@@ -13,6 +13,7 @@ import { fetcher } from "@/lib/swr";
 import { computeWorkDurationText } from "@/lib/admin/work-duration";
 import { enqueueOrFetch } from "@/lib/outbox/enqueueOrFetch";
 import { inferJobSkillTags, skillMatchScore, SERVICE_TYPES } from "@/lib/staff/skills";
+import { computeStepGuideState } from "@/lib/workflow/stepChecklist";
 import { STATUS_FLOW, STATUS_LABEL, STATUS_HINT, type JobReservation, type WorkflowStep } from "./types";
 
 type MemberRow = {
@@ -66,6 +67,13 @@ export default function JobStatusPanel({ reservation, customerId, vehicleId, wor
   const [err, setErr] = useState<string | null>(null);
   const [assigneeBusy, setAssigneeBusy] = useState(false);
   const [partsBusy, setPartsBusy] = useState(false);
+  // 現場ガイド（写真ガイド／確認チェックリスト）: 作業者がチェック済みの項目と、
+  // 未確認のまま進めようとしたときのソフト警告状態。工程が変わるとリセットする。
+  // Hook は storefront 早期 return より前に置く (rules-of-hooks)。
+  const [confirmedPhotos, setConfirmedPhotos] = useState<string[]>([]);
+  const [confirmedChecks, setConfirmedChecks] = useState<string[]>([]);
+  const [pendingWarn, setPendingWarn] = useState(false);
+  const [prevStepOrder, setPrevStepOrder] = useState(reservation.current_step_order ?? 0);
 
   const currentStatus = reservation.status;
 
@@ -124,6 +132,27 @@ export default function JobStatusPanel({ reservation, customerId, vehicleId, wor
   const currentStepOrder = reservation.current_step_order ?? 0;
   const nextTemplateStep = hasTemplate ? (workflowSteps!.find((s) => s.order === currentStepOrder + 1) ?? null) : null;
 
+  // 現在進行中の工程のガイド状態（写真ガイド／確認チェックリスト）。判定は純関数に集約。
+  // 工程が変わったらチェック状態・警告をレンダー中にリセット（React 推奨の派生状態リセット）。
+  const currentStep = hasTemplate ? (workflowSteps!.find((s) => s.order === currentStepOrder) ?? null) : null;
+  if (prevStepOrder !== currentStepOrder) {
+    setPrevStepOrder(currentStepOrder);
+    setConfirmedPhotos([]);
+    setConfirmedChecks([]);
+    setPendingWarn(false);
+  }
+  const guide = currentStep
+    ? computeStepGuideState(currentStep, { photos: confirmedPhotos, checks: confirmedChecks })
+    : null;
+  const togglePhoto = (label: string) => {
+    setPendingWarn(false);
+    setConfirmedPhotos((p) => (p.includes(label) ? p.filter((x) => x !== label) : [...p, label]));
+  };
+  const toggleCheck = (label: string) => {
+    setPendingWarn(false);
+    setConfirmedChecks((p) => (p.includes(label) ? p.filter((x) => x !== label) : [...p, label]));
+  };
+
   const currentIndex = STATUS_FLOW.indexOf(currentStatus as (typeof STATUS_FLOW)[number]);
   const legacyNextStatus =
     currentIndex >= 0 && currentIndex < STATUS_FLOW.length - 1 ? STATUS_FLOW[currentIndex + 1] : null;
@@ -165,6 +194,16 @@ export default function JobStatusPanel({ reservation, customerId, vehicleId, wor
     } finally {
       setBusy(false);
     }
+  }
+
+  /** 進行の入口。未確認のガイド項目があれば一度だけソフト警告を出し、次のタップで進める。
+   *  思想「強制停止は最小限」に従いブロックしない（もう一度押せば必ず進める）。 */
+  function attemptAdvance() {
+    if (guide && guide.outstanding > 0 && !pendingWarn) {
+      setPendingWarn(true);
+      return;
+    }
+    void advance();
   }
 
   /** 部品交換ありトグル。ON にするとバックエンドが装着記録 (draft) を自動作成する (新規UIは無し)。 */
@@ -349,12 +388,87 @@ export default function JobStatusPanel({ reservation, customerId, vehicleId, wor
           </div>
           {canAdvance && (
             <MutationGuard>
-              <button onClick={advance} disabled={busy} className="btn-primary text-sm px-4 py-2 disabled:opacity-50">
-                {busy ? "更新中..." : `確認: ${nextLabel} へ進む →`}
+              <button
+                onClick={attemptAdvance}
+                disabled={busy}
+                className="btn-primary text-sm px-4 py-2 disabled:opacity-50"
+              >
+                {busy
+                  ? "更新中..."
+                  : pendingWarn && guide && guide.outstanding > 0
+                    ? "このまま進める →"
+                    : `確認: ${nextLabel} へ進む →`}
               </button>
             </MutationGuard>
           )}
         </div>
+
+        {/* 現場ガイド: この工程で撮る写真・確認する項目（撮り忘れ／確認漏れ防止） */}
+        {guide && guide.total > 0 && !isCancelled && currentStatus !== "completed" && (
+          <div className="mt-4 rounded-xl border border-border-subtle bg-inset p-3 space-y-2.5">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold tracking-[0.14em] text-muted">この工程のガイド</span>
+              <span className={`text-[11px] font-semibold ${guide.allSatisfied ? "text-success-text" : "text-muted"}`}>
+                {guide.allSatisfied ? "✓ 確認済み" : `未確認 ${guide.outstanding}件`}
+              </span>
+            </div>
+
+            {pendingWarn && guide.outstanding > 0 && (
+              <div className="rounded-lg border border-warning/30 bg-warning-dim px-3 py-2 text-[11px] text-warning-text">
+                未確認の項目が {guide.outstanding}{" "}
+                件あります。撮り忘れ・確認漏れがないかご確認ください。問題なければ「このまま進める」を押してください。
+              </div>
+            )}
+
+            {guide.photos.length > 0 && (
+              <div className="space-y-1">
+                <div className="text-[11px] text-muted">📸 撮る写真</div>
+                <div className="flex flex-wrap gap-1.5">
+                  {guide.photos.map((p) => (
+                    <button
+                      key={p.label}
+                      type="button"
+                      onClick={() => togglePhoto(p.label)}
+                      className={`rounded-full border px-2.5 py-1 text-[11px] transition-colors ${
+                        p.done
+                          ? "border-success/30 bg-success-dim text-success-text"
+                          : "border-border-default bg-surface text-secondary hover:bg-surface-hover"
+                      }`}
+                    >
+                      {p.done ? "✓ " : "○ "}
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {guide.checks.length > 0 && (
+              <div className="space-y-1">
+                <div className="text-[11px] text-muted">✓ 確認項目</div>
+                <div className="flex flex-col gap-1">
+                  {guide.checks.map((c) => (
+                    <button
+                      key={c.label}
+                      type="button"
+                      onClick={() => toggleCheck(c.label)}
+                      className="flex items-center gap-2 rounded-lg px-1 py-0.5 text-left text-xs text-secondary hover:bg-surface-hover"
+                    >
+                      <span
+                        className={`flex h-4 w-4 flex-shrink-0 items-center justify-center rounded border text-[10px] ${
+                          c.done ? "border-success bg-success text-white" : "border-border-default bg-surface"
+                        }`}
+                      >
+                        {c.done ? "✓" : ""}
+                      </span>
+                      <span className={c.done ? "text-muted line-through" : ""}>{c.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* 担当者ピッカー + 作業タイマー */}
         <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 text-xs">
