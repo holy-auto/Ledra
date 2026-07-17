@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import { parseJsonSafe } from "@/lib/api/safeJson";
 import VoiceMemoPanel from "@/app/admin/certificates/new/VoiceMemoPanel";
+import InspectionOcrIntake from "@/components/admin/InspectionOcrIntake";
 import {
   INSPECTION_TYPES,
   INSPECTION_TYPE_LABEL,
@@ -281,6 +282,18 @@ export default function InspectionRecordForm({
           />
         </label>
       </div>
+
+      {/* 写真で自動入力 — 走行距離メーター / タイヤ残溝を撮影して OCR で下書き。
+          対応する numeric 項目へ流し込み、所見は特記事項へ追記する。確定は人が保存で行う。
+          AI 下書きを使えないプラン (Free) では OCR ルートが 403 になるため出さない。 */}
+      {canUseVoiceAi && items.length > 0 && (
+        <InspectionOcrIntake
+          items={items}
+          disabled={submitting}
+          onFillNumeric={(itemId, value) => setAnswerValue(itemId, value)}
+          onAppendNote={(text) => setNotes((prev) => (prev ? `${prev}\n${text}` : text))}
+        />
+      )}
 
       {/* 点検項目 */}
       {items.length === 0 ? (

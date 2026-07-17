@@ -313,6 +313,14 @@ export default function JobStatusPanel({ reservation, customerId, vehicleId, wor
     return diff !== 0 ? diff : a.name.localeCompare(b.name);
   });
 
+  // AI 担当提案 (mechanic.auto_assign_suggest)。未割当のときだけ「1タップで割当」候補を出す。
+  // 割当の確定は人 (このボタン) が行う — 自動割当はしない。提案は入庫時スナップショットなので、
+  // その後に退職/非稼働化した職人 (staffList = 在籍者に不在) は候補から除外する。
+  const aiSuggested = !reservation.assigned_staff_id
+    ? (reservation.ai_assignee_suggestion?.candidates?.[0] ?? null)
+    : null;
+  const aiTopCandidate = aiSuggested && staffList.some((s) => s.id === aiSuggested.staff_id) ? aiSuggested : null;
+
   const currentBooth = allBooths.find((b) => b.id === reservation.booth_id) ?? null;
   // ブース区分が案件内容に合うものを優先表示（キー + 日本語ラベルの両方でマッチ判定）
   const boothMatch = (b: BoothRow) => {
@@ -414,6 +422,20 @@ export default function JobStatusPanel({ reservation, customerId, vehicleId, wor
             {staffBusy && <span className="text-muted">更新中…</span>}
             {jobSkillTags.length > 0 && (
               <span className="text-[10px] text-muted">★=スキル一致（{jobSkillTags.join("・")}）</span>
+            )}
+            {/* AI 担当提案: 未割当のとき最有力候補を1タップで割り当てる (確定は人)。 */}
+            {aiTopCandidate && (
+              <MutationGuard>
+                <button
+                  type="button"
+                  onClick={() => changeAssignedStaff(aiTopCandidate.staff_id)}
+                  disabled={staffBusy || isCancelled}
+                  title={aiTopCandidate.reason}
+                  className="rounded-full border border-accent/40 bg-accent-dim px-2.5 py-1 text-[11px] font-medium text-accent-text transition-colors hover:border-accent disabled:opacity-50"
+                >
+                  🤖 AI提案: {aiTopCandidate.staff_name} を割当
+                </button>
+              </MutationGuard>
             )}
           </div>
 
