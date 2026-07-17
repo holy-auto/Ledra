@@ -50,21 +50,24 @@ export default function InspectionSignaturePad({ onSign, onCancel, orderTitle }:
     lastPos.current = getPos(e, canvas);
   }, []);
 
-  const draw = useCallback((e: React.MouseEvent | React.TouchEvent) => {
-    if (!drawing) return;
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    e.preventDefault();
-    const ctx = canvas.getContext("2d");
-    if (!ctx || !lastPos.current) return;
-    const pos = getPos(e, canvas);
-    ctx.beginPath();
-    ctx.moveTo(lastPos.current.x, lastPos.current.y);
-    ctx.lineTo(pos.x, pos.y);
-    ctx.stroke();
-    lastPos.current = pos;
-    setHasStrokes(true);
-  }, [drawing]);
+  const draw = useCallback(
+    (e: React.MouseEvent | React.TouchEvent) => {
+      if (!drawing) return;
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      e.preventDefault();
+      const ctx = canvas.getContext("2d");
+      if (!ctx || !lastPos.current) return;
+      const pos = getPos(e, canvas);
+      ctx.beginPath();
+      ctx.moveTo(lastPos.current.x, lastPos.current.y);
+      ctx.lineTo(pos.x, pos.y);
+      ctx.stroke();
+      lastPos.current = pos;
+      setHasStrokes(true);
+    },
+    [drawing],
+  );
 
   const endDraw = useCallback(() => {
     setDrawing(false);
@@ -96,7 +99,7 @@ export default function InspectionSignaturePad({ onSign, onCancel, orderTitle }:
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
       <div className="w-full max-w-md bg-surface rounded-2xl shadow-2xl overflow-hidden">
         {/* Header */}
-        <div className="px-5 py-4 border-b border-border">
+        <div className="px-5 py-4 border-b border-border-subtle">
           <p className="text-[11px] font-medium tracking-widest text-muted uppercase">検収確認</p>
           <h2 className="text-base font-semibold text-primary mt-0.5">電子サインで検収承認</h2>
           <p className="text-xs text-secondary mt-1 line-clamp-1">{orderTitle}</p>
@@ -129,7 +132,7 @@ export default function InspectionSignaturePad({ onSign, onCancel, orderTitle }:
                 </button>
               )}
             </div>
-            <div className="rounded-xl border-2 border-dashed border-border bg-white overflow-hidden touch-none">
+            <div className="rounded-xl border-2 border-dashed border-border-default bg-white overflow-hidden touch-none">
               <canvas
                 ref={canvasRef}
                 className="w-full"
@@ -143,25 +146,17 @@ export default function InspectionSignaturePad({ onSign, onCancel, orderTitle }:
                 onTouchEnd={endDraw}
               />
             </div>
-            {!hasStrokes && (
-              <p className="text-[11px] text-muted text-center">↑ ここにサインしてください</p>
-            )}
+            {!hasStrokes && <p className="text-[11px] text-muted text-center">↑ ここにサインしてください</p>}
           </div>
 
           <p className="text-[11px] text-muted leading-relaxed">
-            このサインにより、上記の作業内容を検収承認したことを確認します。
-            サインは記録として保存されます。
+            このサインにより、上記の作業内容を検収承認したことを確認します。 サインは記録として保存されます。
           </p>
         </div>
 
         {/* Footer */}
-        <div className="px-5 py-4 border-t border-border flex gap-2 justify-end">
-          <button
-            type="button"
-            className="btn-secondary text-sm"
-            onClick={onCancel}
-            disabled={submitting}
-          >
+        <div className="px-5 py-4 border-t border-border-subtle flex gap-2 justify-end">
+          <button type="button" className="btn-secondary text-sm" onClick={onCancel} disabled={submitting}>
             キャンセル
           </button>
           <button
