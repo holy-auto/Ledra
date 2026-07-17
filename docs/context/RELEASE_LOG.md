@@ -27,7 +27,21 @@
 - 対象: 予約/案件ワークフロー（`/admin/reservations` 詳細のステッパー、`/admin/workflow-templates`
   テンプレ編集）。全業種共通。バンドルB「工程ゲート統一」の第1弾（アイデア6/7/25の土台）。
 
-## 2026-07-16 現場DX: 点検写真OCR + 担当メカニック自動提案 (repair-workflow-ai)
+## 2026-07-16 現場DX フロントUI: 点検OCR取込ボタン + AI担当提案ワンタップ割当 (repair-workflow-ai 続き)
+- 内容:
+  - 点検フォーム (`InspectionRecordForm`) に「走行距離を撮影 / タイヤ残溝を撮影」
+    ボタンを追加 (`InspectionOcrIntake`)。撮影→OCR (`/api/admin/inspection-records/ocr`)
+    →ラベル一致する numeric 項目へ流し込み、所見 (残溝/スリップサイン/交換目安/劣化)
+    は特記事項へ追記。対応項目が無くても取りこぼさず notes に残す。証明書フォームの
+    「膜厚計から取り込み」と同じカメラ直行パターン。流し込み先の判定は純関数
+    `ocrIntake.ts`（テスト7件）。確定=保存は人。
+  - 案件詳細 (`/admin/jobs/[id]` の `JobStatusPanel`) の施工担当ピッカーに、未割当時のみ
+    AI 担当提案 (`reservations.ai_assignee_suggestion`) の最有力候補を
+    「🤖 AI提案: {名前} を割当」ワンタップボタンで表示。自動割当はせず確定は人。
+- 対象: 点検入力フォーム、案件詳細の施工担当アサイン。
+- 補足: バックエンド (OCR API / 担当提案保存) は PR #763 で実装済み。本変更でUIを接続。
+
+## 2026-07-16 現場DX: 点検写真OCR + 担当メカニック自動提案 (PR #763)
 - 内容:
   - 点検写真OCR (`/api/admin/inspection-records/ocr`): 走行距離メーター/タイヤ
     残溝の写真を Anthropic Vision で読み取り、点検表フォームへ自動入力する数値を
