@@ -314,11 +314,12 @@ export default function JobStatusPanel({ reservation, customerId, vehicleId, wor
   });
 
   // AI 担当提案 (mechanic.auto_assign_suggest)。未割当のときだけ「1タップで割当」候補を出す。
-  // 割当の確定は人 (このボタン) が行う — 自動割当はしない。
-  const aiTopCandidate =
-    !reservation.assigned_staff_id && (reservation.ai_assignee_suggestion?.candidates?.length ?? 0) > 0
-      ? reservation.ai_assignee_suggestion!.candidates[0]
-      : null;
+  // 割当の確定は人 (このボタン) が行う — 自動割当はしない。提案は入庫時スナップショットなので、
+  // その後に退職/非稼働化した職人 (staffList = 在籍者に不在) は候補から除外する。
+  const aiSuggested = !reservation.assigned_staff_id
+    ? (reservation.ai_assignee_suggestion?.candidates?.[0] ?? null)
+    : null;
+  const aiTopCandidate = aiSuggested && staffList.some((s) => s.id === aiSuggested.staff_id) ? aiSuggested : null;
 
   const currentBooth = allBooths.find((b) => b.id === reservation.booth_id) ?? null;
   // ブース区分が案件内容に合うものを優先表示（キー + 日本語ラベルの両方でマッチ判定）

@@ -50,6 +50,10 @@ const ADVICE_LABEL: Record<TireAdvice, string> = {
 };
 
 function findNumericItem(items: OcrIntakeItem[], re: RegExp): OcrIntakeItem | undefined {
+  // ponytail: 最初に一致した numeric 項目にだけ流し込む。前後2本のタイヤ残溝など
+  // 同カテゴリの numeric 項目が複数あるテンプレートでは 1 つしか埋まらない (残りは
+  // notes に要約が残るので値は失われない)。多数項目への個別マッピングが必要になったら、
+  // OCR 側で位置 (tire_position) を返して項目ラベルと突合する方式に上げる。
   return items.find((it) => it.type === "numeric" && re.test(it.label));
 }
 
