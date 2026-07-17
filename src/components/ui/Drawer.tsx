@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, type ReactNode } from "react";
 import { lockBodyScroll, unlockBodyScroll } from "./scrollLock";
-import { isTopOverlay, popOverlay, pushOverlay } from "./overlayStack";
+import { isTopOverlay, registerOverlay, unregisterOverlay } from "./overlayStack";
 
 interface DrawerProps {
   open: boolean;
@@ -13,7 +13,6 @@ interface DrawerProps {
 
 export default function Drawer({ open, onClose, title, children }: DrawerProps) {
   const panelRef = useRef<HTMLDivElement>(null);
-  const overlayIdRef = useRef<symbol | null>(null);
 
   const getFocusableElements = useCallback(() => {
     if (!panelRef.current) return [];
@@ -24,27 +23,28 @@ export default function Drawer({ open, onClose, title, children }: DrawerProps) 
     );
   }, []);
 
-  // Track this instance's place in the shared overlay stack so its keydown
-  // handling below can stay silent while a dialog opened on top of it (e.g.
-  // a Modal opened from this Drawer's content) is the one that should
-  // respond — neither component portals its DOM out of the tree, so a
-  // nested Modal's controls would otherwise also get caught by this
-  // Drawer's own focus trap / Escape handling.
+  // Register this instance's element in the shared overlay registry so its
+  // keydown handling below can stay silent while a dialog opened on top of
+  // it (e.g. a Modal opened from this Drawer's content) is the one that
+  // should respond — neither component portals its DOM out of the tree, so
+  // a nested Modal's controls would otherwise also get caught by this
+  // Drawer's own focus trap / Escape handling. "Topmost" is checked live
+  // via DOM containment (see overlayStack.ts) rather than registration
+  // order, since React fires a nested child's effects before its parent's
+  // — an order-based stack would wrongly rank this Drawer above a Modal
+  // nested inside it if both open in the same commit.
   useEffect(() => {
-    if (!open) return;
-    const id = pushOverlay();
-    overlayIdRef.current = id;
-    return () => {
-      popOverlay(id);
-      overlayIdRef.current = null;
-    };
+    if (!open || !panelRef.current) return;
+    const el = panelRef.current;
+    registerOverlay(el);
+    return () => unregisterOverlay(el);
   }, [open]);
 
   // Close on Escape & focus trap
   useEffect(() => {
     if (!open) return;
     const handler = (e: KeyboardEvent) => {
-      if (!overlayIdRef.current || !isTopOverlay(overlayIdRef.current)) return;
+      if (!isTopOverlay(panelRef.current)) return;
       if (e.key === "Escape") {
         onClose();
         return;
