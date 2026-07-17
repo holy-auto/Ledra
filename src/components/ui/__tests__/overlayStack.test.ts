@@ -175,4 +175,35 @@ describe("overlayStack", () => {
   it("getFocusableElements returns nothing for a null root", () => {
     expect(getFocusableElements(null)).toEqual([]);
   });
+
+  it("picks exactly one leaf when two sibling overlays are nested under the same root", () => {
+    // The exact bug Codex caught: a Drawer containing both an open
+    // ConfirmDialog (via Modal, z-50) and an open BarcodeScanner (z-60) as
+    // siblings -- neither contains the other, so both trivially share the
+    // same root (the Drawer) and a root-only comparison would call both
+    // topmost. The higher z-index leaf must be the sole winner.
+    const drawer = document.createElement("div");
+    drawer.style.zIndex = "50";
+
+    const confirmDialog = document.createElement("div");
+    confirmDialog.style.zIndex = "50";
+    const scanner = document.createElement("div");
+    scanner.style.zIndex = "60";
+    drawer.append(confirmDialog, scanner);
+
+    document.body.append(drawer);
+
+    registerOverlay(drawer);
+    registerOverlay(confirmDialog);
+    registerOverlay(scanner);
+
+    expect(isTopOverlay(scanner)).toBe(true);
+    expect(isTopOverlay(confirmDialog)).toBe(false);
+    expect(isTopOverlay(drawer)).toBe(false);
+
+    unregisterOverlay(scanner);
+    unregisterOverlay(confirmDialog);
+    unregisterOverlay(drawer);
+    drawer.remove();
+  });
 });

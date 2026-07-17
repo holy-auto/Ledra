@@ -80,28 +80,42 @@ function rootOverlayOf(el: HTMLElement): HTMLElement {
   return root;
 }
 
+// `a` visually paints on top of `b` when they share the same immediate
+// stacking context (equal-depth siblings, or two branch roots): higher
+// z-index wins; on a tie, whichever is LATER in DOM document order does
+// (how the browser resolves equal z-index in one stacking context).
+function beats(a: HTMLElement, b: HTMLElement): boolean {
+  const za = zIndexOf(a);
+  const zb = zIndexOf(b);
+  if (za !== zb) return za > zb;
+  return (b.compareDocumentPosition(a) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
+}
+
 export function isTopOverlay(el: HTMLElement | null): boolean {
   if (!el || !openElements.has(el)) return false;
   if (isAncestorOfAnotherOpenOverlay(el)) return false;
 
-  const myRoot = rootOverlayOf(el);
+  // 1. Which branch (outermost open ancestor) wins — confines each nested
+  // overlay's z-index to its own containing context first.
   let winningRoot: HTMLElement | null = null;
   for (const candidate of openElements) {
     const candidateRoot = rootOverlayOf(candidate);
-    if (!winningRoot) {
-      winningRoot = candidateRoot;
-      continue;
-    }
-    if (candidateRoot === winningRoot) continue;
-    const candidateZ = zIndexOf(candidateRoot);
-    const winnerZ = zIndexOf(winningRoot);
-    if (
-      candidateZ > winnerZ ||
-      (candidateZ === winnerZ &&
-        (winningRoot.compareDocumentPosition(candidateRoot) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0)
-    ) {
+    if (!winningRoot || (candidateRoot !== winningRoot && beats(candidateRoot, winningRoot))) {
       winningRoot = candidateRoot;
     }
   }
-  return myRoot === winningRoot;
+  if (rootOverlayOf(el) !== winningRoot) return false;
+
+  // 2. Within that winning branch, more than one leaf can exist side by
+  // side (e.g. a Drawer containing both an open ConfirmDialog and an open
+  // BarcodeScanner, neither nested in the other) — rank those leaves by
+  // the same z-index/DOM-order rule, since siblings nested at the same
+  // depth genuinely do compete within their shared containing context.
+  let winningLeaf: HTMLElement | null = null;
+  for (const candidate of openElements) {
+    if (isAncestorOfAnotherOpenOverlay(candidate)) continue;
+    if (rootOverlayOf(candidate) !== winningRoot) continue;
+    if (!winningLeaf || beats(candidate, winningLeaf)) winningLeaf = candidate;
+  }
+  return winningLeaf === el;
 }
