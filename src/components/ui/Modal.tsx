@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, type ReactNode } from "react";
 import { lockBodyScroll, unlockBodyScroll } from "./scrollLock";
+import { isTopOverlay, popOverlay, pushOverlay } from "./overlayStack";
 
 interface ModalProps {
   open: boolean;
@@ -13,6 +14,7 @@ interface ModalProps {
 
 export default function Modal({ open, onClose, title, children, footer }: ModalProps) {
   const contentRef = useRef<HTMLDivElement>(null);
+  const overlayIdRef = useRef<symbol | null>(null);
 
   const getFocusableElements = useCallback(() => {
     if (!contentRef.current) return [];
@@ -23,10 +25,24 @@ export default function Modal({ open, onClose, title, children, footer }: ModalP
     );
   }, []);
 
+  // Track this instance's place in the shared overlay stack so its keydown
+  // handling below can stay silent while a dialog opened on top of it (e.g.
+  // a ConfirmDialog opened from this Modal) is the one that should respond.
+  useEffect(() => {
+    if (!open) return;
+    const id = pushOverlay();
+    overlayIdRef.current = id;
+    return () => {
+      popOverlay(id);
+      overlayIdRef.current = null;
+    };
+  }, [open]);
+
   // Close on Escape & focus trap
   useEffect(() => {
     if (!open) return;
     const handler = (e: KeyboardEvent) => {
+      if (!overlayIdRef.current || !isTopOverlay(overlayIdRef.current)) return;
       if (e.key === "Escape") {
         onClose();
         return;
