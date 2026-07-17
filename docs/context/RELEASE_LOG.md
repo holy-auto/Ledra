@@ -14,6 +14,17 @@
 
 ## 直近のリリース（git log 直近30件より、2026-07 時点で把握できるもの）
 
+## 2026-07-17 証明書AI下書きの取りこぼし解消（施工箇所・使用材料・保証候補も適用）
+- 内容: 証明書作成フォームの「AI下書き生成」(`AiDraftPanel`) と音声メモが、適用時に
+  title/description/cautions しか施工内容へ流し込まず、AI が生成・表示していた施工箇所
+  (workAreas)・使用材料 (materials)・保証候補 (warrantyCandidates) を破棄していた問題を解消。
+  適用ロジックを純関数 `composeAiDraftContent`（`src/lib/certificates/`, テスト5件）に集約し、
+  空セクションは見出しごと省く・重複や空値は除去したうえで、施工内容フリーテキスト
+  (`content_free_text`) へ見出し付きでまとめる。値は下書きで確定前に人が編集できる。
+- 対象: 証明書作成フォーム (`/admin/certificates/new` の `CertNewFormWrapper` / `AiDraftPanel` /
+  `VoiceMemoPanel`)。構造化フィールド(coating_products_json 等)への流し込みは施工種別依存の
+  ため別スコープ。
+
 ## 2026-07-17 工程ガイドを案件画面（JobStatusPanel）にも展開（第2弾）
 
 - 内容: 第1弾（PR #764）で `WorkflowStepper`（予約詳細）に出した工程ごとの写真ガイド／
