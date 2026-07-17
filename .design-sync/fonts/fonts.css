@@ -15,41 +15,46 @@
    discrete weights actually used by shipped components' CSS is enough here
    and keeps the bundle smaller than the full variable font.
    Both families are SIL Open Font License 1.1 — redistribution requires
-   keeping the license + copyright notice attached, see OFL-NotoSansJP.txt
-   and OFL-GeistMono.txt in this same directory (fetched verbatim from the
-   google/fonts source repo). */
+   keeping the license + copyright notice attached; the authoritative copy
+   of that notice lives in .design-sync/conventions.md (shipped via
+   cfg.readmeHeader into every build's README — see NOTES.md's "Codex round
+   4" for why a plain file copy alongside these fonts isn't reliable here).
+   Shipped as WOFF2 (converted from the original harvested TTFs via
+   ttf2woff2, same glyph coverage, ~55-65% smaller) — see NOTES.md's "Codex
+   round 5" for why WOFF2 was adopted but full Unicode-range subsetting
+   wasn't. */
 @font-face {
   font-family: "Noto Sans JP";
   font-style: normal;
   font-weight: 400;
   font-display: swap;
-  src: url("./noto-sans-jp-400.ttf") format("truetype");
+  src: url("./noto-sans-jp-400.woff2") format("woff2");
 }
 @font-face {
   font-family: "Noto Sans JP";
   font-style: normal;
   font-weight: 500;
   font-display: swap;
-  src: url("./noto-sans-jp-500.ttf") format("truetype");
+  src: url("./noto-sans-jp-500.woff2") format("woff2");
 }
 @font-face {
   font-family: "Noto Sans JP";
   font-style: normal;
   font-weight: 700;
   font-display: swap;
-  src: url("./noto-sans-jp-700.ttf") format("truetype");
+  src: url("./noto-sans-jp-700.woff2") format("woff2");
 }
 @font-face {
   font-family: "Geist Mono";
   font-style: normal;
   font-weight: 400;
   font-display: swap;
-  src: url("./geist-mono-400.ttf") format("truetype");
+  src: url("./geist-mono-400.woff2") format("woff2");
 }
 @font-face {
   font-family: "Geist Mono";
   font-style: normal;
   font-weight: 600;
   font-display: swap;
-  src: url("./geist-mono-600.ttf") format("truetype");
+  src: url("./geist-mono-600.woff2") format("woff2");
 }

@@ -11,6 +11,21 @@ import fs from "node:fs";
 
 const OUT = process.argv[2] ?? "./ds-bundle";
 
+// .ds-sync/ is the design-sync skill's own converter toolchain, staged into
+// this repo by that skill's setup step — it's gitignored (see .gitignore)
+// and never committed, so a fresh checkout without having run the skill
+// first won't have it. Fail with a clear pointer instead of a bare
+// MODULE_NOT_FOUND several steps in.
+if (!fs.existsSync(".ds-sync/package-build.mjs")) {
+  console.error(
+    "✗ .ds-sync/package-build.mjs not found.\n" +
+    "  This is the design-sync skill's converter toolchain, intentionally not\n" +
+    "  committed (see .gitignore). Run the design-sync skill's setup step\n" +
+    "  first to stage .ds-sync/ before invoking this script.",
+  );
+  process.exit(1);
+}
+
 console.log("[1/4] compiling Tailwind CSS...");
 execFileSync("node", [".design-sync/tailwind-build.mjs"], { stdio: "inherit" });
 

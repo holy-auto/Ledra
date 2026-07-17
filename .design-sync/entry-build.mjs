@@ -35,10 +35,15 @@ const componentLines = entries.map(([name, relPath]) => {
     : `export { ${name} } from ${JSON.stringify(abs)};`;
 });
 
-// Non-component named exports (hooks, etc.) that authored previews compose
-// with alongside their owning component — not PascalCase, so they can't go
-// through componentSrcMap, but still need to resolve on window.Ledra.
-const EXTRA_EXPORTS = [{ name: "useToast", path: "src/components/ui/Toast.tsx" }];
+// Extra named exports that componentSrcMap's one-name-per-file mapping can't
+// reach: either a non-PascalCase hook (useToast) or a second PascalCase
+// component sharing a file whose default/primary export is already mapped
+// under a different name (SkeletonLines, alongside Skeleton.tsx's default
+// export). Both still need to resolve on window.Ledra.
+const EXTRA_EXPORTS = [
+  { name: "useToast", path: "src/components/ui/Toast.tsx" },
+  { name: "SkeletonLines", path: "src/components/ui/Skeleton.tsx" },
+];
 const extraLines = EXTRA_EXPORTS.map(
   ({ name, path: relPath }) => `export { ${name} } from ${JSON.stringify(path.resolve(relPath))};`,
 );
