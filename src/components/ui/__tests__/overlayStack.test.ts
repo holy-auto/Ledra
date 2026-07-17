@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect } from "vitest";
-import { registerOverlay, unregisterOverlay, isTopOverlay } from "../overlayStack";
+import { registerOverlay, unregisterOverlay, isTopOverlay, getFocusableElements } from "../overlayStack";
 
 describe("overlayStack", () => {
   it("ranks the innermost open element as topmost regardless of registration order", () => {
@@ -139,5 +139,40 @@ describe("overlayStack", () => {
     unregisterOverlay(drawer);
     drawer.remove();
     modal.remove();
+  });
+
+  it("refocuses the newly-exposed overlay when the topmost one closes", () => {
+    // E.g. a Modal opened from within an open Drawer closes: focus was
+    // inside the Modal, which is now gone, so it falls back to <body> --
+    // the Drawer's own Tab trap doesn't catch that (it only redirects once
+    // activeElement is already its first/last control), so something has
+    // to explicitly move focus back into the Drawer.
+    const drawer = document.createElement("div");
+    const drawerButton = document.createElement("button");
+    drawer.appendChild(drawerButton);
+
+    const modal = document.createElement("div");
+    const modalButton = document.createElement("button");
+    modal.appendChild(modalButton);
+    drawer.appendChild(modal);
+
+    document.body.append(drawer);
+
+    registerOverlay(drawer);
+    registerOverlay(modal);
+    modalButton.focus();
+    expect(document.activeElement).toBe(modalButton);
+
+    modal.remove();
+    unregisterOverlay(modal);
+
+    expect(document.activeElement).toBe(drawerButton);
+
+    unregisterOverlay(drawer);
+    drawer.remove();
+  });
+
+  it("getFocusableElements returns nothing for a null root", () => {
+    expect(getFocusableElements(null)).toEqual([]);
   });
 });

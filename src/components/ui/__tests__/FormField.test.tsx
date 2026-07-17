@@ -23,4 +23,28 @@ describe("FormField", () => {
     const input = screen.getByLabelText("電話番号");
     expect(input.id).toBe("phone-field");
   });
+
+  it("associates an error message with the control via aria-describedby and marks it invalid", () => {
+    render(
+      <FormField label="お名前" error="必須項目です">
+        <input type="text" />
+      </FormField>,
+    );
+    const input = screen.getByLabelText("お名前") as HTMLInputElement;
+    const message = screen.getByText("必須項目です");
+    expect(input.getAttribute("aria-describedby")).toBe(message.id);
+    expect(input.getAttribute("aria-invalid")).toBe("true");
+  });
+
+  it("associates a hint message with the control without marking it invalid", () => {
+    render(
+      <FormField label="お名前" hint="全角で入力してください">
+        <input type="text" />
+      </FormField>,
+    );
+    const input = screen.getByLabelText("お名前") as HTMLInputElement;
+    const message = screen.getByText("全角で入力してください");
+    expect(input.getAttribute("aria-describedby")).toBe(message.id);
+    expect(input.hasAttribute("aria-invalid")).toBe(false);
+  });
 });

@@ -1,8 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import { lockBodyScroll, unlockBodyScroll } from "./scrollLock";
-import { isTopOverlay, registerOverlay, unregisterOverlay } from "./overlayStack";
+import { getFocusableElements, isTopOverlay, registerOverlay, unregisterOverlay } from "./overlayStack";
 
 interface ModalProps {
   open: boolean;
@@ -14,15 +14,6 @@ interface ModalProps {
 
 export default function Modal({ open, onClose, title, children, footer }: ModalProps) {
   const contentRef = useRef<HTMLDivElement>(null);
-
-  const getFocusableElements = useCallback(() => {
-    if (!contentRef.current) return [];
-    return Array.from(
-      contentRef.current.querySelectorAll<HTMLElement>(
-        'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
-      ),
-    );
-  }, []);
 
   // Register this instance's element in the shared overlay registry so its
   // keydown handling below can stay silent while a dialog opened on top of
@@ -47,7 +38,7 @@ export default function Modal({ open, onClose, title, children, footer }: ModalP
         return;
       }
       if (e.key === "Tab") {
-        const focusable = getFocusableElements();
+        const focusable = getFocusableElements(contentRef.current);
         if (focusable.length === 0) return;
         const first = focusable[0];
         const last = focusable[focusable.length - 1];
@@ -66,7 +57,7 @@ export default function Modal({ open, onClose, title, children, footer }: ModalP
     };
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
-  }, [open, onClose, getFocusableElements]);
+  }, [open, onClose]);
 
   // Focus first focusable element on open — re-checked inside the rAF
   // (not just at effect setup) since a nested overlay opened in the same
@@ -77,10 +68,10 @@ export default function Modal({ open, onClose, title, children, footer }: ModalP
     if (!open) return;
     requestAnimationFrame(() => {
       if (!isTopOverlay(contentRef.current)) return;
-      const focusable = getFocusableElements();
+      const focusable = getFocusableElements(contentRef.current);
       if (focusable.length > 0) focusable[0].focus();
     });
-  }, [open, getFocusableElements]);
+  }, [open]);
 
   // Prevent body scroll when open — ref-counted so a nested overlay
   // (e.g. this Modal opened from within an open Drawer) doesn't unlock the
@@ -112,7 +103,7 @@ export default function Modal({ open, onClose, title, children, footer }: ModalP
         {/* Header */}
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-lg font-semibold text-primary">{title}</h2>
-          <button onClick={onClose} className="btn-ghost p-1" aria-label="閉じる">
+          <button type="button" onClick={onClose} className="btn-ghost p-1" aria-label="閉じる">
             <svg
               width="18"
               height="18"

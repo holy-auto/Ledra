@@ -20,12 +20,33 @@
 // of its own ancestor's content).
 const openElements = new Set<HTMLElement>();
 
+// Shared with every overlay's own focus trap, so there's one definition of
+// "focusable" instead of three copies drifting apart.
+const FOCUSABLE_SELECTOR =
+  'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+export function getFocusableElements(root: HTMLElement | null): HTMLElement[] {
+  if (!root) return [];
+  return Array.from(root.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR));
+}
+
 export function registerOverlay(el: HTMLElement) {
   openElements.add(el);
 }
 
 export function unregisterOverlay(el: HTMLElement) {
   openElements.delete(el);
+  // The closing overlay's DOM node is on its way out; if focus was inside
+  // it, it falls back to <body>, which the newly-exposed overlay's own Tab
+  // trap doesn't catch (it only redirects once activeElement is already
+  // its first/last control). Move focus back into whatever's now topmost.
+  for (const candidate of openElements) {
+    if (!isTopOverlay(candidate)) continue;
+    if (candidate.contains(document.activeElement)) return;
+    const [first] = getFocusableElements(candidate);
+    first?.focus();
+    return;
+  }
 }
 
 function isAncestorOfAnotherOpenOverlay(el: HTMLElement): boolean {

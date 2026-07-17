@@ -1,9 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { BrowserMultiFormatReader, type IScannerControls } from "@zxing/browser";
 import { BarcodeFormat, DecodeHintType } from "@zxing/library";
-import { isTopOverlay, registerOverlay, unregisterOverlay } from "./overlayStack";
+import { getFocusableElements, isTopOverlay, registerOverlay, unregisterOverlay } from "./overlayStack";
 
 interface Props {
   open: boolean;
@@ -59,15 +59,6 @@ export default function BarcodeScanner({ open, onResult, onClose, title, descrip
     return () => unregisterOverlay(el);
   }, [open]);
 
-  const getFocusableElements = useCallback(() => {
-    if (!rootRef.current) return [];
-    return Array.from(
-      rootRef.current.querySelectorAll<HTMLElement>(
-        'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
-      ),
-    );
-  }, []);
-
   // Close on Escape & focus trap — same pattern as Modal/Drawer.
   useEffect(() => {
     if (!open) return;
@@ -78,7 +69,7 @@ export default function BarcodeScanner({ open, onResult, onClose, title, descrip
         return;
       }
       if (e.key === "Tab") {
-        const focusable = getFocusableElements();
+        const focusable = getFocusableElements(rootRef.current);
         if (focusable.length === 0) return;
         const first = focusable[0];
         const last = focusable[focusable.length - 1];
@@ -97,7 +88,7 @@ export default function BarcodeScanner({ open, onResult, onClose, title, descrip
     };
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
-  }, [open, onClose, getFocusableElements]);
+  }, [open, onClose]);
 
   // Focus first focusable element on open — same pattern (and same
   // same-commit-race guard) as Modal/Drawer.
@@ -105,10 +96,10 @@ export default function BarcodeScanner({ open, onResult, onClose, title, descrip
     if (!open) return;
     requestAnimationFrame(() => {
       if (!isTopOverlay(rootRef.current)) return;
-      const focusable = getFocusableElements();
+      const focusable = getFocusableElements(rootRef.current);
       if (focusable.length > 0) focusable[0].focus();
     });
-  }, [open, getFocusableElements]);
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;

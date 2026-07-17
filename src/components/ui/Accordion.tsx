@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 
 interface AccordionItem {
   question: string;
@@ -14,6 +14,7 @@ interface AccordionProps {
 
 export default function Accordion({ items, className = "" }: AccordionProps) {
   const [openIndex, setOpenIndex] = useState<number | null>(null);
+  const baseId = useId();
 
   const toggle = (i: number) => {
     setOpenIndex((prev) => (prev === i ? null : i));
@@ -23,11 +24,15 @@ export default function Accordion({ items, className = "" }: AccordionProps) {
     <div className={`divide-y divide-border-default ${className}`}>
       {items.map((item, i) => {
         const isOpen = openIndex === i;
+        const triggerId = `${baseId}-trigger-${i}`;
+        const panelId = `${baseId}-panel-${i}`;
         return (
           <div key={i}>
             <button
+              id={triggerId}
               onClick={() => toggle(i)}
               aria-expanded={isOpen}
+              aria-controls={panelId}
               className="flex w-full items-center justify-between gap-4 py-4 text-left transition-colors hover:text-primary"
             >
               <span className="text-sm font-medium text-primary">{item.question}</span>
@@ -46,6 +51,10 @@ export default function Accordion({ items, className = "" }: AccordionProps) {
               </svg>
             </button>
             <div
+              id={panelId}
+              role="region"
+              aria-labelledby={triggerId}
+              aria-hidden={!isOpen}
               className="grid transition-[grid-template-rows] duration-200"
               style={{ gridTemplateRows: isOpen ? "1fr" : "0fr" }}
             >

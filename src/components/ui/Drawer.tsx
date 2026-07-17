@@ -1,8 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import { lockBodyScroll, unlockBodyScroll } from "./scrollLock";
-import { isTopOverlay, registerOverlay, unregisterOverlay } from "./overlayStack";
+import { getFocusableElements, isTopOverlay, registerOverlay, unregisterOverlay } from "./overlayStack";
 
 interface DrawerProps {
   open: boolean;
@@ -13,15 +13,6 @@ interface DrawerProps {
 
 export default function Drawer({ open, onClose, title, children }: DrawerProps) {
   const panelRef = useRef<HTMLDivElement>(null);
-
-  const getFocusableElements = useCallback(() => {
-    if (!panelRef.current) return [];
-    return Array.from(
-      panelRef.current.querySelectorAll<HTMLElement>(
-        'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
-      ),
-    );
-  }, []);
 
   // Register this instance's element in the shared overlay registry so its
   // keydown handling below can stay silent while a dialog opened on top of
@@ -50,7 +41,7 @@ export default function Drawer({ open, onClose, title, children }: DrawerProps) 
         return;
       }
       if (e.key === "Tab") {
-        const focusable = getFocusableElements();
+        const focusable = getFocusableElements(panelRef.current);
         if (focusable.length === 0) return;
         const first = focusable[0];
         const last = focusable[focusable.length - 1];
@@ -69,7 +60,7 @@ export default function Drawer({ open, onClose, title, children }: DrawerProps) 
     };
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
-  }, [open, onClose, getFocusableElements]);
+  }, [open, onClose]);
 
   // Focus first focusable element on open — re-checked inside the rAF
   // (not just at effect setup) since a nested overlay opened in the same
@@ -80,10 +71,10 @@ export default function Drawer({ open, onClose, title, children }: DrawerProps) 
     if (!open) return;
     requestAnimationFrame(() => {
       if (!isTopOverlay(panelRef.current)) return;
-      const focusable = getFocusableElements();
+      const focusable = getFocusableElements(panelRef.current);
       if (focusable.length > 0) focusable[0].focus();
     });
-  }, [open, getFocusableElements]);
+  }, [open]);
 
   // Ref-counted so a nested overlay (e.g. a Modal opened from within this
   // open Drawer) doesn't unlock the body out from under the other one.
@@ -119,7 +110,7 @@ export default function Drawer({ open, onClose, title, children }: DrawerProps) 
         {/* Header */}
         <div className="sticky top-0 z-10 flex items-center justify-between border-b border-border-subtle bg-[var(--bg-surface-solid)] px-5 py-4">
           <h2 className="text-base font-semibold text-primary">{title}</h2>
-          <button onClick={onClose} className="btn-ghost p-1" aria-label="閉じる">
+          <button type="button" onClick={onClose} className="btn-ghost p-1" aria-label="閉じる">
             <svg
               width="18"
               height="18"

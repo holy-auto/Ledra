@@ -12,25 +12,45 @@ export default function InspectionSignaturePad({ onSign, onCancel, orderTitle }:
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [drawing, setDrawing] = useState(false);
   const [hasStrokes, setHasStrokes] = useState(false);
+  const hasStrokesRef = useRef(false);
   const [signerName, setSignerName] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const lastPos = useRef<{ x: number; y: number } | null>(null);
 
-  // Canvas の解像度を DPR に合わせる
+  // Canvas の解像度を DPR に合わせる。初回だけでなく、開いたまま端末を回転
+  // した場合など描画中の viewport サイズ変更も ResizeObserver で追従する
+  // （そうしないと backing store と CSS 表示サイズがズレ、getPos が返す
+  // 座標が実際の描画位置とずれてしまう）。リサイズ時は一旦既存のストローク
+  // を画像として退避し、新しいサイズに合わせて再描画する。
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const dpr = window.devicePixelRatio || 1;
-    const rect = canvas.getBoundingClientRect();
-    canvas.width = rect.width * dpr;
-    canvas.height = rect.height * dpr;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    ctx.scale(dpr, dpr);
-    ctx.strokeStyle = "#1a1f36";
-    ctx.lineWidth = 2.5;
-    ctx.lineCap = "round";
-    ctx.lineJoin = "round";
+
+    const setup = (preserveExisting: boolean) => {
+      const rect = canvas.getBoundingClientRect();
+      if (rect.width === 0 || rect.height === 0) return;
+      const dpr = window.devicePixelRatio || 1;
+      const prevDataUrl = preserveExisting && hasStrokesRef.current ? canvas.toDataURL() : null;
+      canvas.width = rect.width * dpr;
+      canvas.height = rect.height * dpr;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+      ctx.scale(dpr, dpr);
+      ctx.strokeStyle = "#1a1f36";
+      ctx.lineWidth = 2.5;
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+      if (prevDataUrl) {
+        const img = new Image();
+        img.onload = () => ctx.drawImage(img, 0, 0, rect.width, rect.height);
+        img.src = prevDataUrl;
+      }
+    };
+
+    setup(false);
+    const observer = new ResizeObserver(() => setup(true));
+    observer.observe(canvas);
+    return () => observer.disconnect();
   }, []);
 
   const getPos = (e: React.MouseEvent | React.TouchEvent, canvas: HTMLCanvasElement) => {
@@ -64,6 +84,7 @@ export default function InspectionSignaturePad({ onSign, onCancel, orderTitle }:
       ctx.lineTo(pos.x, pos.y);
       ctx.stroke();
       lastPos.current = pos;
+      hasStrokesRef.current = true;
       setHasStrokes(true);
     },
     [drawing],
@@ -80,6 +101,7 @@ export default function InspectionSignaturePad({ onSign, onCancel, orderTitle }:
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
+    hasStrokesRef.current = false;
     setHasStrokes(false);
   };
 
