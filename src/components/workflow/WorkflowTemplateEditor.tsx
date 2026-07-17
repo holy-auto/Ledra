@@ -25,6 +25,13 @@ function generateKey(label: string, index: number): string {
 
 type GuideField = "photos" | "checks";
 
+// zod スキーマ (workflow-template.ts) の上限に合わせ、保存時に必ず通る配列へ丸める。
+// 1項目の文字数・件数を超えてもテンプレ全体の保存が失敗しないようにするための保険。
+const GUIDE_LIMITS: Record<GuideField, { maxLen: number; maxItems: number }> = {
+  photos: { maxLen: 100, maxItems: 20 },
+  checks: { maxLen: 200, maxItems: 30 },
+};
+
 export default function WorkflowTemplateEditor({ steps, onChange }: Props) {
   const [newLabel, setNewLabel] = useState("");
   // 改行区切りの生テキストを工程 key ごとに保持（入力中の空行で候補が消えないように）。
@@ -45,10 +52,12 @@ export default function WorkflowTemplateEditor({ steps, onChange }: Props) {
 
   const setGuideText = (step: WorkflowStep, field: GuideField, text: string) => {
     setRawGuide((prev) => ({ ...prev, [step.key]: { ...prev[step.key], [field]: text } }));
+    const { maxLen, maxItems } = GUIDE_LIMITS[field];
     const items = text
       .split("\n")
-      .map((s) => s.trim())
-      .filter(Boolean);
+      .map((s) => s.trim().slice(0, maxLen))
+      .filter(Boolean)
+      .slice(0, maxItems);
     const stepField = field === "photos" ? "required_photos" : "checklist";
     onChange(steps.map((s) => (s.key === step.key ? { ...s, [stepField]: items } : s)));
   };
