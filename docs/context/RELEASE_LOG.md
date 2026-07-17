@@ -14,6 +14,24 @@
 
 ## 直近のリリース（git log 直近30件より、2026-07 時点で把握できるもの）
 
+## 2026-07-16 現場DX: 点検写真OCR + 担当メカニック自動提案 (repair-workflow-ai)
+- 内容:
+  - 点検写真OCR (`/api/admin/inspection-records/ocr`): 走行距離メーター/タイヤ
+    残溝の写真を Anthropic Vision で読み取り、点検表フォームへ自動入力する数値を
+    返す。身分証OCR (`identityOcr.ts`) と同型の二段構え（Sonnet→低信頼のみ
+    Opus昇格）。DB非永続、確定=保存は人。タイヤは残溝/スリップサインから交換
+    要否の目安（次回提案の下書き）も添える。正規化・目安判定は純関数
+    (`inspectionOcrSchema.ts`) に集約し単体テストで担保。
+  - 担当メカニック自動提案 (`mechanic.auto_assign_suggest`, opt-in/既定OFF):
+    案件登録(入庫)時に、メニューから必要スキルを推定し職人スキル
+    (`staff_members.skills`) と過去の同種施工履歴で担当候補をランク付けして
+    `reservations.ai_assignee_suggestion` に保存。保険案件の3段振り分け
+    (`caseAssignSuggest.ts`) を整備向けに転用し、`staff/skills.ts` を再利用。
+    自動割当はせず、割当確定はスタッフが1タップ（壁3不介入）。
+  - LINE見積→承認→支払いは既存 opt-in アクションの合成で成立するため新規実装なし
+    （判断は DECISION_LOG 2026-07-16 参照）。
+- 対象: 点検記録フォーム、案件(予約)登録、AI自動化設定 (`/admin/settings/ai-automation`)。
+
 ## 2026-07-16 LINE Webhookのバックグラウンド処理をafter()で保護 (PR #761)
 
 - 内容: 「LINEの自動返信が返ってこない」報告を調査し、Webhookハンドラが

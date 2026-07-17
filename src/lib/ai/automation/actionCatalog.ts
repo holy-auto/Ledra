@@ -46,6 +46,7 @@ export type AutomationActionKey =
   | "thickness.auto_detect"
   | "workflow.auto_propose_on_intake"
   | "workflow.auto_apply_on_intake"
+  | "mechanic.auto_assign_suggest"
   | "job.auto_next_action"
   | "inventory.auto_draft_reorder"
   | "parts.auto_reconcile_delivery_note"
@@ -218,6 +219,15 @@ export const AUTOMATION_ACTIONS: readonly AutomationActionDef[] = [
       "AI 提案 (workflow.auto_propose_on_intake) の最有力テンプレートを案件に自動で割り当て、ワークフローを開始する。テンプレートを手で組まなくても工程が走る。割り当てるだけで各工程の進行・確定は人が行う。スタッフはいつでも別テンプレートへ変更可能。",
     defaultEnabled: false,
     guard: "AI 有効 + Standard プラン以上 + workflow.auto_propose_on_intake 有効 + 一致テンプレートあり",
+  },
+  {
+    key: "mechanic.auto_assign_suggest",
+    workflow: "job",
+    label: "案件登録時に担当メカニックの候補を自動提案",
+    description:
+      "案件 (予約) が登録された時点で、メニュー内容から必要スキルを推定し、職人の得意スキル (staff_members.skills) と過去の同種施工の担当履歴から担当メカニック候補を AI が提案する。提案を保存するだけで自動割当はしない — 誰が施工するかの確定は必ずスタッフが 1 タップで行う (人が判断)。",
+    defaultEnabled: false,
+    guard: "AI 有効 + Standard プラン以上 (ai_job_assist) + 稼働中の職人 (staff_members) 登録済み + 未割当の案件",
   },
   {
     key: "job.auto_next_action",
@@ -454,6 +464,7 @@ export const RECOMMENDED_AUTOMATION_ACTION_KEYS: ReadonlySet<string> = new Set<s
   "thickness.auto_detect",
   "workflow.auto_propose_on_intake",
   "workflow.auto_apply_on_intake",
+  "mechanic.auto_assign_suggest",
   "job.auto_next_action",
   "inventory.auto_draft_reorder",
   "parts.auto_reconcile_delivery_note",

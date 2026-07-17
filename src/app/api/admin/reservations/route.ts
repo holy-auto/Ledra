@@ -24,6 +24,7 @@ import { maybeAutoCreateDraftCertificateForReservation } from "@/lib/ai/automati
 import { maybeAutoCreateDraftInvoiceForReservation } from "@/lib/ai/automation/invoiceRecordAuto";
 import { maybeAutoCategorizeReservationOnIntake } from "@/lib/ai/automation/accountingAuto";
 import { maybeAutoProposeWorkflowForReservation } from "@/lib/ai/automation/workflowAuto";
+import { maybeAutoSuggestAssigneeForReservation } from "@/lib/ai/automation/assigneeAuto";
 import { createDraftPartInstallationForReservation } from "@/lib/parts/installationService";
 
 export const dynamic = "force-dynamic";
@@ -270,6 +271,11 @@ export async function POST(req: NextRequest) {
     // workflow.auto_apply_on_intake が別途 opt-in の場合だけ最有力テンプレートを割り当てる。いずれも
     // 各工程の進行・確定は人 (壁3). 業種を問わず案件起票の起点で効くよう fire-and-forget で呼ぶ。
     void maybeAutoProposeWorkflowForReservation({ tenantId: caller.tenantId, reservationId: reservation.id as string });
+
+    // 案件登録時: 担当メカニック候補を AI 提案して reservations.ai_assignee_suggestion に保存
+    // (mechanic.auto_assign_suggest が opt-in のテナントのみ). 提案の保存のみで、担当の割当 (確定) は
+    // スタッフが 1 タップで行う (人が判断・自動割当しない). レスポンスを遅らせないよう fire-and-forget.
+    void maybeAutoSuggestAssigneeForReservation({ tenantId: caller.tenantId, reservationId: reservation.id as string });
 
     return apiJson({ ok: true, reservation });
   } catch (e: unknown) {
