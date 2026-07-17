@@ -3,8 +3,12 @@
    doesn't leave static font files in the repo for the scraper to find, so
    these are harvested directly from Google Fonts (same public source
    next/font itself pulls from) — see .design-sync/NOTES.md.
-   Weight 700 is intentionally omitted: DESIGN_SYSTEM.md says Ledra never
-   uses 700 for Noto Sans JP ("太字は密度を下げる"). Geist Mono ships 400 and
+   Noto Sans JP ships 400/500/700 — matching src/app/layout.tsx's own
+   next/font weight array. DESIGN_SYSTEM.md's "700 is never used" rule turned
+   out to only cover the named type-ramp classes (.text-h1 etc.); three
+   shipped components (FirstUseInlineGuide, HelpTooltip, Stepper) use the
+   raw Tailwind `font-bold` utility on small numbered/icon badges, which
+   genuinely needs 700. Geist Mono ships 400 and
    600 — 600 is required by `.section-tag` in globals.css; the real app loads
    Geist Mono as a variable font (no fixed weight in next/font/google's
    config) so it has every weight natively, but shipping only the two
@@ -27,6 +31,13 @@
   font-weight: 500;
   font-display: swap;
   src: url("./noto-sans-jp-500.ttf") format("truetype");
+}
+@font-face {
+  font-family: "Noto Sans JP";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("./noto-sans-jp-700.ttf") format("truetype");
 }
 @font-face {
   font-family: "Geist Mono";
