@@ -18,13 +18,17 @@ export default function FormField({ label, required = false, hint, error, childr
   // a single control in every real usage of this component
   // (Input/Select/Textarea/raw <input>) — clone these in rather than
   // requiring every call site to wire them manually.
-  const existingId = isValidElement(children) ? (children.props as { id?: string }).id : undefined;
+  const childProps = isValidElement(children) ? (children.props as Record<string, unknown>) : undefined;
+  const existingId = childProps?.id as string | undefined;
   const controlId = existingId ?? autoId;
   const messageId = error || hint ? `${autoId}-message` : undefined;
 
   const cloneProps: Record<string, unknown> = {};
   if (!existingId) cloneProps.id = controlId;
-  if (messageId) cloneProps["aria-describedby"] = messageId;
+  if (messageId) {
+    const existingDescribedBy = childProps?.["aria-describedby"] as string | undefined;
+    cloneProps["aria-describedby"] = existingDescribedBy ? `${existingDescribedBy} ${messageId}` : messageId;
+  }
   if (error) cloneProps["aria-invalid"] = true;
   const control =
     isValidElement(children) && Object.keys(cloneProps).length > 0 ? cloneElement(children, cloneProps) : children;

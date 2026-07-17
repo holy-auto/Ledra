@@ -13,6 +13,11 @@ export default function InspectionSignaturePad({ onSign, onCancel, orderTitle }:
   const [drawing, setDrawing] = useState(false);
   const [hasStrokes, setHasStrokes] = useState(false);
   const hasStrokesRef = useRef(false);
+  // Bumped on every resize-triggered redraw and on clear, so a pending
+  // async image decode from an earlier resize can tell it's been
+  // superseded (by a newer resize or an explicit clear) and skip drawing
+  // the stale snapshot it was restoring.
+  const renderGenerationRef = useRef(0);
   const [signerName, setSignerName] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const lastPos = useRef<{ x: number; y: number } | null>(null);
@@ -31,6 +36,7 @@ export default function InspectionSignaturePad({ onSign, onCancel, orderTitle }:
       if (rect.width === 0 || rect.height === 0) return;
       const dpr = window.devicePixelRatio || 1;
       const prevDataUrl = preserveExisting && hasStrokesRef.current ? canvas.toDataURL() : null;
+      const generation = ++renderGenerationRef.current;
       canvas.width = rect.width * dpr;
       canvas.height = rect.height * dpr;
       const ctx = canvas.getContext("2d");
@@ -42,7 +48,11 @@ export default function InspectionSignaturePad({ onSign, onCancel, orderTitle }:
       ctx.lineJoin = "round";
       if (prevDataUrl) {
         const img = new Image();
-        img.onload = () => ctx.drawImage(img, 0, 0, rect.width, rect.height);
+        img.onload = () => {
+          // Superseded by a clear or a later resize while this was decoding.
+          if (renderGenerationRef.current !== generation) return;
+          ctx.drawImage(img, 0, 0, rect.width, rect.height);
+        };
         img.src = prevDataUrl;
       }
     };
@@ -102,6 +112,7 @@ export default function InspectionSignaturePad({ onSign, onCancel, orderTitle }:
     if (!ctx) return;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     hasStrokesRef.current = false;
+    renderGenerationRef.current++;
     setHasStrokes(false);
   };
 

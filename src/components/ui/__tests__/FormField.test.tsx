@@ -47,4 +47,16 @@ describe("FormField", () => {
     expect(input.getAttribute("aria-describedby")).toBe(message.id);
     expect(input.hasAttribute("aria-invalid")).toBe(false);
   });
+
+  it("preserves a describedby id the control already declares alongside the message id", () => {
+    render(
+      <FormField label="お名前" error="必須項目です">
+        <input type="text" aria-describedby="other-help-text" />
+      </FormField>,
+    );
+    const input = screen.getByLabelText("お名前") as HTMLInputElement;
+    const message = screen.getByText("必須項目です");
+    const describedBy = input.getAttribute("aria-describedby")?.split(" ");
+    expect(describedBy).toEqual(["other-help-text", message.id]);
+  });
 });
