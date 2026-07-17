@@ -141,15 +141,29 @@ export default function DataTable<T>({
               {columns.map((col) => (
                 <th
                   key={col.key}
-                  className={`section-tag px-4 py-3 ${col.sortable ? "cursor-pointer select-none hover:text-secondary" : ""} ${col.className ?? ""}`}
-                  onClick={col.sortable ? () => handleSort(col.key) : undefined}
+                  className={`section-tag px-4 py-3 ${col.className ?? ""}`}
+                  aria-sort={
+                    col.sortable
+                      ? sortKey === col.key
+                        ? sortDir === "asc"
+                          ? "ascending"
+                          : "descending"
+                        : "none"
+                      : undefined
+                  }
                 >
-                  <span className="inline-flex items-center gap-1">
-                    {col.header}
-                    {col.sortable && sortKey === col.key && (
-                      <span className="text-[10px]">{sortDir === "asc" ? "↑" : "↓"}</span>
-                    )}
-                  </span>
+                  {col.sortable ? (
+                    <button
+                      type="button"
+                      onClick={() => handleSort(col.key)}
+                      className="inline-flex items-center gap-1 select-none hover:text-secondary"
+                    >
+                      {col.header}
+                      {sortKey === col.key && <span className="text-[10px]">{sortDir === "asc" ? "↑" : "↓"}</span>}
+                    </button>
+                  ) : (
+                    <span className="inline-flex items-center gap-1">{col.header}</span>
+                  )}
                 </th>
               ))}
             </tr>

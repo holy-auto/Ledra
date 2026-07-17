@@ -13,11 +13,6 @@ export default function InspectionSignaturePad({ onSign, onCancel, orderTitle }:
   const [drawing, setDrawing] = useState(false);
   const [hasStrokes, setHasStrokes] = useState(false);
   const hasStrokesRef = useRef(false);
-  // Bumped on every resize-triggered redraw and on clear, so a pending
-  // async image decode from an earlier resize can tell it's been
-  // superseded (by a newer resize or an explicit clear) and skip drawing
-  // the stale snapshot it was restoring.
-  const renderGenerationRef = useRef(0);
   const [signerName, setSignerName] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const lastPos = useRef<{ x: number; y: number } | null>(null);
@@ -25,8 +20,10 @@ export default function InspectionSignaturePad({ onSign, onCancel, orderTitle }:
   // Canvas の解像度を DPR に合わせる。初回だけでなく、開いたまま端末を回転
   // した場合など描画中の viewport サイズ変更も ResizeObserver で追従する
   // （そうしないと backing store と CSS 表示サイズがズレ、getPos が返す
-  // 座標が実際の描画位置とずれてしまう）。リサイズ時は一旦既存のストローク
-  // を画像として退避し、新しいサイズに合わせて再描画する。
+  // 座標が実際の描画位置とずれてしまう）。リサイズ前の内容はオフスクリーン
+  // canvas に同期的にコピーしてから新サイズへ再描画する — Image/dataURL
+  // 経由の非同期デコードだと、その間 hasStrokes は true のまま canvas は
+  // 空の状態が生じ得て、その隙に送信されると空の署名が承認扱いになる。
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -35,8 +32,15 @@ export default function InspectionSignaturePad({ onSign, onCancel, orderTitle }:
       const rect = canvas.getBoundingClientRect();
       if (rect.width === 0 || rect.height === 0) return;
       const dpr = window.devicePixelRatio || 1;
-      const prevDataUrl = preserveExisting && hasStrokesRef.current ? canvas.toDataURL() : null;
-      const generation = ++renderGenerationRef.current;
+
+      let snapshot: HTMLCanvasElement | null = null;
+      if (preserveExisting && hasStrokesRef.current) {
+        snapshot = document.createElement("canvas");
+        snapshot.width = canvas.width;
+        snapshot.height = canvas.height;
+        snapshot.getContext("2d")?.drawImage(canvas, 0, 0);
+      }
+
       canvas.width = rect.width * dpr;
       canvas.height = rect.height * dpr;
       const ctx = canvas.getContext("2d");
@@ -46,15 +50,7 @@ export default function InspectionSignaturePad({ onSign, onCancel, orderTitle }:
       ctx.lineWidth = 2.5;
       ctx.lineCap = "round";
       ctx.lineJoin = "round";
-      if (prevDataUrl) {
-        const img = new Image();
-        img.onload = () => {
-          // Superseded by a clear or a later resize while this was decoding.
-          if (renderGenerationRef.current !== generation) return;
-          ctx.drawImage(img, 0, 0, rect.width, rect.height);
-        };
-        img.src = prevDataUrl;
-      }
+      if (snapshot) ctx.drawImage(snapshot, 0, 0, rect.width, rect.height);
     };
 
     setup(false);
@@ -112,7 +108,6 @@ export default function InspectionSignaturePad({ onSign, onCancel, orderTitle }:
     if (!ctx) return;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     hasStrokesRef.current = false;
-    renderGenerationRef.current++;
     setHasStrokes(false);
   };
 

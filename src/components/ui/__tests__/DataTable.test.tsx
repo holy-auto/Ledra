@@ -57,14 +57,35 @@ describe("DataTable", () => {
     expect(onRowClick).toHaveBeenCalledWith(sampleData[0]);
   });
 
-  it("renders sortable column header with click handler", () => {
+  it("renders a sortable column header as a real, keyboard-focusable button", () => {
     const sortableColumns: Column<TestRow>[] = [
       { key: "name", header: "Name", render: (row) => row.name, sortable: true },
       { key: "status", header: "Status", render: (row) => row.status },
     ];
     const { container } = render(<DataTable columns={sortableColumns} data={sampleData} rowKey={rowKey} />);
-    const nameHeader = container.querySelector("th.cursor-pointer");
-    expect(nameHeader).not.toBeNull();
+    const sortButtons = container.querySelectorAll("th button");
+    // Only the sortable "Name" column gets a button -- "Status" stays a span.
+    expect(sortButtons.length).toBeGreaterThanOrEqual(1);
+    expect(sortButtons[0].textContent).toContain("Name");
+  });
+
+  it("sorts and reflects direction via aria-sort when the sortable header is activated", () => {
+    const sortableColumns: Column<TestRow>[] = [
+      { key: "name", header: "Name", render: (row) => row.name, sortable: true, sortValue: (row) => row.name },
+    ];
+    render(<DataTable columns={sortableColumns} data={sampleData} rowKey={rowKey} />);
+    const button = screen.getAllByRole("button", { name: /Name/ })[0];
+    const th = button.closest("th")!;
+    expect(th.getAttribute("aria-sort")).toBe("none");
+
+    fireEvent.click(button);
+    expect(th.getAttribute("aria-sort")).toBe("ascending");
+    // Alice, Bob, Charlie already ascend alphabetically -- assert the arrow shows
+    expect(button.textContent).toContain("↑");
+
+    fireEvent.click(button);
+    expect(th.getAttribute("aria-sort")).toBe("descending");
+    expect(button.textContent).toContain("↓");
   });
 
   it("renders checkboxes when selectable", () => {
