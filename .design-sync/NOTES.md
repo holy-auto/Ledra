@@ -10,7 +10,7 @@
   environment; `@zxing/library@0.22.0` warns it wants Node >=24 (`EBADENGINE`)
   but installs and builds fine — non-blocking.
 
-## componentSrcMap exclusions (13 of 46 files in src/components/ui/)
+## componentSrcMap exclusions (14 of 46 files in src/components/ui/)
 
 Excluded because they can't render standalone outside the real Next.js app
 shell / data layer, not because they're low quality:
@@ -23,16 +23,18 @@ shell / data layer, not because they're low quality:
   into the curated bundle entry as a transitive dependency (see "Bundling
   gotchas" below).
 - **Direct Supabase/data-fetching components**: `NotificationBell`,
-  `OrderCsvImport`.
+  `OrderCsvImport`, `StoreSelector` (added in Codex round 2 — see below).
 - **Non-visual infrastructure**: `ViewerModeProvider` (data-fetching context
   provider), `MutationGuard` (role-gated visibility wrapper, renders nothing
   of its own).
 
-Three included components read app-specific React contexts
-(`BusinessModeToggle`, `StoreSelector`, `ViewModeToggle`) — verified their
-context modules (`BusinessModeContext`, `StoreContext`, `ViewModeContext`)
-all provide safe no-provider fallbacks in their `use*` hooks, so no
-`cfg.provider` wrapper was needed.
+Two included components read app-specific React contexts
+(`BusinessModeToggle`, `ViewModeToggle`) — verified their context modules
+(`BusinessModeContext`, `ViewModeContext`) provide safe no-provider
+fallbacks in their `use*` hooks (full visual renders, just non-interactive
+without a real provider), so no `cfg.provider` wrapper was needed.
+`StoreSelector` also reads a context (`StoreContext`) but its fallback is
+`return null` — excluded instead, see "Codex round 2" below.
 
 ## Tailwind v4 CSS
 
@@ -91,7 +93,15 @@ The default `guidelinesGlob` (`['docs/guides/**/*.md', 'docs/*.md', 'guides/**/*
 - **Geist Mono shipped only weight 400, but `.section-tag` needs 600.** `globals.css`'s `.section-tag` sets `font-weight: 600` with `font-family: var(--font-mono)`; only having a 400 TTF meant browsers synthesized/faked bold. Added a real weight-600 `@font-face` (same Google Fonts source as the others) — `.design-sync/fonts/geist-mono-600.ttf` + `fonts.css` entry.
 - **`.d.ts` contracts for `Input`/`Textarea`/`Select`/`Button`/`Card` dropped all inherited native HTML attributes.** These components `extends *HTMLAttributes<...>` and spread `{...props}`, but `cfg.dtsPropsFor` only supplies the interface *body* (no `extends` clause support), so the emitted contract only showed the custom fields (e.g. `Input` looked like it only accepted `error?: boolean`). Inlined the commonly-used native attributes (`value`, `onChange`, `placeholder`, `disabled`, `className`, etc.) directly into each `dtsPropsFor` body as an explicit, documented addition.
 - **`Accordion`/`Stepper`/`CustomerRankBadge` referenced private, non-exported types** (`AccordionItem`, `StepItem`, `RankLike`) in their `dtsPropsFor` bodies — those types aren't in the emitted `.d.ts` tree (synth-entry mode only has real component exports), so the reference was dangling. Inlined the actual shape (`{ question: string; answer: string }` etc.) instead of referencing the type name.
-- **conventions.md didn't warn that `styles.css` is a static compiled snapshot**, not a live Tailwind build — an arbitrary utility class (`gap-11`, `p-9`) that no shipped component happens to use has no generated rule and silently renders unstyled. Added an explicit warning + the verified-present spacing steps (`0 1 2 3 4 5 6 8 10 12`) to the conventions header.
+- **conventions.md didn't warn that `styles.css` is a static compiled snapshot**, not a live Tailwind build — an arbitrary utility class (`gap-11`, `p-9`) that no shipped component happens to use has no generated rule and silently renders unstyled. Added an explicit warning + the verified-present spacing steps to the conventions header.
+
+## Codex round 2 (after the round-1 fixes above — also fixed)
+
+- **Round-1 type-inlining was incomplete**: `Badge`/`Button`/`Card` still referenced `BadgeVariant`/`ButtonVariant`/`ButtonSize`/`CardVariant`, and `FirstUseInlineGuide`/`HelpTooltip`/`AnchorBadge`/`DashboardWidgets`/`Timeline` still referenced `Step`/`Side`/`PolygonNetwork`/`Widget`/`TimelineItem` — all private, non-exported types with the same dangling-reference problem as round 1's `AccordionItem`/`StepItem`/`RankLike`. Inlined every one of these too (unions and object shapes both).
+- **Round-1's native-attribute fix was still a hand-picked, necessarily-incomplete subset** (e.g. `Input`'s authored preview passes `aria-label` in `.design-sync/previews/Select.tsx`/`Textarea.tsx`, which wasn't in the round-1 list). `cfg.dtsPropsFor` genuinely cannot express an `extends` clause, so instead of chasing an ever-growing enumeration, added `[key: string]: unknown` with an explanatory comment to `Input`/`Textarea`/`Select`/`Button`/`Card` — this honestly signals "additional native attributes (aria-*, data-*, etc.) also pass through" without pretending the named list is exhaustive.
+- **`StoreSelector` excluded from the sync.** Unlike `BusinessModeToggle`/`ViewModeToggle` (which render their full visual from a safe context default), `StoreSelector` has `if (loading || stores.length <= 1) return null;` and the context default is `loading: true` forever with no provider — it renders **nothing** standalone, not degraded-but-visible. Its real `StoreProvider` (`src/lib/stores/StoreContext.tsx`) also wouldn't help: it `fetch()`es `/api/admin/stores`, which fails/404s with no backend, still leaving `stores.length <= 1`. Same category as the already-excluded `NotificationBell`/`OrderCsvImport` (data-layer-coupled, can't render standalone) — moved to `componentSrcMap: null`.
+- **Missing OFL license notices for the redistributed fonts.** Noto Sans JP and Geist Mono are both SIL Open Font License 1.1, which requires the license + copyright notice to travel with redistributed copies. Fetched the real `OFL.txt` for each family verbatim from the `google/fonts` source repo → `.design-sync/fonts/OFL-NotoSansJP.txt` / `OFL-GeistMono.txt`. **These are NOT copied into `ds-bundle/fonts/` automatically** — `package-build.mjs`'s font handling only copies files referenced via `url()` inside `@font-face` rules, never companion license text. Run `.design-sync/copy-font-licenses.mjs <out-dir>` after every `package-build.mjs` run, before uploading (this is a new required step, same spirit as `cfg.buildCmd` but AFTER build instead of before, since the out dir doesn't exist until `package-build.mjs` creates it).
+- **conventions.md's spacing-step claim was wrong for `m-*`/`space-x-*`** — the round-1 fix asserted a single `0 1 2 3 4 5 6 8 10 12` list covering `gap-*`/`p-*`/`m-*`/`space-*`, but only verified it against `gap-*`/`p-*`. Actual verified sets differ a lot per family (e.g. `m-*` only has `0 1 2 3 6`, `space-x-*` only has `3`). Replaced with a per-family table, each verified independently.
 
 ## Bundling gotchas (already fixed, recorded so a re-sync doesn't rediscover them)
 

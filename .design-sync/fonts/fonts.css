@@ -9,7 +9,11 @@
    Geist Mono as a variable font (no fixed weight in next/font/google's
    config) so it has every weight natively, but shipping only the two
    discrete weights actually used by shipped components' CSS is enough here
-   and keeps the bundle smaller than the full variable font. */
+   and keeps the bundle smaller than the full variable font.
+   Both families are SIL Open Font License 1.1 — redistribution requires
+   keeping the license + copyright notice attached, see OFL-NotoSansJP.txt
+   and OFL-GeistMono.txt in this same directory (fetched verbatim from the
+   google/fonts source repo). */
 @font-face {
   font-family: "Noto Sans JP";
   font-style: normal;

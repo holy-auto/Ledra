@@ -4,7 +4,7 @@ Ledra is a Web-based 施工証明書 (work-completion certificate) SaaS connecti
 
 ## Setup
 
-No provider wrapper is required for any component in this kit — every component that reads shared app state (`BusinessModeToggle`, `StoreSelector`, `ViewModeToggle`) falls back to a safe default when rendered without one. Build freely without wrapping in anything.
+No provider wrapper is required for any component in this kit. `BusinessModeToggle` and `ViewModeToggle` read shared app state but render their full visual (dropdown / pill toggle) from a safe default (`mode: "all"` / `"admin"`) when no provider is present — clicking them is inert without one (the setter is a no-op), but they're never invisible, which is what matters for composing a design. Build freely without wrapping in anything.
 
 The one real provider is **`ToastProvider`** — wrap a page/section in it to enable toast notifications, then call `useToast()` from a descendant to fire one:
 
@@ -47,7 +47,17 @@ Two layers, both token-driven (no hardcoded hex anywhere in the source):
 
 **2. Tailwind utilities + CSS custom properties** for layout and one-off styling — spacing/flex/grid utilities are plain Tailwind (`flex`, `gap-3`, `grid-cols-2`, `p-5`, …); anything color/radius/shadow goes through a token via Tailwind's arbitrary-value syntax, e.g. `bg-[var(--bg-surface-solid)]`, `border-[var(--border-default)]`, `text-[var(--accent-blue)]`. Never write a raw hex value.
 
-**Important: `styles.css` is a static, pre-compiled snapshot, not a live Tailwind build.** Only utility classes already used somewhere in this kit's shipped components exist in it — a class you invent that wasn't already in use (e.g. `gap-11`, `p-9`, an arbitrary-value combo no component happens to use) has no generated rule and silently renders unstyled. Verified-present spacing steps for `gap-*`/`p-*`/`m-*`/`space-*`: `0 1 2 3 4 5 6 8 10 12` (steps `7 9 11` and anything above `12` are NOT shipped — use the nearest present step instead). When in doubt, reuse a spacing value you can see in one of this kit's own `.prompt.md` examples rather than picking an arbitrary number.
+**Important: `styles.css` is a static, pre-compiled snapshot, not a live Tailwind build.** Only utility classes already used somewhere in this kit's shipped components exist in it — a class you invent that wasn't already in use has no generated rule and silently renders unstyled. Verified-present steps, per family (anything not listed is NOT shipped — use the nearest present step instead):
+
+| Family | Present steps |
+|---|---|
+| `gap-*` | `0 1 2 3 4 5 6 8 10 12` |
+| `p-*` | `0 1 2 3 4 5 6 7 8 10 12` |
+| `m-*` | `0 1 2 3 6` |
+| `space-x-*` | `3` |
+| `space-y-*` | `0 1 2 3 4 5 6 8 10 12 14 16 20` |
+
+When in doubt, reuse a spacing value you can see in one of this kit's own `.prompt.md` examples rather than picking an arbitrary number — that's always guaranteed to exist.
 
 Key tokens (see `styles.css` for the full set): `--bg-base`, `--bg-surface-solid`, `--bg-elevated`, `--bg-inset`, `--text-primary`, `--text-secondary`, `--text-ink2`, `--text-muted`, `--accent-blue` (primary accent), `--accent-gold` (reserve for certificates / blockchain-anchor moments only — see `AnchorBadge` — never as a general accent), `--radius-sm|md|lg|xl|full`, `--shadow-sm|md|lg|xl|focus`, `--border-default`, `--border-subtle`.
 
