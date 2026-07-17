@@ -8,6 +8,7 @@ import { createCertAction } from "./actions";
 import { enqueueOrFetch } from "@/lib/outbox/enqueueOrFetch";
 import { enqueueOrFetchMultipart } from "@/lib/outbox/enqueueOrFetchMultipart";
 import { certCreateJsonSchema, formDataToCertJson } from "@/lib/certificates/createCertificateApi";
+import { composeAiDraftContent, type AiDraftApplyInput } from "@/lib/certificates/composeAiDraftContent";
 import CertPackagePicker from "./CertPackagePicker";
 import VehiclePickerSection from "./VehiclePickerSection";
 import FilmThicknessSection from "./FilmThicknessSection";
@@ -237,13 +238,14 @@ export default function CertNewFormWrapper({
     setLastCertDismissed(true);
   };
 
-  const handleAiDraftApply = useCallback((draft: { title: string; description: string; cautions: string }) => {
+  const handleAiDraftApply = useCallback((draft: AiDraftApplyInput) => {
     if (!formRef.current) return;
     const form = formRef.current;
-    // 施工内容フィールドへ自動入力
+    // 施工内容フィールドへ自動入力。AI 下書きの施工箇所・使用材料・保証候補も
+    // 取りこぼさず施工内容へまとめる (従来は title/description/cautions のみで破棄されていた)。
     const contentField = form.querySelector<HTMLTextAreaElement>("textarea[name='content_free_text']");
     if (contentField) {
-      contentField.value = `${draft.title}\n\n${draft.description}${draft.cautions ? `\n\n【注意事項】\n${draft.cautions}` : ""}`;
+      contentField.value = composeAiDraftContent(draft);
     }
     setDraftApplied(true);
     setTimeout(() => setDraftApplied(false), 3000);
