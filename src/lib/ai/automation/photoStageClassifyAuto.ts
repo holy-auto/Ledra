@@ -43,7 +43,9 @@ function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 }
 
-type StageSuggestion = { stage: "intake_before" | "after"; confidence: number; source: "auto"; at: string };
+// stage=null は「AI が other と判定 = 提案なし」を意味する。null も保存することで、
+// 分類済み画像を pickImagesToClassify が再選択せず、アップロードごとの再課金を防ぐ。
+type StageSuggestion = { stage: "intake_before" | "after" | null; confidence: number; source: "auto"; at: string };
 
 /** 指定証明書の未タグ写真に before/after 分類を自動適用する。失敗しても投げない。 */
 export async function maybeAutoClassifyStageForCertificate(params: MaybeAutoClassifyStageParams): Promise<void> {
@@ -101,15 +103,14 @@ export async function maybeAutoClassifyStageForCertificate(params: MaybeAutoClas
       if (!base64) continue;
       const result = await classifyPhotoStage(base64, mime as ImageMediaType, { model });
       calls++;
-      const certStage = aiStageToCertStage(result.stage);
-      if (certStage) {
-        newSuggestions[id] = {
-          stage: certStage,
-          confidence: result.confidence,
-          source: "auto",
-          at: new Date().toISOString(),
-        };
-      }
+      // certStage=null (other) も必ず記録する（分類済みとして再分類・再課金を防ぐ）。
+      // UI は stage!=null の提案だけを表示すればよい。
+      newSuggestions[id] = {
+        stage: aiStageToCertStage(result.stage),
+        confidence: result.confidence,
+        source: "auto",
+        at: new Date().toISOString(),
+      };
     }
 
     if (calls > 0) {
