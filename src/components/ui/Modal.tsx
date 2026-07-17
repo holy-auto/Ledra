@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, type ReactNode } from "react";
+import { lockBodyScroll, unlockBodyScroll } from "./scrollLock";
 
 interface ModalProps {
   open: boolean;
@@ -61,16 +62,13 @@ export default function Modal({ open, onClose, title, children, footer }: ModalP
     });
   }, [open, getFocusableElements]);
 
-  // Prevent body scroll when open
+  // Prevent body scroll when open — ref-counted so a nested overlay
+  // (e.g. this Modal opened from within an open Drawer) doesn't unlock the
+  // body out from under the other one when it closes first.
   useEffect(() => {
-    if (open) {
-      document.body.style.overflow = "hidden";
-    } else {
-      document.body.style.overflow = "";
-    }
-    return () => {
-      document.body.style.overflow = "";
-    };
+    if (!open) return;
+    lockBodyScroll();
+    return () => unlockBodyScroll();
   }, [open]);
 
   if (!open) return null;

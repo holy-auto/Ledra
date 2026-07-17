@@ -9,6 +9,7 @@
   "readmeHeader": ".design-sync/conventions.md",
   "guidelinesGlob": "DESIGN_SYSTEM.md",
   "buildCmd": "node .design-sync/tailwind-build.mjs && node .design-sync/entry-build.mjs",
+  "entry": ".design-sync/.cache/entry.mjs",
   "extraFonts": [
     ".design-sync/fonts/fonts.css"
   ],

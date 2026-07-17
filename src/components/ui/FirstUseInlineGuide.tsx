@@ -22,7 +22,10 @@ interface FirstUseInlineGuideProps {
 
 const TONE_CLASS: Record<NonNullable<FirstUseInlineGuideProps["tone"]>, string> = {
   accent: "border-accent/50 bg-accent-dim/30",
-  info: "border-info/50 bg-info-dim/30",
+  // "info" has no dedicated color family in this design system — Badge and
+  // Toast's own "info" variants already reuse the accent/blue tokens, so
+  // this does the same rather than referencing undefined --color-info(-dim).
+  info: "border-accent/50 bg-accent-dim/30",
   warning: "border-warning/50 bg-warning-dim/30",
 };
 

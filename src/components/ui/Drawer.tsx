@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, type ReactNode } from "react";
+import { lockBodyScroll, unlockBodyScroll } from "./scrollLock";
 
 interface DrawerProps {
   open: boolean;
@@ -60,15 +61,12 @@ export default function Drawer({ open, onClose, title, children }: DrawerProps) 
     });
   }, [open, getFocusableElements]);
 
+  // Ref-counted so a nested overlay (e.g. a Modal opened from within this
+  // open Drawer) doesn't unlock the body out from under the other one.
   useEffect(() => {
-    if (open) {
-      document.body.style.overflow = "hidden";
-    } else {
-      document.body.style.overflow = "";
-    }
-    return () => {
-      document.body.style.overflow = "";
-    };
+    if (!open) return;
+    lockBodyScroll();
+    return () => unlockBodyScroll();
   }, [open]);
 
   if (!open) return null;
@@ -84,6 +82,7 @@ export default function Drawer({ open, onClose, title, children }: DrawerProps) 
       />
       {/* Panel */}
       <div
+        ref={panelRef}
         className="fixed right-0 top-0 h-screen w-80 max-w-[90vw] bg-[var(--bg-surface-solid)] shadow-xl border-l border-border-default overflow-y-auto"
         style={{
           borderRadius: "var(--radius-xl) 0 0 var(--radius-xl)",

@@ -1,12 +1,14 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 
 export interface Column<T> {
   key: string;
   header: string;
   render: (row: T) => ReactNode;
   sortable?: boolean;
+  /** Required for `sortable` columns to actually reorder rows — returns the comparable value for a row */
+  sortValue?: (row: T) => string | number;
   className?: string;
   /** Hide this column in mobile card view */
   hideOnMobile?: boolean;
@@ -55,6 +57,19 @@ export default function DataTable<T>({
       setSortDir("asc");
     }
   };
+
+  const sortedData = useMemo(() => {
+    const col = sortKey ? columns.find((c) => c.key === sortKey) : undefined;
+    if (!col?.sortValue) return data;
+    const dir = sortDir === "asc" ? 1 : -1;
+    return [...data].sort((a, b) => {
+      const av = col.sortValue!(a);
+      const bv = col.sortValue!(b);
+      if (av < bv) return -dir;
+      if (av > bv) return dir;
+      return 0;
+    });
+  }, [data, columns, sortKey, sortDir]);
 
   const allSelected = data.length > 0 && selectedKeys?.size === data.length;
 
@@ -150,7 +165,7 @@ export default function DataTable<T>({
                 </td>
               </tr>
             ) : (
-              data.map((row) => {
+              sortedData.map((row) => {
                 const key = rowKey(row);
                 const isSelected = selectedKeys?.has(key) ?? false;
                 return (
@@ -189,7 +204,7 @@ export default function DataTable<T>({
           <div className="px-4 py-12 text-center text-sm text-muted">{emptyMessage}</div>
         ) : (
           <div className="divide-y divide-border-subtle">
-            {data.map((row) => {
+            {sortedData.map((row) => {
               const key = rowKey(row);
               const isSelected = selectedKeys?.has(key) ?? false;
               const titleCol = columns.find((c) => c.cardTitle);
