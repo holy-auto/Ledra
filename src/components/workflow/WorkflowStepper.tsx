@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
+import { computeStepGuideState } from "@/lib/workflow/stepChecklist";
 
 export type WorkflowStep = {
   order: number;
@@ -8,6 +9,10 @@ export type WorkflowStep = {
   label: string;
   is_customer_visible: boolean;
   estimated_min: number;
+  /** この工程で撮る写真のガイド（任意）。 */
+  required_photos?: string[] | null;
+  /** この工程で確認する項目（任意）。 */
+  checklist?: string[] | null;
 };
 
 export type StepLog = {
@@ -60,11 +65,42 @@ export default function WorkflowStepper({
   const [elapsed, setElapsed] = useState(0);
   const [showNoteInput, setShowNoteInput] = useState(false);
   const [note, setNote] = useState("");
+  // 現場ガイド: 作業者がチェック済みの写真/確認項目（現在の工程に対してのみ保持）。
+  const [confirmedPhotos, setConfirmedPhotos] = useState<string[]>([]);
+  const [confirmedChecks, setConfirmedChecks] = useState<string[]>([]);
+  // 未確認のまま進めようとしたときの「このまま進める？」ソフト警告（強制停止はしない）。
+  const [pendingWarn, setPendingWarn] = useState(false);
 
   const currentStep = steps.find((s) => s.order === currentStepOrder) ?? null;
   const currentLog = stepLogs.find((l) => l.step_order === currentStepOrder) ?? null;
   const isCompleted = status === "completed";
   const isCancelled = status === "cancelled";
+
+  // 工程が変わったらチェック状態・警告をリセット。effect ではなくレンダー中に
+  // 前回値と比較してリセットする（React 推奨の「派生状態リセット」パターン）。
+  const [prevStepOrder, setPrevStepOrder] = useState(currentStepOrder);
+  if (prevStepOrder !== currentStepOrder) {
+    setPrevStepOrder(currentStepOrder);
+    setConfirmedPhotos([]);
+    setConfirmedChecks([]);
+    setPendingWarn(false);
+  }
+
+  // 現在の工程のガイド状態（写真ガイド／確認チェックリスト）。純関数で判定。
+  const guide = useMemo(
+    () =>
+      currentStep ? computeStepGuideState(currentStep, { photos: confirmedPhotos, checks: confirmedChecks }) : null,
+    [currentStep, confirmedPhotos, confirmedChecks],
+  );
+
+  const togglePhoto = useCallback((label: string) => {
+    setPendingWarn(false);
+    setConfirmedPhotos((prev) => (prev.includes(label) ? prev.filter((x) => x !== label) : [...prev, label]));
+  }, []);
+  const toggleCheck = useCallback((label: string) => {
+    setPendingWarn(false);
+    setConfirmedChecks((prev) => (prev.includes(label) ? prev.filter((x) => x !== label) : [...prev, label]));
+  }, []);
 
   // 現在のステップの経過時間カウンター
   useEffect(() => {
@@ -83,10 +119,21 @@ export default function WorkflowStepper({
       await onAdvance(note || undefined);
       setNote("");
       setShowNoteInput(false);
+      setPendingWarn(false);
     } finally {
       setAdvancing(false);
     }
   }, [onAdvance, advancing, note]);
+
+  // 進行の入口。未確認のガイド項目があれば一度だけソフト警告を出し、次のタップで進める。
+  // 思想「強制停止は最小限」に従い、ブロックはしない（もう一度押せば必ず進める）。
+  const attemptAdvance = useCallback(() => {
+    if (guide && guide.outstanding > 0 && !pendingWarn) {
+      setPendingWarn(true);
+      return;
+    }
+    void handleAdvance();
+  }, [guide, pendingWarn, handleAdvance]);
 
   if (!templateId || steps.length === 0) {
     return null;
@@ -104,9 +151,7 @@ export default function WorkflowStepper({
         </div>
         <div className="h-2 w-full rounded-full bg-surface-hover overflow-hidden">
           <div
-            className={`h-2 rounded-full transition-all duration-700 ${
-              isCompleted ? "bg-success" : "bg-accent"
-            }`}
+            className={`h-2 rounded-full transition-all duration-700 ${isCompleted ? "bg-success" : "bg-accent"}`}
             style={{ width: `${progressPct}%` }}
           />
         </div>
@@ -130,11 +175,7 @@ export default function WorkflowStepper({
               {/* アイコン */}
               <div
                 className={`flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-[11px] font-bold ${
-                  isDone
-                    ? "bg-success text-white"
-                    : isActive
-                      ? "bg-accent text-white"
-                      : "bg-surface-active text-muted"
+                  isDone ? "bg-success text-white" : isActive ? "bg-accent text-white" : "bg-surface-active text-muted"
                 }`}
               >
                 {isDone ? (
@@ -183,9 +224,75 @@ export default function WorkflowStepper({
         })}
       </div>
 
+      {/* 現場ガイド: この工程で撮る写真・確認する項目（撮り忘れ／確認漏れ防止） */}
+      {!readOnly && !isCompleted && !isCancelled && onAdvance && currentStep && guide && guide.total > 0 && (
+        <div className="rounded-xl border border-border-subtle bg-inset p-3 space-y-2.5">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold tracking-[0.14em] text-muted">この工程のガイド</span>
+            <span className={`text-[11px] font-semibold ${guide.allSatisfied ? "text-success-text" : "text-muted"}`}>
+              {guide.allSatisfied ? "✓ 確認済み" : `未確認 ${guide.outstanding}件`}
+            </span>
+          </div>
+
+          {guide.photos.length > 0 && (
+            <div className="space-y-1">
+              <div className="text-[11px] text-muted">📸 撮る写真</div>
+              <div className="flex flex-wrap gap-1.5">
+                {guide.photos.map((p) => (
+                  <button
+                    key={p.label}
+                    type="button"
+                    onClick={() => togglePhoto(p.label)}
+                    className={`rounded-full border px-2.5 py-1 text-[11px] transition-colors ${
+                      p.done
+                        ? "border-success/30 bg-success-dim text-success-text"
+                        : "border-border-default bg-surface text-secondary hover:bg-surface-hover"
+                    }`}
+                  >
+                    {p.done ? "✓ " : "○ "}
+                    {p.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {guide.checks.length > 0 && (
+            <div className="space-y-1">
+              <div className="text-[11px] text-muted">✓ 確認項目</div>
+              <div className="flex flex-col gap-1">
+                {guide.checks.map((c) => (
+                  <button
+                    key={c.label}
+                    type="button"
+                    onClick={() => toggleCheck(c.label)}
+                    className="flex items-center gap-2 rounded-lg px-1 py-0.5 text-left text-xs text-secondary hover:bg-surface-hover"
+                  >
+                    <span
+                      className={`flex h-4 w-4 flex-shrink-0 items-center justify-center rounded border text-[10px] ${
+                        c.done ? "border-success bg-success text-white" : "border-border-default bg-surface"
+                      }`}
+                    >
+                      {c.done ? "✓" : ""}
+                    </span>
+                    <span className={c.done ? "text-muted line-through" : ""}>{c.label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* 次へボタン（読み取り専用でない、かつ完了・キャンセル以外） */}
       {!readOnly && !isCompleted && !isCancelled && onAdvance && (
         <div className="space-y-2 pt-1">
+          {pendingWarn && guide && guide.outstanding > 0 && (
+            <div className="rounded-xl border border-warning/30 bg-warning-dim px-3 py-2 text-[11px] text-warning-text">
+              未確認の項目が {guide.outstanding} 件あります。撮り忘れ・確認漏れがないかご確認ください。
+              問題なければ「このまま進める」を押してください。
+            </div>
+          )}
           {showNoteInput && (
             <div>
               <textarea
@@ -200,7 +307,7 @@ export default function WorkflowStepper({
           <div className="flex gap-2">
             <button
               type="button"
-              onClick={handleAdvance}
+              onClick={attemptAdvance}
               disabled={advancing}
               className="flex-1 rounded-xl bg-accent px-4 py-3 text-sm font-semibold text-white shadow-sm hover:bg-accent/90 active:bg-accent/80 disabled:opacity-60 transition-colors"
             >
@@ -212,6 +319,8 @@ export default function WorkflowStepper({
                   </svg>
                   処理中...
                 </span>
+              ) : pendingWarn && guide && guide.outstanding > 0 ? (
+                "このまま進める"
               ) : currentStepOrder === 0 ? (
                 `${steps[0]?.label ?? "受付"}を開始`
               ) : nextStep ? (

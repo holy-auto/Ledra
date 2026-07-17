@@ -4,7 +4,7 @@
 > 追わず、常に最新状態だけを保つ（履歴は DECISION_LOG.md / RELEASE_LOG.md 側）。
 > 大きな変化があったら都度上書きすること。
 
-最終更新: 2026-07-15
+最終更新: 2026-07-16
 
 ## 会社・代表者
 
@@ -56,6 +56,9 @@ Sentry · Resend (+ SendGrid fallback) · Anthropic (Opus 4.8 / Sonnet 4.6 / Hai
 - `src/components/ui/` の UI キット（33コンポーネント）を claude.ai/design に
   同期（`.design-sync/` 配下にツール設定・再同期用スクリプトをコミット済み。
   再同期手順は `.design-sync/NOTES.md` 参照）
+- 運営向け店舗利用状況ダッシュボード（`/admin/platform/store-usage`）: 店舗別の
+  月間操作回数・予約/作業記録/請求の累計・機能別利用率を横断確認（ログイン回数は
+  未記録のため last_sign_in_at ベースのアクティブ会員で近似）
 
 ## 使い方
 
