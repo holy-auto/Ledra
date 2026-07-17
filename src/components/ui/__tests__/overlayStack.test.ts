@@ -84,4 +84,26 @@ describe("overlayStack", () => {
     domFirst.remove();
     domSecond.remove();
   });
+
+  it("ranks a higher z-index sibling as topmost even when it's earlier in the DOM", () => {
+    // BarcodeScanner (z-[60]) rendered as a sibling before an already-open
+    // Modal/Drawer (z-50) must still outrank it -- DOM order is only the
+    // tiebreaker when z-index actually ties.
+    const scanner = document.createElement("div");
+    const modal = document.createElement("div");
+    scanner.style.zIndex = "60";
+    modal.style.zIndex = "50";
+    document.body.append(scanner, modal);
+
+    registerOverlay(modal);
+    registerOverlay(scanner);
+
+    expect(isTopOverlay(scanner)).toBe(true);
+    expect(isTopOverlay(modal)).toBe(false);
+
+    unregisterOverlay(scanner);
+    unregisterOverlay(modal);
+    scanner.remove();
+    modal.remove();
+  });
 });

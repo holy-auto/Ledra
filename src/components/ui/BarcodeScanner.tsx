@@ -99,6 +99,17 @@ export default function BarcodeScanner({ open, onResult, onClose, title, descrip
     return () => document.removeEventListener("keydown", handler);
   }, [open, onClose, getFocusableElements]);
 
+  // Focus first focusable element on open — same pattern (and same
+  // same-commit-race guard) as Modal/Drawer.
+  useEffect(() => {
+    if (!open) return;
+    requestAnimationFrame(() => {
+      if (!isTopOverlay(rootRef.current)) return;
+      const focusable = getFocusableElements();
+      if (focusable.length > 0) focusable[0].focus();
+    });
+  }, [open, getFocusableElements]);
+
   useEffect(() => {
     if (!open) return;
 
