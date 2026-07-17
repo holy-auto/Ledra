@@ -10,7 +10,7 @@
   environment; `@zxing/library@0.22.0` warns it wants Node >=24 (`EBADENGINE`)
   but installs and builds fine — non-blocking.
 
-## componentSrcMap exclusions (14 of 46 files in src/components/ui/)
+## componentSrcMap exclusions (15 of 46 files in src/components/ui/)
 
 Excluded because they can't render standalone outside the real Next.js app
 shell / data layer, not because they're low quality:
@@ -27,6 +27,17 @@ shell / data layer, not because they're low quality:
 - **Non-visual infrastructure**: `ViewerModeProvider` (data-fetching context
   provider), `MutationGuard` (role-gated visibility wrapper, renders nothing
   of its own).
+- **Heavy hardware-specific dependency**: `BarcodeScanner` — pulls in
+  `@zxing/browser` + `@zxing/library`, which alone grew the generated
+  bundle entry from ~59KB to ~537KB minified (~18KB → ~140KB gzip),
+  imposing that cost on every single component preview even when a design
+  never renders the scanner (Codex round 10 — see below). This converter's
+  "package shape" only produces one eager IIFE with no lazy/code-split
+  entry mechanism (`cfg.extraEntries` is just more eager exports onto the
+  same global, confirmed by reading `.ds-sync/package-build.mjs`), so
+  there's no way to isolate it without excluding it outright. A
+  camera-scanning modal is also a poor fit for arbitrary generated designs
+  to begin with — same reasoning as the data-fetching exclusions above.
 
 Two included components read app-specific React contexts
 (`BusinessModeToggle`, `ViewModeToggle`) — verified their context modules
@@ -123,6 +134,12 @@ The default `guidelinesGlob` (`['docs/guides/**/*.md', 'docs/*.md', 'guides/**/*
 - **`SkeletonLines` (a real named export in `Skeleton.tsx`, alongside the default-exported `Skeleton`) was completely absent from the synced bundle.** `componentSrcMap` maps one name to one file and `entry-build.mjs` only emits one export line per entry, so a file's *second* export was simply never reached. Fixed by adding it to `entry-build.mjs`'s `EXTRA_EXPORTS` (previously only used for the non-PascalCase `useToast` hook — the mechanism works identically for a second PascalCase export sharing a file) — confirmed `window.Ledra.SkeletonLines` now resolves correctly in the built `_ds_bundle.js`. It still has no dedicated component page / `.d.ts` entry: `.ds-sync/lib/source-kit.mjs`'s component-list derivation runs off `exportedNames()` + `cfg.componentSrcMap`, not off `entry.mjs`'s actual exports, and patching that derivation lives in the same gitignored, skill-owned `.ds-sync/` as the item above — not something this repo's config can reach. Documented `SkeletonLines`'s existence and prop shape directly in `conventions.md` instead (the same treatment `useToast` already gets), so the design agent can discover and use it even without a generated page.
 - **The `readmeHeader` license notice (round 4) still wasn't OFL-compliant** — it linked to the license instead of containing it, and the OFL's own redistribution terms (condition 2 in `OFL-NotoSansJP.txt`) require every copy to contain "the above copyright notice and this license" — a URL isn't a copy. Fixed by reproducing the full OFL 1.1 text verbatim in `conventions.md` (identical body for both families — diffed the two `OFL-*.txt` files to confirm only the copyright line and FAQ URL differ) alongside both copyright lines.
 - **Noto Sans JP TTFs were large (~5.3MB × 3 weights ≈ 15.9MB) with no compression**, unlike the real app's `next/font/google` delivery (WOFF2 + Unicode-range subsets). Converted every shipped font (Noto Sans JP × 3, Geist Mono × 2) from TTF to WOFF2 via `ttf2woff2` — same glyph coverage, ~55-65% smaller (measured: Noto Sans JP 5.3MB→2.2MB per weight, Geist Mono 71KB→26KB per weight; fonts/ dropped from ~16MB to ~6.5MB). **Did not attempt Unicode-range subsetting** — ponytail: full CJK subsetting needs a tool this environment doesn't have installed (fontTools/pyftsubset) and carries real risk of silently dropping glyphs a later design actually needs, which is worse than a slower load for a design-preview tool; WOFF2 alone captures most of the win with zero coverage risk. Upgrade path if bundle size becomes a real problem: add `fonttools` and subset to the Unicode ranges actually used by shipped components' Japanese copy.
+
+## Codex round 6 (design-sync-config findings from later review rounds — also fixed)
+
+- **`cfg.entry` was never set**, so only `rebuild.mjs`'s explicit `--entry` CLI flag pointed the package builder at the curated bundle entry — any build path invoking `package-build.mjs` without that flag would fall back to synth-entry mode and reproduce the empty-`window.Ledra` crash the curated entry exists to prevent. `package-build.mjs` resolves `ENTRY_OVERRIDE` as `flag('entry', cfg.entry)` (CLI wins, falls back to config) — and `cfg.buildCmd` already runs `entry-build.mjs` (which writes `.design-sync/.cache/entry.mjs`) *before* `package-build.mjs` starts, so a static `cfg.entry` pointing there is reachable from every build path, unlike the font-license copy (which needs to run *after* `package-build.mjs` creates the out-dir). Set `"entry": ".design-sync/.cache/entry.mjs"` directly in `config.json`.
+- **`DataTable`'s new `sortValue` accessor (added to fix inert `sortable` columns) was on the real component but missing from `cfg.dtsPropsFor.DataTable`** — the synced contract still couldn't express how to make `sortable: true` do anything. Added it to the synced `columns` shape too.
+- **`BarcodeScanner` excluded** — see the exclusions list above. Pulls in `@zxing/browser`/`@zxing/library` (~478KB minified added to every preview load) for a hardware-camera feature unlikely to compose into arbitrary generated designs; no lazy-entry mechanism exists in this converter to isolate it instead.
 
 ## Bundling gotchas (already fixed, recorded so a re-sync doesn't rediscover them)
 

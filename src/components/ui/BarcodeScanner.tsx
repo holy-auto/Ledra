@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { BrowserMultiFormatReader, type IScannerControls } from "@zxing/browser";
 import { BarcodeFormat, DecodeHintType } from "@zxing/library";
+import { registerOverlay, unregisterOverlay } from "./overlayStack";
 
 interface Props {
   open: boolean;
@@ -40,9 +41,21 @@ const INVENTORY_FORMATS = [
 
 export default function BarcodeScanner({ open, onResult, onClose, title, description }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
   const calledRef = useRef(false);
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Register with the shared overlay registry so an ancestor Modal/Drawer
+  // this scanner is opened from within correctly stands down its own
+  // Escape/focus-trap handling while the (visually topmost, z-[60])
+  // scanner is open — see overlayStack.ts.
+  useEffect(() => {
+    if (!open || !rootRef.current) return;
+    const el = rootRef.current;
+    registerOverlay(el);
+    return () => unregisterOverlay(el);
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -112,6 +125,7 @@ export default function BarcodeScanner({ open, onResult, onClose, title, descrip
 
   return (
     <div
+      ref={rootRef}
       className="fixed inset-0 z-[60] flex flex-col bg-black/95"
       role="dialog"
       aria-modal="true"

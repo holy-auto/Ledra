@@ -27,4 +27,10 @@ describe("DashboardWidgets", () => {
     render(<DashboardWidgets portal="test-portal" widgets={widgets} />);
     expect(screen.getByText("A content")).toBeTruthy();
   });
+
+  it("rejects a persisted order with duplicate ids instead of rendering the widget twice", () => {
+    localStorage.setItem("dashboard-widgets-test-portal", JSON.stringify({ order: ["a", "a"], visible: { a: true } }));
+    render(<DashboardWidgets portal="test-portal" widgets={widgets} />);
+    expect(screen.getAllByText("A content")).toHaveLength(1);
+  });
 });

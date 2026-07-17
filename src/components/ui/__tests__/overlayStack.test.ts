@@ -36,10 +36,12 @@ describe("overlayStack", () => {
     expect(isTopOverlay(el)).toBe(false);
   });
 
-  it("ranks the most recently opened sibling as topmost when neither contains the other", () => {
+  it("ranks the DOM-later sibling as topmost when neither contains the other", () => {
     // E.g. a Drawer that stays mounted while a separate confirmation Modal
     // opens next to it (not nested inside it) -- no containment relation
-    // exists to settle it, so registration order is the tiebreaker.
+    // exists to settle it, so DOM document order is the tiebreaker (both
+    // share the same z-index tier, so DOM-later is what actually paints on
+    // top).
     const first = document.createElement("div");
     const second = document.createElement("div");
     document.body.append(first, second);
@@ -57,5 +59,29 @@ describe("overlayStack", () => {
     unregisterOverlay(first);
     first.remove();
     second.remove();
+  });
+
+  it("still ranks by DOM order even when registration order disagrees", () => {
+    // The exact bug Codex caught: a Drawer positioned earlier in the DOM
+    // opens AFTER a Modal positioned later in the DOM is already open.
+    // Registration/open order alone would (wrongly) rank the
+    // later-to-register Drawer as topmost; DOM order must win instead,
+    // since the DOM-later Modal is what's actually visible on top.
+    const domFirst = document.createElement("div");
+    const domSecond = document.createElement("div");
+    document.body.append(domFirst, domSecond);
+
+    // domSecond registers (opens) first...
+    registerOverlay(domSecond);
+    // ...then domFirst registers (opens) second, reversed from DOM order.
+    registerOverlay(domFirst);
+
+    expect(isTopOverlay(domSecond)).toBe(true);
+    expect(isTopOverlay(domFirst)).toBe(false);
+
+    unregisterOverlay(domFirst);
+    unregisterOverlay(domSecond);
+    domFirst.remove();
+    domSecond.remove();
   });
 });
