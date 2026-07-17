@@ -71,6 +71,10 @@ export type WorkflowStep = {
   label: string;
   is_customer_visible: boolean;
   estimated_min: number;
+  /** この工程で撮る写真のガイド（任意）。 */
+  required_photos?: string[] | null;
+  /** この工程で確認する項目（任意）。 */
+  checklist?: string[] | null;
 };
 
 export type JobReservation = {
