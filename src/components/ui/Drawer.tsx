@@ -71,10 +71,15 @@ export default function Drawer({ open, onClose, title, children }: DrawerProps) 
     return () => document.removeEventListener("keydown", handler);
   }, [open, onClose, getFocusableElements]);
 
-  // Focus first focusable element on open
+  // Focus first focusable element on open — re-checked inside the rAF
+  // (not just at effect setup) since a nested overlay opened in the same
+  // commit schedules its own focus rAF first (child effects run before the
+  // parent's) but both callbacks fire in that same animation frame; without
+  // this guard this Drawer's callback would steal focus back after it.
   useEffect(() => {
     if (!open) return;
     requestAnimationFrame(() => {
+      if (!isTopOverlay(panelRef.current)) return;
       const focusable = getFocusableElements();
       if (focusable.length > 0) focusable[0].focus();
     });

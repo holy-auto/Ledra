@@ -32,10 +32,11 @@ export default function ConfirmDialog({
       title={title}
       footer={
         <>
-          <button className="btn-secondary" onClick={onClose} disabled={loading}>
+          <button type="button" className="btn-secondary" onClick={onClose} disabled={loading}>
             {cancelLabel}
           </button>
           <button
+            type="button"
             className={variant === "danger" ? "btn-danger" : "btn-primary"}
             onClick={onConfirm}
             disabled={loading}
@@ -45,9 +46,7 @@ export default function ConfirmDialog({
         </>
       }
     >
-      {description && (
-        <p className="text-sm text-secondary">{description}</p>
-      )}
+      {description && <p className="text-sm text-secondary">{description}</p>}
     </Modal>
   );
 }

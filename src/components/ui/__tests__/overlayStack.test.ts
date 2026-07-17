@@ -35,4 +35,27 @@ describe("overlayStack", () => {
     unregisterOverlay(el);
     expect(isTopOverlay(el)).toBe(false);
   });
+
+  it("ranks the most recently opened sibling as topmost when neither contains the other", () => {
+    // E.g. a Drawer that stays mounted while a separate confirmation Modal
+    // opens next to it (not nested inside it) -- no containment relation
+    // exists to settle it, so registration order is the tiebreaker.
+    const first = document.createElement("div");
+    const second = document.createElement("div");
+    document.body.append(first, second);
+
+    registerOverlay(first);
+    expect(isTopOverlay(first)).toBe(true);
+
+    registerOverlay(second);
+    expect(isTopOverlay(first)).toBe(false);
+    expect(isTopOverlay(second)).toBe(true);
+
+    unregisterOverlay(second);
+    expect(isTopOverlay(first)).toBe(true);
+
+    unregisterOverlay(first);
+    first.remove();
+    second.remove();
+  });
 });
