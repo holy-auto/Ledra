@@ -106,4 +106,38 @@ describe("overlayStack", () => {
     scanner.remove();
     modal.remove();
   });
+
+  it("confines a nested overlay's z-index to its own ancestor's stacking context", () => {
+    // The exact bug Codex caught: a BarcodeScanner (z-60) nested INSIDE a
+    // Drawer (z-50) cannot use its z-60 to visually escape above a
+    // completely separate, unrelated sibling Modal (z-50) -- CSS scopes a
+    // nested stacking context inside its DOM ancestor's own context. If
+    // the sibling Modal is DOM-later than the Drawer, the Modal's entire
+    // stacking context (including the Drawer+scanner branch beneath it)
+    // paints on top, so the Modal must be topmost, not the scanner.
+    const drawer = document.createElement("div");
+    const scanner = document.createElement("div");
+    drawer.style.zIndex = "50";
+    scanner.style.zIndex = "60";
+    drawer.appendChild(scanner);
+
+    const modal = document.createElement("div");
+    modal.style.zIndex = "50";
+
+    document.body.append(drawer, modal); // drawer (containing scanner) first, modal later
+
+    registerOverlay(drawer);
+    registerOverlay(scanner);
+    registerOverlay(modal);
+
+    expect(isTopOverlay(modal)).toBe(true);
+    expect(isTopOverlay(scanner)).toBe(false);
+    expect(isTopOverlay(drawer)).toBe(false);
+
+    unregisterOverlay(modal);
+    unregisterOverlay(scanner);
+    unregisterOverlay(drawer);
+    drawer.remove();
+    modal.remove();
+  });
 });

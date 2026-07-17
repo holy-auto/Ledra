@@ -33,4 +33,13 @@ describe("DashboardWidgets", () => {
     render(<DashboardWidgets portal="test-portal" widgets={widgets} />);
     expect(screen.getAllByText("A content")).toHaveLength(1);
   });
+
+  it("rejects a persisted visibility map with non-boolean values", () => {
+    // A stale/malformed string "false" is truthy in JS -- if this isn't
+    // rejected, the widget renders even though it's meant to be hidden.
+    const hiddenByDefault = [{ id: "b", label: "Widget B", content: <div>B content</div>, defaultVisible: false }];
+    localStorage.setItem("dashboard-widgets-test-portal", JSON.stringify({ order: ["b"], visible: { b: "false" } }));
+    render(<DashboardWidgets portal="test-portal" widgets={hiddenByDefault} />);
+    expect(screen.queryByText("B content")).toBeNull();
+  });
 });

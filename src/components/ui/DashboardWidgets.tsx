@@ -31,7 +31,9 @@ function isWidgetState(value: unknown): value is WidgetState {
     v.order.every((id) => typeof id === "string") &&
     new Set(v.order).size === v.order.length &&
     !!v.visible &&
-    typeof v.visible === "object"
+    typeof v.visible === "object" &&
+    !Array.isArray(v.visible) &&
+    Object.values(v.visible).every((visible) => typeof visible === "boolean")
   );
 }
 
