@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { BrowserMultiFormatReader, type IScannerControls } from "@zxing/browser";
 import { BarcodeFormat, DecodeHintType } from "@zxing/library";
-import { registerOverlay, unregisterOverlay } from "./overlayStack";
+import { isTopOverlay, registerOverlay, unregisterOverlay } from "./overlayStack";
 
 interface Props {
   open: boolean;
@@ -49,13 +49,55 @@ export default function BarcodeScanner({ open, onResult, onClose, title, descrip
   // Register with the shared overlay registry so an ancestor Modal/Drawer
   // this scanner is opened from within correctly stands down its own
   // Escape/focus-trap handling while the (visually topmost, z-[60])
-  // scanner is open — see overlayStack.ts.
+  // scanner is open — see overlayStack.ts. Registering it alone would
+  // silence the ancestor's Escape/Tab handling with nothing standing in
+  // for it, so this scanner owns that same handling itself below.
   useEffect(() => {
     if (!open || !rootRef.current) return;
     const el = rootRef.current;
     registerOverlay(el);
     return () => unregisterOverlay(el);
   }, [open]);
+
+  const getFocusableElements = useCallback(() => {
+    if (!rootRef.current) return [];
+    return Array.from(
+      rootRef.current.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ),
+    );
+  }, []);
+
+  // Close on Escape & focus trap — same pattern as Modal/Drawer.
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: KeyboardEvent) => {
+      if (!isTopOverlay(rootRef.current)) return;
+      if (e.key === "Escape") {
+        onClose();
+        return;
+      }
+      if (e.key === "Tab") {
+        const focusable = getFocusableElements();
+        if (focusable.length === 0) return;
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (e.shiftKey) {
+          if (document.activeElement === first) {
+            e.preventDefault();
+            last.focus();
+          }
+        } else {
+          if (document.activeElement === last) {
+            e.preventDefault();
+            first.focus();
+          }
+        }
+      }
+    };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [open, onClose, getFocusableElements]);
 
   useEffect(() => {
     if (!open) return;

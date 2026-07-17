@@ -71,7 +71,7 @@ export default function DataTable<T>({
     });
   }, [data, columns, sortKey, sortDir]);
 
-  const allSelected = data.length > 0 && selectedKeys?.size === data.length;
+  const allSelected = data.length > 0 && data.every((row) => selectedKeys?.has(rowKey(row)));
 
   const toggleAll = () => {
     if (!onSelectionChange) return;

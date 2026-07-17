@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 
 type Side = "top" | "bottom" | "left" | "right";
 
@@ -30,6 +30,7 @@ export default function HelpTooltip({
 }: HelpTooltipProps) {
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLSpanElement>(null);
+  const tooltipId = useId();
 
   useEffect(() => {
     if (!open) return;
@@ -67,11 +68,13 @@ export default function HelpTooltip({
         className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-surface-active text-[10px] font-bold text-muted hover:bg-accent-dim hover:text-accent transition-colors cursor-help"
         aria-label={ariaLabel}
         aria-expanded={open}
+        aria-describedby={open ? tooltipId : undefined}
       >
         ?
       </button>
       {open && (
         <span
+          id={tooltipId}
           role="tooltip"
           className={`pointer-events-none absolute ${sideCls[side]} z-50 w-64 max-w-[80vw] rounded-lg border border-border-default bg-surface px-3 py-2 text-xs leading-relaxed text-primary shadow-lg`}
         >
