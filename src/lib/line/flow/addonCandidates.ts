@@ -15,6 +15,19 @@ import {
 
 type Admin = ReturnType<typeof createServiceRoleAdmin>;
 
+/**
+ * menu_items.category_large (自由入力) が queryText に部分文字列として含まれるか。
+ * オプション提案 (このファイル) と概算見積り (quoteReplyAuto.ts) の両方で使う共有判定。
+ *
+ * ponytail: category_large はカテゴリ taxonomy (enum/マスタ) が無い自由入力のため部分
+ * 文字列一致のみ。天井: 「洗車」を含む無関係な問い合わせ文にも「洗車」カテゴリの品目が
+ * マッチしうる。上げる場合は menu_items にカテゴリ taxonomy を導入して置き換える。
+ */
+export function categoryMatchesQuery(categoryLarge: string | null | undefined, queryText: string): boolean {
+  if (!categoryLarge?.trim()) return false;
+  return queryText.toLowerCase().includes(categoryLarge.trim().toLowerCase());
+}
+
 export interface FetchAddonRecommendationsParams {
   vehicle: { maker?: string | null; model?: string | null; size_class?: string | null };
   serviceCategory: string;
@@ -50,14 +63,10 @@ export async function fetchAddonRecommendations(
   const allMenu = (menuRes.data as OptionMenuCandidate[] | null) ?? [];
   // 基本見積りと同一名の品目は除外 (同じ内容を「オプション」として二重提案しない)。
   const nonDuplicate = allMenu.filter((m) => !excludeNames.has(m.name.trim().toLowerCase()));
-  // ponytail: 施工内容のカテゴリ一致は部分文字列比較のみ (category_large は自由入力の
-  // ため taxonomy が無い)。天井: 「洗車」を含む無関係な問い合わせ文にも「洗車」カテゴリの
-  // 品目がマッチしうる (AI 側の id 検証で無登録品目の提案は防げるが、無関係な提案は防げ
-  // ない)。上げる場合は menu_items にカテゴリ taxonomy (enum/マスタ) を導入して置き換える。
-  const category = params.serviceCategory.trim().toLowerCase();
-  const categoryMatched = category
-    ? nonDuplicate.filter((m) => m.category_large && category.includes(m.category_large.trim().toLowerCase()))
-    : [];
+  // カテゴリ一致は categoryMatchesQuery 共有 (AI 側の id 検証で無登録品目の提案は防げるが、
+  // 無関係な提案は防げない — ponytail はヘルパー側に記載)。
+  const category = params.serviceCategory.trim();
+  const categoryMatched = category ? nonDuplicate.filter((m) => categoryMatchesQuery(m.category_large, category)) : [];
   const menuCandidates = (categoryMatched.length > 0 ? categoryMatched : nonDuplicate).slice(0, 10);
 
   const pastInvoices = ((invoicesRes.data as Array<{ items_json: unknown; total: number | null }> | null) ?? [])

@@ -31,6 +31,7 @@ import { generateQuoteFromVehicle, extractInvoiceLines } from "@/lib/ai/quoteFro
 import { fastModelForPlanTier } from "@/lib/ai/client";
 import { startAiRouteUsage } from "@/lib/ai/recordRouteUsage";
 import { sendCustomerLineText } from "@/lib/line/client";
+import { categoryMatchesQuery } from "@/lib/line/flow/addonCandidates";
 import { logger } from "@/lib/logger";
 import { logAutoActionExecuted } from "@/lib/audit/aiAuditLog";
 import { loadAiAutomationSettings, type AiAutomationSettings } from "./policy";
@@ -234,20 +235,34 @@ export async function maybeAutoReplyRoughEstimate(params: MaybeAutoReplyRoughEst
       .slice(0, 5);
 
     // 品目マスタ (menu_items) をカテゴリ一致で絞り込み、登録価格があれば過去請求からの
-    // 推測より優先して概算の土台にする (conversationFlowAuto の fetchAddonRecommendations
-    // と同じ「登録メニュー優先・過去実績はフォールバック」パターン)。
-    // ponytail: category_large は自由入力でカテゴリ taxonomy が無いため部分文字列一致のみ。
-    // 天井: 「洗車」を含む無関係な依頼にも「洗車」カテゴリの品目がマッチしうる。マッチが
-    // 無ければ baseMenu を渡さず従来 (過去請求ベース) にフォールバックするので実害は限定的。
-    // 上げる場合は menu_items にカテゴリ taxonomy (enum/マスタ) を導入して置き換える。
+    // 推測より優先して概算の土台にする (fetchAddonRecommendations と同じ「登録メニュー
+    // 優先・過去実績はフォールバック」パターン、カテゴリ一致判定は categoryMatchesQuery を共有)。
+    //
+    // 概算見積りは自動でそのまま顧客に届く (人の確認なし) ため、以下の2点は
+    // fetchAddonRecommendations (提案止まりで実害が小さい) より慎重に扱う:
+    //   1. 単価未設定 (unit_price が 0/未入力) の品目はマッチさせない。登録単価が無い品目は
+    //      quoteFromVehicle.ts の medianUnitPriceFor フォールバックが品目名と請求書の摘要
+    //      文言の完全一致を要求するためほぼ一致せず ¥0 になり、金額が無言で過小になる。
+    //   2. service は「ガラスコーティング, ホイール撥水」のようにカンマ区切りで複数の施工内容
+    //      を表すことがある (inboundReservationExtract.ts の抽出仕様)。一部の内容にしか
+    //      一致する品目が無い場合に baseMenu を使うと、表示上は全内容分の金額に見えて実際は
+    //      一部しか値付けされていない概算になる。全ての内容に品目が見つかった場合のみ使う。
     const menuItems =
       (menuRes.data as Array<{ name: string; unit_price: number | null; category_large: string | null }> | null) ?? [];
-    const serviceLower = service.toLowerCase();
-    const matchedMenu = menuItems.filter(
-      (m) => m.category_large && serviceLower.includes(m.category_large.trim().toLowerCase()),
+    const pricedMenuItems = menuItems.filter((m) => typeof m.unit_price === "number" && m.unit_price > 0);
+    const serviceSegments = service
+      .split(/[、,\/・]/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const segments = serviceSegments.length > 0 ? serviceSegments : [service.trim()];
+    const matchedMenu = pricedMenuItems.filter((m) =>
+      segments.some((seg) => categoryMatchesQuery(m.category_large, seg)),
+    );
+    const allSegmentsCovered = segments.every((seg) =>
+      matchedMenu.some((m) => categoryMatchesQuery(m.category_large, seg)),
     );
     const baseMenu =
-      matchedMenu.length > 0
+      allSegmentsCovered && matchedMenu.length > 0
         ? matchedMenu.slice(0, 5).map((m) => ({ name: m.name, default_price: m.unit_price }))
         : undefined;
 

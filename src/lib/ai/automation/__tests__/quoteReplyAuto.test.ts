@@ -239,4 +239,48 @@ describe("maybeAutoReplyRoughEstimate", () => {
     const arg = mocks.generateQuoteFromVehicle.mock.calls[0][0];
     expect(arg.baseMenu).toBeUndefined();
   });
+
+  it("does not use an unpriced (0円) matching menu item as baseMenu", async () => {
+    mocks.store.tables.menu_items = [
+      { tenant_id: TENANT, is_active: true, name: "ガラスコーティング", unit_price: 0, category_large: "コーティング" },
+    ];
+    await maybeAutoReplyRoughEstimate(baseParams());
+    const arg = mocks.generateQuoteFromVehicle.mock.calls[0][0];
+    expect(arg.baseMenu).toBeUndefined();
+  });
+
+  it("omits baseMenu when only some of the comma-separated requested services have a matching menu item", async () => {
+    mocks.store.tables.menu_items = [
+      {
+        tenant_id: TENANT,
+        is_active: true,
+        name: "ガラスコーティング",
+        unit_price: 80000,
+        category_large: "コーティング",
+      },
+      // "撥水" に一致する品目は無い
+    ];
+    await maybeAutoReplyRoughEstimate({ ...baseParams(), service: "コーティング, ホイール撥水" });
+    const arg = mocks.generateQuoteFromVehicle.mock.calls[0][0];
+    expect(arg.baseMenu).toBeUndefined();
+  });
+
+  it("uses baseMenu when every comma-separated requested service has a matching menu item", async () => {
+    mocks.store.tables.menu_items = [
+      {
+        tenant_id: TENANT,
+        is_active: true,
+        name: "ガラスコーティング",
+        unit_price: 80000,
+        category_large: "コーティング",
+      },
+      { tenant_id: TENANT, is_active: true, name: "ホイール撥水", unit_price: 5000, category_large: "撥水" },
+    ];
+    await maybeAutoReplyRoughEstimate({ ...baseParams(), service: "コーティング, 撥水" });
+    const arg = mocks.generateQuoteFromVehicle.mock.calls[0][0];
+    expect(arg.baseMenu).toEqual([
+      { name: "ガラスコーティング", default_price: 80000 },
+      { name: "ホイール撥水", default_price: 5000 },
+    ]);
+  });
 });
