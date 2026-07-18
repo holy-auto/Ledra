@@ -24,6 +24,15 @@
   ルール・例を追加して是正 (コード分岐・実行順序は変更なし)。
 - 対象: LINE自動応答 (概算見積り自動返信・店舗ナレッジ自動返信)。全業種共通。
 
+## 2026-07-17 工程ガイドUIを共有コンポーネント化（StepGuidePanel）
+
+- 内容: 第1弾/第2弾で `WorkflowStepper`（予約詳細）と `JobStatusPanel`（案件画面）に重複
+  していた工程ガイド（写真ガイド／確認チェックリスト）の表示を、表示専用の共有コンポーネント
+  `src/components/workflow/StepGuidePanel.tsx` に一本化。判定は既存の純関数 `computeStepGuideState`、
+  チェック状態は各呼び出し側が保持し、本コンポーネントは描画のみ。**挙動は不変（内部リファクタ）**。
+  差分は正味 −18 行で、以後ガイドUIの変更は1箇所で済む。第1弾のコードレビュー指摘1（重複）を解消。
+- 対象: 予約詳細ステッパー・案件画面の進行パネル（UI/挙動の変更なし）。
+
 ## 2026-07-17 現場DX残り3機能: 請求書OCR / 前後写真自動分類 / 傷ダメージマップ (field-dx-remaining)
 - ③ 請求書OCR: 仕入先/外注請求書の写真を Vision OCR し帳票明細へ下書き取込。
   `deliveryNoteOcr` を雛形に `invoiceOcr`（スキーマ＋純関数 `toDocumentItems`, テスト6件）、
@@ -76,6 +85,7 @@
   テンプレ編集）。全業種共通。バンドルB「工程ゲート統一」の第1弾（アイデア6/7/25の土台）。
 
 ## 2026-07-16 現場DX フロントUI: 点検OCR取込ボタン + AI担当提案ワンタップ割当 (repair-workflow-ai 続き)
+
 - 内容:
   - 点検フォーム (`InspectionRecordForm`) に「走行距離を撮影 / タイヤ残溝を撮影」
     ボタンを追加 (`InspectionOcrIntake`)。撮影→OCR (`/api/admin/inspection-records/ocr`)
@@ -90,6 +100,7 @@
 - 補足: バックエンド (OCR API / 担当提案保存) は PR #763 で実装済み。本変更でUIを接続。
 
 ## 2026-07-16 現場DX: 点検写真OCR + 担当メカニック自動提案 (PR #763)
+
 - 内容:
   - 点検写真OCR (`/api/admin/inspection-records/ocr`): 走行距離メーター/タイヤ
     残溝の写真を Anthropic Vision で読み取り、点検表フォームへ自動入力する数値を
