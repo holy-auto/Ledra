@@ -182,7 +182,7 @@ export async function maybeAutoReplyRoughEstimate(params: MaybeAutoReplyRoughEst
 
     // 顧客名・登録車両は既知顧客のときだけ引く。未紐付けの新規客は車両テキストと
     // テナント全体の過去請求実績だけで概算する (精度は落ちるが返信はできる)。
-    const [customerRes, vehiclesRes, invoicesRes] = await Promise.all([
+    const [customerRes, vehiclesRes, invoicesRes, menuRes] = await Promise.all([
       customerId
         ? admin.from("customers").select("name").eq("id", customerId).eq("tenant_id", tenantId).maybeSingle()
         : Promise.resolve({ data: null }),
@@ -200,6 +200,13 @@ export async function maybeAutoReplyRoughEstimate(params: MaybeAutoReplyRoughEst
         .eq("tenant_id", tenantId)
         .order("issued_at", { ascending: false })
         .limit(20),
+      admin
+        .from("menu_items")
+        .select("name, unit_price, category_large")
+        .eq("tenant_id", tenantId)
+        .eq("is_active", true)
+        .order("sort_order", { ascending: true })
+        .limit(100),
     ]);
     const customer = customerRes.data as { name?: string | null } | null;
 
@@ -226,12 +233,31 @@ export async function maybeAutoReplyRoughEstimate(params: MaybeAutoReplyRoughEst
       .filter((inv) => inv.items.length > 0)
       .slice(0, 5);
 
+    // 品目マスタ (menu_items) をカテゴリ一致で絞り込み、登録価格があれば過去請求からの
+    // 推測より優先して概算の土台にする (conversationFlowAuto の fetchAddonRecommendations
+    // と同じ「登録メニュー優先・過去実績はフォールバック」パターン)。
+    // ponytail: category_large は自由入力でカテゴリ taxonomy が無いため部分文字列一致のみ。
+    // 天井: 「洗車」を含む無関係な依頼にも「洗車」カテゴリの品目がマッチしうる。マッチが
+    // 無ければ baseMenu を渡さず従来 (過去請求ベース) にフォールバックするので実害は限定的。
+    // 上げる場合は menu_items にカテゴリ taxonomy (enum/マスタ) を導入して置き換える。
+    const menuItems =
+      (menuRes.data as Array<{ name: string; unit_price: number | null; category_large: string | null }> | null) ?? [];
+    const serviceLower = service.toLowerCase();
+    const matchedMenu = menuItems.filter(
+      (m) => m.category_large && serviceLower.includes(m.category_large.trim().toLowerCase()),
+    );
+    const baseMenu =
+      matchedMenu.length > 0
+        ? matchedMenu.slice(0, 5).map((m) => ({ name: m.name, default_price: m.unit_price }))
+        : undefined;
+
     const usage = startAiRouteUsage(ENDPOINT);
     const quote = await generateQuoteFromVehicle(
       {
         vehicle,
         customerName: customer?.name ?? null,
         serviceCategory: service,
+        baseMenu,
         pastInvoices,
       },
       { model: fastModelForPlanTier(tenant.plan_tier) },

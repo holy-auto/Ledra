@@ -214,4 +214,29 @@ describe("maybeAutoReplyRoughEstimate", () => {
     await maybeAutoReplyRoughEstimate({ ...baseParams(), intent: "cancel" });
     expect(mocks.generateQuoteFromVehicle).not.toHaveBeenCalled();
   });
+
+  it("passes matching menu_items as baseMenu when the category matches the requested service", async () => {
+    mocks.store.tables.menu_items = [
+      {
+        tenant_id: TENANT,
+        is_active: true,
+        name: "ガラスコーティング",
+        unit_price: 80000,
+        category_large: "コーティング",
+      },
+      { tenant_id: TENANT, is_active: true, name: "洗車", unit_price: 3000, category_large: "洗車" },
+    ];
+    await maybeAutoReplyRoughEstimate(baseParams());
+    const arg = mocks.generateQuoteFromVehicle.mock.calls[0][0];
+    expect(arg.baseMenu).toEqual([{ name: "ガラスコーティング", default_price: 80000 }]);
+  });
+
+  it("omits baseMenu when no registered menu item matches the requested service category", async () => {
+    mocks.store.tables.menu_items = [
+      { tenant_id: TENANT, is_active: true, name: "洗車", unit_price: 3000, category_large: "洗車" },
+    ];
+    await maybeAutoReplyRoughEstimate(baseParams());
+    const arg = mocks.generateQuoteFromVehicle.mock.calls[0][0];
+    expect(arg.baseMenu).toBeUndefined();
+  });
 });
