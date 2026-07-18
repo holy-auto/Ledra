@@ -15,6 +15,7 @@
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { canUseFeature, normalizePlanTier } from "@/lib/billing/planFeatures";
 import { extractInboundReservation } from "@/lib/ai/inboundReservationExtract";
+import { deterministicServiceVehicle } from "@/lib/ai/deterministicInboundParse";
 import { fetchRecentConversation } from "@/lib/line/messageStore";
 import { fastModelForPlanTier } from "@/lib/ai/client";
 import { startAiRouteUsage } from "@/lib/ai/recordRouteUsage";
@@ -100,7 +101,28 @@ export async function maybeAutoProcessInboundMessage(params: MaybeAutoProcessPar
       { model: fastModelForPlanTier(tenant.plan_tier) },
     );
 
-    const snapshot = { ...result, auto: true, extracted_at: new Date().toISOString() };
+    // AI 抽出は同形式のメッセージでも service/vehicle を埋めたり埋めなかったりと不安定な
+    // ため、空だった項目だけを決定的キーワード辞書で補完する (AI が埋めた値は上書きしない)。
+    // これが無いと抽出漏れのたびに概算見積り等の自動応答がすべて沈黙する。
+    const detFallback = { service: false, vehicle: false };
+    if (!result.service?.trim() || !result.vehicle?.trim()) {
+      const det = deterministicServiceVehicle(text);
+      if (!result.service?.trim() && det.service) {
+        result.service = det.service;
+        detFallback.service = true;
+      }
+      if (!result.vehicle?.trim() && det.vehicle) {
+        result.vehicle = det.vehicle;
+        detFallback.vehicle = true;
+      }
+    }
+
+    const snapshot = {
+      ...result,
+      auto: true,
+      extracted_at: new Date().toISOString(),
+      ...(detFallback.service || detFallback.vehicle ? { det_fallback: detFallback } : {}),
+    };
 
     // 受信箱に下書きとして保存 (ai_extracted)。列未作成でも続行。
     // auto_extract が OFF (自動返信系のためだけに抽出した) 場合は保存しない。
