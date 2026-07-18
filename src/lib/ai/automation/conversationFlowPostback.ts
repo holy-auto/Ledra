@@ -472,34 +472,6 @@ async function handleSlotSelected(
     return false;
   }
 
-  // 案件登録時の勘定科目提案・ワークフロー提案 (管理画面の予約作成ルートと同じフック) と
-  // Google カレンダー同期。いずれも opt-in / ベストエフォート (壁3 とは無関係、失敗しても
-  // 予約自体は成立させる)。この処理は LINE webhook の after() 内 (レスポンス送出後) で走るため、
-  // await してもお客様への 200 応答は遅れない。逆に await せず撃ちっぱなしにすると、外側の
-  // after() コールバックが先に解決し、serverless 実行環境がこれら未完了の Promise を無言で
-  // 打ち切り得る (PR #761 で直したのと同じクラスの不具合)。3件は互いに独立なので Promise.all で
-  // 並行実行し、各自でエラーを内包する (maybeAuto* は内部 try/catch、gcal は .catch) ため、
-  // 1件の失敗が他や予約確定を壊さない。
-  await Promise.all([
-    maybeAutoCategorizeReservationOnIntake({ tenantId, reservationId }),
-    maybeAutoProposeWorkflowForReservation({ tenantId, reservationId }),
-    syncCreateEvent(tenantId, {
-      id: reservationId,
-      title,
-      scheduled_date: chosen.date,
-      start_time: chosen.start_time,
-      end_time: chosen.end_time,
-      note,
-      customer_name: null,
-      vehicle_label: null,
-    }).catch((e) =>
-      logger.warn("[conversationFlowPostback] gcal sync failed (non-blocking)", {
-        tenantId,
-        err: e instanceof Error ? e.message : String(e),
-      }),
-    ),
-  ]);
-
   await advanceFlow(admin, flow, {
     toState: "closed",
     reservationId,
@@ -525,6 +497,37 @@ async function handleSlotSelected(
     resource: { kind: "reservation", id: reservationId },
     detail: { flow_id: flow.id, state: "closed", date: chosen.date, start_time: chosen.start_time },
   });
+
+  // 案件登録時の勘定科目提案・ワークフロー提案 (管理画面の予約作成ルートと同じフック) と
+  // Google カレンダー同期。いずれも opt-in / ベストエフォート (壁3 とは無関係、失敗しても
+  // 予約自体は成立させる)。この処理は LINE webhook の after() 内 (レスポンス送出後) で走るため、
+  // await してもお客様への 200 応答は遅れない。逆に await せず撃ちっぱなしにすると、外側の
+  // after() コールバックが先に解決し、serverless 実行環境がこれら未完了の Promise を無言で
+  // 打ち切り得る (PR #761 で直したのと同じクラスの不具合)。あえて関数末尾に置き、お客様への
+  // 予約確定通知・スタッフ通知を先に済ませてから待つ (opt-in 時の LLM 呼び出しや gcal の
+  // レイテンシで確定通知を遅らせないため)。3件は互いに独立なので Promise.all で並行実行し、
+  // 各自でエラーを内包する (maybeAuto* は内部 try/catch、gcal は .catch) ため、1件の失敗が
+  // 他や予約確定を壊さない。
+  await Promise.all([
+    maybeAutoCategorizeReservationOnIntake({ tenantId, reservationId }),
+    maybeAutoProposeWorkflowForReservation({ tenantId, reservationId }),
+    syncCreateEvent(tenantId, {
+      id: reservationId,
+      title,
+      scheduled_date: chosen.date,
+      start_time: chosen.start_time,
+      end_time: chosen.end_time,
+      note,
+      customer_name: null,
+      vehicle_label: null,
+    }).catch((e) =>
+      logger.warn("[conversationFlowPostback] gcal sync failed (non-blocking)", {
+        tenantId,
+        err: e instanceof Error ? e.message : String(e),
+      }),
+    ),
+  ]);
+
   return true;
 }
 
