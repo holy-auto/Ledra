@@ -31,6 +31,7 @@ import { generateQuoteFromVehicle, extractInvoiceLines } from "@/lib/ai/quoteFro
 import { fastModelForPlanTier } from "@/lib/ai/client";
 import { startAiRouteUsage } from "@/lib/ai/recordRouteUsage";
 import { sendCustomerLineText } from "@/lib/line/client";
+import { categoryMatchesQuery } from "@/lib/line/flow/addonCandidates";
 import { logger } from "@/lib/logger";
 import { logAutoActionExecuted } from "@/lib/audit/aiAuditLog";
 import { loadAiAutomationSettings, type AiAutomationSettings } from "./policy";
@@ -182,7 +183,7 @@ export async function maybeAutoReplyRoughEstimate(params: MaybeAutoReplyRoughEst
 
     // 顧客名・登録車両は既知顧客のときだけ引く。未紐付けの新規客は車両テキストと
     // テナント全体の過去請求実績だけで概算する (精度は落ちるが返信はできる)。
-    const [customerRes, vehiclesRes, invoicesRes] = await Promise.all([
+    const [customerRes, vehiclesRes, invoicesRes, menuRes] = await Promise.all([
       customerId
         ? admin.from("customers").select("name").eq("id", customerId).eq("tenant_id", tenantId).maybeSingle()
         : Promise.resolve({ data: null }),
@@ -200,6 +201,13 @@ export async function maybeAutoReplyRoughEstimate(params: MaybeAutoReplyRoughEst
         .eq("tenant_id", tenantId)
         .order("issued_at", { ascending: false })
         .limit(20),
+      admin
+        .from("menu_items")
+        .select("name, unit_price, category_large")
+        .eq("tenant_id", tenantId)
+        .eq("is_active", true)
+        .order("sort_order", { ascending: true })
+        .limit(100),
     ]);
     const customer = customerRes.data as { name?: string | null } | null;
 
@@ -226,12 +234,45 @@ export async function maybeAutoReplyRoughEstimate(params: MaybeAutoReplyRoughEst
       .filter((inv) => inv.items.length > 0)
       .slice(0, 5);
 
+    // 品目マスタ (menu_items) をカテゴリ一致で絞り込み、登録価格があれば過去請求からの
+    // 推測より優先して概算の土台にする (fetchAddonRecommendations と同じ「登録メニュー
+    // 優先・過去実績はフォールバック」パターン、カテゴリ一致判定は categoryMatchesQuery を共有)。
+    //
+    // 概算見積りは自動でそのまま顧客に届く (人の確認なし) ため、以下の2点は
+    // fetchAddonRecommendations (提案止まりで実害が小さい) より慎重に扱う:
+    //   1. 単価未設定 (unit_price が 0/未入力) の品目はマッチさせない。登録単価が無い品目は
+    //      quoteFromVehicle.ts の medianUnitPriceFor フォールバックが品目名と請求書の摘要
+    //      文言の完全一致を要求するためほぼ一致せず ¥0 になり、金額が無言で過小になる。
+    //   2. service は「ガラスコーティング, ホイール撥水」のようにカンマ区切りで複数の施工内容
+    //      を表すことがある (inboundReservationExtract.ts の抽出仕様)。一部の内容にしか
+    //      一致する品目が無い場合に baseMenu を使うと、表示上は全内容分の金額に見えて実際は
+    //      一部しか値付けされていない概算になる。全ての内容に品目が見つかった場合のみ使う。
+    const menuItems =
+      (menuRes.data as Array<{ name: string; unit_price: number | null; category_large: string | null }> | null) ?? [];
+    const pricedMenuItems = menuItems.filter((m) => typeof m.unit_price === "number" && m.unit_price > 0);
+    const serviceSegments = service
+      .split(/[、,\/・]/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const segments = serviceSegments.length > 0 ? serviceSegments : [service.trim()];
+    const matchedMenu = pricedMenuItems.filter((m) =>
+      segments.some((seg) => categoryMatchesQuery(m.category_large, seg)),
+    );
+    const allSegmentsCovered = segments.every((seg) =>
+      matchedMenu.some((m) => categoryMatchesQuery(m.category_large, seg)),
+    );
+    const baseMenu =
+      allSegmentsCovered && matchedMenu.length > 0
+        ? matchedMenu.slice(0, 5).map((m) => ({ name: m.name, default_price: m.unit_price }))
+        : undefined;
+
     const usage = startAiRouteUsage(ENDPOINT);
     const quote = await generateQuoteFromVehicle(
       {
         vehicle,
         customerName: customer?.name ?? null,
         serviceCategory: service,
+        baseMenu,
         pastInvoices,
       },
       { model: fastModelForPlanTier(tenant.plan_tier) },
