@@ -14,17 +14,21 @@
 - 起票日: YYYY-MM-DD
 ```
 
-## LINEプロンプト是正(2026-07-18)の本番効果検証
-- 状況: `inboundReservationExtract.ts`（車種+施工の所有格構文の抽出漏れ）と
-  `knowledgeReply.ts`（ナレッジ外の質問への過剰回答）のシステムプロンプトを修正したが、
-  この開発環境に `ANTHROPIC_API_KEY` が無く実際のモデル出力で効果を検証できていない。
-- 選択肢: (a) 本番反映後、HOLY AUTOテナントで同型メッセージ（「〇〇のコーティング見積りが
-  欲しい」等）を実際に送って `has_service`/`has_vehicle`/`can_answer` の監査ログを追跡する /
-  (b) 効果が薄ければ抽出をAI任せにせず正規表現等の決定的フォールバックを併用する。
-- 影響範囲: 改善しなければ同じ「概算見積りが来ない」不具合が再発し続ける。
-- 次のアクション: 次回のLINE会話で監査ログ（`vehicle_histories.description` の
-  `has_service`/`has_vehicle`/`can_answer`）を確認し、改善していなければ(b)を検討。
-- 起票日: 2026-07-18
+## 決定的フォールバック(2026-07-18)のカバレッジ実測 + AI抽出の不安定さの解明
+- 状況: 本番監査ログで、AI抽出(`inboundReservationExtract`)が同形式のメッセージでも
+  service/vehicle を埋めたり埋めなかったりと不安定(6件中2件のみ成功)と判明。#770の
+  プロンプト修正では解消せず、決定的キーワード辞書のフォールバック
+  (`deterministicServiceVehicle`)を追加した(DECISION_LOG 2026-07-18参照)。
+  この開発環境には `ANTHROPIC_API_KEY` が無いため、(1)フォールバックの本番カバレッジ、
+  (2)そもそもAI抽出がなぜ同形式で成否が割れるか、はまだ検証できていない。
+- 選択肢: (a) 本番の `customer_messages.ai_extracted.det_fallback` フラグと
+  `ai_usage_logs` を追跡し、フォールバックが実際に発火・補完しているか、辞書漏れが
+  どれくらいあるかを実測する / (b) 辞書漏れが多ければ、施工内容は menu_items、車両は
+  vehicles テーブルから語彙を動的生成して固定辞書に足す(ponytailの上げ代) /
+  (c) AI抽出の不安定さ自体を、モデル変更・プロンプト再設計・required化などで別途調査。
+- 影響範囲: フォールバックが辞書漏れで空を返すケースでは、依然として概算が沈黙する。
+- 次のアクション: 数日運用後に det_fallback の発火率と辞書漏れ事例を確認し、(b)/(c)の要否を判断。
+- 起票日: 2026-07-18（旧「プロンプト是正の効果検証」から更新）
 
 ## conversationFlowPostback.ts の未await fire-and-forget呼び出しへの対応要否
 - 状況: PR #761 のコードレビューで、`src/lib/ai/automation/conversationFlowPostback.ts`
