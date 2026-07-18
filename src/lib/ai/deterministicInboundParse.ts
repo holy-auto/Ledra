@@ -86,7 +86,8 @@ const VEHICLE_MAKERS = [
   "シトロエン",
   "ジャガー",
   "ランドローバー",
-  "ミニ",
+  // 「ミニ」(MINI) は「ミニバン」に誤マッチするため辞書から除外 (該当車は稀で、
+  // 誤って「お車: ミニ」と概算に表示するリスクの方が大きい)。
 ];
 
 /** 主要車種名 (メーカー名が本文に無くても車両と分かるモデル)。 */
@@ -163,6 +164,14 @@ const VEHICLE_MODELS = [
   "レヴォーグ",
 ];
 
+/**
+ * 大小文字を無視した部分一致 (RAV4 / BMW / C-HR 等のラテン文字車種を「rav4」等の
+ * 小文字入力でも拾うため)。カタカナ・漢字は toLowerCase の影響を受けない。
+ */
+function containsCI(text: string, keyword: string): boolean {
+  return text.toLowerCase().includes(keyword.toLowerCase());
+}
+
 /** other が最長一致で既に採用済みの語の部分文字列かどうか。 */
 function isSubstringOfAccepted(term: string, accepted: string[]): boolean {
   return accepted.some((a) => a !== term && a.includes(term));
@@ -174,7 +183,8 @@ function isSubstringOfAccepted(term: string, accepted: string[]): boolean {
  * すぎない一般語 (「コーティング」) は捨てる。
  */
 function detectService(text: string): string | undefined {
-  const present = SERVICE_KEYWORDS.filter((k) => text.includes(k));
+  const lower = text.toLowerCase();
+  const present = SERVICE_KEYWORDS.filter((k) => lower.includes(k.toLowerCase()));
   if (present.length === 0) return undefined;
   // 長い順に採用候補を確定 → 具体語を優先し、その部分文字列の一般語を除外。
   const byLenDesc = [...present].sort((a, b) => b.length - a.length);
@@ -183,7 +193,7 @@ function detectService(text: string): string | undefined {
     if (!isSubstringOfAccepted(term, accepted)) accepted.push(term);
   }
   // 出力は本文の登場順 (先頭からの index) に並べ直して自然な表記にする。
-  const ordered = accepted.sort((a, b) => text.indexOf(a) - text.indexOf(b));
+  const ordered = accepted.sort((a, b) => lower.indexOf(a.toLowerCase()) - lower.indexOf(b.toLowerCase()));
   return ordered.join(", ");
 }
 
@@ -201,8 +211,8 @@ function detectYear(text: string): string | undefined {
  * メーカー名は本文に無いことが多い (「ハイエースのコーティング」) ため車種単独でも可。
  */
 function detectVehicle(text: string): string | undefined {
-  const maker = VEHICLE_MAKERS.find((m) => text.includes(m));
-  const model = VEHICLE_MODELS.find((m) => text.includes(m));
+  const maker = VEHICLE_MAKERS.find((m) => containsCI(text, m));
+  const model = VEHICLE_MODELS.find((m) => containsCI(text, m));
   const year = maker || model ? detectYear(text) : undefined;
   const parts = [maker, model, year].filter((p): p is string => !!p);
   return parts.length > 0 ? parts.join(" ") : undefined;

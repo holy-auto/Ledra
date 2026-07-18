@@ -56,6 +56,16 @@ describe("deterministicServiceVehicle", () => {
     expect(deterministicServiceVehicle("2026年もよろしくお願いします").vehicle).toBeUndefined();
   });
 
+  it("does not misdetect 'ミニバン' as the MINI brand", () => {
+    // 「ミニ」は辞書から除外済み。ミニバンはボディタイプであって車種名ではない。
+    expect(deterministicServiceVehicle("ミニバンのコーティングお願いします").vehicle).toBeUndefined();
+  });
+
+  it("matches Latin model/maker names case-insensitively", () => {
+    expect(deterministicServiceVehicle("rav4のコーティング").vehicle).toBe("RAV4");
+    expect(deterministicServiceVehicle("bmwの洗車").vehicle).toBe("BMW");
+  });
+
   it("returns empty object for blank input", () => {
     expect(deterministicServiceVehicle("   ")).toEqual({});
   });
