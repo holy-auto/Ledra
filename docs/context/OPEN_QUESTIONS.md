@@ -14,6 +14,18 @@
 - 起票日: YYYY-MM-DD
 ```
 
+## LINEプロンプト是正(2026-07-18)の本番効果検証
+- 状況: `inboundReservationExtract.ts`（車種+施工の所有格構文の抽出漏れ）と
+  `knowledgeReply.ts`（ナレッジ外の質問への過剰回答）のシステムプロンプトを修正したが、
+  この開発環境に `ANTHROPIC_API_KEY` が無く実際のモデル出力で効果を検証できていない。
+- 選択肢: (a) 本番反映後、HOLY AUTOテナントで同型メッセージ（「〇〇のコーティング見積りが
+  欲しい」等）を実際に送って `has_service`/`has_vehicle`/`can_answer` の監査ログを追跡する /
+  (b) 効果が薄ければ抽出をAI任せにせず正規表現等の決定的フォールバックを併用する。
+- 影響範囲: 改善しなければ同じ「概算見積りが来ない」不具合が再発し続ける。
+- 次のアクション: 次回のLINE会話で監査ログ（`vehicle_histories.description` の
+  `has_service`/`has_vehicle`/`can_answer`）を確認し、改善していなければ(b)を検討。
+- 起票日: 2026-07-18
+
 ## conversationFlowPostback.ts の未await fire-and-forget呼び出しへの対応要否
 - 状況: PR #761 のコードレビューで、`src/lib/ai/automation/conversationFlowPostback.ts`
   の `handleSlotSelected`（LINE予約枠選択postbackの処理）内に、
