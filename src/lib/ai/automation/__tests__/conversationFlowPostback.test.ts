@@ -496,6 +496,43 @@ describe("handleFlowPostback — slot selection (Phase 1b-3)", () => {
     expect(mocks.sendCustomerLineText.mock.calls[0][0].body).toContain("確定");
   });
 
+  it("awaits the post-reservation intake hooks so serverless does not drop them after the LINE 200 (regression, same class as PR #761)", async () => {
+    seedOpenSlots(mocks.store);
+    seedAwaitingSchedulePick();
+    mocks.store.tables.documents = [{ id: DOC, total: 33000 }];
+
+    // intake フック (勘定科目提案・ワークフロー提案) をマクロタスク(setTimeout)で解決させ、
+    // await されない撃ちっぱなしだと handleFlowPostback 解決時点で未完了 (=false) になるようにする。
+    // マイクロタスクの内部 await は全て解決してから、マクロタスクの setTimeout が発火するため。
+    let categorizeDone = false;
+    let workflowDone = false;
+    mocks.maybeAutoCategorizeReservationOnIntake.mockImplementation(
+      () =>
+        new Promise<void>((resolve) =>
+          setTimeout(() => {
+            categorizeDone = true;
+            resolve();
+          }, 0),
+        ),
+    );
+    mocks.maybeAutoProposeWorkflowForReservation.mockImplementation(
+      () =>
+        new Promise<void>((resolve) =>
+          setTimeout(() => {
+            workflowDone = true;
+            resolve();
+          }, 0),
+        ),
+    );
+
+    await handleFlowPostback({ tenantId: TENANT, lineUserId: LINE_USER, data: "flow:slot:0" });
+
+    // 予約が作られ (フックに到達し)、かつ両フックが await されて完走している。
+    expect(mocks.store.inserts.some((i) => i.table === "reservations")).toBe(true);
+    expect(categorizeDone).toBe(true);
+    expect(workflowDone).toBe(true);
+  });
+
   it("hands off to staff when the chosen slot got taken (re-validation fails)", async () => {
     // 再検証用の空き枠を seed しない → 空き無し扱いで埋まったとみなす。
     seedAwaitingSchedulePick();

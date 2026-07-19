@@ -50,21 +50,6 @@
 - 次のアクション: 数日運用後に det_fallback の発火率と辞書漏れ事例を確認し、(b)/(c)の要否を判断。
 - 起票日: 2026-07-18（旧「プロンプト是正の効果検証」から更新）
 
-## conversationFlowPostback.ts の未await fire-and-forget呼び出しへの対応要否
-- 状況: PR #761 のコードレビューで、`src/lib/ai/automation/conversationFlowPostback.ts`
-  の `handleSlotSelected`（LINE予約枠選択postbackの処理）内に、
-  `maybeAutoCategorizeReservationOnIntake` / `maybeAutoProposeWorkflowForReservation`
-  / `syncCreateEvent`（Googleカレンダー同期）の3件が未awaitのまま発火されている
-  ことが判明。PR #761 で修正した「レスポンス後にバックグラウンド処理が打ち切られる」
-  バグと同じクラスの問題が、予約枠確定フローに残っている。
-- 選択肢: (a) 同じPRで一緒に修正する / (b) 別PRに切り出して段階的に対応する /
-  (c) 影響が小さいと判断し対応しない。
-- 影響範囲: 対応が遅れると、予約枠確定時の会計カテゴリ自動分類・ワークフロー
-  提案・カレンダー同期が、サーバーレス環境のタイムアウトにより無言で失敗する
-  可能性が残る。
-- 次のアクション: PR #761 のコメントで報告済み。対応要否をレビューで判断する。
-- 起票日: 2026-07-16
-
 ## 「重要な」実装・判断の線引き基準
 - 状況: CLAUDE.md に「重要な実装・事業判断・方針変更が発生した場合、
   docs/context/ を都度更新する」運用ルールを追加したが、何をもって「重要」と

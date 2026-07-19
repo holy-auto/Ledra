@@ -22,6 +22,34 @@
 9. 公開区分: 公開可／要確認／非公開
 ```
 
+## 2026-07-18 LINE予約枠確定の背景処理は撃ちっぱなしをやめ after() 内で await 完走させる
+1. 日付: 2026-07-18
+2. 起きたこと: PR #761（LINE webhook のイベント処理を `after()` でレスポンス後も継続させる修正）の
+   コードレビューで OPEN_QUESTIONS に起票していた「`conversationFlowPostback.ts` の
+   `handleSlotSelected` 内に未await の fire-and-forget が3件残っている」件を、現物確認して修正した。
+   対象は勘定科目提案（`maybeAutoCategorizeReservationOnIntake`）・ワークフロー提案
+   （`maybeAutoProposeWorkflowForReservation`）・Googleカレンダー同期（`syncCreateEvent`）。
+3. 以前の考え: 「レスポンスを遅らせないよう待たない」というコメント通り、背景処理は撃ちっぱなしで
+   よいと考えていた（管理画面の予約作成ルートを模倣したつもりだった）。
+4. 違和感・問題: LINE webhook では #761 で処理全体が既に `after()`（＝レスポンス送出後）内で走る。
+   その中で `void`／`.catch` の未完了 Promise を撒くと、外側の `after()` コールバックが先に解決した
+   時点で serverless 実行環境が in-flight の Promise を無言で打ち切り得る。管理画面ルートは各処理を
+   個別に `after()` で包んでおり、本箇所の「撃ちっぱなし」は模倣として不完全だった。
+5. 決めたこと: 3件を `await Promise.all([...])` に変更し、予約確定処理の一部として完走を保証する。
+   after() 内なのでお客様への 200 応答は遅れない。回帰テスト（撃ちっぱなしだと落ち、await完走なら
+   通る／マクロタスクで判定）を1件追加。
+6. 捨てた選択肢: (a) 各処理を個別に `after()` で包む→ネスト後の挙動が読みにくく、完走保証の観点で
+   `await` と同等以上の利点が無い。(b) 対応しない（影響軽微とみなす）→ 提案・カレンダー同期は
+   「次のリクエストで再実行」される類ではなく、取りこぼすと復旧しないため却下。
+7. 判断理由: after() 内では await にコスト（応答遅延）が無く、確実性が最大化される。3件は独立なので
+   `Promise.all` で並行維持。各処理はエラーを内包するため1件失敗が他や予約確定を壊さない。
+8. まだ答えが出ていないこと: `announcementAuto.ts` の `void putCachedTranslation`（翻訳キャッシュ
+   書き込み）は同型だが、打ち切られても次回再翻訳される自己修復的処理なので今回は据え置いた。
+   他フローに同種の「取りこぼすと復旧しない」撃ちっぱなしが無いかは、automation/line 配下を
+   grep した範囲では該当なし（確認済み）。
+9. 公開区分: 公開可（serverless の fire-and-forget 落とし穴の実例として note 向き。テナント固有
+   情報を含まない）。
+
 ## 2026-07-19 db-migrate 自動適用を実際に成立させるため履歴を完全整合し重複versionファイルを一意化した
 1. 日付: 2026-07-19
 2. 起きたこと: `SUPABASE_DB_URL`(Session pooler URI)登録後、db-migrate を手動実行しながら

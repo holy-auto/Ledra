@@ -14,6 +14,18 @@
 
 ## 直近のリリース（git log 直近30件より、2026-07 時点で把握できるもの）
 
+## 2026-07-18 LINE予約枠確定時のバックグラウンド処理を after() 完走保証に修正
+- 内容: `conversationFlowPostback.ts` の `handleSlotSelected`（LINE会話フローでお客様が
+  日程を選び予約が確定する箇所）で、勘定科目提案・ワークフロー提案・Googleカレンダー同期の
+  3件が `void`／`.catch` の撃ちっぱなしで発火されており、LINE webhook の `after()`（レスポンス
+  送出後）内では外側コールバックが先に解決して serverless に無言で打ち切られ得た（PR #761 で
+  直した「レスポンス後に処理が打ち切られる」のと同じクラス）。3件を `await Promise.all` に変更し
+  完走を保証。after() 内なのでお客様への 200 応答は遅れない。各処理はエラーを内包（`maybeAuto*`は
+  内部try/catch、gcalは`.catch`）するため1件の失敗が他や予約確定を壊さない。回帰テスト1件追加
+  （撃ちっぱなしだと落ち、await完走なら通る）。
+- 対象: LINE会話フローの予約枠確定（全業種共通、opt-inの自動提案／カレンダー連携）。挙動の
+  ユーザー可視な変化なし（取りこぼしていた背景処理が確実に走るようになる内部修正）。
+
 ## 2026-07-19 DBマイグレーションの本番自動適用(GitHub Actions)を追加
 - 内容: `.github/workflows/db-migrate.yml` を追加。main へ `supabase/migrations/**` の変更が
   入ったら `supabase db push` で未適用マイグレーションを本番へ自動適用(手動実行も可、
