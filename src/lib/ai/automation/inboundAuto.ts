@@ -280,19 +280,6 @@ export async function maybeAutoProcessInboundMessage(params: MaybeAutoProcessPar
       return;
     }
 
-    // 価格問い合わせ → 見積ドラフト自動起票 (opt-in / 既知顧客のみ / 内部で fail-soft)。
-    await maybeAutoDraftQuoteFromInbound({
-      tenantId,
-      customerId: resolvedCustomerId,
-      intent: result.intent,
-      service: result.service,
-      vehicleText: result.vehicle,
-      messageId,
-      channel: params.channel ?? "line",
-      settings,
-      tenant,
-    });
-
     // 一般質問 → 店舗/共通ナレッジで LINE 自動返信 (opt-in / 内部で fail-soft)。
     // 概算見積りより**先に**試す: 「駐車場の料金は？」のような価格キーワードを含む
     // 一般質問を、見積りの「不足情報聞き返し」が誤って先取りしないため。ナレッジで
@@ -314,7 +301,7 @@ export async function maybeAutoProcessInboundMessage(params: MaybeAutoProcessPar
     });
 
     // 価格問い合わせ → 概算見積りを LINE で完全自動返信 (opt-in / 未紐付け客も対象 /
-    // 内部で fail-soft)。上のドラフト起票とは独立した opt-in。詳細見積りは来店対応。
+    // 内部で fail-soft)。末尾の見積ドラフト起票とは独立した opt-in。詳細見積りは来店対応。
     // ナレッジが同じメッセージに返信済みなら二重返信になるためスキップ。
     let estimateReplied = false;
     if (!knowledgeReplied) {
@@ -362,6 +349,26 @@ export async function maybeAutoProcessInboundMessage(params: MaybeAutoProcessPar
         committed: committedReservationId != null,
         commit_reason: decision.reason,
       },
+    });
+
+    // 価格問い合わせ → 見積ドラフト自動起票 (opt-in / 既知顧客のみ / 内部で fail-soft)。
+    // これは顧客に届かないスタッフ用の下書き。**顧客向け返信 (ナレッジ/概算/会話フロー) の
+    // 後に**実行する: LINE webhook は after() 内で全 AI チェーンを maxDuration 内に収める
+    // 必要があり、抽出が遅い回だと連鎖が制限時間を超えて最後発の処理が打ち切られる。
+    // 打ち切られてよいのは顧客影響の無いこの内部ドラフト側であって、顧客への概算返信では
+    // ないため、優先度の低いこれを最後に回す。
+    // ponytail: 恒久策は「抽出→顧客返信」を最優先チェーンに分離し、内部ドラフト等を別 after()
+    // (別関数実行) に切り出して独立予算で走らせること。まずは順序で最悪ケースを回避する。
+    await maybeAutoDraftQuoteFromInbound({
+      tenantId,
+      customerId: resolvedCustomerId,
+      intent: result.intent,
+      service: result.service,
+      vehicleText: result.vehicle,
+      messageId,
+      channel: params.channel ?? "line",
+      settings,
+      tenant,
     });
   } catch (e) {
     logger.warn("[inboundAuto] maybeAutoProcessInboundMessage threw", {

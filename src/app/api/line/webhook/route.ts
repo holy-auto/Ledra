@@ -6,9 +6,11 @@ import { claimWebhookEvent } from "@/lib/webhooks/idempotency";
 import { readSecret } from "@/lib/crypto/tenantSecrets";
 
 export const dynamic = "force-dynamic";
-// after() 内で車検証OCR等のLLM呼び出しチェーンを実行するため、既定の実行時間では
-// 途中で打ち切られうる（vehicles/parse-shakken 等の他OCRルートと同じ60秒に合わせる）。
-export const maxDuration = 60;
+// after() 内で AI 抽出→自動返信 (ナレッジ/概算)→会話フロー→見積ドラフトという LLM 呼び出しの
+// 逐次チェーンを実行する。抽出が遅い回だと合計が 60 秒を超え、最後発の顧客向け概算返信が
+// 打ち切られて「認識はできているのに返信が来ない」事象になっていた。応答は after() 前に返して
+// いるため背景予算を延ばすのは安全。プラン上限を超える値は Vercel 側で自動クランプされる。
+export const maxDuration = 300;
 
 /**
  * POST /api/line/webhook?tenant_id=xxx
