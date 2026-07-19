@@ -934,9 +934,11 @@ export default function BookingPage() {
                         cellContent = <span className="text-muted text-base">–</span>;
                       } else if (slot.available > 0) {
                         cellContent = (
+                          // inline-flex にして td の text-center で中央寄せさせる。
+                          // block-level flex だと幅が内容に縮んでセル左端に寄り、×/– とずれる。
                           <button
                             onClick={() => handleDateClick(date)}
-                            className="flex flex-col items-center gap-0.5 group/cell"
+                            className="inline-flex flex-col items-center gap-0.5 group/cell"
                           >
                             <span className="text-accent text-xl font-bold group-hover/cell:scale-110 transition-transform">
                               ○
