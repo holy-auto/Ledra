@@ -14,6 +14,17 @@
 
 ## 直近のリリース（git log 直近30件より、2026-07 時点で把握できるもの）
 
+## 2026-07-19 車種サイズマスタの一括CSVインポータ(運営専用)を追加
+- 内容: `vehicle_size_master` に車種をCSVで一括登録・更新できる運営専用機能を追加。
+  グローバル共有データのため、書き込みは platform admin (`isPlatformAdmin` +
+  `createPlatformScopedAdmin`) のみに限定。API `POST /api/admin/platform/vehicle-size-master`
+  (CSVパース→size_classを寸法から自動決定→(maker,model)でupsert、500件ずつ分割)、
+  純関数 `parseVehicleMasterCsv`(`src/lib/vehicles/vehicleMasterImport.ts`、単体8件)、
+  運営ページ `/admin/platform/vehicle-size-master`(CSV貼付/ファイル/結果表示)、サイドバー
+  「本社・運営」に導線を追加。これで手打ちに頼らず、正規ライセンス諸元データや自前の
+  車種リストを青天井で投入できる(size_classは既存の calcSizeClass で自動)。
+- 対象: 運営(platform admin)。車種サイズマスタ。
+
 ## 2026-07-18 車種マスタにアメ車+国産絶版車を追加 + 決定的パーサをマスタ参照化
 - 内容: 全車種マスタ `vehicle_size_master`(既存・全テナント共有、寸法→体積でサイズ区分
   SS〜XLを自動決定)を拡充。(1)抜けていたアメリカ車(フォード/シボレー/キャデラック/GMC/
