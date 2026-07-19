@@ -3,11 +3,15 @@ name: DB migrate (apply to production)
 # main に supabase/migrations/** の変更が入ったら、未適用のマイグレーションを
 # 本番 DB へ自動適用する。手動実行 (workflow_dispatch) も可能。
 #
-# 必要な GitHub Secrets:
-#   - SUPABASE_ACCESS_TOKEN … CLI 認証用 (db-typegen で既に使用)
-#   - SUPABASE_PROJECT_ID   … プロジェクト ref (db-typegen で既に使用)
-#   - SUPABASE_DB_PASSWORD  … 本番DBパスワード ★このワークフロー用に新規追加が必要
-#     (Supabase ダッシュボード → Project Settings → Database → Database password)
+# 必要な GitHub Secret (1 本だけ):
+#   - SUPABASE_DB_URL … 本番DBの接続URI (パスワード込み)。
+#     Supabase ダッシュボード → Connect → "Session pooler" の URI をそのまま登録する
+#     (末尾 :5432 のセッションモード。[YOUR-PASSWORD] は実際のDBパスワードに置換)。
+#     例: postgresql://postgres.<ref>:<password>@aws-0-<region>.pooler.supabase.com:5432/postgres
+#
+#   接続URI 方式にしている理由: link 方式は SUPABASE_ACCESS_TOKEN + SUPABASE_PROJECT_ID が
+#   別途必要だが、それらが未設定で初回失敗した。--db-url ならこの 1 本で完結し、
+#   ダッシュボードからコピペするだけで済む (project ref / region / エンコード不要)。
 #
 # 安全メモ: main マージで本番へ自動適用される。ゲートしたい場合は本ジョブに
 # `environment: production` を付け、その Environment に必須レビュアーを設定する。
@@ -38,21 +42,21 @@ jobs:
 
       - name: Apply pending migrations (supabase db push)
         env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-          SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
-          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
         run: |
           set -euo pipefail
-          # このリポジトリには supabase/config.toml が無いため、CLI 用に最小構成を用意する
+          if [ -z "${SUPABASE_DB_URL:-}" ]; then
+            echo "::error::SUPABASE_DB_URL secret が未設定です。Supabase ダッシュボード → Connect → Session pooler の接続URI(パスワード込み)を登録してください。"
+            exit 1
+          fi
+          # このリポジトリには supabase/config.toml が無いため CLI 用に最小構成を用意する
           # (既存の supabase/migrations は保持される)。
           if [ ! -f supabase/config.toml ]; then
-            supabase init || printf 'project_id = "ledra"\n' > supabase/config.toml
+            supabase init
           fi
-          # リモート (本番) プロジェクトに紐付け。
-          supabase link --project-ref "$SUPABASE_PROJECT_ID"
-          # まず適用予定を出力 (可視化)。失敗しても続行はしない。
+          # 適用予定を可視化 (失敗しても続行はしない)。
           echo "== pending migrations =="
-          supabase migration list --linked || true
-          # 未適用のマイグレーションのみ本番へ適用する。既存の投入データ系マイグレーションは
-          # ON CONFLICT DO NOTHING 等で冪等に書く運用のため、再実行されても安全。
-          supabase db push
+          supabase migration list --db-url "$SUPABASE_DB_URL" || true
+          # 未適用のマイグレーションのみ本番へ適用。投入データ系は ON CONFLICT DO NOTHING 等で
+          # 冪等に書く運用のため再実行にも耐える。
+          supabase db push --db-url "$SUPABASE_DB_URL"
