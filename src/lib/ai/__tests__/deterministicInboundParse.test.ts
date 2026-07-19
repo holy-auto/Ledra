@@ -86,6 +86,18 @@ describe("deterministicServiceVehicle", () => {
     expect(deterministicServiceVehicle("プログラムの相談です", { extraMakers: ["RA"] }).vehicle).toBeUndefined();
   });
 
+  it("ignores numeric / short-ASCII extra model names so prices/quantities are not misread", () => {
+    // RAM「1500」やクライスラー「300C」をパーサに入れると価格・数量に誤ヒットするため除外。
+    expect(
+      deterministicServiceVehicle("1500円でコーティングできますか", { extraModels: ["1500"] }).vehicle,
+    ).toBeUndefined();
+    expect(deterministicServiceVehicle("300ccのバイクの塗装", { extraModels: ["300C"] }).vehicle).toBeUndefined();
+    // カタカナの車種名 (エスカレード) は問題なく認識される。
+    expect(deterministicServiceVehicle("エスカレードの洗車", { extraModels: ["エスカレード"] }).vehicle).toBe(
+      "エスカレード",
+    );
+  });
+
   it("returns empty object for blank input", () => {
     expect(deterministicServiceVehicle("   ")).toEqual({});
   });

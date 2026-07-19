@@ -215,13 +215,27 @@ function longestPresent(text: string, candidates: string[]): string | undefined 
   return best;
 }
 
-/** 車種辞書に混ぜる追加語彙 (vehicle_size_master 由来)。誤爆しやすい 2 文字以下は捨てる。 */
+/**
+ * 追加語彙が誤爆しやすいか (部分一致パーサに入れると価格・数量等に誤ヒットする)。
+ * - 2 文字以下: 「ミニ」等の誤爆源
+ * - 純数値: 「1500」(RAM) が「1500円」に誤ヒット
+ * - 短い英数字のみ (≤4): 「300C」(クライスラー) が「300cc」に、「XT5」等も誤ヒットしうる。
+ *   RAV4/CX-5 等の正規短縮名は固定辞書 (base) 側に既にあるため取りこぼさない。
+ */
+function isAmbiguousVocab(term: string): boolean {
+  if (term.length <= 2) return true;
+  if (/^\d+$/.test(term)) return true;
+  if (term.length <= 4 && /^[0-9A-Za-z-]+$/.test(term)) return true;
+  return false;
+}
+
+/** 車種辞書に混ぜる追加語彙 (vehicle_size_master 由来)。誤爆しやすい語は捨てる。 */
 function mergeVocab(base: string[], extra?: string[]): string[] {
   if (!extra?.length) return base;
   const set = new Set(base);
   for (const e of extra) {
     const t = e?.trim();
-    if (t && t.length >= 3) set.add(t);
+    if (t && !isAmbiguousVocab(t)) set.add(t);
   }
   return [...set];
 }
