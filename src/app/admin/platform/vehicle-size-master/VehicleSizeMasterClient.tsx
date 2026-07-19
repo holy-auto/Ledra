@@ -56,7 +56,8 @@ export default function VehicleSizeMasterClient() {
       });
       const json = await res.json();
       if (!res.ok) {
-        setError(json.error || json.message || "インポートに失敗しました");
+        // apiError の body は { error: コード, message: 人間向け }。表示は message を優先。
+        setError(json.message || "インポートに失敗しました");
       } else {
         setResult(json as ImportResult);
         refreshTotal();

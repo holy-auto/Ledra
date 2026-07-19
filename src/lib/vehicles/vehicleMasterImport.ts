@@ -31,7 +31,12 @@ export interface ParseVehicleMasterResult {
 
 const SIZE_CLASSES = new Set(["SS", "S", "M", "L", "LL", "XL"]);
 
-/** 1 セルの前後空白と囲みダブルクォートを外す。 */
+/**
+ * 1 セルの前後空白と囲みダブルクォートを外す。
+ * ponytail: 全カンマで単純分割する (既存の vehicles/import-csv と同じ流儀)。天井: クォート内に
+ * カンマを含むセル (例 "トヨタ, Inc") は分割が崩れる。メーカー/車種名にカンマはまず無いため
+ * 許容。必要になったら csv-parse 等の依存を入れて RFC4180 準拠パースに置き換える。
+ */
 function splitCsvLine(line: string): string[] {
   return line.split(",").map((s) => s.trim().replace(/^"(.*)"$/, "$1"));
 }
