@@ -66,6 +66,38 @@ describe("deterministicServiceVehicle", () => {
     expect(deterministicServiceVehicle("bmwの洗車").vehicle).toBe("BMW");
   });
 
+  it("recognizes a model from the vehicle_size_master vocabulary (e.g. American cars)", () => {
+    // 固定辞書に無いアメ車も、マスタ由来の語彙を渡せば認識できる。
+    const opts = { extraMakers: ["キャデラック"], extraModels: ["エスカレード"] };
+    expect(deterministicServiceVehicle("キャデラックのエスカレード、コーティングお願いします", opts)).toEqual({
+      vehicle: "キャデラック エスカレード",
+      service: "コーティング",
+    });
+  });
+
+  it("prefers the longest matching model from the merged vocabulary", () => {
+    const opts = { extraModels: ["ランドクルーザー300"] };
+    // 「ランドクルーザー300」の方が固定辞書の「ランクル」等より具体的なので優先。
+    expect(deterministicServiceVehicle("ランドクルーザー300の洗車", opts).vehicle).toContain("ランドクルーザー300");
+  });
+
+  it("ignores too-short (≤2 char) extra vocabulary to avoid false positives", () => {
+    // 「RA」のような 2 文字語彙は誤爆源なので無視する。
+    expect(deterministicServiceVehicle("プログラムの相談です", { extraMakers: ["RA"] }).vehicle).toBeUndefined();
+  });
+
+  it("ignores numeric / short-ASCII extra model names so prices/quantities are not misread", () => {
+    // RAM「1500」やクライスラー「300C」をパーサに入れると価格・数量に誤ヒットするため除外。
+    expect(
+      deterministicServiceVehicle("1500円でコーティングできますか", { extraModels: ["1500"] }).vehicle,
+    ).toBeUndefined();
+    expect(deterministicServiceVehicle("300ccのバイクの塗装", { extraModels: ["300C"] }).vehicle).toBeUndefined();
+    // カタカナの車種名 (エスカレード) は問題なく認識される。
+    expect(deterministicServiceVehicle("エスカレードの洗車", { extraModels: ["エスカレード"] }).vehicle).toBe(
+      "エスカレード",
+    );
+  });
+
   it("returns empty object for blank input", () => {
     expect(deterministicServiceVehicle("   ")).toEqual({});
   });

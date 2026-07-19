@@ -206,13 +206,49 @@ function detectYear(text: string): string | undefined {
   return undefined;
 }
 
+/** 本文に含まれる候補のうち最長 (最も具体的) の 1 つを返す。 */
+function longestPresent(text: string, candidates: string[]): string | undefined {
+  let best: string | undefined;
+  for (const c of candidates) {
+    if (containsCI(text, c) && (!best || c.length > best.length)) best = c;
+  }
+  return best;
+}
+
+/**
+ * 追加語彙が誤爆しやすいか (部分一致パーサに入れると価格・数量等に誤ヒットする)。
+ * - 2 文字以下: 「ミニ」等の誤爆源
+ * - 純数値: 「1500」(RAM) が「1500円」に誤ヒット
+ * - 短い英数字のみ (≤4): 「300C」(クライスラー) が「300cc」に、「XT5」等も誤ヒットしうる。
+ *   RAV4/CX-5 等の正規短縮名は固定辞書 (base) 側に既にあるため取りこぼさない。
+ */
+function isAmbiguousVocab(term: string): boolean {
+  if (term.length <= 2) return true;
+  if (/^\d+$/.test(term)) return true;
+  if (term.length <= 4 && /^[0-9A-Za-z-]+$/.test(term)) return true;
+  return false;
+}
+
+/** 車種辞書に混ぜる追加語彙 (vehicle_size_master 由来)。誤爆しやすい語は捨てる。 */
+function mergeVocab(base: string[], extra?: string[]): string[] {
+  if (!extra?.length) return base;
+  const set = new Set(base);
+  for (const e of extra) {
+    const t = e?.trim();
+    if (t && !isAmbiguousVocab(t)) set.add(t);
+  }
+  return [...set];
+}
+
 /**
  * 車両をメーカー + 車種 + 年式の順で組み立てる。どれか 1 つでも見つかれば返す。
  * メーカー名は本文に無いことが多い (「ハイエースのコーティング」) ため車種単独でも可。
+ * extraMakers/extraModels に vehicle_size_master のメーカー・車種を渡すと、辞書に無い
+ * 車種 (アメ車の長い車種名等) も認識できる。複数一致時は最長 (最も具体的) を採る。
  */
-function detectVehicle(text: string): string | undefined {
-  const maker = VEHICLE_MAKERS.find((m) => containsCI(text, m));
-  const model = VEHICLE_MODELS.find((m) => containsCI(text, m));
+function detectVehicle(text: string, opts?: DeterministicParseOptions): string | undefined {
+  const maker = longestPresent(text, mergeVocab(VEHICLE_MAKERS, opts?.extraMakers));
+  const model = longestPresent(text, mergeVocab(VEHICLE_MODELS, opts?.extraModels));
   const year = maker || model ? detectYear(text) : undefined;
   const parts = [maker, model, year].filter((p): p is string => !!p);
   return parts.length > 0 ? parts.join(" ") : undefined;
@@ -223,15 +259,23 @@ export interface DeterministicParseResult {
   vehicle?: string;
 }
 
+export interface DeterministicParseOptions {
+  /** vehicle_size_master のメーカー名 (固定辞書に足す追加語彙)。 */
+  extraMakers?: string[];
+  /** vehicle_size_master の車種名 (固定辞書に足す追加語彙)。 */
+  extraModels?: string[];
+}
+
 /**
  * 施工内容と車両を決定的に抽出する。見つからなければ undefined を返す。
  * AI 抽出が空だった場合の補完専用 (AI が埋めた値は上書きしない前提で呼ぶ)。
+ * opts で vehicle_size_master 由来の語彙を渡すと車種認識のカバレッジが広がる。
  */
-export function deterministicServiceVehicle(text: string): DeterministicParseResult {
+export function deterministicServiceVehicle(text: string, opts?: DeterministicParseOptions): DeterministicParseResult {
   const trimmed = text?.trim();
   if (!trimmed) return {};
   return {
     service: detectService(trimmed),
-    vehicle: detectVehicle(trimmed),
+    vehicle: detectVehicle(trimmed, opts),
   };
 }

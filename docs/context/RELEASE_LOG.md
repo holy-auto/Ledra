@@ -14,6 +14,42 @@
 
 ## 直近のリリース（git log 直近30件より、2026-07 時点で把握できるもの）
 
+## 2026-07-19 DBマイグレーションの本番自動適用(GitHub Actions)を追加
+- 内容: `.github/workflows/db-migrate.yml` を追加。main へ `supabase/migrations/**` の変更が
+  入ったら `supabase db push` で未適用マイグレーションを本番へ自動適用(手動実行も可、
+  concurrencyで直列化)。これまで手動だったDB適用を「マージ=適用」に。
+- 対象: CI/CD(DBマイグレーション)。
+- 要対応: GitHub Secret `SUPABASE_DB_PASSWORD`(本番DBパスワード)の新規登録が必要
+  (`SUPABASE_ACCESS_TOKEN`/`SUPABASE_PROJECT_ID`は既存)。未登録だと初回ジョブが失敗する。
+
+## 2026-07-19 車種サイズマスタの一括CSVインポータ(運営専用)を追加
+- 内容: `vehicle_size_master` に車種をCSVで一括登録・更新できる運営専用機能を追加。
+  グローバル共有データのため、書き込みは platform admin (`isPlatformAdmin` +
+  `createPlatformScopedAdmin`) のみに限定。API `POST /api/admin/platform/vehicle-size-master`
+  (CSVパース→size_classを寸法から自動決定→(maker,model)でupsert、500件ずつ分割)、
+  純関数 `parseVehicleMasterCsv`(`src/lib/vehicles/vehicleMasterImport.ts`、単体8件)、
+  運営ページ `/admin/platform/vehicle-size-master`(CSV貼付/ファイル/結果表示)、サイドバー
+  「本社・運営」に導線を追加。これで手打ちに頼らず、正規ライセンス諸元データや自前の
+  車種リストを青天井で投入できる(size_classは既存の calcSizeClass で自動)。
+- 対象: 運営(platform admin)。車種サイズマスタ。
+
+## 2026-07-18 車種マスタにアメ車+国産絶版車を追加 + 決定的パーサをマスタ参照化
+- 内容: 全車種マスタ `vehicle_size_master`(既存・全テナント共有、寸法→体積でサイズ区分
+  SS〜XLを自動決定)を拡充。(1)抜けていたアメリカ車(フォード/シボレー/キャデラック/GMC/
+  ダッジ/RAM/クライスラー/リンカーン/ハマー + テスラ/ジープの車種)33車種。(2)国産の
+  絶版車・旧車・軽トラ/軽バン・商用など(マークX/マークII/ヴィッツ/bB/エスティマ/
+  プロボックス/シルビア/RX-7/S2000/パジェロ/ハイエース系/軽トラ各種 等)約136車種。
+  いずれも代表寸法だけを入れ、size_classは既存の体積計算式で自動決定(size_classは手で
+  決めず寸法から導出=事実由来)。本番の関数で寸法→区分を検算済み(書き込みなし)。
+  国産の登録は193→約329車種に拡大。あわせて決定的車種パーサ(`deterministicServiceVehicle`)
+  を、固定辞書に加えて `vehicle_size_master` の語彙も引くように配線し(`inboundAuto`)、
+  マスタに車種を足せばLINE車種認識も自動で広がる形にした(前回レビューで指摘された辞書の
+  二重管理を解消)。複数一致時は最長=最も具体的な車種を採用。数値/短英数字の誤爆語彙は除外。
+- 対象: 車種サイズマスタ、LINE車種認識・概算見積り。全業種共通。
+- 補足: カーセンサー/グーネット等の外部サイトのスクレイピングは規約・法的リスクのため不採用。
+  完全な全車種は正規のライセンス諸元データ取り込み + 車検証OCRでの継続更新で埋める方針
+  (DECISION_LOG / OPEN_QUESTIONS 参照)。
+
 ## 2026-07-18 LINE抽出の取りこぼしを決定的キーワードフォールバックで補完
 - 内容: LINE受信の車種・施工内容のAI抽出(`inboundReservationExtract`)が、同形式の
   メッセージでも埋めたり埋めなかったりと不安定(本番実績で6件中2件しか埋まらず、
