@@ -148,4 +148,18 @@ describe("maybeAutoProcessInboundMessage auto-reply gating", () => {
     expect(arg.service).toBe("ガラスコーティング");
     expect(arg.vehicleText).toBe("レクサス LX");
   });
+
+  it("recognizes an American car via the vehicle_size_master vocabulary (not in the built-in dict)", async () => {
+    // 固定辞書に無いアメ車も、vehicle_size_master に登録されていれば認識される。
+    mocks.shouldAutoReplyRoughEstimate.mockReturnValue(true);
+    mocks.store.tables.vehicle_size_master = [{ maker: "キャデラック", model: "エスカレード", size_class: "XL" }];
+    mocks.extractInboundReservation.mockResolvedValue({ intent: "inquiry_only", confidence: 0.72, ai: true });
+    await maybeAutoProcessInboundMessage({
+      ...baseParams(),
+      text: "キャデラックのエスカレード、コーティングの見積り欲しい",
+    });
+    const arg = mocks.maybeAutoReplyRoughEstimate.mock.calls[0][0];
+    expect(arg.vehicleText).toBe("キャデラック エスカレード");
+    expect(arg.service).toBe("コーティング");
+  });
 });

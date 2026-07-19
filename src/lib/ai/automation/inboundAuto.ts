@@ -35,6 +35,26 @@ import {
 
 const AUTO_EXTRACT_ENDPOINT = "/api/line/webhook#auto-extract";
 
+/**
+ * 決定的車種フォールバックに渡す語彙を vehicle_size_master (全車種マスタ) から読む。
+ * マスタに車種を足せば LINE の車種認識も自動で広がる (辞書の二重管理を避ける)。
+ * 抽出漏れ時のみ (fallback パス) しか呼ばれないため都度 select で十分。失敗しても空で続行。
+ * ponytail: マスタが数千件規模になり呼び出しが増えたら、TTL 付きのメモリキャッシュに載せる。
+ */
+async function loadVehicleMasterVocab(
+  admin: ReturnType<typeof createServiceRoleAdmin>,
+): Promise<{ extraMakers: string[]; extraModels: string[] }> {
+  try {
+    const { data } = await admin.from("vehicle_size_master").select("maker, model").limit(5000);
+    const rows = (data as Array<{ maker: string | null; model: string | null }> | null) ?? [];
+    const extraMakers = [...new Set(rows.map((r) => r.maker?.trim()).filter((v): v is string => !!v))];
+    const extraModels = [...new Set(rows.map((r) => r.model?.trim()).filter((v): v is string => !!v))];
+    return { extraMakers, extraModels };
+  } catch {
+    return { extraMakers: [], extraModels: [] };
+  }
+}
+
 export interface MaybeAutoProcessParams {
   tenantId: string;
   /** customer_messages.id — ai_extracted の書き込み先。 */
@@ -104,9 +124,11 @@ export async function maybeAutoProcessInboundMessage(params: MaybeAutoProcessPar
     // AI 抽出は同形式のメッセージでも service/vehicle を埋めたり埋めなかったりと不安定な
     // ため、空だった項目だけを決定的キーワード辞書で補完する (AI が埋めた値は上書きしない)。
     // これが無いと抽出漏れのたびに概算見積り等の自動応答がすべて沈黙する。
+    // 車種辞書は vehicle_size_master (全車種マスタ) の語彙も足して認識範囲を広げる
+    // (固定辞書に無いアメ車等も、マスタに登録すれば認識できるようにする)。
     const detFallback = { service: false, vehicle: false };
     if (!result.service?.trim() || !result.vehicle?.trim()) {
-      const det = deterministicServiceVehicle(text);
+      const det = deterministicServiceVehicle(text, await loadVehicleMasterVocab(admin));
       if (!result.service?.trim() && det.service) {
         result.service = det.service;
         detFallback.service = true;
