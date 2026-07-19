@@ -14,7 +14,13 @@
 
 ## 直近のリリース（git log 直近30件より、2026-07 時点で把握できるもの）
 
-## 2026-07-18 LINE予約枠確定時のバックグラウンド処理を after() 完走保証に修正
+## 2026-07-19 公開予約カレンダー（週表示）の空き「○」左ズレを修正
+- 内容: 顧客共有用の予約ページ `customer/[tenant]/booking` の週グリッドで、空き枠の
+  「○」だけが `flex`（block-level flex）の `<button>` に包まれ、幅が内容サイズに縮んで
+  セル左端に寄っていた（×/– は素の span で td の `text-center` により中央のため、○のみ
+  左にずれて見えた）。`inline-flex` に変更し `text-center` を効かせて中央寄せに統一。
+  月表示はセル全体が `items-center` の flex ボタンで○が中央のため影響なし。
+- 対象: 個人客向け公開予約カレンダー（週表示）の見た目のみ。挙動・データ変更なし。
 - 内容: `conversationFlowPostback.ts` の `handleSlotSelected`（LINE会話フローでお客様が
   日程を選び予約が確定する箇所）で、勘定科目提案・ワークフロー提案・Googleカレンダー同期の
   3件が `void`／`.catch` の撃ちっぱなしで発火されており、LINE webhook の `after()`（レスポンス
