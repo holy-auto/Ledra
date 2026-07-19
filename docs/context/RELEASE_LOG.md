@@ -14,6 +14,14 @@
 
 ## 直近のリリース（git log 直近30件より、2026-07 時点で把握できるもの）
 
+## 2026-07-19 DBマイグレーションの本番自動適用(GitHub Actions)を追加
+- 内容: `.github/workflows/db-migrate.yml` を追加。main へ `supabase/migrations/**` の変更が
+  入ったら `supabase db push` で未適用マイグレーションを本番へ自動適用(手動実行も可、
+  concurrencyで直列化)。これまで手動だったDB適用を「マージ=適用」に。
+- 対象: CI/CD(DBマイグレーション)。
+- 要対応: GitHub Secret `SUPABASE_DB_PASSWORD`(本番DBパスワード)の新規登録が必要
+  (`SUPABASE_ACCESS_TOKEN`/`SUPABASE_PROJECT_ID`は既存)。未登録だと初回ジョブが失敗する。
+
 ## 2026-07-19 車種サイズマスタの一括CSVインポータ(運営専用)を追加
 - 内容: `vehicle_size_master` に車種をCSVで一括登録・更新できる運営専用機能を追加。
   グローバル共有データのため、書き込みは platform admin (`isPlatformAdmin` +
