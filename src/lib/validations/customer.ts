@@ -10,6 +10,13 @@ const optionalTrimmed = (max: number) =>
     .optional()
     .transform((v) => v || null);
 
+/** 空文字 / null / undefined を null に寄せ、値があるときだけ整数として範囲検証する任意 int */
+const optionalInt = (min: number, max: number) =>
+  z.preprocess(
+    (v) => (v === "" || v === null || v === undefined ? null : v),
+    z.coerce.number().int().min(min).max(max).nullable(),
+  );
+
 /** email は空文字 / null のときは許容し、値があるときだけ形式検証する */
 const optionalEmail = z
   .string()
@@ -78,6 +85,12 @@ const customerBaseFields = {
     .transform((v) => v ?? null),
   // 締め日・支払いサイト等の自由記述メモ。
   billing_terms_note: optionalTrimmed(500),
+  // 締め日 (1-31, 31=末締め)。合算請求の期間境界に使う。空は締め日未設定。
+  closing_day: optionalInt(1, 31),
+  // 支払サイト (net-N 日数)。空は既定 30 日。
+  payment_terms_days: optionalInt(0, 180),
+  // この顧客が Ledra 利用店（取引先テナント）であるときの tenants.id。BtoB 指名請求の顧客解決に使う。
+  linked_tenant_id: z.preprocess((v) => (v === "" || v === undefined ? null : v), z.string().uuid().nullable()),
   // 法人番号・インボイス登録番号 (任意, 法人のみ入力想定)。
   corporate_number: optionalCorporateNumber,
   invoice_registration_number: optionalInvoiceRegistrationNumber,
