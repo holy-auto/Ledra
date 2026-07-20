@@ -115,6 +115,9 @@ export async function runMonthlyInvoices(targetDate?: Date): Promise<{ sent: num
        )`,
     )
     .eq("billing_timing", "monthly")
+    // 指名(invoice)は請求書払いで cycleInvoice/orderInvoice が持つ。月次(platform)合算の対象外にし
+    // 二重請求を防ぐ。
+    .neq("billing_method", "invoice")
     .eq("status", "payment_pending")
     .is("invoice_sent_at", null)
     .gte("client_approved_at", monthStart)

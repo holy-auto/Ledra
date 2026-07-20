@@ -174,11 +174,6 @@ export async function sendOrderInvoiceEmail(orderId: string): Promise<void> {
     logger.info("[orderInvoice] skipped — no accepted_amount", { orderId });
     return;
   }
-  // 月次合算 (tenant_billing_settings.monthly) は runMonthlyInvoices が持つのでここでは作らない。
-  if (order.billing_timing === "monthly") {
-    logger.info("[orderInvoice] skipped — billing_timing=monthly (handled by runMonthlyInvoices)", { orderId });
-    return;
-  }
 
   const tenant = order.to_tenant as unknown as TenantForPdf | null;
   if (!tenant) {
@@ -188,6 +183,14 @@ export async function sendOrderInvoiceEmail(orderId: string): Promise<void> {
 
   const billingMethod = (order.billing_method as string | null) ?? "platform";
   const isInvoiceBilling = billingMethod === "invoice";
+
+  // 公開案件(platform)の月次合算 (tenant_billing_settings.monthly) は runMonthlyInvoices が持つ。
+  // 指名(invoice)は billing_timing に関わらず、下の顧客 billing_cycle で per-order/合算を決める
+  // （runMonthlyInvoices は invoice を対象外にしているため二重請求にならない）。
+  if (!isInvoiceBilling && order.billing_timing === "monthly") {
+    logger.info("[orderInvoice] skipped — platform monthly (handled by runMonthlyInvoices)", { orderId });
+    return;
+  }
 
   // 指名(invoice)は相手を法人顧客として引き当て、合算払いなら per-order は作らない。
   let counterpartyCustomer = null as Awaited<ReturnType<typeof resolveCounterpartyCustomer>>;
