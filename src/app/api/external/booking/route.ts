@@ -4,6 +4,7 @@ import { z } from "zod";
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { apiOk, apiInternalError, apiValidationError, apiError } from "@/lib/api/response";
 import { checkOverlap } from "@/lib/reservations/overlap";
+import { reservationBlocksSlot } from "@/lib/booking/slots";
 import { syncCreateEvent } from "@/lib/gcal/client";
 import { sendBookingConfirmation } from "@/lib/line/client";
 import { checkRateLimit } from "@/lib/api/rateLimit";
@@ -452,14 +453,15 @@ export async function GET(req: NextRequest) {
     // ── 既存予約を取得 ──────────────────────────────────────
     const { data: reservations } = await admin
       .from("reservations")
-      .select("start_time, end_time")
+      .select("all_day, start_time, end_time")
       .eq("tenant_id", tenant.id)
       .eq("scheduled_date", date)
       .neq("status", "cancelled");
 
     const available = slots.map((slot: any) => {
-      const booked = (reservations ?? []).filter(
-        (r: any) => r.start_time < slot.end_time && r.end_time > slot.start_time,
+      // 終日予約はその日の全枠を占有する（reservationBlocksSlot が判定）。
+      const booked = (reservations ?? []).filter((r: any) =>
+        reservationBlocksSlot(r, slot.start_time, slot.end_time),
       ).length;
 
       return {
@@ -472,7 +474,18 @@ export async function GET(req: NextRequest) {
       };
     });
 
-    return apiOk({ date, slots: available, closed: false, tenant_name: tenant.name ?? null });
+    // 終日予約（1日お預かり）を受けられるか。営業日で既存予約が1件も無ければ可。
+    // ponytail: 複数ブース(max_bookings>1)でも終日と併存不可の保守的判定。
+    // 併存を許すなら日ごとの占有台数を数える実装へ拡張する。
+    const allDayAvailable = (reservations ?? []).length === 0;
+
+    return apiOk({
+      date,
+      slots: available,
+      closed: false,
+      all_day_available: allDayAvailable,
+      tenant_name: tenant.name ?? null,
+    });
   } catch (e) {
     return apiInternalError(e, "available slots");
   }

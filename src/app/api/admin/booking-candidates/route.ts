@@ -116,7 +116,7 @@ export async function GET(req: NextRequest) {
       supabase.from("closed_days").select("type, day_of_week, closed_date").eq("tenant_id", tenantId),
       supabase
         .from("reservations")
-        .select("scheduled_date, start_time, end_time, loaner_car_id")
+        .select("scheduled_date, start_time, end_time, loaner_car_id, all_day")
         .eq("tenant_id", tenantId)
         .neq("status", "cancelled")
         .gte("scheduled_date", from)
@@ -240,8 +240,9 @@ export async function GET(req: NextRequest) {
       }[],
       reservations: (resvRes.data ?? []) as {
         scheduled_date: string;
-        start_time: string;
-        end_time: string;
+        start_time: string | null;
+        end_time: string | null;
+        all_day?: boolean | null;
       }[],
       estimatedMinutes,
       workCategories,

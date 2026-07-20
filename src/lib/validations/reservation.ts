@@ -19,6 +19,8 @@ export const reservationCreateSchema = z.object({
   customer_id: nullableUuid,
   vehicle_id: nullableUuid,
   scheduled_date: z.string().trim().min(1, "予約日は必須です。"),
+  // 終日予約。true のとき start_time / end_time は無視して NULL 保存する（API 側で正規化）。
+  all_day: z.boolean().optional(),
   start_time: z
     .string()
     .trim()
@@ -57,6 +59,8 @@ export const reservationUpdateSchema = z.object({
   customer_id: nullableUuid,
   vehicle_id: nullableUuid,
   scheduled_date: z.string().trim().optional(),
+  // 終日予約。true のとき start_time / end_time は NULL に正規化する（API 側で処理）。
+  all_day: z.boolean().optional(),
   start_time: z
     .string()
     .trim()

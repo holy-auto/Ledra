@@ -272,4 +272,33 @@ describe("proposeCandidates", () => {
     });
     expect(c).toHaveLength(2);
   });
+
+  it("treats an all-day reservation as occupying every slot that day", () => {
+    // 月曜に終日予約(時刻 null, all_day)。同日の全枠が満席になり候補から消える。
+    const c = proposeCandidates({
+      dates: ["2026-07-13", "2026-07-14"],
+      slots: SLOTS,
+      closedDays: [],
+      reservations: [{ scheduled_date: "2026-07-13", start_time: null, end_time: null, all_day: true }],
+      estimatedMinutes: null,
+    });
+    // 定員2の午後枠も終日予約で 1 消費 → 残1 で候補に残る、定員1の枠は満席
+    expect(c.map((x) => `${x.date} ${x.start_time}`)).toEqual([
+      "2026-07-13 13:00", // 定員2 − 終日1 = 残1
+      "2026-07-14 09:00", // 別日は影響なし
+    ]);
+    expect(c[0].remaining).toBe(1);
+  });
+
+  it("ignores non-all-day reservations that have no times (avoids null crash)", () => {
+    // 時刻未設定かつ非終日の行は占有に数えない（かつ timeToMinutes(null) で落ちない）。
+    const c = proposeCandidates({
+      dates: ["2026-07-13"],
+      slots: SLOTS,
+      closedDays: [],
+      reservations: [{ scheduled_date: "2026-07-13", start_time: null, end_time: null, all_day: false }],
+      estimatedMinutes: null,
+    });
+    expect(c.map((x) => x.start_time)).toEqual(["09:00", "13:00"]);
+  });
 });

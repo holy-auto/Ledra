@@ -29,6 +29,7 @@ type Reservation = {
   customer_name: string | null;
   vehicle_label: string | null;
   scheduled_date: string;
+  all_day: boolean | null;
   start_time: string | null;
   end_time: string | null;
   status: string;
@@ -79,12 +80,13 @@ function inRange(dateStr: string, range: { start: string; end: string }): boolea
   return dateStr >= range.start && dateStr <= range.end;
 }
 
-function fmtTime(start: string | null, end: string | null, date: string): string {
+function fmtTime(start: string | null, end: string | null, date: string, allDay?: boolean | null): string {
   const d = new Date(date + "T00:00:00").toLocaleDateString("ja-JP", {
     month: "numeric",
     day: "numeric",
     weekday: "short",
   });
+  if (allDay) return `${d} 終日`;
   if (!start) return d;
   const t = end ? `${start}〜${end}` : start;
   return `${d} ${t}`;
@@ -222,7 +224,7 @@ export default function StorefrontReservations() {
                   </div>
                   <div className="mt-0.5 truncate text-xs text-warning-text/80">
                     {x.vehicle_label ? `${x.vehicle_label} · ` : ""}
-                    {fmtTime(x.start_time, x.end_time, x.scheduled_date)}
+                    {fmtTime(x.start_time, x.end_time, x.scheduled_date, x.all_day)}
                   </div>
                   {x.estimated_amount != null && (
                     <div className="mt-0.5 text-[11px] text-warning-text/70">見積 {formatJpy(x.estimated_amount)}</div>
@@ -260,7 +262,7 @@ export default function StorefrontReservations() {
                 key={x.id}
                 href={`/admin/jobs/${x.id}`}
                 title={x.customer_name || x.title || "(無題)"}
-                meta={fmtTime(x.start_time, x.end_time, x.scheduled_date)}
+                meta={fmtTime(x.start_time, x.end_time, x.scheduled_date, x.all_day)}
                 badge={x.vehicle_label ?? undefined}
                 footer={x.estimated_amount != null ? formatJpy(x.estimated_amount) : undefined}
                 primaryAction={{
@@ -283,7 +285,7 @@ export default function StorefrontReservations() {
                 key={x.id}
                 href={`/admin/jobs/${x.id}`}
                 title={x.customer_name || x.title || "(無題)"}
-                meta={fmtTime(x.start_time, x.end_time, x.scheduled_date)}
+                meta={fmtTime(x.start_time, x.end_time, x.scheduled_date, x.all_day)}
                 badge={x.vehicle_label ?? undefined}
                 footer={x.estimated_amount != null ? formatJpy(x.estimated_amount) : undefined}
                 primaryAction={{
@@ -309,7 +311,7 @@ export default function StorefrontReservations() {
                 meta={
                   x.current_step_key
                     ? `ステップ: ${x.current_step_key}`
-                    : fmtTime(x.start_time, x.end_time, x.scheduled_date)
+                    : fmtTime(x.start_time, x.end_time, x.scheduled_date, x.all_day)
                 }
                 badge={x.vehicle_label ?? undefined}
                 footer={x.progress_pct != null ? `進捗 ${x.progress_pct}%` : undefined}
@@ -333,7 +335,7 @@ export default function StorefrontReservations() {
                 key={x.id}
                 href={`/admin/jobs/${x.id}`}
                 title={x.customer_name || x.title || "(無題)"}
-                meta={fmtTime(x.start_time, x.end_time, x.scheduled_date)}
+                meta={fmtTime(x.start_time, x.end_time, x.scheduled_date, x.all_day)}
                 badge={x.vehicle_label ?? undefined}
                 footer={x.estimated_amount != null ? formatJpy(x.estimated_amount) : undefined}
               />
