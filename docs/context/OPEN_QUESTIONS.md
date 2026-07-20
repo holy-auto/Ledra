@@ -30,16 +30,20 @@
 - 次のアクション: 数店舗で試験運用し、締め日・フォールバック・税表示の要否を実データで確認してから拡張。
 - 起票日: 2026-07-20
 
-## 事業者間コラボ Phase 2（他店の空き確認＋枠押さえ）の設計論点
-- 状況: 「他店の空きを Ledra 上で確認し枠を押さえる(電話レス)」は予約システムへの大きな新規開発として
-  Phase 2 に分離(DECISION_LOG 2026-07-20)。予約基盤(`reservations`/空き計算 `proposeCandidates`/公開空き表示API)は
-  あるが、①認証付きの他店空き参照、②枠の仮押さえ(TTL付き・原子的確保)、③受発注↔予約の紐付け、④他テナント
-  リソース参照を禁止するガード(`reservations_check_tenant_refs`)の取引先例外化、はいずれも未実装。
-- 選択肢/論点: (a) 空き共有は取引先ごとの許可制にするか(プライバシー/競合配慮)、見せる粒度(○×のみか時間帯か)。
-  (b) 仮押さえの実装: 新 `reservation_holds` テーブル or `reservations.status='held'`＋`expires_at`＋原子的 claim
-  (現状 count+overlap は非原子で競合窓あり)。(c) 押さえ→本予約→受発注完了の状態連携。
-- 影響範囲: 他テナントのデータ露出・二重押さえの競合。設計を誤ると予約の整合性/プライバシーに直結。
-- 次のアクション: Phase 1 リリース後、空き共有の範囲とプライバシー方針を代表と確認してから着手。
+## 事業者間コラボ Phase 2（空き確認＋枠押さえ）実装後の残論点
+- 状況: Phase 2（取引先の空き確認＋仮押さえ→承認で本予約）を実装(DECISION_LOG 2026-07-20)。
+  取引先ゲート=`customers.linked_tenant_id`＋`share_availability`、仮押さえ=`reservation_holds`＋
+  `claim_reservation_hold`(advisory lock)、受注承認で本予約変換、失効 cron。残る論点:
+- 選択肢/論点:
+  (a) **公開予約フローとの整合（fast-follow 推奨）**: 一般客向け `external/booking` POST/GET は hold を数えないため、
+      指名で押さえた枠に一般客予約が入り得る（限定オーバーセル）。承認変換は hold を必ず尊重するのがバックストップ。
+      解消は `external/booking` POST に同 advisory lock＋hold カウント、GET に hold 減算。
+  (b) `share_availability` を厳密 opt-in（既定 false＋B 側トグル）にするか。現状は「顧客登録＝許可」で既定 true。
+  (c) 変換の失敗回収: hold を accepted 化した後に reservations 作成が失敗すると「accepted だが予約なし」で滞留。
+      現状はログのみ。リカバリ（再試行/戻し）が要るか。
+  (d) 複数スロット連結・空き○の粒度（時間帯まで見せるか）・変換時の GCal 同期・`reservations.source='partner'` 追加。
+- 影響範囲: (a)は一般客とのダブルブッキング可能性。(c)は稀だが予約漏れ。
+- 次のアクション: 試験運用で (a) の発生頻度と (c) の滞留有無を見てから対応要否を判断。
 - 起票日: 2026-07-20
 
 ## 全車種マスタの完全化（正規諸元データの調達 + 車検証OCR自動投入）

@@ -49,6 +49,25 @@ export const orderCreateSchema = z.object({
     .nullable()
     .optional()
     .transform((v) => v || null),
+  // 指名発注時に相手(to_tenant)の空き枠を仮押さえする場合の枠（任意・3項目セット）。
+  hold_date: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "予約日の形式が不正です。")
+    .nullable()
+    .optional()
+    .transform((v) => v || null),
+  hold_start: z
+    .string()
+    .regex(/^\d{2}:\d{2}(:\d{2})?$/, "開始時刻の形式が不正です。")
+    .nullable()
+    .optional()
+    .transform((v) => v || null),
+  hold_end: z
+    .string()
+    .regex(/^\d{2}:\d{2}(:\d{2})?$/, "終了時刻の形式が不正です。")
+    .nullable()
+    .optional()
+    .transform((v) => v || null),
 });
 
 export const ORDER_STATUSES = [

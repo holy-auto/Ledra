@@ -280,6 +280,22 @@ export default function OrderDetailClient({ orderId }: { orderId: string }) {
   // Inspection signature
   const [showSignaturePad, setShowSignaturePad] = useState(false);
 
+  // 仮押さえ枠 / 本予約
+  const [hold, setHold] = useState<{
+    scheduled_date: string;
+    start_time: string;
+    end_time: string;
+    status: string;
+    expires_at: string;
+  } | null>(null);
+  const [reservation, setReservation] = useState<{
+    scheduled_date: string;
+    start_time: string | null;
+    end_time: string | null;
+    all_day: boolean | null;
+    status: string;
+  } | null>(null);
+
   const fetchDetail = useCallback(async () => {
     try {
       const res = await fetch(`/api/admin/orders/${orderId}`, { cache: "no-store" });
@@ -295,6 +311,8 @@ export default function OrderDetailClient({ orderId }: { orderId: string }) {
       setCounterpartyScore(j.counterparty_score ?? null);
       setIsFrom(j.is_from);
       setIsTo(j.is_to);
+      setHold(j.hold ?? null);
+      setReservation(j.reservation ?? null);
     } catch (e: unknown) {
       setErr(e instanceof Error ? e.message : String(e));
     }
@@ -557,6 +575,38 @@ export default function OrderDetailClient({ orderId }: { orderId: string }) {
         {order.description && <p className="text-[13px] text-secondary mt-2">{order.description}</p>}
         {order.cancel_reason && <p className="text-[13px] text-red-500 mt-2">取消理由: {order.cancel_reason}</p>}
       </section>
+
+      {/* ─── 予約枠（仮押さえ / 本予約） ─── */}
+      {(reservation || (hold && hold.status === "pending")) && (
+        <section className="glass-card p-5 space-y-2">
+          <h3 className="text-sm font-semibold text-primary">予約枠</h3>
+          {reservation ? (
+            <div className="flex items-center gap-2 text-sm">
+              <Badge variant="success">予約確定</Badge>
+              <span className="text-primary font-medium">
+                {formatDate(reservation.scheduled_date)}
+                {reservation.all_day
+                  ? "（終日）"
+                  : reservation.start_time
+                    ? ` ${reservation.start_time.slice(0, 5)}〜${(reservation.end_time ?? "").slice(0, 5)}`
+                    : ""}
+              </span>
+            </div>
+          ) : (
+            hold && (
+              <div className="flex items-center gap-2 text-sm">
+                <Badge variant="warning">承認待ち枠</Badge>
+                <span className="text-primary font-medium">
+                  {formatDate(hold.scheduled_date)} {hold.start_time.slice(0, 5)}〜{hold.end_time.slice(0, 5)}
+                </span>
+                <span className="text-[11px] text-muted">
+                  受注承認で本予約になります（{formatDate(hold.expires_at)} まで）
+                </span>
+              </div>
+            )
+          )}
+        </section>
+      )}
 
       {/* ─── Status Actions ─── */}
       {availableTransitions.length > 0 && (
