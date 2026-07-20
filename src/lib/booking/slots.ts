@@ -27,6 +27,25 @@ export function timeToMinutes(t: string): number {
   return (h || 0) * 60 + (m || 0);
 }
 
+/**
+ * 予約が時間枠 [slotStart, slotEnd) を占有するか（空き状況・満席判定の共通規則）。
+ *
+ * - 終日予約（all_day）はその日のどの枠とも重なる＝常に占有。
+ * - 通常予約は時刻が枠と重なる場合のみ占有（境界は排他: 開始=前枠の終了 は重複としない）。
+ * - 時刻未設定（かつ終日でない）の行は占有しない。
+ *
+ * 引数は "HH:MM" / "HH:MM:SS" いずれも可（先頭からの辞書順比較で判定）。
+ */
+export function reservationBlocksSlot(
+  r: { all_day?: boolean | null; start_time: string | null; end_time: string | null },
+  slotStart: string,
+  slotEnd: string,
+): boolean {
+  if (r.all_day) return true;
+  if (!r.start_time || !r.end_time) return false;
+  return r.start_time < slotEnd && r.end_time > slotStart;
+}
+
 /** YYYY-MM-DD をローカル正午基準で n 日進める（日付跨ぎの TZ 揺れを避ける）。 */
 export function addDays(date: string, n: number): string {
   const [y, m, d] = date.split("-").map(Number);

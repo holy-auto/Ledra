@@ -32,6 +32,16 @@
 - 対象: 受発注(`/admin/orders`)・顧客管理(`/admin/customers`)・請求/帳票(`documents`)。BtoB 指名取引の店舗向け。
 - 補足: 「他店の空き確認＋枠押さえ」は規模が大きいため別PR(Phase 2)に分離（OPEN_QUESTIONS 参照）。
 
+## 2026-07-20 終日予約（1日お預かり）に対応
+- 内容: 予約に「終日」を追加。`reservations.all_day` 列を新設し、終日予約は時刻NULLで保存。
+  `check_reservation_overlap` RPC を更新して終日予約が当日を丸ごと占有（時間枠予約・終日どうしとも
+  ダブルブッキング検知）するようにした。空き状況・日程候補は終日占有を数える共通純粋関数
+  `reservationBlocksSlot`（`src/lib/booking/slots.ts`）に集約。顧客Web予約ページ
+  `customer/[tenant]/booking` に「終日（1日お預かり）」ボタンを追加（当日に既存予約が無い日のみ提示）、
+  管理画面 `admin/reservations` の作成フォームに「終日」チェックボックスと一覧/カレンダー/店頭表示への
+  「終日」ラベルを追加。gcal 同期は既存の「時刻NULL=終日イベント」処理をそのまま利用。
+- 対象: 顧客向け公開予約ページ・管理画面の予約作成/一覧/カレンダー・空き状況/候補提案API（全業種共通）。
+
 ## 2026-07-19 公開予約カレンダー（週表示）の空き「○」左ズレを修正
 - 内容: 顧客共有用の予約ページ `customer/[tenant]/booking` の週グリッドで、空き枠の
   「○」だけが `flex`（block-level flex）の `<button>` に包まれ、幅が内容サイズに縮んで

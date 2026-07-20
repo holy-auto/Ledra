@@ -98,7 +98,7 @@ export async function GET(req: NextRequest) {
     let query = supabase
       .from("reservations")
       .select(
-        "id, customer_id, vehicle_id, title, menu_items_json, note, scheduled_date, start_time, end_time, assigned_user_id, assigned_staff_id, booth_id, loaner_car_id, status, estimated_amount, created_at, workflow_template_id, current_step_key, current_step_order, progress_pct",
+        "id, customer_id, vehicle_id, title, menu_items_json, note, scheduled_date, all_day, start_time, end_time, assigned_user_id, assigned_staff_id, booth_id, loaner_car_id, status, estimated_amount, created_at, workflow_template_id, current_step_key, current_step_order, progress_pct",
         { count: "exact" },
       )
       .eq("tenant_id", caller.tenantId)
@@ -213,6 +213,8 @@ export async function POST(req: NextRequest) {
     );
     if (refErr) return apiValidationError(refErr);
 
+    // 終日予約は時刻を持たない（NULL 保存）。誤って時刻が送られても正規化する。
+    const isAllDay = input.all_day === true;
     const row = {
       id: crypto.randomUUID(),
       tenant_id: caller.tenantId,
@@ -222,8 +224,9 @@ export async function POST(req: NextRequest) {
       menu_items_json: input.menu_items_json ?? [],
       note: input.note,
       scheduled_date: input.scheduled_date,
-      start_time: input.start_time,
-      end_time: input.end_time,
+      all_day: isAllDay,
+      start_time: isAllDay ? null : input.start_time,
+      end_time: isAllDay ? null : input.end_time,
       assigned_user_id: input.assigned_user_id,
       assigned_staff_id: input.assigned_staff_id,
       booth_id: input.booth_id,
@@ -237,7 +240,7 @@ export async function POST(req: NextRequest) {
       .from("reservations")
       .insert(row)
       .select(
-        "id, tenant_id, customer_id, vehicle_id, title, menu_items_json, note, scheduled_date, start_time, end_time, assigned_user_id, assigned_staff_id, booth_id, status, estimated_amount, created_at, updated_at",
+        "id, tenant_id, customer_id, vehicle_id, title, menu_items_json, note, scheduled_date, all_day, start_time, end_time, assigned_user_id, assigned_staff_id, booth_id, status, estimated_amount, created_at, updated_at",
       )
       .single();
     if (error) {
@@ -319,6 +322,13 @@ export async function PUT(req: NextRequest) {
     };
     for (const [key, value] of Object.entries(rest)) {
       if (value !== undefined && sentKeys.has(key)) updates[key] = value;
+    }
+
+    // 終日予約は時刻を持たない。all_day を true にする更新では start/end を NULL に正規化する
+    // （フォームが空時刻を送ってきても、誤って時刻付き終日が保存されないようサーバ側で強制）。
+    if (updates.all_day === true) {
+      updates.start_time = null;
+      updates.end_time = null;
     }
 
     // 送られた assigned_staff_id / booth_id はテナント所有を検証（クロステナント参照防止）
@@ -411,7 +421,7 @@ export async function PUT(req: NextRequest) {
       .eq("id", id)
       .eq("tenant_id", caller.tenantId)
       .select(
-        "id, tenant_id, customer_id, vehicle_id, title, menu_items_json, note, scheduled_date, start_time, end_time, assigned_user_id, assigned_staff_id, booth_id, status, estimated_amount, gcal_event_id, cancelled_at, cancel_reason, work_started_at, work_completed_at, parts_replacement, created_at, updated_at",
+        "id, tenant_id, customer_id, vehicle_id, title, menu_items_json, note, scheduled_date, all_day, start_time, end_time, assigned_user_id, assigned_staff_id, booth_id, status, estimated_amount, gcal_event_id, cancelled_at, cancel_reason, work_started_at, work_completed_at, parts_replacement, created_at, updated_at",
       )
       .single();
 

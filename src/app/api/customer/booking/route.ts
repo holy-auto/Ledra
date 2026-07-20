@@ -9,34 +9,52 @@ import { checkRateLimit } from "@/lib/api/rateLimit";
 import { logger } from "@/lib/logger";
 import { createIntakeInvitation } from "@/lib/identity/intakeServer";
 
-const customerBookingSchema = z.object({
-  tenant_slug: z.string().trim().min(1).max(100),
-  customer_name: z.string().trim().min(1).max(100),
-  customer_email: z
-    .string()
-    .trim()
-    .toLowerCase()
-    .email()
-    .max(254)
-    .optional()
-    .or(z.literal("").transform(() => undefined)),
-  customer_phone: z.string().trim().max(40).optional(),
-  title: z.string().trim().max(200).optional(),
-  // 希望作業の大カテゴリ。指定時、その枠が受け入れるか検証する。
-  category: z.string().trim().max(80).optional(),
-  scheduled_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "scheduled_date は YYYY-MM-DD 形式です"),
-  start_time: z.string().regex(/^\d{2}:\d{2}(:\d{2})?$/, "start_time / end_time は HH:MM 形式です"),
-  end_time: z.string().regex(/^\d{2}:\d{2}(:\d{2})?$/, "start_time / end_time は HH:MM 形式です"),
-  note: z.string().trim().max(2000).optional(),
-  /**
-   * true なら予約と同時に事前カルテ用 intake invitation を発行し、
-   * URL / short_id をレスポンスに含める。Booking page で「事前カルテも記入する」
-   * UI を表示するために使う。
-   */
-  request_intake: z.boolean().optional(),
-});
+const customerBookingSchema = z
+  .object({
+    tenant_slug: z.string().trim().min(1).max(100),
+    customer_name: z.string().trim().min(1).max(100),
+    customer_email: z
+      .string()
+      .trim()
+      .toLowerCase()
+      .email()
+      .max(254)
+      .optional()
+      .or(z.literal("").transform(() => undefined)),
+    customer_phone: z.string().trim().max(40).optional(),
+    title: z.string().trim().max(200).optional(),
+    // 希望作業の大カテゴリ。指定時、その枠が受け入れるか検証する。
+    category: z.string().trim().max(80).optional(),
+    scheduled_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "scheduled_date は YYYY-MM-DD 形式です"),
+    // 終日予約（1日お預かり）。true のとき start_time / end_time は不要。
+    all_day: z.boolean().optional(),
+    start_time: z
+      .string()
+      .regex(/^\d{2}:\d{2}(:\d{2})?$/, "start_time / end_time は HH:MM 形式です")
+      .optional(),
+    end_time: z
+      .string()
+      .regex(/^\d{2}:\d{2}(:\d{2})?$/, "start_time / end_time は HH:MM 形式です")
+      .optional(),
+    note: z.string().trim().max(2000).optional(),
+    /**
+     * true なら予約と同時に事前カルテ用 intake invitation を発行し、
+     * URL / short_id をレスポンスに含める。Booking page で「事前カルテも記入する」
+     * UI を表示するために使う。
+     */
+    request_intake: z.boolean().optional(),
+  })
+  .refine((d) => d.all_day === true || (!!d.start_time && !!d.end_time), {
+    message: "start_time / end_time は必須です（終日予約を除く）",
+    path: ["start_time"],
+  });
 
 export const dynamic = "force-dynamic";
+
+// 終日予約の占有時間帯（ダブルブッキング判定用）。営業日を丸ごと押さえる。
+// ponytail: 24時間制の店舗を想定しない前提。深夜跨ぎ営業が要件化したら要見直し。
+const ALL_DAY_START = "00:00";
+const ALL_DAY_END = "23:59";
 
 /**
  * POST /api/customer/booking
@@ -71,8 +89,12 @@ export async function POST(req: NextRequest) {
     // 希望作業カテゴリが選ばれていればタイトルに反映し、店舗側でどの作業の予約か分かるようにする。
     const title = body.title || body.category || "Web予約";
     const scheduledDate = body.scheduled_date;
+    const isAllDay = body.all_day === true;
     const startTime = body.start_time;
     const endTime = body.end_time;
+    // ダブルブッキング判定に使う時間帯（終日は営業日を丸ごと押さえる）。
+    const overlapStart = isAllDay ? ALL_DAY_START : startTime!;
+    const overlapEnd = isAllDay ? ALL_DAY_END : endTime!;
 
     // 過去日チェック
     const today = new Date();
@@ -130,18 +152,20 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // ── スロット空き状況チェック ──
-    const { data: slots } = await admin
-      .from("external_booking_slots")
-      .select("max_bookings, accepted_categories")
-      .eq("tenant_id", tenant.id)
-      .eq("day_of_week", dayOfWeek)
-      .eq("is_active", true)
-      .lte("start_time", startTime)
-      .gte("end_time", endTime)
-      .limit(1);
+    // ── スロット空き状況チェック（終日予約は特定枠を持たないためスキップ） ──
+    const { data: slots } = isAllDay
+      ? { data: null }
+      : await admin
+          .from("external_booking_slots")
+          .select("max_bookings, accepted_categories")
+          .eq("tenant_id", tenant.id)
+          .eq("day_of_week", dayOfWeek)
+          .eq("is_active", true)
+          .lte("start_time", startTime)
+          .gte("end_time", endTime)
+          .limit(1);
 
-    if (slots && slots.length > 0) {
+    if (!isAllDay && slots && slots.length > 0) {
       const maxBookings = slots[0].max_bookings;
 
       // 受入可否: 受入カテゴリが設定された枠は、一致する希望作業カテゴリの指定を必須にする。
@@ -176,17 +200,21 @@ export async function POST(req: NextRequest) {
     }
 
     // ── ダブルブッキングチェック ──
+    // 終日予約は営業日全体、通常予約は指定時間帯で判定。RPC 側で終日予約(all_day)は
+    // どの時間帯とも競合するため、終日 vs 通常 / 終日 vs 終日 も検出される。
     const overlaps = await checkOverlap({
       tenantId: tenant.id,
       scheduledDate,
-      startTime: startTime.length === 5 ? `${startTime}:00` : startTime,
-      endTime: endTime.length === 5 ? `${endTime}:00` : endTime,
+      startTime: overlapStart.length === 5 ? `${overlapStart}:00` : overlapStart,
+      endTime: overlapEnd.length === 5 ? `${overlapEnd}:00` : overlapEnd,
     });
 
     if (overlaps.length > 0) {
       return apiError({
         code: "conflict",
-        message: "ご指定の時間帯は既に予約が入っています。別の時間帯をお選びください。",
+        message: isAllDay
+          ? "この日は既に予約が入っているため終日予約を承れません。別の日をお選びください。"
+          : "ご指定の時間帯は既に予約が入っています。別の時間帯をお選びください。",
         status: 409,
       });
     }
@@ -247,13 +275,14 @@ export async function POST(req: NextRequest) {
         customer_id: customerId,
         title,
         scheduled_date: scheduledDate,
-        start_time: startTime.length === 5 ? `${startTime}:00` : startTime,
-        end_time: endTime.length === 5 ? `${endTime}:00` : endTime,
+        all_day: isAllDay,
+        start_time: isAllDay ? null : startTime!.length === 5 ? `${startTime}:00` : startTime,
+        end_time: isAllDay ? null : endTime!.length === 5 ? `${endTime}:00` : endTime,
         note: body.note || null,
         source: "web",
         status: "confirmed",
       })
-      .select("id, tenant_id, customer_id, title, scheduled_date, start_time, end_time, note, status")
+      .select("id, tenant_id, customer_id, title, scheduled_date, all_day, start_time, end_time, note, status")
       .single();
 
     if (error) return apiInternalError(error, "customer booking insert");
@@ -305,6 +334,7 @@ export async function POST(req: NextRequest) {
       reservation_id: reservation.id,
       tenant_name: tenant.name,
       scheduled_date: reservation.scheduled_date,
+      all_day: reservation.all_day,
       start_time: reservation.start_time,
       end_time: reservation.end_time,
       status: "confirmed",

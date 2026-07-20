@@ -8,6 +8,7 @@ type Reservation = {
   status: string;
   title: string;
   customer_name: string | null;
+  all_day?: boolean | null;
   start_time: string | null;
 };
 
@@ -247,11 +248,11 @@ const CalendarView = memo(function CalendarView({ reservations, onDateClick }: C
                       <div
                         key={r.id}
                         className={`flex items-center gap-1 rounded-md px-1 py-0.5 text-[10px] leading-tight truncate ${sc.bg}`}
-                        title={`${r.start_time ? r.start_time.slice(0, 5) + " " : ""}${r.title}${r.customer_name ? " / " + r.customer_name : ""}`}
+                        title={`${r.all_day ? "終日 " : r.start_time ? r.start_time.slice(0, 5) + " " : ""}${r.title}${r.customer_name ? " / " + r.customer_name : ""}`}
                       >
                         <span className={`inline-block h-1.5 w-1.5 shrink-0 rounded-full ${sc.dot}`} />
                         <span className={`truncate font-medium ${sc.text}`}>
-                          {r.start_time ? r.start_time.slice(0, 5) + " " : ""}
+                          {r.all_day ? "終日 " : r.start_time ? r.start_time.slice(0, 5) + " " : ""}
                           {r.title}
                         </span>
                       </div>

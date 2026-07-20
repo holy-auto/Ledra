@@ -29,8 +29,10 @@ export type CandidateClosedDay = {
 
 export type CandidateReservation = {
   scheduled_date: string;
-  start_time: string;
-  end_time: string;
+  start_time: string | null;
+  end_time: string | null;
+  /** 終日予約。true ならその日のすべての枠を占有する。 */
+  all_day?: boolean | null;
 };
 
 export type Candidate = {
@@ -162,9 +164,15 @@ export function proposeCandidates(opts: ProposeCandidatesOptions): Candidate[] {
       if (!slotAccepts(slot.accepted_categories)) continue;
       const slotStart = timeToMinutes(slot.start_time);
       const slotEnd = timeToMinutes(slot.end_time);
-      // 排他境界で重なる予約数（空き状況 GET / 満席判定と同じ規則）
+      // 排他境界で重なる予約数（空き状況 GET / 満席判定と同じ規則）。
+      // 終日予約はその日のすべての枠を占有する。時刻未設定の非終日行は数えない。
       const booked = dayResv.filter(
-        (r) => timeToMinutes(r.start_time) < slotEnd && timeToMinutes(r.end_time) > slotStart,
+        (r) =>
+          r.all_day ||
+          (r.start_time != null &&
+            r.end_time != null &&
+            timeToMinutes(r.start_time) < slotEnd &&
+            timeToMinutes(r.end_time) > slotStart),
       ).length;
       let remaining = slot.max_bookings - booked;
       if (remaining <= 0) continue;
@@ -180,7 +188,12 @@ export function proposeCandidates(opts: ProposeCandidatesOptions): Candidate[] {
       let staffFree: number | null = null;
       if (considerStaff && date in staffShiftsByDate) {
         const bookedInWindow = dayResv.filter(
-          (r) => timeToMinutes(r.start_time) < endMin && timeToMinutes(r.end_time) > slotStart,
+          (r) =>
+            r.all_day ||
+            (r.start_time != null &&
+              r.end_time != null &&
+              timeToMinutes(r.start_time) < endMin &&
+              timeToMinutes(r.end_time) > slotStart),
         ).length;
         staffFree = staffCoveringSlot(date, slotStart, endMin) - bookedInWindow;
         if (staffFree <= 0) continue;

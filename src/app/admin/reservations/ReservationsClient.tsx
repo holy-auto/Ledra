@@ -37,6 +37,7 @@ type Reservation = {
   vehicle_id: string | null;
   vehicle_label: string | null;
   scheduled_date: string;
+  all_day: boolean;
   start_time: string | null;
   end_time: string | null;
   status: string;
@@ -209,6 +210,7 @@ export default function ReservationsClient() {
   const [formDate, setFormDate] = useState(new Date().toISOString().slice(0, 10));
   const [formStartTime, setFormStartTime] = useState("");
   const [formEndTime, setFormEndTime] = useState("");
+  const [formAllDay, setFormAllDay] = useState(false);
   const [formNote, setFormNote] = useState("");
   const [formMenuItems, setFormMenuItems] = useState<MenuItem[]>([]);
   const [formAmount, setFormAmount] = useState(0);
@@ -495,6 +497,7 @@ export default function ReservationsClient() {
     setFormDate(new Date().toISOString().slice(0, 10));
     setFormStartTime("");
     setFormEndTime("");
+    setFormAllDay(false);
     setFormNote("");
     setFormMenuItems([]);
     setFormAmount(0);
@@ -526,6 +529,7 @@ export default function ReservationsClient() {
       setFormDate(r.scheduled_date);
       setFormStartTime(r.start_time?.slice(0, 5) ?? "");
       setFormEndTime(r.end_time?.slice(0, 5) ?? "");
+      setFormAllDay(r.all_day ?? false);
       setFormNote(r.note ?? "");
       setFormMenuItems(r.menu_items_json ?? []);
       setFormAmount(r.estimated_amount ?? 0);
@@ -651,8 +655,9 @@ export default function ReservationsClient() {
       customer_id: formCustomerId || null,
       vehicle_id: formVehicleId || null,
       scheduled_date: formDate,
-      start_time: formStartTime || null,
-      end_time: formEndTime || null,
+      all_day: formAllDay,
+      start_time: formAllDay ? null : formStartTime || null,
+      end_time: formAllDay ? null : formEndTime || null,
       note: formNote || null,
       menu_items_json: formMenuItems,
       estimated_amount: formAmount,
@@ -1165,12 +1170,18 @@ export default function ReservationsClient() {
                                       <span className={`w-1.5 h-1.5 rounded-full ${c.dot}`} />
                                       {c.label}
                                     </span>
-                                    {/* Time */}
-                                    {r.start_time && (
+                                    {/* Time / 終日 */}
+                                    {r.all_day ? (
                                       <span className="text-xs font-semibold text-primary bg-surface-hover rounded-full px-2.5 py-0.5">
-                                        🕐 {r.start_time.slice(0, 5)}
-                                        {r.end_time && ` – ${r.end_time.slice(0, 5)}`}
+                                        📅 終日
                                       </span>
+                                    ) : (
+                                      r.start_time && (
+                                        <span className="text-xs font-semibold text-primary bg-surface-hover rounded-full px-2.5 py-0.5">
+                                          🕐 {r.start_time.slice(0, 5)}
+                                          {r.end_time && ` – ${r.end_time.slice(0, 5)}`}
+                                        </span>
+                                      )
                                     )}
                                     {/* Mini progress bar for workflow-enabled reservations */}
                                     {r.workflow_template_id && (
@@ -1448,21 +1459,40 @@ export default function ReservationsClient() {
                         <span className={labelTextCls}>開始</span>
                         <input
                           type="time"
-                          value={formStartTime}
+                          value={formAllDay ? "" : formStartTime}
                           onChange={(e) => setFormStartTime(e.target.value)}
-                          className={inputCls}
+                          disabled={formAllDay}
+                          className={`${inputCls} disabled:opacity-50 disabled:cursor-not-allowed`}
                         />
                       </label>
                       <label className={labelCls}>
                         <span className={labelTextCls}>終了</span>
                         <input
                           type="time"
-                          value={formEndTime}
+                          value={formAllDay ? "" : formEndTime}
                           onChange={(e) => setFormEndTime(e.target.value)}
-                          className={inputCls}
+                          disabled={formAllDay}
+                          className={`${inputCls} disabled:opacity-50 disabled:cursor-not-allowed`}
                         />
                       </label>
                     </div>
+
+                    {/* 終日予約（時間指定なし・1日お預かり） */}
+                    <label className="flex items-center gap-2 cursor-pointer select-none -mt-1">
+                      <input
+                        type="checkbox"
+                        checked={formAllDay}
+                        onChange={(e) => {
+                          setFormAllDay(e.target.checked);
+                          if (e.target.checked) {
+                            setFormStartTime("");
+                            setFormEndTime("");
+                          }
+                        }}
+                        className="h-4 w-4 rounded border-border-default text-accent focus:ring-accent/30"
+                      />
+                      <span className="text-sm text-secondary">終日（時間指定なし・1日お預かり）</span>
+                    </label>
 
                     {/* Customer */}
                     <label className={labelCls}>
