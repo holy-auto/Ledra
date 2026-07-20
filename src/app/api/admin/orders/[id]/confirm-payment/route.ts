@@ -5,6 +5,7 @@ import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { apiJson, apiUnauthorized, apiNotFound, apiValidationError, apiInternalError } from "@/lib/api/response";
 import { executeOrderPayout } from "@/lib/orders/orderPayout";
+import { markOrderInvoicePaid } from "@/lib/orders/markOrderInvoicePaid";
 
 const confirmPaymentSchema = z.object({
   payment_method: z.string().trim().max(50).optional(),
@@ -35,7 +36,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const { data: order, error: fetchErr } = await admin
       .from("job_orders")
       .select(
-        "id, status, from_tenant_id, to_tenant_id, payment_method, accepted_amount, payment_confirmed_by_client, payment_confirmed_by_vendor, payment_status",
+        "id, status, from_tenant_id, to_tenant_id, billing_method, payment_method, accepted_amount, payment_confirmed_by_client, payment_confirmed_by_vendor, payment_status",
       )
       .eq("id", id)
       .or(`from_tenant_id.eq.${tenantId},to_tenant_id.eq.${tenantId}`)
@@ -80,10 +81,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     if (clientConfirmed && vendorConfirmed) {
       updateData.payment_status = "both_confirmed";
       updateData.status = "completed";
-      // Stripe Connect 自動送金（fire-and-forget）
-      executeOrderPayout(id).catch((e: unknown) =>
-        console.error("[confirm-payment] payout failed:", e),
-      );
+      // 公開案件(platform)のみ Stripe Connect 自動送金（fire-and-forget）。
+      // 指名(invoice)は請求書払いで両店が直接精算するため送金しない。
+      if (order.billing_method !== "invoice") {
+        executeOrderPayout(id).catch((e: unknown) => console.error("[confirm-payment] payout failed:", e));
+      }
     } else if (isFrom) {
       updateData.payment_status = "confirmed_by_client";
     } else if (isTo) {
@@ -105,6 +107,16 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     }
     if (!data) {
       return apiNotFound("not_found_or_conflict");
+    }
+
+    // 双方確認 → 完了時、紐づく請求書を入金済にし売掛元帳へ記帳（best-effort・非ブロッキング）。
+    // await して UI の再取得で即 paid を反映。台帳のつまずきで確定済みステータスは巻き戻さない。
+    if (updateData.status === "completed") {
+      try {
+        await markOrderInvoicePaid(id);
+      } catch (e) {
+        console.error("[confirm-payment] mark invoice paid failed (non-blocking):", e);
+      }
     }
 
     // 監査ログ

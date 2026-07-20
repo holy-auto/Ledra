@@ -200,6 +200,16 @@ const DOC_TYPE_LABELS: Record<string, string> = {
   consolidated_invoice: "合算請求書",
 };
 
+const DOC_STATUS_LABELS: Record<string, string> = {
+  draft: "下書き",
+  sent: "送付済",
+  accepted: "承認済",
+  paid: "入金済",
+  overdue: "期限超過",
+  rejected: "却下",
+  cancelled: "取消",
+};
+
 const PAYMENT_METHOD_LABELS: Record<string, string> = {
   bank_transfer: "銀行振込",
   cash: "現金",
@@ -619,14 +629,30 @@ export default function OrderDetailClient({ orderId }: { orderId: string }) {
                 <div>
                   <span className="font-medium">{DOC_TYPE_LABELS[doc.doc_type] ?? doc.doc_type}</span>
                   <span className="text-muted ml-2">#{doc.doc_number}</span>
+                  {doc.doc_type === "invoice" && doc.status === "draft" && isTo && (
+                    <span className="ml-2 text-[11px] text-warning-text">下書き — 内容を確認して送付してください</span>
+                  )}
                 </div>
                 <div className="flex items-center gap-3">
                   <span className="text-muted">{formatJpy(doc.total)}</span>
-                  <Badge variant="default">{doc.status}</Badge>
+                  <Badge variant="default">{DOC_STATUS_LABELS[doc.status] ?? doc.status}</Badge>
+                  {doc.doc_type === "invoice" && (
+                    <a
+                      href={`/api/admin/orders/${orderId}/invoice-pdf`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-accent underline"
+                    >
+                      PDF
+                    </a>
+                  )}
                 </div>
               </div>
             ))}
           </div>
+          {isTo && documents.some((d) => d.doc_type === "invoice" && d.status === "draft") && (
+            <p className="text-[11px] text-muted">請求書の送付は「請求・帳票」画面から行えます（下書き→送付）。</p>
+          )}
         </section>
       )}
 

@@ -11,6 +11,7 @@ import Pagination from "@/components/ui/Pagination";
 import MutationGuard from "@/components/ui/MutationGuard";
 import EmptyStateGuide from "@/components/ui/EmptyStateGuide";
 import IdentityScanButton, { type IdentityScanFields } from "@/components/admin/customers/IdentityScanButton";
+import LinkedTenantPicker from "./LinkedTenantPicker";
 import { formatDate } from "@/lib/format";
 import { fetcher } from "@/lib/swr";
 import { lookupPostalAddress, normalizePostalCode } from "@/lib/address/postalLookup";
@@ -27,6 +28,9 @@ type Customer = {
   customer_type: "individual" | "corporate" | null;
   billing_cycle: "per_job" | "consolidated" | null;
   billing_terms_note: string | null;
+  closing_day: number | null;
+  payment_terms_days: number | null;
+  linked_tenant_id: string | null;
   corporate_number: string | null;
   invoice_registration_number: string | null;
   short_name: string | null;
@@ -70,6 +74,10 @@ const emptyForm = {
   customer_type: "individual" as "individual" | "corporate",
   billing_cycle: "" as "" | "per_job" | "consolidated",
   billing_terms_note: "",
+  closing_day: "",
+  payment_terms_days: "",
+  linked_tenant_id: "",
+  linked_tenant_name: "",
   corporate_number: "",
   invoice_registration_number: "",
   short_name: "",
@@ -297,6 +305,10 @@ export default function CustomersClient() {
       customer_type: c.customer_type ?? "individual",
       billing_cycle: c.billing_cycle ?? "",
       billing_terms_note: c.billing_terms_note ?? "",
+      closing_day: c.closing_day != null ? String(c.closing_day) : "",
+      payment_terms_days: c.payment_terms_days != null ? String(c.payment_terms_days) : "",
+      linked_tenant_id: c.linked_tenant_id ?? "",
+      linked_tenant_name: "",
       corporate_number: c.corporate_number ?? "",
       invoice_registration_number: c.invoice_registration_number ?? "",
       short_name: c.short_name ?? "",
@@ -706,6 +718,49 @@ export default function CustomersClient() {
                   {form.customer_type === "corporate" && (
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div className="space-y-1">
+                        <label className="text-xs text-muted">締め日</label>
+                        <select
+                          value={form.closing_day}
+                          onChange={(e) => setForm({ ...form, closing_day: e.target.value })}
+                          className="input-field"
+                        >
+                          <option value="">未設定（都度扱い）</option>
+                          {Array.from({ length: 31 }, (_, i) => i + 1).map((d) => (
+                            <option key={d} value={String(d)}>
+                              {d === 31 ? "末締め" : `${d}日`}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-xs text-muted">支払サイト（日数）</label>
+                        <input
+                          type="number"
+                          min={0}
+                          max={180}
+                          value={form.payment_terms_days}
+                          onChange={(e) => setForm({ ...form, payment_terms_days: e.target.value })}
+                          className="input-field"
+                          placeholder="例: 30（締め日から30日後が期限。空欄=30）"
+                        />
+                      </div>
+                    </div>
+                  )}
+                  {form.customer_type === "corporate" && (
+                    <div className="space-y-1">
+                      <label className="text-xs text-muted">
+                        取引先（Ledra 利用店）— 合算・締め払いの自動請求に使用（任意）
+                      </label>
+                      <LinkedTenantPicker
+                        valueId={form.linked_tenant_id}
+                        valueName={form.linked_tenant_name}
+                        onChange={(id, nm) => setForm({ ...form, linked_tenant_id: id, linked_tenant_name: nm })}
+                      />
+                    </div>
+                  )}
+                  {form.customer_type === "corporate" && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div className="space-y-1">
                         <label className="text-xs text-muted">法人番号</label>
                         <input
                           type="text"
@@ -971,6 +1026,51 @@ export default function CustomersClient() {
                         onChange={(e) => setEditForm({ ...editForm, billing_terms_note: e.target.value })}
                         className="input-field"
                         placeholder="例: 月末締め翌月末払い"
+                      />
+                    </div>
+                  )}
+                  {editForm.customer_type === "corporate" && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div className="space-y-1">
+                        <label className="text-xs text-muted">締め日</label>
+                        <select
+                          value={editForm.closing_day}
+                          onChange={(e) => setEditForm({ ...editForm, closing_day: e.target.value })}
+                          className="input-field"
+                        >
+                          <option value="">未設定（都度扱い）</option>
+                          {Array.from({ length: 31 }, (_, i) => i + 1).map((d) => (
+                            <option key={d} value={String(d)}>
+                              {d === 31 ? "末締め" : `${d}日`}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-xs text-muted">支払サイト（日数）</label>
+                        <input
+                          type="number"
+                          min={0}
+                          max={180}
+                          value={editForm.payment_terms_days}
+                          onChange={(e) => setEditForm({ ...editForm, payment_terms_days: e.target.value })}
+                          className="input-field"
+                          placeholder="例: 30（空欄=30）"
+                        />
+                      </div>
+                    </div>
+                  )}
+                  {editForm.customer_type === "corporate" && (
+                    <div className="space-y-1">
+                      <label className="text-xs text-muted">
+                        取引先（Ledra 利用店）— 合算・締め払いの自動請求に使用（任意）
+                      </label>
+                      <LinkedTenantPicker
+                        valueId={editForm.linked_tenant_id}
+                        valueName={editForm.linked_tenant_name || editForm.name}
+                        onChange={(id, nm) =>
+                          setEditForm({ ...editForm, linked_tenant_id: id, linked_tenant_name: nm })
+                        }
                       />
                     </div>
                   )}

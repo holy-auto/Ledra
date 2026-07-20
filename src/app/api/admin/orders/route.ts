@@ -239,12 +239,17 @@ export async function POST(req: NextRequest) {
 
     // Build insert payload — only include non-null fields to avoid
     // hitting unexpected NOT NULL constraints on columns with defaults
+    // 指名 (to_tenant_id 指定) は手数料0・請求書払い、公開案件は現行の手数料10%＋Stripe。
+    // 分岐は作成時に確定する（公開案件は後から受注で to_tenant_id が入るため）。
+    const billingMethod = to_tenant_id ? "invoice" : "platform";
     const insertPayload: Record<string, unknown> = {
       public_id: makePublicId(),
       from_tenant_id: tenantId,
       title,
       status: "pending",
       billing_timing: billingTiming,
+      billing_method: billingMethod,
+      platform_fee_rate: to_tenant_id ? 0 : 0.1,
     };
     if (to_tenant_id) insertPayload.to_tenant_id = to_tenant_id;
     if (description) insertPayload.description = description;
