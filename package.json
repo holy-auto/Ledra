@@ -88,6 +88,7 @@
     "react-dom": "19.2.7",
     "react-konva": "18.2.10",
     "react-markdown": "^10.1.0",
+    "reflect-metadata": "^0.2.2",
     "remotion": "^4.0.454",
     "require-in-the-middle": "^8.0.1",
     "resend": "^6.17.1",

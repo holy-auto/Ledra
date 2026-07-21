@@ -32,6 +32,7 @@ import { fastModelForPlanTier } from "@/lib/ai/client";
 import { startAiRouteUsage } from "@/lib/ai/recordRouteUsage";
 import { sendCustomerLineText } from "@/lib/line/client";
 import { categoryMatchesQuery } from "@/lib/line/flow/addonCandidates";
+import { priceForVehicleSize, type SizePrices } from "@/lib/menu/sizePricing";
 import { logger } from "@/lib/logger";
 import { logAutoActionExecuted } from "@/lib/audit/aiAuditLog";
 import { loadAiAutomationSettings, type AiAutomationSettings } from "./policy";
@@ -51,6 +52,27 @@ const TAX_RATE = 0.1;
  * 抽出結果に intent とは別のブール値として持たせ、AI 自身に判定させる。
  */
 const PRICE_INQUIRY_PATTERN = /見積|みつもり|概算|いくら|幾ら|金額|価格|料金|どのくらい|どれくらい/;
+
+/**
+ * 車種テキストから vehicle_size_master 経由で車両サイズ (size_class) を推定する。
+ * テキストに含まれる車種名 (model) のうち最長一致のサイズ区分を返す。該当なしは null。
+ * 未登録の新規客でも「アルファード」等の車種名から車両サイズを引くために使う。
+ */
+export function resolveSizeClassFromText(
+  vehicleText: string,
+  master: Array<{ maker: string | null; model: string | null; size_class: string | null }> | null,
+): string | null {
+  const haystack = (vehicleText ?? "").toLowerCase();
+  if (!haystack.trim() || !master) return null;
+  let best: { len: number; sizeClass: string | null } | null = null;
+  for (const row of master) {
+    const model = row.model?.trim();
+    if (!model || model.length < 2) continue;
+    if (!haystack.includes(model.toLowerCase())) continue;
+    if (!best || model.length > best.len) best = { len: model.length, sizeClass: row.size_class };
+  }
+  return best?.sizeClass ?? null;
+}
 
 export interface MaybeAutoReplyRoughEstimateParams {
   tenantId: string;
@@ -183,7 +205,7 @@ export async function maybeAutoReplyRoughEstimate(params: MaybeAutoReplyRoughEst
 
     // 顧客名・登録車両は既知顧客のときだけ引く。未紐付けの新規客は車両テキストと
     // テナント全体の過去請求実績だけで概算する (精度は落ちるが返信はできる)。
-    const [customerRes, vehiclesRes, invoicesRes, menuRes] = await Promise.all([
+    const [customerRes, vehiclesRes, invoicesRes, menuRes, sizeMasterRes] = await Promise.all([
       customerId
         ? admin.from("customers").select("name").eq("id", customerId).eq("tenant_id", tenantId).maybeSingle()
         : Promise.resolve({ data: null }),
@@ -203,11 +225,14 @@ export async function maybeAutoReplyRoughEstimate(params: MaybeAutoReplyRoughEst
         .limit(20),
       admin
         .from("menu_items")
-        .select("name, unit_price, category_large")
+        .select("name, unit_price, category_large, size_axis, size_prices")
         .eq("tenant_id", tenantId)
         .eq("is_active", true)
         .order("sort_order", { ascending: true })
         .limit(100),
+      // 全車種マスタ (全テナント共有)。未登録車の問い合わせでも車両サイズ (size_class) を
+      // 車種テキストから引けるようにする。サイズ別価格メニューの価格解決に使う。
+      admin.from("vehicle_size_master").select("maker, model, size_class").limit(5000),
     ]);
     const customer = customerRes.data as { name?: string | null } | null;
 
@@ -225,9 +250,12 @@ export async function maybeAutoReplyRoughEstimate(params: MaybeAutoReplyRoughEst
         .filter((t): t is string => !!t && t.trim().length >= 2)
         .some((t) => haystack.includes(t.toLowerCase())),
     );
+    // size_class は「登録車両 → 全車種マスタ(テキスト一致)」の順で解決する。未登録の新規客でも
+    // 車種名から車両サイズを引ければ、サイズ別価格メニューと車両サイズ係数が効く。
+    const sizeClassFromMaster = resolveSizeClassFromText(vehicleText, sizeMasterRes.data);
     const vehicle = matched
-      ? { maker: matched.maker, model: matched.model, size_class: matched.size_class }
-      : { maker: null, model: vehicleText, size_class: null };
+      ? { maker: matched.maker, model: matched.model, size_class: matched.size_class ?? sizeClassFromMaster }
+      : { maker: null, model: vehicleText, size_class: sizeClassFromMaster };
 
     const pastInvoices = ((invoicesRes.data as Array<{ items_json: unknown; total: number | null }> | null) ?? [])
       .map((r) => extractInvoiceLines(r.items_json, r.total))
@@ -248,8 +276,31 @@ export async function maybeAutoReplyRoughEstimate(params: MaybeAutoReplyRoughEst
     //      一致する品目が無い場合に baseMenu を使うと、表示上は全内容分の金額に見えて実際は
     //      一部しか値付けされていない概算になる。全ての内容に品目が見つかった場合のみ使う。
     const menuItems =
-      (menuRes.data as Array<{ name: string; unit_price: number | null; category_large: string | null }> | null) ?? [];
-    const pricedMenuItems = menuItems.filter((m) => typeof m.unit_price === "number" && m.unit_price > 0);
+      (menuRes.data as Array<{
+        name: string;
+        unit_price: number | null;
+        category_large: string | null;
+        size_axis: string | null;
+        size_prices: SizePrices | null;
+      }> | null) ?? [];
+    // 各品目の「この車両に適用する税抜価格」を解決する:
+    //   - size_axis='vehicle_size' … 車両サイズ(size_class)に対応する登録価格。size_adjusted=true
+    //     (車両サイズ係数は quoteFromVehicle 側で二重に掛けない)。size_class 不明/該当段なしは対象外。
+    //   - size_axis='wheel_size'   … ホイールインチが自動概算では不明のため今フェーズは対象外
+    //     (別PRで「インチを聞き返す」会話フローで対応)。
+    //   - それ以外 … 従来どおり単一単価 (unit_price>0)。
+    const pricedMenuItems = menuItems
+      .map((m) => {
+        if (m.size_axis === "vehicle_size" && m.size_prices) {
+          const p = priceForVehicleSize(m.size_prices, vehicle.size_class);
+          return p != null ? { name: m.name, category_large: m.category_large, price: p, size_adjusted: true } : null;
+        }
+        if (m.size_axis === "wheel_size") return null;
+        return typeof m.unit_price === "number" && m.unit_price > 0
+          ? { name: m.name, category_large: m.category_large, price: m.unit_price, size_adjusted: false }
+          : null;
+      })
+      .filter((m): m is { name: string; category_large: string | null; price: number; size_adjusted: boolean } => !!m);
     const serviceSegments = service
       .split(/[、,\/・]/)
       .map((s) => s.trim())
@@ -263,7 +314,7 @@ export async function maybeAutoReplyRoughEstimate(params: MaybeAutoReplyRoughEst
     );
     const baseMenu =
       allSegmentsCovered && matchedMenu.length > 0
-        ? matchedMenu.slice(0, 5).map((m) => ({ name: m.name, default_price: m.unit_price }))
+        ? matchedMenu.slice(0, 5).map((m) => ({ name: m.name, default_price: m.price, size_adjusted: m.size_adjusted }))
         : undefined;
 
     const usage = startAiRouteUsage(ENDPOINT);

@@ -187,17 +187,30 @@ export async function POST(req: NextRequest) {
 
       // 同時間帯の既存予約数。境界は排他（開始=前枠の終了 は重複としない）で数える。
       // 空き状況 GET の重複判定 (start < end && end > start) と揃え、隣接枠を独立して
-      // 予約可能にする。
-      const { count } = await admin
-        .from("reservations")
-        .select("id", { count: "exact", head: true })
-        .eq("tenant_id", tenant.id)
-        .eq("scheduled_date", scheduledDate)
-        .neq("status", "cancelled")
-        .lt("start_time", endTime)
-        .gt("end_time", startTime);
+      // 予約可能にする。あわせて、取引先が押さえている有効な仮押さえ(reservation_holds)も
+      // 占有として数え、押さえ枠に一般客予約が入る（オーバーセル）のを防ぐ。
+      const nowIso = new Date().toISOString();
+      const [{ count }, { count: heldCount }] = await Promise.all([
+        admin
+          .from("reservations")
+          .select("id", { count: "exact", head: true })
+          .eq("tenant_id", tenant.id)
+          .eq("scheduled_date", scheduledDate)
+          .neq("status", "cancelled")
+          .lt("start_time", endTime)
+          .gt("end_time", startTime),
+        admin
+          .from("reservation_holds")
+          .select("id", { count: "exact", head: true })
+          .eq("tenant_id", tenant.id)
+          .eq("scheduled_date", scheduledDate)
+          .eq("status", "pending")
+          .gt("expires_at", nowIso)
+          .lt("start_time", endTime)
+          .gt("end_time", startTime),
+      ]);
 
-      if ((count ?? 0) >= maxBookings) {
+      if ((count ?? 0) + (heldCount ?? 0) >= maxBookings) {
         return apiError({
           code: "conflict",
           message: "ご指定の時間帯は満席です。別の時間帯をお選びください。",
@@ -450,19 +463,37 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    // ── 既存予約を取得 ──────────────────────────────────────
-    const { data: reservations } = await admin
-      .from("reservations")
-      .select("all_day, start_time, end_time")
-      .eq("tenant_id", tenant.id)
-      .eq("scheduled_date", date)
-      .neq("status", "cancelled");
+    // ── 既存予約 + 取引先の有効な仮押さえを取得 ──────────────
+    // 仮押さえ(reservation_holds)も占有として数え、押さえ枠を空きに見せない。
+    const [{ data: reservations }, { data: heldRows }] = await Promise.all([
+      admin
+        .from("reservations")
+        .select("all_day, start_time, end_time")
+        .eq("tenant_id", tenant.id)
+        .eq("scheduled_date", date)
+        .neq("status", "cancelled"),
+      admin
+        .from("reservation_holds")
+        .select("start_time, end_time")
+        .eq("tenant_id", tenant.id)
+        .eq("scheduled_date", date)
+        .eq("status", "pending")
+        .gt("expires_at", new Date().toISOString()),
+    ]);
+
+    // 仮押さえは時間指定（終日ではない）ので all_day=false で占有扱いにする。
+    const occupants = [
+      ...(reservations ?? []),
+      ...(heldRows ?? []).map((h: { start_time: string; end_time: string }) => ({
+        all_day: false as const,
+        start_time: h.start_time,
+        end_time: h.end_time,
+      })),
+    ];
 
     const available = slots.map((slot: any) => {
       // 終日予約はその日の全枠を占有する（reservationBlocksSlot が判定）。
-      const booked = (reservations ?? []).filter((r: any) =>
-        reservationBlocksSlot(r, slot.start_time, slot.end_time),
-      ).length;
+      const booked = occupants.filter((r) => reservationBlocksSlot(r, slot.start_time, slot.end_time)).length;
 
       return {
         start_time: slot.start_time,
@@ -474,10 +505,10 @@ export async function GET(req: NextRequest) {
       };
     });
 
-    // 終日予約（1日お預かり）を受けられるか。営業日で既存予約が1件も無ければ可。
+    // 終日予約（1日お預かり）を受けられるか。営業日で既存予約・仮押さえが1件も無ければ可。
     // ponytail: 複数ブース(max_bookings>1)でも終日と併存不可の保守的判定。
     // 併存を許すなら日ごとの占有台数を数える実装へ拡張する。
-    const allDayAvailable = (reservations ?? []).length === 0;
+    const allDayAvailable = (reservations ?? []).length === 0 && (heldRows ?? []).length === 0;
 
     return apiOk({
       date,
