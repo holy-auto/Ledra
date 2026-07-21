@@ -22,6 +22,17 @@
 9. 公開区分: 公開可／要確認／非公開
 ```
 
+## 2026-07-21 令和の虎(/tora)経由の問い合わせを first-touch UTM でサーバ側(proxy cookie)帰属。client sessionStorage 案は Codex 指摘で撤回
+1. 日付: 2026-07-21
+2. 起きたこと: 放送前チェックリスト(reiwa-no-tora-pitch.md §14.4)の「utm_source=tora の別チャネル化」を実装。`/tora`→`/news?utm_source=tora` 着地の utm が、CTA で `/poc`・`/contact/insurers` へ遷移すると URL から消え、放送経由の問い合わせが utm_source 無印になる計測漏れを修正した(PR #804)。
+3. 以前の考え: LeadForm がその場の URL から utm を読めば十分(既存実装)。着地を跨ぐ保持はクライアント useEffect+sessionStorage で足りると考えた。
+4. 違和感・問題: Codex レビューが2点指摘。(P2) client useEffect はハイドレート前に CTA をタップすると走らず取りこぼす(令和の虎はモバイル視聴が多く実害的)。(P1) サーバ側化のため新設した `src/middleware.ts` が Next 16 の既存 `src/proxy.ts` と併存不可でビルド破綻(Vercel/lighthouse/bundle-size が赤)。※ 既存の規約ファイル(proxy.ts)の存在を着手前に確認しなかったのが原因。
+5. 決めたこと: 既存 proxy(`src/proxy.ts`) に first-touch UTM 捕捉を統合。着地リクエストで utm を初回のみセッション cookie(`ledra_utm`)へサーバ側で保存(ハイドレ非依存で取りこぼさない)。`readUtm` は URL 優先→cookie。判定は純関数 `utmToPersist(searchParams, hasCookie)` に分離。utm 値は 120字上限(leads スキーマと同値)で防御。セッション cookie(maxAge 無し)で同意前の永続マーケ cookie を回避。堅牢度はユーザー確認で「middleware で確実化」を選択。
+6. 捨てた選択肢: (a) client sessionStorage 単独 — ハイドレ前 race で取りこぼし。(b) 記事ページを searchParams で dynamic 化し CTA href に utm を焼く — 全 news 記事が dynamic 化しキャッシュに影響。(c) 30日永続 cookie — 同意前の永続マーケ cookie を回避。(d) 独立 `middleware.ts` — Next 16 は proxy.ts と併存不可でビルド破綻。
+7. 判断理由: サーバ側 proxy cookie はクライアント JS のハイドレートに依存せず取りこぼさず、既存の規約ファイルへ統合するのでアーキ追加が最小。放送(モバイル多)の広告価値を計測漏れなく取るには client 依存を外すのが急所。
+8. まだ答えが出ていないこと: セッション cookie のため、タブを閉じる/別デバイスでのコンバートは帰属が切れる(同一セッション想定)。cross-device/永続帰属が要るなら maxAge 付与＋同意連携の設計。放送後に実データで取りこぼし率を見て判断。
+9. 公開区分: 要確認(計測設計・「AIレビューが本番ビルド破綻を事前検知して設計修正」という開発プロセスは発信可。内部 CV 導線の詳細は非公開が無難)
+
 ## 2026-07-21 予約設定の保存不具合はローカルの ref 修正で対処し、PageBar の actions スナップショット挙動は据え置く
 1. 日付: 2026-07-21
 2. 起きたこと: 代表から「予約設定で一括生成やボタン操作は効くのに『保存する』を押すと初期に戻る（以前にも修正依頼した）」と再指摘。
