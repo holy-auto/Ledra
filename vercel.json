@@ -60,6 +60,10 @@
       "schedule": "0 14 * * *"
     },
     {
+      "path": "/api/cron/reservation-holds-expire",
+      "schedule": "0 * * * *"
+    },
+    {
       "path": "/api/cron/passport-billing",
       "schedule": "0 17 1 * *"
     },

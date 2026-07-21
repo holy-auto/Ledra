@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
@@ -22,7 +22,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     const { data: order, error } = await admin
       .from("job_orders")
       .select(
-        "id, public_id, from_tenant_id, to_tenant_id, title, description, category, budget, deadline, vehicle_id, status, cancelled_by, cancel_reason, vendor_completed_at, client_approved_at, payment_status, payment_method, accepted_amount, payment_confirmed_by_client, payment_confirmed_by_vendor, created_at, updated_at",
+        "id, public_id, from_tenant_id, to_tenant_id, title, description, category, budget, deadline, vehicle_id, status, cancelled_by, cancel_reason, vendor_completed_at, client_approved_at, payment_status, payment_method, accepted_amount, payment_confirmed_by_client, payment_confirmed_by_vendor, reservation_id, created_at, updated_at",
       )
       .eq("id", id)
       .or(`from_tenant_id.eq.${tenantId},to_tenant_id.eq.${tenantId}`)
@@ -72,6 +72,25 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       .order("created_at", { ascending: false })
       .limit(20);
 
+    // 紐づく仮押さえ（承認待ち枠）＋変換済み本予約
+    const { data: holdRow } = await admin
+      .from("reservation_holds")
+      .select("id, scheduled_date, start_time, end_time, status, expires_at")
+      .eq("job_order_id", id)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    let reservation = null;
+    if (order.reservation_id) {
+      const { data: resv } = await admin
+        .from("reservations")
+        .select("id, scheduled_date, start_time, end_time, all_day, status")
+        .eq("id", order.reservation_id)
+        .maybeSingle();
+      reservation = resv;
+    }
+
     // 相手方のパートナースコアを取得
     const counterpartyId = order.from_tenant_id === tenantId ? order.to_tenant_id : order.from_tenant_id;
     let counterpartyScore = null;
@@ -95,6 +114,8 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       is_from: order.from_tenant_id === tenantId,
       is_to: order.to_tenant_id != null && order.to_tenant_id === tenantId,
       counterparty_score: counterpartyScore,
+      hold: holdRow ?? null,
+      reservation: reservation ?? null,
     });
   } catch (e: unknown) {
     return apiInternalError(e, "orders/[id] GET");

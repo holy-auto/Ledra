@@ -8,6 +8,7 @@ import Badge from "@/components/ui/Badge";
 import Button from "@/components/ui/Button";
 import { formatJpy, formatDate } from "@/lib/format";
 import OrderCsvImport from "@/components/ui/OrderCsvImport";
+import PartnerAvailabilityPicker, { type HoldSelection } from "@/components/orders/PartnerAvailabilityPicker";
 
 type OrderStatus =
   | "pending"
@@ -222,6 +223,10 @@ export default function OrdersClient() {
   const [showTenantDropdown, setShowTenantDropdown] = useState(false);
   const searchTimeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
+  // 相手店舗の空き枠の仮押さえ
+  const [holdSel, setHoldSel] = useState<HoldSelection | null>(null);
+  const [pickerKey, setPickerKey] = useState(0);
+
   // New order form
   const [formData, setFormData] = useState({
     title: "",
@@ -349,10 +354,22 @@ export default function OrdersClient() {
           deadline: formData.deadline || null,
           requester_email: formData.requester_email || null,
           requester_company: formData.requester_company || null,
+          hold_date: holdSel?.date || null,
+          hold_start: holdSel?.start || null,
+          hold_end: holdSel?.end || null,
         }),
       });
       const j = await parseJsonSafe(res);
-      if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
+      if (!res.ok) {
+        // 枠が埋まった/枠無し → 枠を再選択できるようピッカーを更新。
+        if (j?.reason === "hold_slot_taken" || j?.reason === "hold_no_slot") {
+          setHoldSel(null);
+          setPickerKey((k) => k + 1);
+          alert(j?.message ?? "選択した枠が押さえられませんでした。別の枠を選んでください。");
+          return;
+        }
+        throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
+      }
       setShowForm(false);
       setFormData({
         title: "",
@@ -365,6 +382,7 @@ export default function OrdersClient() {
       });
       setSelectedTenant(null);
       setTenantQuery("");
+      setHoldSel(null);
       await fetchOrders(typeFilter, statusFilter);
     } catch (e: unknown) {
       alert("発注に失敗しました: " + (e instanceof Error ? e.message : String(e)));
@@ -561,6 +579,7 @@ export default function OrdersClient() {
                       onClick={() => {
                         setSelectedTenant(null);
                         setTenantQuery("");
+                        setHoldSel(null);
                       }}
                     >
                       変更
@@ -668,6 +687,16 @@ export default function OrdersClient() {
                 />
               </div>
             </div>
+
+            {/* 相手店舗の空き枠を仮押さえ（指名時のみ） */}
+            {selectedTenant && (
+              <PartnerAvailabilityPicker
+                key={`${selectedTenant.tenant_id}-${pickerKey}`}
+                partnerTenantId={selectedTenant.tenant_id}
+                value={holdSel}
+                onSelect={setHoldSel}
+              />
+            )}
 
             {/* 請求書送付先 */}
             <div className="rounded-lg border border-border bg-surface-hover p-4 space-y-3">
