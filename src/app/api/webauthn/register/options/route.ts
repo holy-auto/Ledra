@@ -1,3 +1,4 @@
+import "reflect-metadata";
 import { NextRequest } from "next/server";
 import { generateRegistrationOptions } from "@simplewebauthn/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";

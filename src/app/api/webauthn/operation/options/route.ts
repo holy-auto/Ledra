@@ -1,3 +1,4 @@
+import "reflect-metadata";
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { generateAuthenticationOptions } from "@simplewebauthn/server";
