@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { isReiwaPromoActive, REIWA_PROMO_START, REIWA_PROMO_END } from "../promo";
+import { isReiwaPromoActive, shouldShowPromo, REIWA_PROMO_START, REIWA_PROMO_END } from "../promo";
 
 describe("isReiwaPromoActive（令和の虎バナー表示期間）", () => {
   it("開始 = 2026-07-25 19:00 JST（エンバーゴ解除の放送公開時）", () => {
@@ -28,5 +28,24 @@ describe("isReiwaPromoActive（令和の虎バナー表示期間）", () => {
   it("終了後（8/9 JST）は表示しない", () => {
     // 2026-08-09 00:00 JST = 2026-08-08 15:00 UTC（終了 14:59:59 の直後）
     expect(isReiwaPromoActive(new Date("2026-08-08T15:00:00Z"))).toBe(false);
+  });
+});
+
+describe("shouldShowPromo（表示可否＝期間 or プレビュー抜け道）", () => {
+  const beforeWindow = new Date("2026-07-21T00:00:00Z"); // 期間前
+  const inWindow = new Date("2026-07-28T09:00:00Z"); // 期間中
+
+  it("期間前でも ?preview_promo=1 なら表示する", () => {
+    expect(shouldShowPromo(beforeWindow, "?preview_promo=1")).toBe(true);
+    expect(shouldShowPromo(beforeWindow, "?foo=1&preview_promo=1")).toBe(true);
+  });
+
+  it("期間前でプレビュー無しは表示しない", () => {
+    expect(shouldShowPromo(beforeWindow, "")).toBe(false);
+    expect(shouldShowPromo(beforeWindow, "?preview_promo=0")).toBe(false);
+  });
+
+  it("期間中はプレビュー無しでも表示する", () => {
+    expect(shouldShowPromo(inWindow, "")).toBe(true);
   });
 });
