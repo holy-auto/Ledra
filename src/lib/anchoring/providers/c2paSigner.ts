@@ -1,3 +1,4 @@
+import "reflect-metadata"; // tsyringe(@peculiar/x509 経由・@simplewebauthn 等)が要求する Reflect polyfill。x509/simplewebauthn より前に読む。
 /**
  * Lazy-singleton C2PA signer factory.
  *
