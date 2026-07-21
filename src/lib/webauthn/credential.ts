@@ -10,9 +10,12 @@ export function bytesToBase64Url(bytes: Uint8Array): string {
   return Buffer.from(bytes).toString("base64url");
 }
 
-/** base64url 文字列 → Uint8Array。 */
-export function base64UrlToBytes(s: string): Uint8Array {
-  return new Uint8Array(Buffer.from(s, "base64url"));
+/** base64url 文字列 → Uint8Array(ArrayBuffer 裏付け。@simplewebauthn の型に合わせる)。 */
+export function base64UrlToBytes(s: string): Uint8Array<ArrayBuffer> {
+  const buf = Buffer.from(s, "base64url");
+  const out = new Uint8Array(buf.byteLength);
+  out.set(buf);
+  return out;
 }
 
 /** verifyRegistrationResponse().registrationInfo の必要部分(バージョン差異を吸収する最小形)。 */
@@ -67,7 +70,7 @@ export function toWebAuthnCredential(row: {
   public_key: string;
   counter: number;
   transports: string[] | null;
-}): { id: string; publicKey: Uint8Array; counter: number; transports?: string[] } {
+}): { id: string; publicKey: Uint8Array<ArrayBuffer>; counter: number; transports?: string[] } {
   return {
     id: row.credential_id,
     publicKey: base64UrlToBytes(row.public_key),
