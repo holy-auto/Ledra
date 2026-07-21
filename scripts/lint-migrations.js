@@ -234,6 +234,33 @@ let hasErrors = false;
 let scanned = 0;
 let skipped = 0;
 
+// Structural check (runs on ALL files, allowlist included): two migration files
+// must never share the same version prefix (the leading digits before the first
+// `_`). `supabase db push` keys applied state on that version, so a second file
+// with the same version is silently treated as already-applied — and push then
+// fails as an out-of-order insert. This bit us once when two parallel PRs both
+// picked `20260720000000` (webauthn vs customers_payment_cycle). Rename the
+// newer file to a unique, later timestamp to resolve.
+const versionOf = (filename) => {
+  const m = /^(\d+)/.exec(filename);
+  return m ? m[1] : filename.replace(/\.sql$/, "");
+};
+const byVersion = new Map();
+for (const file of files) {
+  const v = versionOf(file);
+  if (!byVersion.has(v)) byVersion.set(v, []);
+  byVersion.get(v).push(file);
+}
+for (const [version, group] of byVersion) {
+  if (group.length < 2) continue;
+  hasErrors = true;
+  console.error(`\n❌ duplicate migration version ${version}:`);
+  for (const f of group) console.error(`   - ${f}`);
+  console.error(
+    `   [duplicate-version] rename the newer file to a unique, later timestamp — supabase db push keys on the version prefix and will skip/refuse the collision.`,
+  );
+}
+
 for (const file of files) {
   if (allowlist.has(file)) {
     skipped++;
