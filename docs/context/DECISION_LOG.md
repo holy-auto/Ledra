@@ -92,6 +92,42 @@
    （出演告知型か、事業マイルストーン同時発表型か）＝代表未確定。損保大手の実名記載可否＝先方許諾未取得。
 9. 公開区分: 要確認（タイミング設計の考え方は公開可＝note候補。ただし出演の事実・結果・損保実名・自社数字は、
    放送/許諾/確定の前に対外発信してはならない）。
+
+## 2026-07-21 鍵の運営者非保持(#5)を一気通し: 残署名経路の KMS 配線・Polygon KMS 化・WebAuthn フロント・CI 重複検出
+1. 日付: 2026-07-21
+2. 起きたこと: goal #5「運営者でも署名鍵/証拠を恣意的に変更できないか」の残タスクを一括実装(ユーザー指示「全部」)。
+   4本立て: (a)残る署名経路を署名器抽象へ配線、(b)Polygon 署名鍵の KMS(secp256k1)化 seam、
+   (c)WebAuthn 操作署名の実フロント(パスキー登録/確定セレモニー)、(d)lint-migrations の重複バージョン検出。
+3. 以前の考え: 署名器抽象(#795)は別ブランチのドラフトのまま(未マージ)、KMS 配線は signature/sign の1経路のみ、
+   Polygon は env 平文 hex 鍵、WebAuthn はバックエンドのみでフロント未実装、マイグレ重複は CI で検出できず。
+4. 違和感・問題: #795 が stale(dirty)で main 未反映のため、残配線が土台を欠く。Polygon の writeContract は単一
+   env 鍵で運営者が保持。WebAuthn は登録 UI が無く optional/enforce に到達不能。#787→#797 の版衝突が CI をすり抜けた。
+5. 決めたこと: 指定ブランチを最新 main から作り直し、#795 の署名器コミットを cherry-pick して本ブランチに統合
+   (#795 は本 PR に吸収=クローズ予定)。その上で:
+   (a) delivery-receipt / body-repair-consent / agent-sign / partSigning(sync→async)を signPayloadWithProvider へ配線。
+       agent-sign の crypto.ts 重複ヘルパは削除。
+   (b) src/lib/anchoring/polygonSigner.ts に getPolygonAccount(local/aws-kms)。aws-kms は viem toAccount +
+       KMS Sign(MessageType=DIGEST)で、DER→low-S(EIP-2)→v 復元(鍵アドレス一致)を純関数 recoverEthSignature に分離。
+       anchor/anchorBatch/残高監視 cron を配線。@noble/curves を明示依存化。
+   (c) @simplewebauthn/browser 導入。設定→セキュリティに PasskeySection(登録/一覧/失効)。証明書発行の finalize に
+       操作署名セレモニーを配線。operation/options を public_id でも指定可に、credentials GET に mode を追加。
+   (d) lint-migrations に重複バージョン接頭辞検出を追加(allowlist でも衝突は隠さない)。テスト3件。
+   全て **フラグゲート・既定で本番挙動ゼロ変更**(SIGNER_PROVIDER=local / POLYGON_SIGNER_PROVIDER=local /
+   WEBAUTHN_OPERATION_SIGNING=off)。KMS 秘密鍵の実 E2E はこの環境で不能なため、暗号の要は AWS 無しの
+   ローカル往復自己検証テストで担保(署名器 roundtrip・secp256k1 DER→{r,s,v} 復元/high-S 正規化)。
+6. 捨てた選択肢: (a) #795 を rebase してから別途マージ — stale で衝突が多く、4本を跨ぐため本ブランチへ統合する方が
+   レビュー単位が揃う。(b) Polygon KMS を hand-rolled ASN.1/点復元で実装 — @noble/curves(viem 依存で導入済み)の
+   Signature.fromDER/normalizeS/recoverPublicKey を使う方が堅牢。(c) 生ダイジェスト署名 — Ethereum は keccak256 を
+   DIGEST で KMS へ渡す(ECDSA_SHA_256 は長さ指定のみで再ハッシュしない)。(d) WebAuthn 確定セレモニーを orphaned な
+   証明書詳細ページに載せる — 現状 dead code(server action で gate 迂回)。live な新規発行フローに配線した。
+7. 判断理由: 既存の署名器抽象・viem・@simplewebauthn・@noble を最大限流用し新規依存を最小化。既定 local/off で
+   無回帰を保証しつつ、鍵を運営者の手から外す(KMS)経路と本人性を独立鍵に近づける(WebAuthn)経路を both 用意。
+   検証できない KMS の要は純関数へ切り出し、ローカル鍵で往復する自己検証を残した。
+8. まだ答えが出ていないこと: KMS(P-256/secp256k1)の実 E2E・鍵作成・IAM/OIDC・Polygon KMS アドレスの anchorer
+   allowlist 登録＋POL 入金(cutover 前提)。WebAuthn の void(取消)セレモニー(現状 UI が dead)。enforce 運用ルール。
+   signature_public_keys への provider/kms_key_arn 列(KMS 公開鍵登録時)。db-migrate 失敗の通知可視化。
+9. 公開区分: 要確認(鍵運用の方針・段階配線は発信可。内部実装詳細・鍵運用手順は非公開が無難。対外発信前に代表確認)。
+
 ## 2026-07-21 WebAuthn マイグレーションのバージョン衝突を forward 再適用で解消（本番へ手動適用＋リポジトリ改名）
 1. 日付: 2026-07-21
 2. 起きたこと: #787(WebAuthn 増分1・2)を main へマージ後、自動適用 GitHub Actions `db-migrate` が失敗。調査の結果、
@@ -232,6 +268,30 @@
 8. まだ答えが出ていないこと: `gcal_calendar_id` 未設定の有効テナント(1件)は 'primary' にフォールバックするが意図通りか
    要確認。将来 push 通知方式に上げるかは別途(現状ポーリングで許容)。Vercel プランの cron 上限に対する余裕は未確認。
 9. 公開区分: 公開可（機能仕様のみ。テナント固有データ・接続情報なし）。
+
+## 2026-07-21 署名鍵を運営者の env から外すため署名器を抽象化(local/KMS)。まず seam＋signature/sign 経路を配線
+1. 日付: 2026-07-21
+2. 起きたこと: goal #5「運営者でも改変不可」の最後のピースとして、単一プラットフォーム署名鍵(env 平文 PEM)を
+   KMS へ移せるよう署名器を抽象化した。別ブランチ claude/ledra-kms-signer で実装。
+3. 以前の考え: 署名は crypto.ts の signPayload(payload, getPrivateKey()) が env の PEM 秘密鍵を直接使う設計で、
+   運営者が鍵を保持できてしまう(#5 の穴)。
+4. 違和感・問題: KMS は非同期(ネットワーク)なので同期の signPayload の置換には署名経路の async 化が要る。
+   また Node の ECDSA は生ダイジェスト署名(sign(null,digest))が createVerify('SHA256') と非互換で、
+   sign('sha256', message) が正(実測で確認)。KMS 側は MessageType=DIGEST(SHA-256→ECDSA DER)で互換にできる。
+5. 決めたこと: src/lib/signature/signer.ts に Signer 抽象(sign(message)→DER ECDSA-SHA256)＋LocalPemSigner(現行 env 鍵)
+   ＋KmsSigner(AWS KMS ECC_NIST_P256・動的 import・秘密鍵はアプリに出ない)＋getSigner(SIGNER_PROVIDER=local|aws-kms、
+   既定 local)＋signPayloadWithProvider を追加。roundtrip 単体テストで「LocalPemSigner 出力が既存 verifySignature で
+   通る＝置換互換」を実証。primary な顧客確認署名 signature/sign を signPayloadWithProvider に配線。
+   @aws-sdk/client-kms は serverExternalPackages で外部化。既定 local で本番挙動は不変。
+6. 捨てた選択肢: (a) sign(null,digest) の生ダイジェスト署名 — 実測で verify 非互換のため sign('sha256',message) に。
+   (b) 全署名経路を一括 async 化 — 本番署名を一度に触るのは高リスク＋E2E 不能のためまず 1 経路、残りは follow-up。
+   (c) 鍵アルゴリズム変更 — P-256 のままドロップイン(DER 互換)。
+7. 判断理由: 検証済み detection(Phase1)＋本人性(WebAuthn)の上に鍵の偽造不能性(#5)を積む。KMS 非対称署名は P-256・
+   DER 互換でドロップイン、既定 local で無回帰、seam を検証してから経路を段階配線する方が安全。
+8. まだ答えが出ていないこと: 残り署名経路(delivery-receipt / body-repair / partSigning[sync→async ripple] /
+   agent-sign[local 重複])の配線。Polygon 署名鍵(secp256k1)の KMS 化。signature_public_keys への
+   provider/kms_key_arn 列追加(KMS 鍵登録時)。KMS の実 E2E(この環境では AWS 不可)。
+9. 公開区分: 要確認(KMS 移行方針・段階配線は発信可。鍵運用の内部詳細は非公開が無難)
 
 ## 2026-07-20 他店の空き確認＋枠押さえ（Phase 2）は取引先許可制＋仮押さえ→承認で本予約、既存資産を再利用
 1. 日付: 2026-07-20

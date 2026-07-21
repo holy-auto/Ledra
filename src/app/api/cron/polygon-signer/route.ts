@@ -165,11 +165,12 @@ export async function GET(req: NextRequest) {
   try {
     // 動的 import で cold-start を軽く保つ
     const { createPublicClient, http } = await import("viem");
-    const { privateKeyToAccount } = await import("viem/accounts");
     const { polygon, polygonAmoy } = await import("viem/chains");
+    const { getPolygonAccount } = await import("@/lib/anchoring/polygonSigner");
 
     const chain = config.network === "amoy" ? polygonAmoy : polygon;
-    const account = privateKeyToAccount(config.privateKey as `0x${string}`);
+    // 署名器抽象で残高監視も KMS アドレスを追跡する(既定 local は現行と同一挙動)。
+    const account = await getPolygonAccount(config.privateKey);
     const client = createPublicClient({ chain, transport: http(config.rpcUrl) });
 
     const balanceWei = await client.getBalance({ address: account.address });

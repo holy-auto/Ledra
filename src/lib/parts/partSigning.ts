@@ -7,7 +7,7 @@
  * 本人(電話フルハッシュ)・装着ID・署名IDに束ねて署名する。
  */
 
-import { signPayload, getPrivateKey, getActiveKeyInfo } from "@/lib/signature/crypto";
+import { signPayloadWithProvider } from "@/lib/signature/signer";
 
 export const PART_SIGNATURE_PAYLOAD_VERSION = "ledra-part-signature-v1";
 
@@ -39,21 +39,23 @@ export interface SignedConfirmation {
   keyVersion: string;
 }
 
-/** ペイロードを構築しサーバ鍵で署名する。 */
-export function signPartConfirmation(args: {
+/**
+ * ペイロードを構築しサーバ鍵で署名する。
+ * 署名器抽象(SIGNER_PROVIDER=local 既定 / aws-kms で KMS)を使うため async。既定は現行と同一挙動。
+ */
+export async function signPartConfirmation(args: {
   contentHash: string;
   signedAt: string;
   installationId: string;
   signatureId: string;
   signerPhoneFullHash: string;
-}): SignedConfirmation {
+}): Promise<SignedConfirmation> {
   const signingPayload = buildPartSigningPayload(args);
-  const signature = signPayload(signingPayload, getPrivateKey());
-  const keyInfo = getActiveKeyInfo();
+  const signed = await signPayloadWithProvider(signingPayload);
   return {
     signingPayload,
-    signature,
-    publicKeyFingerprint: keyInfo.fingerprint,
-    keyVersion: keyInfo.version,
+    signature: signed.signature,
+    publicKeyFingerprint: signed.publicKeyFingerprint,
+    keyVersion: signed.keyVersion,
   };
 }
