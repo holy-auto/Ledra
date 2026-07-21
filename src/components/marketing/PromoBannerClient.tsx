@@ -53,7 +53,6 @@ export function PromoBannerClient() {
           data-cta-label="令和の虎-収録後アップデート"
           className="flex flex-1 items-center justify-center gap-2 text-center text-sm font-medium hover:underline"
         >
-          <span aria-hidden>🐯</span>
           <span>
             「令和の虎」に出演しました ― <span className="font-bold">収録時から Ledra は進化を続けています。</span>
             アップデートを見る →
