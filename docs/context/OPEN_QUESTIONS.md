@@ -31,6 +31,20 @@
   根治を検討。無ければ (a) 個別対処を継続。
 - 起票日: 2026-07-21
 
+## db-typegen（DB types regenerate）が本番シークレット未設定で失敗し続けている
+- 状況: `.github/workflows/db-typegen.yml` の `supabase gen types` ステップが毎回
+  "Access token not provided" で失敗。ログ上 `SUPABASE_ACCESS_TOKEN` / `SUPABASE_PROJECT_ID` が
+  ともに空。#798・#803 のマージ後 run（commit 3c23ed0d / b4dbc1c7）で確認。マイグレーション改名とは
+  無関係の、リポジトリ側 Actions シークレット未設定が原因。
+- 影響範囲: `src/types/db.generated.ts` の自動再生成が回らない。ただし型はコミット済みを使うため
+  アプリのビルド/挙動には影響なし（`type` は text＋CHECK 制約で、CHECK は生成型に出ないため news 追加でも
+  型は変わらない）。放置すると将来スキーマ変更時に生成型がドリフトし得る。`db-migrate`（本番適用）とは別物で、
+  そちらは成功している。
+- 選択肢: (a) GitHub Actions Secrets に `SUPABASE_ACCESS_TOKEN`＋`SUPABASE_PROJECT_ID` を設定して復旧。
+  (b) シークレット未設定時は typegen を skip（`if:` ガード）にして赤を消す。
+- 次のアクション: リポジトリ管理権限を持つ人が Secrets を設定（(a)）。設定できない/回さない方針なら (b) で明示 skip 化。
+- 起票日: 2026-07-21
+
 ## 指名BtoB請求 Phase 1 の残論点（締め日粒度・顧客紐付け・遡及）
 - 状況: 指名BtoB請求(手数料0・請求書払い・支払サイクル自動生成・確認後送付)を実装(DECISION_LOG 2026-07-20)。
   設計上、いくつか運用で詰めるべき点が残る。
