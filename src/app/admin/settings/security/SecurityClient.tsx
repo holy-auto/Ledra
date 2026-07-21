@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { createClient as createBrowserSupabaseClient } from "@/lib/supabase/client";
 import FirstUseInlineGuide from "@/components/ui/FirstUseInlineGuide";
 import { formatDateTime } from "@/lib/format";
+import PasskeySection from "./PasskeySection";
 
 /**
  * SecurityClient
@@ -322,6 +323,8 @@ export default function SecurityClient({ initialTotpFactors }: Props) {
           </div>
         )}
       </section>
+
+      <PasskeySection />
     </div>
   );
 }
