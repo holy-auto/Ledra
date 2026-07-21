@@ -4,6 +4,8 @@ import { Section } from "@/components/marketing/Section";
 import { ScrollReveal } from "@/components/marketing/ScrollReveal";
 import { CTABanner } from "@/components/marketing/CTABanner";
 import { listContent } from "@/lib/marketing/content";
+import { listPublishedPosts } from "@/lib/marketing/site-content-posts";
+import { mergeContentItems, type ContentListItem } from "@/lib/marketing/mergeContent";
 
 export const metadata = {
   title: "お知らせ",
@@ -21,7 +23,24 @@ export const metadata = {
 };
 
 export default async function NewsPage() {
-  const entries = await listContent("news");
+  // お知らせは DB(site_content_posts type=news) と MDX の両方から集約する。
+  // DB を primary にして、同一 slug は DB を優先（/blog と同じ方針）。
+  const [mdxEntries, dbPosts] = await Promise.all([listContent("news"), listPublishedPosts(["news"], { limit: 100 })]);
+  const dbItems: ContentListItem[] = dbPosts.map((p) => ({
+    slug: p.slug,
+    title: p.title,
+    excerpt: p.excerpt ?? undefined,
+    publishedAt: p.published_at ?? undefined,
+    tags: p.tags,
+  }));
+  const mdxItems: ContentListItem[] = mdxEntries.map((e) => ({
+    slug: e.frontmatter.slug,
+    title: e.frontmatter.title,
+    excerpt: e.frontmatter.excerpt,
+    publishedAt: e.frontmatter.publishedAt,
+    tags: e.frontmatter.tags,
+  }));
+  const entries = mergeContentItems(dbItems, mdxItems);
 
   return (
     <>
@@ -43,16 +62,14 @@ export default async function NewsPage() {
         ) : (
           <div className="mx-auto max-w-3xl divide-y divide-white/[0.06]">
             {entries.map((e, i) => (
-              <ScrollReveal key={e.frontmatter.slug} variant="fade-up" delay={i * 50}>
+              <ScrollReveal key={e.slug} variant="fade-up" delay={i * 50}>
                 <Link
-                  href={`/news/${e.frontmatter.slug}`}
+                  href={`/news/${e.slug}`}
                   className="group block py-8 first:pt-0 hover:bg-white/[0.02] rounded-xl -mx-4 px-4 transition-colors"
                 >
                   <div className="flex flex-wrap items-center gap-3 text-xs text-white">
-                    {e.frontmatter.publishedAt && (
-                      <time dateTime={e.frontmatter.publishedAt}>{formatDate(e.frontmatter.publishedAt)}</time>
-                    )}
-                    {e.frontmatter.tags?.map((t) => (
+                    {e.publishedAt && <time dateTime={e.publishedAt}>{formatDate(e.publishedAt)}</time>}
+                    {e.tags?.map((t) => (
                       <span
                         key={t}
                         className="inline-flex items-center rounded-full border border-white/[0.08] px-2.5 py-0.5 text-[0.688rem] font-medium text-white"
@@ -62,11 +79,9 @@ export default async function NewsPage() {
                     ))}
                   </div>
                   <h2 className="mt-3 text-lg md:text-xl font-bold text-white group-hover:text-blue-200 transition-colors leading-snug">
-                    {e.frontmatter.title}
+                    {e.title}
                   </h2>
-                  {e.frontmatter.excerpt && (
-                    <p className="mt-3 text-sm leading-relaxed text-white">{e.frontmatter.excerpt}</p>
-                  )}
+                  {e.excerpt && <p className="mt-3 text-sm leading-relaxed text-white">{e.excerpt}</p>}
                 </Link>
               </ScrollReveal>
             ))}
@@ -87,8 +102,8 @@ export default async function NewsPage() {
 }
 
 function formatDate(iso: string): string {
-  // Expecting YYYY-MM-DD
-  const [y, m, d] = iso.split("-");
+  // MDX は YYYY-MM-DD、DB は ISO datetime。先頭10文字（日付部）で揃える。
+  const [y, m, d] = iso.slice(0, 10).split("-");
   if (!y || !m || !d) return iso;
   return `${y}年${Number(m)}月${Number(d)}日`;
 }

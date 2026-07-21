@@ -96,6 +96,16 @@ async function blogDbEntries(): Promise<Article[]> {
   }
 }
 
+/** DB-backed published お知らせ(news) slugs. Guarded like blogDbEntries. */
+async function newsDbEntries(): Promise<Article[]> {
+  try {
+    const posts = await listPublishedPosts(["news"]);
+    return posts.map((p) => ({ slug: p.slug, lastModified: p.published_at ?? undefined }));
+  } catch {
+    return [];
+  }
+}
+
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const now = new Date();
 
@@ -108,17 +118,22 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
   // Article URLs from every content source. Each loader is independently
   // guarded — worst case we still emit the full static route set.
-  const [news, cases, blogMdx, blogDb] = await Promise.all([
+  const [newsMdx, newsDb, cases, blogMdx, blogDb] = await Promise.all([
     mdxEntries("news"),
+    newsDbEntries(),
     mdxEntries("cases"),
     mdxEntries("blog"),
     blogDbEntries(),
   ]);
 
-  // Blog slugs can come from MDX or the DB; de-duplicate (MDX wins).
+  // Blog / news slugs can come from MDX or the DB; de-duplicate (MDX wins).
   const blog = new Map<string, Article>();
   for (const e of [...blogMdx, ...blogDb]) {
     if (!blog.has(e.slug)) blog.set(e.slug, e);
+  }
+  const news = new Map<string, Article>();
+  for (const e of [...newsMdx, ...newsDb]) {
+    if (!news.has(e.slug)) news.set(e.slug, e);
   }
 
   const toEntry = (prefix: string, { slug, lastModified }: Article): MetadataRoute.Sitemap[number] => {
@@ -132,7 +147,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   };
 
   const dynamicEntries: MetadataRoute.Sitemap = [
-    ...news.map((e) => toEntry("/news", e)),
+    ...[...news.values()].map((e) => toEntry("/news", e)),
     ...cases.map((e) => toEntry("/cases", e)),
     ...[...blog.values()].map((e) => toEntry("/blog", e)),
     // 用語集の個別ページ（静的・有限集合）
