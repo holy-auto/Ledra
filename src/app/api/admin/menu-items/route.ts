@@ -10,6 +10,7 @@ import {
   menuItemUpdateSchema,
 } from "@/lib/validations/menu-item";
 import { calcLaborPrice } from "@/lib/pricing/labor";
+import { normalizeMenuSizePricing } from "@/lib/menu/sizePricing";
 
 export const dynamic = "force-dynamic";
 
@@ -36,7 +37,7 @@ export async function GET(req: NextRequest) {
     let query = supabase
       .from("menu_items")
       .select(
-        "id, name, item_code, description, unit_price, cost_price, margin_rate, tax_category, is_active, sort_order, estimated_minutes, labor_hours, category_large, category_medium, category_small, created_at",
+        "id, name, item_code, description, unit_price, cost_price, margin_rate, tax_category, is_active, sort_order, estimated_minutes, labor_hours, category_large, category_medium, category_small, size_axis, size_prices, created_at",
       )
       .eq("tenant_id", caller.tenantId)
       .order("sort_order", { ascending: true })
@@ -127,9 +128,12 @@ export async function POST(req: NextRequest) {
       return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
     }
 
+    const { size_axis: rawAxis, size_prices: rawPrices, ...rest } = parsed.data;
     const row = {
       tenant_id: caller.tenantId,
-      ...parsed.data,
+      ...rest,
+      // 軸と段キーを検証して保存用に正規化 (不正な段・空表は単一単価扱いに落とす)。
+      ...normalizeMenuSizePricing(rawAxis, rawPrices),
     };
 
     // RLS をバイパスしてサービスロールで INSERT（tenant_id で必ずスコープ限定）
@@ -138,7 +142,7 @@ export async function POST(req: NextRequest) {
       .from("menu_items")
       .insert(row)
       .select(
-        "id, name, item_code, description, unit_price, cost_price, margin_rate, tax_category, is_active, sort_order, estimated_minutes, labor_hours, category_large, category_medium, category_small, created_at",
+        "id, name, item_code, description, unit_price, cost_price, margin_rate, tax_category, is_active, sort_order, estimated_minutes, labor_hours, category_large, category_medium, category_small, size_axis, size_prices, created_at",
       )
       .single();
     if (error) {
@@ -162,12 +166,20 @@ export async function PUT(req: NextRequest) {
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
 
-    const parsed = menuItemUpdateSchema.safeParse(await req.json().catch(() => ({})));
+    const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
+    const parsed = menuItemUpdateSchema.safeParse(body);
     if (!parsed.success) {
       return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
     }
     const { id, ...fields } = parsed.data;
     const updates: Record<string, unknown> = { ...fields };
+    // size_axis/size_prices は部分更新でクライアントが明示送信したときだけ触る
+    // (zod は未指定を null に落とすため、そのまま入れると既存のサイズ別価格を消してしまう)。
+    delete updates.size_axis;
+    delete updates.size_prices;
+    if ("size_axis" in body || "size_prices" in body) {
+      Object.assign(updates, normalizeMenuSizePricing(body.size_axis, body.size_prices));
+    }
 
     // RLS をバイパスしてサービスロールで UPDATE（tenant_id で必ずスコープ限定）
     const { admin } = createTenantScopedAdmin(caller.tenantId);
@@ -177,7 +189,7 @@ export async function PUT(req: NextRequest) {
       .eq("id", id)
       .eq("tenant_id", caller.tenantId)
       .select(
-        "id, name, item_code, description, unit_price, cost_price, margin_rate, tax_category, is_active, sort_order, estimated_minutes, labor_hours, category_large, category_medium, category_small, created_at",
+        "id, name, item_code, description, unit_price, cost_price, margin_rate, tax_category, is_active, sort_order, estimated_minutes, labor_hours, category_large, category_medium, category_small, size_axis, size_prices, created_at",
       )
       .single();
 

@@ -14,8 +14,11 @@ import { enqueueOrFetch } from "@/lib/outbox/enqueueOrFetch";
 import { calcSellingPrice } from "@/lib/pricing/margin";
 import { calcLaborPrice } from "@/lib/pricing/labor";
 import MenuItemPackagesPanel from "./MenuItemPackagesPanel";
+import SizePriceEditor from "./SizePriceEditor";
 
 /* ---------- Types ---------- */
+
+type SizeAxisValue = "" | "vehicle_size" | "wheel_size";
 
 type MenuItem = {
   id: string;
@@ -31,9 +34,22 @@ type MenuItem = {
   category_large: string | null;
   category_medium: string | null;
   category_small: string | null;
+  size_axis: string | null;
+  size_prices: Record<string, number> | null;
   is_active: boolean;
   created_at: string;
 };
+
+/** 段キー -> 数値 の価格表を、フォーム入力用の文字列マップへ。 */
+function sizePricesToForm(sp: Record<string, number> | null | undefined): Record<string, string> {
+  const out: Record<string, string> = {};
+  if (sp) for (const [k, v] of Object.entries(sp)) out[k] = String(v);
+  return out;
+}
+/** 送信用ペイロード。軸が空なら null/null。 */
+function sizePricingPayload(axis: SizeAxisValue, prices: Record<string, string>) {
+  return { size_axis: axis || null, size_prices: axis ? prices : null };
+}
 
 type MenuItemsData = {
   items: MenuItem[];
@@ -72,6 +88,8 @@ export default function MenuItemsClient() {
   const [formCategoryLarge, setFormCategoryLarge] = useState("");
   const [formCategoryMedium, setFormCategoryMedium] = useState("");
   const [formCategorySmall, setFormCategorySmall] = useState("");
+  const [formSizeAxis, setFormSizeAxis] = useState<SizeAxisValue>("");
+  const [formSizePrices, setFormSizePrices] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState<{ text: string; ok: boolean } | null>(null);
 
@@ -89,6 +107,8 @@ export default function MenuItemsClient() {
   const [editCategoryLarge, setEditCategoryLarge] = useState("");
   const [editCategoryMedium, setEditCategoryMedium] = useState("");
   const [editCategorySmall, setEditCategorySmall] = useState("");
+  const [editSizeAxis, setEditSizeAxis] = useState<SizeAxisValue>("");
+  const [editSizePrices, setEditSizePrices] = useState<Record<string, string>>({});
   const [editSaving, setEditSaving] = useState(false);
 
   // カテゴリ絞り込み（大→中→小）
@@ -150,6 +170,7 @@ export default function MenuItemsClient() {
           category_large: formCategoryLarge.trim() || null,
           category_medium: formCategoryMedium.trim() || null,
           category_small: formCategorySmall.trim() || null,
+          ...sizePricingPayload(formSizeAxis, formSizePrices),
         }),
       });
       const j = await parseJsonSafe(res);
@@ -167,6 +188,8 @@ export default function MenuItemsClient() {
       setFormCategoryLarge("");
       setFormCategoryMedium("");
       setFormCategorySmall("");
+      setFormSizeAxis("");
+      setFormSizePrices({});
       setSaveMsg({ text: `品目「${j.item?.name ?? formName}」を登録しました`, ok: true });
       mutate();
     } catch (e: any) {
@@ -241,6 +264,8 @@ export default function MenuItemsClient() {
     setEditCategoryLarge(item.category_large ?? "");
     setEditCategoryMedium(item.category_medium ?? "");
     setEditCategorySmall(item.category_small ?? "");
+    setEditSizeAxis(item.size_axis === "vehicle_size" || item.size_axis === "wheel_size" ? item.size_axis : "");
+    setEditSizePrices(sizePricesToForm(item.size_prices));
   };
 
   const cancelEdit = () => {
@@ -268,6 +293,7 @@ export default function MenuItemsClient() {
           category_large: editCategoryLarge.trim() || null,
           category_medium: editCategoryMedium.trim() || null,
           category_small: editCategorySmall.trim() || null,
+          ...sizePricingPayload(editSizeAxis, editSizePrices),
         },
         label: `品目編集: ${editName.trim()}`,
         kind: "other",
@@ -743,6 +769,16 @@ export default function MenuItemsClient() {
                 </div>
               </div>
 
+              <div className="mt-3">
+                <SizePriceEditor
+                  axis={formSizeAxis}
+                  onAxisChange={setFormSizeAxis}
+                  prices={formSizePrices}
+                  onPriceChange={(k, v) => setFormSizePrices((prev) => ({ ...prev, [k]: v }))}
+                  idPrefix="create"
+                />
+              </div>
+
               <div className="flex gap-3">
                 <button
                   type="button"
@@ -1141,6 +1177,19 @@ export default function MenuItemsClient() {
                           </>
                         )}
                       </tr>
+                      {editingId === item.id && (
+                        <tr className="bg-inset">
+                          <td colSpan={12} className="px-5 py-3">
+                            <SizePriceEditor
+                              axis={editSizeAxis}
+                              onAxisChange={setEditSizeAxis}
+                              prices={editSizePrices}
+                              onPriceChange={(k, v) => setEditSizePrices((prev) => ({ ...prev, [k]: v }))}
+                              idPrefix={`edit-${item.id}`}
+                            />
+                          </td>
+                        </tr>
+                      )}
                       {packagesOpen.has(item.id) && (
                         <tr className="bg-inset">
                           <td colSpan={12} className="px-5 py-3">
