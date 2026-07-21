@@ -10,7 +10,10 @@
 - **結果（成立/条件付き/NO MONEY）は断定しない**。動画に委ねる。SNSでは出演の事実と想いだけ。
 - **虎・番組・他出演者の批評/悪口は一切しない**（reiwa-no-tora-pitch.md §8 / §11）。
 - 【要確認】= 放送URL・自社数字を実値に差し替えてから投稿。
-- リンクは UTM 付き短縮 `ledra.co.jp/tora`（→ `/poc` に301、`utm_source=x|linkedin` を付与）。
+- `ledra.co.jp/tora` は出演告知ページへの **バニティリンク（307 一時リダイレクト）**（`next.config.ts` の redirects で
+  `/news/2026-07-25-reiwa-no-tora?utm_source=tora&utm_medium=broadcast&utm_campaign=reiwa-tora-2026` へ転送）。
+  告知ページから `/poc`・`/contact/insurers` へ誘導する。**依存**: 転送先 news 記事の `draft` 解除（=19:00 公開）が前提。
+  媒体別に流入を分けたい場合は、各投稿で直リンクに `utm_source=x|line|linkedin` を付けて使い分ける。
 
 ---
 
