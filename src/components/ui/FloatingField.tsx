@@ -81,7 +81,7 @@ export const FloatingField = forwardRef<HTMLInputElement, Props>(function Floati
         }}
         className={`peer block w-full bg-transparent border-0 border-b px-3 pt-4 pb-1.5 text-base text-primary placeholder:text-muted/40 focus:outline-none transition-colors ${
           isPassword ? "pr-10" : ""
-        } ${hasError ? "border-red-500/60" : "border-border focus:border-blue-400"}`}
+        } ${hasError ? "border-red-500/60" : "border-border-default focus:border-blue-400"}`}
         style={hasError ? { animation: "field-shake 360ms ease-in-out 1" } : undefined}
       />
       {isPassword && (

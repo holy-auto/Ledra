@@ -1,0 +1,60 @@
+/* Noto Sans JP + Geist Mono — same families the real app self-hosts at
+   Next.js build time via next/font/google (src/app/layout.tsx). next/font
+   doesn't leave static font files in the repo for the scraper to find, so
+   these are harvested directly from Google Fonts (same public source
+   next/font itself pulls from) — see .design-sync/NOTES.md.
+   Noto Sans JP ships 400/500/700 — matching src/app/layout.tsx's own
+   next/font weight array. DESIGN_SYSTEM.md's "700 is never used" rule turned
+   out to only cover the named type-ramp classes (.text-h1 etc.); three
+   shipped components (FirstUseInlineGuide, HelpTooltip, Stepper) use the
+   raw Tailwind `font-bold` utility on small numbered/icon badges, which
+   genuinely needs 700. Geist Mono ships 400 and
+   600 — 600 is required by `.section-tag` in globals.css; the real app loads
+   Geist Mono as a variable font (no fixed weight in next/font/google's
+   config) so it has every weight natively, but shipping only the two
+   discrete weights actually used by shipped components' CSS is enough here
+   and keeps the bundle smaller than the full variable font.
+   Both families are SIL Open Font License 1.1 — redistribution requires
+   keeping the license + copyright notice attached; the authoritative copy
+   of that notice lives in .design-sync/conventions.md (shipped via
+   cfg.readmeHeader into every build's README — see NOTES.md's "Codex round
+   4" for why a plain file copy alongside these fonts isn't reliable here).
+   Shipped as WOFF2 (converted from the original harvested TTFs via
+   ttf2woff2, same glyph coverage, ~55-65% smaller) — see NOTES.md's "Codex
+   round 5" for why WOFF2 was adopted but full Unicode-range subsetting
+   wasn't. */
+@font-face {
+  font-family: "Noto Sans JP";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("./noto-sans-jp-400.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Noto Sans JP";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("./noto-sans-jp-500.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Noto Sans JP";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("./noto-sans-jp-700.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Geist Mono";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("./geist-mono-400.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Geist Mono";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("./geist-mono-600.woff2") format("woff2");
+}

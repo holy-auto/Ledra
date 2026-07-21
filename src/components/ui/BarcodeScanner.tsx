@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { BrowserMultiFormatReader, type IScannerControls } from "@zxing/browser";
 import { BarcodeFormat, DecodeHintType } from "@zxing/library";
+import { getFocusableElements, isTopOverlay, registerOverlay, unregisterOverlay } from "./overlayStack";
 
 interface Props {
   open: boolean;
@@ -40,9 +41,65 @@ const INVENTORY_FORMATS = [
 
 export default function BarcodeScanner({ open, onResult, onClose, title, description }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
   const calledRef = useRef(false);
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Register with the shared overlay registry so an ancestor Modal/Drawer
+  // this scanner is opened from within correctly stands down its own
+  // Escape/focus-trap handling while the (visually topmost, z-[60])
+  // scanner is open — see overlayStack.ts. Registering it alone would
+  // silence the ancestor's Escape/Tab handling with nothing standing in
+  // for it, so this scanner owns that same handling itself below.
+  useEffect(() => {
+    if (!open || !rootRef.current) return;
+    const el = rootRef.current;
+    registerOverlay(el);
+    return () => unregisterOverlay(el);
+  }, [open]);
+
+  // Close on Escape & focus trap — same pattern as Modal/Drawer.
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: KeyboardEvent) => {
+      if (!isTopOverlay(rootRef.current)) return;
+      if (e.key === "Escape") {
+        onClose();
+        return;
+      }
+      if (e.key === "Tab") {
+        const focusable = getFocusableElements(rootRef.current);
+        if (focusable.length === 0) return;
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (e.shiftKey) {
+          if (document.activeElement === first) {
+            e.preventDefault();
+            last.focus();
+          }
+        } else {
+          if (document.activeElement === last) {
+            e.preventDefault();
+            first.focus();
+          }
+        }
+      }
+    };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [open, onClose]);
+
+  // Focus first focusable element on open — same pattern (and same
+  // same-commit-race guard) as Modal/Drawer.
+  useEffect(() => {
+    if (!open) return;
+    requestAnimationFrame(() => {
+      if (!isTopOverlay(rootRef.current)) return;
+      const focusable = getFocusableElements(rootRef.current);
+      if (focusable.length > 0) focusable[0].focus();
+    });
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -112,6 +169,7 @@ export default function BarcodeScanner({ open, onResult, onClose, title, descrip
 
   return (
     <div
+      ref={rootRef}
       className="fixed inset-0 z-[60] flex flex-col bg-black/95"
       role="dialog"
       aria-modal="true"

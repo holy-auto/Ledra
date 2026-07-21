@@ -20,7 +20,7 @@ export default function Pagination({ page, totalPages, onPageChange }: Paginatio
       <button
         onClick={() => onPageChange(page - 1)}
         disabled={page <= 1}
-        className="px-3 py-1.5 text-sm rounded-md border border-divider disabled:opacity-30 disabled:cursor-not-allowed hover:bg-surface-hover transition-colors"
+        className="px-3 py-1.5 text-sm rounded-md border border-border-default disabled:opacity-30 disabled:cursor-not-allowed hover:bg-surface-hover transition-colors"
         aria-label="前のページ"
       >
         ←
@@ -30,7 +30,7 @@ export default function Pagination({ page, totalPages, onPageChange }: Paginatio
         <>
           <button
             onClick={() => onPageChange(1)}
-            className="px-3 py-1.5 text-sm rounded-md border border-divider hover:bg-surface-hover transition-colors"
+            className="px-3 py-1.5 text-sm rounded-md border border-border-default hover:bg-surface-hover transition-colors"
           >
             1
           </button>
@@ -43,9 +43,7 @@ export default function Pagination({ page, totalPages, onPageChange }: Paginatio
           key={p}
           onClick={() => onPageChange(p)}
           className={`px-3 py-1.5 text-sm rounded-md border transition-colors ${
-            p === page
-              ? "bg-accent text-inverse border-accent"
-              : "border-divider hover:bg-surface-hover"
+            p === page ? "bg-accent text-inverse border-accent" : "border-border-default hover:bg-surface-hover"
           }`}
           aria-current={p === page ? "page" : undefined}
         >
@@ -58,7 +56,7 @@ export default function Pagination({ page, totalPages, onPageChange }: Paginatio
           {range[range.length - 1] < totalPages - 1 && <span className="px-1 text-muted">…</span>}
           <button
             onClick={() => onPageChange(totalPages)}
-            className="px-3 py-1.5 text-sm rounded-md border border-divider hover:bg-surface-hover transition-colors"
+            className="px-3 py-1.5 text-sm rounded-md border border-border-default hover:bg-surface-hover transition-colors"
           >
             {totalPages}
           </button>
@@ -68,7 +66,7 @@ export default function Pagination({ page, totalPages, onPageChange }: Paginatio
       <button
         onClick={() => onPageChange(page + 1)}
         disabled={page >= totalPages}
-        className="px-3 py-1.5 text-sm rounded-md border border-divider disabled:opacity-30 disabled:cursor-not-allowed hover:bg-surface-hover transition-colors"
+        className="px-3 py-1.5 text-sm rounded-md border border-border-default disabled:opacity-30 disabled:cursor-not-allowed hover:bg-surface-hover transition-colors"
         aria-label="次のページ"
       >
         →

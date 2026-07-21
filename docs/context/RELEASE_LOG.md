@@ -12,6 +12,61 @@
 - 対象: どの画面・API・業種向けか
 ```
 
+## 2026-07-15 Ledra UIキットを claude.ai/design に同期 (PR #760)
+- 内容: `src/components/ui/` の46ファイル中31コンポーネントを、実際にビルド
+  されたコード（esbuildバンドル + 実際のprops型 + レンダリング済みプレビュー）
+  として既存の「Ledra Design System」プロジェクトに取り込んだ（15個は同期対象外
+  ——アプリシェル結合・データ層結合・重い外部依存など、詳細は
+  `.design-sync/NOTES.md` の exclusion 一覧）。うち16コンポーネント
+  （Button, Card, Badge, Modal, Drawer, ConfirmDialog, フォーム系, StatCard,
+  EmptyState, Skeleton, FloatingField, ToastProvider, SectionTag）はLedraの
+  実際の業務文脈（施工証明書・車両・保険）に沿ったサンプルを手作業で作成し
+  グレーディング済み。残り15個は実プロパティ型付きで機能するが、プレビュー
+  カードは「未作成」の正直な表示のまま。**訂正（2026-07-17）**: 当初「33
+  コンポーネント・残り17個」と記録していたが、その後のレビュー往復で
+  `BarcodeScanner`（重い外部依存のため）を同期対象から除外し、実際の数値は
+  31・15に変わった。
+- 対象: claude.ai/design 上でのデザイン作業（Ledraの実コンポーネントを使った
+  デザイン生成の土台）。**訂正（2026-07-17）**: 初回同期の時点ではアプリ本体
+  （Next.jsランタイム）への変更は無かったが、その後のコードレビュー往復
+  （Codex）で実際のアプリ側バグが複数見つかり修正した。詳細は次のエントリ。
+- 副産物: 同期ツールのデフォルト設定 `guidelinesGlob` が `docs/` 配下の機密
+  文書84件を巻き込む事故を未然に検知・修正（詳細は DECISION_LOG.md）。
+
+## 2026-07-17 design-sync PR (#760) のレビューで見つかった実バグを修正
+- 内容: claude.ai/design 同期作業のコードレビュー往復（Codex）で、
+  `src/components/ui/` の複数コンポーネントに同期処理とは無関係の実バグが
+  見つかり修正した。アプリ本体（Next.jsランタイム）への変更を含む:
+  - `Drawer` のフォーカストラップ用 ref がパネル要素に未接続で、Tabキーが
+    ドロワー外に抜けられた（アクセシビリティ）。
+  - `Modal`/`Drawer` が閉じるたびに body のスクロールロックを無条件解除して
+    おり、入れ子（例: Drawer内で開いたModal）を閉じると外側のオーバーレイの
+    ロックまで解けていた。共有のref-countedロックに変更。
+  - 同上の入れ子構成で、外側のキーダウンハンドラ（Escape/フォーカストラップ）
+    が内側のダイアログにも反応してしまう問題。DOM包含関係 + 開いた順で
+    「最前面」を判定する共有モジュール（`overlayStack.ts`）を追加。
+  - `DataTable` の `sortable` 列がヘッダーの矢印だけ表示され、実際には行が
+    並び替わらなかった。`sortValue` アクセサを追加し実装。
+  - `FirstUseInlineGuide` の `tone="info"` が存在しない CSS トークンを参照し
+    無効なスタイルになっていた。
+  - `ConfirmDialog` のボタンに `type="button"` が無く、フォーム内に置かれると
+    意図せずフォーム送信を発火し得た。
+  - `FormField` のラベルが `<div>` で、フォームコントロールと
+    `htmlFor`/`id` で関連付いておらず、クリックでフォーカスできず
+    支援技術からも認識されなかった。
+  - `DashboardWidgets` が localStorage の永続化データの形をバリデーション
+    せず、壊れたデータで描画時に例外を投げ得た。
+  - （design-syncの同期対象選定の過程で先に発見・修正済み: `border-border`/
+    `border-divider` という存在しないTailwindクラスを使っていた
+    `FloatingField`/`InspectionSignaturePad`/`Pagination` — 詳細は
+    `.design-sync/NOTES.md`）
+- 対象: 上記コンポーネントを使う全画面（Modal/Drawer/ConfirmDialogは
+  アプリ全体で汎用的に使用）。design-sync自体はレビュー用の副次的な
+  発見経路であり、修正内容はアプリのランタイム挙動に影響する。
+- 判断: design-sync PR上で見つかったが、design-syncとは無関係の
+  プリエクスィスティングバグのため、同じPR内で修正して1本化した
+  （スコープが分かれるほど大きくないため）。
+
 ## 直近のリリース（git log 直近30件より、2026-07 時点で把握できるもの）
 
 ## 2026-07-21 未連携LINEユーザーへの連携案内を後ろ倒し（既定2→4通目・env可変） (PR #792)

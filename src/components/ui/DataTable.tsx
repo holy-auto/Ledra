@@ -1,12 +1,14 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 
 export interface Column<T> {
   key: string;
   header: string;
   render: (row: T) => ReactNode;
   sortable?: boolean;
+  /** Required for `sortable` columns to actually reorder rows — returns the comparable value for a row */
+  sortValue?: (row: T) => string | number;
   className?: string;
   /** Hide this column in mobile card view */
   hideOnMobile?: boolean;
@@ -56,7 +58,20 @@ export default function DataTable<T>({
     }
   };
 
-  const allSelected = data.length > 0 && selectedKeys?.size === data.length;
+  const sortedData = useMemo(() => {
+    const col = sortKey ? columns.find((c) => c.key === sortKey) : undefined;
+    if (!col?.sortValue) return data;
+    const dir = sortDir === "asc" ? 1 : -1;
+    return [...data].sort((a, b) => {
+      const av = col.sortValue!(a);
+      const bv = col.sortValue!(b);
+      if (av < bv) return -dir;
+      if (av > bv) return dir;
+      return 0;
+    });
+  }, [data, columns, sortKey, sortDir]);
+
+  const allSelected = data.length > 0 && data.every((row) => selectedKeys?.has(rowKey(row)));
 
   const toggleAll = () => {
     if (!onSelectionChange) return;
@@ -126,15 +141,29 @@ export default function DataTable<T>({
               {columns.map((col) => (
                 <th
                   key={col.key}
-                  className={`section-tag px-4 py-3 ${col.sortable ? "cursor-pointer select-none hover:text-secondary" : ""} ${col.className ?? ""}`}
-                  onClick={col.sortable ? () => handleSort(col.key) : undefined}
+                  className={`section-tag px-4 py-3 ${col.className ?? ""}`}
+                  aria-sort={
+                    col.sortable
+                      ? sortKey === col.key
+                        ? sortDir === "asc"
+                          ? "ascending"
+                          : "descending"
+                        : "none"
+                      : undefined
+                  }
                 >
-                  <span className="inline-flex items-center gap-1">
-                    {col.header}
-                    {col.sortable && sortKey === col.key && (
-                      <span className="text-[10px]">{sortDir === "asc" ? "↑" : "↓"}</span>
-                    )}
-                  </span>
+                  {col.sortable ? (
+                    <button
+                      type="button"
+                      onClick={() => handleSort(col.key)}
+                      className="inline-flex items-center gap-1 select-none hover:text-secondary"
+                    >
+                      {col.header}
+                      {sortKey === col.key && <span className="text-[10px]">{sortDir === "asc" ? "↑" : "↓"}</span>}
+                    </button>
+                  ) : (
+                    <span className="inline-flex items-center gap-1">{col.header}</span>
+                  )}
                 </th>
               ))}
             </tr>
@@ -150,7 +179,7 @@ export default function DataTable<T>({
                 </td>
               </tr>
             ) : (
-              data.map((row) => {
+              sortedData.map((row) => {
                 const key = rowKey(row);
                 const isSelected = selectedKeys?.has(key) ?? false;
                 return (
@@ -185,11 +214,33 @@ export default function DataTable<T>({
 
       {/* Mobile card view */}
       <div className="md:hidden">
+        {columns.some((c) => c.sortable) && (
+          <div className="flex items-center gap-2 overflow-x-auto border-b border-border-default px-4 py-2">
+            {columns
+              .filter((c) => c.sortable)
+              .map((col) => (
+                <button
+                  key={col.key}
+                  type="button"
+                  onClick={() => handleSort(col.key)}
+                  aria-pressed={sortKey === col.key}
+                  className={`inline-flex shrink-0 items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
+                    sortKey === col.key
+                      ? "bg-accent-dim text-accent"
+                      : "bg-[var(--bg-surface)] text-secondary hover:bg-surface-hover"
+                  }`}
+                >
+                  {col.header}
+                  {sortKey === col.key && <span>{sortDir === "asc" ? "↑" : "↓"}</span>}
+                </button>
+              ))}
+          </div>
+        )}
         {data.length === 0 ? (
           <div className="px-4 py-12 text-center text-sm text-muted">{emptyMessage}</div>
         ) : (
           <div className="divide-y divide-border-subtle">
-            {data.map((row) => {
+            {sortedData.map((row) => {
               const key = rowKey(row);
               const isSelected = selectedKeys?.has(key) ?? false;
               const titleCol = columns.find((c) => c.cardTitle);

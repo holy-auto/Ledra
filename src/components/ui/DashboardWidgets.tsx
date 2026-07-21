@@ -23,18 +23,39 @@ const STORAGE_KEY_PREFIX = "dashboard-widgets-";
 /* ------------------------------------------------------------------ */
 /*  Persistence helpers                                                */
 /* ------------------------------------------------------------------ */
+function isWidgetState(value: unknown): value is WidgetState {
+  if (!value || typeof value !== "object") return false;
+  const v = value as Record<string, unknown>;
+  return (
+    Array.isArray(v.order) &&
+    v.order.every((id) => typeof id === "string") &&
+    new Set(v.order).size === v.order.length &&
+    !!v.visible &&
+    typeof v.visible === "object" &&
+    !Array.isArray(v.visible) &&
+    Object.values(v.visible).every((visible) => typeof visible === "boolean")
+  );
+}
+
 function loadState(portal: string): WidgetState | null {
   try {
     const raw = localStorage.getItem(STORAGE_KEY_PREFIX + portal);
-    if (raw) return JSON.parse(raw);
-  } catch { /* ignore */ }
+    if (raw) {
+      const parsed: unknown = JSON.parse(raw);
+      if (isWidgetState(parsed)) return parsed;
+    }
+  } catch {
+    /* ignore */
+  }
   return null;
 }
 
 function saveState(portal: string, state: WidgetState) {
   try {
     localStorage.setItem(STORAGE_KEY_PREFIX + portal, JSON.stringify(state));
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
 }
 
 /* ------------------------------------------------------------------ */
@@ -73,7 +94,10 @@ function CustomizeModal({
         </div>
         <div className="max-h-80 overflow-y-auto p-2">
           {orderedWidgets.map((w, i) => (
-            <div key={w.id} className="flex items-center gap-3 rounded-lg px-3 py-2.5 hover:bg-surface-hover transition-colors">
+            <div
+              key={w.id}
+              className="flex items-center gap-3 rounded-lg px-3 py-2.5 hover:bg-surface-hover transition-colors"
+            >
               <input
                 type="checkbox"
                 checked={state.visible[w.id] ?? true}
@@ -119,13 +143,7 @@ function CustomizeModal({
 /* ------------------------------------------------------------------ */
 /*  Main component                                                     */
 /* ------------------------------------------------------------------ */
-export default function DashboardWidgets({
-  portal,
-  widgets,
-}: {
-  portal: string;
-  widgets: Widget[];
-}) {
+export default function DashboardWidgets({ portal, widgets }: { portal: string; widgets: Widget[] }) {
   const [state, setState] = useState<WidgetState>({
     visible: {},
     order: widgets.map((w) => w.id),
@@ -144,7 +162,10 @@ export default function DashboardWidgets({
         if (!order.includes(w.id)) order.push(w.id);
       }
       setState({
-        visible: { ...Object.fromEntries(widgets.map((w) => [w.id, w.defaultVisible !== false])), ...persisted.visible },
+        visible: {
+          ...Object.fromEntries(widgets.map((w) => [w.id, w.defaultVisible !== false])),
+          ...persisted.visible,
+        },
         order,
       });
     } else {
@@ -204,7 +225,11 @@ export default function DashboardWidgets({
           className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-muted hover:text-primary hover:bg-surface-hover transition-colors"
         >
           <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 6h9.75M10.5 6a1.5 1.5 0 1 1-3 0m3 0a1.5 1.5 0 1 0-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-9.75 0h9.75" />
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M10.5 6h9.75M10.5 6a1.5 1.5 0 1 1-3 0m3 0a1.5 1.5 0 1 0-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-9.75 0h9.75"
+            />
           </svg>
           カスタマイズ
         </button>

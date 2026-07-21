@@ -45,42 +45,61 @@ describe("DataTable", () => {
   });
 
   it("renders custom empty message", () => {
-    render(
-      <DataTable
-        columns={columns}
-        data={[]}
-        rowKey={rowKey}
-        emptyMessage="No results found"
-      />,
-    );
+    render(<DataTable columns={columns} data={[]} rowKey={rowKey} emptyMessage="No results found" />);
     expect(screen.getAllByText("No results found").length).toBeGreaterThanOrEqual(1);
   });
 
   it("calls onRowClick when a row is clicked", () => {
     const onRowClick = vi.fn();
-    render(
-      <DataTable
-        columns={columns}
-        data={sampleData}
-        rowKey={rowKey}
-        onRowClick={onRowClick}
-      />,
-    );
+    render(<DataTable columns={columns} data={sampleData} rowKey={rowKey} onRowClick={onRowClick} />);
     // Click the first occurrence of "Alice"
     fireEvent.click(screen.getAllByText("Alice")[0]);
     expect(onRowClick).toHaveBeenCalledWith(sampleData[0]);
   });
 
-  it("renders sortable column header with click handler", () => {
+  it("renders a sortable column header as a real, keyboard-focusable button", () => {
     const sortableColumns: Column<TestRow>[] = [
       { key: "name", header: "Name", render: (row) => row.name, sortable: true },
       { key: "status", header: "Status", render: (row) => row.status },
     ];
-    const { container } = render(
-      <DataTable columns={sortableColumns} data={sampleData} rowKey={rowKey} />,
-    );
-    const nameHeader = container.querySelector("th.cursor-pointer");
-    expect(nameHeader).not.toBeNull();
+    const { container } = render(<DataTable columns={sortableColumns} data={sampleData} rowKey={rowKey} />);
+    const sortButtons = container.querySelectorAll("th button");
+    // Only the sortable "Name" column gets a button -- "Status" stays a span.
+    expect(sortButtons.length).toBeGreaterThanOrEqual(1);
+    expect(sortButtons[0].textContent).toContain("Name");
+  });
+
+  it("sorts and reflects direction via aria-sort when the sortable header is activated", () => {
+    const sortableColumns: Column<TestRow>[] = [
+      { key: "name", header: "Name", render: (row) => row.name, sortable: true, sortValue: (row) => row.name },
+    ];
+    render(<DataTable columns={sortableColumns} data={sampleData} rowKey={rowKey} />);
+    const button = screen.getAllByRole("button", { name: /Name/ })[0];
+    const th = button.closest("th")!;
+    expect(th.getAttribute("aria-sort")).toBe("none");
+
+    fireEvent.click(button);
+    expect(th.getAttribute("aria-sort")).toBe("ascending");
+    // Alice, Bob, Charlie already ascend alphabetically -- assert the arrow shows
+    expect(button.textContent).toContain("↑");
+
+    fireEvent.click(button);
+    expect(th.getAttribute("aria-sort")).toBe("descending");
+    expect(button.textContent).toContain("↓");
+  });
+
+  it("provides a mobile sort toolbar for sortable columns, since the desktop header is hidden below md", () => {
+    const sortableColumns: Column<TestRow>[] = [
+      { key: "name", header: "Name", render: (row) => row.name, sortable: true, sortValue: (row) => row.name },
+    ];
+    const { container } = render(<DataTable columns={sortableColumns} data={sampleData} rowKey={rowKey} />);
+    const mobileToolbar = container.querySelector(".md\\:hidden button");
+    expect(mobileToolbar).not.toBeNull();
+    expect(mobileToolbar?.textContent).toContain("Name");
+
+    fireEvent.click(mobileToolbar!);
+    expect(mobileToolbar?.getAttribute("aria-pressed")).toBe("true");
+    expect(mobileToolbar?.textContent).toContain("↑");
   });
 
   it("renders checkboxes when selectable", () => {
@@ -112,9 +131,7 @@ describe("DataTable", () => {
       />,
     );
     // Get the first row checkbox (skip the header "select all")
-    const checkboxes = container.querySelectorAll(
-      "table input[type='checkbox']",
-    );
+    const checkboxes = container.querySelectorAll("table input[type='checkbox']");
     // checkboxes[0] is select-all, checkboxes[1] is first row
     fireEvent.click(checkboxes[1]);
     expect(onSelectionChange).toHaveBeenCalled();
@@ -135,6 +152,24 @@ describe("DataTable", () => {
     const selectAll = screen.getByLabelText("すべて選択");
     fireEvent.click(selectAll);
     expect(onSelectionChange).toHaveBeenCalledWith(new Set(["1", "2", "3"]));
+  });
+
+  it("does not mark select-all checked when selectedKeys has the same size but different rows", () => {
+    // Same size (1 == 1) but the selected key isn't in the current data --
+    // e.g. a stale selection after the visible rows were filtered/replaced.
+    const singleRow: TestRow[] = [{ id: "new", name: "New", status: "Active" }];
+    render(
+      <DataTable
+        columns={columns}
+        data={singleRow}
+        rowKey={rowKey}
+        selectable
+        selectedKeys={new Set(["old"])}
+        onSelectionChange={vi.fn()}
+      />,
+    );
+    const selectAll = screen.getByLabelText("すべて選択") as HTMLInputElement;
+    expect(selectAll.checked).toBe(false);
   });
 
   it("renders bulk actions bar when items are selected", () => {

@@ -1,0 +1,10 @@
+/* Bridges the CSS custom properties next/font/google injects at runtime in
+   the real app (--font-noto-sans, --font-geist-mono, set via a generated
+   class on <html>/<body> in src/app/layout.tsx) — without these, the
+   var(--font-noto-sans, "Noto Sans JP") / var(--font-geist-mono, "SF Mono", …)
+   fallback chains in globals.css skip past the shipped @font-face families
+   (see .design-sync/fonts/fonts.css) straight to system fallbacks. */
+:root {
+  --font-noto-sans: "Noto Sans JP";
+  --font-geist-mono: "Geist Mono";
+}

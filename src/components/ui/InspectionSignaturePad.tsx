@@ -12,25 +12,51 @@ export default function InspectionSignaturePad({ onSign, onCancel, orderTitle }:
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [drawing, setDrawing] = useState(false);
   const [hasStrokes, setHasStrokes] = useState(false);
+  const hasStrokesRef = useRef(false);
   const [signerName, setSignerName] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const lastPos = useRef<{ x: number; y: number } | null>(null);
 
-  // Canvas の解像度を DPR に合わせる
+  // Canvas の解像度を DPR に合わせる。初回だけでなく、開いたまま端末を回転
+  // した場合など描画中の viewport サイズ変更も ResizeObserver で追従する
+  // （そうしないと backing store と CSS 表示サイズがズレ、getPos が返す
+  // 座標が実際の描画位置とずれてしまう）。リサイズ前の内容はオフスクリーン
+  // canvas に同期的にコピーしてから新サイズへ再描画する — Image/dataURL
+  // 経由の非同期デコードだと、その間 hasStrokes は true のまま canvas は
+  // 空の状態が生じ得て、その隙に送信されると空の署名が承認扱いになる。
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const dpr = window.devicePixelRatio || 1;
-    const rect = canvas.getBoundingClientRect();
-    canvas.width = rect.width * dpr;
-    canvas.height = rect.height * dpr;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    ctx.scale(dpr, dpr);
-    ctx.strokeStyle = "#1a1f36";
-    ctx.lineWidth = 2.5;
-    ctx.lineCap = "round";
-    ctx.lineJoin = "round";
+
+    const setup = (preserveExisting: boolean) => {
+      const rect = canvas.getBoundingClientRect();
+      if (rect.width === 0 || rect.height === 0) return;
+      const dpr = window.devicePixelRatio || 1;
+
+      let snapshot: HTMLCanvasElement | null = null;
+      if (preserveExisting && hasStrokesRef.current) {
+        snapshot = document.createElement("canvas");
+        snapshot.width = canvas.width;
+        snapshot.height = canvas.height;
+        snapshot.getContext("2d")?.drawImage(canvas, 0, 0);
+      }
+
+      canvas.width = rect.width * dpr;
+      canvas.height = rect.height * dpr;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+      ctx.scale(dpr, dpr);
+      ctx.strokeStyle = "#1a1f36";
+      ctx.lineWidth = 2.5;
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+      if (snapshot) ctx.drawImage(snapshot, 0, 0, rect.width, rect.height);
+    };
+
+    setup(false);
+    const observer = new ResizeObserver(() => setup(true));
+    observer.observe(canvas);
+    return () => observer.disconnect();
   }, []);
 
   const getPos = (e: React.MouseEvent | React.TouchEvent, canvas: HTMLCanvasElement) => {
@@ -50,21 +76,25 @@ export default function InspectionSignaturePad({ onSign, onCancel, orderTitle }:
     lastPos.current = getPos(e, canvas);
   }, []);
 
-  const draw = useCallback((e: React.MouseEvent | React.TouchEvent) => {
-    if (!drawing) return;
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    e.preventDefault();
-    const ctx = canvas.getContext("2d");
-    if (!ctx || !lastPos.current) return;
-    const pos = getPos(e, canvas);
-    ctx.beginPath();
-    ctx.moveTo(lastPos.current.x, lastPos.current.y);
-    ctx.lineTo(pos.x, pos.y);
-    ctx.stroke();
-    lastPos.current = pos;
-    setHasStrokes(true);
-  }, [drawing]);
+  const draw = useCallback(
+    (e: React.MouseEvent | React.TouchEvent) => {
+      if (!drawing) return;
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      e.preventDefault();
+      const ctx = canvas.getContext("2d");
+      if (!ctx || !lastPos.current) return;
+      const pos = getPos(e, canvas);
+      ctx.beginPath();
+      ctx.moveTo(lastPos.current.x, lastPos.current.y);
+      ctx.lineTo(pos.x, pos.y);
+      ctx.stroke();
+      lastPos.current = pos;
+      hasStrokesRef.current = true;
+      setHasStrokes(true);
+    },
+    [drawing],
+  );
 
   const endDraw = useCallback(() => {
     setDrawing(false);
@@ -77,6 +107,7 @@ export default function InspectionSignaturePad({ onSign, onCancel, orderTitle }:
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
+    hasStrokesRef.current = false;
     setHasStrokes(false);
   };
 
@@ -96,7 +127,7 @@ export default function InspectionSignaturePad({ onSign, onCancel, orderTitle }:
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
       <div className="w-full max-w-md bg-surface rounded-2xl shadow-2xl overflow-hidden">
         {/* Header */}
-        <div className="px-5 py-4 border-b border-border">
+        <div className="px-5 py-4 border-b border-border-subtle">
           <p className="text-[11px] font-medium tracking-widest text-muted uppercase">検収確認</p>
           <h2 className="text-base font-semibold text-primary mt-0.5">電子サインで検収承認</h2>
           <p className="text-xs text-secondary mt-1 line-clamp-1">{orderTitle}</p>
@@ -129,7 +160,7 @@ export default function InspectionSignaturePad({ onSign, onCancel, orderTitle }:
                 </button>
               )}
             </div>
-            <div className="rounded-xl border-2 border-dashed border-border bg-white overflow-hidden touch-none">
+            <div className="rounded-xl border-2 border-dashed border-border-default bg-white overflow-hidden touch-none">
               <canvas
                 ref={canvasRef}
                 className="w-full"
@@ -143,25 +174,17 @@ export default function InspectionSignaturePad({ onSign, onCancel, orderTitle }:
                 onTouchEnd={endDraw}
               />
             </div>
-            {!hasStrokes && (
-              <p className="text-[11px] text-muted text-center">↑ ここにサインしてください</p>
-            )}
+            {!hasStrokes && <p className="text-[11px] text-muted text-center">↑ ここにサインしてください</p>}
           </div>
 
           <p className="text-[11px] text-muted leading-relaxed">
-            このサインにより、上記の作業内容を検収承認したことを確認します。
-            サインは記録として保存されます。
+            このサインにより、上記の作業内容を検収承認したことを確認します。 サインは記録として保存されます。
           </p>
         </div>
 
         {/* Footer */}
-        <div className="px-5 py-4 border-t border-border flex gap-2 justify-end">
-          <button
-            type="button"
-            className="btn-secondary text-sm"
-            onClick={onCancel}
-            disabled={submitting}
-          >
+        <div className="px-5 py-4 border-t border-border-subtle flex gap-2 justify-end">
+          <button type="button" className="btn-secondary text-sm" onClick={onCancel} disabled={submitting}>
             キャンセル
           </button>
           <button

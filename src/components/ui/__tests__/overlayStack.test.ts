@@ -1,0 +1,246 @@
+// @vitest-environment jsdom
+import { describe, it, expect } from "vitest";
+import { registerOverlay, unregisterOverlay, isTopOverlay, getFocusableElements } from "../overlayStack";
+
+describe("overlayStack", () => {
+  it("ranks the innermost open element as topmost regardless of registration order", () => {
+    const outer = document.createElement("div");
+    const inner = document.createElement("div");
+    outer.appendChild(inner);
+
+    // Registration order deliberately reversed from DOM nesting (the exact
+    // case a nested Drawer+Modal hit when both open in the same React
+    // commit — the child's effect fires before the parent's): outer must
+    // still lose to inner because inner sits inside outer's DOM subtree.
+    registerOverlay(outer);
+    registerOverlay(inner);
+
+    expect(isTopOverlay(outer)).toBe(false);
+    expect(isTopOverlay(inner)).toBe(true);
+
+    unregisterOverlay(inner);
+    unregisterOverlay(outer);
+  });
+
+  it("treats a lone open overlay as topmost", () => {
+    const el = document.createElement("div");
+    registerOverlay(el);
+    expect(isTopOverlay(el)).toBe(true);
+    unregisterOverlay(el);
+  });
+
+  it("stops considering an unregistered element topmost", () => {
+    const el = document.createElement("div");
+    registerOverlay(el);
+    unregisterOverlay(el);
+    expect(isTopOverlay(el)).toBe(false);
+  });
+
+  it("ranks the DOM-later sibling as topmost when neither contains the other", () => {
+    // E.g. a Drawer that stays mounted while a separate confirmation Modal
+    // opens next to it (not nested inside it) -- no containment relation
+    // exists to settle it, so DOM document order is the tiebreaker (both
+    // share the same z-index tier, so DOM-later is what actually paints on
+    // top).
+    const first = document.createElement("div");
+    const second = document.createElement("div");
+    document.body.append(first, second);
+
+    registerOverlay(first);
+    expect(isTopOverlay(first)).toBe(true);
+
+    registerOverlay(second);
+    expect(isTopOverlay(first)).toBe(false);
+    expect(isTopOverlay(second)).toBe(true);
+
+    unregisterOverlay(second);
+    expect(isTopOverlay(first)).toBe(true);
+
+    unregisterOverlay(first);
+    first.remove();
+    second.remove();
+  });
+
+  it("still ranks by DOM order even when registration order disagrees", () => {
+    // The exact bug Codex caught: a Drawer positioned earlier in the DOM
+    // opens AFTER a Modal positioned later in the DOM is already open.
+    // Registration/open order alone would (wrongly) rank the
+    // later-to-register Drawer as topmost; DOM order must win instead,
+    // since the DOM-later Modal is what's actually visible on top.
+    const domFirst = document.createElement("div");
+    const domSecond = document.createElement("div");
+    document.body.append(domFirst, domSecond);
+
+    // domSecond registers (opens) first...
+    registerOverlay(domSecond);
+    // ...then domFirst registers (opens) second, reversed from DOM order.
+    registerOverlay(domFirst);
+
+    expect(isTopOverlay(domSecond)).toBe(true);
+    expect(isTopOverlay(domFirst)).toBe(false);
+
+    unregisterOverlay(domFirst);
+    unregisterOverlay(domSecond);
+    domFirst.remove();
+    domSecond.remove();
+  });
+
+  it("ranks a higher z-index sibling as topmost even when it's earlier in the DOM", () => {
+    // BarcodeScanner (z-[60]) rendered as a sibling before an already-open
+    // Modal/Drawer (z-50) must still outrank it -- DOM order is only the
+    // tiebreaker when z-index actually ties.
+    const scanner = document.createElement("div");
+    const modal = document.createElement("div");
+    scanner.style.zIndex = "60";
+    modal.style.zIndex = "50";
+    document.body.append(scanner, modal);
+
+    registerOverlay(modal);
+    registerOverlay(scanner);
+
+    expect(isTopOverlay(scanner)).toBe(true);
+    expect(isTopOverlay(modal)).toBe(false);
+
+    unregisterOverlay(scanner);
+    unregisterOverlay(modal);
+    scanner.remove();
+    modal.remove();
+  });
+
+  it("confines a nested overlay's z-index to its own ancestor's stacking context", () => {
+    // The exact bug Codex caught: a BarcodeScanner (z-60) nested INSIDE a
+    // Drawer (z-50) cannot use its z-60 to visually escape above a
+    // completely separate, unrelated sibling Modal (z-50) -- CSS scopes a
+    // nested stacking context inside its DOM ancestor's own context. If
+    // the sibling Modal is DOM-later than the Drawer, the Modal's entire
+    // stacking context (including the Drawer+scanner branch beneath it)
+    // paints on top, so the Modal must be topmost, not the scanner.
+    const drawer = document.createElement("div");
+    const scanner = document.createElement("div");
+    drawer.style.zIndex = "50";
+    scanner.style.zIndex = "60";
+    drawer.appendChild(scanner);
+
+    const modal = document.createElement("div");
+    modal.style.zIndex = "50";
+
+    document.body.append(drawer, modal); // drawer (containing scanner) first, modal later
+
+    registerOverlay(drawer);
+    registerOverlay(scanner);
+    registerOverlay(modal);
+
+    expect(isTopOverlay(modal)).toBe(true);
+    expect(isTopOverlay(scanner)).toBe(false);
+    expect(isTopOverlay(drawer)).toBe(false);
+
+    unregisterOverlay(modal);
+    unregisterOverlay(scanner);
+    unregisterOverlay(drawer);
+    drawer.remove();
+    modal.remove();
+  });
+
+  it("refocuses the newly-exposed overlay when the topmost one closes", () => {
+    // E.g. a Modal opened from within an open Drawer closes: focus was
+    // inside the Modal, which is now gone, so it falls back to <body> --
+    // the Drawer's own Tab trap doesn't catch that (it only redirects once
+    // activeElement is already its first/last control), so something has
+    // to explicitly move focus back into the Drawer.
+    const drawer = document.createElement("div");
+    const drawerButton = document.createElement("button");
+    drawer.appendChild(drawerButton);
+
+    const modal = document.createElement("div");
+    const modalButton = document.createElement("button");
+    modal.appendChild(modalButton);
+    drawer.appendChild(modal);
+
+    document.body.append(drawer);
+
+    registerOverlay(drawer);
+    registerOverlay(modal);
+    modalButton.focus();
+    expect(document.activeElement).toBe(modalButton);
+
+    modal.remove();
+    unregisterOverlay(modal);
+
+    expect(document.activeElement).toBe(drawerButton);
+
+    unregisterOverlay(drawer);
+    drawer.remove();
+  });
+
+  it("getFocusableElements returns nothing for a null root", () => {
+    expect(getFocusableElements(null)).toEqual([]);
+  });
+
+  it("picks exactly one leaf when two sibling overlays are nested under the same root", () => {
+    // The exact bug Codex caught: a Drawer containing both an open
+    // ConfirmDialog (via Modal, z-50) and an open BarcodeScanner (z-60) as
+    // siblings -- neither contains the other, so both trivially share the
+    // same root (the Drawer) and a root-only comparison would call both
+    // topmost. The higher z-index leaf must be the sole winner.
+    const drawer = document.createElement("div");
+    drawer.style.zIndex = "50";
+
+    const confirmDialog = document.createElement("div");
+    confirmDialog.style.zIndex = "50";
+    const scanner = document.createElement("div");
+    scanner.style.zIndex = "60";
+    drawer.append(confirmDialog, scanner);
+
+    document.body.append(drawer);
+
+    registerOverlay(drawer);
+    registerOverlay(confirmDialog);
+    registerOverlay(scanner);
+
+    expect(isTopOverlay(scanner)).toBe(true);
+    expect(isTopOverlay(confirmDialog)).toBe(false);
+    expect(isTopOverlay(drawer)).toBe(false);
+
+    unregisterOverlay(scanner);
+    unregisterOverlay(confirmDialog);
+    unregisterOverlay(drawer);
+    drawer.remove();
+  });
+
+  it("ranks intermediate branches by sibling comparison before descending to leaves", () => {
+    // The exact bug Codex caught: a two-stage root-then-leaf comparison
+    // would compare the deeply-nested scanner's raw z-60 directly against
+    // a shallower sibling Modal, skipping the level in between where that
+    // scanner's own branch (ModalA) already lost. Structure:
+    //   root (no explicit overlay -- ModalA and ModalB are both top-level)
+    //     ModalA (z-50, DOM-first) -> Scanner (z-60) nested inside it
+    //     ModalB (z-50, DOM-later, sibling of ModalA, nothing nested)
+    // ModalB must win outright at the ModalA-vs-ModalB level (DOM order
+    // breaks their z-50 tie); the scanner never gets to compete since it
+    // isn't a sibling of ModalB, regardless of its higher z-index.
+    const modalA = document.createElement("div");
+    modalA.style.zIndex = "50";
+    const scanner = document.createElement("div");
+    scanner.style.zIndex = "60";
+    modalA.appendChild(scanner);
+
+    const modalB = document.createElement("div");
+    modalB.style.zIndex = "50";
+
+    document.body.append(modalA, modalB); // modalA (containing scanner) first, modalB later
+
+    registerOverlay(modalA);
+    registerOverlay(scanner);
+    registerOverlay(modalB);
+
+    expect(isTopOverlay(modalB)).toBe(true);
+    expect(isTopOverlay(scanner)).toBe(false);
+    expect(isTopOverlay(modalA)).toBe(false);
+
+    unregisterOverlay(modalB);
+    unregisterOverlay(scanner);
+    unregisterOverlay(modalA);
+    modalA.remove();
+    modalB.remove();
+  });
+});
