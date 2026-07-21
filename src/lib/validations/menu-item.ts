@@ -1,5 +1,15 @@
 import { z } from "zod";
 
+// サイズ別価格 (任意)。軸と段キーの妥当性は保存時に normalizeMenuSizePricing で正規化するため、
+// ここでは緩く受け取る (空文字/未指定は単一単価扱い)。
+const sizeAxisField = z
+  .string()
+  .trim()
+  .nullable()
+  .optional()
+  .transform((v) => v || null);
+const sizePricesField = z.unknown().optional();
+
 // 大／中／小カテゴリ（自由入力・任意）。空文字は null に正規化する。
 const categoryField = z
   .string()
@@ -42,6 +52,8 @@ export const menuItemCreateSchema = z.object({
   sort_order: z.coerce.number().int().min(0).default(0),
   estimated_minutes: z.coerce.number().int().min(0).max(100000).nullable().optional(),
   labor_hours: z.coerce.number().min(0, "標準工数は0以上で入力してください。").max(1000).nullable().optional(),
+  size_axis: sizeAxisField,
+  size_prices: sizePricesField,
 });
 
 export const menuItemUpdateSchema = z.object({
@@ -70,6 +82,8 @@ export const menuItemUpdateSchema = z.object({
   estimated_minutes: z.coerce.number().int().min(0).max(100000).nullable().optional(),
   labor_hours: z.coerce.number().min(0).max(1000).nullable().optional(),
   is_active: z.boolean().optional(),
+  size_axis: sizeAxisField,
+  size_prices: sizePricesField,
 });
 
 export const menuItemDeleteSchema = z
