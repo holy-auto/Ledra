@@ -16,6 +16,9 @@ import {
 import { orderAcceptSchema, orderCreateSchema, orderUpdateSchema } from "@/lib/validations/order";
 import { parsePagination } from "@/lib/api/pagination";
 import { sendOrderInvoiceEmail } from "@/lib/orders/orderInvoice";
+import { claimReservationHold } from "@/lib/booking/holdClaim";
+import { partnerCanViewAvailability } from "@/lib/partners/availabilityGate";
+import { convertHoldToReservation, releaseOrderHolds } from "@/lib/booking/holdConvert";
 
 // ─── ステータス遷移ルール ───
 // key: 現在のステータス, value: { next: 次ステータス, side: "from" | "to" | "both" }[]
@@ -224,6 +227,9 @@ export async function POST(req: NextRequest) {
       vehicle_id,
       requester_email,
       requester_company,
+      hold_date,
+      hold_start,
+      hold_end,
     } = parsed.data;
 
     // Use admin client to bypass RLS (API already validated auth above)
@@ -274,6 +280,51 @@ export async function POST(req: NextRequest) {
         JSON.stringify({ message: error.message, details: error.details, hint: error.hint, code: error.code }),
       );
       return apiInternalError(error, "orders insert");
+    }
+
+    // 指名発注時に相手(to_tenant)の空き枠を仮押さえする（3項目が揃っていれば）。
+    if (to_tenant_id && hold_date && hold_start && hold_end) {
+      const canView = await partnerCanViewAvailability(tenantId, to_tenant_id);
+      if (!canView) {
+        // 取引先でない相手の枠は押さえられない。オーダー自体は作成済みなので撤回する。
+        await admin.from("job_orders").delete().eq("id", data.id);
+        return apiForbidden("この取引先の枠は押さえられません（先方の取引先登録・空き公開が必要です）");
+      }
+      // TTL: 既定48h。納期があればその日の終わりで頭打ち。
+      let ttlMinutes = 2880;
+      if (deadline) {
+        const deadlineEnd = new Date(`${deadline}T23:59:59+09:00`).getTime();
+        const mins = Math.floor((deadlineEnd - Date.now()) / 60000);
+        if (mins >= 60) ttlMinutes = Math.min(ttlMinutes, mins);
+      }
+      try {
+        const claim = await claimReservationHold(admin, {
+          targetTenantId: to_tenant_id,
+          heldByTenantId: tenantId,
+          scheduledDate: hold_date,
+          startTime: hold_start,
+          endTime: hold_end,
+          jobOrderId: data.id,
+          ttlMinutes,
+        });
+        if (claim.result !== "ok") {
+          // 枠が埋まった/枠が無い → オーダーを撤回し 409（UI で再選択）。
+          await admin.from("job_orders").delete().eq("id", data.id);
+          return apiError({
+            code: "conflict",
+            status: 409,
+            message:
+              claim.result === "full"
+                ? "選択した枠は埋まりました。別の枠を選んでください。"
+                : "その時間帯に受付枠がありません。",
+            data: { reason: claim.result === "full" ? "hold_slot_taken" : "hold_no_slot" },
+          });
+        }
+        return apiJson({ order: data, hold_id: claim.holdId }, { status: 201 });
+      } catch (holdErr) {
+        await admin.from("job_orders").delete().eq("id", data.id);
+        return apiInternalError(holdErr, "orders hold claim");
+      }
     }
 
     return apiJson({ order: data }, { status: 201 });
@@ -393,6 +444,19 @@ export async function PUT(req: NextRequest) {
     // 検収承認 → payment_pending 遷移時に請求書を自動送付（fire-and-forget）
     if (status === "payment_pending") {
       sendOrderInvoiceEmail(id).catch((e: unknown) => console.error("[orders] invoice email failed:", e));
+    }
+
+    // 受注承認 → 仮押さえを本予約へ変換（await・best-effort で UI 即反映）。
+    if (status === "accepted") {
+      try {
+        await convertHoldToReservation(id);
+      } catch (e) {
+        console.error("[orders] hold->reservation convert failed (non-blocking):", e);
+      }
+    }
+    // 却下/取消 → 仮押さえを解放（fire-and-forget）。
+    if (status === "rejected" || status === "cancelled") {
+      releaseOrderHolds(id, status).catch((e: unknown) => console.error("[orders] hold release failed:", e));
     }
 
     return apiJson({ ok: true, order: data });
