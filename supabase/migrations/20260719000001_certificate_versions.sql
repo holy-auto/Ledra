@@ -18,6 +18,34 @@
 --     - DELETE は許可 … certificates 削除時の ON DELETE CASCADE(＝消去権)を通すため
 --   とする。改ざん検知は content_hash(PII フリーな 64hex)を証拠として担保する。
 
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 本番ドリフト是正 (2026-07-20 追記):
+--   本番 DB には旧スキーマの certificate_versions (id, certificate_id, version,
+--   snapshot_json, created_at) が孤立して存在し、本マイグレーションの
+--   「create table if not exists」がスキップされ、直後の tenant_id インデックス作成で
+--   「column "tenant_id" does not exist」で失敗、db push 全体が停止していた
+--   (結果 #781 以降の全未適用マイグレーションがブロックされていた)。
+--   旧テーブルは 0 行かつアプリ未参照 (現行コードは新スキーマ content/content_hash を使用) の
+--   ため、新スキーマ必須列 tenant_id を欠く旧テーブルが存在する場合のみ、空であることを
+--   確認して作り直す。想定外にデータがある場合は中断し手動移行へ委ねる (データ損失防止)。
+do $$
+begin
+  if exists (
+    select 1 from information_schema.tables
+    where table_schema = 'public' and table_name = 'certificate_versions'
+  ) and not exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'certificate_versions'
+      and column_name = 'tenant_id'
+  ) then
+    if (select count(*) from public.certificate_versions) > 0 then
+      raise exception 'certificate_versions が旧スキーマかつ % 行のデータを保持しています。自動置換を中止しました (手動移行が必要)。',
+        (select count(*) from public.certificate_versions);
+    end if;
+    drop table public.certificate_versions cascade;
+  end if;
+end $$;
+
 create table if not exists certificate_versions (
   id                 uuid primary key default gen_random_uuid(),
   certificate_id     uuid not null references certificates(id) on delete cascade,
@@ -75,10 +103,13 @@ create trigger trg_certificate_versions_no_update
 -- RLS: 自テナントのみ参照可。書込はサービスロール(API の tenant-scoped admin)経由のみ。
 alter table certificate_versions enable row level security;
 
+-- ポリシーは再実行に耐えるよう drop-if-exists を前置する (create policy は存在時に失敗するため)。
+drop policy if exists "cert_versions_tenant_select" on certificate_versions;
 create policy "cert_versions_tenant_select"
   on certificate_versions for select
   using (tenant_id in (select tenant_id from tenant_memberships where user_id = auth.uid()));
 
+drop policy if exists "cert_versions_service_insert" on certificate_versions;
 create policy "cert_versions_service_insert"
   on certificate_versions for insert
   with check (auth.role() = 'service_role');
