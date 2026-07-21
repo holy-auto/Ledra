@@ -104,8 +104,13 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // ジョブ自体は実行到達＝成功として streak をリセット（個別失敗は results / gcal_sync_log に残る）。
-    await recordCronSuccess(admin, CRON_TASK);
+    // 一部失敗は許容（ベストエフォート）。ただし対象があるのに全滅した場合は systemic 障害
+    // （Google API 全断・認証失効など）とみなし failure として記録し、streak をリセットしない。
+    if (syncErrors > 0 && processed === 0) {
+      await recordCronFailure(admin, CRON_TASK, new Error(`all ${syncErrors} tenant sync(s) failed`));
+    } else {
+      await recordCronSuccess(admin, CRON_TASK);
+    }
 
     return apiOk({
       task: CRON_TASK,
