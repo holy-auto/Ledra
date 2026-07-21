@@ -185,6 +185,32 @@
    数える実装への拡張が必要（現状は当日無予約時のみ終日受付）。深夜跨ぎ営業の終日表現も未対応（00:00–23:59前提）。
 9. 公開区分: 公開可（機能仕様のみ。テナント固有の数値・個人情報なし）
 
+## 2026-07-20 凍結(Phase2-3)より WebAuthn 操作署名を優先。まず認証器の登録(enrollment)基盤を実装
+1. 日付: 2026-07-20
+2. 起きたこと: ② Phase 1(certificate_versions)を main へマージ後、次の一手として②の物理フリーズ(Phase 2-3)ではなく
+   WebAuthn 操作署名を選び、登録(enrollment)基盤を実装した。
+3. 以前の考え: ②の物理フリーズ(確定後の certificates 行を DB で不変化)まで続けるつもりだった。
+4. 違和感・問題: フリーズは ~106 リーダーの移行(5-8日)を要する高コストで、しかも Phase 1 で既に
+   「訂正が不変・追記専用・アンカ digest と突合で改ざん検知可能」= detection は成立済み。フリーズが足すのは
+   prevention のみで限界効用が小さい。一方 goal #5「運営者でも改変不可」は、鍵と本人性(誰が確定したか)を
+   運営者が偽造できなくする方が直接的で、WebAuthn は外部 ops 依存が小さく単独でほぼ完結できる。
+5. 決めたこと: 物理フリーズより WebAuthn 操作署名を優先。増分1として認証器登録の基盤を実装。
+   - テーブル: operator_credentials / webauthn_challenges / webauthn_assertions(assertions は UPDATE 禁止・
+     DELETE は消去権 CASCADE 用に許可)。RLS は本人スコープ + service-role 書込。
+   - ルート: register options/verify、認証器の一覧(GET)/失効(DELETE ソフト)。userVerification=required で
+     共有アカウントの無言登録を抑止、excludeCredentials で二重登録防止、チャレンジは一度限り・TTL 付き。
+   - 設定: RP ID/origin は NEXT_PUBLIC_APP_URL から導出(WEBAUTHN_* で上書き可)。
+     フラグ WEBAUTHN_OPERATION_SIGNING=off|optional|enforce(増分2用)。@simplewebauthn/server v13.3.2。
+   - 純関数を単体テスト(5 ケース)。migration は本番一時 schema で不変ガード/CHECK を実証。
+6. 捨てた選択肢: (a) Phase 2-3 フリーズ継続 — detection 成立済みで限界効用小・高コスト。(b) 手書き WebAuthn —
+   COSE/attestation/counter 検証の自作は高リスク。(c) 登録と操作署名の一括実装 — セキュリティ実装は増分で
+   検証しながら進める方が安全。
+7. 判断理由: 「検証済みの detection の上に、鍵・本人性の偽造不能性(#5)を積む」方が費用対効果が高い。
+   WebAuthn は私単独で完結でき、登録→操作署名の順で段階検証できる。
+8. まだ答えが出ていないこと: 増分2(操作署名: challenge=イベント payload_hash に束縛し finalize/void/訂正へ配線、
+   enforce 運用)。RP_ID/origin の本番値。フロント(navigator.credentials)実装。② フリーズ(Phase 2-3)を将来やるか。
+9. 公開区分: 要確認(WebAuthn 採用と段階方針は発信可。内部実装詳細は非公開が無難)
+
 ## 2026-07-19 LINE概算自動返信の不着は「60秒タイムアウトで最後発の返信が打ち切られる」ため順序変更+延長で対処
 1. 日付: 2026-07-19
 2. 起きたこと: 「車種・内容は認識してるのに自動返信が来ない」と報告。本番監査ログ(ai_usage_logs /

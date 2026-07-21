@@ -13,6 +13,7 @@ import { triggerCertificateIssued } from "@/lib/certificates/issueHooks";
 import { enqueueCertificateAnchor } from "@/lib/anchoring/certificateAnchorService";
 import { getActorAssurance } from "@/lib/auth/mfa";
 import { describeAssurance } from "@/lib/certificates/issuerAssurance";
+import { requireOperationAssertion } from "@/lib/webauthn/gate";
 import {
   apiOk,
   apiInternalError,
@@ -34,6 +35,8 @@ const certStatusSchema = z.object({
     .trim()
     .toLowerCase()
     .pipe(z.enum(VALID_STATUSES, { message: "status は active / void / draft のいずれかを指定してください。" })),
+  // WebAuthn 操作署名(WEBAUTHN_OPERATION_SIGNING=optional|enforce のとき使用)。
+  webauthn_challenge_id: z.string().uuid().optional(),
 });
 
 /**
@@ -122,6 +125,19 @@ export async function PUT(req: Request) {
       }
     }
 
+    // WebAuthn 操作署名ゲート。WEBAUTHN_OPERATION_SIGNING=off(既定)では即 ok=true で
+    // 本番挙動は不変。optional/enforce のときのみ、登録済み認証器での署名(operation/verify で
+    // 記録済みの assertion)を要求し、チャレンジを単回消費する。→active は 'finalize'、→void は 'void'。
+    const opType = newStatus === "void" ? "void" : "finalize";
+    const gate = await requireOperationAssertion(admin, {
+      userId: caller.userId,
+      tenantId: caller.tenantId,
+      operationType: opType,
+      certificateId: cert.id as string,
+      challengeId: parsed.data.webauthn_challenge_id ?? null,
+    });
+    if (!gate.ok) return apiForbidden(gate.reason ?? "この操作には操作署名が必要です。");
+
     // Perform the update via admin client (bypasses RLS)
     const { data: updated, error: updateErr } = await admin
       .from("certificates")
@@ -146,6 +162,8 @@ export async function PUT(req: Request) {
       const assurance = await getActorAssurance(supabase);
       description += ` (発行者の本人性: ${describeAssurance(assurance)})`;
     }
+    // 操作署名(パスキー)で承認された操作はその旨を監査へ残す。
+    if (gate.assurance === "passkey") description += " [操作署名: パスキー]";
     logCertificateAction({
       type: auditType,
       tenantId: caller.tenantId,
