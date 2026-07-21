@@ -309,7 +309,7 @@ export async function signConfirmation(
   // 署名がまだ（otp_verified）なら作成して signed にする。署名は不変の確定物なので、
   // 既に signed（前回の装着遷移で失敗）なら再署名・再 TSA はせず装着遷移だけ再試行する。
   if (sig.status === "otp_verified") {
-    const signed = signPartConfirmation({
+    const signed = await signPartConfirmation({
       contentHash: sig.document_hash,
       signedAt,
       installationId: sig.installation_id,

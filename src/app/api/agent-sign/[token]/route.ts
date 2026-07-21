@@ -16,11 +16,10 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { createSign } from "crypto";
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { apiJson, apiInternalError } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
-import { getPrivateKey, getActiveKeyInfo } from "@/lib/signature/crypto";
+import { signPayloadWithProvider } from "@/lib/signature/signer";
 
 const agentSignPostSchema = z.object({
   signer_email: z.string().trim().toLowerCase().email("有効なメールアドレスを入力してください").max(254),
@@ -51,14 +50,6 @@ function buildAgentContractPayload(
     signedAt,
     signerEmail.toLowerCase().trim(),
   ].join(":");
-}
-
-/** ECDSA P-256 署名 */
-function signPayload(payload: string, privateKey: string): string {
-  const sign = createSign("SHA256");
-  sign.update(payload, "utf8");
-  sign.end();
-  return sign.sign(privateKey, "base64");
 }
 
 // ── GET ──────────────────────────────────────────────────────
@@ -159,9 +150,10 @@ export async function POST(req: NextRequest, ctx: RouteCtx) {
     let signature: string;
     let keyInfo: { version: string; fingerprint: string };
     try {
-      const privateKey = getPrivateKey();
-      signature = signPayload(payload, privateKey);
-      keyInfo = getActiveKeyInfo();
+      // 署名器抽象(SIGNER_PROVIDER=local 既定 / aws-kms で KMS)。既定は現行と同一挙動。
+      const signed = await signPayloadWithProvider(payload);
+      signature = signed.signature;
+      keyInfo = { version: signed.keyVersion, fingerprint: signed.publicKeyFingerprint };
     } catch (err) {
       console.error("[agent-sign] Signing failed:", err);
       return apiJson({ message: "署名処理中にエラーが発生しました" }, { status: 500 });
