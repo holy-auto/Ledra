@@ -180,17 +180,29 @@ export async function POST(req: NextRequest) {
       }
 
       // 境界は排他（開始=前枠の終了 は重複としない）。空き状況 GET と揃え、隣接枠を
-      // 独立して予約可能にする。
-      const { count } = await admin
-        .from("reservations")
-        .select("id", { count: "exact", head: true })
-        .eq("tenant_id", tenant.id)
-        .eq("scheduled_date", scheduledDate)
-        .neq("status", "cancelled")
-        .lt("start_time", endTime)
-        .gt("end_time", startTime);
+      // 独立して予約可能にする。取引先の有効な仮押さえ(reservation_holds)も占有として
+      // 数え、押さえ枠に一般客予約が入る（オーバーセル）のを防ぐ。
+      const [{ count }, { count: heldCount }] = await Promise.all([
+        admin
+          .from("reservations")
+          .select("id", { count: "exact", head: true })
+          .eq("tenant_id", tenant.id)
+          .eq("scheduled_date", scheduledDate)
+          .neq("status", "cancelled")
+          .lt("start_time", endTime)
+          .gt("end_time", startTime),
+        admin
+          .from("reservation_holds")
+          .select("id", { count: "exact", head: true })
+          .eq("tenant_id", tenant.id)
+          .eq("scheduled_date", scheduledDate)
+          .eq("status", "pending")
+          .gt("expires_at", new Date().toISOString())
+          .lt("start_time", endTime)
+          .gt("end_time", startTime),
+      ]);
 
-      if ((count ?? 0) >= maxBookings) {
+      if ((count ?? 0) + (heldCount ?? 0) >= maxBookings) {
         return apiError({
           code: "conflict",
           message: "ご指定の時間帯は満席です。別の時間帯をお選びください。",
@@ -217,6 +229,25 @@ export async function POST(req: NextRequest) {
           : "ご指定の時間帯は既に予約が入っています。別の時間帯をお選びください。",
         status: 409,
       });
+    }
+
+    // 終日予約は、取引先の有効な仮押さえが当日に1件でもあれば承れない（押さえ枠と併存不可）。
+    // 時間枠予約は上のスロット容量チェックで仮押さえを加味済み。
+    if (isAllDay) {
+      const { count: heldCount } = await admin
+        .from("reservation_holds")
+        .select("id", { count: "exact", head: true })
+        .eq("tenant_id", tenant.id)
+        .eq("scheduled_date", scheduledDate)
+        .eq("status", "pending")
+        .gt("expires_at", new Date().toISOString());
+      if ((heldCount ?? 0) > 0) {
+        return apiError({
+          code: "conflict",
+          message: "この日は既に枠が押さえられているため終日予約を承れません。別の日をお選びください。",
+          status: 409,
+        });
+      }
     }
 
     // ── 顧客レコード作成/取得 ──

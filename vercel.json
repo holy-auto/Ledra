@@ -130,6 +130,10 @@
     {
       "path": "/api/cron/vehicle-capture-prompt",
       "schedule": "0 23 * * *"
+    },
+    {
+      "path": "/api/cron/gcal-sync",
+      "schedule": "*/15 * * * *"
     }
   ]
 }
