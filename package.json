@@ -53,6 +53,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.110.0",
+    "@aws-sdk/client-kms": "^3.1091.0",
     "@googleapis/calendar": "^14.2.0",
     "@openzeppelin/merkle-tree": "^1.0.8",
     "@peculiar/webcrypto": "^1.7.1",

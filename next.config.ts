@@ -26,6 +26,8 @@ const nextConfig: NextConfig = {
     "@react-pdf/renderer",
     // Native binary module — cannot be bundled by Turbopack
     "@contentauth/c2pa-node",
+    // AWS SDK は署名器 aws-kms モード時のみ動的 import。大きいのでバンドルせず外部化する。
+    "@aws-sdk/client-kms",
   ],
 
   // Pin Turbopack root to this directory to prevent path resolution issues in worktrees

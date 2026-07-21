@@ -22,6 +22,30 @@
 9. 公開区分: 公開可／要確認／非公開
 ```
 
+## 2026-07-21 署名鍵を運営者の env から外すため署名器を抽象化(local/KMS)。まず seam＋signature/sign 経路を配線
+1. 日付: 2026-07-21
+2. 起きたこと: goal #5「運営者でも改変不可」の最後のピースとして、単一プラットフォーム署名鍵(env 平文 PEM)を
+   KMS へ移せるよう署名器を抽象化した。別ブランチ claude/ledra-kms-signer で実装。
+3. 以前の考え: 署名は crypto.ts の signPayload(payload, getPrivateKey()) が env の PEM 秘密鍵を直接使う設計で、
+   運営者が鍵を保持できてしまう(#5 の穴)。
+4. 違和感・問題: KMS は非同期(ネットワーク)なので同期の signPayload の置換には署名経路の async 化が要る。
+   また Node の ECDSA は生ダイジェスト署名(sign(null,digest))が createVerify('SHA256') と非互換で、
+   sign('sha256', message) が正(実測で確認)。KMS 側は MessageType=DIGEST(SHA-256→ECDSA DER)で互換にできる。
+5. 決めたこと: src/lib/signature/signer.ts に Signer 抽象(sign(message)→DER ECDSA-SHA256)＋LocalPemSigner(現行 env 鍵)
+   ＋KmsSigner(AWS KMS ECC_NIST_P256・動的 import・秘密鍵はアプリに出ない)＋getSigner(SIGNER_PROVIDER=local|aws-kms、
+   既定 local)＋signPayloadWithProvider を追加。roundtrip 単体テストで「LocalPemSigner 出力が既存 verifySignature で
+   通る＝置換互換」を実証。primary な顧客確認署名 signature/sign を signPayloadWithProvider に配線。
+   @aws-sdk/client-kms は serverExternalPackages で外部化。既定 local で本番挙動は不変。
+6. 捨てた選択肢: (a) sign(null,digest) の生ダイジェスト署名 — 実測で verify 非互換のため sign('sha256',message) に。
+   (b) 全署名経路を一括 async 化 — 本番署名を一度に触るのは高リスク＋E2E 不能のためまず 1 経路、残りは follow-up。
+   (c) 鍵アルゴリズム変更 — P-256 のままドロップイン(DER 互換)。
+7. 判断理由: 検証済み detection(Phase1)＋本人性(WebAuthn)の上に鍵の偽造不能性(#5)を積む。KMS 非対称署名は P-256・
+   DER 互換でドロップイン、既定 local で無回帰、seam を検証してから経路を段階配線する方が安全。
+8. まだ答えが出ていないこと: 残り署名経路(delivery-receipt / body-repair / partSigning[sync→async ripple] /
+   agent-sign[local 重複])の配線。Polygon 署名鍵(secp256k1)の KMS 化。signature_public_keys への
+   provider/kms_key_arn 列追加(KMS 鍵登録時)。KMS の実 E2E(この環境では AWS 不可)。
+9. 公開区分: 要確認(KMS 移行方針・段階配線は発信可。鍵運用の内部詳細は非公開が無難)
+
 ## 2026-07-20 他店の空き確認＋枠押さえ（Phase 2）は取引先許可制＋仮押さえ→承認で本予約、既存資産を再利用
 1. 日付: 2026-07-20
 2. 起きたこと: Phase 1(指名BtoB請求)マージ後、「取引先の空きを Ledra 上で確認し枠を押さえたい(電話レス)」を実装。
