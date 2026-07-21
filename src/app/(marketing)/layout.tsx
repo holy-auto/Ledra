@@ -6,6 +6,7 @@ import { CookieConsent } from "@/components/marketing/CookieConsent";
 import { PostHogProvider } from "@/components/marketing/PostHogProvider";
 import { GoogleAnalytics } from "@/components/marketing/GoogleAnalytics";
 import { CTATracker } from "@/components/marketing/CTATracker";
+import { UtmCapture } from "@/components/marketing/UtmCapture";
 import { StickyMobileCTA } from "@/components/marketing/StickyMobileCTA";
 import MarketingThemeWrapper from "./MarketingThemeWrapper";
 
@@ -45,6 +46,7 @@ export default function MarketingLayout({ children }: { children: React.ReactNod
       <PostHogProvider />
       <GoogleAnalytics />
       <CTATracker />
+      <UtmCapture />
       <Header />
       <main>{children}</main>
       <Footer />
