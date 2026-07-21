@@ -25,8 +25,15 @@ import { createIntakeInvitation } from "@/lib/identity/intakeServer";
 
 /** 案内メッセージ冒頭の識別マーカー (再送クールダウン判定に使う)。 */
 export const LINK_PROMPT_MARKER = "【LINE連携のお願い】";
-/** 何件くらいやり取りが進んだら案内するか (いきなり初回では送らない)。 */
-const PROMPT_AFTER_INBOUND = Number(process.env.LINE_LINK_PROMPT_AFTER_INBOUND) || 2;
+/**
+ * 何通目の受信への返信で案内を出すか (この通数に達した受信メッセージへの返信で送る)。
+ * 既定 4 = お客様の 4 通目。友だち追加直後〜2 通目の「初っ端」で連携 (登録フォーム/コード)
+ * を要求すると、価値が伝わる前に離脱を招くため後ろ倒しにしている。
+ * さらに前後させたい場合は env LINE_LINK_PROMPT_AFTER_INBOUND で調整 (再デプロイ不要)。
+ * ponytail: 通数だけの素朴なヒューリスティックのため、初回セッションで一気に 4 通送る人には
+ * その場で出る。厳密に「初回来訪では出さない」なら初回接触からの経過時間 gate が upgrade path。
+ */
+const PROMPT_AFTER_INBOUND = Number(process.env.LINE_LINK_PROMPT_AFTER_INBOUND) || 4;
 /** 同一ユーザーへの再送を抑止する日数。 */
 const PROMPT_COOLDOWN_DAYS = Number(process.env.LINE_LINK_PROMPT_COOLDOWN_DAYS) || 7;
 
