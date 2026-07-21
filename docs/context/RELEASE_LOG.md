@@ -14,6 +14,17 @@
 
 ## 直近のリリース（git log 直近30件より、2026-07 時点で把握できるもの）
 
+## 2026-07-21 WebAuthn本番ビルド障害の修正（reflect-metadataポリフィル未読込） (PR #799)
+- 内容: 本番ビルド（`next build`）が `Failed to collect page data for /api/webauthn/operation/options` で
+  失敗していた障害を修正。原因は `@simplewebauthn/server` が依存する `@peculiar/x509` が `tsyringe` の
+  デコレータを使っており `reflect-metadata` ポリフィルの事前読込を前提とすること。Next.js のサーバー
+  バンドルにはこれが含まれず、ビルドの "Collecting page data" フェーズでルートモジュールを require した
+  瞬間に例外が発生していた。WebAuthn の4 route（`register/options`, `register/verify`,
+  `operation/options`, `operation/verify`）先頭に `import "reflect-metadata";` を追加し、
+  `package.json` にも直接依存として明記して修正。コンパイル済み route.js を直接 `require()` して
+  修正前後の挙動（例外→正常ロード）を確認済み。
+- 対象: WebAuthn（パスキー登録・重要操作の本人確認）機能全体。本番デプロイのブロッカー解消。
+
 ## 2026-07-21 未連携LINEユーザーへの連携案内を後ろ倒し（既定2→4通目・env可変） (PR #792)
 - 内容: 未連携LINEユーザーへの【LINE連携のお願い】自動返信を、受信2通目→4通目に後ろ倒し
   (`LINE_LINK_PROMPT_AFTER_INBOUND` 既定 2→4)。友だち追加直後（初っ端）の要求で離脱するのを防ぐ。文面は変更なし。
