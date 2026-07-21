@@ -26,6 +26,8 @@ const nextConfig: NextConfig = {
     "@react-pdf/renderer",
     // Native binary module — cannot be bundled by Turbopack
     "@contentauth/c2pa-node",
+    // AWS SDK は署名器 aws-kms モード時のみ動的 import。大きいのでバンドルせず外部化する。
+    "@aws-sdk/client-kms",
   ],
 
   // Pin Turbopack root to this directory to prevent path resolution issues in worktrees
@@ -63,6 +65,24 @@ const nextConfig: NextConfig = {
         hostname: "**.supabase.in",
       },
     ],
+  },
+
+  async redirects() {
+    return [
+      // 令和の虎 出演キャンペーン用の覚えやすいバニティリンク。
+      // 放送 / SNS で案内する ledra.co.jp/tora を、UTM 付きで出演告知ページへ飛ばす。
+      // ponytail: permanent:false(Next.js は 307 一時リダイレクトを返す) にしているのは、
+      //   キャンペーン後に転送先を貼り替える前提のため(308/301 はブラウザに強くキャッシュ
+      //   され、後からの差し替えが効かない)。
+      // 依存: 転送先の /news 記事は放送(7/25 19:00)で draft 解除・公開されること。
+      //   /tora の告知も 19:00 以降のみ行うため、公開前に踏まれて 404 になる導線は無い。
+      {
+        source: "/tora",
+        destination:
+          "/news/2026-07-25-reiwa-no-tora?utm_source=tora&utm_medium=broadcast&utm_campaign=reiwa-tora-2026",
+        permanent: false,
+      },
+    ];
   },
 
   async headers() {

@@ -8,6 +8,7 @@ import { createCertAction } from "./actions";
 import { enqueueOrFetch } from "@/lib/outbox/enqueueOrFetch";
 import { enqueueOrFetchMultipart } from "@/lib/outbox/enqueueOrFetchMultipart";
 import { certCreateJsonSchema, formDataToCertJson } from "@/lib/certificates/createCertificateApi";
+import { listPasskeys, signOperation } from "@/lib/webauthn/browserCeremony";
 import { composeAiDraftContent, type AiDraftApplyInput } from "@/lib/certificates/composeAiDraftContent";
 import CertPackagePicker from "./CertPackagePicker";
 import VehiclePickerSection from "./VehiclePickerSection";
@@ -513,12 +514,43 @@ export default function CertNewFormWrapper({
       // status ルートで active 化する。サーバ側で写真有無を再検証するため、
       // 写真アップロードが失敗していればここでブロックされる (下書きのまま)。
       if (submitStatus === "active") {
+        // 操作署名(WebAuthn)。既定 off ではセレモニーを走らせず現行と同一挙動。
+        // optional/enforce かつパスキー登録済みなら「finalize」を payload_hash に束ねて承認する。
+        let webauthnChallengeId: string | undefined;
+        let modeInfo: Awaited<ReturnType<typeof listPasskeys>> | null = null;
+        try {
+          modeInfo = await listPasskeys();
+        } catch {
+          // モード取得失敗はサーバ gate に委ねてそのまま続行(enforce ならサーバが 403 で弾く)。
+          modeInfo = null;
+        }
+        if (modeInfo && modeInfo.mode !== "off") {
+          if (modeInfo.credentials.length > 0) {
+            setUploadProgress("パスキーで承認中…");
+            try {
+              const { challengeId } = await signOperation("finalize", { publicId: public_id });
+              webauthnChallengeId = challengeId;
+            } catch (e) {
+              const msg = e instanceof Error ? e.message : String(e);
+              setError(`パスキー承認に失敗しました（下書きとして保存されています）: ${msg}`);
+              setUploadProgress(null);
+              return;
+            }
+          } else if (modeInfo.mode === "enforce") {
+            setError(
+              "この操作にはパスキーの登録が必要です。設定 → セキュリティ でパスキーを登録してください（下書きとして保存されています）。",
+            );
+            setUploadProgress(null);
+            return;
+          }
+        }
+
         setUploadProgress("証明書を発行中…");
         try {
           const actRes = await fetch("/api/admin/certificates/status", {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ public_id, status: "active" }),
+            body: JSON.stringify({ public_id, status: "active", webauthn_challenge_id: webauthnChallengeId }),
           });
           if (!actRes.ok) {
             const actJson = await actRes.json().catch(() => ({}));

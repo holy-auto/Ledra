@@ -52,6 +52,10 @@ function isErr(v: AuthContext | Err): v is Err {
 function revalidatePublicPaths(type: SiteContentType) {
   revalidatePath("/admin/site-content");
   if (type === "blog") revalidatePath("/blog");
+  if (type === "news") {
+    revalidatePath("/news");
+    revalidatePath("/"); // トップの NewsTeaser も更新する
+  }
   if (type === "event" || type === "webinar") revalidatePath("/events");
 }
 

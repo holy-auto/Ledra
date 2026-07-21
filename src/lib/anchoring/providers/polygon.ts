@@ -129,12 +129,13 @@ export async function anchorToPolygon(sha256: string): Promise<PolygonAnchorResu
   try {
     // Dynamic import to keep viem tree-shaken when polygon is disabled
     const { createPublicClient, createWalletClient, http } = await import("viem");
-    const { privateKeyToAccount } = await import("viem/accounts");
     const { polygon, polygonAmoy } = await import("viem/chains");
     const { LEDRA_ANCHOR_ABI } = await import("./polygonContract");
+    const { getPolygonAccount } = await import("../polygonSigner");
 
     const chain = config.network === "amoy" ? polygonAmoy : polygon;
-    const account = privateKeyToAccount(config.privateKey as `0x${string}`);
+    // 署名器抽象(POLYGON_SIGNER_PROVIDER=local 既定 / aws-kms で KMS)。既定は現行と同一挙動。
+    const account = await getPolygonAccount(config.privateKey);
 
     const publicClient = createPublicClient({
       chain,

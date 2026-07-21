@@ -3,6 +3,7 @@ import { createClient as createSupabaseServerClient } from "@/lib/supabase/serve
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { apiOk, apiUnauthorized, apiInternalError } from "@/lib/api/response";
+import { operationSigningMode } from "@/lib/webauthn/config";
 
 export const runtime = "nodejs";
 
@@ -22,7 +23,9 @@ export async function GET(_req: NextRequest) {
       .order("created_at", { ascending: false });
     if (error) return apiInternalError(error, "webauthn/credentials list");
 
-    return apiOk({ credentials: data ?? [] });
+    // operation_signing_mode: フロントが「操作署名を求めるか」を判断する材料。
+    // 既定 off ではフロントはセレモニーを一切走らせず現行挙動を維持する。
+    return apiOk({ credentials: data ?? [], operation_signing_mode: operationSigningMode() });
   } catch (e) {
     return apiInternalError(e, "webauthn/credentials");
   }

@@ -14,16 +14,37 @@
 
 ## 直近のリリース（git log 直近30件より、2026-07 時点で把握できるもの）
 
-## 2026-07-21 WebAuthn本番ビルド障害の修正（reflect-metadataポリフィル未読込） (PR #799)
-- 内容: 本番ビルド（`next build`）が `Failed to collect page data for /api/webauthn/operation/options` で
-  失敗していた障害を修正。原因は `@simplewebauthn/server` が依存する `@peculiar/x509` が `tsyringe` の
-  デコレータを使っており `reflect-metadata` ポリフィルの事前読込を前提とすること。Next.js のサーバー
-  バンドルにはこれが含まれず、ビルドの "Collecting page data" フェーズでルートモジュールを require した
-  瞬間に例外が発生していた。WebAuthn の4 route（`register/options`, `register/verify`,
-  `operation/options`, `operation/verify`）先頭に `import "reflect-metadata";` を追加し、
-  `package.json` にも直接依存として明記して修正。コンパイル済み route.js を直接 `require()` して
-  修正前後の挙動（例外→正常ロード）を確認済み。
-- 対象: WebAuthn（パスキー登録・重要操作の本人確認）機能全体。本番デプロイのブロッカー解消。
+## 2026-07-21 予約設定「保存すると初期に戻る」不具合を修正
+- 内容: 外部予約受付設定（受付時間スロット/定休日）で、一括生成・グリッド塗り・一覧編集をしても
+  「保存する」を押すと編集前の状態に戻る不具合を修正。原因は保存ボタンが PageHeader→PageBar へ publish
+  される際、PageBar が `actions` を初回 publish 時のスナップショットとして保持し slots 変更で再 publish
+  しない（無限ループ防止の意図的設計）ため、バー上の保存ボタンの `onClick` がロード直後の `handleSave`
+  （初期 slots を束縛）に固定されていたこと。`handleSave` が最新 state を `ref` 経由で読むようにして、
+  固定クロージャからでも保存ペイロードへ最新の編集を載せる。あわせて保存失敗時にサーバのエラー内容を
+  トーストへ表示（従来は "保存に失敗しました" 固定で原因が見えなかった）。PageBar 実物を載せた回帰
+  テスト2本を追加（修正前は落ちることを確認済み）。
+- 対象: 管理画面 `/admin/booking-settings`（外部予約受付設定）。全業種。
+
+## 2026-07-21 お知らせ(/news)を「HPコンテンツ管理」からブラウザ公開できるように（CMSに「お知らせ」種別を追加）
+- 内容: これまで `/news`（お知らせ）は MDX ファイル専用でデプロイしないと公開できなかった。CMS
+  (`site_content_posts`) に種別 `news`（お知らせ）を追加し、`/news` 一覧・詳細・トップの `NewsTeaser`・
+  sitemap を `/blog` と同じ「MDX + DB マージ（同一 slug は DB 優先）」方式に変更。以後、管理画面
+  「HPコンテンツ管理」から お知らせ を作成・**公開/下書き切替**でき、デプロイ不要。公開/下書き変更時に
+  `/news` とトップを revalidate。DB の `type` CHECK 制約を `NOT VALID`+`VALIDATE` で拡張。マージ処理は
+  純関数 `mergeContentItems` に集約し単体テスト。
+- 対象: 運営の HPコンテンツ管理（お知らせ）／公開サイト `/news`・トップページ。全業種（HP）。
+
+## 2026-07-21 本番ビルド破綻を修正: reflect-metadata polyfill 追加（tsyringe / @peculiar/x509）
+- 内容: `next build` の page-data 収集が `tsyringe requires a reflect polyfill` で失敗し、**本番デプロイ・
+  Vercel プレビュー・lighthouse が全滅**していた。原因は `@peculiar/x509`(→`tsyringe`) が要求する
+  `reflect-metadata` がどこからも import されていなかったこと（WebAuthn `@simplewebauthn/server` v13 と
+  証明書署名 c2pa/jpki/appAttest の両方が x509 を使う）。`reflect-metadata` を直接依存に追加し、x509/
+  simplewebauthn を直接 import する7ファイル（webauthn ルート4＋anchoring/jpki lib3）の先頭で
+  `import "reflect-metadata"` を読むようにした（ESM の記述順評価で x509 より前に polyfill が効く。
+  instrumentation の register はビルドの page-data 収集では走らないため import グラフ内に置くのが確実）。
+- 対象: ビルド/デプロイ基盤（全ルート）。WebAuthn・施工証明書PDF・アンカリング。
+- 検証: reflect-metadata 無し→x509 ロードで throw を再現、有り→正常ロードを node で実証。tsc/eslint 緑。
+  フルビルドはローカル(c2pa ネイティブ未導入)で完走不可のため最終確認は CI。
 
 ## 2026-07-21 未連携LINEユーザーへの連携案内を後ろ倒し（既定2→4通目・env可変） (PR #792)
 - 内容: 未連携LINEユーザーへの【LINE連携のお願い】自動返信を、受信2通目→4通目に後ろ倒し

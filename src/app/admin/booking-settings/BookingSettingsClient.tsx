@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import PageHeader from "@/components/ui/PageHeader";
 import SlotCalendarGrid, { type GridSlot } from "./SlotCalendarGrid";
 import { generateIntervalSlots } from "@/lib/booking/slots";
@@ -75,6 +75,15 @@ const selectCls =
 export default function BookingSettingsClient() {
   const [slots, setSlots] = useState<(BookingSlot & { _tempId: string })[]>([]);
   const [closedDays, setClosedDays] = useState<(ClosedDay & { _tempId: string })[]>([]);
+  // 常に最新の slots / closedDays を保持する ref（保存時に古いクロージャを掴む事故を防ぐ）。
+  const slotsRef = useRef(slots);
+  const closedDaysRef = useRef(closedDays);
+  useEffect(() => {
+    slotsRef.current = slots;
+  }, [slots]);
+  useEffect(() => {
+    closedDaysRef.current = closedDays;
+  }, [closedDays]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<{ type: "success" | "error"; msg: string } | null>(null);
@@ -479,8 +488,19 @@ export default function BookingSettingsClient() {
 
   // ─── 保存 ───
   async function handleSave() {
+    // 保存時に最新の slots / closedDays を必ず読むため、クロージャではなく ref から読む。
+    // 「保存すると初期に戻る」不具合の原因: 保存ボタンは PageHeader→usePublishPageBar 経由で
+    // グローバルのページバー(PageBar)へ publish されるが、PageBar は actions を「初回 publish 時の
+    // スナップショット」として保持し、slots 変更では再 publish しない（sig に actions 内容が含まれ
+    // ないため。無限ループ防止の意図的な設計）。結果、バーに描画される保存ボタンの onClick は
+    // ロード直後の handleSave（初期 slots を束縛）に固定され、編集後にクリックしても編集前の枠だけが
+    // 保存される（本番では更新後の全行が同一 updated_at・新規 insert 0 件で確認）。ref はレンダーを
+    // 跨いで同一参照なので、固定された handleSave からでも .current で最新値が読める（下の useEffect で同期）。
+    const curSlots = slotsRef.current;
+    const curClosed = closedDaysRef.current;
+
     // 編集済みスロットも含め、開始 >= 終了の不正な時間帯を弾く
-    const invalid = slots.some((s) => !s._deleted && toMinutes(s.start_time) >= toMinutes(s.end_time));
+    const invalid = curSlots.some((s) => !s._deleted && toMinutes(s.start_time) >= toMinutes(s.end_time));
     if (invalid) {
       showToast("error", "終了時刻は開始時刻より後にしてください");
       return;
@@ -489,15 +509,15 @@ export default function BookingSettingsClient() {
     try {
       // スロットは「今画面に出ている一式」をそのまま送る（id 付きは更新／id 無しは新規）。
       // 削除はサーバが desired set との差分で確定するため、クライアント側の削除ID送信は不要。
-      const slotsPayload = slots.filter((s) => !s._deleted).map(({ _tempId, _deleted, _new, ...rest }) => rest);
+      const slotsPayload = curSlots.filter((s) => !s._deleted).map(({ _tempId, _deleted, _new, ...rest }) => rest);
 
-      const closedToSave = closedDays
+      const closedToSave = curClosed
         .filter((c) => !c._deleted && !c._new)
         .map(({ _tempId, _deleted, _new, ...rest }) => rest);
-      const newClosed = closedDays
+      const newClosed = curClosed
         .filter((c) => c._new && !c._deleted)
         .map(({ _tempId, _deleted, _new, id, ...rest }) => rest);
-      const deletedClosedIds = closedDays.filter((c) => c._deleted && c.id).map((c) => c.id!);
+      const deletedClosedIds = curClosed.filter((c) => c._deleted && c.id).map((c) => c.id!);
 
       const body = {
         slots: slotsPayload,
@@ -511,12 +531,16 @@ export default function BookingSettingsClient() {
         body: JSON.stringify(body),
       });
 
-      if (!res.ok) throw new Error("save failed");
+      if (!res.ok) {
+        // サーバの実際のエラー内容を握り潰さず表示する（原因調査のため）。
+        const err = (await res.json().catch(() => null)) as { error?: string; message?: string } | null;
+        throw new Error(err?.error || err?.message || `保存に失敗しました (${res.status})`);
+      }
       showToast("success", "設定を保存しました");
       await fetchSettings();
     } catch (e) {
       console.error(e);
-      showToast("error", "保存に失敗しました");
+      showToast("error", e instanceof Error ? e.message : "保存に失敗しました");
     } finally {
       setSaving(false);
     }

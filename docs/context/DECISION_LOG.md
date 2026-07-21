@@ -22,6 +22,112 @@
 9. 公開区分: 公開可／要確認／非公開
 ```
 
+## 2026-07-21 予約設定の保存不具合はローカルの ref 修正で対処し、PageBar の actions スナップショット挙動は据え置く
+1. 日付: 2026-07-21
+2. 起きたこと: 代表から「予約設定で一括生成やボタン操作は効くのに『保存する』を押すと初期に戻る（以前にも修正依頼した）」と再指摘。
+   本番 DB を実測すると外部予約スロット全行が同一 updated_at・新規 insert 0 件で、保存が編集前の枠を再保存していた。
+3. 以前の考え: 症状から React Compiler によるクロージャ古さを疑っていた（未確証）。
+4. 違和感・問題: 根本原因が特定できていなかった。実際は保存ボタンが PageHeader→usePublishPageBar 経由で PageBar へ publish
+   される際、PageBar が `actions` を初回 publish 時のスナップショットとして保持し、slots 変更では再 publish しない（`sig` に
+   actions 内容を含めず無限ループを防ぐ意図的設計）。結果、バー上の保存ボタンの `onClick` がロード直後の `handleSave`
+   （初期 slots 束縛）に固定されていた。React Compiler は無関係（テスト環境=Compiler 無効でも再現した）。
+5. 決めたこと: `handleSave` 内で slots/closedDays を `ref`（レンダー跨ぎで同一参照・useEffect で最新同期）から読むローカル
+   修正で対処。固定クロージャからでも `.current` で最新編集を保存できる。保存失敗時はサーバの `error` をトースト表示。
+   PageBar 実物を載せた回帰テストを追加（修正前は落ちることを確認）。
+6. 捨てた選択肢: (a) PageBar 側で `actions` を毎回再 publish＝共通の根治 ― actions は毎レンダー参照が変わるため無限ループ
+   防止の現設計を崩し、多数の画面へ影響が波及する。緊急のこの修正に同梱するにはリスク大。(b) React Compiler 由来と
+   決めつけた対症 ― 原因誤認で再発リスク。
+7. 判断理由: 保存＝データ喪失に直結する急所（常設指示 §3）で、実害が出ている booking-settings を最小差分・低リスクで確実に
+   直すのが最優先。ref パターンは固定スナップショットの仕組みに依存せず最新値を保証する。
+8. まだ答えが出ていないこと: PageBar の「actions は初回スナップショット固定」は、頻繁に state を変える他ページの操作ボタンにも
+   同種の潜在バグを生む横断的 footgun。共通の根治（例: publish を ref 参照化する等）を別途検討するかは未決（OPEN_QUESTIONS に起票）。
+9. 公開区分: 公開可（技術的なバグ修正の記録。個人情報・機密なし）。
+
+## 2026-07-21 【訂正】「損保ジャパン確定」は事実でない(保険会社と接点ゼロ) → プレスのマイルストーン型を撤回し出演告知型へ戻す
+1. 日付: 2026-07-21
+2. 起きたこと: プレスを「事業マイルストーン同時発表型」で組み、主役の既定案を「大手損保(損保ジャパン)との本番連携」に
+   した。これに対し代表から「現状は保険会社と接点すらも作れていない」と訂正が入った。ピッチ資料
+   (reiwa-no-tora-pitch.md §0-§13)の「損保ジャパン本番接続 確定」表現を額面どおり受けたのが誤りだった。
+3. 以前の考え: ピッチ資料が損保ジャパン本番接続を「確定済み(2026-05-13 経営判断)」の旗艦マイルストーンとして一貫
+   記載していたため、これを実在の事業節目として press の主役に採用できると考えた。
+4. 違和感・問題: 接点すら無い提携を「連携を発表」と書くのは事実の捏造で、令和の虎視聴者(数字・事実に厳しい)に最も
+   刺さる失敗。かつ同じ虚偽がピッチ §0-§13 の想定原稿にも埋まっている（番組は収録済みで放送内容は変えられないため、
+   確実にできるのは「自社発信で損保提携を主張しないこと」）。
+5. 決めたこと: (1) プレスの角度をマイルストーン型から撤回し「出演告知型」に戻す(3ドラフトを損保虚偽の無い状態へ
+   revert)。(2) ドラフト内の損保『連携/準備中』表現を全除去し「保険との提携・接点はゼロ、事実でない実績は書かない」を
+   明記。(3) ピッチ §0-§13 の損保『確定』表現は事実と食い違う旨を §14.3 に整合性メモとして追加(番組は収録済みで
+   放送内容は変えられないため事前修正はできない。将来の流用時に事実へ直す)。(4) 確定済みのエンバーゴ(7/25 昼まで伏せる)は維持。
+6. 捨てた選択肢: (a) 損保を主役にしたマイルストーン型 press ― 虚偽のため不可。(b)「準備中」等のぼかしで残す ― 接点
+   ゼロなら準備中も過大表現で NG。(c) ピッチ §0-§13 を独断で全書き換え ― 当日何を主張するかは代表の事実確認・判断
+   事項のため、独断修正はせず警告に留めた。
+7. 判断理由: press 公開も TV 発言も不可逆・外部向けで、事実でない提携主張は事業の信頼を最も損なう(常設指示 §3 急所)。
+   出演告知型は虚偽の事業実績を一切主張せず、令和の虎の本来価値(認知)を取りに行けるため、真の節目が無い現状で
+   唯一誠実な選択。
+8. まだ答えが出ていないこと: 【2026-07-21 代表確定: 角度=A「出演告知型」で固定。マイルストーン型は真の節目が無い
+   ため不採用】。収録済みビデオで損保をどう語ったか(=7/25 公開後の露出リスクの有無。原稿は直せないので実発言に依存)。
+   自社数字(店舗数/MRR/発行数)・放送URL・反響数は差し込み待ち(データが出た時点で埋める)。
+9. 公開区分: 非公開(内部の事実誤認の訂正・当日原稿のリスクを含む)。
+
+## 2026-07-21 令和の虎（7/25 土 19:00 公開）のプレスは放送前に出さず、放送同時に自社チャネル先行・PR TIMES本命は週明け火曜
+1. 日付: 2026-07-21
+2. 起きたこと: 「7/25 19:00 令和の虎放送。プレスリリースをどのタイミングで出すか」と相談。既存資料
+   （`docs/internal/reiwa-no-tora-pitch.md` §11／`docs/marketing/press-2-distribution-growth.md` §2）を確認し、
+   段階配信の設計と告知ドラフト3種（自社/news・PR TIMES・SNS）を作成した。
+3. 以前の考え: press-2 の配信設計は「火・水・木 10:00 の一斉配信」を土台に置くのみで、YouTube公開型の
+   番組出演に紐づく段階配信（放送同時の自社先行 → 週明けに本命）は未整理だった。
+4. 違和感・問題: 放送は土曜19:00。そのまま土曜夜に PR TIMES 一斉配信すると記者が動かず本命が死ぬ。一方で
+   放送直後の検索スパイク（視聴者が社名・Ledraを検索）は自社チャネルで受ける必要がある。出演結果
+   （成立/条件付き/NO MONEY）とエンバーゴの扱いも未確定。
+5. 決めたこと: (1) 放送前の一斉配信はしない。(2) 7/25(土)19:00 に自社 `/news` と SNS のみ先行公開し検索
+   スパイクを受ける。(3) PR TIMES 本命は 7/28(火)10:00（反響が大きければ 7/27 月朝に前倒し可）。(4) 出演結果は
+   断定せず動画に委ね、自社数字・放送URL・反響数は `【要確認】` プレースホルダで運用。(5) ドラフト3種を作成
+   （news mdx=`draft:true` / PR TIMES 入稿 txt / SNS md）。
+6. 捨てた選択肢: (a) 放送同時に PR TIMES 一斉配信 ― 土曜夜は記者が拾えず本命が無駄になる。(b) 放送前に結果を
+   先出し ― エンバーゴ違反リスク。(c) 出演告知を単独ニュースにせず既存の装着インテグリティ(press-2)に混ぜる ―
+   「令和の虎」という news peg を活かせない。
+7. 判断理由: YouTube公開型は再生数が数日〜数週間積み上がるため、本命を数日後に置いても news hook が生きる。
+   自社プレイブック(press-2 §2)の「火水木10:00・週末回避」と、放送直後の検索スパイク受けを両立させる段階配信が
+   最も取りこぼしが少ない。タイミングより「19:00 時点で LP/news が更新済み・CV導線が生きている」ことが急所。
+8. まだ答えが出ていないこと: エンバーゴの具体条件（放送前告知の可否・結果解禁時刻）＝制作サイド未確認。PRの角度
+   （出演告知型か、事業マイルストーン同時発表型か）＝代表未確定。損保大手の実名記載可否＝先方許諾未取得。
+9. 公開区分: 要確認（タイミング設計の考え方は公開可＝note候補。ただし出演の事実・結果・損保実名・自社数字は、
+   放送/許諾/確定の前に対外発信してはならない）。
+
+## 2026-07-21 鍵の運営者非保持(#5)を一気通し: 残署名経路の KMS 配線・Polygon KMS 化・WebAuthn フロント・CI 重複検出
+1. 日付: 2026-07-21
+2. 起きたこと: goal #5「運営者でも署名鍵/証拠を恣意的に変更できないか」の残タスクを一括実装(ユーザー指示「全部」)。
+   4本立て: (a)残る署名経路を署名器抽象へ配線、(b)Polygon 署名鍵の KMS(secp256k1)化 seam、
+   (c)WebAuthn 操作署名の実フロント(パスキー登録/確定セレモニー)、(d)lint-migrations の重複バージョン検出。
+3. 以前の考え: 署名器抽象(#795)は別ブランチのドラフトのまま(未マージ)、KMS 配線は signature/sign の1経路のみ、
+   Polygon は env 平文 hex 鍵、WebAuthn はバックエンドのみでフロント未実装、マイグレ重複は CI で検出できず。
+4. 違和感・問題: #795 が stale(dirty)で main 未反映のため、残配線が土台を欠く。Polygon の writeContract は単一
+   env 鍵で運営者が保持。WebAuthn は登録 UI が無く optional/enforce に到達不能。#787→#797 の版衝突が CI をすり抜けた。
+5. 決めたこと: 指定ブランチを最新 main から作り直し、#795 の署名器コミットを cherry-pick して本ブランチに統合
+   (#795 は本 PR に吸収=クローズ予定)。その上で:
+   (a) delivery-receipt / body-repair-consent / agent-sign / partSigning(sync→async)を signPayloadWithProvider へ配線。
+       agent-sign の crypto.ts 重複ヘルパは削除。
+   (b) src/lib/anchoring/polygonSigner.ts に getPolygonAccount(local/aws-kms)。aws-kms は viem toAccount +
+       KMS Sign(MessageType=DIGEST)で、DER→low-S(EIP-2)→v 復元(鍵アドレス一致)を純関数 recoverEthSignature に分離。
+       anchor/anchorBatch/残高監視 cron を配線。@noble/curves を明示依存化。
+   (c) @simplewebauthn/browser 導入。設定→セキュリティに PasskeySection(登録/一覧/失効)。証明書発行の finalize に
+       操作署名セレモニーを配線。operation/options を public_id でも指定可に、credentials GET に mode を追加。
+   (d) lint-migrations に重複バージョン接頭辞検出を追加(allowlist でも衝突は隠さない)。テスト3件。
+   全て **フラグゲート・既定で本番挙動ゼロ変更**(SIGNER_PROVIDER=local / POLYGON_SIGNER_PROVIDER=local /
+   WEBAUTHN_OPERATION_SIGNING=off)。KMS 秘密鍵の実 E2E はこの環境で不能なため、暗号の要は AWS 無しの
+   ローカル往復自己検証テストで担保(署名器 roundtrip・secp256k1 DER→{r,s,v} 復元/high-S 正規化)。
+6. 捨てた選択肢: (a) #795 を rebase してから別途マージ — stale で衝突が多く、4本を跨ぐため本ブランチへ統合する方が
+   レビュー単位が揃う。(b) Polygon KMS を hand-rolled ASN.1/点復元で実装 — @noble/curves(viem 依存で導入済み)の
+   Signature.fromDER/normalizeS/recoverPublicKey を使う方が堅牢。(c) 生ダイジェスト署名 — Ethereum は keccak256 を
+   DIGEST で KMS へ渡す(ECDSA_SHA_256 は長さ指定のみで再ハッシュしない)。(d) WebAuthn 確定セレモニーを orphaned な
+   証明書詳細ページに載せる — 現状 dead code(server action で gate 迂回)。live な新規発行フローに配線した。
+7. 判断理由: 既存の署名器抽象・viem・@simplewebauthn・@noble を最大限流用し新規依存を最小化。既定 local/off で
+   無回帰を保証しつつ、鍵を運営者の手から外す(KMS)経路と本人性を独立鍵に近づける(WebAuthn)経路を both 用意。
+   検証できない KMS の要は純関数へ切り出し、ローカル鍵で往復する自己検証を残した。
+8. まだ答えが出ていないこと: KMS(P-256/secp256k1)の実 E2E・鍵作成・IAM/OIDC・Polygon KMS アドレスの anchorer
+   allowlist 登録＋POL 入金(cutover 前提)。WebAuthn の void(取消)セレモニー(現状 UI が dead)。enforce 運用ルール。
+   signature_public_keys への provider/kms_key_arn 列(KMS 公開鍵登録時)。db-migrate 失敗の通知可視化。
+9. 公開区分: 要確認(鍵運用の方針・段階配線は発信可。内部実装詳細・鍵運用手順は非公開が無難。対外発信前に代表確認)。
+
 ## 2026-07-21 WebAuthn マイグレーションのバージョン衝突を forward 再適用で解消（本番へ手動適用＋リポジトリ改名）
 1. 日付: 2026-07-21
 2. 起きたこと: #787(WebAuthn 増分1・2)を main へマージ後、自動適用 GitHub Actions `db-migrate` が失敗。調査の結果、
@@ -162,6 +268,30 @@
 8. まだ答えが出ていないこと: `gcal_calendar_id` 未設定の有効テナント(1件)は 'primary' にフォールバックするが意図通りか
    要確認。将来 push 通知方式に上げるかは別途(現状ポーリングで許容)。Vercel プランの cron 上限に対する余裕は未確認。
 9. 公開区分: 公開可（機能仕様のみ。テナント固有データ・接続情報なし）。
+
+## 2026-07-21 署名鍵を運営者の env から外すため署名器を抽象化(local/KMS)。まず seam＋signature/sign 経路を配線
+1. 日付: 2026-07-21
+2. 起きたこと: goal #5「運営者でも改変不可」の最後のピースとして、単一プラットフォーム署名鍵(env 平文 PEM)を
+   KMS へ移せるよう署名器を抽象化した。別ブランチ claude/ledra-kms-signer で実装。
+3. 以前の考え: 署名は crypto.ts の signPayload(payload, getPrivateKey()) が env の PEM 秘密鍵を直接使う設計で、
+   運営者が鍵を保持できてしまう(#5 の穴)。
+4. 違和感・問題: KMS は非同期(ネットワーク)なので同期の signPayload の置換には署名経路の async 化が要る。
+   また Node の ECDSA は生ダイジェスト署名(sign(null,digest))が createVerify('SHA256') と非互換で、
+   sign('sha256', message) が正(実測で確認)。KMS 側は MessageType=DIGEST(SHA-256→ECDSA DER)で互換にできる。
+5. 決めたこと: src/lib/signature/signer.ts に Signer 抽象(sign(message)→DER ECDSA-SHA256)＋LocalPemSigner(現行 env 鍵)
+   ＋KmsSigner(AWS KMS ECC_NIST_P256・動的 import・秘密鍵はアプリに出ない)＋getSigner(SIGNER_PROVIDER=local|aws-kms、
+   既定 local)＋signPayloadWithProvider を追加。roundtrip 単体テストで「LocalPemSigner 出力が既存 verifySignature で
+   通る＝置換互換」を実証。primary な顧客確認署名 signature/sign を signPayloadWithProvider に配線。
+   @aws-sdk/client-kms は serverExternalPackages で外部化。既定 local で本番挙動は不変。
+6. 捨てた選択肢: (a) sign(null,digest) の生ダイジェスト署名 — 実測で verify 非互換のため sign('sha256',message) に。
+   (b) 全署名経路を一括 async 化 — 本番署名を一度に触るのは高リスク＋E2E 不能のためまず 1 経路、残りは follow-up。
+   (c) 鍵アルゴリズム変更 — P-256 のままドロップイン(DER 互換)。
+7. 判断理由: 検証済み detection(Phase1)＋本人性(WebAuthn)の上に鍵の偽造不能性(#5)を積む。KMS 非対称署名は P-256・
+   DER 互換でドロップイン、既定 local で無回帰、seam を検証してから経路を段階配線する方が安全。
+8. まだ答えが出ていないこと: 残り署名経路(delivery-receipt / body-repair / partSigning[sync→async ripple] /
+   agent-sign[local 重複])の配線。Polygon 署名鍵(secp256k1)の KMS 化。signature_public_keys への
+   provider/kms_key_arn 列追加(KMS 鍵登録時)。KMS の実 E2E(この環境では AWS 不可)。
+9. 公開区分: 要確認(KMS 移行方針・段階配線は発信可。鍵運用の内部詳細は非公開が無難)
 
 ## 2026-07-20 他店の空き確認＋枠押さえ（Phase 2）は取引先許可制＋仮押さえ→承認で本予約、既存資産を再利用
 1. 日付: 2026-07-20

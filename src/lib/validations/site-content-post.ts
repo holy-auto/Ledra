@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const SITE_CONTENT_TYPES = ["blog", "event", "webinar"] as const;
+export const SITE_CONTENT_TYPES = ["blog", "news", "event", "webinar"] as const;
 export type SiteContentType = (typeof SITE_CONTENT_TYPES)[number];
 
 export const SITE_CONTENT_STATUSES = ["draft", "published", "archived"] as const;
@@ -8,6 +8,7 @@ export type SiteContentStatus = (typeof SITE_CONTENT_STATUSES)[number];
 
 export const SITE_CONTENT_TYPE_LABELS: Record<SiteContentType, string> = {
   blog: "ブログ",
+  news: "お知らせ",
   event: "イベント",
   webinar: "ウェビナー",
 };

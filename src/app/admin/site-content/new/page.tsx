@@ -33,7 +33,10 @@ export default async function SiteContentNewPage(props: { searchParams?: Promise
   if (!userRes?.user) redirect("/login?next=/admin/site-content/new");
 
   const initialType =
-    searchParams.type === "event" || searchParams.type === "webinar" || searchParams.type === "blog"
+    searchParams.type === "event" ||
+    searchParams.type === "webinar" ||
+    searchParams.type === "blog" ||
+    searchParams.type === "news"
       ? (searchParams.type as SiteContentType)
       : "blog";
 
@@ -44,7 +47,7 @@ export default async function SiteContentNewPage(props: { searchParams?: Promise
       <PageHeader
         tag="SITE CONTENT"
         title="新規作成"
-        description="ブログ・イベント・ウェビナーを新規作成します。"
+        description="お知らせ・ブログ・イベント・ウェビナーを新規作成します。"
         actions={
           <Link href="/admin/site-content" className="btn-secondary">
             一覧へ戻る
