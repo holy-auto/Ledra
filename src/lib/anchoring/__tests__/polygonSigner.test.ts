@@ -12,7 +12,7 @@ import { describe, it, expect } from "vitest";
 import { secp256k1 } from "@noble/curves/secp256k1";
 import { privateKeyToAccount } from "viem/accounts";
 import { keccak256, recoverAddress, serializeSignature, toHex, type Hex } from "viem";
-import { recoverEthSignature, spkiToAddress } from "@/lib/anchoring/polygonSigner";
+import { recoverEthSignature, spkiToAddress, normalizePolygonPrivateKey } from "@/lib/anchoring/polygonSigner";
 
 const N = secp256k1.CURVE.n;
 // anvil の既知テスト鍵(#0)
@@ -71,5 +71,22 @@ describe("polygonSigner crypto (KMS 互換の純関数)", () => {
 
   it("非圧縮点でない SPKI は明示的に throw する", () => {
     expect(() => spkiToAddress(new Uint8Array(10))).toThrow();
+  });
+});
+
+describe("normalizePolygonPrivateKey", () => {
+  const HEX64 = "ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
+  it("0x付き・無し・前後空白・大文字を 0x+小文字64hex に正規化する", () => {
+    expect(normalizePolygonPrivateKey(`0x${HEX64}`)).toBe(`0x${HEX64}`);
+    expect(normalizePolygonPrivateKey(HEX64)).toBe(`0x${HEX64}`); // 0x 無し → 補う（今回の実害ケース）
+    expect(normalizePolygonPrivateKey(`  0x${HEX64}\n`)).toBe(`0x${HEX64}`); // 前後空白を除去
+    expect(normalizePolygonPrivateKey(HEX64.toUpperCase())).toBe(`0x${HEX64}`); // 小文字化
+  });
+  it("桁不足・非hex・空・null は null を返す（monitor は skip、anchor は明示エラーになる）", () => {
+    expect(normalizePolygonPrivateKey("0xabc")).toBeNull();
+    expect(normalizePolygonPrivateKey("your-key-here")).toBeNull();
+    expect(normalizePolygonPrivateKey("")).toBeNull();
+    expect(normalizePolygonPrivateKey(undefined)).toBeNull();
+    expect(normalizePolygonPrivateKey(null)).toBeNull();
   });
 });

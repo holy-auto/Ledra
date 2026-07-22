@@ -27,16 +27,19 @@
 - 次のアクション: CI に `lint:migrations` を組み込むか判断する（堀越）。実装は軽微（既存 npm script を workflow から呼ぶだけ）。
 - 起票日: 2026-07-22
 
-## polygon-signer cron が秘密鍵形式エラーで連続失敗している（別の壊れた cron）
+## polygon-signer cron の秘密鍵形式エラー（コード側は対処済み・残りは env 値の確認）
 - 状況: `cron_failure_streaks` で `polygon-signer` が 510回超 連続失敗。エラーは
-  "invalid private key, expected hex or 32 bytes, got string"。Vercel の Cron Jobs 機能を ON にした
-  （2026-07-22、GCal 自動同期のため）ことで再び毎時実行されるが、毎回失敗する。Polygon(secp256k1) 署名鍵の
-  env 設定（形式が hex/32byte でない、または未設定）が原因と推定。GCal 調査中に発見（GCal 本件とは無関係）。
-- 影響範囲: Polygon へのアンカリング/署名系が実行できていない可能性（証跡の on-chain 記録に影響しうる）。要確認。
-- 選択肢: (a) Polygon 署名鍵の env を hex/32byte の正しい形式で設定 / (b) 現在使っていないなら cron を無効化・
-  vercel.json から外す。
-- 次のアクション: 当該 cron の役割と現在の要否を確認 → 必要なら鍵を正しい形式で設定、不要なら外す。
-- 起票日: 2026-07-22
+  "invalid private key, expected hex or 32 bytes, got string"。原因は `POLYGON_PRIVATE_KEY` が viem の
+  `privateKeyToAccount` が要求する `0x`+64桁hex でないこと（0x 無し/空白/桁違い等）。GCal 調査中に発見。
+- **コード側の対処済み（2026-07-22 PR）**: 共有関数 `getPolygonAccount` に `normalizePolygonPrivateKey`
+  （0x 補完・空白除去・小文字化・検証）を通す実装を追加。monitor cron は鍵が正規化できない場合 error ではなく
+  **skip** を返し failure streak を伸ばさない。→「0x 無しで貼っていた」なら本修正で monitor/anchor とも復旧。
+- 残（ユーザー対応が要る場合）: 鍵の**値自体**が誤り/プレースホルダ/未設定なら、正しい `POLYGON_PRIVATE_KEY`
+  （0x+64hex）を Vercel env に設定する必要がある（鍵の値は開発側からは参照・設定できない）。
+  アンカリング（on-chain 証跡）を使わないなら `POLYGON_ANCHOR_ENABLED` を外して monitor ごと止めるのも可。
+- 次のアクション: デプロイ後に polygon-signer が skip か healthy かを確認。healthy になれば復旧完了。
+  skip のままなら鍵の値を正しく設定 or アンカリング自体の要否を判断。
+- 起票日: 2026-07-22（同日中にコード対処を追記）
 
 ## PageBar の `actions` 初回スナップショット固定は他ページでも潜在バグになりうる
 - 状況: PageHeader→`usePublishPageBar` は `actions`（ページ上部バーの操作ボタン群）を初回 publish 時の
