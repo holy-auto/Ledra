@@ -46,6 +46,14 @@ async function resolveNews(slug: string): Promise<ResolvedNews | null> {
       publishedAt: dbPost.published_at ?? undefined,
       tags: dbPost.tags,
       heroImageUrl: dbPost.hero_image_url ?? undefined,
+      cta: {
+        title: dbPost.cta_title ?? undefined,
+        subtitle: dbPost.cta_subtitle ?? undefined,
+        primaryLabel: dbPost.cta_primary_label ?? undefined,
+        primaryHref: dbPost.cta_primary_href ?? undefined,
+        secondaryLabel: dbPost.cta_secondary_label ?? undefined,
+        secondaryHref: dbPost.cta_secondary_href ?? undefined,
+      },
     };
   }
 

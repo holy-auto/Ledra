@@ -9,10 +9,14 @@ export const contentType = OG_CONTENT_TYPE;
 export default async function Image({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
 
-  // DB(お知らせ)を優先。DB 投稿には ogTitle/ogSubtitle が無いので title/excerpt を使う。
+  // DB(お知らせ)を優先。og_title/og_subtitle があれば使い、無ければ title/excerpt にフォールバック。
   const dbPost = await getPublishedPostBySlug("news", slug);
   if (dbPost) {
-    return makeOgImage({ badge: "NEWS", title: dbPost.title, subtitle: dbPost.excerpt ?? undefined });
+    return makeOgImage({
+      badge: "NEWS",
+      title: dbPost.og_title ?? dbPost.title,
+      subtitle: dbPost.og_subtitle ?? dbPost.excerpt ?? undefined,
+    });
   }
 
   const fm = (await getContentBySlug("news", slug))?.frontmatter;
