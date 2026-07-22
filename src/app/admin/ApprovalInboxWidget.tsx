@@ -1,22 +1,28 @@
 import Link from "next/link";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { fetchApprovalInbox } from "@/lib/admin/approvalInboxData";
+import type { InboxSection } from "@/lib/admin/approvalInbox";
 import { logger } from "@/lib/logger";
+import type { Role } from "@/lib/auth/roles";
+
+const PREVIEW_ITEMS_PER_SECTION = 2;
 
 /**
  * ダッシュボード最上部に置く「AI 自動化の人の承認待ち」ウィジェット。
  * AI / 自動化が用意した下書き（証明書 / 発注 / 請求）が承認待ちの時だけ、
- * 琥珀の目立つカードで件数と内訳を出し、承認インボックスへ誘導する。
+ * 琥珀の目立つカードで件数・内訳・上位案件の「なぜ」を出し、承認インボックス
+ * へ誘導する。「なぜ」は実データがある種別だけ表示し、無い種別は捏造しない
+ * （証明書=AI信頼度、発注=起票時の実文言、請求書=表示なし）。
  * 0 件の時は何も描画しない（一等地を無駄に占有しない）。
  */
-export default async function ApprovalInboxWidget({ tenantId }: { tenantId: string }) {
+export default async function ApprovalInboxWidget({ tenantId, role }: { tenantId: string; role: Role }) {
   let total = 0;
-  let sections: { key: string; label: string; count: number }[] = [];
+  let sections: InboxSection[] = [];
   try {
     const supabase = await createSupabaseServerClient();
-    const inbox = await fetchApprovalInbox(supabase, tenantId);
+    const inbox = await fetchApprovalInbox(supabase, tenantId, role);
     total = inbox.total;
-    sections = inbox.sections.map((s) => ({ key: s.key, label: s.label, count: s.count }));
+    sections = inbox.sections;
   } catch (e) {
     // ダッシュボードは壊さない。承認ウィジェットは非表示にして続行。
     logger.error("ApprovalInboxWidget fetch failed", e);
@@ -60,15 +66,25 @@ export default async function ApprovalInboxWidget({ tenantId }: { tenantId: stri
       </div>
 
       {sections.length > 0 && (
-        <div className="mt-3 flex flex-wrap gap-2 pl-12">
+        <div className="mt-3 space-y-2.5 pl-12">
           {sections.map((s) => (
-            <span
-              key={s.key}
-              className="inline-flex items-center gap-1.5 rounded-full border border-border-subtle bg-base px-2.5 py-1 text-xs text-secondary"
-            >
-              {s.label}
-              <span className="font-semibold text-primary">{s.count}</span>
-            </span>
+            <div key={s.key}>
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-border-subtle bg-base px-2.5 py-1 text-xs text-secondary">
+                {s.label}
+                <span className="font-semibold text-primary">{s.count}</span>
+              </span>
+              <ul className="mt-1 space-y-0.5">
+                {s.items.slice(0, PREVIEW_ITEMS_PER_SECTION).map((item) => (
+                  <li key={item.id} className="truncate text-xs text-muted">
+                    <span className="text-secondary">{item.title}</span>
+                    {item.why && <span> — {item.why}</span>}
+                  </li>
+                ))}
+                {s.count > PREVIEW_ITEMS_PER_SECTION && (
+                  <li className="text-xs text-muted">他 {s.count - PREVIEW_ITEMS_PER_SECTION} 件</li>
+                )}
+              </ul>
+            </div>
           ))}
         </div>
       )}
