@@ -77,6 +77,19 @@ describe("buildApprovalInbox", () => {
     expect(items.find((i) => i.id === "C-without-confidence")?.why).toBeUndefined();
   });
 
+  it("does not throw when missingInfo (untyped JSONB) contains a non-string entry", () => {
+    const { sections } = buildApprovalInbox({
+      certificates: [
+        // @ts-expect-error — simulating a malformed/legacy AI snapshot from JSONB
+        { public_id: "C-bad-data", confidence: 0.6, missingInfo: ["走行距離", 42, null] },
+      ],
+      purchaseOrders: [],
+      invoices: [],
+    });
+    const item = sections.find((s) => s.key === "certificates")?.items[0];
+    expect(item?.why).toBe("AI信頼度 60% ・未確認: 走行距離");
+  });
+
   it("uses the purchase order's own note as why, never a fabricated number", () => {
     const { sections } = buildApprovalInbox({
       certificates: [],

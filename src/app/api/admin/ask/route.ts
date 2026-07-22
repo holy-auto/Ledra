@@ -21,6 +21,7 @@ import { loadAiAutomationSettings } from "@/lib/ai/automation/policy";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { matchAskRoute } from "@/lib/ai/askRouter";
 import { generateQAAnswer } from "@/lib/ai/qaAssistant";
+import { isAdvancedFeatureVisibleForUser } from "@/lib/features/serverVisibility";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -54,6 +55,13 @@ export async function POST(req: NextRequest) {
 
     if (!canUseFeature(caller.planTier, "ai_academy_qa")) {
       return apiValidationError("この機能はStandardプラン以上でご利用いただけます。", { code: "plan_limit" });
+    }
+
+    // academy-qa は advanced 機能としてテナント無効化/ユーザー未 opt-in にできる
+    // （/admin/academy/qa の元ネタと同じエンジンをここでも呼ぶため、プラン制限だけ
+    // 見てテナントの無効化設定をすり抜けないようにする）。
+    if (!(await isAdvancedFeatureVisibleForUser(caller.tenantId, caller.userId, "academy-qa"))) {
+      return apiValidationError("この機能は無効になっています。設定をご確認ください。", { code: "feature_disabled" });
     }
 
     const aiSettings = await loadAiAutomationSettings(caller.tenantId);

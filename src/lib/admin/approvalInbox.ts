@@ -73,7 +73,10 @@ function certificateWhy(
 ): string | undefined {
   if (typeof confidence !== "number") return undefined;
   const pct = Math.round(confidence * 100);
-  const missing = (missingInfo ?? []).filter((m) => m.trim().length > 0);
+  // ai_certificate_draft は非スキーマ拘束の JSONB なので、壊れた/古いスナップショットに
+  // 文字列以外が混ざっていても trim() で例外にしない（1件の不正データで
+  // /api/admin/inbox 全体を 500 にしない）。
+  const missing = (missingInfo ?? []).filter((m) => typeof m === "string" && m.trim().length > 0);
   return missing.length > 0 ? `AI信頼度 ${pct}% ・未確認: ${missing.join("、")}` : `AI信頼度 ${pct}%`;
 }
 

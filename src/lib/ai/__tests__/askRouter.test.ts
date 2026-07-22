@@ -15,6 +15,14 @@ describe("matchAskRoute", () => {
     expect(matchAskRoute("発注書を発行して")).toMatchObject({ href: "/admin/inventory" });
   });
 
+  it("routes walk-in job phrasing to jobs/new even when it mentions '予約'", () => {
+    expect(matchAskRoute("予約なしで飛び込み案件を作りたい")).toMatchObject({ href: "/admin/jobs/new" });
+  });
+
+  it("still routes a plain reservation question to reservations", () => {
+    expect(matchAskRoute("予約の空き状況を確認したい")).toMatchObject({ href: "/admin/reservations" });
+  });
+
   it("returns null for an empty or unmatched question", () => {
     expect(matchAskRoute("")).toBeNull();
     expect(matchAskRoute("   ")).toBeNull();
