@@ -13,7 +13,7 @@ export interface AskRouteMatch {
 
 const ROUTES: { keywords: string[]; href: string; label: string }[] = [
   { keywords: ["承認"], href: "/admin/inbox", label: "承認インボックス" },
-  { keywords: ["証明書", "しょうめいしょ", "発行"], href: "/admin/certificates", label: "証明書一覧" },
+  { keywords: ["証明書", "しょうめいしょ"], href: "/admin/certificates", label: "証明書一覧" },
   { keywords: ["請求書", "せいきゅう", "invoice"], href: "/admin/invoices", label: "請求書" },
   { keywords: ["課金", "プラン", "billing"], href: "/admin/billing", label: "請求・プラン" },
   { keywords: ["顧客", "こきゃく", "customer"], href: "/admin/customers", label: "顧客管理" },

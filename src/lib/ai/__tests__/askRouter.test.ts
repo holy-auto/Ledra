@@ -10,6 +10,11 @@ describe("matchAskRoute", () => {
     expect(matchAskRoute("請求書を送りたい")).toMatchObject({ href: "/admin/invoices" });
   });
 
+  it("does not let a generic '発行' verb hijack unrelated object+verb questions", () => {
+    expect(matchAskRoute("請求書を発行したい")).toMatchObject({ href: "/admin/invoices" });
+    expect(matchAskRoute("発注書を発行して")).toMatchObject({ href: "/admin/inventory" });
+  });
+
   it("returns null for an empty or unmatched question", () => {
     expect(matchAskRoute("")).toBeNull();
     expect(matchAskRoute("   ")).toBeNull();

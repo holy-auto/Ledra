@@ -32,8 +32,9 @@ export default function AskLedraBar() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ question: q }),
       });
-      const json = await parseJsonSafe<{ result?: AskResult; error?: string }>(res);
-      if (!res.ok) throw new Error(json?.error ?? `HTTP ${res.status}`);
+      const json = await parseJsonSafe<{ result?: AskResult; message?: string; error?: string }>(res);
+      // apiError は機械可読コードを `error` に、ユーザー向け日本語文言を `message` に入れる。
+      if (!res.ok) throw new Error(json?.message ?? json?.error ?? `HTTP ${res.status}`);
       if (json?.result) setResult(json.result);
     } catch (e) {
       setError(e instanceof Error ? e.message : "エラーが発生しました");
