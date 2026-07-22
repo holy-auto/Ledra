@@ -119,6 +119,9 @@ const PLAN_LABELS: Record<PlanTier, string> = {
   pro: "PRO",
 };
 
+// idempotencyKey の crypto 不在時フォールバックでのみ使う連番（衝突回避目的、セキュリティ用途ではない）。
+let fallbackKeySeq = 0;
+
 export default function CertNewFormWrapper({
   vehicles,
   customers = [],
@@ -197,7 +200,14 @@ export default function CertNewFormWrapper({
     if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
       return crypto.randomUUID();
     }
-    return `cert-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+    if (typeof crypto !== "undefined" && typeof crypto.getRandomValues === "function") {
+      const bytes = crypto.getRandomValues(new Uint8Array(10));
+      return `cert-${Date.now().toString(36)}-${Array.from(bytes, (b) => b.toString(36)).join("")}`;
+    }
+    // crypto が全く使えない環境向けの最終フォールバック（実運用では到達しない想定）。
+    // 一意性だけが目的でセキュリティ用途ではないため Math.random は使わず、
+    // モジュールスコープの連番で衝突を避ける。
+    return `cert-${Date.now().toString(36)}-${(fallbackKeySeq++).toString(36)}`;
   }, []);
 
   // AI下書き適用時にフォームフィールドを自動入力する
