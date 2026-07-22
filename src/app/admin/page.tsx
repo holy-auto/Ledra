@@ -430,7 +430,7 @@ export default async function AdminHome({ searchParams }: { searchParams?: Promi
       {/* AI 自動化の人の承認待ち — 一等地に常設（0 件なら自動で非表示） */}
       {tenantId && (
         <Suspense fallback={<ApprovalInboxWidgetSkeleton />}>
-          <ApprovalInboxWidget tenantId={tenantId} />
+          <ApprovalInboxWidget tenantId={tenantId} role={caller.role} />
         </Suspense>
       )}
 

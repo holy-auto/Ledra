@@ -17,7 +17,7 @@ export async function GET() {
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
 
-    const result = await fetchApprovalInbox(supabase, caller.tenantId);
+    const result = await fetchApprovalInbox(supabase, caller.tenantId, caller.role);
     return apiJson(result);
   } catch (e) {
     return apiInternalError(e, "admin/inbox GET");

@@ -3,6 +3,7 @@ import { createClient as createSupabaseServerClient } from "@/lib/supabase/serve
 import { fetchApprovalInbox } from "@/lib/admin/approvalInboxData";
 import type { InboxSection } from "@/lib/admin/approvalInbox";
 import { logger } from "@/lib/logger";
+import type { Role } from "@/lib/auth/roles";
 
 const PREVIEW_ITEMS_PER_SECTION = 2;
 
@@ -14,12 +15,12 @@ const PREVIEW_ITEMS_PER_SECTION = 2;
  * （証明書=AI信頼度、発注=起票時の実文言、請求書=表示なし）。
  * 0 件の時は何も描画しない（一等地を無駄に占有しない）。
  */
-export default async function ApprovalInboxWidget({ tenantId }: { tenantId: string }) {
+export default async function ApprovalInboxWidget({ tenantId, role }: { tenantId: string; role: Role }) {
   let total = 0;
   let sections: InboxSection[] = [];
   try {
     const supabase = await createSupabaseServerClient();
-    const inbox = await fetchApprovalInbox(supabase, tenantId);
+    const inbox = await fetchApprovalInbox(supabase, tenantId, role);
     total = inbox.total;
     sections = inbox.sections;
   } catch (e) {
