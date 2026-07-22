@@ -255,7 +255,15 @@ export default function SiteContentForm({ initial }: { initial: SiteContentFormI
             error={Boolean(errors.tags)}
           />
         </FormField>
-        <FormField label="公開日時" hint="未指定の場合、公開時に現在時刻が設定されます。" error={errors.published_at}>
+        <FormField
+          label="公開日時"
+          hint={
+            status === "scheduled"
+              ? "「予約」ではこの日時に自動公開されます（予約時刻・必須）。"
+              : "未指定の場合、公開時に現在時刻が設定されます。"
+          }
+          error={errors.published_at}
+        >
           <Input
             type="datetime-local"
             value={publishedAt}
