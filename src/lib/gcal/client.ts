@@ -242,6 +242,7 @@ export async function syncDeleteEvent(
 interface ReservationRow {
   id: string;
   gcal_event_id: string | null;
+  gcal_calendar_id: string | null;
   title: string;
   note: string | null;
   scheduled_date: string;
@@ -260,8 +261,44 @@ interface PushReservationRow {
   customer_id: string | null;
 }
 
+export type GcalReadMode = "full" | "busy";
+export type GcalCalendarSpec = { id: string; mode: GcalReadMode };
+
 /**
- * Google Calendar → 予約テーブルへ pull 同期
+ * pull 時に予約へ書き込む title/note を mode 別に決める（純関数・単体テスト対象）。
+ *   full … 予定名・詳細をそのまま取り込む
+ *   busy … 予定名・内容を隠して「予定あり」ブロックにする（個人カレンダーの非表示）
+ */
+export function desiredReservationFields(
+  summary: string | null | undefined,
+  description: string | null | undefined,
+  mode: GcalReadMode,
+): { title: string; note: string | null } {
+  if (mode === "busy") return { title: "予定あり", note: null };
+  return { title: summary || "(無題)", note: description || null };
+}
+
+/** tenants.gcal_read_calendars（jsonb）を安全に正規化する（不正値・重複・除外IDを排除）。 */
+export function normalizeReadCalendars(raw: unknown, excludeId?: string): GcalCalendarSpec[] {
+  if (!Array.isArray(raw)) return [];
+  const out: GcalCalendarSpec[] = [];
+  const seen = new Set<string>(excludeId ? [excludeId] : []);
+  for (const c of raw) {
+    const id = (c as { id?: unknown })?.id;
+    const mode = (c as { mode?: unknown })?.mode;
+    if (typeof id === "string" && id && !seen.has(id) && (mode === "full" || mode === "busy")) {
+      seen.add(id);
+      out.push({ id, mode });
+    }
+  }
+  return out;
+}
+
+/**
+ * Google Calendar → 予約テーブルへ pull 同期（複数カレンダー対応）
+ *
+ * メイン（gcal_calendar_id＝書き込み先）を full 読み取り、加えて gcal_read_calendars の
+ * 各カレンダーをモード別に取り込む。busy モードは時間だけ押さえて予定名を隠す。
  */
 export async function pullEventsFromCalendar(
   tenantId: string,
@@ -276,136 +313,29 @@ export async function pullEventsFromCalendar(
       return result;
     }
 
-    console.info(`[gcal] pull: fetching events from ${dateFrom} to ${dateTo} for tenant ${tenantId}`);
-
-    const res = await client.calendar.events.list({
-      calendarId: client.calendarId,
-      timeMin: `${dateFrom}T00:00:00+09:00`,
-      timeMax: `${dateTo}T23:59:59+09:00`,
-      singleEvents: true,
-      showDeleted: true,
-      maxResults: 500,
-    });
-
-    const events = res.data.items ?? [];
-    console.info(`[gcal] pull: found ${events.length} events in Google Calendar (including deleted)`);
-
     const { admin } = createTenantScopedAdmin(tenantId);
+
+    // メイン（書き込み先）は full 読み取り。追加カレンダーはモード別（メインと重複は除外）。
+    const { data: tenant } = await admin.from("tenants").select("gcal_read_calendars").eq("id", tenantId).single();
+    const calendars: GcalCalendarSpec[] = [
+      { id: client.calendarId, mode: "full" },
+      ...normalizeReadCalendars(tenant?.gcal_read_calendars, client.calendarId),
+    ];
+
+    // 既存の gcal 由来予約を一度に取得（カレンダー横断で event_id 照合）。
     const { data: existing } = await admin
       .from("reservations")
-      .select("id, gcal_event_id, title, note, scheduled_date, start_time, end_time, status")
+      .select("id, gcal_event_id, gcal_calendar_id, title, note, scheduled_date, start_time, end_time, status")
       .eq("tenant_id", tenantId)
       .not("gcal_event_id", "is", null);
-
     const existingMap = new Map((existing ?? []).map((r: ReservationRow) => [r.gcal_event_id, r]));
 
-    if (events.length === 0) return result;
-
-    for (const event of events) {
-      if (!event.id) continue;
-      if (event.status === "cancelled") {
-        const existingReservation = existingMap.get(event.id);
-        if (existingReservation && existingReservation.status !== "cancelled") {
-          const { error } = await admin
-            .from("reservations")
-            .update({
-              status: "cancelled",
-              cancelled_at: new Date().toISOString(),
-              cancel_reason: "Googleカレンダーで削除されました",
-              updated_at: new Date().toISOString(),
-            })
-            .eq("id", existingReservation.id);
-
-          if (error) {
-            console.error(`[gcal] pull: failed to cancel reservation ${existingReservation.id}:`, error.message);
-          } else {
-            result.cancelled++;
-            await logSync(
-              tenantId,
-              existingReservation.id,
-              "pull_cancel",
-              event.id,
-              "success",
-              "GCal event deleted/cancelled",
-            );
-          }
-        } else {
-          result.skipped++;
-        }
-        continue;
-      }
-
-      const summary = event.summary || "(無題)";
-      const startDate = event.start?.date || event.start?.dateTime?.slice(0, 10);
-      const startTime = event.start?.dateTime ? event.start.dateTime.slice(11, 19) : null;
-      const endTime = event.end?.dateTime ? event.end.dateTime.slice(11, 19) : null;
-
-      if (!startDate) {
-        console.warn(`[gcal] pull: skipping event ${event.id} — no start date`);
-        result.skipped++;
-        continue;
-      }
-
-      const existingReservation = existingMap.get(event.id);
-
-      if (existingReservation) {
-        const needsUpdate =
-          existingReservation.title !== summary ||
-          existingReservation.scheduled_date !== startDate ||
-          existingReservation.start_time !== startTime ||
-          existingReservation.end_time !== endTime ||
-          existingReservation.note !== (event.description || null);
-
-        if (needsUpdate) {
-          const { error } = await admin
-            .from("reservations")
-            .update({
-              title: summary,
-              note: event.description || null,
-              scheduled_date: startDate,
-              start_time: startTime,
-              end_time: endTime,
-            })
-            .eq("id", existingReservation.id);
-
-          if (error) {
-            console.error(`[gcal] pull: failed to update reservation ${existingReservation.id}:`, error.message);
-          } else {
-            result.updated++;
-            await logSync(tenantId, existingReservation.id, "pull_update", event.id, "success");
-          }
-        } else {
-          result.skipped++;
-        }
-      } else {
-        const { data: inserted, error } = await admin
-          .from("reservations")
-          .insert({
-            tenant_id: tenantId,
-            title: summary,
-            note: event.description || null,
-            scheduled_date: startDate,
-            start_time: startTime,
-            end_time: endTime,
-            gcal_event_id: event.id,
-            source: "gcal",
-            status: "confirmed",
-          })
-          .select("id")
-          .single();
-
-        if (error) {
-          console.error(`[gcal] pull: failed to insert event ${event.id}:`, error.message);
-          await logSync(tenantId, null, "pull_create", event.id, "error", error.message);
-        } else {
-          result.imported++;
-          await logSync(tenantId, inserted?.id ?? null, "pull_create", event.id, "success");
-        }
-      }
+    for (const cal of calendars) {
+      await pullOneCalendar(client.calendar, cal, admin, tenantId, dateFrom, dateTo, existingMap, result);
     }
 
     console.info(
-      `[gcal] pull: imported=${result.imported}, updated=${result.updated}, cancelled=${result.cancelled}, skipped=${result.skipped}`,
+      `[gcal] pull: imported=${result.imported}, updated=${result.updated}, cancelled=${result.cancelled}, skipped=${result.skipped} (calendars=${calendars.length})`,
     );
     await logSync(
       tenantId,
@@ -413,13 +343,153 @@ export async function pullEventsFromCalendar(
       "pull",
       null,
       "success",
-      `imported=${result.imported}, updated=${result.updated}, cancelled=${result.cancelled}, skipped=${result.skipped}`,
+      `imported=${result.imported}, updated=${result.updated}, cancelled=${result.cancelled}, skipped=${result.skipped}, calendars=${calendars.length}`,
     );
     return result;
   } catch (e) {
     console.error("[gcal] pull: error:", e);
     await logSync(tenantId, null, "pull", null, "error", String(e));
     return result;
+  }
+}
+
+/** 1 カレンダー分の pull（mode 別マスキング・由来カレンダー記録つき）。失敗は他カレンダーに波及させない。 */
+async function pullOneCalendar(
+  cal: calendar_v3.Calendar,
+  spec: GcalCalendarSpec,
+  admin: ReturnType<typeof createTenantScopedAdmin>["admin"],
+  tenantId: string,
+  dateFrom: string,
+  dateTo: string,
+  existingMap: Map<string | null, ReservationRow>,
+  result: { imported: number; updated: number; skipped: number; cancelled: number },
+): Promise<void> {
+  const { id: calendarId, mode } = spec;
+  let events: calendar_v3.Schema$Event[];
+  try {
+    const res = await cal.events.list({
+      calendarId,
+      timeMin: `${dateFrom}T00:00:00+09:00`,
+      timeMax: `${dateTo}T23:59:59+09:00`,
+      singleEvents: true,
+      showDeleted: true,
+      maxResults: 500,
+    });
+    events = res.data.items ?? [];
+  } catch (e) {
+    // 権限喪失・カレンダー削除などの 1 カレンダー障害は握り、他カレンダーの同期を続ける。
+    console.warn(`[gcal] pull: events.list failed for calendar ${calendarId}:`, e);
+    await logSync(tenantId, null, "pull", null, "error", `calendar=${calendarId}: ${String(e)}`);
+    return;
+  }
+
+  for (const event of events) {
+    if (!event.id) continue;
+
+    if (event.status === "cancelled") {
+      const existingReservation = existingMap.get(event.id);
+      if (existingReservation && existingReservation.status !== "cancelled") {
+        const { error } = await admin
+          .from("reservations")
+          .update({
+            status: "cancelled",
+            cancelled_at: new Date().toISOString(),
+            cancel_reason: "Googleカレンダーで削除されました",
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", existingReservation.id);
+        if (error) {
+          console.error(`[gcal] pull: failed to cancel reservation ${existingReservation.id}:`, error.message);
+        } else {
+          result.cancelled++;
+          await logSync(
+            tenantId,
+            existingReservation.id,
+            "pull_cancel",
+            event.id,
+            "success",
+            "GCal event deleted/cancelled",
+          );
+        }
+      } else {
+        result.skipped++;
+      }
+      continue;
+    }
+
+    const startDate = event.start?.date || event.start?.dateTime?.slice(0, 10);
+    const startTime = event.start?.dateTime ? event.start.dateTime.slice(11, 19) : null;
+    const endTime = event.end?.dateTime ? event.end.dateTime.slice(11, 19) : null;
+
+    if (!startDate) {
+      result.skipped++;
+      continue;
+    }
+    // busy は「時間を押さえる」用途なので、時刻の無い終日予定はブロックにしない（＝スキップ）。
+    if (mode === "busy" && !startTime) {
+      result.skipped++;
+      continue;
+    }
+
+    const { title, note } = desiredReservationFields(event.summary, event.description, mode);
+    const existingReservation = existingMap.get(event.id);
+
+    if (existingReservation) {
+      const needsUpdate =
+        existingReservation.title !== title ||
+        existingReservation.note !== note ||
+        existingReservation.scheduled_date !== startDate ||
+        existingReservation.start_time !== startTime ||
+        existingReservation.end_time !== endTime ||
+        existingReservation.gcal_calendar_id !== calendarId;
+      if (needsUpdate) {
+        const { error } = await admin
+          .from("reservations")
+          .update({
+            title,
+            note,
+            scheduled_date: startDate,
+            start_time: startTime,
+            end_time: endTime,
+            gcal_calendar_id: calendarId,
+          })
+          .eq("id", existingReservation.id);
+        if (error) {
+          console.error(`[gcal] pull: failed to update reservation ${existingReservation.id}:`, error.message);
+        } else {
+          result.updated++;
+          await logSync(tenantId, existingReservation.id, "pull_update", event.id, "success");
+        }
+      } else {
+        result.skipped++;
+      }
+    } else {
+      const { data: inserted, error } = await admin
+        .from("reservations")
+        .insert({
+          tenant_id: tenantId,
+          title,
+          note,
+          scheduled_date: startDate,
+          start_time: startTime,
+          end_time: endTime,
+          gcal_event_id: event.id,
+          gcal_calendar_id: calendarId,
+          source: "gcal",
+          status: "confirmed",
+        })
+        .select("id, gcal_event_id, gcal_calendar_id, title, note, scheduled_date, start_time, end_time, status")
+        .single();
+      if (error) {
+        console.error(`[gcal] pull: failed to insert event ${event.id}:`, error.message);
+        await logSync(tenantId, null, "pull_create", event.id, "error", error.message);
+      } else {
+        result.imported++;
+        // 同一イベントが別カレンダーにも出る場合の二重挿入を防ぐ。
+        if (inserted?.gcal_event_id) existingMap.set(inserted.gcal_event_id, inserted as ReservationRow);
+        await logSync(tenantId, inserted?.id ?? null, "pull_create", event.id, "success");
+      }
+    }
   }
 }
 

@@ -242,6 +242,7 @@ export default function ReservationsClient() {
   const [gcalLastSynced, setGcalLastSynced] = useState<string | null>(null);
   const [gcalCalendars, setGcalCalendars] = useState<{ id: string; summary: string; primary?: boolean }[]>([]);
   const [gcalCalendarId, setGcalCalendarId] = useState<string | null>(null);
+  const [gcalReadCalendars, setGcalReadCalendars] = useState<{ id: string; mode: "full" | "busy" }[]>([]);
   const [gcalCalendarSaving, setGcalCalendarSaving] = useState(false);
   const [showGcalPanel, setShowGcalPanel] = useState(false);
   const [gcalFeedback, setGcalFeedback] = useState<"connected" | "error" | null>(null);
@@ -321,6 +322,7 @@ export default function ReservationsClient() {
         if (gcRes.ok && gcJ?.connected) {
           setGcalConnected(true);
           if (gcJ?.calendar_id) setGcalCalendarId(gcJ.calendar_id);
+          if (Array.isArray(gcJ?.read_calendars)) setGcalReadCalendars(gcJ.read_calendars);
           const calRes = await fetch("/api/admin/gcal", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -1077,31 +1079,78 @@ export default function ReservationsClient() {
             </div>
           </div>
           {gcalConnected && gcalCalendars.length > 0 && (
-            <div className="flex items-center gap-2 pt-2 border-t border-border">
-              <label className="text-xs text-muted whitespace-nowrap">同期先カレンダー:</label>
-              <select
-                value={gcalCalendarId ?? "primary"}
-                onChange={async (e) => {
-                  const id = e.target.value;
-                  setGcalCalendarId(id);
-                  setGcalCalendarSaving(true);
-                  await fetch("/api/admin/gcal", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ action: "set-calendar", calendar_id: id }),
-                  });
-                  setGcalCalendarSaving(false);
-                }}
-                disabled={gcalCalendarSaving}
-                className="text-xs border border-border rounded px-2 py-1 flex-1 bg-background text-primary"
-              >
-                {gcalCalendars.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.summary}
-                    {c.primary ? " (メイン)" : ""}
-                  </option>
-                ))}
-              </select>
+            <div className="pt-2 border-t border-border space-y-2">
+              {/* 予約の書き込み先＝メイン（full 読み取りも兼ねる） */}
+              <div className="flex items-center gap-2">
+                <label className="text-xs text-muted whitespace-nowrap">予約の書き込み先:</label>
+                <select
+                  value={gcalCalendarId ?? "primary"}
+                  onChange={async (e) => {
+                    const id = e.target.value;
+                    setGcalCalendarId(id);
+                    setGcalCalendarSaving(true);
+                    await fetch("/api/admin/gcal", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ action: "set-calendar", calendar_id: id }),
+                    });
+                    setGcalCalendarSaving(false);
+                  }}
+                  disabled={gcalCalendarSaving}
+                  className="text-xs border border-border rounded px-2 py-1 flex-1 bg-background text-primary"
+                >
+                  {gcalCalendars.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.summary}
+                      {c.primary ? " (メイン)" : ""}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* 追加カレンダー（衝突チェック用・書き込み先以外）。個人予定は「予定あり(非公開)」で名前を隠せる。 */}
+              {gcalCalendars.filter((c) => c.id !== (gcalCalendarId ?? "primary")).length > 0 && (
+                <div className="space-y-1">
+                  <p className="text-xs text-muted">
+                    他のカレンダーもダブルブッキング防止に使う（個人予定は「予定あり(非公開)」で名前を隠せます）:
+                  </p>
+                  {gcalCalendars
+                    .filter((c) => c.id !== (gcalCalendarId ?? "primary"))
+                    .map((c) => {
+                      const mode = gcalReadCalendars.find((r) => r.id === c.id)?.mode ?? "off";
+                      return (
+                        <div key={c.id} className="flex items-center gap-2">
+                          <span className="text-xs text-primary flex-1 truncate">
+                            {c.summary}
+                            {c.primary ? " (メイン)" : ""}
+                          </span>
+                          <select
+                            value={mode}
+                            onChange={async (e) => {
+                              const m = e.target.value as "off" | "full" | "busy";
+                              const next = gcalReadCalendars.filter((r) => r.id !== c.id);
+                              if (m !== "off") next.push({ id: c.id, mode: m });
+                              setGcalReadCalendars(next);
+                              setGcalCalendarSaving(true);
+                              await fetch("/api/admin/gcal", {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({ action: "set-read-calendars", read_calendars: next }),
+                              });
+                              setGcalCalendarSaving(false);
+                            }}
+                            disabled={gcalCalendarSaving}
+                            className="text-xs border border-border rounded px-2 py-1 bg-background text-primary"
+                          >
+                            <option value="off">使わない</option>
+                            <option value="full">内容も同期</option>
+                            <option value="busy">予定あり(非公開)</option>
+                          </select>
+                        </div>
+                      );
+                    })}
+                </div>
+              )}
               {gcalCalendarSaving && <span className="text-xs text-muted">保存中...</span>}
             </div>
           )}

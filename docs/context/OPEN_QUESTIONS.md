@@ -14,6 +14,17 @@
 - 起票日: YYYY-MM-DD
 ```
 
+## polygon-signer cron が秘密鍵形式エラーで連続失敗している（別の壊れた cron）
+- 状況: `cron_failure_streaks` で `polygon-signer` が 510回超 連続失敗。エラーは
+  "invalid private key, expected hex or 32 bytes, got string"。Vercel の Cron Jobs 機能を ON にした
+  （2026-07-22、GCal 自動同期のため）ことで再び毎時実行されるが、毎回失敗する。Polygon(secp256k1) 署名鍵の
+  env 設定（形式が hex/32byte でない、または未設定）が原因と推定。GCal 調査中に発見（GCal 本件とは無関係）。
+- 影響範囲: Polygon へのアンカリング/署名系が実行できていない可能性（証跡の on-chain 記録に影響しうる）。要確認。
+- 選択肢: (a) Polygon 署名鍵の env を hex/32byte の正しい形式で設定 / (b) 現在使っていないなら cron を無効化・
+  vercel.json から外す。
+- 次のアクション: 当該 cron の役割と現在の要否を確認 → 必要なら鍵を正しい形式で設定、不要なら外す。
+- 起票日: 2026-07-22
+
 ## PageBar の `actions` 初回スナップショット固定は他ページでも潜在バグになりうる
 - 状況: PageHeader→`usePublishPageBar` は `actions`（ページ上部バーの操作ボタン群）を初回 publish 時の
   スナップショットとして保持し、`sig`（title/description/activeTab/tabs/有無）が変わらない限り再 publish しない
