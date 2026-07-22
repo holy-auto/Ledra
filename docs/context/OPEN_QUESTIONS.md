@@ -14,6 +14,19 @@
 - 起票日: YYYY-MM-DD
 ```
 
+## マイグレーションの version 衝突チェックが CI で強制されていない（ローカル lint 頼み）
+- 状況: `scripts/lint-migrations.js` に「同一 version prefix の2ファイルを禁止する」duplicate-version チェックが
+  あるにもかかわらず、#808(cta_og) と #810(gcal) が同一 version `20260721110000` で衝突し、本番 db-migrate が
+  連続失敗した（2026-07-22、forward 改名で解消）。原因は lint がどの GitHub Actions workflow でも実行されておらず
+  （`npm run lint:migrations` のみ、pre-push は vitest だけ）、並行 PR の衝突をマージ前に止められないこと。
+- 選択肢: 案A `lint:migrations` を PR CI（必須チェック）に追加してマージをブロック。案B db-migrate workflow の
+  db push 前に `lint:migrations` を実行。案C 現状維持（衝突は事後に forward 改名で対処）。A/B はすり抜けを構造的に
+  防げるが必須チェック運用の追加、C は再発リスクを許容。
+- 影響範囲: 誤ると（＝再発すると）本番 db-migrate が止まり、以降の全マイグレーションがブロックされる（今回まさに
+  予約投稿マイグレーションが巻き込まれた）。
+- 次のアクション: CI に `lint:migrations` を組み込むか判断する（堀越）。実装は軽微（既存 npm script を workflow から呼ぶだけ）。
+- 起票日: 2026-07-22
+
 ## polygon-signer cron が秘密鍵形式エラーで連続失敗している（別の壊れた cron）
 - 状況: `cron_failure_streaks` で `polygon-signer` が 510回超 連続失敗。エラーは
   "invalid private key, expected hex or 32 bytes, got string"。Vercel の Cron Jobs 機能を ON にした
