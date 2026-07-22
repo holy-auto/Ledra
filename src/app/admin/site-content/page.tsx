@@ -28,7 +28,7 @@ type Row = {
 
 function statusVariant(status: SiteContentStatus): "success" | "warning" | "default" {
   if (status === "published") return "success";
-  if (status === "draft") return "warning";
+  if (status === "draft" || status === "scheduled") return "warning";
   return "default";
 }
 

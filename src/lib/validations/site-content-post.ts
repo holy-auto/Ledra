@@ -3,7 +3,7 @@ import { z } from "zod";
 export const SITE_CONTENT_TYPES = ["blog", "news", "event", "webinar"] as const;
 export type SiteContentType = (typeof SITE_CONTENT_TYPES)[number];
 
-export const SITE_CONTENT_STATUSES = ["draft", "published", "archived"] as const;
+export const SITE_CONTENT_STATUSES = ["draft", "scheduled", "published", "archived"] as const;
 export type SiteContentStatus = (typeof SITE_CONTENT_STATUSES)[number];
 
 export const SITE_CONTENT_TYPE_LABELS: Record<SiteContentType, string> = {
@@ -15,6 +15,7 @@ export const SITE_CONTENT_TYPE_LABELS: Record<SiteContentType, string> = {
 
 export const SITE_CONTENT_STATUS_LABELS: Record<SiteContentStatus, string> = {
   draft: "下書き",
+  scheduled: "予約",
   published: "公開中",
   archived: "アーカイブ",
 };
@@ -62,6 +63,13 @@ export const siteContentPostSchema = z
     og_subtitle: z.string().trim().max(200).nullable().optional(),
   })
   .superRefine((data, ctx) => {
+    if (data.status === "scheduled" && (!data.published_at || Number.isNaN(Date.parse(data.published_at)))) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["published_at"],
+        message: "予約公開には公開日時（予約時刻）を指定してください。",
+      });
+    }
     if (data.type === "event" || data.type === "webinar") {
       if (!data.event_start_at) {
         ctx.addIssue({
