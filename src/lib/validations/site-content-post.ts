@@ -22,6 +22,8 @@ export const SITE_CONTENT_STATUS_LABELS: Record<SiteContentStatus, string> = {
 const slugRegex = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/;
 
 const urlOrNull = z.string().trim().url("URLの形式が不正です。").max(500).nullable().optional();
+// CTA のリンク先は相対パス(/poc)も絶対URLも許すため url() は使わない。
+const hrefOrNull = z.string().trim().max(500, "リンクは500文字以内で入力してください。").nullable().optional();
 
 export const siteContentPostSchema = z
   .object({
@@ -47,6 +49,17 @@ export const siteContentPostSchema = z
     online_url: urlOrNull,
     capacity: z.coerce.number().int().min(0).max(100000).nullable().optional(),
     registration_url: urlOrNull,
+
+    // 記事CTA（未指定なら記事側で既定にフォールバック）
+    cta_title: z.string().trim().max(200).nullable().optional(),
+    cta_subtitle: z.string().trim().max(400).nullable().optional(),
+    cta_primary_label: z.string().trim().max(80).nullable().optional(),
+    cta_primary_href: hrefOrNull,
+    cta_secondary_label: z.string().trim().max(80).nullable().optional(),
+    cta_secondary_href: hrefOrNull,
+    // OGP（SNS カード用。未指定なら title/excerpt を使う）
+    og_title: z.string().trim().max(120).nullable().optional(),
+    og_subtitle: z.string().trim().max(200).nullable().optional(),
   })
   .superRefine((data, ctx) => {
     if (data.type === "event" || data.type === "webinar") {
@@ -107,5 +120,13 @@ export function parseSiteContentFormData(fd: FormData): Record<string, unknown> 
     online_url: nullable("online_url"),
     capacity: capacityRaw.length === 0 ? null : capacityRaw,
     registration_url: nullable("registration_url"),
+    cta_title: nullable("cta_title"),
+    cta_subtitle: nullable("cta_subtitle"),
+    cta_primary_label: nullable("cta_primary_label"),
+    cta_primary_href: nullable("cta_primary_href"),
+    cta_secondary_label: nullable("cta_secondary_label"),
+    cta_secondary_href: nullable("cta_secondary_href"),
+    og_title: nullable("og_title"),
+    og_subtitle: nullable("og_subtitle"),
   };
 }

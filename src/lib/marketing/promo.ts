@@ -17,6 +17,19 @@ export function isReiwaPromoActive(now: Date): boolean {
   return t >= REIWA_PROMO_START && t <= REIWA_PROMO_END;
 }
 
+/**
+ * バナーを出すか。期間内、または `?preview_promo=1`（期間前に文言/デザインを目視確認する
+ * ための抜け道）なら true。dismiss 判定はクライアント側で別途行う。
+ */
+export function shouldShowPromo(now: Date, search: string): boolean {
+  try {
+    if (new URLSearchParams(search).get("preview_promo") === "1") return true;
+  } catch {
+    // 不正な search でも期間判定にフォールバック
+  }
+  return isReiwaPromoActive(now);
+}
+
 /** バナー→告知ページの遷移に付ける UTM（新設の first-touch 帰属で「バナー経由」を分離計測）。 */
 export const REIWA_PROMO_HREF =
   "/news/2026-07-25-reiwa-no-tora?utm_source=promo-banner&utm_medium=site&utm_campaign=reiwa-tora-2026";

@@ -111,6 +111,14 @@ export async function createSiteContentAction(
       online_url: input.online_url ?? null,
       capacity: input.capacity ?? null,
       registration_url: input.registration_url ?? null,
+      cta_title: input.cta_title ?? null,
+      cta_subtitle: input.cta_subtitle ?? null,
+      cta_primary_label: input.cta_primary_label ?? null,
+      cta_primary_href: input.cta_primary_href ?? null,
+      cta_secondary_label: input.cta_secondary_label ?? null,
+      cta_secondary_href: input.cta_secondary_href ?? null,
+      og_title: input.og_title ?? null,
+      og_subtitle: input.og_subtitle ?? null,
       created_by: auth.userId,
     })
     .select("id, type")
@@ -179,6 +187,14 @@ export async function updateSiteContentAction(
       online_url: input.online_url ?? null,
       capacity: input.capacity ?? null,
       registration_url: input.registration_url ?? null,
+      cta_title: input.cta_title ?? null,
+      cta_subtitle: input.cta_subtitle ?? null,
+      cta_primary_label: input.cta_primary_label ?? null,
+      cta_primary_href: input.cta_primary_href ?? null,
+      cta_secondary_label: input.cta_secondary_label ?? null,
+      cta_secondary_href: input.cta_secondary_href ?? null,
+      og_title: input.og_title ?? null,
+      og_subtitle: input.og_subtitle ?? null,
     })
     .eq("id", id)
     .select("id, type")
