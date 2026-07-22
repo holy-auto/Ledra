@@ -132,7 +132,7 @@ export default function WalkinJobClient() {
       });
       const j = await parseJsonSafe(res);
       if (!res.ok || !j?.reservation?.id) {
-        throw new Error(j?.error ?? `HTTP ${res.status}`);
+        throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       }
       // 見積書を作成する場合: 帳票の見積書作成タブへ、顧客を引き継いで遷移。
       // スキップする場合: そのままワークフロー画面へ。

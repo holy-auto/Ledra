@@ -19,6 +19,7 @@ export default async function Page({
     customer_id?: string;
     reservation_id?: string;
     category?: string;
+    stage?: string;
   }>;
 }) {
   const sp = await searchParams;
@@ -27,6 +28,9 @@ export default async function Page({
   const defaultVehicleId = sp.vehicle_id ?? undefined;
   const defaultCustomerId = sp.customer_id ?? undefined;
   const defaultReservationId = sp.reservation_id ?? undefined;
+  // 案件ワークフローの「作業中の写真を撮る」導線から来た場合、アップロードする写真を
+  // stage=in_progress として記録する（施工前/後のみだった撮影段階タグを作業中にも拡張）。
+  const defaultPhotoStage = sp.stage === "in_progress" ? "in_progress" : undefined;
 
   const supabase = await createSupabaseServerClient();
   const caller = await resolveCallerWithRole(supabase);
@@ -203,6 +207,7 @@ export default async function Page({
         defaultCustomerId={defaultCustomerId}
         defaultReservationId={defaultReservationId}
         defaultPartsReplacedNote={defaultPartsReplacedNote}
+        defaultPhotoStage={defaultPhotoStage}
         templates={list}
         selectedTemplate={selected}
         tenantLogoPath={tenantLogoPath}

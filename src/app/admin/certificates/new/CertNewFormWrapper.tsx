@@ -93,6 +93,8 @@ type Props = {
   defaultReservationId?: string;
   /** 案件の「部品交換あり」トグルが ON のとき、整備内容セクションへの既定メモ。 */
   defaultPartsReplacedNote?: string;
+  /** "in_progress" のとき、この発行フローでアップロードする写真を作業中の記録として stage タグ付けする。 */
+  defaultPhotoStage?: string;
   templates: Template[];
   selectedTemplate: Template | null;
   tenantLogoPath: string | null;
@@ -124,6 +126,7 @@ export default function CertNewFormWrapper({
   defaultCustomerId,
   defaultReservationId,
   defaultPartsReplacedNote,
+  defaultPhotoStage,
   templates,
   selectedTemplate,
   tenantLogoPath,
@@ -402,7 +405,10 @@ export default function CertNewFormWrapper({
         for (const file of files) {
           await enqueueOrFetchMultipart({
             url: "/api/certificates/images/upload",
-            fields: { cert_idempotency_key: idempotencyKey },
+            fields: {
+              cert_idempotency_key: idempotencyKey,
+              ...(defaultPhotoStage ? { stage: defaultPhotoStage } : {}),
+            },
             files: [{ fieldName: "photos", file }],
             label: `証明書写真 (オフライン): ${file.name}`,
             kind: "certificate_image_upload",
@@ -458,6 +464,7 @@ export default function CertNewFormWrapper({
           // 撮影時来歴: 作成時に払い出した単回nonceを写真アップロードへ引き渡す
           // （これが無いと担保ゲートの nonceOk が満たせない）。
           if (capture_nonce) photoForm.append("capture_nonce", capture_nonce);
+          if (defaultPhotoStage) photoForm.append("stage", defaultPhotoStage);
           files.forEach((f) => photoForm.append("photos", f));
           const uploadRes = await fetch("/api/certificates/images/upload", {
             method: "POST",
@@ -752,7 +759,7 @@ export default function CertNewFormWrapper({
         {/* ━━━ 3. コーティング剤 / 使用フィルム（コーティング・PPF時のみ） ━━━ */}
         {isCoatingOrPpf && (
           <section id="sec-coating" className="border-t border-border-subtle py-6">
-            <CoatingProductsSection serviceType={serviceType} />
+            <CoatingProductsSection serviceType={serviceType} canDeliveryNoteExtract={canAiDraft} />
           </section>
         )}
 
@@ -796,6 +803,12 @@ export default function CertNewFormWrapper({
               施工前後の写真をアップロードします。証明書の信頼性確保のため、発行には施工写真が1枚以上必須です（写真がない場合は下書き保存のみ可能）。プランごとに枚数上限が異なります。
             </HelpTooltip>
           </div>
+          {defaultPhotoStage === "in_progress" && (
+            <div className="rounded-xl border border-accent/20 bg-accent-dim px-4 py-3 text-xs text-accent-text">
+              📷
+              作業中の記録として写真を追加します。まだ工程の途中でも、ここで「下書き保存」しておけば後から続きを入力・発行できます。
+            </div>
+          )}
           <PhotoUploadSection
             ref={photoRef}
             maxPhotos={maxPhotos}

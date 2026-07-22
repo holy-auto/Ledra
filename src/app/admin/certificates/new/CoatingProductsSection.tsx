@@ -21,11 +21,18 @@ type Row = {
   customArea: string; // free text when area === "custom"
   brand_id: string;
   brand_name: string;
-  product_id: string;
+  product_id: string; // マスター製品ID、または自由入力時 "__custom__"
   product_name: string;
+  customProductName: string; // 自由入力時の製品名下書き（マスター未登録品・納品書OCR取り込み用）
+  product_code: string; // 品番（マスター選択時は自動入力、常に編集可）
   lot_number: string; // ロット番号
   film_type: string; // PPF用: gloss | matte | satin | color | ""
 };
+
+const CUSTOM_PRODUCT = "__custom__";
+
+// 納品書OCRが返す明細1行分
+type DeliveryNoteLine = { label: string; code: string | null };
 
 // PPFフィルムタイプ選択肢
 const FILM_TYPE_OPTIONS = [
@@ -72,6 +79,8 @@ function newRow(): Row {
     brand_name: "",
     product_id: "",
     product_name: "",
+    customProductName: "",
+    product_code: "",
     lot_number: "",
     film_type: "",
   };
@@ -79,14 +88,19 @@ function newRow(): Row {
 
 type Props = {
   serviceType?: string; // "ppf" | "coating" | etc
+  /** 納品書から読み取って下書き入力する機能を出すか（Standard以上）。 */
+  canDeliveryNoteExtract?: boolean;
 };
 
-export default function CoatingProductsSection({ serviceType }: Props) {
+export default function CoatingProductsSection({ serviceType, canDeliveryNoteExtract }: Props) {
   const isPpf = serviceType === "ppf";
   const [rows, setRows] = useState<Row[]>([newRow()]);
   const [brands, setBrands] = useState<Brand[]>([]);
   const [brandsLoading, setBrandsLoading] = useState(false);
   const [brandsLoaded, setBrandsLoaded] = useState(false);
+  const [extracting, setExtracting] = useState(false);
+  const [extractError, setExtractError] = useState<string | null>(null);
+  const [extractedCount, setExtractedCount] = useState(0);
 
   // マウント時にブランド一覧を取得
   useEffect(() => {
@@ -108,12 +122,31 @@ export default function CoatingProductsSection({ serviceType }: Props) {
         if (r.id !== id) return r;
         if (field === "brand_id") {
           const brand = brands.find((b) => b.id === value);
-          return { ...r, brand_id: value, brand_name: brand?.name ?? "", product_id: "", product_name: "" };
+          return {
+            ...r,
+            brand_id: value,
+            brand_name: brand?.name ?? "",
+            product_id: "",
+            product_name: "",
+            customProductName: "",
+            product_code: "",
+          };
         }
         if (field === "product_id") {
+          if (value === CUSTOM_PRODUCT) {
+            return { ...r, product_id: CUSTOM_PRODUCT, product_name: r.customProductName };
+          }
           const brand = brands.find((b) => b.id === r.brand_id);
           const product = brand?.coating_products?.find((p) => p.id === value);
-          return { ...r, product_id: value, product_name: product?.name ?? "" };
+          return {
+            ...r,
+            product_id: value,
+            product_name: product?.name ?? "",
+            product_code: product?.product_code ?? "",
+          };
+        }
+        if (field === "customProductName") {
+          return { ...r, customProductName: value, product_name: value };
         }
         return { ...r, [field]: value };
       }),
@@ -122,9 +155,51 @@ export default function CoatingProductsSection({ serviceType }: Props) {
   const addRow = () => setRows((prev) => [...prev, newRow()]);
   const removeRow = (id: number) => setRows((prev) => (prev.length > 1 ? prev.filter((r) => r.id !== id) : prev));
 
+  /** 納品書OCRの明細を下書き行として追加する（部位は未選択のまま、後で人が選ぶ）。 */
+  const applyExtractedLines = (lines: DeliveryNoteLine[]) => {
+    if (lines.length === 0) return;
+    setRows((prev) => {
+      // 最初の行が未入力（空の初期行）なら、それを1件目の受け皿として使う。
+      const base = prev.length === 1 && !prev[0].area && !prev[0].brand_id && !prev[0].product_name ? [] : prev;
+      const added = lines.slice(0, 8).map((l) => {
+        const row = newRow();
+        row.product_id = CUSTOM_PRODUCT;
+        row.customProductName = l.label;
+        row.product_name = l.label;
+        row.product_code = l.code ?? "";
+        return row;
+      });
+      return [...base, ...added];
+    });
+    setExtractedCount(lines.length);
+  };
+
+  const handleDeliveryNoteFile = async (file: File) => {
+    setExtracting(true);
+    setExtractError(null);
+    setExtractedCount(0);
+    try {
+      const fd = new FormData();
+      fd.append("delivery_note", file);
+      const res = await fetch("/api/admin/certificates/delivery-note-extract", { method: "POST", body: fd });
+      const j = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
+      const lines = (j?.lines as DeliveryNoteLine[] | undefined) ?? [];
+      if (lines.length === 0) {
+        setExtractError("納品書から品目を読み取れませんでした。手入力してください。");
+        return;
+      }
+      applyExtractedLines(lines);
+    } catch (e: unknown) {
+      setExtractError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setExtracting(false);
+    }
+  };
+
   const validRows = rows.filter((r) => {
     const location = r.area === "custom" ? r.customArea.trim() : r.area;
-    return location || r.brand_id;
+    return location || r.brand_id || r.product_name.trim();
   });
 
   const jsonValue = JSON.stringify(
@@ -132,8 +207,9 @@ export default function CoatingProductsSection({ serviceType }: Props) {
       location: r.area === "custom" ? r.customArea.trim() : r.area,
       brand_id: r.brand_id || null,
       brand_name: r.brand_name || null,
-      product_id: r.product_id || null,
-      product_name: r.product_name || null,
+      product_id: r.product_id && r.product_id !== CUSTOM_PRODUCT ? r.product_id : null,
+      product_name: r.product_name.trim() || null,
+      product_code: r.product_code?.trim() || null,
       lot_number: r.lot_number?.trim() || null,
       ...(isPpf && r.film_type ? { film_type: r.film_type } : {}),
     })),
@@ -163,6 +239,36 @@ export default function CoatingProductsSection({ serviceType }: Props) {
         </p>
       </div>
 
+      {canDeliveryNoteExtract && (
+        <div className="rounded-xl border border-border-default bg-surface p-3 space-y-2">
+          <label className="flex items-center gap-2 text-sm font-medium text-secondary cursor-pointer w-fit">
+            <span className="rounded-lg border border-border-default bg-inset px-3 py-2 text-xs font-medium hover:bg-surface-hover">
+              📄 納品書を撮影して読み取り
+            </span>
+            <input
+              type="file"
+              accept="image/*"
+              capture="environment"
+              className="hidden"
+              disabled={extracting}
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                e.target.value = "";
+                if (file) void handleDeliveryNoteFile(file);
+              }}
+            />
+            {extracting && <span className="text-xs text-muted">読み取り中…</span>}
+          </label>
+          <p className="text-xs text-muted">
+            部品・液剤の納品書を撮影すると、AIが品名・品番を読み取って下書き行を追加します（内容は必ず確認・編集してください）。
+          </p>
+          {extractedCount > 0 && !extracting && (
+            <p className="text-xs text-success-text">✅ {extractedCount} 件を下書きに追加しました。</p>
+          )}
+          {extractError && <p className="text-xs text-danger-text">{extractError}</p>}
+        </div>
+      )}
+
       {brandsLoading ? (
         <p className="text-xs text-muted">ブランドを読み込み中...</p>
       ) : brands.length === 0 && brandsLoaded ? (
@@ -177,12 +283,13 @@ export default function CoatingProductsSection({ serviceType }: Props) {
 
       {/* ヘッダー行 */}
       <div
-        className={`hidden sm:grid gap-2 px-1 ${isPpf ? "sm:grid-cols-[1.5fr_2fr_2fr_1.5fr_1.5fr_auto]" : "sm:grid-cols-[2fr_2fr_2fr_1.5fr_auto]"}`}
+        className={`hidden sm:grid gap-2 px-1 ${isPpf ? "sm:grid-cols-[1.5fr_2fr_2fr_1.5fr_1.5fr_1.5fr_auto]" : "sm:grid-cols-[2fr_2fr_2fr_1.5fr_1.5fr_auto]"}`}
       >
         <span className="text-[11px] font-semibold text-muted uppercase">{isPpf ? "部位" : "部位"}</span>
         <span className="text-[11px] font-semibold text-muted uppercase">ブランド</span>
         <span className="text-[11px] font-semibold text-muted uppercase">製品</span>
         {isPpf && <span className="text-[11px] font-semibold text-muted uppercase">タイプ</span>}
+        <span className="text-[11px] font-semibold text-muted uppercase">品番</span>
         <span className="text-[11px] font-semibold text-muted uppercase">ロット番号</span>
         <span />
       </div>
@@ -192,7 +299,7 @@ export default function CoatingProductsSection({ serviceType }: Props) {
         return (
           <div
             key={row.id}
-            className={`grid grid-cols-1 gap-2 items-start rounded-xl border border-border-subtle bg-inset p-3 sm:p-0 sm:bg-transparent sm:border-0 ${isPpf ? "sm:grid-cols-[1.5fr_2fr_2fr_1.5fr_1.5fr_auto]" : "sm:grid-cols-[2fr_2fr_2fr_1.5fr_auto]"}`}
+            className={`grid grid-cols-1 gap-2 items-start rounded-xl border border-border-subtle bg-inset p-3 sm:p-0 sm:bg-transparent sm:border-0 ${isPpf ? "sm:grid-cols-[1.5fr_2fr_2fr_1.5fr_1.5fr_1.5fr_auto]" : "sm:grid-cols-[2fr_2fr_2fr_1.5fr_1.5fr_auto]"}`}
           >
             {/* 部位 */}
             <div>
@@ -239,8 +346,7 @@ export default function CoatingProductsSection({ serviceType }: Props) {
               <select
                 value={row.product_id}
                 onChange={(e) => update(row.id, "product_id", e.target.value)}
-                disabled={!row.brand_id || brandProducts.length === 0}
-                className={`${selectCls} disabled:bg-surface-hover disabled:text-muted`}
+                className={selectCls}
               >
                 <option value="">選択</option>
                 {brandProducts.map((p) => (
@@ -249,7 +355,16 @@ export default function CoatingProductsSection({ serviceType }: Props) {
                     {p.product_code ? ` (${p.product_code})` : ""}
                   </option>
                 ))}
+                <option value={CUSTOM_PRODUCT}>その他（自由入力・下書き）</option>
               </select>
+              {row.product_id === CUSTOM_PRODUCT && (
+                <input
+                  value={row.customProductName}
+                  onChange={(e) => update(row.id, "customProductName", e.target.value)}
+                  placeholder="製品名を入力（マスター未登録・納品書取り込み用）"
+                  className={`${inputCls} mt-1`}
+                />
+              )}
             </div>
 
             {/* フィルムタイプ（PPFのみ） */}
@@ -269,6 +384,17 @@ export default function CoatingProductsSection({ serviceType }: Props) {
                 </select>
               </div>
             )}
+
+            {/* 品番 */}
+            <div>
+              <span className="sm:hidden text-[11px] font-semibold text-muted uppercase mb-1 block">品番</span>
+              <input
+                value={row.product_code}
+                onChange={(e) => update(row.id, "product_code", e.target.value)}
+                placeholder="品番"
+                className={inputCls}
+              />
+            </div>
 
             {/* ロット番号 */}
             <div>

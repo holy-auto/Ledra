@@ -141,7 +141,7 @@ export default function StorefrontJobWorkflow({ reservation, customer, vehicle, 
       });
       if (!res.ok) {
         const j = await parseJsonSafe(res);
-        throw new Error(j?.error ?? j?.message ?? `HTTP ${res.status}`);
+        throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       }
       router.refresh();
     } catch (e: unknown) {
@@ -169,7 +169,7 @@ export default function StorefrontJobWorkflow({ reservation, customer, vehicle, 
       }
       if (!r.ok && r.response) {
         const j = await parseJsonSafe(r.response);
-        throw new Error(j?.error ?? `HTTP ${r.status}`);
+        throw new Error(j?.message ?? j?.error ?? `HTTP ${r.status}`);
       }
       router.refresh();
     } catch (e: unknown) {
