@@ -211,3 +211,13 @@
 # CONCURRENTLY cannot run inside Supabase's per-file transaction. Bounded one-time write
 # lock, accepted at ship time. Rationale: docs/operations/zero-downtime-migrations.md.
 20260708000001_customer_messages_email_from.sql
+
+# Allowlisted as a FROZEN/already-applied migration (not new work). #810 の gcal 複数
+# カレンダー対応。元は 20260721110000_gcal_multi_calendar.sql だったが、#808 の
+# 20260721110000_site_content_posts_cta_og.sql と version prefix が衝突していた。本番へは
+# 別 version 20260722025744 として既適用（schema_migrations に記録済み）だったため、ローカル
+# ファイルを本番の記録に合わせて 20260722025744 へ改名し db push の「remote not in local」を
+# 解消する。既適用ゆえ db push は本ファイルを再実行せず（index も作成済み）、
+# create-index-without-concurrently は再現しない frozen 状態。Rationale:
+# docs/operations/zero-downtime-migrations.md.
+20260722025744_gcal_multi_calendar.sql
