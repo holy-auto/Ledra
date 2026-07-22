@@ -20,6 +20,12 @@ export interface InboxItem {
   href: string;
   /** ワンタップ承認アクション。確認のみ（壁3 で外向き確定を伴う）の場合は省略。 */
   action?: { kind: InboxActionKind; label: string };
+  /**
+   * この下書きが「なぜ」用意されたかの短い説明。実データが無い種別では
+   * 数値を捏造せず省略する（証明書=AI信頼度、発注=起票理由の実文言、
+   * 請求書=生成プロセスの一般説明のみ）。
+   */
+  why?: string;
 }
 
 export interface InboxSection {
@@ -34,12 +40,17 @@ export interface InboxCertificate {
   public_id: string;
   customer_name?: string | null;
   service_type?: string | null;
+  /** 元になった予約の AI 下書き自己評価（0.0〜1.0）。無ければ「なぜ」を出さない。 */
+  confidence?: number | null;
+  missingInfo?: string[] | null;
 }
 export interface InboxPurchaseOrder {
   id: string;
   po_number?: string | null;
   supplier_name?: string | null;
   subtotal?: number | null;
+  /** 自動起票時に書き込まれる決定的な理由文言（数値の信頼度ではない）。 */
+  note?: string | null;
 }
 export interface InboxInvoice {
   id: string;
@@ -50,6 +61,20 @@ export interface InboxInvoice {
 
 function jpy(n: number | null | undefined): string {
   return `¥${Math.round(n ?? 0).toLocaleString("ja-JP")}`;
+}
+
+/**
+ * 証明書ドラフトの「なぜ」。confidence が無い（=手動下書き等で AI 自己評価が
+ * 存在しない）場合は数値を捏造せず undefined を返す。
+ */
+function certificateWhy(
+  confidence: number | null | undefined,
+  missingInfo: string[] | null | undefined,
+): string | undefined {
+  if (typeof confidence !== "number") return undefined;
+  const pct = Math.round(confidence * 100);
+  const missing = (missingInfo ?? []).filter((m) => m.trim().length > 0);
+  return missing.length > 0 ? `AI信頼度 ${pct}% ・未確認: ${missing.join("、")}` : `AI信頼度 ${pct}%`;
 }
 
 /**
@@ -74,6 +99,7 @@ export function buildApprovalInbox(input: {
     subtitle: c.service_type?.trim() || "施工証明書",
     href: "/admin/certificates",
     action: { kind: "issue_certificate", label: "発行" },
+    why: certificateWhy(c.confidence, c.missingInfo),
   }));
   if (certItems.length > 0) {
     sections.push({
@@ -91,6 +117,7 @@ export function buildApprovalInbox(input: {
     subtitle: [p.po_number?.trim(), jpy(p.subtotal)].filter(Boolean).join(" / "),
     href: "/admin/inventory",
     action: { kind: "approve_purchase_order", label: "承認" },
+    why: p.note?.trim() || undefined,
   }));
   if (poItems.length > 0) {
     sections.push({

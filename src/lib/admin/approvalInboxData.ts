@@ -14,14 +14,14 @@ export async function fetchApprovalInbox(
   const [certs, pos, invs] = await Promise.all([
     supabase
       .from("certificates")
-      .select("public_id, customer_name, service_type")
+      .select("public_id, customer_name, service_type, reservations(ai_certificate_draft)")
       .eq("tenant_id", tenantId)
       .eq("status", "draft")
       .order("created_at", { ascending: false })
       .limit(50),
     supabase
       .from("purchase_orders")
-      .select("id, po_number, subtotal, suppliers(name)")
+      .select("id, po_number, subtotal, note, suppliers(name)")
       .eq("tenant_id", tenantId)
       .eq("status", "draft")
       .order("created_at", { ascending: false })
@@ -41,17 +41,26 @@ export async function fetchApprovalInbox(
   if (invs.error) throw invs.error;
 
   return buildApprovalInbox({
-    certificates: (certs.data ?? []).map((c) => ({
-      public_id: c.public_id as string,
-      customer_name: (c.customer_name as string | null) ?? null,
-      service_type: (c.service_type as string | null) ?? null,
-    })),
+    certificates: (certs.data ?? []).map((c) => {
+      const reservation = Array.isArray(c.reservations) ? c.reservations[0] : c.reservations;
+      const draft = (
+        reservation as { ai_certificate_draft?: { draft?: { confidence?: number; missingInfo?: string[] } } } | null
+      )?.ai_certificate_draft?.draft;
+      return {
+        public_id: c.public_id as string,
+        customer_name: (c.customer_name as string | null) ?? null,
+        service_type: (c.service_type as string | null) ?? null,
+        confidence: typeof draft?.confidence === "number" ? draft.confidence : null,
+        missingInfo: Array.isArray(draft?.missingInfo) ? draft.missingInfo : null,
+      };
+    }),
     purchaseOrders: (pos.data ?? []).map((p) => {
       const supplier = Array.isArray(p.suppliers) ? p.suppliers[0] : p.suppliers;
       return {
         id: p.id as string,
         po_number: (p.po_number as string | null) ?? null,
         subtotal: (p.subtotal as number | null) ?? null,
+        note: (p.note as string | null) ?? null,
         supplier_name: ((supplier as { name?: string | null } | null)?.name as string | null) ?? null,
       };
     }),
