@@ -16,7 +16,10 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@/lib/supabase/server", () => ({ createClient: async () => ({}) }));
-vi.mock("@/lib/auth/checkRole", () => ({ resolveCallerWithRole: mocks.resolveCaller }));
+vi.mock("@/lib/auth/checkRole", async (orig) => {
+  const real = (await orig()) as Record<string, unknown>;
+  return { ...real, resolveCallerWithRole: mocks.resolveCaller };
+});
 vi.mock("@/lib/ai/deliveryNoteOcr", () => ({ extractDeliveryNote: mocks.extractDeliveryNote }));
 vi.mock("@/lib/ai/automation/policy", async (orig) => {
   const real = (await orig()) as Record<string, unknown>;
@@ -56,14 +59,21 @@ beforeEach(() => {
 
 describe("POST delivery-note-extract", () => {
   it("free プランは 403", async () => {
-    mocks.resolveCaller.mockResolvedValue({ tenantId: "t1", userId: "u1", planTier: "free" });
+    mocks.resolveCaller.mockResolvedValue({ tenantId: "t1", userId: "u1", planTier: "free", role: "staff" });
+    const res = await POST(reqWithFile({ name: "a.jpg", bytes: JPEG_BYTES, type: "image/jpeg" }));
+    expect(res.status).toBe(403);
+    expect(mocks.extractDeliveryNote).not.toHaveBeenCalled();
+  });
+
+  it("viewer ロールは 403（AI Vision 呼び出し・テナントコスト消費を防ぐ）", async () => {
+    mocks.resolveCaller.mockResolvedValue({ tenantId: "t1", userId: "u1", planTier: "pro", role: "viewer" });
     const res = await POST(reqWithFile({ name: "a.jpg", bytes: JPEG_BYTES, type: "image/jpeg" }));
     expect(res.status).toBe(403);
     expect(mocks.extractDeliveryNote).not.toHaveBeenCalled();
   });
 
   it("テナントのAI自動入力が無効なら OCR を呼ばず notice を返す", async () => {
-    mocks.resolveCaller.mockResolvedValue({ tenantId: "t1", userId: "u1", planTier: "pro" });
+    mocks.resolveCaller.mockResolvedValue({ tenantId: "t1", userId: "u1", planTier: "pro", role: "staff" });
     mocks.loadSettings.mockResolvedValue({
       enabled: false,
       fieldPolicies: {},
@@ -80,13 +90,13 @@ describe("POST delivery-note-extract", () => {
   });
 
   it("ファイル未添付は 400", async () => {
-    mocks.resolveCaller.mockResolvedValue({ tenantId: "t1", userId: "u1", planTier: "pro" });
+    mocks.resolveCaller.mockResolvedValue({ tenantId: "t1", userId: "u1", planTier: "pro", role: "staff" });
     const res = await POST(reqWithFile());
     expect(res.status).toBe(400);
   });
 
   it("pro プラン + JPEG で OCR 結果を返す", async () => {
-    mocks.resolveCaller.mockResolvedValue({ tenantId: "t1", userId: "u1", planTier: "pro" });
+    mocks.resolveCaller.mockResolvedValue({ tenantId: "t1", userId: "u1", planTier: "pro", role: "staff" });
     mocks.extractDeliveryNote.mockResolvedValue({
       supplier_name: "テスト商事",
       delivery_date: null,

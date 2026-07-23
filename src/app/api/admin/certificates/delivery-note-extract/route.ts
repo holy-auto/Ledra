@@ -9,7 +9,7 @@
  */
 import { NextRequest } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
+import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
 import { apiOk, apiUnauthorized, apiInternalError, apiValidationError, apiForbidden } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { canUseFeature, normalizePlanTier } from "@/lib/billing/planFeatures";
@@ -30,6 +30,9 @@ export async function POST(req: NextRequest) {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
+    // viewer は証明書の作成・編集権限が無い。閲覧のみのロールが AI Vision 呼び出し
+    // (テナントのAIコスト消費) を叩けないよう、他の証明書系ルートと同じ staff 以上を要求する。
+    if (!requireMinRole(caller, "staff")) return apiForbidden();
 
     const tier = normalizePlanTier(caller.planTier);
     if (!canUseFeature(tier, "ai_draft")) {

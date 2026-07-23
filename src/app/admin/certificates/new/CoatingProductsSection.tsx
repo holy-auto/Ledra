@@ -136,7 +136,8 @@ export default function CoatingProductsSection({ serviceType, canDeliveryNoteExt
         }
         if (field === "product_id") {
           if (value === CUSTOM_PRODUCT) {
-            return { ...r, product_id: CUSTOM_PRODUCT, product_name: r.customProductName };
+            // マスター製品選択で自動入力された品番は、自由入力の別製品には引き継がない。
+            return { ...r, product_id: CUSTOM_PRODUCT, product_name: r.customProductName, product_code: "" };
           }
           const brand = brands.find((b) => b.id === r.brand_id);
           const product = brand?.coating_products?.find((p) => p.id === value);
