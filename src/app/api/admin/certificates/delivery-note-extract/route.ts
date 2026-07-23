@@ -15,6 +15,8 @@ import { checkRateLimit } from "@/lib/api/rateLimit";
 import { canUseFeature, normalizePlanTier } from "@/lib/billing/planFeatures";
 import { detectMagicByteMime } from "@/lib/media/magicBytes";
 import { extractDeliveryNote, type ImageMediaType } from "@/lib/ai/deliveryNoteOcr";
+import { loadAiAutomationSettings, isSourceAllowed } from "@/lib/ai/automation/policy";
+import { startAiRouteUsage } from "@/lib/ai/recordRouteUsage";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -52,7 +54,27 @@ export async function POST(req: NextRequest) {
       return apiValidationError("対応していないファイル形式です (JPEG・PNG・WebP・GIF のみ)。");
     }
 
+    // AI マスタースイッチ OFF、または「書類画像を Vision に送る」情報源が無効化されていれば
+    // 画像を Anthropic に送らずスキップする（納品書の読取は車検証OCR/膜厚OCRと同じ
+    // 「書類画像→フィールド抽出」なので identity_documents で判定、既存ルートと同一パターン）。
+    const usage = startAiRouteUsage("/api/admin/certificates/delivery-note-extract");
+    const aiSettings = await loadAiAutomationSettings(caller.tenantId);
+    if (!aiSettings.enabled || !isSourceAllowed(aiSettings, "identity_documents")) {
+      usage.record({ tenantId: caller.tenantId, userId: caller.userId, outcome: "ai_disabled" });
+      return apiOk({
+        lines: [],
+        supplier_name: null,
+        notice: "AI 自動入力が停止中のため読み取りを実行しませんでした。手動で入力してください。",
+      });
+    }
+
     const extract = await extractDeliveryNote(buffer.toString("base64"), mime as ImageMediaType);
+    usage.record({
+      tenantId: caller.tenantId,
+      userId: caller.userId,
+      outcome: "ok",
+      meta: { line_count: extract.lines.length },
+    });
 
     return apiOk({
       lines: extract.lines.map((l) => ({ label: l.label, code: l.code })),

@@ -163,7 +163,10 @@ export default function CoatingProductsSection({ serviceType, canDeliveryNoteExt
     const capped = lines.slice(0, 8);
     setRows((prev) => {
       // 最初の行が未入力（空の初期行）なら、それを1件目の受け皿として使う。
-      const base = prev.length === 1 && !prev[0].area && !prev[0].brand_id && !prev[0].product_name ? [] : prev;
+      const first = prev[0];
+      const isFirstRowEmpty =
+        prev.length === 1 && !first.area && !first.brand_id && !first.product_name.trim() && !first.product_code.trim();
+      const base = isFirstRowEmpty ? [] : prev;
       const added = capped.map((l) => {
         const row = newRow();
         row.product_id = CUSTOM_PRODUCT;
@@ -192,7 +195,9 @@ export default function CoatingProductsSection({ serviceType, canDeliveryNoteExt
       if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       const lines = (j?.lines as DeliveryNoteLine[] | undefined) ?? [];
       if (lines.length === 0) {
-        setExtractError("納品書から品目を読み取れませんでした。手入力してください。");
+        setExtractError(
+          (j?.notice as string | undefined) ?? "納品書から品目を読み取れませんでした。手入力してください。",
+        );
         return;
       }
       applyExtractedLines(lines);

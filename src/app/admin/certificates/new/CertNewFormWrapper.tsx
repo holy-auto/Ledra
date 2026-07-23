@@ -627,6 +627,9 @@ export default function CertNewFormWrapper({
           {defaultVehicleId && <input type="hidden" name="vehicle_id" value={defaultVehicleId} />}
           {defaultCustomerId && <input type="hidden" name="customer_id" value={defaultCustomerId} />}
           {defaultReservationId && <input type="hidden" name="reservation_id" value={defaultReservationId} />}
+          {/* 作業中の撮影導線 (?stage=in_progress) から来た場合、テンプレ切替後も stage を維持する。
+              無いと再読み込みで in_progress タグが失われ、写真が unspecified で保存されてしまう。 */}
+          {defaultPhotoStage && <input type="hidden" name="stage" value={defaultPhotoStage} />}
           <select name="tid" defaultValue={tid} className={`flex-1 ${inputCls}`}>
             {templates.length === 0 ? (
               <option value="">テンプレートがありません</option>
