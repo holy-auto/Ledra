@@ -49,9 +49,22 @@ export async function PATCH(req: NextRequest) {
     if (status === "resolved") updateData.resolved_at = now;
     if (status === "closed") updateData.closed_at = now;
 
-    const { error: updateErr } = await admin.from("insurer_cases").update(updateData).in("id", validIds);
-
-    if (updateErr) return apiValidationError(updateErr.message);
+    // 1件ずつ status='(取得時点の値)' を条件にした compare-and-swap で更新する。
+    // このルートは status 系フィールドしか書き換えないため、他フィールドの同時
+    // 編集を巻き込む心配は無い。これにより、同時に別リクエストが同じケースを
+    // 更新していた場合でも「実際にこのリクエストが遷移させたケース」だけを
+    // 正しく webhook 発火・カウントできる。
+    const transitioned: typeof validCases = [];
+    for (const c of validCases) {
+      const { data: rows, error: updErr } = await admin
+        .from("insurer_cases")
+        .update(updateData)
+        .eq("id", c.id)
+        .eq("status", c.status)
+        .select("id");
+      if (updErr) return apiValidationError(updErr.message);
+      if (rows && rows.length > 0) transitioned.push(c);
+    }
 
     const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null;
     const ua = req.headers.get("user-agent") ?? null;
@@ -60,15 +73,15 @@ export async function PATCH(req: NextRequest) {
       insurer_id: caller.insurerId,
       insurer_user_id: caller.insurerUserId,
       action: "case_bulk_update",
-      meta: { case_ids: validIds, status, route: "PATCH /api/insurer/cases/bulk" },
+      meta: { case_ids: transitioned.map((c) => c.id), status, route: "PATCH /api/insurer/cases/bulk" },
       ip,
       user_agent: ua,
     });
 
-    // テナント (施工店) の基幹ソフト連携向け webhook。実際にステータスが変わった
-    // ケースのみ、対象テナントごとに発火 (購読が無ければ no-op)。
+    // テナント (施工店) の基幹ソフト連携向け webhook。実際にこのリクエストで
+    // ステータスが変わったケースのみ、対象テナントごとに発火 (購読が無ければ no-op)。
     after(async () => {
-      for (const c of validCases) {
+      for (const c of transitioned) {
         if (!c.tenant_id || c.status === status) continue;
         await emitEntityWebhook(c.tenant_id, "insurer_case.status_changed", c.id, {
           case_id: c.id,
@@ -82,7 +95,7 @@ export async function PATCH(req: NextRequest) {
       }
     });
 
-    return apiJson({ updated_count: validIds.length });
+    return apiJson({ updated_count: transitioned.length });
   } catch (err) {
     return apiInternalError(err, "PATCH /api/insurer/cases/bulk");
   }
