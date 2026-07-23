@@ -9,6 +9,7 @@ import { applyAssignmentRules, type AssignmentRule } from "@/lib/insurer/applyAs
 import { maybeAutoFraudScoreForCase } from "@/lib/ai/automation/fraudScoreAuto";
 import { maybeAutoSummarizeCase } from "@/lib/ai/automation/caseSummaryAuto";
 import { maybeAutoSuggestAssigneeForCase } from "@/lib/ai/automation/caseAssignAuto";
+import { emitEntityWebhook } from "@/lib/outbound-webhooks";
 
 export const runtime = "nodejs";
 
@@ -235,6 +236,17 @@ export async function POST(req: NextRequest) {
     // 上書きして失われる (lost update)。1 つの after() で **順次** 実行し、各処理が直前の書き込み後の
     // meta を読み直して安全にマージできるようにする (各 maybe* は内部で例外を握りつぶす)。
     after(async () => {
+      // テナント (施工店) の基幹ソフト連携向け通知。購読が無ければ no-op。
+      if (tenant_id) {
+        await emitEntityWebhook(tenant_id, "insurer_case.created", newCase.id as string, {
+          case_id: newCase.id,
+          case_number: newCase.case_number,
+          title: newCase.title,
+          status: newCase.status,
+          insurer_id: caller.insurerId,
+          created_at: newCase.created_at,
+        });
+      }
       await maybeAutoFraudScoreForCase({
         caseId: newCase.id as string,
         insurerId: caller.insurerId,

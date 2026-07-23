@@ -29,4 +29,9 @@ describe("webhook-topics", () => {
     expect(WEBHOOK_TOPICS).toContain("vehicle.updated");
     expect(WEBHOOK_TOPICS).toContain("work_history.created");
   });
+
+  it("includes the insurer case topics", () => {
+    expect(WEBHOOK_TOPICS).toContain("insurer_case.created");
+    expect(WEBHOOK_TOPICS).toContain("insurer_case.status_changed");
+  });
 });

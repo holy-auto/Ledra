@@ -19,6 +19,9 @@ export const WEBHOOK_TOPICS = [
   "vehicle.updated",
   // 作業履歴
   "work_history.created",
+  // 保険会社ケース (損保案件)
+  "insurer_case.created",
+  "insurer_case.status_changed",
 ] as const;
 
 export type WebhookTopic = (typeof WEBHOOK_TOPICS)[number];
@@ -31,6 +34,8 @@ export const WEBHOOK_TOPIC_LABELS: Record<WebhookTopic, string> = {
   "vehicle.created": "車両 作成",
   "vehicle.updated": "車両 更新",
   "work_history.created": "作業履歴 追加",
+  "insurer_case.created": "保険会社ケース 作成",
+  "insurer_case.status_changed": "保険会社ケース ステータス変更",
 };
 
 const TOPIC_SET = new Set<string>(WEBHOOK_TOPICS);

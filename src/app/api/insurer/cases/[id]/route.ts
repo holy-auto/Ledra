@@ -4,6 +4,7 @@ import { apiJson, apiUnauthorized, apiValidationError, apiNotFound, apiInternalE
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { createInsurerScopedAdmin } from "@/lib/supabase/admin";
 import { sendCaseStatusNotification } from "@/lib/insurer/notifications";
+import { emitEntityWebhook } from "@/lib/outbound-webhooks";
 import { insurerCaseUpdateSchema } from "@/lib/validations/insurer-case";
 
 export const runtime = "nodejs";
@@ -185,6 +186,17 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
 
           // Notify tenant if case has tenant_id
           if (updated.tenant_id) {
+            // 基幹ソフト連携向け webhook (購読が無ければ no-op)。メール通知とは独立。
+            await emitEntityWebhook(updated.tenant_id, "insurer_case.status_changed", id, {
+              case_id: id,
+              case_number: updated.case_number,
+              title: updated.title,
+              old_status: existing.status,
+              new_status: updateData.status,
+              insurer_id: caller.insurerId,
+              updated_at: updated.updated_at,
+            });
+
             const { data: tenant } = await admin
               .from("tenants")
               .select("name, contact_email")
