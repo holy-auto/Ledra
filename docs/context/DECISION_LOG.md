@@ -22,6 +22,17 @@
 9. 公開区分: 公開可／要確認／非公開
 ```
 
+## 2026-07-23 PR#820 2巡目のCodexレビュー指摘（Slack WebhookのSSRF/データ流出リスク・serverlessでの通知取りこぼし）を検証のうえ修正
+1. 日付: 2026-07-23
+2. 起きたこと: 暗号化列化（本ログ下の同日エントリ）をpushした直後、Codexから2件目のレビュー指摘。(a) `booking_notify_slack_webhook_url` の検証が https:// prefixのみで、任意ホストを許容していた。予約のたびに顧客名・日時・備考をそのURLへPOSTするため、Slack以外の任意サーバーへの「保存型データ流出シンク」になり得る。(b) `customer/booking` / `external/booking` の通知呼び出しがbareのfire-and-forget（`.catch()`のみ）で、serverless環境では応答後にPromiseが打ち切られ通知が届かない恐れがある。
+3. 以前の考え: Slack Webhook URLはhttps形式であれば十分と考えていた。通知呼び出しは既存のGCal同期呼び出しと同じfire-and-forgetパターンを踏襲すれば十分と判断していた。
+4. 違和感・問題: (a) 実際に検証すると、`^https:\/\//`のみのチェックでは`https://evil.example.com/collect`のような任意ホストも通過してしまい、SlackというUI上のラベルと実際の検証が乖離していた。(b) リポジトリ内の`recordRouteUsage.ts`/`admin/documents/route.ts`で「serverlessはbare fire-and-forgetを打ち切ることがあるためafter()に委譲する」という既存の教訓・パターンが既に文書化されていたにもかかわらず、今回の新規コードでは踏襲していなかった。
+5. 決めたこと: (a) `booking_notify_slack_webhook_url`のバリデーションを`new URL()`で解析し、`protocol==="https:"`かつ`hostname==="hooks.slack.com"`かつ`pathname`が`/services/`始まりの場合のみ許可するよう変更。サブドメインすり替え（`hooks.slack.com.evil.com`）を拒否するテストを追加。(b) 両ルートの通知呼び出しをNext.jsの`after()`でラップし、応答後も実行完走を保証するよう変更（GCal同期呼び出し自体は本PRの変更範囲外のため据え置き）。
+6. 捨てた選択肢: URLホワイトリストを環境変数で運用側が設定可能にする案（Slack Incoming Webhookという機能の性質上、ホストは`hooks.slack.com`に固定でよく、設定可能にする理由がないため不採用）。GCal同期呼び出しも同時に`after()`化する案（本PRのスコープ外の既存コードへの手入れになるため見送り、コメントで指摘のみ）。
+7. 判断理由: 「バグ修正=root cause」の原則で、UIのラベル（Slack Webhook）と実際のサーバー動作（任意ホストへの顧客情報POST）が一致するよう検証を締める。`after()`は既にコードベースに文書化された解決策があったため、新規に考案せず流用した。
+8. まだ答えが出ていないこと: GCal同期呼び出し自体のserverless打ち切りリスクは未対応のまま（別Issue化が必要か検討）。
+9. 公開区分: 要確認（SSRF対策・serverlessのfire-and-forget注意点という一般的教訓は公開可。個別PRの脆弱性詳細は要確認）。
+
 ## 2026-07-23 PR#820のCodexレビュー指摘（Slack Webhook露出・マイグレーション未適用時の安全性）を検証のうえ修正し、LINE/Square同様の暗号化列に統一
 1. 日付: 2026-07-23
 2. 起きたこと: 予約通知機能（本ログ下の同日エントリ参照）のPR #820に対し、Codex（`chatgpt-codex-connector[bot]`）から2件のレビュー指摘（P1: `tenants.booking_notify_slack_webhook_url` が RLS `tenant_select_own` により同テナントの全メンバーに読める / P2: 新カラムを既存の拡張フィールド取得クエリに混ぜているため、マイグレーション未適用環境で select 全体が失敗する）が付いた。その後 Codex は別コメントで「暗号化テーブルへの分離を実装・コミット済み」と報告してきたが、実際にブランチを fetch して確認したところ該当コミットは存在しなかった（虚偽/幻覚報告）。
