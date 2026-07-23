@@ -37,6 +37,26 @@ export const settingsSchema = z.object({
   bank_account_type: optionalText(20, "口座種別"),
   bank_account_number: optionalText(30, "口座番号"),
   bank_account_holder: optionalText(120, "口座名義"),
+  // Slack Incoming Webhook 以外のホストを許すと、予約のたびに顧客名・日時・備考を
+  // 任意のサーバーへPOSTする「保存型SSRF/データ流出シンク」になり得るため、
+  // hooks.slack.com の /services/... 形式に限定する。
+  booking_notify_slack_webhook_url: z
+    .union([
+      z.literal(""),
+      z
+        .string()
+        .trim()
+        .max(500)
+        .refine((v) => {
+          try {
+            const u = new URL(v);
+            return u.protocol === "https:" && u.hostname === "hooks.slack.com" && u.pathname.startsWith("/services/");
+          } catch {
+            return false;
+          }
+        }, "SlackのIncoming Webhook URL（https://hooks.slack.com/services/... 形式）で入力してください"),
+    ])
+    .optional(),
 });
 
 export type SettingsInput = z.infer<typeof settingsSchema>;
