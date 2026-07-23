@@ -46,10 +46,17 @@ export async function notifyNewBooking(
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://app.ledra.co.jp";
   const reservationUrl = `${appUrl}/admin/reservations`;
 
-  await Promise.allSettled([
+  const results = await Promise.allSettled([
     sendOwnerEmail({ supabase, tenantId, reservation, customerName, timeLabel, reservationUrl }),
     sendSlackAlert({ supabase, tenantId, reservation, customerName, timeLabel, reservationUrl }),
   ]);
+  // allSettled は reject しないため、呼び出し側の `.catch()` はここでの例外を拾えない。
+  // 握りつぶすと原因不明のまま通知が届かなくなるので、ここで明示的にログする。
+  for (const r of results) {
+    if (r.status === "rejected") {
+      logger.error("bookingNotify: unexpected failure", { tenantId, reservationId: reservation.id, error: r.reason });
+    }
+  }
 }
 
 async function sendOwnerEmail(params: {
