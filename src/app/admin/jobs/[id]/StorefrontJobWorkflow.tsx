@@ -141,7 +141,7 @@ export default function StorefrontJobWorkflow({ reservation, customer, vehicle, 
       });
       if (!res.ok) {
         const j = await parseJsonSafe(res);
-        throw new Error(j?.error ?? j?.message ?? `HTTP ${res.status}`);
+        throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       }
       router.refresh();
     } catch (e: unknown) {
@@ -169,7 +169,7 @@ export default function StorefrontJobWorkflow({ reservation, customer, vehicle, 
       }
       if (!r.ok && r.response) {
         const j = await parseJsonSafe(r.response);
-        throw new Error(j?.error ?? `HTTP ${r.status}`);
+        throw new Error(j?.message ?? j?.error ?? `HTTP ${r.status}`);
       }
       router.refresh();
     } catch (e: unknown) {
@@ -186,6 +186,10 @@ export default function StorefrontJobWorkflow({ reservation, customer, vehicle, 
     const qs = params.toString();
     return `/admin/certificates/new${qs ? `?${qs}` : ""}`;
   })();
+
+  // 作業内容によっては完了後に証跡を残しづらいことがあるため、作業中のうちに
+  // 撮影を促す（管理モードの JobStatusPanel と同じ導線を店頭モードにも出す）。
+  const inProgressPhotoUrl = `${certificateNewUrl}${certificateNewUrl.includes("?") ? "&" : "?"}stage=in_progress`;
 
   const invoiceNewUrl = (() => {
     const params = new URLSearchParams();
@@ -275,6 +279,18 @@ export default function StorefrontJobWorkflow({ reservation, customer, vehicle, 
         ) : (
           <div className="mt-5 rounded-xl border border-success/20 bg-success-dim px-3 py-2 text-sm text-success-text">
             この案件の作業ステップはすべて完了しています。次は会計・証明書の発行へ進んでください。
+          </div>
+        )}
+
+        {/* 作業中の撮影を促す: 完了後は証跡を残しづらい作業もあるため、途中でも撮影導線を出す */}
+        {currentStatus === "in_progress" && (
+          <div className="mt-4 flex flex-wrap items-center gap-3 rounded-xl border border-accent/20 bg-accent-dim px-3 py-2.5">
+            <span className="text-xs text-accent-text">
+              📷 完了後は証跡を残しづらい作業もあります。作業中の様子も撮っておくと安心です。
+            </span>
+            <Link href={inProgressPhotoUrl} className="ml-auto text-xs font-semibold text-accent hover:underline">
+              作業中の写真を撮る →
+            </Link>
           </div>
         )}
 
