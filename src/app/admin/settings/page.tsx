@@ -100,13 +100,14 @@ async function fetchBookingNotifySlackStatus(
   const { admin } = createTenantScopedAdmin(tenantId);
   const { data, error } = await admin
     .from("tenants")
-    .select("booking_notify_slack_webhook_url")
+    .select("booking_notify_slack_webhook_ciphertext")
     .eq("id", tenantId)
     .maybeSingle();
   const columnExists = !error || !error.message.includes("does not exist");
   const configured =
     columnExists &&
-    !!(data as { booking_notify_slack_webhook_url?: string | null } | null)?.booking_notify_slack_webhook_url;
+    !!(data as { booking_notify_slack_webhook_ciphertext?: string | null } | null)
+      ?.booking_notify_slack_webhook_ciphertext;
   return { columnExists, configured };
 }
 

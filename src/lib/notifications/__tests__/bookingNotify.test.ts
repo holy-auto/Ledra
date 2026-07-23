@@ -15,6 +15,11 @@ vi.mock("@/lib/logger", () => ({
 vi.mock("@/lib/supabase/admin", () => ({
   createServiceRoleAdmin: (...args: unknown[]) => createServiceRoleAdminMock(...args),
 }));
+// 暗号化/復号自体は tenantSecrets 側の既存テストで担保済み。ここでは
+// bookingNotify の分岐ロジックだけを見たいので pass-through にする。
+vi.mock("@/lib/crypto/tenantSecrets", () => ({
+  readSecret: async (ciphertext: string | null) => ciphertext,
+}));
 
 import { notifyNewBooking } from "@/lib/notifications/bookingNotify";
 
@@ -40,7 +45,8 @@ function makeFakeSupabase(state: FakeState) {
   return {
     from: (table: string) => {
       if (table === "tenant_memberships") return chain({ data: state.members });
-      if (table === "tenants") return chain({ data: { booking_notify_slack_webhook_url: state.slackWebhookUrl } });
+      if (table === "tenants")
+        return chain({ data: { booking_notify_slack_webhook_ciphertext: state.slackWebhookUrl } });
       throw new Error(`unexpected table: ${table}`);
     },
     auth: {

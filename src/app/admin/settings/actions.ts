@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { calcLaborPrice } from "@/lib/pricing/labor";
+import { buildSecretWrite } from "@/lib/crypto/tenantSecrets";
 import { settingsSchema } from "./settingsSchema";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
@@ -67,10 +68,13 @@ export async function updateTenantSettingsAction(formData: FormData): Promise<Se
 
   // Slack Webhook URLは秘密情報のためフォームには常に空欄で表示される（write-only）。
   // 空欄のまま保存 = 変更なし（既存値を保持）。明示的に削除したい場合のみチェックボックスでnull化する。
+  // LINE channel secret / Square OAuth トークンと同じ規約で暗号化列に保存する。
   if (formData.get("booking_notify_slack_webhook_url_clear") === "on") {
-    payload.booking_notify_slack_webhook_url = null;
+    payload.booking_notify_slack_webhook_ciphertext = null;
   } else if (v.booking_notify_slack_webhook_url) {
-    payload.booking_notify_slack_webhook_url = v.booking_notify_slack_webhook_url;
+    payload.booking_notify_slack_webhook_ciphertext = (
+      await buildSecretWrite(v.booking_notify_slack_webhook_url)
+    ).ciphertext;
   }
 
   if (formData.has("bank_name")) {

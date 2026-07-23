@@ -1,6 +1,7 @@
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { sendEmail } from "@/lib/email/sendEmail";
 import { notifySlack } from "@/lib/slack";
+import { readSecret } from "@/lib/crypto/tenantSecrets";
 import { logger, maskEmail } from "@/lib/logger";
 
 function escapeHtml(s: string): string {
@@ -148,11 +149,13 @@ async function sendSlackAlert(params: {
 
   const { data: tenant } = await supabase
     .from("tenants")
-    .select("booking_notify_slack_webhook_url")
+    .select("booking_notify_slack_webhook_ciphertext")
     .eq("id", tenantId)
     .maybeSingle();
-  const webhookUrl = tenant?.booking_notify_slack_webhook_url as string | null | undefined;
-  if (!webhookUrl) return; // 未設定は無条件でスキップ（notifySlack 自体も no-op だが問い合わせ自体を省く）
+  const ciphertext = tenant?.booking_notify_slack_webhook_ciphertext as string | null | undefined;
+  if (!ciphertext) return; // 未設定は無条件でスキップ（notifySlack 自体も no-op だが問い合わせ自体を省く）
+  const webhookUrl = await readSecret(ciphertext, "tenants.booking_notify_slack_webhook_ciphertext");
+  if (!webhookUrl) return; // 復号失敗（キー不整合等）も通知スキップ。readSecret 側でエラーログ済み
 
   await notifySlack(webhookUrl, {
     text: `📅 新しい予約が入りました — ${reservation.tenant_name}`,

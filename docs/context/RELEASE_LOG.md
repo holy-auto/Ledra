@@ -18,7 +18,8 @@
   「予約が入りました」メールを自動送信（`src/lib/notifications/bookingNotify.ts`）。
   GCal同期・LINE確認通知と同じ non-blocking fire-and-forget で呼び出し、予約成立自体は
   阻害しない。加えて `/admin/settings` の「予約通知」欄に Slack Incoming Webhook URL
-  （`tenants.booking_notify_slack_webhook_url`）を設定すると同内容をSlackにも通知（未設定なら
+  （`tenants.booking_notify_slack_webhook_ciphertext`、LINE/Squareと同じ規約で`buildSecretWrite`/
+  `readSecret`により暗号化保存・write-only表示）を設定すると同内容をSlackにも通知（未設定なら
   スキップ）。管理画面から作成した予約（`/api/admin/reservations`）は対象外。
 - 対象: 顧客Web予約フォーム、Googleマップ予約/LINE LIFF経由の外部予約、`/admin/settings`
   店舗設定画面。
