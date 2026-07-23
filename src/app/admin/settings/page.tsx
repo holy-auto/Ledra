@@ -38,7 +38,6 @@ type TenantExtended = {
   stripe_connect_account_id: string | null;
   stripe_connect_onboarded: boolean;
   labor_rate_per_hour: number | null;
-  booking_notify_slack_webhook_url: string | null;
 };
 
 const EMPTY_TENANT_EXTENDED: TenantExtended = {
@@ -51,7 +50,6 @@ const EMPTY_TENANT_EXTENDED: TenantExtended = {
   stripe_connect_account_id: null,
   stripe_connect_onboarded: false,
   labor_rate_per_hour: null,
-  booking_notify_slack_webhook_url: null,
 };
 
 /** Attempt to fetch extended tenant columns added via migration.
@@ -62,7 +60,7 @@ async function fetchTenantExtended(tenantId: string): Promise<TenantExtended> {
     const { data, error } = await admin
       .from("tenants")
       .select(
-        "contact_email,contact_phone,address,website_url,registration_number,bank_info,stripe_connect_account_id,stripe_connect_onboarded,labor_rate_per_hour,booking_notify_slack_webhook_url",
+        "contact_email,contact_phone,address,website_url,registration_number,bank_info,stripe_connect_account_id,stripe_connect_onboarded,labor_rate_per_hour",
       )
       .eq("id", tenantId)
       .single();
@@ -78,11 +76,38 @@ async function fetchTenantExtended(tenantId: string): Promise<TenantExtended> {
       stripe_connect_account_id: row.stripe_connect_account_id ?? null,
       stripe_connect_onboarded: row.stripe_connect_onboarded ?? false,
       labor_rate_per_hour: row.labor_rate_per_hour ?? null,
-      booking_notify_slack_webhook_url: row.booking_notify_slack_webhook_url ?? null,
     };
   } catch {
     return { ...EMPTY_TENANT_EXTENDED };
   }
+}
+
+/**
+ * 予約通知Slack Webhookの存在確認/設定状況のみを取得する。
+ *
+ * `fetchTenantExtended` とは意図的に別クエリにしている: 同じ select に混ぜると、
+ * このカラムのマイグレーション未適用時に select 全体がエラーになり、
+ * contact_email 等の既存項目まで「未設定」に見えてしまう
+ * （保存時に空文字で上書きされ既存値を消してしまう恐れがある）。
+ *
+ * また、Slack Webhook URL自体は値を返さない（設定済みかどうかの真偽値のみ）。
+ * `tenants` は tenant_select_own RLS で同テナントの全メンバーが SELECT 可能なため、
+ * オーナー以外のスタッフのブラウザにも生の値をレンダリングしない write-only 設計とする。
+ */
+async function fetchBookingNotifySlackStatus(
+  tenantId: string,
+): Promise<{ columnExists: boolean; configured: boolean }> {
+  const { admin } = createTenantScopedAdmin(tenantId);
+  const { data, error } = await admin
+    .from("tenants")
+    .select("booking_notify_slack_webhook_url")
+    .eq("id", tenantId)
+    .maybeSingle();
+  const columnExists = !error || !error.message.includes("does not exist");
+  const configured =
+    columnExists &&
+    !!(data as { booking_notify_slack_webhook_url?: string | null } | null)?.booking_notify_slack_webhook_url;
+  return { columnExists, configured };
 }
 
 export default async function AdminSettingsPage({
@@ -126,6 +151,7 @@ export default async function AdminSettingsPage({
 
   // Extended fields — gracefully null if migration not yet applied
   const ext = await fetchTenantExtended(tenantId);
+  const bookingNotifySlack = await fetchBookingNotifySlackStatus(tenantId);
   const hasExtendedCols =
     ext.contact_email !== null ||
     ext.contact_phone !== null ||
@@ -270,7 +296,8 @@ export default async function AdminSettingsPage({
           registrationNumber={columnsExist ? ext.registration_number : null}
           bankInfo={columnsExist ? ext.bank_info : null}
           laborRatePerHour={columnsExist ? ext.labor_rate_per_hour : null}
-          bookingNotifySlackWebhookUrl={ext.booking_notify_slack_webhook_url}
+          bookingNotifySlackColumnExists={bookingNotifySlack.columnExists}
+          bookingNotifySlackConfigured={bookingNotifySlack.configured}
           columnsExist={columnsExist}
           connectStatus={
             columnsExist

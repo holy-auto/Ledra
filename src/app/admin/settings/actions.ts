@@ -65,8 +65,12 @@ export async function updateTenantSettingsAction(formData: FormData): Promise<Se
     payload.labor_rate_per_hour = laborRate;
   }
 
-  if (formData.has("booking_notify_slack_webhook_url")) {
-    payload.booking_notify_slack_webhook_url = v.booking_notify_slack_webhook_url || null;
+  // Slack Webhook URLは秘密情報のためフォームには常に空欄で表示される（write-only）。
+  // 空欄のまま保存 = 変更なし（既存値を保持）。明示的に削除したい場合のみチェックボックスでnull化する。
+  if (formData.get("booking_notify_slack_webhook_url_clear") === "on") {
+    payload.booking_notify_slack_webhook_url = null;
+  } else if (v.booking_notify_slack_webhook_url) {
+    payload.booking_notify_slack_webhook_url = v.booking_notify_slack_webhook_url;
   }
 
   if (formData.has("bank_name")) {
