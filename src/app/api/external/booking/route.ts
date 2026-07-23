@@ -7,6 +7,7 @@ import { checkOverlap } from "@/lib/reservations/overlap";
 import { reservationBlocksSlot } from "@/lib/booking/slots";
 import { syncCreateEvent } from "@/lib/gcal/client";
 import { sendBookingConfirmation } from "@/lib/line/client";
+import { notifyNewBooking } from "@/lib/notifications/bookingNotify";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { logger } from "@/lib/logger";
 
@@ -318,6 +319,27 @@ export async function POST(req: NextRequest) {
       customer_name: customerName,
     }).catch((error) => {
       logger.warn("google calendar sync failed (non-blocking)", {
+        error,
+        tenantId: tenant.id,
+        reservationId: reservation.id,
+      });
+    });
+
+    // ── 予約通知（メール/Slack、非ブロッキング） ──
+    notifyNewBooking(
+      tenant.id,
+      {
+        id: reservation.id,
+        title: reservation.title,
+        scheduled_date: reservation.scheduled_date,
+        start_time: reservation.start_time,
+        end_time: reservation.end_time,
+        note: reservation.note,
+        tenant_name: tenant.name,
+      },
+      customerName,
+    ).catch((error) => {
+      logger.warn("booking notify failed (non-blocking)", {
         error,
         tenantId: tenant.id,
         reservationId: reservation.id,

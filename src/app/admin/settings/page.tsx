@@ -38,6 +38,7 @@ type TenantExtended = {
   stripe_connect_account_id: string | null;
   stripe_connect_onboarded: boolean;
   labor_rate_per_hour: number | null;
+  booking_notify_slack_webhook_url: string | null;
 };
 
 const EMPTY_TENANT_EXTENDED: TenantExtended = {
@@ -50,6 +51,7 @@ const EMPTY_TENANT_EXTENDED: TenantExtended = {
   stripe_connect_account_id: null,
   stripe_connect_onboarded: false,
   labor_rate_per_hour: null,
+  booking_notify_slack_webhook_url: null,
 };
 
 /** Attempt to fetch extended tenant columns added via migration.
@@ -60,7 +62,7 @@ async function fetchTenantExtended(tenantId: string): Promise<TenantExtended> {
     const { data, error } = await admin
       .from("tenants")
       .select(
-        "contact_email,contact_phone,address,website_url,registration_number,bank_info,stripe_connect_account_id,stripe_connect_onboarded,labor_rate_per_hour",
+        "contact_email,contact_phone,address,website_url,registration_number,bank_info,stripe_connect_account_id,stripe_connect_onboarded,labor_rate_per_hour,booking_notify_slack_webhook_url",
       )
       .eq("id", tenantId)
       .single();
@@ -76,6 +78,7 @@ async function fetchTenantExtended(tenantId: string): Promise<TenantExtended> {
       stripe_connect_account_id: row.stripe_connect_account_id ?? null,
       stripe_connect_onboarded: row.stripe_connect_onboarded ?? false,
       labor_rate_per_hour: row.labor_rate_per_hour ?? null,
+      booking_notify_slack_webhook_url: row.booking_notify_slack_webhook_url ?? null,
     };
   } catch {
     return { ...EMPTY_TENANT_EXTENDED };
@@ -267,6 +270,7 @@ export default async function AdminSettingsPage({
           registrationNumber={columnsExist ? ext.registration_number : null}
           bankInfo={columnsExist ? ext.bank_info : null}
           laborRatePerHour={columnsExist ? ext.labor_rate_per_hour : null}
+          bookingNotifySlackWebhookUrl={ext.booking_notify_slack_webhook_url}
           columnsExist={columnsExist}
           connectStatus={
             columnsExist

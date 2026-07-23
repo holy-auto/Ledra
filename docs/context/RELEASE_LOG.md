@@ -12,6 +12,17 @@
 - 対象: どの画面・API・業種向けか
 ```
 
+## 2026-07-23 予約が入った際の店舗宛通知（メール/Slack）(PR未採番)
+- 内容: 顧客予約（`/api/customer/booking` Web予約フォーム、`/api/external/booking`
+  Googleマップ予約/LINE LIFF）が作成されると、テナントのオーナー/管理者へ
+  「予約が入りました」メールを自動送信（`src/lib/notifications/bookingNotify.ts`）。
+  GCal同期・LINE確認通知と同じ non-blocking fire-and-forget で呼び出し、予約成立自体は
+  阻害しない。加えて `/admin/settings` の「予約通知」欄に Slack Incoming Webhook URL
+  （`tenants.booking_notify_slack_webhook_url`）を設定すると同内容をSlackにも通知（未設定なら
+  スキップ）。管理画面から作成した予約（`/api/admin/reservations`）は対象外。
+- 対象: 顧客Web予約フォーム、Googleマップ予約/LINE LIFF経由の外部予約、`/admin/settings`
+  店舗設定画面。
+
 ## 2026-07-22 管理画面ダッシュボードに「Ledraに聞く」入口 + 承認インボックスに根拠表示 (PR #819)
 - 内容: ダッシュボード最上部に自由入力欄 `AskLedraBar` を新設。まず決定的なキーワード→
   画面ルーティング（`src/lib/ai/askRouter.ts`、AI不使用・無料・全プラン対象）を試し、

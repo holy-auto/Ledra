@@ -35,6 +35,7 @@ export async function updateTenantSettingsAction(formData: FormData): Promise<Se
     bank_account_type: get("bank_account_type"),
     bank_account_number: get("bank_account_number"),
     bank_account_holder: get("bank_account_holder"),
+    booking_notify_slack_webhook_url: get("booking_notify_slack_webhook_url"),
   });
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? "入力内容が正しくありません" };
@@ -62,6 +63,10 @@ export async function updateTenantSettingsAction(formData: FormData): Promise<Se
       laborRate = n > 0 ? n : null;
     }
     payload.labor_rate_per_hour = laborRate;
+  }
+
+  if (formData.has("booking_notify_slack_webhook_url")) {
+    payload.booking_notify_slack_webhook_url = v.booking_notify_slack_webhook_url || null;
   }
 
   if (formData.has("bank_name")) {

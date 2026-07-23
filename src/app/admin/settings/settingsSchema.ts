@@ -37,6 +37,17 @@ export const settingsSchema = z.object({
   bank_account_type: optionalText(20, "口座種別"),
   bank_account_number: optionalText(30, "口座番号"),
   bank_account_holder: optionalText(120, "口座名義"),
+  booking_notify_slack_webhook_url: z
+    .union([
+      z.literal(""),
+      z
+        .string()
+        .trim()
+        .max(500)
+        .url("URLの形式が正しくありません")
+        .refine((v) => /^https:\/\//i.test(v), "URLは https:// から始まる形式で入力してください"),
+    ])
+    .optional(),
 });
 
 export type SettingsInput = z.infer<typeof settingsSchema>;
