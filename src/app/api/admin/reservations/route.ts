@@ -158,19 +158,33 @@ export async function GET(req: NextRequest) {
       vehicle_label: r.vehicle_id ? (vehicleMap[r.vehicle_id] ?? null) : null,
     }));
 
-    // 統計
+    // 統計: 一覧の既定フィルタ (from=today 等) に引きずられず、常にテナント全体
+    // (status/customer_id 絞り込みのみ反映) の集計にする。ダッシュボードKPIとして
+    // 「一覧で今何を表示しているか」ではなく「テナント全体の状況」を表すため。
     const today = new Date().toISOString().slice(0, 10);
-    const todayCount = enriched.filter((r) => r.scheduled_date === today && r.status !== "cancelled").length;
-    const activeCount = enriched.filter((r) => r.status !== "cancelled" && r.status !== "completed").length;
+    const statsBase = () => {
+      let q = supabase
+        .from("reservations")
+        .select("id", { count: "exact", head: true })
+        .eq("tenant_id", caller.tenantId);
+      if (status && status !== "all") q = q.eq("status", status);
+      if (customerId) q = q.eq("customer_id", customerId);
+      return q;
+    };
+    const [totalStats, todayStats, activeStats] = await Promise.all([
+      statsBase(),
+      statsBase().eq("scheduled_date", today).neq("status", "cancelled"),
+      statsBase().neq("status", "cancelled").neq("status", "completed"),
+    ]);
 
     const headers = { "Cache-Control": "private, max-age=10, stale-while-revalidate=30" };
     return apiJson(
       {
         reservations: enriched,
         stats: {
-          total: count ?? enriched.length,
-          today_count: todayCount,
-          active_count: activeCount,
+          total: totalStats.count ?? 0,
+          today_count: todayStats.count ?? 0,
+          active_count: activeStats.count ?? 0,
         },
         ...(pagination.page > 0 && { page: pagination.page, per_page: pagination.perPage, total: count ?? 0 }),
       },

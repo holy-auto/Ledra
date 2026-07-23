@@ -144,7 +144,7 @@ export default function StorefrontReservations() {
       const res = await fetch(`/api/admin/reservations/${id}/advance`, { method: "POST" });
       if (!res.ok) {
         const j = await parseJsonSafe(res);
-        throw new Error(j?.error ?? j?.message ?? `HTTP ${res.status}`);
+        throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       }
       // 背後でサーバ状態と再同期
       mutate();

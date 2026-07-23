@@ -187,7 +187,7 @@ export default function JobStatusPanel({ reservation, customerId, vehicleId, wor
       }
       if (!r.ok && r.response) {
         const j = await parseJsonSafe(r.response);
-        throw new Error(j?.error ?? `HTTP ${r.status}`);
+        throw new Error(j?.message ?? j?.error ?? `HTTP ${r.status}`);
       }
       router.refresh();
     } catch (e: unknown) {
@@ -225,7 +225,7 @@ export default function JobStatusPanel({ reservation, customerId, vehicleId, wor
       }
       if (!r.ok && r.response) {
         const j = await parseJsonSafe(r.response);
-        throw new Error(j?.error ?? `HTTP ${r.status}`);
+        throw new Error(j?.message ?? j?.error ?? `HTTP ${r.status}`);
       }
       router.refresh();
     } catch (e: unknown) {
@@ -252,7 +252,7 @@ export default function JobStatusPanel({ reservation, customerId, vehicleId, wor
       }
       if (!r.ok && r.response) {
         const j = await parseJsonSafe(r.response);
-        throw new Error(j?.error ?? `HTTP ${r.status}`);
+        throw new Error(j?.message ?? j?.error ?? `HTTP ${r.status}`);
       }
       router.refresh();
     } catch (e: unknown) {
@@ -279,7 +279,7 @@ export default function JobStatusPanel({ reservation, customerId, vehicleId, wor
       }
       if (!r.ok && r.response) {
         const j = await parseJsonSafe(r.response);
-        throw new Error(j?.error ?? `HTTP ${r.status}`);
+        throw new Error(j?.message ?? j?.error ?? `HTTP ${r.status}`);
       }
       router.refresh();
     } catch (e: unknown) {
@@ -306,7 +306,7 @@ export default function JobStatusPanel({ reservation, customerId, vehicleId, wor
       }
       if (!r.ok && r.response) {
         const j = await parseJsonSafe(r.response);
-        throw new Error(j?.error ?? `HTTP ${r.status}`);
+        throw new Error(j?.message ?? j?.error ?? `HTTP ${r.status}`);
       }
       router.refresh();
     } catch (e: unknown) {
@@ -325,6 +325,10 @@ export default function JobStatusPanel({ reservation, customerId, vehicleId, wor
     const qs = params.toString();
     return `/admin/certificates/new${qs ? `?${qs}` : ""}`;
   })();
+
+  // 作業内容によっては完了後に証跡を残しづらいことがあるため、作業中のうちに
+  // 撮影を促す（下書き保存すれば後で続きを入力・発行できる）。
+  const inProgressPhotoUrl = `${certificateNewUrl}&stage=in_progress`;
 
   // 案件 (reservation) ID を含めて遷移すると DocumentForm が
   // ai-from-job を叩いて明細・備考を AI 起票する。
@@ -413,6 +417,18 @@ export default function JobStatusPanel({ reservation, customerId, vehicleId, wor
             pendingWarn={pendingWarn}
             className="mt-4 rounded-xl border border-border-subtle bg-inset p-3 space-y-2.5"
           />
+        )}
+
+        {/* 作業中の撮影を促す: 完了後だと証跡を残しづらい作業もあるため、途中でも撮影導線を出す */}
+        {currentStatus === "in_progress" && (
+          <div className="mt-4 flex flex-wrap items-center gap-3 rounded-xl border border-accent/20 bg-accent-dim px-3 py-2.5">
+            <span className="text-xs text-accent-text">
+              📷 完了後は証跡を残しづらい作業もあります。作業中の様子も撮っておくと安心です。
+            </span>
+            <Link href={inProgressPhotoUrl} className="btn-secondary text-xs px-3 py-1.5 ml-auto whitespace-nowrap">
+              作業中の写真を撮る
+            </Link>
+          </div>
         )}
 
         {/* 担当者ピッカー + 作業タイマー */}

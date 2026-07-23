@@ -43,6 +43,9 @@ type SignoffStateResponse = {
   state: SignoffState;
 };
 
+/** 案件の連鎖タイムライン（予約→施工→証明書→請求→フォロー）レスポンスのうち、ここではフォロー欄だけ使う。 */
+type TimelineResponse = { steps: { key: string; label: string; state: string; detail: string }[] };
+
 const STEP_LABEL: Record<SignoffStepKey, string> = {
   completion: "完了報告",
   certificate: "証明書 (施工前後写真)",
@@ -79,11 +82,42 @@ export default function JobSignoffPanel({ reservationId }: { reservationId: stri
     revalidateOnFocus: true,
     dedupingInterval: 5000,
   });
+  // 発行後フォロー（証明書発行後の顧客フォロー連絡）の状態。証明書が無い間は無意味なので
+  // 証明書発行後にだけ意味を持つ表示（下の JSX 側で cert 有無を見て出し分ける）。
+  const { data: timeline } = useSWR<TimelineResponse>(`/api/admin/reservations/${reservationId}/timeline`, fetcher, {
+    revalidateOnFocus: true,
+    dedupingInterval: 5000,
+  });
+  const followUp = timeline?.steps?.find((s) => s.key === "follow_up") ?? null;
 
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [email, setEmail] = useState("");
   const [copied, setCopied] = useState(false);
+  const [issuing, setIssuing] = useState(false);
+
+  /** 施工前後写真が揃った下書き証明書を1タップで発行する（承認インボックスと同一エンドポイント）。 */
+  async function issueCertificate() {
+    if (!data?.certificate?.public_id) return;
+    setIssuing(true);
+    setErr(null);
+    try {
+      const res = await fetch("/api/admin/certificates/status", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ public_id: data.certificate.public_id, status: "active" }),
+      });
+      if (!res.ok) {
+        const j = await parseJsonSafe(res);
+        throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
+      }
+      await mutate();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setIssuing(false);
+    }
+  }
 
   async function requestSignature() {
     if (!data?.certificate) return;
@@ -183,7 +217,7 @@ export default function JobSignoffPanel({ reservationId }: { reservationId: stri
 
       {/* ── アクション領域 ───────────────────────────── */}
       <div className="mt-4 space-y-3">
-        {/* 証明書ステップ: 発行 / 写真追加への導線 */}
+        {/* 証明書ステップ: 発行 / 写真追加 / 1タップ発行への導線 */}
         {(state.steps.certificate.state === "current" || state.steps.certificate.state === "blocked") && (
           <div className="flex flex-wrap gap-2">
             {!certificate ? (
@@ -193,11 +227,32 @@ export default function JobSignoffPanel({ reservationId }: { reservationId: stri
               >
                 🪪 証明書を発行
               </Link>
+            ) : certificate.status !== "active" &&
+              certificate.hasBeforePhoto &&
+              certificate.hasAfterPhoto &&
+              certificate.public_id ? (
+              // 施工前後写真が揃った下書き: 承認インボックスと同じ 1 タップ発行
+              <MutationGuard>
+                <button
+                  onClick={issueCertificate}
+                  disabled={issuing}
+                  className="btn-primary text-sm px-4 py-2 disabled:opacity-50"
+                >
+                  {issuing ? "発行中…" : "🪪 証明書を発行する"}
+                </button>
+              </MutationGuard>
             ) : (
               <Link href={`/admin/certificates/${certificate.id}`} className="btn-secondary text-sm px-4 py-2">
                 📷 施工前後の写真を追加
               </Link>
             )}
+          </div>
+        )}
+
+        {/* 発行後フォロー（証明書発行後の顧客フォロー連絡）の状態 */}
+        {certificate && followUp && (
+          <div className="text-xs text-muted">
+            <span className="font-semibold text-secondary">フォロー:</span> {followUp.detail}
           </div>
         )}
 
