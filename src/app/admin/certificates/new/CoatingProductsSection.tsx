@@ -101,6 +101,8 @@ export default function CoatingProductsSection({ serviceType, canDeliveryNoteExt
   const [extracting, setExtracting] = useState(false);
   const [extractError, setExtractError] = useState<string | null>(null);
   const [extractedCount, setExtractedCount] = useState(0);
+  // 納品書の明細が上限(8件)を超えていた場合の元の件数。null なら打ち切りなし。
+  const [extractTruncatedFrom, setExtractTruncatedFrom] = useState<number | null>(null);
 
   // マウント時にブランド一覧を取得
   useEffect(() => {
@@ -158,10 +160,11 @@ export default function CoatingProductsSection({ serviceType, canDeliveryNoteExt
   /** 納品書OCRの明細を下書き行として追加する（部位は未選択のまま、後で人が選ぶ）。 */
   const applyExtractedLines = (lines: DeliveryNoteLine[]) => {
     if (lines.length === 0) return;
+    const capped = lines.slice(0, 8);
     setRows((prev) => {
       // 最初の行が未入力（空の初期行）なら、それを1件目の受け皿として使う。
       const base = prev.length === 1 && !prev[0].area && !prev[0].brand_id && !prev[0].product_name ? [] : prev;
-      const added = lines.slice(0, 8).map((l) => {
+      const added = capped.map((l) => {
         const row = newRow();
         row.product_id = CUSTOM_PRODUCT;
         row.customProductName = l.label;
@@ -171,13 +174,16 @@ export default function CoatingProductsSection({ serviceType, canDeliveryNoteExt
       });
       return [...base, ...added];
     });
-    setExtractedCount(lines.length);
+    // 実際に追加した件数を表示する（元の明細が上限を超える場合は打ち切りを明示する）。
+    setExtractedCount(capped.length);
+    setExtractTruncatedFrom(lines.length > capped.length ? lines.length : null);
   };
 
   const handleDeliveryNoteFile = async (file: File) => {
     setExtracting(true);
     setExtractError(null);
     setExtractedCount(0);
+    setExtractTruncatedFrom(null);
     try {
       const fd = new FormData();
       fd.append("delivery_note", file);
@@ -199,7 +205,7 @@ export default function CoatingProductsSection({ serviceType, canDeliveryNoteExt
 
   const validRows = rows.filter((r) => {
     const location = r.area === "custom" ? r.customArea.trim() : r.area;
-    return location || r.brand_id || r.product_name.trim();
+    return location || r.brand_id || r.product_name.trim() || r.product_code.trim();
   });
 
   const jsonValue = JSON.stringify(
@@ -263,7 +269,16 @@ export default function CoatingProductsSection({ serviceType, canDeliveryNoteExt
             部品・液剤の納品書を撮影すると、AIが品名・品番を読み取って下書き行を追加します（内容は必ず確認・編集してください）。
           </p>
           {extractedCount > 0 && !extracting && (
-            <p className="text-xs text-success-text">✅ {extractedCount} 件を下書きに追加しました。</p>
+            <p className="text-xs text-success-text">
+              ✅ {extractedCount} 件を下書きに追加しました。
+              {extractTruncatedFrom && (
+                <span className="text-warning-text">
+                  {" "}
+                  （納品書には {extractTruncatedFrom} 件ありましたが、上限のため先頭 {extractedCount}{" "}
+                  件のみ取り込みました。残りは手入力してください。）
+                </span>
+              )}
+            </p>
           )}
           {extractError && <p className="text-xs text-danger-text">{extractError}</p>}
         </div>

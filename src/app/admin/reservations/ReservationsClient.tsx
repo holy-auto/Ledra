@@ -148,7 +148,12 @@ export default function ReservationsClient() {
   const [activeStatusFilter, setActiveStatusFilter] = useState("all");
   const [activeDateFilter, setActiveDateFilter] = useState("");
   // 古い予約は既定で隠す（本日以降のみ表示）。過去分は明示的にトグルしたときだけ読み込む。
+  // カレンダー表示では月移動で過去月も見る必要があるためこの既定フィルタは適用しない
+  // （過去分トグルはリスト表示にしか出さないので、絞ったままだと見る手段が無くなる）。
   const [showPast, setShowPast] = useState(false);
+
+  // View
+  const [viewMode, setViewMode] = useState<"list" | "calendar">("list");
 
   const swrKey = (() => {
     const params = new URLSearchParams();
@@ -156,7 +161,7 @@ export default function ReservationsClient() {
     if (activeDateFilter) {
       params.set("from", activeDateFilter);
       params.set("to", activeDateFilter);
-    } else if (!showPast) {
+    } else if (!showPast && viewMode === "list") {
       params.set("from", today);
     }
     return `/api/admin/reservations?${params.toString()}`;
@@ -177,9 +182,6 @@ export default function ReservationsClient() {
   // Transitions — defers heavy re-renders so button presses feel instant
   const [, startFilterTransition] = useTransition();
   const [, startFormTransition] = useTransition();
-
-  // View
-  const [viewMode, setViewMode] = useState<"list" | "calendar">("list");
 
   // Master
   const [customers, setCustomers] = useState<Customer[]>([]);
