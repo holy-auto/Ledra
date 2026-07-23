@@ -40,6 +40,19 @@ export function polygonSignerProvider(): PolygonSignerProvider {
   return v === "aws-kms" ? "aws-kms" : "local";
 }
 
+/**
+ * `POLYGON_PRIVATE_KEY` を viem が受け付ける `0x`+64桁hex に正規化する（純関数）。
+ * よくある形式ミス（`0x` プレフィックス無し・前後の空白・大文字）を吸収し、不正なら null を返す。
+ * viem の `privateKeyToAccount` は `0x`+64hex 以外を "invalid private key, expected hex or 32 bytes,
+ * got string" で落とすため、これを通してから渡すことで monitor/anchor が cryptic に失敗し続けるのを防ぐ。
+ */
+export function normalizePolygonPrivateKey(raw: string | undefined | null): `0x${string}` | null {
+  if (!raw) return null;
+  const trimmed = raw.trim();
+  const hex = trimmed.startsWith("0x") || trimmed.startsWith("0X") ? trimmed.slice(2) : trimmed;
+  return /^[0-9a-fA-F]{64}$/.test(hex) ? (`0x${hex.toLowerCase()}` as `0x${string}`) : null;
+}
+
 const SECP256K1_N = secp256k1.CURVE.n;
 
 /** bigint を 32byte 0x-hex に。 */
@@ -144,6 +157,12 @@ export async function getPolygonAccount(privateKey: string | undefined): Promise
     }
     return createKmsAccount(keyId);
   }
+  const key = normalizePolygonPrivateKey(privateKey);
+  if (!key) {
+    throw new Error(
+      "[polygon-signer] POLYGON_PRIVATE_KEY が 0x+64桁hex の秘密鍵ではありません（0x プレフィックス・桁数・空白を確認してください）。",
+    );
+  }
   const { privateKeyToAccount } = await import("viem/accounts");
-  return privateKeyToAccount(privateKey as `0x${string}`);
+  return privateKeyToAccount(key);
 }

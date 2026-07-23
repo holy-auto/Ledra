@@ -14,6 +14,20 @@
 - 起票日: YYYY-MM-DD
 ```
 
+## 「Ledraに聞く」のキーワードルーティングとルートテストが未成熟（PR #819）
+- 状況: `src/lib/ai/askRouter.ts` は「証明書」「発行」等の固定キーワードでマッチさせているが、実運用でどんな聞き方をされるかはまだ観測できていない。「発注を発行して」のような発話が意図せず証明書一覧へ誤ルーティングする可能性がある。また `/api/admin/ask` ルートハンドラ自体（認証→ルート一致→AIフォールバックの分岐、gating順序）の統合テストが無く、純関数（`matchAskRoute`・`buildApprovalInbox`）のみテスト済み。
+- 選択肢: 案A 本番の質問ログ（`ai_usage_logs`等）を見てキーワードを継続調整＋ルートレベルテストを追加。案B 埋め込み/簡易分類に置き換える（精度は上がるがコスト・複雑さも増える）。案C 現状維持で様子見。
+- 影響範囲: 誤ルーティングが多いと「聞く」機能自体への信頼が下がり、結局ナビで探す従来行動に戻ってしまう。
+- 次のアクション: リリース後1〜2週間、実際の質問内容とマッチ成否をログで確認してからキーワード調整・ルートテスト追加を判断する。
+- 起票日: 2026-07-22
+
+## 請求書ドラフトに「なぜ」を出すには documents に自動作成フラグが必要（PR #819）
+- 状況: 承認インボックスの証明書・発注ドラフトには実データに基づく「なぜ」表示を追加したが、請求書ドラフト（`documents` テーブル）には自動作成か手動作成かを区別するフラグが無く、全件に一律の説明を出すと手動作成分について事実と異なる可能性があるため、今回は意図的に非表示のままにした。
+- 選択肢: 案A `documents` に `created_via` 等のフラグ列を追加し、`invoiceRecordAuto.ts` の insert 時にセットする（スキーマ変更が必要）。案B 現状維持（請求書は「なぜ」なしのまま）。
+- 影響範囲: 案Aを取らない限り、請求書ドラフトだけ他の2種別と表示が非対称なままになる。
+- 次のアクション: 優先度が高ければスキーマ変更（マイグレーション追加）を検討する（堀越の判断待ち）。
+- 起票日: 2026-07-22
+
 ## エラーコード/メッセージ取り違えバグが残り83ファイルに存在する（今回は17箇所のみ修正）
 - 状況: `apiError()`（`src/lib/api/response.ts`）は `{error: エラーコード（固定文字列）, message: 人間向けメッセージ}` を
   返す設計だが、フロントエンドの catch 節で `j?.error ?? fallback` のように `message` ではなく `error` を読んで
@@ -60,16 +74,19 @@
 - 次のアクション: CI に `lint:migrations` を組み込むか判断する（堀越）。実装は軽微（既存 npm script を workflow から呼ぶだけ）。
 - 起票日: 2026-07-22
 
-## polygon-signer cron が秘密鍵形式エラーで連続失敗している（別の壊れた cron）
+## polygon-signer cron の秘密鍵形式エラー（コード側は対処済み・残りは env 値の確認）
 - 状況: `cron_failure_streaks` で `polygon-signer` が 510回超 連続失敗。エラーは
-  "invalid private key, expected hex or 32 bytes, got string"。Vercel の Cron Jobs 機能を ON にした
-  （2026-07-22、GCal 自動同期のため）ことで再び毎時実行されるが、毎回失敗する。Polygon(secp256k1) 署名鍵の
-  env 設定（形式が hex/32byte でない、または未設定）が原因と推定。GCal 調査中に発見（GCal 本件とは無関係）。
-- 影響範囲: Polygon へのアンカリング/署名系が実行できていない可能性（証跡の on-chain 記録に影響しうる）。要確認。
-- 選択肢: (a) Polygon 署名鍵の env を hex/32byte の正しい形式で設定 / (b) 現在使っていないなら cron を無効化・
-  vercel.json から外す。
-- 次のアクション: 当該 cron の役割と現在の要否を確認 → 必要なら鍵を正しい形式で設定、不要なら外す。
-- 起票日: 2026-07-22
+  "invalid private key, expected hex or 32 bytes, got string"。原因は `POLYGON_PRIVATE_KEY` が viem の
+  `privateKeyToAccount` が要求する `0x`+64桁hex でないこと（0x 無し/空白/桁違い等）。GCal 調査中に発見。
+- **コード側の対処済み（2026-07-22 PR）**: 共有関数 `getPolygonAccount` に `normalizePolygonPrivateKey`
+  （0x 補完・空白除去・小文字化・検証）を通す実装を追加。monitor cron は鍵が正規化できない場合 error ではなく
+  **skip** を返し failure streak を伸ばさない。→「0x 無しで貼っていた」なら本修正で monitor/anchor とも復旧。
+- 残（ユーザー対応が要る場合）: 鍵の**値自体**が誤り/プレースホルダ/未設定なら、正しい `POLYGON_PRIVATE_KEY`
+  （0x+64hex）を Vercel env に設定する必要がある（鍵の値は開発側からは参照・設定できない）。
+  アンカリング（on-chain 証跡）を使わないなら `POLYGON_ANCHOR_ENABLED` を外して monitor ごと止めるのも可。
+- 次のアクション: デプロイ後に polygon-signer が skip か healthy かを確認。healthy になれば復旧完了。
+  skip のままなら鍵の値を正しく設定 or アンカリング自体の要否を判断。
+- 起票日: 2026-07-22（同日中にコード対処を追記）
 
 ## PageBar の `actions` 初回スナップショット固定は他ページでも潜在バグになりうる
 - 状況: PageHeader→`usePublishPageBar` は `actions`（ページ上部バーの操作ボタン群）を初回 publish 時の

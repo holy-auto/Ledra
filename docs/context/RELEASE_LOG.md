@@ -12,6 +12,18 @@
 - 対象: どの画面・API・業種向けか
 ```
 
+## 2026-07-22 管理画面ダッシュボードに「Ledraに聞く」入口 + 承認インボックスに根拠表示 (PR #819)
+- 内容: ダッシュボード最上部に自由入力欄 `AskLedraBar` を新設。まず決定的なキーワード→
+  画面ルーティング（`src/lib/ai/askRouter.ts`、AI不使用・無料・全プラン対象）を試し、
+  マッチしなければ既存の `qaAssistant.generateQAAnswer`（施工ナレッジ・Academy事例の
+  RAG）にフォールバックする（`/api/admin/ask`、`field-knowledge/ask` と同じプラン制限・
+  レート制限・AI設定ゲート）。また承認インボックス（`ApprovalInboxWidget`、既に
+  ダッシュボード最上部に常設済み）の各下書きに「なぜ」を追加: 証明書は元の予約に
+  保存された実際のAI信頼度（`reservations.ai_certificate_draft`）、発注は起票時の実際の
+  理由文言（`purchase_orders.note`）を表示。請求書は自動/手動を区別する実データが無い
+  ため意図的に非表示（捏造しない）。
+- 対象: 管理画面ダッシュボード `/admin`（全業種のテナント管理画面）。
+
 ## 直近のリリース（git log 直近30件より、2026-07 時点で把握できるもの）
 
 ## 2026-07-22 予約管理UI整理・案件ワークフローのエラー表示バグ修正・証明書発行の下書き補助 (PR #817)
@@ -61,6 +73,15 @@
   `20260722025744` として out-of-band 適用されていたドリフト。ローカルの scheduled 用を `20260722030000` へ、gcal を
   本番記録に一致する `20260722025744` へ改名（forward 解消）し、db push を復旧。制約は
   `('draft','scheduled','published','archived')` に更新済み。
+
+## 2026-07-22 polygon-signer cron の秘密鍵形式エラーを堅牢化（0x補完＋不正時skip）
+- 内容: 残高監視 cron `polygon-signer` が `POLYGON_PRIVATE_KEY` の形式不備（`0x` 無し・空白等）で
+  viem `privateKeyToAccount` の "invalid private key" を毎時投げ、failure streak が 510超に膨れていた。
+  共有関数 `getPolygonAccount` に純関数 `normalizePolygonPrivateKey`（`0x` 補完・trim・小文字化・64hex 検証）を
+  通す実装を追加し、monitor/anchor 双方の「0x 無しで貼った鍵」等を吸収。monitor cron は鍵が正規化不能なら
+  error ではなく **skip** を返し（失敗記録を積まない）、anchor 側は明示エラーメッセージにした。正規化の
+  純関数テスト2件を追加。※ 鍵の**値自体**が誤り/未設定の場合は env 設定（ユーザー対応）が別途必要。
+- 対象: `/api/cron/polygon-signer`（残高監視）・Polygon アンカリング署名（`polygonBatch`）。全業種（アンカリング利用時）。
 
 ## 2026-07-22 Googleカレンダー: 複数カレンダー同期＋「予定あり(非公開)」モード
 - 内容: これまで gcal 連携は1カレンダーだけ（読み取り＝ブロック確認も書き込み＝予約作成も同一）だった。
