@@ -32,7 +32,7 @@ describe("settingsSchema (テナント設定フォームの入力検証)", () =>
     expect(settingsSchema.safeParse({ name: "店", registration_number: "1".repeat(101) }).success).toBe(false);
   });
 
-  it("予約通知のSlack Webhook URLはhttps以外・不正なURLを弾く", () => {
+  it("予約通知のSlack Webhook URLはhooks.slack.com/services/...以外を弾く（SSRF/データ流出対策）", () => {
     expect(settingsSchema.safeParse({ name: "店", booking_notify_slack_webhook_url: "" }).success).toBe(true);
     expect(
       settingsSchema.safeParse({ name: "店", booking_notify_slack_webhook_url: "https://hooks.slack.com/services/x" })
@@ -43,6 +43,23 @@ describe("settingsSchema (テナント設定フォームの入力検証)", () =>
         .success,
     ).toBe(false);
     expect(settingsSchema.safeParse({ name: "店", booking_notify_slack_webhook_url: "not-a-url" }).success).toBe(false);
+    // hooks.slack.com 以外のホスト（任意サーバーへの顧客情報POSTになり得る）は拒否する
+    expect(
+      settingsSchema.safeParse({ name: "店", booking_notify_slack_webhook_url: "https://evil.example.com/collect" })
+        .success,
+    ).toBe(false);
+    // サブドメインすり替え（hooks.slack.com.evil.com）も拒否する
+    expect(
+      settingsSchema.safeParse({
+        name: "店",
+        booking_notify_slack_webhook_url: "https://hooks.slack.com.evil.com/services/x",
+      }).success,
+    ).toBe(false);
+    // パスが /services/ でないSlackドメインも拒否する
+    expect(
+      settingsSchema.safeParse({ name: "店", booking_notify_slack_webhook_url: "https://hooks.slack.com/other/x" })
+        .success,
+    ).toBe(false);
   });
 
   it("前後の空白はトリムして正規化する", () => {

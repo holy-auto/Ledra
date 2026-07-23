@@ -1,4 +1,4 @@
-import { NextRequest } from "next/server";
+import { NextRequest, after } from "next/server";
 import { z } from "zod";
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { apiOk, apiInternalError, apiValidationError, apiError } from "@/lib/api/response";
@@ -336,26 +336,32 @@ export async function POST(req: NextRequest) {
       });
     });
 
-    // ── 予約通知（メール/Slack、非ブロッキング） ──
-    notifyNewBooking(
-      tenant.id,
-      {
-        id: reservation.id,
-        title: reservation.title,
-        scheduled_date: reservation.scheduled_date,
-        all_day: reservation.all_day,
-        start_time: reservation.start_time,
-        end_time: reservation.end_time,
-        note: reservation.note,
-        tenant_name: tenant.name,
-      },
-      customerName,
-    ).catch((error) => {
-      logger.warn("booking notify failed (non-blocking)", {
-        error,
-        tenantId: tenant.id,
-        reservationId: reservation.id,
-      });
+    // ── 予約通知（メール/Slack）──
+    // serverless では応答後にbareのfire-and-forget Promiseが完走を待たれず
+    // 打ち切られる恐れがあるため、応答後も実行を保証する after() に委譲する。
+    after(async () => {
+      try {
+        await notifyNewBooking(
+          tenant.id,
+          {
+            id: reservation.id,
+            title: reservation.title,
+            scheduled_date: reservation.scheduled_date,
+            all_day: reservation.all_day,
+            start_time: reservation.start_time,
+            end_time: reservation.end_time,
+            note: reservation.note,
+            tenant_name: tenant.name,
+          },
+          customerName,
+        );
+      } catch (error) {
+        logger.warn("booking notify failed (non-blocking)", {
+          error,
+          tenantId: tenant.id,
+          reservationId: reservation.id,
+        });
+      }
     });
 
     // 事前カルテ (intake invitation) を併発する
