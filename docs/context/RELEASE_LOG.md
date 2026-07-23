@@ -12,7 +12,7 @@
 - 対象: どの画面・API・業種向けか
 ```
 
-## 2026-07-23 予約が入った際の店舗宛通知（メール/Slack）(PR未採番)
+## 2026-07-23 予約が入った際の店舗宛通知（メール/Slack）(PR #820)
 - 内容: 顧客予約（`/api/customer/booking` Web予約フォーム、`/api/external/booking`
   Googleマップ予約/LINE LIFF）が作成されると、テナントのオーナー/管理者へ
   「予約が入りました」メールを自動送信（`src/lib/notifications/bookingNotify.ts`）。
