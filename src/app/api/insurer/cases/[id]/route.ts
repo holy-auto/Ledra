@@ -1,4 +1,4 @@
-import { NextRequest } from "next/server";
+import { NextRequest, after } from "next/server";
 import { resolveInsurerCaller } from "@/lib/api/insurerAuth";
 import { apiJson, apiUnauthorized, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
@@ -146,9 +146,11 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
       user_agent: ua,
     });
 
-    // Send notification on status change (fire-and-forget)
+    // Send notification on status change. Registered with after() so the
+    // work is guaranteed to run in serverless (an unawaited bare async IIFE
+    // can be dropped once the response is sent).
     if (updateData.status && updateData.status !== existing.status) {
-      (async () => {
+      after(async () => {
         try {
           // Notify insurer admin users about the status change
           const { data: insurerUsers } = await admin
@@ -219,7 +221,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
         } catch (e) {
           console.error("[case-notification] status change notification failed:", e);
         }
-      })();
+      });
     }
 
     return apiJson({ case: updated });
