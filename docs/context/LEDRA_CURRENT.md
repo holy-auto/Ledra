@@ -4,7 +4,7 @@
 > 追わず、常に最新状態だけを保つ（履歴は DECISION_LOG.md / RELEASE_LOG.md 側）。
 > 大きな変化があったら都度上書きすること。
 
-最終更新: 2026-07-22
+最終更新: 2026-07-24
 
 ## 会社・代表者
 
@@ -72,3 +72,22 @@ Sentry · Resend (+ SendGrid fallback) · Anthropic (Opus 4.8 / Sonnet 4.6 / Hai
   迷っていることは OPEN_QUESTIONS.md、note記事のネタは NOTE_CANDIDATES.md に書く。
 - このファイルは上記4ファイルの要約を随時反映し、「今の状態」を1枚で把握できる
   ようにする。
+
+## 事業戦略の現在地（2026-07）
+
+戦略・市場・マイルストーン議論の正典（source-of-truth）と、そこから派生した作業用ドキュメント
+を以下に集約。数値は原則すべて **推計／試算／仮説** であり、対外利用前に一次情報で再確認する。
+
+- North Star Metric: **VDE（検証済み意思決定イベント数）** — 第三者がLedra履歴を確認し意思決定に
+  利用した回数。`年間有料VDE × 平均実現単価` がトランザクション収益。店舗数・発行件数は先行指標。
+- マイルストーン正典（Claude引き継ぎ用マスターコンテキスト）: `docs/internal/ledra-master-context-strategy.md`
+- 保険・市場・課金モデル正典（同上・保険向け提案）: `docs/internal/ledra-handoff-insurance-market-context.md`
+  - 課金は用途で別建て: 一般第三者閲覧 **550円/認証レポート（税込）**、保険会社API大量利用 **200円/件（税込）**。
+    ⑥非公開領域は外部資料に出さない。
+- 普及マイルストーン（Milestone 0〜5）の作業用まとめ: `docs/ledra-milestone-roadmap-2026-07.md`
+- 保険PoCの現在地（重要）: 12店舗はコーティング・PPF中心で **保険修理を扱う板金店がゼロ**。目玉の
+  「工数削減PoC」は現時点で対照実験の題材が無く実行不可。先行ユースケースとして
+  「事故前状態の証明」（コーティング施工前の全周写真＝時刻固定・改ざん不可）を検討中。
+  詳細: `docs/insurance-poc-strategy-2026-07.md`（進め方A/B/CはOPEN_QUESTIONSに起票）。
+- 投資家対応: ANOBAKA（VC）評価は通過ライン超え。残る宿題は12店舗の定量エンゲージメント指標の
+  DB抽出（面談前）。詳細: `docs/internal/investor-qa-anobaka-feedback-2026-07.md`。
