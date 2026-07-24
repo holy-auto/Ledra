@@ -180,10 +180,13 @@ export async function POST(req: NextRequest) {
         });
       }
 
-      // 境界は排他（開始=前枠の終了 は重複としない）。空き状況 GET と揃え、隣接枠を
-      // 独立して予約可能にする。取引先の有効な仮押さえ(reservation_holds)も占有として
-      // 数え、押さえ枠に一般客予約が入る（オーバーセル）のを防ぐ。
-      const [{ count }, { count: heldCount }] = await Promise.all([
+      // 境界は排他（開始=前枠の終了 は重複としない）。空き状況 GET / 候補提案と揃え、隣接枠を
+      // 独立して予約可能にする。占有としてカウントするのは
+      //   (a) 時間帯が重なる通常予約、(b) その日の終日予約（時刻NULLで時間比較に載らないため別集計）、
+      //   (c) 取引先の有効な仮押さえ(reservation_holds)
+      // の3種。この容量チェックを占有の唯一の権威にする（下流の checkOverlap はスロット予約では
+      // スキップするため、終日予約の取りこぼしをここで塞ぐ）。
+      const [{ count }, { count: allDayCount }, { count: heldCount }] = await Promise.all([
         admin
           .from("reservations")
           .select("id", { count: "exact", head: true })
@@ -192,6 +195,13 @@ export async function POST(req: NextRequest) {
           .neq("status", "cancelled")
           .lt("start_time", endTime)
           .gt("end_time", startTime),
+        admin
+          .from("reservations")
+          .select("id", { count: "exact", head: true })
+          .eq("tenant_id", tenant.id)
+          .eq("scheduled_date", scheduledDate)
+          .neq("status", "cancelled")
+          .eq("all_day", true),
         admin
           .from("reservation_holds")
           .select("id", { count: "exact", head: true })
@@ -203,7 +213,7 @@ export async function POST(req: NextRequest) {
           .gt("end_time", startTime),
       ]);
 
-      if ((count ?? 0) + (heldCount ?? 0) >= maxBookings) {
+      if ((count ?? 0) + (allDayCount ?? 0) + (heldCount ?? 0) >= maxBookings) {
         return apiError({
           code: "conflict",
           message: "ご指定の時間帯は満席です。別の時間帯をお選びください。",
