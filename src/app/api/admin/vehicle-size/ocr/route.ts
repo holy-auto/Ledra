@@ -1,9 +1,12 @@
 import { NextRequest } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
-import { apiOk, apiUnauthorized, apiInternalError, apiValidationError } from "@/lib/api/response";
+import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
+import { apiOk, apiUnauthorized, apiForbidden, apiInternalError, apiValidationError } from "@/lib/api/response";
+import { checkRateLimit } from "@/lib/api/rateLimit";
 import { parseShakenshoAuto, calcSizeClass } from "@/lib/ocr/shakensho";
 import { escapeIlike } from "@/lib/sanitize";
+import { loadAiAutomationSettings, isSourceAllowed } from "@/lib/ai/automation/policy";
+import { startAiRouteUsage } from "@/lib/ai/recordRouteUsage";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -11,6 +14,26 @@ export const dynamic = "force-dynamic";
 
 /** Maximum image size: 10 MB */
 const MAX_IMAGE_SIZE = 10 * 1024 * 1024;
+/** 兄弟 OCR ルート(thickness/inspection)と揃えた対応画像形式。 */
+const ALLOWED_MIME = new Set(["image/jpeg", "image/png", "image/webp"]);
+
+/** AI 停止 / コストキャップ超過時に返す空レスポンス（フォームは手入力にフォールバック）。 */
+const AI_DISABLED_RESPONSE = {
+  source: null,
+  size_class: null,
+  volume_m3: null,
+  dimensions: null,
+  parsed: {
+    maker: null,
+    model: null,
+    vin: null,
+    weight_kg: null,
+    displacement_cc: null,
+    first_registration: null,
+  },
+  master_size_class: null,
+  message: "AI 自動入力が停止中のため OCR を実行しませんでした。手動で入力してください。",
+} as const;
 
 /**
  * POST /api/admin/vehicle-size/ocr
@@ -19,10 +42,20 @@ const MAX_IMAGE_SIZE = 10 * 1024 * 1024;
  * and return parsed dimensions, size_class, and other metadata.
  */
 export async function POST(req: NextRequest) {
+  // 1) IP ベースの rate limit（兄弟 OCR ルートと同じ preset）。Vision コストの暴発を防ぐ。
+  const ipLimit = await checkRateLimit(req, "identity_ocr");
+  if (ipLimit) return ipLimit;
+
   try {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
+    // 2) 認証（staff 以上）。viewer など閲覧専用ロールに Vision を叩かせない。
+    if (!requireMinRole(caller, "staff")) return apiForbidden();
+
+    // 3) テナント単位の rate limit
+    const tenantLimit = await checkRateLimit(req, "identity_ocr", `tenant:${caller.tenantId}`);
+    if (tenantLimit) return tenantLimit;
 
     // --- Parse multipart form data ---
     const formData = await req.formData();
@@ -32,8 +65,25 @@ export async function POST(req: NextRequest) {
       return apiValidationError("画像ファイルが必要です。'image' フィールドにファイルを添付してください。");
     }
 
+    if (file.size === 0) {
+      return apiValidationError("ファイルが空です。");
+    }
+
     if (file.size > MAX_IMAGE_SIZE) {
       return apiValidationError("画像サイズが大きすぎます（上限 10MB）。");
+    }
+
+    if (file.type && !ALLOWED_MIME.has(file.type)) {
+      return apiValidationError("対応形式は JPEG / PNG / WebP です。");
+    }
+
+    // 4) AI マスタースイッチ OFF / 月次コストキャップ超過時はスキップして手入力にフォールバック。
+    // 車検証画像→フィールド抽出なので識別情報系(identity_documents)として判定する。
+    const usage = startAiRouteUsage("/api/admin/vehicle-size/ocr");
+    const aiSettings = await loadAiAutomationSettings(caller.tenantId);
+    if (!aiSettings.enabled || !isSourceAllowed(aiSettings, "identity_documents")) {
+      usage.record({ tenantId: caller.tenantId, userId: caller.userId, outcome: "ai_disabled" });
+      return apiOk(AI_DISABLED_RESPONSE);
     }
 
     // Convert to Buffer
@@ -85,6 +135,8 @@ export async function POST(req: NextRequest) {
         }
       }
     }
+
+    usage.record({ tenantId: caller.tenantId, userId: caller.userId, outcome: "ok" });
 
     return apiOk({
       source,

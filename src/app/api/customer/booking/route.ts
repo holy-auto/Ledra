@@ -215,21 +215,29 @@ export async function POST(req: NextRequest) {
     // ── ダブルブッキングチェック ──
     // 終日予約は営業日全体、通常予約は指定時間帯で判定。RPC 側で終日予約(all_day)は
     // どの時間帯とも競合するため、終日 vs 通常 / 終日 vs 終日 も検出される。
-    const overlaps = await checkOverlap({
-      tenantId: tenant.id,
-      scheduledDate,
-      startTime: overlapStart.length === 5 ? `${overlapStart}:00` : overlapStart,
-      endTime: overlapEnd.length === 5 ? `${overlapEnd}:00` : overlapEnd,
-    });
-
-    if (overlaps.length > 0) {
-      return apiError({
-        code: "conflict",
-        message: isAllDay
-          ? "この日は既に予約が入っているため終日予約を承れません。別の日をお選びください。"
-          : "ご指定の時間帯は既に予約が入っています。別の時間帯をお選びください。",
-        status: 409,
+    //
+    // ただし「容量スロットが支配する予約」は、その枠の max_bookings が同時受付数の権威。
+    // ここで無条件の重複拒否をかけると max_bookings>1（並列ブース）の枠で2件目が必ず弾かれ、
+    // 空き状況 GET / 候補提案（remaining = max_bookings - booked）と矛盾する。よって容量枠で
+    // 判定済みの予約はスキップし、枠に載らない予約（終日 or 枠未設定）だけ重複チェックする。
+    const slotGoverned = !isAllDay && !!slots && slots.length > 0;
+    if (!slotGoverned) {
+      const overlaps = await checkOverlap({
+        tenantId: tenant.id,
+        scheduledDate,
+        startTime: overlapStart.length === 5 ? `${overlapStart}:00` : overlapStart,
+        endTime: overlapEnd.length === 5 ? `${overlapEnd}:00` : overlapEnd,
       });
+
+      if (overlaps.length > 0) {
+        return apiError({
+          code: "conflict",
+          message: isAllDay
+            ? "この日は既に予約が入っているため終日予約を承れません。別の日をお選びください。"
+            : "ご指定の時間帯は既に予約が入っています。別の時間帯をお選びください。",
+          status: 409,
+        });
+      }
     }
 
     // 終日予約は、取引先の有効な仮押さえが当日に1件でもあれば承れない（押さえ枠と併存不可）。

@@ -312,11 +312,16 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     // 到達した工程の意味（証明書/会計…）に応じて先回りで下書きを生成する
     // （各自 opt-in / 冪等 / 壁3）。新しい工程アシストは stepAutomations に追加する。
     if (!isLastStep && nextStep) {
-      void runStepAutomationOnReach(nextStep, { tenantId: caller.tenantId, reservationId: id }).catch((e) =>
-        logger.warn("[advance] step automation failed", {
-          reservationId: id,
-          err: e instanceof Error ? e.message : String(e),
-        }),
+      // 完了フック（下記 after 群）と同様、serverless でレスポンス後に打ち切られないよう after() で
+      // 確実に完走させる。bare void だと工程到達時の下書き自動生成が取りこぼされ得る。
+      const reachedStep = nextStep;
+      after(() =>
+        runStepAutomationOnReach(reachedStep, { tenantId: caller.tenantId, reservationId: id }).catch((e) =>
+          logger.warn("[advance] step automation failed", {
+            reservationId: id,
+            err: e instanceof Error ? e.message : String(e),
+          }),
+        ),
       );
     }
     // ワークフロー完了は予約 PUT ルートの発行フックを通らないため、証明書ドラフト＋請求書
@@ -363,22 +368,28 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     // ─── 顧客公開イベント書き込み & LINE通知 ───
     const currentStepForHistory = isLastStep ? steps.find((s) => s.order === currentOrder) : nextStep;
 
-    if (currentStepForHistory?.is_customer_visible && reservation.vehicle_id) {
-      const historyLabel = isLastStep
-        ? `施工が完了しました（${currentStepForHistory.label}）`
-        : `${currentStepForHistory.label}を開始しました`;
+    // 完了は最終工程の可視設定に依存させず必ず顧客へ知らせる（会計/請求などを最終工程に
+    // 置いても「施工完了」通知が消えないように）。中間工程は従来どおり is_customer_visible の工程のみ。
+    const notifyCustomer = isLastStep || !!currentStepForHistory?.is_customer_visible;
 
-      // vehicle_histories に記録（顧客ポータル表示用）
-      await supabase.from("vehicle_histories").insert({
-        tenant_id: caller.tenantId,
-        vehicle_id: reservation.vehicle_id,
-        type: "progress_update",
-        title: historyLabel,
-        description: note ?? null,
-        performed_at: new Date().toISOString(),
-      });
+    if (notifyCustomer) {
+      const stepLabel = currentStepForHistory?.label ?? reservation.title ?? "作業";
+      const historyLabel = isLastStep ? `施工が完了しました（${stepLabel}）` : `${stepLabel}を開始しました`;
 
-      // LINE通知（顧客にline_user_idがあれば送信）
+      // vehicle_histories は車両キーが必須なので vehicle_id があるときだけ記録する。
+      if (reservation.vehicle_id) {
+        await supabase.from("vehicle_histories").insert({
+          tenant_id: caller.tenantId,
+          vehicle_id: reservation.vehicle_id,
+          type: "progress_update",
+          title: historyLabel,
+          description: note ?? null,
+          performed_at: new Date().toISOString(),
+        });
+      }
+
+      // LINE通知は customer_id + line_user_id だけで送れる（vehicle_id 非依存）。
+      // 車両未登録の飛び込み客でも進捗/完了通知が届くよう vehicle_id ガードから切り離す。
       if (reservation.customer_id) {
         const { data: customer } = await supabase
           .from("customers")
@@ -390,52 +401,58 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           const { data: tenant } = await supabase.from("tenants").select("name").eq("id", caller.tenantId).single();
 
           const portalUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/customer/${caller.tenantId}`;
+          const lineUserId = customer.line_user_id as string;
 
           if (isLastStep) {
-            // 作業完了は重要通知 → withRetry + 配信記録 + SMS フォールバック
-            sendProgressCompletionReliable(
-              {
+            // 作業完了は重要通知 → withRetry + 配信記録 + SMS フォールバック。
+            // レスポンス後にリトライ中でも打ち切られないよう after() で確実に完走させる。
+            after(() =>
+              sendProgressCompletionReliable(
+                {
+                  tenantId: caller.tenantId,
+                  lineUserId,
+                  customerId: customer.id as string,
+                  customerPhone: (customer.phone as string | null) ?? null,
+                  bodyForRecord: "(set internally)",
+                  sentByUserId: caller.userId,
+                },
+                {
+                  customerName: customer.name as string,
+                  tenantName: tenant?.name ?? "施工店",
+                  stepLabel,
+                  portalUrl,
+                },
+              ).catch((error) => {
+                logger.warn("LINE completion notification failed (non-blocking)", {
+                  error,
+                  tenantId: caller.tenantId,
+                  customerId: reservation.customer_id,
+                });
+              }),
+            );
+          } else {
+            // 進捗中の通知も after() でレスポンス後に確実に送る（timeliness は維持される）。
+            const estimatedCompletion = nextStep ? calcEstimatedCompletion(steps, nextOrder) : undefined;
+            after(() =>
+              sendProgressUpdate({
                 tenantId: caller.tenantId,
-                lineUserId: customer.line_user_id,
-                customerId: customer.id as string,
-                customerPhone: (customer.phone as string | null) ?? null,
-                bodyForRecord: "(set internally)",
-                sentByUserId: caller.userId,
-              },
-              {
+                lineUserId,
                 customerName: customer.name as string,
                 tenantName: tenant?.name ?? "施工店",
-                stepLabel: currentStepForHistory.label,
+                stepLabel,
+                progressPct,
+                currentStep: nextOrder,
+                totalSteps,
+                estimatedCompletionTime: estimatedCompletion,
                 portalUrl,
-              },
-            ).catch((error) => {
-              logger.warn("LINE completion notification failed (non-blocking)", {
-                error,
-                tenantId: caller.tenantId,
-                customerId: reservation.customer_id,
-              });
-            });
-          } else {
-            // 進捗中の通知は時効性が高いので従来通り fire-and-forget
-            const estimatedCompletion = nextStep ? calcEstimatedCompletion(steps, nextOrder) : undefined;
-            sendProgressUpdate({
-              tenantId: caller.tenantId,
-              lineUserId: customer.line_user_id,
-              customerName: customer.name as string,
-              tenantName: tenant?.name ?? "施工店",
-              stepLabel: currentStepForHistory.label,
-              progressPct,
-              currentStep: nextOrder,
-              totalSteps,
-              estimatedCompletionTime: estimatedCompletion,
-              portalUrl,
-            }).catch((error) => {
-              logger.warn("LINE progress notification failed (non-blocking)", {
-                error,
-                tenantId: caller.tenantId,
-                customerId: reservation.customer_id,
-              });
-            });
+              }).catch((error) => {
+                logger.warn("LINE progress notification failed (non-blocking)", {
+                  error,
+                  tenantId: caller.tenantId,
+                  customerId: reservation.customer_id,
+                });
+              }),
+            );
           }
         }
       }

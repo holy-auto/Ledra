@@ -221,19 +221,25 @@ export async function POST(req: NextRequest) {
     }
 
     // ── ダブルブッキングチェック ──
-    const overlaps = await checkOverlap({
-      tenantId: tenant.id,
-      scheduledDate,
-      startTime: startTime.length === 5 ? `${startTime}:00` : startTime,
-      endTime: endTime.length === 5 ? `${endTime}:00` : endTime,
-    });
-
-    if (overlaps.length > 0) {
-      return apiError({
-        code: "conflict",
-        message: "ご指定の時間帯は既に予約が入っています。別の時間帯をお選びください。",
-        status: 409,
+    // 容量スロットが支配する予約は、その枠の max_bookings が同時受付数の権威（GET 空き状況の
+    // available = max_bookings - booked と揃える）。無条件の重複拒否だと max_bookings>1 の枠で
+    // 2件目が必ず弾かれ案内と矛盾するため、枠未設定の予約だけ重複チェックする。
+    const slotGoverned = !!slots && slots.length > 0;
+    if (!slotGoverned) {
+      const overlaps = await checkOverlap({
+        tenantId: tenant.id,
+        scheduledDate,
+        startTime: startTime.length === 5 ? `${startTime}:00` : startTime,
+        endTime: endTime.length === 5 ? `${endTime}:00` : endTime,
       });
+
+      if (overlaps.length > 0) {
+        return apiError({
+          code: "conflict",
+          message: "ご指定の時間帯は既に予約が入っています。別の時間帯をお選びください。",
+          status: 409,
+        });
+      }
     }
 
     // ── 顧客レコード作成/取得 ──

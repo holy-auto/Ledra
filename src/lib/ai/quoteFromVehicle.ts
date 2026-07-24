@@ -175,14 +175,17 @@ export async function generateQuoteFromVehicle(
     );
     const parsed = msg.parsed_output;
     if (!parsed || parsed.items.length === 0) return baseline;
+    const items = parsed.items.map((i) => ({
+      description: i.description,
+      quantity: i.quantity,
+      unit_price: i.unit_price,
+      rationale: i.rationale,
+    }));
     return {
-      items: parsed.items.map((i) => ({
-        description: i.description,
-        quantity: i.quantity,
-        unit_price: i.unit_price,
-        rationale: i.rationale,
-      })),
-      total: parsed.total,
+      items,
+      // total は LLM 出力(parsed.total)を信用せず明細から再導出する。
+      // モデルの算術ミスで合計だけズレた見積が、フォーム初期値や顧客向け概算レンジに乗るのを防ぐ。
+      total: items.reduce((s, i) => s + i.unit_price * i.quantity, 0),
       validity_days: parsed.validity_days,
       terms: parsed.terms || baseline.terms,
       confidence: parsed.confidence,
