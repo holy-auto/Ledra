@@ -1,12 +1,15 @@
 # Ledra — 全機能一覧 & ワークフロー
 
 > WEB施工証明書SaaS プラットフォーム
-> 最終更新: 2026-07-03
+> 最終更新: 2026-07-24
 >
-> ※ セクション 13「2026-05〜06 追加機能」に、本リスト前回更新 (2026-05-09) 以降に実装された
+> ※ セクション 13「2026-05〜06 追加機能」に、リスト更新 (2026-05-09) 以降に実装された
 > 機能群 (メーカーポータル / 車両パスポート / 部品インテグリティ / 供給チェーン 等) をまとめています。
 > ※ 2026-07: 作業完了サインオフ・パイプライン (§2.5b) — 完了報告→証明書 (施工前後写真ゲート)→
 > お客様サイン (必須/24h)→お会計 (顧客区分×サイクル自動判定)→オンチェーン の全業種共通フローを追加。
+> ※ 2026-07-24: セクション 14「2026-07 追加機能 (07-03 以降)」に、前回棚卸 (2026-07-03) 以降の
+> 実装 (WebAuthn 操作署名・鍵の運営者非保持 / Google カレンダー双方向同期 / 指名 BtoB 請求 /
+> 終日予約 / 現場 DX / HP コンテンツ CMS / AskLedraBar 等) をまとめています。
 
 ---
 
@@ -594,8 +597,14 @@ Ledraは自動車施工（コーティング・フィルム・ラッピング等
 | `image-variants-backfill` ★新規 | 画像バリアント (サムネ等) のバックフィル生成 |
 | `stripe-event-monitor` ★新規 | Stripe イベント取りこぼし監視・自己修復 |
 | `insurer-sla-alerts` ★新規 | 保険案件の SLA 期限接近 (at_risk) / 超過 (overdue) を毎時検知し担当者・管理者へ通知 |
+| `gcal-sync` ★2026-07 | 連携テナントの Google カレンダーを 15 分毎に双方向同期 (未連携予約を push / GCal 側変更を pull・更新・キャンセル反映) |
+| `cycle-invoices` ★2026-07 | 顧客ごとの締め日に指名 (invoice) オーダーの合算請求書を下書き生成 (日次) |
+| `reservation-holds-expire` ★2026-07 | 期限切れの仮押さえ (reservation_holds) を毎時 expired に揃える状態同期 |
+| `publish-scheduled` ★2026-07 | 予約投稿 (site_content_posts status=scheduled) を公開時刻経過で published へ自動昇格 (5 分毎) |
+| `daily-digest` ★2026-07 | オプトイン済みテナントへ「今日のまとめ」を AI で自然文ブリーフィング生成 (店長向け、日次) |
+| `vehicle-capture-prompt` ★2026-07 | 本日入庫予定で車両未登録の LINE 予約に、車検証撮影依頼プロンプトを送信 (日次) |
 
-> Cron は計 **25 本** (vercel.json 登録ベース)。`maintenance` / `follow-up` は車検満了・走行距離ベースの整備リマインダーも担う。
+> Cron は計 **31 本** (vercel.json 登録ベース)。`maintenance` / `follow-up` は車検満了・走行距離ベースの整備リマインダーも担う。
 
 ---
 
@@ -760,16 +769,19 @@ Square売上と突合 → 経営分析
 
 | ポータル | APIルート数 (route.ts 実数) |
 |---|---|
-| Admin | **300** (会計連携 / Polygon / パスポート運営 / 部品インテグリティ / 供給チェーン / 組織・本社横断 等を含む) |
+| Admin | **328** (会計連携 / Polygon / パスポート運営 / 部品インテグリティ / 供給チェーン / 組織・本社横断 等を含む) |
 | Agent | **40** |
 | Insurer | **42** (アンカー検証 / BtoB マッチを含む) |
-| Manufacturer ★新規 | **14** |
-| Passport / v1 外部API ★新規 | **15** (Passport verify / marketplace / referrals / ingest / accident-match) |
+| Manufacturer | **14** |
+| Passport / v1 外部API | **15** (Passport verify / marketplace / referrals / ingest / accident-match) |
 | 共通/Public | 35+ (受領サイン / 部品装着署名 / 有料車両履歴レポート / 公開操作ガイド 等) |
-| Mobile | **23** (Apple Tap to Pay / QR 決済 / 本人確認OCR / 顧客インテーク を含む) |
+| Mobile | **25** (Apple Tap to Pay / QR 決済 / 本人確認OCR / 顧客インテーク を含む) |
+| WebAuthn ★2026-07 | **6** (パスキー登録 options/verify / 操作署名 options/verify / credentials CRUD) |
 | Webhook | **13** (Stripe / Square / Resend / LINE / 供給パートナー / 動画プロバイダ) |
-| Cron | **24** |
-| **合計 (route.ts)** | **570** |
+| Cron | **31** |
+| **合計 (route.ts)** | **617** |
+
+> 合計 617 は `find src/app/api -name route.ts` の実数 (2026-07-24)。上表の各行は機能グルーピングのため、raw な API ディレクトリ数 (admin 328 / insurer 42 / agent 40 / cron 31 / mobile 25 / manufacturer 13 / parts・customer・certificates 各 11 / signature 10 / v1 7 / webauthn 6 …) とは切り口が異なる。
 
 ---
 
@@ -1206,5 +1218,91 @@ VIN を鍵に**車両の全施工履歴を束ねる「デジタル車両パス�
 - **モバイルAPI 追加**: QR 決済セッション（`pos/checkout/qr-session` / `qr-status`）、本人確認 OCR（`identity/ocr`）、顧客インテーク取込、予約ステージ前進（`reservations/[id]/advance`）
 - **Webhook 追加**: 供給パートナー（`webhooks/supply/[partnerId]` / `supply-line`）、動画プロバイダ（`webhooks/video/[provider]`）
 - **マーケ追加ページ**: ブログ `/blog`・施工事例 `/cases`・デモ `/demo`・イベント `/events`・PoC `/poc`・ROI `/roi`・セキュリティ `/security`・財務透明性 `/financial-transparency`・データ開示 `/data-disclosure`・公開検証 `/verify`、機能詳細に在庫 `/features/inventory`・膜厚 `/features/thickness`
+
+---
+
+## 14. 2026-07 追加機能（07-03 以降）
+
+> 前回棚卸 (2026-07-03) 以降に main へ入った機能群 (git log で 68 コミット)。
+> 出典: `docs/context/RELEASE_LOG.md`・git log・実コード。実装が段階的なものは各項に状態を明記。
+
+### 14.1 WebAuthn 操作署名・鍵の運営者非保持 ★新規
+
+- **パスキー登録/失効**: 認証器 (Face ID / 指紋 / セキュリティキー) を登録し、秘密鍵は端末側に留め、サーバは公開鍵 (`operator_credentials.public_key`) のみ保持。UI は `/admin/settings/security`。
+- **操作署名**: 証明書の finalize / void 等の業務イベントに、`payload_hash` をチャレンジとした assertion を暗号的にコミット (`src/lib/webauthn/`、API `/api/webauthn/{register,operation}/{options,verify}` + `credentials`)。
+- **状態**: パスキー管理は本番配線済み。操作署名の**強制**は環境変数 `WEBAUTHN_OPERATION_SIGNING`（既定 `off` / `optional` / `enforce`）で段階導入 — 既定は off。
+- 関連 (#787 / #800): Polygon 署名鍵の KMS 配線も併せて整備し、アンカリング署名も運営者非保持へ寄せる土台を用意。
+
+### 14.2 Google カレンダー双方向同期 ★新規
+
+- **定期双方向同期 cron** (`gcal-sync`, 15 分毎, #793): 未連携予約を GCal へ push、GCal 側の変更を pull して予約へ反映・キャンセル同期。
+- **複数カレンダー + 非公開モード** (#810): `tenants.gcal_read_calendars` に読み取りカレンダーを複数登録。mode=full は予定名も取込、mode=busy は時間だけ「予定あり」ブロックで押さえ予定名は保存しない。書き込み先 (メイン) は単一。設定 UI は `/admin/reservations` の GCal 連携。
+
+### 14.3 予約ワークフローの強化
+
+- **終日予約 (1 日お預かり)** (#784): `reservations.all_day`。顧客 Web 予約・管理画面の両方で作成でき、当日を丸ごと占有 (ダブルブッキング判定・空き状況に反映)。
+- **仮押さえ → 承認で本予約** (#785, #794): 取引先 (BtoB) の空き確認 → 枠の仮押さえ (`reservation_holds`) → 承認で本予約。公開予約にも仮押さえを反映しオーバーセルを防止。期限切れ hold は `reservation-holds-expire` cron で失効。
+- **予約店舗通知 (メール / Slack)** (#820): 顧客予約 (Web フォーム / Google マップ・LINE LIFF) が入るとテナントのオーナー/管理者へ通知メールを自動送信。`/admin/settings` に Slack Incoming Webhook を設定すると Slack にも通知 (URL は LINE/Square と同じ暗号化列で write-only 保存)。管理画面から作成した予約は対象外。
+
+### 14.4 指名 BtoB 請求 ★新規 (#783)
+
+- 取引先を指名した BtoB 発注を、手数料 0・請求書払い・支払サイクル自動生成・確認後送付で処理。締め日ごとの合算請求書下書きは `cycle-invoices` cron が生成。
+
+### 14.5 現場 DX (フィールド入力の負担軽減)
+
+- **工程ごとの写真ガイド / 確認チェックリスト** (#764, #766, #768): 撮り忘れ・確認漏れ防止。共有コンポーネント `StepGuidePanel` に一本化し、案件画面 (`JobStatusPanel`) にも表示。
+- **点検写真 OCR 取込 + AI 担当提案ワンタップ割当** (#765, #769)。
+- **傷ダメージマップ / 請求書 OCR / 前後写真自動分類** (#769)。
+- **証明書 AI 下書きの取りこぼし解消** (#767): 施工箇所・使用材料・保証候補もフォームへ適用。
+- **納品書撮影 → 品名・品番 AI 抽出** (#817): 証明書発行フォームで納品書を撮影し AI Vision で下書き行を追加 (`/api/admin/certificates/delivery-note-extract`、Standard 以上)。作業中ステータスからも撮影導線を追加。
+
+### 14.6 HP コンテンツ CMS の拡張
+
+- **予約投稿 (scheduled)** (#811): `site_content_posts.status=scheduled` + 未来 `published_at`。`publish-scheduled` cron (5 分毎) が公開時刻経過で `published` へ自動昇格。
+- **お知らせ (/news)** (#798)・**記事 CTA / OGP 編集** (#808) を「HP コンテンツ管理」から公開可能に。
+- **令和の虎 出演の期間限定告知バー** (#807): 全マーケページ最上部に表示 (期間 2026-07-25 19:00〜08-08 JST、クライアント判定で ISR 非破壊)。
+- **first-touch UTM 帰属** (#804): 着地時に utm を初回のみサーバ側 cookie (`ledra_utm`) へ保存し、CTA 遷移で utm が消えても問い合わせに帰属。
+
+### 14.7 LINE 概算見積りの精度向上
+
+- **品目マスタ (menu_items) 接続** (#771): 概算見積りに登録済み品目価格を反映。
+- **決定的キーワードフォールバック** (#773): AI 抽出の取りこぼしをキーワードで補完。
+- **背景処理の完走保証** (#772): `after()` 内で await し撃ちっぱなしを解消。
+
+### 14.8 「Ledra に聞く」入口 + 承認インボックス根拠表示 (#819)
+
+- ダッシュボード最上部に自由入力 `AskLedraBar`。まず決定的キーワード→画面ルーティング (`src/lib/ai/askRouter.ts`、AI 不使用・無料・全プラン) を試し、未マッチ時のみ `qaAssistant` (施工ナレッジ RAG) にフォールバック。
+- 承認インボックスの各下書きに「なぜ」を表示: 証明書 = 元予約の AI 信頼度、発注 = 起票理由の実文言。根拠データの無い請求書には表示しない (捏造しない)。
+
+### 14.9 マスタ / 価格・証拠性の拡充
+
+- **品目マスタにサイズ別価格** (#796): 車両サイズ / ホイールインチ別価格を導入し概算に接続。
+- **車種サイズマスタ拡充 + CSV 一括インポータ** (#776): アメ車 + 国産絶版車を追加、パーサ参照化。
+- **certificate_versions (version-forward)** (#781, #820): 証明書の版管理と RLS ドリフト是正で証拠性を強化。
+
+### 14.10 新規の管理画面
+
+- **`/admin/next-touch`「次の接触」**: 顧客ごとに近々連絡すべき理由 (定期点検・車検満了・保証満了・誕生日) を 1 件に集約し、超過/今日/まもなくで色分け表示 (通知は送らない可視化)。
+- **`/admin/notification-logs`「通知配信状況」**: `notification_logs` を 7/30/90 日で集計し、種別ごとの送信/失敗率・LINE/メール内訳・直近の失敗を表示。
+- **`/admin/field-knowledge`「現場ナレッジ」**: 車種別注意点・配線ルート・クレーム事例を登録し、登録内容のみを根拠に AI へ質問 (記録に無い内容は「確認が必要」と返す)。登録は staff 以上、質問は `ai_academy_qa` (Standard 以上)。
+- **`/admin/scan`**: スタッフ用の車両タグ (QR `/s/v/<publicId>`) カメラスキャン入口 → 車両の作業開始パネルへ遷移。
+- **`/admin/referrals`**: 自テナントに帰属する紹介リード (`passport_referral_leads`: VIN・成約額・紹介手数料・ステータス) の一覧 (admin 以上)。
+- **`/admin/agent-commissions`**: 代理店コミッション支払いキューの承認/支払い/取消 (運営 platformOnly)。
+- **`/admin/platform/store-usage`** (運営専用): 店舗別の月間操作回数・予約/作業記録/請求の累計・機能別利用率を横断確認 (ログイン回数は未記録のため `last_sign_in_at` ベースで近似)。
+
+### 14.11 将来拡張の土台 (Phase 0〜1・段階導入)
+
+> 実コード上は未完成/未配線の段階にあるモジュール。現時点で本番動作するのは検証パス等の一部のみ (棚卸で状態を確認済み)。
+
+- **zkp (ゼロ知識・選択的開示)**: 保険会社向けの検証パス (`/api/insurer/zkp/verify` → `verifyZkpClaims`) は配線済み。コミットメント生成パスは未配線。SHA-256 Merkle 選択的開示の Phase 1 実装で、真の ZK 回路 (Groth16/PLONK) ではない。
+- **jpki (公的個人認証)**: 型・関数スケルトンのみで全関数が "Phase 0 not implemented" を throw。app 側の利用はゼロ。J-LIS 認定取得後の Phase 1 用。
+- **whiteLabel (独自ドメイン)**: Host → tenant_id 解決ロジック (`resolveTenantByHost`) は実装 + テスト済みだが `proxy.ts` への配線は未実施 (別 PR 予定)。
+- **identity (顧客事前カルテ)**: 本番配線済み。招待/リンクでの事前カルテ入力、身分証 OCR 自動入力 (マイナンバー検出 trip-wire + 要配慮情報マスク)。KYC ではなく DB 非永続の入力補助。
+
+### 14.12 UI モード切替 (2026-07 配線)
+
+- **業務モード (business-mode)**: 業務種別 (整備 / 鈑金 / コーティング / PPF) でサイドバー項目を絞る (localStorage 永続)。
+- **表示モード (view-mode)**: admin UI ↔ storefront (POS 風) UI を切替。
+- **オフライン読み取りキャッシュ (offline-cache)**: Service Worker (`public/sw.js`) で主要一覧をオフライン閲覧、ログアウト時にキャッシュ消去。
 
 ---
