@@ -66,19 +66,23 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       return apiValidationError("already_refunded");
     }
 
-    // 返金額が元の金額以下であることを確認
-    if (refundAmount > (payment.amount ?? 0)) {
+    // 返金は累計で管理する。既存の返金額に今回分を足し、元金額を超えないか検証する
+    // （単発額だけで比較すると partial_refund から再返金して合計が元金額を超えてしまう）。
+    const alreadyRefunded = Number(payment.refund_amount ?? 0);
+    const grossAmount = Number(payment.amount ?? 0);
+    const cumulativeRefund = alreadyRefunded + refundAmount;
+    if (cumulativeRefund > grossAmount) {
       return apiValidationError("refund_exceeds_amount");
     }
 
-    // ステータス判定
-    const newStatus = refundAmount === (payment.amount ?? 0) ? "refunded" : "partial_refund";
+    // ステータス判定（累計が元金額に達したら全額返金）
+    const newStatus = cumulativeRefund === grossAmount ? "refunded" : "partial_refund";
 
-    // payment更新
+    // payment更新（refund_amount は累計で保存する）
     const { data: updated, error: updateErr } = await supabase
       .from("payments")
       .update({
-        refund_amount: refundAmount,
+        refund_amount: cumulativeRefund,
         refund_reason: reason,
         status: newStatus,
         updated_at: new Date().toISOString(),

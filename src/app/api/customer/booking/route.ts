@@ -180,10 +180,13 @@ export async function POST(req: NextRequest) {
         });
       }
 
-      // 境界は排他（開始=前枠の終了 は重複としない）。空き状況 GET と揃え、隣接枠を
-      // 独立して予約可能にする。取引先の有効な仮押さえ(reservation_holds)も占有として
-      // 数え、押さえ枠に一般客予約が入る（オーバーセル）のを防ぐ。
-      const [{ count }, { count: heldCount }] = await Promise.all([
+      // 境界は排他（開始=前枠の終了 は重複としない）。空き状況 GET / 候補提案と揃え、隣接枠を
+      // 独立して予約可能にする。占有としてカウントするのは
+      //   (a) 時間帯が重なる通常予約、(b) その日の終日予約（時刻NULLで時間比較に載らないため別集計）、
+      //   (c) 取引先の有効な仮押さえ(reservation_holds)
+      // の3種。この容量チェックを占有の唯一の権威にする（下流の checkOverlap はスロット予約では
+      // スキップするため、終日予約の取りこぼしをここで塞ぐ）。
+      const [{ count }, { count: allDayCount }, { count: heldCount }] = await Promise.all([
         admin
           .from("reservations")
           .select("id", { count: "exact", head: true })
@@ -192,6 +195,13 @@ export async function POST(req: NextRequest) {
           .neq("status", "cancelled")
           .lt("start_time", endTime)
           .gt("end_time", startTime),
+        admin
+          .from("reservations")
+          .select("id", { count: "exact", head: true })
+          .eq("tenant_id", tenant.id)
+          .eq("scheduled_date", scheduledDate)
+          .neq("status", "cancelled")
+          .eq("all_day", true),
         admin
           .from("reservation_holds")
           .select("id", { count: "exact", head: true })
@@ -203,7 +213,7 @@ export async function POST(req: NextRequest) {
           .gt("end_time", startTime),
       ]);
 
-      if ((count ?? 0) + (heldCount ?? 0) >= maxBookings) {
+      if ((count ?? 0) + (allDayCount ?? 0) + (heldCount ?? 0) >= maxBookings) {
         return apiError({
           code: "conflict",
           message: "ご指定の時間帯は満席です。別の時間帯をお選びください。",
@@ -215,21 +225,29 @@ export async function POST(req: NextRequest) {
     // ── ダブルブッキングチェック ──
     // 終日予約は営業日全体、通常予約は指定時間帯で判定。RPC 側で終日予約(all_day)は
     // どの時間帯とも競合するため、終日 vs 通常 / 終日 vs 終日 も検出される。
-    const overlaps = await checkOverlap({
-      tenantId: tenant.id,
-      scheduledDate,
-      startTime: overlapStart.length === 5 ? `${overlapStart}:00` : overlapStart,
-      endTime: overlapEnd.length === 5 ? `${overlapEnd}:00` : overlapEnd,
-    });
-
-    if (overlaps.length > 0) {
-      return apiError({
-        code: "conflict",
-        message: isAllDay
-          ? "この日は既に予約が入っているため終日予約を承れません。別の日をお選びください。"
-          : "ご指定の時間帯は既に予約が入っています。別の時間帯をお選びください。",
-        status: 409,
+    //
+    // ただし「容量スロットが支配する予約」は、その枠の max_bookings が同時受付数の権威。
+    // ここで無条件の重複拒否をかけると max_bookings>1（並列ブース）の枠で2件目が必ず弾かれ、
+    // 空き状況 GET / 候補提案（remaining = max_bookings - booked）と矛盾する。よって容量枠で
+    // 判定済みの予約はスキップし、枠に載らない予約（終日 or 枠未設定）だけ重複チェックする。
+    const slotGoverned = !isAllDay && !!slots && slots.length > 0;
+    if (!slotGoverned) {
+      const overlaps = await checkOverlap({
+        tenantId: tenant.id,
+        scheduledDate,
+        startTime: overlapStart.length === 5 ? `${overlapStart}:00` : overlapStart,
+        endTime: overlapEnd.length === 5 ? `${overlapEnd}:00` : overlapEnd,
       });
+
+      if (overlaps.length > 0) {
+        return apiError({
+          code: "conflict",
+          message: isAllDay
+            ? "この日は既に予約が入っているため終日予約を承れません。別の日をお選びください。"
+            : "ご指定の時間帯は既に予約が入っています。別の時間帯をお選びください。",
+          status: 409,
+        });
+      }
     }
 
     // 終日予約は、取引先の有効な仮押さえが当日に1件でもあれば承れない（押さえ枠と併存不可）。

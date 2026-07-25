@@ -12,6 +12,25 @@
 - 対象: どの画面・API・業種向けか
 ```
 
+## 2026-07-24 コアフロー横断バグ監査：実バグ8系統を修正 (branch claude/dazzling-ride-9mnfsp)
+- 内容: 予約受付〜会計終了のコア機能を監査し、以下を修正。
+  (1) 並列ブース枠（max_bookings>1）で2件目が必ず弾かれる不具合。容量スロットが支配する
+  予約は max_bookings を同時受付数の権威とし、枠に載らない予約（終日/枠未設定）のみ重複判定
+  （`customer/booking`・`external/booking`）。
+  (2) 返金の累計上限チェック欠如・`refund_amount` 上書きによる過剰返金。累計判定＋累計保存に修正、
+  回帰テスト追加（`payments/[id]/refund`）。
+  (3) 売掛元帳が見積等の非請求帳票を未回収額に混入。`doc_type in (invoice, consolidated_invoice)`
+  に限定（`payment-entries/ledger`）。
+  (4) ショップ会計の税端数が Stripe 実請求額と1円ズレ。単価端数×数量に統一し DB total=請求額
+  （`shop/checkout`）。
+  (5) 見積AIの合計をLLM出力のまま採用 → 明細から再計算（`quoteFromVehicle`）。
+  (6) `vehicle-size/ocr` にレート制限・staff権限・空/MIME検証・AI停止/コストキャップを追加（兄弟
+  OCRルートと統一）。
+  (7) ワークフロー完了通知が最終工程の可視設定・車両IDに依存して飛ばないケースを解消、完了/進捗
+  通知と工程到達AI自動化を after() 化して serverless 打ち切りを防止（`reservations/[id]/advance`）。
+  (8) ジョブ写真取得に tenant_id フィルタを付与（`jobs/[id]/photos`）。
+- 対象: 顧客/外部予約API、ワークフロー進行、ジョブ写真・車検証OCR、見積AI、返金・売掛・ショップ会計。
+
 ## 2026-07-23 予約が入った際の店舗宛通知（メール/Slack）(PR #820)
 - 内容: 顧客予約（`/api/customer/booking` Web予約フォーム、`/api/external/booking`
   Googleマップ予約/LINE LIFF）が作成されると、テナントのオーナー/管理者へ

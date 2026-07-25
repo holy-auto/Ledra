@@ -191,7 +191,10 @@ export async function POST(req: NextRequest) {
       // 予約可能にする。あわせて、取引先が押さえている有効な仮押さえ(reservation_holds)も
       // 占有として数え、押さえ枠に一般客予約が入る（オーバーセル）のを防ぐ。
       const nowIso = new Date().toISOString();
-      const [{ count }, { count: heldCount }] = await Promise.all([
+      // 占有カウントは (a) 時間帯が重なる通常予約 (b) その日の終日予約（時刻NULLで時間比較に
+      // 載らないため別集計）(c) 有効な仮押さえ の3種。スロット予約では下流の checkOverlap を
+      // スキップするため、終日予約の取りこぼしをこの容量チェックで塞ぐ。
+      const [{ count }, { count: allDayCount }, { count: heldCount }] = await Promise.all([
         admin
           .from("reservations")
           .select("id", { count: "exact", head: true })
@@ -200,6 +203,13 @@ export async function POST(req: NextRequest) {
           .neq("status", "cancelled")
           .lt("start_time", endTime)
           .gt("end_time", startTime),
+        admin
+          .from("reservations")
+          .select("id", { count: "exact", head: true })
+          .eq("tenant_id", tenant.id)
+          .eq("scheduled_date", scheduledDate)
+          .neq("status", "cancelled")
+          .eq("all_day", true),
         admin
           .from("reservation_holds")
           .select("id", { count: "exact", head: true })
@@ -211,7 +221,7 @@ export async function POST(req: NextRequest) {
           .gt("end_time", startTime),
       ]);
 
-      if ((count ?? 0) + (heldCount ?? 0) >= maxBookings) {
+      if ((count ?? 0) + (allDayCount ?? 0) + (heldCount ?? 0) >= maxBookings) {
         return apiError({
           code: "conflict",
           message: "ご指定の時間帯は満席です。別の時間帯をお選びください。",
@@ -221,19 +231,25 @@ export async function POST(req: NextRequest) {
     }
 
     // ── ダブルブッキングチェック ──
-    const overlaps = await checkOverlap({
-      tenantId: tenant.id,
-      scheduledDate,
-      startTime: startTime.length === 5 ? `${startTime}:00` : startTime,
-      endTime: endTime.length === 5 ? `${endTime}:00` : endTime,
-    });
-
-    if (overlaps.length > 0) {
-      return apiError({
-        code: "conflict",
-        message: "ご指定の時間帯は既に予約が入っています。別の時間帯をお選びください。",
-        status: 409,
+    // 容量スロットが支配する予約は、その枠の max_bookings が同時受付数の権威（GET 空き状況の
+    // available = max_bookings - booked と揃える）。無条件の重複拒否だと max_bookings>1 の枠で
+    // 2件目が必ず弾かれ案内と矛盾するため、枠未設定の予約だけ重複チェックする。
+    const slotGoverned = !!slots && slots.length > 0;
+    if (!slotGoverned) {
+      const overlaps = await checkOverlap({
+        tenantId: tenant.id,
+        scheduledDate,
+        startTime: startTime.length === 5 ? `${startTime}:00` : startTime,
+        endTime: endTime.length === 5 ? `${endTime}:00` : endTime,
       });
+
+      if (overlaps.length > 0) {
+        return apiError({
+          code: "conflict",
+          message: "ご指定の時間帯は既に予約が入っています。別の時間帯をお選びください。",
+          status: 409,
+        });
+      }
     }
 
     // ── 顧客レコード作成/取得 ──

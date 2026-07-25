@@ -19,6 +19,9 @@ export const dynamic = "force-dynamic";
 
 // 「未請求 / 無効」扱いで売掛集計から外すステータス。
 const EXCLUDED_STATUSES = ["draft", "cancelled", "rejected"] as const;
+// 売掛（未回収）として数える帳票タイプ。見積 (estimate) / 納品書 (delivery) / 領収書 (receipt) は
+// 請求ではないため、documents に同居していても未回収額に混ぜない（入金記帳の doc_type 制限と揃える）。
+const RECEIVABLE_DOC_TYPES = ["invoice", "consolidated_invoice"] as const;
 
 export async function GET(req: NextRequest) {
   try {
@@ -34,6 +37,7 @@ export async function GET(req: NextRequest) {
       .from("documents")
       .select("id, doc_number, doc_type, customer_id, issued_at, status, total, created_at")
       .eq("tenant_id", caller.tenantId)
+      .in("doc_type", RECEIVABLE_DOC_TYPES as unknown as string[])
       .not("status", "in", `(${EXCLUDED_STATUSES.join(",")})`)
       .order("created_at", { ascending: false });
 

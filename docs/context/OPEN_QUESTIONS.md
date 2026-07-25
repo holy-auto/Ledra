@@ -14,6 +14,34 @@
 - 起票日: YYYY-MM-DD
 ```
 
+## 予約の二重登録（TOCTOU）をDBレベルで防ぐか（2026-07-24 バグ監査）
+- 状況: 一般客予約（`customer/booking`・`external/booking`）は容量/重複チェックの後にロック無しで reservations を INSERT する。取引先ホールドの `claim_reservation_hold` は `pg_advisory_xact_lock` で守られているが、一般予約INSERTパスはロックも排他制約も無い。ほぼ同時の2POSTが両方 count=0 を読み、同一枠に二重登録し得る。reservations に時間重複を防ぐ EXCLUDE/UNIQUE 制約は存在しない（マイグレーション全走査で確認）。
+- 選択肢: 案A `reservations` に `tstzrange`/時間帯の EXCLUDE 制約（GiST）を追加し、DB側で重複INSERTを弾く。案B 予約INSERT前に日付+テナント単位の advisory lock を取る（ホールドと同じ方式）。案C 現状維持（発生は同時POST時のみ・店側で気づけるとして許容）。
+- 影響範囲: 案A/BともコアのINSERTパスに触れるため、既存の容量/終日/カテゴリ判定との整合を崩さないか要検証。案Cのままだと繁忙時間帯に同一枠の二重予約が現場で発生し得る。
+- 次のアクション: EXCLUDE制約（案A）を第一候補に、既存予約データで制約違反が起きないかを検証してから小さく導入するか代表判断。
+- 起票日: 2026-07-24
+
+## freee連携で複数税率を単一税区分（既定10%）で計上している（2026-07-24 バグ監査）
+- 状況: `accounting/freee/client.ts` が breakdown 全行に `tax_code=既定(10%課税売上)` を付与しており、8%軽減税率の行も10%の税区分で計上される（vat額自体は明示で渡すが税区分の分類が誤る）。コメント上は固定マッピングのMVP割り切りとして明記されている。
+- 選択肢: 案A 行の税率(8/10)に応じて freee の税区分コードを出し分ける（軽減税率マスタの対応表が必要）。案B 現状維持（軽減税率取引が無い加盟店には無害）。
+- 影響範囲: 軽減税率対象（部品に紛れる飲食・一部消耗品等は稀）を扱う加盟店で会計区分が崩れる。頻度は業種的に低い見込み。
+- 次のアクション: 軽減税率取引の実発生有無を確認し、あるなら税区分マッピングを実装。
+- 起票日: 2026-07-24
+
+## 決済系の冪等キー付与とモバイル/Web advance の共通化（2026-07-24 バグ監査）
+- 状況: (a) `stripe/invoicePaymentLink.ts`・`shop/checkout` の Stripe Checkout/Customer 作成に idempotencyKey が無く、タイムアウト後リトライでセッション/顧客が重複生成され得る（`orderPayout` の transfer は付与済み）。(b) `mobile/reservations/[id]/advance` が Web版と別実装で drift しており、完了時のタイマー（work_completed_at）・証明書/請求書 auto-draft・信頼通知(SMSフォールバック)を欠く。
+- 選択肢: (a) create 呼び出しに `idempotencyKey` を付ける。(b) Web/モバイルの advance を共通ロジックに集約するか、モバイルにも同じ完了フックを移植する。案C 現状維持。
+- 影響範囲: (a) Checkoutセッション重複は顧客が片方を払うだけで実害は小さいが、Customer重複は台帳を汚す。(b) モバイルで完了操作した案件はタイマー・下書き・SMS救済が欠落する。
+- 次のアクション: (a)は低リスクなので次PRで付与。(b)は共通化のリファクタ規模を見積もってから判断。
+- 起票日: 2026-07-24
+
+## 証明書 auto_issue が実質無効（写真検査結果に未接続）（2026-07-24 バグ監査）
+- 状況: `certificateRecordAuto.ts` は `shouldAutoIssueCertificate` を `photoQualityPassed:false, tamperingCheckPassed:false` 固定で呼ぶため autoIssue は常に false になり、`certificate.auto_issue` を opt-in しても証明書は必ず status=draft のまま。安全側（誤発行しない）だが、宣伝している自動発行が発火しない。
+- 選択肢: 案A `photo.auto_quality_check`/`photo.auto_tampering_check` の実結果を読んで渡し、両方合格時のみ自動 active 化する。案B 機能自体を撤回（opt-in項目を隠す）。案C 現状維持（常に下書き）。
+- 影響範囲: 誤発行リスクは無い（安全側）が、Proテナントの期待と実挙動が食い違う。法的効力のある証明書のため自動発行の設計は慎重に。
+- 次のアクション: 自動発行を実効化するか撤回するかを製品判断。実効化するなら写真検査アノテーションの読み取り経路を実装。
+- 起票日: 2026-07-24
+
 ## 証明書PDF/公開ページに 品番(product_code) が表示されない（PR #817、Codexレビュー指摘）
 - 状況: 証明書発行フォームのコーティング剤セクションに 品番 (product_code) を保存できるようにしたが（納品書OCR取り込み・手入力とも）、PDF (`pdfCertificate.tsx`)・ブランドテンプレートPDF (`renderBrandedCertificate.tsx`)・公開ページ (`c/[public_id]/page.tsx` 等) はいずれも `coating_products_json` から brand_name/product_name/film_type しか描画しておらず、品番は保存されるだけで発行物には出ない。特に「製品名が未登録で品番だけ入力した」行では、証明書上は製品が識別できない表示になる。既存の `lot_number`（ロット番号）も同様に「内部記録のみ・発行物には出さない」設計のため、今回は同じ扱いとして据え置いた。
 - 選択肢: 案A 現状維持（品番は内部記録専用。ロット番号と同じ扱い）。案B PDF/公開ページの明細行に品番を追加表示する（`pdfCertificate.tsx`・`renderBrandedCertificate.tsx`・公開ページの3箇所を変更、証明書という顧客向け文書のレイアウトが変わる）。

@@ -72,6 +72,9 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
       .select(
         "id, certificate_id, storage_path, file_name, content_type, file_size, sort_order, annotations, created_at",
       )
+      // service-role クライアントは RLS をバイパスするため、tenant_id を明示して越境取得を防ぐ
+      // （certificate_images には tenant_id 列があり、他の全クエリと規約を揃える）。
+      .eq("tenant_id", caller.tenantId)
       .in(
         "certificate_id",
         certs.map((c) => c.id),
