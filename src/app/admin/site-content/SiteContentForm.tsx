@@ -16,6 +16,7 @@ import {
   type SiteContentStatus,
   type SiteContentType,
 } from "@/lib/validations/site-content-post";
+import { utcIsoToJstLocalInput } from "@/lib/datetime";
 import { createSiteContentAction, updateSiteContentAction } from "./actions";
 
 export type SiteContentFormInitial = {
@@ -46,14 +47,6 @@ export type SiteContentFormInitial = {
   og_subtitle: string | null;
 };
 
-function toInputDateTime(iso: string | null): string {
-  if (!iso) return "";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "";
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-
 function slugify(text: string): string {
   return text
     .toLowerCase()
@@ -81,9 +74,9 @@ export default function SiteContentForm({ initial }: { initial: SiteContentFormI
   const [heroImageUrl, setHeroImageUrl] = useState(initial.hero_image_url ?? "");
   const [tags, setTags] = useState(initial.tags.join(", "));
   const [author, setAuthor] = useState(initial.author ?? "");
-  const [publishedAt, setPublishedAt] = useState(toInputDateTime(initial.published_at));
-  const [eventStartAt, setEventStartAt] = useState(toInputDateTime(initial.event_start_at));
-  const [eventEndAt, setEventEndAt] = useState(toInputDateTime(initial.event_end_at));
+  const [publishedAt, setPublishedAt] = useState(utcIsoToJstLocalInput(initial.published_at));
+  const [eventStartAt, setEventStartAt] = useState(utcIsoToJstLocalInput(initial.event_start_at));
+  const [eventEndAt, setEventEndAt] = useState(utcIsoToJstLocalInput(initial.event_end_at));
   const [location, setLocation] = useState(initial.location ?? "");
   const [onlineUrl, setOnlineUrl] = useState(initial.online_url ?? "");
   const [capacity, setCapacity] = useState(initial.capacity != null ? String(initial.capacity) : "");

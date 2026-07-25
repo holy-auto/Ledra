@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
+import { jstLocalInputToUtcIso } from "@/lib/datetime";
 import { normalizeRole, hasMinRole } from "@/lib/auth/roles";
 import {
   parseSiteContentFormData,
@@ -83,13 +84,8 @@ export async function createSiteContentAction(
   const input = parsed.data;
 
   const published_at =
-    input.status === "published"
-      ? input.published_at && input.published_at.length > 0
-        ? new Date(input.published_at).toISOString()
-        : new Date().toISOString()
-      : input.published_at && input.published_at.length > 0
-        ? new Date(input.published_at).toISOString()
-        : null;
+    jstLocalInputToUtcIso(input.published_at) ??
+    (input.status === "published" ? new Date().toISOString() : null);
 
   const { data, error } = await auth.supabase
     .from("site_content_posts")
@@ -105,8 +101,8 @@ export async function createSiteContentAction(
       tags: input.tags ?? [],
       author: input.author ?? null,
       published_at,
-      event_start_at: input.event_start_at ? new Date(input.event_start_at).toISOString() : null,
-      event_end_at: input.event_end_at ? new Date(input.event_end_at).toISOString() : null,
+      event_start_at: jstLocalInputToUtcIso(input.event_start_at),
+      event_end_at: jstLocalInputToUtcIso(input.event_end_at),
       location: input.location ?? null,
       online_url: input.online_url ?? null,
       capacity: input.capacity ?? null,
@@ -162,11 +158,10 @@ export async function updateSiteContentAction(
   if (!existing) return { ok: false, error: "not_found" };
 
   const published_at =
-    input.published_at && input.published_at.length > 0
-      ? new Date(input.published_at).toISOString()
-      : input.status === "published"
-        ? ((existing.published_at as string | null) ?? new Date().toISOString())
-        : null;
+    jstLocalInputToUtcIso(input.published_at) ??
+    (input.status === "published"
+      ? ((existing.published_at as string | null) ?? new Date().toISOString())
+      : null);
 
   const { data, error } = await auth.supabase
     .from("site_content_posts")
@@ -181,8 +176,8 @@ export async function updateSiteContentAction(
       tags: input.tags ?? [],
       author: input.author ?? null,
       published_at,
-      event_start_at: input.event_start_at ? new Date(input.event_start_at).toISOString() : null,
-      event_end_at: input.event_end_at ? new Date(input.event_end_at).toISOString() : null,
+      event_start_at: jstLocalInputToUtcIso(input.event_start_at),
+      event_end_at: jstLocalInputToUtcIso(input.event_end_at),
       location: input.location ?? null,
       online_url: input.online_url ?? null,
       capacity: input.capacity ?? null,

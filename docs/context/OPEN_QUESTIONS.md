@@ -14,6 +14,13 @@
 - 起票日: YYYY-MM-DD
 ```
 
+## CMS予約投稿のTZ修正に伴う残課題（2026-07-25）
+- 状況: naive datetime-local を JST 解釈にする修正（本日 DECISION_LOG 参照）で今後の保存は正しくなるが、(a) 修正前に保存済みの予約/イベント日時は `published_at` 等が9時間ずれている可能性、(b) `agent-announcements`（`AdminAnnouncementsClient.tsx`＋`/api/admin/agent-announcements`）にも同種の naive `new Date(form.published_at).toISOString()` が残っている。
+- 選択肢: (a) 既存データ: 対象が少なければ手修正 / 多ければ一括補正マイグレーション / 影響軽微なら放置。(b) agent-announcements: 同じ `@/lib/datetime` ヘルパーへ寄せて修正 / 別UIで許容 / 挙動確認のうえ判断。
+- 影響範囲: (a) 既存予約投稿が意図と違う時刻に公開/表示される。(b) エージェント向けお知らせの公開日時が9時間ずれる可能性。
+- 次のアクション: (a) 本番 `site_content_posts` に status='scheduled' or 未来 published_at の行が何件あるか確認（【要確認】件数）。(b) agent-announcements の datetime 入力有無と実害を確認し、必要なら同ヘルパーで追随。
+- 起票日: 2026-07-25
+
 ## 予約の二重登録（TOCTOU）をDBレベルで防ぐか（2026-07-24 バグ監査）
 - 状況: 一般客予約（`customer/booking`・`external/booking`）は容量/重複チェックの後にロック無しで reservations を INSERT する。取引先ホールドの `claim_reservation_hold` は `pg_advisory_xact_lock` で守られているが、一般予約INSERTパスはロックも排他制約も無い。ほぼ同時の2POSTが両方 count=0 を読み、同一枠に二重登録し得る。reservations に時間重複を防ぐ EXCLUDE/UNIQUE 制約は存在しない（マイグレーション全走査で確認）。
 - 選択肢: 案A `reservations` に `tstzrange`/時間帯の EXCLUDE 制約（GiST）を追加し、DB側で重複INSERTを弾く。案B 予約INSERT前に日付+テナント単位の advisory lock を取る（ホールドと同じ方式）。案C 現状維持（発生は同時POST時のみ・店側で気づけるとして許容）。
