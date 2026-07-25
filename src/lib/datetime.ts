@@ -29,16 +29,55 @@ export function jstLocalInputToUtcIso(input: string | null | undefined): string 
   return d.toISOString();
 }
 
+/** UTC ISO（または "YYYY-MM-DD" 等の日付文字列）を JST の暦カレンダー値へ分解する。
+ * 表示用。`new Date().getHours()` 等は実行環境ローカル TZ（Vercel は UTC）で動くため、
+ * サーバレンダリングだと JST 入力が 9 時間ずれて表示される。これを避けるため常に JST で読む。 */
+export function jstParts(
+  iso: string | null | undefined,
+): { y: number; m: number; d: number; hh: number; mm: number } | null {
+  if (!iso) return null;
+  const base = new Date(iso);
+  if (Number.isNaN(base.getTime())) return null;
+  // JST へシフトしてから UTC 各値を読む（= JST 壁時計）。
+  const jst = new Date(base.getTime() + 9 * 60 * 60 * 1000);
+  return {
+    y: jst.getUTCFullYear(),
+    m: jst.getUTCMonth() + 1,
+    d: jst.getUTCDate(),
+    hh: jst.getUTCHours(),
+    mm: jst.getUTCMinutes(),
+  };
+}
+
+const pad2 = (n: number) => String(n).padStart(2, "0");
+
 /**
  * UTC ISO 文字列を datetime-local 入力用の JST 壁時計文字列 "YYYY-MM-DDTHH:mm" へ変換する。
  * ブラウザ TZ に依存せず常に JST で表示するため、サーバ側 {@link jstLocalInputToUtcIso} と対称になる。
  */
 export function utcIsoToJstLocalInput(iso: string | null | undefined): string {
-  if (!iso) return "";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "";
-  // JST へシフトしてから UTC 各値を読む（= JST 壁時計）。
-  const jst = new Date(d.getTime() + 9 * 60 * 60 * 1000);
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${jst.getUTCFullYear()}-${pad(jst.getUTCMonth() + 1)}-${pad(jst.getUTCDate())}T${pad(jst.getUTCHours())}:${pad(jst.getUTCMinutes())}`;
+  const p = jstParts(iso);
+  if (!p) return "";
+  return `${p.y}-${pad2(p.m)}-${pad2(p.d)}T${pad2(p.hh)}:${pad2(p.mm)}`;
+}
+
+/** 表示用 "YYYY/MM/DD HH:mm"（JST）。iso が無効なら fallback（既定 "—"）。 */
+export function formatJstDateTime(iso: string | null | undefined, fallback = "—"): string {
+  const p = jstParts(iso);
+  if (!p) return fallback;
+  return `${p.y}/${pad2(p.m)}/${pad2(p.d)} ${pad2(p.hh)}:${pad2(p.mm)}`;
+}
+
+/** 表示用 "YYYY年M月D日 HH:mm"（JST）。iso が無効なら fallback（既定 ""）。 */
+export function formatJstDateTimeJa(iso: string | null | undefined, fallback = ""): string {
+  const p = jstParts(iso);
+  if (!p) return fallback;
+  return `${p.y}年${p.m}月${p.d}日 ${pad2(p.hh)}:${pad2(p.mm)}`;
+}
+
+/** 表示用 "YYYY年M月D日"（JST・日付のみ）。iso が無効なら fallback（既定 ""）。 */
+export function formatJstDateJa(iso: string | null | undefined, fallback = ""): string {
+  const p = jstParts(iso);
+  if (!p) return fallback;
+  return `${p.y}年${p.m}月${p.d}日`;
 }

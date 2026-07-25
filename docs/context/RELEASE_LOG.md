@@ -12,9 +12,12 @@
 - 対象: どの画面・API・業種向けか
 ```
 
-## 2026-07-25 CMS予約投稿のタイムゾーンずれを修正（予約時刻に公開されない不具合） (branch claude/cms-scheduled-post-bug-ejccnb)
-- 内容: サイトコンテンツ（お知らせ/ブログ/イベント）の予約公開が指定時刻に公開されなかった不具合を修正。原因は `datetime-local` が生成するタイムゾーン無しの壁時計文字列（例 `2026-07-30T14:00`）を、サーバ側 server action が `new Date(x).toISOString()` でそのまま変換していたこと。Vercel ランタイムの TZ が UTC のため JST 14:00 の予約が `14:00Z`（＝JST 23:00）として保存され、cron 自体は正常でも公開が9時間遅れていた。naive 入力を常に JST(UTC+9) として解釈する共有ヘルパー `src/lib/datetime.ts`（`jstLocalInputToUtcIso` / `utcIsoToJstLocalInput`）を新設し、`published_at`・`event_start_at`・`event_end_at` の保存と、編集フォームの再表示（ブラウザTZ非依存）を対称にした。ユニットテスト追加（UTC/JST/他TZの各サーバで検証）。
-- 対象: `/admin/site-content`（作成・編集 server action、SiteContentForm）、cron `/api/cron/publish-scheduled` の対象データ
+## 2026-07-25 CMS予約投稿のタイムゾーンずれを修正（保存・表示の両方） (branch claude/cms-scheduled-post-bug-ejccnb)
+- 内容: サイトコンテンツ（お知らせ/ブログ/イベント）の予約公開が指定時刻に公開されず、かつ管理/公開画面の日時表示も入力とずれていた不具合を修正。
+  - **保存**: `datetime-local` が生成する TZ 無しの壁時計文字列（例 `2026-07-30T14:00`）を server action が `new Date(x).toISOString()` でそのまま変換していた。Vercel ランタイムの TZ が UTC のため JST 14:00 の予約が `14:00Z`（＝JST 23:00）で保存され、cron 自体は正常でも公開が9時間遅れていた。
+  - **表示**: 管理一覧・公開イベント/ニュース/ブログ・NewsTeaser の日時整形がサーバ側で `new Date().getHours()` / `iso.slice(0,10)` を使い、SSR(UTC)で JST 入力が9時間ずれて（日付のみ表示は深夜帯で1日）表示されていた。
+  - 共有ヘルパー `src/lib/datetime.ts` を新設（`jstLocalInputToUtcIso` / `utcIsoToJstLocalInput` / `jstParts` / `formatJstDateTime` / `formatJstDateTimeJa` / `formatJstDateJa`）。naive 入力を常に JST(UTC+9) として保存し、表示も常に JST で描画（実行環境TZ非依存）。散在していた各ページのローカル日時整形関数を撤去して集約。ユニットテスト追加（UTC/JST/他TZの各サーバで検証）。
+- 対象: `/admin/site-content`（作成・編集 server action / 一覧）、公開 `/events`・`/news/[slug]`・`/news`・`/blog`・`/blog/[slug]`・トップ NewsTeaser、cron `/api/cron/publish-scheduled` の対象データ
 
 ## 2026-07-24 コアフロー横断バグ監査：実バグ8系統を修正 (branch claude/dazzling-ride-9mnfsp)
 - 内容: 予約受付〜会計終了のコア機能を監査し、以下を修正。

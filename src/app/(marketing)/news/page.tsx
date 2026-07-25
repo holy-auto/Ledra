@@ -6,6 +6,7 @@ import { CTABanner } from "@/components/marketing/CTABanner";
 import { listContent } from "@/lib/marketing/content";
 import { listPublishedPosts } from "@/lib/marketing/site-content-posts";
 import { mergeContentItems, type ContentListItem } from "@/lib/marketing/mergeContent";
+import { formatJstDateJa } from "@/lib/datetime";
 
 export const metadata = {
   title: "お知らせ",
@@ -68,7 +69,9 @@ export default async function NewsPage() {
                   className="group block py-8 first:pt-0 hover:bg-white/[0.02] rounded-xl -mx-4 px-4 transition-colors"
                 >
                   <div className="flex flex-wrap items-center gap-3 text-xs text-white">
-                    {e.publishedAt && <time dateTime={e.publishedAt}>{formatDate(e.publishedAt)}</time>}
+                    {e.publishedAt && (
+                      <time dateTime={e.publishedAt}>{formatJstDateJa(e.publishedAt, e.publishedAt)}</time>
+                    )}
                     {e.tags?.map((t) => (
                       <span
                         key={t}
@@ -99,11 +102,4 @@ export default async function NewsPage() {
       />
     </>
   );
-}
-
-function formatDate(iso: string): string {
-  // MDX は YYYY-MM-DD、DB は ISO datetime。先頭10文字（日付部）で揃える。
-  const [y, m, d] = iso.slice(0, 10).split("-");
-  if (!y || !m || !d) return iso;
-  return `${y}年${Number(m)}月${Number(d)}日`;
 }
