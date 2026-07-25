@@ -39,8 +39,7 @@ export default async function PassportTransferAdminPage({ params }: PageProps) {
   const { data: vehicleRaw } = await admin
     .from("vehicles")
     .select(
-      "id, tenant_id, maker, model, year, vin_code, vin_code_normalized, " +
-        "customer_name, customer_email, passport_opt_out",
+      "id, tenant_id, maker, model, year, vin_code, vin_code_normalized, " + "customers(name, email), passport_opt_out",
     )
     .eq("id", id)
     .eq("tenant_id", caller.tenantId)
@@ -54,8 +53,8 @@ export default async function PassportTransferAdminPage({ params }: PageProps) {
     year: number | null;
     vin_code: string | null;
     vin_code_normalized: string | null;
-    customer_name: string | null;
-    customer_email: string | null;
+    // 顧客情報は customers テーブルに正規化済み（vehicles からは削除）。FK 埋め込みで取得する。
+    customers: { name: string | null; email: string | null } | null;
     passport_opt_out: boolean;
   } | null;
 
@@ -157,7 +156,7 @@ export default async function PassportTransferAdminPage({ params }: PageProps) {
             まだパスポート所有者は登録されていません。最初の移転受諾時に登録されます。
             <br />
             <span className="text-xs text-zinc-500">
-              （車両登録時のお客様情報: {vehicle.customer_email ?? "—"} / {vehicle.customer_name ?? "—"}）
+              （車両登録時のお客様情報: {vehicle.customers?.email ?? "—"} / {vehicle.customers?.name ?? "—"}）
             </span>
           </p>
         )}

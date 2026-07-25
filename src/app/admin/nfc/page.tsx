@@ -44,7 +44,7 @@ export default async function AdminNfcPage() {
   if (vehicleIds.length > 0) {
     const { data: vs } = await supabase
       .from("vehicles")
-      .select("id,maker,model,year,plate_display,customer_name")
+      .select("id,maker,model,year,plate_display")
       .in("id", vehicleIds);
     for (const v of vs ?? []) vehicleMap[v.id] = v;
   }

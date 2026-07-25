@@ -63,7 +63,11 @@ export async function POST(req: NextRequest) {
     if (!cert) return apiNotFound("証明書が見つかりません");
 
     // テナント（施工店）情報
-    const { data: tenant } = await admin.from("tenants").select("name, phone").eq("id", cert.tenant_id).single();
+    const { data: tenant } = await admin
+      .from("tenants")
+      .select("name, phone:contact_phone")
+      .eq("id", cert.tenant_id)
+      .single();
 
     // 車両情報
     let vehicleInfo: Record<string, string | undefined> = {};

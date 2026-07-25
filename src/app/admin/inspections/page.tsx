@@ -13,8 +13,8 @@ type VehicleRow = {
   model: string | null;
   year: number | null;
   plate_display: string | null;
-  customer_name: string | null;
-  customer_email: string | null;
+  // 顧客情報は customers テーブルに正規化済み（vehicles からは削除）。FK 埋め込みで取得する。
+  customers: { name: string | null; email: string | null } | null;
   inspection_expiry_date: string;
   inspection_reminder_sent_at: string | null;
 };
@@ -56,7 +56,7 @@ export default async function InspectionsPage() {
   const { data: rawVehicles } = await admin
     .from("vehicles")
     .select(
-      "id, maker, model, year, plate_display, customer_name, customer_email, inspection_expiry_date, inspection_reminder_sent_at",
+      "id, maker, model, year, plate_display, customers(name, email), inspection_expiry_date, inspection_reminder_sent_at",
     )
     .eq("tenant_id", caller.tenantId)
     .not("inspection_expiry_date", "is", null)
@@ -64,7 +64,7 @@ export default async function InspectionsPage() {
     .lte("inspection_expiry_date", horizonStr)
     .order("inspection_expiry_date", { ascending: true });
 
-  const vehicles = ((rawVehicles ?? []) as VehicleRow[]).map((v) => ({
+  const vehicles = ((rawVehicles ?? []) as unknown as VehicleRow[]).map((v) => ({
     ...v,
     days_until: daysUntil(v.inspection_expiry_date, today),
   }));
@@ -172,9 +172,9 @@ export default async function InspectionsPage() {
                         <td className="px-4 py-3 font-medium">{vehicleLabel(v)}</td>
                         <td className="px-4 py-3 tabular-nums">{v.plate_display ?? "—"}</td>
                         <td className="px-4 py-3">
-                          <div>{v.customer_name ?? "—"}</div>
-                          {v.customer_email ? (
-                            <div className="text-xs text-zinc-500 break-all">{v.customer_email}</div>
+                          <div>{v.customers?.name ?? "—"}</div>
+                          {v.customers?.email ? (
+                            <div className="text-xs text-zinc-500 break-all">{v.customers.email}</div>
                           ) : null}
                         </td>
                         <td className="px-4 py-3 text-right tabular-nums">{formatDate(v.inspection_expiry_date)}</td>
@@ -188,7 +188,7 @@ export default async function InspectionsPage() {
                         <td className="px-4 py-3 text-right text-xs">
                           {v.inspection_reminder_sent_at ? (
                             <span className="text-emerald-700">送信済</span>
-                          ) : v.customer_email ? (
+                          ) : v.customers?.email ? (
                             <span className="text-zinc-500">未送信</span>
                           ) : (
                             <span className="text-rose-600">メール未登録</span>
