@@ -64,7 +64,7 @@ export async function initiatePassportTransfer(args: {
   const { data: vehicleRaw } = await admin
     .from("vehicles")
     .select(
-      "id, tenant_id, vin_code, vin_code_normalized, passport_opt_out, customer_name, customer_email, maker, model, year",
+      "id, tenant_id, vin_code, vin_code_normalized, passport_opt_out, customers(name, email), maker, model, year",
     )
     .eq("id", args.vehicleId)
     .eq("tenant_id", args.tenantId)
@@ -75,8 +75,8 @@ export async function initiatePassportTransfer(args: {
     vin_code: string | null;
     vin_code_normalized: string | null;
     passport_opt_out: boolean;
-    customer_name: string | null;
-    customer_email: string | null;
+    // 顧客情報は customers テーブルに正規化済み（vehicles からは削除）。FK 埋め込みで取得する。
+    customers: { name: string | null; email: string | null } | null;
     maker: string | null;
     model: string | null;
     year: number | null;
@@ -161,8 +161,8 @@ export async function initiatePassportTransfer(args: {
       initiating_tenant_id: args.tenantId,
       initiating_vehicle_id: vehicle.id,
       initiated_by_user_id: args.userId,
-      from_owner_email: passport.current_owner_email ?? vehicle.customer_email,
-      from_owner_name: vehicle.customer_name,
+      from_owner_email: passport.current_owner_email ?? vehicle.customers?.email ?? null,
+      from_owner_name: vehicle.customers?.name ?? null,
       to_owner_email: toEmail,
       to_owner_name: args.toName?.trim() || null,
       transfer_token_hash: tokenHash,
