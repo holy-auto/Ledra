@@ -219,7 +219,7 @@ export async function getPublicCertificateData(pid: string): Promise<PublicCerti
     cert.vehicle_id
       ? supabase
           .from("vehicles")
-          .select("id, maker, model, year, plate_display, customer_name, customer_email, notes, vin_code_normalized")
+          .select("id, maker, model, year, plate_display, notes, vin_code_normalized")
           .eq("id", cert.vehicle_id)
           .limit(1)
           .maybeSingle<VehicleRow>()
@@ -330,7 +330,9 @@ export async function getPublicCertificateData(pid: string): Promise<PublicCerti
     }
     let renderedUrl: string | null = null;
     if (img.rendered_storage_path) {
-      const { data: signedData } = supabase.storage.from(CERTIFICATE_IMAGE_BUCKET).getPublicUrl(img.rendered_storage_path);
+      const { data: signedData } = supabase.storage
+        .from(CERTIFICATE_IMAGE_BUCKET)
+        .getPublicUrl(img.rendered_storage_path);
       renderedUrl = signedData?.publicUrl ?? null;
     }
     return { ...img, url, rendered_url: renderedUrl };

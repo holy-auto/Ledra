@@ -22,6 +22,17 @@
 9. 公開区分: 公開可／要確認／非公開
 ```
 
+## 2026-07-25 本番ログの別系統エラー3種を調査し根本修正（search_path空 / 削除済み列参照 / 列名誤り）
+1. 日付: 2026-07-25
+2. 起きたこと: parts_replacement 修復の検証中に本番Postgresログで別系統の再発エラー3種を発見し、追加調査した。(A)`relation "tenants" does not exist`（再発）、(B)`column vehicles.customer_name does not exist`、(C)`column tenants.phone does not exist`。
+3. 以前の考え: これらは予約エラーの副次かノイズと思っていた。
+4. 違和感・問題: それぞれ独立した実バグだった。(A)`platform_regional_stats`/`platform_tenant_category_stats` が `SECURITY DEFINER` かつ `SET search_path TO ''` なのに本文で無修飾の `tenants` を参照 → 空 search_path で解決不能。プラットフォーム管理者ダッシュボードの統計呼び出しで毎回発生。同じ欠陥が `insurer_get_certificate`/`insurer_search_certificates`/`insurer_search_stores`/`insurer_search_vehicles`（保険ポータル検索）にもあり、呼ばれれば必ず500（ログに insurer_users エラーが無い＝まだ保険トラフィックが無いだけの潜在バグ）。(B)移行 20260321000002 が「顧客情報は customers テーブルへ」の方針で vehicles.customer_name/customer_email/customer_phone_masked を削除済みなのに、コード6箇所が今も vehicles から customer_name/email を SELECT → 該当ページがアクセス時500。(C)`certificates/ai-explain/route.ts` が存在しない `tenants.phone` を SELECT（実カラムは `contact_phone`）。
+5. 決めたこと: 3種すべて根本修正。(A)壊れている6関数に明示的 search_path（`public, extensions`）を ALTER で固定（本文は書き換えずロジック回帰リスクを避ける）。冪等ではないが非破壊。本番適用済み＋移行ファイル追加。platform 2関数は適用後に非null返却を確認。(B)監査/NFCは未使用の死んだ列参照を除去、車検リマインダー/パスポート移転（初期化・詳細）は用途があるため customers への FK 埋め込み `customers(name,email)` に切替（型・表示も更新）。(C)`phone:contact_phone` エイリアスで下流コード無改修のまま実カラムに接続。型チェック通過、passport 系81テストパス。
+6. 捨てた選択肢: (A)6関数の本文を全て `public.` 修飾して search_path='' に戻す厳格版＝正しいが6関数の全書き換えで転記ミス危険・ここで実行検証しづらいため見送り、ponytail コメントでアップグレード経路を明記。(B)死んだ列を単に消して所有者名を「—」に落とす案＝車検リマインダー/パスポート移転は所有者情報に用途があるため、customers 正規化元から取り直す方を選択。
+7. 判断理由: いずれもコードとDBスキーマの乖離が根本原因。最小・非破壊で実害（管理統計欠落・保険ポータル全滅・車検/パスポート/AI説明の500）を止められ、既存パターン（他関数の search_path、customers FK）に沿うため。
+8. まだ答えが出ていないこと: なぜ platform/insurer 関数が search_path='' + 無修飾で作られたのか（生成時の定型ミスの可能性）。他にも search_path='' + 無修飾の SECURITY DEFINER 関数が無いか横断監査すべきか。厳格版（本文完全修飾）へ格上げするか。→ OPEN_QUESTIONS 候補。
+9. 公開区分: 公開可（スキーマ乖離・search_path 設定不備という技術知見。機密・個人情報なし）
+
 ## 2026-07-25 予約管理の「サーバーエラー」＝parts_replacement 列の本番ドリフトを修復
 1. 日付: 2026-07-25
 2. 起きたこと: 予約管理画面で「サーバーエラーが発生しました。」が表示されるとの報告（スクショ）。一覧・統計（本日3/進行中119/総149）は正常表示されていたため GET は成功しており、このメッセージ（`apiInternalError` の本番文言）は SWR fetcher（"Fetch failed" を投げる）ではなくミューテーション＝予約 PUT の 500 由来と切り分けた。本番DB（cahybswpduchptvyvdkk / 旧「WEB施工証明書」）を調べると、`reservations.parts_replacement` 列が存在しないのに `schema_migrations` には 20260714000003 が「適用済み」として記録されていた（履歴ドリフト）。予約 PUT の `.update().select(... parts_replacement ...)` の RETURNING 句が毎回この列を要求するため、ステータス前進（来店へ→等）や編集の PUT が全件 500 になっていた。
