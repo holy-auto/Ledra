@@ -19,7 +19,7 @@ export async function GET() {
     const { data: stores, error } = await supabase
       .from("stores")
       .select(
-        "id, name, address, phone, email, manager_name, business_hours, is_active, is_default, sort_order, created_at",
+        "id, name, address, phone, email, manager_name, business_hours, latitude, longitude, is_active, is_default, sort_order, created_at",
       )
       .eq("tenant_id", caller.tenantId)
       .order("sort_order", { ascending: true })
@@ -83,7 +83,7 @@ export async function POST(req: NextRequest) {
     if (!parsed.success) {
       return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
     }
-    const { name, address, phone, email, manager_name, business_hours } = parsed.data;
+    const { name, address, phone, email, manager_name, business_hours, latitude, longitude } = parsed.data;
 
     // If first store, make it default
     const isFirst = (count ?? 0) === 0;
@@ -98,11 +98,13 @@ export async function POST(req: NextRequest) {
         email,
         manager_name,
         business_hours,
+        latitude,
+        longitude,
         is_default: isFirst,
         sort_order: count ?? 0,
       })
       .select(
-        "id, tenant_id, name, address, phone, email, manager_name, business_hours, is_active, is_default, sort_order, created_at, updated_at",
+        "id, tenant_id, name, address, phone, email, manager_name, business_hours, latitude, longitude, is_active, is_default, sort_order, created_at, updated_at",
       )
       .single();
 
@@ -139,7 +141,7 @@ export async function PUT(req: NextRequest) {
       .eq("id", id)
       .eq("tenant_id", caller.tenantId)
       .select(
-        "id, tenant_id, name, address, phone, email, manager_name, business_hours, is_active, is_default, sort_order, created_at, updated_at",
+        "id, tenant_id, name, address, phone, email, manager_name, business_hours, latitude, longitude, is_active, is_default, sort_order, created_at, updated_at",
       )
       .single();
 

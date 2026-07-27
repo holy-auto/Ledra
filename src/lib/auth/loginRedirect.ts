@@ -2,11 +2,12 @@ import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 
 /**
  * ログイン後のデフォルトリダイレクト先をコンテキストに基づいて決定する。
- * - 施工店のみ → /admin/certificates
+ * - 施工店のみ → /admin（ダッシュボード）
  * - 代理店のみ → /agent
- * - 両方 → 前回のアクティブコンテキスト or デフォルト施工店
+ * - 両方 → 前回のアクティブコンテキスト or デフォルト施工店（/admin ダッシュボード）
  * - 本社専用ユーザ（組織オーナー / 本社チーム） → /admin/hq-overview
- * - どちらでもない → /admin/certificates (施工店登録フローへ)
+ * - どちらでもない → /admin/certificates（施工店登録フローへ。/admin ダッシュボードは
+ *   会員資格の無いユーザを /login へ跳ね返すため、ここでは使わない）
  *
  * パスワードログイン（server action）とマジックリンクの /auth/callback の
  * 双方から呼ばれるため、ここに集約している。
@@ -40,12 +41,15 @@ export async function resolveDefaultRedirect(userId: string, activeContext: stri
   const hasAgent = !!agentUser?.agent_id && status === "active";
 
   if (hasShop && hasAgent) {
-    // 両方持っている: 前回のコンテキストまたはデフォルト施工店
+    // 両方持っている: 前回のコンテキストまたはデフォルト施工店（ダッシュボード）
     if (activeContext === "agent") return "/agent";
-    return "/admin/certificates";
+    return "/admin";
   }
 
   if (hasAgent) return "/agent";
+
+  // 施工店のみ: ダッシュボードへ（テナント会員のため /admin は正常に解決する）。
+  if (hasShop) return "/admin";
 
   // 施工店も代理店も無い場合、本社専用ユーザ (組織オーナー / 本社チーム) なら
   // 本社横断ビューへ。そうでなければ従来どおり施工店登録フローへ。
@@ -69,5 +73,8 @@ export async function resolveDefaultRedirect(userId: string, activeContext: stri
     if (isOrgUser) return "/admin/hq-overview";
   }
 
+  // 会員資格なし（施工店/代理店/組織いずれも無し）: /admin ダッシュボードは
+  // null caller を /login?next=/admin へ跳ね返しループになるため、登録フローの
+  // 起点である証明書画面へ送る。
   return "/admin/certificates";
 }

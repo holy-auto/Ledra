@@ -13,6 +13,8 @@ type Store = {
   email: string | null;
   manager_name: string | null;
   business_hours: unknown;
+  latitude: number | null;
+  longitude: number | null;
   is_default: boolean;
   is_active: boolean;
   sort_order: number;
@@ -42,6 +44,9 @@ export default function StoresClient() {
   const [formPhone, setFormPhone] = useState("");
   const [formEmail, setFormEmail] = useState("");
   const [formManager, setFormManager] = useState("");
+  // 写真GPS整合チェックの基準となる店舗座標 (任意)。
+  const [formLat, setFormLat] = useState("");
+  const [formLng, setFormLng] = useState("");
 
   // 担当者アサイン
   const [tenantMembers, setTenantMembers] = useState<TenantMember[]>([]);
@@ -150,6 +155,8 @@ export default function StoresClient() {
     setFormPhone("");
     setFormEmail("");
     setFormManager("");
+    setFormLat("");
+    setFormLng("");
     setEditingStore(null);
     setShowForm(false);
     setError(null);
@@ -162,6 +169,8 @@ export default function StoresClient() {
     setFormPhone(store.phone ?? "");
     setFormEmail(store.email ?? "");
     setFormManager(store.manager_name ?? "");
+    setFormLat(store.latitude != null ? String(store.latitude) : "");
+    setFormLng(store.longitude != null ? String(store.longitude) : "");
     setShowForm(true);
   };
 
@@ -178,6 +187,9 @@ export default function StoresClient() {
         phone: formPhone,
         email: formEmail,
         manager_name: formManager,
+        // 常に送る (空文字は API 側で null 化)。他フィールドと同様、省略で既存値を消さない。
+        latitude: formLat.trim(),
+        longitude: formLng.trim(),
       };
 
       const res = await fetch("/api/admin/stores", {
@@ -287,6 +299,35 @@ export default function StoresClient() {
                   className="input-field w-full"
                   placeholder="東京都渋谷区..."
                 />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-secondary">緯度 (任意)</label>
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    step="any"
+                    value={formLat}
+                    onChange={(e) => setFormLat(e.target.value)}
+                    className="input-field w-full"
+                    placeholder="35.6586"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-secondary">経度 (任意)</label>
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    step="any"
+                    value={formLng}
+                    onChange={(e) => setFormLng(e.target.value)}
+                    className="input-field w-full"
+                    placeholder="139.7454"
+                  />
+                </div>
+                <p className="col-span-2 text-[11px] text-muted">
+                  写真GPSと店舗位置の整合性チェックの基準に使います (未入力可)。
+                </p>
               </div>
               <div>
                 <label className="mb-1 block text-xs font-medium text-secondary">電話番号</label>

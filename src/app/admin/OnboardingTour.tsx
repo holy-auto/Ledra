@@ -4,8 +4,8 @@ import { useEffect, useState } from "react";
 // CSS is small (~3KB) and harmless to ship eagerly; keep it as a side-effect
 // import so PostCSS/Next picks it up. The heavy JS module is loaded lazily.
 import "driver.js/dist/driver.css";
-
-const TOUR_DONE_KEY = "ledra_tour_done";
+// キーは副作用フリーの共有モジュールが単一の出典（driver.js を他ページに巻き込まない）。
+import { TOUR_DONE_KEY } from "@/lib/onboarding";
 
 export default function OnboardingTour(): null {
   const [ready, setReady] = useState(false);
@@ -80,6 +80,26 @@ export default function OnboardingTour(): null {
               title: "3. 素早く検索・移動するには",
               description:
                 "画面のどこでも Cmd+K (Mac) / Ctrl+K (Win) を押すとコマンドパレットが開きます。ページ名や顧客名で素早く移動できます。",
+            },
+          },
+          {
+            element: "[data-tour='assistant-chat']",
+            popover: {
+              title: "AIに聞いて画面を開く",
+              description:
+                "「予約管理を開いて」「先月の売上」など、やりたいことを言葉で打つと画面が切り替わります。何と打てばよいか迷ったら、開いたパネルの「使い方」で例文も見られます。",
+              side: "right",
+              align: "start",
+            },
+          },
+          {
+            element: "[data-tour='all-features-toggle']",
+            popover: {
+              title: "サイドバーはよく使う機能だけに整理",
+              description:
+                "常時表示はよく使うコア機能に絞りました。その他の機能は「すべての機能を表示」から開けます。よく使う画面は各項目にカーソルを合わせて📌でピン留めすると、サイドバーに常に表示されます。",
+              side: "right",
+              align: "start",
             },
           },
           {

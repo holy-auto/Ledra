@@ -9,7 +9,7 @@ const notoSansJP = Noto_Sans_JP({
 });
 
 export const metadata: Metadata = {
-  title: "Ledra — WEB施工証明書SaaS | 説明会",
+  title: "Ledra — 自動車整備・コーティング店のAI業務管理SaaS | 説明会",
   description: "Ledra 説明会プレゼンテーション",
   robots: { index: false, follow: false },
 };

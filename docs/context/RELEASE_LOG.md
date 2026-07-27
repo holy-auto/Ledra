@@ -19,6 +19,18 @@
   - 共有ヘルパー `src/lib/datetime.ts` を新設（`jstLocalInputToUtcIso` / `utcIsoToJstLocalInput` / `jstParts` / `formatJstDateTime` / `formatJstDateTimeJa` / `formatJstDateJa`）。naive 入力を常に JST(UTC+9) として保存し、表示も常に JST で描画（実行環境TZ非依存）。散在していた各ページのローカル日時整形関数を撤去して集約。ユニットテスト追加（UTC/JST/他TZの各サーバで検証）。
 - 対象: `/admin/site-content`（作成・編集 server action / 一覧）、公開 `/events`・`/news/[slug]`・`/news`・`/blog`・`/blog/[slug]`・トップ NewsTeaser、cron `/api/cron/publish-scheduled` の対象データ
 
+## 2026-07-27 SEO/GEOポジショニング刷新：「AI業務管理SaaS」へ (branch claude/ledra-seo-keywords-7vnacz)
+- 内容: サイト全体のSEO文言を「WEB施工証明書SaaS」→「自動車整備・コーティング店のAI業務管理SaaS」へ統一。
+  `siteConfig`（`src/lib/marketing/config.ts`）に siteTagline / siteDescription / keywords(15語) /
+  featureList(9項目) / siteNameAlt「レドラ」を集約し、root layout・(marketing) layout・トップページ・
+  features/for-shops の各 metadata と JSON-LD がここを参照する単一情報源に。
+  JSON-LD(SoftwareApplication) に featureList・audience(BusinessAudience)・keywords・alternateName・
+  applicationSubCategory・inLanguage を追加（生成AI検索が「何ができる/誰向け」を事実で拾えるように）。
+  `robots.ts` で主要AIクローラー（GPTBot / OAI-SearchBot / ChatGPT-User / ClaudeBot / PerplexityBot /
+  Google-Extended / Applebot-Extended）を名指しで allow。Hero バッジ・Footer タグライン・OG画像(root/marketing/og.tsx)・
+  video レイアウト/ページ・サービス概要PDF・オンボーディングメールのタグラインも新ポジションへ更新。
+- 対象: 公開マーケLP全体のメタデータ・構造化データ・OGP、およびAI検索(GEO/AEO)向け露出。全業種（整備/鈑金/コーティング/PPF）。
+
 ## 2026-07-24 コアフロー横断バグ監査：実バグ8系統を修正 (branch claude/dazzling-ride-9mnfsp)
 - 内容: 予約受付〜会計終了のコア機能を監査し、以下を修正。
   (1) 並列ブース枠（max_bookings>1）で2件目が必ず弾かれる不具合。容量スロットが支配する

@@ -13,6 +13,7 @@ import TodayTasksWidget, { TodayTasksWidgetSkeleton } from "./TodayTasksWidget";
 import SetupChecklist, { SetupChecklistSkeleton } from "./SetupChecklist";
 import ApprovalInboxWidget, { ApprovalInboxWidgetSkeleton } from "./ApprovalInboxWidget";
 import AskLedraBar from "./AskLedraBar";
+import AnnouncementsBanner from "./AnnouncementsBanner";
 
 // ── Partner Rank System ──
 interface PartnerRank {
@@ -426,6 +427,9 @@ export default async function AdminHome({ searchParams }: { searchParams?: Promi
     <>
       {/* Ledraに聞く — 90近い管理画面をナビで探す前に、まず自由入力で聞ける入口 */}
       <AskLedraBar />
+
+      {/* 運営からのお知らせ（アップデート予告等）。未読があればバッジ表示、0件なら自動で非表示。 */}
+      <AnnouncementsBanner />
 
       {/* AI 自動化の人の承認待ち — 一等地に常設（0 件なら自動で非表示） */}
       {tenantId && (

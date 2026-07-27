@@ -422,6 +422,15 @@ export function shouldAutoClassifyStage(settings: AiAutomationSettings): boolean
   return resolveAutoAction(settings, "photo.auto_classify_stage");
 }
 
+/**
+ * 施工写真アップロード時に「写真打刻」(EXIF 撮影時刻 → 施工日 / 作業時間) を自動導出して
+ * よいか。結果は提案 (meta.work_stamp) の注釈のみで、フォームへの反映・発行・金額には
+ * 関与しない (提案のみ・非壁3・LLM 不使用でコスト無し)。
+ */
+export function shouldAutoWorkStamp(settings: AiAutomationSettings): boolean {
+  return resolveAutoAction(settings, "photo.auto_work_stamp");
+}
+
 // ─────────────────────────────────────────────
 // 保険案件 (claim) → 不正リスク自動スコア
 // ─────────────────────────────────────────────

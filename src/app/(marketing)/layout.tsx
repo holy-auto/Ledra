@@ -9,6 +9,7 @@ import { CTATracker } from "@/components/marketing/CTATracker";
 import { PromoBannerClient } from "@/components/marketing/PromoBannerClient";
 import { StickyMobileCTA } from "@/components/marketing/StickyMobileCTA";
 import MarketingThemeWrapper from "./MarketingThemeWrapper";
+import { siteConfig } from "@/lib/marketing/config";
 
 const notoSansJP = Noto_Sans_JP({
   subsets: ["latin"],
@@ -23,14 +24,15 @@ export const revalidate = 60;
 
 export const metadata = {
   title: {
-    default: "Ledra | WEB施工証明書SaaS",
-    template: "%s | Ledra",
+    default: `${siteConfig.siteName}｜${siteConfig.siteTagline}`,
+    template: `%s | ${siteConfig.siteName}`,
   },
-  description: "施工証明をデジタルで。Ledraは、施工店と保険会社をつなぐWEB施工証明書プラットフォームです。",
+  description: siteConfig.siteDescription,
+  keywords: siteConfig.keywords,
   openGraph: {
-    title: "Ledra | WEB施工証明書SaaS",
-    description: "施工証明をデジタルで。Ledraは、施工店と保険会社をつなぐWEB施工証明書プラットフォームです。",
-    siteName: "Ledra",
+    title: `${siteConfig.siteName}｜${siteConfig.siteTagline}`,
+    description: siteConfig.siteDescription,
+    siteName: siteConfig.siteName,
     locale: "ja_JP",
     type: "website",
   },
