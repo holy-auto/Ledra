@@ -28,7 +28,20 @@ export type PhotoIntegrityFlag =
   | "capture_time_future" // 撮影日時が未来 (時計改ざん / 別端末)
   | "capture_time_stale" // 撮影日時がアップロードより大幅に前 (過去写真の使い回しの疑い)
   | "metadata_missing" // 撮影メタが無い (スクショ / 再エクスポート等)
+  | "gps_mismatch_store" // 写真GPSが店舗の許容半径外 (出張なら正当なので inconclusive 止まり)
+  | "c2pa_missing" // C2PA本番署名を期待する運用なのに未署名 (署名基盤が有効な時のみ)
   | "vision_suspicious"; // Opus Vision の内容審査で改ざんの疑い
+
+/**
+ * Vision の内容審査で解消し得る (画素を見れば判断できる) inconclusive フラグ。
+ * GPS 不一致・C2PA 未署名は撮影内容ではなく来歴の問題で、Vision では確認できないため
+ * ここに含めない → これらだけの画像を無駄に Opus へ回さない (gray-zone 抽出から除外)。
+ */
+const VISION_ADDRESSABLE_FLAGS: ReadonlySet<PhotoIntegrityFlag> = new Set<PhotoIntegrityFlag>([
+  "similar_image",
+  "capture_time_stale",
+  "metadata_missing",
+]);
 
 export type IntegrityVerdict = "clear" | "suspicious" | "inconclusive";
 
@@ -69,6 +82,19 @@ export interface CertImageIntegrityInput {
   deviceModel: string | null;
   deepfakeVerdict: string | null;
   authenticityGrade: string | null;
+  /** 自社C2PA署名の検証結果 (certificate_images.c2pa_verified)。 */
+  c2paVerified: boolean | null;
+  /** 写真GPS×店舗位置の整合性判定 (certificate_images.gps_check_verdict)。生座標は保存していない。 */
+  gpsCheckVerdict: string | null;
+}
+
+/** 集約の任意オプション。 */
+export interface IntegrityAggregateOptions {
+  /**
+   * C2PA本番署名を期待する運用か (C2PA_MODE==="production" のとき true)。
+   * 署名基盤が無効な既定運用では未署名が常態なので、false のとき c2pa_missing は付けない。
+   */
+  c2paExpected?: boolean;
 }
 
 export interface ImageIntegrityVerdict {
@@ -128,6 +154,9 @@ function rollupSummary(
   if (flagSet.has("capture_time_stale"))
     inconclusiveReasons.push("アップロードより大幅に前に撮影された写真（使い回しの疑い）");
   if (flagSet.has("metadata_missing")) inconclusiveReasons.push("撮影メタ（日時/端末）の不足");
+  if (flagSet.has("gps_mismatch_store"))
+    inconclusiveReasons.push("店舗から離れた場所で撮影された写真（出張作業でなければ要確認）");
+  if (flagSet.has("c2pa_missing")) inconclusiveReasons.push("C2PA署名の欠落");
 
   const summary =
     suspiciousCount > 0
@@ -170,6 +199,7 @@ export function computeIntegritySignature(images: CertImageIntegrityInput[]): st
 export function aggregateCertificateImageIntegrity(
   images: CertImageIntegrityInput[],
   now: Date = new Date(),
+  opts: IntegrityAggregateOptions = {},
 ): CertificateIntegritySummary {
   const imageCount = images.length;
   if (imageCount === 0) {
@@ -221,6 +251,14 @@ export function aggregateCertificateImageIntegrity(
 
     if (!takenAt && !im.deviceModel) flags.push("metadata_missing");
 
+    // 写真GPS×店舗位置が mismatch。出張作業は正当に店舗から離れるため決定的にはせず
+    // inconclusive 止まり (要確認)。作業場所GPSとの一致判定はフェーズ3で追加予定。
+    if (im.gpsCheckVerdict === "mismatch") flags.push("gps_mismatch_store");
+
+    // C2PA本番署名を期待する運用 (production) なのに未署名 → 来歴の欠落。
+    // 署名基盤が無効な既定運用では常態なので付けない (opts.c2paExpected で制御)。
+    if (opts.c2paExpected && im.c2paVerified !== true) flags.push("c2pa_missing");
+
     return { imageId: im.id, flags, verdict: imageVerdict(flags) };
   });
 
@@ -235,7 +273,9 @@ export function aggregateCertificateImageIntegrity(
 export function pickGrayZoneImageIds(summary: CertificateIntegritySummary, maxN: number): string[] {
   const ids: string[] = [];
   for (const r of summary.perImage) {
-    if (r.verdict === "inconclusive") ids.push(r.imageId);
+    // Vision で解消し得るフラグ (画素で判断できるもの) を持つ inconclusive 画像だけを回す。
+    // GPS 不一致・C2PA 未署名しか無い画像は Vision で確認できないので Opus を呼ばない。
+    if (r.verdict === "inconclusive" && r.flags.some((f) => VISION_ADDRESSABLE_FLAGS.has(f))) ids.push(r.imageId);
     if (ids.length >= maxN) break;
   }
   return ids;

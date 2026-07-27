@@ -62,7 +62,7 @@ export async function POST(req: NextRequest) {
     const { data: rows } = await admin
       .from("certificate_images")
       .select(
-        "id, sha256, perceptual_hash, exif_captured_at, exif_device_model, deepfake_verdict, authenticity_grade, created_at",
+        "id, sha256, perceptual_hash, exif_captured_at, exif_device_model, deepfake_verdict, authenticity_grade, c2pa_verified, gps_check_verdict, created_at",
       )
       .eq("certificate_id", certificateId)
       .eq("tenant_id", caller.tenantId)
@@ -77,13 +77,17 @@ export async function POST(req: NextRequest) {
       deviceModel: (r.exif_device_model as string | null) ?? null,
       deepfakeVerdict: (r.deepfake_verdict as string | null) ?? null,
       authenticityGrade: (r.authenticity_grade as string | null) ?? null,
+      c2paVerified: (r.c2pa_verified as boolean | null) ?? null,
+      gpsCheckVerdict: (r.gps_check_verdict as string | null) ?? null,
     }));
 
     if (images.length === 0) {
       return apiJson({ any_flagged: false, summary: "写真なし", results: [] });
     }
 
-    const summary = aggregateCertificateImageIntegrity(images);
+    // C2PA本番署名を期待する運用のときだけ c2pa_missing を有効化する。
+    const c2paExpected = (process.env.C2PA_MODE ?? "disabled") === "production";
+    const summary = aggregateCertificateImageIntegrity(images, new Date(), { c2paExpected });
 
     // per-image をパネル表示用に整形（撮影メタは DB 列由来。GPS/ソフトは除去済みのため無し）。
     const byId = new Map(images.map((im) => [im.id, im]));
