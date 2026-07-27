@@ -152,7 +152,11 @@ export async function signC2pa(buffer: Buffer, mime: string, binding?: CaptureBi
 
     const { Builder } = await import("@contentauth/c2pa-node");
 
-    const builder = new Builder({
+    // c2pa-node 0.6.x では Builder のコンストラクタはネイティブハンドルを取る内部用で、
+    // マニフェスト定義から作るには静的ファクトリ `Builder.withJson(...)` を使う。
+    // `new Builder({...})` は旧APIで、0.6.x では addAssertion 時に neon downcast エラーで
+    // throw → signC2pa の catch で握られ「署名されない(DISABLED)」に fail-open してしまう。
+    const builder = Builder.withJson({
       claim_generator: CLAIM_GENERATOR,
       title: MANIFEST_TITLE,
     });
