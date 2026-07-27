@@ -20,6 +20,7 @@ import { maybeAutoTamperingCheckForCertificate } from "@/lib/ai/automation/photo
 import { maybeAutoQualityCheckForCertificate } from "@/lib/ai/automation/photoQualityAuto";
 import { maybeAutoClassifyStageForCertificate } from "@/lib/ai/automation/photoStageClassifyAuto";
 import { maybeAutoWorkStampForCertificate } from "@/lib/ai/automation/workStampAuto";
+import { maybeAutoDraftContentForCertificate } from "@/lib/ai/automation/photoContentDraftAuto";
 import { enqueueCertificateAnchor } from "@/lib/anchoring/certificateAnchorService";
 import { detectMagicByteMime } from "@/lib/media/magicBytes";
 
@@ -230,6 +231,9 @@ export async function handleCertificateImageUpload(req: NextRequest, tenantId: s
       // 写真打刻: EXIF 撮影時刻 → 施工日 / 作業時間 (提案を meta.work_stamp に保存)。
       // LLM 不使用で無料。別 meta キーだが順次にして最新 meta を読み直す。
       await maybeAutoWorkStampForCertificate({ tenantId, certificateId: certId });
+      // 施工内容ドラフト: 代表写真を Vision で読み取り施工内容の下書きを提案
+      // (meta.content_draft_suggestion)。証明書単位で1度だけ・opt-in・提案のみ。
+      await maybeAutoDraftContentForCertificate({ tenantId, certificateId: certId });
     });
     // 画像追加で image_sha256_set が変わるため新しい digest を anchor queue に積む（best-effort）。
     enqueueCertificateAnchor({ tenantId, certificateId: certId }).catch(() => {});

@@ -145,6 +145,15 @@ export default async function Page({ params }: PageProps) {
       ? workStampMeta
       : null;
 
+  // 施工内容ドラフト: 施工写真から AI が生成した施工内容の下書き (meta.content_draft_suggestion)。
+  // 読み取り専用の提案チップ (施工内容欄への反映は手入力)。contentDraft が空の提案は表示しない。
+  const contentDraftMeta = (row.meta as Record<string, unknown> | null)?.content_draft_suggestion as
+    { source?: string; serviceCategory?: string; contentDraft?: string; confidence?: number } | undefined;
+  const autoContentDraft =
+    contentDraftMeta && contentDraftMeta.source === "auto" && (contentDraftMeta.contentDraft ?? "").trim()
+      ? contentDraftMeta
+      : null;
+
   // 閲覧ログ記録
   logCertificateAction({
     type: "certificate_viewed",
@@ -610,6 +619,19 @@ export default async function Page({ params }: PageProps) {
               <p className="text-xs text-muted">
                 施工写真の EXIF 撮影時刻からの推定です。内容欄への反映は手入力で行ってください。
                 {autoWorkStamp.confidence === "low" ? "（精度: 低 — 写真の撮影時刻がばらついています）" : ""}
+              </p>
+            </section>
+          )}
+
+          {/* 施工内容ドラフト: 施工写真から AI が生成した下書き (読み取り専用の提案) */}
+          {autoContentDraft && (
+            <section className="glass-card p-5 space-y-2">
+              <div className="text-xs font-semibold tracking-[0.18em] text-muted">CONTENT DRAFT</div>
+              <div className="mt-1 text-lg font-semibold text-primary">写真からの施工内容ドラフト</div>
+              <p className="whitespace-pre-wrap text-sm text-primary">{autoContentDraft.contentDraft}</p>
+              <p className="text-xs text-muted">
+                施工写真から AI
+                が生成した下書きです。内容欄への反映・修正は手入力で行ってください（発行前に必ず内容をご確認ください）。
               </p>
             </section>
           )}
