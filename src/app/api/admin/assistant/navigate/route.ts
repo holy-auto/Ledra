@@ -11,6 +11,7 @@ import { NextRequest } from "next/server";
 import { z } from "zod";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
+import { checkRateLimit } from "@/lib/api/rateLimit";
 import { apiOk, apiUnauthorized, apiInternalError, apiValidationError } from "@/lib/api/response";
 import { resolveNavIntent } from "@/lib/ai/navIntent";
 import { fastModelForPlanTier } from "@/lib/ai/client";
@@ -30,6 +31,11 @@ export async function POST(req: NextRequest) {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
+
+    // 毎リクエストが Anthropic 呼び出しに達するため、ユーザ単位で AI レート
+    // リミットを掛けて課金爆発・暴走を防ぐ（ハードなプラン制限は無いが低コスト上限は掛ける）。
+    const limited = await checkRateLimit(req, "ai", `assistant-navigate:${caller.userId}`);
+    if (limited) return limited;
 
     const parsed = bodySchema.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) {

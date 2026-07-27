@@ -48,6 +48,7 @@ export default function AssistantChat() {
   const [messages, setMessages] = useState<Msg[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const abortRef = useRef<AbortController | null>(null);
   const router = useRouter();
 
   // 起動: サイドバー/トップバーの入口ボタン（event）＋ グローバルショートカット ⌘/Ctrl+J。
@@ -74,6 +75,11 @@ export default function AssistantChat() {
     if (open) {
       requestAnimationFrame(() => inputRef.current?.focus());
     } else {
+      // 閉じたら in-flight リクエストを中断: 遅延応答での不意の画面遷移を防ぎ、
+      // loading の固着（次回開いても送信不可）も解消する。
+      abortRef.current?.abort();
+      abortRef.current = null;
+      setLoading(false);
       setMessages([]);
       setQuery("");
     }
@@ -124,13 +130,18 @@ export default function AssistantChat() {
       setQuery("");
       setMessages((prev) => [...prev, { role: "user", text: q }]);
       setLoading(true);
+      const controller = new AbortController();
+      abortRef.current = controller;
       try {
         const res = await fetch("/api/admin/assistant/navigate", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ query: q }),
+          signal: controller.signal,
         });
         const json = await res.json().catch(() => null);
+        // ダイアログを閉じた（=中断）後は応答を無視し、遷移も候補表示もしない。
+        if (controller.signal.aborted) return;
         if (res.ok && json?.ok) {
           const href: string | null = json.href ?? null;
           // サーバが {href,label} 済みのチップを返す（画面候補・エンティティ候補の両方）。
@@ -161,9 +172,15 @@ export default function AssistantChat() {
         // 非 200 / plan 制限など → AI 到達不可としてフォールバック
         fallback(q, true);
       } catch {
+        // 中断（ダイアログを閉じた）は無視。それ以外は AI 到達不可としてフォールバック。
+        if (controller.signal.aborted) return;
         fallback(q, true);
       } finally {
-        setLoading(false);
+        // 後続の送信に取って代わられていなければ状態を解放（中断時は close 側で解放済み）。
+        if (abortRef.current === controller) {
+          abortRef.current = null;
+          setLoading(false);
+        }
       }
     },
     [loading, navigate, pushAssistant, fallback],

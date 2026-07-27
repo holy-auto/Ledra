@@ -6,7 +6,8 @@ import { createServiceRoleAdmin } from "@/lib/supabase/admin";
  * - 代理店のみ → /agent
  * - 両方 → 前回のアクティブコンテキスト or デフォルト施工店（/admin ダッシュボード）
  * - 本社専用ユーザ（組織オーナー / 本社チーム） → /admin/hq-overview
- * - どちらでもない → /admin（ダッシュボード。施工店登録フローもここから辿れる）
+ * - どちらでもない → /admin/certificates（施工店登録フローへ。/admin ダッシュボードは
+ *   会員資格の無いユーザを /login へ跳ね返すため、ここでは使わない）
  *
  * パスワードログイン（server action）とマジックリンクの /auth/callback の
  * 双方から呼ばれるため、ここに集約している。
@@ -69,5 +70,8 @@ export async function resolveDefaultRedirect(userId: string, activeContext: stri
     if (isOrgUser) return "/admin/hq-overview";
   }
 
-  return "/admin";
+  // 会員資格なし（施工店/代理店/組織いずれも無し）: /admin ダッシュボードは
+  // null caller を /login?next=/admin へ跳ね返しループになるため、登録フローの
+  // 起点である証明書画面へ送る。
+  return "/admin/certificates";
 }
