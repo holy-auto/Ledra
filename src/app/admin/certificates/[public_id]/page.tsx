@@ -190,11 +190,11 @@ export default async function Page({ params }: PageProps) {
     .order("created_at", { ascending: true });
 
   // 写真GPS × 店舗位置の整合性サマリ（結果のみ・生座標は保持していない）。
-  // mismatch が1枚でもあれば注意、無くて match_store があれば確認済みとして表示。
+  // mismatch が1枚でもあれば注意、無くて店舗/出張作業場所一致があれば確認済みとして表示。
   const gpsVerdicts = (imageRowsRaw ?? []).map((img: any) => (img.gps_check_verdict as string | null) ?? null);
   const gpsSummary: "warn" | "ok" | null = gpsVerdicts.includes("mismatch")
     ? "warn"
-    : gpsVerdicts.includes("match_store")
+    : gpsVerdicts.includes("match_store") || gpsVerdicts.includes("match_worksite")
       ? "ok"
       : null;
 
@@ -673,14 +673,16 @@ export default async function Page({ params }: PageProps) {
               <div className="text-xs font-semibold tracking-[0.18em] text-muted">PHOTO LOCATION</div>
               <div className="mt-1 text-lg font-semibold text-primary">撮影場所の整合性</div>
               {gpsSummary === "ok" ? (
-                <p className="text-sm text-primary">写真は店舗付近で撮影されています（GPS照合済み）。</p>
+                <p className="text-sm text-primary">
+                  写真は登録店舗または出張作業場所の付近で撮影されています（GPS照合済み）。
+                </p>
               ) : (
                 <p className="text-sm text-danger">
-                  一部の写真が店舗から離れた場所で撮影されています。出張作業でなければ確認してください。
+                  一部の写真が店舗・出張作業場所のいずれからも離れた場所で撮影されています。確認してください。
                 </p>
               )}
               <p className="text-xs text-muted">
-                写真の位置情報と店舗座標の照合結果です。プライバシー保護のため、生のGPS座標は保存していません。
+                写真の位置情報と店舗/出張作業場所の座標の照合結果です。プライバシー保護のため、生のGPS座標は保存していません。
               </p>
             </section>
           )}

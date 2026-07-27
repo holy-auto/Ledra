@@ -92,7 +92,7 @@ export async function handleCertificateImageUpload(req: NextRequest, tenantId: s
     const { admin } = createTenantScopedAdmin(tenantId);
     const { data: cert } = await admin
       .from("certificates")
-      .select("id, tenant_id, vehicle_id")
+      .select("id, tenant_id, vehicle_id, reservation_id")
       .eq("public_id", publicId)
       .eq("tenant_id", tenantId)
       .limit(1)
@@ -133,6 +133,21 @@ export async function handleCertificateImageUpload(req: NextRequest, tenantId: s
       const lat = store?.latitude as number | null | undefined;
       const lng = store?.longitude as number | null | undefined;
       if (typeof lat === "number" && typeof lng === "number") storeCoords = { lat, lng };
+    }
+
+    // 出張作業場所の基準座標を、証明書に紐づく予約 (reservation_id) の作業GPSから解決する。
+    // 出張現場は店舗から離れるため、作業場所一致 (match_worksite) を「正当」と判定できる。
+    let worksiteCoords: { lat: number; lng: number } | null = null;
+    if (cert.reservation_id) {
+      const { data: rsv } = await admin
+        .from("reservations")
+        .select("work_lat, work_lng")
+        .eq("id", cert.reservation_id as string)
+        .eq("tenant_id", tenantId)
+        .maybeSingle();
+      const lat = rsv?.work_lat as number | null | undefined;
+      const lng = rsv?.work_lng as number | null | undefined;
+      if (typeof lat === "number" && typeof lng === "number") worksiteCoords = { lat, lng };
     }
 
     // ── Count existing images ─────────────────────────────────────
@@ -217,6 +232,7 @@ export async function handleCertificateImageUpload(req: NextRequest, tenantId: s
         sortOrder: existing + uploaded,
         vin,
         storeCoords,
+        worksiteCoords,
         capture: { attestation, nonceOk, nonceResult, captureNonce, deviceToken },
         tsaBudget,
       });
