@@ -154,6 +154,15 @@ export default async function Page({ params }: PageProps) {
       ? workStampMeta
       : null;
 
+  // 施工内容ドラフト: 施工写真から AI が生成した施工内容の下書き (meta.content_draft_suggestion)。
+  // 読み取り専用の提案チップ (施工内容欄への反映は手入力)。contentDraft が空の提案は表示しない。
+  const contentDraftMeta = (row.meta as Record<string, unknown> | null)?.content_draft_suggestion as
+    { source?: string; serviceCategory?: string; contentDraft?: string; confidence?: number } | undefined;
+  const autoContentDraft =
+    contentDraftMeta && contentDraftMeta.source === "auto" && (contentDraftMeta.contentDraft ?? "").trim()
+      ? contentDraftMeta
+      : null;
+
   // 閲覧ログ記録
   logCertificateAction({
     type: "certificate_viewed",
@@ -174,11 +183,20 @@ export default async function Page({ params }: PageProps) {
   const { data: imageRowsRaw } = await admin
     .from("certificate_images")
     .select(
-      "id,storage_path,file_name,content_type,file_size,sort_order,created_at,sha256,authenticity_grade,polygon_tx_hash,polygon_network,c2pa_verified,c2pa_manifest_cid,c2pa_manifest,annotations,rendered_storage_path",
+      "id,storage_path,file_name,content_type,file_size,sort_order,created_at,sha256,authenticity_grade,polygon_tx_hash,polygon_network,c2pa_verified,c2pa_manifest_cid,c2pa_manifest,gps_check_verdict,gps_distance_bucket,annotations,rendered_storage_path",
     )
     .eq("certificate_id", row.id)
     .order("sort_order", { ascending: true })
     .order("created_at", { ascending: true });
+
+  // 写真GPS × 店舗位置の整合性サマリ（結果のみ・生座標は保持していない）。
+  // mismatch が1枚でもあれば注意、無くて match_store があれば確認済みとして表示。
+  const gpsVerdicts = (imageRowsRaw ?? []).map((img: any) => (img.gps_check_verdict as string | null) ?? null);
+  const gpsSummary: "warn" | "ok" | null = gpsVerdicts.includes("mismatch")
+    ? "warn"
+    : gpsVerdicts.includes("match_store")
+      ? "ok"
+      : null;
 
   const images = await Promise.all(
     (imageRowsRaw ?? []).map(async (img: any) => {
@@ -645,6 +663,37 @@ export default async function Page({ params }: PageProps) {
               <p className="text-xs text-muted">
                 施工写真の EXIF 撮影時刻からの推定です。内容欄への反映は手入力で行ってください。
                 {autoWorkStamp.confidence === "low" ? "（精度: 低 — 写真の撮影時刻がばらついています）" : ""}
+              </p>
+            </section>
+          )}
+
+          {/* 写真GPS × 店舗位置の整合性（結果のみ・生座標は保持していない） */}
+          {gpsSummary && (
+            <section className="glass-card p-5 space-y-2">
+              <div className="text-xs font-semibold tracking-[0.18em] text-muted">PHOTO LOCATION</div>
+              <div className="mt-1 text-lg font-semibold text-primary">撮影場所の整合性</div>
+              {gpsSummary === "ok" ? (
+                <p className="text-sm text-primary">写真は店舗付近で撮影されています（GPS照合済み）。</p>
+              ) : (
+                <p className="text-sm text-danger">
+                  一部の写真が店舗から離れた場所で撮影されています。出張作業でなければ確認してください。
+                </p>
+              )}
+              <p className="text-xs text-muted">
+                写真の位置情報と店舗座標の照合結果です。プライバシー保護のため、生のGPS座標は保存していません。
+              </p>
+            </section>
+          )}
+
+          {/* 施工内容ドラフト: 施工写真から AI が生成した下書き (読み取り専用の提案) */}
+          {autoContentDraft && (
+            <section className="glass-card p-5 space-y-2">
+              <div className="text-xs font-semibold tracking-[0.18em] text-muted">CONTENT DRAFT</div>
+              <div className="mt-1 text-lg font-semibold text-primary">写真からの施工内容ドラフト</div>
+              <p className="whitespace-pre-wrap text-sm text-primary">{autoContentDraft.contentDraft}</p>
+              <p className="text-xs text-muted">
+                施工写真から AI
+                が生成した下書きです。内容欄への反映・修正は手入力で行ってください（発行前に必ず内容をご確認ください）。
               </p>
             </section>
           )}

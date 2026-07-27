@@ -16,6 +16,7 @@ import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { CERTIFICATE_IMAGE_BUCKET } from "@/lib/certificateImages";
 import { hashSha256, computePerceptualHash } from "@/lib/anchoring/imageHashing";
 import { stripGpsAndReadExif } from "@/lib/anchoring/imageExif";
+import { checkPhotoLocation } from "@/lib/geo/photoLocationCheck";
 import { computeAuthenticityGrade } from "@/lib/anchoring/authenticityGrade";
 import { invokeAllUploadProviders } from "@/lib/anchoring/providers";
 import type { DeviceAttestationResult } from "@/lib/anchoring/providers/types";
@@ -60,6 +61,8 @@ export interface ProcessPhotoParams {
   sortOrder: number;
   /** 証明書対象車両の VIN（C2PA manifest に束縛封入。無ければ封入しない）。 */
   vin?: string | null;
+  /** 写真GPS整合チェックの基準となる店舗座標（無ければ no_reference）。生座標は保存しない。 */
+  storeCoords?: { lat: number; lng: number } | null;
   capture: CaptureContext;
   tsaBudget: TsaBatchBudget;
 }
@@ -81,6 +84,7 @@ export async function processUploadedPhoto(params: ProcessPhotoParams): Promise<
     index,
     sortOrder,
     vin,
+    storeCoords,
     capture,
     tsaBudget,
   } = params;
@@ -95,6 +99,10 @@ export async function processUploadedPhoto(params: ProcessPhotoParams): Promise<
   // GPS/EXIF 除去（失敗時は元バッファへフォールバックし upload を止めない）。
   const exif = await stripGpsAndReadExif(buffer);
   const uploadBuffer = exif.strippedBuffer;
+
+  // 写真GPS × 店舗位置の整合性チェック。生座標(exif.gps)はここで照合してすぐ捨て、
+  // 結果(verdict / 距離帯)だけを DB に保存する（プライバシー方針: 生座標は永続化しない）。
+  const gpsCheck = checkPhotoLocation({ photo: exif.gps, store: storeCoords ?? null });
 
   const sha256 = hashSha256(uploadBuffer);
   let perceptualHash: string | null = null;
@@ -196,6 +204,9 @@ export async function processUploadedPhoto(params: ProcessPhotoParams): Promise<
       exif_captured_at: exif.capturedAt ? exif.capturedAt.toISOString() : null,
       exif_device_model: exif.deviceModel,
       exif_gps_stripped: exif.gpsStripped,
+      // 写真GPS × 店舗位置の整合性チェック結果のみ（生座標は保存しない）。
+      gps_check_verdict: gpsCheck.verdict,
+      gps_distance_bucket: gpsCheck.distanceBucket,
       capture_nonce: captureNonce ?? null,
       device_attestation_token_hash: deviceToken ? hashSha256(Buffer.from(deviceToken)) : null,
       // bytea は PostgREST 経由の JSON では `\x<hex>` リテラルで渡す。
