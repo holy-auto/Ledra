@@ -93,6 +93,11 @@ export default function AssistantChat() {
   // 会話クリア（「使い方」ボタン用: 開いたままヘルプ表示に戻す）。閉じる時のリセットは
   // 上の open 監視 effect が担うため、close は open を倒すだけでよい。
   const reset = useCallback(() => {
+    // 「使い方」でヘルプに戻す時も in-flight を中断: 古い応答が後から遷移／ヘルプを
+    // 上書きするのを防ぎ、loading 固着でヘルプ例文を送信できなくなるのも解消する。
+    abortRef.current?.abort();
+    abortRef.current = null;
+    setLoading(false);
     setMessages([]);
     setQuery("");
   }, []);

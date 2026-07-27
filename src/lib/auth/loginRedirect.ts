@@ -48,6 +48,9 @@ export async function resolveDefaultRedirect(userId: string, activeContext: stri
 
   if (hasAgent) return "/agent";
 
+  // 施工店のみ: ダッシュボードへ（テナント会員のため /admin は正常に解決する）。
+  if (hasShop) return "/admin";
+
   // 施工店も代理店も無い場合、本社専用ユーザ (組織オーナー / 本社チーム) なら
   // 本社横断ビューへ。そうでなければ従来どおり施工店登録フローへ。
   if (!hasShop) {
