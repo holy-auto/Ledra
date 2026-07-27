@@ -15,7 +15,7 @@
 ## 2026-07-27 SEO/GEOポジショニング刷新：「AI業務管理SaaS」へ (branch claude/ledra-seo-keywords-7vnacz)
 - 内容: サイト全体のSEO文言を「WEB施工証明書SaaS」→「自動車整備・コーティング店のAI業務管理SaaS」へ統一。
   `siteConfig`（`src/lib/marketing/config.ts`）に siteTagline / siteDescription / keywords(15語) /
-  featureList(10項目) / siteNameAlt「レドラ」を集約し、root layout・(marketing) layout・トップページ・
+  featureList(9項目) / siteNameAlt「レドラ」を集約し、root layout・(marketing) layout・トップページ・
   features/for-shops の各 metadata と JSON-LD がここを参照する単一情報源に。
   JSON-LD(SoftwareApplication) に featureList・audience(BusinessAudience)・keywords・alternateName・
   applicationSubCategory・inLanguage を追加（生成AI検索が「何ができる/誰向け」を事実で拾えるように）。
