@@ -53,6 +53,7 @@ export type AutomationActionKey =
   | "photo.auto_tampering_check"
   | "photo.auto_quality_check"
   | "photo.auto_classify_stage"
+  | "photo.auto_work_stamp"
   | "insurer_case.auto_fraud_score"
   | "insurer_case.auto_summary"
   | "insurer_case.auto_assign_suggest"
@@ -431,6 +432,15 @@ export const AUTOMATION_ACTIONS: readonly AutomationActionDef[] = [
       "LINE 会話フロー経由で確定した予約のうち、車両が未登録のものについて、入庫日 (作業予定日) の朝に車検証の撮影を LINE で依頼する。写真を受け取ったら OCR で車両を自動登録し予約に紐付ける (登録後は既存の証明書下書き自動作成が通常どおり働く)。メーカーが読み取れない等 OCR に失敗した場合はスタッフに引き継ぐ。",
     defaultEnabled: false,
     guard: "AI 有効 + Standard プラン以上 + LINE会話フロー経由の予約 + 車両未登録 + 進行中フローが無いこと",
+  },
+  {
+    key: "photo.auto_work_stamp",
+    workflow: "certificate",
+    label: "施工写真の撮影時刻から施工日・作業時間を自動推定",
+    description:
+      "施工写真がアップロードされた時点で、EXIF の撮影時刻から施工日と作業時間 (最早→最遅の差) を自動推定し、提案として証明書に保存する。手入力の代わりに使える下書きで、フォームへの反映・発行・金額には関与しない (提案のみ・LLM 不使用でコスト無し・壁3 不介入)。",
+    defaultEnabled: false,
+    guard: "AI 有効 + opt-in。EXIF が無い / 壊れた時計は提案しない (捏造しない)",
   },
 ];
 

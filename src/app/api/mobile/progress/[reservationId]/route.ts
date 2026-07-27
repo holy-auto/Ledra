@@ -11,6 +11,7 @@ import {
 } from "@/lib/api/response";
 import { parseJsonBody } from "@/lib/api/parseBody";
 import { mobileProgressEventSchema } from "@/lib/validations/mobile";
+import { resolveProgressLabel, templateStepLabel } from "@/lib/workflow/progressLabel";
 
 export const dynamic = "force-dynamic";
 
@@ -27,10 +28,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     if (!parsed.ok) return parsed.response;
     const body = parsed.data;
 
-    // Look up reservation to get vehicle_id
+    // Look up reservation to get vehicle_id + current workflow step (label 補完用)
     const { data: reservation } = await caller.supabase
       .from("reservations")
-      .select("id, vehicle_id")
+      .select("id, vehicle_id, current_step_order, workflow_template_id")
       .eq("id", reservationId)
       .eq("tenant_id", caller.tenantId)
       .single();
@@ -40,13 +41,39 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return apiValidationError("Reservation has no vehicle_id assigned");
     }
 
+    // ラベル未指定なら現在の工程名から補完する (advance ルートと同様、写真だけで進捗を送れる)。
+    let label = body.progress_label?.trim() ?? "";
+    if (!label) {
+      const currentStepOrder = reservation.current_step_order as number | null;
+      let stepLogLabel: string | null = null;
+      let tplLabel: string | null = null;
+      if (currentStepOrder != null) {
+        const { data: log } = await caller.supabase
+          .from("reservation_step_logs")
+          .select("step_label")
+          .eq("reservation_id", reservationId)
+          .eq("step_order", currentStepOrder)
+          .maybeSingle();
+        stepLogLabel = (log?.step_label as string | null) ?? null;
+        if (!stepLogLabel && reservation.workflow_template_id) {
+          const { data: tpl } = await caller.supabase
+            .from("workflow_templates")
+            .select("steps")
+            .eq("id", reservation.workflow_template_id as string)
+            .maybeSingle();
+          tplLabel = templateStepLabel(tpl?.steps, currentStepOrder);
+        }
+      }
+      label = resolveProgressLabel({ stepLogLabel, templateStepLabel: tplLabel });
+    }
+
     const { data, error } = await caller.supabase
       .from("vehicle_histories")
       .insert({
         tenant_id: caller.tenantId,
         vehicle_id: reservation.vehicle_id,
         type: "progress_update",
-        title: body.progress_label,
+        title: label,
         description: body.note ?? null,
         performed_at: new Date().toISOString(),
       })
