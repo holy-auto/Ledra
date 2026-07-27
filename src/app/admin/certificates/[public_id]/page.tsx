@@ -174,11 +174,20 @@ export default async function Page({ params }: PageProps) {
   const { data: imageRowsRaw } = await admin
     .from("certificate_images")
     .select(
-      "id,storage_path,file_name,content_type,file_size,sort_order,created_at,sha256,authenticity_grade,polygon_tx_hash,polygon_network,c2pa_verified,c2pa_manifest_cid,annotations,rendered_storage_path",
+      "id,storage_path,file_name,content_type,file_size,sort_order,created_at,sha256,authenticity_grade,polygon_tx_hash,polygon_network,c2pa_verified,c2pa_manifest_cid,gps_check_verdict,gps_distance_bucket,annotations,rendered_storage_path",
     )
     .eq("certificate_id", row.id)
     .order("sort_order", { ascending: true })
     .order("created_at", { ascending: true });
+
+  // 写真GPS × 店舗位置の整合性サマリ（結果のみ・生座標は保持していない）。
+  // mismatch が1枚でもあれば注意、無くて match_store があれば確認済みとして表示。
+  const gpsVerdicts = (imageRowsRaw ?? []).map((img: any) => (img.gps_check_verdict as string | null) ?? null);
+  const gpsSummary: "warn" | "ok" | null = gpsVerdicts.includes("mismatch")
+    ? "warn"
+    : gpsVerdicts.includes("match_store")
+      ? "ok"
+      : null;
 
   const images = await Promise.all(
     (imageRowsRaw ?? []).map(async (img: any) => {
@@ -619,6 +628,24 @@ export default async function Page({ params }: PageProps) {
               <p className="text-xs text-muted">
                 施工写真の EXIF 撮影時刻からの推定です。内容欄への反映は手入力で行ってください。
                 {autoWorkStamp.confidence === "low" ? "（精度: 低 — 写真の撮影時刻がばらついています）" : ""}
+              </p>
+            </section>
+          )}
+
+          {/* 写真GPS × 店舗位置の整合性（結果のみ・生座標は保持していない） */}
+          {gpsSummary && (
+            <section className="glass-card p-5 space-y-2">
+              <div className="text-xs font-semibold tracking-[0.18em] text-muted">PHOTO LOCATION</div>
+              <div className="mt-1 text-lg font-semibold text-primary">撮影場所の整合性</div>
+              {gpsSummary === "ok" ? (
+                <p className="text-sm text-primary">写真は店舗付近で撮影されています（GPS照合済み）。</p>
+              ) : (
+                <p className="text-sm text-danger">
+                  一部の写真が店舗から離れた場所で撮影されています。出張作業でなければ確認してください。
+                </p>
+              )}
+              <p className="text-xs text-muted">
+                写真の位置情報と店舗座標の照合結果です。プライバシー保護のため、生のGPS座標は保存していません。
               </p>
             </section>
           )}
