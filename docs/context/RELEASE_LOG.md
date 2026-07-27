@@ -12,6 +12,15 @@
 - 対象: どの画面・API・業種向けか
 ```
 
+## 2026-07-27 AITURBO対抗フェーズ1：写真打刻・進捗ラベル自動化・C2PA VIN封入・店舗座標 (PR #830 / 87a90d5)
+- 内容: 競合 AITURBO（株式会社ルクレ）の「写真を撮るだけ」低摩擦入力と改ざん不能な証跡を吸収する第一弾。既存資産の接続が中心。
+  - **A1 写真打刻**: 施工写真の EXIF 撮影時刻から施工日・作業時間を推定する純関数 `deriveWorkStamp`（`src/lib/certificates/workStamp.ts`＋8テスト）。写真アップロード後の `after()` で `certificates.meta.work_stamp` に提案保存する opt-in 自動アクション `photo.auto_work_stamp`（既定OFF・**LLM 不使用で無料**、`src/lib/ai/automation/workStampAuto.ts`）。証明書詳細に読み取り専用の推定チップを表示。`exif_captured_at` はサーバ tz=UTC 取り込み前提で UTC 成分を施工日とし（tz変換で日付が±9hずれるのを回避）、EXIF欠落・壊れた時計・広すぎる時間幅は提案しない（捏造防止）。
+  - **A4 モバイル進捗ラベル自動化**: `progress_label` を任意化し、未指定時は現ワークフロー工程名から補完（純関数 `resolveProgressLabel`、`src/app/api/mobile/progress/[reservationId]`）。職人が写真だけで進捗を送れる。
+  - **B1 C2PA VIN封入**: 証明書対象車両の VIN を `CaptureBinding` に渡し `com.ledra.capture` アサーションへ封入（署名の別車両流用を防ぐ束縛、`processUploadedPhoto`/`uploadHandler`）。本番署名の有効化は env 運用。
+  - **C2 店舗座標**: `stores` に `latitude`/`longitude` 列を追加（追加のみ・安全なマイグレーション）、`/admin/stores` に座標入力欄。写真GPS整合チェック（Phase 2）の基準座標。
+- 対象: 証明書発行・写真アップロード（cookie/モバイル両経路）、モバイル進捗API、店舗設定。整備/鈑金/コーティング/PPF 全業種。
+- 備考: A2（証明書フォームの写真ファースト化）は実アプリ目視確認が必要なため別変更に延期。後続 Phase 2 は写真→施工内容Visionドラフト・C2PAマニフェスト永続化/外部検証・GPS整合チェック本体・出張作業のモバイルGPS取得。
+
 ## 2026-07-27 SEO/GEOポジショニング刷新：「AI業務管理SaaS」へ (branch claude/ledra-seo-keywords-7vnacz)
 - 内容: サイト全体のSEO文言を「WEB施工証明書SaaS」→「自動車整備・コーティング店のAI業務管理SaaS」へ統一。
   `siteConfig`（`src/lib/marketing/config.ts`）に siteTagline / siteDescription / keywords(15語) /
