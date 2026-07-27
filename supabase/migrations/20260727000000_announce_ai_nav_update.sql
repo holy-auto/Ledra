@@ -5,8 +5,11 @@
 -- 「近日アップデート」の予告を1件投入する。作成用の管理UIが無いためデータ投入は
 -- マイグレーションで行う（PR マージ＝公開のゲート）。
 --
--- published = true のためデプロイ時に公開される。取り下げ/文面変更は該当行を
--- 削除 or UPDATE すればよい。固定 id + ON CONFLICT DO NOTHING で冪等。
+-- published = true のためデプロイ時に即公開される（読み取りは published=true と
+-- expires_at のみで判定し published_at では絞らないため、published_at は表示日付・
+-- 並び順のみに影響する）。取り下げ/文面変更は該当行を削除 or UPDATE すればよい。
+-- 固定 id + ON CONFLICT DO NOTHING で冪等。
+-- published_at はデプロイ日の「夜中 0:00（JST）」に揃える（表示日付を日付単位にする）。
 -- 予告なので expires_at を 45 日後に設定し、提供後は自動的に非表示になる。
 --
 -- 本文は改行を含む単一の文字列リテラル（隣接リテラル連結を使うと継続部の \n が
@@ -29,7 +32,7 @@ VALUES (
 よく使う機能だけを常時表示にし、その他は「すべての機能を表示」から。よく開く画面は📌ピン留めで固定できます。',
   'update',
   true,
-  now(),
+  date_trunc('day', now() AT TIME ZONE 'Asia/Tokyo') AT TIME ZONE 'Asia/Tokyo',  -- その日の 0:00 JST
   now() + interval '45 days'
 )
 ON CONFLICT (id) DO NOTHING;
