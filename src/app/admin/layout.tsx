@@ -7,6 +7,7 @@ import DemoTenantBanner from "./DemoTenantBanner";
 import IdleAutoLogout from "./IdleAutoLogout";
 import HelpFab from "./HelpFab";
 import CommandPalette from "@/components/ui/CommandPalette";
+import AssistantChat from "@/components/ui/AssistantChat";
 import AdminTopBar from "@/components/ui/AdminTopBar";
 import AdminPageBar, { PageBarProvider } from "@/components/ui/PageBar";
 import NavigationProgress from "@/components/ui/NavigationProgress";
@@ -41,6 +42,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           <DemoTenantBanner />
           <IdleAutoLogout />
           <CommandPalette />
+          <AssistantChat />
           <HelpFab />
           <OfflineBanner />
           <div className="flex min-h-screen">
