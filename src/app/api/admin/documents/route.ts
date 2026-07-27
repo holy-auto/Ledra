@@ -21,6 +21,7 @@ import { autoRegisterMenuItems } from "@/lib/documents/autoRegisterMenuItems";
 import { calcItems } from "@/lib/documents/calcItems";
 import { isValidRegistrationNumber } from "@/lib/invoice/taxBreakdown";
 import { recordInvoicePaymentBalance } from "@/lib/invoice/recordPayment";
+import { sealDocumentOnFinalize, type SealableDocument } from "@/lib/documents/documentSeal";
 
 export const dynamic = "force-dynamic";
 
@@ -41,6 +42,16 @@ export async function GET(req: NextRequest) {
     const isoDate = /^\d{4}-\d{2}-\d{2}$/;
     const dateFrom = isoDate.test(dateFromRaw) ? dateFromRaw : "";
     const dateTo = isoDate.test(dateToRaw) ? dateToRaw : "";
+    // 電帳法「可視性の確保」: 取引金額（total）と取引先で検索できるようにする。
+    const parseAmount = (raw: string | null): number | null => {
+      const n = Number((raw ?? "").trim());
+      return Number.isFinite(n) && n >= 0 ? Math.floor(n) : null;
+    };
+    const amountMin = parseAmount(url.searchParams.get("amount_min"));
+    const amountMax = parseAmount(url.searchParams.get("amount_max"));
+    const counterpartyRaw = (url.searchParams.get("counterparty") ?? "").trim();
+    // PostgREST の or() フィルタ文字列を壊す区切り文字は除去してから ilike パターン化する。
+    const counterparty = counterpartyRaw.replace(/[,()*%]/g, "").slice(0, 100);
     const { page, perPage, from, to } = parsePagination(req, { maxPerPage: 200 });
 
     const selectCols =
@@ -76,6 +87,30 @@ export async function GET(req: NextRequest) {
     if (dateTo) {
       query = query.lte("issued_at", dateTo);
       countQuery = countQuery.lte("issued_at", dateTo);
+    }
+    if (amountMin !== null) {
+      query = query.gte("total", amountMin);
+      countQuery = countQuery.gte("total", amountMin);
+    }
+    if (amountMax !== null) {
+      query = query.lte("total", amountMax);
+      countQuery = countQuery.lte("total", amountMax);
+    }
+    // 取引先: 帳票直書きの宛先名（recipient_name）に加え、顧客名でも引けるように
+    // 名前一致する customer_id を先に解決して OR 条件に含める。
+    if (counterparty) {
+      const { data: matchedCustomers } = await supabase
+        .from("customers")
+        .select("id")
+        .eq("tenant_id", caller.tenantId)
+        .ilike("name", `%${counterparty}%`)
+        .limit(200);
+      const ids = (matchedCustomers ?? []).map((c) => c.id);
+      const orParts = [`recipient_name.ilike.%${counterparty}%`];
+      if (ids.length > 0) orParts.push(`customer_id.in.(${ids.join(",")})`);
+      const orExpr = orParts.join(",");
+      query = query.or(orExpr);
+      countQuery = countQuery.or(orExpr);
     }
 
     if (page > 0) {
@@ -287,6 +322,18 @@ export async function POST(req: NextRequest) {
       });
     }
 
+    // 下書きを経ずに「確定 (status=sent)」で直接作成された帳票も封印対象にする
+    // （PUT の draft→sent 遷移を通らないため、ここでも同じ封印を掛ける）。
+    if (data?.status === "sent") {
+      after(async () => {
+        try {
+          await sealDocumentOnFinalize(admin, caller.tenantId, data as SealableDocument & { id: string; meta_json?: unknown });
+        } catch (sealErr) {
+          console.error("documents POST: integrity seal failed (non-blocking)", sealErr);
+        }
+      });
+    }
+
     return apiJson({ ok: true, document: data });
   } catch (e) {
     return apiInternalError(e, "documents POST");
@@ -480,6 +527,12 @@ export async function PUT(req: NextRequest) {
       const baseUrl = resolveBaseUrl({ req });
       const isEstimate = data?.doc_type === "estimate";
       after(async () => {
+        // 電帳法「真実性の確保」: 確定した帳票に内容ハッシュ＋TS 封印を付ける（best-effort）。
+        try {
+          await sealDocumentOnFinalize(admin, caller.tenantId, data as SealableDocument & { id: string; meta_json?: unknown });
+        } catch (sealErr) {
+          console.error("documents PUT: integrity seal failed (non-blocking)", sealErr);
+        }
         try {
           await maybeAutoSendDocumentOnConfirm({
             tenantId: caller.tenantId,
