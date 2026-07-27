@@ -22,6 +22,17 @@
 9. 公開区分: 公開可／要確認／非公開
 ```
 
+## 2026-07-27 C2PA本番導入：署名パイプラインの実バグ2件を修正し、本番証明書はtrust list準拠のCA発行に依存すると確定
+1. 日付: 2026-07-27
+2. 起きたこと: 「C2PA本番導入に必要な部分を学習」する中で、@contentauth/c2pa-node をこの環境に実際にインストール（Node 22/linux でネイティブビルド成功）し、実 JPEG で署名を通す検証をしたところ、Ledra の署名コードが dev-signed / production いずれでも例外を握りつぶして無署名フォールバックしていたことが判明した。原因は (1) `new Builder({...})` の誤用（正しくは静的ファクトリ `Builder.withJson`）、(2) 自己署名 dev 証明書が C2PA の end-entity 証明書プロファイル（EKU=emailProtection / SubjectKeyIdentifier / BasicConstraints CA:FALSE）を満たさず c2pa-rs に拒否される、の2点。
+3. 以前の考え: C2PA は「配線は完成、あとは本番証明書を入れて C2PA_MODE=production にするだけ」で、コード側は動作していると考えていた（README・型定義上は整合して見えた）。
+4. 違和感・問題: 既存テストが disabled 経路と「無効バッファで失敗」しか検証しておらず、成功パス（実 JPEG が署名され manifest が埋まる）を一度も通していなかった。このため上記2バグが検出されず、本番モードにしても実際には署名されない状態が隠れていた。証明書要件（EKU/SKI/鍵形式/チェーン）もコード・.env.example に明記されておらず、本番証明書を用意しても sign が通らない導線だった。
+5. 決めたこと: (a) `Builder.withJson` への修正と dev 証明書プロファイル修正（EKU/SKI/AKI/BasicConstraints/notBefore バックデート）を実装。(b) 実 JPEG を実コードパスで署名し manifest を読み戻す happy-path テストを追加（ネイティブ不在時はスキップ）。(c) 本番証明書の要件を `.env.example` に明記：PEM チェーン（末端→中間、root 除く）・PKCS#8 鍵・末端は KeyUsage=digitalSignature/EKU=emailProtection/SKI/CA:FALSE、かつ検証器で「検証済み」表示にするには C2PA trust list 上の root にチェーンする本番 CA 発行証明書が必要（自己署名・社内 CA 単体は validation_state=Invalid のまま）。
+6. 捨てた選択肢: (a) dev-signed を本番グレードに数える案＝自己署名は trust list 非搭載で検証器が Invalid とするため不可。既存の authenticityGrade 設計（dev-signed は封印に数えない）を維持。(b) C2PA signer に TSA を配線して署名時刻を封入する案＝TSA の遅延/不達が sign 全体を落とし fail-open 写真タイムスタンプを C2PA 可用性に結合するため見送り。撮影時刻封印は独立した RFC3161 トークン（certificate_images.tsa_token）で担保する現行方針を維持。(c) 本番証明書の実発行までこのブランチで行う案＝CA 契約/KMS など環境外の資産が必要で、コードでは完了できないため OPEN_QUESTIONS に分離。
+7. 判断理由: 署名が実際に成立しなければ「本番導入」は名目だけになる。ネイティブモジュールを実インストールして実 JPEG を通す検証が、README/型だけでは見えない2バグを一発で表面化させた（§検証の別経路化）。修正は最小差分（コンストラクタ呼び出し1箇所＋証明書拡張の付与）で、runtime テストと eslint で確認済み。
+8. まだ答えが出ていないこと: 本番用の C2PA trust list 準拠証明書をどこから取得するか（対応 CA / 発行フロー / 鍵の保管を KMS にするか env 直置きにするか）。取得後に validation_state が Valid になることの実地確認。TSA を将来 C2PA 署名に組み込むかの再検討。→ OPEN_QUESTIONS.md に起票。
+9. 公開区分: 要確認（C2PA 対応という事実・技術知見は公開可だが、「本番署名が今まで動いていなかった」という表現は対外発信時にニュアンス調整が必要。note 化する場合は「本番導入の検証で早期に落とし穴を潰した」観点に整える）。
+
 ## 2026-07-27 SEOポジショニングを「WEB施工証明書SaaS」から「自動車整備・コーティング店のAI業務管理SaaS」へ刷新
 1. 日付: 2026-07-27
 2. 起きたこと: サイト全体のSEO文言（title/description/OGP/ヒーロー等）が「WEB施工証明書SaaS」で固定されており、現在のプロダクト実態（予約・作業管理・請求帳票・顧客管理・保険連携・AI業務自動化を含む総合業務管理SaaS）と乖離しているとの指摘。あわせて生成AI検索（ChatGPT/Perplexity/Gemini等）にもヒットさせたいとの要望。

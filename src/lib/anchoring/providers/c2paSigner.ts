@@ -35,14 +35,30 @@ async function generateDevCert(): Promise<{ certPem: string; keyPem: string }> {
 
   const keys = await crypto.subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, true, ["sign", "verify"]);
 
+  // C2PA (c2pa-rs) enforces an end-entity certificate profile at *sign* time.
+  // A bare digitalSignature cert is rejected with "the certificate is invalid".
+  // The profile requires, at minimum:
+  //   - BasicConstraints CA:FALSE
+  //   - KeyUsage = digitalSignature (critical)
+  //   - an ExtendedKeyUsage set (no anyExtendedKeyUsage); id-kp-emailProtection
+  //     (1.3.6.1.5.5.7.3.4) is the EKU c2pa-rs accepts for document/claim signing
+  //   - a Subject Key Identifier extension (RFC 5280)
+  // notBefore is back-dated 60s so a just-issued cert isn't rejected on clock skew.
+  const ski = await x509.SubjectKeyIdentifierExtension.create(keys.publicKey);
   const cert = await x509.X509CertificateGenerator.createSelfSigned({
     serialNumber: "01",
     name: "CN=Ledra Dev C2PA Signer",
-    notBefore: new Date(),
+    notBefore: new Date(Date.now() - 60_000),
     notAfter: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
     keys,
     signingAlgorithm: { name: "ECDSA", hash: "SHA-256" },
-    extensions: [new x509.KeyUsagesExtension(x509.KeyUsageFlags.digitalSignature, true)],
+    extensions: [
+      new x509.BasicConstraintsExtension(false, undefined, true),
+      new x509.KeyUsagesExtension(x509.KeyUsageFlags.digitalSignature, true),
+      new x509.ExtendedKeyUsageExtension(["1.3.6.1.5.5.7.3.4"], false),
+      ski,
+      new x509.AuthorityKeyIdentifierExtension(ski.keyId),
+    ],
   });
 
   const certPem = cert.toString("pem");

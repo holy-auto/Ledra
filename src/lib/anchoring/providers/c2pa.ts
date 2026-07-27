@@ -104,8 +104,13 @@ export async function signC2pa(buffer: Buffer, mime: string, binding?: CaptureBi
 
     const { Builder } = await import("@contentauth/c2pa-node");
 
-    const builder = new Builder({
-      claim_generator: "Ledra/1.0",
+    // Use the static factory, NOT `new Builder({...})`. The Builder constructor
+    // takes a native NeonBuilder handle; passing a manifest-definition object
+    // makes every subsequent native call (addAssertion/sign) throw
+    // "failed to downcast any to JsBox<NeonBuilder>". `withJson` allocates the
+    // native builder and seeds it with the manifest definition.
+    const builder = Builder.withJson({
+      claim_generator_info: [{ name: "Ledra", version: "1.0" }],
       title: "Certificate Photo",
     });
 

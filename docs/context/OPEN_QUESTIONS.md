@@ -14,6 +14,13 @@
 - 起票日: YYYY-MM-DD
 ```
 
+## C2PA本番証明書（trust list準拠）をどう取得・保管するか（2026-07-27）
+- 状況: C2PA 署名パイプラインのコード側バグ2件（Builder 誤用・dev 証明書プロファイル）は修正済みで、dev-signed の実署名は通るようになった。ただし production モードで検証器に「検証済み」と表示させるには、C2PA trust list 上の root にチェーンする本番 CA 発行の end-entity 証明書が必要。この証明書がまだ無い（自己署名・社内 CA 単体では validation_state=Invalid のまま）。
+- 選択肢: 案A C2PA/CAI 対応の商用 CA（例: DigiCert 等の document/content signing 証明書）から発行を受ける＝trust list 準拠が明確だがコスト・審査・更新運用が発生。案B 当面は production 証明書を用意せず、撮影時刻封印は既存の RFC3161 TSA（PHOTO_TSA_*）で担保し、C2PA は dev-signed(埋め込みのみ・グレード非加算)に留める＝コストゼロだが「C2PA検証済み」は名乗れない。案C 鍵保管を KMS（署名を CallbackSigner 経由に）にするか env 直置き（C2PA_SIGNER_KEY）にするか＝KMS は漏洩耐性が高いが実装追加、env はシンプルだが秘密鍵が環境変数に載る。
+- 影響範囲: 本番証明書が無い限り「C2PA署名済み写真」を対外的に検証可能な形で提供できない（HP/保険会社向けの訴求で弱点）。誤って自己署名を本番投入すると検証器で Invalid となり逆効果。
+- 次のアクション: (1) どの CA が C2PA trust list に載っているか最新の trust list を確認（c2pa-org の資料 / conformance）。(2) 対応 CA から見積・要件取得は代表判断。(3) 取得後にステージングで実署名→Content Credentials 等の検証器で Valid になることを確認。(4) 鍵保管方式（KMS or env）を決定。
+- 起票日: 2026-07-27
+
 ## 予約の二重登録（TOCTOU）をDBレベルで防ぐか（2026-07-24 バグ監査）
 - 状況: 一般客予約（`customer/booking`・`external/booking`）は容量/重複チェックの後にロック無しで reservations を INSERT する。取引先ホールドの `claim_reservation_hold` は `pg_advisory_xact_lock` で守られているが、一般予約INSERTパスはロックも排他制約も無い。ほぼ同時の2POSTが両方 count=0 を読み、同一枠に二重登録し得る。reservations に時間重複を防ぐ EXCLUDE/UNIQUE 制約は存在しない（マイグレーション全走査で確認）。
 - 選択肢: 案A `reservations` に `tstzrange`/時間帯の EXCLUDE 制約（GiST）を追加し、DB側で重複INSERTを弾く。案B 予約INSERT前に日付+テナント単位の advisory lock を取る（ホールドと同じ方式）。案C 現状維持（発生は同時POST時のみ・店側で気づけるとして許容）。
