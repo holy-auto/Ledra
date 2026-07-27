@@ -13,12 +13,12 @@ import { ScreenshotFrame } from "@/components/marketing/ScreenshotFrame";
 export const metadata = {
   title: "施工店の方へ",
   description:
-    "コーティング・フィルム・ラッピング施工店のための WEB 施工証明書 SaaS。証明書発行・車両管理・POS・帳票までをLedra一つに。",
+    "自動車整備・鈑金塗装・コーティング・PPF施工店のためのAI業務管理SaaS。予約・作業管理・施工証明書発行・車両管理・POS・請求帳票までをLedra一つに。",
   alternates: { canonical: "/for-shops" },
   openGraph: {
     title: "施工店の方へ | Ledra",
     description:
-      "コーティング・フィルム・ラッピング施工店のための WEB 施工証明書 SaaS。証明書発行・車両管理・POS・帳票までをLedra一つに。",
+      "自動車整備・鈑金塗装・コーティング・PPF施工店のためのAI業務管理SaaS。予約・作業管理・施工証明書発行・車両管理・POS・請求帳票までをLedra一つに。",
     url: "/for-shops",
     siteName: "Ledra",
     locale: "ja_JP",

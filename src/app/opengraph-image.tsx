@@ -60,8 +60,8 @@ export default function OgImage() {
             lineHeight: 1.5,
           }}
         >
-          施工証明をデジタルで。
-          施工店と保険会社をつなぐプラットフォーム。
+          自動車整備・コーティング店のAI業務管理SaaS。
+          予約・施工証明書・請求・顧客管理・保険連携を一本化。
         </div>
 
         {/* Domain */}
