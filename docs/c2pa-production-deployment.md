@@ -79,11 +79,52 @@ GO を確認してから `C2PA_MODE=production` を本番に反映する。
   外部 KMS（例: AWS KMS / GCP KMS）に委譲でき、秘密鍵をアプリに置かずに済む。導入時は
   `c2paSigner.ts` に CallbackSigner 経路を追加する。【要決定: env か KMS か】
 
-## 6. 当面の代替（証明書取得までの繋ぎ）
+## 6. 当面の推奨：TSA（タイムスタンプ）で撮影時封印を成立させる
 
-本番証明書が揃うまでは、撮影時刻の封印は既存の **RFC3161 TSA**（`PHOTO_TSA_*`）で担保できる
-（`authenticityGrade` は production C2PA **または** TSA を「撮影時封印」として扱う）。
-この間 C2PA は `disabled` のままか、埋め込みのみの `dev-signed`（グレード非加算）に留める。
+C2PA 本番証明書の取得（英語の適合認定プロセス）を待たずに、**各施工写真に第三者の
+タイムスタンプ（RFC3161）を付ける**ことで「この画像がこの時刻に存在した」ことを
+Ledra のサーバーに依存せず検証可能にできる。実装・配線は完了済み（`processUploadedPhoto`
+→ `requestPhotoTimestamp`、`src/lib/anchoring/providers/photoTsa.ts`）なので、**環境変数を
+設定するだけ**で有効になる。コード変更不要。
+
+### 有効化手順（Vercel の環境変数に 2 つ追加するだけ）
+
+| 変数 | 値 |
+|------|-----|
+| `PHOTO_TSA_ENABLED` | `true` |
+| `PHOTO_TSA_URL` | `http://timestamp.digicert.com` |
+
+- DigiCert の公開 TS局は無料・口座不要・世界的に信頼される。まずはこれで十分。
+- 国内の法的効力（電子帳簿保存法 等）を重視する段階になったら、**JIPDEC 認定 TS局**
+  （有料契約: セイコーソリューションズ / アマノ / サイバーリンクス 等）の URL に差し替え、
+  必要なら `PHOTO_TSA_USERNAME` / `PHOTO_TSA_PASSWORD`（Basic 認証）も設定する。
+
+### 有効化するとどうなるか（正直なスコープ）
+
+- **効くこと**: 以降にアップロードされる各写真に TSA トークンが付き
+  （`certificate_images.tsa_token` / `tsa_timestamp_at` に保存）、第三者が TS局に対して
+  独立に「その時刻に存在した」ことを検証できる。撮影時封印（`captureTimeSealOk`）が成立する。
+- **これだけでは grade は上がらない**: 公開バッジの `authenticity_grade` が `verified` に
+  上がるには、撮影時封印に加えて**デバイス認証**（Play Integrity / App Attest）と
+  **使い捨てnonce**も必要（`computeAuthenticityGrade` の三本柱）。TSA はそのうちの 1 本目。
+  残り 2 本は別途モバイル撮影経路の有効化が要る。
+- 失敗しても安全: TS局が遅い/不達でもアップロードは止まらず、その写真だけ封印なしで
+  degrade する（サイレントに担保を騙らない）。
+
+### 動作確認
+
+有効化後、施工写真を 1 枚アップロードし、管理画面の証明書詳細でタイムスタンプが
+付いていること（または `certificate_images.tsa_timestamp_at` が入っていること）を確認する。
+
+> 注: サンドボックス環境からは外向き通信ポリシーにより TS局へ到達できないため、
+> 本番/ステージング等の通常の外向き通信がある環境で確認すること。RFC3161 クライアント
+> 自体は部品確定署名の TSA（`PARTS_TSA_*`）と同一の実装で、`rfc3161.test.ts` で
+> エンコード/パースを検証済み。
+
+### C2PA 側は
+
+TSA を入れている間、C2PA は `disabled` のまま、または埋め込みのみの `dev-signed`
+（グレード非加算）に留めてよい。C2PA 本番証明書は §2〜§5 の通り後から追加できる。
 
 ## 関連
 
