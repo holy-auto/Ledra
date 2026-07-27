@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { adminCommandItems, ADMIN_NAV_LABELS, CORE_HREFS, type AdminCommand } from "@/components/ui/Sidebar";
+import { tokenizeQuery } from "@/lib/ai/navTokens";
 
 /**
  * AIナビゲーション・チャット。
@@ -34,11 +35,21 @@ const DISCOVERY_CHIPS: AdminCommand[] = CATALOG.filter((c) => !CORE_HREF_SET.has
 type Chip = { href: string; label: string };
 type Msg = { role: "user" | "assistant"; text: string; chips?: Chip[] };
 
+// 全文一致だと「予約を開いて」が「予約管理」に当たらない。AI 不通時のフォールバックで
+// 行き止まりにしないため tokenizeQuery で軽量トークン化して substring 照合する。
 function staticFilter(q: string): Chip[] {
-  const query = q.toLowerCase();
-  return CATALOG.filter((c) => c.label.toLowerCase().includes(query) || c.href.toLowerCase().includes(query))
+  const query = q.toLowerCase().trim();
+  const tokens = tokenizeQuery(q);
+  return CATALOG.map((c) => {
+    const hay = `${c.label} ${c.href}`.toLowerCase();
+    let score = query && hay.includes(query) ? 10 : 0; // 全文一致は最優先
+    for (const t of tokens) if (hay.includes(t)) score += 1;
+    return { c, score };
+  })
+    .filter((s) => s.score > 0)
+    .sort((a, b) => b.score - a.score || a.c.label.length - b.c.label.length)
     .slice(0, 8)
-    .map((c) => ({ href: c.href, label: c.label }));
+    .map((s) => ({ href: s.c.href, label: s.c.label }));
 }
 
 export default function AssistantChat() {

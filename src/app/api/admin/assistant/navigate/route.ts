@@ -11,6 +11,7 @@ import { NextRequest } from "next/server";
 import { z } from "zod";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
+import { resolveOrgUserContext } from "@/lib/auth/orgAccess";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { apiOk, apiUnauthorized, apiInternalError, apiValidationError } from "@/lib/api/response";
 import { resolveNavIntent } from "@/lib/ai/navIntent";
@@ -30,11 +31,16 @@ export async function POST(req: NextRequest) {
   try {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
+    // 本社専用ユーザ（tenant membership 無し）はナビ限定で許可する。共有 admin レイアウトが
+    // アシスタント入口を出すため、401 で「AI 利用不可」と誤表示させない。エンティティ検索は
+    // tenant データに触れるため下でガードして対象外にする。それ以外の未認証は 401。
+    const orgCtx = caller ? null : await resolveOrgUserContext(supabase);
+    if (!caller && !orgCtx) return apiUnauthorized();
+    const userId = caller?.userId ?? orgCtx!.userId;
 
     // 毎リクエストが Anthropic 呼び出しに達するため、ユーザ単位で AI レート
     // リミットを掛けて課金爆発・暴走を防ぐ（ハードなプラン制限は無いが低コスト上限は掛ける）。
-    const limited = await checkRateLimit(req, "ai", `assistant-navigate:${caller.userId}`);
+    const limited = await checkRateLimit(req, "ai", `assistant-navigate:${userId}`);
     if (limited) return limited;
 
     const parsed = bodySchema.safeParse(await req.json().catch(() => ({})));
@@ -43,7 +49,8 @@ export async function POST(req: NextRequest) {
     }
 
     const intent = await resolveNavIntent(parsed.data.query, {
-      model: fastModelForPlanTier(caller.planTier),
+      // 本社専用ユーザは plan tier が無いため既定（高速/低コストモデル）にフォールバック。
+      model: fastModelForPlanTier(caller?.planTier),
     });
 
     // 画面遷移が確定していればそれを返す（label はサーバで確定）。
@@ -56,8 +63,9 @@ export async function POST(req: NextRequest) {
     }
 
     // エンティティ検索の意図: 顧客/車両/証明書/請求書を名前・番号で探す。
+    // tenant データに触れるため、本社専用ユーザ（caller 無し）と staff 未満は不可。
     if (intent.searchQuery) {
-      if (!requireMinRole(caller, "staff")) {
+      if (!caller || !requireMinRole(caller, "staff")) {
         return apiOk({
           href: null,
           reply: "検索の権限がありません。担当者にご確認ください。",

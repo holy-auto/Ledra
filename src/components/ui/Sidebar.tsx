@@ -391,8 +391,9 @@ export default function Sidebar() {
             <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${dotBg}`} />
           ) : null}
         </Link>
-        {/* ピン留めトグル。ponytail: 行の右端（バッジ/ドット位置）に重ねる。ホバー時のみ
-            表示するため通常時は見えず、ピン済みは常時ピンアイコンを出す。
+        {/* ピン留めトグル。ponytail: 行の右端（バッジ/ドット位置）に重ねる。ピン済みは常時表示。
+            未ピンは、ポインタ環境では hover で出す。タッチ端末（hover 不可）では常時表示にし、
+            キーボード操作では focus-visible で出す（見えない control を tab で踏むのを防ぐ）。
             コア項目は常時表示のためピン留めしても意味が無く、ボタンを出さない。 */}
         {opts?.pinnable && !CORE_HREFS.includes(item.href) && (
           <button
@@ -405,7 +406,9 @@ export default function Sidebar() {
               togglePin(item.href);
             }}
             className={`absolute right-1.5 top-1/2 inline-flex -translate-y-1/2 rounded-[var(--radius-sm)] bg-[var(--bg-elevated)] p-1 transition-opacity hover:bg-surface-hover ${
-              pinned ? "text-accent opacity-100" : "text-muted opacity-0 group-hover:opacity-100"
+              pinned
+                ? "text-accent opacity-100"
+                : `text-muted group-hover:opacity-100 focus-visible:opacity-100 ${isMobile ? "opacity-100" : "opacity-0"}`
             }`}
           >
             <svg
@@ -522,11 +525,28 @@ export default function Sidebar() {
           /* Slim: メイン（ダッシュボード + 承認インボックス）→ コア → ピン留め。
              それぞれ既存 filterItems を通すので RBAC/プラン/業種ゲートは維持される。 */
           <>
-            {(() => {
-              const mainGroup = NAV_GROUPS.find((g) => !g.label);
-              const items = mainGroup ? filterItems(mainGroup.items) : [];
-              return items.length ? <ul className="space-y-0.5">{items.map((it) => renderItem(it))}</ul> : null;
-            })()}
+            {isOrgUser && !role ? (
+              /* 本社専用ユーザ: core/main には orgUserVisible 項目が無く slim が空になり、
+                 毎回「すべての機能を表示」を開かせることになる。全グループから本社向けリンクを
+                 集約して表示する（filterItems が orgUserVisible に限定するのでゲートは維持）。 */
+              (() => {
+                const seen = new Set<string>();
+                const items = filterItems(NAV_GROUPS.flatMap((g) => g.items)).filter(
+                  (it) => !seen.has(it.href) && seen.add(it.href),
+                );
+                return items.length ? (
+                  <ul className="space-y-0.5">{items.map((it) => renderItem(it, { pinnable: true }))}</ul>
+                ) : null;
+              })()
+            ) : (
+              <>
+                {(() => {
+                  const mainGroup = NAV_GROUPS.find((g) => !g.label);
+                  const items = mainGroup ? filterItems(mainGroup.items) : [];
+                  return items.length ? (
+                    <ul className="space-y-0.5">{items.map((it) => renderItem(it))}</ul>
+                  ) : null;
+                })()}
 
             {(() => {
               const items = filterItems(coreItems);
@@ -547,6 +567,8 @@ export default function Sidebar() {
                 </div>
               );
             })()}
+              </>
+            )}
           </>
         )}
 
