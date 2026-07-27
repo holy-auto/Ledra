@@ -62,7 +62,7 @@ export async function POST(req: NextRequest) {
     const { data: rows } = await admin
       .from("certificate_images")
       .select(
-        "id, sha256, perceptual_hash, exif_captured_at, exif_device_model, deepfake_verdict, authenticity_grade, c2pa_verified, gps_check_verdict, created_at",
+        "id, sha256, perceptual_hash, exif_captured_at, exif_device_model, deepfake_verdict, authenticity_grade, c2pa_verified, gps_check_verdict, external_c2pa_present, external_c2pa_verified, created_at",
       )
       .eq("certificate_id", certificateId)
       .eq("tenant_id", caller.tenantId)
@@ -79,6 +79,8 @@ export async function POST(req: NextRequest) {
       authenticityGrade: (r.authenticity_grade as string | null) ?? null,
       c2paVerified: (r.c2pa_verified as boolean | null) ?? null,
       gpsCheckVerdict: (r.gps_check_verdict as string | null) ?? null,
+      externalC2paPresent: (r.external_c2pa_present as boolean | null) ?? null,
+      externalC2paVerified: (r.external_c2pa_verified as boolean | null) ?? null,
     }));
 
     if (images.length === 0) {
