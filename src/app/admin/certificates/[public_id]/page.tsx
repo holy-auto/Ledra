@@ -134,6 +134,17 @@ export default async function Page({ params }: PageProps) {
         }
       : null;
 
+  // 写真打刻: EXIF 撮影時刻から推定した施工日 / 作業時間 (meta.work_stamp)。
+  // 提案の読み取り専用チップとして表示する (フォームへの反映は手入力。反映UIは後続で追加)。
+  const workStampMeta = (row.meta as Record<string, unknown> | null)?.work_stamp as
+    { source?: string; workDate?: string | null; workMinutes?: number | null; confidence?: string } | undefined;
+  const autoWorkStamp =
+    workStampMeta &&
+    workStampMeta.source === "auto" &&
+    (workStampMeta.workDate || typeof workStampMeta.workMinutes === "number")
+      ? workStampMeta
+      : null;
+
   // 閲覧ログ記録
   logCertificateAction({
     type: "certificate_viewed",
@@ -584,6 +595,24 @@ export default async function Page({ params }: PageProps) {
 
           {/* 写真品質・抜け漏れ監査 (アップロード時に自動付与された結果のみ表示) */}
           {autoQuality && <QualityAutoPanel result={autoQuality} />}
+
+          {/* 写真打刻: EXIF 撮影時刻からの施工日 / 作業時間の推定 (読み取り専用の提案) */}
+          {autoWorkStamp && (
+            <section className="glass-card p-5 space-y-2">
+              <div className="text-xs font-semibold tracking-[0.18em] text-muted">PHOTO WORK STAMP</div>
+              <div className="mt-1 text-lg font-semibold text-primary">写真からの推定</div>
+              <div className="text-sm text-primary">
+                {autoWorkStamp.workDate && <span>施工日: {autoWorkStamp.workDate}</span>}
+                {typeof autoWorkStamp.workMinutes === "number" && (
+                  <span className="ml-3">作業時間: 約{autoWorkStamp.workMinutes}分</span>
+                )}
+              </div>
+              <p className="text-xs text-muted">
+                施工写真の EXIF 撮影時刻からの推定です。内容欄への反映は手入力で行ってください。
+                {autoWorkStamp.confidence === "low" ? "（精度: 低 — 写真の撮影時刻がばらついています）" : ""}
+              </p>
+            </section>
+          )}
 
           {/* 電子署名依頼パネル */}
           {!isVoid && (

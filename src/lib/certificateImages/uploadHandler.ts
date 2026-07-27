@@ -19,6 +19,7 @@ import { processUploadedPhoto } from "@/lib/certificateImages/processUploadedPho
 import { maybeAutoTamperingCheckForCertificate } from "@/lib/ai/automation/photoTamperingAuto";
 import { maybeAutoQualityCheckForCertificate } from "@/lib/ai/automation/photoQualityAuto";
 import { maybeAutoClassifyStageForCertificate } from "@/lib/ai/automation/photoStageClassifyAuto";
+import { maybeAutoWorkStampForCertificate } from "@/lib/ai/automation/workStampAuto";
 import { enqueueCertificateAnchor } from "@/lib/anchoring/certificateAnchorService";
 import { detectMagicByteMime } from "@/lib/media/magicBytes";
 
@@ -90,7 +91,7 @@ export async function handleCertificateImageUpload(req: NextRequest, tenantId: s
     const { admin } = createTenantScopedAdmin(tenantId);
     const { data: cert } = await admin
       .from("certificates")
-      .select("id, tenant_id")
+      .select("id, tenant_id, vehicle_id")
       .eq("public_id", publicId)
       .eq("tenant_id", tenantId)
       .limit(1)
@@ -99,6 +100,19 @@ export async function handleCertificateImageUpload(req: NextRequest, tenantId: s
       return apiNotFound("証明書が見つかりません。");
     }
     const certId = cert.id as string;
+
+    // C2PA manifest に封入する車両 VIN を 1 リクエストにつき 1 回だけ解決する
+    // (署名が別車両の証明書へ流用されるのを防ぐ束縛。無ければ封入しないだけ)。
+    let vin: string | null = null;
+    if (cert.vehicle_id) {
+      const { data: vehicle } = await admin
+        .from("vehicles")
+        .select("vin_code")
+        .eq("id", cert.vehicle_id as string)
+        .eq("tenant_id", tenantId)
+        .maybeSingle();
+      vin = (vehicle?.vin_code as string | null)?.trim() || null;
+    }
 
     // ── Count existing images ─────────────────────────────────────
     const { count: existingCount } = await admin
@@ -180,6 +194,7 @@ export async function handleCertificateImageUpload(req: NextRequest, tenantId: s
         fileName: file.name || null,
         index: i,
         sortOrder: existing + uploaded,
+        vin,
         capture: { attestation, nonceOk, nonceResult, captureNonce, deviceToken },
         tsaBudget,
       });
@@ -212,6 +227,9 @@ export async function handleCertificateImageUpload(req: NextRequest, tenantId: s
       // 未タグ写真の before/after 自動分類 (提案を meta.stage_suggestions に保存)。
       // 別 meta キーだが順次にして最新 meta を読み直す。
       await maybeAutoClassifyStageForCertificate({ tenantId, certificateId: certId });
+      // 写真打刻: EXIF 撮影時刻 → 施工日 / 作業時間 (提案を meta.work_stamp に保存)。
+      // LLM 不使用で無料。別 meta キーだが順次にして最新 meta を読み直す。
+      await maybeAutoWorkStampForCertificate({ tenantId, certificateId: certId });
     });
     // 画像追加で image_sha256_set が変わるため新しい digest を anchor queue に積む（best-effort）。
     enqueueCertificateAnchor({ tenantId, certificateId: certId }).catch(() => {});

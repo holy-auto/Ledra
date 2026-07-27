@@ -49,7 +49,9 @@ export type MobileReservationUpdate = z.infer<typeof mobileReservationUpdateSche
 /* ─── Progress ───────────────────────────────────────────── */
 
 export const mobileProgressEventSchema = z.object({
-  progress_label: NON_EMPTY(100, "進捗ラベル"),
+  // 任意: 未指定なら現在のワークフロー工程名を自動採用する (advance ルートと同様、
+  // 職人が写真を撮って進めるだけでラベル手入力を不要にする)。
+  progress_label: z.string().trim().max(100).optional(),
   note: z.string().trim().max(2000).optional(),
 });
 export type MobileProgressEvent = z.infer<typeof mobileProgressEventSchema>;
