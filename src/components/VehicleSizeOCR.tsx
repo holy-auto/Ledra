@@ -105,19 +105,11 @@ export default function VehicleSizeOCR({ onResult }: VehicleSizeOCRProps) {
         onChange={handleFileChange}
       />
 
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        loading={loading}
-        onClick={handleClick}
-      >
+      <Button type="button" variant="outline" size="sm" loading={loading} onClick={handleClick}>
         {loading ? "読み取り中..." : "車検証から判定"}
       </Button>
 
-      {error && (
-        <p className="text-sm text-red-600">{error}</p>
-      )}
+      {error && <p className="text-sm text-red-600">{error}</p>}
 
       {result && (
         <div className="rounded-lg border border-border-default bg-inset p-4 text-sm space-y-2">
@@ -148,27 +140,21 @@ export default function VehicleSizeOCR({ onResult }: VehicleSizeOCRProps) {
                 </p>
               )}
 
-              {result.master_size_class &&
-                result.master_size_class !== result.size_class && (
-                  <p className="text-warning-text text-xs">
-                    ※ マスタ判定: {result.master_size_class}（寸法判定と異なります）
-                  </p>
-                )}
+              {result.master_size_class && result.master_size_class !== result.size_class && (
+                <p className="text-warning-text text-xs">
+                  ※ マスタ判定: {result.master_size_class}（寸法判定と異なります）
+                </p>
+              )}
 
               <div className="pt-1">
-                <Button
-                  type="button"
-                  variant="primary"
-                  size="sm"
-                  onClick={handleApply}
-                >
+                <Button type="button" variant="primary" size="sm" onClick={handleApply}>
                   適用
                 </Button>
               </div>
             </>
           ) : (
             <p className="text-muted">
-              寸法を読み取れませんでした。画像を確認して再度お試しください。
+              {result.message ?? "寸法を読み取れませんでした。画像を確認して再度お試しください。"}
             </p>
           )}
         </div>

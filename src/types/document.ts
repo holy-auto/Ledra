@@ -8,6 +8,7 @@ export const DOC_TYPES = {
   receipt: { label: "領収書", prefix: "RCP", color: "success" as const },
   invoice: { label: "請求書", prefix: "INV", color: "danger" as const },
   consolidated_invoice: { label: "合算請求書", prefix: "CINV", color: "danger" as const },
+  staff_invoice: { label: "外注請求書", prefix: "SINV", color: "warning" as const },
 } as const;
 
 export type DocType = keyof typeof DOC_TYPES;
@@ -80,10 +81,12 @@ const INVOICE_STATUS_TRANSITIONS: Record<string, string[]> = {
   cancelled: [],
 };
 
+/** invoice 系のステータス遷移マップを使う帳票種別（受理/却下の概念を持たない）。 */
+const INVOICE_LIKE_DOC_TYPES = new Set(["invoice", "consolidated_invoice", "staff_invoice"]);
+
 /** doc_type に応じた次のステータス遷移候補を返す。 */
 export function nextStatusesFor(docType: string, status: string): string[] {
-  const map =
-    docType === "invoice" || docType === "consolidated_invoice" ? INVOICE_STATUS_TRANSITIONS : STATUS_TRANSITIONS;
+  const map = INVOICE_LIKE_DOC_TYPES.has(docType) ? INVOICE_STATUS_TRANSITIONS : STATUS_TRANSITIONS;
   return map[status] ?? [];
 }
 
@@ -103,7 +106,7 @@ export const CONVERSION_TARGETS: Partial<Record<DocType, DocType[]>> = {
  * - その他の帳票は基本的に常に編集可能
  */
 export function isDocumentEditable(docType: string, status: string): boolean {
-  if ((docType === "invoice" || docType === "consolidated_invoice") && status !== "draft") {
+  if (INVOICE_LIKE_DOC_TYPES.has(docType) && status !== "draft") {
     return false;
   }
   return true;
@@ -164,6 +167,7 @@ export const GREETING_BY_DOC_TYPE: Record<DocType, string> = {
   order_confirmation: "下記のとおりご注文を承りました。",
   inspection: "下記のとおり検収いたしました。",
   receipt: "下記のとおり領収いたしました。",
+  staff_invoice: "下記のとおり外注費をご請求申し上げます。",
 };
 
 export type DocumentRow = {
@@ -171,6 +175,8 @@ export type DocumentRow = {
   tenant_id: string;
   customer_id: string | null;
   customer_name?: string | null;
+  /** 外注請求書 (doc_type=staff_invoice) の宛先となる外注職人。顧客向け帳票では常に null。 */
+  staff_member_id?: string | null;
   doc_type: DocType;
   doc_number: string;
   issued_at: string | null;

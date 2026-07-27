@@ -16,6 +16,10 @@
   },
   "crons": [
     {
+      "path": "/api/cron/publish-scheduled",
+      "schedule": "*/5 * * * *"
+    },
+    {
       "path": "/api/cron/billing",
       "schedule": "0 9 * * *"
     },
@@ -54,6 +58,14 @@
     {
       "path": "/api/cron/monthly-invoices",
       "schedule": "0 1 28-31 * *"
+    },
+    {
+      "path": "/api/cron/cycle-invoices",
+      "schedule": "0 14 * * *"
+    },
+    {
+      "path": "/api/cron/reservation-holds-expire",
+      "schedule": "0 * * * *"
     },
     {
       "path": "/api/cron/passport-billing",
@@ -122,6 +134,10 @@
     {
       "path": "/api/cron/vehicle-capture-prompt",
       "schedule": "0 23 * * *"
+    },
+    {
+      "path": "/api/cron/gcal-sync",
+      "schedule": "*/15 * * * *"
     }
   ]
 }

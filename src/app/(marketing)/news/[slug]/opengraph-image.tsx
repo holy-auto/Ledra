@@ -1,5 +1,6 @@
 import { makeOgImage, OG_SIZE, OG_CONTENT_TYPE } from "@/lib/marketing/og";
 import { getContentBySlug } from "@/lib/marketing/content";
+import { getPublishedPostBySlug } from "@/lib/marketing/site-content-posts";
 
 export const alt = "Ledra お知らせ";
 export const size = OG_SIZE;
@@ -7,9 +8,18 @@ export const contentType = OG_CONTENT_TYPE;
 
 export default async function Image({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
-  const entry = await getContentBySlug("news", slug);
-  const fm = entry?.frontmatter;
 
+  // DB(お知らせ)を優先。og_title/og_subtitle があれば使い、無ければ title/excerpt にフォールバック。
+  const dbPost = await getPublishedPostBySlug("news", slug);
+  if (dbPost) {
+    return makeOgImage({
+      badge: "NEWS",
+      title: dbPost.og_title ?? dbPost.title,
+      subtitle: dbPost.og_subtitle ?? dbPost.excerpt ?? undefined,
+    });
+  }
+
+  const fm = (await getContentBySlug("news", slug))?.frontmatter;
   return makeOgImage({
     badge: "NEWS",
     // Long article titles overflow the OG canvas — prefer a short ogTitle.

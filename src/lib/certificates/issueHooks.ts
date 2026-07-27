@@ -14,6 +14,8 @@
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { enqueueInsuranceCaseCreated } from "@/lib/qstash/publish";
 import { enqueueCertificateAnchor } from "@/lib/anchoring/certificateAnchorService";
+import { completeDraftPartInstallationsForReservation } from "@/lib/parts/installationService";
+import { sendCustomerLineText } from "@/lib/line/client";
 import { logger } from "@/lib/logger";
 
 export interface CertificateIssuedParams {
@@ -26,6 +28,8 @@ export interface CertificateIssuedParams {
   vehiclePlate?: string | null;
   serviceType?: string | null;
   createdBy?: string | null;
+  /** この証明書のもとになった予約。部品交換の下書き完成・LINE通知の起点に使う。 */
+  reservationId?: string | null;
 }
 
 /**
@@ -58,6 +62,46 @@ export async function triggerCertificateIssued(params: CertificateIssuedParams):
   await triggerPostIssueFollowUp(params).catch((e) =>
     logger.warn("[cert-issued] post_issue follow-up failed", { err: e instanceof Error ? e.message : String(e) }),
   );
+
+  // 部品交換トグルで作った下書き (draft) を完成 (installed) にする。証明書発行の必須チェック
+  // (施工後写真) が既にこの時点で満たされているため、新たな撮影要求はしない。
+  if (params.reservationId) {
+    completeDraftPartInstallationsForReservation(params.tenantId, params.reservationId).catch((e) =>
+      logger.warn("[cert-issued] complete draft part installations failed", {
+        err: e instanceof Error ? e.message : String(e),
+      }),
+    );
+  }
+
+  // 証明書発行を顧客へ LINE で自動連絡 (line_user_id が無ければ何もしない)。進捗通知と同様
+  // fire-and-forget・失敗しても発行はブロックしない。
+  notifyCustomerCertificateIssuedViaLine(params).catch((e) =>
+    logger.warn("[cert-issued] LINE notify failed", { err: e instanceof Error ? e.message : String(e) }),
+  );
+}
+
+/** 証明書発行を顧客へ LINE で連絡する (customers.line_user_id がある場合のみ)。 */
+async function notifyCustomerCertificateIssuedViaLine(params: CertificateIssuedParams): Promise<void> {
+  if (!params.customerId) return;
+
+  const { admin } = createTenantScopedAdmin(params.tenantId);
+  const { data: customer } = await admin
+    .from("customers")
+    .select("id, line_user_id")
+    .eq("id", params.customerId)
+    .eq("tenant_id", params.tenantId)
+    .maybeSingle();
+  if (!customer?.line_user_id) return;
+
+  const portalUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/c/${params.publicId}`;
+  const body = `【証明書発行】施工証明書を発行しました。${params.customerName ? `${params.customerName} 様\n` : ""}以下のリンクからご確認いただけます。\n${portalUrl}`;
+
+  await sendCustomerLineText({
+    tenantId: params.tenantId,
+    customerId: params.customerId,
+    lineUserId: customer.line_user_id as string,
+    body,
+  });
 }
 
 /** 発行直後フォローアップ通知ログを (重複なく) 記録する。 */

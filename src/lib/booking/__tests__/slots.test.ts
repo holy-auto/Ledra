@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { addDays, generateIntervalSlots, minutesToTime, timeToMinutes } from "../slots";
+import { addDays, generateIntervalSlots, minutesToTime, reservationBlocksSlot, timeToMinutes } from "../slots";
 
 describe("minutesToTime / timeToMinutes", () => {
   it("round-trips HH:MM", () => {
@@ -59,5 +59,25 @@ describe("generateIntervalSlots", () => {
     expect(generateIntervalSlots({ days: [1], startMin: 600, endMin: 540, intervalMin: 30 })).toEqual([]);
     expect(generateIntervalSlots({ days: [1], startMin: 540, endMin: 600, intervalMin: 0 })).toEqual([]);
     expect(generateIntervalSlots({ days: [], startMin: 540, endMin: 600, intervalMin: 30 })).toEqual([]);
+  });
+});
+
+describe("reservationBlocksSlot", () => {
+  it("all-day reservation blocks any slot", () => {
+    const r = { all_day: true, start_time: null, end_time: null };
+    expect(reservationBlocksSlot(r, "09:00:00", "10:00:00")).toBe(true);
+    expect(reservationBlocksSlot(r, "17:00:00", "18:00:00")).toBe(true);
+  });
+
+  it("timed reservation blocks only overlapping slots (exclusive boundary)", () => {
+    const r = { all_day: false, start_time: "10:00:00", end_time: "12:00:00" };
+    expect(reservationBlocksSlot(r, "09:00:00", "11:00:00")).toBe(true); // overlaps
+    expect(reservationBlocksSlot(r, "12:00:00", "13:00:00")).toBe(false); // adjacent = no overlap
+    expect(reservationBlocksSlot(r, "08:00:00", "10:00:00")).toBe(false); // adjacent = no overlap
+  });
+
+  it("non-all-day reservation with missing times blocks nothing", () => {
+    expect(reservationBlocksSlot({ all_day: false, start_time: null, end_time: null }, "09:00", "10:00")).toBe(false);
+    expect(reservationBlocksSlot({ start_time: "09:00", end_time: null }, "09:00", "10:00")).toBe(false);
   });
 });

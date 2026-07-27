@@ -214,4 +214,108 @@ describe("maybeAutoReplyRoughEstimate", () => {
     await maybeAutoReplyRoughEstimate({ ...baseParams(), intent: "cancel" });
     expect(mocks.generateQuoteFromVehicle).not.toHaveBeenCalled();
   });
+
+  it("passes matching menu_items as baseMenu when the category matches the requested service", async () => {
+    mocks.store.tables.menu_items = [
+      {
+        tenant_id: TENANT,
+        is_active: true,
+        name: "ガラスコーティング",
+        unit_price: 80000,
+        category_large: "コーティング",
+      },
+      { tenant_id: TENANT, is_active: true, name: "洗車", unit_price: 3000, category_large: "洗車" },
+    ];
+    await maybeAutoReplyRoughEstimate(baseParams());
+    const arg = mocks.generateQuoteFromVehicle.mock.calls[0][0];
+    expect(arg.baseMenu).toEqual([{ name: "ガラスコーティング", default_price: 80000, size_adjusted: false }]);
+  });
+
+  it("omits baseMenu when no registered menu item matches the requested service category", async () => {
+    mocks.store.tables.menu_items = [
+      { tenant_id: TENANT, is_active: true, name: "洗車", unit_price: 3000, category_large: "洗車" },
+    ];
+    await maybeAutoReplyRoughEstimate(baseParams());
+    const arg = mocks.generateQuoteFromVehicle.mock.calls[0][0];
+    expect(arg.baseMenu).toBeUndefined();
+  });
+
+  it("does not use an unpriced (0円) matching menu item as baseMenu", async () => {
+    mocks.store.tables.menu_items = [
+      { tenant_id: TENANT, is_active: true, name: "ガラスコーティング", unit_price: 0, category_large: "コーティング" },
+    ];
+    await maybeAutoReplyRoughEstimate(baseParams());
+    const arg = mocks.generateQuoteFromVehicle.mock.calls[0][0];
+    expect(arg.baseMenu).toBeUndefined();
+  });
+
+  it("omits baseMenu when only some of the comma-separated requested services have a matching menu item", async () => {
+    mocks.store.tables.menu_items = [
+      {
+        tenant_id: TENANT,
+        is_active: true,
+        name: "ガラスコーティング",
+        unit_price: 80000,
+        category_large: "コーティング",
+      },
+      // "撥水" に一致する品目は無い
+    ];
+    await maybeAutoReplyRoughEstimate({ ...baseParams(), service: "コーティング, ホイール撥水" });
+    const arg = mocks.generateQuoteFromVehicle.mock.calls[0][0];
+    expect(arg.baseMenu).toBeUndefined();
+  });
+
+  it("uses baseMenu when every comma-separated requested service has a matching menu item", async () => {
+    mocks.store.tables.menu_items = [
+      {
+        tenant_id: TENANT,
+        is_active: true,
+        name: "ガラスコーティング",
+        unit_price: 80000,
+        category_large: "コーティング",
+      },
+      { tenant_id: TENANT, is_active: true, name: "ホイール撥水", unit_price: 5000, category_large: "撥水" },
+    ];
+    await maybeAutoReplyRoughEstimate({ ...baseParams(), service: "コーティング, 撥水" });
+    const arg = mocks.generateQuoteFromVehicle.mock.calls[0][0];
+    expect(arg.baseMenu).toEqual([
+      { name: "ガラスコーティング", default_price: 80000, size_adjusted: false },
+      { name: "ホイール撥水", default_price: 5000, size_adjusted: false },
+    ]);
+  });
+
+  it("車両サイズ別価格メニューは size_class に対応する価格を size_adjusted で採用する", async () => {
+    // 登録車両 ヴェルファイア = size_class LL。
+    mocks.store.tables.menu_items = [
+      {
+        tenant_id: TENANT,
+        is_active: true,
+        name: "ガラスコーティング",
+        unit_price: 0,
+        category_large: "コーティング",
+        size_axis: "vehicle_size",
+        size_prices: { M: 80000, LL: 120000 },
+      },
+    ];
+    await maybeAutoReplyRoughEstimate(baseParams());
+    const arg = mocks.generateQuoteFromVehicle.mock.calls[0][0];
+    expect(arg.baseMenu).toEqual([{ name: "ガラスコーティング", default_price: 120000, size_adjusted: true }]);
+  });
+
+  it("ホイールインチ別価格メニューは自動概算では対象外 (今フェーズ)", async () => {
+    mocks.store.tables.menu_items = [
+      {
+        tenant_id: TENANT,
+        is_active: true,
+        name: "ホイールコーティング",
+        unit_price: 0,
+        category_large: "コーティング",
+        size_axis: "wheel_size",
+        size_prices: { "18": 7000, "20": 9000 },
+      },
+    ];
+    await maybeAutoReplyRoughEstimate(baseParams());
+    const arg = mocks.generateQuoteFromVehicle.mock.calls[0][0];
+    expect(arg.baseMenu).toBeUndefined();
+  });
 });

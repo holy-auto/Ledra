@@ -20,6 +20,7 @@ export async function GET(req: NextRequest) {
 
     const url = new URL(req.url);
     const q = (url.searchParams.get("q") ?? "").trim();
+    const idParam = (url.searchParams.get("id") ?? "").trim();
     const { page, perPage, from, to } = parsePagination(req, { maxPerPage: 200 });
 
     // Count query for pagination metadata
@@ -34,10 +35,17 @@ export async function GET(req: NextRequest) {
       // caller は既に自テナント下で認証されているので response body に
       // 含める必要はなく、外す (see `redactScopeIds`).
       .select(
-        "id, name, name_kana, email, phone, postal_code, address, note, customer_type, billing_cycle, billing_terms_note, corporate_number, invoice_registration_number, short_name, honorific, transfer_fee_payer, document_delivery_method, nda_status, basic_contract_status, created_at, updated_at",
+        "id, name, name_kana, email, phone, postal_code, address, note, customer_type, billing_cycle, billing_terms_note, closing_day, payment_terms_days, linked_tenant_id, corporate_number, invoice_registration_number, short_name, honorific, transfer_fee_payer, document_delivery_method, nda_status, basic_contract_status, created_at, updated_at",
       )
       .eq("tenant_id", caller.tenantId)
       .order("created_at", { ascending: false });
+
+    // id 指定時は単一顧客の直接取得（例: 送付モーダルの連絡先補完）のため、
+    // ページネーション件数や証明書/請求書の集計は不要 — 後続のカウント系クエリを丸ごとスキップする。
+    const isSingleIdLookup = !!idParam;
+    if (idParam) {
+      query = query.eq("id", idParam);
+    }
 
     if (q) {
       const sq = escapeIlike(q);
@@ -51,7 +59,10 @@ export async function GET(req: NextRequest) {
       query = query.range(from, to);
     }
 
-    const [{ data: customers, error }, { count: totalCount }] = await Promise.all([query, countQuery]);
+    const [{ data: customers, error }, { count: totalCount }] = await Promise.all([
+      query,
+      isSingleIdLookup ? Promise.resolve({ count: null }) : countQuery,
+    ]);
     if (error) {
       return apiInternalError(error, "customers GET");
     }
@@ -61,7 +72,7 @@ export async function GET(req: NextRequest) {
     const certCounts: Record<string, number> = {};
     const invoiceCounts: Record<string, number> = {};
 
-    if (customerIds.length > 0) {
+    if (customerIds.length > 0 && !isSingleIdLookup) {
       const [{ data: certs }, { data: invs }] = await Promise.all([
         supabase
           .from("certificates")
@@ -157,7 +168,7 @@ export async function POST(req: NextRequest) {
       .from("customers")
       .insert(row)
       .select(
-        "id, tenant_id, name, name_kana, email, phone, postal_code, address, note, customer_type, billing_cycle, billing_terms_note, corporate_number, invoice_registration_number, short_name, honorific, transfer_fee_payer, document_delivery_method, nda_status, basic_contract_status, created_at, updated_at",
+        "id, tenant_id, name, name_kana, email, phone, postal_code, address, note, customer_type, billing_cycle, billing_terms_note, closing_day, payment_terms_days, linked_tenant_id, corporate_number, invoice_registration_number, short_name, honorific, transfer_fee_payer, document_delivery_method, nda_status, basic_contract_status, created_at, updated_at",
       )
       .single();
     if (error) {
@@ -210,7 +221,7 @@ export async function PUT(req: NextRequest) {
       .eq("id", id)
       .eq("tenant_id", caller.tenantId)
       .select(
-        "id, tenant_id, name, name_kana, email, phone, postal_code, address, note, customer_type, billing_cycle, billing_terms_note, corporate_number, invoice_registration_number, short_name, honorific, transfer_fee_payer, document_delivery_method, nda_status, basic_contract_status, created_at, updated_at",
+        "id, tenant_id, name, name_kana, email, phone, postal_code, address, note, customer_type, billing_cycle, billing_terms_note, closing_day, payment_terms_days, linked_tenant_id, corporate_number, invoice_registration_number, short_name, honorific, transfer_fee_payer, document_delivery_method, nda_status, basic_contract_status, created_at, updated_at",
       )
       .single();
 

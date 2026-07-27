@@ -19,9 +19,19 @@ type YearData = {
   count: number;
 };
 
+type WeekData = {
+  week: string;
+  label: string;
+  combinedTotal: number;
+  count: number;
+};
+
+type CustomerRevenue = { id: string; name: string; total: number };
+
 type AnalyticsData = {
   months: MonthData[];
   years: YearData[];
+  weeks: WeekData[];
   current: {
     month: number;
     monthLabel: string;
@@ -38,6 +48,8 @@ type AnalyticsData = {
     maxMonthTotal: number;
     totalCount: number;
   };
+  /** 売上実績のある顧客一覧（顧客別タブ表示用。売上合計の降順）。 */
+  customers: CustomerRevenue[];
 };
 
 function GrowthBadge({ rate }: { rate: number | null }) {
@@ -64,20 +76,32 @@ function GrowthBadge({ rate }: { rate: number | null }) {
 export default function RevenueAnalytics() {
   const [data, setData] = useState<AnalyticsData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [viewMode, setViewMode] = useState<"monthly" | "yearly">("monthly");
+  const [viewMode, setViewMode] = useState<"weekly" | "monthly" | "yearly">("monthly");
+  const [activeCustomerId, setActiveCustomerId] = useState("__all__");
 
   useEffect(() => {
+    let cancelled = false;
     (async () => {
+      setLoading(true);
       try {
-        const res = await fetch("/api/admin/billing-analytics", { cache: "no-store" });
+        const qs = activeCustomerId !== "__all__" ? `?customer_id=${activeCustomerId}` : "";
+        const res = await fetch(`/api/admin/billing-analytics${qs}`, { cache: "no-store" });
         const j = await parseJsonSafe(res);
-        if (res.ok && j) setData(j);
+        if (!cancelled && res.ok && j) setData(j);
       } catch {}
-      setLoading(false);
+      if (!cancelled) setLoading(false);
     })();
-  }, []);
+    return () => {
+      cancelled = true;
+    };
+  }, [activeCustomerId]);
 
-  if (loading) {
+  // customers は customer_id で絞り込んでも常にテナント全体から算出されるため
+  // （RPC 側の customer_totals CTE が p_customer_id に依存しない）、選択中タブが
+  // 一覧から消えることはない。
+  const customerOptions = data?.customers ?? [];
+
+  if (loading && !data) {
     return (
       <div className="glass-card p-6 animate-pulse space-y-4">
         <div className="h-4 w-32 rounded bg-border-default" />
@@ -143,6 +167,15 @@ export default function RevenueAnalytics() {
           <div className="flex gap-1 rounded-lg p-0.5" style={{ background: "var(--color-border-default)" }}>
             <button
               type="button"
+              onClick={() => setViewMode("weekly")}
+              className={`px-3 py-1.5 rounded-md text-[11px] font-medium transition-all ${
+                viewMode === "weekly" ? "bg-surface text-accent shadow-sm" : "text-secondary hover:text-primary"
+              }`}
+            >
+              週別
+            </button>
+            <button
+              type="button"
               onClick={() => setViewMode("monthly")}
               className={`px-3 py-1.5 rounded-md text-[11px] font-medium transition-all ${
                 viewMode === "monthly" ? "bg-surface text-accent shadow-sm" : "text-secondary hover:text-primary"
@@ -162,103 +195,301 @@ export default function RevenueAnalytics() {
           </div>
         </div>
 
-        {viewMode === "monthly" ? (
-          <>
-            {/* Monthly Bar Chart */}
-            <div className="flex items-end gap-1 sm:gap-2 h-36 sm:h-44 overflow-x-auto">
-              {chartMonths.map((m, idx) => {
-                const height = maxVal > 0 ? (m.combinedTotal / maxVal) * 100 : 0;
-                const isCurrentMonth = idx === chartMonths.length - 1;
-                const prevMonthTotal = idx > 0 ? chartMonths[idx - 1].combinedTotal : 0;
-                const growth = prevMonthTotal > 0 ? ((m.combinedTotal - prevMonthTotal) / prevMonthTotal) * 100 : null;
+        {/* 顧客別タブ */}
+        {customerOptions.length > 0 && (
+          <div className="flex gap-1 overflow-x-auto border-b border-border-subtle pb-3">
+            <button
+              type="button"
+              onClick={() => setActiveCustomerId("__all__")}
+              className={`shrink-0 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                activeCustomerId === "__all__" ? "bg-accent-dim text-accent" : "text-secondary hover:text-primary"
+              }`}
+            >
+              すべて
+            </button>
+            {customerOptions.map((c) => (
+              <button
+                key={c.id}
+                type="button"
+                onClick={() => setActiveCustomerId(c.id)}
+                className={`shrink-0 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                  activeCustomerId === c.id ? "bg-accent-dim text-accent" : "text-secondary hover:text-primary"
+                }`}
+              >
+                {c.name}
+              </button>
+            ))}
+          </div>
+        )}
 
-                return (
-                  <div key={m.month} className="flex-1 flex flex-col items-center gap-1 group">
-                    {/* Value label on hover */}
-                    <div className="text-[10px] font-medium text-primary opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
-                      {formatJpy(m.combinedTotal)}
-                    </div>
-                    {/* Growth indicator */}
-                    <div className="h-4 flex items-center">
-                      {growth !== null && m.combinedTotal > 0 && (
-                        <span
-                          className="text-[9px] font-semibold opacity-0 group-hover:opacity-100 transition-opacity"
-                          style={{ color: growth >= 0 ? "var(--color-success)" : "var(--color-danger)" }}
+        <div className={`space-y-4 transition-opacity ${loading ? "opacity-50" : ""}`}>
+          {viewMode === "weekly" ? (
+            <>
+              {/* Weekly Bar Chart */}
+              <div className="flex items-end gap-1 sm:gap-2 h-36 sm:h-44 overflow-x-auto">
+                {(() => {
+                  const weekMax = Math.max(...data.weeks.map((x) => x.combinedTotal), 1);
+                  return data.weeks.map((w, idx) => {
+                    const height = weekMax > 0 ? (w.combinedTotal / weekMax) * 100 : 0;
+                    const isCurrentWeek = idx === data.weeks.length - 1;
+                    return (
+                      <div key={w.week} className="flex-1 flex flex-col items-center gap-1 group">
+                        <div className="text-[10px] font-medium text-primary opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+                          {formatJpy(w.combinedTotal)}
+                        </div>
+                        <div className="h-4" />
+                        <div
+                          className="w-full rounded-t-lg transition-all duration-500 ease-out min-h-[4px]"
+                          style={{
+                            height: `${Math.max(height, 3)}%`,
+                            background: isCurrentWeek
+                              ? "linear-gradient(180deg, var(--accent-blue), var(--accent-violet))"
+                              : w.combinedTotal > 0
+                                ? "linear-gradient(180deg, color-mix(in srgb, var(--accent-blue) 30%, transparent), color-mix(in srgb, var(--accent-violet) 20%, transparent))"
+                                : "var(--color-border-default)",
+                          }}
+                        />
+                        <div
+                          className={`text-[10px] mt-1 ${isCurrentWeek ? "font-semibold text-accent" : "text-muted"}`}
                         >
-                          {growth >= 0 ? "+" : ""}
-                          {growth.toFixed(0)}%
-                        </span>
-                      )}
-                    </div>
-                    {/* Bar */}
-                    <div
-                      className="w-full rounded-t-lg transition-all duration-500 ease-out min-h-[4px]"
-                      style={{
-                        height: `${Math.max(height, 3)}%`,
-                        background: isCurrentMonth
-                          ? "linear-gradient(180deg, var(--accent-blue), var(--accent-violet))"
-                          : m.combinedTotal > 0
-                            ? "linear-gradient(180deg, color-mix(in srgb, var(--accent-blue) 30%, transparent), color-mix(in srgb, var(--accent-violet) 20%, transparent))"
-                            : "var(--color-border-default)",
-                      }}
-                    />
-                    {/* Month label */}
-                    <div className={`text-[10px] mt-1 ${isCurrentMonth ? "font-semibold text-accent" : "text-muted"}`}>
-                      {m.label.replace(/^\d+年/, "")}
-                    </div>
-                    {/* Count */}
-                    <div className="text-[9px] text-muted">{m.count}件</div>
-                  </div>
-                );
-              })}
-            </div>
+                          {w.label}
+                        </div>
+                        <div className="text-[9px] text-muted">{w.count}件</div>
+                      </div>
+                    );
+                  });
+                })()}
+              </div>
 
-            {/* Monthly Table */}
-            <div className="border-t border-border-subtle pt-3">
-              <div className="overflow-x-auto">
+              {/* Weekly Table */}
+              <div className="border-t border-border-subtle pt-3">
+                <div className="overflow-x-auto">
+                  <table className="min-w-full text-[12px]">
+                    <thead>
+                      <tr>
+                        <th className="text-left py-2 px-2 text-[10px] font-semibold tracking-[0.12em] text-muted">
+                          週
+                        </th>
+                        <th className="text-right py-2 px-2 text-[10px] font-semibold tracking-[0.12em] text-muted">
+                          合計
+                        </th>
+                        <th className="text-right py-2 px-2 text-[10px] font-semibold tracking-[0.12em] text-muted">
+                          件数
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border-subtle">
+                      {[...data.weeks].reverse().map((w, idx) => (
+                        <tr key={w.week} className={idx === 0 ? "bg-accent-dim" : ""}>
+                          <td className="py-2 px-2 text-secondary font-medium">{w.label}</td>
+                          <td className="py-2 px-2 text-right font-semibold text-primary">
+                            {formatJpy(w.combinedTotal)}
+                          </td>
+                          <td className="py-2 px-2 text-right text-muted">{w.count}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </>
+          ) : viewMode === "monthly" ? (
+            <>
+              {/* Monthly Bar Chart */}
+              <div className="flex items-end gap-1 sm:gap-2 h-36 sm:h-44 overflow-x-auto">
+                {chartMonths.map((m, idx) => {
+                  const height = maxVal > 0 ? (m.combinedTotal / maxVal) * 100 : 0;
+                  const isCurrentMonth = idx === chartMonths.length - 1;
+                  const prevMonthTotal = idx > 0 ? chartMonths[idx - 1].combinedTotal : 0;
+                  const growth =
+                    prevMonthTotal > 0 ? ((m.combinedTotal - prevMonthTotal) / prevMonthTotal) * 100 : null;
+
+                  return (
+                    <div key={m.month} className="flex-1 flex flex-col items-center gap-1 group">
+                      {/* Value label on hover */}
+                      <div className="text-[10px] font-medium text-primary opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+                        {formatJpy(m.combinedTotal)}
+                      </div>
+                      {/* Growth indicator */}
+                      <div className="h-4 flex items-center">
+                        {growth !== null && m.combinedTotal > 0 && (
+                          <span
+                            className="text-[9px] font-semibold opacity-0 group-hover:opacity-100 transition-opacity"
+                            style={{ color: growth >= 0 ? "var(--color-success)" : "var(--color-danger)" }}
+                          >
+                            {growth >= 0 ? "+" : ""}
+                            {growth.toFixed(0)}%
+                          </span>
+                        )}
+                      </div>
+                      {/* Bar */}
+                      <div
+                        className="w-full rounded-t-lg transition-all duration-500 ease-out min-h-[4px]"
+                        style={{
+                          height: `${Math.max(height, 3)}%`,
+                          background: isCurrentMonth
+                            ? "linear-gradient(180deg, var(--accent-blue), var(--accent-violet))"
+                            : m.combinedTotal > 0
+                              ? "linear-gradient(180deg, color-mix(in srgb, var(--accent-blue) 30%, transparent), color-mix(in srgb, var(--accent-violet) 20%, transparent))"
+                              : "var(--color-border-default)",
+                        }}
+                      />
+                      {/* Month label */}
+                      <div
+                        className={`text-[10px] mt-1 ${isCurrentMonth ? "font-semibold text-accent" : "text-muted"}`}
+                      >
+                        {m.label.replace(/^\d+年/, "")}
+                      </div>
+                      {/* Count */}
+                      <div className="text-[9px] text-muted">{m.count}件</div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Monthly Table */}
+              <div className="border-t border-border-subtle pt-3">
+                <div className="overflow-x-auto">
+                  <table className="min-w-full text-[12px]">
+                    <thead>
+                      <tr>
+                        <th className="text-left py-2 px-2 text-[10px] font-semibold tracking-[0.12em] text-muted">
+                          月
+                        </th>
+                        <th className="hidden sm:table-cell text-right py-2 px-2 text-[10px] font-semibold tracking-[0.12em] text-muted">
+                          請求書
+                        </th>
+                        <th className="hidden sm:table-cell text-right py-2 px-2 text-[10px] font-semibold tracking-[0.12em] text-muted">
+                          帳票
+                        </th>
+                        <th className="text-right py-2 px-2 text-[10px] font-semibold tracking-[0.12em] text-muted">
+                          合計
+                        </th>
+                        <th className="text-right py-2 px-2 text-[10px] font-semibold tracking-[0.12em] text-muted">
+                          件数
+                        </th>
+                        <th className="text-right py-2 px-2 text-[10px] font-semibold tracking-[0.12em] text-muted">
+                          前月比
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border-subtle">
+                      {[...months].reverse().map((m, idx, arr) => {
+                        const prevMonth = arr[idx + 1];
+                        const growth =
+                          prevMonth && prevMonth.combinedTotal > 0
+                            ? ((m.combinedTotal - prevMonth.combinedTotal) / prevMonth.combinedTotal) * 100
+                            : null;
+                        return (
+                          <tr key={m.month} className={idx === 0 ? "bg-accent-dim" : ""}>
+                            <td className="py-2 px-2 text-secondary font-medium">{m.label}</td>
+                            <td className="hidden sm:table-cell py-2 px-2 text-right text-secondary">
+                              {formatJpy(m.invoiceTotal)}
+                            </td>
+                            <td className="hidden sm:table-cell py-2 px-2 text-right text-secondary">
+                              {formatJpy(m.documentTotal)}
+                            </td>
+                            <td className="py-2 px-2 text-right font-semibold text-primary">
+                              {formatJpy(m.combinedTotal)}
+                            </td>
+                            <td className="py-2 px-2 text-right text-muted">{m.count}</td>
+                            <td className="py-2 px-2 text-right">
+                              {growth !== null && m.combinedTotal > 0 ? (
+                                <span style={{ color: growth >= 0 ? "var(--color-success)" : "var(--color-danger)" }}>
+                                  {growth >= 0 ? "+" : ""}
+                                  {growth.toFixed(1)}%
+                                </span>
+                              ) : (
+                                <span className="text-muted">-</span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </>
+          ) : (
+            <>
+              {/* Yearly View */}
+              <div className="flex items-end gap-2 sm:gap-4 h-36 sm:h-44 px-2 sm:px-8 overflow-x-auto">
+                {years.map((y, idx) => {
+                  const yearMax = Math.max(...years.map((yr) => yr.total), 1);
+                  const height = yearMax > 0 ? (y.total / yearMax) * 100 : 0;
+                  const prevYear = years[idx - 1];
+                  const growth =
+                    prevYear && prevYear.total > 0 ? ((y.total - prevYear.total) / prevYear.total) * 100 : null;
+
+                  return (
+                    <div key={y.year} className="flex-1 flex flex-col items-center gap-1 group">
+                      <div className="text-[11px] font-medium text-primary opacity-0 group-hover:opacity-100 transition-opacity">
+                        {formatJpy(y.total)}
+                      </div>
+                      <div className="h-4 flex items-center">
+                        {growth !== null && (
+                          <span
+                            className="text-[10px] font-semibold"
+                            style={{ color: growth >= 0 ? "var(--color-success)" : "var(--color-danger)" }}
+                          >
+                            {growth >= 0 ? "+" : ""}
+                            {growth.toFixed(1)}%
+                          </span>
+                        )}
+                      </div>
+                      <div
+                        className="w-full rounded-t-lg transition-all duration-500 ease-out min-h-[4px]"
+                        style={{
+                          height: `${Math.max(height, 3)}%`,
+                          background:
+                            idx === years.length - 1
+                              ? "linear-gradient(180deg, var(--accent-blue), var(--accent-violet))"
+                              : "linear-gradient(180deg, color-mix(in srgb, var(--accent-blue) 30%, transparent), color-mix(in srgb, var(--accent-violet) 20%, transparent))",
+                        }}
+                      />
+                      <div
+                        className={`text-[12px] mt-1 font-semibold ${idx === years.length - 1 ? "text-accent" : "text-secondary"}`}
+                      >
+                        {y.year}年
+                      </div>
+                      <div className="text-[10px] text-muted">{y.count}件</div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Yearly summary table */}
+              <div className="border-t border-border-subtle pt-3">
                 <table className="min-w-full text-[12px]">
                   <thead>
                     <tr>
-                      <th className="text-left py-2 px-2 text-[10px] font-semibold tracking-[0.12em] text-muted">月</th>
-                      <th className="hidden sm:table-cell text-right py-2 px-2 text-[10px] font-semibold tracking-[0.12em] text-muted">
-                        請求書
-                      </th>
-                      <th className="hidden sm:table-cell text-right py-2 px-2 text-[10px] font-semibold tracking-[0.12em] text-muted">
-                        帳票
+                      <th className="text-left py-2 px-2 text-[10px] font-semibold tracking-[0.12em] text-muted">
+                        年度
                       </th>
                       <th className="text-right py-2 px-2 text-[10px] font-semibold tracking-[0.12em] text-muted">
-                        合計
+                        年間売上
                       </th>
                       <th className="text-right py-2 px-2 text-[10px] font-semibold tracking-[0.12em] text-muted">
                         件数
                       </th>
                       <th className="text-right py-2 px-2 text-[10px] font-semibold tracking-[0.12em] text-muted">
-                        前月比
+                        前年比
                       </th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border-subtle">
-                    {[...months].reverse().map((m, idx, arr) => {
-                      const prevMonth = arr[idx + 1];
+                    {[...years].reverse().map((y, idx, arr) => {
+                      const prevYear = arr[idx + 1];
                       const growth =
-                        prevMonth && prevMonth.combinedTotal > 0
-                          ? ((m.combinedTotal - prevMonth.combinedTotal) / prevMonth.combinedTotal) * 100
-                          : null;
+                        prevYear && prevYear.total > 0 ? ((y.total - prevYear.total) / prevYear.total) * 100 : null;
                       return (
-                        <tr key={m.month} className={idx === 0 ? "bg-accent-dim" : ""}>
-                          <td className="py-2 px-2 text-secondary font-medium">{m.label}</td>
-                          <td className="hidden sm:table-cell py-2 px-2 text-right text-secondary">
-                            {formatJpy(m.invoiceTotal)}
-                          </td>
-                          <td className="hidden sm:table-cell py-2 px-2 text-right text-secondary">
-                            {formatJpy(m.documentTotal)}
-                          </td>
-                          <td className="py-2 px-2 text-right font-semibold text-primary">
-                            {formatJpy(m.combinedTotal)}
-                          </td>
-                          <td className="py-2 px-2 text-right text-muted">{m.count}</td>
+                        <tr key={y.year} className={idx === 0 ? "bg-accent-dim" : ""}>
+                          <td className="py-2 px-2 font-semibold text-primary">{y.year}年</td>
+                          <td className="py-2 px-2 text-right font-semibold text-primary">{formatJpy(y.total)}</td>
+                          <td className="py-2 px-2 text-right text-muted">{y.count}</td>
                           <td className="py-2 px-2 text-right">
-                            {growth !== null && m.combinedTotal > 0 ? (
+                            {growth !== null ? (
                               <span style={{ color: growth >= 0 ? "var(--color-success)" : "var(--color-danger)" }}>
                                 {growth >= 0 ? "+" : ""}
                                 {growth.toFixed(1)}%
@@ -273,101 +504,9 @@ export default function RevenueAnalytics() {
                   </tbody>
                 </table>
               </div>
-            </div>
-          </>
-        ) : (
-          <>
-            {/* Yearly View */}
-            <div className="flex items-end gap-2 sm:gap-4 h-36 sm:h-44 px-2 sm:px-8 overflow-x-auto">
-              {years.map((y, idx) => {
-                const yearMax = Math.max(...years.map((yr) => yr.total), 1);
-                const height = yearMax > 0 ? (y.total / yearMax) * 100 : 0;
-                const prevYear = years[idx - 1];
-                const growth =
-                  prevYear && prevYear.total > 0 ? ((y.total - prevYear.total) / prevYear.total) * 100 : null;
-
-                return (
-                  <div key={y.year} className="flex-1 flex flex-col items-center gap-1 group">
-                    <div className="text-[11px] font-medium text-primary opacity-0 group-hover:opacity-100 transition-opacity">
-                      {formatJpy(y.total)}
-                    </div>
-                    <div className="h-4 flex items-center">
-                      {growth !== null && (
-                        <span
-                          className="text-[10px] font-semibold"
-                          style={{ color: growth >= 0 ? "var(--color-success)" : "var(--color-danger)" }}
-                        >
-                          {growth >= 0 ? "+" : ""}
-                          {growth.toFixed(1)}%
-                        </span>
-                      )}
-                    </div>
-                    <div
-                      className="w-full rounded-t-lg transition-all duration-500 ease-out min-h-[4px]"
-                      style={{
-                        height: `${Math.max(height, 3)}%`,
-                        background:
-                          idx === years.length - 1
-                            ? "linear-gradient(180deg, var(--accent-blue), var(--accent-violet))"
-                            : "linear-gradient(180deg, color-mix(in srgb, var(--accent-blue) 30%, transparent), color-mix(in srgb, var(--accent-violet) 20%, transparent))",
-                      }}
-                    />
-                    <div
-                      className={`text-[12px] mt-1 font-semibold ${idx === years.length - 1 ? "text-accent" : "text-secondary"}`}
-                    >
-                      {y.year}年
-                    </div>
-                    <div className="text-[10px] text-muted">{y.count}件</div>
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* Yearly summary table */}
-            <div className="border-t border-border-subtle pt-3">
-              <table className="min-w-full text-[12px]">
-                <thead>
-                  <tr>
-                    <th className="text-left py-2 px-2 text-[10px] font-semibold tracking-[0.12em] text-muted">年度</th>
-                    <th className="text-right py-2 px-2 text-[10px] font-semibold tracking-[0.12em] text-muted">
-                      年間売上
-                    </th>
-                    <th className="text-right py-2 px-2 text-[10px] font-semibold tracking-[0.12em] text-muted">
-                      件数
-                    </th>
-                    <th className="text-right py-2 px-2 text-[10px] font-semibold tracking-[0.12em] text-muted">
-                      前年比
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border-subtle">
-                  {[...years].reverse().map((y, idx, arr) => {
-                    const prevYear = arr[idx + 1];
-                    const growth =
-                      prevYear && prevYear.total > 0 ? ((y.total - prevYear.total) / prevYear.total) * 100 : null;
-                    return (
-                      <tr key={y.year} className={idx === 0 ? "bg-accent-dim" : ""}>
-                        <td className="py-2 px-2 font-semibold text-primary">{y.year}年</td>
-                        <td className="py-2 px-2 text-right font-semibold text-primary">{formatJpy(y.total)}</td>
-                        <td className="py-2 px-2 text-right text-muted">{y.count}</td>
-                        <td className="py-2 px-2 text-right">
-                          {growth !== null ? (
-                            <span style={{ color: growth >= 0 ? "var(--color-success)" : "var(--color-danger)" }}>
-                              {growth >= 0 ? "+" : ""}
-                              {growth.toFixed(1)}%
-                            </span>
-                          ) : (
-                            <span className="text-muted">-</span>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </>
-        )}
+            </>
+          )}
+        </div>
       </div>
     </div>
   );

@@ -8,6 +8,8 @@ import { createCertAction } from "./actions";
 import { enqueueOrFetch } from "@/lib/outbox/enqueueOrFetch";
 import { enqueueOrFetchMultipart } from "@/lib/outbox/enqueueOrFetchMultipart";
 import { certCreateJsonSchema, formDataToCertJson } from "@/lib/certificates/createCertificateApi";
+import { listPasskeys, signOperation } from "@/lib/webauthn/browserCeremony";
+import { composeAiDraftContent, type AiDraftApplyInput } from "@/lib/certificates/composeAiDraftContent";
 import CertPackagePicker from "./CertPackagePicker";
 import VehiclePickerSection from "./VehiclePickerSection";
 import FilmThicknessSection from "./FilmThicknessSection";
@@ -15,6 +17,7 @@ import CoatingProductsSection from "./CoatingProductsSection";
 import PpfCoverageSection from "./PpfCoverageSection";
 import MaintenanceDetailsSection from "./MaintenanceDetailsSection";
 import BodyRepairDetailsSection from "./BodyRepairDetailsSection";
+import DamageMapSection from "./DamageMapSection";
 import AccessoryDetailsSection from "./AccessoryDetailsSection";
 import PhotoUploadSection, { type PhotoUploadHandle } from "./PhotoUploadSection";
 import ManufacturerTemplatePicker from "./ManufacturerTemplatePicker";
@@ -88,6 +91,10 @@ type Props = {
   defaultVehicleId?: string;
   defaultCustomerId?: string;
   defaultReservationId?: string;
+  /** 案件の「部品交換あり」トグルが ON のとき、整備内容セクションへの既定メモ。 */
+  defaultPartsReplacedNote?: string;
+  /** "in_progress" のとき、この発行フローでアップロードする写真を作業中の記録として stage タグ付けする。 */
+  defaultPhotoStage?: string;
   templates: Template[];
   selectedTemplate: Template | null;
   tenantLogoPath: string | null;
@@ -112,12 +119,17 @@ const PLAN_LABELS: Record<PlanTier, string> = {
   pro: "PRO",
 };
 
+// idempotencyKey の crypto 不在時フォールバックでのみ使う連番（衝突回避目的、セキュリティ用途ではない）。
+let fallbackKeySeq = 0;
+
 export default function CertNewFormWrapper({
   vehicles,
   customers = [],
   defaultVehicleId,
   defaultCustomerId,
   defaultReservationId,
+  defaultPartsReplacedNote,
+  defaultPhotoStage,
   templates,
   selectedTemplate,
   tenantLogoPath,
@@ -188,7 +200,14 @@ export default function CertNewFormWrapper({
     if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
       return crypto.randomUUID();
     }
-    return `cert-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+    if (typeof crypto !== "undefined" && typeof crypto.getRandomValues === "function") {
+      const bytes = crypto.getRandomValues(new Uint8Array(10));
+      return `cert-${Date.now().toString(36)}-${Array.from(bytes, (b) => b.toString(36)).join("")}`;
+    }
+    // crypto が全く使えない環境向けの最終フォールバック（実運用では到達しない想定）。
+    // 一意性だけが目的でセキュリティ用途ではないため Math.random は使わず、
+    // モジュールスコープの連番で衝突を避ける。
+    return `cert-${Date.now().toString(36)}-${(fallbackKeySeq++).toString(36)}`;
   }, []);
 
   // AI下書き適用時にフォームフィールドを自動入力する
@@ -234,13 +253,14 @@ export default function CertNewFormWrapper({
     setLastCertDismissed(true);
   };
 
-  const handleAiDraftApply = useCallback((draft: { title: string; description: string; cautions: string }) => {
+  const handleAiDraftApply = useCallback((draft: AiDraftApplyInput) => {
     if (!formRef.current) return;
     const form = formRef.current;
-    // 施工内容フィールドへ自動入力
+    // 施工内容フィールドへ自動入力。AI 下書きの施工箇所・使用材料・保証候補も
+    // 取りこぼさず施工内容へまとめる (従来は title/description/cautions のみで破棄されていた)。
     const contentField = form.querySelector<HTMLTextAreaElement>("textarea[name='content_free_text']");
     if (contentField) {
-      contentField.value = `${draft.title}\n\n${draft.description}${draft.cautions ? `\n\n【注意事項】\n${draft.cautions}` : ""}`;
+      contentField.value = composeAiDraftContent(draft);
     }
     setDraftApplied(true);
     setTimeout(() => setDraftApplied(false), 3000);
@@ -395,7 +415,10 @@ export default function CertNewFormWrapper({
         for (const file of files) {
           await enqueueOrFetchMultipart({
             url: "/api/certificates/images/upload",
-            fields: { cert_idempotency_key: idempotencyKey },
+            fields: {
+              cert_idempotency_key: idempotencyKey,
+              ...(defaultPhotoStage ? { stage: defaultPhotoStage } : {}),
+            },
             files: [{ fieldName: "photos", file }],
             label: `証明書写真 (オフライン): ${file.name}`,
             kind: "certificate_image_upload",
@@ -451,6 +474,7 @@ export default function CertNewFormWrapper({
           // 撮影時来歴: 作成時に払い出した単回nonceを写真アップロードへ引き渡す
           // （これが無いと担保ゲートの nonceOk が満たせない）。
           if (capture_nonce) photoForm.append("capture_nonce", capture_nonce);
+          if (defaultPhotoStage) photoForm.append("stage", defaultPhotoStage);
           files.forEach((f) => photoForm.append("photos", f));
           const uploadRes = await fetch("/api/certificates/images/upload", {
             method: "POST",
@@ -507,12 +531,43 @@ export default function CertNewFormWrapper({
       // status ルートで active 化する。サーバ側で写真有無を再検証するため、
       // 写真アップロードが失敗していればここでブロックされる (下書きのまま)。
       if (submitStatus === "active") {
+        // 操作署名(WebAuthn)。既定 off ではセレモニーを走らせず現行と同一挙動。
+        // optional/enforce かつパスキー登録済みなら「finalize」を payload_hash に束ねて承認する。
+        let webauthnChallengeId: string | undefined;
+        let modeInfo: Awaited<ReturnType<typeof listPasskeys>> | null = null;
+        try {
+          modeInfo = await listPasskeys();
+        } catch {
+          // モード取得失敗はサーバ gate に委ねてそのまま続行(enforce ならサーバが 403 で弾く)。
+          modeInfo = null;
+        }
+        if (modeInfo && modeInfo.mode !== "off") {
+          if (modeInfo.credentials.length > 0) {
+            setUploadProgress("パスキーで承認中…");
+            try {
+              const { challengeId } = await signOperation("finalize", { publicId: public_id });
+              webauthnChallengeId = challengeId;
+            } catch (e) {
+              const msg = e instanceof Error ? e.message : String(e);
+              setError(`パスキー承認に失敗しました（下書きとして保存されています）: ${msg}`);
+              setUploadProgress(null);
+              return;
+            }
+          } else if (modeInfo.mode === "enforce") {
+            setError(
+              "この操作にはパスキーの登録が必要です。設定 → セキュリティ でパスキーを登録してください（下書きとして保存されています）。",
+            );
+            setUploadProgress(null);
+            return;
+          }
+        }
+
         setUploadProgress("証明書を発行中…");
         try {
           const actRes = await fetch("/api/admin/certificates/status", {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ public_id, status: "active" }),
+            body: JSON.stringify({ public_id, status: "active", webauthn_challenge_id: webauthnChallengeId }),
           });
           if (!actRes.ok) {
             const actJson = await actRes.json().catch(() => ({}));
@@ -572,6 +627,9 @@ export default function CertNewFormWrapper({
           {defaultVehicleId && <input type="hidden" name="vehicle_id" value={defaultVehicleId} />}
           {defaultCustomerId && <input type="hidden" name="customer_id" value={defaultCustomerId} />}
           {defaultReservationId && <input type="hidden" name="reservation_id" value={defaultReservationId} />}
+          {/* 作業中の撮影導線 (?stage=in_progress) から来た場合、テンプレ切替後も stage を維持する。
+              無いと再読み込みで in_progress タグが失われ、写真が unspecified で保存されてしまう。 */}
+          {defaultPhotoStage && <input type="hidden" name="stage" value={defaultPhotoStage} />}
           <select name="tid" defaultValue={tid} className={`flex-1 ${inputCls}`}>
             {templates.length === 0 ? (
               <option value="">テンプレートがありません</option>
@@ -691,14 +749,16 @@ export default function CertNewFormWrapper({
         {/* ━━━ 2b. 整備内容（整備テンプレート時のみ） ━━━ */}
         {isMaintenance && (
           <section id="sec-detail-maintenance" className="border-t border-border-subtle py-6">
-            <MaintenanceDetailsSection />
+            <MaintenanceDetailsSection defaultPartsReplacedNote={defaultPartsReplacedNote} />
           </section>
         )}
 
         {/* ━━━ 2c. 鈑金塗装内容（鈑金塗装テンプレート時のみ） ━━━ */}
         {isBodyRepair && (
-          <section id="sec-detail-body-repair" className="border-t border-border-subtle py-6">
+          <section id="sec-detail-body-repair" className="border-t border-border-subtle py-6 space-y-6">
             <BodyRepairDetailsSection />
+            {/* 車両図タップで傷・損傷位置を記録（damage_map_json）。 */}
+            <DamageMapSection />
           </section>
         )}
 
@@ -712,7 +772,7 @@ export default function CertNewFormWrapper({
         {/* ━━━ 3. コーティング剤 / 使用フィルム（コーティング・PPF時のみ） ━━━ */}
         {isCoatingOrPpf && (
           <section id="sec-coating" className="border-t border-border-subtle py-6">
-            <CoatingProductsSection serviceType={serviceType} />
+            <CoatingProductsSection serviceType={serviceType} canDeliveryNoteExtract={canAiDraft} />
           </section>
         )}
 
@@ -756,6 +816,12 @@ export default function CertNewFormWrapper({
               施工前後の写真をアップロードします。証明書の信頼性確保のため、発行には施工写真が1枚以上必須です（写真がない場合は下書き保存のみ可能）。プランごとに枚数上限が異なります。
             </HelpTooltip>
           </div>
+          {defaultPhotoStage === "in_progress" && (
+            <div className="rounded-xl border border-accent/20 bg-accent-dim px-4 py-3 text-xs text-accent-text">
+              📷
+              作業中の記録として写真を追加します。まだ工程の途中でも、ここで「下書き保存」しておけば後から続きを入力・発行できます。
+            </div>
+          )}
           <PhotoUploadSection
             ref={photoRef}
             maxPhotos={maxPhotos}

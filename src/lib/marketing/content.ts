@@ -116,6 +116,17 @@ async function safeReaddir(dir: string): Promise<string[]> {
   }
 }
 
+/**
+ * 下書き(`draft: true`)を隠すか。
+ * **本番でのみ隠す**：Vercel は本番=`VERCEL_ENV=production`／プレビュー=`preview`。プレビューと
+ * ローカル開発では下書きを表示してレビューできるようにする。VERCEL_ENV が無い環境（自ホスト等）は
+ * `NODE_ENV` にフォールバック＝`production` なら隠す（＝本番相当は必ず隠れる。下書きの本番流出を防ぐ）。
+ */
+export function shouldHideDraft(draft: boolean | undefined, env: { VERCEL_ENV?: string; NODE_ENV?: string }): boolean {
+  if (draft !== true) return false;
+  return (env.VERCEL_ENV ?? env.NODE_ENV) === "production";
+}
+
 export async function listContent(collection: ContentCollection): Promise<ContentEntry[]> {
   const dir = path.join(CONTENT_ROOT, collection);
   const files = (await safeReaddir(dir)).filter(
@@ -138,7 +149,7 @@ export async function listContent(collection: ContentCollection): Promise<Conten
       ...data,
     };
 
-    if (frontmatter.draft === true && process.env.NODE_ENV === "production") continue;
+    if (shouldHideDraft(frontmatter.draft, process.env)) continue;
 
     entries.push({ frontmatter, body, sourcePath: full });
   }

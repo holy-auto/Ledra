@@ -1,17 +1,16 @@
 "use client";
 import { parseJsonSafe } from "@/lib/api/safeJson";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import type { LeadSource } from "@/lib/marketing/leads";
 import { track } from "@/lib/marketing/analytics";
+import { readUtm } from "@/lib/marketing/utm";
 
 const inputClass =
   "w-full px-4 py-3 rounded-lg border border-white/[0.08] bg-white/[0.05] text-white text-sm placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500/40 transition-colors";
 
 const successCardClass = "text-center py-16 px-8 rounded-xl bg-white/[0.04] border border-white/[0.07]";
-
-const UTM_KEYS = ["utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content"] as const;
 
 type FieldsConfig = {
   /** Require a phone field (default: false) */
@@ -71,24 +70,6 @@ export function LeadForm({
   const [submitted, setSubmitted] = useState(false);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
-  const [utm, setUtm] = useState<Record<string, string>>({});
-  const [referrer, setReferrer] = useState<string>("");
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    try {
-      const params = new URLSearchParams(window.location.search);
-      const collected: Record<string, string> = {};
-      for (const key of UTM_KEYS) {
-        const v = params.get(key);
-        if (v) collected[key] = v;
-      }
-      setUtm(collected);
-      setReferrer(document.referrer || "");
-    } catch {
-      // ignore
-    }
-  }, []);
 
   if (submitted) {
     return (
@@ -119,6 +100,9 @@ export function LeadForm({
     setSending(true);
 
     const fd = new FormData(e.currentTarget);
+    // 送信時に読む: URL の utm を優先、無ければ着地時保存の first-touch（/tora→/news 経由など）。
+    const utm = readUtm();
+    const referrer = typeof document !== "undefined" ? document.referrer : "";
     const payload = {
       source,
       resource_key: resourceKey,

@@ -126,6 +126,7 @@ export const templateCreateSchema = z.object({
       "receipt",
       "invoice",
       "consolidated_invoice",
+      "staff_invoice",
     ])
     .nullable()
     .optional(),

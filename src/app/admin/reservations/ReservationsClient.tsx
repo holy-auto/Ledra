@@ -5,7 +5,6 @@ import { useCallback, useEffect, useMemo, useState, useTransition } from "react"
 import Link from "next/link";
 import useSWR from "swr";
 import PageHeader from "@/components/ui/PageHeader";
-import Badge from "@/components/ui/Badge";
 import Button from "@/components/ui/Button";
 import EmptyStateGuide from "@/components/ui/EmptyStateGuide";
 import { estimateReservationMinutes, formatMinutes } from "@/lib/booths/duration";
@@ -20,10 +19,7 @@ const VoiceMemoPanel = dynamic(() => import("@/app/admin/certificates/new/VoiceM
 import { canUseFeature, normalizePlanTier } from "@/lib/billing/planFeatures";
 import { formatDate, formatJpy } from "@/lib/format";
 import { fetcher } from "@/lib/swr";
-import WorkflowStepper from "@/components/workflow/WorkflowStepper";
 import type { WorkflowStep } from "@/components/workflow/WorkflowTemplateEditor";
-import CaseTimeline from "./CaseTimeline";
-import type { CaseStep, CaseStepAction, CaseActionKind } from "@/lib/admin/caseTimeline";
 
 // ─── Types ───────────────────────────────────────────────
 
@@ -37,6 +33,7 @@ type Reservation = {
   vehicle_id: string | null;
   vehicle_label: string | null;
   scheduled_date: string;
+  all_day: boolean;
   start_time: string | null;
   end_time: string | null;
   status: string;
@@ -79,17 +76,6 @@ type BookingCandidate = {
 const WEEKDAY_JA = ["日", "月", "火", "水", "木", "金", "土"] as const;
 type Stats = { total: number; today_count: number; active_count: number };
 type ReservationsData = { reservations: Reservation[]; stats: Stats };
-
-type StepLog = {
-  id: string;
-  step_key: string;
-  step_order: number;
-  step_label: string;
-  started_at: string | null;
-  completed_at: string | null;
-  duration_sec: number | null;
-  note: string | null;
-};
 
 type WorkflowTemplate = {
   id: string;
@@ -154,11 +140,23 @@ const labelTextCls = "text-xs font-semibold text-secondary tracking-wide upperca
 // ─── Component ───────────────────────────────────────────
 
 export default function ReservationsClient() {
+  // ローカル(端末)日付の YYYY-MM-DD。toISOString() は UTC 変換されるため、JST 深夜帯
+  // (00:00〜08:59) だと日付が1日前にずれる — ブラウザのローカル時計から直接組み立てる。
+  const now = new Date();
+  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+
   // Filters
   const [statusFilter, setStatusFilter] = useState("all");
   const [dateFilter, setDateFilter] = useState("");
   const [activeStatusFilter, setActiveStatusFilter] = useState("all");
   const [activeDateFilter, setActiveDateFilter] = useState("");
+  // 古い予約は既定で隠す（本日以降のみ表示）。過去分は明示的にトグルしたときだけ読み込む。
+  // カレンダー表示では月移動で過去月も見る必要があるためこの既定フィルタは適用しない
+  // （過去分トグルはリスト表示にしか出さないので、絞ったままだと見る手段が無くなる）。
+  const [showPast, setShowPast] = useState(false);
+
+  // View
+  const [viewMode, setViewMode] = useState<"list" | "calendar">("list");
 
   const swrKey = (() => {
     const params = new URLSearchParams();
@@ -166,6 +164,8 @@ export default function ReservationsClient() {
     if (activeDateFilter) {
       params.set("from", activeDateFilter);
       params.set("to", activeDateFilter);
+    } else if (!showPast && viewMode === "list") {
+      params.set("from", today);
     }
     return `/api/admin/reservations?${params.toString()}`;
   })();
@@ -185,9 +185,6 @@ export default function ReservationsClient() {
   // Transitions — defers heavy re-renders so button presses feel instant
   const [, startFilterTransition] = useTransition();
   const [, startFormTransition] = useTransition();
-
-  // View
-  const [viewMode, setViewMode] = useState<"list" | "calendar">("list");
 
   // Master
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -209,6 +206,7 @@ export default function ReservationsClient() {
   const [formDate, setFormDate] = useState(new Date().toISOString().slice(0, 10));
   const [formStartTime, setFormStartTime] = useState("");
   const [formEndTime, setFormEndTime] = useState("");
+  const [formAllDay, setFormAllDay] = useState(false);
   const [formNote, setFormNote] = useState("");
   const [formMenuItems, setFormMenuItems] = useState<MenuItem[]>([]);
   const [formAmount, setFormAmount] = useState(0);
@@ -240,6 +238,7 @@ export default function ReservationsClient() {
   const [gcalLastSynced, setGcalLastSynced] = useState<string | null>(null);
   const [gcalCalendars, setGcalCalendars] = useState<{ id: string; summary: string; primary?: boolean }[]>([]);
   const [gcalCalendarId, setGcalCalendarId] = useState<string | null>(null);
+  const [gcalReadCalendars, setGcalReadCalendars] = useState<{ id: string; mode: "full" | "busy" }[]>([]);
   const [gcalCalendarSaving, setGcalCalendarSaving] = useState(false);
   const [showGcalPanel, setShowGcalPanel] = useState(false);
   const [gcalFeedback, setGcalFeedback] = useState<"connected" | "error" | null>(null);
@@ -263,18 +262,9 @@ export default function ReservationsClient() {
   const [showBookingUrlPanel, setShowBookingUrlPanel] = useState(false);
   const [bookingUrlCopied, setBookingUrlCopied] = useState(false);
 
-  // Detail drawer
+  // Inline card actions (edit / cancel / delete) — expand-in-place, not a workflow view.
+  // ワークフロー詳細は /admin/jobs/[id] に一本化（旧: 別ドロワーで二重表示していた）。
   const [detailId, setDetailId] = useState<string | null>(null);
-  const detailReservation = reservations.find((r) => r.id === detailId) ?? null;
-
-  // Workflow
-  const [detailSteps, setDetailSteps] = useState<WorkflowStep[]>([]);
-  const [detailStepLogs, setDetailStepLogs] = useState<StepLog[]>([]);
-  const [detailTimeline, setDetailTimeline] = useState<CaseStep[]>([]);
-  const [caseActionBusy, setCaseActionBusy] = useState<CaseActionKind | null>(null);
-  const [detailTemplates, setDetailTemplates] = useState<WorkflowTemplate[]>([]);
-  const [detailTemplateLoading, setDetailTemplateLoading] = useState(false);
-  const [workflowTemplateId, setWorkflowTemplateId] = useState("");
 
   // ─── Reference data ──────────────────────────────────────
 
@@ -319,6 +309,7 @@ export default function ReservationsClient() {
         if (gcRes.ok && gcJ?.connected) {
           setGcalConnected(true);
           if (gcJ?.calendar_id) setGcalCalendarId(gcJ.calendar_id);
+          if (Array.isArray(gcJ?.read_calendars)) setGcalReadCalendars(gcJ.read_calendars);
           const calRes = await fetch("/api/admin/gcal", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -346,122 +337,6 @@ export default function ReservationsClient() {
       setVehicles([]);
     }
   }, []);
-
-  const refreshTimeline = useCallback(async (reservationId: string) => {
-    try {
-      const res = await fetch(`/api/admin/reservations/${reservationId}/timeline`, { cache: "no-store" });
-      const j = await parseJsonSafe(res);
-      setDetailTimeline((j?.steps as CaseStep[]) ?? []);
-    } catch {
-      setDetailTimeline([]);
-    }
-  }, []);
-
-  /** タイムラインの「次のアクション」を実行（既存の安全なエンドポイントを再利用）。 */
-  const runCaseAction = async (action: CaseStepAction) => {
-    if (!detailId) return;
-    setCaseActionBusy(action.kind);
-    try {
-      if (action.kind === "start_work") {
-        await handleStatusChange(detailId, "in_progress");
-      } else if (action.kind === "complete_work") {
-        await handleStatusChange(detailId, "completed");
-      } else if (action.kind === "issue_certificate" && action.targetId) {
-        const res = await fetch("/api/admin/certificates/status", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ public_id: action.targetId, status: "active" }),
-        });
-        if (!res.ok) {
-          const j = await parseJsonSafe(res);
-          throw new Error(j?.error ?? `HTTP ${res.status}`);
-        }
-      }
-      await refreshTimeline(detailId);
-    } catch (e) {
-      setMutationErr(e instanceof Error ? e.message : String(e));
-    } finally {
-      setCaseActionBusy(null);
-    }
-  };
-
-  const openWorkflowDetail = async (r: Reservation) => {
-    setDetailId(r.id);
-    // 案件の連鎖タイムライン（予約→施工→証明書→請求→フォロー）を取得
-    setDetailTimeline([]);
-    void refreshTimeline(r.id);
-    if (r.workflow_template_id) {
-      try {
-        const [tplRes, logsRes] = await Promise.all([
-          fetch(`/api/admin/workflow-templates`),
-          fetch(`/api/admin/reservations/${r.id}/step-logs`, { cache: "no-store" }),
-        ]);
-        const tplJ = await parseJsonSafe(tplRes);
-        const logsJ = await parseJsonSafe(logsRes);
-        const templates: WorkflowTemplate[] = tplJ?.templates ?? [];
-        const tpl = templates.find((t: WorkflowTemplate) => t.id === r.workflow_template_id);
-        if (tpl) setDetailSteps(tpl.steps);
-        setDetailStepLogs(logsJ?.step_logs ?? []);
-      } catch {
-        /* ignore */
-      }
-    } else {
-      setDetailSteps([]);
-      setDetailStepLogs([]);
-      try {
-        setDetailTemplateLoading(true);
-        const res = await fetch("/api/admin/workflow-templates");
-        const j = await parseJsonSafe(res);
-        setDetailTemplates(j?.templates ?? []);
-      } catch {
-        /* ignore */
-      } finally {
-        setDetailTemplateLoading(false);
-      }
-    }
-  };
-
-  const handleStartWorkflow = async (reservationId: string) => {
-    if (!workflowTemplateId) return;
-    try {
-      const res = await fetch(`/api/admin/reservations/${reservationId}/start-workflow`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ workflow_template_id: workflowTemplateId }),
-      });
-      const j = await parseJsonSafe(res);
-      if (!res.ok) throw new Error(j?.error ?? "Failed");
-      // ワークフロー開始直後にドロワーを閉じずに、そのままステッパーを表示させる。
-      // 返却された steps を即座に反映して「次へ」ボタンで来店→証明書発行→会計と進行できるようにする。
-      if (Array.isArray(j?.steps)) setDetailSteps(j.steps);
-      setDetailStepLogs([]);
-      setWorkflowTemplateId("");
-      await mutate();
-    } catch (e: unknown) {
-      alert("ワークフロー開始に失敗: " + (e instanceof Error ? e.message : String(e)));
-    }
-  };
-
-  const handleAdvance = async (reservationId: string, note?: string) => {
-    try {
-      const res = await fetch(`/api/admin/reservations/${reservationId}/advance`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ note }),
-      });
-      const j = await parseJsonSafe(res);
-      if (!res.ok) throw new Error(j?.error ?? "Failed");
-      mutate();
-      // Refresh step logs
-      const logsRes = await fetch(`/api/admin/reservations/${reservationId}/step-logs`);
-      const logsJ = await parseJsonSafe(logsRes);
-      setDetailStepLogs(logsJ?.step_logs ?? []);
-      // ワークフロー前進で証明書ドラフトが自動生成されることがある → タイムラインも更新
-      await refreshTimeline(reservationId);
-    } catch (e: unknown) {
-      alert("進行に失敗: " + (e instanceof Error ? e.message : String(e)));
-    }
-  };
 
   useEffect(() => {
     fetchMasterData();
@@ -495,6 +370,7 @@ export default function ReservationsClient() {
     setFormDate(new Date().toISOString().slice(0, 10));
     setFormStartTime("");
     setFormEndTime("");
+    setFormAllDay(false);
     setFormNote("");
     setFormMenuItems([]);
     setFormAmount(0);
@@ -526,6 +402,7 @@ export default function ReservationsClient() {
       setFormDate(r.scheduled_date);
       setFormStartTime(r.start_time?.slice(0, 5) ?? "");
       setFormEndTime(r.end_time?.slice(0, 5) ?? "");
+      setFormAllDay(r.all_day ?? false);
       setFormNote(r.note ?? "");
       setFormMenuItems(r.menu_items_json ?? []);
       setFormAmount(r.estimated_amount ?? 0);
@@ -624,7 +501,7 @@ export default function ReservationsClient() {
       params.set("days", "21");
       const res = await fetch(`/api/admin/booking-candidates?${params.toString()}`);
       const j = await parseJsonSafe(res);
-      if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
+      if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       setCandidates((j?.candidates ?? []) as BookingCandidate[]);
     } catch (e: unknown) {
       setCandidatesErr(e instanceof Error ? e.message : String(e));
@@ -651,8 +528,9 @@ export default function ReservationsClient() {
       customer_id: formCustomerId || null,
       vehicle_id: formVehicleId || null,
       scheduled_date: formDate,
-      start_time: formStartTime || null,
-      end_time: formEndTime || null,
+      all_day: formAllDay,
+      start_time: formAllDay ? null : formStartTime || null,
+      end_time: formAllDay ? null : formEndTime || null,
       note: formNote || null,
       menu_items_json: formMenuItems,
       estimated_amount: formAmount,
@@ -667,7 +545,7 @@ export default function ReservationsClient() {
         body: JSON.stringify(payload),
       });
       const j = await parseJsonSafe(res);
-      if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
+      if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       setSaveMsg({ text: editingId ? "予約を更新しました" : "予約を作成しました", ok: true });
       setShowForm(false);
       resetForm();
@@ -690,7 +568,7 @@ export default function ReservationsClient() {
       });
       if (!res.ok) {
         const j = await parseJsonSafe(res);
-        throw new Error(j?.error ?? `HTTP ${res.status}`);
+        throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       }
       mutate();
     } catch (e: unknown) {
@@ -710,7 +588,7 @@ export default function ReservationsClient() {
       });
       if (!res.ok) {
         const j = await parseJsonSafe(res);
-        throw new Error(j?.error ?? `HTTP ${res.status}`);
+        throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       }
       setCancelTarget(null);
       setCancelReason("");
@@ -738,8 +616,6 @@ export default function ReservationsClient() {
     [reservations],
   );
   const sortedDates = useMemo(() => Object.keys(grouped).sort(), [grouped]);
-
-  const today = new Date().toISOString().slice(0, 10);
 
   if (loading) {
     return (
@@ -884,6 +760,18 @@ export default function ReservationsClient() {
                 className="text-xs text-muted hover:text-primary px-2 py-1 rounded-lg hover:bg-surface-hover"
               >
                 ✕ クリア
+              </button>
+            )}
+            {!dateFilter && (
+              <button
+                onClick={() => setShowPast((v) => !v)}
+                className={`text-xs font-medium px-3 py-2 rounded-xl border transition-colors shadow-sm ${
+                  showPast
+                    ? "border-accent/30 bg-accent-dim text-accent-text"
+                    : "border-border-subtle bg-surface text-secondary hover:bg-surface-hover"
+                }`}
+              >
+                過去の予約{showPast ? "を隠す" : "も表示"}
               </button>
             )}
           </div>
@@ -1072,31 +960,78 @@ export default function ReservationsClient() {
             </div>
           </div>
           {gcalConnected && gcalCalendars.length > 0 && (
-            <div className="flex items-center gap-2 pt-2 border-t border-border">
-              <label className="text-xs text-muted whitespace-nowrap">同期先カレンダー:</label>
-              <select
-                value={gcalCalendarId ?? "primary"}
-                onChange={async (e) => {
-                  const id = e.target.value;
-                  setGcalCalendarId(id);
-                  setGcalCalendarSaving(true);
-                  await fetch("/api/admin/gcal", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ action: "set-calendar", calendar_id: id }),
-                  });
-                  setGcalCalendarSaving(false);
-                }}
-                disabled={gcalCalendarSaving}
-                className="text-xs border border-border rounded px-2 py-1 flex-1 bg-background text-primary"
-              >
-                {gcalCalendars.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.summary}
-                    {c.primary ? " (メイン)" : ""}
-                  </option>
-                ))}
-              </select>
+            <div className="pt-2 border-t border-border space-y-2">
+              {/* 予約の書き込み先＝メイン（full 読み取りも兼ねる） */}
+              <div className="flex items-center gap-2">
+                <label className="text-xs text-muted whitespace-nowrap">予約の書き込み先:</label>
+                <select
+                  value={gcalCalendarId ?? "primary"}
+                  onChange={async (e) => {
+                    const id = e.target.value;
+                    setGcalCalendarId(id);
+                    setGcalCalendarSaving(true);
+                    await fetch("/api/admin/gcal", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ action: "set-calendar", calendar_id: id }),
+                    });
+                    setGcalCalendarSaving(false);
+                  }}
+                  disabled={gcalCalendarSaving}
+                  className="text-xs border border-border rounded px-2 py-1 flex-1 bg-background text-primary"
+                >
+                  {gcalCalendars.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.summary}
+                      {c.primary ? " (メイン)" : ""}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* 追加カレンダー（衝突チェック用・書き込み先以外）。個人予定は「予定あり(非公開)」で名前を隠せる。 */}
+              {gcalCalendars.filter((c) => c.id !== (gcalCalendarId ?? "primary")).length > 0 && (
+                <div className="space-y-1">
+                  <p className="text-xs text-muted">
+                    他のカレンダーもダブルブッキング防止に使う（個人予定は「予定あり(非公開)」で名前を隠せます）:
+                  </p>
+                  {gcalCalendars
+                    .filter((c) => c.id !== (gcalCalendarId ?? "primary"))
+                    .map((c) => {
+                      const mode = gcalReadCalendars.find((r) => r.id === c.id)?.mode ?? "off";
+                      return (
+                        <div key={c.id} className="flex items-center gap-2">
+                          <span className="text-xs text-primary flex-1 truncate">
+                            {c.summary}
+                            {c.primary ? " (メイン)" : ""}
+                          </span>
+                          <select
+                            value={mode}
+                            onChange={async (e) => {
+                              const m = e.target.value as "off" | "full" | "busy";
+                              const next = gcalReadCalendars.filter((r) => r.id !== c.id);
+                              if (m !== "off") next.push({ id: c.id, mode: m });
+                              setGcalReadCalendars(next);
+                              setGcalCalendarSaving(true);
+                              await fetch("/api/admin/gcal", {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({ action: "set-read-calendars", read_calendars: next }),
+                              });
+                              setGcalCalendarSaving(false);
+                            }}
+                            disabled={gcalCalendarSaving}
+                            className="text-xs border border-border rounded px-2 py-1 bg-background text-primary"
+                          >
+                            <option value="off">使わない</option>
+                            <option value="full">内容も同期</option>
+                            <option value="busy">予定あり(非公開)</option>
+                          </select>
+                        </div>
+                      );
+                    })}
+                </div>
+              )}
               {gcalCalendarSaving && <span className="text-xs text-muted">保存中...</span>}
             </div>
           )}
@@ -1165,12 +1100,18 @@ export default function ReservationsClient() {
                                       <span className={`w-1.5 h-1.5 rounded-full ${c.dot}`} />
                                       {c.label}
                                     </span>
-                                    {/* Time */}
-                                    {r.start_time && (
+                                    {/* Time / 終日 */}
+                                    {r.all_day ? (
                                       <span className="text-xs font-semibold text-primary bg-surface-hover rounded-full px-2.5 py-0.5">
-                                        🕐 {r.start_time.slice(0, 5)}
-                                        {r.end_time && ` – ${r.end_time.slice(0, 5)}`}
+                                        📅 終日
                                       </span>
+                                    ) : (
+                                      r.start_time && (
+                                        <span className="text-xs font-semibold text-primary bg-surface-hover rounded-full px-2.5 py-0.5">
+                                          {r.start_time.slice(0, 5)}
+                                          {r.end_time && ` – ${r.end_time.slice(0, 5)}`}
+                                        </span>
+                                      )
                                     )}
                                     {/* Mini progress bar for workflow-enabled reservations */}
                                     {r.workflow_template_id && (
@@ -1260,18 +1201,12 @@ export default function ReservationsClient() {
                                   >
                                     🧭 案件を開く
                                   </Link>
-                                  {/* Detail button (inline drawer) */}
+                                  {/* Quick actions toggle (edit / cancel / delete) — inline expando, not a workflow view */}
                                   <button
-                                    onClick={() => {
-                                      if (detailId === r.id) {
-                                        setDetailId(null);
-                                      } else {
-                                        openWorkflowDetail(r);
-                                      }
-                                    }}
+                                    onClick={() => setDetailId(detailId === r.id ? null : r.id)}
                                     className="text-[11px] text-muted hover:text-primary px-2 py-1 rounded-lg hover:bg-surface-hover transition-colors"
                                   >
-                                    詳細 {detailId === r.id ? "▲" : "▼"}
+                                    操作 {detailId === r.id ? "▲" : "▼"}
                                   </button>
 
                                   {/* Next status button */}
@@ -1286,15 +1221,9 @@ export default function ReservationsClient() {
                                 </div>
                               </div>
 
-                              {/* Detail panel */}
+                              {/* Quick actions panel (edit / cancel / delete) */}
                               {detailId === r.id && (
                                 <div className="mt-3 pt-3 border-t border-border-subtle flex flex-wrap gap-2">
-                                  <Link
-                                    href={`/admin/jobs/${r.id}`}
-                                    className="px-3 py-1.5 text-xs rounded-lg border border-accent/30 bg-accent-dim text-accent-text hover:bg-accent/10 transition-colors font-semibold"
-                                  >
-                                    🧭 案件ワークフローを開く
-                                  </Link>
                                   {r.status !== "cancelled" && r.status !== "completed" && (
                                     <button
                                       onClick={() => {
@@ -1448,21 +1377,40 @@ export default function ReservationsClient() {
                         <span className={labelTextCls}>開始</span>
                         <input
                           type="time"
-                          value={formStartTime}
+                          value={formAllDay ? "" : formStartTime}
                           onChange={(e) => setFormStartTime(e.target.value)}
-                          className={inputCls}
+                          disabled={formAllDay}
+                          className={`${inputCls} disabled:opacity-50 disabled:cursor-not-allowed`}
                         />
                       </label>
                       <label className={labelCls}>
                         <span className={labelTextCls}>終了</span>
                         <input
                           type="time"
-                          value={formEndTime}
+                          value={formAllDay ? "" : formEndTime}
                           onChange={(e) => setFormEndTime(e.target.value)}
-                          className={inputCls}
+                          disabled={formAllDay}
+                          className={`${inputCls} disabled:opacity-50 disabled:cursor-not-allowed`}
                         />
                       </label>
                     </div>
+
+                    {/* 終日予約（時間指定なし・1日お預かり） */}
+                    <label className="flex items-center gap-2 cursor-pointer select-none -mt-1">
+                      <input
+                        type="checkbox"
+                        checked={formAllDay}
+                        onChange={(e) => {
+                          setFormAllDay(e.target.checked);
+                          if (e.target.checked) {
+                            setFormStartTime("");
+                            setFormEndTime("");
+                          }
+                        }}
+                        className="h-4 w-4 rounded border-border-default text-accent focus:ring-accent/30"
+                      />
+                      <span className="text-sm text-secondary">終日（時間指定なし・1日お預かり）</span>
+                    </label>
 
                     {/* Customer */}
                     <label className={labelCls}>
@@ -1858,109 +1806,6 @@ export default function ReservationsClient() {
               >
                 キャンセル確定
               </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ─── Workflow Detail Drawer ─── */}
-      {detailId && detailReservation && (
-        <div
-          className="fixed inset-0 z-50 flex justify-end bg-black/40 backdrop-blur-sm"
-          onClick={() => setDetailId(null)}
-        >
-          <div
-            className="w-full max-w-md bg-surface shadow-2xl h-full overflow-y-auto"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="sticky top-0 bg-surface border-b border-border-subtle p-4 flex items-center justify-between z-10">
-              <div>
-                <div className="text-xs text-muted">予約詳細</div>
-                <div className="text-sm font-semibold text-primary">{detailReservation.title}</div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setDetailId(null)}
-                className="p-1 rounded-lg hover:bg-surface-hover text-muted"
-              >
-                ✕
-              </button>
-            </div>
-            <div className="p-4 space-y-4">
-              {/* Summary */}
-              <div className="grid grid-cols-2 gap-3 text-xs">
-                <div>
-                  <span className="text-muted">日時</span>
-                  <div className="font-medium text-primary">{formatDate(detailReservation.scheduled_date)}</div>
-                </div>
-                <div>
-                  <span className="text-muted">ステータス</span>
-                  <div>
-                    <Badge variant={cfg(detailReservation.status).variant}>{cfg(detailReservation.status).label}</Badge>
-                  </div>
-                </div>
-                <div>
-                  <span className="text-muted">顧客</span>
-                  <div className="font-medium text-primary">{detailReservation.customer_name ?? "-"}</div>
-                </div>
-                <div>
-                  <span className="text-muted">車両</span>
-                  <div className="font-medium text-primary">{detailReservation.vehicle_label ?? "-"}</div>
-                </div>
-              </div>
-
-              {/* 案件の連鎖タイムライン（予約→施工→証明書→請求→フォロー） */}
-              {detailTimeline.length > 0 && (
-                <div className="space-y-2">
-                  <div className="text-xs font-semibold tracking-[0.18em] text-muted">案件の流れ</div>
-                  <CaseTimeline steps={detailTimeline} onAction={runCaseAction} busyKind={caseActionBusy} />
-                </div>
-              )}
-
-              {/* Workflow */}
-              {detailReservation.workflow_template_id ? (
-                <WorkflowStepper
-                  reservationId={detailReservation.id}
-                  templateId={detailReservation.workflow_template_id}
-                  steps={detailSteps}
-                  stepLogs={detailStepLogs}
-                  currentStepOrder={detailReservation.current_step_order}
-                  progressPct={detailReservation.progress_pct}
-                  status={detailReservation.status}
-                  onAdvance={(note) => handleAdvance(detailReservation.id, note)}
-                />
-              ) : (
-                <div className="glass-card p-4 space-y-3">
-                  <div className="text-xs font-semibold text-muted">ワークフロー未設定</div>
-                  <p className="text-xs text-muted">テンプレートを選択してワークフローを開始できます。</p>
-                  {detailTemplateLoading ? (
-                    <div className="text-xs text-muted">読み込み中...</div>
-                  ) : (
-                    <>
-                      <select
-                        className="select-field text-sm"
-                        value={workflowTemplateId}
-                        onChange={(e) => setWorkflowTemplateId(e.target.value)}
-                      >
-                        <option value="">テンプレートを選択</option>
-                        {detailTemplates.map((t) => (
-                          <option key={t.id} value={t.id}>
-                            {t.name}（{t.steps.length}ステップ）
-                          </option>
-                        ))}
-                      </select>
-                      <button
-                        type="button"
-                        className="btn-primary w-full text-sm"
-                        disabled={!workflowTemplateId}
-                        onClick={() => handleStartWorkflow(detailReservation.id)}
-                      >
-                        ワークフロー開始
-                      </button>
-                    </>
-                  )}
-                </div>
-              )}
             </div>
           </div>
         </div>

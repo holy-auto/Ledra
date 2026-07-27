@@ -20,6 +20,14 @@ type Store = {
   created_at: string;
 };
 
+type TenantMember = { user_id: string; display_name: string | null; email: string | null };
+type StoreMember = {
+  user_id: string;
+  role: "manager" | "staff";
+  display_name: string | null;
+  email: string | null;
+};
+
 export default function StoresClient() {
   const [stores, setStores] = useState<Store[]>([]);
   const [loading, setLoading] = useState(true);
@@ -34,6 +42,15 @@ export default function StoresClient() {
   const [formPhone, setFormPhone] = useState("");
   const [formEmail, setFormEmail] = useState("");
   const [formManager, setFormManager] = useState("");
+
+  // 担当者アサイン
+  const [tenantMembers, setTenantMembers] = useState<TenantMember[]>([]);
+  const [membersStoreId, setMembersStoreId] = useState<string | null>(null);
+  const [storeMembers, setStoreMembers] = useState<StoreMember[]>([]);
+  const [membersLoading, setMembersLoading] = useState(false);
+  const [addMemberUserId, setAddMemberUserId] = useState("");
+  const [addMemberRole, setAddMemberRole] = useState<"manager" | "staff">("staff");
+  const [memberSaving, setMemberSaving] = useState(false);
 
   const fetchStores = useCallback(async () => {
     try {
@@ -51,6 +68,81 @@ export default function StoresClient() {
   useEffect(() => {
     fetchStores();
   }, [fetchStores]);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch("/api/admin/members", { cache: "no-store" });
+        if (!res.ok) return;
+        const data = await res.json();
+        setTenantMembers(data.members ?? []);
+      } catch {}
+    })();
+  }, []);
+
+  const fetchStoreMembers = useCallback(async (storeId: string) => {
+    setMembersLoading(true);
+    try {
+      const res = await fetch(`/api/admin/stores/${storeId}/members`, { cache: "no-store" });
+      if (!res.ok) throw new Error("Failed to fetch");
+      const data = await res.json();
+      setStoreMembers(data.members ?? []);
+    } catch {
+      setStoreMembers([]);
+    } finally {
+      setMembersLoading(false);
+    }
+  }, []);
+
+  const toggleMembersPanel = (store: Store) => {
+    if (membersStoreId === store.id) {
+      setMembersStoreId(null);
+      return;
+    }
+    setMembersStoreId(store.id);
+    setAddMemberUserId("");
+    setAddMemberRole("staff");
+    void fetchStoreMembers(store.id);
+  };
+
+  const addStoreMember = async () => {
+    if (!membersStoreId || !addMemberUserId) return;
+    setMemberSaving(true);
+    try {
+      const res = await fetch(`/api/admin/stores/${membersStoreId}/members`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_id: addMemberUserId, role: addMemberRole }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "追加に失敗しました");
+      }
+      setAddMemberUserId("");
+      await fetchStoreMembers(membersStoreId);
+      fetchStores();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "追加に失敗しました");
+    } finally {
+      setMemberSaving(false);
+    }
+  };
+
+  const removeStoreMember = async (userId: string) => {
+    if (!membersStoreId) return;
+    try {
+      const res = await fetch(`/api/admin/stores/${membersStoreId}/members`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_id: userId }),
+      });
+      if (!res.ok) throw new Error("解除に失敗しました");
+      await fetchStoreMembers(membersStoreId);
+      fetchStores();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "解除に失敗しました");
+    }
+  };
 
   const resetForm = () => {
     setFormName("");
@@ -145,7 +237,10 @@ export default function StoresClient() {
         actions={
           !showForm ? (
             <button
-              onClick={() => { resetForm(); setShowForm(true); }}
+              onClick={() => {
+                resetForm();
+                setShowForm(true);
+              }}
               className="btn-primary"
             >
               + 新規店舗
@@ -154,18 +249,12 @@ export default function StoresClient() {
         }
       />
 
-      {error && (
-        <div className="glass-card p-3 text-sm text-red-400 glow-red">
-          {error}
-        </div>
-      )}
+      {error && <div className="glass-card p-3 text-sm text-red-400 glow-red">{error}</div>}
 
       {/* Create/Edit Form */}
       {showForm && (
         <div className="glass-card p-5 space-y-4">
-          <h3 className="text-sm font-semibold text-primary">
-            {editingStore ? "店舗を編集" : "新規店舗を追加"}
-          </h3>
+          <h3 className="text-sm font-semibold text-primary">{editingStore ? "店舗を編集" : "新規店舗を追加"}</h3>
           <form onSubmit={handleSubmit} className="space-y-3">
             <div className="grid gap-3 sm:grid-cols-2">
               <div>
@@ -263,16 +352,12 @@ export default function StoresClient() {
                       </span>
                     )}
                   </div>
-                  {store.manager_name && (
-                    <p className="mt-0.5 text-xs text-secondary">店長: {store.manager_name}</p>
-                  )}
+                  {store.manager_name && <p className="mt-0.5 text-xs text-secondary">店長: {store.manager_name}</p>}
                 </div>
                 <span className="text-xs text-muted">{store.member_count}名</span>
               </div>
 
-              {store.address && (
-                <p className="text-xs text-secondary">{store.address}</p>
-              )}
+              {store.address && <p className="text-xs text-secondary">{store.address}</p>}
 
               <div className="flex flex-wrap gap-2 text-xs text-secondary">
                 {store.phone && <span>{store.phone}</span>}
@@ -280,10 +365,7 @@ export default function StoresClient() {
               </div>
 
               <div className="flex gap-2 border-t border-border-subtle pt-2">
-                <button
-                  onClick={() => openEdit(store)}
-                  className="text-xs font-medium text-accent hover:underline"
-                >
+                <button onClick={() => openEdit(store)} className="text-xs font-medium text-accent hover:underline">
                   編集
                 </button>
                 <button
@@ -291,6 +373,12 @@ export default function StoresClient() {
                   className="text-xs font-medium text-secondary hover:underline"
                 >
                   {store.is_active ? "無効にする" : "有効にする"}
+                </button>
+                <button
+                  onClick={() => toggleMembersPanel(store)}
+                  className="text-xs font-medium text-secondary hover:underline"
+                >
+                  担当者 {membersStoreId === store.id ? "▲" : "▼"}
                 </button>
                 {!store.is_default && (
                   <button
@@ -301,6 +389,72 @@ export default function StoresClient() {
                   </button>
                 )}
               </div>
+
+              {/* 担当者アサイン */}
+              {membersStoreId === store.id && (
+                <div className="space-y-2 border-t border-border-subtle pt-3">
+                  {membersLoading ? (
+                    <p className="text-[11px] text-muted">読み込み中…</p>
+                  ) : (
+                    <>
+                      {storeMembers.length === 0 && (
+                        <p className="text-[11px] text-muted">担当者はまだ割り当てられていません。</p>
+                      )}
+                      {storeMembers.map((m) => (
+                        <div key={m.user_id} className="flex items-center justify-between gap-2 text-xs">
+                          <span className="text-secondary">
+                            {m.display_name ?? m.email ?? m.user_id.slice(0, 8)}
+                            <span
+                              className={`ml-2 rounded px-1.5 py-0.5 text-[10px] ${
+                                m.role === "manager" ? "bg-accent-dim text-accent-text" : "bg-surface-active text-muted"
+                              }`}
+                            >
+                              {m.role === "manager" ? "店長" : "担当"}
+                            </span>
+                          </span>
+                          <button
+                            onClick={() => removeStoreMember(m.user_id)}
+                            className="text-[11px] text-red-500 hover:underline"
+                          >
+                            解除
+                          </button>
+                        </div>
+                      ))}
+                      <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                        <select
+                          className="select-field flex-1 min-w-[120px] text-xs py-1"
+                          value={addMemberUserId}
+                          onChange={(e) => setAddMemberUserId(e.target.value)}
+                        >
+                          <option value="">メンバーを選択...</option>
+                          {tenantMembers
+                            .filter((tm) => !storeMembers.some((sm) => sm.user_id === tm.user_id))
+                            .map((tm) => (
+                              <option key={tm.user_id} value={tm.user_id}>
+                                {tm.display_name ?? tm.email ?? tm.user_id.slice(0, 8)}
+                              </option>
+                            ))}
+                        </select>
+                        <select
+                          className="select-field text-xs py-1"
+                          value={addMemberRole}
+                          onChange={(e) => setAddMemberRole(e.target.value as "manager" | "staff")}
+                        >
+                          <option value="staff">担当</option>
+                          <option value="manager">店長</option>
+                        </select>
+                        <button
+                          onClick={addStoreMember}
+                          disabled={!addMemberUserId || memberSaving}
+                          className="btn-secondary text-xs px-2 py-1"
+                        >
+                          追加
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
             </div>
           ))}
         </div>

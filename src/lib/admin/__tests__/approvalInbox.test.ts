@@ -63,6 +63,56 @@ describe("buildApprovalInbox", () => {
     expect(sections.find((s) => s.key === "purchase_orders")?.items[0].title).toBe("発注書");
   });
 
+  it("shows AI confidence as why only when the source reservation has it", () => {
+    const { sections } = buildApprovalInbox({
+      certificates: [
+        { public_id: "C-with-confidence", confidence: 0.85, missingInfo: ["走行距離"] },
+        { public_id: "C-without-confidence" },
+      ],
+      purchaseOrders: [],
+      invoices: [],
+    });
+    const items = sections.find((s) => s.key === "certificates")?.items ?? [];
+    expect(items.find((i) => i.id === "C-with-confidence")?.why).toBe("AI信頼度 85% ・未確認: 走行距離");
+    expect(items.find((i) => i.id === "C-without-confidence")?.why).toBeUndefined();
+  });
+
+  it("does not throw when missingInfo (untyped JSONB) contains a non-string entry", () => {
+    const { sections } = buildApprovalInbox({
+      certificates: [
+        // @ts-expect-error — simulating a malformed/legacy AI snapshot from JSONB
+        { public_id: "C-bad-data", confidence: 0.6, missingInfo: ["走行距離", 42, null] },
+      ],
+      purchaseOrders: [],
+      invoices: [],
+    });
+    const item = sections.find((s) => s.key === "certificates")?.items[0];
+    expect(item?.why).toBe("AI信頼度 60% ・未確認: 走行距離");
+  });
+
+  it("uses the purchase order's own note as why, never a fabricated number", () => {
+    const { sections } = buildApprovalInbox({
+      certificates: [],
+      purchaseOrders: [
+        { id: "po-with-note", note: "在庫下限割れにより自動作成された発注ドラフトです。" },
+        { id: "po-without-note" },
+      ],
+      invoices: [],
+    });
+    const items = sections.find((s) => s.key === "purchase_orders")?.items ?? [];
+    expect(items.find((i) => i.id === "po-with-note")?.why).toBe("在庫下限割れにより自動作成された発注ドラフトです。");
+    expect(items.find((i) => i.id === "po-without-note")?.why).toBeUndefined();
+  });
+
+  it("never shows a why for invoices (no reliable auto-vs-manual signal exists)", () => {
+    const { sections } = buildApprovalInbox({
+      certificates: [],
+      purchaseOrders: [],
+      invoices: [{ id: "doc-1", doc_number: "INV-9", recipient_name: "山田", total: 5000 }],
+    });
+    expect(sections.find((s) => s.key === "invoices")?.items[0].why).toBeUndefined();
+  });
+
   it("orders sections certificates → purchase_orders → invoices and sums total", () => {
     const { sections, total } = buildApprovalInbox({
       certificates: [{ public_id: "C1" }, { public_id: "C2" }],

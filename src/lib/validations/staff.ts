@@ -39,6 +39,14 @@ const skillsArray = z
     return out;
   });
 
+const nullableRate = z
+  .number()
+  .min(0)
+  .max(1)
+  .nullable()
+  .optional()
+  .transform((v) => (v == null || isNaN(v) ? null : v));
+
 export const staffCreateSchema = z.object({
   name: z.string().trim().min(1, "名前は必須です。").max(100),
   kind: z.enum(["internal", "external"]).default("internal"),
@@ -49,6 +57,8 @@ export const staffCreateSchema = z.object({
   color: nullableText(20),
   note: nullableText(1000),
   is_active: z.boolean().default(true),
+  /** レス率（0〜1）。外注請求書の金額自動計算に使うデフォルト値。 */
+  commission_rate: nullableRate,
 });
 
 export const staffUpdateSchema = staffCreateSchema.partial().extend({

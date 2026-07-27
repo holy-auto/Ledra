@@ -20,6 +20,39 @@ import {
   type DocumentRow,
 } from "@/types/document";
 import DocumentForm from "./DocumentForm";
+import ShareDocumentModal from "@/components/documents/ShareDocumentModal";
+import CustomerSummaryPanel from "./CustomerSummaryPanel";
+import { canConsolidateDocuments } from "@/lib/documents/consolidateEligibility";
+
+const MAX_BULK_SHARE = 20;
+
+type PeriodFilter = "all" | "week" | "month" | "year";
+
+/** 期間プリセットから発行日 (issued_at) の絞り込み範囲 (YYYY-MM-DD) を算出する。週は月曜起点。 */
+function periodRange(period: PeriodFilter): { from: string; to: string } | null {
+  if (period === "all") return null;
+  const now = new Date();
+  // toISOString() はUTCに変換するため、JST等UTC+の環境では日付がズレる
+  // （例: 7/1 00:00 JSTはUTCでは6/30 15:00）。ローカル日付をそのまま文字列化する。
+  const toStr = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  if (period === "year") {
+    return { from: `${now.getFullYear()}-01-01`, to: `${now.getFullYear()}-12-31` };
+  }
+  if (period === "month") {
+    const from = new Date(now.getFullYear(), now.getMonth(), 1);
+    const to = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    return { from: toStr(from), to: toStr(to) };
+  }
+  // week: 月曜始まり
+  const day = now.getDay();
+  const diffToMonday = day === 0 ? 6 : day - 1;
+  const from = new Date(now);
+  from.setDate(now.getDate() - diffToMonday);
+  const to = new Date(from);
+  to.setDate(from.getDate() + 6);
+  return { from: toStr(from), to: toStr(to) };
+}
 
 type Stats = { total: number; unpaid_amount: number };
 type DocumentsData = { documents: DocumentRow[]; stats: Stats };
@@ -30,18 +63,25 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
   const prefillCustomerId = searchParams.get("customer_id") ?? "";
   const prefillVehicleId = searchParams.get("vehicle_id") ?? "";
   const prefillReservationId = searchParams.get("reservation_id") ?? "";
+  const prefillStaffMemberId = searchParams.get("staff_id") ?? "";
   const autoOpenForm = searchParams.get("create") === "1";
 
   const [typeFilter, setTypeFilter] = useState<string>(initialTypeFilter ?? "all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [activeTypeFilter, setActiveTypeFilter] = useState<string>(initialTypeFilter ?? "all");
   const [activeStatusFilter, setActiveStatusFilter] = useState<string>("all");
+  const [periodFilter, setPeriodFilter] = useState<PeriodFilter>("all");
 
   // Build SWR key
   const swrKey = (() => {
     const params = new URLSearchParams();
     if (activeTypeFilter && activeTypeFilter !== "all") params.set("doc_type", activeTypeFilter);
     if (activeStatusFilter && activeStatusFilter !== "all") params.set("status", activeStatusFilter);
+    const range = periodRange(periodFilter);
+    if (range) {
+      params.set("date_from", range.from);
+      params.set("date_to", range.to);
+    }
     return `/api/admin/documents?${params.toString()}`;
   })();
 
@@ -68,6 +108,12 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
 
+  // 一括送付
+  const [bulkShareOpen, setBulkShareOpen] = useState(false);
+
+  // 合算請求書の作成
+  const [creatingConsolidated, setCreatingConsolidated] = useState(false);
+
   // 入金記録（請求書のみ）
   const [paymentTarget, setPaymentTarget] = useState<string | null>(null);
   const [paymentDate, setPaymentDate] = useState(new Date().toISOString().slice(0, 10));
@@ -82,8 +128,9 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
   };
 
   const isDeletable = (doc: DocumentRow) => isDocumentDeletable(doc.doc_type, doc.status);
-  const deletableDocs = docs.filter(isDeletable);
-  const allSelected = deletableDocs.length > 0 && deletableDocs.every((d) => selectedIds.has(d.id));
+  const isSendable = (doc: DocumentRow) => !!doc.customer_id && doc.status !== "cancelled" && doc.status !== "rejected";
+  const selectableDocs = docs.filter((d) => isDeletable(d) || isSendable(d));
+  const allSelected = selectableDocs.length > 0 && selectableDocs.every((d) => selectedIds.has(d.id));
 
   const toggleSelected = (id: string) => {
     setSelectedIds((prev) => {
@@ -95,8 +142,31 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
   };
 
   const toggleSelectAll = () => {
-    setSelectedIds(allSelected ? new Set() : new Set(deletableDocs.map((d) => d.id)));
+    setSelectedIds(allSelected ? new Set() : new Set(selectableDocs.map((d) => d.id)));
   };
+
+  const selectedDocs = docs.filter((d) => selectedIds.has(d.id));
+  const selectedDeletableCount = selectedDocs.filter(isDeletable).length;
+  const selectedCustomerIds = new Set(selectedDocs.map((d) => d.customer_id).filter(Boolean));
+  const canBulkSend =
+    selectedDocs.length > 0 &&
+    selectedDocs.every((d) => d.customer_id) &&
+    selectedCustomerIds.size === 1 &&
+    selectedDocs.length <= MAX_BULK_SHARE + 1;
+  const bulkSendDisabledReason =
+    selectedDocs.length === 0
+      ? undefined
+      : selectedCustomerIds.size > 1
+        ? "同じ顧客の帳票のみ一括送付できます"
+        : selectedDocs.length > MAX_BULK_SHARE + 1
+          ? `一度に送付できるのは${MAX_BULK_SHARE + 1}件までです`
+          : !selectedDocs.every((d) => d.customer_id)
+            ? "顧客が未設定の帳票は送付できません"
+            : undefined;
+
+  const consolidateEligibility = canConsolidateDocuments(selectedDocs);
+  const canConsolidate = consolidateEligibility.ok;
+  const consolidateDisabledReason = consolidateEligibility.reason;
 
   const handleDelete = async (id: string) => {
     if (!confirm("この帳票を削除しますか？")) return;
@@ -124,7 +194,7 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
   };
 
   const handleBulkDelete = async () => {
-    const ids = Array.from(selectedIds);
+    const ids = docs.filter((d) => selectedIds.has(d.id) && isDeletable(d)).map((d) => d.id);
     if (ids.length === 0) return;
     if (!confirm(`選択した ${ids.length} 件の帳票を削除しますか？`)) return;
     setBulkDeleting(true);
@@ -145,7 +215,58 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
     }
   };
 
+  const handleCreateConsolidated = async () => {
+    if (!canConsolidate) return;
+    if (!confirm(`選択した ${selectedDocs.length} 件を合算して請求書を作成しますか？`)) return;
+    setCreatingConsolidated(true);
+    try {
+      const customerId = selectedDocs[0].customer_id;
+      // 各元帳票の合計金額（税込）を1明細行として並べる。複数税率が混在する場合でも
+      // ponytail: 税率区分は一律 10% で計算する（元帳票ごとの税率差異は反映しない）。
+      // 混在税率を厳密に扱う場合は元帳票ごとに tax_breakdown を合算する処理へ拡張が必要。
+      const items = selectedDocs.map((d) => ({
+        item_type: "item",
+        description: `${docTypeLabel(d.doc_type)} ${d.doc_number}`,
+        quantity: 1,
+        unit_price: d.total,
+      }));
+      const res = await fetch("/api/admin/documents", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          doc_type: "consolidated_invoice",
+          customer_id: customerId,
+          items,
+          tax_rate: 10,
+          is_tax_inclusive: true,
+          status: "draft",
+          source_document_id: selectedDocs[0].id,
+          meta_json: { source_document_ids: selectedDocs.map((d) => d.id) },
+          note: `合算対象: ${selectedDocs.map((d) => d.doc_number).join("、")}`,
+        }),
+      });
+      const j = await parseJsonSafe(res);
+      if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
+      setSelectedIds(new Set());
+      mutate();
+      router.push(`/admin/documents/${j.document.id}`);
+    } catch (e: any) {
+      alert("合算請求書の作成に失敗しました: " + (e?.message ?? String(e)));
+    } finally {
+      setCreatingConsolidated(false);
+    }
+  };
+
   const docTypeLabel = (dt: string) => DOC_TYPES[dt as DocType]?.label ?? dt;
+
+  // CustomerSummaryPanel は現在の一覧フィルタと同じ docs を受け取るため、
+  // 絞り込み中であることを明示しないと「未入金額が0件」等の集計が誤解される。
+  const filterScopeLabel = [
+    activeTypeFilter !== "all" ? docTypeLabel(activeTypeFilter) : null,
+    activeStatusFilter !== "all" ? statusLabel(activeStatusFilter) : null,
+  ]
+    .filter(Boolean)
+    .join(" / ");
 
   const defaultDocType: DocType =
     initialTypeFilter && initialTypeFilter in DOC_TYPES ? (initialTypeFilter as DocType) : "estimate";
@@ -243,6 +364,9 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
               );
             })()}
 
+          {/* 顧客別集計 */}
+          <CustomerSummaryPanel docs={docs} filterScopeLabel={filterScopeLabel || null} />
+
           {/* Filters */}
           <section className="glass-card p-5">
             <div className="flex gap-4 items-end flex-wrap">
@@ -275,6 +399,22 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
                   ))}
                 </select>
               </div>
+              <div className="space-y-1">
+                <label className="text-xs text-muted">期間</label>
+                <select
+                  className="select-field"
+                  value={periodFilter}
+                  onChange={(e) => {
+                    setPeriodFilter(e.target.value as PeriodFilter);
+                    setSelectedIds(new Set());
+                  }}
+                >
+                  <option value="all">すべて</option>
+                  <option value="week">今週</option>
+                  <option value="month">今月</option>
+                  <option value="year">今年</option>
+                </select>
+              </div>
             </div>
           </section>
 
@@ -288,6 +428,7 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
               prefillCustomerId={prefillCustomerId}
               prefillVehicleId={prefillVehicleId}
               prefillReservationId={prefillReservationId}
+              prefillStaffMemberId={prefillStaffMemberId}
               onSaved={(created) => {
                 // 作成後はそのまま書類詳細へ遷移し、確認・編集・PDF出力へ繋げる。
                 // （どの書類作成画面から来ても、作成→詳細の導線を揃える）
@@ -304,7 +445,7 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
             <div className="border-b border-border-subtle p-5 flex items-center justify-between flex-wrap gap-3">
               <div className="text-xs font-semibold tracking-[0.18em] text-muted">帳票一覧</div>
               {selectedIds.size > 0 && (
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-xs text-muted">{selectedIds.size} 件選択中</span>
                   <button
                     type="button"
@@ -315,11 +456,30 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
                   </button>
                   <button
                     type="button"
+                    className="btn-primary px-3 py-1 text-xs"
+                    disabled={!canBulkSend}
+                    title={bulkSendDisabledReason}
+                    onClick={() => setBulkShareOpen(true)}
+                  >
+                    選択した帳票を送付
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-secondary px-3 py-1 text-xs"
+                    disabled={!canConsolidate || creatingConsolidated}
+                    title={consolidateDisabledReason}
+                    onClick={handleCreateConsolidated}
+                  >
+                    {creatingConsolidated ? "作成中…" : "合算請求書を作成"}
+                  </button>
+                  <button
+                    type="button"
                     className="btn-danger px-3 py-1 text-xs"
-                    disabled={bulkDeleting}
+                    disabled={bulkDeleting || selectedDeletableCount === 0}
+                    title={selectedDeletableCount === 0 ? "削除できる帳票が選択されていません" : undefined}
                     onClick={handleBulkDelete}
                   >
-                    {bulkDeleting ? "削除中…" : "選択した帳票を削除"}
+                    {bulkDeleting ? "削除中…" : `選択した帳票を削除 (${selectedDeletableCount})`}
                   </button>
                 </div>
               )}
@@ -332,7 +492,7 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
                       <input
                         type="checkbox"
                         checked={allSelected}
-                        disabled={deletableDocs.length === 0}
+                        disabled={selectableDocs.length === 0}
                         onChange={toggleSelectAll}
                         aria-label="すべて選択"
                       />
@@ -356,7 +516,7 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
                   {docs.map((doc) => (
                     <tr key={doc.id} className="hover:bg-surface-hover/60">
                       <td className="px-5 py-3.5">
-                        {isDeletable(doc) && (
+                        {(isDeletable(doc) || isSendable(doc)) && (
                           <input
                             type="checkbox"
                             checked={selectedIds.has(doc.id)}
@@ -431,6 +591,25 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
             </div>
           </section>
         </>
+      )}
+
+      {/* 一括送付モーダル */}
+      {bulkShareOpen && selectedDocs.length > 0 && (
+        <ShareDocumentModal
+          open={bulkShareOpen}
+          onClose={() => setBulkShareOpen(false)}
+          document={selectedDocs[0]}
+          customerName={selectedDocs[0].customer_name}
+          initialAdditionalDocumentIds={selectedDocs
+            .slice(1)
+            .filter((d) => d.status === "draft")
+            .map((d) => d.id)}
+          onShared={() => {
+            setBulkShareOpen(false);
+            setSelectedIds(new Set());
+            mutate();
+          }}
+        />
       )}
 
       {/* Payment Dialog（請求書のみ） */}

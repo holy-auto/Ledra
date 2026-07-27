@@ -24,8 +24,12 @@ export interface QuoteFromVehicleInput {
   serviceCategory: string;
   /** 同テナント / 同カテゴリの直近請求書 1〜5 件 */
   pastInvoices: Array<{ items: PastInvoiceLine[]; total: number }>;
-  /** 任意で店舗が指定したいベースメニュー (これに価格を貼る) */
-  baseMenu?: Array<{ name: string; default_price?: number | null }>;
+  /**
+   * 任意で店舗が指定したいベースメニュー (これに価格を貼る)。
+   * size_adjusted=true は既に車両サイズ別価格を解決済みの明細で、車両サイズ係数を
+   * 二重に掛けないようにする (menu_items のサイズ別価格から来た価格)。
+   */
+  baseMenu?: Array<{ name: string; default_price?: number | null; size_adjusted?: boolean }>;
 }
 
 const QuoteSchema = z.object({
@@ -80,6 +84,8 @@ export function extractInvoiceLines(
 
 export function buildDeterministicQuote(input: QuoteFromVehicleInput): QuoteFromVehicleResult {
   const items: QuoteFromVehicleResult["items"] = [];
+  // 車両サイズ係数を掛けない明細のインデックス (既にサイズ別価格を解決済みのもの)。
+  const sizeAdjustedIdx = new Set<number>();
   // 同カテゴリ過去請求書の中央値を採用 (外れ値耐性)
   if (input.baseMenu && input.baseMenu.length > 0) {
     for (const m of input.baseMenu) {
@@ -87,6 +93,7 @@ export function buildDeterministicQuote(input: QuoteFromVehicleInput): QuoteFrom
         m.default_price && m.default_price > 0
           ? Math.round(m.default_price)
           : (medianUnitPriceFor(input.pastInvoices, m.name) ?? 0);
+      if (m.size_adjusted) sizeAdjustedIdx.add(items.length);
       items.push({ description: m.name, quantity: 1, unit_price: price });
     }
   } else if (input.pastInvoices.length > 0) {
@@ -108,10 +115,13 @@ export function buildDeterministicQuote(input: QuoteFromVehicleInput): QuoteFrom
     items.push({ description: `${input.serviceCategory} 一式`, quantity: 1, unit_price: 0 });
   }
 
-  // 車両サイズ係数: SS<S<M<L<LL<XL で +0/+5/+10/+15/+20/+25 % の単純倍率
+  // 車両サイズ係数: SS<S<M<L<LL<XL で +0/+5/+10/+15/+20/+25 % の単純倍率。
+  // サイズ別価格を既に解決済みの明細 (sizeAdjustedIdx) には掛けない (二重計上の回避)。
   const sizeUplift = sizeMultiplier(input.vehicle.size_class);
   if (sizeUplift !== 1) {
-    for (const item of items) item.unit_price = Math.round(item.unit_price * sizeUplift);
+    items.forEach((item, i) => {
+      if (!sizeAdjustedIdx.has(i)) item.unit_price = Math.round(item.unit_price * sizeUplift);
+    });
   }
 
   const total = items.reduce((s, i) => s + i.unit_price * i.quantity, 0);
@@ -165,14 +175,17 @@ export async function generateQuoteFromVehicle(
     );
     const parsed = msg.parsed_output;
     if (!parsed || parsed.items.length === 0) return baseline;
+    const items = parsed.items.map((i) => ({
+      description: i.description,
+      quantity: i.quantity,
+      unit_price: i.unit_price,
+      rationale: i.rationale,
+    }));
     return {
-      items: parsed.items.map((i) => ({
-        description: i.description,
-        quantity: i.quantity,
-        unit_price: i.unit_price,
-        rationale: i.rationale,
-      })),
-      total: parsed.total,
+      items,
+      // total は LLM 出力(parsed.total)を信用せず明細から再導出する。
+      // モデルの算術ミスで合計だけズレた見積が、フォーム初期値や顧客向け概算レンジに乗るのを防ぐ。
+      total: items.reduce((s, i) => s + i.unit_price * i.quantity, 0),
       validity_days: parsed.validity_days,
       terms: parsed.terms || baseline.terms,
       confidence: parsed.confidence,

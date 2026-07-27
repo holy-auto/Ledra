@@ -46,11 +46,13 @@ export type AutomationActionKey =
   | "thickness.auto_detect"
   | "workflow.auto_propose_on_intake"
   | "workflow.auto_apply_on_intake"
+  | "mechanic.auto_assign_suggest"
   | "job.auto_next_action"
   | "inventory.auto_draft_reorder"
   | "parts.auto_reconcile_delivery_note"
   | "photo.auto_tampering_check"
   | "photo.auto_quality_check"
+  | "photo.auto_classify_stage"
   | "insurer_case.auto_fraud_score"
   | "insurer_case.auto_summary"
   | "insurer_case.auto_assign_suggest"
@@ -220,6 +222,15 @@ export const AUTOMATION_ACTIONS: readonly AutomationActionDef[] = [
     guard: "AI 有効 + Standard プラン以上 + workflow.auto_propose_on_intake 有効 + 一致テンプレートあり",
   },
   {
+    key: "mechanic.auto_assign_suggest",
+    workflow: "job",
+    label: "案件登録時に担当メカニックの候補を自動提案",
+    description:
+      "案件 (予約) が登録された時点で、メニュー内容から必要スキルを推定し、職人の得意スキル (staff_members.skills) と過去の同種施工の担当履歴から担当メカニック候補を AI が提案する。提案を保存するだけで自動割当はしない — 誰が施工するかの確定は必ずスタッフが 1 タップで行う (人が判断)。",
+    defaultEnabled: false,
+    guard: "AI 有効 + Standard プラン以上 (ai_job_assist) + 稼働中の職人 (staff_members) 登録済み + 未割当の案件",
+  },
+  {
     key: "job.auto_next_action",
     workflow: "job",
     label: "案件の状態が変わったら次アクションを自動提案",
@@ -263,6 +274,15 @@ export const AUTOMATION_ACTIONS: readonly AutomationActionDef[] = [
       "施工写真がアップロードされた時点で、Ledra Standard 基準に照らした写真品質・枚数・記入項目の抜け漏れを自動審査し、スコアと指摘を注釈として保存する。発行・金額・本人確認には関与しないため安全 (人は発行前に確認できる)。発行のブロックはしない。",
     defaultEnabled: false,
     guard: "AI 有効 + Standard プラン以上 (ai_quality_vision) + 施工カテゴリ判定済み",
+  },
+  {
+    key: "photo.auto_classify_stage",
+    workflow: "certificate",
+    label: "施工写真の施工前/施工後を自動分類",
+    description:
+      "施工写真がアップロードされた時点で、未タグ (stage 未設定) の写真を施工前/施工後に AI が自動分類し、提案として証明書に保存する。stage の確定 (書き換え) や発行の before/after ゲートには関与しない — 人が UI で提案を確認して確定する。注釈のみのため安全。",
+    defaultEnabled: false,
+    guard: "AI 有効 + Standard プラン以上 (ai_quality_vision) + 未タグの写真あり",
   },
   {
     key: "insurer_case.auto_fraud_score",
@@ -454,11 +474,13 @@ export const RECOMMENDED_AUTOMATION_ACTION_KEYS: ReadonlySet<string> = new Set<s
   "thickness.auto_detect",
   "workflow.auto_propose_on_intake",
   "workflow.auto_apply_on_intake",
+  "mechanic.auto_assign_suggest",
   "job.auto_next_action",
   "inventory.auto_draft_reorder",
   "parts.auto_reconcile_delivery_note",
   "photo.auto_tampering_check",
   "photo.auto_quality_check",
+  "photo.auto_classify_stage",
   "insurer_case.auto_fraud_score",
   "insurer_case.auto_summary",
   "insurer_case.auto_assign_suggest",

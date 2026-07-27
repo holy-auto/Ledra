@@ -7,6 +7,7 @@ import { formatDate } from "@/lib/format";
 import Badge from "@/components/ui/Badge";
 import InspectionRecordForm from "@/components/admin/InspectionRecordForm";
 import { INSPECTION_TYPE_LABEL, type InspectionType } from "@/lib/validations/inspection";
+import { canUseFeature } from "@/lib/billing/planFeatures";
 
 /**
  * 案件ワークフローの「点検」タブ。
@@ -56,6 +57,13 @@ export default function JobInspectionTab({ reservationId, vehicleId, customerId 
     revalidateOnFocus: false,
     dedupingInterval: 5000,
   });
+  // 音声メモ(AI整形)はプラン依存。ai_draft 非対応プラン(Free)では 403 になるためパネルを出さない。
+  // 未取得のうちは false 側 (= 非表示) に倒し、対応が確認できてから出す。
+  const { data: me } = useSWR<{ plan_tier?: string }>("/api/admin/me", fetcher, {
+    revalidateOnFocus: false,
+    dedupingInterval: 60000,
+  });
+  const canUseVoiceAi = canUseFeature(me?.plan_tier, "ai_draft");
 
   const records = data?.records ?? [];
   const activeTemplates = (tplData?.templates ?? []).filter((t) => t.is_active);
@@ -89,6 +97,8 @@ export default function JobInspectionTab({ reservationId, vehicleId, customerId 
       {starting && defaultTemplate && (
         <InspectionRecordForm
           templateId={defaultTemplate.id}
+          template={defaultTemplate}
+          canUseVoiceAi={canUseVoiceAi}
           reservationId={reservationId}
           vehicleId={vehicleId ?? undefined}
           customerId={customerId ?? undefined}

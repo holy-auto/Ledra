@@ -101,6 +101,7 @@ export default function ApprovalInboxClient() {
                   <div className="min-w-0">
                     <div className="truncate font-medium text-primary">{item.title}</div>
                     <div className="truncate text-xs text-muted">{item.subtitle}</div>
+                    {item.why && <div className="truncate text-[11px] text-muted/80">{item.why}</div>}
                   </div>
                   <div className="flex shrink-0 items-center gap-2">
                     <Link href={item.href} className="text-xs text-accent hover:underline">

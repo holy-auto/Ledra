@@ -151,6 +151,52 @@ describe("lint-migrations", () => {
     expect(r.stdout).toContain("1 grandfathered");
   });
 
+  it("flags two migration files sharing the same version prefix", () => {
+    writeFileSync(
+      path.join(dir, "supabase", "migrations", "20990101000000_alpha.sql"),
+      "CREATE TABLE alpha (id uuid);",
+    );
+    writeFileSync(
+      path.join(dir, "supabase", "migrations", "20990101000000_beta.sql"),
+      "CREATE TABLE beta (id uuid);",
+    );
+    const r = runLint(dir);
+    expect(r.code).toBe(1);
+    expect(r.stderr).toContain("duplicate migration version 20990101000000");
+    expect(r.stderr).toContain("20990101000000_alpha.sql");
+    expect(r.stderr).toContain("20990101000000_beta.sql");
+  });
+
+  it("does not flag distinct version prefixes", () => {
+    writeFileSync(
+      path.join(dir, "supabase", "migrations", "20990101000000_alpha.sql"),
+      "CREATE TABLE alpha (id uuid);",
+    );
+    writeFileSync(
+      path.join(dir, "supabase", "migrations", "20990101000001_beta.sql"),
+      "CREATE TABLE beta (id uuid);",
+    );
+    expect(runLint(dir).code).toBe(0);
+  });
+
+  it("flags a duplicate version even when one file is allowlisted", () => {
+    // A collision is structural — the allowlist (which only waives lock-safety
+    // rules) must not hide it.
+    writeFileSync(
+      path.join(dir, "supabase", "migrations", "20990101000000_alpha.sql"),
+      "CREATE TABLE alpha (id uuid);",
+    );
+    writeFileSync(
+      path.join(dir, "supabase", "migrations", "20990101000000_beta.sql"),
+      "CREATE TABLE beta (id uuid);",
+    );
+    writeFileSync(
+      path.join(dir, "supabase", "migrations.allowlist"),
+      "# legacy\n20990101000000_alpha.sql\n",
+    );
+    expect(runLint(dir).code).toBe(1);
+  });
+
   it("ignores comments inside SQL", () => {
     writeFileSync(
       path.join(dir, "supabase", "migrations", "20990101000000_comment.sql"),

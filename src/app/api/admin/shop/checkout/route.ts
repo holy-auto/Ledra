@@ -78,7 +78,10 @@ export async function POST(req: NextRequest) {
       if (!product) continue;
 
       const amount = product.price * item.quantity;
-      const itemTax = Math.floor(amount * product.tax_rate);
+      // 税は「単価ごとに端数処理してから数量倍」で計算する。Stripe の line_item は
+      // 税込み単価(unitAmountWithTax)×quantity で請求するため、行合計に対する端数処理だと
+      // price*rate に端数がある数量>1 の商品で shop_orders.total と実請求額が 1 円ずれる。
+      const itemTax = Math.floor(product.price * product.tax_rate) * item.quantity;
       subtotal += amount;
       tax += itemTax;
 

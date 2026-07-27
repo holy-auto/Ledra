@@ -9,7 +9,7 @@ import JobSignoffPanel from "./JobSignoffPanel";
 import JobAiSuggestPanel from "./JobAiSuggestPanel";
 import JobCertificateDraftPanel from "./JobCertificateDraftPanel";
 import JobTabsLoader from "./JobTabsLoader";
-import type { AiCertificateDraft, JobCustomer, JobReservation, JobVehicle } from "./types";
+import type { AiCertificateDraft, JobCustomer, JobReservation, JobVehicle, WorkflowStep } from "./types";
 
 /**
  * 案件ワークフロー (Job Workflow) 画面
@@ -100,6 +100,18 @@ export default async function JobWorkflowPage({ params }: { params: Promise<{ id
   const customer = customerRes.data as JobCustomer;
   const vehicle = vehicleRes.data as JobVehicle;
 
+  // ワークフローテンプレートの工程一覧 (設定されている案件のみ)。ジョブ詳細・メカニック稼働管理の
+  // どちらでも同じ POST .../advance で進行できるよう、ステッパー表示だけここで軽量に1回取得する。
+  let workflowSteps: WorkflowStep[] | null = null;
+  if (reservation.workflow_template_id) {
+    const { data: template } = await supabase
+      .from("workflow_templates")
+      .select("steps")
+      .eq("id", reservation.workflow_template_id)
+      .maybeSingle();
+    workflowSteps = (template?.steps as WorkflowStep[] | null) ?? null;
+  }
+
   // 状態遷移時に保存済みの次アクション (job.auto_next_action) があれば即時表示用に渡す。
   const storedNextActionRaw = (
     reservation as {
@@ -184,6 +196,7 @@ export default async function JobWorkflowPage({ params }: { params: Promise<{ id
         reservation={reservation as JobReservation}
         customerId={reservation.customer_id}
         vehicleId={reservation.vehicle_id}
+        workflowSteps={workflowSteps}
       />
 
       {/* 作業完了サインオフ・パイプライン (完了→証明書→サイン→会計→オンチェーン、全業種共通) */}

@@ -36,6 +36,14 @@ export type SiteContentFormInitial = {
   online_url: string | null;
   capacity: number | null;
   registration_url: string | null;
+  cta_title: string | null;
+  cta_subtitle: string | null;
+  cta_primary_label: string | null;
+  cta_primary_href: string | null;
+  cta_secondary_label: string | null;
+  cta_secondary_href: string | null;
+  og_title: string | null;
+  og_subtitle: string | null;
 };
 
 function toInputDateTime(iso: string | null): string {
@@ -80,6 +88,14 @@ export default function SiteContentForm({ initial }: { initial: SiteContentFormI
   const [onlineUrl, setOnlineUrl] = useState(initial.online_url ?? "");
   const [capacity, setCapacity] = useState(initial.capacity != null ? String(initial.capacity) : "");
   const [registrationUrl, setRegistrationUrl] = useState(initial.registration_url ?? "");
+  const [ctaTitle, setCtaTitle] = useState(initial.cta_title ?? "");
+  const [ctaSubtitle, setCtaSubtitle] = useState(initial.cta_subtitle ?? "");
+  const [ctaPrimaryLabel, setCtaPrimaryLabel] = useState(initial.cta_primary_label ?? "");
+  const [ctaPrimaryHref, setCtaPrimaryHref] = useState(initial.cta_primary_href ?? "");
+  const [ctaSecondaryLabel, setCtaSecondaryLabel] = useState(initial.cta_secondary_label ?? "");
+  const [ctaSecondaryHref, setCtaSecondaryHref] = useState(initial.cta_secondary_href ?? "");
+  const [ogTitle, setOgTitle] = useState(initial.og_title ?? "");
+  const [ogSubtitle, setOgSubtitle] = useState(initial.og_subtitle ?? "");
 
   const isEvent = type === "event" || type === "webinar";
   const isEdit = Boolean(initial.id);
@@ -111,6 +127,14 @@ export default function SiteContentForm({ initial }: { initial: SiteContentFormI
     fd.set("online_url", isEvent ? onlineUrl : "");
     fd.set("capacity", isEvent ? capacity : "");
     fd.set("registration_url", isEvent ? registrationUrl : "");
+    fd.set("cta_title", ctaTitle);
+    fd.set("cta_subtitle", ctaSubtitle);
+    fd.set("cta_primary_label", ctaPrimaryLabel);
+    fd.set("cta_primary_href", ctaPrimaryHref);
+    fd.set("cta_secondary_label", ctaSecondaryLabel);
+    fd.set("cta_secondary_href", ctaSecondaryHref);
+    fd.set("og_title", ogTitle);
+    fd.set("og_subtitle", ogSubtitle);
 
     startTransition(async () => {
       const res =
@@ -231,7 +255,15 @@ export default function SiteContentForm({ initial }: { initial: SiteContentFormI
             error={Boolean(errors.tags)}
           />
         </FormField>
-        <FormField label="公開日時" hint="未指定の場合、公開時に現在時刻が設定されます。" error={errors.published_at}>
+        <FormField
+          label="公開日時"
+          hint={
+            status === "scheduled"
+              ? "「予約」ではこの日時に自動公開されます（予約時刻・必須）。"
+              : "未指定の場合、公開時に現在時刻が設定されます。"
+          }
+          error={errors.published_at}
+        >
           <Input
             type="datetime-local"
             value={publishedAt}
@@ -304,6 +336,75 @@ export default function SiteContentForm({ initial }: { initial: SiteContentFormI
                 onChange={(e) => setRegistrationUrl(e.target.value)}
                 placeholder="https://..."
                 error={Boolean(errors.registration_url)}
+              />
+            </FormField>
+          </div>
+        </div>
+      )}
+
+      {!isEvent && (
+        <div className="rounded-2xl border border-border-default bg-surface-hover/40 p-5 space-y-4">
+          <div className="text-xs font-medium tracking-wider text-secondary uppercase">記事下部の CTA・OGP（任意）</div>
+          <p className="text-xs text-muted">
+            未入力なら既定（資料ダウンロード等）にフォールバックします。リンクは <code>/poc</code> のような相対パスも{" "}
+            <code>https://</code> も可。
+          </p>
+          <FormField label="CTA 見出し" error={errors.cta_title}>
+            <Input
+              value={ctaTitle}
+              onChange={(e) => setCtaTitle(e.target.value)}
+              placeholder="施工の「事実」を、検証できる資産に"
+            />
+          </FormField>
+          <FormField label="CTA 説明" error={errors.cta_subtitle}>
+            <Textarea
+              value={ctaSubtitle}
+              onChange={(e) => setCtaSubtitle(e.target.value)}
+              rows={2}
+              placeholder="損保・中古車流通の皆さまへ。PoC・法人相談を承っています。"
+            />
+          </FormField>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <FormField label="主ボタン ラベル" error={errors.cta_primary_label}>
+              <Input
+                value={ctaPrimaryLabel}
+                onChange={(e) => setCtaPrimaryLabel(e.target.value)}
+                placeholder="PoC・導入を相談する"
+              />
+            </FormField>
+            <FormField label="主ボタン リンク" error={errors.cta_primary_href}>
+              <Input value={ctaPrimaryHref} onChange={(e) => setCtaPrimaryHref(e.target.value)} placeholder="/poc" />
+            </FormField>
+          </div>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <FormField label="副ボタン ラベル" error={errors.cta_secondary_label}>
+              <Input
+                value={ctaSecondaryLabel}
+                onChange={(e) => setCtaSecondaryLabel(e.target.value)}
+                placeholder="保険会社の方はこちら"
+              />
+            </FormField>
+            <FormField label="副ボタン リンク" error={errors.cta_secondary_href}>
+              <Input
+                value={ctaSecondaryHref}
+                onChange={(e) => setCtaSecondaryHref(e.target.value)}
+                placeholder="/contact/insurers"
+              />
+            </FormField>
+          </div>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <FormField label="OGP タイトル" hint="SNS カード用の短い見出し（未指定はタイトル）" error={errors.og_title}>
+              <Input
+                value={ogTitle}
+                onChange={(e) => setOgTitle(e.target.value)}
+                placeholder="「令和の虎」に出演します"
+              />
+            </FormField>
+            <FormField label="OGP サブタイトル" error={errors.og_subtitle}>
+              <Input
+                value={ogSubtitle}
+                onChange={(e) => setOgSubtitle(e.target.value)}
+                placeholder="施工の『事実』を、検証できる世界へ ― Ledra"
               />
             </FormField>
           </div>

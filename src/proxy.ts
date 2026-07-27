@@ -4,6 +4,7 @@ import { createServerClient } from "@supabase/ssr";
 import { resolveRequestId } from "@/lib/logger";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { buildCspHeader } from "@/lib/security/csp";
+import { UTM_COOKIE, utmToPersist } from "@/lib/marketing/utm";
 
 /**
  * Generate a cryptographically random nonce for CSP script-src.
@@ -219,6 +220,22 @@ export async function proxy(request: NextRequest) {
     if (!response.headers.has("pragma")) {
       response.headers.set("pragma", "no-cache");
     }
+  }
+
+  // First-touch UTM 帰属: 着地 URL（例 /tora→/news?utm_source=tora）の utm を初回のみ
+  // セッション cookie に保存する。クライアント JS のハイドレートに依存せずサーバ側で確定するため、
+  // ハイドレ前に CTA をタップして離脱しても取りこぼさない。値は readUtm(URL優先→cookie)で読む。
+  const utm = utmToPersist(request.nextUrl.searchParams, request.cookies.has(UTM_COOKIE));
+  if (utm) {
+    response.cookies.set(UTM_COOKIE, JSON.stringify(utm), {
+      // セッション cookie（maxAge 無し）: 放送→同一セッションの問い合わせを想定。
+      // 同意前に永続マーケ cookie を置かない。
+      sameSite: "lax",
+      secure: true,
+      path: "/",
+      // クライアント(readUtm)から読むため httpOnly にしない（値は非機密の utm 文字列）。
+      httpOnly: false,
+    });
   }
 
   return response;

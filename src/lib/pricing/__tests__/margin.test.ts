@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { calcMarginRate, calcSellingPrice } from "../margin";
+import { calcCommissionAmount, calcMarginRate, calcSellingPrice } from "../margin";
 
 describe("calcSellingPrice (マークアップ率方式)", () => {
   it("原価 × (1 + 利益率%) で提供価格を算出する", () => {
@@ -40,5 +40,22 @@ describe("calcMarginRate (逆算)", () => {
 
   it("赤字（提供価格 < 原価）の場合は負の値を返す", () => {
     expect(calcMarginRate(1000, 800)).toBe(-20);
+  });
+});
+
+describe("calcCommissionAmount (レス率)", () => {
+  it("案件金額 × レス率% で外注職人への支払額を算出する", () => {
+    expect(calcCommissionAmount(100000, 70)).toBe(70000);
+    expect(calcCommissionAmount(50000, 50)).toBe(25000);
+  });
+
+  it("レス率が null/undefined の場合は案件金額をそのまま返す", () => {
+    expect(calcCommissionAmount(100000, null)).toBe(100000);
+    expect(calcCommissionAmount(100000, undefined)).toBe(100000);
+  });
+
+  it("案件金額が 0 や負値の場合は 0 を返す", () => {
+    expect(calcCommissionAmount(0, 70)).toBe(0);
+    expect(calcCommissionAmount(-100, 70)).toBe(0);
   });
 });

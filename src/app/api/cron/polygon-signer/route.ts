@@ -165,11 +165,29 @@ export async function GET(req: NextRequest) {
   try {
     // 動的 import で cold-start を軽く保つ
     const { createPublicClient, http } = await import("viem");
-    const { privateKeyToAccount } = await import("viem/accounts");
     const { polygon, polygonAmoy } = await import("viem/chains");
+    const { getPolygonAccount, normalizePolygonPrivateKey } = await import("@/lib/anchoring/polygonSigner");
+
+    // 鍵が 0x+64桁hex に正規化できない（形式ミス）場合は、RPC 障害ではなく「設定不足」として skip する。
+    // これで「0x 無しで貼った鍵」等により cron が毎時 error になり続け failure streak が伸びるのを防ぐ。
+    const normalizedKey = normalizePolygonPrivateKey(config.privateKey);
+    if (!normalizedKey) {
+      console.warn("[cron/polygon-signer] skipped: POLYGON_PRIVATE_KEY malformed (expected 0x + 64 hex)");
+      return apiJson({
+        timestamp: now.toISOString(),
+        status: "skipped",
+        network: config.network,
+        address: null,
+        balance_pol: null,
+        balance_wei: null,
+        thresholds: { warn_pol: warnPol, alert_pol: alertPol },
+        message: "POLYGON_PRIVATE_KEY が不正な形式です（0x+64桁hex 必須）; skipping balance check.",
+      } satisfies SignerSummary);
+    }
 
     const chain = config.network === "amoy" ? polygonAmoy : polygon;
-    const account = privateKeyToAccount(config.privateKey as `0x${string}`);
+    // 署名器抽象で残高監視も KMS アドレスを追跡する(既定 local は現行と同一挙動)。
+    const account = await getPolygonAccount(normalizedKey);
     const client = createPublicClient({ chain, transport: http(config.rpcUrl) });
 
     const balanceWei = await client.getBalance({ address: account.address });

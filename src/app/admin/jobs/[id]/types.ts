@@ -47,6 +47,36 @@ export type AiCertificateDraft = {
   generated_at?: string;
 };
 
+/** mechanic.auto_assign_suggest が reservations.ai_assignee_suggestion に保存するスナップショット。 */
+export type AiAssigneeCandidate = {
+  staff_id: string;
+  staff_name: string;
+  score: number;
+  method: "skill" | "history" | "ai" | "fallback";
+  reason: string;
+};
+export type AiAssigneeSuggestion = {
+  candidates: AiAssigneeCandidate[];
+  ai?: boolean;
+  service_type?: string | null;
+  job_tags?: string[];
+  auto?: boolean;
+  generated_at?: string;
+};
+
+/** ワークフローテンプレートの1工程 (advance API と同じ形)。 */
+export type WorkflowStep = {
+  order: number;
+  key: string;
+  label: string;
+  is_customer_visible: boolean;
+  estimated_min: number;
+  /** この工程で撮る写真のガイド（任意）。 */
+  required_photos?: string[] | null;
+  /** この工程で確認する項目（任意）。 */
+  checklist?: string[] | null;
+};
+
 export type JobReservation = {
   id: string;
   title: string | null;
@@ -72,7 +102,15 @@ export type JobReservation = {
   signed_off_at?: string | null;
   created_at: string;
   ai_certificate_draft?: AiCertificateDraft | null;
+  ai_assignee_suggestion?: AiAssigneeSuggestion | null;
   handoff_notes?: HandoffNote[] | null;
+  // 工程テンプレート駆動のワークフロー (POST .../advance で進行)
+  workflow_template_id?: string | null;
+  current_step_key?: string | null;
+  current_step_order?: number | null;
+  progress_pct?: number | null;
+  // 部品交換あり。ON でバックエンドが装着記録 (draft) を自動作成する。
+  parts_replacement?: boolean | null;
 };
 
 export type JobCustomer = {

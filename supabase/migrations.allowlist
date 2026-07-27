@@ -19,7 +19,7 @@
 20260317000000_announcements.sql
 20260317000001_gcal_line.sql
 20260317000003_insurers.sql
-20260317000003a_insurer_self_registration.sql
+20260317000008_insurer_self_registration.sql
 20260317000004_job_orders.sql
 20260317000005_perf_indexes.sql
 20260317000006_sales_management.sql
@@ -103,23 +103,23 @@
 20260330000000_stripe_connect_transfers.sql
 20260330010000_customer_global_portal.sql
 20260401000000_ai_quality_academy.sql
-20260401000000_dedup_brands_add_unique.sql
+20260401000001_dedup_brands_add_unique.sql
 20260401100000_agents_user_id_integration.sql
 20260402000000_workflow_engine.sql
 20260402000001_booking_settings.sql
 20260403000000_add_electronic_signature.sql
 20260404000000_fix_security_definer_search_path.sql
 20260404100000_apply_customer_global_portal.sql
-20260404100000_customer_inquiries.sql
+20260404100001_customer_inquiries.sql
 20260406100000_fix_customer_inquiries_rls.sql
 20260406200000_certificates_phone_hash.sql
 20260406300000_fix_get_my_user_contexts_search_path.sql
 20260407000000_vehicles_add_missing_columns.sql
 20260408000000_certificate_edit_histories.sql
 20260409000000_customer_inquiries.sql
-20260409000000_tenants_add_external_api_key.sql
+20260409000003_tenants_add_external_api_key.sql
 20260409000001_certificates_add_signed_at.sql
-20260409000001_demo_seed_agent.sql
+20260409000004_demo_seed_agent.sql
 20260409000002_agent_signing_self_hosted.sql
 20260411000000_c2pa_verification_schema.sql
 20260412000000_customer_sessions_add_phone_last4.sql
@@ -130,16 +130,16 @@
 20260421000002_batch_pdf_jobs.sql
 20260421000003_square_sync_runs_async.sql
 20260422000000_documents_layout_fields.sql
-20260422000000_marketing_leads.sql
+20260422000002_marketing_leads.sql
 20260422000001_document_templates.sql
 20260423000000_insurer_access_logs_tenant_id.sql
 20260423000001_analytics_insurer_30days_rpc.sql
 20260423100000_nexptg_thickness.sql
 20260424000000_customer_sessions_customer_id.sql
-20260424000000_marketing_leads_downloaded_at.sql
-20260424000000_site_content_posts.sql
-20260424000000_tighten_market_inquiries_rls.sql
-20260424000000_vehicle_passports.sql
+20260424000001_marketing_leads_downloaded_at.sql
+20260424000002_site_content_posts.sql
+20260424000003_tighten_market_inquiries_rls.sql
+20260424000004_vehicle_passports.sql
 20260424010000_site_content_posts_super_admin_only.sql
 # follow_up_settings は settings テーブルで行数が極めて少ない。ACCESS EXCLUSIVE の影響は無視できる。
 # 別マイグレーションで NOT VALID + VALIDATE に分割することも可能だが、運用リスクに比して効果が薄い。
@@ -149,7 +149,7 @@
 # documents.tax_breakdown は jsonb 形状の軽量チェック (NULL or array) のみで
 # スキャンコストが小さく、運用上 ACCESS EXCLUSIVE の保持時間も短い。
 # NOT VALID + VALIDATE 分割は可能だが、効果に対して運用ステップが増えすぎる。
-20260429000002_qualified_invoice_compliance.sql
+20260429000005_qualified_invoice_compliance.sql
 
 # academy_lessons の video_* カラム追加は ALTER TABLE で完了し、続く CREATE INDEX
 # は新規追加カラム (video_provider, video_status) に対する partial index のため
@@ -168,7 +168,7 @@
 #   - vehicle_passports_meta_anchor: CREATE INDEX (非 CONCURRENTLY) + CHECK
 #   - customer_intake_two_stage: CREATE INDEX (非 CONCURRENTLY) + CHECK ×2
 #   - intake_validation_issues: CREATE INDEX (非 CONCURRENTLY)
-20260522000000_square_sync_runs_align_with_code.sql
+20260522000009_square_sync_runs_align_with_code.sql
 20260526000001_vehicle_passports_meta_anchor.sql
 20260527000002_customer_intake_two_stage.sql
 20260527000003_intake_validation_issues.sql
@@ -185,7 +185,7 @@
 # Grandfathered for security-definer-mutable-search-path: shipped via PR #511
 # before this branch's lint rule existed. fn_sync_mileage_from_certificate() is
 # hardened forward in 20260604010000_harden_vehicle_prediction_search_path.sql.
-20260604000000_vehicle_prediction_data_infra.sql
+20260604000001_vehicle_prediction_data_infra.sql
 
 # Grandfathered for create-index-without-concurrently. Already shipped to main
 # (certificates 非表示フラグ機能, 2026-06-19) — the file is frozen history.
@@ -203,7 +203,7 @@
 # applicable; CONCURRENTLY cannot run inside Supabase's per-file transaction. `tenants`
 # is a small table, so the one-time write lock to build the index is bounded and
 # accepted at ship time. Rationale: docs/operations/zero-downtime-migrations.md.
-20260708000000_email_inbound.sql
+20260708000002_email_inbound.sql
 
 # Allowlisted for create-index-without-concurrently. idx_customer_messages_thread_by_email
 # is a partial index on the EXISTING `customer_messages` table (メール受信のスレッドキー
@@ -211,3 +211,13 @@
 # CONCURRENTLY cannot run inside Supabase's per-file transaction. Bounded one-time write
 # lock, accepted at ship time. Rationale: docs/operations/zero-downtime-migrations.md.
 20260708000001_customer_messages_email_from.sql
+
+# Allowlisted as a FROZEN/already-applied migration (not new work). #810 の gcal 複数
+# カレンダー対応。元は 20260721110000_gcal_multi_calendar.sql だったが、#808 の
+# 20260721110000_site_content_posts_cta_og.sql と version prefix が衝突していた。本番へは
+# 別 version 20260722025744 として既適用（schema_migrations に記録済み）だったため、ローカル
+# ファイルを本番の記録に合わせて 20260722025744 へ改名し db push の「remote not in local」を
+# 解消する。既適用ゆえ db push は本ファイルを再実行せず（index も作成済み）、
+# create-index-without-concurrently は再現しない frozen 状態。Rationale:
+# docs/operations/zero-downtime-migrations.md.
+20260722025744_gcal_multi_calendar.sql

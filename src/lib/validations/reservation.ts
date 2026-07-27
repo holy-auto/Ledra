@@ -19,6 +19,8 @@ export const reservationCreateSchema = z.object({
   customer_id: nullableUuid,
   vehicle_id: nullableUuid,
   scheduled_date: z.string().trim().min(1, "予約日は必須です。"),
+  // 終日予約。true のとき start_time / end_time は無視して NULL 保存する（API 側で正規化）。
+  all_day: z.boolean().optional(),
   start_time: z
     .string()
     .trim()
@@ -57,6 +59,8 @@ export const reservationUpdateSchema = z.object({
   customer_id: nullableUuid,
   vehicle_id: nullableUuid,
   scheduled_date: z.string().trim().optional(),
+  // 終日予約。true のとき start_time / end_time は NULL に正規化する（API 側で処理）。
+  all_day: z.boolean().optional(),
   start_time: z
     .string()
     .trim()
@@ -79,6 +83,8 @@ export const reservationUpdateSchema = z.object({
   workflow_template_id: nullableUuid,
   // この予約で使う代車。日程候補の代車空き判定に使う。
   loaner_car_id: nullableUuid,
+  // 部品交換あり。ON にすると part_installations (draft) を自動作成する。
+  parts_replacement: z.boolean().optional(),
   note: z
     .string()
     .trim()

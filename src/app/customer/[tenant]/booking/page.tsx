@@ -21,6 +21,7 @@ type DaySlots = {
   hasAvailable: boolean;
   closed?: boolean; // 定休日フラグ
   message?: string; // 定休日メッセージ
+  allDayAvailable?: boolean; // 終日予約（1日お預かり）を受けられるか
 };
 
 type Step = "calendar" | "week-grid" | "time-select" | "form" | "confirm" | "done";
@@ -117,6 +118,8 @@ export default function BookingPage() {
   // ── selection ──
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [selectedSlot, setSelectedSlot] = useState<SlotInfo | null>(null);
+  // 終日予約（1日お預かり）を選択したか。true のとき selectedSlot は使わない。
+  const [selectedAllDay, setSelectedAllDay] = useState(false);
   // ご希望の作業（大カテゴリ）。受入可否で空き枠を絞り込む。null=指定なし。
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
 
@@ -135,6 +138,7 @@ export default function BookingPage() {
     date: string;
     start: string;
     end: string;
+    allDay?: boolean;
     intake?: { url: string; short_id: string; expires_at: string } | null;
   } | null>(null);
 
@@ -171,6 +175,7 @@ export default function BookingPage() {
             hasAvailable: slots.some((s) => s.available > 0),
             closed: j.closed === true,
             message: j.message,
+            allDayAvailable: j.all_day_available === true,
           },
         }));
       } catch {
@@ -241,16 +246,25 @@ export default function BookingPage() {
     if (date < todayStr) return;
     fetchSlots(date);
     setSelectedDate(date);
+    setSelectedAllDay(false);
     setStep("time-select");
   };
 
   const handleSlotClick = (slot: SlotInfo) => {
     setSelectedSlot(slot);
+    setSelectedAllDay(false);
+    setStep("form");
+  };
+
+  // 終日（1日お預かり）を選択。時間枠は使わない。
+  const handleAllDayClick = () => {
+    setSelectedSlot(null);
+    setSelectedAllDay(true);
     setStep("form");
   };
 
   const handleSubmit = async () => {
-    if (!selectedDate || !selectedSlot) return;
+    if (!selectedDate || (!selectedSlot && !selectedAllDay)) return;
     setSubmitting(true);
     setSubmitErr(null);
     try {
@@ -263,8 +277,13 @@ export default function BookingPage() {
           customer_phone: formPhone || undefined,
           customer_email: formEmail || undefined,
           scheduled_date: selectedDate,
-          start_time: selectedSlot.start_time.slice(0, 5),
-          end_time: selectedSlot.end_time.slice(0, 5),
+          // 終日予約は時刻を送らず all_day を立てる。通常予約は選択枠の時刻を送る。
+          ...(selectedAllDay
+            ? { all_day: true }
+            : {
+                start_time: selectedSlot!.start_time.slice(0, 5),
+                end_time: selectedSlot!.end_time.slice(0, 5),
+              }),
           category: selectedCategory || undefined,
           note: formNote || undefined,
           // 来店前の事前カルテ用 intake invitation を併発してもらう
@@ -277,8 +296,9 @@ export default function BookingPage() {
       }
       setDoneReservation({
         date: selectedDate,
-        start: selectedSlot.start_time.slice(0, 5),
-        end: selectedSlot.end_time.slice(0, 5),
+        start: selectedAllDay ? "" : selectedSlot!.start_time.slice(0, 5),
+        end: selectedAllDay ? "" : selectedSlot!.end_time.slice(0, 5),
+        allDay: selectedAllDay,
         intake: j?.intake ?? null,
       });
       // キャッシュ削除（空き状況を再取得させる）
@@ -376,7 +396,7 @@ export default function BookingPage() {
             <div className="flex justify-between text-sm">
               <span className="text-secondary">時間</span>
               <span className="font-semibold text-primary">
-                {doneReservation.start} 〜 {doneReservation.end}
+                {doneReservation.allDay ? "終日（1日お預かり）" : `${doneReservation.start} 〜 ${doneReservation.end}`}
               </span>
             </div>
             <div className="flex justify-between text-sm">
@@ -408,6 +428,7 @@ export default function BookingPage() {
               setStep("calendar");
               setSelectedDate(null);
               setSelectedSlot(null);
+              setSelectedAllDay(false);
               setFormName("");
               setFormPhone("");
               setFormEmail("");
@@ -424,7 +445,7 @@ export default function BookingPage() {
   }
 
   // ── Confirm screen ──
-  if (step === "confirm" && selectedDate && selectedSlot) {
+  if (step === "confirm" && selectedDate && (selectedSlot || selectedAllDay)) {
     return (
       <div className="min-h-screen bg-base">
         <Header tenantName={tenantName || tenantSlug} />
@@ -436,7 +457,11 @@ export default function BookingPage() {
               <Row label="日時" value={formatDateJa(selectedDate)} />
               <Row
                 label="時間"
-                value={`${selectedSlot.start_time.slice(0, 5)} 〜 ${selectedSlot.end_time.slice(0, 5)}`}
+                value={
+                  selectedAllDay
+                    ? "終日（1日お預かり）"
+                    : `${selectedSlot!.start_time.slice(0, 5)} 〜 ${selectedSlot!.end_time.slice(0, 5)}`
+                }
               />
               <Row label="お名前" value={`${formName} 様`} />
               {formPhone && <Row label="電話番号" value={formPhone} />}
@@ -470,7 +495,7 @@ export default function BookingPage() {
   }
 
   // ── Form screen ──
-  if (step === "form" && selectedDate && selectedSlot) {
+  if (step === "form" && selectedDate && (selectedSlot || selectedAllDay)) {
     const isValid = formName.trim().length > 0;
     return (
       <div className="min-h-screen bg-base">
@@ -494,8 +519,11 @@ export default function BookingPage() {
                 />
               </svg>
               <span className="text-sm font-semibold text-accent">
-                {formatDateJa(selectedDate)}　{selectedSlot.start_time.slice(0, 5)} 〜{" "}
-                {selectedSlot.end_time.slice(0, 5)}
+                {formatDateJa(selectedDate)}
+                {"　"}
+                {selectedAllDay
+                  ? "終日（1日お預かり）"
+                  : `${selectedSlot!.start_time.slice(0, 5)} 〜 ${selectedSlot!.end_time.slice(0, 5)}`}
               </span>
             </div>
 
@@ -588,6 +616,31 @@ export default function BookingPage() {
               </button>
               <h2 className="text-base font-bold text-primary">{formatDateJa(selectedDate)}</h2>
             </div>
+
+            {/* 終日（1日お預かり）: 時間指定なしで1日通しての予約。空いている日のみ提示 */}
+            {!isLoading && !dayData?.closed && dayData?.allDayAvailable && (
+              <button
+                onClick={handleAllDayClick}
+                className="mb-4 flex w-full items-center justify-between rounded-xl border-2 border-accent bg-accent-dim px-4 py-3 text-left transition-all hover:bg-accent/10 active:scale-[0.99]"
+              >
+                <span className="flex items-center gap-2">
+                  <span className="text-xl">📅</span>
+                  <span>
+                    <span className="block text-sm font-bold text-accent">終日（1日お預かり）</span>
+                    <span className="block text-[11px] text-secondary">時間を指定せず1日通してご予約</span>
+                  </span>
+                </span>
+                <svg
+                  className="h-5 w-5 text-accent"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
+                </svg>
+              </button>
+            )}
 
             {isLoading ? (
               <div className="py-12 text-center text-sm text-muted">空き状況を確認中...</div>
@@ -934,9 +987,11 @@ export default function BookingPage() {
                         cellContent = <span className="text-muted text-base">–</span>;
                       } else if (slot.available > 0) {
                         cellContent = (
+                          // inline-flex にして td の text-center で中央寄せさせる。
+                          // block-level flex だと幅が内容に縮んでセル左端に寄り、×/– とずれる。
                           <button
                             onClick={() => handleDateClick(date)}
-                            className="flex flex-col items-center gap-0.5 group/cell"
+                            className="inline-flex flex-col items-center gap-0.5 group/cell"
                           >
                             <span className="text-accent text-xl font-bold group-hover/cell:scale-110 transition-transform">
                               ○

@@ -15,6 +15,32 @@
 - 任意で Codex も回したいときだけ、PR 作成後に `@codex review` コメントを投稿して Codex（`chatgpt-codex-connector[bot]`）をトリガーする。
   - Codex は「非ドラフトで PR を開く」「ドラフトを ready 化」「`@codex review` コメント」のいずれかでのみ起動する。ただし利用上限に達しているとレビューではなく上限メッセージが返る。
 
+## Ledra 事業ログ運用ルール（docs/context/）
+
+重要な実装・事業判断・方針変更が発生した場合、**作業完了前に**該当ファイルを更新する。
+
+- 現状が変わった場合: `docs/context/LEDRA_CURRENT.md`
+- 意思決定をした場合: `docs/context/DECISION_LOG.md`
+- 未解決事項が生まれた場合: `docs/context/OPEN_QUESTIONS.md`
+- 機能を実装・公開した場合: `docs/context/RELEASE_LOG.md`
+- note発信に使える出来事があった場合: `docs/context/NOTE_CANDIDATES.md`
+
+`DECISION_LOG.md` の各エントリには必ず次の9項目を記録する。
+
+1. 日付
+2. 起きたこと
+3. 以前の考え
+4. 違和感・問題
+5. 決めたこと
+6. 捨てた選択肢
+7. 判断理由
+8. まだ答えが出ていないこと
+9. 公開区分（公開可／要確認／非公開）
+
+- 推測で事実を補わない。数字が不明な場合は `【要確認】` と記載する。
+- 機密情報・個人情報は `NOTE_CANDIDATES.md` に転記しない。
+- 各作業終了時（マージなど区切りのタイミング）に「今日の実装と意思決定を事業ログに反映して。note候補も抽出し、公開区分を付けて。」を必ず実行する。
+
 ## Ponytail, lazy senior dev mode
 
 You are a lazy senior developer. Lazy means efficient, not careless. The best code is the code never written.

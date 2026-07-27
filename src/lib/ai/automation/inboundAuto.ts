@@ -15,6 +15,7 @@
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { canUseFeature, normalizePlanTier } from "@/lib/billing/planFeatures";
 import { extractInboundReservation } from "@/lib/ai/inboundReservationExtract";
+import { deterministicServiceVehicle } from "@/lib/ai/deterministicInboundParse";
 import { fetchRecentConversation } from "@/lib/line/messageStore";
 import { fastModelForPlanTier } from "@/lib/ai/client";
 import { startAiRouteUsage } from "@/lib/ai/recordRouteUsage";
@@ -33,6 +34,26 @@ import {
 } from "./orchestrator";
 
 const AUTO_EXTRACT_ENDPOINT = "/api/line/webhook#auto-extract";
+
+/**
+ * 決定的車種フォールバックに渡す語彙を vehicle_size_master (全車種マスタ) から読む。
+ * マスタに車種を足せば LINE の車種認識も自動で広がる (辞書の二重管理を避ける)。
+ * 抽出漏れ時のみ (fallback パス) しか呼ばれないため都度 select で十分。失敗しても空で続行。
+ * ponytail: マスタが数千件規模になり呼び出しが増えたら、TTL 付きのメモリキャッシュに載せる。
+ */
+async function loadVehicleMasterVocab(
+  admin: ReturnType<typeof createServiceRoleAdmin>,
+): Promise<{ extraMakers: string[]; extraModels: string[] }> {
+  try {
+    const { data } = await admin.from("vehicle_size_master").select("maker, model").limit(5000);
+    const rows = (data as Array<{ maker: string | null; model: string | null }> | null) ?? [];
+    const extraMakers = [...new Set(rows.map((r) => r.maker?.trim()).filter((v): v is string => !!v))];
+    const extraModels = [...new Set(rows.map((r) => r.model?.trim()).filter((v): v is string => !!v))];
+    return { extraMakers, extraModels };
+  } catch {
+    return { extraMakers: [], extraModels: [] };
+  }
+}
 
 export interface MaybeAutoProcessParams {
   tenantId: string;
@@ -100,7 +121,30 @@ export async function maybeAutoProcessInboundMessage(params: MaybeAutoProcessPar
       { model: fastModelForPlanTier(tenant.plan_tier) },
     );
 
-    const snapshot = { ...result, auto: true, extracted_at: new Date().toISOString() };
+    // AI 抽出は同形式のメッセージでも service/vehicle を埋めたり埋めなかったりと不安定な
+    // ため、空だった項目だけを決定的キーワード辞書で補完する (AI が埋めた値は上書きしない)。
+    // これが無いと抽出漏れのたびに概算見積り等の自動応答がすべて沈黙する。
+    // 車種辞書は vehicle_size_master (全車種マスタ) の語彙も足して認識範囲を広げる
+    // (固定辞書に無いアメ車等も、マスタに登録すれば認識できるようにする)。
+    const detFallback = { service: false, vehicle: false };
+    if (!result.service?.trim() || !result.vehicle?.trim()) {
+      const det = deterministicServiceVehicle(text, await loadVehicleMasterVocab(admin));
+      if (!result.service?.trim() && det.service) {
+        result.service = det.service;
+        detFallback.service = true;
+      }
+      if (!result.vehicle?.trim() && det.vehicle) {
+        result.vehicle = det.vehicle;
+        detFallback.vehicle = true;
+      }
+    }
+
+    const snapshot = {
+      ...result,
+      auto: true,
+      extracted_at: new Date().toISOString(),
+      ...(detFallback.service || detFallback.vehicle ? { det_fallback: detFallback } : {}),
+    };
 
     // 受信箱に下書きとして保存 (ai_extracted)。列未作成でも続行。
     // auto_extract が OFF (自動返信系のためだけに抽出した) 場合は保存しない。
@@ -236,19 +280,6 @@ export async function maybeAutoProcessInboundMessage(params: MaybeAutoProcessPar
       return;
     }
 
-    // 価格問い合わせ → 見積ドラフト自動起票 (opt-in / 既知顧客のみ / 内部で fail-soft)。
-    await maybeAutoDraftQuoteFromInbound({
-      tenantId,
-      customerId: resolvedCustomerId,
-      intent: result.intent,
-      service: result.service,
-      vehicleText: result.vehicle,
-      messageId,
-      channel: params.channel ?? "line",
-      settings,
-      tenant,
-    });
-
     // 一般質問 → 店舗/共通ナレッジで LINE 自動返信 (opt-in / 内部で fail-soft)。
     // 概算見積りより**先に**試す: 「駐車場の料金は？」のような価格キーワードを含む
     // 一般質問を、見積りの「不足情報聞き返し」が誤って先取りしないため。ナレッジで
@@ -270,7 +301,7 @@ export async function maybeAutoProcessInboundMessage(params: MaybeAutoProcessPar
     });
 
     // 価格問い合わせ → 概算見積りを LINE で完全自動返信 (opt-in / 未紐付け客も対象 /
-    // 内部で fail-soft)。上のドラフト起票とは独立した opt-in。詳細見積りは来店対応。
+    // 内部で fail-soft)。末尾の見積ドラフト起票とは独立した opt-in。詳細見積りは来店対応。
     // ナレッジが同じメッセージに返信済みなら二重返信になるためスキップ。
     let estimateReplied = false;
     if (!knowledgeReplied) {
@@ -318,6 +349,26 @@ export async function maybeAutoProcessInboundMessage(params: MaybeAutoProcessPar
         committed: committedReservationId != null,
         commit_reason: decision.reason,
       },
+    });
+
+    // 価格問い合わせ → 見積ドラフト自動起票 (opt-in / 既知顧客のみ / 内部で fail-soft)。
+    // これは顧客に届かないスタッフ用の下書き。**顧客向け返信 (ナレッジ/概算/会話フロー) の
+    // 後に**実行する: LINE webhook は after() 内で全 AI チェーンを maxDuration 内に収める
+    // 必要があり、抽出が遅い回だと連鎖が制限時間を超えて最後発の処理が打ち切られる。
+    // 打ち切られてよいのは顧客影響の無いこの内部ドラフト側であって、顧客への概算返信では
+    // ないため、優先度の低いこれを最後に回す。
+    // ponytail: 恒久策は「抽出→顧客返信」を最優先チェーンに分離し、内部ドラフト等を別 after()
+    // (別関数実行) に切り出して独立予算で走らせること。まずは順序で最悪ケースを回避する。
+    await maybeAutoDraftQuoteFromInbound({
+      tenantId,
+      customerId: resolvedCustomerId,
+      intent: result.intent,
+      service: result.service,
+      vehicleText: result.vehicle,
+      messageId,
+      channel: params.channel ?? "line",
+      settings,
+      tenant,
     });
   } catch (e) {
     logger.warn("[inboundAuto] maybeAutoProcessInboundMessage threw", {

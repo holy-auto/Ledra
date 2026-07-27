@@ -12,6 +12,7 @@ const DOC_TYPE_LABELS: Record<DocType, string> = {
   receipt: "領収書",
   invoice: "請求書",
   consolidated_invoice: "合算請求書",
+  staff_invoice: "外注請求書",
 };
 
 const GREETINGS: Record<DocType, string> = {
@@ -23,6 +24,7 @@ const GREETINGS: Record<DocType, string> = {
   order_confirmation: "下記のとおりご注文を承りました。",
   inspection: "下記のとおり検収いたしました。",
   receipt: "下記のとおり領収いたしました。",
+  staff_invoice: "下記のとおり外注費をご請求申し上げます。",
 };
 
 const ISSUED_LABEL: Record<DocType, string> = {
@@ -34,6 +36,7 @@ const ISSUED_LABEL: Record<DocType, string> = {
   order_confirmation: "受注日",
   inspection: "検収日",
   receipt: "領収日",
+  staff_invoice: "請求日",
 };
 
 /**

@@ -1,11 +1,13 @@
-import { NextRequest } from "next/server";
+import { NextRequest, after } from "next/server";
 import crypto from "crypto";
 import { z } from "zod";
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { apiOk, apiInternalError, apiValidationError, apiError } from "@/lib/api/response";
 import { checkOverlap } from "@/lib/reservations/overlap";
+import { reservationBlocksSlot } from "@/lib/booking/slots";
 import { syncCreateEvent } from "@/lib/gcal/client";
 import { sendBookingConfirmation } from "@/lib/line/client";
+import { notifyNewBooking } from "@/lib/notifications/bookingNotify";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { logger } from "@/lib/logger";
 
@@ -186,17 +188,40 @@ export async function POST(req: NextRequest) {
 
       // 同時間帯の既存予約数。境界は排他（開始=前枠の終了 は重複としない）で数える。
       // 空き状況 GET の重複判定 (start < end && end > start) と揃え、隣接枠を独立して
-      // 予約可能にする。
-      const { count } = await admin
-        .from("reservations")
-        .select("id", { count: "exact", head: true })
-        .eq("tenant_id", tenant.id)
-        .eq("scheduled_date", scheduledDate)
-        .neq("status", "cancelled")
-        .lt("start_time", endTime)
-        .gt("end_time", startTime);
+      // 予約可能にする。あわせて、取引先が押さえている有効な仮押さえ(reservation_holds)も
+      // 占有として数え、押さえ枠に一般客予約が入る（オーバーセル）のを防ぐ。
+      const nowIso = new Date().toISOString();
+      // 占有カウントは (a) 時間帯が重なる通常予約 (b) その日の終日予約（時刻NULLで時間比較に
+      // 載らないため別集計）(c) 有効な仮押さえ の3種。スロット予約では下流の checkOverlap を
+      // スキップするため、終日予約の取りこぼしをこの容量チェックで塞ぐ。
+      const [{ count }, { count: allDayCount }, { count: heldCount }] = await Promise.all([
+        admin
+          .from("reservations")
+          .select("id", { count: "exact", head: true })
+          .eq("tenant_id", tenant.id)
+          .eq("scheduled_date", scheduledDate)
+          .neq("status", "cancelled")
+          .lt("start_time", endTime)
+          .gt("end_time", startTime),
+        admin
+          .from("reservations")
+          .select("id", { count: "exact", head: true })
+          .eq("tenant_id", tenant.id)
+          .eq("scheduled_date", scheduledDate)
+          .neq("status", "cancelled")
+          .eq("all_day", true),
+        admin
+          .from("reservation_holds")
+          .select("id", { count: "exact", head: true })
+          .eq("tenant_id", tenant.id)
+          .eq("scheduled_date", scheduledDate)
+          .eq("status", "pending")
+          .gt("expires_at", nowIso)
+          .lt("start_time", endTime)
+          .gt("end_time", startTime),
+      ]);
 
-      if ((count ?? 0) >= maxBookings) {
+      if ((count ?? 0) + (allDayCount ?? 0) + (heldCount ?? 0) >= maxBookings) {
         return apiError({
           code: "conflict",
           message: "ご指定の時間帯は満席です。別の時間帯をお選びください。",
@@ -206,19 +231,25 @@ export async function POST(req: NextRequest) {
     }
 
     // ── ダブルブッキングチェック ──
-    const overlaps = await checkOverlap({
-      tenantId: tenant.id,
-      scheduledDate,
-      startTime: startTime.length === 5 ? `${startTime}:00` : startTime,
-      endTime: endTime.length === 5 ? `${endTime}:00` : endTime,
-    });
-
-    if (overlaps.length > 0) {
-      return apiError({
-        code: "conflict",
-        message: "ご指定の時間帯は既に予約が入っています。別の時間帯をお選びください。",
-        status: 409,
+    // 容量スロットが支配する予約は、その枠の max_bookings が同時受付数の権威（GET 空き状況の
+    // available = max_bookings - booked と揃える）。無条件の重複拒否だと max_bookings>1 の枠で
+    // 2件目が必ず弾かれ案内と矛盾するため、枠未設定の予約だけ重複チェックする。
+    const slotGoverned = !!slots && slots.length > 0;
+    if (!slotGoverned) {
+      const overlaps = await checkOverlap({
+        tenantId: tenant.id,
+        scheduledDate,
+        startTime: startTime.length === 5 ? `${startTime}:00` : startTime,
+        endTime: endTime.length === 5 ? `${endTime}:00` : endTime,
       });
+
+      if (overlaps.length > 0) {
+        return apiError({
+          code: "conflict",
+          message: "ご指定の時間帯は既に予約が入っています。別の時間帯をお選びください。",
+          status: 409,
+        });
+      }
     }
 
     // ── 顧客レコード作成/取得 ──
@@ -308,6 +339,33 @@ export async function POST(req: NextRequest) {
         tenantId: tenant.id,
         reservationId: reservation.id,
       });
+    });
+
+    // ── 予約通知（メール/Slack）──
+    // serverless では応答後にbareのfire-and-forget Promiseが完走を待たれず
+    // 打ち切られる恐れがあるため、応答後も実行を保証する after() に委譲する。
+    after(async () => {
+      try {
+        await notifyNewBooking(
+          tenant.id,
+          {
+            id: reservation.id,
+            title: reservation.title,
+            scheduled_date: reservation.scheduled_date,
+            start_time: reservation.start_time,
+            end_time: reservation.end_time,
+            note: reservation.note,
+            tenant_name: tenant.name,
+          },
+          customerName,
+        );
+      } catch (error) {
+        logger.warn("booking notify failed (non-blocking)", {
+          error,
+          tenantId: tenant.id,
+          reservationId: reservation.id,
+        });
+      }
     });
 
     // ── LINE 予約確認通知（非ブロッキング） ──
@@ -449,18 +507,37 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    // ── 既存予約を取得 ──────────────────────────────────────
-    const { data: reservations } = await admin
-      .from("reservations")
-      .select("start_time, end_time")
-      .eq("tenant_id", tenant.id)
-      .eq("scheduled_date", date)
-      .neq("status", "cancelled");
+    // ── 既存予約 + 取引先の有効な仮押さえを取得 ──────────────
+    // 仮押さえ(reservation_holds)も占有として数え、押さえ枠を空きに見せない。
+    const [{ data: reservations }, { data: heldRows }] = await Promise.all([
+      admin
+        .from("reservations")
+        .select("all_day, start_time, end_time")
+        .eq("tenant_id", tenant.id)
+        .eq("scheduled_date", date)
+        .neq("status", "cancelled"),
+      admin
+        .from("reservation_holds")
+        .select("start_time, end_time")
+        .eq("tenant_id", tenant.id)
+        .eq("scheduled_date", date)
+        .eq("status", "pending")
+        .gt("expires_at", new Date().toISOString()),
+    ]);
+
+    // 仮押さえは時間指定（終日ではない）ので all_day=false で占有扱いにする。
+    const occupants = [
+      ...(reservations ?? []),
+      ...(heldRows ?? []).map((h: { start_time: string; end_time: string }) => ({
+        all_day: false as const,
+        start_time: h.start_time,
+        end_time: h.end_time,
+      })),
+    ];
 
     const available = slots.map((slot: any) => {
-      const booked = (reservations ?? []).filter(
-        (r: any) => r.start_time < slot.end_time && r.end_time > slot.start_time,
-      ).length;
+      // 終日予約はその日の全枠を占有する（reservationBlocksSlot が判定）。
+      const booked = occupants.filter((r) => reservationBlocksSlot(r, slot.start_time, slot.end_time)).length;
 
       return {
         start_time: slot.start_time,
@@ -472,7 +549,18 @@ export async function GET(req: NextRequest) {
       };
     });
 
-    return apiOk({ date, slots: available, closed: false, tenant_name: tenant.name ?? null });
+    // 終日予約（1日お預かり）を受けられるか。営業日で既存予約・仮押さえが1件も無ければ可。
+    // ponytail: 複数ブース(max_bookings>1)でも終日と併存不可の保守的判定。
+    // 併存を許すなら日ごとの占有台数を数える実装へ拡張する。
+    const allDayAvailable = (reservations ?? []).length === 0 && (heldRows ?? []).length === 0;
+
+    return apiOk({
+      date,
+      slots: available,
+      closed: false,
+      all_day_available: allDayAvailable,
+      tenant_name: tenant.name ?? null,
+    });
   } catch (e) {
     return apiInternalError(e, "available slots");
   }

@@ -156,7 +156,7 @@ export default async function AdminAuditPage({
   if (vehicleIds.length > 0) {
     const { data: vRows } = await supabase
       .from("vehicles")
-      .select("id,maker,model,year,plate_display,customer_name")
+      .select("id,maker,model,year,plate_display")
       .in("id", vehicleIds as string[]);
     for (const v of vRows ?? []) {
       const label = [v.maker, v.model, v.year ? String(v.year) : null].filter(Boolean).join(" ") || "車両";

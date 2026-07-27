@@ -24,6 +24,8 @@ import { maybeAutoCreateDraftCertificateForReservation } from "@/lib/ai/automati
 import { maybeAutoCreateDraftInvoiceForReservation } from "@/lib/ai/automation/invoiceRecordAuto";
 import { maybeAutoCategorizeReservationOnIntake } from "@/lib/ai/automation/accountingAuto";
 import { maybeAutoProposeWorkflowForReservation } from "@/lib/ai/automation/workflowAuto";
+import { maybeAutoSuggestAssigneeForReservation } from "@/lib/ai/automation/assigneeAuto";
+import { createDraftPartInstallationForReservation } from "@/lib/parts/installationService";
 
 export const dynamic = "force-dynamic";
 
@@ -96,7 +98,7 @@ export async function GET(req: NextRequest) {
     let query = supabase
       .from("reservations")
       .select(
-        "id, customer_id, vehicle_id, title, menu_items_json, note, scheduled_date, start_time, end_time, assigned_user_id, assigned_staff_id, booth_id, loaner_car_id, status, estimated_amount, created_at, workflow_template_id, current_step_key, current_step_order, progress_pct",
+        "id, customer_id, vehicle_id, title, menu_items_json, note, scheduled_date, all_day, start_time, end_time, assigned_user_id, assigned_staff_id, booth_id, loaner_car_id, status, estimated_amount, created_at, workflow_template_id, current_step_key, current_step_order, progress_pct",
         { count: "exact" },
       )
       .eq("tenant_id", caller.tenantId)
@@ -156,19 +158,33 @@ export async function GET(req: NextRequest) {
       vehicle_label: r.vehicle_id ? (vehicleMap[r.vehicle_id] ?? null) : null,
     }));
 
-    // 統計
+    // 統計: 一覧の既定フィルタ (from=today 等) に引きずられず、常にテナント全体
+    // (status/customer_id 絞り込みのみ反映) の集計にする。ダッシュボードKPIとして
+    // 「一覧で今何を表示しているか」ではなく「テナント全体の状況」を表すため。
     const today = new Date().toISOString().slice(0, 10);
-    const todayCount = enriched.filter((r) => r.scheduled_date === today && r.status !== "cancelled").length;
-    const activeCount = enriched.filter((r) => r.status !== "cancelled" && r.status !== "completed").length;
+    const statsBase = () => {
+      let q = supabase
+        .from("reservations")
+        .select("id", { count: "exact", head: true })
+        .eq("tenant_id", caller.tenantId);
+      if (status && status !== "all") q = q.eq("status", status);
+      if (customerId) q = q.eq("customer_id", customerId);
+      return q;
+    };
+    const [totalStats, todayStats, activeStats] = await Promise.all([
+      statsBase(),
+      statsBase().eq("scheduled_date", today).neq("status", "cancelled"),
+      statsBase().neq("status", "cancelled").neq("status", "completed"),
+    ]);
 
     const headers = { "Cache-Control": "private, max-age=10, stale-while-revalidate=30" };
     return apiJson(
       {
         reservations: enriched,
         stats: {
-          total: count ?? enriched.length,
-          today_count: todayCount,
-          active_count: activeCount,
+          total: totalStats.count ?? 0,
+          today_count: todayStats.count ?? 0,
+          active_count: activeStats.count ?? 0,
         },
         ...(pagination.page > 0 && { page: pagination.page, per_page: pagination.perPage, total: count ?? 0 }),
       },
@@ -211,6 +227,8 @@ export async function POST(req: NextRequest) {
     );
     if (refErr) return apiValidationError(refErr);
 
+    // 終日予約は時刻を持たない（NULL 保存）。誤って時刻が送られても正規化する。
+    const isAllDay = input.all_day === true;
     const row = {
       id: crypto.randomUUID(),
       tenant_id: caller.tenantId,
@@ -220,8 +238,9 @@ export async function POST(req: NextRequest) {
       menu_items_json: input.menu_items_json ?? [],
       note: input.note,
       scheduled_date: input.scheduled_date,
-      start_time: input.start_time,
-      end_time: input.end_time,
+      all_day: isAllDay,
+      start_time: isAllDay ? null : input.start_time,
+      end_time: isAllDay ? null : input.end_time,
       assigned_user_id: input.assigned_user_id,
       assigned_staff_id: input.assigned_staff_id,
       booth_id: input.booth_id,
@@ -235,7 +254,7 @@ export async function POST(req: NextRequest) {
       .from("reservations")
       .insert(row)
       .select(
-        "id, tenant_id, customer_id, vehicle_id, title, menu_items_json, note, scheduled_date, start_time, end_time, assigned_user_id, assigned_staff_id, booth_id, status, estimated_amount, created_at, updated_at",
+        "id, tenant_id, customer_id, vehicle_id, title, menu_items_json, note, scheduled_date, all_day, start_time, end_time, assigned_user_id, assigned_staff_id, booth_id, status, estimated_amount, created_at, updated_at",
       )
       .single();
     if (error) {
@@ -269,6 +288,11 @@ export async function POST(req: NextRequest) {
     // workflow.auto_apply_on_intake が別途 opt-in の場合だけ最有力テンプレートを割り当てる。いずれも
     // 各工程の進行・確定は人 (壁3). 業種を問わず案件起票の起点で効くよう fire-and-forget で呼ぶ。
     void maybeAutoProposeWorkflowForReservation({ tenantId: caller.tenantId, reservationId: reservation.id as string });
+
+    // 案件登録時: 担当メカニック候補を AI 提案して reservations.ai_assignee_suggestion に保存
+    // (mechanic.auto_assign_suggest が opt-in のテナントのみ). 提案の保存のみで、担当の割当 (確定) は
+    // スタッフが 1 タップで行う (人が判断・自動割当しない). レスポンスを遅らせないよう fire-and-forget.
+    void maybeAutoSuggestAssigneeForReservation({ tenantId: caller.tenantId, reservationId: reservation.id as string });
 
     return apiJson({ ok: true, reservation });
   } catch (e: unknown) {
@@ -312,6 +336,13 @@ export async function PUT(req: NextRequest) {
     };
     for (const [key, value] of Object.entries(rest)) {
       if (value !== undefined && sentKeys.has(key)) updates[key] = value;
+    }
+
+    // 終日予約は時刻を持たない。all_day を true にする更新では start/end を NULL に正規化する
+    // （フォームが空時刻を送ってきても、誤って時刻付き終日が保存されないようサーバ側で強制）。
+    if (updates.all_day === true) {
+      updates.start_time = null;
+      updates.end_time = null;
     }
 
     // 送られた assigned_staff_id / booth_id はテナント所有を検証（クロステナント参照防止）
@@ -404,7 +435,7 @@ export async function PUT(req: NextRequest) {
       .eq("id", id)
       .eq("tenant_id", caller.tenantId)
       .select(
-        "id, tenant_id, customer_id, vehicle_id, title, menu_items_json, note, scheduled_date, start_time, end_time, assigned_user_id, assigned_staff_id, booth_id, status, estimated_amount, gcal_event_id, cancelled_at, cancel_reason, work_started_at, work_completed_at, created_at, updated_at",
+        "id, tenant_id, customer_id, vehicle_id, title, menu_items_json, note, scheduled_date, all_day, start_time, end_time, assigned_user_id, assigned_staff_id, booth_id, status, estimated_amount, gcal_event_id, cancelled_at, cancel_reason, work_started_at, work_completed_at, parts_replacement, created_at, updated_at",
       )
       .single();
 
@@ -454,6 +485,28 @@ export async function PUT(req: NextRequest) {
           tenantId: caller.tenantId,
           reservationId: data.id,
         }),
+      );
+    }
+
+    // 部品交換トグル ON: 新規UIは作らず、バックエンドのみで作業前の最小限レコード
+    // (part_installations, status=draft) を自動作成する。作業後の写真は証明書発行時に
+    // 相乗りするため、ここでは写真もフォームも要求しない。冪等 (既存 draft があれば作らない・
+    // DB のユニークインデックスでも保証)。レスポンスを遅らせないよう after() で実行する。
+    if (sentKeys.has("parts_replacement") && updates.parts_replacement === true) {
+      after(() =>
+        createDraftPartInstallationForReservation({
+          tenantId: caller.tenantId,
+          reservationId: data.id,
+          vehicleId: data.vehicle_id,
+          customerId: data.customer_id,
+          userId: caller.userId,
+          partNameHint: data.title,
+        }).catch((e) =>
+          logger.warn("[reservations PUT] draft part installation auto-create failed", {
+            reservationId: data.id,
+            err: e instanceof Error ? e.message : String(e),
+          }),
+        ),
       );
     }
 

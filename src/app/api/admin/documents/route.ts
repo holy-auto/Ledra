@@ -35,10 +35,16 @@ export async function GET(req: NextRequest) {
     const docType = url.searchParams.get("doc_type") ?? "";
     const status = url.searchParams.get("status") ?? "";
     const customerId = url.searchParams.get("customer_id") ?? "";
+    // 発行日 (issued_at) による期間絞り込み。YYYY-MM-DD 形式のみ受け付ける。
+    const dateFromRaw = url.searchParams.get("date_from") ?? "";
+    const dateToRaw = url.searchParams.get("date_to") ?? "";
+    const isoDate = /^\d{4}-\d{2}-\d{2}$/;
+    const dateFrom = isoDate.test(dateFromRaw) ? dateFromRaw : "";
+    const dateTo = isoDate.test(dateToRaw) ? dateToRaw : "";
     const { page, perPage, from, to } = parsePagination(req, { maxPerPage: 200 });
 
     const selectCols =
-      "id, tenant_id, customer_id, doc_type, doc_number, issued_at, due_date, status, subtotal, tax, total, tax_rate, note, is_invoice_compliant, source_document_id, show_seal, show_logo, show_bank_info, recipient_name, recipient_honorific, recipient_postal_code, recipient_address, recipient_phone, subject, period_start, period_end, payment_terms, delivery_date, template_id, created_at, updated_at";
+      "id, tenant_id, customer_id, staff_member_id, doc_type, doc_number, issued_at, due_date, status, subtotal, tax, total, tax_rate, note, is_invoice_compliant, source_document_id, show_seal, show_logo, show_bank_info, recipient_name, recipient_honorific, recipient_postal_code, recipient_address, recipient_phone, subject, period_start, period_end, payment_terms, delivery_date, template_id, created_at, updated_at";
 
     let query = supabase
       .from("documents")
@@ -62,6 +68,14 @@ export async function GET(req: NextRequest) {
     if (customerId) {
       query = query.eq("customer_id", customerId);
       countQuery = countQuery.eq("customer_id", customerId);
+    }
+    if (dateFrom) {
+      query = query.gte("issued_at", dateFrom);
+      countQuery = countQuery.gte("issued_at", dateFrom);
+    }
+    if (dateTo) {
+      query = query.lte("issued_at", dateTo);
+      countQuery = countQuery.lte("issued_at", dateTo);
     }
 
     if (page > 0) {
@@ -90,8 +104,10 @@ export async function GET(req: NextRequest) {
 
     // 統計
     const total = enriched.length;
+    // staff_invoice はテナントが外注職人へ「支払う」金額（未払費用）であり、
+    // 顧客からの「未入金額」（売掛金）とは意味が逆なので合算しない。
     const unpaidAmount = enriched
-      .filter((d) => d.status === "sent" || d.status === "accepted")
+      .filter((d) => (d.status === "sent" || d.status === "accepted") && d.doc_type !== "staff_invoice")
       .reduce((sum, d) => sum + (d.total ?? 0), 0);
 
     return apiJson({
@@ -130,8 +146,15 @@ export async function POST(req: NextRequest) {
     if (!DOC_TYPES[docType]) {
       return apiValidationError("invalid doc_type");
     }
+    // 外注請求書（内部精算・金銭データ）は staff_members と同じ管理ロール限定にする。
+    // RLS 側にも RESTRICTIVE ポリシーがあるが、この POST は service-role でRLSを
+    // バイパスするため、API 層でも明示的にガードする。
+    if (docType === "staff_invoice" && !requireMinRole(caller, "admin")) {
+      return apiForbidden("外注請求書の作成は管理者ロールのみ可能です。");
+    }
 
     const customerId = input.customer_id || null;
+    const staffMemberId = input.staff_member_id || null;
     const issuedAt = input.issued_at || new Date().toISOString().slice(0, 10);
     const dueDate = input.due_date || null;
     const note = input.note;
@@ -174,13 +197,29 @@ export async function POST(req: NextRequest) {
     const tenantRegNumberValid = isValidRegistrationNumber(tenantInfo.data?.registration_number ?? null);
     const isInvoiceCompliant = !!input.is_invoice_compliant && tenantRegNumberValid;
 
+    // staff_member_id は他テナントの staff_members を指せてしまわないよう検証し、
+    // 併せて宛先名（PDF・詳細画面表示用）に職人名を補完する。
+    let staffMemberName: string | null = null;
+    if (docType === "staff_invoice") {
+      if (!staffMemberId) return apiValidationError("外注職人を選択してください。");
+      const { data: staffRow } = await admin
+        .from("staff_members")
+        .select("name")
+        .eq("id", staffMemberId)
+        .eq("tenant_id", caller.tenantId)
+        .maybeSingle();
+      if (!staffRow) return apiValidationError("無効な外注職人が指定されました。");
+      staffMemberName = staffRow.name;
+    }
+
     const { itemsJson, subtotal, tax, total, taxBreakdown } = calcItems(items, taxRate, isTaxInclusive);
 
     const row = {
       id: crypto.randomUUID(),
       tenant_id: caller.tenantId,
       customer_id: customerId,
-      recipient_name: recipientName,
+      staff_member_id: staffMemberId,
+      recipient_name: recipientName || staffMemberName,
       recipient_honorific: recipientHonorific,
       recipient_postal_code: recipientPostalCode,
       recipient_address: recipientAddress,
@@ -226,7 +265,7 @@ export async function POST(req: NextRequest) {
           .from("documents")
           .insert({ ...row, doc_number: docNumber })
           .select(
-            "id, tenant_id, customer_id, recipient_name, recipient_honorific, recipient_postal_code, recipient_address, recipient_phone, subject, period_start, period_end, payment_terms, delivery_date, template_id, payment_date, vehicle_id, vehicle_info_json, doc_type, doc_number, issued_at, due_date, status, subtotal, tax, total, tax_rate, tax_breakdown, items_json, note, meta_json, is_invoice_compliant, source_document_id, show_seal, show_logo, show_bank_info, created_at, updated_at",
+            "id, tenant_id, customer_id, staff_member_id, recipient_name, recipient_honorific, recipient_postal_code, recipient_address, recipient_phone, subject, period_start, period_end, payment_terms, delivery_date, template_id, payment_date, vehicle_id, vehicle_info_json, doc_type, doc_number, issued_at, due_date, status, subtotal, tax, total, tax_rate, tax_breakdown, items_json, note, meta_json, is_invoice_compliant, source_document_id, show_seal, show_logo, show_bank_info, created_at, updated_at",
           )
           .single(),
       { fixedNumber: input.doc_number || null },
@@ -235,14 +274,18 @@ export async function POST(req: NextRequest) {
       return apiInternalError(error, "documents POST");
     }
 
-    // 品目マスタに無い明細は自動登録する（保存自体は失敗させない fire-and-forget）
-    after(async () => {
-      try {
-        await autoRegisterMenuItems(admin, caller.tenantId, items);
-      } catch {
-        // 自動登録の失敗は握り潰す（帳票保存自体は既に成功済み）
-      }
-    });
+    // 品目マスタに無い明細は自動登録する（保存自体は失敗させない fire-and-forget）。
+    // staff_invoice の明細は cost_price/margin_rate が「案件金額/レス率」という別意味
+    // なので、通常の原価/利益率として品目マスタへ登録してしまわないよう除外する。
+    if (docType !== "staff_invoice") {
+      after(async () => {
+        try {
+          await autoRegisterMenuItems(admin, caller.tenantId, items);
+        } catch {
+          // 自動登録の失敗は握り潰す（帳票保存自体は既に成功済み）
+        }
+      });
+    }
 
     return apiJson({ ok: true, document: data });
   } catch (e) {
@@ -267,6 +310,7 @@ export async function PUT(req: NextRequest) {
     // 既存帳票の状態を確認し、内容編集の可否をチェック（ステータス変更は別途許可）
     const isContentEdit =
       body.items !== undefined ||
+      body.staff_member_id !== undefined ||
       body.recipient_name !== undefined ||
       body.recipient_postal_code !== undefined ||
       body.recipient_address !== undefined ||
@@ -299,16 +343,34 @@ export async function PUT(req: NextRequest) {
       return apiValidationError("送付済みの請求書は内容を編集できません。");
     }
 
+    // 外注請求書（金銭データ）は staff_members と同じ管理ロール限定にする。
+    // POST 側と同じ理由（service-role で RLS をバイパスするため）で API 層でもガードする。
+    if (existing?.doc_type === "staff_invoice" && !requireMinRole(caller, "admin")) {
+      return apiForbidden("外注請求書の更新は管理者ロールのみ可能です。");
+    }
+
     // 「確定 (draft→sent)」を検出するため、ステータス更新時は変更前の状態を控える。
     const priorStatus: string | null = body.status !== undefined ? (existing?.status ?? null) : null;
 
     // RLS をバイパスしてサービスロールで UPDATE（tenant_id で必ずスコープ限定）
     const { admin } = createTenantScopedAdmin(caller.tenantId);
 
+    // staff_member_id を変更する場合、他テナントの staff_members を指せないよう検証する。
+    if (body.staff_member_id) {
+      const { data: staffRow } = await admin
+        .from("staff_members")
+        .select("id")
+        .eq("id", body.staff_member_id)
+        .eq("tenant_id", caller.tenantId)
+        .maybeSingle();
+      if (!staffRow) return apiValidationError("無効な外注職人が指定されました。");
+    }
+
     const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
 
     if (body.status !== undefined) updates.status = body.status;
     if (body.customer_id !== undefined) updates.customer_id = body.customer_id || null;
+    if (body.staff_member_id !== undefined) updates.staff_member_id = body.staff_member_id || null;
     if (body.issued_at !== undefined) updates.issued_at = body.issued_at;
     if (body.due_date !== undefined) updates.due_date = body.due_date;
     if (body.payment_date !== undefined) updates.payment_date = body.payment_date || null;
@@ -366,7 +428,7 @@ export async function PUT(req: NextRequest) {
       .eq("id", id)
       .eq("tenant_id", caller.tenantId)
       .select(
-        "id, tenant_id, customer_id, recipient_name, recipient_honorific, recipient_postal_code, recipient_address, recipient_phone, subject, period_start, period_end, payment_terms, delivery_date, template_id, payment_date, vehicle_id, vehicle_info_json, doc_type, doc_number, issued_at, due_date, status, subtotal, tax, total, tax_rate, tax_breakdown, items_json, note, meta_json, is_invoice_compliant, source_document_id, show_seal, show_logo, show_bank_info, created_at, updated_at",
+        "id, tenant_id, customer_id, staff_member_id, recipient_name, recipient_honorific, recipient_postal_code, recipient_address, recipient_phone, subject, period_start, period_end, payment_terms, delivery_date, template_id, payment_date, vehicle_id, vehicle_info_json, doc_type, doc_number, issued_at, due_date, status, subtotal, tax, total, tax_rate, tax_breakdown, items_json, note, meta_json, is_invoice_compliant, source_document_id, show_seal, show_logo, show_bank_info, created_at, updated_at",
       )
       .single();
 
@@ -374,8 +436,9 @@ export async function PUT(req: NextRequest) {
       return apiInternalError(error, "documents PUT");
     }
 
-    // 品目マスタに無い明細は自動登録する（保存自体は失敗させない fire-and-forget）
-    if (body.items !== undefined) {
+    // 品目マスタに無い明細は自動登録する（保存自体は失敗させない fire-and-forget）。
+    // staff_invoice は cost_price/margin_rate が別意味のため対象外（POST と同じ理由）。
+    if (body.items !== undefined && data?.doc_type !== "staff_invoice") {
       after(async () => {
         try {
           await autoRegisterMenuItems(admin, caller.tenantId, body.items ?? []);

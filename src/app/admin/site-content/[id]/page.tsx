@@ -17,7 +17,7 @@ export default async function SiteContentEditPage(props: { params: Promise<{ id:
   const { data: row, error } = await supabase
     .from("site_content_posts")
     .select(
-      "id, type, status, slug, title, excerpt, body, hero_image_url, tags, author, published_at, event_start_at, event_end_at, location, online_url, capacity, registration_url",
+      "id, type, status, slug, title, excerpt, body, hero_image_url, tags, author, published_at, event_start_at, event_end_at, location, online_url, capacity, registration_url, cta_title, cta_subtitle, cta_primary_label, cta_primary_href, cta_secondary_label, cta_secondary_href, og_title, og_subtitle",
     )
     .eq("id", id)
     .maybeSingle();
@@ -50,6 +50,14 @@ export default async function SiteContentEditPage(props: { params: Promise<{ id:
     online_url: (row.online_url as string | null) ?? "",
     capacity: (row.capacity as number | null) ?? null,
     registration_url: (row.registration_url as string | null) ?? "",
+    cta_title: (row.cta_title as string | null) ?? null,
+    cta_subtitle: (row.cta_subtitle as string | null) ?? null,
+    cta_primary_label: (row.cta_primary_label as string | null) ?? null,
+    cta_primary_href: (row.cta_primary_href as string | null) ?? null,
+    cta_secondary_label: (row.cta_secondary_label as string | null) ?? null,
+    cta_secondary_href: (row.cta_secondary_href as string | null) ?? null,
+    og_title: (row.og_title as string | null) ?? null,
+    og_subtitle: (row.og_subtitle as string | null) ?? null,
   };
 
   return (

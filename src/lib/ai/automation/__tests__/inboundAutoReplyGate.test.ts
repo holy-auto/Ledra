@@ -119,4 +119,47 @@ describe("maybeAutoProcessInboundMessage auto-reply gating", () => {
     expect(mocks.maybeAutoReplyKnowledge).not.toHaveBeenCalled();
     expect(mocks.maybeAutoReplyRoughEstimate).not.toHaveBeenCalled();
   });
+
+  it("fills empty service/vehicle from the deterministic fallback so the rough estimate can fire", async () => {
+    // 本番で AI 抽出が service/vehicle を空で返し、概算見積りが沈黙した実メッセージ。
+    mocks.shouldAutoReplyRoughEstimate.mockReturnValue(true);
+    mocks.extractInboundReservation.mockResolvedValue({ intent: "inquiry_only", confidence: 0.72, ai: true });
+    await maybeAutoProcessInboundMessage({
+      ...baseParams(),
+      text: "トヨタ　ハイエース　2026年式\nボディコーティング、ホイールコーティング",
+    });
+    expect(mocks.maybeAutoReplyRoughEstimate).toHaveBeenCalledTimes(1);
+    const arg = mocks.maybeAutoReplyRoughEstimate.mock.calls[0][0];
+    expect(arg.vehicleText).toBe("トヨタ ハイエース 2026年式");
+    expect(arg.service).toBe("ボディコーティング, ホイールコーティング");
+  });
+
+  it("does not override a service/vehicle the AI did extract", async () => {
+    mocks.shouldAutoReplyRoughEstimate.mockReturnValue(true);
+    mocks.extractInboundReservation.mockResolvedValue({
+      intent: "inquiry_only",
+      confidence: 0.9,
+      ai: true,
+      service: "ガラスコーティング",
+      vehicle: "レクサス LX",
+    });
+    await maybeAutoProcessInboundMessage({ ...baseParams(), text: "レクサスのコーティングお願いします" });
+    const arg = mocks.maybeAutoReplyRoughEstimate.mock.calls[0][0];
+    expect(arg.service).toBe("ガラスコーティング");
+    expect(arg.vehicleText).toBe("レクサス LX");
+  });
+
+  it("recognizes an American car via the vehicle_size_master vocabulary (not in the built-in dict)", async () => {
+    // 固定辞書に無いアメ車も、vehicle_size_master に登録されていれば認識される。
+    mocks.shouldAutoReplyRoughEstimate.mockReturnValue(true);
+    mocks.store.tables.vehicle_size_master = [{ maker: "キャデラック", model: "エスカレード", size_class: "XL" }];
+    mocks.extractInboundReservation.mockResolvedValue({ intent: "inquiry_only", confidence: 0.72, ai: true });
+    await maybeAutoProcessInboundMessage({
+      ...baseParams(),
+      text: "キャデラックのエスカレード、コーティングの見積り欲しい",
+    });
+    const arg = mocks.maybeAutoReplyRoughEstimate.mock.calls[0][0];
+    expect(arg.vehicleText).toBe("キャデラック エスカレード");
+    expect(arg.service).toBe("コーティング");
+  });
 });

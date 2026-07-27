@@ -82,6 +82,35 @@ async function fetchTenantExtended(tenantId: string): Promise<TenantExtended> {
   }
 }
 
+/**
+ * 予約通知Slack Webhookの存在確認/設定状況のみを取得する。
+ *
+ * `fetchTenantExtended` とは意図的に別クエリにしている: 同じ select に混ぜると、
+ * このカラムのマイグレーション未適用時に select 全体がエラーになり、
+ * contact_email 等の既存項目まで「未設定」に見えてしまう
+ * （保存時に空文字で上書きされ既存値を消してしまう恐れがある）。
+ *
+ * また、Slack Webhook URL自体は値を返さない（設定済みかどうかの真偽値のみ）。
+ * `tenants` は tenant_select_own RLS で同テナントの全メンバーが SELECT 可能なため、
+ * オーナー以外のスタッフのブラウザにも生の値をレンダリングしない write-only 設計とする。
+ */
+async function fetchBookingNotifySlackStatus(
+  tenantId: string,
+): Promise<{ columnExists: boolean; configured: boolean }> {
+  const { admin } = createTenantScopedAdmin(tenantId);
+  const { data, error } = await admin
+    .from("tenants")
+    .select("booking_notify_slack_webhook_ciphertext")
+    .eq("id", tenantId)
+    .maybeSingle();
+  const columnExists = !error || !error.message.includes("does not exist");
+  const configured =
+    columnExists &&
+    !!(data as { booking_notify_slack_webhook_ciphertext?: string | null } | null)
+      ?.booking_notify_slack_webhook_ciphertext;
+  return { columnExists, configured };
+}
+
 export default async function AdminSettingsPage({
   searchParams,
 }: {
@@ -123,6 +152,7 @@ export default async function AdminSettingsPage({
 
   // Extended fields — gracefully null if migration not yet applied
   const ext = await fetchTenantExtended(tenantId);
+  const bookingNotifySlack = await fetchBookingNotifySlackStatus(tenantId);
   const hasExtendedCols =
     ext.contact_email !== null ||
     ext.contact_phone !== null ||
@@ -267,6 +297,8 @@ export default async function AdminSettingsPage({
           registrationNumber={columnsExist ? ext.registration_number : null}
           bankInfo={columnsExist ? ext.bank_info : null}
           laborRatePerHour={columnsExist ? ext.labor_rate_per_hour : null}
+          bookingNotifySlackColumnExists={bookingNotifySlack.columnExists}
+          bookingNotifySlackConfigured={bookingNotifySlack.configured}
           columnsExist={columnsExist}
           connectStatus={
             columnsExist

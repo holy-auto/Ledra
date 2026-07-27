@@ -200,6 +200,16 @@ const DOC_TYPE_LABELS: Record<string, string> = {
   consolidated_invoice: "合算請求書",
 };
 
+const DOC_STATUS_LABELS: Record<string, string> = {
+  draft: "下書き",
+  sent: "送付済",
+  accepted: "承認済",
+  paid: "入金済",
+  overdue: "期限超過",
+  rejected: "却下",
+  cancelled: "取消",
+};
+
 const PAYMENT_METHOD_LABELS: Record<string, string> = {
   bank_transfer: "銀行振込",
   cash: "現金",
@@ -270,6 +280,22 @@ export default function OrderDetailClient({ orderId }: { orderId: string }) {
   // Inspection signature
   const [showSignaturePad, setShowSignaturePad] = useState(false);
 
+  // 仮押さえ枠 / 本予約
+  const [hold, setHold] = useState<{
+    scheduled_date: string;
+    start_time: string;
+    end_time: string;
+    status: string;
+    expires_at: string;
+  } | null>(null);
+  const [reservation, setReservation] = useState<{
+    scheduled_date: string;
+    start_time: string | null;
+    end_time: string | null;
+    all_day: boolean | null;
+    status: string;
+  } | null>(null);
+
   const fetchDetail = useCallback(async () => {
     try {
       const res = await fetch(`/api/admin/orders/${orderId}`, { cache: "no-store" });
@@ -285,6 +311,8 @@ export default function OrderDetailClient({ orderId }: { orderId: string }) {
       setCounterpartyScore(j.counterparty_score ?? null);
       setIsFrom(j.is_from);
       setIsTo(j.is_to);
+      setHold(j.hold ?? null);
+      setReservation(j.reservation ?? null);
     } catch (e: unknown) {
       setErr(e instanceof Error ? e.message : String(e));
     }
@@ -548,6 +576,38 @@ export default function OrderDetailClient({ orderId }: { orderId: string }) {
         {order.cancel_reason && <p className="text-[13px] text-red-500 mt-2">取消理由: {order.cancel_reason}</p>}
       </section>
 
+      {/* ─── 予約枠（仮押さえ / 本予約） ─── */}
+      {(reservation || (hold && hold.status === "pending")) && (
+        <section className="glass-card p-5 space-y-2">
+          <h3 className="text-sm font-semibold text-primary">予約枠</h3>
+          {reservation ? (
+            <div className="flex items-center gap-2 text-sm">
+              <Badge variant="success">予約確定</Badge>
+              <span className="text-primary font-medium">
+                {formatDate(reservation.scheduled_date)}
+                {reservation.all_day
+                  ? "（終日）"
+                  : reservation.start_time
+                    ? ` ${reservation.start_time.slice(0, 5)}〜${(reservation.end_time ?? "").slice(0, 5)}`
+                    : ""}
+              </span>
+            </div>
+          ) : (
+            hold && (
+              <div className="flex items-center gap-2 text-sm">
+                <Badge variant="warning">承認待ち枠</Badge>
+                <span className="text-primary font-medium">
+                  {formatDate(hold.scheduled_date)} {hold.start_time.slice(0, 5)}〜{hold.end_time.slice(0, 5)}
+                </span>
+                <span className="text-[11px] text-muted">
+                  受注承認で本予約になります（{formatDate(hold.expires_at)} まで）
+                </span>
+              </div>
+            )
+          )}
+        </section>
+      )}
+
       {/* ─── Status Actions ─── */}
       {availableTransitions.length > 0 && (
         <section className="glass-card p-5 space-y-3">
@@ -619,14 +679,30 @@ export default function OrderDetailClient({ orderId }: { orderId: string }) {
                 <div>
                   <span className="font-medium">{DOC_TYPE_LABELS[doc.doc_type] ?? doc.doc_type}</span>
                   <span className="text-muted ml-2">#{doc.doc_number}</span>
+                  {doc.doc_type === "invoice" && doc.status === "draft" && isTo && (
+                    <span className="ml-2 text-[11px] text-warning-text">下書き — 内容を確認して送付してください</span>
+                  )}
                 </div>
                 <div className="flex items-center gap-3">
                   <span className="text-muted">{formatJpy(doc.total)}</span>
-                  <Badge variant="default">{doc.status}</Badge>
+                  <Badge variant="default">{DOC_STATUS_LABELS[doc.status] ?? doc.status}</Badge>
+                  {doc.doc_type === "invoice" && (
+                    <a
+                      href={`/api/admin/orders/${orderId}/invoice-pdf`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-accent underline"
+                    >
+                      PDF
+                    </a>
+                  )}
                 </div>
               </div>
             ))}
           </div>
+          {isTo && documents.some((d) => d.doc_type === "invoice" && d.status === "draft") && (
+            <p className="text-[11px] text-muted">請求書の送付は「請求・帳票」画面から行えます（下書き→送付）。</p>
+          )}
         </section>
       )}
 

@@ -23,7 +23,7 @@ import { z } from "zod";
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { apiOk, apiError, apiInternalError } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
-import { signPayload, getPrivateKey, getActiveKeyInfo } from "@/lib/signature/crypto";
+import { signPayloadWithProvider } from "@/lib/signature/signer";
 import {
   buildDeliveryReceiptPayload,
   computeConsentTextHash,
@@ -200,8 +200,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
     let signature: string;
     let keyInfo: { version: string; fingerprint: string };
     try {
-      signature = signPayload(signingPayload, getPrivateKey());
-      keyInfo = getActiveKeyInfo();
+      // 署名器抽象(SIGNER_PROVIDER=local 既定 / aws-kms で KMS)。既定は現行と同一挙動。
+      const signed = await signPayloadWithProvider(signingPayload);
+      signature = signed.signature;
+      keyInfo = { version: signed.keyVersion, fingerprint: signed.publicKeyFingerprint };
     } catch (err) {
       console.error("[delivery-receipt/sign] signing failed:", err);
       return apiError({ code: "internal_error", message: "署名処理中にエラーが発生しました", status: 500 });

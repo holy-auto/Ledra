@@ -28,6 +28,8 @@ type Props = {
   registrationNumber: string | null;
   bankInfo: BankInfo;
   laborRatePerHour: number | null;
+  bookingNotifySlackColumnExists: boolean;
+  bookingNotifySlackConfigured: boolean;
   columnsExist: boolean;
   connectStatus?: ConnectStatus;
 };
@@ -45,6 +47,8 @@ export default function SettingsForm({
   registrationNumber,
   bankInfo,
   laborRatePerHour,
+  bookingNotifySlackColumnExists,
+  bookingNotifySlackConfigured,
   columnsExist,
   connectStatus,
 }: Props) {
@@ -232,6 +236,41 @@ export default function SettingsForm({
         <p className="rounded-xl border border-warning/30 bg-warning-dim px-3 py-2 text-xs text-warning">
           住所・連絡先はDBマイグレーション後に入力できます（上記のSQL実行後にページを再読み込み）
         </p>
+      )}
+
+      {bookingNotifySlackColumnExists && (
+        <div className="border-t border-[var(--border-default)] pt-5 mt-5">
+          <div className="text-xs font-semibold tracking-[0.18em] text-muted mb-3 flex items-center gap-1.5">
+            予約通知
+            <HelpTooltip>
+              お客様がWeb予約フォームやGoogleマップ予約・LINEから予約すると、店舗の管理者/オーナー宛にメールで自動通知します。加えてSlackの着信Webhook
+              URLを設定すると、同じ内容をSlackにも通知します（未設定ならSlack通知はスキップ）。
+            </HelpTooltip>
+          </div>
+          <label className={labelCls}>
+            <span className={labelTextCls}>Slack Webhook URL（任意）</span>
+            <input
+              type="url"
+              name="booking_notify_slack_webhook_url"
+              defaultValue=""
+              className={inputCls}
+              placeholder={
+                bookingNotifySlackConfigured
+                  ? "設定済み（変更する場合のみ新しいURLを入力）"
+                  : "https://hooks.slack.com/services/..."
+              }
+            />
+            <span className="text-xs text-muted">
+              未設定でもメール通知（管理者/オーナー宛）は自動で送信されます。セキュリティのため設定済みのURLは再表示されません（空欄のまま保存すれば変更されません）。
+            </span>
+          </label>
+          {bookingNotifySlackConfigured && (
+            <label className="mt-2 flex items-center gap-2 text-xs text-secondary">
+              <input type="checkbox" name="booking_notify_slack_webhook_url_clear" value="on" />
+              Slack通知用のWebhook URLを削除する
+            </label>
+          )}
+        </div>
       )}
 
       {error && (

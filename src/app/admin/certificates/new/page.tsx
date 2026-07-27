@@ -19,6 +19,7 @@ export default async function Page({
     customer_id?: string;
     reservation_id?: string;
     category?: string;
+    stage?: string;
   }>;
 }) {
   const sp = await searchParams;
@@ -27,6 +28,9 @@ export default async function Page({
   const defaultVehicleId = sp.vehicle_id ?? undefined;
   const defaultCustomerId = sp.customer_id ?? undefined;
   const defaultReservationId = sp.reservation_id ?? undefined;
+  // 案件ワークフローの「作業中の写真を撮る」導線から来た場合、アップロードする写真を
+  // stage=in_progress として記録する（施工前/後のみだった撮影段階タグを作業中にも拡張）。
+  const defaultPhotoStage = sp.stage === "in_progress" ? "in_progress" : undefined;
 
   const supabase = await createSupabaseServerClient();
   const caller = await resolveCallerWithRole(supabase);
@@ -119,6 +123,21 @@ export default async function Page({
 
   if (tplErr) return <div className="text-sm text-danger">テンプレ読み込みエラー: {tplErr.message}</div>;
 
+  // 案件の「部品交換あり」トグルが ON なら、整備内容セクションへの既定メモを用意する
+  // (発行前に人が編集・削除できる下書きへの差し込みで、壁3は維持される)。
+  let defaultPartsReplacedNote: string | undefined;
+  if (defaultReservationId) {
+    const { data: sourceReservation } = await supabase
+      .from("reservations")
+      .select("parts_replacement")
+      .eq("id", defaultReservationId)
+      .eq("tenant_id", tenantId)
+      .maybeSingle();
+    if (sourceReservation?.parts_replacement) {
+      defaultPartsReplacedNote = "部品交換あり";
+    }
+  }
+
   const tenantLogoPath = (tenantRow?.logo_asset_path as string | null) ?? null;
   const planTier = normalizePlanTier(tenantRow?.plan_tier) as PlanTier;
   const defaultWarrantyExclusions = (tenantRow?.default_warranty_exclusions as string | null) ?? "";
@@ -187,6 +206,8 @@ export default async function Page({
         defaultVehicleId={defaultVehicleId}
         defaultCustomerId={defaultCustomerId}
         defaultReservationId={defaultReservationId}
+        defaultPartsReplacedNote={defaultPartsReplacedNote}
+        defaultPhotoStage={defaultPhotoStage}
         templates={list}
         selectedTemplate={selected}
         tenantLogoPath={tenantLogoPath}

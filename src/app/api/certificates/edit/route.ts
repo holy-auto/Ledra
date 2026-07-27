@@ -14,6 +14,7 @@ import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { resolveCertifiedTemplateForTenant } from "@/lib/manufacturers/certifiedTemplates";
 import { enqueueCertificateAnchor } from "@/lib/anchoring/certificateAnchorService";
+import { buildCertificateVersionRow, type CertificateVersionRow } from "@/lib/certificates/certificateVersion";
 
 const certificateEditSchema = z
   .object({
@@ -71,7 +72,7 @@ export async function PUT(req: NextRequest) {
     const { data: cert, error: fetchError } = await admin
       .from("certificates")
       .select(
-        "id, tenant_id, public_id, status, customer_name, vehicle_info_json, content_free_text, expiry_type, expiry_value, expiry_date, warranty_period_end, maintenance_date, warranty_exclusions, remarks, service_type, coating_products_json, ppf_coverage_json, maintenance_json, body_repair_json, accessory_json, current_version, manufacturer_id, manufacturer_template_id",
+        "id, tenant_id, public_id, status, customer_name, vehicle_info_json, content_free_text, content_preset_json, expiry_type, expiry_value, expiry_date, warranty_period_end, maintenance_date, warranty_exclusions, remarks, service_type, coating_products_json, ppf_coverage_json, maintenance_json, body_repair_json, accessory_json, certificate_no, current_version, manufacturer_id, manufacturer_template_id",
       )
       .eq("public_id", publicId)
       .eq("tenant_id", caller.tenantId)
@@ -164,6 +165,56 @@ export async function PUT(req: NextRequest) {
     // 内容が変わったので証明書レコードの新しい digest を anchor queue に積む
     // (best-effort fire-and-forget / CERT_RECORD_ANCHOR_ENABLED=false なら no-op / dedup あり)。
     enqueueCertificateAnchor({ tenantId: caller.tenantId, certificateId: cert.id as string }).catch(() => {});
+
+    // ② version-forward (Phase 1): 訂正内容を certificate_versions に不変スナップショットとして追記。
+    // 既存の in-place 更新・edit_histories・再アンカは維持(リーダー ~106 箇所は無変更)。
+    // best-effort: 失敗しても編集自体はブロックしない(Phase 1 では他が versions に依存していない)。
+    try {
+      const { count: versionCount } = await admin
+        .from("certificate_versions")
+        .select("id", { count: "exact", head: true })
+        .eq("certificate_id", cert.id);
+
+      const certRecord = cert as Record<string, unknown>;
+      const rows: CertificateVersionRow[] = [];
+      // 初回訂正時は原本(訂正前)も v(現行版) として残し、版の連続性を保つ。
+      if (!versionCount) {
+        rows.push(
+          buildCertificateVersionRow({
+            cert: certRecord,
+            certificateId: cert.id as string,
+            tenantId: caller.tenantId,
+            version: (cert.current_version as number) ?? 1,
+            createdBy: caller.userId,
+            changeReason: "initial",
+          }),
+        );
+      }
+      // 今回の訂正後内容を nextVersion として残す。
+      rows.push(
+        buildCertificateVersionRow({
+          cert: { ...certRecord, ...updatePayload },
+          certificateId: cert.id as string,
+          tenantId: caller.tenantId,
+          version: nextVersion,
+          createdBy: caller.userId,
+          changeReason: "edit",
+        }),
+      );
+
+      const { data: insertedVersions, error: versionErr } = await admin
+        .from("certificate_versions")
+        .insert(rows)
+        .select("id, version");
+      if (versionErr) {
+        console.error("[cert-version] snapshot insert failed (non-fatal)", versionErr);
+      } else if (insertedVersions && insertedVersions.length > 0) {
+        const latest = insertedVersions.reduce((a, b) => (b.version > a.version ? b : a));
+        await admin.from("certificates").update({ current_version_id: latest.id }).eq("id", cert.id);
+      }
+    } catch (e) {
+      console.error("[cert-version] snapshot failed (non-fatal)", e);
+    }
 
     return apiOk({
       changed: true,

@@ -14,6 +14,7 @@ export const metadata = {
 
 const TYPE_LABEL: Record<SiteContentType, string> = {
   blog: "ブログ",
+  news: "お知らせ",
   event: "イベント",
   webinar: "ウェビナー",
 };
