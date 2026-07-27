@@ -58,6 +58,8 @@ export interface ProcessPhotoParams {
   index: number;
   /** certificate_images.sort_order に入れる値。 */
   sortOrder: number;
+  /** 証明書対象車両の VIN（C2PA manifest に束縛封入。無ければ封入しない）。 */
+  vin?: string | null;
   capture: CaptureContext;
   tsaBudget: TsaBatchBudget;
 }
@@ -67,8 +69,21 @@ export type ProcessPhotoResult =
   | { ok: false; code: "internal_error" | "db_error"; message: string };
 
 export async function processUploadedPhoto(params: ProcessPhotoParams): Promise<ProcessPhotoResult> {
-  const { admin, tenantId, certId, publicId, stage, buffer, mime, fileName, index, sortOrder, capture, tsaBudget } =
-    params;
+  const {
+    admin,
+    tenantId,
+    certId,
+    publicId,
+    stage,
+    buffer,
+    mime,
+    fileName,
+    index,
+    sortOrder,
+    vin,
+    capture,
+    tsaBudget,
+  } = params;
   const { attestation, nonceOk, nonceResult, captureNonce, deviceToken } = capture;
 
   const ext = mime.split("/")[1]?.replace("jpeg", "jpg") ?? "jpg";
@@ -101,6 +116,7 @@ export async function processUploadedPhoto(params: ProcessPhotoParams): Promise<
   // 検証プロバイダ（署名は保存前）。cert/nonce/TSA時刻を C2PA manifest に封入。
   const providers = await invokeAllUploadProviders(uploadBuffer, mime, sha256, {
     publicId,
+    vin: vin ?? null,
     captureNonce,
     tsaTimestamp: tsa?.timestampAt ?? null,
   });
