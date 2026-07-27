@@ -114,6 +114,26 @@ export async function handleCertificateImageUpload(req: NextRequest, tenantId: s
       vin = (vehicle?.vin_code as string | null)?.trim() || null;
     }
 
+    // 写真GPS整合チェックの基準座標を 1 リクエストにつき 1 回だけ解決する（生座標は保存しない）。
+    // ponytail: マルチ店舗テナントは「既定の有効店舗」を基準にする（暫定）。
+    //   将来は証明書に紐づく予約の store_id で店舗を特定するのがより正確。
+    let storeCoords: { lat: number; lng: number } | null = null;
+    {
+      const { data: store } = await admin
+        .from("stores")
+        .select("latitude, longitude")
+        .eq("tenant_id", tenantId)
+        .eq("is_active", true)
+        .not("latitude", "is", null)
+        .not("longitude", "is", null)
+        .order("is_default", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      const lat = store?.latitude as number | null | undefined;
+      const lng = store?.longitude as number | null | undefined;
+      if (typeof lat === "number" && typeof lng === "number") storeCoords = { lat, lng };
+    }
+
     // ── Count existing images ─────────────────────────────────────
     const { count: existingCount } = await admin
       .from("certificate_images")
@@ -195,6 +215,7 @@ export async function handleCertificateImageUpload(req: NextRequest, tenantId: s
         index: i,
         sortOrder: existing + uploaded,
         vin,
+        storeCoords,
         capture: { attestation, nonceOk, nonceResult, captureNonce, deviceToken },
         tsaBudget,
       });
