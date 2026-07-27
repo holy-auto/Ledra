@@ -31,7 +31,7 @@ export function Footer() {
             <p className="mt-4 text-sm text-white leading-relaxed max-w-[240px]">
               記録を、業界の共通言語にする。
               <br />
-              自動車整備・コーティング店のAI業務管理SaaS — Ledra。
+              自動車整備・コーティング店の施工履歴プラットフォーム — Ledra。
             </p>
             <div className="mt-8 max-w-[280px]">
               <NewsletterForm />

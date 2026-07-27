@@ -219,7 +219,7 @@ export async function makeOgImage({ title, subtitle, badge, imageUrl }: OgInput)
               display: "flex",
             }}
           >
-            自動車整備・コーティング店のAI業務管理SaaS
+            自動車整備・コーティング店の施工履歴プラットフォーム
           </div>
         </div>
       </div>
