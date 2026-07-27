@@ -30,6 +30,7 @@ export type PhotoIntegrityFlag =
   | "metadata_missing" // 撮影メタが無い (スクショ / 再エクスポート等)
   | "gps_mismatch_store" // 写真GPSが店舗の許容半径外 (出張なら正当なので inconclusive 止まり)
   | "c2pa_missing" // C2PA本番署名を期待する運用なのに未署名 (署名基盤が有効な時のみ)
+  | "external_c2pa_invalid" // 外部C2PAマニフェストが存在するが署名/内容束縛が無効 (撮影後改変の疑い)
   | "vision_suspicious"; // Opus Vision の内容審査で改ざんの疑い
 
 /**
@@ -68,6 +69,8 @@ const DECISIVE_FLAGS: ReadonlySet<PhotoIntegrityFlag> = new Set<PhotoIntegrityFl
   "duplicate_image",
   "deepfake_suspected",
   "capture_time_future",
+  // 外部C2PAが「存在するのに無効」= 撮影後に改変された強いシグナル → 決定的。
+  "external_c2pa_invalid",
   "vision_suspicious",
 ]);
 
@@ -86,6 +89,10 @@ export interface CertImageIntegrityInput {
   c2paVerified: boolean | null;
   /** 写真GPS×店舗位置の整合性判定 (certificate_images.gps_check_verdict)。生座標は保存していない。 */
   gpsCheckVerdict: string | null;
+  /** 外部C2PAマニフェストが原バイトに存在したか (certificate_images.external_c2pa_present)。 */
+  externalC2paPresent: boolean | null;
+  /** 外部C2PA署名・内容束縛が有効か (certificate_images.external_c2pa_verified)。 */
+  externalC2paVerified: boolean | null;
 }
 
 /** 集約の任意オプション。 */
@@ -258,6 +265,10 @@ export function aggregateCertificateImageIntegrity(
     // C2PA本番署名を期待する運用 (production) なのに未署名 → 来歴の欠落。
     // 署名基盤が無効な既定運用では常態なので付けない (opts.c2paExpected で制御)。
     if (opts.c2paExpected && im.c2paVerified !== true) flags.push("c2pa_missing");
+
+    // 外部C2PAマニフェストが存在するのに検証NG = 撮影後の改変の疑い（決定的）。
+    // present でないときは無関係（大多数の写真は外部マニフェスト無し）。
+    if (im.externalC2paPresent === true && im.externalC2paVerified === false) flags.push("external_c2pa_invalid");
 
     return { imageId: im.id, flags, verdict: imageVerdict(flags) };
   });

@@ -42,6 +42,7 @@ const FLAG_LABELS: Record<string, string> = {
   metadata_missing: "撮影メタ欠落",
   gps_mismatch_store: "撮影場所が店舗から離れている (出張なら正当)",
   c2pa_missing: "C2PA署名の欠落",
+  external_c2pa_invalid: "外部C2PA署名が無効 (撮影後改変の疑い)",
 };
 
 /** アップロード時に自動付与される改ざんスクリーニング結果 (certificates.meta.tampering_check)。 */

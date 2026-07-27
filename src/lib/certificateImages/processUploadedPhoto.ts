@@ -17,6 +17,7 @@ import { CERTIFICATE_IMAGE_BUCKET } from "@/lib/certificateImages";
 import { hashSha256, computePerceptualHash } from "@/lib/anchoring/imageHashing";
 import { stripGpsAndReadExif } from "@/lib/anchoring/imageExif";
 import { checkPhotoLocation } from "@/lib/geo/photoLocationCheck";
+import { verifyExternalC2pa } from "@/lib/anchoring/providers/c2paVerify";
 import { computeAuthenticityGrade } from "@/lib/anchoring/authenticityGrade";
 import { invokeAllUploadProviders } from "@/lib/anchoring/providers";
 import type { DeviceAttestationResult } from "@/lib/anchoring/providers/types";
@@ -98,6 +99,10 @@ export async function processUploadedPhoto(params: ProcessPhotoParams): Promise<
 
   // 除去前ハッシュ（原本照合用。GPS除去で失われる as-captured バイトの SHA-256）。
   const originalSha256 = hashSha256(buffer);
+
+  // 外部C2PA検証は **strip/再エンコード前の原バイト** に対して行う（再エンコードで外部
+  // マニフェストが失われ dataHash も壊れるため）。fail-open（未対応/エラーは present=false）。
+  const externalC2pa = await verifyExternalC2pa(buffer, mime);
 
   // GPS/EXIF 除去（失敗時は元バッファへフォールバックし upload を止めない）。
   const exif = await stripGpsAndReadExif(buffer);
@@ -225,6 +230,10 @@ export async function processUploadedPhoto(params: ProcessPhotoParams): Promise<
       c2pa_verified: providers.c2pa.verified,
       // 署名マニフェストの要約（署名者モード・actions台帳・封入値の要約）。生のnonceは含めない。
       c2pa_manifest: providers.c2pa.manifestSummary,
+      // 外部（カメラ/他アプリ）C2PA検証（原バイトに対して実施）。マニフェスト有無・有効性・署名者。
+      external_c2pa_present: externalC2pa.present,
+      external_c2pa_verified: externalC2pa.verified,
+      external_c2pa_signer: externalC2pa.signer,
       device_attestation_provider: attestation.provider,
       device_attestation_verified: attestation.verified,
       deepfake_score: providers.deepfake.score,

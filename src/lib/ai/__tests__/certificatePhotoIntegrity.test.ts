@@ -21,6 +21,8 @@ function img(overrides: Partial<CertImageIntegrityInput> & { id: string }): Cert
     authenticityGrade: "A",
     c2paVerified: true,
     gpsCheckVerdict: "match_store",
+    externalC2paPresent: false,
+    externalC2paVerified: null,
     ...overrides,
   };
 }
@@ -234,5 +236,28 @@ describe("B4: C2PA / GPS の真正性統合", () => {
     });
     expect(r.flags).not.toContain("c2pa_missing");
     expect(r.verdict).toBe("clear");
+  });
+
+  it("外部C2PAが存在するのに検証NGは external_c2pa_invalid で suspicious（決定的）", () => {
+    const r = aggregateCertificateImageIntegrity(
+      [img({ id: "1", externalC2paPresent: true, externalC2paVerified: false })],
+      NOW,
+    );
+    expect(r.flags).toContain("external_c2pa_invalid");
+    expect(r.verdict).toBe("suspicious");
+    expect(r.anyFlagged).toBe(true);
+  });
+
+  it("外部C2PAが有効 / 不在 なら external_c2pa_invalid を付けない", () => {
+    const ok = aggregateCertificateImageIntegrity(
+      [img({ id: "1", externalC2paPresent: true, externalC2paVerified: true })],
+      NOW,
+    );
+    expect(ok.flags).not.toContain("external_c2pa_invalid");
+    const absent = aggregateCertificateImageIntegrity(
+      [img({ id: "2", externalC2paPresent: false, externalC2paVerified: null })],
+      NOW,
+    );
+    expect(absent.flags).not.toContain("external_c2pa_invalid");
   });
 });
