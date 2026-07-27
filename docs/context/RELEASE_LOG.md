@@ -12,6 +12,18 @@
 - 対象: どの画面・API・業種向けか
 ```
 
+## 2026-07-27 AITURBO対抗フェーズ2：C2PA本格統合・GPS真正性・真正性エンジン統合・写真ファースト (PR #832–#841)
+- 内容: フェーズ1に続き、C2PAの本格活用と多層GPS整合による真正性強化＋入力低摩擦化を一括実装。すべて opt-in・デフォルト無害・生座標非保存を貫いた。
+  - **A2 フォーム写真ファースト化** (PR #833): 証明書発行フォームで施工写真セクションを車種選択直後へ移動、任意項目を折りたたみ `<details>`「詳細を追加」に格納。必須3項目（顧客名・車両・写真1枚）は常時表示。UIのみ・ロジック不変。
+  - **A3 写真→施工内容ドラフト** (PR #834): 施工写真1〜2枚から `serviceCategory`＋施工内容下書き（≤120字）を Vision 生成する opt-in 自動アクション `photo.auto_draft_content`（既定OFF・「おまかせ」プリセット外＝精度実証まで個別opt-in・fail-open）。`certificates.meta.content_draft_suggestion` に提案のみ保存、発行前に人が確認（壁3不介入）。
+  - **C5 写真GPS×店舗位置の整合性** (PR #836): 純関数 `checkPhotoLocation`＋`haversineMeters`。写真EXIFのGPSをアップロード処理中にメモリ内で店舗座標と照合し、**判定(verdict)と距離帯だけ**を `certificate_images.gps_check_verdict/gps_distance_bucket` に保存して生座標は破棄。証明書詳細に「撮影場所の整合性」チップ。
+  - **B2 C2PAマニフェスト要約の永続化・表示** (PR #837): 署名時に封入した内容（署名者モード・actions台帳・封入VIN・TSA/nonce封入有無）を決定的に要約して `certificate_images.c2pa_manifest`(jsonb) に保存。証明書詳細・保険照会で読み戻し表示。**単回nonceの生値は保存しない**（真偽のみ）。
+  - **B4 真正性エンジンにC2PA/GPS統合** (PR #838): 改ざんスクリーニング集約に、C2PA検証結果とGPS整合をフラグ統合。`gps_mismatch_store`（出張は正当なので非決定的）、`c2pa_missing`（本番署名運用時のみ）。GPS/C2PAは画素で確認できないため Vision抽出から除外し無駄な課金を防止。既定運用（署名OFF・店舗座標なし）ではフラグ増えず＝デフォルト無害。
+  - **C4 出張モバイルGPS＋写真×作業場所照合** (PR #840): 作業開始/完了時にモバイル端末GPSを予約(`reservations.work_lat/lng/gps_at`)へ記録し、写真を「店舗 or 出張作業場所」いずれかと照合（新verdict `match_worksite`）。出張現場の写真の誤警告を根本解消。作業場所座標は**スタッフ運用限定**（顧客/保険ポータル非公開）。CSP `geolocation=(self)`。
+  - **B3 外部C2PAマニフェスト検証** (PR #841): カメラ/他アプリの Content Credential をアップロード時に検証（`@contentauth/c2pa-node` v0.6.0 Reader API・fail-open）。**再エンコード前の原バイト**に対して実施。`external_c2pa_invalid`（存在するのに無効＝撮影後改変）を決定的フラグとして真正性エンジンに統合。
+- 対象: 証明書発行フォーム・写真アップロード（cookie/モバイル両経路）・証明書詳細・保険照会・モバイル予約API・改ざんスクリーニング。全業種（出張作業を含む）。
+- 備考: **B1 本番C2PA署名の有効化は env 運用**（`C2PA_MODE=production`＋メンバー証明書・`PINATA_JWT`をVercel環境変数に設定＝コード変更なし）。外部C2PA検証の実署名/改変サンプルによる統合確認はステージング推奨（ネイティブ依存がCIに未インストールのため）。
+
 ## 2026-07-27 AITURBO対抗フェーズ1：写真打刻・進捗ラベル自動化・C2PA VIN封入・店舗座標 (PR #830 / 87a90d5)
 - 内容: 競合 AITURBO（株式会社ルクレ）の「写真を撮るだけ」低摩擦入力と改ざん不能な証跡を吸収する第一弾。既存資産の接続が中心。
   - **A1 写真打刻**: 施工写真の EXIF 撮影時刻から施工日・作業時間を推定する純関数 `deriveWorkStamp`（`src/lib/certificates/workStamp.ts`＋8テスト）。写真アップロード後の `after()` で `certificates.meta.work_stamp` に提案保存する opt-in 自動アクション `photo.auto_work_stamp`（既定OFF・**LLM 不使用で無料**、`src/lib/ai/automation/workStampAuto.ts`）。証明書詳細に読み取り専用の推定チップを表示。`exif_captured_at` はサーバ tz=UTC 取り込み前提で UTC 成分を施工日とし（tz変換で日付が±9hずれるのを回避）、EXIF欠落・壊れた時計・広すぎる時間幅は提案しない（捏造防止）。
