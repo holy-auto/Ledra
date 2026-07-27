@@ -19,10 +19,20 @@ export async function OrganizationJsonLd() {
     "@context": "https://schema.org",
     "@type": "SoftwareApplication",
     name: siteConfig.siteName,
+    alternateName: siteConfig.siteNameAlt,
     description: siteConfig.siteDescription,
     url: siteConfig.siteUrl,
+    inLanguage: "ja",
     applicationCategory: "BusinessApplication",
+    applicationSubCategory: "自動車整備・コーティング店向け業務管理SaaS",
     operatingSystem: "Web",
+    // AI検索(GEO)が「何ができるか」「誰向けか」を事実ベースで拾えるように付与。
+    keywords: siteConfig.keywords.join(", "),
+    featureList: siteConfig.featureList,
+    audience: {
+      "@type": "BusinessAudience",
+      audienceType: "自動車整備・鈑金塗装・コーティング・PPF施工店",
+    },
     offers: {
       "@type": "AggregateOffer",
       priceCurrency: "JPY",

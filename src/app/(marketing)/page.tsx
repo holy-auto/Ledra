@@ -28,21 +28,23 @@ import { QuickStartReliabilityBar } from "@/components/marketing/QuickStartRelia
 import { CarJourneySection } from "@/components/marketing/CarJourneySection";
 import { ProductTourSection } from "@/components/marketing/ProductTourSection";
 import { PLANS } from "@/lib/marketing/pricing";
+import { siteConfig } from "@/lib/marketing/config";
 import Link from "next/link";
 import { Suspense } from "react";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Ledra | WEB施工証明書SaaS",
+  title: "Ledra｜自動車整備・コーティング店のAI業務管理SaaS",
   description:
-    "施工証明をデジタルで。施工店・代理店・保険会社をつなぐマルチテナント SaaS。" +
-    "ブロックチェーン・アンカリング・電子署名・QR 公開・モバイル NFC 連携を一本化。",
+    "自動車整備・鈑金塗装・コーティング・PPF施工店向けのAI搭載クラウド業務管理SaaS。" +
+    "予約・作業管理、改ざん検知付きの施工証明書、請求・帳票、顧客360、保険会社連携までを一本化し、整備工場のDXと業務効率化を実現します。",
+  keywords: siteConfig.keywords,
   alternates: { canonical: "/" },
   openGraph: {
-    title: "Ledra | WEB施工証明書SaaS",
+    title: "Ledra｜自動車整備・コーティング店のAI業務管理SaaS",
     description:
-      "施工店・代理店・保険会社をつなぐマルチテナント SaaS。" +
-      "ブロックチェーン・アンカリング、電子署名、QR、NFC を一本化。",
+      "自動車整備・鈑金塗装・コーティング・PPF施工店向けのAI搭載クラウド業務管理SaaS。" +
+      "予約・作業管理、施工証明書、請求・帳票、顧客管理、保険会社連携を一本化。",
     url: "/",
     siteName: "Ledra",
     locale: "ja_JP",
@@ -50,8 +52,9 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "Ledra | WEB施工証明書SaaS",
-    description: "施工証明をデジタルで。施工店と保険会社をつなぐ WEB SaaS。",
+    title: "Ledra｜自動車整備・コーティング店のAI業務管理SaaS",
+    description:
+      "自動車整備・鈑金・コーティング・PPF店向けのAI業務管理SaaS。予約・施工証明書・請求・顧客管理・保険連携を一本化。",
   },
 };
 

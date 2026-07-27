@@ -4,7 +4,7 @@
 > 追わず、常に最新状態だけを保つ（履歴は DECISION_LOG.md / RELEASE_LOG.md 側）。
 > 大きな変化があったら都度上書きすること。
 
-最終更新: 2026-07-22
+最終更新: 2026-07-27
 
 ## 会社・代表者
 
@@ -15,6 +15,12 @@
   自動車業界の信頼低下・大手不正を背景に、AIと現場知見を融合したLedraを開発。
 
 ## プロダクト概要
+
+**対外ポジショニング（SEO/GEO の一言）**: 「自動車整備・コーティング店のAI業務管理SaaS」。
+2026-07-27 に旧「WEB施工証明書SaaS」から刷新（施工証明書は主要機能の1つとして残す）。
+サイトの title/description/OGP・JSON-LD・robots は `src/lib/marketing/config.ts` の `siteConfig`
+（siteTagline / siteDescription / keywords / featureList）を単一情報源として参照する。
+詳細は DECISION_LOG.md / RELEASE_LOG.md 2026-07-27 を参照。
 
 自動車整備 / ボディリペア / コーティング / PPF 店向けのマルチテナント SaaS。
 施工証明書発行、請求・帳票、顧客ポータル、予約、保険会社（損保）との案件連携、
