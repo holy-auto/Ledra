@@ -63,6 +63,8 @@ export interface ProcessPhotoParams {
   vin?: string | null;
   /** 写真GPS整合チェックの基準となる店舗座標（無ければ no_reference）。生座標は保存しない。 */
   storeCoords?: { lat: number; lng: number } | null;
+  /** 出張作業場所の基準座標（証明書に紐づく予約の作業GPS）。無ければ店舗のみで照合。生座標は保存しない。 */
+  worksiteCoords?: { lat: number; lng: number } | null;
   capture: CaptureContext;
   tsaBudget: TsaBatchBudget;
 }
@@ -85,6 +87,7 @@ export async function processUploadedPhoto(params: ProcessPhotoParams): Promise<
     sortOrder,
     vin,
     storeCoords,
+    worksiteCoords,
     capture,
     tsaBudget,
   } = params;
@@ -102,7 +105,11 @@ export async function processUploadedPhoto(params: ProcessPhotoParams): Promise<
 
   // 写真GPS × 店舗位置の整合性チェック。生座標(exif.gps)はここで照合してすぐ捨て、
   // 結果(verdict / 距離帯)だけを DB に保存する（プライバシー方針: 生座標は永続化しない）。
-  const gpsCheck = checkPhotoLocation({ photo: exif.gps, store: storeCoords ?? null });
+  const gpsCheck = checkPhotoLocation({
+    photo: exif.gps,
+    store: storeCoords ?? null,
+    worksite: worksiteCoords ?? null,
+  });
 
   const sha256 = hashSha256(uploadBuffer);
   let perceptualHash: string | null = null;

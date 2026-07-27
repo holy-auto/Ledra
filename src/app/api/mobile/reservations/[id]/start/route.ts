@@ -9,6 +9,7 @@ import {
   apiValidationError,
   apiInternalError,
 } from "@/lib/api/response";
+import { parseWorkGps, workGpsPatch } from "@/lib/reservations/workGps";
 
 export const dynamic = "force-dynamic";
 
@@ -33,9 +34,12 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return apiValidationError(`Cannot start: current status is "${reservation.status}", expected "arrived"`);
     }
 
+    // 出張作業場所GPS（任意）。取得できていれば作業場所として記録する（照合の基準）。
+    const workGps = parseWorkGps(await request.json().catch(() => null));
+
     const { data, error } = await caller.supabase
       .from("reservations")
-      .update({ status: "in_progress" })
+      .update({ status: "in_progress", ...workGpsPatch(workGps, new Date().toISOString()) })
       .eq("id", id)
       .eq("tenant_id", caller.tenantId)
       .select("id, status, updated_at")
