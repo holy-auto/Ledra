@@ -30,6 +30,7 @@ export default function AdminTopBar() {
   }, []);
 
   const openSearch = () => window.dispatchEvent(new Event("open-command-palette"));
+  const openAssistant = () => window.dispatchEvent(new Event("open-assistant-chat"));
 
   return (
     <div className="sticky top-0 z-[45] flex h-11 flex-shrink-0 items-center gap-3 border-b border-border-default bg-base pr-3 pl-16 sm:pr-4 lg:pl-6">
@@ -49,6 +50,36 @@ export default function AdminTopBar() {
       </nav>
 
       <div className="flex-1" />
+
+      {/* AIナビ起動（どの画面からでも開ける主要導線）。⌘/Ctrl+J でも起動。モバイルはアイコンのみ。 */}
+      <button
+        type="button"
+        onClick={openAssistant}
+        aria-label="AIに聞いて画面を開く"
+        className="inline-flex items-center gap-2 rounded-[var(--radius-md)] bg-accent px-2.5 py-1.5 text-[13px] font-medium text-inverse transition-opacity hover:opacity-90"
+      >
+        <svg
+          width="15"
+          height="15"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+          strokeWidth={1.6}
+          className="shrink-0"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            d="M8 10h8M8 14h5M21 12a8 8 0 0 1-11.6 7.1L3 21l1.9-6.4A8 8 0 1 1 21 12Z"
+          />
+        </svg>
+        <span className="hidden sm:inline">AIに聞く</span>
+        {modKey && (
+          <kbd className="ml-0.5 hidden rounded border border-white/30 px-1.5 py-0.5 font-mono text-[10.5px] text-inverse sm:inline">
+            {modKey}J
+          </kbd>
+        )}
+      </button>
 
       {/* 幅広検索ピル（既存 CommandPalette を起動）。モバイルはアイコンのみ。 */}
       <button

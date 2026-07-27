@@ -23,21 +23,24 @@ const notoSansJP = Noto_Sans_JP({
   preload: false, // marketing pages handle their own preload
 });
 
+const siteTitle = `${siteConfig.siteName}｜${siteConfig.siteTagline}`;
+
 export const metadata = {
-  title: "Ledra",
-  description: "WEB施工証明書SaaS",
+  title: siteConfig.siteName,
+  description: siteConfig.siteDescription,
+  keywords: siteConfig.keywords,
   metadataBase: new URL(siteConfig.siteUrl),
   openGraph: {
-    title: "Ledra | WEB施工証明書SaaS",
-    description: "施工証明をデジタルで。施工店と保険会社をつなぐSaaSプラットフォームです。",
-    siteName: "Ledra",
+    title: siteTitle,
+    description: siteConfig.siteDescription,
+    siteName: siteConfig.siteName,
     locale: "ja_JP",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Ledra | WEB施工証明書SaaS",
-    description: "施工証明をデジタルで。施工店と保険会社をつなぐSaaSプラットフォームです。",
+    title: siteTitle,
+    description: siteConfig.siteDescription,
   },
   alternates: {
     canonical: "/",

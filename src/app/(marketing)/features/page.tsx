@@ -12,12 +12,12 @@ import { FEATURE_GROUPS as groups } from "@/lib/marketing/features";
 export const metadata = {
   title: "機能一覧",
   description:
-    "施工店・代理店・保険会社・顧客の4者をつなぐWEB施工証明書SaaS。証明書発行・車両管理・POS・帳票・分析まで一気通貫。",
+    "自動車整備・鈑金塗装・コーティング・PPF施工店向けのAI業務管理SaaS。予約・作業管理・施工証明書発行・車両管理・POS・請求帳票・保険連携・分析まで一気通貫。",
   alternates: { canonical: "/features" },
   openGraph: {
     title: "機能一覧 | Ledra",
     description:
-      "施工店・代理店・保険会社・顧客の4者をつなぐWEB施工証明書SaaS。証明書発行・車両管理・POS・帳票・分析まで一気通貫。",
+      "自動車整備・鈑金塗装・コーティング・PPF施工店向けのAI業務管理SaaS。予約・作業管理・施工証明書発行・車両管理・POS・請求帳票・保険連携・分析まで一気通貫。",
     url: "/features",
     siteName: "Ledra",
     locale: "ja_JP",

@@ -12,7 +12,7 @@ const SLIDES = [
     id: "title",
     render: () => (
       <div className="flex flex-col items-center justify-center h-full text-center gap-6">
-        <div className="text-[10px] font-mono tracking-[0.3em] text-blue-400 uppercase mb-2">WEB 施工証明書 SaaS</div>
+        <div className="text-[10px] font-mono tracking-[0.3em] text-blue-400 uppercase mb-2">AI業務管理 SaaS</div>
         <h1 className="text-7xl md:text-8xl font-bold tracking-tight text-white">Ledra</h1>
         <p className="text-2xl md:text-3xl text-white font-light">施工の証明を、デジタルで。</p>
         <div className="mt-8 w-16 h-px bg-blue-500/60" />

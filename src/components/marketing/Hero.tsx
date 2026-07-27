@@ -42,7 +42,7 @@ export function Hero() {
             <div className="animate-[hero-fade-in_0.7s_ease-out_0.15s_both]">
               <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-medium text-blue-300 bg-blue-500/10 border border-blue-500/20 shadow-[0_0_20px_rgba(59,130,246,0.15)]">
                 <span className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-[pulse-soft_2s_ease-in-out_infinite]" />
-                WEB施工証明書SaaS
+                自動車整備・コーティング店のAI業務管理SaaS
               </div>
             </div>
 

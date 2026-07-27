@@ -33,6 +33,18 @@
 8. まだ答えが出ていないこと: (i) 記録DXで正面勝負するのか、証明書検証エコシステム＋AI顧客体験で非対称の堀を作るのか（戦略選択、代表判断）。(ii) BP工場の現場実測で AITURBO の「写真を撮るだけ」に対し Ledra の入力摩擦で勝てているか。(iii) AITURBO の料金・契約形態【要確認：LP・PRとも非公開】。(iv) ルクレの自動車ロードマップ（車検/一般整備への拡張、見積ソフトAPI連携、経営ダッシュボード）が Ledra 想定顧客とどこまで衝突するか。→ OPEN_QUESTIONS 起票。
 9. 公開区分: 非公開（競合の実名を挙げた自社の差別化戦略・弱み認識を含むため。外部発信時は競合名を出さない一般論へ再構成し要確認）
 
+## 2026-07-27 SEOポジショニングを「WEB施工証明書SaaS」から「自動車整備・コーティング店のAI業務管理SaaS」へ刷新
+1. 日付: 2026-07-27
+2. 起きたこと: サイト全体のSEO文言（title/description/OGP/ヒーロー等）が「WEB施工証明書SaaS」で固定されており、現在のプロダクト実態（予約・作業管理・請求帳票・顧客管理・保険連携・AI業務自動化を含む総合業務管理SaaS）と乖離しているとの指摘。あわせて生成AI検索（ChatGPT/Perplexity/Gemini等）にもヒットさせたいとの要望。
+3. 以前の考え: 立ち上げ期は「WEB施工証明書」という一機能を旗印にすれば分かりやすいと考え、サイト全体をその一語で位置づけていた。
+4. 違和感・問題: 施工証明書は差別化機能ではあるが「数ある機能の1つ」に過ぎず、これを製品全体の名称にすると、整備・予約・請求・顧客管理を探している検索者やAIに「証明書発行ツール」としか認識されず、実態より狭く見える。AI検索向けの構造化データ（featureList/audience/keywords）やAIクローラー許可の明示も無かった。
+5. 決めたこと: 位置づけを「自動車整備・コーティング店のAI業務管理SaaS」に統一（施工証明書は主要機能の1つとして残す）。単一の情報源として `siteConfig` に siteTagline / siteDescription / keywords / featureList / siteNameAlt(レドラ) を集約し、root・marketing の各メタデータと JSON-LD から参照。JSON-LD(SoftwareApplication) に featureList・audience(BusinessAudience)・keywords・alternateName・applicationSubCategory を付与。robots.ts で主要AIクローラー（GPTBot/OAI-SearchBot/ChatGPT-User/ClaudeBot/PerplexityBot/Google-Extended/Applebot-Extended）を名指しで allow。Hero/Footer/OG画像/features・for-shops・video の各文言も新ポジションへ更新。
+6. 捨てた選択肢: (a)施工証明書を完全に外して純粋な「業務管理SaaS」にする案＝改ざん検知付き施工証明書は他社に無い差別化なので機能の柱として残す方が強い。(b)meta keywords を大量投入する旧来SEO＝Googleは無視するため過剰投入せず、実態に即した15語程度に絞りAI/一部検索向けの補助に留める。(c)公開済みニュース記事(2026-04-22 サービス開始)の「WEB施工証明書SaaS」表記も書き換える案＝当時の事実の記録なので改変せず据え置き。
+7. 判断理由: 実態（README/LEDRA_CURRENT）に沿った広い位置づけの方が検索・AI双方の想起集合を広げられ、かつ差別化（改ざん検知証明書）も温存できる。文言を siteConfig 一箇所に集約することで今後のブレも防げる。
+   - 公開範囲の判断: JSON-LD の featureList は「公開マーケLPが既に宣伝している機能のみ」を載せる方針とし、LP未掲載の「部品装着インテグリティ」は構造化データで先出ししない（社内資料・READMEにはあるが、公開露出は事業側判断）。当初10項目→9項目に削減（コミット済み分の指摘を受け撤回）。
+8. まだ答えが出ていないこと: 新ポジションでの実際の検索順位・AI引用率の変化（要計測）。「業務管理」か「店舗管理」か「基幹システム」か、カテゴリ語の最適解は運用データ待ち。部品装着インテグリティを公開機能として打ち出すかは未決（打ち出すなら featureList / features ページ側にも追加）。→ 効果測定・公開範囲は OPEN_QUESTIONS 候補。
+9. 公開区分: 公開可（マーケティング・SEO/GEO の方針知見。機密・個人情報なし）
+
 ## 2026-07-25 本番ログの別系統エラー3種を調査し根本修正（search_path空 / 削除済み列参照 / 列名誤り）
 1. 日付: 2026-07-25
 2. 起きたこと: parts_replacement 修復の検証中に本番Postgresログで別系統の再発エラー3種を発見し、追加調査した。(A)`relation "tenants" does not exist`（再発）、(B)`column vehicles.customer_name does not exist`、(C)`column tenants.phone does not exist`。

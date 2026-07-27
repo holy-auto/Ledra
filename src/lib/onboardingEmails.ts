@@ -26,7 +26,7 @@ const SHARED_FOOTER = `
     通知設定の変更は <a href="${urlAdmin("/admin/settings")}" style="color: #6366f1;">店舗設定</a> から行えます。
   </p>
   <p style="margin: 0; color: #9ca3af; font-size: 11px;">
-    Ledra — WEB施工証明書プラットフォーム
+    Ledra — 自動車整備・コーティング店のAI業務管理SaaS
   </p>
 `;
 
