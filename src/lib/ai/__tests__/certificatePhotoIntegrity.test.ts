@@ -19,6 +19,8 @@ function img(overrides: Partial<CertImageIntegrityInput> & { id: string }): Cert
     deviceModel: "Apple iPhone 15",
     deepfakeVerdict: "likely_real",
     authenticityGrade: "A",
+    c2paVerified: true,
+    gpsCheckVerdict: "match_store",
     ...overrides,
   };
 }
@@ -186,5 +188,51 @@ describe("Vision エスカレーション (グレーゾーン抽出 / 結果折�
     const before = mixed();
     const after = applyVisionVerdicts(before, { gray: { suspicious: true } });
     expect(after.signature).toBe(before.signature);
+  });
+});
+
+describe("B4: C2PA / GPS の真正性統合", () => {
+  it("GPS mismatch は gps_mismatch_store で inconclusive (出張は正当なので suspicious にしない)", () => {
+    const r = aggregateCertificateImageIntegrity([img({ id: "1", gpsCheckVerdict: "mismatch" })], NOW);
+    expect(r.flags).toContain("gps_mismatch_store");
+    expect(r.verdict).toBe("inconclusive");
+    expect(r.anyFlagged).toBe(false);
+    expect(r.summary).toContain("店舗から離れた");
+  });
+
+  it("GPS mismatch だけの画像は Vision に回さない (位置は画素で確認できない)", () => {
+    const r = aggregateCertificateImageIntegrity([img({ id: "1", gpsCheckVerdict: "mismatch" })], NOW);
+    expect(pickGrayZoneImageIds(r, 10)).toEqual([]);
+  });
+
+  it("match_store / no_gps / no_reference はフラグを付けない", () => {
+    for (const v of ["match_store", "no_gps", "no_reference", null]) {
+      const r = aggregateCertificateImageIntegrity([img({ id: "1", gpsCheckVerdict: v })], NOW);
+      expect(r.flags).not.toContain("gps_mismatch_store");
+    }
+  });
+
+  it("c2paExpected=true で未署名なら c2pa_missing (inconclusive)", () => {
+    const r = aggregateCertificateImageIntegrity([img({ id: "1", c2paVerified: false })], NOW, {
+      c2paExpected: true,
+    });
+    expect(r.flags).toContain("c2pa_missing");
+    expect(r.verdict).toBe("inconclusive");
+    // 署名の有無は画素で確認できないので Vision には回さない。
+    expect(pickGrayZoneImageIds(r, 10)).toEqual([]);
+  });
+
+  it("c2paExpected 未指定 (既定=署名基盤OFF) では未署名でも c2pa_missing を付けない", () => {
+    const r = aggregateCertificateImageIntegrity([img({ id: "1", c2paVerified: false })], NOW);
+    expect(r.flags).not.toContain("c2pa_missing");
+    expect(r.verdict).toBe("clear");
+  });
+
+  it("c2paExpected=true でも署名済みなら c2pa_missing を付けない", () => {
+    const r = aggregateCertificateImageIntegrity([img({ id: "1", c2paVerified: true })], NOW, {
+      c2paExpected: true,
+    });
+    expect(r.flags).not.toContain("c2pa_missing");
+    expect(r.verdict).toBe("clear");
   });
 });
