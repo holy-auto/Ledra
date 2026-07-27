@@ -172,12 +172,12 @@ export default function CertNewFormWrapper({
     const list = [
       { id: "sec-package", label: "施工パッケージ" },
       { id: "sec-vehicle", label: "車種選択" },
+      { id: "sec-photos", label: "施工写真" },
     ];
     if (detailSection) list.push(detailSection);
     if (isCoatingOrPpf) list.push({ id: "sec-coating", label: "コーティング剤・使用フィルム" });
     list.push(
       { id: "sec-expiry", label: "有効期限・保証期間" },
-      { id: "sec-photos", label: "施工写真" },
       { id: "sec-work", label: "詳細な施工内容" },
       { id: "sec-film", label: "膜厚計測" },
       { id: "sec-maintenance-date", label: "メンテナンス実施日" },
@@ -739,76 +739,7 @@ export default function CertNewFormWrapper({
           )}
         </section>
 
-        {/* ━━━ 2. PPF施工範囲（PPFテンプレート時のみ） ━━━ */}
-        {isPpf && (
-          <section id="sec-detail-ppf" className="border-t border-border-subtle py-6">
-            <PpfCoverageSection />
-          </section>
-        )}
-
-        {/* ━━━ 2b. 整備内容（整備テンプレート時のみ） ━━━ */}
-        {isMaintenance && (
-          <section id="sec-detail-maintenance" className="border-t border-border-subtle py-6">
-            <MaintenanceDetailsSection defaultPartsReplacedNote={defaultPartsReplacedNote} />
-          </section>
-        )}
-
-        {/* ━━━ 2c. 鈑金塗装内容（鈑金塗装テンプレート時のみ） ━━━ */}
-        {isBodyRepair && (
-          <section id="sec-detail-body-repair" className="border-t border-border-subtle py-6 space-y-6">
-            <BodyRepairDetailsSection />
-            {/* 車両図タップで傷・損傷位置を記録（damage_map_json）。 */}
-            <DamageMapSection />
-          </section>
-        )}
-
-        {/* ━━━ 2d. 用品取付内容（用品取付テンプレート時のみ） ━━━ */}
-        {isAccessory && (
-          <section id="sec-detail-accessory" className="border-t border-border-subtle py-6">
-            <AccessoryDetailsSection />
-          </section>
-        )}
-
-        {/* ━━━ 3. コーティング剤 / 使用フィルム（コーティング・PPF時のみ） ━━━ */}
-        {isCoatingOrPpf && (
-          <section id="sec-coating" className="border-t border-border-subtle py-6">
-            <CoatingProductsSection serviceType={serviceType} canDeliveryNoteExtract={canAiDraft} />
-          </section>
-        )}
-
-        {/* ━━━ 3. 有効期限・保証期間 ━━━ */}
-        <section id="sec-expiry" className="border-t border-border-subtle py-6 space-y-4">
-          <div className={sectionHeaderCls}>
-            <div className={sectionTagCls}>EXPIRY & WARRANTY</div>
-            <div className={`${sectionTitleCls} flex items-center gap-1.5`}>
-              有効期限・保証期間
-              <HelpTooltip>
-                証明書PDFと公開ページに表示されます。「半年ごとにメンテ推奨」など条件文と、年月日の有効期限・保証終了日を別々に設定できます。空欄でも発行可能。
-              </HelpTooltip>
-            </div>
-          </div>
-          <label className={labelCls}>
-            <span className={labelTextCls}>有効条件（テキスト）</span>
-            <input
-              ref={expiryValueRef}
-              name="expiry_value"
-              className={inputCls}
-              placeholder="半年ごとにメンテ推奨 など"
-            />
-          </label>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <label className={labelCls}>
-              <span className={labelTextCls}>有効期限</span>
-              <input type="date" name="expiry_date" className={inputCls} />
-            </label>
-            <label className={labelCls}>
-              <span className={labelTextCls}>保証期間（終了日）</span>
-              <input type="date" name="warranty_period_end" className={inputCls} />
-            </label>
-          </div>
-        </section>
-
-        {/* ━━━ 4. 施工写真 ━━━ */}
+        {/* ━━━ 4. 施工写真（写真ファースト：車種の直後に配置） ━━━ */}
         <section id="sec-photos" className="border-t border-border-subtle py-6 space-y-4">
           <div className="flex items-center gap-1.5 -mb-2">
             <span className="text-xs font-semibold tracking-[0.18em] text-muted">PHOTOS</span>
@@ -858,117 +789,196 @@ export default function CertNewFormWrapper({
           )}
         </section>
 
-        {/* ━━━ 5. 詳細な施工内容 ━━━ */}
-        <section id="sec-work" className="border-t border-border-subtle py-6 space-y-4">
-          <div className={sectionHeaderCls}>
-            <div className={sectionTagCls}>WORK DETAILS</div>
-            <div className={`${sectionTitleCls} flex items-center gap-1.5`}>
-              詳細な施工内容
-              <HelpTooltip>
-                自由記述の施工メモです。Standard 以上では音声入力や AI
-                下書き生成も使えます。証明書PDFには簡潔に印字されるため、長すぎる場合は要点をまとめて。
-              </HelpTooltip>
-            </div>
-          </div>
+        {/* ━━━ 以下は任意項目。既定は折りたたみ、「詳細を追加」で展開 ━━━ */}
+        <details className="group">
+          <summary className="flex cursor-pointer list-none items-center justify-between border-t border-border-subtle py-4 text-sm font-medium text-primary [&::-webkit-details-marker]:hidden">
+            <span>詳細を追加（任意）— 有効期限・施工内容・膜厚・保証除外・備考など</span>
+            <span className="text-muted transition-transform group-open:rotate-180" aria-hidden="true">
+              ▾
+            </span>
+          </summary>
 
-          {/* AI下書き生成パネル（Standard以上） */}
-          {canAiDraft && (
-            <AiDraftPanel vehicleId={selectedVehicleId} templateCategory={serviceType} onApply={handleAiDraftApply} />
+          {/* ━━━ 2. PPF施工範囲（PPFテンプレート時のみ） ━━━ */}
+          {isPpf && (
+            <section id="sec-detail-ppf" className="border-t border-border-subtle py-6">
+              <PpfCoverageSection />
+            </section>
           )}
 
-          {/* 音声メモパネル（Standard以上）— マイクで喋った内容を AI が整形してフォームへ */}
-          {canAiDraft && <VoiceMemoPanel serviceType={serviceType} onApply={handleAiDraftApply} />}
-
-          {/* AI下書き適用通知 */}
-          {draftApplied && (
-            <div className="rounded-xl border border-success/30 bg-success-dim px-3 py-2 text-xs text-success-text">
-              ✅ AI下書きをフォームに適用しました。内容を確認・編集してください。
-            </div>
+          {/* ━━━ 2b. 整備内容（整備テンプレート時のみ） ━━━ */}
+          {isMaintenance && (
+            <section id="sec-detail-maintenance" className="border-t border-border-subtle py-6">
+              <MaintenanceDetailsSection defaultPartsReplacedNote={defaultPartsReplacedNote} />
+            </section>
           )}
 
-          <label className={`${labelCls} block`}>
-            <span className={labelTextCls}>施工内容（自由記述）</span>
-            <textarea
-              name="content_free_text"
-              className={inputCls}
-              rows={5}
-              placeholder="施工内容の詳細を記入してください（下地処理、コーティング工程、仕上げ等）"
-            />
-          </label>
-        </section>
+          {/* ━━━ 2c. 鈑金塗装内容（鈑金塗装テンプレート時のみ） ━━━ */}
+          {isBodyRepair && (
+            <section id="sec-detail-body-repair" className="border-t border-border-subtle py-6 space-y-6">
+              <BodyRepairDetailsSection />
+              {/* 車両図タップで傷・損傷位置を記録（damage_map_json）。 */}
+              <DamageMapSection />
+            </section>
+          )}
 
-        {/* ━━━ 6. 膜厚計測 ━━━ */}
-        <section id="sec-film" className="border-t border-border-subtle py-6">
-          <FilmThicknessSection />
-        </section>
+          {/* ━━━ 2d. 用品取付内容（用品取付テンプレート時のみ） ━━━ */}
+          {isAccessory && (
+            <section id="sec-detail-accessory" className="border-t border-border-subtle py-6">
+              <AccessoryDetailsSection />
+            </section>
+          )}
 
-        {/* ━━━ 7. メンテナンス実施日 ━━━ */}
-        <section id="sec-maintenance-date" className="border-t border-border-subtle py-6 space-y-4">
-          <div className={sectionHeaderCls}>
-            <div className={sectionTagCls}>MAINTENANCE</div>
-            <div className={sectionTitleCls}>メンテナンス実施日</div>
-          </div>
-          <label className={labelCls}>
-            <span className={labelTextCls}>実施日</span>
-            <input type="date" name="maintenance_date" className={inputCls} />
-          </label>
-        </section>
+          {/* ━━━ 3. コーティング剤 / 使用フィルム（コーティング・PPF時のみ） ━━━ */}
+          {isCoatingOrPpf && (
+            <section id="sec-coating" className="border-t border-border-subtle py-6">
+              <CoatingProductsSection serviceType={serviceType} canDeliveryNoteExtract={canAiDraft} />
+            </section>
+          )}
 
-        {/* ━━━ 8. 保証除外内容 ━━━ */}
-        <section id="sec-warranty-exclusions" className="border-t border-border-subtle py-6 space-y-4">
-          <div className={sectionHeaderCls}>
-            <div className={sectionTagCls}>WARRANTY EXCLUSIONS</div>
-            <div className={`${sectionTitleCls} flex items-center gap-1.5`}>
-              保証除外内容
-              <HelpTooltip>
-                保証の対象外になる条件を明記する欄です。トラブル防止のために重要。一度入力した内容は店舗のデフォルトとして保存・流用できます。
-              </HelpTooltip>
+          {/* ━━━ 3. 有効期限・保証期間 ━━━ */}
+          <section id="sec-expiry" className="border-t border-border-subtle py-6 space-y-4">
+            <div className={sectionHeaderCls}>
+              <div className={sectionTagCls}>EXPIRY & WARRANTY</div>
+              <div className={`${sectionTitleCls} flex items-center gap-1.5`}>
+                有効期限・保証期間
+                <HelpTooltip>
+                  証明書PDFと公開ページに表示されます。「半年ごとにメンテ推奨」など条件文と、年月日の有効期限・保証終了日を別々に設定できます。空欄でも発行可能。
+                </HelpTooltip>
+              </div>
             </div>
-          </div>
-          <label className={`${labelCls} block`}>
-            <span className={labelTextCls}>保証対象外となる条件・注意事項</span>
-            <textarea
-              ref={warrantyRef}
-              name="warranty_exclusions"
-              className={inputCls}
-              rows={4}
-              defaultValue={defaultWarrantyExclusions ?? ""}
-              placeholder="例: 飛び石による損傷、経年劣化、不適切な洗車方法による損傷等"
-            />
-          </label>
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={handleSaveWarrantyDefault}
-              disabled={savingDefault}
-              className="rounded-xl border border-border-default bg-surface px-4 py-2 text-xs font-medium text-primary hover:bg-surface-hover disabled:opacity-50"
-            >
-              {savingDefault ? "保存中…" : "デフォルトとして保存"}
-            </button>
-            {defaultSaveMsg && (
-              <span className={`text-xs ${defaultSaveMsg.includes("失敗") ? "text-danger" : "text-accent"}`}>
-                {defaultSaveMsg}
-              </span>
+            <label className={labelCls}>
+              <span className={labelTextCls}>有効条件（テキスト）</span>
+              <input
+                ref={expiryValueRef}
+                name="expiry_value"
+                className={inputCls}
+                placeholder="半年ごとにメンテ推奨 など"
+              />
+            </label>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className={labelCls}>
+                <span className={labelTextCls}>有効期限</span>
+                <input type="date" name="expiry_date" className={inputCls} />
+              </label>
+              <label className={labelCls}>
+                <span className={labelTextCls}>保証期間（終了日）</span>
+                <input type="date" name="warranty_period_end" className={inputCls} />
+              </label>
+            </div>
+          </section>
+
+          {/* ━━━ 5. 詳細な施工内容 ━━━ */}
+          <section id="sec-work" className="border-t border-border-subtle py-6 space-y-4">
+            <div className={sectionHeaderCls}>
+              <div className={sectionTagCls}>WORK DETAILS</div>
+              <div className={`${sectionTitleCls} flex items-center gap-1.5`}>
+                詳細な施工内容
+                <HelpTooltip>
+                  自由記述の施工メモです。Standard 以上では音声入力や AI
+                  下書き生成も使えます。証明書PDFには簡潔に印字されるため、長すぎる場合は要点をまとめて。
+                </HelpTooltip>
+              </div>
+            </div>
+
+            {/* AI下書き生成パネル（Standard以上） */}
+            {canAiDraft && (
+              <AiDraftPanel vehicleId={selectedVehicleId} templateCategory={serviceType} onApply={handleAiDraftApply} />
             )}
-          </div>
-        </section>
 
-        {/* ━━━ 9. 備考欄 ━━━ */}
-        <section id="sec-remarks" className="border-t border-border-subtle py-6 space-y-4">
-          <div className={sectionHeaderCls}>
-            <div className={sectionTagCls}>REMARKS</div>
-            <div className={sectionTitleCls}>備考</div>
-          </div>
-          <label className={`${labelCls} block`}>
-            <span className={labelTextCls}>備考・特記事項</span>
-            <textarea
-              name="remarks"
-              className={inputCls}
-              rows={3}
-              placeholder="その他の特記事項があれば記入してください"
-            />
-          </label>
-        </section>
+            {/* 音声メモパネル（Standard以上）— マイクで喋った内容を AI が整形してフォームへ */}
+            {canAiDraft && <VoiceMemoPanel serviceType={serviceType} onApply={handleAiDraftApply} />}
+
+            {/* AI下書き適用通知 */}
+            {draftApplied && (
+              <div className="rounded-xl border border-success/30 bg-success-dim px-3 py-2 text-xs text-success-text">
+                ✅ AI下書きをフォームに適用しました。内容を確認・編集してください。
+              </div>
+            )}
+
+            <label className={`${labelCls} block`}>
+              <span className={labelTextCls}>施工内容（自由記述）</span>
+              <textarea
+                name="content_free_text"
+                className={inputCls}
+                rows={5}
+                placeholder="施工内容の詳細を記入してください（下地処理、コーティング工程、仕上げ等）"
+              />
+            </label>
+          </section>
+
+          {/* ━━━ 6. 膜厚計測 ━━━ */}
+          <section id="sec-film" className="border-t border-border-subtle py-6">
+            <FilmThicknessSection />
+          </section>
+
+          {/* ━━━ 7. メンテナンス実施日 ━━━ */}
+          <section id="sec-maintenance-date" className="border-t border-border-subtle py-6 space-y-4">
+            <div className={sectionHeaderCls}>
+              <div className={sectionTagCls}>MAINTENANCE</div>
+              <div className={sectionTitleCls}>メンテナンス実施日</div>
+            </div>
+            <label className={labelCls}>
+              <span className={labelTextCls}>実施日</span>
+              <input type="date" name="maintenance_date" className={inputCls} />
+            </label>
+          </section>
+
+          {/* ━━━ 8. 保証除外内容 ━━━ */}
+          <section id="sec-warranty-exclusions" className="border-t border-border-subtle py-6 space-y-4">
+            <div className={sectionHeaderCls}>
+              <div className={sectionTagCls}>WARRANTY EXCLUSIONS</div>
+              <div className={`${sectionTitleCls} flex items-center gap-1.5`}>
+                保証除外内容
+                <HelpTooltip>
+                  保証の対象外になる条件を明記する欄です。トラブル防止のために重要。一度入力した内容は店舗のデフォルトとして保存・流用できます。
+                </HelpTooltip>
+              </div>
+            </div>
+            <label className={`${labelCls} block`}>
+              <span className={labelTextCls}>保証対象外となる条件・注意事項</span>
+              <textarea
+                ref={warrantyRef}
+                name="warranty_exclusions"
+                className={inputCls}
+                rows={4}
+                defaultValue={defaultWarrantyExclusions ?? ""}
+                placeholder="例: 飛び石による損傷、経年劣化、不適切な洗車方法による損傷等"
+              />
+            </label>
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={handleSaveWarrantyDefault}
+                disabled={savingDefault}
+                className="rounded-xl border border-border-default bg-surface px-4 py-2 text-xs font-medium text-primary hover:bg-surface-hover disabled:opacity-50"
+              >
+                {savingDefault ? "保存中…" : "デフォルトとして保存"}
+              </button>
+              {defaultSaveMsg && (
+                <span className={`text-xs ${defaultSaveMsg.includes("失敗") ? "text-danger" : "text-accent"}`}>
+                  {defaultSaveMsg}
+                </span>
+              )}
+            </div>
+          </section>
+
+          {/* ━━━ 9. 備考欄 ━━━ */}
+          <section id="sec-remarks" className="border-t border-border-subtle py-6 space-y-4">
+            <div className={sectionHeaderCls}>
+              <div className={sectionTagCls}>REMARKS</div>
+              <div className={sectionTitleCls}>備考</div>
+            </div>
+            <label className={`${labelCls} block`}>
+              <span className={labelTextCls}>備考・特記事項</span>
+              <textarea
+                name="remarks"
+                className={inputCls}
+                rows={3}
+                placeholder="その他の特記事項があれば記入してください"
+              />
+            </label>
+          </section>
+        </details>
 
         {/* テンプレート追加項目は廃止 — テンプレート選択のみ上部で行う */}
 

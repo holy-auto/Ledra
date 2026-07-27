@@ -54,6 +54,7 @@ export type AutomationActionKey =
   | "photo.auto_quality_check"
   | "photo.auto_classify_stage"
   | "photo.auto_work_stamp"
+  | "photo.auto_draft_content"
   | "insurer_case.auto_fraud_score"
   | "insurer_case.auto_summary"
   | "insurer_case.auto_assign_suggest"
@@ -441,6 +442,15 @@ export const AUTOMATION_ACTIONS: readonly AutomationActionDef[] = [
       "施工写真がアップロードされた時点で、EXIF の撮影時刻から施工日と作業時間 (最早→最遅の差) を自動推定し、提案として証明書に保存する。手入力の代わりに使える下書きで、フォームへの反映・発行・金額には関与しない (提案のみ・LLM 不使用でコスト無し・壁3 不介入)。",
     defaultEnabled: false,
     guard: "AI 有効 + opt-in。EXIF が無い / 壊れた時計は提案しない (捏造しない)",
+  },
+  {
+    key: "photo.auto_draft_content",
+    workflow: "certificate",
+    label: "施工写真から施工内容の下書きを自動生成",
+    description:
+      "施工写真がアップロードされた時点で、代表写真（1〜2枚）を AI Vision で読み取り、施工種別と施工内容の下書きを生成して証明書に提案として保存する。施工内容欄への反映・発行・金額には関与しない（提案のみ・壁3 不介入）。写真から確実に言えることだけを下書きし、装備や数値を推測で作らない。",
+    defaultEnabled: false,
+    guard: "AI 有効 + Standard プラン以上 (ai_quality_vision) + 写真あり + 未提案 (証明書単位で1度だけ)",
   },
 ];
 
