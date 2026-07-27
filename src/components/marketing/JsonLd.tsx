@@ -24,7 +24,7 @@ export async function OrganizationJsonLd() {
     url: siteConfig.siteUrl,
     inLanguage: "ja",
     applicationCategory: "BusinessApplication",
-    applicationSubCategory: "自動車整備・コーティング店向け業務管理SaaS",
+    applicationSubCategory: "自動車整備・コーティング店向け施工履歴プラットフォーム",
     operatingSystem: "Web",
     // AI検索(GEO)が「何ができるか」「誰向けか」を事実ベースで拾えるように付与。
     keywords: siteConfig.keywords.join(", "),

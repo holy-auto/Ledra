@@ -16,8 +16,9 @@
 
 ## プロダクト概要
 
-**対外ポジショニング（SEO/GEO の一言）**: 「自動車整備・コーティング店のAI業務管理SaaS」。
-2026-07-27 に旧「WEB施工証明書SaaS」から刷新（施工証明書は主要機能の1つとして残す）。
+**対外ポジショニング（SEO/GEO の一言）**: 「自動車整備・コーティング店の施工履歴プラットフォーム」。
+2026-07-27 に旧「WEB施工証明書SaaS」から刷新し、同日 PR TIMES の表記に合わせ「施工履歴プラットフォーム」に統一
+（施工証明書は主要機能の1つとして残す。買い手検索語は description/keywords 側で確保）。
 サイトの title/description/OGP・JSON-LD・robots は `src/lib/marketing/config.ts` の `siteConfig`
 （siteTagline / siteDescription / keywords / featureList）を単一情報源として参照する。
 詳細は DECISION_LOG.md / RELEASE_LOG.md 2026-07-27 を参照。

@@ -208,7 +208,7 @@ const updated = new Date().toLocaleDateString("ja-JP", {
 function Footer({ pageLabel }: { pageLabel: string }) {
   return (
     <View style={styles.footer} fixed>
-      <Text>Ledra | 自動車整備・コーティング店のAI業務管理SaaS</Text>
+      <Text>Ledra | 自動車整備・コーティング店の施工履歴プラットフォーム</Text>
       <Text>
         {pageLabel} · 更新: {updated}
       </Text>
@@ -224,7 +224,7 @@ function Page1Cover() {
       <Text style={styles.h1}>記録を、業界の共通言語にする。</Text>
       <Text style={styles.lead}>
         Ledra
-        は、自動車整備・鈑金塗装・コーティング・PPF施工店向けのAI搭載クラウド業務管理SaaSです。予約・作業管理から、改ざん検知付きの施工証明書発行、請求・帳票、顧客管理、保険会社連携までを一本化します。
+        は、自動車整備・鈑金塗装・コーティング・PPF施工店向けの施工履歴プラットフォームです。予約・作業管理から、施工・整備履歴の記録、改ざん検知付きの施工証明書発行、請求・帳票、顧客管理、保険会社連携までをAIで一本化します。
       </Text>
       <Text style={styles.lead}>
         施工店・代理店・保険会社・顧客の4ポータルが、同じ「施工の事実」を役割に応じて閲覧・検証できる設計により、業界全体の記録文化を一段引き上げます。
@@ -239,7 +239,7 @@ function Page1Cover() {
         <Text style={styles.bullet}>• ご相談の窓口と次のステップ</Text>
       </View>
 
-      <Text style={styles.tagline}>自動車整備・コーティング店のAI業務管理SaaS — Ledra</Text>
+      <Text style={styles.tagline}>自動車整備・コーティング店の施工履歴プラットフォーム — Ledra</Text>
       <Footer pageLabel="1 / 4" />
     </Page>
   );
@@ -371,7 +371,7 @@ export function ServiceOverviewPdf() {
     <Document
       title="Ledra サービス概要"
       author="Ledra"
-      subject="自動車整備・コーティング店のAI業務管理SaaS サービス概要資料"
+      subject="自動車整備・コーティング店の施工履歴プラットフォーム サービス概要資料"
       creator="Ledra"
       producer="Ledra"
     >
