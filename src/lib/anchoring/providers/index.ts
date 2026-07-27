@@ -60,7 +60,7 @@ export async function invokeAllUploadProviders(
   const [c2pa, deepfake, polygon] = await Promise.all([
     withTimeout(
       signC2pa(buffer, mime, captureBinding),
-      { manifestCid: null, verified: false, signedBuffer: null },
+      { manifestCid: null, verified: false, signedBuffer: null, manifestSummary: null },
       "c2pa",
     ),
     withTimeout(checkDeepfake(buffer), { score: null, verdict: null }, "deepfake"),
@@ -72,4 +72,11 @@ export async function invokeAllUploadProviders(
 
 export type { CaptureBinding } from "./c2pa";
 export type { UploadProviderBundle } from "./types";
-export type { C2paResult, DeepfakeResult, DeviceAttestationResult, PolygonAnchorResult, PolygonNetwork } from "./types";
+export type {
+  C2paResult,
+  C2paManifestSummary,
+  DeepfakeResult,
+  DeviceAttestationResult,
+  PolygonAnchorResult,
+  PolygonNetwork,
+} from "./types";

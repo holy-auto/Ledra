@@ -15,6 +15,7 @@ import { resolveInsurerCaller } from "@/lib/api/insurerAuth";
 import { apiInternalError, apiUnauthorized, apiValidationError, apiNotFound, apiOk } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { verifyAnchor, buildExplorerUrl } from "@/lib/anchoring/providers";
+import type { C2paManifestSummary } from "@/lib/anchoring/providers";
 
 export const runtime = "nodejs";
 
@@ -40,7 +41,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ sha256: str
   const { data: image, error } = await sb
     .from("certificate_images")
     .select(
-      "id, certificate_id, sha256, authenticity_grade, polygon_tx_hash, polygon_network, c2pa_verified, exif_captured_at, exif_device_model, created_at, certificates!inner(tenant_id, public_id, status)",
+      "id, certificate_id, sha256, authenticity_grade, polygon_tx_hash, polygon_network, c2pa_verified, c2pa_manifest, exif_captured_at, exif_device_model, created_at, certificates!inner(tenant_id, public_id, status)",
     )
     .eq("sha256", sha256)
     .limit(1)
@@ -52,6 +53,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ sha256: str
       polygon_tx_hash: string | null;
       polygon_network: "polygon" | "amoy" | null;
       c2pa_verified: boolean | null;
+      c2pa_manifest: C2paManifestSummary | null;
       exif_captured_at: string | null;
       exif_device_model: string | null;
       created_at: string | null;
@@ -118,6 +120,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ sha256: str
     polygon_network: network,
     explorer_url: buildExplorerUrl(image.polygon_tx_hash, network),
     c2pa_verified: image.c2pa_verified,
+    c2pa_manifest: image.c2pa_manifest ?? null,
     captured_at: image.exif_captured_at,
     device_model: image.exif_device_model,
     certificate_public_id: cert.public_id,
