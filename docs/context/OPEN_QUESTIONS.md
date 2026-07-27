@@ -15,10 +15,10 @@
 ```
 
 ## C2PA本番証明書（trust list準拠）をどう取得・保管するか（2026-07-27）
-- 状況: C2PA 署名パイプラインのコード側バグ2件（Builder 誤用・dev 証明書プロファイル）は修正済みで、dev-signed の実署名は通るようになった。ただし production モードで検証器に「検証済み」と表示させるには、C2PA trust list 上の root にチェーンする本番 CA 発行の end-entity 証明書が必要。この証明書がまだ無い（自己署名・社内 CA 単体では validation_state=Invalid のまま）。
-- 選択肢: 案A C2PA/CAI 対応の商用 CA（例: DigiCert 等の document/content signing 証明書）から発行を受ける＝trust list 準拠が明確だがコスト・審査・更新運用が発生。案B 当面は production 証明書を用意せず、撮影時刻封印は既存の RFC3161 TSA（PHOTO_TSA_*）で担保し、C2PA は dev-signed(埋め込みのみ・グレード非加算)に留める＝コストゼロだが「C2PA検証済み」は名乗れない。案C 鍵保管を KMS（署名を CallbackSigner 経由に）にするか env 直置き（C2PA_SIGNER_KEY）にするか＝KMS は漏洩耐性が高いが実装追加、env はシンプルだが秘密鍵が環境変数に載る。
-- 影響範囲: 本番証明書が無い限り「C2PA署名済み写真」を対外的に検証可能な形で提供できない（HP/保険会社向けの訴求で弱点）。誤って自己署名を本番投入すると検証器で Invalid となり逆効果。
-- 次のアクション: (1) どの CA が C2PA trust list に載っているか最新の trust list を確認（c2pa-org の資料 / conformance）。(2) 対応 CA から見積・要件取得は代表判断。(3) 取得後にステージングで実署名→Content Credentials 等の検証器で Valid になることを確認。(4) 鍵保管方式（KMS or env）を決定。
+- 状況: 署名パイプラインのコード側は実装・検証済み（PR #831）。残るブロッカーは本番署名証明書の取得のみ。調査の結果、これは単なる証明書購入ではなく **C2PA Conformance Program への登録（Ledra を Conforming Product として適合性・セキュリティ評価 → CPL 登録）→ trust list CA から発行** という手順だと判明。公式 C2PA Trust List（c2pa-org/conformance-public の trust-list/C2PA-TRUST-LIST.pem、2026-07-27 確認時点で 28 証明書）にサードパーティ発行している商用 CA は主に **DigiCert** と **SSL.com**（他は Google/Xiaomi/Adobe 等のデバイス自社署名系）。手順・env 形式・切替前検証は docs/c2pa-production-deployment.md に集約済み。プリフライト検証スクリプト `scripts/verify-c2pa-cert.mjs`（証明書が Trusted になるかをローカルで GO/NO-GO 判定）も用意済み。
+- 選択肢: 案A DigiCert / SSL.com の C2PA claim signing 証明書を Conformance Program 経由で取得＝trust list 準拠が確実だが評価プロセス・費用・更新運用が発生。案B 当面 production は用意せず、撮影時刻封印は既存 RFC3161 TSA（PHOTO_TSA_*）で担保、C2PA は dev-signed(埋め込みのみ・グレード非加算) or disabled に留める＝コストゼロだが「C2PA検証済み」は名乗れない。案C 鍵保管を KMS（CallbackSigner 経由・未実装）か env 直置き（現行対応）か。
+- 影響範囲: 本番証明書が無い限り「C2PA検証済み写真」を対外提供できない（HP/保険会社向け訴求の弱点）。誤って自己署名を本番投入すると Invalid 表示で逆効果 → 切替前に verify-c2pa-cert.mjs で必ず GO 確認。
+- 次のアクション（代表判断）: (1) 狙う Assurance Level を決める（上位は HW attestation 要求の可能性）。(2) DigiCert / SSL.com へ Expression of Interest・見積依頼（費用・日本からの契約可否・審査期間は【要確認】）。(3) 取得後 verify-c2pa-cert.mjs で Trusted を確認してから C2PA_MODE=production を反映。(4) 鍵保管方式（KMS or env）を決定。
 - 起票日: 2026-07-27
 
 ## 予約の二重登録（TOCTOU）をDBレベルで防ぐか（2026-07-24 バグ監査）
