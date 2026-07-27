@@ -71,6 +71,7 @@ describe("stageInstallationPhoto", () => {
       capturedAt: null,
       deviceModel: null,
       gpsStripped: true,
+      gps: null,
     });
     hashMock.mockClear();
     tsaMock.mockReset();

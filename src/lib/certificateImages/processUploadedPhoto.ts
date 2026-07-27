@@ -16,6 +16,8 @@ import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { CERTIFICATE_IMAGE_BUCKET } from "@/lib/certificateImages";
 import { hashSha256, computePerceptualHash } from "@/lib/anchoring/imageHashing";
 import { stripGpsAndReadExif } from "@/lib/anchoring/imageExif";
+import { checkPhotoLocation } from "@/lib/geo/photoLocationCheck";
+import { verifyExternalC2pa } from "@/lib/anchoring/providers/c2paVerify";
 import { computeAuthenticityGrade } from "@/lib/anchoring/authenticityGrade";
 import { invokeAllUploadProviders } from "@/lib/anchoring/providers";
 import type { DeviceAttestationResult } from "@/lib/anchoring/providers/types";
@@ -60,6 +62,10 @@ export interface ProcessPhotoParams {
   sortOrder: number;
   /** 証明書対象車両の VIN（C2PA manifest に束縛封入。無ければ封入しない）。 */
   vin?: string | null;
+  /** 写真GPS整合チェックの基準となる店舗座標（無ければ no_reference）。生座標は保存しない。 */
+  storeCoords?: { lat: number; lng: number } | null;
+  /** 出張作業場所の基準座標（証明書に紐づく予約の作業GPS）。無ければ店舗のみで照合。生座標は保存しない。 */
+  worksiteCoords?: { lat: number; lng: number } | null;
   capture: CaptureContext;
   tsaBudget: TsaBatchBudget;
 }
@@ -81,6 +87,8 @@ export async function processUploadedPhoto(params: ProcessPhotoParams): Promise<
     index,
     sortOrder,
     vin,
+    storeCoords,
+    worksiteCoords,
     capture,
     tsaBudget,
   } = params;
@@ -92,9 +100,21 @@ export async function processUploadedPhoto(params: ProcessPhotoParams): Promise<
   // 除去前ハッシュ（原本照合用。GPS除去で失われる as-captured バイトの SHA-256）。
   const originalSha256 = hashSha256(buffer);
 
+  // 外部C2PA検証は **strip/再エンコード前の原バイト** に対して行う（再エンコードで外部
+  // マニフェストが失われ dataHash も壊れるため）。fail-open（未対応/エラーは present=false）。
+  const externalC2pa = await verifyExternalC2pa(buffer, mime);
+
   // GPS/EXIF 除去（失敗時は元バッファへフォールバックし upload を止めない）。
   const exif = await stripGpsAndReadExif(buffer);
   const uploadBuffer = exif.strippedBuffer;
+
+  // 写真GPS × 店舗位置の整合性チェック。生座標(exif.gps)はここで照合してすぐ捨て、
+  // 結果(verdict / 距離帯)だけを DB に保存する（プライバシー方針: 生座標は永続化しない）。
+  const gpsCheck = checkPhotoLocation({
+    photo: exif.gps,
+    store: storeCoords ?? null,
+    worksite: worksiteCoords ?? null,
+  });
 
   const sha256 = hashSha256(uploadBuffer);
   let perceptualHash: string | null = null;
@@ -196,6 +216,9 @@ export async function processUploadedPhoto(params: ProcessPhotoParams): Promise<
       exif_captured_at: exif.capturedAt ? exif.capturedAt.toISOString() : null,
       exif_device_model: exif.deviceModel,
       exif_gps_stripped: exif.gpsStripped,
+      // 写真GPS × 店舗位置の整合性チェック結果のみ（生座標は保存しない）。
+      gps_check_verdict: gpsCheck.verdict,
+      gps_distance_bucket: gpsCheck.distanceBucket,
       capture_nonce: captureNonce ?? null,
       device_attestation_token_hash: deviceToken ? hashSha256(Buffer.from(deviceToken)) : null,
       // bytea は PostgREST 経由の JSON では `\x<hex>` リテラルで渡す。
@@ -205,6 +228,12 @@ export async function processUploadedPhoto(params: ProcessPhotoParams): Promise<
       capture_binding_reason: captureBindingReason,
       c2pa_manifest_cid: providers.c2pa.manifestCid,
       c2pa_verified: providers.c2pa.verified,
+      // 署名マニフェストの要約（署名者モード・actions台帳・封入値の要約）。生のnonceは含めない。
+      c2pa_manifest: providers.c2pa.manifestSummary,
+      // 外部（カメラ/他アプリ）C2PA検証（原バイトに対して実施）。マニフェスト有無・有効性・署名者。
+      external_c2pa_present: externalC2pa.present,
+      external_c2pa_verified: externalC2pa.verified,
+      external_c2pa_signer: externalC2pa.signer,
       device_attestation_provider: attestation.provider,
       device_attestation_verified: attestation.verified,
       deepfake_score: providers.deepfake.score,

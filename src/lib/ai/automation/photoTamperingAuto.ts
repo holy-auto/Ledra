@@ -49,6 +49,9 @@ const FLAG_HINT_JA: Record<PhotoIntegrityFlag, string> = {
   capture_time_future: "撮影日時が未来",
   capture_time_stale: "撮影日時がアップロードより大幅に前 (使い回しの疑い)",
   metadata_missing: "撮影メタ(日時/端末)が欠落",
+  gps_mismatch_store: "撮影場所が店舗から離れている (出張なら正当)",
+  c2pa_missing: "C2PA署名が欠落",
+  external_c2pa_invalid: "外部C2PA署名が無効 (撮影後改変の疑い)",
   vision_suspicious: "内容審査で要注意",
 };
 
@@ -87,7 +90,7 @@ export async function maybeAutoTamperingCheckForCertificate(params: MaybeAutoTam
     const { data: rows } = await admin
       .from("certificate_images")
       .select(
-        "id, sha256, perceptual_hash, exif_captured_at, exif_device_model, deepfake_verdict, authenticity_grade, storage_path, content_type, created_at",
+        "id, sha256, perceptual_hash, exif_captured_at, exif_device_model, deepfake_verdict, authenticity_grade, c2pa_verified, gps_check_verdict, external_c2pa_present, external_c2pa_verified, storage_path, content_type, created_at",
       )
       .eq("certificate_id", certificateId)
       .eq("tenant_id", tenantId)
@@ -103,6 +106,10 @@ export async function maybeAutoTamperingCheckForCertificate(params: MaybeAutoTam
       deviceModel: (r.exif_device_model as string | null) ?? null,
       deepfakeVerdict: (r.deepfake_verdict as string | null) ?? null,
       authenticityGrade: (r.authenticity_grade as string | null) ?? null,
+      c2paVerified: (r.c2pa_verified as boolean | null) ?? null,
+      gpsCheckVerdict: (r.gps_check_verdict as string | null) ?? null,
+      externalC2paPresent: (r.external_c2pa_present as boolean | null) ?? null,
+      externalC2paVerified: (r.external_c2pa_verified as boolean | null) ?? null,
       storagePath: (r.storage_path as string | null) ?? null,
       contentType: (r.content_type as string | null) ?? null,
     }));
@@ -112,7 +119,9 @@ export async function maybeAutoTamperingCheckForCertificate(params: MaybeAutoTam
 
     // stale 判定は各写真の uploadedAt (certificate_images.created_at) を基準に
     // 集約関数側で行うため、ここでは追加の基準時刻は渡さない。
-    const firstPass = aggregateCertificateImageIntegrity(imageRows);
+    // C2PA本番署名を期待する運用のときだけ c2pa_missing を有効化する。
+    const c2paExpected = (process.env.C2PA_MODE ?? "disabled") === "production";
+    const firstPass = aggregateCertificateImageIntegrity(imageRows, new Date(), { c2paExpected });
 
     // 既存の判定を尊重して無駄な上書きを避ける。
     const { data: cert } = await admin

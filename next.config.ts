@@ -106,7 +106,9 @@ const nextConfig: NextConfig = {
             value: [
               "camera=(self)",
               "microphone=()",
-              "geolocation=()",
+              // 出張作業場所の記録に自サイト内でのみ位置情報を許可（作業開始/完了画面で使用）。
+              // 第三者オリジンには開けない（(self) 限定）。他機能では位置情報は未使用。
+              "geolocation=(self)",
               "payment=()",
               "usb=()",
               "serial=()",
