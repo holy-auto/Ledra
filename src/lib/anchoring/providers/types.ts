@@ -8,6 +8,30 @@
 
 /* ── C2PA signing ──────────────────────────────────────────────── */
 
+/**
+ * 署名時に確定するC2PAマニフェストの要約。読み戻し(Reader API)を必要とせず、
+ * こちらが封入した内容から決定的に組み立てられる範囲だけを DB に保存・表示する。
+ * 単回nonceの生値は残さない（封入したか否かの真偽のみ）。
+ */
+export interface C2paManifestSummary {
+  /** claim_generator（署名アプリの識別子）。 */
+  claimGenerator: string;
+  /** マニフェストのタイトル。 */
+  title: string;
+  /** 署名モード（署名者の種別）。 */
+  signerMode: "dev-signed" | "production";
+  /** c2pa.actions 台帳（要約した action 名の配列）。 */
+  actions: string[];
+  /** com.ledra.capture に封入した束縛の要約。 */
+  binding: {
+    certPublicId: string | null;
+    vin: string | null;
+    tsaTimestamp: string | null;
+    /** 単回撮影nonceを封入したか（生値は残さない）。 */
+    nonceSealed: boolean;
+  };
+}
+
 export interface C2paResult {
   /** IPFS CID of the signed C2PA manifest, or null if not signed. */
   manifestCid: string | null;
@@ -15,6 +39,8 @@ export interface C2paResult {
   verified: boolean;
   /** Image buffer with C2PA manifest embedded, or null if not signed. */
   signedBuffer: Buffer | null;
+  /** 署名したマニフェストの要約（未署名なら null）。DB `certificate_images.c2pa_manifest` に保存。 */
+  manifestSummary: C2paManifestSummary | null;
 }
 
 /* ── Deepfake detection ────────────────────────────────────────── */

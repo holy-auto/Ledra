@@ -20,6 +20,7 @@ import { isAnnotationDocument, type AnnotationDocument } from "@/components/imag
 import { formatDateTime } from "@/lib/format";
 import AnchorBadge from "@/components/ui/AnchorBadge";
 import { normalizePlanTier, PHOTO_LIMITS } from "@/lib/billing/planFeatures";
+import type { C2paManifestSummary } from "@/lib/anchoring/providers";
 
 type PageProps = {
   params: Promise<{ public_id: string }>;
@@ -33,6 +34,14 @@ function asObj(v: unknown): Record<string, any> {
 function asText(v: unknown) {
   if (v == null) return "";
   return String(v);
+}
+
+/** DB(jsonb) から C2PA マニフェスト要約を安全に取り出す（形が違えば null）。 */
+function asC2paManifestSummary(v: unknown): C2paManifestSummary | null {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return null;
+  const o = v as Record<string, unknown>;
+  if (typeof o.signerMode !== "string" || !Array.isArray(o.actions)) return null;
+  return o as unknown as C2paManifestSummary;
 }
 
 async function getMyTenantId(supabase: any) {
@@ -174,7 +183,7 @@ export default async function Page({ params }: PageProps) {
   const { data: imageRowsRaw } = await admin
     .from("certificate_images")
     .select(
-      "id,storage_path,file_name,content_type,file_size,sort_order,created_at,sha256,authenticity_grade,polygon_tx_hash,polygon_network,c2pa_verified,c2pa_manifest_cid,gps_check_verdict,gps_distance_bucket,annotations,rendered_storage_path",
+      "id,storage_path,file_name,content_type,file_size,sort_order,created_at,sha256,authenticity_grade,polygon_tx_hash,polygon_network,c2pa_verified,c2pa_manifest_cid,c2pa_manifest,gps_check_verdict,gps_distance_bucket,annotations,rendered_storage_path",
     )
     .eq("certificate_id", row.id)
     .order("sort_order", { ascending: true })
@@ -223,6 +232,7 @@ export default async function Page({ params }: PageProps) {
         polygon_network: polygonNetwork,
         c2pa_verified: Boolean(img.c2pa_verified),
         c2pa_manifest_cid: (img.c2pa_manifest_cid as string | null) ?? null,
+        c2pa_manifest: asC2paManifestSummary(img.c2pa_manifest),
         annotations,
         rendered_storage_path: (img.rendered_storage_path as string | null) ?? null,
       };
@@ -545,6 +555,31 @@ export default async function Page({ params }: PageProps) {
                           <span className={img.c2pa_verified ? "text-success" : "text-muted"}>
                             {img.c2pa_verified ? "署名あり" : "-"}
                           </span>
+
+                          {img.c2pa_manifest ? (
+                            <>
+                              <span className="text-muted">署名者</span>
+                              <span className="text-secondary">
+                                {img.c2pa_manifest.signerMode === "production" ? "本番証明書" : "開発用（自己署名）"}
+                              </span>
+
+                              {img.c2pa_manifest.binding.vin ? (
+                                <>
+                                  <span className="text-muted">封入VIN</span>
+                                  <span className="break-all font-mono text-[10px] text-secondary">
+                                    {img.c2pa_manifest.binding.vin}
+                                  </span>
+                                </>
+                              ) : null}
+
+                              <span className="text-muted">撮影台帳</span>
+                              <span className="text-secondary">
+                                {img.c2pa_manifest.actions.length}件の行為を記録
+                                {img.c2pa_manifest.binding.tsaTimestamp ? "・TSA時刻封入" : ""}
+                                {img.c2pa_manifest.binding.nonceSealed ? "・撮影nonce封入" : ""}
+                              </span>
+                            </>
+                          ) : null}
 
                           <span className="text-muted">SHA-256</span>
                           <span className="break-all font-mono text-[10px] text-secondary">

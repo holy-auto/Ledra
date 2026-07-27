@@ -216,6 +216,8 @@ export async function processUploadedPhoto(params: ProcessPhotoParams): Promise<
       capture_binding_reason: captureBindingReason,
       c2pa_manifest_cid: providers.c2pa.manifestCid,
       c2pa_verified: providers.c2pa.verified,
+      // 署名マニフェストの要約（署名者モード・actions台帳・封入値の要約）。生のnonceは含めない。
+      c2pa_manifest: providers.c2pa.manifestSummary,
       device_attestation_provider: attestation.provider,
       device_attestation_verified: attestation.verified,
       deepfake_score: providers.deepfake.score,

@@ -27,7 +27,7 @@ describe("invokeAllUploadProviders", () => {
     const { invokeAllUploadProviders } = await loadProviders();
     const result = await invokeAllUploadProviders(dummyBuffer, "image/jpeg", "abc123");
 
-    expect(result.c2pa).toEqual({ manifestCid: null, verified: false, signedBuffer: null });
+    expect(result.c2pa).toEqual({ manifestCid: null, verified: false, signedBuffer: null, manifestSummary: null });
     expect(result.deepfake).toEqual({ score: null, verdict: null });
     expect(result.polygon).toEqual({ txHash: null, anchored: false, network: null });
   });
@@ -79,7 +79,7 @@ describe("signC2pa directly", () => {
     })();
 
     const result = await signC2pa(Buffer.from("test"), "image/jpeg");
-    expect(result).toEqual({ manifestCid: null, verified: false, signedBuffer: null });
+    expect(result).toEqual({ manifestCid: null, verified: false, signedBuffer: null, manifestSummary: null });
   });
 
   it("returns disabled result when C2PA_MODE is disabled", async () => {
@@ -90,7 +90,7 @@ describe("signC2pa directly", () => {
     })();
 
     const result = await signC2pa(Buffer.from("test"), "image/jpeg");
-    expect(result).toEqual({ manifestCid: null, verified: false, signedBuffer: null });
+    expect(result).toEqual({ manifestCid: null, verified: false, signedBuffer: null, manifestSummary: null });
   });
 });
 
