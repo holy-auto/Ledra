@@ -68,7 +68,9 @@ export async function maybeAutoWorkStampForCertificate(params: MaybeAutoWorkStam
           .select("scheduled_date")
           .eq("id", reservationId)
           .maybeSingle();
-        expectedDate = (rsv?.scheduled_date as string | null | undefined) ?? null;
+        // scheduled_date は date 型 ("YYYY-MM-DD") 想定だが、時刻付きで返っても
+        // 先頭 10 文字に正規化して stale_album 判定の誤発火を防ぐ。
+        expectedDate = ((rsv?.scheduled_date as string | null | undefined) ?? "").slice(0, 10) || null;
       }
     } catch {
       // reservation_id 列が無い / 取得失敗時は stale_album 判定を諦める (提案自体は続行)。
