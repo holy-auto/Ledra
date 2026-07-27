@@ -39,9 +39,11 @@
     "esbuild": "0.28.1",
     "ws": "^8.21.0",
     "undici": "^7.28.0",
-    "postcss": "^8.5.10",
+    "postcss": "^8.5.18",
     "uuid": "^11.1.1",
-    "sharp": "^0.35.3"
+    "sharp": "^0.35.3",
+    "brace-expansion": "^5.0.8",
+    "minimatch": "^10.2.5"
   },
   "lint-staged": {
     "src/**/*.{ts,tsx}": [
