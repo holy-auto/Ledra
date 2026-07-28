@@ -11,6 +11,11 @@ type AnchorVerifyResult = {
   polygon_network: "polygon" | "amoy" | null;
   explorer_url: string | null;
   c2pa_verified: boolean | null;
+  c2pa_manifest: {
+    signerMode: "dev-signed" | "production";
+    actions: string[];
+    binding: { certPublicId: string | null; vin: string | null; tsaTimestamp: string | null; nonceSealed: boolean };
+  } | null;
   captured_at: string | null;
   device_model: string | null;
   certificate_public_id: string | null;
@@ -102,9 +107,7 @@ export default function AnchorVerifyClient() {
         const msg =
           json?.message ??
           json?.error ??
-          (res.status === 404
-            ? "該当する施工画像が見つかりません。"
-            : `検証APIエラー (HTTP ${res.status})`);
+          (res.status === 404 ? "該当する施工画像が見つかりません。" : `検証APIエラー (HTTP ${res.status})`);
         setError(String(msg));
         setStage("error");
         return;
@@ -154,20 +157,13 @@ export default function AnchorVerifyClient() {
     <>
       <section className="rounded-2xl border border-border-default bg-surface p-5 shadow-sm">
         <div className="mb-4">
-          <div className="text-xs font-semibold tracking-[0.18em] text-muted">
-            INPUT
-          </div>
-          <div className="mt-1 text-lg font-semibold text-primary">
-            SHA-256 ハッシュを入力 / 画像をドロップ
-          </div>
+          <div className="text-xs font-semibold tracking-[0.18em] text-muted">INPUT</div>
+          <div className="mt-1 text-lg font-semibold text-primary">SHA-256 ハッシュを入力 / 画像をドロップ</div>
         </div>
 
         <form onSubmit={onSubmit} className="space-y-4">
           <div>
-            <label
-              htmlFor="sha256-input"
-              className="mb-1 block text-xs font-semibold text-secondary"
-            >
+            <label htmlFor="sha256-input" className="mb-1 block text-xs font-semibold text-secondary">
               SHA-256 ハッシュ (64桁 hex, 0x プレフィックス可)
             </label>
             <div className="flex flex-col gap-2 sm:flex-row">
@@ -191,9 +187,7 @@ export default function AnchorVerifyClient() {
           <div className="relative">
             <div
               className={`rounded-xl border-2 border-dashed px-4 py-8 text-center transition-colors ${
-                dragOver
-                  ? "border-neutral-500 bg-surface-hover"
-                  : "border-border-default bg-inset"
+                dragOver ? "border-neutral-500 bg-surface-hover" : "border-border-default bg-inset"
               }`}
               onDragOver={(e) => {
                 e.preventDefault();
@@ -209,8 +203,7 @@ export default function AnchorVerifyClient() {
               }}
             >
               <div className="text-sm font-medium text-secondary">
-                画像ファイルをドロップすると、ブラウザ内で SHA-256 を計算して
-                自動検証します。
+                画像ファイルをドロップすると、ブラウザ内で SHA-256 を計算して 自動検証します。
               </div>
               <div className="mt-1 text-xs text-muted">
                 画像データは Ledra サーバーには送信されません (ハッシュのみ送信)。
@@ -256,9 +249,7 @@ export default function AnchorVerifyClient() {
         <>
           <section
             className={`rounded-2xl border p-5 shadow-sm ${
-              result.onChainVerified
-                ? "border-emerald-300 bg-emerald-50"
-                : "border-amber-300 bg-amber-50"
+              result.onChainVerified ? "border-emerald-300 bg-emerald-50" : "border-amber-300 bg-amber-50"
             }`}
           >
             <div className="flex flex-wrap items-start justify-between gap-4">
@@ -275,15 +266,9 @@ export default function AnchorVerifyClient() {
                     result.onChainVerified ? "text-emerald-800" : "text-amber-800"
                   }`}
                 >
-                  {result.onChainVerified
-                    ? "アンカー確認済み (真正)"
-                    : "アンカー未確認"}
+                  {result.onChainVerified ? "アンカー確認済み (真正)" : "アンカー未確認"}
                 </div>
-                <p
-                  className={`mt-2 text-sm ${
-                    result.onChainVerified ? "text-emerald-900" : "text-amber-900"
-                  }`}
-                >
+                <p className={`mt-2 text-sm ${result.onChainVerified ? "text-emerald-900" : "text-amber-900"}`}>
                   {result.onChainVerified
                     ? "このハッシュは LedraAnchor コントラクトに記録されています。DB メタデータと一致するため、施工画像は改ざんされていません。"
                     : "このハッシュは DB 上には存在しますが、LedraAnchor コントラクトには記録されていません。アンカー前・RPC 障害・未施工の可能性があります。"}
@@ -291,12 +276,7 @@ export default function AnchorVerifyClient() {
               </div>
 
               {result.explorer_url ? (
-                <a
-                  href={result.explorer_url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="btn-primary px-4 py-3"
-                >
+                <a href={result.explorer_url} target="_blank" rel="noreferrer" className="btn-primary px-4 py-3">
                   Polygonscan で確認 →
                 </a>
               ) : null}
@@ -305,12 +285,8 @@ export default function AnchorVerifyClient() {
 
           <section className="rounded-2xl border border-border-default bg-surface p-5 shadow-sm">
             <div className="mb-4">
-              <div className="text-xs font-semibold tracking-[0.18em] text-muted">
-                METADATA
-              </div>
-              <div className="mt-1 text-lg font-semibold text-primary">
-                画像メタデータ
-              </div>
+              <div className="text-xs font-semibold tracking-[0.18em] text-muted">METADATA</div>
+              <div className="mt-1 text-lg font-semibold text-primary">画像メタデータ</div>
             </div>
 
             <dl className="grid gap-4 md:grid-cols-2">
@@ -322,9 +298,7 @@ export default function AnchorVerifyClient() {
                 {(() => {
                   const g = gradeLabel(result.authenticity_grade);
                   return (
-                    <span
-                      className={`inline-flex rounded-full border px-2.5 py-0.5 text-xs font-semibold ${g.cls}`}
-                    >
+                    <span className={`inline-flex rounded-full border px-2.5 py-0.5 text-xs font-semibold ${g.cls}`}>
                       {g.label}
                     </span>
                   );
@@ -360,6 +334,28 @@ export default function AnchorVerifyClient() {
                   {result.c2pa_verified ? "検証済み" : "未検証 / 非対応"}
                 </span>
               </Row>
+
+              {result.c2pa_manifest ? (
+                <>
+                  <Row label="C2PA 署名者">
+                    <span className="text-sm">
+                      {result.c2pa_manifest.signerMode === "production" ? "本番証明書" : "開発用（自己署名）"}
+                    </span>
+                  </Row>
+                  {result.c2pa_manifest.binding.vin ? (
+                    <Row label="C2PA 封入VIN">
+                      <span className="font-mono text-sm">{result.c2pa_manifest.binding.vin}</span>
+                    </Row>
+                  ) : null}
+                  <Row label="C2PA 撮影台帳">
+                    <span className="text-sm">
+                      {result.c2pa_manifest.actions.length}件の行為を記録
+                      {result.c2pa_manifest.binding.tsaTimestamp ? "・TSA時刻封入" : ""}
+                      {result.c2pa_manifest.binding.nonceSealed ? "・撮影nonce封入" : ""}
+                    </span>
+                  </Row>
+                </>
+              ) : null}
 
               <Row label="撮影日時 (EXIF)">
                 <span className="text-sm">{formatDt(result.captured_at)}</span>
@@ -403,9 +399,7 @@ export default function AnchorVerifyClient() {
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="rounded-xl border border-border-default bg-inset p-3">
-      <dt className="text-[11px] font-semibold uppercase tracking-wider text-muted">
-        {label}
-      </dt>
+      <dt className="text-[11px] font-semibold uppercase tracking-wider text-muted">{label}</dt>
       <dd className="mt-1 text-primary">{children}</dd>
     </div>
   );

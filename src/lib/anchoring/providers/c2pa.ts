@@ -13,7 +13,7 @@
  * binding failure on an unsupported platform falls back gracefully.
  */
 
-import type { C2paResult } from "./types";
+import type { C2paResult, C2paManifestSummary } from "./types";
 
 export type C2paMode = "disabled" | "dev-signed" | "production";
 
@@ -27,7 +27,55 @@ const DISABLED_RESULT: C2paResult = {
   manifestCid: null,
   verified: false,
   signedBuffer: null,
+  manifestSummary: null,
 };
+
+/** マニフェストの固定メタ（要約とアサーションで単一ソースにし drift を防ぐ）。 */
+const CLAIM_GENERATOR = "Ledra/1.0";
+const MANIFEST_TITLE = "Certificate Photo";
+
+/**
+ * c2pa.actions に封入する行為台帳（要約と実アサーションで共有する唯一の定義）。
+ * Ledra は撮影機ではなく、署名時点で upload パイプラインが端末撮影写真を開き→
+ * 向き確定→再エンコード→EXIF/GPS 除去、を済ませている。その実来歴を正直に宣言する。
+ */
+const MANIFEST_ACTIONS = [
+  { action: "c2pa.opened", softwareAgent: "Ledra/1.0" },
+  { action: "c2pa.orientation", softwareAgent: "sharp" },
+  { action: "c2pa.converted", softwareAgent: "sharp" },
+  // EXIF/GPS metadata removed for privacy before signing.
+  { action: "c2pa.edited", parameters: { name: "exif_gps_metadata_removed" } },
+] as const;
+
+/** actions 台帳を要約文字列に落とす（parameters.name があれば `action:name`）。 */
+function summarizeActions(): string[] {
+  return MANIFEST_ACTIONS.map((a) =>
+    "parameters" in a && a.parameters?.name ? `${a.action}:${a.parameters.name}` : a.action,
+  );
+}
+
+/**
+ * 署名時に確定するマニフェスト要約を組み立てる純関数（読み戻し不要・テスト可能）。
+ * signC2pa が実際に封入する内容と同じソース（MANIFEST_ACTIONS/固定メタ/binding）から作る。
+ */
+export function buildC2paManifestSummary(
+  mode: "dev-signed" | "production",
+  binding?: CaptureBinding,
+): C2paManifestSummary {
+  return {
+    claimGenerator: CLAIM_GENERATOR,
+    title: MANIFEST_TITLE,
+    signerMode: mode,
+    actions: summarizeActions(),
+    binding: {
+      certPublicId: binding?.publicId?.trim() || null,
+      vin: binding?.vin?.trim() || null,
+      tsaTimestamp: binding?.tsaTimestamp || null,
+      // 生の nonce は残さず、封入した事実だけを真偽で記録する。
+      nonceSealed: !!(binding?.captureNonce && binding.captureNonce.trim()),
+    },
+  };
+}
 
 /**
  * Pin a buffer to IPFS via Pinata and return its CID.
@@ -104,9 +152,13 @@ export async function signC2pa(buffer: Buffer, mime: string, binding?: CaptureBi
 
     const { Builder } = await import("@contentauth/c2pa-node");
 
-    const builder = new Builder({
-      claim_generator: "Ledra/1.0",
-      title: "Certificate Photo",
+    // c2pa-node 0.6.x では Builder のコンストラクタはネイティブハンドルを取る内部用で、
+    // マニフェスト定義から作るには静的ファクトリ `Builder.withJson(...)` を使う。
+    // `new Builder({...})` は旧APIで、0.6.x では addAssertion 時に neon downcast エラーで
+    // throw → signC2pa の catch で握られ「署名されない(DISABLED)」に fail-open してしまう。
+    const builder = Builder.withJson({
+      claim_generator: CLAIM_GENERATOR,
+      title: MANIFEST_TITLE,
     });
 
     // Record the real provenance, not a bare `c2pa.created`. Ledra is not the
@@ -124,13 +176,7 @@ export async function signC2pa(buffer: Buffer, mime: string, binding?: CaptureBi
     // the removal action slightly over-claim. Upgrade path: thread the transform
     // outcome from the upload route through invokeAllUploadProviders → signC2pa.
     builder.addAssertion("c2pa.actions", {
-      actions: [
-        { action: "c2pa.opened", softwareAgent: "Ledra/1.0" },
-        { action: "c2pa.orientation", softwareAgent: "sharp" },
-        { action: "c2pa.converted", softwareAgent: "sharp" },
-        // EXIF/GPS metadata removed for privacy before signing.
-        { action: "c2pa.edited", parameters: { name: "exif_gps_metadata_removed" } },
-      ],
+      actions: MANIFEST_ACTIONS as unknown as Record<string, unknown>[],
     });
 
     // Seal the capture context into the manifest: which certificate/vehicle this
@@ -164,6 +210,8 @@ export async function signC2pa(buffer: Buffer, mime: string, binding?: CaptureBi
       manifestCid,
       verified: true,
       signedBuffer: output.buffer,
+      // 封入した内容から決定的に作る要約（読み戻し不要）。DBに保存し UI で表示する。
+      manifestSummary: buildC2paManifestSummary(mode, binding),
     };
   } catch (err) {
     console.error("[c2pa] signing failed, falling back to unsigned", err);
