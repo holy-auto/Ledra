@@ -9,7 +9,7 @@
  * これで route ごとに同じ recordAiUsage 呼び出しを書かずに済む。
  * `record` は fire-and-forget (void Promise を返さない) ので await 不要。
  */
-import { after } from "next/server";
+import { afterOrInline } from "@/lib/http/afterOrInline";
 import { recordAiUsage, type AiUsageLog, type AiUsageOutcome } from "./usageLog";
 import { recordAiBreadcrumb } from "./sentryAiBreadcrumb";
 import { addMonthlyCostJpy } from "./costCap";
@@ -22,11 +22,7 @@ import { beginAiUsageCapture, getCapturedUsage } from "./usageContext";
  * (テスト等) では after() が throw するので即時実行にフォールバックする。
  */
 function persistAfterResponse(fn: () => Promise<unknown>): void {
-  try {
-    after(fn);
-  } catch {
-    void fn();
-  }
+  afterOrInline(fn);
 }
 
 export interface RouteUsageHandle {

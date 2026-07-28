@@ -1,5 +1,5 @@
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
-import { NextRequest, after } from "next/server";
+import { NextRequest } from "next/server";
 import { z } from "zod";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
@@ -9,6 +9,7 @@ import { sendDocumentEmail } from "@/lib/documents/share-email";
 import { sendDocumentLink } from "@/lib/line/client";
 import { sendSMS } from "@/lib/sms/client";
 import { sealDocumentById } from "@/lib/documents/documentSeal";
+import { afterOrInline } from "@/lib/http/afterOrInline";
 
 export const dynamic = "force-dynamic";
 
@@ -210,7 +211,7 @@ export async function POST(req: NextRequest) {
 
       // 電帳法「真実性の確保」: 共有送付で draft→sent 確定した各帳票にも封印を付ける
       // （PUT / POST と同じ第3の確定パス。id 起点で読み直して封印する best-effort）。
-      after(async () => {
+      afterOrInline(async () => {
         for (const id of draftIds) {
           try {
             await sealDocumentById(adminForUpdate, caller.tenantId, id);
