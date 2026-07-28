@@ -431,6 +431,15 @@ export function shouldAutoWorkStamp(settings: AiAutomationSettings): boolean {
   return resolveAutoAction(settings, "photo.auto_work_stamp");
 }
 
+/**
+ * 施工写真アップロード時に「施工内容ドラフト」を AI Vision で自動生成してよいか。
+ * 結果は提案（meta.content_draft_suggestion）の注釈のみで、施工内容欄への反映・発行・
+ * 金額には関与しない（提案のみ・非壁3）。
+ */
+export function shouldAutoDraftContent(settings: AiAutomationSettings): boolean {
+  return resolveAutoAction(settings, "photo.auto_draft_content");
+}
+
 // ─────────────────────────────────────────────
 // 保険案件 (claim) → 不正リスク自動スコア
 // ─────────────────────────────────────────────

@@ -56,6 +56,16 @@ export const mobileProgressEventSchema = z.object({
 });
 export type MobileProgressEvent = z.infer<typeof mobileProgressEventSchema>;
 
+/**
+ * 作業開始/完了時に任意で送る出張作業場所のGPS（モバイル端末の getCurrentPosition）。
+ * 位置情報が取得できない/拒否された端末では省略され、照合は no_reference のまま。
+ */
+export const mobileWorkGpsSchema = z.object({
+  lat: z.number().min(-90).max(90).optional(),
+  lng: z.number().min(-180).max(180).optional(),
+});
+export type MobileWorkGps = z.infer<typeof mobileWorkGpsSchema>;
+
 /* ─── Push registration ──────────────────────────────────── */
 
 export const mobilePushTokenSchema = z.object({

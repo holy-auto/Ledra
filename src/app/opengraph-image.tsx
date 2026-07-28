@@ -60,7 +60,7 @@ export default function OgImage() {
             lineHeight: 1.5,
           }}
         >
-          自動車整備・コーティング店のAI業務管理SaaS。
+          自動車整備・コーティング店の施工履歴プラットフォーム。
           予約・施工証明書・請求・顧客管理・保険連携を一本化。
         </div>
 

@@ -21,6 +21,17 @@
 - 次のアクション: 加盟店の電帳法ニーズの強さを確認し、検証 UI（案A）まで踏み込むか、TS 局有効化（案C）を先にやるかを代表判断。内部資料の表記修正（選択肢1）は独立して着手可。
 - 起票日: 2026-07-27
 
+## フェーズ2で残した真正性まわりの未確定事項（2026-07-27 C2PA/GPS実装後）
+- 状況: 真正性強化（C2PA本格統合・多層GPS整合）のコードはフェーズ2で main に入ったが、本番有効化・検証・ポリシーに未確定が残る。
+- 選択肢/論点:
+  - **B1 本番C2PA署名の有効化**: `C2PA_MODE=production`＋メンバー発行の署名証明書/鍵＋`PINATA_JWT` を Vercel 環境変数に設定すれば動く（コード変更なし）。中間CA連鎖を `LocalSigner` にどう渡すか（現状2 PEMのみ）は実署名時に要検証。→ いつ・誰が本番証明書を入れるか。
+  - **外部C2PA検証の統合確認**: `@contentauth/c2pa-node` がネイティブ依存でCIに未インストールのため、実署名/改変サンプルでの `external_c2pa_verified` の正誤はステージング未確認。→ ステージングで実サンプル検証。
+  - **出張作業場所座標(work_lat/lng)の保持期間**: スタッフ限定で保持する方針は決めたが、保持期間ポリシー（何日で消すか/匿名化するか）は未確定。顧客宅位置になり得るため要設計。
+  - **プライバシーポリシー本文**: 「写真GPSは照合のみ・座標非保存／出張作業場所は最小権限保持」の外部公開文面（`src/app/(marketing)/privacy`）は未反映・代表確認待ち。
+- 影響範囲: B1未設定の間は自社C2PA署名は dev-signed 止まり（真正性グレードの本番seal寄与が出ない）。保持期間・プライバシー文面の未確定は、出張運用が広がると法的・信頼リスクになり得る。
+- 次のアクション: (1) 代表が本番C2PA証明書の入手・env設定タイミングを決定。(2) ステージングで外部検証を実サンプル確認。(3) work_lat/lng の保持期間ポリシーを決めてプライバシー文面へ反映（代表確認）。
+- 起票日: 2026-07-27
+
 ## C2PA本番証明書（trust list準拠）をどう取得・保管するか（2026-07-27）
 - 状況: 署名パイプラインのコード側は実装・検証済み（PR #831）。残るブロッカーは本番署名証明書の取得のみ。調査の結果、これは単なる証明書購入ではなく **C2PA Conformance Program への登録（Ledra を Conforming Product として適合性・セキュリティ評価 → CPL 登録）→ trust list CA から発行** という手順だと判明。公式 C2PA Trust List（c2pa-org/conformance-public の trust-list/C2PA-TRUST-LIST.pem、2026-07-27 確認時点で 28 証明書）にサードパーティ発行している商用 CA は主に **DigiCert** と **SSL.com**（他は Google/Xiaomi/Adobe 等のデバイス自社署名系）。手順・env 形式・切替前検証は docs/c2pa-production-deployment.md に集約済み。プリフライト検証スクリプト `scripts/verify-c2pa-cert.mjs`（証明書が Trusted になるかをローカルで GO/NO-GO 判定）も用意済み。
 - 選択肢: 案A DigiCert / SSL.com の C2PA claim signing 証明書を Conformance Program 経由で取得＝trust list 準拠が確実だが評価プロセス・費用・更新運用が発生。案B 当面 production は用意せず、撮影時刻封印は既存 RFC3161 TSA（PHOTO_TSA_*）で担保、C2PA は dev-signed(埋め込みのみ・グレード非加算) or disabled に留める＝コストゼロだが「C2PA検証済み」は名乗れない。案C 鍵保管を KMS（CallbackSigner 経由・未実装）か env 直置き（現行対応）か。

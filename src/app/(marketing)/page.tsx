@@ -34,16 +34,16 @@ import { Suspense } from "react";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Ledra｜自動車整備・コーティング店のAI業務管理SaaS",
+  title: "Ledra｜自動車整備・コーティング店の施工履歴プラットフォーム",
   description:
-    "自動車整備・鈑金塗装・コーティング・PPF施工店向けのAI搭載クラウド業務管理SaaS。" +
+    "自動車整備・鈑金塗装・コーティング・PPF施工店向けの施工履歴プラットフォーム。" +
     "予約・作業管理、改ざん検知付きの施工証明書、請求・帳票、顧客360、保険会社連携までを一本化し、整備工場のDXと業務効率化を実現します。",
   keywords: siteConfig.keywords,
   alternates: { canonical: "/" },
   openGraph: {
-    title: "Ledra｜自動車整備・コーティング店のAI業務管理SaaS",
+    title: "Ledra｜自動車整備・コーティング店の施工履歴プラットフォーム",
     description:
-      "自動車整備・鈑金塗装・コーティング・PPF施工店向けのAI搭載クラウド業務管理SaaS。" +
+      "自動車整備・鈑金塗装・コーティング・PPF施工店向けの施工履歴プラットフォーム。" +
       "予約・作業管理、施工証明書、請求・帳票、顧客管理、保険会社連携を一本化。",
     url: "/",
     siteName: "Ledra",
@@ -52,9 +52,9 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "Ledra｜自動車整備・コーティング店のAI業務管理SaaS",
+    title: "Ledra｜自動車整備・コーティング店の施工履歴プラットフォーム",
     description:
-      "自動車整備・鈑金・コーティング・PPF店向けのAI業務管理SaaS。予約・施工証明書・請求・顧客管理・保険連携を一本化。",
+      "自動車整備・鈑金・コーティング・PPF店向けの施工履歴プラットフォーム。予約・施工証明書・請求・顧客管理・保険連携を一本化。",
   },
 };
 
