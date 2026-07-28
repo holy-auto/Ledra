@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { createRequire } from "node:module";
 
 // Dynamically import so env vars take effect per-test
 async function loadProviders() {
@@ -92,6 +93,60 @@ describe("signC2pa directly", () => {
     const result = await signC2pa(Buffer.from("test"), "image/jpeg");
     expect(result).toEqual({ manifestCid: null, verified: false, signedBuffer: null, manifestSummary: null });
   });
+});
+
+// Happy-path signing: the existing tests only cover the disabled path and the
+// bad-buffer fallback, so a broken sign() (e.g. wrong Builder construction, or a
+// cert that fails the C2PA profile) silently fell back to unsigned and no test
+// caught it. This test signs a real JPEG and reads the manifest back.
+describe("signC2pa happy path (dev-signed)", () => {
+  beforeEach(() => {
+    vi.resetModules();
+    delete process.env.C2PA_MODE;
+    delete process.env.PINATA_JWT;
+  });
+
+  it("signs a real JPEG and embeds a readable capture-bound manifest", async () => {
+    process.env.C2PA_MODE = "dev-signed";
+
+    // @contentauth/c2pa-node is an optionalDependency (native build may be
+    // absent). Gate the strong assertions on its presence so CI without the
+    // native binding still passes on the graceful-degradation contract.
+    const require = createRequire(import.meta.url);
+    let moduleAvailable = true;
+    try {
+      require.resolve("@contentauth/c2pa-node");
+    } catch {
+      moduleAvailable = false;
+    }
+
+    const sharp = (await import("sharp")).default;
+    const jpeg = await sharp({ create: { width: 64, height: 64, channels: 3, background: { r: 10, g: 20, b: 30 } } })
+      .jpeg()
+      .toBuffer();
+
+    const infoSpy = vi.spyOn(console, "info").mockImplementation(() => {});
+    const { signC2pa } = await import("../c2pa");
+    const result = await signC2pa(jpeg, "image/jpeg", { publicId: "cert_test123", vin: "TESTVIN0000000001" });
+    infoSpy.mockRestore();
+
+    if (!moduleAvailable) {
+      expect(result.signedBuffer).toBeNull();
+      expect(result.verified).toBe(false);
+      return;
+    }
+
+    expect(result.verified).toBe(true);
+    expect(result.signedBuffer).not.toBeNull();
+    expect(result.signedBuffer!.length).toBeGreaterThan(jpeg.length);
+
+    const { Reader } = await import("@contentauth/c2pa-node");
+    const reader = await Reader.fromAsset({ buffer: result.signedBuffer, mimeType: "image/jpeg" });
+    const json = reader.json();
+    const jstr = typeof json === "string" ? json : JSON.stringify(json);
+    expect(jstr).toContain("com.ledra.capture");
+    expect(jstr).toContain("cert_test123");
+  }, 30_000);
 });
 
 describe("anchorToPolygon", () => {

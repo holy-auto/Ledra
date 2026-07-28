@@ -71,6 +71,14 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
   const [activeTypeFilter, setActiveTypeFilter] = useState<string>(initialTypeFilter ?? "all");
   const [activeStatusFilter, setActiveStatusFilter] = useState<string>("all");
   const [periodFilter, setPeriodFilter] = useState<PeriodFilter>("all");
+  // 取引先・金額での検索（電帳法 可視性）。入力は「検索」適用時に active へ反映する
+  // （キー入力ごとにリクエストを飛ばさないため）。
+  const [counterpartyInput, setCounterpartyInput] = useState("");
+  const [amountMinInput, setAmountMinInput] = useState("");
+  const [amountMaxInput, setAmountMaxInput] = useState("");
+  const [activeCounterparty, setActiveCounterparty] = useState("");
+  const [activeAmountMin, setActiveAmountMin] = useState("");
+  const [activeAmountMax, setActiveAmountMax] = useState("");
 
   // Build SWR key
   const swrKey = (() => {
@@ -82,6 +90,9 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
       params.set("date_from", range.from);
       params.set("date_to", range.to);
     }
+    if (activeCounterparty) params.set("counterparty", activeCounterparty);
+    if (activeAmountMin) params.set("amount_min", activeAmountMin);
+    if (activeAmountMax) params.set("amount_max", activeAmountMax);
     return `/api/admin/documents?${params.toString()}`;
   })();
 
@@ -125,6 +136,22 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
     setActiveTypeFilter(newType);
     setActiveStatusFilter(newStatus);
     setSelectedIds(new Set());
+  };
+
+  // 取引先・金額の検索を適用（入力 → active）。空欄はその条件を外す。
+  const applySearch = () => {
+    setActiveCounterparty(counterpartyInput.trim());
+    setActiveAmountMin(amountMinInput.trim());
+    setActiveAmountMax(amountMaxInput.trim());
+    setSelectedIds(new Set());
+  };
+  const resetSearch = () => {
+    setCounterpartyInput("");
+    setAmountMinInput("");
+    setAmountMaxInput("");
+    setActiveCounterparty("");
+    setActiveAmountMin("");
+    setActiveAmountMax("");
   };
 
   const isDeletable = (doc: DocumentRow) => isDocumentDeletable(doc.doc_type, doc.status);
@@ -414,6 +441,51 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
                   <option value="month">今月</option>
                   <option value="year">今年</option>
                 </select>
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs text-muted">取引先</label>
+                <input
+                  type="text"
+                  className="input-field"
+                  placeholder="顧客名・宛先名"
+                  value={counterpartyInput}
+                  onChange={(e) => setCounterpartyInput(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && applySearch()}
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs text-muted">金額（円）</label>
+                <div className="flex items-center gap-1">
+                  <input
+                    type="number"
+                    min={0}
+                    className="input-field w-28"
+                    placeholder="下限"
+                    value={amountMinInput}
+                    onChange={(e) => setAmountMinInput(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && applySearch()}
+                  />
+                  <span className="text-xs text-muted">〜</span>
+                  <input
+                    type="number"
+                    min={0}
+                    className="input-field w-28"
+                    placeholder="上限"
+                    value={amountMaxInput}
+                    onChange={(e) => setAmountMaxInput(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && applySearch()}
+                  />
+                </div>
+              </div>
+              <div className="flex items-end gap-2">
+                <button type="button" className="btn-secondary px-4 py-2 text-sm" onClick={applySearch}>
+                  検索
+                </button>
+                {(activeCounterparty || activeAmountMin || activeAmountMax) && (
+                  <button type="button" className="btn-ghost px-3 py-2 text-sm" onClick={resetSearch}>
+                    クリア
+                  </button>
+                )}
               </div>
             </div>
           </section>

@@ -15,6 +15,7 @@
 | `outbox_events` (delivered) | **90 日** | 物理削除 | 既配送の証跡が不要になる時点 |
 | `outbox_events` (dead_letter) | **2 年** | 保持 | 障害調査 + 是正記録 |
 | `stripe_processed_events` | **90 日** | 物理削除 | 冪等性チェックの window |
+| `reservations.work_lat/lng/work_gps_at` | **完了 (work_completed_at) + 90 日** | 座標を NULL 化（行は保持） | 出張作業場所の位置情報は顧客宅になり得るため最小権限・短期保持。真正性照合の基準として保持期間内のみ必要 |
 | `inventory_movements` | **無期限** | 保持 | 監査証跡 |
 | `certificates` | **無期限** | 論理削除 (status='archived') | 顧客の権利 / 改ざん検知の信頼性 |
 | `vehicle_passports` | **無期限** | 論理削除 | 同上 |

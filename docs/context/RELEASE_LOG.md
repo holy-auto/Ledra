@@ -20,6 +20,45 @@
   - 共有ヘルパー `src/lib/datetime.ts` を新設（`jstLocalInputToUtcIso` / `utcIsoToJstLocalInput` / `jstParts` / `formatJstDateTime` / `formatJstDateTimeJa` / `formatJstDateJa`）。naive 入力を常に JST(UTC+9) として保存し、表示も常に JST で描画（実行環境TZ非依存）。散在していた各ページのローカル日時整形関数を撤去して集約。ユニットテスト追加（UTC/JST/他TZの各サーバで検証）。
 - 対象: `/admin/site-content`（作成・編集 server action / 一覧）、公開 `/events`・`/news/[slug]`・`/news`・`/blog`・`/blog/[slug]`・トップ NewsTeaser、cron `/api/cron/publish-scheduled` の対象データ
 
+## 2026-07-27 AIナビ＆横断検索でサイドバーをスリム化 + 監査ゲート恒久修正 (PR #752 / e19d92c)
+- 内容:
+  (1) サイドバー刷新: 常時表示をコア8機能に絞る slim 表示と、全 NAV_GROUPS を出す full トグル。
+  ピン留めを localStorage 永続化。ナビ定義を `adminNav.tsx` に抽出し単一の出典化。
+  (2) AIナビ（`AssistantChat` + `/api/admin/assistant/navigate` + `navIntent`）: 自由文→画面 href。
+  モデル出力の href は `resolveHrefFromCatalog` で既知カタログ照合（ハルシネーション/オープン
+  リダイレクト防止）。到達先は `AdminRouteGuard` が担保。⌘/Ctrl+J で起動。
+  (3) 横断検索: 名前・番号で顧客/車両/証明書/請求書を検索し詳細へ。staff 以上に限定。
+  (4) 自動レビュー(Codex)対応: ログイン後リダイレクトのループ修正（会員資格なしは
+  `/admin/certificates` へ）、AIナビ API のユーザ単位レート制限、ダイアログ閉/リセット時の
+  in-flight fetch 中断、本社専用ユーザへナビ限定許可、フォールバック語一致のトークン化
+  （`navTokens.ts`）、ピン留めボタンのタッチ/キーボード a11y、告知バナーの実マウント。
+  (5) `npm audit` high 脆弱性(postcss/brace-expansion/minimatch)を override 統一で恒久解消し
+  CI 必須チェックを緑化（詳細は DECISION_LOG 2026-07-27）。
+  (6) お知らせ「【アップデート予告】AIナビ＆横断検索」を publish（公開日付 0:00 JST）。
+- 対象: 管理画面（admin）サイドバー / AIナビ API / ログイン後遷移 / CI・依存。
+
+## 2026-07-27 電子帳簿保存法 対応：確定帳票の封印（真実性）＋金額・取引先検索（可視性） (branch claude/c2pa-production-deployment-nlv0gs)
+- 内容: 電帳法の2要件を加盟店向けに満たす実装。
+  (1) 真実性の確保 — 確定（draft→sent）した帳票の不変フィールド（doc_number/issued_at/金額/税/明細/取引先等）から SHA-256 ハッシュを算出し、可能なら RFC3161 タイムスタンプ（第三者による存在時刻証明）を付けて `documents.meta_json.integrity_seal` に保存（新規 `src/lib/documents/documentSeal.ts`）。TS は写真 TSA と同じ機構（`fetchTimestamp`）を流用し、専用 env `DOCUMENT_TSA_*` が無ければ有効化済みの `PHOTO_TSA_*` にフォールバック。TS 局未契約/失敗/締切超過はハッシュのみの封印へ正直に degrade（付いていない TS を騙らない）。送付済み帳票が編集不可である既存運用と合わせ、後から再計算で改ざん検知できる基盤になる。確定パスは3経路すべてに配線：PUT の draft→sent、POST の status=sent 直接作成、共有送付（`documents/share/route.ts`）の draft→sent 一括更新。
+  (2) 可視性の確保 — 帳票一覧 API/画面に「取引金額（下限・上限）」「取引先（顧客名 or 宛先名の部分一致）」検索を追加（`GET /api/admin/documents`・`DocumentsClient.tsx`）。既存の日付（issued_at）絞り込みと合わせ、電帳法が求める「取引年月日・金額・取引先」での検索を満たす。取引先は `customers(tenant_id, name)` 索引を使う ilike と `recipient_name` の OR。
+- 対象: 帳票管理（見積書/納品書/請求書/領収書等、全業種）。スキーマ変更なし（封印は `meta_json` に格納）。検証: `documentSeal` 単体テスト4件＋`src/lib/documents` 全31件パス、tsc エラー0、eslint エラー0。
+- 残: 検証器（封印の照合UI・TS トークン検証表示）は未実装。`DOCUMENT_TSA_*`/`PHOTO_TSA_*` 未設定時はハッシュのみ（TS 付与には TS局の有効化が必要）。
+
+## 2026-07-27 C2PA署名パイプラインの本番導入ブロッカー2件を修正 (branch claude/c2pa-production-deployment-nlv0gs)
+- 内容: 施工写真の C2PA 署名（`src/lib/anchoring/providers/`）が dev-signed / production いずれのモードでも実際には署名できず、無署名フォールバックしていた根本原因2件を特定・修正。
+  (1) `c2pa.ts`: `new Builder({...})` は @contentauth/c2pa-node の誤用（コンストラクタはネイティブ handle を取る）で、以降の `addAssertion`/`sign` が `failed to downcast ... NeonBuilder` を throw → try/catch で握りつぶし無署名になっていた。静的ファクトリ `Builder.withJson({...})` に修正（`claim_generator` → `claim_generator_info`）。
+  (2) `c2paSigner.ts`: dev-signed の自己署名証明書が C2PA の end-entity 証明書プロファイルを満たさず、c2pa-rs が sign 時に「the certificate is invalid」で拒否。EKU=emailProtection(1.3.6.1.5.5.7.3.4)・SubjectKeyIdentifier・AuthorityKeyIdentifier・BasicConstraints(CA:FALSE) を付与し、notBefore を 60 秒バックデート。
+  併せて実 JPEG を実コードパスで署名し manifest を読み戻す happy-path テストを追加（従来テストは disabled と失敗フォールバックしか見ておらず本バグを検出できていなかった）。`.env.example` に production 証明書要件（PEM チェーン / PKCS#8 鍵 / trust list チェーン）を明記。
+- 対象: 証明書画像アップロード（`processUploadedPhoto` → `invokeAllUploadProviders` → `signC2pa`）の C2PA 来歴署名。整備/鈑金/コーティング/PPF 全業種。ネイティブモジュールは optionalDependency のため、この環境（Node 22/linux）でビルド成功を確認済み。
+
+## 2026-07-27 TSA（タイムスタンプ）有効化を当面の推奨経路として整備 (branch claude/c2pa-production-deployment-nlv0gs)
+- 内容: C2PA 本番証明書（重い適合認定が必要）を待たず、既存実装済みの写真 TSA（PHOTO_TSA_*、RFC3161）を有効化して撮影時封印を成立させる方針をドキュメント化。コード変更は不要（processUploadedPhoto → requestPhotoTimestamp は配線済み）。`.env.example` に推奨 TS局（無料の DigiCert 公開 TSA、国内法対応時は JIPDEC 認定局に差し替え）と有効化に必要な2変数を明記。`docs/c2pa-production-deployment.md` §6 に日本語の有効化手順・正直なスコープ（TSA 単独では grade は verified まで上がらず、別途デバイス認証＋nonce が必要）・動作確認方法を追記。
+- 対象: 施工写真の改ざん検知（撮影時封印）の運用。証明書取得不要で即有効化できる軽量経路。
+
+## 2026-07-27 C2PA本番証明書の取得手順ドキュメント + 切替前プリフライト検証スクリプト (branch claude/c2pa-production-deployment-nlv0gs)
+- 内容: production 署名証明書の取得〜切替を代表が実行できるよう整備。(1) `docs/c2pa-production-deployment.md` に取得フロー（C2PA Conformance Program 登録 → Conforming Products List → trust list CA 発行。商用発行は主に DigiCert / SSL.com）・env 形式（PEM チェーン / PKCS#8 鍵 / EKU 等）・鍵保管（env or KMS）・当面の TSA 代替を集約。公式 C2PA Trust List（c2pa-org/conformance-public、確認時点で 28 証明書）の実態を明記。(2) `scripts/verify-c2pa-cert.mjs`: 候補証明書で Ledra と同じ manifest を実署名し、公式 Trust List を anchor に読み戻して `validation_state==="Trusted"` のときだけ GO(exit0)、Valid/Invalid は NO-GO(exit1) と判定する切替前検証ツール。自己署名証明書で NO-GO(Invalid) になることを実測確認。
+- 対象: C2PA production 導入の運用手順・ツール。証明書取得自体は Conformance Program 登録を伴い代表判断待ち（OPEN_QUESTIONS 参照）。
+
 ## 2026-07-27 SEOカテゴリ語を「施工履歴プラットフォーム」に統一 (branch claude/ledra-seo-keywords-7vnacz)
 - 内容: 主カテゴリ語を PR TIMES と揃え「施工履歴プラットフォーム」に統一（旧「AI業務管理SaaS」から変更）。
   タイトル「Ledra｜自動車整備・コーティング店の施工履歴プラットフォーム」。`siteConfig`(single source) 経由で

@@ -9,6 +9,8 @@
  * - notification_logs    : 180 日経過 → 物理削除
  * - outbox_events delivered : 90 日経過 → 物理削除
  * - stripe_processed_events : 90 日経過 → 物理削除
+ * - reservations.work_lat/lng : 完了 (work_completed_at) + 90 日経過 → 座標を NULL 化
+ *   (出張作業場所の位置情報は顧客宅になり得るため最小権限・短期保持。行は消さず座標のみ消す)
  *
  * 失敗は Sentry + Resend (`sendCronFailureAlert`) で通知される。
  * 件数が多い場合は cron 1 回で全消化せず、次回に持ち越す。
@@ -71,6 +73,42 @@ async function pruneRule(
   return { table: rule.table, deleted: count ?? ids.length };
 }
 
+/** 出張作業場所GPSの保持期間ポリシー（完了から N 日）。 */
+const WORK_GPS_RETENTION_DAYS = 90;
+
+/**
+ * 完了から WORK_GPS_RETENTION_DAYS 日経過した予約の出張作業場所座標を NULL 化する。
+ * 行は削除せず、work_lat/work_lng/work_gps_at のみ消す（顧客宅位置になり得る座標を短期保持）。
+ * 1 cron あたり CHUNK 件でキャップし、多い場合は次回に持ち越す（削除ルールと同方針）。
+ */
+async function redactExpiredWorkGps(
+  admin: ReturnType<typeof createServiceRoleAdmin>,
+): Promise<{ table: string; deleted: number }> {
+  const cutoff = new Date(Date.now() - WORK_GPS_RETENTION_DAYS * 24 * 3600 * 1000).toISOString();
+  const { data, error } = await admin
+    .from("reservations")
+    .select("id")
+    .lte("work_completed_at", cutoff)
+    .not("work_lat", "is", null)
+    .limit(CHUNK);
+  if (error) {
+    logger.warn("retention: work_gps select failed", { error: error.message });
+    return { table: "reservations.work_gps", deleted: 0 };
+  }
+  const ids = (data ?? []).map((r) => (r as { id: string }).id);
+  if (ids.length === 0) return { table: "reservations.work_gps", deleted: 0 };
+
+  const { error: upErr, count } = await admin
+    .from("reservations")
+    .update({ work_lat: null, work_lng: null, work_gps_at: null }, { count: "exact" })
+    .in("id", ids);
+  if (upErr) {
+    logger.warn("retention: work_gps redact failed", { error: upErr.message });
+    return { table: "reservations.work_gps", deleted: 0 };
+  }
+  return { table: "reservations.work_gps", deleted: count ?? ids.length };
+}
+
 export async function GET(req: NextRequest) {
   const { authorized, error: authErr } = verifyCronRequest(req);
   if (!authorized) return apiUnauthorized(authErr);
@@ -83,6 +121,8 @@ export async function GET(req: NextRequest) {
       for (const rule of RULES) {
         out.push(await pruneRule(admin, rule));
       }
+      // 出張作業場所GPSは削除ではなく座標の NULL 化（完了から90日）。
+      out.push(await redactExpiredWorkGps(admin));
       return out;
     });
 
