@@ -22,6 +22,28 @@
 9. 公開区分: 公開可／要確認／非公開
 ```
 
+## 2026-07-27 npm audit 必須ゲートを minimatch@10 統一で恒久解消（依存ゲート運用）
+1. 日付: 2026-07-27
+2. 起きたこと: PR #752（AIナビ）の CI 必須チェック「Lint, Type Check & Unit Tests」が `npm audit --audit-level=high --omit=dev` で失敗。調査の結果、これは本PR起因ではなく main 自身も 07-25 から同じ理由で赤（リポジトリ全体のブロッカー）。原因は `postcss`(<=8.5.17) と `brace-expansion`(<=5.0.7、非脆弱は 5.0.8 のみ) の advisory。
+3. 以前の考え: 依存の override で個別に潰せば済むと考えていた。
+4. 違和感・問題: `brace-expansion` を全体 5.0.8 に上げると eslint 系の minimatch@3 が壊れ（5.x は ESM化で非互換）、スコープ override は効かず、npm も非破壊では直せず `--force`（rimraf メジャー破壊）を要求した。
+5. 決めたこと: override で `postcss=^8.5.18`・`brace-expansion=^5.0.8`・`minimatch=^10.2.5` に統一。minimatch@10 は brace-expansion 5.x 対応のため、eslint/config-array を含め全 minimatch を 10 に揃えて両立させた。検証: npm audit 0件 / eslint 0 errors / tsc clean / vitest 3577 pass。
+6. 捨てた選択肢: (A) 監査レベルを critical に下げる＝全 high を見逃すため却下。(B) rimraf 配下のみ scoped override＝深い minimatch に効かず却下。(C) brace-expansion を全体 5.0.8 のみ＝eslint 破壊で却下。
+7. 判断理由: ゲートの厳しさ（high をブロック）を保ったまま、テスト・lint・型で回帰無しを実測できた最小構成だったため。main のブロックも同時に解消する。
+8. まだ答えが出ていないこと: minimatch を override で 10 に固定するのは対症療法寄り。将来 eslint/glob 等のツールチェーン更新で override を外せるか（OPEN_QUESTIONS に起票）。
+9. 公開区分: 公開可
+
+## 2026-07-27 本社専用ユーザに AIナビを「ナビ限定」で許可（アクセス設計）
+1. 日付: 2026-07-27
+2. 起きたこと: AIナビの入口は共有 admin レイアウトが常時描画するが、本社専用ユーザ（tenant membership 無し）は `resolveCallerWithRole()` が null を返し、送信が必ず 401 →「AI 利用不可」と誤表示される、と自動レビューで指摘。
+3. 以前の考え: 認証＝tenant membership 前提で、caller null は 401 で十分と考えていた。
+4. 違和感・問題: 本社ユーザは正規の認証済みで、画面遷移（本社横断ビュー等）にナビは有用なのに一律拒否になっていた。
+5. 決めたこと: caller が無くても `resolveOrgUserContext` で本社ユーザと確認できればナビ意図のみ許可。顧客/車両/証明書/請求書のエンティティ検索は tenant データに触れるため従来どおり tenant + staff 必須でガード。サイドバー slim も本社ユーザ向けに orgUserVisible を集約表示。
+6. 捨てた選択肢: 本社ユーザには入口ごと非表示にする案＝複数入口（サイドバー/トップバー/⌘J）を塞ぐ必要があり漏れやすく、機能提供を諦めることになるため却下。
+7. 判断理由: 既存ヘルパ（`resolveOrgUserContext`）の再利用で contained に実装でき、データ境界（検索）は維持したまま UX を直せるため。
+8. まだ答えが出ていないこと: 本社ユーザ向けナビカタログを本社画面に最適化するか（現状は全 orgUserVisible）。
+9. 公開区分: 公開可
+
 ## 2026-07-27 電子帳簿保存法対応：確定帳票の封印（真実性）と金額・取引先検索（可視性）を実装（選択肢2＋3）
 1. 日付: 2026-07-27
 2. 起きたこと: 電帳法対応の打ち手を小さい順に4つ提示（1:内部資料の表記修正 / 2:確定帳票へTS＋ハッシュ封印=真実性 / 3:金額・取引先検索=可視性 / 4:記録のみ）したところ、代表が「2、3を実装」を選択。
