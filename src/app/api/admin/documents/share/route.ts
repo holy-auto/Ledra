@@ -1,5 +1,5 @@
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
-import { NextRequest } from "next/server";
+import { NextRequest, after } from "next/server";
 import { z } from "zod";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
@@ -8,6 +8,7 @@ import { DOC_TYPES, type DocType } from "@/types/document";
 import { sendDocumentEmail } from "@/lib/documents/share-email";
 import { sendDocumentLink } from "@/lib/line/client";
 import { sendSMS } from "@/lib/sms/client";
+import { sealDocumentById } from "@/lib/documents/documentSeal";
 
 export const dynamic = "force-dynamic";
 
@@ -206,6 +207,18 @@ export async function POST(req: NextRequest) {
         );
       const updatedPrimary = updated?.find((d) => d.id === documentId);
       if (updatedPrimary) updatedDoc = updatedPrimary;
+
+      // 電帳法「真実性の確保」: 共有送付で draft→sent 確定した各帳票にも封印を付ける
+      // （PUT / POST と同じ第3の確定パス。id 起点で読み直して封印する best-effort）。
+      after(async () => {
+        for (const id of draftIds) {
+          try {
+            await sealDocumentById(adminForUpdate, caller.tenantId, id);
+          } catch (sealErr) {
+            console.error("document_share: integrity seal failed (non-blocking)", sealErr);
+          }
+        }
+      });
     }
 
     return apiOk({
