@@ -15,6 +15,7 @@ import { sendTemplateSubscriptionStartedEmail } from "@/lib/email/templateOrderE
 import { maskEmail } from "@/lib/logger";
 import { invalidateTenantBillingCache } from "@/lib/billing/guard";
 import { REPORT_ACCESS_VALIDITY_DAYS } from "@/lib/vehicleReport/access";
+import { recordVehicleReportRevenueShares } from "@/lib/vehicleReport/revenueShare";
 import { recordSubscriptionCommission, advanceReferralToContracted } from "@/lib/agents/commission";
 import { recordInvoicePaymentBalance } from "@/lib/invoice/recordPayment";
 
@@ -648,6 +649,15 @@ export async function POST(req: NextRequest) {
           }
 
           console.info("webhook: vehicle report order paid", { orderId });
+          // Book the merchant revenue-share accrual. Idempotent vs the
+          // unlock route (UNIQUE(order_id, tenant_id) + ignoreDuplicates).
+          // Non-fatal: a booking error must not 500 the webhook (Stripe
+          // would retry and re-book idempotently anyway).
+          try {
+            await recordVehicleReportRevenueShares(orderId);
+          } catch (shareErr) {
+            console.error("webhook: vehicle report revenue share booking failed (non-fatal)", { orderId, shareErr });
+          }
           break;
         }
 

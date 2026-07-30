@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach } from "vitest";
+import { describe, expect, it, vi, beforeEach, beforeAll, afterAll } from "vitest";
 
 vi.mock("@/lib/logger", () => ({
   logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn(), child: () => ({}) },
@@ -13,6 +13,23 @@ vi.mock("@/lib/supabase/admin", () => ({
 }));
 
 import { getPricingElasticity, pricingWindowToSince } from "@/lib/analytics/pricing";
+
+// getPricingElasticity derives its month axis from the *current* time
+// (since = now - windowDays), and only rows whose period_month falls inside
+// that axis are counted. The fixtures below are dated 2026-04/05, so the
+// suite is only correct while "now" is close to them — it silently started
+// failing once the real clock moved >90d past those months. Freeze the clock
+// to a fixed date inside the window (only Date is faked, so async/microtasks
+// are untouched) to make the axis — and therefore the assertions —
+// deterministic regardless of when CI runs.
+beforeAll(() => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2026-06-15T00:00:00Z"));
+});
+
+afterAll(() => {
+  vi.useRealTimers();
+});
 
 describe("pricingWindowToSince", () => {
   it("returns ~90 days back for '90d'", () => {
