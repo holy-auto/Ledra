@@ -127,11 +127,14 @@ export const FEATURES: readonly FeatureDef[] = [
     requiredPermission: "certificates:view",
   },
   {
+    // core (always visible for payments:view roles): the whole point of
+    // this feature is that merchants SEE their records earning — hiding it
+    // behind the advanced opt-in would defeat that. Empty state explains it.
     key: "report-revenue",
     href: "/admin/report-revenue",
     label: "レポート収益",
     groupKey: "revenue",
-    tier: "advanced",
+    tier: "core",
     requiredPermission: "payments:view",
   },
   {
