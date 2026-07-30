@@ -127,6 +127,14 @@ export const FEATURES: readonly FeatureDef[] = [
     requiredPermission: "certificates:view",
   },
   {
+    key: "report-revenue",
+    href: "/admin/report-revenue",
+    label: "レポート収益",
+    groupKey: "revenue",
+    tier: "advanced",
+    requiredPermission: "payments:view",
+  },
+  {
     key: "vehicles",
     href: "/admin/vehicles",
     label: "車両管理",

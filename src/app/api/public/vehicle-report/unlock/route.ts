@@ -17,6 +17,7 @@ import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { isPassportPublicEnabled } from "@/lib/passport/featureGate";
 import { reportCookieName, REPORT_ACCESS_VALIDITY_DAYS } from "@/lib/vehicleReport/access";
+import { recordVehicleReportRevenueShares } from "@/lib/vehicleReport/revenueShare";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -94,6 +95,16 @@ export async function GET(req: NextRequest) {
             typeof session.payment_intent === "string" ? session.payment_intent : null,
         })
         .eq("id", order.id);
+    }
+
+    // Book the merchant revenue-share accrual (fallback for webhook lag).
+    // Idempotent vs the webhook path via UNIQUE(order_id, tenant_id).
+    // Never let an accounting hiccup block the buyer's paid access — the
+    // webhook path books the same shares, so a failure here self-heals.
+    try {
+      await recordVehicleReportRevenueShares(order.id);
+    } catch (shareErr) {
+      console.error("vehicle report unlock: revenue share booking failed (non-fatal)", { orderId: order.id, shareErr });
     }
 
     const maxAgeSec = expiresAtIso
