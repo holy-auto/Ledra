@@ -290,6 +290,18 @@ export async function POST(req: NextRequest) {
           });
         }
 
+        // 車両レポート収益の還元送金が着金 → 台帳を paid に確定
+        if (meta?.source_type === "vehicle_report" && meta?.source_id) {
+          await supabase
+            .from("vehicle_report_revenue_shares")
+            .update({ status: "paid", paid_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+            .eq("id", meta.source_id);
+          console.info("connect-webhook: vehicle report share paid", {
+            shareId: meta.source_id,
+            transferId: transfer.id,
+          });
+        }
+
         // 入金完了メール: テナント or 代理店の contact_email に送信
         const destinationAccountId = transfer.destination
           ? typeof transfer.destination === "string"
@@ -362,6 +374,18 @@ export async function POST(req: NextRequest) {
             .eq("id", meta.source_id);
           console.info("connect-webhook: agent commission reversed", {
             commissionId: meta.source_id,
+            transferId: transfer.id,
+          });
+        }
+
+        // 車両レポート収益の還元送金が取消 → 台帳を reversed に
+        if (meta?.source_type === "vehicle_report" && meta?.source_id) {
+          await supabase
+            .from("vehicle_report_revenue_shares")
+            .update({ status: "reversed", updated_at: new Date().toISOString() })
+            .eq("id", meta.source_id);
+          console.info("connect-webhook: vehicle report share reversed", {
+            shareId: meta.source_id,
             transferId: transfer.id,
           });
         }

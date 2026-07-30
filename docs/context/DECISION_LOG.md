@@ -22,6 +22,17 @@
 9. 公開区分: 公開可／要確認／非公開
 ```
 
+## 2026-07-30 レポート収益還元の実送金（Connect 精算）と返金巻き戻しを実装
+1. 日付: 2026-07-30
+2. 起きたこと: 蓄積台帳（#848）に続き、代表の指示で「実送金の自動化」と「返金時の台帳巻き戻し」を実装。既存の代理店コミッション精算と同じ Stripe Connect レール（`stripe.transfers.create` → connect-webhook `transfer.paid/reversed` で確定）を再利用できることを確認し、それに準拠した。
+3. 以前の考え: 実送金・返金巻き戻しは後続の別 PR、送金 UI や Connect オンボーディングは新規に作る必要があると想定していた。
+4. 違和感・問題: テナントの Stripe Connect（`tenants.stripe_connect_account_id` / `stripe_connect_onboarded`）とオンボーディング（`/admin/settings`・`/api/stripe/connect`）、送金記録（`stripe_connect_transfers` の webhook upsert）が既に存在し、コミッション精算が「approved のみ送金＋webhook 確定」という安全な型を確立していた。新規に作るのは重複だった。
+5. 決めたこと: (a) `stripe_connect_transfers.source_type` に `vehicle_report`、`vehicle_report_orders.status` に `refunded` を追加。(b) `payVehicleReportRevenueShare`（approved のみ・冪等・webhook 確定）と cron `/api/cron/vehicle-report-payout`（毎日 05:20 UTC）で自動精算。(c) 承認は人手ゲート（platform-admin `PATCH /api/admin/platform/report-revenue/<id>` の approve）。(d) 返金は connect-webhook `transfer.reversed` と メイン webhook `charge.refunded`（全額のみ）→ `reverseVehicleReportRevenueSharesForOrder`。巻き戻し判定は純粋関数 `reversalActionForStatus`（テスト）。
+6. 捨てた選択肢: (A) 承認なしで cron が pending を即送金＝還元率70%が【要確認】のまま不可逆な送金が走るリスクで却下、approved のみ送金の人手ゲートにした。(B) 送金 UI/オンボーディングを新規実装＝既存の `/admin/settings` Connect 導線があり重複のため却下、ポータルに CTA を出すだけにした。(C) 部分返金対応＝按分の部分 reversal は複雑で、レポート返金導線自体が現状無いため全額返金のみに限定。
+7. 判断理由: 既存コミッション精算の型に完全準拠することで、レビュー容易・webhook 確定の冪等性・監査（stripe_connect_transfers）を無料で得られる。人手承認ゲートは、率が未確定なうちは 1 円も動かさない安全弁になる。
+8. まだ答えが出ていないこと: 還元率 70% の最終確定（未確定のうちは approve しなければ送金されない）。精算頻度・最低支払額の妥当性（現状は毎日・下限なし）。部分返金対応の要否。承認/精算の専用管理 UI の要否（現状 API のみ）。
+9. 公開区分: 要確認（送金・返金という金銭移動と未確定の還元率を含むため、対外発信は代表確認の上で「記録が収益として施工店に還元される仕組みを送金まで実装した」枠に限定）
+
 ## 2026-07-30 車両全履歴レポート売上を記録元の施工店へ還元（蓄積台帳を実装）
 1. 日付: 2026-07-30
 2. 起きたこと: 「記録を作った加盟店に還元される設計 ＝『技術が、資産になる。』の実装そのものなのに、今の説明で伝わっていない」という問題提起を受けて実装状況を確認したところ、有料の車両全履歴レポート（`/v/[vin]`、¥3,000）の売上は 100% プラットフォーム取り分で、記録を残した施工店への還元は設計・実装ともに存在しなかった（`stripe_connect_transfers.source_type` にも vehicle_report は無い）。

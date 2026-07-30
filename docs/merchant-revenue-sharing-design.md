@@ -112,13 +112,41 @@ ALTER TABLE vehicle_report_settings
 - 累計還元額・件数、直近の内訳（VIN 末尾 6 桁・件数・金額・状態）。
 - サイドバー nav（証明書の近く）＋ feature catalog に追加（`payments:view`）。
 
-## 6. スコープ外（今回やらないこと）
+## 6. 実送金（後続で実装済み: 20260730100000）
 
-- **実送金の自動化**: 台帳は `pending` で積むのみ。実 Transfer は既存の
-  `stripe_connect_transfers` 経路を後日つなぐ（`source_type` に `vehicle_report`
-  追加が必要）。未連携施工店が多い前提のため、送金 UI/精算バッチは別 PR。
-- **返金時の台帳巻き戻し**: レポートは返金導線が現状ないため、`reversed` 状態は
-  定義のみ用意し、巻き戻し処理は未実装。
+蓄積台帳を、代理店コミッションと同じ Stripe Connect レールで精算する。
+
+- **承認ゲート（人手）**: 台帳は `pending` で積む。プラットフォーム管理者が
+  `PATCH /api/admin/platform/report-revenue/<id>`（`approve`）で `pending → approved`。
+  還元率 70% の妥当性を確認してから承認する運用（お金の急所を人手で止める）。
+- **精算**: `payVehicleReportRevenueShare`（`src/lib/vehicleReport/payout.ts`）が
+  `approved` の share を Stripe Transfer（`metadata.source_type=vehicle_report` +
+  `source_id`、idempotencyKey 付き）で送金し、`stripe_transfer_id` を刻む。
+  実際の確定は **connect-webhook** の `transfer.paid` が `share.status=paid` に、
+  `transfer.reversed` が `reversed` にする（agent_commission と同一機構）。
+- **バッチ**: cron `/api/cron/vehicle-report-payout`（毎日 05:20 UTC、`withCronLock`）が
+  `approved` かつ未送金の share を一括精算。連携済み施工店のみ送金し、未連携は
+  `tenant_not_onboarded` でスキップ（施工店ポータルに Stripe 連携導線を表示）。
+- **オンボーディング導線**: テナントの Stripe Connect は既存の `/admin/settings`
+  （`tenants.stripe_connect_account_id` / `stripe_connect_onboarded`）を再利用。
+  `/admin/report-revenue` は未精算かつ未連携のとき登録 CTA を出す。
+
+## 7. 返金時の台帳巻き戻し（後続で実装済み）
+
+- **送金の取消**: connect-webhook `transfer.reversed` → 該当 share を `reversed`。
+- **売上の返金**: メイン webhook `charge.refunded`（全額返金のみ）→ その注文の
+  `stripe_payment_intent_id` から `vehicle_report_orders` を引き、
+  `reverseVehicleReportRevenueSharesForOrder` で各 share を巻き戻す。
+  送金ディスパッチ済み（transfer_id あり）の share は Stripe Transfer を reversal し
+  （webhook が `reversed` へ）、未送金の share は `cancelled`。注文は `refunded` に。
+  巻き戻し判定は純粋関数 `reversalActionForStatus`（単体テスト）で決定的に行う。
+  部分返金は対象外（ponytail: 天井＝比率按分の部分 reversal は未対応）。
+
+## 8. スコープ外（今回もやらない）
+
+- 部分返金への対応（全額返金のみ巻き戻す）。
+- 承認・精算の専用管理 UI（現状は platform-admin API のみ。一覧は
+  `GET /api/admin/platform/report-revenue?status=pending`）。
 
 ## 7. 検証（この設計の合否）
 

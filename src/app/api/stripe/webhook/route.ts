@@ -16,6 +16,7 @@ import { maskEmail } from "@/lib/logger";
 import { invalidateTenantBillingCache } from "@/lib/billing/guard";
 import { REPORT_ACCESS_VALIDITY_DAYS } from "@/lib/vehicleReport/access";
 import { recordVehicleReportRevenueShares } from "@/lib/vehicleReport/revenueShare";
+import { reverseVehicleReportRevenueSharesForOrder } from "@/lib/vehicleReport/payout";
 import { recordSubscriptionCommission, advanceReferralToContracted } from "@/lib/agents/commission";
 import { recordInvoicePaymentBalance } from "@/lib/invoice/recordPayment";
 
@@ -1072,6 +1073,34 @@ export async function POST(req: NextRequest) {
           await supabase.from("tenants").update({ stripe_connect_onboarded: onboarded }).eq("id", tenant.id);
           console.info("webhook: connect account synced", { accountId, onboarded });
         }
+        break;
+      }
+
+      // ─── 車両履歴レポート売上の返金 → 加盟店還元の巻き戻し ───
+      case "charge.refunded": {
+        const charge = event.data.object as Stripe.Charge;
+        // 全額返金のみ対象。ponytail: 部分返金は無視する。天井: 部分返金を
+        // 扱うなら refunded 比率に応じて各 share を部分 reverse する設計へ拡張。
+        if (!charge.refunded || charge.amount_refunded !== charge.amount) break;
+        const piId = asStringId(charge.payment_intent);
+        if (!piId) break;
+
+        const { data: order } = await supabase
+          .from("vehicle_report_orders")
+          .select("id, status")
+          .eq("stripe_payment_intent_id", piId)
+          .maybeSingle();
+        if (!order) break;
+
+        const summary = await reverseVehicleReportRevenueSharesForOrder(supabase, order.id as string);
+        await supabase
+          .from("vehicle_report_orders")
+          .update({ status: "refunded", updated_at: new Date().toISOString() })
+          .eq("id", order.id);
+        console.info("webhook: vehicle report order refunded — shares rolled back", {
+          orderId: order.id,
+          ...summary,
+        });
         break;
       }
 
