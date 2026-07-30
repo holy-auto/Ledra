@@ -4,28 +4,9 @@ import { useState } from "react";
 import { ScrollReveal } from "./ScrollReveal";
 import { LeadForm } from "./LeadForm";
 import { track } from "@/lib/marketing/analytics";
+import type { Resource } from "@/lib/marketing/resourceCatalog";
 
-export type Resource = {
-  /** Stable key used as `resource_key` on the lead record */
-  key: string;
-  title: string;
-  description: string;
-  badge?: string;
-  /**
-   * Optional direct download URL. When set, the download is fetched via
-   * blob right after lead submission so we can (a) time it, (b) track a
-   * `document_download_completed` event on success, and (c) pass the lead
-   * id back to the server for downloaded_at writeback.
-   */
-  downloadUrl?: string;
-  /**
-   * Optional filename for the saved download. Defaults to `${key}.pdf`.
-   * Set this when the resource is not a PDF (e.g. the bundle ZIP).
-   */
-  downloadFilename?: string;
-  pageCount?: number;
-  ctaLabel?: string;
-};
+export type { Resource };
 
 export function ResourceCard({ resource, delay = 0 }: { resource: Resource; delay?: number }) {
   const [open, setOpen] = useState(false);

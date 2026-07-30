@@ -12,6 +12,13 @@
 - 対象: どの画面・API・業種向けか
 ```
 
+## 2026-07-30 代理店ポータルに「常に最新の商品資料」欄を追加（自動生成PDFの再利用） (branch claude/agency-franchise-document-updates-3pdw2w)
+- 内容: 代理店資料が静的アップロード（`agent-materials` バケット）のみで、機能追加・料金改定のたびに本部が差し替えないと陳腐化する問題に対応。既にライブデータ（`PLANS`/`FEATURE_GROUPS`/`SECURITY_BLOCKS` 等）からリクエスト時に自動生成しているマーケ資料（`RESOURCE_PDFS` → `/api/marketing/resources/[key]/pdf`）を代理店ポータルにも露出させ、「常に最新の商品資料」欄として配置。機能の増減・改定があってもダウンロードのたびに最新版が出力され、本部の差し替え作業は不要になる。
+  - 実装: 6資料（サービス概要/機能紹介/セキュリティ/導入事例/ROI/料金）のタイトル・説明・DLリンクを、これまでマーケ資料ページにローカル定義していた配列から共有モジュール `src/lib/marketing/resourceCatalog.ts`（純データ、重い依存なし＝クライアント同梱を回避）へ抽出し単一情報源化。`ResourceCard` の `Resource` 型もカタログ由来に統一。`/agent/materials`（`src/app/agent/materials/page.tsx`）に緑の「ALWAYS LATEST」欄＋各資料の「最新版をDL」＋「全資料一括DL（ZIP）」を追加。マーケ資料ページ（`/resources`）は共有カタログを参照するよう置換（表示は不変）。
+  - 対象: 代理店ポータル（agent）資料画面 / マーケ資料ページ（表示不変のリファクタ）。
+  - 限界: 自動最新化されるのは元データを持つ製品資料のみ。契約書テンプレ等・機能増減と連動しない定型文書は従来どおり本部が手動更新（静的アップロード欄は併存）。プレビューは attachment 配信のため欄内 iframe ではなく新規タブDLとした。
+  - 検証: 新規 parity テスト（catalog↔`RESOURCE_PDFS` の双方向カバレッジ・DLリンク整合）3件＋`src/lib/marketing` 全66件パス、tsc エラー0、eslint エラー0（既存 warning 2件は無関係の別箇所）。
+
 ## 2026-07-27 AIナビ＆横断検索でサイドバーをスリム化 + 監査ゲート恒久修正 (PR #752 / e19d92c)
 - 内容:
   (1) サイドバー刷新: 常時表示をコア8機能に絞る slim 表示と、全 NAV_GROUPS を出す full トグル。
