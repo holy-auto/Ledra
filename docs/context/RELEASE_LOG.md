@@ -19,6 +19,27 @@
   - 限界: 自動最新化されるのは元データを持つ製品資料のみ。契約書テンプレ等・機能増減と連動しない定型文書は従来どおり本部が手動更新（静的アップロード欄は併存）。プレビューは attachment 配信のため欄内 iframe ではなく新規タブDLとした。
   - 検証: 新規 parity テスト（catalog↔`RESOURCE_PDFS` の双方向カバレッジ・DLリンク整合）3件＋`src/lib/marketing` 全66件パス、tsc エラー0、eslint エラー0（既存 warning 2件は無関係の別箇所）。
 
+## 2026-07-30 車両全履歴レポート収益の施工店還元（蓄積台帳）(branch claude/merchant-revenue-sharing-22tuq3)
+- 内容: 有料の車両全履歴レポート売上を、記録を残した施工店へ按分して蓄積する仕組みを実装。
+  (1) スキーマ: `vehicle_report_settings.merchant_share_bps`（還元率、既定 7000bps=70%）を追加。
+  台帳 `vehicle_report_revenue_shares`（1売上×施工店で1行、`UNIQUE(order_id, tenant_id)`、
+  RLS は service-role のみ）を新設（`supabase/migrations/20260730000000_vehicle_report_revenue_shares.sql`）。
+  (2) 按分: `src/lib/vehicleReport/revenueShare.ts` の純粋関数 `splitRevenueByRecordCount` が
+  プール = floor(売上×bps/10000) を記録件数比例で配分し、丸め残差を件数上位へ1円ずつ配って
+  Σ=プールを保証（円の生成/消失なし）。記録の定義は `/v/[vin]` タイムラインと同じ
+  「opt-in 車両のアンカー済み証明書」。
+  (3) 配線: レポートが paid 化する2経路（Stripe webhook / 成功URLの unlock フォールバック）から
+  冪等な `recordVehicleReportRevenueShares(orderId)` を呼ぶ。二重計上は UNIQUE + ignoreDuplicates で防止。
+  計上失敗は非致命化し、購入者のアクセス付与や webhook をブロックしない。
+  (4) 可視化: 施工店ポータル `/admin/report-revenue`（サーバコンポーネント）に「あなたの記録が生んだ収益」
+  （累計還元額・未精算・回数・VIN 末尾別内訳）と「技術が、資産になる。」の価値説明を表示。
+  サイドバー nav（証明書の近く）＋ feature カタログ（revenue グループ・advanced・`payments:view`）に追加。
+- 対象: 車両パスポート/レポート課金（全業種）・施工店 admin ポータル・Stripe webhook。
+- 検証: `splitRevenueByRecordCount` 単体テスト6件パス、feature カタログ整合テスト継続パス、tsc エラー0、
+  変更ファイル eslint エラー0。設計書 `docs/merchant-revenue-sharing-design.md`。
+- 残（スコープ外）: 実送金の自動化（`stripe_connect_transfers.source_type` に vehicle_report 追加＋精算バッチ／
+  Connect オンボーディング導線は別 PR）、返金時の台帳巻き戻し。
+
 ## 2026-07-27 AIナビ＆横断検索でサイドバーをスリム化 + 監査ゲート恒久修正 (PR #752 / e19d92c)
 - 内容:
   (1) サイドバー刷新: 常時表示をコア8機能に絞る slim 表示と、全 NAV_GROUPS を出す full トグル。
