@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import Badge from "@/components/ui/Badge";
 import { formatDateTime } from "@/lib/format";
+import { RESOURCE_CATALOG } from "@/lib/marketing/resourceCatalog";
 
 type Category = {
   id: string;
@@ -276,6 +277,80 @@ export default function AgentMaterialsPage() {
           </span>
         </div>
       </a>
+
+      {/* Auto-generated resources — always reflect the latest product content */}
+      <div className="rounded-2xl border border-emerald-300/40 bg-emerald-50/40 dark:bg-emerald-500/[0.06] p-5 shadow-sm">
+        <div className="flex items-start gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-500 text-white text-lg">
+            ♻️
+          </div>
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-xs font-semibold tracking-[0.18em] text-emerald-700 dark:text-emerald-400">
+                ALWAYS LATEST
+              </span>
+              <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 dark:text-emerald-400">
+                自動生成
+              </span>
+            </div>
+            <h2 className="mt-1 text-base font-semibold text-primary">常に最新の商品資料</h2>
+            <p className="mt-1 text-sm text-secondary leading-relaxed">
+              以下の資料はダウンロードのたびにサーバーで自動生成され、機能の追加・変更・料金改定があっても
+              <span className="font-semibold">常に最新の内容</span>で出力されます（本部の差し替え作業は不要）。
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {RESOURCE_CATALOG.map((r) => (
+            <div key={r.key} className="flex flex-col rounded-xl border border-emerald-300/30 bg-surface p-4 shadow-sm">
+              <div className="flex items-center gap-2">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-red-100 text-red-700 text-[11px] font-bold">
+                  PDF
+                </div>
+                <h3 className="min-w-0 truncate text-sm font-semibold text-primary">{r.title}</h3>
+              </div>
+              <p className="mt-2 line-clamp-3 flex-1 text-xs text-muted leading-relaxed">{r.description}</p>
+              <div className="mt-3 flex items-center justify-between gap-2">
+                {r.pageCount && <span className="text-[11px] text-muted">約{r.pageCount}ページ</span>}
+                <a
+                  href={r.downloadUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="ml-auto inline-flex items-center gap-1 rounded-lg border border-border-default bg-surface px-3 py-1 text-xs font-medium text-secondary hover:bg-surface-hover"
+                >
+                  <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3"
+                    />
+                  </svg>
+                  最新版をDL
+                </a>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="mt-4 flex justify-end">
+          <a
+            href="/api/marketing/resources/all/zip"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-4 py-2 text-xs font-medium text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/20"
+          >
+            <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3"
+              />
+            </svg>
+            全資料を一括ダウンロード（ZIP）
+          </a>
+        </div>
+      </div>
 
       {/* Search + Category filters */}
       <div className="rounded-2xl border border-border-default bg-surface p-4 shadow-sm space-y-3">
