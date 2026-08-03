@@ -12,7 +12,16 @@
 - 対象: どの画面・API・業種向けか
 ```
 
-## 2026-08-03 顧客登録の支払条件を請求書へ自動反映（プリフィル経路の取りこぼしを是正） (branch claude/customer-payment-terms-invoice-0q1v5p)
+## 2026-08-03 帳票明細: 品番のみ入力した明細が詳細画面・PDFで消えて見える不具合を修正 (branch claude/chouhyo-functionality-check-7fbgko)
+- 内容: 帳票明細の「内容(description)」が空で「品番(item_code)」だけ入力された明細が、詳細画面・PDF・印刷で
+  すべて「-」表示になり、入力した品番・商品名が丸ごと不可視になっていた（＝「DBに反映されない／吸い上げられない」
+  と誤認される）不具合を修正。データ自体は `documents.items_json` に保存されており欠損ではなく、描画側が
+  `description || "-"` のみで `item_code` を一切表示していなかったことが原因。表示ルールを純関数
+  `itemContentLines`（`src/lib/documents/itemDisplay.ts`）に集約し、「内容が空でも品番があれば品番を内容として
+  昇格表示」「両方あれば内容を主・品番を従(品番: …)に表示」に統一。詳細画面(`DocumentDetailClient.tsx`)と
+  PDF(`pdfDocument.tsx`)の両描画経路へ適用。純関数の単体テスト `itemDisplay.test.ts` を追加。
+  既存の帳票もデータ移行なしで即復旧する。
+- 対象: 帳票詳細 `/admin/documents/[id]`、帳票PDF `/admin/documents/pdf`、印刷表示（全帳票種別）。
 - 内容: 顧客登録で入力した支払条件（`billing_terms_note`、無ければ支払サイクルのラベル）が請求書に反映されない不具合を修正。
   原因は、顧客の敬称・住所・支払条件を宛先詳細へ自動反映するロジックが顧客セレクトの `onChange` 内にしか無く、
   「請求書を作成」ボタン（`/admin/invoices/new?customer_id=...`）等の URL プリフィル経路（`onChange` を経由しない）では

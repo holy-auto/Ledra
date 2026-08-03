@@ -5,6 +5,7 @@ import { useState } from "react";
 import Badge from "@/components/ui/Badge";
 import ShareDocumentModal from "@/components/documents/ShareDocumentModal";
 import { formatDate, formatDateTime, formatJpy } from "@/lib/format";
+import { itemContentLines } from "@/lib/documents/itemDisplay";
 import {
   CONVERSION_TARGETS,
   DOC_TYPES,
@@ -416,6 +417,7 @@ export default function DocumentDetailClient({
                 <tbody>
                   {items.map((item, idx) => {
                     const type = item.item_type ?? "item";
+                    const content = itemContentLines(item);
                     if (type === "heading") {
                       return (
                         <tr
@@ -426,7 +428,7 @@ export default function DocumentDetailClient({
                             colSpan={5}
                             className="py-2.5 px-3 font-semibold text-primary print:text-black print:bg-gray-100"
                           >
-                            {item.description || "-"}
+                            {content.primary}
                           </td>
                         </tr>
                       );
@@ -449,8 +451,13 @@ export default function DocumentDetailClient({
                     return (
                       <tr key={idx} className="border-b border-border-subtle print:border-gray-200">
                         <td className="py-3 px-3 text-primary print:text-black">
-                          {item.description || "-"}
+                          {content.primary}
                           {item.tax_category === 8 && <span className="ml-1 text-[10px] text-muted">※軽減</span>}
+                          {content.code && (
+                            <span className="block text-[10px] text-muted print:text-gray-500 font-mono">
+                              品番: {content.code}
+                            </span>
+                          )}
                         </td>
                         <td className="py-3 px-3 text-right text-secondary print:text-gray-700">{item.quantity}</td>
                         <td className="py-3 px-3 text-left text-secondary print:text-gray-700">{item.unit ?? ""}</td>

@@ -4,6 +4,7 @@ import { renderToBuffer } from "@react-pdf/renderer";
 import { createSignedAssetUrl } from "@/lib/signedUrl";
 import { notoSansJpDataUrl } from "@/lib/marketing/pdfFonts";
 import { fmtJpy, fmtDate, fmtTotal } from "@/lib/pdf/format";
+import { itemContentLines } from "@/lib/documents/itemDisplay";
 import {
   buildTaxBreakdown,
   hasMultipleRates,
@@ -25,6 +26,8 @@ Font.register({
 
 type InvoiceItem = {
   description: string;
+  /** 品番。品目マスタ(menu_items)の item_code。内容が空でも品番があれば摘要へ出す。 */
+  item_code?: string | null;
   quantity: number;
   unit_price: number;
   amount: number;
@@ -150,6 +153,7 @@ const s = StyleSheet.create({
     paddingVertical: 5,
   },
   colDesc: { flex: 3, paddingRight: 4 },
+  colDescCode: { fontSize: 7, color: "#888" },
   colQty: { width: 50, textAlign: "right" },
   colPrice: { width: 70, textAlign: "right" },
   colAmount: { width: 80, textAlign: "right" },
@@ -315,12 +319,20 @@ export async function renderInvoicePdf(invoice: InvoiceForPdf, tenant: TenantFor
         </View>
         {items.map((item, idx) => {
           const reduced = item.is_reduced_rate || item.tax_rate === 8;
+          const content = itemContentLines(item);
           return (
             <View key={idx} style={s.tableRow}>
               <Text style={s.colDesc}>
                 {reduced ? "※ " : ""}
-                {item.description || "-"}
+                {content.primary}
                 {item.certificate_public_id ? ` [証明書: ${item.certificate_public_id}]` : ""}
+                {content.code ? (
+                  <Text style={s.colDescCode}>
+                    {"\n"}品番: {content.code}
+                  </Text>
+                ) : (
+                  ""
+                )}
               </Text>
               <Text style={s.colQty}>{item.quantity}</Text>
               <Text style={s.colPrice}>{fmtJpy(item.unit_price)}</Text>

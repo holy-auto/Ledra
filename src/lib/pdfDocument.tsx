@@ -4,6 +4,7 @@ import { renderToBuffer } from "@react-pdf/renderer";
 import { createSignedAssetUrl } from "@/lib/signedUrl";
 import { notoSansJpDataUrl } from "@/lib/marketing/pdfFonts";
 import { fmtJpy, fmtDate, fmtTotal } from "@/lib/pdf/format";
+import { itemContentLines } from "@/lib/documents/itemDisplay";
 import { DEFAULT_LAYOUT, type LayoutConfig, mergeLayout } from "@/types/documentTemplate";
 import {
   buildTaxBreakdown,
@@ -69,6 +70,8 @@ type DocumentItem = {
   /** "item"（既定）/ "heading"（見出し行）/ "subtotal"（小計行） */
   item_type?: "item" | "heading" | "subtotal";
   description: string;
+  /** 品番。品目マスタ(menu_items)の item_code。内容が空でも品番があれば摘要へ出す。 */
+  item_code?: string | null;
   quantity: number;
   unit?: string;
   unit_price: number;
@@ -254,6 +257,7 @@ function buildStyles(layout: LayoutConfig) {
     subtotalLabel: { flex: 1, fontWeight: 700, color: "#333", textAlign: "right", paddingRight: 8 },
     subtotalValue: { width: 80, textAlign: "right", fontWeight: 700, color: "#333" },
     colDesc: { flex: 3, paddingRight: 4 },
+    colDescCode: { fontSize: 7, color: "#888" },
     colQty: { width: 40, textAlign: "right" },
     colUnit: { width: 32, textAlign: "center" },
     colPrice: { width: 68, textAlign: "right" },
@@ -503,10 +507,11 @@ export async function renderDocumentPdf(
         </View>
         {items.map((item, idx) => {
           const type = item.item_type ?? "item";
+          const content = itemContentLines(item);
           if (type === "heading") {
             return (
               <View key={idx} style={s.headingRow}>
-                <Text style={s.headingText}>{item.description || "-"}</Text>
+                <Text style={s.headingText}>{content.primary}</Text>
               </View>
             );
           }
@@ -521,8 +526,15 @@ export async function renderDocumentPdf(
           return (
             <View key={idx} style={s.tableRow}>
               <Text style={s.colDesc}>
-                {item.description || "-"}
+                {content.primary}
                 {layout.items.showTaxLabel && item.tax_category === 8 ? " ※軽減" : ""}
+                {content.code ? (
+                  <Text style={s.colDescCode}>
+                    {"\n"}品番: {content.code}
+                  </Text>
+                ) : (
+                  ""
+                )}
               </Text>
               <Text style={s.colQty}>{item.quantity}</Text>
               {layout.items.showUnit && <Text style={s.colUnit}>{item.unit ?? ""}</Text>}

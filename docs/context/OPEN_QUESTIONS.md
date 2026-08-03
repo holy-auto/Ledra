@@ -14,6 +14,20 @@
 - 起票日: YYYY-MM-DD
 ```
 
+## 帳票明細バリデーションの二重定義（未使用 `documentItemSchema`）が実データ形状と非互換な潜在地雷（2026-08-03）
+- 状況: `src/lib/validations/document.ts` の `documentItemSchema`（`name` min1 必須／`type` enum／`tax_category` enum文字列）が、実際に保存・読込される明細形状（`description`／`item_type`／数値`tax_category` 10・8／`amount`）と完全に非互換。かつ `@/types/document` と同名の `DocumentItem` 型を別定義しており名前衝突している。現状フォームは `items`(`z.array(z.any())`) キーで送り、API も `input.items` のみ読むため無害だが、`documentCreateSchema.items_json`（厳格スキーマ結線）を使う経路に切り替わった瞬間に全明細がバリデーションで弾かれる／空になる。
+- 選択肢: 案A `documentItemSchema` を実データ形状（`description`/`item_type`/数値`tax_category`）に合わせて統一し `@/types/document` の型へ寄せる（正攻法だが波及調査が要る）／案B 未使用の `items_json` フィールドとスキーマを削除して `items`(実経路)一本化（最小・地雷除去）／案C コメントで「未使用・非互換」を明記し現状維持（最も安全だが地雷は残る）。
+- 影響範囲: 現時点で発火なし。将来 `items_json` キー送信・参照に変えると帳票明細が丸ごと保存・表示不能になり得る（今回の症状より重い）。
+- 次のアクション: `items_json` キーを送る/読む予定があるかを確認し、無ければ案B（削除）で地雷除去が妥当。
+- 起票日: 2026-08-03
+
+## 帳票フォームの「内容」欄と「品番」欄の二段構成が誤入力を誘発する件（2026-08-03）
+- 状況: 品番検索/入力欄に商品名を直接入力し「内容」欄を空のまま保存する運用が定着しており（本番実データで確認）、表示側を品番昇格表示に直して復旧はしたが、入力導線自体が「内容が空の明細」を作りやすい。
+- 選択肢: 案A 現状維持（表示修正で実害は消えたため）／案B 品番欄で品目マスタ非マッチの自由入力を確定した際、内容が空なら内容へ複写する／案C 内容欄を必須化しフォーム側で空明細を弾く。
+- 影響範囲: 誤ると帳票の見た目・伝わり方に影響（信頼に直結）。ただし表示修正済みのため緊急度は中。
+- 次のアクション: 代表の実運用（品番欄をどう使っているか）を確認して A/B/C を判断。
+- 起票日: 2026-08-03
+
 ## 存在しない列を参照している2箇所（template_name / agents.stripe_connect_onboarded）をどう直すか（2026-08-02）
 - 状況: 本番ログで検出。どちらもマイグレーションに定義が無く、コードだけが参照している（ドリフトではなくコード/スキーマ不整合）。(1) `certificates.template_name` を `src/app/api/admin/vehicles/[id]/last-cert/route.ts:25` が select しているが、`certificates` に `template_name` 列を追加するマイグレーションは存在しない。(2) `agents.stripe_connect_onboarded` を `src/app/api/stripe/connect-webhook/route.ts:537-543` が参照するが、`stripe_connect_onboarded` は `tenants` にのみ追加され（`20260314000005`）`agents` には無い。
 - 選択肢: 各々 案A 列を追加する（その値の意味・更新経路を設計）／案B コード側を修正する（(1) はテンプレJOINのエイリアス参照に、(2) は `tenants` 参照へ、あるいは該当分岐を削除）。どちらが正しいかは「その列に意味があるか」次第。
