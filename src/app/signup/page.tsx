@@ -8,7 +8,6 @@ import { createClient } from "@/lib/supabase/client";
 import { FloatingField } from "@/components/ui/FloatingField";
 
 type FieldKey = "shop_name" | "display_name" | "contact_phone" | "email" | "password" | "password_confirm";
-type Mode = "password" | "magic";
 
 const initialValues: Record<FieldKey, string> = {
   shop_name: "",
@@ -23,14 +22,12 @@ const isEmail = (v: string) => /^\S+@\S+\.\S+$/.test(v);
 
 export default function SignupPage() {
   const router = useRouter();
-  // 既定はパスワード入力が要らないメールリンク方式（迷わず登録できる導線を優先）
-  const [mode, setMode] = useState<Mode>("magic");
   const [values, setValues] = useState<Record<FieldKey, string>>(initialValues);
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<FieldKey, string>>>({});
   const [showDetails, setShowDetails] = useState(false);
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<string[]>([]);
-  const [done, setDone] = useState<null | "password" | "magic">(null);
+  const [done, setDone] = useState(false);
 
   const setValue = (key: FieldKey) => (v: string) => {
     setValues((prev) => ({ ...prev, [key]: v }));
@@ -46,9 +43,9 @@ export default function SignupPage() {
     else if (key === "email") {
       if (!v) msg = "メールアドレスを入力してください";
       else if (!isEmail(v)) msg = "メールアドレスの形式が正しくありません";
-    } else if (key === "password" && mode === "password") {
+    } else if (key === "password") {
       if (!v || v.length < 8) msg = "8文字以上で入力してください";
-    } else if (key === "password_confirm" && mode === "password") {
+    } else if (key === "password_confirm") {
       if (v !== values.password.trim()) msg = "パスワードが一致しません";
     }
     if (msg) setFieldErrors((prev) => ({ ...prev, [key]: msg }));
@@ -59,10 +56,8 @@ export default function SignupPage() {
     if (!values.shop_name.trim()) next.shop_name = "店舗名を入力してください";
     if (!values.email.trim()) next.email = "メールアドレスを入力してください";
     else if (!isEmail(values.email.trim())) next.email = "メールアドレスの形式が正しくありません";
-    if (mode === "password") {
-      if (!values.password || values.password.trim().length < 8) next.password = "8文字以上で入力してください";
-      if (values.password.trim() !== values.password_confirm.trim()) next.password_confirm = "パスワードが一致しません";
-    }
+    if (!values.password || values.password.trim().length < 8) next.password = "8文字以上で入力してください";
+    if (values.password.trim() !== values.password_confirm.trim()) next.password_confirm = "パスワードが一致しません";
     setFieldErrors(next);
     return Object.keys(next).length === 0;
   }
@@ -83,8 +78,7 @@ export default function SignupPage() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           email,
-          passwordless: mode === "magic",
-          password: mode === "password" ? password : undefined,
+          password,
           shop_name: values.shop_name.trim(),
           display_name: values.display_name.trim() || null,
           contact_phone: values.contact_phone.trim() || null,
@@ -99,18 +93,11 @@ export default function SignupPage() {
         return;
       }
 
-      if (mode === "magic") {
-        // 2a) マジックリンクは API 側で送信済み（作成と一体・失敗時はロールバック）。
-        setDone("magic");
-        setLoading(false);
-        return;
-      }
-
-      // 2b) パスワード方式: 作成したアカウントで自動ログイン
+      // 2) 作成したアカウントで自動ログイン
       const supabase = createClient();
       const { error: loginError } = await supabase.auth.signInWithPassword({ email, password });
       if (loginError) {
-        setDone("password");
+        setDone(true);
         setLoading(false);
         return;
       }
@@ -124,7 +111,6 @@ export default function SignupPage() {
   }
 
   if (done) {
-    const magic = done === "magic";
     return (
       <main className="min-h-screen flex items-center justify-center bg-base p-6">
         <div className="glass-card w-full max-w-sm space-y-6 p-8 text-center">
@@ -158,17 +144,8 @@ export default function SignupPage() {
               />
             </svg>
           </div>
-          <h1 className="text-xl font-bold text-primary">{magic ? "確認メールを送信しました" : "登録完了"}</h1>
-          {magic ? (
-            <p className="text-sm text-secondary">
-              <span className="font-medium text-primary">{values.email.trim()}</span>{" "}
-              宛にログイン用のリンクを送信しました。
-              <br />
-              メール内のボタンを押すと、そのまま管理画面に入れます。
-            </p>
-          ) : (
-            <p className="text-sm text-secondary">アカウントが作成されました。ログインしてご利用ください。</p>
-          )}
+          <h1 className="text-xl font-bold text-primary">登録完了</h1>
+          <p className="text-sm text-secondary">アカウントが作成されました。ログインしてご利用ください。</p>
           <Link href="/login" className="btn-primary w-full inline-block text-center">
             ログインページへ
           </Link>
@@ -193,11 +170,7 @@ export default function SignupPage() {
 
         {/* 登録の流れ — 3ステップで迷わせない */}
         <ol className="space-y-1.5 text-sm text-secondary" aria-label="登録の流れ">
-          {[
-            "お店の名前とメールを入力",
-            mode === "magic" ? "届いたメールのボタンを押す" : "パスワードを決めて入力",
-            "登録完了（約2分）",
-          ].map((step, i) => (
+          {["お店の名前とメールを入力", "パスワードを決めて入力", "登録完了（約2分）"].map((step, i) => (
             <li key={step} className="flex items-center gap-2.5">
               <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-accent/10 text-accent text-xs font-semibold">
                 {i + 1}
@@ -244,37 +217,32 @@ export default function SignupPage() {
             error={fieldErrors.email}
           />
 
-          {/* パスワード方式のときだけ表示 */}
-          {mode === "password" && (
-            <>
-              <FloatingField
-                label="パスワード"
-                name="password"
-                type="password"
-                required
-                minLength={8}
-                autoComplete="new-password"
-                placeholder="8文字以上"
-                value={values.password}
-                onChange={setValue("password")}
-                onBlur={validateField("password")}
-                error={fieldErrors.password}
-              />
-              <FloatingField
-                label="パスワード（確認）"
-                name="password_confirm"
-                type="password"
-                required
-                minLength={8}
-                autoComplete="new-password"
-                placeholder="もう一度入力"
-                value={values.password_confirm}
-                onChange={setValue("password_confirm")}
-                onBlur={validateField("password_confirm")}
-                error={fieldErrors.password_confirm}
-              />
-            </>
-          )}
+          <FloatingField
+            label="パスワード"
+            name="password"
+            type="password"
+            required
+            minLength={8}
+            autoComplete="new-password"
+            placeholder="8文字以上"
+            value={values.password}
+            onChange={setValue("password")}
+            onBlur={validateField("password")}
+            error={fieldErrors.password}
+          />
+          <FloatingField
+            label="パスワード（確認）"
+            name="password_confirm"
+            type="password"
+            required
+            minLength={8}
+            autoComplete="new-password"
+            placeholder="もう一度入力"
+            value={values.password_confirm}
+            onChange={setValue("password_confirm")}
+            onBlur={validateField("password_confirm")}
+            error={fieldErrors.password_confirm}
+          />
 
           {/* 任意項目はデフォルトで折りたたみ、入力欄を最小化 */}
           {showDetails ? (
@@ -311,20 +279,7 @@ export default function SignupPage() {
             disabled={loading}
             className="btn-primary w-full disabled:opacity-50 disabled:cursor-not-allowed mt-4"
           >
-            {loading ? "送信中..." : mode === "magic" ? "メールリンクで登録" : "無料で始める"}
-          </button>
-
-          {/* 登録方式の切り替え */}
-          <button
-            type="button"
-            onClick={() => {
-              setMode((m) => (m === "password" ? "magic" : "password"));
-              setFieldErrors({});
-              setErrors([]);
-            }}
-            className="block w-full text-center text-xs text-muted hover:text-accent transition-colors mt-2"
-          >
-            {mode === "password" ? "パスワードを設定せず、メールリンクで登録する" : "パスワードを設定して登録する"}
+            {loading ? "送信中..." : "無料で始める"}
           </button>
         </form>
 
