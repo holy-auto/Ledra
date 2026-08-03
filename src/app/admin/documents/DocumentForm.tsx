@@ -48,6 +48,31 @@ type ExternalStaff = {
 };
 
 const BILLING_CYCLE_LABEL: Record<string, string> = { per_job: "都度払い", consolidated: "合算（締め払い）" };
+
+/**
+ * 顧客管理に登録済みの敬称・住所・支払条件を、新規帳票の宛先詳細へ自動反映するための既定値を導出する。
+ * 支払条件は自由記述メモを最優先し、無ければ支払サイクルのラベルへフォールバックする。
+ * 顧客選択（select onChange）と URL プリフィル（請求書を作成ボタン等）の双方で同じ結果を得るため、
+ * ロジックはこの純関数に集約する。
+ */
+export function customerFormDefaults(
+  c: Pick<Customer, "honorific" | "postal_code" | "address" | "phone" | "billing_cycle" | "billing_terms_note">,
+): {
+  honorific: "御中" | "様" | "";
+  postal_code: string;
+  address: string;
+  phone: string;
+  payment_terms: string;
+} {
+  return {
+    honorific: c.honorific || "御中",
+    postal_code: c.postal_code ?? "",
+    address: c.address ?? "",
+    phone: c.phone ?? "",
+    payment_terms: c.billing_terms_note || (c.billing_cycle ? BILLING_CYCLE_LABEL[c.billing_cycle] : ""),
+  };
+}
+
 type TemplateOption = { id: string; name: string; doc_type: string | null };
 
 type VehicleOption = {
@@ -365,6 +390,22 @@ export default function DocumentForm({
     fetchCertificatesForCustomer(formCustomerId);
   }, [formDocType, formCustomerId, fetchCertificatesForCustomer]);
 
+  // 顧客の敬称・住所・支払条件を宛先詳細へ自動反映する（新規作成時のみ）。
+  // select onChange と URL プリフィルの双方から呼び、宛先・支払条件の反映を揃える。
+  const applyCustomerDefaults = useCallback(
+    (customerId: string) => {
+      const c = customers.find((cust) => cust.id === customerId);
+      if (!c) return;
+      const d = customerFormDefaults(c);
+      setFormRecipientHonorific(d.honorific);
+      setFormRecipientPostalCode(d.postal_code);
+      setFormRecipientAddress(d.address);
+      setFormRecipientPhone(d.phone);
+      setFormPaymentTerms(d.payment_terms);
+    },
+    [customers],
+  );
+
   // create モードで URL プリフィル
   const prefillAppliedRef = useRef(false);
   useEffect(() => {
@@ -373,8 +414,10 @@ export default function DocumentForm({
     if (!prefillCustomerId) return;
     if (customers.length === 0) return;
     setFormCustomerId(prefillCustomerId);
+    // プリフィルでも顧客登録済みの宛先・支払条件を反映する（onChange を経由しないため明示的に呼ぶ）。
+    applyCustomerDefaults(prefillCustomerId);
     prefillAppliedRef.current = true;
-  }, [customers, prefillCustomerId, isEdit]);
+  }, [customers, prefillCustomerId, isEdit, applyCustomerDefaults]);
 
   const handleVehicleSelect = useCallback(
     (vehicleId: string) => {
@@ -759,16 +802,7 @@ export default function DocumentForm({
                   // 編集モードでは既に手入力・確定済みの宛先情報を上書きしないよう、
                   // 新規作成時のみ自動反映する。
                   if (isEdit) return;
-                  const c = customers.find((cust) => cust.id === id);
-                  if (c) {
-                    setFormRecipientHonorific(c.honorific || "御中");
-                    setFormRecipientPostalCode(c.postal_code ?? "");
-                    setFormRecipientAddress(c.address ?? "");
-                    setFormRecipientPhone(c.phone ?? "");
-                    setFormPaymentTerms(
-                      c.billing_terms_note || (c.billing_cycle ? BILLING_CYCLE_LABEL[c.billing_cycle] : ""),
-                    );
-                  }
+                  applyCustomerDefaults(id);
                 }}
               >
                 <option value="">選択なし</option>
