@@ -365,3 +365,16 @@
 - 次のアクション: ユーザー（Supabase/Vercel ダッシュボード権限保有）が (1)(2)(3) を確認・是正。SSO 提供有無を
   決めて (4)。コード修正の効果は「実アクセスするオリジンが許可リストに含まれる」ことが前提。
 - 起票日: 2026-08-02
+
+## sso_required（パスワードログイン遮断契約）の扱い — SSO 撤去に伴う整合
+- 状況: 2026-08-03、ログイン画面を password のみに簡素化する際、password 経路の `checkPasswordSignInAllowed`
+  （`tenants.sso_required` ドメインの password ログイン遮断）を撤去した。`docs/enterprise-readiness.md` は
+  「sso_required=true はパスワードを遮断する」と記載しているため、将来この列を有効化すると挙動と文書が乖離する。
+  現状は `sso_required=true` のテナントは 0 件で実害なし、SSO ログイン導線自体も撤去済み（＝遮断しても代替が無い）。
+- 選択肢: (a) SSO を実提供する段階で、SSO ログイン導線と `checkPasswordSignInAllowed` 遮断をセットで復活（推奨）/
+  (b) SSO を提供しない方針が確定なら、`tenants.sso_required`/`sso_email_domain` 列と関連 lib・docs を整理して撤去 /
+  (c) 現状維持（ドキュメントに「導線復活まで遮断は非適用」と注記）。
+- 影響範囲: (b)は schema マイグレーションと enterprise 文書の改訂を伴う不可逆寄りの判断。SSO は損保系エンタープライズ
+  導入向けに earmark 済みのため、独断で撤去しない。
+- 次のアクション: SSO 提供方針（やる/やらない）をユーザーが確定 → (a) か (b) を選択。それまでは (c) 相当で保留。
+- 起票日: 2026-08-03
