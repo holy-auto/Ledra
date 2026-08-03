@@ -2,11 +2,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { redirect } from "next/navigation";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { createServiceRoleAdmin } from "@/lib/supabase/admin";
-import { checkPasswordSignInAllowed } from "@/lib/auth/ssoPolicy";
 import { resolveDefaultRedirect } from "@/lib/auth/loginRedirect";
-import { SsoSignInButton } from "@/components/auth/SsoSignInButton";
-import { MagicLinkSignIn } from "./MagicLinkSignIn";
 
 /**
  * ログイン後のリダイレクト先を安全に決定する。
@@ -32,8 +28,6 @@ export default async function Page({
     e?: string;
     error?: string;
     reason?: string;
-    sso?: string;
-    domain?: string;
   }>;
 }) {
   const sp = await searchParams;
@@ -46,19 +40,6 @@ export default async function Page({
     "use server";
     const email = String(formData.get("email") || "");
     const password = String(formData.get("password") || "");
-
-    // Enterprise SSO enforcement: if the user's email domain belongs to a
-    // tenant with sso_required=true, block password sign-in and redirect to
-    // the SSO entry point. Fail-open semantics — see ssoPolicy.ts.
-    const policyAdmin = createServiceRoleAdmin("login — checks sso_required policy for caller email");
-    const policy = await checkPasswordSignInAllowed(policyAdmin, email);
-    if (!policy.allowed) {
-      const params = new URLSearchParams();
-      if (rawNext) params.set("next", rawNext);
-      params.set("sso", "1");
-      params.set("domain", policy.tenantSsoDomain);
-      redirect(`/login?${params.toString()}`);
-    }
 
     const supabase = await createSupabaseServerClient();
     const { data: authData, error } = await supabase.auth.signInWithPassword({ email, password });
@@ -112,14 +93,7 @@ export default async function Page({
 
         {sp.error && (
           <div className="rounded-lg border border-red-500/30 bg-red-500/5 p-3 text-sm text-red-400 text-center">
-            ログインリンクが無効か、有効期限が切れています。下のフォームから再度ログインするか、メールリンクを再送してください。
-          </div>
-        )}
-
-        {sp.sso === "1" && (
-          <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-sm text-amber-400">
-            このメールアドレスは SSO ログインが必須に設定されています。下の「会社の SSO
-            でログイン」ボタンを使用してください。
+            ログインリンクが無効か、有効期限が切れています。下のフォームから再度ログインしてください。
           </div>
         )}
 
@@ -137,19 +111,6 @@ export default async function Page({
             ログイン
           </button>
         </form>
-
-        <div className="relative">
-          <div className="absolute inset-0 flex items-center" aria-hidden="true">
-            <div className="w-full border-t border-border-default" />
-          </div>
-          <div className="relative flex justify-center text-xs uppercase">
-            <span className="bg-base px-2 text-muted">または</span>
-          </div>
-        </div>
-
-        <MagicLinkSignIn next={rawNext} />
-
-        <SsoSignInButton defaultDomain={sp.domain} next={rawNext} />
 
         <div className="text-center space-y-2">
           <Link href="/forgot-password" className="text-xs text-accent hover:underline">

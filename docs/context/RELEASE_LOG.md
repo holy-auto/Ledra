@@ -12,6 +12,13 @@
 - 対象: どの画面・API・業種向けか
 ```
 
+## 2026-08-03 ログイン画面をパスワードのみに簡素化（メールリンク/SSO の導線を撤去） (branch claude/email-sso-login-issue-1f9upn)
+- 内容: ログイン画面から「メールリンクでログイン（パスワード不要）」「会社の SSO でログイン」ボタン・区切り線・
+  SSO 必須バナー・password 経路の SSO 強制分岐を撤去し、パスワードログインのみのシンプルな画面に。未使用の
+  `MagicLinkSignIn.tsx` / `SsoSignInButton.tsx` を削除（252 行削除）。バックエンド API（`/api/auth/magic-link`,
+  `/api/auth/sso/start`）と `ssoPolicy`/`sso` lib は温存し、可逆に。
+- 対象: `/login`（施工店・代理店の入口）。
+
 ## 2026-08-02 メールリンク/サインアップ/SSO の PKCE コールバックを同一オリジンへ戻す修正 (branch claude/email-sso-login-issue-1f9upn)
 - 内容: `resolveBaseUrl` に opt-in の `preferRequestOrigin` を追加し、magic-link / signup(パスワードレス) /
   sso-start の `emailRedirectTo`/`redirectTo` をリクエストと同一オリジンに変更。PKCE の code_verifier Cookie は
