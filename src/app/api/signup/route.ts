@@ -110,7 +110,10 @@ export async function POST(req: NextRequest) {
     // 時の「メール重複」エラーで詰まる事態を防ぐ。
     if (passwordless) {
       try {
-        const baseUrl = resolveBaseUrl({ req });
+        // PKCE: verifier Cookie を張ったオリジン（＝今このリクエスト）へ確認リンクを
+        // 戻す。別ドメイン（APP_URL）だと Cookie が届かず本人がログインできず、
+        // パスワード無しアカウントが孤児化する。
+        const baseUrl = resolveBaseUrl({ req, preferRequestOrigin: true });
         const supabase = await createClient();
         const { error: otpError } = await supabase.auth.signInWithOtp({
           email,

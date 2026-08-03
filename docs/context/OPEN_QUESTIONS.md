@@ -346,3 +346,22 @@
 - 影響範囲: (c)のままだと DR/ブランチDB が使えず、監査時に repo≠prod を説明できない。
 - 次のアクション: DR・ブランチDB を実運用で使う予定があるか確認 → 使うなら (b) のベースライン化を検討。
 - 起票日: 2026-07-19
+
+## メールリンク/サインアップ確認/SSO のログイン成立に必要な Supabase・ドメイン設定（コード外）
+- 状況: 2026-08-02 実査。magic-link は auth.flow_state に「code 発行済み・未交換」が複数残り交換が systemic に
+  失敗。SSO は auth.sso_providers / sso_domains / saml_providers が 0 件で「会社の SSO でログイン」は常に 404。
+  コード側は PKCE コールバックを同一オリジンへ戻す修正を実施済みだが、以下は設定側で未確認・未変更。
+- 要確認/要対応:
+  (1) 本番 Vercel の環境変数 `APP_URL` / `NEXT_PUBLIC_APP_URL` の実値（正規ドメイン app.ledra.co.jp か、
+      vercel URL か）。ユーザーが実際にアクセスするオリジンと一致しているか。
+  (2) Supabase Auth → URL Configuration の Site URL と Redirect URLs（許可リスト）に、実アクセスする
+      オリジン（ledra-...vercel.app と、使うなら app.ledra.co.jp）＋ `/auth/callback` が登録されているか。
+      未登録だと Supabase がリンクを Site URL に差し替え、交換に到達しない。
+  (3) 正規ドメイン app.ledra.co.jp が実際に接続・配信されているか（未接続なら vercel URL に統一する）。
+  (4) SSO を提供するなら、対象 IdP(SAML/OIDC)を Supabase に登録（Pro プラン要）。登録が無い限り SSO ボタンは
+      機能しない（現状は仕様上「未設定」）。
+- 影響範囲: (1)〜(3)未整備だと magic-link/サインアップ確認/パスワード復旧の一部が成立せず、パスワードレス
+  アカウントが孤児化しうる。(4)未整備だと SSO 導線は常にエラー。
+- 次のアクション: ユーザー（Supabase/Vercel ダッシュボード権限保有）が (1)(2)(3) を確認・是正。SSO 提供有無を
+  決めて (4)。コード修正の効果は「実アクセスするオリジンが許可リストに含まれる」ことが前提。
+- 起票日: 2026-08-02

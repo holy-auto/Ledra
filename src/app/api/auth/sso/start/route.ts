@@ -61,7 +61,9 @@ export async function POST(req: Request) {
     const next = safeNext(parsed.data.next);
 
     const supabase = await createClient();
-    const baseUrl = resolveBaseUrl({ req });
+    // PKCE(SAML): signInWithSSO の verifier Cookie はリクエストオリジンに張られる。
+    // コールバックも同一オリジンへ戻さないと exchangeCodeForSession が失敗する。
+    const baseUrl = resolveBaseUrl({ req, preferRequestOrigin: true });
     const callbackPath = next ? `/auth/callback?next=${encodeURIComponent(next)}` : "/auth/callback";
 
     const result = await startSsoSignIn(supabase, {

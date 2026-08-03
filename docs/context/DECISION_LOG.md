@@ -1327,3 +1327,33 @@
    フリーズ＋dual-write 停止)の着手時期。per-version の独立アンカ(現状は cert digest 経由の間接担保)。
    #781 とは別コミット/別 PR 化の要否。
 9. 公開区分: 要確認（② 採用と段階設計の方針は発信可。内部実装詳細・本番構成は非公開が無難）
+
+## 2026-08-02 メールリンク/サインアップ/SSO のログイン不能の原因切り分けと、PKCE コールバックの同一オリジン化
+1. 日付: 2026-08-02
+2. 起きたこと: 「メールリンクでログインと SSO が登録できてもログインできない」という報告。本番 Supabase
+   (プロジェクト cahybswpduchptvyvdkk) を実査したところ、(a) SSO/SAML プロバイダは 0 件（auth.sso_providers /
+   sso_domains / saml_providers いずれも 0）、(b) magic-link の auth.flow_state に「code 発行済みだが未交換のまま
+   残存」した行が複数ユーザー分あり、交換(exchangeCodeForSession)が systemic に失敗していると判明。
+3. 以前の考え: パスワードは通るのに magic-link/SSO だけ落ちるので、コールバックの Cookie 伝播バグかと疑った。
+4. 違和感・問題: パスワード復旧フロー(forgot-password)は client 側で `window.location.origin/auth/callback` を
+   使い同一オリジンで完結する一方、magic-link / signup(パスワードレス) / sso-start は server 側で
+   `resolveBaseUrl({req})`（APP_URL 優先）を使う。正規ドメインは app.ledra.co.jp だが、実アクセスは
+   ledra-...vercel.app。PKCE の code_verifier Cookie はリクエストオリジン(vercel)に張られるのに、コールバック先が
+   APP_URL(app.ledra.co.jp)になると Cookie が届かず交換に失敗する（＝リンクを踏んでもログインできない）。
+5. 決めたこと: `resolveBaseUrl` に opt-in の `preferRequestOrigin` を追加し、PKCE メール認証(magic-link /
+   signup パスワードレス / sso-start)だけ「リクエストオリジン優先」に変更。通知メール等の他リンクは既定(APP_URL 優先)
+   のまま。純関数の単体テスト(src/lib/__tests__/url.test.ts)を追加。SSO の 0 プロバイダ問題と Supabase の
+   URL 設定(Site URL / Redirect URLs 許可リスト)は OPEN_QUESTIONS へ起票（コードでは直せない設定側）。
+6. 捨てた選択肢: (a) `resolveBaseUrl` の既定を全面的にリクエストオリジン優先へ変更…請求/決済リンク等が正規
+   ドメインで届かなくなるため不採用。(b) `/` に届いた `?code=` を /auth/callback へ転送する middleware/ルート追加…
+   `?code=` 誤検知の副作用と、Site URL 設定という真因の推測依存が強いため不採用。(c) 憶測でのコード修正の push を
+   避け、設定側は実測できないため確定せず起票。
+7. 判断理由: 「推測で実装せず実測してから最小修正」に従い、本番 DB の flow_state / sso_providers を実査。
+   復旧フローが既に採る同一オリジンのパターンに magic-link/signup/sso を揃える（既存パターンの再利用）ことで、
+   verifier Cookie 不一致という不具合クラスを構造的に消す。設定(APP_URL 値・許可リスト・Site URL・SSO IdP)は
+   ツールから変更・確認できないため、確定事実(実装)と要確認事項(設定)を分離した。
+8. まだ答えが出ていないこと: 本番 Vercel の APP_URL 実値。Supabase の Site URL と Redirect URLs 許可リストに
+   実アクセスするオリジン(vercel URL / 正規ドメイン)が登録されているか。正規ドメイン app.ledra.co.jp が実際に
+   接続済みか。SSO を使うなら IdP(SAML/OIDC)の Supabase 登録（Pro プラン要）。（OPEN_QUESTIONS に起票）
+9. 公開区分: 要確認（「PKCE メールリンクはリクエストと同一オリジンに戻す必要がある」という技術知見は発信可。
+   本番ドメイン構成・Supabase 設定の内部詳細は非公開が無難）
