@@ -1231,43 +1231,6 @@ export default function DocumentForm({
                     ) : (
                       <>
                         <div className="min-w-0">
-                          {menuItems.length > 0 ? (
-                            <>
-                              <div className="mb-1">
-                                <ItemCodeField
-                                  value={item.item_code ?? ""}
-                                  menuItems={menuItems}
-                                  onChange={(code) => updateItem(idx, "item_code", code)}
-                                  onSelect={(mi) => handleMenuItemSelect(mi.id, idx)}
-                                />
-                              </div>
-                              <select
-                                className="select-field py-1 text-xs mb-1 w-full"
-                                value=""
-                                onChange={(e) => {
-                                  if (e.target.value) handleMenuItemSelect(e.target.value, idx);
-                                }}
-                              >
-                                <option value="">品目マスタから選択...</option>
-                                {menuItems.map((mi) => (
-                                  <option key={mi.id} value={mi.id}>
-                                    {mi.name} ({formatJpy(mi.unit_price)})
-                                  </option>
-                                ))}
-                              </select>
-                            </>
-                          ) : (
-                            idx === firstItemRowIdx && (
-                              <div className="mb-1 text-[11px] text-muted">
-                                {menuItemsError
-                                  ? "品目マスタの読み込みに失敗しました。再読み込みしてください。"
-                                  : "品目マスタが未登録、または全品目が無効化されています。"}{" "}
-                                <Link href="/admin/menu-items" className="underline">
-                                  品目管理へ
-                                </Link>
-                              </div>
-                            )
-                          )}
                           <input
                             type="text"
                             className="input-field"
@@ -1289,6 +1252,27 @@ export default function DocumentForm({
                               </option>
                             ))}
                           </datalist>
+                          {menuItems.length > 0 ? (
+                            <div className="mt-1">
+                              <ItemCodeField
+                                value={item.item_code ?? ""}
+                                menuItems={menuItems}
+                                onChange={(code) => updateItem(idx, "item_code", code)}
+                                onSelect={(mi) => handleMenuItemSelect(mi.id, idx)}
+                              />
+                            </div>
+                          ) : (
+                            idx === firstItemRowIdx && (
+                              <div className="mt-1 text-[11px] text-muted">
+                                {menuItemsError
+                                  ? "品目マスタの読み込みに失敗しました。再読み込みしてください。"
+                                  : "品目マスタが未登録、または全品目が無効化されています。"}{" "}
+                                <Link href="/admin/menu-items" className="underline">
+                                  品目管理へ
+                                </Link>
+                              </div>
+                            )
+                          )}
                           {formDocType === "invoice" && certificates.length > 0 && (
                             <div className="flex items-center gap-2 mt-1">
                               <label className="text-[10px] text-muted whitespace-nowrap">証明書紐付け:</label>
