@@ -22,6 +22,17 @@
 9. 公開区分: 公開可／要確認／非公開
 ```
 
+## 2026-08-02 証明書/保険会社系4関数の search_path バレ参照＋enum 'expired' 二重バグは「関数側を修正」で対応（enum に 'expired' は追加しない）
+1. 日付: 2026-08-02
+2. 起きたこと: 7/31 の帳票ドリフト修復後も「帳票が表示されない」との報告。本番 `cahybswpduchptvyvdkk` のログを再点検すると、帳票管理(documents)系は正常（クエリ・RPCとも成功、エラー無し）だったが、別系統で `relation "certificates"/"insurers" does not exist` が継続発生していた。原因は SECURITY DEFINER 関数4本（`get_certificate_service_price` / `platform_certificate_stats` / `platform_insurer_count` / `insurer_get_vehicle_certificates`）で、`20260404000000` が `SET search_path=''` を付けた際に本体のテーブル参照を `public.` 修飾へ直しておらず、空 search_path 下で必ず失敗していた（第1弾修正 `20260725125332` が取りこぼした4本）。さらに `platform_certificate_stats` と `insurer_get_vehicle_certificates` は enum に無い `'expired'` を参照しており、バレ参照を直すと今度は `invalid input value for enum` に変わる二重バグだった。
+3. 以前の考え: search_path ハイジャック対策は `ALTER FUNCTION ... SET search_path=''` を付ければ足りると考え、本体の非修飾参照までは点検していなかった。
+4. 違和感・問題: `search_path=''` は「関数本体が全オブジェクトを完全修飾していること」を前提にする設定で、本体が非修飾のままだと確実に壊れる。第1弾修正(`20260725125332`)が対象を網羅できておらず、4関数が数か月放置されていた。enum の `'expired'` はそもそも `certificate_status_enum`(active/void/draft)に存在しない。
+5. 決めたこと: `20260802000000_fix_search_path_bare_refs_certificates_insurers.sql` で4関数を `CREATE OR REPLACE` し、(1) 本体の全テーブル参照を `public.` 修飾、(2) status 比較を `status::text` 化して `'expired'` でも enum 例外を出さない（JSON 出力の 'expired' キーは常に0で維持）。`SET search_path=''` は維持。本番へ適用済み・動作確認済み（PR #854 マージ済み）。
+6. 捨てた選択肢: (A) `certificate_status_enum` に `'expired'` 値を追加する案 → 却下（`20260329200001_fix_search_status_enum.sql` で「enum に 'expired' は持たせず関数側から除く」方針が確立済みで、値追加は expiry_date 由来の期限切れを status に二重管理させ設計を崩す）。(B) `search_path=''` を外して `= public` に戻す案 → 却下（ハイジャック対策の後退になる）。
+7. 判断理由: 既存の確立済みパターン（`insurer_search_certificates` の `status::text` 比較、完全修飾）に合わせるのが最小差分かつ設計整合。挙動不変で失敗しなくなるだけ。
+8. まだ答えが出ていないこと: 別系統のコード/スキーマ不整合2件（`certificates.template_name` はマイグレーション未定義、`agents.stripe_connect_onboarded` は列が `tenants` にのみ存在）。列追加かコード修正かは列の意味次第で要判断（OPEN_QUESTIONS.md 起票済み）。また「帳票が表示されない」の当該画面がフロントのキャッシュか特定画面かは、代表からの画面・症状の確認待ち（バックエンド／ビルド／本番デプロイは健全と確認済み）。
+9. 公開区分: 要確認（技術的知見＝「`search_path=''` は本体の完全修飾とセットで初めて安全」は公開可。本番プロジェクトIDや具体的な統計値は非公開）。
+
 ## 2026-07-31 帳票管理エラー・入金済更新不可は 20260715* マイグレーションのドリフトが原因、冪等な修復マイグレーションで再適用
 1. 日付: 2026-07-31
 2. 起きたこと: 代表から「入金済みに変更が出来ない」「帳票管理がエラー出てて書類が確認できない」と2件の障害報告。本番 `cahybswpduchptvyvdkk` の Postgres ログに直近多数の `column documents.staff_member_id does not exist` を確認。調査の結果、`20260715000000`〜`20260715000003` の4本が `schema_migrations` に「適用済み」と記録されているのに DDL が本番に一切反映されておらず（`documents.staff_member_id` / `staff_members.commission_rate` / `store_memberships.role` / documents・document_templates の doc_type CHECK への `staff_invoice` 追加 / `billing_analytics_stats` の週別対応 / RESTRICTIVE ポリシーが全欠落）、`/api/admin/documents` の GET（一覧）と PUT（入金確定は UPDATE...RETURNING で `staff_member_id` を SELECT）が 500 になっていた。
