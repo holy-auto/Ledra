@@ -12,6 +12,16 @@
 - 対象: どの画面・API・業種向けか
 ```
 
+## 2026-08-03 法人番号のチェックディジット判定が全法人番号を弾く不具合を修復 (PR #858 / branch claude/display-issue-3qfbwj)
+- 内容: `isValidCorporateNumber`（`src/lib/insurer/corporateNumber.ts`）のチェックディジット重み付けが逆で、
+  国税庁の式（最下位=1桁目を奇数として重み1、偶数桁を重み2）に対し重み2/1を逆順に適用していた。結果、
+  自社(株式会社HOLY 6040001080734)・トヨタ・国税庁を含む実在の法人番号を軒並み無効判定していた。1行修正
+  （`i % 2 === 0 ? 2 : 1` → `1 : 2`）。回帰防止テスト `src/lib/insurer/__tests__/corporateNumber.test.ts` を追加。
+- 対象: 顧客管理（`admin/customers` 法人番号入力→会社名/住所の自動照会）と加盟店新規登録（`/api/join`）。
+  照会 API `/api/join/lookup-corporate` が形式エラーで 400 を返し、フォームが「法人情報が見つかりませんでした
+  （手入力してください）」を常時表示していた症状の根本原因。
+- 検証: 修正後の関数で実在3法人番号=有効・改竄1件=無効・非13桁=無効を確認。
+
 ## 2026-08-02 メールリンク/サインアップ/SSO の PKCE コールバックを同一オリジンへ戻す修正 (branch claude/email-sso-login-issue-1f9upn)
 - 内容: `resolveBaseUrl` に opt-in の `preferRequestOrigin` を追加し、magic-link / signup(パスワードレス) /
   sso-start の `emailRedirectTo`/`redirectTo` をリクエストと同一オリジンに変更。PKCE の code_verifier Cookie は
@@ -391,7 +401,7 @@
 ## 2026-07-20 終日予約（1日お預かり）に対応
 - 内容: 予約に「終日」を追加。`reservations.all_day` 列を新設し、終日予約は時刻NULLで保存。
   `check_reservation_overlap` RPC を更新して終日予約が当日を丸ごと占有（時間枠予約・終日どうしとも
-  ダブルブッキング検知）するようにした。空き状況・日程候補は終日占有を数える共通純粋関数
+  ダブルブッキング検知）するսようにした。空き状況・日程候補は終日占有を数える共通純粋関数
   `reservationBlocksSlot`（`src/lib/booking/slots.ts`）に集約。顧客Web予約ページ
   `customer/[tenant]/booking` に「終日（1日お預かり）」ボタンを追加（当日に既存予約が無い日のみ提示）、
   管理画面 `admin/reservations` の作成フォームに「終日」チェックボックスと一覧/カレンダー/店頭表示への
