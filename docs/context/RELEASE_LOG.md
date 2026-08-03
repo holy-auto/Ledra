@@ -12,6 +12,14 @@
 - 対象: どの画面・API・業種向けか
 ```
 
+## 2026-08-03 顧客登録の支払条件を請求書へ自動反映（プリフィル経路の取りこぼしを是正） (branch claude/customer-payment-terms-invoice-0q1v5p)
+- 内容: 顧客登録で入力した支払条件（`billing_terms_note`、無ければ支払サイクルのラベル）が請求書に反映されない不具合を修正。
+  原因は、顧客の敬称・住所・支払条件を宛先詳細へ自動反映するロジックが顧客セレクトの `onChange` 内にしか無く、
+  「請求書を作成」ボタン（`/admin/invoices/new?customer_id=...`）等の URL プリフィル経路（`onChange` を経由しない）では
+  未適用だったこと。導出ロジックを純関数 `customerFormDefaults` に集約し、`onChange` とプリフィル `useEffect` の双方から
+  呼ぶよう修正。純関数の単体テスト `customerFormDefaults.test.ts` を追加。
+- 対象: 帳票作成フォーム `src/app/admin/documents/DocumentForm.tsx`（請求書・見積書等の新規作成）。
+
 ## 2026-08-03 サインアップもパスワード必須に統一（パスワードレス登録の締め出しを予防） (branch claude/email-sso-login-issue-1f9upn)
 - 内容: ログインを password のみにしたのに合わせ、新規登録も password 必須に統一。既定 `mode="magic"`（パスワードレス
   ＝メールリンク）と方式切替トグル・magic 分岐を撤去。これで「パスワード無しアカウント＋メールリンクログイン撤去」による
