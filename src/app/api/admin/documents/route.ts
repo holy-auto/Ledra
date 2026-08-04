@@ -66,13 +66,20 @@ export async function GET(req: NextRequest) {
     // セッションへフォールバック」の二重取得にする。caller.tenantId は所属検証済み。
     const { admin } = createTenantScopedAdmin(caller.tenantId);
 
+    // caller.tenantId に不可視文字（空白・制御文字等）が混入すると PostgREST の
+    // 等値比較で外れ、データがあっても0件になる（本番で発生）。UUID だけを厳密抽出して正規化する。
+    const tenantId =
+      String(caller.tenantId ?? "").match(
+        /[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/,
+      )?.[0] ?? String(caller.tenantId ?? "").trim();
+
     // 取引先検索: 顧客名一致の customer_id を先に解決して OR 条件に含める。
     let orExpr: string | null = null;
     if (counterparty) {
       const { data: matchedCustomers } = await admin
         .from("customers")
         .select("id")
-        .eq("tenant_id", caller.tenantId)
+        .eq("tenant_id", tenantId)
         .ilike("name", `%${counterparty}%`)
         .limit(200);
       const ids = (matchedCustomers ?? []).map((c) => c.id);
@@ -86,7 +93,7 @@ export async function GET(req: NextRequest) {
       let q = client
         .from("documents")
         .select(selectCols)
-        .eq("tenant_id", caller.tenantId)
+        .eq("tenant_id", tenantId)
         .order("created_at", { ascending: false });
       if (docType) q = q.eq("doc_type", docType);
       if (status && status !== "all") q = q.eq("status", status);
@@ -100,7 +107,7 @@ export async function GET(req: NextRequest) {
       return q;
     };
     const buildCount = (client: DocClient) => {
-      let q = client.from("documents").select("*", { count: "exact", head: true }).eq("tenant_id", caller.tenantId);
+      let q = client.from("documents").select("*", { count: "exact", head: true }).eq("tenant_id", tenantId);
       if (docType) q = q.eq("doc_type", docType);
       if (status && status !== "all") q = q.eq("status", status);
       if (customerId) q = q.eq("customer_id", customerId);
@@ -141,7 +148,7 @@ export async function GET(req: NextRequest) {
       const { data: customers } = await dataClient
         .from("customers")
         .select("id, name")
-        .eq("tenant_id", caller.tenantId)
+        .eq("tenant_id", tenantId)
         .in("id", customerIds);
       for (const c of customers ?? []) {
         customerNames[c.id] = c.name;
@@ -201,6 +208,9 @@ export async function GET(req: NextRequest) {
         serviceKeyRole: keyRole,
         projectRef,
         callerTenantId: caller.tenantId,
+        callerTidLen: String(caller.tenantId ?? "").length,
+        callerTidRaw: JSON.stringify(caller.tenantId),
+        normalizedTenantId: tenantId,
         adminAllDocs: adminAllDocs ?? null,
         adminE724: adminE724 ?? null,
       },
@@ -297,7 +307,7 @@ export async function POST(req: NextRequest) {
         .from("staff_members")
         .select("name")
         .eq("id", staffMemberId)
-        .eq("tenant_id", caller.tenantId)
+        .eq("tenant_id", tenantId)
         .maybeSingle();
       if (!staffRow) return apiValidationError("無効な外注職人が指定されました。");
       staffMemberName = staffRow.name;
@@ -443,7 +453,7 @@ export async function PUT(req: NextRequest) {
       .from("documents")
       .select("doc_type, status")
       .eq("id", id)
-      .eq("tenant_id", caller.tenantId)
+      .eq("tenant_id", tenantId)
       .single();
 
     if (isContentEdit && existing && !isDocumentEditable(existing.doc_type, existing.status)) {
@@ -468,7 +478,7 @@ export async function PUT(req: NextRequest) {
         .from("staff_members")
         .select("id")
         .eq("id", body.staff_member_id)
-        .eq("tenant_id", caller.tenantId)
+        .eq("tenant_id", tenantId)
         .maybeSingle();
       if (!staffRow) return apiValidationError("無効な外注職人が指定されました。");
     }
@@ -533,7 +543,7 @@ export async function PUT(req: NextRequest) {
       .from("documents")
       .update(updates)
       .eq("id", id)
-      .eq("tenant_id", caller.tenantId)
+      .eq("tenant_id", tenantId)
       .select(
         "id, tenant_id, customer_id, staff_member_id, recipient_name, recipient_honorific, recipient_postal_code, recipient_address, recipient_phone, subject, period_start, period_end, payment_terms, delivery_date, template_id, payment_date, vehicle_id, vehicle_info_json, doc_type, doc_number, issued_at, due_date, status, subtotal, tax, total, tax_rate, tax_breakdown, items_json, note, meta_json, is_invoice_compliant, source_document_id, show_seal, show_logo, show_bank_info, created_at, updated_at",
       )
@@ -644,7 +654,7 @@ export async function DELETE(req: NextRequest) {
       .from("documents")
       .select("id, status, doc_type")
       .in("id", ids)
-      .eq("tenant_id", caller.tenantId);
+      .eq("tenant_id", tenantId);
 
     if (!docs || docs.length === 0) return apiNotFound("帳票が見つかりません。");
 
@@ -656,7 +666,7 @@ export async function DELETE(req: NextRequest) {
     // RLS をバイパスしてサービスロールで DELETE（tenant_id で必ずスコープ限定）
     const { admin } = createTenantScopedAdmin(caller.tenantId);
     const eligibleIds = eligible.map((d) => d.id);
-    const { error } = await admin.from("documents").delete().in("id", eligibleIds).eq("tenant_id", caller.tenantId);
+    const { error } = await admin.from("documents").delete().in("id", eligibleIds).eq("tenant_id", tenantId);
 
     if (error) {
       // 23503: 他の帳票の source_document_id からまだ参照されている（変換元として使われた帳票）
