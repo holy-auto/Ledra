@@ -32,6 +32,11 @@ export async function GET(req: NextRequest) {
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
 
+    // 帳票一覧は他の管理APIと同様、テナント厳格スコープのサービスロールで取得する。
+    // ユーザーセッション(RLS)経由の読み取りが本番実行時に 0 件を返す事象への対処。
+    // caller.tenantId は resolveCallerWithRole で所属検証済みのため安全。
+    const { admin } = createTenantScopedAdmin(caller.tenantId);
+
     const url = new URL(req.url);
     const docType = url.searchParams.get("doc_type") ?? "";
     const status = url.searchParams.get("status") ?? "";
@@ -57,13 +62,13 @@ export async function GET(req: NextRequest) {
     const selectCols =
       "id, tenant_id, customer_id, staff_member_id, doc_type, doc_number, issued_at, due_date, status, subtotal, tax, total, tax_rate, note, is_invoice_compliant, source_document_id, show_seal, show_logo, show_bank_info, recipient_name, recipient_honorific, recipient_postal_code, recipient_address, recipient_phone, subject, period_start, period_end, payment_terms, delivery_date, template_id, created_at, updated_at";
 
-    let query = supabase
+    let query = admin
       .from("documents")
       .select(selectCols)
       .eq("tenant_id", caller.tenantId)
       .order("created_at", { ascending: false });
 
-    let countQuery = supabase
+    let countQuery = admin
       .from("documents")
       .select("*", { count: "exact", head: true })
       .eq("tenant_id", caller.tenantId);
@@ -99,7 +104,7 @@ export async function GET(req: NextRequest) {
     // 取引先: 帳票直書きの宛先名（recipient_name）に加え、顧客名でも引けるように
     // 名前一致する customer_id を先に解決して OR 条件に含める。
     if (counterparty) {
-      const { data: matchedCustomers } = await supabase
+      const { data: matchedCustomers } = await admin
         .from("customers")
         .select("id")
         .eq("tenant_id", caller.tenantId)
@@ -122,11 +127,22 @@ export async function GET(req: NextRequest) {
       return apiInternalError(error, "documents GET");
     }
 
+    // 一時診断: ユーザーセッション(RLS)経由の件数を併記し、admin 経由との差で
+    // 「RLS 実行時に 0 件になる」事象を確定する（原因確定後に削除する）。
+    const { count: rlsCount } = await supabase
+      .from("documents")
+      .select("*", { count: "exact", head: true })
+      .eq("tenant_id", caller.tenantId);
+
     // 顧客名を並列取得（メインクエリ完了後すぐにIDを収集）
     const customerIds = [...new Set((docs ?? []).map((d) => d.customer_id).filter(Boolean))];
     const customerNames: Record<string, string> = {};
     if (customerIds.length > 0) {
-      const { data: customers } = await supabase.from("customers").select("id, name").in("id", customerIds);
+      const { data: customers } = await admin
+        .from("customers")
+        .select("id, name")
+        .eq("tenant_id", caller.tenantId)
+        .in("id", customerIds);
       for (const c of customers ?? []) {
         customerNames[c.id] = c.name;
       }
@@ -148,6 +164,7 @@ export async function GET(req: NextRequest) {
     return apiJson({
       documents: enriched,
       stats: { total: totalCount ?? total, unpaid_amount: unpaidAmount },
+      _diag: { tenantId: caller.tenantId, adminTotal: totalCount ?? null, rlsCount: rlsCount ?? null },
       ...(page > 0 && {
         pagination: {
           page,
@@ -327,7 +344,11 @@ export async function POST(req: NextRequest) {
     if (data?.status === "sent") {
       after(async () => {
         try {
-          await sealDocumentOnFinalize(admin, caller.tenantId, data as SealableDocument & { id: string; meta_json?: unknown });
+          await sealDocumentOnFinalize(
+            admin,
+            caller.tenantId,
+            data as SealableDocument & { id: string; meta_json?: unknown },
+          );
         } catch (sealErr) {
           console.error("documents POST: integrity seal failed (non-blocking)", sealErr);
         }
@@ -529,7 +550,11 @@ export async function PUT(req: NextRequest) {
       after(async () => {
         // 電帳法「真実性の確保」: 確定した帳票に内容ハッシュ＋TS 封印を付ける（best-effort）。
         try {
-          await sealDocumentOnFinalize(admin, caller.tenantId, data as SealableDocument & { id: string; meta_json?: unknown });
+          await sealDocumentOnFinalize(
+            admin,
+            caller.tenantId,
+            data as SealableDocument & { id: string; meta_json?: unknown },
+          );
         } catch (sealErr) {
           console.error("documents PUT: integrity seal failed (non-blocking)", sealErr);
         }
