@@ -22,6 +22,16 @@
   PDF(`pdfDocument.tsx`)の両描画経路へ適用。純関数の単体テスト `itemDisplay.test.ts` を追加。
   既存の帳票もデータ移行なしで即復旧する。
 - 対象: 帳票詳細 `/admin/documents/[id]`、帳票PDF `/admin/documents/pdf`、印刷表示（全帳票種別）。
+
+## 2026-08-03 帳票明細の品目入力を「入力欄＋検索欄」の2段に整理（選択UIの重複を解消） (PR #860)
+- 内容: 明細1行あたり3要素あった品目入力（品番検索・「品目マスタから選択」ドロップダウン・品目入力欄）のうち、
+  冗長な `<select>`「品目マスタから選択」を削除。品目名での選択が入力欄の datalist 補完と二重で、かつ select 側だけが
+  全項目を埋め datalist 側は単価しか埋めないという不整合もあった。品番検索（`ItemCodeField`）と品目・内容の入力欄の
+  2段構成へ統一し、入力欄を上に配置。純粋な JSX の再構成で挙動変更なし。マスタ未登録の入力内容を保存時に品目マスタへ
+  自動反映する `autoRegisterMenuItems` は従来どおり動作（documents/invoices 両 API）。
+- 対象: 帳票作成フォーム `src/app/admin/documents/DocumentForm.tsx`（見積書・請求書等の明細入力）。
+
+## 2026-08-03 顧客登録の支払条件を請求書へ自動反映（プリフィル経路の取りこぼしを是正） (branch claude/customer-payment-terms-invoice-0q1v5p)
 - 内容: 顧客登録で入力した支払条件（`billing_terms_note`、無ければ支払サイクルのラベル）が請求書に反映されない不具合を修正。
   原因は、顧客の敬称・住所・支払条件を宛先詳細へ自動反映するロジックが顧客セレクトの `onChange` 内にしか無く、
   「請求書を作成」ボタン（`/admin/invoices/new?customer_id=...`）等の URL プリフィル経路（`onChange` を経由しない）では
