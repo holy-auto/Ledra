@@ -138,6 +138,9 @@ export async function GET(req: NextRequest) {
         if (totalCount === null) totalCount = docs.length;
         break;
       }
+      // ページ範囲外（from >= 総件数）の空はリトライしても埋まらないので即終了。
+      // page=0（範囲指定なし＝一覧の既定表示）では from=0 のため発火しない。
+      if (page > 0 && totalCount !== null && from >= totalCount) break;
       zeroCountStreak = c === 0 && !cnt.error ? zeroCountStreak + 1 : 0;
       // count が安定して 0（かつ行も無い）＝本当に0件。過渡的0を弾くため 3 連続を要求。
       if (totalCount === null && zeroCountStreak >= 3) {
