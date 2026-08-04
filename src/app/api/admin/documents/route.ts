@@ -112,33 +112,50 @@ export async function GET(req: NextRequest) {
       return q;
     };
 
-    // 本番で「リクエスト内の“最初の” service-role クエリだけ 0 件を返す」現象がある
-    // （同一クライアント・同一クエリでも後続呼び出しは正しく返る＝接続ウォームアップ等の
-    //  実行順序依存。診断: 後半の同一クエリ adminCallerLate は28件だが前半は0件）。
-    // 確実に取得するため、0件かつ無エラーのあいだ短間隔で数回リトライする。
-    let { data: docs, error } = await buildList(admin);
-    let attempts = 1;
-    while (!error && (!docs || docs.length === 0) && attempts < 6) {
-      await new Promise((res) => setTimeout(res, 150));
-      const r = await buildList(admin);
-      docs = r.data;
-      error = r.error;
-      attempts++;
-    }
-    if (error) {
-      return apiInternalError(error, "documents GET");
-    }
-    let totalCount: number | null = (await buildCount(admin)).count ?? docs?.length ?? 0;
-    let dataClient: DocClient = admin;
-
-    // フォールバック: admin が最終的に 0 件のままなら user セッション(RLS)も試す
+    // 本番診断で判明した経験則:
+    //  - リクエスト内の "最初の" service-role(admin) クエリ群は 0 件を返し、
+    //    「user セッションの documents クエリが1回走った後」の admin クエリは正しく返る
+    //    （admin の連続リトライ 6回では解決せず、user クエリ介在後に adminAllDocs=40 等）。
+    // そこで取得順を「先に user セッションで引く → その結果が空なら（解錠済みの）admin」
+    // に変更する。どちらか行が取れた方を採用。caller.tenantId は所属検証済み。
     const userClient = supabase as unknown as DocClient;
-    if (!docs || docs.length === 0) {
+    let docs: Awaited<ReturnType<typeof buildList>>["data"] = null;
+    let dataClient: DocClient = userClient;
+    let totalCount: number | null = null;
+    let attempts = 0;
+
+    // 1) user セッション(RLS)で取得（同時に admin を"解錠"）
+    {
       const u = await buildList(userClient);
-      if (!u.error && u.data && u.data.length > 0) {
+      attempts++;
+      if (u.error) {
+        // user が権限エラー等でも、続けて admin を試す
+      } else if (u.data && u.data.length > 0) {
         docs = u.data;
         dataClient = userClient;
-        totalCount = (await buildCount(userClient)).count ?? docs.length;
+        totalCount = (await buildCount(userClient)).count ?? u.data.length;
+      } else {
+        docs = u.data ?? [];
+      }
+    }
+
+    // 2) user が 0 件なら admin（この時点では解錠済みのはず）で数回リトライ
+    if (!docs || docs.length === 0) {
+      for (let i = 0; i < 6; i++) {
+        attempts++;
+        const a = await buildList(admin);
+        if (a.error) return apiInternalError(a.error, "documents GET");
+        if (a.data && a.data.length > 0) {
+          docs = a.data;
+          dataClient = admin;
+          totalCount = (await buildCount(admin)).count ?? a.data.length;
+          break;
+        }
+        docs = a.data ?? [];
+        if (i < 5) await new Promise((res) => setTimeout(res, 150));
+      }
+      if ((!docs || docs.length === 0) && totalCount === null) {
+        totalCount = (await buildCount(admin)).count ?? 0;
       }
     }
 
