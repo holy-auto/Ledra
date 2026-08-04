@@ -12,6 +12,17 @@
 - 対象: どの画面・API・業種向けか
 ```
 
+## 2026-08-04 帳票一覧が本番で常に0件になる不具合を修正（金額フィルタ未指定を total=0 と誤解釈していた根本原因）(PR #879 / 93eeeea)
+- 内容: 帳票一覧API `GET /api/admin/documents` が、金額検索 `amount_min`/`amount_max` 未指定時に
+  `Number("") === 0` によりフィルタ値を 0 と解釈し、クエリに `total>=0 AND total<=0`（＝ total=0）を
+  常時付与していた。金額>0 の全帳票が一致せず、本番で「帳票がありません（0件）」になっていた根本原因を修正。
+  金額パースを純関数 `parseAmountParam`（`src/lib/api/amountFilter.ts`）へ切り出し、空・空白・未指定は
+  null（フィルタ無し）を返し、明示的な "0" のみ 0 とするよう修正。回帰防止テスト
+  `src/lib/api/__tests__/amountFilter.test.ts`（4ケース）を追加。あわせて #878 で入れた
+  「接続過渡的0件」への多重リトライ／診断 `_diag`（誤診に基づく対症策）を撤去し、
+  service-role 単一クエリのシンプルな取得に戻した。本番デプロイ後、表示回復を確認済み。
+- 対象: 帳票管理一覧 `/admin/invoices`・`/admin/documents`（帳票取得API `GET /api/admin/documents`）。
+
 ## 2026-08-03 帳票明細: 品番のみ入力した明細が詳細画面・PDFで消えて見える不具合を修正 (branch claude/chouhyo-functionality-check-7fbgko)
 - 内容: 帳票明細の「内容(description)」が空で「品番(item_code)」だけ入力された明細が、詳細画面・PDF・印刷で
   すべて「-」表示になり、入力した品番・商品名が丸ごと不可視になっていた（＝「DBに反映されない／吸い上げられない」
