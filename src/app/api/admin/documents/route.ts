@@ -179,11 +179,33 @@ export async function GET(req: NextRequest) {
       .filter((d) => (d.status === "sent" || d.status === "accepted") && d.doc_type !== "staff_invoice")
       .reduce((sum, d) => sum + (d.total ?? 0), 0);
 
+    // 診断: この "デプロイ環境" が持つ SUPABASE_SERVICE_ROLE_KEY の role クレームと接続先を
+    // 確認する（キー本体は出さない）。本番(Production)とプレビュー(Preview)で環境変数は別管理で、
+    // 本番の値が anon 等になっていると admin クライアントが RLS 配下になり、
+    // ユーザ JWT を持たないため 0 件・エラー無しになる（＝今回の症状）。表示回復後に削除する。
+    let keyRole: string | null = null;
+    try {
+      const payloadB64 = (process.env.SUPABASE_SERVICE_ROLE_KEY || "").split(".")[1];
+      keyRole = payloadB64
+        ? ((JSON.parse(Buffer.from(payloadB64, "base64").toString("utf8")) as { role?: string }).role ?? null)
+        : process.env.SUPABASE_SERVICE_ROLE_KEY
+          ? "not_a_jwt"
+          : "empty";
+    } catch {
+      keyRole = "decode_error";
+    }
+    let projectRef: string | null = null;
+    try {
+      projectRef = new URL(process.env.NEXT_PUBLIC_SUPABASE_URL || "").host.split(".")[0] || null;
+    } catch {
+      projectRef = null;
+    }
+
     return apiJson({
       documents: enriched,
       stats: { total: totalCount ?? total, unpaid_amount: unpaidAmount },
-      // 最小診断: リトライ回数と件数のみ（秘匿情報は出さない）。表示が直り次第削除する。
-      _diag: { returned: enriched.length, totalCount: totalCount ?? total, attempts },
+      // 診断（表示が直り次第削除）。keyRole が service_role でなければ本番の環境変数設定ミス確定。
+      _diag: { returned: enriched.length, totalCount: totalCount ?? total, attempts, keyRole, projectRef },
       ...(page > 0 && {
         pagination: {
           page,
