@@ -161,6 +161,28 @@ export async function GET(req: NextRequest) {
       .filter((d) => (d.status === "sent" || d.status === "accepted") && d.doc_type !== "staff_invoice")
       .reduce((sum, d) => sum + (d.total ?? 0), 0);
 
+    // 一時診断: サービスロールキー(SUPABASE_SERVICE_ROLE_KEY)の role クレームと接続先を
+    // 確認する（キー本体は出さない）。anon が入っていれば env の設定ミスが確定する。
+    let keyRole: string | null = null;
+    try {
+      const k = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
+      const payloadB64 = k.split(".")[1];
+      if (payloadB64) {
+        const json = JSON.parse(Buffer.from(payloadB64, "base64").toString("utf8")) as { role?: string };
+        keyRole = json.role ?? null;
+      } else {
+        keyRole = k ? "not_a_jwt" : "empty";
+      }
+    } catch {
+      keyRole = "decode_error";
+    }
+    let projectRef: string | null = null;
+    try {
+      projectRef = new URL(process.env.NEXT_PUBLIC_SUPABASE_URL || "").host.split(".")[0] || null;
+    } catch {
+      projectRef = null;
+    }
+
     return apiJson({
       documents: enriched,
       stats: { total: totalCount ?? total, unpaid_amount: unpaidAmount },
@@ -168,6 +190,8 @@ export async function GET(req: NextRequest) {
         source: dataClient === admin ? "admin" : "user",
         returned: enriched.length,
         totalCount: totalCount ?? null,
+        serviceKeyRole: keyRole,
+        projectRef,
       },
       ...(page > 0 && {
         pagination: {
