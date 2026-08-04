@@ -190,6 +190,12 @@ export async function GET(req: NextRequest) {
       .from("documents")
       .select("*", { count: "exact", head: true })
       .eq("tenant_id", "e724ef83-7dfe-422a-a967-14ff8eec14a4");
+    // 後半で caller.tenantId を使った件数（前半の buildCount と同一式）。
+    // これが 28 なら「値」は正しく、前半クエリが0なのは実行タイミング/初回接続の問題。
+    const { count: adminCallerLate, error: adminCallerLateErr } = await admin
+      .from("documents")
+      .select("*", { count: "exact", head: true })
+      .eq("tenant_id", caller.tenantId);
 
     return apiJson({
       documents: enriched,
@@ -205,6 +211,9 @@ export async function GET(req: NextRequest) {
         callerTidRaw: JSON.stringify(caller.tenantId),
         adminAllDocs: adminAllDocs ?? null,
         adminE724: adminE724 ?? null,
+        adminCallerLate: adminCallerLate ?? null,
+        adminCallerLateErr: adminCallerLateErr?.message ?? null,
+        reqSearch: url.search || "(none)",
       },
       ...(page > 0 && {
         pagination: {
