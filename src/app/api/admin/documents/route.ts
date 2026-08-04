@@ -32,12 +32,6 @@ export async function GET(req: NextRequest) {
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
 
-    // 帳票一覧は他の管理APIと同様、テナント厳格スコープのサービスロールで取得する。
-    // ユーザーセッション(RLS)経由の読み取りが本番で非決定的に 0 件を返す事象があり
-    // （プーラ/JWT実行時要因の疑い）、RLS/JWT に依存しないサービスロール取得へ統一する。
-    // caller.tenantId は resolveCallerWithRole で所属検証済みのため安全。
-    const { admin } = createTenantScopedAdmin(caller.tenantId);
-
     const url = new URL(req.url);
     const docType = url.searchParams.get("doc_type") ?? "";
     const status = url.searchParams.get("status") ?? "";
@@ -63,13 +57,13 @@ export async function GET(req: NextRequest) {
     const selectCols =
       "id, tenant_id, customer_id, staff_member_id, doc_type, doc_number, issued_at, due_date, status, subtotal, tax, total, tax_rate, note, is_invoice_compliant, source_document_id, show_seal, show_logo, show_bank_info, recipient_name, recipient_honorific, recipient_postal_code, recipient_address, recipient_phone, subject, period_start, period_end, payment_terms, delivery_date, template_id, created_at, updated_at";
 
-    let query = admin
+    let query = supabase
       .from("documents")
       .select(selectCols)
       .eq("tenant_id", caller.tenantId)
       .order("created_at", { ascending: false });
 
-    let countQuery = admin
+    let countQuery = supabase
       .from("documents")
       .select("*", { count: "exact", head: true })
       .eq("tenant_id", caller.tenantId);
@@ -105,7 +99,7 @@ export async function GET(req: NextRequest) {
     // 取引先: 帳票直書きの宛先名（recipient_name）に加え、顧客名でも引けるように
     // 名前一致する customer_id を先に解決して OR 条件に含める。
     if (counterparty) {
-      const { data: matchedCustomers } = await admin
+      const { data: matchedCustomers } = await supabase
         .from("customers")
         .select("id")
         .eq("tenant_id", caller.tenantId)
@@ -123,27 +117,21 @@ export async function GET(req: NextRequest) {
       query = query.range(from, to);
     }
 
-    const [{ data: docs, error }, { count: totalCount }] = await Promise.all([query, countQuery]);
+    // @supabase/ssr の Cookie 認証は、アクセストークン期限切れ時に「並行」リクエストが
+    // トークン更新でレースし、片方が匿名扱いになって RLS で 0 件を返すことがある
+    // （本番で帳票一覧が非決定的に 0 件化していた根本原因）。list と count を
+    // Promise.all で並行させず、逐次実行してレースを防ぐ。
+    const { data: docs, error } = await query;
     if (error) {
       return apiInternalError(error, "documents GET");
     }
+    const { count: totalCount } = await countQuery;
 
-    // 一時診断: サービスロール(admin)経由 totalCount と、ユーザーセッション(RLS)経由の
-    // 件数を併記し、サービスロールキー是正が効いているか確認する（確定後に削除）。
-    const { count: rlsCount } = await supabase
-      .from("documents")
-      .select("*", { count: "exact", head: true })
-      .eq("tenant_id", caller.tenantId);
-
-    // 顧客名を並列取得（メインクエリ完了後すぐにIDを収集）
+    // 顧客名を取得（メインクエリ完了後にIDを収集し、逐次で取得）
     const customerIds = [...new Set((docs ?? []).map((d) => d.customer_id).filter(Boolean))];
     const customerNames: Record<string, string> = {};
     if (customerIds.length > 0) {
-      const { data: customers } = await admin
-        .from("customers")
-        .select("id, name")
-        .eq("tenant_id", caller.tenantId)
-        .in("id", customerIds);
+      const { data: customers } = await supabase.from("customers").select("id, name").in("id", customerIds);
       for (const c of customers ?? []) {
         customerNames[c.id] = c.name;
       }
@@ -165,7 +153,6 @@ export async function GET(req: NextRequest) {
     return apiJson({
       documents: enriched,
       stats: { total: totalCount ?? total, unpaid_amount: unpaidAmount },
-      _diag: { tenantId: caller.tenantId, adminTotal: totalCount ?? null, rlsCount: rlsCount ?? null },
       ...(page > 0 && {
         pagination: {
           page,
