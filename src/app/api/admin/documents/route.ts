@@ -112,25 +112,33 @@ export async function GET(req: NextRequest) {
       return q;
     };
 
-    // 1) サービスロール優先（キー是正済みなら決定的に全件取得）
+    // 本番で「リクエスト内の“最初の” service-role クエリだけ 0 件を返す」現象がある
+    // （同一クライアント・同一クエリでも後続呼び出しは正しく返る＝接続ウォームアップ等の
+    //  実行順序依存。診断: 後半の同一クエリ adminCallerLate は28件だが前半は0件）。
+    // 確実に取得するため、0件かつ無エラーのあいだ短間隔で数回リトライする。
     let { data: docs, error } = await buildList(admin);
-    let totalCount: number | null = null;
-    let dataClient: DocClient = admin;
-    if (!error) {
-      totalCount = (await buildCount(admin)).count ?? null;
+    let attempts = 1;
+    while (!error && (!docs || docs.length === 0) && attempts < 6) {
+      await new Promise((res) => setTimeout(res, 150));
+      const r = await buildList(admin);
+      docs = r.data;
+      error = r.error;
+      attempts++;
     }
-    // 2) サービスロールが 0 件/失敗ならユーザーセッション(RLS)へフォールバック（逐次）
+    if (error) {
+      return apiInternalError(error, "documents GET");
+    }
+    let totalCount: number | null = (await buildCount(admin)).count ?? docs?.length ?? 0;
+    let dataClient: DocClient = admin;
+
+    // フォールバック: admin が最終的に 0 件のままなら user セッション(RLS)も試す
     const userClient = supabase as unknown as DocClient;
-    if (error || !docs || docs.length === 0) {
+    if (!docs || docs.length === 0) {
       const u = await buildList(userClient);
       if (!u.error && u.data && u.data.length > 0) {
         docs = u.data;
-        error = null;
         dataClient = userClient;
         totalCount = (await buildCount(userClient)).count ?? docs.length;
-      } else if (error && u.error) {
-        // 両経路とも失敗した場合のみエラー返却
-        return apiInternalError(error, "documents GET");
       }
     }
 
@@ -214,6 +222,7 @@ export async function GET(req: NextRequest) {
         adminCallerLate: adminCallerLate ?? null,
         adminCallerLateErr: adminCallerLateErr?.message ?? null,
         reqSearch: url.search || "(none)",
+        attempts,
       },
       ...(page > 0 && {
         pagination: {
