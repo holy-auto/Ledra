@@ -182,6 +182,14 @@ export async function GET(req: NextRequest) {
     } catch {
       projectRef = null;
     }
+    // 一時診断: admin(service_role/PostgREST) が実際に何件見えているかを直接確認する。
+    // adminAllDocs=0 なら PostgREST が別データ源(空)を見ている、adminAllDocs>0 かつ
+    // adminE724=0 ならテナントIDの不一致、と切り分けられる。
+    const { count: adminAllDocs } = await admin.from("documents").select("*", { count: "exact", head: true });
+    const { count: adminE724 } = await admin
+      .from("documents")
+      .select("*", { count: "exact", head: true })
+      .eq("tenant_id", "e724ef83-7dfe-422a-a967-14ff8eec14a4");
 
     return apiJson({
       documents: enriched,
@@ -192,6 +200,9 @@ export async function GET(req: NextRequest) {
         totalCount: totalCount ?? null,
         serviceKeyRole: keyRole,
         projectRef,
+        callerTenantId: caller.tenantId,
+        adminAllDocs: adminAllDocs ?? null,
+        adminE724: adminE724 ?? null,
       },
       ...(page > 0 && {
         pagination: {
