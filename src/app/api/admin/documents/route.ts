@@ -5,6 +5,7 @@ import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
 import { DOC_TYPES, isDocumentEditable, isDocumentDeletable, type DocType } from "@/types/document";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { parsePagination } from "@/lib/api/pagination";
+import { parseAmountParam } from "@/lib/api/amountFilter";
 import {
   apiJson,
   apiUnauthorized,
@@ -43,12 +44,8 @@ export async function GET(req: NextRequest) {
     const dateFrom = isoDate.test(dateFromRaw) ? dateFromRaw : "";
     const dateTo = isoDate.test(dateToRaw) ? dateToRaw : "";
     // 電帳法「可視性の確保」: 取引金額（total）と取引先で検索できるようにする。
-    const parseAmount = (raw: string | null): number | null => {
-      const n = Number((raw ?? "").trim());
-      return Number.isFinite(n) && n >= 0 ? Math.floor(n) : null;
-    };
-    const amountMin = parseAmount(url.searchParams.get("amount_min"));
-    const amountMax = parseAmount(url.searchParams.get("amount_max"));
+    const amountMin = parseAmountParam(url.searchParams.get("amount_min"));
+    const amountMax = parseAmountParam(url.searchParams.get("amount_max"));
     const counterpartyRaw = (url.searchParams.get("counterparty") ?? "").trim();
     // PostgREST の or() フィルタ文字列を壊す区切り文字は除去してから ilike パターン化する。
     const counterparty = counterpartyRaw.replace(/[,()*%]/g, "").slice(0, 100);
@@ -112,44 +109,11 @@ export async function GET(req: NextRequest) {
       return q;
     };
 
-    // 本番で service-role(PostgREST) 経由の帳票取得が「非決定的に0件」を返す事象への対処。
-    // DB 直（postgres）では 28 件見えており、単一プライマリ・レプリカ無し・service_role は
-    // RLS バイパス・列も全て存在することを確認済み。それでもリクエスト内の早い段階の
-    // PostgREST クエリ（データ・件数の双方）が空/0 を返し、後続の同一クエリは正しく返る、
-    // という接続レイヤ由来と思われる過渡的挙動を観測している。原因は未確定。
-    // 対処: admin で「行が返るまで」有限回リトライして温める。件数(count)も同様に過渡的に
-    // 0 を返しうるため、一度でも count>0 を観測したら真値として保持し、count が安定して
-    // 0 のとき（=本当に0件）のみ早期終了する。
-    // ponytail: 原因未確定の暫定対処。天井 = 空テナントで最大 ~3×120ms、温まり待ちで最大
-    // ~12×120ms(≈1.4s) の遅延。恒久対処は PostgREST/接続プールのコールドスタート調査、
-    // もしくは直 Postgres 接続への移行。
-    let docs: Awaited<ReturnType<typeof buildList>>["data"] = [];
-    let totalCount: number | null = null;
-    let attempts = 0;
-    let zeroCountStreak = 0;
-    for (let i = 0; i < 12; i++) {
-      attempts++;
-      const [list, cnt] = await Promise.all([buildList(admin), buildCount(admin)]);
-      if (list.error) return apiInternalError(list.error, "documents GET");
-      docs = list.data ?? [];
-      const c = cnt.count ?? 0;
-      if (c > 0) totalCount = c; // 一度でも >0 を見たら真値として確定
-      if (docs.length > 0) {
-        if (totalCount === null) totalCount = docs.length;
-        break;
-      }
-      // ページ範囲外（from >= 総件数）の空はリトライしても埋まらないので即終了。
-      // page=0（範囲指定なし＝一覧の既定表示）では from=0 のため発火しない。
-      if (page > 0 && totalCount !== null && from >= totalCount) break;
-      zeroCountStreak = c === 0 && !cnt.error ? zeroCountStreak + 1 : 0;
-      // count が安定して 0（かつ行も無い）＝本当に0件。過渡的0を弾くため 3 連続を要求。
-      if (totalCount === null && zeroCountStreak >= 3) {
-        totalCount = 0;
-        break;
-      }
-      if (i < 11) await new Promise((res) => setTimeout(res, 120));
-    }
-    if (totalCount === null) totalCount = docs?.length ?? 0;
+    // service-role(admin) 単一経路で取得。caller.tenantId は所属検証済み。
+    const [list, cnt] = await Promise.all([buildList(admin), buildCount(admin)]);
+    if (list.error) return apiInternalError(list.error, "documents GET");
+    const docs = list.data ?? [];
+    const totalCount = cnt.count ?? docs.length;
     const dataClient = admin;
 
     // 顧客名を取得（データを返せたクライアントで逐次取得）
@@ -179,33 +143,9 @@ export async function GET(req: NextRequest) {
       .filter((d) => (d.status === "sent" || d.status === "accepted") && d.doc_type !== "staff_invoice")
       .reduce((sum, d) => sum + (d.total ?? 0), 0);
 
-    // 診断: この "デプロイ環境" が持つ SUPABASE_SERVICE_ROLE_KEY の role クレームと接続先を
-    // 確認する（キー本体は出さない）。本番(Production)とプレビュー(Preview)で環境変数は別管理で、
-    // 本番の値が anon 等になっていると admin クライアントが RLS 配下になり、
-    // ユーザ JWT を持たないため 0 件・エラー無しになる（＝今回の症状）。表示回復後に削除する。
-    let keyRole: string | null = null;
-    try {
-      const payloadB64 = (process.env.SUPABASE_SERVICE_ROLE_KEY || "").split(".")[1];
-      keyRole = payloadB64
-        ? ((JSON.parse(Buffer.from(payloadB64, "base64").toString("utf8")) as { role?: string }).role ?? null)
-        : process.env.SUPABASE_SERVICE_ROLE_KEY
-          ? "not_a_jwt"
-          : "empty";
-    } catch {
-      keyRole = "decode_error";
-    }
-    let projectRef: string | null = null;
-    try {
-      projectRef = new URL(process.env.NEXT_PUBLIC_SUPABASE_URL || "").host.split(".")[0] || null;
-    } catch {
-      projectRef = null;
-    }
-
     return apiJson({
       documents: enriched,
       stats: { total: totalCount ?? total, unpaid_amount: unpaidAmount },
-      // 診断（表示が直り次第削除）。keyRole が service_role でなければ本番の環境変数設定ミス確定。
-      _diag: { returned: enriched.length, totalCount: totalCount ?? total, attempts, keyRole, projectRef },
       ...(page > 0 && {
         pagination: {
           page,
