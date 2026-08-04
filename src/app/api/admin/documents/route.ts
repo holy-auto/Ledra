@@ -112,52 +112,42 @@ export async function GET(req: NextRequest) {
       return q;
     };
 
-    // 本番診断で判明した経験則:
-    //  - リクエスト内の "最初の" service-role(admin) クエリ群は 0 件を返し、
-    //    「user セッションの documents クエリが1回走った後」の admin クエリは正しく返る
-    //    （admin の連続リトライ 6回では解決せず、user クエリ介在後に adminAllDocs=40 等）。
-    // そこで取得順を「先に user セッションで引く → その結果が空なら（解錠済みの）admin」
-    // に変更する。どちらか行が取れた方を採用。caller.tenantId は所属検証済み。
-    const userClient = supabase as unknown as DocClient;
-    let docs: Awaited<ReturnType<typeof buildList>>["data"] = null;
-    let dataClient: DocClient = userClient;
+    // 本番で service-role(PostgREST) 経由の帳票取得が「非決定的に0件」を返す事象への対処。
+    // DB 直（postgres）では 28 件見えており、単一プライマリ・レプリカ無し・service_role は
+    // RLS バイパス・列も全て存在することを確認済み。それでもリクエスト内の早い段階の
+    // PostgREST クエリ（データ・件数の双方）が空/0 を返し、後続の同一クエリは正しく返る、
+    // という接続レイヤ由来と思われる過渡的挙動を観測している。原因は未確定。
+    // 対処: admin で「行が返るまで」有限回リトライして温める。件数(count)も同様に過渡的に
+    // 0 を返しうるため、一度でも count>0 を観測したら真値として保持し、count が安定して
+    // 0 のとき（=本当に0件）のみ早期終了する。
+    // ponytail: 原因未確定の暫定対処。天井 = 空テナントで最大 ~3×120ms、温まり待ちで最大
+    // ~12×120ms(≈1.4s) の遅延。恒久対処は PostgREST/接続プールのコールドスタート調査、
+    // もしくは直 Postgres 接続への移行。
+    let docs: Awaited<ReturnType<typeof buildList>>["data"] = [];
     let totalCount: number | null = null;
     let attempts = 0;
-
-    // 1) user セッション(RLS)で取得（同時に admin を"解錠"）
-    {
-      const u = await buildList(userClient);
+    let zeroCountStreak = 0;
+    for (let i = 0; i < 12; i++) {
       attempts++;
-      if (u.error) {
-        // user が権限エラー等でも、続けて admin を試す
-      } else if (u.data && u.data.length > 0) {
-        docs = u.data;
-        dataClient = userClient;
-        totalCount = (await buildCount(userClient)).count ?? u.data.length;
-      } else {
-        docs = u.data ?? [];
+      const [list, cnt] = await Promise.all([buildList(admin), buildCount(admin)]);
+      if (list.error) return apiInternalError(list.error, "documents GET");
+      docs = list.data ?? [];
+      const c = cnt.count ?? 0;
+      if (c > 0) totalCount = c; // 一度でも >0 を見たら真値として確定
+      if (docs.length > 0) {
+        if (totalCount === null) totalCount = docs.length;
+        break;
       }
+      zeroCountStreak = c === 0 && !cnt.error ? zeroCountStreak + 1 : 0;
+      // count が安定して 0（かつ行も無い）＝本当に0件。過渡的0を弾くため 3 連続を要求。
+      if (totalCount === null && zeroCountStreak >= 3) {
+        totalCount = 0;
+        break;
+      }
+      if (i < 11) await new Promise((res) => setTimeout(res, 120));
     }
-
-    // 2) user が 0 件なら admin（この時点では解錠済みのはず）で数回リトライ
-    if (!docs || docs.length === 0) {
-      for (let i = 0; i < 6; i++) {
-        attempts++;
-        const a = await buildList(admin);
-        if (a.error) return apiInternalError(a.error, "documents GET");
-        if (a.data && a.data.length > 0) {
-          docs = a.data;
-          dataClient = admin;
-          totalCount = (await buildCount(admin)).count ?? a.data.length;
-          break;
-        }
-        docs = a.data ?? [];
-        if (i < 5) await new Promise((res) => setTimeout(res, 150));
-      }
-      if ((!docs || docs.length === 0) && totalCount === null) {
-        totalCount = (await buildCount(admin)).count ?? 0;
-      }
-    }
+    if (totalCount === null) totalCount = docs?.length ?? 0;
+    const dataClient = admin;
 
     // 顧客名を取得（データを返せたクライアントで逐次取得）
     const customerIds = [...new Set((docs ?? []).map((d) => d.customer_id).filter(Boolean))];
@@ -186,61 +176,11 @@ export async function GET(req: NextRequest) {
       .filter((d) => (d.status === "sent" || d.status === "accepted") && d.doc_type !== "staff_invoice")
       .reduce((sum, d) => sum + (d.total ?? 0), 0);
 
-    // 一時診断: サービスロールキー(SUPABASE_SERVICE_ROLE_KEY)の role クレームと接続先を
-    // 確認する（キー本体は出さない）。anon が入っていれば env の設定ミスが確定する。
-    let keyRole: string | null = null;
-    try {
-      const k = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
-      const payloadB64 = k.split(".")[1];
-      if (payloadB64) {
-        const json = JSON.parse(Buffer.from(payloadB64, "base64").toString("utf8")) as { role?: string };
-        keyRole = json.role ?? null;
-      } else {
-        keyRole = k ? "not_a_jwt" : "empty";
-      }
-    } catch {
-      keyRole = "decode_error";
-    }
-    let projectRef: string | null = null;
-    try {
-      projectRef = new URL(process.env.NEXT_PUBLIC_SUPABASE_URL || "").host.split(".")[0] || null;
-    } catch {
-      projectRef = null;
-    }
-    // 一時診断: admin(service_role/PostgREST) が実際に何件見えているかを直接確認する。
-    // adminAllDocs=0 なら PostgREST が別データ源(空)を見ている、adminAllDocs>0 かつ
-    // adminE724=0 ならテナントIDの不一致、と切り分けられる。
-    const { count: adminAllDocs } = await admin.from("documents").select("*", { count: "exact", head: true });
-    const { count: adminE724 } = await admin
-      .from("documents")
-      .select("*", { count: "exact", head: true })
-      .eq("tenant_id", "e724ef83-7dfe-422a-a967-14ff8eec14a4");
-    // 後半で caller.tenantId を使った件数（前半の buildCount と同一式）。
-    // これが 28 なら「値」は正しく、前半クエリが0なのは実行タイミング/初回接続の問題。
-    const { count: adminCallerLate, error: adminCallerLateErr } = await admin
-      .from("documents")
-      .select("*", { count: "exact", head: true })
-      .eq("tenant_id", caller.tenantId);
-
     return apiJson({
       documents: enriched,
       stats: { total: totalCount ?? total, unpaid_amount: unpaidAmount },
-      _diag: {
-        source: dataClient === admin ? "admin" : "user",
-        returned: enriched.length,
-        totalCount: totalCount ?? null,
-        serviceKeyRole: keyRole,
-        projectRef,
-        callerTenantId: caller.tenantId,
-        callerTidLen: String(caller.tenantId ?? "").length,
-        callerTidRaw: JSON.stringify(caller.tenantId),
-        adminAllDocs: adminAllDocs ?? null,
-        adminE724: adminE724 ?? null,
-        adminCallerLate: adminCallerLate ?? null,
-        adminCallerLateErr: adminCallerLateErr?.message ?? null,
-        reqSearch: url.search || "(none)",
-        attempts,
-      },
+      // 最小診断: リトライ回数と件数のみ（秘匿情報は出さない）。表示が直り次第削除する。
+      _diag: { returned: enriched.length, totalCount: totalCount ?? total, attempts },
       ...(page > 0 && {
         pagination: {
           page,
