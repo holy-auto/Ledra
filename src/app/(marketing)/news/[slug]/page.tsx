@@ -8,6 +8,7 @@ import { ArticleJsonLd } from "@/components/marketing/JsonLd";
 import { ArticleHero } from "@/components/marketing/ArticleHero";
 import { getContentBySlug, listContent } from "@/lib/marketing/content";
 import { getPublishedPostBySlug, listPublishedPosts } from "@/lib/marketing/site-content-posts";
+import { formatJstDateJa } from "@/lib/datetime";
 
 type Props = { params: Promise<{ slug: string }> };
 
@@ -148,7 +149,9 @@ export default async function NewsDetailPage({ params }: Props) {
             )}
           </div>
           <div className="mt-6 flex flex-wrap items-center gap-3 text-xs text-white">
-            {article.publishedAt && <time dateTime={article.publishedAt}>{formatDate(article.publishedAt)}</time>}
+            {article.publishedAt && (
+              <time dateTime={article.publishedAt}>{formatJstDateJa(article.publishedAt, article.publishedAt)}</time>
+            )}
             {article.tags?.map((t) => (
               <span
                 key={t}
@@ -183,11 +186,4 @@ export default async function NewsDetailPage({ params }: Props) {
       />
     </>
   );
-}
-
-function formatDate(iso: string): string {
-  // MDX は YYYY-MM-DD、DB は ISO datetime。先頭10文字（日付部）で揃える。
-  const [y, m, d] = iso.slice(0, 10).split("-");
-  if (!y || !m || !d) return iso;
-  return `${y}年${Number(m)}月${Number(d)}日`;
 }

@@ -10,6 +10,7 @@ import {
   type SiteContentStatus,
   type SiteContentType,
 } from "@/lib/validations/site-content-post";
+import { formatJstDateTime } from "@/lib/datetime";
 import SiteContentRowActions from "./SiteContentRowActions";
 
 export const dynamic = "force-dynamic";
@@ -30,18 +31,6 @@ function statusVariant(status: SiteContentStatus): "success" | "warning" | "defa
   if (status === "published") return "success";
   if (status === "draft" || status === "scheduled") return "warning";
   return "default";
-}
-
-function formatDateTime(iso: string | null): string {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "—";
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  const hh = String(d.getHours()).padStart(2, "0");
-  const mm = String(d.getMinutes()).padStart(2, "0");
-  return `${y}/${m}/${day} ${hh}:${mm}`;
 }
 
 export default async function SiteContentListPage(props: { searchParams?: Promise<{ type?: string }> }) {
@@ -132,10 +121,10 @@ export default async function SiteContentListPage(props: { searchParams?: Promis
                   </td>
                   <td className="px-4 py-3 text-xs text-secondary">
                     {r.type === "event" || r.type === "webinar"
-                      ? formatDateTime(r.event_start_at)
-                      : formatDateTime(r.published_at)}
+                      ? formatJstDateTime(r.event_start_at)
+                      : formatJstDateTime(r.published_at)}
                   </td>
-                  <td className="px-4 py-3 text-xs text-muted">{formatDateTime(r.updated_at)}</td>
+                  <td className="px-4 py-3 text-xs text-muted">{formatJstDateTime(r.updated_at)}</td>
                   <td className="px-4 py-3 text-right">
                     <SiteContentRowActions id={r.id} status={r.status} />
                   </td>

@@ -7,6 +7,7 @@ import { CTABanner } from "@/components/marketing/CTABanner";
 import { ArticleHero } from "@/components/marketing/ArticleHero";
 import { getContentBySlug, listContent } from "@/lib/marketing/content";
 import { getPublishedPostBySlug, listPublishedPosts } from "@/lib/marketing/site-content-posts";
+import { formatJstDateJa } from "@/lib/datetime";
 
 type Props = { params: Promise<{ slug: string }> };
 
@@ -100,7 +101,9 @@ export default async function BlogDetailPage({ params }: Props) {
             )}
           </div>
           <div className="mt-6 flex flex-wrap items-center gap-3 text-xs text-white">
-            {article.publishedAt && <time dateTime={article.publishedAt}>{formatDate(article.publishedAt)}</time>}
+            {article.publishedAt && (
+              <time dateTime={article.publishedAt}>{formatJstDateJa(article.publishedAt, article.publishedAt)}</time>
+            )}
             {article.author && <span>by {article.author}</span>}
             {article.tags?.map((t) => (
               <span
@@ -131,11 +134,4 @@ export default async function BlogDetailPage({ params }: Props) {
       />
     </>
   );
-}
-
-function formatDate(iso: string): string {
-  const datePart = iso.slice(0, 10);
-  const [y, m, d] = datePart.split("-");
-  if (!y || !m || !d) return iso;
-  return `${y}年${Number(m)}月${Number(d)}日`;
 }
