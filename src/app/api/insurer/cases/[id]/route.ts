@@ -1,12 +1,16 @@
-import { NextRequest } from "next/server";
+import { NextRequest, after } from "next/server";
 import { resolveInsurerCaller } from "@/lib/api/insurerAuth";
 import { apiJson, apiUnauthorized, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { createInsurerScopedAdmin } from "@/lib/supabase/admin";
 import { sendCaseStatusNotification } from "@/lib/insurer/notifications";
+import { emitEntityWebhook } from "@/lib/outbound-webhooks";
 import { insurerCaseUpdateSchema } from "@/lib/validations/insurer-case";
 
 export const runtime = "nodejs";
+
+const CASE_COLUMNS =
+  "id, insurer_id, title, description, status, priority, category, case_number, certificate_id, vehicle_id, tenant_id, assigned_to, created_by, resolved_at, closed_at, created_at, updated_at, meta";
 
 /**
  * GET /api/insurer/cases/[id]
@@ -28,9 +32,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
     // manual insurer_id check below).
     const { data: caseData, error: caseErr } = await admin
       .from("insurer_cases")
-      .select(
-        "id, insurer_id, title, description, status, priority, category, case_number, certificate_id, vehicle_id, tenant_id, assigned_to, created_by, resolved_at, closed_at, created_at, updated_at, meta",
-      )
+      .select(CASE_COLUMNS)
       .eq("id", id)
       .eq("insurer_id", caller.insurerId)
       .maybeSingle();
@@ -114,19 +116,36 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
 
     updateData.updated_at = new Date().toISOString();
 
-    // Scope the UPDATE itself by insurer_id so no race between the check
-    // above and the write can touch another insurer's row.
-    const { data: updated, error: updateErr } = await admin
-      .from("insurer_cases")
-      .update(updateData)
-      .eq("id", id)
-      .eq("insurer_id", caller.insurerId)
-      .select(
-        "id, insurer_id, title, description, status, priority, category, case_number, certificate_id, vehicle_id, tenant_id, assigned_to, created_by, resolved_at, closed_at, created_at, updated_at, meta",
-      )
-      .single();
+    const isStatusChange = updateData.status !== undefined && updateData.status !== existing.status;
+
+    // Scope the UPDATE by insurer_id (no cross-insurer write) and, on a status
+    // transition, also by the status we read above (compare-and-swap). The
+    // status CAS makes "did THIS request flip the case?" race-free, matching
+    // the bulk route: two concurrent PATCHes flipping the same case no longer
+    // both pass the gate below and double-emit the status_changed webhook. A
+    // non-status update keeps matching on id+insurer only, so a concurrent
+    // status change elsewhere doesn't spuriously fail an unrelated field edit.
+    let updateQuery = admin.from("insurer_cases").update(updateData).eq("id", id).eq("insurer_id", caller.insurerId);
+    if (isStatusChange) updateQuery = updateQuery.eq("status", existing.status);
+
+    const { data: updated, error: updateErr } = await updateQuery.select(CASE_COLUMNS).maybeSingle();
 
     if (updateErr) return apiValidationError(updateErr.message);
+
+    if (!updated) {
+      // Either the row vanished between read and write, or (on a status change)
+      // another request won the compare-and-swap and already transitioned it.
+      // Re-read and return the current row without re-emitting the webhook —
+      // this request did not perform the transition.
+      const { data: current } = await admin
+        .from("insurer_cases")
+        .select(CASE_COLUMNS)
+        .eq("id", id)
+        .eq("insurer_id", caller.insurerId)
+        .maybeSingle();
+      if (!current) return apiNotFound("ケースが見つかりません。");
+      return apiJson({ case: current });
+    }
 
     // Log to insurer_access_logs
     const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null;
@@ -145,9 +164,11 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
       user_agent: ua,
     });
 
-    // Send notification on status change (fire-and-forget)
-    if (updateData.status && updateData.status !== existing.status) {
-      (async () => {
+    // Send notification on status change. Registered with after() so the
+    // work is guaranteed to run in serverless (an unawaited bare async IIFE
+    // can be dropped once the response is sent).
+    if (isStatusChange) {
+      after(async () => {
         try {
           // Notify insurer admin users about the status change
           const { data: insurerUsers } = await admin
@@ -185,6 +206,17 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
 
           // Notify tenant if case has tenant_id
           if (updated.tenant_id) {
+            // 基幹ソフト連携向け webhook (購読が無ければ no-op)。メール通知とは独立。
+            await emitEntityWebhook(updated.tenant_id, "insurer_case.status_changed", id, {
+              case_id: id,
+              case_number: updated.case_number,
+              title: updated.title,
+              old_status: existing.status,
+              new_status: updateData.status,
+              insurer_id: caller.insurerId,
+              updated_at: updated.updated_at,
+            });
+
             const { data: tenant } = await admin
               .from("tenants")
               .select("name, contact_email")
@@ -207,7 +239,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
         } catch (e) {
           console.error("[case-notification] status change notification failed:", e);
         }
-      })();
+      });
     }
 
     return apiJson({ case: updated });
