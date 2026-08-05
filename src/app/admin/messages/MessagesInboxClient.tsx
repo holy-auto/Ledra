@@ -256,6 +256,11 @@ export default function MessagesInboxClient() {
         tag="メッセージ"
         title="メッセージ受信箱"
         description="LINE で届いた全顧客のメッセージを一覧し、その場で返信できます。"
+        actions={
+          <Link href="/admin/line-broadcasts" className="btn-secondary text-sm">
+            LINE一斉配信
+          </Link>
+        }
         tabs={[
           { key: "all", label: "すべて" },
           { key: "unread", label: "未読", badge: listData?.total_unread ?? 0 },

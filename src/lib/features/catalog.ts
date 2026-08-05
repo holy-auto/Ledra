@@ -208,7 +208,7 @@ export const FEATURES: readonly FeatureDef[] = [
     href: "/admin/booths",
     label: "ピット管理",
     groupKey: "operations",
-    tier: "core",
+    tier: "advanced",
     requiredPermission: "reservations:view",
   },
   {
@@ -216,7 +216,7 @@ export const FEATURES: readonly FeatureDef[] = [
     href: "/admin/contact-schedules",
     label: "コンタクト管理",
     groupKey: "operations",
-    tier: "core",
+    tier: "advanced",
     requiredPermission: "customers:view",
   },
   {
@@ -224,7 +224,7 @@ export const FEATURES: readonly FeatureDef[] = [
     href: "/admin/coupons",
     label: "クーポン管理",
     groupKey: "operations",
-    tier: "core",
+    tier: "advanced",
     requiredPermission: "customers:view",
   },
   {
@@ -234,7 +234,6 @@ export const FEATURES: readonly FeatureDef[] = [
     groupKey: "operations",
     tier: "core",
     requiredPermission: "reservations:view",
-    businessModes: ["mechanic"],
   },
   {
     key: "maintenance-packs",
@@ -250,7 +249,7 @@ export const FEATURES: readonly FeatureDef[] = [
     href: "/admin/next-touch",
     label: "次の接触",
     groupKey: "operations",
-    tier: "core",
+    tier: "advanced",
     requiredPermission: "menu_items:manage",
   },
   {
@@ -258,7 +257,7 @@ export const FEATURES: readonly FeatureDef[] = [
     href: "/admin/notification-logs",
     label: "通知配信状況",
     groupKey: "operations",
-    tier: "core",
+    tier: "advanced",
     requiredPermission: "menu_items:manage",
   },
   {
@@ -274,7 +273,7 @@ export const FEATURES: readonly FeatureDef[] = [
     key: "parts-orders",
     href: "/admin/parts-orders",
     label: "部品発注",
-    groupKey: "operations",
+    groupKey: "accounting",
     tier: "core",
     requiredPermission: "reservations:view",
     businessModes: ["mechanic", "body_paint"],
@@ -283,7 +282,7 @@ export const FEATURES: readonly FeatureDef[] = [
     key: "purchase-orders",
     href: "/admin/purchase-orders",
     label: "発注管理",
-    groupKey: "operations",
+    groupKey: "accounting",
     tier: "core",
     requiredPermission: "menu_items:manage",
     businessModes: ["mechanic", "body_paint"],
@@ -293,7 +292,7 @@ export const FEATURES: readonly FeatureDef[] = [
     href: "/admin/quick-quote",
     label: "概算見積",
     groupKey: "operations",
-    tier: "core",
+    tier: "advanced",
     requiredPermission: "reservations:view",
   },
   {
@@ -385,7 +384,7 @@ export const FEATURES: readonly FeatureDef[] = [
     href: "/admin/reviews",
     label: "レビュー",
     groupKey: "customers",
-    tier: "core",
+    tier: "advanced",
     requiredPermission: "customers:view",
   },
   {
@@ -393,7 +392,7 @@ export const FEATURES: readonly FeatureDef[] = [
     href: "/admin/shop-announcements",
     label: "店舗お知らせ",
     groupKey: "customers",
-    tier: "core",
+    tier: "advanced",
     requiredPermission: "customers:view",
   },
 
@@ -485,7 +484,7 @@ export const FEATURES: readonly FeatureDef[] = [
     href: "/admin/agent-commissions",
     label: "代理店コミッション",
     groupKey: "trade",
-    tier: "core",
+    tier: "advanced",
     requiredPermission: "insurers:view",
   },
   {
@@ -493,7 +492,7 @@ export const FEATURES: readonly FeatureDef[] = [
     href: "/admin/deals",
     label: "商談管理",
     groupKey: "trade",
-    tier: "core",
+    tier: "advanced",
     requiredPermission: "market:view",
   },
   {
@@ -501,7 +500,7 @@ export const FEATURES: readonly FeatureDef[] = [
     href: "/admin/insurers",
     label: "保険会社管理",
     groupKey: "trade",
-    tier: "core",
+    tier: "advanced",
     requiredPermission: "insurers:view",
   },
   {
@@ -509,7 +508,7 @@ export const FEATURES: readonly FeatureDef[] = [
     href: "/admin/market-vehicles",
     label: "マーケット車両",
     groupKey: "trade",
-    tier: "core",
+    tier: "advanced",
     requiredPermission: "market:view",
   },
 
