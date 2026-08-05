@@ -14,6 +14,13 @@
 - 起票日: YYYY-MM-DD
 ```
 
+## LINE共有の宛先が生の LINE ユーザーID 手入力のままで実運用しづらい（2026-08-05）
+- 状況: 帳票を LINE で PDF 送付できるようにしたが（署名 URL を本文に含める方式）、共有モーダルの LINE タブは宛先として生の LINE ユーザーID（`U...`）を手入力する仕様のまま。店舗スタッフが顧客の LINE ユーザーIDを知っている場面はほぼ無く、そのままでは使いづらい。
+- 選択肢: 案A 顧客に紐付け済みの `customers.line_user_id` をモーダルへ自動補完し、未紐付けなら連携コード発行/案内へ誘導（実用的だが customer→line_user_id 取得と UI 追加が要る）／案B 現状維持（PDF 送付機能自体は完成、宛先運用は別途）／案C 顧客選択ドロップダウンから line_user_id を解決。
+- 影響範囲: 誤ると「機能はあるが使えない」状態。緊急度は中（PDF 送付のコア機能は動作）。
+- 次のアクション: 代理店/店舗が LINE 宛先をどう選びたいか（顧客紐付け前提か、都度ID入力か）を代表に確認して A/C を判断。
+- 起票日: 2026-08-05
+
 ## 帳票明細バリデーションの二重定義（未使用 `documentItemSchema`）が実データ形状と非互換な潜在地雷（2026-08-03）
 - 状況: `src/lib/validations/document.ts` の `documentItemSchema`（`name` min1 必須／`type` enum／`tax_category` enum文字列）が、実際に保存・読込される明細形状（`description`／`item_type`／数値`tax_category` 10・8／`amount`）と完全に非互換。かつ `@/types/document` と同名の `DocumentItem` 型を別定義しており名前衝突している。現状フォームは `items`(`z.array(z.any())`) キーで送り、API も `input.items` のみ読むため無害だが、`documentCreateSchema.items_json`（厳格スキーマ結線）を使う経路に切り替わった瞬間に全明細がバリデーションで弾かれる／空になる。
 - 選択肢: 案A `documentItemSchema` を実データ形状（`description`/`item_type`/数値`tax_category`）に合わせて統一し `@/types/document` の型へ寄せる（正攻法だが波及調査が要る）／案B 未使用の `items_json` フィールドとスキーマを削除して `items`(実経路)一本化（最小・地雷除去）／案C コメントで「未使用・非互換」を明記し現状維持（最も安全だが地雷は残る）。

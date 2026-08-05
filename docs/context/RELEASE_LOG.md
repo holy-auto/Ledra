@@ -12,6 +12,21 @@
 - 対象: どの画面・API・業種向けか
 ```
 
+## 2026-08-05 帳票（請求書等）を LINE・メール・SMS で PDF リンク付き送付 (branch claude/payment-status-and-error-no5a9m)
+- 内容: 帳票共有（`POST /api/admin/documents/share`）で主帳票 PDF をレンダリングし、非公開 Storage
+  バケット（既存 `line-media` 再利用）へ保存して長期署名 URL を発行、各 channel の本文に含めるように
+  した。LINE Messaging API は生ファイル（PDF）を push できないため、URL 送付が唯一の方法。LINE は
+  `sendDocumentLink` に `pdfUrl` を追加して本文へ「PDFはこちら」リンクを付与、メールは既存の未使用
+  `pdfUrl` 引数（「PDFを表示」ボタン）を配線、SMS は本文に PDF URL を付記。PDF 生成失敗は fail-soft で
+  本文のみ送信。PDF ルートと共有で重複していたレイアウト解決を `src/lib/documents/pdfShare.ts` に集約。
+- 対象: 帳票詳細／一覧の「共有」→ LINE・メール・SMS（全帳票種別。請求書を含む）。
+
+## 2026-08-05 通知ベルの「すべて既読」がサーバに永続化されず未読が復活する不具合を修正 (branch claude/payment-status-and-error-no5a9m)
+- 内容: `NotificationBell` の「すべて既読」がローカル状態のみ更新で API を呼ばず、ポーリング再取得で
+  未読が復活していた。一括既読 API `PUT /api/admin/notifications/read-all`（テナント宛＋本人宛の未読を
+  `read_at` で既読化）を追加し、ベルを「楽観更新 → API → 再取得」に修正。
+- 対象: 管理画面トップバーの通知ベル。
+
 ## 2026-08-04 帳票一覧が本番で常に0件になる不具合を修正（金額フィルタ未指定を total=0 と誤解釈していた根本原因）(PR #879 / 93eeeea)
 - 内容: 帳票一覧API `GET /api/admin/documents` が、金額検索 `amount_min`/`amount_max` 未指定時に
   `Number("") === 0` によりフィルタ値を 0 と解釈し、クエリに `total>=0 AND total<=0`（＝ total=0）を

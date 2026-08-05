@@ -666,6 +666,11 @@ export async function sendDocumentLink(params: {
   docNumber: string;
   totalAmount: number;
   message?: string;
+  /**
+   * 帳票 PDF の署名 URL。LINE Messaging API は生ファイル (PDF) を push できないため、
+   * URL を本文に含めて顧客が開けるようにする (LINE は本文中の URL を自動リンク化する)。
+   */
+  pdfUrl?: string;
 }): Promise<boolean> {
   const config = await getLineConfig(params.tenantId);
   if (!config) return false;
@@ -674,6 +679,7 @@ export async function sendDocumentLink(params: {
     `【${params.docType}】${params.docNumber}`,
     `金額: ¥${params.totalAmount.toLocaleString("ja-JP")}`,
     params.message || null,
+    params.pdfUrl ? `\nPDFはこちら:\n${params.pdfUrl}` : null,
   ]
     .filter(Boolean)
     .join("\n");
