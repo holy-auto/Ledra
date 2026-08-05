@@ -143,9 +143,9 @@ export const NAV_GROUPS: NavGroup[] = [
     defaultOpen: true,
   },
   {
-    // 旧「業務」は項目数が多すぎたため、予約・作業まわりと 在庫・部品・装備まわりの
-    // 2 グループに分割して走査しやすくする（二段整理）。
-    label: "予約・作業",
+    // 「業務」= 予約・作業まわり + 在庫・部品・装備まわりを 1 グループに統合（大カテゴリ化）。
+    // 低頻度項目は catalog.ts の tier:"advanced" により既定非表示 (機能カスタマイズで opt-in)。
+    label: "業務",
     items: [
       {
         href: "/admin/reservations",
@@ -397,12 +397,6 @@ export const NAV_GROUPS: NavGroup[] = [
           </svg>
         ),
       },
-    ],
-    defaultOpen: true,
-  },
-  {
-    label: "在庫・部品・装備",
-    items: [
       {
         href: "/admin/menu-items",
         label: "品目マスタ",
@@ -455,34 +449,6 @@ export const NAV_GROUPS: NavGroup[] = [
               strokeLinecap="round"
               strokeLinejoin="round"
               d="M20.25 7.5l-7.5-4.5-7.5 4.5m15 0l-7.5 4.5m7.5-4.5v9l-7.5 4.5m0-9L4.5 7.5m7.5 4.5v9m-7.5-13.5v9l7.5 4.5"
-            />
-          </svg>
-        ),
-      },
-      {
-        href: "/admin/purchase-orders",
-        label: "発注管理",
-        requiredPermission: "menu_items:manage",
-        icon: (
-          <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              d="M15.75 10.5V6a3.75 3.75 0 1 0-7.5 0v4.5m11.356-1.993 1.263 12c.07.665-.45 1.243-1.119 1.243H4.25a1.125 1.125 0 0 1-1.12-1.243l1.264-12A1.125 1.125 0 0 1 5.513 7.5h12.974c.576 0 1.059.435 1.119 1.007ZM8.625 10.5a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm7.5 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z"
-            />
-          </svg>
-        ),
-      },
-      {
-        href: "/admin/parts-orders",
-        label: "部品発注",
-        requiredPermission: "reservations:view",
-        icon: (
-          <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              d="m7.5 4.27 9 5.15M21 8.25v7.5a.75.75 0 0 1-.38.65l-7.5 4.286a.75.75 0 0 1-.74 0l-7.5-4.286A.75.75 0 0 1 3 15.75v-7.5a.75.75 0 0 1 .38-.65l7.5-4.286a.75.75 0 0 1 .74 0l7.5 4.286a.75.75 0 0 1 .38.65Zm0 0L12 12m0 0L3 8.25M12 12v9"
             />
           </svg>
         ),
@@ -548,7 +514,7 @@ export const NAV_GROUPS: NavGroup[] = [
     defaultOpen: true,
   },
   {
-    label: "顧客",
+    label: "顧客・販促",
     items: [
       {
         href: "/admin/customers",
@@ -575,20 +541,6 @@ export const NAV_GROUPS: NavGroup[] = [
               strokeLinecap="round"
               strokeLinejoin="round"
               d="M8.625 9.75a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0H8.25m4.125 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0H12m4.125 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 0 1-2.555-.337A5.972 5.972 0 0 1 5.41 20.97a5.969 5.969 0 0 1-.474-.065 4.48 4.48 0 0 0 .978-2.025c.09-.457-.133-.901-.467-1.226C3.93 16.178 3 14.189 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25Z"
-            />
-          </svg>
-        ),
-      },
-      {
-        href: "/admin/line-broadcasts",
-        label: "LINE配信",
-        requiredPermission: "customers:view",
-        icon: (
-          <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              d="M2.25 12.76c0 1.6 1.123 2.994 2.707 3.227 1.087.16 2.185.283 3.293.369V21l4.076-4.076a1.526 1.526 0 0 1 1.037-.443 48.282 48.282 0 0 0 5.68-.494c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0 0 12 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018Z"
             />
           </svg>
         ),
@@ -746,7 +698,55 @@ export const NAV_GROUPS: NavGroup[] = [
     defaultOpen: true,
   },
   {
-    label: "取引ハブ",
+    label: "経理",
+    items: [
+      {
+        href: "/admin/payment-ledger",
+        label: "売掛元帳",
+        requiredPermission: "invoices:view",
+        icon: (
+          <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M9 14.25l6-6m4.5-3.493V21.75l-3.75-1.5-3.75 1.5-3.75-1.5-3.75 1.5V4.757c0-1.108.806-2.057 1.907-2.185a48.507 48.507 0 0 1 11.186 0c1.1.128 1.907 1.077 1.907 2.185ZM9.75 9h.008v.008H9.75V9Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm4.125 4.5h.008v.008h-.008V13.5Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z"
+            />
+          </svg>
+        ),
+      },
+      {
+        href: "/admin/purchase-orders",
+        label: "発注管理",
+        requiredPermission: "menu_items:manage",
+        icon: (
+          <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M15.75 10.5V6a3.75 3.75 0 1 0-7.5 0v4.5m11.356-1.993 1.263 12c.07.665-.45 1.243-1.119 1.243H4.25a1.125 1.125 0 0 1-1.12-1.243l1.264-12A1.125 1.125 0 0 1 5.513 7.5h12.974c.576 0 1.059.435 1.119 1.007ZM8.625 10.5a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm7.5 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z"
+            />
+          </svg>
+        ),
+      },
+      {
+        href: "/admin/parts-orders",
+        label: "部品発注",
+        requiredPermission: "reservations:view",
+        icon: (
+          <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="m7.5 4.27 9 5.15M21 8.25v7.5a.75.75 0 0 1-.38.65l-7.5 4.286a.75.75 0 0 1-.74 0l-7.5-4.286A.75.75 0 0 1 3 15.75v-7.5a.75.75 0 0 1 .38-.65l7.5-4.286a.75.75 0 0 1 .74 0l7.5 4.286a.75.75 0 0 1 .38.65Zm0 0L12 12m0 0L3 8.25M12 12v9"
+            />
+          </svg>
+        ),
+      },
+    ],
+    defaultOpen: true,
+  },
+  {
+    label: "取引・ネットワーク",
     items: [
       {
         href: "/admin/trades",
@@ -881,7 +881,8 @@ export const NAV_GROUPS: NavGroup[] = [
     defaultOpen: true,
   },
   {
-    label: "情報・学習",
+    // 情報・学習 + 設定/マスタ + 本社横断/運営 を「情報・設定」に統合（大カテゴリ化）。
+    label: "情報・設定",
     items: [
       {
         href: "/admin/announcements",
@@ -1005,35 +1006,6 @@ export const NAV_GROUPS: NavGroup[] = [
           </svg>
         ),
       },
-    ],
-    defaultOpen: false,
-  },
-  {
-    label: "経理",
-    items: [
-      {
-        href: "/admin/payment-ledger",
-        label: "売掛元帳",
-        requiredPermission: "invoices:view",
-        icon: (
-          <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              d="M9 14.25l6-6m4.5-3.493V21.75l-3.75-1.5-3.75 1.5-3.75-1.5-3.75 1.5V4.757c0-1.108.806-2.057 1.907-2.185a48.507 48.507 0 0 1 11.186 0c1.1.128 1.907 1.077 1.907 2.185ZM9.75 9h.008v.008H9.75V9Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm4.125 4.5h.008v.008h-.008V13.5Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z"
-            />
-          </svg>
-        ),
-      },
-    ],
-    defaultOpen: true,
-  },
-  {
-    // 設定・マスタ系 (hub:true) は歯車から開く設定ハブ (/admin/settings) に集約し、
-    // サイドバーには描画しない。ここに残るのは本社横断 (組織管理・横断ビュー) と
-    // 運営 (platformOnly) 項目だけなので、グループ見出しも「本社・運営」にする。
-    label: "本社・運営",
-    items: [
       {
         href: "/admin/settings",
         label: "店舗設定",

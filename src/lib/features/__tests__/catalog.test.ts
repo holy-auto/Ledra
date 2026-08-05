@@ -52,23 +52,14 @@ describe("feature catalog integrity", () => {
   // existing sidebars don't lose links overnight.
   it("routes newly added to the catalog stay core (no retroactive hiding)", () => {
     const previouslyUncataloguedHrefs = [
-      "/admin/agent-commissions",
       "/admin/body-repair",
-      "/admin/booths",
-      "/admin/contact-schedules",
-      "/admin/coupons",
-      "/admin/deals",
       "/admin/hq-overview",
       "/admin/inspection-templates",
-      "/admin/insurers",
       "/admin/integrations",
       "/admin/line-broadcasts",
       "/admin/loaner-cars",
       "/admin/maintenance-packs",
-      "/admin/market-vehicles",
       "/admin/messages",
-      "/admin/next-touch",
-      "/admin/notification-logs",
       "/admin/organizations",
       "/admin/parts-install/new",
       "/admin/parts-orders",
@@ -76,18 +67,36 @@ describe("feature catalog integrity", () => {
       "/admin/pos",
       "/admin/price-stats",
       "/admin/purchase-orders",
-      "/admin/quick-quote",
-      "/admin/reviews",
       "/admin/service-reminders",
       "/admin/settings/follow-up",
       "/admin/settings/customer-ranks",
-      "/admin/shop-announcements",
       "/admin/staff",
       "/admin/stocktake",
       "/admin/tire-storage",
     ];
     for (const href of previouslyUncataloguedHrefs) {
       expect(FEATURE_BY_HREF.get(href)?.tier, `${href} must stay core`).toBe("core");
+    }
+
+    // 2026-07 ナビ大カテゴリ再編で、低頻度機能を意図的に advanced（既定非表示＋
+    // オプトイン）へ移した。既存ユーザーは /admin/settings/features で再表示できる。
+    // 上の「後から隠さない」ガードの明示的な例外なので、advanced であることを固定する。
+    const intentionallyOptionalisedHrefs = [
+      "/admin/agent-commissions",
+      "/admin/booths",
+      "/admin/contact-schedules",
+      "/admin/coupons",
+      "/admin/deals",
+      "/admin/insurers",
+      "/admin/market-vehicles",
+      "/admin/next-touch",
+      "/admin/notification-logs",
+      "/admin/quick-quote",
+      "/admin/reviews",
+      "/admin/shop-announcements",
+    ];
+    for (const href of intentionallyOptionalisedHrefs) {
+      expect(FEATURE_BY_HREF.get(href)?.tier, `${href} is now advanced (intentional)`).toBe("advanced");
     }
   });
 });
