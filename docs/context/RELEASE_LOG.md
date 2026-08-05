@@ -13,6 +13,14 @@
 - 対象: どの画面・API・業種向けか
 ```
 
+## 2026-08-05 滞留PRバックログを整理し、機能3件を現mainへ再適用してマージ (PR #884 / #885 / #886)
+- 内容:
+  - #884: サインアップ失敗時のロールバック（auth user / tenant / membership 削除）失敗を検知し、「孤児レコード・要手動クリーンアップ」を3つの失敗パスすべてでログ化（`src/app/api/signup/route.ts`）。
+  - #885: 保険ケースのステータス変更で基幹ソフト連携向け webhook（`insurer_case.status_changed`）を発火（7ファイル）。加えて単一ケース PATCH に status compare-and-swap を追加し、同時更新時の webhook 二重発火を防止（bulk/messages ルートと整合、`cases/[id]/__tests__/route.test.ts` で3挙動を検証）。
+  - #886: CMS予約投稿の日時を JST↔UTC で正しく変換する `src/lib/datetime.ts` を新設し、`new Date().toISOString()` の素朴な変換を置換（14ファイル、`datetime.test.ts` 10件）。
+- 補足: 依存Bump #853/#775/#774 をマージ、陳腐化docs等（#757/#823/#822/#864/#863）をクローズ、履歴断絶した旧 #821/#748/#826 は上記再適用でクローズ。WIP実送金 #851・大型UIキット同期 #760 は保留。
+- 対象: サインアップAPI、保険会社ポータル（ケース管理）、CMS予約投稿、依存関係。
+
 ## 2026-08-05 帳票ステータスの 'overdue' を DB 制約に追加＋種別クイックナビ追加 (branch claude/chouhyo-kanri-kaizen-fkgzaa)
 - 内容:
   - `documents_status_check` に 'overdue'（期限超過）を追加。アプリは遷移・表示で 'overdue' を使うのに
