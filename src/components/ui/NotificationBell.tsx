@@ -73,9 +73,16 @@ export default function NotificationBell() {
     return () => document.removeEventListener("mousedown", handleClick);
   }, []);
 
-  const markAllRead = () => {
+  const markAllRead = async () => {
+    // 楽観的に既読表示。サーバにも永続化しないと次のポーリング再取得で未読に戻る
+    // (read_at が null のまま) ため、必ず API を叩いてから再取得する。
     setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
-    // Optionally call API to mark as read
+    try {
+      await fetch("/api/admin/notifications/read-all", { method: "PUT" });
+    } catch {
+      // 失敗時は次回ポーリングで元の未読状態に戻る (サーバが真実)。
+    }
+    fetchNotifications();
   };
 
   const formatTime = (iso: string) => {
