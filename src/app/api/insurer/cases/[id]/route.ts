@@ -1,9 +1,10 @@
-import { NextRequest } from "next/server";
+import { NextRequest, after } from "next/server";
 import { resolveInsurerCaller } from "@/lib/api/insurerAuth";
 import { apiJson, apiUnauthorized, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { createInsurerScopedAdmin } from "@/lib/supabase/admin";
 import { sendCaseStatusNotification } from "@/lib/insurer/notifications";
+import { emitEntityWebhook } from "@/lib/outbound-webhooks";
 import { insurerCaseUpdateSchema } from "@/lib/validations/insurer-case";
 
 export const runtime = "nodejs";
@@ -145,9 +146,11 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
       user_agent: ua,
     });
 
-    // Send notification on status change (fire-and-forget)
+    // Send notification on status change. Registered with after() so the
+    // work is guaranteed to run in serverless (an unawaited bare async IIFE
+    // can be dropped once the response is sent).
     if (updateData.status && updateData.status !== existing.status) {
-      (async () => {
+      after(async () => {
         try {
           // Notify insurer admin users about the status change
           const { data: insurerUsers } = await admin
@@ -185,6 +188,17 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
 
           // Notify tenant if case has tenant_id
           if (updated.tenant_id) {
+            // 基幹ソフト連携向け webhook (購読が無ければ no-op)。メール通知とは独立。
+            await emitEntityWebhook(updated.tenant_id, "insurer_case.status_changed", id, {
+              case_id: id,
+              case_number: updated.case_number,
+              title: updated.title,
+              old_status: existing.status,
+              new_status: updateData.status,
+              insurer_id: caller.insurerId,
+              updated_at: updated.updated_at,
+            });
+
             const { data: tenant } = await admin
               .from("tenants")
               .select("name, contact_email")
@@ -207,7 +221,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
         } catch (e) {
           console.error("[case-notification] status change notification failed:", e);
         }
-      })();
+      });
     }
 
     return apiJson({ case: updated });

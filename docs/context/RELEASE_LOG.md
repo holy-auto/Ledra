@@ -254,6 +254,17 @@
 - 対象: 顧客Web予約フォーム、Googleマップ予約/LINE LIFF経由の外部予約、`/admin/settings`
   店舗設定画面。
 
+## 2026-07-23 保険会社ケース更新をテナントAPI webhook基盤に接続 (PR #821)
+- 内容: `insurer_cases` の作成・ステータス変更は、これまでテナント（施工店）へはメール通知
+  （`sendCaseStatusNotification`）のみが届いており、既存の outbound webhook 基盤
+  （`tenant_webhooks` / `webhook-topics.ts`、certificate/customer/vehicle/work_history
+  のみ対応）には接続されていなかった。`insurer_case.created` / `insurer_case.status_changed`
+  をトピックレジストリに追加し、`POST /api/insurer/cases`（作成時）と
+  `PATCH /api/insurer/cases/[id]`（ステータス変更時）から `emitEntityWebhook()` で発火する
+  ようにした。既存のメール通知とは独立して動作し、購読が無いテナントには no-op。
+- 対象: 保険会社ポータル `/insurer/cases`（案件管理）と、テナント側の連携管理 UI
+  `/admin/integrations`（Webhook トピック選択に新トピックが自動反映）。
+
 ## 2026-07-22 管理画面ダッシュボードに「Ledraに聞く」入口 + 承認インボックスに根拠表示 (PR #819)
 - 内容: ダッシュボード最上部に自由入力欄 `AskLedraBar` を新設。まず決定的なキーワード→
   画面ルーティング（`src/lib/ai/askRouter.ts`、AI不使用・無料・全プラン対象）を試し、

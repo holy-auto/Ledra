@@ -1,4 +1,4 @@
-import { NextRequest } from "next/server";
+import { NextRequest, after } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
@@ -12,6 +12,7 @@ import {
 } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { insurerCaseMessageSchema } from "@/lib/validations/insurer-case";
+import { emitEntityWebhook } from "@/lib/outbound-webhooks";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -109,12 +110,32 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     if (error) return apiInternalError(error, "admin/insurer-cases/[id]/messages POST");
 
     // 保険会社からの返答待ちだった案件は「処理中」に戻す (施工店が返答した)。
+    // status='pending_tenant' を WHERE 条件に含めて compare-and-swap にすることで、
+    // 同時に複数の返信が来ても遷移を実行する (＝webhookを発火する) のは1件だけになる。
     if ((verified as { status?: string }).status === "pending_tenant") {
-      await admin
+      const now = new Date().toISOString();
+      const { data: transitioned } = await admin
         .from("insurer_cases")
-        .update({ status: "in_progress", updated_at: new Date().toISOString() })
+        .update({ status: "in_progress", updated_at: now })
         .eq("id", id)
-        .eq("tenant_id", caller.tenantId);
+        .eq("tenant_id", caller.tenantId)
+        .eq("status", "pending_tenant")
+        .select("id");
+
+      if (transitioned && transitioned.length > 0) {
+        // 基幹ソフト連携向け webhook (購読が無ければ no-op)。after() で確実に実行する。
+        after(async () => {
+          await emitEntityWebhook(caller.tenantId, "insurer_case.status_changed", id, {
+            case_id: id,
+            case_number: (verified as { case_number?: string }).case_number ?? null,
+            title: (verified as { title?: string }).title ?? null,
+            old_status: "pending_tenant",
+            new_status: "in_progress",
+            insurer_id: (verified as { insurer_id?: string | null }).insurer_id ?? null,
+            updated_at: now,
+          });
+        });
+      }
     }
 
     // 保険会社の担当者へ通知 (fire-and-forget)。テーブル未整備の環境では握りつぶす。
