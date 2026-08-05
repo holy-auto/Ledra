@@ -318,6 +318,26 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
         }
       />
 
+      {/* 帳票種別クイックナビ（バー）: 別種別の帳票へワンタップで切り替える */}
+      <nav className="flex gap-2 overflow-x-auto pb-1" aria-label="帳票種別の切り替え">
+        {[{ value: "all", label: "すべて" }, ...DOC_TYPE_LIST].map((t) => {
+          const active = typeFilter === t.value;
+          return (
+            <button
+              key={t.value}
+              type="button"
+              aria-pressed={active}
+              onClick={() => handleFilterChange(t.value, statusFilter)}
+              className={`whitespace-nowrap rounded-full px-4 py-1.5 text-xs font-medium transition ${
+                active ? "bg-accent text-white" : "glass-card text-secondary hover:text-primary"
+              }`}
+            >
+              {t.label}
+            </button>
+          );
+        })}
+      </nav>
+
       {loading && <div className="text-sm text-muted">読み込み中…</div>}
       {err && <div className="glass-card p-4 text-sm text-danger">{err}</div>}
 
@@ -625,18 +645,19 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
                           <Link href={`/admin/documents/${doc.id}`} className="btn-ghost px-3 py-1 text-xs">
                             詳細
                           </Link>
-                          {doc.doc_type === "invoice" && (doc.status === "sent" || doc.status === "overdue") && (
-                            <button
-                              type="button"
-                              className="btn-primary px-3 py-1 text-xs"
-                              onClick={() => {
-                                setPaymentTarget(doc.id);
-                                setPaymentDate(new Date().toISOString().slice(0, 10));
-                              }}
-                            >
-                              入金
-                            </button>
-                          )}
+                          {(doc.doc_type === "invoice" || doc.doc_type === "consolidated_invoice") &&
+                            (doc.status === "sent" || doc.status === "overdue") && (
+                              <button
+                                type="button"
+                                className="btn-primary px-3 py-1 text-xs"
+                                onClick={() => {
+                                  setPaymentTarget(doc.id);
+                                  setPaymentDate(new Date().toISOString().slice(0, 10));
+                                }}
+                              >
+                                入金
+                              </button>
+                            )}
                           {isDeletable(doc) && (
                             <button
                               type="button"
