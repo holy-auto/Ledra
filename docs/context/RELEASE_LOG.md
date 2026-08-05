@@ -7,6 +7,7 @@
 ## 記入フォーマット
 
 ```
+
 ## YYYY-MM-DD 変更タイトル (PR #番号 / commit)
 - 内容: 何を実装・変更したか
 - 対象: どの画面・API・業種向けか
@@ -144,6 +145,13 @@
 - 残（スコープ外）: 実送金の自動化（`stripe_connect_transfers.source_type` に vehicle_report 追加＋精算バッチ／
   Connect オンボーディング導線は別 PR）、返金時の台帳巻き戻し。
 
+## 2026-07-25 CMS予約投稿のタイムゾーンずれを修正（保存・表示の両方） (branch claude/cms-scheduled-post-bug-ejccnb)
+- 内容: サイトコンテンツ（お知らせ/ブログ/イベント）の予約公開が指定時刻に公開されず、かつ管理/公開画面の日時表示も入力とずれていた不具合を修正。
+  - **保存**: `datetime-local` が生成する TZ 無しの壁時計文字列（例 `2026-07-30T14:00`）を server action が `new Date(x).toISOString()` でそのまま変換していた。Vercel ランタイムの TZ が UTC のため JST 14:00 の予約が `14:00Z`（＝JST 23:00）で保存され、cron 自体は正常でも公開が9時間遅れていた。
+  - **表示**: 管理一覧・公開イベント/ニュース/ブログ・NewsTeaser の日時整形がサーバ側で `new Date().getHours()` / `iso.slice(0,10)` を使い、SSR(UTC)で JST 入力が9時間ずれて（日付のみ表示は深夜帯で1日）表示されていた。
+  - 共有ヘルパー `src/lib/datetime.ts` を新設（`jstLocalInputToUtcIso` / `utcIsoToJstLocalInput` / `jstParts` / `formatJstDateTime` / `formatJstDateTimeJa` / `formatJstDateJa`）。naive 入力を常に JST(UTC+9) として保存し、表示も常に JST で描画（実行環境TZ非依存）。散在していた各ページのローカル日時整形関数を撤去して集約。ユニットテスト追加（UTC/JST/他TZの各サーバで検証）。
+- 対象: `/admin/site-content`（作成・編集 server action / 一覧）、公開 `/events`・`/news/[slug]`・`/news`・`/blog`・`/blog/[slug]`・トップ NewsTeaser、cron `/api/cron/publish-scheduled` の対象データ
+
 ## 2026-07-27 AIナビ＆横断検索でサイドバーをスリム化 + 監査ゲート恒久修正 (PR #752 / e19d92c)
 - 内容:
   (1) サイドバー刷新: 常時表示をコア8機能に絞る slim 表示と、全 NAV_GROUPS を出す full トグル。
@@ -182,6 +190,7 @@
 ## 2026-07-27 C2PA本番証明書の取得手順ドキュメント + 切替前プリフライト検証スクリプト (branch claude/c2pa-production-deployment-nlv0gs)
 - 内容: production 署名証明書の取得〜切替を代表が実行できるよう整備。(1) `docs/c2pa-production-deployment.md` に取得フロー（C2PA Conformance Program 登録 → Conforming Products List → trust list CA 発行。商用発行は主に DigiCert / SSL.com）・env 形式（PEM チェーン / PKCS#8 鍵 / EKU 等）・鍵保管（env or KMS）・当面の TSA 代替を集約。公式 C2PA Trust List（c2pa-org/conformance-public、確認時点で 28 証明書）の実態を明記。(2) `scripts/verify-c2pa-cert.mjs`: 候補証明書で Ledra と同じ manifest を実署名し、公式 Trust List を anchor に読み戻して `validation_state==="Trusted"` のときだけ GO(exit0)、Valid/Invalid は NO-GO(exit1) と判定する切替前検証ツール。自己署名証明書で NO-GO(Invalid) になることを実測確認。
 - 対象: C2PA production 導入の運用手順・ツール。証明書取得自体は Conformance Program 登録を伴い代表判断待ち（OPEN_QUESTIONS 参照）。
+
 ## 2026-07-27 SEOカテゴリ語を「施工履歴プラットフォーム」に統一 (branch claude/ledra-seo-keywords-7vnacz)
 - 内容: 主カテゴリ語を PR TIMES と揃え「施工履歴プラットフォーム」に統一（旧「AI業務管理SaaS」から変更）。
   タイトル「Ledra｜自動車整備・コーティング店の施工履歴プラットフォーム」。`siteConfig`(single source) 経由で
