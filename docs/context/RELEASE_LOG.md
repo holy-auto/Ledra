@@ -12,6 +12,19 @@
 - 対象: どの画面・API・業種向けか
 ```
 
+## 2026-08-05 帳票ステータスの 'overdue' を DB 制約に追加＋種別クイックナビ追加 (branch claude/chouhyo-kanri-kaizen-fkgzaa)
+- 内容:
+  - `documents_status_check` に 'overdue'（期限超過）を追加。アプリは遷移・表示で 'overdue' を使うのに
+    制約が欠いており、詳細画面「期限超過に変更」で PUT が CHECK 違反(23514)の 500 になりステータス変更が
+    適用されなかったのを修正（マイグレーション `20260805085225_documents_status_overdue.sql`。本番へ直接適用済み）。
+  - 帳票管理一覧のヘッダーバーに帳票種別クイックナビ（すべて／見積書／請求書／領収書…）を追加。ワンタップで
+    種別を切り替えられる（既存の種別フィルタ状態を再利用）。
+  - 一覧の「入金」クイックボタンを `consolidated_invoice`（合算請求書）にも表示（詳細画面と条件を統一）。
+  - 再発防止テスト `statusConstraint.test.ts`（アプリが遷移し得る全ステータス ⊆ DB許可集合）を追加。
+- 補足: 「入金済の変更が適用されない」の主因は 20260715 バッチのマイグレーション・ドリフト（`documents.staff_member_id`
+  未反映で GET/PUT が 500）で、修復マイグレーション `20260731144359` が本番適用済みのため入金済更新自体は復旧済み。
+- 対象: 帳票管理（`/admin/documents`）一覧・詳細、`documents` テーブル。
+
 ## 2026-08-05 帳票（請求書等）を LINE・メール・SMS で PDF リンク付き送付 (branch claude/payment-status-and-error-no5a9m)
 - 内容: 帳票共有（`POST /api/admin/documents/share`）で主帳票 PDF をレンダリングし、非公開 Storage
   バケット（既存 `line-media` 再利用）へ保存して長期署名 URL を発行、各 channel の本文に含めるように
