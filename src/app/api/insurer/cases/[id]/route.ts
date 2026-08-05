@@ -9,6 +9,9 @@ import { insurerCaseUpdateSchema } from "@/lib/validations/insurer-case";
 
 export const runtime = "nodejs";
 
+const CASE_COLUMNS =
+  "id, insurer_id, title, description, status, priority, category, case_number, certificate_id, vehicle_id, tenant_id, assigned_to, created_by, resolved_at, closed_at, created_at, updated_at, meta";
+
 /**
  * GET /api/insurer/cases/[id]
  * Get case detail with messages and attachments.
@@ -29,9 +32,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
     // manual insurer_id check below).
     const { data: caseData, error: caseErr } = await admin
       .from("insurer_cases")
-      .select(
-        "id, insurer_id, title, description, status, priority, category, case_number, certificate_id, vehicle_id, tenant_id, assigned_to, created_by, resolved_at, closed_at, created_at, updated_at, meta",
-      )
+      .select(CASE_COLUMNS)
       .eq("id", id)
       .eq("insurer_id", caller.insurerId)
       .maybeSingle();
@@ -115,19 +116,36 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
 
     updateData.updated_at = new Date().toISOString();
 
-    // Scope the UPDATE itself by insurer_id so no race between the check
-    // above and the write can touch another insurer's row.
-    const { data: updated, error: updateErr } = await admin
-      .from("insurer_cases")
-      .update(updateData)
-      .eq("id", id)
-      .eq("insurer_id", caller.insurerId)
-      .select(
-        "id, insurer_id, title, description, status, priority, category, case_number, certificate_id, vehicle_id, tenant_id, assigned_to, created_by, resolved_at, closed_at, created_at, updated_at, meta",
-      )
-      .single();
+    const isStatusChange = updateData.status !== undefined && updateData.status !== existing.status;
+
+    // Scope the UPDATE by insurer_id (no cross-insurer write) and, on a status
+    // transition, also by the status we read above (compare-and-swap). The
+    // status CAS makes "did THIS request flip the case?" race-free, matching
+    // the bulk route: two concurrent PATCHes flipping the same case no longer
+    // both pass the gate below and double-emit the status_changed webhook. A
+    // non-status update keeps matching on id+insurer only, so a concurrent
+    // status change elsewhere doesn't spuriously fail an unrelated field edit.
+    let updateQuery = admin.from("insurer_cases").update(updateData).eq("id", id).eq("insurer_id", caller.insurerId);
+    if (isStatusChange) updateQuery = updateQuery.eq("status", existing.status);
+
+    const { data: updated, error: updateErr } = await updateQuery.select(CASE_COLUMNS).maybeSingle();
 
     if (updateErr) return apiValidationError(updateErr.message);
+
+    if (!updated) {
+      // Either the row vanished between read and write, or (on a status change)
+      // another request won the compare-and-swap and already transitioned it.
+      // Re-read and return the current row without re-emitting the webhook —
+      // this request did not perform the transition.
+      const { data: current } = await admin
+        .from("insurer_cases")
+        .select(CASE_COLUMNS)
+        .eq("id", id)
+        .eq("insurer_id", caller.insurerId)
+        .maybeSingle();
+      if (!current) return apiNotFound("ケースが見つかりません。");
+      return apiJson({ case: current });
+    }
 
     // Log to insurer_access_logs
     const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null;
@@ -149,7 +167,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     // Send notification on status change. Registered with after() so the
     // work is guaranteed to run in serverless (an unawaited bare async IIFE
     // can be dropped once the response is sent).
-    if (updateData.status && updateData.status !== existing.status) {
+    if (isStatusChange) {
       after(async () => {
         try {
           // Notify insurer admin users about the status change
