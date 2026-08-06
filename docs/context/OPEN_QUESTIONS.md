@@ -15,6 +15,18 @@
 - 起票日: YYYY-MM-DD
 ```
 
+## Tap to Pay 本番リリースの残論点（App Store一般公開・2026-08-06）
+- 状況: モバイルをApp Store一般公開する方針に決定し必須要件を実装したが、Apple提出前に確定が要る点が残る。
+- 論点と選択肢:
+  1. **Apple 本番(Distribution) entitlement の付与状況【確定: 未付与】**: 2026-08-06 の実機向け `preview`(AdHoc) ビルドで、fastlane が `Entitlement com.apple.developer.proximity-reader.payment.acceptance not found and could not be included in profile` で失敗 → **Distribution/publishing entitlement は未付与**と確定。暫定対応として `withRemoveTapToPayEntitlement` を app.json plugins に登録し、development のみ entitlement を保持・preview/production は除去するよう修正済み（実機動作確認ビルドは TTP 無しで通る）。**残作業**: 審査動画3本を提出して publishing entitlement を取得 → 付与後に plugin 条件へ preview/production を戻して TTP 入りビルドを出す（submission-guide の Go/No-Go）。
+  2. **要件1.6 T&C取得**: Stripe Terminal SDK が Apple 保存の T&C 同意状態を返すAPIを持つか【要確認】。現状 `termsAccepted` は接続成功から派生した表示専用フラグ（checkoutはゲートしないので要件の趣旨=ローカル変数依存の禁止には抵触しない想定）。SDKにAPIがあれば置換。
+  3. **要件3.2 初回スプラッシュ告知**: 全画面モーダルの初回告知が審査ブロッカーか。基盤(push/banner)はあるが全画面スプラッシュは未実装。→ 審査で問われたら追加。
+  4. **要件4.1 ProximityReaderDiscovery**: Stripe Terminal SDK が内部で使用しているか【要確認】。教育コンテンツ(4.4-4.8)の充足可否に影響。
+  5. **単独owner退会時のデータ保持方針**: `DELETE /api/mobile/account` は単独ownerのときテナントを無効化＋連絡先PII消去に留め、施工履歴等の業務レコードは物理削除していない。施工履歴の保持義務・個人情報保護法の削除請求との整合をどう定義するか（法務判断）。→ 保持期間ポリシーを決めて明文化。
+- 影響範囲: 1が未確定だと本番ビルドが通らずリリース不可。2〜4は審査差し戻しリスク。5は将来的な法務・信頼リスク。
+- 次のアクション: 代表が(1)Apple Portalのステータス確認・(4)は提出前にSDK挙動確認。(2)(3)は審査反応を見て対応。(5)は保持方針を決定しDECISION_LOGへ。
+- 起票日: 2026-08-06
+
 ## 保留中PR #851（実送金）・#760（大型UIキット同期）の扱い（2026-08-05）
 - 状況: PRバックログ整理で、WIP の実送金PR #851（Passport連携、draft/未完成）と大型UIキット同期 #760（55ファイル・レビュー20件）を保留とした。他11件（依存Bump/docs/機能PR3件）は処理済み（マージ4・クローズ8・再作成3）。
 - 選択肢: #851 → 送金機能の完成を待ってから再開／今クローズして完成時に作り直し。#760 → 55ファイルを手動レビューしてマージ／小さく分割し直す／クローズ。

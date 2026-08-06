@@ -16,6 +16,7 @@ import { useQueryClient } from "@tanstack/react-query";
 
 import { supabase } from "@/lib/supabase";
 import { useAuthStore } from "@/stores/authStore";
+import { mobileApi } from "@/lib/api";
 
 const ENV = process.env.EXPO_PUBLIC_ENV ?? "development";
 const WEB_APP_URL =
@@ -32,6 +33,8 @@ export default function SettingsIndexScreen() {
   const { user, selectedStore, setSelectedStore, reset } = useAuthStore();
   const queryClient = useQueryClient();
   const [clearVisible, setClearVisible] = useState(false);
+  const [deleteVisible, setDeleteVisible] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [snackbar, setSnackbar] = useState("");
 
   const appVersion =
@@ -62,6 +65,25 @@ export default function SettingsIndexScreen() {
     setClearVisible(false);
     queryClient.clear();
     setSnackbar("キャッシュを削除しました");
+  }
+
+  async function handleDeleteAccount() {
+    setDeleting(true);
+    try {
+      await mobileApi("/account", { method: "DELETE" });
+      // 認証は削除済み。ローカルセッションを破棄してログインへ。
+      await supabase.auth.signOut();
+      queryClient.clear();
+      reset();
+      router.replace("/(auth)/login");
+    } catch (e) {
+      setDeleteVisible(false);
+      setSnackbar(
+        e instanceof Error ? e.message : "アカウント削除に失敗しました"
+      );
+    } finally {
+      setDeleting(false);
+    }
   }
 
   async function handleOpenWeb() {
@@ -167,6 +189,16 @@ export default function SettingsIndexScreen() {
         >
           ログアウト
         </Button>
+
+        <Button
+          mode="text"
+          icon="account-remove-outline"
+          onPress={() => setDeleteVisible(true)}
+          style={styles.actionButton}
+          textColor="#991b1b"
+        >
+          アカウントを削除
+        </Button>
       </View>
 
       {/* App Info */}
@@ -207,6 +239,41 @@ export default function SettingsIndexScreen() {
               onPress={handleClearCache}
             >
               削除
+            </Button>
+          </Dialog.Actions>
+        </Dialog>
+
+        <Dialog
+          visible={deleteVisible}
+          onDismiss={() => !deleting && setDeleteVisible(false)}
+        >
+          <Dialog.Icon icon="account-remove-outline" />
+          <Dialog.Title style={{ textAlign: "center" }}>
+            アカウントを削除
+          </Dialog.Title>
+          <Dialog.Content>
+            <Text variant="bodyMedium">
+              このアカウントを完全に削除します。ログインできなくなり、この操作は
+              取り消せません。
+              {"\n\n"}
+              あなたが店舗の唯一の管理者(owner)の場合、店舗も無効化されます。
+            </Text>
+          </Dialog.Content>
+          <Dialog.Actions>
+            <Button
+              disabled={deleting}
+              onPress={() => setDeleteVisible(false)}
+            >
+              キャンセル
+            </Button>
+            <Button
+              mode="contained"
+              buttonColor="#991b1b"
+              loading={deleting}
+              disabled={deleting}
+              onPress={handleDeleteAccount}
+            >
+              削除する
             </Button>
           </Dialog.Actions>
         </Dialog>

@@ -1,5 +1,10 @@
 # Tap to Pay on iPhone - Distribution承認チェックリスト
 
+> **2026-08 注記**: 本表は「実装着手前」のギャップ分析スナップショット。
+> 配布方針を **App Store 一般公開** に決定し（旧: Custom Apps 前提を撤回）、
+> アプリ内サインアップ / アカウント削除 / push基盤 / ホームバナー等を実装済み。
+> **最新の項目別ステータスと提出手順は `docs/tap-to-pay-submission-guide.md` を正とする**（本表は経緯として保存）。
+
 Apple Distribution Entitlement 取得のための要件と Ledra 現状の対応マッピング。
 
 **ステータス凡例:**

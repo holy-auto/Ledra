@@ -40,20 +40,33 @@ const TAP_TO_PAY_ENTITLEMENT =
 /**
  * 2026-05 update:
  *   Apple から Development Distribution Entitlement が付与されたため、
- *   development / preview プロファイル のビルドではこの plugin を
- *   スキップ（entitlement を残したまま）にする。
- *   production プロファイル（App Store配布）は publishing entitlement
- *   が下りるまで引き続き除去する。
+ *   development プロファイル（Development provisioning profile）のビルドでは
+ *   この plugin をスキップ（entitlement を残したまま）にする。
+ *
+ * 2026-08 update:
+ *   preview（internal＝AdHoc）と production は **Distribution 型**の
+ *   provisioning profile を使う。Apple はまだ TTP の publishing
+ *   (Distribution) entitlement を付与していないため、これらの profile には
+ *   proximity-reader.payment.acceptance を含められず、含めると fastlane が
+ *   "Entitlement ... not found and could not be included in profile" で失敗
+ *   する。よって **development 以外（preview / production）では除去**する。
+ *   Distribution entitlement が付与されたら、下の shouldKeep 条件に
+ *   "preview" を戻す（App Store 提出=production は付与後に別途復活）。
  *
  *   EAS Build は EAS_BUILD_PROFILE 環境変数にプロファイル名を入れる。
  */
 module.exports = function withRemoveTapToPayEntitlement(config) {
   const profile = process.env.EAS_BUILD_PROFILE;
-  const shouldKeep = profile === "development" || profile === "preview";
+  // Development 型 provisioning profile（development / development-device）は
+  // dev-granted entitlement を含められる。審査動画は development-device の
+  // 実機ビルド + Stripe テストモードで撮るため、ここで TTP を保持する。
+  // preview(AdHoc) / production は Distribution 型のため除去する。
+  const shouldKeep =
+    profile === "development" || profile === "development-device";
 
   return withEntitlementsPlist(config, (mod) => {
     if (shouldKeep) {
-      // 開発/プレビューでは entitlement を残し、Tap to Pay を実機で動作させる
+      // 開発ビルドでは entitlement を残し、Tap to Pay を実機で動作させる
       return mod;
     }
     if (mod.modResults && TAP_TO_PAY_ENTITLEMENT in mod.modResults) {

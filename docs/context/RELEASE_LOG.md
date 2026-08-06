@@ -13,6 +13,22 @@
 - 対象: どの画面・API・業種向けか
 ```
 
+## 2026-08-06 モバイルApp Store一般公開に向けたサインアップ/退会/push/TTP UX整備 (PR #891)
+- 内容:
+  - **アプリ内サインアップ**（要件2.x）: `apps/mobile/src/app/(auth)/signup.tsx` を新設。既存 `POST /api/signup` を再利用してテナント+ownerを作成し、そのまま `signInWithPassword`→店舗選択まで**アプリ内で完結**。login画面に導線追加。
+  - **アプリ内アカウント削除**（Apple 5.1.1(v)）: `DELETE /api/mobile/account` を新設。唯一のownerならテナントを `is_active=false` 化＋連絡先PII消去、それ以外は本人のみ削除（auth削除で `tenant_memberships` は ON DELETE CASCADE）。設定画面に確認ダイアログ付き導線。
+  - **プライバシーマニフェスト**: `app.json` の `ios.privacyManifests` に Required Reason API（FileTimestamp/UserDefaults/SystemBootTime/DiskSpace）を宣言。
+  - **ホームのTap to Payバナー**（要件3.1）: iPhone時に有効化導線を表示し `/settings/tap-to-pay` へ誘導（閉じる可）。
+  - **push基盤**（要件3.3）: `expo-notifications`/`expo-device` を導入し `lib/push.ts` でトークン取得→`POST /api/mobile/push/register`。認証後にroot layoutで自動登録。
+  - **checkout微修正**: 副決済ボタンのアイコンを `contactless-payment` に統一（5.5）、未使用の `ReceiptShareDialog` 導線を削除（B-8）。
+  - **設定画面「有効化済み」表示の修正**: `termsAccepted` をTTP接続成功時にセット（checkoutはこのフラグでゲートせず＝要件5.3準拠）。
+  - **ドキュメント**: `tap-to-pay-submission-guide.md` を Custom Apps 前提から **App Store 一般公開前提**に全面改訂（動画台本3本・ASCメタデータ・審査用デモアカウント・提出前Go/No-Go・審査項目対応表）。`tap-to-pay-distribution-checklist.md` に方針変更の注記。
+  - **実機起動の修復（RN依存整合）**: `react-native` を Expo SDK55 の pin 版へ（0.86.0→0.83.6、`@react-native/codegen` 0.83.x と一致）ほか react/reanimated/worklets 等7点を整合。不整合で Metro バンドルが `VirtualView` codegen エラーになり実機/devビルドが起動不能だったのを解消。
+  - **TTP location 取得の修復**: `GET /api/mobile/pos/terminal/location` の Terminal Location 自動作成を日本住所形式 `address_kanji` に修正（標準 `address` は JP で Stripe 400 になり Location を作成できず、TTP有効化が常に「location取得失敗」になっていた）。
+  - **entitlement plugin**: `withRemoveTapToPayEntitlement` を app.json に登録し、Development型プロファイル(development/development-device)のみ TTP entitlement を保持・Distribution型(preview/production)は除去（Apple の publishing entitlement 未付与のため。付与後に preview/production を条件へ戻す）。
+- 対象: モバイルアプリ（`apps/mobile`、Expo SDK55）／モバイル用API（signup再利用・account削除・push登録・terminal location）。iOS App Store 提出準備。
+- 補足: 動画3本の**撮影は代表が実施**（台本はsubmission-guideに用意）。mobile typecheck パス。実機は `development-device` ビルド（entitlement 保持）で起動確認。**A-1=Apple の Distribution entitlement は未付与で確定**（実ビルド署名失敗より）。
+
 ## 2026-08-05 帳票共有のLINE宛先を顧客の連携済みLINEに自動選択 (branch claude/payment-status-and-error-no5a9m)
 - 内容: 帳票共有モーダルの LINE タブで、顧客に連携済みの `customers.line_user_id` があれば宛先を
   自動選択し「◯◯様のLINEに送信します（連携済み）」と表示（生IDの手入力が不要に）。未連携時、
