@@ -60,15 +60,22 @@ export async function GET(req: NextRequest) {
     // 2) 無ければ作成 (最低限の住所で OK)
     const name = (tenant?.name as string | null) ?? "Ledra Store";
     const address = (tenant?.address as Record<string, string> | null) ?? {};
+    // 日本アカウントの Terminal Location は標準の `address` ではなく
+    // `address_kanji`(/`address_kana`) で送る必要がある。`address` を使うと
+    // Stripe が 400 (`The address field cannot be used for addresses in JP.
+    // Use address_kana or address_kanji instead.`) を返し、Location を作成でき
+    // ない（＝Tap to Pay の location 取得が常に失敗する）。手元にあるのは
+    // 漢字表記の住所なので address_kanji に投入する。
     const created = await stripe.terminal.locations.create(
       {
         display_name: name.slice(0, 100),
-        address: {
-          line1: address.line1 ?? "1-1-1",
-          city: address.city ?? "Tokyo",
-          state: address.state ?? "Tokyo",
-          postal_code: address.postal_code ?? "1000001",
+        address_kanji: {
           country: "JP",
+          postal_code: address.postal_code ?? "1000001",
+          state: address.state ?? "東京都",
+          city: address.city ?? "千代田区",
+          line1: address.line1 ?? "1-1-1",
+          ...(address.line2 ? { line2: address.line2 } : {}),
         },
       },
       stripeOptions,
