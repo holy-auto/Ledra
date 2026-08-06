@@ -83,7 +83,9 @@ export async function GET(req: NextRequest) {
 
     // Confirm paid (idempotent fallback for webhook lag).
     let expiresAtIso = order.expires_at;
-    if (order.status !== "paid" || !expiresAtIso) {
+    if (order.status === "pending") {
+      // Only a pending order becomes paid — never re-pay one already flipped to
+      // `refunded` (webhook ordering safety; guarded atomically on status).
       expiresAtIso = new Date(Date.now() + REPORT_ACCESS_VALIDITY_DAYS * 24 * 60 * 60 * 1000).toISOString();
       await admin
         .from("vehicle_report_orders")
@@ -94,6 +96,14 @@ export async function GET(req: NextRequest) {
           stripe_payment_intent_id:
             typeof session.payment_intent === "string" ? session.payment_intent : null,
         })
+        .eq("id", order.id)
+        .eq("status", "pending");
+    } else if (order.status === "paid" && !expiresAtIso) {
+      // Already paid but missing the access window (rare) → backfill only.
+      expiresAtIso = new Date(Date.now() + REPORT_ACCESS_VALIDITY_DAYS * 24 * 60 * 60 * 1000).toISOString();
+      await admin
+        .from("vehicle_report_orders")
+        .update({ expires_at: expiresAtIso, updated_at: new Date().toISOString() })
         .eq("id", order.id);
     }
 

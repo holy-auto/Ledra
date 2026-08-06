@@ -16,6 +16,7 @@ import { maskEmail } from "@/lib/logger";
 import { invalidateTenantBillingCache } from "@/lib/billing/guard";
 import { REPORT_ACCESS_VALIDITY_DAYS } from "@/lib/vehicleReport/access";
 import { recordVehicleReportRevenueShares } from "@/lib/vehicleReport/revenueShare";
+import { reverseVehicleReportRevenueSharesForOrder } from "@/lib/vehicleReport/payout";
 import { recordSubscriptionCommission, advanceReferralToContracted } from "@/lib/agents/commission";
 import { recordInvoicePaymentBalance } from "@/lib/invoice/recordPayment";
 
@@ -38,6 +39,66 @@ function asStringId(v: unknown): string | null {
 function getCurrentPeriodEnd(sub: Stripe.Subscription): number | null {
   const subRecord = sub as unknown as Record<string, unknown>;
   return (subRecord.current_period_end as number | undefined) ?? sub.items?.data?.[0]?.current_period_end ?? null;
+}
+
+/**
+ * Mark a vehicle-report order paid + book its revenue-share accrual. Shared by
+ * `checkout.session.completed` (synchronous card) and
+ * `checkout.session.async_payment_succeeded` (conbini / bank transfer, which
+ * completes `unpaid` and only confirms funds via this later event). Idempotent:
+ * the paid update guards on status='pending' (never re-pays a refunded order),
+ * and the share booking upserts on UNIQUE(order_id, tenant_id).
+ */
+async function handleVehicleReportSessionPaid(
+  supabase: ReturnType<typeof createServiceRoleAdmin>,
+  session: Stripe.Checkout.Session,
+): Promise<void> {
+  const orderId = session.metadata?.vehicle_report_order_id;
+  if (!orderId) return;
+  if (session.payment_status !== "paid") {
+    console.info("webhook: vehicle report checkout not yet paid", {
+      orderId,
+      paymentStatus: session.payment_status,
+    });
+    return;
+  }
+
+  const paymentIntentId = asStringId(session.payment_intent);
+  const nowIso = new Date().toISOString();
+  const expiresAt = new Date(Date.now() + REPORT_ACCESS_VALIDITY_DAYS * 24 * 60 * 60 * 1000).toISOString();
+
+  // Only a still-`pending` order becomes paid — never re-pay one that the
+  // unlock route already confirmed or that `charge.refunded` flipped to
+  // `refunded` (webhook ordering safety).
+  const { error: vrErr } = await supabase
+    .from("vehicle_report_orders")
+    .update({
+      status: "paid",
+      stripe_payment_intent_id: paymentIntentId,
+      paid_at: nowIso,
+      expires_at: expiresAt,
+      updated_at: nowIso,
+    })
+    .eq("id", orderId)
+    .eq("status", "pending");
+
+  if (vrErr) {
+    // Don't swallow: returning normally lets the outer handler mark the event
+    // processed, so an async_payment_succeeded resend is duplicate-skipped and
+    // a paying customer is stranded on a permanently `pending` order. Throw →
+    // the event stays `processed_at IS NULL` for the monitor cron + manual
+    // replay. The update guards on status='pending', so a replay is idempotent.
+    throw new Error(`vehicle report order paid transition failed for ${orderId}: ${vrErr.message}`);
+  }
+
+  console.info("webhook: vehicle report order paid", { orderId });
+  // Book the merchant revenue-share accrual. This webhook is the ONLY reliable
+  // booking opportunity for async_payment_succeeded (the buyer already passed
+  // the unlock route while unpaid), and a Stripe resend is duplicate-skipped —
+  // so a swallowed error would permanently drop the ledger rows. Let it throw:
+  // the event stays `processed_at IS NULL` for the monitor cron + manual replay,
+  // and the booking is idempotent (UNIQUE(order_id,tenant_id)), so replay is safe.
+  await recordVehicleReportRevenueShares(orderId);
 }
 
 // ── Payment failure notification email ──
@@ -622,42 +683,11 @@ export async function POST(req: NextRequest) {
         }
 
         // ─── 車両履歴レポート checkout (mode=payment / アカウント不要) ───
+        // 非同期決済 (コンビニ/銀行振込 等) は completed 時点で payment_status が
+        // 'unpaid' のことがある。その場合は入金確定時の
+        // checkout.session.async_payment_succeeded で paid 化する。
         if (session.metadata?.vehicle_report_order_id) {
-          const orderId = session.metadata.vehicle_report_order_id;
-          const paymentIntentId = asStringId(session.payment_intent);
-          const nowIso = new Date().toISOString();
-          const expiresAt = new Date(Date.now() + REPORT_ACCESS_VALIDITY_DAYS * 24 * 60 * 60 * 1000).toISOString();
-
-          // .neq("status","paid") keeps this idempotent vs the unlock
-          // route, which may have already confirmed the order (and set
-          // its own expires_at) before this webhook is delivered.
-          const { error: vrErr } = await supabase
-            .from("vehicle_report_orders")
-            .update({
-              status: "paid",
-              stripe_payment_intent_id: paymentIntentId,
-              paid_at: nowIso,
-              expires_at: expiresAt,
-              updated_at: nowIso,
-            })
-            .eq("id", orderId)
-            .neq("status", "paid");
-
-          if (vrErr) {
-            console.error("webhook: vehicle report order update failed", { orderId, error: vrErr });
-            break;
-          }
-
-          console.info("webhook: vehicle report order paid", { orderId });
-          // Book the merchant revenue-share accrual. Idempotent vs the
-          // unlock route (UNIQUE(order_id, tenant_id) + ignoreDuplicates).
-          // Non-fatal: a booking error must not 500 the webhook (Stripe
-          // would retry and re-book idempotently anyway).
-          try {
-            await recordVehicleReportRevenueShares(orderId);
-          } catch (shareErr) {
-            console.error("webhook: vehicle report revenue share booking failed (non-fatal)", { orderId, shareErr });
-          }
+          await handleVehicleReportSessionPaid(supabase, session);
           break;
         }
 
@@ -790,6 +820,16 @@ export async function POST(req: NextRequest) {
           if (tenant_id && !sub.metadata?.tenant_id) sub.metadata = { ...(sub.metadata ?? {}), tenant_id };
           if (tenant_slug && !sub.metadata?.tenant_slug) sub.metadata = { ...(sub.metadata ?? {}), tenant_slug };
           await syncBySubscription(stripe, supabase, sub);
+        }
+        break;
+      }
+
+      // 非同期決済 (コンビニ/銀行振込 等) の入金確定。checkout.session.completed
+      // 時点では payment_status='unpaid' なので、ここで初めて paid 化する。
+      case "checkout.session.async_payment_succeeded": {
+        const session = event.data.object as Stripe.Checkout.Session;
+        if (session.metadata?.vehicle_report_order_id) {
+          await handleVehicleReportSessionPaid(supabase, session);
         }
         break;
       }
@@ -1072,6 +1112,77 @@ export async function POST(req: NextRequest) {
           await supabase.from("tenants").update({ stripe_connect_onboarded: onboarded }).eq("id", tenant.id);
           console.info("webhook: connect account synced", { accountId, onboarded });
         }
+        break;
+      }
+
+      // ─── 車両履歴レポート売上の返金 → 加盟店還元の巻き戻し ───
+      case "charge.refunded": {
+        const charge = event.data.object as Stripe.Charge;
+        // 全額返金のみ対象。ponytail: 部分返金は無視する。天井: 部分返金を
+        // 扱うなら refunded 比率に応じて各 share を部分 reverse する設計へ拡張。
+        if (!charge.refunded || charge.amount_refunded !== charge.amount) break;
+        const piId = asStringId(charge.payment_intent);
+        if (!piId) break;
+
+        // Resolve the report order. Prefer the id stamped on the PaymentIntent
+        // at checkout — robust even if the order row's payment_intent id is not
+        // persisted yet (refund delivered before checkout.session.completed).
+        let orderId = (charge.metadata?.vehicle_report_order_id as string | undefined) ?? null;
+        if (!orderId) {
+          try {
+            const pi = await stripe.paymentIntents.retrieve(piId);
+            orderId = (pi.metadata?.vehicle_report_order_id as string | undefined) ?? null;
+          } catch {
+            /* fall through to payment_intent id lookup */
+          }
+        }
+        if (!orderId) {
+          const { data: byPi } = await supabase
+            .from("vehicle_report_orders")
+            .select("id")
+            .eq("stripe_payment_intent_id", piId)
+            .maybeSingle();
+          orderId = (byPi as { id: string } | null)?.id ?? null;
+        }
+        if (!orderId) break; // not a vehicle-report charge
+
+        const { data: order, error: orderErr } = await supabase
+          .from("vehicle_report_orders")
+          .select("id, status")
+          .eq("id", orderId)
+          .maybeSingle();
+        // A failed lookup must NOT be read as "no such order" — that would let a
+        // known refund be marked processed while the order stays paid and its
+        // shares payable. Throw so the monitor cron surfaces it for replay.
+        if (orderErr) {
+          throw new Error(`vehicle report refund order lookup failed for ${orderId}: ${orderErr.message}`);
+        }
+        if (!order) break;
+        if ((order.status as string) === "refunded") break; // already handled (idempotent)
+
+        // Roll back booked shares (throws on a failed reversal → Stripe retries
+        // the whole event), then mark the order refunded. Marking refunded also
+        // blocks a late checkout.session.completed from re-paying it (that
+        // update guards on status = 'pending').
+        const summary = await reverseVehicleReportRevenueSharesForOrder(supabase, order.id as string);
+        // The shares are already reversed; the order MUST now flip to refunded.
+        // If this update fails and we silently marked the event processed, the
+        // order stays non-refunded — a late checkout.session.completed could
+        // re-pay it (its guard is status='pending'). Throw so the event stays
+        // `processed_at IS NULL` with the error → the stripe-event-monitor cron
+        // alerts ops for manual replay; the reversal above is idempotent
+        // (terminal shares are skipped), so a replay is safe.
+        const { error: refundErr } = await supabase
+          .from("vehicle_report_orders")
+          .update({ status: "refunded", updated_at: new Date().toISOString() })
+          .eq("id", order.id);
+        if (refundErr) {
+          throw new Error(`vehicle report order refund transition failed for ${order.id}: ${refundErr.message}`);
+        }
+        console.info("webhook: vehicle report order refunded — shares rolled back", {
+          orderId: order.id,
+          ...summary,
+        });
         break;
       }
 

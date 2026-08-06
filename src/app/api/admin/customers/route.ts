@@ -35,7 +35,7 @@ export async function GET(req: NextRequest) {
       // caller は既に自テナント下で認証されているので response body に
       // 含める必要はなく、外す (see `redactScopeIds`).
       .select(
-        "id, name, name_kana, email, phone, postal_code, address, note, customer_type, billing_cycle, billing_terms_note, closing_day, payment_terms_days, linked_tenant_id, corporate_number, invoice_registration_number, short_name, honorific, transfer_fee_payer, document_delivery_method, nda_status, basic_contract_status, created_at, updated_at",
+        "id, name, name_kana, email, phone, line_user_id, postal_code, address, note, customer_type, billing_cycle, billing_terms_note, closing_day, payment_terms_days, linked_tenant_id, corporate_number, invoice_registration_number, short_name, honorific, transfer_fee_payer, document_delivery_method, nda_status, basic_contract_status, created_at, updated_at",
       )
       .eq("tenant_id", caller.tenantId)
       .order("created_at", { ascending: false });
