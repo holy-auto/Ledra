@@ -86,7 +86,12 @@ export async function getReportTiers(): Promise<ReportTier[]> {
 
   // The full-report price stays sourced from `vehicle_report_settings.price_jpy`
   // so the existing platform-admin price screen remains effective; partial
-  // tiers use their own row price.
+  // tiers use their own row price. A failed settings read must NOT silently fall
+  // back to the seeded tier price (that would charge a stale price after an
+  // admin change) — throw so the caller surfaces it.
+  if (settingsRes.error) {
+    throw new Error(`vehicle report tiers: settings price read failed: ${settingsRes.error.message}`);
+  }
   const fullPrice =
     typeof (settingsRes.data as { price_jpy: number | null } | null)?.price_jpy === "number"
       ? (settingsRes.data as { price_jpy: number }).price_jpy

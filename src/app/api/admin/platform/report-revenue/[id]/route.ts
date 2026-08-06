@@ -96,7 +96,10 @@ export async function PATCH(request: NextRequest, ctx: RouteContext) {
       };
       return apiValidationError(msg[result.reason ?? ""] ?? "送金に失敗しました。");
     }
-    return apiJson({ ok: true, status: "approved", transferId: result.transferId });
+    // payVehicleReportRevenueShare finalizes synchronously to `paid` (Stripe
+    // does not emit transfer.paid), so report the real resulting status, not
+    // the pre-transfer `approved`.
+    return apiJson({ ok: true, status: "paid", transferId: result.transferId });
   } catch (e) {
     return apiInternalError(e, "report-revenue PATCH");
   }

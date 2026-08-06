@@ -213,6 +213,11 @@ export async function settleApprovedRevenueShares(
       const res = await payVehicleReportRevenueShare(admin, r.id);
       if (res.ok) paid += 1;
       else if (res.reason === "tenant_not_onboarded") needsOnboarding += 1;
+      // claim_failed / reconcile_read_failed mean a transfer was already created
+      // but the DB write/read failed — money moved without being recorded. Count
+      // as errored (not a benign skip) so a batch-wide settlement-DB failure
+      // trips the escalation below and alerts ops.
+      else if (res.reason === "claim_failed" || res.reason === "reconcile_read_failed") errored += 1;
       else skipped += 1;
     } catch (e) {
       errored += 1;

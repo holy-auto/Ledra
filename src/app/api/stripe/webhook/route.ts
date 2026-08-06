@@ -92,13 +92,13 @@ async function handleVehicleReportSessionPaid(
   }
 
   console.info("webhook: vehicle report order paid", { orderId });
-  // Book the merchant revenue-share accrual. Non-fatal: a booking error must
-  // not 500 the webhook (Stripe retries and re-books idempotently anyway).
-  try {
-    await recordVehicleReportRevenueShares(orderId);
-  } catch (shareErr) {
-    console.error("webhook: vehicle report revenue share booking failed (non-fatal)", { orderId, shareErr });
-  }
+  // Book the merchant revenue-share accrual. This webhook is the ONLY reliable
+  // booking opportunity for async_payment_succeeded (the buyer already passed
+  // the unlock route while unpaid), and a Stripe resend is duplicate-skipped —
+  // so a swallowed error would permanently drop the ledger rows. Let it throw:
+  // the event stays `processed_at IS NULL` for the monitor cron + manual replay,
+  // and the booking is idempotent (UNIQUE(order_id,tenant_id)), so replay is safe.
+  await recordVehicleReportRevenueShares(orderId);
 }
 
 // ── Payment failure notification email ──
@@ -1146,11 +1146,17 @@ export async function POST(req: NextRequest) {
         }
         if (!orderId) break; // not a vehicle-report charge
 
-        const { data: order } = await supabase
+        const { data: order, error: orderErr } = await supabase
           .from("vehicle_report_orders")
           .select("id, status")
           .eq("id", orderId)
           .maybeSingle();
+        // A failed lookup must NOT be read as "no such order" — that would let a
+        // known refund be marked processed while the order stays paid and its
+        // shares payable. Throw so the monitor cron surfaces it for replay.
+        if (orderErr) {
+          throw new Error(`vehicle report refund order lookup failed for ${orderId}: ${orderErr.message}`);
+        }
         if (!order) break;
         if ((order.status as string) === "refunded") break; // already handled (idempotent)
 

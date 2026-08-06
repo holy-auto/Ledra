@@ -66,6 +66,16 @@ export default async function ReportRevenuePage() {
     .maybeSingle();
   const onboarded = !!(tenantRow as { stripe_connect_onboarded: boolean | null } | null)?.stripe_connect_onboarded;
 
+  // The onboarding CTA gates real money, so decide it from an UNCAPPED count of
+  // unpaid shares — the 200-row list above can hide older pending/approved rows
+  // (e.g. after selective approvals), which would wrongly suppress the prompt.
+  const { count: unpaidCount } = await admin
+    .from("vehicle_report_revenue_shares")
+    .select("id", { count: "exact", head: true })
+    .eq("tenant_id", tenantId)
+    .in("status", ["pending", "approved"]);
+  const hasUnpaid = (unpaidCount ?? 0) > 0;
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -83,7 +93,7 @@ export default async function ReportRevenuePage() {
       </div>
 
       {/* Payout onboarding CTA — only when money is waiting and no Connect yet */}
-      {unpaid > 0 && !onboarded ? (
+      {hasUnpaid && !onboarded ? (
         <div className="rounded-xl border border-amber-500/30 bg-[rgba(245,158,11,0.08)] p-4 text-sm">
           <div className="font-semibold text-amber-500">還元金の受け取りには振込先の登録が必要です</div>
           <p className="mt-1 text-secondary">
