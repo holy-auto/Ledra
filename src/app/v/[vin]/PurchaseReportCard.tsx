@@ -26,11 +26,15 @@ type Props = {
 
 export default function PurchaseReportCard({ vin, tiers, enabled, notice, sourcePublicId, compact, onlyTier }: Props) {
   const [busyTier, setBusyTier] = useState<string | null>(null);
+  // Retained across failures so the error panel's "try again" re-runs the same
+  // tier (busyTier is cleared on failure and would be null in the callback).
+  const [lastTier, setLastTier] = useState<string | null>(null);
   const checkout = useStripeAction<{ url: string }>("vehicle-report:checkout");
 
   const offered = onlyTier ? tiers.filter((t) => t.tier_key === onlyTier) : tiers;
 
   async function startCheckout(tierKey: string) {
+    setLastTier(tierKey);
     setBusyTier(tierKey);
     const result = await checkout.execute(async () => {
       const res = await fetch("/api/public/vehicle-report/checkout", {
@@ -111,7 +115,7 @@ export default function PurchaseReportCard({ vin, tiers, enabled, notice, source
             errorCode={checkout.errorCode}
             attempt={checkout.attempt}
             isPending={checkout.isPending}
-            onRetry={() => (busyTier ? startCheckout(busyTier) : undefined)}
+            onRetry={() => (lastTier ? startCheckout(lastTier) : undefined)}
           />
         </div>
       ) : null}

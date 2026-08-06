@@ -632,6 +632,9 @@ export async function POST(req: NextRequest) {
           // .neq("status","paid") keeps this idempotent vs the unlock
           // route, which may have already confirmed the order (and set
           // its own expires_at) before this webhook is delivered.
+          // Only a still-`pending` order becomes paid — never re-pay one that
+          // a `charge.refunded` event already flipped to `refunded` (webhook
+          // ordering safety). Idempotent vs the unlock route (same guard).
           const { error: vrErr } = await supabase
             .from("vehicle_report_orders")
             .update({
@@ -642,7 +645,7 @@ export async function POST(req: NextRequest) {
               updated_at: nowIso,
             })
             .eq("id", orderId)
-            .neq("status", "paid");
+            .eq("status", "pending");
 
           if (vrErr) {
             console.error("webhook: vehicle report order update failed", { orderId, error: vrErr });
@@ -1085,13 +1088,40 @@ export async function POST(req: NextRequest) {
         const piId = asStringId(charge.payment_intent);
         if (!piId) break;
 
+        // Resolve the report order. Prefer the id stamped on the PaymentIntent
+        // at checkout — robust even if the order row's payment_intent id is not
+        // persisted yet (refund delivered before checkout.session.completed).
+        let orderId = (charge.metadata?.vehicle_report_order_id as string | undefined) ?? null;
+        if (!orderId) {
+          try {
+            const pi = await stripe.paymentIntents.retrieve(piId);
+            orderId = (pi.metadata?.vehicle_report_order_id as string | undefined) ?? null;
+          } catch {
+            /* fall through to payment_intent id lookup */
+          }
+        }
+        if (!orderId) {
+          const { data: byPi } = await supabase
+            .from("vehicle_report_orders")
+            .select("id")
+            .eq("stripe_payment_intent_id", piId)
+            .maybeSingle();
+          orderId = (byPi as { id: string } | null)?.id ?? null;
+        }
+        if (!orderId) break; // not a vehicle-report charge
+
         const { data: order } = await supabase
           .from("vehicle_report_orders")
           .select("id, status")
-          .eq("stripe_payment_intent_id", piId)
+          .eq("id", orderId)
           .maybeSingle();
         if (!order) break;
+        if ((order.status as string) === "refunded") break; // already handled (idempotent)
 
+        // Roll back booked shares (throws on a failed reversal → Stripe retries
+        // the whole event), then mark the order refunded. Marking refunded also
+        // blocks a late checkout.session.completed from re-paying it (that
+        // update guards on status = 'pending').
         const summary = await reverseVehicleReportRevenueSharesForOrder(supabase, order.id as string);
         await supabase
           .from("vehicle_report_orders")

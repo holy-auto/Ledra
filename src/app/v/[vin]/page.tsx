@@ -77,10 +77,18 @@ export default async function VehiclePassportPage({ params, searchParams }: Page
   // identical for the whole access window.
   const scope: ReportScope = access?.scope ?? { type: "full" };
   const scopeFromMs = access?.scopeFromIso ? new Date(access.scopeFromIso).getTime() : null;
-  const visibleCerts =
-    isMemberFree || scopeFromMs === null
-      ? data.certificates
-      : data.certificates.filter((c) => c.created_at !== null && new Date(c.created_at).getTime() >= scopeFromMs);
+  // Immutable upper bound = the purchase moment, so records added during the
+  // access window don't leak in (they were never in the booked shares either).
+  const purchasedAtMs = access?.purchasedAtIso ? new Date(access.purchasedAtIso).getTime() : null;
+  const visibleCerts = isMemberFree
+    ? data.certificates
+    : data.certificates.filter((c) => {
+        if (c.created_at === null) return false;
+        const t = new Date(c.created_at).getTime();
+        if (scopeFromMs !== null && t < scopeFromMs) return false;
+        if (purchasedAtMs !== null && t > purchasedAtMs) return false;
+        return true;
+      });
   const isPartialPaid = isPaid && !isMemberFree && scope.type === "recent_months";
 
   const sp = (await searchParams) ?? {};

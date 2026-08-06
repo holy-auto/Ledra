@@ -26,6 +26,17 @@ describe("scopeCutoffIso", () => {
       new Date(Date.UTC(2025, 6, 30)).toISOString(),
     );
   });
+
+  it("clamps to the last day of the target month (no setMonth overflow)", () => {
+    // Mar 31 2026 − 1 month → Feb 28 2026 (not Mar 3).
+    expect(scopeCutoffIso({ type: "recent_months", months: 1 }, Date.UTC(2026, 2, 31))).toBe(
+      new Date(Date.UTC(2026, 1, 28)).toISOString(),
+    );
+    // Feb 29 2028 (leap) − 12 months → Feb 28 2027 (2027 not leap).
+    expect(scopeCutoffIso({ type: "recent_months", months: 12 }, Date.UTC(2028, 1, 29))).toBe(
+      new Date(Date.UTC(2027, 1, 28)).toISOString(),
+    );
+  });
 });
 
 describe("isCreatedAtInScope", () => {

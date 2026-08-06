@@ -75,11 +75,14 @@ export async function POST(req: NextRequest) {
 
     // Resolve the purchased tier (price + disclosure scope). Client-supplied
     // amounts are never trusted — price and scope come from the tier row.
-    // Fall back to the "full" tier (or, if unseeded, the flat settings price).
-    const requestedTier = parsed.data.tier ?? "full";
-    const tier = (await getReportTierByKey(requestedTier)) ?? (await getReportTierByKey("full"));
-    if (parsed.data.tier && !tier) {
-      return apiValidationError("指定のレポート種別は購入できません。");
+    // A supplied-but-unknown/disabled tier is rejected (never silently sold as
+    // full); only an OMITTED tier falls back to the full-history report.
+    let tier;
+    if (parsed.data.tier) {
+      tier = await getReportTierByKey(parsed.data.tier);
+      if (!tier) return apiValidationError("指定のレポート種別は購入できません。");
+    } else {
+      tier = await getReportTierByKey("full");
     }
     const priceJpy = tier?.price_jpy ?? settings.price_jpy;
     const tierKey = tier?.tier_key ?? null;
@@ -128,6 +131,12 @@ export async function POST(req: NextRequest) {
         metadata: {
           vehicle_report_order_id: order.id,
           vin,
+        },
+        // Stamp the order id on the PaymentIntent too, so a `charge.refunded`
+        // event can resolve the order even before the order row has its
+        // payment_intent id persisted (webhook ordering safety).
+        payment_intent_data: {
+          metadata: { vehicle_report_order_id: order.id, vin },
         },
         line_items: [
           {

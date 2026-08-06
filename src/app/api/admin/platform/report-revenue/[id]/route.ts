@@ -53,10 +53,14 @@ export async function PATCH(request: NextRequest, ctx: RouteContext) {
 
     if (action === "approve") {
       if (share.status !== "pending") return apiValidationError("承認できるのは pending のみです。");
-      await admin
+      // Guard the transition so two concurrent approvals don't both "succeed",
+      // and surface DB/constraint failures instead of returning a false ok.
+      const { error: aErr } = await admin
         .from("vehicle_report_revenue_shares")
         .update({ status: "approved", updated_at: new Date().toISOString() })
-        .eq("id", id);
+        .eq("id", id)
+        .eq("status", "pending");
+      if (aErr) return apiInternalError(aErr, "report-revenue approve");
       return apiJson({ ok: true, status: "approved" });
     }
 
@@ -64,10 +68,12 @@ export async function PATCH(request: NextRequest, ctx: RouteContext) {
       if (!["pending", "approved"].includes(share.status as string)) {
         return apiValidationError("キャンセルできるのは pending / approved のみです。");
       }
-      await admin
+      const { error: cErr } = await admin
         .from("vehicle_report_revenue_shares")
         .update({ status: "cancelled", updated_at: new Date().toISOString() })
-        .eq("id", id);
+        .eq("id", id)
+        .in("status", ["pending", "approved"]);
+      if (cErr) return apiInternalError(cErr, "report-revenue cancel");
       return apiJson({ ok: true, status: "cancelled" });
     }
 

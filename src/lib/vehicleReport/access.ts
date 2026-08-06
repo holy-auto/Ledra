@@ -50,6 +50,12 @@ export type ValidReportAccess = {
   scope: ReportScope;
   /** Absolute lower bound (ISO) resolved at purchase; null = no bound (full). */
   scopeFromIso: string | null;
+  /**
+   * Immutable upper bound (ISO): records created after the purchase moment are
+   * NOT disclosed. Snapshots the report so new records added during the access
+   * window don't leak in (they were never in the booked revenue-share either).
+   */
+  purchasedAtIso: string;
 };
 
 /**
@@ -67,7 +73,7 @@ export async function findValidReportAccess(
   const admin = createServiceRoleAdmin("vehicle report access — anonymous token check for /v/[vin]");
   const { data } = await admin
     .from("vehicle_report_orders")
-    .select("id, vin_code_normalized, status, expires_at, scope_type, scope_months, scope_from")
+    .select("id, vin_code_normalized, status, expires_at, scope_type, scope_months, scope_from, created_at")
     .eq("access_token", token)
     .eq("vin_code_normalized", vinNormalized)
     .eq("status", "paid")
@@ -81,6 +87,7 @@ export async function findValidReportAccess(
     scope_type: string | null;
     scope_months: number | null;
     scope_from: string | null;
+    created_at: string;
   } | null;
   if (!row) return null;
 
@@ -92,5 +99,6 @@ export async function findValidReportAccess(
     expires_at: row.expires_at,
     scope: scopeFromRow(row.scope_type, row.scope_months),
     scopeFromIso: row.scope_from,
+    purchasedAtIso: row.created_at,
   };
 }

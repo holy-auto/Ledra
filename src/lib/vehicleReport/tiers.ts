@@ -27,9 +27,16 @@ export function scopeFromRow(scopeType: string | null, scopeMonths: number | nul
  */
 export function scopeCutoffIso(scope: ReportScope, nowMs: number): string | null {
   if (scope.type === "full") return null;
-  const cutoff = new Date(nowMs);
-  cutoff.setMonth(cutoff.getMonth() - scope.months);
-  return cutoff.toISOString();
+  const d = new Date(nowMs);
+  const day = d.getUTCDate();
+  // Subtract months off the 1st to avoid setUTCMonth rolling an overflowing
+  // day into the next month (e.g. Mar 31 − 1mo would become Mar 3), then clamp
+  // the day to the destination month's last valid date.
+  d.setUTCDate(1);
+  d.setUTCMonth(d.getUTCMonth() - scope.months);
+  const lastDay = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate();
+  d.setUTCDate(Math.min(day, lastDay));
+  return d.toISOString();
 }
 
 /**
@@ -68,12 +75,26 @@ function toTier(r: TierRow): ReportTier {
 /** Enabled tiers, most-partial/cheapest first (by sort_order). */
 export async function getReportTiers(): Promise<ReportTier[]> {
   const admin = createServiceRoleAdmin("vehicle report tiers — platform-wide staged offerings");
-  const { data } = await admin
-    .from("vehicle_report_tiers")
-    .select("tier_key, label, description, price_jpy, scope_type, scope_months, sort_order")
-    .eq("enabled", true)
-    .order("sort_order", { ascending: true });
-  return ((data ?? []) as TierRow[]).map(toTier);
+  const [tiersRes, settingsRes] = await Promise.all([
+    admin
+      .from("vehicle_report_tiers")
+      .select("tier_key, label, description, price_jpy, scope_type, scope_months, sort_order")
+      .eq("enabled", true)
+      .order("sort_order", { ascending: true }),
+    admin.from("vehicle_report_settings").select("price_jpy").eq("id", 1).maybeSingle(),
+  ]);
+
+  // The full-report price stays sourced from `vehicle_report_settings.price_jpy`
+  // so the existing platform-admin price screen remains effective; partial
+  // tiers use their own row price.
+  const fullPrice =
+    typeof (settingsRes.data as { price_jpy: number | null } | null)?.price_jpy === "number"
+      ? (settingsRes.data as { price_jpy: number }).price_jpy
+      : null;
+
+  return ((tiersRes.data ?? []) as TierRow[])
+    .map(toTier)
+    .map((t) => (t.scope.type === "full" && fullPrice !== null ? { ...t, price_jpy: fullPrice } : t));
 }
 
 /** A single enabled tier by key, or null. */

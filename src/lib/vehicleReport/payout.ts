@@ -79,12 +79,60 @@ export async function payVehicleReportRevenueShare(admin: Db, shareId: string): 
     { idempotencyKey: `vehicle-report-share-payout:${shareId}` },
   );
 
-  await admin
+  // A platform→connected Connect transfer settles synchronously (funded from
+  // the platform balance), so the transfer IS the settlement — finalize to
+  // `paid` here rather than waiting on a `transfer.paid` webhook (which the
+  // current Stripe API does not emit). Claim atomically: only an un-dispatched
+  // `approved` row is flipped, so a concurrent cancel/refund can't be lost.
+  const nowIso = new Date().toISOString();
+  const { data: claimed, error: claimErr } = await admin
     .from("vehicle_report_revenue_shares")
-    .update({ stripe_transfer_id: transfer.id, updated_at: new Date().toISOString() })
-    .eq("id", shareId);
+    .update({ status: "paid", stripe_transfer_id: transfer.id, paid_at: nowIso, updated_at: nowIso })
+    .eq("id", shareId)
+    .eq("status", "approved")
+    .is("stripe_transfer_id", null)
+    .select("id");
 
-  logger.info("[vehicleReportPayout] transfer dispatched", { shareId, transferId: transfer.id });
+  if (claimErr) {
+    // The transfer succeeded but recording it failed (transient DB error). Do
+    // NOT reverse — the money was legitimately sent. Leave the share `approved`
+    // with no transfer id; a later run re-calls with the SAME idempotency key
+    // (same transfer, no double-send) and finalizes it then.
+    logger.error("[vehicleReportPayout] settle claim failed after transfer — will retry", {
+      shareId,
+      transferId: transfer.id,
+      detail: claimErr.message,
+    });
+    return { ok: false, reason: "claim_failed" };
+  }
+
+  if (!claimed || (claimed as { id: string }[]).length === 0) {
+    // The row was not claimable. Either a concurrent identical call already
+    // settled it with THIS transfer (idempotency key → same transfer id: fine),
+    // or it was cancelled/refunded under us (money moved: reverse it).
+    const { data: curRaw } = await admin
+      .from("vehicle_report_revenue_shares")
+      .select("status, stripe_transfer_id")
+      .eq("id", shareId)
+      .maybeSingle();
+    const cur = curRaw as { status: string; stripe_transfer_id: string | null } | null;
+    if (cur?.status === "paid" && cur.stripe_transfer_id === transfer.id) {
+      return { ok: true, transferId: transfer.id };
+    }
+    await stripe.transfers.createReversal(
+      transfer.id,
+      { metadata: { source_type: "vehicle_report", source_id: shareId } },
+      { idempotencyKey: `vehicle-report-share-reverse:${shareId}` },
+    );
+    logger.error("[vehicleReportPayout] share changed mid-transfer — reversed", {
+      shareId,
+      transferId: transfer.id,
+      status: cur?.status,
+    });
+    return { ok: false, reason: "share_changed" };
+  }
+
+  logger.info("[vehicleReportPayout] transfer settled", { shareId, transferId: transfer.id });
   return { ok: true, transferId: transfer.id };
 }
 
@@ -144,6 +192,7 @@ export async function reverseVehicleReportRevenueSharesForOrder(
   let reversed = 0;
   let cancelled = 0;
   let skipped = 0;
+  let failed = 0;
   const stripe = getStripeClient();
 
   for (const s of shares) {
@@ -169,7 +218,7 @@ export async function reverseVehicleReportRevenueSharesForOrder(
       );
       reversed += 1;
     } catch (e) {
-      skipped += 1;
+      failed += 1;
       logger.error("[vehicleReportPayout] transfer reversal failed", {
         shareId: s.id,
         detail: e instanceof Error ? e.message : String(e),
@@ -177,6 +226,16 @@ export async function reverseVehicleReportRevenueSharesForOrder(
     }
   }
 
-  logger.info("[vehicleReportPayout] order shares rolled back", { orderId, reversed, cancelled, skipped });
+  logger.info("[vehicleReportPayout] order shares rolled back", { orderId, reversed, cancelled, skipped, failed });
+
+  // A paid share whose transfer could not be reversed means the merchant still
+  // holds funds from a refunded sale. Surface it so the caller (charge.refunded
+  // handler) fails and Stripe retries the event — never silently complete the
+  // refund with money left stranded. Reversals are idempotent, so the retry
+  // re-attempts only the ones that failed.
+  if (failed > 0) {
+    throw new Error(`vehicle report revenue share reversal failed for ${failed} share(s) on order ${orderId}`);
+  }
+
   return { reversed, cancelled, skipped };
 }
