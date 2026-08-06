@@ -23,6 +23,17 @@
 9. 公開区分: 公開可／要確認／非公開
 ```
 
+## 2026-08-06 送付済み請求書を入金済に変更できない真因は「Zodの .partial() が default を剥がさず content フィールドが false で混入→isContentEdit 誤発火」。更新スキーマから default を除去して修正
+1. 日付: 2026-08-06
+2. 起きたこと: 代表から「入金済みに変更したいが『送付済みだから変更できない』となる。送付後に入金済へ変える処理は当然必要なので操作できるように」と依頼。
+3. 以前の考え: 2026-08-05 の切り分けで「入金済不可はマイグレーション・ドリフト（修復済）、残る実バグは status CHECK の 'overdue' 欠落」と結論していた（DECISION_LOG 2026-08-05 参照）。
+4. 違和感・問題: それは誤りだった。DB を実査すると documents に status 遷移を縛るトリガーは無く、CHECK 制約は元から 'paid' を許可（'overdue' 追加が 08-05 の修正）。アプリの遷移マップも sent→paid を許可。にもかかわらずブロックされる真因は Zod。`documentUpdateSchema = documentCreateSchema.partial().extend({id})` だが、**Zod の .partial() は `.default()` を剥がさない**（`ZodOptional(ZodDefault)` はキー欠落時に inner default を適用）。このため status のみの更新 `{id,status:"paid",payment_date}` を parse しても `show_seal/show_logo/show_bank_info/is_invoice_compliant/is_tax_inclusive` が `false` として結果に現れる。PUT ハンドラは `isContentEdit` を「これらが `!== undefined` か」で判定していたため誤って content 編集扱いになり、送付済み請求書は編集不可 → "送付済みの請求書は内容を編集できません。" で全ステータス変更（入金済/期限超過/取消）がブロックされていた。実際に vitest で parse 結果に false 混入を再現・確定。加えて status の `.default("draft")` も漏れるため、status 未指定の内容更新で送付済み帳票が draft に巻き戻る二次バグの芽もあった。
+5. 決めたこと: `documentUpdateSchema` で default を持つフィールド（status/subtotal/tax/total/is_invoice_compliant/show_bank_info/show_seal/show_logo/is_tax_inclusive）を default 無しの `.optional()` に上書きし、「送っていない項目は parse 結果にも現れない（＝触らない）」を保証。回帰テストを追加。
+6. 捨てた選択肢: (A) isContentEdit をリクエスト生 JSON のキーで判定に変更 → フィールド一覧の二重管理が増える。根本は「更新スキーマに default が漏れる」ことなのでスキーマ側で断つ方が正しい。(B) create スキーマの default を撤去 → 作成時の既定値は必要で POST を壊す。(C) isDocumentEditable の緩和 → 電帳法の内容不変（送付済み請求書の本文編集禁止）は正しい仕様なので触らない。ブロックすべきは「本文編集」であって「ステータス変更」ではない、という区別が争点。
+7. 判断理由: 真因は DB でもインフラでもなくスキーマの default 漏れだと vitest で確定。更新スキーマから default を除けば、ステータスのみ変更は content 編集と見なされず通り、実際に content を送った時だけ編集ガードが効く（正しい挙動）。最小差分で二次バグ（draft 巻き戻り）も同時に塞ぐ。
+8. まだ答えが出ていないこと: 同様の「.partial() + default」パターンが他の更新スキーマにも無いか（横展開点検の価値あり）。今回は documents のみ確認・修正。
+9. 公開区分: 要確認（「Zod の .partial() は default を剥がさない」という実装知見は公開可。本番プロジェクトID・帳票実データは非公開）。
+
 ## 2026-08-06 モバイルアプリを Tap to Pay 込みで App Store 一般公開する方針に決定（Custom Apps 配布を撤回）
 1. 日付: 2026-08-06
 2. 起きたこと: モバイル(iOS)の本番リリース方針を詰める中で、「Tap to Pay 無しで先行公開し後追いで足す」案を検討。実コードを確認した結果、TTP実装は既に大半が完成しており、最大の障壁は Apple審査要件2.x（アプリ内オンボーディング）だと判明。この2.xは配布チャネルで回避可能（Custom Apps なら免除）だったため、代表に配布方針を確認した。

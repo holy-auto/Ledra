@@ -144,6 +144,23 @@ export const documentCreateSchema = z.object({
 
 export const documentUpdateSchema = documentCreateSchema.partial().extend({
   id: z.string().uuid("id is required"),
+  // 注意: Zod の .partial() は default を剥がさない（ZodOptional(ZodDefault) は
+  // キー欠落時に inner default を適用する）。更新では「送っていない項目は触らない」が
+  // 正なので、default を持つフィールドを default 無しの optional に上書きする。
+  // これを怠ると status のみの更新でも show_*/is_invoice_compliant/is_tax_inclusive が
+  // false として parse 結果に現れ、PUT の isContentEdit 判定（!== undefined）が誤発火して
+  // 「送付済みの請求書は内容を編集できません」で入金済等への変更がブロックされる。
+  // また status の default("draft") が漏れると、status 未指定の内容更新で送付済み帳票が
+  // draft に巻き戻る二次バグにもなる。
+  status: z.enum(docStatuses).optional(),
+  subtotal: z.number().min(0).optional(),
+  tax: z.number().min(0).optional(),
+  total: z.number().min(0).optional(),
+  is_invoice_compliant: z.boolean().optional(),
+  show_bank_info: z.boolean().optional(),
+  show_seal: z.boolean().optional(),
+  show_logo: z.boolean().optional(),
+  is_tax_inclusive: z.boolean().optional(),
 });
 
 export const documentDeleteSchema = z
