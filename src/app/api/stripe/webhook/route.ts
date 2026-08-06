@@ -41,6 +41,62 @@ function getCurrentPeriodEnd(sub: Stripe.Subscription): number | null {
   return (subRecord.current_period_end as number | undefined) ?? sub.items?.data?.[0]?.current_period_end ?? null;
 }
 
+/**
+ * Mark a vehicle-report order paid + book its revenue-share accrual. Shared by
+ * `checkout.session.completed` (synchronous card) and
+ * `checkout.session.async_payment_succeeded` (conbini / bank transfer, which
+ * completes `unpaid` and only confirms funds via this later event). Idempotent:
+ * the paid update guards on status='pending' (never re-pays a refunded order),
+ * and the share booking upserts on UNIQUE(order_id, tenant_id).
+ */
+async function handleVehicleReportSessionPaid(
+  supabase: ReturnType<typeof createServiceRoleAdmin>,
+  session: Stripe.Checkout.Session,
+): Promise<void> {
+  const orderId = session.metadata?.vehicle_report_order_id;
+  if (!orderId) return;
+  if (session.payment_status !== "paid") {
+    console.info("webhook: vehicle report checkout not yet paid", {
+      orderId,
+      paymentStatus: session.payment_status,
+    });
+    return;
+  }
+
+  const paymentIntentId = asStringId(session.payment_intent);
+  const nowIso = new Date().toISOString();
+  const expiresAt = new Date(Date.now() + REPORT_ACCESS_VALIDITY_DAYS * 24 * 60 * 60 * 1000).toISOString();
+
+  // Only a still-`pending` order becomes paid — never re-pay one that the
+  // unlock route already confirmed or that `charge.refunded` flipped to
+  // `refunded` (webhook ordering safety).
+  const { error: vrErr } = await supabase
+    .from("vehicle_report_orders")
+    .update({
+      status: "paid",
+      stripe_payment_intent_id: paymentIntentId,
+      paid_at: nowIso,
+      expires_at: expiresAt,
+      updated_at: nowIso,
+    })
+    .eq("id", orderId)
+    .eq("status", "pending");
+
+  if (vrErr) {
+    console.error("webhook: vehicle report order update failed", { orderId, error: vrErr });
+    return;
+  }
+
+  console.info("webhook: vehicle report order paid", { orderId });
+  // Book the merchant revenue-share accrual. Non-fatal: a booking error must
+  // not 500 the webhook (Stripe retries and re-books idempotently anyway).
+  try {
+    await recordVehicleReportRevenueShares(orderId);
+  } catch (shareErr) {
+    console.error("webhook: vehicle report revenue share booking failed (non-fatal)", { orderId, shareErr });
+  }
+}
+
 // ── Payment failure notification email ──
 async function sendPaymentFailureEmail(
   supabase: ReturnType<typeof createServiceRoleAdmin>,
@@ -623,58 +679,11 @@ export async function POST(req: NextRequest) {
         }
 
         // ─── 車両履歴レポート checkout (mode=payment / アカウント不要) ───
+        // 非同期決済 (コンビニ/銀行振込 等) は completed 時点で payment_status が
+        // 'unpaid' のことがある。その場合は入金確定時の
+        // checkout.session.async_payment_succeeded で paid 化する。
         if (session.metadata?.vehicle_report_order_id) {
-          const orderId = session.metadata.vehicle_report_order_id;
-
-          // 非同期決済 (コンビニ/銀行振込 等) は completed 時点で payment_status が
-          // 'unpaid' のことがある。実際に入金確定した時のみ paid 化する
-          // (未入金でレポート解錠・還元計上しない)。確定は unlock 経路の
-          // Stripe セッション照会、または後続の async_payment_succeeded で行う。
-          if (session.payment_status !== "paid") {
-            console.info("webhook: vehicle report checkout completed but not yet paid", {
-              orderId,
-              paymentStatus: session.payment_status,
-            });
-            break;
-          }
-
-          const paymentIntentId = asStringId(session.payment_intent);
-          const nowIso = new Date().toISOString();
-          const expiresAt = new Date(Date.now() + REPORT_ACCESS_VALIDITY_DAYS * 24 * 60 * 60 * 1000).toISOString();
-
-          // .neq("status","paid") keeps this idempotent vs the unlock
-          // route, which may have already confirmed the order (and set
-          // its own expires_at) before this webhook is delivered.
-          // Only a still-`pending` order becomes paid — never re-pay one that
-          // a `charge.refunded` event already flipped to `refunded` (webhook
-          // ordering safety). Idempotent vs the unlock route (same guard).
-          const { error: vrErr } = await supabase
-            .from("vehicle_report_orders")
-            .update({
-              status: "paid",
-              stripe_payment_intent_id: paymentIntentId,
-              paid_at: nowIso,
-              expires_at: expiresAt,
-              updated_at: nowIso,
-            })
-            .eq("id", orderId)
-            .eq("status", "pending");
-
-          if (vrErr) {
-            console.error("webhook: vehicle report order update failed", { orderId, error: vrErr });
-            break;
-          }
-
-          console.info("webhook: vehicle report order paid", { orderId });
-          // Book the merchant revenue-share accrual. Idempotent vs the
-          // unlock route (UNIQUE(order_id, tenant_id) + ignoreDuplicates).
-          // Non-fatal: a booking error must not 500 the webhook (Stripe
-          // would retry and re-book idempotently anyway).
-          try {
-            await recordVehicleReportRevenueShares(orderId);
-          } catch (shareErr) {
-            console.error("webhook: vehicle report revenue share booking failed (non-fatal)", { orderId, shareErr });
-          }
+          await handleVehicleReportSessionPaid(supabase, session);
           break;
         }
 
@@ -807,6 +816,16 @@ export async function POST(req: NextRequest) {
           if (tenant_id && !sub.metadata?.tenant_id) sub.metadata = { ...(sub.metadata ?? {}), tenant_id };
           if (tenant_slug && !sub.metadata?.tenant_slug) sub.metadata = { ...(sub.metadata ?? {}), tenant_slug };
           await syncBySubscription(stripe, supabase, sub);
+        }
+        break;
+      }
+
+      // 非同期決済 (コンビニ/銀行振込 等) の入金確定。checkout.session.completed
+      // 時点では payment_status='unpaid' なので、ここで初めて paid 化する。
+      case "checkout.session.async_payment_succeeded": {
+        const session = event.data.object as Stripe.Checkout.Session;
+        if (session.metadata?.vehicle_report_order_id) {
+          await handleVehicleReportSessionPaid(supabase, session);
         }
         break;
       }
@@ -1136,10 +1155,19 @@ export async function POST(req: NextRequest) {
         // blocks a late checkout.session.completed from re-paying it (that
         // update guards on status = 'pending').
         const summary = await reverseVehicleReportRevenueSharesForOrder(supabase, order.id as string);
-        await supabase
+        // The shares are already reversed; the order MUST now flip to refunded.
+        // If this update fails and we silently marked the event processed, the
+        // order stays non-refunded — a late checkout.session.completed could
+        // re-pay it (its guard is status='pending'), and the monitor cron would
+        // never re-run this. Throw so Stripe retries; the reversal above is
+        // idempotent (terminal shares are skipped), so the retry is safe.
+        const { error: refundErr } = await supabase
           .from("vehicle_report_orders")
           .update({ status: "refunded", updated_at: new Date().toISOString() })
           .eq("id", order.id);
+        if (refundErr) {
+          throw new Error(`vehicle report order refund transition failed for ${order.id}: ${refundErr.message}`);
+        }
         console.info("webhook: vehicle report order refunded — shares rolled back", {
           orderId: order.id,
           ...summary,

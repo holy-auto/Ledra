@@ -148,7 +148,7 @@ export async function settleApprovedRevenueShares(
   // join + filter). Otherwise a backlog of `tenant_not_onboarded` rows at the
   // head of the queue would be re-scanned every run and starve newer, payable
   // shares for onboarded tenants.
-  const { data: rows } = await admin
+  const { data: rows, error: queueErr } = await admin
     .from("vehicle_report_revenue_shares")
     .select("id, tenants!inner(stripe_connect_onboarded)")
     .eq("status", "approved")
@@ -156,6 +156,13 @@ export async function settleApprovedRevenueShares(
     .eq("tenants.stripe_connect_onboarded", true)
     .order("created_at", { ascending: true })
     .limit(limit);
+
+  // Surface a query failure instead of silently reporting an all-zero "success"
+  // run — otherwise a persistent error would leave every approved share unpaid
+  // while the cron looks healthy. The cron's failure alert fires on the throw.
+  if (queueErr) {
+    throw new Error(`vehicle report payout queue query failed: ${queueErr.message}`);
+  }
 
   let paid = 0;
   let skipped = 0;

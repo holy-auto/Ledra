@@ -380,14 +380,26 @@ export async function POST(req: NextRequest) {
 
         // 車両レポート収益の還元送金が取消 → 台帳を reversed に
         if (meta?.source_type === "vehicle_report" && meta?.source_id) {
-          await supabase
+          const { error: revErr } = await supabase
             .from("vehicle_report_revenue_shares")
             .update({ status: "reversed", updated_at: new Date().toISOString() })
             .eq("id", meta.source_id);
-          console.info("connect-webhook: vehicle report share reversed", {
-            shareId: meta.source_id,
-            transferId: transfer.id,
-          });
+          // このイベントは冒頭で claim 済みなので、失敗しても Stripe 再送では
+          // duplicate スキップされ再実行されない。money は Stripe 側で戻った
+          // のに台帳が paid のまま残る不整合になるため、error で明示的に surface
+          // して運用が手動修正できるようにする（silent success にしない）。
+          if (revErr) {
+            console.error("connect-webhook: vehicle report share reverse update FAILED — ledger/Stripe mismatch", {
+              shareId: meta.source_id,
+              transferId: transfer.id,
+              error: revErr.message,
+            });
+          } else {
+            console.info("connect-webhook: vehicle report share reversed", {
+              shareId: meta.source_id,
+              transferId: transfer.id,
+            });
+          }
         }
 
         console.info("connect-webhook: transfer reversed", { transferId: transfer.id });
