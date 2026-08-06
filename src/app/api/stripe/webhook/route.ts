@@ -1158,9 +1158,10 @@ export async function POST(req: NextRequest) {
         // The shares are already reversed; the order MUST now flip to refunded.
         // If this update fails and we silently marked the event processed, the
         // order stays non-refunded — a late checkout.session.completed could
-        // re-pay it (its guard is status='pending'), and the monitor cron would
-        // never re-run this. Throw so Stripe retries; the reversal above is
-        // idempotent (terminal shares are skipped), so the retry is safe.
+        // re-pay it (its guard is status='pending'). Throw so the event stays
+        // `processed_at IS NULL` with the error → the stripe-event-monitor cron
+        // alerts ops for manual replay; the reversal above is idempotent
+        // (terminal shares are skipped), so a replay is safe.
         const { error: refundErr } = await supabase
           .from("vehicle_report_orders")
           .update({ status: "refunded", updated_at: new Date().toISOString() })
