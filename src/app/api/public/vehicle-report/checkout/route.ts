@@ -25,6 +25,7 @@ import { normalizeVin } from "@/lib/passport/normalizeVin";
 import { isPassportPublicEnabled } from "@/lib/passport/featureGate";
 import { getVehicleReportSettings, generateReportAccessToken } from "@/lib/vehicleReport/access";
 import { getReportTierByKey, scopeCutoffIso } from "@/lib/vehicleReport/tiers";
+import { getAnchoredCertCountsByTenant } from "@/lib/vehicleReport/revenueShare";
 
 const schema = z.object({
   vin: z.string().trim().min(1).max(64),
@@ -82,15 +83,32 @@ export async function POST(req: NextRequest) {
       tier = await getReportTierByKey(parsed.data.tier);
       if (!tier) return apiValidationError("指定のレポート種別は購入できません。");
     } else {
+      // Omitted tier → the full-history report. The migration always seeds a
+      // `full` tier, so a null here means an operator DISABLED it — reject
+      // rather than falling back to a full-scope sale the UI no longer offers.
       tier = await getReportTierByKey("full");
+      if (!tier) return apiForbidden("車両全履歴レポートの販売は現在停止しています。");
     }
-    const priceJpy = tier?.price_jpy ?? settings.price_jpy;
-    const tierKey = tier?.tier_key ?? null;
-    const scopeType = tier?.scope.type ?? "full";
-    const scopeMonths = tier && tier.scope.type === "recent_months" ? tier.scope.months : null;
+    const priceJpy = tier.price_jpy;
+    const tierKey = tier.tier_key;
+    const scopeType = tier.scope.type;
+    const scopeMonths = tier.scope.type === "recent_months" ? tier.scope.months : null;
     // Anchor the disclosure cutoff at purchase time (absolute), so display and
     // revenue-share never drift over the access window.
-    const scopeFrom = tier ? scopeCutoffIso(tier.scope, Date.now()) : null;
+    const scopeFrom = scopeCutoffIso(tier.scope, Date.now());
+
+    // Never sell a report that would disclose zero records: a recent_months tier
+    // whose window predates all anchored work (or a VIN with no anchored certs)
+    // would hand the buyer an empty paid timeline and book no merchant share.
+    const inScope = await getAnchoredCertCountsByTenant(admin, vin, scopeFrom, new Date().toISOString());
+    const inScopeCount = inScope.reduce((sum, t) => sum + t.certCount, 0);
+    if (inScopeCount === 0) {
+      return apiValidationError(
+        scopeType === "recent_months"
+          ? `直近${scopeMonths}ヶ月に該当する認証済みの施工記録がありません。`
+          : "認証済みの施工記録が見つかりません。",
+      );
+    }
     const productName = tier?.label ?? "車両全履歴レポート";
     const productDesc =
       scopeType === "recent_months"

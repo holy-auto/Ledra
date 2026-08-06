@@ -58,12 +58,16 @@ export function postCancelClaimAction(
  *   - Idempotent via the Stripe idempotency key and the stored transfer id.
  */
 export async function payVehicleReportRevenueShare(admin: Db, shareId: string): Promise<PayoutResult> {
-  const { data: share } = await admin
+  const { data: share, error: shareErr } = await admin
     .from("vehicle_report_revenue_shares")
     .select("id, tenant_id, amount, currency, status, stripe_transfer_id")
     .eq("id", shareId)
     .maybeSingle();
 
+  // A failed lookup must NOT be read as `not_found` (a benign skip) — throw so
+  // the batch counts it as an error and a systemic DB failure trips the cron
+  // alert instead of a false all-zero success.
+  if (shareErr) throw new Error(`vehicle report share lookup failed for ${shareId}: ${shareErr.message}`);
   if (!share) return { ok: false, reason: "not_found" };
   if (share.status === "paid") {
     return { ok: true, transferId: (share.stripe_transfer_id as string | null) ?? undefined };

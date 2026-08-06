@@ -89,6 +89,12 @@ export async function getReportTiers(): Promise<ReportTier[]> {
   // tiers use their own row price. A failed settings read must NOT silently fall
   // back to the seeded tier price (that would charge a stale price after an
   // admin change) — throw so the caller surfaces it.
+  // A failed tier-catalog read must NOT collapse to an empty catalog (which
+  // would falsely report "sales stopped" / reject valid tier checkouts with no
+  // error reaching monitoring) — throw so the caller surfaces it.
+  if (tiersRes.error) {
+    throw new Error(`vehicle report tiers: catalog read failed: ${tiersRes.error.message}`);
+  }
   if (settingsRes.error) {
     throw new Error(`vehicle report tiers: settings price read failed: ${settingsRes.error.message}`);
   }

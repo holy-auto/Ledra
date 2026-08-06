@@ -63,7 +63,7 @@ export function splitRevenueByRecordCount(
  * one VIN with thousands of certs would bloat the IN list. Upgrade path is
  * a single grouped SQL/RPC count when a passport ever gets that large.
  */
-async function getAnchoredCertCountsByTenant(
+export async function getAnchoredCertCountsByTenant(
   admin: ServiceRoleAdmin,
   vin: string,
   cutoffIso: string | null,
