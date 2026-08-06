@@ -153,3 +153,52 @@ ALTER TABLE vehicle_report_settings
 - 単体テスト: `splitRevenueByRecordCount` が (a) 合計＝プール、(b) 件数比例、
   (c) 丸め残差が件数上位へ、(d) 記録 0 件で空配列、を満たす。
 - 冪等性: 同一 `order_id` で 2 回計上しても行数が増えない（UNIQUE 制約）。
+
+## 9. 段階式レポート（部分 / フル）とスコープ按分（後続で実装: 20260730200000）
+
+無料サマリ → 部分レポート → 全履歴フル、の段階式（ラダー）課金に拡張する。
+
+### ティア
+
+`vehicle_report_tiers`（プラットフォーム共通）で定義する。初期シード:
+
+| tier_key | label | price | scope_type | scope_months |
+| --- | --- | --- | --- | --- |
+| `recent12` | 直近1年レポート | ¥1,500 | `recent_months` | 12 |
+| `full` | 全履歴レポート | ¥3,000 | `full` | （なし） |
+
+- 無料サマリは「未購入」の状態そのもの（ティア行ではない）。
+- `scope_type`: `full`（全期間）/ `recent_months`（直近 N ヶ月）。将来 `service_type` 等の
+  軸を追加してもスキーマ変更なしで足せる形にする（列追加のみ）。
+
+### スコープの意味と**按分の核心制約**
+
+各注文（`vehicle_report_orders`）は購入時のティアの `tier_key` / `scope_type` /
+`scope_months` をスナップショットとして持つ。
+
+- **公開範囲**: `/v/[vin]` は、その購入が解錠したスコープ内の記録だけを表示する
+  （`recent_months` なら「作成日 ≥ now − N ヶ月」の証明書のみ）。上位ティアへの
+  アップグレード導線を出す。
+- **還元の按分（重要）**: 還元は **その購入で実際に開示した記録に対してのみ** 按分する。
+  部分レポートの売上を、そのスコープ外（表示していない）施工店へ分配してはならない
+  （見せていない店が儲かる不整合の防止）。実装は `getExposedCertCountsByTenant(vin, scope)`
+  がスコープでフィルタした件数を返し、`splitRevenueByRecordCount` に渡す。
+- **段階（複数回購入）**: 同一 VIN を部分→フルと別々に買った場合、各購入は独立した
+  売上として、それぞれのスコープに応じて按分する。異なる売上をまたいだ二重計上は
+  「不当」ではない（別々の支払い＝別々の収益）ため、売上横断の重複排除はしない。
+
+### スコープ判定（純粋関数・テスト対象）
+
+`isCreatedAtInScope(createdAtMs, scope, nowMs)`:
+- `full` → 常に true。
+- `recent_months` → `createdAt ≥ (now の N ヶ月前)`。カレンダー月で計算（`setMonth`）。
+
+### 購入時アンカー（scope_from）— ドリフト防止
+
+`recent_months` は相対（閲覧時刻基準）だと、30 日のアクセス期間中に境界が動き、
+購入時に見えた記録が後で消える／按分とズレる。これを防ぐため、**購入時に絶対カットオフ
+`scope_from = now − N ヶ月` を確定して `vehicle_report_orders.scope_from` に保存**し、
+(a) `/v/[vin]` 表示フィルタ（`created_at ≥ scope_from`）と (b) 還元按分の記録抽出
+（同 `scope_from` で `.gte`）の**両方が同一の絶対境界**を使う。これにより「買い手が
+見える範囲」＝「施工店が還元を受ける範囲」がアクセス期間中ずっと一致する。
+`isCreatedAtInScope`（相対判定・テスト済み）は checkout で `scope_from` を求める際に使う。

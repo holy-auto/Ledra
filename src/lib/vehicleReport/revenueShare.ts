@@ -63,7 +63,11 @@ export function splitRevenueByRecordCount(
  * one VIN with thousands of certs would bloat the IN list. Upgrade path is
  * a single grouped SQL/RPC count when a passport ever gets that large.
  */
-async function getAnchoredCertCountsByTenant(admin: ServiceRoleAdmin, vin: string): Promise<TenantCertCount[]> {
+async function getAnchoredCertCountsByTenant(
+  admin: ServiceRoleAdmin,
+  vin: string,
+  cutoffIso: string | null,
+): Promise<TenantCertCount[]> {
   const { data: vehiclesRaw } = await admin
     .from("vehicles")
     .select("id")
@@ -72,7 +76,12 @@ async function getAnchoredCertCountsByTenant(admin: ServiceRoleAdmin, vin: strin
   const vehicleIds = ((vehiclesRaw ?? []) as { id: string }[]).map((v) => v.id);
   if (!vehicleIds.length) return [];
 
-  const { data: certsRaw } = await admin.from("certificates").select("id, tenant_id").in("vehicle_id", vehicleIds);
+  // Scope the record set to what THIS purchase disclosed — never pay a shop
+  // whose records were not shown. `cutoffIso` is the order's anchored
+  // `scope_from` (null = full history); the same bound the page displays.
+  let certQuery = admin.from("certificates").select("id, tenant_id").in("vehicle_id", vehicleIds);
+  if (cutoffIso) certQuery = certQuery.gte("created_at", cutoffIso);
+  const { data: certsRaw } = await certQuery;
   const certs = (certsRaw ?? []) as { id: string; tenant_id: string }[];
   if (!certs.length) return [];
 
@@ -110,10 +119,16 @@ export async function recordVehicleReportRevenueShares(orderId: string): Promise
 
   const { data: orderRaw } = await admin
     .from("vehicle_report_orders")
-    .select("id, vin_code_normalized, status, amount_jpy")
+    .select("id, vin_code_normalized, status, amount_jpy, scope_from")
     .eq("id", orderId)
     .maybeSingle();
-  const order = orderRaw as { id: string; vin_code_normalized: string; status: string; amount_jpy: number } | null;
+  const order = orderRaw as {
+    id: string;
+    vin_code_normalized: string;
+    status: string;
+    amount_jpy: number;
+    scope_from: string | null;
+  } | null;
   if (!order || order.status !== "paid") return;
 
   const vin = order.vin_code_normalized;
@@ -128,7 +143,7 @@ export async function recordVehicleReportRevenueShares(orderId: string): Promise
       ? (settingsRaw as { merchant_share_bps: number }).merchant_share_bps
       : DEFAULT_MERCHANT_SHARE_BPS;
 
-  const perTenant = await getAnchoredCertCountsByTenant(admin, vin);
+  const perTenant = await getAnchoredCertCountsByTenant(admin, vin, order.scope_from);
   const { pool, totalCertCount, shares } = splitRevenueByRecordCount(order.amount_jpy, shareBps, perTenant);
 
   if (pool <= 0 || shares.length === 0) {

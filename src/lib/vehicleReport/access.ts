@@ -1,5 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
+import { scopeFromRow, type ReportScope } from "@/lib/vehicleReport/tiers";
 
 /** Fallback price when the settings row is missing/unreadable. */
 export const DEFAULT_REPORT_PRICE_JPY = 3000;
@@ -45,11 +46,17 @@ export type ValidReportAccess = {
   id: string;
   vin_code_normalized: string;
   expires_at: string | null;
+  /** The disclosure scope this purchase unlocked (relative — used for labels). */
+  scope: ReportScope;
+  /** Absolute lower bound (ISO) resolved at purchase; null = no bound (full). */
+  scopeFromIso: string | null;
 };
 
 /**
  * True iff `token` is a paid, non-expired report order for `vinNormalized`.
  * Used by the gated `/v/[vin]` page; anonymous callers, service role only.
+ * Returns the purchase's disclosure scope so the page shows only the records
+ * that purchase paid for.
  */
 export async function findValidReportAccess(
   vinNormalized: string,
@@ -60,16 +67,30 @@ export async function findValidReportAccess(
   const admin = createServiceRoleAdmin("vehicle report access — anonymous token check for /v/[vin]");
   const { data } = await admin
     .from("vehicle_report_orders")
-    .select("id, vin_code_normalized, status, expires_at")
+    .select("id, vin_code_normalized, status, expires_at, scope_type, scope_months, scope_from")
     .eq("access_token", token)
     .eq("vin_code_normalized", vinNormalized)
     .eq("status", "paid")
     .maybeSingle();
 
-  const row = data as { id: string; vin_code_normalized: string; status: string; expires_at: string | null } | null;
+  const row = data as {
+    id: string;
+    vin_code_normalized: string;
+    status: string;
+    expires_at: string | null;
+    scope_type: string | null;
+    scope_months: number | null;
+    scope_from: string | null;
+  } | null;
   if (!row) return null;
 
   if (row.expires_at && new Date(row.expires_at).getTime() <= Date.now()) return null;
 
-  return { id: row.id, vin_code_normalized: row.vin_code_normalized, expires_at: row.expires_at };
+  return {
+    id: row.id,
+    vin_code_normalized: row.vin_code_normalized,
+    expires_at: row.expires_at,
+    scope: scopeFromRow(row.scope_type, row.scope_months),
+    scopeFromIso: row.scope_from,
+  };
 }

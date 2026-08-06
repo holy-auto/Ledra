@@ -6,6 +6,7 @@ import { getPassportData, getServiceTypeLabel } from "@/lib/passport/getPassport
 import { isPassportPublicEnabled } from "@/lib/passport/featureGate";
 import { formatDate } from "@/lib/format";
 import { findValidReportAccess, getVehicleReportSettings, reportCookieName } from "@/lib/vehicleReport/access";
+import { getReportTiers, type ReportScope } from "@/lib/vehicleReport/tiers";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import PurchaseReportCard from "./PurchaseReportCard";
@@ -69,6 +70,19 @@ export default async function VehiclePassportPage({ params, searchParams }: Page
 
   const isUnlocked = isPaid || isMemberFree;
 
+  // Paid buyers see only the records their tier disclosed; logged-in members
+  // (and full-tier buyers) see the whole timeline. The cutoff is the absolute
+  // `scope_from` anchored at purchase — the SAME bound the revenue-share
+  // proration uses — so what the buyer sees and what merchants earn from stay
+  // identical for the whole access window.
+  const scope: ReportScope = access?.scope ?? { type: "full" };
+  const scopeFromMs = access?.scopeFromIso ? new Date(access.scopeFromIso).getTime() : null;
+  const visibleCerts =
+    isMemberFree || scopeFromMs === null
+      ? data.certificates
+      : data.certificates.filter((c) => c.created_at !== null && new Date(c.created_at).getTime() >= scopeFromMs);
+  const isPartialPaid = isPaid && !isMemberFree && scope.type === "recent_months";
+
   const sp = (await searchParams) ?? {};
   const rawNotice = Array.isArray(sp.canceled)
     ? "canceled"
@@ -83,6 +97,9 @@ export default async function VehiclePassportPage({ params, searchParams }: Page
   const sourcePublicId = typeof sp.src === "string" ? sp.src : Array.isArray(sp.src) ? sp.src[0] : undefined;
 
   const settings = isUnlocked ? null : await getVehicleReportSettings();
+  // Tiers are also needed by the partial-tier upsell shown to paid buyers,
+  // so fetch them whenever a purchase CTA might render.
+  const tiers = isUnlocked && !isPartialPaid ? [] : await getReportTiers();
 
   return (
     <main className="mx-auto max-w-[860px] p-4">
@@ -179,6 +196,25 @@ export default async function VehiclePassportPage({ params, searchParams }: Page
         ) : null}
       </div>
 
+      {/* Partial-tier buyers: show what's still behind the full report */}
+      {isPartialPaid && scope.type === "recent_months" ? (
+        <div className="glass-card mb-4 flex flex-wrap items-center justify-between gap-3 border border-blue-500/30 p-4">
+          <div className="text-sm text-secondary">
+            直近{scope.months}ヶ月分を表示中。全 {data.anchored_cert_count} 件の全期間履歴は
+            <strong className="text-primary">全履歴レポート</strong>でご覧いただけます。
+          </div>
+          <PurchaseReportCard
+            vin={vinNorm}
+            tiers={tiers}
+            enabled
+            notice={null}
+            sourcePublicId={sourcePublicId}
+            compact
+            onlyTier="full"
+          />
+        </div>
+      ) : null}
+
       {/* Certificate timeline — gated behind the paid report */}
       {isUnlocked ? (
         <div className="glass-card mb-4 p-5">
@@ -188,7 +224,7 @@ export default async function VehiclePassportPage({ params, searchParams }: Page
             <div className="absolute left-[7px] top-2 bottom-2 w-px bg-border-default" />
 
             <div className="flex flex-col gap-5">
-              {data.certificates.map((cert) => (
+              {visibleCerts.map((cert) => (
                 <div key={cert.public_id} className="relative flex gap-4">
                   {/* Timeline dot */}
                   <div className="mt-1 h-3.5 w-3.5 shrink-0 rounded-full border-2 border-emerald-500 bg-[rgba(16,185,129,0.2)]" />
@@ -247,7 +283,7 @@ export default async function VehiclePassportPage({ params, searchParams }: Page
       ) : (
         <PurchaseReportCard
           vin={vinNorm}
-          priceJpy={settings?.price_jpy ?? 0}
+          tiers={tiers}
           enabled={settings?.enabled ?? false}
           notice={notice}
           sourcePublicId={sourcePublicId}

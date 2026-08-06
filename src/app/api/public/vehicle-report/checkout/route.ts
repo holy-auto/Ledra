@@ -4,14 +4,14 @@
  * POST /api/public/vehicle-report/checkout
  * body: { vin: string, source_public_id?: string }
  *
- * 第三者 (買取店・整備工場 等) が /v/[vin] の全履歴レポートを
+ * 第三者 (買取店・整備工場 等) が /v/[vin] の施工履歴レポートを
  * 閲覧するための Stripe Checkout (mode=payment / JPY) を作成する。
- * 価格は vehicle_report_settings (プラットフォーム共通) から取得。
+ * 段階式ティア (vehicle_report_tiers) の価格・開示スコープを用いる。
  *
  * セキュリティ:
  *   - 任意 VIN での課金を防ぐため、vehicle_passports に実在する
  *     VIN のみチェックアウト可能 (404)
- *   - 金額はサーバ側 settings から決定 (クライアント値は信用しない)
+ *   - 金額・スコープはサーバ側ティアから決定 (クライアント値は信用しない)
  *   - レート制限 `auth` プリセット (Stripe API 浪費の防止)
  */
 import { NextRequest } from "next/server";
@@ -24,10 +24,13 @@ import { checkRateLimit } from "@/lib/api/rateLimit";
 import { normalizeVin } from "@/lib/passport/normalizeVin";
 import { isPassportPublicEnabled } from "@/lib/passport/featureGate";
 import { getVehicleReportSettings, generateReportAccessToken } from "@/lib/vehicleReport/access";
+import { getReportTierByKey, scopeCutoffIso } from "@/lib/vehicleReport/tiers";
 
 const schema = z.object({
   vin: z.string().trim().min(1).max(64),
   source_public_id: z.string().trim().max(128).optional(),
+  // Which staged tier to buy. Omitted → the full-history tier (back-compat).
+  tier: z.string().trim().max(64).optional(),
 });
 
 export const runtime = "nodejs";
@@ -70,6 +73,27 @@ export async function POST(req: NextRequest) {
       return apiForbidden("車両履歴レポートの販売は現在停止しています。");
     }
 
+    // Resolve the purchased tier (price + disclosure scope). Client-supplied
+    // amounts are never trusted — price and scope come from the tier row.
+    // Fall back to the "full" tier (or, if unseeded, the flat settings price).
+    const requestedTier = parsed.data.tier ?? "full";
+    const tier = (await getReportTierByKey(requestedTier)) ?? (await getReportTierByKey("full"));
+    if (parsed.data.tier && !tier) {
+      return apiValidationError("指定のレポート種別は購入できません。");
+    }
+    const priceJpy = tier?.price_jpy ?? settings.price_jpy;
+    const tierKey = tier?.tier_key ?? null;
+    const scopeType = tier?.scope.type ?? "full";
+    const scopeMonths = tier && tier.scope.type === "recent_months" ? tier.scope.months : null;
+    // Anchor the disclosure cutoff at purchase time (absolute), so display and
+    // revenue-share never drift over the access window.
+    const scopeFrom = tier ? scopeCutoffIso(tier.scope, Date.now()) : null;
+    const productName = tier?.label ?? "車両全履歴レポート";
+    const productDesc =
+      scopeType === "recent_months"
+        ? `VIN ${vin} の直近${scopeMonths}ヶ月の施工履歴 (ブロックチェーン認証済み)`
+        : `VIN ${vin} の全施工履歴 (ブロックチェーン認証済み)`;
+
     const appUrl = process.env.APP_URL ?? process.env.NEXT_PUBLIC_APP_URL;
     if (!appUrl) throw new Error("Missing APP_URL");
 
@@ -83,7 +107,11 @@ export async function POST(req: NextRequest) {
         source_public_id: parsed.data.source_public_id ?? null,
         access_token: accessToken,
         status: "pending",
-        amount_jpy: settings.price_jpy,
+        amount_jpy: priceJpy,
+        tier_key: tierKey,
+        scope_type: scopeType,
+        scope_months: scopeMonths,
+        scope_from: scopeFrom,
       })
       .select("id")
       .single();
@@ -106,10 +134,10 @@ export async function POST(req: NextRequest) {
             price_data: {
               currency: "jpy",
               product_data: {
-                name: "車両全履歴レポート",
-                description: `VIN ${vin} の全施工履歴 (ブロックチェーン認証済み)`,
+                name: productName,
+                description: productDesc,
               },
-              unit_amount: settings.price_jpy,
+              unit_amount: priceJpy,
             },
             quantity: 1,
           },
