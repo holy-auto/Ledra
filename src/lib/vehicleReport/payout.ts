@@ -202,6 +202,7 @@ export async function settleApprovedRevenueShares(
   let paid = 0;
   let skipped = 0;
   let needsOnboarding = 0;
+  let errored = 0;
   for (const r of (rows ?? []) as { id: string }[]) {
     try {
       const res = await payVehicleReportRevenueShare(admin, r.id);
@@ -209,14 +210,21 @@ export async function settleApprovedRevenueShares(
       else if (res.reason === "tenant_not_onboarded") needsOnboarding += 1;
       else skipped += 1;
     } catch (e) {
-      skipped += 1;
+      errored += 1;
       logger.error("[vehicleReportPayout] share payout threw", {
         shareId: r.id,
         detail: e instanceof Error ? e.message : String(e),
       });
     }
   }
-  return { paid, skipped, needsOnboarding };
+  // Per-row isolation above keeps one bad share from aborting the sweep. But a
+  // systemic failure (Stripe down, bad credentials) makes EVERY row throw with
+  // nothing settled — that must not look like a healthy all-zero run. Escalate
+  // so the cron's failure alert fires.
+  if (errored > 0 && paid === 0) {
+    throw new Error(`vehicle report payout sweep failed systemically: ${errored} share(s) threw, 0 paid`);
+  }
+  return { paid, skipped: skipped + errored, needsOnboarding };
 }
 
 /**
@@ -300,11 +308,18 @@ export async function reverseVehicleReportRevenueSharesForOrder(
       let freshStatus: string | null = s.status;
       let freshTransferId: string | null = null;
       if (claimedCount === 0) {
-        const { data: freshRaw } = await admin
+        // This re-read is the only way to discover a transfer a concurrent
+        // payout just dispatched. A failed read must NOT collapse to `skip`
+        // (which would leave a paid share un-reversed on a refunded sale) —
+        // throw so the refund fails and is surfaced for replay.
+        const { data: freshRaw, error: freshErr } = await admin
           .from("vehicle_report_revenue_shares")
           .select("status, stripe_transfer_id")
           .eq("id", s.id)
           .maybeSingle();
+        if (freshErr) {
+          throw new Error(`vehicle report share reconcile read failed for ${s.id}: ${freshErr.message}`);
+        }
         const fresh = freshRaw as { status: string; stripe_transfer_id: string | null } | null;
         freshStatus = fresh?.status ?? null;
         freshTransferId = fresh?.stripe_transfer_id ?? null;

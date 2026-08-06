@@ -193,11 +193,20 @@ export async function recordVehicleReportRevenueShares(orderId: string): Promise
     .eq("id", order.id)
     .maybeSingle();
   if ((freshRaw as { status: string } | null)?.status === "refunded") {
-    await admin
+    // This cancel is the only barrier stopping the shares we just booked from
+    // being approved/paid for a refunded sale. If it fails, surface it (throw)
+    // rather than logging a false "cancelled" — the caller re-books idempotently
+    // on retry and the recheck cancels again.
+    const { error: cancelErr } = await admin
       .from("vehicle_report_revenue_shares")
       .update({ status: "cancelled", updated_at: new Date().toISOString() })
       .eq("order_id", order.id)
       .eq("status", "pending");
+    if (cancelErr) {
+      throw new Error(
+        `vehicle report revenue share: refund-during-booking cancel failed for order ${orderId}: ${cancelErr.message}`,
+      );
+    }
     console.info("vehicle report revenue share: order refunded during booking — cancelled", { orderId, vin });
     return;
   }

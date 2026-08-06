@@ -55,12 +55,16 @@ export async function PATCH(request: NextRequest, ctx: RouteContext) {
       if (share.status !== "pending") return apiValidationError("承認できるのは pending のみです。");
       // Guard the transition so two concurrent approvals don't both "succeed",
       // and surface DB/constraint failures instead of returning a false ok.
-      const { error: aErr } = await admin
+      // A 0-row update means the share changed under us (e.g. a payout marked
+      // it paid) — report a conflict, not a false "approved".
+      const { data: aRows, error: aErr } = await admin
         .from("vehicle_report_revenue_shares")
         .update({ status: "approved", updated_at: new Date().toISOString() })
         .eq("id", id)
-        .eq("status", "pending");
+        .eq("status", "pending")
+        .select("id");
       if (aErr) return apiInternalError(aErr, "report-revenue approve");
+      if (!aRows?.length) return apiValidationError("承認できませんでした（レコードの状態が変化しています）。");
       return apiJson({ ok: true, status: "approved" });
     }
 
@@ -68,12 +72,16 @@ export async function PATCH(request: NextRequest, ctx: RouteContext) {
       if (!["pending", "approved"].includes(share.status as string)) {
         return apiValidationError("キャンセルできるのは pending / approved のみです。");
       }
-      const { error: cErr } = await admin
+      const { data: cRows, error: cErr } = await admin
         .from("vehicle_report_revenue_shares")
         .update({ status: "cancelled", updated_at: new Date().toISOString() })
         .eq("id", id)
-        .in("status", ["pending", "approved"]);
+        .in("status", ["pending", "approved"])
+        .select("id");
       if (cErr) return apiInternalError(cErr, "report-revenue cancel");
+      // 0 rows = a concurrent payout already moved the share to paid; do not
+      // tell the operator funds were cancelled when the transfer completed.
+      if (!cRows?.length) return apiValidationError("キャンセルできませんでした（送金済みの可能性があります）。");
       return apiJson({ ok: true, status: "cancelled" });
     }
 

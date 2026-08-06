@@ -20,7 +20,13 @@ export async function GET(request: NextRequest) {
     if (!caller) return apiUnauthorized();
     if (!isPlatformAdmin(caller)) return apiForbidden();
 
-    const status = request.nextUrl.searchParams.get("status");
+    const params = request.nextUrl.searchParams;
+    const status = params.get("status");
+    // Offset pagination so every share is reachable, not just the newest page —
+    // otherwise, once >500 shares share a status, older ones can never be
+    // approved through this (the only) platform-wide reader.
+    const limit = Math.min(500, Math.max(1, Number(params.get("limit")) || 500));
+    const offset = Math.max(0, Number(params.get("offset")) || 0);
     const admin = createPlatformScopedAdmin("report-revenue — platform-wide payout queue");
 
     let query = admin
@@ -31,14 +37,16 @@ export async function GET(request: NextRequest) {
           "tenants(name, stripe_connect_account_id, stripe_connect_onboarded)",
       )
       .order("created_at", { ascending: false })
-      .limit(500);
+      .range(offset, offset + limit - 1);
 
     if (status) query = query.eq("status", status);
 
     const { data, error } = await query;
     if (error) return apiInternalError(error, "report-revenue GET");
 
-    return apiJson({ shares: data ?? [] });
+    const shares = data ?? [];
+    // hasMore lets the operator page forward until the queue is exhausted.
+    return apiJson({ shares, limit, offset, hasMore: shares.length === limit });
   } catch (e) {
     return apiInternalError(e, "report-revenue GET");
   }
