@@ -68,8 +68,13 @@ export async function payVehicleReportRevenueShare(admin: Db, shareId: string): 
   if (share.status === "paid") {
     return { ok: true, transferId: (share.stripe_transfer_id as string | null) ?? undefined };
   }
+  // A terminal share (cancelled/reversed) can still carry its old transfer id;
+  // never report `pay` as an in-flight success for one — check status first.
+  if (share.status === "cancelled" || share.status === "reversed" || share.status === "failed") {
+    return { ok: false, reason: "not_approved" };
+  }
   if (share.stripe_transfer_id) {
-    // Already dispatched; the webhook will settle it.
+    // Already dispatched on a live (approved) row; the webhook will settle it.
     return { ok: true, transferId: share.stripe_transfer_id as string };
   }
   if (share.status !== "approved") return { ok: false, reason: "not_approved" };
@@ -289,11 +294,15 @@ export async function reverseVehicleReportRevenueSharesForOrder(
       // transfer between our load and here, this affects 0 rows — then re-read
       // and reverse instead of cancelling a paid row (which would leave the
       // merchant holding funds from a refunded sale).
+      // Guard on any non-terminal, no-transfer state (not just the loaded one):
+      // a concurrent admin approval can flip pending→approved between our load
+      // and here, and that share still needs cancelling on a refund. Only a
+      // dispatched transfer (0 rows) sends us to the reverse path below.
       const { data: claimedRows, error: cancelErr } = await admin
         .from("vehicle_report_revenue_shares")
         .update({ status: "cancelled", updated_at: new Date().toISOString() })
         .eq("id", s.id)
-        .eq("status", s.status)
+        .in("status", ["pending", "approved"])
         .is("stripe_transfer_id", null)
         .select("id");
       // A failed UPDATE must NOT be read as a 0-row race — that would `skip` an

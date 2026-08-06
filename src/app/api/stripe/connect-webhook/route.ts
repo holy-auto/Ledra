@@ -378,8 +378,15 @@ export async function POST(req: NextRequest) {
           });
         }
 
-        // 車両レポート収益の還元送金が取消 → 台帳を reversed に
-        if (meta?.source_type === "vehicle_report" && meta?.source_id) {
+        // 車両レポート収益の還元送金が取消 → 台帳を reversed に。
+        // transfer.reversed は「一部取消」でも発火し、その場合 transfer.reversed
+        // は false（全額取消で初めて true）。一部取消で share 全体を terminal な
+        // reversed にすると残額を保持中の施工店を誤って完済扱いするため、全額
+        // 取消のときだけ台帳を反映する。
+        const fullyReversed =
+          transfer.reversed === true ||
+          (typeof transfer.amount_reversed === "number" && transfer.amount_reversed >= transfer.amount);
+        if (meta?.source_type === "vehicle_report" && meta?.source_id && fullyReversed) {
           const { error: revErr } = await supabase
             .from("vehicle_report_revenue_shares")
             .update({ status: "reversed", updated_at: new Date().toISOString() })
