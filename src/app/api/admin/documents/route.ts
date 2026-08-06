@@ -5,6 +5,7 @@ import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
 import { DOC_TYPES, isDocumentEditable, isDocumentDeletable, type DocType } from "@/types/document";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { parsePagination } from "@/lib/api/pagination";
+import { parseAmountParam } from "@/lib/api/amountFilter";
 import {
   apiJson,
   apiUnauthorized,
@@ -43,12 +44,8 @@ export async function GET(req: NextRequest) {
     const dateFrom = isoDate.test(dateFromRaw) ? dateFromRaw : "";
     const dateTo = isoDate.test(dateToRaw) ? dateToRaw : "";
     // 電帳法「可視性の確保」: 取引金額（total）と取引先で検索できるようにする。
-    const parseAmount = (raw: string | null): number | null => {
-      const n = Number((raw ?? "").trim());
-      return Number.isFinite(n) && n >= 0 ? Math.floor(n) : null;
-    };
-    const amountMin = parseAmount(url.searchParams.get("amount_min"));
-    const amountMax = parseAmount(url.searchParams.get("amount_max"));
+    const amountMin = parseAmountParam(url.searchParams.get("amount_min"));
+    const amountMax = parseAmountParam(url.searchParams.get("amount_max"));
     const counterpartyRaw = (url.searchParams.get("counterparty") ?? "").trim();
     // PostgREST の or() フィルタ文字列を壊す区切り文字は除去してから ilike パターン化する。
     const counterparty = counterpartyRaw.replace(/[,()*%]/g, "").slice(0, 100);
@@ -57,49 +54,19 @@ export async function GET(req: NextRequest) {
     const selectCols =
       "id, tenant_id, customer_id, staff_member_id, doc_type, doc_number, issued_at, due_date, status, subtotal, tax, total, tax_rate, note, is_invoice_compliant, source_document_id, show_seal, show_logo, show_bank_info, recipient_name, recipient_honorific, recipient_postal_code, recipient_address, recipient_phone, subject, period_start, period_end, payment_terms, delivery_date, template_id, created_at, updated_at";
 
-    let query = supabase
-      .from("documents")
-      .select(selectCols)
-      .eq("tenant_id", caller.tenantId)
-      .order("created_at", { ascending: false });
+    // 本番で帳票一覧が「非決定的に0件」になる事象への恒久対処。
+    // - ユーザーセッション(RLS)経由は documents に対して実行時に0件を返すことがある
+    //   （resolveCallerWithRole の tenant_memberships 読取は効くのに documents は0）。
+    // - サービスロール経由は RLS/JWT に依存せず決定的だが、本番の
+    //   SUPABASE_SERVICE_ROLE_KEY が anon 相当だと0件になる。
+    // どちらか一方が壊れていても表示できるよう「サービスロール優先→0件ならユーザー
+    // セッションへフォールバック」の二重取得にする。caller.tenantId は所属検証済み。
+    const { admin } = createTenantScopedAdmin(caller.tenantId);
 
-    let countQuery = supabase
-      .from("documents")
-      .select("*", { count: "exact", head: true })
-      .eq("tenant_id", caller.tenantId);
-
-    if (docType) {
-      query = query.eq("doc_type", docType);
-      countQuery = countQuery.eq("doc_type", docType);
-    }
-    if (status && status !== "all") {
-      query = query.eq("status", status);
-      countQuery = countQuery.eq("status", status);
-    }
-    if (customerId) {
-      query = query.eq("customer_id", customerId);
-      countQuery = countQuery.eq("customer_id", customerId);
-    }
-    if (dateFrom) {
-      query = query.gte("issued_at", dateFrom);
-      countQuery = countQuery.gte("issued_at", dateFrom);
-    }
-    if (dateTo) {
-      query = query.lte("issued_at", dateTo);
-      countQuery = countQuery.lte("issued_at", dateTo);
-    }
-    if (amountMin !== null) {
-      query = query.gte("total", amountMin);
-      countQuery = countQuery.gte("total", amountMin);
-    }
-    if (amountMax !== null) {
-      query = query.lte("total", amountMax);
-      countQuery = countQuery.lte("total", amountMax);
-    }
-    // 取引先: 帳票直書きの宛先名（recipient_name）に加え、顧客名でも引けるように
-    // 名前一致する customer_id を先に解決して OR 条件に含める。
+    // 取引先検索: 顧客名一致の customer_id を先に解決して OR 条件に含める。
+    let orExpr: string | null = null;
     if (counterparty) {
-      const { data: matchedCustomers } = await supabase
+      const { data: matchedCustomers } = await admin
         .from("customers")
         .select("id")
         .eq("tenant_id", caller.tenantId)
@@ -108,25 +75,56 @@ export async function GET(req: NextRequest) {
       const ids = (matchedCustomers ?? []).map((c) => c.id);
       const orParts = [`recipient_name.ilike.%${counterparty}%`];
       if (ids.length > 0) orParts.push(`customer_id.in.(${ids.join(",")})`);
-      const orExpr = orParts.join(",");
-      query = query.or(orExpr);
-      countQuery = countQuery.or(orExpr);
+      orExpr = orParts.join(",");
     }
 
-    if (page > 0) {
-      query = query.range(from, to);
-    }
+    type DocClient = typeof admin;
+    const buildList = (client: DocClient) => {
+      let q = client
+        .from("documents")
+        .select(selectCols)
+        .eq("tenant_id", caller.tenantId)
+        .order("created_at", { ascending: false });
+      if (docType) q = q.eq("doc_type", docType);
+      if (status && status !== "all") q = q.eq("status", status);
+      if (customerId) q = q.eq("customer_id", customerId);
+      if (dateFrom) q = q.gte("issued_at", dateFrom);
+      if (dateTo) q = q.lte("issued_at", dateTo);
+      if (amountMin !== null) q = q.gte("total", amountMin);
+      if (amountMax !== null) q = q.lte("total", amountMax);
+      if (orExpr) q = q.or(orExpr);
+      if (page > 0) q = q.range(from, to);
+      return q;
+    };
+    const buildCount = (client: DocClient) => {
+      let q = client.from("documents").select("*", { count: "exact", head: true }).eq("tenant_id", caller.tenantId);
+      if (docType) q = q.eq("doc_type", docType);
+      if (status && status !== "all") q = q.eq("status", status);
+      if (customerId) q = q.eq("customer_id", customerId);
+      if (dateFrom) q = q.gte("issued_at", dateFrom);
+      if (dateTo) q = q.lte("issued_at", dateTo);
+      if (amountMin !== null) q = q.gte("total", amountMin);
+      if (amountMax !== null) q = q.lte("total", amountMax);
+      if (orExpr) q = q.or(orExpr);
+      return q;
+    };
 
-    const [{ data: docs, error }, { count: totalCount }] = await Promise.all([query, countQuery]);
-    if (error) {
-      return apiInternalError(error, "documents GET");
-    }
+    // service-role(admin) 単一経路で取得。caller.tenantId は所属検証済み。
+    const [list, cnt] = await Promise.all([buildList(admin), buildCount(admin)]);
+    if (list.error) return apiInternalError(list.error, "documents GET");
+    const docs = list.data ?? [];
+    const totalCount = cnt.count ?? docs.length;
+    const dataClient = admin;
 
-    // 顧客名を並列取得（メインクエリ完了後すぐにIDを収集）
+    // 顧客名を取得（データを返せたクライアントで逐次取得）
     const customerIds = [...new Set((docs ?? []).map((d) => d.customer_id).filter(Boolean))];
     const customerNames: Record<string, string> = {};
     if (customerIds.length > 0) {
-      const { data: customers } = await supabase.from("customers").select("id, name").in("id", customerIds);
+      const { data: customers } = await dataClient
+        .from("customers")
+        .select("id, name")
+        .eq("tenant_id", caller.tenantId)
+        .in("id", customerIds);
       for (const c of customers ?? []) {
         customerNames[c.id] = c.name;
       }
@@ -327,7 +325,11 @@ export async function POST(req: NextRequest) {
     if (data?.status === "sent") {
       after(async () => {
         try {
-          await sealDocumentOnFinalize(admin, caller.tenantId, data as SealableDocument & { id: string; meta_json?: unknown });
+          await sealDocumentOnFinalize(
+            admin,
+            caller.tenantId,
+            data as SealableDocument & { id: string; meta_json?: unknown },
+          );
         } catch (sealErr) {
           console.error("documents POST: integrity seal failed (non-blocking)", sealErr);
         }
@@ -529,7 +531,11 @@ export async function PUT(req: NextRequest) {
       after(async () => {
         // 電帳法「真実性の確保」: 確定した帳票に内容ハッシュ＋TS 封印を付ける（best-effort）。
         try {
-          await sealDocumentOnFinalize(admin, caller.tenantId, data as SealableDocument & { id: string; meta_json?: unknown });
+          await sealDocumentOnFinalize(
+            admin,
+            caller.tenantId,
+            data as SealableDocument & { id: string; meta_json?: unknown },
+          );
         } catch (sealErr) {
           console.error("documents PUT: integrity seal failed (non-blocking)", sealErr);
         }

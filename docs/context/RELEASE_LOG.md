@@ -7,10 +7,138 @@
 ## 記入フォーマット
 
 ```
+
 ## YYYY-MM-DD 変更タイトル (PR #番号 / commit)
 - 内容: 何を実装・変更したか
 - 対象: どの画面・API・業種向けか
 ```
+
+## 2026-08-05 帳票共有のLINE宛先を顧客の連携済みLINEに自動選択 (branch claude/payment-status-and-error-no5a9m)
+- 内容: 帳票共有モーダルの LINE タブで、顧客に連携済みの `customers.line_user_id` があれば宛先を
+  自動選択し「◯◯様のLINEに送信します（連携済み）」と表示（生IDの手入力が不要に）。未連携時、
+  または「別のユーザーIDを指定」選択時のみ手動入力欄を出すフォールバック。`/api/admin/customers`
+  の select に `line_user_id` を追加し、モーダルは顧客がいる限り常に取得するよう変更。
+- 対象: 帳票詳細の「共有」→ LINE タブ。
+
+## 2026-08-05 滞留PRバックログを整理し、機能3件を現mainへ再適用してマージ (PR #884 / #885 / #886)
+- 内容:
+  - #884: サインアップ失敗時のロールバック（auth user / tenant / membership 削除）失敗を検知し、「孤児レコード・要手動クリーンアップ」を3つの失敗パスすべてでログ化（`src/app/api/signup/route.ts`）。
+  - #885: 保険ケースのステータス変更で基幹ソフト連携向け webhook（`insurer_case.status_changed`）を発火（7ファイル）。加えて単一ケース PATCH に status compare-and-swap を追加し、同時更新時の webhook 二重発火を防止（bulk/messages ルートと整合、`cases/[id]/__tests__/route.test.ts` で3挙動を検証）。
+  - #886: CMS予約投稿の日時を JST↔UTC で正しく変換する `src/lib/datetime.ts` を新設し、`new Date().toISOString()` の素朴な変換を置換（14ファイル、`datetime.test.ts` 10件）。
+- 補足: 依存Bump #853/#775/#774 をマージ、陳腐化docs等（#757/#823/#822/#864/#863）をクローズ、履歴断絶した旧 #821/#748/#826 は上記再適用でクローズ。WIP実送金 #851・大型UIキット同期 #760 は保留。
+- 対象: サインアップAPI、保険会社ポータル（ケース管理）、CMS予約投稿、依存関係。
+
+## 2026-08-05 帳票ステータスの 'overdue' を DB 制約に追加＋種別クイックナビ追加 (branch claude/chouhyo-kanri-kaizen-fkgzaa)
+- 内容:
+  - `documents_status_check` に 'overdue'（期限超過）を追加。アプリは遷移・表示で 'overdue' を使うのに
+    制約が欠いており、詳細画面「期限超過に変更」で PUT が CHECK 違反(23514)の 500 になりステータス変更が
+    適用されなかったのを修正（マイグレーション `20260805085225_documents_status_overdue.sql`。本番へ直接適用済み）。
+  - 帳票管理一覧のヘッダーバーに帳票種別クイックナビ（すべて／見積書／請求書／領収書…）を追加。ワンタップで
+    種別を切り替えられる（既存の種別フィルタ状態を再利用）。
+  - 一覧の「入金」クイックボタンを `consolidated_invoice`（合算請求書）にも表示（詳細画面と条件を統一）。
+  - 再発防止テスト `statusConstraint.test.ts`（アプリが遷移し得る全ステータス ⊆ DB許可集合）を追加。
+- 補足: 「入金済の変更が適用されない」の主因は 20260715 バッチのマイグレーション・ドリフト（`documents.staff_member_id`
+  未反映で GET/PUT が 500）で、修復マイグレーション `20260731144359` が本番適用済みのため入金済更新自体は復旧済み。
+- 対象: 帳票管理（`/admin/documents`）一覧・詳細、`documents` テーブル。
+
+## 2026-08-05 帳票（請求書等）を LINE・メール・SMS で PDF リンク付き送付 (branch claude/payment-status-and-error-no5a9m)
+- 内容: 帳票共有（`POST /api/admin/documents/share`）で主帳票 PDF をレンダリングし、非公開 Storage
+  バケット（既存 `line-media` 再利用）へ保存して長期署名 URL を発行、各 channel の本文に含めるように
+  した。LINE Messaging API は生ファイル（PDF）を push できないため、URL 送付が唯一の方法。LINE は
+  `sendDocumentLink` に `pdfUrl` を追加して本文へ「PDFはこちら」リンクを付与、メールは既存の未使用
+  `pdfUrl` 引数（「PDFを表示」ボタン）を配線、SMS は本文に PDF URL を付記。PDF 生成失敗は fail-soft で
+  本文のみ送信。PDF ルートと共有で重複していたレイアウト解決を `src/lib/documents/pdfShare.ts` に集約。
+- 対象: 帳票詳細／一覧の「共有」→ LINE・メール・SMS（全帳票種別。請求書を含む）。
+
+## 2026-08-05 通知ベルの「すべて既読」がサーバに永続化されず未読が復活する不具合を修正 (branch claude/payment-status-and-error-no5a9m)
+- 内容: `NotificationBell` の「すべて既読」がローカル状態のみ更新で API を呼ばず、ポーリング再取得で
+  未読が復活していた。一括既読 API `PUT /api/admin/notifications/read-all`（テナント宛＋本人宛の未読を
+  `read_at` で既読化）を追加し、ベルを「楽観更新 → API → 再取得」に修正。
+- 対象: 管理画面トップバーの通知ベル。
+
+## 2026-08-04 帳票一覧が本番で常に0件になる不具合を修正（金額フィルタ未指定を total=0 と誤解釈していた根本原因）(PR #879 / 93eeeea)
+- 内容: 帳票一覧API `GET /api/admin/documents` が、金額検索 `amount_min`/`amount_max` 未指定時に
+  `Number("") === 0` によりフィルタ値を 0 と解釈し、クエリに `total>=0 AND total<=0`（＝ total=0）を
+  常時付与していた。金額>0 の全帳票が一致せず、本番で「帳票がありません（0件）」になっていた根本原因を修正。
+  金額パースを純関数 `parseAmountParam`（`src/lib/api/amountFilter.ts`）へ切り出し、空・空白・未指定は
+  null（フィルタ無し）を返し、明示的な "0" のみ 0 とするよう修正。回帰防止テスト
+  `src/lib/api/__tests__/amountFilter.test.ts`（4ケース）を追加。あわせて #878 で入れた
+  「接続過渡的0件」への多重リトライ／診断 `_diag`（誤診に基づく対症策）を撤去し、
+  service-role 単一クエリのシンプルな取得に戻した。本番デプロイ後、表示回復を確認済み。
+- 対象: 帳票管理一覧 `/admin/invoices`・`/admin/documents`（帳票取得API `GET /api/admin/documents`）。
+
+## 2026-08-03 帳票明細: 品番のみ入力した明細が詳細画面・PDFで消えて見える不具合を修正 (branch claude/chouhyo-functionality-check-7fbgko)
+- 内容: 帳票明細の「内容(description)」が空で「品番(item_code)」だけ入力された明細が、詳細画面・PDF・印刷で
+  すべて「-」表示になり、入力した品番・商品名が丸ごと不可視になっていた（＝「DBに反映されない／吸い上げられない」
+  と誤認される）不具合を修正。データ自体は `documents.items_json` に保存されており欠損ではなく、描画側が
+  `description || "-"` のみで `item_code` を一切表示していなかったことが原因。表示ルールを純関数
+  `itemContentLines`（`src/lib/documents/itemDisplay.ts`）に集約し、「内容が空でも品番があれば品番を内容として
+  昇格表示」「両方あれば内容を主・品番を従(品番: …)に表示」に統一。詳細画面(`DocumentDetailClient.tsx`)と
+  PDF(`pdfDocument.tsx`)の両描画経路へ適用。純関数の単体テスト `itemDisplay.test.ts` を追加。
+  既存の帳票もデータ移行なしで即復旧する。
+- 対象: 帳票詳細 `/admin/documents/[id]`、帳票PDF `/admin/documents/pdf`、印刷表示（全帳票種別）。
+
+## 2026-08-03 帳票明細の品目入力を「入力欄＋検索欄」の2段に整理（選択UIの重複を解消） (PR #860)
+- 内容: 明細1行あたり3要素あった品目入力（品番検索・「品目マスタから選択」ドロップダウン・品目入力欄）のうち、
+  冗長な `<select>`「品目マスタから選択」を削除。品目名での選択が入力欄の datalist 補完と二重で、かつ select 側だけが
+  全項目を埋め datalist 側は単価しか埋めないという不整合もあった。品番検索（`ItemCodeField`）と品目・内容の入力欄の
+  2段構成へ統一し、入力欄を上に配置。純粋な JSX の再構成で挙動変更なし。マスタ未登録の入力内容を保存時に品目マスタへ
+  自動反映する `autoRegisterMenuItems` は従来どおり動作（documents/invoices 両 API）。
+- 対象: 帳票作成フォーム `src/app/admin/documents/DocumentForm.tsx`（見積書・請求書等の明細入力）。
+
+## 2026-08-03 顧客登録の支払条件を請求書へ自動反映（プリフィル経路の取りこぼしを是正） (branch claude/customer-payment-terms-invoice-0q1v5p)
+- 内容: 顧客登録で入力した支払条件（`billing_terms_note`、無ければ支払サイクルのラベル）が請求書に反映されない不具合を修正。
+  原因は、顧客の敬称・住所・支払条件を宛先詳細へ自動反映するロジックが顧客セレクトの `onChange` 内にしか無く、
+  「請求書を作成」ボタン（`/admin/invoices/new?customer_id=...`）等の URL プリフィル経路（`onChange` を経由しない）では
+  未適用だったこと。導出ロジックを純関数 `customerFormDefaults` に集約し、`onChange` とプリフィル `useEffect` の双方から
+  呼ぶよう修正。純関数の単体テスト `customerFormDefaults.test.ts` を追加。
+- 対象: 帳票作成フォーム `src/app/admin/documents/DocumentForm.tsx`（請求書・見積書等の新規作成）。
+
+## 2026-08-03 サインアップもパスワード必須に統一（パスワードレス登録の締め出しを予防） (branch claude/email-sso-login-issue-1f9upn)
+- 内容: ログインを password のみにしたのに合わせ、新規登録も password 必須に統一。既定 `mode="magic"`（パスワードレス
+  ＝メールリンク）と方式切替トグル・magic 分岐を撤去。これで「パスワード無しアカウント＋メールリンクログイン撤去」による
+  将来の締め出し（Codex P1 指摘）を予防。既存パスワードレスユーザーは 0 件のため移行不要。サーバー(`signupSchema`)は
+  passwordless 省略時に password 8 文字以上を必須化済みで二重に担保。
+- 対象: `/signup`。API `/api/signup` と passwordless 分岐はバックエンド温存（UI からは未使用）。
+
+## 2026-08-03 ログイン画面をパスワードのみに簡素化（メールリンク/SSO の導線を撤去） (branch claude/email-sso-login-issue-1f9upn)
+- 内容: ログイン画面から「メールリンクでログイン（パスワード不要）」「会社の SSO でログイン」ボタン・区切り線・
+  SSO 必須バナー・password 経路の SSO 強制分岐を撤去し、パスワードログインのみのシンプルな画面に。未使用の
+  `MagicLinkSignIn.tsx` / `SsoSignInButton.tsx` を削除（252 行削除）。バックエンド API（`/api/auth/magic-link`,
+  `/api/auth/sso/start`）と `ssoPolicy`/`sso` lib は温存し、可逆に。
+- 対象: `/login`（施工店・代理店の入口）。
+
+## 2026-08-02 メールリンク/サインアップ/SSO の PKCE コールバックを同一オリジンへ戻す修正 (branch claude/email-sso-login-issue-1f9upn)
+- 内容: `resolveBaseUrl` に opt-in の `preferRequestOrigin` を追加し、magic-link / signup(パスワードレス) /
+  sso-start の `emailRedirectTo`/`redirectTo` をリクエストと同一オリジンに変更。PKCE の code_verifier Cookie は
+  リクエストオリジンに張られるため、コールバックが APP_URL(正規ドメイン)だと交換に失敗してログインできない問題を是正。
+  純関数の単体テスト `src/lib/__tests__/url.test.ts` を追加。
+- 対象: ログイン導線（`/api/auth/magic-link`, `/api/signup`, `/api/auth/sso/start`）。共通ヘルパ `src/lib/url.ts`。
+- 注記: 本修正の効果は「ユーザーが実アクセスするオリジンが Supabase の Redirect URLs 許可リストに含まれる」ことが前提。
+  SSO は Supabase 側に IdP 未登録（プロバイダ 0 件）のため別途設定が必要。詳細は DECISION_LOG / OPEN_QUESTIONS 2026-08-02。
+
+## 2026-08-02 証明書/保険会社系 SECURITY DEFINER 関数の search_path バレ参照＋enum バグを修復 (branch claude/payment-status-and-error-no5a9m)
+- 内容: 本番 `cahybswpduchptvyvdkk` のログに `relation "certificates"/"insurers" does not exist` が継続発生。原因は `20260404000000` が4関数に `SET search_path=''` を付けた際に本体のテーブル参照を `public.` 修飾へ直さなかったこと（`20260725125332` の第1弾修正が取りこぼした4関数）。さらに `platform_certificate_stats`・`insurer_get_vehicle_certificates` は enum に無い `'expired'`（`certificate_status_enum` は active/void/draft のみ）を参照しており、バレ参照を直すと enum 例外に変わる二重バグだった。`20260802000000_fix_search_path_bare_refs_certificates_insurers.sql` で4関数を `public.` 修飾＋`status::text` 比較に修正し本番へ適用。
+- 対象: `get_certificate_service_price`（証明書料金）/ `platform_certificate_stats`・`platform_insurer_count`（管理ダッシュボードのプラットフォーム統計、super_admin 表示）/ `insurer_get_vehicle_certificates`（保険会社ポータルの車両別証明書一覧）。
+- 限界: 別2件のコード/スキーマ不整合は未修正で要判断として残す — `certificates.template_name`（`api/admin/vehicles/[id]/last-cert` が参照するがマイグレーション未定義）、`agents.stripe_connect_onboarded`（stripe connect webhook が参照するが列は `tenants` にのみ存在し `agents` には無い）。
+- 検証: 適用後 `platform_certificate_stats()`＝{total:38, active:23, void:14, expired:0, draft:1}、`platform_insurer_count()`＝2 がエラーなく返ることを本番で確認。
+
+## 2026-07-31 帳票管理エラー・入金済更新不可を修復（20260715* マイグレーションドリフトの再適用） (branch claude/payment-status-and-error-no5a9m)
+- 内容: 本番 `cahybswpduchptvyvdkk` で `20260715000000`〜`20260715000003` の4本が `schema_migrations` に記録済みなのに DDL 未反映（ドリフト）だったため、`/api/admin/documents` の GET/PUT が `column documents.staff_member_id does not exist` で 500 になり、帳票管理の一覧表示と「入金済」への更新ができなかった。4本の DDL を冪等にまとめた修復マイグレーション `supabase/migrations/20260731144359_repair_20260715_batch_drift.sql` を新規作成し本番へ適用。復旧した機能: 帳票管理一覧・書類確認、請求書の入金済（入金確定）更新、外注請求書（staff_invoice）、支社担当者ロール（store_memberships.role）、売上分析の週別集計、外注職人のレス率。
+- 対象: 管理画面 帳票管理（`/admin/documents`）・請求書入金確定 / `/api/admin/documents` GET・PUT / 本番DB スキーマ。
+- 限界: 元の4マイグレーションファイルは履歴再現性のため未変更（修復は別マイグレーションで冪等再適用）。ドリフトの根本原因（記録済みなのに未適用になった経緯）は未究明で OPEN_QUESTIONS に起票。
+- 検証: 適用前に FK/CHECK 検証の安全性を確認（store_memberships 0行・孤児user_id 0、documents/document_templates の doc_type 逸脱 0）。適用後、7オブジェクト（`documents.staff_member_id`／`staff_members.commission_rate`／`store_memberships.role`／documents・document_templates の doc_type CHECK の staff_invoice／RESTRICTIVE ポリシー／billing_analytics_stats の週別）の実在と、PUT ハンドラの全 SELECT 列（38列）が本番でエラーなく解決することを確認。
+
+## 2026-07-30 代理店ポータルに「常に最新の商品資料」欄を追加（自動生成PDFの再利用） (branch claude/agency-franchise-document-updates-3pdw2w)
+- 内容: 代理店資料が静的アップロード（`agent-materials` バケット）のみで、機能追加・料金改定のたびに本部が差し替えないと陳腐化する問題に対応。既にライブデータ（`PLANS`/`FEATURE_GROUPS`/`SECURITY_BLOCKS` 等）からリクエスト時に自動生成しているマーケ資料（`RESOURCE_PDFS` → `/api/marketing/resources/[key]/pdf`）を代理店ポータルにも露出させ、「常に最新の商品資料」欄として配置。機能の増減・改定があってもダウンロードのたびに最新版が出力され、本部の差し替え作業は不要になる。
+  - 実装: 6資料（サービス概要/機能紹介/セキュリティ/導入事例/ROI/料金）のタイトル・説明・DLリンクを、これまでマーケ資料ページにローカル定義していた配列から共有モジュール `src/lib/marketing/resourceCatalog.ts`（純データ、重い依存なし＝クライアント同梱を回避）へ抽出し単一情報源化。`ResourceCard` の `Resource` 型もカタログ由来に統一。`/agent/materials`（`src/app/agent/materials/page.tsx`）に緑の「ALWAYS LATEST」欄＋各資料の「最新版をDL」＋「全資料一括DL（ZIP）」を追加。マーケ資料ページ（`/resources`）は共有カタログを参照するよう置換（表示は不変）。
+  - 対象: 代理店ポータル（agent）資料画面 / マーケ資料ページ（表示不変のリファクタ）。
+  - 限界: 自動最新化されるのは元データを持つ製品資料のみ。契約書テンプレ等・機能増減と連動しない定型文書は従来どおり本部が手動更新（静的アップロード欄は併存）。プレビューは attachment 配信のため欄内 iframe ではなく新規タブDLとした。
+  - 検証: 新規 parity テスト（catalog↔`RESOURCE_PDFS` の双方向カバレッジ・DLリンク整合）3件＋`src/lib/marketing` 全66件パス、tsc エラー0、eslint エラー0（既存 warning 2件は無関係の別箇所）。
+
+## 2026-07-28 「レドラ」音声起動の運用手順を追加（アシスタント経由・コード変更なし）
+- 内容: `apps/mobile/docs/VOICE_LAUNCH.md` を新規作成。既存の `ledra://` URL スキーム（expo-router の自動ディープリンク解決）を使い、iOS ショートカット／Android ルーティンに「レドラ」を登録して `ledra://certificates/new` 等でデータ入力画面へ直行させる手順を文書化。アプリ側の追加実装はゼロ。アプリ内ウェイクワード（B）とネイティブ App Intents は実装ロードマップとして同ドキュメントに記載（実機ビルド待ち・未実装）。
+- 対象: モバイルアプリ（`apps/mobile`、Expo）／現場の施工士による音声起点のデータ入力。
 
 ## 2026-07-30 車両レポートの段階式ティア（部分/フル）＋スコープ按分 (branch claude/merchant-revenue-sharing-22tuq3)
 - 内容: 単一定額レポートを、無料サマリ→部分（直近N ヶ月）→全履歴フルの段階式へ拡張。開示範囲と還元対象を一致させる。
@@ -57,6 +185,13 @@
 - 残（スコープ外）: 実送金の自動化（`stripe_connect_transfers.source_type` に vehicle_report 追加＋精算バッチ／
   Connect オンボーディング導線は別 PR）、返金時の台帳巻き戻し。
 
+## 2026-07-25 CMS予約投稿のタイムゾーンずれを修正（保存・表示の両方） (branch claude/cms-scheduled-post-bug-ejccnb)
+- 内容: サイトコンテンツ（お知らせ/ブログ/イベント）の予約公開が指定時刻に公開されず、かつ管理/公開画面の日時表示も入力とずれていた不具合を修正。
+  - **保存**: `datetime-local` が生成する TZ 無しの壁時計文字列（例 `2026-07-30T14:00`）を server action が `new Date(x).toISOString()` でそのまま変換していた。Vercel ランタイムの TZ が UTC のため JST 14:00 の予約が `14:00Z`（＝JST 23:00）で保存され、cron 自体は正常でも公開が9時間遅れていた。
+  - **表示**: 管理一覧・公開イベント/ニュース/ブログ・NewsTeaser の日時整形がサーバ側で `new Date().getHours()` / `iso.slice(0,10)` を使い、SSR(UTC)で JST 入力が9時間ずれて（日付のみ表示は深夜帯で1日）表示されていた。
+  - 共有ヘルパー `src/lib/datetime.ts` を新設（`jstLocalInputToUtcIso` / `utcIsoToJstLocalInput` / `jstParts` / `formatJstDateTime` / `formatJstDateTimeJa` / `formatJstDateJa`）。naive 入力を常に JST(UTC+9) として保存し、表示も常に JST で描画（実行環境TZ非依存）。散在していた各ページのローカル日時整形関数を撤去して集約。ユニットテスト追加（UTC/JST/他TZの各サーバで検証）。
+- 対象: `/admin/site-content`（作成・編集 server action / 一覧）、公開 `/events`・`/news/[slug]`・`/news`・`/blog`・`/blog/[slug]`・トップ NewsTeaser、cron `/api/cron/publish-scheduled` の対象データ
+
 ## 2026-07-27 AIナビ＆横断検索でサイドバーをスリム化 + 監査ゲート恒久修正 (PR #752 / e19d92c)
 - 内容:
   (1) サイドバー刷新: 常時表示をコア8機能に絞る slim 表示と、全 NAV_GROUPS を出す full トグル。
@@ -95,6 +230,7 @@
 ## 2026-07-27 C2PA本番証明書の取得手順ドキュメント + 切替前プリフライト検証スクリプト (branch claude/c2pa-production-deployment-nlv0gs)
 - 内容: production 署名証明書の取得〜切替を代表が実行できるよう整備。(1) `docs/c2pa-production-deployment.md` に取得フロー（C2PA Conformance Program 登録 → Conforming Products List → trust list CA 発行。商用発行は主に DigiCert / SSL.com）・env 形式（PEM チェーン / PKCS#8 鍵 / EKU 等）・鍵保管（env or KMS）・当面の TSA 代替を集約。公式 C2PA Trust List（c2pa-org/conformance-public、確認時点で 28 証明書）の実態を明記。(2) `scripts/verify-c2pa-cert.mjs`: 候補証明書で Ledra と同じ manifest を実署名し、公式 Trust List を anchor に読み戻して `validation_state==="Trusted"` のときだけ GO(exit0)、Valid/Invalid は NO-GO(exit1) と判定する切替前検証ツール。自己署名証明書で NO-GO(Invalid) になることを実測確認。
 - 対象: C2PA production 導入の運用手順・ツール。証明書取得自体は Conformance Program 登録を伴い代表判断待ち（OPEN_QUESTIONS 参照）。
+
 ## 2026-07-27 SEOカテゴリ語を「施工履歴プラットフォーム」に統一 (branch claude/ledra-seo-keywords-7vnacz)
 - 内容: 主カテゴリ語を PR TIMES と揃え「施工履歴プラットフォーム」に統一（旧「AI業務管理SaaS」から変更）。
   タイトル「Ledra｜自動車整備・コーティング店の施工履歴プラットフォーム」。`siteConfig`(single source) 経由で
@@ -166,6 +302,17 @@
   スキップ）。管理画面から作成した予約（`/api/admin/reservations`）は対象外。
 - 対象: 顧客Web予約フォーム、Googleマップ予約/LINE LIFF経由の外部予約、`/admin/settings`
   店舗設定画面。
+
+## 2026-07-23 保険会社ケース更新をテナントAPI webhook基盤に接続 (PR #821)
+- 内容: `insurer_cases` の作成・ステータス変更は、これまでテナント（施工店）へはメール通知
+  （`sendCaseStatusNotification`）のみが届いており、既存の outbound webhook 基盤
+  （`tenant_webhooks` / `webhook-topics.ts`、certificate/customer/vehicle/work_history
+  のみ対応）には接続されていなかった。`insurer_case.created` / `insurer_case.status_changed`
+  をトピックレジストリに追加し、`POST /api/insurer/cases`（作成時）と
+  `PATCH /api/insurer/cases/[id]`（ステータス変更時）から `emitEntityWebhook()` で発火する
+  ようにした。既存のメール通知とは独立して動作し、購読が無いテナントには no-op。
+- 対象: 保険会社ポータル `/insurer/cases`（案件管理）と、テナント側の連携管理 UI
+  `/admin/integrations`（Webhook トピック選択に新トピックが自動反映）。
 
 ## 2026-07-22 管理画面ダッシュボードに「Ledraに聞く」入口 + 承認インボックスに根拠表示 (PR #819)
 - 内容: ダッシュボード最上部に自由入力欄 `AskLedraBar` を新設。まず決定的なキーワード→

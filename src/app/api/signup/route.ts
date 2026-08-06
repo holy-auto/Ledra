@@ -83,8 +83,16 @@ export async function POST(req: NextRequest) {
       .single();
 
     if (tenantError) {
-      console.error("signup: tenant creation failed, rolling back user", tenantError);
-      await admin.auth.admin.deleteUser(userId);
+      const { error: deleteError } = await admin.auth.admin.deleteUser(userId);
+      if (deleteError) {
+        console.error(
+          `signup: tenant creation failed AND rollback failed — orphaned auth user ${userId} (${email}) requires manual cleanup`,
+          tenantError,
+          deleteError,
+        );
+      } else {
+        console.error("signup: tenant creation failed, rolled back user", tenantError);
+      }
       return apiInternalError(tenantError, "signup: tenant creation");
     }
 
@@ -97,9 +105,18 @@ export async function POST(req: NextRequest) {
     });
 
     if (membershipError) {
-      console.error("signup: membership creation failed, rolling back", membershipError);
-      await admin.from("tenants").delete().eq("id", tenant.id);
-      await admin.auth.admin.deleteUser(userId);
+      const { error: tenantDeleteError } = await admin.from("tenants").delete().eq("id", tenant.id);
+      const { error: deleteError } = await admin.auth.admin.deleteUser(userId);
+      if (tenantDeleteError || deleteError) {
+        console.error(
+          `signup: membership creation failed AND rollback failed — orphaned tenant ${tenant.id} / auth user ${userId} (${email}) requires manual cleanup`,
+          membershipError,
+          tenantDeleteError,
+          deleteError,
+        );
+      } else {
+        console.error("signup: membership creation failed, rolled back", membershipError);
+      }
       return apiInternalError(membershipError, "signup: membership creation");
     }
 
@@ -110,7 +127,10 @@ export async function POST(req: NextRequest) {
     // 時の「メール重複」エラーで詰まる事態を防ぐ。
     if (passwordless) {
       try {
-        const baseUrl = resolveBaseUrl({ req });
+        // PKCE: verifier Cookie を張ったオリジン（＝今このリクエスト）へ確認リンクを
+        // 戻す。別ドメイン（APP_URL）だと Cookie が届かず本人がログインできず、
+        // パスワード無しアカウントが孤児化する。
+        const baseUrl = resolveBaseUrl({ req, preferRequestOrigin: true });
         const supabase = await createClient();
         const { error: otpError } = await supabase.auth.signInWithOtp({
           email,
@@ -121,10 +141,23 @@ export async function POST(req: NextRequest) {
         });
         if (otpError) throw otpError;
       } catch (otpErr) {
-        console.error("signup: magic-link send failed, rolling back", otpErr);
-        await admin.from("tenant_memberships").delete().eq("tenant_id", tenant.id);
-        await admin.from("tenants").delete().eq("id", tenant.id);
-        await admin.auth.admin.deleteUser(userId);
+        const { error: membershipDeleteError } = await admin
+          .from("tenant_memberships")
+          .delete()
+          .eq("tenant_id", tenant.id);
+        const { error: tenantDeleteError } = await admin.from("tenants").delete().eq("id", tenant.id);
+        const { error: deleteError } = await admin.auth.admin.deleteUser(userId);
+        if (membershipDeleteError || tenantDeleteError || deleteError) {
+          console.error(
+            `signup: magic-link send failed AND rollback failed — orphaned tenant ${tenant.id} / auth user ${userId} (${email}) requires manual cleanup`,
+            otpErr,
+            membershipDeleteError,
+            tenantDeleteError,
+            deleteError,
+          );
+        } else {
+          console.error("signup: magic-link send failed, rolled back", otpErr);
+        }
         return apiError({
           code: "internal_error",
           message: "確認メールの送信に失敗しました。時間をおいて再度お試しください。",

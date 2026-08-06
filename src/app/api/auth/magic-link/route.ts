@@ -61,7 +61,10 @@ export async function POST(req: NextRequest) {
     }
 
     // ── マジックリンク送信（新規ユーザーは作成しない） ──
-    const baseUrl = resolveBaseUrl({ req });
+    // PKCE: verifier Cookie を張るのは今このリクエストのオリジン。コールバックも
+    // 同一オリジンでないと exchangeCodeForSession が verifier 不一致で失敗するため、
+    // APP_URL ではなくリクエストオリジンへ戻す。
+    const baseUrl = resolveBaseUrl({ req, preferRequestOrigin: true });
     const supabase = await createClient();
     const { error } = await supabase.auth.signInWithOtp({
       email,

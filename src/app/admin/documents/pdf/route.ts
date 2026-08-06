@@ -2,46 +2,9 @@ import { NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { renderDocumentPdf, type DocForPdf, type TenantForDocPdf } from "@/lib/pdfDocument";
-import { layoutConfigSchema, type LayoutConfig } from "@/types/documentTemplate";
+import { resolveLayoutForDoc } from "@/lib/documents/pdfShare";
 
 export const dynamic = "force-dynamic";
-
-async function resolveLayoutForDoc(
-  admin: ReturnType<typeof createTenantScopedAdmin>["admin"],
-  tenantId: string,
-  docTypeFromDoc: string,
-  templateIdFromDoc: string | null,
-  tenantDefaultTemplateId: string | null,
-): Promise<Partial<LayoutConfig> | undefined> {
-  let templateId: string | null = templateIdFromDoc || null;
-
-  if (!templateId) {
-    const { data: typeDefault } = await admin
-      .from("document_templates")
-      .select("id")
-      .eq("tenant_id", tenantId)
-      .eq("doc_type", docTypeFromDoc)
-      .eq("is_default", true)
-      .limit(1)
-      .maybeSingle();
-    templateId = typeDefault?.id ?? null;
-  }
-
-  if (!templateId) templateId = tenantDefaultTemplateId;
-  if (!templateId) return undefined;
-
-  const { data: tpl } = await admin
-    .from("document_templates")
-    .select("layout_config")
-    .eq("id", templateId)
-    .eq("tenant_id", tenantId)
-    .maybeSingle();
-
-  if (!tpl?.layout_config) return undefined;
-
-  const parsed = layoutConfigSchema.safeParse(tpl.layout_config);
-  return parsed.success ? parsed.data : undefined;
-}
 
 export async function GET(req: Request) {
   const supabase = await createSupabaseServerClient();

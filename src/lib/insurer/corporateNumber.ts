@@ -26,10 +26,11 @@ export function isValidCorporateNumber(corpNumber: string): boolean {
   const checkDigit = digits[0];
   const body = digits.slice(1);
 
-  // Weights: odd positions (from right) get 1, even positions get 2
+  // Weights: odd positions (from right, 1-indexed) get 1, even positions get 2.
+  // body[11 - i] walks from the least-significant base digit (position 1, i=0).
   let sum = 0;
   for (let i = 0; i < 12; i++) {
-    const weight = i % 2 === 0 ? 2 : 1;
+    const weight = i % 2 === 0 ? 1 : 2;
     sum += body[11 - i] * weight;
   }
 
