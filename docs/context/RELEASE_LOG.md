@@ -13,6 +13,19 @@
 - 対象: どの画面・API・業種向けか
 ```
 
+## 2026-08-06 モバイルApp Store一般公開に向けたサインアップ/退会/push/TTP UX整備 (branch claude/ledra-tap-to-pay-strategy-v08fcp)
+- 内容:
+  - **アプリ内サインアップ**（要件2.x）: `apps/mobile/src/app/(auth)/signup.tsx` を新設。既存 `POST /api/signup` を再利用してテナント+ownerを作成し、そのまま `signInWithPassword`→店舗選択まで**アプリ内で完結**。login画面に導線追加。
+  - **アプリ内アカウント削除**（Apple 5.1.1(v)）: `DELETE /api/mobile/account` を新設。唯一のownerならテナントを `is_active=false` 化＋連絡先PII消去、それ以外は本人のみ削除（auth削除で `tenant_memberships` は ON DELETE CASCADE）。設定画面に確認ダイアログ付き導線。
+  - **プライバシーマニフェスト**: `app.json` の `ios.privacyManifests` に Required Reason API（FileTimestamp/UserDefaults/SystemBootTime/DiskSpace）を宣言。
+  - **ホームのTap to Payバナー**（要件3.1）: iPhone時に有効化導線を表示し `/settings/tap-to-pay` へ誘導（閉じる可）。
+  - **push基盤**（要件3.3）: `expo-notifications`/`expo-device` を導入し `lib/push.ts` でトークン取得→`POST /api/mobile/push/register`。認証後にroot layoutで自動登録。
+  - **checkout微修正**: 副決済ボタンのアイコンを `contactless-payment` に統一（5.5）、未使用の `ReceiptShareDialog` 導線を削除（B-8）。
+  - **設定画面「有効化済み」表示の修正**: `termsAccepted` をTTP接続成功時にセット（checkoutはこのフラグでゲートせず＝要件5.3準拠）。
+  - **ドキュメント**: `tap-to-pay-submission-guide.md` を Custom Apps 前提から **App Store 一般公開前提**に全面改訂（動画台本3本・ASCメタデータ・審査用デモアカウント・提出前Go/No-Go・審査項目対応表）。`tap-to-pay-distribution-checklist.md` に方針変更の注記。
+- 対象: モバイルアプリ（`apps/mobile`、Expo SDK55）／モバイル用API（signup再利用・account削除・push登録）。iOS App Store 提出準備。
+- 補足: 動画3本の**撮影は代表が実施**（台本はsubmission-guideに用意）。mobile typecheck パス。Apple本番entitlementの付与状況(A-1)は要確認。
+
 ## 2026-08-05 滞留PRバックログを整理し、機能3件を現mainへ再適用してマージ (PR #884 / #885 / #886)
 - 内容:
   - #884: サインアップ失敗時のロールバック（auth user / tenant / membership 削除）失敗を検知し、「孤児レコード・要手動クリーンアップ」を3つの失敗パスすべてでログ化（`src/app/api/signup/route.ts`）。
