@@ -57,8 +57,12 @@ const TAP_TO_PAY_ENTITLEMENT =
  */
 module.exports = function withRemoveTapToPayEntitlement(config) {
   const profile = process.env.EAS_BUILD_PROFILE;
-  // Development provisioning profile のみ dev-granted entitlement を含められる。
-  const shouldKeep = profile === "development";
+  // Development 型 provisioning profile（development / development-device）は
+  // dev-granted entitlement を含められる。審査動画は development-device の
+  // 実機ビルド + Stripe テストモードで撮るため、ここで TTP を保持する。
+  // preview(AdHoc) / production は Distribution 型のため除去する。
+  const shouldKeep =
+    profile === "development" || profile === "development-device";
 
   return withEntitlementsPlist(config, (mod) => {
     if (shouldKeep) {
