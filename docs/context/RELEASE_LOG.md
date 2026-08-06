@@ -13,6 +13,13 @@
 - 対象: どの画面・API・業種向けか
 ```
 
+## 2026-08-05 帳票共有のLINE宛先を顧客の連携済みLINEに自動選択 (branch claude/payment-status-and-error-no5a9m)
+- 内容: 帳票共有モーダルの LINE タブで、顧客に連携済みの `customers.line_user_id` があれば宛先を
+  自動選択し「◯◯様のLINEに送信します（連携済み）」と表示（生IDの手入力が不要に）。未連携時、
+  または「別のユーザーIDを指定」選択時のみ手動入力欄を出すフォールバック。`/api/admin/customers`
+  の select に `line_user_id` を追加し、モーダルは顧客がいる限り常に取得するよう変更。
+- 対象: 帳票詳細の「共有」→ LINE タブ。
+
 ## 2026-08-05 滞留PRバックログを整理し、機能3件を現mainへ再適用してマージ (PR #884 / #885 / #886)
 - 内容:
   - #884: サインアップ失敗時のロールバック（auth user / tenant / membership 削除）失敗を検知し、「孤児レコード・要手動クリーンアップ」を3つの失敗パスすべてでログ化（`src/app/api/signup/route.ts`）。
