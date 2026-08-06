@@ -181,6 +181,27 @@ export async function recordVehicleReportRevenueShares(orderId: string): Promise
     return;
   }
 
+  // Close the booking-vs-refund race: a `charge.refunded` handler that ran
+  // between our "order is paid" read and this insert would have seen no shares
+  // to reverse. Re-check now; if the order was refunded meanwhile, cancel the
+  // pending shares we just booked so they can't later be approved/paid for a
+  // refunded sale. (Shares are pending here and gated behind manual approval,
+  // so this recheck reliably wins before any payout.)
+  const { data: freshRaw } = await admin
+    .from("vehicle_report_orders")
+    .select("status")
+    .eq("id", order.id)
+    .maybeSingle();
+  if ((freshRaw as { status: string } | null)?.status === "refunded") {
+    await admin
+      .from("vehicle_report_revenue_shares")
+      .update({ status: "cancelled", updated_at: new Date().toISOString() })
+      .eq("order_id", order.id)
+      .eq("status", "pending");
+    console.info("vehicle report revenue share: order refunded during booking — cancelled", { orderId, vin });
+    return;
+  }
+
   console.info("vehicle report revenue share: booked", {
     orderId,
     vin,

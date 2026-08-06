@@ -625,6 +625,19 @@ export async function POST(req: NextRequest) {
         // ─── 車両履歴レポート checkout (mode=payment / アカウント不要) ───
         if (session.metadata?.vehicle_report_order_id) {
           const orderId = session.metadata.vehicle_report_order_id;
+
+          // 非同期決済 (コンビニ/銀行振込 等) は completed 時点で payment_status が
+          // 'unpaid' のことがある。実際に入金確定した時のみ paid 化する
+          // (未入金でレポート解錠・還元計上しない)。確定は unlock 経路の
+          // Stripe セッション照会、または後続の async_payment_succeeded で行う。
+          if (session.payment_status !== "paid") {
+            console.info("webhook: vehicle report checkout completed but not yet paid", {
+              orderId,
+              paymentStatus: session.payment_status,
+            });
+            break;
+          }
+
           const paymentIntentId = asStringId(session.payment_intent);
           const nowIso = new Date().toISOString();
           const expiresAt = new Date(Date.now() + REPORT_ACCESS_VALIDITY_DAYS * 24 * 60 * 60 * 1000).toISOString();

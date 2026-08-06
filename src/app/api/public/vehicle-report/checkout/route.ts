@@ -160,11 +160,19 @@ export async function POST(req: NextRequest) {
       throw stripeErr;
     }
 
-    // Step 3: セッション ID を記録
-    await admin
+    // Step 3: セッション ID を記録。unlock 経路はこの id で注文を照合して
+    // アクセス Cookie を発行するため、保存に失敗したまま URL を返すと「支払った
+    // のにレポートを受け取れない」状態になる。保存失敗時は注文を expire して
+    // checkout 自体を失敗させる（孤立セッションは status=pending 以外なので
+    // 後から paid 化もされない）。
+    const { error: sidErr } = await admin
       .from("vehicle_report_orders")
       .update({ stripe_checkout_session_id: session.id })
       .eq("id", order.id);
+    if (sidErr) {
+      await admin.from("vehicle_report_orders").update({ status: "expired" }).eq("id", order.id);
+      return apiInternalError(sidErr, "vehicle_report_orders session id persist");
+    }
 
     return apiOk({ url: session.url });
   } catch (e) {

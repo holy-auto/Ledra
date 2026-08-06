@@ -144,11 +144,16 @@ export async function settleApprovedRevenueShares(
   admin: Db,
   limit = 500,
 ): Promise<{ paid: number; skipped: number; needsOnboarding: number }> {
+  // Only select shares whose tenant has completed Connect onboarding (inner
+  // join + filter). Otherwise a backlog of `tenant_not_onboarded` rows at the
+  // head of the queue would be re-scanned every run and starve newer, payable
+  // shares for onboarded tenants.
   const { data: rows } = await admin
     .from("vehicle_report_revenue_shares")
-    .select("id")
+    .select("id, tenants!inner(stripe_connect_onboarded)")
     .eq("status", "approved")
     .is("stripe_transfer_id", null)
+    .eq("tenants.stripe_connect_onboarded", true)
     .order("created_at", { ascending: true })
     .limit(limit);
 
@@ -182,10 +187,17 @@ export async function reverseVehicleReportRevenueSharesForOrder(
   admin: Db,
   orderId: string,
 ): Promise<{ reversed: number; cancelled: number; skipped: number }> {
-  const { data: rows } = await admin
+  const { data: rows, error: loadErr } = await admin
     .from("vehicle_report_revenue_shares")
     .select("id, status, stripe_transfer_id")
     .eq("order_id", orderId);
+
+  // A transient load failure must NOT look like "no shares to reverse" — that
+  // would let the caller mark the order refunded while paid shares stay
+  // un-reversed. Throw so the refund workflow fails (and is surfaced) instead.
+  if (loadErr) {
+    throw new Error(`vehicle report share load failed for order ${orderId}: ${loadErr.message}`);
+  }
 
   const shares = (rows ?? []) as { id: string; status: string; stripe_transfer_id: string | null }[];
 
