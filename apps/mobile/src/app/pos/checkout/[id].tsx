@@ -20,7 +20,6 @@ import { mobileApi } from "@/lib/api";
 import { useTerminal } from "@/hooks/useTerminal";
 import { useTerminalStore } from "@/stores/terminalStore";
 import { TapToPayButton } from "@/components/TapToPayButton";
-import { ReceiptShareDialog } from "@/components/ReceiptShareDialog";
 
 // ─────────────────────────────────────────────────────────────
 // 端末種別の判定
@@ -110,10 +109,6 @@ export default function PosCheckoutScreen() {
     useState<PaymentMethod>(defaultMethod);
   const [receivedAmount, setReceivedAmount] = useState("");
   const [snackbar, setSnackbar] = useState("");
-  const [receiptDialog, setReceiptDialog] = useState<{
-    visible: boolean;
-    url: string;
-  }>({ visible: false, url: "" });
 
   // QR決済用（Android）
   const [qrUrl, setQrUrl] = useState<string | null>(null);
@@ -666,7 +661,7 @@ export default function PosCheckoutScreen() {
               mode="contained"
               icon={
                 isIPhone && paymentMethod === "card"
-                  ? "cellphone-nfc"
+                  ? "contactless-payment"
                   : (isAndroid || isIPad) && paymentMethod === "card"
                     ? "qrcode"
                     : "check-circle"
@@ -693,13 +688,6 @@ export default function PosCheckoutScreen() {
       >
         {snackbar}
       </Snackbar>
-
-      <ReceiptShareDialog
-        visible={receiptDialog.visible}
-        receiptUrl={receiptDialog.url}
-        onDismiss={() => setReceiptDialog({ visible: false, url: "" })}
-        onSent={() => setSnackbar("レシートを送信しました")}
-      />
     </>
   );
 }

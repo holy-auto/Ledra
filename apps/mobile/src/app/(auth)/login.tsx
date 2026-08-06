@@ -114,6 +114,15 @@ export default function LoginScreen() {
           >
             ログイン
           </Button>
+
+          <Button
+            mode="text"
+            onPress={() => router.push("/(auth)/signup")}
+            disabled={loading}
+            style={styles.linkButton}
+          >
+            新規登録（施工店の方）はこちら
+          </Button>
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -152,5 +161,8 @@ const styles = StyleSheet.create({
   },
   buttonContent: {
     paddingVertical: 6,
+  },
+  linkButton: {
+    marginTop: 4,
   },
 });

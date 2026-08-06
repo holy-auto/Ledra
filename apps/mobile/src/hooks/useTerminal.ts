@@ -280,6 +280,12 @@ export function useTerminal() {
 
       store.setReaderStatus("connected");
       store.setConnectedReader(connected ?? null);
+      // 接続成功 = Apple の T&C 同意 + セットアップ完了。設定画面の
+      // 「有効化済み」表示のためにフラグを立てる。
+      // ponytail: これは表示用の派生状態でありセッション内のみ。checkout は
+      // このフラグでボタンをゲートしない（要件5.3: 未同意でも常時押下可、
+      // 押下で connect が再走する）ため、再起動で null に戻っても実害なし。
+      store.setTermsAccepted(true);
       return true;
     } catch (e) {
       // タイムアウト / その他例外
