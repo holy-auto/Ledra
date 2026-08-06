@@ -139,6 +139,31 @@
 ## 2026-07-28 「レドラ」音声起動の運用手順を追加（アシスタント経由・コード変更なし）
 - 内容: `apps/mobile/docs/VOICE_LAUNCH.md` を新規作成。既存の `ledra://` URL スキーム（expo-router の自動ディープリンク解決）を使い、iOS ショートカット／Android ルーティンに「レドラ」を登録して `ledra://certificates/new` 等でデータ入力画面へ直行させる手順を文書化。アプリ側の追加実装はゼロ。アプリ内ウェイクワード（B）とネイティブ App Intents は実装ロードマップとして同ドキュメントに記載（実機ビルド待ち・未実装）。
 - 対象: モバイルアプリ（`apps/mobile`、Expo）／現場の施工士による音声起点のデータ入力。
+
+## 2026-07-30 車両レポートの段階式ティア（部分/フル）＋スコープ按分 (branch claude/merchant-revenue-sharing-22tuq3)
+- 内容: 単一定額レポートを、無料サマリ→部分（直近N ヶ月）→全履歴フルの段階式へ拡張。開示範囲と還元対象を一致させる。
+  (1) スキーマ（`20260730200000_vehicle_report_tiers.sql`）: `vehicle_report_tiers`（tier_key/label/price_jpy/scope_type/scope_months/enabled/sort、直近1年¥1,500＋全履歴¥3,000 を seed）。`vehicle_report_orders` に `tier_key`/`scope_type`/`scope_months`/**`scope_from`（購入時アンカーの絶対カットオフ）**を追加。
+  (2) スコープ純粋関数（`src/lib/vehicleReport/tiers.ts`）: `scopeFromRow`/`scopeCutoffIso`/`isCreatedAtInScope`（カレンダー月・テスト7件）。`getReportTiers`/`getReportTierByKey`。
+  (3) 課金配線: checkout が `tier` を受け取り、価格・スコープをティアから決定し `scope_from` を確定して保存（クライアント値は不使用）。access は `scopeFromIso` を返す。
+  (4) 表示: `/v/[vin]` は購入スコープ（`scope_from` 絶対境界）内の記録のみ表示。部分購入者には全履歴レポートへのアップセル導線。会員（ログイン施工店）は従来どおり全表示。
+  (5) 還元按分: `recordVehicleReportRevenueShares` が注文の `scope_from` で記録を絞り、**開示した記録の施工店にのみ**件数比例で按分（見せていない店は対象外）。表示と按分が同一境界。
+  (6) UI: `PurchaseReportCard` をティア一覧＋compact アップセルに刷新。
+- 対象: 車両パスポート/レポート課金（全業種）・公開ページ `/v/[vin]`・checkout。
+- 検証: vehicleReport 系テスト27件パス（scope 7＋access＋split 6＋payout 5 等）、`lint:migrations` OK、tsc エラー0、変更ファイル eslint エラー/警告0。設計書 `docs/merchant-revenue-sharing-design.md` §9。
+- 残（スコープ外）: 部分軸は期間のみ（種別/店は将来）、ティア価格の妥当性、段階購入の差額課金、運営ティア編集 UI。
+
+## 2026-07-30 レポート収益還元の実送金（Connect 精算）＋返金巻き戻し (branch claude/merchant-revenue-sharing-22tuq3)
+- 内容: 蓄積台帳（PR #848）の後続。台帳の還元分を Stripe Connect で施工店へ実送金し、返金時に巻き戻す。既存の代理店コミッション精算と同型。
+  (1) スキーマ（`20260730100000_vehicle_report_payout.sql`）: `stripe_connect_transfers.source_type` に `vehicle_report`、`vehicle_report_orders.status` に `refunded` を追加（DROP/ADD CHECK, NOT VALID+VALIDATE）。
+  (2) 精算: `src/lib/vehicleReport/payout.ts`。`payVehicleReportRevenueShare` は `approved` の share のみ送金（`metadata.source_type=vehicle_report`＋idempotencyKey、`stripe_transfer_id` を刻むだけで確定は webhook）。`settleApprovedRevenueShares` が一括精算。cron `/api/cron/vehicle-report-payout`（毎日 05:20 UTC・`withCronLock`）。
+  (3) 確定: connect-webhook の `transfer.paid`→share を `paid`、`transfer.reversed`→`reversed`（agent_commission と同じ分岐に vehicle_report ケース追加）。
+  (4) 承認ゲート（人手）: platform-admin API `GET /api/admin/platform/report-revenue`（一覧）＋ `PATCH .../<id>`（approve/pay/cancel）。還元率70%確定まで approve しなければ 1 円も動かない安全弁。
+  (5) 返金巻き戻し: メイン webhook `charge.refunded`（全額のみ）→ `reverseVehicleReportRevenueSharesForOrder`。送金済み share は Stripe reversal（webhook で `reversed`）、未送金は `cancelled`、注文は `refunded`。判定は純粋関数 `reversalActionForStatus`（テスト5件）。
+  (6) 導線: `/admin/report-revenue` に未精算かつ Connect 未連携時の登録 CTA（既存 `/admin/settings` 連携を再利用）。vercel.json に cron 登録。
+- 対象: 車両レポート課金の後精算（全業種）・Stripe connect/main webhook・施工店 admin ポータル・platform-admin。
+- 検証: `reversalActionForStatus` テスト5件＋`splitRevenueByRecordCount` 6件パス、`lint:migrations` OK、tsc エラー0、変更ファイル eslint エラー0。
+- 残（スコープ外）: 部分返金対応、承認/精算の専用管理 UI（現状 API のみ）、最低支払額・精算頻度の調整、還元率70%の最終確定。
+
 ## 2026-07-30 車両全履歴レポート収益の施工店還元（蓄積台帳）(branch claude/merchant-revenue-sharing-22tuq3)
 - 内容: 有料の車両全履歴レポート売上を、記録を残した施工店へ按分して蓄積する仕組みを実装。
   (1) スキーマ: `vehicle_report_settings.merchant_share_bps`（還元率、既定 7000bps=70%）を追加。
