@@ -13,6 +13,17 @@
 - 対象: どの画面・API・業種向けか
 ```
 
+## 2026-08-06 送付済み請求書のステータス変更（入金済等）が「内容編集」と誤判定されブロックされる不具合を修正 (branch claude/payment-status-and-error-no5a9m)
+- 内容: `PUT /api/admin/documents` で送付済み請求書を入金済に変更できなかった根本原因を修正。原因は
+  `documentUpdateSchema`（`documentCreateSchema.partial().extend(...)`）で、Zod の `.partial()` が
+  `.default()` を剥がさないため、ステータスのみの更新でも `show_seal`/`show_logo`/`show_bank_info`/
+  `is_invoice_compliant`/`is_tax_inclusive` が `false` として parse 結果に混入し、ハンドラの
+  `isContentEdit`（`!== undefined` 判定）が誤発火 → 「送付済みの請求書は内容を編集できません」で
+  ブロックされていた。更新スキーマの当該フィールド（＋ `status`/`subtotal`/`tax`/`total`）を default 無しの
+  `.optional()` に上書きし、送っていない項目が parse 結果に現れないよう修正。回帰テスト3件を追加。
+  status の default 漏れによる「内容更新で送付済み帳票が draft に巻き戻る」二次バグも同時に解消。
+- 対象: 帳票詳細／一覧のステータス変更（入金済・期限超過・取消 等）。特に送付済み請求書の入金記録。
+
 ## 2026-08-06 モバイルApp Store一般公開に向けたサインアップ/退会/push/TTP UX整備 (PR #891)
 - 内容:
   - **アプリ内サインアップ**（要件2.x）: `apps/mobile/src/app/(auth)/signup.tsx` を新設。既存 `POST /api/signup` を再利用してテナント+ownerを作成し、そのまま `signInWithPassword`→店舗選択まで**アプリ内で完結**。login画面に導線追加。
