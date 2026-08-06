@@ -84,11 +84,16 @@ export async function payVehicleReportRevenueShare(admin: Db, shareId: string): 
   if (share.status !== "approved") return { ok: false, reason: "not_approved" };
   if (!share.amount || (share.amount as number) <= 0) return { ok: false, reason: "zero_amount" };
 
-  const { data: tenant } = await admin
+  const { data: tenant, error: tenantErr } = await admin
     .from("tenants")
     .select("id, stripe_connect_account_id, stripe_connect_onboarded")
     .eq("id", share.tenant_id as string)
     .maybeSingle();
+  // A failed lookup must NOT masquerade as `tenant_not_onboarded` (a benign
+  // skip) — a tenant-table outage would then hide a batch-wide failure from the
+  // cron alert. Throw so the batch counts it as an error and escalates.
+  if (tenantErr)
+    throw new Error(`vehicle report payout tenant lookup failed for ${share.tenant_id}: ${tenantErr.message}`);
   if (!tenant?.stripe_connect_account_id || !tenant.stripe_connect_onboarded) {
     // Self-serve onboarding lives at /api/stripe/connect (surfaced from the
     // merchant portal). Leave the share approved; a later run settles it.

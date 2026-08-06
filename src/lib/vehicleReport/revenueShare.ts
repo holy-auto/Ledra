@@ -69,11 +69,15 @@ export async function getAnchoredCertCountsByTenant(
   cutoffIso: string | null,
   upperIso: string | null,
 ): Promise<TenantCertCount[]> {
-  const { data: vehiclesRaw } = await admin
+  // Surface DB errors rather than returning an empty count: callers use a zero
+  // count as a real signal (checkout blocks the sale, booking finds no
+  // merchants), so a swallowed query failure would mis-report "no records".
+  const { data: vehiclesRaw, error: vehErr } = await admin
     .from("vehicles")
     .select("id")
     .eq("vin_code_normalized", vin)
     .eq("passport_opt_out", false);
+  if (vehErr) throw new Error(`anchored cert count: vehicles query failed for VIN ${vin}: ${vehErr.message}`);
   const vehicleIds = ((vehiclesRaw ?? []) as { id: string }[]).map((v) => v.id);
   if (!vehicleIds.length) return [];
 
@@ -84,11 +88,12 @@ export async function getAnchoredCertCountsByTenant(
   let certQuery = admin.from("certificates").select("id, tenant_id").in("vehicle_id", vehicleIds);
   if (cutoffIso) certQuery = certQuery.gte("created_at", cutoffIso);
   if (upperIso) certQuery = certQuery.lte("created_at", upperIso);
-  const { data: certsRaw } = await certQuery;
+  const { data: certsRaw, error: certErr } = await certQuery;
+  if (certErr) throw new Error(`anchored cert count: certificates query failed for VIN ${vin}: ${certErr.message}`);
   const certs = (certsRaw ?? []) as { id: string; tenant_id: string }[];
   if (!certs.length) return [];
 
-  const { data: imgsRaw } = await admin
+  const { data: imgsRaw, error: imgErr } = await admin
     .from("certificate_images")
     .select("certificate_id")
     .in(
@@ -96,6 +101,7 @@ export async function getAnchoredCertCountsByTenant(
       certs.map((c) => c.id),
     )
     .not("polygon_tx_hash", "is", null);
+  if (imgErr) throw new Error(`anchored cert count: images query failed for VIN ${vin}: ${imgErr.message}`);
   const anchoredCertIds = new Set(((imgsRaw ?? []) as { certificate_id: string }[]).map((i) => i.certificate_id));
 
   const counts = new Map<string, number>();
