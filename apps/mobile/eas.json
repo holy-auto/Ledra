@@ -17,7 +17,6 @@
     "development-device": {
       "developmentClient": true,
       "distribution": "internal",
-      "credentialsSource": "local",
       "ios": {
         "simulator": false
       },
