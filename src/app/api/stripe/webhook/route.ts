@@ -83,8 +83,12 @@ async function handleVehicleReportSessionPaid(
     .eq("status", "pending");
 
   if (vrErr) {
-    console.error("webhook: vehicle report order update failed", { orderId, error: vrErr });
-    return;
+    // Don't swallow: returning normally lets the outer handler mark the event
+    // processed, so an async_payment_succeeded resend is duplicate-skipped and
+    // a paying customer is stranded on a permanently `pending` order. Throw →
+    // the event stays `processed_at IS NULL` for the monitor cron + manual
+    // replay. The update guards on status='pending', so a replay is idempotent.
+    throw new Error(`vehicle report order paid transition failed for ${orderId}: ${vrErr.message}`);
   }
 
   console.info("webhook: vehicle report order paid", { orderId });

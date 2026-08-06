@@ -132,11 +132,24 @@ export async function payVehicleReportRevenueShare(admin: Db, shareId: string): 
     // The row was not claimable. Either a concurrent identical call already
     // settled it with THIS transfer (idempotency key → same transfer id: fine),
     // or it was cancelled/refunded under us (money moved: reverse it).
-    const { data: curRaw } = await admin
+    const { data: curRaw, error: readErr } = await admin
       .from("vehicle_report_revenue_shares")
       .select("status, stripe_transfer_id")
       .eq("id", shareId)
       .maybeSingle();
+    if (readErr) {
+      // We can't tell whether a concurrent identical call already settled this
+      // with THIS transfer. Reversing on a guess could claw back legitimately
+      // settled money (ledger `paid`, funds gone), so do NOT reverse — leave it
+      // for a later run, which re-calls with the SAME idempotency key (same
+      // transfer, no double-send) and reconciles then.
+      logger.error("[vehicleReportPayout] post-claim reconcile read failed — not reversing", {
+        shareId,
+        transferId: transfer.id,
+        detail: readErr.message,
+      });
+      return { ok: false, reason: "reconcile_read_failed" };
+    }
     const cur = curRaw as { status: string; stripe_transfer_id: string | null } | null;
     if (cur?.status === "paid" && cur.stripe_transfer_id === transfer.id) {
       return { ok: true, transferId: transfer.id };
@@ -268,13 +281,20 @@ export async function reverseVehicleReportRevenueSharesForOrder(
       // transfer between our load and here, this affects 0 rows — then re-read
       // and reverse instead of cancelling a paid row (which would leave the
       // merchant holding funds from a refunded sale).
-      const { data: claimedRows } = await admin
+      const { data: claimedRows, error: cancelErr } = await admin
         .from("vehicle_report_revenue_shares")
         .update({ status: "cancelled", updated_at: new Date().toISOString() })
         .eq("id", s.id)
         .eq("status", s.status)
         .is("stripe_transfer_id", null)
         .select("id");
+      // A failed UPDATE must NOT be read as a 0-row race — that would `skip` an
+      // un-cancelled share and let the caller mark the order refunded while the
+      // share stays payable. Throw so the refund workflow fails and is surfaced
+      // (the reversal is idempotent, so a replay is safe).
+      if (cancelErr) {
+        throw new Error(`vehicle report share cancel-claim failed for ${s.id}: ${cancelErr.message}`);
+      }
       const claimedCount = (claimedRows as { id: string }[] | null)?.length ?? 0;
 
       let freshStatus: string | null = s.status;
