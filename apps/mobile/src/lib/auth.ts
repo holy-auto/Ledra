@@ -24,6 +24,10 @@ export async function fetchUserProfile(): Promise<UserProfile | null> {
 
   if (!user) return null;
 
+  // ponytail: モバイルは1ユーザー=1テナント前提。複数テナントに所属する
+  // ユーザー（例: 自店のオーナーが他店に staff 招待された）でも .single() で
+  // 落ちないよう、Web 側 (checkRole.ts) と同じく最古の membership を1件選ぶ。
+  // 上限: テナントを跨いだ利用は不可。将来必要なら select-store をテナント選択に拡張。
   const { data: membership, error } = await supabase
     .from("tenant_memberships")
     .select(
@@ -37,7 +41,9 @@ export async function fetchUserProfile(): Promise<UserProfile | null> {
     `
     )
     .eq("user_id", user.id)
-    .single();
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
 
   if (error || !membership) {
     console.error("fetchUserProfile error:", error?.message);
