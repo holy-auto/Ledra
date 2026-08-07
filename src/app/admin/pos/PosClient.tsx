@@ -11,6 +11,7 @@ import StatCard from "@/components/ui/StatCard";
 import FirstUseInlineGuide from "@/components/ui/FirstUseInlineGuide";
 import { InventoryWarningsBanner } from "@/components/pos/InventoryWarningsBanner";
 import PosInventoryDeductPanel from "./PosInventoryDeductPanel";
+import { menuCategoriesOf, filterMenuItems } from "@/lib/reservations/menuFilter";
 
 /* ────────────────────────────────────────────── */
 /*  Types                                         */
@@ -55,6 +56,7 @@ interface MasterMenuItem {
   tax_category: string | null;
   is_active: boolean;
   unit: string | null;
+  category_large: string | null;
 }
 
 interface MenuItemsData {
@@ -169,6 +171,7 @@ export default function PosClient() {
   const [selected, setSelected] = useState<Reservation | null>(null);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [menuSearch, setMenuSearch] = useState("");
+  const [menuCategory, setMenuCategory] = useState<string | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<string>("cash");
   const [receivedAmount, setReceivedAmount] = useState<string>("");
   const [note, setNote] = useState("");
@@ -244,12 +247,12 @@ export default function PosClient() {
     }
   }, [invoiceSearch]);
 
-  // ── Filtered menu items ──
-  const filteredMenuItems = useMemo(() => {
-    if (!menuSearch.trim()) return masterMenuItems;
-    const q = menuSearch.trim().toLowerCase();
-    return masterMenuItems.filter((mi) => mi.name.toLowerCase().includes(q));
-  }, [masterMenuItems, menuSearch]);
+  // ── Filtered menu items（検索 + 大カテゴリ絞り込み。予約作成と同じ純関数を再利用） ──
+  const menuCategories = useMemo(() => menuCategoriesOf(masterMenuItems), [masterMenuItems]);
+  const filteredMenuItems = useMemo(
+    () => filterMenuItems(masterMenuItems, menuSearch, menuCategory),
+    [masterMenuItems, menuSearch, menuCategory],
+  );
 
   // ── Cart helpers ──
   const addToCart = useCallback((mi: MasterMenuItem) => {
@@ -767,6 +770,37 @@ export default function PosClient() {
                 className="w-full rounded-xl border border-border-subtle bg-surface px-3 py-2 text-sm text-primary placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-accent"
               />
 
+              {/* カテゴリ絞り込み（品目マスタが多いと選びにくいため） */}
+              {menuCategories.length > 1 && (
+                <div className="flex flex-wrap gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setMenuCategory(null)}
+                    className={`rounded-full border px-3 py-1 text-[11px] font-medium transition-colors ${
+                      menuCategory === null
+                        ? "border-accent bg-accent-dim text-accent-text"
+                        : "border-border-subtle bg-surface text-secondary hover:border-border"
+                    }`}
+                  >
+                    {"すべて"}
+                  </button>
+                  {menuCategories.map((c) => (
+                    <button
+                      key={c}
+                      type="button"
+                      onClick={() => setMenuCategory(c)}
+                      className={`rounded-full border px-3 py-1 text-[11px] font-medium transition-colors ${
+                        menuCategory === c
+                          ? "border-accent bg-accent-dim text-accent-text"
+                          : "border-border-subtle bg-surface text-secondary hover:border-border"
+                      }`}
+                    >
+                      {c}
+                    </button>
+                  ))}
+                </div>
+              )}
+
               {/* Cart summary */}
               {cart.length > 0 && (
                 <div className="space-y-1 rounded-xl border border-accent bg-accent-dim p-3">
@@ -812,7 +846,7 @@ export default function PosClient() {
                 </div>
               ) : filteredMenuItems.length === 0 ? (
                 <div className="rounded-xl border border-border-subtle bg-surface p-8 text-center text-sm text-muted">
-                  {menuSearch ? "該当する品目がありません" : "品目マスタが登録されていません"}
+                  {menuSearch || menuCategory ? "該当する品目がありません" : "品目マスタが登録されていません"}
                 </div>
               ) : (
                 <div className="grid grid-cols-3 gap-2">
