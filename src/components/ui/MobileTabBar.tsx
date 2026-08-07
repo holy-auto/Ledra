@@ -40,10 +40,12 @@ export default function MobileTabBar() {
     [navByHref, can, role, loading],
   );
 
+  // z-20: 本文より前・各種オーバーレイより後ろ。サイドバードロワー(overlay z-30 / aside z-40)や
+  // モーダル(z-50)が開いたときはそれらの下に隠れ、フッター等を覆わない。
   return (
     <nav
       aria-label="タブバー"
-      className="fixed inset-x-0 bottom-0 z-40 flex border-t border-border-default bg-[var(--bg-surface-solid)] pb-[env(safe-area-inset-bottom)] lg:hidden"
+      className="fixed inset-x-0 bottom-0 z-20 flex border-t border-border-default bg-[var(--bg-surface-solid)] pb-[env(safe-area-inset-bottom)] lg:hidden"
     >
       {tabs.map((t) => {
         const active = t.nav.exact ? pathname === t.href : pathname.startsWith(t.href);
