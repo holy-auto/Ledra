@@ -10,9 +10,11 @@ import { usePathname } from "next/navigation";
 
 interface SidebarShellProps {
   children: React.ReactNode;
+  /** モバイルのハンバーガー位置。既定は左上。管理画面は右上に置く（左上は戻るボタン用）。 */
+  hamburgerAlign?: "left" | "right";
 }
 
-export default function SidebarShell({ children }: SidebarShellProps) {
+export default function SidebarShell({ children, hamburgerAlign = "left" }: SidebarShellProps) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
 
@@ -27,7 +29,9 @@ export default function SidebarShell({ children }: SidebarShellProps) {
       <button
         type="button"
         onClick={() => setOpen(!open)}
-        className="fixed left-4 top-4 z-50 flex h-10 w-10 items-center justify-center rounded-[var(--radius-lg)] border border-border-default bg-[var(--bg-surface-solid)] lg:hidden"
+        className={`fixed top-4 z-50 flex h-10 w-10 items-center justify-center rounded-[var(--radius-lg)] border border-border-default bg-[var(--bg-surface-solid)] lg:hidden ${
+          hamburgerAlign === "right" ? "right-4" : "left-4"
+        }`}
         aria-label="メニュー"
       >
         {open ? (
@@ -43,10 +47,7 @@ export default function SidebarShell({ children }: SidebarShellProps) {
 
       {/* Overlay */}
       {open && (
-        <div
-          className="fixed inset-0 z-30 bg-black/20 backdrop-blur-sm lg:hidden"
-          onClick={() => setOpen(false)}
-        />
+        <div className="fixed inset-0 z-30 bg-black/20 backdrop-blur-sm lg:hidden" onClick={() => setOpen(false)} />
       )}
 
       {/* Sidebar

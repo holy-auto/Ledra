@@ -20,7 +20,7 @@ export default function HelpFab() {
           onClick={() => setOpen(true)}
           aria-label="操作ガイドを開く"
           title="操作ガイドを開く"
-          className="fixed bottom-5 right-5 z-30 flex h-12 w-12 items-center justify-center rounded-full bg-accent text-white shadow-lg hover:scale-105 hover:shadow-xl transition-all"
+          className="fixed bottom-20 right-5 z-30 flex h-12 w-12 items-center justify-center rounded-full bg-accent text-white shadow-lg transition-all hover:scale-105 hover:shadow-xl lg:bottom-5"
         >
           <svg
             width="22"
