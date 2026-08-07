@@ -13,6 +13,20 @@
 - 対象: どの画面・API・業種向けか
 ```
 
+## 2026-08-07 HPトップに「AI自動化でできること」セクションを新設（LINE対応・予約・アフターフォロー・帳票の自動化を訴求） (branch claude/ledra-line-automation-5clwdq)
+- 内容: マーケティングHPのトップページ（`src/app/(marketing)/page.tsx`）の「Ledra でできること」直下に、新コンポーネント
+  `AiAutomationSection`（`src/components/marketing/AiAutomationSection.tsx`）を追加。既存の証明書中心の訴求では見えていなかった
+  **AI自動化の5本柱**を1セクションに集約して掲載した——(1) LINE連携でお客様対応を半自動化（定型質問・概算見積りは完全自動応答／
+  見積書・請求書などの帳票もLINEで自動送付）、(2) 予約はAIが受信メッセージから自動で下書き（顧客・車両・作業内容を反映）、
+  (3) 作業内容に応じた作業後アフターフォローの自動連絡、(4) 証明書は撮影と確定ボタンだけ（下書き・写真監査まで自動）、
+  (5) 見積書・請求書の自動作成。ブランドの幹（信頼）に合わせ、見出しは「AIが下ごしらえ、確定は人。」とし、
+  金額確定・本人確認・証明書発行など責任の伴う操作は必ず人が最終確認する旨（壁3）と、AI自動化はStandardプラン以上の
+  機能ごとopt-inである旨を注記。既存カードのデザイン（角丸カード/ScrollReveal/blue系アクセント）を踏襲し、掲載内容は
+  実装済み機能（`docs/ai-automation-guide.md` §4.5 の auto-actions／`inboundAuto`・`documentAuto`・`certificateAuto`・
+  `followUp` cron 等）に照合済み。デザインコンポーネントの追加のみで挙動変更なし。
+- 対象: マーケティングHP トップページ（施工店向けの訴求）。
+- 検証: `npx tsc --noEmit`（0 error）、`eslint`（新規/編集ファイル clean）。未使用の `page.full.tsx` は App Router のルート対象外のため未更新。
+
 ## 2026-08-06 送付済み請求書のステータス変更（入金済等）が「内容編集」と誤判定されブロックされる不具合を修正 (branch claude/payment-status-and-error-no5a9m)
 - 内容: `PUT /api/admin/documents` で送付済み請求書を入金済に変更できなかった根本原因を修正。原因は
   `documentUpdateSchema`（`documentCreateSchema.partial().extend(...)`）で、Zod の `.partial()` が
