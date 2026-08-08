@@ -24,6 +24,23 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 /** 封印スキーマのバージョン（後方互換に備えて検証側が分岐できるように保持）。 */
 const SEAL_VERSION = 1;
 
+/**
+ * meta_json 内で「サーバのみが書き込む」予約キー。
+ * クライアントが任意 meta_json を送れる（帳票 create/update）ため、この封印キーを
+ * 入力から必ず剥がさないと、偽の timestamp_token_b64 を仕込んで TSA 未接触のまま
+ * 「タイムスタンプ付き封印」バッジを騙れてしまう（trust boundary）。
+ */
+export const INTEGRITY_SEAL_KEY = "integrity_seal";
+
+/** クライアント由来 meta_json から封印キーを除去する。 */
+export function stripClientIntegritySeal<T extends Record<string, unknown>>(meta: T | null | undefined): T {
+  const src = (meta ?? {}) as T;
+  if (!(INTEGRITY_SEAL_KEY in src)) return src;
+  const clone = { ...src } as Record<string, unknown>;
+  delete clone[INTEGRITY_SEAL_KEY];
+  return clone as T;
+}
+
 /** TSA 取得の per-attempt タイムアウトと、リトライ込み総時間の締切（fail-open）。 */
 const DOC_TSA_ATTEMPT_MS = 3_000;
 const DOC_TSA_DEADLINE_MS = 5_000;

@@ -22,7 +22,7 @@ import { autoRegisterMenuItems } from "@/lib/documents/autoRegisterMenuItems";
 import { calcItems } from "@/lib/documents/calcItems";
 import { isValidRegistrationNumber } from "@/lib/invoice/taxBreakdown";
 import { recordInvoicePaymentBalance } from "@/lib/invoice/recordPayment";
-import { sealDocumentOnFinalize, type SealableDocument } from "@/lib/documents/documentSeal";
+import { sealDocumentOnFinalize, stripClientIntegritySeal, type SealableDocument } from "@/lib/documents/documentSeal";
 
 export const dynamic = "force-dynamic";
 
@@ -214,7 +214,8 @@ export async function POST(req: NextRequest) {
     const vehicleInfo = input.vehicle_info ?? {};
     const isTaxInclusive = !!input.is_tax_inclusive;
     const metaJson = {
-      ...(input.meta_json ?? {}),
+      // 封印キーはサーバのみが書く。クライアント入力からは剥がして偽装封印を防ぐ。
+      ...stripClientIntegritySeal(input.meta_json as Record<string, unknown> | undefined),
       is_tax_inclusive: isTaxInclusive,
     };
 
@@ -454,7 +455,8 @@ export async function PUT(req: NextRequest) {
     if (body.payment_terms !== undefined) updates.payment_terms = body.payment_terms;
     if (body.delivery_date !== undefined) updates.delivery_date = body.delivery_date;
     if (body.template_id !== undefined) updates.template_id = body.template_id || null;
-    if (body.meta_json !== undefined) updates.meta_json = body.meta_json;
+    if (body.meta_json !== undefined)
+      updates.meta_json = stripClientIntegritySeal(body.meta_json as Record<string, unknown> | undefined);
 
     if (body.items !== undefined) {
       const taxRate = body.tax_rate ?? 10;
@@ -467,7 +469,8 @@ export async function PUT(req: NextRequest) {
       updates.tax_rate = taxRate;
       updates.tax_breakdown = taxBreakdown;
       // meta_json は他の更新と共存させるため、明示的に渡された meta_json があればマージ
-      const baseMeta = (body.meta_json as Record<string, unknown> | undefined) ?? {};
+      // （封印キーはサーバ専用なのでクライアント入力からは剥がす）
+      const baseMeta = stripClientIntegritySeal(body.meta_json as Record<string, unknown> | undefined);
       updates.meta_json = { ...baseMeta, is_tax_inclusive: isTaxInclusive };
     }
 
