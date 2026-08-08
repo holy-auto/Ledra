@@ -13,6 +13,11 @@
 - 対象: どの画面・API・業種向けか
 ```
 
+## 2026-08-08 デモ証明書画像の Storage 400 を解消（プレースホルダ実ファイルを配置）
+- 内容: デモシード `setup-demo-tenant.ts` が `certificate_images` 行（`demo/LEDRA-DEMO-XXXX/NN.jpg`）を作るのに実ファイルを Storage に置かず、公開ページの `<img>`（`object/public/assets/…`）と外部の `object/info` メタデータ取得が全て 400（Object not found）を返していた。sharp で軽量プレースホルダ JPEG を生成し、シード時に各 `storage_path` へ upsert アップロードするよう修正。旧コメントにあった「`certificate-images` バケットに placeholder を1枚」というパス共有スキームは実コード（バケット `assets` / パスは cert 単位ユニーク）と食い違っていたため、コメントも実態に合わせて更新。
+- 検証: 本番プロジェクト `cahybswpduchptvyvdkk` で `assets` バケット=public・該当パスのオブジェクト0件・参照行63件を SQL で確認。プレースホルダ生成の JPEG magic byte を検証する単体テスト1件を追加（パス）。**【要確認】本番の 400 解消**: 本番 Storage への配置は `npx tsx scripts/setup-demo-tenant.ts` を本番 env で再実行（冪等）するまで未反映。
+- 対象: 公開証明書ページ `/c/[public_id]` のギャラリー画像 / デモテナント provisioning スクリプト。
+
 ## 2026-08-06 レポート収益還元（実送金＋段階式）を9ラウンドの堅牢化後にマージ (PR #851 squash → main 9ced4f3)
 - **【要確認】本番反映**: `main` にコードはマージ済みだが、`20260730100000_vehicle_report_payout.sql` / `20260730200000_vehicle_report_tiers.sql` の**本番DB適用は未確認**。`DB migrate (apply to production)` ワークフローが Aug 2 以降失敗し続けている（OPEN_QUESTIONS 2026-08-05 の履歴ドリフト）。適用が確認できるまで「本番稼働」ではなく「main マージ済み・本番適用要確認」として扱う。
 - 内容: 2026-07-30 実装分（蓄積台帳→人手承認→Stripe Connect 実送金→返金巻き戻し、段階式レポート＋スコープ按分）を仕上げて `main` にマージ。マージ前に Codex 自動レビュー9ラウンドで金銭移動・整合性を追い込み、以下の bounded 修正を反映:

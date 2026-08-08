@@ -20,6 +20,7 @@
  */
 
 import { createClient } from "@supabase/supabase-js";
+import { generateDemoPlaceholderJpeg } from "./demoPlaceholderImage";
 
 const SUPABASE_URL = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
@@ -392,11 +393,11 @@ async function main(): Promise<void> {
   await upsert("certificates", certRows, "id");
   console.log(`  ✓ ${certRows.length} 枚（public_id: LEDRA-DEMO-0001 〜 ${String(certRows.length).padStart(4, "0")}）`);
 
-  // 5) Certificate images (metadata only — 実ファイルはストレージにアップロード不要。
+  // 5) Certificate images
   //    HeroCard の施工記録数カウンタと、公開証明書ページのギャラリー件数を成立させるために投入。
-  //    実画像を表示したい場合は、Supabase ストレージ `certificate-images` バケットの
-  //    `demo/placeholder-XX.jpg` に placeholder 画像を 1 枚だけ置けば、全ての seed
-  //    画像が同じ見た目で表示されるようにパスを共有している)
+  //    以前は行(メタデータ)だけを作り実ファイルを Storage に置かなかったため、公開ページの
+  //    <img …/object/public/assets/demo/…> が全て 400 (Object not found) を返していた。
+  //    下の 5b) で各 storage_path に軽量プレースホルダ JPEG をアップロードして 400 を解消する。
   console.log("─ Certificate images");
   // 既存の seed 残骸を一旦削除（storage_path UNIQUE 制約回避）
   const certIds = certRows.map((c) => c.id);
@@ -424,7 +425,23 @@ async function main(): Promise<void> {
     }));
   });
   await upsert("certificate_images", imageRows, "id");
-  console.log(`  ✓ ${imageRows.length} 件（※実ファイルはストレージに任意で配置）`);
+  console.log(`  ✓ ${imageRows.length} 件`);
+
+  // 5b) 各 storage_path に軽量プレースホルダ JPEG を配置 (upsert / best-effort)。
+  //     これが無いと公開ページの <img> が全て Storage 400 を出す。バケットは
+  //     src/lib/certificateImages.ts の CERTIFICATE_IMAGE_BUCKET と同じ "assets"。
+  console.log("─ Certificate image placeholders");
+  const placeholder = await generateDemoPlaceholderJpeg();
+  let uploaded = 0;
+  for (const img of imageRows) {
+    const path = img.storage_path as string;
+    const { error } = await admin.storage
+      .from("assets")
+      .upload(path, placeholder, { contentType: "image/jpeg", upsert: true });
+    if (error) console.warn(`  ⚠️ placeholder upload 失敗 (${path}): ${error.message}`);
+    else uploaded += 1;
+  }
+  console.log(`  ✓ ${uploaded}/${imageRows.length} 件を Storage にアップロード`);
 
   // 6) Vehicle histories (車両ページ・公開証明書ページの「履歴」セクション用)
   console.log("─ Vehicle histories");
