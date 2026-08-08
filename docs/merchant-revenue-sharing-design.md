@@ -112,16 +112,93 @@ ALTER TABLE vehicle_report_settings
 - 累計還元額・件数、直近の内訳（VIN 末尾 6 桁・件数・金額・状態）。
 - サイドバー nav（証明書の近く）＋ feature catalog に追加（`payments:view`）。
 
-## 6. スコープ外（今回やらないこと）
+## 6. 実送金（後続で実装済み: 20260730100000）
 
-- **実送金の自動化**: 台帳は `pending` で積むのみ。実 Transfer は既存の
-  `stripe_connect_transfers` 経路を後日つなぐ（`source_type` に `vehicle_report`
-  追加が必要）。未連携施工店が多い前提のため、送金 UI/精算バッチは別 PR。
-- **返金時の台帳巻き戻し**: レポートは返金導線が現状ないため、`reversed` 状態は
-  定義のみ用意し、巻き戻し処理は未実装。
+蓄積台帳を、代理店コミッションと同じ Stripe Connect レールで精算する。
+
+- **承認ゲート（人手）**: 台帳は `pending` で積む。プラットフォーム管理者が
+  `PATCH /api/admin/platform/report-revenue/<id>`（`approve`）で `pending → approved`。
+  還元率 70% の妥当性を確認してから承認する運用（お金の急所を人手で止める）。
+- **精算**: `payVehicleReportRevenueShare`（`src/lib/vehicleReport/payout.ts`）が
+  `approved` の share を Stripe Transfer（`metadata.source_type=vehicle_report` +
+  `source_id`、idempotencyKey 付き）で送金し、`stripe_transfer_id` を刻む。
+  実際の確定は **connect-webhook** の `transfer.paid` が `share.status=paid` に、
+  `transfer.reversed` が `reversed` にする（agent_commission と同一機構）。
+- **バッチ**: cron `/api/cron/vehicle-report-payout`（毎日 05:20 UTC、`withCronLock`）が
+  `approved` かつ未送金の share を一括精算。連携済み施工店のみ送金し、未連携は
+  `tenant_not_onboarded` でスキップ（施工店ポータルに Stripe 連携導線を表示）。
+- **オンボーディング導線**: テナントの Stripe Connect は既存の `/admin/settings`
+  （`tenants.stripe_connect_account_id` / `stripe_connect_onboarded`）を再利用。
+  `/admin/report-revenue` は未精算かつ未連携のとき登録 CTA を出す。
+
+## 7. 返金時の台帳巻き戻し（後続で実装済み）
+
+- **送金の取消**: connect-webhook `transfer.reversed` → 該当 share を `reversed`。
+- **売上の返金**: メイン webhook `charge.refunded`（全額返金のみ）→ その注文の
+  `stripe_payment_intent_id` から `vehicle_report_orders` を引き、
+  `reverseVehicleReportRevenueSharesForOrder` で各 share を巻き戻す。
+  送金ディスパッチ済み（transfer_id あり）の share は Stripe Transfer を reversal し
+  （webhook が `reversed` へ）、未送金の share は `cancelled`。注文は `refunded` に。
+  巻き戻し判定は純粋関数 `reversalActionForStatus`（単体テスト）で決定的に行う。
+  部分返金は対象外（ponytail: 天井＝比率按分の部分 reversal は未対応）。
+
+## 8. スコープ外（今回もやらない）
+
+- 部分返金への対応（全額返金のみ巻き戻す）。
+- 承認・精算の専用管理 UI（現状は platform-admin API のみ。一覧は
+  `GET /api/admin/platform/report-revenue?status=pending`）。
 
 ## 7. 検証（この設計の合否）
 
 - 単体テスト: `splitRevenueByRecordCount` が (a) 合計＝プール、(b) 件数比例、
   (c) 丸め残差が件数上位へ、(d) 記録 0 件で空配列、を満たす。
 - 冪等性: 同一 `order_id` で 2 回計上しても行数が増えない（UNIQUE 制約）。
+
+## 9. 段階式レポート（部分 / フル）とスコープ按分（後続で実装: 20260730200000）
+
+無料サマリ → 部分レポート → 全履歴フル、の段階式（ラダー）課金に拡張する。
+
+### ティア
+
+`vehicle_report_tiers`（プラットフォーム共通）で定義する。初期シード:
+
+| tier_key | label | price | scope_type | scope_months |
+| --- | --- | --- | --- | --- |
+| `recent12` | 直近1年レポート | ¥1,500 | `recent_months` | 12 |
+| `full` | 全履歴レポート | ¥3,000 | `full` | （なし） |
+
+- 無料サマリは「未購入」の状態そのもの（ティア行ではない）。
+- `scope_type`: `full`（全期間）/ `recent_months`（直近 N ヶ月）。将来 `service_type` 等の
+  軸を追加してもスキーマ変更なしで足せる形にする（列追加のみ）。
+
+### スコープの意味と**按分の核心制約**
+
+各注文（`vehicle_report_orders`）は購入時のティアの `tier_key` / `scope_type` /
+`scope_months` をスナップショットとして持つ。
+
+- **公開範囲**: `/v/[vin]` は、その購入が解錠したスコープ内の記録だけを表示する
+  （`recent_months` なら「作成日 ≥ now − N ヶ月」の証明書のみ）。上位ティアへの
+  アップグレード導線を出す。
+- **還元の按分（重要）**: 還元は **その購入で実際に開示した記録に対してのみ** 按分する。
+  部分レポートの売上を、そのスコープ外（表示していない）施工店へ分配してはならない
+  （見せていない店が儲かる不整合の防止）。実装は `getExposedCertCountsByTenant(vin, scope)`
+  がスコープでフィルタした件数を返し、`splitRevenueByRecordCount` に渡す。
+- **段階（複数回購入）**: 同一 VIN を部分→フルと別々に買った場合、各購入は独立した
+  売上として、それぞれのスコープに応じて按分する。異なる売上をまたいだ二重計上は
+  「不当」ではない（別々の支払い＝別々の収益）ため、売上横断の重複排除はしない。
+
+### スコープ判定（純粋関数・テスト対象）
+
+`isCreatedAtInScope(createdAtMs, scope, nowMs)`:
+- `full` → 常に true。
+- `recent_months` → `createdAt ≥ (now の N ヶ月前)`。カレンダー月で計算（`setMonth`）。
+
+### 購入時アンカー（scope_from）— ドリフト防止
+
+`recent_months` は相対（閲覧時刻基準）だと、30 日のアクセス期間中に境界が動き、
+購入時に見えた記録が後で消える／按分とズレる。これを防ぐため、**購入時に絶対カットオフ
+`scope_from = now − N ヶ月` を確定して `vehicle_report_orders.scope_from` に保存**し、
+(a) `/v/[vin]` 表示フィルタ（`created_at ≥ scope_from`）と (b) 還元按分の記録抽出
+（同 `scope_from` で `.gte`）の**両方が同一の絶対境界**を使う。これにより「買い手が
+見える範囲」＝「施工店が還元を受ける範囲」がアクセス期間中ずっと一致する。
+`isCreatedAtInScope`（相対判定・テスト済み）は checkout で `scope_from` を求める際に使う。

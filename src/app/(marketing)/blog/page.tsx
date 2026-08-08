@@ -5,6 +5,7 @@ import { ScrollReveal } from "@/components/marketing/ScrollReveal";
 import { CTABanner } from "@/components/marketing/CTABanner";
 import { listContent } from "@/lib/marketing/content";
 import { listPublishedPosts } from "@/lib/marketing/site-content-posts";
+import { formatJstDateJa } from "@/lib/datetime";
 
 export const metadata = {
   title: "ブログ",
@@ -92,7 +93,9 @@ export default async function BlogPage() {
                   className="group block h-full rounded-2xl border border-white/[0.08] bg-white/[0.03] p-7 md:p-8 hover:bg-white/[0.06] hover:border-white/[0.14] hover:shadow-[0_0_28px_rgba(59,130,246,0.1)] hover:-translate-y-1 transition-all duration-400"
                 >
                   <div className="flex flex-wrap items-center gap-2 text-[0.688rem] text-white">
-                    {e.publishedAt && <time dateTime={e.publishedAt}>{formatDate(e.publishedAt)}</time>}
+                    {e.publishedAt && (
+                      <time dateTime={e.publishedAt}>{formatJstDateJa(e.publishedAt, e.publishedAt)}</time>
+                    )}
                     {e.tags?.slice(0, 2).map((t) => (
                       <span
                         key={t}
@@ -126,11 +129,4 @@ export default async function BlogPage() {
       />
     </>
   );
-}
-
-function formatDate(iso: string): string {
-  const datePart = iso.slice(0, 10);
-  const [y, m, d] = datePart.split("-");
-  if (!y || !m || !d) return iso;
-  return `${y}年${Number(m)}月${Number(d)}日`;
 }

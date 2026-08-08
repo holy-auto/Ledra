@@ -9,6 +9,7 @@ import { sendDocumentEmail } from "@/lib/documents/share-email";
 import { sendDocumentLink } from "@/lib/line/client";
 import { sendSMS } from "@/lib/sms/client";
 import { sealDocumentById } from "@/lib/documents/documentSeal";
+import { renderAndStoreDocumentPdf } from "@/lib/documents/pdfShare";
 import { afterOrInline } from "@/lib/http/afterOrInline";
 
 export const dynamic = "force-dynamic";
@@ -128,6 +129,10 @@ export async function POST(req: NextRequest) {
       recipientName = cust?.name ?? "";
     }
 
+    // 主帳票の PDF をレンダリングして共有 URL を発行する (顧客が LINE/メール/SMS から
+    // 開けるようにするため)。生成失敗は致命的ではないので null のまま本文だけ送る (fail-soft)。
+    const pdfUrl = (await renderAndStoreDocumentPdf(caller.tenantId, documentId)) ?? undefined;
+
     // Send via chosen channel
     let success = false;
     let errorMessage: string | undefined;
@@ -142,6 +147,7 @@ export async function POST(req: NextRequest) {
           recipientName: recipientName || recipient,
           senderName,
           message,
+          pdfUrl,
           additionalDocuments: extraDocs.map((d) => ({
             docType: DOC_TYPES[d.doc_type as DocType]?.label ?? d.doc_type,
             docNumber: d.doc_number,
@@ -156,9 +162,10 @@ export async function POST(req: NextRequest) {
           docNumber: doc.doc_number,
           totalAmount: doc.total,
           message,
+          pdfUrl,
         });
       } else if (channel === "sms") {
-        const smsBody = `【${senderName}】${docLabel} ${doc.doc_number}\n合計: ¥${doc.total.toLocaleString("ja-JP")}${message ? `\n${message}` : ""}`;
+        const smsBody = `【${senderName}】${docLabel} ${doc.doc_number}\n合計: ¥${doc.total.toLocaleString("ja-JP")}${message ? `\n${message}` : ""}${pdfUrl ? `\nPDF: ${pdfUrl}` : ""}`;
         success = await sendSMS(recipient, smsBody);
       }
     } catch (e) {

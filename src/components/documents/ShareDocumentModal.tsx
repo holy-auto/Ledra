@@ -65,7 +65,10 @@ export default function ShareDocumentModal({
 
   // Form fields
   const [emailInput, setEmailInput] = useState<string | undefined>(undefined);
-  const [lineUserId, setLineUserId] = useState("");
+  // LINE 宛先: 既定は顧客の連携済み line_user_id を自動選択。手動指定に切り替えたときだけ
+  // lineUserIdInput を使う。
+  const [lineUserIdInput, setLineUserIdInput] = useState<string | undefined>(undefined);
+  const [manualLine, setManualLine] = useState(false);
   const [phoneInput, setPhoneInput] = useState<string | undefined>(undefined);
   const [message, setMessage] = useState("");
 
@@ -79,15 +82,20 @@ export default function ShareDocumentModal({
   // 送付済み（下書き以外）の帳票は誤って二重送付しないよう候補から除外する。
   const otherDocs = (otherDocsData?.documents ?? []).filter((d) => d.id !== doc.id && d.status === "draft");
 
-  // 一覧ページからの一括送付では顧客の連絡先が渡されないため、customer_id から補完する
-  const shouldFetchCustomer = open && !!doc.customer_id && customerEmail === undefined && customerPhone === undefined;
-  const { data: customerLookup } = useSWR<{ customers: { id: string; email: string | null; phone: string | null }[] }>(
-    shouldFetchCustomer ? `/api/admin/customers?id=${doc.customer_id}` : null,
-    fetcher,
-    adminSwrConfig,
-  );
-  const email = emailInput ?? customerEmail ?? customerLookup?.customers?.[0]?.email ?? "";
-  const phone = phoneInput ?? customerPhone ?? customerLookup?.customers?.[0]?.phone ?? "";
+  // 顧客の連絡先を customer_id から補完する（連絡先が渡されない一括送付、および LINE 連携
+  // 済み line_user_id の自動選択のため、顧客がいる限り常に取得する）。
+  const shouldFetchCustomer = open && !!doc.customer_id;
+  const { data: customerLookup, isLoading: loadingCustomer } = useSWR<{
+    customers: { id: string; email: string | null; phone: string | null; line_user_id: string | null }[];
+  }>(shouldFetchCustomer ? `/api/admin/customers?id=${doc.customer_id}` : null, fetcher, adminSwrConfig);
+  const customerRow = customerLookup?.customers?.[0];
+  const email = emailInput ?? customerEmail ?? customerRow?.email ?? "";
+  const phone = phoneInput ?? customerPhone ?? customerRow?.phone ?? "";
+
+  // LINE 連携済み ID（自動選択の宛先）。手動指定モードまたは未連携時は入力欄を出す。
+  const linkedLineUserId = customerRow?.line_user_id ?? null;
+  const useManualLine = manualLine || !linkedLineUserId;
+  const lineRecipient = useManualLine ? (lineUserIdInput ?? "") : linkedLineUserId;
 
   const resetForm = () => {
     setResult(null);
@@ -100,7 +108,7 @@ export default function ShareDocumentModal({
 
     let recipient = "";
     if (tab === "email") recipient = email.trim();
-    else if (tab === "line") recipient = lineUserId.trim();
+    else if (tab === "line") recipient = lineRecipient.trim();
     else if (tab === "sms") recipient = phone.trim();
 
     if (!recipient) {
@@ -252,20 +260,58 @@ export default function ShareDocumentModal({
       {/* LINE tab */}
       {tab === "line" && (
         <div className="space-y-3">
-          <div>
-            <label htmlFor="share-line-userid" className="mb-1 block text-xs text-muted">
-              LINE ユーザーID
-            </label>
-            <input
-              id="share-line-userid"
-              type="text"
-              className="input-field w-full"
-              placeholder="U1234567890abcdef..."
-              value={lineUserId}
-              onChange={(e) => setLineUserId(e.target.value)}
-            />
-          </div>
-          <p className="text-xs text-muted">LINE公式アカウントと友だち登録済みのユーザーIDを入力してください。</p>
+          {loadingCustomer && doc.customer_id ? (
+            <p className="text-xs text-muted">顧客のLINE連携状況を確認中...</p>
+          ) : !useManualLine ? (
+            // 連携済み: 顧客のLINEを自動選択（生IDは見せない）。手動指定にも切替可能。
+            <div className="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-secondary)] p-3">
+              <div className="flex items-center gap-2 text-sm text-primary">
+                <span className="inline-block h-2 w-2 rounded-full bg-success" />
+                {customerName ? `${customerName} 様` : "この顧客"}のLINEに送信します
+                <span className="text-xs text-success">（連携済み）</span>
+              </div>
+              <button
+                type="button"
+                className="mt-2 text-xs text-accent hover:underline"
+                onClick={() => {
+                  setManualLine(true);
+                  setLineUserIdInput("");
+                }}
+              >
+                別のユーザーIDを指定
+              </button>
+            </div>
+          ) : (
+            <div>
+              <label htmlFor="share-line-userid" className="mb-1 block text-xs text-muted">
+                LINE ユーザーID
+              </label>
+              <input
+                id="share-line-userid"
+                type="text"
+                className="input-field w-full"
+                placeholder="U1234567890abcdef..."
+                value={lineUserIdInput ?? ""}
+                onChange={(e) => setLineUserIdInput(e.target.value)}
+              />
+              {linkedLineUserId ? (
+                <button
+                  type="button"
+                  className="mt-1 text-xs text-accent hover:underline"
+                  onClick={() => {
+                    setManualLine(false);
+                    setLineUserIdInput(undefined);
+                  }}
+                >
+                  連携済みの顧客LINEに戻す
+                </button>
+              ) : (
+                <p className="mt-1 text-xs text-muted">
+                  この顧客はLINE未連携です。友だち登録済みのユーザーIDを入力するか、連携後に送信してください。
+                </p>
+              )}
+            </div>
+          )}
           <div>
             <label htmlFor="share-line-message" className="mb-1 block text-xs text-muted">
               メッセージ（任意）

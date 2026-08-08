@@ -5,6 +5,7 @@ import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
 import { DOC_TYPES, isDocumentEditable, isDocumentDeletable, type DocType } from "@/types/document";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { parsePagination } from "@/lib/api/pagination";
+import { parseAmountParam } from "@/lib/api/amountFilter";
 import {
   apiJson,
   apiUnauthorized,
@@ -43,12 +44,8 @@ export async function GET(req: NextRequest) {
     const dateFrom = isoDate.test(dateFromRaw) ? dateFromRaw : "";
     const dateTo = isoDate.test(dateToRaw) ? dateToRaw : "";
     // 電帳法「可視性の確保」: 取引金額（total）と取引先で検索できるようにする。
-    const parseAmount = (raw: string | null): number | null => {
-      const n = Number((raw ?? "").trim());
-      return Number.isFinite(n) && n >= 0 ? Math.floor(n) : null;
-    };
-    const amountMin = parseAmount(url.searchParams.get("amount_min"));
-    const amountMax = parseAmount(url.searchParams.get("amount_max"));
+    const amountMin = parseAmountParam(url.searchParams.get("amount_min"));
+    const amountMax = parseAmountParam(url.searchParams.get("amount_max"));
     const counterpartyRaw = (url.searchParams.get("counterparty") ?? "").trim();
     // PostgREST の or() フィルタ文字列を壊す区切り文字は除去してから ilike パターン化する。
     const counterparty = counterpartyRaw.replace(/[,()*%]/g, "").slice(0, 100);
@@ -112,27 +109,12 @@ export async function GET(req: NextRequest) {
       return q;
     };
 
-    // 1) サービスロール優先（キー是正済みなら決定的に全件取得）
-    let { data: docs, error } = await buildList(admin);
-    let totalCount: number | null = null;
-    let dataClient: DocClient = admin;
-    if (!error) {
-      totalCount = (await buildCount(admin)).count ?? null;
-    }
-    // 2) サービスロールが 0 件/失敗ならユーザーセッション(RLS)へフォールバック（逐次）
-    const userClient = supabase as unknown as DocClient;
-    if (error || !docs || docs.length === 0) {
-      const u = await buildList(userClient);
-      if (!u.error && u.data && u.data.length > 0) {
-        docs = u.data;
-        error = null;
-        dataClient = userClient;
-        totalCount = (await buildCount(userClient)).count ?? docs.length;
-      } else if (error && u.error) {
-        // 両経路とも失敗した場合のみエラー返却
-        return apiInternalError(error, "documents GET");
-      }
-    }
+    // service-role(admin) 単一経路で取得。caller.tenantId は所属検証済み。
+    const [list, cnt] = await Promise.all([buildList(admin), buildCount(admin)]);
+    if (list.error) return apiInternalError(list.error, "documents GET");
+    const docs = list.data ?? [];
+    const totalCount = cnt.count ?? docs.length;
+    const dataClient = admin;
 
     // 顧客名を取得（データを返せたクライアントで逐次取得）
     const customerIds = [...new Set((docs ?? []).map((d) => d.customer_id).filter(Boolean))];
@@ -161,49 +143,9 @@ export async function GET(req: NextRequest) {
       .filter((d) => (d.status === "sent" || d.status === "accepted") && d.doc_type !== "staff_invoice")
       .reduce((sum, d) => sum + (d.total ?? 0), 0);
 
-    // 一時診断: サービスロールキー(SUPABASE_SERVICE_ROLE_KEY)の role クレームと接続先を
-    // 確認する（キー本体は出さない）。anon が入っていれば env の設定ミスが確定する。
-    let keyRole: string | null = null;
-    try {
-      const k = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
-      const payloadB64 = k.split(".")[1];
-      if (payloadB64) {
-        const json = JSON.parse(Buffer.from(payloadB64, "base64").toString("utf8")) as { role?: string };
-        keyRole = json.role ?? null;
-      } else {
-        keyRole = k ? "not_a_jwt" : "empty";
-      }
-    } catch {
-      keyRole = "decode_error";
-    }
-    let projectRef: string | null = null;
-    try {
-      projectRef = new URL(process.env.NEXT_PUBLIC_SUPABASE_URL || "").host.split(".")[0] || null;
-    } catch {
-      projectRef = null;
-    }
-    // 一時診断: admin(service_role/PostgREST) が実際に何件見えているかを直接確認する。
-    // adminAllDocs=0 なら PostgREST が別データ源(空)を見ている、adminAllDocs>0 かつ
-    // adminE724=0 ならテナントIDの不一致、と切り分けられる。
-    const { count: adminAllDocs } = await admin.from("documents").select("*", { count: "exact", head: true });
-    const { count: adminE724 } = await admin
-      .from("documents")
-      .select("*", { count: "exact", head: true })
-      .eq("tenant_id", "e724ef83-7dfe-422a-a967-14ff8eec14a4");
-
     return apiJson({
       documents: enriched,
       stats: { total: totalCount ?? total, unpaid_amount: unpaidAmount },
-      _diag: {
-        source: dataClient === admin ? "admin" : "user",
-        returned: enriched.length,
-        totalCount: totalCount ?? null,
-        serviceKeyRole: keyRole,
-        projectRef,
-        callerTenantId: caller.tenantId,
-        adminAllDocs: adminAllDocs ?? null,
-        adminE724: adminE724 ?? null,
-      },
       ...(page > 0 && {
         pagination: {
           page,

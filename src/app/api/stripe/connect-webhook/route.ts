@@ -290,6 +290,18 @@ export async function POST(req: NextRequest) {
           });
         }
 
+        // 車両レポート収益の還元送金が着金 → 台帳を paid に確定
+        if (meta?.source_type === "vehicle_report" && meta?.source_id) {
+          await supabase
+            .from("vehicle_report_revenue_shares")
+            .update({ status: "paid", paid_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+            .eq("id", meta.source_id);
+          console.info("connect-webhook: vehicle report share paid", {
+            shareId: meta.source_id,
+            transferId: transfer.id,
+          });
+        }
+
         // 入金完了メール: テナント or 代理店の contact_email に送信
         const destinationAccountId = transfer.destination
           ? typeof transfer.destination === "string"
@@ -364,6 +376,37 @@ export async function POST(req: NextRequest) {
             commissionId: meta.source_id,
             transferId: transfer.id,
           });
+        }
+
+        // 車両レポート収益の還元送金が取消 → 台帳を reversed に。
+        // transfer.reversed は「一部取消」でも発火し、その場合 transfer.reversed
+        // は false（全額取消で初めて true）。一部取消で share 全体を terminal な
+        // reversed にすると残額を保持中の施工店を誤って完済扱いするため、全額
+        // 取消のときだけ台帳を反映する。
+        const fullyReversed =
+          transfer.reversed === true ||
+          (typeof transfer.amount_reversed === "number" && transfer.amount_reversed >= transfer.amount);
+        if (meta?.source_type === "vehicle_report" && meta?.source_id && fullyReversed) {
+          const { error: revErr } = await supabase
+            .from("vehicle_report_revenue_shares")
+            .update({ status: "reversed", updated_at: new Date().toISOString() })
+            .eq("id", meta.source_id);
+          // このイベントは冒頭で claim 済みなので、失敗しても Stripe 再送では
+          // duplicate スキップされ再実行されない。money は Stripe 側で戻った
+          // のに台帳が paid のまま残る不整合になるため、error で明示的に surface
+          // して運用が手動修正できるようにする（silent success にしない）。
+          if (revErr) {
+            console.error("connect-webhook: vehicle report share reverse update FAILED — ledger/Stripe mismatch", {
+              shareId: meta.source_id,
+              transferId: transfer.id,
+              error: revErr.message,
+            });
+          } else {
+            console.info("connect-webhook: vehicle report share reversed", {
+              shareId: meta.source_id,
+              transferId: transfer.id,
+            });
+          }
         }
 
         console.info("connect-webhook: transfer reversed", { transferId: transfer.id });

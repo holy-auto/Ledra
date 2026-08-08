@@ -5,6 +5,7 @@ import {
   ScrollView,
   RefreshControl,
   useWindowDimensions,
+  Platform,
 } from "react-native";
 import { Text, Card, IconButton } from "react-native-paper";
 import { router } from "expo-router";
@@ -38,7 +39,10 @@ function buildDateRange(days: number): string[] {
 
 export default function HomeScreen() {
   const { user, selectedStore } = useAuthStore();
-  const { width } = useWindowDimensions();
+  const { width, height } = useWindowDimensions();
+  // Tap to Pay は iPhone 専用（iPad 非対応）。iPhone のときだけ有効化バナーを出す。
+  const isIPhone = Platform.OS === "ios" && Math.min(width, height) < 768;
+  const [ttpBannerDismissed, setTtpBannerDismissed] = useState(false);
   const [stats, setStats] = useState<DashboardStats>({
     todayReservations: 0,
     activeWork: 0,
@@ -157,6 +161,41 @@ export default function HomeScreen() {
           accessibilityLabel="設定を開く"
         />
       </View>
+
+      {/* Tap to Pay 有効化バナー (Apple 要件 3.1: 発見しやすい導線) */}
+      {isIPhone && !ttpBannerDismissed && (
+        <Card
+          style={[styles.card, styles.ttpCard]}
+          mode="outlined"
+          onPress={() => router.push("/settings/tap-to-pay")}
+        >
+          <Card.Content style={styles.ttpContent}>
+            <IconButton
+              icon="contactless-payment"
+              iconColor="#1d4ed8"
+              size={24}
+              style={{ margin: 0 }}
+              accessibilityElementsHidden
+              importantForAccessibility="no"
+            />
+            <View style={{ flex: 1 }}>
+              <Text variant="titleSmall" style={styles.ttpTitle}>
+                iPhone でカード決済を受け付けられます
+              </Text>
+              <Text variant="bodySmall" style={styles.ttpSub}>
+                追加端末なしで Tap to Pay を有効化 →
+              </Text>
+            </View>
+            <IconButton
+              icon="close"
+              size={18}
+              iconColor="#3b82f6"
+              onPress={() => setTtpBannerDismissed(true)}
+              accessibilityLabel="バナーを閉じる"
+            />
+          </Card.Content>
+        </Card>
+      )}
 
       {/* NFCタグ在庫アラート */}
       {stats.preparedNfcTags <= NFC_LOW_STOCK_THRESHOLD && (
@@ -359,6 +398,10 @@ const styles = StyleSheet.create({
   alertContent: { flexDirection: "row", alignItems: "center", gap: 4 },
   alertTitle: { fontWeight: "700", color: "#92400e" },
   alertSub: { color: "#b45309", marginTop: 2 },
+  ttpCard: { borderColor: "#bfdbfe", backgroundColor: "#eff6ff" },
+  ttpContent: { flexDirection: "row", alignItems: "center", gap: 4 },
+  ttpTitle: { fontWeight: "700", color: "#1d4ed8" },
+  ttpSub: { color: "#3b82f6", marginTop: 2 },
   statContent: {
     alignItems: "center",
     paddingVertical: 12,

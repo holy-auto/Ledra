@@ -54,6 +54,7 @@ const mocks = vi.hoisted(() => ({
   sendDocumentEmail: vi.fn(),
   sendDocumentLink: vi.fn(),
   sendSMS: vi.fn(),
+  renderAndStoreDocumentPdf: vi.fn(),
 }));
 
 vi.mock("@/lib/supabase/server", () => ({ createClient: mocks.createSupabaseServerClient }));
@@ -61,6 +62,8 @@ vi.mock("@/lib/auth/checkRole", () => ({ resolveCallerWithRole: mocks.resolveCal
 vi.mock("@/lib/documents/share-email", () => ({ sendDocumentEmail: mocks.sendDocumentEmail }));
 vi.mock("@/lib/line/client", () => ({ sendDocumentLink: mocks.sendDocumentLink }));
 vi.mock("@/lib/sms/client", () => ({ sendSMS: mocks.sendSMS }));
+// PDF レンダリング/保存は実行時に @react-pdf/renderer + Storage を叩くのでモックする。
+vi.mock("@/lib/documents/pdfShare", () => ({ renderAndStoreDocumentPdf: mocks.renderAndStoreDocumentPdf }));
 
 let tables: Record<string, Row[]>;
 vi.mock("@/lib/supabase/admin", () => ({
@@ -86,6 +89,7 @@ beforeEach(() => {
   Object.values(mocks).forEach((m) => m.mockReset());
   mocks.resolveCaller.mockResolvedValue({ userId: "user-1", tenantId: TENANT_ID, role: "admin" });
   mocks.sendDocumentEmail.mockResolvedValue(true);
+  mocks.renderAndStoreDocumentPdf.mockResolvedValue("https://signed.example/doc.pdf");
 
   tables = {
     documents: [
@@ -184,5 +188,24 @@ describe("POST /api/admin/documents/share — additional_document_ids", () => {
     expect(res.status).toBe(200);
     const json = await res.json();
     expect(json.shared_document_ids).toEqual([DOC_A]);
+  });
+
+  it("LINE 送付時に PDF 署名 URL を sendDocumentLink へ渡す", async () => {
+    mocks.sendDocumentLink.mockResolvedValue(true);
+    const res = (await POST(req({ document_id: DOC_A, channel: "line", recipient: "U1234567890" }))) as Response;
+
+    expect(res.status).toBe(200);
+    const lineArgs = mocks.sendDocumentLink.mock.calls[0][0];
+    expect(lineArgs.pdfUrl).toBe("https://signed.example/doc.pdf");
+  });
+
+  it("PDF 生成に失敗 (null) しても本文だけで送信は成功する", async () => {
+    mocks.renderAndStoreDocumentPdf.mockResolvedValue(null);
+    mocks.sendDocumentLink.mockResolvedValue(true);
+    const res = (await POST(req({ document_id: DOC_A, channel: "line", recipient: "U1234567890" }))) as Response;
+
+    expect(res.status).toBe(200);
+    const lineArgs = mocks.sendDocumentLink.mock.calls[0][0];
+    expect(lineArgs.pdfUrl).toBeUndefined();
   });
 });

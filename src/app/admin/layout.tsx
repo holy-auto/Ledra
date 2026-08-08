@@ -9,6 +9,7 @@ import HelpFab from "./HelpFab";
 import CommandPalette from "@/components/ui/CommandPalette";
 import AssistantChat from "@/components/ui/AssistantChat";
 import AdminTopBar from "@/components/ui/AdminTopBar";
+import MobileTabBar from "@/components/ui/MobileTabBar";
 import AdminPageBar, { PageBarProvider } from "@/components/ui/PageBar";
 import NavigationProgress from "@/components/ui/NavigationProgress";
 import { ViewModeProvider } from "@/lib/view-mode/ViewModeContext";
@@ -51,7 +52,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               <PageBarProvider>
                 <AdminTopBar />
                 <AdminPageBar />
-                <div id="main-content" className="flex-1 p-4 pt-6 sm:p-6">
+                {/* pb-24: 下部タブバー（モバイル固定）に本文が隠れないよう余白を確保。lg では非表示。 */}
+                <div id="main-content" className="flex-1 px-4 pt-6 pb-28 sm:px-6 lg:pb-6">
                   <Suspense fallback={null}>
                     <AdminRouteGuard>{children}</AdminRouteGuard>
                   </Suspense>
@@ -59,6 +61,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               </PageBarProvider>
             </main>
           </div>
+          <MobileTabBar />
         </ViewerModeProvider>
       </BusinessModeProvider>
     </ViewModeProvider>

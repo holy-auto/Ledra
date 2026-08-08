@@ -20,6 +20,7 @@ import { CustomerCasesSection } from "@/components/marketing/CustomerCasesSectio
 import { CustomerSuccessSection } from "@/components/marketing/CustomerSuccessSection";
 import { LedgerScaleSection } from "@/components/marketing/LedgerScaleSection";
 import { WhatYouCanDoSection } from "@/components/marketing/WhatYouCanDoSection";
+import { AiAutomationSection } from "@/components/marketing/AiAutomationSection";
 import { MediaAwardsRow } from "@/components/marketing/MediaAwardsRow";
 import { FeatureCatalogSection } from "@/components/marketing/FeatureCatalogSection";
 import { IndustryEntries } from "@/components/marketing/IndustryEntries";
@@ -66,6 +67,9 @@ export default async function HomePage() {
 
       {/* Ledra でできること — 旧: 課題提起 / 解決 / 流れ / エコシステム / 証明書プレビュー を統合 */}
       <WhatYouCanDoSection />
+
+      {/* AIが下ごしらえ、確定は人 — LINE対応・予約・アフターフォロー・帳票の自動化 */}
+      <AiAutomationSection />
 
       {/* インタラクティブ・プロダクトツアー — 登録不要でその場で操作を体験 */}
       <ProductTourSection />

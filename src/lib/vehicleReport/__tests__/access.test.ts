@@ -102,6 +102,7 @@ describe("findValidReportAccess", () => {
       id: "o1",
       vin_code_normalized: "VIN1",
       expires_at: expires,
+      scope: { type: "full" },
     });
   });
 
@@ -113,6 +114,7 @@ describe("findValidReportAccess", () => {
       id: "o2",
       vin_code_normalized: "VIN2",
       expires_at: null,
+      scope: { type: "full" },
     });
   });
 });

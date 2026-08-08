@@ -7,6 +7,7 @@
 ## 記入フォーマット
 
 ```
+
 ## YYYY-MM-DD 変更タイトル (PR #番号 / commit)
 - 内容: 何を実装・変更したか
 - 対象: どの画面・API・業種向けか
@@ -16,6 +17,131 @@
 - 内容: (1) 本番Vercelで写真TSA（`PHOTO_TSA_ENABLED=true` / `PHOTO_TSA_URL=http://timestamp.digicert.com`）を有効化。確定帳票の封印（`documentSeal.ts`）は専用 `DOCUMENT_TSA_*` が無ければ `PHOTO_TSA_*` を流用する実装のため、この1トグルで請求書封印にも第三者タイムスタンプが付くようになった。本番DBで実確認済み（請求書 INV-202608-001、`meta_json.integrity_seal.timestamp_token_b64` に約6KBのRFC3161トークン、genTime 2026-08-04T23:56:50Z、authority timestamp.digicert.com）。DECISION_LOGに残っていた「本番TSA実通信未検証」の穴を実データで解消。(2) 帳票詳細画面のステータス行に封印バッジを追加（`describeIntegritySeal`＝クライアント安全な純関数、`src/lib/documents/integritySealView.ts`）。タイムスタンプ付きは success バッジ＋「TS局 / 時刻(JST)」、ハッシュのみは info バッジで正直に区別表示。
 - 対象: 帳票詳細（`admin/documents/[id]`）。全業種。検証: `integritySealView` 単体3件パス、tsc/eslint エラー0。封印バッジは meta_json.integrity_seal を読むだけでスキーマ変更なし。
 - 残: 加盟店/税務向けの「封印の検証（ハッシュ再計算照合・TSトークン検証）」UIと電帳法の規程面は未実装。法的効力重視時は JIPDEC 認定TS局へURL差し替え（設定変更のみ）。
+## 2026-08-06 レポート収益還元（実送金＋段階式）を9ラウンドの堅牢化後にマージ (PR #851 squash → main 9ced4f3)
+- **【要確認】本番反映**: `main` にコードはマージ済みだが、`20260730100000_vehicle_report_payout.sql` / `20260730200000_vehicle_report_tiers.sql` の**本番DB適用は未確認**。`DB migrate (apply to production)` ワークフローが Aug 2 以降失敗し続けている（OPEN_QUESTIONS 2026-08-05 の履歴ドリフト）。適用が確認できるまで「本番稼働」ではなく「main マージ済み・本番適用要確認」として扱う。
+- 内容: 2026-07-30 実装分（蓄積台帳→人手承認→Stripe Connect 実送金→返金巻き戻し、段階式レポート＋スコープ按分）を仕上げて `main` にマージ。マージ前に Codex 自動レビュー9ラウンドで金銭移動・整合性を追い込み、以下の bounded 修正を反映:
+  - **finalize-on-create ＋ 原子的 claim**: Stripe が `transfer.paid` を出さないため、送金作成直後に `status='approved' かつ transfer_id IS NULL` ガード付き UPDATE で `paid` 確定。並行 cancel/refund を取りこぼさない。
+  - **返金巻き戻しの純粋関数化**: `reversalActionForStatus`（terminal→skip / transfer有→reverse / 無→cancel）と `postCancelClaimAction`（cancel-claim 0行時の再読込→reverse 判定）を切り出し単体テスト。並行 payout が送金済みにした行を無条件 cancel して資金を宙に浮かせる競合を解消。
+  - **空スコープ販売の拒否**: 開示レコードが0件（直近Nヶ月の窓が全記録より新しい／認証済み記録なし）の購入を checkout で拒否。空レポート課金と還元0を防ぐ。
+  - **DBエラーの surface（主要経路）**: webhook の paid/refunded 遷移・refund 注文照会・reversal のロード/cancel-claim、payout の share/tenant 照会、精算バッチの systemic 障害（全行失敗）、checkout の空スコープ判定（`getAnchoredCertCountsByTenant`）、tiers カタログ/settings 読取——を throw して surface（webhook 系は `stripe_processed_events` の `processed_at=NULL` を `stripe-event-monitor` cron に載せる／バッチは cron 失敗アラート）。**未対応（#892 に計上）**: `recordVehicleReportRevenueShares` の台帳 upsert・order/settings 読取の error は現状 swallow のまま＝計上失敗が無音になりうる。
+  - **非同期決済対応**: `checkout.session.async_payment_succeeded` を新設（コンビニ/銀行振込の入金確定時に paid化＋還元計上、`handleVehicleReportSessionPaid` で完了経路と共有・冪等）。
+  - **一部取消の扱い**: connect-webhook `transfer.reversed` は全額取消（`transfer.reversed===true`／`amount_reversed>=amount`）時のみ台帳を terminal `reversed` に。
+  - **platform-admin 堅牢化**: approve/cancel の0行遷移を競合として 4xx、pay 後は実状態 `paid` を返す、一覧は limit/offset ページネーション、オンボーディングCTAは uncapped count で判定。
+- 検証: `vehicleReport` テスト32件パス（split 6＋scope 7＋access＋reversalActionForStatus 5＋postCancelClaimAction 4 等）、`tsc --noEmit` エラー0、変更ファイル eslint エラー0。
+- 残（別issue #892 に切り出し）: webhook 冪等の自動 replay 化、booking↔refund の完全アトミック化、payout の durable transfer recovery、アップグレード返金時の partial entitlement 保持、passport 表示の anchor スナップショット、`stripe_connect_transfers` 監査行の paid 同期。
+- 対象: 公開 `/v/[vin]` レポート課金（段階式）／施工店ポータル `/admin/report-revenue`／platform-admin 精算API／Stripe webhook（main + connect）／cron。
+## 2026-08-07 会計（POS）ウォークインの品目選択にもカテゴリ絞り込みを追加
+
+- 内容: 予約作成モーダルと同様の品目選択の課題が会計（POS）のウォークイン会計画面
+  （`/admin/pos`）にもあったため、大カテゴリでの絞り込みチップを追加。既存の名前検索と
+  併用でき、絞り込みロジックは既存の純関数 `src/lib/reservations/menuFilter.ts` を再利用。
+- 対象: `/admin/pos`（ウォークイン会計の品目グリッド）。`PosClient` に `category_large` を取り込み。
+
+## 2026-08-07 モバイル向けナビ整備と品目選択の絞り込み
+
+- 内容: モバイルアプリ審査に向けた店頭画面の操作性改善。
+  - 予約作成モーダルのメニュー（品目マスタ）選択に「検索」と「大カテゴリ絞り込み」を追加。
+    全品目がずらっと縦に並んで選びにくかったのを、検索文字列＋カテゴリチップで絞り込める形に。
+    絞り込みロジックは `src/lib/reservations/menuFilter.ts` に純関数として切り出し（ユニットテスト付き）。
+  - 管理画面のモバイルナビを整理: 左上に「前の画面に戻る」ボタン、右上にハンバーガーメニュー、
+    下部にどの画面でも表示される固定タブバー（ホーム/予約/顧客/帳票/証明書）を追加。
+- 対象: `/admin/reservations`（新規予約モーダル）、`/admin` 全画面のモバイルレイアウト。
+  `MobileTabBar` 新規、`AdminTopBar`（戻るボタン）、`SidebarShell`（ハンバーガー右上化）。
+
+## 2026-08-07 HPトップに「AI自動化でできること」セクションを新設（LINE対応・予約・アフターフォロー・帳票の自動化を訴求） (branch claude/ledra-line-automation-5clwdq)
+- 内容: マーケティングHPのトップページ（`src/app/(marketing)/page.tsx`）の「Ledra でできること」直下に、新コンポーネント
+  `AiAutomationSection`（`src/components/marketing/AiAutomationSection.tsx`）を追加。既存の証明書中心の訴求では見えていなかった
+  **AI自動化の5本柱**を1セクションに集約して掲載した——(1) LINE連携でお客様対応を半自動化（定型質問・概算見積りは完全自動応答／
+  見積書・請求書などの帳票もLINEで自動送付）、(2) 予約はAIが受信メッセージから自動で下書き（顧客・車両・作業内容を反映）、
+  (3) 作業内容に応じた作業後アフターフォローの自動連絡、(4) 証明書は撮影と確定ボタンだけ（下書き・写真監査まで自動）、
+  (5) 見積書・請求書の自動作成。ブランドの幹（信頼）に合わせ、見出しは「AIが下ごしらえ、確定は人。」とし、
+  金額確定・本人確認・証明書発行など責任の伴う操作は必ず人が最終確認する旨（壁3）と、AI自動化はStandardプラン以上の
+  機能ごとopt-inである旨を注記。既存カードのデザイン（角丸カード/ScrollReveal/blue系アクセント）を踏襲し、掲載内容は
+  実装済み機能（`docs/ai-automation-guide.md` §4.5 の auto-actions／`inboundAuto`・`documentAuto`・`certificateAuto`・
+  `followUp` cron 等）に照合済み。デザインコンポーネントの追加のみで挙動変更なし。
+- 対象: マーケティングHP トップページ（施工店向けの訴求）。
+- 検証: `npx tsc --noEmit`（0 error）、`eslint`（新規/編集ファイル clean）。未使用の `page.full.tsx` は App Router のルート対象外のため未更新。
+
+## 2026-08-06 送付済み請求書のステータス変更（入金済等）が「内容編集」と誤判定されブロックされる不具合を修正 (branch claude/payment-status-and-error-no5a9m)
+- 内容: `PUT /api/admin/documents` で送付済み請求書を入金済に変更できなかった根本原因を修正。原因は
+  `documentUpdateSchema`（`documentCreateSchema.partial().extend(...)`）で、Zod の `.partial()` が
+  `.default()` を剥がさないため、ステータスのみの更新でも `show_seal`/`show_logo`/`show_bank_info`/
+  `is_invoice_compliant`/`is_tax_inclusive` が `false` として parse 結果に混入し、ハンドラの
+  `isContentEdit`（`!== undefined` 判定）が誤発火 → 「送付済みの請求書は内容を編集できません」で
+  ブロックされていた。更新スキーマの当該フィールド（＋ `status`/`subtotal`/`tax`/`total`）を default 無しの
+  `.optional()` に上書きし、送っていない項目が parse 結果に現れないよう修正。回帰テスト3件を追加。
+  status の default 漏れによる「内容更新で送付済み帳票が draft に巻き戻る」二次バグも同時に解消。
+- 対象: 帳票詳細／一覧のステータス変更（入金済・期限超過・取消 等）。特に送付済み請求書の入金記録。
+
+## 2026-08-06 モバイルApp Store一般公開に向けたサインアップ/退会/push/TTP UX整備 (PR #891)
+- 内容:
+  - **アプリ内サインアップ**（要件2.x）: `apps/mobile/src/app/(auth)/signup.tsx` を新設。既存 `POST /api/signup` を再利用してテナント+ownerを作成し、そのまま `signInWithPassword`→店舗選択まで**アプリ内で完結**。login画面に導線追加。
+  - **アプリ内アカウント削除**（Apple 5.1.1(v)）: `DELETE /api/mobile/account` を新設。唯一のownerならテナントを `is_active=false` 化＋連絡先PII消去、それ以外は本人のみ削除（auth削除で `tenant_memberships` は ON DELETE CASCADE）。設定画面に確認ダイアログ付き導線。
+  - **プライバシーマニフェスト**: `app.json` の `ios.privacyManifests` に Required Reason API（FileTimestamp/UserDefaults/SystemBootTime/DiskSpace）を宣言。
+  - **ホームのTap to Payバナー**（要件3.1）: iPhone時に有効化導線を表示し `/settings/tap-to-pay` へ誘導（閉じる可）。
+  - **push基盤**（要件3.3）: `expo-notifications`/`expo-device` を導入し `lib/push.ts` でトークン取得→`POST /api/mobile/push/register`。認証後にroot layoutで自動登録。
+  - **checkout微修正**: 副決済ボタンのアイコンを `contactless-payment` に統一（5.5）、未使用の `ReceiptShareDialog` 導線を削除（B-8）。
+  - **設定画面「有効化済み」表示の修正**: `termsAccepted` をTTP接続成功時にセット（checkoutはこのフラグでゲートせず＝要件5.3準拠）。
+  - **ドキュメント**: `tap-to-pay-submission-guide.md` を Custom Apps 前提から **App Store 一般公開前提**に全面改訂（動画台本3本・ASCメタデータ・審査用デモアカウント・提出前Go/No-Go・審査項目対応表）。`tap-to-pay-distribution-checklist.md` に方針変更の注記。
+  - **実機起動の修復（RN依存整合）**: `react-native` を Expo SDK55 の pin 版へ（0.86.0→0.83.6、`@react-native/codegen` 0.83.x と一致）ほか react/reanimated/worklets 等7点を整合。不整合で Metro バンドルが `VirtualView` codegen エラーになり実機/devビルドが起動不能だったのを解消。
+  - **TTP location 取得の修復**: `GET /api/mobile/pos/terminal/location` の Terminal Location 自動作成を日本住所形式 `address_kanji` に修正（標準 `address` は JP で Stripe 400 になり Location を作成できず、TTP有効化が常に「location取得失敗」になっていた）。
+  - **entitlement plugin**: `withRemoveTapToPayEntitlement` を app.json に登録し、Development型プロファイル(development/development-device)のみ TTP entitlement を保持・Distribution型(preview/production)は除去（Apple の publishing entitlement 未付与のため。付与後に preview/production を条件へ戻す）。
+- 対象: モバイルアプリ（`apps/mobile`、Expo SDK55）／モバイル用API（signup再利用・account削除・push登録・terminal location）。iOS App Store 提出準備。
+- 補足: 動画3本の**撮影は代表が実施**（台本はsubmission-guideに用意）。mobile typecheck パス。実機は `development-device` ビルド（entitlement 保持）で起動確認。**A-1=Apple の Distribution entitlement は未付与で確定**（実ビルド署名失敗より）。
+
+## 2026-08-05 帳票共有のLINE宛先を顧客の連携済みLINEに自動選択 (branch claude/payment-status-and-error-no5a9m)
+- 内容: 帳票共有モーダルの LINE タブで、顧客に連携済みの `customers.line_user_id` があれば宛先を
+  自動選択し「◯◯様のLINEに送信します（連携済み）」と表示（生IDの手入力が不要に）。未連携時、
+  または「別のユーザーIDを指定」選択時のみ手動入力欄を出すフォールバック。`/api/admin/customers`
+  の select に `line_user_id` を追加し、モーダルは顧客がいる限り常に取得するよう変更。
+- 対象: 帳票詳細の「共有」→ LINE タブ。
+
+## 2026-08-05 滞留PRバックログを整理し、機能3件を現mainへ再適用してマージ (PR #884 / #885 / #886)
+- 内容:
+  - #884: サインアップ失敗時のロールバック（auth user / tenant / membership 削除）失敗を検知し、「孤児レコード・要手動クリーンアップ」を3つの失敗パスすべてでログ化（`src/app/api/signup/route.ts`）。
+  - #885: 保険ケースのステータス変更で基幹ソフト連携向け webhook（`insurer_case.status_changed`）を発火（7ファイル）。加えて単一ケース PATCH に status compare-and-swap を追加し、同時更新時の webhook 二重発火を防止（bulk/messages ルートと整合、`cases/[id]/__tests__/route.test.ts` で3挙動を検証）。
+  - #886: CMS予約投稿の日時を JST↔UTC で正しく変換する `src/lib/datetime.ts` を新設し、`new Date().toISOString()` の素朴な変換を置換（14ファイル、`datetime.test.ts` 10件）。
+- 補足: 依存Bump #853/#775/#774 をマージ、陳腐化docs等（#757/#823/#822/#864/#863）をクローズ、履歴断絶した旧 #821/#748/#826 は上記再適用でクローズ。WIP実送金 #851・大型UIキット同期 #760 は保留。
+- 対象: サインアップAPI、保険会社ポータル（ケース管理）、CMS予約投稿、依存関係。
+
+## 2026-08-05 帳票ステータスの 'overdue' を DB 制約に追加＋種別クイックナビ追加 (branch claude/chouhyo-kanri-kaizen-fkgzaa)
+- 内容:
+  - `documents_status_check` に 'overdue'（期限超過）を追加。アプリは遷移・表示で 'overdue' を使うのに
+    制約が欠いており、詳細画面「期限超過に変更」で PUT が CHECK 違反(23514)の 500 になりステータス変更が
+    適用されなかったのを修正（マイグレーション `20260805085225_documents_status_overdue.sql`。本番へ直接適用済み）。
+  - 帳票管理一覧のヘッダーバーに帳票種別クイックナビ（すべて／見積書／請求書／領収書…）を追加。ワンタップで
+    種別を切り替えられる（既存の種別フィルタ状態を再利用）。
+  - 一覧の「入金」クイックボタンを `consolidated_invoice`（合算請求書）にも表示（詳細画面と条件を統一）。
+  - 再発防止テスト `statusConstraint.test.ts`（アプリが遷移し得る全ステータス ⊆ DB許可集合）を追加。
+- 補足: 「入金済の変更が適用されない」の主因は 20260715 バッチのマイグレーション・ドリフト（`documents.staff_member_id`
+  未反映で GET/PUT が 500）で、修復マイグレーション `20260731144359` が本番適用済みのため入金済更新自体は復旧済み。
+- 対象: 帳票管理（`/admin/documents`）一覧・詳細、`documents` テーブル。
+
+## 2026-08-05 帳票（請求書等）を LINE・メール・SMS で PDF リンク付き送付 (branch claude/payment-status-and-error-no5a9m)
+- 内容: 帳票共有（`POST /api/admin/documents/share`）で主帳票 PDF をレンダリングし、非公開 Storage
+  バケット（既存 `line-media` 再利用）へ保存して長期署名 URL を発行、各 channel の本文に含めるように
+  した。LINE Messaging API は生ファイル（PDF）を push できないため、URL 送付が唯一の方法。LINE は
+  `sendDocumentLink` に `pdfUrl` を追加して本文へ「PDFはこちら」リンクを付与、メールは既存の未使用
+  `pdfUrl` 引数（「PDFを表示」ボタン）を配線、SMS は本文に PDF URL を付記。PDF 生成失敗は fail-soft で
+  本文のみ送信。PDF ルートと共有で重複していたレイアウト解決を `src/lib/documents/pdfShare.ts` に集約。
+- 対象: 帳票詳細／一覧の「共有」→ LINE・メール・SMS（全帳票種別。請求書を含む）。
+
+## 2026-08-05 通知ベルの「すべて既読」がサーバに永続化されず未読が復活する不具合を修正 (branch claude/payment-status-and-error-no5a9m)
+- 内容: `NotificationBell` の「すべて既読」がローカル状態のみ更新で API を呼ばず、ポーリング再取得で
+  未読が復活していた。一括既読 API `PUT /api/admin/notifications/read-all`（テナント宛＋本人宛の未読を
+  `read_at` で既読化）を追加し、ベルを「楽観更新 → API → 再取得」に修正。
+- 対象: 管理画面トップバーの通知ベル。
+
+## 2026-08-04 帳票一覧が本番で常に0件になる不具合を修正（金額フィルタ未指定を total=0 と誤解釈していた根本原因）(PR #879 / 93eeeea)
+- 内容: 帳票一覧API `GET /api/admin/documents` が、金額検索 `amount_min`/`amount_max` 未指定時に
+  `Number("") === 0` によりフィルタ値を 0 と解釈し、クエリに `total>=0 AND total<=0`（＝ total=0）を
+  常時付与していた。金額>0 の全帳票が一致せず、本番で「帳票がありません（0件）」になっていた根本原因を修正。
+  金額パースを純関数 `parseAmountParam`（`src/lib/api/amountFilter.ts`）へ切り出し、空・空白・未指定は
+  null（フィルタ無し）を返し、明示的な "0" のみ 0 とするよう修正。回帰防止テスト
+  `src/lib/api/__tests__/amountFilter.test.ts`（4ケース）を追加。あわせて #878 で入れた
+  「接続過渡的0件」への多重リトライ／診断 `_diag`（誤診に基づく対症策）を撤去し、
+  service-role 単一クエリのシンプルな取得に戻した。本番デプロイ後、表示回復を確認済み。
+- 対象: 帳票管理一覧 `/admin/invoices`・`/admin/documents`（帳票取得API `GET /api/admin/documents`）。
 
 ## 2026-08-03 帳票明細: 品番のみ入力した明細が詳細画面・PDFで消えて見える不具合を修正 (branch claude/chouhyo-functionality-check-7fbgko)
 - 内容: 帳票明細の「内容(description)」が空で「品番(item_code)」だけ入力された明細が、詳細画面・PDF・印刷で
@@ -89,6 +215,31 @@
 ## 2026-07-28 「レドラ」音声起動の運用手順を追加（アシスタント経由・コード変更なし）
 - 内容: `apps/mobile/docs/VOICE_LAUNCH.md` を新規作成。既存の `ledra://` URL スキーム（expo-router の自動ディープリンク解決）を使い、iOS ショートカット／Android ルーティンに「レドラ」を登録して `ledra://certificates/new` 等でデータ入力画面へ直行させる手順を文書化。アプリ側の追加実装はゼロ。アプリ内ウェイクワード（B）とネイティブ App Intents は実装ロードマップとして同ドキュメントに記載（実機ビルド待ち・未実装）。
 - 対象: モバイルアプリ（`apps/mobile`、Expo）／現場の施工士による音声起点のデータ入力。
+
+## 2026-07-30 車両レポートの段階式ティア（部分/フル）＋スコープ按分 (branch claude/merchant-revenue-sharing-22tuq3)
+- 内容: 単一定額レポートを、無料サマリ→部分（直近N ヶ月）→全履歴フルの段階式へ拡張。開示範囲と還元対象を一致させる。
+  (1) スキーマ（`20260730200000_vehicle_report_tiers.sql`）: `vehicle_report_tiers`（tier_key/label/price_jpy/scope_type/scope_months/enabled/sort、直近1年¥1,500＋全履歴¥3,000 を seed）。`vehicle_report_orders` に `tier_key`/`scope_type`/`scope_months`/**`scope_from`（購入時アンカーの絶対カットオフ）**を追加。
+  (2) スコープ純粋関数（`src/lib/vehicleReport/tiers.ts`）: `scopeFromRow`/`scopeCutoffIso`/`isCreatedAtInScope`（カレンダー月・テスト7件）。`getReportTiers`/`getReportTierByKey`。
+  (3) 課金配線: checkout が `tier` を受け取り、価格・スコープをティアから決定し `scope_from` を確定して保存（クライアント値は不使用）。access は `scopeFromIso` を返す。
+  (4) 表示: `/v/[vin]` は購入スコープ（`scope_from` 絶対境界）内の記録のみ表示。部分購入者には全履歴レポートへのアップセル導線。会員（ログイン施工店）は従来どおり全表示。
+  (5) 還元按分: `recordVehicleReportRevenueShares` が注文の `scope_from` で記録を絞り、**開示した記録の施工店にのみ**件数比例で按分（見せていない店は対象外）。表示と按分が同一境界。
+  (6) UI: `PurchaseReportCard` をティア一覧＋compact アップセルに刷新。
+- 対象: 車両パスポート/レポート課金（全業種）・公開ページ `/v/[vin]`・checkout。
+- 検証: vehicleReport 系テスト27件パス（scope 7＋access＋split 6＋payout 5 等）、`lint:migrations` OK、tsc エラー0、変更ファイル eslint エラー/警告0。設計書 `docs/merchant-revenue-sharing-design.md` §9。
+- 残（スコープ外）: 部分軸は期間のみ（種別/店は将来）、ティア価格の妥当性、段階購入の差額課金、運営ティア編集 UI。
+
+## 2026-07-30 レポート収益還元の実送金（Connect 精算）＋返金巻き戻し (branch claude/merchant-revenue-sharing-22tuq3)
+- 内容: 蓄積台帳（PR #848）の後続。台帳の還元分を Stripe Connect で施工店へ実送金し、返金時に巻き戻す。既存の代理店コミッション精算と同型。
+  (1) スキーマ（`20260730100000_vehicle_report_payout.sql`）: `stripe_connect_transfers.source_type` に `vehicle_report`、`vehicle_report_orders.status` に `refunded` を追加（DROP/ADD CHECK, NOT VALID+VALIDATE）。
+  (2) 精算: `src/lib/vehicleReport/payout.ts`。`payVehicleReportRevenueShare` は `approved` の share のみ送金（`metadata.source_type=vehicle_report`＋idempotencyKey、`stripe_transfer_id` を刻むだけで確定は webhook）。`settleApprovedRevenueShares` が一括精算。cron `/api/cron/vehicle-report-payout`（毎日 05:20 UTC・`withCronLock`）。
+  (3) 確定: connect-webhook の `transfer.paid`→share を `paid`、`transfer.reversed`→`reversed`（agent_commission と同じ分岐に vehicle_report ケース追加）。
+  (4) 承認ゲート（人手）: platform-admin API `GET /api/admin/platform/report-revenue`（一覧）＋ `PATCH .../<id>`（approve/pay/cancel）。還元率70%確定まで approve しなければ 1 円も動かない安全弁。
+  (5) 返金巻き戻し: メイン webhook `charge.refunded`（全額のみ）→ `reverseVehicleReportRevenueSharesForOrder`。送金済み share は Stripe reversal（webhook で `reversed`）、未送金は `cancelled`、注文は `refunded`。判定は純粋関数 `reversalActionForStatus`（テスト5件）。
+  (6) 導線: `/admin/report-revenue` に未精算かつ Connect 未連携時の登録 CTA（既存 `/admin/settings` 連携を再利用）。vercel.json に cron 登録。
+- 対象: 車両レポート課金の後精算（全業種）・Stripe connect/main webhook・施工店 admin ポータル・platform-admin。
+- 検証: `reversalActionForStatus` テスト5件＋`splitRevenueByRecordCount` 6件パス、`lint:migrations` OK、tsc エラー0、変更ファイル eslint エラー0。
+- 残（スコープ外）: 部分返金対応、承認/精算の専用管理 UI（現状 API のみ）、最低支払額・精算頻度の調整、還元率70%の最終確定。
+
 ## 2026-07-30 車両全履歴レポート収益の施工店還元（蓄積台帳）(branch claude/merchant-revenue-sharing-22tuq3)
 - 内容: 有料の車両全履歴レポート売上を、記録を残した施工店へ按分して蓄積する仕組みを実装。
   (1) スキーマ: `vehicle_report_settings.merchant_share_bps`（還元率、既定 7000bps=70%）を追加。
@@ -109,6 +260,13 @@
   変更ファイル eslint エラー0。設計書 `docs/merchant-revenue-sharing-design.md`。
 - 残（スコープ外）: 実送金の自動化（`stripe_connect_transfers.source_type` に vehicle_report 追加＋精算バッチ／
   Connect オンボーディング導線は別 PR）、返金時の台帳巻き戻し。
+
+## 2026-07-25 CMS予約投稿のタイムゾーンずれを修正（保存・表示の両方） (branch claude/cms-scheduled-post-bug-ejccnb)
+- 内容: サイトコンテンツ（お知らせ/ブログ/イベント）の予約公開が指定時刻に公開されず、かつ管理/公開画面の日時表示も入力とずれていた不具合を修正。
+  - **保存**: `datetime-local` が生成する TZ 無しの壁時計文字列（例 `2026-07-30T14:00`）を server action が `new Date(x).toISOString()` でそのまま変換していた。Vercel ランタイムの TZ が UTC のため JST 14:00 の予約が `14:00Z`（＝JST 23:00）で保存され、cron 自体は正常でも公開が9時間遅れていた。
+  - **表示**: 管理一覧・公開イベント/ニュース/ブログ・NewsTeaser の日時整形がサーバ側で `new Date().getHours()` / `iso.slice(0,10)` を使い、SSR(UTC)で JST 入力が9時間ずれて（日付のみ表示は深夜帯で1日）表示されていた。
+  - 共有ヘルパー `src/lib/datetime.ts` を新設（`jstLocalInputToUtcIso` / `utcIsoToJstLocalInput` / `jstParts` / `formatJstDateTime` / `formatJstDateTimeJa` / `formatJstDateJa`）。naive 入力を常に JST(UTC+9) として保存し、表示も常に JST で描画（実行環境TZ非依存）。散在していた各ページのローカル日時整形関数を撤去して集約。ユニットテスト追加（UTC/JST/他TZの各サーバで検証）。
+- 対象: `/admin/site-content`（作成・編集 server action / 一覧）、公開 `/events`・`/news/[slug]`・`/news`・`/blog`・`/blog/[slug]`・トップ NewsTeaser、cron `/api/cron/publish-scheduled` の対象データ
 
 ## 2026-07-27 AIナビ＆横断検索でサイドバーをスリム化 + 監査ゲート恒久修正 (PR #752 / e19d92c)
 - 内容:
@@ -148,6 +306,7 @@
 ## 2026-07-27 C2PA本番証明書の取得手順ドキュメント + 切替前プリフライト検証スクリプト (branch claude/c2pa-production-deployment-nlv0gs)
 - 内容: production 署名証明書の取得〜切替を代表が実行できるよう整備。(1) `docs/c2pa-production-deployment.md` に取得フロー（C2PA Conformance Program 登録 → Conforming Products List → trust list CA 発行。商用発行は主に DigiCert / SSL.com）・env 形式（PEM チェーン / PKCS#8 鍵 / EKU 等）・鍵保管（env or KMS）・当面の TSA 代替を集約。公式 C2PA Trust List（c2pa-org/conformance-public、確認時点で 28 証明書）の実態を明記。(2) `scripts/verify-c2pa-cert.mjs`: 候補証明書で Ledra と同じ manifest を実署名し、公式 Trust List を anchor に読み戻して `validation_state==="Trusted"` のときだけ GO(exit0)、Valid/Invalid は NO-GO(exit1) と判定する切替前検証ツール。自己署名証明書で NO-GO(Invalid) になることを実測確認。
 - 対象: C2PA production 導入の運用手順・ツール。証明書取得自体は Conformance Program 登録を伴い代表判断待ち（OPEN_QUESTIONS 参照）。
+
 ## 2026-07-27 SEOカテゴリ語を「施工履歴プラットフォーム」に統一 (branch claude/ledra-seo-keywords-7vnacz)
 - 内容: 主カテゴリ語を PR TIMES と揃え「施工履歴プラットフォーム」に統一（旧「AI業務管理SaaS」から変更）。
   タイトル「Ledra｜自動車整備・コーティング店の施工履歴プラットフォーム」。`siteConfig`(single source) 経由で
@@ -219,6 +378,17 @@
   スキップ）。管理画面から作成した予約（`/api/admin/reservations`）は対象外。
 - 対象: 顧客Web予約フォーム、Googleマップ予約/LINE LIFF経由の外部予約、`/admin/settings`
   店舗設定画面。
+
+## 2026-07-23 保険会社ケース更新をテナントAPI webhook基盤に接続 (PR #821)
+- 内容: `insurer_cases` の作成・ステータス変更は、これまでテナント（施工店）へはメール通知
+  （`sendCaseStatusNotification`）のみが届いており、既存の outbound webhook 基盤
+  （`tenant_webhooks` / `webhook-topics.ts`、certificate/customer/vehicle/work_history
+  のみ対応）には接続されていなかった。`insurer_case.created` / `insurer_case.status_changed`
+  をトピックレジストリに追加し、`POST /api/insurer/cases`（作成時）と
+  `PATCH /api/insurer/cases/[id]`（ステータス変更時）から `emitEntityWebhook()` で発火する
+  ようにした。既存のメール通知とは独立して動作し、購読が無いテナントには no-op。
+- 対象: 保険会社ポータル `/insurer/cases`（案件管理）と、テナント側の連携管理 UI
+  `/admin/integrations`（Webhook トピック選択に新トピックが自動反映）。
 
 ## 2026-07-22 管理画面ダッシュボードに「Ledraに聞く」入口 + 承認インボックスに根拠表示 (PR #819)
 - 内容: ダッシュボード最上部に自由入力欄 `AskLedraBar` を新設。まず決定的なキーワード→
@@ -692,3 +862,13 @@
 - 対象: `/admin/platform/store-usage`（platformOnly）。API `/api/admin/platform/store-usage`、
   集計 `src/lib/analytics/storeUsage.ts`（ユニットテスト付き）。
 - 注記: ログイン「回数」は未記録のため、last_sign_in_at ベースの「アクティブ会員」で近似。
+
+## 2026-08-07 モバイル: 複数テナント所属ユーザーのログイン修正 (PR #897)
+
+- 内容: fetchUserProfile が tenant_memberships を .single() で取得しており、2件以上の
+  membership を持つユーザー（自店オーナーが他店に staff 招待された等）でログイン不可
+  （「テナント情報が見つかりません」）だった不具合を修正。Web の checkRole.ts と同じく
+  created_at 昇順 + limit(1) + maybeSingle() で最古の1件を採用するよう統一。
+- 対象: apps/mobile/src/lib/auth.ts。
+- 注記: モバイルは1ユーザー=1テナント前提のUX（select-store はテナント内の店舗選択のみ）。
+  将来のマルチテナント対応は select-store 拡張が上限（ponytail コメントで明記）。

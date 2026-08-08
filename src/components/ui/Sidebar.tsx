@@ -428,7 +428,7 @@ export default function Sidebar() {
   };
 
   return (
-    <SidebarShell>
+    <SidebarShell hamburgerAlign="right">
       {/* Brand */}
       <div className="flex h-14 items-center gap-2.5 border-b border-border-subtle px-5">
         <Image src="/icon-192.png" alt="Ledra" width={28} height={28} className="rounded-lg" />
@@ -543,30 +543,28 @@ export default function Sidebar() {
                 {(() => {
                   const mainGroup = NAV_GROUPS.find((g) => !g.label);
                   const items = mainGroup ? filterItems(mainGroup.items) : [];
+                  return items.length ? <ul className="space-y-0.5">{items.map((it) => renderItem(it))}</ul> : null;
+                })()}
+
+                {(() => {
+                  const items = filterItems(coreItems);
                   return items.length ? (
-                    <ul className="space-y-0.5">{items.map((it) => renderItem(it))}</ul>
+                    <ul className="mt-1 space-y-0.5">{items.map((it) => renderItem(it, { pinnable: true }))}</ul>
                   ) : null;
                 })()}
 
-            {(() => {
-              const items = filterItems(coreItems);
-              return items.length ? (
-                <ul className="mt-1 space-y-0.5">{items.map((it) => renderItem(it, { pinnable: true }))}</ul>
-              ) : null;
-            })()}
-
-            {(() => {
-              const items = filterItems(pinnedItems);
-              if (!items.length) return null;
-              return (
-                <div className="mt-2">
-                  <div className="px-2.5 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted">
-                    ピン留め
-                  </div>
-                  <ul className="space-y-0.5">{items.map((it) => renderItem(it, { pinnable: true }))}</ul>
-                </div>
-              );
-            })()}
+                {(() => {
+                  const items = filterItems(pinnedItems);
+                  if (!items.length) return null;
+                  return (
+                    <div className="mt-2">
+                      <div className="px-2.5 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted">
+                        ピン留め
+                      </div>
+                      <ul className="space-y-0.5">{items.map((it) => renderItem(it, { pinnable: true }))}</ul>
+                    </div>
+                  );
+                })()}
               </>
             )}
           </>

@@ -4,6 +4,7 @@ import { ScrollReveal } from "@/components/marketing/ScrollReveal";
 import { CTABanner } from "@/components/marketing/CTABanner";
 import { CTAButton } from "@/components/marketing/CTAButton";
 import { listPublishedPosts } from "@/lib/marketing/site-content-posts";
+import { formatJstDateTimeJa } from "@/lib/datetime";
 import type { SiteContentType } from "@/lib/validations/site-content-post";
 
 export const metadata = {
@@ -18,18 +19,6 @@ const TYPE_LABEL: Record<SiteContentType, string> = {
   event: "イベント",
   webinar: "ウェビナー",
 };
-
-function formatDateTime(iso: string | null): string {
-  if (!iso) return "";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "";
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  const hh = String(d.getHours()).padStart(2, "0");
-  const mm = String(d.getMinutes()).padStart(2, "0");
-  return `${y}年${Number(m)}月${Number(day)}日 ${hh}:${mm}`;
-}
 
 export default async function EventsPage() {
   const posts = await listPublishedPosts(["event", "webinar"], { limit: 60 });
@@ -85,7 +74,7 @@ export default async function EventsPage() {
                             {TYPE_LABEL[p.type]}
                           </span>
                           {p.event_start_at && (
-                            <time dateTime={p.event_start_at}>{formatDateTime(p.event_start_at)}</time>
+                            <time dateTime={p.event_start_at}>{formatJstDateTimeJa(p.event_start_at)}</time>
                           )}
                         </div>
                         <h3 className="mt-4 text-[1.125rem] md:text-[1.25rem] font-bold text-white leading-[1.4]">
@@ -136,7 +125,7 @@ export default async function EventsPage() {
                           {TYPE_LABEL[p.type]}
                         </span>
                         {p.event_start_at && (
-                          <time dateTime={p.event_start_at}>{formatDateTime(p.event_start_at)}</time>
+                          <time dateTime={p.event_start_at}>{formatJstDateTimeJa(p.event_start_at)}</time>
                         )}
                       </div>
                       <h3 className="mt-2 text-base font-bold text-white">{p.title}</h3>

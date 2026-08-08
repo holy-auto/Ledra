@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { Stack, router } from "expo-router";
 import { PaperProvider } from "react-native-paper";
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -16,6 +16,7 @@ import { useAuthStore } from "@/stores/authStore";
 import { ToastProvider } from "@/components/ToastProvider";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { useTapToPayWarmup } from "@/hooks/useTapToPayWarmup";
+import { registerForPushNotifications } from "@/lib/push";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -26,6 +27,25 @@ SplashScreen.preventAutoHideAsync();
  */
 function TapToPayWarmupGate() {
   useTapToPayWarmup();
+  return null;
+}
+
+/**
+ * 認証完了後に一度だけ push トークンを登録する（要件 3.3 の配信基盤）。
+ * ログアウトでリセットし、次回ログイン時に再登録する。
+ */
+function PushRegisterGate() {
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  const done = useRef(false);
+  useEffect(() => {
+    if (isAuthenticated && !done.current) {
+      done.current = true;
+      void registerForPushNotifications();
+    }
+    if (!isAuthenticated) {
+      done.current = false;
+    }
+  }, [isAuthenticated]);
   return null;
 }
 
@@ -72,6 +92,7 @@ export default function RootLayout() {
       <QueryClientProvider client={queryClient}>
         <StripeTerminalProvider tokenProvider={fetchTokenProvider}>
           <TapToPayWarmupGate />
+          <PushRegisterGate />
           <PaperProvider theme={theme}>
             <ToastProvider>
               <StatusBar style="dark" />

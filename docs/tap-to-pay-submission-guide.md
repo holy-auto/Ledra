@@ -1,9 +1,14 @@
 # Tap to Pay on iPhone - Distribution 提出ガイド
 
+> **2026-08 更新（配布方針の変更）**: 配布チャネルを **Custom Apps → App Store 一般公開** に変更した（代表判断: 毎回の手動配布運用を避け、誰でもDL可能にする）。
+> これに伴い Apple 審査要件 **2.x（アプリ内オンボーディング）・3.2/3.3/3.4・6.x が「N/A」から「必須」に変わる**。
+> 該当実装（アプリ内サインアップ / アカウント削除 / push基盤 / ホームバナー）は
+> PR `claude/ledra-tap-to-pay-strategy-v08fcp` で対応済み。旧 Custom Apps 前提の記述は本更新で置き換えた。
+
 ## 提出物 (Apple へメール返信時)
 
 1. **動画3本**:
-   - Onboarding flow video
+   - Onboarding flow video（アプリ内サインアップ〜利用開始）
    - Enabling Tap to Pay & Educating Merchants video
    - Checkout flow video
 2. **App Review Requirements Checklist** (記入済み Numbers ファイル)
@@ -24,6 +29,7 @@
 ### 2. テスト環境
 - Stripe **テストモード** で発行された Connect アカウントとPSPテスト鍵
 - ビルドは `eas build --profile development` (Development Distribution Entitlement で署名されたビルド)
+- **テスト用の新規メールアドレス**（動画1のサインアップ実演用。使い捨て可）
 
 ### 3. 録画準備
 - **画面録画ツール**: コントロールセンターの画面収録 + マイクON
@@ -31,59 +37,67 @@
 
 ---
 
-## 動画1: Onboarding Flow (新規ユーザー)
+## 動画1: Onboarding Flow (新規ユーザー / アプリ内サインアップ)
 
-### Custom Apps 配布の場合
-
-Custom Apps なのでアプリ内サインアップは不要だが、Apple は「新規ユーザーが TTP を利用開始するまでの導線」の説明を求める。以下を録画 OR 文書で説明する：
+App Store 一般公開のため、**アプリ内で新規アカウント作成 → 利用開始までが完結**することを示す（要件 2.1 / 2.2）。目標は平均15分以内（要件 2.3）。
 
 ```
-[ナレーション + 画面収録 (任意)]
-1. Ledra は Custom Apps として Apple Business Manager 経由で配布されます
-2. 新規顧客は弊社の Web 管理画面 (https://app.cartrust.co.jp) でテナント登録し、
-   ABM の "Apps and Books" 経由で Ledra アプリの配布を受けます
-3. iPhone に Ledra をインストール後、初回起動でログイン (Email + パスワード)
-4. ログイン後、ホーム画面 → その他タブ → 設定 → Tap to Pay 設定 へ進む
-5. 「Tap to Pay を有効化する」ボタンを押下 → 規約同意 → セットアップ完了
+[画面収録]
+1. App Store から Ledra をインストール（or TestFlight）
+2. 初回起動 → ログイン画面
+3. 「新規登録（施工店の方）はこちら」をタップ
+4. サインアップ画面で入力:
+   - 店舗名（必須）
+   - お名前（任意）
+   - メールアドレス（必須）
+   - パスワード（8文字以上）
+   - 電話番号（任意）
+5. 「登録して始める」をタップ
+   ↓
+   /api/signup がテナント + owner ユーザーを作成し、そのまま自動サインイン
+6. 店舗選択画面 → 店舗を選ぶ
+7. ホーム画面が表示される（=利用開始）
+8. ホームの「iPhone でカード決済を受け付けられます」バナーをタップ
+   → Tap to Pay 設定へ（動画2へ続く導線を示す。要件 3.1 / 3.4）
 ```
 
-提出時のラベル: `01_onboarding_custom_apps.mp4` (または書面説明)
+提出時のラベル: `01_onboarding_signup.mp4`
+
+> メモ: アカウント削除導線（要件対応・Apple 5.1.1(v)）は 設定 → 「アカウントを削除」。
+> 審査で問われたら実演できるようにしておく（削除は不可逆なので本番アカウントでは実行しない）。
 
 ---
 
 ## 動画2: Enabling Tap to Pay + Educating Merchants
 
-### シナリオ (既存ログイン済みユーザー)
+### シナリオ (ログイン済みユーザー)
 
 **準備**: アプリにログイン済み、Tap to Pay は未有効化の状態。
 
 ```
 1. アプリ起動 → ホーム画面表示
-2. (任意) Tap to Pay 利用可能の通知バナーがあれば写す
-3. 下タブ「その他」 → 「設定」をタップ
-4. 「Tap to Pay 設定」をタップ
+2. ホームの Tap to Pay 有効化バナーを写す（要件 3.1）
+3. バナー もしくは 下タブ「その他」→「設定」→「Tap to Pay 設定」をタップ
    ↓
    要件 3.6 を満たす：通常フロー外 (設定画面) からアクセス可能
-5. Tap to Pay 設定画面が表示される
+4. Tap to Pay 設定画面が表示される
    - iPhone のタッチ決済の説明カード
    - 受け付けられる支払方法 (コンタクトレスカード/Apple Pay/その他電子ウォレット)
    ↓
    要件 4.3 を満たす：設定/ヘルプから教育コンテンツへアクセス可能
-6. 「Tap to Pay を有効化する」ボタンをタップ
+5. 「Tap to Pay を有効化する」ボタンをタップ
    ↓
    要件 3.5 を満たす：T&C同意の明確なアクション
-7. Apple の Tap to Pay 利用規約画面が iOS 標準UIで表示される
-8. 「同意して続ける」をタップ
-9. 設定進捗インジケータが表示される (0% → 100%)
+6. Apple の Tap to Pay 利用規約画面が iOS 標準UIで表示される
+7. 「同意して続ける」をタップ
+8. 設定進捗インジケータが表示される (0% → 100%)
    ↓
    要件 3.9.1 を満たす：configurationProgress による進捗表示
-10. 完了通知が表示される
-11. 設定画面に戻り「✅ 有効化済みです」表示を確認
-
-[管理者権限がない場合のフロー (別動画 or 同動画内で示す)]
-12. 非adminユーザーで設定画面を開くと「管理者のみが行えます」案内が表示
+9. 完了通知が表示される
+10. 設定画面に戻り「✅ 有効化済みです」表示を確認
+11. [別途] 非adminユーザーで設定画面を開くと「管理者のみが行えます」案内が表示
    ↓
-   要件 3.8.1 を満たす
+   要件 3.8 / 3.8.1 を満たす
 ```
 
 提出時のラベル: `02_enabling_education.mp4`
@@ -148,29 +162,29 @@ Tap to Pay UI は **画面録画でブラック表示** される (Apple の仕�
 | 1 | 1.3 | ✅ Completed | 同上 |
 | 1 | 1.4 | ✅ Completed | useTerminal で OS_VERSION_NOT_SUPPORTED 専用ハンドリング |
 | 1 | 1.5 | ✅ Completed | useTapToPayWarmup でアプリ起動時 + foreground 復帰時に warmup |
-| 1 | 1.6 | ✅ Completed | T&C状態は Stripe Terminal SDK 経由で取得 (ローカル変数依存なし) |
-| 1 | 1.7 | ⚠️ Optional | FaceID/TouchID は Phase 5 で追加予定 (現時点では未実装、推奨項目のため非ブロッカー) |
+| 1 | 1.6 | ⚠️ 要確認 | **checkout はローカル T&C フラグでゲートしない（要件遵守）**。ただし termsAccepted は接続成功から派生した表示専用フラグ。Stripe Terminal SDK が Apple 保存の T&C 状態を直接返す API を持つか **提出前に確認**（無ければ「接続成功=同意済み」の現方針を明記して回答） |
+| 1 | 1.7 | ⚠️ Optional | FaceID/TouchID は未実装（推奨項目のため非ブロッカー） |
 | 1 | 1.8 | ✅ Completed | HIG 準拠 (SF Symbols 同等アイコン、iOS Native Stack 利用) |
-| 1 | 1.9 | N/A | Custom Apps 配布のため公開マーケティング非該当 |
-| 2 | 2.1 | N/A | Custom Apps 配布のため要件免除 |
-| 2 | 2.2 | N/A | 同上 |
-| 2 | 2.3 | N/A | 同上 |
-| 3 | 3.1 | ✅ Completed | 設定画面 → Tap to Pay 設定 で常時アクセス可能 |
-| 3 | 3.2 | N/A | Custom Apps 配布のためスプラッシュ強制不要 |
-| 3 | 3.3 | N/A | 同上 |
-| 3 | 3.4 | N/A | 同上 (新規オンボーディングプロセスがアプリ内に存在しない) |
+| 1 | 1.9 | ⚠️ 要対応 | App Store 公開のためマーケティングガイドライン準拠が必要（ロゴ・文言はリリース後にAppleガイドラインで点検） |
+| 2 | 2.1 | ✅ Completed | (auth)/signup.tsx でアプリ内サインアップ（テナント+owner作成→自動サインイン） |
+| 2 | 2.2 | ✅ Completed | 完全アプリ内デジタルオンボーディング（Web遷移なし） |
+| 2 | 2.3 | ⚠️ 要計測 | 平均15分以内。実機で所要時間を計測して記入 |
+| 3 | 3.1 | ✅ Completed | ホームの Tap to Pay 有効化バナー + 設定 → Tap to Pay 設定 |
+| 3 | 3.2 | ⚠️ 未実装 | 初回起動の全画面スプラッシュ告知は未実装（リリース時告知として後追い可。審査ブロッカーか要確認） |
+| 3 | 3.3 | ⚠️ 基盤のみ | push トークン収集（expo-notifications → /api/mobile/push/register）は実装済み。実際の一斉配信送出はリリース運用時に実施 |
+| 3 | 3.4 | ✅ Completed | サインアップ完了後ホームの有効化バナーで TTP 有効化方法を提示 |
 | 3 | 3.5 | ✅ Completed | 設定画面の「Tap to Pay を有効化する」ボタン |
 | 3 | 3.6 | ✅ Completed | 設定画面から有効化可能 |
 | 3 | 3.7 | ✅ Completed | チェックアウトの TTP ボタン押下で connectTapToPay 起動 |
 | 3 | 3.8 | ✅ Completed | hasMinRole('admin') による制御 |
 | 3 | 3.8.1 | ✅ Completed | 非adminには管理者連絡を促す UI |
 | 3 | 3.8.2 | N/A | Apple Account 経由で T&C 同意するため対象外 |
-| 3 | 3.9 | ⚠️ Optional | 「試してみる」画面は Phase 5 (推奨項目) |
+| 3 | 3.9 | ⚠️ Optional | 「試してみる」画面は未実装（推奨項目） |
 | 3 | 3.9.1 | ✅ Completed | onDidReportReaderSoftwareUpdateProgress + ProgressBar |
-| 4 | 4.1 | ⚠️ See note | Stripe Terminal SDK は ProximityReaderDiscovery を内部使用。SDKに任せる方針 |
+| 4 | 4.1 | ⚠️ 要確認 | Stripe Terminal SDK が ProximityReaderDiscovery を内部使用しているか **提出前に確認**。SDK 依存の方針 |
 | 4 | 4.2 | ✅ Completed | 設定画面 Tap to Pay 設定の「使い方」セクション |
 | 4 | 4.3 | ✅ Completed | 同上 |
-| 4 | 4.4-4.8 | N/A | Custom Apps 配布のため必須ではない (社内研修で代替) |
+| 4 | 4.4-4.8 | ⚠️ 要確認 | 4.1 で SDK が対応していれば充足。教育コンテンツの網羅性を点検 |
 | 5 | 5.1 | ✅ Completed | TapToPayButton コンポーネント |
 | 5 | 5.2 | ✅ Completed | 明細カード直後・支払方法より上に配置 |
 | 5 | 5.3 | ✅ Completed | グレーアウトせず常時押下可能 |
@@ -182,11 +196,38 @@ Tap to Pay UI は **画面録画でブラック表示** される (Apple の仕�
 | 5 | 5.9 | ✅ Completed | PaymentOutcome コンポーネント (承認/拒否/タイムアウト) |
 | 5 | 5.10 | ✅ Completed | ReceiptShareDialog (SMS/Email/Share Sheet) |
 | 5 | 5.11 | N/A | 日本市場のため PIN 入力 / Fallback 不要 |
-| 6 | 6.1-6.3 | N/A | Custom Apps 配布のためマーケティング要件非該当 |
+| 6 | 6.1 | ⚠️ リリース時 | 対象ユーザーへ専用メール（リリース運用） |
+| 6 | 6.2 | ⚠️ 未実装 | 3.2 と兼ねる（リリース時スプラッシュ） |
+| 6 | 6.3 | ⚠️ 基盤のみ | 3.3 の push 基盤を用いてリリース時に配信 |
 
 ---
 
-## 返信メールテンプレート
+## App Store Connect 提出メタデータ（C-3）
+
+App Store 一般公開に必要（コード外・ASC 画面で設定）:
+
+- [ ] アプリ名 / サブタイトル / 説明文 / キーワード / プロモーションテキスト
+- [ ] スクリーンショット（6.7"・6.5"・5.5" 各必須サイズ、iPad 対応なら iPad も）
+- [ ] **プライバシーポリシー URL**（必須）
+- [ ] **サポート URL**（必須）
+- [ ] App Privacy「収集データ」申告（連絡先: メール/氏名/電話、位置情報、写真、支払い情報、識別子）
+      ※ アプリ側の `PrivacyInfo`（Required Reason API）は app.json `ios.privacyManifests` に実装済み
+- [ ] 年齢レーティング（アンケート回答）
+- [ ] 輸出コンプライアンス（`ITSAppUsesNonExemptEncryption: false` 設定済み → 追加書類不要）
+- [ ] カテゴリ（ビジネス / 仕事効率化 等）
+
+## App Review 用デモアカウント（C-4）
+
+審査は認証必須アプリのためログイン情報が必要。ASC の「App Review 情報」に記載:
+
+- [ ] 審査用テナントを1つ用意（本番 or ステージング）し、owner ロールのメール/パスワードを記載
+- [ ] Tap to Pay を実演できるよう、Stripe の該当 Location を `tap_to_pay_eligible` にしておく
+- [ ] デモ用の予約/会計データを1件仕込んでおく（チェックアウトを審査員が試せるように）
+- [ ] 備考欄に「Tap to Pay は実機 iPhone XS 以降 + 実店舗 Location が必要」と明記
+
+---
+
+## 返信メールテンプレート（App Store 公開版）
 
 ```
 Subject: Re: Tap to Pay on iPhone Publishing Entitlement Submission - com.ledra.app
@@ -200,21 +241,19 @@ We have built our app to meet the requirements outlined in
 "Tap to Pay on iPhone App & Marketing Requirements and Review Guide v1.6"
 and would like to request the Publishing Entitlement.
 
-We are distributing this app via **Custom Apps** through Apple Business Manager
-to known automotive service merchants in Japan.
-Therefore the consumer-facing onboarding requirements (sec 2.x) and
-marketing requirements (sec 6.x) do not apply.
+We distribute this app publicly on the App Store. New merchants can create an
+account and complete onboarding entirely in-app (see video 1), and can delete
+their account from within the app (Settings > Delete Account).
 
 We have uploaded the following materials to the File Uploader:
 
-1. 01_onboarding_custom_apps.mp4
-   - Documents the Custom Apps distribution flow (no in-app sign-up)
+1. 01_onboarding_signup.mp4
+   - In-app account creation and onboarding to first use
 2. 02_enabling_education.mp4
-   - Existing user enables Tap to Pay from Settings, accepts terms,
-     and is shown merchant education
+   - Enabling Tap to Pay from Settings, accepting terms, merchant education
 3. 03_checkout.mp4
    - Filmed externally to capture the Tap to Pay on iPhone UI;
-     shows item entry → checkout → tap → processing → outcome → receipt
+     shows item entry -> checkout -> tap -> processing -> outcome -> receipt
 4. App_Review_Requirements_Checklist_1_6_completed.numbers
 
 PSP: Stripe (approved PSP for JP region)
@@ -236,8 +275,21 @@ HOLY Corp. (Company)
 - [ ] iPhone XS 以降のテスト機を Apple Developer Portal に登録済み
 - [ ] iOS 16.4 以降にアップデート済み
 - [ ] 画面の通知が映らないように「おやすみモード」ON
-- [ ] バッテリー残量が映ってもOK（リアルな画面でAppleはむしろ歓迎）
+- [ ] 動画1用に使い捨てメールアドレスを用意（サインアップ実演）
 - [ ] 動画解像度: 1080p以上、30fps以上
 - [ ] 音声: 不要（ナレーション無くてOK、画面で完結する）
 - [ ] 手ぶれ防止: 三脚またはスタビライザー使用
 - [ ] チェックアウト動画は **iPhone を物理撮影** すること（OS が画面録画をブロックする）
+
+---
+
+## 提出前 Go/No-Go（ビルド署名）
+
+- [ ] **A-1**: Apple Developer Portal で `com.ledra.app` の Provisioning Support が
+      `Development, Distribution` になっているか確認。
+- [ ] `Distribution` 未付与なら production ビルドは entitlement 署名で失敗する。
+      その場合は `apps/mobile/plugins/withRemoveTapToPayEntitlement` を app.json の
+      plugins に一時的に戻し、TTP無しで先行公開 → 承認後に外す運用に切替
+      （手順は `docs/mobile-release-tap-to-pay.md`）。
+- [ ] `Distribution` 付与済みなら現状の app.json のまま production ビルド可。
+```

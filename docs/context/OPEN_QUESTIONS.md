@@ -6,6 +6,7 @@
 ## 記入フォーマット
 
 ```
+
 ## 論点タイトル
 - 状況: 何が問題／何を迷っているか
 - 選択肢: 案A / 案B / ...（それぞれの長所短所）
@@ -13,6 +14,33 @@
 - 次のアクション: 誰が・何をすれば決着するか
 - 起票日: YYYY-MM-DD
 ```
+
+## Tap to Pay 本番リリースの残論点（App Store一般公開・2026-08-06）
+- 状況: モバイルをApp Store一般公開する方針に決定し必須要件を実装したが、Apple提出前に確定が要る点が残る。
+- 論点と選択肢:
+  1. **Apple 本番(Distribution) entitlement の付与状況【確定: 未付与】**: 2026-08-06 の実機向け `preview`(AdHoc) ビルドで、fastlane が `Entitlement com.apple.developer.proximity-reader.payment.acceptance not found and could not be included in profile` で失敗 → **Distribution/publishing entitlement は未付与**と確定。暫定対応として `withRemoveTapToPayEntitlement` を app.json plugins に登録し、development のみ entitlement を保持・preview/production は除去するよう修正済み（実機動作確認ビルドは TTP 無しで通る）。**残作業**: 審査動画3本を提出して publishing entitlement を取得 → 付与後に plugin 条件へ preview/production を戻して TTP 入りビルドを出す（submission-guide の Go/No-Go）。
+  2. **要件1.6 T&C取得**: Stripe Terminal SDK が Apple 保存の T&C 同意状態を返すAPIを持つか【要確認】。現状 `termsAccepted` は接続成功から派生した表示専用フラグ（checkoutはゲートしないので要件の趣旨=ローカル変数依存の禁止には抵触しない想定）。SDKにAPIがあれば置換。
+  3. **要件3.2 初回スプラッシュ告知**: 全画面モーダルの初回告知が審査ブロッカーか。基盤(push/banner)はあるが全画面スプラッシュは未実装。→ 審査で問われたら追加。
+  4. **要件4.1 ProximityReaderDiscovery**: Stripe Terminal SDK が内部で使用しているか【要確認】。教育コンテンツ(4.4-4.8)の充足可否に影響。
+  5. **単独owner退会時のデータ保持方針**: `DELETE /api/mobile/account` は単独ownerのときテナントを無効化＋連絡先PII消去に留め、施工履歴等の業務レコードは物理削除していない。施工履歴の保持義務・個人情報保護法の削除請求との整合をどう定義するか（法務判断）。→ 保持期間ポリシーを決めて明文化。
+- 影響範囲: 1が未確定だと本番ビルドが通らずリリース不可。2〜4は審査差し戻しリスク。5は将来的な法務・信頼リスク。
+- 次のアクション: 代表が(1)Apple Portalのステータス確認・(4)は提出前にSDK挙動確認。(2)(3)は審査反応を見て対応。(5)は保持方針を決定しDECISION_LOGへ。
+- 起票日: 2026-08-06
+
+## 保留中PR #760（大型UIキット同期）の扱い（2026-08-05）
+- 状況: PRバックログ整理で保留とした2件のうち、**#851（実送金）は 2026-08-06 に完成・マージ済み**（DECISION_LOG 2026-08-06、残タスクは issue #892）。残るは大型UIキット同期 #760（55ファイル・レビュー20件）のみ。
+- 選択肢: #760 → 55ファイルを手動レビューしてマージ／小さく分割し直す／クローズ。
+- 影響範囲: 放置するとmainとの乖離が拡大し再び陳腐化。緊急度は低〜中。
+- 次のアクション: 代表に #760 を今レビューするか分割するかを確認。
+- 起票日: 2026-08-05（2026-08-06 に #851 分を解決済みへ更新）
+
+## 本番DBに存在するがリポジトリに無いマイグレーション記録（履歴ドリフト）の棚卸し（2026-08-05）
+- 状況: 帳票調査中、本番 `supabase_migrations.schema_migrations` に `20260804064418_documents_select_direct_membership_policy` などリポジトリ `supabase/migrations/` に存在しないバージョンが記録されているのを確認。逆に 20260715 バッチは「記録済みだがDDL未適用」だった（`20260731144359` で修復済）。CIのマイグレーション適用とリポジトリ履歴・DB実態の三者が乖離している。
+- 選択肢: 案A 本番の `schema_migrations` 全件とリポジトリ `migrations/` を突合し、欠落ファイルを起こす／余分な記録の是非を確認（正攻法・棚卸し工数大）／案B 乖離が判明した都度、今回のように冪等再適用マイグレーションで個別修復／案C 現状放置（次のドリフト障害まで気づけない）。
+- 影響範囲: 誤ると再び「記録済みだが未適用」で本番API 500（今回の帳票管理障害の再来）。緊急度は中〜高（顕在化すると業務停止級）。
+- 次のアクション: 本番 `schema_migrations` の全バージョンをエクスポートしリポジトリと差分を取る担当・タイミングを決める。
+- 追記(2026-08-05): この乖離により GitHub Actions `DB migrate (apply to production)` ワークフローが Aug 2 以降 `supabase db push` の `Remote migration versions not found in local migrations directory.` で失敗し続けている（本番 `cahybswpduchptvyvdkk`）。repo に無いリモート記録は `20260802154302` / `20260802154541` / `20260804064418`、逆に repo の `20260802000000_fix_search_path_bare_refs_certificates_insurers.sql` は本番未適用。ワークフローが常時赤＝以降のマイグレーションが自動適用されないため、緊急度を高に引き上げ。CLIの案内は `supabase migration repair --status reverted <上記3件>`（記録を戻す）か `supabase db pull`（本番実態をrepoに取り込む）。どちらが正かは3件のDDL内容の棚卸し次第。
+- 起票日: 2026-08-05
 
 ## 帳票明細バリデーションの二重定義（未使用 `documentItemSchema`）が実データ形状と非互換な潜在地雷（2026-08-03）
 - 状況: `src/lib/validations/document.ts` の `documentItemSchema`（`name` min1 必須／`type` enum／`tax_category` enum文字列）が、実際に保存・読込される明細形状（`description`／`item_type`／数値`tax_category` 10・8／`amount`）と完全に非互換。かつ `@/types/document` と同名の `DocumentItem` 型を別定義しており名前衝突している。現状フォームは `items`(`z.array(z.any())`) キーで送り、API も `input.items` のみ読むため無害だが、`documentCreateSchema.items_json`（厳格スキーマ結線）を使う経路に切り替わった瞬間に全明細がバリデーションで弾かれる／空になる。
@@ -48,6 +76,13 @@
 - 影響範囲: B はフォアグラウンド限定・マイク常時使用のためバッテリーとプライバシー表示の設計が要る。iOS は `app.json` の `ios.infoPlist` に `NSMicrophoneUsageDescription` が無く、B 実装時に追加必須（未対応ギャップ）。取り違えると「声で入力できる」と訴求して実態と乖離するリスク。
 - 次のアクション: (1) A（手順運用）を実機で検証し現場で回るか確認。(2) 需要が確認できたら案A/Bを選定し、iOS マイク権限追加＋dev-client 再ビルドで PoC。サーバ経路は既存 `voiceMemoReformat` / `/api/admin/certificates/voice-memo` を流用。
 - 起票日: 2026-07-28
+
+## CMS予約投稿のTZ修正に伴う残課題（2026-07-25）
+- 状況: naive datetime-local を JST 解釈にする修正（本日 DECISION_LOG 参照）で今後の保存は正しくなるが、(a) 修正前に保存済みの予約/イベント日時は `published_at` 等が9時間ずれている可能性、(b) `agent-announcements`（`AdminAnnouncementsClient.tsx`＋`/api/admin/agent-announcements`）にも同種の naive `new Date(form.published_at).toISOString()` が残っている。
+- 選択肢: (a) 既存データ: 対象が少なければ手修正 / 多ければ一括補正マイグレーション / 影響軽微なら放置。(b) agent-announcements: 同じ `@/lib/datetime` ヘルパーへ寄せて修正 / 別UIで許容 / 挙動確認のうえ判断。
+- 影響範囲: (a) 既存予約投稿が意図と違う時刻に公開/表示される。(b) エージェント向けお知らせの公開日時が9時間ずれる可能性。
+- 次のアクション: (a) 本番 `site_content_posts` に status='scheduled' or 未来 published_at の行が何件あるか確認（【要確認】件数）。(b) agent-announcements の datetime 入力有無と実害を確認し、必要なら同ヘルパーで追随。
+- 起票日: 2026-07-25
 
 ## 整備記録簿の電磁的取扱い（令和7年7月8日通知）への準拠ギャップをどこまで埋めるか（2026-07-28）
 - 状況: 国交省「点検整備記録簿、特定整備記録簿及び指定整備記録簿の電磁的方法による作成、保存又は交付に関する取扱い」（令和7年7月8日周知）に対する Ledra 実装の準拠マッピングを作成（`docs/e-maintenance-record-compliance.md`）。多くの要件（電磁的作成・保存・表示、改ざん防止、検索、交付、入力エラー検出）は対応済みだが、システムで埋めうるギャップが5点残る。(G1) 法定資格ロール（自動車検査員/整備主任者/起票入力）が権限体系に無く、汎用ロール（owner/admin/staff/viewer）のみ〔第２ ３（１）①〕。(G2) 更新箇所＋作業者の自動履歴が証明書以外（documents/inspection_records/body_repair_jobs）で不完全、かつ「消去」の日時をログする実装が未確認〔第２ ２（３）〕。(G3) 電子交付方法の「事前承諾」を専用取得する仕組みが無い（汎用同意基盤は流用可）〔第２ ４（３）〕。(G4) 使用者起点の「交付承諾の撤回」フローと撤回後の交付ブロックが無い（cancel=無効化は有）〔第２ ４（４）〕。(G5) 指定整備記録簿の法定様式（指定整備事業規則第10条の２）出力が未確認〔第２ １（４）〕。

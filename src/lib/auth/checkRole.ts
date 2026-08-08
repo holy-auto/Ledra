@@ -14,6 +14,18 @@ export type CallerInfo = {
 
 const ACTIVE_TENANT_COOKIE = "active_tenant_id";
 
+const UUID_RE = /[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/;
+
+/**
+ * tenant_id を UUID のみに正規化する。万一 DB/クッキー由来の値に不可視文字
+ * （空白・制御文字等）が混入しても、PostgREST の等値比較が外れて「データがあるのに
+ * 0件」になる事故を防ぐ。UUID が取れなければ trim した文字列を返す。
+ */
+function normalizeTenantId(value: unknown): string {
+  const s = String(value ?? "");
+  return s.match(UUID_RE)?.[0] ?? s.trim();
+}
+
 async function getActiveTenantCookie(): Promise<string | null> {
   try {
     const cookieStore = await cookies();
@@ -47,10 +59,11 @@ export async function resolveCallerWithRole(
       .maybeSingle();
 
     if (mem?.tenant_id) {
-      const planTier = await resolvePlanTier(mem.tenant_id as string);
+      const tid = normalizeTenantId(mem.tenant_id);
+      const planTier = await resolvePlanTier(tid);
       return {
         userId: userRes.user.id,
-        tenantId: mem.tenant_id as string,
+        tenantId: tid,
         role: normalizeRole(mem.role),
         planTier,
       };
@@ -68,11 +81,12 @@ export async function resolveCallerWithRole(
 
   if (!mem?.tenant_id) return null;
 
-  const planTier = await resolvePlanTier(mem.tenant_id as string);
+  const tid = normalizeTenantId(mem.tenant_id);
+  const planTier = await resolvePlanTier(tid);
 
   return {
     userId: userRes.user.id,
-    tenantId: mem.tenant_id as string,
+    tenantId: tid,
     role: normalizeRole(mem.role),
     planTier,
   };

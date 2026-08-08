@@ -63,20 +63,37 @@ export function splitRevenueByRecordCount(
  * one VIN with thousands of certs would bloat the IN list. Upgrade path is
  * a single grouped SQL/RPC count when a passport ever gets that large.
  */
-async function getAnchoredCertCountsByTenant(admin: ServiceRoleAdmin, vin: string): Promise<TenantCertCount[]> {
-  const { data: vehiclesRaw } = await admin
+export async function getAnchoredCertCountsByTenant(
+  admin: ServiceRoleAdmin,
+  vin: string,
+  cutoffIso: string | null,
+  upperIso: string | null,
+): Promise<TenantCertCount[]> {
+  // Surface DB errors rather than returning an empty count: callers use a zero
+  // count as a real signal (checkout blocks the sale, booking finds no
+  // merchants), so a swallowed query failure would mis-report "no records".
+  const { data: vehiclesRaw, error: vehErr } = await admin
     .from("vehicles")
     .select("id")
     .eq("vin_code_normalized", vin)
     .eq("passport_opt_out", false);
+  if (vehErr) throw new Error(`anchored cert count: vehicles query failed for VIN ${vin}: ${vehErr.message}`);
   const vehicleIds = ((vehiclesRaw ?? []) as { id: string }[]).map((v) => v.id);
   if (!vehicleIds.length) return [];
 
-  const { data: certsRaw } = await admin.from("certificates").select("id, tenant_id").in("vehicle_id", vehicleIds);
+  // Scope the record set to exactly what THIS purchase disclosed — never pay a
+  // shop whose records were not shown. Bounds match the page display:
+  //   lower = order `scope_from` (null = full history),
+  //   upper = purchase time (records added afterward aren't disclosed/paid).
+  let certQuery = admin.from("certificates").select("id, tenant_id").in("vehicle_id", vehicleIds);
+  if (cutoffIso) certQuery = certQuery.gte("created_at", cutoffIso);
+  if (upperIso) certQuery = certQuery.lte("created_at", upperIso);
+  const { data: certsRaw, error: certErr } = await certQuery;
+  if (certErr) throw new Error(`anchored cert count: certificates query failed for VIN ${vin}: ${certErr.message}`);
   const certs = (certsRaw ?? []) as { id: string; tenant_id: string }[];
   if (!certs.length) return [];
 
-  const { data: imgsRaw } = await admin
+  const { data: imgsRaw, error: imgErr } = await admin
     .from("certificate_images")
     .select("certificate_id")
     .in(
@@ -84,6 +101,7 @@ async function getAnchoredCertCountsByTenant(admin: ServiceRoleAdmin, vin: strin
       certs.map((c) => c.id),
     )
     .not("polygon_tx_hash", "is", null);
+  if (imgErr) throw new Error(`anchored cert count: images query failed for VIN ${vin}: ${imgErr.message}`);
   const anchoredCertIds = new Set(((imgsRaw ?? []) as { certificate_id: string }[]).map((i) => i.certificate_id));
 
   const counts = new Map<string, number>();
@@ -110,10 +128,17 @@ export async function recordVehicleReportRevenueShares(orderId: string): Promise
 
   const { data: orderRaw } = await admin
     .from("vehicle_report_orders")
-    .select("id, vin_code_normalized, status, amount_jpy")
+    .select("id, vin_code_normalized, status, amount_jpy, scope_from, created_at")
     .eq("id", orderId)
     .maybeSingle();
-  const order = orderRaw as { id: string; vin_code_normalized: string; status: string; amount_jpy: number } | null;
+  const order = orderRaw as {
+    id: string;
+    vin_code_normalized: string;
+    status: string;
+    amount_jpy: number;
+    scope_from: string | null;
+    created_at: string;
+  } | null;
   if (!order || order.status !== "paid") return;
 
   const vin = order.vin_code_normalized;
@@ -128,7 +153,7 @@ export async function recordVehicleReportRevenueShares(orderId: string): Promise
       ? (settingsRaw as { merchant_share_bps: number }).merchant_share_bps
       : DEFAULT_MERCHANT_SHARE_BPS;
 
-  const perTenant = await getAnchoredCertCountsByTenant(admin, vin);
+  const perTenant = await getAnchoredCertCountsByTenant(admin, vin, order.scope_from, order.created_at);
   const { pool, totalCertCount, shares } = splitRevenueByRecordCount(order.amount_jpy, shareBps, perTenant);
 
   if (pool <= 0 || shares.length === 0) {
@@ -159,6 +184,36 @@ export async function recordVehicleReportRevenueShares(orderId: string): Promise
 
   if (error) {
     console.error("vehicle report revenue share: ledger insert failed", { orderId, vin, error });
+    return;
+  }
+
+  // Close the booking-vs-refund race: a `charge.refunded` handler that ran
+  // between our "order is paid" read and this insert would have seen no shares
+  // to reverse. Re-check now; if the order was refunded meanwhile, cancel the
+  // pending shares we just booked so they can't later be approved/paid for a
+  // refunded sale. (Shares are pending here and gated behind manual approval,
+  // so this recheck reliably wins before any payout.)
+  const { data: freshRaw } = await admin
+    .from("vehicle_report_orders")
+    .select("status")
+    .eq("id", order.id)
+    .maybeSingle();
+  if ((freshRaw as { status: string } | null)?.status === "refunded") {
+    // This cancel is the only barrier stopping the shares we just booked from
+    // being approved/paid for a refunded sale. If it fails, surface it (throw)
+    // rather than logging a false "cancelled" — the caller re-books idempotently
+    // on retry and the recheck cancels again.
+    const { error: cancelErr } = await admin
+      .from("vehicle_report_revenue_shares")
+      .update({ status: "cancelled", updated_at: new Date().toISOString() })
+      .eq("order_id", order.id)
+      .eq("status", "pending");
+    if (cancelErr) {
+      throw new Error(
+        `vehicle report revenue share: refund-during-booking cancel failed for order ${orderId}: ${cancelErr.message}`,
+      );
+    }
+    console.info("vehicle report revenue share: order refunded during booking — cancelled", { orderId, vin });
     return;
   }
 
