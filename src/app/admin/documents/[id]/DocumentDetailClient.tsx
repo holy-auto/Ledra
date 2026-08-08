@@ -17,6 +17,7 @@ import {
   type DocumentItem,
   type DocumentRow,
 } from "@/types/document";
+import { describeIntegritySeal } from "@/lib/documents/integritySealView";
 import DocumentForm from "../DocumentForm";
 
 type BankInfo = {
@@ -192,6 +193,7 @@ export default function DocumentDetailClient({
     }
   };
 
+  const seal = describeIntegritySeal(doc.meta_json);
   const items = (doc.items_json ?? []) as DocumentItem[];
   const nextStatuses = nextStatusesFor(doc.doc_type, doc.status);
   const docLabel = DOC_TYPES[doc.doc_type as DocType]?.label ?? doc.doc_type;
@@ -212,6 +214,12 @@ export default function DocumentDetailClient({
             <span className="text-sm text-muted">ステータス:</span>
             <Badge variant={statusVariant(doc.status)}>{statusLabel(doc.status)}</Badge>
             {doc.is_invoice_compliant && <Badge variant="info">インボイス対応</Badge>}
+            {seal && (
+              <span className="inline-flex items-center gap-1" title={seal.detail ?? undefined}>
+                <Badge variant={seal.hasTimestamp ? "success" : "info"}>🔏 {seal.label}</Badge>
+                {seal.detail && <span className="text-xs text-muted">{seal.detail}</span>}
+              </span>
+            )}
           </div>
           <div className="flex gap-2 flex-wrap">
             {canEdit && !editing && (
