@@ -26,6 +26,37 @@
 - 検証: `vehicleReport` テスト32件パス（split 6＋scope 7＋access＋reversalActionForStatus 5＋postCancelClaimAction 4 等）、`tsc --noEmit` エラー0、変更ファイル eslint エラー0。
 - 残（別issue #892 に切り出し）: webhook 冪等の自動 replay 化、booking↔refund の完全アトミック化、payout の durable transfer recovery、アップグレード返金時の partial entitlement 保持、passport 表示の anchor スナップショット、`stripe_connect_transfers` 監査行の paid 同期。
 - 対象: 公開 `/v/[vin]` レポート課金（段階式）／施工店ポータル `/admin/report-revenue`／platform-admin 精算API／Stripe webhook（main + connect）／cron。
+## 2026-08-07 会計（POS）ウォークインの品目選択にもカテゴリ絞り込みを追加
+
+- 内容: 予約作成モーダルと同様の品目選択の課題が会計（POS）のウォークイン会計画面
+  （`/admin/pos`）にもあったため、大カテゴリでの絞り込みチップを追加。既存の名前検索と
+  併用でき、絞り込みロジックは既存の純関数 `src/lib/reservations/menuFilter.ts` を再利用。
+- 対象: `/admin/pos`（ウォークイン会計の品目グリッド）。`PosClient` に `category_large` を取り込み。
+
+## 2026-08-07 モバイル向けナビ整備と品目選択の絞り込み
+
+- 内容: モバイルアプリ審査に向けた店頭画面の操作性改善。
+  - 予約作成モーダルのメニュー（品目マスタ）選択に「検索」と「大カテゴリ絞り込み」を追加。
+    全品目がずらっと縦に並んで選びにくかったのを、検索文字列＋カテゴリチップで絞り込める形に。
+    絞り込みロジックは `src/lib/reservations/menuFilter.ts` に純関数として切り出し（ユニットテスト付き）。
+  - 管理画面のモバイルナビを整理: 左上に「前の画面に戻る」ボタン、右上にハンバーガーメニュー、
+    下部にどの画面でも表示される固定タブバー（ホーム/予約/顧客/帳票/証明書）を追加。
+- 対象: `/admin/reservations`（新規予約モーダル）、`/admin` 全画面のモバイルレイアウト。
+  `MobileTabBar` 新規、`AdminTopBar`（戻るボタン）、`SidebarShell`（ハンバーガー右上化）。
+
+## 2026-08-07 HPトップに「AI自動化でできること」セクションを新設（LINE対応・予約・アフターフォロー・帳票の自動化を訴求） (branch claude/ledra-line-automation-5clwdq)
+- 内容: マーケティングHPのトップページ（`src/app/(marketing)/page.tsx`）の「Ledra でできること」直下に、新コンポーネント
+  `AiAutomationSection`（`src/components/marketing/AiAutomationSection.tsx`）を追加。既存の証明書中心の訴求では見えていなかった
+  **AI自動化の5本柱**を1セクションに集約して掲載した——(1) LINE連携でお客様対応を半自動化（定型質問・概算見積りは完全自動応答／
+  見積書・請求書などの帳票もLINEで自動送付）、(2) 予約はAIが受信メッセージから自動で下書き（顧客・車両・作業内容を反映）、
+  (3) 作業内容に応じた作業後アフターフォローの自動連絡、(4) 証明書は撮影と確定ボタンだけ（下書き・写真監査まで自動）、
+  (5) 見積書・請求書の自動作成。ブランドの幹（信頼）に合わせ、見出しは「AIが下ごしらえ、確定は人。」とし、
+  金額確定・本人確認・証明書発行など責任の伴う操作は必ず人が最終確認する旨（壁3）と、AI自動化はStandardプラン以上の
+  機能ごとopt-inである旨を注記。既存カードのデザイン（角丸カード/ScrollReveal/blue系アクセント）を踏襲し、掲載内容は
+  実装済み機能（`docs/ai-automation-guide.md` §4.5 の auto-actions／`inboundAuto`・`documentAuto`・`certificateAuto`・
+  `followUp` cron 等）に照合済み。デザインコンポーネントの追加のみで挙動変更なし。
+- 対象: マーケティングHP トップページ（施工店向けの訴求）。
+- 検証: `npx tsc --noEmit`（0 error）、`eslint`（新規/編集ファイル clean）。未使用の `page.full.tsx` は App Router のルート対象外のため未更新。
 
 ## 2026-08-06 送付済み請求書のステータス変更（入金済等）が「内容編集」と誤判定されブロックされる不具合を修正 (branch claude/payment-status-and-error-no5a9m)
 - 内容: `PUT /api/admin/documents` で送付済み請求書を入金済に変更できなかった根本原因を修正。原因は

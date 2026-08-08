@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { adminSectionLabel } from "@/components/ui/Sidebar";
 import { useCurrentRole } from "@/lib/auth/useCurrentRole";
@@ -17,7 +17,10 @@ import NotificationBell from "@/components/ui/NotificationBell";
  */
 export default function AdminTopBar() {
   const pathname = usePathname();
+  const router = useRouter();
   const section = adminSectionLabel(pathname);
+  // ダッシュボード（トップ）は戻る先が無いのでボタンを出さない。
+  const isHome = pathname === "/admin";
   const { data } = useCurrentRole();
   const workspace = data?.tenant_name || "管理";
   const avatarChar = (data?.email || "?").trim().charAt(0).toUpperCase() || "?";
@@ -33,7 +36,21 @@ export default function AdminTopBar() {
   const openAssistant = () => window.dispatchEvent(new Event("open-assistant-chat"));
 
   return (
-    <div className="sticky top-0 z-[45] flex h-11 flex-shrink-0 items-center gap-3 border-b border-border-default bg-base pr-3 pl-16 sm:pr-4 lg:pl-6">
+    <div className="sticky top-0 z-[45] flex h-11 flex-shrink-0 items-center gap-3 border-b border-border-default bg-base pl-3 pr-16 sm:pl-4 lg:pl-6 lg:pr-4">
+      {/* 前の画面に戻る（モバイルのみ。右上ハンバーガーと対に左上へ配置）。 */}
+      {!isHome && (
+        <button
+          type="button"
+          onClick={() => router.back()}
+          aria-label="前の画面に戻る"
+          className="inline-flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-[var(--radius-md)] border border-border-default text-muted transition-colors hover:bg-surface-hover hover:text-primary lg:hidden"
+        >
+          <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5" />
+          </svg>
+        </button>
+      )}
+
       {/* パンくず（モバイルではハンバーガーと干渉するため非表示） */}
       <nav aria-label="パンくず" className="hidden min-w-0 items-center gap-1.5 text-[13px] lg:flex">
         <Link href="/admin" className="truncate text-secondary transition-colors hover:text-primary">
