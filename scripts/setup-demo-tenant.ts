@@ -21,6 +21,9 @@
 
 import { createClient } from "@supabase/supabase-js";
 import { generateDemoPlaceholderJpeg } from "./demoPlaceholderImage";
+// 書き込み先バケットは公開ページの読み取り (publicData.ts の getPublicUrl) と
+// 同じ定数を使い、writer/reader がドリフトしないようにする。
+import { CERTIFICATE_IMAGE_BUCKET } from "../src/lib/certificateImages";
 
 const SUPABASE_URL = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
@@ -37,6 +40,10 @@ const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
 // ─── 固定 ID（再実行しても同じレコードを上書き）─────────────
 const TENANT_ID = "00000000-0000-0000-0000-de0000000010";
 const TENANT_SLUG = "ledra-motors-demo";
+
+// プレースホルダ画像のアップロード失敗枚数。>0 なら main 末尾で throw して
+// 非ゼロ終了させる（緑の exit に 400 残存を埋もれさせない）。
+let placeholderUploadFailures = 0;
 
 function uuid(ns: string, n: number): string {
   // Derive a stable UUID-shaped identifier. Postgres validates the final
@@ -409,6 +416,9 @@ async function main(): Promise<void> {
     console.error("⚠️ 既存 certificate_images の掃除に失敗:", imgDelErr.message);
   }
 
+  // プレースホルダ本体を先に生成し、file_size をアップロードする実バイト数に一致させる
+  // (実ファイルが存在する以上、admin ギャラリーの容量表示と齟齬させない)。
+  const placeholder = await generateDemoPlaceholderJpeg();
   const imageRows = certRows.flatMap((cert, certIdx) => {
     // 1 枚の証明書につき 3〜5 枚の施工写真メタデータを作る
     const count = 3 + (certIdx % 3);
@@ -420,28 +430,33 @@ async function main(): Promise<void> {
       storage_path: `demo/${cert.public_id}/${String(i + 1).padStart(2, "0")}.jpg`,
       file_name: `${cert.public_id}-${String(i + 1).padStart(2, "0")}.jpg`,
       content_type: "image/jpeg",
-      file_size: 320000 + i * 12000,
+      file_size: placeholder.length,
       sort_order: i,
     }));
   });
   await upsert("certificate_images", imageRows, "id");
   console.log(`  ✓ ${imageRows.length} 件`);
 
-  // 5b) 各 storage_path に軽量プレースホルダ JPEG を配置 (upsert / best-effort)。
-  //     これが無いと公開ページの <img> が全て Storage 400 を出す。バケットは
-  //     src/lib/certificateImages.ts の CERTIFICATE_IMAGE_BUCKET と同じ "assets"。
+  // 5b) 各 storage_path に同じプレースホルダ JPEG を配置 (upsert / 並列)。
+  //     これが無いと公開ページの <img> が全て Storage 400 を出す。同一バッファを
+  //     独立パスへ上げるだけなので順序非依存 → Promise.all でまとめて実行する。
   console.log("─ Certificate image placeholders");
-  const placeholder = await generateDemoPlaceholderJpeg();
-  let uploaded = 0;
-  for (const img of imageRows) {
-    const path = img.storage_path as string;
-    const { error } = await admin.storage
-      .from("assets")
-      .upload(path, placeholder, { contentType: "image/jpeg", upsert: true });
-    if (error) console.warn(`  ⚠️ placeholder upload 失敗 (${path}): ${error.message}`);
-    else uploaded += 1;
-  }
+  const uploadResults = await Promise.all(
+    imageRows.map(async (img) => {
+      const { error } = await admin.storage
+        .from(CERTIFICATE_IMAGE_BUCKET)
+        .upload(img.storage_path, placeholder, { contentType: "image/jpeg", upsert: true });
+      if (error) console.warn(`  ⚠️ placeholder upload 失敗 (${img.storage_path}): ${error.message}`);
+      return !error;
+    }),
+  );
+  const uploaded = uploadResults.filter(Boolean).length;
   console.log(`  ✓ ${uploaded}/${imageRows.length} 件を Storage にアップロード`);
+  // 1 枚でも失敗すると公開ページに 400 が残る。best-effort で握り潰さず、
+  // 非対話 (CI/cron) でも失敗が緑の exit 0 に埋もれないよう記録して最後に throw する。
+  if (uploaded < imageRows.length) {
+    placeholderUploadFailures = imageRows.length - uploaded;
+  }
 
   // 6) Vehicle histories (車両ページ・公開証明書ページの「履歴」セクション用)
   console.log("─ Vehicle histories");
@@ -589,6 +604,15 @@ async function main(): Promise<void> {
     console.log(`    https://app.ledra.co.jp/c/${c.public_id}`);
   });
   console.log("\n  リセット: npx tsx scripts/setup-demo-tenant.ts --reset");
+
+  // DB シードは完了させたうえで、プレースホルダ配置に失敗があれば非ゼロ終了させる
+  // (公開ページの Storage 400 が残っているサイン)。
+  if (placeholderUploadFailures > 0) {
+    throw new Error(
+      `プレースホルダ画像 ${placeholderUploadFailures} 件のアップロードに失敗しました。` +
+        `公開証明書ページの該当画像は Storage 400 のままです。`,
+    );
+  }
 }
 
 main().catch((err) => {

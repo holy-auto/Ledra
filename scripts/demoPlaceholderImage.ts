@@ -15,10 +15,12 @@ import sharp from "sharp";
 export async function generateDemoPlaceholderJpeg(): Promise<Buffer> {
   const width = 1200;
   const height = 800;
+  // テキストは ASCII のみ。sharp(librsvg/resvg) は環境の利用可能フォントで
+  // ラスタライズするため、日本語フォント非搭載の環境で豆腐化しないよう避ける。
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">
   <rect width="100%" height="100%" fill="#e5e7eb"/>
   <text x="50%" y="47%" font-family="sans-serif" font-size="72" font-weight="700" fill="#9ca3af" text-anchor="middle">LEDRA</text>
-  <text x="50%" y="58%" font-family="sans-serif" font-size="34" fill="#9ca3af" text-anchor="middle">DEMO 施工写真</text>
+  <text x="50%" y="58%" font-family="sans-serif" font-size="34" fill="#9ca3af" text-anchor="middle">DEMO PHOTO</text>
 </svg>`;
   return sharp(Buffer.from(svg)).jpeg({ quality: 70 }).toBuffer();
 }
