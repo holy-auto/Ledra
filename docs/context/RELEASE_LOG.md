@@ -858,3 +858,13 @@
 - 対象: `/admin/platform/store-usage`（platformOnly）。API `/api/admin/platform/store-usage`、
   集計 `src/lib/analytics/storeUsage.ts`（ユニットテスト付き）。
 - 注記: ログイン「回数」は未記録のため、last_sign_in_at ベースの「アクティブ会員」で近似。
+
+## 2026-08-07 モバイル: 複数テナント所属ユーザーのログイン修正 (PR #897)
+
+- 内容: fetchUserProfile が tenant_memberships を .single() で取得しており、2件以上の
+  membership を持つユーザー（自店オーナーが他店に staff 招待された等）でログイン不可
+  （「テナント情報が見つかりません」）だった不具合を修正。Web の checkRole.ts と同じく
+  created_at 昇順 + limit(1) + maybeSingle() で最古の1件を採用するよう統一。
+- 対象: apps/mobile/src/lib/auth.ts。
+- 注記: モバイルは1ユーザー=1テナント前提のUX（select-store はテナント内の店舗選択のみ）。
+  将来のマルチテナント対応は select-store 拡張が上限（ponytail コメントで明記）。
