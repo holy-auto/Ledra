@@ -878,3 +878,16 @@
 - 対象: apps/mobile/src/lib/auth.ts。
 - 注記: モバイルは1ユーザー=1テナント前提のUX（select-store はテナント内の店舗選択のみ）。
   将来のマルチテナント対応は select-store 拡張が上限（ponytail コメントで明記）。
+
+## 2026-08-09 モバイル: 入力進捗ステッパー（Steps）追加
+
+- 内容: 各項目の入力・操作の進捗を可視化する汎用ステッパー（Steps インジケーター）を追加。
+  完了ステップは番号→チェックに置換、現在ステップを強調、先のステップは淡色。
+  connector（線）は通過済みを primary、先を outline で描画。Web では現在ステップに
+  `aria-current="step"` を付与。
+- 対象: `apps/mobile/src/components/Steps.tsx`（汎用UI）、
+  `apps/mobile/src/lib/reservationSteps.ts`（モード別ステップ定義と現在ステップ導出の純ロジック、
+  自己チェック `reservationSteps.check.ts` 付き）。
+  予約作成画面 `apps/mobile/src/app/reservations/new.tsx` に組み込み、入力状態から進捗を自動導出。
+- 注記: 日時はデフォルト値が常に入り「常に完了」表示になるためステップから除外（ponytail）。
+  飛び込み受付は顧客・車両が任意のため「メニュー→確認」の2段に簡略化。
