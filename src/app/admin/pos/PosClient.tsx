@@ -204,6 +204,7 @@ export default function PosClient() {
     setSelected(null);
     setCart([]);
     setMenuSearch("");
+    setMenuCategory(null);
     setResult(null);
     setError(null);
     setPaymentMethod("cash");

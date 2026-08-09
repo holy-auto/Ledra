@@ -419,6 +419,8 @@ export default function ReservationsClient() {
       setFormNote(r.note ?? "");
       setFormMenuItems(r.menu_items_json ?? []);
       setFormAmount(r.estimated_amount ?? 0);
+      setMenuQuery("");
+      setMenuCategory(null);
       setTaskTemplateId(r.workflow_template_id ?? "");
       setFormLoanerId(r.loaner_car_id ?? "");
       setFormWorkflowStarted(!!r.current_step_key || r.current_step_order > 0 || r.progress_pct > 0);
@@ -430,13 +432,19 @@ export default function ReservationsClient() {
     else fetchVehicles();
   };
 
-  const toggleMenuItem = (mi: MenuItemMaster) => {
-    const exists = formMenuItems.find((m) => m.menu_item_id === mi.id);
-    const next = exists
-      ? formMenuItems.filter((m) => m.menu_item_id !== mi.id)
-      : [...formMenuItems, { menu_item_id: mi.id, name: mi.name, price: mi.unit_price }];
+  // 選択品目と見積金額をまとめて更新（toggle / 解除で共有）。
+  const applyMenuItems = (next: MenuItem[]) => {
     setFormMenuItems(next);
     setFormAmount(next.reduce((sum, m) => sum + m.price, 0));
+  };
+
+  const toggleMenuItem = (mi: MenuItemMaster) => {
+    const exists = formMenuItems.find((m) => m.menu_item_id === mi.id);
+    applyMenuItems(
+      exists
+        ? formMenuItems.filter((m) => m.menu_item_id !== mi.id)
+        : [...formMenuItems, { menu_item_id: mi.id, name: mi.name, price: mi.unit_price }],
+    );
   };
 
   // 品目の絞り込み（大カテゴリ + 検索）。選択済み（formMenuItems）は絞り込みに関わらず保持される。
@@ -1536,11 +1544,9 @@ export default function ReservationsClient() {
                               <button
                                 key={m.menu_item_id}
                                 type="button"
-                                onClick={() => {
-                                  const next = formMenuItems.filter((x) => x.menu_item_id !== m.menu_item_id);
-                                  setFormMenuItems(next);
-                                  setFormAmount(next.reduce((s, i) => s + i.price, 0));
-                                }}
+                                onClick={() =>
+                                  applyMenuItems(formMenuItems.filter((x) => x.menu_item_id !== m.menu_item_id))
+                                }
                                 className="inline-flex items-center gap-1 rounded-full border border-accent bg-accent-dim px-3 py-1 text-[11px] font-medium text-accent-text"
                               >
                                 {m.name} ✕
