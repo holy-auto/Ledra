@@ -23,11 +23,9 @@ const CIRCLE = 28;
  */
 export function Steps({ steps, current }: Props) {
   return (
-    <View
-      style={styles.container}
-      accessible
-      accessibilityLabel={`ステップ ${Math.min(current + 1, steps.length)} / ${steps.length}`}
-    >
+    <View style={styles.container} accessibilityRole="list">
+      {/* container に accessible を付けると子が1ノードに潰れ、各ステップの
+          ラベル/aria-current が読み上げられない。各円側で accessible にする。 */}
       {steps.map((step, i) => {
         const isCompleted = i < current;
         const isCurrent = i === current;
@@ -58,6 +56,8 @@ export function Steps({ steps, current }: Props) {
                   isCurrent && styles.circleCurrent,
                   !isCompleted && !isCurrent && styles.circleUpcoming,
                 ]}
+                accessible
+                accessibilityRole="text"
                 // Web(react-native-web)では aria-current が現在ステップとして解釈される。
                 {...(isCurrent ? { "aria-current": "step" } : {})}
                 accessibilityLabel={`ステップ${i + 1} ${step.label} ${state}`}
