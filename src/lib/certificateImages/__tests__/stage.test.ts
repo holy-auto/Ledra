@@ -26,4 +26,11 @@ describe("certificate photo stage", () => {
   it("前後の空白は許容して正規化する", () => {
     expect(normalizeStage("  after  ")).toBe("after");
   });
+
+  it("非文字列（File 等、multipart 信頼境界）は throw せず unspecified に落とす", () => {
+    // form.get('stage') は File を返しうる。.trim() で TypeError を出さないこと。
+    expect(normalizeStage(new Blob(["x"]))).toBe("unspecified");
+    expect(normalizeStage(123 as unknown)).toBe("unspecified");
+    expect(normalizeStage({} as unknown)).toBe("unspecified");
+  });
 });

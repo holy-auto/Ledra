@@ -15,8 +15,13 @@ export const STAGE_VALUES = ["intake_before", "in_progress", "after", "unspecifi
 
 export type CertificatePhotoStage = (typeof STAGE_VALUES)[number];
 
-/** 未指定・未知の入力を安全側の `unspecified` に正規化する。 */
-export function normalizeStage(raw: string | null | undefined): CertificatePhotoStage {
-  const value = (raw ?? "").trim();
+/**
+ * 未指定・未知の入力を安全側の `unspecified` に正規化する。
+ *
+ * multipart の `form.get('stage')` は File を返しうる（信頼境界）。非文字列は
+ * そのまま `unspecified` に落とし、`.trim()` で throw させない。
+ */
+export function normalizeStage(raw: unknown): CertificatePhotoStage {
+  const value = typeof raw === "string" ? raw.trim() : "";
   return (STAGE_VALUES as readonly string[]).includes(value) ? (value as CertificatePhotoStage) : "unspecified";
 }

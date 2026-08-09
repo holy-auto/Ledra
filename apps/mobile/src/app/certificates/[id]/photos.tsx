@@ -127,6 +127,8 @@ export default function CertificatePhotosScreen() {
       setStaged([]);
       await queryClient.invalidateQueries({ queryKey: ["certificate-photo-meta", id] });
       await queryClient.invalidateQueries({ queryKey: ["certificate-images", id] });
+      // 作業詳細のサムネイル（["work-photos", certId]）も同じ certificate_id を見るため更新する。
+      await queryClient.invalidateQueries({ queryKey: ["work-photos", id] });
       setSnackbar(`${res?.uploaded ?? staged.length}枚をアップロードしました`);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "アップロードに失敗しました";
