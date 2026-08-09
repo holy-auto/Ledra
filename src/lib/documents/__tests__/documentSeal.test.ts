@@ -1,5 +1,10 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { computeDocumentContentHash, buildIntegritySeal, type SealableDocument } from "@/lib/documents/documentSeal";
+import {
+  computeDocumentContentHash,
+  buildIntegritySeal,
+  stripClientIntegritySeal,
+  type SealableDocument,
+} from "@/lib/documents/documentSeal";
 
 const baseDoc: SealableDocument = {
   doc_type: "invoice",
@@ -33,6 +38,23 @@ describe("computeDocumentContentHash", () => {
   it("金額が変わればハッシュが変わる（改ざん検知の要）", () => {
     const tampered: SealableDocument = { ...baseDoc, total: 99000 };
     expect(computeDocumentContentHash(tampered)).not.toBe(computeDocumentContentHash(baseDoc));
+  });
+});
+
+describe("stripClientIntegritySeal", () => {
+  it("クライアント入力の封印キーを剥がす（偽装封印の防止）", () => {
+    const out = stripClientIntegritySeal({
+      is_tax_inclusive: true,
+      integrity_seal: { hash_sha256: "forged", timestamp_token_b64: "fake" },
+    });
+    expect(out).toEqual({ is_tax_inclusive: true });
+    expect("integrity_seal" in out).toBe(false);
+  });
+
+  it("封印キーが無ければそのまま／null・undefinedは空オブジェクト", () => {
+    expect(stripClientIntegritySeal({ a: 1 })).toEqual({ a: 1 });
+    expect(stripClientIntegritySeal(null)).toEqual({});
+    expect(stripClientIntegritySeal(undefined)).toEqual({});
   });
 });
 
