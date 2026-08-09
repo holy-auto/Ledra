@@ -9,7 +9,13 @@ import Button from "@/components/ui/Button";
 import EmptyStateGuide from "@/components/ui/EmptyStateGuide";
 import { estimateReservationMinutes, formatMinutes } from "@/lib/booths/duration";
 import { decomposeTasks } from "@/lib/booking/tasks";
-import { menuCategoriesOf, filterMenuItems } from "@/lib/reservations/menuFilter";
+import {
+  menuCategoriesOf,
+  filterMenuItems,
+  resolveMenuCategory,
+  shouldRevealMenu,
+  MENU_ALL,
+} from "@/lib/reservations/menuFilter";
 import dynamic from "next/dynamic";
 
 const CalendarView = dynamic(() => import("./CalendarView"), {
@@ -379,6 +385,8 @@ export default function ReservationsClient() {
     setFormNote("");
     setFormMenuItems([]);
     setFormAmount(0);
+    setMenuQuery("");
+    setMenuCategory(null);
     setSaveMsg(null);
     setFormStep(1);
     setNeedsLoaner(false);
@@ -411,6 +419,8 @@ export default function ReservationsClient() {
       setFormNote(r.note ?? "");
       setFormMenuItems(r.menu_items_json ?? []);
       setFormAmount(r.estimated_amount ?? 0);
+      setMenuQuery("");
+      setMenuCategory(null);
       setTaskTemplateId(r.workflow_template_id ?? "");
       setFormLoanerId(r.loaner_car_id ?? "");
       setFormWorkflowStarted(!!r.current_step_key || r.current_step_order > 0 || r.progress_pct > 0);
@@ -422,21 +432,29 @@ export default function ReservationsClient() {
     else fetchVehicles();
   };
 
-  const toggleMenuItem = (mi: MenuItemMaster) => {
-    const exists = formMenuItems.find((m) => m.menu_item_id === mi.id);
-    const next = exists
-      ? formMenuItems.filter((m) => m.menu_item_id !== mi.id)
-      : [...formMenuItems, { menu_item_id: mi.id, name: mi.name, price: mi.unit_price }];
+  // 選択品目と見積金額をまとめて更新（toggle / 解除で共有）。
+  const applyMenuItems = (next: MenuItem[]) => {
     setFormMenuItems(next);
     setFormAmount(next.reduce((sum, m) => sum + m.price, 0));
+  };
+
+  const toggleMenuItem = (mi: MenuItemMaster) => {
+    const exists = formMenuItems.find((m) => m.menu_item_id === mi.id);
+    applyMenuItems(
+      exists
+        ? formMenuItems.filter((m) => m.menu_item_id !== mi.id)
+        : [...formMenuItems, { menu_item_id: mi.id, name: mi.name, price: mi.unit_price }],
+    );
   };
 
   // 品目の絞り込み（大カテゴリ + 検索）。選択済み（formMenuItems）は絞り込みに関わらず保持される。
   const menuCategories = useMemo(() => menuCategoriesOf(menuItems), [menuItems]);
   const filteredMenuItems = useMemo(
-    () => filterMenuItems(menuItems, menuQuery, menuCategory),
+    () => filterMenuItems(menuItems, menuQuery, resolveMenuCategory(menuCategory)),
     [menuItems, menuQuery, menuCategory],
   );
+  // 品目が多いと開いた直後に全件が縦に並んで選びにくいため、検索語かカテゴリ選択があるまで一覧を隠す。
+  const revealMenu = shouldRevealMenu(menuItems.length, menuQuery, menuCategory);
 
   // 選択メニューの推定作業時間（品目マスタ estimated_minutes の合計）。無ければ null。
   const selectedEstMinutes = useMemo(() => {
@@ -1519,6 +1537,23 @@ export default function ReservationsClient() {
                             <span className="text-[11px] text-muted">選択中 {formMenuItems.length}件</span>
                           )}
                         </div>
+                        {/* 選択済み品目は一覧の表示状態に関わらず常に見えるようにする（✕で解除） */}
+                        {formMenuItems.length > 0 && (
+                          <div className="mt-2 flex flex-wrap gap-1.5">
+                            {formMenuItems.map((m) => (
+                              <button
+                                key={m.menu_item_id}
+                                type="button"
+                                onClick={() =>
+                                  applyMenuItems(formMenuItems.filter((x) => x.menu_item_id !== m.menu_item_id))
+                                }
+                                className="inline-flex items-center gap-1 rounded-full border border-accent bg-accent-dim px-3 py-1 text-[11px] font-medium text-accent-text"
+                              >
+                                {m.name} ✕
+                              </button>
+                            ))}
+                          </div>
+                        )}
                         {/* 品目が多いと一覧が縦に伸びるため、検索とカテゴリで絞り込む */}
                         <input
                           type="text"
@@ -1531,9 +1566,9 @@ export default function ReservationsClient() {
                           <div className="mt-2 flex flex-wrap gap-1.5">
                             <button
                               type="button"
-                              onClick={() => setMenuCategory(null)}
+                              onClick={() => setMenuCategory(MENU_ALL)}
                               className={`rounded-full border px-3 py-1 text-[11px] font-medium transition-colors ${
-                                menuCategory === null
+                                menuCategory === MENU_ALL
                                   ? "border-accent bg-accent-dim text-accent-text"
                                   : "border-border-default bg-surface text-secondary hover:border-border-strong"
                               }`}
@@ -1556,29 +1591,36 @@ export default function ReservationsClient() {
                             ))}
                           </div>
                         )}
-                        <div className="mt-2 flex max-h-56 flex-wrap gap-2 overflow-y-auto">
-                          {filteredMenuItems.map((mi) => {
-                            const selected = formMenuItems.some((m) => m.menu_item_id === mi.id);
-                            return (
-                              <button
-                                key={mi.id}
-                                type="button"
-                                onClick={() => toggleMenuItem(mi)}
-                                className={`h-fit rounded-full border px-3 py-1.5 text-xs font-medium transition-all ${
-                                  selected
-                                    ? "border-accent bg-accent-dim text-accent-text shadow-sm"
-                                    : "border-border-default bg-surface text-secondary hover:border-border-strong"
-                                }`}
-                              >
-                                {selected ? "✓ " : ""}
-                                {mi.name} ({formatJpy(mi.unit_price)})
-                              </button>
-                            );
-                          })}
-                          {filteredMenuItems.length === 0 && (
-                            <div className="py-2 text-xs text-muted">該当する品目がありません</div>
-                          )}
-                        </div>
+                        {revealMenu ? (
+                          <div className="mt-2 flex max-h-56 flex-wrap gap-2 overflow-y-auto">
+                            {filteredMenuItems.map((mi) => {
+                              const selected = formMenuItems.some((m) => m.menu_item_id === mi.id);
+                              return (
+                                <button
+                                  key={mi.id}
+                                  type="button"
+                                  onClick={() => toggleMenuItem(mi)}
+                                  className={`h-fit rounded-full border px-3 py-1.5 text-xs font-medium transition-all ${
+                                    selected
+                                      ? "border-accent bg-accent-dim text-accent-text shadow-sm"
+                                      : "border-border-default bg-surface text-secondary hover:border-border-strong"
+                                  }`}
+                                >
+                                  {selected ? "✓ " : ""}
+                                  {mi.name} ({formatJpy(mi.unit_price)})
+                                </button>
+                              );
+                            })}
+                            {filteredMenuItems.length === 0 && (
+                              <div className="py-2 text-xs text-muted">該当する品目がありません</div>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="mt-2 rounded-xl border border-dashed border-border-default bg-inset px-4 py-6 text-center text-xs text-muted">
+                            品目名で検索{menuCategories.length > 1 ? "、またはカテゴリを選択" : ""}
+                            すると候補が表示されます
+                          </div>
+                        )}
                         {formAmount > 0 && (
                           <div className="mt-3 flex items-center justify-between bg-accent-dim border border-accent/20 rounded-xl px-4 py-2.5">
                             <span className="text-xs text-accent-text font-medium">見積金額</span>
