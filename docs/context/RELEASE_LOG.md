@@ -878,3 +878,25 @@
 - 対象: apps/mobile/src/lib/auth.ts。
 - 注記: モバイルは1ユーザー=1テナント前提のUX（select-store はテナント内の店舗選択のみ）。
   将来のマルチテナント対応は select-store 拡張が上限（ponytail コメントで明記）。
+
+## 2026-08-09 モバイル: 証明書写真を WEB 真正性パイプラインへ統一（カメラ限定・後からDL）
+
+- 内容: モバイルの証明書写真キャプチャを WEB と同一の真正性パイプライン
+  （/api/mobile/certificates/images/upload → uploadHandler：ハッシュ・GPS/EXIF除去・
+  TSA封印・撮影nonce消費・段階タグ・グレード判定）経由に統一。
+  - カメラ限定（ライブラリ選択を撤去＝強制起動）。撮影は端末に保存せずDBのみに保存。
+  - 段階セレクタ（施工前 intake_before / 作業中 in_progress / 施工後 after）を付与。
+  - 撮影セッションごとに capture-nonce（/api/mobile/certificates/[id]/capture-nonce）を取得し、
+    全写真を単一 multipart で送信（nonce はリクエストにつき1回消費のため必ずまとめて送る）。
+  - 証明書詳細で正規 certificate_images を storage_path から公開URL表示（段階/グレードチップ付き）。
+  - 「端末に保存」ボタンで後から明示DL（expo-media-library）。WEB管理は既存の署名/公開URLでDL可。
+- 対象: apps/mobile/src/app/certificates/[id]/photos.tsx（新規・カメラ限定キャプチャ）、
+  certificates/[id]/index.tsx（正規画像読取＋端末保存＋写真導線、[id].tsx から移動）、
+  apps/mobile/src/lib/api.ts（mobileMultipart）、apps/mobile/src/lib/photoStage.ts（新規）、
+  work/[id]/index.tsx（壊れた列/バケット参照を撤去し証明書束縛へ集約）、work/[id]/photos.tsx（削除）、
+  src/lib/certificateImages/stage.ts（段階定数の単一化＋テスト）、uploadHandler.ts（共有定数を参照）。
+  依存追加: expo-media-library ~55.0.19 / expo-file-system ~55.0.24（app.json に保存権限プラグイン）。
+- 注記: バックエンドの真正性エンドポイントは既存で新設なし（未使用だったものを結線）。
+  実DBで certificates.public_id は generate_public_id() 自動採番、certificate_images に
+  image_url/reservation_id/caption 列は無く work-photos バケットも不在＝旧モバイル写真フローは
+  現行スキーマに対して壊れていたため撤去。端末アテステーションは別フェーズ（グレードは basic 超まで）。

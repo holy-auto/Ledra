@@ -16,6 +16,7 @@ import { isPhotoTsaEnabled } from "@/lib/anchoring/providers/photoTsa";
 import { verifyDeviceAttestation } from "@/lib/anchoring/providers/deviceAttestation";
 import { consumeCaptureNonce, type ConsumeNonceResult } from "@/lib/certificates/captureNonce";
 import { processUploadedPhoto } from "@/lib/certificateImages/processUploadedPhoto";
+import { normalizeStage } from "@/lib/certificateImages/stage";
 import { maybeAutoTamperingCheckForCertificate } from "@/lib/ai/automation/photoTamperingAuto";
 import { maybeAutoQualityCheckForCertificate } from "@/lib/ai/automation/photoQualityAuto";
 import { maybeAutoClassifyStageForCertificate } from "@/lib/ai/automation/photoStageClassifyAuto";
@@ -58,9 +59,7 @@ export async function handleCertificateImageUpload(req: NextRequest, tenantId: s
     const captureNonce = String(form.get("capture_nonce") ?? "").trim() || undefined;
 
     // 車体整備ガイドライン4.2(1): 撮影段階のタグ (任意。未指定は 'unspecified')。
-    const STAGE_VALUES = ["intake_before", "in_progress", "after", "unspecified"] as const;
-    const rawStage = String(form.get("stage") ?? "").trim();
-    const stage = (STAGE_VALUES as readonly string[]).includes(rawStage) ? rawStage : "unspecified";
+    const stage = normalizeStage(form.get("stage") as string | null);
 
     // public_id が無く cert_idempotency_key だけある場合 (オフライン同期時の写真 upload) は
     // 永続マッピング表から逆引きする。cert 作成と画像 upload の連鎖が IP/network 変化後も成立。
