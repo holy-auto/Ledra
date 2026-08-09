@@ -13,6 +13,11 @@
 - 対象: どの画面・API・業種向けか
 ```
 
+## 2026-08-09 帳票の送付履歴を詳細画面で確認できるように（送付済み自動移行は既存を確認） (branch claude/invoice-auto-transition-history-t4ddz2)
+- 内容: (1) 「送付したら送付済みに自動移行」は既に共有API（`/api/admin/documents/share` POST）が draft→sent 確定＋封印まで行っており、コード確認のうえ再実装せず。(2) 不足していた「送付履歴の確認」を実装。同APIに `GET ?document_id=` を追加し、`document_share_log` をテナントスコープの service-role クライアントで新しい順に返す（ログは RLS ポリシー無し＝service-role のみ読み書きのため、tenant_id を明示して絞る）。帳票詳細画面に「送付履歴」セクションを追加し、日時・チャネル（メール/LINE/SMS）・宛先・送信済/失敗を一覧表示。共有直後に SWR mutate で即時反映。
+- 対象: 帳票詳細（`admin/documents/[id]`）。全帳票種別（請求書含む）。
+- 検証: 共有APIの単体テストに GET 2件（テナント絞り込み・UUID不正で400）を追加し既存5件と合わせ7件パス。tsc/eslint エラー0（既存の `any` 警告のみ）。DBスキーマ変更なし（既存 `document_share_log` を読むだけ）。
+
 ## 2026-08-08 デモ証明書画像の Storage 400 を解消（プレースホルダ実ファイルを配置）
 - 内容: デモシード `setup-demo-tenant.ts` が `certificate_images` 行（`demo/LEDRA-DEMO-XXXX/NN.jpg`）を作るのに実ファイルを Storage に置かず、公開ページの `<img>`（`object/public/assets/…`）と外部の `object/info` メタデータ取得が全て 400（Object not found）を返していた。sharp で軽量プレースホルダ JPEG を生成し、シード時に各 `storage_path` へ upsert アップロードするよう修正。旧コメントにあった「`certificate-images` バケットに placeholder を1枚」というパス共有スキームは実コード（バケット `assets` / パスは cert 単位ユニーク）と食い違っていたため、コメントも実態に合わせて更新。
 - 検証: 本番プロジェクト `cahybswpduchptvyvdkk` で `assets` バケット=public・該当パスのオブジェクト0件・参照行63件を SQL で確認。プレースホルダ生成の JPEG magic byte を検証する単体テスト1件を追加（パス）。**【要確認】本番の 400 解消**: 本番 Storage への配置は `npx tsx scripts/setup-demo-tenant.ts` を本番 env で再実行（冪等）するまで未反映。

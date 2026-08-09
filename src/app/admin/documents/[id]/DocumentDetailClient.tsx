@@ -2,8 +2,10 @@
 import { parseJsonSafe } from "@/lib/api/safeJson";
 
 import { useState } from "react";
+import useSWR from "swr";
 import Badge from "@/components/ui/Badge";
 import ShareDocumentModal from "@/components/documents/ShareDocumentModal";
+import { fetcher, adminSwrConfig } from "@/lib/swr";
 import { formatDate, formatDateTime, formatJpy } from "@/lib/format";
 import { itemContentLines } from "@/lib/documents/itemDisplay";
 import {
@@ -39,6 +41,17 @@ type TenantInfo = {
   bank_info: BankInfo;
 } | null;
 
+type ShareLogEntry = {
+  id: string;
+  channel: "email" | "line" | "sms";
+  recipient: string;
+  sent_at: string;
+  status: string | null;
+  error_message: string | null;
+};
+
+const CHANNEL_LABELS: Record<string, string> = { email: "メール", line: "LINE", sms: "SMS" };
+
 export default function DocumentDetailClient({
   document: initial,
   customerName,
@@ -71,6 +84,14 @@ export default function DocumentDetailClient({
   const [paymentDateInput, setPaymentDateInput] = useState<string | null>(null);
   const [linePayBusy, setLinePayBusy] = useState(false);
   const [linePayUrl, setLinePayUrl] = useState<string | null>(null);
+
+  // 送付履歴（document_share_log）。共有直後に mutate で最新化する。
+  const { data: shareData, mutate: mutateShares } = useSWR<{ shares: ShareLogEntry[] }>(
+    `/api/admin/documents/share?document_id=${doc.id}`,
+    fetcher,
+    adminSwrConfig,
+  );
+  const shares = shareData?.shares ?? [];
 
   const handleStatusChange = async (newStatus: string, paymentDate?: string) => {
     setUpdating(true);
@@ -586,6 +607,31 @@ export default function DocumentDetailClient({
         </section>
       )}
 
+      {/* 送付履歴 */}
+      <section className="glass-card p-5 print:hidden">
+        <h2 className="text-sm font-semibold text-primary mb-3">送付履歴</h2>
+        {shares.length === 0 ? (
+          <p className="text-xs text-muted">まだ送付されていません。</p>
+        ) : (
+          <ul className="space-y-2">
+            {shares.map((s) => (
+              <li
+                key={s.id}
+                className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-border-subtle pb-2 text-xs last:border-0 last:pb-0"
+              >
+                <span className="text-muted tabular-nums">{formatDateTime(s.sent_at)}</span>
+                <Badge variant="default">{CHANNEL_LABELS[s.channel] ?? s.channel}</Badge>
+                <span className="text-secondary break-all">{s.recipient}</span>
+                {s.status === "failed" ? <Badge variant="danger">失敗</Badge> : <Badge variant="success">送信済</Badge>}
+                {s.status === "failed" && s.error_message && (
+                  <span className="text-danger break-all">{s.error_message}</span>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
       {/* Meta */}
       <section className="glass-card p-5 text-xs text-muted space-y-1 print:hidden">
         <div>
@@ -608,6 +654,8 @@ export default function DocumentDetailClient({
             setDoc((prev) => ({ ...prev, status: "sent" }));
           }
           setMsg({ text: `${channel}で送信しました`, ok: true });
+          // 送付履歴を最新化（今の送付を反映）
+          mutateShares();
         }}
       />
     </div>

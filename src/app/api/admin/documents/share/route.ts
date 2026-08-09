@@ -40,6 +40,38 @@ const documentShareSchema = z.object({
   additional_document_ids: z.array(z.string().uuid()).max(20).optional(),
 });
 
+/**
+ * GET /api/admin/documents/share?document_id=<uuid>
+ * 指定帳票の送付履歴（document_share_log）を新しい順で返す。
+ * 送付ログは service role でのみ書き込む（RLS ポリシー無し）ため、読み出しも
+ * テナントスコープの admin クライアントで tenant_id を明示して絞る。
+ */
+export async function GET(req: NextRequest) {
+  try {
+    const supabase = await createSupabaseServerClient();
+    const caller = await resolveCallerWithRole(supabase);
+    if (!caller) return apiUnauthorized();
+
+    const documentId = new URL(req.url).searchParams.get("document_id");
+    if (!documentId || !z.string().uuid().safeParse(documentId).success) {
+      return apiValidationError("document_id は必須です。");
+    }
+
+    const { admin } = createTenantScopedAdmin(caller.tenantId);
+    const { data, error } = await admin
+      .from("document_share_log")
+      .select("id, channel, recipient, sent_at, status, error_message")
+      .eq("document_id", documentId)
+      .eq("tenant_id", caller.tenantId)
+      .order("sent_at", { ascending: false });
+
+    if (error) return apiInternalError(error, "document_share_history");
+    return apiOk({ shares: data ?? [] });
+  } catch (e) {
+    return apiInternalError(e, "document_share_history");
+  }
+}
+
 export async function POST(req: NextRequest) {
   try {
     const supabase = await createSupabaseServerClient();

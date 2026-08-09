@@ -26,6 +26,7 @@ function makeQueryBuilder(getRows: () => Row[]) {
       filtered = filtered.filter((r) => vals.includes(r[col]));
       return builder;
     },
+    order: () => builder,
     update: (patch: Row) => {
       pendingUpdate = patch;
       return builder;
@@ -70,7 +71,7 @@ vi.mock("@/lib/supabase/admin", () => ({
   createTenantScopedAdmin: (tenantId: string) => ({ admin: makeSupabase(tables), tenantId }),
 }));
 
-import { POST } from "@/app/api/admin/documents/share/route";
+import { GET, POST } from "@/app/api/admin/documents/share/route";
 
 function req(body: unknown) {
   return new Request("http://localhost/api/admin/documents/share", {
@@ -207,5 +208,36 @@ describe("POST /api/admin/documents/share — additional_document_ids", () => {
     expect(res.status).toBe(200);
     const lineArgs = mocks.sendDocumentLink.mock.calls[0][0];
     expect(lineArgs.pdfUrl).toBeUndefined();
+  });
+});
+
+describe("GET /api/admin/documents/share — 送付履歴", () => {
+  function getReq(qs: string) {
+    return new Request(`http://localhost/api/admin/documents/share?${qs}`) as any;
+  }
+
+  it("指定帳票の送付ログを返す（テナントで絞り込み）", async () => {
+    tables.document_share_log = [
+      {
+        id: "log-1",
+        document_id: DOC_A,
+        tenant_id: TENANT_ID,
+        channel: "email",
+        recipient: "a@example.com",
+        status: "sent",
+      },
+      { id: "log-2", document_id: DOC_B, tenant_id: TENANT_ID, channel: "line", recipient: "U999", status: "sent" },
+    ];
+
+    const res = (await GET(getReq(`document_id=${DOC_A}`))) as Response;
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.shares).toHaveLength(1);
+    expect(json.shares[0].id).toBe("log-1");
+  });
+
+  it("document_id が UUID でなければ 400", async () => {
+    const res = (await GET(getReq("document_id=not-a-uuid"))) as Response;
+    expect(res.status).toBe(400);
   });
 });
