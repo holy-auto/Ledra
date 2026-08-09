@@ -13,6 +13,17 @@
 - 対象: どの画面・API・業種向けか
 ```
 
+## 2026-08-09 品目選択を「検索/カテゴリで絞るまで隠す」段階表示に変更（予約作成・POS）
+
+- 内容: 予約作成モーダル（`/admin/reservations` step2）と会計（POS）ウォークイン
+  （`/admin/pos`）で、開いた直後に全品目が縦にどっと出て選びにくかった問題を解消。
+  品目が一定数（`MENU_REVEAL_THRESHOLD` = 12）を超える場合は、検索語入力かカテゴリ選択
+  （「すべて」含む）があるまで一覧を隠し、プロンプトを表示するようにした（POSレジ風の段階表示）。
+  少数の場合は従来どおり全件表示。共有ロジック `src/lib/reservations/menuFilter.ts` に
+  `shouldRevealMenu` / `resolveMenuCategory` / 番兵 `MENU_ALL` を追加し両画面で再利用（テスト付き）。
+  予約作成側は一覧を隠しても選択済み品目が常に見えるよう、解除可能なチップ表示を追加。
+- 対象: `/admin/reservations`（予約作成）、`/admin/pos`（ウォークイン会計）
+
 ## 2026-08-04 電帳法: 本番でTSAタイムスタンプ封印が成立、帳票詳細に封印バッジを追加 (branch claude/edoc-seal-badge-and-logs)
 - 内容: (1) 本番Vercelで写真TSA（`PHOTO_TSA_ENABLED=true` / `PHOTO_TSA_URL=http://timestamp.digicert.com`）を有効化。確定帳票の封印（`documentSeal.ts`）は専用 `DOCUMENT_TSA_*` が無ければ `PHOTO_TSA_*` を流用する実装のため、この1トグルで請求書封印にも第三者タイムスタンプが付くようになった。本番DBで実確認済み（請求書 INV-202608-001、`meta_json.integrity_seal.timestamp_token_b64` に約6KBのRFC3161トークン、genTime 2026-08-04T23:56:50Z、authority timestamp.digicert.com）。DECISION_LOGに残っていた「本番TSA実通信未検証」の穴を実データで解消。(2) 帳票詳細画面のステータス行に封印バッジを追加（`describeIntegritySeal`＝クライアント安全な純関数、`src/lib/documents/integritySealView.ts`）。タイムスタンプ付きは success バッジ＋「TS局 / 時刻(JST)」、ハッシュのみは info バッジで正直に区別表示。
 - 対象: 帳票詳細（`admin/documents/[id]`）。全業種。検証: `integritySealView` 単体3件パス、tsc/eslint エラー0。封印バッジは meta_json.integrity_seal を読むだけでスキーマ変更なし。
@@ -30,6 +41,7 @@
 - 検証: `vehicleReport` テスト32件パス（split 6＋scope 7＋access＋reversalActionForStatus 5＋postCancelClaimAction 4 等）、`tsc --noEmit` エラー0、変更ファイル eslint エラー0。
 - 残（別issue #892 に切り出し）: webhook 冪等の自動 replay 化、booking↔refund の完全アトミック化、payout の durable transfer recovery、アップグレード返金時の partial entitlement 保持、passport 表示の anchor スナップショット、`stripe_connect_transfers` 監査行の paid 同期。
 - 対象: 公開 `/v/[vin]` レポート課金（段階式）／施工店ポータル `/admin/report-revenue`／platform-admin 精算API／Stripe webhook（main + connect）／cron。
+
 ## 2026-08-07 会計（POS）ウォークインの品目選択にもカテゴリ絞り込みを追加
 
 - 内容: 予約作成モーダルと同様の品目選択の課題が会計（POS）のウォークイン会計画面

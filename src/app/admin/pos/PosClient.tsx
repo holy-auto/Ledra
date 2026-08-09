@@ -11,7 +11,13 @@ import StatCard from "@/components/ui/StatCard";
 import FirstUseInlineGuide from "@/components/ui/FirstUseInlineGuide";
 import { InventoryWarningsBanner } from "@/components/pos/InventoryWarningsBanner";
 import PosInventoryDeductPanel from "./PosInventoryDeductPanel";
-import { menuCategoriesOf, filterMenuItems } from "@/lib/reservations/menuFilter";
+import {
+  menuCategoriesOf,
+  filterMenuItems,
+  resolveMenuCategory,
+  shouldRevealMenu,
+  MENU_ALL,
+} from "@/lib/reservations/menuFilter";
 
 /* ────────────────────────────────────────────── */
 /*  Types                                         */
@@ -250,9 +256,11 @@ export default function PosClient() {
   // ── Filtered menu items（検索 + 大カテゴリ絞り込み。予約作成と同じ純関数を再利用） ──
   const menuCategories = useMemo(() => menuCategoriesOf(masterMenuItems), [masterMenuItems]);
   const filteredMenuItems = useMemo(
-    () => filterMenuItems(masterMenuItems, menuSearch, menuCategory),
+    () => filterMenuItems(masterMenuItems, menuSearch, resolveMenuCategory(menuCategory)),
     [masterMenuItems, menuSearch, menuCategory],
   );
+  // 品目が多いと開いた直後に全件が並んで選びにくいため、検索語かカテゴリ選択があるまで一覧を隠す。
+  const revealMenu = shouldRevealMenu(masterMenuItems.length, menuSearch, menuCategory);
 
   // ── Cart helpers ──
   const addToCart = useCallback((mi: MasterMenuItem) => {
@@ -775,9 +783,9 @@ export default function PosClient() {
                 <div className="flex flex-wrap gap-1.5">
                   <button
                     type="button"
-                    onClick={() => setMenuCategory(null)}
+                    onClick={() => setMenuCategory(MENU_ALL)}
                     className={`rounded-full border px-3 py-1 text-[11px] font-medium transition-colors ${
-                      menuCategory === null
+                      menuCategory === MENU_ALL
                         ? "border-accent bg-accent-dim text-accent-text"
                         : "border-border-subtle bg-surface text-secondary hover:border-border"
                     }`}
@@ -844,9 +852,19 @@ export default function PosClient() {
                     <div key={i} className="h-20 animate-pulse rounded-xl bg-surface-hover" />
                   ))}
                 </div>
+              ) : masterMenuItems.length === 0 ? (
+                <div className="rounded-xl border border-border-subtle bg-surface p-8 text-center text-sm text-muted">
+                  {"品目マスタが登録されていません"}
+                </div>
+              ) : !revealMenu ? (
+                <div className="rounded-xl border border-dashed border-border-subtle bg-surface p-8 text-center text-sm text-muted">
+                  {menuCategories.length > 1
+                    ? "品目名で検索、またはカテゴリを選ぶと品目が表示されます"
+                    : "品目名で検索すると品目が表示されます"}
+                </div>
               ) : filteredMenuItems.length === 0 ? (
                 <div className="rounded-xl border border-border-subtle bg-surface p-8 text-center text-sm text-muted">
-                  {menuSearch || menuCategory ? "該当する品目がありません" : "品目マスタが登録されていません"}
+                  {"該当する品目がありません"}
                 </div>
               ) : (
                 <div className="grid grid-cols-3 gap-2">
