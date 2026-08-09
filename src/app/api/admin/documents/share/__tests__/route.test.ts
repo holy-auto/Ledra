@@ -26,7 +26,15 @@ function makeQueryBuilder(getRows: () => Row[]) {
       filtered = filtered.filter((r) => vals.includes(r[col]));
       return builder;
     },
-    order: () => builder,
+    order: (col: string, opts?: { ascending?: boolean }) => {
+      const dir = opts?.ascending === false ? -1 : 1;
+      filtered = [...filtered].sort((a, b) => (a[col] < b[col] ? -1 : a[col] > b[col] ? 1 : 0) * dir);
+      return builder;
+    },
+    limit: (n: number) => {
+      filtered = filtered.slice(0, n);
+      return builder;
+    },
     update: (patch: Row) => {
       pendingUpdate = patch;
       return builder;
@@ -216,24 +224,42 @@ describe("GET /api/admin/documents/share — 送付履歴", () => {
     return new Request(`http://localhost/api/admin/documents/share?${qs}`) as any;
   }
 
-  it("指定帳票の送付ログを返す（テナントで絞り込み）", async () => {
+  it("指定帳票の送付ログを新しい順で返す（テナント・帳票で絞り込み）", async () => {
     tables.document_share_log = [
       {
-        id: "log-1",
+        id: "old",
         document_id: DOC_A,
         tenant_id: TENANT_ID,
         channel: "email",
         recipient: "a@example.com",
         status: "sent",
+        sent_at: "2026-08-01T00:00:00Z",
       },
-      { id: "log-2", document_id: DOC_B, tenant_id: TENANT_ID, channel: "line", recipient: "U999", status: "sent" },
+      {
+        id: "new",
+        document_id: DOC_A,
+        tenant_id: TENANT_ID,
+        channel: "sms",
+        recipient: "090",
+        status: "failed",
+        sent_at: "2026-08-05T00:00:00Z",
+      },
+      {
+        id: "other-doc",
+        document_id: DOC_B,
+        tenant_id: TENANT_ID,
+        channel: "line",
+        recipient: "U999",
+        status: "sent",
+        sent_at: "2026-08-09T00:00:00Z",
+      },
     ];
 
     const res = (await GET(getReq(`document_id=${DOC_A}`))) as Response;
     expect(res.status).toBe(200);
     const json = await res.json();
-    expect(json.shares).toHaveLength(1);
-    expect(json.shares[0].id).toBe("log-1");
+    // DOC_A のログのみ、新しい順（new → old）。他帳票 (other-doc) は含まない。
+    expect(json.shares.map((s: { id: string }) => s.id)).toEqual(["new", "old"]);
   });
 
   it("document_id が UUID でなければ 400", async () => {

@@ -86,11 +86,11 @@ export default function DocumentDetailClient({
   const [linePayUrl, setLinePayUrl] = useState<string | null>(null);
 
   // 送付履歴（document_share_log）。共有直後に mutate で最新化する。
-  const { data: shareData, mutate: mutateShares } = useSWR<{ shares: ShareLogEntry[] }>(
-    `/api/admin/documents/share?document_id=${doc.id}`,
-    fetcher,
-    adminSwrConfig,
-  );
+  const {
+    data: shareData,
+    error: shareError,
+    mutate: mutateShares,
+  } = useSWR<{ shares: ShareLogEntry[] }>(`/api/admin/documents/share?document_id=${doc.id}`, fetcher, adminSwrConfig);
   const shares = shareData?.shares ?? [];
 
   const handleStatusChange = async (newStatus: string, paymentDate?: string) => {
@@ -610,7 +610,9 @@ export default function DocumentDetailClient({
       {/* 送付履歴 */}
       <section className="glass-card p-5 print:hidden">
         <h2 className="text-sm font-semibold text-primary mb-3">送付履歴</h2>
-        {shares.length === 0 ? (
+        {shareError ? (
+          <p className="text-xs text-danger">送付履歴の取得に失敗しました。時間をおいて再読み込みしてください。</p>
+        ) : shares.length === 0 ? (
           <p className="text-xs text-muted">まだ送付されていません。</p>
         ) : (
           <ul className="space-y-2">

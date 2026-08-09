@@ -63,7 +63,10 @@ export async function GET(req: NextRequest) {
       .select("id, channel, recipient, sent_at, status, error_message")
       .eq("document_id", documentId)
       .eq("tenant_id", caller.tenantId)
-      .order("sent_at", { ascending: false });
+      .order("sent_at", { ascending: false })
+      // ponytail: 履歴表示は最新100件で頭打ち（ページングなし）。1帳票の送付回数は
+      // 通常わずかなので十分。再送を大量に繰り返す運用が出たらページング追加を検討。
+      .limit(100);
 
     if (error) return apiInternalError(error, "document_share_history");
     return apiOk({ shares: data ?? [] });
