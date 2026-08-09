@@ -149,7 +149,10 @@ async function requestDocumentTimestamp(
     if (!result) return null;
     return { token: result.token, authority, timestampAt: result.genTime };
   } catch (err) {
-    console.warn("[document-tsa] timestamp request failed, degrading to hash-only seal", err instanceof Error ? err.message : err);
+    console.warn(
+      "[document-tsa] timestamp request failed, degrading to hash-only seal",
+      err instanceof Error ? err.message : err,
+    );
     return null;
   }
 }

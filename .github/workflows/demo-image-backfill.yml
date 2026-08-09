@@ -1,0 +1,35 @@
+name: Demo image placeholder backfill
+
+# 手動実行専用。デモ証明書 (`demo/LEDRA-DEMO-…`) の certificate_images 行に対し、
+# Storage 実ファイル（軽量プレースホルダ JPEG）を配置して公開ページの Storage 400 を解消する。
+# DB は書き換えず、Storage の該当 demo パスへ upsert するだけ（冪等）。
+#
+# 必要な GitHub Secret:
+#   - NEXT_PUBLIC_SUPABASE_URL   … 本番プロジェクトの URL
+#   - SUPABASE_SERVICE_ROLE_KEY  … サービスロールキー（Storage 書き込み用）
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: demo-image-backfill
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Upload demo image placeholders
+        env:
+          SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: npx tsx scripts/backfill-demo-image-placeholders.ts

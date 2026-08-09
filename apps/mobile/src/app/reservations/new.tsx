@@ -24,6 +24,11 @@ import DateTimePicker from "@react-native-community/datetimepicker";
 
 import { supabase } from "@/lib/supabase";
 import { useAuthStore } from "@/stores/authStore";
+import { Steps } from "@/components/Steps";
+import {
+  reservationSteps,
+  reservationCurrentStep,
+} from "@/lib/reservationSteps";
 
 interface Customer {
   id: string;
@@ -183,10 +188,26 @@ export default function ReservationNewScreen() {
 
   const isWalkIn = reservationType === "walk_in";
 
+  // 入力進捗インジケーター用のステップ状態を導出
+  const stepDefs = reservationSteps(reservationType);
+  const currentStep = reservationCurrentStep({
+    mode: reservationType,
+    hasCustomer: !!selectedCustomer,
+    hasVehicle: !!selectedVehicle,
+    hasMenu: selectedMenuItems.length > 0,
+  });
+
   return (
     <>
       <Stack.Screen options={{ title: isWalkIn ? "飛び込み受付" : "予約作成" }} />
       <ScrollView style={styles.container} keyboardShouldPersistTaps="handled">
+        {/* 入力進捗 */}
+        <Card style={styles.card} mode="outlined">
+          <Card.Content>
+            <Steps steps={stepDefs} current={currentStep} />
+          </Card.Content>
+        </Card>
+
         {/* 予約タイプ */}
         <Card style={styles.card} mode="outlined">
           <Card.Content>

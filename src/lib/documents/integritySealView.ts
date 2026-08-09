@@ -33,9 +33,7 @@ function formatJst(iso: string): string {
 /**
  * meta_json から封印の表示情報を作る。封印が無ければ null（バッジ非表示）。
  */
-export function describeIntegritySeal(
-  metaJson: Record<string, unknown> | null | undefined,
-): IntegritySealView | null {
+export function describeIntegritySeal(metaJson: Record<string, unknown> | null | undefined): IntegritySealView | null {
   const seal = metaJson?.integrity_seal as Record<string, unknown> | undefined;
   if (!seal || typeof seal !== "object" || !seal.hash_sha256) return null;
 
