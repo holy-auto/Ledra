@@ -37,8 +37,15 @@ import { syncCreateEvent } from "@/lib/gcal/client";
 import { calcItems } from "@/lib/documents/calcItems";
 import { logger } from "@/lib/logger";
 import { logAutoActionExecuted } from "@/lib/audit/aiAuditLog";
-import { getActiveFlow, getFlowByQuoteDoc, advanceFlow, type ConversationFlowRow } from "@/lib/line/flow/flowStore";
-import { interpretReply } from "@/lib/line/flow/interpret";
+import {
+  getActiveFlow,
+  getFlowByQuoteDoc,
+  createFlow,
+  advanceFlow,
+  type ConversationFlowRow,
+} from "@/lib/line/flow/flowStore";
+import { interpretReply, parseFlowPostback } from "@/lib/line/flow/interpret";
+import { isTerminal } from "@/lib/line/flow/states";
 import { fetchFlowScheduleCandidates, type FlowScheduleCandidate } from "@/lib/line/flow/scheduleCandidates";
 import { fetchAddonRecommendations } from "@/lib/line/flow/addonCandidates";
 import type { RecommendedOption } from "@/lib/ai/optionRecommend";
@@ -47,6 +54,7 @@ import { maybeAutoCategorizeReservationOnIntake } from "./accountingAuto";
 import { maybeAutoProposeWorkflowForReservation } from "./workflowAuto";
 import {
   buildQuoteApprovalAsk,
+  buildQuoteDetailAsk,
   buildScheduleHandoff,
   buildQuoteConsultHandoff,
   buildScheduleCandidatesAsk,
@@ -156,6 +164,18 @@ export async function handleFlowPostback(params: {
     if (!shouldRunConversationFlow(settings)) return false;
 
     const admin = createServiceRoleAdmin("AI conversation flow (postback) — no auth session");
+
+    // 状態非依存の誘導ボタン (FAQ/ナレッジ返信の末尾に添付したもの)。フロー生成・
+    // 引き継ぎであり状態機械の遷移ではないため、interpretReply ではなく
+    // parseFlowPostback で直接判定し、進行中フローの有無で分岐する。
+    const pb = parseFlowPostback(params.data);
+    if (pb?.event === "start_quote") {
+      return handleFollowupStartQuote(admin, tenantId, lineUserId, params.customerId ?? null, params.data);
+    }
+    if (pb?.event === "consult") {
+      return handleFollowupConsult(admin, tenantId, lineUserId, params.customerId ?? null, params.data);
+    }
+
     const flow = await getActiveFlow(admin, tenantId, { customerId: params.customerId, lineUserId });
     if (!flow) return false;
 
@@ -344,6 +364,116 @@ export async function handleFlowPostback(params: {
     });
     return false;
   }
+}
+
+/**
+ * FAQ/ナレッジ返信に添えた「お見積りをお願いしたい」ボタン (flow:start_quote) の処理。
+ * 進行中フローが無ければ awaiting_quote_detail フローを作成し、詳細 (車検証 or 車種+年式)
+ * を依頼する (maybeStartQuoteFlow と同じ入口メッセージ buildQuoteDetailAsk を再利用)。
+ * 進行中フローがあれば二重開始せず false を返す (呼び出し元→受信箱記録+スタッフ通知に
+ * フォールバック)。呼び出し元 (handleFlowPostback) の catch で保護されるため投げてよい。
+ */
+async function handleFollowupStartQuote(
+  admin: Admin,
+  tenantId: string,
+  lineUserId: string,
+  customerId: string | null,
+  data: string,
+): Promise<boolean> {
+  if (!(await tenantEligibleForAiAutomation(admin, tenantId))) return false;
+
+  // 進行中フローがあれば二重開始しない (詳細待ち・日程調整中などを上書きしない)。
+  const existing = await getActiveFlow(admin, tenantId, { customerId, lineUserId });
+  if (existing) return false;
+
+  const flow = await createFlow(admin, {
+    tenantId,
+    customerId,
+    lineUserId,
+    state: "awaiting_quote_detail",
+    context: { source: "followup_button" },
+  });
+  if (!flow) return false; // 一意制約競合など。二重送信しない。
+
+  // 顧客のボタン操作をスレッドに残す (postback は受信箱に出ないため)。
+  await recordInboundLineMessage({
+    tenantId,
+    lineUserId,
+    body: "「お見積りをお願いしたい」を選択",
+    rawEvent: { flow_postback: data },
+  });
+
+  const delivered = await sendCustomerLineText({
+    tenantId,
+    customerId,
+    lineUserId,
+    body: buildQuoteDetailAsk(),
+  });
+  if (!delivered) {
+    logger.warn("[conversationFlowPostback] followup start_quote delivery failed", { tenantId, lineUserId });
+    return false;
+  }
+
+  await logAutoActionExecuted({
+    tenantId,
+    actionKey: "inbound_message.auto_conversation_flow",
+    resource: { kind: "line_user", id: lineUserId },
+    detail: { flow_id: flow.id, state: "awaiting_quote_detail", trigger: "followup_button" },
+  });
+  return true;
+}
+
+/**
+ * FAQ/ナレッジ返信に添えた「スタッフに相談したい」ボタン (flow:consult) の処理。
+ * スタッフへ通知し、進行中フローがあれば human_takeover に落として自動進行を止める
+ * (以降の自動返信が「対応済み」と誤認させない)。顧客へは相談受付の案内を返す。
+ * 呼び出し元 (handleFlowPostback) の catch で保護されるため投げてよい。
+ */
+async function handleFollowupConsult(
+  admin: Admin,
+  tenantId: string,
+  lineUserId: string,
+  customerId: string | null,
+  data: string,
+): Promise<boolean> {
+  if (!(await tenantEligibleForAiAutomation(admin, tenantId))) return false;
+
+  await recordInboundLineMessage({
+    tenantId,
+    lineUserId,
+    body: "「スタッフに相談したい」を選択",
+    rawEvent: { flow_postback: data },
+  });
+
+  // 進行中フロー (終端でないもの) があれば自動進行を止める。
+  const existing = await getActiveFlow(admin, tenantId, { customerId, lineUserId });
+  if (existing && !isTerminal(existing.state)) {
+    await advanceFlow(admin, existing, {
+      toState: "human_takeover",
+      contextPatch: { consult_requested: true },
+      expectState: existing.state,
+    });
+  }
+
+  await sendCustomerLineText({
+    tenantId,
+    customerId,
+    lineUserId,
+    body: buildQuoteConsultHandoff(),
+  });
+  await notifyStaffOfAiAction(
+    admin,
+    tenantId,
+    "お客様が相談をご希望です — ご対応をお願いします",
+    "お客様がLINEで「スタッフに相談したい」を選択されました。トークでご対応ください。",
+  );
+  await logAutoActionExecuted({
+    tenantId,
+    actionKey: "inbound_message.auto_conversation_flow",
+    resource: { kind: "line_user", id: lineUserId },
+    detail: { state: "human_takeover", trigger: "followup_button" },
+  });
+  return true;
 }
 
 /**

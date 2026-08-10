@@ -4,9 +4,11 @@ import { emptyStore, makeFakeAdmin, type FakeStore } from "./fakeSupabaseAdmin";
 const mocks = vi.hoisted(() => ({
   loadAiAutomationSettings: vi.fn(),
   shouldAutoReplyKnowledge: vi.fn(),
+  shouldRunConversationFlow: vi.fn(),
   generateKnowledgeReply: vi.fn(),
   fetchRecentConversation: vi.fn(),
   sendCustomerLineText: vi.fn(),
+  sendCustomerLineButtons: vi.fn(),
   logAutoActionExecuted: vi.fn(),
   usageRecord: vi.fn(),
   store: null as unknown as FakeStore,
@@ -16,7 +18,10 @@ vi.mock("@/lib/supabase/admin", () => ({
   createServiceRoleAdmin: () => makeFakeAdmin(mocks.store),
 }));
 vi.mock("../policy", () => ({ loadAiAutomationSettings: mocks.loadAiAutomationSettings }));
-vi.mock("../orchestrator", () => ({ shouldAutoReplyKnowledge: mocks.shouldAutoReplyKnowledge }));
+vi.mock("../orchestrator", () => ({
+  shouldAutoReplyKnowledge: mocks.shouldAutoReplyKnowledge,
+  shouldRunConversationFlow: mocks.shouldRunConversationFlow,
+}));
 vi.mock("@/lib/ai/knowledgeReply", () => ({
   generateKnowledgeReply: mocks.generateKnowledgeReply,
   KNOWLEDGE_LIMIT: 50,
@@ -25,7 +30,10 @@ vi.mock("@/lib/ai/knowledgeReply", () => ({
 vi.mock("@/lib/line/messageStore", () => ({ fetchRecentConversation: mocks.fetchRecentConversation }));
 vi.mock("@/lib/ai/client", () => ({ fastModelForPlanTier: () => "claude-haiku" }));
 vi.mock("@/lib/ai/recordRouteUsage", () => ({ startAiRouteUsage: () => ({ record: mocks.usageRecord }) }));
-vi.mock("@/lib/line/client", () => ({ sendCustomerLineText: mocks.sendCustomerLineText }));
+vi.mock("@/lib/line/client", () => ({
+  sendCustomerLineText: mocks.sendCustomerLineText,
+  sendCustomerLineButtons: mocks.sendCustomerLineButtons,
+}));
 vi.mock("@/lib/audit/aiAuditLog", () => ({ logAutoActionExecuted: mocks.logAutoActionExecuted }));
 vi.mock("@/lib/logger", () => ({
   logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn(), child: () => ({}) },
@@ -67,6 +75,9 @@ beforeEach(() => {
     ai: true,
   });
   mocks.sendCustomerLineText.mockResolvedValue(true);
+  mocks.sendCustomerLineButtons.mockResolvedValue(true);
+  // 既定は会話フロー opt-in OFF → 従来どおりテキスト送信 (既存テストの前提を維持)。
+  mocks.shouldRunConversationFlow.mockReturnValue(false);
 });
 
 describe("maybeAutoReplyKnowledge", () => {
@@ -180,5 +191,25 @@ describe("maybeAutoReplyKnowledge", () => {
     mocks.logAutoActionExecuted.mockRejectedValue(new Error("audit down"));
     const replied = await maybeAutoReplyKnowledge(baseParams());
     expect(replied).toBe(true);
+  });
+
+  it("attaches follow-up buttons when conversation-flow automation is opted in", async () => {
+    mocks.shouldRunConversationFlow.mockReturnValue(true);
+    const replied = await maybeAutoReplyKnowledge(baseParams());
+
+    expect(replied).toBe(true);
+    // ボタン付き送信を使い、プレーンテキスト送信は使わない。
+    expect(mocks.sendCustomerLineButtons).toHaveBeenCalledTimes(1);
+    expect(mocks.sendCustomerLineText).not.toHaveBeenCalled();
+    const arg = mocks.sendCustomerLineButtons.mock.calls[0][0];
+    expect(arg.text).toContain("営業時間");
+    expect(arg.buttons.map((b: { data: string }) => b.data)).toEqual(["flow:start_quote", "flow:consult"]);
+  });
+
+  it("falls back to plain text when conversation-flow automation is off", async () => {
+    mocks.shouldRunConversationFlow.mockReturnValue(false);
+    await maybeAutoReplyKnowledge(baseParams());
+    expect(mocks.sendCustomerLineText).toHaveBeenCalledTimes(1);
+    expect(mocks.sendCustomerLineButtons).not.toHaveBeenCalled();
   });
 });

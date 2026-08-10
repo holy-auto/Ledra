@@ -36,6 +36,20 @@ export function buildQuoteDetailAsk(): string {
 }
 
 /**
+ * ナレッジ自動返信の末尾に添える「次の行動」誘導ボタン。会話フロー opt-in 済み
+ * テナントのみ添付する (postback を handleFlowPostback が状態非依存で捌けるため)。
+ *   - `flow:start_quote` … 見積りフロー (awaiting_quote_detail) を開始
+ *   - `flow:consult`     … スタッフ引き継ぎ (human_takeover) + 通知
+ * どちらも interpret.ts の状態遷移ではなく、conversationFlowPostback が直接処理する。
+ */
+export function buildFollowupButtons(): FlowButton[] {
+  return [
+    { label: "お見積りをお願いしたい", data: "flow:start_quote" },
+    { label: "スタッフに相談したい", data: "flow:consult" },
+  ];
+}
+
+/**
  * 詳細を受領し正式見積書の下書きを用意したことの顧客向けお礼・案内。
  * 送付そのものはスタッフが内容確認のうえ行う (壁3) ため「担当より」と明示する。
  */

@@ -25,12 +25,13 @@ import {
 } from "@/lib/ai/knowledgeReply";
 import { fastModelForPlanTier } from "@/lib/ai/client";
 import { startAiRouteUsage } from "@/lib/ai/recordRouteUsage";
-import { sendCustomerLineText } from "@/lib/line/client";
+import { sendCustomerLineText, sendCustomerLineButtons } from "@/lib/line/client";
 import { fetchRecentConversation, type ConversationTurn } from "@/lib/line/messageStore";
+import { buildFollowupButtons } from "@/lib/line/flow/messages";
 import { logger } from "@/lib/logger";
 import { logAutoActionExecuted } from "@/lib/audit/aiAuditLog";
 import { loadAiAutomationSettings, type AiAutomationSettings } from "./policy";
-import { shouldAutoReplyKnowledge } from "./orchestrator";
+import { shouldAutoReplyKnowledge, shouldRunConversationFlow } from "./orchestrator";
 
 const ENDPOINT = "/api/line/webhook#auto-knowledge-reply";
 
@@ -145,12 +146,24 @@ export async function maybeAutoReplyKnowledge(params: MaybeAutoReplyKnowledgePar
       return false;
     }
 
-    const delivered = await sendCustomerLineText({
-      tenantId,
-      customerId: customerId ?? null,
-      lineUserId,
-      body: reply,
-    });
+    // 会話フロー opt-in 済みなら回答の末尾に「次の行動」誘導ボタンを添える
+    // (お見積り依頼 / スタッフ相談。postback は handleFlowPostback が捌く)。
+    // opt-in OFF のテナントは従来どおりテキストのみ (挙動不変)。
+    const withButtons = shouldRunConversationFlow(settings);
+    const delivered = withButtons
+      ? await sendCustomerLineButtons({
+          tenantId,
+          customerId: customerId ?? null,
+          lineUserId,
+          text: reply,
+          buttons: buildFollowupButtons(),
+        })
+      : await sendCustomerLineText({
+          tenantId,
+          customerId: customerId ?? null,
+          lineUserId,
+          body: reply,
+        });
     if (!delivered) {
       usage.record({ tenantId, outcome: "error", meta: { auto: true, committed: false } });
       return false;

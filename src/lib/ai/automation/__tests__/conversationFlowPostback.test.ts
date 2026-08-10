@@ -665,3 +665,67 @@ describe("handleFlowPostback — slot selection (Phase 1b-3)", () => {
     expect(inserted?.payload.vehicle_id).toBeNull();
   });
 });
+
+describe("handleFlowPostback — 誘導ボタン (FAQ返信の末尾)", () => {
+  it("flow:start_quote は進行中フロー無しなら awaiting_quote_detail を作成し詳細を依頼する", async () => {
+    mocks.store.tables.line_conversation_flows = [];
+    const handled = await handleFlowPostback({ tenantId: TENANT, lineUserId: LINE_USER, data: "flow:start_quote" });
+    expect(handled).toBe(true);
+
+    const inserted = mocks.store.inserts.find((i) => i.table === "line_conversation_flows");
+    expect(inserted?.payload.state).toBe("awaiting_quote_detail");
+    expect(mocks.sendCustomerLineText).toHaveBeenCalledTimes(1);
+    expect(mocks.recordInboundLineMessage).toHaveBeenCalled();
+  });
+
+  it("flow:start_quote は進行中フローがあれば二重開始せず false", async () => {
+    mocks.store.tables.line_conversation_flows = [
+      {
+        id: "flow-x",
+        tenant_id: TENANT,
+        customer_id: null,
+        line_user_id: LINE_USER,
+        state: "awaiting_quote_detail",
+        quote_doc_id: null,
+        context_json: {},
+      },
+    ];
+    const handled = await handleFlowPostback({ tenantId: TENANT, lineUserId: LINE_USER, data: "flow:start_quote" });
+    expect(handled).toBe(false);
+    expect(mocks.store.inserts.find((i) => i.table === "line_conversation_flows")).toBeUndefined();
+    expect(mocks.sendCustomerLineText).not.toHaveBeenCalled();
+  });
+
+  it("flow:consult はスタッフに通知し顧客へ相談受付を返す", async () => {
+    mocks.store.tables.line_conversation_flows = [];
+    const handled = await handleFlowPostback({ tenantId: TENANT, lineUserId: LINE_USER, data: "flow:consult" });
+    expect(handled).toBe(true);
+    expect(mocks.store.inserts.find((i) => i.table === "notifications")).toBeDefined();
+    expect(mocks.sendCustomerLineText).toHaveBeenCalledTimes(1);
+  });
+
+  it("flow:consult は進行中フローを human_takeover に落とす", async () => {
+    mocks.store.tables.line_conversation_flows = [
+      {
+        id: "flow-y",
+        tenant_id: TENANT,
+        customer_id: null,
+        line_user_id: LINE_USER,
+        state: "awaiting_quote_ok",
+        quote_doc_id: DOC,
+        context_json: {},
+      },
+    ];
+    const handled = await handleFlowPostback({ tenantId: TENANT, lineUserId: LINE_USER, data: "flow:consult" });
+    expect(handled).toBe(true);
+    const upd = mocks.store.updates.find((u) => u.table === "line_conversation_flows");
+    expect(upd?.payload.state).toBe("human_takeover");
+  });
+
+  it("会話フロー opt-in OFF なら何もしない (false)", async () => {
+    mocks.shouldRunConversationFlow.mockReturnValue(false);
+    const handled = await handleFlowPostback({ tenantId: TENANT, lineUserId: LINE_USER, data: "flow:start_quote" });
+    expect(handled).toBe(false);
+    expect(mocks.store.inserts.find((i) => i.table === "line_conversation_flows")).toBeUndefined();
+  });
+});
