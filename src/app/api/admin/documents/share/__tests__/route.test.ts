@@ -26,6 +26,15 @@ function makeQueryBuilder(getRows: () => Row[]) {
       filtered = filtered.filter((r) => vals.includes(r[col]));
       return builder;
     },
+    order: (col: string, opts?: { ascending?: boolean }) => {
+      const dir = opts?.ascending === false ? -1 : 1;
+      filtered = [...filtered].sort((a, b) => (a[col] < b[col] ? -1 : a[col] > b[col] ? 1 : 0) * dir);
+      return builder;
+    },
+    limit: (n: number) => {
+      filtered = filtered.slice(0, n);
+      return builder;
+    },
     update: (patch: Row) => {
       pendingUpdate = patch;
       return builder;
@@ -70,7 +79,7 @@ vi.mock("@/lib/supabase/admin", () => ({
   createTenantScopedAdmin: (tenantId: string) => ({ admin: makeSupabase(tables), tenantId }),
 }));
 
-import { POST } from "@/app/api/admin/documents/share/route";
+import { GET, POST } from "@/app/api/admin/documents/share/route";
 
 function req(body: unknown) {
   return new Request("http://localhost/api/admin/documents/share", {
@@ -207,5 +216,54 @@ describe("POST /api/admin/documents/share — additional_document_ids", () => {
     expect(res.status).toBe(200);
     const lineArgs = mocks.sendDocumentLink.mock.calls[0][0];
     expect(lineArgs.pdfUrl).toBeUndefined();
+  });
+});
+
+describe("GET /api/admin/documents/share — 送付履歴", () => {
+  function getReq(qs: string) {
+    return new Request(`http://localhost/api/admin/documents/share?${qs}`) as any;
+  }
+
+  it("指定帳票の送付ログを新しい順で返す（テナント・帳票で絞り込み）", async () => {
+    tables.document_share_log = [
+      {
+        id: "old",
+        document_id: DOC_A,
+        tenant_id: TENANT_ID,
+        channel: "email",
+        recipient: "a@example.com",
+        status: "sent",
+        sent_at: "2026-08-01T00:00:00Z",
+      },
+      {
+        id: "new",
+        document_id: DOC_A,
+        tenant_id: TENANT_ID,
+        channel: "sms",
+        recipient: "090",
+        status: "failed",
+        sent_at: "2026-08-05T00:00:00Z",
+      },
+      {
+        id: "other-doc",
+        document_id: DOC_B,
+        tenant_id: TENANT_ID,
+        channel: "line",
+        recipient: "U999",
+        status: "sent",
+        sent_at: "2026-08-09T00:00:00Z",
+      },
+    ];
+
+    const res = (await GET(getReq(`document_id=${DOC_A}`))) as Response;
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    // DOC_A のログのみ、新しい順（new → old）。他帳票 (other-doc) は含まない。
+    expect(json.shares.map((s: { id: string }) => s.id)).toEqual(["new", "old"]);
+  });
+
+  it("document_id が UUID でなければ 400", async () => {
+    const res = (await GET(getReq("document_id=not-a-uuid"))) as Response;
+    expect(res.status).toBe(400);
   });
 });

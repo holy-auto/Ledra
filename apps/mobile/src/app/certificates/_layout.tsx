@@ -9,7 +9,8 @@ export default function CertificatesLayout() {
       }}
     >
       <Stack.Screen name="index" options={{ title: "証明書一覧" }} />
-      <Stack.Screen name="[id]" options={{ title: "証明書詳細" }} />
+      <Stack.Screen name="[id]/index" options={{ title: "証明書詳細" }} />
+      <Stack.Screen name="[id]/photos" options={{ title: "施工写真" }} />
       <Stack.Screen name="new" options={{ title: "証明書作成" }} />
     </Stack>
   );
