@@ -106,6 +106,53 @@ export async function mobileApi<T = unknown>(
   return response.json();
 }
 
+/**
+ * Mobile API の multipart 版。写真アップロード等 FormData を送る経路専用。
+ *
+ * mobileApi() は Content-Type を application/json 固定 + JSON.stringify するため
+ * ファイル送信に使えない。ここでは同じ Bearer トークン取得と 401 集約処理を再利用しつつ、
+ * **Content-Type は設定しない**（React Native が multipart boundary を自動付与する）。
+ */
+export async function mobileMultipart<T = unknown>(path: string, form: FormData): Promise<T> {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+
+  if (!session?.access_token) {
+    await handleUnauthorized();
+    throw new ApiError("認証が必要です", 401);
+  }
+
+  const url = `${API_BASE_URL}/api/mobile${path}`;
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      // Content-Type は付けない（boundary を RN に決めさせる）。
+      Authorization: `Bearer ${session.access_token}`,
+    },
+    body: form,
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.json().catch(() => ({}));
+    if (response.status === 401) {
+      await handleUnauthorized();
+    }
+    throw new ApiError(
+      errorBody.error || `API Error: ${response.status}`,
+      response.status,
+      errorBody
+    );
+  }
+
+  if (response.status === 204) {
+    return undefined as T;
+  }
+
+  return response.json();
+}
+
 export class ApiError extends Error {
   constructor(
     message: string,

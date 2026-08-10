@@ -94,6 +94,13 @@
         }
       ],
       [
+        "expo-media-library",
+        {
+          "savePhotosPermission": "Ledraは施工写真を端末に保存するために使用します",
+          "isAccessMediaLocationEnabled": false
+        }
+      ],
+      [
         "@stripe/stripe-terminal-react-native",
         {
           "bluetoothBackgroundMode": false,
