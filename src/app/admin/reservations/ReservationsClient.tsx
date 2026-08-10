@@ -9,13 +9,7 @@ import Button from "@/components/ui/Button";
 import EmptyStateGuide from "@/components/ui/EmptyStateGuide";
 import { estimateReservationMinutes, formatMinutes } from "@/lib/booths/duration";
 import { decomposeTasks } from "@/lib/booking/tasks";
-import {
-  menuCategoriesOf,
-  filterMenuItems,
-  resolveMenuCategory,
-  shouldRevealMenu,
-  MENU_ALL,
-} from "@/lib/reservations/menuFilter";
+import { menuCategoriesOf, filterMenuItems } from "@/lib/reservations/menuFilter";
 import dynamic from "next/dynamic";
 
 const CalendarView = dynamic(() => import("./CalendarView"), {
@@ -450,11 +444,9 @@ export default function ReservationsClient() {
   // 品目の絞り込み（大カテゴリ + 検索）。選択済み（formMenuItems）は絞り込みに関わらず保持される。
   const menuCategories = useMemo(() => menuCategoriesOf(menuItems), [menuItems]);
   const filteredMenuItems = useMemo(
-    () => filterMenuItems(menuItems, menuQuery, resolveMenuCategory(menuCategory)),
+    () => filterMenuItems(menuItems, menuQuery, menuCategory),
     [menuItems, menuQuery, menuCategory],
   );
-  // 品目が多いと開いた直後に全件が縦に並んで選びにくいため、検索語かカテゴリ選択があるまで一覧を隠す。
-  const revealMenu = shouldRevealMenu(menuItems.length, menuQuery, menuCategory);
 
   // 選択メニューの推定作業時間（品目マスタ estimated_minutes の合計）。無ければ null。
   const selectedEstMinutes = useMemo(() => {
@@ -1566,9 +1558,9 @@ export default function ReservationsClient() {
                           <div className="mt-2 flex flex-wrap gap-1.5">
                             <button
                               type="button"
-                              onClick={() => setMenuCategory(MENU_ALL)}
+                              onClick={() => setMenuCategory(null)}
                               className={`rounded-full border px-3 py-1 text-[11px] font-medium transition-colors ${
-                                menuCategory === MENU_ALL
+                                menuCategory === null
                                   ? "border-accent bg-accent-dim text-accent-text"
                                   : "border-border-default bg-surface text-secondary hover:border-border-strong"
                               }`}
@@ -1591,36 +1583,38 @@ export default function ReservationsClient() {
                             ))}
                           </div>
                         )}
-                        {revealMenu ? (
-                          <div className="mt-2 flex max-h-56 flex-wrap gap-2 overflow-y-auto">
-                            {filteredMenuItems.map((mi) => {
-                              const selected = formMenuItems.some((m) => m.menu_item_id === mi.id);
-                              return (
-                                <button
-                                  key={mi.id}
-                                  type="button"
-                                  onClick={() => toggleMenuItem(mi)}
-                                  className={`h-fit rounded-full border px-3 py-1.5 text-xs font-medium transition-all ${
-                                    selected
-                                      ? "border-accent bg-accent-dim text-accent-text shadow-sm"
-                                      : "border-border-default bg-surface text-secondary hover:border-border-strong"
-                                  }`}
-                                >
-                                  {selected ? "✓ " : ""}
-                                  {mi.name} ({formatJpy(mi.unit_price)})
-                                </button>
-                              );
-                            })}
-                            {filteredMenuItems.length === 0 && (
-                              <div className="py-2 text-xs text-muted">該当する品目がありません</div>
-                            )}
-                          </div>
-                        ) : (
-                          <div className="mt-2 rounded-xl border border-dashed border-border-default bg-inset px-4 py-6 text-center text-xs text-muted">
-                            品目名で検索{menuCategories.length > 1 ? "、またはカテゴリを選択" : ""}
-                            すると候補が表示されます
-                          </div>
-                        )}
+                        {/* POSレジ風に、常にカテゴリタブ＋グリッドで一覧表示（縦積みのピルをやめ、
+                            マス目状に並べて選びやすくする）。選択済みは枠色＋✓で示す。 */}
+                        <div className="mt-2 grid max-h-72 grid-cols-2 gap-2 overflow-y-auto sm:grid-cols-3">
+                          {filteredMenuItems.map((mi) => {
+                            const selected = formMenuItems.some((m) => m.menu_item_id === mi.id);
+                            return (
+                              <button
+                                key={mi.id}
+                                type="button"
+                                onClick={() => toggleMenuItem(mi)}
+                                className={`relative rounded-xl border p-2.5 text-left transition-all ${
+                                  selected
+                                    ? "border-accent bg-accent-dim text-accent-text shadow-sm"
+                                    : "border-border-default bg-surface text-secondary hover:border-border-strong"
+                                }`}
+                              >
+                                <div className="text-xs font-medium leading-tight">{mi.name}</div>
+                                <div className="mt-1 text-[11px] font-semibold opacity-80">
+                                  {formatJpy(mi.unit_price)}
+                                </div>
+                                {selected && (
+                                  <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-accent text-[10px] font-bold text-white">
+                                    ✓
+                                  </span>
+                                )}
+                              </button>
+                            );
+                          })}
+                          {filteredMenuItems.length === 0 && (
+                            <div className="col-span-full py-2 text-xs text-muted">該当する品目がありません</div>
+                          )}
+                        </div>
                         {formAmount > 0 && (
                           <div className="mt-3 flex items-center justify-between bg-accent-dim border border-accent/20 rounded-xl px-4 py-2.5">
                             <span className="text-xs text-accent-text font-medium">見積金額</span>
