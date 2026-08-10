@@ -25,6 +25,11 @@
 - 注意: カテゴリタブは大カテゴリが2つ以上あるときのみ表示。品目マスタが未分類のみの店舗では
   タブが出ず、グリッド＋検索での運用になる（グリッド化で縦長の羅列は解消済み）。
 
+## 2026-08-09 帳票の送付履歴を詳細画面で確認できるように（送付済み自動移行は既存を確認） (branch claude/invoice-auto-transition-history-t4ddz2)
+- 内容: (1) 「送付したら送付済みに自動移行」は既に共有API（`/api/admin/documents/share` POST）が draft→sent 確定＋封印まで行っており、コード確認のうえ再実装せず。(2) 不足していた「送付履歴の確認」を実装。同APIに `GET ?document_id=` を追加し、`document_share_log` をテナントスコープの service-role クライアントで新しい順に返す（ログは RLS ポリシー無し＝service-role のみ読み書きのため、tenant_id を明示して絞る）。帳票詳細画面に「送付履歴」セクションを追加し、日時・チャネル（メール/LINE/SMS）・宛先・送信済/失敗を一覧表示。共有直後に SWR mutate で即時反映。
+- 対象: 帳票詳細（`admin/documents/[id]`）。全帳票種別（請求書含む）。
+- 検証: 共有APIの単体テストに GET 2件（テナント絞り込み・UUID不正で400）を追加し既存5件と合わせ7件パス。tsc/eslint エラー0（既存の `any` 警告のみ）。DBスキーマ変更なし（既存 `document_share_log` を読むだけ）。
+
 ## 2026-08-09 品目選択を「検索/カテゴリで絞るまで隠す」段階表示に変更（予約作成・POS）
 
 - 内容: 予約作成モーダル（`/admin/reservations` step2）と会計（POS）ウォークイン
@@ -902,6 +907,28 @@
 - 対象: apps/mobile/src/lib/auth.ts。
 - 注記: モバイルは1ユーザー=1テナント前提のUX（select-store はテナント内の店舗選択のみ）。
   将来のマルチテナント対応は select-store 拡張が上限（ponytail コメントで明記）。
+
+## 2026-08-09 モバイル: 証明書写真を WEB 真正性パイプラインへ統一（カメラ限定・後からDL）
+
+- 内容: モバイルの証明書写真キャプチャを WEB と同一の真正性パイプライン
+  （/api/mobile/certificates/images/upload → uploadHandler：ハッシュ・GPS/EXIF除去・
+  TSA封印・撮影nonce消費・段階タグ・グレード判定）経由に統一。
+  - カメラ限定（ライブラリ選択を撤去＝強制起動）。撮影は端末に保存せずDBのみに保存。
+  - 段階セレクタ（施工前 intake_before / 作業中 in_progress / 施工後 after）を付与。
+  - 撮影セッションごとに capture-nonce（/api/mobile/certificates/[id]/capture-nonce）を取得し、
+    全写真を単一 multipart で送信（nonce はリクエストにつき1回消費のため必ずまとめて送る）。
+  - 証明書詳細で正規 certificate_images を storage_path から公開URL表示（段階/グレードチップ付き）。
+  - 「端末に保存」ボタンで後から明示DL（expo-media-library）。WEB管理は既存の署名/公開URLでDL可。
+- 対象: apps/mobile/src/app/certificates/[id]/photos.tsx（新規・カメラ限定キャプチャ）、
+  certificates/[id]/index.tsx（正規画像読取＋端末保存＋写真導線、[id].tsx から移動）、
+  apps/mobile/src/lib/api.ts（mobileMultipart）、apps/mobile/src/lib/photoStage.ts（新規）、
+  work/[id]/index.tsx（壊れた列/バケット参照を撤去し証明書束縛へ集約）、work/[id]/photos.tsx（削除）、
+  src/lib/certificateImages/stage.ts（段階定数の単一化＋テスト）、uploadHandler.ts（共有定数を参照）。
+  依存追加: expo-media-library ~55.0.19 / expo-file-system ~55.0.24（app.json に保存権限プラグイン）。
+- 注記: バックエンドの真正性エンドポイントは既存で新設なし（未使用だったものを結線）。
+  実DBで certificates.public_id は generate_public_id() 自動採番、certificate_images に
+  image_url/reservation_id/caption 列は無く work-photos バケットも不在＝旧モバイル写真フローは
+  現行スキーマに対して壊れていたため撤去。端末アテステーションは別フェーズ（グレードは basic 超まで）。
 
 ## 2026-08-09 モバイル: 入力進捗ステッパー（Steps）追加
 

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { View, StyleSheet, ScrollView, RefreshControl, Image } from "react-native";
+import { View, StyleSheet, ScrollView, RefreshControl, Image, Alert } from "react-native";
 import {
   Text,
   Card,
@@ -14,7 +14,6 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { supabase } from "@/lib/supabase";
 import { useAuthStore } from "@/stores/authStore";
-import { mobileApi } from "@/lib/api";
 
 interface WorkOrder {
   id: string;
@@ -41,8 +40,8 @@ interface WorkOrder {
 
 interface WorkPhoto {
   id: string;
-  image_url: string;
-  caption: string | null;
+  storage_path: string;
+  thumbnail_path: string | null;
 }
 
 const STATUS_LABELS: Record<string, string> = {
@@ -87,19 +86,54 @@ export default function WorkDetailScreen() {
     enabled: !!id,
   });
 
+  // 施工写真は証明書に束縛される（真正性パイプライン）。予約に紐づく証明書を解決し、
+  // その certificate_id で正規テーブル (certificate_images) を読む。
+  const { data: certId } = useQuery({
+    queryKey: ["work-certificate", id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("certificates")
+        .select("id")
+        .eq("reservation_id", id)
+        .eq("tenant_id", user!.tenantId)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (error) throw error;
+      return (data?.id as string | undefined) ?? null;
+    },
+    enabled: !!id && !!user?.tenantId,
+  });
+
   const { data: photos = [] } = useQuery<WorkPhoto[]>({
-    queryKey: ["work-photos", id],
+    queryKey: ["work-photos", certId],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("certificate_images")
-        .select("id, image_url, caption")
-        .eq("reservation_id", id)
-        .order("created_at", { ascending: false });
+        .select("id, storage_path, thumbnail_path")
+        .eq("certificate_id", certId)
+        .order("sort_order", { ascending: true });
       if (error) throw error;
       return (data ?? []) as WorkPhoto[];
     },
-    enabled: !!id,
+    enabled: !!certId,
   });
+
+  // 施工写真は証明書必須。無ければ予約情報を引き継いで証明書作成へ誘導する。
+  function goToPhotos() {
+    if (certId) {
+      router.push(`/certificates/${certId}/photos`);
+    } else {
+      Alert.alert(
+        "証明書が必要です",
+        "施工写真は証明書に紐づけて保存します。先に証明書を作成してください。",
+        [
+          { text: "キャンセル", style: "cancel" },
+          { text: "証明書を作成", onPress: () => router.push(`/certificates/new?reservationId=${id}`) },
+        ]
+      );
+    }
+  }
 
   const updateMutation = useMutation({
     mutationFn: async () => {
@@ -122,7 +156,8 @@ export default function WorkDetailScreen() {
   async function onRefresh() {
     setRefreshing(true);
     await queryClient.invalidateQueries({ queryKey: ["work-order", id] });
-    await queryClient.invalidateQueries({ queryKey: ["work-photos", id] });
+    await queryClient.invalidateQueries({ queryKey: ["work-certificate", id] });
+    await queryClient.invalidateQueries({ queryKey: ["work-photos", certId] });
     setRefreshing(false);
   }
 
@@ -194,7 +229,7 @@ export default function WorkDetailScreen() {
                 mode="contained-tonal"
                 icon="camera"
                 compact
-                onPress={() => router.push(`/work/${id}/photos`)}
+                onPress={goToPhotos}
               >
                 写真撮影
               </Button>
@@ -204,7 +239,11 @@ export default function WorkDetailScreen() {
                 {photos.slice(0, 6).map((photo) => (
                   <Image
                     key={photo.id}
-                    source={{ uri: photo.image_url }}
+                    source={{
+                      uri: supabase.storage
+                        .from("assets")
+                        .getPublicUrl(photo.thumbnail_path ?? photo.storage_path).data.publicUrl,
+                    }}
                     style={styles.photoThumb}
                   />
                 ))}
