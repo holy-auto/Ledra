@@ -45,7 +45,6 @@ import {
   type ConversationFlowRow,
 } from "@/lib/line/flow/flowStore";
 import { interpretReply, parseFlowPostback } from "@/lib/line/flow/interpret";
-import { isTerminal } from "@/lib/line/flow/states";
 import { fetchFlowScheduleCandidates, type FlowScheduleCandidate } from "@/lib/line/flow/scheduleCandidates";
 import { fetchAddonRecommendations } from "@/lib/line/flow/addonCandidates";
 import type { RecommendedOption } from "@/lib/ai/optionRecommend";
@@ -384,7 +383,21 @@ async function handleFollowupStartQuote(
 
   // 進行中フローがあれば二重開始しない (詳細待ち・日程調整中などを上書きしない)。
   const existing = await getActiveFlow(admin, tenantId, { customerId, lineUserId });
-  if (existing) return false;
+  if (existing) {
+    // 既に見積り詳細待ちなら、無反応を避けて詳細依頼を再送する (履歴に残った古いボタンの
+    // 再タップ対策)。それ以外の進行中状態はスタッフ対応に委ねる (false → 受信箱記録+通知)。
+    if (existing.state === "awaiting_quote_detail") {
+      await recordInboundLineMessage({
+        tenantId,
+        lineUserId,
+        body: "「お見積りをお願いしたい」を選択",
+        rawEvent: { flow_postback: data },
+      });
+      await sendCustomerLineText({ tenantId, customerId, lineUserId, body: buildQuoteDetailAsk() });
+      return true;
+    }
+    return false;
+  }
 
   const flow = await createFlow(admin, {
     tenantId,
@@ -438,6 +451,11 @@ async function handleFollowupConsult(
 ): Promise<boolean> {
   if (!(await tenantEligibleForAiAutomation(admin, tenantId))) return false;
 
+  // 冪等性: 既に human_takeover (相談受付済み) なら二重通知・二重返信しない
+  // (LINE の postback 再配信や、履歴に残ったボタンの再タップに対して安全にする)。
+  const existing = await getActiveFlow(admin, tenantId, { customerId, lineUserId });
+  if (existing?.state === "human_takeover") return true;
+
   await recordInboundLineMessage({
     tenantId,
     lineUserId,
@@ -445,13 +463,22 @@ async function handleFollowupConsult(
     rawEvent: { flow_postback: data },
   });
 
-  // 進行中フロー (終端でないもの) があれば自動進行を止める。
-  const existing = await getActiveFlow(admin, tenantId, { customerId, lineUserId });
-  if (existing && !isTerminal(existing.state)) {
+  // 進行中フローがあれば human_takeover へ落とし、無ければ durable マーカーを新規作成する。
+  // これにより以降の顧客向け自動返信 (inboundAuto) が human_takeover を尊重して止まり、
+  // 「スタッフに相談」が実際にボットを黙らせる (マーカーは 72h で失効し自動応答は自然復帰)。
+  if (existing) {
     await advanceFlow(admin, existing, {
       toState: "human_takeover",
       contextPatch: { consult_requested: true },
       expectState: existing.state,
+    });
+  } else {
+    await createFlow(admin, {
+      tenantId,
+      customerId,
+      lineUserId,
+      state: "human_takeover",
+      context: { consult_requested: true, source: "followup_button" },
     });
   }
 

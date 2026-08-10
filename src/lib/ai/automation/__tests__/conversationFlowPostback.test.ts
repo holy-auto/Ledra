@@ -678,7 +678,7 @@ describe("handleFlowPostback — 誘導ボタン (FAQ返信の末尾)", () => {
     expect(mocks.recordInboundLineMessage).toHaveBeenCalled();
   });
 
-  it("flow:start_quote は進行中フローがあれば二重開始せず false", async () => {
+  it("flow:start_quote は見積り詳細待ちの進行中フローには詳細依頼を再送する (無反応にしない)", async () => {
     mocks.store.tables.line_conversation_flows = [
       {
         id: "flow-x",
@@ -691,20 +691,42 @@ describe("handleFlowPostback — 誘導ボタン (FAQ返信の末尾)", () => {
       },
     ];
     const handled = await handleFlowPostback({ tenantId: TENANT, lineUserId: LINE_USER, data: "flow:start_quote" });
+    expect(handled).toBe(true);
+    // 二重開始はしない (新規フローを作らない) が、詳細依頼は再送する。
+    expect(mocks.store.inserts.find((i) => i.table === "line_conversation_flows")).toBeUndefined();
+    expect(mocks.sendCustomerLineText).toHaveBeenCalledTimes(1);
+  });
+
+  it("flow:start_quote は詳細待ち以外の進行中フローでは false (スタッフ対応に委ねる)", async () => {
+    mocks.store.tables.line_conversation_flows = [
+      {
+        id: "flow-x2",
+        tenant_id: TENANT,
+        customer_id: null,
+        line_user_id: LINE_USER,
+        state: "awaiting_quote_ok",
+        quote_doc_id: DOC,
+        context_json: {},
+      },
+    ];
+    const handled = await handleFlowPostback({ tenantId: TENANT, lineUserId: LINE_USER, data: "flow:start_quote" });
     expect(handled).toBe(false);
     expect(mocks.store.inserts.find((i) => i.table === "line_conversation_flows")).toBeUndefined();
     expect(mocks.sendCustomerLineText).not.toHaveBeenCalled();
   });
 
-  it("flow:consult はスタッフに通知し顧客へ相談受付を返す", async () => {
+  it("flow:consult はスタッフ通知＋顧客案内し、進行中フロー無しなら human_takeover マーカーを作る", async () => {
     mocks.store.tables.line_conversation_flows = [];
     const handled = await handleFlowPostback({ tenantId: TENANT, lineUserId: LINE_USER, data: "flow:consult" });
     expect(handled).toBe(true);
     expect(mocks.store.inserts.find((i) => i.table === "notifications")).toBeDefined();
     expect(mocks.sendCustomerLineText).toHaveBeenCalledTimes(1);
+    // 以降の自動返信を止める durable マーカーを新規作成する。
+    const flowInsert = mocks.store.inserts.find((i) => i.table === "line_conversation_flows");
+    expect(flowInsert?.payload.state).toBe("human_takeover");
   });
 
-  it("flow:consult は進行中フローを human_takeover に落とす", async () => {
+  it("flow:consult は進行中フローを human_takeover に落とす (新規作成はしない)", async () => {
     mocks.store.tables.line_conversation_flows = [
       {
         id: "flow-y",
@@ -720,6 +742,25 @@ describe("handleFlowPostback — 誘導ボタン (FAQ返信の末尾)", () => {
     expect(handled).toBe(true);
     const upd = mocks.store.updates.find((u) => u.table === "line_conversation_flows");
     expect(upd?.payload.state).toBe("human_takeover");
+    expect(mocks.store.inserts.find((i) => i.table === "line_conversation_flows")).toBeUndefined();
+  });
+
+  it("flow:consult は既に human_takeover なら冪等に no-op (二重通知しない)", async () => {
+    mocks.store.tables.line_conversation_flows = [
+      {
+        id: "flow-z",
+        tenant_id: TENANT,
+        customer_id: null,
+        line_user_id: LINE_USER,
+        state: "human_takeover",
+        quote_doc_id: null,
+        context_json: {},
+      },
+    ];
+    const handled = await handleFlowPostback({ tenantId: TENANT, lineUserId: LINE_USER, data: "flow:consult" });
+    expect(handled).toBe(true);
+    expect(mocks.store.inserts.find((i) => i.table === "notifications")).toBeUndefined();
+    expect(mocks.sendCustomerLineText).not.toHaveBeenCalled();
   });
 
   it("会話フロー opt-in OFF なら何もしない (false)", async () => {

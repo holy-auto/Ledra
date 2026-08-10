@@ -17,6 +17,7 @@ import { canUseFeature, normalizePlanTier } from "@/lib/billing/planFeatures";
 import { extractInboundReservation } from "@/lib/ai/inboundReservationExtract";
 import { deterministicServiceVehicle } from "@/lib/ai/deterministicInboundParse";
 import { fetchRecentConversation } from "@/lib/line/messageStore";
+import { getActiveFlow } from "@/lib/line/flow/flowStore";
 import { fastModelForPlanTier } from "@/lib/ai/client";
 import { startAiRouteUsage } from "@/lib/ai/recordRouteUsage";
 import { logger } from "@/lib/logger";
@@ -30,6 +31,7 @@ import {
   shouldAutoExtractInbound,
   shouldAutoReplyKnowledge,
   shouldAutoReplyRoughEstimate,
+  shouldRunConversationFlow,
   decideInboundCommit,
 } from "./orchestrator";
 
@@ -280,6 +282,30 @@ export async function maybeAutoProcessInboundMessage(params: MaybeAutoProcessPar
       return;
     }
 
+    // 会話フロー opt-in 済みなら、進行中フローの状態を一度だけ見て顧客向け自動返信を制御する:
+    //   - human_takeover (スタッフ対応中 / 「スタッフに相談したい」ボタンが残した durable
+    //     マーカー) … 顧客向け自動返信をすべて止める (「対応済み」と誤認させない)。
+    //     マーカーは 72h で失効し (getActiveFlow の expires_at ゲート)、自動応答は自然に復帰する。
+    //   - その他の進行中フロー (見積り詳細待ち等) … ナレッジ返信は行うが誘導ボタンは付けない
+    //     (start_quote は進行中フローがあると二重開始で無反応になるため)。
+    //   - フロー無し … 誘導ボタンを添付する。
+    let attachFollowupButtons = false;
+    if (shouldRunConversationFlow(settings)) {
+      const activeFlow = await getActiveFlow(admin, tenantId, {
+        customerId: resolvedCustomerId,
+        lineUserId: params.lineUserId,
+      });
+      if (activeFlow?.state === "human_takeover") {
+        usage.record({
+          tenantId,
+          outcome: "ok",
+          meta: { auto: true, suppressed: "human_takeover", channel: params.channel ?? "line" },
+        });
+        return;
+      }
+      attachFollowupButtons = !activeFlow;
+    }
+
     // 一般質問 → 店舗/共通ナレッジで LINE 自動返信 (opt-in / 内部で fail-soft)。
     // 概算見積りより**先に**試す: 「駐車場の料金は？」のような価格キーワードを含む
     // 一般質問を、見積りの「不足情報聞き返し」が誤って先取りしないため。ナレッジで
@@ -298,6 +324,7 @@ export async function maybeAutoProcessInboundMessage(params: MaybeAutoProcessPar
       settings,
       tenant,
       history,
+      attachButtons: attachFollowupButtons,
     });
 
     // 価格問い合わせ → 概算見積りを LINE で完全自動返信 (opt-in / 未紐付け客も対象 /

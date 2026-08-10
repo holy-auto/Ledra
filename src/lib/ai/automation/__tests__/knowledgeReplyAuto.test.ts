@@ -4,7 +4,6 @@ import { emptyStore, makeFakeAdmin, type FakeStore } from "./fakeSupabaseAdmin";
 const mocks = vi.hoisted(() => ({
   loadAiAutomationSettings: vi.fn(),
   shouldAutoReplyKnowledge: vi.fn(),
-  shouldRunConversationFlow: vi.fn(),
   generateKnowledgeReply: vi.fn(),
   fetchRecentConversation: vi.fn(),
   sendCustomerLineText: vi.fn(),
@@ -18,10 +17,7 @@ vi.mock("@/lib/supabase/admin", () => ({
   createServiceRoleAdmin: () => makeFakeAdmin(mocks.store),
 }));
 vi.mock("../policy", () => ({ loadAiAutomationSettings: mocks.loadAiAutomationSettings }));
-vi.mock("../orchestrator", () => ({
-  shouldAutoReplyKnowledge: mocks.shouldAutoReplyKnowledge,
-  shouldRunConversationFlow: mocks.shouldRunConversationFlow,
-}));
+vi.mock("../orchestrator", () => ({ shouldAutoReplyKnowledge: mocks.shouldAutoReplyKnowledge }));
 vi.mock("@/lib/ai/knowledgeReply", () => ({
   generateKnowledgeReply: mocks.generateKnowledgeReply,
   KNOWLEDGE_LIMIT: 50,
@@ -76,8 +72,6 @@ beforeEach(() => {
   });
   mocks.sendCustomerLineText.mockResolvedValue(true);
   mocks.sendCustomerLineButtons.mockResolvedValue(true);
-  // 既定は会話フロー opt-in OFF → 従来どおりテキスト送信 (既存テストの前提を維持)。
-  mocks.shouldRunConversationFlow.mockReturnValue(false);
 });
 
 describe("maybeAutoReplyKnowledge", () => {
@@ -193,9 +187,8 @@ describe("maybeAutoReplyKnowledge", () => {
     expect(replied).toBe(true);
   });
 
-  it("attaches follow-up buttons when conversation-flow automation is opted in", async () => {
-    mocks.shouldRunConversationFlow.mockReturnValue(true);
-    const replied = await maybeAutoReplyKnowledge(baseParams());
+  it("attaches follow-up buttons when the caller requests them (attachButtons=true)", async () => {
+    const replied = await maybeAutoReplyKnowledge({ ...baseParams(), attachButtons: true });
 
     expect(replied).toBe(true);
     // ボタン付き送信を使い、プレーンテキスト送信は使わない。
@@ -206,8 +199,7 @@ describe("maybeAutoReplyKnowledge", () => {
     expect(arg.buttons.map((b: { data: string }) => b.data)).toEqual(["flow:start_quote", "flow:consult"]);
   });
 
-  it("falls back to plain text when conversation-flow automation is off", async () => {
-    mocks.shouldRunConversationFlow.mockReturnValue(false);
+  it("falls back to plain text when buttons are not requested (default)", async () => {
     await maybeAutoReplyKnowledge(baseParams());
     expect(mocks.sendCustomerLineText).toHaveBeenCalledTimes(1);
     expect(mocks.sendCustomerLineButtons).not.toHaveBeenCalled();

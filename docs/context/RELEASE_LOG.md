@@ -27,9 +27,18 @@
   - ボタン定義は `buildFollowupButtons()`（`src/lib/line/flow/messages.ts`、単一情報源）。
   - **会話フロー opt-in（`shouldRunConversationFlow`）が有効なテナントのみ**ボタン化。
     OFF のテナントは従来どおりテキスト送信で挙動不変（blast radius 最小）。
+- 「スタッフに相談したい」を実効化（自動コードレビュー指摘に対応）: `flow:consult` は
+  進行中フローを `human_takeover` に落とすか、無ければ `human_takeover` の durable マーカーを
+  新規作成する。`inboundAuto` は返信前に一度だけフロー状態を見て、`human_takeover` の間は
+  顧客向け自動返信（ナレッジ・概算・フロー開始）を**すべて止める**（マーカーは 72h で失効し
+  自動応答は自然復帰）。あわせて (a) consult は既に `human_takeover` なら冪等に no-op（二重
+  通知・二重返信を防止）、(b) 進行中フローがある間は誘導ボタンを付けない（`start_quote` が
+  二重開始で無反応になるのを防ぐ。ボタン添付可否は `inboundAuto` が判断し `attachButtons` で
+  ナレッジ返信へ渡す）、(c) 見積り詳細待ち中に古い `start_quote` を再タップされたら詳細依頼を
+  再送（無反応にしない）。
 - 対象: LINE 受信の AI 自動応答（全業種、Standard プラン以上・opt-in）。
-- 検証: 単体テスト追加（`conversationFlowPostback.test.ts` +5件、`knowledgeReplyAuto.test.ts`
-  +2件、計47件パス）、tsc/eslint エラー0。
+- 検証: 単体テスト追加（`conversationFlowPostback.test.ts`・`knowledgeReplyAuto.test.ts`・
+  `inboundAutoReplyGate.test.ts`）。automation+line 全体で 198 件パス、tsc/eslint エラー0。
 - 補足: 「FAQで答えられる内容そのものを増やす」のは `tenant_line_knowledge` への登録
   （データ運用）であり本PRの範囲外。本PRは「登録済みFAQに答えた後の誘導UX」を担当。
   概算見積り返信（`quoteReplyAuto`）へのボタン適用は、現行文面「ご来店時に承ります」と
