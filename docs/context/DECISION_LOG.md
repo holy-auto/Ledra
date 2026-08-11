@@ -23,6 +23,18 @@
 9. 公開区分: 公開可／要確認／非公開
 ```
 
+## 2026-08-11 C2PA Conformance Program は Generator Product / Backend クラスで Max Assurance Level 1 を先行申請する方針に決定
+
+1. 日付: 2026-08-11
+2. 起きたこと: conformance-public docs/v0.2（Conformance Program / GP Security Requirements / GPSA Template）を精読し、Ledra の C2PA 署名実装（`c2paSigner.ts` の LocalSigner、鍵は env PEM）と CI/ホスティングを突合。申請計画とギャップ分析を `docs/c2pa-conformance-application.md` に作成。
+3. 以前の考え: C2PA は「B1 本番署名を env 有効化すれば動く」段階までは認識していたが、公式 Conformance Program への申請要件（GPSA・実装クラス・Assurance Level）は未整理だった。
+4. 違和感・問題: 本番証明書は C2PA から直接ではなく「適合認定→認定CAから取得」の2段構え。どの Assurance Level を狙うかで必要な実装（KMS・端末アテステーション）が大きく変わるのに、その分岐が未確定だった。
+5. 決めたこと: 役割=Generator Product、実装クラス=Backend、初回目標=Max Assurance Level 1。AL1 のクリティカルパスは (a) 署名鍵の鍵管理サービス移行＋ローテーション手順、(b) CA選定と自動エンロール認証、(c) 90日修正ポリシー/OWASPカバレッジの運用文書化の3点。
+6. 捨てた選択肢: ①AL2 まで作り込んでから申請（KMS＋ハードウェアRoTアテスト＋Play Integrity/App Attest が必要でリードタイム過大）。②Validator Product も同時申請（別契約・別Intake・検証サンプルでスコープ拡大、GP適合を優先）。
+7. 判断理由: AL1 の Level1 要件は既存資産（Vercel/Supabase の TLS1.3・IAM/RLS、CodeQL/Codacy/dependabot）で大部分カバー済みで、残ギャップが O.1/O.2 に集約されるため最短で CPL 掲載に到達できる。AL2 は掲載後にインスタンス単位で引き上げ可能。
+8. まだ答えが出ていないこと: 申告 Spec バージョン（2.2/2.4）、CA の選定と自動エンロール認証方式、鍵管理方式の具体、対応メディアタイプ確定、登記情報の DN 各値（OPEN_QUESTIONS 2026-08-11）。
+9. 公開区分: 要確認（申請方針は公開可だが、登記情報・鍵管理の詳細・CA交渉は非公開/要確認）。
+
 ## 2026-08-10 品目選択を「絞るまで隠す段階表示」から「純POSレジ型（常時グリッド表示）」へ差し戻し（前日の#903を代表要望で撤回）
 1. 日付: 2026-08-10
 2. 起きたこと: 前日（2026-08-09, #903）に予約作成・POSの品目選択を「検索/カテゴリで絞るまで一覧を隠す段階表示」に変えたところ、代表から「隠さず、常にカテゴリタブ＋品目グリッドを出す純POSレジ型にしてほしい」と要望があり、作り替えてマージ（#907）。
