@@ -148,5 +148,48 @@ VP は別契約・別 Intake・検証結果サンプル提出が必要でスコ�
 
 > 次アクション候補: (a) CA 候補の調査、(b) 署名鍵の KMS 移行 PoC、
 > (c) 90日修正ポリシー & OWASP カバレッジの運用文書化。いずれも AL1 のクリティカルパス。
-</content>
-</invoke>
+
+## 6. AL1→AL2 移行パスと「AL2 フォワードな AL1」方針
+
+### 6.1 移行は可能（ただし新レコード扱い）
+
+出典: Conformance Program §Definition of Material Change。
+
+- AL は CPL レコードの属性であり、Max Assurance Level を 1→2 に上げることは Security
+  Requirements への適合が変わる＝**material change** に該当する。よって既存レコードの
+  「格上げ」ではなく、**AL2 要件で再評価を受けて CPL 上に新しい record id を作る再申請**になる。
+- **費用は無料**（申請料・掲載料ゼロ）。AL1 で始めて後から AL2 を取り直すことにペナルティはない。
+- AL2 適合になれば **AL1・AL2 両方の証明書を発行可能**（Max は上限。実際の証明書レベルは
+  登録時の Dynamic Evidence 次第）。AL2 に上がれば下位互換で AL1 もカバー。
+- 推定: 移行中は旧 AL1 レコードを残したまま AL2 レコードを並存させられる（本文が新 record id を
+  要求するため。実務上の並存の細部は未確認）。
+
+### 6.2 本当のコストは手続きではなく再設計
+
+AL2 の実コストはアーキテクチャの作り替え（§0・§2 の AL2 追加要件）。具体的には
+(1) 署名鍵の **KMS 化**、(2) 署名処理の **Confidential Computing 環境**（AWS Nitro Enclave /
+GCP Confidential VM 等）への移設＝ハードウェア RoT アテストの取得、(3) **モバイル端末
+アテステーション**（App Attest / Play Integrity）。
+
+- 推定: **Vercel サーバーレスは実行インスタンスの HW アテストを出せない** → O.1/O.3/O.4 の
+  Dynamic Evidence（HW RoT アテスト）と O.6 L2（HIDS・ネットワークセグメンテーション）は
+  Vercel のままでは満たせず、制御可能なクラウドへの移設が要る。未検証（要・実機確認）。
+- **仮定**: 「calling client」の解釈（§2.2.3 / 下記 A・B）が AL2 可否そのものを左右する。
+  誤って解釈 A で Web 経由も AL2 必須と判断されると、Web パスは AL2 不可のまま。
+  - 解釈A（呼び出し元＝エンドユーザー端末）: モバイルは App Attest/Play Integrity で可、
+    **Web ブラウザは HW アテスト不可**。
+  - 解釈B（呼び出し元＝内部サーバー→署名エンクレーブ）: Nitro Enclave アテストで端末非依存に
+    Backend 全体で AL2 を主張しうる。GPSA テンプレ §2.2.3 が例に Nitro を挙げている。
+
+### 6.3 決定した方針: 「AL2 フォワードな AL1」
+
+**AL1 で申請・掲載しつつ、署名鍵だけは最初からクラウド KMS に置く**（env 平文 PEM をやめる）。
+
+- KMS 化は AL1 の O.2「独立した鍵管理」を満たしつつ、そのまま AL2 の土台になる（最も効く一手）。
+- 署名処理を独立モジュールに隔離し、後で Nitro Enclave 等へ移設しやすくしておく。
+- モバイル撮影に端末アテステーションのフックを見込んでおく。
+- 逆に AL1 を env PEM のまま最短で通すと、AL2 移行時に鍵基盤ごと作り直しになり手戻りが大きい。
+
+> 追加の次アクション: AL1 掲載後・AL2 着手前に、Conformance Program へ「純 Backend・
+> エンドユーザーはアップロードのみの TOE で calling client / Edge subsystem をどう扱うか」を
+> 確認する（§6.2 の A/B 分岐＝AL2 可否の決定点）。

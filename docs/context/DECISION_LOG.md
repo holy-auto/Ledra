@@ -23,6 +23,18 @@
 9. 公開区分: 公開可／要確認／非公開
 ```
 
+## 2026-08-11 C2PA AL2 移行は「新レコード再申請」であり、AL1 を "AL2 フォワード"（鍵は最初から KMS）で作る方針に決定
+
+1. 日付: 2026-08-11
+2. 起きたこと: AL1/AL2 の差分と Ledra での AL2 可否・後日移行可否を精査（Security Requirements §O.1-O.6、Conformance Program §Material Change）。結論を `docs/c2pa-conformance-application.md` §6 に追記。
+3. 以前の考え: AL1 で通してから AL2 は「レコードを格上げすればよい」と漠然と想定。
+4. 違和感・問題: 実際は Max Assurance Level 変更＝material change で、CPL 上は新 record id の再申請になる。かつ AL2 の実コストは手続きでなく再設計（KMS＋Confidential Computing＋端末アテステーション）。env 平文 PEM のまま AL1 を通すと AL2 移行時に鍵基盤ごと作り直しになる。
+5. 決めたこと: 「AL2 フォワードな AL1」。AL1 申請・掲載を進めつつ、署名鍵だけは最初からクラウド KMS に置き（env PEM を廃止）、署名処理を移設しやすい独立モジュールに隔離する。
+6. 捨てた選択肢: ①env PEM のまま AL1 最短通過（AL2 移行で手戻り大）。②いきなり AL2（Vercel→Confidential Computing 移設・端末アテステーションでリードタイム過大）。
+7. 判断理由: KMS 化は AL1 の O.2「独立鍵管理」を満たしつつ AL2 の土台にもなる二重効果。掲載を止めずに将来コストを最小化できる。
+8. まだ答えが出ていないこと: 「calling client / Edge subsystem」の解釈（解釈A=端末アテスト必須で Web パス AL2 不可 / 解釈B=内部エンクレーブアテストで端末非依存）。Vercel サーバーレスが HW RoT アテスト・HIDS・セグメンテーションを満たせるか（推定=不可、未検証）。AL2 着手前に Conformance Program へ要確認。
+9. 公開区分: 要確認（方針は公開可、鍵管理・インフラ詳細・CA 交渉は非公開/要確認）。
+
 ## 2026-08-11 C2PA Conformance Program は Generator Product / Backend クラスで Max Assurance Level 1 を先行申請する方針に決定
 
 1. 日付: 2026-08-11
