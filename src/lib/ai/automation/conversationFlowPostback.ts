@@ -53,7 +53,6 @@ import { maybeAutoCategorizeReservationOnIntake } from "./accountingAuto";
 import { maybeAutoProposeWorkflowForReservation } from "./workflowAuto";
 import {
   buildQuoteApprovalAsk,
-  buildQuoteDetailAsk,
   buildQuoteDetailAskWithService,
   buildScheduleHandoff,
   buildQuoteConsultHandoff,
@@ -405,26 +404,30 @@ async function handleFollowupStartQuote(
 ): Promise<boolean> {
   if (!(await tenantEligibleForAiAutomation(admin, tenantId))) return false;
 
-  // 進行中フローがあれば二重開始しない (詳細待ち・日程調整中などを上書きしない)。
   const existing = await getActiveFlow(admin, tenantId, { customerId, lineUserId });
+
+  // 未紐付けの LINE ユーザーは見積りフローを完了できない (正式見積りの下書き作成に顧客
+  // レコードが必要で、maybeAdvanceQuoteFlowOnDetail は顧客不在なら false を返す)。
+  // 詰まるフローを作らず、スタッフへ引き継ぐ (顧客登録は担当が行う)。
+  if (!customerId) {
+    return followupStaffHandoff(admin, tenantId, lineUserId, null, existing, data, {
+      recordBody: "「お見積りをお願いしたい」を選択",
+      staffTitle: "お見積りのご希望（未登録のお客様）— ご対応をお願いします",
+      staffBody: "未登録のお客様がLINEで見積りをご希望です。ご登録のうえお見積りをご案内ください。",
+    });
+  }
+
+  // 進行中フローがあれば二重開始しない。詳細待ちなら無反応を避けて依頼を再送する
+  // (履歴に残った古いボタンの再タップ対策)。それ以外の進行中状態はスタッフ対応に委ねる。
   if (existing) {
-    // 既に見積り詳細待ちなら、無反応を避けて詳細依頼を再送する (履歴に残った古いボタンの
-    // 再タップ対策)。それ以外の進行中状態はスタッフ対応に委ねる (false → 受信箱記録+通知)。
     if (existing.state === "awaiting_quote_detail") {
-      // 元問い合わせに施工内容があれば車両のみ、無ければ施工内容+車両をまとめて聞く。
-      const hasService = !!(existing.context_json as { service?: string | null }).service?.trim();
       await recordInboundLineMessage({
         tenantId,
         lineUserId,
         body: "「お見積りをお願いしたい」を選択",
         rawEvent: { flow_postback: data },
       });
-      await sendCustomerLineText({
-        tenantId,
-        customerId,
-        lineUserId,
-        body: hasService ? buildQuoteDetailAsk() : buildQuoteDetailAskWithService(),
-      });
+      await sendCustomerLineText({ tenantId, customerId, lineUserId, body: buildQuoteDetailAskWithService() });
       return true;
     }
     return false;
@@ -448,7 +451,7 @@ async function handleFollowupStartQuote(
   });
 
   // FAQ後のボタン開始は施工内容が未知。車両だけ聞くと service 欠落で見積りに進めないため、
-  // 施工内容+車両をまとめて依頼する (maybeAdvanceQuoteFlowOnDetail が両方を要求する)。
+  // 施工内容+車両をテキストでまとめて依頼する (maybeAdvanceQuoteFlowOnDetail が両方を要求)。
   const delivered = await sendCustomerLineText({
     tenantId,
     customerId,
@@ -471,9 +474,8 @@ async function handleFollowupStartQuote(
 
 /**
  * FAQ/ナレッジ返信に添えた「スタッフに相談したい」ボタン (flow:consult) の処理。
- * スタッフへ通知し、進行中フローがあれば human_takeover に落として自動進行を止める
- * (以降の自動返信が「対応済み」と誤認させない)。顧客へは相談受付の案内を返す。
- * 呼び出し元 (handleFlowPostback) の catch で保護されるため投げてよい。
+ * スタッフへ通知し、顧客へ相談受付の案内を返す。呼び出し元 (handleFlowPostback) の
+ * catch で保護されるため投げてよい。
  */
 async function handleFollowupConsult(
   admin: Admin,
@@ -489,20 +491,38 @@ async function handleFollowupConsult(
   const existing = await getActiveFlow(admin, tenantId, { customerId, lineUserId });
   if (existing?.state === "human_takeover") return true;
 
-  await recordInboundLineMessage({
-    tenantId,
-    lineUserId,
-    body: "「スタッフに相談したい」を選択",
-    rawEvent: { flow_postback: data },
+  return followupStaffHandoff(admin, tenantId, lineUserId, customerId, existing, data, {
+    recordBody: "「スタッフに相談したい」を選択",
+    staffTitle: "お客様が相談をご希望です — ご対応をお願いします",
+    staffBody: "お客様がLINEで「スタッフに相談したい」を選択されました。トークでご対応ください。",
   });
+}
 
-  // 進行中フローがあれば human_takeover へ落とし、無ければ durable マーカーを新規作成する。
-  // これにより以降の顧客向け自動返信 (inboundAuto) が human_takeover を尊重して止まり、
-  // 「スタッフに相談」が実際にボットを黙らせる (マーカーは 72h で失効し自動応答は自然復帰)。
-  if (existing) {
-    // advanceFlow は楽観ロック (expectState) 不一致や DB 失敗で false を返す。取りこぼすと
-    // 「担当が対応」と伝えたのにフローが自動状態のまま残るため、失敗時は最新状態を読み直して
-    // 1 回だけ再試行する (競合相手が human_takeover でなければ確実に落とす)。
+/**
+ * 誘導ボタン (相談 / 未登録の見積り希望) からスタッフへ引き継ぐ共通処理。
+ * 通知とお客様への案内を行い、**進行中フローがあるときだけ** human_takeover へ落とす
+ * (検証+1回再試行)。
+ *
+ * フローが無い場合は human_takeover 行を作らない — line_conversation_flows の一意
+ * インデックスは human_takeover を「進行中」として扱い、失効行を expired にするスイープが
+ * 無いため、単発の human_takeover マーカーを作ると 72h 後にその顧客の createFlow が一意
+ * 制約で永久に失敗し、二度と会話フローを開始できなくなる。よってフロー不在時は通知と案内の
+ * み行う (以降の FAQ 自動返信は継続しうるが、スタッフには通知済みで実害は小さい)。
+ */
+async function followupStaffHandoff(
+  admin: Admin,
+  tenantId: string,
+  lineUserId: string,
+  customerId: string | null,
+  existing: FlowRow | null,
+  data: string,
+  copy: { recordBody: string; staffTitle: string; staffBody: string },
+): Promise<boolean> {
+  await recordInboundLineMessage({ tenantId, lineUserId, body: copy.recordBody, rawEvent: { flow_postback: data } });
+
+  // 進行中の会話フローがあれば human_takeover へ落として自動進行を止める。advanceFlow は
+  // 楽観ロック不一致/DB失敗で false を返すため、取りこぼしたら最新状態を読み直して1回再試行。
+  if (existing && existing.state !== "human_takeover") {
     const ok = await advanceFlow(admin, existing, {
       toState: "human_takeover",
       contextPatch: { consult_requested: true },
@@ -518,33 +538,15 @@ async function handleFollowupConsult(
         });
       }
     }
-  } else {
-    await createFlow(admin, {
-      tenantId,
-      customerId,
-      lineUserId,
-      state: "human_takeover",
-      context: { consult_requested: true, source: "followup_button" },
-    });
   }
 
-  await sendCustomerLineText({
-    tenantId,
-    customerId,
-    lineUserId,
-    body: buildQuoteConsultHandoff(),
-  });
-  await notifyStaffOfAiAction(
-    admin,
-    tenantId,
-    "お客様が相談をご希望です — ご対応をお願いします",
-    "お客様がLINEで「スタッフに相談したい」を選択されました。トークでご対応ください。",
-  );
+  await sendCustomerLineText({ tenantId, customerId, lineUserId, body: buildQuoteConsultHandoff() });
+  await notifyStaffOfAiAction(admin, tenantId, copy.staffTitle, copy.staffBody);
   await logAutoActionExecuted({
     tenantId,
     actionKey: "inbound_message.auto_conversation_flow",
     resource: { kind: "line_user", id: lineUserId },
-    detail: { state: "human_takeover", trigger: "followup_button" },
+    detail: { state: existing ? "human_takeover" : "staff_handoff", trigger: "followup_button" },
   });
   return true;
 }

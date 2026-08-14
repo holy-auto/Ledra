@@ -54,14 +54,18 @@ export function buildFollowupButtons(): FlowButton[] {
  * まとめて依頼する文面。buildQuoteDetailAsk は車両しか聞かないため、元問い合わせに
  * 施工内容が無いフローでこれを使わないと、車両だけ返ってきて正式見積りに進めない
  * (maybeAdvanceQuoteFlowOnDetail は service と vehicle の両方を要求する)。
+ *
+ * 車検証の「写真」は求めない: awaiting_quote_detail 中の画像は OCR フロー
+ * (handleVehiclePhotoMessage は awaiting_vehicle_photo 専用) に配線されておらず、
+ * 送られてもスタッフ記録止まりでフローが進まないため。テキストで受け取れる項目のみ聞く。
  */
 export function buildQuoteDetailAskWithService(): string {
   return [
     "【お見積りについて】",
-    "正式なお見積りをお作りするために、下記を教えていただけますか？",
+    "正式なお見積りをお作りするために、下記をこのトークにご返信ください。",
     "",
     "① ご希望の施工内容（例: ボディコーティング、キズ・へこみ修理 など）",
-    "② お車の「車種・年式」（例: アルファード 2022年式）または車検証のお写真",
+    "② お車の「車種・年式」（例: アルファード 2022年式）",
     "",
     "いただいた内容をもとに担当が正式なお見積りをお作りしてお送りします。",
   ].join("\n");

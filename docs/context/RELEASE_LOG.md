@@ -27,25 +27,28 @@
   - ボタン定義は `buildFollowupButtons()`（`src/lib/line/flow/messages.ts`、単一情報源）。
   - **会話フロー opt-in（`shouldRunConversationFlow`）が有効なテナントのみ**ボタン化。
     OFF のテナントは従来どおりテキスト送信で挙動不変（blast radius 最小）。
-- 「スタッフに相談したい」を実効化（自動コードレビュー指摘に対応）: `flow:consult` は
-  進行中フローを `human_takeover` に落とすか、無ければ `human_takeover` の durable マーカーを
-  新規作成する。`inboundAuto` は返信前に一度だけフロー状態を見て、`human_takeover` の間は
-  顧客向け自動返信（ナレッジ・概算・フロー開始）を**すべて止める**（マーカーは 72h で失効し
-  自動応答は自然復帰）。あわせて (a) consult は既に `human_takeover` なら冪等に no-op（二重
-  通知・二重返信を防止）、(b) 進行中フローがある間は誘導ボタンを付けない（`start_quote` が
-  二重開始で無反応になるのを防ぐ。ボタン添付可否は `inboundAuto` が判断し `attachButtons` で
-  ナレッジ返信へ渡す）、(c) 見積り詳細待ち中に古い `start_quote` を再タップされたら詳細依頼を
-  再送（無反応にしない）。
-- Codex レビュー（P1×3・P2×1）対応: (1) 本番 webhook が postback に customerId を渡さず
-  フローが `customer_id=null` で作られ次受信で見つからない問題を、`line_user_id` から顧客を
-  解決してキーを一致させて修正。(2) FAQ後のボタン開始フローは施工内容が未知なため、車両だけ
-  でなく施工内容も聞く文面（`buildQuoteDetailAskWithService`）に変更（service 欠落で見積りに
-  進めない詰まりを解消）。(3) consult の `human_takeover` 遷移を検証し、楽観ロック不一致時は
-  読み直して1回再試行。(4) `human_takeover` 抑止を**予約自動起票の前**に移動（相談希望中に
-  予約が自動確定されるのを防止）。
+- 挙動の要点（自動コードレビュー Codex を2ラウンド回して堅牢化）:
+  - `flow:consult`（相談）: スタッフへ通知＋お客様へ相談受付案内。**進行中の会話フローがある
+    ときだけ** `human_takeover` に落として自動進行を止める（検証＋1回再試行）。フロー不在時は
+    `human_takeover` 行を**作らない** — 一意インデックスが `human_takeover` を「進行中」として
+    扱い、失効行を `expired` にするスイープが無いため、単発マーカーを作ると 72h 後に createFlow
+    が永久に一意制約で失敗する（＝顧客が二度と会話フローを開始できない）ため。単発相談は通知＋
+    案内のみ（以降の FAQ 自動返信は継続しうるが実害小）。
+  - `flow:start_quote`（見積り）: **紐付け顧客のみ** `awaiting_quote_detail` を作成（未紐付けは
+    フローを作らずスタッフ引き継ぎ＝詰まり防止）。本番 webhook は customerId を渡さないため
+    `line_user_id` から顧客を解決し、フロー作成・照会のキーを inbound 側（customer_id 優先）と
+    一致させる。施工内容が未知の入口なので施工内容＋車種年式を**テキストで**依頼
+    （`buildQuoteDetailAskWithService`。車検証写真は `awaiting_quote_detail` で OCR 未配線のため
+    求めない）。
+  - `inboundAuto`: 返信・**予約自動起票の前**にフロー状態を一度見て、`human_takeover` の間は
+    顧客向け自動処理（予約起票・ナレッジ・概算・フロー開始）を全て止める（受信箱の下書き＝受動
+    抽出は残す）。進行中フローがある間は誘導ボタンを付けない（`attachButtons` を渡す）。
 - 対象: LINE 受信の AI 自動応答（全業種、Standard プラン以上・opt-in）。
 - 検証: 単体テスト追加（`conversationFlowPostback.test.ts`・`knowledgeReplyAuto.test.ts`・
   `inboundAutoReplyGate.test.ts`）。automation+line 全体で 200 件パス、tsc/eslint エラー0。
+- 未対応（別PR/フェーズ）: 単発相談後の durable な自動返信抑止（フロー行を汚さないマーカー機構
+  or 失効スイープが要る）、`awaiting_quote_detail` 中の車検証写真→OCR 配線、未紐付け客の
+  自動登録導線。
 - 補足: 「FAQで答えられる内容そのものを増やす」のは `tenant_line_knowledge` への登録
   （データ運用）であり本PRの範囲外。本PRは「登録済みFAQに答えた後の誘導UX」を担当。
   概算見積り返信（`quoteReplyAuto`）へのボタン適用は、現行文面「ご来店時に承ります」と
