@@ -687,13 +687,28 @@ describe("handleFlowPostback — 誘導ボタン (FAQ返信の末尾)", () => {
     expect(mocks.sendCustomerLineText.mock.calls[0][0].body).toContain("施工内容");
   });
 
-  it("flow:start_quote は未紐付けユーザーならフローを作らずスタッフに引き継ぐ", async () => {
-    // 未紐付けだと見積り下書きが作れずフローが詰まるため、フローを作らず通知する。
+  it("flow:start_quote は未紐付けユーザーなら見積りフローを作らずスタッフ引き継ぎ (human_takeover) にする", async () => {
+    // 未紐付けだと見積り下書きが作れずフローが詰まるため、awaiting_quote_detail は作らず
+    // human_takeover マーカー＋通知でスタッフ対応に回す。
     mocks.store.tables.line_conversation_flows = [];
     const handled = await handleFlowPostback({ tenantId: TENANT, lineUserId: LINE_USER, data: "flow:start_quote" });
     expect(handled).toBe(true);
-    expect(mocks.store.inserts.find((i) => i.table === "line_conversation_flows")).toBeUndefined();
+    const flowInsert = mocks.store.inserts.find((i) => i.table === "line_conversation_flows");
+    expect(flowInsert?.payload.state).toBe("human_takeover");
     expect(mocks.store.inserts.find((i) => i.table === "notifications")).toBeDefined();
+  });
+
+  it("flow:start_quote は配信失敗時に作成した awaiting_quote_detail 行を expired に落とす", async () => {
+    linkCustomer();
+    mocks.store.tables.line_conversation_flows = [];
+    mocks.sendCustomerLineText.mockResolvedValueOnce(false);
+    const handled = await handleFlowPostback({ tenantId: TENANT, lineUserId: LINE_USER, data: "flow:start_quote" });
+    expect(handled).toBe(false);
+    // 届かなかった詳細依頼のフロー行を残すと以降を塞ぐため expired にする。
+    const expire = mocks.store.updates.find(
+      (u) => u.table === "line_conversation_flows" && u.filters.state === "awaiting_quote_detail",
+    );
+    expect(expire?.payload.state).toBe("expired");
   });
 
   it("flow:start_quote は詳細待ちの進行中フローには詳細依頼を再送する (無反応にしない)", async () => {
@@ -734,15 +749,15 @@ describe("handleFlowPostback — 誘導ボタン (FAQ返信の末尾)", () => {
     expect(mocks.sendCustomerLineText).not.toHaveBeenCalled();
   });
 
-  it("flow:consult はスタッフ通知＋顧客案内するが、フロー不在時は human_takeover マーカーを作らない", async () => {
-    // 単発 human_takeover 行は一意インデックスを塞ぎ、失効行を expired にするスイープも無い
-    // ため、作ると 72h 後にその顧客の createFlow が永久に失敗する。よって作らない。
+  it("flow:consult はフロー不在時も durable な human_takeover マーカーを作り、通知＋案内する", async () => {
+    // 失効マーカーの rot は createFlow の失効スイープが掃除するため安全に永続化できる。
     mocks.store.tables.line_conversation_flows = [];
     const handled = await handleFlowPostback({ tenantId: TENANT, lineUserId: LINE_USER, data: "flow:consult" });
     expect(handled).toBe(true);
     expect(mocks.store.inserts.find((i) => i.table === "notifications")).toBeDefined();
     expect(mocks.sendCustomerLineText).toHaveBeenCalledTimes(1);
-    expect(mocks.store.inserts.find((i) => i.table === "line_conversation_flows")).toBeUndefined();
+    const flowInsert = mocks.store.inserts.find((i) => i.table === "line_conversation_flows");
+    expect(flowInsert?.payload.state).toBe("human_takeover");
   });
 
   it("flow:consult は進行中フローがあれば human_takeover に落とす (新規作成はしない)", async () => {

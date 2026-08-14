@@ -71,6 +71,7 @@ export function makeFakeAdmin(store: FakeStore): any {
       in: () => builder,
       gt: () => builder,
       gte: () => builder,
+      lt: () => builder,
       contains: () => builder,
       lte: () => builder,
       order: () => builder,

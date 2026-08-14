@@ -178,7 +178,28 @@ export async function createFlow(
   },
 ): Promise<ConversationFlowRow | null> {
   try {
-    const expiresAt = new Date(Date.now() + FLOW_EXPIRY_HOURS * 3600_000).toISOString();
+    const now = new Date();
+    // 失効済み (expires_at 超過) の "進行中" 行を先に expired へ落とす。一意インデックスは
+    // `state NOT IN ('closed','expired')` で張られており、他に失効スイープが無いため、放置
+    // された行 (特に相談の human_takeover マーカー) が残ると同一キーの新規作成が一意制約で
+    // 永久に失敗する。作成の直前に同一キーの失効行だけを掃除し、この rot を防ぐ。
+    if (input.customerId || input.lineUserId) {
+      let sweep = admin
+        .from("line_conversation_flows")
+        .update({ state: "expired" })
+        .eq("tenant_id", input.tenantId)
+        .lt("expires_at", now.toISOString())
+        .not("state", "in", "(closed,expired)");
+      sweep = input.customerId
+        ? sweep.eq("customer_id", input.customerId)
+        : sweep.eq("line_user_id", input.lineUserId as string);
+      const { error: sweepErr } = await sweep;
+      if (sweepErr) {
+        logger.warn("[flowStore] createFlow stale sweep failed", { tenantId: input.tenantId, err: sweepErr.message });
+      }
+    }
+
+    const expiresAt = new Date(now.getTime() + FLOW_EXPIRY_HOURS * 3600_000).toISOString();
     const { data, error } = await admin
       .from("line_conversation_flows")
       .insert({

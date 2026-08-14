@@ -459,6 +459,10 @@ async function handleFollowupStartQuote(
     body: buildQuoteDetailAskWithService(),
   });
   if (!delivered) {
+    // 依頼文面が届かなかったのに awaiting_quote_detail 行を残すと、以降の受信でこの
+    // フローが見えてしまい (詳細を送っていないのに) ボタン再提示も見積り前進も塞がれる。
+    // 作った行を expired に落として、次回のボタン/フロー開始を妨げない。
+    await advanceFlow(admin, flow, { toState: "expired", expectState: "awaiting_quote_detail" });
     logger.warn("[conversationFlowPostback] followup start_quote delivery failed", { tenantId, lineUserId });
     return false;
   }
@@ -500,14 +504,14 @@ async function handleFollowupConsult(
 
 /**
  * 誘導ボタン (相談 / 未登録の見積り希望) からスタッフへ引き継ぐ共通処理。
- * 通知とお客様への案内を行い、**進行中フローがあるときだけ** human_takeover へ落とす
- * (検証+1回再試行)。
+ * 通知とお客様への案内に加え、以降の顧客向け自動処理を止める `human_takeover` 状態を
+ * 永続化する: 進行中フローがあればそれを human_takeover へ落とし (検証+1回再試行)、無ければ
+ * human_takeover マーカーを新規作成する。これにより単発の相談でも「担当が対応」と伝えた後に
+ * ボットが再応答しない。
  *
- * フローが無い場合は human_takeover 行を作らない — line_conversation_flows の一意
- * インデックスは human_takeover を「進行中」として扱い、失効行を expired にするスイープが
- * 無いため、単発の human_takeover マーカーを作ると 72h 後にその顧客の createFlow が一意
- * 制約で永久に失敗し、二度と会話フローを開始できなくなる。よってフロー不在時は通知と案内の
- * み行う (以降の FAQ 自動返信は継続しうるが、スタッフには通知済みで実害は小さい)。
+ * マーカーは expires_at (72h) を持ち、超過後は getActiveFlow が無視して自動応答が自然復帰する。
+ * 失効行が一意インデックスを塞ぐ問題 (state が human_takeover のまま残る) は createFlow 側の
+ * 失効スイープが同一キー作成時に掃除するため、rot しない。
  */
 async function followupStaffHandoff(
   admin: Admin,
@@ -520,9 +524,9 @@ async function followupStaffHandoff(
 ): Promise<boolean> {
   await recordInboundLineMessage({ tenantId, lineUserId, body: copy.recordBody, rawEvent: { flow_postback: data } });
 
-  // 進行中の会話フローがあれば human_takeover へ落として自動進行を止める。advanceFlow は
-  // 楽観ロック不一致/DB失敗で false を返すため、取りこぼしたら最新状態を読み直して1回再試行。
   if (existing && existing.state !== "human_takeover") {
+    // 進行中フローを human_takeover へ落として自動進行を止める。advanceFlow は楽観ロック
+    // 不一致/DB失敗で false を返すため、取りこぼしたら最新状態を読み直して1回再試行。
     const ok = await advanceFlow(admin, existing, {
       toState: "human_takeover",
       contextPatch: { consult_requested: true },
@@ -538,6 +542,16 @@ async function followupStaffHandoff(
         });
       }
     }
+  } else if (!existing) {
+    // 進行中フローが無ければ durable な human_takeover マーカーを作成する (単発相談の抑止)。
+    // createFlow が同一キーの失効行を掃除するため、期限切れマーカーによる rot は起きない。
+    await createFlow(admin, {
+      tenantId,
+      customerId,
+      lineUserId,
+      state: "human_takeover",
+      context: { consult_requested: true, source: "followup_button" },
+    });
   }
 
   await sendCustomerLineText({ tenantId, customerId, lineUserId, body: buildQuoteConsultHandoff() });
@@ -546,7 +560,7 @@ async function followupStaffHandoff(
     tenantId,
     actionKey: "inbound_message.auto_conversation_flow",
     resource: { kind: "line_user", id: lineUserId },
-    detail: { state: existing ? "human_takeover" : "staff_handoff", trigger: "followup_button" },
+    detail: { state: "human_takeover", trigger: "followup_button" },
   });
   return true;
 }

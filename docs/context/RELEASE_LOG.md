@@ -28,12 +28,13 @@
   - **会話フロー opt-in（`shouldRunConversationFlow`）が有効なテナントのみ**ボタン化。
     OFF のテナントは従来どおりテキスト送信で挙動不変（blast radius 最小）。
 - 挙動の要点（自動コードレビュー Codex を2ラウンド回して堅牢化）:
-  - `flow:consult`（相談）: スタッフへ通知＋お客様へ相談受付案内。**進行中の会話フローがある
-    ときだけ** `human_takeover` に落として自動進行を止める（検証＋1回再試行）。フロー不在時は
-    `human_takeover` 行を**作らない** — 一意インデックスが `human_takeover` を「進行中」として
-    扱い、失効行を `expired` にするスイープが無いため、単発マーカーを作ると 72h 後に createFlow
-    が永久に一意制約で失敗する（＝顧客が二度と会話フローを開始できない）ため。単発相談は通知＋
-    案内のみ（以降の FAQ 自動返信は継続しうるが実害小）。
+  - `flow:consult`（相談）: スタッフへ通知＋お客様へ相談受付案内し、以降の自動処理を止める
+    `human_takeover` 状態を**永続化**する（進行中フローがあれば検証＋1回再試行で落とし、無ければ
+    マーカーを新規作成）。単発相談でもボットが再応答しない。マーカーは 72h で失効し getActiveFlow
+    が無視して自動応答が自然復帰する。**失効行 rot の対策**として `createFlow` に「同一キーの失効
+    済み進行中行を expired へ掃除するスイープ」を追加した（一意インデックスは `state NOT IN
+    (closed,expired)` で張られ他に失効スイープが無いため、これが無いと期限切れ human_takeover 行が
+    残って同一キーの createFlow が永久に失敗する rot が起きる）。
   - `flow:start_quote`（見積り）: **紐付け顧客のみ** `awaiting_quote_detail` を作成（未紐付けは
     フローを作らずスタッフ引き継ぎ＝詰まり防止）。本番 webhook は customerId を渡さないため
     `line_user_id` から顧客を解決し、フロー作成・照会のキーを inbound 側（customer_id 優先）と
@@ -46,9 +47,11 @@
 - 対象: LINE 受信の AI 自動応答（全業種、Standard プラン以上・opt-in）。
 - 検証: 単体テスト追加（`conversationFlowPostback.test.ts`・`knowledgeReplyAuto.test.ts`・
   `inboundAutoReplyGate.test.ts`）。automation+line 全体で 200 件パス、tsc/eslint エラー0。
-- 未対応（別PR/フェーズ）: 単発相談後の durable な自動返信抑止（フロー行を汚さないマーカー機構
-  or 失効スイープが要る）、`awaiting_quote_detail` 中の車検証写真→OCR 配線、未紐付け客の
-  自動登録導線。
+- 配信失敗の後始末: `start_quote` で `createFlow` 後に LINE push が失敗した場合、作った
+  `awaiting_quote_detail` 行を `expired` に落とす（届いていない詳細依頼のフローが残って以降の
+  ボタン再提示・見積り前進を 72h 塞ぐのを防ぐ）。
+- 未対応（別PR/フェーズ）: `awaiting_quote_detail` 中の車検証写真→OCR 配線、未紐付け客の
+  自動登録導線（現状は未紐付けはスタッフ引き継ぎ）。
 - 補足: 「FAQで答えられる内容そのものを増やす」のは `tenant_line_knowledge` への登録
   （データ運用）であり本PRの範囲外。本PRは「登録済みFAQに答えた後の誘導UX」を担当。
   概算見積り返信（`quoteReplyAuto`）へのボタン適用は、現行文面「ご来店時に承ります」と
