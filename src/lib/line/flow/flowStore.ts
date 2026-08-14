@@ -31,9 +31,16 @@ export async function getActiveFlow(
   tenantId: string,
   key: { customerId?: string | null; lineUserId?: string | null },
 ): Promise<ConversationFlowRow | null> {
-  if (!key.customerId && !key.lineUserId) return null;
+  // 特殊文字を含む line_user_id は or フィルタ (下記) の構文を壊すため使わない。UUID の
+  // customer_id は安全。LINE ユーザー ID は通常英数字のみ。
+  const luid = key.lineUserId && !/[(),.]/.test(key.lineUserId) ? key.lineUserId : null;
+  const cid = key.customerId ?? null;
+  if (!cid && !luid) return null;
   try {
-    // customer_id を優先。未紐付けは line_user_id で束ねる。
+    // customer_id **または** line_user_id のいずれか一致で束ねる。全 LINE フローは
+    // line_user_id を持つため、未紐付けで作った行 (customer_id=null) を後から紐付いた
+    // customer_id で引いても取りこぼさない (逆も同様)。単一キー固定だと、紐付け前後で
+    // キーが変わった瞬間に進行中フローを見失い、抑止や前進が効かなくなる。
     // expires_at 超過の停滞フローは「進行中」に数えない — 失効 cron が state を
     // 落とす前でも、期限切れフローが新規開始を永久に塞ぐのを防ぐ (時刻ベースで実効)。
     let q = admin
@@ -44,7 +51,9 @@ export async function getActiveFlow(
       .gt("expires_at", new Date().toISOString())
       .order("updated_at", { ascending: false })
       .limit(1);
-    q = key.customerId ? q.eq("customer_id", key.customerId) : q.eq("line_user_id", key.lineUserId as string);
+    if (cid && luid) q = q.or(`customer_id.eq.${cid},line_user_id.eq.${luid}`);
+    else if (cid) q = q.eq("customer_id", cid);
+    else q = q.eq("line_user_id", luid as string);
     const { data, error } = await q.maybeSingle();
     if (error) {
       logger.warn("[flowStore] getActiveFlow failed", { tenantId, err: error.message });

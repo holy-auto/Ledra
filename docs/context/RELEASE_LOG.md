@@ -47,9 +47,14 @@
 - 対象: LINE 受信の AI 自動応答（全業種、Standard プラン以上・opt-in）。
 - 検証: 単体テスト追加（`conversationFlowPostback.test.ts`・`knowledgeReplyAuto.test.ts`・
   `inboundAutoReplyGate.test.ts`）。automation+line 全体で 200 件パス、tsc/eslint エラー0。
+- フロー照会のキー堅牢化: `getActiveFlow` を `customer_id` **または** `line_user_id` の
+  いずれか一致に変更（全 LINE フローは line_user_id を持つ）。未紐付けで作った行を後から
+  紐付いた顧客 ID で照会しても取りこぼさず、紐付け前後で進行中フローを見失って抑止/前進が
+  切れる問題を解消（この keying 不整合は複数の経路で再発していた根本原因）。
 - 配信失敗の後始末: `start_quote` で `createFlow` 後に LINE push が失敗した場合、作った
   `awaiting_quote_detail` 行を `expired` に落とす（届いていない詳細依頼のフローが残って以降の
-  ボタン再提示・見積り前進を 72h 塞ぐのを防ぐ）。
+  ボタン再提示・見積り前進を 72h 塞ぐのを防ぐ）。takeover 遷移時は `expires_at` を今から 72h に
+  更新し、競合作成で `createFlow` が弾かれた場合は最新フローを読み直して落とす。
 - 未対応（別PR/フェーズ）: `awaiting_quote_detail` 中の車検証写真→OCR 配線、未紐付け客の
   自動登録導線（現状は未紐付けはスタッフ引き継ぎ）。
 - 補足: 「FAQで答えられる内容そのものを増やす」のは `tenant_line_knowledge` への登録

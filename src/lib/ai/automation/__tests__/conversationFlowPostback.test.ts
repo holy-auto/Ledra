@@ -797,6 +797,28 @@ describe("handleFlowPostback — 誘導ボタン (FAQ返信の末尾)", () => {
     expect(mocks.sendCustomerLineText).not.toHaveBeenCalled();
   });
 
+  it("getActiveFlow は customer_id または line_user_id のどちらでもマッチする (紐付け前後で見失わない)", async () => {
+    // 未紐付け時に line_user_id で作った human_takeover マーカーを、後から紐付いた顧客の
+    // customerId で照会しても取りこぼさない (単一キー固定だと見失って抑止が切れる)。
+    linkCustomer();
+    mocks.store.tables.line_conversation_flows = [
+      {
+        id: "flow-mk",
+        tenant_id: TENANT,
+        customer_id: null,
+        line_user_id: LINE_USER,
+        state: "human_takeover",
+        quote_doc_id: null,
+        context_json: {},
+      },
+    ];
+    // consult は既存 human_takeover を見つけたら冪等 no-op になる = マーカーを発見できた証拠。
+    const handled = await handleFlowPostback({ tenantId: TENANT, lineUserId: LINE_USER, data: "flow:consult" });
+    expect(handled).toBe(true);
+    expect(mocks.store.inserts.find((i) => i.table === "notifications")).toBeUndefined();
+    expect(mocks.sendCustomerLineText).not.toHaveBeenCalled();
+  });
+
   it("会話フロー opt-in OFF なら何もしない (false)", async () => {
     mocks.shouldRunConversationFlow.mockReturnValue(false);
     const handled = await handleFlowPostback({ tenantId: TENANT, lineUserId: LINE_USER, data: "flow:start_quote" });
