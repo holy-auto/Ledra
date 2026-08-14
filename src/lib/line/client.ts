@@ -427,9 +427,19 @@ export async function handleWebhookEvents(
       // (別々に reply すると 2 通目以降が落ちるため)
       const replyMessages: Array<{ type: string; text?: string; [key: string]: unknown }> = [];
 
+      // human_takeover (「スタッフに相談したい」後 / スタッフ対応中) の間は、決定的な定型返信
+      // (予約リンク・連携案内) を**組み立てない** ——「担当が対応します」と伝えた直後に自動返信を
+      // 返さないため。判定を組み立ての**前**に置くのは、連携案内 (buildLineLinkPrompt) が招待行を
+      // 作る副作用を持つため。組み立て後に抑止すると、抑止された回ごとに未到達の招待が溜まる。
+      const { isHumanTakeoverActive } = await import("@/lib/line/flow/flowStore");
+      const takeoverActive = await isHumanTakeoverActive(tenantId, {
+        customerId: stored.customerId ?? null,
+        lineUserId: event.source.userId,
+      });
+
       const text = rawText.trim().toLowerCase();
       // リッチメニューの定型テキスト (来店予約 等) も拾う
-      if (text === "予約" || text === "来店予約" || text === "booking") {
+      if (!takeoverActive && (text === "予約" || text === "来店予約" || text === "booking")) {
         // LIFF URL で予約画面へ誘導
         const liffUrl = config.liffId ? `https://liff.line.me/${config.liffId}` : null;
         replyMessages.push({
@@ -442,7 +452,8 @@ export async function handleWebhookEvents(
       // 課金されるプッシュではなく、この受信メッセージへの**リプライ (無料)** で返す。
       // 招待 URL を含むため、参加者全員に届くグループ/ルームでは送らず、1:1 トークのみ
       // (source.type === "user")。replyToken が無い回はスキップし、次の受信で返す。
-      if (event.source.type === "user" && event.replyToken) {
+      // human_takeover 中は buildLineLinkPrompt を呼ばない (招待行の副作用を避ける)。
+      if (!takeoverActive && event.source.type === "user" && event.replyToken) {
         const { buildLineLinkPrompt } = await import("@/lib/line/linkPrompt");
         const prompt = await buildLineLinkPrompt({
           tenantId,
@@ -454,22 +465,9 @@ export async function handleWebhookEvents(
         }
       }
 
-      // human_takeover (「スタッフに相談したい」後 / スタッフ対応中) の間は、決定的な定型返信
-      // (予約リンク・連携案内) も抑止する ——「担当が対応します」と伝えた直後に自動返信を返さない。
-      // 返す定型返信が実際にある場合のみ判定する (無い回に無駄なクエリを足さない)。
-      const takeoverSuppressed =
-        replyMessages.length > 0 &&
-        (await (async () => {
-          const { isHumanTakeoverActive } = await import("@/lib/line/flow/flowStore");
-          return isHumanTakeoverActive(tenantId, {
-            customerId: stored.customerId ?? null,
-            lineUserId: event.source?.userId ?? null,
-          });
-        })());
-
       // まとめて 1 回のリプライで送信 (最大 5)。送れた自動返信はすべて受信箱に
       // outbound として残す (連携案内はクールダウン判定にも使われる)。
-      if (event.replyToken && replyMessages.length > 0 && !takeoverSuppressed) {
+      if (event.replyToken && replyMessages.length > 0) {
         try {
           const sent = replyMessages.slice(0, 5);
           await replyMessage(config.channelAccessToken, event.replyToken, sent);
