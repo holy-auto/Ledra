@@ -44,6 +44,10 @@
   - `inboundAuto`: 返信・**予約自動起票の前**にフロー状態を一度見て、`human_takeover` の間は
     顧客向け自動処理（予約起票・ナレッジ・概算・フロー開始）を全て止める（受信箱の下書き＝受動
     抽出は残す）。進行中フローがある間は誘導ボタンを付けない（`attachButtons` を渡す）。
+  - webhook（`client.ts`）: `maybeAutoProcessInboundMessage` の**前**に送る決定的な定型返信
+    （「予約」→予約リンク、未紐付けの連携案内）も `human_takeover` 中は抑止する（`isHumanTakeoverActive`。
+    返す定型返信が実際にある回のみ判定してホットパスに無駄なクエリを足さない）。これで AI 層・
+    決定的層の両方で takeover が一貫して効く。
 - 対象: LINE 受信の AI 自動応答（全業種、Standard プラン以上・opt-in）。
 - 検証: 単体テスト追加（`conversationFlowPostback.test.ts`・`knowledgeReplyAuto.test.ts`・
   `inboundAutoReplyGate.test.ts`）。automation+line 全体で 200 件パス、tsc/eslint エラー0。

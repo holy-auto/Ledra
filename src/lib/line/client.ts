@@ -454,9 +454,22 @@ export async function handleWebhookEvents(
         }
       }
 
+      // human_takeover (「スタッフに相談したい」後 / スタッフ対応中) の間は、決定的な定型返信
+      // (予約リンク・連携案内) も抑止する ——「担当が対応します」と伝えた直後に自動返信を返さない。
+      // 返す定型返信が実際にある場合のみ判定する (無い回に無駄なクエリを足さない)。
+      const takeoverSuppressed =
+        replyMessages.length > 0 &&
+        (await (async () => {
+          const { isHumanTakeoverActive } = await import("@/lib/line/flow/flowStore");
+          return isHumanTakeoverActive(tenantId, {
+            customerId: stored.customerId ?? null,
+            lineUserId: event.source?.userId ?? null,
+          });
+        })());
+
       // まとめて 1 回のリプライで送信 (最大 5)。送れた自動返信はすべて受信箱に
       // outbound として残す (連携案内はクールダウン判定にも使われる)。
-      if (event.replyToken && replyMessages.length > 0) {
+      if (event.replyToken && replyMessages.length > 0 && !takeoverSuppressed) {
         try {
           const sent = replyMessages.slice(0, 5);
           await replyMessage(config.channelAccessToken, event.replyToken, sent);

@@ -66,6 +66,24 @@ export async function getActiveFlow(
   }
 }
 
+/**
+ * 進行中フローが human_takeover (スタッフ対応中 / 「スタッフに相談したい」マーカー) か。
+ * webhook の決定的な定型返信 (予約リンク・連携案内) を takeover 中に抑止するための軽量判定。
+ * 自前で service-role クライアントを張るため webhook から直接呼べる。失敗時は false (投げない)。
+ */
+export async function isHumanTakeoverActive(
+  tenantId: string,
+  key: { customerId?: string | null; lineUserId?: string | null },
+): Promise<boolean> {
+  try {
+    const admin = createServiceRoleAdmin("LINE webhook — human_takeover 抑止判定");
+    const flow = await getActiveFlow(admin, tenantId, key);
+    return flow?.state === "human_takeover";
+  } catch {
+    return false;
+  }
+}
+
 /** 進行中フローを見積書 doc_id で 1 件返す (スタッフ送付フック用)。無ければ null。 */
 export async function getFlowByQuoteDoc(
   admin: Admin,
