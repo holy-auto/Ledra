@@ -527,10 +527,12 @@ async function followupStaffHandoff(
   if (existing && existing.state !== "human_takeover") {
     // 進行中フローを human_takeover へ落として自動進行を止める。advanceFlow は楽観ロック
     // 不一致/DB失敗で false を返すため、取りこぼしたら最新状態を読み直して1回再試行。
+    // refreshExpiry で失効窓を今から 72h に延長する (古いフローの残り時間を引き継がない)。
     const ok = await advanceFlow(admin, existing, {
       toState: "human_takeover",
       contextPatch: { consult_requested: true },
       expectState: existing.state,
+      refreshExpiry: true,
     });
     if (!ok) {
       const fresh = await getActiveFlow(admin, tenantId, { customerId, lineUserId });
@@ -539,19 +541,34 @@ async function followupStaffHandoff(
           toState: "human_takeover",
           contextPatch: { consult_requested: true },
           expectState: fresh.state,
+          refreshExpiry: true,
         });
       }
     }
   } else if (!existing) {
     // 進行中フローが無ければ durable な human_takeover マーカーを作成する (単発相談の抑止)。
     // createFlow が同一キーの失効行を掃除するため、期限切れマーカーによる rot は起きない。
-    await createFlow(admin, {
+    const created = await createFlow(admin, {
       tenantId,
       customerId,
       lineUserId,
       state: "human_takeover",
       context: { consult_requested: true, source: "followup_button" },
     });
+    if (!created) {
+      // 競合: getActiveFlow の後・insert の前に別フローができた (start_quote と consult の
+      // 同時押し等) と一意制約で弾かれる。今あるフローを読み直して human_takeover に落とす
+      // — でないと「担当が対応」と伝えたのに競合フローが自動のまま残る。
+      const fresh = await getActiveFlow(admin, tenantId, { customerId, lineUserId });
+      if (fresh && fresh.state !== "human_takeover") {
+        await advanceFlow(admin, fresh, {
+          toState: "human_takeover",
+          contextPatch: { consult_requested: true },
+          expectState: fresh.state,
+          refreshExpiry: true,
+        });
+      }
+    }
   }
 
   await sendCustomerLineText({ tenantId, customerId, lineUserId, body: buildQuoteConsultHandoff() });

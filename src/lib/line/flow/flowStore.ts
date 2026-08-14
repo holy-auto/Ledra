@@ -133,6 +133,8 @@ export async function advanceFlow(
     quoteDocId?: string | null;
     reservationId?: string | null;
     expectState?: FlowState;
+    /** true のとき expires_at を今から FLOW_EXPIRY_HOURS 後へ更新する (失効窓を延長)。 */
+    refreshExpiry?: boolean;
   },
 ): Promise<boolean> {
   try {
@@ -142,6 +144,7 @@ export async function advanceFlow(
     };
     if (input.quoteDocId !== undefined) patch.quote_doc_id = input.quoteDocId;
     if (input.reservationId !== undefined) patch.reservation_id = input.reservationId;
+    if (input.refreshExpiry) patch.expires_at = new Date(Date.now() + FLOW_EXPIRY_HOURS * 3600_000).toISOString();
 
     let q = admin.from("line_conversation_flows").update(patch).eq("id", flow.id);
     if (input.expectState) q = q.eq("state", input.expectState);
