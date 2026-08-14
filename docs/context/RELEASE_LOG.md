@@ -36,9 +36,16 @@
   二重開始で無反応になるのを防ぐ。ボタン添付可否は `inboundAuto` が判断し `attachButtons` で
   ナレッジ返信へ渡す）、(c) 見積り詳細待ち中に古い `start_quote` を再タップされたら詳細依頼を
   再送（無反応にしない）。
+- Codex レビュー（P1×3・P2×1）対応: (1) 本番 webhook が postback に customerId を渡さず
+  フローが `customer_id=null` で作られ次受信で見つからない問題を、`line_user_id` から顧客を
+  解決してキーを一致させて修正。(2) FAQ後のボタン開始フローは施工内容が未知なため、車両だけ
+  でなく施工内容も聞く文面（`buildQuoteDetailAskWithService`）に変更（service 欠落で見積りに
+  進めない詰まりを解消）。(3) consult の `human_takeover` 遷移を検証し、楽観ロック不一致時は
+  読み直して1回再試行。(4) `human_takeover` 抑止を**予約自動起票の前**に移動（相談希望中に
+  予約が自動確定されるのを防止）。
 - 対象: LINE 受信の AI 自動応答（全業種、Standard プラン以上・opt-in）。
 - 検証: 単体テスト追加（`conversationFlowPostback.test.ts`・`knowledgeReplyAuto.test.ts`・
-  `inboundAutoReplyGate.test.ts`）。automation+line 全体で 198 件パス、tsc/eslint エラー0。
+  `inboundAutoReplyGate.test.ts`）。automation+line 全体で 200 件パス、tsc/eslint エラー0。
 - 補足: 「FAQで答えられる内容そのものを増やす」のは `tenant_line_knowledge` への登録
   （データ運用）であり本PRの範囲外。本PRは「登録済みFAQに答えた後の誘導UX」を担当。
   概算見積り返信（`quoteReplyAuto`）へのボタン適用は、現行文面「ご来店時に承ります」と

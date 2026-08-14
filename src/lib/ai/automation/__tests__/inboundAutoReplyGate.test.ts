@@ -173,6 +173,34 @@ describe("maybeAutoProcessInboundMessage auto-reply gating", () => {
     expect(mocks.maybeAutoReplyRoughEstimate).not.toHaveBeenCalled();
   });
 
+  it("suppresses reservation auto-creation while the active flow is human_takeover", async () => {
+    // human_takeover 中は予約自動起票も止める（相談希望なのに予約が自動確定されないよう、
+    // 判定を起票の前に置く）。
+    mocks.shouldRunConversationFlow.mockReturnValue(true);
+    mocks.decideInboundCommit.mockReturnValue({ create: true, reason: "ok" });
+    mocks.extractInboundReservation.mockResolvedValue({
+      intent: "new_reservation",
+      confidence: 0.9,
+      ai: true,
+      scheduled_date: "2026-09-01",
+      service: "コーティング",
+    });
+    mocks.store.tables.line_conversation_flows = [
+      {
+        id: "flow-ht",
+        tenant_id: TENANT,
+        customer_id: "cust-1",
+        line_user_id: "Uabc123",
+        state: "human_takeover",
+        quote_doc_id: null,
+        context_json: {},
+      },
+    ];
+    await maybeAutoProcessInboundMessage({ ...baseParams(), customerId: "cust-1" });
+    expect(mocks.store.inserts.find((i) => i.table === "reservations")).toBeUndefined();
+    expect(mocks.maybeAutoReplyKnowledge).not.toHaveBeenCalled();
+  });
+
   it("passes attachButtons=true to the knowledge reply when no flow is active", async () => {
     mocks.shouldAutoReplyKnowledge.mockReturnValue(true);
     mocks.shouldRunConversationFlow.mockReturnValue(true);
