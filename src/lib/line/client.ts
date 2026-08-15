@@ -446,6 +446,25 @@ export async function handleWebhookEvents(
         });
       }
 
+      // 「マイページ」でログインリンクを再発行する (無料のリプライで返す)。
+      // ログインリンクは単回使用・期限付きなので、切れた顧客が自分で取り直せる導線が要る。
+      // email 無しの顧客にとっては唯一のマイページ入口なので、ここが最後の砦。
+      // お客様専用リンクを含むため、1:1 トークかつ紐づけ済みのときだけ。
+      if (
+        event.source.type === "user" &&
+        event.replyToken &&
+        stored.customerId &&
+        (text === "マイページ" || text === "まいぺーじ" || text === "mypage")
+      ) {
+        try {
+          const { buildPortalWelcomeText } = await import("@/lib/line/linkCustomer");
+          const portalText = await buildPortalWelcomeText(tenantId, stored.customerId);
+          if (portalText) replyMessages.push({ type: "text", text: portalText });
+        } catch (e) {
+          console.error("[line.portalLink] reissue failed:", e);
+        }
+      }
+
       // 未紐づけユーザーへの「連携を促す案内」(opt-in テナントのみ / fail-soft)。
       // 課金されるプッシュではなく、この受信メッセージへの**リプライ (無料)** で返す。
       // 招待 URL を含むため、参加者全員に届くグループ/ルームでは送らず、1:1 トークのみ

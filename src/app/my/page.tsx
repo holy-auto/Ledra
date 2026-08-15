@@ -15,6 +15,7 @@ export default function GlobalPortalLoginPage() {
   const tenant = useMemo(() => (sp.get("tenant") ?? "").trim(), [sp]);
   const from = useMemo(() => (sp.get("from") ?? "").trim(), [sp]);
   const pid = useMemo(() => (sp.get("pid") ?? "").trim(), [sp]);
+  const reason = useMemo(() => (sp.get("reason") ?? "").trim(), [sp]);
 
   async function requestCode() {
     setBusy(true);
@@ -60,6 +61,15 @@ export default function GlobalPortalLoginPage() {
           ご利用中の加盟店情報をまとめて確認できます。まずはご本人確認を行ってください。
         </p>
 
+        {reason === "line_link_expired" ? (
+          <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-800/50 dark:bg-amber-950 dark:text-amber-400">
+            リンクの有効期限が切れているか、既に使用済みです。
+            <br />
+            LINEのトークで「<span className="font-semibold">マイページ</span>
+            」と送っていただくと、新しいリンクをお送りします。
+          </div>
+        ) : null}
+
         {from === "nfc" ? (
           <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700 dark:border-emerald-800/50 dark:bg-emerald-950 dark:text-emerald-400">
             NFCタグから開いた証明書に関連するマイページへご案内します。
@@ -89,7 +99,9 @@ export default function GlobalPortalLoginPage() {
         </button>
 
         {msg ? (
-          <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-800/50 dark:bg-red-950 dark:text-red-400">{msg}</div>
+          <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-800/50 dark:bg-red-950 dark:text-red-400">
+            {msg}
+          </div>
         ) : null}
 
         <div className="mt-5 text-xs leading-6 text-muted">

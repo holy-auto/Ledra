@@ -13,6 +13,30 @@
 - 対象: どの画面・API・業種向けか
 ```
 
+## 2026-08-15 email が無い顧客もマイページに入れるように（LINE連携＝本人性での単回使用トークンログイン）
+
+- 内容: マイページのログインは email 一致＋メール宛OTPのみで、email を持たない顧客
+  （受信箱からスタッフが作った顧客・登録フォームで email を空にした顧客）は入る手段が
+  無かった。LINE連携済みなら本人性は取れているので、連携時と「マイページ」受信時に
+  **単回使用・期限付き（既定7日、`PORTAL_LINE_LOGIN_TTL_MIN`）のログイントークン**を発行し、
+  `GET /my/line?t=` で `customer_id` 紐付きのポータルセッションに引き換える。
+  生トークンはDBに保存せず sha256+pepper のみ。tenant はトークン側の値を正とし、
+  URLパラメータでの上書きを許さない。期限切れ・使用済みは `/my` に戻し、LINEに
+  「マイページ」と送れば無料の応答メッセージで再発行できる旨を表示する。
+- 対象: 顧客マイページ（`/my/line`、`/customer/[tenant]`）、LINE通知。全業種共通。
+- DB: `supabase/migrations/20260815000000_customer_portal_line_login.sql`
+  （`customer_sessions` の email/下4桁ハッシュを NULL 許容化＋「customer_id があるか
+  email+下4桁が揃っているか」のCHECK / 新表 `customer_portal_login_tokens` /
+  `customer_inquiries` に customer_id 追加・下4桁ハッシュ NULL 許容 /
+  `customer_deletion_requests` の email NULL 許容）。**本番未適用**。
+- 併せて修正: `/api/customer/list`・`/api/customer/inquiry` の認証ゲートが下4桁ハッシュ
+  必須だったため customer_id でも通るように。問い合わせ一覧は customer_id と下4桁ハッシュの
+  OR で引く（customer_id 列が無かった時代の行を取りこぼさないため）。`/my` を proxy の
+  PUBLIC_PREFIXES に追加（Supabase auth ではなく専用cookieで認証するため）。
+- 検証: 新規テスト `src/lib/__tests__/customerPortalLineLogin.test.ts` 8件
+  （ハッシュのみ保存・期限切れ/使用済み/並行クレーム負け/不正形式の拒否・tenantはトークン側優先）。
+  ユニット全体 3745件パス、tsc エラー0、eslint 追加警告0。
+
 ## 2026-08-15 LINE連携が完了したら、マイページURLを自動でLINE送信（branch claude/customer-history-check-eoqjsy）
 
 - 内容: 顧客が LINE 連携を済ませても、マイページ（証明書・施工履歴・予約の閲覧口）の URL が

@@ -47,7 +47,7 @@ async function resolvePortalCustomer(tenantSlug: string): Promise<{ tenantId: st
   if (tenantToken) {
     const sess = await validateSession(tenantId, tenantToken);
     if (sess) {
-      email = sess.email;
+      email = sess.email ?? "";
       phoneHash = sess.phone_last4_hash ?? "";
       customerId = sess.customer_id ?? null;
     }

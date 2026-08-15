@@ -31,11 +31,12 @@ export interface LinkLineUserResult {
 /**
  * 連携完了時に顧客へ送る「マイページのご案内」本文を組み立てる。
  *
- * 次のいずれかに当たると null を返し、呼び出し側は送信を見送る:
- *   - APP_URL 未設定 / tenant slug 不明 … `/my?...` という壊れたリンクを送ってしまう
- *   - 顧客に email が無い … マイページのログインはメール宛 OTP のみで
- *     (`listPortalMemberships` が email 一致で顧客を引く)、email 無しの顧客は
- *     URL を開いても入れない。開けない導線を案内するくらいなら送らない。
+ * URL には単回使用のログイントークンを載せるため、**email を持たない顧客でもそのまま
+ * マイページに入れる** (メール宛 OTP を経由しない)。トークンは LINE の 1:1 トークにしか
+ * 流さない前提なので、呼び出し側はグループへの配信をしないこと。
+ *
+ * APP_URL 未設定 / tenant slug 不明のときは null を返して送信を見送る
+ * (壊れたリンクを顧客へ送らないため)。
  */
 export async function buildPortalWelcomeText(tenantId: string, customerId: string): Promise<string | null> {
   // linkPrompt.getBaseUrl と同じフォールバック順。片方だけ設定された環境で、
@@ -51,33 +52,24 @@ export async function buildPortalWelcomeText(tenantId: string, customerId: strin
     return null;
   }
 
-  const admin = createServiceRoleAdmin("LINE 連携完了時のマイページ案内 — tenant slug 解決");
-  const { data: tenant } = await admin.from("tenants").select("slug").eq("id", tenantId).maybeSingle();
-  const slug = (tenant?.slug as string | null) ?? null;
-  if (!slug) {
-    logger.warn("[linkCustomer] portal welcome skipped — tenant slug 不明", { tenantId });
+  const admin = createServiceRoleAdmin("LINE 連携完了時のマイページ案内 — 店舗名の解決");
+  const { data: tenant } = await admin.from("tenants").select("name").eq("id", tenantId).maybeSingle();
+  const shopName = String(tenant?.name ?? "").trim();
+  if (!shopName) {
+    logger.warn("[linkCustomer] portal welcome skipped — tenant が引けない", { tenantId });
     return null;
   }
 
-  const { data: customer } = await admin
-    .from("customers")
-    .select("email")
-    .eq("id", customerId)
-    .eq("tenant_id", tenantId)
-    .maybeSingle();
-  if (!String(customer?.email ?? "").trim()) {
-    logger.info("[linkCustomer] portal welcome skipped — 顧客に email が無くマイページに入れない", {
-      tenantId,
-      customerId,
-    });
-    return null;
-  }
+  const { issuePortalLoginToken } = await import("@/lib/customerPortalLineLogin");
+  const token = await issuePortalLoginToken(tenantId, customerId);
 
   const origin = (base.startsWith("http") ? base : `https://${base}`).replace(/\/+$/, "");
   return [
-    "【マイページのご案内】",
+    `【${shopName} マイページのご案内】`,
     "施工証明書・施工履歴・ご予約はこちらからご確認いただけます。",
-    `${origin}/my?tenant=${encodeURIComponent(slug)}`,
+    `${origin}/my/line?t=${token}`,
+    "",
+    "※ このリンクはお客様専用です。有効期限が切れたら「マイページ」とこのトークに送ってください。",
   ].join("\n");
 }
 
