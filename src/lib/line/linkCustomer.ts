@@ -52,13 +52,23 @@ export async function buildPortalWelcomeText(tenantId: string, customerId: strin
     return null;
   }
 
-  const admin = createServiceRoleAdmin("LINE 連携完了時のマイページ案内 — 店舗名の解決");
+  const admin = createServiceRoleAdmin("LINE 連携完了時のマイページ案内 — 店舗名・連絡先の有無の確認");
   const { data: tenant } = await admin.from("tenants").select("name").eq("id", tenantId).maybeSingle();
   const shopName = String(tenant?.name ?? "").trim();
   if (!shopName) {
     logger.warn("[linkCustomer] portal welcome skipped — tenant が引けない", { tenantId });
     return null;
   }
+
+  // 連絡先が欠けているお客様には、マイページで登録してもらう案内も添える。
+  // (email が無いとメール通知が届かず、LINE 以外からログインもできない)
+  const { data: customer } = await admin
+    .from("customers")
+    .select("email")
+    .eq("id", customerId)
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+  const needsEmail = !String(customer?.email ?? "").trim();
 
   const { issuePortalLoginToken } = await import("@/lib/customerPortalLineLogin");
   const token = await issuePortalLoginToken(tenantId, customerId);
@@ -68,6 +78,9 @@ export async function buildPortalWelcomeText(tenantId: string, customerId: strin
     `【${shopName} マイページのご案内】`,
     "施工証明書・施工履歴・ご予約はこちらからご確認いただけます。",
     `${origin}/my/line?t=${token}`,
+    ...(needsEmail
+      ? ["", "はじめに、マイページでメールアドレスのご登録をお願いします。大切なお知らせをメールでもお届けします。"]
+      : []),
     "",
     "※ このリンクはお客様専用です。有効期限が切れたら「マイページ」とこのトークに送ってください。",
   ].join("\n");
