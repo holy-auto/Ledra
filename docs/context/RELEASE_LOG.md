@@ -13,24 +13,36 @@
 - 対象: どの画面・API・業種向けか
 ```
 
-## 2026-08-15 証明書の新規発行が全件失敗していたスキーマドリフトを修復（branch claude/issuance-failure-ug8bdo）
+## 2026-08-15 証明書の新規発行が全件失敗していたスキーマドリフトを修復し、db-migrate の停止も解消（branch claude/issuance-failure-ug8bdo）
 
-- 内容: 本番DBで `certificates.damage_map_json` が存在せず、証明書の新規発行が
+- 内容: 本番DBに `certificates.damage_map_json` が存在せず、証明書の新規発行が
   PostgREST の "Could not find the 'damage_map_json' column of 'certificates' in the schema cache"
   で**全件失敗**していた（発行 insert は傷マップ未使用でも常にこのキーを送るため、
   傷マップを使わない発行も落ちる）。原因は `supabase_migrations.schema_migrations` に
   「適用済み」と記録されているのに DDL が本番に反映されていないマイグレーションドリフト。
-  全406マイグレーションを機械的に突合し、欠落していたのは次の3本（列4つ・索引1つ）だけと確定:
+  リポジトリの全マイグレーションを機械パースして本番の `information_schema` と突合し、
+  欠落していたのは**4ファイル・列3つ・索引1つ**と特定した:
   `20260710000001`（`square_orders.receipt_document_id`）/ `20260710000002`（同索引）/
   `20260716000000`（`reservations.ai_assignee_suggestion`）/ `20260717000000`（`certificates.damage_map_json`）。
-  20260731144359 と同じ方式で冪等な再適用マイグレーションを追加した。
-- 再発防止: `.github/workflows/db-migrate.yml` の `supabase db push` に `--include-all` を付与。
-  既定の push は「リモート履歴の最新より古い未適用ファイル」を黙って除外するため、並行PRで後から
-  古いタイムスタンプのマイグレーションが main に入ると永久に適用されない。実際に
-  `20260730100000` / `20260730200000` / `20260802000000` の3本が未適用のまま放置されていた
-  （この修正で次回マージ時に適用される）。
-- 対象: `/admin/certificates/new`（証明書の新規発行）。副次的に Square 領収書リンクと
-  入庫時の担当メカニック候補提案。
+  20260731144359 と同じ方式で、元ファイルは変更せず冪等な再適用マイグレーションを追加した。
+- あわせて修復: この修復を本番へ届ける経路である GitHub Actions `db-migrate` 自体が
+  2026-08-02 以降ずっと赤で、`supabase db push` が
+  "Remote migration versions not found in local migrations directory." で停止していた
+  （OPEN_QUESTIONS 2026-08-05 追記で既知）。本番履歴にしか存在しなかった3バージョンを
+  リポジトリ側に揃えて解消した——`20260802154302` は既存ファイル
+  `20260802000000_fix_search_path_bare_refs_certificates_insurers.sql` の改名で対応し、
+  `20260802154541`（同 v2）と `20260804064418`（documents の SELECT ポリシー追加）は
+  本番 `schema_migrations.statements` から内容を復元してファイル化した。
+  さらに out-of-order で止まる `20260730100000` / `20260730200000`（vehicle_report 系、
+  いずれも本番未適用）を、適用済み最新 `20260805085225` より後の
+  `20260815100000` / `20260815100001` へ改名（DECISION_LOG 2026-07-21 の webauthn と同じ方式）。
+- 検証: 突合クエリで「本番履歴にあってリポジトリに無いバージョン」が0件、未適用4本すべてが
+  適用済み最新より後（out-of-order 無し）になったことを確認。`lint-migrations` 通過（257件検査）。
+- 対象: `/admin/certificates/new`（証明書の新規発行）。副次的に Square 領収書リンク、
+  入庫時の担当メカニック候補提案、および以後のマイグレーション自動適用全般。
+- 限界: 今回の突合は**テーブルと列のみ**を対象にしており、索引・CHECK 制約・RLS ポリシー・
+  関数のドリフトは検証していない（2026-07-31 のドリフトはまさにこの範囲を含んでいた）。
+  この範囲の自動突合は OPEN_QUESTIONS に起票済み。
 
 ## 2026-08-10 品目選択を「純POSレジ型（常にカテゴリタブ＋グリッド表示）」に変更（予約作成・POS）
 

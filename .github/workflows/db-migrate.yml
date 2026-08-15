@@ -60,10 +60,18 @@ jobs:
           # 未適用のマイグレーションのみ本番へ適用。投入データ系は ON CONFLICT DO NOTHING 等で
           # 冪等に書く運用のため再実行にも耐える。
           #
-          # --include-all が必須:
-          #   既定の push は「リモート履歴の最新バージョンより古い未適用ファイル」を
-          #   黙って除外する。並行 PR で後から古いタイムスタンプのマイグレーションが
-          #   main に入ると、それが永久に適用されないまま放置される
-          #   (20260730100000 / 20260730200000 / 20260802000000 が実際にこの状態だった)。
-          #   --include-all で「履歴に無いものは全部適用」に揃える。
-          supabase db push --include-all --db-url "$SUPABASE_DB_URL"
+          # このジョブが緑であり続けるための不変条件が2つある。どちらも破ると
+          # push が exit 1 で止まり、以降のマイグレーションが自動適用されなくなる
+          # (2026-08-02〜08-15 に実際に発生し、証明書発行が全件停止した):
+          #
+          #   1. 本番 schema_migrations にあるバージョンは、必ず同じバージョンの
+          #      ファイルが supabase/migrations に存在すること。
+          #      無いと "Remote migration versions not found in local migrations
+          #      directory." で停止する。Supabase MCP の apply_migration で本番へ
+          #      直接当てたときは、必ず同バージョン名のファイルを repo にも足す。
+          #   2. 新しいマイグレーションのタイムスタンプは、本番へ適用済みの最新
+          #      バージョンより後にすること。古い日付を後から入れると
+          #      out-of-order として停止する (--include-all で強制適用もできるが、
+          #      順序不変性が崩れ他環境の再現性が濁るため DECISION_LOG 2026-07-21 で
+          #      不採用。後発ファイルを一意な後ろの日付へ改名する運用に統一する)。
+          supabase db push --db-url "$SUPABASE_DB_URL"

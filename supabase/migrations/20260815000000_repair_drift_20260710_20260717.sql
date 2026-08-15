@@ -23,12 +23,14 @@
 --   索引 idx_square_orders_receipt_document は CREATE INDEX CONCURRENTLY が
 --   トランザクション内で実行できないため、別ファイル（20260815000001）に分ける。
 --
--- 再発防止:
---   .github/workflows/db-migrate.yml の `supabase db push` に `--include-all` を
---   付与した。既定の push は「リモート履歴の最新より古い未適用マイグレーション」を
---   黙って除外するため、後から古いタイムスタンプで入ったファイルが永久に
---   適用されない状態になっていた（20260730100000 / 20260730200000 /
---   20260802000000 が実際にこの状態だった）。
+-- 適用経路について:
+--   この修復が本番へ届くには db-migrate ワークフローが緑である必要があるが、
+--   同ワークフローは 2026-08-02 以降 `supabase db push` の
+--   "Remote migration versions not found in local migrations directory." で
+--   失敗し続けていた（OPEN_QUESTIONS 2026-08-05 追記）。本PRで、本番履歴にしか
+--   存在しなかった 20260802154302 / 20260802154541 / 20260804064418 の3件を
+--   リポジトリ側に揃え（改名＋本番 statements からの復元）、あわせて
+--   out-of-order だった vehicle_report 系2本を後ろの日付へ改名して解消している。
 
 
 -- ===== re-apply: 20260710000001_square_orders_receipt_link.sql =====
