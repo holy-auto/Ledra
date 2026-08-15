@@ -80,7 +80,7 @@ ALTER TABLE customer_inquiries ADD CONSTRAINT customer_inquiries_identity_presen
 ALTER TABLE customer_inquiries VALIDATE CONSTRAINT customer_inquiries_identity_present;
 
 -- customer_id 索引は CONCURRENTLY が要るため別ファイル
--- (20260815000001_customer_inquiries_customer_index.sql)。
+-- (20260815110001_customer_inquiries_customer_index.sql)。
 
 -- ─── 4. customer_deletion_requests ──────────────────────────────────────────
 ALTER TABLE customer_deletion_requests ALTER COLUMN email DROP NOT NULL;

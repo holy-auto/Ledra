@@ -47,13 +47,13 @@
   URLパラメータでの上書きを許さない。期限切れ・使用済みは `/my` に戻し、LINEに
   「マイページ」と送れば無料の応答メッセージで再発行できる旨を表示する。
 - 対象: 顧客マイページ（`/my/line`、`/customer/[tenant]`）、LINE通知。全業種共通。
-- DB: `supabase/migrations/20260815000000_customer_portal_line_login.sql`
+- DB: `supabase/migrations/20260815110000_customer_portal_line_login.sql`
   （`customer_sessions` の email/下4桁ハッシュを NULL 許容化＋「customer_id があるか
   email+下4桁が揃っているか」のCHECK / 新表 `customer_portal_login_tokens` /
   `customer_inquiries` に customer_id 追加・下4桁ハッシュ NULL 許容 /
   `customer_deletion_requests` の email NULL 許容）。CHECK は `NOT VALID` で追加してから
   別途 `VALIDATE`（既存行の全走査で ACCESS EXCLUSIVE を取らないため）。索引は
-  `CONCURRENTLY` が要るので `20260815000001_customer_inquiries_customer_index.sql` に分離。
+  `CONCURRENTLY` が要るので `20260815110001_customer_inquiries_customer_index.sql` に分離。
   **本番未適用**。
 - 秘匿: 案内本文には生のログイントークンが載るため、受信箱 (`customer_messages`) へ
   記録する本文では `recordOutboundLineMessage` が `?t=` を伏せる（`maskPortalLoginToken`）。
@@ -86,6 +86,45 @@
 - 検証: 新規テスト `src/lib/line/__tests__/linkCustomer.test.ts` 7件パス（URL組み立て・末尾スラッシュ重複・
   APP_URL未設定/slug不明のスキップ・プッシュ抑止・送信失敗時も連携は成功扱い）。
   ユニット全体 3734件パス、tsc エラー0、eslint 追加警告0（既存の未使用変数警告1件のみ）。
+
+## 2026-08-15 証明書の新規発行が全件失敗していたスキーマドリフトを修復し、db-migrate の停止も解消（branch claude/issuance-failure-ug8bdo）
+
+- 内容: 本番DBに `certificates.damage_map_json` が存在せず、証明書の新規発行が
+  PostgREST の "Could not find the 'damage_map_json' column of 'certificates' in the schema cache"
+  で**全件失敗**していた（発行 insert は傷マップ未使用でも常にこのキーを送るため、
+  傷マップを使わない発行も落ちる）。原因は `supabase_migrations.schema_migrations` に
+  「適用済み」と記録されているのに DDL が本番に反映されていないマイグレーションドリフト。
+  リポジトリの全マイグレーションを機械パースして本番の `information_schema` / `pg_class` と突合し
+  （テーブル250・列472・CONCURRENTLY索引180）、欠落していたのは**6ファイル・列3つ・索引3つ**と特定した:
+  `20260710000001`（`square_orders.receipt_document_id`）/ `20260710000002`（`idx_square_orders_receipt_document`）/
+  `20260711000003`（`idx_vehicles_public_id`, UNIQUE）/ `20260714000002`（`idx_part_installations_one_draft_per_reservation`, UNIQUE）/
+  `20260716000000`（`reservations.ai_assignee_suggestion`）/ `20260717000000`（`certificates.damage_map_json`）。
+  20260731144359 と同じ方式で、元ファイルは変更せず冪等な再適用マイグレーションを追加した。
+  索引2本は当初の列だけの突合では見落としており、自動コードレビューの指摘で気づいて追加した。
+  うち `idx_part_installations_one_draft_per_reservation` は性能用ではなく、
+  `src/lib/parts/installationService.ts` が「予約あたり下書き1件」の冪等性を一意制約違反(23505)に
+  依存して担保しているため、欠落は二重タップ・オフライン再送で下書きが複数できることを意味していた
+  （本番に重複は0件で、そのまま作成できることを確認済み）。
+- あわせて修復: この修復を本番へ届ける経路である GitHub Actions `db-migrate` 自体が
+  2026-08-02 以降ずっと赤で、`supabase db push` が
+  "Remote migration versions not found in local migrations directory." で停止していた
+  （OPEN_QUESTIONS 2026-08-05 追記で既知）。本番履歴にしか存在しなかった3バージョンを
+  リポジトリ側に揃えて解消した——`20260802154302` は既存ファイル
+  `20260802000000_fix_search_path_bare_refs_certificates_insurers.sql` の改名で対応し、
+  `20260802154541`（同 v2）と `20260804064418`（documents の SELECT ポリシー追加）は
+  本番 `schema_migrations.statements` から内容を復元してファイル化した。
+  さらに out-of-order で止まる `20260730100000` / `20260730200000`（vehicle_report 系、
+  いずれも本番未適用）を、適用済み最新 `20260805085225` より後の
+  `20260815100000` / `20260815100001` へ改名（DECISION_LOG 2026-07-21 の webauthn と同じ方式）。
+- 検証: 突合クエリで「本番履歴にあってリポジトリに無いバージョン」が0件、未適用4本すべてが
+  適用済み最新より後（out-of-order 無し）になったことを確認。`lint-migrations` 通過（257件検査）。
+- 対象: `/admin/certificates/new`（証明書の新規発行）。副次的に Square 領収書リンク、
+  入庫時の担当メカニック候補提案、および以後のマイグレーション自動適用全般。
+- 限界: 突合はテーブル・列・CONCURRENTLY索引までを対象にした。CHECK 制約・RLS ポリシー・
+  関数・テーブル定義内に書かれた索引のドリフトは未検証（2026-07-31 のドリフトはこの範囲を含んでいた）。
+  この範囲の自動突合は OPEN_QUESTIONS に起票済み。
+- 補足: CONCURRENTLY 索引180本のうち欠落は上記3本のみで、いずれも「記録済み・未実行」の
+  マイグレーションに属する。つまり CONCURRENTLY 自体は本番で正常に動いており、ドリフトの原因ではない。
 
 ## 2026-08-10 品目選択を「純POSレジ型（常にカテゴリタブ＋グリッド表示）」に変更（予約作成・POS）
 
@@ -126,7 +165,7 @@
 - 残: 加盟店/税務向けの「封印の検証（ハッシュ再計算照合・TSトークン検証）」UIと電帳法の規程面は未実装。法的効力重視時は JIPDEC 認定TS局へURL差し替え（設定変更のみ）。
 
 ## 2026-08-06 レポート収益還元（実送金＋段階式）を9ラウンドの堅牢化後にマージ (PR #851 squash → main 9ced4f3)
-- **【要確認】本番反映**: `main` にコードはマージ済みだが、`20260730100000_vehicle_report_payout.sql` / `20260730200000_vehicle_report_tiers.sql` の**本番DB適用は未確認**。`DB migrate (apply to production)` ワークフローが Aug 2 以降失敗し続けている（OPEN_QUESTIONS 2026-08-05 の履歴ドリフト）。適用が確認できるまで「本番稼働」ではなく「main マージ済み・本番適用要確認」として扱う。
+- **【要確認】本番反映**: `main` にコードはマージ済みだが、**本番DB適用は未実施**（2026-08-15 時点で本番に `vehicle_report_tiers` テーブルと `vehicle_report_orders.tier_key`/`scope_*` が存在しないことを確認済み。「未確認」ではなく「未適用」と確定）。原因は `DB migrate (apply to production)` ワークフローが Aug 2 以降失敗し続けていたこと（OPEN_QUESTIONS 2026-08-05 の履歴ドリフト）。2026-08-15 の PR #917 でワークフローの停止を解消し、2ファイルを `20260815100000_vehicle_report_payout.sql` / `20260815100001_vehicle_report_tiers.sql` へ改名して適用対象に載せた。**#917 マージ時に本番へ適用される**ので、適用後に本番稼働として扱う。
 - 内容: 2026-07-30 実装分（蓄積台帳→人手承認→Stripe Connect 実送金→返金巻き戻し、段階式レポート＋スコープ按分）を仕上げて `main` にマージ。マージ前に Codex 自動レビュー9ラウンドで金銭移動・整合性を追い込み、以下の bounded 修正を反映:
   - **finalize-on-create ＋ 原子的 claim**: Stripe が `transfer.paid` を出さないため、送金作成直後に `status='approved' かつ transfer_id IS NULL` ガード付き UPDATE で `paid` 確定。並行 cancel/refund を取りこぼさない。
   - **返金巻き戻しの純粋関数化**: `reversalActionForStatus`（terminal→skip / transfer有→reverse / 無→cancel）と `postCancelClaimAction`（cancel-claim 0行時の再読込→reverse 判定）を切り出し単体テスト。並行 payout が送金済みにした行を無条件 cancel して資金を宙に浮かせる競合を解消。
@@ -327,7 +366,7 @@
 
 ## 2026-07-30 車両レポートの段階式ティア（部分/フル）＋スコープ按分 (branch claude/merchant-revenue-sharing-22tuq3)
 - 内容: 単一定額レポートを、無料サマリ→部分（直近N ヶ月）→全履歴フルの段階式へ拡張。開示範囲と還元対象を一致させる。
-  (1) スキーマ（`20260730200000_vehicle_report_tiers.sql`）: `vehicle_report_tiers`（tier_key/label/price_jpy/scope_type/scope_months/enabled/sort、直近1年¥1,500＋全履歴¥3,000 を seed）。`vehicle_report_orders` に `tier_key`/`scope_type`/`scope_months`/**`scope_from`（購入時アンカーの絶対カットオフ）**を追加。
+  (1) スキーマ（`20260815100001_vehicle_report_tiers.sql`、旧 `20260730200000` から改名）: `vehicle_report_tiers`（tier_key/label/price_jpy/scope_type/scope_months/enabled/sort、直近1年¥1,500＋全履歴¥3,000 を seed）。`vehicle_report_orders` に `tier_key`/`scope_type`/`scope_months`/**`scope_from`（購入時アンカーの絶対カットオフ）**を追加。
   (2) スコープ純粋関数（`src/lib/vehicleReport/tiers.ts`）: `scopeFromRow`/`scopeCutoffIso`/`isCreatedAtInScope`（カレンダー月・テスト7件）。`getReportTiers`/`getReportTierByKey`。
   (3) 課金配線: checkout が `tier` を受け取り、価格・スコープをティアから決定し `scope_from` を確定して保存（クライアント値は不使用）。access は `scopeFromIso` を返す。
   (4) 表示: `/v/[vin]` は購入スコープ（`scope_from` 絶対境界）内の記録のみ表示。部分購入者には全履歴レポートへのアップセル導線。会員（ログイン施工店）は従来どおり全表示。
@@ -339,7 +378,7 @@
 
 ## 2026-07-30 レポート収益還元の実送金（Connect 精算）＋返金巻き戻し (branch claude/merchant-revenue-sharing-22tuq3)
 - 内容: 蓄積台帳（PR #848）の後続。台帳の還元分を Stripe Connect で施工店へ実送金し、返金時に巻き戻す。既存の代理店コミッション精算と同型。
-  (1) スキーマ（`20260730100000_vehicle_report_payout.sql`）: `stripe_connect_transfers.source_type` に `vehicle_report`、`vehicle_report_orders.status` に `refunded` を追加（DROP/ADD CHECK, NOT VALID+VALIDATE）。
+  (1) スキーマ（`20260815100000_vehicle_report_payout.sql`、旧 `20260730100000` から改名）: `stripe_connect_transfers.source_type` に `vehicle_report`、`vehicle_report_orders.status` に `refunded` を追加（DROP/ADD CHECK, NOT VALID+VALIDATE）。
   (2) 精算: `src/lib/vehicleReport/payout.ts`。`payVehicleReportRevenueShare` は `approved` の share のみ送金（`metadata.source_type=vehicle_report`＋idempotencyKey、`stripe_transfer_id` を刻むだけで確定は webhook）。`settleApprovedRevenueShares` が一括精算。cron `/api/cron/vehicle-report-payout`（毎日 05:20 UTC・`withCronLock`）。
   (3) 確定: connect-webhook の `transfer.paid`→share を `paid`、`transfer.reversed`→`reversed`（agent_commission と同じ分岐に vehicle_report ケース追加）。
   (4) 承認ゲート（人手）: platform-admin API `GET /api/admin/platform/report-revenue`（一覧）＋ `PATCH .../<id>`（approve/pay/cancel）。還元率70%確定まで approve しなければ 1 円も動かない安全弁。

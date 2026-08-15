@@ -3,7 +3,7 @@
 --
 -- LINE ログインのセッションは下4桁ハッシュを持たず customer_id で問い合わせを引くため。
 -- 別ファイルにしたのは CREATE INDEX CONCURRENTLY がトランザクション内で実行できないため
--- (既存の索引追加と同作法)。列の追加は 20260815000000 側。
+-- (既存の索引追加と同作法)。列の追加は 20260815110000 側。
 -- =============================================================
 
 CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_customer_inquiries_tenant_customer
