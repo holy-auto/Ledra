@@ -399,7 +399,12 @@ export async function handleWebhookEvents(
         if (link.linked) {
           if (event.replyToken) {
             // マイページ案内は同じ応答メッセージに同梱する (応答は無料・プッシュは従量課金)。
-            const linkedText = ["LINE連携が完了しました。今後の確認はこちらにお送りします。", link.portalText ?? null]
+            // ただしグループ/ルームへのリプライは参加者全員に届くため、URL を含む案内は
+            // 1:1 トークのときだけ送る (linkPrompt.ts と同じ方針)。
+            const linkedText = [
+              "LINE連携が完了しました。今後の確認はこちらにお送りします。",
+              event.source.type === "user" ? (link.portalText ?? null) : null,
+            ]
               .filter(Boolean)
               .join("\n\n");
             await replyMessage(config.channelAccessToken, event.replyToken, [{ type: "text", text: linkedText }]);

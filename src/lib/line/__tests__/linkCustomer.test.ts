@@ -29,10 +29,11 @@ const LINE_USER = "Uabcdef0123456789abcdef0123456789";
 /**
  * 最小の fluent モック。
  *  - tenants.maybeSingle()   → { slug }（slug: null で「解決できない」ケース）
- *  - customers.maybeSingle() → { line_user_id: null }（未連携なので更新経路に入る）
+ *  - customers.maybeSingle() → { line_user_id, email }
+ *    （lineUserId: 既存の紐づけ = 再連携ケース / email: null でログイン不可ケース）
  *  - update 系チェーン (await) → { error: null, count: 0 }
  */
-function adminMock(opts: { slug?: string | null } = {}) {
+function adminMock(opts: { slug?: string | null; email?: string | null; lineUserId?: string | null } = {}) {
   return {
     from(table: string) {
       const b: any = {
@@ -43,7 +44,13 @@ function adminMock(opts: { slug?: string | null } = {}) {
         maybeSingle: async () =>
           table === "tenants"
             ? { data: opts.slug === null ? null : { slug: opts.slug ?? "demo-shop" }, error: null }
-            : { data: { line_user_id: null }, error: null },
+            : {
+                data: {
+                  line_user_id: opts.lineUserId ?? null,
+                  email: opts.email === undefined ? "customer@example.com" : opts.email,
+                },
+                error: null,
+              },
         then: (resolve: (v: any) => void) => resolve({ error: null, count: 0 }),
       };
       return b;
@@ -51,10 +58,12 @@ function adminMock(opts: { slug?: string | null } = {}) {
   };
 }
 
-const ORIGINAL_APP_URL = process.env.NEXT_PUBLIC_APP_URL;
+const URL_ENV_KEYS = ["NEXT_PUBLIC_APP_URL", "APP_URL", "NEXT_PUBLIC_BASE_URL"] as const;
+const ORIGINAL_URL_ENV = Object.fromEntries(URL_ENV_KEYS.map((k) => [k, process.env[k]]));
 
 beforeEach(() => {
   vi.clearAllMocks();
+  for (const k of URL_ENV_KEYS) delete process.env[k];
   process.env.NEXT_PUBLIC_APP_URL = "https://app.ledra.co.jp";
   mocks.createServiceRoleAdmin.mockReturnValue(adminMock());
   mocks.enqueueLineHistoryImport.mockResolvedValue(undefined);
@@ -62,30 +71,47 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  if (ORIGINAL_APP_URL === undefined) delete process.env.NEXT_PUBLIC_APP_URL;
-  else process.env.NEXT_PUBLIC_APP_URL = ORIGINAL_APP_URL;
+  for (const k of URL_ENV_KEYS) {
+    const original = ORIGINAL_URL_ENV[k];
+    if (original === undefined) delete process.env[k];
+    else process.env[k] = original;
+  }
 });
 
 describe("buildPortalWelcomeText", () => {
   it("tenant slug 付きのマイページ URL を含む案内を返す", async () => {
-    const text = await buildPortalWelcomeText(TENANT);
+    const text = await buildPortalWelcomeText(TENANT, CUSTOMER);
     expect(text).toContain("https://app.ledra.co.jp/my?tenant=demo-shop");
   });
 
   it("APP_URL 末尾のスラッシュを重複させない", async () => {
     process.env.NEXT_PUBLIC_APP_URL = "https://app.ledra.co.jp/";
-    const text = await buildPortalWelcomeText(TENANT);
+    const text = await buildPortalWelcomeText(TENANT, CUSTOMER);
     expect(text).toContain("https://app.ledra.co.jp/my?tenant=demo-shop");
   });
 
-  it("APP_URL 未設定なら null (壊れた相対リンクを送らない)", async () => {
+  it("NEXT_PUBLIC_APP_URL が無くても APP_URL にフォールバックする", async () => {
     delete process.env.NEXT_PUBLIC_APP_URL;
-    expect(await buildPortalWelcomeText(TENANT)).toBeNull();
+    process.env.APP_URL = "https://app.ledra.co.jp";
+    const text = await buildPortalWelcomeText(TENANT, CUSTOMER);
+    expect(text).toContain("https://app.ledra.co.jp/my?tenant=demo-shop");
+  });
+
+  it("base URL がどれも未設定なら null (壊れた相対リンクを送らない)", async () => {
+    delete process.env.NEXT_PUBLIC_APP_URL;
+    delete process.env.APP_URL;
+    delete process.env.NEXT_PUBLIC_BASE_URL;
+    expect(await buildPortalWelcomeText(TENANT, CUSTOMER)).toBeNull();
   });
 
   it("tenant slug が引けなければ null", async () => {
     mocks.createServiceRoleAdmin.mockReturnValue(adminMock({ slug: null }));
-    expect(await buildPortalWelcomeText(TENANT)).toBeNull();
+    expect(await buildPortalWelcomeText(TENANT, CUSTOMER)).toBeNull();
+  });
+
+  it("顧客に email が無ければ null (マイページはメールOTPログインのみで入れない)", async () => {
+    mocks.createServiceRoleAdmin.mockReturnValue(adminMock({ email: null }));
+    expect(await buildPortalWelcomeText(TENANT, CUSTOMER)).toBeNull();
   });
 });
 
@@ -109,11 +135,30 @@ describe("linkLineUserToCustomer", () => {
     expect(mocks.sendCustomerLineText).not.toHaveBeenCalled();
   });
 
-  it("案内の送信に失敗しても連携自体は成功として返す", async () => {
-    mocks.sendCustomerLineText.mockRejectedValue(new Error("LINE down"));
+  it("既に同じ LINE ユーザーで連携済みなら送らない (再連携での二重送信・二重課金を防ぐ)", async () => {
+    mocks.createServiceRoleAdmin.mockReturnValue(adminMock({ lineUserId: LINE_USER }));
 
     const res = await linkLineUserToCustomer({ tenantId: TENANT, customerId: CUSTOMER, lineUserId: LINE_USER });
 
     expect(res.ok).toBe(true);
+    expect(mocks.sendCustomerLineText).not.toHaveBeenCalled();
+  });
+
+  it("email 無しの顧客には送らない (開けないマイページを案内しない)", async () => {
+    mocks.createServiceRoleAdmin.mockReturnValue(adminMock({ email: null }));
+
+    await linkLineUserToCustomer({ tenantId: TENANT, customerId: CUSTOMER, lineUserId: LINE_USER });
+
+    expect(mocks.sendCustomerLineText).not.toHaveBeenCalled();
+  });
+
+  it("案内が届かなくても連携自体は成功として返す", async () => {
+    // 実際の sendCustomerLineText は内部で例外を捕まえて false を返す (throw しない)。
+    mocks.sendCustomerLineText.mockResolvedValue(false);
+
+    const res = await linkLineUserToCustomer({ tenantId: TENANT, customerId: CUSTOMER, lineUserId: LINE_USER });
+
+    expect(res.ok).toBe(true);
+    expect(mocks.sendCustomerLineText).toHaveBeenCalledTimes(1);
   });
 });

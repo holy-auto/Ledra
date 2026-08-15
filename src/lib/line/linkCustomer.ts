@@ -31,17 +31,47 @@ export interface LinkLineUserResult {
 /**
  * 連携完了時に顧客へ送る「マイページのご案内」本文を組み立てる。
  *
- * 送れない条件 (APP_URL 未設定 / tenant slug 不明) では null を返し、呼び出し側は送信を
- * 見送る。base URL 無しで組むと `/my?...` という壊れたリンクを顧客に送ることになるため。
+ * 次のいずれかに当たると null を返し、呼び出し側は送信を見送る:
+ *   - APP_URL 未設定 / tenant slug 不明 … `/my?...` という壊れたリンクを送ってしまう
+ *   - 顧客に email が無い … マイページのログインはメール宛 OTP のみで
+ *     (`listPortalMemberships` が email 一致で顧客を引く)、email 無しの顧客は
+ *     URL を開いても入れない。開けない導線を案内するくらいなら送らない。
  */
-export async function buildPortalWelcomeText(tenantId: string): Promise<string | null> {
-  const base = (process.env.NEXT_PUBLIC_APP_URL ?? "").trim();
-  if (!base) return null;
+export async function buildPortalWelcomeText(tenantId: string, customerId: string): Promise<string | null> {
+  // linkPrompt.getBaseUrl と同じフォールバック順。片方だけ設定された環境で、
+  // 連携案内だけ無言で止まるのを防ぐ。
+  const base = (
+    process.env.NEXT_PUBLIC_APP_URL ??
+    process.env.APP_URL ??
+    process.env.NEXT_PUBLIC_BASE_URL ??
+    ""
+  ).trim();
+  if (!base) {
+    logger.warn("[linkCustomer] portal welcome skipped — APP_URL 未設定", { tenantId });
+    return null;
+  }
 
   const admin = createServiceRoleAdmin("LINE 連携完了時のマイページ案内 — tenant slug 解決");
   const { data: tenant } = await admin.from("tenants").select("slug").eq("id", tenantId).maybeSingle();
   const slug = (tenant?.slug as string | null) ?? null;
-  if (!slug) return null;
+  if (!slug) {
+    logger.warn("[linkCustomer] portal welcome skipped — tenant slug 不明", { tenantId });
+    return null;
+  }
+
+  const { data: customer } = await admin
+    .from("customers")
+    .select("email")
+    .eq("id", customerId)
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+  if (!String(customer?.email ?? "").trim()) {
+    logger.info("[linkCustomer] portal welcome skipped — 顧客に email が無くマイページに入れない", {
+      tenantId,
+      customerId,
+    });
+    return null;
+  }
 
   const origin = (base.startsWith("http") ? base : `https://${base}`).replace(/\/+$/, "");
   return [
@@ -75,6 +105,9 @@ export async function linkLineUserToCustomer(params: {
     "LINE 顧客紐づけ — line_user_id セット + 過去メッセージ backfill (webhook / intake は auth セッション無し)",
   );
 
+  // 既に同じ line_user_id で連携済みだったか。再連携で案内を二重に送らないための印。
+  let alreadyLinked = false;
+
   // a. customers.line_user_id をセット (まだ別ユーザーが付いていない場合のみ)。
   if (setLineUserId) {
     // 既に **別の** line_user_id が紐づいている顧客は上書きしない。
@@ -93,6 +126,7 @@ export async function linkLineUserToCustomer(params: {
       });
       return { ok: false, backfilled: 0 };
     }
+    alreadyLinked = existingLineUserId === lineUserId;
     if (!existingLineUserId) {
       const { error: upErr } = await admin
         .from("customers")
@@ -143,9 +177,10 @@ export async function linkLineUserToCustomer(params: {
 
   // d. マイページ案内を送る (fire-and-forget)。client.ts は本モジュールを (linkCode 経由で)
   //    動的に読むため、循環参照を避けてこちらも動的 import する。
-  if (!params.suppressPortalMessage) {
+  //    既に同じ LINE ユーザーで連携済みなら送らない (再連携での二重送信・二重課金を防ぐ)。
+  if (!params.suppressPortalMessage && !alreadyLinked) {
     try {
-      const body = await buildPortalWelcomeText(tenantId);
+      const body = await buildPortalWelcomeText(tenantId, customerId);
       if (body) {
         const { sendCustomerLineText } = await import("@/lib/line/client");
         await sendCustomerLineText({ tenantId, customerId, lineUserId, body });
