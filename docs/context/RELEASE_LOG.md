@@ -13,6 +13,18 @@
 - 対象: どの画面・API・業種向けか
 ```
 
+## 2026-08-15 車検証OCRの失敗理由を画面に表示（無反応の解消） (branch claude/vehicle-inspection-cert-reading-5347oo)
+
+- 内容: 車検証の読み取りが「押しても何も起きない」状態になり得た経路を修正。(1) `parseShakensho` が
+  Vision 呼び出しの例外を握りつぶして空データを返していたのをやめ、例外を投げるように変更（QRが
+  読めていれば `parseShakenshoAuto` がQR分だけ返して degrade）。(2) `/api/vehicles/parse-shakken` と
+  `/api/admin/vehicle-size/ocr` は OCR 基盤の失敗を 502 +「AI OCR に接続できませんでした」で返す。
+  (3) 表示判定を `src/lib/ocr/shakenshoAutofill.ts` に集約し、「AI自動入力が無効（設定/月次コスト上限）」
+  「1項目も読めなかった」「自動入力できた項目名」を全画面で同じ文言に統一。LINE の車検証自動登録は
+  従来どおりスタッフ引き継ぎに倒す（例外で止めない）。
+- 対象: 車両登録（`/admin/vehicles/new`）、車両編集（`/admin/vehicles/[id]/edit`）、
+  証明書発行の車両ピッカー（`/admin/certificates/new`）、車両サイズOCR（`VehicleSizeOCR`）
+
 ## 2026-08-10 品目選択を「純POSレジ型（常にカテゴリタブ＋グリッド表示）」に変更（予約作成・POS）
 
 - 内容: 前日の「検索/カテゴリで絞るまで隠す」段階表示（#903）を、代表の要望により純POSレジ型へ作り替え。
