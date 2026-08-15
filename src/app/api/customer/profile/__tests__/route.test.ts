@@ -37,12 +37,16 @@ const CUSTOMER = "cust-1";
  */
 function adminMock(opts: {
   current?: { id: string; email: string | null; phone: string | null } | null;
-  clash?: boolean;
+  /** ilike で引っかかる候補 (完全一致するとは限らない) */
+  candidates?: { id: string; email: string }[];
+  /** 重複チェックのクエリ自体が失敗する */
+  clashError?: boolean;
 }) {
   const updates: Record<string, unknown>[] = [];
   const admin = {
     updates,
     from() {
+      // 重複チェックだけが .neq() を使う → それで問い合わせの種類を見分ける
       const b: {
         _neq: boolean;
         select: () => typeof b;
@@ -50,7 +54,7 @@ function adminMock(opts: {
         eq: () => typeof b;
         ilike: () => typeof b;
         neq: () => typeof b;
-        limit: () => typeof b;
+        limit: () => Promise<{ data: unknown; error: unknown }> | typeof b;
         maybeSingle: () => Promise<{ data: unknown; error: null }>;
         then: (resolve: (v: unknown) => void) => void;
       } = {
@@ -62,19 +66,21 @@ function adminMock(opts: {
         },
         eq: () => b,
         ilike: () => b,
-        // 重複チェックだけが .neq() を使う → それで問い合わせの種類を見分ける
         neq: () => {
           b._neq = true;
           return b;
         },
-        limit: () => b,
-        maybeSingle: async () =>
+        limit: () =>
           b._neq
-            ? { data: opts.clash ? { id: "other-customer" } : null, error: null }
-            : {
-                data: opts.current === undefined ? { id: CUSTOMER, email: null, phone: null } : opts.current,
-                error: null,
-              },
+            ? Promise.resolve({
+                data: opts.clashError ? null : (opts.candidates ?? []),
+                error: opts.clashError ? { message: "db down" } : null,
+              })
+            : b,
+        maybeSingle: async () => ({
+          data: opts.current === undefined ? { id: CUSTOMER, email: null, phone: null } : opts.current,
+          error: null,
+        }),
         then: (resolve: (v: unknown) => void) => resolve({ error: null }),
       };
       return b;
@@ -111,10 +117,51 @@ describe("POST /api/customer/profile", () => {
   });
 
   it("同一テナントの他顧客が使っている email は拒否する", async () => {
-    const scoped = adminMock({ clash: true });
+    const scoped = adminMock({ candidates: [{ id: "other-customer", email: "taken@example.com" }] });
     mocks.createTenantScopedAdmin.mockReturnValue(scoped);
 
     const res = await POST(req({ tenant_slug: "demo", email: "taken@example.com" }));
+
+    expect(res.status).toBe(400);
+    expect(scoped._ref.updates).toHaveLength(0);
+  });
+
+  it("ilike のワイルドカード一致だけでは拒否しない (a_b@ は axb@ と別物)", async () => {
+    // `_` は ilike のワイルドカードなので候補には挙がるが、完全一致ではないので通す。
+    const scoped = adminMock({ candidates: [{ id: "other-customer", email: "axb@example.com" }] });
+    mocks.createTenantScopedAdmin.mockReturnValue(scoped);
+
+    const res = await POST(req({ tenant_slug: "demo", email: "a_b@example.com" }));
+
+    expect(res.status).toBe(200);
+    expect(scoped._ref.updates[0]).toMatchObject({ email: "a_b@example.com" });
+  });
+
+  it("重複チェックが失敗したら書き込まない (fail-open にしない)", async () => {
+    const scoped = adminMock({ clashError: true });
+    mocks.createTenantScopedAdmin.mockReturnValue(scoped);
+
+    const res = await POST(req({ tenant_slug: "demo", email: "me@example.com" }));
+
+    expect(res.status).toBe(500);
+    expect(scoped._ref.updates).toHaveLength(0);
+  });
+
+  it("登録済みの email は上書きできない (ログイン identity の差し替えを防ぐ)", async () => {
+    const scoped = adminMock({ current: { id: CUSTOMER, email: "old@example.com", phone: null } });
+    mocks.createTenantScopedAdmin.mockReturnValue(scoped);
+
+    const res = await POST(req({ tenant_slug: "demo", email: "new@example.com" }));
+
+    expect(res.status).toBe(400);
+    expect(scoped._ref.updates).toHaveLength(0);
+  });
+
+  it("登録済みの電話番号も上書きできない", async () => {
+    const scoped = adminMock({ current: { id: CUSTOMER, email: null, phone: "090-0000-0000" } });
+    mocks.createTenantScopedAdmin.mockReturnValue(scoped);
+
+    const res = await POST(req({ tenant_slug: "demo", phone: "080-1111-2222" }));
 
     expect(res.status).toBe(400);
     expect(scoped._ref.updates).toHaveLength(0);

@@ -65,18 +65,33 @@ export async function POST(req: Request) {
 
     const patch: Record<string, string> = {};
 
+    // 空欄を埋めるだけ。既に入っている値の変更はここでは受け付けない。
+    // 登録済みの email はマイページのログイン identity そのもので、本人確認なしに
+    // 差し替えられると乗っ取りの経路になる (変更は店舗経由)。
+    if (email && String(current.email ?? "").trim()) {
+      return apiValidationError("メールアドレスは登録済みです。変更をご希望の場合は店舗へお問い合わせください。");
+    }
+    if (phone && String(current.phone ?? "").trim()) {
+      return apiValidationError("電話番号は登録済みです。変更をご希望の場合は店舗へお問い合わせください。");
+    }
+
     if (email) {
       const normalized = normalizeEmail(email);
       // 同一テナント内で他の顧客が使っている email は拒否する。マイページのログインは
       // email 一致で顧客を引くため、重複を許すと他人の情報に手が届く経路を作ってしまう。
-      const { data: clash } = await admin
+      // ilike は `_` `%` をワイルドカードとして扱うので、候補を引いたうえで完全一致だけを見る
+      // (`a_b@ex.com` が `axb@ex.com` に当たって誤って弾かれるのを防ぐ)。
+      const { data: candidates, error: clashErr } = await admin
         .from("customers")
-        .select("id")
+        .select("id, email")
         .eq("tenant_id", tenantId)
         .ilike("email", normalized)
         .neq("id", customerId)
-        .limit(1)
-        .maybeSingle();
+        .limit(20);
+      // 重複チェックが失敗したまま書き込むと fail-open になる。確認できないなら書かない。
+      if (clashErr) return apiInternalError(clashErr, "customer/profile duplicate check");
+
+      const clash = (candidates ?? []).some((c) => normalizeEmail(String(c.email ?? "")) === normalized);
       if (clash) {
         return apiValidationError(
           "このメールアドレスは既に登録されています。お心当たりが無い場合は店舗へお問い合わせください。",

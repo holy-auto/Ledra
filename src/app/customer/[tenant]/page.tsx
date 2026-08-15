@@ -37,6 +37,8 @@ type Profile = {
   email: string | null;
   phone: string | null;
   certificateCount: number;
+  /** 連絡先の自己登録が可能なセッションか (customer_id 付きのみ)。 */
+  canEditContact?: boolean;
 } | null;
 
 type VehicleInfo = Record<string, any> | null;
@@ -404,7 +406,7 @@ export default function CustomerListPage() {
 
       {/* 連絡先が欠けているお客様への登録のお願い。LINE 連携だけで作られた顧客は
           email が無く、メール通知が届かず PC からもログインできないため。 */}
-      {profile && (!profile.email || !profile.phone) ? (
+      {profile && profile.canEditContact && (!profile.email || !profile.phone) ? (
         <div className="mb-4 rounded-3xl border border-amber-200 bg-amber-50 p-5 shadow-sm dark:border-amber-800/50 dark:bg-amber-950">
           <div className="text-sm font-semibold text-amber-900 dark:text-amber-300">お客様情報のご登録のお願い</div>
           <p className="mt-1 text-sm text-amber-800 dark:text-amber-400">

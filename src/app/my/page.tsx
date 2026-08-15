@@ -61,9 +61,14 @@ export default function GlobalPortalLoginPage() {
           ご利用中の加盟店情報をまとめて確認できます。まずはご本人確認を行ってください。
         </p>
 
-        {reason === "line_link_expired" ? (
+        {/* /my/line からの失敗はすべてここへ戻る。どの理由でも「次に何をすればいいか」を出す。 */}
+        {reason === "line_link_expired" || reason === "line_link_error" || reason === "rate_limited" ? (
           <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-800/50 dark:bg-amber-950 dark:text-amber-400">
-            リンクの有効期限が切れているか、既に使用済みです。
+            {reason === "line_link_expired"
+              ? "リンクの有効期限が切れているか、既に使用済みです。"
+              : reason === "rate_limited"
+                ? "アクセスが集中しています。少し時間をおいてからもう一度お試しください。"
+                : "ログインリンクを開けませんでした。お手数ですが、もう一度お試しください。"}
             <br />
             LINEのトークで「<span className="font-semibold">マイページ</span>
             」と送っていただくと、新しいリンクをお送りします。

@@ -66,7 +66,9 @@ export async function GET(req: Request) {
 
     if (action === "profile") {
       const profile = await getCustomerProfile(tenantId, phoneHash, sessionEmail, sessionCustomerId);
-      return apiJson({ ok: true, profile });
+      // 連絡先の自己登録は customer_id 付きセッションでしか通らない (更新対象の行を
+      // 一意に決められないため)。フォームを出してから 401 にしないよう、UI に伝える。
+      return apiJson({ ok: true, profile: profile ? { ...profile, canEditContact: !!sessionCustomerId } : null });
     }
 
     const rows = await listCertificatesForCustomer(tenantId, phoneHash, sessionEmail, sessionCustomerId);
