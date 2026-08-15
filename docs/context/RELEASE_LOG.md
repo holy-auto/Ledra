@@ -54,7 +54,9 @@
   `customer_deletion_requests` の email NULL 許容）。CHECK は `NOT VALID` で追加してから
   別途 `VALIDATE`（既存行の全走査で ACCESS EXCLUSIVE を取らないため）。索引は
   `CONCURRENTLY` が要るので `20260815110001_customer_inquiries_customer_index.sql` に分離。
-  **本番未適用**。
+  **適用は main マージ時に db-migrate ワークフローが自動で行う**（#917 で復旧済み）。
+  バージョンは #917 の `20260815000000/000001` と衝突していたため `20260815110000/110001` へ改番
+  （重複すると片方が「適用済み」と記録されたまま中身が実行されず、#917 が修復したドリフトそのものになる）。
 - 秘匿: 案内本文には生のログイントークンが載るため、受信箱 (`customer_messages`) へ
   記録する本文では `recordOutboundLineMessage` が `?t=` を伏せる（`maskPortalLoginToken`）。
   伏せないと店舗スタッフが受信箱からコピーして顧客本人としてログインできてしまう。
