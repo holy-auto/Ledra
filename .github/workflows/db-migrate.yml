@@ -59,4 +59,11 @@ jobs:
           supabase migration list --db-url "$SUPABASE_DB_URL" || true
           # 未適用のマイグレーションのみ本番へ適用。投入データ系は ON CONFLICT DO NOTHING 等で
           # 冪等に書く運用のため再実行にも耐える。
-          supabase db push --db-url "$SUPABASE_DB_URL"
+          #
+          # --include-all が必須:
+          #   既定の push は「リモート履歴の最新バージョンより古い未適用ファイル」を
+          #   黙って除外する。並行 PR で後から古いタイムスタンプのマイグレーションが
+          #   main に入ると、それが永久に適用されないまま放置される
+          #   (20260730100000 / 20260730200000 / 20260802000000 が実際にこの状態だった)。
+          #   --include-all で「履歴に無いものは全部適用」に揃える。
+          supabase db push --include-all --db-url "$SUPABASE_DB_URL"

@@ -13,6 +13,25 @@
 - 対象: どの画面・API・業種向けか
 ```
 
+## 2026-08-15 証明書の新規発行が全件失敗していたスキーマドリフトを修復（branch claude/issuance-failure-ug8bdo）
+
+- 内容: 本番DBで `certificates.damage_map_json` が存在せず、証明書の新規発行が
+  PostgREST の "Could not find the 'damage_map_json' column of 'certificates' in the schema cache"
+  で**全件失敗**していた（発行 insert は傷マップ未使用でも常にこのキーを送るため、
+  傷マップを使わない発行も落ちる）。原因は `supabase_migrations.schema_migrations` に
+  「適用済み」と記録されているのに DDL が本番に反映されていないマイグレーションドリフト。
+  全406マイグレーションを機械的に突合し、欠落していたのは次の3本（列4つ・索引1つ）だけと確定:
+  `20260710000001`（`square_orders.receipt_document_id`）/ `20260710000002`（同索引）/
+  `20260716000000`（`reservations.ai_assignee_suggestion`）/ `20260717000000`（`certificates.damage_map_json`）。
+  20260731144359 と同じ方式で冪等な再適用マイグレーションを追加した。
+- 再発防止: `.github/workflows/db-migrate.yml` の `supabase db push` に `--include-all` を付与。
+  既定の push は「リモート履歴の最新より古い未適用ファイル」を黙って除外するため、並行PRで後から
+  古いタイムスタンプのマイグレーションが main に入ると永久に適用されない。実際に
+  `20260730100000` / `20260730200000` / `20260802000000` の3本が未適用のまま放置されていた
+  （この修正で次回マージ時に適用される）。
+- 対象: `/admin/certificates/new`（証明書の新規発行）。副次的に Square 領収書リンクと
+  入庫時の担当メカニック候補提案。
+
 ## 2026-08-10 品目選択を「純POSレジ型（常にカテゴリタブ＋グリッド表示）」に変更（予約作成・POS）
 
 - 内容: 前日の「検索/カテゴリで絞るまで隠す」段階表示（#903）を、代表の要望により純POSレジ型へ作り替え。
