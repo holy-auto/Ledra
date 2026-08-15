@@ -398,7 +398,10 @@ export async function handleWebhookEvents(
         const link = await tryConsumeLineLinkCode(tenantId, event.source.userId, rawText);
         if (link.linked) {
           if (event.replyToken) {
-            const linkedText = "LINE連携が完了しました。今後の確認はこちらにお送りします。";
+            // マイページ案内は同じ応答メッセージに同梱する (応答は無料・プッシュは従量課金)。
+            const linkedText = ["LINE連携が完了しました。今後の確認はこちらにお送りします。", link.portalText ?? null]
+              .filter(Boolean)
+              .join("\n\n");
             await replyMessage(config.channelAccessToken, event.replyToken, [{ type: "text", text: linkedText }]);
             await recordOutboundLineMessage({
               tenantId,

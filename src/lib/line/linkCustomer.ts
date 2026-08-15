@@ -12,6 +12,8 @@
  *      (友だち追加直後など未紐づけで溜まっていた過去スレッドを顧客に集約)
  *   c. 過去のやり取りを AI 解析して予約候補化する一括取り込みジョブを enqueue
  *      (fire-and-forget。opt-in テナントのみ実体が動く)
+ *   d. マイページ (証明書・施工履歴・予約の閲覧口) の URL を LINE で案内
+ *      (fire-and-forget。連携直後にしか送らないので 1 顧客 1 通)
  *
  * webhook / 自動経路には auth セッションが無いため service-role で書き込む。
  * tenant_id は呼び出し元から厳密に渡される値のみを使う。
@@ -27,16 +29,44 @@ export interface LinkLineUserResult {
 }
 
 /**
- * line_user_id を顧客に紐づけ、過去メッセージを backfill し、履歴取り込みを enqueue する。
+ * 連携完了時に顧客へ送る「マイページのご案内」本文を組み立てる。
+ *
+ * 送れない条件 (APP_URL 未設定 / tenant slug 不明) では null を返し、呼び出し側は送信を
+ * 見送る。base URL 無しで組むと `/my?...` という壊れたリンクを顧客に送ることになるため。
+ */
+export async function buildPortalWelcomeText(tenantId: string): Promise<string | null> {
+  const base = (process.env.NEXT_PUBLIC_APP_URL ?? "").trim();
+  if (!base) return null;
+
+  const admin = createServiceRoleAdmin("LINE 連携完了時のマイページ案内 — tenant slug 解決");
+  const { data: tenant } = await admin.from("tenants").select("slug").eq("id", tenantId).maybeSingle();
+  const slug = (tenant?.slug as string | null) ?? null;
+  if (!slug) return null;
+
+  const origin = (base.startsWith("http") ? base : `https://${base}`).replace(/\/+$/, "");
+  return [
+    "【マイページのご案内】",
+    "施工証明書・施工履歴・ご予約はこちらからご確認いただけます。",
+    `${origin}/my?tenant=${encodeURIComponent(slug)}`,
+  ].join("\n");
+}
+
+/**
+ * line_user_id を顧客に紐づけ、過去メッセージを backfill し、履歴取り込みを enqueue し、
+ * マイページ URL を案内する。
  *
  * @param setLineUserId customers.line_user_id を更新するか (既定 true)。受信箱の link
  *   ルートのように呼び出し側で既に更新済みの場合は false を渡して二重更新を避ける。
+ * @param suppressPortalMessage マイページ案内のプッシュ送信を抑止するか (既定 false)。
+ *   連携コード経路のように呼び出し側が**無料の応答メッセージ**へ同梱できる場合に true。
+ *   (LINE 公式アカウントはプッシュが従量課金・応答メッセージは無料)
  */
 export async function linkLineUserToCustomer(params: {
   tenantId: string;
   customerId: string;
   lineUserId: string;
   setLineUserId?: boolean;
+  suppressPortalMessage?: boolean;
 }): Promise<LinkLineUserResult> {
   const { tenantId, customerId, lineUserId } = params;
   const setLineUserId = params.setLineUserId !== false;
@@ -109,6 +139,24 @@ export async function linkLineUserToCustomer(params: {
       customerId,
       err: e instanceof Error ? e.message : String(e),
     });
+  }
+
+  // d. マイページ案内を送る (fire-and-forget)。client.ts は本モジュールを (linkCode 経由で)
+  //    動的に読むため、循環参照を避けてこちらも動的 import する。
+  if (!params.suppressPortalMessage) {
+    try {
+      const body = await buildPortalWelcomeText(tenantId);
+      if (body) {
+        const { sendCustomerLineText } = await import("@/lib/line/client");
+        await sendCustomerLineText({ tenantId, customerId, lineUserId, body });
+      }
+    } catch (e) {
+      logger.warn("[linkCustomer] portal welcome send failed", {
+        tenantId,
+        customerId,
+        err: e instanceof Error ? e.message : String(e),
+      });
+    }
   }
 
   return { ok: true, backfilled };

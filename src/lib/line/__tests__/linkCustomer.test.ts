@@ -1,0 +1,119 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+
+// LINE 連携完了時の「マイページ URL 案内」を検証する。
+// 検証の要点は 3 つ:
+//   1. 案内本文に正しいマイページ URL (slug 付き) が入る
+//   2. 送れない条件 (APP_URL 未設定 / slug 不明) では壊れたリンクを送らず黙って見送る
+//   3. 連携コード経路 (無料の応答メッセージへ同梱) では有料プッシュを二重に送らない
+
+const mocks = vi.hoisted(() => ({
+  createServiceRoleAdmin: vi.fn(),
+  enqueueLineHistoryImport: vi.fn(),
+  sendCustomerLineText: vi.fn(),
+}));
+
+vi.mock("@/lib/supabase/admin", () => ({ createServiceRoleAdmin: mocks.createServiceRoleAdmin }));
+vi.mock("@/lib/qstash/publish", () => ({ enqueueLineHistoryImport: mocks.enqueueLineHistoryImport }));
+vi.mock("@/lib/line/client", () => ({ sendCustomerLineText: mocks.sendCustomerLineText }));
+vi.mock("@/lib/logger", () => ({
+  logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn(), child: () => ({}) },
+}));
+
+import { buildPortalWelcomeText, linkLineUserToCustomer } from "@/lib/line/linkCustomer";
+
+const TENANT = "11111111-1111-1111-1111-111111111111";
+const CUSTOMER = "22222222-2222-2222-2222-222222222222";
+const LINE_USER = "Uabcdef0123456789abcdef0123456789";
+
+/**
+ * 最小の fluent モック。
+ *  - tenants.maybeSingle()   → { slug }（slug: null で「解決できない」ケース）
+ *  - customers.maybeSingle() → { line_user_id: null }（未連携なので更新経路に入る）
+ *  - update 系チェーン (await) → { error: null, count: 0 }
+ */
+function adminMock(opts: { slug?: string | null } = {}) {
+  return {
+    from(table: string) {
+      const b: any = {
+        select: () => b,
+        update: () => b,
+        eq: () => b,
+        is: () => b,
+        maybeSingle: async () =>
+          table === "tenants"
+            ? { data: opts.slug === null ? null : { slug: opts.slug ?? "demo-shop" }, error: null }
+            : { data: { line_user_id: null }, error: null },
+        then: (resolve: (v: any) => void) => resolve({ error: null, count: 0 }),
+      };
+      return b;
+    },
+  };
+}
+
+const ORIGINAL_APP_URL = process.env.NEXT_PUBLIC_APP_URL;
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  process.env.NEXT_PUBLIC_APP_URL = "https://app.ledra.co.jp";
+  mocks.createServiceRoleAdmin.mockReturnValue(adminMock());
+  mocks.enqueueLineHistoryImport.mockResolvedValue(undefined);
+  mocks.sendCustomerLineText.mockResolvedValue(true);
+});
+
+afterEach(() => {
+  if (ORIGINAL_APP_URL === undefined) delete process.env.NEXT_PUBLIC_APP_URL;
+  else process.env.NEXT_PUBLIC_APP_URL = ORIGINAL_APP_URL;
+});
+
+describe("buildPortalWelcomeText", () => {
+  it("tenant slug 付きのマイページ URL を含む案内を返す", async () => {
+    const text = await buildPortalWelcomeText(TENANT);
+    expect(text).toContain("https://app.ledra.co.jp/my?tenant=demo-shop");
+  });
+
+  it("APP_URL 末尾のスラッシュを重複させない", async () => {
+    process.env.NEXT_PUBLIC_APP_URL = "https://app.ledra.co.jp/";
+    const text = await buildPortalWelcomeText(TENANT);
+    expect(text).toContain("https://app.ledra.co.jp/my?tenant=demo-shop");
+  });
+
+  it("APP_URL 未設定なら null (壊れた相対リンクを送らない)", async () => {
+    delete process.env.NEXT_PUBLIC_APP_URL;
+    expect(await buildPortalWelcomeText(TENANT)).toBeNull();
+  });
+
+  it("tenant slug が引けなければ null", async () => {
+    mocks.createServiceRoleAdmin.mockReturnValue(adminMock({ slug: null }));
+    expect(await buildPortalWelcomeText(TENANT)).toBeNull();
+  });
+});
+
+describe("linkLineUserToCustomer", () => {
+  it("連携成立時にマイページ案内を LINE で送る", async () => {
+    const res = await linkLineUserToCustomer({ tenantId: TENANT, customerId: CUSTOMER, lineUserId: LINE_USER });
+
+    expect(res.ok).toBe(true);
+    expect(mocks.sendCustomerLineText).toHaveBeenCalledTimes(1);
+    expect(mocks.sendCustomerLineText.mock.calls[0][0].body).toContain("/my?tenant=demo-shop");
+  });
+
+  it("suppressPortalMessage=true ならプッシュを送らない (応答メッセージ側で同梱するため)", async () => {
+    await linkLineUserToCustomer({
+      tenantId: TENANT,
+      customerId: CUSTOMER,
+      lineUserId: LINE_USER,
+      suppressPortalMessage: true,
+    });
+
+    expect(mocks.sendCustomerLineText).not.toHaveBeenCalled();
+  });
+
+  it("案内の送信に失敗しても連携自体は成功として返す", async () => {
+    mocks.sendCustomerLineText.mockRejectedValue(new Error("LINE down"));
+
+    const res = await linkLineUserToCustomer({ tenantId: TENANT, customerId: CUSTOMER, lineUserId: LINE_USER });
+
+    expect(res.ok).toBe(true);
+  });
+});

@@ -59,13 +59,15 @@ export async function generateCustomerLinkCode(
 /**
  * LINE inbound テキストが有効な連携コードなら customers.line_user_id を紐付ける。
  * webhook(handleWebhookEvents) から呼ぶ。
- * @returns linked=true なら連携成功。
+ * @returns linked=true なら連携成功。portalText は連携完了リプライへ同梱するマイページ案内
+ *   (組み立てられなければ null)。プッシュではなく無料の応答メッセージで送るため、
+ *   送信自体は呼び出し側 (webhook) が行う。
  */
 export async function tryConsumeLineLinkCode(
   tenantId: string,
   lineUserId: string,
   text: string,
-): Promise<{ linked: boolean }> {
+): Promise<{ linked: boolean; portalText?: string | null }> {
   const normalized = normalizeLinkCode(text);
   if (normalized.length !== CODE_LEN) return { linked: false };
 
@@ -93,13 +95,16 @@ export async function tryConsumeLineLinkCode(
 
   // 紐づけ + 過去メッセージの backfill + 履歴一括取り込みの enqueue をまとめて行う。
   // (受信箱からの手動紐づけと挙動を揃える)
-  const { linkLineUserToCustomer } = await import("@/lib/line/linkCustomer");
+  const { linkLineUserToCustomer, buildPortalWelcomeText } = await import("@/lib/line/linkCustomer");
   const linked = await linkLineUserToCustomer({
     tenantId,
     customerId: row.customer_id as string,
     lineUserId,
+    // 直後に連携完了リプライ (無料) を返す経路なので、有料のプッシュ送信は抑止して同梱する。
+    suppressPortalMessage: true,
   });
   if (!linked.ok) throw new Error("customer line link failed");
 
-  return { linked: true };
+  const portalText = await buildPortalWelcomeText(tenantId).catch(() => null);
+  return { linked: true, portalText };
 }
