@@ -26,12 +26,16 @@ ALTER TABLE customer_sessions ALTER COLUMN phone_last4_hash DROP NOT NULL;
 
 -- スコープを持たないセッション (email も phone も customer_id も無い) を禁止する。
 -- これが無いと、どの顧客のデータも引けない/引けてしまうセッションが作れてしまう。
+-- NOT VALID で追加 → 別途 VALIDATE。既存行の全走査を ACCESS EXCLUSIVE で行わないため
+-- (VALIDATE は SHARE UPDATE EXCLUSIVE で読み書きを止めない)。
+-- 追加前は email / phone_last4_hash とも NOT NULL だったので、既存行はすべて条件を満たす。
 ALTER TABLE customer_sessions DROP CONSTRAINT IF EXISTS customer_sessions_identity_present;
 ALTER TABLE customer_sessions ADD CONSTRAINT customer_sessions_identity_present
   CHECK (
     customer_id IS NOT NULL
     OR (email IS NOT NULL AND phone_last4_hash IS NOT NULL)
-  );
+  ) NOT VALID;
+ALTER TABLE customer_sessions VALIDATE CONSTRAINT customer_sessions_identity_present;
 
 COMMENT ON COLUMN customer_sessions.email IS
   'OTP ログイン時の email。LINE ログインで作られたセッションは NULL で、customer_id が識別子になる。';
@@ -69,17 +73,20 @@ ALTER TABLE customer_inquiries
 
 ALTER TABLE customer_inquiries ALTER COLUMN phone_last4_hash DROP NOT NULL;
 
+-- 追加前は phone_last4_hash が NOT NULL だったので、既存行はすべて条件を満たす。
 ALTER TABLE customer_inquiries DROP CONSTRAINT IF EXISTS customer_inquiries_identity_present;
 ALTER TABLE customer_inquiries ADD CONSTRAINT customer_inquiries_identity_present
-  CHECK (customer_id IS NOT NULL OR phone_last4_hash IS NOT NULL);
+  CHECK (customer_id IS NOT NULL OR phone_last4_hash IS NOT NULL) NOT VALID;
+ALTER TABLE customer_inquiries VALIDATE CONSTRAINT customer_inquiries_identity_present;
 
-CREATE INDEX IF NOT EXISTS idx_customer_inquiries_tenant_customer
-  ON customer_inquiries (tenant_id, customer_id, created_at DESC)
-  WHERE customer_id IS NOT NULL;
+-- customer_id 索引は CONCURRENTLY が要るため別ファイル
+-- (20260815000001_customer_inquiries_customer_index.sql)。
 
 -- ─── 4. customer_deletion_requests ──────────────────────────────────────────
 ALTER TABLE customer_deletion_requests ALTER COLUMN email DROP NOT NULL;
 
+-- 追加前は email が NOT NULL だったので、既存行はすべて条件を満たす。
 ALTER TABLE customer_deletion_requests DROP CONSTRAINT IF EXISTS customer_deletion_requests_identity_present;
 ALTER TABLE customer_deletion_requests ADD CONSTRAINT customer_deletion_requests_identity_present
-  CHECK (customer_id IS NOT NULL OR email IS NOT NULL);
+  CHECK (customer_id IS NOT NULL OR email IS NOT NULL) NOT VALID;
+ALTER TABLE customer_deletion_requests VALIDATE CONSTRAINT customer_deletion_requests_identity_present;

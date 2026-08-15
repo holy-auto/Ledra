@@ -67,6 +67,11 @@ export async function tryConsumeLineLinkCode(
   tenantId: string,
   lineUserId: string,
   text: string,
+  /**
+   * マイページ案内 (ログイントークン入り) を組み立てるか。グループ/ルームからの
+   * 連携ではリプライに載せられないので、無駄なトークンを発行しないよう false を渡す。
+   */
+  withPortalLink = true,
 ): Promise<{ linked: boolean; portalText?: string | null }> {
   const normalized = normalizeLinkCode(text);
   if (normalized.length !== CODE_LEN) return { linked: false };
@@ -105,6 +110,8 @@ export async function tryConsumeLineLinkCode(
   });
   if (!linked.ok) throw new Error("customer line link failed");
 
-  const portalText = await buildPortalWelcomeText(tenantId, row.customer_id as string).catch(() => null);
+  const portalText = withPortalLink
+    ? await buildPortalWelcomeText(tenantId, row.customer_id as string).catch(() => null)
+    : null;
   return { linked: true, portalText };
 }

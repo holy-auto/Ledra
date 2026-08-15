@@ -28,7 +28,13 @@
   （`customer_sessions` の email/下4桁ハッシュを NULL 許容化＋「customer_id があるか
   email+下4桁が揃っているか」のCHECK / 新表 `customer_portal_login_tokens` /
   `customer_inquiries` に customer_id 追加・下4桁ハッシュ NULL 許容 /
-  `customer_deletion_requests` の email NULL 許容）。**本番未適用**。
+  `customer_deletion_requests` の email NULL 許容）。CHECK は `NOT VALID` で追加してから
+  別途 `VALIDATE`（既存行の全走査で ACCESS EXCLUSIVE を取らないため）。索引は
+  `CONCURRENTLY` が要るので `20260815000001_customer_inquiries_customer_index.sql` に分離。
+  **本番未適用**。
+- 秘匿: 案内本文には生のログイントークンが載るため、受信箱 (`customer_messages`) へ
+  記録する本文では `recordOutboundLineMessage` が `?t=` を伏せる（`maskPortalLoginToken`）。
+  伏せないと店舗スタッフが受信箱からコピーして顧客本人としてログインできてしまう。
 - 併せて修正: `/api/customer/list`・`/api/customer/inquiry` の認証ゲートが下4桁ハッシュ
   必須だったため customer_id でも通るように。問い合わせ一覧は customer_id と下4桁ハッシュの
   OR で引く（customer_id 列が無かった時代の行を取りこぼさないため）。`/my` を proxy の

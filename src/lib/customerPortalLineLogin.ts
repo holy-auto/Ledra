@@ -91,3 +91,17 @@ export async function consumePortalLoginToken(token: string): Promise<{ tenantId
 
   return { tenantId: String(row.tenant_id), customerId: String(row.customer_id) };
 }
+
+/**
+ * 消費済みトークンを未使用に戻す。
+ *
+ * 消費に成功した後・セッションを張る前に落ちたときだけ呼ぶ。こちら側の障害で顧客の
+ * リンクを永久に焼いてしまうと、email 無しの顧客はマイページに入る手段を完全に失う。
+ * 期限そのものは戻さない (expires_at はそのまま) ので、窓が延びることはない。
+ */
+export async function releasePortalLoginToken(token: string): Promise<void> {
+  const normalized = (token ?? "").trim();
+  if (!/^[0-9a-f]{64}$/.test(normalized)) return;
+
+  await admin().from("customer_portal_login_tokens").update({ used_at: null }).eq("token_hash", tokenHash(normalized));
+}

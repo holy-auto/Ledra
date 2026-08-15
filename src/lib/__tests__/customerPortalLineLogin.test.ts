@@ -7,7 +7,8 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 const mocks = vi.hoisted(() => ({ createServiceRoleAdmin: vi.fn() }));
 vi.mock("@/lib/supabase/admin", () => ({ createServiceRoleAdmin: mocks.createServiceRoleAdmin }));
 
-import { issuePortalLoginToken, consumePortalLoginToken } from "@/lib/customerPortalLineLogin";
+import { issuePortalLoginToken, consumePortalLoginToken, releasePortalLoginToken } from "@/lib/customerPortalLineLogin";
+import { maskPortalLoginToken } from "@/lib/line/messageStore";
 
 const TENANT = "11111111-1111-1111-1111-111111111111";
 const CUSTOMER = "22222222-2222-2222-2222-222222222222";
@@ -128,5 +129,37 @@ describe("consumePortalLoginToken", () => {
       expect(await consumePortalLoginToken(bad)).toBeNull();
     }
     expect(mocks.createServiceRoleAdmin).not.toHaveBeenCalled();
+  });
+});
+
+describe("releasePortalLoginToken", () => {
+  it("形が違うトークンでは DB を触らない", async () => {
+    mocks.createServiceRoleAdmin.mockReturnValue(adminMock({}));
+    await releasePortalLoginToken("nope");
+    expect(mocks.createServiceRoleAdmin).not.toHaveBeenCalled();
+  });
+
+  it("正しい形なら未使用に戻す (セッションを張れなかったときリンクを焼き切らない)", async () => {
+    mocks.createServiceRoleAdmin.mockReturnValue(adminMock({}));
+    await releasePortalLoginToken("a".repeat(64));
+    expect(mocks.createServiceRoleAdmin).toHaveBeenCalled();
+  });
+});
+
+describe("maskPortalLoginToken", () => {
+  // 受信箱 (customer_messages) に生トークンが残ると、店舗スタッフがコピーして
+  // 顧客本人としてログインできてしまう。記録前に必ず伏せる。
+  it("ログイン URL のトークンを伏せる", () => {
+    const token = "b".repeat(64);
+    const masked = maskPortalLoginToken(`ご案内\nhttps://app.example.com/my/line?t=${token}\n以上`);
+
+    expect(masked).not.toContain(token);
+    expect(masked).toContain("/my/line?t=***");
+    expect(masked).toContain("ご案内");
+  });
+
+  it("トークンを含まない本文は変えない", () => {
+    const body = "ご予約ありがとうございます。https://app.example.com/my?tenant=demo";
+    expect(maskPortalLoginToken(body)).toBe(body);
   });
 });

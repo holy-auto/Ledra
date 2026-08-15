@@ -9,7 +9,7 @@
  */
 import { NextResponse, type NextRequest } from "next/server";
 import { checkRateLimit } from "@/lib/api/rateLimit";
-import { consumePortalLoginToken } from "@/lib/customerPortalLineLogin";
+import { consumePortalLoginToken, releasePortalLoginToken } from "@/lib/customerPortalLineLogin";
 import { CUSTOMER_COOKIE, createSessionForCustomer } from "@/lib/customerPortalServer";
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { logger } from "@/lib/logger";
@@ -20,28 +20,28 @@ export const runtime = "nodejs";
 const isSecureCookie = process.env.NODE_ENV === "production";
 
 export async function GET(req: NextRequest) {
+  // ブラウザのページ遷移なので、失敗はすべて JSON ではなく /my への redirect で返す。
+  const backToLogin = (reason: string) => {
+    const url = new URL("/my", req.nextUrl.origin);
+    url.searchParams.set("reason", reason);
+    return NextResponse.redirect(url);
+  };
+
   // 総当たりは 256bit トークンで現実的に不可能だが、連打自体は抑える。
-  const limited = await checkRateLimit(req, "auth");
-  if (limited) return limited;
+  if (await checkRateLimit(req, "auth")) return backToLogin("rate_limited");
 
   const token = (req.nextUrl.searchParams.get("t") ?? "").trim();
-  const failure = new URL("/my", req.nextUrl.origin);
+  let claimed: { tenantId: string; customerId: string } | null = null;
 
   try {
-    const claimed = await consumePortalLoginToken(token);
-    if (!claimed) {
-      // 期限切れ / 使用済み / 不正。どれかは伝えない (トークンの状態を漏らさない)。
-      failure.searchParams.set("reason", "line_link_expired");
-      return NextResponse.redirect(failure);
-    }
+    claimed = await consumePortalLoginToken(token);
+    // 期限切れ / 使用済み / 不正。どれかは伝えない (トークンの状態を漏らさない)。
+    if (!claimed) return backToLogin("line_link_expired");
 
     const admin = createServiceRoleAdmin("マイページ LINE ログイン — tenant slug 解決 (顧客セッション発行前)");
     const { data: tenant } = await admin.from("tenants").select("slug").eq("id", claimed.tenantId).maybeSingle();
     const slug = String(tenant?.slug ?? "").trim();
-    if (!slug) {
-      failure.searchParams.set("reason", "line_link_expired");
-      return NextResponse.redirect(failure);
-    }
+    if (!slug) throw new Error(`tenant slug not found: ${claimed.tenantId}`);
 
     const sess = await createSessionForCustomer(claimed.tenantId, claimed.customerId);
 
@@ -56,7 +56,9 @@ export async function GET(req: NextRequest) {
     return res;
   } catch (e) {
     logger.error("[portal-line-login] failed", { err: e instanceof Error ? e.message : String(e) });
-    failure.searchParams.set("reason", "line_link_expired");
-    return NextResponse.redirect(failure);
+    // トークンは消費済みだがセッションを張れていない。ここで戻さないと、こちら側の
+    // 障害で顧客のリンクを永久に焼いてしまう (期限切れと区別が付かないまま入れなくなる)。
+    if (claimed) await releasePortalLoginToken(token).catch(() => undefined);
+    return backToLogin("line_link_error");
   }
 }

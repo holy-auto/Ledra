@@ -79,6 +79,10 @@ export async function buildPortalWelcomeText(tenantId: string, customerId: strin
  *
  * @param setLineUserId customers.line_user_id を更新するか (既定 true)。受信箱の link
  *   ルートのように呼び出し側で既に更新済みの場合は false を渡して二重更新を避ける。
+ *   **false のとき本関数は「既に連携済みだったか」を判定できない** (値が既に書かれて
+ *   いるため) ので、再連携でのマイページ案内の二重送信は呼び出し側で防ぐこと。
+ *   現在の唯一の呼び出し元 (`/api/admin/messages/[key]/link`) は、同じ line_user_id が
+ *   既に顧客に紐付いていれば手前で 400 を返すため、ここに再連携では到達しない。
  * @param suppressPortalMessage マイページ案内のプッシュ送信を抑止するか (既定 false)。
  *   連携コード経路のように呼び出し側が**無料の応答メッセージ**へ同梱できる場合に true。
  *   (LINE 公式アカウントはプッシュが従量課金・応答メッセージは無料)
