@@ -240,8 +240,9 @@ export default function VehiclePickerSection({
   };
 
   // Apply extracted data from QR scan or image OCR to form fields.
-  // この画面が反映できる項目（車検満了日の入力欄はここには無い）。
-  const OCR_FIELDS = ["maker", "model", "year", "plate_display", "vin_code", "size_class"] as const;
+  // この画面が反映できる項目（車検満了日の入力欄は無い。年式は車種欄に畳み込まれる
+  // ため、メーカー/車種が無い年式単独では何も書き込まれない → 数えない）。
+  const OCR_FIELDS = ["maker", "model", "plate_display", "vin_code", "size_class"] as const;
 
   const applyExtracted = (res: ShakenshoAutofillResponse) => {
     // AI 自動入力 OFF / 全項目 null は理由が分かる文言で返る (無反応にしない)。

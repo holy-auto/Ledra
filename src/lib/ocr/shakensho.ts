@@ -307,16 +307,10 @@ export async function parseShakenshoAuto(
   }
 
   // QR が不足 or 読めず → OCR で補完。
-  // OCR (Vision) が落ちたとき、QR が読めていればその分だけ返して degrade する。
-  // QR も無い場合は握りつぶさず投げる — 呼び出し側が「読み取り失敗」として
-  // 表示できるようにする (空データを返すと UI が無反応になり原因が分からない)。
-  let ocrData: ShakenshoData;
-  try {
-    ocrData = await parseShakensho(imageBuffer);
-  } catch (err) {
-    if (qrData) return { data: qrData, source: "qr" };
-    throw err;
-  }
+  // ここに来た時点で「QR だけでは requireFields を満たせない」ことが確定しているので、
+  // OCR (Vision) が落ちたら握りつぶさず投げる。QR の一部だけを返すと呼び出し側は
+  // 「成功したが項目が足りない」と誤認し、基盤障害が UI にもログにも出ない。
+  const ocrData = await parseShakensho(imageBuffer);
   if (!qrData) {
     return { data: ocrData, source: "ocr" };
   }
