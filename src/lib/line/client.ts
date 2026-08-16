@@ -1,5 +1,7 @@
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
-import { readSecret } from "@/lib/crypto/tenantSecrets";
+import { readSecret, buildSecretWrite } from "@/lib/crypto/tenantSecrets";
+import { issueChannelAccessToken, isLineTokenExpiringSoon } from "./provisioning";
+import { logger } from "@/lib/logger";
 import { recordInboundLineMessage, recordOutboundLineMessage } from "./messageStore";
 import { maybeAutoProcessInboundMessage } from "@/lib/ai/automation/inboundAuto";
 import { maybeNotifyInboundMessage } from "./inboundNotify";
@@ -24,7 +26,7 @@ async function getLineConfig(tenantId: string): Promise<LineConfig | null> {
   const { data: tenant } = await admin
     .from("tenants")
     .select(
-      "line_channel_id, line_channel_secret_ciphertext, line_channel_access_token_ciphertext, line_liff_id, line_enabled",
+      "line_channel_id, line_channel_secret_ciphertext, line_channel_access_token_ciphertext, line_channel_token_expires_at, line_liff_id, line_enabled",
     )
     .eq("id", tenantId)
     .single();
@@ -32,12 +34,32 @@ async function getLineConfig(tenantId: string): Promise<LineConfig | null> {
   if (!tenant?.line_enabled) return null;
 
   const channelSecret = await readSecret(tenant.line_channel_secret_ciphertext, "tenants.line_channel_secret");
-  const channelAccessToken = await readSecret(
+  let channelAccessToken = await readSecret(
     tenant.line_channel_access_token_ciphertext,
     "tenants.line_channel_access_token",
   );
 
   if (!channelAccessToken || !channelSecret) return null;
+
+  // Ledra が自動発行したトークンは 30 日で失効する。放置すると予約通知・
+  // リマインダー・書類送付が静かに全部止まるため、期限が近ければここで差し替える。
+  // 再発行に失敗しても既存トークンはまだ有効なので、送信自体は止めない。
+  if (isLineTokenExpiringSoon(tenant.line_channel_token_expires_at as string | null)) {
+    try {
+      const issued = await issueChannelAccessToken(tenant.line_channel_id as string, channelSecret);
+      const { ciphertext } = await buildSecretWrite(issued.accessToken);
+      await admin
+        .from("tenants")
+        .update({
+          line_channel_access_token_ciphertext: ciphertext,
+          line_channel_token_expires_at: issued.expiresAt,
+        })
+        .eq("id", tenantId);
+      channelAccessToken = issued.accessToken;
+    } catch (e) {
+      logger.error("line: channel access token refresh failed", e, { tenantId });
+    }
+  }
 
   return {
     channelId: tenant.line_channel_id,

@@ -42,11 +42,14 @@ export const INTEGRATION_CATALOG: readonly IntegrationCatalogEntry[] = [
   {
     id: "line",
     label: "LINE公式アカウント",
-    summary: "予約確認・リマインダー・書類送付をLINEで自動送信します。",
+    summary:
+      "予約確認・リマインダー・書類送付をLINEで自動送信します。Channel ID と Secret の2つを貼るだけで繋がります。",
     section: "通知・コミュニケーション",
     kind: "manual",
-    // LINE Messaging API はチャネルごとの発行が必要。モジュールチャネル移行で
-    // ログインのみに出来る可能性がある（docs/line-module-channel-research.md）。
+    // Channel ID / Secret の2値だけは加盟店が Console からコピーする必要がある
+    // （トークン発行と Webhook 設定は Ledra が自動化済み）。完全にログインのみへ
+    // するにはモジュールチャネルが要るが、現在申請受付が停止中。
+    // 詳細は docs/line-module-channel-research.md。
     loginOnly: false,
   },
   {

@@ -69,7 +69,7 @@
 | Google カレンダー | OAuth（個別実装） | 不要 |
 | Stripe Connect | オンボーディングリンク | 不要 |
 | メール予約取り込み | 画面のトグル | 不要 |
-| **LINE公式アカウント** | 手動（Channel ID / Secret / 長期トークン + Webhook URL 貼り戻し） | **必要（7手順）** |
+| **LINE公式アカウント** | Channel ID と Channel Secret の2値を貼るだけ（トークン発行・Webhook設定はLedraが自動） | **2値のコピーのみ** |
 | NexPTG（膜厚計） | Ledra 側が API キーを発行して相手アプリに設定 | 対象外（方向が逆） |
 
 新しい OAuth 連携は `src/lib/integrations/providers/*.ts` にプロバイダ定義を1ファイル
@@ -77,9 +77,12 @@
 共通テーブル `tenant_integrations`。新しい API ルートも DB マイグレーションも不要）。
 既存の Square / 会計 / Google カレンダーは稼働中のため個別実装のまま併存させている。
 
-LINE だけ手作業が残っている。モジュールチャネルへ移行すればログインのみにできるが、
-LINEヤフーへの申請が必要な法人限定機能のため事業判断待ち
-（`docs/line-module-channel-research.md` / OPEN_QUESTIONS.md 2026-08-16）。
+LINE だけ「ログインのみ」になっていない。完全に消すにはモジュールチャネル（申請制）が必要だが
+**現在は申請の受付が停止中**のため、申請不要の Messaging API でできる自動化を先に実装した
+（2026-08-16。アクセストークンの自動発行・Webhook URL の自動設定・保存時の配送テスト・
+残作業の自動検出）。加盟店に残るのは Channel ID と Channel Secret のコピーのみ。
+自動発行トークンは30日で失効するため、送信直前に期限が近ければ自動で再発行する。
+詳細は `docs/line-module-channel-research.md` / OPEN_QUESTIONS.md。
 
 ## 技術スタック（package.json / README.md より）
 
