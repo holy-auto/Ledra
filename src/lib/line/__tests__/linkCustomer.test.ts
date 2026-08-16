@@ -34,18 +34,32 @@ const LINE_USER = "Uabcdef0123456789abcdef0123456789";
  *  - customers.maybeSingle() → { line_user_id }（既存の紐づけ = 再連携ケース）
  *  - update 系チェーン (await) → { error: null, count: 0 }
  */
-function adminMock(opts: { shopName?: string | null; lineUserId?: string | null } = {}) {
+function adminMock(opts: { shopName?: string | null; lineUserId?: string | null; linkedAfter?: string | null } = {}) {
   return {
     from(table: string) {
+      let cols = "";
       const b: any = {
-        select: () => b,
+        select: (c?: string) => {
+          cols = c ?? "";
+          return b;
+        },
         update: () => b,
         eq: () => b,
         is: () => b,
-        maybeSingle: async () =>
-          table === "tenants"
-            ? { data: opts.shopName === null ? null : { name: opts.shopName ?? "デモ整備" }, error: null }
-            : { data: { line_user_id: opts.lineUserId ?? null }, error: null },
+        maybeSingle: async () => {
+          if (table === "tenants") {
+            return { data: opts.shopName === null ? null : { name: opts.shopName ?? "デモ整備" }, error: null };
+          }
+          // 案内の組み立て (email も一緒に読む) は連携が済んだ後の状態を返す。
+          // 連携前の確認 (line_user_id だけ) とは別物なので select の列で見分ける。
+          if (cols.includes("email")) {
+            return {
+              data: { email: null, line_user_id: opts.linkedAfter === undefined ? LINE_USER : opts.linkedAfter },
+              error: null,
+            };
+          }
+          return { data: { line_user_id: opts.lineUserId ?? null }, error: null };
+        },
         then: (resolve: (v: any) => void) => resolve({ error: null, count: 0 }),
       };
       return b;
@@ -117,6 +131,18 @@ describe("buildPortalWelcomeText", () => {
     mocks.createServiceRoleAdmin.mockReturnValue(adminMock({ shopName: null }));
     expect(await buildPortalWelcomeText(TENANT, CUSTOMER)).toBeNull();
     expect(mocks.issuePortalLoginToken).not.toHaveBeenCalled();
+  });
+
+  it("宛先が現在の連携相手でなければトークンを作らず null (敗者にログインURLを渡さない)", async () => {
+    mocks.createServiceRoleAdmin.mockReturnValue(adminMock({ linkedAfter: "Uother0000000000000000000000000000" }));
+
+    expect(await buildPortalWelcomeText(TENANT, CUSTOMER, LINE_USER)).toBeNull();
+    expect(mocks.issuePortalLoginToken).not.toHaveBeenCalled();
+  });
+
+  it("宛先が現在の連携相手なら発行する", async () => {
+    const text = await buildPortalWelcomeText(TENANT, CUSTOMER, LINE_USER);
+    expect(text).toContain(`/my/line?t=${TOKEN}`);
   });
 });
 

@@ -27,8 +27,16 @@ const schema = z.object({
     .trim()
     .max(20)
     .regex(/^[0-9+\-() ]*$/, "電話番号の形式が正しくありません。")
+    // 桁数も見る。`()` や `123` を通すと、UI 上は登録済みになり以後訂正できないのに、
+    // マイページのログインは下4桁一致を要求するので永久に入れない番号ができてしまう。
+    .refine((v) => v.replace(/\D/g, "").length >= 10, "電話番号の桁数が足りません。")
     .optional(),
 });
+
+/** ilike のワイルドカード (`%` `_`) と `\` をエスケープし、完全一致として扱えるようにする。 */
+function escapeLikePattern(v: string): string {
+  return v.replace(/[\\%_]/g, "\\$&");
+}
 
 export async function POST(req: Request) {
   // 連絡先の書き換えは乗っ取りの足がかりになり得るので機微フロー扱い。
@@ -79,13 +87,15 @@ export async function POST(req: Request) {
       const normalized = normalizeEmail(email);
       // 同一テナント内で他の顧客が使っている email は拒否する。マイページのログインは
       // email 一致で顧客を引くため、重複を許すと他人の情報に手が届く経路を作ってしまう。
-      // ilike は `_` `%` をワイルドカードとして扱うので、候補を引いたうえで完全一致だけを見る
-      // (`a_b@ex.com` が `axb@ex.com` に当たって誤って弾かれるのを防ぐ)。
+      // ilike のワイルドカードはエスケープして完全一致にする。エスケープしないと
+      // `a_b@ex.com` が `axb@ex.com` に当たる (誤検知) 一方、`%` を含むアドレスでは
+      // 大量にヒットして limit で本物の重複が溢れ、**検知漏れ**にもなる。
+      // 取得後に JS 側でも完全一致を確認する (照合ロジックを1箇所に頼らない)。
       const { data: candidates, error: clashErr } = await admin
         .from("customers")
         .select("id, email")
         .eq("tenant_id", tenantId)
-        .ilike("email", normalized)
+        .ilike("email", escapeLikePattern(normalized))
         .neq("id", customerId)
         .limit(20);
       // 重複チェックが失敗したまま書き込むと fail-open になる。確認できないなら書かない。
@@ -102,12 +112,23 @@ export async function POST(req: Request) {
 
     if (phone) patch.phone = phone;
 
-    const { error } = await admin
+    // 「空欄のときだけ埋める」を UPDATE の条件にも入れる。`current` を読んでから
+    // ここに来るまでの間に、別の自己登録リクエストやスタッフ操作が値を入れているかも
+    // しれない。無条件に書くと、登録済みの email (＝ログイン identity) を上書きできて
+    // しまう。書けた行が無ければ「その間に埋まった」なので失敗として返す。
+    let update = admin
       .from("customers")
       .update({ ...patch, updated_at: new Date().toISOString() })
       .eq("id", customerId)
       .eq("tenant_id", tenantId);
+    if (patch.email) update = update.or("email.is.null,email.eq.");
+    if (patch.phone) update = update.or("phone.is.null,phone.eq.");
+
+    const { data: updated, error } = await update.select("id").maybeSingle();
     if (error) return apiInternalError(error, "customer/profile update");
+    if (!updated) {
+      return apiValidationError("入れ違いで登録されました。画面を更新してご確認ください。");
+    }
 
     logger.info("customer self-registered contact details", {
       tenantId,

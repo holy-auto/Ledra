@@ -53,6 +53,7 @@ function adminMock(opts: {
         update: (v: Record<string, unknown>) => typeof b;
         eq: () => typeof b;
         ilike: () => typeof b;
+        or: () => typeof b;
         neq: () => typeof b;
         limit: () => Promise<{ data: unknown; error: unknown }> | typeof b;
         maybeSingle: () => Promise<{ data: unknown; error: null }>;
@@ -66,6 +67,7 @@ function adminMock(opts: {
         },
         eq: () => b,
         ilike: () => b,
+        or: () => b,
         neq: () => {
           b._neq = true;
           return b;

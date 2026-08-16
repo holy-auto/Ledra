@@ -37,8 +37,16 @@ export interface LinkLineUserResult {
  *
  * APP_URL 未設定 / tenant slug 不明のときは null を返して送信を見送る
  * (壊れたリンクを顧客へ送らないため)。
+ *
+ * @param forLineUserId 宛先の LINE ユーザー。渡すと、顧客に実際に紐づいているのが
+ *   その相手であることを**トークン発行の直前に**確認する。競合した連携の敗者や、
+ *   既に別の相手へ付け替わった顧客へログイン URL を送ってしまわないため。
  */
-export async function buildPortalWelcomeText(tenantId: string, customerId: string): Promise<string | null> {
+export async function buildPortalWelcomeText(
+  tenantId: string,
+  customerId: string,
+  forLineUserId?: string,
+): Promise<string | null> {
   // linkPrompt.getBaseUrl と同じフォールバック順。片方だけ設定された環境で、
   // 連携案内だけ無言で止まるのを防ぐ。
   const base = (
@@ -64,11 +72,20 @@ export async function buildPortalWelcomeText(tenantId: string, customerId: strin
   // (email が無いとメール通知が届かず、LINE 以外からログインもできない)
   const { data: customer } = await admin
     .from("customers")
-    .select("email")
+    .select("email, line_user_id")
     .eq("id", customerId)
     .eq("tenant_id", tenantId)
     .maybeSingle();
   const needsEmail = !String(customer?.email ?? "").trim();
+
+  // 宛先が今この顧客に紐づいている相手であることを、トークンを作る前に確認する。
+  if (forLineUserId && (customer?.line_user_id as string | null) !== forLineUserId) {
+    logger.warn("[linkCustomer] portal welcome skipped — 宛先が現在の連携相手と一致しない", {
+      tenantId,
+      customerId,
+    });
+    return null;
+  }
 
   const { issuePortalLoginToken } = await import("@/lib/customerPortalLineLogin");
   const token = await issuePortalLoginToken(tenantId, customerId);
@@ -137,16 +154,34 @@ export async function linkLineUserToCustomer(params: {
     }
     alreadyLinked = existingLineUserId === lineUserId;
     if (!existingLineUserId) {
-      const { error: upErr } = await admin
+      const { data: updated, error: upErr } = await admin
         .from("customers")
         .update({ line_user_id: lineUserId, updated_at: new Date().toISOString() })
         .eq("id", customerId)
         .eq("tenant_id", tenantId)
         // 競合時の上書き防止: NULL のときだけセットする。
-        .is("line_user_id", null);
+        .is("line_user_id", null)
+        .select("id")
+        .maybeSingle();
       if (upErr) {
         logger.warn("[linkCustomer] set line_user_id failed", { tenantId, customerId, err: upErr.message });
         return { ok: false, backfilled: 0 };
+      }
+      if (!updated) {
+        // 同時に別のリクエストが先に紐づけた。相手が自分と同じ LINE ユーザーなら実質成功
+        // (二重送信を避けるため alreadyLinked 扱い)、別ユーザーならこちらは負けなので中止する。
+        // ここで中止しないと、**紐づいていない方の LINE ユーザーにログイン URL を送ってしまう**。
+        const { data: after } = await admin
+          .from("customers")
+          .select("line_user_id")
+          .eq("id", customerId)
+          .eq("tenant_id", tenantId)
+          .maybeSingle();
+        if ((after?.line_user_id as string | null) !== lineUserId) {
+          logger.warn("[linkCustomer] lost a concurrent link race — skip", { tenantId, customerId });
+          return { ok: false, backfilled: 0 };
+        }
+        alreadyLinked = true;
       }
     }
   }
@@ -189,7 +224,7 @@ export async function linkLineUserToCustomer(params: {
   //    既に同じ LINE ユーザーで連携済みなら送らない (再連携での二重送信・二重課金を防ぐ)。
   if (!params.suppressPortalMessage && !alreadyLinked) {
     try {
-      const body = await buildPortalWelcomeText(tenantId, customerId);
+      const body = await buildPortalWelcomeText(tenantId, customerId, lineUserId);
       if (body) {
         const { sendCustomerLineText } = await import("@/lib/line/client");
         await sendCustomerLineText({ tenantId, customerId, lineUserId, body });

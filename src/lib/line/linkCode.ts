@@ -111,7 +111,7 @@ export async function tryConsumeLineLinkCode(
   if (!linked.ok) throw new Error("customer line link failed");
 
   const portalText = withPortalLink
-    ? await buildPortalWelcomeText(tenantId, row.customer_id as string).catch(() => null)
+    ? await buildPortalWelcomeText(tenantId, row.customer_id as string, lineUserId).catch(() => null)
     : null;
   return { linked: true, portalText };
 }

@@ -37,6 +37,19 @@ ALTER TABLE customer_sessions ADD CONSTRAINT customer_sessions_identity_present
   ) NOT VALID;
 ALTER TABLE customer_sessions VALIDATE CONSTRAINT customer_sessions_identity_present;
 
+-- customer_id の外部キーを SET NULL → CASCADE に変える。
+-- SET NULL のままだと、顧客削除時に LINE セッション (email も下4桁も NULL) の
+-- customer_id だけが NULL になり、上の CHECK に違反して**削除そのものが失敗する**
+-- （個人情報の削除請求の実行経路が壊れる）。削除された顧客のセッションは残しても
+-- 何も引けないので、一緒に消すのが正しい。
+-- NOT VALID で追加 → 別途 VALIDATE（既存行の全走査で ACCESS EXCLUSIVE を取らない）。
+-- 参照先は張り替え前と同じ customers(id) なので、既存行はすべて条件を満たす。
+ALTER TABLE customer_sessions DROP CONSTRAINT IF EXISTS customer_sessions_customer_id_fkey;
+ALTER TABLE customer_sessions
+  ADD CONSTRAINT customer_sessions_customer_id_fkey
+  FOREIGN KEY (customer_id) REFERENCES customers (id) ON DELETE CASCADE NOT VALID;
+ALTER TABLE customer_sessions VALIDATE CONSTRAINT customer_sessions_customer_id_fkey;
+
 COMMENT ON COLUMN customer_sessions.email IS
   'OTP ログイン時の email。LINE ログインで作られたセッションは NULL で、customer_id が識別子になる。';
 
@@ -73,11 +86,12 @@ ALTER TABLE customer_inquiries
 
 ALTER TABLE customer_inquiries ALTER COLUMN phone_last4_hash DROP NOT NULL;
 
--- 追加前は phone_last4_hash が NOT NULL だったので、既存行はすべて条件を満たす。
+-- ここには「customer_id か phone_last4_hash のどちらかは必ずある」CHECK を**付けない**。
+-- customer_id は顧客削除時に SET NULL になるため、LINE 経由の問い合わせ (下4桁ハッシュ
+-- 無し) があると顧客削除が CHECK 違反で失敗してしまう。問い合わせ記録は顧客が消えても
+-- 残す方が既存挙動に沿う (どちらも NULL の孤児行になるだけで害は無い)。
+-- 書き込み側 (`/api/customer/inquiry`) はセッションから必ずどちらかを入れる。
 ALTER TABLE customer_inquiries DROP CONSTRAINT IF EXISTS customer_inquiries_identity_present;
-ALTER TABLE customer_inquiries ADD CONSTRAINT customer_inquiries_identity_present
-  CHECK (customer_id IS NOT NULL OR phone_last4_hash IS NOT NULL) NOT VALID;
-ALTER TABLE customer_inquiries VALIDATE CONSTRAINT customer_inquiries_identity_present;
 
 -- customer_id 索引は CONCURRENTLY が要るため別ファイル
 -- (20260815110001_customer_inquiries_customer_index.sql)。
@@ -85,8 +99,8 @@ ALTER TABLE customer_inquiries VALIDATE CONSTRAINT customer_inquiries_identity_p
 -- ─── 4. customer_deletion_requests ──────────────────────────────────────────
 ALTER TABLE customer_deletion_requests ALTER COLUMN email DROP NOT NULL;
 
--- 追加前は email が NOT NULL だったので、既存行はすべて条件を満たす。
+-- こちらも CHECK は**付けない**。customer_id は顧客削除時に SET NULL になるため、
+-- LINE 経由の削除請求 (email 無し) があると、その請求が実行される瞬間に CHECK 違反で
+-- 削除が失敗する — 削除請求そのものを実行不能にする自己矛盾になる。
+-- 請求記録は「いつ誰の依頼で消したか」の証跡なので、顧客が消えても残す。
 ALTER TABLE customer_deletion_requests DROP CONSTRAINT IF EXISTS customer_deletion_requests_identity_present;
-ALTER TABLE customer_deletion_requests ADD CONSTRAINT customer_deletion_requests_identity_present
-  CHECK (customer_id IS NOT NULL OR email IS NOT NULL) NOT VALID;
-ALTER TABLE customer_deletion_requests VALIDATE CONSTRAINT customer_deletion_requests_identity_present;

@@ -457,7 +457,7 @@ export async function handleWebhookEvents(
       ) {
         try {
           const { buildPortalWelcomeText } = await import("@/lib/line/linkCustomer");
-          const portalText = await buildPortalWelcomeText(tenantId, stored.customerId);
+          const portalText = await buildPortalWelcomeText(tenantId, stored.customerId, event.source.userId);
           if (portalText) replyMessages.push({ type: "text", text: portalText });
         } catch (e) {
           console.error("[line.portalLink] reissue failed:", e);

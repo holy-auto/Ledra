@@ -1,11 +1,10 @@
 /**
- * GET /my/line?t=<token> — LINE から届いたリンクでマイページにログインする。
+ * POST /api/customer/line-login — LINE ログインリンクをセッションに引き換える。
  *
- * email を持たない顧客はメール宛 OTP を受け取れずマイページに入れないため、LINE 連携済み
- * (＝本人性が取れている) 顧客には単回使用トークン付きの URL を送り、ここでセッションに
- * 引き換える。tenant はトークン側の値を正とする (URL パラメータは信用しない)。
+ * 確認画面 (`/my/line`) のフォーム送信からのみ呼ばれる。GET で消費しないのは、
+ * リンクプレビューやクローラの先読みで単回使用トークンが焼き切れるのを防ぐため。
  *
- * 失敗時は /my (通常ログイン) へ戻し、期限切れは LINE で再発行できる旨を伝える。
+ * tenant はトークン側の値を正とする (URL/フォームの値は信用しない)。
  */
 import { NextResponse, type NextRequest } from "next/server";
 import { checkRateLimit } from "@/lib/api/rateLimit";
@@ -19,20 +18,27 @@ export const runtime = "nodejs";
 
 const isSecureCookie = process.env.NODE_ENV === "production";
 
-export async function GET(req: NextRequest) {
-  // ブラウザのページ遷移なので、失敗はすべて JSON ではなく /my への redirect で返す。
+export async function POST(req: NextRequest) {
+  // ブラウザのフォーム送信なので、失敗はすべて JSON ではなく /my への redirect で返す。
   const backToLogin = (reason: string) => {
     const url = new URL("/my", req.nextUrl.origin);
     url.searchParams.set("reason", reason);
-    return NextResponse.redirect(url);
+    // フォーム POST からの遷移なので 303 (GET で辿らせる)。
+    return NextResponse.redirect(url, 303);
   };
 
   // 総当たりは 256bit トークンで現実的に不可能だが、連打自体は抑える。
   if (await checkRateLimit(req, "auth")) return backToLogin("rate_limited");
 
-  const token = (req.nextUrl.searchParams.get("t") ?? "").trim();
-  let claimed: { tenantId: string; customerId: string } | null = null;
+  let token = "";
+  try {
+    const form = await req.formData();
+    token = String(form.get("t") ?? "").trim();
+  } catch {
+    return backToLogin("line_link_error");
+  }
 
+  let claimed: { tenantId: string; customerId: string } | null = null;
   try {
     claimed = await consumePortalLoginToken(token);
     // 期限切れ / 使用済み / 不正。どれかは伝えない (トークンの状態を漏らさない)。
@@ -45,7 +51,7 @@ export async function GET(req: NextRequest) {
 
     const sess = await createSessionForCustomer(claimed.tenantId, claimed.customerId);
 
-    const res = NextResponse.redirect(new URL(`/customer/${encodeURIComponent(slug)}`, req.nextUrl.origin));
+    const res = NextResponse.redirect(new URL(`/customer/${encodeURIComponent(slug)}`, req.nextUrl.origin), 303);
     res.cookies.set(CUSTOMER_COOKIE, sess.token, {
       httpOnly: true,
       sameSite: "lax",
