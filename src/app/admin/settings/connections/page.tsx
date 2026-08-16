@@ -20,6 +20,11 @@ export const dynamic = "force-dynamic";
 /** 連携ページに出す 1 行あたりの見え方 */
 type Row = { connected: boolean; detail?: string };
 
+/**
+ * コールバックの `?e=` に対応する画面文言。
+ * 各文言は単独で完結させる（"連携に失敗しました:" を前置きすると、db_save のように
+ * 「連携自体は成立している」ケースと矛盾するため）。
+ */
 const ERROR_LABELS: Record<string, string> = {
   denied: "連携が許可されませんでした。もう一度お試しください。",
   missing_params: "連携に必要な情報が返りませんでした。もう一度お試しください。",
@@ -152,8 +157,9 @@ export default async function ConnectionsPage({
       )}
       {errorKey && (
         <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-400">
-          連携に失敗しました:{" "}
-          {Object.prototype.hasOwnProperty.call(ERROR_LABELS, errorKey) ? ERROR_LABELS[errorKey] : errorKey}
+          {Object.prototype.hasOwnProperty.call(ERROR_LABELS, errorKey)
+            ? ERROR_LABELS[errorKey]
+            : `連携に失敗しました: ${errorKey}`}
         </div>
       )}
       {statusLoadFailed && (

@@ -98,7 +98,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ prov
       // 済んでいる＝連携自体は有効になっている。ここで「連携に失敗しました」と出すと
       // 実態と食い違うので、「有効だが表示情報だけ保存できなかった」と正しく伝える。
       logger.error("integration callback: db save failed", new Error(saved.error), { provider: spec.id });
-      return back(baseUrl, returnPath, { e: "db_save", provider: spec.id, connected: spec.id });
+      return back(baseUrl, returnPath, { e: "db_save", provider: spec.id });
     }
 
     return back(baseUrl, returnPath, { connected: spec.id });
