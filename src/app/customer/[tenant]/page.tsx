@@ -37,6 +37,8 @@ type Profile = {
   email: string | null;
   phone: string | null;
   certificateCount: number;
+  /** 連絡先の自己登録が可能なセッションか (customer_id 付きのみ)。 */
+  canEditContact?: boolean;
 } | null;
 
 type VehicleInfo = Record<string, any> | null;
@@ -132,6 +134,12 @@ export default function CustomerListPage() {
     { id: string; title: string; body: string; published_at: string | null; available_langs: string[] }[]
   >([]);
   const [annLang, setAnnLang] = useState<"ja" | "en" | "zh" | "vi">("ja");
+
+  // 連絡先の自己登録 (LINE 連携だけの顧客は email / 電話が空のことがある)
+  const [regEmail, setRegEmail] = useState("");
+  const [regPhone, setRegPhone] = useState("");
+  const [regSaving, setRegSaving] = useState(false);
+  const [regMsg, setRegMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
   // Inquiry state
   const [inquiries, setInquiries] = useState<
@@ -267,6 +275,36 @@ export default function CustomerListPage() {
     }
   }
 
+  async function saveContact() {
+    setRegSaving(true);
+    setRegMsg(null);
+    try {
+      const res = await fetch("/api/customer/profile", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          tenant_slug: tenant,
+          ...(regEmail.trim() ? { email: regEmail.trim() } : {}),
+          ...(regPhone.trim() ? { phone: regPhone.trim() } : {}),
+        }),
+      });
+      const j = await res.json().catch(() => ({}) as Record<string, unknown>);
+      if (!res.ok) throw new Error(j?.message ?? j?.error ?? "登録に失敗しました");
+
+      setRegMsg({ ok: true, text: "ご登録ありがとうございます。" });
+      setRegEmail("");
+      setRegPhone("");
+      setProfile((p) =>
+        p ? { ...p, email: (j.email as string | null) ?? p.email, phone: (j.phone as string | null) ?? p.phone } : p,
+      );
+    } catch (e: any) {
+      setRegMsg({ ok: false, text: e?.message ?? "エラーが発生しました" });
+    } finally {
+      setRegSaving(false);
+    }
+  }
+
   async function logout() {
     try {
       await fetch("/api/portal/logout", { method: "POST", credentials: "include" });
@@ -365,6 +403,60 @@ export default function CustomerListPage() {
       </header>
 
       <LineLinkPanel key={tenant} tenantSlug={tenant} />
+
+      {/* 連絡先が欠けているお客様への登録のお願い。LINE 連携だけで作られた顧客は
+          email が無く、メール通知が届かず PC からもログインできないため。 */}
+      {profile && profile.canEditContact && (!profile.email || !profile.phone) ? (
+        <div className="mb-4 rounded-3xl border border-amber-200 bg-amber-50 p-5 shadow-sm dark:border-amber-800/50 dark:bg-amber-950">
+          <div className="text-sm font-semibold text-amber-900 dark:text-amber-300">お客様情報のご登録のお願い</div>
+          <p className="mt-1 text-sm text-amber-800 dark:text-amber-400">
+            {!profile.email
+              ? "メールアドレスをご登録いただくと、パソコンなど LINE 以外からもログインでき、大切なお知らせをメールでもお届けできます。"
+              : "電話番号をご登録いただくと、ご連絡がよりスムーズになります。"}
+          </p>
+
+          <div className="mt-3 grid gap-2 sm:grid-cols-2">
+            {!profile.email ? (
+              <input
+                value={regEmail}
+                onChange={(e) => setRegEmail(e.target.value)}
+                type="email"
+                inputMode="email"
+                autoComplete="email"
+                placeholder="メールアドレス"
+                className="w-full rounded-xl border border-border-default bg-surface px-3 py-2 text-sm text-primary outline-none focus:ring-2 focus:ring-accent/30"
+              />
+            ) : null}
+            {!profile.phone ? (
+              <input
+                value={regPhone}
+                onChange={(e) => setRegPhone(e.target.value)}
+                type="tel"
+                inputMode="tel"
+                autoComplete="tel"
+                placeholder="電話番号"
+                className="w-full rounded-xl border border-border-default bg-surface px-3 py-2 text-sm text-primary outline-none focus:ring-2 focus:ring-accent/30"
+              />
+            ) : null}
+          </div>
+
+          {regMsg ? (
+            <div
+              className={`mt-2 rounded-xl px-3 py-2 text-sm ${regMsg.ok ? "bg-success-dim text-success-text" : "bg-danger-dim text-danger-text"}`}
+            >
+              {regMsg.text}
+            </div>
+          ) : null}
+
+          <button
+            onClick={saveContact}
+            disabled={regSaving || (!regEmail.trim() && !regPhone.trim())}
+            className="mt-3 rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white hover:bg-accent/90 disabled:opacity-50"
+          >
+            {regSaving ? "登録中…" : "登録する"}
+          </button>
+        </div>
+      ) : null}
 
       {profile && (profile.email || profile.phone) ? (
         <div className="mb-4 rounded-3xl border border-border-default bg-inset p-4 text-sm shadow-sm">

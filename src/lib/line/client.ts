@@ -395,10 +395,17 @@ export async function handleWebhookEvents(
       // 部品確定の連携コードなら customers.line_user_id を紐付けて完了（コードは履歴に残さない）。
       try {
         const { tryConsumeLineLinkCode } = await import("@/lib/line/linkCode");
-        const link = await tryConsumeLineLinkCode(tenantId, event.source.userId, rawText);
+        // グループ/ルームではマイページ案内をリプライに載せない (参加者全員に届くため)。
+        // 載せない場所でトークンだけ発行しても無駄なので、組み立て自体を止める。
+        const isDirectTalk = event.source.type === "user";
+        const link = await tryConsumeLineLinkCode(tenantId, event.source.userId, rawText, isDirectTalk);
         if (link.linked) {
           if (event.replyToken) {
-            const linkedText = "LINE連携が完了しました。今後の確認はこちらにお送りします。";
+            // マイページ案内は同じ応答メッセージに同梱する (応答は無料・プッシュは従量課金)。
+            // portalText はグループ/ルームでは組み立てられない (上の isDirectTalk)。
+            const linkedText = ["LINE連携が完了しました。今後の確認はこちらにお送りします。", link.portalText ?? null]
+              .filter(Boolean)
+              .join("\n\n");
             await replyMessage(config.channelAccessToken, event.replyToken, [{ type: "text", text: linkedText }]);
             await recordOutboundLineMessage({
               tenantId,
@@ -436,6 +443,25 @@ export async function handleWebhookEvents(
           type: "text",
           text: liffUrl ? `こちらから予約できます:\n${liffUrl}` : "Web予約ページからご予約ください。",
         });
+      }
+
+      // 「マイページ」でログインリンクを再発行する (無料のリプライで返す)。
+      // ログインリンクは単回使用・期限付きなので、切れた顧客が自分で取り直せる導線が要る。
+      // email 無しの顧客にとっては唯一のマイページ入口なので、ここが最後の砦。
+      // お客様専用リンクを含むため、1:1 トークかつ紐づけ済みのときだけ。
+      if (
+        event.source.type === "user" &&
+        event.replyToken &&
+        stored.customerId &&
+        (text === "マイページ" || text === "まいぺーじ" || text === "mypage")
+      ) {
+        try {
+          const { buildPortalWelcomeText } = await import("@/lib/line/linkCustomer");
+          const portalText = await buildPortalWelcomeText(tenantId, stored.customerId, event.source.userId);
+          if (portalText) replyMessages.push({ type: "text", text: portalText });
+        } catch (e) {
+          console.error("[line.portalLink] reissue failed:", e);
+        }
       }
 
       // 未紐づけユーザーへの「連携を促す案内」(opt-in テナントのみ / fail-soft)。

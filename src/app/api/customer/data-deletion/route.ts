@@ -104,12 +104,28 @@ export async function DELETE(req: Request) {
 
     const admin = createServiceRoleAdmin("customer/data-deletion DELETE — cancel pending request");
 
+    // LINE ログインのセッションは email を持たない。postgrest の eq は NULL に
+    // 一致しないため email で引くと撤回が黙って 0 件になり、30 日後に本当に消える。
+    // customer_id があるときは必ずそちらで引く (audit-log と同じ方針)。
+    // 両方あるセッションでは OR で引く。customer_id だけに絞ると、customer_id を
+    // 持たずに作られた過去の申請を撤回できなくなるため。
+    // email は `,` や `(` を含み得るので postgrest のフィルタ文字列にそのまま埋めない
+    // (customer_id は uuid なのでそのままでよい)。
+    const quoted = (v: string) => `"${v.replace(/["\\]/g, "\\$&")}"`;
+    const scope = [
+      session.customer_id ? `customer_id.eq.${session.customer_id}` : null,
+      session.email ? `email.eq.${quoted(session.email)}` : null,
+    ]
+      .filter(Boolean)
+      .join(",");
+    if (!scope) return apiUnauthorized();
+
     const { error, count } = await admin
       .from("customer_deletion_requests")
       .update({ status: "cancelled", cancelled_at: new Date().toISOString() }, { count: "exact" })
       .eq("tenant_id", tenantId)
-      .eq("email", session.email)
-      .eq("status", "pending");
+      .eq("status", "pending")
+      .or(scope);
 
     if (error) return apiInternalError(error, "data-deletion cancel");
     return apiOk({ ok: true, cancelled: count ?? 0 });
