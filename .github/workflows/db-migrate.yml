@@ -75,3 +75,67 @@ jobs:
           #      順序不変性が崩れ他環境の再現性が濁るため DECISION_LOG 2026-07-21 で
           #      不採用。後発ファイルを一意な後ろの日付へ改名する運用に統一する)。
           supabase db push --db-url "$SUPABASE_DB_URL"
+
+      # 失敗したら Slack へ通知する。
+      #
+      # なぜ要るか: このジョブは 2026-08-02 から 08-15 までの13日間ずっと赤で、
+      # その間マイグレーションが一切自動適用されていなかった。気づいたのは
+      # 「証明書が発行できない」という本番障害の調査中で、赤かったこと自体は
+      # 誰も見ていなかった (DECISION_LOG 2026-07-21 でも「失敗の可視化(通知)も
+      # 要検討」と書かれたまま放置されていた)。ここが赤いまま放置されると、
+      # 以降のスキーマ変更が全部本番に届かなくなるため影響が大きい。
+      #
+      # 通知先は記事ドラフト通知 (notify-article-pr.yml) と同じ SLACK_WEBHOOK_URL を
+      # 流用する。新しいシークレットも仕組みも増やさない。
+      #
+      # if: failure() なので push 成功時は何も送らない (成功通知はノイズになるため出さない)。
+      #
+      # このステップは「自分が失敗したことを自分で報告できない」構造になりやすい。
+      # それはまさにこのPRで直そうとしている「誰も気づかない」の再生産なので、
+      # 配信できなかったら必ずステップを赤くする:
+      #   - set -euo pipefail  … jq が失敗したときに空ボディを POST して緑で終わるのを防ぐ
+      #   - curl --fail-with-body … Slack は無効な webhook にも HTTP 4xx + 本文を返す。
+      #                             --fail 系が無いと curl は exit 0 で、未配信に気づけない
+      #   - continue-on-error は付けない … このステップは if: failure() でしか動かず、
+      #     その時点でジョブの結論は既に failure。つまりジョブを緑に見せる余地は元々無く、
+      #     付けても「通知ステップ自身の失敗を隠す」効果しか無い
+      - name: 失敗を Slack に通知
+        if: failure()
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          # workflow_dispatch では head_commit が無く null になる (マイグレーションを直した後の
+          # 再実行はまさにこの経路) ため、その場合は SHA にフォールバックする
+          COMMIT_MSG: ${{ github.event.head_commit.message || github.sha }}
+        run: |
+          set -euo pipefail
+          if [ -z "${SLACK_WEBHOOK_URL:-}" ]; then
+            echo "::warning::SLACK_WEBHOOK_URL が未設定のため通知をスキップしました。"
+            exit 0
+          fi
+          # 長いコミットメッセージは1行目だけにする。
+          # printf | head だと巨大なメッセージで printf が SIGPIPE を受け、pipefail と併せて
+          # ここで落ちうるので、パイプを使わないパラメータ展開で切る。
+          title=${COMMIT_MSG%%$'\n'*}
+          payload=$(jq -n \
+            --arg run "$RUN_URL" \
+            --arg title "$title" \
+            '{
+              blocks: [
+                { type: "header",
+                  text: { type: "plain_text", text: "🔴 本番DBマイグレーションが失敗しました" } },
+                { type: "section",
+                  text: { type: "mrkdwn",
+                    text: ("*このまま放置すると、以降のスキーマ変更が本番に届きません。*\n直近のコミット: " + $title) } },
+                { type: "context", elements: [
+                  { type: "mrkdwn",
+                    text: "よくある原因: (1) 本番 schema_migrations にあるバージョンのファイルが repo に無い → 該当ファイルを追加する。(2) 新しいマイグレーションの日付が適用済み最新より古い (out-of-order) → 後ろの日付へ改名する。" }
+                ] },
+                { type: "actions", elements: [
+                  { type: "button", style: "danger",
+                    text: { type: "plain_text", text: "実行ログを見る" }, url: $run }
+                ] }
+              ]
+            }')
+          curl -sS --fail-with-body -X POST -H 'Content-type: application/json' \
+            --data "$payload" "$SLACK_WEBHOOK_URL"
