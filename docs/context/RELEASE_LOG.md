@@ -13,6 +13,44 @@
 - 対象: どの画面・API・業種向けか
 ```
 
+## 2026-08-16 外部サービス連携を1画面に集約し、Slack を「ログインするだけ」に（branch claude/multi-integration-login-opnzfh）
+
+- 内容: 加盟店が連携のたびに開発者コンソールで ID・トークンを発行して貼り付ける手間を無くすため、
+  (1) 汎用 OAuth 基盤、(2) Slack のワンクリック連携、(3) 連携ページの集約、を実装した。
+  LINE は申請が必要な法人限定機能に依存するため調査のみ（`docs/line-module-channel-research.md`）。
+- 対象: 加盟店管理画面 `/admin/settings/connections`（新設）、全業種。
+- 実装:
+  - **汎用 OAuth 基盤** `src/lib/integrations/`。`OAuthProviderSpec` を実装した
+    プロバイダ定義1ファイルを `providers/` に置き `registry.ts` に1行足すと、
+    共通ルート `/api/admin/connect/[provider]`（GET=状態 / POST=認可URL / DELETE=解除）と
+    `/callback` がそのまま使える。新しい API ルートも DB マイグレーションも不要。
+    保存先は新テーブル `tenant_integrations`（`provider` に CHECK 制約を意図的に置かず、
+    連携先追加でマイグレーションが要らないようにしている）。トークンは既存の
+    envelope 暗号化（`@/lib/crypto/tenantSecrets`）で `_ciphertext` 列にのみ保管。
+  - **Slack 連携**（基盤の最初の実装）。`incoming-webhook` スコープのみを要求し、
+    bot トークンは保存しない（`storeTokens: false`）。受け取った webhook URL は
+    **既存の** `tenants.booking_notify_slack_webhook_ciphertext` に書くため、
+    通知の送信側 `src/lib/notifications/bookingNotify.ts` は1行も変えていない。
+    手入力フォームも従来どおり使え、既に設定済みのテナントはそのまま動く。
+    Slack が返した URL も手入力と同じ `isSlackIncomingWebhookUrl()` で
+    `hooks.slack.com/services/...` に限定する（顧客名・日時・備考を任意のサーバーへ
+    POST させないため。判定は設定フォームと共通化した）。
+  - **連携ページ集約** `/admin/settings/connections`。Slack / LINE / Square /
+    メール予約取り込み / NexPTG のセクションを店舗設定から移設し、Google カレンダー・
+    freee・マネーフォワード・Stripe への導線と接続状況を1画面にまとめた。各連携に
+    「ログインのみ / 発行作業あり」のラベルを出し、手間が残っている連携が分かるようにしている。
+  - `oauthState.ts` を `src/lib/accounting/` から `src/lib/integrations/` に移設（全連携共通化）。
+    署名鍵は `INTEGRATION_OAUTH_STATE_SECRET`、後方互換で
+    `ACCOUNTING_OAUTH_STATE_SECRET` → `FREEE_CLIENT_SECRET` にフォールバックする。
+    32文字未満の鍵は拒否するが、**既存の会計連携が突然切れないよう、長さチェックは
+    新しい env にのみ課している**。
+- 運営側の必要作業: Slack アプリを1度だけ登録し `SLACK_CLIENT_ID` / `SLACK_CLIENT_SECRET` /
+  `INTEGRATION_OAUTH_STATE_SECRET` を設定する。未設定の間は Slack カードが
+  「運営側の設定待ち」と表示され、ボタンは押せない（加盟店が失敗を踏まないようにするため）。
+- 検証: 全 411 ファイル 3744 テスト green。新規 18 テスト（認可URL組み立て / トークン交換 /
+  state の署名・provider不一致・改竄・期限切れ・短い鍵 / Slack の `ok:false` 拒否・
+  ホスト限定・解除時の webhook 列クリア）。`npm run build` 通過、`lint:migrations` OK。
+
 ## 2026-08-15 本番DBマイグレーション失敗を Slack に通知するようにした（branch claude/issuance-failure-ug8bdo）
 
 - 内容: `db-migrate`（本番へのマイグレーション自動適用）が失敗したとき、Slack へ通知するステップを追加した。
