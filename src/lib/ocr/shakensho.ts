@@ -306,7 +306,10 @@ export async function parseShakenshoAuto(
     return { data: qrData, source: "qr" };
   }
 
-  // QR が不足 or 読めず → OCR で補完
+  // QR が不足 or 読めず → OCR で補完。
+  // ここに来た時点で「QR だけでは requireFields を満たせない」ことが確定しているので、
+  // OCR (Vision) が落ちたら握りつぶさず投げる。QR の一部だけを返すと呼び出し側は
+  // 「成功したが項目が足りない」と誤認し、基盤障害が UI にもログにも出ない。
   const ocrData = await parseShakensho(imageBuffer);
   if (!qrData) {
     return { data: ocrData, source: "ocr" };
@@ -329,37 +332,37 @@ export async function parseShakenshoAuto(
 /**
  * 車検証画像を Claude Vision で解析し、構造化データを返す。
  *
+ * Vision 呼び出しが失敗した場合は例外を投げる（空データを返さない）。
+ * 「API キー未設定 / レート制限 / サーキットオープン」と「画像が読めない」を
+ * 呼び出し側が区別できないと、UI が無反応になり原因を追えないため。
+ *
  * @param imageBuffer - Raw image bytes (JPEG, PNG, GIF, WEBP)
  * @returns Parsed vehicle data
+ * @throws Vision API 呼び出しに失敗したとき
  */
 export async function parseShakensho(imageBuffer: Buffer): Promise<ShakenshoData> {
   const client = getAnthropicClient();
   const mediaType = detectMediaType(imageBuffer);
   const base64 = imageBuffer.toString("base64");
 
-  let raw: ShakenshoRaw | null = null;
-  try {
-    const msg = await withRetry("anthropic", () =>
-      client.messages.parse({
-        model: AI_MODEL_VISION,
-        max_tokens: 1024,
-        system: [{ type: "text", text: SYSTEM_PROMPT, cache_control: { type: "ephemeral" } }],
-        messages: [
-          {
-            role: "user",
-            content: [
-              { type: "image", source: { type: "base64", media_type: mediaType, data: base64 } },
-              { type: "text", text: "この車検証画像から指定項目をJSONで抽出してください。" },
-            ],
-          },
-        ],
-        output_config: { format: zodOutputFormat(ShakenshoRawSchema) },
-      }),
-    );
-    raw = msg.parsed_output ?? null;
-  } catch (err) {
-    console.error("[shakensho] parse failed:", err);
-  }
+  const msg = await withRetry("anthropic", () =>
+    client.messages.parse({
+      model: AI_MODEL_VISION,
+      max_tokens: 1024,
+      system: [{ type: "text", text: SYSTEM_PROMPT, cache_control: { type: "ephemeral" } }],
+      messages: [
+        {
+          role: "user",
+          content: [
+            { type: "image", source: { type: "base64", media_type: mediaType, data: base64 } },
+            { type: "text", text: "この車検証画像から指定項目をJSONで抽出してください。" },
+          ],
+        },
+      ],
+      output_config: { format: zodOutputFormat(ShakenshoRawSchema) },
+    }),
+  );
+  const raw: ShakenshoRaw | null = msg.parsed_output ?? null;
 
   const data: ShakenshoData = {};
   if (raw?.maker) data.maker = raw.maker;
