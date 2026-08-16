@@ -8,6 +8,7 @@
 | テーブル | 保持期間 | 削除ポリシー | 根拠 |
 |---------|---------|-------------|------|
 | `customer_login_codes` | **30 日** | 物理削除 | OTP 履歴。攻撃調査用に 30 日あれば十分 |
+| `customer_portal_login_tokens` | **expires_at + 30 日** | 物理削除 | LINE ログインリンク。連携・再発行のたびに増えるので溜めない |
 | `customer_sessions` | **revoked_at + 90 日** | 物理削除 | revoke 後の調査用 |
 | `audit_logs` (一般) | **2 年** | アーカイブ → 削除 | コンプラ + 訴訟対応 |
 | `audit_logs` (billing) | **7 年** | アーカイブのみ | 国税法 (帳簿書類) |
@@ -32,6 +33,7 @@
    - `certificates.customer_id` は残置 (証明書の改ざん検知信頼性のため)
    - `customer_sessions` を物理削除
    - `customer_login_codes` を物理削除
+   - `customer_portal_login_tokens` は `customers` 削除時に CASCADE で消える
 
 完全な物理削除ではなく **PII の匿名化** に留めるのは、ブロックチェーン
 アンカーされた証明書ハッシュとの整合性を保つため (証明書本体は

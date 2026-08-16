@@ -5,6 +5,9 @@
  * 行を削除する。Vercel Cron で 03:00 JST (= 18:00 UTC) に実行。
  *
  * - customer_login_codes : 30 日経過 → 物理削除
+ * - customer_portal_login_tokens : expires_at + 30 日経過 → 物理削除
+ *   (LINE ログインリンク。連携のたび・「マイページ」受信のたびに 1 行増えるので、
+ *    消さないと認証メタデータが無制限に溜まる)
  * - customer_sessions    : revoked_at + 90 日経過 → 物理削除
  * - notification_logs    : 180 日経過 → 物理削除
  * - outbox_events delivered : 90 日経過 → 物理削除
@@ -41,6 +44,9 @@ interface DeletionRule {
 
 const RULES: DeletionRule[] = [
   { table: "customer_login_codes", column: "created_at", days: 30 },
+  // 期限切れ後 30 日で削除。TTL 7 日なので 1 行の寿命は最長でも約 37 日。
+  // 使用済み (used_at あり) の行も expires_at は入っているのでこの規則で拾える。
+  { table: "customer_portal_login_tokens", column: "expires_at", days: 30 },
   { table: "customer_sessions", column: "revoked_at", days: 90 },
   { table: "notification_logs", column: "sent_at", days: 180 },
   { table: "outbox_events", column: "delivered_at", days: 90, filter: { col: "status", val: "delivered" } },

@@ -50,6 +50,91 @@
 - 検証: 全 411 ファイル 3744 テスト green。新規 18 テスト（認可URL組み立て / トークン交換 /
   state の署名・provider不一致・改竄・期限切れ・短い鍵 / Slack の `ok:false` 拒否・
   ホスト限定・解除時の webhook 列クリア）。`npm run build` 通過、`lint:migrations` OK。
+## 2026-08-15 連絡先が欠けているお客様に、マイページから自分で登録してもらう導線を追加
+
+- 内容: LINE連携だけで作られた顧客は email（や電話）が空で、メール通知が届かず PC など
+  LINE 以外からログインもできない。マイページに「お客様情報のご登録のお願い」を出し、
+  本人が入力して保存できるようにした（欠けている項目だけ表示）。LINE の連携案内メッセージにも、
+  email が無いお客様にだけ登録のお願いを 1 行添える。
+- 対象: 顧客マイページ（`/customer/[tenant]`）、`POST /api/customer/profile`（新規）、LINE通知。
+- 安全側: 更新できるのは**セッションに紐づいた customer_id の行のみ**（customer_id を持たない
+  旧 OTP セッションは 401。フォーム自体も出さないよう profile API が `canEditContact` を返す）。
+  **空欄を埋めるだけで、登録済みの値は上書きできない**（登録済み email はマイページの
+  ログイン identity そのもので、本人確認なしの差し替えは乗っ取り経路になるため。変更は店舗経由）。
+  同一テナント内で他の顧客が使っている email は拒否（重複チェックのクエリが失敗したときは
+  書き込まず 500＝fail-open にしない。`ilike` の `_`/`%` ワイルドカードで誤判定しないよう
+  候補を引いたうえで完全一致だけを見る）。ログには値そのものを残さず「どの項目を埋めたか」だけ記録。
+- 既存の登録フォーム（intake 招待）は使わなかった: あれは**身元が未知の新規客**向けで、
+  email/電話の一致による突合を通るため、既に customer_id が確定しているこのケースでは
+  重複顧客を作る危険がある。セッションで本人が確定している以上、その行を直接更新するのが素直。
+- 【要確認】入力された email は検証していない（確認コードを送っていない）。スタッフが管理画面から
+  入力する既存の経路も未検証なので、それに揃えた。誤入力の宛先に通知が飛ぶ余地は残る。
+- 検証: 新規テスト `src/app/api/customer/profile/__tests__/route.test.ts` 7件
+  （自分の行だけ更新・重複emailの拒否・customer_id 無しセッションの401・形式不正）。
+  ユニット全体 3756件パス、tsc エラー0、eslint/migrations lint OK。
+
+## 2026-08-15 email が無い顧客もマイページに入れるように（LINE連携＝本人性での単回使用トークンログイン）
+
+- 内容: マイページのログインは email 一致＋メール宛OTPのみで、email を持たない顧客
+  （受信箱からスタッフが作った顧客・登録フォームで email を空にした顧客）は入る手段が
+  無かった。LINE連携済みなら本人性は取れているので、連携時と「マイページ」受信時に
+  **単回使用・期限付き（既定7日、`PORTAL_LINE_LOGIN_TTL_MIN`）のログイントークン**を発行し、
+  `GET /my/line?t=` で `customer_id` 紐付きのポータルセッションに引き換える。
+  生トークンはDBに保存せず sha256+pepper のみ。tenant はトークン側の値を正とし、
+  URLパラメータでの上書きを許さない。期限切れ・使用済みは `/my` に戻し、LINEに
+  「マイページ」と送れば無料の応答メッセージで再発行できる旨を表示する。
+- 対象: 顧客マイページ（`/my/line`、`/customer/[tenant]`）、LINE通知。全業種共通。
+- DB: `supabase/migrations/20260815110000_customer_portal_line_login.sql`
+  （`customer_sessions` の email/下4桁ハッシュを NULL 許容化＋「customer_id があるか
+  email+下4桁が揃っているか」のCHECK / 新表 `customer_portal_login_tokens` /
+  `customer_inquiries` に customer_id 追加・下4桁ハッシュ NULL 許容 /
+  `customer_deletion_requests` の email NULL 許容）。CHECK は `NOT VALID` で追加してから
+  別途 `VALIDATE`（既存行の全走査で ACCESS EXCLUSIVE を取らないため）。索引は
+  `CONCURRENTLY` が要るので `20260815110001_customer_inquiries_customer_index.sql` に分離。
+  **適用は main マージ時に db-migrate ワークフローが自動で行う**（#917 で復旧済み）。
+  バージョンは #917 の `20260815000000/000001` と衝突していたため `20260815110000/110001` へ改番
+  （重複すると片方が「適用済み」と記録されたまま中身が実行されず、#917 が修復したドリフトそのものになる）。
+- Codex レビューでの修正: (1) `customer_sessions.customer_id` の外部キーを SET NULL → CASCADE に
+  変更し、`customer_inquiries` / `customer_deletion_requests` の CHECK は付けないことにした。
+  SET NULL のままだと LINE 由来の行（email も下4桁も無い）で顧客削除が CHECK 違反になり、
+  **個人情報の削除請求の実行そのものが失敗する**。(2) 連携の競合で敗者にもログインURLを
+  送っていた経路を塞いだ（条件付き UPDATE の結果を確認し、トークン発行の直前にも宛先が
+  現在の連携相手かを確認する）。(3) ログインリンクは GET で消費せず確認画面のボタン（POST）で
+  引き換える — LINE のリンクプレビューやクローラの先読みで単回使用トークンが焼き切れ、
+  実際にタップしたお客様が入れなくなるため。(4) 自己登録の重複チェックで `ilike` の
+  ワイルドカードをエスケープ（`%` を含むアドレスで検知漏れになる）。(5) 「空欄のときだけ
+  埋める」を UPDATE の条件にも入れて競合時の上書きを防止。(6) 電話番号は桁数も検証。
+- 秘匿: 案内本文には生のログイントークンが載るため、受信箱 (`customer_messages`) へ
+  記録する本文では `recordOutboundLineMessage` が `?t=` を伏せる（`maskPortalLoginToken`）。
+  伏せないと店舗スタッフが受信箱からコピーして顧客本人としてログインできてしまう。
+- 併せて修正: `/api/customer/list`・`/api/customer/inquiry` の認証ゲートが下4桁ハッシュ
+  必須だったため customer_id でも通るように。問い合わせ一覧は customer_id と下4桁ハッシュの
+  OR で引く（customer_id 列が無かった時代の行を取りこぼさないため）。`/my` を proxy の
+  PUBLIC_PREFIXES に追加（Supabase auth ではなく専用cookieで認証するため）。
+- 検証: 新規テスト `src/lib/__tests__/customerPortalLineLogin.test.ts` 8件
+  （ハッシュのみ保存・期限切れ/使用済み/並行クレーム負け/不正形式の拒否・tenantはトークン側優先）。
+  ユニット全体 3745件パス、tsc エラー0、eslint 追加警告0。
+
+## 2026-08-15 LINE連携が完了したら、マイページURLを自動でLINE送信（branch claude/customer-history-check-eoqjsy）
+
+- 内容: 顧客が LINE 連携を済ませても、マイページ（証明書・施工履歴・予約の閲覧口）の URL が
+  自動では届いていなかった。連携成立の共通チョークポイント `linkLineUserToCustomer()`
+  （`src/lib/line/linkCustomer.ts`）に「d. マイページ案内の送信」を追加し、3つの連携経路
+  （受信箱からの手動紐づけ / 連携コード / 登録フォーム intake 完了）すべてで 1 通だけ届くようにした。
+  本文組み立ては `buildPortalWelcomeText(tenantId)` に切り出し、`NEXT_PUBLIC_APP_URL` 未設定または
+  tenant slug 不明のときは **null を返して送信を見送る**（`/my?...` という壊れた相対リンクを
+  顧客に送らないため）。
+- 対象: 顧客向け LINE 通知。マイページ導線 `/my?tenant={slug}`。全業種共通。
+- コスト配慮: 連携コード経路は直後に**無料の応答メッセージ**を返しているので、そこへ案内を同梱し、
+  従量課金のプッシュは送らない（`suppressPortalMessage` オプションで抑止）。他の2経路はプッシュ 1 通。
+- 送信条件（自動コードレビューの指摘を受けて追加）: (1) 顧客に email が無ければ送らない
+  — マイページのログインはメール宛OTPのみで、email 無しの顧客はURLを開いても入れないため
+  （開けない導線を案内しない）。(2) 既に同じ LINE ユーザーで連携済みなら送らない（再連携での
+  二重送信・二重課金を防ぐ）。(3) 連携コードがグループ/ルームに送られた場合、URL入りの案内は
+  同梱しない（リプライは参加者全員に届くため。`linkPrompt.ts` と同じ 1:1 限定方針）。
+- 検証: 新規テスト `src/lib/line/__tests__/linkCustomer.test.ts` 7件パス（URL組み立て・末尾スラッシュ重複・
+  APP_URL未設定/slug不明のスキップ・プッシュ抑止・送信失敗時も連携は成功扱い）。
+  ユニット全体 3734件パス、tsc エラー0、eslint 追加警告0（既存の未使用変数警告1件のみ）。
 
 ## 2026-08-15 本番DBマイグレーション失敗を Slack に通知するようにした（branch claude/issuance-failure-ug8bdo）
 
@@ -115,6 +200,18 @@
   この範囲の自動突合は OPEN_QUESTIONS に起票済み。
 - 補足: CONCURRENTLY 索引180本のうち欠落は上記3本のみで、いずれも「記録済み・未実行」の
   マイグレーションに属する。つまり CONCURRENTLY 自体は本番で正常に動いており、ドリフトの原因ではない。
+
+## 2026-08-15 車検証OCRの失敗理由を画面に表示（無反応の解消） (branch claude/vehicle-inspection-cert-reading-5347oo)
+
+- 内容: 車検証の読み取りが「押しても何も起きない」状態になり得た経路を修正。(1) `parseShakensho` が
+  Vision 呼び出しの例外を握りつぶして空データを返していたのをやめ、例外を投げるように変更（QRが
+  読めていれば `parseShakenshoAuto` がQR分だけ返して degrade）。(2) `/api/vehicles/parse-shakken` と
+  `/api/admin/vehicle-size/ocr` は OCR 基盤の失敗を 502 +「AI OCR に接続できませんでした」で返す。
+  (3) 表示判定を `src/lib/ocr/shakenshoAutofill.ts` に集約し、「AI自動入力が無効（設定/月次コスト上限）」
+  「1項目も読めなかった」「自動入力できた項目名」を全画面で同じ文言に統一。LINE の車検証自動登録は
+  従来どおりスタッフ引き継ぎに倒す（例外で止めない）。
+- 対象: 車両登録（`/admin/vehicles/new`）、車両編集（`/admin/vehicles/[id]/edit`）、
+  証明書発行の車両ピッカー（`/admin/certificates/new`）、車両サイズOCR（`VehicleSizeOCR`）
 
 ## 2026-08-10 品目選択を「純POSレジ型（常にカテゴリタブ＋グリッド表示）」に変更（予約作成・POS）
 

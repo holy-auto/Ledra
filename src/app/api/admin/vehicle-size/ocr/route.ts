@@ -1,7 +1,14 @@
 import { NextRequest } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
-import { apiOk, apiUnauthorized, apiForbidden, apiInternalError, apiValidationError } from "@/lib/api/response";
+import {
+  apiOk,
+  apiError,
+  apiUnauthorized,
+  apiForbidden,
+  apiInternalError,
+  apiValidationError,
+} from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { parseShakenshoAuto, calcSizeClass } from "@/lib/ocr/shakensho";
 import { escapeIlike } from "@/lib/sanitize";
@@ -93,9 +100,22 @@ export async function POST(req: NextRequest) {
     // --- 2D code → OCR フォールバック ---
     // このルートはサイズクラス判定で寸法（長さ・幅・高さ・重量）が必須。
     // QR には寸法が含まれないため、QR のみでは必ず OCR 併用になる。
-    const { data: parsed, source } = await parseShakenshoAuto(imageBuffer, {
-      requireFields: ["maker", "length_mm", "width_mm", "height_mm", "weight_kg"],
-    });
+    // OCR 基盤側の失敗は「寸法が読めなかった」と区別できる文言で返す。
+    let parsed: Awaited<ReturnType<typeof parseShakenshoAuto>>["data"];
+    let source: Awaited<ReturnType<typeof parseShakenshoAuto>>["source"];
+    try {
+      ({ data: parsed, source } = await parseShakenshoAuto(imageBuffer, {
+        requireFields: ["maker", "length_mm", "width_mm", "height_mm", "weight_kg"],
+      }));
+    } catch (e) {
+      usage.record({ tenantId: caller.tenantId, userId: caller.userId, outcome: "error" });
+      console.error("[vehicle-size/ocr] OCR failed:", e instanceof Error ? e.message : String(e));
+      return apiError({
+        code: "internal_error",
+        message: "車検証の読み取りに失敗しました（AI OCR に接続できませんでした）。時間をおいて再度お試しください。",
+        status: 502,
+      });
+    }
 
     // --- Calculate size_class from dimensions if available ---
     let size_class: string | null = null;
