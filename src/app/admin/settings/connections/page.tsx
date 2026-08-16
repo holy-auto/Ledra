@@ -29,7 +29,8 @@ const ERROR_LABELS: Record<string, string> = {
   forbidden: "連携の設定はオーナー・管理者のみ行えます。",
   not_configured: "運営側の設定が未完了です。サポートへご連絡ください。",
   exchange_failed: "連携先との通信に失敗しました。時間をおいてお試しください。",
-  db_save: "連携情報の保存に失敗しました。もう一度お試しください。",
+  db_save:
+    "連携自体は有効になりましたが、接続先名などの表示情報だけ保存できませんでした。「連携先を変更」からやり直すと表示が揃います。",
   unknown_provider: "不明な連携先です。",
 };
 
@@ -59,7 +60,7 @@ export default async function ConnectionsPage({
     admin
       .from("tenants")
       .select(
-        "line_enabled, email_inbound_enabled, gcal_refresh_token, gcal_sync_enabled, stripe_connect_onboarded, booking_notify_slack_webhook_ciphertext",
+        "line_enabled, email_inbound_enabled, gcal_refresh_token, gcal_sync_enabled, stripe_connect_onboarded, booking_notify_slack_webhook_ciphertext, external_api_key",
       )
       .eq("id", tenantId)
       .maybeSingle(),
@@ -119,9 +120,9 @@ export default async function ConnectionsPage({
     },
     stripe: { connected: !!t?.stripe_connect_onboarded },
     square: { connected: initialSquareConnection?.status === "active" },
-    // NexPTG は Ledra 側が発行したキーを相手アプリに入れる方向で、状態は
-    // 下の NexPTGConnectSection がクライアント側で取得する。ここでは総覧に出さない。
-    nexptg: { connected: false },
+    // NexPTG は Ledra 側が発行した API キーを相手アプリに入れる方向なので、
+    // 「キーを発行済みか」を接続状態とみなす（総覧に出す以上、実状態を見る）。
+    nexptg: { connected: !!t?.external_api_key },
   };
 
   const connectedCount = INTEGRATION_CATALOG.filter((e) => rows[e.id]?.connected).length;

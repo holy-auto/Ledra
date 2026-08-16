@@ -9,6 +9,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { logger } from "@/lib/logger";
+import { hasMinRole, normalizeRole } from "@/lib/auth/roles";
 import { getOAuthProvider } from "@/lib/integrations/registry";
 import { verifyOAuthState } from "@/lib/integrations/oauthState";
 import { buildRedirectUri, exchangeCodeForToken } from "@/lib/integrations/oauth";
@@ -66,11 +67,13 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ prov
     .maybeSingle();
   if (!membership) return back(baseUrl, returnPath, { e: "unauthorized", provider: spec.id });
 
-  // 連携開始 (POST) と同じ owner/admin を要求する。会計連携のコールバックと同じ流儀。
+  // 連携開始 (POST) と同じ「admin 以上」を要求する。
   // ここを membership だけで通すと、有効な state URL を踏まされたスタッフが
   // 自分のアカウントに繋ぎ替えられてしまう (予約通知の宛先ごと奪われる)。
-  const role = membership.role as string;
-  if (role !== "owner" && role !== "admin") {
+  //
+  // 判定は POST 側と同じ hasMinRole を使う。owner/admin の素の許可リストで書くと
+  // super_admin が漏れ、認可を通したあとに弾かれて永久に連携できなくなる。
+  if (!hasMinRole(normalizeRole(membership.role), "admin")) {
     return back(baseUrl, returnPath, { e: "forbidden", provider: spec.id });
   }
 
@@ -91,8 +94,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ prov
 
     const saved = await saveConnection({ tenantId, spec, token, info, connectedBy: user.id });
     if (!saved.ok) {
+      // onConnected は既に走っており、provider 固有の保存 (Slack なら webhook URL) は
+      // 済んでいる＝連携自体は有効になっている。ここで「連携に失敗しました」と出すと
+      // 実態と食い違うので、「有効だが表示情報だけ保存できなかった」と正しく伝える。
       logger.error("integration callback: db save failed", new Error(saved.error), { provider: spec.id });
-      return back(baseUrl, returnPath, { e: "db_save", provider: spec.id });
+      return back(baseUrl, returnPath, { e: "db_save", provider: spec.id, connected: spec.id });
     }
 
     return back(baseUrl, returnPath, { connected: spec.id });

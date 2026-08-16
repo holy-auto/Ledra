@@ -72,6 +72,16 @@ COMMENT ON COLUMN tenant_integrations.metadata IS
 -- ─── RLS ──────────────────────────────────────────────────────────────────────
 ALTER TABLE tenant_integrations ENABLE ROW LEVEL SECURITY;
 
+-- CREATE POLICY / CREATE TRIGGER には IF NOT EXISTS が無い。テーブルだけ先に
+-- 存在する状態（MCP 等での直接適用、部分適用からの再実行）でこのファイルが
+-- 走ると 42710 で落ち、db-migrate が以降すべて止まる。このリポジトリでは
+-- 実際に db-migrate が13日間停止した前例があるため、必ず DROP ... IF EXISTS で
+-- 冪等にしてから作る。
+DROP POLICY IF EXISTS tenant_integrations_select ON tenant_integrations;
+DROP POLICY IF EXISTS tenant_integrations_insert ON tenant_integrations;
+DROP POLICY IF EXISTS tenant_integrations_update ON tenant_integrations;
+DROP POLICY IF EXISTS tenant_integrations_delete ON tenant_integrations;
+
 CREATE POLICY tenant_integrations_select ON tenant_integrations
   FOR SELECT USING (tenant_id IN (SELECT my_tenant_ids()));
 
@@ -91,6 +101,7 @@ CREATE POLICY tenant_integrations_delete ON tenant_integrations
   );
 
 -- ─── updated_at trigger ───────────────────────────────────────────────────────
+DROP TRIGGER IF EXISTS trg_tenant_integrations_updated_at ON tenant_integrations;
 CREATE TRIGGER trg_tenant_integrations_updated_at
   BEFORE UPDATE ON tenant_integrations
   FOR EACH ROW EXECUTE FUNCTION set_updated_at();

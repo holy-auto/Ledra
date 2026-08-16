@@ -26,6 +26,9 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ pro
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
+    // 接続先アカウント名・投稿先チャンネル・運営側の env 設定状況を返すので、
+    // 書き込み系と同じ admin 以上に揃える (/api/admin/line の GET と同じ方針)。
+    if (!requireMinRole(caller, "admin")) return apiForbidden();
 
     const connection = await getConnection(caller.tenantId, spec.id);
     return apiOk({

@@ -238,14 +238,35 @@ export async function verifyWithExistingToken(accessToken: string, webhookUrl: s
 }
 
 async function setUpWithToken(token: IssuedToken, webhookUrl: string): Promise<ProvisionResult> {
+  // 資格情報が本物かどうかはここで確定させる。ここが失敗したら保存に進ませない。
   const bot = await getBotInfo(token.accessToken);
 
-  await setWebhookEndpoint(token.accessToken, webhookUrl);
-  const webhook = await getWebhookEndpoint(token.accessToken);
-  const test = await testWebhookEndpoint(token.accessToken, webhookUrl);
-
   const manualSteps: string[] = [];
-  if (!webhook.active) {
+
+  // Webhook まわりは「あると嬉しい自動化」であって、連携の成立条件ではない。
+  // LINE 側が 429/5xx を返しただけで連携そのものを保存できなくすると、
+  // 加盟店に回避手段が無くなる（UI からトークン入力欄も無くしたため）。
+  // 失敗しても保存は続行し、代わりに手順を manualSteps に積む。
+  let webhookSetupFailed = false;
+  try {
+    await setWebhookEndpoint(token.accessToken, webhookUrl);
+  } catch {
+    webhookSetupFailed = true;
+    manualSteps.push(
+      `Webhook URL の自動設定に失敗しました。LINE Developers Console の「Messaging API設定」→「Webhook URL」に次を貼り付けてください: ${webhookUrl}`,
+    );
+  }
+
+  const webhook = await safely(() => getWebhookEndpoint(token.accessToken), { endpoint: null, active: false });
+  const test = webhookSetupFailed
+    ? { success: false, statusCode: null, detail: null }
+    : await safely(() => testWebhookEndpoint(token.accessToken, webhookUrl), {
+        success: false,
+        statusCode: null,
+        detail: null,
+      });
+
+  if (!webhook.active && !webhookSetupFailed) {
     manualSteps.push(
       "LINE Developers Console の「Messaging API設定」で「Webhookの利用」をONにしてください（URLはLedraが設定済みです）。",
     );
@@ -262,4 +283,13 @@ async function setUpWithToken(token: IssuedToken, webhookUrl: string): Promise<P
   }
 
   return { token, bot, webhook, test, manualSteps };
+}
+
+/** 状態の読み取り系は失敗しても連携を止めない。既定値に倒す。 */
+async function safely<T>(fn: () => Promise<T>, fallback: T): Promise<T> {
+  try {
+    return await fn();
+  } catch {
+    return fallback;
+  }
 }

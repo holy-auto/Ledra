@@ -156,3 +156,30 @@ describe("isLineTokenExpiringSoon", () => {
     expect(isLineTokenExpiringSoon(value as string | null | undefined, now)).toBe(expected);
   });
 });
+
+describe("Webhook 設定が失敗しても連携は成立させる（回避手段を奪わない）", () => {
+  it("PUT が 500 でも throw せず、URLを手で貼る手順を manualSteps に出す", async () => {
+    stubFetch({
+      ...OK_ROUTES,
+      "PUT /v2/bot/channel/webhook/endpoint": { status: 500, body: {} },
+    });
+    const r = await provisionLineChannel({ channelId: "1", channelSecret: "s", webhookUrl: WEBHOOK_URL });
+
+    // トークンは取れている＝資格情報は本物なので、保存に進める
+    expect(r.token.accessToken).toBe("tok");
+    expect(r.manualSteps.some((s) => s.includes("自動設定に失敗") && s.includes(WEBHOOK_URL))).toBe(true);
+    // 自動設定できていないのに「利用をONに」と二重で言わない
+    expect(r.manualSteps.some((s) => s.includes("Webhookの利用"))).toBe(false);
+  });
+
+  it("状態取得や配送テストが落ちても連携は成立する", async () => {
+    stubFetch({
+      ...OK_ROUTES,
+      "GET /v2/bot/channel/webhook/endpoint": { status: 500, body: {} },
+      "/v2/bot/channel/webhook/test": { status: 500, body: {} },
+    });
+    const r = await provisionLineChannel({ channelId: "1", channelSecret: "s", webhookUrl: WEBHOOK_URL });
+    expect(r.token.accessToken).toBe("tok");
+    expect(r.webhook).toEqual({ endpoint: null, active: false });
+  });
+});
