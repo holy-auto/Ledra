@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
+import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import PageHeader from "@/components/ui/PageHeader";
 import HelpTooltip from "@/components/ui/HelpTooltip";
 import type { SquareConnection } from "@/types/square";
@@ -25,6 +26,7 @@ const ERROR_LABELS: Record<string, string> = {
   invalid_state: "連携リンクの有効期限が切れています。もう一度お試しください。",
   unauthenticated: "セッションが切れています。再ログインしてからお試しください。",
   unauthorized: "この店舗の連携権限がありません。",
+  forbidden: "連携の設定はオーナー・管理者のみ行えます。",
   not_configured: "運営側の設定が未完了です。サポートへご連絡ください。",
   exchange_failed: "連携先との通信に失敗しました。時間をおいてお試しください。",
   db_save: "連携情報の保存に失敗しました。もう一度お試しください。",
@@ -38,21 +40,18 @@ export default async function ConnectionsPage({
 }) {
   const sp = await searchParams;
   const supabase = await createSupabaseServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect("/login?next=/admin/settings/connections");
-
-  const { data: membership } = await supabase
-    .from("tenant_memberships")
-    .select("tenant_id")
-    .eq("user_id", user.id)
-    .limit(1)
-    .single();
-  if (!membership?.tenant_id) {
+  // 接続 API (/api/admin/connect) と同じ resolveCallerWithRole でテナントを決める。
+  // ここだけ「最初の membership」で解決すると、複数テナントに所属するユーザーが
+  // テナントを切り替えている場合に「画面はA店の状態、解除ボタンはB店に効く」になる。
+  const caller = await resolveCallerWithRole(supabase);
+  if (!caller) {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) redirect("/login?next=/admin/settings/connections");
     return <div className="text-sm text-muted">tenant が見つかりません。</div>;
   }
-  const tenantId = membership.tenant_id as string;
+  const tenantId = caller.tenantId;
   const { admin } = createTenantScopedAdmin(tenantId);
 
   // 連携状態は tenants の各列 + 個別テーブルに散っているため、ここで 1 度だけ束ねる。
@@ -74,7 +73,7 @@ export default async function ConnectionsPage({
   ]);
 
   const t = (tenantRes.data ?? null) as Record<string, unknown> | null;
-  const statusLoadFailed = !!tenantRes.error;
+  const statusLoadFailed = !!tenantRes.error || !!squareRes.error || !!accountingRes.error || generic.failed;
 
   const squareRow = squareRes.data as Record<string, unknown> | null;
   const initialSquareConnection: SquareConnection | null = squareRow
@@ -95,7 +94,9 @@ export default async function ConnectionsPage({
     ),
   );
 
-  const slackRow = generic.slack ?? null;
+  // status が active の行だけを表示に使う。解除後に手入力で繋ぎ直した場合、古い
+  // ワークスペース名を出したまま実際の通知は別チャンネルへ、という食い違いを防ぐ。
+  const slackRow = generic.byProvider.slack?.status === "active" ? generic.byProvider.slack : null;
   const slackChannel = typeof slackRow?.metadata?.channel === "string" ? slackRow.metadata.channel : null;
   // 真の接続状態は「通知が実際に飛ぶか」＝ webhook 列が入っているか。
   // 手入力フォームで設定/解除した場合も必ずこちらが正になる。
@@ -118,7 +119,9 @@ export default async function ConnectionsPage({
     },
     stripe: { connected: !!t?.stripe_connect_onboarded },
     square: { connected: initialSquareConnection?.status === "active" },
-    nexptg: { connected: false, detail: "下のセクションで確認" },
+    // NexPTG は Ledra 側が発行したキーを相手アプリに入れる方向で、状態は
+    // 下の NexPTGConnectSection がクライアント側で取得する。ここでは総覧に出さない。
+    nexptg: { connected: false },
   };
 
   const connectedCount = INTEGRATION_CATALOG.filter((e) => rows[e.id]?.connected).length;
@@ -148,7 +151,8 @@ export default async function ConnectionsPage({
       )}
       {errorKey && (
         <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-400">
-          連携に失敗しました: {ERROR_LABELS[errorKey] ?? errorKey}
+          連携に失敗しました:{" "}
+          {Object.prototype.hasOwnProperty.call(ERROR_LABELS, errorKey) ? ERROR_LABELS[errorKey] : errorKey}
         </div>
       )}
       {statusLoadFailed && (

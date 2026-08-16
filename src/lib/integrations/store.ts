@@ -7,6 +7,7 @@
 
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { buildSecretWrite, readSecret } from "@/lib/crypto/tenantSecrets";
+import { logger } from "@/lib/logger";
 import type { IntegrationStatus, OAuthProviderSpec, OAuthTokenResponse, ProviderConnectionInfo } from "./types";
 
 /** 画面に返して安全な接続状態 (秘密情報を含まない) */
@@ -26,21 +27,35 @@ const PUBLIC_COLUMNS =
 
 export async function getConnection(tenantId: string, provider: string): Promise<IntegrationConnection | null> {
   const { admin } = createTenantScopedAdmin(tenantId);
-  const { data } = await admin
+  const { data, error } = await admin
     .from("tenant_integrations")
     .select(PUBLIC_COLUMNS)
     .eq("tenant_id", tenantId)
     .eq("provider", provider)
     .maybeSingle();
+  // 取得失敗 (マイグレーション未適用など) を黙って「未連携」に潰さない。
+  if (error) logger.error("tenant_integrations select failed", error, { provider });
   return (data as IntegrationConnection | null) ?? null;
 }
 
-/** 連携ページの一覧表示用。1 クエリで全 provider 分を取る。 */
-export async function listConnections(tenantId: string): Promise<Record<string, IntegrationConnection>> {
+/**
+ * 連携ページの一覧表示用。1 クエリで全 provider 分を取る。
+ *
+ * `failed` は「取得できなかった」を「未連携」と区別するためのフラグ。
+ * このリポジトリではマイグレーション未適用のドリフトが実際に起きているので、
+ * テーブルが無いときに画面が静かに嘘をつかないようにする。
+ */
+export async function listConnections(
+  tenantId: string,
+): Promise<{ byProvider: Record<string, IntegrationConnection>; failed: boolean }> {
   const { admin } = createTenantScopedAdmin(tenantId);
-  const { data } = await admin.from("tenant_integrations").select(PUBLIC_COLUMNS).eq("tenant_id", tenantId);
+  const { data, error } = await admin.from("tenant_integrations").select(PUBLIC_COLUMNS).eq("tenant_id", tenantId);
+  if (error) {
+    logger.error("tenant_integrations list failed", error, { tenantId });
+    return { byProvider: {}, failed: true };
+  }
   const rows = (data as IntegrationConnection[] | null) ?? [];
-  return Object.fromEntries(rows.map((r) => [r.provider, r]));
+  return { byProvider: Object.fromEntries(rows.map((r) => [r.provider, r])), failed: false };
 }
 
 /** access_token を復号して返す。未接続 / 復号失敗は null。 */

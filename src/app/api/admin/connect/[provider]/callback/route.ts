@@ -59,12 +59,20 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ prov
   const { admin } = createTenantScopedAdmin(tenantId);
   const { data: membership } = await admin
     .from("tenant_memberships")
-    .select("user_id")
+    .select("user_id, role")
     .eq("user_id", user.id)
     .eq("tenant_id", tenantId)
     .limit(1)
     .maybeSingle();
   if (!membership) return back(baseUrl, returnPath, { e: "unauthorized", provider: spec.id });
+
+  // 連携開始 (POST) と同じ owner/admin を要求する。会計連携のコールバックと同じ流儀。
+  // ここを membership だけで通すと、有効な state URL を踏まされたスタッフが
+  // 自分のアカウントに繋ぎ替えられてしまう (予約通知の宛先ごと奪われる)。
+  const role = membership.role as string;
+  if (role !== "owner" && role !== "admin") {
+    return back(baseUrl, returnPath, { e: "forbidden", provider: spec.id });
+  }
 
   const clientId = process.env[spec.clientIdEnv];
   const clientSecret = process.env[spec.clientSecretEnv];
