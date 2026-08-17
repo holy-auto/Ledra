@@ -13,6 +13,70 @@
 - 対象: どの画面・API・業種向けか
 ```
 
+## 2026-08-16 LINE連携の入力を「Channel ID と Secret の2つだけ」に（branch claude/multi-integration-login-opnzfh）
+
+- 内容: LINE公式アカウント連携で加盟店に求めていた7手順のうち3つを自動化し、入力を2値に削った。
+  モジュールチャネル（申請制・現在受付停止中）を待たず、申請不要の Messaging API だけで実現している。
+- 対象: 加盟店管理画面の LINE 連携（`/admin/settings/connections`）、全業種。
+- 実装 (`src/lib/line/provisioning.ts` 新規):
+  - **アクセストークンの自動発行**: `POST /v2/oauth/accessToken` (client_credentials)。
+    加盟店が LINE Developers Console で「チャネルアクセストークン（長期）」を発行してコピーする工程が消えた。
+  - **Webhook URL の自動設定**: `PUT /v2/bot/channel/webhook/endpoint`。
+    Ledra が表示した URL を加盟店が Console に貼り戻す工程（最も事故る工程）が消えた。
+  - **保存時の配送テスト**: `POST /v2/bot/channel/webhook/test`。
+    「保存はできたのに届かない」を保存の瞬間に検出する。
+  - **残作業の自動検出**: `GET /v2/bot/info` の `chatMode` と webhook の `active` を読み、
+    **API で変更できない2項目**（Webhookの利用ON / 応答モードをBotに）だけを、
+    その状態のときに限って1行ずつ案内する。全部済んでいれば「完了」と言い切る。
+  - **「接続を再確認」ボタン**（`action: "verify"`）: トークンを発行し直し、Webhook を設定し直して
+    配送テストまで実行する。失効時の手動復旧口も兼ねる。
+- 失効対策: 自動発行されるトークンは **30日で失効する**（手入力の長期トークンは無期限だった）。
+  放置すると30日後に通知が静かに全部止まるため、`tenants.line_channel_token_expires_at` に失効時刻を
+  保存し、送信直前に期限が3日以内なら自動で再発行する（`getLineConfig`）。再発行に失敗しても
+  既存トークンはまだ有効なので送信自体は止めない（ログのみ）。
+- 後方互換: 手入力の長期トークンで運用中の既存テナントは同カラムが NULL のままで再発行の対象外。
+  API も `channel_access_token` を任意で受け付け続けるため、既存の連携はそのまま動く。
+- 検証: 416ファイル 3804テスト green（新規17テスト: トークン発行のパラメータと失効時刻の計算 /
+  401の日本語メッセージ / Webhook の PUT 内容 / 残作業の判定3パターン / GET 404 を「未設定」として扱う /
+  手入力トークンは再発行しない / 失効判定7ケース）。`tsc` エラーなし、`lint:migrations` OK。
+
+## 2026-08-16 外部サービス連携を1画面に集約し、Slack を「ログインするだけ」に（branch claude/multi-integration-login-opnzfh）
+
+- 内容: 加盟店が連携のたびに開発者コンソールで ID・トークンを発行して貼り付ける手間を無くすため、
+  (1) 汎用 OAuth 基盤、(2) Slack のワンクリック連携、(3) 連携ページの集約、を実装した。
+  LINE は申請が必要な法人限定機能に依存するため調査のみ（`docs/line-module-channel-research.md`）。
+- 対象: 加盟店管理画面 `/admin/settings/connections`（新設）、全業種。
+- 実装:
+  - **汎用 OAuth 基盤** `src/lib/integrations/`。`OAuthProviderSpec` を実装した
+    プロバイダ定義1ファイルを `providers/` に置き `registry.ts` に1行足すと、
+    共通ルート `/api/admin/connect/[provider]`（GET=状態 / POST=認可URL / DELETE=解除）と
+    `/callback` がそのまま使える。新しい API ルートも DB マイグレーションも不要。
+    保存先は新テーブル `tenant_integrations`（`provider` に CHECK 制約を意図的に置かず、
+    連携先追加でマイグレーションが要らないようにしている）。トークンは既存の
+    envelope 暗号化（`@/lib/crypto/tenantSecrets`）で `_ciphertext` 列にのみ保管。
+  - **Slack 連携**（基盤の最初の実装）。`incoming-webhook` スコープのみを要求し、
+    bot トークンは保存しない（`storeTokens: false`）。受け取った webhook URL は
+    **既存の** `tenants.booking_notify_slack_webhook_ciphertext` に書くため、
+    通知の送信側 `src/lib/notifications/bookingNotify.ts` は1行も変えていない。
+    手入力フォームも従来どおり使え、既に設定済みのテナントはそのまま動く。
+    Slack が返した URL も手入力と同じ `isSlackIncomingWebhookUrl()` で
+    `hooks.slack.com/services/...` に限定する（顧客名・日時・備考を任意のサーバーへ
+    POST させないため。判定は設定フォームと共通化した）。
+  - **連携ページ集約** `/admin/settings/connections`。Slack / LINE / Square /
+    メール予約取り込み / NexPTG のセクションを店舗設定から移設し、Google カレンダー・
+    freee・マネーフォワード・Stripe への導線と接続状況を1画面にまとめた。各連携に
+    「ログインのみ / 発行作業あり」のラベルを出し、手間が残っている連携が分かるようにしている。
+  - `oauthState.ts` を `src/lib/accounting/` から `src/lib/integrations/` に移設（全連携共通化）。
+    署名鍵は `INTEGRATION_OAUTH_STATE_SECRET`、後方互換で
+    `ACCOUNTING_OAUTH_STATE_SECRET` → `FREEE_CLIENT_SECRET` にフォールバックする。
+    32文字未満の鍵は拒否するが、**既存の会計連携が突然切れないよう、長さチェックは
+    新しい env にのみ課している**。
+- 運営側の必要作業: Slack アプリを1度だけ登録し `SLACK_CLIENT_ID` / `SLACK_CLIENT_SECRET` /
+  `INTEGRATION_OAUTH_STATE_SECRET` を設定する。未設定の間は Slack カードが
+  「運営側の設定待ち」と表示され、ボタンは押せない（加盟店が失敗を踏まないようにするため）。
+- 検証: 全 411 ファイル 3744 テスト green。新規 18 テスト（認可URL組み立て / トークン交換 /
+  state の署名・provider不一致・改竄・期限切れ・短い鍵 / Slack の `ok:false` 拒否・
+  ホスト限定・解除時の webhook 列クリア）。`npm run build` 通過、`lint:migrations` OK。
 ## 2026-08-15 連絡先が欠けているお客様に、マイページから自分で登録してもらう導線を追加
 
 - 内容: LINE連携だけで作られた顧客は email（や電話）が空で、メール通知が届かず PC など

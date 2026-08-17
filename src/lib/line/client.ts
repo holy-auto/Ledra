@@ -1,5 +1,7 @@
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
-import { readSecret } from "@/lib/crypto/tenantSecrets";
+import { readSecret, buildSecretWrite } from "@/lib/crypto/tenantSecrets";
+import { issueChannelAccessToken, isLineTokenExpiringSoon } from "./provisioning";
+import { logger } from "@/lib/logger";
 import { recordInboundLineMessage, recordOutboundLineMessage } from "./messageStore";
 import { maybeAutoProcessInboundMessage } from "@/lib/ai/automation/inboundAuto";
 import { maybeNotifyInboundMessage } from "./inboundNotify";
@@ -18,6 +20,27 @@ type LineConfig = {
   liffId: string | null;
 };
 
+/**
+ * トークン失効時刻を単独で読む。列が無い（マイグレーション未適用）環境では
+ * null = 「期限なし」を返し、送信経路を絶対に止めない。
+ */
+async function readTokenExpiry(tenantId: string): Promise<string | null> {
+  try {
+    const { admin } = createTenantScopedAdmin(tenantId);
+    const { data, error } = await admin
+      .from("tenants")
+      .select("line_channel_token_expires_at")
+      .eq("id", tenantId)
+      .maybeSingle();
+    if (error) return null;
+    return (data?.line_channel_token_expires_at as string | null) ?? null;
+  } catch {
+    // ここは「再発行が要るか」を知るためだけの補助クエリ。何が起きても
+    // 送信経路を巻き込まない (throw させない)。
+    return null;
+  }
+}
+
 /** テナントの LINE 設定を取得 */
 async function getLineConfig(tenantId: string): Promise<LineConfig | null> {
   const { admin } = createTenantScopedAdmin(tenantId);
@@ -31,13 +54,47 @@ async function getLineConfig(tenantId: string): Promise<LineConfig | null> {
 
   if (!tenant?.line_enabled) return null;
 
+  /**
+   * 失効時刻だけ別クエリにする。
+   *
+   * 上の select に混ぜると、この列のマイグレーション未適用時に select 全体が
+   * エラーになり `tenant` が null → getLineConfig が null を返し、**LINE の
+   * 送受信が全部無言で止まる**（このリポジトリではマイグレーション未適用の
+   * ドリフトが実際に2回起きている）。列が無い環境では「期限なし」として扱い、
+   * 従来どおり保存済みトークンをそのまま使う。
+   */
+  const tokenExpiresAt = await readTokenExpiry(tenantId);
+
   const channelSecret = await readSecret(tenant.line_channel_secret_ciphertext, "tenants.line_channel_secret");
-  const channelAccessToken = await readSecret(
+  let channelAccessToken = await readSecret(
     tenant.line_channel_access_token_ciphertext,
     "tenants.line_channel_access_token",
   );
 
   if (!channelAccessToken || !channelSecret) return null;
+
+  // Ledra が自動発行したトークンは 30 日で失効する。放置すると予約通知・
+  // リマインダー・書類送付が静かに全部止まるため、期限が近ければここで差し替える。
+  // 再発行に失敗しても既存トークンはまだ有効なので、送信自体は止めない。
+  if (isLineTokenExpiringSoon(tokenExpiresAt)) {
+    try {
+      const issued = await issueChannelAccessToken(tenant.line_channel_id as string, channelSecret);
+      const { ciphertext } = await buildSecretWrite(issued.accessToken);
+      const { error } = await admin
+        .from("tenants")
+        .update({
+          line_channel_access_token_ciphertext: ciphertext,
+          line_channel_token_expires_at: issued.expiresAt,
+        })
+        .eq("id", tenantId);
+      // 書き込み失敗を握りつぶすと、送信のたびに LINE のトークン発行 API を
+      // 叩き続ける状態に無言で入る。必ず記録する。
+      if (error) logger.error("line: token refresh saved failed", error, { tenantId });
+      channelAccessToken = issued.accessToken;
+    } catch (e) {
+      logger.error("line: channel access token refresh failed", e, { tenantId });
+    }
+  }
 
   return {
     channelId: tenant.line_channel_id,
