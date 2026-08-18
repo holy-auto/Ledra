@@ -95,7 +95,7 @@ export default function NotificationLogsClient() {
       ) : summary ? (
         <div className="space-y-6">
           {/* サマリー */}
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid gap-3 sm:grid-cols-3">
             <StatCard label="送信成功" value={summary.totals.sent} tone="success" />
             <StatCard
               label="失敗"
