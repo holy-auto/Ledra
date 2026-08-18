@@ -281,7 +281,7 @@ export default function FollowUpSettings() {
               {dryRun.items.length === 0 ? (
                 <p className="text-[11px] text-muted">この期間に送信予定のリマインダーはありません。</p>
               ) : (
-                <div className="max-h-60 overflow-y-auto rounded-lg border border-border-subtle">
+                <div className="max-h-60 overflow-x-auto overflow-y-auto rounded-lg border border-border-subtle">
                   <table className="w-full text-[11px]">
                     <thead className="bg-surface text-muted">
                       <tr>

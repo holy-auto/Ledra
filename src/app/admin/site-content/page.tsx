@@ -95,6 +95,7 @@ export default async function SiteContentListPage(props: { searchParams?: Promis
         />
       ) : (
         <div className="overflow-hidden rounded-2xl border border-border-default bg-surface-solid">
+          <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="border-b border-border-default bg-surface-hover text-xs text-muted">
               <tr>
@@ -132,6 +133,7 @@ export default async function SiteContentListPage(props: { searchParams?: Promis
               ))}
             </tbody>
           </table>
+          </div>
         </div>
       )}
     </div>

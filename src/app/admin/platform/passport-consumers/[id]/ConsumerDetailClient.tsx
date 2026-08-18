@@ -309,7 +309,7 @@ export default function ConsumerDetailClient({ consumerId }: { consumerId: strin
               <option value="closed">解約済み</option>
             </select>
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="text-sm font-semibold text-primary">月間クォータ</label>
               <input
@@ -536,6 +536,7 @@ export default function ConsumerDetailClient({ consumerId }: { consumerId: strin
           <div className="glass-card p-4 text-sm text-muted">まだキーが発行されていません。</div>
         ) : (
           <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white">
+            <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-zinc-50 text-xs uppercase tracking-wider text-zinc-500">
                 <tr>
@@ -589,6 +590,7 @@ export default function ConsumerDetailClient({ consumerId }: { consumerId: strin
                 ))}
               </tbody>
             </table>
+            </div>
           </div>
         )}
       </section>
@@ -614,6 +616,7 @@ export default function ConsumerDetailClient({ consumerId }: { consumerId: strin
           <div className="glass-card p-4 text-sm text-muted">該当するコール履歴がありません。</div>
         ) : (
           <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white">
+            <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-zinc-50 text-xs uppercase tracking-wider text-zinc-500">
                 <tr>
@@ -662,6 +665,7 @@ export default function ConsumerDetailClient({ consumerId }: { consumerId: strin
                 ))}
               </tbody>
             </table>
+            </div>
           </div>
         )}
       </section>
@@ -675,6 +679,7 @@ export default function ConsumerDetailClient({ consumerId }: { consumerId: strin
           </div>
         ) : (
           <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white">
+            <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-zinc-50 text-xs uppercase tracking-wider text-zinc-500">
                 <tr>
@@ -715,6 +720,7 @@ export default function ConsumerDetailClient({ consumerId }: { consumerId: strin
                 ))}
               </tbody>
             </table>
+            </div>
           </div>
         )}
       </section>

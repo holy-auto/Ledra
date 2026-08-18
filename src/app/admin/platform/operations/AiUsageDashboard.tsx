@@ -183,6 +183,7 @@ export default function AiUsageDashboard() {
             <div>
               <div className="text-xs font-semibold text-muted mb-1.5">エンドポイント別</div>
               <div className="rounded-xl border border-border-subtle bg-surface overflow-hidden">
+                <div className="overflow-x-auto">
                 <table className="w-full text-xs">
                   <thead className="bg-surface-hover text-muted">
                     <tr>
@@ -215,6 +216,7 @@ export default function AiUsageDashboard() {
                     ))}
                   </tbody>
                 </table>
+                </div>
               </div>
             </div>
           )}
