@@ -368,7 +368,7 @@ function CreatePackDialog({ onClose, onCreated }: { onClose: () => void; onCreat
           />
         </Field>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Field label="チケット総数" required>
             <input
               type="number"
@@ -391,7 +391,7 @@ function CreatePackDialog({ onClose, onCreated }: { onClose: () => void; onCreat
           </Field>
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Field label="有効期間（開始）">
             <input
               type="date"

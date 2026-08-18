@@ -90,7 +90,7 @@ export default function TemplatesClient() {
             </div>
           </div>
 
-          <div className="mt-3 grid grid-cols-2 gap-3 border-t border-border-subtle pt-3">
+          <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3 border-t border-border-subtle pt-3">
             <div>
               <div className="text-xs text-secondary">累計発行件数</div>
               <div className="text-lg font-semibold text-primary">{t.certificate_count.toLocaleString("ja-JP")}</div>

@@ -202,7 +202,7 @@ const PhotoUploadSection = forwardRef<PhotoUploadHandle, Props>(function PhotoUp
           <div className="mb-2 text-xs text-muted">
             {count} / {maxPhotos} 枚
           </div>
-          <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-5">
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
             {previews.map((p) => {
               const annotationCount = p.annotations?.annotations.length ?? 0;
               return (

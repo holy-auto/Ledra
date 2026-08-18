@@ -685,7 +685,7 @@ function CreateDialog({
           </Field>
         )}
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Field label="見積金額（円）">
             <input
               type="number"
@@ -706,7 +706,7 @@ function CreateDialog({
           </Field>
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Field label="保険会社">
             <input
               value={insuranceCompany}
@@ -735,7 +735,7 @@ function CreateDialog({
           />
         </Field>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Field label="予定部品（任意）">
             <input
               value={plannedParts}
@@ -1397,7 +1397,7 @@ function EditDialog({
           />
         </Field>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Field label="実際に使用した部品">
             <input
               value={actualParts}
@@ -1426,7 +1426,7 @@ function EditDialog({
           />
         </Field>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Field label="実績金額（円）">
             <input
               type="number"
@@ -1450,7 +1450,7 @@ function EditDialog({
         {/* 保険査定 (保険会社から受領した結果の記録) */}
         <div className="rounded-lg border border-border-subtle bg-inset p-3">
           <div className="mb-2 text-xs font-semibold text-primary">保険査定（受領結果）</div>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
             <Field label="ステータス">
               <select
                 value={claimStatus}

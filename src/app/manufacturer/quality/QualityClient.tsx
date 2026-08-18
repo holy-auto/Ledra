@@ -62,7 +62,7 @@ export default function QualityClient() {
   return (
     <div className="space-y-6">
       {/* Summary cards — click to filter */}
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 lg:grid-cols-4">
         {FLAG_ORDER.map((code) => {
           const count = data.summary[code] ?? 0;
           const isActive = activeFlag === code;

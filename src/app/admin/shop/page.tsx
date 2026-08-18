@@ -355,7 +355,7 @@ export default function ShopPage() {
                   {/* Payment method selection */}
                   <div className="space-y-2">
                     <p className="text-xs font-semibold tracking-wider text-secondary uppercase">お支払い方法</p>
-                    <div className="grid grid-cols-2 gap-2">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                       <button
                         onClick={() => setPaymentMethod("stripe")}
                         className={`rounded-lg border px-3 py-2 text-xs font-medium transition-colors ${

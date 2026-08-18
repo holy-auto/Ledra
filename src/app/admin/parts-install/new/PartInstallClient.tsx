@@ -316,7 +316,7 @@ export default function PartInstallClient() {
             placeholder="例: ドライブレコーダー"
           />
         </Field>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Field label="種別">
             <select
               value={partKind}
@@ -353,7 +353,7 @@ export default function PartInstallClient() {
             <input value={unit} onChange={(e) => setUnit(e.target.value)} className="input-field w-full" />
           </Field>
         </div>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Field label="シリアル番号（任意）">
             <input
               value={serialNo}
@@ -369,7 +369,7 @@ export default function PartInstallClient() {
             <input value={lotCode} onChange={(e) => setLotCode(e.target.value)} className="input-field w-full" />
           </Field>
         </div>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Field label="顧客（任意）">
             <select
               value={customerId}

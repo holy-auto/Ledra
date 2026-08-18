@@ -181,7 +181,7 @@ function AddPartForm({
         className="input-field w-full"
         maxLength={120}
       />
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
         <input
           value={partNumber}
           onChange={(e) => setPartNumber(e.target.value)}
@@ -197,7 +197,7 @@ function AddPartForm({
           maxLength={120}
         />
       </div>
-      <div className="grid grid-cols-3 gap-2">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
         <input
           type="number"
           min={1}

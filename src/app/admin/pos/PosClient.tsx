@@ -840,7 +840,7 @@ export default function PosClient() {
 
               {/* Menu item grid */}
               {menuLoading ? (
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                   {[1, 2, 3, 4, 5, 6].map((i) => (
                     <div key={i} className="h-20 animate-pulse rounded-xl bg-surface-hover" />
                   ))}
@@ -854,7 +854,7 @@ export default function PosClient() {
                   {"該当する品目がありません"}
                 </div>
               ) : (
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                   {filteredMenuItems.map((mi) => {
                     const inCart = cart.find((c) => c.id === mi.id);
                     return (
@@ -1112,7 +1112,7 @@ export default function PosClient() {
                 {/* Payment method */}
                 <div className="space-y-2">
                   <span className="text-xs font-medium text-secondary">{"支払方法"}</span>
-                  <div className="grid grid-cols-3 gap-2">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                     {PAYMENT_METHODS.map((pm) => (
                       <button
                         key={pm.value}

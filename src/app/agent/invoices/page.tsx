@@ -111,7 +111,7 @@ export default function AgentInvoicesPage() {
           </div>
 
           {/* Invoice info */}
-          <div className="mt-6 grid grid-cols-2 gap-6">
+          <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-6">
             <div>
               <div className="text-xs text-muted mb-1">請求先</div>
               <div className="text-sm font-semibold text-primary">{agent?.name ?? "-"}</div>

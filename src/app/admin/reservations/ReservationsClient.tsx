@@ -721,7 +721,7 @@ export default function ReservationsClient() {
       )}
 
       {/* ── Stats cards ── */}
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
         {[
           { label: "本日の予約", value: stats?.today_count ?? 0, icon: "📅", color: "from-blue-500 to-blue-600" },
           { label: "進行中", value: stats?.active_count ?? 0, icon: "⚙️", color: "from-violet-500 to-violet-600" },
@@ -1382,7 +1382,7 @@ export default function ReservationsClient() {
                     </label>
 
                     {/* Date & Time */}
-                    <div className="grid grid-cols-3 gap-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                       <label className={`${labelCls} col-span-1`}>
                         <span className={labelTextCls}>
                           予約日 <span className="text-danger">*</span>
