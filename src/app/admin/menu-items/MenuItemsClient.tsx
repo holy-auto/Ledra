@@ -437,7 +437,7 @@ export default function MenuItemsClient() {
         title="品目マスタ"
         description="帳票で使用する品目・メニューの管理"
         actions={
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <button
               type="button"
               className="btn-secondary"

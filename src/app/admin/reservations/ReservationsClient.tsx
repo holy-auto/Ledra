@@ -658,7 +658,7 @@ export default function ReservationsClient() {
         title="予約管理"
         description="予約の登録・管理を行います。"
         actions={
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Link
               href="/admin/jobs/new"
               className="inline-flex items-center gap-2 rounded-xl border border-accent/30 bg-accent-dim px-4 py-2 text-sm font-semibold text-accent-text hover:bg-accent/10 transition-colors"
