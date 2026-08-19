@@ -4,16 +4,20 @@ import { redirect } from "next/navigation";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { logger } from "@/lib/logger";
+import { availableScopes, defaultScope, type WorkScope } from "@/lib/navigation/scope";
 import PageHeader from "@/components/ui/PageHeader";
 import DashboardCharts from "./DashboardCharts";
 import OnboardingTour from "./OnboardingTour";
 import CmdKHintToast from "./CmdKHintToast";
 import DashboardModeSwitch from "./DashboardModeSwitch";
+import NextActionSection, { NextActionSectionSkeleton } from "./NextActionSection";
+import TodayProgressCard, { TodayProgressCardSkeleton } from "./TodayProgressCard";
 import TodayTasksWidget, { TodayTasksWidgetSkeleton } from "./TodayTasksWidget";
 import SetupChecklist, { SetupChecklistSkeleton } from "./SetupChecklist";
 import ApprovalInboxWidget, { ApprovalInboxWidgetSkeleton } from "./ApprovalInboxWidget";
 import AskLedraBar from "./AskLedraBar";
 import AnnouncementsBanner from "./AnnouncementsBanner";
+import HomeScopeToggle from "./HomeScopeToggle";
 
 // ── Partner Rank System ──
 interface PartnerRank {
@@ -414,14 +418,28 @@ async function PlatformStats() {
   );
 }
 
-export default async function AdminHome({ searchParams }: { searchParams?: Promise<{ tasks?: string }> }) {
+export default async function AdminHome({
+  searchParams,
+}: {
+  searchParams?: Promise<{ tasks?: string; scope?: string }>;
+}) {
   const supabase = await createSupabaseServerClient();
   const caller = await resolveCallerWithRole(supabase);
   if (!caller) redirect("/login?next=/admin");
 
   const tenantId = caller.tenantId;
   const sp = (await searchParams) ?? {};
-  const tasksScope: "tenant" | "mine" = sp.tasks === "mine" ? "mine" : "tenant";
+
+  // v2.0 IMP-021: 3 段階スコープ（self/store/all_stores）。
+  // 後方互換: 旧 `tasks=mine` も受容する。
+  const allowed = availableScopes(caller.role);
+  const rawScope = sp.scope ?? (sp.tasks === "mine" ? "self" : null);
+  const workScope: WorkScope =
+    rawScope && allowed.includes(rawScope as WorkScope) ? (rawScope as WorkScope) : defaultScope(caller.role);
+
+  // ponytail: fetchTodaySignals は "tenant"/"mine" を受けるので変換する。
+  // all_stores は store と同挙動（単一テナント前提）。
+  const tasksScope: "tenant" | "mine" = workScope === "self" ? "mine" : "tenant";
 
   const adminContent = (
     <>
@@ -430,6 +448,19 @@ export default async function AdminHome({ searchParams }: { searchParams?: Promi
 
       {/* 運営からのお知らせ（アップデート予告等）。未読があればバッジ表示、0件なら自動で非表示。 */}
       <AnnouncementsBanner />
+
+      {/* ── 3 秒理解ゾーン (IMP-021 / v2.0 §5) ── */}
+      {/* NEXT ACTION → 今日の進捗。スコープはページ上部のトグルで一括切替。 */}
+      {tenantId && (
+        <div className="grid gap-4 sm:grid-cols-[1fr_auto]">
+          <Suspense fallback={<NextActionSectionSkeleton />}>
+            <NextActionSection tenantId={tenantId} scope={tasksScope} currentUserId={caller.userId} />
+          </Suspense>
+          <Suspense fallback={<TodayProgressCardSkeleton />}>
+            <TodayProgressCard tenantId={tenantId} scope={tasksScope} currentUserId={caller.userId} />
+          </Suspense>
+        </div>
+      )}
 
       {/* AI 自動化の人の承認待ち — 一等地に常設（0 件なら自動で非表示） */}
       {tenantId && (
@@ -642,7 +673,12 @@ export default async function AdminHome({ searchParams }: { searchParams?: Promi
     <div className="space-y-6">
       <OnboardingTour />
       <CmdKHintToast />
-      <PageHeader tag="管理画面" title="ダッシュボード" description="施工証明書の管理状況を一目で確認" />
+      <PageHeader
+        tag="管理画面"
+        title="ダッシュボード"
+        description="施工証明書の管理状況を一目で確認"
+        actions={<HomeScopeToggle scope={workScope} scopes={allowed} />}
+      />
       <DashboardModeSwitch adminContent={adminContent} />
     </div>
   );

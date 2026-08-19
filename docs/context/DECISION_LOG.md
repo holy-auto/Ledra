@@ -23,6 +23,18 @@
 9. 公開区分: 公開可／要確認／非公開
 ```
 
+## 2026-08-19 IMP-021 NEXT ACTION は既存タイル優先順位を再利用する
+
+1. 日付: 2026-08-19
+2. 起きたこと: IMP-021（§5 HOME — 3 秒理解ホーム）で、v2.0 §5.3 の NEXT ACTION カードに表示する「最優先の実行可能アクション」の導出方式を決める必要があった。
+3. 以前の考え: `pickJobNextActionCandidate`（jobNextAction.ts）を予約ごとに実行し、全案件から最優先の 1 件を集約する方式を検討していた。
+4. 違和感・問題: `pickJobNextActionCandidate` は Job 単位の入力（hasCustomer, hasVehicle, hasActiveCertificate 等）を必要とし、それぞれ追加 DB クエリ（JOIN or サブクエリ）が必要。ダッシュボードの初期読込時間が増える。一方、既存の `deriveTodayTasks`（todayTasks.ts）は既にテナント全体のシグナルから優先度ソート済みタイルを返しており、先頭タイルが事実上の「最優先タスク」。
+5. 決めたこと: 既存の `deriveTodayTasks` のタイル優先順序をそのまま NEXT ACTION の導出に使う。新 DB クエリは作らない。タイルの tone → Severity マッピング（urgent→CRITICAL、warn→HIGH、normal→ACTION）で NextActionCard に流し込む。
+6. 捨てた選択肢: (a) `pickJobNextActionCandidate` を全予約に適用して集約 — 追加クエリ 3〜5 本、Job 粒度の情報が過剰（ダッシュボードでは「何をすべきか」のカテゴリで十分）。(b) 新しい priority エンジン（IMP-044 予定）を先行実装 — 依存タスクが多すぎ。
+7. 判断理由: 既存のタイル導出は決定論的で信頼済み、追加コスト 0、テスト済み。Job 粒度の提案は IMP-044（priority エンジン）で改善すれば良い。Ponytail: 動くコードを 0 行で書く。
+8. まだ答えが出ていないこと: IMP-044 で NEXT ACTION をより粒度の細かい提案（具体的な案件名・顧客名・アクション）に進化させるかどうか。
+9. 公開区分: 公開可
+
 ## 2026-08-19 IMP-020 Quick Create を CommandPalette に統合、別 FAB は作らない
 
 1. 日付: 2026-08-19

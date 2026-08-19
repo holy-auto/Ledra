@@ -124,6 +124,12 @@ Sentry · Resend (+ SendGrid fallback) · Anthropic (Opus 4.8 / Sonnet 4.6 / Hai
   （SegmentedControl/StatusBadge/StatusCard/NextActionCard/ProgressCard/Alert/IconButton/
   BottomSheet）+ Badge dot + Button xl。v2.0 の色トークン値は不採用・既存デザインシステム維持
   （DECISION_LOG 2026-08-19）。
+- **IMP-021（§5 HOME — 3秒理解ホーム）完了**: ダッシュボードに NEXT ACTION セクション
+  （最優先タスク 1 件を NextActionCard で提示）と今日の進捗 ProgressCard を追加。
+  3 段階ワークスコープ切替（HomeScopeToggle — SegmentedControl ベース、自分/店舗/全店舗）。
+  WorkScopeProvider（React Context）を新設。レイアウトを v2.0 §5 準拠に再構築
+  （NEXT ACTION → 進捗 → 承認 → セットアップ → クイックアクション → タスク → 統計）。
+  新 DB クエリなし（既存 fetchTodaySignals 再利用）。テスト 13 件。
 - **IMP-020（ナビゲーション・検索・Quick Create 基盤）完了**: `src/lib/navigation/` に
   正準 5 タブ定義（Home/作業/車両/証明/その他 — v2.0 製品不変条件 #2 準拠）、Quick Create
   アクション 5 種（コンテキスト継承・権限ゲート付き）、ワークスコープ 3 段階

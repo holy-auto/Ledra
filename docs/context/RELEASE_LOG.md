@@ -13,6 +13,19 @@
 - 対象: どの画面・API・業種向けか
 ```
 
+## 2026-08-19 IMP-021 §5 HOME — 3秒理解ホーム（branch impl/IMP-021-home / PR #TBD）
+
+- 内容: v2.0 §5 のダッシュボード「3秒理解」を実装。(1) NEXT ACTION セクション —
+  今日のタスクタイル（todayTasks.ts ベース）から最優先 1 件を NextActionCard で提示。
+  優先度→Severity 自動変換（urgent→CRITICAL、warn→HIGH、normal→ACTION）、
+  CTA ボタン付き。(2) 今日の進捗 ProgressCard — 当日予約の完了/合計を円形プログレスで表示。
+  (3) WorkScopeProvider — React Context（自分/店舗/全店舗 3 段階切替、URL params 連動）。
+  (4) HomeScopeToggle — SegmentedControl ベースの 3 段階スコープ切替（旧 2 段階から拡張、
+  PageHeader の actions に配置）。(5) ダッシュボードレイアウト再構築 — NEXT ACTION →
+  Progress → Approval → Setup → QuickActions → TodayTasks → Stats の順に再配置。
+  新 DB クエリ・マイグレーションなし（既存 fetchTodaySignals を再利用）。テスト 13 件。
+- 対象: 管理画面ダッシュボード。IMP-022（Work List）・IMP-029（Job Detail）の前提条件。
+
 ## 2026-08-19 IMP-020 ナビゲーション・検索・Quick Create 基盤（branch impl/IMP-020-navigation / PR #TBD）
 
 - 内容: v2.0 §2/§4 のナビゲーション基盤を整備。(1) 正準5タブ定義（`tabs.ts` —
