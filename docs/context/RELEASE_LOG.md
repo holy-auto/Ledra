@@ -13,7 +13,7 @@
 - 対象: どの画面・API・業種向けか
 ```
 
-## 2026-08-19 IMP-010 デザイントークン & 共有コンポーネント基盤（branch impl/IMP-010-design-tokens / PR 番号は作成後追記）
+## 2026-08-19 IMP-010 デザイントークン & 共有コンポーネント基盤（branch impl/IMP-010-design-tokens / PR #928）
 
 - 内容: v2.0 §3 の不足 UI プリミティブ8つを新設 — SegmentedControl（ピル型切替、3箇所の
   重複実装の共通化先）/ StatusBadge（Badge+statusMaps の定型接続）/ StatusCard /
