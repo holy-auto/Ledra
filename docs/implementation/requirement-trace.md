@@ -183,7 +183,7 @@ Payment Policy(v2.0 §11.3: Consumer PAID / B2B CREDIT_APPROVED / Insurance INSU
 |---|---|---|---|---|
 | IMP-000 | 0 / P0 | §22, §24(監査・トレース) | 本書+current-architecture.md で完了(実装済み=本タスク) | なし |
 | IMP-001 | 0 / P0 | §1, §19, Appendix A(語彙・ガードレール) | **実装済み**(2026-08-19): 正準6軸 `src/lib/domain/states.ts`+ロケール別ラベル `labels.ts`+テスト、ADR 0001〜0006(`docs/adr/`)、アドホック状態禁止ルール(CLAUDE.md)。既存語彙との統一・マッピングは IMP-015 で判断(ADR-0002) | 000 |
-| IMP-010 | 1 / P0 | §3(デザイントークン・共有部品) | Tailwind 4 トークン+UI 49部品あり。v2.0 トークン値との照合未実施(部分) | 001 |
+| IMP-010 | 1 / P0 | §3(デザイントークン・共有部品) | **実装済み**(2026-08-19): 不足8プリミティブ(SegmentedControl/StatusBadge/StatusCard/NextActionCard/ProgressCard/Alert/IconButton/BottomSheet)+Badge dot+Button xl(48px CTA)+`SEVERITY_VARIANT_MAP` を新設。v2.0 §3.1 の色値(#155EEF 等)は既存 DESIGN_SYSTEM トークン維持のため不採用(DECISION_LOG 2026-08-19)。Storybook 相当なし(既存方針どおり) | 001 |
 | IMP-011 | 1 / P0 | §17, L10N(i18n 基盤・用語集) | 自前 t()+ja/en 8キーのみ。6言語・用語集・original/translated 分離なし(部分) | 001 |
 | IMP-012 | 1 / P0 | §15, AUTH_*(認証・招待・端末・step-up) | password 認証+WebAuthn 操作ゲートあり。正準フロー(Invite→OTP→生体)・端末管理なし(別方式) | 000, 001, 011 |
 | IMP-013 | 1 / P0 | §16(権限エンジン・店舗スコープ) | Role5段+Permission55種+RLS240 稼働。権限動詞・Assignment/Risk 軸なし(部分) | 001, 012 |
