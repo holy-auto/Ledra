@@ -13,7 +13,7 @@
 - 対象: どの画面・API・業種向けか
 ```
 
-## 2026-08-19 IMP-000 リポジトリ監査 & 実装ベースライン（branch claude/imp-000-implementation-r0eje1 / PR 番号は作成後追記）
+## 2026-08-19 IMP-000 リポジトリ監査 & 実装ベースライン（branch claude/imp-000-implementation-r0eje1 / PR #926）
 
 - 内容: v2.0 仕様書（UI/UX & Development Specification v2.0）の実装に先立つリポジトリ監査。
   `docs/implementation/current-architecture.md`（現状アーキテクチャ＋検証ベースライン＋不可逆リスク台帳）と
