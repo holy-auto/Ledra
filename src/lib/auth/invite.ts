@@ -51,8 +51,12 @@ export type InviteValidationResult =
  */
 export function validateInvitation(invitation: Invitation | null, now: string): InviteValidationResult {
   if (!invitation) return { valid: false, reason: "not_found" };
-  if (invitation.status === "accepted") return { valid: false, reason: "already_accepted" };
-  if (invitation.status === "revoked") return { valid: false, reason: "revoked" };
+  // ponytail: pending 以外は全て無効。status 値が増えても安全（fail-closed）。
+  if (invitation.status !== "pending") {
+    if (invitation.status === "accepted") return { valid: false, reason: "already_accepted" };
+    if (invitation.status === "revoked") return { valid: false, reason: "revoked" };
+    return { valid: false, reason: "expired" };
+  }
   if (new Date(invitation.expiresAt).getTime() < new Date(now).getTime()) {
     return { valid: false, reason: "expired" };
   }

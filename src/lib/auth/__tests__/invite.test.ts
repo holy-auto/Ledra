@@ -58,6 +58,11 @@ describe("validateInvitation()", () => {
     const inv = makeInvitation({ expiresAt: "2026-08-18T00:00:00Z" }); // before NOW
     expect(validateInvitation(inv, NOW)).toEqual({ valid: false, reason: "expired" });
   });
+
+  it("returns expired for status=expired even with future expiresAt", () => {
+    const inv = makeInvitation({ status: "expired", expiresAt: "2026-12-31T00:00:00Z" });
+    expect(validateInvitation(inv, NOW)).toEqual({ valid: false, reason: "expired" });
+  });
 });
 
 describe("validateAcceptParams()", () => {
