@@ -124,9 +124,13 @@ Sentry · Resend (+ SendGrid fallback) · Anthropic (Opus 4.8 / Sonnet 4.6 / Hai
   （SegmentedControl/StatusBadge/StatusCard/NextActionCard/ProgressCard/Alert/IconButton/
   BottomSheet）+ Badge dot + Button xl。v2.0 の色トークン値は不採用・既存デザインシステム維持
   （DECISION_LOG 2026-08-19）。
+- **IMP-015（状態機械・遷移表・Certificate Gate 型）完了**: `src/lib/domain/transitions.ts`
+  （正準 6 軸の遷移表＋汎用遷移検証関数）、`src/lib/domain/certificateGate.ts`
+  （v2.0 §19.4 の 10 条件型定義）。既存値→正準値マッピングは各消費タスクで段階的に
+  導入する方針を確定（DECISION_LOG 2026-08-19）。テスト 54 件。
 - **IMP-001（実装ガードレール & 正準ドメイン語彙）完了**: `src/lib/domain/{states,labels}.ts`
   （6軸の正準値+ロケール別ラベル）、`docs/adr/0001`〜`0006`、アドホック状態禁止ルール
-  （CLAUDE.md）。既存語彙との統一・マッピングは IMP-015 で判断（ADR-0002）。
+  （CLAUDE.md）。既存語彙との統一・マッピングは IMP-015 で判断済み。
 - 起点タスク **IMP-000（リポジトリ監査 & 実装ベースライン）完了**。成果物:
   - `docs/implementation/current-architecture.md` — 実査に基づく現状マップ＋検証ベースライン＋不可逆リスク台帳
   - `docs/implementation/requirement-trace.md` — v2.0 要件 ⇔ 既存実装 ⇔ IMP タスクのトレース表（36タスク全件）

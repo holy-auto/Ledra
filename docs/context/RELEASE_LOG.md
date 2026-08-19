@@ -13,6 +13,20 @@
 - 対象: どの画面・API・業種向けか
 ```
 
+## 2026-08-19 IMP-015 状態機械・遷移表・Certificate Gate 型（branch impl/IMP-015-state-machines / PR #TBD）
+
+- 内容: v2.0 §19 の状態機械基盤を型・純粋関数で整備。(1) 正準 6 軸（Job/Step/Severity/
+  Certificate/Payment/Sync）の遷移表（`Record<State, readonly State[]>`）。
+  (2) 汎用遷移検証関数（`isValidTransition` / `validNextStates` / `isTerminalState`）と
+  拒否理由生成（`rejectTransition`）。(3) Certificate Gate 10 条件の型定義
+  （v2.0 §19.4 / ADR-0005。評価器の実装は IMP-028）。(4) UNKNOWN → PENDING 禁止
+  （v2.0 §11.3）・CRITICAL → NORMAL 直接降格禁止を遷移表で構造的に表現。
+  既存の signoff 状態機械・photoRequirement・API ルートの遷移ロジックは変更なし。
+  DB マイグレーションなし。テスト 54 件。
+- 対象: 開発基盤（IMP-016 オフライン同期・IMP-028 Certificate Gate・IMP-031 例外状態の前提条件）。
+- ADR-0002 判断事項（既存値→正準値マッピング方針）: TS 層マッピングは各消費タスクで
+  段階的に導入する。IMP-015 では遷移表のみ定義し変換関数は作らない。
+
 ## 2026-08-19 IMP-014 ドメインイベント・監査・冪等基盤（branch impl/IMP-014-domain-events / PR #932）
 
 - 内容: v2.0 §20 / Appendix B のドメインイベント基盤を型・純粋関数で整備。(1) 統一ドメイン
