@@ -13,6 +13,15 @@
 - 対象: どの画面・API・業種向けか
 ```
 
+## 2026-08-19 IMP-000 リポジトリ監査 & 実装ベースライン（branch claude/imp-000-implementation-r0eje1 / PR 番号は作成後追記）
+
+- 内容: v2.0 仕様書（UI/UX & Development Specification v2.0）の実装に先立つリポジトリ監査。
+  `docs/implementation/current-architecture.md`（現状アーキテクチャ＋検証ベースライン＋不可逆リスク台帳）と
+  `docs/implementation/requirement-trace.md`（v2.0 要件⇔既存実装⇔IMP タスク36件のトレース表）を新規作成。
+  既存検証（lint / lint:migrations / tsc / vitest coverage / build / mobile typecheck+test）を無変更で実行し
+  ベースラインを記録。コード変更ゼロ。
+- 対象: 開発プロセス（ユーザー向け機能の変更なし）。
+
 ## 2026-08-16 LINE連携の入力を「Channel ID と Secret の2つだけ」に（branch claude/multi-integration-login-opnzfh）
 
 - 内容: LINE公式アカウント連携で加盟店に求めていた7手順のうち3つを自動化し、入力を2値に削った。

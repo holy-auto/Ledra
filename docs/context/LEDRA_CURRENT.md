@@ -4,7 +4,7 @@
 > 追わず、常に最新状態だけを保つ（履歴は DECISION_LOG.md / RELEASE_LOG.md 側）。
 > 大きな変化があったら都度上書きすること。
 
-最終更新: 2026-08-16
+最終更新: 2026-08-19
 
 > 2026-07-30 追記: 代理店ポータルの営業資料は2系統。(1)「常に最新の商品資料」欄＝
 > ライブデータから自動生成される製品資料（機能紹介/料金/比較表/セキュリティ/ROI/概要）で
@@ -95,6 +95,16 @@ Sentry · Resend (+ SendGrid fallback) · Anthropic (Opus 4.8 / Sonnet 4.6 / Hai
 
 - テスト: Vitest（単体）/ Playwright（E2E）
 - API: 560+ Route Handlers（37 トップレベルグループ、README.md 時点）
+
+## 実装計画（UI/UX & Development Specification v2.0、2026-08-19〜）
+
+- 「Ledra UI/UX & Development Specification v2.0」（2026-08-19）と、それを36タスク
+  （IMP-000〜IMP-054）に分解した「Claude Code Implementation Guide v1.0」を実装基準線として採用。
+- 起点タスク **IMP-000（リポジトリ監査 & 実装ベースライン）完了**。成果物:
+  - `docs/implementation/current-architecture.md` — 実査に基づく現状マップ＋検証ベースライン＋不可逆リスク台帳
+  - `docs/implementation/requirement-trace.md` — v2.0 要件 ⇔ 既存実装 ⇔ IMP タスクのトレース表（36タスク全件）
+- コード変更ゼロ。v2.0 の正準語彙（JobState 12値等）と既存実装の語彙（reservations.status 5値等）は
+  別体系であり、統一の要否は IMP-001 以降で判断する（DECISION_LOG 2026-08-19 参照）。
 
 ## 直近の開発フォーカス（git log 直近30件より、2026-07 時点）
 
