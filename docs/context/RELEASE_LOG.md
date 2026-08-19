@@ -13,6 +13,16 @@
 - 対象: どの画面・API・業種向けか
 ```
 
+## 2026-08-19 IMP-013 権限エンジン・店舗スコープ基盤（branch impl/IMP-013-permission-engine / PR #TBD）
+
+- 内容: v2.0 §16 の不足分を型・純粋関数で補完。(1) 正準権限動詞 7 種（VIEW/EDIT/CONFIRM/
+  APPROVE/ISSUE/MANAGE/EXPORT）の型定義と既存 Permission→正準動詞マッピング。
+  (2) 操作リスクレベル 4 段階（low/medium/high/critical）の分類と判定関数（IMP-012
+  step-up 認証と連携）。(3) 店舗スコープ型（store_memberships DB スキーマ対応）と
+  判定関数群（hasStoreAccess/effectiveStoreRole/isStoreManager/accessibleStoreIds）。
+  既存の Permission 型・ROLE_PERMISSIONS マトリクスは変更なし。DB マイグレーションなし。
+- 対象: 開発基盤（IMP-014 ドメインイベント・監査の前提条件）。
+
 ## 2026-08-19 IMP-012 認証・招待・端末・step-up 基盤（branch impl/IMP-012-auth-foundation / PR #930）
 
 - 内容: v2.0 §15 の認証基盤を型・状態機械・ヘルパーとして整備。(1) 正準オンボーディング
