@@ -3,6 +3,12 @@ import { Icon } from "react-native-paper";
 import { useAuthStore } from "@/stores/authStore";
 import { Redirect } from "expo-router";
 
+/**
+ * v2.0 §2 / 製品不変条件 #2: ホーム / 作業 / 車両 / 証明 / その他（IMP-020）。
+ *
+ * 旧タブ（予約 / 会計）はルートとして残すが、タブバーには表示しない（href: null）。
+ * 予約は「その他」メニュー、会計は「その他」→レジ管理 から引き続きアクセス可能。
+ */
 export default function TabsLayout() {
   const { isAuthenticated, selectedStore } = useAuthStore();
 
@@ -34,6 +40,7 @@ export default function TabsLayout() {
         },
       }}
     >
+      {/* ── v2.0 正準 5 タブ ── */}
       <Tabs.Screen
         name="index"
         options={{
@@ -41,20 +48,6 @@ export default function TabsLayout() {
           tabBarIcon: ({ color, focused }) => (
             <Icon
               source={focused ? "home" : "home-outline"}
-              size={28}
-              color={color}
-            />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="reservations"
-        options={{
-          title: "予約",
-          headerShown: false,
-          tabBarIcon: ({ color, focused }) => (
-            <Icon
-              source={focused ? "calendar" : "calendar-outline"}
               size={28}
               color={color}
             />
@@ -76,12 +69,30 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen
-        name="pos"
+        name="vehicles"
         options={{
-          title: "会計",
+          title: "車両",
           headerShown: false,
-          tabBarIcon: ({ color }) => (
-            <Icon source="cash-register" size={28} color={color} />
+          tabBarIcon: ({ color, focused }) => (
+            <Icon
+              source={focused ? "car" : "car-outline"}
+              size={28}
+              color={color}
+            />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="certificates"
+        options={{
+          title: "証明",
+          headerShown: false,
+          tabBarIcon: ({ color, focused }) => (
+            <Icon
+              source={focused ? "certificate" : "certificate-outline"}
+              size={28}
+              color={color}
+            />
           ),
         }}
       />
@@ -95,6 +106,10 @@ export default function TabsLayout() {
           ),
         }}
       />
+
+      {/* ── 旧タブ（ルート維持・タブバー非表示） ── */}
+      <Tabs.Screen name="reservations" options={{ href: null }} />
+      <Tabs.Screen name="pos" options={{ href: null }} />
     </Tabs>
   );
 }

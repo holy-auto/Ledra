@@ -14,13 +14,16 @@ interface MenuItem {
   route: string;
 }
 
+/**
+ * v2.0 §2 / IMP-020: 車両・証明書はトップレベルタブに移動。
+ * 代わりに予約と会計をここに配置。
+ */
 const MENU_ITEMS: MenuItem[] = [
+  { icon: "calendar", label: "予約管理", route: "/reservations" },
   { icon: "account-group", label: "顧客管理", route: "/customers" },
-  { icon: "car", label: "車両管理", route: "/vehicles" },
-  { icon: "certificate", label: "証明書", route: "/certificates" },
+  { icon: "cash-register", label: "レジ・会計", route: "/pos/register" },
   { icon: "nfc", label: "NFC", route: "/nfc/scan" },
   { icon: "tag-multiple", label: "NFCタグ台帳", route: "/nfc/tags" },
-  { icon: "cash-register", label: "レジ管理", route: "/pos/register" },
   { icon: "chart-bar", label: "店舗ダッシュボード", route: "/dashboard" },
   { icon: "cog-outline", label: "設定", route: "/settings" },
 ];

@@ -124,6 +124,12 @@ Sentry · Resend (+ SendGrid fallback) · Anthropic (Opus 4.8 / Sonnet 4.6 / Hai
   （SegmentedControl/StatusBadge/StatusCard/NextActionCard/ProgressCard/Alert/IconButton/
   BottomSheet）+ Badge dot + Button xl。v2.0 の色トークン値は不採用・既存デザインシステム維持
   （DECISION_LOG 2026-08-19）。
+- **IMP-020（ナビゲーション・検索・Quick Create 基盤）完了**: `src/lib/navigation/` に
+  正準 5 タブ定義（Home/作業/車両/証明/その他 — v2.0 製品不変条件 #2 準拠）、Quick Create
+  アクション 5 種（コンテキスト継承・権限ゲート付き）、ワークスコープ 3 段階
+  （self/store/all_stores）を定義。Expo モバイルタブ再配置（車両・証明タブ新設、
+  予約・会計をその他に移動）。Web MobileTabBar を正準タブに準拠。CommandPalette に
+  エンティティ横断検索を統合（顧客/車両/証明書/請求書、300ms デバウンス）。テスト 28 件。
 - **IMP-016（オフライン同期キュー・競合検出基盤）完了**: `src/lib/sync/` に
   同期キュー型（`SyncQueueItem` — 既存 OutboxItem の上位ビュー）、競合検出・解決型
   （`SyncConflict` 3 種別 × `ConflictResolutionStrategy` 4 方針）、リソースタイプ別

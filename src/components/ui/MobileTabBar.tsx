@@ -7,18 +7,16 @@ import { useCurrentRole } from "@/lib/auth/useCurrentRole";
 import { NAV_GROUPS, type NavItem } from "@/components/ui/adminNav";
 
 /**
- * モバイル専用の下部タブバー。どの画面でも主要導線（ホーム/予約/顧客/帳票/証明書）へ
+ * モバイル専用の下部タブバー。どの画面でも主要導線（ホーム/作業/車両/証明書/その他）へ
  * 1タップで戻れるよう常時表示する。ラベル・アイコン・権限は Sidebar の NAV 定義
  * (NAV_GROUPS) を単一の出典として再利用し、タブバー用に短いラベルだけ上書きする。
  * lg 以上ではサイドバーがあるため非表示（lg:hidden）。
+ *
+ * v2.0 §2 / 製品不変条件 #2: タブ構成は WEB_TABS（navigation/tabs.ts）を単一定義源とする。
  */
-const TABS: { href: string; label: string }[] = [
-  { href: "/admin", label: "ホーム" },
-  { href: "/admin/reservations", label: "予約" },
-  { href: "/admin/customers", label: "顧客" },
-  { href: "/admin/invoices", label: "帳票" },
-  { href: "/admin/certificates", label: "証明書" },
-];
+import { WEB_TABS } from "@/lib/navigation/tabs";
+
+const TABS: { href: string; label: string }[] = WEB_TABS.map((t) => ({ href: t.href, label: t.label }));
 
 export default function MobileTabBar() {
   const pathname = usePathname();

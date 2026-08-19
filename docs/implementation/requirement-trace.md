@@ -190,7 +190,7 @@ Payment Policy(v2.0 §11.3: Consumer PAID / B2B CREDIT_APPROVED / Insurance INSU
 | IMP-014 | 1 / P0 | §20, Appendix B(ドメインイベント・監査・冪等) | AuditEventType27種+outbox+冪等3系統あり。イベントカタログ網羅・パイプラインなし(部分) | 001, 013 |
 | IMP-015 | 1 / P0 | §19(状態機械) | **実装済み**(2026-08-19): 正準6軸遷移表(`src/lib/domain/transitions.ts`)+汎用遷移検証関数+Certificate Gate 10条件型定義(`certificateGate.ts`)。既存値→正準値マッピングは消費タスク(IMP-028/031/027)で段階的導入。既存signoff/photoRequirement変更なし | 001, 014 |
 | IMP-016 | 1 / P0 | §14(オフライン永続・同期キュー・競合) | **実装済み**(2026-08-19): 同期キュー型(`src/lib/sync/types.ts` — SyncQueueItem/SyncResourceType 8種/SyncConflict 3種別/ConflictResolutionStrategy 4方針/SyncSummary)+競合検出・解決ヘルパー(`src/lib/sync/conflict.ts` — HTTP応答ベース競合検出/重複キュー検出/リソースタイプ別デフォルト解決戦略)+同期ドメインイベント5種をカタログ追加。既存outboxインフラ変更なし。DBマイグレーションなし | 001, 014, 015 |
-| IMP-020 | 2 / P0 | §2, §4, HOME 他(ナビ・検索・Quick Create) | 5タブ実値不一致。横断検索部分。Quick Create なし(部分) | 010, 011, 013 |
+| IMP-020 | 2 / P0 | §2, §4, HOME 他(ナビ・検索・Quick Create) | **実装済み**(2026-08-19): 正準5タブ定義(`src/lib/navigation/tabs.ts` — Home/作業/車両/証明/その他)+Expoモバイルタブ再配置(`_layout.tsx` — 車両・証明タブ追加、予約・会計をその他に移動)+Web MobileTabBar v2.0準拠+CommandPalette拡張(エンティティ横断検索統合 — 顧客/車両/証明書/請求書+デバウンス300ms)+Quick Createアクション5種(`quickCreate.ts` — コンテキスト継承/権限ゲート)+ワークスコープ3段階(`scope.ts` — self/store/all_stores+ロール別使用可能判定) | 010, 011, 013 |
 | IMP-021 | 2 / P0 | §5, HOME(3秒理解ホーム) | ダッシュボード稼働。NEXT ACTION 中心設計なし(別方式) | 010, 013, 015, 020 |
 | IMP-022 | 2 / P0 | §6, WORK_LIST/JOB_HUB | `/admin/jobs/[id]` 統合ワークスペースあり。情報階層・工程CTA規律は未適用(部分) | 015, 020, 021 |
 | IMP-023 | 2 / P0 | §7, JOB_EVIDENCE(証跡撮影・必須ショット・不変連鎖) | 撮影パイプライン(nonce/TSA/grade)は深い。必須ショットチェックリスト・完全 append-only なし(部分) | 016, 022 |

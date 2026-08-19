@@ -13,6 +13,20 @@
 - 対象: どの画面・API・業種向けか
 ```
 
+## 2026-08-19 IMP-020 ナビゲーション・検索・Quick Create 基盤（branch impl/IMP-020-navigation / PR #TBD）
+
+- 内容: v2.0 §2/§4 のナビゲーション基盤を整備。(1) 正準5タブ定義（`tabs.ts` —
+  Home/作業/車両/証明/その他。Web/Expo 両面の単一定義源）。(2) Expo モバイルタブ再配置
+  （車両・証明書タブを新設、予約・会計をその他メニューに移動。タブバーは v2.0 製品不変条件 #2
+  に準拠）。(3) Web MobileTabBar を正準タブに準拠（`tabs.ts` から導出）。
+  (4) CommandPalette 拡張（エンティティ横断検索を統合 — 顧客/車両/証明書/請求書を 300ms
+  デバウンスで検索。既存 `/api/admin/search` を活用）。(5) Quick Create アクション 5 種
+  （予約/顧客/車両/証明書/請求書。ルートからコンテキスト推論 → 遷移先にパラメータ継承。
+  権限ゲート付き）。(6) ワークスコープ型（self/store/all_stores の 3 段階。ロール別
+  使用可能判定。IMP-013 の storeScope.ts と補完関係）。テスト 28 件。
+- 対象: 開発基盤 + UI 構造（IMP-021 Home・IMP-022 Work List・IMP-032 Sync Center・
+  IMP-033 More メニュー・IMP-034 タブレット 2-pane の前提条件）。
+
 ## 2026-08-19 IMP-016 オフライン同期キュー・競合検出基盤（branch impl/IMP-016-offline-sync / PR #TBD）
 
 - 内容: v2.0 §14 のオフライン同期基盤を型・純粋関数で整備。(1) 同期キュー型
