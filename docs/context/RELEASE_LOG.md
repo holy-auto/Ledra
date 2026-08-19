@@ -13,7 +13,7 @@
 - 対象: どの画面・API・業種向けか
 ```
 
-## 2026-08-19 IMP-001 実装ガードレール & 正準ドメイン語彙（branch impl/IMP-001-domain-vocabulary / PR 番号は作成後追記）
+## 2026-08-19 IMP-001 実装ガードレール & 正準ドメイン語彙（branch impl/IMP-001-domain-vocabulary / PR #927）
 
 - 内容: v2.0 の6状態軸（Job/Step/Severity/Certificate/Payment/Sync）を正準語彙モジュール
   `src/lib/domain/states.ts`（値集合+型+型ガード）と `src/lib/domain/labels.ts`

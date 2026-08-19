@@ -93,6 +93,11 @@ describe("ロケール別ラベル", () => {
     expect(stepStateLabel("WAITING_APPROVAL", "en")).toBe("Awaiting approval");
   });
 
+  it("型を欺いて非正準値が渡された場合は undefined ではなくコードをそのまま返す", () => {
+    expect(jobStateLabel("confirmed" as never)).toBe("confirmed");
+    expect(paymentStateLabel("paid" as never, "en")).toBe("paid");
+  });
+
   it("未収録ロケールは ja にフォールバックする(6言語すべてで解決可能)", () => {
     for (const locale of DOMAIN_LOCALES) {
       expect(jobStateLabel("SCHEDULED", locale)).toBeTruthy();

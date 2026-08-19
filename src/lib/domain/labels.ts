@@ -160,7 +160,9 @@ const SYNC_STATE_LABELS: LabelMaps<SyncState> = {
 };
 
 function pick<T extends string>(maps: LabelMaps<T>, code: T, locale: DomainLocale): string {
-  return (maps[locale] ?? maps.ja)[code];
+  // 型を欺いて legacy 値等が渡された場合に「undefined」を描画せず、コードをそのまま返す
+  // (statusMaps.ts の getStatusEntry と同じ境界防御)
+  return (maps[locale] ?? maps.ja)[code] ?? code;
 }
 
 export const jobStateLabel = (s: JobState, locale: DomainLocale = DEFAULT_DOMAIN_LOCALE) =>
