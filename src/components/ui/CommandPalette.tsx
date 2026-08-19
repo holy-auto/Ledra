@@ -60,7 +60,12 @@ export default function CommandPalette() {
     : quickCreateCommands;
 
   // ── 結合リスト ──
-  const allCommands = [...filteredCreate, ...filteredPages, ...entityResults];
+  // ponytail: entityResults はデバウンス後に届くので、現在の query と齟齬がありうる。
+  // 簡易フィルタで古い結果が残らないようにする。
+  const filteredEntities = query
+    ? entityResults.filter((cmd) => cmd.label.toLowerCase().includes(query.toLowerCase()))
+    : entityResults;
+  const allCommands = [...filteredCreate, ...filteredPages, ...filteredEntities];
 
   // Group by section
   const grouped = allCommands.reduce<Record<string, AdminCommand[]>>((acc, cmd) => {
@@ -93,6 +98,7 @@ export default function CommandPalette() {
           signal: controller.signal,
         });
         if (!res.ok || controller.signal.aborted) {
+          if (!controller.signal.aborted) setEntityResults([]);
           setSearching(false);
           return;
         }
