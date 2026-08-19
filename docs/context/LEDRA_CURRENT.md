@@ -100,6 +100,11 @@ Sentry · Resend (+ SendGrid fallback) · Anthropic (Opus 4.8 / Sonnet 4.6 / Hai
 
 - 「Ledra UI/UX & Development Specification v2.0」（2026-08-19）と、それを36タスク
   （IMP-000〜IMP-054）に分解した「Claude Code Implementation Guide v1.0」を実装基準線として採用。
+- **IMP-014（ドメインイベント・監査・冪等基盤）完了**: v2.0 §20 / Appendix B のドメインイベント
+  基盤を型・純粋関数で整備。統一イベントカタログ（`resource.action` 命名、33 型）、既存
+  AuditEventType→DomainEventType マッピング、型付きイベントエンベロープ（actor/tenant/
+  store/risk/version/idempotencyKey）、イベント型別リスクレベル推定。既存の audit / outbox /
+  webhook-topics は変更なし。
 - **IMP-013（権限エンジン・店舗スコープ基盤）完了**: v2.0 §16 の不足分を型・純粋関数で
   補完。正準権限動詞 7 種の型定義と既存 Permission→正準動詞マッピング、操作リスクレベル
   4 段階分類、店舗スコープ型と判定関数群（hasStoreAccess/effectiveStoreRole/
