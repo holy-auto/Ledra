@@ -8,6 +8,10 @@
  */
 import { DEFAULT_LOCALE, SUPPORTED_LOCALES, type Locale, isSupportedLocale } from "./locales";
 
+// ponytail: BCP 47 language tag aliases for supported locales.
+// "tl" (Tagalog) → "fil" (Filipino) — same language, different ISO codes.
+const LOCALE_ALIASES: Record<string, Locale> = { tl: "fil" };
+
 /**
  * Parse Accept-Language and return the best-matching supported locale, or
  * DEFAULT_LOCALE if none match.
@@ -36,6 +40,8 @@ export function negotiateLocale(input: { headers: Headers } | Headers): Locale {
     // Language-only prefix (e.g. "ja-JP" → "ja", "en-US" → "en")
     const primary = tag.split("-")[0];
     if (isSupportedLocale(primary)) return primary;
+    // Alias (e.g. "tl" → "fil")
+    if (primary in LOCALE_ALIASES) return LOCALE_ALIASES[primary];
   }
 
   return DEFAULT_LOCALE;

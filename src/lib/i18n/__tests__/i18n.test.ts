@@ -112,6 +112,11 @@ describe("negotiateLocale()", () => {
     expect(negotiateLocale(withAcceptLanguage("fr,de,en,ja"))).toBe("en");
   });
 
+  it("maps tl (Tagalog) to fil (Filipino)", () => {
+    expect(negotiateLocale(withAcceptLanguage("tl"))).toBe("fil");
+    expect(negotiateLocale(withAcceptLanguage("tl-PH"))).toBe("fil");
+  });
+
   it("accepts a Request-shaped object", () => {
     const req = new Request("https://example.com", { headers: { "accept-language": "en" } });
     expect(negotiateLocale(req)).toBe("en");
