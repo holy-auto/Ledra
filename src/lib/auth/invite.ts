@@ -57,7 +57,10 @@ export function validateInvitation(invitation: Invitation | null, now: string): 
     if (invitation.status === "revoked") return { valid: false, reason: "revoked" };
     return { valid: false, reason: "expired" };
   }
-  if (new Date(invitation.expiresAt).getTime() < new Date(now).getTime()) {
+  // ponytail: NaN 対策。expiresAt が不正文字列なら expired 扱い（fail-closed）。
+  const expiresMs = new Date(invitation.expiresAt).getTime();
+  const nowMs = new Date(now).getTime();
+  if (Number.isNaN(expiresMs) || Number.isNaN(nowMs) || expiresMs < nowMs) {
     return { valid: false, reason: "expired" };
   }
   return { valid: true, invitation };

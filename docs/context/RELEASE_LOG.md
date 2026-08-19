@@ -13,7 +13,7 @@
 - 対象: どの画面・API・業種向けか
 ```
 
-## 2026-08-19 IMP-013 権限エンジン・店舗スコープ基盤（branch impl/IMP-013-permission-engine / PR #TBD）
+## 2026-08-19 IMP-013 権限エンジン・店舗スコープ基盤（branch impl/IMP-013-permission-engine / PR #931）
 
 - 内容: v2.0 §16 の不足分を型・純粋関数で補完。(1) 正準権限動詞 7 種（VIEW/EDIT/CONFIRM/
   APPROVE/ISSUE/MANAGE/EXPORT）の型定義と既存 Permission→正準動詞マッピング。

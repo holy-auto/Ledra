@@ -63,6 +63,11 @@ describe("validateInvitation()", () => {
     const inv = makeInvitation({ status: "expired", expiresAt: "2026-12-31T00:00:00Z" });
     expect(validateInvitation(inv, NOW)).toEqual({ valid: false, reason: "expired" });
   });
+
+  it("returns expired for invalid expiresAt (NaN guard, fail-closed)", () => {
+    const inv = makeInvitation({ expiresAt: "not-a-date" });
+    expect(validateInvitation(inv, NOW)).toEqual({ valid: false, reason: "expired" });
+  });
 });
 
 describe("validateAcceptParams()", () => {
