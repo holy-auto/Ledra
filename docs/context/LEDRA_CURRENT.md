@@ -124,6 +124,10 @@ Sentry · Resend (+ SendGrid fallback) · Anthropic (Opus 4.8 / Sonnet 4.6 / Hai
   （SegmentedControl/StatusBadge/StatusCard/NextActionCard/ProgressCard/Alert/IconButton/
   BottomSheet）+ Badge dot + Button xl。v2.0 の色トークン値は不採用・既存デザインシステム維持
   （DECISION_LOG 2026-08-19）。
+- **IMP-016（オフライン同期キュー・競合検出基盤）完了**: `src/lib/sync/` に
+  同期キュー型（`SyncQueueItem` — 既存 OutboxItem の上位ビュー）、競合検出・解決型
+  （`SyncConflict` 3 種別 × `ConflictResolutionStrategy` 4 方針）、リソースタイプ別
+  デフォルト解決戦略を定義。イベントカタログに `sync.*` 5 イベント追加。テスト 30 件。
 - **IMP-015（状態機械・遷移表・Certificate Gate 型）完了**: `src/lib/domain/transitions.ts`
   （正準 6 軸の遷移表＋汎用遷移検証関数）、`src/lib/domain/certificateGate.ts`
   （v2.0 §19.4 の 10 条件型定義）。既存値→正準値マッピングは各消費タスクで段階的に

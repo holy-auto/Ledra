@@ -98,6 +98,13 @@ export const DOMAIN_EVENT_TYPES = [
 
   // メモ
   "note.created",
+
+  // 同期（IMP-016: オフライン同期ライフサイクル）
+  "sync.started",
+  "sync.completed",
+  "sync.failed",
+  "sync.conflict_detected",
+  "sync.conflict_resolved",
 ] as const;
 
 export type DomainEventType = (typeof DOMAIN_EVENT_TYPES)[number];

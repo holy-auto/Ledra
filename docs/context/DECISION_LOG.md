@@ -23,6 +23,32 @@
 9. 公開区分: 公開可／要確認／非公開
 ```
 
+## 2026-08-19 IMP-016 同期キュー型を既存 OutboxItem のビューとして定義、IDB 新ストアは作らない
+
+1. 日付: 2026-08-19
+2. 起きたこと: IMP-016（オフライン同期基盤）で、既存の IndexedDB outbox（`OutboxItem`）と
+   正準 SyncState を接続する方法を決める必要があった。
+3. 以前の考え: 未検討。outbox は実装レベル（HTTP リクエストキュー）、SyncState はドメインレベル
+   （リソース同期状態）で別世界だった。
+4. 違和感・問題: SyncState.CONFLICT が定義済みだが、競合を検出・表現する型が存在しない。
+   OutboxItem にはリソース種別やテナント ID がなく、SYNC_CENTER 画面のフィルタや
+   クロステナント安全性を型レベルで表現できない。
+5. 決めたこと: `SyncQueueItem` を `OutboxItem` の上位ビュー（メモリ上の wrapper）として
+   定義し、IDB に新ストアは作らない。`listOutbox()` → `mapToSyncQueueItem()` の変換で
+   生成する設計。競合検出は HTTP レスポンスコードベース（409=version_mismatch、
+   404/410+PUT/PATCH=resource_deleted）。リソースタイプ別のデフォルト解決戦略を定義
+   （証明書・部品＝手動、予約・顧客＝クライアント優先）。
+6. 捨てた選択肢: (a) IDB に sync_queue ストアを新設し OutboxItem とは別に管理 →
+   二重管理になり整合性リスクが増える。(b) OutboxItem 自体に SyncState フィールドを
+   追加 → 既存の outbox コード全体に影響し、変更範囲が大きすぎる。
+7. 判断理由: 既存 outbox インフラは安定稼働中。ビューとして上位型を被せれば、既存コードを
+   変更せずに SYNC_CENTER 画面（IMP-032）が必要とする情報を提供できる。Ponytail 原則
+   （最小差分）に合致。
+8. まだ答えが出ていないこと: `OutboxItem` → `SyncQueueItem` の実際のマッピング実装は
+   IMP-032（SYNC_CENTER 画面）で行う。OutboxKind から SyncResourceType への変換表は
+   そのタイミングで定義する。
+9. 公開区分: 公開可
+
 ## 2026-08-19 IMP-015 遷移表のみ定義し、既存値→正準値マッピングは各消費タスクで段階的導入
 
 1. 日付: 2026-08-19

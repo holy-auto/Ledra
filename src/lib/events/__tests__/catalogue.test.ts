@@ -56,6 +56,16 @@ describe("eventTypesForResource()", () => {
     expect(ai.length).toBe(5);
     expect(ai).toContain("ai.auto_action_executed");
   });
+
+  it("returns sync events (IMP-016)", () => {
+    const sync = eventTypesForResource("sync");
+    expect(sync.length).toBe(5);
+    expect(sync).toContain("sync.started");
+    expect(sync).toContain("sync.completed");
+    expect(sync).toContain("sync.failed");
+    expect(sync).toContain("sync.conflict_detected");
+    expect(sync).toContain("sync.conflict_resolved");
+  });
 });
 
 describe("LEGACY_EVENT_MAP", () => {
