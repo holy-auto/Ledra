@@ -13,6 +13,16 @@
 - 対象: どの画面・API・業種向けか
 ```
 
+## 2026-08-19 IMP-001 実装ガードレール & 正準ドメイン語彙（branch impl/IMP-001-domain-vocabulary / PR 番号は作成後追記）
+
+- 内容: v2.0 の6状態軸（Job/Step/Severity/Certificate/Payment/Sync）を正準語彙モジュール
+  `src/lib/domain/states.ts`（値集合+型+型ガード）と `src/lib/domain/labels.ts`
+  （ja/en ラベル、ja は v2.0 Appendix A 準拠、未収録ロケールは ja フォールバック）として新設。
+  ADR 6本（`docs/adr/0001`〜`0006`）と「アドホック状態禁止」ルール（CLAUDE.md）を追加。
+  ユニットテスト29件（値集合・型ガード・legacy 値拒否・ラベル網羅・フォールバック）。
+  既存の稼働コード・DB には変更なし。
+- 対象: 開発基盤（ユーザー向け画面の変更なし）。
+
 ## 2026-08-19 IMP-000 リポジトリ監査 & 実装ベースライン（branch claude/imp-000-implementation-r0eje1 / PR #926）
 
 - 内容: v2.0 仕様書（UI/UX & Development Specification v2.0）の実装に先立つリポジトリ監査。

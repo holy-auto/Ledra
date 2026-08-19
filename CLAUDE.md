@@ -41,6 +41,18 @@
 - 機密情報・個人情報は `NOTE_CANDIDATES.md` に転記しない。
 - 各作業終了時（マージなど区切りのタイミング）に「今日の実装と意思決定を事業ログに反映して。note候補も抽出し、公開区分を付けて。」を必ず実行する。
 
+## ドメイン状態語彙ルール（IMP-001、docs/adr/0002）
+
+- v2.0 の正準状態語彙（Job / Step / Severity / Certificate / Payment / Sync の6軸）の
+  単一定義源は `src/lib/domain/states.ts`、ロケール別 UI ラベルは `src/lib/domain/labels.ts`。
+- **新しいステータス文字列・状態軸・遷移を追加する PR は、この正準モジュールと
+  `src/lib/domain/__tests__/` を同一 PR で更新しない限りマージしない。**
+- 1つのカラム・型に複数軸の値を混在させない。`PaymentState.UNKNOWN` は失敗ではなく
+  「結果不明」であり、UNKNOWN の間に再決済を発火させない。
+- 稼働中の既存語彙（`reservations.status` 等）の置き換え・対応マッピングは IMP-015 で
+  判断する。それまで既存値と正準値を暗黙に同一視するコードを書かない
+  （対応表: `docs/implementation/requirement-trace.md` §1）。
+
 ## Ponytail, lazy senior dev mode
 
 You are a lazy senior developer. Lazy means efficient, not careless. The best code is the code never written.

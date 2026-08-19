@@ -182,7 +182,7 @@ Payment Policy(v2.0 §11.3: Consumer PAID / B2B CREDIT_APPROVED / Insurance INSU
 | IMP | Phase/優先度 | 対応 v2.0 § / 画面ID | 現状サマリ(状態) | 依存 |
 |---|---|---|---|---|
 | IMP-000 | 0 / P0 | §22, §24(監査・トレース) | 本書+current-architecture.md で完了(実装済み=本タスク) | なし |
-| IMP-001 | 0 / P0 | §1, §19, Appendix A(語彙・ガードレール) | 正準 enum モジュール・ロケール別ラベルなし。`statusMaps.ts` が既存ラベル一元管理(なし〜部分) | 000 |
+| IMP-001 | 0 / P0 | §1, §19, Appendix A(語彙・ガードレール) | **実装済み**(2026-08-19): 正準6軸 `src/lib/domain/states.ts`+ロケール別ラベル `labels.ts`+テスト、ADR 0001〜0006(`docs/adr/`)、アドホック状態禁止ルール(CLAUDE.md)。既存語彙との統一・マッピングは IMP-015 で判断(ADR-0002) | 000 |
 | IMP-010 | 1 / P0 | §3(デザイントークン・共有部品) | Tailwind 4 トークン+UI 49部品あり。v2.0 トークン値との照合未実施(部分) | 001 |
 | IMP-011 | 1 / P0 | §17, L10N(i18n 基盤・用語集) | 自前 t()+ja/en 8キーのみ。6言語・用語集・original/translated 分離なし(部分) | 001 |
 | IMP-012 | 1 / P0 | §15, AUTH_*(認証・招待・端末・step-up) | password 認証+WebAuthn 操作ゲートあり。正準フロー(Invite→OTP→生体)・端末管理なし(別方式) | 000, 001, 011 |
