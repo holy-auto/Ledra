@@ -126,8 +126,8 @@ export function eventTypesForResource(resource: string): DomainEventType[] {
  * 既存の AuditEventType（snake_case）から DomainEventType（resource.action）への変換表。
  * 段階的移行に使用。新コードは DomainEventType を直接使う。
  *
- * ponytail: 完全な 1:1 対応。既存 AuditEventType 27 + AiAuditAction 1（重複除外）
- * + untyped 2 = 30 値をカバー。
+ * ponytail: 完全な 1:1 対応。既存 AuditEventType 23（8 cert + 15 general）
+ * + AiAuditAction 1（重複除外）+ untyped 2 = 26 値をカバー。
  */
 export const LEGACY_EVENT_MAP: Record<string, DomainEventType> = {
   // CertificateAuditType (8)
@@ -140,7 +140,7 @@ export const LEGACY_EVENT_MAP: Record<string, DomainEventType> = {
   certificate_public_viewed: "certificate.public_viewed",
   certificate_public_pdf: "certificate.public_pdf",
 
-  // AuditEventType remainder (19)
+  // AuditEventType remainder (15)
   vehicle_registered: "vehicle.registered",
   vehicle_updated: "vehicle.updated",
   member_added: "member.added",

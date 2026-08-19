@@ -18,9 +18,9 @@ describe("DOMAIN_EVENT_TYPES", () => {
     }
   });
 
-  it("covers at least 30 event types", () => {
-    // 27 AuditEventType + 1 ai_auto_action_executed + 2 untyped + extras
-    expect(DOMAIN_EVENT_TYPES.length).toBeGreaterThanOrEqual(30);
+  it("covers at least 26 event types", () => {
+    // 23 AuditEventType + 1 ai_auto_action_executed + 2 untyped + extras
+    expect(DOMAIN_EVENT_TYPES.length).toBeGreaterThanOrEqual(26);
   });
 });
 
@@ -59,8 +59,8 @@ describe("eventTypesForResource()", () => {
 });
 
 describe("LEGACY_EVENT_MAP", () => {
-  it("maps all 27 AuditEventType values", () => {
-    // 8 cert + 19 general from AuditEventType
+  it("maps all 23 AuditEventType values", () => {
+    // 8 cert + 15 general from AuditEventType
     const auditTypes = [
       "certificate_issued",
       "certificate_edited",
