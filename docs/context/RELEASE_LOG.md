@@ -13,6 +13,17 @@
 - 対象: どの画面・API・業種向けか
 ```
 
+## 2026-08-19 IMP-011 i18n 基盤 & 自動車用語集（branch impl/IMP-011-i18n-foundation / PR #TBD）
+
+- 内容: v2.0 §17 の i18n 基盤を整備。(1) ロケール登録を 6 言語（ja/en/vi/id/fil/hi）に
+  統一（`src/lib/i18n/locales.ts` を単一定義源化、`labels.ts` の `DOMAIN_LOCALES` は再エクスポートに変更）。
+  (2) メッセージファイル 4 言語追加（`messages/{vi,id,fil,hi}.json` 各 8 エラーキー）。
+  (3) ドメインラベル全 6 軸を 6 言語化（~188 ラベル文字列）。(4) 自動車翻訳用語集
+  （`src/lib/i18n/glossary.ts` ~28 用語、`getGlossaryForLocale()` で translateContent.ts 連携可）。
+  (5) `WithTranslations<T>` UGC 翻訳分離型（`src/lib/i18n/translated.ts` 型定義のみ）。
+  (6) `LOCALE_LABELS` マップ（言語選択 UI 用）。vi/id/fil/hi 翻訳は推定、正式検証は IMP-051。
+- 対象: 開発基盤（画面変更なし。IMP-012/020/024/026/051 の前提条件）。
+
 ## 2026-08-19 IMP-010 デザイントークン & 共有コンポーネント基盤（branch impl/IMP-010-design-tokens / PR #928）
 
 - 内容: v2.0 §3 の不足 UI プリミティブ8つを新設 — SegmentedControl（ピル型切替、3箇所の

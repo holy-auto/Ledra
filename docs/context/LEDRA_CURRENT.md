@@ -100,6 +100,10 @@ Sentry · Resend (+ SendGrid fallback) · Anthropic (Opus 4.8 / Sonnet 4.6 / Hai
 
 - 「Ledra UI/UX & Development Specification v2.0」（2026-08-19）と、それを36タスク
   （IMP-000〜IMP-054）に分解した「Claude Code Implementation Guide v1.0」を実装基準線として採用。
+- **IMP-011（i18n 基盤 & 自動車用語集）完了**: ロケール登録を 6 言語（ja/en/vi/id/fil/hi）に
+  統一（`src/lib/i18n/locales.ts` が単一定義源）。メッセージファイル 4 言語追加、ドメインラベル
+  全 6 軸を 6 言語化、自動車翻訳用語集（~28 用語）、`WithTranslations<T>` UGC 翻訳分離型を新設。
+  vi/id/fil/hi 翻訳は推定（正式検証は IMP-051）。画面移行・ルーティング変更・DB マイグレーションなし。
 - **IMP-010（デザイントークン & 共有コンポーネント基盤）完了**: 不足 UI プリミティブ8つ
   （SegmentedControl/StatusBadge/StatusCard/NextActionCard/ProgressCard/Alert/IconButton/
   BottomSheet）+ Badge dot + Button xl。v2.0 の色トークン値は不採用・既存デザインシステム維持

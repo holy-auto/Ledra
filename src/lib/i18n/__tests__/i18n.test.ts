@@ -34,6 +34,17 @@ describe("t()", () => {
   it("uses DEFAULT_LOCALE when none is specified", () => {
     expect(t("errors.unauthorized")).toBe(t("errors.unauthorized", DEFAULT_LOCALE));
   });
+
+  it("translates a key in new locales (IMP-011)", () => {
+    expect(t("errors.unauthorized", "vi")).toBe("Yêu cầu đăng nhập.");
+    expect(t("errors.unauthorized", "id")).toBe("Autentikasi diperlukan.");
+    expect(t("errors.unauthorized", "fil")).toBe("Kailangan mag-login.");
+    expect(t("errors.unauthorized", "hi")).toBe("लॉगिन आवश्यक है।");
+  });
+
+  it("interpolates in new locales", () => {
+    expect(t("errors.missing_field", "vi", { field: "email" })).toBe("email là bắt buộc.");
+  });
 });
 
 describe("getTranslator()", () => {
@@ -45,9 +56,13 @@ describe("getTranslator()", () => {
 });
 
 describe("isSupportedLocale()", () => {
-  it("accepts known locales", () => {
+  it("accepts known locales (6 languages, IMP-011)", () => {
     expect(isSupportedLocale("ja")).toBe(true);
     expect(isSupportedLocale("en")).toBe(true);
+    expect(isSupportedLocale("vi")).toBe(true);
+    expect(isSupportedLocale("id")).toBe(true);
+    expect(isSupportedLocale("fil")).toBe(true);
+    expect(isSupportedLocale("hi")).toBe(true);
   });
 
   it("rejects unknown locales", () => {
@@ -78,6 +93,8 @@ describe("negotiateLocale()", () => {
   it("matches by primary language tag when full tag is unsupported", () => {
     expect(negotiateLocale(withAcceptLanguage("en-US"))).toBe("en");
     expect(negotiateLocale(withAcceptLanguage("ja-JP"))).toBe("ja");
+    expect(negotiateLocale(withAcceptLanguage("vi-VN"))).toBe("vi");
+    expect(negotiateLocale(withAcceptLanguage("hi-IN"))).toBe("hi");
   });
 
   it("respects q-value priority", () => {
