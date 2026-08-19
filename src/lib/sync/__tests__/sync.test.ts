@@ -192,10 +192,20 @@ describe("recommendedStrategy()", () => {
 // ── detectConflictFromResponse ──
 
 describe("detectConflictFromResponse()", () => {
-  it("409 → version_mismatch", () => {
+  it("409 + PUT → version_mismatch", () => {
     const conflict = detectConflictFromResponse(409, "PUT");
     expect(conflict).not.toBeNull();
     expect(conflict!.kind).toBe("version_mismatch");
+  });
+
+  it("409 + PATCH → version_mismatch", () => {
+    const conflict = detectConflictFromResponse(409, "PATCH");
+    expect(conflict).not.toBeNull();
+    expect(conflict!.kind).toBe("version_mismatch");
+  });
+
+  it("409 + POST → null（冪等性衝突は競合ではない）", () => {
+    expect(detectConflictFromResponse(409, "POST")).toBeNull();
   });
 
   it("404 + PUT → resource_deleted", () => {

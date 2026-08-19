@@ -67,7 +67,9 @@ export function detectConflictFromResponse(
   method: string,
   serverMessage?: string,
 ): SyncConflict | null {
-  if (status === 409) {
+  // ponytail: POST 409 は冪等性衝突（既に処理済み＝成功扱い）であり、競合ではない。
+  // 既存 drainItems も 409 を成功扱いにしている。PUT/PATCH 409 のみ version_mismatch。
+  if (status === 409 && (method === "PUT" || method === "PATCH")) {
     return {
       kind: "version_mismatch",
       detectedAt: Date.now(),

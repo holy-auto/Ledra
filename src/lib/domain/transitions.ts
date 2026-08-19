@@ -53,7 +53,7 @@ export const STEP_TRANSITIONS: Record<StepState, readonly StepState[]> = {
 // ── 緊急度（Severity）遷移表 v2.0 §19.3 ──
 // ponytail: Severity はライフサイクル状態ではなく分類レベル。
 // 遷移表はあるが制約は緩い（再評価で自由に変更可能）。
-// CRITICAL → NORMAL の直接降格だけ禁止（段階的に下げる）。
+// CRITICAL からは HIGH または RESOLVED のみ（NORMAL/ACTION への直接降格禁止＝段階的に下げる）。
 
 export const SEVERITY_TRANSITIONS: Record<Severity, readonly Severity[]> = {
   NORMAL: ["ACTION", "HIGH", "CRITICAL"],
