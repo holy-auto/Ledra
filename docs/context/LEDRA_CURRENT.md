@@ -100,6 +100,12 @@ Sentry · Resend (+ SendGrid fallback) · Anthropic (Opus 4.8 / Sonnet 4.6 / Hai
 
 - 「Ledra UI/UX & Development Specification v2.0」（2026-08-19）と、それを36タスク
   （IMP-000〜IMP-054）に分解した「Claude Code Implementation Guide v1.0」を実装基準線として採用。
+- **IMP-050（§18 SECURITY_PRIVACY — プライバシー・データ分類・可視性・マスキング基盤）完了**:
+  v2.0 §18 のプライバシー・データ保護基盤を4モジュールの純関数で実装。4段階データ分類
+  （restricted/pii/confidential/public、ISO 27001 A.5.12 準拠、19フィールド登録）、
+  4段階可視性モデル（owner_only→public、ViewerContext→有効レベル解決）、レンディション
+  マスキング（ADR-0003 一般化、4戦略、定義済みルール3セット）、エクスポート監査イベント
+  （4スコープ統一フォーマット、頻度異常検出）。テスト64件。IO なし。
 - **IMP-014（ドメインイベント・監査・冪等基盤）完了**: v2.0 §20 / Appendix B のドメインイベント
   基盤を型・純粋関数で整備。統一イベントカタログ（`resource.action` 命名、33 型）、既存
   AuditEventType→DomainEventType マッピング、型付きイベントエンベロープ（actor/tenant/

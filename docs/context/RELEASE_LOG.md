@@ -13,6 +13,32 @@
 - 対象: どの画面・API・業種向けか
 ```
 
+## 2026-08-20 IMP-050 §18 SECURITY_PRIVACY — プライバシー・データ分類・可視性・マスキング基盤（branch impl/IMP-050-privacy-classification）
+
+- 内容: v2.0 §18 が要求するプライバシー・データ保護基盤を4モジュールの純関数で実装。
+  - `src/lib/privacy/classification.ts`: 4段階データ分類（ISO 27001 A.5.12 準拠）
+    - `DataClassification` 型（restricted/pii/confidential/public）
+    - `FIELD_CLASSIFICATIONS` レジストリ（19エントリ: customers/vehicles/invoices/tenant_secrets）
+    - `getFieldClassification()` — テーブル.カラム→分類ルックアップ
+    - `maxClassification()` — フィールド群の最厳分類
+    - `findClassificationViolations()` — 閾値超過フィールド検出
+  - `src/lib/privacy/visibility.ts`: 4段階可視性モデル
+    - `VisibilityLevel` 型（owner_only/tenant_internal/partner_shared/public）
+    - `ViewerContext` — ロール/データ主体/パートナー開示同意から有効レベル解決
+    - `findHiddenFields()` — 閲覧者レベルに基づく非表示フィールド識別
+    - `DEFAULT_REQUIRED_VISIBILITY` — 分類→可視性の最低要件マッピング
+  - `src/lib/privacy/rendition.ts`: レンディション・マスキング（ADR-0003 一般化）
+    - 4戦略（nullify/redact/truncate/hash）
+    - `createRendition()` — 非破壊レコードマスキング
+    - 定義済みルール3セット（CERTIFICATE/VEHICLE/PASSPORT_PUBLIC_RULES）
+  - `src/lib/privacy/exportAudit.ts`: エクスポート監査イベント
+    - 4スコープ（admin/customer/agent/insurer）の統一監査フォーマット
+    - `createExportAuditEntry()` — 監査エントリ生成
+    - `detectAbnormalExportFrequency()` — 頻度異常検出
+- 対象: 既存 PII 遮断（customerRelation.ts）・公開ビュー（certificates_public）・エクスポートルートの型安全な一般化
+- テスト: 64件（classification 10 + visibility 11 + rendition 22 + exportAudit 21）
+- 依存: なし（純関数モジュール、IO なし）
+
 ## 2026-08-20 IMP-046 §21 ANALYTICS_STORE — 運用KPI・キャパシティ分析（branch impl/IMP-046-analytics-kpi）
 
 - 内容: v2.0 §21 が要求する運用指標とキャパシティ可視化の純関数計算器を実装。
