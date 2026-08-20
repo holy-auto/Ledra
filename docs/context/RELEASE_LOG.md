@@ -13,6 +13,23 @@
 - 対象: どの画面・API・業種向けか
 ```
 
+## 2026-08-20 IMP-041 §21 設備/リフト稼働 占有予測・NEXT ACTION シグナル（branch impl/IMP-041-booth-occupancy）
+
+- 内容: ブース占有予測とNEXT ACTIONブースシグナルの型基盤を実装。
+  - `src/lib/booths/occupancy.ts`: ブース占有予測の純関数群
+    - `peakConcurrent()` — スイープラインによる同時占有ピーク計算（BoothsClient.maxConcurrent のサーバー側版）
+    - `computeBoothUtilization()` — 営業時間に対する稼働率（0–100%）
+    - `detectCapacityConflicts()` — 定員超過の時間帯検出
+    - `predictBoothFreeAt()` — in_progress 予約の終了時刻から空き推定
+    - `findAvailableBooths()` — 指定時刻の空きブース検索（空き時間帯リスト付き）
+  - `src/lib/booths/boothSignals.ts`: NEXT ACTION ブースシグナル
+    - `BoothSignalKind` 4種: booth_freed / assign_booth / capacity_exceeded / booth_overloaded
+    - `deriveBoothSignals()` — 予約・ブース状態からアクション可能シグナルを導出
+  - テスト 41 件追加（occupancy 27 + signals 9 + duration 5）、全 4550 件通過
+- 対象: 全施工店（ブース管理機能利用店舗）
+- 依存: IMP-014, IMP-021, IMP-022
+- 下流: IMP-044（NEXT ACTION エンジン拡張）、IMP-046（経営分析 KPI）
+
 ## 2026-08-20 IMP-040 §8 部品装着インテグリティ 正準語彙（branch impl/IMP-040-parts-integrity）
 
 - 内容: v2.0 §8 の部品装着状態を正準ドメイン語彙の 7 軸目として追加。
