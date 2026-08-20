@@ -23,6 +23,18 @@
 9. 公開区分: 公開可／要確認／非公開
 ```
 
+## 2026-08-20 IMP-043 見積/請求ワークフロー — 承認スナップショット・版管理・POS ブリッジ
+
+1. 日付: 2026-08-20
+2. 起きたこと: IMP-043（§11 見積/請求ワークフロー）の実装。documents 統合モデル（9 帳票種 + 遷移マップ + PDF + 送付履歴）と PaymentState 導出層（IMP-027）は完了済みだが、顧客承認額の版管理、POS→元帳自動ブリッジ、返金元帳エントリが未実装。
+3. 以前の考え: 見積の status=accepted で「承認済み」として扱っていた。承認時の金額・明細の凍結はなく、LINE フローの awaiting_quote_ok→yes も flow state の遷移のみで、承認額の記録はなかった。
+4. 違和感・問題: (a) 見積承認後に明細を編集すると、顧客が承認した金額と実際の金額が乖離する（「いつの間にか数字が変わった」問題 — ADR-0004）。(b) 帳票の確定後編集は integrity_seal（ハッシュ）で検出できるが、版履歴の追跡がない。(c) POS 決済（payments テーブル）と売掛元帳（payment_entries）が別系統で、POS 入金の元帳反映が手動のみ。(d) payment_entries は CHECK(amount > 0) で返金エントリを記録できない。
+5. 決めたこと: (a) 見積承認スナップショット（`estimateApproval.ts`）— 承認時の明細・金額を deep copy で凍結し、差分検出で再承認要否を判定。3 承認方法。(b) 帳票版管理（`documentVersion.ts`、ADR-0004 準拠）— DocumentVersion 型 + DocumentCorrectionRequest（5 カテゴリ×4 ステータス遷移表）。invoice 系 + estimate の確定済みのみ訂正ワークフロー必須。(c) POS→元帳ブリッジ（`posLedgerBridge.ts`）— POS 取引をプロバイダ別 PaymentMethod マッピング付きで LedgerEntryInput に変換。返金は RefundLedgerEntryInput に分離、記帳方式（negative_entry / separate_table）は DB 設計で決定。
+6. 捨てた選択肢: (a) 帳票テーブルに version 列追加して版ごとにレコード管理 → ADR-0004 の Correction Record パターンの方が証明書（IMP-030）と統一的。(b) POS→元帳を webhook トリガーで自動実行 → コンシューマ（webhook ハンドラ）がまだないので YAGNI。型基盤のみ先行。(c) 返金を payment_entries の amount CHECK 制約を変更して負値許可 → DB マイグレーションを伴うため消費タスクに委譲。2 方式（negative/separate_table）を純関数で提供し、DB 設計時に決定。
+7. 判断理由: ADR-0004「訂正は上書きではなく版の追加」を帳票にも適用することで、証明書の版管理（IMP-030）と同一パターンで設計。見積承認スナップショットは IMP-042 の WorkflowSnapshot と同じ凍結パターン。POS ブリッジは recordInvoicePaymentBalance の referenceNo 冪等性キーと同じ方式で重複記帳を防止。
+8. まだ答えが出ていないこと: (a) DB マイグレーション — document_versions テーブル、documents.approval_snapshot 列の追加時期。(b) 返金の帳簿記帳方式（negative_entry vs separate_table）の最終決定。(c) LINE フローの awaiting_quote_ok→yes 時に自動で approval_snapshot を作成する統合タイミング。(d) 見積改定時の顧客への再承認通知方法。
+9. 公開区分: 公開可
+
 ## 2026-08-20 IMP-042 ワークフローテンプレート版管理（スナップショット方式）
 
 1. 日付: 2026-08-20

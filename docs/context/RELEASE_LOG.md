@@ -13,6 +13,24 @@
 - 対象: どの画面・API・業種向けか
 ```
 
+## 2026-08-20 IMP-043 §11 見積/請求ワークフロー — 承認スナップショット・版管理・POS ブリッジ型基盤（branch impl/IMP-043-estimate-invoice-workflow）
+
+- 内容: v2.0 §11 Estimate/Invoice/Payment の残ギャップ「顧客承認額の版管理」
+  「POS→元帳自動ブリッジ」「返金元帳エントリ」の型基盤を実装。ADR-0004 準拠。
+  (1) 見積承認スナップショット — `createApprovalSnapshot()` で承認時の明細・金額を
+  deep copy 凍結。`diffEstimateRevision()` で承認後の編集差分を検出し再承認要否を判定。
+  3 承認方法（customer_web/verbal_confirmation/message_reply）。
+  (2) 帳票版管理（ADR-0004「訂正は上書きではなく版の追加」準拠）— `DocumentVersion` 型
+  （版番号+ハッシュ+合計）、`DocumentCorrectionRequest`（5 カテゴリ×4 ステータス）、
+  遷移表 `isValidCorrectionTransition()`、`requiresCorrectionWorkflow()`（invoice 系
+  + estimate の確定済みのみ対象）。
+  (3) POS→元帳ブリッジ — `bridgePosToLedger()` で POS 取引を `LedgerEntryInput` に
+  変換。プロバイダ別 PaymentMethod 自動マッピング。voided 除外、帳票なし→unbridgeable
+  分類、返金→`RefundLedgerEntryInput` 分離。`computeRefundRecording()` で negative_entry
+  / separate_table の 2 方式を提供。
+  テスト 54 件。
+- 対象: 型定義・ロジック層（src/lib/documents/）。UI 変更・DB マイグレーションなし。
+
 ## 2026-08-20 IMP-042 WORKFLOW_BUILDER 版管理テンプレート型基盤（branch impl/IMP-042-workflow-versioning）
 
 - 内容: ワークフローテンプレートの版管理（バージョニング + ジョブ実行時凍結）の型基盤を実装。
