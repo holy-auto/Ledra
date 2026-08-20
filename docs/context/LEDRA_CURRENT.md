@@ -124,6 +124,12 @@ Sentry · Resend (+ SendGrid fallback) · Anthropic (Opus 4.8 / Sonnet 4.6 / Hai
   （SegmentedControl/StatusBadge/StatusCard/NextActionCard/ProgressCard/Alert/IconButton/
   BottomSheet）+ Badge dot + Button xl。v2.0 の色トークン値は不採用・既存デザインシステム維持
   （DECISION_LOG 2026-08-19）。
+- **IMP-044（§20.2 Priority/NEXT ACTION エンジン）完了**:
+  統一優先度スコアリングサービス。4 ソース（ダッシュボードタイル / ジョブ次アクション /
+  顧客シグナル / ブースシグナル）を統一スコア（0-100）に正規化する `scoreAndRank()`。
+  ブース→ジョブ統合（`enrichJobWithBoothContext()` で未割当・定員超過を反映）。
+  イベント→優先度パイプライン（13 ドメインイベントの影響マッピング + 再計算リクエスト生成）。
+  IO なし・型基盤先行。テスト 38 件。
 - **IMP-043（§11 見積/請求ワークフロー — 承認スナップショット・版管理・POS ブリッジ）完了**:
   見積承認スナップショット（承認時の明細・金額凍結 + 差分検出 + 再承認要否判定）、
   帳票版管理（ADR-0004 準拠、訂正ワークフロー型定義 + 遷移表）、

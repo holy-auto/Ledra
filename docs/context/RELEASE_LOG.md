@@ -15,6 +15,25 @@
 
 ## 2026-08-20 IMP-043 §11 見積/請求ワークフロー — 承認スナップショット・版管理・POS ブリッジ型基盤（branch impl/IMP-043-estimate-invoice-workflow）
 
+## 2026-08-20 IMP-044 §20.2 Priority/NEXT ACTION エンジン（branch impl/IMP-044-priority-engine）
+
+- 内容: 3 つの独立した優先度システム + ブースシグナルを統一スコアリングサービスに統合する型基盤を実装。
+  - `src/lib/priority/scorer.ts`: 統一スコアリングサービス
+    - `ScoredAction` 型 — 全シグナルソースを統一スコア (0-100) で表現、actionKey で重複排除
+    - `scoreTile()` / `scoreJobSuggestion()` / `scoreCustomerAction()` / `scoreBoothSignal()` — 各ソースの priority 表現を統一スコアに正規化
+    - `scoreAndRank()` — 全ソースを統合・重複排除・降順ソート。limit で上位 N 件に絞り込み可
+  - `src/lib/priority/boothJobIntegration.ts`: ブース→ジョブ次アクション統合
+    - `enrichJobWithBoothContext()` — pickJobNextActionCandidate の結果をブース文脈で調整（未割当 → priority:high 引き上げ、定員超過 → ヒント追加）
+    - `boothSignalsForReservation()` / `deriveBoothContextForJob()` — シグナル→ジョブ文脈変換ヘルパ
+  - `src/lib/priority/eventTriggers.ts`: イベント→優先度パイプライン型定義
+    - `PRIORITY_TRIGGERS` — 13 ドメインイベントの優先度影響マッピング
+    - `isPriorityAffecting()` / `getPriorityTrigger()` — イベント型から影響判定
+    - `toPriorityRecalcRequest()` — DomainEvent から再計算リクエスト生成
+  - テスト 38 件追加（scorer 17 + boothJobIntegration 10 + eventTriggers 11）、全 4677 件通過
+- 対象: 型定義・ロジック層（src/lib/priority/）。UI 変更・DB マイグレーションなし。
+- 依存: IMP-014, IMP-021, IMP-041
+- 下流: IMP-046（経営分析 KPI — 優先度スコアの集計）
+
 - 内容: v2.0 §11 Estimate/Invoice/Payment の残ギャップ「顧客承認額の版管理」
   「POS→元帳自動ブリッジ」「返金元帳エントリ」の型基盤を実装。ADR-0004 準拠。
   (1) 見積承認スナップショット — `createApprovalSnapshot()` で承認時の明細・金額を

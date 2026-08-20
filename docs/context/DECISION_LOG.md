@@ -23,6 +23,18 @@
 9. 公開区分: 公開可／要確認／非公開
 ```
 
+## 2026-08-20 IMP-044 Priority/NEXT ACTION エンジン — 統一スコアリングサービス
+
+1. 日付: 2026-08-20
+2. 起きたこと: IMP-044（§20.2 Priority/NEXT ACTION エンジン）の実装。3 つの独立した優先度システム（ダッシュボードタイル `deriveTodayTasks` / ジョブ次アクション `pickJobNextActionCandidate` / 顧客シグナル `deriveSignals`）+ ブースシグナル（IMP-041）が個別に動作しており、統一的なスコアリング・ランキングのサービスがなかった。
+3. 以前の考え: IMP-021 でダッシュボードのタイル優先順序（priority 0-3）をそのまま NEXT ACTION の導出に使うことを決めた。`pickJobNextActionCandidate` は Job 単位、`deriveSignals` は顧客単位で独立。ブースシグナルは IMP-041 で型定義済みだが `pickJobNextActionCandidate` に未統合。
+4. 違和感・問題: (a) 各ソースが異なる priority 表現（数値 0-3 / "high"|"med"|"low" / "high"|"medium"|"low"）を使い、横断比較が不可能。(b) ブースシグナルがジョブの次アクションに反映されない。(c) どのドメインイベントが優先度再計算をトリガーすべきかの定義がない。(d) スコアの根拠が不透明（なぜこのアクションが上位か説明できない）。
+5. 決めたこと: 3 モジュール構成で型基盤先行。(1) `scorer.ts` — 4ソースを統一スコア（0-100, 高い=緊急）に正規化する純関数群。重複排除（actionKey）+ 説明可能性（reason フィールド）。(2) `boothJobIntegration.ts` — `enrichJobWithBoothContext()` で pickJobNextActionCandidate の結果にブース文脈を注入。既存関数のシグネチャは変えない。(3) `eventTriggers.ts` — PRIORITY_TRIGGERS マッピング（13イベント）と `toPriorityRecalcRequest()` ファクトリ。IO 実装（キューイング・pub/sub）は消費タスク。
+6. 捨てた選択肢: (a) 機械学習ベースの優先度スコアリング — 訓練データがなく、説明可能性が低い。(b) 各ソースの priority 表現を統一する（全て "high"|"med"|"low" に）— 既存の呼び出し元が多く、破壊的変更。(c) pickJobNextActionCandidate のシグネチャにブース引数を追加 — 呼び出し元 2 箇所（nextActionAuto.ts + ダッシュボード）に影響。ラッパー方式のほうが影響ゼロ。
+7. 判断理由: Ponytail 原則。既存 3 システムの出力をそのまま正規化する「加算型」アプローチなら、既存コードへの変更ゼロ。スコアのバンド幅（dashboard 90/70/50/30、booth 88/62/38、job 85/60/35、customer 80/55/30）はソースの性質を反映（ダッシュボードはテナント全体、ブースは安全直結で高め、顧客は個別対応で控えめ）。
+8. まだ答えが出ていないこと: (a) スコアのバンド幅の最適値（実運用データでのチューニングが必要）。(b) パイプラインの IO 実装方式（QStash vs after() vs cron、既存 3 冪等系統との統合）。(c) UI 層での ScoredAction[] の表示方式。
+9. 公開区分: 公開可
+
 ## 2026-08-20 IMP-043 見積/請求ワークフロー — 承認スナップショット・版管理・POS ブリッジ
 
 1. 日付: 2026-08-20
