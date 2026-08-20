@@ -205,7 +205,7 @@ Payment Policy(v2.0 §11.3: Consumer PAID / B2B CREDIT_APPROVED / Insurance INSU
 | IMP-032 | 3 / P0 | §14, SYNC_CENTER | **実装済み**(2026-08-20): OutboxItem→SyncQueueItem マッパー(`mapper.ts` — OutboxKind 5種→SyncResourceType 8種変換、URLパターン推定、リソースID/テナントID抽出、重複検出付き一括変換)。SyncSummary 集計計算(`summary.ts` — syncBadgeCount/hasAttentionItems)。競合解決実行ロジック(`resolver.ts` — resolveAction/applyResolution/canAutoResolve/autoResolveAll)。IndexedDB新ストアなし(メモリ上ビュー方式)。既存outboxインフラ変更なし。テスト54件(合計84件) | 016, 020 |
 | IMP-033 | 3 / P0 | §2, MORE(その他メニュー IA) | **実装済み** | 010, 013, 020, 032 |
 | IMP-034 | 3 / P0 | §2, §4(タブレット2-pane・共用端末) | **実装済み** | 010, 021, 022, 023, 033 |
-| IMP-040 | 4 / P1 | §8(部品・装着インテグリティ) | 3-way match+凍結ガード+OTP署名+TSA+アンカーで深い(実装済み。語彙差あり) | 023, 030 |
+| IMP-040 | 4 / P1 | §8(部品・装着インテグリティ) | **実装済み**(2026-08-20): (1) 正準語彙 `PART_INSTALLATION_STATES` を 7 軸目として `states.ts` に追加(DRAFT/INSTALLED/CUSTOMER_VERIFIED/DISPUTED/VOIDED)。型ガード `isPartInstallationState` + 遷移表 `PART_INSTALLATION_TRANSITIONS` + 遷移検証 `isValidPartInstallationTransition()`。(2) `labels.ts` に 6 言語ラベル追加(ja: 既存 admin UI 表記と一致)。(3) Certificate Gate 部品整合性条件の導出関数 `derivePartsIntegrityOk()` — 未解決 critical findings でブロック。DB 実装値(小文字)との対応は IMP-015 に委ねる(ADR-0002 準拠) | 023, 030 |
 | IMP-041 | 4 / P1 | §21(設備/リフト稼働) | ブース管理+ガントあり。占有予測・NEXT ACTION 連動なし(部分) | 014, 021, 022 |
 | IMP-042 | 4 / P1 | WORKFLOW_BUILDER(版管理テンプレート) | エディタあり。テンプレ版管理・実行中ジョブの版凍結なし(部分) | 015, 013 |
 | IMP-043 | 4 / P1 | §11(見積/請求ワークフロー) | documents 統合モデル+PDF+送付履歴あり。顧客承認額の版管理なし(部分) | 027, 031 |

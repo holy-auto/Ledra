@@ -11,7 +11,15 @@
  *
  * vi/id/fil/hi ラベルは IMP-011 でベストエフォート翻訳。正式検証は IMP-051。
  */
-import type { CertificateState, JobState, PaymentState, Severity, StepState, SyncState } from "./states";
+import type {
+  CertificateState,
+  JobState,
+  PartInstallationState,
+  PaymentState,
+  Severity,
+  StepState,
+  SyncState,
+} from "./states";
 import { SUPPORTED_LOCALES, DEFAULT_LOCALE, type Locale } from "@/lib/i18n/locales";
 
 /** ロケール定義源は src/lib/i18n/locales.ts に統一(IMP-011)。後方互換のため再エクスポート。 */
@@ -365,6 +373,55 @@ const SYNC_STATE_LABELS: LabelMaps<SyncState> = {
   hi: { SYNCED: "सिंक हो गया", PENDING: "सिंक लंबित", SYNCING: "सिंक हो रहा है", FAILED: "विफल", CONFLICT: "विरोध" },
 };
 
+/**
+ * 部品装着の状態ラベル(IMP-040)。v2.0 §8。
+ * ja ラベルは既存の admin/parts-integrity ページの STATUS_LABEL に合致させた。
+ */
+const PART_INSTALLATION_STATE_LABELS: LabelMaps<PartInstallationState> = {
+  ja: {
+    DRAFT: "下書き",
+    INSTALLED: "装着済み（未確定）",
+    CUSTOMER_VERIFIED: "確定済み（完全凍結）",
+    DISPUTED: "係争中",
+    VOIDED: "取消済み",
+  },
+  en: {
+    DRAFT: "Draft",
+    INSTALLED: "Installed (unconfirmed)",
+    CUSTOMER_VERIFIED: "Verified (frozen)",
+    DISPUTED: "Disputed",
+    VOIDED: "Voided",
+  },
+  vi: {
+    DRAFT: "Bản nháp",
+    INSTALLED: "Đã lắp đặt (chưa xác nhận)",
+    CUSTOMER_VERIFIED: "Đã xác nhận (đóng băng)",
+    DISPUTED: "Đang tranh chấp",
+    VOIDED: "Đã hủy bỏ",
+  },
+  id: {
+    DRAFT: "Draf",
+    INSTALLED: "Terpasang (belum dikonfirmasi)",
+    CUSTOMER_VERIFIED: "Dikonfirmasi (dibekukan)",
+    DISPUTED: "Disengketakan",
+    VOIDED: "Dibatalkan",
+  },
+  fil: {
+    DRAFT: "Draft",
+    INSTALLED: "Naka-install (hindi pa kumpirmado)",
+    CUSTOMER_VERIFIED: "Nakumpirma (naka-freeze)",
+    DISPUTED: "Pinagtatalunan",
+    VOIDED: "Na-void",
+  },
+  hi: {
+    DRAFT: "ड्राफ़्ट",
+    INSTALLED: "स्थापित (अपुष्ट)",
+    CUSTOMER_VERIFIED: "पुष्ट (फ़्रीज़)",
+    DISPUTED: "विवादित",
+    VOIDED: "रद्द",
+  },
+};
+
 function pick<T extends string>(maps: LabelMaps<T>, code: T, locale: DomainLocale): string {
   // 型を欺いて legacy 値等が渡された場合に「undefined」を描画せず、コードをそのまま返す
   // (statusMaps.ts の getStatusEntry と同じ境界防御)
@@ -383,6 +440,8 @@ export const paymentStateLabel = (s: PaymentState, locale: DomainLocale = DEFAUL
   pick(PAYMENT_STATE_LABELS, s, locale);
 export const syncStateLabel = (s: SyncState, locale: DomainLocale = DEFAULT_DOMAIN_LOCALE) =>
   pick(SYNC_STATE_LABELS, s, locale);
+export const partInstallationStateLabel = (s: PartInstallationState, locale: DomainLocale = DEFAULT_DOMAIN_LOCALE) =>
+  pick(PART_INSTALLATION_STATE_LABELS, s, locale);
 
 /** テスト用に全マップを公開(アプリコードからは個別の *Label 関数を使うこと)。 */
 export const __DOMAIN_LABEL_MAPS = {
@@ -392,4 +451,5 @@ export const __DOMAIN_LABEL_MAPS = {
   certificate: CERTIFICATE_STATE_LABELS,
   payment: PAYMENT_STATE_LABELS,
   sync: SYNC_STATE_LABELS,
+  partInstallation: PART_INSTALLATION_STATE_LABELS,
 } as const;

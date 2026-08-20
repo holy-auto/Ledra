@@ -2,15 +2,16 @@
  * 正準ドメイン状態語彙(IMP-001)。
  *
  * 出典: Ledra UI/UX & Development Specification v2.0 §19 / Appendix A。
- * 6軸(Job / Step / Severity / Certificate / Payment / Sync)は独立した関心事であり、
- * 1つの status カラムに混ぜない。新しいステータス文字列・遷移を追加する場合は、
- * 必ず本モジュールと __tests__ を先に更新すること(docs/adr/0002 参照)。
+ * 7軸(Job / Step / Severity / Certificate / Payment / Sync / PartInstallation)は
+ * 独立した関心事であり、1つの status カラムに混ぜない。新しいステータス文字列・遷移を
+ * 追加する場合は、必ず本モジュールと __tests__ を先に更新すること(docs/adr/0002 参照)。
  *
  * 注意: これは v2.0 語彙の正準定義であり、稼働中の実装語彙
- * (例: reservations.status='confirmed'..., certificates.status='active'...)の
- * 置き換えではない。既存語彙との対応表は docs/implementation/requirement-trace.md §1。
- * 既存値→正準値のコード上のマッピングは意図的に持たない(対応が「部分/別方式」の軸で
- * 誤った同一視を焼き込まないため。状態機械を導入する IMP-015 で判断する)。
+ * (例: reservations.status='confirmed'..., certificates.status='active'...,
+ * part_installations.status='draft'...)の置き換えではない。既存語彙との対応表は
+ * docs/implementation/requirement-trace.md §1。既存値→正準値のコード上のマッピングは
+ * 意図的に持たない(対応が「部分/別方式」の軸で誤った同一視を焼き込まないため。
+ * 状態機械を導入する IMP-015 で判断する)。
  */
 
 function makeGuard<T extends string>(values: readonly T[]) {
@@ -92,3 +93,36 @@ export const isPaymentState = makeGuard(PAYMENT_STATES);
 export const SYNC_STATES = ["SYNCED", "PENDING", "SYNCING", "FAILED", "CONFLICT"] as const;
 export type SyncState = (typeof SYNC_STATES)[number];
 export const isSyncState = makeGuard(SYNC_STATES);
+
+/**
+ * 部品装着の状態。v2.0 §8。
+ *
+ * 状態機械: DRAFT → INSTALLED → CUSTOMER_VERIFIED（完全凍結）。
+ * DISPUTED / VOIDED は別枝。CUSTOMER_VERIFIED 後の唯一の遷移は → VOIDED（理由必須）。
+ * DB 実装値は小文字(draft/installed/...)。正準語彙との対応は IMP-015 で判断する。
+ */
+export const PART_INSTALLATION_STATES = ["DRAFT", "INSTALLED", "CUSTOMER_VERIFIED", "DISPUTED", "VOIDED"] as const;
+export type PartInstallationState = (typeof PART_INSTALLATION_STATES)[number];
+export const isPartInstallationState = makeGuard(PART_INSTALLATION_STATES);
+
+/**
+ * 部品装着の正準遷移表。v2.0 §8 + DB 凍結ガード(part_installations_guard)準拠。
+ *
+ * key = 遷移元、value = 遷移先の配列。定義にない遷移は不正。
+ * VOIDED は終端状態（遷移先なし）。
+ */
+export const PART_INSTALLATION_TRANSITIONS: Readonly<
+  Partial<Record<PartInstallationState, readonly PartInstallationState[]>>
+> = {
+  DRAFT: ["INSTALLED"],
+  INSTALLED: ["CUSTOMER_VERIFIED", "DISPUTED", "VOIDED"],
+  CUSTOMER_VERIFIED: ["VOIDED"],
+  DISPUTED: ["CUSTOMER_VERIFIED", "VOIDED"],
+  // VOIDED: 終端 — 遷移先なし
+} as const;
+
+/** 遷移が正準遷移表に存在するか判定する。 */
+export function isValidPartInstallationTransition(from: PartInstallationState, to: PartInstallationState): boolean {
+  const targets = PART_INSTALLATION_TRANSITIONS[from];
+  return targets != null && (targets as readonly string[]).includes(to);
+}

@@ -2,22 +2,27 @@ import { describe, expect, it } from "vitest";
 import {
   CERTIFICATE_STATES,
   JOB_STATES,
+  PART_INSTALLATION_STATES,
+  PART_INSTALLATION_TRANSITIONS,
   PAYMENT_STATES,
   SEVERITIES,
   STEP_STATES,
   SYNC_STATES,
   isCertificateState,
   isJobState,
+  isPartInstallationState,
   isPaymentState,
   isSeverity,
   isStepState,
   isSyncState,
+  isValidPartInstallationTransition,
 } from "../states";
 import {
   DOMAIN_LOCALES,
   __DOMAIN_LABEL_MAPS,
   certificateStateLabel,
   jobStateLabel,
+  partInstallationStateLabel,
   paymentStateLabel,
   severityLabel,
   stepStateLabel,
@@ -31,6 +36,7 @@ const AXES = [
   { name: "certificate", values: CERTIFICATE_STATES, guard: isCertificateState, expected: 8 },
   { name: "payment", values: PAYMENT_STATES, guard: isPaymentState, expected: 9 },
   { name: "sync", values: SYNC_STATES, guard: isSyncState, expected: 5 },
+  { name: "partInstallation", values: PART_INSTALLATION_STATES, guard: isPartInstallationState, expected: 5 },
 ] as const;
 
 describe("正準語彙の値集合(v2.0 Appendix A)", () => {
@@ -66,6 +72,54 @@ describe("型ガード(不正値の扱い)", () => {
     }
     for (const legacy of ["unpaid", "paid", "partial", "refunded", "partial_refund", "voided"]) {
       expect(isPaymentState(legacy)).toBe(false);
+    }
+  });
+
+  it("part_installations の小文字 DB 値は正準値として受理しない", () => {
+    for (const dbVal of ["draft", "installed", "customer_verified", "disputed", "voided"]) {
+      expect(isPartInstallationState(dbVal)).toBe(false);
+    }
+  });
+});
+
+describe("PartInstallation 遷移表", () => {
+  it("DRAFT → INSTALLED のみ許可", () => {
+    expect(isValidPartInstallationTransition("DRAFT", "INSTALLED")).toBe(true);
+    expect(isValidPartInstallationTransition("DRAFT", "CUSTOMER_VERIFIED")).toBe(false);
+    expect(isValidPartInstallationTransition("DRAFT", "VOIDED")).toBe(false);
+  });
+
+  it("INSTALLED → CUSTOMER_VERIFIED / DISPUTED / VOIDED を許可", () => {
+    expect(isValidPartInstallationTransition("INSTALLED", "CUSTOMER_VERIFIED")).toBe(true);
+    expect(isValidPartInstallationTransition("INSTALLED", "DISPUTED")).toBe(true);
+    expect(isValidPartInstallationTransition("INSTALLED", "VOIDED")).toBe(true);
+    expect(isValidPartInstallationTransition("INSTALLED", "DRAFT")).toBe(false);
+  });
+
+  it("CUSTOMER_VERIFIED → VOIDED のみ許可（完全凍結の唯一の例外）", () => {
+    expect(isValidPartInstallationTransition("CUSTOMER_VERIFIED", "VOIDED")).toBe(true);
+    expect(isValidPartInstallationTransition("CUSTOMER_VERIFIED", "INSTALLED")).toBe(false);
+    expect(isValidPartInstallationTransition("CUSTOMER_VERIFIED", "DISPUTED")).toBe(false);
+  });
+
+  it("DISPUTED → CUSTOMER_VERIFIED / VOIDED を許可", () => {
+    expect(isValidPartInstallationTransition("DISPUTED", "CUSTOMER_VERIFIED")).toBe(true);
+    expect(isValidPartInstallationTransition("DISPUTED", "VOIDED")).toBe(true);
+    expect(isValidPartInstallationTransition("DISPUTED", "INSTALLED")).toBe(false);
+  });
+
+  it("VOIDED は終端状態 — 遷移先なし", () => {
+    for (const target of PART_INSTALLATION_STATES) {
+      expect(isValidPartInstallationTransition("VOIDED", target)).toBe(false);
+    }
+  });
+
+  it("遷移表のキーと値はすべて正準値", () => {
+    for (const [from, targets] of Object.entries(PART_INSTALLATION_TRANSITIONS)) {
+      expect(isPartInstallationState(from)).toBe(true);
+      for (const to of targets as readonly string[]) {
+        expect(isPartInstallationState(to)).toBe(true);
+      }
     }
   });
 });
@@ -107,5 +161,24 @@ describe("ロケール別ラベル", () => {
     expect(paymentStateLabel("PAID", "hi")).toBe("भुगतान पूर्ण");
     expect(stepStateLabel("COMPLETED", "id")).toBe("Selesai");
     expect(severityLabel("CRITICAL", "fil")).toBe("Kritikal");
+  });
+
+  it("PartInstallation ラベル — ja は既存 UI 表記と一致", () => {
+    expect(partInstallationStateLabel("DRAFT")).toBe("下書き");
+    expect(partInstallationStateLabel("INSTALLED")).toBe("装着済み（未確定）");
+    expect(partInstallationStateLabel("CUSTOMER_VERIFIED")).toBe("確定済み（完全凍結）");
+    expect(partInstallationStateLabel("DISPUTED")).toBe("係争中");
+    expect(partInstallationStateLabel("VOIDED")).toBe("取消済み");
+  });
+
+  it("PartInstallation ラベル — en", () => {
+    expect(partInstallationStateLabel("INSTALLED", "en")).toBe("Installed (unconfirmed)");
+    expect(partInstallationStateLabel("CUSTOMER_VERIFIED", "en")).toBe("Verified (frozen)");
+  });
+
+  it("PartInstallation ラベル — 6言語すべてで解決可能", () => {
+    for (const locale of DOMAIN_LOCALES) {
+      expect(partInstallationStateLabel("INSTALLED", locale)).toBeTruthy();
+    }
   });
 });

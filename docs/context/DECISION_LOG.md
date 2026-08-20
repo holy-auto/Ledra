@@ -23,6 +23,18 @@
 9. 公開区分: 公開可／要確認／非公開
 ```
 
+## 2026-08-20 IMP-040 部品装着状態を正準語彙 7 軸目に追加
+
+1. 日付: 2026-08-20
+2. 起きたこと: IMP-040（§8 部品装着インテグリティ）の語彙差を解消する作業。3-way match・凍結ガード・OTP 署名・TSA・アンカーなど機能は実装済みだが、Part Installation の状態語彙が `src/lib/domain/states.ts` の正準定義に含まれていなかった。DB CHECK 制約と admin ページの STATUS_LABEL に小文字で散在するのみ。
+3. 以前の考え: 6 軸（Job/Step/Severity/Certificate/Payment/Sync）で正準語彙は完結していた。部品装着は独自の `src/lib/parts/` 内で完結し、正準語彙への統合は不要と考えていた。
+4. 違和感・問題: (a) Part Installation の状態値は DB の CHECK 制約・admin ページの STATUS_LABEL・サービスコードの文字列リテラルの 3 箇所に重複定義。(b) 型ガードがなく、不正な状態値を TS レベルで検出できない。(c) 遷移表がなく、凍結ガードのルールがコード上で形式化されていない（DB トリガーのみ）。(d) 6 言語ラベルがなく、admin ページは ja ハードコードのみ。
+5. 決めたこと: (a) `PART_INSTALLATION_STATES` を 7 軸目として `states.ts` に追加（UPPERCASE 正準値: DRAFT/INSTALLED/CUSTOMER_VERIFIED/DISPUTED/VOIDED）。(b) 遷移表 `PART_INSTALLATION_TRANSITIONS` と `isValidPartInstallationTransition()` を同ファイルに追加。(c) `labels.ts` に 6 言語ラベル追加（ja は既存 admin UI 表記と一致）。(d) `derivePartsIntegrityOk()` で Certificate Gate 条件を findings から導出。(e) DB 実装値(小文字)との対応マッピングは作らない（ADR-0002 準拠、IMP-015 で判断）。
+6. 捨てた選択肢: (a) Integrity Finding Rules も states.ts に追加 — finding rule は状態機械ではなく分類値のため、正準語彙に含めない。既存の `integrityChecks.ts` の `FindingRule` 型で十分。(b) Finding statuses を正準軸に追加 — 内部の運用状態（open/acknowledged/resolved/dismissed）であり v2.0 §19 の対象外。(c) admin ページの STATUS_LABEL/RULE_LABEL を labels.ts に統合 — UI 変更はスコープ外（型基盤先行）。
+7. 判断理由: 「1 つの status カラムに混ぜない」(ADR-0002) の原則に沿って独立軸として追加。UPPERCASE 正準値は既存 6 軸と同じパターン。遷移表は DB トリガーの凍結ガードをコードレベルで形式化し、TS の型安全性を活用可能にする。
+8. まだ答えが出ていないこと: DB 実装値(小文字)→正準値(UPPERCASE)のマッピングをいつ・どこに入れるか（IMP-015 の範囲）。admin ページの重複 STATUS_LABEL/RULE_LABEL をいつ labels.ts の正準ラベルに置き換えるか。
+9. 公開区分: 公開可（「部品装着の状態管理を正準語彙に統一」「DB トリガーの凍結ルールをコードで形式化」の設計知見）
+
 ## 2026-08-20 IMP-034 タブレットレイアウト方式 — 2-pane 画面マッピング + 共用端末モード
 
 1. 日付: 2026-08-20

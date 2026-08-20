@@ -13,6 +13,18 @@
 - 対象: どの画面・API・業種向けか
 ```
 
+## 2026-08-20 IMP-040 §8 部品装着インテグリティ 正準語彙（branch impl/IMP-040-parts-integrity）
+
+- 内容: v2.0 §8 の部品装着状態を正準ドメイン語彙の 7 軸目として追加。
+  - `src/lib/domain/states.ts`: `PART_INSTALLATION_STATES`（DRAFT/INSTALLED/CUSTOMER_VERIFIED/DISPUTED/VOIDED）、
+    型ガード `isPartInstallationState`、正準遷移表 `PART_INSTALLATION_TRANSITIONS`、
+    遷移検証関数 `isValidPartInstallationTransition()`。
+  - `src/lib/domain/labels.ts`: 6 言語ラベル（ja: 既存 admin/parts-integrity UI 表記と一致）。
+  - `src/lib/parts/partsIntegrity.ts`: Certificate Gate 部品整合性条件の導出関数
+    `derivePartsIntegrityOk()` — 未解決 critical findings でブロック。
+- 対象: 型基盤。UI・DB 変更なし。DB 実装値(小文字)との対応は IMP-015 に委ねる(ADR-0002 準拠)。
+- テスト: 51 件（domain/states 37 件 + parts/partsIntegrity 7 件）
+
 ## 2026-08-20 IMP-034 §2/§4 タブレット 2-pane・共用端末 型基盤（branch impl/IMP-034-tablet-shared-device）
 
 - 内容: v2.0 §2/§4 のタブレット 2-pane レイアウトと共用端末ユーザー切替の型基盤を実装。
