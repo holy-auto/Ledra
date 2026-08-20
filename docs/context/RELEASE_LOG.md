@@ -13,6 +13,19 @@
 - 対象: どの画面・API・業種向けか
 ```
 
+## 2026-08-20 IMP-028 §12 Certificate Gate 単一評価器（branch impl/IMP-028-certificate-gate）
+
+- 内容: v2.0 §19.4 / ADR-0005 の Certificate Gate 単一評価器を実装。
+  `evaluateCertificateGate()` 純関数が 10 条件を一括評価し `CertificateGateResult`
+  （ready: boolean + 各条件の met/detail）を返す。
+  実装済み条件: required_evidence_present（写真枚数 + コーティング/PPF の Before/After）、
+  payment_policy_met（IMP-027 の evaluatePaymentPolicy 連携）、
+  no_unresolved_alerts（IMP-026 の hasUnresolvedConcerns 連携）。
+  残り 7 条件はデフォルト met:true のスタブ（後続タスクで実装時に追加）。
+  テスト 17 件。
+- 対象: バックエンド型定義・ロジック層（src/lib/certificates/gateEvaluator.ts）。
+  活性化ルートへの統合・UI 変更・DB マイグレーションなし。
+
 ## 2026-08-20 IMP-027 §11 支払いモデル — PaymentState 導出層・Policy 評価器（branch impl/IMP-027-payment-model）
 
 - 内容: v2.0 §11 Estimate/Invoice/Payment のギャップ「正準 PaymentState と既存実装語彙の橋渡し」

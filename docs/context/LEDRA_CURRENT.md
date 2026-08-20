@@ -124,6 +124,11 @@ Sentry · Resend (+ SendGrid fallback) · Anthropic (Opus 4.8 / Sonnet 4.6 / Hai
   （SegmentedControl/StatusBadge/StatusCard/NextActionCard/ProgressCard/Alert/IconButton/
   BottomSheet）+ Badge dot + Button xl。v2.0 の色トークン値は不採用・既存デザインシステム維持
   （DECISION_LOG 2026-08-19）。
+- **IMP-028（§12 Certificate Gate 単一評価器）完了**:
+  v2.0 §19.4 / ADR-0005 の Certificate Gate 10 条件を一括判定する純関数 `evaluateCertificateGate()`
+  を `src/lib/certificates/gateEvaluator.ts` に実装。実装済み条件: required_evidence_present
+  （写真枚数＋Before/After）、payment_policy_met（IMP-027 連携）、no_unresolved_alerts
+  （IMP-026 連携）。残り 7 条件はデフォルト met:true のスタブ。活性化ルートへの統合は後続。テスト 17 件。
 - **IMP-027（§11 支払いモデル — PaymentState 導出層・Policy 評価器）完了**:
   既存3系統（documents/payments/reservations）の支払いステータスから正準 PaymentState を
   導出する純関数3本（`deriveDocumentPaymentState`/`derivePoSPaymentState`/
