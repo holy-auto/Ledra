@@ -86,7 +86,11 @@ export function createWorkflowSnapshot(template: {
     templateName: template.name,
     serviceType: template.service_type,
     // deep copy — 凍結後にテンプレート側の参照を経由した変更を防止
-    steps: template.steps.map((s) => ({ ...s })),
+    steps: template.steps.map((s) => ({
+      ...s,
+      ...(s.required_photos && { required_photos: [...s.required_photos] }),
+      ...(s.checklist && { checklist: [...s.checklist] }),
+    })),
     frozenAt: new Date().toISOString(),
     templateUpdatedAt: template.updated_at,
   };

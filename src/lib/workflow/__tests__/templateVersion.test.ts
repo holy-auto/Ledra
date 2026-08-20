@@ -53,6 +53,17 @@ describe("createWorkflowSnapshot", () => {
     tmpl.steps[0].label = "変更後";
     expect(snap.steps[0].label).toBe("来店受付");
   });
+
+  it("required_photos / checklist 配列も独立コピー", () => {
+    const tmpl = mkTemplate();
+    tmpl.steps[0].required_photos = ["前方", "後方"];
+    tmpl.steps[0].checklist = ["確認A"];
+    const snap = createWorkflowSnapshot(tmpl);
+    tmpl.steps[0].required_photos.push("側面");
+    tmpl.steps[0].checklist.push("確認B");
+    expect(snap.steps[0].required_photos).toEqual(["前方", "後方"]);
+    expect(snap.steps[0].checklist).toEqual(["確認A"]);
+  });
 });
 
 // ── diffTemplateSteps ──
