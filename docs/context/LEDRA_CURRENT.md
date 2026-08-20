@@ -4,7 +4,7 @@
 > 追わず、常に最新状態だけを保つ（履歴は DECISION_LOG.md / RELEASE_LOG.md 側）。
 > 大きな変化があったら都度上書きすること。
 
-最終更新: 2026-08-19
+最終更新: 2026-08-20
 
 > 2026-07-30 追記: 代理店ポータルの営業資料は2系統。(1)「常に最新の商品資料」欄＝
 > ライブデータから自動生成される製品資料（機能紹介/料金/比較表/セキュリティ/ROI/概要）で
@@ -124,6 +124,11 @@ Sentry · Resend (+ SendGrid fallback) · Anthropic (Opus 4.8 / Sonnet 4.6 / Hai
   （SegmentedControl/StatusBadge/StatusCard/NextActionCard/ProgressCard/Alert/IconButton/
   BottomSheet）+ Badge dot + Button xl。v2.0 の色トークン値は不採用・既存デザインシステム維持
   （DECISION_LOG 2026-08-19）。
+- **IMP-022（§6 Work List & Job Hub）完了**: 予約ステータス表示を単一定義源
+  （`src/lib/domain/jobStatusDisplay.ts` — 5 値×色/ラベル/ヒント/variant）に統一し、
+  4 箇所の重複 STATUS_CONFIG を置換。ステッパー情報階層（現ステップ拡大・完了/未着手圧縮）を
+  JobStatusPanel + JobSignoffPanel に適用。Next Actions CTA をステータスで出し分け
+  （作業前は証明書/請求書非表示、完了後は予約編集非表示、キャンセルは全非表示）。テスト 7 件。
 - **IMP-021（§5 HOME — 3秒理解ホーム）完了**: ダッシュボードに NEXT ACTION セクション
   （最優先タスク 1 件を NextActionCard で提示）と今日の進捗 ProgressCard を追加。
   3 段階ワークスコープ切替（HomeScopeToggle — SegmentedControl ベース、自分/店舗/全店舗）。

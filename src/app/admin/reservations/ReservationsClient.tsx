@@ -10,6 +10,7 @@ import EmptyStateGuide from "@/components/ui/EmptyStateGuide";
 import { estimateReservationMinutes, formatMinutes } from "@/lib/booths/duration";
 import { decomposeTasks } from "@/lib/booking/tasks";
 import { menuCategoriesOf, filterMenuItems } from "@/lib/reservations/menuFilter";
+import { RESERVATION_STATUS_FLOW, reservationStatusDisplay } from "@/lib/domain/jobStatusDisplay";
 import dynamic from "next/dynamic";
 
 const CalendarView = dynamic(() => import("./CalendarView"), {
@@ -96,40 +97,10 @@ const STATUS_OPTIONS = [
   { value: "cancelled", label: "キャンセル" },
 ];
 
-const STATUS_FLOW = ["confirmed", "arrived", "in_progress", "completed"] as const;
-
-// ステータスカラー定義（スマレジ風）
-const STATUS_CONFIG: Record<
-  string,
-  {
-    label: string;
-    bg: string;
-    text: string;
-    dot: string;
-    variant: "info" | "warning" | "success" | "danger" | "default";
-  }
-> = {
-  confirmed: { label: "予約確定", bg: "bg-accent-dim", text: "text-accent-text", dot: "bg-accent", variant: "info" },
-  arrived: { label: "来店", bg: "bg-warning-dim", text: "text-warning-text", dot: "bg-warning", variant: "warning" },
-  in_progress: { label: "作業中", bg: "bg-violet-dim", text: "text-violet-text", dot: "bg-violet", variant: "info" },
-  completed: {
-    label: "完了",
-    bg: "bg-success-dim",
-    text: "text-success-text",
-    dot: "bg-success",
-    variant: "success",
-  },
-  cancelled: { label: "キャンセル", bg: "bg-inset", text: "text-secondary", dot: "bg-muted", variant: "danger" },
-};
-
-const cfg = (s: string) =>
-  STATUS_CONFIG[s] ?? {
-    label: s,
-    bg: "bg-inset",
-    text: "text-secondary",
-    dot: "bg-muted",
-    variant: "default" as const,
-  };
+// ponytail: IMP-022 — STATUS_CONFIG / STATUS_FLOW は jobStatusDisplay.ts に統合。
+// cfg() は reservationStatusDisplay() に置き換え。
+const cfg = reservationStatusDisplay;
+const STATUS_FLOW = RESERVATION_STATUS_FLOW;
 
 // ─── Styles ──────────────────────────────────────────────
 

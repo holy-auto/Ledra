@@ -23,6 +23,18 @@
 9. 公開区分: 公開可／要確認／非公開
 ```
 
+## 2026-08-20 IMP-022 予約ステータス表示を単一定義源に統一
+
+1. 日付: 2026-08-20
+2. 起きたこと: IMP-022（§6 Work List & Job Hub）で、予約ステータスの色・ラベル・ヒントが ReservationsClient / CalendarView / JobStatusPanel(types.ts) / StorefrontJobWorkflow の 4 箇所に重複定義されていた。ラベルの微妙な違い（「来店」vs「来店・受付」）もあった。
+3. 以前の考え: 各コンポーネントが自前で STATUS_CONFIG を持ち、変更時は全箇所を手動同期していた。
+4. 違和感・問題: 4 箇所の重複は保守コストが高く、ラベル不一致のリスクがある。v2.0 §6 の情報階層・CTA 規律を適用するにあたり、まずステータス表示の単一定義源が必要。
+5. 決めたこと: `src/lib/domain/jobStatusDisplay.ts` を作成し、5 値（confirmed/arrived/in_progress/completed/cancelled）の label/hint/bg/text/dot/variant を一括管理。既存の types.ts は後方互換の再エクスポートに変更。
+6. 捨てた選択肢: (a) states.ts の正準 JobState 12 値を直接使う案 — DB 移行前なので見送り（ADR-0002 に従い既存 5 値の表示統一に留める）。(b) 各コンポーネントで直接 import に全面書き換え — 消費者が多いため、types.ts の再エクスポートで後方互換を維持。
+7. 判断理由: 単一定義源 + 後方互換のコスト最小パス。正準 JobState への本格移行は IMP-015 のマッピングテーブルを待つ。
+8. まだ答えが出ていないこと: 正準 JobState 12 値への DB マイグレーション時期（IMP-015 判断）。
+9. 公開区分: 公開可
+
 ## 2026-08-19 IMP-021 NEXT ACTION は既存タイル優先順位を再利用する
 
 1. 日付: 2026-08-19
