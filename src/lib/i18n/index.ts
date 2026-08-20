@@ -10,3 +10,13 @@ export {
 } from "./locales";
 export { AUTO_GLOSSARY, getGlossaryForLocale, type AutoGlossaryEntry } from "./glossary";
 export type { TranslatedFields, WithTranslations } from "./translated";
+export {
+  findMissingTranslations,
+  findPlaceholderMismatches,
+  computeTranslationCoverage,
+  findGlossaryGaps,
+  type MissingTranslation,
+  type PlaceholderMismatch,
+  type TranslationCoverage,
+  type GlossaryGap,
+} from "./qa";
