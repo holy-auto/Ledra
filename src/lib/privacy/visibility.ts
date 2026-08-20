@@ -20,8 +20,8 @@ import type { DataClassification } from "./classification";
 export const VISIBILITY_LEVELS = ["owner_only", "tenant_internal", "partner_shared", "public"] as const;
 export type VisibilityLevel = (typeof VISIBILITY_LEVELS)[number];
 
-/** 可視性の厳密さ順序（0 = 最も制限的） */
-const VISIBILITY_ORDER: Record<VisibilityLevel, number> = {
+/** 可視性の厳密さ順序（0 = 最も制限的＝最上位特権） */
+export const VISIBILITY_ORDER: Record<VisibilityLevel, number> = {
   owner_only: 0,
   tenant_internal: 1,
   partner_shared: 2,

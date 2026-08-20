@@ -10,7 +10,7 @@
  * 純関数。IO なし。
  */
 
-import type { VisibilityLevel } from "./visibility";
+import { VISIBILITY_ORDER, type VisibilityLevel } from "./visibility";
 
 // ── マスキング戦略 ──
 
@@ -69,14 +69,6 @@ export function applyMask(
 }
 
 // ── レンディション生成 ──
-
-/** 可視性レベルに基づく順序マップ */
-const VISIBILITY_ORDER: Record<VisibilityLevel, number> = {
-  owner_only: 0,
-  tenant_internal: 1,
-  partner_shared: 2,
-  public: 3,
-};
 
 /**
  * レコードにマスキングルールを適用してレンディションを生成する。
