@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   CERTIFICATE_STATES,
+  DOCUMENT_CORRECTION_STATES,
+  DOCUMENT_CORRECTION_TRANSITIONS,
   JOB_STATES,
   PART_INSTALLATION_STATES,
   PART_INSTALLATION_TRANSITIONS,
@@ -9,18 +11,21 @@ import {
   STEP_STATES,
   SYNC_STATES,
   isCertificateState,
+  isDocumentCorrectionState,
   isJobState,
   isPartInstallationState,
   isPaymentState,
   isSeverity,
   isStepState,
   isSyncState,
+  isValidDocumentCorrectionTransition,
   isValidPartInstallationTransition,
 } from "../states";
 import {
   DOMAIN_LOCALES,
   __DOMAIN_LABEL_MAPS,
   certificateStateLabel,
+  documentCorrectionStateLabel,
   jobStateLabel,
   partInstallationStateLabel,
   paymentStateLabel,
@@ -37,6 +42,7 @@ const AXES = [
   { name: "payment", values: PAYMENT_STATES, guard: isPaymentState, expected: 9 },
   { name: "sync", values: SYNC_STATES, guard: isSyncState, expected: 5 },
   { name: "partInstallation", values: PART_INSTALLATION_STATES, guard: isPartInstallationState, expected: 5 },
+  { name: "documentCorrection", values: DOCUMENT_CORRECTION_STATES, guard: isDocumentCorrectionState, expected: 4 },
 ] as const;
 
 describe("正準語彙の値集合(v2.0 Appendix A)", () => {
@@ -119,6 +125,35 @@ describe("PartInstallation 遷移表", () => {
       expect(isPartInstallationState(from)).toBe(true);
       for (const to of targets as readonly string[]) {
         expect(isPartInstallationState(to)).toBe(true);
+      }
+    }
+  });
+});
+
+describe("DocumentCorrection 遷移表(ADR-0004)", () => {
+  it("PENDING → APPROVED / REJECTED のみ許可", () => {
+    expect(isValidDocumentCorrectionTransition("PENDING", "APPROVED")).toBe(true);
+    expect(isValidDocumentCorrectionTransition("PENDING", "REJECTED")).toBe(true);
+    expect(isValidDocumentCorrectionTransition("PENDING", "APPLIED")).toBe(false);
+  });
+
+  it("APPROVED → APPLIED のみ許可", () => {
+    expect(isValidDocumentCorrectionTransition("APPROVED", "APPLIED")).toBe(true);
+    expect(isValidDocumentCorrectionTransition("APPROVED", "PENDING")).toBe(false);
+  });
+
+  it("REJECTED / APPLIED は終端状態", () => {
+    for (const target of DOCUMENT_CORRECTION_STATES) {
+      expect(isValidDocumentCorrectionTransition("REJECTED", target)).toBe(false);
+      expect(isValidDocumentCorrectionTransition("APPLIED", target)).toBe(false);
+    }
+  });
+
+  it("遷移表のキーと値はすべて正準値", () => {
+    for (const [from, targets] of Object.entries(DOCUMENT_CORRECTION_TRANSITIONS)) {
+      expect(isDocumentCorrectionState(from)).toBe(true);
+      for (const to of targets as readonly string[]) {
+        expect(isDocumentCorrectionState(to)).toBe(true);
       }
     }
   });

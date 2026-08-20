@@ -14,6 +14,7 @@
  */
 
 import type { DocumentItem, DocType, DocumentStatus } from "@/types/document";
+import { type DocumentCorrectionState, isValidDocumentCorrectionTransition } from "@/lib/domain/states";
 
 // ── 型 ──
 
@@ -88,7 +89,12 @@ export type DocumentCorrectionCategory =
   /** その他の誤り。 */
   | "other";
 
-/** 帳票訂正リクエストのステータス。 */
+/**
+ * 帳票訂正リクエストのステータス。
+ *
+ * 正準語彙は states.ts の DocumentCorrectionState（大文字）。
+ * ここでは DB カラム値（小文字）の型エイリアスを提供する。
+ */
 export type DocumentCorrectionStatus = "pending" | "approved" | "rejected" | "applied";
 
 // ── 純関数 ──
@@ -117,16 +123,15 @@ export function isCorrectable(status: DocumentStatus): boolean {
 
 /**
  * 訂正リクエストの状態遷移が有効か判定する。
+ *
+ * 正準遷移表 (states.ts DOCUMENT_CORRECTION_TRANSITIONS) に委譲。
+ * 小文字の DB 値を大文字の正準値に変換して判定する。
  */
-const CORRECTION_TRANSITIONS: Record<DocumentCorrectionStatus, readonly DocumentCorrectionStatus[]> = {
-  pending: ["approved", "rejected"],
-  approved: ["applied"],
-  rejected: [],
-  applied: [],
-};
-
 export function isValidCorrectionTransition(from: DocumentCorrectionStatus, to: DocumentCorrectionStatus): boolean {
-  return (CORRECTION_TRANSITIONS[from] ?? []).includes(to);
+  return isValidDocumentCorrectionTransition(
+    from.toUpperCase() as DocumentCorrectionState,
+    to.toUpperCase() as DocumentCorrectionState,
+  );
 }
 
 /**

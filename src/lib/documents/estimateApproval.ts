@@ -128,6 +128,11 @@ export function createApprovalSnapshot(
  *
  * description をキーとして明細を照合する。
  * 管理画面で「承認済み金額から ¥X 変更されています」等の警告に使用。
+ *
+ * ponytail: description が重複する明細（同一品目名で数量・単価違い等）は
+ * 後勝ちで上書きされ差分が欠落する。DocumentItem に id が追加されたら
+ * id ベースの照合に切り替える。現状の見積 UI は同一 description の重複を
+ * 許容していないため実害は低い。
  */
 export function diffEstimateRevision(
   snapshot: EstimateApprovalSnapshot,
@@ -216,8 +221,9 @@ export function isApprovalTrackable(docType: DocType | string): boolean {
 /**
  * 見積変換時（estimate → invoice 等）に承認済み金額を引き継ぐべきか判定する。
  *
- * 見積が承認済みで、その後変更がない場合のみ true。
- * 変更がある場合は再承認を促す。
+ * 合計額の一致のみで判定する軽量ゲート。明細構成の精密な差分チェックには
+ * diffEstimateRevision() を使用する。合計が一致していれば変換フローを
+ * ブロックしない設計（明細入替は diffEstimateRevision で警告表示）。
  */
 export function shouldCarryApproval(
   snapshot: EstimateApprovalSnapshot | null | undefined,

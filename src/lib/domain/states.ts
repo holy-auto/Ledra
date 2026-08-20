@@ -126,3 +126,31 @@ export function isValidPartInstallationTransition(from: PartInstallationState, t
   const targets = PART_INSTALLATION_TRANSITIONS[from];
   return targets != null && (targets as readonly string[]).includes(to);
 }
+
+/**
+ * 帳票訂正リクエストの状態。ADR-0004 準拠（IMP-043）。
+ *
+ * pending → approved / rejected → applied の一方向フロー。
+ * 確定済み帳票（sent/accepted/overdue）の修正に使用。
+ * document_corrections テーブルの status 列に格納する想定。
+ */
+export const DOCUMENT_CORRECTION_STATES = ["PENDING", "APPROVED", "REJECTED", "APPLIED"] as const;
+export type DocumentCorrectionState = (typeof DOCUMENT_CORRECTION_STATES)[number];
+export const isDocumentCorrectionState = makeGuard(DOCUMENT_CORRECTION_STATES);
+
+export const DOCUMENT_CORRECTION_TRANSITIONS: Readonly<
+  Partial<Record<DocumentCorrectionState, readonly DocumentCorrectionState[]>>
+> = {
+  PENDING: ["APPROVED", "REJECTED"],
+  APPROVED: ["APPLIED"],
+  // REJECTED: 終端 — 再提出は新規リクエスト
+  // APPLIED: 終端 — 適用済み
+} as const;
+
+export function isValidDocumentCorrectionTransition(
+  from: DocumentCorrectionState,
+  to: DocumentCorrectionState,
+): boolean {
+  const targets = DOCUMENT_CORRECTION_TRANSITIONS[from];
+  return targets != null && (targets as readonly string[]).includes(to);
+}

@@ -110,14 +110,14 @@ export function bridgePosToLedger(transactions: readonly PosTransaction[]): PosB
   const unbridgeable: PosTransaction[] = [];
 
   for (const tx of transactions) {
+    // voided → 元帳に反映しない（取消済み）— documentId チェックより先
+    if (tx.status === "voided") continue;
+
     // 帳票なし → 元帳に記帳不可
     if (!tx.documentId) {
       unbridgeable.push(tx);
       continue;
     }
-
-    // voided → 元帳に反映しない（取消済み）
-    if (tx.status === "voided") continue;
 
     const method = mapProviderToMethod(tx.provider);
     const date = tx.paidAt.slice(0, 10); // ISO → YYYY-MM-DD

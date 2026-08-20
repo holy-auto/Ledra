@@ -45,6 +45,13 @@ describe("bridgePosToLedger", () => {
     expect(result.unbridgeable).toHaveLength(0);
   });
 
+  it("voided + documentId なし → unbridgeable ではなくスキップ", () => {
+    const result = bridgePosToLedger([mkTx({ status: "voided", documentId: null })]);
+    expect(result.entries).toHaveLength(0);
+    expect(result.refundEntries).toHaveLength(0);
+    expect(result.unbridgeable).toHaveLength(0);
+  });
+
   it("refunded → entries + refundEntries の両方", () => {
     const result = bridgePosToLedger([mkTx({ status: "refunded", refundAmount: 50000 })]);
     expect(result.entries).toHaveLength(1);

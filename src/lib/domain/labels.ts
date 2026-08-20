@@ -13,6 +13,7 @@
  */
 import type {
   CertificateState,
+  DocumentCorrectionState,
   JobState,
   PartInstallationState,
   PaymentState,
@@ -422,6 +423,29 @@ const PART_INSTALLATION_STATE_LABELS: LabelMaps<PartInstallationState> = {
   },
 };
 
+/**
+ * 帳票訂正リクエストの状態ラベル(IMP-043)。ADR-0004 準拠。
+ * 正準語彙は states.ts の DOCUMENT_CORRECTION_STATES。
+ */
+const DOCUMENT_CORRECTION_STATE_LABELS: LabelMaps<DocumentCorrectionState> = {
+  ja: {
+    PENDING: "申請中",
+    APPROVED: "承認済み",
+    REJECTED: "却下",
+    APPLIED: "適用済み",
+  },
+  en: {
+    PENDING: "Pending",
+    APPROVED: "Approved",
+    REJECTED: "Rejected",
+    APPLIED: "Applied",
+  },
+  vi: { PENDING: "Đang chờ", APPROVED: "Đã duyệt", REJECTED: "Từ chối", APPLIED: "Đã áp dụng" },
+  id: { PENDING: "Menunggu", APPROVED: "Disetujui", REJECTED: "Ditolak", APPLIED: "Diterapkan" },
+  fil: { PENDING: "Nakabinbin", APPROVED: "Aprubado", REJECTED: "Tinanggihan", APPLIED: "Inilapat" },
+  hi: { PENDING: "लंबित", APPROVED: "स्वीकृत", REJECTED: "अस्वीकृत", APPLIED: "लागू" },
+};
+
 function pick<T extends string>(maps: LabelMaps<T>, code: T, locale: DomainLocale): string {
   // 型を欺いて legacy 値等が渡された場合に「undefined」を描画せず、コードをそのまま返す
   // (statusMaps.ts の getStatusEntry と同じ境界防御)
@@ -442,6 +466,10 @@ export const syncStateLabel = (s: SyncState, locale: DomainLocale = DEFAULT_DOMA
   pick(SYNC_STATE_LABELS, s, locale);
 export const partInstallationStateLabel = (s: PartInstallationState, locale: DomainLocale = DEFAULT_DOMAIN_LOCALE) =>
   pick(PART_INSTALLATION_STATE_LABELS, s, locale);
+export const documentCorrectionStateLabel = (
+  s: DocumentCorrectionState,
+  locale: DomainLocale = DEFAULT_DOMAIN_LOCALE,
+) => pick(DOCUMENT_CORRECTION_STATE_LABELS, s, locale);
 
 /** テスト用に全マップを公開(アプリコードからは個別の *Label 関数を使うこと)。 */
 export const __DOMAIN_LABEL_MAPS = {
@@ -452,4 +480,5 @@ export const __DOMAIN_LABEL_MAPS = {
   payment: PAYMENT_STATE_LABELS,
   sync: SYNC_STATE_LABELS,
   partInstallation: PART_INSTALLATION_STATE_LABELS,
+  documentCorrection: DOCUMENT_CORRECTION_STATE_LABELS,
 } as const;
