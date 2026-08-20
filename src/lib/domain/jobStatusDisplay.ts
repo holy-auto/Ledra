@@ -72,12 +72,7 @@ export const RESERVATION_STATUS_DISPLAY: Record<ReservationStatus, ReservationSt
 };
 
 /** レガシーフロー (テンプレートなし) のステータス進行順。 */
-export const RESERVATION_STATUS_FLOW: readonly ReservationStatus[] = [
-  "confirmed",
-  "arrived",
-  "in_progress",
-  "completed",
-];
+export const RESERVATION_STATUS_FLOW = ["confirmed", "arrived", "in_progress", "completed"] as const;
 
 /**
  * 安全な lookup。未知のステータス文字列にもフォールバックを返す。

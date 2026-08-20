@@ -10,7 +10,11 @@ import EmptyStateGuide from "@/components/ui/EmptyStateGuide";
 import { estimateReservationMinutes, formatMinutes } from "@/lib/booths/duration";
 import { decomposeTasks } from "@/lib/booking/tasks";
 import { menuCategoriesOf, filterMenuItems } from "@/lib/reservations/menuFilter";
-import { RESERVATION_STATUS_FLOW, reservationStatusDisplay } from "@/lib/domain/jobStatusDisplay";
+import {
+  RESERVATION_STATUS_FLOW,
+  RESERVATION_STATUS_DISPLAY,
+  reservationStatusDisplay,
+} from "@/lib/domain/jobStatusDisplay";
 import dynamic from "next/dynamic";
 
 const CalendarView = dynamic(() => import("./CalendarView"), {
@@ -90,11 +94,7 @@ type WorkflowTemplate = {
 
 const STATUS_OPTIONS = [
   { value: "all", label: "すべて" },
-  { value: "confirmed", label: "予約確定" },
-  { value: "arrived", label: "来店" },
-  { value: "in_progress", label: "作業中" },
-  { value: "completed", label: "完了" },
-  { value: "cancelled", label: "キャンセル" },
+  ...Object.entries(RESERVATION_STATUS_DISPLAY).map(([value, d]) => ({ value, label: d.label })),
 ];
 
 // ponytail: IMP-022 — STATUS_CONFIG / STATUS_FLOW は jobStatusDisplay.ts に統合。
