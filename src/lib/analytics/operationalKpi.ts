@@ -87,12 +87,14 @@ export interface OperationalKPIs {
  * 分子 = VERIFIED に到達した証明書
  *
  * ponytail: NOT_READY は「まだ発行条件が揃っていない下書き」なので分母から除外。
- * SUPERSEDED は版遷移で旧版が通った VERIFIED なので分子に含めない（最新版のみ数える）。
+ * SUPERSEDED は版遷移で旧版（既に VERIFIED 通過済み）なので分母・分子ともに除外
+ * — 現行版のみで率を測る。
  */
 export function computeVerifiedRate(counts: CertificateStateCounts): number | null {
   const notReady = counts.NOT_READY ?? 0;
+  const superseded = counts.SUPERSEDED ?? 0;
   const total = Object.values(counts).reduce((s, n) => s + (n ?? 0), 0);
-  const denominator = total - notReady;
+  const denominator = total - notReady - superseded;
   if (denominator <= 0) return null;
   const verified = counts.VERIFIED ?? 0;
   return Math.round((verified / denominator) * 10000) / 100;

@@ -41,6 +41,13 @@ describe("computeVerifiedRate", () => {
   it("空 → null", () => {
     expect(computeVerifiedRate({})).toBeNull();
   });
+
+  it("SUPERSEDED は分母・分子から除外（旧版は率に影響しない）", () => {
+    // 10 VERIFIED + 2 SUPERSEDED → 分母 = 10（SUPERSEDED 除外）、100%
+    expect(computeVerifiedRate({ VERIFIED: 10, SUPERSEDED: 2 })).toBe(100);
+    // 7 VERIFIED + 3 READY + 5 SUPERSEDED → 分母 = 10（SUPERSEDED 除外）、70%
+    expect(computeVerifiedRate({ VERIFIED: 7, READY: 3, SUPERSEDED: 5 })).toBe(70);
+  });
 });
 
 // ── computeEvidenceSufficiencyRate ──
