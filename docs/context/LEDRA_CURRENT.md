@@ -124,6 +124,10 @@ Sentry · Resend (+ SendGrid fallback) · Anthropic (Opus 4.8 / Sonnet 4.6 / Hai
   （SegmentedControl/StatusBadge/StatusCard/NextActionCard/ProgressCard/Alert/IconButton/
   BottomSheet）+ Badge dot + Button xl。v2.0 の色トークン値は不採用・既存デザインシステム維持
   （DECISION_LOG 2026-08-19）。
+- **IMP-042（WORKFLOW_BUILDER 版管理テンプレート型基盤）完了**:
+  ワークフローテンプレートの版管理型基盤。WorkflowSnapshot（ジョブ開始時テンプレート凍結）+
+  TemplateStep 正準共有型（6+ 箇所の散在型定義を統一）+ diffTemplateSteps（steps 差分比較）+
+  isSnapshotStale（凍結スナップショット乖離判定）。DB マイグレーションは消費タスクで実施。テスト 20 件。
 - **IMP-041（§21 設備/リフト稼働 占有予測・NEXT ACTION シグナル）完了**:
   ブース占有予測の純関数群（peakConcurrent/稼働率/定員超過検出/空き推定/空きブース検索）+
   NEXT ACTION ブースシグナル（booth_freed/assign_booth/capacity_exceeded/booth_overloaded の

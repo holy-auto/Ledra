@@ -13,6 +13,22 @@
 - 対象: どの画面・API・業種向けか
 ```
 
+## 2026-08-20 IMP-042 WORKFLOW_BUILDER 版管理テンプレート型基盤（branch impl/IMP-042-workflow-versioning）
+
+- 内容: ワークフローテンプレートの版管理（バージョニング + ジョブ実行時凍結）の型基盤を実装。
+  - `src/lib/workflow/templateVersion.ts`: 版管理の型定義と純関数
+    - `WorkflowSnapshot` — ジョブ開始時にテンプレートを凍結する不変スナップショット型
+    - `TemplateStep` — 6+ 箇所に散在していた WorkflowStep 型の正準共有定義
+    - `createWorkflowSnapshot()` — テンプレートから deep copy スナップショットを生成
+    - `diffTemplateSteps()` — 2 つの steps 配列を key ベースで比較（added/removed/modified/reordered）
+    - `isSnapshotStale()` — 凍結スナップショットと現行テンプレートの乖離判定
+    - `resolveStepFromSnapshot()` — 凍結スナップショットからステップ解決
+    - `computeSnapshotProgress()` — 凍結スナップショットからの進捗計算
+  - テスト 20 件追加
+- 対象: 全施工店（ワークフローテンプレート利用店舗）
+- 依存: IMP-015, IMP-013
+- 注記: DB マイグレーション（reservations.workflow_snapshot jsonb 列追加等）は消費タスクで実施。型基盤先行パターン。
+
 ## 2026-08-20 IMP-041 §21 設備/リフト稼働 占有予測・NEXT ACTION シグナル（branch impl/IMP-041-booth-occupancy）
 
 - 内容: ブース占有予測とNEXT ACTIONブースシグナルの型基盤を実装。

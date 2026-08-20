@@ -23,6 +23,18 @@
 9. 公開区分: 公開可／要確認／非公開
 ```
 
+## 2026-08-20 IMP-042 ワークフローテンプレート版管理（スナップショット方式）
+
+1. 日付: 2026-08-20
+2. 起きたこと: IMP-042（§9 WORKFLOW_BUILDER 版管理テンプレート）の実装。テンプレート編集は in-place 上書きで、実行中ジョブの版凍結がない。テンプレートを編集すると進行中のすべてのジョブが新しい steps を参照してしまう。
+3. 以前の考え: `workflow_templates` テーブルにバージョン列を追加して版管理する方法を想定していた。
+4. 違和感・問題: (a) テンプレート編集と進行中ジョブの独立性がない。(b) ステップの追加・削除・並替えが進行中ジョブの progress_pct やステップ遷移を壊す。(c) WorkflowStep（TemplateStep）型が Zod スキーマ・API ルート・クライアントコンポーネント・DB マイグレーションなど 6 箇所以上で重複定義されていた。
+5. 決めたこと: (a) `TemplateStep` を `templateVersion.ts` に正準型として定義。(b) `WorkflowSnapshot` 型 — ジョブ開始時にテンプレートを deep copy で凍結し、reservations テーブルに jsonb 格納する想定。(c) 差分検出 `diffTemplateSteps()` — key ベースで added/removed/modified/reordered を分類。(d) 鮮度判定 `isSnapshotStale()` — updated_at 高速パス＋steps 内容比較。(e) ヘルパー `resolveStepFromSnapshot()` / `computeSnapshotProgress()`。DB マイグレーション（`reservations.workflow_snapshot` jsonb 列追加等）は消費タスクで実施。
+6. 捨てた選択肢: (a) workflow_templates にバージョン列を追加し版ごとにレコード管理 — スナップショット方式の方が単純で、既存 JSONB パターンと一致する。(b) 今すぐ DB マイグレーション実施 — コンシューマ（start-workflow API 等）がまだないため YAGNI。型基盤先行パターンに従い型と純関数のみ先行。(c) 6 箇所の WorkflowStep 型を今すぐ統一 — 影響範囲が広く、各消費箇所の修正は個別タスクで実施。
+7. 判断理由: スナップショット方式は既存の JSONB 格納パターン（`reservations.workflow_template_id` + steps 参照）と整合する。ジョブ単位で凍結するため、テンプレートの任意の編集から完全に独立。型基盤を先に確定させることで、下流の start-workflow API や管理画面の「テンプレート更新警告」が安全に構築できる。
+8. まだ答えが出ていないこと: (a) `reservations.workflow_snapshot` 列の DB マイグレーション時期（start-workflow API 実装時）。(b) 6 箇所以上の WorkflowStep 型重複の統一タイミング。(c) スナップショットが stale な場合の管理画面 UX（警告のみ or 更新反映オプション）。
+9. 公開区分: 公開可
+
 ## 2026-08-20 IMP-041 ブース占有予測・NEXT ACTION シグナルの型基盤方式
 
 1. 日付: 2026-08-20
