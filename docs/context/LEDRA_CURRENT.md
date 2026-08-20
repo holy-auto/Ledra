@@ -124,6 +124,12 @@ Sentry · Resend (+ SendGrid fallback) · Anthropic (Opus 4.8 / Sonnet 4.6 / Hai
   （SegmentedControl/StatusBadge/StatusCard/NextActionCard/ProgressCard/Alert/IconButton/
   BottomSheet）+ Badge dot + Button xl。v2.0 の色トークン値は不採用・既存デザインシステム維持
   （DECISION_LOG 2026-08-19）。
+- **IMP-030（§12.3-12.4 訂正・supersede・Integrity Incident・revoke 型基盤）完了**:
+  訂正リクエスト型（5 状態 × 5 カテゴリ + 訂正可否判定 + 状態遷移検証）、
+  Integrity Incident 型（6 カテゴリ × 3 重大度 × 5 状態 + revoke 可否判定 + 即時 revoke 判定）、
+  版遷移ヘルパー（evaluateSupersede/evaluateRevoke/resolveVersionRedirect）を
+  `src/lib/certificates/` に実装。Certificate Gate の `no_pending_corrections` 条件を
+  実装接続（`correctionRequests` 入力追加、後方互換あり）。DB マイグレーションなし。テスト 57 件。
 - **IMP-029（§13 通知・エスカレーション・Deep Link 中央通知エンジン型基盤）完了**:
   中央通知エンジンの型基盤を `src/lib/notifications/` に実装。(1) 通知タイプカタログ
   （18 タイプ × Severity 3 段 × Channel 6 種 × Category 11 種）、(2) Deep Link 生成

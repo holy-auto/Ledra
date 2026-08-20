@@ -13,6 +13,23 @@
 - 対象: どの画面・API・業種向けか
 ```
 
+## 2026-08-20 IMP-030 §12.3-12.4 訂正・supersede・Integrity Incident・revoke 型基盤（branch impl/IMP-030-correction-supersede-revoke）
+
+- 内容: v2.0 §12.3-12.4 / ADR-0004 の訂正ワークフロー・Integrity Incident・版遷移の
+  型基盤を `src/lib/certificates/` に実装。
+  - `correction.ts`: 訂正リクエスト型（5 状態 × 5 カテゴリ）+ 訂正可否判定
+    （VERIFIED + 未処理訂正なしのみ許可）+ 状態遷移検証 + Gate 条件用
+    `hasPendingOrApprovedCorrection()`。
+  - `integrityIncident.ts`: Integrity Incident 型（6 カテゴリ × 3 重大度 × 5 状態）
+    + revoke 可否判定 + 即時 revoke 判定（critical=全即時、high+tampering=即時）。
+  - `versionTransition.ts`: `evaluateSupersede()`（VERIFIED→SUPERSEDED）+
+    `evaluateRevoke()`（VERIFIED→REVOKED）+ `resolveVersionRedirect()`
+    （旧版アクセス時の誘導情報）。
+  - `gateEvaluator.ts` 変更: `no_pending_corrections` 条件を実装接続。
+    `correctionRequests` 入力追加、後方互換あり。
+  - テスト 57 件（correction 21 + integrityIncident 15 + versionTransition 7 + gate 統合 7 + 定数 7）。
+- 対象: 全テナント共通の証明書訂正・無効化基盤。DB マイグレーションなし。
+
 ## 2026-08-20 IMP-029 §13 通知・エスカレーション・Deep Link 中央通知エンジン型基盤（branch impl/IMP-029-notification-engine）
 
 - 内容: v2.0 §13 の中央通知エンジン型基盤を `src/lib/notifications/` に実装。

@@ -23,6 +23,18 @@
 9. 公開区分: 公開可／要確認／非公開
 ```
 
+## 2026-08-20 IMP-030 訂正・revoke の型基盤方式 — 型基盤先行 vs DB+ルート一括実装
+
+1. 日付: 2026-08-20
+2. 起きたこと: v2.0 §12.3-12.4（訂正・supersede・Integrity Incident・revoke）の実装に着手。既存は `certificate_edit_histories`（フィールド差分）+ `certificate_versions`（内容ハッシュ Phase 1）+ void ルート（status=void）があるが、訂正リクエスト→承認ワークフロー、Integrity Incident 型、版遷移（SUPERSEDED/REVOKED）のロジックがない。
+3. 以前の考え: ADR-0004 で「訂正は版の追加」「リクエスト→承認→訂正レコード」と決定済み。具体的な実装タイミングは未定だった。
+4. 違和感・問題: 訂正リクエストテーブル・Incident テーブルの DB マイグレーションは IMP-031（例外ワークフロー）と合わせて設計すべき共通パターンがある。void と REVOKED の関係整理（void=日常取り下げ、REVOKED=公式無効化）もルート側の変更を伴う。型基盤なしに DB を作ると、後からスキーマ変更が発生するリスクがある。
+5. 決めたこと: 訂正リクエスト型・Incident 型・版遷移ヘルパーを純関数で先に定義し、Certificate Gate の `no_pending_corrections` 条件を実装接続する。DB マイグレーション・API ルート変更は後続タスク。
+6. 捨てた選択肢: (a) DB テーブル（correction_requests, integrity_incidents）+ API ルート + UI を一括実装 — スコープが大きく、IMP-031 との依存関係が複雑になる。(b) 型だけ定義して Gate 接続しない — Gate の `no_pending_corrections` が永久にスタブのまま残り、後続タスクで接続を忘れるリスク。
+7. 判断理由: 型基盤を先に確定することで、後続の DB 設計・ルート実装は「型に合わせるだけ」で済む。Gate 接続を含めることで、呼び出し側が `correctionRequests` を渡せばすぐに訂正ブロックが効く（段階的に有効化可能）。後方互換（`noPendingCorrections` 直接フラグ）も維持。
+8. まだ答えが出ていないこと: void と REVOKED の関係の既存ルート統合タイミング。correction_requests テーブルの具体的なスキーマ（Incident との外部キー関係）。旧 QR → 最新版誘導の公開ルート側実装。
+9. 公開区分: 公開可
+
 ## 2026-08-20 IMP-029 通知エンジンの型基盤方式 — 純関数型基盤 vs 統合 dispatch 一括実装
 
 1. 日付: 2026-08-20
