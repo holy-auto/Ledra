@@ -124,6 +124,10 @@ Sentry · Resend (+ SendGrid fallback) · Anthropic (Opus 4.8 / Sonnet 4.6 / Hai
   （SegmentedControl/StatusBadge/StatusCard/NextActionCard/ProgressCard/Alert/IconButton/
   BottomSheet）+ Badge dot + Button xl。v2.0 の色トークン値は不採用・既存デザインシステム維持
   （DECISION_LOG 2026-08-19）。
+- **IMP-034（§2/§4 タブレット 2-pane・共用端末 型基盤）完了**:
+  3 段階デバイスクラス（mobile/tablet/desktop）、タブレット 2-pane 画面マッピング（4 ペア）、
+  共用端末セッションモード・切替認証方式を型定義。UI コンポーネント・認証フロー変更なし。
+  テスト 29 件。
 - **IMP-033（§2 MORE メニュー IA 型基盤）完了**:
   MORE（その他）タブの項目構成を正準定義する `src/lib/navigation/moreMenu.ts` を実装。
   MoreMenuItem 型（10 項目、4 セクション）、権限ベースフィルタリング、

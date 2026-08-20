@@ -13,6 +13,19 @@
 - 対象: どの画面・API・業種向けか
 ```
 
+## 2026-08-20 IMP-034 §2/§4 タブレット 2-pane・共用端末 型基盤（branch impl/IMP-034-tablet-shared-device）
+
+- 内容: v2.0 §2/§4 のタブレット 2-pane レイアウトと共用端末ユーザー切替の型基盤を実装。
+  - `src/lib/navigation/deviceClass.ts`: 3 段階デバイスクラス（mobile/tablet/desktop）、
+    ブレークポイント定数（768px/1024px）、`resolveDeviceClass()` 判定関数。
+  - `src/lib/navigation/tabletLayout.ts`: タブレット 2-pane 画面マッピング（作業/車両/証明書/顧客の 4 ペア）、
+    ペイン幅比率定義、`resolveLayoutMode()` / `findPaneConfig()` レイアウト解決関数。
+  - `src/lib/auth/sharedDevice.ts`: 共用端末セッションモード（personal/shared）、
+    切替認証方式（pin/biometric/full_auth）、端末信頼度連携、自動ロック設定。
+  - テスト 29 件（ナビゲーション計 78 件）。
+  - UI コンポーネント・認証フロー変更なし（型基盤のみ）。
+- 対象: タブレット端末最適化 / 整備工場共用端末
+
 ## 2026-08-20 IMP-033 §2 MORE メニュー IA 型基盤（branch impl/IMP-033-more-menu）
 
 - 内容: v2.0 §2 MORE（その他）タブの項目構成を正準定義する型基盤を実装。
