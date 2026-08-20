@@ -13,6 +13,21 @@
 - 対象: どの画面・API・業種向けか
 ```
 
+## 2026-08-20 IMP-025 §9 車両パスポート基盤 — PII遮断体系検証・車両顧客関係型モデル（branch impl/IMP-025-vehicle-passport / PR #TBD）
+
+- 内容: v2.0 §9 車両デジタルパスポートの残ギャップ2件をクローズ。
+  (1) PII遮断体系検証 — `piiFields.ts` でコンパイル時型アサーション4型分（PassportCertCard /
+  PassportData / PassportVerifyResponse / PublicTransferView）を導入。公開サーフェスの型キーが
+  PII フィールドと重複しないことを TS 型レベルで保証。`piiShield.test.ts` で実行時検証18件
+  （クエリ SELECT 列監査、フィールド形状検証、前所有者 PII 非露出検証）。
+  (2) 車両顧客関係型モデル — ADR-0006 に基づく `customerRelation.ts` を新設。
+  `VehicleCustomerRelation` / `VehicleRelationEndReason` / `PublicVehicleIdentity` 型と
+  `VEHICLE_TABLE_PII_COLUMNS` / `PASSPORT_TABLE_PII_COLUMNS` レジストリを定義。
+  DB マイグレーション（`vehicle_customer_relationships` テーブル化）は IMP-050 に委譲。
+  車両パスポートの既存インフラ（DB / 公開ページ / 所有権移転 / API / メタアンカー）は
+  変更なし — これらは既に稼働中。
+- 対象: パスポート公開サーフェス全般。IMP-026/050 の前提条件。
+
 ## 2026-08-20 IMP-024 §7 音声→AI構造化→人間確認 — オフライン検知・多言語音声・備考接続（branch impl/IMP-024-voice / PR #TBD）
 
 - 内容: v2.0 §7 の音声メモ→AI構造化パイプラインの統合ギャップ3件をクローズ。
