@@ -26,6 +26,8 @@ type CommonProps = {
   serviceType?: string;
   vehicleHint?: string;
   customerHint?: string;
+  /** BCP 47 音声認識言語。省略時 "ja-JP"。 */
+  speechLang?: string;
 };
 type CertVariantProps = CommonProps & {
   variant?: "certificate";
@@ -57,7 +59,7 @@ function getSpeechRecognitionCtor(): null | (new () => SpeechRecognitionInstance
 }
 
 export default function VoiceMemoPanel(props: Props) {
-  const { serviceType, vehicleHint, customerHint } = props;
+  const { serviceType, vehicleHint, customerHint, speechLang } = props;
   const isNote = props.variant === "note";
   const [open, setOpen] = useState(false);
   const [supported, setSupported] = useState(true);
@@ -78,7 +80,7 @@ export default function VoiceMemoPanel(props: Props) {
     const rec = new Ctor();
     rec.continuous = true;
     rec.interimResults = true;
-    rec.lang = "ja-JP";
+    rec.lang = speechLang ?? "ja-JP";
     rec.onresult = (ev: any) => {
       let finalText = "";
       let interimText = "";
@@ -106,7 +108,7 @@ export default function VoiceMemoPanel(props: Props) {
         // already stopped
       }
     };
-  }, []);
+  }, [speechLang]);
 
   const startRecording = () => {
     setError(null);
@@ -130,6 +132,10 @@ export default function VoiceMemoPanel(props: Props) {
     const finalTranscript = (transcript + (interim ? ` ${interim}` : "")).trim();
     if (!finalTranscript) {
       setError("音声メモが空です");
+      return;
+    }
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      setError("オフラインのため AI 整形を実行できません。接続を確認してください。");
       return;
     }
     setGenerating(true);
