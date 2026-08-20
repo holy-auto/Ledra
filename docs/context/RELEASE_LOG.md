@@ -13,6 +13,22 @@
 - 対象: どの画面・API・業種向けか
 ```
 
+## 2026-08-20 IMP-029 §13 通知・エスカレーション・Deep Link 中央通知エンジン型基盤（branch impl/IMP-029-notification-engine）
+
+- 内容: v2.0 §13 の中央通知エンジン型基盤を `src/lib/notifications/` に実装。
+  既存の用途別通知モジュール（bookingNotify, SLA cron 等）は変更せず共存。
+  - `types.ts`: 18 タイプカタログ（booking_created, order_created, sla_overdue 等）、
+    Severity 3 段（urgent/action_required/informational）、Channel 6 種、Category 11 種。
+    `isActionRequired()` で要対応判定、`getTypeConfig()` で未知タイプの安全フォールバック。
+  - `deepLink.ts`: 10 エンティティ × 3 ロール（admin/insurer/customer）の Deep Link 生成。
+    実ルート構造（`/admin/jobs/{id}`, `/insurer/cases/{id}` 等）に合致。
+  - `escalation.ts`: insurer-sla-alerts cron の純関数部分を汎用化した SLA エスカレーション評価器。
+    `evaluateEscalation()` + `shouldEscalate()`（重複抑止・エスカレーション遷移）。
+  - `routing.ts`: `resolveChannels()`（disable/add override 付き）、`countActionRequired()`
+    （未読 × urgent/action_required）、`groupByCategory()`、`filterBySeverity()`。
+  - テスト 35 件（types 5 + deepLink 9 + escalation 10 + routing 11）。
+- 対象: 全テナント・保険会社共通の通知基盤。DB マイグレーションなし。
+
 ## 2026-08-20 IMP-028 §12 Certificate Gate 単一評価器（branch impl/IMP-028-certificate-gate）
 
 - 内容: v2.0 §19.4 / ADR-0005 の Certificate Gate 単一評価器を実装。

@@ -124,6 +124,13 @@ Sentry · Resend (+ SendGrid fallback) · Anthropic (Opus 4.8 / Sonnet 4.6 / Hai
   （SegmentedControl/StatusBadge/StatusCard/NextActionCard/ProgressCard/Alert/IconButton/
   BottomSheet）+ Badge dot + Button xl。v2.0 の色トークン値は不採用・既存デザインシステム維持
   （DECISION_LOG 2026-08-19）。
+- **IMP-029（§13 通知・エスカレーション・Deep Link 中央通知エンジン型基盤）完了**:
+  中央通知エンジンの型基盤を `src/lib/notifications/` に実装。(1) 通知タイプカタログ
+  （18 タイプ × Severity 3 段 × Channel 6 種 × Category 11 種）、(2) Deep Link 生成
+  （10 エンティティ × 3 ロール、実ルート構造に合致）、(3) SLA エスカレーション評価器
+  （insurer-sla-alerts cron の純関数部分を汎用化）、(4) チャネル解決・要対応カウント・
+  カテゴリグルーピング・重要度フィルタ。既存の用途別通知モジュールは変更なし（共存）。
+  DB マイグレーションなし（純関数方式）。テスト 35 件。
 - **IMP-028（§12 Certificate Gate 単一評価器）完了**:
   v2.0 §19.4 / ADR-0005 の Certificate Gate 10 条件を一括判定する純関数 `evaluateCertificateGate()`
   を `src/lib/certificates/gateEvaluator.ts` に実装。実装済み条件: required_evidence_present
