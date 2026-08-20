@@ -124,6 +124,11 @@ Sentry · Resend (+ SendGrid fallback) · Anthropic (Opus 4.8 / Sonnet 4.6 / Hai
   （SegmentedControl/StatusBadge/StatusCard/NextActionCard/ProgressCard/Alert/IconButton/
   BottomSheet）+ Badge dot + Button xl。v2.0 の色トークン値は不採用・既存デザインシステム維持
   （DECISION_LOG 2026-08-19）。
+- **IMP-045（§16 STAFF_MANAGEMENT — メンバーシップ管理ガード）完了**:
+  既存スタッフ管理基盤の欠損3領域を純関数ガードで補完。ロール変更ガード（owner保護・
+  ASSIGNABLE_ROLES制限）、メンバー削除ガード（最終管理者保護）、停止/無効化ガード
+  （MembershipState型: active/suspended/deactivated）、店舗間移籍ガード（ロール引継ぎ）。
+  Permission文字列改名は見送り（VERB_MAP翻訳レイヤーで十分と判断）。テスト33件。
 - **IMP-044（§20.2 Priority/NEXT ACTION エンジン）完了**:
   統一優先度スコアリングサービス。4 ソース（ダッシュボードタイル / ジョブ次アクション /
   顧客シグナル / ブースシグナル）を統一スコア（0-100）に正規化する `scoreAndRank()`。

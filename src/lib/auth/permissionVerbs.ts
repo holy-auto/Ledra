@@ -24,7 +24,8 @@ export type PermissionVerb = (typeof PERMISSION_VERBS)[number];
 /**
  * 既存の Permission 文字列から正準動詞への対応。
  * ponytail: 完全な 1:1 対応ではない。create→EDIT, void→APPROVE, operate→MANAGE 等の
- * 意味的マッピング。Permission 文字列自体の改名は将来タスク（IMP-045 判断）。
+ * 意味的マッピング。Permission 文字列自体の改名は見送り（IMP-045 判断: VERB_MAP
+ * による翻訳レイヤーで十分。55 種の既存文字列を一括改名するコストに見合わない）。
  */
 const VERB_MAP: Record<string, PermissionVerb> = {
   view: "VIEW",

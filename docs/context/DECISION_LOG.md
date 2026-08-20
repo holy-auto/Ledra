@@ -23,6 +23,18 @@
 9. 公開区分: 公開可／要確認／非公開
 ```
 
+## 2026-08-20 IMP-045 STAFF_MANAGEMENT — Permission文字列改名見送り＆最終管理者保護の実装判断
+
+1. 日付: 2026-08-20
+2. 起きたこと: IMP-013 の permissionVerbs.ts に「Permission 文字列自体の改名は将来タスク（IMP-045 判断）」とコメントされていた。IMP-045 実装時に判断が必要。同時に、requirement-trace が「移籍・停止・最終管理者保護は【要確認】(部分)」と記録していた。
+3. 以前の考え: 既存の 55 種の Permission 文字列（`resource:verb` 形式）を v2.0 正準動詞（VIEW/EDIT/CONFIRM/APPROVE/ISSUE/MANAGE/EXPORT）に一括改名する案があった。
+4. 違和感・問題: 一括改名すると (a) ROLE_PERMISSIONS マトリクスの 55 行の書き換え、(b) 40+ の API ルートの `requirePermission()` 呼び出しの書き換え、(c) クライアント側の `can()` 呼び出しの書き換えが必要。既存の VERB_MAP は 7 行で十分に機能している。
+5. 決めたこと: (a) Permission 文字列の改名は見送り。VERB_MAP の翻訳レイヤーで十分。(b) 最終管理者保護は純関数ガード `validateMemberRemoval()` / `validateMemberSuspension()` / `wouldLoseLastAdmin()` で実装。(c) メンバー停止は `MembershipState` 型（active/suspended/deactivated）で定義。(d) 店舗間移籍は `validateStoreTransfer()` で型基盤を提供。
+6. 捨てた選択肢: Permission 文字列の一括改名。DB カラム `tenant_memberships.state` の追加（マイグレーションは消費タスクで）。
+7. 判断理由: 改名コスト（55 文字列 × 3 層の書き換え）に対し、VERB_MAP 翻訳レイヤーで step-up 認証・リスクレベル分類が既に機能している。改名しても実行時の動作は変わらない。最終管理者保護は API ルートで ad-hoc に書かれていた自己変更防止をリユーザブルな純関数に集約した。
+8. まだ答えが出ていないこと: (a) `tenant_memberships` テーブルへの `state` カラム追加のタイミング。(b) 停止中メンバーのログイン挙動（Supabase Auth のユーザー無効化との連携）。(c) 移籍の履歴記録（DomainEvent で追跡するか、専用テーブルか）。
+9. 公開区分: 公開可
+
 ## 2026-08-20 IMP-044 Priority/NEXT ACTION エンジン — 統一スコアリングサービス
 
 1. 日付: 2026-08-20
