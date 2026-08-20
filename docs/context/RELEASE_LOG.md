@@ -13,6 +13,24 @@
 - 対象: どの画面・API・業種向けか
 ```
 
+## 2026-08-20 IMP-053 §14.4 OBSERVABILITY_ERROR_CONTRACT — 構造化エラー契約（branch impl/IMP-053-observability-error-contract）
+
+- 内容: v2.0 §14.4 が要求する構造化エラー契約の型基盤を実装。
+  - `src/lib/observability/errorContract.ts`: 構造化エラー契約
+    - `DataSafetyLevel` — 4段階データ安全性(safe/partial/unknown/compromised)
+    - `RecoveryAction` — 復旧アクション型(retry/retry_after/contact_support/manual_check/refresh/rollback/none)
+    - `ErrorCategory` — 11分類(validation/auth/data_integrity/external_service/timeout/rate_limit/state_transition/resource_not_found/concurrency/configuration/unknown)
+    - `RetryPolicy` — 再試行ポリシー(retryable/maxAttempts/backoff/baseDelaySeconds)
+    - `StructuredError` — 全エラーが答えるべき4問（データ安全性・分類・再試行可否・復旧手段）
+    - `createStructuredError()` — 純粋ファクトリ
+    - `structuredErrors.*` — 6プリセット(validation/externalService/stateTransition/dataIntegrity/timeout/concurrency)
+    - `requiresImmediateAttention()` — 即時対応要否判定
+    - `toSentryContext()` — Sentry breadcrumb 変換
+    - `toClientPayload()` — クライアント向けペイロード抽出（本番detail除外）
+  - `src/lib/observability/index.ts`: barrel export
+- 対象: 全API/cron/webhook（型基盤。既存 response.ts の ErrorCode/apiError は変更なし）
+- 設計判断: 型基盤先行。既存エラーヘルパーとの統合は消費側が段階的に行う。
+
 ## 2026-08-20 IMP-052 §23 E2E_SUITE — 必須 E2E テストスイート（branch impl/IMP-052-e2e-suite）
 
 - 内容: v2.0 §23 が要求する必須 E2E テスト（正常ワークフロー・例外10種・顧客確認・WCAG AA）を Playwright で実装。
