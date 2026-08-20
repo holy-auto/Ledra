@@ -13,6 +13,23 @@
 - 対象: どの画面・API・業種向けか
 ```
 
+## 2026-08-20 IMP-026 §10 顧客確認Web — 「気になる点を伝える」懸念提起フロー（branch impl/IMP-026-customer-concern / PR #TBD）
+
+- 内容: v2.0 §10 Customer Confirmation Web の残ギャップ「気になる点を伝える→Customer Issue
+  作成→請求/証明ブロック」を実装。
+  (1) `customer_concerns` テーブル（DBマイグレーション）— source_type 4系統
+  （delivery_receipt/parts_confirmation/body_repair_consent/body_repair_tracking）×
+  status 4状態（open/investigating/resolved/dismissed）×category 5分類。
+  job_id/certificate_id FK によるブロック判定対応。
+  (2) `RaiseConcernButton` コンポーネント — 4確認ページに「気になる点を伝える」UI を統合。
+  ダーク/ライトバリアント対応（受領サインはダークテーマ、部品/板金はライト）。
+  カテゴリ選択・テキスト入力・お名前・メール（任意）のフォーム。
+  (3) 顧客API（POST /api/customer/concerns）— トークンからテナント/ジョブ/証明書を
+  逆引き解決。レート制限+Slack 通知。管理者API（GET/PATCH /api/admin/concerns）。
+  (4) ブロック判定ヘルパー（`hasUnresolvedConcerns`）— IMP-028 Certificate Gate で使用。
+  (5) 型モデル（`src/lib/concerns/types.ts`）+テスト15件。
+- 対象: 受領サイン・部品確認・板金同意・進捗追跡の4確認ページ。IMP-028 の前提条件。
+
 ## 2026-08-20 IMP-025 §9 車両パスポート基盤 — PII遮断体系検証・車両顧客関係型モデル（branch impl/IMP-025-vehicle-passport / PR #TBD）
 
 - 内容: v2.0 §9 車両デジタルパスポートの残ギャップ2件をクローズ。

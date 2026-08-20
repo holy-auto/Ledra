@@ -124,6 +124,11 @@ Sentry · Resend (+ SendGrid fallback) · Anthropic (Opus 4.8 / Sonnet 4.6 / Hai
   （SegmentedControl/StatusBadge/StatusCard/NextActionCard/ProgressCard/Alert/IconButton/
   BottomSheet）+ Badge dot + Button xl。v2.0 の色トークン値は不採用・既存デザインシステム維持
   （DECISION_LOG 2026-08-19）。
+- **IMP-026（§10 顧客確認Web — 「気になる点を伝える」懸念提起フロー）完了**:
+  確認フロー4系統（受領サイン・部品確認・板金同意・進捗追跡）に「気になる点を伝える」UI を統合。
+  `customer_concerns` テーブル（DBマイグレーション）+ 顧客API（トークン→テナント逆引き）+
+  管理者API（GET/PATCH）+ ブロック判定ヘルパー（`hasUnresolvedConcerns` — IMP-028 用）。
+  customer_inquiries（一般問い合わせ）とは別系統。Certificate Gate への実際の統合は IMP-028。
 - **IMP-025（§9 車両パスポート基盤 — PII遮断体系検証・車両顧客関係型モデル）完了**:
   パスポート公開サーフェスの PII 遮断をコンパイル時型アサーション（4型分）+テスト18件で体系的に検証。
   ADR-0006 に基づく車両顧客関係型モデル(`customerRelation.ts`)を新設 — 型のみ、DB変更なし。

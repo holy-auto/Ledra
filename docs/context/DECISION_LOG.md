@@ -23,6 +23,18 @@
 9. 公開区分: 公開可／要確認／非公開
 ```
 
+## 2026-08-20 IMP-026 顧客懸念テーブルの設計判断 — customer_inquiries 拡張 vs 新テーブル
+
+1. 日付: 2026-08-20
+2. 起きたこと: IMP-026（§10 Customer Confirmation Web）の残ギャップ実装にあたり、「気になる点を伝える」の永続化先を決める必要があった。
+3. 以前の考え: customer_inquiries に source_type 列を追加して統合する案があった（既存 admin UI を流用できる）。
+4. 違和感・問題: customer_inquiries は一般ポータル問い合わせ（new/responded/closed のライフサイクル）。顧客懸念は「確認フローから発生→請求/証明書をブロック→管理者が解決→ブロック解除」という異なるライフサイクル。ステータス（open/investigating/resolved/dismissed）も異なり、job_id/certificate_id FK によるブロック判定が必要。requirement-trace も「customer_inquiries は別系統」と明記。
+5. 決めたこと: `customer_concerns` テーブルを新設し、customer_inquiries とは独立に管理する。ブロック判定ヘルパー（`hasUnresolvedConcerns`）を IMP-028 Certificate Gate 用に export。
+6. 捨てた選択肢: (a) customer_inquiries を拡張 — ライフサイクル・ステータス・用途が異なりすぎる。admin UI のフィルタ/ソートも複雑化する。(b) 型定義のみ・テーブルなし — IMP-025 の ponytail 判断とは異なり、顧客からの入力を永続化する必要があるため DB は必須。
+7. 判断理由: ライフサイクルが根本的に異なる2エンティティを1テーブルに詰め込むと、ステータス遷移の矛盾や admin UI の条件分岐が増える。新テーブルの方がシンプルで、ブロック判定のクエリも明快。
+8. まだ答えが出ていないこと: Certificate Gate への実際の統合方法（IMP-028 で判断）。懸念解決時の顧客への通知方法（メール返信 etc.）。
+9. 公開区分: 公開可
+
 ## 2026-08-20 IMP-025 車両顧客関係モデルの実装範囲判断
 
 1. 日付: 2026-08-20
