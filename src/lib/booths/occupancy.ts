@@ -7,7 +7,14 @@
  * IMP-044（NEXT ACTION エンジン）と IMP-046（経営分析 KPI）の前提条件。
  * DB・API・UI の変更なし（型基盤先行パターン）。
  */
-import { parseTimeToHours, SHIFT_START, SHIFT_END, HOURS_TOTAL } from "@/lib/gantt/board";
+import { parseTimeToHours, SHIFT_START, SHIFT_END } from "@/lib/gantt/board";
+
+/**
+ * ブースを占有しない終端ステータス。
+ * cancelled は toEvents で除外。completed/no_show は「作業終了 → ブースは空き」。
+ * computeBoothUtilization は完了作業も稼働実績に含めるため、この定数は使わない。
+ */
+const NON_OCCUPYING = new Set(["cancelled", "completed", "no_show"]);
 
 // ── 入力型 ──
 
@@ -89,17 +96,20 @@ function toEvents(
     if (r.status === "cancelled") continue;
     const s = parseTimeToHours(r.startTime);
     const e = parseTimeToHours(r.endTime);
-    if (s != null && e != null && e > s) {
+    if (s != null && e != null) {
+      // 逆転時刻（end <= start）はデータ不備 — 終日扱いせず無視
+      if (e <= s) continue;
       const cs = Math.max(shiftStart, s);
       const ce = Math.min(shiftEnd, e);
       if (ce > cs) {
         events.push({ time: cs, delta: 1, reservationId: r.id });
         events.push({ time: ce, delta: -1, reservationId: r.id });
       }
-    } else {
+    } else if (s == null && e == null) {
       // 時間未設定 → 終日占有
       allDayIds.push(r.id);
     }
+    // 片方だけ設定 → データ不備、無視
   }
 
   // 同時刻は終了(-1)を開始(+1)より先に処理 — 隣接予約を重複と見なさない
@@ -192,27 +202,24 @@ export function detectCapacityConflicts(
   shiftStart = SHIFT_START,
   shiftEnd = SHIFT_END,
 ): CapacityConflict[] {
-  const boothRes = reservations.filter((r) => r.boothId === booth.id);
+  // completed/no_show は占有していないので定員超過チェックから除外
+  const boothRes = reservations.filter((r) => r.boothId === booth.id && !NON_OCCUPYING.has(r.status));
   const { events, allDayIds } = toEvents(boothRes, shiftStart, shiftEnd);
 
-  // 終日予約だけで定員超過
-  if (allDayIds.length > booth.capacity) {
-    return [
-      {
-        boothId: booth.id,
-        window: { start: shiftStart, end: shiftEnd },
-        peakConcurrent: allDayIds.length,
-        capacity: booth.capacity,
-        reservationIds: allDayIds,
-      },
-    ];
-  }
-
+  // ponytail: early-return を削除 — 終日予約だけで超過していても、
+  // timed 予約の ID も reservationIds に含めるためスイープラインを回す
   const conflicts: CapacityConflict[] = [];
   const active = new Set<string>(allDayIds);
   let windowStart: number | null = null;
   let windowPeak = 0;
   const windowIds = new Set<string>();
+
+  // 終日予約だけで超過 → 営業開始からウィンドウを開く（timed 予約の ID も拾うためスイープ続行）
+  if (active.size > booth.capacity) {
+    windowStart = shiftStart;
+    windowPeak = active.size;
+    for (const id of active) windowIds.add(id);
+  }
 
   for (const ev of events) {
     if (ev.delta === 1) active.add(ev.reservationId);
@@ -300,7 +307,7 @@ export function findAvailableBooths(
   return booths
     .filter((b) => b.isActive)
     .map((booth) => {
-      const boothRes = allReservations.filter((r) => r.boothId === booth.id && r.status !== "cancelled");
+      const boothRes = allReservations.filter((r) => r.boothId === booth.id && !NON_OCCUPYING.has(r.status));
 
       // 予約時間帯を収集してソート
       const occupied: Array<{ start: number; end: number }> = [];
@@ -382,7 +389,7 @@ function countConcurrentAt(
 ): number {
   let count = 0;
   for (const r of reservations) {
-    if (r.status === "cancelled") continue;
+    if (NON_OCCUPYING.has(r.status)) continue;
     const s = parseTimeToHours(r.startTime);
     const e = parseTimeToHours(r.endTime);
     if (s != null && e != null) {

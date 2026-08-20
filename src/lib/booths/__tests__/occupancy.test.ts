@@ -81,6 +81,16 @@ describe("peakConcurrent", () => {
     // 08:00–19:00 にクランプ → 窓外なのでカウント 0
     expect(peakConcurrent(res)).toBe(0);
   });
+
+  it("逆転時刻（end <= start）は無視", () => {
+    const res = [mkRes({ id: "r1", startTime: "12:00", endTime: "09:00" })];
+    expect(peakConcurrent(res)).toBe(0);
+  });
+
+  it("片方だけ設定は無視", () => {
+    const res = [mkRes({ id: "r1", startTime: "09:00", endTime: null })];
+    expect(peakConcurrent(res)).toBe(0);
+  });
 });
 
 // ── computeBoothUtilization ──
@@ -150,6 +160,29 @@ describe("detectCapacityConflicts", () => {
     const conflicts = detectCapacityConflicts(booth, res);
     expect(conflicts).toHaveLength(1);
     expect(conflicts[0].peakConcurrent).toBe(2);
+  });
+
+  it("終日超過 + timed 予約 → timed の ID も含む", () => {
+    const booth = mkBooth({ capacity: 1 });
+    const res = [
+      mkRes({ id: "r1", boothId: "b1" }), // 終日
+      mkRes({ id: "r2", boothId: "b1" }), // 終日
+      mkRes({ id: "r3", boothId: "b1", startTime: "10:00", endTime: "12:00" }),
+    ];
+    const conflicts = detectCapacityConflicts(booth, res);
+    expect(conflicts).toHaveLength(1);
+    expect(conflicts[0].reservationIds).toContain("r3");
+    expect(conflicts[0].peakConcurrent).toBe(3);
+  });
+
+  it("completed/no_show は定員超過チェックから除外", () => {
+    const booth = mkBooth({ capacity: 1 });
+    const res = [
+      mkRes({ id: "r1", boothId: "b1", startTime: "09:00", endTime: "12:00" }),
+      mkRes({ id: "r2", boothId: "b1", startTime: "10:00", endTime: "14:00", status: "completed" }),
+    ];
+    // completed は toEvents で cancelled と同様に除外される
+    expect(detectCapacityConflicts(booth, res)).toHaveLength(0);
   });
 });
 
@@ -230,5 +263,16 @@ describe("findAvailableBooths", () => {
     const res = [mkRes({ id: "r1", boothId: "b1", startTime: "09:00", endTime: "12:00", status: "cancelled" })];
     const result = findAvailableBooths(booths, res, 10);
     expect(result[0].currentlyFree).toBe(true);
+  });
+
+  it("completed/no_show 予約はブースを占有しない", () => {
+    const booths = [mkBooth({ id: "b1" })];
+    const res = [
+      mkRes({ id: "r1", boothId: "b1", startTime: "09:00", endTime: "12:00", status: "completed" }),
+      mkRes({ id: "r2", boothId: "b1", startTime: "10:00", endTime: "14:00", status: "no_show" }),
+    ];
+    const result = findAvailableBooths(booths, res, 10);
+    expect(result[0].currentlyFree).toBe(true);
+    expect(result[0].freeSlots).toEqual([{ start: 8, end: 19 }]);
   });
 });

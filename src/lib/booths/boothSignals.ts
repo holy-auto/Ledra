@@ -83,8 +83,13 @@ export function deriveBoothSignals(input: BoothSignalInput): BoothSignal[] {
     const boothRes = reservations.filter((r) => r.boothId === booth.id);
     if (boothRes.length === 0) continue;
 
+    // 定員超過・空き判定には終端ステータスを除外（占有していない）
+    const activeBoothRes = boothRes.filter(
+      (r) => r.status !== "cancelled" && r.status !== "completed" && r.status !== "no_show",
+    );
+
     // 2a. 定員超過
-    const conflicts = detectCapacityConflicts(booth, boothRes);
+    const conflicts = detectCapacityConflicts(booth, activeBoothRes);
     for (const c of conflicts) {
       // nowHours が超過区間に含まれるか今後にあるもののみ
       if (c.window.end > nowHours) {
