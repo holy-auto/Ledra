@@ -50,10 +50,9 @@ CREATE TRIGGER trg_customer_concerns_updated_at
 -- RLS
 ALTER TABLE customer_concerns ENABLE ROW LEVEL SECURITY;
 
--- 未認証の顧客が懸念を INSERT できる(source_token でスコープ)
-CREATE POLICY customer_concerns_public_insert ON customer_concerns
-  FOR INSERT TO anon, authenticated
-  WITH CHECK (true);
+-- INSERT は API route が service_role で行う(RLS バイパス)。
+-- anon/authenticated への INSERT ポリシーは意図的に設けない。
+-- PostgREST 経由の直接 INSERT を防ぎ、source_token 検証を強制する。
 
 -- 管理者(テナント内)が閲覧・更新できる
 CREATE POLICY customer_concerns_admin_select ON customer_concerns

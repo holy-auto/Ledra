@@ -1,14 +1,21 @@
 import { z } from "zod";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
-import { apiJson, apiUnauthorized, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
+import {
+  apiJson,
+  apiUnauthorized,
+  apiForbidden,
+  apiValidationError,
+  apiNotFound,
+  apiInternalError,
+} from "@/lib/api/response";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
-import { CONCERN_STATUSES } from "@/lib/concerns/types";
+import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
+import { CONCERN_STATUSES, CONCERN_CATEGORIES } from "@/lib/concerns/types";
 
 const patchSchema = z.object({
   status: z.enum(CONCERN_STATUSES as unknown as [string, ...string[]]).optional(),
   admin_response: z.string().trim().max(2000).optional(),
-  category: z.string().trim().max(50).optional(),
+  category: z.enum(CONCERN_CATEGORIES as unknown as [string, ...string[]]).optional(),
 });
 
 interface RouteContext {
@@ -22,6 +29,7 @@ export async function PATCH(req: Request, ctx: RouteContext) {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
+    if (!requireMinRole(caller, "staff")) return apiForbidden();
 
     const parsed = patchSchema.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) {

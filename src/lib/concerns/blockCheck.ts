@@ -19,14 +19,17 @@ export async function hasUnresolvedConcerns(
 ): Promise<boolean> {
   if (!opts.jobId && !opts.certificateId) return false;
 
-  let query = supabase
+  // jobId と certificateId の両方が指定された場合は OR で検索
+  // （懸念は片方しか持たないことがあるため AND だと漏れる）
+  const orParts: string[] = [];
+  if (opts.jobId) orParts.push(`job_id.eq.${opts.jobId}`);
+  if (opts.certificateId) orParts.push(`certificate_id.eq.${opts.certificateId}`);
+
+  const { count } = await supabase
     .from("customer_concerns")
     .select("id", { count: "exact", head: true })
-    .in("status", [...UNRESOLVED_CONCERN_STATUSES]);
+    .in("status", [...UNRESOLVED_CONCERN_STATUSES])
+    .or(orParts.join(","));
 
-  if (opts.jobId) query = query.eq("job_id", opts.jobId);
-  if (opts.certificateId) query = query.eq("certificate_id", opts.certificateId);
-
-  const { count } = await query;
   return (count ?? 0) > 0;
 }

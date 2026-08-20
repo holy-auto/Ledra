@@ -4,7 +4,7 @@ import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { apiJson, apiValidationError, apiInternalError, apiNotFound } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { notifySlack } from "@/lib/slack";
-import { CONCERN_SOURCES, CONCERN_CATEGORIES } from "@/lib/concerns/types";
+import { CONCERN_SOURCES, CONCERN_CATEGORIES, CONCERN_CATEGORY_LABELS } from "@/lib/concerns/types";
 
 const concernSchema = z.object({
   source_type: z.enum(CONCERN_SOURCES as unknown as [string, ...string[]]),
@@ -157,23 +157,17 @@ async function resolveSourceContext(
   }
 }
 
+const SOURCE_LABELS: Record<string, string> = {
+  delivery_receipt: "受領サイン",
+  parts_confirmation: "部品確認",
+  body_repair_consent: "板金同意",
+  body_repair_tracking: "板金進捗",
+};
+
 function sourceLabel(s: string): string {
-  const m: Record<string, string> = {
-    delivery_receipt: "受領サイン",
-    parts_confirmation: "部品確認",
-    body_repair_consent: "板金同意",
-    body_repair_tracking: "板金進捗",
-  };
-  return m[s] ?? s;
+  return SOURCE_LABELS[s] ?? s;
 }
 
 function categoryLabel(c?: string): string {
-  const m: Record<string, string> = {
-    work_quality: "仕上がりの品質",
-    wrong_parts: "部品の間違い",
-    pricing: "金額・料金",
-    damage: "損傷・キズ",
-    other: "その他",
-  };
-  return c ? (m[c] ?? c) : "未分類";
+  return c ? (CONCERN_CATEGORY_LABELS[c as keyof typeof CONCERN_CATEGORY_LABELS] ?? c) : "未分類";
 }
