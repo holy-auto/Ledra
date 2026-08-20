@@ -23,6 +23,18 @@
 9. 公開区分: 公開可／要確認／非公開
 ```
 
+## 2026-08-20 IMP-027 支払い状態の橋渡し方式 — DB カラム追加 vs 純関数導出
+
+1. 日付: 2026-08-20
+2. 起きたこと: IMP-027 で正準 PaymentState（9 状態）と既存実装語彙（documents.status 7 値、payments.status 4 値、reservations.payment_status 4 値 + null）を接続する必要が生じた。
+3. 以前の考え: IMP-015 で「変換関数は各消費タスクで段階的に導入する」と決めていた。DB に canonical_payment_state カラムを追加してトリガーで同期する案もあった。
+4. 違和感・問題: DB カラム追加は既存の書き込みパス全箇所（documents API、invoices API、Stripe webhook、Square webhook、POS API）に同期コードを挿入する必要があり、差分が大きい。また既存データのバックフィルも必要。入金額と返金額のデータは payment_entries / payments テーブルにすでに存在しており、DocumentStatus と金額の組み合わせから一意に PaymentState を決定できる。
+5. 決めたこと: DB カラムは追加せず、純関数 `deriveDocumentPaymentState(ctx)` で既存データから正準 PaymentState を導出する。IO なし、消費側が Supabase から取得した数値を渡す。Certificate Gate の `payment_policy_met` は導出された PaymentState を入力として Policy 評価器が判定する。
+6. 捨てた選択肢: (a) documents テーブルに `canonical_payment_state` カラムを追加しトリガーで同期 — 全書き込みパスの変更が必要で差分大。(b) ビューで導出 — payment_entries の JOIN が必要で RLS との相性が悪い。
+7. 判断理由: ponytail（最短差分）原則。既存データから一意に導出できる値に専用カラムは不要。導出関数はテスト可能で、既存コードを一切変更しない。将来 DB カラム化が必要になった場合も、導出関数がバックフィルのロジックになる。
+8. まだ答えが出ていないこと: POS payments → payment_entries の自動ブリッジ（IMP-043）。payment_entries の返金エントリ対応（amount > 0 制約の緩和、IMP-043）。insurance ポリシーの詳細（Phase 2）。
+9. 公開区分: 公開可
+
 ## 2026-08-20 IMP-026 顧客懸念テーブルの設計判断 — customer_inquiries 拡張 vs 新テーブル
 
 1. 日付: 2026-08-20

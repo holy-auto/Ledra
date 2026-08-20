@@ -121,7 +121,7 @@ Payment Policy(v2.0 §11.3: Consumer PAID / B2B CREDIT_APPROVED / Insurance INSU
 | §8 | Parts & Installation Integrity | `src/lib/parts/`(3-way match、凍結ガード、OTP 署名、TSA、アンカー)+`/admin/parts-integrity` | 実装済み | v2.0 の Part statuses 語彙とは差異あり(実値: `draft/installed/customer_verified/disputed/voided`)。Certificate Gate との自動連動は部分 | IMP-040 |
 | §9 | Vehicle Digital Passport | `/admin/vehicles/[id]`+`/v/[vin]`(公開履歴)+`vehicle_passports`(所有権移転)+車検証 OCR+PII遮断検証(`piiFields.ts`コンパイル時型アサーション+18テスト)+車両顧客関係型(`customerRelation.ts`) | 実装済み | 顧客関係DBマイグレーション(`vehicle_customer_relationships`テーブル化)はIMP-050に委譲。レガシーPII列(`vehicles.customer_name/email/phone_masked`)のDROPはIMP-050。モバイル車両タブはプレースホルダのみ(IMP-033) | IMP-025 |
 | §10 | Customer Confirmation Web | 受領サイン `/sign/receipt/[token]`(下4桁2FA+同意文言版管理+内容スナップショット)、部品確認 `/parts/confirm/[token]`、板金同意 `/sign/consent/[token]`、板金進捗 `/track/[token]`。`RaiseConcernButton`で4系統に「気になる点を伝える」UI+`customer_concerns`テーブル+管理者API+ブロック判定ヘルパー(`hasUnresolvedConcerns`) | 実装済み | Certificate Gateへのブロック統合はIMP-028。admin UI(懸念一覧画面)は最小API提供のみ(画面は後続) | IMP-026 |
-| §11 | Estimate / Invoice / Payment | `documents` 統合モデル(9帳票種+遷移マップ `nextStatusesFor()`)+`payment_entries` 売掛元帳+Stripe/Square/Tap to Pay | 部分 | PaymentState 語彙差(§1.5)。UNKNOWN/OVERPAID/PENDING なし。Payment Policy 評価器なし。Provider 分離は UI 上概ね充足 | IMP-027, 043 |
+| §11 | Estimate / Invoice / Payment | `documents` 統合モデル(9帳票種+遷移マップ `nextStatusesFor()`)+`payment_entries` 売掛元帳+Stripe/Square/Tap to Pay+正準PaymentState導出層(`deriveDocumentPaymentState`/`derivePoSPaymentState`/`deriveReservationPaymentState`)+Payment Policy評価器(`evaluatePaymentPolicy`: consumer/b2b/insurance 3ポリシー)+UNKNOWN盲目リトライ禁止ガード(`isBlindRetryBlocked`) | 部分 | DB列の直接変更は未実施(IMP-043)。POS→元帳自動ブリッジ・返金元帳エントリは IMP-043。Provider 分離は UI 上概ね充足 | IMP-027, 043 |
 | §12 | Certificate / Integrity / Correction | 写真ゲート+void+編集履歴(`certificate_edit_histories`)+content hash(`certificate_versions` Phase 1)+アンカー2層 | 部分 | READY→ISSUING→VERIFYING→VERIFIED の自動遷移なし(§1.4)。SUPERSEDED 版遷移・旧QR誘導なし。REVOKED 相当の void 公開表示はあり | IMP-028, 030 |
 | §13 | Notification / Escalation | 用途別通知モジュール群+outbox+SLA エスカレーション(保険のみ)+LINE/Slack/メール/SMS。Push はトークン登録まで | 部分 | 中央通知エンジン・Role/Assignment/Severity/経過時間ルーティング・要対応件数分離なし | IMP-029 |
 | §14 | Offline / Sync / Loading / Error | Web PWA: IndexedDB outbox+SW+multipart(`src/lib/outbox/`)。モバイル: 検知バナーのみ。エラー契約(error_code/is_data_safe 等)なし | 部分 | モバイル同期キューなし。CONFLICT 解決なし。構造化エラー契約なし。ローディング規律(0.3s/2s)未体系化 | IMP-016, 032, 053 |
@@ -147,7 +147,7 @@ Payment Policy(v2.0 §11.3: Consumer PAID / B2B CREDIT_APPROVED / Insurance INSU
 | WORK_LIST | 作業一覧 | `/admin/reservations`+mobile `(tabs)/work` | 部分 | IMP-022 |
 | JOB_HUB | 1台の案件ハブ | `/admin/jobs/[id]`(統合ワークスペース) | 部分 | IMP-022 |
 | JOB_EVIDENCE | 証跡撮影 | `/admin/certificates/[public_id]`(写真)+mobile `certificates/[id]/photos`+凍結ガード+進捗計算 | 実装済み | IMP-023 |
-| JOB_DOCUMENTS | 見積/請求/決済/確認 | `/admin/invoices`+`/admin/payment-ledger` | 部分 | IMP-027, 043 |
+| JOB_DOCUMENTS | 見積/請求/決済/確認 | `/admin/invoices`+`/admin/payment-ledger`+PaymentState導出層+Policy評価器 | 部分 | IMP-027, 043 |
 | VEHICLE_LIST | 車両検索/一覧 | `/admin/vehicles` | 実装済み | IMP-025 |
 | VEHICLE_DETAIL | 車両パスポート | `/admin/vehicles/[id]`+公開 `/v/[vin]`+PII遮断検証済み | 実装済み | IMP-025 |
 | CERTIFICATE_LIST | 証明書一覧 | `/admin/certificates` | 実装済み | IMP-028 |
@@ -168,7 +168,7 @@ Payment Policy(v2.0 §11.3: Consumer PAID / B2B CREDIT_APPROVED / Insurance INSU
 | 3 | 「作業完了して証明書発行」CTA を出さない | 発行はサインオフ工程に分離。証明書は写真ゲート通過後に activate | 部分 | IMP-022, 028 |
 | 4 | Job/Step/Severity/Certificate/Payment/Sync は独立軸 | 実装の各軸は §1 参照。Severity 軸なし、Step は導出 | 部分 | IMP-001, 015 |
 | 5 | 正式証明/VERIFIED は同期済み必須証跡+全 Gate 条件 | 写真必須ゲート(before/after)はサーバ側強制。同期条件・10条件 Gate はなし | 部分 | IMP-028 |
-| 6 | PaymentState.UNKNOWN は失敗ではない/盲目リトライ禁止 | UNKNOWN に相当する状態が存在しない | なし | IMP-027 |
+| 6 | PaymentState.UNKNOWN は失敗ではない/盲目リトライ禁止 | `deriveDocumentPaymentState`で既存データからUNKNOWN含む9状態を導出。`isBlindRetryBlocked()`でUNKNOWN時の再決済発火を構造的に禁止。`evaluatePaymentPolicy()`で全ポリシーがUNKNOWN不成立を返す | 実装済み | IMP-027 |
 | 7 | 予測は事実ではない(scheduled/predicted/actual 分離) | `estimated_min`(予定)と `started_at/completed_at/duration_sec`(実績)は分離。predicted 系フィールドなし | 部分 | IMP-014, 044 |
 | 8 | AI は構造化/提案/予測、重要記録は人間確定 | `src/lib/ai/automation/policy.ts`(FieldPolicy: manual/suggest/自動、confidence 未満は suggest デモート、壁3安全弁) | 実装済み | IMP-024 |
 | 9 | 車両 identity は顧客 PII から独立 | `vehicles` は独立エンティティ+`vehicle_passports` 所有権移転あり。公開サーフェスのPII遮断はコンパイル時型アサーション+テスト18件で検証済み。顧客紐付けは `vehicles.customer_id` 直付け(関係型モデル定義済み、DBマイグレーションはIMP-050) | 実装済み | IMP-025, 050 |
@@ -197,7 +197,7 @@ Payment Policy(v2.0 §11.3: Consumer PAID / B2B CREDIT_APPROVED / Insurance INSU
 | IMP-024 | 2 / P0 | §7(音声→AI構造化→人間確認) | **実装済み**(2026-08-20): (1) VoiceMemoPanel にオフライン検知(navigator.onLine チェック→明示エラー)。(2) `speechLang` prop + `LOCALE_SPEECH_LANG` マッピング(6言語BCP47対応)。(3) 証明書備考欄に VoiceMemoPanel(note variant)接続。モバイル音声は未実装(設計選択未解決、OPEN_QUESTIONS.md) | 011, 016, 022 |
 | IMP-025 | 2 / P0 | §9, VEHICLE_*(車両パスポート基盤) | **実装済み**(2026-08-20): (1) PII遮断体系検証 — `piiFields.ts` でコンパイル時型アサーション(PassportCertCard/PassportData/PassportVerifyResponse/PublicTransferView の4型がPIIフィールドと重複しないことをTS型レベルで保証)。`piiShield.test.ts` で実行時検証18件(クエリSELECT列監査、フィールド形状検証、前所有者PII非露出検証)。(2) 車両顧客関係型モデル — `customerRelation.ts` でADR-0006に基づく関係エンティティ型(`VehicleCustomerRelation`/`VehicleRelationEndReason`/`PublicVehicleIdentity`)とPIIフィールドレジストリ(`VEHICLE_TABLE_PII_COLUMNS`/`PASSPORT_TABLE_PII_COLUMNS`)を定義。DBマイグレーションはIMP-050に委譲 | 013, 015 |
 | IMP-026 | 2 / P0 | §10(顧客確認 Web) | **実装済み**(2026-08-20): (1) `customer_concerns` テーブル(DBマイグレーション) — source_type 4系統×status 4状態×category 5分類。job_id/certificate_id FK でブロック判定可能。(2) `RaiseConcernButton` コンポーネント — 4確認ページ(受領サイン/部品確認/板金同意/進捗追跡)に「気になる点を伝える」UI統合。(3) 顧客API(POST /api/customer/concerns — トークンからテナント/ジョブ/証明書を逆引き+Slack通知)+管理者API(GET/PATCH /api/admin/concerns)。(4) ブロック判定ヘルパー(`hasUnresolvedConcerns` — IMP-028 Certificate Gate で使用)。(5) 型モデル(`src/lib/concerns/types.ts` — ConcernSource/ConcernCategory/ConcernStatus/CustomerConcern)+テスト15件 | 011, 022, 023, 025 |
-| IMP-027 | 2 / P0 | §11, JOB_DOCUMENTS(支払モデル・Policy) | 売掛元帳+返金あり。UNKNOWN/OVERPAID/Policy 評価器なし(部分) | 013, 014, 015, 022 |
+| IMP-027 | 2 / P0 | §11, JOB_DOCUMENTS(支払モデル・Policy) | **実装済み**(2026-08-20): (1) PaymentState導出層 — `deriveDocumentPaymentState`(帳票status+入金額+返金額→9状態)、`derivePoSPaymentState`(POS取引→5状態)、`deriveReservationPaymentState`(予約payment_status→4状態)。DB変更なし、既存データからの純関数導出。(2) Payment Policy評価器 — `evaluatePaymentPolicy`(consumer/b2b/insurance 3ポリシー)。Certificate Gate `payment_policy_met` 条件の実装基盤。合算払い(consolidated)は自動承認、都度払い(per_job)はPAID必須、billingCycle未設定はブロック+設定促進。(3) UNKNOWN盲目リトライ禁止 — `isBlindRetryBlocked()`+全ポリシーでUNKNOWN不成立。(4) テスト40件 | 013, 014, 015, 022 |
 | IMP-028 | 2 / P0 | §12, CERTIFICATE_*(Certificate Gate・発行・公開検証) | 写真ゲート+公開検証+アンカー2層あり。単一 Gate 評価器・状態遷移なし(部分) | 015, 023, 026, 027 |
 | IMP-029 | 2 / P0 | §13(通知・エスカレーション・Deep Link) | 用途別通知+SLA(保険)あり。中央エンジン・ルーティングなし(部分) | 014, 021, 028 |
 | IMP-030 | 3 / P0 | §12.3-12.4(訂正・supersede・Integrity Incident・revoke) | 編集履歴+void あり。版遷移(SUPERSEDED)・Incident 状態なし(部分) | 014, 023, 028 |
@@ -229,7 +229,7 @@ v2.0 §24.1 の P0(Ledra Core)10項目すべてに、既存実装参照または
 | Workflow + Photo Evidence + Voice | ワークフローエンジン+写真ゲート+Web 音声 | IMP-022, 023, 024 |
 | Vehicle | `/admin/vehicles`+`/v/[vin]` | IMP-025 |
 | Customer Confirmation | `/sign/receipt/[token]` ほか署名付き URL 系統 | IMP-026 |
-| Payment state + Certificate + VERIFIED | 売掛元帳+写真ゲート+アンカー(語彙差あり) | IMP-027, 028 |
+| Payment state + Certificate + VERIFIED | 売掛元帳+写真ゲート+アンカー+PaymentState導出層+Policy評価器 | IMP-027, 028 |
 | Role / Permission | Role5段+Permission55種+RLS240 | IMP-013 |
 | Basic Offline / Sync | Web PWA outbox(モバイルなし) | IMP-016, 032 |
 | Basic Notifications | 用途別通知+outbox | IMP-029 |

@@ -124,6 +124,12 @@ Sentry · Resend (+ SendGrid fallback) · Anthropic (Opus 4.8 / Sonnet 4.6 / Hai
   （SegmentedControl/StatusBadge/StatusCard/NextActionCard/ProgressCard/Alert/IconButton/
   BottomSheet）+ Badge dot + Button xl。v2.0 の色トークン値は不採用・既存デザインシステム維持
   （DECISION_LOG 2026-08-19）。
+- **IMP-027（§11 支払いモデル — PaymentState 導出層・Policy 評価器）完了**:
+  既存3系統（documents/payments/reservations）の支払いステータスから正準 PaymentState を
+  導出する純関数3本（`deriveDocumentPaymentState`/`derivePoSPaymentState`/
+  `deriveReservationPaymentState`）と、Certificate Gate の `payment_policy_met` 条件を
+  評価する Policy 評価器（consumer/b2b/insurance の3ポリシー）を `src/lib/payment/` に実装。
+  UNKNOWN 状態での盲目リトライ禁止ガード付き。DB マイグレーションなし（純関数導出方式）。テスト 40 件。
 - **IMP-026（§10 顧客確認Web — 「気になる点を伝える」懸念提起フロー）完了**:
   確認フロー4系統（受領サイン・部品確認・板金同意・進捗追跡）に「気になる点を伝える」UI を統合。
   `customer_concerns` テーブル（DBマイグレーション）+ 顧客API（トークン→テナント逆引き）+
