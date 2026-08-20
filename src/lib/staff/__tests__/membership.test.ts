@@ -19,6 +19,7 @@ const mkRoleChange = (overrides?: Partial<RoleChangeInput>): RoleChangeInput => 
   targetId: "target-1",
   currentRole: "staff",
   newRole: "admin",
+  adminOrAboveCount: 2,
   ...overrides,
 });
 
@@ -27,7 +28,6 @@ const mkRemoval = (overrides?: Partial<MemberRemovalInput>): MemberRemovalInput 
   callerId: "caller-1",
   targetId: "target-1",
   targetRole: "staff",
-  ownerCount: 1,
   adminOrAboveCount: 2,
   ...overrides,
 });
@@ -94,7 +94,17 @@ describe("validateRoleChange", () => {
   });
 
   it("admin → viewer への降格は許可", () => {
-    const result = validateRoleChange(mkRoleChange({ currentRole: "admin", newRole: "viewer" }));
+    const result = validateRoleChange(mkRoleChange({ currentRole: "admin", newRole: "viewer", adminOrAboveCount: 2 }));
+    expect(result.allowed).toBe(true);
+  });
+
+  it("最後の admin の降格は不可", () => {
+    const result = validateRoleChange(mkRoleChange({ currentRole: "admin", newRole: "staff", adminOrAboveCount: 1 }));
+    expect(result).toEqual({ allowed: false, reason: "last_admin" });
+  });
+
+  it("admin が複数いれば降格は許可", () => {
+    const result = validateRoleChange(mkRoleChange({ currentRole: "admin", newRole: "viewer", adminOrAboveCount: 3 }));
     expect(result.allowed).toBe(true);
   });
 });
@@ -200,6 +210,18 @@ describe("validateStoreTransfer", () => {
       mkTransfer({ fromStoreId: "store-x", currentAssignments: [{ storeId: "store-a", role: "staff" }] }),
     );
     expect(result).toEqual({ allowed: false, reason: "not_assigned" });
+  });
+
+  it("移籍先に既に割当がある場合は不可", () => {
+    const result = validateStoreTransfer(
+      mkTransfer({
+        currentAssignments: [
+          { storeId: "store-a", role: "staff" },
+          { storeId: "store-b", role: "staff" },
+        ],
+      }),
+    );
+    expect(result).toEqual({ allowed: false, reason: "already_assigned" });
   });
 
   it("manager からの移籍は role を引き継ぐ", () => {

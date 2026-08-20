@@ -20,6 +20,12 @@ import type { StoreAssignment } from "@/lib/auth/storeScope";
 
 // ── メンバーシップ状態 ──
 
+/**
+ * ponytail: MembershipState は認証/アイデンティティの状態であり、
+ * states.ts のドメイン状態語彙（Job/Step/Severity/Certificate/Payment/Sync）とは
+ * 別軸。tenant_memberships の運用状態を表し、ドメインオブジェクトの
+ * ライフサイクルとは無関係なので states.ts には登録しない。
+ */
 export const MEMBERSHIP_STATES = ["active", "suspended", "deactivated"] as const;
 export type MembershipState = (typeof MEMBERSHIP_STATES)[number];
 
@@ -36,11 +42,19 @@ export type RoleChangeInput = {
   currentRole: Role;
   /** 変更先のロール */
   newRole: Role;
+  /**
+   * テナント内の admin 以上のメンバー数（対象者を含む）。
+   * admin→staff/viewer への降格時に最終管理者保護で使用。
+   */
+  adminOrAboveCount: number;
 };
 
 export type RoleChangeResult =
   | { allowed: true }
-  | { allowed: false; reason: "self_change" | "insufficient_rank" | "unassignable_role" | "owner_protected" };
+  | {
+      allowed: false;
+      reason: "self_change" | "insufficient_rank" | "unassignable_role" | "owner_protected" | "last_admin";
+    };
 
 /**
  * ロール変更が許可されるかを判定する。
@@ -50,6 +64,7 @@ export type RoleChangeResult =
  * 2. owner のロールは変更不可（owner は特殊。移譲は別フロー）
  * 3. 操作者は admin 以上が必要
  * 4. 変更先は ASSIGNABLE_ROLES (admin/staff/viewer) のみ
+ * 5. admin 以上 → staff/viewer への降格時、最後の admin なら拒否
  */
 export function validateRoleChange(input: RoleChangeInput): RoleChangeResult {
   if (input.callerId === input.targetId) {
@@ -64,6 +79,10 @@ export function validateRoleChange(input: RoleChangeInput): RoleChangeResult {
   if (!(ASSIGNABLE_ROLES as readonly string[]).includes(input.newRole)) {
     return { allowed: false, reason: "unassignable_role" };
   }
+  // admin→staff/viewer 降格で admin 以上が 0 になるケースを防ぐ
+  if (hasMinRole(input.currentRole, "admin") && !hasMinRole(input.newRole, "admin") && input.adminOrAboveCount <= 1) {
+    return { allowed: false, reason: "last_admin" };
+  }
   return { allowed: true };
 }
 
@@ -75,11 +94,6 @@ export type MemberRemovalInput = {
   targetId: string;
   targetRole: Role;
   /**
-   * テナント内の owner ロールを持つメンバー数（対象者を含む）。
-   * 呼び出し側が DB から取得。
-   */
-  ownerCount: number;
-  /**
    * テナント内の admin 以上のロールを持つメンバー数（対象者を含む）。
    * admin + owner + super_admin の合計。
    */
@@ -88,7 +102,7 @@ export type MemberRemovalInput = {
 
 export type MemberRemovalResult =
   | { allowed: true }
-  | { allowed: false; reason: "self_removal" | "insufficient_rank" | "last_owner" | "last_admin" | "owner_protected" };
+  | { allowed: false; reason: "self_removal" | "insufficient_rank" | "last_admin" | "owner_protected" };
 
 /**
  * メンバー削除が許可されるかを判定する。
@@ -178,7 +192,7 @@ export type StoreTransferInput = {
 
 export type StoreTransferResult =
   | { allowed: true; effectiveRole: "manager" | "staff" }
-  | { allowed: false; reason: "insufficient_rank" | "same_store" | "not_assigned" };
+  | { allowed: false; reason: "insufficient_rank" | "same_store" | "not_assigned" | "already_assigned" };
 
 /**
  * 店舗間移籍が許可されるかを判定する。
@@ -197,6 +211,10 @@ export function validateStoreTransfer(input: StoreTransferInput): StoreTransferR
   }
   if (input.fromStoreId === input.toStoreId) {
     return { allowed: false, reason: "same_store" };
+  }
+  // ponytail: 移籍先に既に割当がある場合は重複防止
+  if (input.currentAssignments.some((a) => a.storeId === input.toStoreId)) {
+    return { allowed: false, reason: "already_assigned" };
   }
   const fromAssignment = input.currentAssignments.find((a) => a.storeId === input.fromStoreId);
   if (!fromAssignment) {
