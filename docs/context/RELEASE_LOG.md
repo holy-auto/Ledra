@@ -13,6 +13,22 @@
 - 対象: どの画面・API・業種向けか
 ```
 
+## 2026-08-20 IMP-032 §14 SYNC_CENTER 同期キュー変換・集計・競合解決（branch impl/IMP-032-sync-center）
+
+- 内容: v2.0 §14 SYNC_CENTER 画面の基盤となる純関数レイヤを実装。
+  - `src/lib/sync/mapper.ts`: OutboxItem → SyncQueueItem マッパー。
+    OutboxKind(5 種)→ SyncResourceType(8 種)変換テーブル、
+    URL パターンからのリソースタイプ推定、リソース ID/テナント ID 抽出、
+    重複検出付き一括変換(`mapOutboxToSyncQueue`)。
+  - `src/lib/sync/summary.ts`: SyncSummary 集計計算、
+    バッジ表示用カウント(`syncBadgeCount`)、要注意判定(`hasAttentionItems`)。
+  - `src/lib/sync/resolver.ts`: 競合解決実行ロジック。
+    戦略→アクション変換(`resolveAction`)、不変更新適用(`applyResolution`)、
+    自動解決判定(`canAutoResolve`)、一括自動解決(`autoResolveAll`)。
+  - テスト 54 件（既存 30 件 + 新規 54 件 = 合計 84 件）。
+  - DB マイグレーション・UI コンポーネント変更なし。
+- 対象: オフライン同期・競合解決（SYNC_CENTER 画面の入力レイヤ）
+
 ## 2026-08-20 IMP-031 §19.1 例外フロー（cancel/no-show/pause/追加作業）型基盤（branch impl/IMP-031-job-exceptions）
 
 - 内容: v2.0 §19.1 の案件例外フローの型基盤と遷移評価器を実装。

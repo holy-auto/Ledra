@@ -124,6 +124,12 @@ Sentry · Resend (+ SendGrid fallback) · Anthropic (Opus 4.8 / Sonnet 4.6 / Hai
   （SegmentedControl/StatusBadge/StatusCard/NextActionCard/ProgressCard/Alert/IconButton/
   BottomSheet）+ Badge dot + Button xl。v2.0 の色トークン値は不採用・既存デザインシステム維持
   （DECISION_LOG 2026-08-19）。
+- **IMP-032（§14 SYNC_CENTER 同期キュー変換・集計・競合解決）完了**:
+  OutboxItem → SyncQueueItem マッパー（OutboxKind 5 種→ SyncResourceType 8 種変換、
+  URL パターン推定、重複検出付き一括変換）、SyncSummary 集計計算（バッジ表示用カウント、
+  要注意判定）、競合解決実行ロジック（戦略→アクション変換、不変更新適用、自動解決判定・
+  一括自動解決）を `src/lib/sync/` に追加。IndexedDB 新ストア作成なし（メモリ上ビュー方式）。
+  既存 outbox インフラ変更なし。テスト 54 件（合計 84 件）。
 - **IMP-031（§19.1 例外フロー cancel/no-show/pause/追加作業 型基盤）完了**:
   案件例外フローの遷移評価器 5 本（evaluateCancel/evaluateNoShow/evaluatePause/
   evaluateResume/evaluatePartialComplete）を JOB_TRANSITIONS ベースで実装。

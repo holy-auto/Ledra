@@ -23,6 +23,18 @@
 9. 公開区分: 公開可／要確認／非公開
 ```
 
+## 2026-08-20 IMP-032 SYNC_CENTER のレイヤ構成 — 純関数ビュー vs IndexedDB 新ストア
+
+1. 日付: 2026-08-20
+2. 起きたこと: IMP-032 SYNC_CENTER（v2.0 §14）の実装に着手。IMP-016 で SyncQueueItem/SyncConflict/SyncSummary 型と detectConflictFromResponse/detectDuplicatePending 検出関数を定義済み。OutboxItem → SyncQueueItem のマッピング実装が明示的に IMP-032 に委譲されていた。
+3. 以前の考え: SYNC_CENTER は IndexedDB に新しい `sync_queue` ストアを作り、OutboxItem と並行して状態を永続化する構想があった。
+4. 違和感・問題: IndexedDB に新ストアを作ると OutboxItem との二重管理になり、整合性の維持が複雑になる。既存の outbox drain ループ（drainItems）は安定稼働中で、ここに同期状態管理を組み込むと壊すリスクがある。
+5. 決めたこと: SyncQueueItem はメモリ上のビューとして生成する。`listOutbox()` → `mapToSyncQueueItem()` のパイプラインで毎回変換し、IndexedDB に新ストアを作らない。競合解決も純関数で「何をすべきか」を決定し、実際の I/O（removeOutboxItem 等）は呼び出し側が行う。サマリー（SyncSummary）も配列から毎回計算。
+6. 捨てた選択肢: (a) IndexedDB sync_queue ストア新設 — 二重管理の複雑さ。(b) 既存 drainItems を改修して競合ハンドリングを内蔵 — 安定コードの変更リスク。(c) SYNC_CENTER 画面 UI を同時実装 — スコープ拡大。
+7. 判断理由: IMP-016〜031 と同じ「型基盤先行」パターン。既存インフラ変更なし + 純関数テスト容易 + 画面実装は消費側の責任。OutboxKind(5) → SyncResourceType(8) の変換は URL パターン推定で対応し、outbox 型の変更を避けた。
+8. まだ答えが出ていないこと: SYNC_CENTER の画面 UI 実装時期。ナビゲーション導線（sidebar に直接追加 vs MORE タブ経由）。drainItems への競合検出フックの組み込み方法。
+9. 公開区分: 公開可
+
 ## 2026-08-20 IMP-031 例外フローの型基盤方式 — 純関数評価器 vs DB CHECK+API 一括変更
 
 1. 日付: 2026-08-20
