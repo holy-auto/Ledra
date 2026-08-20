@@ -23,6 +23,18 @@
 9. 公開区分: 公開可／要確認／非公開
 ```
 
+## 2026-08-20 IMP-033 MORE メニュー項目の管理方式 — 正準レジストリ vs 各画面ハードコード
+
+1. 日付: 2026-08-20
+2. 起きたこと: IMP-033 MORE タブ IA の実装に着手。モバイル `more/index.tsx` に 7 項目がハードコードされており、Web 側 `settingsHub.ts` の hub 項目群とは独立して管理されていた。両者に権限ゲートの有無、項目の重複、プラットフォーム差異がある。
+3. 以前の考え: モバイルとWebは別物として各画面でハードコード管理。
+4. 違和感・問題: (a) モバイルに権限フィルタリングが一切ない（viewer でもPOS・設定が見える）。(b) 項目の追加・削除が 2 箇所で必要。(c) SYNC_CENTER の導線を追加する場所が不定。
+5. 決めたこと: `src/lib/navigation/moreMenu.ts` に `MORE_MENU_ITEMS` 正準リストを定義し、`filterMoreMenuItems(can, platform)` で権限×プラットフォーム別の項目を返す。セクション分類（業務/デバイス・連携/管理/システム）で構造化。
+6. 捨てた選択肢: (a) Web 側 `NAV_GROUPS` の `hub: true` をそのままモバイルにも流用 — Web 固有の hubSection/platformOnly/orgUserVisible ゲートがモバイルに不適合。(b) モバイル `more/index.tsx` 内にだけ権限フィルタを追加 — 二重管理が残る。
+7. 判断理由: tabs.ts（IMP-020）で確立した「データ定義は `src/lib/navigation/`、描画は消費側」パターンの踏襲。settingsHub.ts の HubEntry/HubGate パターンとは意味的に揃えつつ、モバイル向けにシンプルな Permission ベースのゲートに絞る。
+8. まだ答えが出ていないこと: (a) SYNC_CENTER の最終配置（MORE タブ内 vs サイドバー直接）— 暫定で MORE 内に「同期センター」項目を配置。(b) Web SettingsHub の既存 hub 項目と MORE_MENU_ITEMS の統合タイミング（消費側タスク）。
+9. 公開区分: 公開可
+
 ## 2026-08-20 IMP-032 SYNC_CENTER のレイヤ構成 — 純関数ビュー vs IndexedDB 新ストア
 
 1. 日付: 2026-08-20

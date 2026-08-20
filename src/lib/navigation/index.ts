@@ -27,3 +27,13 @@ export {
 // ── ワークスコープ ──
 export { WORK_SCOPES, WORK_SCOPE_LABELS, availableScopes, defaultScope, type WorkScope } from "./scope";
 export { WorkScopeProvider, useWorkScope } from "./WorkScopeProvider";
+
+// ── MORE メニュー (IMP-033) ──
+export {
+  MORE_SECTIONS,
+  MORE_MENU_ITEMS,
+  filterMoreMenuItems,
+  groupMoreMenuItems,
+  type MoreSection,
+  type MoreMenuItem,
+} from "./moreMenu";

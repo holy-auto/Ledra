@@ -152,7 +152,7 @@ Payment Policy(v2.0 §11.3: Consumer PAID / B2B CREDIT_APPROVED / Insurance INSU
 | VEHICLE_DETAIL | 車両パスポート | `/admin/vehicles/[id]`+公開 `/v/[vin]`+PII遮断検証済み | 実装済み | IMP-025 |
 | CERTIFICATE_LIST | 証明書一覧 | `/admin/certificates` | 実装済み | IMP-028 |
 | CERTIFICATE_DETAIL | 証明書+整合性+版 | `/admin/certificates/[public_id]`+公開 `/c/[public_id]` | 部分(状態軸差 §1.4) | IMP-028 |
-| MORE | その他メニュー | mobile `(tabs)/more` | 部分 | IMP-033 |
+| MORE | その他メニュー | mobile `(tabs)/more`+`src/lib/navigation/moreMenu.ts` | **実装済み** | IMP-033 |
 | SYNC_CENTER | 同期/競合 | なし(`PendingOfflineCerts`+`OfflineBanner` が部分) | なし | IMP-032 |
 | ANALYTICS_STORE | 店舗分析 | `/admin/management`+`/admin/analytics/*` | 部分 | IMP-046 |
 | STAFF_MANAGEMENT | スタッフ/設備 | `/admin/staff`+`/admin/members`+`/admin/mechanic-gantt`+`/admin/booths` | 実装済み(概ね) | IMP-045 |
@@ -203,7 +203,7 @@ Payment Policy(v2.0 §11.3: Consumer PAID / B2B CREDIT_APPROVED / Insurance INSU
 | IMP-030 | 3 / P0 | §12.3-12.4(訂正・supersede・Integrity Incident・revoke) | **実装済み**(2026-08-20): (1) 訂正リクエスト型(`correction.ts`)— 5状態(pending/approved/rejected/applied/cancelled)×5カテゴリ(content_error/measurement_error/evidence_error/expiry_error/other)+訂正可否判定(VERIFIED+未処理訂正なしのみ許可)+状態遷移検証(承認を飛ばせない等)+`hasPendingOrApprovedCorrection()`(Gate条件用)。(2) Integrity Incident型(`integrityIncident.ts`)— 6カテゴリ(tampering/fraud/legal_request/gross_negligence/evidence_compromise/other)×3重大度(critical/high/medium)×5状態(reported→investigating→confirmed→revoked/dismissed)+revoke可否判定(VERIFIEDのみ)+即時revoke判定(critical=全即時、high+tampering=即時)。(3) 版遷移ヘルパー(`versionTransition.ts`)— `evaluateSupersede()`(VERIFIED→SUPERSEDED+新版VERIFIED)+`evaluateRevoke()`(VERIFIED→REVOKED)+`resolveVersionRedirect()`(旧版アクセス時の誘導情報生成)。(4) Gate条件`no_pending_corrections`実装接続 — `gateEvaluator.ts`に`correctionRequests`入力追加、`hasPendingOrApprovedCorrection()`で判定(後方互換あり)。テスト57件 | 014, 023, 028 |
 | IMP-031 | 3 / P0 | §19.1 例外(cancel/no-show/pause/追加作業) | **実装済み**(2026-08-20): 例外遷移評価器5本(`jobExceptions.ts`)— evaluateCancel(8状態→CANCELED)/evaluateNoShow(SCHEDULED,CHECKED_IN→NO_SHOW)/evaluatePause(IN_PROGRESS→PAUSED)/evaluateResume(PAUSED→IN_PROGRESS, NO_SHOW→SCHEDULED, PARTIALLY_COMPLETED→IN_PROGRESS)/evaluatePartialComplete(IN_PROGRESS→PARTIALLY_COMPLETED)。全てJOB_TRANSITIONSベース。例外メタデータ型: CancelReasonCategory(6)/PauseReasonCategory(6)/NoShowAction(3)/PartialCompleteReason(5)/JobExceptionEvent。スコープ変更型: ScopeChangeCategory(5)/ScopeChangeRecord/requiresApproval()。jobStatusDisplay.ts: paused/no_show/partially_completedの表示構成追加(ReservationStatus 5→8値)。isExceptionState()ヘルパー。DBマイグレーション・APIルート変更なし(型基盤先行)。テスト51件 | 015, 022, 027, 030 |
 | IMP-032 | 3 / P0 | §14, SYNC_CENTER | **実装済み**(2026-08-20): OutboxItem→SyncQueueItem マッパー(`mapper.ts` — OutboxKind 5種→SyncResourceType 8種変換、URLパターン推定、リソースID/テナントID抽出、重複検出付き一括変換)。SyncSummary 集計計算(`summary.ts` — syncBadgeCount/hasAttentionItems)。競合解決実行ロジック(`resolver.ts` — resolveAction/applyResolution/canAutoResolve/autoResolveAll)。IndexedDB新ストアなし(メモリ上ビュー方式)。既存outboxインフラ変更なし。テスト54件(合計84件) | 016, 020 |
-| IMP-033 | 3 / P0 | §2, MORE(その他メニュー IA) | mobile その他タブあり(項目構成は v2.0 IA と異なる)(部分) | 010, 013, 020, 032 |
+| IMP-033 | 3 / P0 | §2, MORE(その他メニュー IA) | **実装済み** | 010, 013, 020, 032 |
 | IMP-034 | 3 / P0 | §2, §4(タブレット2-pane・共用端末) | レスポンシブは admin Web 側のみ。タブレット専用レイアウト・ユーザー切替なし(なし〜部分) | 010, 021, 022, 023, 033 |
 | IMP-040 | 4 / P1 | §8(部品・装着インテグリティ) | 3-way match+凍結ガード+OTP署名+TSA+アンカーで深い(実装済み。語彙差あり) | 023, 030 |
 | IMP-041 | 4 / P1 | §21(設備/リフト稼働) | ブース管理+ガントあり。占有予測・NEXT ACTION 連動なし(部分) | 014, 021, 022 |

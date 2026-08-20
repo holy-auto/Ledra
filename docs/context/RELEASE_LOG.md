@@ -13,6 +13,17 @@
 - 対象: どの画面・API・業種向けか
 ```
 
+## 2026-08-20 IMP-033 §2 MORE メニュー IA 型基盤（branch impl/IMP-033-more-menu）
+
+- 内容: v2.0 §2 MORE（その他）タブの項目構成を正準定義する型基盤を実装。
+  - `src/lib/navigation/moreMenu.ts`: MoreMenuItem 型、MORE_MENU_ITEMS 正準リスト（10 項目、4 セクション）、
+    権限ベースフィルタリング(`filterMoreMenuItems`)、セクショングループ化(`groupMoreMenuItems`)。
+  - 現行モバイル 7 項目 + メンバー管理・店舗管理・同期センターを追加。
+  - プラットフォーム別表示制御（NFC 系はモバイル専用）。
+  - テスト 21 件（既存 28 件 + 新規 21 件 = ナビゲーション計 49 件）。
+  - UI コンポーネント変更なし（消費側が `filterMoreMenuItems` 経由で使う）。
+- 対象: モバイル「その他」タブ / Web 設定ハブの項目定義
+
 ## 2026-08-20 IMP-032 §14 SYNC_CENTER 同期キュー変換・集計・競合解決（branch impl/IMP-032-sync-center）
 
 - 内容: v2.0 §14 SYNC_CENTER 画面の基盤となる純関数レイヤを実装。
