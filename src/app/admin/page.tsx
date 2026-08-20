@@ -5,6 +5,7 @@ import { createClient as createSupabaseServerClient } from "@/lib/supabase/serve
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { logger } from "@/lib/logger";
 import { availableScopes, defaultScope, type WorkScope } from "@/lib/navigation/scope";
+import { fetchTodaySignals } from "@/lib/admin/fetchTodaySignals";
 import PageHeader from "@/components/ui/PageHeader";
 import DashboardCharts from "./DashboardCharts";
 import OnboardingTour from "./OnboardingTour";
@@ -418,6 +419,31 @@ async function PlatformStats() {
   );
 }
 
+/**
+ * 3 秒理解ゾーンの統合ラッパ。fetchTodaySignals 1 回で NEXT ACTION と進捗カードの両方を描画。
+ * ponytail: NextActionSection / TodayProgressCard が個別に fetch していた 3 重呼び出しを解消。
+ */
+async function TodayOverviewSection({
+  tenantId,
+  scope,
+  currentUserId,
+}: {
+  tenantId: string;
+  scope: "tenant" | "mine";
+  currentUserId: string | null;
+}) {
+  const signals = await fetchTodaySignals(tenantId, { scope, currentUserId });
+  const nextAction = <NextActionSection signals={signals} />;
+  const progress = <TodayProgressCard signals={signals} scope={scope} />;
+
+  return (
+    <div className="grid gap-4 sm:grid-cols-[1fr_auto]">
+      {nextAction}
+      {progress}
+    </div>
+  );
+}
+
 export default async function AdminHome({
   searchParams,
 }: {
@@ -450,16 +476,18 @@ export default async function AdminHome({
       <AnnouncementsBanner />
 
       {/* ── 3 秒理解ゾーン (IMP-021 / v2.0 §5) ── */}
-      {/* NEXT ACTION → 今日の進捗。スコープはページ上部のトグルで一括切替。 */}
+      {/* NEXT ACTION + 今日の進捗。1 回の fetchTodaySignals で両方描画。 */}
       {tenantId && (
-        <div className="grid gap-4 sm:grid-cols-[1fr_auto]">
-          <Suspense fallback={<NextActionSectionSkeleton />}>
-            <NextActionSection tenantId={tenantId} scope={tasksScope} currentUserId={caller.userId} />
-          </Suspense>
-          <Suspense fallback={<TodayProgressCardSkeleton />}>
-            <TodayProgressCard tenantId={tenantId} scope={tasksScope} currentUserId={caller.userId} />
-          </Suspense>
-        </div>
+        <Suspense
+          fallback={
+            <div className="grid gap-4 sm:grid-cols-[1fr_auto]">
+              <NextActionSectionSkeleton />
+              <TodayProgressCardSkeleton />
+            </div>
+          }
+        >
+          <TodayOverviewSection tenantId={tenantId} scope={tasksScope} currentUserId={caller.userId} />
+        </Suspense>
       )}
 
       {/* AI 自動化の人の承認待ち — 一等地に常設（0 件なら自動で非表示） */}
@@ -677,7 +705,7 @@ export default async function AdminHome({
         tag="管理画面"
         title="ダッシュボード"
         description="施工証明書の管理状況を一目で確認"
-        actions={<HomeScopeToggle scope={workScope} scopes={allowed} />}
+        actions={<HomeScopeToggle scope={workScope} scopes={allowed} defaultScopeValue={defaultScope(caller.role)} />}
       />
       <DashboardModeSwitch adminContent={adminContent} />
     </div>

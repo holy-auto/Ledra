@@ -1,4 +1,4 @@
-import { fetchTodaySignals, businessDateString } from "@/lib/admin/fetchTodaySignals";
+import { businessDateString, type TodaySignals } from "@/lib/admin/fetchTodaySignals";
 import ProgressCard from "@/components/ui/ProgressCard";
 
 /**
@@ -22,18 +22,14 @@ export function TodayProgressCardSkeleton() {
   );
 }
 
-export default async function TodayProgressCard({
-  tenantId,
+export default function TodayProgressCard({
+  signals,
   scope = "tenant",
-  currentUserId = null,
 }: {
-  tenantId: string;
+  signals: TodaySignals;
   scope?: "tenant" | "mine";
-  currentUserId?: string | null;
 }) {
-  const now = new Date();
-  const signals = await fetchTodaySignals(tenantId, { scope, currentUserId, now });
-  const today = businessDateString(now);
+  const today = businessDateString(signals.now);
 
   // 今日の予約（キャンセル除外）
   const todayReservations = signals.reservations.filter((r) => r.scheduled_date === today && r.status !== "cancelled");

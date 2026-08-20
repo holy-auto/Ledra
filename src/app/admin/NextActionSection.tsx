@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { fetchTodaySignals, tilesFromSignals } from "@/lib/admin/fetchTodaySignals";
+import { tilesFromSignals, type TodaySignals } from "@/lib/admin/fetchTodaySignals";
 import NextActionCard from "@/components/ui/NextActionCard";
 import type { Severity } from "@/lib/domain/states";
 import type { TaskTile } from "@/lib/admin/todayTasks";
@@ -40,16 +40,7 @@ export function NextActionSectionSkeleton() {
   );
 }
 
-export default async function NextActionSection({
-  tenantId,
-  scope = "tenant",
-  currentUserId = null,
-}: {
-  tenantId: string;
-  scope?: "tenant" | "mine";
-  currentUserId?: string | null;
-}) {
-  const signals = await fetchTodaySignals(tenantId, { scope, currentUserId });
+export default function NextActionSection({ signals }: { signals: TodaySignals }) {
   const tiles = tilesFromSignals(signals);
 
   // タイルなし → 全部完了。カードは出さない。

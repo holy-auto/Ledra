@@ -15,7 +15,16 @@ import SegmentedControl, { type SegmentItem } from "@/components/ui/SegmentedCon
 import type { WorkScope } from "@/lib/navigation/scope";
 import { WORK_SCOPE_LABELS } from "@/lib/navigation/scope";
 
-export default function HomeScopeToggle({ scope, scopes }: { scope: WorkScope; scopes: readonly WorkScope[] }) {
+export default function HomeScopeToggle({
+  scope,
+  scopes,
+  defaultScopeValue,
+}: {
+  scope: WorkScope;
+  scopes: readonly WorkScope[];
+  /** サーバ側で解決したデフォルトスコープ。このスコープ選択時は URL param を消す。 */
+  defaultScopeValue: WorkScope;
+}) {
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -29,9 +38,8 @@ export default function HomeScopeToggle({ scope, scopes }: { scope: WorkScope; s
 
   const setScope = (next: WorkScope) => {
     const params = new URLSearchParams(searchParams?.toString() ?? "");
-    // デフォルトに戻す場合は param を消す。"store" がデフォルト。
     params.delete("tasks"); // 旧パラメータ削除
-    if (next === "store") {
+    if (next === defaultScopeValue) {
       params.delete("scope");
     } else {
       params.set("scope", next);
