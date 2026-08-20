@@ -11,8 +11,12 @@
 
 import type { BadgeVariant } from "@/lib/statusMaps";
 
-/** DB に実在する reservations.status の 5 値。 */
-export type ReservationStatus = "confirmed" | "arrived" | "in_progress" | "completed" | "cancelled";
+/**
+ * DB に実在する reservations.status の値。
+ * 既存 5 値 + IMP-031 で追加予定の 3 値（DB マイグレーション前に表示定義を先行）。
+ */
+export type ReservationStatus =
+  "confirmed" | "arrived" | "in_progress" | "completed" | "cancelled" | "paused" | "no_show" | "partially_completed";
 
 export interface ReservationStatusDisplay {
   label: string;
@@ -68,6 +72,31 @@ export const RESERVATION_STATUS_DISPLAY: Record<ReservationStatus, ReservationSt
     text: "text-secondary",
     dot: "bg-muted",
     variant: "danger",
+  },
+  // ── IMP-031: 例外状態 ──
+  paused: {
+    label: "中断中",
+    hint: "作業を中断しています。再開すると作業中に戻ります。",
+    bg: "bg-warning-dim",
+    text: "text-warning-text",
+    dot: "bg-warning",
+    variant: "warning",
+  },
+  no_show: {
+    label: "来店なし",
+    hint: "お客様が来店しませんでした。再予約またはキャンセルしてください。",
+    bg: "bg-inset",
+    text: "text-secondary",
+    dot: "bg-muted",
+    variant: "danger",
+  },
+  partially_completed: {
+    label: "部分終了",
+    hint: "一部工程が完了しました。残りの工程は後日対応します。",
+    bg: "bg-accent-dim",
+    text: "text-accent-text",
+    dot: "bg-accent",
+    variant: "info",
   },
 };
 

@@ -13,6 +13,22 @@
 - 対象: どの画面・API・業種向けか
 ```
 
+## 2026-08-20 IMP-031 §19.1 例外フロー（cancel/no-show/pause/追加作業）型基盤（branch impl/IMP-031-job-exceptions）
+
+- 内容: v2.0 §19.1 の案件例外フローの型基盤と遷移評価器を実装。
+  - `src/lib/domain/jobExceptions.ts`:
+    - 例外遷移評価器 5 本（evaluateCancel / evaluateNoShow / evaluatePause /
+      evaluateResume / evaluatePartialComplete）。全て JOB_TRANSITIONS を参照し
+      遷移ルールを二重管理しない。
+    - 例外メタデータ型: CancelReasonCategory(6) / PauseReasonCategory(6) /
+      NoShowAction(3) / PartialCompleteReason(5) / JobExceptionEvent。
+    - スコープ変更型: ScopeChangeCategory(5) / ScopeChangeRecord / requiresApproval()。
+    - isExceptionState() ヘルパー。
+  - `src/lib/domain/jobStatusDisplay.ts` 変更: paused / no_show / partially_completed
+    の表示構成追加（ReservationStatus を 5→8 値に拡張）。
+  - テスト 51 件。DB マイグレーション・API ルート変更なし。
+- 対象: 案件管理全般（予約の例外状態遷移）
+
 ## 2026-08-20 IMP-030 §12.3-12.4 訂正・supersede・Integrity Incident・revoke 型基盤（branch impl/IMP-030-correction-supersede-revoke）
 
 - 内容: v2.0 §12.3-12.4 / ADR-0004 の訂正ワークフロー・Integrity Incident・版遷移の

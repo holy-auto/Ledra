@@ -23,6 +23,18 @@
 9. 公開区分: 公開可／要確認／非公開
 ```
 
+## 2026-08-20 IMP-031 例外フローの型基盤方式 — 純関数評価器 vs DB CHECK+API 一括変更
+
+1. 日付: 2026-08-20
+2. 起きたこと: v2.0 §19.1 の例外フロー（cancel/no-show/pause/partial-completion/追加作業）の実装に着手。既存は `cancelled` のみ実装済み（`reservations.status` CHECK 制約に含まれ、API ルートで処理）。PAUSED/NO_SHOW/PARTIALLY_COMPLETED は正準型（`states.ts`）・遷移表（`transitions.ts`）・ラベル（`labels.ts`）が定義済みだが、DB・API・UI が未実装。
+3. 以前の考え: DB の CHECK 制約拡張（3 値追加）+ メタデータカラム + API ルート変更を一括実装する案。
+4. 違和感・問題: CHECK 制約変更は既存の予約管理全体に影響する。API ルート（admin/reservations、advance 等）の変更箇所が多く、一括実装はレビュー困難。IMP-030 と同様、型基盤を先に確定してから DB/API を追加するほうが安全。
+5. 決めたこと: (a) 例外遷移評価器 5 本を JOB_TRANSITIONS ベースの純関数で実装。(b) 例外メタデータ型（CancelReasonCategory 等）を型定義。(c) スコープ変更型（ScopeChangeRecord）を型定義。(d) jobStatusDisplay.ts に 3 状態の表示構成を追加。DB マイグレーション・API ルート変更は後続タスクで実施。
+6. 捨てた選択肢: (a) DB CHECK + API + UI 一括実装 — 影響範囲が大きく PR が肥大化。既存の予約管理を壊すリスク。(b) cancel 以外は全て「後で」 — 表示構成すら定義しないと、IMP-043（見積・請求）等の下流が例外状態を処理できない。
+7. 判断理由: IMP-027〜030 と一貫した「型基盤先行」パターン。遷移評価器が先に存在すれば、DB マイグレーション時に「評価器の検証をそのまま DB トリガーに転写」できる。jobStatusDisplay の拡張は下流タスクの前提（中断中・来店なしの表示が必要）。
+8. まだ答えが出ていないこと: `reservations.status` CHECK 制約の変更タイミング（ALTER ... NOT VALID + VALIDATE パターン）。追加作業のスコープ変更を menu_items_json の版管理で実現するか、別テーブルで管理するか。NO_SHOW 後の GCal イベント削除ポリシー。
+9. 公開区分: 公開可
+
 ## 2026-08-20 IMP-030 訂正・revoke の型基盤方式 — 型基盤先行 vs DB+ルート一括実装
 
 1. 日付: 2026-08-20

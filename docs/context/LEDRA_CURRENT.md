@@ -124,6 +124,14 @@ Sentry · Resend (+ SendGrid fallback) · Anthropic (Opus 4.8 / Sonnet 4.6 / Hai
   （SegmentedControl/StatusBadge/StatusCard/NextActionCard/ProgressCard/Alert/IconButton/
   BottomSheet）+ Badge dot + Button xl。v2.0 の色トークン値は不採用・既存デザインシステム維持
   （DECISION_LOG 2026-08-19）。
+- **IMP-031（§19.1 例外フロー cancel/no-show/pause/追加作業 型基盤）完了**:
+  案件例外フローの遷移評価器 5 本（evaluateCancel/evaluateNoShow/evaluatePause/
+  evaluateResume/evaluatePartialComplete）を JOB_TRANSITIONS ベースで実装。
+  例外メタデータ型（CancelReasonCategory 6/PauseReasonCategory 6/NoShowAction 3/
+  PartialCompleteReason 5/JobExceptionEvent）、スコープ変更型（ScopeChangeCategory 5/
+  ScopeChangeRecord/requiresApproval）を定義。jobStatusDisplay.ts に paused/no_show/
+  partially_completed の表示構成を追加（ReservationStatus 5→8 値）。
+  DB マイグレーション・API ルート変更なし。テスト 51 件。
 - **IMP-030（§12.3-12.4 訂正・supersede・Integrity Incident・revoke 型基盤）完了**:
   訂正リクエスト型（5 状態 × 5 カテゴリ + 訂正可否判定 + 状態遷移検証）、
   Integrity Incident 型（6 カテゴリ × 3 重大度 × 5 状態 + revoke 可否判定 + 即時 revoke 判定）、
