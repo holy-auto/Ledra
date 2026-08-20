@@ -18,7 +18,8 @@ import type { DocumentPaymentContext, PosPaymentContext } from "./types";
  * 2. draft             → UNPAID（まだ請求していない）
  * 3. pendingAsync      → PENDING（Stripe/Square 等で決済処理中）
  * 4. refunded > 0 かつ paid - refunded ≤ 0 → REFUNDED
- * 5. refunded > 0 かつ paid - refunded > 0 → PARTIALLY_REFUNDED
+ * 5. refunded > 0 かつ paid - refunded > total → OVERPAID（返金後もまだ過入金）
+ * 5b. refunded > 0 かつ 0 < paid - refunded ≤ total → PARTIALLY_REFUNDED
  * 6. paid > total      → OVERPAID
  * 7. paid === total    → PAID
  * 8. paid > 0          → PARTIALLY_PAID
@@ -41,6 +42,8 @@ export function deriveDocumentPaymentState(ctx: DocumentPaymentContext): Payment
   if (refunded > 0) {
     const netPaid = paid - refunded;
     if (netPaid <= 0) return "REFUNDED";
+    // 返金後もまだ過入金 → OVERPAID が優先（返金不足の検出用）
+    if (total > 0 && netPaid > total) return "OVERPAID";
     return "PARTIALLY_REFUNDED";
   }
 
@@ -49,8 +52,8 @@ export function deriveDocumentPaymentState(ctx: DocumentPaymentContext): Payment
     if (paid > total) return "OVERPAID";
     if (paid >= total) return "PAID";
     if (paid > 0) return "PARTIALLY_PAID";
-  } else if (total === 0) {
-    // 合計 0 の帳票（無料サービス等）は自動的に PAID
+  } else if (total <= 0) {
+    // 合計 0 以下の帳票（無料サービス・クレジットノート等）は自動的に PAID
     return "PAID";
   }
 
@@ -64,6 +67,8 @@ export function deriveDocumentPaymentState(ctx: DocumentPaymentContext): Payment
 export function derivePoSPaymentState(ctx: PosPaymentContext): PaymentState {
   switch (ctx.status) {
     case "completed":
+      // 全額返金済みだがステータス未更新の場合を考慮
+      if (ctx.refundAmount > 0 && ctx.refundAmount >= ctx.amount) return "REFUNDED";
       return ctx.refundAmount > 0 ? "PARTIALLY_REFUNDED" : "PAID";
     case "refunded":
       return "REFUNDED";
@@ -71,6 +76,11 @@ export function derivePoSPaymentState(ctx: PosPaymentContext): PaymentState {
       return "PARTIALLY_REFUNDED";
     case "voided":
       return "CANCELED";
+    default: {
+      // ponytail: PosPaymentStatus 拡張時に未処理値を検出
+      const _exhaustive: never = ctx.status;
+      return "UNKNOWN";
+    }
   }
 }
 

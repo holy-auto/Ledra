@@ -60,6 +60,15 @@ describe("deriveDocumentPaymentState", () => {
   it("返金が入金を上回る → REFUNDED", () => {
     expect(deriveDocumentPaymentState({ ...base, paid: 5000, refunded: 6000 })).toBe("REFUNDED");
   });
+
+  it("過入金+一部返金で netPaid > total → OVERPAID", () => {
+    // paid=15000, refunded=3000 → netPaid=12000 > total=10000
+    expect(deriveDocumentPaymentState({ ...base, paid: 15000, refunded: 3000 })).toBe("OVERPAID");
+  });
+
+  it("合計が負（クレジットノート等）→ PAID", () => {
+    expect(deriveDocumentPaymentState({ ...base, total: -5000 })).toBe("PAID");
+  });
 });
 
 describe("derivePoSPaymentState", () => {
@@ -86,6 +95,11 @@ describe("derivePoSPaymentState", () => {
   it("voided → CANCELED", () => {
     const ctx: PosPaymentContext = { status: "voided", amount: 5000, refundAmount: 0 };
     expect(derivePoSPaymentState(ctx)).toBe("CANCELED");
+  });
+
+  it("completed + full refund amount → REFUNDED", () => {
+    const ctx: PosPaymentContext = { status: "completed", amount: 5000, refundAmount: 5000 };
+    expect(derivePoSPaymentState(ctx)).toBe("REFUNDED");
   });
 });
 

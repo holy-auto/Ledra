@@ -40,15 +40,6 @@ export function evaluatePaymentPolicy(ctx: PaymentPolicyContext): PaymentPolicyR
   const policy = resolvePaymentPolicy(ctx);
   const { paymentState, billingCycle } = ctx;
 
-  // UNKNOWN は常に不成立（v2.0 §11.3: UNKNOWN の間は再決済させない）
-  if (paymentState === "UNKNOWN") {
-    return {
-      policy,
-      met: false,
-      reason: "決済結果が不明です。決済プロバイダの管理画面で状態を確認してください。",
-    };
-  }
-
   switch (policy) {
     case "consumer":
       return evaluateConsumer(paymentState);
@@ -61,7 +52,15 @@ export function evaluatePaymentPolicy(ctx: PaymentPolicyContext): PaymentPolicyR
   }
 }
 
+/** UNKNOWN → 不成立（v2.0 §11.3: UNKNOWN の間は再決済させない） */
+const UNKNOWN_RESULT = (policy: PaymentPolicy): PaymentPolicyResult => ({
+  policy,
+  met: false,
+  reason: "決済結果が不明です。決済プロバイダの管理画面で状態を確認してください。",
+});
+
 function evaluateConsumer(paymentState: PaymentState): PaymentPolicyResult {
+  if (paymentState === "UNKNOWN") return UNKNOWN_RESULT("consumer");
   if (PAID_STATES.has(paymentState)) {
     return { policy: "consumer", met: true };
   }
@@ -73,9 +72,12 @@ function evaluateConsumer(paymentState: PaymentState): PaymentPolicyResult {
 
 function evaluateB2B(paymentState: PaymentState, billingCycle: string | null): PaymentPolicyResult {
   // 合算払い → 支払い条件は自動成立（後日まとめて請求）
+  // UNKNOWN でも成立: 合算払いは「証明書を今出す、請求は後」なので決済状態は無関係
   if (billingCycle === "consolidated") {
     return { policy: "b2b", met: true };
   }
+
+  if (paymentState === "UNKNOWN") return UNKNOWN_RESULT("b2b");
 
   // 支払いサイクル未設定 → 設定を促す
   if (!billingCycle) {

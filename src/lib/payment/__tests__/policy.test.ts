@@ -116,15 +116,23 @@ describe("isBlindRetryBlocked", () => {
 });
 
 describe("UNKNOWN からの盲目リトライ禁止", () => {
-  it("全ポリシーで UNKNOWN は不成立", () => {
+  it("都度払い・consumer・insurance で UNKNOWN は不成立", () => {
     const contexts: PaymentPolicyContext[] = [
       { customerType: "individual", billingCycle: null, paymentState: "UNKNOWN" },
-      { customerType: "corporate", billingCycle: "consolidated", paymentState: "UNKNOWN" },
       { customerType: "corporate", billingCycle: "per_job", paymentState: "UNKNOWN" },
       { customerType: "individual", billingCycle: null, paymentState: "UNKNOWN", insurerApproved: false },
     ];
     for (const ctx of contexts) {
       expect(evaluatePaymentPolicy(ctx).met).toBe(false);
     }
+  });
+
+  it("合算払い(consolidated) は UNKNOWN でも成立（後日請求なので決済状態は無関係）", () => {
+    const result = evaluatePaymentPolicy({
+      customerType: "corporate",
+      billingCycle: "consolidated",
+      paymentState: "UNKNOWN",
+    });
+    expect(result.met).toBe(true);
   });
 });
