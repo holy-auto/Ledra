@@ -13,6 +13,17 @@
 - 対象: どの画面・API・業種向けか
 ```
 
+## 2026-08-20 IMP-023 §7 JOB_EVIDENCE — 証跡凍結ガード・必須ショット進捗（branch impl/IMP-023-evidence / PR #TBD）
+
+- 内容: v2.0 §7 の証跡撮影基盤ギャップを2件クローズ。(1) `certificate_images_guard` DB
+  トリガー — 発行済み(active)/取消済み(void)証明書に紐づく写真行の DELETE を DB レベルで
+  ブロック。証跡列(sha256/original_sha256/perceptual_hash/stage/authenticity_grade/
+  tsa_token/tsa_authority/tsa_timestamp_at/c2pa_manifest_cid/storage_path)の破壊的 UPDATE
+  も拒否。非証跡列(sort_order 等)の更新は許可。DELETE API route にトリガーエラーの 409
+  ハンドリング追加。(2) `evidenceProgress.ts` — 工程ガイドの必須ショット宣言とアップロード
+  済み写真の stage タグを突合せ、進捗(total/fulfilled/missing)を返す純関数。テスト 8 件。
+- 対象: 証明書写真システム。設計原則 10「原本証跡は不変/追記のみ」の充足。IMP-024/026 の前提条件。
+
 ## 2026-08-20 IMP-022 §6 Work List & Job Hub — ステータス統一・情報階層・CTA規律（branch impl/IMP-022-work-list-job-hub / PR #TBD）
 
 - 内容: v2.0 §6 の Work List & Job Hub を実装。(1) 予約ステータス表示統一

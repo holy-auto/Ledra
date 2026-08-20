@@ -124,6 +124,12 @@ Sentry · Resend (+ SendGrid fallback) · Anthropic (Opus 4.8 / Sonnet 4.6 / Hai
   （SegmentedControl/StatusBadge/StatusCard/NextActionCard/ProgressCard/Alert/IconButton/
   BottomSheet）+ Badge dot + Button xl。v2.0 の色トークン値は不採用・既存デザインシステム維持
   （DECISION_LOG 2026-08-19）。
+- **IMP-023（§7 JOB_EVIDENCE — 証跡凍結ガード・必須ショット進捗）完了**:
+  (1) `certificate_images_guard` DB トリガーで発行済み/取消済み証明書の写真行 DELETE を
+  DB レベルでブロック。証跡列 10 列の破壊的 UPDATE も拒否（sort_order 等の表示列は許可）。
+  DELETE API route にトリガーエラーの 409 ハンドリング追加。設計原則 10 充足。
+  (2) `evidenceProgress.ts` — 必須ショット宣言とアップロード済み stage の突合せ進捗計算
+  （純関数）。テスト 8 件。
 - **IMP-022（§6 Work List & Job Hub）完了**: 予約ステータス表示を単一定義源
   （`src/lib/domain/jobStatusDisplay.ts` — 5 値×色/ラベル/ヒント/variant）に統一し、
   4 箇所の重複 STATUS_CONFIG を置換。ステッパー情報階層（現ステップ拡大・完了/未着手圧縮）を

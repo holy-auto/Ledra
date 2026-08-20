@@ -48,6 +48,13 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
       .eq("tenant_id", caller.tenantId);
 
     if (dbError) {
+      // ponytail: certificate_images_guard trigger raises P0001 when cert is active/void
+      if (dbError.code === "P0001" && dbError.message?.includes("certificate_images")) {
+        return Response.json(
+          { error: "発行済みまたは取消済みの証明書に紐づく写真は削除できません。" },
+          { status: 409 },
+        );
+      }
       console.error("[image delete] db delete error", dbError);
       return apiInternalError(dbError, "image delete");
     }
