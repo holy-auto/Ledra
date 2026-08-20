@@ -13,6 +13,25 @@
 - 対象: どの画面・API・業種向けか
 ```
 
+## 2026-08-20 IMP-046 §21 ANALYTICS_STORE — 運用KPI・キャパシティ分析（branch impl/IMP-046-analytics-kpi）
+
+- 内容: v2.0 §21 が要求する運用指標とキャパシティ可視化の純関数計算器を実装。
+  - `src/lib/analytics/operationalKpi.ts`: 運用KPI計算器6本
+    - `computeVerifiedRate()` — 証明書VERIFIED到達率
+    - `computeEvidenceSufficiencyRate()` — 証跡充足率
+    - `computeAvgReviewWaitHours()` — 平均レビュー待ち時間（作業完了→VERIFIED）
+    - `computeAvgCycleTimeHours()` — 平均ジョブサイクルタイム（SCHEDULED→VERIFIED）
+    - `computeSlaComplianceRate()` — SLA遵守率（IMP-029 EscalationResult消費）
+    - `computeDailyThroughput()` — 日次スループット
+    - `computeOperationalKPIs()` — 一括算出（部分入力可）
+  - `src/lib/analytics/capacityAnalytics.ts`: キャパシティ分析
+    - `decomposeTimeBands()` — capacity>1ブースの時間帯別占有分解（IMP-041 L330/L347から委ねられた実装）
+    - `computeFleetUtilization()` — 全ブースフリート稼働率サマリー
+    - `computeStaffCapacity()` — スタッフ負荷分析（負荷率・効率・過負荷/遊休識別）
+- 対象: 経営ダッシュボード（/admin/management）のデータソース拡張
+- テスト: 40件（operationalKpi 22 + capacityAnalytics 18）
+- 依存: IMP-041（BoothUtilization再利用）、IMP-029（EscalationStage型参照）、IMP-001（CertificateState/JobState型参照）
+
 ## 2026-08-20 IMP-045 §16 STAFF_MANAGEMENT — メンバーシップ管理ガード（branch impl/IMP-045-staff-management）
 
 - 内容: 既存スタッフ管理基盤の欠損3領域（移籍・停止・最終管理者保護）を純関数ガードで補完。
