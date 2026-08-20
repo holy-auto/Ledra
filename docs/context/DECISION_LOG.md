@@ -23,6 +23,18 @@
 9. 公開区分: 公開可／要確認／非公開
 ```
 
+## 2026-08-20 IMP-052 E2E_SUITE — E2E テスト設計と CI ゲーティング判断
+
+1. 日付: 2026-08-20
+2. 起きたこと: v2.0 §23 が必須 E2E（正常ワークフロー＋例外10種）を要求。既存 14 spec は認可ゲートと公開ページのスモークチェックのみで、業務フロー・例外系・アクセシビリティの E2E が未自動化だった。CI からは E2E ジョブ自体が削除済み（実バックエンド依存）。
+3. 以前の考え: E2E は実バックエンドなしでは動かないため CI から完全削除し、ローカル実行のみで対応していた。
+4. 違和感・問題: (a) v2.0 §23 の必須 E2E 要件を満たしていない。(b) 管理画面の WCAG AA 検証手段がない（Lighthouse CI は認証壁で管理画面に到達不可）。(c) 例外フローの API レベル検証が E2E にない（入力バリデーション・ステータス遷移）。
+5. 決めたこと: (a) 4 spec ファイル新設（workflow-flow / exception-flows / customer-confirmation / accessibility）。(b) CI に E2E ジョブを復元するが、secrets ゲート付き — `E2E_USER_EMAIL` 未設定時はジョブ全体をスキップ。テストファイル側でも `adminCreds()` / `isAxeAvailable()` / `customerPortalConfig()` で個別 skip。(c) axe-core は動的 import で未インストール時 graceful skip。(d) a11y テストは `critical` impact のみ fail（serious/moderate は console.log レポート）。
+6. 捨てた選択肢: (a) MSW でバックエンドをモック — 実 API の挙動検証が目的であり、モックは本質を検証しない。(b) CI で常時 E2E 実行 — secrets 管理の運用負荷とセキュリティリスク。(c) @axe-core/playwright を devDependencies に強制追加 — CI 環境での追加インストール時間とサイズ。動的 import で任意化。(d) a11y で serious/moderate も fail にする — 既存ページに未修正の moderate 違反がある可能性があり、段階的改善が現実的。
+7. 判断理由: 環境変数ゲートにより、secrets 未設定の fork/外部 CI では完全無害。設定済み環境では v2.0 §23 の要件を自動検証。既存 14 spec のパターン（`test.skip(!creds, "...")` ）を踏襲し一貫性を維持。axe-core 動的 import パターンは IMP-051 で設計済みの `checkA11y()` ヘルパーを活用。
+8. まだ答えが出ていないこと: (a) E2E secrets の Staging 環境設定タイミング（本番デプロイ前に設定が必要）。(b) axe-core の管理画面での実際の違反件数（テスト実行後に判明）。
+9. 公開区分: 公開可
+
 ## 2026-08-20 IMP-051 ACCESSIBILITY_I18N_AUDIT — アクセシビリティ・翻訳QA基盤の構成判断
 
 1. 日付: 2026-08-20
