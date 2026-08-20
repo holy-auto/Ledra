@@ -100,6 +100,10 @@ Sentry · Resend (+ SendGrid fallback) · Anthropic (Opus 4.8 / Sonnet 4.6 / Hai
 
 - 「Ledra UI/UX & Development Specification v2.0」（2026-08-19）と、それを36タスク
   （IMP-000〜IMP-054）に分解した「Claude Code Implementation Guide v1.0」を実装基準線として採用。
+- **IMP-054（§24 P0_RELEASE_GATE — P0 リリースゲート）完了**:
+  全 36 タスク（IMP-000〜IMP-054）の実装状態を最終検証。P0 全 30 タスク＋P1 全 6 タスク =
+  36 タスク全て実装済み。IMP-011/012/013/014 の requirement-trace.md 行を実装済みに是正。
+  P0 充足サマリ 10 項目に実装証跡を追加、全て ✅。
 - **IMP-053（§14.4 OBSERVABILITY_ERROR_CONTRACT — 構造化エラー契約）完了**:
   v2.0 §14.4 の構造化エラー契約型基盤。StructuredError 型（データ安全性4段階・エラー分類
   11種・再試行ポリシー・復旧アクション7種）、createStructuredError ファクトリ、6プリセット

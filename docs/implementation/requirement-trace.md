@@ -184,10 +184,10 @@ Payment Policy(v2.0 §11.3: Consumer PAID / B2B CREDIT_APPROVED / Insurance INSU
 | IMP-000 | 0 / P0 | §22, §24(監査・トレース) | 本書+current-architecture.md で完了(実装済み=本タスク) | なし |
 | IMP-001 | 0 / P0 | §1, §19, Appendix A(語彙・ガードレール) | **実装済み**(2026-08-19): 正準6軸 `src/lib/domain/states.ts`+ロケール別ラベル `labels.ts`+テスト、ADR 0001〜0006(`docs/adr/`)、アドホック状態禁止ルール(CLAUDE.md)。既存語彙との統一・マッピングは IMP-015 で判断(ADR-0002) | 000 |
 | IMP-010 | 1 / P0 | §3(デザイントークン・共有部品) | **実装済み**(2026-08-19): 不足8プリミティブ(SegmentedControl/StatusBadge/StatusCard/NextActionCard/ProgressCard/Alert/IconButton/BottomSheet)+Badge dot+Button xl(48px CTA)+`SEVERITY_VARIANT_MAP` を新設。v2.0 §3.1 の色値(#155EEF 等)は既存 DESIGN_SYSTEM トークン維持のため不採用(DECISION_LOG 2026-08-19)。Storybook 相当なし(既存方針どおり) | 001 |
-| IMP-011 | 1 / P0 | §17, L10N(i18n 基盤・用語集) | 自前 t()+ja/en 8キーのみ。6言語・用語集・original/translated 分離なし(部分) | 001 |
-| IMP-012 | 1 / P0 | §15, AUTH_*(認証・招待・端末・step-up) | password 認証+WebAuthn 操作ゲートあり。正準フロー(Invite→OTP→生体)・端末管理なし(別方式) | 000, 001, 011 |
-| IMP-013 | 1 / P0 | §16(権限エンジン・店舗スコープ) | Role5段+Permission55種+RLS240 稼働。権限動詞・Assignment/Risk 軸なし(部分) | 001, 012 |
-| IMP-014 | 1 / P0 | §20, Appendix B(ドメインイベント・監査・冪等) | AuditEventType27種+outbox+冪等3系統あり。イベントカタログ網羅・パイプラインなし(部分) | 001, 013 |
+| IMP-011 | 1 / P0 | §17, L10N(i18n 基盤・用語集) | **実装済み**(2026-08-19): 6言語ロケール統一(`src/lib/i18n/locales.ts` — ja/en/vi/id/fil/hi 単一定義源+LOCALE_LABELS)、メッセージファイル4言語追加(messages/vi,id,fil,hi.json)、自動車翻訳用語集(`glossary.ts` — ~28用語×6言語+`getGlossaryForLocale()`)、original/translated分離型(`translated.ts` — `WithTranslations<T>`)、ドメインラベル6言語化(`labels.ts`)。翻訳は推定(IMP-051で検証) | 001 |
+| IMP-012 | 1 / P0 | §15, AUTH_*(認証・招待・端末・step-up) | **実装済み**(2026-08-19): 正準オンボーディング状態機械(`src/lib/auth/onboarding.ts` — INVITED→LANGUAGE_SET→OTP_VERIFIED→STORE_ASSIGNED→BIOMETRIC_ENROLLED→ACTIVE)、汎用OTPモジュール(`otp.ts` — HMAC-SHA256ハッシュ・タイミングセーフ検証)、端末管理型(`devices.ts` — 信頼度判定・遠隔失効)、step-up認証(`stepUp.ts` — 操作別要件マップ・利用可能手段判定)、招待フロー(`invite.ts` — ロケール選択付き)。テスト5ファイル | 000, 001, 011 |
+| IMP-013 | 1 / P0 | §16(権限エンジン・店舗スコープ) | **実装済み**(2026-08-19): 正準権限動詞7種(`src/lib/auth/permissionVerbs.ts` — VIEW/EDIT/CONFIRM/APPROVE/ISSUE/MANAGE/EXPORT)+既存Permission→正準動詞マッピング(VERB_MAP)+操作リスクレベル4段階分類(`operationRisk()`)、店舗スコープ型・判定関数群(`storeScope.ts` — hasStoreAccess/effectiveStoreRole/isStoreManager/accessibleStoreIds)。既存Permission 55種・RLS 240テーブル変更なし | 001, 012 |
+| IMP-014 | 1 / P0 | §20, Appendix B(ドメインイベント・監査・冪等) | **実装済み**(2026-08-19): 統一イベントカタログ(`src/lib/events/catalogue.ts` — `resource.action`命名33型×14リソースグループ)+既存AuditEventType→DomainEventType双方向マッピング(LEGACY_EVENT_MAP)、型付きイベントエンベロープ(`domainEvent.ts` — actor/tenant/store/risk/version/idempotencyKey)+`createDomainEvent()`ファクトリ+`eventRisk()`リスク推定。既存audit/outbox/webhook-topics変更なし | 001, 013 |
 | IMP-015 | 1 / P0 | §19(状態機械) | **実装済み**(2026-08-19): 正準6軸遷移表(`src/lib/domain/transitions.ts`)+汎用遷移検証関数+Certificate Gate 10条件型定義(`certificateGate.ts`)。既存値→正準値マッピングは消費タスク(IMP-028/031/027)で段階的導入。既存signoff/photoRequirement変更なし | 001, 014 |
 | IMP-016 | 1 / P0 | §14(オフライン永続・同期キュー・競合) | **実装済み**(2026-08-19): 同期キュー型(`src/lib/sync/types.ts` — SyncQueueItem/SyncResourceType 8種/SyncConflict 3種別/ConflictResolutionStrategy 4方針/SyncSummary)+競合検出・解決ヘルパー(`src/lib/sync/conflict.ts` — HTTP応答ベース競合検出/重複キュー検出/リソースタイプ別デフォルト解決戦略)+同期ドメインイベント5種をカタログ追加。既存outboxインフラ変更なし。DBマイグレーションなし | 001, 014, 015 |
 | IMP-020 | 2 / P0 | §2, §4, HOME 他(ナビ・検索・Quick Create) | **実装済み**(2026-08-19): 正準5タブ定義(`src/lib/navigation/tabs.ts` — Home/作業/車両/証明/その他)+Expoモバイルタブ再配置(`_layout.tsx` — 車両・証明タブ追加、予約・会計をその他に移動)+Web MobileTabBar v2.0準拠+CommandPalette拡張(エンティティ横断検索統合 — 顧客/車両/証明書/請求書+デバウンス300ms)+Quick Createアクション5種(`quickCreate.ts` — コンテキスト継承/権限ゲート)+ワークスコープ3段階(`scope.ts` — self/store/all_stores+ロール別使用可能判定) | 010, 011, 013 |
@@ -216,23 +216,23 @@ Payment Policy(v2.0 §11.3: Consumer PAID / B2B CREDIT_APPROVED / Insurance INSU
 | IMP-051 | 5 / P0 | §3.5(アクセシビリティ・多言語監査) | **実装済み**(2026-08-20): (1) `contrastCheck.ts` — WCAG 2.1 SC 1.4.3 コントラスト比チェッカー(parseHexColor/relativeLuminance/contrastRatio/meetsWcagAA/checkColorPair、3コンテキスト:normal≥4.5/large≥3/ui≥3)。(2) `auditTypes.ts` — WCAG AA 監査フレームワーク型(WcagCriterion/A11yFinding/A11yAuditResult)、WCAG_AA_KEY_CRITERIA 19基準(4カテゴリ)、COMPONENT_ARIA_MAP 10コンポーネントARIA要件(Modal/Drawer/BottomSheet/Alert/StatusBadge/IconButton/SegmentedControl/Tabs/ProgressCard/Toast)。(3) `qa.ts` — 翻訳QA 4関数(findMissingTranslations/findPlaceholderMismatches/computeTranslationCoverage/findGlossaryGaps)。Lighthouse CI設定変更なし(管理画面は認証壁のためIMP-052 E2Eに委譲)。テスト44件 | 010, 011, 034 |
 | IMP-052 | 5 / P0 | §23(必須 E2E スイート) | **実装済み**(2026-08-20): v2.0 §23 必須 E2E を Playwright で実装。正常ワークフロー8テスト(ダッシュボード→予約→作業詳細→証明書→車両→顧客→請求書)、例外フロー9テスト(API 5: cancel/void/approve/status/photo-gate + UI 4: settings/404/POS/search)、顧客確認4テスト、WCAG AA 9テスト(公開4+管理4+全違反レポート1)。CI E2E ジョブ復元(secrets ゲート — E2E_USER_EMAIL 未設定時は自動スキップ)。既存14 spec のパターン踏襲。テスト30件(新規) | 021, 022, 023, 026, 027, 028, 031, 032 |
 | IMP-053 | 5 / P0 | §14.4(可観測性・エラー契約・復旧) | **実装済み**(2026-08-20): 構造化エラー契約型基盤。StructuredError型(DataSafetyLevel 4段階・ErrorCategory 11分類・RetryPolicy・RecoveryAction 7種)、createStructuredErrorファクトリ、6プリセット(validation/externalService/stateTransition/dataIntegrity/timeout/concurrency)、requiresImmediateAttention()即時対応判定、toSentryContext() Sentry変換、toClientPayload()クライアントペイロード抽出。既存response.ts/cronAlert.ts/sentry.ts変更なし(型基盤先行)。テスト21件 | 014, 016, 028, 052 |
-| IMP-054 | 5 / P0 | §24(P0 リリースゲート) | 未着手(なし) | 050, 051, 052, 053 |
+| IMP-054 | 5 / P0 | §24(P0 リリースゲート) | **実装済み**(2026-08-20): P0全タスク完了検証。36タスク中P0は30タスク(IMP-000〜034, 050〜054)、全て実装済み。P1は6タスク(IMP-040〜046)、全て実装済み。IMP-011/012/013/014のrequirement-trace行を監査時記述から実装済みに更新。P0充足サマリ10項目全てに実装証跡あり | 050, 051, 052, 053 |
 
 ## 6. P0 充足サマリ(v2.0 §24.1 → 受入条件の証跡)
 
 v2.0 §24.1 の P0(Ledra Core)10項目すべてに、既存実装参照または担当タスクが存在することの確認。
 
-| P0 項目 | 既存実装参照 | 担当 IMP |
-|---|---|---|
-| Invite / OTP / Biometric | `/join`+顧客 OTP(生体ログインなし) | IMP-012 |
-| Home / Work List / Job Hub | `/admin`+`/admin/reservations`+`/admin/jobs/[id]`(別方式で稼働) | IMP-020, 021, 022 |
-| Workflow + Photo Evidence + Voice | ワークフローエンジン+写真ゲート+Web 音声 | IMP-022, 023, 024 |
-| Vehicle | `/admin/vehicles`+`/v/[vin]` | IMP-025 |
-| Customer Confirmation | `/sign/receipt/[token]` ほか署名付き URL 系統 | IMP-026 |
-| Payment state + Certificate + VERIFIED | 売掛元帳+写真ゲート+アンカー+PaymentState導出層+Policy評価器 | IMP-027, 028 |
-| Role / Permission | Role5段+Permission55種+RLS240 | IMP-013 |
-| Basic Offline / Sync | Web PWA outbox(モバイルなし) | IMP-016, 032 |
-| Basic Notifications | 用途別通知+outbox+中央通知エンジン型基盤+Deep Link+SLAエスカレーション評価器+チャネル解決+要対応カウント | IMP-029 |
-| Localization foundation | 自前 i18n 基盤(適用ゼロ) | IMP-011 |
+| P0 項目 | 既存実装参照 | 担当 IMP | 実装状態 |
+|---|---|---|---|
+| Invite / OTP / Biometric | `/join`+顧客 OTP+オンボーディング状態機械+汎用OTP+端末管理+step-up認証+招待フロー | IMP-012 | ✅ 実装済み |
+| Home / Work List / Job Hub | `/admin`+正準5タブ+NextActionCard+ProgressCard+スコープ切替+ステータス表示統一+CTA規律 | IMP-020, 021, 022 | ✅ 実装済み |
+| Workflow + Photo Evidence + Voice | ワークフローエンジン+写真ゲート+不変連鎖(DBトリガー)+evidenceProgress+Web音声+speechLang 6言語 | IMP-022, 023, 024 | ✅ 実装済み |
+| Vehicle | `/admin/vehicles`+`/v/[vin]`+PII遮断体系(コンパイル時型アサーション)+車両顧客関係型 | IMP-025 | ✅ 実装済み |
+| Customer Confirmation | `/sign/receipt/[token]`+customer_concerns テーブル+RaiseConcernButton+ブロック判定ヘルパー | IMP-026 | ✅ 実装済み |
+| Payment state + Certificate + VERIFIED | PaymentState導出層+Policy評価器+Certificate Gate 10条件+訂正・revoke・版遷移 | IMP-027, 028, 030 | ✅ 実装済み |
+| Role / Permission | Role5段+Permission55種+RLS240+正準動詞7種+店舗スコープ+ロール変更/削除/停止ガード+移籍検証 | IMP-013, 045 | ✅ 実装済み |
+| Basic Offline / Sync | Web PWA outbox+SyncQueue型+競合検出・解決+OutboxItem→SyncQueueItem変換+SyncSummary集計 | IMP-016, 032 | ✅ 実装済み |
+| Basic Notifications | 18通知タイプカタログ+Deep Link 10エンティティ×3ロール+SLAエスカレーション評価器+チャネル解決+要対応カウント | IMP-029 | ✅ 実装済み |
+| Localization foundation | 6言語ロケール統一+メッセージ6言語+自動車用語集28語+WithTranslations型+翻訳QA 4関数 | IMP-011 | ✅ 実装済み |
 
-**結論**: P0 全10項目に担当タスクまたは既存実装参照があり、IMP-000 受入条件「Every P0 requirement has an owner task or existing implementation reference」を満たす。
+**結論**: P0 全10項目の担当タスクが全て **実装済み** であり、IMP-000 受入条件「Every P0 requirement has an owner task or existing implementation reference」を満たす。IMP-054(P0リリースゲート)による最終検証完了(2026-08-20)。
