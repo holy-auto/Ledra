@@ -99,6 +99,10 @@ describe("inferResourceType()", () => {
     expect(inferResourceType("other", "/api/admin/workflow/templates")).toBe("work_step");
   });
 
+  it("other + certificate-images URL → certificate_image（certificate と混同しない）", () => {
+    expect(inferResourceType("other", "/api/admin/certificate-images/abc")).toBe("certificate_image");
+  });
+
   it("other + 不明な URL → reservation（フォールバック）", () => {
     expect(inferResourceType("other", "/api/admin/unknown/thing")).toBe("reservation");
   });
@@ -224,6 +228,25 @@ describe("mapOutboxToSyncQueue()", () => {
     expect(result).toHaveLength(2);
     expect(result[0].syncState).toBe("CONFLICT");
     expect(result[0].conflict?.kind).toBe("duplicate_pending");
+    expect(result[1].syncState).toBe("CONFLICT");
+  });
+
+  it("FAILED + 重複 → FAILED を維持し conflict のみ付与", () => {
+    const items = [
+      makeOutboxItem({
+        id: "a",
+        url: "/api/admin/reservations/a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+        attempts: 3,
+        lastError: "network timeout",
+      }),
+      makeOutboxItem({ id: "b", url: "/api/admin/reservations/a1b2c3d4-e5f6-7890-abcd-ef1234567890" }),
+    ];
+    const result = mapOutboxToSyncQueue(items);
+    // FAILED アイテムは FAILED を維持
+    expect(result[0].syncState).toBe("FAILED");
+    expect(result[0].lastError).toBe("network timeout");
+    expect(result[0].conflict?.kind).toBe("duplicate_pending");
+    // 非 FAILED アイテムは CONFLICT
     expect(result[1].syncState).toBe("CONFLICT");
   });
 });

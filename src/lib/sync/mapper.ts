@@ -12,6 +12,7 @@
 
 import type { OutboxItem, OutboxKind } from "@/lib/outbox/types";
 import type { SyncQueueItem, SyncResourceType } from "./types";
+import { detectDuplicatePending } from "./conflict";
 
 // ── OutboxKind → SyncResourceType 変換 ──
 
@@ -33,9 +34,12 @@ const KIND_TO_RESOURCE: Record<Exclude<OutboxKind, "other">, SyncResourceType> =
  * ponytail: 既存 API ルート構造（/api/admin/{entity}/…）に合わせた
  * 最小パターン。新エンティティ追加時はここに 1 行追加。
  */
+// ponytail: certificate-image must precede certificate — \b treats
+// hyphens as word boundaries, so /certificates?\b/ would match
+// "certificate-images". More specific patterns first.
 const URL_PATTERNS: ReadonlyArray<[RegExp, SyncResourceType]> = [
-  [/\/api\/.*\/certificates?\b/, "certificate"],
   [/\/api\/.*\/certificate-images?\b/, "certificate_image"],
+  [/\/api\/.*\/certificates?\b/, "certificate"],
   [/\/api\/.*\/reservations?\b/, "reservation"],
   [/\/api\/.*\/customers?\b/, "customer"],
   [/\/api\/.*\/(invoices?|documents?)\b/, "invoice"],
@@ -71,7 +75,7 @@ export function inferResourceType(kind: OutboxKind, url: string): SyncResourceTy
  */
 const UUID_LIKE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-export function extractResourceId(item: OutboxItem): string {
+export function extractResourceId(item: OutboxItem, parsedBody?: Record<string, unknown> | null): string {
   // URL 末尾セグメント
   try {
     const pathname = new URL(item.url, "https://dummy").pathname;
@@ -82,16 +86,10 @@ export function extractResourceId(item: OutboxItem): string {
   }
 
   // bodyJson から id 系フィールドを探す
-  if (item.bodyJson) {
-    try {
-      const body = JSON.parse(item.bodyJson);
-      if (typeof body === "object" && body !== null) {
-        for (const key of ["id", "public_id", "reservation_id", "certificate_id"]) {
-          if (typeof body[key] === "string" && body[key]) return body[key];
-        }
-      }
-    } catch {
-      // JSON パース失敗はフォールバックへ
+  const body = parsedBody ?? parseBody(item.bodyJson);
+  if (body) {
+    for (const key of ["id", "public_id", "reservation_id", "certificate_id"]) {
+      if (typeof body[key] === "string" && body[key]) return body[key] as string;
     }
   }
 
@@ -108,20 +106,27 @@ export function extractResourceId(item: OutboxItem): string {
  * 実運用上は各クライアントが単一テナントなので問題にならないが、
  * 将来の multi-tenant クライアント対応時に outbox に tenant_id を追加する。
  */
-export function extractTenantId(item: OutboxItem): string {
-  if (item.bodyJson) {
-    try {
-      const body = JSON.parse(item.bodyJson);
-      if (typeof body === "object" && body !== null) {
-        if (typeof body.tenant_id === "string" && body.tenant_id) return body.tenant_id;
-        if (typeof body.shop_id === "string" && body.shop_id) return body.shop_id;
-      }
-    } catch {
-      // フォールバック
-    }
+export function extractTenantId(item: OutboxItem, parsedBody?: Record<string, unknown> | null): string {
+  const body = parsedBody ?? parseBody(item.bodyJson);
+  if (body) {
+    if (typeof body.tenant_id === "string" && body.tenant_id) return body.tenant_id;
+    if (typeof body.shop_id === "string" && body.shop_id) return body.shop_id;
   }
   // ponytail: 単一テナントクライアントでは "unknown" で安全。
   return "unknown";
+}
+
+// ── bodyJson パーサー ──
+
+/** bodyJson を 1 回だけパースし、Object でなければ null を返す。 */
+function parseBody(bodyJson: string | null): Record<string, unknown> | null {
+  if (!bodyJson) return null;
+  try {
+    const parsed = JSON.parse(bodyJson);
+    return typeof parsed === "object" && parsed !== null ? parsed : null;
+  } catch {
+    return null;
+  }
 }
 
 // ── メインマッパー ──
@@ -133,15 +138,17 @@ export function extractTenantId(item: OutboxItem): string {
  * ドメインレベルの追跡情報を付加する。
  */
 export function mapToSyncQueueItem(item: OutboxItem): SyncQueueItem {
+  // ponytail: bodyJson を 1 回だけパースし、両抽出関数に渡す。
+  const body = parseBody(item.bodyJson);
   return {
     outboxItemId: item.id,
     resourceType: inferResourceType(item.kind, item.url),
-    resourceId: extractResourceId(item),
+    resourceId: extractResourceId(item, body),
     // ponytail: OutboxItem には syncState がない。
     // attempts > 0 + lastError ありなら FAILED、それ以外は PENDING。
     // SYNCING / CONFLICT は drain ループ中のみ発生（ここでは出ない）。
     syncState: item.attempts > 0 && item.lastError ? "FAILED" : "PENDING",
-    tenantId: extractTenantId(item),
+    tenantId: extractTenantId(item, body),
     createdAt: item.createdAt,
     lastSyncAt: item.lastAttemptAt,
     attempts: item.attempts,
@@ -153,28 +160,24 @@ export function mapToSyncQueueItem(item: OutboxItem): SyncQueueItem {
 /**
  * OutboxItem 配列を SyncQueueItem 配列に一括変換する。
  * 重複検出付き: duplicate_pending 競合を自動付与する。
+ * FAILED 状態のアイテムは重複があっても FAILED を維持する（情報を失わない）。
  */
 export function mapOutboxToSyncQueue(items: readonly OutboxItem[]): SyncQueueItem[] {
   const mapped = items.map(mapToSyncQueueItem);
 
-  // 重複検出
-  const counts = new Map<string, number>();
-  for (const item of mapped) {
-    const key = `${item.resourceType}:${item.resourceId}`;
-    counts.set(key, (counts.get(key) ?? 0) + 1);
-  }
+  // detectDuplicatePending を再利用（conflict.ts の単一定義源）
+  const duplicates = detectDuplicatePending(mapped);
 
-  // 重複アイテムに競合情報を付与
   for (const item of mapped) {
     const key = `${item.resourceType}:${item.resourceId}`;
-    const count = counts.get(key) ?? 0;
-    if (count > 1) {
-      item.syncState = "CONFLICT";
-      item.conflict = {
-        kind: "duplicate_pending",
-        detectedAt: Date.now(),
-        description: `同一リソースへの未同期変更が ${count} 件あります`,
-      };
+    const conflict = duplicates.get(key);
+    if (conflict) {
+      // ponytail: FAILED アイテムは FAILED を維持し、conflict だけ付与する。
+      // FAILED の lastError 情報を CONFLICT で上書きしない。
+      if (item.syncState !== "FAILED") {
+        item.syncState = "CONFLICT";
+      }
+      item.conflict = conflict;
     }
   }
 
