@@ -73,9 +73,6 @@ const staticPages: Array<{ path: string; changeFrequency: Freq; priority: number
   { path: "/security-policy", changeFrequency: "yearly", priority: 0.4 },
   { path: "/tokusho", changeFrequency: "yearly", priority: 0.4 },
 
-  // LLMO (AI検索向け)
-  { path: "/llms.txt", changeFrequency: "monthly", priority: 0.3 },
-  { path: "/llms-full.txt", changeFrequency: "monthly", priority: 0.3 },
 ];
 
 type Article = { slug: string; lastModified?: string };

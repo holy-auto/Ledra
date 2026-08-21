@@ -1,5 +1,5 @@
 import { siteConfig } from "@/lib/marketing/config";
-import { PLANS } from "@/lib/marketing/pricing";
+import { PLANS, ANNUAL_DISCOUNT_PERCENT, LAUNCH_CAMPAIGN } from "@/lib/marketing/pricing";
 
 function buildBody(): string {
   const s = siteConfig;
@@ -35,7 +35,7 @@ ${featureLines}
 
 ${plans}
 
-年払いで20%割引。先着100店舗は初期費用0円+月額1万円引き（スタンダード・プロ）。
+年払いで${ANNUAL_DISCOUNT_PERCENT}%割引。${LAUNCH_CAMPAIGN.description}。
 
 ## 機能詳細ページ
 
