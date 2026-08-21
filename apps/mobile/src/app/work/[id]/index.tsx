@@ -277,7 +277,7 @@ export default function WorkDetailScreen() {
               </View>
             </View>
             <ProgressRing
-              progress={progressPercent}
+              progress={progressPercent / 100}
               size={64}
               strokeWidth={5}
               label={`${progressPercent}%`}
@@ -302,7 +302,7 @@ export default function WorkDetailScreen() {
                 : undefined
             }
             icon={photos.length === 0 ? "camera" : "check-circle-outline"}
-            onPress={photos.length === 0 ? goToPhotos : undefined}
+            onPress={photos.length === 0 ? goToPhotos : () => {}}
           />
         </View>
 

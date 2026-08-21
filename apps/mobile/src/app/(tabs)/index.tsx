@@ -293,11 +293,15 @@ export default function HomeScreen() {
       nextAction,
       activeWork: activeWorkData,
     });
-    setLoading(false);
   }, [user, selectedStore]);
 
   useEffect(() => {
-    loadStats();
+    setLoading(true);
+    loadStats()
+      .catch(() => {
+        // ponytail: swallow — initial load error shows empty state, not stuck skeleton
+      })
+      .finally(() => setLoading(false));
   }, [loadStats]);
 
   async function onRefresh() {
