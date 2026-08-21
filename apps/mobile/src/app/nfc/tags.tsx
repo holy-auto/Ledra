@@ -1,10 +1,13 @@
 import { useCallback } from "react";
-import { View, FlatList, StyleSheet } from "react-native";
-import { Text, Card, Chip, ActivityIndicator } from "react-native-paper";
+import { View, FlatList, StyleSheet, Pressable } from "react-native";
+import { Text, ActivityIndicator, Icon } from "react-native-paper";
 import { useQuery } from "@tanstack/react-query";
 
 import { supabase } from "@/lib/supabase";
 import { useAuthStore } from "@/stores/authStore";
+import { StatusBadge } from "@/components/ui";
+import { EmptyState } from "@/components/EmptyState";
+import { colors, spacing, radius, typography, shadows } from "@/constants/tokens";
 
 interface NfcTag {
   id: string;
@@ -17,13 +20,14 @@ interface NfcTag {
   plate_display: string | null;
 }
 
-const STATUS_STYLES: Record<string, { bg: string; text: string }> = {
-  prepared: { bg: "#f3f4f6", text: "#374151" },
-  written: { bg: "#dbeafe", text: "#1e40af" },
-  attached: { bg: "#dcfce7", text: "#166534" },
-  lost: { bg: "#fee2e2", text: "#991b1b" },
-  retired: { bg: "#f3f4f6", text: "#71717a" },
-  error: { bg: "#fee2e2", text: "#991b1b" },
+// ponytail: map NFC tag statuses to StatusBadge severities
+const STATUS_SEVERITY: Record<string, "success" | "warning" | "danger" | "info" | "neutral"> = {
+  prepared: "neutral",
+  written: "info",
+  attached: "success",
+  lost: "danger",
+  retired: "neutral",
+  error: "danger",
 };
 
 export default function NfcTagsScreen() {
@@ -57,70 +61,64 @@ export default function NfcTagsScreen() {
   });
 
   const renderItem = useCallback(
-    ({ item }: { item: NfcTag }) => {
-      const statusStyle = STATUS_STYLES[item.status] ?? {
-        bg: "#f3f4f6",
-        text: "#374151",
-      };
+    ({ item }: { item: NfcTag }) => (
+      <View style={styles.card}>
+        <View style={styles.row}>
+          <View style={styles.tagIconWrap}>
+            <Icon source="nfc" size={20} color={colors.primary} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.tagCode}>{item.tag_code}</Text>
+            {item.uid && (
+              <Text style={styles.sub}>UID: {item.uid}</Text>
+            )}
+          </View>
+          <StatusBadge
+            label={item.status}
+            severity={STATUS_SEVERITY[item.status] ?? "neutral"}
+            compact
+          />
+        </View>
 
-      return (
-        <Card style={styles.card} mode="outlined">
-          <Card.Content>
-            <View style={styles.row}>
-              <View style={{ flex: 1 }}>
-                <Text variant="titleSmall" style={styles.tagCode}>
-                  {item.tag_code}
-                </Text>
-                {item.uid && (
-                  <Text variant="bodySmall" style={styles.sub}>
-                    UID: {item.uid}
-                  </Text>
-                )}
-              </View>
-              <Chip
-                compact
-                style={{ backgroundColor: statusStyle.bg }}
-                textStyle={{ color: statusStyle.text, fontSize: 11 }}
-              >
-                {item.status}
-              </Chip>
-            </View>
-
-            {(item.certificate_no || item.plate_display) && (
-              <View style={styles.linkedInfo}>
-                {item.certificate_no && (
-                  <Text variant="bodySmall" style={styles.linked}>
-                    証明書: {item.certificate_no}
-                  </Text>
-                )}
-                {item.plate_display && (
-                  <Text variant="bodySmall" style={styles.linked}>
-                    車両: {item.plate_display}
-                  </Text>
-                )}
+        {(item.certificate_no || item.plate_display) && (
+          <View style={styles.linkedInfo}>
+            {item.certificate_no && (
+              <View style={styles.metaItem}>
+                <Icon source="certificate" size={14} color={colors.textTertiary} />
+                <Text style={styles.linked}>{item.certificate_no}</Text>
               </View>
             )}
-          </Card.Content>
-        </Card>
-      );
-    },
+            {item.plate_display && (
+              <View style={styles.metaItem}>
+                <Icon source="car-outline" size={14} color={colors.textTertiary} />
+                <Text style={styles.linked}>{item.plate_display}</Text>
+              </View>
+            )}
+          </View>
+        )}
+      </View>
+    ),
     []
   );
 
   return (
     <View style={styles.container}>
       {isLoading ? (
-        <ActivityIndicator style={styles.loading} />
+        <ActivityIndicator style={styles.loading} color={colors.primary} />
       ) : (
         <FlatList
           data={tags}
           keyExtractor={(item) => item.id}
           renderItem={renderItem}
-          contentContainerStyle={styles.list}
+          contentContainerStyle={styles.listContent}
           onRefresh={refetch}
           refreshing={isLoading}
           ListEmptyComponent={
-            <Text style={styles.empty}>NFCタグはありません</Text>
+            <EmptyState
+              icon="nfc"
+              title="NFCタグはありません"
+              description="NFCタグを書き込むと、ここに一覧表示されます"
+            />
           }
         />
       )}
@@ -129,14 +127,56 @@ export default function NfcTagsScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#fafafa" },
-  list: { padding: 12 },
-  card: { marginBottom: 8, backgroundColor: "#ffffff" },
-  row: { flexDirection: "row", alignItems: "center" },
-  tagCode: { fontWeight: "700", color: "#1a1a2e" },
-  sub: { color: "#71717a", marginTop: 2 },
-  linkedInfo: { marginTop: 8, borderTopWidth: 1, borderTopColor: "#e4e4e7", paddingTop: 8 },
-  linked: { color: "#3b82f6", marginTop: 2 },
-  loading: { marginTop: 32 },
-  empty: { textAlign: "center", color: "#71717a", marginTop: 32 },
+  container: { flex: 1, backgroundColor: colors.background },
+  listContent: {
+    padding: spacing.lg,
+    paddingBottom: spacing["3xl"],
+    gap: spacing.md,
+  },
+  card: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.card,
+    padding: spacing.lg,
+    ...shadows.card,
+  },
+  row: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+  },
+  tagIconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: radius.md,
+    backgroundColor: colors.primaryLight,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  tagCode: {
+    ...typography.titleSmall,
+    color: colors.textPrimary,
+  },
+  sub: {
+    ...typography.meta,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
+  linkedInfo: {
+    marginTop: spacing.md,
+    marginLeft: 52,
+    paddingTop: spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: colors.divider,
+    gap: spacing.xs,
+  },
+  metaItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+  },
+  linked: {
+    ...typography.meta,
+    color: colors.textTertiary,
+  },
+  loading: { marginTop: spacing["3xl"] },
 });

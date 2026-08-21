@@ -5,14 +5,13 @@ import {
   StyleSheet,
   TouchableOpacity,
   Image,
+  TextInput as RNTextInput,
+  Pressable,
 } from "react-native";
 import {
   TextInput,
-  Button,
   HelperText,
   Text,
-  Card,
-  Searchbar,
   List,
   ActivityIndicator,
   Snackbar,
@@ -25,6 +24,8 @@ import * as ImagePicker from "expo-image-picker";
 import { supabase } from "@/lib/supabase";
 import { useAuthStore } from "@/stores/authStore";
 import { mobileApi } from "@/lib/api";
+import { LedraButton } from "@/components/ui";
+import { colors, spacing, radius, typography, shadows } from "@/constants/tokens";
 
 interface Customer {
   id: string;
@@ -196,164 +197,159 @@ export default function VehicleNewScreen() {
       <ScrollView style={styles.container} keyboardShouldPersistTaps="handled">
         {/* 車検証OCR（有料プランのみ） */}
         {isPaidPlan && (
-          <Card style={styles.card} mode="outlined">
-            <Card.Content>
-              <View style={styles.ocrHeader}>
-                <Icon source="camera" size={20} color="#1a1a2e" />
-                <Text variant="titleMedium" style={styles.heading}>
-                  車検証スキャン
-                </Text>
-              </View>
-              <Text variant="bodySmall" style={styles.subText}>
-                車検証を撮影して自動入力
-              </Text>
+          <View style={styles.card}>
+            <View style={styles.ocrHeader}>
+              <Icon source="camera" size={20} color={colors.primary} />
+              <Text style={styles.heading}>車検証スキャン</Text>
+            </View>
+            <Text style={styles.subText}>車検証を撮影して自動入力</Text>
 
-              {ocrImage && (
-                <Image
-                  source={{ uri: ocrImage }}
-                  style={styles.ocrPreview}
-                  resizeMode="cover"
-                />
-              )}
+            {ocrImage && (
+              <Image
+                source={{ uri: ocrImage }}
+                style={styles.ocrPreview}
+                resizeMode="cover"
+              />
+            )}
 
-              <Button
-                mode="contained-tonal"
-                icon="camera"
-                onPress={handleOcrScan}
-                loading={ocrLoading}
-                disabled={ocrLoading}
-                style={styles.ocrButton}
-              >
-                {ocrLoading ? "読み取り中..." : "車検証を撮影"}
-              </Button>
-            </Card.Content>
-          </Card>
+            <LedraButton
+              variant="secondary"
+              icon="camera"
+              onPress={handleOcrScan}
+              loading={ocrLoading}
+              disabled={ocrLoading}
+              style={styles.ocrButton}
+            >
+              {ocrLoading ? "読み取り中..." : "車検証を撮影"}
+            </LedraButton>
+          </View>
         )}
 
         {/* オーナー選択 */}
-        <Card style={styles.card} mode="outlined">
-          <Card.Content>
-            <Text variant="titleMedium" style={styles.heading}>
-              オーナー
-            </Text>
-            {selectedCustomer ? (
-              <View style={styles.selectedRow}>
-                <View style={{ flex: 1 }}>
-                  <Text variant="bodyLarge" style={{ fontWeight: "600" }}>
-                    {selectedCustomer.name}
+        <View style={styles.card}>
+          <Text style={styles.heading}>オーナー</Text>
+          {selectedCustomer ? (
+            <View style={styles.selectedRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.selectedName}>
+                  {selectedCustomer.name}
+                </Text>
+                {selectedCustomer.phone && (
+                  <Text style={styles.subText}>
+                    {selectedCustomer.phone}
                   </Text>
-                  {selectedCustomer.phone && (
-                    <Text variant="bodySmall" style={styles.subText}>
-                      {selectedCustomer.phone}
-                    </Text>
-                  )}
-                </View>
-                <Button
-                  mode="text"
-                  onPress={() => {
-                    setSelectedCustomer(null);
-                    setCustomerSearch("");
-                  }}
-                >
-                  変更
-                </Button>
+                )}
               </View>
-            ) : (
-              <>
-                <Searchbar
+              <LedraButton
+                variant="ghost"
+                size="small"
+                fullWidth={false}
+                onPress={() => {
+                  setSelectedCustomer(null);
+                  setCustomerSearch("");
+                }}
+              >
+                変更
+              </LedraButton>
+            </View>
+          ) : (
+            <>
+              <View style={styles.searchBar}>
+                <Icon source="magnify" size={20} color={colors.textTertiary} />
+                <RNTextInput
+                  style={styles.searchInput}
                   placeholder="顧客名で検索..."
+                  placeholderTextColor={colors.textTertiary}
                   value={customerSearch}
                   onChangeText={setCustomerSearch}
-                  loading={searchingCustomers}
-                  style={styles.searchbar}
+                  autoCapitalize="none"
+                  autoCorrect={false}
                 />
-                {customers.map((c) => (
-                  <List.Item
-                    key={c.id}
-                    title={c.name}
-                    description={c.phone ?? ""}
-                    onPress={() => {
-                      setSelectedCustomer(c);
-                      setCustomerSearch(c.name);
-                    }}
-                    left={(props) => <List.Icon {...props} icon="account" />}
-                  />
-                ))}
-                <Text variant="bodySmall" style={[styles.subText, { marginTop: 8 }]}>
-                  未選択の場合はオーナーなしで登録します
-                </Text>
-              </>
-            )}
-          </Card.Content>
-        </Card>
+                {searchingCustomers && (
+                  <ActivityIndicator size="small" color={colors.primary} />
+                )}
+              </View>
+              {customers.map((c) => (
+                <List.Item
+                  key={c.id}
+                  title={c.name}
+                  description={c.phone ?? ""}
+                  onPress={() => {
+                    setSelectedCustomer(c);
+                    setCustomerSearch(c.name);
+                  }}
+                  left={(props) => <List.Icon {...props} icon="account" />}
+                  titleStyle={{ color: colors.textPrimary }}
+                  descriptionStyle={{ color: colors.textSecondary }}
+                />
+              ))}
+              <Text style={[styles.subText, { marginTop: spacing.sm }]}>
+                未選択の場合はオーナーなしで登録します
+              </Text>
+            </>
+          )}
+        </View>
 
         {/* 車両情報フォーム */}
-        <Card style={styles.card} mode="outlined">
-          <Card.Content>
-            <Text variant="titleMedium" style={styles.heading}>
-              車両情報
-            </Text>
+        <View style={styles.card}>
+          <Text style={styles.heading}>車両情報</Text>
 
-            <TextInput
-              label="メーカー"
-              value={form.maker}
-              onChangeText={(v) => update("maker", v)}
-              mode="outlined"
-              style={styles.input}
-            />
+          <TextInput
+            label="メーカー"
+            value={form.maker}
+            onChangeText={(v) => update("maker", v)}
+            mode="outlined"
+            style={styles.input}
+          />
 
-            <TextInput
-              label="車種"
-              value={form.model}
-              onChangeText={(v) => update("model", v)}
-              mode="outlined"
-              style={styles.input}
-            />
+          <TextInput
+            label="車種"
+            value={form.model}
+            onChangeText={(v) => update("model", v)}
+            mode="outlined"
+            style={styles.input}
+          />
 
-            <TextInput
-              label="年式"
-              value={form.year}
-              onChangeText={(v) => update("year", v)}
-              mode="outlined"
-              keyboardType="number-pad"
-              style={styles.input}
-            />
+          <TextInput
+            label="年式"
+            value={form.year}
+            onChangeText={(v) => update("year", v)}
+            mode="outlined"
+            keyboardType="number-pad"
+            style={styles.input}
+          />
 
-            <TextInput
-              label="ナンバー *"
-              value={form.plate_display}
-              onChangeText={(v) => update("plate_display", v)}
-              mode="outlined"
-              error={!!errors.plate_display}
-              style={styles.input}
-            />
-            {errors.plate_display && (
-              <HelperText type="error">{errors.plate_display}</HelperText>
-            )}
+          <TextInput
+            label="ナンバー *"
+            value={form.plate_display}
+            onChangeText={(v) => update("plate_display", v)}
+            mode="outlined"
+            error={!!errors.plate_display}
+            style={styles.input}
+          />
+          {errors.plate_display && (
+            <HelperText type="error">{errors.plate_display}</HelperText>
+          )}
 
-            <TextInput
-              label="車台番号"
-              value={form.vin_code}
-              onChangeText={(v) => update("vin_code", v)}
-              mode="outlined"
-              style={styles.input}
-            />
-          </Card.Content>
-        </Card>
+          <TextInput
+            label="車台番号"
+            value={form.vin_code}
+            onChangeText={(v) => update("vin_code", v)}
+            mode="outlined"
+            style={styles.input}
+          />
+        </View>
 
         {/* 登録ボタン */}
         <View style={styles.submitArea}>
-          <Button
-            mode="contained"
+          <LedraButton
             onPress={handleSubmit}
             loading={mutation.isPending}
             disabled={mutation.isPending}
-            buttonColor="#1a1a2e"
-            style={styles.submitButton}
             icon="check"
           >
             登録する
-          </Button>
+          </LedraButton>
         </View>
 
         {mutation.isError && (
@@ -362,13 +358,14 @@ export default function VehicleNewScreen() {
           </HelperText>
         )}
 
-        <View style={{ height: 40 }} />
+        <View style={{ height: spacing["4xl"] }} />
       </ScrollView>
 
       <Snackbar
         visible={!!snackbar}
         onDismiss={() => setSnackbar("")}
         duration={3000}
+        style={styles.snackbar}
       >
         {snackbar}
       </Snackbar>
@@ -377,17 +374,61 @@ export default function VehicleNewScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#fafafa" },
-  card: { marginHorizontal: 16, marginTop: 16, backgroundColor: "#ffffff" },
-  heading: { fontWeight: "700", color: "#1a1a2e", marginBottom: 8 },
-  subText: { color: "#71717a", marginTop: 2 },
-  ocrHeader: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 8 },
-  ocrPreview: { width: "100%", height: 160, borderRadius: 8, marginTop: 8, marginBottom: 8 },
-  ocrButton: { marginTop: 8 },
+  container: { flex: 1, backgroundColor: colors.background },
+  card: {
+    marginHorizontal: spacing.lg,
+    marginTop: spacing.lg,
+    backgroundColor: colors.surface,
+    borderRadius: radius.card,
+    padding: spacing.lg,
+    ...shadows.card,
+  },
+  heading: {
+    ...typography.titleMedium,
+    color: colors.textPrimary,
+    marginBottom: spacing.sm,
+  },
+  subText: {
+    ...typography.meta,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
+  ocrHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    marginBottom: spacing.sm,
+  },
+  ocrPreview: {
+    width: "100%",
+    height: 160,
+    borderRadius: radius.sm,
+    marginTop: spacing.sm,
+    marginBottom: spacing.sm,
+  },
+  ocrButton: { marginTop: spacing.sm },
   selectedRow: { flexDirection: "row", alignItems: "center" },
-  searchbar: { backgroundColor: "#f4f4f5", elevation: 0 },
-  input: { marginBottom: 8, backgroundColor: "#ffffff" },
-  submitArea: { padding: 16 },
-  submitButton: { borderRadius: 8 },
-  errorText: { marginHorizontal: 16 },
+  selectedName: {
+    ...typography.titleSmall,
+    color: colors.textPrimary,
+  },
+  searchBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: colors.surfaceVariant,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    height: 44,
+    gap: spacing.sm,
+  },
+  searchInput: {
+    flex: 1,
+    ...typography.body,
+    color: colors.textPrimary,
+    padding: 0,
+  },
+  input: { marginBottom: spacing.sm, backgroundColor: colors.surface },
+  submitArea: { padding: spacing.lg },
+  errorText: { marginHorizontal: spacing.lg },
+  snackbar: { backgroundColor: colors.textPrimary },
 });

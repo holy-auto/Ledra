@@ -5,12 +5,15 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  Pressable,
 } from "react-native";
-import { Text, TextInput, Button, HelperText } from "react-native-paper";
+import { Text, TextInput, HelperText } from "react-native-paper";
 import { router } from "expo-router";
 
 import { signIn, fetchUserProfile } from "@/lib/auth";
 import { useAuthStore } from "@/stores/authStore";
+import { LedraButton } from "@/components/ui";
+import { colors, spacing, radius, typography, sizing } from "@/constants/tokens";
 
 const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL!;
 
@@ -107,19 +110,19 @@ export default function SignupScreen() {
       behavior={Platform.OS === "ios" ? "padding" : "height"}
     >
       <ScrollView
-        contentContainerStyle={styles.container}
+        contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
       >
-        <View style={styles.header}>
-          <Text variant="headlineLarge" style={styles.title}>
-            Ledra
-          </Text>
-          <Text variant="bodyLarge" style={styles.subtitle}>
-            新規登録（無料）
+        {/* Branded header */}
+        <View style={styles.brandHeader}>
+          <Text style={styles.brandTitle}>Ledra</Text>
+          <Text style={styles.brandSubtitle}>
+            アカウントを作成してください
           </Text>
         </View>
 
-        <View style={styles.form}>
+        {/* Form card */}
+        <View style={styles.formCard}>
           <TextInput
             label="店舗名"
             value={shopName}
@@ -127,6 +130,8 @@ export default function SignupScreen() {
             mode="outlined"
             style={styles.input}
             disabled={loading}
+            outlineColor={colors.border}
+            activeOutlineColor={colors.primary}
           />
           <TextInput
             label="お名前（任意）"
@@ -135,6 +140,8 @@ export default function SignupScreen() {
             mode="outlined"
             style={styles.input}
             disabled={loading}
+            outlineColor={colors.border}
+            activeOutlineColor={colors.primary}
           />
           <TextInput
             label="メールアドレス"
@@ -146,6 +153,8 @@ export default function SignupScreen() {
             mode="outlined"
             style={styles.input}
             disabled={loading}
+            outlineColor={colors.border}
+            activeOutlineColor={colors.primary}
           />
           <TextInput
             label="パスワード（8文字以上）"
@@ -156,6 +165,8 @@ export default function SignupScreen() {
             mode="outlined"
             style={styles.input}
             disabled={loading}
+            outlineColor={colors.border}
+            activeOutlineColor={colors.primary}
             right={
               <TextInput.Icon
                 icon={showPassword ? "eye-off" : "eye"}
@@ -171,6 +182,8 @@ export default function SignupScreen() {
             mode="outlined"
             style={styles.input}
             disabled={loading}
+            outlineColor={colors.border}
+            activeOutlineColor={colors.primary}
           />
 
           {error ? (
@@ -179,25 +192,25 @@ export default function SignupScreen() {
             </HelperText>
           ) : null}
 
-          <Button
-            mode="contained"
+          <LedraButton
             onPress={handleSignup}
             loading={loading}
             disabled={loading}
-            style={styles.button}
-            contentStyle={styles.buttonContent}
           >
             登録して始める
-          </Button>
+          </LedraButton>
 
-          <Button
-            mode="text"
+          {/* Login link */}
+          <Pressable
             onPress={() => router.replace("/(auth)/login")}
             disabled={loading}
-            style={styles.linkButton}
+            style={styles.bottomLink}
           >
-            すでにアカウントをお持ちの方はログイン
-          </Button>
+            <Text style={styles.bottomLinkText}>
+              すでにアカウントをお持ちの方は{" "}
+              <Text style={styles.bottomLinkBold}>ログイン</Text>
+            </Text>
+          </Pressable>
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -205,39 +218,54 @@ export default function SignupScreen() {
 }
 
 const styles = StyleSheet.create({
-  flex: { flex: 1, backgroundColor: "#fafafa" },
-  container: {
+  flex: { flex: 1, backgroundColor: colors.background },
+  scrollContent: {
     flexGrow: 1,
-    justifyContent: "center",
-    padding: 24,
   },
-  header: {
+  brandHeader: {
+    backgroundColor: colors.primary,
+    paddingTop: 80,
+    paddingBottom: spacing["4xl"],
+    paddingHorizontal: spacing["2xl"],
     alignItems: "center",
-    marginBottom: 32,
   },
-  title: {
-    fontWeight: "700",
-    color: "#1a1a2e",
+  brandTitle: {
+    ...typography.hero,
+    fontSize: 36,
+    color: colors.textOnPrimary,
     letterSpacing: 2,
   },
-  subtitle: {
-    marginTop: 8,
-    color: "#71717a",
+  brandSubtitle: {
+    ...typography.body,
+    color: "rgba(255, 255, 255, 0.8)",
+    marginTop: spacing.sm,
   },
-  form: {
-    gap: 12,
+  formCard: {
+    backgroundColor: colors.surface,
+    borderTopLeftRadius: radius.hero,
+    borderTopRightRadius: radius.hero,
+    marginTop: -spacing.lg,
+    paddingHorizontal: spacing["2xl"],
+    paddingTop: spacing["3xl"],
+    paddingBottom: spacing["4xl"],
+    flex: 1,
+    gap: spacing.md,
   },
   input: {
-    backgroundColor: "#ffffff",
+    backgroundColor: colors.surface,
   },
-  button: {
-    marginTop: 12,
-    borderRadius: 12,
+  bottomLink: {
+    alignItems: "center",
+    marginTop: spacing.lg,
+    minHeight: sizing.touchTarget,
+    justifyContent: "center",
   },
-  buttonContent: {
-    paddingVertical: 6,
+  bottomLinkText: {
+    ...typography.bodySmall,
+    color: colors.textSecondary,
   },
-  linkButton: {
-    marginTop: 4,
+  bottomLinkBold: {
+    ...typography.label,
+    color: colors.primary,
   },
 });

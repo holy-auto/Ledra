@@ -2,9 +2,6 @@ import { useState } from "react";
 import { View, StyleSheet, ScrollView } from "react-native";
 import {
   Text,
-  Card,
-  Button,
-  Divider,
   ActivityIndicator,
   Snackbar,
 } from "react-native-paper";
@@ -15,6 +12,8 @@ import { supabase } from "@/lib/supabase";
 import { useAuthStore } from "@/stores/authStore";
 import { mobileApi } from "@/lib/api";
 import { ReceiptShareDialog } from "@/components/ReceiptShareDialog";
+import { LedraButton } from "@/components/ui";
+import { colors, spacing, radius, typography, shadows } from "@/constants/tokens";
 
 interface Payment {
   id: string;
@@ -56,7 +55,6 @@ export default function PosReceiptScreen() {
   const [shareOpen, setShareOpen] = useState(false);
   const [snack, setSnack] = useState("");
 
-  // 適格請求書発行事業者登録番号 (T+13桁) と発行者情報
   const { data: tenant } = useQuery<TenantInvoiceInfo | null>({
     queryKey: ["tenant-invoice", user?.tenantId],
     queryFn: async () => {
@@ -131,199 +129,185 @@ export default function PosReceiptScreen() {
       <ScrollView style={styles.container}>
         {/* 発行者情報 (適格請求書としての要件) */}
         {tenant && (
-          <Card style={styles.card} mode="outlined">
-            <Card.Content style={styles.issuerHeader}>
-              <Text variant="titleMedium" style={styles.issuerName}>
-                {tenant.name}
+          <View style={styles.card}>
+            <Text style={styles.issuerName}>
+              {tenant.name}
+            </Text>
+            {tenant.address && (
+              <Text style={styles.issuerSub}>
+                {tenant.address}
               </Text>
-              {tenant.address && (
-                <Text variant="bodySmall" style={styles.issuerSub}>
-                  {tenant.address}
-                </Text>
-              )}
-              {tenant.contact_phone && (
-                <Text variant="bodySmall" style={styles.issuerSub}>
-                  TEL: {tenant.contact_phone}
-                </Text>
-              )}
-              {tenant.registration_number && (
-                <Text variant="bodySmall" style={styles.regNumber}>
-                  登録番号: {tenant.registration_number}
-                </Text>
-              )}
-            </Card.Content>
-          </Card>
+            )}
+            {tenant.contact_phone && (
+              <Text style={styles.issuerSub}>
+                TEL: {tenant.contact_phone}
+              </Text>
+            )}
+            {tenant.registration_number && (
+              <Text style={styles.regNumber}>
+                登録番号: {tenant.registration_number}
+              </Text>
+            )}
+          </View>
         )}
 
         {/* Header */}
-        <Card style={styles.card} mode="outlined">
-          <Card.Content style={styles.receiptHeader}>
-            <Text variant="headlineSmall" style={styles.checkmark}>
-              {"\u2713"}
+        <View style={styles.card}>
+          <View style={styles.receiptHeader}>
+            <Text style={styles.checkmark}>
+              {"✓"}
             </Text>
-            <Text variant="titleLarge" style={styles.paidText}>
+            <Text style={styles.paidText}>
               お支払い完了
             </Text>
-            <Text variant="headlineMedium" style={styles.amount}>
-              {"\u00a5"}
+            <Text style={styles.amount}>
+              {"¥"}
               {payment.amount.toLocaleString()}
             </Text>
-            <Text variant="bodyMedium" style={styles.subText}>
+            <Text style={styles.subText}>
               {METHOD_LABELS[payment.payment_method] ?? payment.payment_method}
             </Text>
-            <Text variant="bodySmall" style={styles.subText}>
+            <Text style={styles.dateText}>
               {paidDate.toLocaleDateString("ja-JP")}{" "}
               {paidDate.toLocaleTimeString("ja-JP", {
                 hour: "2-digit",
                 minute: "2-digit",
               })}
             </Text>
-          </Card.Content>
-        </Card>
+          </View>
+        </View>
 
         {/* Customer & Vehicle */}
         {payment.reservation && (
-          <Card style={styles.card} mode="outlined">
-            <Card.Content>
-              <Text variant="titleMedium" style={styles.heading}>
-                顧客 / 車両
+          <View style={styles.card}>
+            <Text style={styles.heading}>
+              顧客 / 車両
+            </Text>
+            <Text style={styles.customerName}>
+              {payment.reservation.customer?.name ?? "不明"}
+            </Text>
+            {payment.reservation.customer?.phone && (
+              <Text style={styles.subText}>
+                {payment.reservation.customer.phone}
               </Text>
-              <Text variant="bodyLarge" style={{ fontWeight: "600" }}>
-                {payment.reservation.customer?.name ?? "不明"}
-              </Text>
-              {payment.reservation.customer?.phone && (
-                <Text variant="bodySmall" style={styles.subText}>
-                  {payment.reservation.customer.phone}
-                </Text>
-              )}
-              <Text variant="bodyMedium" style={{ marginTop: 4 }}>
-                {payment.reservation.vehicle?.plate_number ?? ""}{" "}
-                {[
-                  payment.reservation.vehicle?.make,
-                  payment.reservation.vehicle?.model,
-                ]
-                  .filter(Boolean)
-                  .join(" ")}
-              </Text>
-            </Card.Content>
-          </Card>
+            )}
+            <Text style={styles.vehicleText}>
+              {payment.reservation.vehicle?.plate_number ?? ""}{" "}
+              {[
+                payment.reservation.vehicle?.make,
+                payment.reservation.vehicle?.model,
+              ]
+                .filter(Boolean)
+                .join(" ")}
+            </Text>
+          </View>
         )}
 
         {/* Line Items */}
         {payment.reservation && (
-          <Card style={styles.card} mode="outlined">
-            <Card.Content>
-              <Text variant="titleMedium" style={styles.heading}>
-                明細
+          <View style={styles.card}>
+            <Text style={styles.heading}>
+              明細
+            </Text>
+            {payment.reservation.reservation_items.map((item) => (
+              <View key={item.id} style={styles.lineItem}>
+                <Text style={[styles.bodyText, { flex: 1 }]}>
+                  {item.menu_item?.name ?? "不明"}
+                </Text>
+                <Text style={styles.subText}>
+                  x{item.quantity}
+                </Text>
+                <Text style={styles.price}>
+                  {"¥"}
+                  {(item.quantity * item.unit_price).toLocaleString()}
+                </Text>
+              </View>
+            ))}
+            <View style={styles.divider} />
+
+            {/* 適格請求書要件: 税率ごとの合計と税額を分離表示 */}
+            <View style={styles.lineItem}>
+              <Text style={[styles.bodyText, { flex: 1 }]}>
+                小計（税抜）
               </Text>
-              {payment.reservation.reservation_items.map((item) => (
-                <View key={item.id} style={styles.lineItem}>
-                  <Text variant="bodyMedium" style={{ flex: 1 }}>
-                    {item.menu_item?.name ?? "不明"}
+              <Text style={styles.bodyText}>
+                {"¥"}
+                {subtotal.toLocaleString()}
+              </Text>
+            </View>
+            <View style={styles.lineItem}>
+              <Text style={[styles.bodyText, { flex: 1 }]}>
+                消費税 ({Math.round(TAX_RATE * 100)}% 対象 {"¥"}
+                {subtotal.toLocaleString()})
+              </Text>
+              <Text style={styles.bodyText}>
+                {"¥"}
+                {taxAmount.toLocaleString()}
+              </Text>
+            </View>
+            <View style={styles.divider} />
+            <View style={styles.lineItem}>
+              <Text style={[styles.totalLabel, { flex: 1 }]}>
+                合計（税込）
+              </Text>
+              <Text style={styles.totalLabel}>
+                {"¥"}
+                {payment.amount.toLocaleString()}
+              </Text>
+            </View>
+            {payment.payment_method === "cash" && (
+              <>
+                <View style={styles.lineItem}>
+                  <Text style={[styles.bodyText, { flex: 1 }]}>
+                    お預かり
                   </Text>
-                  <Text variant="bodyMedium" style={styles.subText}>
-                    x{item.quantity}
-                  </Text>
-                  <Text variant="bodyMedium" style={styles.price}>
-                    {"\u00a5"}
-                    {(item.quantity * item.unit_price).toLocaleString()}
+                  <Text style={styles.bodyText}>
+                    {"¥"}
+                    {(payment.received_amount ?? 0).toLocaleString()}
                   </Text>
                 </View>
-              ))}
-              <Divider style={{ marginVertical: 8 }} />
-
-              {/* 適格請求書要件: 税率ごとの合計と税額を分離表示 */}
-              <View style={styles.lineItem}>
-                <Text variant="bodyMedium" style={{ flex: 1 }}>
-                  小計（税抜）
-                </Text>
-                <Text variant="bodyMedium">
-                  {"¥"}
-                  {subtotal.toLocaleString()}
-                </Text>
-              </View>
-              <View style={styles.lineItem}>
-                <Text variant="bodyMedium" style={{ flex: 1 }}>
-                  消費税 ({Math.round(TAX_RATE * 100)}% 対象 {"¥"}
-                  {subtotal.toLocaleString()})
-                </Text>
-                <Text variant="bodyMedium">
-                  {"¥"}
-                  {taxAmount.toLocaleString()}
-                </Text>
-              </View>
-              <Divider style={{ marginVertical: 8 }} />
-              <View style={styles.lineItem}>
-                <Text
-                  variant="titleSmall"
-                  style={{ flex: 1, fontWeight: "700" }}
-                >
-                  合計（税込）
-                </Text>
-                <Text variant="titleSmall" style={{ fontWeight: "700" }}>
-                  {"\u00a5"}
-                  {payment.amount.toLocaleString()}
-                </Text>
-              </View>
-              {payment.payment_method === "cash" && (
-                <>
-                  <View style={styles.lineItem}>
-                    <Text variant="bodyMedium" style={{ flex: 1 }}>
-                      お預かり
-                    </Text>
-                    <Text variant="bodyMedium">
-                      {"\u00a5"}
-                      {(payment.received_amount ?? 0).toLocaleString()}
-                    </Text>
-                  </View>
-                  <View style={styles.lineItem}>
-                    <Text variant="bodyMedium" style={{ flex: 1 }}>
-                      おつり
-                    </Text>
-                    <Text variant="bodyMedium">
-                      {"\u00a5"}
-                      {(payment.change_amount ?? 0).toLocaleString()}
-                    </Text>
-                  </View>
-                </>
-              )}
-            </Card.Content>
-          </Card>
+                <View style={styles.lineItem}>
+                  <Text style={[styles.bodyText, { flex: 1 }]}>
+                    おつり
+                  </Text>
+                  <Text style={styles.bodyText}>
+                    {"¥"}
+                    {(payment.change_amount ?? 0).toLocaleString()}
+                  </Text>
+                </View>
+              </>
+            )}
+          </View>
         )}
 
         {/* Actions */}
         <View style={styles.actions}>
           {/* Apple TTP 要件 5.10: デジタルレシート送信 */}
-          <Button
-            mode="contained"
+          <LedraButton
             icon="email-outline"
             onPress={() => setShareOpen(true)}
-            style={styles.actionButton}
-            buttonColor="#1a1a2e"
           >
             レシートを送る
-          </Button>
-          <Button
-            mode="outlined"
+          </LedraButton>
+          <LedraButton
+            variant="outline"
             icon="certificate"
             onPress={() =>
               router.push(`/certificates/new?reservationId=${id}`)
             }
-            style={styles.actionButton}
           >
             証明書を作成
-          </Button>
-          <Button
-            mode="text"
+          </LedraButton>
+          <LedraButton
+            variant="ghost"
             icon="home"
             onPress={() => router.replace("/(tabs)")}
-            style={styles.actionButton}
           >
             ホームに戻る
-          </Button>
+          </LedraButton>
         </View>
 
-        <View style={{ height: 40 }} />
+        <View style={{ height: spacing["4xl"] }} />
       </ScrollView>
 
       <ReceiptShareDialog
@@ -332,7 +316,12 @@ export default function PosReceiptScreen() {
         onDismiss={() => setShareOpen(false)}
         onSent={() => setSnack("レシートを送信しました")}
       />
-      <Snackbar visible={!!snack} onDismiss={() => setSnack("")} duration={2500}>
+      <Snackbar
+        visible={!!snack}
+        onDismiss={() => setSnack("")}
+        duration={2500}
+        style={{ backgroundColor: colors.textPrimary }}
+      >
         {snack}
       </Snackbar>
     </>
@@ -340,48 +329,98 @@ export default function PosReceiptScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#fafafa" },
-  issuerHeader: { paddingVertical: 12 },
-  issuerName: { fontWeight: "700", color: "#1a1a2e" },
-  issuerSub: { color: "#71717a", marginTop: 2 },
+  container: { flex: 1, backgroundColor: colors.background },
+  center: { flex: 1, justifyContent: "center", alignItems: "center" },
+  card: {
+    marginHorizontal: spacing.lg,
+    marginTop: spacing.lg,
+    backgroundColor: colors.surface,
+    borderRadius: radius.card,
+    padding: spacing.lg,
+    ...shadows.card,
+  },
+  issuerName: {
+    ...typography.titleMedium,
+    color: colors.textPrimary,
+  },
+  issuerSub: {
+    ...typography.bodySmall,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
   regNumber: {
-    color: "#1a1a2e",
-    marginTop: 6,
+    ...typography.bodySmall,
+    color: colors.textPrimary,
+    marginTop: spacing.xs + 2,
     fontFamily: "monospace",
     fontWeight: "600",
   },
-  center: { flex: 1, justifyContent: "center", alignItems: "center" },
-  card: {
-    marginHorizontal: 16,
-    marginTop: 16,
-    backgroundColor: "#ffffff",
-  },
   receiptHeader: {
     alignItems: "center",
-    paddingVertical: 24,
+    paddingVertical: spacing["2xl"],
   },
   checkmark: {
     fontSize: 48,
-    color: "#10b981",
+    color: colors.success,
   },
   paidText: {
-    fontWeight: "700",
-    color: "#1a1a2e",
-    marginTop: 8,
+    ...typography.titleLarge,
+    color: colors.textPrimary,
+    marginTop: spacing.sm,
   },
   amount: {
-    fontWeight: "700",
-    color: "#1a1a2e",
-    marginTop: 4,
+    ...typography.hero,
+    color: colors.textPrimary,
+    marginTop: spacing.xs,
   },
-  heading: { fontWeight: "700", color: "#1a1a2e", marginBottom: 8 },
-  subText: { color: "#71717a", marginTop: 2 },
-  price: { fontWeight: "600", color: "#1a1a2e", marginLeft: 12 },
+  heading: {
+    ...typography.titleMedium,
+    color: colors.textPrimary,
+    marginBottom: spacing.sm,
+  },
+  subText: {
+    ...typography.bodySmall,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
+  dateText: {
+    ...typography.bodySmall,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
+  customerName: {
+    ...typography.body,
+    fontWeight: "600",
+    color: colors.textPrimary,
+  },
+  vehicleText: {
+    ...typography.body,
+    color: colors.textPrimary,
+    marginTop: spacing.xs,
+  },
+  bodyText: {
+    ...typography.body,
+    color: colors.textPrimary,
+  },
+  price: {
+    ...typography.body,
+    fontWeight: "600",
+    color: colors.textPrimary,
+    marginLeft: spacing.md,
+  },
   lineItem: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 4,
+    paddingVertical: spacing.xs,
   },
-  actions: { padding: 16, gap: 12 },
-  actionButton: { borderRadius: 8 },
+  divider: {
+    height: 1,
+    backgroundColor: colors.divider,
+    marginVertical: spacing.sm,
+  },
+  totalLabel: {
+    ...typography.titleSmall,
+    color: colors.textPrimary,
+  },
+  actions: { padding: spacing.lg, gap: spacing.md },
 });

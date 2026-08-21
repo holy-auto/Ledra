@@ -2,12 +2,9 @@ import { useState } from "react";
 import { View, StyleSheet, FlatList, Image, Alert } from "react-native";
 import {
   Text,
-  Button,
   ActivityIndicator,
   Snackbar,
-  SegmentedButtons,
   IconButton,
-  Card,
 } from "react-native-paper";
 import { useLocalSearchParams, Stack } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -16,6 +13,8 @@ import * as ImagePicker from "expo-image-picker";
 import { supabase } from "@/lib/supabase";
 import { mobileApi, mobileMultipart } from "@/lib/api";
 import { STAGE_OPTIONS, type CertificatePhotoStage } from "@/lib/photoStage";
+import { LedraButton, SegmentedControl } from "@/components/ui";
+import { colors, spacing, radius, typography, shadows } from "@/constants/tokens";
 
 /** 撮影してまだアップロードしていないローカル写真。端末ギャラリーには保存しない一時URI。 */
 interface StagedPhoto {
@@ -42,6 +41,8 @@ function guessType(uri: string): { ext: string; mime: string } {
           : "image/jpeg";
   return { ext, mime };
 }
+
+const STAGE_SEGMENTS = STAGE_OPTIONS.map((o) => ({ value: o.value, label: o.label }));
 
 export default function CertificatePhotosScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -151,13 +152,11 @@ export default function CertificatePhotosScreen() {
       <Stack.Screen options={{ title: "施工写真" }} />
       <View style={styles.container}>
         <View style={styles.stageBox}>
-          <Text variant="labelMedium" style={styles.stageLabel}>
-            撮影段階
-          </Text>
-          <SegmentedButtons
+          <Text style={styles.stageLabel}>撮影段階</Text>
+          <SegmentedControl
+            segments={STAGE_SEGMENTS}
             value={stage}
-            onValueChange={(v) => setStage(v as Exclude<CertificatePhotoStage, "unspecified">)}
-            buttons={STAGE_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
+            onChange={(v) => setStage(v as Exclude<CertificatePhotoStage, "unspecified">)}
           />
         </View>
 
@@ -172,27 +171,25 @@ export default function CertificatePhotosScreen() {
               <IconButton
                 icon="close-circle"
                 size={20}
-                iconColor="#991b1b"
+                iconColor={colors.danger}
                 style={styles.removeBtn}
                 onPress={() => removeStaged(item.uri)}
               />
             </View>
           )}
           ListHeaderComponent={
-            <Card style={styles.infoCard} mode="outlined">
-              <Card.Content>
-                <Text variant="bodySmall" style={styles.infoText}>
-                  アップロード済み: {uploadedCount}枚 / 撮影待ち: {staged.length}枚
-                </Text>
-                <Text variant="bodySmall" style={styles.hint}>
-                  写真はカメラ撮影のみ・端末には保存されずDBに直接保存されます。
-                </Text>
-              </Card.Content>
-            </Card>
+            <View style={styles.infoCard}>
+              <Text style={styles.infoText}>
+                アップロード済み: {uploadedCount}枚 / 撮影待ち: {staged.length}枚
+              </Text>
+              <Text style={styles.hint}>
+                写真はカメラ撮影のみ・端末には保存されずDBに直接保存されます。
+              </Text>
+            </View>
           }
           ListEmptyComponent={
-            <View style={styles.center}>
-              <Text variant="bodyMedium" style={styles.emptyText}>
+            <View style={styles.emptyCenter}>
+              <Text style={styles.emptyText}>
                 「撮影」で施工写真を追加してください
               </Text>
             </View>
@@ -200,32 +197,35 @@ export default function CertificatePhotosScreen() {
         />
 
         <View style={styles.footer}>
-          <Button
-            mode="outlined"
+          <LedraButton
+            variant="outline"
             icon="camera"
             onPress={takePhoto}
             disabled={uploading}
             style={styles.actionButton}
-            textColor="#1a1a2e"
+            fullWidth={false}
           >
             撮影
-          </Button>
-          <Button
-            mode="contained"
+          </LedraButton>
+          <LedraButton
             icon="cloud-upload"
             onPress={upload}
             loading={uploading}
             disabled={uploading || staged.length === 0}
             style={styles.actionButton}
-            buttonColor="#1a1a2e"
-            contentStyle={{ paddingVertical: 8 }}
+            fullWidth={false}
           >
             アップロード ({staged.length})
-          </Button>
+          </LedraButton>
         </View>
       </View>
 
-      <Snackbar visible={!!snackbar} onDismiss={() => setSnackbar("")} duration={3000}>
+      <Snackbar
+        visible={!!snackbar}
+        onDismiss={() => setSnackbar("")}
+        duration={3000}
+        style={{ backgroundColor: colors.textPrimary }}
+      >
         {snackbar}
       </Snackbar>
     </>
@@ -233,30 +233,52 @@ export default function CertificatePhotosScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#fafafa" },
+  container: { flex: 1, backgroundColor: colors.background },
   center: { flex: 1, justifyContent: "center", alignItems: "center", paddingTop: 64 },
   stageBox: {
-    padding: 12,
-    backgroundColor: "#ffffff",
+    padding: spacing.md,
+    backgroundColor: colors.surface,
     borderBottomWidth: 1,
-    borderBottomColor: "#e4e4e7",
+    borderBottomColor: colors.border,
   },
-  stageLabel: { color: "#71717a", marginBottom: 8 },
-  grid: { padding: 4 },
-  infoCard: { margin: 8, backgroundColor: "#ffffff" },
-  infoText: { color: "#1a1a2e", fontWeight: "600" },
-  hint: { color: "#71717a", marginTop: 4 },
-  thumbBox: { flex: 1 / 3, aspectRatio: 1, padding: 4 },
-  thumb: { flex: 1, borderRadius: 8, backgroundColor: "#e4e4e7" },
+  stageLabel: {
+    ...typography.label,
+    color: colors.textSecondary,
+    marginBottom: spacing.sm,
+  },
+  grid: { padding: spacing.xs },
+  infoCard: {
+    margin: spacing.sm,
+    backgroundColor: colors.surface,
+    borderRadius: radius.card,
+    padding: spacing.lg,
+    ...shadows.card,
+  },
+  infoText: {
+    ...typography.bodySmall,
+    color: colors.textPrimary,
+    fontWeight: "600",
+  },
+  hint: {
+    ...typography.meta,
+    color: colors.textSecondary,
+    marginTop: spacing.xs,
+  },
+  thumbBox: { flex: 1 / 3, aspectRatio: 1, padding: spacing.xs },
+  thumb: { flex: 1, borderRadius: radius.sm, backgroundColor: colors.border },
   removeBtn: { position: "absolute", top: -8, right: -8, margin: 0 },
-  emptyText: { color: "#71717a" },
+  emptyCenter: { flex: 1, justifyContent: "center", alignItems: "center", paddingTop: 64 },
+  emptyText: {
+    ...typography.body,
+    color: colors.textSecondary,
+  },
   footer: {
     flexDirection: "row",
-    gap: 8,
-    padding: 12,
-    backgroundColor: "#ffffff",
+    gap: spacing.sm,
+    padding: spacing.md,
+    backgroundColor: colors.surface,
     borderTopWidth: 1,
-    borderTopColor: "#e4e4e7",
+    borderTopColor: colors.border,
   },
-  actionButton: { flex: 1, borderRadius: 8 },
+  actionButton: { flex: 1 },
 });

@@ -6,13 +6,23 @@ import {
   RefreshControl,
   Pressable,
 } from "react-native";
-import { Text, Card, Chip, FAB, IconButton } from "react-native-paper";
+import { Text, Icon, IconButton } from "react-native-paper";
 import { router } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 import DateTimePicker from "@react-native-community/datetimepicker";
 
 import { supabase } from "@/lib/supabase";
 import { useAuthStore } from "@/stores/authStore";
+import { StatusBadge } from "@/components/ui";
+import { EmptyState } from "@/components/EmptyState";
+import {
+  colors,
+  spacing,
+  radius,
+  typography,
+  shadows,
+  sizing,
+} from "@/constants/tokens";
 
 type ReservationStatus =
   | "confirmed"
@@ -35,20 +45,23 @@ interface Reservation {
   } | null;
 }
 
-const STATUS_COLORS: Record<ReservationStatus, string> = {
-  confirmed: "#3b82f6",
-  arrived: "#f59e0b",
-  in_progress: "#f97316",
-  completed: "#10b981",
-  cancelled: "#ef4444",
-};
-
 const STATUS_LABELS: Record<ReservationStatus, string> = {
   confirmed: "確認済",
   arrived: "来店",
   in_progress: "作業中",
   completed: "完了",
   cancelled: "キャンセル",
+};
+
+const STATUS_SEVERITY: Record<
+  ReservationStatus,
+  "info" | "warning" | "success" | "danger"
+> = {
+  confirmed: "info",
+  arrived: "warning",
+  in_progress: "warning",
+  completed: "success",
+  cancelled: "danger",
 };
 
 const FILTER_OPTIONS: { key: string; label: string }[] = [
@@ -67,8 +80,18 @@ export default function ReservationsScreen() {
 
   const dateStr = selectedDate.toISOString().split("T")[0];
 
-  const { data: reservations = [], isLoading, refetch } = useQuery({
-    queryKey: ["reservations", user?.tenantId, selectedStore?.id, dateStr, statusFilter],
+  const {
+    data: reservations = [],
+    isLoading,
+    refetch,
+  } = useQuery({
+    queryKey: [
+      "reservations",
+      user?.tenantId,
+      selectedStore?.id,
+      dateStr,
+      statusFilter,
+    ],
     queryFn: async () => {
       if (!user?.tenantId || !selectedStore?.id) return [];
 
@@ -124,49 +147,31 @@ export default function ReservationsScreen() {
   };
 
   const renderItem = ({ item }: { item: Reservation }) => (
-    <Card
+    <Pressable
       style={styles.card}
-      mode="outlined"
       onPress={() => router.push(`/reservations/${item.id}`)}
+      accessibilityRole="button"
+      accessibilityLabel={`${item.customer?.name ?? "未登録"} ${formatTime(item.scheduled_time)}`}
     >
-      <Card.Content style={styles.cardContent}>
-        <View style={styles.cardLeft}>
-          <Text variant="titleMedium" style={styles.time}>
-            {formatTime(item.scheduled_time)}
-          </Text>
-        </View>
-        <View style={styles.cardCenter}>
-          <Text variant="titleSmall" style={styles.customerName}>
-            {item.customer?.name ?? "未登録"}
-          </Text>
-          <Text variant="bodySmall" style={styles.vehicleInfo}>
-            {item.vehicle
-              ? `${item.vehicle.plate_number}  ${item.vehicle.make} ${item.vehicle.model}`
-              : "車両未登録"}
-          </Text>
-        </View>
-        <View style={styles.cardRight}>
-          <Chip
-            compact
-            textStyle={styles.chipText}
-            style={[
-              styles.chip,
-              { backgroundColor: `${STATUS_COLORS[item.status]}18` },
-            ]}
-          >
-            <Text
-              style={{
-                color: STATUS_COLORS[item.status],
-                fontSize: 11,
-                fontWeight: "600",
-              }}
-            >
-              {STATUS_LABELS[item.status]}
-            </Text>
-          </Chip>
-        </View>
-      </Card.Content>
-    </Card>
+      <View style={styles.cardLeft}>
+        <Text style={styles.time}>{formatTime(item.scheduled_time)}</Text>
+      </View>
+      <View style={styles.cardCenter}>
+        <Text style={styles.customerName} numberOfLines={1}>
+          {item.customer?.name ?? "未登録"}
+        </Text>
+        <Text style={styles.vehicleInfo} numberOfLines={1}>
+          {item.vehicle
+            ? `${item.vehicle.plate_number}  ${item.vehicle.make} ${item.vehicle.model}`
+            : "車両未登録"}
+        </Text>
+      </View>
+      <StatusBadge
+        label={STATUS_LABELS[item.status]}
+        severity={STATUS_SEVERITY[item.status]}
+        compact
+      />
+    </Pressable>
   );
 
   return (
@@ -176,6 +181,7 @@ export default function ReservationsScreen() {
         <IconButton
           icon="chevron-left"
           size={20}
+          iconColor={colors.textPrimary}
           onPress={() => shiftDate(-1)}
           accessibilityLabel="前日へ"
         />
@@ -185,13 +191,12 @@ export default function ReservationsScreen() {
           accessibilityRole="button"
           accessibilityLabel={`日付選択: ${formatDate(selectedDate)}`}
         >
-          <Text variant="titleSmall" style={styles.dateText}>
-            {formatDate(selectedDate)}
-          </Text>
+          <Text style={styles.dateText}>{formatDate(selectedDate)}</Text>
         </Pressable>
         <IconButton
           icon="chevron-right"
           size={20}
+          iconColor={colors.textPrimary}
           onPress={() => shiftDate(1)}
           accessibilityLabel="翌日へ"
         />
@@ -199,9 +204,7 @@ export default function ReservationsScreen() {
           onPress={() => setSelectedDate(new Date())}
           style={styles.todayButton}
         >
-          <Text variant="labelSmall" style={styles.todayText}>
-            今日
-          </Text>
+          <Text style={styles.todayText}>今日</Text>
         </Pressable>
       </View>
 
@@ -216,22 +219,23 @@ export default function ReservationsScreen() {
       {/* Status filter */}
       <View style={styles.filterRow}>
         {FILTER_OPTIONS.map((opt) => (
-          <Chip
+          <Pressable
             key={opt.key}
-            selected={statusFilter === opt.key}
             onPress={() => setStatusFilter(opt.key)}
-            compact
             style={[
               styles.filterChip,
               statusFilter === opt.key && styles.filterChipActive,
             ]}
-            textStyle={[
-              styles.filterChipText,
-              statusFilter === opt.key && styles.filterChipTextActive,
-            ]}
           >
-            {opt.label}
-          </Chip>
+            <Text
+              style={[
+                styles.filterChipText,
+                statusFilter === opt.key && styles.filterChipTextActive,
+              ]}
+            >
+              {opt.label}
+            </Text>
+          </Pressable>
         ))}
       </View>
 
@@ -245,106 +249,123 @@ export default function ReservationsScreen() {
         }
         contentContainerStyle={styles.listContent}
         ListEmptyComponent={
-          <View style={styles.empty}>
-            <Text variant="bodyMedium" style={styles.emptyText}>
-              予約がありません
-            </Text>
-          </View>
+          <EmptyState
+            icon="calendar-blank-outline"
+            title="予約がありません"
+            description={`${formatDate(selectedDate)} の予約はまだありません`}
+          />
         }
       />
 
-      <FAB
-        icon="plus"
-        label="新規"
+      <Pressable
         style={styles.fab}
-        color="#ffffff"
         onPress={() => router.push("/reservations/new")}
-      />
+        accessibilityRole="button"
+        accessibilityLabel="新規予約"
+      >
+        <Icon source="plus" size={sizing.iconMd} color={colors.textOnPrimary} />
+      </Pressable>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#fafafa" },
+  container: { flex: 1, backgroundColor: colors.background },
   dateRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    backgroundColor: "#ffffff",
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    backgroundColor: colors.surface,
     borderBottomWidth: 1,
-    borderBottomColor: "#e4e4e7",
+    borderBottomColor: colors.border,
   },
   dateButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
   },
-  dateText: { fontWeight: "700", color: "#1a1a2e" },
+  dateText: {
+    ...typography.titleSmall,
+    color: colors.textPrimary,
+  },
   todayButton: {
     marginLeft: "auto",
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-    backgroundColor: "#1a1a2e",
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.full,
+    backgroundColor: colors.primary,
   },
-  todayText: { color: "#ffffff", fontWeight: "600" },
+  todayText: {
+    ...typography.labelSmall,
+    color: colors.textOnPrimary,
+  },
   filterRow: {
     flexDirection: "row",
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    gap: 6,
-    backgroundColor: "#ffffff",
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    gap: spacing.sm,
+    backgroundColor: colors.surface,
     borderBottomWidth: 1,
-    borderBottomColor: "#e4e4e7",
+    borderBottomColor: colors.border,
   },
   filterChip: {
-    backgroundColor: "#f4f4f5",
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.full,
+    backgroundColor: colors.surfaceVariant,
   },
   filterChipActive: {
-    backgroundColor: "#1a1a2e",
+    backgroundColor: colors.primary,
   },
   filterChipText: {
-    fontSize: 12,
-    color: "#71717a",
+    ...typography.labelSmall,
+    color: colors.textSecondary,
   },
   filterChipTextActive: {
-    color: "#ffffff",
+    color: colors.textOnPrimary,
   },
-  listContent: { padding: 12, paddingBottom: 80 },
+  listContent: {
+    padding: spacing.lg,
+    paddingBottom: spacing["4xl"] + spacing["4xl"],
+    gap: spacing.sm,
+  },
   card: {
-    backgroundColor: "#ffffff",
-    marginBottom: 8,
-  },
-  cardContent: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 12,
+    backgroundColor: colors.surface,
+    borderRadius: radius.card,
+    padding: spacing.lg,
+    gap: spacing.md,
+    ...shadows.card,
   },
   cardLeft: {
     width: 56,
     alignItems: "center",
   },
-  time: { fontWeight: "700", color: "#1a1a2e" },
-  cardCenter: { flex: 1, paddingHorizontal: 8 },
-  customerName: { fontWeight: "600", color: "#1a1a2e" },
-  vehicleInfo: { color: "#71717a", marginTop: 2 },
-  cardRight: { paddingLeft: 8 },
-  chip: {
-    borderRadius: 12,
+  time: {
+    ...typography.titleSmall,
+    color: colors.textPrimary,
   },
-  chipText: { fontSize: 11 },
-  empty: { alignItems: "center", paddingTop: 48 },
-  emptyText: { color: "#71717a" },
+  cardCenter: { flex: 1 },
+  customerName: {
+    ...typography.titleSmall,
+    color: colors.textPrimary,
+  },
+  vehicleInfo: {
+    ...typography.meta,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
   fab: {
     position: "absolute",
-    right: 16,
-    bottom: 24,
-    backgroundColor: "#3b82f6",
+    right: spacing.lg,
+    bottom: spacing["2xl"],
+    width: 56,
+    height: 56,
     borderRadius: 28,
-    elevation: 6,
-    shadowColor: "#000",
-    shadowOpacity: 0.25,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 3 },
+    backgroundColor: colors.primary,
+    alignItems: "center",
+    justifyContent: "center",
+    ...shadows.fab,
   },
 });

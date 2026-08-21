@@ -9,14 +9,11 @@ import {
 import {
   Text,
   TextInput,
-  Button,
-  Card,
   Chip,
   Searchbar,
   ActivityIndicator,
   List,
   Snackbar,
-  SegmentedButtons,
 } from "react-native-paper";
 import { router, Stack } from "expo-router";
 import { useQuery, useMutation } from "@tanstack/react-query";
@@ -29,6 +26,8 @@ import {
   reservationSteps,
   reservationCurrentStep,
 } from "@/lib/reservationSteps";
+import { LedraButton, SegmentedControl } from "@/components/ui";
+import { colors, spacing, radius, typography, shadows } from "@/constants/tokens";
 
 interface Customer {
   id: string;
@@ -132,7 +131,6 @@ export default function ReservationNewScreen() {
         ? now.toTimeString().slice(0, 5)
         : selectedDate.toTimeString().slice(0, 5);
 
-      // reservations.menu_items_json (Web 側と同じ shape: { menu_item_id, name, price })
       const items = selectedMenuItems.map((menuItemId) => {
         const mi = menuItems.find((m) => m.id === menuItemId);
         return {
@@ -202,35 +200,93 @@ export default function ReservationNewScreen() {
       <Stack.Screen options={{ title: isWalkIn ? "飛び込み受付" : "予約作成" }} />
       <ScrollView style={styles.container} keyboardShouldPersistTaps="handled">
         {/* 入力進捗 */}
-        <Card style={styles.card} mode="outlined">
-          <Card.Content>
-            <Steps steps={stepDefs} current={currentStep} />
-          </Card.Content>
-        </Card>
+        <View style={styles.card}>
+          <Steps steps={stepDefs} current={currentStep} />
+        </View>
 
         {/* 予約タイプ */}
-        <Card style={styles.card} mode="outlined">
-          <Card.Content>
-            <Text variant="titleMedium" style={styles.heading}>
-              受付タイプ
-            </Text>
-            <SegmentedButtons
-              value={reservationType}
-              onValueChange={(v) => setReservationType(v as ReservationType)}
-              buttons={[
-                { value: "scheduled", label: "予約", icon: "calendar-check" },
-                { value: "walk_in", label: "飛び込み", icon: "walk" },
-              ]}
-            />
-          </Card.Content>
-        </Card>
+        <View style={styles.card}>
+          <Text style={styles.heading}>
+            受付タイプ
+          </Text>
+          <SegmentedControl
+            segments={[
+              { value: "scheduled", label: "予約" },
+              { value: "walk_in", label: "飛び込み" },
+            ]}
+            value={reservationType}
+            onChange={(v) => setReservationType(v as ReservationType)}
+          />
+        </View>
 
         {/* Customer Picker */}
-        <Card style={styles.card} mode="outlined">
-          <Card.Content>
+        <View style={styles.card}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.heading}>
+              顧客
+            </Text>
+            {isWalkIn && (
+              <Chip compact style={styles.optionalChip}>
+                <Text style={styles.optionalText}>任意</Text>
+              </Chip>
+            )}
+          </View>
+          {selectedCustomer ? (
+            <View style={styles.selectedRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.customerName}>
+                  {selectedCustomer.name}
+                </Text>
+                {selectedCustomer.phone && (
+                  <Text style={styles.subText}>
+                    {selectedCustomer.phone}
+                  </Text>
+                )}
+              </View>
+              <LedraButton
+                variant="ghost"
+                size="small"
+                fullWidth={false}
+                onPress={() => {
+                  setSelectedCustomer(null);
+                  setSelectedVehicle(null);
+                  setCustomerSearch("");
+                }}
+              >
+                変更
+              </LedraButton>
+            </View>
+          ) : (
+            <>
+              <Searchbar
+                placeholder="顧客名で検索..."
+                value={customerSearch}
+                onChangeText={setCustomerSearch}
+                loading={searchingCustomers}
+                style={styles.searchbar}
+              />
+              {customers.map((c) => (
+                <List.Item
+                  key={c.id}
+                  title={c.name}
+                  description={c.phone ?? ""}
+                  onPress={() => {
+                    setSelectedCustomer(c);
+                    setCustomerSearch(c.name);
+                  }}
+                  left={(props) => <List.Icon {...props} icon="account" />}
+                />
+              ))}
+            </>
+          )}
+        </View>
+
+        {/* Vehicle Picker */}
+        {selectedCustomer && (
+          <View style={styles.card}>
             <View style={styles.sectionHeader}>
-              <Text variant="titleMedium" style={styles.heading}>
-                顧客
+              <Text style={styles.heading}>
+                車両
               </Text>
               {isWalkIn && (
                 <Chip compact style={styles.optionalChip}>
@@ -238,226 +294,148 @@ export default function ReservationNewScreen() {
                 </Chip>
               )}
             </View>
-            {selectedCustomer ? (
-              <View style={styles.selectedRow}>
-                <View style={{ flex: 1 }}>
-                  <Text variant="bodyLarge" style={{ fontWeight: "600" }}>
-                    {selectedCustomer.name}
-                  </Text>
-                  {selectedCustomer.phone && (
-                    <Text variant="bodySmall" style={styles.subText}>
-                      {selectedCustomer.phone}
-                    </Text>
-                  )}
-                </View>
-                <Button
-                  mode="text"
-                  onPress={() => {
-                    setSelectedCustomer(null);
-                    setSelectedVehicle(null);
-                    setCustomerSearch("");
-                  }}
-                >
-                  変更
-                </Button>
-              </View>
+            {vehicles.length === 0 ? (
+              <Text style={styles.subText}>
+                この顧客の車両がありません
+              </Text>
             ) : (
-              <>
-                <Searchbar
-                  placeholder="顧客名で検索..."
-                  value={customerSearch}
-                  onChangeText={setCustomerSearch}
-                  loading={searchingCustomers}
-                  style={styles.searchbar}
-                />
-                {customers.map((c) => (
-                  <List.Item
-                    key={c.id}
-                    title={c.name}
-                    description={c.phone ?? ""}
-                    onPress={() => {
-                      setSelectedCustomer(c);
-                      setCustomerSearch(c.name);
-                    }}
-                    left={(props) => <List.Icon {...props} icon="account" />}
-                  />
-                ))}
-              </>
-            )}
-          </Card.Content>
-        </Card>
-
-        {/* Vehicle Picker */}
-        {selectedCustomer && (
-          <Card style={styles.card} mode="outlined">
-            <Card.Content>
-              <View style={styles.sectionHeader}>
-                <Text variant="titleMedium" style={styles.heading}>
-                  車両
-                </Text>
-                {isWalkIn && (
-                  <Chip compact style={styles.optionalChip}>
-                    <Text style={styles.optionalText}>任意</Text>
-                  </Chip>
-                )}
-              </View>
-              {vehicles.length === 0 ? (
-                <Text variant="bodyMedium" style={styles.subText}>
-                  この顧客の車両がありません
-                </Text>
-              ) : (
-                vehicles.map((v) => (
-                  <TouchableOpacity
-                    key={v.id}
-                    onPress={() => setSelectedVehicle(v)}
+              vehicles.map((v) => (
+                <TouchableOpacity
+                  key={v.id}
+                  onPress={() => setSelectedVehicle(v)}
+                  style={[
+                    styles.vehicleOption,
+                    selectedVehicle?.id === v.id && styles.vehicleSelected,
+                  ]}
+                >
+                  <Text
                     style={[
-                      styles.vehicleOption,
-                      selectedVehicle?.id === v.id && styles.vehicleSelected,
+                      styles.bodyText,
+                      selectedVehicle?.id === v.id && { fontWeight: "700" },
                     ]}
                   >
-                    <Text
-                      variant="bodyLarge"
-                      style={{
-                        fontWeight: selectedVehicle?.id === v.id ? "700" : "400",
-                      }}
-                    >
-                      {v.plate_display ?? "ナンバー未登録"}
-                    </Text>
-                    <Text variant="bodySmall" style={styles.subText}>
-                      {[v.maker, v.model].filter(Boolean).join(" ")}
-                    </Text>
-                  </TouchableOpacity>
-                ))
-              )}
-            </Card.Content>
-          </Card>
+                    {v.plate_display ?? "ナンバー未登録"}
+                  </Text>
+                  <Text style={styles.subText}>
+                    {[v.maker, v.model].filter(Boolean).join(" ")}
+                  </Text>
+                </TouchableOpacity>
+              ))
+            )}
+          </View>
         )}
 
         {/* Date/Time Picker（予約モードのみ） */}
         {!isWalkIn && (
-          <Card style={styles.card} mode="outlined">
-            <Card.Content>
-              <Text variant="titleMedium" style={styles.heading}>
-                日時
-              </Text>
-              <View style={styles.dateRow}>
-                <Button
-                  mode="outlined"
-                  icon="calendar"
-                  onPress={() => setShowDatePicker(true)}
-                  style={{ flex: 1, marginRight: 8 }}
-                >
-                  {selectedDate.toLocaleDateString("ja-JP")}
-                </Button>
-                <Button
-                  mode="outlined"
-                  icon="clock-outline"
-                  onPress={() => setShowTimePicker(true)}
-                  style={{ flex: 1 }}
-                >
-                  {selectedDate.toLocaleTimeString("ja-JP", {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })}
-                </Button>
-              </View>
-              {showDatePicker && (
-                <DateTimePicker
-                  value={selectedDate}
-                  mode="date"
-                  display={Platform.OS === "ios" ? "spinner" : "default"}
-                  onChange={(_, date) => {
-                    setShowDatePicker(false);
-                    if (date) setSelectedDate(date);
-                  }}
-                />
-              )}
-              {showTimePicker && (
-                <DateTimePicker
-                  value={selectedDate}
-                  mode="time"
-                  display={Platform.OS === "ios" ? "spinner" : "default"}
-                  onChange={(_, date) => {
-                    setShowTimePicker(false);
-                    if (date) setSelectedDate(date);
-                  }}
-                />
-              )}
-            </Card.Content>
-          </Card>
+          <View style={styles.card}>
+            <Text style={styles.heading}>
+              日時
+            </Text>
+            <View style={styles.dateRow}>
+              <LedraButton
+                variant="outline"
+                icon="calendar"
+                onPress={() => setShowDatePicker(true)}
+                style={{ flex: 1, marginRight: spacing.sm }}
+                fullWidth={false}
+              >
+                {selectedDate.toLocaleDateString("ja-JP")}
+              </LedraButton>
+              <LedraButton
+                variant="outline"
+                icon="clock-outline"
+                onPress={() => setShowTimePicker(true)}
+                style={{ flex: 1 }}
+                fullWidth={false}
+              >
+                {selectedDate.toLocaleTimeString("ja-JP", {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })}
+              </LedraButton>
+            </View>
+            {showDatePicker && (
+              <DateTimePicker
+                value={selectedDate}
+                mode="date"
+                display={Platform.OS === "ios" ? "spinner" : "default"}
+                onChange={(_, date) => {
+                  setShowDatePicker(false);
+                  if (date) setSelectedDate(date);
+                }}
+              />
+            )}
+            {showTimePicker && (
+              <DateTimePicker
+                value={selectedDate}
+                mode="time"
+                display={Platform.OS === "ios" ? "spinner" : "default"}
+                onChange={(_, date) => {
+                  setShowTimePicker(false);
+                  if (date) setSelectedDate(date);
+                }}
+              />
+            )}
+          </View>
         )}
 
         {/* 飛び込みモード情報 */}
         {isWalkIn && (
-          <Card style={[styles.card, styles.walkInInfoCard]} mode="outlined">
-            <Card.Content style={styles.walkInInfoContent}>
-              <Text variant="bodyMedium" style={styles.walkInInfoText}>
-                本日の日時で「来店済」ステータスとして登録されます
-              </Text>
-            </Card.Content>
-          </Card>
+          <View style={styles.walkInInfoCard}>
+            <Text style={styles.walkInInfoText}>
+              本日の日時で「来店済」ステータスとして登録されます
+            </Text>
+          </View>
         )}
 
         {/* Menu Items Multi-select */}
-        <Card style={styles.card} mode="outlined">
-          <Card.Content>
-            <Text variant="titleMedium" style={styles.heading}>
-              メニュー
-            </Text>
-            <View style={styles.chipContainer}>
-              {menuItems.map((mi) => (
-                <Chip
-                  key={mi.id}
-                  selected={selectedMenuItems.includes(mi.id)}
-                  onPress={() => toggleMenuItem(mi.id)}
-                  style={styles.chip}
-                  showSelectedCheck
-                >
-                  {mi.name} (¥{mi.unit_price.toLocaleString()})
-                </Chip>
-              ))}
-              {menuItems.length === 0 && (
-                <Text variant="bodySmall" style={styles.subText}>
-                  メニューが未登録です
-                </Text>
-              )}
-            </View>
-            {selectedMenuItems.length > 0 && (
-              <Text
-                variant="titleSmall"
-                style={{
-                  marginTop: 12,
-                  fontWeight: "700",
-                  textAlign: "right",
-                }}
+        <View style={styles.card}>
+          <Text style={styles.heading}>
+            メニュー
+          </Text>
+          <View style={styles.chipContainer}>
+            {menuItems.map((mi) => (
+              <Chip
+                key={mi.id}
+                selected={selectedMenuItems.includes(mi.id)}
+                onPress={() => toggleMenuItem(mi.id)}
+                style={styles.chip}
+                showSelectedCheck
               >
-                合計: ¥{total.toLocaleString()}
+                {mi.name} (¥{mi.unit_price.toLocaleString()})
+              </Chip>
+            ))}
+            {menuItems.length === 0 && (
+              <Text style={styles.subText}>
+                メニューが未登録です
               </Text>
             )}
-          </Card.Content>
-        </Card>
+          </View>
+          {selectedMenuItems.length > 0 && (
+            <Text style={styles.menuTotal}>
+              合計: ¥{total.toLocaleString()}
+            </Text>
+          )}
+        </View>
 
         {/* Notes */}
-        <Card style={styles.card} mode="outlined">
-          <Card.Content>
-            <Text variant="titleMedium" style={styles.heading}>
-              備考
-            </Text>
-            <TextInput
-              mode="outlined"
-              multiline
-              numberOfLines={3}
-              value={notes}
-              onChangeText={setNotes}
-              placeholder="メモを入力..."
-            />
-          </Card.Content>
-        </Card>
+        <View style={styles.card}>
+          <Text style={styles.heading}>
+            備考
+          </Text>
+          <TextInput
+            mode="outlined"
+            multiline
+            numberOfLines={3}
+            value={notes}
+            onChangeText={setNotes}
+            placeholder="メモを入力..."
+          />
+        </View>
 
         {/* Submit */}
         <View style={styles.submitArea}>
-          <Button
-            mode="contained"
+          <LedraButton
             icon={isWalkIn ? "walk" : "check"}
             onPress={() => createMutation.mutate()}
             loading={createMutation.isPending}
@@ -466,20 +444,19 @@ export default function ReservationNewScreen() {
               selectedMenuItems.length === 0 ||
               (!isWalkIn && (!selectedCustomer || !selectedVehicle))
             }
-            style={styles.submitButton}
-            buttonColor="#1a1a2e"
           >
             {isWalkIn ? "飛び込み受付を作成" : "予約を作成"}
-          </Button>
+          </LedraButton>
         </View>
 
-        <View style={{ height: 40 }} />
+        <View style={{ height: spacing["4xl"] }} />
       </ScrollView>
 
       <Snackbar
         visible={!!snackbar}
         onDismiss={() => setSnackbar("")}
         duration={3000}
+        style={{ backgroundColor: colors.textPrimary }}
       >
         {snackbar}
       </Snackbar>
@@ -488,71 +465,98 @@ export default function ReservationNewScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#fafafa" },
+  container: { flex: 1, backgroundColor: colors.background },
   card: {
-    marginHorizontal: 16,
-    marginTop: 16,
-    backgroundColor: "#ffffff",
+    marginHorizontal: spacing.lg,
+    marginTop: spacing.lg,
+    backgroundColor: colors.surface,
+    borderRadius: radius.card,
+    padding: spacing.lg,
+    ...shadows.card,
   },
-  heading: { fontWeight: "700", color: "#1a1a2e", marginBottom: 8 },
+  heading: {
+    ...typography.titleMedium,
+    color: colors.textPrimary,
+    marginBottom: spacing.sm,
+  },
   sectionHeader: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: 8,
+    marginBottom: spacing.sm,
   },
-  optionalChip: { backgroundColor: "#f4f4f5" },
-  optionalText: { fontSize: 11, color: "#71717a" },
-  subText: { color: "#71717a", marginTop: 2 },
+  optionalChip: { backgroundColor: colors.surfaceVariant },
+  optionalText: {
+    fontSize: 11,
+    color: colors.textSecondary,
+  },
+  subText: {
+    ...typography.bodySmall,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
+  bodyText: {
+    ...typography.body,
+    color: colors.textPrimary,
+  },
+  customerName: {
+    ...typography.body,
+    fontWeight: "600",
+    color: colors.textPrimary,
+  },
   selectedRow: {
     flexDirection: "row",
     alignItems: "center",
   },
   searchbar: {
-    backgroundColor: "#f4f4f5",
+    backgroundColor: colors.surfaceVariant,
     elevation: 0,
   },
   vehicleOption: {
-    padding: 12,
-    borderRadius: 8,
+    padding: spacing.md,
+    borderRadius: radius.sm,
     borderWidth: 1,
-    borderColor: "#e4e4e7",
-    marginTop: 8,
+    borderColor: colors.border,
+    marginTop: spacing.sm,
   },
   vehicleSelected: {
-    borderColor: "#1a1a2e",
-    backgroundColor: "#f0f0ff",
+    borderColor: colors.textPrimary,
+    backgroundColor: colors.infoLight,
   },
   dateRow: {
     flexDirection: "row",
     alignItems: "center",
   },
   walkInInfoCard: {
-    backgroundColor: "#eff6ff",
-    borderColor: "#93c5fd",
-  },
-  walkInInfoContent: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
+    marginHorizontal: spacing.lg,
+    marginTop: spacing.lg,
+    backgroundColor: colors.primaryLight,
+    borderRadius: radius.card,
+    padding: spacing.lg,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    ...shadows.card,
   },
   walkInInfoText: {
-    color: "#1d4ed8",
+    ...typography.body,
     fontWeight: "600",
+    color: colors.primaryDark,
   },
   chipContainer: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 8,
+    gap: spacing.sm,
   },
   chip: {
-    marginBottom: 4,
+    marginBottom: spacing.xs,
+  },
+  menuTotal: {
+    ...typography.titleSmall,
+    marginTop: spacing.md,
+    textAlign: "right",
+    color: colors.textPrimary,
   },
   submitArea: {
-    padding: 16,
-  },
-  submitButton: {
-    borderRadius: 8,
-    paddingVertical: 4,
+    padding: spacing.lg,
   },
 });

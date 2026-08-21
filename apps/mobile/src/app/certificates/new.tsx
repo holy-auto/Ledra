@@ -1,11 +1,13 @@
 import { useState, useEffect } from "react";
 import { View, ScrollView, StyleSheet } from "react-native";
-import { TextInput, Button, HelperText, Menu, Chip } from "react-native-paper";
+import { TextInput, HelperText, Menu, Chip } from "react-native-paper";
 import { router, useLocalSearchParams } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { supabase } from "@/lib/supabase";
 import { useAuthStore } from "@/stores/authStore";
+import { LedraButton } from "@/components/ui";
+import { colors, spacing, radius } from "@/constants/tokens";
 
 interface Vehicle {
   id: string;
@@ -299,16 +301,14 @@ export default function CertificateNewScreen() {
           style={styles.input}
         />
 
-        <Button
-          mode="contained"
+        <LedraButton
           onPress={handleSubmit}
           loading={mutation.isPending}
           disabled={mutation.isPending}
-          buttonColor="#1a1a2e"
           style={styles.button}
         >
           下書き保存
-        </Button>
+        </LedraButton>
 
         {mutation.isError && (
           <HelperText type="error" style={styles.errorText}>
@@ -321,12 +321,16 @@ export default function CertificateNewScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#fafafa" },
-  form: { padding: 16 },
-  input: { marginBottom: 8, backgroundColor: "#ffffff" },
+  container: { flex: 1, backgroundColor: colors.background },
+  form: { padding: spacing.lg },
+  input: { marginBottom: spacing.sm, backgroundColor: colors.surface },
   menu: { maxHeight: 300 },
-  button: { marginTop: 16 },
-  errorText: { marginTop: 8 },
-  chip: { marginBottom: 8, alignSelf: "flex-start" },
-  chipText: { fontSize: 12 },
+  button: { marginTop: spacing.lg },
+  errorText: { marginTop: spacing.sm },
+  chip: {
+    marginBottom: spacing.sm,
+    alignSelf: "flex-start",
+    backgroundColor: colors.primaryLight,
+  },
+  chipText: { fontSize: 12, color: colors.primaryDark },
 });

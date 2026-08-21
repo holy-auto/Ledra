@@ -3,10 +3,6 @@ import { View, StyleSheet, ScrollView, Pressable, Platform } from "react-native"
 import QRCode from "react-native-qrcode-svg";
 import {
   Text,
-  Card,
-  Button,
-  Divider,
-  SegmentedButtons,
   TextInput,
   ActivityIndicator,
   Snackbar,
@@ -20,6 +16,8 @@ import { useAuthStore } from "@/stores/authStore";
 import { mobileApi } from "@/lib/api";
 import { useTerminal } from "@/hooks/useTerminal";
 import { useTerminalStore } from "@/stores/terminalStore";
+import { LedraButton, SegmentedControl } from "@/components/ui";
+import { colors, spacing, radius, typography, shadows } from "@/constants/tokens";
 
 interface MenuItem {
   id: string;
@@ -96,8 +94,6 @@ export default function WalkInCheckoutScreen() {
   const [receivedAmount, setReceivedAmount] = useState("");
   const [processing, setProcessing] = useState(false);
 
-  // total / received / change を上に移動 (React Compiler の temporal-dead-zone
-  // エラー回避: onQrPaid useCallback が total を参照するため)
   const total = useMemo(
     () => cart.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0),
     [cart],
@@ -131,7 +127,6 @@ export default function WalkInCheckoutScreen() {
     setQrPolling(false);
     resetPayment();
 
-    // Stripe側で決済成功 → DBにも payments/documents を記録
     try {
       const itemsJson = cart.map((item) => ({
         name: item.name,
@@ -139,10 +134,6 @@ export default function WalkInCheckoutScreen() {
         unit_price: item.unitPrice,
         amount: item.unitPrice * item.quantity,
       }));
-      // 任意UUIDは空文字列だと PG が "invalid input syntax for type uuid"
-      // で落ちるため明示的に null に正規化する。
-      // 店舗未設定（select-store の "店舗が登録されていません" 経路）で
-      // selectedStore.id が "" になる現象の保険。
       const { data, error } = await supabase.rpc("pos_checkout", {
         p_tenant_id: user!.tenantId,
         p_reservation_id: null,
@@ -295,9 +286,6 @@ export default function WalkInCheckoutScreen() {
         return;
       }
 
-      // pos_checkout RPC呼び出し（予約なし）
-      // 任意UUIDは空文字列だと PG が "invalid input syntax for type uuid"
-      // で落ちるため明示的に null に正規化する。
       const { data, error } = await supabase.rpc("pos_checkout", {
         p_tenant_id: user!.tenantId,
         p_reservation_id: null,
@@ -335,27 +323,26 @@ export default function WalkInCheckoutScreen() {
     }
   }
 
-  const paymentButtons = (() => {
+  const paymentSegments = (() => {
     if (isIPad) {
       return [
-        { value: "cash", label: "現金" },
-        { value: "card", label: "QR決済" },
-        { value: "bank_transfer", label: "振込" },
+        { value: "cash" as const, label: "現金" },
+        { value: "card" as const, label: "QR決済" },
+        { value: "bank_transfer" as const, label: "振込" },
       ];
     }
     if (isIPhone) {
-      // iPhone: Tap to Pay は専用ボタン (TapToPayButton) で上部に表示
       return [
-        { value: "cash", label: "現金" },
-        { value: "card", label: "カード" },
-        { value: "qr", label: "QR" },
-        { value: "bank_transfer", label: "振込" },
+        { value: "cash" as const, label: "現金" },
+        { value: "card" as const, label: "カード" },
+        { value: "qr" as const, label: "QR" },
+        { value: "bank_transfer" as const, label: "振込" },
       ];
     }
     return [
-      { value: "cash", label: "現金" },
-      { value: "card", label: "QR決済" },
-      { value: "bank_transfer", label: "振込" },
+      { value: "cash" as const, label: "現金" },
+      { value: "card" as const, label: "QR決済" },
+      { value: "bank_transfer" as const, label: "振込" },
     ];
   })();
 
@@ -390,224 +377,215 @@ export default function WalkInCheckoutScreen() {
       <Stack.Screen options={{ title: "ウォークイン会計" }} />
       <ScrollView style={styles.container}>
         {/* メニューから追加 */}
-        <Card style={styles.card} mode="outlined">
-          <Card.Content>
-            <Text variant="titleMedium" style={styles.heading}>
-              メニューから追加
-            </Text>
-            <View style={styles.menuGrid}>
-              {menuItems.map((item) => (
-                <Pressable
-                  key={item.id}
-                  style={styles.menuChip}
-                  onPress={() => addMenuItem(item)}
-                >
-                  <Text variant="labelMedium" style={styles.menuChipLabel} numberOfLines={1}>
-                    {item.name}
-                  </Text>
-                  <Text variant="labelSmall" style={styles.menuChipPrice}>
-                    ¥{item.unit_price.toLocaleString()}
-                  </Text>
-                </Pressable>
-              ))}
-              {menuItems.length === 0 && (
-                <Text variant="bodySmall" style={styles.emptyText}>
-                  メニューが未登録です
+        <View style={styles.card}>
+          <Text style={styles.heading}>
+            メニューから追加
+          </Text>
+          <View style={styles.menuGrid}>
+            {menuItems.map((item) => (
+              <Pressable
+                key={item.id}
+                style={styles.menuChip}
+                onPress={() => addMenuItem(item)}
+              >
+                <Text style={styles.menuChipLabel} numberOfLines={1}>
+                  {item.name}
                 </Text>
-              )}
-            </View>
-          </Card.Content>
-        </Card>
+                <Text style={styles.menuChipPrice}>
+                  ¥{item.unit_price.toLocaleString()}
+                </Text>
+              </Pressable>
+            ))}
+            {menuItems.length === 0 && (
+              <Text style={styles.emptyText}>
+                メニューが未登録です
+              </Text>
+            )}
+          </View>
+        </View>
 
         {/* カスタム品目 */}
-        <Card style={styles.card} mode="outlined">
-          <Card.Content>
-            <Text variant="titleMedium" style={styles.heading}>
-              カスタム品目
-            </Text>
-            <View style={styles.customRow}>
-              <TextInput
-                mode="outlined"
-                label="品名"
-                value={customName}
-                onChangeText={setCustomName}
-                style={[styles.input, { flex: 2 }]}
-                dense
-              />
-              <TextInput
-                mode="outlined"
-                label="金額"
-                value={customPrice}
-                onChangeText={setCustomPrice}
-                keyboardType="numeric"
-                style={[styles.input, { flex: 1 }]}
-                right={<TextInput.Affix text="円" />}
-                dense
-              />
-              <IconButton
-                icon="plus-circle"
-                iconColor="#1a1a2e"
-                size={28}
-                onPress={addCustomItem}
-              />
-            </View>
-          </Card.Content>
-        </Card>
+        <View style={styles.card}>
+          <Text style={styles.heading}>
+            カスタム品目
+          </Text>
+          <View style={styles.customRow}>
+            <TextInput
+              mode="outlined"
+              label="品名"
+              value={customName}
+              onChangeText={setCustomName}
+              style={[styles.input, { flex: 2 }]}
+              dense
+            />
+            <TextInput
+              mode="outlined"
+              label="金額"
+              value={customPrice}
+              onChangeText={setCustomPrice}
+              keyboardType="numeric"
+              style={[styles.input, { flex: 1 }]}
+              right={<TextInput.Affix text="円" />}
+              dense
+            />
+            <IconButton
+              icon="plus-circle"
+              iconColor={colors.textPrimary}
+              size={28}
+              onPress={addCustomItem}
+            />
+          </View>
+        </View>
 
         {/* カート明細 */}
         {cart.length > 0 && (
-          <Card style={styles.card} mode="outlined">
-            <Card.Content>
-              <Text variant="titleMedium" style={styles.heading}>
-                明細
-              </Text>
-              {cart.map((item, index) => (
-                <View key={`${item.menuItemId ?? "custom"}-${index}`} style={styles.cartItem}>
-                  <View style={{ flex: 1 }}>
-                    <Text variant="bodyMedium">{item.name}</Text>
-                    <Text variant="bodySmall" style={styles.subText}>
-                      ¥{item.unitPrice.toLocaleString()} × {item.quantity}
-                    </Text>
-                  </View>
-                  <View style={styles.qtyControls}>
-                    <IconButton
-                      icon="minus-circle-outline"
-                      size={20}
-                      onPress={() => updateQuantity(index, -1)}
-                    />
-                    <Text variant="bodyMedium" style={{ fontWeight: "600" }}>
-                      {item.quantity}
-                    </Text>
-                    <IconButton
-                      icon="plus-circle-outline"
-                      size={20}
-                      onPress={() => updateQuantity(index, 1)}
-                    />
-                    <IconButton
-                      icon="delete-outline"
-                      size={20}
-                      iconColor="#ef4444"
-                      onPress={() => removeItem(index)}
-                    />
-                  </View>
+          <View style={styles.card}>
+            <Text style={styles.heading}>
+              明細
+            </Text>
+            {cart.map((item, index) => (
+              <View key={`${item.menuItemId ?? "custom"}-${index}`} style={styles.cartItem}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.bodyText}>{item.name}</Text>
+                  <Text style={styles.subText}>
+                    ¥{item.unitPrice.toLocaleString()} × {item.quantity}
+                  </Text>
                 </View>
-              ))}
-              <Divider style={{ marginVertical: 12 }} />
-              <View style={styles.totalRow}>
-                <Text variant="titleMedium" style={{ fontWeight: "700" }}>
-                  合計
-                </Text>
-                <Text variant="headlineSmall" style={{ fontWeight: "700", color: "#1a1a2e" }}>
-                  ¥{total.toLocaleString()}
-                </Text>
+                <View style={styles.qtyControls}>
+                  <IconButton
+                    icon="minus-circle-outline"
+                    size={20}
+                    onPress={() => updateQuantity(index, -1)}
+                  />
+                  <Text style={styles.qtyText}>
+                    {item.quantity}
+                  </Text>
+                  <IconButton
+                    icon="plus-circle-outline"
+                    size={20}
+                    onPress={() => updateQuantity(index, 1)}
+                  />
+                  <IconButton
+                    icon="delete-outline"
+                    size={20}
+                    iconColor={colors.danger}
+                    onPress={() => removeItem(index)}
+                  />
+                </View>
               </View>
-            </Card.Content>
-          </Card>
+            ))}
+            <View style={styles.divider} />
+            <View style={styles.totalRow}>
+              <Text style={styles.totalLabel}>
+                合計
+              </Text>
+              <Text style={styles.totalAmount}>
+                ¥{total.toLocaleString()}
+              </Text>
+            </View>
+          </View>
         )}
 
         {/* QRコード表示 */}
         {(((isAndroid || isIPad) && paymentMethod === "card") ||
           (isIPhone && paymentMethod === "qr")) &&
           qrUrl && (
-          <Card style={[styles.card, { backgroundColor: "#f0fdf4" }]} mode="outlined">
-            <Card.Content style={{ alignItems: "center", paddingVertical: 16 }}>
-              <Text variant="titleMedium" style={{ fontWeight: "700", color: "#15803d", marginBottom: 12 }}>
-                お客様のスマホでQRを読み込んでください
-              </Text>
-              <View style={{ padding: 16, backgroundColor: "#ffffff", borderRadius: 12, marginBottom: 12 }}>
-                <QRCode value={qrUrl} size={200} />
+          <View style={styles.qrCard}>
+            <Text style={styles.qrTitle}>
+              お客様のスマホでQRを読み込んでください
+            </Text>
+            <View style={styles.qrCodeWrapper}>
+              <QRCode value={qrUrl} size={200} />
+            </View>
+            <Text style={styles.qrSubtext}>
+              ¥{total.toLocaleString()} · Stripe Checkout
+            </Text>
+            {qrPolling && (
+              <View style={styles.qrPollingRow}>
+                <ActivityIndicator size="small" color={colors.successDark} />
+                <Text style={styles.qrPollingText}>決済完了を確認中...</Text>
               </View>
-              <Text variant="bodySmall" style={{ color: "#15803d" }}>
-                ¥{total.toLocaleString()} · Stripe Checkout
-              </Text>
-              {qrPolling && (
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginTop: 12 }}>
-                  <ActivityIndicator size="small" color="#15803d" />
-                  <Text style={{ color: "#15803d", fontSize: 13 }}>決済完了を確認中...</Text>
-                </View>
-              )}
-              <Button
-                mode="outlined"
-                textColor="#ef4444"
-                style={{ marginTop: 12 }}
-                onPress={() => {
-                  setQrUrl(null);
-                  setQrSessionId(null);
-                  setQrPolling(false);
-                }}
-              >
-                QRをキャンセル
-              </Button>
-            </Card.Content>
-          </Card>
+            )}
+            <LedraButton
+              variant="outline"
+              style={{ marginTop: spacing.md }}
+              onPress={() => {
+                setQrUrl(null);
+                setQrSessionId(null);
+                setQrPolling(false);
+              }}
+            >
+              QRをキャンセル
+            </LedraButton>
+          </View>
         )}
 
         {/* 支払方法 */}
         {!qrPolling && cart.length > 0 && (
-          <Card style={styles.card} mode="outlined">
-            <Card.Content>
-              <Text variant="titleMedium" style={styles.heading}>
-                支払方法
-              </Text>
-              <SegmentedButtons
-                value={paymentMethod}
-                onValueChange={(v) => {
-                  setPaymentMethod(v as PaymentMethod);
-                  setQrUrl(null);
-                  setQrSessionId(null);
-                  setQrPolling(false);
-                }}
-                buttons={paymentButtons}
-                style={{ marginBottom: 12 }}
-              />
-              {paymentMethod === "cash" && (
-                <>
-                  <TextInput
-                    mode="outlined"
-                    label="お預かり金額"
-                    value={receivedAmount}
-                    onChangeText={setReceivedAmount}
-                    keyboardType="numeric"
-                    style={{ backgroundColor: "#ffffff", marginBottom: 8 }}
-                    right={<TextInput.Affix text="円" />}
-                  />
-                  <View style={styles.changeRow}>
-                    <Text variant="bodyMedium">おつり:</Text>
-                    <Text
-                      variant="titleMedium"
-                      style={{ fontWeight: "700", color: change >= 0 ? "#10b981" : "#ef4444" }}
-                    >
-                      ¥{change.toLocaleString()}
-                    </Text>
-                  </View>
-                </>
-              )}
-            </Card.Content>
-          </Card>
+          <View style={styles.card}>
+            <Text style={styles.heading}>
+              支払方法
+            </Text>
+            <SegmentedControl
+              segments={paymentSegments}
+              value={paymentMethod}
+              onChange={(v) => {
+                setPaymentMethod(v as PaymentMethod);
+                setQrUrl(null);
+                setQrSessionId(null);
+                setQrPolling(false);
+              }}
+            />
+            {paymentMethod === "cash" && (
+              <>
+                <TextInput
+                  mode="outlined"
+                  label="お預かり金額"
+                  value={receivedAmount}
+                  onChangeText={setReceivedAmount}
+                  keyboardType="numeric"
+                  style={styles.cashInput}
+                  right={<TextInput.Affix text="円" />}
+                />
+                <View style={styles.changeRow}>
+                  <Text style={styles.bodyText}>おつり:</Text>
+                  <Text
+                    style={[
+                      styles.totalLabel,
+                      { color: change >= 0 ? colors.success : colors.danger },
+                    ]}
+                  >
+                    ¥{change.toLocaleString()}
+                  </Text>
+                </View>
+              </>
+            )}
+          </View>
         )}
 
         {/* 決済ボタン */}
         {!qrPolling && cart.length > 0 && (
           <View style={styles.submitArea}>
-            <Button
-              mode="contained"
+            <LedraButton
               icon="check-circle"
               onPress={handleCheckout}
               loading={processing || isProcessing}
               disabled={isDisabled}
-              style={styles.submitButton}
-              buttonColor="#1a1a2e"
-              contentStyle={{ paddingVertical: 8 }}
             >
               {submitLabel}
-            </Button>
+            </LedraButton>
           </View>
         )}
 
-        <View style={{ height: 40 }} />
+        <View style={{ height: spacing["4xl"] }} />
       </ScrollView>
 
-      <Snackbar visible={!!snackbar} onDismiss={() => setSnackbar("")} duration={3000}>
+      <Snackbar
+        visible={!!snackbar}
+        onDismiss={() => setSnackbar("")}
+        duration={3000}
+        style={{ backgroundColor: colors.textPrimary }}
+      >
         {snackbar}
       </Snackbar>
     </>
@@ -615,44 +593,128 @@ export default function WalkInCheckoutScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#fafafa" },
-  card: { marginHorizontal: 16, marginTop: 16, backgroundColor: "#ffffff" },
-  heading: { fontWeight: "700", color: "#1a1a2e", marginBottom: 8 },
-  subText: { color: "#71717a" },
-  menuGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  menuChip: {
-    backgroundColor: "#f4f4f5",
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderWidth: 1,
-    borderColor: "#e4e4e7",
+  container: { flex: 1, backgroundColor: colors.background },
+  card: {
+    marginHorizontal: spacing.lg,
+    marginTop: spacing.lg,
+    backgroundColor: colors.surface,
+    borderRadius: radius.card,
+    padding: spacing.lg,
+    ...shadows.card,
   },
-  menuChipLabel: { color: "#1a1a2e", fontWeight: "600" },
-  menuChipPrice: { color: "#71717a", marginTop: 2 },
-  emptyText: { color: "#71717a" },
-  customRow: { flexDirection: "row", alignItems: "center", gap: 8 },
-  input: { backgroundColor: "#ffffff" },
+  heading: {
+    ...typography.titleMedium,
+    color: colors.textPrimary,
+    marginBottom: spacing.sm,
+  },
+  subText: {
+    ...typography.bodySmall,
+    color: colors.textSecondary,
+  },
+  bodyText: {
+    ...typography.body,
+    color: colors.textPrimary,
+  },
+  emptyText: {
+    ...typography.bodySmall,
+    color: colors.textSecondary,
+  },
+  menuGrid: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
+  menuChip: {
+    backgroundColor: colors.surfaceVariant,
+    borderRadius: radius.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  menuChipLabel: {
+    ...typography.label,
+    color: colors.textPrimary,
+  },
+  menuChipPrice: {
+    ...typography.meta,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
+  customRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  input: { backgroundColor: colors.surface },
   cartItem: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 4,
+    paddingVertical: spacing.xs,
   },
   qtyControls: {
     flexDirection: "row",
     alignItems: "center",
+  },
+  qtyText: {
+    ...typography.body,
+    fontWeight: "600",
+    color: colors.textPrimary,
+  },
+  divider: {
+    height: 1,
+    backgroundColor: colors.divider,
+    marginVertical: spacing.md,
   },
   totalRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
   },
+  totalLabel: {
+    ...typography.titleMedium,
+    color: colors.textPrimary,
+  },
+  totalAmount: {
+    ...typography.titleLarge,
+    color: colors.textPrimary,
+  },
+  qrCard: {
+    marginHorizontal: spacing.lg,
+    marginTop: spacing.lg,
+    backgroundColor: colors.successLight,
+    borderRadius: radius.card,
+    padding: spacing.lg,
+    alignItems: "center",
+    ...shadows.card,
+  },
+  qrTitle: {
+    ...typography.titleMedium,
+    color: colors.successDark,
+    marginBottom: spacing.md,
+  },
+  qrCodeWrapper: {
+    padding: spacing.lg,
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    marginBottom: spacing.md,
+  },
+  qrSubtext: {
+    ...typography.bodySmall,
+    color: colors.successDark,
+  },
+  qrPollingRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    marginTop: spacing.md,
+  },
+  qrPollingText: {
+    ...typography.meta,
+    color: colors.successDark,
+  },
+  cashInput: {
+    backgroundColor: colors.surface,
+    marginTop: spacing.md,
+    marginBottom: spacing.sm,
+  },
   changeRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingVertical: 8,
+    paddingVertical: spacing.sm,
   },
-  submitArea: { padding: 16 },
-  submitButton: { borderRadius: 8 },
+  submitArea: { padding: spacing.lg },
 });

@@ -3,10 +3,6 @@ import { View, StyleSheet, ScrollView, Platform } from "react-native";
 import QRCode from "react-native-qrcode-svg";
 import {
   Text,
-  Card,
-  Button,
-  Divider,
-  SegmentedButtons,
   TextInput,
   ActivityIndicator,
   Snackbar,
@@ -20,25 +16,23 @@ import { mobileApi } from "@/lib/api";
 import { useTerminal } from "@/hooks/useTerminal";
 import { useTerminalStore } from "@/stores/terminalStore";
 import { TapToPayButton } from "@/components/TapToPayButton";
+import { LedraButton, SegmentedControl } from "@/components/ui";
+import { colors, spacing, radius, typography, shadows } from "@/constants/tokens";
 
 // ─────────────────────────────────────────────────────────────
 // 端末種別の判定
-//   iPhone  → Tap to Pay
-//   iPad    → 確認・管理専用（カード決済なし）
-//   Android → Stripe Checkout QR
 // ─────────────────────────────────────────────────────────────
 function useDeviceType() {
   const [isTablet, setIsTablet] = useState(false);
   useEffect(() => {
     if (Platform.OS === "ios") {
-      // expo-device がない場合はウィンドウ幅で判定
       const { width, height } =
         require("react-native").Dimensions.get("window");
       setIsTablet(Math.min(width, height) >= 768);
     }
   }, []);
 
-  const os = Platform.OS; // "ios" | "android" | "web"
+  const os = Platform.OS;
   const isIPhone = os === "ios" && !isTablet;
   const isIPad = os === "ios" && isTablet;
   const isAndroid = os === "android";
@@ -62,12 +56,10 @@ interface ReservationCheckout {
   }[];
 }
 
-// iPad では「カード」選択肢を除外
 type PaymentMethod = "cash" | "card" | "qr" | "bank_transfer";
 
 // ─────────────────────────────────────────────────────────────
-// QR決済ポーリング（Android）
-// Stripe Checkout Session が paid になるまで監視
+// QR決済ポーリング
 // ─────────────────────────────────────────────────────────────
 function useQrPaymentPoller(
   sessionId: string | null,
@@ -103,7 +95,6 @@ export default function PosCheckoutScreen() {
   const { user, selectedStore } = useAuthStore();
   const { isIPhone, isIPad, isAndroid } = useDeviceType();
 
-  // 支払い方法の初期値：iPad はデフォルト現金
   const defaultMethod: PaymentMethod = "cash";
   const [paymentMethod, setPaymentMethod] =
     useState<PaymentMethod>(defaultMethod);
@@ -127,7 +118,6 @@ export default function PosCheckoutScreen() {
     resetPayment,
   } = useTerminal();
 
-  // iPhone: マウント時にTerminal初期化（Tap to Pay）
   useEffect(() => {
     if (isIPhone) {
       initTerminal();
@@ -176,16 +166,11 @@ export default function PosCheckoutScreen() {
   // ── 決済ミューテーション ───────────────────────────────────────
   const checkoutMutation = useMutation({
     mutationFn: async () => {
-      // ────────────────────────────────────────────────────────
       // A. iPhone: Tap to Pay
-      // ────────────────────────────────────────────────────────
       if (isIPhone && paymentMethod === "card") {
-        // Tap to Pay 未接続なら接続
         if (readerStatus !== "connected") {
           const ok = await connectTapToPay();
           if (!ok) {
-            // connectTapToPay が store にセットした最新の readerError を投げる
-            // (closure の readerError は古いことがあるので getState で取る)
             const latestErr =
               useTerminalStore.getState().readerError ?? readerError;
             throw new Error(
@@ -204,15 +189,12 @@ export default function PosCheckoutScreen() {
           if (result.cancelled) return;
           throw new Error(result.error ?? "カード決済失敗");
         }
-        // Supabase に記録
         const itemsJson = (reservation?.reservation_items ?? []).map((it) => ({
           name: it.menu_item?.name ?? "不明",
           quantity: it.quantity,
           unit_price: it.unit_price,
           amount: it.quantity * it.unit_price,
         }));
-        // 任意UUIDは空文字列だと PG が "invalid input syntax for type uuid"
-        // で落ちるため明示的に null に正規化する。
         const { error } = await supabase.rpc("pos_checkout", {
           p_tenant_id: user!.tenantId,
           p_reservation_id: id || null,
@@ -229,11 +211,7 @@ export default function PosCheckoutScreen() {
         return;
       }
 
-      // ────────────────────────────────────────────────────────
-      // B. QRコード決済（Stripe Checkout）
-      //    iPad/Android: 「カード」ボタン（Tap to Pay 非対応のためQRで代替）
-      //    iPhone:       「QR」ボタン
-      // ────────────────────────────────────────────────────────
+      // B. QRコード決済
       const isQrFlow =
         ((isAndroid || isIPad) && paymentMethod === "card") ||
         (isIPhone && paymentMethod === "qr");
@@ -253,20 +231,16 @@ export default function PosCheckoutScreen() {
         setQrUrl(res.url);
         setQrSessionId(res.session_id);
         setQrPolling(true);
-        return; // 以降はポーリングで処理
+        return;
       }
 
-      // ────────────────────────────────────────────────────────
-      // C. 現金・QR(支払方法記録)・振込（全端末共通）
-      // ────────────────────────────────────────────────────────
+      // C. 現金・QR(支払方法記録)・振込
       const itemsJson = (reservation?.reservation_items ?? []).map((it) => ({
         name: it.menu_item?.name ?? "不明",
         quantity: it.quantity,
         unit_price: it.unit_price,
         amount: it.quantity * it.unit_price,
       }));
-      // 任意UUIDは明示的に null を渡す（空文字列だと PG が
-      // "invalid input syntax for type uuid" で落ちる）
       const { error } = await supabase.rpc("pos_checkout", {
         p_tenant_id: user!.tenantId,
         p_reservation_id: id || null,
@@ -282,7 +256,6 @@ export default function PosCheckoutScreen() {
       if (error) throw error;
     },
     onSuccess: () => {
-      // QRフロー（iPad/Android「カード」or iPhone「QR」）はポーリング側で遷移
       const isQrFlow =
         ((isAndroid || isIPad) && paymentMethod === "card") ||
         (isIPhone && paymentMethod === "qr");
@@ -291,8 +264,6 @@ export default function PosCheckoutScreen() {
       router.replace(`/pos/receipt/${id}`);
     },
     onError: (err) => {
-      // Supabase の PostgrestError 等は Error インスタンスでないため
-      // 個別に message を取り出して表示
       const msg =
         err instanceof Error
           ? err.message
@@ -305,30 +276,26 @@ export default function PosCheckoutScreen() {
   });
 
   // ── 支払い方法ボタン定義（端末別） ────────────────────────────
-  const paymentButtons = (() => {
+  const paymentSegments = (() => {
     if (isIPad) {
-      // iPad: Tap to Pay 不可のため「QRコード決済」として card を提供
       return [
-        { value: "cash", label: "現金" },
-        { value: "card", label: "QR決済" },
-        { value: "bank_transfer", label: "振込" },
+        { value: "cash" as const, label: "現金" },
+        { value: "card" as const, label: "QR決済" },
+        { value: "bank_transfer" as const, label: "振込" },
       ];
     }
     if (isIPhone) {
-      // iPhone: Tap to Pay は専用ボタンで上部に常時表示（要件 5.1〜5.5）。
-      // SegmentedButtons は他の選択肢を提供。
       return [
-        { value: "cash", label: "現金" },
-        { value: "card", label: "カード" },
-        { value: "qr", label: "QR" },
-        { value: "bank_transfer", label: "振込" },
+        { value: "cash" as const, label: "現金" },
+        { value: "card" as const, label: "カード" },
+        { value: "qr" as const, label: "QR" },
+        { value: "bank_transfer" as const, label: "振込" },
       ];
     }
-    // Android
     return [
-      { value: "cash", label: "現金" },
-      { value: "card", label: "QR決済" },
-      { value: "bank_transfer", label: "振込" },
+      { value: "cash" as const, label: "現金" },
+      { value: "card" as const, label: "QR決済" },
+      { value: "bank_transfer" as const, label: "振込" },
     ];
   })();
 
@@ -381,85 +348,64 @@ export default function PosCheckoutScreen() {
 
         {/* ── iPad モード バナー ────────────────────────────────── */}
         {isIPad && (
-          <Card
-            style={[styles.card, { backgroundColor: "#eff6ff" }]}
-            mode="outlined"
-          >
-            <Card.Content
-              style={{ flexDirection: "row", alignItems: "center", gap: 10 }}
-            >
-              <Text style={{ fontSize: 20 }}>🖥️</Text>
-              <View style={{ flex: 1 }}>
-                <Text
-                  variant="titleSmall"
-                  style={{ fontWeight: "700", color: "#1d4ed8" }}
-                >
-                  iPad モード
-                </Text>
-                <Text variant="bodySmall" style={{ color: "#3b82f6" }}>
-                  カード決済はQRコードでお客様スマホから受け付けます
-                </Text>
-              </View>
-            </Card.Content>
-          </Card>
+          <View style={styles.ipadBanner}>
+            <Text style={{ fontSize: 20 }}>🖥️</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.ipadBannerTitle}>
+                iPad モード
+              </Text>
+              <Text style={styles.ipadBannerSub}>
+                カード決済はQRコードでお客様スマホから受け付けます
+              </Text>
+            </View>
+          </View>
         )}
 
         {/* ── 顧客・車両 ───────────────────────────────────────── */}
-        <Card style={styles.card} mode="outlined">
-          <Card.Content>
-            <Text variant="titleMedium" style={styles.heading}>
-              {reservation.customer?.name ?? "顧客不明"}
-            </Text>
-            <Text variant="bodyMedium" style={styles.subText}>
-              {reservation.vehicle?.plate_number ?? ""}
-            </Text>
-          </Card.Content>
-        </Card>
+        <View style={styles.card}>
+          <Text style={styles.heading}>
+            {reservation.customer?.name ?? "顧客不明"}
+          </Text>
+          <Text style={styles.subText}>
+            {reservation.vehicle?.plate_number ?? ""}
+          </Text>
+        </View>
 
         {/* ── 明細 ─────────────────────────────────────────────── */}
-        <Card style={styles.card} mode="outlined">
-          <Card.Content>
-            <Text variant="titleMedium" style={styles.heading}>
-              明細
-            </Text>
-            {reservation.reservation_items.map((item) => (
-              <View key={item.id} style={styles.lineItem}>
-                <Text variant="bodyMedium" style={{ flex: 1 }}>
-                  {item.menu_item?.name ?? "不明"}
-                </Text>
-                <Text variant="bodyMedium" style={styles.subText}>
-                  x{item.quantity}
-                </Text>
-                <Text variant="bodyMedium" style={styles.price}>
-                  {"¥"}
-                  {(item.quantity * item.unit_price).toLocaleString()}
-                </Text>
-              </View>
-            ))}
-            <Divider style={{ marginVertical: 12 }} />
-            <View style={styles.lineItem}>
-              <Text
-                variant="titleMedium"
-                style={{ flex: 1, fontWeight: "700" }}
-              >
-                合計
+        <View style={styles.card}>
+          <Text style={styles.heading}>
+            明細
+          </Text>
+          {reservation.reservation_items.map((item) => (
+            <View key={item.id} style={styles.lineItem}>
+              <Text style={[styles.bodyText, { flex: 1 }]}>
+                {item.menu_item?.name ?? "不明"}
               </Text>
-              <Text
-                variant="headlineSmall"
-                style={{ fontWeight: "700", color: "#1a1a2e" }}
-              >
+              <Text style={styles.subText}>
+                x{item.quantity}
+              </Text>
+              <Text style={styles.price}>
                 {"¥"}
-                {total.toLocaleString()}
+                {(item.quantity * item.unit_price).toLocaleString()}
               </Text>
             </View>
-          </Card.Content>
-        </Card>
+          ))}
+          <View style={styles.divider} />
+          <View style={styles.lineItem}>
+            <Text style={[styles.totalLabel, { flex: 1 }]}>
+              合計
+            </Text>
+            <Text style={styles.totalAmount}>
+              {"¥"}
+              {total.toLocaleString()}
+            </Text>
+          </View>
+        </View>
 
-        {/* ── iPhone: Tap to Pay 専用ボタン（要件 5.1〜5.5） ───────
-             決済方法リストの最上位に常時可視で配置、グレーアウト禁止。
-             T&C 未同意なら押下時に同意フローへ遷移する設計。 */}
+        {/* ── iPhone: Tap to Pay 専用ボタン ───────
+             TapToPayButton component left as-is per task instructions */}
         {isIPhone && !qrPolling && (
-          <View style={{ paddingHorizontal: 16, marginTop: 16 }}>
+          <View style={{ paddingHorizontal: spacing.lg, marginTop: spacing.lg }}>
             <TapToPayButton
               amountLabel={`¥${total.toLocaleString()}`}
               state={
@@ -482,183 +428,134 @@ export default function PosCheckoutScreen() {
 
         {/* ── iPhone: Tap to Pay ステータス ────────────────────── */}
         {isIPhone && paymentMethod === "card" && isProcessing && (
-          <Card
-            style={[styles.card, { backgroundColor: "#eff6ff" }]}
-            mode="outlined"
-          >
-            <Card.Content
-              style={{ flexDirection: "row", alignItems: "center", gap: 12 }}
-            >
-              {paymentStatus === "collecting" ? (
-                <>
-                  <Text style={{ fontSize: 36 }}>📱</Text>
-                  <View style={{ flex: 1 }}>
-                    <Text
-                      variant="titleMedium"
-                      style={{ fontWeight: "700", color: "#1d4ed8" }}
-                    >
-                      カードをかざしてください
-                    </Text>
-                    <Text variant="bodySmall" style={{ color: "#3b82f6" }}>
-                      ¥{total.toLocaleString()} · Tap to Pay
-                    </Text>
-                  </View>
-                  <Button
-                    mode="outlined"
-                    textColor="#ef4444"
-                    compact
-                    onPress={cancelPayment}
-                  >
-                    キャンセル
-                  </Button>
-                </>
-              ) : (
-                <>
-                  <ActivityIndicator size="small" color="#1d4ed8" />
-                  <Text style={{ color: "#1d4ed8", fontWeight: "600" }}>
-                    {paymentStatus === "creating"
-                      ? "決済準備中..."
-                      : paymentStatus === "processing"
-                        ? "処理中..."
-                        : "確定中..."}
+          <View style={styles.tapToPayStatus}>
+            {paymentStatus === "collecting" ? (
+              <>
+                <Text style={{ fontSize: 36 }}>📱</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.tapToPayTitle}>
+                    カードをかざしてください
                   </Text>
-                </>
-              )}
-            </Card.Content>
-          </Card>
+                  <Text style={styles.tapToPaySub}>
+                    ¥{total.toLocaleString()} · Tap to Pay
+                  </Text>
+                </View>
+                <LedraButton
+                  variant="outline"
+                  size="small"
+                  onPress={cancelPayment}
+                  fullWidth={false}
+                >
+                  キャンセル
+                </LedraButton>
+              </>
+            ) : (
+              <>
+                <ActivityIndicator size="small" color={colors.primaryDark} />
+                <Text style={styles.tapToPayProcessing}>
+                  {paymentStatus === "creating"
+                    ? "決済準備中..."
+                    : paymentStatus === "processing"
+                      ? "処理中..."
+                      : "確定中..."}
+                </Text>
+              </>
+            )}
+          </View>
         )}
 
-        {/* ── QRコード表示エリア（iPad/Android「カード」 or iPhone「QR」） ──── */}
+        {/* ── QRコード表示エリア ──── */}
         {(((isAndroid || isIPad) && paymentMethod === "card") ||
           (isIPhone && paymentMethod === "qr")) &&
           qrUrl && (
-          <Card
-            style={[styles.card, { backgroundColor: "#f0fdf4" }]}
-            mode="outlined"
-          >
-            <Card.Content style={{ alignItems: "center", paddingVertical: 16 }}>
-              <Text
-                variant="titleMedium"
-                style={{
-                  fontWeight: "700",
-                  color: "#15803d",
-                  marginBottom: 12,
-                }}
-              >
-                お客様のスマホでQRを読み込んでください
-              </Text>
-
-              <View
-                style={{
-                  padding: 16,
-                  backgroundColor: "#ffffff",
-                  borderRadius: 12,
-                  marginBottom: 12,
-                }}
-              >
-                <QRCode value={qrUrl} size={200} />
+          <View style={styles.qrCard}>
+            <Text style={styles.qrTitle}>
+              お客様のスマホでQRを読み込んでください
+            </Text>
+            <View style={styles.qrCodeWrapper}>
+              <QRCode value={qrUrl} size={200} />
+            </View>
+            <Text style={styles.qrSubtext}>
+              ¥{total.toLocaleString()} · Stripe Checkout
+            </Text>
+            {qrPolling && (
+              <View style={styles.qrPollingRow}>
+                <ActivityIndicator size="small" color={colors.successDark} />
+                <Text style={styles.qrPollingText}>
+                  決済完了を確認中...
+                </Text>
               </View>
-
-              <Text variant="bodySmall" style={{ color: "#15803d" }}>
-                ¥{total.toLocaleString()} · Stripe Checkout
-              </Text>
-
-              {qrPolling && (
-                <View
-                  style={{
-                    flexDirection: "row",
-                    alignItems: "center",
-                    gap: 8,
-                    marginTop: 12,
-                  }}
-                >
-                  <ActivityIndicator size="small" color="#15803d" />
-                  <Text style={{ color: "#15803d", fontSize: 13 }}>
-                    決済完了を確認中...
-                  </Text>
-                </View>
-              )}
-
-              {/* キャンセル */}
-              <Button
-                mode="outlined"
-                textColor="#ef4444"
-                style={{ marginTop: 12 }}
-                onPress={() => {
-                  setQrUrl(null);
-                  setQrSessionId(null);
-                  setQrPolling(false);
-                }}
-              >
-                QRをキャンセル
-              </Button>
-            </Card.Content>
-          </Card>
+            )}
+            <LedraButton
+              variant="outline"
+              style={{ marginTop: spacing.md }}
+              onPress={() => {
+                setQrUrl(null);
+                setQrSessionId(null);
+                setQrPolling(false);
+              }}
+            >
+              QRをキャンセル
+            </LedraButton>
+          </View>
         )}
 
         {/* ── 支払い方法 ─────────────────────────────────────────── */}
-        {/* iPad: QR表示中でなければ通常フォーム */}
         {!qrPolling && (
-          <Card style={styles.card} mode="outlined">
-            <Card.Content>
-              <Text variant="titleMedium" style={styles.heading}>
-                支払方法
+          <View style={styles.card}>
+            <Text style={styles.heading}>
+              支払方法
+            </Text>
+            <SegmentedControl
+              segments={paymentSegments}
+              value={paymentMethod}
+              onChange={(v) => {
+                setPaymentMethod(v as PaymentMethod);
+                setQrUrl(null);
+                setQrSessionId(null);
+                setQrPolling(false);
+              }}
+            />
+
+            {paymentMethod === "cash" && (
+              <>
+                <TextInput
+                  mode="outlined"
+                  label="お預かり金額"
+                  value={receivedAmount}
+                  onChangeText={setReceivedAmount}
+                  keyboardType="numeric"
+                  style={styles.cashInput}
+                  right={<TextInput.Affix text="円" />}
+                />
+                <View style={styles.changeRow}>
+                  <Text style={styles.bodyText}>おつり:</Text>
+                  <Text
+                    style={[
+                      styles.totalLabel,
+                      { color: change >= 0 ? colors.success : colors.danger },
+                    ]}
+                  >
+                    {"¥"}
+                    {change.toLocaleString()}
+                  </Text>
+                </View>
+              </>
+            )}
+
+            {/* iPad QR説明文 */}
+            {isIPad && paymentMethod === "card" && (
+              <Text style={styles.ipadQrHint}>
+                📲 QRコードをお客様のスマホで読み取ってもらい決済します
               </Text>
-              <SegmentedButtons
-                value={paymentMethod}
-                onValueChange={(v) => {
-                  setPaymentMethod(v as PaymentMethod);
-                  // 支払い方法変更時にQRをリセット
-                  setQrUrl(null);
-                  setQrSessionId(null);
-                  setQrPolling(false);
-                }}
-                buttons={paymentButtons}
-                style={{ marginBottom: 12 }}
-              />
-
-              {paymentMethod === "cash" && (
-                <>
-                  <TextInput
-                    mode="outlined"
-                    label="お預かり金額"
-                    value={receivedAmount}
-                    onChangeText={setReceivedAmount}
-                    keyboardType="numeric"
-                    style={{ backgroundColor: "#ffffff", marginBottom: 8 }}
-                    right={<TextInput.Affix text="円" />}
-                  />
-                  <View style={styles.changeRow}>
-                    <Text variant="bodyMedium">おつり:</Text>
-                    <Text
-                      variant="titleMedium"
-                      style={{
-                        fontWeight: "700",
-                        color: change >= 0 ? "#10b981" : "#ef4444",
-                      }}
-                    >
-                      {"¥"}
-                      {change.toLocaleString()}
-                    </Text>
-                  </View>
-                </>
-              )}
-
-              {/* iPad QR説明文 */}
-              {isIPad && paymentMethod === "card" && (
-                <Text style={{ color: "#166534", fontSize: 13, marginTop: 4 }}>
-                  📲 QRコードをお客様のスマホで読み取ってもらい決済します
-                </Text>
-              )}
-            </Card.Content>
-          </Card>
+            )}
+          </View>
         )}
 
         {/* ── 決済ボタン ─────────────────────────────────────────── */}
         {!qrPolling && (
           <View style={styles.submitArea}>
-            <Button
-              mode="contained"
+            <LedraButton
               icon={
                 isIPhone && paymentMethod === "card"
                   ? "contactless-payment"
@@ -669,22 +566,20 @@ export default function PosCheckoutScreen() {
               onPress={() => checkoutMutation.mutate()}
               loading={checkoutMutation.isPending || isProcessing}
               disabled={isDisabled}
-              style={styles.submitButton}
-              buttonColor="#1a1a2e"
-              contentStyle={{ paddingVertical: 8 }}
             >
               {submitLabel}
-            </Button>
+            </LedraButton>
           </View>
         )}
 
-        <View style={{ height: 40 }} />
+        <View style={{ height: spacing["4xl"] }} />
       </ScrollView>
 
       <Snackbar
         visible={!!snackbar}
         onDismiss={() => setSnackbar("")}
         duration={3000}
+        style={{ backgroundColor: colors.textPrimary }}
       >
         {snackbar}
       </Snackbar>
@@ -693,37 +588,150 @@ export default function PosCheckoutScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#fafafa" },
+  container: { flex: 1, backgroundColor: colors.background },
   containerTablet: { paddingHorizontal: "10%" },
   center: { flex: 1, justifyContent: "center", alignItems: "center" },
   card: {
-    marginHorizontal: 16,
-    marginTop: 16,
-    backgroundColor: "#ffffff",
+    marginHorizontal: spacing.lg,
+    marginTop: spacing.lg,
+    backgroundColor: colors.surface,
+    borderRadius: radius.card,
+    padding: spacing.lg,
+    ...shadows.card,
   },
-  heading: { fontWeight: "700", color: "#1a1a2e", marginBottom: 8 },
-  subText: { color: "#71717a" },
-  price: { fontWeight: "600", color: "#1a1a2e", marginLeft: 12 },
+  heading: {
+    ...typography.titleMedium,
+    color: colors.textPrimary,
+    marginBottom: spacing.sm,
+  },
+  subText: {
+    ...typography.bodySmall,
+    color: colors.textSecondary,
+  },
+  bodyText: {
+    ...typography.body,
+    color: colors.textPrimary,
+  },
+  price: {
+    ...typography.body,
+    fontWeight: "600",
+    color: colors.textPrimary,
+    marginLeft: spacing.md,
+  },
   lineItem: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 4,
+    paddingVertical: spacing.xs,
+  },
+  divider: {
+    height: 1,
+    backgroundColor: colors.divider,
+    marginVertical: spacing.md,
+  },
+  totalLabel: {
+    ...typography.titleMedium,
+    color: colors.textPrimary,
+  },
+  totalAmount: {
+    ...typography.titleLarge,
+    color: colors.textPrimary,
   },
   changeRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingVertical: 8,
+    paddingVertical: spacing.sm,
   },
-  submitArea: { padding: 16 },
-  submitButton: { borderRadius: 8 },
-  qrFallback: {
-    width: 200,
-    height: 200,
-    backgroundColor: "#f4f4f5",
-    borderRadius: 12,
-    justifyContent: "center",
+  cashInput: {
+    backgroundColor: colors.surface,
+    marginTop: spacing.md,
+    marginBottom: spacing.sm,
+  },
+  submitArea: { padding: spacing.lg },
+  // iPad banner
+  ipadBanner: {
+    marginHorizontal: spacing.lg,
+    marginTop: spacing.lg,
+    backgroundColor: colors.primaryLight,
+    borderRadius: radius.card,
+    padding: spacing.lg,
+    flexDirection: "row",
     alignItems: "center",
-    marginBottom: 12,
+    gap: spacing.md,
+    ...shadows.card,
+  },
+  ipadBannerTitle: {
+    ...typography.titleSmall,
+    color: colors.primaryDark,
+  },
+  ipadBannerSub: {
+    ...typography.bodySmall,
+    color: colors.primary,
+  },
+  // Tap to Pay status
+  tapToPayStatus: {
+    marginHorizontal: spacing.lg,
+    marginTop: spacing.lg,
+    backgroundColor: colors.primaryLight,
+    borderRadius: radius.card,
+    padding: spacing.lg,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    ...shadows.card,
+  },
+  tapToPayTitle: {
+    ...typography.titleMedium,
+    color: colors.primaryDark,
+  },
+  tapToPaySub: {
+    ...typography.bodySmall,
+    color: colors.primary,
+  },
+  tapToPayProcessing: {
+    ...typography.body,
+    fontWeight: "600",
+    color: colors.primaryDark,
+  },
+  // QR card
+  qrCard: {
+    marginHorizontal: spacing.lg,
+    marginTop: spacing.lg,
+    backgroundColor: colors.successLight,
+    borderRadius: radius.card,
+    padding: spacing.lg,
+    alignItems: "center",
+    ...shadows.card,
+  },
+  qrTitle: {
+    ...typography.titleMedium,
+    color: colors.successDark,
+    marginBottom: spacing.md,
+  },
+  qrCodeWrapper: {
+    padding: spacing.lg,
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    marginBottom: spacing.md,
+  },
+  qrSubtext: {
+    ...typography.bodySmall,
+    color: colors.successDark,
+  },
+  qrPollingRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    marginTop: spacing.md,
+  },
+  qrPollingText: {
+    ...typography.meta,
+    color: colors.successDark,
+  },
+  // iPad QR hint
+  ipadQrHint: {
+    ...typography.meta,
+    color: colors.successDark,
+    marginTop: spacing.xs,
   },
 });

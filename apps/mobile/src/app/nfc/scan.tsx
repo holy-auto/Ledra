@@ -1,11 +1,13 @@
 import { useState } from "react";
 import { View, StyleSheet } from "react-native";
-import { Text, Button, Card, ActivityIndicator, Icon } from "react-native-paper";
+import { Text, ActivityIndicator, Icon } from "react-native-paper";
 import { router } from "expo-router";
 import NfcManager, { NfcTech, Ndef } from "react-native-nfc-manager";
 
 import { supabase } from "@/lib/supabase";
 import { useAuthStore } from "@/stores/authStore";
+import { LedraButton } from "@/components/ui";
+import { colors, spacing, radius, typography, shadows } from "@/constants/tokens";
 
 type ScanState = "idle" | "scanning" | "success" | "error";
 
@@ -141,34 +143,30 @@ export default function NfcScanScreen() {
       <View style={styles.content}>
         {scanState === "idle" && (
           <>
-            <Icon source="nfc" size={80} color="#1a1a2e" />
-            <Text variant="bodyLarge" style={styles.description}>
+            <Icon source="nfc" size={80} color={colors.primary} />
+            <Text style={styles.description}>
               NFCタグをスキャンして証明書情報を確認します
             </Text>
-            <Button
-              mode="contained"
+            <LedraButton
               onPress={startScan}
-              buttonColor="#1a1a2e"
-              style={styles.scanButton}
               icon="nfc"
-              contentStyle={styles.scanButtonContent}
+              style={styles.actionButton}
+              fullWidth={false}
             >
               タグをスキャン
-            </Button>
+            </LedraButton>
           </>
         )}
 
         {scanState === "scanning" && (
           <>
-            <ActivityIndicator size="large" color="#1a1a2e" />
-            <Text variant="titleMedium" style={styles.scanningText}>
-              スキャン中...
-            </Text>
-            <Text variant="bodyMedium" style={styles.description}>
+            <ActivityIndicator size="large" color={colors.primary} />
+            <Text style={styles.statusText}>スキャン中...</Text>
+            <Text style={styles.description}>
               NFCタグをデバイスに近づけてください
             </Text>
-            <Button
-              mode="outlined"
+            <LedraButton
+              variant="outline"
               onPress={async () => {
                 try {
                   await NfcManager.cancelTechnologyRequest();
@@ -178,55 +176,51 @@ export default function NfcScanScreen() {
                 setScanState("idle");
               }}
               style={styles.cancelButton}
+              fullWidth={false}
             >
               キャンセル
-            </Button>
+            </LedraButton>
           </>
         )}
 
         {scanState === "success" && certInfo && (
           <>
-            <Icon source="check-circle" size={64} color="#166534" />
-            <Card style={styles.resultCard} mode="outlined">
-              <Card.Content>
-                <Text variant="titleMedium" style={styles.certNo}>
-                  {certInfo.certificate_no}
-                </Text>
-                {certInfo.customer_name && (
-                  <Text variant="bodyMedium" style={styles.sub}>
-                    {certInfo.customer_name}
-                  </Text>
-                )}
-              </Card.Content>
-            </Card>
-            <Button
-              mode="contained"
+            <Icon source="check-circle" size={64} color={colors.successDark} />
+            <View style={styles.resultCard}>
+              <Text style={styles.certNo}>{certInfo.certificate_no}</Text>
+              {certInfo.customer_name && (
+                <Text style={styles.sub}>{certInfo.customer_name}</Text>
+              )}
+            </View>
+            <LedraButton
               onPress={navigateToCert}
-              buttonColor="#1a1a2e"
-              style={styles.scanButton}
+              style={styles.actionButton}
+              fullWidth={false}
             >
               証明書を表示
-            </Button>
-            <Button mode="outlined" onPress={startScan} style={styles.retryButton}>
+            </LedraButton>
+            <LedraButton
+              variant="outline"
+              onPress={startScan}
+              style={styles.retryButton}
+              fullWidth={false}
+            >
               再スキャン
-            </Button>
+            </LedraButton>
           </>
         )}
 
         {scanState === "error" && (
           <>
-            <Icon source="alert-circle" size={64} color="#991b1b" />
-            <Text variant="bodyLarge" style={styles.errorText}>
-              {errorMessage}
-            </Text>
-            <Button
-              mode="contained"
+            <Icon source="alert-circle" size={64} color={colors.dangerDark} />
+            <Text style={styles.errorText}>{errorMessage}</Text>
+            <LedraButton
               onPress={startScan}
-              buttonColor="#1a1a2e"
-              style={styles.scanButton}
+              style={styles.actionButton}
+              fullWidth={false}
             >
               再試行
-            </Button>
+            </LedraButton>
           </>
         )}
       </View>
@@ -235,43 +229,52 @@ export default function NfcScanScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#fafafa" },
+  container: { flex: 1, backgroundColor: colors.background },
   content: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    padding: 24,
+    padding: spacing["2xl"],
   },
   description: {
-    color: "#71717a",
+    ...typography.body,
+    color: colors.textSecondary,
     textAlign: "center",
-    marginTop: 16,
-    marginBottom: 24,
+    marginTop: spacing.lg,
+    marginBottom: spacing["2xl"],
   },
-  scanButton: {
-    paddingHorizontal: 24,
-    marginTop: 16,
+  actionButton: {
+    marginTop: spacing.lg,
+    paddingHorizontal: spacing["2xl"],
   },
-  scanButtonContent: {
-    paddingVertical: 8,
+  statusText: {
+    ...typography.titleMedium,
+    color: colors.textPrimary,
+    marginTop: spacing.lg,
   },
-  scanningText: {
-    color: "#1a1a2e",
-    marginTop: 16,
-    fontWeight: "600",
-  },
-  cancelButton: { marginTop: 24 },
+  cancelButton: { marginTop: spacing["2xl"] },
   resultCard: {
-    marginTop: 16,
+    marginTop: spacing.lg,
     width: "100%",
-    backgroundColor: "#ffffff",
+    backgroundColor: colors.surface,
+    borderRadius: radius.card,
+    padding: spacing.lg,
+    ...shadows.card,
   },
-  certNo: { fontWeight: "700", color: "#1a1a2e" },
-  sub: { color: "#71717a", marginTop: 4 },
-  retryButton: { marginTop: 8 },
+  certNo: {
+    ...typography.titleMedium,
+    color: colors.textPrimary,
+  },
+  sub: {
+    ...typography.bodySmall,
+    color: colors.textSecondary,
+    marginTop: spacing.xs,
+  },
+  retryButton: { marginTop: spacing.sm },
   errorText: {
-    color: "#991b1b",
+    ...typography.body,
+    color: colors.dangerDark,
     textAlign: "center",
-    marginTop: 16,
+    marginTop: spacing.lg,
   },
 });

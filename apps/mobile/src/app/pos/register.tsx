@@ -2,12 +2,9 @@ import { useState } from "react";
 import { View, StyleSheet, ScrollView } from "react-native";
 import {
   Text,
-  Card,
-  Button,
   TextInput,
-  Divider,
-  ActivityIndicator,
   Chip,
+  ActivityIndicator,
   Snackbar,
 } from "react-native-paper";
 import { Stack } from "expo-router";
@@ -16,6 +13,8 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import { useAuthStore } from "@/stores/authStore";
 import { mobileApi } from "@/lib/api";
+import { LedraButton } from "@/components/ui";
+import { colors, spacing, radius, typography, shadows } from "@/constants/tokens";
 
 interface RegisterSession {
   id: string;
@@ -129,21 +128,21 @@ export default function PosRegisterScreen() {
       <Stack.Screen options={{ title: "レジ管理" }} />
       <ScrollView style={styles.container}>
         {/* Status Header */}
-        <Card style={styles.card} mode="outlined">
-          <Card.Content style={styles.statusHeader}>
+        <View style={styles.card}>
+          <View style={styles.statusHeader}>
             <Chip
               style={{
-                backgroundColor: isOpen ? "#10b98120" : "#71717a20",
+                backgroundColor: isOpen ? colors.successLight : colors.surfaceVariant,
               }}
               textStyle={{
-                color: isOpen ? "#10b981" : "#71717a",
+                color: isOpen ? colors.success : colors.textSecondary,
                 fontWeight: "600",
               }}
             >
               {isOpen ? "営業中" : "クローズ"}
             </Chip>
             {isOpen && session && (
-              <Text variant="bodySmall" style={styles.subText}>
+              <Text style={styles.subText}>
                 開始:{" "}
                 {new Date(session.opened_at).toLocaleTimeString("ja-JP", {
                   hour: "2-digit",
@@ -151,141 +150,133 @@ export default function PosRegisterScreen() {
                 })}
               </Text>
             )}
-          </Card.Content>
-        </Card>
+          </View>
+        </View>
 
         {!isOpen ? (
           /* Open Register Form */
-          <Card style={styles.card} mode="outlined">
-            <Card.Content>
-              <Text variant="titleMedium" style={styles.heading}>
-                レジ開け
+          <View style={styles.card}>
+            <Text style={styles.heading}>
+              レジ開け
+            </Text>
+            <Text style={styles.subText}>
+              開始時のレジ内現金を入力してください
+            </Text>
+            <TextInput
+              mode="outlined"
+              label="開始現金"
+              value={openingCash}
+              onChangeText={setOpeningCash}
+              keyboardType="numeric"
+              style={styles.input}
+              right={<TextInput.Affix text="円" />}
+            />
+            <LedraButton
+              icon="cash-register"
+              onPress={() => openMutation.mutate()}
+              loading={openMutation.isPending}
+              disabled={openMutation.isPending || !openingCash}
+              style={{ backgroundColor: colors.success }}
+            >
+              レジ開け
+            </LedraButton>
+          </View>
+        ) : (
+          <>
+            {/* Session Summary */}
+            <View style={styles.card}>
+              <Text style={styles.heading}>
+                セッション概要
               </Text>
-              <Text variant="bodyMedium" style={styles.subText}>
-                開始時のレジ内現金を入力してください
+              <View style={styles.summaryRow}>
+                <Text style={styles.bodyText}>開始現金</Text>
+                <Text style={styles.boldText}>
+                  {"¥"}
+                  {(session?.opening_cash ?? 0).toLocaleString()}
+                </Text>
+              </View>
+              <View style={styles.summaryRow}>
+                <Text style={styles.bodyText}>売上合計</Text>
+                <Text style={styles.boldText}>
+                  {"¥"}
+                  {(session?.total_sales ?? 0).toLocaleString()}
+                </Text>
+              </View>
+              <View style={styles.summaryRow}>
+                <Text style={styles.bodyText}>取引数</Text>
+                <Text style={styles.boldText}>
+                  {session?.total_transactions ?? 0}件
+                </Text>
+              </View>
+              <View style={styles.divider} />
+              <View style={styles.summaryRow}>
+                <Text style={styles.totalLabel}>
+                  想定現金
+                </Text>
+                <Text style={styles.totalLabel}>
+                  {"¥"}
+                  {(session?.expected_cash ?? 0).toLocaleString()}
+                </Text>
+              </View>
+            </View>
+
+            {/* Close Register Form */}
+            <View style={styles.card}>
+              <Text style={styles.heading}>
+                レジ締め
               </Text>
               <TextInput
                 mode="outlined"
-                label="開始現金"
-                value={openingCash}
-                onChangeText={setOpeningCash}
+                label="締め現金"
+                value={closingCash}
+                onChangeText={setClosingCash}
                 keyboardType="numeric"
                 style={styles.input}
                 right={<TextInput.Affix text="円" />}
               />
-              <Button
-                mode="contained"
-                icon="cash-register"
-                onPress={() => openMutation.mutate()}
-                loading={openMutation.isPending}
-                disabled={openMutation.isPending || !openingCash}
-                style={styles.submitButton}
-                buttonColor="#10b981"
-              >
-                レジ開け
-              </Button>
-            </Card.Content>
-          </Card>
-        ) : (
-          <>
-            {/* Session Summary */}
-            <Card style={styles.card} mode="outlined">
-              <Card.Content>
-                <Text variant="titleMedium" style={styles.heading}>
-                  セッション概要
-                </Text>
+              {closingCash !== "" && (
                 <View style={styles.summaryRow}>
-                  <Text variant="bodyMedium">開始現金</Text>
-                  <Text variant="bodyMedium" style={{ fontWeight: "600" }}>
-                    {"\u00a5"}
-                    {(session?.opening_cash ?? 0).toLocaleString()}
-                  </Text>
-                </View>
-                <View style={styles.summaryRow}>
-                  <Text variant="bodyMedium">売上合計</Text>
-                  <Text variant="bodyMedium" style={{ fontWeight: "600" }}>
-                    {"\u00a5"}
-                    {(session?.total_sales ?? 0).toLocaleString()}
-                  </Text>
-                </View>
-                <View style={styles.summaryRow}>
-                  <Text variant="bodyMedium">取引数</Text>
-                  <Text variant="bodyMedium" style={{ fontWeight: "600" }}>
-                    {session?.total_transactions ?? 0}件
-                  </Text>
-                </View>
-                <Divider style={{ marginVertical: 8 }} />
-                <View style={styles.summaryRow}>
-                  <Text variant="titleSmall" style={{ fontWeight: "700" }}>
-                    想定現金
-                  </Text>
-                  <Text variant="titleSmall" style={{ fontWeight: "700" }}>
-                    {"\u00a5"}
-                    {(session?.expected_cash ?? 0).toLocaleString()}
-                  </Text>
-                </View>
-              </Card.Content>
-            </Card>
-
-            {/* Close Register Form */}
-            <Card style={styles.card} mode="outlined">
-              <Card.Content>
-                <Text variant="titleMedium" style={styles.heading}>
-                  レジ締め
-                </Text>
-                <TextInput
-                  mode="outlined"
-                  label="締め現金"
-                  value={closingCash}
-                  onChangeText={setClosingCash}
-                  keyboardType="numeric"
-                  style={styles.input}
-                  right={<TextInput.Affix text="円" />}
-                />
-                {closingCash !== "" && (
-                  <View style={styles.summaryRow}>
-                    <Text variant="bodyMedium">差額</Text>
-                    <Text
-                      variant="titleSmall"
-                      style={{
-                        fontWeight: "700",
+                  <Text style={styles.bodyText}>差額</Text>
+                  <Text
+                    style={[
+                      styles.totalLabel,
+                      {
                         color:
                           difference === 0
-                            ? "#10b981"
+                            ? colors.success
                             : difference > 0
-                              ? "#3b82f6"
-                              : "#ef4444",
-                      }}
-                    >
-                      {difference >= 0 ? "+" : ""}
-                      {"\u00a5"}
-                      {difference.toLocaleString()}
-                    </Text>
-                  </View>
-                )}
-                <Button
-                  mode="contained"
-                  icon="lock"
-                  onPress={() => closeMutation.mutate()}
-                  loading={closeMutation.isPending}
-                  disabled={closeMutation.isPending || !closingCash}
-                  style={styles.submitButton}
-                  buttonColor="#ef4444"
-                >
-                  レジ締め
-                </Button>
-              </Card.Content>
-            </Card>
+                              ? colors.primary
+                              : colors.danger,
+                      },
+                    ]}
+                  >
+                    {difference >= 0 ? "+" : ""}
+                    {"¥"}
+                    {difference.toLocaleString()}
+                  </Text>
+                </View>
+              )}
+              <LedraButton
+                variant="danger"
+                icon="lock"
+                onPress={() => closeMutation.mutate()}
+                loading={closeMutation.isPending}
+                disabled={closeMutation.isPending || !closingCash}
+              >
+                レジ締め
+              </LedraButton>
+            </View>
           </>
         )}
 
-        <View style={{ height: 40 }} />
+        <View style={{ height: spacing["4xl"] }} />
       </ScrollView>
 
       <Snackbar
         visible={!!snackbar}
         onDismiss={() => setSnackbar("")}
         duration={2000}
+        style={{ backgroundColor: colors.textPrimary }}
       >
         {snackbar}
       </Snackbar>
@@ -294,33 +285,58 @@ export default function PosRegisterScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#fafafa" },
+  container: { flex: 1, backgroundColor: colors.background },
   center: { flex: 1, justifyContent: "center", alignItems: "center" },
   card: {
-    marginHorizontal: 16,
-    marginTop: 16,
-    backgroundColor: "#ffffff",
+    marginHorizontal: spacing.lg,
+    marginTop: spacing.lg,
+    backgroundColor: colors.surface,
+    borderRadius: radius.card,
+    padding: spacing.lg,
+    ...shadows.card,
   },
   statusHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
   },
-  heading: { fontWeight: "700", color: "#1a1a2e", marginBottom: 8 },
-  subText: { color: "#71717a", marginTop: 4 },
+  heading: {
+    ...typography.titleMedium,
+    color: colors.textPrimary,
+    marginBottom: spacing.sm,
+  },
+  subText: {
+    ...typography.bodySmall,
+    color: colors.textSecondary,
+    marginTop: spacing.xs,
+  },
+  bodyText: {
+    ...typography.body,
+    color: colors.textPrimary,
+  },
+  boldText: {
+    ...typography.body,
+    fontWeight: "600",
+    color: colors.textPrimary,
+  },
+  totalLabel: {
+    ...typography.titleSmall,
+    color: colors.textPrimary,
+  },
   input: {
-    backgroundColor: "#ffffff",
-    marginTop: 12,
-    marginBottom: 16,
+    backgroundColor: colors.surface,
+    marginTop: spacing.md,
+    marginBottom: spacing.lg,
   },
   summaryRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingVertical: 6,
+    paddingVertical: spacing.xs + 2,
   },
-  submitButton: {
-    borderRadius: 8,
-    marginTop: 4,
+  divider: {
+    height: 1,
+    backgroundColor: colors.divider,
+    marginVertical: spacing.sm,
   },
 });

@@ -1,11 +1,12 @@
 import { useCallback } from "react";
-import { View, StyleSheet, FlatList, RefreshControl } from "react-native";
-import { Text, Card, Chip, Icon } from "react-native-paper";
+import { View, StyleSheet, FlatList, RefreshControl, Pressable } from "react-native";
+import { Text, Chip, Icon } from "react-native-paper";
 import { router } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 
 import { supabase } from "@/lib/supabase";
 import { useAuthStore } from "@/stores/authStore";
+import { colors, spacing, radius, typography, shadows } from "@/constants/tokens";
 
 interface PosItem {
   id: string;
@@ -81,43 +82,39 @@ export default function PosScreen() {
   };
 
   const renderItem = ({ item }: { item: PosItem }) => (
-    <Card
+    <Pressable
       style={styles.card}
-      mode="outlined"
       onPress={() => router.push(`/pos/checkout/${item.id}`)}
+      accessibilityRole="button"
     >
-      <Card.Content style={styles.cardContent}>
-        <View style={styles.cardMain}>
-          <View style={styles.cardHeader}>
-            <Text variant="titleSmall" style={styles.customerName}>
-              {item.customer?.name ?? "未登録"}
-            </Text>
-            <Chip
-              compact
-              style={[styles.chip, { backgroundColor: "#ef444418" }]}
-            >
-              <Text style={styles.unpaidText}>未払い</Text>
-            </Chip>
-          </View>
+      <View style={styles.cardHeader}>
+        <Text style={styles.customerName}>
+          {item.customer?.name ?? "未登録"}
+        </Text>
+        <Chip
+          compact
+          style={styles.unpaidChip}
+        >
+          <Text style={styles.unpaidText}>未払い</Text>
+        </Chip>
+      </View>
 
-          <Text variant="bodySmall" style={styles.vehicleInfo}>
-            {item.vehicle
-              ? `${item.vehicle.plate_number}  ${item.vehicle.make} ${item.vehicle.model}`
-              : "車両未登録"}
-          </Text>
+      <Text style={styles.vehicleInfo}>
+        {item.vehicle
+          ? `${item.vehicle.plate_number}  ${item.vehicle.make} ${item.vehicle.model}`
+          : "車両未登録"}
+      </Text>
 
-          <Text variant="bodySmall" style={styles.menuSummary} numberOfLines={1}>
-            {getMenuSummary(item)}
-          </Text>
+      <Text style={styles.menuSummary} numberOfLines={1}>
+        {getMenuSummary(item)}
+      </Text>
 
-          <View style={styles.amountRow}>
-            <Text variant="titleMedium" style={styles.amount}>
-              {formatAmount(item.estimated_amount)}
-            </Text>
-          </View>
-        </View>
-      </Card.Content>
-    </Card>
+      <View style={styles.amountRow}>
+        <Text style={styles.amount}>
+          {formatAmount(item.estimated_amount)}
+        </Text>
+      </View>
+    </Pressable>
   );
 
   return (
@@ -131,32 +128,31 @@ export default function PosScreen() {
         }
         contentContainerStyle={styles.listContent}
         ListHeaderComponent={
-          <Card
+          <Pressable
             style={styles.walkInCard}
-            mode="outlined"
             onPress={() => router.push("/pos/walk-in")}
+            accessibilityRole="button"
           >
-            <Card.Content style={styles.walkInContent}>
+            <View style={styles.walkInContent}>
               <View style={styles.walkInIcon}>
-                <Icon source="plus-circle" size={24} color="#ffffff" />
+                <Icon source="plus-circle" size={24} color={colors.textOnPrimary} />
               </View>
               <View style={{ flex: 1 }}>
-                <Text variant="titleSmall" style={styles.walkInTitle}>
+                <Text style={styles.walkInTitle}>
                   新規会計（飛び込み）
                 </Text>
-                <Text variant="bodySmall" style={styles.walkInSub}>
+                <Text style={styles.walkInSub}>
                   予約なしのお客様の会計を作成
                 </Text>
               </View>
-              <Icon source="chevron-right" size={24} color="#71717a" />
-            </Card.Content>
-          </Card>
+              <Icon source="chevron-right" size={24} color={colors.textTertiary} />
+            </View>
+          </Pressable>
         }
         ListEmptyComponent={
           <View style={styles.empty}>
-            <Text variant="bodyMedium" style={styles.emptyText}>
-              会計待ちの予約はありません
-            </Text>
+            <Icon source="cash-register" size={48} color={colors.textTertiary} />
+            <Text style={styles.emptyTitle}>会計待ちの予約はありません</Text>
           </View>
         }
       />
@@ -165,58 +161,88 @@ export default function PosScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#fafafa" },
-  listContent: { padding: 12, paddingBottom: 24 },
+  container: { flex: 1, backgroundColor: colors.background },
+  listContent: { padding: spacing.md, paddingBottom: spacing["3xl"], gap: spacing.sm },
   card: {
-    backgroundColor: "#ffffff",
-    marginBottom: 8,
+    backgroundColor: colors.surface,
+    borderRadius: radius.card,
+    padding: spacing.lg,
+    ...shadows.card,
   },
-  cardContent: {
-    paddingVertical: 12,
-  },
-  cardMain: { flex: 1 },
   cardHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 4,
+    marginBottom: spacing.xs,
   },
-  customerName: { fontWeight: "600", color: "#1a1a2e" },
-  vehicleInfo: { color: "#71717a", marginTop: 2 },
-  menuSummary: { color: "#71717a", marginTop: 4 },
+  customerName: {
+    ...typography.titleSmall,
+    color: colors.textPrimary,
+  },
+  vehicleInfo: {
+    ...typography.bodySmall,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
+  menuSummary: {
+    ...typography.bodySmall,
+    color: colors.textSecondary,
+    marginTop: spacing.xs,
+  },
   amountRow: {
     flexDirection: "row",
     justifyContent: "flex-end",
-    marginTop: 8,
+    marginTop: spacing.sm,
   },
-  amount: { fontWeight: "700", color: "#1a1a2e" },
-  chip: {
-    borderRadius: 12,
+  amount: {
+    ...typography.titleMedium,
+    color: colors.textPrimary,
+  },
+  unpaidChip: {
+    backgroundColor: colors.dangerLight,
+    borderRadius: radius.md,
   },
   unpaidText: {
-    color: "#ef4444",
+    color: colors.danger,
     fontSize: 11,
     fontWeight: "600",
   },
   walkInCard: {
-    backgroundColor: "#ffffff",
-    marginBottom: 12,
+    backgroundColor: colors.surface,
+    borderRadius: radius.card,
+    padding: spacing.lg,
+    ...shadows.card,
   },
   walkInContent: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
+    gap: spacing.md,
   },
   walkInIcon: {
     width: 40,
     height: 40,
-    borderRadius: 20,
-    backgroundColor: "#1a1a2e",
+    borderRadius: radius.full,
+    backgroundColor: colors.textPrimary,
     alignItems: "center",
     justifyContent: "center",
   },
-  walkInTitle: { fontWeight: "700", color: "#1a1a2e" },
-  walkInSub: { color: "#71717a", marginTop: 2 },
-  empty: { alignItems: "center", paddingTop: 48 },
-  emptyText: { color: "#71717a" },
+  walkInTitle: {
+    ...typography.titleSmall,
+    color: colors.textPrimary,
+  },
+  walkInSub: {
+    ...typography.meta,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
+  empty: {
+    alignItems: "center",
+    paddingTop: 80,
+    gap: spacing.sm,
+  },
+  emptyTitle: {
+    ...typography.bodySmall,
+    color: colors.textSecondary,
+    marginTop: spacing.lg,
+  },
 });
