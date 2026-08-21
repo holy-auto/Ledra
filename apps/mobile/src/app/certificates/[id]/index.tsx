@@ -19,7 +19,13 @@ import {
 } from "react-native-paper";
 import { useLocalSearchParams, router } from "expo-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import * as MediaLibrary from "expo-media-library";
+// ponytail: lazy-import to avoid crash in Expo Go where native module is missing
+let MediaLibrary: typeof import("expo-media-library") | null = null;
+try {
+  MediaLibrary = require("expo-media-library");
+} catch {
+  // expo-media-library unavailable in Expo Go — saveToDevice disabled
+}
 import { File, Paths } from "expo-file-system";
 
 import { supabase } from "@/lib/supabase";
@@ -134,6 +140,10 @@ export default function CertificateDetailScreen() {
   });
 
   async function saveToDevice(img: CertImage) {
+    if (!MediaLibrary) {
+      Alert.alert("未対応", "この環境では端末保存が利用できません（開発ビルドが必要です）");
+      return;
+    }
     setSavingId(img.id);
     try {
       const perm = await MediaLibrary.requestPermissionsAsync(true);

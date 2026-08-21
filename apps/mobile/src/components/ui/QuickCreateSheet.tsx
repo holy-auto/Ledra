@@ -18,7 +18,7 @@ interface QuickAction {
 
 const actions: QuickAction[] = [
   {
-    icon: "car-plus",
+    icon: "car-side",
     label: "車両登録",
     description: "新しい車両を追加",
     route: "/vehicles/new",
