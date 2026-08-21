@@ -25,6 +25,14 @@ interface MenuSection {
 
 const SECTIONS: MenuSection[] = [
   {
+    title: "業務管理",
+    items: [
+      { icon: "calendar-clock-outline", label: "予約管理", route: "/reservations" },
+      { icon: "cash-register", label: "POS・会計", route: "/pos/register" },
+      { icon: "account-group-outline", label: "顧客一覧", route: "/customers" },
+    ],
+  },
+  {
     title: "通知・同期",
     items: [
       { icon: "bell-outline", label: "通知一覧", route: "/notifications" },

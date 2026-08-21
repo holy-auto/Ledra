@@ -94,7 +94,10 @@ export default function SignupScreen() {
       }
 
       setUser(profile);
-      router.replace("/(auth)/select-store");
+      router.replace({
+        pathname: "/(auth)/verify-otp",
+        params: { email: email.trim(), fromSignup: "1" },
+      });
     } catch (err: unknown) {
       setError(
         err instanceof Error ? err.message : "登録に失敗しました"

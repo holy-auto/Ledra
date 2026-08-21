@@ -1,11 +1,12 @@
 import { Stack } from "expo-router";
+import { colors } from "@/constants/tokens";
 
 export default function VehiclesLayout() {
   return (
     <Stack
       screenOptions={{
-        headerStyle: { backgroundColor: "#ffffff" },
-        headerTintColor: "#1a1a2e",
+        headerStyle: { backgroundColor: colors.surface },
+        headerTintColor: colors.textPrimary,
       }}
     >
       <Stack.Screen name="index" options={{ title: "車両一覧" }} />

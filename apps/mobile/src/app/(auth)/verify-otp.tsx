@@ -110,7 +110,7 @@ export default function VerifyOtpScreen() {
   }
 
   function handleNext() {
-    router.replace("/(auth)/biometric-setup");
+    router.replace("/(auth)/select-store?fromSignup=1");
   }
 
   // ── Success state ──

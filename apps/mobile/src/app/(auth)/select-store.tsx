@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { View, StyleSheet, FlatList, Pressable } from "react-native";
 import { Text, ActivityIndicator, Icon } from "react-native-paper";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 
 import { supabase } from "@/lib/supabase";
 import { useAuthStore } from "@/stores/authStore";
@@ -16,16 +16,19 @@ interface Store {
 }
 
 export default function SelectStoreScreen() {
+  const { fromSignup } = useLocalSearchParams<{ fromSignup?: string }>();
   const [stores, setStores] = useState<Store[]>([]);
   const [loading, setLoading] = useState(true);
   const { user, setSelectedStore } = useAuthStore();
 
+  const nextRoute = fromSignup === "1" ? "/(auth)/biometric-setup" : "/(tabs)";
+
   const handleSelect = useCallback(
     (store: Store) => {
       setSelectedStore({ id: store.id, name: store.name });
-      router.replace("/(tabs)");
+      router.replace(nextRoute as never);
     },
-    [setSelectedStore]
+    [setSelectedStore, nextRoute]
   );
 
   useEffect(() => {
@@ -84,7 +87,7 @@ export default function SelectStoreScreen() {
             //   selectedStore?.id || null に正規化されるので
             //   "invalid input syntax for type uuid" は発生しない。
             setSelectedStore({ id: "", name: user?.tenantName ?? "本店" });
-            router.replace("/(tabs)");
+            router.replace(nextRoute as never);
           }}
           style={styles.continueButton}
         >
