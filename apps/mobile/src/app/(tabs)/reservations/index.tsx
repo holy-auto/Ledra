@@ -6,7 +6,7 @@ import {
   RefreshControl,
   Pressable,
 } from "react-native";
-import { Text, Icon, IconButton } from "react-native-paper";
+import { Text, IconButton } from "react-native-paper";
 import { router } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 import DateTimePicker from "@react-native-community/datetimepicker";
@@ -21,7 +21,6 @@ import {
   radius,
   typography,
   shadows,
-  sizing,
 } from "@/constants/tokens";
 
 type ReservationStatus =
@@ -257,14 +256,6 @@ export default function ReservationsScreen() {
         }
       />
 
-      <Pressable
-        style={styles.fab}
-        onPress={() => router.push("/reservations/new")}
-        accessibilityRole="button"
-        accessibilityLabel="新規予約"
-      >
-        <Icon source="plus" size={sizing.iconMd} color={colors.textOnPrimary} />
-      </Pressable>
     </View>
   );
 }
@@ -355,17 +346,5 @@ const styles = StyleSheet.create({
     ...typography.meta,
     color: colors.textSecondary,
     marginTop: 2,
-  },
-  fab: {
-    position: "absolute",
-    right: spacing.lg,
-    bottom: spacing["2xl"],
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: colors.primary,
-    alignItems: "center",
-    justifyContent: "center",
-    ...shadows.fab,
   },
 });

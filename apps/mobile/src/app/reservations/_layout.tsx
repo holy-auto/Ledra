@@ -9,7 +9,7 @@ export default function ReservationsLayout() {
         headerTintColor: colors.textPrimary,
       }}
     >
-      <Stack.Screen name="index" options={{ headerShown: false }} />
+      <Stack.Screen name="index" options={{ title: "予約一覧" }} />
       <Stack.Screen name="[id]" options={{ title: "予約詳細" }} />
       <Stack.Screen name="new" options={{ title: "予約作成" }} />
     </Stack>
