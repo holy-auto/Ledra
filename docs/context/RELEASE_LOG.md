@@ -13,6 +13,28 @@
 - 対象: どの画面・API・業種向けか
 ```
 
+## 2026-08-20 UI-010/020/030 モバイルアプリ UI リデザイン Phase 1（branch claude/imp-000-implementation-r0eje1 / PR #926）
+
+- 内容: Ledra_UIUX_Development_Specification_v2.0 のリファレンス画像を視覚目標として、
+  モバイル Expo アプリ（`apps/mobile/`）の UI を全面リデザイン。3タスクを一括実装。
+  - **UI-010（デザインシステム基盤）**: `apps/mobile/src/constants/tokens.ts` を新規作成し、
+    色・タイポグラフィ・余白・角丸・サイズ・影のすべてのトークンを単一定義源に集約。
+    react-native-paper テーマ（`theme.ts`）をトークンから導出するよう接続。
+    9 つの共有 UI コンポーネントを新規作成（LedraButton / StatusBadge / SegmentedControl /
+    NextActionCard / StatusCard / ProgressRing / LedraAlert / Skeleton / BottomSheet）。
+    既存コンポーネント（EmptyState / LoadingScreen / OfflineBanner / Steps）もトークン移行。
+  - **UI-020（モバイルシェル）**: タブレイアウトを v2.0 正準5タブ（ホーム/作業/車両/証明/その他）に再編。
+    浮遊型 Ledra Blue 円形アクティブインジケータ、Quick Create FAB（+ボタン）、
+    QuickCreateSheet（車両登録/顧客登録/予約作成/作業開始の4アクション）を実装。
+  - **UI-030（ホーム & MORE 画面）**: ホーム画面をリファレンス01_home に合わせ全面再構築
+    （日付挨拶・3段階スコープ・作業サマリカード+ProgressRing・NEXT ACTION・進行中一覧・
+    対応必要一覧・タイムライン）。MORE 画面をリファレンス07 に合わせセクション別リストに再編。
+- 対象: モバイルアプリ（`apps/mobile/`）。ウェブ管理画面は対象外。
+- コードレビュー: 自己レビューで BottomSheet の閉じアニメーション未再生バグと
+  onRefresh の try/finally 欠如を発見・修正してから push。
+- 検証: `npx tsc --noEmit`（モバイル・ルート両方）通過、`npm run lint` エラー0件。
+  25ファイル変更、+2589行/-552行。
+
 ## 2026-08-19 IMP-000 リポジトリ監査 & 実装ベースライン（branch claude/imp-000-implementation-r0eje1 / PR #926）
 
 - 内容: v2.0 仕様書（UI/UX & Development Specification v2.0）の実装に先立つリポジトリ監査。
