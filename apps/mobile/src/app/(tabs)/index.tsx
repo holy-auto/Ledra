@@ -4,76 +4,129 @@ import {
   StyleSheet,
   ScrollView,
   RefreshControl,
-  useWindowDimensions,
-  Platform,
+  Pressable,
 } from "react-native";
-import { Text, Card, IconButton } from "react-native-paper";
+import { Text, Icon, IconButton } from "react-native-paper";
 import { router } from "expo-router";
+import dayjs from "dayjs";
+import "dayjs/locale/ja";
 
 import { useAuthStore } from "@/stores/authStore";
 import { supabase } from "@/lib/supabase";
-import { SalesBarChart, type SalesPoint } from "@/components/SalesBarChart";
+import { colors, radius, spacing, sizing, shadows } from "@/constants/tokens";
+import {
+  ProgressRing,
+  SegmentedControl,
+  StatusBadge,
+  Skeleton,
+} from "@/components/ui";
 
-interface DashboardStats {
-  todayReservations: number;
-  activeWork: number;
+dayjs.locale("ja");
+
+// ─── Types ───────────────────────────────────────────────────────────
+
+type Scope = "self" | "store" | "all";
+
+interface HomeStats {
+  todayTotal: number;
+  todayCompleted: number;
+  inProgress: number;
+  awaitingConfirmation: number;
+  notStarted: number;
   awaitingPayment: number;
-  todayPayments: number;
-  preparedNfcTags: number;
+  issues: Issue[];
+  timeline: TimelineEntry[];
+  nextAction: NextAction | null;
+  activeWork: ActiveWorkEntry[];
 }
 
-// 在庫アラート閾値: prepared (uid 未割当) のタグがこれ以下になったら警告
+interface Issue {
+  id: string;
+  label: string;
+  severity: "CRITICAL" | "HIGH" | "ACTION";
+  title: string;
+  detail: string;
+  route: string;
+}
+
+interface TimelineEntry {
+  id: string;
+  time: string;
+  title: string;
+  detail?: string;
+  isNow?: boolean;
+  status: "completed" | "in_progress" | "scheduled";
+}
+
+interface NextAction {
+  title: string;
+  vehicleName: string;
+  plateNumber: string;
+  workType: string;
+  deadline: string;
+  estimatedCompletion?: string;
+  partsStatus?: string;
+  liftStatus?: string;
+  estimatedTime?: string;
+  reason: string;
+  route: string;
+}
+
+interface ActiveWorkEntry {
+  id: string;
+  progress: number;
+  vehicleName: string;
+  plateNumber: string;
+  workType: string;
+  worker: string;
+  nextStep: string;
+  estimatedCompletion: string;
+  deadline: string;
+}
+
 const NFC_LOW_STOCK_THRESHOLD = 10;
 
-const SALES_DAYS = 7;
+const EMPTY_STATS: HomeStats = {
+  todayTotal: 0,
+  todayCompleted: 0,
+  inProgress: 0,
+  awaitingConfirmation: 0,
+  notStarted: 0,
+  awaitingPayment: 0,
+  issues: [],
+  timeline: [],
+  nextAction: null,
+  activeWork: [],
+};
 
-function buildDateRange(days: number): string[] {
-  const out: string[] = [];
-  for (let i = days - 1; i >= 0; i--) {
-    const d = new Date();
-    d.setDate(d.getDate() - i);
-    out.push(d.toISOString().split("T")[0]);
-  }
-  return out;
-}
+// ─── Main Screen ─────────────────────────────────────────────────────
 
 export default function HomeScreen() {
   const { user, selectedStore } = useAuthStore();
-  const { width, height } = useWindowDimensions();
-  // Tap to Pay は iPhone 専用（iPad 非対応）。iPhone のときだけ有効化バナーを出す。
-  const isIPhone = Platform.OS === "ios" && Math.min(width, height) < 768;
-  const [ttpBannerDismissed, setTtpBannerDismissed] = useState(false);
-  const [stats, setStats] = useState<DashboardStats>({
-    todayReservations: 0,
-    activeWork: 0,
-    awaitingPayment: 0,
-    todayPayments: 0,
-    preparedNfcTags: 0,
-  });
-  const [salesSeries, setSalesSeries] = useState<SalesPoint[]>(() =>
-    buildDateRange(SALES_DAYS).map((date) => ({ date, amount: 0 }))
-  );
+  const [scope, setScope] = useState<Scope>("self");
+  const [stats, setStats] = useState<HomeStats>(EMPTY_STATS);
   const [refreshing, setRefreshing] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  const today = dayjs();
 
   const loadStats = useCallback(async () => {
     if (!user?.tenantId || !selectedStore?.id) return;
 
-    const today = new Date().toISOString().split("T")[0];
-    const dateRange = buildDateRange(SALES_DAYS);
-    const sevenDaysAgo = dateRange[0];
+    const todayStr = new Date().toISOString().split("T")[0];
 
-    const [reservations, work, awaitingPay, payments, preparedTags, salesRows] =
+    const [todayRes, activeWork, awaitingPay, preparedTags, todayTimeline] =
       await Promise.all([
         supabase
           .from("reservations")
-          .select("id", { count: "exact", head: true })
+          .select("id, status", { count: "exact" })
           .eq("tenant_id", user.tenantId)
           .eq("store_id", selectedStore.id)
-          .eq("scheduled_date", today)
+          .eq("scheduled_date", todayStr)
           .not("status", "eq", "cancelled"),
         supabase
           .from("reservations")
-          .select("id", { count: "exact", head: true })
+          .select("id, status, customer_name, vehicle_info, scheduled_time")
           .eq("tenant_id", user.tenantId)
           .eq("store_id", selectedStore.id)
           .in("status", ["arrived", "in_progress"]),
@@ -85,48 +138,161 @@ export default function HomeScreen() {
           .eq("status", "completed")
           .eq("payment_status", "unpaid"),
         supabase
-          .from("payments")
-          .select("id", { count: "exact", head: true })
-          .eq("tenant_id", user.tenantId)
-          .eq("store_id", selectedStore.id)
-          .gte("paid_at", today),
-        // NFCタグ在庫: tenant 全体で uid 未割当の prepared タグ数
-        supabase
           .from("nfc_tags")
           .select("id", { count: "exact", head: true })
           .eq("tenant_id", user.tenantId)
           .eq("status", "prepared")
           .is("uid", null),
         supabase
-          .from("payments")
-          .select("amount, paid_at")
+          .from("reservations")
+          .select("id, scheduled_date, scheduled_time, status, customer_name, vehicle_info")
           .eq("tenant_id", user.tenantId)
           .eq("store_id", selectedStore.id)
-          .gte("paid_at", sevenDaysAgo),
+          .eq("scheduled_date", todayStr)
+          .not("status", "eq", "cancelled")
+          .order("scheduled_time", { ascending: true })
+          .limit(8),
       ]);
 
-    setStats({
-      todayReservations: reservations.count ?? 0,
-      activeWork: work.count ?? 0,
-      awaitingPayment: awaitingPay.count ?? 0,
-      todayPayments: payments.count ?? 0,
-      preparedNfcTags: preparedTags.count ?? 0,
-    });
+    const todayTotal = todayRes.count ?? 0;
+    const todayData = (todayRes.data ?? []) as Array<{ id: string; status: string }>;
+    const todayCompleted = todayData.filter(
+      (r) => r.status === "completed" || r.status === "delivered"
+    ).length;
+    const inProgressCount = todayData.filter(
+      (r) => r.status === "in_progress" || r.status === "arrived"
+    ).length;
+    const awaitingConfirmation = todayData.filter(
+      (r) => r.status === "awaiting_confirmation"
+    ).length;
+    const notStarted = todayTotal - todayCompleted - inProgressCount - awaitingConfirmation;
 
-    // 直近7日の売上を日付別に集計
-    const buckets: Record<string, number> = Object.fromEntries(
-      dateRange.map((d) => [d, 0])
-    );
-    for (const row of (salesRows.data ?? []) as Array<{
-      amount: number;
-      paid_at: string;
-    }>) {
-      const dateKey = row.paid_at.split("T")[0];
-      if (dateKey in buckets) {
-        buckets[dateKey] += row.amount ?? 0;
+    // Build issues
+    const issues: Issue[] = [];
+    const nfcCount = preparedTags.count ?? 0;
+    if (nfcCount <= NFC_LOW_STOCK_THRESHOLD) {
+      issues.push({
+        id: "nfc-low",
+        label: nfcCount === 0 ? "CRITICAL" : "HIGH",
+        severity: nfcCount === 0 ? "CRITICAL" : "HIGH",
+        title: "NFCタグ在庫不足",
+        detail: `残り ${nfcCount} 枚`,
+        route: "/nfc/tags",
+      });
+    }
+    const unpaid = awaitingPay.count ?? 0;
+    if (unpaid > 0) {
+      issues.push({
+        id: "unpaid",
+        label: "ACTION",
+        severity: "ACTION",
+        title: "決済確認待ち",
+        detail: `¥未精算 ${unpaid} 件`,
+        route: "/(tabs)/pos",
+      });
+    }
+
+    // Active work entries
+    const activeWorkData = (
+      (activeWork.data ?? []) as Array<{
+        id: string;
+        status: string;
+        customer_name: string | null;
+        vehicle_info: string | null;
+        scheduled_time: string | null;
+      }>
+    ).map((r) => ({
+      id: r.id,
+      progress: r.status === "in_progress" ? 0.5 : 0.2,
+      vehicleName: r.vehicle_info ?? "車両",
+      plateNumber: "",
+      workType: "",
+      worker: r.customer_name ?? "",
+      nextStep: "",
+      estimatedCompletion: "",
+      deadline: r.scheduled_time ? r.scheduled_time.slice(0, 5) : "",
+    }));
+
+    // Build timeline
+    const timeline: TimelineEntry[] = (
+      (todayTimeline.data ?? []) as Array<{
+        id: string;
+        scheduled_time: string | null;
+        status: string;
+        customer_name: string | null;
+        vehicle_info: string | null;
+      }>
+    ).map((r) => ({
+      id: r.id,
+      time: r.scheduled_time ? r.scheduled_time.slice(0, 5) : "--:--",
+      title: r.vehicle_info || r.customer_name || "予約",
+      status: (
+        r.status === "completed" || r.status === "delivered"
+          ? "completed"
+          : r.status === "in_progress" || r.status === "arrived"
+            ? "in_progress"
+            : "scheduled"
+      ) as TimelineEntry["status"],
+    }));
+
+    // Mark current timeline entry
+    const now = dayjs().format("HH:mm");
+    for (let i = timeline.length - 1; i >= 0; i--) {
+      if (timeline[i].time <= now && timeline[i].status !== "completed") {
+        timeline[i].isNow = true;
+        break;
       }
     }
-    setSalesSeries(dateRange.map((date) => ({ date, amount: buckets[date] })));
+
+    // Determine next action
+    let nextAction: NextAction | null = null;
+    const activeCount = activeWork.count ?? activeWorkData.length;
+    if (activeCount > 0) {
+      const first = activeWorkData[0];
+      nextAction = {
+        title: "作業を開始",
+        vehicleName: first?.vehicleName ?? "車両",
+        plateNumber: first?.plateNumber ?? "",
+        workType: first?.workType ?? "",
+        deadline: first?.deadline ? `納車 ${first.deadline}` : "",
+        reason: `今開始すれば予定通り完了できます。`,
+        route: "/(tabs)/work",
+      };
+    } else if (todayTotal > todayCompleted) {
+      nextAction = {
+        title: "次の入庫を受け付ける",
+        vehicleName: "",
+        plateNumber: "",
+        workType: "",
+        deadline: "",
+        reason: `本日の残り ${todayTotal - todayCompleted} 件`,
+        route: "/(tabs)/reservations",
+      };
+    } else if (unpaid > 0) {
+      nextAction = {
+        title: "会計処理を完了する",
+        vehicleName: "",
+        plateNumber: "",
+        workType: "",
+        deadline: "",
+        reason: `${unpaid} 件の未精算あり`,
+        route: "/(tabs)/pos",
+      };
+    }
+
+    setStats({
+      todayTotal,
+      todayCompleted,
+      inProgress: inProgressCount,
+      awaitingConfirmation,
+      notStarted: Math.max(0, notStarted),
+      awaitingPayment: unpaid,
+      issues,
+      timeline,
+      nextAction,
+      activeWork: activeWorkData,
+    });
+    setLoading(false);
   }, [user, selectedStore]);
 
   useEffect(() => {
@@ -139,315 +305,729 @@ export default function HomeScreen() {
     setRefreshing(false);
   }
 
+  const progress = stats.todayTotal > 0
+    ? stats.todayCompleted / stats.todayTotal
+    : 0;
+
   return (
     <ScrollView
-      style={styles.container}
+      style={styles.screen}
+      contentContainerStyle={styles.screenContent}
       refreshControl={
         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
       }
     >
+      {/* ── 1. Header: date, greeting, store, search, bell ── */}
       <View style={styles.header}>
-        <View>
-          <Text variant="titleLarge" style={styles.greeting}>
+        <View style={styles.headerLeft}>
+          <Text style={styles.dateText}>
+            {today.format("M月D日（dd）").toUpperCase()}
+          </Text>
+          <Text style={styles.greeting}>
+            {getGreeting()}、{user?.email?.split("@")[0] ?? ""}さん
+          </Text>
+          <Text style={styles.storeName}>
             {selectedStore?.name}
           </Text>
-          <Text variant="bodySmall" style={styles.role}>
-            {user?.email}
-          </Text>
         </View>
-        <IconButton
-          icon="cog-outline"
-          onPress={() => router.push("/settings")}
-          accessibilityLabel="設定を開く"
+        <View style={styles.headerRight}>
+          <IconButton
+            icon="magnify"
+            size={sizing.iconMd}
+            iconColor={colors.textPrimary}
+            onPress={() => {}}
+            accessibilityLabel="検索"
+            style={styles.headerBtn}
+          />
+          <View>
+            <IconButton
+              icon="bell-outline"
+              size={sizing.iconMd}
+              iconColor={colors.textPrimary}
+              onPress={() => router.push("/notifications" as never)}
+              accessibilityLabel="通知"
+              style={styles.headerBtn}
+            />
+            {stats.issues.length > 0 && (
+              <View style={styles.notifBadge}>
+                <Text style={styles.notifBadgeText}>{stats.issues.length}</Text>
+              </View>
+            )}
+          </View>
+        </View>
+      </View>
+
+      {/* ── 2. Scope segmented control (3 segments) ── */}
+      <View style={styles.section}>
+        <SegmentedControl
+          segments={[
+            { value: "self" as Scope, label: "自分" },
+            { value: "store" as Scope, label: "店舗" },
+            { value: "all" as Scope, label: "全店舗" },
+          ]}
+          value={scope}
+          onChange={setScope}
         />
       </View>
 
-      {/* Tap to Pay 有効化バナー (Apple 要件 3.1: 発見しやすい導線) */}
-      {isIPhone && !ttpBannerDismissed && (
-        <Card
-          style={[styles.card, styles.ttpCard]}
-          mode="outlined"
-          onPress={() => router.push("/settings/tap-to-pay")}
-        >
-          <Card.Content style={styles.ttpContent}>
-            <IconButton
-              icon="contactless-payment"
-              iconColor="#1d4ed8"
-              size={24}
-              style={{ margin: 0 }}
-              accessibilityElementsHidden
-              importantForAccessibility="no"
-            />
-            <View style={{ flex: 1 }}>
-              <Text variant="titleSmall" style={styles.ttpTitle}>
-                iPhone でカード決済を受け付けられます
-              </Text>
-              <Text variant="bodySmall" style={styles.ttpSub}>
-                追加端末なしで Tap to Pay を有効化 →
-              </Text>
+      {/* ── 3. Today work summary card ── */}
+      <View style={styles.section}>
+        <View style={styles.todayCard}>
+          <View style={styles.todayHeader}>
+            <View>
+              <Text style={styles.todayLabel}>本日の作業</Text>
+              <View style={styles.todayCountRow}>
+                <Text style={styles.todayCount}>
+                  {loading ? "-" : stats.todayTotal}
+                </Text>
+                <Text style={styles.todayUnit}>件</Text>
+              </View>
             </View>
-            <IconButton
-              icon="close"
-              size={18}
-              iconColor="#3b82f6"
-              onPress={() => setTtpBannerDismissed(true)}
-              accessibilityLabel="バナーを閉じる"
+            <ProgressRing
+              progress={progress}
+              size={72}
+              strokeWidth={6}
+              label={`${Math.round(progress * 100)}%`}
             />
-          </Card.Content>
-        </Card>
+          </View>
+          {/* Status badges row */}
+          <View style={styles.statusRow}>
+            <StatusPill label="作業中" count={stats.inProgress} severity="warning" />
+            <StatusPill label="確認待ち" count={stats.awaitingConfirmation} severity="danger" />
+            <StatusPill label="未完了" count={stats.notStarted} severity="neutral" />
+            <StatusPill label="完了" count={stats.todayCompleted} severity="success" />
+          </View>
+        </View>
+      </View>
+
+      {/* ── 4. NEXT ACTION (dominant) ── */}
+      {loading ? (
+        <View style={styles.section}>
+          <Skeleton height={120} borderRadius={radius.card} />
+        </View>
+      ) : stats.nextAction ? (
+        <View style={styles.section}>
+          <Pressable
+            style={styles.nextActionCard}
+            onPress={() => router.push(stats.nextAction!.route as never)}
+            accessibilityRole="button"
+            accessibilityLabel={`次のアクション: ${stats.nextAction.title}`}
+          >
+            {/* Top row: label + priority badge */}
+            <View style={styles.naTopRow}>
+              <Text style={styles.naLabel}>NEXT ACTION</Text>
+              {stats.issues.length > 0 && (
+                <StatusBadge label="優先度 高" severity="danger" compact />
+              )}
+            </View>
+
+            {/* Vehicle info */}
+            {stats.nextAction.vehicleName ? (
+              <View style={styles.naVehicleRow}>
+                <Icon source="car-outline" size={20} color={colors.textSecondary} />
+                <View style={styles.naVehicleText}>
+                  <Text style={styles.naVehicleName}>
+                    {stats.nextAction.vehicleName}
+                  </Text>
+                  {stats.nextAction.plateNumber ? (
+                    <Text style={styles.naPlate}>{stats.nextAction.plateNumber}</Text>
+                  ) : null}
+                  {stats.nextAction.workType ? (
+                    <Text style={styles.naWorkType}>{stats.nextAction.workType}</Text>
+                  ) : null}
+                </View>
+                {stats.nextAction.deadline ? (
+                  <Text style={styles.naDeadline}>{stats.nextAction.deadline}</Text>
+                ) : null}
+              </View>
+            ) : null}
+
+            {/* Reason */}
+            <View style={styles.naReasonRow}>
+              <Icon source="information-outline" size={16} color={colors.primary} />
+              <Text style={styles.naReason}>{stats.nextAction.reason}</Text>
+            </View>
+
+            {/* CTA */}
+            <View style={styles.naCta}>
+              <Text style={styles.naCtaText}>{stats.nextAction.title}</Text>
+              <Icon source="arrow-right" size={20} color={colors.textOnPrimary} />
+            </View>
+          </Pressable>
+        </View>
+      ) : (
+        <View style={styles.section}>
+          <View style={styles.allDoneCard}>
+            <Icon source="check-circle" size={24} color={colors.success} />
+            <Text style={styles.allDoneText}>本日のタスクはすべて完了しました</Text>
+          </View>
+        </View>
       )}
 
-      {/* NFCタグ在庫アラート */}
-      {stats.preparedNfcTags <= NFC_LOW_STOCK_THRESHOLD && (
-        <Card
-          style={[styles.card, styles.alertCard]}
-          mode="outlined"
-          onPress={() => router.push("/nfc/tags")}
-        >
-          <Card.Content style={styles.alertContent}>
-            <IconButton
-              icon="alert-circle-outline"
-              iconColor="#b45309"
-              size={24}
-              style={{ margin: 0 }}
-            />
-            <View style={{ flex: 1 }}>
-              <Text variant="titleSmall" style={styles.alertTitle}>
-                NFCタグ在庫が少なくなっています
-              </Text>
-              <Text variant="bodySmall" style={styles.alertSub}>
-                残り {stats.preparedNfcTags} 枚 (閾値 {NFC_LOW_STOCK_THRESHOLD}{" "}
-                枚)。発注を検討してください
-              </Text>
-            </View>
-          </Card.Content>
-        </Card>
+      {/* ── 5. In-progress work (compact) ── */}
+      {stats.activeWork.length > 0 && (
+        <View style={styles.section}>
+          <View style={styles.sectionHeaderRow}>
+            <Text style={styles.sectionTitle}>進行中の作業</Text>
+            <Pressable onPress={() => router.push("/(tabs)/work")}>
+              <Text style={styles.seeAll}>すべて見る →</Text>
+            </Pressable>
+          </View>
+          <View style={styles.activeWorkList}>
+            {stats.activeWork.slice(0, 3).map((work) => (
+              <Pressable
+                key={work.id}
+                style={styles.activeWorkRow}
+                onPress={() => router.push(`/work/${work.id}` as never)}
+                accessibilityRole="button"
+              >
+                <View style={styles.activeWorkProgress}>
+                  <ProgressRing
+                    progress={work.progress}
+                    size={40}
+                    strokeWidth={3}
+                    label={`${Math.round(work.progress * 100)}%`}
+                  />
+                </View>
+                <View style={styles.activeWorkInfo}>
+                  <View style={styles.activeWorkTopRow}>
+                    <StatusBadge label="作業中" severity="warning" compact />
+                    <Text style={styles.activeWorkVehicle} numberOfLines={1}>
+                      {work.vehicleName}
+                    </Text>
+                  </View>
+                  {work.worker ? (
+                    <Text style={styles.activeWorkMeta} numberOfLines={1}>
+                      {work.worker}
+                    </Text>
+                  ) : null}
+                </View>
+              </Pressable>
+            ))}
+          </View>
+        </View>
       )}
 
-      <View style={styles.grid}>
-        <StatCard
-          title="今日の予約"
-          value={stats.todayReservations}
-          icon="calendar-check"
-          color="#3b82f6"
-          onPress={() => router.push("/(tabs)/reservations")}
-        />
-        <StatCard
-          title="作業中"
-          value={stats.activeWork}
-          icon="wrench"
-          color="#f59e0b"
-          onPress={() => router.push("/(tabs)/work")}
-        />
-        <StatCard
-          title="会計待ち"
-          value={stats.awaitingPayment}
-          icon="cash-register"
-          color="#10b981"
-          onPress={() => router.push("/(tabs)/pos")}
-        />
-        <StatCard
-          title="今日の決済"
-          value={stats.todayPayments}
-          icon="check-circle"
-          color="#8b5cf6"
-        />
-      </View>
-
-      {/* 売上推移 */}
-      <View style={styles.salesSection}>
-        <View style={styles.salesHeader}>
-          <Text variant="titleMedium" style={styles.sectionTitle}>
-            直近7日の売上
-          </Text>
-          <Text variant="bodySmall" style={styles.salesTotal}>
-            {"¥"}
-            {salesSeries
-              .reduce((sum, p) => sum + p.amount, 0)
-              .toLocaleString()}
-          </Text>
+      {/* ── 6. Action-needed issues (severity cards) ── */}
+      {stats.issues.length > 0 && (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>要対応</Text>
+          <View style={styles.issueList}>
+            {stats.issues.map((issue) => (
+              <Pressable
+                key={issue.id}
+                style={[
+                  styles.issueRow,
+                  issue.severity === "CRITICAL" && styles.issueCritical,
+                  issue.severity === "HIGH" && styles.issueHigh,
+                  issue.severity === "ACTION" && styles.issueAction,
+                ]}
+                onPress={() => router.push(issue.route as never)}
+                accessibilityRole="button"
+              >
+                <View style={styles.issueLeft}>
+                  <Icon
+                    source={issue.severity === "CRITICAL" ? "alert" : issue.severity === "HIGH" ? "alert-circle-outline" : "information-outline"}
+                    size={18}
+                    color={
+                      issue.severity === "CRITICAL" ? colors.danger
+                        : issue.severity === "HIGH" ? colors.warningDark
+                          : colors.primary
+                    }
+                  />
+                  <View style={[
+                    styles.issueLabelBadge,
+                    issue.severity === "CRITICAL" && { backgroundColor: colors.dangerLight },
+                    issue.severity === "HIGH" && { backgroundColor: colors.warningLight },
+                    issue.severity === "ACTION" && { backgroundColor: colors.primaryLight },
+                  ]}>
+                    <Text style={[
+                      styles.issueLabelText,
+                      issue.severity === "CRITICAL" && { color: colors.danger },
+                      issue.severity === "HIGH" && { color: colors.warningDark },
+                      issue.severity === "ACTION" && { color: colors.primary },
+                    ]}>
+                      {issue.label}
+                    </Text>
+                  </View>
+                </View>
+                <View style={styles.issueContent}>
+                  <Text style={styles.issueTitle} numberOfLines={1}>{issue.title}</Text>
+                  <Text style={styles.issueDetail} numberOfLines={1}>{issue.detail}</Text>
+                </View>
+                <Icon source="chevron-right" size={18} color={colors.textTertiary} />
+              </Pressable>
+            ))}
+          </View>
         </View>
-        <Card mode="outlined" style={styles.salesCard}>
-          <Card.Content>
-            <SalesBarChart data={salesSeries} width={width - 64} />
-          </Card.Content>
-        </Card>
-      </View>
+      )}
 
-      <View style={styles.quickActions}>
-        <Text variant="titleMedium" style={styles.sectionTitle}>
-          クイックアクション
-        </Text>
-        <View style={styles.actionRow}>
-          <ActionButton
-            icon="account-plus"
-            label="顧客登録"
-            onPress={() => router.push("/customers/new")}
-          />
-          <ActionButton
-            icon="car-plus"
-            label="車両登録"
-            onPress={() => router.push("/vehicles/new")}
-          />
-          <ActionButton
-            icon="nfc"
-            label="NFCスキャン"
-            onPress={() => router.push("/nfc/scan")}
-          />
-          <ActionButton
-            icon="certificate"
-            label="証明書"
-            onPress={() => router.push("/certificates")}
-          />
+      {/* ── 7. Today timeline ── */}
+      {stats.timeline.length > 0 && (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>今日の予定</Text>
+          <View style={styles.timelineCard}>
+            {stats.timeline.map((entry, i) => (
+              <View key={entry.id}>
+                {i > 0 && <View style={styles.timelineDivider} />}
+                <View style={styles.timelineRow}>
+                  {/* NOW marker or time */}
+                  {entry.isNow ? (
+                    <View style={styles.nowMarkerWrap}>
+                      <View style={styles.nowDot} />
+                      <Text style={styles.nowText}>NOW</Text>
+                    </View>
+                  ) : (
+                    <Text style={styles.timelineTime}>{entry.time}</Text>
+                  )}
+                  <Text style={styles.timelineTitle} numberOfLines={1}>
+                    {entry.title}
+                  </Text>
+                  {entry.detail && (
+                    <Text style={styles.timelineDetail} numberOfLines={1}>
+                      {entry.detail}
+                    </Text>
+                  )}
+                </View>
+              </View>
+            ))}
+          </View>
         </View>
-      </View>
+      )}
+
+      <View style={{ height: spacing["4xl"] }} />
     </ScrollView>
   );
 }
 
-function StatCard({
-  title,
-  value,
-  icon,
-  color,
-  onPress,
-}: {
-  title: string;
-  value: number;
-  icon: string;
-  color: string;
-  onPress?: () => void;
-}) {
-  return (
-    <Card
-      style={styles.statCard}
-      onPress={onPress}
-      mode="outlined"
-      accessibilityLabel={`${title}: ${value}件`}
-      accessibilityRole={onPress ? "button" : undefined}
-    >
-      <Card.Content style={styles.statContent}>
-        <IconButton
-          icon={icon}
-          iconColor={color}
-          size={24}
-          style={{ margin: 0 }}
-          // 親 Card が同じラベルを持つので、装飾として TalkBack/VoiceOver からは無視
-          accessibilityElementsHidden
-          importantForAccessibility="no"
-        />
-        <Text variant="headlineMedium" style={[styles.statValue, { color }]}>
-          {value}
-        </Text>
-        <Text variant="labelSmall" style={styles.statLabel}>
-          {title}
-        </Text>
-      </Card.Content>
-    </Card>
-  );
+// ─── Helpers ─────────────────────────────────────────────────────────
+
+function getGreeting(): string {
+  const hour = new Date().getHours();
+  if (hour < 10) return "おはようございます";
+  if (hour < 17) return "お疲れさまです";
+  return "お疲れさまでした";
 }
 
-function ActionButton({
-  icon,
+/** Status pill in the today card (作業中 3, 確認待ち 2, etc.) */
+function StatusPill({
   label,
-  onPress,
+  count,
+  severity,
 }: {
-  icon: string;
   label: string;
-  onPress: () => void;
+  count: number;
+  severity: "success" | "warning" | "danger" | "neutral";
 }) {
+  const bgMap = {
+    success: colors.successLight,
+    warning: colors.warningLight,
+    danger: colors.dangerLight,
+    neutral: colors.surfaceVariant,
+  };
+  const fgMap = {
+    success: colors.successDark,
+    warning: colors.warningDark,
+    danger: colors.dangerDark,
+    neutral: colors.textSecondary,
+  };
+
   return (
-    <View style={styles.actionItem}>
-      <IconButton
-        icon={icon}
-        mode="contained-tonal"
-        size={24}
-        onPress={onPress}
-        accessibilityLabel={label}
-      />
-      <Text variant="labelSmall" style={styles.actionLabel}>
+    <View style={[styles.statusPill, { backgroundColor: bgMap[severity] }]}>
+      <Text style={[styles.statusPillLabel, { color: fgMap[severity] }]}>
         {label}
+      </Text>
+      <Text style={[styles.statusPillCount, { color: fgMap[severity] }]}>
+        {count}
       </Text>
     </View>
   );
 }
 
+// ─── Styles ──────────────────────────────────────────────────────────
+
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#fafafa" },
+  screen: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
+  screenContent: {
+    paddingBottom: sizing.tabBarHeight,
+  },
+
+  // Header
   header: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "center",
-    padding: 16,
-    paddingTop: 8,
+    alignItems: "flex-start",
+    paddingHorizontal: spacing.xl,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.xs,
   },
-  greeting: { fontWeight: "700", color: "#1a1a2e" },
-  role: { color: "#71717a", marginTop: 2 },
-  grid: {
+  headerLeft: { flex: 1 },
+  headerRight: {
     flexDirection: "row",
-    flexWrap: "wrap",
-    padding: 12,
-    gap: 12,
-  },
-  statCard: {
-    width: "47%",
-    backgroundColor: "#ffffff",
-  },
-  card: { marginHorizontal: 12, marginTop: 12, backgroundColor: "#ffffff" },
-  alertCard: { borderColor: "#fcd34d", backgroundColor: "#fef3c7" },
-  alertContent: { flexDirection: "row", alignItems: "center", gap: 4 },
-  alertTitle: { fontWeight: "700", color: "#92400e" },
-  alertSub: { color: "#b45309", marginTop: 2 },
-  ttpCard: { borderColor: "#bfdbfe", backgroundColor: "#eff6ff" },
-  ttpContent: { flexDirection: "row", alignItems: "center", gap: 4 },
-  ttpTitle: { fontWeight: "700", color: "#1d4ed8" },
-  ttpSub: { color: "#3b82f6", marginTop: 2 },
-  statContent: {
     alignItems: "center",
-    paddingVertical: 12,
+    marginTop: spacing.xs,
   },
-  statValue: {
+  headerBtn: { margin: 0 },
+  dateText: {
+    fontSize: 13,
+    fontWeight: "500",
+    color: colors.textSecondary,
+    lineHeight: 18,
+    letterSpacing: 0.5,
+  },
+  greeting: {
+    fontSize: 20,
     fontWeight: "700",
-    marginTop: 4,
+    color: colors.textPrimary,
+    lineHeight: 28,
+    marginTop: 2,
   },
-  statLabel: {
-    color: "#71717a",
-    marginTop: 4,
+  storeName: {
+    fontSize: 14,
+    fontWeight: "500",
+    color: colors.textSecondary,
+    lineHeight: 20,
   },
-  salesSection: {
-    padding: 16,
-    paddingTop: 0,
+  notifBadge: {
+    position: "absolute",
+    top: 6,
+    right: 6,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: colors.danger,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 4,
   },
-  salesHeader: {
+  notifBadgeText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: colors.textOnPrimary,
+  },
+
+  // Section
+  section: {
+    paddingHorizontal: spacing.xl,
+    marginTop: spacing.lg,
+  },
+  sectionHeaderRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "baseline",
-    marginBottom: 8,
-  },
-  salesTotal: {
-    color: "#1a1a2e",
-    fontWeight: "700",
-  },
-  salesCard: {
-    backgroundColor: "#ffffff",
-  },
-  quickActions: {
-    padding: 16,
+    alignItems: "center",
+    marginBottom: spacing.md,
   },
   sectionTitle: {
+    fontSize: 16,
     fontWeight: "700",
-    color: "#1a1a2e",
-    marginBottom: 12,
+    color: colors.textPrimary,
+    marginBottom: spacing.md,
   },
-  actionRow: {
+  seeAll: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: colors.textSecondary,
+  },
+
+  // Today card
+  todayCard: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.card,
+    padding: spacing.xl,
+    ...shadows.card,
+  },
+  todayHeader: {
     flexDirection: "row",
-    justifyContent: "space-around",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: spacing.lg,
   },
-  actionItem: {
+  todayLabel: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: colors.textSecondary,
+    marginBottom: spacing.xs,
+  },
+  todayCountRow: {
+    flexDirection: "row",
+    alignItems: "baseline",
+  },
+  todayCount: {
+    fontSize: 36,
+    fontWeight: "800",
+    color: colors.textPrimary,
+    lineHeight: 42,
+  },
+  todayUnit: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: colors.textSecondary,
+    marginLeft: spacing.xs,
+  },
+  statusRow: {
+    flexDirection: "row",
+    gap: spacing.sm,
+  },
+  statusPill: {
+    flex: 1,
+    alignItems: "center",
+    paddingVertical: spacing.sm,
+    borderRadius: radius.sm,
+    gap: 2,
+  },
+  statusPillLabel: {
+    fontSize: 11,
+    fontWeight: "600",
+  },
+  statusPillCount: {
+    fontSize: 18,
+    fontWeight: "700",
+  },
+
+  // Next Action
+  nextActionCard: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.card,
+    borderWidth: 1.5,
+    borderColor: colors.primary,
+    padding: spacing.xl,
+    ...shadows.card,
+  },
+  naTopRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: spacing.md,
+  },
+  naLabel: {
+    fontSize: 12,
+    fontWeight: "800",
+    color: colors.primary,
+    letterSpacing: 1,
+  },
+  naVehicleRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: spacing.md,
+    marginBottom: spacing.md,
+  },
+  naVehicleText: {
+    flex: 1,
+  },
+  naVehicleName: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: colors.textPrimary,
+  },
+  naPlate: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
+  naWorkType: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
+  naDeadline: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: colors.textSecondary,
+  },
+  naReasonRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    backgroundColor: colors.primaryLight,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.sm,
+    marginBottom: spacing.lg,
+  },
+  naReason: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: "500",
+    color: colors.primary,
+  },
+  naCta: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.primary,
+    borderRadius: radius.md,
+    paddingVertical: 14,
+    gap: spacing.sm,
+  },
+  naCtaText: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: colors.textOnPrimary,
+  },
+
+  // All done
+  allDoneCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    backgroundColor: colors.successLight,
+    borderRadius: radius.card,
+    padding: spacing.xl,
+  },
+  allDoneText: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: colors.successDark,
+  },
+
+  // Active work
+  activeWorkList: {
+    gap: spacing.sm,
+  },
+  activeWorkRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    backgroundColor: colors.surface,
+    borderRadius: radius.card,
+    padding: spacing.lg,
+    ...shadows.card,
+  },
+  activeWorkProgress: {
+    width: 44,
     alignItems: "center",
   },
-  actionLabel: {
-    color: "#71717a",
-    marginTop: 4,
+  activeWorkInfo: {
+    flex: 1,
+    gap: spacing.xs,
+  },
+  activeWorkTopRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+  },
+  activeWorkVehicle: {
+    flex: 1,
+    fontSize: 15,
+    fontWeight: "600",
+    color: colors.textPrimary,
+  },
+  activeWorkMeta: {
+    fontSize: 13,
+    color: colors.textSecondary,
+  },
+
+  // Issues
+  issueList: {
+    gap: spacing.sm,
+  },
+  issueRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    borderRadius: radius.card,
+    gap: spacing.md,
+    minHeight: sizing.touchTarget + spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  issueCritical: {
+    backgroundColor: colors.dangerLight,
+    borderColor: "#FECACA",
+  },
+  issueHigh: {
+    backgroundColor: colors.warningLight,
+    borderColor: "#FDE68A",
+  },
+  issueAction: {
+    backgroundColor: colors.primaryLight,
+    borderColor: "#BFDBFE",
+  },
+  issueLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+  },
+  issueLabelBadge: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+    borderRadius: radius.sm,
+  },
+  issueLabelText: {
+    fontSize: 11,
+    fontWeight: "800",
+    letterSpacing: 0.5,
+  },
+  issueContent: {
+    flex: 1,
+  },
+  issueTitle: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: colors.textPrimary,
+  },
+  issueDetail: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
+
+  // Timeline
+  timelineCard: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.card,
+    padding: spacing.lg,
+    ...shadows.card,
+  },
+  timelineRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    paddingVertical: spacing.sm,
+    minHeight: sizing.touchTarget,
+  },
+  timelineDivider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: colors.divider,
+    marginLeft: 60,
+  },
+  timelineTime: {
+    width: 48,
+    fontSize: 14,
+    fontWeight: "600",
+    color: colors.textSecondary,
+  },
+  nowMarkerWrap: {
+    width: 48,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  nowDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: colors.primary,
+  },
+  nowText: {
+    fontSize: 12,
+    fontWeight: "800",
+    color: colors.primary,
+    letterSpacing: 0.5,
+  },
+  timelineTitle: {
+    flex: 1,
+    fontSize: 15,
+    fontWeight: "500",
+    color: colors.textPrimary,
+  },
+  timelineDetail: {
+    fontSize: 13,
+    color: colors.textSecondary,
   },
 });

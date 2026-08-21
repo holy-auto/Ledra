@@ -4,13 +4,12 @@ import {
   useNetworkStatus,
   isEffectivelyOffline,
 } from "@/hooks/useNetworkStatus";
+import { colors, spacing } from "@/constants/tokens";
 
 /**
  * 画面最上部に表示するオフラインバナー。
  * 接続中は何も描画しない (null)。屋外整備で電波が切れたとき即座に
  * ユーザーに気付かせる用途。
- *
- * SafeArea の上に置く想定 (StatusBar の直下)。
  */
 export function OfflineBanner() {
   const status = useNetworkStatus();
@@ -18,7 +17,7 @@ export function OfflineBanner() {
 
   return (
     <View style={styles.container} accessibilityRole="alert">
-      <Icon source="cloud-off-outline" size={16} color="#ffffff" />
+      <Icon source="cloud-off-outline" size={16} color={colors.textOnPrimary} />
       <Text variant="labelMedium" style={styles.text}>
         オフラインです。書込み操作は接続復帰後に同期されます。
       </Text>
@@ -31,10 +30,10 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#991b1b",
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    gap: 8,
+    backgroundColor: colors.dangerDark,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    gap: spacing.sm,
   },
-  text: { color: "#ffffff", fontWeight: "600" },
+  text: { color: colors.textOnPrimary, fontWeight: "600" },
 });
