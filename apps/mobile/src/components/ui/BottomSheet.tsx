@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   View,
   StyleSheet,
@@ -19,14 +19,15 @@ interface Props {
   onDismiss: () => void;
   title?: string;
   children: React.ReactNode;
-  /** Additional style for the sheet content container. */
   contentStyle?: ViewStyle;
 }
 
 /**
  * BottomSheet — modal drawer from bottom.
- * Used for Quick Create, filters, confirmations.
- * Slide-up animation, overlay dismiss, handle bar.
+ *
+ * ponytail: Uses a separate `modalVisible` state so the close animation
+ * plays BEFORE the Modal unmounts. The Modal stays mounted during the
+ * slide-down, then we set modalVisible=false after the animation completes.
  */
 export function BottomSheet({
   visible,
@@ -39,9 +40,28 @@ export function BottomSheet({
   const insets = useSafeAreaInsets();
   const translateY = useRef(new Animated.Value(height)).current;
   const overlayOpacity = useRef(new Animated.Value(0)).current;
+  const [modalVisible, setModalVisible] = useState(false);
+
+  const animateClose = useCallback(() => {
+    Animated.parallel([
+      Animated.timing(translateY, {
+        toValue: height,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+      Animated.timing(overlayOpacity, {
+        toValue: 0,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      setModalVisible(false);
+    });
+  }, [height, translateY, overlayOpacity]);
 
   useEffect(() => {
     if (visible) {
+      setModalVisible(true);
       Animated.parallel([
         Animated.spring(translateY, {
           toValue: 0,
@@ -55,28 +75,21 @@ export function BottomSheet({
           useNativeDriver: true,
         }),
       ]).start();
-    } else {
-      Animated.parallel([
-        Animated.timing(translateY, {
-          toValue: height,
-          duration: 200,
-          useNativeDriver: true,
-        }),
-        Animated.timing(overlayOpacity, {
-          toValue: 0,
-          duration: 200,
-          useNativeDriver: true,
-        }),
-      ]).start();
+    } else if (modalVisible) {
+      animateClose();
     }
-  }, [visible, height, translateY, overlayOpacity]);
+  }, [visible]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  function handleDismiss() {
+    onDismiss();
+  }
 
   return (
     <Modal
-      visible={visible}
+      visible={modalVisible}
       transparent
       animationType="none"
-      onRequestClose={onDismiss}
+      onRequestClose={handleDismiss}
       statusBarTranslucent
     >
       <KeyboardAvoidingView
@@ -86,7 +99,7 @@ export function BottomSheet({
         <Animated.View style={[styles.overlay, { opacity: overlayOpacity }]}>
           <Pressable
             style={StyleSheet.absoluteFill}
-            onPress={onDismiss}
+            onPress={handleDismiss}
             accessibilityRole="button"
             accessibilityLabel="シートを閉じる"
           />
@@ -100,7 +113,6 @@ export function BottomSheet({
             contentStyle,
           ]}
         >
-          {/* Handle bar */}
           <View style={styles.handleRow}>
             <View style={styles.handle} />
           </View>
@@ -111,7 +123,7 @@ export function BottomSheet({
               <IconButton
                 icon="close"
                 size={20}
-                onPress={onDismiss}
+                onPress={handleDismiss}
                 accessibilityLabel="閉じる"
               />
             </View>

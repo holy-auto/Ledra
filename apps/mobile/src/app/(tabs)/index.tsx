@@ -108,6 +108,7 @@ export default function HomeScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
 
+  // ponytail: recalculated on every render so it stays current across midnight
   const today = dayjs();
 
   const loadStats = useCallback(async () => {
@@ -301,8 +302,11 @@ export default function HomeScreen() {
 
   async function onRefresh() {
     setRefreshing(true);
-    await loadStats();
-    setRefreshing(false);
+    try {
+      await loadStats();
+    } finally {
+      setRefreshing(false);
+    }
   }
 
   const progress = stats.todayTotal > 0
