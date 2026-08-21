@@ -11,6 +11,7 @@ import { router } from "expo-router";
 import dayjs from "dayjs";
 import "dayjs/locale/ja";
 
+import { useQuery } from "@tanstack/react-query";
 import { useAuthStore } from "@/stores/authStore";
 import { supabase } from "@/lib/supabase";
 import { colors, radius, spacing, sizing, shadows } from "@/constants/tokens";
@@ -110,6 +111,23 @@ export default function HomeScreen() {
 
   // ponytail: recalculated on every render so it stays current across midnight
   const today = dayjs();
+
+  // ponytail: notification badge — notifications テーブルの未読件数を使う
+  const { data: unreadNotifCount = 0 } = useQuery({
+    queryKey: ["notif-unread-count", user?.id],
+    queryFn: async () => {
+      if (!user?.id) return 0;
+      const { count, error } = await supabase
+        .from("notifications")
+        .select("id", { count: "exact", head: true })
+        .or(`user_id.is.null,user_id.eq.${user.id}`)
+        .is("read_at", null);
+      if (error) return 0;
+      return count ?? 0;
+    },
+    enabled: !!user?.id,
+    refetchInterval: 30_000,
+  });
 
   const loadStats = useCallback(async () => {
     if (!user?.tenantId) return;
@@ -368,9 +386,9 @@ export default function HomeScreen() {
               accessibilityLabel="通知"
               style={styles.headerBtn}
             />
-            {stats.issues.length > 0 && (
+            {unreadNotifCount > 0 && (
               <View style={styles.notifBadge}>
-                <Text style={styles.notifBadgeText}>{stats.issues.length}</Text>
+                <Text style={styles.notifBadgeText}>{unreadNotifCount}</Text>
               </View>
             )}
           </View>

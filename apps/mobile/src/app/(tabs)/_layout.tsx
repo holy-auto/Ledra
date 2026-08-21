@@ -152,7 +152,8 @@ export default function TabsLayout() {
 }
 
 /**
- * Tab icon with floating circular highlight for active state.
+ * Tab icon with subtle pill-shaped background for active state.
+ * ponytail: 旧デザインの青丸 → 薄い青背景ピルに変更。視認性↑、主張↓
  */
 function TabIcon({
   name,
@@ -168,7 +169,7 @@ function TabIcon({
       <Icon
         source={name}
         size={sizing.tabIconSize}
-        color={focused ? colors.textOnPrimary : color}
+        color={focused ? colors.primary : color}
       />
     </View>
   );
@@ -206,15 +207,14 @@ function QuickCreateFAB({ onPress }: { onPress: () => void }) {
 
 const styles = StyleSheet.create({
   tabIconWrap: {
-    width: 36,
-    height: 36,
+    width: 48,
+    height: 32,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: 18,
+    borderRadius: 16,
   },
   tabIconActive: {
-    backgroundColor: colors.primary,
-    ...shadows.fab,
+    backgroundColor: colors.primaryLight,
   },
   fabContainer: {
     position: "absolute",

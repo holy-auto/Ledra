@@ -7,7 +7,7 @@ import {
   Pressable,
 } from "react-native";
 import { Text, Icon } from "react-native-paper";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { supabase } from "@/lib/supabase";
 import { useAuthStore } from "@/stores/authStore";
@@ -27,8 +27,8 @@ interface NotificationItem {
   id: string;
   title: string;
   body: string | null;
-  type: string | null;
-  read: boolean;
+  notification_type: string | null;
+  read_at: string | null;
   created_at: string;
 }
 
@@ -50,6 +50,7 @@ const FILTER_SEGMENTS: { value: NotifFilter; label: string }[] = [
 export default function NotificationsScreen() {
   const { user } = useAuthStore();
   const [filter, setFilter] = useState<NotifFilter>("all");
+  const queryClient = useQueryClient();
 
   const {
     data: notifications = [],
@@ -60,26 +61,44 @@ export default function NotificationsScreen() {
     queryFn: async () => {
       if (!user?.id) return [];
 
+      // ponytail: notification_type / read_at が正しいカラム名（type / read は存在しない）
+      // user_id IS NULL はテナント全体への通知
       const { data, error } = await supabase
         .from("notifications")
-        .select("id, title, body, type, read, created_at")
-        .eq("user_id", user.id)
+        .select("id, title, body, notification_type, read_at, created_at")
+        .or(`user_id.is.null,user_id.eq.${user.id}`)
         .order("created_at", { ascending: false })
         .limit(100);
 
       if (error) throw error;
-      return (data ?? []) as NotificationItem[];
+      return (data ?? []) as unknown as NotificationItem[];
     },
     enabled: !!user?.id,
     refetchInterval: 30_000,
   });
 
+  const markReadMutation = useMutation({
+    mutationFn: async (notifId: string) => {
+      const { error } = await supabase
+        .from("notifications")
+        .update({ read_at: new Date().toISOString() })
+        .eq("id", notifId)
+        .is("read_at", null);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["notifications"] });
+    },
+  });
+
+  const isUnread = (n: NotificationItem) => n.read_at === null;
+
   const filtered =
     filter === "all"
       ? notifications
-      : notifications.filter((n) => !n.read);
+      : notifications.filter(isUnread);
 
-  const unreadCount = notifications.filter((n) => !n.read).length;
+  const unreadCount = notifications.filter(isUnread).length;
 
   const onRefresh = useCallback(async () => {
     try {
@@ -104,13 +123,17 @@ export default function NotificationsScreen() {
   };
 
   const renderItem = ({ item }: { item: NotificationItem }) => {
-    const iconCfg = TYPE_ICON[item.type ?? ""] ?? DEFAULT_ICON;
+    const iconCfg = TYPE_ICON[item.notification_type ?? ""] ?? DEFAULT_ICON;
+    const unread = isUnread(item);
 
     return (
       <Pressable
-        style={[styles.card, !item.read && styles.cardUnread]}
+        style={[styles.card, unread && styles.cardUnread]}
+        onPress={() => {
+          if (unread) markReadMutation.mutate(item.id);
+        }}
         accessibilityRole="button"
-        accessibilityLabel={`${item.title} ${item.read ? "" : "未読"}`}
+        accessibilityLabel={`${item.title} ${unread ? "未読" : ""}`}
       >
         <View style={[styles.iconContainer, { backgroundColor: iconCfg.bg }]}>
           <Icon source={iconCfg.icon} size={20} color={iconCfg.color} />
@@ -118,7 +141,7 @@ export default function NotificationsScreen() {
         <View style={styles.cardContent}>
           <View style={styles.cardTitleRow}>
             <Text
-              style={[styles.titleText, !item.read && styles.titleUnread]}
+              style={[styles.titleText, unread && styles.titleUnread]}
               numberOfLines={1}
             >
               {item.title}
@@ -131,7 +154,7 @@ export default function NotificationsScreen() {
             </Text>
           )}
         </View>
-        {!item.read && <View style={styles.unreadDot} />}
+        {unread && <View style={styles.unreadDot} />}
       </Pressable>
     );
   };

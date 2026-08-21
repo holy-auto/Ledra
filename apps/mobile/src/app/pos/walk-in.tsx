@@ -24,6 +24,9 @@ interface MenuItem {
   name: string;
   unit_price: number;
   description: string | null;
+  category_large: string | null;
+  category_medium: string | null;
+  category_small: string | null;
 }
 
 interface CartItem {
@@ -167,7 +170,7 @@ export default function WalkInCheckoutScreen() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("menu_items")
-        .select("id, name, unit_price, description")
+        .select("id, name, unit_price, description, category_large, category_medium, category_small")
         .eq("tenant_id", user!.tenantId)
         .eq("is_active", true)
         .order("sort_order");
@@ -176,6 +179,31 @@ export default function WalkInCheckoutScreen() {
     },
     enabled: !!user?.tenantId,
   });
+
+  // メニュー検索・カテゴリフィルタ
+  const [menuSearch, setMenuSearch] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState<string>("すべて");
+
+  const categories = useMemo(() => {
+    const unique = new Set<string>();
+    for (const item of menuItems) {
+      unique.add(item.category_large ?? "未分類");
+    }
+    return ["すべて", ...Array.from(unique).sort()];
+  }, [menuItems]);
+
+  const filteredMenuItems = useMemo(() => {
+    let items = menuItems;
+    if (selectedCategory !== "すべて") {
+      const cat = selectedCategory === "未分類" ? null : selectedCategory;
+      items = items.filter((i) => (i.category_large ?? null) === cat);
+    }
+    if (menuSearch.trim()) {
+      const q = menuSearch.trim().toLowerCase();
+      items = items.filter((i) => i.name.toLowerCase().includes(q));
+    }
+    return items;
+  }, [menuItems, selectedCategory, menuSearch]);
 
   function addMenuItem(item: MenuItem) {
     setCart((prev) => {
@@ -381,8 +409,44 @@ export default function WalkInCheckoutScreen() {
           <Text style={styles.heading}>
             メニューから追加
           </Text>
+          <TextInput
+            mode="outlined"
+            placeholder="メニュー名で検索..."
+            value={menuSearch}
+            onChangeText={setMenuSearch}
+            left={<TextInput.Icon icon="magnify" />}
+            right={menuSearch ? <TextInput.Icon icon="close" onPress={() => setMenuSearch("")} /> : undefined}
+            style={styles.searchInput}
+            dense
+          />
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.categoryScroll}
+            contentContainerStyle={styles.categoryScrollContent}
+          >
+            {categories.map((cat) => (
+              <Pressable
+                key={cat}
+                style={[
+                  styles.categoryChip,
+                  selectedCategory === cat && styles.categoryChipActive,
+                ]}
+                onPress={() => setSelectedCategory(cat)}
+              >
+                <Text
+                  style={[
+                    styles.categoryChipLabel,
+                    selectedCategory === cat && styles.categoryChipLabelActive,
+                  ]}
+                >
+                  {cat}
+                </Text>
+              </Pressable>
+            ))}
+          </ScrollView>
           <View style={styles.menuGrid}>
-            {menuItems.map((item) => (
+            {filteredMenuItems.map((item) => (
               <Pressable
                 key={item.id}
                 style={styles.menuChip}
@@ -399,6 +463,11 @@ export default function WalkInCheckoutScreen() {
             {menuItems.length === 0 && (
               <Text style={styles.emptyText}>
                 メニューが未登録です
+              </Text>
+            )}
+            {menuItems.length > 0 && filteredMenuItems.length === 0 && (
+              <Text style={styles.emptyText}>
+                該当するメニューがありません
               </Text>
             )}
           </View>
@@ -618,6 +687,37 @@ const styles = StyleSheet.create({
   emptyText: {
     ...typography.bodySmall,
     color: colors.textSecondary,
+  },
+  searchInput: {
+    backgroundColor: colors.surface,
+    marginBottom: spacing.sm,
+  },
+  categoryScroll: {
+    marginBottom: spacing.md,
+    marginHorizontal: -spacing.xs,
+  },
+  categoryScrollContent: {
+    paddingHorizontal: spacing.xs,
+    gap: spacing.sm,
+  },
+  categoryChip: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.full,
+    backgroundColor: colors.surfaceVariant,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  categoryChipActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  categoryChipLabel: {
+    ...typography.labelSmall,
+    color: colors.textSecondary,
+  },
+  categoryChipLabelActive: {
+    color: colors.textOnPrimary,
   },
   menuGrid: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
   menuChip: {
