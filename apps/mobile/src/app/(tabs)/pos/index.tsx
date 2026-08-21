@@ -16,8 +16,8 @@ interface PosItem {
   customer: { id: string; name: string } | null;
   vehicle: {
     id: string;
-    plate_number: string;
-    make: string;
+    plate_display: string;
+    maker: string;
     model: string;
   } | null;
   reservation_items: {
@@ -43,7 +43,7 @@ export default function PosScreen() {
           payment_status,
           estimated_amount,
           customer:customers ( id, name ),
-          vehicle:vehicles ( id, plate_number, make, model ),
+          vehicle:vehicles ( id, plate_display, maker, model ),
           reservation_items (
             id,
             menu_item:menu_items ( name )
@@ -106,7 +106,7 @@ export default function PosScreen() {
 
       <Text style={styles.vehicleInfo}>
         {item.vehicle
-          ? `${item.vehicle.plate_number}  ${item.vehicle.make} ${item.vehicle.model}`
+          ? `${item.vehicle.plate_display}  ${item.vehicle.maker} ${item.vehicle.model}`
           : "車両未登録"}
       </Text>
 

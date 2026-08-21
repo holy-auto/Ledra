@@ -23,11 +23,9 @@ interface CertItem {
   certificate_no: string;
   status: string;
   service_type: string | null;
-  issued_date: string | null;
-  plate_display: string | null;
-  vehicle_maker: string | null;
-  vehicle_model: string | null;
+  created_at: string;
   customer_name: string | null;
+  vehicle: { id: string; plate_display: string; maker: string; model: string } | null;
 }
 
 const STATUS_MAP: Record<
@@ -62,8 +60,9 @@ export default function CertificatesScreen() {
       let query = supabase
         .from("certificates")
         .select(
-          `id, certificate_no, status, service_type, issued_date,
-           plate_display, vehicle_maker, vehicle_model, customer_name`
+          `id, certificate_no, status, service_type, created_at,
+           customer_name,
+           vehicle:vehicles ( id, plate_display, maker, model )`
         )
         .eq("tenant_id", user.tenantId)
         .order("created_at", { ascending: false })
@@ -76,7 +75,7 @@ export default function CertificatesScreen() {
 
       const { data, error } = await query;
       if (error) throw error;
-      return (data ?? []) as CertItem[];
+      return (data ?? []) as unknown as CertItem[];
     },
     enabled: !!user?.tenantId,
     refetchInterval: 60_000,
@@ -98,9 +97,9 @@ export default function CertificatesScreen() {
       label: item.status,
       severity: "neutral" as const,
     };
-    const vehicleText = [item.vehicle_maker, item.vehicle_model]
-      .filter(Boolean)
-      .join(" ");
+    const vehicleText = item.vehicle
+      ? [item.vehicle.maker, item.vehicle.model].filter(Boolean).join(" ")
+      : "";
 
     return (
       <Pressable
@@ -130,20 +129,20 @@ export default function CertificatesScreen() {
 
         {/* Meta row */}
         <View style={styles.metaRow}>
-          {item.issued_date && (
+          {item.created_at && (
             <View style={styles.metaItem}>
               <Icon
                 source="calendar-outline"
                 size={14}
                 color={colors.textTertiary}
               />
-              <Text style={styles.metaText}>{item.issued_date}</Text>
+              <Text style={styles.metaText}>{item.created_at.split("T")[0]}</Text>
             </View>
           )}
-          {item.plate_display && (
+          {item.vehicle?.plate_display && (
             <View style={styles.metaItem}>
               <Icon source="car" size={14} color={colors.textTertiary} />
-              <Text style={styles.metaText}>{item.plate_display}</Text>
+              <Text style={styles.metaText}>{item.vehicle?.plate_display}</Text>
             </View>
           )}
           {item.customer_name && (

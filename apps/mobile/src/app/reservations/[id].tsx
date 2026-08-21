@@ -18,7 +18,7 @@ interface Reservation {
   status: string;
   payment_status: string;
   scheduled_date: string;
-  scheduled_time: string | null;
+  start_time: string | null;
   notes: string | null;
   customer: {
     id: string;
@@ -28,10 +28,9 @@ interface Reservation {
   } | null;
   vehicle: {
     id: string;
-    plate_number: string;
-    make: string | null;
+    plate_display: string;
+    maker: string | null;
     model: string | null;
-    color: string | null;
   } | null;
   reservation_items: {
     id: string;
@@ -72,9 +71,9 @@ export default function ReservationDetailScreen() {
         .from("reservations")
         .select(
           `
-          id, status, payment_status, scheduled_date, scheduled_time, notes,
+          id, status, payment_status, scheduled_date, start_time, notes,
           customer:customers(id, name, phone, email),
-          vehicle:vehicles(id, plate_number, make, model, color),
+          vehicle:vehicles(id, plate_display, maker, model),
           reservation_items(
             id, quantity, unit_price,
             menu_item:menu_items(name)
@@ -162,8 +161,8 @@ export default function ReservationDetailScreen() {
           </View>
           <Text style={styles.dateText}>
             {reservation.scheduled_date}
-            {reservation.scheduled_time
-              ? ` ${reservation.scheduled_time}`
+            {reservation.start_time
+              ? ` ${reservation.start_time}`
               : ""}
           </Text>
         </View>
@@ -197,13 +196,12 @@ export default function ReservationDetailScreen() {
               車両情報
             </Text>
             <Text style={styles.name}>
-              {reservation.vehicle.plate_number}
+              {reservation.vehicle.plate_display}
             </Text>
             <Text style={styles.subText}>
               {[
-                reservation.vehicle.make,
+                reservation.vehicle.maker,
                 reservation.vehicle.model,
-                reservation.vehicle.color,
               ]
                 .filter(Boolean)
                 .join(" / ")}

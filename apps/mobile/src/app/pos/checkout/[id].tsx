@@ -47,7 +47,7 @@ interface ReservationCheckout {
   status: string;
   payment_status: string;
   customer: { name: string } | null;
-  vehicle: { plate_number: string } | null;
+  vehicle: { plate_display: string } | null;
   reservation_items: {
     id: string;
     quantity: number;
@@ -141,7 +141,7 @@ export default function PosCheckoutScreen() {
           `
           id, status, payment_status,
           customer:customers(name),
-          vehicle:vehicles(plate_number),
+          vehicle:vehicles(plate_display),
           reservation_items(
             id, quantity, unit_price,
             menu_item:menu_items(name)
@@ -367,7 +367,7 @@ export default function PosCheckoutScreen() {
             {reservation.customer?.name ?? "顧客不明"}
           </Text>
           <Text style={styles.subText}>
-            {reservation.vehicle?.plate_number ?? ""}
+            {reservation.vehicle?.plate_display ?? ""}
           </Text>
         </View>
 

@@ -126,7 +126,7 @@ export default function HomeScreen() {
 
     let q2 = supabase
       .from("reservations")
-      .select("id, status, customer_name, vehicle_info, scheduled_time")
+      .select("id, status, start_time, customer:customers ( name ), vehicle:vehicles ( plate_display, maker, model )")
       .eq("tenant_id", user.tenantId);
     if (storeId) q2 = q2.eq("store_id", storeId);
 
@@ -138,7 +138,7 @@ export default function HomeScreen() {
 
     let q5 = supabase
       .from("reservations")
-      .select("id, scheduled_date, scheduled_time, status, customer_name, vehicle_info")
+      .select("id, scheduled_date, start_time, status, customer:customers ( name ), vehicle:vehicles ( plate_display, maker, model )")
       .eq("tenant_id", user.tenantId);
     if (storeId) q5 = q5.eq("store_id", storeId);
 
@@ -161,7 +161,7 @@ export default function HomeScreen() {
         q5
           .eq("scheduled_date", todayStr)
           .not("status", "eq", "cancelled")
-          .order("scheduled_time", { ascending: true })
+          .order("start_time", { ascending: true })
           .limit(8),
       ]);
 
@@ -205,38 +205,40 @@ export default function HomeScreen() {
 
     // Active work entries
     const activeWorkData = (
-      (activeWork.data ?? []) as Array<{
+      (activeWork.data ?? []) as unknown as Array<{
         id: string;
         status: string;
-        customer_name: string | null;
-        vehicle_info: string | null;
-        scheduled_time: string | null;
+        customer: { name: string } | null;
+        vehicle: { plate_display: string; maker: string; model: string } | null;
+        start_time: string | null;
       }>
     ).map((r) => ({
       id: r.id,
       progress: r.status === "in_progress" ? 0.5 : 0.2,
-      vehicleName: r.vehicle_info ?? "車両",
-      plateNumber: "",
+      vehicleName: r.vehicle
+        ? `${r.vehicle.maker} ${r.vehicle.model}`.trim() || r.vehicle.plate_display
+        : "車両",
+      plateNumber: r.vehicle?.plate_display ?? "",
       workType: "",
-      worker: r.customer_name ?? "",
+      worker: r.customer?.name ?? "",
       nextStep: "",
       estimatedCompletion: "",
-      deadline: r.scheduled_time ? r.scheduled_time.slice(0, 5) : "",
+      deadline: r.start_time ? r.start_time.slice(0, 5) : "",
     }));
 
     // Build timeline
     const timeline: TimelineEntry[] = (
-      (todayTimeline.data ?? []) as Array<{
+      (todayTimeline.data ?? []) as unknown as Array<{
         id: string;
-        scheduled_time: string | null;
+        start_time: string | null;
         status: string;
-        customer_name: string | null;
-        vehicle_info: string | null;
+        customer: { name: string } | null;
+        vehicle: { plate_display: string; maker: string; model: string } | null;
       }>
     ).map((r) => ({
       id: r.id,
-      time: r.scheduled_time ? r.scheduled_time.slice(0, 5) : "--:--",
-      title: r.vehicle_info || r.customer_name || "予約",
+      time: r.start_time ? r.start_time.slice(0, 5) : "--:--",
+      title: r.vehicle?.plate_display || r.customer?.name || "予約",
       status: (
         r.status === "completed" || r.status === "delivered"
           ? "completed"

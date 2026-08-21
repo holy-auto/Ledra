@@ -25,7 +25,7 @@ interface Payment {
   reservation: {
     id: string;
     customer: { name: string; phone: string | null } | null;
-    vehicle: { plate_number: string; make: string | null; model: string | null } | null;
+    vehicle: { plate_display: string; maker: string | null; model: string | null } | null;
     reservation_items: {
       id: string;
       quantity: number;
@@ -81,7 +81,7 @@ export default function PosReceiptScreen() {
           reservation:reservations(
             id,
             customer:customers(name, phone),
-            vehicle:vehicles(plate_number, make, model),
+            vehicle:vehicles(plate_display, maker, model),
             reservation_items(
               id, quantity, unit_price,
               menu_item:menu_items(name)
@@ -192,9 +192,9 @@ export default function PosReceiptScreen() {
               </Text>
             )}
             <Text style={styles.vehicleText}>
-              {payment.reservation.vehicle?.plate_number ?? ""}{" "}
+              {payment.reservation.vehicle?.plate_display ?? ""}{" "}
               {[
-                payment.reservation.vehicle?.make,
+                payment.reservation.vehicle?.maker,
                 payment.reservation.vehicle?.model,
               ]
                 .filter(Boolean)

@@ -21,12 +21,12 @@ interface WorkItem {
   id: string;
   status: WorkStatus;
   scheduled_date: string | null;
-  scheduled_time: string | null;
+  start_time: string | null;
   customer: { id: string; name: string } | null;
   vehicle: {
     id: string;
-    plate_number: string;
-    make: string;
+    plate_display: string;
+    maker: string;
     model: string;
   } | null;
   assigned_staff: { id: string; display_name: string } | null;
@@ -58,16 +58,16 @@ export default function WorkScreen() {
         .from("reservations")
         .select(
           `
-          id, status, scheduled_date, scheduled_time,
+          id, status, scheduled_date, start_time,
           customer:customers ( id, name ),
-          vehicle:vehicles ( id, plate_number, make, model ),
+          vehicle:vehicles ( id, plate_display, maker, model ),
           assigned_staff:staff ( id, display_name ),
           reservation_items ( menu_item:menu_items ( name ) )
         `
         )
         .eq("tenant_id", user.tenantId)
         .in("status", ["arrived", "in_progress"])
-        .order("scheduled_time", { ascending: true });
+        .order("start_time", { ascending: true });
 
       // ponytail: skip store filter when id is empty (店舗なしで続行)
       if (selectedStore?.id) {
@@ -107,7 +107,7 @@ export default function WorkScreen() {
         style={styles.card}
         onPress={() => router.push(`/work/${item.id}`)}
         accessibilityRole="button"
-        accessibilityLabel={`${item.vehicle?.plate_number ?? "車両不明"} ${cfg.label}`}
+        accessibilityLabel={`${item.vehicle?.plate_display ?? "車両不明"} ${cfg.label}`}
       >
         {/* Top row: vehicle + status */}
         <View style={styles.cardHeader}>
@@ -116,11 +116,11 @@ export default function WorkScreen() {
           </View>
           <View style={styles.cardHeaderText}>
             <Text style={styles.plateText}>
-              {item.vehicle?.plate_number ?? "車両未登録"}
+              {item.vehicle?.plate_display ?? "車両未登録"}
             </Text>
             <Text style={styles.vehicleModel} numberOfLines={1}>
               {item.vehicle
-                ? `${item.vehicle.make} ${item.vehicle.model}`
+                ? `${item.vehicle.maker} ${item.vehicle.model}`
                 : ""}
             </Text>
           </View>
@@ -138,7 +138,7 @@ export default function WorkScreen() {
         <View style={styles.metaRow}>
           <View style={styles.metaItem}>
             <Icon source="clock-outline" size={14} color={colors.textTertiary} />
-            <Text style={styles.metaText}>{formatTime(item.scheduled_time)}</Text>
+            <Text style={styles.metaText}>{formatTime(item.start_time)}</Text>
           </View>
           <View style={styles.metaItem}>
             <Icon source="account-outline" size={14} color={colors.textTertiary} />

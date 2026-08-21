@@ -41,15 +41,15 @@ interface WorkOrder {
   sub_status: string | null;
   progress_note: string | null;
   scheduled_date: string;
-  scheduled_time: string | null;
+  start_time: string | null;
   customer: {
     name: string;
     phone: string | null;
   } | null;
   vehicle: {
     id: string;
-    plate_number: string;
-    make: string | null;
+    plate_display: string;
+    maker: string | null;
     model: string | null;
   } | null;
   reservation_items: {
@@ -114,9 +114,9 @@ export default function WorkDetailScreen() {
         .from("reservations")
         .select(
           `
-          id, status, sub_status, progress_note, scheduled_date, scheduled_time,
+          id, status, sub_status, progress_note, scheduled_date, start_time,
           customer:customers(name, phone),
-          vehicle:vehicles(id, plate_number, make, model),
+          vehicle:vehicles(id, plate_display, maker, model),
           reservation_items(
             id, quantity,
             menu_item:menu_items(name)
@@ -264,15 +264,15 @@ export default function WorkDetailScreen() {
             </View>
             <View style={styles.heroText}>
               <Text style={styles.heroMake}>
-                {work.vehicle?.make ?? ""} {work.vehicle?.model ?? ""}
+                {work.vehicle?.maker ?? ""} {work.vehicle?.model ?? ""}
               </Text>
               <Text style={styles.heroPlate}>
-                {work.vehicle?.plate_number ?? "車両不明"}
+                {work.vehicle?.plate_display ?? "車両不明"}
               </Text>
               <View style={styles.heroMeta}>
                 <Icon source="calendar-outline" size={14} color={colors.textTertiary} />
                 <Text style={styles.heroMetaText}>
-                  納車 {work.scheduled_time?.slice(0, 5) ?? "--:--"}
+                  納車 {work.start_time?.slice(0, 5) ?? "--:--"}
                 </Text>
               </View>
             </View>

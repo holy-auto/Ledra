@@ -33,13 +33,13 @@ type ReservationStatus =
 interface Reservation {
   id: string;
   scheduled_date: string;
-  scheduled_time: string | null;
+  start_time: string | null;
   status: ReservationStatus;
   customer: { id: string; name: string } | null;
   vehicle: {
     id: string;
-    plate_number: string;
-    make: string;
+    plate_display: string;
+    maker: string;
     model: string;
   } | null;
 }
@@ -100,15 +100,15 @@ export default function ReservationsScreen() {
           `
           id,
           scheduled_date,
-          scheduled_time,
+          start_time,
           status,
           customer:customers ( id, name ),
-          vehicle:vehicles ( id, plate_number, make, model )
+          vehicle:vehicles ( id, plate_display, maker, model )
         `
         )
         .eq("tenant_id", user.tenantId)
         .eq("scheduled_date", dateStr)
-        .order("scheduled_time", { ascending: true });
+        .order("start_time", { ascending: true });
 
       // ponytail: skip store filter when id is empty (店舗なしで続行)
       if (selectedStore?.id) {
@@ -154,10 +154,10 @@ export default function ReservationsScreen() {
       style={styles.card}
       onPress={() => router.push(`/reservations/${item.id}`)}
       accessibilityRole="button"
-      accessibilityLabel={`${item.customer?.name ?? "未登録"} ${formatTime(item.scheduled_time)}`}
+      accessibilityLabel={`${item.customer?.name ?? "未登録"} ${formatTime(item.start_time)}`}
     >
       <View style={styles.cardLeft}>
-        <Text style={styles.time}>{formatTime(item.scheduled_time)}</Text>
+        <Text style={styles.time}>{formatTime(item.start_time)}</Text>
       </View>
       <View style={styles.cardCenter}>
         <Text style={styles.customerName} numberOfLines={1}>
@@ -165,7 +165,7 @@ export default function ReservationsScreen() {
         </Text>
         <Text style={styles.vehicleInfo} numberOfLines={1}>
           {item.vehicle
-            ? `${item.vehicle.plate_number}  ${item.vehicle.make} ${item.vehicle.model}`
+            ? `${item.vehicle.plate_display}  ${item.vehicle.maker} ${item.vehicle.model}`
             : "車両未登録"}
         </Text>
       </View>
