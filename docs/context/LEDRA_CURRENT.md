@@ -118,6 +118,14 @@ Sentry · Resend (+ SendGrid fallback) · Anthropic (Opus 4.8 / Sonnet 4.6 / Hai
   - 証明書リスト: SegmentedControl（すべて/有効/下書き）フィルター
   - 証明書詳細: VERIFIED shield hero、完全性検証チェック、PDF/QR/共有アクション
   - 通知センター: すべて/未読フィルター、タイプ別アイコン、相対時刻表示
+- **全画面デザイントークン適用 & 認証/オンボーディングフロー新設 完了**（2026-08-21、PR #926 に追加コミット）:
+  - 既存28画面をLedraデザイントークンに一括移行（hardcoded colors→tokens, Card→View+card styles,
+    Button→LedraButton, Chip→StatusBadge, SegmentedButtons→SegmentedControl, Dialog→Alert.alert()/LedraAlert,
+    Searchbar→native TextInput）
+  - 認証フロー新規4画面: OTP認証（verify-otp）、生体認証セットアップ（biometric-setup）、
+    オンボーディング（3スライド）、パスワードリセット（forgot-password）
+  - 認証フロー既存3画面リデザイン: ログイン（ブランドヘッダー）、サインアップ、店舗選択
+  - **モバイルアプリの全41画面がLedraデザイントークン準拠**。実機確認待ち
 
 ## 直近の開発フォーカス（git log 直近30件より、2026-07 時点）
 

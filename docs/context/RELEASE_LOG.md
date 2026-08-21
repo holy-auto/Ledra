@@ -13,6 +13,22 @@
 - 対象: どの画面・API・業種向けか
 ```
 
+## 2026-08-21 全画面デザイントークン適用 & 認証/オンボーディングフロー新設（branch claude/imp-000-implementation-r0eje1 / PR #926）
+
+- 内容: モバイルアプリの全41画面をLedraデザイントークン準拠にする最終仕上げ。
+  - **既存28画面の一括トークン移行**: hardcoded colors→tokens, Card→View+card styles,
+    Button→LedraButton, Chip→StatusBadge, SegmentedButtons→SegmentedControl,
+    Dialog→Alert.alert()/LedraAlert, Searchbar→native TextInput, Divider→View+colors.divider
+  - **認証フロー新規4画面**: OTP認証（verify-otp: 6桁個別入力+自動フォーカス+60秒リセンド）、
+    生体認証セットアップ（biometric-setup: 3メリット+アニメーション成功画面）、
+    オンボーディング（3スライド横スワイプ+ページインジケーター+スキップ）、
+    パスワードリセット（forgot-password: ブランドヘッダー+成功画面）
+  - **認証フロー既存3画面リデザイン**: ログイン（Ledra Blueブランドヘッダー+角丸フォームカード）、
+    サインアップ（同ブランドヘッダーパターン）、店舗選択（コンパクトブランドバー）
+- 対象: モバイルアプリ（`apps/mobile/`）。全41画面（スクリーン）がデザイントークン準拠。
+- 検証: `npx tsc --noEmit` 通過、`expo lint` エラー0件、テスト通過。
+  32ファイル変更、+4903行/-2859行。
+
 ## 2026-08-21 UI-040/060/070 モバイルアプリ UI リデザイン Phase 2（branch claude/imp-000-implementation-r0eje1 / PR #926）
 
 - 内容: Phase 1（UI-010/020/030）に続き、残りの主要画面をLedraデザイントークンベースに全面リデザイン。
