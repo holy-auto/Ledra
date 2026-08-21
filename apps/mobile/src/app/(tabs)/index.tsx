@@ -112,30 +112,44 @@ export default function HomeScreen() {
   const today = dayjs();
 
   const loadStats = useCallback(async () => {
-    if (!user?.tenantId || !selectedStore?.id) return;
+    if (!user?.tenantId) return;
 
     const todayStr = new Date().toISOString().split("T")[0];
+    // ponytail: skip store filter when id is empty (店舗なしで続行)
+    const storeId = selectedStore?.id || null;
+
+    let q1 = supabase
+      .from("reservations")
+      .select("id, status", { count: "exact" })
+      .eq("tenant_id", user.tenantId);
+    if (storeId) q1 = q1.eq("store_id", storeId);
+
+    let q2 = supabase
+      .from("reservations")
+      .select("id, status, customer_name, vehicle_info, scheduled_time")
+      .eq("tenant_id", user.tenantId);
+    if (storeId) q2 = q2.eq("store_id", storeId);
+
+    let q3 = supabase
+      .from("reservations")
+      .select("id", { count: "exact", head: true })
+      .eq("tenant_id", user.tenantId);
+    if (storeId) q3 = q3.eq("store_id", storeId);
+
+    let q5 = supabase
+      .from("reservations")
+      .select("id, scheduled_date, scheduled_time, status, customer_name, vehicle_info")
+      .eq("tenant_id", user.tenantId);
+    if (storeId) q5 = q5.eq("store_id", storeId);
 
     const [todayRes, activeWork, awaitingPay, preparedTags, todayTimeline] =
       await Promise.all([
-        supabase
-          .from("reservations")
-          .select("id, status", { count: "exact" })
-          .eq("tenant_id", user.tenantId)
-          .eq("store_id", selectedStore.id)
+        q1
           .eq("scheduled_date", todayStr)
           .not("status", "eq", "cancelled"),
-        supabase
-          .from("reservations")
-          .select("id, status, customer_name, vehicle_info, scheduled_time")
-          .eq("tenant_id", user.tenantId)
-          .eq("store_id", selectedStore.id)
+        q2
           .in("status", ["arrived", "in_progress"]),
-        supabase
-          .from("reservations")
-          .select("id", { count: "exact", head: true })
-          .eq("tenant_id", user.tenantId)
-          .eq("store_id", selectedStore.id)
+        q3
           .eq("status", "completed")
           .eq("payment_status", "unpaid"),
         supabase
@@ -144,11 +158,7 @@ export default function HomeScreen() {
           .eq("tenant_id", user.tenantId)
           .eq("status", "prepared")
           .is("uid", null),
-        supabase
-          .from("reservations")
-          .select("id, scheduled_date, scheduled_time, status, customer_name, vehicle_info")
-          .eq("tenant_id", user.tenantId)
-          .eq("store_id", selectedStore.id)
+        q5
           .eq("scheduled_date", todayStr)
           .not("status", "eq", "cancelled")
           .order("scheduled_time", { ascending: true })

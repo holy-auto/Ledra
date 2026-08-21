@@ -52,9 +52,9 @@ export default function WorkScreen() {
   } = useQuery({
     queryKey: ["work", user?.tenantId, selectedStore?.id],
     queryFn: async () => {
-      if (!user?.tenantId || !selectedStore?.id) return [];
+      if (!user?.tenantId) return [];
 
-      const { data, error } = await supabase
+      let query = supabase
         .from("reservations")
         .select(
           `
@@ -66,14 +66,19 @@ export default function WorkScreen() {
         `
         )
         .eq("tenant_id", user.tenantId)
-        .eq("store_id", selectedStore.id)
         .in("status", ["arrived", "in_progress"])
         .order("scheduled_time", { ascending: true });
 
+      // ponytail: skip store filter when id is empty (店舗なしで続行)
+      if (selectedStore?.id) {
+        query = query.eq("store_id", selectedStore.id);
+      }
+
+      const { data, error } = await query;
       if (error) throw error;
       return (data ?? []) as unknown as WorkItem[];
     },
-    enabled: !!user?.tenantId && !!selectedStore?.id,
+    enabled: !!user?.tenantId,
     refetchInterval: 30_000,
   });
 

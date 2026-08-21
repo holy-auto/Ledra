@@ -32,9 +32,9 @@ export default function PosScreen() {
   const { data: items = [], isLoading, refetch } = useQuery({
     queryKey: ["pos", user?.tenantId, selectedStore?.id],
     queryFn: async () => {
-      if (!user?.tenantId || !selectedStore?.id) return [];
+      if (!user?.tenantId) return [];
 
-      const { data, error } = await supabase
+      let query = supabase
         .from("reservations")
         .select(
           `
@@ -51,15 +51,20 @@ export default function PosScreen() {
         `
         )
         .eq("tenant_id", user.tenantId)
-        .eq("store_id", selectedStore.id)
         .eq("status", "completed")
         .eq("payment_status", "unpaid")
         .order("updated_at", { ascending: false });
 
+      // ponytail: skip store filter when id is empty (店舗なしで続行)
+      if (selectedStore?.id) {
+        query = query.eq("store_id", selectedStore.id);
+      }
+
+      const { data, error } = await query;
       if (error) throw error;
       return (data ?? []) as unknown as PosItem[];
     },
-    enabled: !!user?.tenantId && !!selectedStore?.id,
+    enabled: !!user?.tenantId,
     refetchInterval: 30_000,
   });
 

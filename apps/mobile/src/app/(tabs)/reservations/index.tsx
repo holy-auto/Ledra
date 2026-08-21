@@ -92,7 +92,7 @@ export default function ReservationsScreen() {
       statusFilter,
     ],
     queryFn: async () => {
-      if (!user?.tenantId || !selectedStore?.id) return [];
+      if (!user?.tenantId) return [];
 
       let query = supabase
         .from("reservations")
@@ -107,9 +107,13 @@ export default function ReservationsScreen() {
         `
         )
         .eq("tenant_id", user.tenantId)
-        .eq("store_id", selectedStore.id)
         .eq("scheduled_date", dateStr)
         .order("scheduled_time", { ascending: true });
+
+      // ponytail: skip store filter when id is empty (店舗なしで続行)
+      if (selectedStore?.id) {
+        query = query.eq("store_id", selectedStore.id);
+      }
 
       if (statusFilter !== "all") {
         query = query.eq("status", statusFilter);
@@ -119,7 +123,7 @@ export default function ReservationsScreen() {
       if (error) throw error;
       return (data ?? []) as unknown as Reservation[];
     },
-    enabled: !!user?.tenantId && !!selectedStore?.id,
+    enabled: !!user?.tenantId,
   });
 
   const onRefresh = useCallback(async () => {

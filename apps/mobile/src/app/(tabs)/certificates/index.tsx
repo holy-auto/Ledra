@@ -57,23 +57,28 @@ export default function CertificatesScreen() {
   } = useQuery({
     queryKey: ["certificates", user?.tenantId, selectedStore?.id],
     queryFn: async () => {
-      if (!user?.tenantId || !selectedStore?.id) return [];
+      if (!user?.tenantId) return [];
 
-      const { data, error } = await supabase
+      let query = supabase
         .from("certificates")
         .select(
           `id, certificate_no, status, service_type, issued_date,
            plate_display, vehicle_maker, vehicle_model, customer_name`
         )
         .eq("tenant_id", user.tenantId)
-        .eq("store_id", selectedStore.id)
         .order("created_at", { ascending: false })
         .limit(200);
 
+      // ponytail: skip store filter when id is empty (店舗なしで続行)
+      if (selectedStore?.id) {
+        query = query.eq("store_id", selectedStore.id);
+      }
+
+      const { data, error } = await query;
       if (error) throw error;
       return (data ?? []) as CertItem[];
     },
-    enabled: !!user?.tenantId && !!selectedStore?.id,
+    enabled: !!user?.tenantId,
     refetchInterval: 60_000,
   });
 
