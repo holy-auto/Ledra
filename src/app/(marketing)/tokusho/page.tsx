@@ -82,6 +82,7 @@ export default function TokushoPage() {
 export const metadata: Metadata = {
   title: `特定商取引法に基づく表記 | ${siteConfig.siteName}`,
   description: "Ledraの特定商取引法に基づく表記です。",
+  alternates: { canonical: "/tokusho" },
   openGraph: {
     title: `特定商取引法に基づく表記 | ${siteConfig.siteName}`,
     description: "Ledraの特定商取引法に基づく表記です。",
