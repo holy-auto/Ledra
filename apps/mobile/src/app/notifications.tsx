@@ -184,8 +184,8 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
-    paddingBottom: spacing.sm,
+    paddingTop: spacing["2xl"],
+    paddingBottom: spacing.md,
     gap: spacing.md,
   },
   listContent: {
