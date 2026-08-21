@@ -13,6 +13,22 @@
 - 対象: どの画面・API・業種向けか
 ```
 
+## 2026-08-21 UI-040/060/070 モバイルアプリ UI リデザイン Phase 2（branch claude/imp-000-implementation-r0eje1 / PR #926）
+
+- 内容: Phase 1（UI-010/020/030）に続き、残りの主要画面をLedraデザイントークンベースに全面リデザイン。
+  - **UI-040（作業リスト & Job Hub）**: 作業一覧を StatusBadge+車両アイコン+メタ行のカード形式に再構成。
+    作業詳細を Vehicle heroカード+ProgressRing+NEXT ACTION+ステッパー+5タブ（概要/作業/証拠/書類/履歴）の
+    多機能ハブに拡張。
+  - **UI-060（車両 & 証明書タブ）**: 車両タブのスタブを検索バー付き一覧に実装（証明書数バッジ付き）。
+    車両詳細を Vehicle Passport レイアウト（Heroカード+2x2 Stat Grid+証明書タイムライン+NFCタグ一覧）に刷新。
+    証明書タブのスタブを SegmentedControl（すべて/有効/下書き）フィルター付き一覧に実装。
+    証明書詳細を VERIFIED shield hero+完全性検証チェック（写真同期/NFC/ステータス）+PDF/QR/共有アクションに刷新。
+  - **UI-070（通知センター）**: 新規画面作成。すべて/未読フィルター、タイプ別カラーアイコン、相対時刻表示、
+    未読インジケーター（青ドット+左ボーダー）。
+- 対象: モバイルアプリ（`apps/mobile/`）。ウェブ管理画面は対象外。
+- 検証: `npx tsc --noEmit` 通過、`npm run lint` エラー0件、全3806テスト通過。
+  7ファイル変更、+2217行/-571行。
+
 ## 2026-08-20 UI-010/020/030 モバイルアプリ UI リデザイン Phase 1（branch claude/imp-000-implementation-r0eje1 / PR #926）
 
 - 内容: Ledra_UIUX_Development_Specification_v2.0 のリファレンス画像を視覚目標として、
