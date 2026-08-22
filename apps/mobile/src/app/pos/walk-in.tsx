@@ -1,5 +1,13 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { View, StyleSheet, ScrollView, Pressable, Platform } from "react-native";
+import {
+  View,
+  StyleSheet,
+  ScrollView,
+  FlatList,
+  Pressable,
+  Platform,
+  useWindowDimensions,
+} from "react-native";
 import QRCode from "react-native-qrcode-svg";
 import {
   Text,
@@ -8,6 +16,7 @@ import {
   Snackbar,
   IconButton,
 } from "react-native-paper";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router, Stack } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 
@@ -38,22 +47,25 @@ interface CartItem {
 
 type PaymentMethod = "cash" | "card" | "qr" | "bank_transfer";
 
+/**
+ * 「よく使う」に出す件数。
+ * ponytail: 店舗が menu_items.sort_order で手で並べた順の上位を流用している。
+ * 上限: 実売上頻度ではない。頻度順にするなら payment_items の集計クエリが要る。
+ */
+const POPULAR_LIMIT = 12;
+
 function useDeviceType() {
-  const [isTablet, setIsTablet] = useState(false);
-  useEffect(() => {
-    if (Platform.OS === "ios") {
-      const { width, height } =
-        require("react-native").Dimensions.get("window");
-      setIsTablet(Math.min(width, height) >= 768);
-    }
-  }, []);
+  // useWindowDimensions は回転にも追随する。初回描画から確定するので
+  // これに依存する numColumns がマウント後に変わって再マウントすることもない
+  const { width, height } = useWindowDimensions();
+  const isTablet = Math.min(width, height) >= 768;
 
   const os = Platform.OS;
-  const isIPhone = os === "ios" && !isTablet;
-  const isIPad = os === "ios" && isTablet;
-  const isAndroid = os === "android";
-
-  return { isIPhone, isIPad, isAndroid };
+  return {
+    isIPhone: os === "ios" && !isTablet,
+    isIPad: os === "ios" && isTablet,
+    isAndroid: os === "android",
+  };
 }
 
 function useQrPaymentPoller(
@@ -89,7 +101,10 @@ function useQrPaymentPoller(
 export default function WalkInCheckoutScreen() {
   const { user, selectedStore } = useAuthStore();
   const { isIPhone, isIPad, isAndroid } = useDeviceType();
+  const insets = useSafeAreaInsets();
 
+  // POS レジ同様、品目選択と会計を 2 ステップに分ける（1 画面に積むと品数増加で破綻する）
+  const [step, setStep] = useState<"menu" | "checkout">("menu");
   const [cart, setCart] = useState<CartItem[]>([]);
   const [customName, setCustomName] = useState("");
   const [customPrice, setCustomPrice] = useState("");
@@ -101,6 +116,16 @@ export default function WalkInCheckoutScreen() {
     () => cart.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0),
     [cart],
   );
+  const itemCount = useMemo(
+    () => cart.reduce((n, item) => n + item.quantity, 0),
+    [cart],
+  );
+  // タイルに数量バッジを出すための menuItemId → 数量
+  const cartQty = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const c of cart) if (c.menuItemId) m.set(c.menuItemId, c.quantity);
+    return m;
+  }, [cart]);
   const received = parseInt(receivedAmount, 10) || 0;
   const change = paymentMethod === "cash" ? Math.max(0, received - total) : 0;
   const [snackbar, setSnackbar] = useState("");
@@ -182,28 +207,42 @@ export default function WalkInCheckoutScreen() {
 
   // メニュー検索・カテゴリフィルタ
   const [menuSearch, setMenuSearch] = useState("");
-  const [selectedCategory, setSelectedCategory] = useState<string>("すべて");
+  const [selectedCategory, setSelectedCategory] = useState<string>("よく使う");
 
   const categories = useMemo(() => {
     const unique = new Set<string>();
     for (const item of menuItems) {
       unique.add(item.category_large ?? "未分類");
     }
-    return ["すべて", ...Array.from(unique).sort()];
+    const rest = Array.from(unique).sort();
+    return menuItems.length > POPULAR_LIMIT
+      ? ["よく使う", "すべて", ...rest]
+      : ["すべて", ...rest];
   }, [menuItems]);
 
+  // メニュー読込前は selectedCategory が候補に無い。その場合は先頭に落とす
+  const activeCategory = categories.includes(selectedCategory)
+    ? selectedCategory
+    : (categories[0] ?? "すべて");
+
   const filteredMenuItems = useMemo(() => {
-    let items = menuItems;
-    if (selectedCategory !== "すべて") {
-      const cat = selectedCategory === "未分類" ? null : selectedCategory;
-      items = items.filter((i) => (i.category_large ?? null) === cat);
-    }
-    if (menuSearch.trim()) {
-      const q = menuSearch.trim().toLowerCase();
-      items = items.filter((i) => i.name.toLowerCase().includes(q));
-    }
-    return items;
-  }, [menuItems, selectedCategory, menuSearch]);
+    const q = menuSearch.trim().toLowerCase();
+    // 検索中はカテゴリを跨いで探す（探し物が今のカテゴリにあるとは限らない）
+    if (q) return menuItems.filter((i) => i.name.toLowerCase().includes(q));
+    if (activeCategory === "よく使う") return menuItems.slice(0, POPULAR_LIMIT);
+    if (activeCategory === "すべて") return menuItems;
+    const cat = activeCategory === "未分類" ? null : activeCategory;
+    return menuItems.filter((i) => (i.category_large ?? null) === cat);
+  }, [menuItems, activeCategory, menuSearch]);
+
+  const numColumns = isIPad ? 4 : 2;
+
+  // 端数行のタイルが横に伸びないよう null でパディングして必ず numColumns の倍数にする
+  const gridData = useMemo<(MenuItem | null)[]>(() => {
+    const rem = filteredMenuItems.length % numColumns;
+    if (rem === 0) return filteredMenuItems;
+    return [...filteredMenuItems, ...(Array(numColumns - rem).fill(null) as null[])];
+  }, [filteredMenuItems, numColumns]);
 
   function addMenuItem(item: MenuItem) {
     setCart((prev) => {
@@ -402,252 +441,296 @@ export default function WalkInCheckoutScreen() {
 
   return (
     <>
-      <Stack.Screen options={{ title: "ウォークイン会計" }} />
-      <ScrollView style={styles.container}>
-        {/* メニューから追加 */}
-        <View style={styles.card}>
-          <Text style={styles.heading}>
-            メニューから追加
-          </Text>
-          <TextInput
-            mode="outlined"
-            placeholder="メニュー名で検索..."
-            value={menuSearch}
-            onChangeText={setMenuSearch}
-            left={<TextInput.Icon icon="magnify" />}
-            right={menuSearch ? <TextInput.Icon icon="close" onPress={() => setMenuSearch("")} /> : undefined}
-            style={styles.searchInput}
-            dense
-          />
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            style={styles.categoryScroll}
-            contentContainerStyle={styles.categoryScrollContent}
-          >
-            {categories.map((cat) => (
-              <Pressable
-                key={cat}
-                style={[
-                  styles.categoryChip,
-                  selectedCategory === cat && styles.categoryChipActive,
-                ]}
-                onPress={() => setSelectedCategory(cat)}
-              >
-                <Text
-                  style={[
-                    styles.categoryChipLabel,
-                    selectedCategory === cat && styles.categoryChipLabelActive,
-                  ]}
-                >
-                  {cat}
-                </Text>
-              </Pressable>
-            ))}
-          </ScrollView>
-          <View style={styles.menuGrid}>
-            {filteredMenuItems.map((item) => (
-              <Pressable
-                key={item.id}
-                style={styles.menuChip}
-                onPress={() => addMenuItem(item)}
-              >
-                <Text style={styles.menuChipLabel} numberOfLines={1}>
-                  {item.name}
-                </Text>
-                <Text style={styles.menuChipPrice}>
-                  ¥{item.unit_price.toLocaleString()}
-                </Text>
-              </Pressable>
-            ))}
-            {menuItems.length === 0 && (
-              <Text style={styles.emptyText}>
-                メニューが未登録です
-              </Text>
-            )}
-            {menuItems.length > 0 && filteredMenuItems.length === 0 && (
-              <Text style={styles.emptyText}>
-                該当するメニューがありません
-              </Text>
-            )}
-          </View>
-        </View>
+      <Stack.Screen
+        options={{ title: step === "menu" ? "品目を選ぶ" : "会計" }}
+      />
 
-        {/* カスタム品目 */}
-        <View style={styles.card}>
-          <Text style={styles.heading}>
-            カスタム品目
-          </Text>
-          <View style={styles.customRow}>
+      {step === "menu" ? (
+        <View style={styles.container}>
+          {/* 検索 + カテゴリタブ（グリッドと分離して常時固定） */}
+          <View style={styles.pickerHeader}>
             <TextInput
               mode="outlined"
-              label="品名"
-              value={customName}
-              onChangeText={setCustomName}
-              style={[styles.input, { flex: 2 }]}
+              placeholder="メニュー名で検索"
+              value={menuSearch}
+              onChangeText={setMenuSearch}
+              left={<TextInput.Icon icon="magnify" />}
+              right={
+                menuSearch ? (
+                  <TextInput.Icon icon="close" onPress={() => setMenuSearch("")} />
+                ) : undefined
+              }
+              style={styles.searchInput}
               dense
             />
-            <TextInput
-              mode="outlined"
-              label="金額"
-              value={customPrice}
-              onChangeText={setCustomPrice}
-              keyboardType="numeric"
-              style={[styles.input, { flex: 1 }]}
-              right={<TextInput.Affix text="円" />}
-              dense
-            />
-            <IconButton
-              icon="plus-circle"
-              iconColor={colors.textPrimary}
-              size={28}
-              onPress={addCustomItem}
-            />
-          </View>
-        </View>
-
-        {/* カート明細 */}
-        {cart.length > 0 && (
-          <View style={styles.card}>
-            <Text style={styles.heading}>
-              明細
-            </Text>
-            {cart.map((item, index) => (
-              <View key={`${item.menuItemId ?? "custom"}-${index}`} style={styles.cartItem}>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.bodyText}>{item.name}</Text>
-                  <Text style={styles.subText}>
-                    ¥{item.unitPrice.toLocaleString()} × {item.quantity}
-                  </Text>
-                </View>
-                <View style={styles.qtyControls}>
-                  <IconButton
-                    icon="minus-circle-outline"
-                    size={20}
-                    onPress={() => updateQuantity(index, -1)}
-                  />
-                  <Text style={styles.qtyText}>
-                    {item.quantity}
-                  </Text>
-                  <IconButton
-                    icon="plus-circle-outline"
-                    size={20}
-                    onPress={() => updateQuantity(index, 1)}
-                  />
-                  <IconButton
-                    icon="delete-outline"
-                    size={20}
-                    iconColor={colors.danger}
-                    onPress={() => removeItem(index)}
-                  />
-                </View>
-              </View>
-            ))}
-            <View style={styles.divider} />
-            <View style={styles.totalRow}>
-              <Text style={styles.totalLabel}>
-                合計
-              </Text>
-              <Text style={styles.totalAmount}>
-                ¥{total.toLocaleString()}
-              </Text>
-            </View>
-          </View>
-        )}
-
-        {/* QRコード表示 */}
-        {(((isAndroid || isIPad) && paymentMethod === "card") ||
-          (isIPhone && paymentMethod === "qr")) &&
-          qrUrl && (
-          <View style={styles.qrCard}>
-            <Text style={styles.qrTitle}>
-              お客様のスマホでQRを読み込んでください
-            </Text>
-            <View style={styles.qrCodeWrapper}>
-              <QRCode value={qrUrl} size={200} />
-            </View>
-            <Text style={styles.qrSubtext}>
-              ¥{total.toLocaleString()} · Stripe Checkout
-            </Text>
-            {qrPolling && (
-              <View style={styles.qrPollingRow}>
-                <ActivityIndicator size="small" color={colors.successDark} />
-                <Text style={styles.qrPollingText}>決済完了を確認中...</Text>
-              </View>
-            )}
-            <LedraButton
-              variant="outline"
-              style={{ marginTop: spacing.md }}
-              onPress={() => {
-                setQrUrl(null);
-                setQrSessionId(null);
-                setQrPolling(false);
-              }}
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.categoryScrollContent}
             >
-              QRをキャンセル
-            </LedraButton>
-          </View>
-        )}
-
-        {/* 支払方法 */}
-        {!qrPolling && cart.length > 0 && (
-          <View style={styles.card}>
-            <Text style={styles.heading}>
-              支払方法
-            </Text>
-            <SegmentedControl
-              segments={paymentSegments}
-              value={paymentMethod}
-              onChange={(v) => {
-                setPaymentMethod(v as PaymentMethod);
-                setQrUrl(null);
-                setQrSessionId(null);
-                setQrPolling(false);
-              }}
-            />
-            {paymentMethod === "cash" && (
-              <>
-                <TextInput
-                  mode="outlined"
-                  label="お預かり金額"
-                  value={receivedAmount}
-                  onChangeText={setReceivedAmount}
-                  keyboardType="numeric"
-                  style={styles.cashInput}
-                  right={<TextInput.Affix text="円" />}
-                />
-                <View style={styles.changeRow}>
-                  <Text style={styles.bodyText}>おつり:</Text>
+              {categories.map((cat) => (
+                <Pressable
+                  key={cat}
+                  style={[
+                    styles.categoryChip,
+                    activeCategory === cat && styles.categoryChipActive,
+                  ]}
+                  onPress={() => {
+                    setSelectedCategory(cat);
+                    setMenuSearch("");
+                  }}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: activeCategory === cat }}
+                >
                   <Text
                     style={[
-                      styles.totalLabel,
-                      { color: change >= 0 ? colors.success : colors.danger },
+                      styles.categoryChipLabel,
+                      activeCategory === cat && styles.categoryChipLabelActive,
                     ]}
                   >
-                    ¥{change.toLocaleString()}
+                    {cat}
                   </Text>
-                </View>
-              </>
-            )}
+                </Pressable>
+              ))}
+            </ScrollView>
           </View>
-        )}
 
-        {/* 決済ボタン */}
-        {!qrPolling && cart.length > 0 && (
-          <View style={styles.submitArea}>
+          {/* 等幅タイルグリッド。FlatList なので品目が増えても描画は画面分だけ */}
+          <FlatList
+            key={numColumns}
+            data={gridData}
+            numColumns={numColumns}
+            keyExtractor={(item, i) => item?.id ?? `pad-${i}`}
+            columnWrapperStyle={styles.gridRow}
+            contentContainerStyle={styles.gridContent}
+            keyboardShouldPersistTaps="handled"
+            renderItem={({ item }) =>
+              item ? (
+                <MenuTile
+                  item={item}
+                  qty={cartQty.get(item.id) ?? 0}
+                  onPress={() => addMenuItem(item)}
+                />
+              ) : (
+                <View style={styles.tileSpacer} />
+              )
+            }
+            ListEmptyComponent={
+              <Text style={styles.emptyText}>
+                {menuItems.length === 0
+                  ? "メニューが未登録です"
+                  : "該当するメニューがありません"}
+              </Text>
+            }
+          />
+
+          {/* 合計バー */}
+          <View
+            style={[styles.bottomBar, { paddingBottom: insets.bottom + spacing.md }]}
+          >
+            <View style={{ flex: 1 }}>
+              <Text style={styles.barCount}>{itemCount}点</Text>
+              <Text style={styles.barTotal}>¥{total.toLocaleString()}</Text>
+            </View>
             <LedraButton
-              icon="check-circle"
-              onPress={handleCheckout}
-              loading={processing || isProcessing}
-              disabled={isDisabled}
+              icon="arrow-right"
+              disabled={cart.length === 0}
+              onPress={() => setStep("checkout")}
             >
-              {submitLabel}
+              明細・支払い
             </LedraButton>
           </View>
-        )}
+        </View>
+      ) : (
+        <ScrollView style={styles.container} keyboardShouldPersistTaps="handled">
+          <Pressable
+            style={styles.backToMenu}
+            onPress={() => setStep("menu")}
+            accessibilityRole="button"
+          >
+            <Text style={styles.backToMenuText}>← 品目を追加する</Text>
+          </Pressable>
 
-        <View style={{ height: spacing["4xl"] }} />
-      </ScrollView>
+          {/* カート明細 */}
+          {cart.length > 0 ? (
+            <View style={styles.card}>
+              <Text style={styles.heading}>
+                明細
+              </Text>
+              {cart.map((item, index) => (
+                <View key={`${item.menuItemId ?? "custom"}-${index}`} style={styles.cartItem}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.bodyText}>{item.name}</Text>
+                    <Text style={styles.subText}>
+                      ¥{item.unitPrice.toLocaleString()} × {item.quantity}
+                    </Text>
+                  </View>
+                  <View style={styles.qtyControls}>
+                    <IconButton
+                      icon="minus-circle-outline"
+                      size={20}
+                      onPress={() => updateQuantity(index, -1)}
+                    />
+                    <Text style={styles.qtyText}>
+                      {item.quantity}
+                    </Text>
+                    <IconButton
+                      icon="plus-circle-outline"
+                      size={20}
+                      onPress={() => updateQuantity(index, 1)}
+                    />
+                    <IconButton
+                      icon="delete-outline"
+                      size={20}
+                      iconColor={colors.danger}
+                      onPress={() => removeItem(index)}
+                    />
+                  </View>
+                </View>
+              ))}
+              <View style={styles.divider} />
+              <View style={styles.totalRow}>
+                <Text style={styles.totalLabel}>
+                  合計
+                </Text>
+                <Text style={styles.totalAmount}>
+                  ¥{total.toLocaleString()}
+                </Text>
+              </View>
+            </View>
+          ) : (
+            <View style={styles.card}>
+              <Text style={styles.emptyText}>明細がありません</Text>
+            </View>
+          )}
+
+          {/* カスタム品目 */}
+          <View style={styles.card}>
+            <Text style={styles.heading}>
+              カスタム品目
+            </Text>
+            <View style={styles.customRow}>
+              <TextInput
+                mode="outlined"
+                label="品名"
+                value={customName}
+                onChangeText={setCustomName}
+                style={[styles.input, { flex: 2 }]}
+                dense
+              />
+              <TextInput
+                mode="outlined"
+                label="金額"
+                value={customPrice}
+                onChangeText={setCustomPrice}
+                keyboardType="numeric"
+                style={[styles.input, { flex: 1 }]}
+                right={<TextInput.Affix text="円" />}
+                dense
+              />
+              <IconButton
+                icon="plus-circle"
+                iconColor={colors.textPrimary}
+                size={28}
+                onPress={addCustomItem}
+              />
+            </View>
+          </View>
+
+          {/* QRコード表示 */}
+          {(((isAndroid || isIPad) && paymentMethod === "card") ||
+            (isIPhone && paymentMethod === "qr")) &&
+            qrUrl && (
+            <View style={styles.qrCard}>
+              <Text style={styles.qrTitle}>
+                お客様のスマホでQRを読み込んでください
+              </Text>
+              <View style={styles.qrCodeWrapper}>
+                <QRCode value={qrUrl} size={200} />
+              </View>
+              <Text style={styles.qrSubtext}>
+                ¥{total.toLocaleString()} · Stripe Checkout
+              </Text>
+              {qrPolling && (
+                <View style={styles.qrPollingRow}>
+                  <ActivityIndicator size="small" color={colors.successDark} />
+                  <Text style={styles.qrPollingText}>決済完了を確認中...</Text>
+                </View>
+              )}
+              <LedraButton
+                variant="outline"
+                style={{ marginTop: spacing.md }}
+                onPress={() => {
+                  setQrUrl(null);
+                  setQrSessionId(null);
+                  setQrPolling(false);
+                }}
+              >
+                QRをキャンセル
+              </LedraButton>
+            </View>
+          )}
+
+          {/* 支払方法 */}
+          {!qrPolling && cart.length > 0 && (
+            <View style={styles.card}>
+              <Text style={styles.heading}>
+                支払方法
+              </Text>
+              <SegmentedControl
+                segments={paymentSegments}
+                value={paymentMethod}
+                onChange={(v) => {
+                  setPaymentMethod(v as PaymentMethod);
+                  setQrUrl(null);
+                  setQrSessionId(null);
+                  setQrPolling(false);
+                }}
+              />
+              {paymentMethod === "cash" && (
+                <>
+                  <TextInput
+                    mode="outlined"
+                    label="お預かり金額"
+                    value={receivedAmount}
+                    onChangeText={setReceivedAmount}
+                    keyboardType="numeric"
+                    style={styles.cashInput}
+                    right={<TextInput.Affix text="円" />}
+                  />
+                  <View style={styles.changeRow}>
+                    <Text style={styles.bodyText}>おつり:</Text>
+                    <Text
+                      style={[
+                        styles.totalLabel,
+                        { color: change >= 0 ? colors.success : colors.danger },
+                      ]}
+                    >
+                      ¥{change.toLocaleString()}
+                    </Text>
+                  </View>
+                </>
+              )}
+            </View>
+          )}
+
+          {/* 決済ボタン */}
+          {!qrPolling && cart.length > 0 && (
+            <View style={styles.submitArea}>
+              <LedraButton
+                icon="check-circle"
+                onPress={handleCheckout}
+                loading={processing || isProcessing}
+                disabled={isDisabled}
+              >
+                {submitLabel}
+              </LedraButton>
+            </View>
+          )}
+
+          <View style={{ height: spacing["4xl"] }} />
+        </ScrollView>
+      )}
 
       <Snackbar
         visible={!!snackbar}
@@ -658,6 +741,40 @@ export default function WalkInCheckoutScreen() {
         {snackbar}
       </Snackbar>
     </>
+  );
+}
+
+/** POS レジ風の等幅タイル。カート投入済みは枠+数量バッジで一目でわかる */
+function MenuTile({
+  item,
+  qty,
+  onPress,
+}: {
+  item: MenuItem;
+  qty: number;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      style={({ pressed }) => [
+        styles.tile,
+        qty > 0 && styles.tileActive,
+        pressed && styles.tilePressed,
+      ]}
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={`${item.name} ${item.unit_price}円を追加`}
+    >
+      <Text style={styles.tileName} numberOfLines={2}>
+        {item.name}
+      </Text>
+      <Text style={styles.tilePrice}>¥{item.unit_price.toLocaleString()}</Text>
+      {qty > 0 && (
+        <View style={styles.tileBadge}>
+          <Text style={styles.tileBadgeText}>{qty}</Text>
+        </View>
+      )}
+    </Pressable>
   );
 }
 
@@ -688,17 +805,21 @@ const styles = StyleSheet.create({
     ...typography.bodySmall,
     color: colors.textSecondary,
   },
+  pickerHeader: {
+    backgroundColor: colors.surface,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
+  },
   searchInput: {
     backgroundColor: colors.surface,
     marginBottom: spacing.sm,
   },
-  categoryScroll: {
-    marginBottom: spacing.md,
-    marginHorizontal: -spacing.xs,
-  },
   categoryScrollContent: {
-    paddingHorizontal: spacing.xs,
     gap: spacing.sm,
+    paddingRight: spacing.lg,
   },
   categoryChip: {
     paddingHorizontal: spacing.md,
@@ -719,23 +840,79 @@ const styles = StyleSheet.create({
   categoryChipLabelActive: {
     color: colors.textOnPrimary,
   },
-  menuGrid: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
-  menuChip: {
-    backgroundColor: colors.surfaceVariant,
-    borderRadius: radius.sm,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+  gridContent: {
+    padding: spacing.lg,
+    gap: spacing.sm,
+  },
+  gridRow: { gap: spacing.sm },
+  tile: {
+    flex: 1,
+    minHeight: 80,
+    justifyContent: "space-between",
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    padding: spacing.md,
     borderWidth: 1,
     borderColor: colors.border,
   },
-  menuChipLabel: {
+  tileActive: {
+    borderColor: colors.primary,
+    backgroundColor: colors.primaryLight,
+  },
+  tilePressed: { opacity: 0.6 },
+  tileSpacer: { flex: 1 },
+  tileName: {
     ...typography.label,
     color: colors.textPrimary,
   },
-  menuChipPrice: {
+  tilePrice: {
+    ...typography.body,
+    fontWeight: "700",
+    color: colors.textPrimary,
+    marginTop: spacing.xs,
+  },
+  tileBadge: {
+    position: "absolute",
+    top: -6,
+    right: -6,
+    minWidth: 22,
+    height: 22,
+    paddingHorizontal: 5,
+    borderRadius: 11,
+    backgroundColor: colors.primary,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  tileBadgeText: {
+    ...typography.meta,
+    fontWeight: "700",
+    color: colors.textOnPrimary,
+  },
+  bottomBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md,
+    backgroundColor: colors.surface,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
+  },
+  barCount: {
     ...typography.meta,
     color: colors.textSecondary,
-    marginTop: 2,
+  },
+  barTotal: {
+    ...typography.titleLarge,
+    color: colors.textPrimary,
+  },
+  backToMenu: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.lg,
+  },
+  backToMenuText: {
+    ...typography.label,
+    color: colors.primary,
   },
   customRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
   input: { backgroundColor: colors.surface },
