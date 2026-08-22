@@ -57,6 +57,7 @@ export default function PrivacyPage() {
 export const metadata: Metadata = {
   title: `プライバシーポリシー | ${siteConfig.siteName}`,
   description: "Ledraのプライバシーポリシーです。",
+  alternates: { canonical: "/privacy" },
   openGraph: {
     title: `プライバシーポリシー | ${siteConfig.siteName}`,
     description: "Ledraのプライバシーポリシーです。",

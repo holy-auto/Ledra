@@ -4,6 +4,35 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-08-22 モバイル: 規約・問い合わせ・ナレッジをアプリ内で完結させる
+
+- **規約・プライバシーポリシー**: 外部ブラウザへ飛ばすのをやめ、アプリ内で表示。
+  本文は `src/lib/legal/documents.json` を正とし、`apps/mobile/src/constants/legalDocuments.json`
+  に**同梱**する。当初はサーバー API から取得する設計にしたが、アプリと Web の
+  リリース時期がずれた瞬間に表示できなくなる（実機で 404 になった）ため同梱に変更。
+  オフラインの現場でも読める。2ファイルのズレは `legal.check.ts` が検出（`npm test` に組込）。
+  Web の `(marketing)/terms・privacy` も同じ JSON から描画するよう書き換え（文言は不変）。
+- **お問い合わせ**: `app/legal/contact` にネイティブフォームを追加し、既存の
+  `/api/contact` へ送信。受信側（メール + Slack）は Web と共通。店舗名と
+  「アプリから送信」を自動付与。
+- **ナレッジ**: `app/knowledge` を追加。**新テーブル・新スキーマなし**。
+  - 共有: `academy_lessons` の published。RLS が `status='published'` を全認証ユーザーへ
+    開いているため、運営コンテンツと**他店舗の投稿**が横断で読める（既存設計）
+  - 自店舗: `tenant_field_knowledge`（施工の勘所・車種別メモ、自テナントのみ）
+  - 出所が分かるよう「Ledra 公式」「他店舗の知見」バッジを表示
+- **ナレッジの投稿・取り消し**: `POST/PATCH/DELETE /api/mobile/academy/lessons[/[id]]` を追加。
+  スキーマ・権限判定・行の組み立ては `src/lib/academy/createLesson.ts` に集約し、
+  管理画面の既存ルートも同じモジュールを使うよう書き換え。Supabase へ直接 insert
+  させないのは、RLS だけだと staff でも書けてしまい「投稿は admin 以上」という
+  管理画面のルールが崩れるため。編集・削除は「作者本人 or 運営」（テナント管理者でも不可）。
+  公開を選んだときだけ「他店舗のスタッフからも読める」旨と、顧客名・車両番号を
+  書かない注意を出す。一覧の「自分の投稿」タブは下書きも含め、取り消した投稿が
+  辿れなくなる行き止まりを防ぐ。
+- **タブバー**: 自前描画に変更（React Navigation 既定の項目内 padding で丸ボタンが潰れた）。
+  絶対配置にして内容がその下を流れるようにし、丸ボタンだけが浮く形に。ラベルは廃止。
+- 注記: 投稿・取り消しは `/api/mobile/academy/lessons` が**未デプロイのため本番反映後に動く**。
+  規約類は同梱したので即動く。
+
 ## 記入フォーマット
 
 ```
@@ -75,6 +104,22 @@
   既存検証（lint / lint:migrations / tsc / vitest coverage / build / mobile typecheck+test）を無変更で実行し
   ベースラインを記録。コード変更ゼロ。
 - 対象: 開発プロセス（ユーザー向け機能の変更なし）。
+
+## 2026-08-22 SEO/LLMO改善: llms.txt, OGメタデータ補完, canonical追加, Twitterハンドル設定 (PR #962)
+
+- 内容: AIクローラー向けllms.txt/llms-full.txtを新規追加、ブログ・事例詳細ページのOG/Twitter/JSON-LD補完、法的ページのcanonical URL追加、Twitterハンドル(@detailing_holy)の全ページ反映。
+- 対象: マーケティングサイト全体（SEO/LLMO/SNSシェア）。
+- 実装:
+  - `src/app/llms.txt/route.ts` (新規): siteConfigから動的生成する簡潔版AI向けテキスト
+  - `src/app/llms-full.txt/route.ts` (新規): 料金・機能・全ページリンク・キーワード含む詳細版
+  - `src/components/marketing/JsonLd.tsx`: ArticleJsonLdにpathPrefix/articleTypeパラメータ追加（後方互換）
+  - `src/app/(marketing)/blog/[slug]/page.tsx`: OG(article)/Twitter/BlogPosting JSON-LD追加
+  - `src/app/(marketing)/cases/[slug]/page.tsx`: OG(article)/Twitter/Article JSON-LD + publishedAt伝搬
+  - `src/app/(marketing)/news/[slug]/page.tsx`: twitter site/creator追加
+  - `src/lib/marketing/config.ts`: twitterHandle追加
+  - `src/app/layout.tsx`: twitter.site/creator反映
+  - `/privacy`, `/terms`, `/law`, `/contact`: canonical追加
+  - `/tokusho`: canonical・og:urlを/lawに統一、sitemapから除去
 
 ## 2026-08-16 LINE連携の入力を「Channel ID と Secret の2つだけ」に（branch claude/multi-integration-login-opnzfh）
 

@@ -57,6 +57,7 @@ export default function TermsPage() {
 export const metadata: Metadata = {
   title: `利用規約 | ${siteConfig.siteName}`,
   description: "Ledraの利用規約です。",
+  alternates: { canonical: "/terms" },
   openGraph: {
     title: `利用規約 | ${siteConfig.siteName}`,
     description: "Ledraの利用規約です。",

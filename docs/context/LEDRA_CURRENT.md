@@ -4,7 +4,7 @@
 > 追わず、常に最新状態だけを保つ（履歴は DECISION_LOG.md / RELEASE_LOG.md 側）。
 > 大きな変化があったら都度上書きすること。
 
-最終更新: 2026-08-21
+最終更新: 2026-08-22
 
 > 2026-07-30 追記: 代理店ポータルの営業資料は2系統。(1)「常に最新の商品資料」欄＝
 > ライブデータから自動生成される製品資料（機能紹介/料金/比較表/セキュリティ/ROI/概要）で
@@ -26,8 +26,10 @@
 2026-07-27 に旧「WEB施工証明書SaaS」から刷新し、同日 PR TIMES の表記に合わせ「施工履歴プラットフォーム」に統一
 （施工証明書は主要機能の1つとして残す。買い手検索語は description/keywords 側で確保）。
 サイトの title/description/OGP・JSON-LD・robots は `src/lib/marketing/config.ts` の `siteConfig`
-（siteTagline / siteDescription / keywords / featureList）を単一情報源として参照する。
-詳細は DECISION_LOG.md / RELEASE_LOG.md 2026-07-27 を参照。
+（siteTagline / siteDescription / keywords / featureList / twitterHandle）を単一情報源として参照する。
+AIクローラー向けには `llms.txt`（簡潔版）と `llms-full.txt`（料金・機能・全リンク含む詳細版）を
+Route Handlerで動的提供（siteConfig + PLANSから自動追従）。Xハンドルは `@detailing_holy`。
+詳細は DECISION_LOG.md / RELEASE_LOG.md 2026-07-27, 2026-08-22 を参照。
 
 自動車整備 / ボディリペア / コーティング / PPF 店向けのマルチテナント SaaS。
 施工証明書発行、請求・帳票、顧客ポータル、予約、保険会社（損保）との案件連携、
