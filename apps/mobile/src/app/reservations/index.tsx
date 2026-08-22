@@ -1,4 +1,5 @@
 import { useState, useCallback } from "react";
+import dayjs from "dayjs";
 import {
   View,
   StyleSheet,
@@ -78,7 +79,8 @@ export default function ReservationsScreen() {
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [statusFilter, setStatusFilter] = useState("all");
 
-  const dateStr = selectedDate.toISOString().split("T")[0];
+  // 見出しの formatDate はローカル日付なので、クエリも揃える（UTC だと前日を引く）
+  const dateStr = dayjs(selectedDate).format("YYYY-MM-DD");
 
   const {
     data: reservations = [],

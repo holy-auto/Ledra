@@ -1,15 +1,9 @@
 import { Stack } from "expo-router";
-import { colors } from "@/constants/tokens";
+import { tabStackScreenOptions } from "@/components/screenOptions";
 
 export default function VehiclesLayout() {
   return (
-    <Stack
-      screenOptions={{
-        headerStyle: { backgroundColor: colors.surface },
-        headerTintColor: colors.textPrimary,
-        headerTitleStyle: { fontSize: 18, fontWeight: "700" },
-      }}
-    >
+    <Stack screenOptions={tabStackScreenOptions}>
       <Stack.Screen name="index" options={{ title: "車両" }} />
     </Stack>
   );

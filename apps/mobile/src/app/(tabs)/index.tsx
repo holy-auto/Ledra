@@ -132,7 +132,8 @@ export default function HomeScreen() {
   const loadStats = useCallback(async () => {
     if (!user?.tenantId) return;
 
-    const todayStr = new Date().toISOString().split("T")[0];
+    // UTC 日付だと JST 09:00 前は前日を集計してしまう
+    const todayStr = dayjs().format("YYYY-MM-DD");
     // ponytail: skip store filter when id is empty (店舗なしで続行)
     const storeId = selectedStore?.id || null;
 

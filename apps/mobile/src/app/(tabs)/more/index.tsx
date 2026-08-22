@@ -1,22 +1,20 @@
+import { useState } from "react";
 import { View, StyleSheet, ScrollView, Pressable, Linking } from "react-native";
-import { Text, Icon } from "react-native-paper";
+import { Text, Icon, Snackbar } from "react-native-paper";
 import { router } from "expo-router";
 import { useAuthStore } from "@/stores/authStore";
 import { colors, radius, spacing, sizing, shadows } from "@/constants/tokens";
 
 /**
- * その他メニュー — v2.0 / UI-070 reference target.
- *
- * Sectioned list layout (not grid) per reference 07:
- * 通知・同期 / サポート / 設定 / その他
- * Role-restricted items hidden (v2.0: hidden, not disabled).
+ * その他メニュー — v2.0 / UI-070。
+ * セクション別のリスト（グリッドではない）。
  */
 
 interface MenuItem {
   icon: string;
   label: string;
   route: string;
-  /** true なら Web（app.ledra.co.jp）をブラウザで開く */
+  /** true なら Web をブラウザで開く */
   external?: boolean;
 }
 
@@ -25,7 +23,8 @@ interface MenuSection {
   items: MenuItem[];
 }
 
-const WEB_BASE = process.env.EXPO_PUBLIC_API_URL ?? "";
+// settings/index.tsx と同じ env を使う。API ベースとは別物
+const WEB_BASE = process.env.EXPO_PUBLIC_WEB_URL ?? "https://app.ledra.co.jp";
 
 /**
  * ponytail: 行き先が存在しない項目は載せない。
@@ -40,7 +39,15 @@ const SECTIONS: MenuSection[] = [
     items: [
       { icon: "calendar-clock-outline", label: "予約管理", route: "/reservations" },
       { icon: "cash-register", label: "POS・会計", route: "/pos" },
+      { icon: "calculator-variant-outline", label: "レジ管理（開設・締め）", route: "/pos/register" },
       { icon: "account-group-outline", label: "顧客一覧", route: "/customers" },
+      { icon: "chart-box-outline", label: "店舗ダッシュボード", route: "/dashboard" },
+    ],
+  },
+  {
+    title: "NFC",
+    items: [
+      { icon: "nfc-search-variant", label: "NFCスキャン", route: "/nfc/scan" },
       { icon: "nfc-variant", label: "NFCタグ台帳", route: "/nfc/tags" },
     ],
   },
@@ -67,13 +74,31 @@ const SECTIONS: MenuSection[] = [
   },
 ];
 
+/** 外部リンクを開く。開けない場合は黙って消えず理由を出す */
+async function openExternal(url: string, onError: (msg: string) => void) {
+  try {
+    const supported = await Linking.canOpenURL(url);
+    if (!supported) throw new Error("ブラウザを開けません");
+    await Linking.openURL(url);
+  } catch (e) {
+    onError(e instanceof Error ? e.message : "リンクを開けませんでした");
+  }
+}
+
 export default function MoreScreen() {
   const { user, selectedStore } = useAuthStore();
+  const [snackbar, setSnackbar] = useState("");
 
   return (
+    <>
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      {/* Store info card */}
-      <View style={styles.storeCard}>
+      {/* Store info card — 店舗切替 */}
+      <Pressable
+        style={({ pressed }) => [styles.storeCard, pressed && styles.menuRowPressed]}
+        onPress={() => router.push("/(auth)/select-store")}
+        accessibilityRole="button"
+        accessibilityLabel="店舗を切り替える"
+      >
         <View style={styles.storeIcon}>
           <Icon source="store" size={sizing.iconMd} color={colors.primary} />
         </View>
@@ -84,7 +109,7 @@ export default function MoreScreen() {
           </Text>
         </View>
         <Icon source="chevron-right" size={20} color={colors.textTertiary} />
-      </View>
+      </Pressable>
 
       {/* Menu sections */}
       {SECTIONS.map((section) => (
@@ -101,7 +126,7 @@ export default function MoreScreen() {
                   ]}
                   onPress={() => {
                     if (item.external) {
-                      void Linking.openURL(`${WEB_BASE}${item.route}`);
+                      openExternal(`${WEB_BASE}${item.route}`, setSnackbar);
                       return;
                     }
                     router.push(item.route as never);
@@ -125,6 +150,15 @@ export default function MoreScreen() {
 
       <View style={{ height: spacing["4xl"] }} />
     </ScrollView>
+    <Snackbar
+      visible={!!snackbar}
+      onDismiss={() => setSnackbar("")}
+      duration={3000}
+      style={{ backgroundColor: colors.textPrimary }}
+    >
+      {snackbar}
+    </Snackbar>
+    </>
   );
 }
 

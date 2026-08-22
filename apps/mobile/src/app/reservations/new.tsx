@@ -1,4 +1,5 @@
-import { useState, useCallback } from "react";
+import { useState, useEffect, useCallback } from "react";
+import dayjs from "dayjs";
 import {
   View,
   StyleSheet,
@@ -58,6 +59,11 @@ export default function ReservationNewScreen() {
   const [reservationType, setReservationType] = useState<ReservationType>(
     type === "walk_in" ? "walk_in" : "scheduled",
   );
+  // useLocalSearchParams は遷移直後の初回描画で空を返すことがある。
+  // useState の初期値だけに頼ると飛び込み指定が黙って落ちるので追随させる
+  useEffect(() => {
+    if (type === "walk_in") setReservationType("walk_in");
+  }, [type]);
 
   // Form state
   const [customerSearch, setCustomerSearch] = useState("");
@@ -128,9 +134,11 @@ export default function ReservationNewScreen() {
       const isWalkIn = reservationType === "walk_in";
       const now = new Date();
 
+      // toISOString() は UTC を返すため、時刻がローカルなのに日付だけ前日になる
+      // （JST 09:00 前の受付が全部前日に入る）。ローカル日付で揃える
       const scheduledDate = isWalkIn
-        ? now.toISOString().split("T")[0]
-        : selectedDate.toISOString().split("T")[0];
+        ? dayjs(now).format("YYYY-MM-DD")
+        : dayjs(selectedDate).format("YYYY-MM-DD");
       const scheduledTime = isWalkIn
         ? now.toTimeString().slice(0, 5)
         : selectedDate.toTimeString().slice(0, 5);

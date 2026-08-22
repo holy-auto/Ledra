@@ -133,13 +133,10 @@ export default function RootLayout() {
                     title: "通知",
                   }}
                 />
+                {/* dashboard は画面側で title を設定するのでここでは指定しない */}
                 <Stack.Screen
                   name="dashboard"
-                  options={{
-                    ...stackScreenOptions,
-                    headerShown: true,
-                    title: "ダッシュボード",
-                  }}
+                  options={{ ...stackScreenOptions, headerShown: true }}
                 />
               </Stack>
             </ToastProvider>
