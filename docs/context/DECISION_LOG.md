@@ -23,6 +23,23 @@
 9. 公開区分: 公開可／要確認／非公開
 ```
 
+## 2026-08-22 SEO/LLMO改善: llms.txt導入・メタデータ補完・canonical統一
+
+1. 日付: 2026-08-22
+2. 起きたこと: robots.tsでAIクローラー（GPTBot, ClaudeBot, PerplexityBot等）を許可済みだが、AI向け構造化テキスト（llms.txt）が未提供だった。ブログ・事例詳細ページにOG/Twitterメタデータ・JSON-LDがなく、法的ページにcanonical URLがなかった。
+3. 以前の考え: サイト全体のメタデータ基盤（Metadata API、JSON-LD 7種、動的sitemap、OG画像16件）は十分と考えていた。
+4. 違和感・問題: AIクローラーを許可しているのにAI向けの構造化テキストがない（LLMO未対策）。ブログ・事例の個別ページがSNSシェア・検索エンジンに対して不完全。/tokushoと/lawが同一内容なのにcanonicalが自己参照で重複コンテンツ扱いのリスク。Next.jsのtwitter metadataが子ルートで上書きされるためルートのtwitterHandle設定が効いていなかった。
+5. 決めたこと:
+   - llms.txt / llms-full.txt をRoute Handlerで動的生成（siteConfig + PLANSから自動追従）
+   - ブログ・事例にOG/Twitter + ArticleJsonLd追加（既存ArticleJsonLdにpathPrefix/articleType追加で汎用化）
+   - /tokushoのcanonical・og:urlを/lawに統一、sitemapから/tokusho除去
+   - 全記事ページのtwitter objectにsite/creatorを明示（Next.jsの置換挙動対策）
+   - llms.txt/llms-full.txtはsitemapに含めない（text/plainはSearch Consoleで警告になる）
+6. 捨てた選択肢: llms.txtを静的ファイルとして配置する案（料金・機能の変更に手動追従が必要になるため却下）。/tokushoを別ページとしてcanonical自己参照にする案（同一内容なので重複扱いのリスク）。
+7. 判断理由: LLMO対策はAIクローラー許可済みの状態では最もインパクトが大きい。既存パターン（news/[slug]のメタデータ構造、ArticleJsonLd）の再利用で最小差分。
+8. まだ答えが出ていないこと: llms-full.txtの内容拡充（動的な記事一覧の含め方等）。各ページのOG画像個別設定。
+9. 公開区分: 公開可
+
 ## 2026-08-16 LINEのモジュールチャネルは受付停止中。申請の再開を待たず、Messaging APIで自動化できる工程を全部Ledra側に寄せる
 1. 日付: 2026-08-16
 2. 起きたこと: 同日の調査で「モジュールチャネルを使えばLINE連携をログインだけにできる」と結論し、

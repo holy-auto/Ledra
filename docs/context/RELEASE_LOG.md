@@ -13,6 +13,22 @@
 - 対象: どの画面・API・業種向けか
 ```
 
+## 2026-08-22 SEO/LLMO改善: llms.txt, OGメタデータ補完, canonical追加, Twitterハンドル設定 (PR #962)
+
+- 内容: AIクローラー向けllms.txt/llms-full.txtを新規追加、ブログ・事例詳細ページのOG/Twitter/JSON-LD補完、法的ページのcanonical URL追加、Twitterハンドル(@detailing_holy)の全ページ反映。
+- 対象: マーケティングサイト全体（SEO/LLMO/SNSシェア）。
+- 実装:
+  - `src/app/llms.txt/route.ts` (新規): siteConfigから動的生成する簡潔版AI向けテキスト
+  - `src/app/llms-full.txt/route.ts` (新規): 料金・機能・全ページリンク・キーワード含む詳細版
+  - `src/components/marketing/JsonLd.tsx`: ArticleJsonLdにpathPrefix/articleTypeパラメータ追加（後方互換）
+  - `src/app/(marketing)/blog/[slug]/page.tsx`: OG(article)/Twitter/BlogPosting JSON-LD追加
+  - `src/app/(marketing)/cases/[slug]/page.tsx`: OG(article)/Twitter/Article JSON-LD + publishedAt伝搬
+  - `src/app/(marketing)/news/[slug]/page.tsx`: twitter site/creator追加
+  - `src/lib/marketing/config.ts`: twitterHandle追加
+  - `src/app/layout.tsx`: twitter.site/creator反映
+  - `/privacy`, `/terms`, `/law`, `/contact`: canonical追加
+  - `/tokusho`: canonical・og:urlを/lawに統一、sitemapから除去
+
 ## 2026-08-16 LINE連携の入力を「Channel ID と Secret の2つだけ」に（branch claude/multi-integration-login-opnzfh）
 
 - 内容: LINE公式アカウント連携で加盟店に求めていた7手順のうち3つを自動化し、入力を2値に削った。
