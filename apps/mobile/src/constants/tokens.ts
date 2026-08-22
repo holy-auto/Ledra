@@ -97,9 +97,9 @@ export const sizing = {
   iconMd: 24,
   iconLg: 32,
   // タブバーの中身の高さ。セーフエリアは含まない（_layout.tsx で insets.bottom を足す）。
-  // 内訳: 上下 padding 8x2 + 丸ボタン 48 + gap 4 + ラベル行 18 = 86。
-  // 丸ボタンの直径やラベルの行高を変えたらここも合わせること
-  tabBarHeight: 86,
+  // 内訳: 上下 padding 8x2 + 丸ボタン 48 = 64（ラベル無し・Uber 同様アイコンのみ）。
+  // 丸ボタンの直径を変えたらここも合わせること
+  tabBarHeight: 64,
   tabIconSize: 24,
   // タブの丸ボタン直径。tabBarHeight とセットで動かすこと
   tabIconCircle: 48,
@@ -107,7 +107,7 @@ export const sizing = {
   // タブバーは絶対配置で内容の上に浮いているので、その高さ 86 に
   // FAB の張り出し（余白8 + 直径60 + 余白8 = 76）を足す。
   // 実際に使うときは useTabContentInset() で insets.bottom を足すこと
-  tabBarClearance: 86 + 76,
+  tabBarClearance: 64 + 76,
 } as const;
 
 // ─── Shadows ─────────────────────────────────────────────────────────

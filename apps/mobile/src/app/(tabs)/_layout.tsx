@@ -1,13 +1,13 @@
 import { useState } from "react";
 import { View, StyleSheet, Pressable } from "react-native";
 import { Tabs, Redirect } from "expo-router";
-import { Text, Icon } from "react-native-paper";
+import { Icon } from "react-native-paper";
 import type { BottomTabBarProps } from "@react-navigation/bottom-tabs";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useAuthStore } from "@/stores/authStore";
 import { QuickCreateSheet } from "@/components/ui/QuickCreateSheet";
-import { colors, spacing, sizing, shadows, typography } from "@/constants/tokens";
+import { colors, spacing, sizing, shadows } from "@/constants/tokens";
 
 /**
  * v2.0 §2 / UI-020: ホーム / 作業 / 車両 / 証明 / その他
@@ -115,12 +115,6 @@ function LedraTabBar({ state, navigation }: BottomTabBarProps) {
                 color={focused ? colors.textOnPrimary : colors.tabInactive}
               />
             </View>
-            <Text
-              style={[styles.tabLabel, focused && styles.tabLabelActive]}
-              numberOfLines={1}
-            >
-              {tab.title}
-            </Text>
           </Pressable>
         );
       })}
@@ -176,8 +170,7 @@ const styles = StyleSheet.create({
   tabItem: {
     flex: 1,
     alignItems: "center",
-    gap: spacing.xs,
-    // 丸 + ラベルが必ず収まる高さを自前で確保する
+    // 丸が必ず収まる高さを自前で確保する
     minHeight: sizing.tabBarHeight - spacing.sm * 2,
   },
   tabCircle: {
@@ -192,14 +185,6 @@ const styles = StyleSheet.create({
   },
   tabCircleActive: {
     backgroundColor: colors.primary,
-  },
-  tabLabel: {
-    ...typography.meta,
-    fontWeight: "600",
-    color: colors.tabInactive,
-  },
-  tabLabelActive: {
-    color: colors.primary,
   },
   fabContainer: {
     position: "absolute",

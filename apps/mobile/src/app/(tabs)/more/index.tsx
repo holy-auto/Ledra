@@ -46,6 +46,12 @@ const SECTIONS: MenuSection[] = [
     ],
   },
   {
+    title: "ナレッジ",
+    items: [
+      { icon: "book-open-variant", label: "現場ナレッジ", route: "/knowledge" },
+    ],
+  },
+  {
     title: "NFC",
     items: [
       { icon: "nfc-search-variant", label: "NFCスキャン", route: "/nfc/scan" },
@@ -68,9 +74,9 @@ const SECTIONS: MenuSection[] = [
   {
     title: "サポート・規約",
     items: [
-      { icon: "email-outline", label: "お問い合わせ", route: "/contact", external: true },
-      { icon: "file-document-outline", label: "利用規約", route: "/terms", external: true },
-      { icon: "shield-check-outline", label: "プライバシーポリシー", route: "/privacy", external: true },
+      { icon: "email-outline", label: "お問い合わせ", route: "/legal/contact" },
+      { icon: "file-document-outline", label: "利用規約", route: "/legal/terms" },
+      { icon: "shield-check-outline", label: "プライバシーポリシー", route: "/legal/privacy" },
     ],
   },
 ];
