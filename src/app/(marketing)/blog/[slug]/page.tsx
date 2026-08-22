@@ -8,6 +8,7 @@ import { ArticleJsonLd } from "@/components/marketing/JsonLd";
 import { ArticleHero } from "@/components/marketing/ArticleHero";
 import { getContentBySlug, listContent } from "@/lib/marketing/content";
 import { getPublishedPostBySlug, listPublishedPosts } from "@/lib/marketing/site-content-posts";
+import { siteConfig } from "@/lib/marketing/config";
 import { formatJstDateJa } from "@/lib/datetime";
 
 type Props = { params: Promise<{ slug: string }> };
@@ -80,6 +81,8 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
       card: "summary_large_image",
       title: article.title,
       description: article.excerpt,
+      site: siteConfig.twitterHandle,
+      creator: siteConfig.twitterHandle,
     },
   };
 }

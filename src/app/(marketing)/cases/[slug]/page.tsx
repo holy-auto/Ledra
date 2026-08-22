@@ -7,6 +7,7 @@ import { CTABanner } from "@/components/marketing/CTABanner";
 import { ArticleJsonLd } from "@/components/marketing/JsonLd";
 import { ArticleHero } from "@/components/marketing/ArticleHero";
 import { getContentBySlug, listContent } from "@/lib/marketing/content";
+import { siteConfig } from "@/lib/marketing/config";
 
 type Props = { params: Promise<{ slug: string }> };
 
@@ -28,11 +29,14 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
       title: entry.frontmatter.title,
       description: entry.frontmatter.excerpt,
       url: `/cases/${entry.frontmatter.slug}`,
+      publishedTime: entry.frontmatter.publishedAt,
     },
     twitter: {
       card: "summary_large_image",
       title: entry.frontmatter.title,
       description: entry.frontmatter.excerpt,
+      site: siteConfig.twitterHandle,
+      creator: siteConfig.twitterHandle,
     },
   };
 }
@@ -48,6 +52,7 @@ export default async function CaseDetailPage({ params }: Props) {
         title={entry.frontmatter.title}
         description={entry.frontmatter.excerpt}
         slug={entry.frontmatter.slug}
+        publishedAt={entry.frontmatter.publishedAt}
         pathPrefix="/cases"
         articleType="Article"
       />

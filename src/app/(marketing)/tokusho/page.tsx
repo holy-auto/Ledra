@@ -86,7 +86,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: `特定商取引法に基づく表記 | ${siteConfig.siteName}`,
     description: "Ledraの特定商取引法に基づく表記です。",
-    url: `${siteConfig.siteUrl}/tokusho`,
+    url: `${siteConfig.siteUrl}/law`,
   },
   robots: { index: true, follow: false },
 };
