@@ -35,7 +35,7 @@ import {
   MenuTile,
   MenuTileSpacer,
 } from "@/components/MenuPicker";
-import { colors, spacing, radius, typography, shadows } from "@/constants/tokens";
+import { colors, spacing, radius, sizing, typography, shadows } from "@/constants/tokens";
 
 interface MenuItem {
   id: string;
@@ -441,21 +441,28 @@ export default function WalkInCheckoutScreen() {
       <Stack.Screen
         options={{
           title: step === "menu" ? "品目を選ぶ" : "会計",
-          // 会計ステップのヘッダー戻るも品目選択へ。既定の router.back() だと
-          // 画面ごと閉じてカートが消える
-          ...(step === "checkout" && {
-            headerLeft: () => (
-              <Pressable
-                onPress={() => setStep("menu")}
-                hitSlop={8}
-                style={{ marginRight: spacing.sm }}
-                accessibilityRole="button"
-                accessibilityLabel="品目選択に戻る"
-              >
-                <Icon source="chevron-left" size={28} color={colors.textPrimary} />
-              </Pressable>
-            ),
-          }),
+          // headerLeft は条件付きスプレッドで渡さないこと。setOptions はマージなので
+          // 会計ステップで設定した headerLeft がキーとして残り、品目選択に戻った後も
+          // 「品目選択へ戻る」ハンドラのままになって押しても何も起きなくなる
+          headerLeft: () => (
+            <Pressable
+              onPress={() => {
+                if (step === "checkout") {
+                  setStep("menu");
+                } else if (router.canGoBack()) {
+                  router.back();
+                } else {
+                  router.replace("/(tabs)");
+                }
+              }}
+              hitSlop={8}
+              style={styles.headerBack}
+              accessibilityRole="button"
+              accessibilityLabel={step === "checkout" ? "品目選択に戻る" : "戻る"}
+            >
+              <Icon source="chevron-left" size={28} color={colors.textPrimary} />
+            </Pressable>
+          ),
         }}
       />
 
@@ -734,6 +741,12 @@ export default function WalkInCheckoutScreen() {
 }
 
 const styles = StyleSheet.create({
+  headerBack: {
+    width: sizing.touchTarget,
+    height: sizing.touchTarget,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   container: { flex: 1, backgroundColor: colors.background },
   card: {
     marginHorizontal: spacing.lg,

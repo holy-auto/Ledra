@@ -7,7 +7,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useAuthStore } from "@/stores/authStore";
 import { QuickCreateSheet } from "@/components/ui/QuickCreateSheet";
-import { colors, radius, spacing, sizing, shadows, typography } from "@/constants/tokens";
+import { colors, spacing, sizing, shadows, typography } from "@/constants/tokens";
 
 /**
  * v2.0 §2 / UI-020: ホーム / 作業 / 車両 / 証明 / その他
@@ -162,12 +162,11 @@ const styles = StyleSheet.create({
   tabBar: {
     flexDirection: "row",
     alignItems: "flex-start",
-    backgroundColor: colors.tabBarBg,
+    // 帯を描かず、画面と同じ地色にして丸ボタンだけが浮いて見えるようにする。
+    // transparent にするとナビゲータ既定の白が透けるので明示的に地色を敷く
+    backgroundColor: colors.background,
     paddingTop: spacing.sm,
     paddingHorizontal: spacing.sm,
-    borderTopLeftRadius: radius.hero,
-    borderTopRightRadius: radius.hero,
-    ...shadows.card,
   },
   tabItem: {
     flex: 1,
@@ -182,7 +181,9 @@ const styles = StyleSheet.create({
     borderRadius: sizing.tabIconCircle / 2,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: colors.surfaceVariant,
+    // 帯が無いので、丸自体が白 + 影で地色から浮く
+    backgroundColor: colors.surface,
+    ...shadows.card,
   },
   tabCircleActive: {
     backgroundColor: colors.primary,
@@ -208,7 +209,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 3,
-    borderColor: colors.tabBarBg,
+    borderColor: colors.background,
     ...shadows.fab,
   },
   fabPressed: {
