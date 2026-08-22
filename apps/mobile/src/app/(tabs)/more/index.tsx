@@ -1,4 +1,4 @@
-import { View, StyleSheet, ScrollView, Pressable } from "react-native";
+import { View, StyleSheet, ScrollView, Pressable, Linking } from "react-native";
 import { Text, Icon } from "react-native-paper";
 import { router } from "expo-router";
 import { useAuthStore } from "@/stores/authStore";
@@ -16,6 +16,8 @@ interface MenuItem {
   icon: string;
   label: string;
   route: string;
+  /** true なら Web（app.ledra.co.jp）をブラウザで開く */
+  external?: boolean;
 }
 
 interface MenuSection {
@@ -23,44 +25,44 @@ interface MenuSection {
   items: MenuItem[];
 }
 
+const WEB_BASE = process.env.EXPO_PUBLIC_API_URL ?? "";
+
+/**
+ * ponytail: 行き先が存在しない項目は載せない。
+ * 押しても何も起きない行は「壊れている」と同じで、あるだけ判断を鈍らせる。
+ * 撤去したもの: Sync Center / ヘルプセンター / フィードバック / Ledraについて
+ * （画面未実装）、スタッフ・権限管理 / 各種設定（未実装かつ「アカウント設定」と重複）。
+ * 実装したらここへ戻す。
+ */
 const SECTIONS: MenuSection[] = [
   {
     title: "業務管理",
     items: [
       { icon: "calendar-clock-outline", label: "予約管理", route: "/reservations" },
-      { icon: "cash-register", label: "POS・会計", route: "/pos/register" },
+      { icon: "cash-register", label: "POS・会計", route: "/pos" },
       { icon: "account-group-outline", label: "顧客一覧", route: "/customers" },
+      { icon: "nfc-variant", label: "NFCタグ台帳", route: "/nfc/tags" },
     ],
   },
   {
-    title: "通知・同期",
+    title: "通知",
     items: [
       { icon: "bell-outline", label: "通知一覧", route: "/notifications" },
-      { icon: "cloud-sync-outline", label: "Sync Center（同期状況）", route: "/sync" },
-    ],
-  },
-  {
-    title: "サポート",
-    items: [
-      { icon: "help-circle-outline", label: "ヘルプセンター", route: "/help" },
-      { icon: "email-outline", label: "お問い合わせ", route: "/contact" },
-      { icon: "message-text-outline", label: "フィードバックを送る", route: "/feedback" },
     ],
   },
   {
     title: "設定",
     items: [
       { icon: "account-outline", label: "アカウント設定", route: "/settings" },
-      { icon: "account-group-outline", label: "スタッフ・権限管理", route: "/settings/staff" },
-      { icon: "cog-outline", label: "各種設定", route: "/settings/general" },
+      { icon: "contactless-payment", label: "Tap to Pay", route: "/settings/tap-to-pay" },
     ],
   },
   {
-    title: "その他",
+    title: "サポート・規約",
     items: [
-      { icon: "information-outline", label: "Ledraについて", route: "/about" },
-      { icon: "file-document-outline", label: "利用規約", route: "/terms" },
-      { icon: "shield-check-outline", label: "プライバシーポリシー", route: "/privacy" },
+      { icon: "email-outline", label: "お問い合わせ", route: "/contact", external: true },
+      { icon: "file-document-outline", label: "利用規約", route: "/terms", external: true },
+      { icon: "shield-check-outline", label: "プライバシーポリシー", route: "/privacy", external: true },
     ],
   },
 ];
@@ -97,13 +99,23 @@ export default function MoreScreen() {
                     styles.menuRow,
                     pressed && styles.menuRowPressed,
                   ]}
-                  onPress={() => router.push(item.route as never)}
+                  onPress={() => {
+                    if (item.external) {
+                      void Linking.openURL(`${WEB_BASE}${item.route}`);
+                      return;
+                    }
+                    router.push(item.route as never);
+                  }}
                   accessibilityRole="button"
                   accessibilityLabel={item.label}
                 >
                   <Icon source={item.icon} size={sizing.iconMd} color={colors.textPrimary} />
                   <Text style={styles.menuLabel}>{item.label}</Text>
-                  <Icon source="chevron-right" size={18} color={colors.textTertiary} />
+                  <Icon
+                    source={item.external ? "open-in-new" : "chevron-right"}
+                    size={18}
+                    color={colors.textTertiary}
+                  />
                 </Pressable>
               </View>
             ))}

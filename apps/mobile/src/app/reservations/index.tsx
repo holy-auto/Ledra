@@ -23,8 +23,6 @@ import {
   shadows,
 } from "@/constants/tokens";
 
-// ponytail: shares same structure as (tabs)/reservations/index.tsx
-// standalone route gets header+back button from reservations/_layout.tsx
 
 type ReservationStatus =
   | "confirmed"

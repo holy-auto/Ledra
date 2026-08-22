@@ -1270,3 +1270,40 @@
   頻度順にするなら `payment_items` の集計クエリが要る。
   タブは v2.0 §2 の正準5構成のままなので、+ を列の中に入れると必ず中心からずれる（6スロットでは
   41.7% か 58.3%）。列の上に浮かせるのが中央に置ける唯一の形として採用した。
+
+## 2026-08-22 モバイル: ルート衝突の解消（戻るボタン欠落・二重ヘッダーの根因）
+
+- 内容: 代表から「戻るボタンが追加されていない、もう3回目」との指摘。原因は**同一 URL を指す
+  ルートファイルの重複**で、戻るボタンを入れた側が影に隠れて表示されていなかった。
+  - `app/(tabs)/reservations/index.tsx` と `app/reservations/index.tsx` が両方 `/reservations` を指し、
+    タブ側が URL を握っていた。タブ側は Tabs ナビゲーターの内側で描画されるため戻るボタンを出せず、
+    さらに `href: null` の `Tabs.Screen` に `headerShown: false` が無かったため、
+    Tabs のヘッダー（タイトル未設定＝ルート名 "reservations"）と入れ子 Stack のヘッダー「予約」で
+    **二重ヘッダー**になっていた。同じ重複が `/certificates` `/vehicles` にも存在
+  - 対処: 予約・会計は v2.0 §2 の正準5タブに含まれないため、タブから外してトップレベル Stack へ集約。
+    `(tabs)/reservations/` と `(tabs)/pos/` を削除（`pos/index.tsx` はトップレベルへ移動）、
+    到達不能だった `certificates/index.tsx` `vehicles/index.tsx` を削除
+- 再発防止: 戻るボタンを8つの `_layout.tsx` に手書きしていたのが取りこぼしの温床だったため、
+  `components/screenOptions.tsx` に `stackScreenOptions` として集約。各 Stack はこれを渡すだけ。
+- ヘッダーを持たない単体画面の修正: `notifications` `dashboard` はルート Stack が
+  `headerShown: false` で、Stack も持たないため**戻る導線が一切無かった**。個別にヘッダーを付与。
+- クイック作成（+）の死んだ導線を修正: 「予約作成」`/(tabs)/reservations/new`、
+  「作業開始」`/(tabs)/work/new` はいずれも**存在しないファイル**を指しており無反応だった。
+  `/reservations/new` と `/reservations/new?type=walk_in` に修正し、
+  `reservations/new.tsx` が `type` クエリで飛び込みを初期選択できるようにした。
+- 「その他」の死んだリンク6本を撤去: `/sync` `/help` `/feedback` `/about` `/settings/staff`
+  `/settings/general` は画面が存在せず無反応だった。`/contact` `/terms` `/privacy` は Web
+  （`app.ledra.co.jp`）に実在するため `Linking.openURL` で外部リンク化し、アイコンで区別。
+  代わりに実在する「NFCタグ台帳」「Tap to Pay」を追加。
+- タブバーの + は中央配置をやめ、右下の独立した FAB に戻した（代表の指示）。
+  タブ5枚では列内で中央に置けず、列の上に浮かせるとリスト行の中央に恒常的に重なるため。
+- 検証: 全ナビゲーション先（`route:` と `router.push/replace`）がファイルとして実在するかを
+  機械的に照合し、アプリ内リンクの欠落ゼロを確認。
+- 対象: `apps/mobile/src/components/screenOptions.tsx`（新規）、8つの `_layout.tsx`、
+  `app/_layout.tsx`、`(tabs)/_layout.tsx`、`(tabs)/index.tsx`、`(tabs)/more/index.tsx`、
+  `components/ui/QuickCreateSheet.tsx`、`reservations/new.tsx`、`notifications.tsx`。
+  削除: `(tabs)/reservations/`、`(tabs)/pos/`（`pos/index.tsx` へ移動）、
+  `certificates/index.tsx`、`vehicles/index.tsx`。
+- 注記: 撤去した6項目（Sync Center / ヘルプ / フィードバック / Ledraについて / スタッフ権限 /
+  各種設定）は**画面を実装したらメニューに戻す**。認証フロー7画面は前進のみの線形フローのため
+  戻るボタンは付けていない。

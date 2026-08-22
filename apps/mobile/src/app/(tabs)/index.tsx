@@ -217,7 +217,7 @@ export default function HomeScreen() {
         severity: "ACTION",
         title: "決済確認待ち",
         detail: `¥未精算 ${unpaid} 件`,
-        route: "/(tabs)/pos",
+        route: "/pos",
       });
     }
 
@@ -297,7 +297,7 @@ export default function HomeScreen() {
         workType: "",
         deadline: "",
         reason: `本日の残り ${todayTotal - todayCompleted} 件`,
-        route: "/(tabs)/reservations",
+        route: "/reservations",
       };
     } else if (unpaid > 0) {
       nextAction = {
@@ -307,7 +307,7 @@ export default function HomeScreen() {
         workType: "",
         deadline: "",
         reason: `${unpaid} 件の未精算あり`,
-        route: "/(tabs)/pos",
+        route: "/pos",
       };
     }
 

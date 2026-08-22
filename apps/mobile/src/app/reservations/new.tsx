@@ -15,7 +15,7 @@ import {
   List,
   Snackbar,
 } from "react-native-paper";
-import { router, Stack } from "expo-router";
+import { router, Stack, useLocalSearchParams } from "expo-router";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import DateTimePicker from "@react-native-community/datetimepicker";
 
@@ -52,8 +52,12 @@ type ReservationType = "scheduled" | "walk_in";
 
 export default function ReservationNewScreen() {
   const { user, selectedStore } = useAuthStore();
+  // クイック作成の「作業開始（ウォークイン入庫）」から飛び込みを初期選択して開く
+  const { type } = useLocalSearchParams<{ type?: string }>();
 
-  const [reservationType, setReservationType] = useState<ReservationType>("scheduled");
+  const [reservationType, setReservationType] = useState<ReservationType>(
+    type === "walk_in" ? "walk_in" : "scheduled",
+  );
 
   // Form state
   const [customerSearch, setCustomerSearch] = useState("");

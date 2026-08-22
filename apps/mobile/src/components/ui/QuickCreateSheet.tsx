@@ -33,13 +33,13 @@ const actions: QuickAction[] = [
     icon: "calendar-plus",
     label: "予約作成",
     description: "新規予約を登録",
-    route: "/(tabs)/reservations/new",
+    route: "/reservations/new",
   },
   {
     icon: "wrench-outline",
     label: "作業開始",
     description: "ウォークイン入庫",
-    route: "/(tabs)/work/new",
+    route: "/reservations/new?type=walk_in",
   },
 ];
 

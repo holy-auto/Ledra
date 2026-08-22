@@ -11,11 +11,11 @@ import { colors, spacing, sizing, shadows } from "@/constants/tokens";
 /**
  * v2.0 §2 / UI-020: ホーム / 作業 / 車両 / 証明 / その他
  *
- * Active tab: floating Ledra Blue circular icon.
- * Global "+" FAB: Quick Create action (separate from tab selection).
- * 44x44 minimum touch targets for all tabs.
+ * 各タブは独立した丸ボタン。Quick Create の "+" はタブ選択とは別物。
  *
- * 旧タブ（予約 / 会計）はルートとして残すが、タブバーには表示しない（href: null）。
+ * 予約 / 会計 はタブではなくトップレベル Stack のルート（app/reservations,
+ * app/pos）。href: null のタブとして置くと Tabs の内側で描画されるため、
+ * 戻るボタンを出せずタブバーだけが残って行き止まりになる。
  */
 export default function TabsLayout() {
   const { isAuthenticated, selectedStore } = useAuthStore();
@@ -138,10 +138,6 @@ export default function TabsLayout() {
             ),
           }}
         />
-
-        {/* ── 旧タブ（ルート維持・タブバー非表示） ── */}
-        <Tabs.Screen name="reservations" options={{ href: null }} />
-        <Tabs.Screen name="pos" options={{ href: null }} />
       </Tabs>
 
       {/* Quick Create FAB */}
@@ -180,12 +176,11 @@ function TabIcon({
 }
 
 /**
- * クイック作成ボタン。
- * タブバー中央の真上に浮かせる。タブ列とは 8px 空けて重ならないので、
- * どのタブのタップ領域も削らない。
+ * クイック作成ボタン。タブバーとは独立した右下の FAB。
  *
- * ponytail: タブが5枚（v2.0 §2 の正準構成）なので、+ を列の中に入れると
- * 必ず中心からずれる。列の上に浮かせるのが中央に置ける唯一の形。
+ * 中央配置は見送り: タブが5枚（v2.0 §2 の正準構成）だと + を列の中で
+ * 中央に置けず、列の上に浮かせるとリスト行の中央に恒常的に重なる。
+ * タブ選択とは別の操作なので、右下に離して置く。
  */
 function QuickCreateFAB({ onPress }: { onPress: () => void }) {
   const insets = useSafeAreaInsets();
@@ -194,8 +189,7 @@ function QuickCreateFAB({ onPress }: { onPress: () => void }) {
     <View
       style={[
         styles.fabContainer,
-        // タブバーの実高さ（= 中身 + セーフエリア）の上に 8px 空けて置く。
-        // 両 OS で同じ見た目になる
+        // タブバーの実高さ（= 中身 + セーフエリア）の上に 8px 空けて置く
         { bottom: sizing.tabBarHeight + insets.bottom + spacing.sm },
       ]}
       pointerEvents="box-none"
@@ -232,9 +226,7 @@ const styles = StyleSheet.create({
   },
   fabContainer: {
     position: "absolute",
-    left: 0,
-    right: 0,
-    alignItems: "center",
+    right: spacing.xl,
     zIndex: 10,
   },
   fab: {

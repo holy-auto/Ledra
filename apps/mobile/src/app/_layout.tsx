@@ -17,6 +17,7 @@ import { ToastProvider } from "@/components/ToastProvider";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { useTapToPayWarmup } from "@/hooks/useTapToPayWarmup";
 import { registerForPushNotifications } from "@/lib/push";
+import { stackScreenOptions } from "@/components/screenOptions";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -123,7 +124,23 @@ export default function RootLayout() {
                 />
                 <Stack.Screen name="work" options={{ headerShown: false }} />
                 <Stack.Screen name="pos" options={{ headerShown: false }} />
-                <Stack.Screen name="dashboard" />
+                {/* Stack を持たない単体画面。ヘッダーを出さないと戻る導線が無くなる */}
+                <Stack.Screen
+                  name="notifications"
+                  options={{
+                    ...stackScreenOptions,
+                    headerShown: true,
+                    title: "通知",
+                  }}
+                />
+                <Stack.Screen
+                  name="dashboard"
+                  options={{
+                    ...stackScreenOptions,
+                    headerShown: true,
+                    title: "ダッシュボード",
+                  }}
+                />
               </Stack>
             </ToastProvider>
           </PaperProvider>
