@@ -96,9 +96,15 @@ export const sizing = {
   iconSm: 20,
   iconMd: 24,
   iconLg: 32,
-  // 48px の丸ボタン + ラベル + 上下パディング + iOS ホームインジケータ分
-  tabBarHeight: 100,
+  // タブバーの中身の高さ（丸ボタン + ラベル + 上下パディング）。
+  // セーフエリアは含まない。実高さは _layout.tsx で insets.bottom を足して決める
+  tabBarHeight: 80,
   tabIconSize: 24,
+  // タブの丸ボタン直径。tabBarHeight とセットで動かすこと
+  tabIconCircle: 48,
+  // 中央の + ボタンがタブバーより上に張り出す分（余白8 + 直径60 + 余白8）。
+  // タブ配下のスクロール内容の下余白に使い、最後の行が + に隠れないようにする
+  fabClearance: 76,
 } as const;
 
 // ─── Shadows ─────────────────────────────────────────────────────────

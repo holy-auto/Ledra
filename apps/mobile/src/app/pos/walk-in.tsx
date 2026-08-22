@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, memo } from "react";
 import {
   View,
   StyleSheet,
@@ -6,6 +6,7 @@ import {
   FlatList,
   Pressable,
   Platform,
+  BackHandler,
   useWindowDimensions,
 } from "react-native";
 import QRCode from "react-native-qrcode-svg";
@@ -15,6 +16,7 @@ import {
   ActivityIndicator,
   Snackbar,
   IconButton,
+  Icon,
 } from "react-native-paper";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router, Stack } from "expo-router";
@@ -26,6 +28,7 @@ import { mobileApi } from "@/lib/api";
 import { useTerminal } from "@/hooks/useTerminal";
 import { useTerminalStore } from "@/stores/terminalStore";
 import { LedraButton, SegmentedControl } from "@/components/ui";
+import { menuCategories, filterMenuItems, padToColumns } from "@/lib/menuFilter";
 import { colors, spacing, radius, typography, shadows } from "@/constants/tokens";
 
 interface MenuItem {
@@ -48,22 +51,20 @@ interface CartItem {
 type PaymentMethod = "cash" | "card" | "qr" | "bank_transfer";
 
 /**
- * 「よく使う」に出す件数。
- * ponytail: 店舗が menu_items.sort_order で手で並べた順の上位を流用している。
- * 上限: 実売上頻度ではない。頻度順にするなら payment_items の集計クエリが要る。
+ * 決済手段の構成を決める端末種別。
+ *
+ * ponytail: ウィンドウ幅ではなく Platform.isPad（端末固有の事実）で判定する。
+ * 幅で判定すると iPad の Split View 中に isIPad が反転し、選択済みの
+ * paymentMethod が構成から消える（例: "qr" のまま iPad 構成になると
+ * QR を出さずに p_payment_method: "qr" で記帳される）。
+ * 見た目の列数は別途ウィンドウ幅から決める。
  */
-const POPULAR_LIMIT = 12;
-
 function useDeviceType() {
-  // useWindowDimensions は回転にも追随する。初回描画から確定するので
-  // これに依存する numColumns がマウント後に変わって再マウントすることもない
-  const { width, height } = useWindowDimensions();
-  const isTablet = Math.min(width, height) >= 768;
-
   const os = Platform.OS;
+  const isIPad = os === "ios" && Platform.isPad;
   return {
-    isIPhone: os === "ios" && !isTablet,
-    isIPad: os === "ios" && isTablet,
+    isIPhone: os === "ios" && !isIPad,
+    isIPad,
     isAndroid: os === "android",
   };
 }
@@ -101,6 +102,7 @@ function useQrPaymentPoller(
 export default function WalkInCheckoutScreen() {
   const { user, selectedStore } = useAuthStore();
   const { isIPhone, isIPad, isAndroid } = useDeviceType();
+  const { width: windowWidth } = useWindowDimensions();
   const insets = useSafeAreaInsets();
 
   // POS レジ同様、品目選択と会計を 2 ステップに分ける（1 画面に積むと品数増加で破綻する）
@@ -189,6 +191,17 @@ export default function WalkInCheckoutScreen() {
 
   useQrPaymentPoller(qrPolling ? qrSessionId : null, onQrPaid);
 
+  // 会計ステップでの端末バックは画面を閉じずに品目選択へ戻す。
+  // そのまま pop させるとカートが黙って消える
+  useEffect(() => {
+    if (step !== "checkout") return;
+    const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+      setStep("menu");
+      return true;
+    });
+    return () => sub.remove();
+  }, [step]);
+
   // メニュー取得
   const { data: menuItems = [] } = useQuery<MenuItem[]>({
     queryKey: ["menu-items", user?.tenantId],
@@ -209,40 +222,25 @@ export default function WalkInCheckoutScreen() {
   const [menuSearch, setMenuSearch] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string>("よく使う");
 
-  const categories = useMemo(() => {
-    const unique = new Set<string>();
-    for (const item of menuItems) {
-      unique.add(item.category_large ?? "未分類");
-    }
-    const rest = Array.from(unique).sort();
-    return menuItems.length > POPULAR_LIMIT
-      ? ["よく使う", "すべて", ...rest]
-      : ["すべて", ...rest];
-  }, [menuItems]);
+  const categories = useMemo(() => menuCategories(menuItems), [menuItems]);
 
   // メニュー読込前は selectedCategory が候補に無い。その場合は先頭に落とす
   const activeCategory = categories.includes(selectedCategory)
     ? selectedCategory
     : (categories[0] ?? "すべて");
 
-  const filteredMenuItems = useMemo(() => {
-    const q = menuSearch.trim().toLowerCase();
-    // 検索中はカテゴリを跨いで探す（探し物が今のカテゴリにあるとは限らない）
-    if (q) return menuItems.filter((i) => i.name.toLowerCase().includes(q));
-    if (activeCategory === "よく使う") return menuItems.slice(0, POPULAR_LIMIT);
-    if (activeCategory === "すべて") return menuItems;
-    const cat = activeCategory === "未分類" ? null : activeCategory;
-    return menuItems.filter((i) => (i.category_large ?? null) === cat);
-  }, [menuItems, activeCategory, menuSearch]);
+  const filteredMenuItems = useMemo(
+    () => filterMenuItems(menuItems, activeCategory, menuSearch),
+    [menuItems, activeCategory, menuSearch],
+  );
 
-  const numColumns = isIPad ? 4 : 2;
+  // 列数は実ウィンドウ幅から。Split View や回転にも素直に追随する
+  const numColumns = windowWidth >= 700 ? 4 : windowWidth >= 500 ? 3 : 2;
 
-  // 端数行のタイルが横に伸びないよう null でパディングして必ず numColumns の倍数にする
-  const gridData = useMemo<(MenuItem | null)[]>(() => {
-    const rem = filteredMenuItems.length % numColumns;
-    if (rem === 0) return filteredMenuItems;
-    return [...filteredMenuItems, ...(Array(numColumns - rem).fill(null) as null[])];
-  }, [filteredMenuItems, numColumns]);
+  const gridData = useMemo(
+    () => padToColumns(filteredMenuItems, numColumns),
+    [filteredMenuItems, numColumns],
+  );
 
   function addMenuItem(item: MenuItem) {
     setCart((prev) => {
@@ -442,7 +440,24 @@ export default function WalkInCheckoutScreen() {
   return (
     <>
       <Stack.Screen
-        options={{ title: step === "menu" ? "品目を選ぶ" : "会計" }}
+        options={{
+          title: step === "menu" ? "品目を選ぶ" : "会計",
+          // 会計ステップのヘッダー戻るも品目選択へ。既定の router.back() だと
+          // 画面ごと閉じてカートが消える
+          ...(step === "checkout" && {
+            headerLeft: () => (
+              <Pressable
+                onPress={() => setStep("menu")}
+                hitSlop={8}
+                style={{ marginRight: spacing.sm }}
+                accessibilityRole="button"
+                accessibilityLabel="品目選択に戻る"
+              >
+                <Icon source="chevron-left" size={28} color={colors.textPrimary} />
+              </Pressable>
+            ),
+          }),
+        }}
       />
 
       {step === "menu" ? (
@@ -532,24 +547,26 @@ export default function WalkInCheckoutScreen() {
               <Text style={styles.barCount}>{itemCount}点</Text>
               <Text style={styles.barTotal}>¥{total.toLocaleString()}</Text>
             </View>
-            <LedraButton
-              icon="arrow-right"
-              disabled={cart.length === 0}
-              onPress={() => setStep("checkout")}
-            >
+            {/* カートが空でも進めること。カスタム品目（自由入力）は会計側にあり、
+                メニュー未登録の店舗や都度見積りの会計はそこからしか作れない */}
+            <LedraButton icon="arrow-right" onPress={() => setStep("checkout")}>
               明細・支払い
             </LedraButton>
           </View>
         </View>
       ) : (
         <ScrollView style={styles.container} keyboardShouldPersistTaps="handled">
-          <Pressable
-            style={styles.backToMenu}
-            onPress={() => setStep("menu")}
-            accessibilityRole="button"
-          >
-            <Text style={styles.backToMenuText}>← 品目を追加する</Text>
-          </Pressable>
+          {/* QR 提示中は金額を動かせない。Stripe が請求する額と
+              pos_checkout に記帳する額がずれる */}
+          {!qrPolling && (
+            <Pressable
+              style={styles.backToMenu}
+              onPress={() => setStep("menu")}
+              accessibilityRole="button"
+            >
+              <Text style={styles.backToMenuText}>← 品目を追加する</Text>
+            </Pressable>
+          )}
 
           {/* カート明細 */}
           {cart.length > 0 ? (
@@ -569,6 +586,7 @@ export default function WalkInCheckoutScreen() {
                     <IconButton
                       icon="minus-circle-outline"
                       size={20}
+                      disabled={qrPolling}
                       onPress={() => updateQuantity(index, -1)}
                     />
                     <Text style={styles.qtyText}>
@@ -577,12 +595,14 @@ export default function WalkInCheckoutScreen() {
                     <IconButton
                       icon="plus-circle-outline"
                       size={20}
+                      disabled={qrPolling}
                       onPress={() => updateQuantity(index, 1)}
                     />
                     <IconButton
                       icon="delete-outline"
                       size={20}
                       iconColor={colors.danger}
+                      disabled={qrPolling}
                       onPress={() => removeItem(index)}
                     />
                   </View>
@@ -632,6 +652,7 @@ export default function WalkInCheckoutScreen() {
                 icon="plus-circle"
                 iconColor={colors.textPrimary}
                 size={28}
+                disabled={qrPolling}
                 onPress={addCustomItem}
               />
             </View>
@@ -700,10 +721,15 @@ export default function WalkInCheckoutScreen() {
                   />
                   <View style={styles.changeRow}>
                     <Text style={styles.bodyText}>おつり:</Text>
+                    {/* change は Math.max で 0 に丸めてあるので、色は
+                        預かり額が足りているかで決める */}
                     <Text
                       style={[
                         styles.totalLabel,
-                        { color: change >= 0 ? colors.success : colors.danger },
+                        {
+                          color:
+                            received >= total ? colors.success : colors.danger,
+                        },
                       ]}
                     >
                       ¥{change.toLocaleString()}
@@ -744,8 +770,12 @@ export default function WalkInCheckoutScreen() {
   );
 }
 
-/** POS レジ風の等幅タイル。カート投入済みは枠+数量バッジで一目でわかる */
-function MenuTile({
+/**
+ * POS レジ風の等幅タイル。カート投入済みは枠+数量バッジで一目でわかる。
+ * バッジはタイル内のフローに置く（角丸の外にはみ出させると Android で
+ * クリップされて数量が見えなくなる）。
+ */
+const MenuTile = memo(function MenuTile({
   item,
   qty,
   onPress,
@@ -763,20 +793,22 @@ function MenuTile({
       ]}
       onPress={onPress}
       accessibilityRole="button"
-      accessibilityLabel={`${item.name} ${item.unit_price}円を追加`}
+      accessibilityLabel={`${item.name} ${item.unit_price}円を追加${qty > 0 ? `（カートに${qty}）` : ""}`}
     >
       <Text style={styles.tileName} numberOfLines={2}>
         {item.name}
       </Text>
-      <Text style={styles.tilePrice}>¥{item.unit_price.toLocaleString()}</Text>
-      {qty > 0 && (
-        <View style={styles.tileBadge}>
-          <Text style={styles.tileBadgeText}>{qty}</Text>
-        </View>
-      )}
+      <View style={styles.tileFooter}>
+        <Text style={styles.tilePrice}>¥{item.unit_price.toLocaleString()}</Text>
+        {qty > 0 && (
+          <View style={styles.tileBadge}>
+            <Text style={styles.tileBadgeText}>{qty}</Text>
+          </View>
+        )}
+      </View>
     </Pressable>
   );
-}
+});
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
@@ -865,16 +897,19 @@ const styles = StyleSheet.create({
     ...typography.label,
     color: colors.textPrimary,
   },
+  tileFooter: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing.xs,
+    marginTop: spacing.xs,
+  },
   tilePrice: {
     ...typography.body,
     fontWeight: "700",
     color: colors.textPrimary,
-    marginTop: spacing.xs,
   },
   tileBadge: {
-    position: "absolute",
-    top: -6,
-    right: -6,
     minWidth: 22,
     height: 22,
     paddingHorizontal: 5,

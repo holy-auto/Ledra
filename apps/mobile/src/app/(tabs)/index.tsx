@@ -690,7 +690,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   screenContent: {
-    paddingBottom: sizing.tabBarHeight,
+    paddingBottom: sizing.fabClearance,
   },
 
   // Header

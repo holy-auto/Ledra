@@ -13,7 +13,7 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import { useAuthStore } from "@/stores/authStore";
 import { StatusBadge } from "@/components/ui";
-import { colors, spacing, radius, typography, shadows } from "@/constants/tokens";
+import { colors, spacing, radius, sizing, typography, shadows } from "@/constants/tokens";
 
 type WorkStatus = "arrived" | "in_progress" | "completed";
 
@@ -190,7 +190,7 @@ export default function WorkScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
-  listContent: { padding: spacing.lg, paddingBottom: spacing["3xl"], gap: spacing.md },
+  listContent: { padding: spacing.lg, paddingBottom: sizing.fabClearance, gap: spacing.md },
   card: {
     backgroundColor: colors.surface,
     borderRadius: radius.card,

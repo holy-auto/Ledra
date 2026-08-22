@@ -8,7 +8,7 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "typecheck": "tsc --noEmit",
-    "test": "node src/lib/reservationSteps.check.ts",
+    "test": "node src/lib/reservationSteps.check.ts && node src/lib/menuFilter.check.ts",
     "lint": "expo lint"
   },
   "dependencies": {

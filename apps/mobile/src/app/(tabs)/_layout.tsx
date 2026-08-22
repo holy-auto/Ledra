@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { View, StyleSheet, Pressable, Platform } from "react-native";
+import { View, StyleSheet, Pressable } from "react-native";
 import { Tabs } from "expo-router";
 import { Icon } from "react-native-paper";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -20,6 +20,9 @@ import { colors, spacing, sizing, shadows } from "@/constants/tokens";
 export default function TabsLayout() {
   const { isAuthenticated, selectedStore } = useAuthStore();
   const [quickCreateVisible, setQuickCreateVisible] = useState(false);
+  // 数値 height を渡すと react-navigation はセーフエリアを足してくれないので自前で足す。
+  // 固定値で代用すると Android のジェスチャーバー配下にラベルが潜る
+  const insets = useSafeAreaInsets();
 
   if (!isAuthenticated) return <Redirect href="/(auth)/login" />;
   if (!selectedStore) return <Redirect href="/(auth)/select-store" />;
@@ -46,9 +49,9 @@ export default function TabsLayout() {
             backgroundColor: colors.tabBarBg,
             borderTopColor: colors.borderLight,
             borderTopWidth: StyleSheet.hairlineWidth,
-            height: sizing.tabBarHeight,
+            height: sizing.tabBarHeight + insets.bottom,
             paddingTop: spacing.xs,
-            paddingBottom: Platform.OS === "ios" ? 28 : spacing.sm,
+            paddingBottom: insets.bottom + spacing.xs,
             ...shadows.card,
           },
           tabBarLabelStyle: {
@@ -191,12 +194,9 @@ function QuickCreateFAB({ onPress }: { onPress: () => void }) {
     <View
       style={[
         styles.fabContainer,
-        {
-          bottom:
-            sizing.tabBarHeight +
-            (Platform.OS === "ios" ? 0 : insets.bottom) +
-            spacing.sm,
-        },
+        // タブバーの実高さ（= 中身 + セーフエリア）の上に 8px 空けて置く。
+        // 両 OS で同じ見た目になる
+        { bottom: sizing.tabBarHeight + insets.bottom + spacing.sm },
       ]}
       pointerEvents="box-none"
     >
@@ -217,11 +217,11 @@ function QuickCreateFAB({ onPress }: { onPress: () => void }) {
 
 const styles = StyleSheet.create({
   tabIconWrap: {
-    width: 48,
-    height: 48,
+    width: sizing.tabIconCircle,
+    height: sizing.tabIconCircle,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: 24,
+    borderRadius: sizing.tabIconCircle / 2,
     backgroundColor: colors.surfaceVariant,
     borderWidth: 1,
     borderColor: colors.border,

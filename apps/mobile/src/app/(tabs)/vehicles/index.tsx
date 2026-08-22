@@ -15,7 +15,7 @@ import { supabase } from "@/lib/supabase";
 import { useAuthStore } from "@/stores/authStore";
 import { StatusBadge } from "@/components/ui";
 import { EmptyState } from "@/components/EmptyState";
-import { colors, spacing, radius, typography, shadows } from "@/constants/tokens";
+import { colors, spacing, radius, sizing, typography, shadows } from "@/constants/tokens";
 
 interface VehicleItem {
   id: string;
@@ -208,7 +208,7 @@ const styles = StyleSheet.create({
   },
   listContent: {
     padding: spacing.lg,
-    paddingBottom: spacing["3xl"],
+    paddingBottom: sizing.fabClearance,
     gap: spacing.md,
   },
   card: {

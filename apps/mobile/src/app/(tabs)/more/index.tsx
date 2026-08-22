@@ -124,7 +124,7 @@ const styles = StyleSheet.create({
   content: {
     paddingHorizontal: spacing.xl,
     paddingTop: spacing.lg,
-    paddingBottom: sizing.tabBarHeight,
+    paddingBottom: sizing.fabClearance,
   },
 
   // Store card
