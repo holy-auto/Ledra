@@ -6,6 +6,7 @@ export default function KnowledgeLayout() {
     <Stack screenOptions={stackScreenOptions}>
       <Stack.Screen name="index" options={{ title: "ナレッジ" }} />
       <Stack.Screen name="[id]" options={{ title: "ナレッジ詳細" }} />
+      <Stack.Screen name="new" options={{ title: "ナレッジを書く" }} />
     </Stack>
   );
 }

@@ -70,7 +70,9 @@ interface FieldNote {
 }
 
 export default function KnowledgeScreen() {
-  const { user } = useAuthStore();
+  const { user, hasMinRole } = useAuthStore();
+  // 投稿できるのは admin 以上（正の判定はサーバー側 /api/mobile/academy/lessons）
+  const canPost = hasMinRole("admin");
   const [scope, setScope] = useState<Scope>("shared");
   const [search, setSearch] = useState("");
 
@@ -140,6 +142,18 @@ export default function KnowledgeScreen() {
           dense
         />
       </View>
+
+      {canPost && scope === "shared" && (
+        <Pressable
+          style={({ pressed }) => [styles.postButton, pressed && styles.cardPressed]}
+          onPress={() => router.push("/knowledge/new")}
+          accessibilityRole="button"
+          accessibilityLabel="ナレッジを書く"
+        >
+          <Icon source="pencil-plus-outline" size={20} color={colors.primary} />
+          <Text style={styles.postButtonText}>ナレッジを書く</Text>
+        </Pressable>
+      )}
 
       {scope === "shared" ? (
         <FlatList
@@ -289,4 +303,19 @@ const styles = StyleSheet.create({
   },
   tagText: { ...typography.meta, color: colors.textSecondary },
   ratingRow: { flexDirection: "row", alignItems: "center", gap: spacing.xs },
+  postButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacing.sm,
+    marginHorizontal: spacing.lg,
+    marginTop: spacing.lg,
+    paddingVertical: spacing.md,
+    borderRadius: radius.card,
+    borderWidth: 1,
+    borderStyle: "dashed",
+    borderColor: colors.primary,
+    backgroundColor: colors.primaryLight,
+  },
+  postButtonText: { ...typography.label, color: colors.primary },
 });
