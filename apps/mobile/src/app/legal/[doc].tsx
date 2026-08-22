@@ -1,14 +1,12 @@
 import { View, StyleSheet, ScrollView, Linking } from "react-native";
-import { Text, ActivityIndicator } from "react-native-paper";
+import { Text } from "react-native-paper";
 import { Stack, useLocalSearchParams } from "expo-router";
-import { useQuery } from "@tanstack/react-query";
 
 import { EmptyState } from "@/components/EmptyState";
+import legalDocuments from "@/constants/legalDocuments.json";
 import { colors, spacing, typography } from "@/constants/tokens";
 
-const WEB_BASE = process.env.EXPO_PUBLIC_WEB_URL ?? "https://app.ledra.co.jp";
-
-/** Web の src/lib/legal/documents.ts と同じ構造。文面はサーバー側が単一定義源 */
+/** src/lib/legal/documents.json と同じ構造（同一ファイルのコピー） */
 type LegalBlock =
   | { type: "p"; text: string }
   | { type: "h2"; text: string }
@@ -16,6 +14,7 @@ type LegalBlock =
   | { type: "contact"; before: string; email: string; after?: string };
 
 interface LegalDocument {
+  slug: string;
   title: string;
   updated: string;
   blocks: LegalBlock[];
@@ -24,35 +23,24 @@ interface LegalDocument {
 /**
  * 利用規約・プライバシーポリシーをアプリ内で表示する。
  *
- * ponytail: 文面をアプリ側に複製せず /api/legal/[doc] から取得する。
- * 法務文書を 2 箇所に持つと片方だけ古くなり、それがそのまま実害になる。
+ * ponytail: 文面はアプリに同梱する。サーバーの API から取ると、アプリと Web の
+ * リリース時期がずれた瞬間（配信前・古い本番）に表示できなくなる。オフラインの
+ * 現場でも読めるべき文書でもある。
+ * 正は Web の src/lib/legal/documents.json で、こちらはそのコピー。
+ * 2 ファイルがズレていないことは src/lib/legal.check.ts が検証する。
  */
 export default function LegalDocScreen() {
   const { doc } = useLocalSearchParams<{ doc: string }>();
-
-  const { data, isLoading, isError } = useQuery<LegalDocument>({
-    queryKey: ["legal", doc],
-    queryFn: async () => {
-      const res = await fetch(`${WEB_BASE}/api/legal/${doc}`);
-      if (!res.ok) throw new Error("読み込みに失敗しました");
-      return res.json();
-    },
-    enabled: !!doc,
-    staleTime: 60 * 60 * 1000,
-  });
+  const data = (legalDocuments as LegalDocument[]).find((d) => d.slug === doc);
 
   return (
     <>
       <Stack.Screen options={{ title: data?.title ?? "" }} />
-      {isLoading ? (
-        <View style={styles.center}>
-          <ActivityIndicator />
-        </View>
-      ) : isError || !data ? (
+      {!data ? (
         <EmptyState
           icon="file-document-outline"
-          title="読み込めませんでした"
-          description="通信環境を確認して、もう一度お試しください"
+          title="文書が見つかりません"
+          description="アプリを最新版に更新してください"
         />
       ) : (
         <ScrollView style={styles.container} contentContainerStyle={styles.content}>
