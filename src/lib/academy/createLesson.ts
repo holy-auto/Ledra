@@ -81,3 +81,34 @@ export function buildLessonInsert(caller: LessonCreateCaller, input: LessonCreat
 export async function insertLesson(supabase: SupabaseClient, caller: LessonCreateCaller, input: LessonCreateInput) {
   return supabase.from("academy_lessons").insert(buildLessonInsert(caller, input)).select("id").single();
 }
+
+/** 公開状態の変更だけを受け付けるスキーマ（モバイルからの取り消し・再公開用） */
+export const lessonStatusUpdateSchema = z.object({
+  status: z.enum(["draft", "published", "archived"]),
+});
+
+/**
+ * このレッスンを編集・削除してよいか。
+ *
+ * 管理画面の /api/admin/academy/lessons/[id] が持っていた規則をここに集約した。
+ * テナント管理者ではなく **作者本人**（または運営）に限る。他人の投稿を
+ * 勝手に取り下げられないようにするため。
+ */
+export function canModifyLesson(
+  caller: { userId: string; role: Role },
+  lesson: { author_user_id: string | null },
+): boolean {
+  return lesson.author_user_id === caller.userId || caller.role === "super_admin";
+}
+
+/** 公開状態を変える更新行。draft -> published のときだけ published_at を打つ */
+export function buildLessonStatusUpdate(nextStatus: "draft" | "published" | "archived", currentStatus: string) {
+  const update: Record<string, unknown> = {
+    status: nextStatus,
+    updated_at: new Date().toISOString(),
+  };
+  if (nextStatus === "published" && currentStatus !== "published") {
+    update.published_at = new Date().toISOString();
+  }
+  return update;
+}

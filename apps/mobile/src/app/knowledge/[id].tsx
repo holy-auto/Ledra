@@ -1,16 +1,21 @@
-import { View, StyleSheet, ScrollView, Linking, Pressable } from "react-native";
-import { Text, ActivityIndicator, Icon } from "react-native-paper";
-import { Stack, useLocalSearchParams } from "expo-router";
-import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
+import { View, StyleSheet, ScrollView, Linking, Pressable, Alert } from "react-native";
+import { Text, ActivityIndicator, Icon, Snackbar } from "react-native-paper";
+import { Stack, router, useLocalSearchParams } from "expo-router";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { supabase } from "@/lib/supabase";
-import { StatusBadge } from "@/components/ui";
+import { mobileApi } from "@/lib/api";
+import { useAuthStore } from "@/stores/authStore";
+import { LedraButton, StatusBadge } from "@/components/ui";
 import { EmptyState } from "@/components/EmptyState";
 import { colors, spacing, radius, typography, shadows } from "@/constants/tokens";
 
 interface Lesson {
   id: string;
   tenant_id: string | null;
+  author_user_id: string | null;
+  status: string;
   category: string;
   level: string;
   title: string;
@@ -40,6 +45,10 @@ const LEVEL_LABEL: Record<string, string> = {
 
 export default function KnowledgeDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const { user } = useAuthStore();
+  const queryClient = useQueryClient();
+  const [busy, setBusy] = useState(false);
+  const [snackbar, setSnackbar] = useState("");
 
   const { data, isLoading, isError } = useQuery<Lesson | null>({
     queryKey: ["knowledge-lesson", id],
@@ -47,16 +56,62 @@ export default function KnowledgeDetailScreen() {
       const { data, error } = await supabase
         .from("academy_lessons")
         .select(
-          "id, tenant_id, category, level, title, summary, body, video_url, tags, published_at, rating_avg, rating_count",
+          "id, tenant_id, author_user_id, status, category, level, title, summary, body, video_url, tags, published_at, rating_avg, rating_count",
         )
         .eq("id", id)
-        .eq("status", "published")
         .maybeSingle();
       if (error) throw error;
       return (data ?? null) as Lesson | null;
     },
     enabled: !!id,
   });
+
+  // 取り下げ・再公開・削除は作者本人のみ（サーバー側 canModifyLesson が正）
+  const isAuthor = !!user?.id && data?.author_user_id === user.id;
+
+  async function changeStatus(next: "draft" | "published") {
+    setBusy(true);
+    try {
+      await mobileApi(`/academy/lessons/${id}`, {
+        method: "PATCH",
+        body: { status: next },
+      });
+      await queryClient.invalidateQueries({ queryKey: ["knowledge-lesson", id] });
+      queryClient.invalidateQueries({ queryKey: ["knowledge-lessons"] });
+      queryClient.invalidateQueries({ queryKey: ["knowledge-mine"] });
+      setSnackbar(next === "draft" ? "公開を取り消しました" : "公開しました");
+    } catch (e) {
+      setSnackbar(e instanceof Error ? e.message : "変更に失敗しました");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function confirmDelete() {
+    Alert.alert(
+      "この投稿を削除しますか？",
+      "削除すると元に戻せません。公開を止めるだけなら「公開を取り消す」を使ってください。",
+      [
+        { text: "キャンセル", style: "cancel" },
+        {
+          text: "削除する",
+          style: "destructive",
+          onPress: async () => {
+            setBusy(true);
+            try {
+              await mobileApi(`/academy/lessons/${id}`, { method: "DELETE" });
+              queryClient.invalidateQueries({ queryKey: ["knowledge-lessons"] });
+              queryClient.invalidateQueries({ queryKey: ["knowledge-mine"] });
+              router.back();
+            } catch (e) {
+              setSnackbar(e instanceof Error ? e.message : "削除に失敗しました");
+              setBusy(false);
+            }
+          },
+        },
+      ],
+    );
+  }
 
   if (isLoading) {
     return (
@@ -124,6 +179,32 @@ export default function KnowledgeDetailScreen() {
           </View>
         )}
 
+        {isAuthor && (
+          <View style={styles.card}>
+            <Text style={styles.ownerHeading}>この投稿の管理</Text>
+            <Text style={styles.meta}>
+              {data.status === "published"
+                ? "現在、他店舗のスタッフからも読める状態です"
+                : "現在は自分と自店舗だけが見られる状態です"}
+            </Text>
+            <LedraButton
+              variant={data.status === "published" ? "outline" : "primary"}
+              icon={data.status === "published" ? "eye-off-outline" : "earth"}
+              loading={busy}
+              disabled={busy}
+              onPress={() =>
+                changeStatus(data.status === "published" ? "draft" : "published")
+              }
+            >
+              {data.status === "published" ? "公開を取り消す" : "公開する"}
+            </LedraButton>
+            <Pressable onPress={confirmDelete} disabled={busy} style={styles.deleteRow}>
+              <Icon source="trash-can-outline" size={18} color={colors.danger} />
+              <Text style={styles.deleteText}>この投稿を削除する</Text>
+            </Pressable>
+          </View>
+        )}
+
         {data.tags.length > 0 && (
           <View style={styles.tagWrap}>
             {data.tags.map((t) => (
@@ -136,6 +217,15 @@ export default function KnowledgeDetailScreen() {
 
         <View style={{ height: spacing["4xl"] }} />
       </ScrollView>
+
+      <Snackbar
+        visible={!!snackbar}
+        onDismiss={() => setSnackbar("")}
+        duration={3000}
+        style={{ backgroundColor: colors.textPrimary }}
+      >
+        {snackbar}
+      </Snackbar>
     </>
   );
 }
@@ -172,4 +262,13 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surfaceVariant,
   },
   tagText: { ...typography.meta, color: colors.textSecondary },
+  ownerHeading: { ...typography.label, color: colors.textPrimary },
+  deleteRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacing.xs,
+    paddingVertical: spacing.sm,
+  },
+  deleteText: { ...typography.label, color: colors.danger },
 });

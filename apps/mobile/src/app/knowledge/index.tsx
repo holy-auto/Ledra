@@ -25,12 +25,19 @@ import { colors, spacing, radius, typography, shadows } from "@/constants/tokens
  * - 自店舗: tenant_field_knowledge。自テナントのみ（RLS）。施工の勘所・車種別メモ。
  */
 
-type Scope = "shared" | "own";
+type Scope = "shared" | "own" | "mine";
 
 const SCOPES: { value: Scope; label: string }[] = [
-  { value: "shared", label: "共有ナレッジ" },
+  { value: "shared", label: "共有" },
   { value: "own", label: "自店舗" },
+  { value: "mine", label: "自分の投稿" },
 ];
+
+const STATUS_LABEL: Record<string, { label: string; severity: "success" | "warning" | "neutral" }> = {
+  published: { label: "公開中", severity: "success" },
+  draft: { label: "下書き", severity: "warning" },
+  archived: { label: "アーカイブ", severity: "neutral" },
+};
 
 const CATEGORY_LABEL: Record<string, string> = {
   general: "全般",
@@ -50,6 +57,8 @@ const LEVEL_LABEL: Record<string, string> = {
 interface Lesson {
   id: string;
   tenant_id: string | null;
+  author_user_id: string | null;
+  status?: string;
   category: string;
   level: string;
   title: string;
@@ -82,7 +91,7 @@ export default function KnowledgeScreen() {
       const { data, error } = await supabase
         .from("academy_lessons")
         .select(
-          "id, tenant_id, category, level, title, summary, tags, published_at, rating_avg, rating_count",
+          "id, tenant_id, author_user_id, category, level, title, summary, tags, published_at, rating_avg, rating_count",
         )
         .eq("status", "published")
         .order("published_at", { ascending: false })
@@ -91,6 +100,24 @@ export default function KnowledgeScreen() {
       return (data ?? []) as Lesson[];
     },
     enabled: scope === "shared",
+  });
+
+  // 誤って公開したものを取り下げられるよう、下書きも含めて自分の投稿を出す
+  const mine = useQuery<Lesson[]>({
+    queryKey: ["knowledge-mine", user?.id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("academy_lessons")
+        .select(
+          "id, tenant_id, author_user_id, status, category, level, title, summary, tags, published_at, rating_avg, rating_count",
+        )
+        .eq("author_user_id", user!.id)
+        .order("created_at", { ascending: false })
+        .limit(200);
+      if (error) throw error;
+      return (data ?? []) as Lesson[];
+    },
+    enabled: scope === "mine" && !!user?.id,
   });
 
   const notes = useQuery<FieldNote[]>({
@@ -119,8 +146,11 @@ export default function KnowledgeScreen() {
   const filteredNotes = (notes.data ?? []).filter((n) =>
     matches(n.title, n.content, n.vehicle_model, n.tags.join(" ")),
   );
+  const filteredMine = (mine.data ?? []).filter((l) =>
+    matches(l.title, l.summary, l.tags.join(" ")),
+  );
 
-  const active = scope === "shared" ? lessons : notes;
+  const active = scope === "shared" ? lessons : scope === "mine" ? mine : notes;
   const onRefresh = useCallback(() => void active.refetch(), [active]);
 
   return (
@@ -143,7 +173,7 @@ export default function KnowledgeScreen() {
         />
       </View>
 
-      {canPost && scope === "shared" && (
+      {canPost && scope !== "own" && (
         <Pressable
           style={({ pressed }) => [styles.postButton, pressed && styles.cardPressed]}
           onPress={() => router.push("/knowledge/new")}
@@ -217,6 +247,48 @@ export default function KnowledgeScreen() {
               icon="book-open-variant"
               title={q ? "該当するナレッジがありません" : "共有ナレッジはまだありません"}
               description="Ledra 公式と他店舗が公開した知見がここに並びます"
+            />
+          }
+        />
+      ) : scope === "mine" ? (
+        <FlatList
+          data={filteredMine}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={styles.list}
+          refreshControl={
+            <RefreshControl refreshing={mine.isFetching} onRefresh={onRefresh} />
+          }
+          renderItem={({ item }) => {
+            const st = STATUS_LABEL[item.status ?? "draft"] ?? STATUS_LABEL.draft;
+            return (
+              <Pressable
+                style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
+                onPress={() => router.push(`/knowledge/${item.id}`)}
+                accessibilityRole="button"
+                accessibilityLabel={`${item.title}（${st.label}）`}
+              >
+                <View style={styles.cardTop}>
+                  <StatusBadge label={st.label} severity={st.severity} compact />
+                  <Text style={styles.meta}>
+                    {CATEGORY_LABEL[item.category] ?? item.category}
+                  </Text>
+                </View>
+                <Text style={styles.title} numberOfLines={2}>
+                  {item.title}
+                </Text>
+                {item.summary && (
+                  <Text style={styles.summary} numberOfLines={2}>
+                    {item.summary}
+                  </Text>
+                )}
+              </Pressable>
+            );
+          }}
+          ListEmptyComponent={
+            <EmptyState
+              icon="pencil-outline"
+              title={q ? "該当する投稿がありません" : "まだ投稿がありません"}
+              description="公開したものはここから取り消せます"
             />
           }
         />
