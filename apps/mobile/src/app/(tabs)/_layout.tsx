@@ -6,7 +6,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuthStore } from "@/stores/authStore";
 import { Redirect } from "expo-router";
 import { QuickCreateSheet } from "@/components/ui/QuickCreateSheet";
-import { colors, radius, spacing, sizing, shadows } from "@/constants/tokens";
+import { colors, spacing, sizing, shadows } from "@/constants/tokens";
 
 /**
  * v2.0 §2 / UI-020: ホーム / 作業 / 車両 / 証明 / その他
@@ -47,7 +47,7 @@ export default function TabsLayout() {
             borderTopColor: colors.borderLight,
             borderTopWidth: StyleSheet.hairlineWidth,
             height: sizing.tabBarHeight,
-            paddingTop: spacing.sm,
+            paddingTop: spacing.xs,
             paddingBottom: Platform.OS === "ios" ? 28 : spacing.sm,
             ...shadows.card,
           },
@@ -61,7 +61,7 @@ export default function TabsLayout() {
           },
           tabBarItemStyle: {
             minWidth: sizing.touchTarget,
-            minHeight: sizing.touchTarget,
+            minHeight: 64,
           },
         }}
       >
@@ -152,8 +152,9 @@ export default function TabsLayout() {
 }
 
 /**
- * Tab icon with subtle pill-shaped background for active state.
- * ponytail: 旧デザインの青丸 → 薄い青背景ピルに変更。視認性↑、主張↓
+ * 各タブを独立した丸ボタンにする。
+ * 非選択時も背景と枠線を出すことで、隣のタブとの境界が見えて押し分けられる。
+ * 直径 48px は最小タップ領域 44pt を満たす。
  */
 function TabIcon({
   name,
@@ -176,8 +177,12 @@ function TabIcon({
 }
 
 /**
- * Floating action button for Quick Create.
- * Positioned above tab bar, visually separated from tabs.
+ * クイック作成ボタン。
+ * タブバー中央の真上に浮かせる。タブ列とは 8px 空けて重ならないので、
+ * どのタブのタップ領域も削らない。
+ *
+ * ponytail: タブが5枚（v2.0 §2 の正準構成）なので、+ を列の中に入れると
+ * 必ず中心からずれる。列の上に浮かせるのが中央に置ける唯一の形。
  */
 function QuickCreateFAB({ onPress }: { onPress: () => void }) {
   const insets = useSafeAreaInsets();
@@ -186,7 +191,12 @@ function QuickCreateFAB({ onPress }: { onPress: () => void }) {
     <View
       style={[
         styles.fabContainer,
-        { bottom: sizing.tabBarHeight + (Platform.OS === "ios" ? 0 : insets.bottom) - 16 },
+        {
+          bottom:
+            sizing.tabBarHeight +
+            (Platform.OS === "ios" ? 0 : insets.bottom) +
+            spacing.sm,
+        },
       ]}
       pointerEvents="box-none"
     >
@@ -208,26 +218,34 @@ function QuickCreateFAB({ onPress }: { onPress: () => void }) {
 const styles = StyleSheet.create({
   tabIconWrap: {
     width: 48,
-    height: 32,
+    height: 48,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: 16,
+    borderRadius: 24,
+    backgroundColor: colors.surfaceVariant,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   tabIconActive: {
     backgroundColor: colors.primaryLight,
+    borderColor: colors.primary,
   },
   fabContainer: {
     position: "absolute",
-    right: spacing.xl,
+    left: 0,
+    right: 0,
+    alignItems: "center",
     zIndex: 10,
   },
   fab: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
     backgroundColor: colors.primary,
     alignItems: "center",
     justifyContent: "center",
+    borderWidth: 3,
+    borderColor: colors.tabBarBg,
     ...shadows.fab,
   },
   fabPressed: {

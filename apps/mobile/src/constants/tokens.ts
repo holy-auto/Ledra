@@ -96,7 +96,8 @@ export const sizing = {
   iconSm: 20,
   iconMd: 24,
   iconLg: 32,
-  tabBarHeight: 84,
+  // 48px の丸ボタン + ラベル + 上下パディング + iOS ホームインジケータ分
+  tabBarHeight: 100,
   tabIconSize: 24,
 } as const;
 
