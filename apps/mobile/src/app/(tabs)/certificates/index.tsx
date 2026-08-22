@@ -14,6 +14,7 @@ import { supabase } from "@/lib/supabase";
 import { useAuthStore } from "@/stores/authStore";
 import { StatusBadge, SegmentedControl } from "@/components/ui";
 import { EmptyState } from "@/components/EmptyState";
+import { useTabContentInset } from "@/hooks/useTabContentInset";
 import { colors, spacing, radius, sizing, typography, shadows } from "@/constants/tokens";
 
 type CertFilter = "all" | "active" | "draft";
@@ -45,6 +46,7 @@ const FILTER_SEGMENTS: { value: CertFilter; label: string }[] = [
 ];
 
 export default function CertificatesScreen() {
+  const tabInset = useTabContentInset();
   const { user, selectedStore } = useAuthStore();
   const [filter, setFilter] = useState<CertFilter>("all");
 
@@ -182,7 +184,7 @@ export default function CertificatesScreen() {
         refreshControl={
           <RefreshControl refreshing={isLoading} onRefresh={onRefresh} />
         }
-        contentContainerStyle={styles.listContent}
+        contentContainerStyle={[styles.listContent, { paddingBottom: tabInset }]}
         ListEmptyComponent={
           <EmptyState
             icon="certificate-outline"
@@ -204,7 +206,6 @@ const styles = StyleSheet.create({
   },
   listContent: {
     padding: spacing.lg,
-    paddingBottom: sizing.fabClearance,
     gap: spacing.md,
   },
   card: {

@@ -14,6 +14,7 @@ import "dayjs/locale/ja";
 import { useQuery } from "@tanstack/react-query";
 import { useAuthStore } from "@/stores/authStore";
 import { supabase } from "@/lib/supabase";
+import { useTabContentInset } from "@/hooks/useTabContentInset";
 import { colors, radius, spacing, sizing, shadows } from "@/constants/tokens";
 import {
   ProgressRing,
@@ -103,6 +104,7 @@ const EMPTY_STATS: HomeStats = {
 // ─── Main Screen ─────────────────────────────────────────────────────
 
 export default function HomeScreen() {
+  const tabInset = useTabContentInset();
   const { user, selectedStore } = useAuthStore();
   const [scope, setScope] = useState<Scope>("self");
   const [stats, setStats] = useState<HomeStats>(EMPTY_STATS);
@@ -351,7 +353,7 @@ export default function HomeScreen() {
   return (
     <ScrollView
       style={styles.screen}
-      contentContainerStyle={styles.screenContent}
+      contentContainerStyle={[styles.screenContent, { paddingBottom: tabInset }]}
       refreshControl={
         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
       }
@@ -691,7 +693,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   screenContent: {
-    paddingBottom: sizing.fabClearance,
   },
 
   // Header

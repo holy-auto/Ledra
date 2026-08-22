@@ -15,6 +15,7 @@ import { supabase } from "@/lib/supabase";
 import { useAuthStore } from "@/stores/authStore";
 import { StatusBadge } from "@/components/ui";
 import { EmptyState } from "@/components/EmptyState";
+import { useTabContentInset } from "@/hooks/useTabContentInset";
 import { colors, spacing, radius, sizing, typography, shadows } from "@/constants/tokens";
 
 interface VehicleItem {
@@ -28,6 +29,7 @@ interface VehicleItem {
 }
 
 export default function VehiclesScreen() {
+  const tabInset = useTabContentInset();
   const { user, selectedStore } = useAuthStore();
   const [search, setSearch] = useState("");
 
@@ -160,7 +162,7 @@ export default function VehiclesScreen() {
         refreshControl={
           <RefreshControl refreshing={isLoading} onRefresh={onRefresh} />
         }
-        contentContainerStyle={styles.listContent}
+        contentContainerStyle={[styles.listContent, { paddingBottom: tabInset }]}
         ListEmptyComponent={
           search.trim() ? (
             <View style={styles.empty}>
@@ -208,7 +210,6 @@ const styles = StyleSheet.create({
   },
   listContent: {
     padding: spacing.lg,
-    paddingBottom: sizing.fabClearance,
     gap: spacing.md,
   },
   card: {

@@ -13,6 +13,7 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import { useAuthStore } from "@/stores/authStore";
 import { StatusBadge } from "@/components/ui";
+import { useTabContentInset } from "@/hooks/useTabContentInset";
 import { colors, spacing, radius, sizing, typography, shadows } from "@/constants/tokens";
 
 type WorkStatus = "arrived" | "in_progress" | "completed";
@@ -43,6 +44,7 @@ const STATUS_CONFIG: Record<
 };
 
 export default function WorkScreen() {
+  const tabInset = useTabContentInset();
   const { user, selectedStore } = useAuthStore();
 
   const {
@@ -173,7 +175,7 @@ export default function WorkScreen() {
         refreshControl={
           <RefreshControl refreshing={isLoading} onRefresh={onRefresh} />
         }
-        contentContainerStyle={styles.listContent}
+        contentContainerStyle={[styles.listContent, { paddingBottom: tabInset }]}
         ListEmptyComponent={
           <View style={styles.empty}>
             <Icon source="wrench-outline" size={48} color={colors.textTertiary} />
@@ -190,7 +192,7 @@ export default function WorkScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
-  listContent: { padding: spacing.lg, paddingBottom: sizing.fabClearance, gap: spacing.md },
+  listContent: { padding: spacing.lg, gap: spacing.md },
   card: {
     backgroundColor: colors.surface,
     borderRadius: radius.card,

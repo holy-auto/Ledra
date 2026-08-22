@@ -160,11 +160,16 @@ function QuickCreateFAB({ onPress }: { onPress: () => void }) {
 
 const styles = StyleSheet.create({
   tabBar: {
+    // 絶対配置にしてレイアウトの流れから外す。こうしないとバーが領域を占有し、
+    // 背景色を地色に合わせてもスクロール内容がバーの上端で切れる。
+    // 外すことで内容はバーの下を流れ、丸ボタンだけが浮いて見える
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
     flexDirection: "row",
     alignItems: "flex-start",
-    // 帯を描かず、画面と同じ地色にして丸ボタンだけが浮いて見えるようにする。
-    // transparent にするとナビゲータ既定の白が透けるので明示的に地色を敷く
-    backgroundColor: colors.background,
+    backgroundColor: "transparent",
     paddingTop: spacing.sm,
     paddingHorizontal: spacing.sm,
   },

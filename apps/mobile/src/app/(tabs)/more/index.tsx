@@ -3,6 +3,7 @@ import { View, StyleSheet, ScrollView, Pressable, Linking } from "react-native";
 import { Text, Icon, Snackbar } from "react-native-paper";
 import { router } from "expo-router";
 import { useAuthStore } from "@/stores/authStore";
+import { useTabContentInset } from "@/hooks/useTabContentInset";
 import { colors, radius, spacing, sizing, shadows } from "@/constants/tokens";
 
 /**
@@ -86,12 +87,13 @@ async function openExternal(url: string, onError: (msg: string) => void) {
 }
 
 export default function MoreScreen() {
+  const tabInset = useTabContentInset();
   const { user, selectedStore } = useAuthStore();
   const [snackbar, setSnackbar] = useState("");
 
   return (
     <>
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <ScrollView style={styles.container} contentContainerStyle={[styles.content, { paddingBottom: tabInset }]}>
       {/* Store info card — 店舗切替 */}
       <Pressable
         style={({ pressed }) => [styles.storeCard, pressed && styles.menuRowPressed]}
@@ -170,7 +172,6 @@ const styles = StyleSheet.create({
   content: {
     paddingHorizontal: spacing.xl,
     paddingTop: spacing.lg,
-    paddingBottom: sizing.fabClearance,
   },
 
   // Store card
