@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo, memo } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import {
   View,
   StyleSheet,
@@ -28,7 +28,13 @@ import { mobileApi } from "@/lib/api";
 import { useTerminal } from "@/hooks/useTerminal";
 import { useTerminalStore } from "@/stores/terminalStore";
 import { LedraButton, SegmentedControl } from "@/components/ui";
-import { menuCategories, filterMenuItems, padToColumns } from "@/lib/menuFilter";
+import { padToColumns } from "@/lib/menuFilter";
+import {
+  useMenuFilter,
+  MenuFilterBar,
+  MenuTile,
+  MenuTileSpacer,
+} from "@/components/MenuPicker";
 import { colors, spacing, radius, typography, shadows } from "@/constants/tokens";
 
 interface MenuItem {
@@ -218,23 +224,16 @@ export default function WalkInCheckoutScreen() {
     enabled: !!user?.tenantId,
   });
 
-  // メニュー検索・カテゴリフィルタ
-  const [menuSearch, setMenuSearch] = useState("");
-  const [selectedCategory, setSelectedCategory] = useState<string>("よく使う");
+  // 検索・カテゴリの絞り込みは飛び込み受付と共通（components/MenuPicker）
+  const {
+    search: menuSearch,
+    setSearch: setMenuSearch,
+    categories,
+    activeCategory,
+    changeCategory,
+    filtered: filteredMenuItems,
+  } = useMenuFilter(menuItems);
 
-  const categories = useMemo(() => menuCategories(menuItems), [menuItems]);
-
-  // メニュー読込前は selectedCategory が候補に無い。その場合は先頭に落とす
-  const activeCategory = categories.includes(selectedCategory)
-    ? selectedCategory
-    : (categories[0] ?? "すべて");
-
-  const filteredMenuItems = useMemo(
-    () => filterMenuItems(menuItems, activeCategory, menuSearch),
-    [menuItems, activeCategory, menuSearch],
-  );
-
-  // 列数は実ウィンドウ幅から。Split View や回転にも素直に追随する
   const numColumns = windowWidth >= 700 ? 4 : windowWidth >= 500 ? 3 : 2;
 
   const gridData = useMemo(
@@ -464,50 +463,13 @@ export default function WalkInCheckoutScreen() {
         <View style={styles.container}>
           {/* 検索 + カテゴリタブ（グリッドと分離して常時固定） */}
           <View style={styles.pickerHeader}>
-            <TextInput
-              mode="outlined"
-              placeholder="メニュー名で検索"
-              value={menuSearch}
-              onChangeText={setMenuSearch}
-              left={<TextInput.Icon icon="magnify" />}
-              right={
-                menuSearch ? (
-                  <TextInput.Icon icon="close" onPress={() => setMenuSearch("")} />
-                ) : undefined
-              }
-              style={styles.searchInput}
-              dense
+            <MenuFilterBar
+              categories={categories}
+              activeCategory={activeCategory}
+              onCategoryChange={changeCategory}
+              search={menuSearch}
+              onSearchChange={setMenuSearch}
             />
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.categoryScrollContent}
-            >
-              {categories.map((cat) => (
-                <Pressable
-                  key={cat}
-                  style={[
-                    styles.categoryChip,
-                    activeCategory === cat && styles.categoryChipActive,
-                  ]}
-                  onPress={() => {
-                    setSelectedCategory(cat);
-                    setMenuSearch("");
-                  }}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: activeCategory === cat }}
-                >
-                  <Text
-                    style={[
-                      styles.categoryChipLabel,
-                      activeCategory === cat && styles.categoryChipLabelActive,
-                    ]}
-                  >
-                    {cat}
-                  </Text>
-                </Pressable>
-              ))}
-            </ScrollView>
           </View>
 
           {/* 等幅タイルグリッド。FlatList なので品目が増えても描画は画面分だけ */}
@@ -522,12 +484,13 @@ export default function WalkInCheckoutScreen() {
             renderItem={({ item }) =>
               item ? (
                 <MenuTile
-                  item={item}
-                  qty={cartQty.get(item.id) ?? 0}
+                  name={item.name}
+                  price={item.unit_price}
+                  badge={cartQty.get(item.id) ?? 0}
                   onPress={() => addMenuItem(item)}
                 />
               ) : (
-                <View style={styles.tileSpacer} />
+                <MenuTileSpacer />
               )
             }
             ListEmptyComponent={
@@ -770,46 +733,6 @@ export default function WalkInCheckoutScreen() {
   );
 }
 
-/**
- * POS レジ風の等幅タイル。カート投入済みは枠+数量バッジで一目でわかる。
- * バッジはタイル内のフローに置く（角丸の外にはみ出させると Android で
- * クリップされて数量が見えなくなる）。
- */
-const MenuTile = memo(function MenuTile({
-  item,
-  qty,
-  onPress,
-}: {
-  item: MenuItem;
-  qty: number;
-  onPress: () => void;
-}) {
-  return (
-    <Pressable
-      style={({ pressed }) => [
-        styles.tile,
-        qty > 0 && styles.tileActive,
-        pressed && styles.tilePressed,
-      ]}
-      onPress={onPress}
-      accessibilityRole="button"
-      accessibilityLabel={`${item.name} ${item.unit_price}円を追加${qty > 0 ? `（カートに${qty}）` : ""}`}
-    >
-      <Text style={styles.tileName} numberOfLines={2}>
-        {item.name}
-      </Text>
-      <View style={styles.tileFooter}>
-        <Text style={styles.tilePrice}>¥{item.unit_price.toLocaleString()}</Text>
-        {qty > 0 && (
-          <View style={styles.tileBadge}>
-            <Text style={styles.tileBadgeText}>{qty}</Text>
-          </View>
-        )}
-      </View>
-    </Pressable>
-  );
-});
-
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   card: {
@@ -845,84 +768,11 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.border,
   },
-  searchInput: {
-    backgroundColor: colors.surface,
-    marginBottom: spacing.sm,
-  },
-  categoryScrollContent: {
-    gap: spacing.sm,
-    paddingRight: spacing.lg,
-  },
-  categoryChip: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: radius.full,
-    backgroundColor: colors.surfaceVariant,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  categoryChipActive: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
-  },
-  categoryChipLabel: {
-    ...typography.labelSmall,
-    color: colors.textSecondary,
-  },
-  categoryChipLabelActive: {
-    color: colors.textOnPrimary,
-  },
   gridContent: {
     padding: spacing.lg,
     gap: spacing.sm,
   },
   gridRow: { gap: spacing.sm },
-  tile: {
-    flex: 1,
-    minHeight: 80,
-    justifyContent: "space-between",
-    backgroundColor: colors.surface,
-    borderRadius: radius.md,
-    padding: spacing.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  tileActive: {
-    borderColor: colors.primary,
-    backgroundColor: colors.primaryLight,
-  },
-  tilePressed: { opacity: 0.6 },
-  tileSpacer: { flex: 1 },
-  tileName: {
-    ...typography.label,
-    color: colors.textPrimary,
-  },
-  tileFooter: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: spacing.xs,
-    marginTop: spacing.xs,
-  },
-  tilePrice: {
-    ...typography.body,
-    fontWeight: "700",
-    color: colors.textPrimary,
-  },
-  tileBadge: {
-    minWidth: 22,
-    height: 22,
-    paddingHorizontal: 5,
-    borderRadius: 11,
-    backgroundColor: colors.primary,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  tileBadgeText: {
-    ...typography.meta,
-    fontWeight: "700",
-    color: colors.textOnPrimary,
-  },
   bottomBar: {
     flexDirection: "row",
     alignItems: "center",

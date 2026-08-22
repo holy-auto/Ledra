@@ -96,9 +96,10 @@ export const sizing = {
   iconSm: 20,
   iconMd: 24,
   iconLg: 32,
-  // タブバーの中身の高さ（丸ボタン + ラベル + 上下パディング）。
-  // セーフエリアは含まない。実高さは _layout.tsx で insets.bottom を足して決める
-  tabBarHeight: 80,
+  // タブバーの中身の高さ。セーフエリアは含まない（_layout.tsx で insets.bottom を足す）。
+  // 内訳: 上下 padding 8x2 + 丸ボタン 48 + gap 4 + ラベル行 18 = 86。
+  // 丸ボタンの直径やラベルの行高を変えたらここも合わせること
+  tabBarHeight: 86,
   tabIconSize: 24,
   // タブの丸ボタン直径。tabBarHeight とセットで動かすこと
   tabIconCircle: 48,

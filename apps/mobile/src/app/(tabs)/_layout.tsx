@@ -1,28 +1,34 @@
 import { useState } from "react";
 import { View, StyleSheet, Pressable } from "react-native";
-import { Tabs } from "expo-router";
-import { Icon } from "react-native-paper";
+import { Tabs, Redirect } from "expo-router";
+import { Text, Icon } from "react-native-paper";
+import type { BottomTabBarProps } from "@react-navigation/bottom-tabs";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+
 import { useAuthStore } from "@/stores/authStore";
-import { Redirect } from "expo-router";
 import { QuickCreateSheet } from "@/components/ui/QuickCreateSheet";
-import { colors, spacing, sizing, shadows } from "@/constants/tokens";
+import { colors, radius, spacing, sizing, shadows, typography } from "@/constants/tokens";
 
 /**
  * v2.0 §2 / UI-020: ホーム / 作業 / 車両 / 証明 / その他
- *
- * 各タブは独立した丸ボタン。Quick Create の "+" はタブ選択とは別物。
  *
  * 予約 / 会計 はタブではなくトップレベル Stack のルート（app/reservations,
  * app/pos）。href: null のタブとして置くと Tabs の内側で描画されるため、
  * 戻るボタンを出せずタブバーだけが残って行き止まりになる。
  */
+
+/** タブの単一定義源。タブバーの描画と Tabs.Screen の両方がここを読む */
+const TABS = [
+  { name: "index", title: "ホーム", icon: "home", outline: "home-outline" },
+  { name: "work", title: "作業", icon: "wrench", outline: "wrench-outline" },
+  { name: "vehicles", title: "車両", icon: "car", outline: "car-outline" },
+  { name: "certificates", title: "証明", icon: "certificate", outline: "certificate-outline" },
+  { name: "more", title: "その他", icon: "dots-horizontal-circle", outline: "dots-horizontal-circle-outline" },
+] as const;
+
 export default function TabsLayout() {
   const { isAuthenticated, selectedStore } = useAuthStore();
   const [quickCreateVisible, setQuickCreateVisible] = useState(false);
-  // 数値 height を渡すと react-navigation はセーフエリアを足してくれないので自前で足す。
-  // 固定値で代用すると Android のジェスチャーバー配下にラベルが潜る
-  const insets = useSafeAreaInsets();
 
   if (!isAuthenticated) return <Redirect href="/(auth)/login" />;
   if (!selectedStore) return <Redirect href="/(auth)/select-store" />;
@@ -30,6 +36,7 @@ export default function TabsLayout() {
   return (
     <>
       <Tabs
+        tabBar={(props) => <LedraTabBar {...props} />}
         screenOptions={{
           headerStyle: {
             backgroundColor: colors.surface,
@@ -43,104 +50,17 @@ export default function TabsLayout() {
             fontWeight: "700",
             color: colors.textPrimary,
           },
-          tabBarActiveTintColor: colors.tabActive,
-          tabBarInactiveTintColor: colors.tabInactive,
-          tabBarStyle: {
-            backgroundColor: colors.tabBarBg,
-            borderTopColor: colors.borderLight,
-            borderTopWidth: StyleSheet.hairlineWidth,
-            height: sizing.tabBarHeight + insets.bottom,
-            paddingTop: spacing.xs,
-            paddingBottom: insets.bottom + spacing.xs,
-            ...shadows.card,
-          },
-          tabBarLabelStyle: {
-            fontSize: 11,
-            fontWeight: "600",
-            marginTop: 2,
-          },
-          tabBarIconStyle: {
-            marginBottom: 0,
-          },
-          tabBarItemStyle: {
-            minWidth: sizing.touchTarget,
-            minHeight: 64,
-          },
         }}
       >
-        {/* ── v2.0 正準 5 タブ ── */}
-        <Tabs.Screen
-          name="index"
-          options={{
-            title: "ホーム",
-            tabBarIcon: ({ color, focused }) => (
-              <TabIcon
-                name={focused ? "home" : "home-outline"}
-                color={color}
-                focused={focused}
-              />
-            ),
-          }}
-        />
-        <Tabs.Screen
-          name="work"
-          options={{
-            title: "作業",
-            headerShown: false,
-            tabBarIcon: ({ color, focused }) => (
-              <TabIcon
-                name={focused ? "wrench" : "wrench-outline"}
-                color={color}
-                focused={focused}
-              />
-            ),
-          }}
-        />
-        <Tabs.Screen
-          name="vehicles"
-          options={{
-            title: "車両",
-            headerShown: false,
-            tabBarIcon: ({ color, focused }) => (
-              <TabIcon
-                name={focused ? "car" : "car-outline"}
-                color={color}
-                focused={focused}
-              />
-            ),
-          }}
-        />
-        <Tabs.Screen
-          name="certificates"
-          options={{
-            title: "証明",
-            headerShown: false,
-            tabBarIcon: ({ color, focused }) => (
-              <TabIcon
-                name={focused ? "certificate" : "certificate-outline"}
-                color={color}
-                focused={focused}
-              />
-            ),
-          }}
-        />
-        <Tabs.Screen
-          name="more"
-          options={{
-            title: "その他",
-            headerShown: false,
-            tabBarIcon: ({ color, focused }) => (
-              <TabIcon
-                name="dots-horizontal-circle-outline"
-                color={color}
-                focused={focused}
-              />
-            ),
-          }}
-        />
+        {TABS.map((t) => (
+          <Tabs.Screen
+            key={t.name}
+            name={t.name}
+            options={{ title: t.title, headerShown: t.name === "index" }}
+          />
+        ))}
       </Tabs>
 
-      {/* Quick Create FAB */}
       <QuickCreateFAB onPress={() => setQuickCreateVisible(true)} />
       <QuickCreateSheet
         visible={quickCreateVisible}
@@ -151,26 +71,59 @@ export default function TabsLayout() {
 }
 
 /**
- * 各タブを独立した丸ボタンにする。
- * 非選択時も背景と枠線を出すことで、隣のタブとの境界が見えて押し分けられる。
- * 直径 48px は最小タップ領域 44pt を満たす。
+ * Uber 風のタブバー。各タブが独立した丸ボタンで、行として等幅に並ぶ。
+ *
+ * ponytail: React Navigation 既定の BottomTabItem は内側に固有の padding を持ち、
+ * 丸ボタン + ラベルを入れると高さが足りずに潰れる（実機で位置が崩れた）。
+ * 自前で描いて配置を確定させる。
  */
-function TabIcon({
-  name,
-  color,
-  focused,
-}: {
-  name: string;
-  color: string;
-  focused: boolean;
-}) {
+function LedraTabBar({ state, navigation }: BottomTabBarProps) {
+  const insets = useSafeAreaInsets();
+
   return (
-    <View style={[styles.tabIconWrap, focused && styles.tabIconActive]}>
-      <Icon
-        source={name}
-        size={sizing.tabIconSize}
-        color={focused ? colors.primary : color}
-      />
+    <View
+      style={[styles.tabBar, { paddingBottom: insets.bottom + spacing.sm }]}
+      accessibilityRole="tablist"
+    >
+      {state.routes.map((route, index) => {
+        const tab = TABS.find((t) => t.name === route.name);
+        if (!tab) return null;
+        const focused = state.index === index;
+
+        return (
+          <Pressable
+            key={route.key}
+            style={styles.tabItem}
+            accessibilityRole="tab"
+            accessibilityState={{ selected: focused }}
+            accessibilityLabel={tab.title}
+            onPress={() => {
+              const event = navigation.emit({
+                type: "tabPress",
+                target: route.key,
+                canPreventDefault: true,
+              });
+              if (!focused && !event.defaultPrevented) {
+                navigation.navigate(route.name);
+              }
+            }}
+          >
+            <View style={[styles.tabCircle, focused && styles.tabCircleActive]}>
+              <Icon
+                source={focused ? tab.icon : tab.outline}
+                size={sizing.tabIconSize}
+                color={focused ? colors.textOnPrimary : colors.tabInactive}
+              />
+            </View>
+            <Text
+              style={[styles.tabLabel, focused && styles.tabLabelActive]}
+              numberOfLines={1}
+            >
+              {tab.title}
+            </Text>
+          </Pressable>
+        );
+      })}
     </View>
   );
 }
@@ -189,16 +142,12 @@ function QuickCreateFAB({ onPress }: { onPress: () => void }) {
     <View
       style={[
         styles.fabContainer,
-        // タブバーの実高さ（= 中身 + セーフエリア）の上に 8px 空けて置く
         { bottom: sizing.tabBarHeight + insets.bottom + spacing.sm },
       ]}
       pointerEvents="box-none"
     >
       <Pressable
-        style={({ pressed }) => [
-          styles.fab,
-          pressed && styles.fabPressed,
-        ]}
+        style={({ pressed }) => [styles.fab, pressed && styles.fabPressed]}
         onPress={onPress}
         accessibilityRole="button"
         accessibilityLabel="クイック作成"
@@ -210,19 +159,41 @@ function QuickCreateFAB({ onPress }: { onPress: () => void }) {
 }
 
 const styles = StyleSheet.create({
-  tabIconWrap: {
+  tabBar: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    backgroundColor: colors.tabBarBg,
+    paddingTop: spacing.sm,
+    paddingHorizontal: spacing.sm,
+    borderTopLeftRadius: radius.hero,
+    borderTopRightRadius: radius.hero,
+    ...shadows.card,
+  },
+  tabItem: {
+    flex: 1,
+    alignItems: "center",
+    gap: spacing.xs,
+    // 丸 + ラベルが必ず収まる高さを自前で確保する
+    minHeight: sizing.tabBarHeight - spacing.sm * 2,
+  },
+  tabCircle: {
     width: sizing.tabIconCircle,
     height: sizing.tabIconCircle,
+    borderRadius: sizing.tabIconCircle / 2,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: sizing.tabIconCircle / 2,
     backgroundColor: colors.surfaceVariant,
-    borderWidth: 1,
-    borderColor: colors.border,
   },
-  tabIconActive: {
-    backgroundColor: colors.primaryLight,
-    borderColor: colors.primary,
+  tabCircleActive: {
+    backgroundColor: colors.primary,
+  },
+  tabLabel: {
+    ...typography.meta,
+    fontWeight: "600",
+    color: colors.tabInactive,
+  },
+  tabLabelActive: {
+    color: colors.primary,
   },
   fabContainer: {
     position: "absolute",

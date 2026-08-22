@@ -1,9 +1,9 @@
 import type { ComponentProps } from "react";
-import { Pressable } from "react-native";
+import { Pressable, StyleSheet } from "react-native";
 import { Stack, router } from "expo-router";
 import { Icon } from "react-native-paper";
 
-import { colors, spacing } from "@/constants/tokens";
+import { colors, sizing } from "@/constants/tokens";
 
 // @react-navigation/native-stack は expo-router の推移的依存でしか入っていないので
 // 直接 import せず、Stack の props から型を借りる
@@ -15,6 +15,10 @@ type ScreenOptions = ComponentProps<typeof Stack>["screenOptions"];
  * expo-router では、別のトップレベルルートグループへ push した画面に
  * Stack 上の前任者がいないため React Navigation が既定の戻るボタンを出さない。
  * 各 Stack に明示的に headerLeft を渡す必要がある。
+ *
+ * ponytail: タップ領域は 44x44 の正方形で、左右非対称な margin を付けない。
+ * margin を付けると iOS がヘッダーボタンに被せる円形コンテナの中で
+ * アイコンが偏り、さらに円の縁を押しても反応しない領域ができる。
  */
 export function HeaderBackButton() {
   return (
@@ -23,7 +27,7 @@ export function HeaderBackButton() {
       // router.back() が何も起きないボタンになる。その場合はホームへ戻す
       onPress={() => (router.canGoBack() ? router.back() : router.replace("/(tabs)"))}
       hitSlop={8}
-      style={{ marginRight: spacing.sm }}
+      style={styles.backButton}
       accessibilityRole="button"
       accessibilityLabel="戻る"
     >
@@ -31,6 +35,15 @@ export function HeaderBackButton() {
     </Pressable>
   );
 }
+
+const styles = StyleSheet.create({
+  backButton: {
+    width: sizing.touchTarget,
+    height: sizing.touchTarget,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+});
 
 /** タブ根の Stack 用。見た目だけ揃える（タブ根に戻るボタンは要らない） */
 export const tabStackScreenOptions: ScreenOptions = {

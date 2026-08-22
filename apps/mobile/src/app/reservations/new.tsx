@@ -1,18 +1,19 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useMemo } from "react";
 import dayjs from "dayjs";
 import {
   View,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
+  Pressable,
   Platform,
+  useWindowDimensions,
 } from "react-native";
 import {
   Text,
   TextInput,
   Chip,
   Searchbar,
-  ActivityIndicator,
   List,
   Snackbar,
 } from "react-native-paper";
@@ -28,6 +29,13 @@ import {
   reservationCurrentStep,
 } from "@/lib/reservationSteps";
 import { LedraButton, SegmentedControl } from "@/components/ui";
+import { padToColumns } from "@/lib/menuFilter";
+import {
+  useMenuFilter,
+  MenuFilterBar,
+  MenuTile,
+  MenuTileSpacer,
+} from "@/components/MenuPicker";
 import { colors, spacing, radius, typography, shadows } from "@/constants/tokens";
 
 interface Customer {
@@ -47,12 +55,14 @@ interface MenuItem {
   id: string;
   name: string;
   unit_price: number;
+  category_large: string | null;
 }
 
 type ReservationType = "scheduled" | "walk_in";
 
 export default function ReservationNewScreen() {
   const { user, selectedStore } = useAuthStore();
+  const { width: windowWidth } = useWindowDimensions();
   // クイック作成の「作業開始（ウォークイン入庫）」から飛び込みを初期選択して開く
   const { type } = useLocalSearchParams<{ type?: string }>();
 
@@ -114,7 +124,7 @@ export default function ReservationNewScreen() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("menu_items")
-        .select("id, name, unit_price")
+        .select("id, name, unit_price, category_large")
         .eq("tenant_id", user!.tenantId)
         .eq("is_active", true)
         .order("sort_order");
@@ -184,6 +194,33 @@ export default function ReservationNewScreen() {
       setSnackbar(err instanceof Error ? err.message : "作成に失敗しました");
     },
   });
+
+  // 会計画面と同じ検索・カテゴリ絞り込み（components/MenuPicker）
+  const {
+    search: menuSearch,
+    setSearch: setMenuSearch,
+    categories,
+    activeCategory,
+    changeCategory,
+    filtered: filteredMenu,
+  } = useMenuFilter(menuItems);
+
+  // ponytail: この画面はフォーム全体が1つの ScrollView なので、グリッドは
+  // 仮想化せず素の View で描く。代わりに初期表示を打ち切って「すべて表示」を出す。
+  // 上限: 全件表示にすると品目数ぶんの View を一度に作る。数百件規模になったら
+  // 会計画面と同じ FlatList 化が必要。
+  const VISIBLE_LIMIT = 12;
+  const [showAllMenu, setShowAllMenu] = useState(false);
+  const visibleMenu = showAllMenu ? filteredMenu : filteredMenu.slice(0, VISIBLE_LIMIT);
+  const menuColumns = windowWidth >= 700 ? 4 : windowWidth >= 500 ? 3 : 2;
+  const menuRows = useMemo(() => {
+    const padded = padToColumns(visibleMenu, menuColumns);
+    const rows: (MenuItem | null)[][] = [];
+    for (let i = 0; i < padded.length; i += menuColumns) {
+      rows.push(padded.slice(i, i + menuColumns));
+    }
+    return rows;
+  }, [visibleMenu, menuColumns]);
 
   function toggleMenuItem(id: string) {
     setSelectedMenuItems((prev) =>
@@ -405,24 +442,49 @@ export default function ReservationNewScreen() {
           <Text style={styles.heading}>
             メニュー
           </Text>
-          <View style={styles.chipContainer}>
-            {menuItems.map((mi) => (
-              <Chip
-                key={mi.id}
-                selected={selectedMenuItems.includes(mi.id)}
-                onPress={() => toggleMenuItem(mi.id)}
-                style={styles.chip}
-                showSelectedCheck
-              >
-                {mi.name} (¥{mi.unit_price.toLocaleString()})
-              </Chip>
+          <MenuFilterBar
+            categories={categories}
+            activeCategory={activeCategory}
+            onCategoryChange={changeCategory}
+            search={menuSearch}
+            onSearchChange={setMenuSearch}
+          />
+          <View style={styles.menuGrid}>
+            {menuRows.map((row, ri) => (
+              <View key={`row-${ri}`} style={styles.menuRow}>
+                {row.map((mi, ci) =>
+                  mi ? (
+                    <MenuTile
+                      key={mi.id}
+                      name={mi.name}
+                      price={mi.unit_price}
+                      selected={selectedMenuItems.includes(mi.id)}
+                      onPress={() => toggleMenuItem(mi.id)}
+                    />
+                  ) : (
+                    <MenuTileSpacer key={`pad-${ri}-${ci}`} />
+                  ),
+                )}
+              </View>
             ))}
-            {menuItems.length === 0 && (
-              <Text style={styles.subText}>
-                メニューが未登録です
-              </Text>
-            )}
           </View>
+          {menuItems.length === 0 && (
+            <Text style={styles.subText}>メニューが未登録です</Text>
+          )}
+          {menuItems.length > 0 && filteredMenu.length === 0 && (
+            <Text style={styles.subText}>該当するメニューがありません</Text>
+          )}
+          {!showAllMenu && filteredMenu.length > VISIBLE_LIMIT && (
+            <Pressable
+              onPress={() => setShowAllMenu(true)}
+              style={styles.moreButton}
+              accessibilityRole="button"
+            >
+              <Text style={styles.moreText}>
+                すべて表示（あと{filteredMenu.length - VISIBLE_LIMIT}件）
+              </Text>
+            </Pressable>
+          )}
           {selectedMenuItems.length > 0 && (
             <Text style={styles.menuTotal}>
               合計: ¥{total.toLocaleString()}
@@ -477,6 +539,10 @@ export default function ReservationNewScreen() {
 }
 
 const styles = StyleSheet.create({
+  menuGrid: { gap: spacing.sm, marginTop: spacing.sm },
+  menuRow: { flexDirection: "row", gap: spacing.sm },
+  moreButton: { paddingVertical: spacing.md, alignItems: "center" },
+  moreText: { ...typography.label, color: colors.primary },
   container: { flex: 1, backgroundColor: colors.background },
   card: {
     marginHorizontal: spacing.lg,
@@ -553,11 +619,6 @@ const styles = StyleSheet.create({
     ...typography.body,
     fontWeight: "600",
     color: colors.primaryDark,
-  },
-  chipContainer: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: spacing.sm,
   },
   chip: {
     marginBottom: spacing.xs,
