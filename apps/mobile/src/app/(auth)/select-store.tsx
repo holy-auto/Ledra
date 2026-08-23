@@ -9,6 +9,12 @@ import { useAuthStore } from "@/stores/authStore";
 export default function SelectStoreScreen() {
   const [stores, setStores] = useState<ActiveStore[]>([]);
   const [loading, setLoading] = useState(true);
+  // 取得失敗と「店舗が0個」を区別する。混同すると、通信が切れているだけなのに
+  // 「店舗が登録されていません」と表示し、ユーザーが「続行する」を押して
+  // selectedStore に空文字IDが入る。空文字IDは certificates/new・reservations/new・
+  // customers/new の INSERT で uuid エラーになる（POS 系と違い正規化されていない）。
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
   const { user, setSelectedStore } = useAuthStore();
 
   const handleSelect = useCallback(
@@ -27,8 +33,21 @@ export default function SelectStoreScreen() {
       // 通常のコールドスタートでは useAuthInit が起動処理の中で同じ判定を
       // 済ませているため、店舗が1つのユーザーはこの画面に来ない。
       // ここに来るのは「複数店舗」「0店舗」「設定からの店舗切替」「ログイン直後」。
-      const data = await fetchActiveStores(user.tenantId).catch(() => []);
+      let data: ActiveStore[];
+      try {
+        data = await fetchActiveStores(user.tenantId);
+      } catch (e) {
+        console.warn(
+          "fetchActiveStores failed:",
+          e instanceof Error ? e.message : e,
+        );
+        setStores([]);
+        setLoadFailed(true);
+        setLoading(false);
+        return;
+      }
 
+      setLoadFailed(false);
       setStores(data);
 
       // 店舗が1つだけならスキップ
@@ -43,12 +62,36 @@ export default function SelectStoreScreen() {
     }
 
     loadStores();
-  }, [user?.tenantId, handleSelect]);
+  }, [user?.tenantId, handleSelect, reloadKey]);
 
   if (loading) {
     return (
       <View style={styles.center}>
         <ActivityIndicator size="large" />
+      </View>
+    );
+  }
+
+  // 取得に失敗したときは「0店舗」と別の画面を出す。
+  // ここで「続行する」を出すと、通信断のたびに空文字IDが入り込む。
+  if (loadFailed) {
+    return (
+      <View style={styles.center}>
+        <Text variant="titleMedium">店舗情報を取得できませんでした</Text>
+        <Text variant="bodyMedium" style={styles.subtext}>
+          通信状況を確認して、もう一度お試しください
+        </Text>
+        <Button
+          mode="contained"
+          onPress={() => {
+            setLoading(true);
+            setLoadFailed(false);
+            setReloadKey((n) => n + 1);
+          }}
+          style={{ marginTop: 24 }}
+        >
+          再試行
+        </Button>
       </View>
     );
   }
