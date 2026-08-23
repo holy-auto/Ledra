@@ -9,8 +9,8 @@
     "userInterfaceStyle": "light",
     "splash": {
       "image": "./assets/splash-icon.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#1a1a2e"
+      "resizeMode": "cover",
+      "backgroundColor": "#d6d0cb"
     },
     "ios": {
       "supportsTablet": true,
@@ -48,9 +48,8 @@
     "android": {
       "package": "com.ledra.app",
       "adaptiveIcon": {
-        "backgroundColor": "#1a1a2e",
+        "backgroundColor": "#ffffff",
         "foregroundImage": "./assets/android-icon-foreground.png",
-        "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "permissions": [
@@ -81,6 +80,7 @@
       ],
       "expo-router",
       "expo-secure-store",
+      "expo-video",
       [
         "expo-camera",
         {

@@ -8,7 +8,7 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "typecheck": "tsc --noEmit",
-    "test": "node src/lib/reservationSteps.check.ts"
+    "test": "node src/lib/reservationSteps.check.ts && node src/lib/introTiming.check.ts"
   },
   "dependencies": {
     "@expo/metro-runtime": "~55.0.10",
@@ -34,6 +34,7 @@
     "expo-secure-store": "~55.0.14",
     "expo-splash-screen": "~55.0.21",
     "expo-status-bar": "~55.0.6",
+    "expo-video": "~55.0.20",
     "react": "19.2.0",
     "react-dom": "19.2.0",
     "react-native": "0.83.6",

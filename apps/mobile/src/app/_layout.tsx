@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Stack, router } from "expo-router";
 import { PaperProvider } from "react-native-paper";
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -15,6 +15,7 @@ import { initSentry, setSentryUser } from "@/lib/sentry";
 import { useAuthStore } from "@/stores/authStore";
 import { ToastProvider } from "@/components/ToastProvider";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { AppIntro } from "@/components/AppIntro";
 import { useTapToPayWarmup } from "@/hooks/useTapToPayWarmup";
 import { registerForPushNotifications } from "@/lib/push";
 
@@ -67,12 +68,7 @@ useAuthStore.subscribe((state) => {
 
 export default function RootLayout() {
   const { isReady } = useAuthInit();
-
-  useEffect(() => {
-    if (isReady) {
-      SplashScreen.hideAsync();
-    }
-  }, [isReady]);
+  const [introDone, setIntroDone] = useState(false);
 
   // Stripe Terminal の connection token 取得
   // SDK 0.0.1-beta.29 では initialize() 経由ではなく Provider 経由で渡す
@@ -85,7 +81,11 @@ export default function RootLayout() {
     return res.secret;
   }, []);
 
-  if (!isReady) return null;
+  // 起動処理が終わるまでの空白をオープニング演出で埋める。
+  // SplashScreen.hideAsync() は AppIntro 側が「動画を描ける状態になってから」呼ぶ。
+  if (!introDone) {
+    return <AppIntro ready={isReady} onFinish={() => setIntroDone(true)} />;
+  }
 
   return (
     <ErrorBoundary>
