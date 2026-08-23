@@ -8,6 +8,7 @@ import {
 } from "react-native-paper";
 import { useLocalSearchParams, Stack } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { supabase } from "@/lib/supabase";
 import { mobileApi, mobileMultipart } from "@/lib/api";
@@ -31,6 +32,7 @@ export default function CertificatePhotosScreen() {
   const [staged, setStaged] = useState<PickedImage[]>([]);
   const [uploading, setUploading] = useState(false);
   const [snackbar, setSnackbar] = useState("");
+  const insets = useSafeAreaInsets();
 
   // 証明書の public_id（アップロードに必須）と既存枚数を取得。
   const { data: cert, isLoading } = useQuery({
@@ -162,7 +164,7 @@ export default function CertificatePhotosScreen() {
           }
         />
 
-        <View style={styles.footer}>
+        <View style={[styles.footer, { paddingBottom: spacing.md + insets.bottom }]}>
           <LedraButton
             variant="outline"
             icon="camera"
@@ -191,6 +193,9 @@ export default function CertificatePhotosScreen() {
         onDismiss={() => setSnackbar("")}
         duration={3000}
         style={{ backgroundColor: colors.textPrimary }}
+        // Android は兄弟同士の重なりを elevation で決める。下の固定バーが
+        // elevation 3 を持つので、既定（0）のままだと通知が完全に隠れる
+        wrapperStyle={{ elevation: 8 }}
       >
         {snackbar}
       </Snackbar>
@@ -241,7 +246,7 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     padding: spacing.md,
     backgroundColor: colors.surface,
-    ...shadows.card,
+    ...shadows.bar,
   },
   actionButton: { flex: 1 },
 });

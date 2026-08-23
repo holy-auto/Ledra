@@ -733,6 +733,9 @@ export default function WalkInCheckoutScreen() {
         onDismiss={() => setSnackbar("")}
         duration={3000}
         style={{ backgroundColor: colors.textPrimary }}
+        // Android は兄弟同士の重なりを elevation で決める。合計バーが
+        // elevation 3 を持つので、既定（0）のままだと通知が完全に隠れる
+        wrapperStyle={{ elevation: 8 }}
       >
         {snackbar}
       </Snackbar>
@@ -791,7 +794,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.md,
     backgroundColor: colors.surface,
-    ...shadows.card,
+    ...shadows.bar,
   },
   barCount: {
     ...typography.meta,

@@ -296,6 +296,11 @@ const styles = StyleSheet.create({
   },
   filterRow: {
     flexDirection: "row",
+    // 日付バーと絞り込みバーは別の操作なので、白どうしがつながって
+    // 1つの帯に見えないよう地色（背景）を1本挟む。線で切るのとは違い、
+    // 画面を横断する罫線にはならない
+    borderTopWidth: spacing.xs,
+    borderTopColor: colors.background,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
     gap: spacing.sm,

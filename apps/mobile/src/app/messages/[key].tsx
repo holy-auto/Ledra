@@ -11,6 +11,7 @@ import {
   Alert,
 } from "react-native";
 import { Text, Icon, Snackbar } from "react-native-paper";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Stack, useLocalSearchParams } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import dayjs from "dayjs";
@@ -75,6 +76,7 @@ export default function MessageThreadScreen() {
   const [pendingImage, setPendingImage] = useState<PickedImage | null>(null);
   const [snackbar, setSnackbar] = useState("");
   const markedRef = useRef(false);
+  const insets = useSafeAreaInsets();
 
   const encodedKey = encodeURIComponent(key ?? "");
 
@@ -251,7 +253,7 @@ export default function MessageThreadScreen() {
       />
 
       {canSend ? (
-        <View style={styles.composerWrap}>
+        <View style={[styles.composerWrap, { paddingBottom: insets.bottom }]}>
           {/* 控えの画像。送る前に取り消せるようにする（相手に届いたら戻せない） */}
           {pendingImage && (
             <View style={styles.pendingRow}>
@@ -302,7 +304,7 @@ export default function MessageThreadScreen() {
           </View>
         </View>
       ) : (
-        <View style={styles.cannotSend}>
+        <View style={[styles.cannotSend, { paddingBottom: spacing.lg + insets.bottom }]}>
           <Icon source="information-outline" size={16} color={colors.textSecondary} />
           <Text style={styles.cannotSendText}>
             {data?.thread.email_from
@@ -317,6 +319,9 @@ export default function MessageThreadScreen() {
         onDismiss={() => setSnackbar("")}
         duration={4000}
         style={{ backgroundColor: colors.textPrimary }}
+        // Android は兄弟同士の重なりを elevation で決める。下の固定バーが
+        // elevation 3 を持つので、既定（0）のままだと通知が完全に隠れる
+        wrapperStyle={{ elevation: 8 }}
       >
         {snackbar}
       </Snackbar>
@@ -355,7 +360,7 @@ const styles = StyleSheet.create({
 
   composerWrap: {
     backgroundColor: colors.surface,
-    ...shadows.card,
+    ...shadows.bar,
   },
   composer: {
     flexDirection: "row",
@@ -410,7 +415,7 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     padding: spacing.lg,
     backgroundColor: colors.surface,
-    ...shadows.card,
+    ...shadows.bar,
   },
   cannotSendText: { ...typography.bodySmall, color: colors.textSecondary, flex: 1 },
 });

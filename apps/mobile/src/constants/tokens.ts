@@ -123,6 +123,17 @@ export const shadows = {
     shadowRadius: 8,
     elevation: 3,
   },
+  // 画面下端に固定するバー用。カードと違って影を落とす先は「上」なので
+  // offset を反転させる。card（下向き +2）を流用すると、白バーの上端＝
+  // 実際に境界が要る側にほとんど影が乗らず、白地に白のまま消える。
+  // Android は offset を見ず elevation だけで描くので値は card と揃える
+  bar: {
+    shadowColor: "#0F172A",
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 3,
+  },
   cardHover: {
     shadowColor: "#0F172A",
     shadowOffset: { width: 0, height: 4 },
