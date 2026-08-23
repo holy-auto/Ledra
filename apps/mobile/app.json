@@ -8,8 +8,6 @@
     "scheme": "ledra",
     "userInterfaceStyle": "light",
     "splash": {
-      "image": "./assets/splash-icon.png",
-      "resizeMode": "cover",
       "backgroundColor": "#d6d0cb"
     },
     "ios": {

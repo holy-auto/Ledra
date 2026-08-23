@@ -63,15 +63,13 @@ ffmpeg -hide_banner -loglevel error -y -t "$CUT_SEC" -i "$MASTER" -filter_comple
   -an -c:v libx264 -crf 24 -preset slow -pix_fmt yuv420p -movflags +faststart \
   "$ASSETS/ledra-intro.mp4"
 
-echo "==> ネイティブスプラッシュ (動画のフレーム0からロゴの芽を消したもの)"
-# ネイティブスプラッシュ = 動画の1コマ目にすることで、再生開始が無段差になる。
-# ただしフレーム0には L マークが現れ始めた極小の芽(bbox 60x76)が写っている。
-# ネイティブスプラッシュは JS バンドルのロード中ずっと出たままなので、
-# この芽が数百ms固まって見えると描画バグのように見える。delogo で周囲の壁から
-# 補間して消し、無地のクリームにする。ビネットは動画と完全に一致したまま残るので
-# 継ぎ目は出ない(消すのは全体の 0.15% にあたる 15/10260 画素だけ)。
-ffmpeg -hide_banner -loglevel error -y -i "$ASSETS/ledra-intro.mp4" \
-  -vf "delogo=x=477:y=909:w=80:h=96" -frames:v 1 "$ASSETS/splash-icon.png"
+# ネイティブスプラッシュは画像を持たせず、単色(#d6d0cb = 動画の背景クリーム)にしている。
+# Android 12+ のスプラッシュAPIは「単色の上に中央のアイコン」しか描けず、
+# @expo/prebuild-config の legacy splash 経路では imageWidth が 200dp に
+# ハードコードされている(getAndroidSplashConfig.js)。つまりフルブリードの
+# スプラッシュ画像は Android では原理的に実現できない。
+# 動画のフレーム0はビネット以外ほぼ一様なクリームなので、単色で置き換えても
+# 再生開始の継ぎ目はほぼ見えない。iOS だけ全画面にすると挙動が割れるため揃えている。
 
 echo "==> アプリアイコン (iOS はアルファ不可なので白でフラット化)"
 MARK_H_ICON=620

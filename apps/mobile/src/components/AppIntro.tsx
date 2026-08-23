@@ -13,9 +13,9 @@ import {
 /**
  * コールドスタート時のオープニング。ブランドのロゴスティングを1回だけ再生する。
  *
- * ネイティブスプラッシュ(assets/splash-icon.png)は動画のフレーム0から作ってあるので、
- * 動画が描画可能になってから hideAsync() を呼べば継ぎ目が出ない。先に消すと
- * デコード待ちのあいだ黒画面が挟まる。
+ * ネイティブスプラッシュは単色 #d6d0cb (動画の背景クリーム) で、このコンポーネントの
+ * 背景色と一致させてある。動画が描画可能になってから hideAsync() を呼べば継ぎ目が出ない。
+ * 先に消すとデコード待ちのあいだ黒画面が挟まる。
  *
  * コールドスタート限定は追加コード不要。_layout.tsx はプロセスごとに1回しか
  * マウントされず、バックグラウンド復帰では再マウントされない。
@@ -37,8 +37,14 @@ const INTRO_BG = "#d6d0cb";
 const APP_BG = "#fafafa";
 /** モーション低減の判定を待つ上限。超えたら「低減なし」として進める。 */
 const REDUCE_MOTION_PROBE_MS = 400;
-/** 動画の準備を待つ上限。超えたらスプラッシュだけ先に剥がす(下に無地のクリームがある)。 */
-const SPLASH_HANDOFF_MAX_MS = 1500;
+/**
+ * 動画の準備を待つ上限。267KB のローカル mp4 がこれだけ待っても再生可能に
+ * ならないなら異常なので、失敗扱いにして演出を諦め、アプリ本体へ進む。
+ * ここで諦めないと、スプラッシュを剥がしたあと動かない動画の前で永久に止まる。
+ */
+const VIDEO_READY_TIMEOUT_MS = 1500;
+/** 退場フェードの完了コールバックを待つ上限。超えたら強制的にアプリ本体へ渡す。 */
+const FADE_TIMEOUT_MS = INTRO_FADE_MS + 500;
 
 export function AppIntro({ ready, onFinish }: Props) {
   // null = 判定中。判定が済むまで再生を始めない(モーション低減が有効な端末で一瞬でも動かさないため)
@@ -46,7 +52,10 @@ export function AppIntro({ ready, onFinish }: Props) {
   const [videoReady, setVideoReady] = useState(false);
   const [videoFailed, setVideoFailed] = useState(false);
   const [handoff, setHandoff] = useState(false);
-  const mountedAt = useRef(Date.now());
+  // 経過時間の基準は「動画が実際に見え始めた時刻」。マウント時ではない。
+  // マウントからはモーション低減の判定(最大400ms)とデコード待ちが挟まるので、
+  // マウント基準で測るとロックアップが完成する前に退場してしまう。
+  const videoVisibleAt = useRef<number | null>(null);
   const fade = useRef(new Animated.Value(0)).current;
   const exiting = useRef(false);
 
@@ -75,10 +84,15 @@ export function AppIntro({ ready, onFinish }: Props) {
   }, []);
 
   useEffect(() => {
-    const sub = player.addListener("statusChange", ({ status }) => {
+    const apply = (status: string) => {
       if (status === "readyToPlay") setVideoReady(true);
       else if (status === "error") setVideoFailed(true);
-    });
+    };
+    // useVideoPlayer は購読より前に読み込みを始めているので、
+    // 先に届いてしまった statusChange を現在値から拾い直す。
+    // これを怠ると videoReady が永久に false のままになる。
+    apply(player.status);
+    const sub = player.addListener("statusChange", ({ status }) => apply(status));
     return () => sub.remove();
   }, [player]);
 
@@ -95,13 +109,17 @@ export function AppIntro({ ready, onFinish }: Props) {
   const paintable = canPaint(videoState);
   useEffect(() => {
     if (paintable) {
+      if (showVideo && videoVisibleAt.current === null) {
+        videoVisibleAt.current = Date.now();
+      }
       setHandoff(true);
       return;
     }
-    // 保険: 動画の準備が返ってこなくてもスプラッシュは必ず剥がす
-    const id = setTimeout(() => setHandoff(true), SPLASH_HANDOFF_MAX_MS);
+    // 保険: 動画の準備が返ってこなければ、失敗扱いにして演出を諦める。
+    // showVideo が false になり、この効果が再実行されて handoff まで進む。
+    const id = setTimeout(() => setVideoFailed(true), VIDEO_READY_TIMEOUT_MS);
     return () => clearTimeout(id);
-  }, [paintable]);
+  }, [paintable, showVideo]);
 
   useEffect(() => {
     if (handoff) SplashScreen.hideAsync().catch(() => {});
@@ -110,27 +128,45 @@ export function AppIntro({ ready, onFinish }: Props) {
   const startExit = useCallback(() => {
     if (exiting.current) return;
     exiting.current = true;
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      onFinish();
+    };
+    // 保険: 完了コールバックが返らなくても必ずアプリ本体へ渡す。
+    // ここで止まると、スプラッシュは剥がれた後なので不透明な #fafafa の
+    // 一枚絵が残り続けることになる。
+    const id = setTimeout(finish, FADE_TIMEOUT_MS);
     Animated.timing(fade, {
       toValue: 1,
       duration: INTRO_FADE_MS,
       useNativeDriver: true,
-    }).start(({ finished }) => {
-      if (finished) onFinish();
+    }).start(() => {
+      clearTimeout(id);
+      finish();
     });
   }, [fade, onFinish]);
 
   useEffect(() => {
     if (!ready || reduceMotion === null) return;
     // 見せる演出が無い分岐(モーション低減・デコード失敗)では待つ意味がないので即抜ける
-    const wait = showVideo ? msUntilExit(ready, Date.now() - mountedAt.current) : 0;
-    if (wait === null) return;
-    if (wait <= 0) {
+    if (!showVideo) {
+      startExit();
+      return;
+    }
+    // 動画がまだ見えていないなら、見え始めるまで退場を測り始めない
+    // (videoVisibleAt が入ると videoReady が変わり、この効果が再実行される)
+    const shownAt = videoVisibleAt.current;
+    if (shownAt === null) return;
+    const wait = msUntilExit(ready, Date.now() - shownAt);
+    if (wait === null || wait <= 0) {
       startExit();
       return;
     }
     const id = setTimeout(startExit, wait);
     return () => clearTimeout(id);
-  }, [ready, reduceMotion, showVideo, startExit]);
+  }, [ready, reduceMotion, showVideo, videoReady, startExit]);
 
   return (
     <View style={styles.container}>

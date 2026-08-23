@@ -21,6 +21,9 @@ import { registerForPushNotifications } from "@/lib/push";
 
 SplashScreen.preventAutoHideAsync();
 
+/** どの経路でも剥がれなかったときに、強制的にスプラッシュを外すまでの時間。 */
+const SPLASH_FAILSAFE_MS = 5000;
+
 /**
  * useTapToPayWarmup は useStripeTerminal を内部で呼ぶため
  * StripeTerminalProvider の内側で動かす必要がある。
@@ -70,6 +73,18 @@ export default function RootLayout() {
   const { isReady } = useAuthInit();
   const [introDone, setIntroDone] = useState(false);
 
+  // 最後の砦: 何があってもネイティブスプラッシュは必ず剥がす。
+  // 通常は AppIntro が「動画を描ける状態になってから」呼ぶが、そこが
+  // 一切動かなかった場合(例: dev-client のビルドが古く expo-video の
+  // ネイティブ側が入っていないなど)、スプラッシュの裏でアプリが永久に
+  // 見えなくなる。それだけは避ける。
+  useEffect(() => {
+    const id = setTimeout(() => {
+      void SplashScreen.hideAsync().catch(() => {});
+    }, SPLASH_FAILSAFE_MS);
+    return () => clearTimeout(id);
+  }, []);
+
   // Stripe Terminal の connection token 取得
   // SDK 0.0.1-beta.29 では initialize() 経由ではなく Provider 経由で渡す
   // API側は POST のみ受付なので必ず POST で叩く
@@ -83,8 +98,14 @@ export default function RootLayout() {
 
   // 起動処理が終わるまでの空白をオープニング演出で埋める。
   // SplashScreen.hideAsync() は AppIntro 側が「動画を描ける状態になってから」呼ぶ。
+  // 演出は本質的に飾りなので、ここで落ちてもアプリ本体には入れるように
+  // ErrorBoundary の内側に置く。
   if (!introDone) {
-    return <AppIntro ready={isReady} onFinish={() => setIntroDone(true)} />;
+    return (
+      <ErrorBoundary>
+        <AppIntro ready={isReady} onFinish={() => setIntroDone(true)} />
+      </ErrorBoundary>
+    );
   }
 
   return (
