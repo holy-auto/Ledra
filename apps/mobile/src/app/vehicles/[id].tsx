@@ -220,8 +220,8 @@ export default function VehicleDetailScreen() {
                     <Text style={styles.certMeta} numberOfLines={1}>
                       {[
                         cert.service_type,
-                        // 未署名の下書きは作成日を出す
-                        dayjs(cert.signed_at ?? cert.created_at).format("YYYY/M/D"),
+                        // 未署名の下書きに発行日は無い
+                        cert.signed_at ? dayjs(cert.signed_at).format("YYYY/M/D") : null,
                       ]
                         .filter(Boolean)
                         .join(" · ")}

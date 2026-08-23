@@ -20,7 +20,7 @@ interface Reservation {
   payment_status: string;
   scheduled_date: string;
   start_time: string | null;
-  notes: string | null;
+  note: string | null;
   customer: {
     id: string;
     name: string;
@@ -68,7 +68,6 @@ export default function ReservationDetailScreen() {
           id, status, payment_status, scheduled_date, start_time, note,
           customer:customers(id, name, phone, email),
           vehicle:vehicles(id, plate_display, maker, model),
-          // 明細は menu_items_json（reservation_items テーブルは存在しない）
           menu_items_json
         `
         )
@@ -126,7 +125,6 @@ export default function ReservationDetailScreen() {
     );
   }
 
-  // menu_items_json は 1 行 1 点で数量を持たない
   const items = parseMenuItems(reservation.menu_items_json);
   const total = menuItemsTotal(items);
 
@@ -208,9 +206,9 @@ export default function ReservationDetailScreen() {
           {items.map((item, i) => (
             <View key={`${item.menu_item_id ?? item.name}-${i}`} style={styles.menuRow}>
               <Text style={[styles.bodyText, { flex: 1 }]}>{item.name}</Text>
+              {item.quantity !== 1 && <Text style={styles.subText}>x{item.quantity}</Text>}
               <Text style={styles.price}>
-                {"¥"}
-                {item.price.toLocaleString()}
+                {item.amount === null ? "金額不明" : `¥${item.amount.toLocaleString()}`}
               </Text>
             </View>
           ))}
@@ -227,12 +225,12 @@ export default function ReservationDetailScreen() {
         </View>
 
         {/* Notes */}
-        {reservation.notes && (
+        {reservation.note && (
           <View style={styles.card}>
             <Text style={styles.heading}>
               備考
             </Text>
-            <Text style={styles.bodyText}>{reservation.notes}</Text>
+            <Text style={styles.bodyText}>{reservation.note}</Text>
           </View>
         )}
 

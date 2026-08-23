@@ -114,7 +114,6 @@ export default function WorkDetailScreen() {
           id, status, sub_status, progress_note, scheduled_date, start_time,
           customer:customers(name, phone),
           vehicle:vehicles(id, plate_display, maker, model),
-          // 明細は menu_items_json（reservation_items テーブルは存在しない）
           menu_items_json
         `
         )

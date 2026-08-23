@@ -78,7 +78,6 @@ export default function PosReceiptScreen() {
             id,
             customer:customers(name, phone),
             vehicle:vehicles(plate_display, maker, model),
-            // 明細は menu_items_json（reservation_items テーブルは存在しない）
             menu_items_json
           )
         `
@@ -206,9 +205,9 @@ export default function PosReceiptScreen() {
             {parseMenuItems(payment.reservation.menu_items_json).map((item, i) => (
               <View key={`${item.menu_item_id ?? item.name}-${i}`} style={styles.lineItem}>
                 <Text style={[styles.bodyText, { flex: 1 }]}>{item.name}</Text>
+                {item.quantity !== 1 && <Text style={styles.subText}>x{item.quantity}</Text>}
                 <Text style={styles.price}>
-                  {"¥"}
-                  {item.price.toLocaleString()}
+                  {item.amount === null ? "金額不明" : `¥${item.amount.toLocaleString()}`}
                 </Text>
               </View>
             ))}

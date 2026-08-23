@@ -66,6 +66,9 @@ export default function WorkScreen() {
           id, status, scheduled_date, start_time,
           customer:customers ( id, name ),
           vehicle:vehicles ( id, plate_display, maker, model ),
+          // staff_members の SELECT は RLS で owner/admin 以上に限定されている。
+          // staff / viewer では埋め込みが null になり担当者が出ない（エラーにはならない）。
+          // 現場ロールにも見せるなら RLS を緩めるか、サーバ経由で引く必要がある
           assigned_staff:staff_members ( id, name ),
           menu_items_json
         `

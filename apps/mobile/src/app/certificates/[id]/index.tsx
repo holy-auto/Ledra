@@ -224,8 +224,9 @@ export default function CertificateDetailScreen() {
   ]
     .filter(Boolean)
     .join(" ");
-  // 未署名の下書きは作成日を発行日として出す
-  const issuedDate = dayjs(cert.signed_at ?? cert.created_at).format("YYYY/M/D");
+  // 未署名の下書きに「発行日」は無い。作成日を発行日として出すと、
+  // 顧客が保証の起算日として読む書類に、発行していない日付が載る
+  const issuedDate = cert.signed_at ? dayjs(cert.signed_at).format("YYYY/M/D") : null;
 
   return (
     <ScrollView style={styles.container}>

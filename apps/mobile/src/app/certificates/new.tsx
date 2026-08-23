@@ -111,15 +111,19 @@ export default function CertificateNewScreen() {
           store_id: selectedStore!.id,
           vehicle_id: form.vehicle_id || null,
           service_type: form.service_type || null,
-          content: {
-            summary: form.content_summary.trim(),
-            notes: form.notes.trim(),
-          },
+          // content / vehicle_maker / vehicle_model / plate_display 列は存在しない。
+          // 施工内容は content_free_text、車両は発行時スナップショットの vehicle_info_json。
+          // public_id は DB 側の generate_public_id() が採番する
+          content_free_text:
+            [form.content_summary.trim(), form.notes.trim()].filter(Boolean).join("\n\n") || null,
           status: "draft",
-          customer_name: selectedVehicle?.customers?.name ?? null,
-          vehicle_maker: form.vehicle_maker.trim() || null,
-          vehicle_model: form.vehicle_model.trim() || null,
-          plate_display: form.vehicle_plate.trim() || null,
+          // customer_name は NOT NULL。顧客未選択でも空文字で通す（あとから編集できる）
+          customer_name: selectedVehicle?.customers?.name ?? "",
+          vehicle_info_json: {
+            maker: form.vehicle_maker.trim(),
+            model: form.vehicle_model.trim(),
+            plate: form.vehicle_plate.trim(),
+          },
         })
         .select("id")
         .single();

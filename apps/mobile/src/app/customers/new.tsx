@@ -11,7 +11,7 @@ import { LedraButton } from "@/components/ui";
 import { colors, spacing } from "@/constants/tokens";
 
 export default function CustomerNewScreen() {
-  const { user, selectedStore } = useAuthStore();
+  const { user } = useAuthStore();
   const queryClient = useQueryClient();
 
   const [form, setForm] = useState({
@@ -30,8 +30,8 @@ export default function CustomerNewScreen() {
       const { data, error } = await supabase
         .from("customers")
         .insert({
+          // customers に store_id 列は無い（顧客はテナント単位）
           tenant_id: user!.tenantId,
-          store_id: selectedStore!.id,
           name: form.name.trim(),
           name_kana: form.name_kana.trim() || null,
           email: form.email.trim() || null,

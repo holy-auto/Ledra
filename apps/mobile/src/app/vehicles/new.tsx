@@ -93,8 +93,8 @@ export default function VehicleNewScreen() {
           year: form.year.trim() ? parseInt(form.year.trim(), 10) : null,
           plate_display: form.plate_display.trim() || null,
           vin_code: form.vin_code.trim() || null,
+          // vehicles に customer_name 列は無い。顧客は customer_id で紐付ける
           customer_id: selectedCustomer?.id ?? null,
-          customer_name: selectedCustomer?.name ?? null,
         })
         .select("id")
         .single();

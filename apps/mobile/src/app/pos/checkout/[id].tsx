@@ -11,7 +11,7 @@ import { useLocalSearchParams, router, Stack } from "expo-router";
 import { useQuery, useMutation } from "@tanstack/react-query";
 
 import { supabase } from "@/lib/supabase";
-import { parseMenuItems, menuItemsTotal } from "@/lib/reservationItems";
+import { parseMenuItems, menuItemsTotal, hasUnknownPrice } from "@/lib/reservationItems";
 import { useAuthStore } from "@/stores/authStore";
 import { mobileApi } from "@/lib/api";
 import { useTerminal } from "@/hooks/useTerminal";
@@ -138,7 +138,6 @@ export default function PosCheckoutScreen() {
           id, status, payment_status,
           customer:customers(name),
           vehicle:vehicles(plate_display),
-          // 明細は menu_items_json（reservation_items テーブルは存在しない）
           menu_items_json
         `
         )
@@ -150,9 +149,10 @@ export default function PosCheckoutScreen() {
     enabled: !!id,
   });
 
-  // menu_items_json は 1 行 1 点で数量を持たない
   const items = parseMenuItems(reservation?.menu_items_json);
   const total = menuItemsTotal(items);
+  // 金額を確定できない明細があるとき、合計は実際より小さい。決済させない
+  const priceUnknown = hasUnknownPrice(items);
   const received = parseInt(receivedAmount, 10) || 0;
   const change = paymentMethod === "cash" ? Math.max(0, received - total) : 0;
 
@@ -182,12 +182,11 @@ export default function PosCheckoutScreen() {
           if (result.cancelled) return;
           throw new Error(result.error ?? "カード決済失敗");
         }
-        // menu_items_json は 1 行 1 点。数量は常に 1
         const itemsJson = items.map((it) => ({
           name: it.name,
-          quantity: 1,
-          unit_price: it.price,
-          amount: it.price,
+          quantity: it.quantity,
+          unit_price: it.unitPrice ?? 0,
+          amount: it.amount ?? 0,
         }));
         const { error } = await supabase.rpc("pos_checkout", {
           p_tenant_id: user!.tenantId,
@@ -229,12 +228,11 @@ export default function PosCheckoutScreen() {
       }
 
       // C. 現金・QR(支払方法記録)・振込
-      // menu_items_json は 1 行 1 点。数量は常に 1
       const itemsJson = items.map((it) => ({
         name: it.name,
-        quantity: 1,
-        unit_price: it.price,
-        amount: it.price,
+        quantity: it.quantity,
+        unit_price: it.unitPrice ?? 0,
+        amount: it.amount ?? 0,
       }));
       const { error } = await supabase.rpc("pos_checkout", {
         p_tenant_id: user!.tenantId,
@@ -321,10 +319,15 @@ export default function PosCheckoutScreen() {
     checkoutMutation.isPending ||
     isProcessing ||
     qrPolling ||
+    // 明細が無い・金額が読めない状態で押せると ¥0 の売上が立つ
+    total <= 0 ||
+    priceUnknown ||
     (paymentMethod === "cash" && received < total);
 
   // ── 決済ボタンラベル ──────────────────────────────────────────
   const submitLabel = (() => {
+    if (priceUnknown) return "金額が確定できません（管理画面で確認）";
+    if (total <= 0) return "明細がありません";
     if (qrPolling) return "お客様の決済完了を待っています...";
     if (isIPhone && paymentMethod === "card") {
       if (paymentStatus === "collecting") return "カードをかざしてください";
@@ -374,9 +377,9 @@ export default function PosCheckoutScreen() {
           {items.map((item, i) => (
             <View key={`${item.menu_item_id ?? item.name}-${i}`} style={styles.lineItem}>
               <Text style={[styles.bodyText, { flex: 1 }]}>{item.name}</Text>
+              {item.quantity !== 1 && <Text style={styles.subText}>x{item.quantity}</Text>}
               <Text style={styles.price}>
-                {"¥"}
-                {item.price.toLocaleString()}
+                {item.amount === null ? "金額不明" : `¥${item.amount.toLocaleString()}`}
               </Text>
             </View>
           ))}

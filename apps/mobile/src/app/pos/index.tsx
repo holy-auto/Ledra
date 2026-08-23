@@ -42,7 +42,6 @@ export default function PosScreen() {
           estimated_amount,
           customer:customers ( id, name ),
           vehicle:vehicles ( id, plate_display, maker, model ),
-          // 明細は menu_items_json（reservation_items テーブルは存在しない）
           menu_items_json
         `
         )
