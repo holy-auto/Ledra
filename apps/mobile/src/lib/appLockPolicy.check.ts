@@ -22,17 +22,27 @@ assert.equal(lockStateOnForeground({ ...base, awayMs: 60_000 }), "open");
 assert.equal(lockStateOnForeground({ ...base, awayMs: RELOCK_AFTER_MS }), "locked");
 assert.equal(lockStateOnForeground({ ...base, awayMs: RELOCK_AFTER_MS + 1 }), "locked");
 
-// background を経ていない復帰（生体認証プロンプト・通知センター）では状態を変えない
+// background を経ていない復帰（生体認証プロンプト・通知センター）では開けたまま
 assert.equal(lockStateOnForeground({ ...base, awayMs: null }), "open");
 
-// ロック中に離れて戻ってきたらロックのまま。離席が短くても解除されない
+// 端末の時刻を戻されて負になったら、経過時間が不明なのでロックする
+assert.equal(lockStateOnForeground({ ...base, awayMs: -3_600_000 }), "locked");
+
+// 閉じている状態は enabled の読み取り失敗（false）でも開かない。
+// isAppLockEnabledSync は例外を握って false を返すので、順番を誤ると認証なしで外れる
+for (const current of ["locked", "needs_setup"] as const) {
+  assert.equal(lockStateOnForeground({ ...base, current, awayMs: 1_000 }), current);
+  assert.equal(lockStateOnForeground({ ...base, current, awayMs: null }), current);
+  assert.equal(
+    lockStateOnForeground({ ...base, current, enabled: false, awayMs: null }),
+    current,
+  );
+}
+
+// ただしログアウトすればどの状態からでも開く（ログイン画面に被せない）
 assert.equal(
-  lockStateOnForeground({ ...base, current: "locked", awayMs: 1_000 }),
-  "locked",
-);
-assert.equal(
-  lockStateOnForeground({ ...base, current: "locked", awayMs: null }),
-  "locked",
+  lockStateOnForeground({ ...base, current: "needs_setup", authenticated: false, awayMs: null }),
+  "open",
 );
 
 console.log("appLockPolicy self-check: OK");

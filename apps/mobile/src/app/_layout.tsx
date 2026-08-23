@@ -10,6 +10,7 @@ import { theme } from "@/constants/theme";
 import { queryClient } from "@/lib/queryClient";
 import { useAuthInit } from "@/hooks/useAuthInit";
 import { bindUnauthorizedHandler, mobileApi } from "@/lib/api";
+import { signOutEverywhere } from "@/lib/signOut";
 import { OfflineBanner } from "@/components/OfflineBanner";
 import { AppLockGate } from "@/components/AppLockGate";
 import { initSentry, setSentryUser } from "@/lib/sentry";
@@ -52,8 +53,8 @@ function PushRegisterGate() {
 }
 
 // 401 受信時のグローバルハンドラ: store を初期化して /login へリダイレクト
-bindUnauthorizedHandler(() => {
-  useAuthStore.getState().reset();
+bindUnauthorizedHandler(async () => {
+  await signOutEverywhere();
   router.replace("/(auth)/login");
 });
 

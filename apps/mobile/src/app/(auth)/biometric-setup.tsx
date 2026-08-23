@@ -5,12 +5,7 @@ import { router } from "expo-router";
 import { Pressable } from "react-native";
 
 import { LedraButton } from "@/components/ui";
-import {
-  canUseAppLock,
-  disableAppLock,
-  enableAppLock,
-  unlockApp,
-} from "@/lib/appLock";
+import { enableAppLockVerified } from "@/lib/appLock";
 import { colors, spacing, radius, typography, sizing } from "@/constants/tokens";
 
 const BENEFITS = [
@@ -49,35 +44,18 @@ export default function BiometricSetupScreen() {
   async function handleSetup() {
     setLoading(true);
     setError("");
-
     try {
-      if (!canUseAppLock()) {
-        setError(
-          "この端末では生体認証が使えません。端末の設定で Face ID / 指紋を登録してください。",
-        );
-        return;
-      }
-
-      await enableAppLock();
-
-      // 保存できただけでは解除できる保証がない。その場で1回通して確かめる
-      const result = await unlockApp();
+      const result = await enableAppLockVerified();
       if (result === "ok") {
         setSetupDone(true);
         return;
       }
-
-      // 通らなかったものを有効なままにしない（次回起動で開けなくなる）
-      await disableAppLock();
       setError(
-        result === "cancelled"
-          ? "認証がキャンセルされました"
-          : "生体認証を確認できませんでした",
-      );
-    } catch (err: unknown) {
-      await disableAppLock().catch(() => {});
-      setError(
-        err instanceof Error ? err.message : "生体認証の設定に失敗しました",
+        result === "unsupported"
+          ? "この端末では生体認証が使えません。端末の設定で Face ID / 指紋を登録してください。"
+          : result === "cancelled"
+            ? "認証がキャンセルされました"
+            : "生体認証を確認できませんでした",
       );
     } finally {
       setLoading(false);

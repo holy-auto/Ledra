@@ -1,18 +1,17 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { View, ScrollView, StyleSheet, Platform, Alert, Linking } from "react-native";
 import { Text, Chip, Snackbar } from "react-native-paper";
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import Constants from "expo-constants";
 import { useQueryClient } from "@tanstack/react-query";
 
-import { supabase } from "@/lib/supabase";
+import { signOutEverywhere } from "@/lib/signOut";
 import { useAuthStore } from "@/stores/authStore";
 import { mobileApi } from "@/lib/api";
 import { LedraButton } from "@/components/ui";
 import {
-  canUseAppLock,
   disableAppLock,
-  enableAppLock,
+  enableAppLockVerified,
   isAppLockEnabledSync,
   unlockApp,
 } from "@/lib/appLock";
@@ -30,10 +29,9 @@ const ENV_BADGE: Record<string, { label: string; bg: string; fg: string }> = {
 };
 
 export default function SettingsIndexScreen() {
-  const { user, selectedStore, setSelectedStore, reset } = useAuthStore();
+  const { user, selectedStore, setSelectedStore } = useAuthStore();
   const queryClient = useQueryClient();
   const [deleting, setDeleting] = useState(false);
-  // 同期で読めるので効果は要らない
   const [lockOn, setLockOn] = useState(isAppLockEnabledSync);
   const [lockBusy, setLockBusy] = useState(false);
   const [snackbar, setSnackbar] = useState("");
@@ -51,6 +49,14 @@ export default function SettingsIndexScreen() {
 
   const envInfo = ENV_BADGE[ENV] ?? ENV_BADGE.development;
 
+  // ロック画面の「ロックを解除して続ける」で無効化されることがあるので、
+  // この画面に戻るたび実際の値を読み直す
+  useFocusEffect(
+    useCallback(() => {
+      setLockOn(isAppLockEnabledSync());
+    }, []),
+  );
+
   async function handleToggleLock() {
     setLockBusy(true);
     try {
@@ -61,31 +67,23 @@ export default function SettingsIndexScreen() {
           setSnackbar("認証できなかったため変更しませんでした");
           return;
         }
+        // needs_setup（生体情報の変更で番人が無効化）はここで切らせる。
+        // 切れないままだと次回起動で開けなくなる
         await disableAppLock();
         setLockOn(false);
         setSnackbar("アプリロックを無効にしました");
         return;
       }
 
-      if (!canUseAppLock()) {
-        setSnackbar("この端末では生体認証が使えません。端末の設定で登録してください");
-        return;
-      }
-      await enableAppLock();
-      // 保存できただけでは解除できる保証がない。その場で1回通して確かめる
-      const result = await unlockApp();
-      if (result !== "ok") {
-        // 通らなかったものを有効なままにしない（次回起動で開けなくなる）
-        await disableAppLock();
-        setSnackbar("生体認証を確認できなかったため有効にしませんでした");
-        return;
-      }
-      setLockOn(true);
-      setSnackbar("アプリロックを有効にしました");
-    } catch (e) {
-      await disableAppLock().catch(() => {});
-      setLockOn(false);
-      setSnackbar(e instanceof Error ? e.message : "設定に失敗しました");
+      const result = await enableAppLockVerified();
+      setLockOn(result === "ok");
+      setSnackbar(
+        result === "ok"
+          ? "アプリロックを有効にしました"
+          : result === "unsupported"
+            ? "この端末では生体認証が使えません。端末の設定で登録してください"
+            : "生体認証を確認できなかったため有効にしませんでした",
+      );
     } finally {
       setLockBusy(false);
     }
@@ -97,8 +95,7 @@ export default function SettingsIndexScreen() {
   }
 
   async function handleLogout() {
-    await supabase.auth.signOut();
-    reset();
+    await signOutEverywhere();
     router.replace("/(auth)/login");
   }
 
@@ -112,9 +109,7 @@ export default function SettingsIndexScreen() {
     try {
       await mobileApi("/account", { method: "DELETE" });
       // 認証は削除済み。ローカルセッションを破棄してログインへ。
-      await supabase.auth.signOut();
-      queryClient.clear();
-      reset();
+      await signOutEverywhere();
       router.replace("/(auth)/login");
     } catch (e) {
       setSnackbar(

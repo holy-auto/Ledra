@@ -12,6 +12,7 @@ import {
 } from "react-native";
 import { Text, IconButton } from "react-native-paper";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useIsAppLocked } from "@/stores/appLockStore";
 import { colors, radius, spacing } from "@/constants/tokens";
 
 interface Props {
@@ -41,6 +42,13 @@ export function BottomSheet({
   const translateY = useRef(new Animated.Value(height)).current;
   const overlayOpacity = useRef(new Animated.Value(0)).current;
   const [modalVisible, setModalVisible] = useState(false);
+
+  // RN の Modal はネイティブの別ウィンドウなので、AppLockGate の覆いが上に来ない。
+  // ロックがかかったら自分から閉じないと、シートの中身（顧客名など）が見えたままになる
+  const appLocked = useIsAppLocked();
+  useEffect(() => {
+    if (appLocked && visible) onDismiss();
+  }, [appLocked, visible, onDismiss]);
 
   const animateClose = useCallback(() => {
     Animated.parallel([
