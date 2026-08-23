@@ -15,11 +15,35 @@
 -- (plus mobile and the external v1 API), so one trigger is a smaller and more
 -- durable guard than one call per caller.
 --
--- The expression must stay identical to `normalizeVin()` in
--- src/lib/passport/normalizeVin.ts — NFKC, uppercase, strip whitespace and
--- hyphens — because that helper normalizes the *lookup* side. Note this also
--- adds the NFKC step the 20260424 backfill lacked, so full-width VINs now
--- match; the backfill below re-normalizes any row that differs.
+-- The rule must stay identical to `normalizeVin()` in
+-- src/lib/passport/normalizeVin.ts, which normalizes the *lookup* side in the
+-- v1 API routes, the report checkout, and `/v/[vin]`. Note this adds the NFKC
+-- step the 20260424 backfill lacked, so full-width VINs now normalize the same
+-- way on both sides; the backfill below re-normalizes any row that differs.
+--
+-- Caveat, deliberate: editing a vehicle's vin_code now re-keys
+-- vin_code_normalized, and nothing cascades that to the tables that use it as
+-- a join key (`vehicle_report_orders`, `vehicle_passports`). Correcting a VIN
+-- typo therefore detaches an already-purchased report and orphans an anchored
+-- passport row, which `upsertVehiclePassport()` will recreate under the new
+-- key. Leaving the column stale instead is worse — the vehicle would stay
+-- findable under a VIN it no longer has — so this migration keeps the column
+-- truthful and the cascade is tracked in OPEN_QUESTIONS.md (2026-08-23).
+-- There is no live exposure today: production has zero report orders.
+
+-- Single definition of the rule. IMMUTABLE so the trigger, the backfill and
+-- the self-check below cannot drift apart.
+CREATE OR REPLACE FUNCTION vin_normalize(raw text)
+RETURNS text
+LANGUAGE sql
+IMMUTABLE
+SET search_path TO ''
+AS $$
+  -- NFKC (full-width → half-width) → uppercase → strip whitespace, hyphens and
+  -- U+FEFF. U+FEFF is listed explicitly because PostgreSQL's `\s` does not
+  -- match it while JavaScript's does, and the two sides must agree.
+  SELECT nullif(upper(regexp_replace(normalize(coalesce(raw, ''), NFKC), E'[\\s\\-\\ufeff]', '', 'g')), '');
+$$;
 
 CREATE OR REPLACE FUNCTION set_vehicle_vin_normalized()
 RETURNS trigger
@@ -27,8 +51,7 @@ LANGUAGE plpgsql
 SET search_path TO ''
 AS $$
 BEGIN
-  new.vin_code_normalized :=
-    nullif(upper(regexp_replace(normalize(coalesce(new.vin_code, ''), NFKC), '[\s\-]', '', 'g')), '');
+  new.vin_code_normalized := public.vin_normalize(new.vin_code);
   RETURN new;
 END;
 $$;
@@ -44,16 +67,14 @@ CREATE TRIGGER trg_vehicles_vin_normalized
 -- Backfill the stranded rows. Idempotent: only touches rows whose stored value
 -- disagrees with the derived one.
 UPDATE vehicles
-   SET vin_code_normalized =
-         nullif(upper(regexp_replace(normalize(coalesce(vin_code, ''), NFKC), '[\s\-]', '', 'g')), '')
- WHERE vin_code_normalized IS DISTINCT FROM
-         nullif(upper(regexp_replace(normalize(coalesce(vin_code, ''), NFKC), '[\s\-]', '', 'g')), '');
+   SET vin_code_normalized = vin_normalize(vin_code)
+ WHERE vin_code_normalized IS DISTINCT FROM vin_normalize(vin_code);
 
 -- Self-check. Fails the migration loudly if either half of the fix is wrong.
 DO $$
 DECLARE
-  got     text;
-  stranded bigint;
+  got   text;
+  drift bigint;
 BEGIN
   -- 1. The trigger actually normalizes (exercised on a throwaway table so no
   --    real vehicle row is created just to test).
@@ -67,14 +88,15 @@ BEGIN
   END IF;
   DROP TABLE _vin_trigger_check;
 
-  -- 2. No vehicle is left with a VIN the passport cannot find.
-  SELECT count(*) INTO stranded
+  -- 2. Every row's stored value now agrees with the rule. Stated as agreement
+  --    rather than "vin_code is set but normalized is NULL", so a placeholder
+  --    VIN that legitimately normalizes to NULL (e.g. '---', '　') does not
+  --    abort the migration.
+  SELECT count(*) INTO drift
     FROM vehicles
-   WHERE vin_code IS NOT NULL
-     AND btrim(vin_code) <> ''
-     AND vin_code_normalized IS NULL;
-  IF stranded > 0 THEN
-    RAISE EXCEPTION '% vehicle(s) still have a vin_code but no vin_code_normalized', stranded;
+   WHERE vin_code_normalized IS DISTINCT FROM vin_normalize(vin_code);
+  IF drift > 0 THEN
+    RAISE EXCEPTION '% vehicle(s) have a vin_code_normalized that disagrees with vin_code', drift;
   END IF;
 END;
 $$;
