@@ -10,7 +10,12 @@ import {
 } from "@/lib/api/response";
 import { parseJsonBody } from "@/lib/api/parseBody";
 import { agentSettingsUpdateSchema } from "@/lib/validations/agent-portal";
-import { AGENT_PROFILE_COLUMNS, toAgentPatch, type AgentBankInfo } from "@/lib/agents/profileColumns";
+import {
+  AGENT_PROFILE_COLUMNS,
+  AGENT_PROFILE_COLUMNS_ADMIN,
+  toAgentPatch,
+  type AgentBankInfo,
+} from "@/lib/agents/profileColumns";
 
 export const dynamic = "force-dynamic";
 
@@ -31,18 +36,10 @@ export async function GET() {
     const agent = Array.isArray(agentData) ? agentData[0] : agentData;
     const agentId = agent.agent_id as string;
 
-    // Fetch agent profile
-    const { data: profile, error: profileErr } = await supabase
-      .from("agents")
-      .select(AGENT_PROFILE_COLUMNS)
-      .eq("id", agentId)
-      .single();
-
-    if (profileErr || !profile) {
-      return apiNotFound("agent_profile_not_found");
-    }
-
-    // Fetch current user's role in this agent org
+    // 先に role を引く。振込先（bank_info）は admin だけに返すため、
+    // 読む列を role で切り替える必要がある。
+    // RLS は行単位で列を絞れず、`agents_select` は「その代理店に属していれば
+    // 読める」なので、ここで列を分けないと viewer にも口座番号が渡る
     const { data: membership, error: memberErr } = await supabase
       .from("agent_users")
       .select("role, display_name")
@@ -54,11 +51,23 @@ export async function GET() {
       console.error("[agent/settings] membership fetch error:", memberErr.message);
     }
 
+    const role = membership?.role ?? agent.role ?? "viewer";
+
+    const { data: profile, error: profileErr } = await supabase
+      .from("agents")
+      .select(role === "admin" ? AGENT_PROFILE_COLUMNS_ADMIN : AGENT_PROFILE_COLUMNS)
+      .eq("id", agentId)
+      .single();
+
+    if (profileErr || !profile) {
+      return apiNotFound("agent_profile_not_found");
+    }
+
     return apiJson({
       agent: profile,
       current_user: {
         user_id: auth.user.id,
-        role: membership?.role ?? agent.role ?? "viewer",
+        role,
         display_name: membership?.display_name ?? null,
       },
     });
@@ -95,7 +104,14 @@ export async function PUT(request: NextRequest) {
 
     // 振込先は bank_info（jsonb）に入るので、1項目だけ更新したときに他が
     // 消えないよう既存の中身を読んでから重ねる
-    const { data: current } = await supabase.from("agents").select("bank_info").eq("id", agentId).maybeSingle();
+    const { data: current, error: currentErr } = await supabase
+      .from("agents")
+      .select("bank_info")
+      .eq("id", agentId)
+      .maybeSingle();
+    // 読めなかったときに空から組み直すと、送られてこなかった口座情報が消える。
+    // 消すくらいなら保存を止める
+    if (currentErr) return apiInternalError(currentErr, "agent/settings read bank_info");
 
     // agents の実列に載せ替える。以前は検証済みの値をそのまま update に渡していたが、
     // company_name / company_address / logo_url / commission_rate / bank_* は
@@ -111,7 +127,7 @@ export async function PUT(request: NextRequest) {
       .from("agents")
       .update(updates)
       .eq("id", agentId)
-      .select(AGENT_PROFILE_COLUMNS)
+      .select(AGENT_PROFILE_COLUMNS_ADMIN)
       .single();
 
     if (updateErr) {

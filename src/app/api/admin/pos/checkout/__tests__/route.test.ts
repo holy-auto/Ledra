@@ -24,8 +24,11 @@ vi.mock("@/lib/supabase/server", () => ({
 }));
 
 vi.mock("@/lib/supabase/admin", () => ({
+  // pos_checkout は SECURITY DEFINER で service_role 専用にしたため、
+  // ルートはサービスロールのクライアントで RPC を呼ぶ。
+  // その admin にも rpc を生やしておく
   createTenantScopedAdmin: (tenantId: string) => ({
-    admin: { __scopedTenantId: tenantId },
+    admin: { __scopedTenantId: tenantId, rpc: rpcMock },
     tenantId,
   }),
 }));

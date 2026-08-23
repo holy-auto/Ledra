@@ -11,7 +11,16 @@
 import type { AgentSettingsUpdate } from "@/lib/validations/agent-portal";
 
 /** agents から読む実在の列 */
-export const AGENT_PROFILE_COLUMNS = `id, name, contact_name, contact_email, contact_phone, postal_code, address, website_url, logo_asset_path, status, commission_type, default_commission_rate, default_commission_fixed, bank_info, stripe_account_id, stripe_onboarding_done, notes, created_at, updated_at`;
+/** 誰でも読んでよい列（代理店に属する利用者なら role を問わない） */
+export const AGENT_PROFILE_COLUMNS = `id, name, contact_name, contact_email, contact_phone, postal_code, address, website_url, logo_asset_path, status, commission_type, default_commission_rate, default_commission_fixed, stripe_account_id, stripe_onboarding_done, email_notifications, notes, created_at, updated_at`;
+
+/**
+ * 振込先まで含めた列。**admin だけに返すこと。**
+ * Postgres の RLS は行単位で、列単位の制限ができない。`agents_select` ポリシーは
+ * 「その代理店に属していれば読める」なので、viewer にも口座番号が見えてしまう。
+ * 列を絞れる場所はこのハンドラしかないので、role で SELECT を分ける。
+ */
+export const AGENT_PROFILE_COLUMNS_ADMIN = `${AGENT_PROFILE_COLUMNS}, bank_info`;
 
 /** 振込先の形。tenants.bank_info と揃える */
 export interface AgentBankInfo {
@@ -41,6 +50,7 @@ const COLUMN_MAP: Partial<Record<keyof AgentSettingsUpdate, string>> = {
   company_address: "address",
   postal_code: "postal_code",
   website_url: "website_url",
+  email_notifications: "email_notifications",
   logo_url: "logo_asset_path",
   commission_type: "commission_type",
   commission_rate: "default_commission_rate",
@@ -51,15 +61,13 @@ const COLUMN_MAP: Partial<Record<keyof AgentSettingsUpdate, string>> = {
  * まだ保存先の無い項目。**黙って捨てず、呼び出し元に返して拒否する**。
  * 保存できたつもりで消えるのが一番costが高い。
  *
- * - `company_name`: agents は `name` 一本。別に会社名を持つ必要が出たら列を足す
- * - `email_notifications`: 通知の設定は代理店単位ではなく利用者単位で持つべきで、
- *   置き場所（agent_users か別テーブル）が決まっていない
+ * - `company_name`: agents は `name` 一本。別に会社名を持つ必要が出たら列を足す。
+ *   画面にも入力欄が無いので、実際にここへ来ることはない
  */
-const NO_STORAGE: ReadonlyArray<keyof AgentSettingsUpdate> = ["company_name", "email_notifications"];
+const NO_STORAGE: ReadonlyArray<keyof AgentSettingsUpdate> = ["company_name"];
 
 const LABELS: Partial<Record<keyof AgentSettingsUpdate, string>> = {
   company_name: "会社名",
-  email_notifications: "メール通知",
 };
 
 /**

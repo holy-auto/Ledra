@@ -26,19 +26,26 @@ const cols = new Map(Object.entries(schema).map(([t, c]) => [t, new Set(c)]));
 
 // 走査対象と、そこにあるはずのクエリ数の下限。0 件は必ず異常で、
 // 大きく減ったら正規表現が実装の書き方に追いつけていない
-const TARGETS = [
-  { dir: "src", minSelects: 2000, minMutations: 800 },
-  { dir: "apps/mobile/src", minSelects: 55, minMutations: 5 },
-  // 運用スクリプトも実 DB を触る。役目を終えた平文シークレットのバックフィルが
-  // 削除済み列を参照したまま残っていたので、ここも対象に入れる
-  { dir: "scripts", minSelects: 0, minMutations: 0 },
-];
+const TARGETS = process.env.CHECK_SCHEMA_DIRS
+  ? // テスト用: 走査対象を差し替える（scripts/__tests__/check-schema-parse.test.ts）。
+    // 下限は 0 にして、1ファイルだけでも走るようにする
+    process.env.CHECK_SCHEMA_DIRS.split(",").map((dir) => ({ dir, minSelects: 0, minMutations: 0 }))
+  : [
+      { dir: "src", minSelects: 2000, minMutations: 800 },
+      { dir: "apps/mobile/src", minSelects: 55, minMutations: 5 },
+      // 運用スクリプトも実 DB を触る。役目を終えた平文シークレットのバックフィルが
+      // 削除済み列を参照したまま残っていたので、ここも対象に入れる
+      { dir: "scripts", minSelects: 0, minMutations: 0 },
+    ];
 
 function walk(dir, out = []) {
   for (const e of readdirSync(dir)) {
     const p = join(dir, e);
+    // テストは対象外。わざと壊したクエリを書く場所なので、実コードと混ぜると
+    // 検査自身のテストが検査に落とされる
+    if (e === "__tests__" || e === "__mocks__") continue;
     if (statSync(p).isDirectory()) walk(p, out);
-    else if (/\.tsx?$/.test(p)) out.push(p);
+    else if (/\.tsx?$/.test(p) && !/\.(test|spec)\.tsx?$/.test(p)) out.push(p);
   }
   return out;
 }
@@ -153,13 +160,22 @@ function checkMutation(body, table, where) {
     add(where, `テーブル ${table} が存在しない（書き込み）`);
     return;
   }
-  // トップレベルのキーだけ拾う（ネストした値の中のキーは列ではない）
+  // トップレベルのキーだけ拾う（ネストした値の中のキーは列ではない）。
+  // **文字列の中の括弧は数えない** —— `{ notes: "a } b", ... }` で深さが狂い、
+  // 以降のキーを1つも見なくなる
   let depth = 0;
   let atKey = true;
   let buf = "";
+  let quote = null;
   for (let i = 0; i < body.length; i++) {
     const c = body[i];
-    if (c === "{" || c === "[" || c === "(") depth++;
+    if (quote) {
+      if (c === "\\") i++;
+      else if (c === quote) quote = null;
+      continue;
+    }
+    if (c === '"' || c === "'" || c === "`") quote = c;
+    else if (c === "{" || c === "[" || c === "(") depth++;
     else if (c === "}" || c === "]" || c === ")") depth--;
     else if (depth === 0 && c === ":") {
       if (atKey) {
@@ -216,8 +232,14 @@ function isOptedOut(src, idx) {
   return src.slice(Math.max(0, head), idx).includes("schema-check-ignore:");
 }
 
-/** `(` の対応する `)` までの中身を返す（文字列リテラル内の括弧は無視する） */
-function balancedParen(src, openIdx) {
+/**
+ * `open` の位置から対応する閉じ括弧までの中身を返す。**文字列リテラルの中の
+ * 括弧は数えない**。対応が見つからなければ `null`（＝読めなかった）。
+ *
+ * 読めなかったことを空文字と区別するのが要。空文字を返すと、引数なしの
+ * `.select()` と「解析に失敗した」が同じ扱いになり、**壊れたクエリが素通りする**。
+ */
+function balancedRange(src, openIdx, open, close) {
   let d = 0;
   let quote = null;
   for (let i = openIdx; i < src.length; i++) {
@@ -228,50 +250,43 @@ function balancedParen(src, openIdx) {
       continue;
     }
     if (c === '"' || c === "'" || c === "`") quote = c;
-    else if (c === "(") d++;
-    else if (c === ")") {
+    else if (c === open) d++;
+    else if (c === close) {
       d--;
       if (d === 0) return src.slice(openIdx + 1, i);
     }
   }
-  return "";
+  return null;
 }
 
 /**
  * `.select(...)` の第1引数を列の文字列として読む。
- * `"a" + "b"` の連結、`\`...\`` のテンプレート、定数、それらの混在に対応する。
+ * `"a" + "b"` の連結、テンプレート、定数、`cond ? A : B`（**両方の枝**を返す）に対応する。
  * 読めない部分が残ったら null を返す（黙って通さない）。
  */
 function readSelectArg(arg, localConsts) {
+  if (arg === null) return null; // 括弧の対応が取れなかった＝読めていない
   // 第2引数（{ count: "exact" }）より前だけを見る
-  let depth = 0;
-  let quote = null;
-  let end = arg.length;
-  for (let i = 0; i < arg.length; i++) {
-    const c = arg[i];
-    if (quote) {
-      if (c === "\\") i++;
-      else if (c === quote) quote = null;
-      continue;
-    }
-    if (c === '"' || c === "'" || c === "`") quote = c;
-    else if (c === "(" || c === "{" || c === "[") depth++;
-    else if (c === ")" || c === "}" || c === "]") depth--;
-    else if (c === "," && depth === 0) {
-      end = i;
-      break;
+  const first = splitTopLevel(arg, ",")[0] ?? "";
+  const expr = stripComments(first).trim();
+  // 引数なしの `.select()` は全列。照合するものが無い
+  if (!expr) return ["*"];
+
+  // 三項演算子は枝ごとに読む（片方しか見ないと、もう片方の誤りを見逃す）
+  const q = indexOfTopLevel(expr, "?");
+  if (q >= 0) {
+    const c = indexOfTopLevel(expr, ":", q + 1);
+    if (c > q) {
+      const a = readSelectArg(expr.slice(q + 1, c), localConsts);
+      const b = readSelectArg(expr.slice(c + 1), localConsts);
+      if (a === null || b === null) return null;
+      return [...a, ...b];
     }
   }
-  let expr = arg.slice(0, end).trim();
-  // コメントを落とす（select 文字列の中のコメントは checkSelect 側で捕まえる）
-  expr = expr.replace(/^(?:\/\/[^\n]*\n|\/\*[\s\S]*?\*\/|\s)+/, "").trim();
-  // 引数なしの `.select()` は全列。照合するものが無い
-  if (!expr) return "*";
 
-  const parts = expr.split("+").map((t) => t.trim());
   const out = [];
-  for (const part of parts) {
-    const lit = /^(["'`])([\s\S]*)\1$/.exec(part);
+  for (const part of splitTopLevel(expr, "+").map((t) => t.trim())) {
+    const lit = /^(["\'`])([\s\S]*)\1$/.exec(part);
     if (lit) {
       out.push(lit[2]);
       continue;
@@ -284,20 +299,93 @@ function readSelectArg(arg, localConsts) {
     }
     return null;
   }
-  return out.join("");
+  return [out.join("")];
 }
 
-/** 対応する閉じ括弧までを返す */
-function balanced(src, openIdx) {
-  let d = 0;
-  for (let i = openIdx; i < src.length; i++) {
-    if (src[i] === "{") d++;
-    else if (src[i] === "}") {
-      d--;
-      if (d === 0) return src.slice(openIdx + 1, i);
+/** 行・ブロックコメントを取り除く（文字列の中は触らない） */
+function stripComments(src) {
+  let out = "";
+  let quote = null;
+  for (let i = 0; i < src.length; i++) {
+    const c = src[i];
+    if (quote) {
+      out += c;
+      if (c === "\\") out += src[++i] ?? "";
+      else if (c === quote) quote = null;
+      continue;
     }
+    if (c === '"' || c === "'" || c === "`") {
+      quote = c;
+      out += c;
+      continue;
+    }
+    if (c === "/" && src[i + 1] === "/") {
+      const nl = src.indexOf("\n", i);
+      i = nl < 0 ? src.length : nl;
+      out += "\n";
+      continue;
+    }
+    if (c === "/" && src[i + 1] === "*") {
+      const end = src.indexOf("*/", i + 2);
+      i = end < 0 ? src.length : end + 1;
+      out += " ";
+      continue;
+    }
+    out += c;
   }
-  return "";
+  return out;
+}
+
+/** 深さ0（クォート・括弧の外）だけで区切る */
+function splitTopLevel(src, sep) {
+  const parts = [];
+  let depth = 0;
+  let quote = null;
+  let buf = "";
+  for (let i = 0; i < src.length; i++) {
+    const c = src[i];
+    if (quote) {
+      buf += c;
+      if (c === "\\") buf += src[++i] ?? "";
+      else if (c === quote) quote = null;
+      continue;
+    }
+    if (c === '"' || c === "'" || c === "`") quote = c;
+    else if (c === "(" || c === "{" || c === "[") depth++;
+    else if (c === ")" || c === "}" || c === "]") depth--;
+    else if (c === sep && depth === 0) {
+      parts.push(buf);
+      buf = "";
+      continue;
+    }
+    buf += c;
+  }
+  parts.push(buf);
+  return parts;
+}
+
+/** 深さ0にある文字の位置。無ければ -1 */
+function indexOfTopLevel(src, ch, from = 0) {
+  let depth = 0;
+  let quote = null;
+  for (let i = 0; i < src.length; i++) {
+    const c = src[i];
+    if (quote) {
+      if (c === "\\") i++;
+      else if (c === quote) quote = null;
+      continue;
+    }
+    if (c === '"' || c === "'" || c === "`") quote = c;
+    else if (c === "(" || c === "{" || c === "[") depth++;
+    else if (c === ")" || c === "}" || c === "]") depth--;
+    else if (c === ch && depth === 0 && i >= from) return i;
+  }
+  return -1;
+}
+
+/** `{ ... }` の中身。文字列の中の波括弧は数えない（`{ note: 'a } b' }` で切れないため） */
+function balanced(src, openIdx) {
+  return balancedRange(src, openIdx, "{", "}");
 }
 
 /**
@@ -346,7 +434,7 @@ function nearestObject(objects, name, usedAt) {
   return best?.body;
 }
 
-const ALL_FILES = TARGETS.flatMap(({ dir }) => walk(join(repoRoot, dir)));
+const ALL_FILES = TARGETS.flatMap(({ dir }) => walk(dir.startsWith("/") ? dir : join(repoRoot, dir)));
 const STRING_CONSTS = collectStringConsts(ALL_FILES);
 
 /**
@@ -363,7 +451,7 @@ function expandConsts(sel, localConsts) {
 
 const summary = [];
 for (const { dir, minSelects, minMutations } of TARGETS) {
-  const root = join(repoRoot, dir);
+  const root = dir.startsWith("/") ? dir : join(repoRoot, dir);
   if (!existsSync(root)) throw new Error(`走査対象が無い: ${dir}`);
   let selects = 0;
   let mutations = 0;
@@ -378,17 +466,25 @@ for (const { dir, minSelects, minMutations } of TARGETS) {
       if (inComment(m.index) || isOptedOut(txt, m.index)) continue;
       selects++;
       const open = m.index + m[0].length - 1;
-      const raw = readSelectArg(balancedParen(txt, open), localConsts);
-      if (raw === null) {
+      const raws = readSelectArg(balancedRange(txt, open, "(", ")"), localConsts);
+      if (raws === null) {
         addUnresolved(rel(m.index), "select の列を解決できない（定数にするか文字列で書く）");
         continue;
       }
-      checkSelect(expandConsts(raw, localConsts).replace(/\s+/g, " "), m[1], rel(m.index));
+      // 三項演算子は枝ごとに返るので、全部を照合する
+      for (const raw of raws) {
+        checkSelect(expandConsts(raw, localConsts).replace(/\s+/g, " "), m[1], rel(m.index));
+      }
     }
     for (const m of txt.matchAll(MUTATE)) {
       if (inComment(m.index) || isOptedOut(txt, m.index)) continue;
       mutations++;
-      checkMutation(balanced(txt, txt.indexOf("{", m.index + m[0].length - 1)), m[1], rel(m.index));
+      const body = balanced(txt, txt.indexOf("{", m.index + m[0].length - 1));
+      if (body === null) {
+        addUnresolved(rel(m.index), `${m[2]} のペイロードを解決できない（括弧の対応が取れない）`);
+        continue;
+      }
+      checkMutation(body, m[1], rel(m.index));
     }
     // 書き込みのペイロードを変数で渡す形。解決できたら中身を見る。できなければ報告する
     for (const m of txt.matchAll(MUTATE_VAR)) {
@@ -422,7 +518,7 @@ assert.deepEqual(
 );
 
 assert.ok(
-  unresolved.length <= UNRESOLVED_BASELINE,
+  process.env.CHECK_SCHEMA_DIRS ? true : unresolved.length <= UNRESOLVED_BASELINE,
   `中身を読めないクエリが ${unresolved.length} 件に増えました（上限 ${UNRESOLVED_BASELINE}）。\n` +
     unresolved.join("\n") +
     "\n列は const に括り出すか文字列で書いてください。意図して増やす場合は " +

@@ -156,10 +156,7 @@ describe("lint-migrations", () => {
       path.join(dir, "supabase", "migrations", "20990101000000_alpha.sql"),
       "CREATE TABLE alpha (id uuid);",
     );
-    writeFileSync(
-      path.join(dir, "supabase", "migrations", "20990101000000_beta.sql"),
-      "CREATE TABLE beta (id uuid);",
-    );
+    writeFileSync(path.join(dir, "supabase", "migrations", "20990101000000_beta.sql"), "CREATE TABLE beta (id uuid);");
     const r = runLint(dir);
     expect(r.code).toBe(1);
     expect(r.stderr).toContain("duplicate migration version 20990101000000");
@@ -172,10 +169,7 @@ describe("lint-migrations", () => {
       path.join(dir, "supabase", "migrations", "20990101000000_alpha.sql"),
       "CREATE TABLE alpha (id uuid);",
     );
-    writeFileSync(
-      path.join(dir, "supabase", "migrations", "20990101000001_beta.sql"),
-      "CREATE TABLE beta (id uuid);",
-    );
+    writeFileSync(path.join(dir, "supabase", "migrations", "20990101000001_beta.sql"), "CREATE TABLE beta (id uuid);");
     expect(runLint(dir).code).toBe(0);
   });
 
@@ -186,14 +180,8 @@ describe("lint-migrations", () => {
       path.join(dir, "supabase", "migrations", "20990101000000_alpha.sql"),
       "CREATE TABLE alpha (id uuid);",
     );
-    writeFileSync(
-      path.join(dir, "supabase", "migrations", "20990101000000_beta.sql"),
-      "CREATE TABLE beta (id uuid);",
-    );
-    writeFileSync(
-      path.join(dir, "supabase", "migrations.allowlist"),
-      "# legacy\n20990101000000_alpha.sql\n",
-    );
+    writeFileSync(path.join(dir, "supabase", "migrations", "20990101000000_beta.sql"), "CREATE TABLE beta (id uuid);");
+    writeFileSync(path.join(dir, "supabase", "migrations.allowlist"), "# legacy\n20990101000000_alpha.sql\n");
     expect(runLint(dir).code).toBe(1);
   });
 

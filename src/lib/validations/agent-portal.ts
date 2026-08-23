@@ -89,13 +89,15 @@ export const agentSettingsUpdateSchema = z
     // 保存先の列がまだ無い項目。宣言しておかないと zod が黙って落とすため、
     // 受け取ったうえで「保存できない」と返す（toAgentPatch 側で判定）
     email_notifications: z.boolean().optional(),
-    website_url: z.string().trim().url("URL の形式が不正です。").max(2000).optional(),
-    logo_url: z.string().trim().url("URL の形式が不正です。").max(2000).optional(),
+    // 空文字は「消す」の意味。url() は "" を弾くので明示的に許す
+    website_url: z.union([z.string().trim().url("URL の形式が不正です。").max(2000), z.literal("")]).optional(),
+    logo_url: z.union([z.string().trim().url("URL の形式が不正です。").max(2000), z.literal("")]).optional(),
     commission_type: z.enum(COMMISSION_TYPES).optional(),
     commission_rate: z.number().min(0).max(100).optional(),
     bank_name: OPTIONAL_TRIMMED(100),
     bank_branch: OPTIONAL_TRIMMED(100),
-    bank_account_type: z.enum(BANK_ACCOUNT_TYPES).optional(),
+    // 空文字は「消す」の意味（enum は "" を弾くため明示的に許す）
+    bank_account_type: z.union([z.enum(BANK_ACCOUNT_TYPES), z.literal("")]).optional(),
     bank_account_number: OPTIONAL_TRIMMED(50),
     bank_account_holder: OPTIONAL_TRIMMED(100),
     notes: OPTIONAL_TRIMMED(5000),

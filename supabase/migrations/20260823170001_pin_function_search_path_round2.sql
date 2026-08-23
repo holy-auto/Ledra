@@ -29,7 +29,11 @@ begin
     from pg_proc p join pg_namespace n on n.oid = p.pronamespace
     where n.nspname = 'public'
       and p.proname = any(targets)
-      and p.proconfig is null  -- 既に固定済みのものは触らない
+      -- 既に search_path を持つものだけ除く。proconfig は statement_timeout など
+      -- 他の設定でも非 NULL になるので、`is null` で判定すると取りこぼす
+      and not exists (
+        select 1 from unnest(coalesce(p.proconfig, '{}')) c where c like 'search\_path=%'
+      )
   loop
     execute format('alter function %s set search_path = public, pg_temp', r.sig);
   end loop;

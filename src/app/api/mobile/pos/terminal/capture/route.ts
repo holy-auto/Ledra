@@ -56,7 +56,10 @@ export async function POST(req: NextRequest) {
     }
 
     // pos_checkout RPC で支払記録 + 領収書作成
-    const { data, error } = await client.rpc("pos_checkout", {
+    // pos_checkout は SECURITY DEFINER で、引数の tenant_id をそのまま使う。
+    // 未認証・他テナントから呼ばれないよう service_role 専用にしたので、
+    // 権限確認済みのこのルートからはサービスロールのクライアントで呼ぶ
+    const { data, error } = await admin.rpc("pos_checkout", {
       p_tenant_id: caller.tenantId,
       p_reservation_id: input.reservation_id,
       p_customer_id: input.customer_id,

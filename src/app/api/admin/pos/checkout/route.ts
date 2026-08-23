@@ -33,7 +33,11 @@ export async function POST(req: NextRequest) {
     const data2 = parsed.data;
 
     // RPC呼び出し
-    const { data, error } = await supabase.rpc("pos_checkout", {
+    const { admin: rpcAdmin } = createTenantScopedAdmin(caller.tenantId);
+    // pos_checkout は SECURITY DEFINER で、引数の tenant_id をそのまま使う。
+    // 未認証・他テナントから呼ばれないよう service_role 専用にしたので、
+    // 権限確認済みのこのルートからはサービスロールのクライアントで呼ぶ
+    const { data, error } = await rpcAdmin.rpc("pos_checkout", {
       p_tenant_id: caller.tenantId,
       p_reservation_id: data2.reservation_id,
       p_customer_id: data2.customer_id,

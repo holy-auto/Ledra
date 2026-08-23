@@ -58,9 +58,11 @@
     documents を作る。**未認証で任意テナントに決済レコードを作れる。**
   - `upsert_agent_user(...)`: agent_users に任意の role で upsert する。
     **代理店 ID とメールが分かれば未認証でその代理店の admin を付けられる。**
-- 対応済み: 危険度が高く、かつ剥奪しても壊れないと確認できた 16 本（上記2本＋
-  トリガ専用2本＋テナント横断の集計 10 本＋督促ログ）を
-  `20260823170000_revoke_anon_from_secdef_rpcs.sql` で剥奪する。
+- 対応済み: 16 本を `20260823170000_revoke_anon_from_secdef_rpcs.sql` で絞る。
+  当初 `revoke ... from anon` と書いていたが、**これは何も変えない**（EXECUTE は
+  既定で PUBLIC に付与され、anon の権限はそこ由来。実測で確認）。`from public, anon`
+  で剥奪し、必要なロールへ grant し直す形に修正済み。
+  呼び出し元の検査が無い4本は service_role 専用にし、呼び出し側7箇所も変更した。
   **このマイグレーションは本番未適用**（権限の剥奪は障害になり得るため、
   適用の判断を代表に仰ぐ）。
 - 残り: `insurer_*` / `get_my_*` など。内部で `auth.uid()` を見ており anon では

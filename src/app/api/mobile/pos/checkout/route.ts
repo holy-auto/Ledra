@@ -33,7 +33,11 @@ export async function POST(req: NextRequest) {
     }
     const input = parsed.data;
 
-    const { data, error } = await client.rpc("pos_checkout", {
+    const { admin: rpcAdmin } = createTenantScopedAdmin(caller.tenantId);
+    // pos_checkout は SECURITY DEFINER で、引数の tenant_id をそのまま使う。
+    // 未認証・他テナントから呼ばれないよう service_role 専用にしたので、
+    // 権限確認済みのこのルートからはサービスロールのクライアントで呼ぶ
+    const { data, error } = await rpcAdmin.rpc("pos_checkout", {
       p_tenant_id: caller.tenantId,
       p_reservation_id: input.reservation_id,
       p_customer_id: input.customer_id,

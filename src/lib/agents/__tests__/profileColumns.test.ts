@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 
-import { AGENT_PROFILE_COLUMNS, toAgentPatch } from "../profileColumns";
+import { AGENT_PROFILE_COLUMNS, AGENT_PROFILE_COLUMNS_ADMIN, toAgentPatch } from "../profileColumns";
 
 describe("AGENT_PROFILE_COLUMNS", () => {
   it("agents に無い列を含まない（1つでも混ざるとクエリごと失敗する）", () => {
@@ -25,9 +25,14 @@ describe("AGENT_PROFILE_COLUMNS", () => {
     expect(cols).toContain("address");
     expect(cols).toContain("postal_code");
     expect(cols).toContain("website_url");
-    expect(cols).toContain("bank_info");
     expect(cols).toContain("logo_asset_path");
     expect(cols).toContain("default_commission_rate");
+    expect(cols).toContain("email_notifications");
+  });
+
+  it("振込先は既定の列に含めない（RLS は列を絞れないので、ここで分けるしかない）", () => {
+    expect(AGENT_PROFILE_COLUMNS.split(",").map((c) => c.trim())).not.toContain("bank_info");
+    expect(AGENT_PROFILE_COLUMNS_ADMIN.split(",").map((c) => c.trim())).toContain("bank_info");
   });
 });
 
@@ -40,15 +45,25 @@ describe("toAgentPatch", () => {
   });
 
   it("保存先の無い項目は patch に入れず、日本語の名前で返す（黙って捨てない）", () => {
-    const { patch, unsupported } = toAgentPatch({ company_name: "A株式会社", email_notifications: true });
+    const { patch, unsupported } = toAgentPatch({ company_name: "A株式会社" });
     expect(patch).toEqual({});
-    expect(unsupported).toEqual(["会社名", "メール通知"]);
+    expect(unsupported).toEqual(["会社名"]);
   });
 
   it("保存できる項目と保存できない項目が混ざったら、保存できない方を報告する", () => {
     const { patch, unsupported } = toAgentPatch({ name: "A社", company_name: "A株式会社" });
     expect(patch).toEqual({ name: "A社" });
     expect(unsupported).toEqual(["会社名"]);
+  });
+
+  it("画面が毎回送る通知トグルは実列に入る（既定 true でも保存を止めない）", () => {
+    // 画面は email_notifications を既定 true で毎回送る。ここで拒否すると
+    // 名前を直すだけの保存まで 400 になる
+    expect(toAgentPatch({ name: "A社", email_notifications: true })).toEqual({
+      patch: { name: "A社", email_notifications: true },
+      unsupported: [],
+    });
+    expect(toAgentPatch({ email_notifications: false }).patch).toEqual({ email_notifications: false });
   });
 
   describe("振込先（bank_info）", () => {
@@ -107,7 +122,7 @@ describe("toAgentPatch", () => {
   });
 
   it("保存先の無い項目が空のまま送られても保存操作は止めない（画面は毎回全項目を送る）", () => {
-    const { patch, unsupported } = toAgentPatch({ name: "A社", company_name: "", email_notifications: false });
+    const { patch, unsupported } = toAgentPatch({ name: "A社", company_name: "" });
     expect(patch).toEqual({ name: "A社" });
     expect(unsupported).toEqual([]);
   });
