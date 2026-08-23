@@ -19,6 +19,7 @@ import { useLocalSearchParams, router, Stack } from "expo-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { supabase } from "@/lib/supabase";
+import { parseMenuItems } from "@/lib/reservationItems";
 import { useAuthStore } from "@/stores/authStore";
 import {
   ProgressRing,
@@ -52,11 +53,7 @@ interface WorkOrder {
     maker: string | null;
     model: string | null;
   } | null;
-  reservation_items: {
-    id: string;
-    quantity: number;
-    menu_item: { name: string } | null;
-  }[];
+  menu_items_json: unknown;
 }
 
 interface WorkPhoto {
@@ -117,10 +114,8 @@ export default function WorkDetailScreen() {
           id, status, sub_status, progress_note, scheduled_date, start_time,
           customer:customers(name, phone),
           vehicle:vehicles(id, plate_display, maker, model),
-          reservation_items(
-            id, quantity,
-            menu_item:menu_items(name)
-          )
+          // 明細は menu_items_json（reservation_items テーブルは存在しない）
+          menu_items_json
         `
         )
         .eq("id", id)
@@ -346,7 +341,7 @@ export default function WorkDetailScreen() {
                 <Icon source="wrench" size={20} color={colors.primary} />
                 <Text style={styles.quickInfoLabel}>使用部品・資材</Text>
                 <Text style={styles.quickInfoValue}>
-                  {work.reservation_items?.length ?? 0}点
+                  {parseMenuItems(work.menu_items_json).length}点
                 </Text>
                 <Icon source="chevron-right" size={16} color={colors.textTertiary} />
               </Pressable>
@@ -373,15 +368,13 @@ export default function WorkDetailScreen() {
             {/* Service Items */}
             <View style={styles.sectionCard}>
               <Text style={styles.sectionTitle}>施工内容</Text>
-              {work.reservation_items.map((ri) => (
-                <View key={ri.id} style={styles.serviceRow}>
+              {parseMenuItems(work.menu_items_json).map((mi, i) => (
+                <View key={`${mi.menu_item_id ?? mi.name}-${i}`} style={styles.serviceRow}>
                   <Icon source="checkbox-marked-circle-outline" size={18} color={colors.success} />
-                  <Text style={styles.serviceItemText}>
-                    {ri.menu_item?.name ?? "不明"} × {ri.quantity}
-                  </Text>
+                  <Text style={styles.serviceItemText}>{mi.name}</Text>
                 </View>
               ))}
-              {work.reservation_items.length === 0 && (
+              {parseMenuItems(work.menu_items_json).length === 0 && (
                 <Text style={styles.emptyText}>施工項目はありません</Text>
               )}
             </View>

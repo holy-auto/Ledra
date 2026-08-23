@@ -8,6 +8,7 @@ import { useLocalSearchParams, router, Stack } from "expo-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { supabase } from "@/lib/supabase";
+import { parseMenuItems, menuItemsTotal } from "@/lib/reservationItems";
 import { useAuthStore } from "@/stores/authStore";
 import { mobileApi } from "@/lib/api";
 import { LedraButton, StatusBadge } from "@/components/ui";
@@ -32,14 +33,7 @@ interface Reservation {
     maker: string | null;
     model: string | null;
   } | null;
-  reservation_items: {
-    id: string;
-    quantity: number;
-    unit_price: number;
-    menu_item: {
-      name: string;
-    } | null;
-  }[];
+  menu_items_json: unknown;
 }
 
 const STATUS_LABELS: Record<string, string> = {
@@ -71,13 +65,11 @@ export default function ReservationDetailScreen() {
         .from("reservations")
         .select(
           `
-          id, status, payment_status, scheduled_date, start_time, notes,
+          id, status, payment_status, scheduled_date, start_time, note,
           customer:customers(id, name, phone, email),
           vehicle:vehicles(id, plate_display, maker, model),
-          reservation_items(
-            id, quantity, unit_price,
-            menu_item:menu_items(name)
-          )
+          // 明細は menu_items_json（reservation_items テーブルは存在しない）
+          menu_items_json
         `
         )
         .eq("id", id)
@@ -134,10 +126,9 @@ export default function ReservationDetailScreen() {
     );
   }
 
-  const total = reservation.reservation_items.reduce(
-    (sum, item) => sum + item.quantity * item.unit_price,
-    0
-  );
+  // menu_items_json は 1 行 1 点で数量を持たない
+  const items = parseMenuItems(reservation.menu_items_json);
+  const total = menuItemsTotal(items);
 
   return (
     <>
@@ -214,17 +205,12 @@ export default function ReservationDetailScreen() {
           <Text style={styles.heading}>
             メニュー
           </Text>
-          {reservation.reservation_items.map((item) => (
-            <View key={item.id} style={styles.menuRow}>
-              <Text style={[styles.bodyText, { flex: 1 }]}>
-                {item.menu_item?.name ?? "不明"}
-              </Text>
-              <Text style={styles.subText}>
-                x{item.quantity}
-              </Text>
+          {items.map((item, i) => (
+            <View key={`${item.menu_item_id ?? item.name}-${i}`} style={styles.menuRow}>
+              <Text style={[styles.bodyText, { flex: 1 }]}>{item.name}</Text>
               <Text style={styles.price}>
                 {"¥"}
-                {(item.quantity * item.unit_price).toLocaleString()}
+                {item.price.toLocaleString()}
               </Text>
             </View>
           ))}

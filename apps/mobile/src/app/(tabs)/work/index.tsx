@@ -15,6 +15,7 @@ import { useAuthStore } from "@/stores/authStore";
 import { StatusBadge } from "@/components/ui";
 import { useTabContentInset } from "@/hooks/useTabContentInset";
 import { TabTopBar } from "@/components/TabTopBar";
+import { parseMenuItems } from "@/lib/reservationItems";
 import { colors, spacing, radius, sizing, typography, shadows } from "@/constants/tokens";
 
 type WorkStatus = "arrived" | "in_progress" | "completed";
@@ -31,8 +32,8 @@ interface WorkItem {
     maker: string;
     model: string;
   } | null;
-  assigned_staff: { id: string; display_name: string } | null;
-  reservation_items: { menu_item: { name: string } | null }[];
+  assigned_staff: { id: string; name: string } | null;
+  menu_items_json: unknown;
 }
 
 const STATUS_CONFIG: Record<
@@ -65,8 +66,8 @@ export default function WorkScreen() {
           id, status, scheduled_date, start_time,
           customer:customers ( id, name ),
           vehicle:vehicles ( id, plate_display, maker, model ),
-          assigned_staff:staff ( id, display_name ),
-          reservation_items ( menu_item:menu_items ( name ) )
+          assigned_staff:staff_members ( id, name ),
+          menu_items_json
         `
         )
         .eq("tenant_id", user.tenantId)
@@ -101,9 +102,8 @@ export default function WorkScreen() {
 
   const renderItem = ({ item }: { item: WorkItem }) => {
     const cfg = STATUS_CONFIG[item.status] ?? STATUS_CONFIG.arrived;
-    const serviceNames = item.reservation_items
-      ?.map((ri) => ri.menu_item?.name)
-      .filter(Boolean)
+    const serviceNames = parseMenuItems(item.menu_items_json)
+      .map((m) => m.name)
       .join("、");
 
     return (
@@ -154,7 +154,7 @@ export default function WorkScreen() {
             <View style={styles.metaItem}>
               <Icon source="wrench-outline" size={14} color={colors.textTertiary} />
               <Text style={styles.metaText}>
-                {item.assigned_staff.display_name}
+                {item.assigned_staff.name}
               </Text>
             </View>
           )}
@@ -180,8 +180,8 @@ export default function WorkScreen() {
               i.vehicle?.maker,
               i.vehicle?.model,
               i.customer?.name,
-              i.assigned_staff?.display_name,
-              ...(i.reservation_items ?? []).map((r) => r.menu_item?.name),
+              i.assigned_staff?.name,
+              ...parseMenuItems(i.menu_items_json).map((m) => m.name),
             ].some((v) => (v ?? "").toLowerCase().includes(q)),
           ),
     [items, q],

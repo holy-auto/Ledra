@@ -1,4 +1,5 @@
 import { useState } from "react";
+import dayjs from "dayjs";
 import {
   View,
   ScrollView,
@@ -50,18 +51,20 @@ function assetUrl(path: string): string {
 
 interface CertificateDetail {
   id: string;
-  certificate_no: string;
-  public_id: string | null;
+  /** 証明書番号。certificate_no 列は存在せず、public_id が番号 */
+  public_id: string;
   status: string;
   service_type: string | null;
-  content: Record<string, unknown> | null;
+  /** 自由記述の施工内容（content 列は存在しない） */
+  content_free_text: string | null;
   customer_name: string | null;
   customer_id: string | null;
   vehicle_id: string | null;
-  vehicle_maker: string | null;
-  vehicle_model: string | null;
-  plate_display: string | null;
-  issued_date: string | null;
+  /** 発行時点の車両情報のスナップショット。vehicle_maker 等の列は存在しない */
+  vehicle_info_json: { maker?: string; model?: string; plate?: string } | null;
+  /** 発行日。issued_date 列は無い。署名日、未署名なら作成日を使う */
+  signed_at: string | null;
+  created_at: string;
   expiry_date: string | null;
 }
 
@@ -112,7 +115,7 @@ export default function CertificateDetailScreen() {
       const { data, error } = await supabase
         .from("certificates")
         .select(
-          "id, certificate_no, public_id, status, service_type, content, customer_name, customer_id, vehicle_id, vehicle_maker, vehicle_model, plate_display, issued_date, expiry_date"
+          "id, public_id, status, service_type, content_free_text, customer_name, customer_id, vehicle_id, vehicle_info_json, signed_at, created_at, expiry_date"
         )
         .eq("id", id)
         .eq("tenant_id", user!.tenantId)
@@ -214,9 +217,15 @@ export default function CertificateDetailScreen() {
     label: cert.status,
     severity: "neutral" as const,
   };
-  const vehicleText = [cert.vehicle_maker, cert.vehicle_model, cert.plate_display]
+  const vehicleText = [
+    cert.vehicle_info_json?.maker,
+    cert.vehicle_info_json?.model,
+    cert.vehicle_info_json?.plate,
+  ]
     .filter(Boolean)
     .join(" ");
+  // 未署名の下書きは作成日を発行日として出す
+  const issuedDate = dayjs(cert.signed_at ?? cert.created_at).format("YYYY/M/D");
 
   return (
     <ScrollView style={styles.container}>
@@ -242,9 +251,9 @@ export default function CertificateDetailScreen() {
           />
         </View>
         <StatusBadge label={statusCfg.label} severity={statusCfg.severity} />
-        <Text style={styles.certNo}>{cert.certificate_no}</Text>
-        {cert.issued_date && (
-          <Text style={styles.issuedDate}>発行日: {cert.issued_date}</Text>
+        <Text style={styles.certNo}>{cert.public_id}</Text>
+        {issuedDate && (
+          <Text style={styles.issuedDate}>発行日: {issuedDate}</Text>
         )}
       </View>
 
@@ -273,7 +282,7 @@ export default function CertificateDetailScreen() {
         <View style={styles.sectionCard}>
           <InfoRow icon="wrench" label="サービス" value={cert.service_type} />
           <InfoRow icon="account" label="顧客" value={cert.customer_name} />
-          <InfoRow icon="calendar" label="発行日" value={cert.issued_date} />
+          <InfoRow icon="calendar" label="発行日" value={issuedDate} />
           <InfoRow icon="calendar-clock" label="有効期限" value={cert.expiry_date} />
         </View>
       </View>

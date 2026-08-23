@@ -14,7 +14,7 @@ interface Vehicle {
   plate_display: string | null;
   maker: string | null;
   model: string | null;
-  customer_name: string | null;
+  customers: { name: string | null } | null;
 }
 
 const SERVICE_TYPES = [
@@ -51,12 +51,13 @@ export default function CertificateNewScreen() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("vehicles")
-        .select("id, plate_display, maker, model, customer_name")
+        // vehicles に customer_name 列は無い。顧客名は customers を埋め込む
+        .select("id, plate_display, maker, model, customers ( name )")
         .eq("tenant_id", user!.tenantId)
         .order("created_at", { ascending: false })
         .limit(100);
       if (error) throw error;
-      return data as Vehicle[];
+      return data as unknown as Vehicle[];
     },
     enabled: !!user?.tenantId,
   });
@@ -79,12 +80,13 @@ export default function CertificateNewScreen() {
 
         const { data: v } = await supabase
           .from("vehicles")
-          .select("id, plate_display, maker, model, customer_name")
+          // vehicles に customer_name 列は無い。顧客名は customers を埋め込む
+        .select("id, plate_display, maker, model, customers ( name )")
           .eq("id", data.vehicle_id)
           .single();
 
         if (v) {
-          const vehicle = v as Vehicle;
+          const vehicle = v as unknown as Vehicle;
           setSelectedVehicle(vehicle);
           setForm((prev) => ({
             ...prev,
@@ -114,7 +116,7 @@ export default function CertificateNewScreen() {
             notes: form.notes.trim(),
           },
           status: "draft",
-          customer_name: selectedVehicle?.customer_name ?? null,
+          customer_name: selectedVehicle?.customers?.name ?? null,
           vehicle_maker: form.vehicle_maker.trim() || null,
           vehicle_model: form.vehicle_model.trim() || null,
           plate_display: form.vehicle_plate.trim() || null,

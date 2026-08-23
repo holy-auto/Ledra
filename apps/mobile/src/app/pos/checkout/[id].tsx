@@ -11,6 +11,7 @@ import { useLocalSearchParams, router, Stack } from "expo-router";
 import { useQuery, useMutation } from "@tanstack/react-query";
 
 import { supabase } from "@/lib/supabase";
+import { parseMenuItems, menuItemsTotal } from "@/lib/reservationItems";
 import { useAuthStore } from "@/stores/authStore";
 import { mobileApi } from "@/lib/api";
 import { useTerminal } from "@/hooks/useTerminal";
@@ -48,12 +49,7 @@ interface ReservationCheckout {
   payment_status: string;
   customer: { name: string } | null;
   vehicle: { plate_display: string } | null;
-  reservation_items: {
-    id: string;
-    quantity: number;
-    unit_price: number;
-    menu_item: { name: string } | null;
-  }[];
+  menu_items_json: unknown;
 }
 
 type PaymentMethod = "cash" | "card" | "qr" | "bank_transfer";
@@ -142,10 +138,8 @@ export default function PosCheckoutScreen() {
           id, status, payment_status,
           customer:customers(name),
           vehicle:vehicles(plate_display),
-          reservation_items(
-            id, quantity, unit_price,
-            menu_item:menu_items(name)
-          )
+          // 明細は menu_items_json（reservation_items テーブルは存在しない）
+          menu_items_json
         `
         )
         .eq("id", id)
@@ -156,10 +150,9 @@ export default function PosCheckoutScreen() {
     enabled: !!id,
   });
 
-  const total = (reservation?.reservation_items ?? []).reduce(
-    (sum, item) => sum + item.quantity * item.unit_price,
-    0
-  );
+  // menu_items_json は 1 行 1 点で数量を持たない
+  const items = parseMenuItems(reservation?.menu_items_json);
+  const total = menuItemsTotal(items);
   const received = parseInt(receivedAmount, 10) || 0;
   const change = paymentMethod === "cash" ? Math.max(0, received - total) : 0;
 
@@ -189,11 +182,12 @@ export default function PosCheckoutScreen() {
           if (result.cancelled) return;
           throw new Error(result.error ?? "カード決済失敗");
         }
-        const itemsJson = (reservation?.reservation_items ?? []).map((it) => ({
-          name: it.menu_item?.name ?? "不明",
-          quantity: it.quantity,
-          unit_price: it.unit_price,
-          amount: it.quantity * it.unit_price,
+        // menu_items_json は 1 行 1 点。数量は常に 1
+        const itemsJson = items.map((it) => ({
+          name: it.name,
+          quantity: 1,
+          unit_price: it.price,
+          amount: it.price,
         }));
         const { error } = await supabase.rpc("pos_checkout", {
           p_tenant_id: user!.tenantId,
@@ -235,11 +229,12 @@ export default function PosCheckoutScreen() {
       }
 
       // C. 現金・QR(支払方法記録)・振込
-      const itemsJson = (reservation?.reservation_items ?? []).map((it) => ({
-        name: it.menu_item?.name ?? "不明",
-        quantity: it.quantity,
-        unit_price: it.unit_price,
-        amount: it.quantity * it.unit_price,
+      // menu_items_json は 1 行 1 点。数量は常に 1
+      const itemsJson = items.map((it) => ({
+        name: it.name,
+        quantity: 1,
+        unit_price: it.price,
+        amount: it.price,
       }));
       const { error } = await supabase.rpc("pos_checkout", {
         p_tenant_id: user!.tenantId,
@@ -376,17 +371,12 @@ export default function PosCheckoutScreen() {
           <Text style={styles.heading}>
             明細
           </Text>
-          {reservation.reservation_items.map((item) => (
-            <View key={item.id} style={styles.lineItem}>
-              <Text style={[styles.bodyText, { flex: 1 }]}>
-                {item.menu_item?.name ?? "不明"}
-              </Text>
-              <Text style={styles.subText}>
-                x{item.quantity}
-              </Text>
+          {items.map((item, i) => (
+            <View key={`${item.menu_item_id ?? item.name}-${i}`} style={styles.lineItem}>
+              <Text style={[styles.bodyText, { flex: 1 }]}>{item.name}</Text>
               <Text style={styles.price}>
                 {"¥"}
-                {(item.quantity * item.unit_price).toLocaleString()}
+                {item.price.toLocaleString()}
               </Text>
             </View>
           ))}

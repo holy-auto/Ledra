@@ -17,7 +17,7 @@ export default function NfcScanScreen() {
   const [errorMessage, setErrorMessage] = useState("");
   const [certInfo, setCertInfo] = useState<{
     id: string;
-    certificate_no: string;
+    public_id: string;
     customer_name: string | null;
   } | null>(null);
 
@@ -107,7 +107,7 @@ export default function NfcScanScreen() {
       // Look up certificate by public_id
       const { data: cert, error } = await supabase
         .from("certificates")
-        .select("id, certificate_no, customer_name")
+        .select("id, public_id, customer_name")
         .eq("public_id", publicId)
         .eq("tenant_id", user!.tenantId)
         .single();
@@ -187,7 +187,7 @@ export default function NfcScanScreen() {
           <>
             <Icon source="check-circle" size={64} color={colors.successDark} />
             <View style={styles.resultCard}>
-              <Text style={styles.certNo}>{certInfo.certificate_no}</Text>
+              <Text style={styles.certNo}>{certInfo.public_id}</Text>
               {certInfo.customer_name && (
                 <Text style={styles.sub}>{certInfo.customer_name}</Text>
               )}

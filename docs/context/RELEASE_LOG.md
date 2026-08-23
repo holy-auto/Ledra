@@ -4,6 +4,39 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-08-23 モバイル: 実在しない列・テーブルを参照していたクエリを全面修正（車両一覧が空だった原因）
+
+- **症状**: 車両が登録されているのにモバイルの車両一覧に何も出ない。
+- **原因**: クエリが `vehicles.customer_name` を SELECT していたが、**その列は存在しない**
+  （あるのは `customer_id`）。PostgREST はクエリごと 400 を返し、画面は
+  「車両がまだ登録されていません」と表示する。**データはあるのに空に見える**ため、
+  実機で触っても「まだ登録していないのだろう」と読めてしまい発見が遅れていた。
+- **全画面を機械照合したところ、同じ壊れ方が 13 画面・27 箇所あった**。実 DB の
+  `information_schema` と全 `supabase.from().select()` を突き合わせて確定させた。
+
+| 誤り | 実際 | 影響画面 |
+|---|---|---|
+| `vehicles.customer_name` | 列なし。`customers` を埋め込む | 車両一覧・車両詳細・証明書作成 |
+| `certificates.certificate_no` | `public_id` が証明書番号 | 証明書一覧・証明書詳細・車両詳細・NFCスキャン・NFCタグ台帳・NFC書き込み |
+| `certificates.issued_date` | 列なし。`signed_at`（未署名なら `created_at`） | 証明書詳細・車両詳細 |
+| `certificates.content` | `content_free_text` | 証明書詳細 |
+| `certificates.vehicle_maker` / `vehicle_model` / `plate_display` | 列なし。発行時スナップショットの `vehicle_info_json` | 証明書詳細・NFC書き込み |
+| `reservation_items` テーブル | **存在しない**。明細は `reservations.menu_items_json` | 作業一覧・作業詳細・POS一覧・会計・レシート・予約詳細 |
+| `staff` テーブル | `staff_members`（`display_name` ではなく `name`） | 作業一覧 |
+| `reservations.notes` | `note` | 予約詳細 |
+
+- 明細の取り出しは `lib/reservationItems.ts` に集約（`menu_items_json` は
+  `[{name, price, menu_item_id}]` で**数量を持たない**ので、表示から数量列を落とした）。
+  壊れた jsonb でも画面を落とさないよう均す。自己チェック付き。
+- **再発防止**: 実スキーマのスナップショット `lib/schema.snapshot.json` をコミットし、
+  `lib/schema.check.ts` が**モバイルの全クエリ（58件）の列と埋め込みテーブルを
+  `npm test` で照合**する。壊した状態で実際に落ちることを確認済み。
+  更新手順は `schema.snapshot.README.md` に記載。
+- **根本的には** `npm run db:typegen` の生成型でクエリを型付けすべき（`tsc` が直接落とす）。
+  生成型が未コミットで Metro もアプリ外を解決しないため、まずこの照合で止める。
+- 検証: mobile `tsc --noEmit` 型エラーなし / 自己チェック**9件** OK / `lint` エラー0、
+  警告は変更前後とも 77 件。実 DB に対する再監査で残り 0 件。
+
 ## 2026-08-23 モバイル: メッセージに画像送信を追加
 
 - 代表の指示で、モバイルのメッセージから顧客へ画像を送れるようにした。

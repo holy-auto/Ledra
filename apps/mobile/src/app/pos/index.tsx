@@ -5,6 +5,7 @@ import { router } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 
 import { supabase } from "@/lib/supabase";
+import { parseMenuItems } from "@/lib/reservationItems";
 import { useAuthStore } from "@/stores/authStore";
 import { colors, spacing, radius, typography, shadows } from "@/constants/tokens";
 
@@ -20,10 +21,7 @@ interface PosItem {
     maker: string;
     model: string;
   } | null;
-  reservation_items: {
-    id: string;
-    menu_item: { name: string } | null;
-  }[];
+  menu_items_json: unknown;
 }
 
 export default function PosScreen() {
@@ -44,10 +42,8 @@ export default function PosScreen() {
           estimated_amount,
           customer:customers ( id, name ),
           vehicle:vehicles ( id, plate_display, maker, model ),
-          reservation_items (
-            id,
-            menu_item:menu_items ( name )
-          )
+          // 明細は menu_items_json（reservation_items テーブルは存在しない）
+          menu_items_json
         `
         )
         .eq("tenant_id", user.tenantId)
@@ -78,9 +74,7 @@ export default function PosScreen() {
   };
 
   const getMenuSummary = (item: PosItem) => {
-    const names = item.reservation_items
-      .map((ri) => ri.menu_item?.name)
-      .filter(Boolean);
+    const names = parseMenuItems(item.menu_items_json).map((m) => m.name);
     if (names.length === 0) return "メニュー未設定";
     if (names.length <= 2) return names.join("、");
     return `${names[0]}、${names[1]} 他${names.length - 2}件`;

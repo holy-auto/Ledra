@@ -9,6 +9,7 @@ import {
 import { Text, Icon, ActivityIndicator } from "react-native-paper";
 import { useLocalSearchParams, router } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
+import dayjs from "dayjs";
 
 import { supabase } from "@/lib/supabase";
 import { useAuthStore } from "@/stores/authStore";
@@ -22,14 +23,17 @@ interface VehicleDetail {
   year: number | null;
   plate_display: string | null;
   customer_id: string | null;
-  customer_name: string | null;
+  customers: { name: string | null } | null;
 }
 
 interface Certificate {
   id: string;
-  certificate_no: string;
+  /** 証明書番号。certificates に certificate_no 列は無く public_id が番号 */
+  public_id: string;
   status: string;
-  issued_date: string | null;
+  /** 発行日。issued_date 列は無い。署名日、未署名なら作成日 */
+  signed_at: string | null;
+  created_at: string;
   service_type: string | null;
 }
 
@@ -76,13 +80,14 @@ export default function VehicleDetailScreen() {
       const { data, error } = await supabase
         .from("vehicles")
         .select(
-          "id, maker, model, year, plate_display, customer_id, customer_name"
+          // customer_name 列は無い。顧客名は customers を埋め込んで取る
+          "id, maker, model, year, plate_display, customer_id, customers ( name )"
         )
         .eq("id", id)
         .eq("tenant_id", user!.tenantId)
         .single();
       if (error) throw error;
-      return data as VehicleDetail;
+      return data as unknown as VehicleDetail;
     },
     enabled: !!id && !!user?.tenantId,
   });
@@ -92,7 +97,7 @@ export default function VehicleDetailScreen() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("certificates")
-        .select("id, certificate_no, status, issued_date, service_type")
+        .select("id, public_id, status, signed_at, created_at, service_type")
         .eq("vehicle_id", id)
         .eq("tenant_id", user!.tenantId)
         .order("created_at", { ascending: false });
@@ -154,7 +159,7 @@ export default function VehicleDetailScreen() {
         {vehicle.year && (
           <Text style={styles.heroYear}>{vehicle.year}年式</Text>
         )}
-        {vehicle.customer_name && (
+        {vehicle.customers?.name && (
           <Pressable
             style={styles.ownerRow}
             onPress={() =>
@@ -163,7 +168,7 @@ export default function VehicleDetailScreen() {
             }
           >
             <Icon source="account-outline" size={16} color={colors.primary} />
-            <Text style={styles.ownerText}>{vehicle.customer_name}</Text>
+            <Text style={styles.ownerText}>{vehicle.customers.name}</Text>
           </Pressable>
         )}
       </View>
@@ -211,9 +216,13 @@ export default function VehicleDetailScreen() {
                 <View style={styles.listCardInner}>
                   <View style={styles.timelineDot} />
                   <View style={styles.listCardContent}>
-                    <Text style={styles.certNo}>{cert.certificate_no}</Text>
+                    <Text style={styles.certNo}>{cert.public_id}</Text>
                     <Text style={styles.certMeta} numberOfLines={1}>
-                      {[cert.service_type, cert.issued_date]
+                      {[
+                        cert.service_type,
+                        // 未署名の下書きは作成日を出す
+                        dayjs(cert.signed_at ?? cert.created_at).format("YYYY/M/D"),
+                      ]
                         .filter(Boolean)
                         .join(" · ")}
                     </Text>

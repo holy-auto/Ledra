@@ -16,7 +16,7 @@ interface NfcTag {
   status: string;
   certificate_id: string | null;
   vehicle_id: string | null;
-  certificate_no: string | null;
+  public_id: string | null;
   plate_display: string | null;
 }
 
@@ -39,7 +39,7 @@ export default function NfcTagsScreen() {
       const { data, error } = await supabase
         .from("nfc_tags")
         .select(
-          "id, tag_code, uid, status, certificate_id, vehicle_id, certificates(certificate_no), vehicles(plate_display)"
+          "id, tag_code, uid, status, certificate_id, vehicle_id, certificates(public_id), vehicles(plate_display)"
         )
         .eq("tenant_id", user!.tenantId)
         .order("created_at", { ascending: false })
@@ -53,7 +53,7 @@ export default function NfcTagsScreen() {
         status: row.status,
         certificate_id: row.certificate_id,
         vehicle_id: row.vehicle_id,
-        certificate_no: row.certificates?.certificate_no ?? null,
+        public_id: row.certificates?.public_id ?? null,
         plate_display: row.vehicles?.plate_display ?? null,
       })) as NfcTag[];
     },
@@ -80,12 +80,12 @@ export default function NfcTagsScreen() {
           />
         </View>
 
-        {(item.certificate_no || item.plate_display) && (
+        {(item.public_id || item.plate_display) && (
           <View style={styles.linkedInfo}>
-            {item.certificate_no && (
+            {item.public_id && (
               <View style={styles.metaItem}>
                 <Icon source="certificate" size={14} color={colors.textTertiary} />
-                <Text style={styles.linked}>{item.certificate_no}</Text>
+                <Text style={styles.linked}>{item.public_id}</Text>
               </View>
             )}
             {item.plate_display && (

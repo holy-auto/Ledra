@@ -9,6 +9,7 @@ import { useLocalSearchParams, router, Stack } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 
 import { supabase } from "@/lib/supabase";
+import { parseMenuItems } from "@/lib/reservationItems";
 import { useAuthStore } from "@/stores/authStore";
 import { mobileApi } from "@/lib/api";
 import { ReceiptShareDialog } from "@/components/ReceiptShareDialog";
@@ -26,12 +27,7 @@ interface Payment {
     id: string;
     customer: { name: string; phone: string | null } | null;
     vehicle: { plate_display: string; maker: string | null; model: string | null } | null;
-    reservation_items: {
-      id: string;
-      quantity: number;
-      unit_price: number;
-      menu_item: { name: string } | null;
-    }[];
+    menu_items_json: unknown;
   } | null;
 }
 
@@ -82,10 +78,8 @@ export default function PosReceiptScreen() {
             id,
             customer:customers(name, phone),
             vehicle:vehicles(plate_display, maker, model),
-            reservation_items(
-              id, quantity, unit_price,
-              menu_item:menu_items(name)
-            )
+            // 明細は menu_items_json（reservation_items テーブルは存在しない）
+            menu_items_json
           )
         `
         )
@@ -209,17 +203,12 @@ export default function PosReceiptScreen() {
             <Text style={styles.heading}>
               明細
             </Text>
-            {payment.reservation.reservation_items.map((item) => (
-              <View key={item.id} style={styles.lineItem}>
-                <Text style={[styles.bodyText, { flex: 1 }]}>
-                  {item.menu_item?.name ?? "不明"}
-                </Text>
-                <Text style={styles.subText}>
-                  x{item.quantity}
-                </Text>
+            {parseMenuItems(payment.reservation.menu_items_json).map((item, i) => (
+              <View key={`${item.menu_item_id ?? item.name}-${i}`} style={styles.lineItem}>
+                <Text style={[styles.bodyText, { flex: 1 }]}>{item.name}</Text>
                 <Text style={styles.price}>
                   {"¥"}
-                  {(item.quantity * item.unit_price).toLocaleString()}
+                  {item.price.toLocaleString()}
                 </Text>
               </View>
             ))}

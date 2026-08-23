@@ -22,7 +22,7 @@ type CertFilter = "all" | "active" | "draft";
 
 interface CertItem {
   id: string;
-  certificate_no: string;
+  public_id: string;
   status: string;
   service_type: string | null;
   created_at: string;
@@ -64,7 +64,8 @@ export default function CertificatesScreen() {
       let query = supabase
         .from("certificates")
         .select(
-          `id, certificate_no, status, service_type, created_at,
+          // 証明書番号は public_id（certificate_no 列は存在しない）
+          `id, public_id, status, service_type, created_at,
            customer_name,
            vehicle:vehicles ( id, plate_display, maker, model )`
         )
@@ -93,7 +94,7 @@ export default function CertificatesScreen() {
       (c) =>
         !q ||
         [
-          c.certificate_no,
+          c.public_id,
           c.customer_name,
           c.service_type,
           c.vehicle?.plate_display,
@@ -124,7 +125,7 @@ export default function CertificatesScreen() {
         style={styles.card}
         onPress={() => router.push(`/certificates/${item.id}`)}
         accessibilityRole="button"
-        accessibilityLabel={`証明書 ${item.certificate_no} ${cfg.label}`}
+        accessibilityLabel={`証明書 ${item.public_id} ${cfg.label}`}
       >
         <View style={styles.cardHeader}>
           <View style={styles.certIcon}>
@@ -137,7 +138,7 @@ export default function CertificatesScreen() {
             />
           </View>
           <View style={styles.cardHeaderText}>
-            <Text style={styles.certNoText}>{item.certificate_no}</Text>
+            <Text style={styles.certNoText}>{item.public_id}</Text>
             <Text style={styles.serviceText} numberOfLines={1}>
               {item.service_type ?? "—"}
             </Text>

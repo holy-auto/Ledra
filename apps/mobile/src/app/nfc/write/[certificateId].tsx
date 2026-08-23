@@ -17,12 +17,9 @@ const CERT_PUBLIC_BASE_URL = process.env.EXPO_PUBLIC_CERT_URL ?? "https://cert.l
 
 interface CertificateInfo {
   id: string;
-  certificate_no: string;
   public_id: string;
   customer_name: string | null;
-  vehicle_maker: string | null;
-  vehicle_model: string | null;
-  plate_display: string | null;
+  vehicle_info_json: { maker?: string; model?: string; plate?: string } | null;
   /** Resolved at fetch time. Non-null when the cert's vehicle has a VIN
    * with a published vehicle_passports row — write `/v/{vin}` instead of
    * `/c/{public_id}` so the same physical tag carries the cross-tenant
@@ -43,7 +40,9 @@ export default function NfcWriteScreen() {
       const { data, error } = await supabase
         .from("certificates")
         .select(
-          "id, certificate_no, public_id, customer_name, vehicle_maker, vehicle_model, plate_display, vehicle_id"
+          // certificate_no / vehicle_* / plate_display 列は存在しない。
+          // 番号は public_id、車両は発行時スナップショットの vehicle_info_json
+          "id, public_id, customer_name, vehicle_info_json, vehicle_id"
         )
         .eq("id", certificateId)
         .eq("tenant_id", user!.tenantId)
@@ -208,12 +207,16 @@ export default function NfcWriteScreen() {
     <View style={styles.container}>
       {/* Certificate Info */}
       <View style={styles.card}>
-        <Text style={styles.certNo}>{cert.certificate_no}</Text>
+        <Text style={styles.certNo}>{cert.public_id}</Text>
         {cert.customer_name && (
           <Text style={styles.sub}>{cert.customer_name}</Text>
         )}
         <Text style={styles.sub}>
-          {[cert.vehicle_maker, cert.vehicle_model, cert.plate_display]
+          {[
+            cert.vehicle_info_json?.maker,
+            cert.vehicle_info_json?.model,
+            cert.vehicle_info_json?.plate,
+          ]
             .filter(Boolean)
             .join(" ")}
         </Text>

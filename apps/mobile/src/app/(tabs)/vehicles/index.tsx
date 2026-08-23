@@ -24,7 +24,7 @@ interface VehicleItem {
   model: string | null;
   year: number | null;
   plate_display: string | null;
-  customer_name: string | null;
+  customers: { name: string | null } | null;
   certificates: { id: string }[];
 }
 
@@ -44,8 +44,11 @@ export default function VehiclesScreen() {
 
       const q = supabase
         .from("vehicles")
+        // vehicles に customer_name 列は無い（あるのは customer_id）。
+        // 顧客名は customers を埋め込んで取る（管理画面と同じ）
         .select(
-          `id, maker, model, year, plate_display, customer_name,
+          `id, maker, model, year, plate_display,
+           customers ( name ),
            certificates ( id )`
         )
         .eq("tenant_id", user.tenantId)
@@ -68,7 +71,7 @@ export default function VehiclesScreen() {
           v.plate_display?.toLowerCase().includes(q) ||
           v.maker?.toLowerCase().includes(q) ||
           v.model?.toLowerCase().includes(q) ||
-          v.customer_name?.toLowerCase().includes(q)
+          v.customers?.name?.toLowerCase().includes(q)
         );
       })
     : vehicles;
@@ -114,14 +117,14 @@ export default function VehiclesScreen() {
 
         {/* Meta row */}
         <View style={styles.metaRow}>
-          {item.customer_name && (
+          {item.customers?.name && (
             <View style={styles.metaItem}>
               <Icon
                 source="account-outline"
                 size={14}
                 color={colors.textTertiary}
               />
-              <Text style={styles.metaText}>{item.customer_name}</Text>
+              <Text style={styles.metaText}>{item.customers.name}</Text>
             </View>
           )}
         </View>
