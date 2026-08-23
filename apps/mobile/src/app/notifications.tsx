@@ -92,6 +92,8 @@ export default function NotificationsScreen() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["notifications"] });
+      // 各画面のベル（useUnreadNotifCount）も更新する
+      queryClient.invalidateQueries({ queryKey: ["notif-unread-count"] });
     },
   });
 

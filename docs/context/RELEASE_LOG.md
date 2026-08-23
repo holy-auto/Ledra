@@ -15,11 +15,17 @@
   **現状の制約**: 実際に発行されている `link_path` は `/admin/messages` と
   `/admin/documents?doc_type=estimate` の2種のみで、どちらもモバイルに対応画面が
   無いため今は遷移しない。対応画面を作った時点で PATH_MAP に1行足せば有効になる。
-- **日時選択の月表記を数字へ**: 飛び込み受付・予約作成の `DateTimePicker` が端末
+- **日時選択の月表記を数字へ（iOS のみ）**: 飛び込み受付・予約作成の `DateTimePicker` が端末
   ロケール既定（英語だと "Aug"）だった。`locale="ja-JP"` を指定し数字の年月日に固定。
+  **`locale` は `@react-native-community/datetimepicker` の iOS 専用 prop**（Android の
+  型定義には存在しないが union 型なので `tsc` は通る）。英語設定の Android 端末では
+  依然として英語表記のまま。Android を直すにはアプリロケールのネイティブ設定が必要で
+  EAS 再ビルドを伴うため、実機検証が iOS 中心の現状では見送った。
 - **ベース背景を白に統一**: `colors.background` を `#F6F7F9` → `#FFFFFF`。
-  白地に白カード（`colors.surface`）が溶けるため、`shadows.card` の
-  `shadowOpacity` を 0.06 → 0.10 に上げてカードの輪郭を保った。
+  白地に白カード（`colors.surface`）が溶けるため、`shadows.card` を
+  `shadowOpacity` 0.06 → 0.10（iOS）+ `elevation` 2 → 3（Android は shadowOpacity を
+  見ないため両方要る）に上げてカードの輪郭を保った。タブバーの丸ボタンは白のままだと
+  白地に消えるので、非選択時を `surfaceVariant`（薄いグレー）に変更。
 - **画面名の帯を撤去し検索窓に置換**: 「作業」「車両」「証明」「その他」の各タブは
   ヘッダーに画面名を出していたが、その情報はタブバーのアイコンで既に分かる。
   一等地を検索に譲り、共通コンポーネント `components/TabTopBar.tsx`（検索窓＋通知ベル）
@@ -40,8 +46,32 @@
   `lib/notificationTarget.ts`（+ check）が新規。`constants/tokens.ts`、
   `(tabs)/_layout.tsx`、`(tabs)/{index,work,vehicles,certificates,more}` の
   `_layout.tsx`/`index.tsx`、`app/notifications.tsx`、`reservations/new.tsx` を変更。
-- 検証: `tsc --noEmit` 型エラーなし。自己チェック4件すべて OK。`lint` エラー0
-  （警告は変更前 79 → 変更後 78 で、新規の警告なし）。
+- **`/code-review` で自作の不具合を検出し同時修正**:
+  - 通知の遷移先が「/admin 以外は素通し」になっており、モバイルに無いパスは白画面、
+    `//example.com` はプロトコル相対 URL として外部遷移になりえた。`link_path` は
+    このリポジトリ外が書く値なので、モバイルに実在するルートの許可リストと
+    「単一スラッシュ区切りの安全な文字だけ」の形式チェックを通す方式に変更。
+  - 既読にしても `notif-unread-count` を無効化しておらず、5画面に出るようになった
+    ベルのバッジが最大30秒古い数字を出していた。
+  - 作業タブの検索が `reservation_items` を `?.` なしで展開しており、同ファイルの
+    別箇所は nullish 扱いだった（1文字目の入力でタブごと落ちうる）。
+  - 検索中の1タップ目がキーボード閉じに吸われる（`keyboardShouldPersistTaps` 未指定）。
+    既存10画面が設定済みの規約を4画面に適用。
+  - 検索窓に `autoCapitalize="none"` / `autoCorrect={false}` が無く、置き換え前の
+    車両検索バーにはあった。ナンバーや車種の入力が自動修正で別語に化ける。
+  - `clearButtonMode`（iOS 専用）と自前の × が二重に出ていたため前者を撤去。
+  - 車両タブだけ `trim()` の結果ではなく生の入力で照合しており、日本語変換確定後の
+    末尾スペースで0件になっていた。
+  - 検索0件のときに「まだ登録がありません」と出て、実際は有るのに無いと読めた
+    （作業・証明・その他）。車両タブに既にあった分岐の形へ統一。
+  - 通知バッジのマークアップがホームと TabTopBar で二重化しており、ホーム側だけ
+    99+ の打ち切りが無かった。`components/NotifBell.tsx` に集約。
+  - 撤去した検索バーの残骸（未使用 import・未使用スタイル3件）と、
+    どの画面でも描画されなくなったタブナビゲータのヘッダー設定13行を削除。
+- 検証: `tsc --noEmit` 型エラーなし。自己チェック4件すべて OK。`lint` エラー0、
+  警告は変更前後とも 77 件で**警告1件ずつを突き合わせて同一**であることを確認済み
+  （件数の増減だけを見ると入れ替わりを見落とす。実際、途中の版で
+  `RNTextInput` の未使用 import が1件増えていたのをこの照合で検出して撤去した）。
 
 ## 2026-08-22 モバイル: 規約・問い合わせ・ナレッジをアプリ内で完結させる
 

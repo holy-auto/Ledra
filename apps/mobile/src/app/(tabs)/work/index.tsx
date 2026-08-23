@@ -181,7 +181,7 @@ export default function WorkScreen() {
               i.vehicle?.model,
               i.customer?.name,
               i.assigned_staff?.display_name,
-              ...i.reservation_items.map((r) => r.menu_item?.name),
+              ...(i.reservation_items ?? []).map((r) => r.menu_item?.name),
             ].some((v) => (v ?? "").toLowerCase().includes(q)),
           ),
     [items, q],
@@ -196,6 +196,8 @@ export default function WorkScreen() {
       />
       <FlatList
         data={filtered}
+        // 検索中の1タップ目がキーボード閉じに吸われないように
+        keyboardShouldPersistTaps="handled"
         keyExtractor={(item) => item.id}
         renderItem={renderItem}
         refreshControl={
@@ -203,13 +205,22 @@ export default function WorkScreen() {
         }
         contentContainerStyle={[styles.listContent, { paddingBottom: tabInset }]}
         ListEmptyComponent={
-          <View style={styles.empty}>
-            <Icon source="wrench-outline" size={48} color={colors.textTertiary} />
-            <Text style={styles.emptyTitle}>作業中の予約はありません</Text>
-            <Text style={styles.emptyDesc}>
-              入庫した車両がここに表示されます
-            </Text>
-          </View>
+          search.trim() ? (
+            <View style={styles.empty}>
+              <Icon source="magnify" size={48} color={colors.textTertiary} />
+              <Text style={styles.emptyTitle}>
+                「{search.trim()}」に一致する作業はありません
+              </Text>
+            </View>
+          ) : (
+            <View style={styles.empty}>
+              <Icon source="wrench-outline" size={48} color={colors.textTertiary} />
+              <Text style={styles.emptyTitle}>作業中の予約はありません</Text>
+              <Text style={styles.emptyDesc}>
+                入庫した車両がここに表示されます
+              </Text>
+            </View>
+          )
         }
       />
     </View>

@@ -37,27 +37,14 @@ export default function TabsLayout() {
     <>
       <Tabs
         tabBar={(props) => <LedraTabBar {...props} />}
-        screenOptions={{
-          headerStyle: {
-            backgroundColor: colors.surface,
-            elevation: 0,
-            shadowOpacity: 0,
-            borderBottomWidth: 0,
-          },
-          headerTintColor: colors.textPrimary,
-          headerTitleStyle: {
-            fontSize: 18,
-            fontWeight: "700",
-            color: colors.textPrimary,
-          },
-        }}
+        // 画面名の帯は出さない。各画面が上部を検索窓（TabTopBar）や独自ヘッダーに使う
+        screenOptions={{ headerShown: false }}
       >
         {TABS.map((t) => (
           <Tabs.Screen
             key={t.name}
             name={t.name}
-            // 画面名の帯は出さない。各画面が上部を検索窓（TabTopBar）や独自ヘッダーに使う
-            options={{ title: t.title, headerShown: false }}
+            options={{ title: t.title }}
           />
         ))}
       </Tabs>
@@ -180,8 +167,9 @@ const styles = StyleSheet.create({
     borderRadius: sizing.tabIconCircle / 2,
     alignItems: "center",
     justifyContent: "center",
-    // 帯が無いので、丸自体が白 + 影で地色から浮く
-    backgroundColor: colors.surface,
+    // 帯が無いので丸自体で浮かせる。地色が白になったため白丸だと消えるので
+    // 非選択時は surfaceVariant（薄いグレー）。Android は影を elevation でしか描かない
+    backgroundColor: colors.surfaceVariant,
     ...shadows.card,
   },
   tabCircleActive: {

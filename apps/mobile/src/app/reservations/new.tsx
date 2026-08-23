@@ -408,7 +408,12 @@ export default function ReservationNewScreen() {
                 value={selectedDate}
                 mode="date"
                 // 既定は端末ロケール。英語だと "Aug" 等になり分かりにくいので
-                // 日本語（数字の年月日）に固定する
+                // 日本語（数字の年月日）に固定する。
+                // ponytail: locale は iOS 専用の prop（Android の型には無く、
+                // union 型なので tsc も警告しない）。Android は端末の言語設定に従うため、
+                // 英語設定の Android では依然 "Aug" のまま。直すには
+                // AppCompatDelegate.setApplicationLocales 相当のネイティブ設定が必要で
+                // EAS 再ビルドを伴う。実機検証は iOS 中心なので今は iOS のみ対応。
                 locale="ja-JP"
                 display={Platform.OS === "ios" ? "spinner" : "default"}
                 onChange={(_, date) => {

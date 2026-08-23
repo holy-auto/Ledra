@@ -29,4 +29,12 @@ assert.equal(notificationTarget(""), null);
 // 既にモバイルのパスならそのまま
 assert.equal(notificationTarget("/knowledge/abc"), "/knowledge/abc");
 
+// 実在しないモバイルパスは通さない（素通しすると白画面になる）
+assert.equal(notificationTarget("/messages/abc"), null);
+assert.equal(notificationTarget("/knowledgeXX"), null);
+
+// プロトコル相対 URL は外部遷移になりうるので通さない
+assert.equal(notificationTarget("//evil.com"), null);
+assert.equal(notificationTarget("/admin/vehicles//evil.com"), null);
+
 console.log("notificationTarget self-check: OK");

@@ -114,13 +114,14 @@ export const sizing = {
 // ─── Shadows ─────────────────────────────────────────────────────────
 export const shadows = {
   // 背景が白（colors.background）になったので、カードを区切るのはこの影だけ。
-  // 0.06 だと白地に白カードが溶けて見えないため 0.10 に上げている
+  // 白地に白カードが溶けるため iOS は shadowOpacity 0.06→0.10、
+  // Android は shadowOpacity を見ないので elevation 2→3 で同じ埋め合わせをする
   card: {
     shadowColor: "#0F172A",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 8,
-    elevation: 2,
+    elevation: 3,
   },
   cardHover: {
     shadowColor: "#0F172A",

@@ -1,9 +1,8 @@
 import { View, StyleSheet, Pressable, TextInput } from "react-native";
-import { Text, Icon } from "react-native-paper";
-import { router } from "expo-router";
+import { Icon } from "react-native-paper";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { useUnreadNotifCount } from "@/hooks/useUnreadNotifCount";
+import { NotifBell } from "@/components/NotifBell";
 import { colors, spacing, radius, sizing, typography } from "@/constants/tokens";
 
 /**
@@ -21,7 +20,6 @@ export function TabTopBar({
   onSearchChange: (v: string) => void;
   placeholder: string;
 }) {
-  const unread = useUnreadNotifCount();
   // ヘッダー非表示なので、ステータスバーに潜り込まないよう上端は自前で空ける
   const insets = useSafeAreaInsets();
 
@@ -36,8 +34,11 @@ export function TabTopBar({
           value={search}
           onChangeText={onSearchChange}
           returnKeyType="search"
-          clearButtonMode="while-editing"
+          // ナンバー・車種・証明書番号を打つ場所。自動修正が働くと別の語に置き換わる
+          autoCapitalize="none"
+          autoCorrect={false}
         />
+        {/* clearButtonMode は iOS 専用で、この×と二重に出るため使わない */}
         {!!search && (
           <Pressable
             onPress={() => onSearchChange("")}
@@ -50,19 +51,7 @@ export function TabTopBar({
         )}
       </View>
 
-      <Pressable
-        style={styles.bell}
-        onPress={() => router.push("/notifications")}
-        accessibilityRole="button"
-        accessibilityLabel={unread > 0 ? `通知 ${unread}件の未読` : "通知"}
-      >
-        <Icon source="bell-outline" size={sizing.iconMd} color={colors.textPrimary} />
-        {unread > 0 && (
-          <View style={styles.badge}>
-            <Text style={styles.badgeText}>{unread > 99 ? "99+" : unread}</Text>
-          </View>
-        )}
-      </Pressable>
+      <NotifBell />
     </View>
   );
 }
@@ -73,7 +62,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: spacing.sm,
     paddingHorizontal: spacing.lg,
-    paddingTop: spacing.sm,
     paddingBottom: spacing.md,
     backgroundColor: colors.background,
   },
@@ -92,30 +80,5 @@ const styles = StyleSheet.create({
     ...typography.bodySmall,
     color: colors.textPrimary,
     padding: 0,
-  },
-  bell: {
-    width: sizing.touchTarget,
-    height: sizing.touchTarget,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  badge: {
-    position: "absolute",
-    top: 4,
-    right: 2,
-    minWidth: 18,
-    height: 18,
-    paddingHorizontal: 4,
-    borderRadius: 9,
-    backgroundColor: colors.danger,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  badgeText: {
-    ...typography.meta,
-    fontSize: 11,
-    lineHeight: 14,
-    fontWeight: "700",
-    color: colors.textOnPrimary,
   },
 });

@@ -116,7 +116,11 @@ export default function MoreScreen() {
       onSearchChange={setMenuSearch}
       placeholder="メニューを検索"
     />
-    <ScrollView contentContainerStyle={[styles.content, { paddingBottom: tabInset }]}>
+    <ScrollView
+      contentContainerStyle={[styles.content, { paddingBottom: tabInset }]}
+      // 検索中の1タップ目がキーボード閉じに吸われないように
+      keyboardShouldPersistTaps="handled"
+    >
       {/* Store info card — 店舗切替 */}
       <Pressable
         style={({ pressed }) => [styles.storeCard, pressed && styles.menuRowPressed]}
@@ -172,6 +176,10 @@ export default function MoreScreen() {
           </View>
         </View>
       ))}
+
+      {visibleSections.length === 0 && (
+        <Text style={styles.noHit}>「{mq}」に一致するメニューはありません</Text>
+      )}
 
       <View style={{ height: spacing["4xl"] }} />
     </ScrollView>
@@ -267,6 +275,12 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "500",
     color: colors.textPrimary,
+  },
+  noHit: {
+    marginTop: spacing.xl,
+    textAlign: "center",
+    fontSize: 14,
+    color: colors.textSecondary,
   },
   divider: {
     height: StyleSheet.hairlineWidth,

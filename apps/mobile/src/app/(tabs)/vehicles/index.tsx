@@ -5,7 +5,6 @@ import {
   FlatList,
   RefreshControl,
   Pressable,
-  TextInput as RNTextInput,
 } from "react-native";
 import { Text, Icon } from "react-native-paper";
 import { router } from "expo-router";
@@ -63,7 +62,8 @@ export default function VehiclesScreen() {
 
   const filtered = search.trim()
     ? vehicles.filter((v) => {
-        const q = search.toLowerCase();
+        // trim 前で比較すると日本語変換確定後の末尾スペースで0件になる
+        const q = search.trim().toLowerCase();
         return (
           v.plate_display?.toLowerCase().includes(q) ||
           v.maker?.toLowerCase().includes(q) ||
@@ -142,6 +142,8 @@ export default function VehiclesScreen() {
       />
       <FlatList
         data={filtered}
+        // 検索中の1タップ目がキーボード閉じに吸われないように
+        keyboardShouldPersistTaps="handled"
         keyExtractor={(item) => item.id}
         renderItem={renderItem}
         refreshControl={
@@ -171,28 +173,6 @@ export default function VehiclesScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
-  searchContainer: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
-    paddingBottom: spacing.sm,
-  },
-  searchBar: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: colors.surface,
-    borderRadius: radius.md,
-    paddingHorizontal: spacing.md,
-    height: 44,
-    gap: spacing.sm,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  searchInput: {
-    flex: 1,
-    ...typography.body,
-    color: colors.textPrimary,
-    padding: 0,
-  },
   listContent: {
     padding: spacing.lg,
     gap: spacing.md,

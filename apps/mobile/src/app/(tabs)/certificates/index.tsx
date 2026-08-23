@@ -200,6 +200,8 @@ export default function CertificatesScreen() {
 
       <FlatList
         data={filtered}
+        // 検索中の1タップ目がキーボード閉じに吸われないように
+        keyboardShouldPersistTaps="handled"
         keyExtractor={(item) => item.id}
         renderItem={renderItem}
         refreshControl={
@@ -207,11 +209,18 @@ export default function CertificatesScreen() {
         }
         contentContainerStyle={[styles.listContent, { paddingBottom: tabInset }]}
         ListEmptyComponent={
-          <EmptyState
-            icon="certificate-outline"
-            title="発行済み証明書はありません"
-            description="施工完了後、品質確認を経て証明書が発行されます"
-          />
+          search.trim() ? (
+            <EmptyState
+              icon="magnify"
+              title={`「${search.trim()}」に一致する証明書はありません`}
+            />
+          ) : (
+            <EmptyState
+              icon="certificate-outline"
+              title="発行済み証明書はありません"
+              description="施工完了後、品質確認を経て証明書が発行されます"
+            />
+          )
         }
       />
     </View>

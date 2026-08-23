@@ -6,7 +6,7 @@ import {
   RefreshControl,
   Pressable,
 } from "react-native";
-import { Text, Icon, IconButton } from "react-native-paper";
+import { Text, Icon } from "react-native-paper";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import dayjs from "dayjs";
@@ -15,7 +15,7 @@ import "dayjs/locale/ja";
 import { useAuthStore } from "@/stores/authStore";
 import { supabase } from "@/lib/supabase";
 import { useTabContentInset } from "@/hooks/useTabContentInset";
-import { useUnreadNotifCount } from "@/hooks/useUnreadNotifCount";
+import { NotifBell } from "@/components/NotifBell";
 import { colors, radius, spacing, sizing, shadows } from "@/constants/tokens";
 import {
   ProgressRing,
@@ -116,8 +116,6 @@ export default function HomeScreen() {
 
   // ponytail: recalculated on every render so it stays current across midnight
   const today = dayjs();
-
-  const unreadNotifCount = useUnreadNotifCount();
 
   const loadStats = useCallback(async () => {
     if (!user?.tenantId) return;
@@ -360,21 +358,7 @@ export default function HomeScreen() {
           </Text>
         </View>
         <View style={styles.headerRight}>
-          <View>
-            <IconButton
-              icon="bell-outline"
-              size={sizing.iconMd}
-              iconColor={colors.textPrimary}
-              onPress={() => router.push("/notifications" as never)}
-              accessibilityLabel="通知"
-              style={styles.headerBtn}
-            />
-            {unreadNotifCount > 0 && (
-              <View style={styles.notifBadge}>
-                <Text style={styles.notifBadgeText}>{unreadNotifCount}</Text>
-              </View>
-            )}
-          </View>
+          <NotifBell />
         </View>
       </View>
 
@@ -690,7 +674,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginTop: spacing.xs,
   },
-  headerBtn: { margin: 0 },
   dateText: {
     fontSize: 13,
     fontWeight: "500",
@@ -710,23 +693,6 @@ const styles = StyleSheet.create({
     fontWeight: "500",
     color: colors.textSecondary,
     lineHeight: 20,
-  },
-  notifBadge: {
-    position: "absolute",
-    top: 6,
-    right: 6,
-    minWidth: 18,
-    height: 18,
-    borderRadius: 9,
-    backgroundColor: colors.danger,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 4,
-  },
-  notifBadgeText: {
-    fontSize: 11,
-    fontWeight: "700",
-    color: colors.textOnPrimary,
   },
 
   // Section
