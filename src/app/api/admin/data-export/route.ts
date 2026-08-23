@@ -85,9 +85,10 @@ export async function GET(req: NextRequest) {
     // Fetch the tenant row itself (single row, separate query).
     const { data: tenantRow } = await admin
       .from("tenants")
+      // 注: tenants に updated_at 列は無い（文字列を連結していたため検査を素通りしていた）
       .select(
         "id, slug, name, category, prefecture, contact_email, contact_phone, registration_number, " +
-          "stripe_connect_account_id, stripe_connect_onboarded, plan_tier, created_at, updated_at",
+          "stripe_connect_account_id, stripe_connect_onboarded, plan_tier, created_at",
       )
       .eq("id", tenantId)
       .maybeSingle();

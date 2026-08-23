@@ -183,13 +183,10 @@ function checkMutation(body, table, where) {
 // `.from("x")` と `.select(...)` の間に別の `.from(` を挟ませない。
 // 挟ませると `.from("a").update(...)` の直後に来る `.from("b").select(...)` を
 // 取り違え、無関係な表の列として報告してしまう（実際に3件そうなった）
-const SELECT =
-  /\.from\(\s*["'`](\w+)["'`]\s*\)((?:(?!\.from\()[\s\S]){0,500}?)\.select\(\s*(?:\/\/[^\n]*\n\s*|\/\*[\s\S]*?\*\/\s*)*(["'`])([\s\S]*?)\3/g;
-// 列を**変数**で渡す形（.select(selectCols)）。値を解決できないと素通りするので
-// 別に拾って、解決できなければ「読めない」として落とす。
-// これを見ていなかったせいで、実際に4箇所の壊れたクエリが検査を通っていた
-const SELECT_VAR =
-  /\.from\(\s*["'`](\w+)["'`]\s*\)((?:(?!\.from\()[\s\S]){0,500}?)\.select\(\s*([A-Za-z_$][\w$]*)\s*[,)]/g;
+// `.from("x") ... .select(` の位置だけを見つける。中身は括弧の対応で取り出す
+// （`"a, b" + "c, d"` のような**連結**を1つ目のリテラルだけで判断すると、
+//  2つ目に混ざった存在しない列を見逃す。実際に見逃していた）
+const SELECT_HEAD = /\.from\(\s*["'`](\w+)["'`]\s*\)((?:(?!\.from\()[\s\S]){0,500}?)\.select\(/g;
 const MUTATE = /\.from\(\s*["'`](\w+)["'`]\s*\)\s*\.(insert|update|upsert)\(\s*\{/g;
 // 書き込みのペイロードを**変数**で渡す形（.insert(certRow)）。同上
 const MUTATE_VAR = /\.from\(\s*["'`](\w+)["'`]\s*\)\s*\.(insert|update|upsert)\(\s*([A-Za-z_$][\w$]*)\s*[,)]/g;
@@ -217,6 +214,77 @@ function blockCommentRanges(src) {
 function isOptedOut(src, idx) {
   const head = src.lastIndexOf("\n", src.lastIndexOf("\n", idx) - 1);
   return src.slice(Math.max(0, head), idx).includes("schema-check-ignore:");
+}
+
+/** `(` の対応する `)` までの中身を返す（文字列リテラル内の括弧は無視する） */
+function balancedParen(src, openIdx) {
+  let d = 0;
+  let quote = null;
+  for (let i = openIdx; i < src.length; i++) {
+    const c = src[i];
+    if (quote) {
+      if (c === "\\") i++;
+      else if (c === quote) quote = null;
+      continue;
+    }
+    if (c === '"' || c === "'" || c === "`") quote = c;
+    else if (c === "(") d++;
+    else if (c === ")") {
+      d--;
+      if (d === 0) return src.slice(openIdx + 1, i);
+    }
+  }
+  return "";
+}
+
+/**
+ * `.select(...)` の第1引数を列の文字列として読む。
+ * `"a" + "b"` の連結、`\`...\`` のテンプレート、定数、それらの混在に対応する。
+ * 読めない部分が残ったら null を返す（黙って通さない）。
+ */
+function readSelectArg(arg, localConsts) {
+  // 第2引数（{ count: "exact" }）より前だけを見る
+  let depth = 0;
+  let quote = null;
+  let end = arg.length;
+  for (let i = 0; i < arg.length; i++) {
+    const c = arg[i];
+    if (quote) {
+      if (c === "\\") i++;
+      else if (c === quote) quote = null;
+      continue;
+    }
+    if (c === '"' || c === "'" || c === "`") quote = c;
+    else if (c === "(" || c === "{" || c === "[") depth++;
+    else if (c === ")" || c === "}" || c === "]") depth--;
+    else if (c === "," && depth === 0) {
+      end = i;
+      break;
+    }
+  }
+  let expr = arg.slice(0, end).trim();
+  // コメントを落とす（select 文字列の中のコメントは checkSelect 側で捕まえる）
+  expr = expr.replace(/^(?:\/\/[^\n]*\n|\/\*[\s\S]*?\*\/|\s)+/, "").trim();
+  // 引数なしの `.select()` は全列。照合するものが無い
+  if (!expr) return "*";
+
+  const parts = expr.split("+").map((t) => t.trim());
+  const out = [];
+  for (const part of parts) {
+    const lit = /^(["'`])([\s\S]*)\1$/.exec(part);
+    if (lit) {
+      out.push(lit[2]);
+      continue;
+    }
+    if (/^[A-Za-z_$][\w$]*$/.test(part)) {
+      const v = localConsts.get(part) ?? STRING_CONSTS.get(part);
+      if (typeof v !== "string") return null;
+      out.push(v);
+      continue;
+    }
+    return null;
+  }
+  return out.join("");
 }
 
 /** 対応する閉じ括弧までを返す */
@@ -306,27 +374,23 @@ for (const { dir, minSelects, minMutations } of TARGETS) {
     const localObjects = collectObjectConsts(txt);
     const inComment = (i) => comments.some(([a, b]) => i >= a && i < b);
     const rel = (i) => `${relative(repoRoot, file)}:${txt.slice(0, i).split("\n").length}`;
-    for (const m of txt.matchAll(SELECT)) {
+    for (const m of txt.matchAll(SELECT_HEAD)) {
       if (inComment(m.index) || isOptedOut(txt, m.index)) continue;
       selects++;
-      checkSelect(expandConsts(m[4], localConsts).replace(/\s+/g, " "), m[1], rel(m.index));
+      const open = m.index + m[0].length - 1;
+      const raw = readSelectArg(balancedParen(txt, open), localConsts);
+      if (raw === null) {
+        addUnresolved(rel(m.index), "select の列を解決できない（定数にするか文字列で書く）");
+        continue;
+      }
+      checkSelect(expandConsts(raw, localConsts).replace(/\s+/g, " "), m[1], rel(m.index));
     }
     for (const m of txt.matchAll(MUTATE)) {
       if (inComment(m.index) || isOptedOut(txt, m.index)) continue;
       mutations++;
       checkMutation(balanced(txt, txt.indexOf("{", m.index + m[0].length - 1)), m[1], rel(m.index));
     }
-    // 列・ペイロードを変数で渡す形。解決できたら中身を見る。できなければ報告する
-    for (const m of txt.matchAll(SELECT_VAR)) {
-      if (inComment(m.index) || isOptedOut(txt, m.index)) continue;
-      selects++;
-      const v = localConsts.get(m[3]) ?? STRING_CONSTS.get(m[3]);
-      if (typeof v !== "string") {
-        addUnresolved(rel(m.index), `select の列を解決できない: ${m[3]}`);
-        continue;
-      }
-      checkSelect(expandConsts(v, localConsts).replace(/\s+/g, " "), m[1], rel(m.index));
-    }
+    // 書き込みのペイロードを変数で渡す形。解決できたら中身を見る。できなければ報告する
     for (const m of txt.matchAll(MUTATE_VAR)) {
       if (inComment(m.index) || isOptedOut(txt, m.index)) continue;
       mutations++;

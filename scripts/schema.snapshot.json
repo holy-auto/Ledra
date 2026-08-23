@@ -487,6 +487,7 @@
 ],
 "agents": [
 "address",
+"bank_info",
 "commission_type",
 "contact_email",
 "contact_name",
@@ -499,11 +500,13 @@
 "logo_asset_path",
 "name",
 "notes",
+"postal_code",
 "slug",
 "status",
 "stripe_account_id",
 "stripe_onboarding_done",
-"updated_at"
+"updated_at",
+"website_url"
 ],
 "ai_translation_cache": [
 "cache_key",

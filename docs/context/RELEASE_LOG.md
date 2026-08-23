@@ -4,6 +4,49 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-08-23 本番とマイグレーションのずれを全テーブルで洗い出して修復 / 代理店の口座情報の保存先を追加 / 未認証で呼べる RPC の権限を剥奪
+
+- **マイグレーション 417 本をローカルの空 PostgreSQL に流し、本番と全テーブルで
+  突き合わせた**。`audit_logs` 1件の話ではなく、**本番にあるのにマイグレーションの
+  どこにも書かれていない列が 26 個 / 9 テーブル**あった。
+  空 DB から作った環境ではこれらが欠け、同じコードが環境によって動かない。
+
+| テーブル | 欠けていた列 |
+|---|---|
+| `tenants` | `subscription_status` / `current_period_start` / `cancel_at` / `cancel_at_period_end` / `trial_end`（**契約・課金の状態**） |
+| `customers` | `line_link_status` / `line_link_source` / `line_linked_at` / `line_unlinked_at` / `line_unlink_reason` |
+| `job_orders` | `service_category` / `desired_date` / `city` / `budget_min` / `budget_max` |
+| `signature_sessions` | `remind_count` / `last_reminded_at` / `notified_channel` |
+| `agent_signing_requests` | `sign_engine` / `sign_url` / `ledra_session_id` / `ledra_verified` / `notified_channel` |
+| `documents` | `job_status` |
+| `insurer_users` | `last_login_at` |
+
+  → `20260823160000_repair_drift_20260823.sql` で本番の定義のまま取り込み、
+  再突き合わせで**差分 0 件**を確認。
+
+- **代理店の口座情報を保存できるようにした**（本番適用済み）。`agents` に
+  `bank_info`（jsonb、`tenants.bank_info` と同じ形）/ `postal_code` / `website_url`
+  を追加。1項目だけ更新しても他の項目が消えないよう、既存の中身に重ねる。
+  保存先がまだ無い項目（会社名・メール通知）は引き続き**黙って捨てず**
+  「保存できません」と返す。
+
+- **未認証（anon）から呼べる SECURITY DEFINER 関数が 53 本あった**。
+  advisor の指摘を `has_function_privilege` で実測し、さらに関数の本体を読んで
+  内部の検査の有無まで確認した。危険度が高く剥奪しても壊れない 16 本に絞って
+  `20260823170000_revoke_anon_from_secdef_rpcs.sql` を用意。
+  **本番未適用（適用の判断は代表へ）。**
+  併せて search_path が固定されていない 6 関数を固定（`20260823170001`）。
+
+- **スキーマ照合にもう1つ盲点があった**。`"a, b" + "c, d"` のような**文字列の連結**を
+  1つ目のリテラルだけで判断しており、2つ目に混ざった存在しない列を見逃していた
+  （`tenants.updated_at` が実際にそれで通っていた）。`.select(` の引数を括弧の
+  対応で取り出し、連結・テンプレート・定数の混在を解決する方式に変更。
+  引数なしの `.select()` は全列として扱う。対象 select は 2107 → 2109 件。
+
+- 検証: マイグレーション 4 本ともローカルの空 DB で実行を確認 /
+  `lint:migrations` OK / `tsc` 型エラーなし / `vitest` 全通過 /
+  スキーマ照合 実バグ0件・ドリフト0件。
+
 ## 2026-08-23 Web の壊れたクエリ 189 箇所を修正 / スキーマ照合を Web+モバイル共通で CI に入れる
 
 - モバイルで見つけた「存在しない列を SELECT していてクエリごと 400 になる」不具合を

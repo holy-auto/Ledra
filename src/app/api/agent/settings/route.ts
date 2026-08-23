@@ -10,7 +10,7 @@ import {
 } from "@/lib/api/response";
 import { parseJsonBody } from "@/lib/api/parseBody";
 import { agentSettingsUpdateSchema } from "@/lib/validations/agent-portal";
-import { AGENT_PROFILE_COLUMNS, toAgentPatch } from "@/lib/agents/profileColumns";
+import { AGENT_PROFILE_COLUMNS, toAgentPatch, type AgentBankInfo } from "@/lib/agents/profileColumns";
 
 export const dynamic = "force-dynamic";
 
@@ -93,10 +93,14 @@ export async function PUT(request: NextRequest) {
     const parsed = await parseJsonBody(request, agentSettingsUpdateSchema);
     if (!parsed.ok) return parsed.response;
 
+    // 振込先は bank_info（jsonb）に入るので、1項目だけ更新したときに他が
+    // 消えないよう既存の中身を読んでから重ねる
+    const { data: current } = await supabase.from("agents").select("bank_info").eq("id", agentId).maybeSingle();
+
     // agents の実列に載せ替える。以前は検証済みの値をそのまま update に渡していたが、
-    // company_name / company_address / website_url / logo_url / commission_rate /
-    // bank_* は agents に**存在しない列**で、送られると update ごと失敗していた。
-    const { unsupported, patch } = toAgentPatch(parsed.data);
+    // company_name / company_address / logo_url / commission_rate / bank_* は
+    // agents に**存在しない列**で、送られると update ごと失敗していた。
+    const { unsupported, patch } = toAgentPatch(parsed.data, current?.bank_info as AgentBankInfo | null);
     if (unsupported.length > 0) {
       // 黙って捨てない。保存できない項目があることを呼び出し元に返す
       return apiValidationError(`この項目は現在保存できません: ${unsupported.join(", ")}`);

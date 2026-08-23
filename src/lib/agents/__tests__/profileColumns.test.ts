@@ -8,7 +8,6 @@ describe("AGENT_PROFILE_COLUMNS", () => {
     for (const gone of [
       "company_name",
       "company_address",
-      "website_url",
       "logo_url",
       "commission_rate",
       "bank_name",
@@ -24,6 +23,9 @@ describe("AGENT_PROFILE_COLUMNS", () => {
     }
     expect(cols).toContain("name");
     expect(cols).toContain("address");
+    expect(cols).toContain("postal_code");
+    expect(cols).toContain("website_url");
+    expect(cols).toContain("bank_info");
     expect(cols).toContain("logo_asset_path");
     expect(cols).toContain("default_commission_rate");
   });
@@ -38,15 +40,61 @@ describe("toAgentPatch", () => {
   });
 
   it("保存先の無い項目は patch に入れず、日本語の名前で返す（黙って捨てない）", () => {
-    const { patch, unsupported } = toAgentPatch({ bank_name: "みずほ", website_url: "https://x.test" });
+    const { patch, unsupported } = toAgentPatch({ company_name: "A株式会社", email_notifications: true });
     expect(patch).toEqual({});
-    expect(unsupported).toEqual(["銀行名", "ウェブサイト"]);
+    expect(unsupported).toEqual(["会社名", "メール通知"]);
   });
 
   it("保存できる項目と保存できない項目が混ざったら、保存できない方を報告する", () => {
-    const { patch, unsupported } = toAgentPatch({ name: "A社", bank_account_number: "123" });
+    const { patch, unsupported } = toAgentPatch({ name: "A社", company_name: "A株式会社" });
     expect(patch).toEqual({ name: "A社" });
-    expect(unsupported).toEqual(["口座番号"]);
+    expect(unsupported).toEqual(["会社名"]);
+  });
+
+  describe("振込先（bank_info）", () => {
+    it("画面の bank_* を1つの jsonb にまとめる", () => {
+      expect(
+        toAgentPatch({
+          bank_name: "みずほ銀行",
+          bank_branch: "渋谷支店",
+          bank_account_type: "ordinary",
+          bank_account_number: "1234567",
+          bank_account_holder: "カ)ホーリー",
+        }).patch,
+      ).toEqual({
+        bank_info: {
+          bank_name: "みずほ銀行",
+          branch: "渋谷支店",
+          account_type: "ordinary",
+          account_number: "1234567",
+          account_holder: "カ)ホーリー",
+        },
+      });
+    });
+
+    it("1項目だけ更新しても既存の他の項目が消えない", () => {
+      const current = { bank_name: "みずほ銀行", branch: "渋谷支店", account_number: "1234567" };
+      expect(toAgentPatch({ bank_branch: "新宿支店" }, current).patch).toEqual({
+        bank_info: { bank_name: "みずほ銀行", branch: "新宿支店", account_number: "1234567" },
+      });
+    });
+
+    it("空文字を送るとその項目だけ消える（他は残る）", () => {
+      const current = { bank_name: "みずほ銀行", branch: "渋谷支店" };
+      expect(toAgentPatch({ bank_branch: "" }, current).patch).toEqual({
+        bank_info: { bank_name: "みずほ銀行" },
+      });
+    });
+
+    it("全部空にしたら bank_info ごと null にする（空オブジェクトを残さない）", () => {
+      expect(toAgentPatch({ bank_name: "" }, { bank_name: "みずほ銀行" }).patch).toEqual({ bank_info: null });
+    });
+
+    it("振込先に触れていなければ bank_info を patch に入れない（意図しない上書きを避ける）", () => {
+      const { patch } = toAgentPatch({ name: "A社" }, { bank_name: "みずほ銀行" });
+      expect(patch).toEqual({ name: "A社" });
+      expect(patch).not.toHaveProperty("bank_info");
+    });
   });
 
   it("undefined の項目は patch に入れない（未指定と空を混同しない）", () => {
@@ -59,14 +107,16 @@ describe("toAgentPatch", () => {
   });
 
   it("保存先の無い項目が空のまま送られても保存操作は止めない（画面は毎回全項目を送る）", () => {
-    const { patch, unsupported } = toAgentPatch({ name: "A社", postal_code: "", bank_name: "" });
+    const { patch, unsupported } = toAgentPatch({ name: "A社", company_name: "", email_notifications: false });
     expect(patch).toEqual({ name: "A社" });
     expect(unsupported).toEqual([]);
   });
 
-  it("保存先の無い項目に中身があるときは保存できないと返す", () => {
-    expect(toAgentPatch({ postal_code: "150-0001" }).unsupported).toEqual(["郵便番号"]);
-    expect(toAgentPatch({ email_notifications: true }).unsupported).toEqual(["メール通知"]);
+  it("郵便番号とウェブサイトは実列に入る", () => {
+    expect(toAgentPatch({ postal_code: "150-0001", website_url: "https://x.test" }).patch).toEqual({
+      postal_code: "150-0001",
+      website_url: "https://x.test",
+    });
   });
 
   it("保存できない項目と実列の対応表が重ならない（重なると片方が黙って消える）", () => {
