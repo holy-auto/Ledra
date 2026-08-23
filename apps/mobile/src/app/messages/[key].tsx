@@ -354,8 +354,6 @@ const styles = StyleSheet.create({
   failed: { ...typography.meta, color: colors.danger, fontWeight: "700" },
 
   composerWrap: {
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.divider,
     backgroundColor: colors.surface,
     ...shadows.card,
   },
@@ -411,9 +409,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: spacing.sm,
     padding: spacing.lg,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.divider,
     backgroundColor: colors.surface,
+    ...shadows.card,
   },
   cannotSendText: { ...typography.bodySmall, color: colors.textSecondary, flex: 1 },
 });

@@ -343,8 +343,6 @@ const styles = StyleSheet.create({
     paddingTop: spacing.md,
     paddingBottom: spacing.sm,
     gap: spacing.sm,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
   },
   search: { backgroundColor: colors.surface },
   list: { padding: spacing.lg, gap: spacing.md },

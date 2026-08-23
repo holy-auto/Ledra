@@ -204,8 +204,6 @@ const styles = StyleSheet.create({
   stageBox: {
     padding: spacing.md,
     backgroundColor: colors.surface,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
   },
   stageLabel: {
     ...typography.label,
@@ -243,8 +241,7 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     padding: spacing.md,
     backgroundColor: colors.surface,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
+    ...shadows.card,
   },
   actionButton: { flex: 1 },
 });

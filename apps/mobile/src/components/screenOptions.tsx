@@ -50,6 +50,9 @@ export const tabStackScreenOptions: ScreenOptions = {
   headerStyle: { backgroundColor: colors.surface },
   headerTintColor: colors.textPrimary,
   headerTitleStyle: { fontSize: 18, fontWeight: "700" },
+  // ヘッダー下の区切り線を出さない。背景が白で統一されているので、
+  // 線を引くと画面が横に切られて見える（native-stack は既定で細い線を描く）
+  headerShadowVisible: false,
 };
 
 /**
