@@ -31,9 +31,15 @@ export default function SelectStoreScreen() {
 
       // 取得条件は lib/auth.ts の fetchActiveStores に集約している。
       // コールドスタート (useAuthInit) とログイン (login.tsx) は、遷移先を
-      // 決める前に同じ判定を済ませている。よって店舗が1つのユーザーは
-      // この画面に来ない。ここに来るのは「複数店舗」「0店舗」
-      // 「設定からの店舗切替」「新規登録直後（必ず0店舗）」。
+      // 決める前に同じ判定 (resolveDefaultStore) を済ませている。よって
+      // 通常は「複数店舗」「0店舗」「設定からの店舗切替」「新規登録直後
+      // （必ず0店舗）」だけがここに来る。
+      //
+      // ただし resolveDefaultStore は取得失敗を握りつぶして null を返すので、
+      // 通信が切れていた1店舗のユーザーもここに来る。下の
+      // data.length === 1 の自動選択は「もう通らない分岐」ではない。
+      // 消すと、再試行で復帰した1店舗ユーザーが毎回カード1枚の画面を
+      // 手でタップすることになる。
       let data: ActiveStore[];
       try {
         data = await fetchActiveStores(user.tenantId);
