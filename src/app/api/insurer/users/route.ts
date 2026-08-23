@@ -9,7 +9,7 @@ import {
   apiNotFound,
 } from "@/lib/api/response";
 import { insurerUserInviteSchema, insurerUserUpdateSchema, insurerUserDeleteSchema } from "@/lib/validations/insurer";
-import { insurerMaxUsers } from "@/types/insurer";
+import { INSURER_PLAN_FEATURES } from "@/types/insurer";
 
 export const runtime = "nodejs";
 
@@ -60,7 +60,8 @@ export async function GET() {
 
     return apiJson({
       users,
-      max_users: insurerMaxUsers(caller.planTier),
+      // 上限は INSURER_PLAN_FEATURES が持つ（CSV 取り込み側と同じ値を使う）
+      max_users: INSURER_PLAN_FEATURES[caller.planTier]?.max_users ?? 3,
     });
   } catch (e) {
     return apiInternalError(e, "insurer users list");
@@ -89,7 +90,7 @@ export async function POST(req: Request) {
 
     // insurers に max_users 列は無い。上限はプランから決める
 
-    const maxUsers = insurerMaxUsers(caller.planTier);
+    const maxUsers = INSURER_PLAN_FEATURES[caller.planTier]?.max_users ?? 3;
 
     const { count: currentCount } = await admin
       .from("insurer_users")

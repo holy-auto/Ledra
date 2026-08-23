@@ -140,7 +140,7 @@ export async function markCodeUsed(id: string) {
  * no matched cert has a customer_id, returns null — the caller should
  * fall back to the legacy phone_hash + email scope.
  */
-async function resolveUniqueCustomerId(tenantId: string, phoneHash: string): Promise<string | null> {
+async function resolveUniqueCustomerId(tenantId: string, phoneHash: string, email: string): Promise<string | null> {
   const db = admin();
   const query = db
     .from("certificates")
@@ -153,13 +153,32 @@ async function resolveUniqueCustomerId(tenantId: string, phoneHash: string): Pro
   const { data } = await query;
   if (!data || data.length === 0) return null;
 
-  // certificates に customer_email 列は無いため、メールでの絞り込みはできない。
-  // 以前は存在しない列を SELECT していてクエリごと失敗し、この関数は常に null を
-  // 返していた（＝毎回 phone_hash + email のフォールバック経路に落ちていた）。
-  // 電話番号ハッシュで一意に定まるときだけ customer_id を確定させる。
   const uniqueIds = new Set(data.map((r) => r.customer_id as string).filter(Boolean));
   if (uniqueIds.size !== 1) return null;
-  return [...uniqueIds][0];
+  const candidateId = [...uniqueIds][0];
+
+  // **ここでメールを突き合わせるのが要**。
+  // ログインコードは「入力されたメール宛」に送られ、電話下4桁が一致する顧客が
+  // テナントに1人いれば発行される。ここで確定した customer_id は、その顧客の
+  // 全証明書（別の電話番号のものを含む）へ範囲を広げるため、メールの一致を
+  // 確かめずに bake すると、下4桁を知っているだけの相手が他人の履歴を開ける。
+  //
+  // 以前は certificates.customer_email を見ていたが**その列は存在せず**、
+  // クエリごと失敗して常に null を返していた（＝この経路が死んでいたので
+  // 問題が表面化していなかった）。実在する customers.email で照合する。
+  const { data: customer } = await db
+    .from("customers")
+    .select("email")
+    .eq("id", candidateId)
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+
+  const customerEmail = customer?.email ? normalizeEmail(customer.email as string) : null;
+  // メール未登録の顧客は突き合わせようがないので bake しない
+  // （電話ハッシュだけのフォールバック経路で扱う）
+  if (!customerEmail || customerEmail !== normalizeEmail(email)) return null;
+
+  return candidateId;
 }
 
 export async function createSession(tenantId: string, email: string, phoneHash: string) {
@@ -169,7 +188,7 @@ export async function createSession(tenantId: string, email: string, phoneHash: 
 
   // Bake the resolved customer_id when unambiguous. Null is acceptable;
   // callers will fall back to phone_hash + email scoping.
-  const customerId = await resolveUniqueCustomerId(tenantId, phoneHash);
+  const customerId = await resolveUniqueCustomerId(tenantId, phoneHash, email);
 
   // phone_last4 (平文) はセッションに保存しない。証明書検索はハッシュ一本化済み。
   const { error } = await admin()
@@ -257,7 +276,7 @@ export async function listCertificatesForCustomer(
   /** Phase 2: セッションに bake された customer_id。あれば最優先で scope */
   customerId?: string | null,
 ) {
-  const selectCols = "public_id, customer_name, customer_email, vehicle_info_json, created_at, status";
+  const selectCols = "public_id, customer_name, vehicle_info_json, created_at, status";
   const db = admin();
 
   let query = db
@@ -284,14 +303,10 @@ export async function listCertificatesForCustomer(
   const { data } = await query;
   if (!data) return [];
 
-  // email filter — extra defense in the legacy path only.
-  if (email) {
-    const normalized = normalizeEmail(email);
-    return data.filter((c) => {
-      const certEmail = c.customer_email ? normalizeEmail(c.customer_email) : null;
-      return certEmail === null || certEmail === normalized;
-    });
-  }
+  // certificates に customer_email 列は無いので、この経路でメールによる
+  // 追加の絞り込みはできない（以前のフィルタは列が無く常に素通りしていた上、
+  // その列を SELECT していたためクエリごと 400 になっていた）。
+  // メールの突き合わせはログイン時（resolveUniqueCustomerId）で行う。
   return data;
 }
 

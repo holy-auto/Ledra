@@ -3,6 +3,7 @@ import { resolveInsurerCaller } from "@/lib/api/insurerAuth";
 import { apiInternalError, apiJson, apiUnauthorized, apiValidationError, apiForbidden } from "@/lib/api/response";
 import { createInsurerScopedAdmin } from "@/lib/supabase/admin";
 import { insurerAccountUpdateSchema } from "@/lib/validations/insurer";
+import { INSURER_PLAN_FEATURES } from "@/types/insurer";
 
 export const runtime = "nodejs";
 
@@ -25,7 +26,11 @@ export async function GET(_req: NextRequest) {
     .eq("insurer_id", caller.insurerId)
     .eq("is_active", true);
 
-  return apiJson({ insurer, user_count: count ?? 0 });
+  // insurers に max_users 列は無い。上限はプランから決まるので API 側で付ける
+  return apiJson({
+    insurer: { ...insurer, max_users: INSURER_PLAN_FEATURES[caller.planTier]?.max_users ?? 3 },
+    user_count: count ?? 0,
+  });
 }
 
 export async function PATCH(req: NextRequest) {
@@ -58,5 +63,7 @@ export async function PATCH(req: NextRequest) {
 
   if (error) return apiInternalError(error, "insurer.account");
 
-  return apiJson({ insurer: data });
+  return apiJson({
+    insurer: { ...data, max_users: INSURER_PLAN_FEATURES[caller.planTier]?.max_users ?? 3 },
+  });
 }

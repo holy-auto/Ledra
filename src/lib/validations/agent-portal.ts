@@ -82,7 +82,13 @@ export const agentSettingsUpdateSchema = z
     contact_email: z.string().trim().email("メールアドレスの形式が不正です。").max(254).optional(),
     contact_phone: OPTIONAL_TRIMMED(50),
     company_name: OPTIONAL_TRIMMED(200),
+    // 画面は `address` を送る。`company_address` は旧名として残す（どちらも agents.address へ）
+    address: OPTIONAL_TRIMMED(500),
     company_address: OPTIONAL_TRIMMED(500),
+    // agents に保存先の列が無い項目。宣言しておかないと zod が黙って落とすため、
+    // 受け取ったうえで「保存できない」と返す（toAgentPatch 側で判定）
+    postal_code: OPTIONAL_TRIMMED(20),
+    email_notifications: z.boolean().optional(),
     website_url: z.string().trim().url("URL の形式が不正です。").max(2000).optional(),
     logo_url: z.string().trim().url("URL の形式が不正です。").max(2000).optional(),
     commission_type: z.enum(COMMISSION_TYPES).optional(),

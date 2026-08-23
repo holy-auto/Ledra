@@ -27,8 +27,11 @@ const cols = new Map(Object.entries(schema).map(([t, c]) => [t, new Set(c)]));
 // 走査対象と、そこにあるはずのクエリ数の下限。0 件は必ず異常で、
 // 大きく減ったら正規表現が実装の書き方に追いつけていない
 const TARGETS = [
-  { dir: "src", minSelects: 1800, minMutations: 600 },
+  { dir: "src", minSelects: 2000, minMutations: 800 },
   { dir: "apps/mobile/src", minSelects: 55, minMutations: 5 },
+  // 運用スクリプトも実 DB を触る。役目を終えた平文シークレットのバックフィルが
+  // 削除済み列を参照したまま残っていたので、ここも対象に入れる
+  { dir: "scripts", minSelects: 0, minMutations: 0 },
 ];
 
 function walk(dir, out = []) {
@@ -42,6 +45,18 @@ function walk(dir, out = []) {
 
 const issues = [];
 const add = (where, what) => issues.push(`  ${where}  ${what}`);
+
+/**
+ * 列やペイロードを `.map()` などで組み立てていて**中身を読めなかった**クエリ。
+ * これを黙って飛ばしていたせいで、壊れたクエリが4箇所そのまま通っていた。
+ * かといって全部落とすと、正当な書き方（配列を map で作る insert）が止まる。
+ * **件数を記録して、増えたら落とす。**減らすには対象を const に括り出すか
+ * 文字列で書く。
+ * ponytail: 上限。生成型 (db:typegen) でクエリを型付けすれば、この枠は要らなくなる。
+ */
+const unresolved = [];
+const UNRESOLVED_BASELINE = 54;
+const addUnresolved = (where, what) => unresolved.push(`  ${where}  ${what}`);
 
 /** select 文字列を走査する。埋め込み `alias:table ( ... )` は再帰的に見る */
 function checkSelect(sel, table, where) {
@@ -170,7 +185,14 @@ function checkMutation(body, table, where) {
 // 取り違え、無関係な表の列として報告してしまう（実際に3件そうなった）
 const SELECT =
   /\.from\(\s*["'`](\w+)["'`]\s*\)((?:(?!\.from\()[\s\S]){0,500}?)\.select\(\s*(?:\/\/[^\n]*\n\s*|\/\*[\s\S]*?\*\/\s*)*(["'`])([\s\S]*?)\3/g;
+// 列を**変数**で渡す形（.select(selectCols)）。値を解決できないと素通りするので
+// 別に拾って、解決できなければ「読めない」として落とす。
+// これを見ていなかったせいで、実際に4箇所の壊れたクエリが検査を通っていた
+const SELECT_VAR =
+  /\.from\(\s*["'`](\w+)["'`]\s*\)((?:(?!\.from\()[\s\S]){0,500}?)\.select\(\s*([A-Za-z_$][\w$]*)\s*[,)]/g;
 const MUTATE = /\.from\(\s*["'`](\w+)["'`]\s*\)\s*\.(insert|update|upsert)\(\s*\{/g;
+// 書き込みのペイロードを**変数**で渡す形（.insert(certRow)）。同上
+const MUTATE_VAR = /\.from\(\s*["'`](\w+)["'`]\s*\)\s*\.(insert|update|upsert)\(\s*([A-Za-z_$][\w$]*)\s*[,)]/g;
 
 /**
  * ブロックコメントの範囲。JSDoc の @example に書かれた見本のクエリを
@@ -218,7 +240,8 @@ function balanced(src, openIdx) {
  */
 function collectStringConsts(files) {
   const seen = new Map();
-  const re = /(?:export\s+)?const\s+([A-Za-z_$][\w$]*)\s*=\s*(["'])((?:[^\\]|\\.)*?)\2\s*;/g;
+  // バッククォートも見る（列リストはテンプレートリテラルで書かれていることが多い）
+  const re = /(?:export\s+)?const\s+([A-Za-z_$][\w$]*)\s*=\s*(["'`])((?:[^\\]|\\.)*?)\2\s*;/g;
   for (const f of files) {
     for (const m of readFileSync(f, "utf8").matchAll(re)) {
       const [name, , , value] = [m[1], m[2], null, m[3]];
@@ -228,6 +251,31 @@ function collectStringConsts(files) {
     }
   }
   return seen;
+}
+
+/**
+ * `const NAME = { ... }` の中身（バランスの取れた括弧まで）を位置つきで集める。
+ * **同じ名前が同じファイルに複数ある**（`payload` が2つ、など）ので、
+ * 名前だけで引くと別の定義を掴む。使用箇所より前で最も近い定義を選ぶ
+ */
+function collectObjectConsts(src) {
+  const out = new Map();
+  const re = /(?:export\s+)?const\s+([A-Za-z_$][\w$]*)(?::[^=]*)?\s*=\s*\{/g;
+  for (const m of src.matchAll(re)) {
+    const open = src.indexOf("{", m.index + m[0].length - 1);
+    if (!out.has(m[1])) out.set(m[1], []);
+    out.get(m[1]).push({ at: m.index, body: balanced(src, open) });
+  }
+  return out;
+}
+
+/** 使用位置より前にある最も近い定義を返す */
+function nearestObject(objects, name, usedAt) {
+  const defs = objects.get(name);
+  if (!defs) return undefined;
+  let best;
+  for (const d of defs) if (d.at < usedAt && (!best || d.at > best.at)) best = d;
+  return best?.body;
 }
 
 const ALL_FILES = TARGETS.flatMap(({ dir }) => walk(join(repoRoot, dir)));
@@ -255,6 +303,7 @@ for (const { dir, minSelects, minMutations } of TARGETS) {
     const txt = readFileSync(file, "utf8");
     const comments = blockCommentRanges(txt);
     const localConsts = collectStringConsts([file]);
+    const localObjects = collectObjectConsts(txt);
     const inComment = (i) => comments.some(([a, b]) => i >= a && i < b);
     const rel = (i) => `${relative(repoRoot, file)}:${txt.slice(0, i).split("\n").length}`;
     for (const m of txt.matchAll(SELECT)) {
@@ -266,6 +315,27 @@ for (const { dir, minSelects, minMutations } of TARGETS) {
       if (inComment(m.index) || isOptedOut(txt, m.index)) continue;
       mutations++;
       checkMutation(balanced(txt, txt.indexOf("{", m.index + m[0].length - 1)), m[1], rel(m.index));
+    }
+    // 列・ペイロードを変数で渡す形。解決できたら中身を見る。できなければ報告する
+    for (const m of txt.matchAll(SELECT_VAR)) {
+      if (inComment(m.index) || isOptedOut(txt, m.index)) continue;
+      selects++;
+      const v = localConsts.get(m[3]) ?? STRING_CONSTS.get(m[3]);
+      if (typeof v !== "string") {
+        addUnresolved(rel(m.index), `select の列を解決できない: ${m[3]}`);
+        continue;
+      }
+      checkSelect(expandConsts(v, localConsts).replace(/\s+/g, " "), m[1], rel(m.index));
+    }
+    for (const m of txt.matchAll(MUTATE_VAR)) {
+      if (inComment(m.index) || isOptedOut(txt, m.index)) continue;
+      mutations++;
+      const body = nearestObject(localObjects, m[3], m.index);
+      if (body === undefined) {
+        addUnresolved(rel(m.index), `${m[2]} のペイロードを解決できない: ${m[3]}`);
+        continue;
+      }
+      checkMutation(body, m[1], rel(m.index));
     }
   }
   assert.ok(
@@ -287,4 +357,14 @@ assert.deepEqual(
     "\nスキーマを変えた場合は scripts/schema.snapshot.json を更新してください。",
 );
 
-console.log(`schema self-check: OK (${summary.join(" / ")})`);
+assert.ok(
+  unresolved.length <= UNRESOLVED_BASELINE,
+  `中身を読めないクエリが ${unresolved.length} 件に増えました（上限 ${UNRESOLVED_BASELINE}）。\n` +
+    unresolved.join("\n") +
+    "\n列は const に括り出すか文字列で書いてください。意図して増やす場合は " +
+    "scripts/check-schema.mjs の UNRESOLVED_BASELINE を更新し、理由をコミットに書いてください。",
+);
+
+console.log(
+  `schema self-check: OK (${summary.join(" / ")} / 中身を読めないクエリ ${unresolved.length} 件（上限 ${UNRESOLVED_BASELINE}）)`,
+);

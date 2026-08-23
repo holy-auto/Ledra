@@ -63,7 +63,7 @@ export async function GET(req: NextRequest) {
           const allTenantIds = [...new Set(settings.map((s) => s.tenant_id))];
           const { data: tenants } = (await supabase
             .from("tenants")
-            .select("id, name, contact_phone, plan_tier")
+            .select("id, name, phone:contact_phone, plan_tier")
             .in("id", allTenantIds)) as { data: TenantInfo[] | null };
           const tenantMap = new Map((tenants ?? []).map((t) => [t.id, t]));
 

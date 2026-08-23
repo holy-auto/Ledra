@@ -144,7 +144,7 @@ export default async function AdminVehicleDetailPage({
 
   const { data: certs } = await supabase
     .from("certificates")
-    .select("id, public_id, public_id, service_type, created_at, status")
+    .select("id, public_id, service_type, created_at, status")
     .eq("tenant_id", tenantId)
     .eq("vehicle_id", id)
     .order("created_at", { ascending: false });

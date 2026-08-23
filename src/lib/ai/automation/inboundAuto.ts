@@ -552,7 +552,8 @@ async function autoCreateCustomer(
       id,
       tenant_id: input.tenantId,
       name: input.name,
-      source: `ai_auto_create_${input.channel ?? "unknown"}`,
+      // customers の実列は source_system（source は存在しない）
+      source_system: `ai_auto_create_${input.channel ?? "unknown"}`,
     };
     if (input.lineUserId) {
       row.line_user_id = input.lineUserId;

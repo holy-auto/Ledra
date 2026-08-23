@@ -11,10 +11,7 @@
 import type { AgentSettingsUpdate } from "@/lib/validations/agent-portal";
 
 /** agents から読む実在の列 */
-export const AGENT_PROFILE_COLUMNS =
-  "id, name, contact_name, contact_email, contact_phone, address, logo_asset_path, status, " +
-  "commission_type, default_commission_rate, default_commission_fixed, stripe_account_id, " +
-  "stripe_onboarding_done, notes, created_at, updated_at";
+export const AGENT_PROFILE_COLUMNS = `id, name, contact_name, contact_email, contact_phone, address, logo_asset_path, status, commission_type, default_commission_rate, default_commission_fixed, stripe_account_id, stripe_onboarding_done, notes, created_at, updated_at`;
 
 /** 画面の項目名 → agents の実列 */
 const COLUMN_MAP: Partial<Record<keyof AgentSettingsUpdate, string>> = {
@@ -22,6 +19,7 @@ const COLUMN_MAP: Partial<Record<keyof AgentSettingsUpdate, string>> = {
   contact_name: "contact_name",
   contact_email: "contact_email",
   contact_phone: "contact_phone",
+  address: "address",
   company_address: "address",
   logo_url: "logo_asset_path",
   commission_type: "commission_type",
@@ -39,6 +37,8 @@ const COLUMN_MAP: Partial<Record<keyof AgentSettingsUpdate, string>> = {
 const NO_STORAGE: ReadonlyArray<keyof AgentSettingsUpdate> = [
   "company_name",
   "website_url",
+  "postal_code",
+  "email_notifications",
   "bank_name",
   "bank_branch",
   "bank_account_type",
@@ -49,6 +49,8 @@ const NO_STORAGE: ReadonlyArray<keyof AgentSettingsUpdate> = [
 const LABELS: Partial<Record<keyof AgentSettingsUpdate, string>> = {
   company_name: "会社名",
   website_url: "ウェブサイト",
+  postal_code: "郵便番号",
+  email_notifications: "メール通知",
   bank_name: "銀行名",
   bank_branch: "支店名",
   bank_account_type: "口座種別",
@@ -65,6 +67,10 @@ export function toAgentPatch(input: AgentSettingsUpdate): {
   for (const [key, value] of Object.entries(input) as [keyof AgentSettingsUpdate, unknown][]) {
     if (value === undefined) continue;
     if (NO_STORAGE.includes(key)) {
+      // 画面は未入力の項目も毎回送ってくる。空のまま送られたものは
+      // 失うものが無いので黙って落として構わない。**中身がある時だけ**
+      // 保存できないと返す（そうしないと保存操作そのものが通らなくなる）
+      if (value === "" || value === null) continue;
       unsupported.push(LABELS[key] ?? key);
       continue;
     }
