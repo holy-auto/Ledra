@@ -1,4 +1,5 @@
 import { supabase } from "./supabase";
+import type { StoreOption } from "./storeSelection";
 
 export type AppRole = "super_admin" | "owner" | "admin" | "staff" | "viewer";
 
@@ -61,6 +62,33 @@ export async function fetchUserProfile(): Promise<UserProfile | null> {
     role: membership.role as AppRole,
     storeIds: [],
   };
+}
+
+/** 店舗一覧の1件。select-store の表示に address が要るので StoreOption を広げている。 */
+export interface ActiveStore extends StoreOption {
+  address: string | null;
+}
+
+/**
+ * テナント配下の有効な店舗を取得する。
+ *
+ * 起動処理 (useAuthInit) と店舗選択画面 (select-store) の両方が使う。
+ * 絞り込み条件（is_active・テナント境界・並び順）が2箇所に散ると
+ * 片方だけ直して食い違うので、ここ1箇所に集約している。
+ */
+export async function fetchActiveStores(
+  tenantId: string,
+): Promise<ActiveStore[]> {
+  const { data, error } = await supabase
+    .from("stores")
+    .select("id, name, address, is_default")
+    .eq("tenant_id", tenantId)
+    .eq("is_active", true)
+    .order("is_default", { ascending: false })
+    .order("sort_order");
+
+  if (error) throw error;
+  return data ?? [];
 }
 
 /**

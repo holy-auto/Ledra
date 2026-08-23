@@ -8,7 +8,7 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "typecheck": "tsc --noEmit",
-    "test": "node src/lib/reservationSteps.check.ts && node src/lib/introTiming.check.ts"
+    "test": "node src/lib/reservationSteps.check.ts && node src/lib/introTiming.check.ts && node src/lib/storeSelection.check.ts"
   },
   "dependencies": {
     "@expo/metro-runtime": "~55.0.10",

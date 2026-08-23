@@ -13,6 +13,36 @@
 - 対象: どの画面・API・業種向けか
 ```
 
+## 2026-08-23 モバイルの起動直後に毎回入っていた2度目のちらつきを解消（branch claude/mobile-app-opening-animation-s2a6m3）
+
+- 内容: ログイン済みユーザーのコールドスタートで毎回発生していた画面の往復
+  （`/(tabs)` → `/(auth)/select-store` → 店舗フェッチ → `/(tabs)`）を消した。
+- 対象: モバイルアプリのコールドスタート、店舗が1つのテナント（大多数）。
+- 原因: `selectedStore` は認証の三点セット（セッション／ユーザー／店舗）のうち
+  **唯一どこにも保存されず、起動時に誰も復元しない**値だった。そのため
+  `(tabs)/_layout.tsx:10` が毎回 `selectedStore === null` を見て select-store へ飛ばし、
+  そこで `stores` をネットワーク取得（react-query 不使用・キャッシュ無し）していた。
+  **ちらつきの実体はこのフェッチ時間**で、先に入れたオープニング演出は `isReady` までしか
+  覆わないため、演出が消えた直後に露出していた。
+- 対応: 店舗の解決を `useAuthInit` の中（＝演出が覆っている区間）に前倒しした。
+  - `src/lib/storeSelection.ts`（新規・純粋関数）に `pickDefaultStore` を置き、
+    **店舗が1つのときに限り**自動選択する。2つ以上のとき `is_default` を自動選択しないのは意図的で、
+    勝手に選ぶと別店舗で作業しているスタッフが気づかないまま誤った店舗に記録を作る。
+  - `src/lib/auth.ts` に `fetchActiveStores(tenantId)` を追加し、select-store のインラインクエリを
+    そこへ集約。絞り込み条件（`is_active`・テナント境界・並び順）が2箇所に散って
+    片方だけ直る事故を防ぐ。
+  - 店舗クエリが失敗しても起動は止めない。`null` のままなら select-store に流れるだけで、
+    挙動は変更前と同じ。原因が追えるよう `console.warn` は残す。
+  - `setSelectedStore` を `setUser` より**先**に呼ぶ。`setUser` が `isAuthenticated` を立てるので、
+    逆順だと「認証済みだが店舗なし」の状態が一瞬でも観測され得る。
+- ネットワーク往復の**総数は変わらない**。今も select-store が同じクエリを1回していたので、
+  見える位置が「演出の後」から「演出の中」に移るだけ。
+- 検証: `npm run typecheck` / `npm test`（`storeSelection.check.ts` を追加）。
+  **変異テストで3種のバグ（2件以上でも `is_default` を自動選択／`is_default` を戻り値に混入／
+  0件のとき空の店舗をでっち上げ）を検出できることを確認済み**。
+- 未実施: 実機での確認。ログイン直後のちらつき（`login.tsx:44` が必ず select-store へ遷移する）は
+  ボタン操作の結果の画面遷移なので今回の範囲外。
+
 ## 2026-08-23 モバイルアプリのコールドスタートにロゴスティングを再生、起動アセットをExpoデフォルトから差し替え（branch claude/mobile-app-opening-animation-s2a6m3）
 
 - 内容: `apps/mobile` の起動時オープニング演出を実装した。あわせて、これまで **Expo のデフォルト素材のまま**

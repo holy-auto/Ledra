@@ -3,23 +3,16 @@ import { View, StyleSheet, FlatList } from "react-native";
 import { Text, Card, Button, ActivityIndicator } from "react-native-paper";
 import { router } from "expo-router";
 
-import { supabase } from "@/lib/supabase";
+import { fetchActiveStores, type ActiveStore } from "@/lib/auth";
 import { useAuthStore } from "@/stores/authStore";
 
-interface Store {
-  id: string;
-  name: string;
-  address: string | null;
-  is_default: boolean;
-}
-
 export default function SelectStoreScreen() {
-  const [stores, setStores] = useState<Store[]>([]);
+  const [stores, setStores] = useState<ActiveStore[]>([]);
   const [loading, setLoading] = useState(true);
   const { user, setSelectedStore } = useAuthStore();
 
   const handleSelect = useCallback(
-    (store: Store) => {
+    (store: ActiveStore) => {
       setSelectedStore({ id: store.id, name: store.name });
       router.replace("/(tabs)");
     },
@@ -30,27 +23,22 @@ export default function SelectStoreScreen() {
     async function loadStores() {
       if (!user?.tenantId) return;
 
-      const { data } = await supabase
-        .from("stores")
-        .select("id, name, address, is_default")
-        .eq("tenant_id", user.tenantId)
-        .eq("is_active", true)
-        .order("is_default", { ascending: false })
-        .order("sort_order");
+      // 取得条件は lib/auth.ts の fetchActiveStores に集約している。
+      // 通常のコールドスタートでは useAuthInit が起動処理の中で同じ判定を
+      // 済ませているため、店舗が1つのユーザーはこの画面に来ない。
+      // ここに来るのは「複数店舗」「0店舗」「設定からの店舗切替」「ログイン直後」。
+      const data = await fetchActiveStores(user.tenantId).catch(() => []);
 
-      if (data) {
-        setStores(data);
+      setStores(data);
 
-        // 店舗が1つだけならスキップ
-        if (data.length === 1) {
-          handleSelect(data[0]);
-          return;
-        }
-
-        // デフォルト店舗があれば自動選択オプション
-        // （ここではユーザーに選ばせる）
+      // 店舗が1つだけならスキップ
+      if (data.length === 1) {
+        handleSelect(data[0]);
+        return;
       }
 
+      // デフォルト店舗があれば自動選択オプション
+      // （ここではユーザーに選ばせる）
       setLoading(false);
     }
 

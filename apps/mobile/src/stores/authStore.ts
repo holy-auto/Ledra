@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import type { AppRole, UserProfile } from "@/lib/auth";
 
-interface StoreInfo {
+export interface StoreInfo {
   id: string;
   name: string;
 }
