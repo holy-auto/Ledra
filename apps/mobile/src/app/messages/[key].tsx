@@ -8,22 +8,44 @@ import {
   KeyboardAvoidingView,
   Platform,
   Image,
+  Alert,
 } from "react-native";
 import { Text, Icon, Snackbar } from "react-native-paper";
+import * as ImagePicker from "expo-image-picker";
 import { Stack, useLocalSearchParams } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import dayjs from "dayjs";
 
-import { mobileApi } from "@/lib/api";
+import { mobileApi, mobileMultipart } from "@/lib/api";
 import { EmptyState } from "@/components/EmptyState";
 import { colors, spacing, radius, typography, sizing, shadows } from "@/constants/tokens";
 
 /**
- * 1 スレッドの会話。テキストの返信だけ扱う。
+ * 1 スレッドの会話。テキストと画像を返信できる。
  *
- * ponytail: 画像の送信は管理画面だけに残している。現場で必要になったら
- * mobileMultipart + サーバ側の multipart 分岐を足す（サーバは対応済み）。
+ * 画像は LINE の仕様で JPEG / PNG・10MB まで。iPhone のライブラリは HEIC を返すので
+ * preferredAssetRepresentationMode: "compatible" で JPEG へ変換させる。
+ * それでも通らない形式は、無駄なアップロードをせずここで止める（サーバ側も同じ検証をする）。
  */
+
+/** LINE の受け付ける画像。sendImage.ts と同じ値を持つ */
+const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png"];
+const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+
+interface PendingImage {
+  uri: string;
+  name: string;
+  type: string;
+}
+
+/** 拡張子から MIME を推測する。ピッカーが mimeType を返さない場合の保険 */
+function guessImageType(uri: string): string {
+  const ext = (uri.split(".").pop()?.split("?")[0] ?? "jpg").toLowerCase();
+  if (ext === "png") return "image/png";
+  if (ext === "heic" || ext === "heif") return "image/heic";
+  if (ext === "webp") return "image/webp";
+  return "image/jpeg";
+}
 
 interface Message {
   id: string;
@@ -54,6 +76,7 @@ export default function MessageThreadScreen() {
   const queryClient = useQueryClient();
   const listRef = useRef<FlatList<Message>>(null);
   const [draft, setDraft] = useState("");
+  const [pendingImage, setPendingImage] = useState<PendingImage | null>(null);
   const [snackbar, setSnackbar] = useState("");
   const markedRef = useRef(false);
 
@@ -100,11 +123,94 @@ export default function MessageThreadScreen() {
     onError: (e) => setSnackbar(e instanceof Error ? e.message : "送信に失敗しました"),
   });
 
+  const sendImageMutation = useMutation({
+    mutationFn: (image: PendingImage) => {
+      const form = new FormData();
+      // React Native の FormData ファイル形式
+      form.append("image", { uri: image.uri, name: image.name, type: image.type } as unknown as Blob);
+      return mobileMultipart<{ delivered: boolean }>(`/messages/${encodedKey}`, form);
+    },
+    onSuccess: (res) => {
+      setPendingImage(null);
+      queryClient.invalidateQueries({ queryKey: ["message-thread", key] });
+      queryClient.invalidateQueries({ queryKey: ["message-threads"] });
+      if (!res.delivered) setSnackbar("送信できませんでした。LINE の設定を確認してください。");
+    },
+    onError: (e) => setSnackbar(e instanceof Error ? e.message : "画像の送信に失敗しました"),
+  });
+
+  const busy = sendMutation.isPending || sendImageMutation.isPending;
+
+  /** ピッカーの結果を検証して控えに置く。送信は本人が押したときだけ */
+  function stagePicked(asset: ImagePicker.ImagePickerAsset) {
+    const type = asset.mimeType ?? guessImageType(asset.uri);
+    if (!ALLOWED_IMAGE_TYPES.includes(type)) {
+      setSnackbar("送れるのは JPEG と PNG だけです（LINE の仕様）。");
+      return;
+    }
+    // fileSize は端末によって取れないことがある。取れたときだけ弾く
+    if (asset.fileSize && asset.fileSize > MAX_IMAGE_BYTES) {
+      setSnackbar("画像は 10MB 以下にしてください。");
+      return;
+    }
+    setPendingImage({
+      uri: asset.uri,
+      name: asset.fileName ?? `photo.${type === "image/png" ? "png" : "jpg"}`,
+      type,
+    });
+  }
+
+  async function pickFromCamera() {
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== "granted") {
+      Alert.alert("権限エラー", "カメラへのアクセスを許可してください");
+      return;
+    }
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ["images"],
+      quality: 0.8,
+      allowsEditing: false,
+    });
+    if (!result.canceled && result.assets?.[0]) stagePicked(result.assets[0]);
+  }
+
+  async function pickFromLibrary() {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== "granted") {
+      Alert.alert("権限エラー", "写真へのアクセスを許可してください");
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ["images"],
+      quality: 0.8,
+      allowsEditing: false,
+      // iOS のライブラリは既定で HEIC を返す。LINE は受け付けないので変換させる
+      preferredAssetRepresentationMode:
+        ImagePicker.UIImagePickerPreferredAssetRepresentationMode.Compatible,
+    });
+    if (!result.canceled && result.assets?.[0]) stagePicked(result.assets[0]);
+  }
+
+  function chooseImageSource() {
+    Alert.alert("画像を送る", "送信する画像を選んでください", [
+      { text: "カメラで撮影", onPress: pickFromCamera },
+      { text: "ライブラリから選ぶ", onPress: pickFromLibrary },
+      { text: "キャンセル", style: "cancel" },
+    ]);
+  }
+
   const onSend = useCallback(() => {
+    if (busy) return;
+    // 画像が控えにあればそちらを先に送る（LINE の画像メッセージに本文は付かない）。
+    // 文章は入力欄に残るので、続けてもう一度押せば送れる
+    if (pendingImage) {
+      sendImageMutation.mutate(pendingImage);
+      return;
+    }
     const body = draft.trim();
-    if (!body || sendMutation.isPending) return;
+    if (!body) return;
     sendMutation.mutate(body);
-  }, [draft, sendMutation]);
+  }, [busy, pendingImage, draft, sendMutation, sendImageMutation]);
 
   const renderItem = ({ item }: { item: Message }) => {
     const mine = item.direction === "outbound";
@@ -172,25 +278,58 @@ export default function MessageThreadScreen() {
       />
 
       {canSend ? (
-        <View style={styles.composer}>
-          <TextInput
-            style={styles.input}
-            value={draft}
-            onChangeText={setDraft}
-            placeholder="メッセージを入力"
-            placeholderTextColor={colors.textTertiary}
-            multiline
-            maxLength={2000}
-          />
-          <Pressable
-            onPress={onSend}
-            disabled={!draft.trim() || sendMutation.isPending}
-            style={[styles.sendButton, (!draft.trim() || sendMutation.isPending) && styles.sendDisabled]}
-            accessibilityRole="button"
-            accessibilityLabel="送信"
-          >
-            <Icon source="send" size={20} color={colors.textOnPrimary} />
-          </Pressable>
+        <View style={styles.composerWrap}>
+          {/* 控えの画像。送る前に取り消せるようにする（相手に届いたら戻せない） */}
+          {pendingImage && (
+            <View style={styles.pendingRow}>
+              <Image source={{ uri: pendingImage.uri }} style={styles.pendingThumb} alt="送信する画像" />
+              <Text style={styles.pendingText} numberOfLines={2}>
+                この画像を送ります
+              </Text>
+              <Pressable
+                onPress={() => setPendingImage(null)}
+                disabled={busy}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel="画像の選択を取り消す"
+              >
+                <Icon source="close-circle" size={22} color={colors.textTertiary} />
+              </Pressable>
+            </View>
+          )}
+
+          <View style={styles.composer}>
+            <Pressable
+              onPress={chooseImageSource}
+              disabled={busy}
+              style={styles.attachButton}
+              accessibilityRole="button"
+              accessibilityLabel="画像を送る"
+            >
+              <Icon source="camera-outline" size={22} color={colors.textSecondary} />
+            </Pressable>
+            <TextInput
+              style={styles.input}
+              value={draft}
+              onChangeText={setDraft}
+              placeholder="メッセージを入力"
+              placeholderTextColor={colors.textTertiary}
+              multiline
+              maxLength={2000}
+            />
+            <Pressable
+              onPress={onSend}
+              disabled={(!draft.trim() && !pendingImage) || busy}
+              style={[
+                styles.sendButton,
+                ((!draft.trim() && !pendingImage) || busy) && styles.sendDisabled,
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel={pendingImage ? "画像を送信" : "送信"}
+            >
+              <Icon source="send" size={20} color={colors.textOnPrimary} />
+            </Pressable>
+          </View>
         </View>
       ) : (
         <View style={styles.cannotSend}>
@@ -244,16 +383,38 @@ const styles = StyleSheet.create({
   metaMine: { color: colors.primaryLight },
   failed: { ...typography.meta, color: colors.danger, fontWeight: "700" },
 
-  composer: {
-    flexDirection: "row",
-    alignItems: "flex-end",
-    gap: spacing.sm,
-    padding: spacing.md,
+  composerWrap: {
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.divider,
     backgroundColor: colors.surface,
     ...shadows.card,
   },
+  composer: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    gap: spacing.sm,
+    padding: spacing.md,
+  },
+  attachButton: {
+    width: sizing.touchTarget,
+    height: sizing.touchTarget,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  pendingRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.md,
+  },
+  pendingThumb: {
+    width: 48,
+    height: 48,
+    borderRadius: radius.sm,
+    backgroundColor: colors.surfaceVariant,
+  },
+  pendingText: { ...typography.bodySmall, color: colors.textSecondary, flex: 1 },
   input: {
     flex: 1,
     minHeight: sizing.touchTarget,

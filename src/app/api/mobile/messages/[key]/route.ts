@@ -8,6 +8,7 @@ import { parseThreadKey } from "@/lib/messages/threadKey";
 import { withAttachmentUrls } from "@/lib/messages/attachments";
 import { fetchThreadMessages, markThreadRead, resolveThread } from "@/lib/messages/threads";
 import { sendCustomerLineText } from "@/lib/line/client";
+import { sendLineImageFromForm } from "@/lib/messages/sendImage";
 import {
   apiOk,
   apiUnauthorized,
@@ -23,8 +24,7 @@ export const dynamic = "force-dynamic";
  * 受信箱の 1 スレッドの取得 / 返信送信 / 既読化（モバイル）。
  *
  * 管理画面版 (/api/admin/messages/[key]) と同じロジックを共有し、
- * 認証だけ Bearer トークンに差し替えたもの。画像送信は管理画面のみ
- * （現場では文字だけ返せれば足りる。必要になったら multipart を足す）。
+ * 認証だけ Bearer トークンに差し替えたもの。テキストと画像の両方を送れる。
  */
 
 const sendSchema = z.object({
@@ -89,6 +89,19 @@ export async function POST(request: NextRequest, ctx: { params: Promise<{ key: s
           ? "メールスレッドには返信を送信できません（受信取り込み専用です）。"
           : "このスレッドには LINE ユーザがまだ紐付いていません。",
       );
+    }
+
+    // multipart は画像送信、JSON はテキスト送信（管理画面と同じ分岐）
+    if ((request.headers.get("content-type") ?? "").includes("multipart/form-data")) {
+      const out = await sendLineImageFromForm({
+        form: await request.formData(),
+        tenantId: caller.tenantId,
+        customerId: resolved.customerId,
+        lineUserId: resolved.lineUserId,
+        sentByUserId: caller.userId,
+      });
+      if (!out.ok) return apiValidationError(out.message);
+      return apiOk({ delivered: out.delivered });
     }
 
     const parsed = sendSchema.safeParse(await request.json().catch(() => ({})));

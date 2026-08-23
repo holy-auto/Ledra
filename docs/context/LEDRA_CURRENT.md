@@ -160,7 +160,10 @@ Sentry · Resend (+ SendGrid fallback) · Anthropic (Opus 4.8 / Sonnet 4.6 / Hai
   `src/lib/messages/threads.ts` と `src/lib/documents/statusEffects.ts` へ抜いて共有した
   （帳票の確定は電帳法の封印・自動送付・見積フロー進行を伴うため、入口を1つにして
   片方だけ抜ける事故を構造的に防ぐ）。読み取りは Supabase 直読み、副作用のある操作だけ
-  `/api/mobile/*` を通す既存の使い分けを踏襲。詳細は DECISION_LOG / RELEASE_LOG 2026-08-23。
+  `/api/mobile/*` を通す既存の使い分けを踏襲。メッセージは画像も送れる
+  （`expo-image-picker` は導入済みなので再ビルド不要。iOS の HEIC は
+  `preferredAssetRepresentationMode: "compatible"` で JPEG に変換させる）。
+  詳細は DECISION_LOG / RELEASE_LOG 2026-08-23。
   詳細は DECISION_LOG / RELEASE_LOG 2026-08-23。
 
 ## 直近の開発フォーカス（git log 直近30件より、2026-07 時点）
