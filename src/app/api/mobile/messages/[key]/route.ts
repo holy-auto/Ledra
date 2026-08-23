@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { z } from "zod";
 import { resolveMobileCaller } from "@/lib/auth/mobileAuth";
 import { requireMinRole } from "@/lib/auth/checkRole";
+import { checkRateLimit } from "@/lib/api/rateLimit";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { parseThreadKey } from "@/lib/messages/threadKey";
 import { withAttachmentUrls } from "@/lib/messages/attachments";
@@ -73,6 +74,11 @@ export async function POST(request: NextRequest, ctx: { params: Promise<{ key: s
     const caller = await resolveMobileCaller(request);
     if (!caller) return apiUnauthorized();
     if (!requireMinRole(caller, "staff")) return apiForbidden();
+
+    // 送信は課金対象の LINE メッセージを出す。ループで顧客に連投されないよう
+    // 書き込み系の既存プリセット（60回/分）で止める
+    const limited = await checkRateLimit(request, "admin_write", caller.userId);
+    if (limited) return limited;
 
     const { admin } = createTenantScopedAdmin(caller.tenantId);
     const resolved = await resolveThread(admin, caller.tenantId, ref);

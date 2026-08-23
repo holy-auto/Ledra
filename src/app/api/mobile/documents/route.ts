@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { z } from "zod";
 import { resolveMobileCaller } from "@/lib/auth/mobileAuth";
 import { requireMinRole } from "@/lib/auth/checkRole";
+import { checkRateLimit } from "@/lib/api/rateLimit";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { nextStatusesFor, type DocType, type DocumentStatus } from "@/types/document";
 import { resolveBaseUrl } from "@/lib/url";
@@ -43,6 +44,12 @@ export async function PUT(request: NextRequest) {
   try {
     const caller = await resolveMobileCaller(request);
     if (!caller) return apiUnauthorized();
+    // 他のモバイル書き込みルートと同じ下限。viewer に確定や入金記帳をさせない
+    if (!requireMinRole(caller, "staff")) return apiForbidden();
+
+    // 書き込み系の既存プリセット（60回/分）を使う。新しい枠は作らない
+    const limited = await checkRateLimit(request, "admin_write", caller.userId);
+    if (limited) return limited;
 
     const parsed = schema.safeParse(await request.json().catch(() => ({})));
     if (!parsed.success) return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
@@ -50,12 +57,14 @@ export async function PUT(request: NextRequest) {
 
     const { admin } = createTenantScopedAdmin(caller.tenantId);
 
-    const { data: existing } = await admin
+    const { data: existing, error: readErr } = await admin
       .from("documents")
       .select("id, doc_type, status")
       .eq("id", id)
       .eq("tenant_id", caller.tenantId)
       .maybeSingle();
+    // 読み取り失敗を 404 にすると、再試行すれば直る状態を「存在しない」と伝えてしまう
+    if (readErr) return apiInternalError(readErr, "mobile documents PUT (read)");
     if (!existing) return apiNotFound("帳票が見つかりません。");
 
     // 外注請求書（金銭データ）は管理ロール限定。管理画面 PUT と同じ理由
@@ -72,7 +81,9 @@ export async function PUT(request: NextRequest) {
       return apiValidationError(`このステータスへは変更できません（${priorStatus} → ${status}）。`);
     }
 
-    const updates: Record<string, unknown> = { status };
+    // documents に更新トリガは無い。管理画面 PUT と同じく明示的に入れないと
+    // 封印済みの帳票なのに更新日が作成時のまま残る
+    const updates: Record<string, unknown> = { status, updated_at: new Date().toISOString() };
     if (status === "paid") {
       updates.payment_date = parsed.data.payment_date ?? new Date().toISOString().slice(0, 10);
     }
@@ -82,13 +93,20 @@ export async function PUT(request: NextRequest) {
       .update(updates)
       .eq("id", id)
       .eq("tenant_id", caller.tenantId)
+      // 読んだ時点のステータスを条件に入れる。連打や再送で 2 回確定が走ると
+      // 封印と自動送付が二重に動く
+      .eq("status", priorStatus)
       // 封印は内容ハッシュを取るので SealableDocument の全項目が要る。
       // 欠けると管理画面で確定した場合と違うハッシュになり、後の照合が通らない。
       .select(
         "id, doc_type, doc_number, status, issued_at, due_date, customer_id, recipient_name, subtotal, tax, total, tax_rate, tax_breakdown, items_json, is_invoice_compliant, payment_date, meta_json, updated_at",
       )
-      .single();
+      .maybeSingle();
     if (error) return apiInternalError(error, "mobile documents PUT");
+    // 0 行 = 読んでから書くまでに別の遷移が入った
+    if (!data) {
+      return apiValidationError("他の操作でステータスが変わりました。画面を更新してやり直してください。");
+    }
 
     if (status === "paid" && data) {
       await recordPaymentOnPaid(admin, {

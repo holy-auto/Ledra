@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { View, StyleSheet, ScrollView, Alert } from "react-native";
+import { View, StyleSheet, ScrollView, Alert, ActivityIndicator } from "react-native";
 import { Text, Icon, Snackbar } from "react-native-paper";
 import { Stack, useLocalSearchParams } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -9,6 +9,7 @@ import { supabase } from "@/lib/supabase";
 import { mobileApi } from "@/lib/api";
 import { useAuthStore } from "@/stores/authStore";
 import { LedraButton, StatusBadge } from "@/components/ui";
+import { EmptyState } from "@/components/EmptyState";
 import {
   DOC_TYPES,
   nextStatusesFor,
@@ -59,7 +60,7 @@ export default function DocumentDetailScreen() {
   const queryClient = useQueryClient();
   const [snackbar, setSnackbar] = useState("");
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ["document", id],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -100,10 +101,27 @@ export default function DocumentDetailScreen() {
     ]);
   }
 
-  if (isLoading || !data) {
+  if (isLoading) {
+    return (
+      <View style={styles.center}>
+        <Stack.Screen options={{ title: "帳票" }} />
+        <ActivityIndicator size="large" color={colors.primary} />
+      </View>
+    );
+  }
+
+  // 取得に失敗した場合に何も出さないと、白い画面のまま止まって原因が分からない
+  if (isError || !data) {
     return (
       <View style={styles.container}>
         <Stack.Screen options={{ title: "帳票" }} />
+        <EmptyState
+          icon="alert-circle-outline"
+          title="帳票を読み込めませんでした"
+          description="通信状況を確認して、もう一度お試しください"
+          actionLabel="再読み込み"
+          onAction={() => refetch()}
+        />
       </View>
     );
   }
@@ -232,6 +250,12 @@ function InfoRow({ label, value }: { label: string; value: string }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
+  center: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.background,
+  },
   content: { padding: spacing.lg, gap: spacing.md, paddingBottom: spacing["4xl"] },
   card: {
     backgroundColor: colors.surface,

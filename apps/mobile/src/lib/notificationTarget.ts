@@ -80,8 +80,8 @@ function translateQuery(mobilePath: string, search: string): string {
   }
 
   // /admin/documents?doc_type=estimate → /documents?type=estimate
-  // Web 側は ?type= を読むが、通知の発行側は ?doc_type= を書いている。
-  // どちらで来ても拾う（受け側のモバイル画面は ?type= を読む）。
+  // 発行側は ?type= に直したが、それ以前に作られた通知は ?doc_type= のまま
+  // DB に残っているので両方拾う。
   if (mobilePath === "/documents") {
     const docType = params.get("doc_type") ?? params.get("type");
     if (docType === "estimate" || docType === "invoice") {

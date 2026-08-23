@@ -63,7 +63,11 @@ export default function MessageThreadScreen() {
     queryKey: ["message-thread", key],
     queryFn: () => mobileApi<ThreadResponse>(`/messages/${encodedKey}`),
     enabled: !!key,
-    refetchInterval: 15_000,
+    // ponytail: 上限。この API は毎回スレッド全体（最大500件×3クエリ）と
+    // 添付の署名付き URL を作り直して返すので、短い間隔だと通信量が嵩む。
+    // 管理画面は 15 秒だが、現場は従量回線なので 30 秒にしている。
+    // 詰めるなら since/カーソルを足して差分だけ返すこと
+    refetchInterval: 30_000,
   });
 
   // 開いた時点で一度だけ既読にする。ポーリングのたびに叩かない

@@ -62,7 +62,7 @@ function relativeTime(iso: string): string {
 export default function MessagesScreen() {
   const { user } = useAuthStore();
 
-  const { data, isLoading, refetch } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ["message-threads", user?.tenantId],
     queryFn: () =>
       mobileApi<{ threads: Thread[]; total_unread: number; truncated: boolean }>("/messages"),
@@ -134,11 +134,23 @@ export default function MessagesScreen() {
           ) : null
         }
         ListEmptyComponent={
-          <EmptyState
-            icon="chat-outline"
-            title="メッセージはまだありません"
-            description="LINE で顧客から届いたメッセージがここに表示されます"
-          />
+          // 取得に失敗したときに「まだありません」と出すと、実際は届いているのに
+          // 無いと読める
+          isError ? (
+            <EmptyState
+              icon="alert-circle-outline"
+              title="メッセージを読み込めませんでした"
+              description="通信状況を確認して、もう一度お試しください"
+              actionLabel="再読み込み"
+              onAction={() => refetch()}
+            />
+          ) : (
+            <EmptyState
+              icon="chat-outline"
+              title="メッセージはまだありません"
+              description="LINE で顧客から届いたメッセージがここに表示されます"
+            />
+          )
         }
       />
     </View>

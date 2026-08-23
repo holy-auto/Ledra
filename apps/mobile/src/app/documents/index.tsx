@@ -53,11 +53,17 @@ export default function DocumentsScreen() {
   const { user } = useAuthStore();
   // 通知からは /documents?type=estimate で飛んでくる
   const { type } = useLocalSearchParams<{ type?: string }>();
-  const [filter, setFilter] = useState<TypeFilter>(
-    type === "invoice" ? "invoice" : type === "all" ? "all" : "estimate",
-  );
+  // 絞り込みはクエリから導出し、手動で切り替えたときだけ上書きする。
+  // useState の初期値だけに頼ると、この画面が開いたままのときに別種別の通知から
+  // 来ても前の絞り込みが残る。上書きは「どのクエリに対する選択か」を持たせて、
+  // クエリが変わったら自動で捨てる（効果を使わずに済む）
+  const fromParam: TypeFilter =
+    type === "invoice" ? "invoice" : type === "all" ? "all" : "estimate";
+  const [override, setOverride] = useState<{ forParam?: string; value: TypeFilter } | null>(null);
+  const filter = override && override.forParam === type ? override.value : fromParam;
+  const setFilter = (value: TypeFilter) => setOverride({ forParam: type, value });
 
-  const { data = [], isLoading, refetch } = useQuery({
+  const { data = [], isLoading, isError, refetch } = useQuery({
     queryKey: ["documents", user?.tenantId, filter],
     queryFn: async () => {
       let q = supabase
@@ -133,11 +139,23 @@ export default function DocumentsScreen() {
         refreshControl={<RefreshControl refreshing={isLoading} onRefresh={onRefresh} />}
         contentContainerStyle={styles.list}
         ListEmptyComponent={
-          <EmptyState
-            icon="file-document-outline"
-            title={filter === "estimate" ? "見積書はまだありません" : "帳票はまだありません"}
-            description="管理画面や AI の見積ドラフトで作成された帳票がここに表示されます"
-          />
+          // 取得に失敗したときに「まだありません」と出すと、実際は有るのに
+          // 無いと読める
+          isError ? (
+            <EmptyState
+              icon="alert-circle-outline"
+              title="帳票を読み込めませんでした"
+              description="通信状況を確認して、もう一度お試しください"
+              actionLabel="再読み込み"
+              onAction={() => refetch()}
+            />
+          ) : (
+            <EmptyState
+              icon="file-document-outline"
+              title={filter === "estimate" ? "見積書はまだありません" : "帳票はまだありません"}
+              description="管理画面や AI の見積ドラフトで作成された帳票がここに表示されます"
+            />
+          )
         }
       />
     </View>
