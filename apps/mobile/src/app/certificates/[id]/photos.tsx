@@ -8,38 +8,17 @@ import {
 } from "react-native-paper";
 import { useLocalSearchParams, Stack } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import * as ImagePicker from "expo-image-picker";
 
 import { supabase } from "@/lib/supabase";
 import { mobileApi, mobileMultipart } from "@/lib/api";
 import { STAGE_OPTIONS, type CertificatePhotoStage } from "@/lib/photoStage";
+import { appendImage, pickImageFromCamera, type PickedImage } from "@/lib/pickImage";
 import { LedraButton, SegmentedControl } from "@/components/ui";
 import { colors, spacing, radius, typography, shadows } from "@/constants/tokens";
-
-/** 撮影してまだアップロードしていないローカル写真。端末ギャラリーには保存しない一時URI。 */
-interface StagedPhoto {
-  uri: string;
-  name: string;
-  type: string;
-}
 
 interface NonceResponse {
   capture_nonce: string | null;
   public_id: string | null;
-}
-
-/** uri 拡張子から multipart 用の MIME を推定（最終判定はサーバの magic bytes）。 */
-function guessType(uri: string): { ext: string; mime: string } {
-  const ext = (uri.split(".").pop()?.split("?")[0] ?? "jpg").toLowerCase();
-  const mime =
-    ext === "png"
-      ? "image/png"
-      : ext === "webp"
-        ? "image/webp"
-        : ext === "heic" || ext === "heif"
-          ? "image/heic"
-          : "image/jpeg";
-  return { ext, mime };
 }
 
 const STAGE_SEGMENTS = STAGE_OPTIONS.map((o) => ({ value: o.value, label: o.label }));
@@ -49,7 +28,7 @@ export default function CertificatePhotosScreen() {
   const queryClient = useQueryClient();
 
   const [stage, setStage] = useState<Exclude<CertificatePhotoStage, "unspecified">>("in_progress");
-  const [staged, setStaged] = useState<StagedPhoto[]>([]);
+  const [staged, setStaged] = useState<PickedImage[]>([]);
   const [uploading, setUploading] = useState(false);
   const [snackbar, setSnackbar] = useState("");
 
@@ -75,24 +54,12 @@ export default function CertificatePhotosScreen() {
 
   async function takePhoto() {
     // カメラ限定（ライブラリ選択は不可）。その場で撮った新鮮な写真だけを受け付ける。
-    const { status } = await ImagePicker.requestCameraPermissionsAsync();
-    if (status !== "granted") {
-      Alert.alert("権限エラー", "カメラへのアクセスを許可してください");
+    const result = await pickImageFromCamera();
+    if (!result.ok) {
+      if (!result.cancelled) Alert.alert("撮影できません", result.message);
       return;
     }
-    const result = await ImagePicker.launchCameraAsync({
-      mediaTypes: ["images"],
-      quality: 0.8,
-      allowsEditing: false,
-    });
-    if (result.canceled || !result.assets?.[0]) return;
-
-    const a = result.assets[0];
-    const { ext, mime } = guessType(a.uri);
-    setStaged((prev) => [
-      ...prev,
-      { uri: a.uri, name: a.fileName ?? `capture-${prev.length + 1}.${ext}`, type: a.mimeType ?? mime },
-    ]);
+    setStaged((prev) => [...prev, result.image]);
   }
 
   function removeStaged(uri: string) {
@@ -116,8 +83,7 @@ export default function CertificatePhotosScreen() {
 
       const form = new FormData();
       for (const p of staged) {
-        // React Native の FormData ファイル形式。
-        form.append("photos", { uri: p.uri, name: p.name, type: p.type } as unknown as Blob);
+        appendImage(form, "photos", p);
       }
       form.append("stage", stage);
       form.append("public_id", publicId);

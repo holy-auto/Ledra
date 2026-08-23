@@ -164,7 +164,6 @@ Sentry · Resend (+ SendGrid fallback) · Anthropic (Opus 4.8 / Sonnet 4.6 / Hai
   （`expo-image-picker` は導入済みなので再ビルド不要。iOS の HEIC は
   `preferredAssetRepresentationMode: "compatible"` で JPEG に変換させる）。
   詳細は DECISION_LOG / RELEASE_LOG 2026-08-23。
-  詳細は DECISION_LOG / RELEASE_LOG 2026-08-23。
 
 ## 直近の開発フォーカス（git log 直近30件より、2026-07 時点）
 
