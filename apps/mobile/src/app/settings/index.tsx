@@ -9,6 +9,13 @@ import { supabase } from "@/lib/supabase";
 import { useAuthStore } from "@/stores/authStore";
 import { mobileApi } from "@/lib/api";
 import { LedraButton } from "@/components/ui";
+import {
+  canUseAppLock,
+  disableAppLock,
+  enableAppLock,
+  isAppLockEnabledSync,
+  unlockApp,
+} from "@/lib/appLock";
 import { colors, spacing, radius, typography, shadows } from "@/constants/tokens";
 
 const ENV = process.env.EXPO_PUBLIC_ENV ?? "development";
@@ -26,6 +33,9 @@ export default function SettingsIndexScreen() {
   const { user, selectedStore, setSelectedStore, reset } = useAuthStore();
   const queryClient = useQueryClient();
   const [deleting, setDeleting] = useState(false);
+  // 同期で読めるので効果は要らない
+  const [lockOn, setLockOn] = useState(isAppLockEnabledSync);
+  const [lockBusy, setLockBusy] = useState(false);
   const [snackbar, setSnackbar] = useState("");
 
   const appVersion =
@@ -40,6 +50,46 @@ export default function SettingsIndexScreen() {
       : String(Constants.expoConfig?.android?.versionCode ?? "—");
 
   const envInfo = ENV_BADGE[ENV] ?? ENV_BADGE.development;
+
+  async function handleToggleLock() {
+    setLockBusy(true);
+    try {
+      if (lockOn) {
+        // 解除にも本人確認を要求する。端末を渡された第三者に切られては意味がない
+        const result = await unlockApp();
+        if (result === "cancelled") {
+          setSnackbar("認証できなかったため変更しませんでした");
+          return;
+        }
+        await disableAppLock();
+        setLockOn(false);
+        setSnackbar("アプリロックを無効にしました");
+        return;
+      }
+
+      if (!canUseAppLock()) {
+        setSnackbar("この端末では生体認証が使えません。端末の設定で登録してください");
+        return;
+      }
+      await enableAppLock();
+      // 保存できただけでは解除できる保証がない。その場で1回通して確かめる
+      const result = await unlockApp();
+      if (result !== "ok") {
+        // 通らなかったものを有効なままにしない（次回起動で開けなくなる）
+        await disableAppLock();
+        setSnackbar("生体認証を確認できなかったため有効にしませんでした");
+        return;
+      }
+      setLockOn(true);
+      setSnackbar("アプリロックを有効にしました");
+    } catch (e) {
+      await disableAppLock().catch(() => {});
+      setLockOn(false);
+      setSnackbar(e instanceof Error ? e.message : "設定に失敗しました");
+    } finally {
+      setLockBusy(false);
+    }
+  }
 
   async function handleSwitchStore() {
     setSelectedStore(null);
@@ -111,6 +161,27 @@ export default function SettingsIndexScreen() {
         <InfoRow label="ロール" value={user?.role ?? "-"} />
         <InfoRow label="テナント" value={user?.tenantName ?? "-"} />
         <InfoRow label="店舗" value={selectedStore?.name ?? "-"} />
+      </View>
+
+      {/* Security */}
+      <View style={styles.card}>
+        <Text style={styles.heading}>セキュリティ</Text>
+        <View style={styles.divider} />
+
+        <Text style={styles.lockDesc}>
+          一度ログインすると次回の起動から素通りになります。有効にすると、起動時と
+          5分以上アプリを離れたあとに Face ID / 指紋での本人確認が入ります。
+        </Text>
+        <LedraButton
+          variant={lockOn ? "danger" : "primary"}
+          icon={lockOn ? "lock-open-variant-outline" : "lock-outline"}
+          onPress={handleToggleLock}
+          loading={lockBusy}
+          disabled={lockBusy}
+          fullWidth
+        >
+          {lockOn ? "アプリロックを無効にする" : "アプリロックを有効にする"}
+        </LedraButton>
       </View>
 
       {/* Actions */}
@@ -254,6 +325,11 @@ const styles = StyleSheet.create({
   heading: {
     ...typography.titleMedium,
     color: colors.textPrimary,
+  },
+  lockDesc: {
+    ...typography.bodySmall,
+    color: colors.textSecondary,
+    marginBottom: spacing.lg,
   },
   divider: {
     height: 1,

@@ -11,6 +11,7 @@ import { queryClient } from "@/lib/queryClient";
 import { useAuthInit } from "@/hooks/useAuthInit";
 import { bindUnauthorizedHandler, mobileApi } from "@/lib/api";
 import { OfflineBanner } from "@/components/OfflineBanner";
+import { AppLockGate } from "@/components/AppLockGate";
 import { initSentry, setSentryUser } from "@/lib/sentry";
 import { useAuthStore } from "@/stores/authStore";
 import { ToastProvider } from "@/components/ToastProvider";
@@ -141,6 +142,9 @@ export default function RootLayout() {
                   options={{ ...stackScreenOptions, headerShown: true }}
                 />
               </Stack>
+
+              {/* 画面ツリーの最後＝最前面。ロック中は全画面を覆う */}
+              <AppLockGate />
             </ToastProvider>
           </PaperProvider>
         </StripeTerminalProvider>

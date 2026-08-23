@@ -80,7 +80,12 @@
         }
       ],
       "expo-router",
-      "expo-secure-store",
+      [
+        "expo-secure-store",
+        {
+          "faceIDPermission": "Ledraのロック解除に Face ID を使用します"
+        }
+      ],
       [
         "expo-camera",
         {

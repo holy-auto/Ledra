@@ -5,12 +5,18 @@ import { router } from "expo-router";
 import { Pressable } from "react-native";
 
 import { LedraButton } from "@/components/ui";
+import {
+  canUseAppLock,
+  disableAppLock,
+  enableAppLock,
+  unlockApp,
+} from "@/lib/appLock";
 import { colors, spacing, radius, typography, sizing } from "@/constants/tokens";
 
 const BENEFITS = [
-  "Touch ID / Face ID で簡単ログイン",
-  "パスワード入力が不要に",
-  "高いセキュリティで保護",
+  "アプリを開くたびに Face ID / 指紋で本人確認",
+  "端末を貸しても顧客情報を見られない",
+  "パスワードの再入力は不要",
 ] as const;
 
 export default function BiometricSetupScreen() {
@@ -45,50 +51,33 @@ export default function BiometricSetupScreen() {
     setError("");
 
     try {
-      // ponytail: lazy-import expo-local-authentication (same pattern as MediaLibrary)
-      // Dynamic import avoids hard crash when the package isn't installed.
-      const moduleName = "expo-local-authentication";
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const LocalAuth: any = await import(/* webpackIgnore: true */ moduleName).catch(
-        () => null
-      );
-
-      if (!LocalAuth) {
-        setError("この環境では利用できません");
-        setLoading(false);
-        return;
-      }
-
-      const compatible = await LocalAuth.hasHardwareAsync();
-      if (!compatible) {
-        setError("この端末は生体認証に対応していません");
-        setLoading(false);
-        return;
-      }
-
-      const enrolled = await LocalAuth.isEnrolledAsync();
-      if (!enrolled) {
+      if (!canUseAppLock()) {
         setError(
-          "生体認証が設定されていません。端末の設定から登録してください。"
+          "この端末では生体認証が使えません。端末の設定で Face ID / 指紋を登録してください。",
         );
-        setLoading(false);
         return;
       }
 
-      const result = await LocalAuth.authenticateAsync({
-        promptMessage: "Ledraの生体認証を有効にする",
-        cancelLabel: "キャンセル",
-        disableDeviceFallback: false,
-      });
+      await enableAppLock();
 
-      if (result.success) {
+      // 保存できただけでは解除できる保証がない。その場で1回通して確かめる
+      const result = await unlockApp();
+      if (result === "ok") {
         setSetupDone(true);
-      } else {
-        setError("認証がキャンセルされました");
+        return;
       }
-    } catch (err: unknown) {
+
+      // 通らなかったものを有効なままにしない（次回起動で開けなくなる）
+      await disableAppLock();
       setError(
-        err instanceof Error ? err.message : "生体認証の設定に失敗しました"
+        result === "cancelled"
+          ? "認証がキャンセルされました"
+          : "生体認証を確認できませんでした",
+      );
+    } catch (err: unknown) {
+      await disableAppLock().catch(() => {});
+      setError(
+        err instanceof Error ? err.message : "生体認証の設定に失敗しました",
       );
     } finally {
       setLoading(false);
@@ -118,7 +107,7 @@ export default function BiometricSetupScreen() {
         {/* Title */}
         <Text style={styles.title}>生体認証の設定</Text>
         <Text style={styles.subtitle}>
-          次回以降のログインをもっと簡単で安全に。
+          一度ログインすると次回から素通りになります。その手前に本人確認を挟みます。
         </Text>
 
         {/* Benefits */}
@@ -172,7 +161,7 @@ export default function BiometricSetupScreen() {
             生体認証を有効にしました
           </Text>
           <Text style={styles.successDetail}>
-            次回から Face ID でログインできます
+            次回の起動から本人確認が入ります
           </Text>
           <View style={styles.successButtonWrap}>
             <LedraButton onPress={handleNext}>次へ</LedraButton>
