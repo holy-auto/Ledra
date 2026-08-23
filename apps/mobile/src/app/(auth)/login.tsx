@@ -9,8 +9,7 @@ import {
 import { Text, TextInput, Button, HelperText } from "react-native-paper";
 import { router } from "expo-router";
 
-import { signIn } from "@/lib/auth";
-import { fetchUserProfile } from "@/lib/auth";
+import { fetchUserProfile, resolveDefaultStore, signIn } from "@/lib/auth";
 import { useAuthStore } from "@/stores/authStore";
 
 export default function LoginScreen() {
@@ -19,7 +18,7 @@ export default function LoginScreen() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const { setUser } = useAuthStore();
+  const { setUser, setSelectedStore } = useAuthStore();
 
   async function handleLogin() {
     if (!email.trim() || !password.trim()) {
@@ -40,8 +39,24 @@ export default function LoginScreen() {
         return;
       }
 
+      // 遷移先を決める前に店舗を確定させる。ここで解決しておかないと
+      // select-store に飛ばされ、そこでの店舗フェッチを待って /(tabs) へ
+      // 跳ね返る＝ログインのたびに画面が2回変わる。
+      // 解決に失敗しても null になるだけで、ログイン自体は成功させる。
+      const store = profile.tenantId
+        ? await resolveDefaultStore(profile.tenantId)
+        : null;
+
+      // 店舗を先に入れる。setUser が isAuthenticated を立てるので、
+      // 逆順だと (tabs)/_layout が「認証済みだが店舗なし」を見て
+      // select-store へ飛ばす。
+      setSelectedStore(store);
       setUser(profile);
-      router.replace("/(auth)/select-store");
+
+      // 行き先は明示的に分ける。常に /(tabs) へ送って (tabs)/_layout の
+      // ゲートに任せると、0店舗・複数店舗のユーザーに1フレーム分の
+      // 余計な画面が挟まる（いま消そうとしているものと同種）。
+      router.replace(store ? "/(tabs)" : "/(auth)/select-store");
     } catch (err: unknown) {
       const message =
         err instanceof Error ? err.message : "ログインに失敗しました";

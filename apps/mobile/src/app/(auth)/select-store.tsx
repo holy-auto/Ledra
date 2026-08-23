@@ -30,9 +30,10 @@ export default function SelectStoreScreen() {
       if (!user?.tenantId) return;
 
       // 取得条件は lib/auth.ts の fetchActiveStores に集約している。
-      // 通常のコールドスタートでは useAuthInit が起動処理の中で同じ判定を
-      // 済ませているため、店舗が1つのユーザーはこの画面に来ない。
-      // ここに来るのは「複数店舗」「0店舗」「設定からの店舗切替」「ログイン直後」。
+      // コールドスタート (useAuthInit) とログイン (login.tsx) は、遷移先を
+      // 決める前に同じ判定を済ませている。よって店舗が1つのユーザーは
+      // この画面に来ない。ここに来るのは「複数店舗」「0店舗」
+      // 「設定からの店舗切替」「新規登録直後（必ず0店舗）」。
       let data: ActiveStore[];
       try {
         data = await fetchActiveStores(user.tenantId);

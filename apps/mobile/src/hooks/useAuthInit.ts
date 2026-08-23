@@ -1,32 +1,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
-import { fetchActiveStores, fetchUserProfile } from "@/lib/auth";
-import { pickDefaultStore } from "@/lib/storeSelection";
-import { useAuthStore, type StoreInfo } from "@/stores/authStore";
-
-/**
- * 店舗が1つだけのテナントなら、その店舗を起動処理の中で確定させる。
- *
- * これをやらないと、コールドスタートのたびに
- * /(tabs) → /(auth)/select-store → 店舗フェッチ → /(tabs) と画面が2回変わる。
- * ちらつきの実体は select-store のフェッチ時間なので、それを起動処理
- * （オープニング演出が覆っている区間）に前倒しするとホップ自体が消える。
- *
- * 失敗しても起動は止めない。null のままなら select-store に流れるだけで、
- * 挙動はこの変更前と同じになる。
- */
-async function resolveDefaultStore(tenantId: string): Promise<StoreInfo | null> {
-  try {
-    return pickDefaultStore(await fetchActiveStores(tenantId));
-  } catch (e) {
-    // 起動を止めないための握りつぶしだが、無言だと原因が追えないので残す
-    console.warn(
-      "resolveDefaultStore failed:",
-      e instanceof Error ? e.message : e,
-    );
-    return null;
-  }
-}
+import { fetchUserProfile, resolveDefaultStore } from "@/lib/auth";
+import { useAuthStore } from "@/stores/authStore";
 
 /**
  * アプリ起動時の認証状態初期化

@@ -1,5 +1,5 @@
 import { supabase } from "./supabase";
-import type { StoreOption } from "./storeSelection";
+import { pickDefaultStore, type StoreOption } from "./storeSelection";
 
 export type AppRole = "super_admin" | "owner" | "admin" | "staff" | "viewer";
 
@@ -89,6 +89,32 @@ export async function fetchActiveStores(
 
   if (error) throw error;
   return data ?? [];
+}
+
+/**
+ * テナントの店舗が1つだけなら、その店舗を確定して返す。それ以外は null。
+ *
+ * 起動処理 (useAuthInit) とログイン (login.tsx) の両方が、画面を出す前に呼ぶ。
+ * これをやらないと /(tabs) → /(auth)/select-store → 店舗フェッチ → /(tabs) と
+ * 画面が2回変わる。ちらつきの実体は select-store のフェッチ時間なので、
+ * 遷移先を決める前に済ませてしまえばホップ自体が消える。
+ *
+ * 失敗しても呼び出し側を止めない。null が返れば select-store に流れるだけで、
+ * 挙動はこの仕組みが無かったときと同じになる。
+ */
+export async function resolveDefaultStore(
+  tenantId: string,
+): Promise<{ id: string; name: string } | null> {
+  try {
+    return pickDefaultStore(await fetchActiveStores(tenantId));
+  } catch (e) {
+    // 呼び出し側を止めないための握りつぶしだが、無言だと原因が追えないので残す
+    console.warn(
+      "resolveDefaultStore failed:",
+      e instanceof Error ? e.message : e,
+    );
+    return null;
+  }
 }
 
 /**
