@@ -15,7 +15,8 @@ export const colors = {
   primaryDark: "#0D47C9",
 
   // Surfaces
-  background: "#F6F7F9",
+  // ベースは白で統一。カードは影（shadows.card）で浮かせて区別する
+  background: "#FFFFFF",
   surface: "#FFFFFF",
   surfaceVariant: "#F1F3F5",
 
@@ -112,10 +113,12 @@ export const sizing = {
 
 // ─── Shadows ─────────────────────────────────────────────────────────
 export const shadows = {
+  // 背景が白（colors.background）になったので、カードを区切るのはこの影だけ。
+  // 0.06 だと白地に白カードが溶けて見えないため 0.10 に上げている
   card: {
     shadowColor: "#0F172A",
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
+    shadowOpacity: 0.1,
     shadowRadius: 8,
     elevation: 2,
   },

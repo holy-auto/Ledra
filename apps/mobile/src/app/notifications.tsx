@@ -9,7 +9,10 @@ import {
 import { Text, Icon } from "react-native-paper";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
+import { router } from "expo-router";
+
 import { supabase } from "@/lib/supabase";
+import { notificationTarget } from "@/lib/notificationTarget";
 import { useAuthStore } from "@/stores/authStore";
 import { SegmentedControl, StatusBadge } from "@/components/ui";
 import { EmptyState } from "@/components/EmptyState";
@@ -28,6 +31,7 @@ interface NotificationItem {
   title: string;
   body: string | null;
   notification_type: string | null;
+  link_path: string | null;
   read_at: string | null;
   created_at: string;
 }
@@ -65,7 +69,7 @@ export default function NotificationsScreen() {
       // user_id IS NULL はテナント全体への通知
       const { data, error } = await supabase
         .from("notifications")
-        .select("id, title, body, notification_type, read_at, created_at")
+        .select("id, title, body, notification_type, link_path, read_at, created_at")
         .or(`user_id.is.null,user_id.eq.${user.id}`)
         .order("created_at", { ascending: false })
         .limit(100);
@@ -125,15 +129,18 @@ export default function NotificationsScreen() {
   const renderItem = ({ item }: { item: NotificationItem }) => {
     const iconCfg = TYPE_ICON[item.notification_type ?? ""] ?? DEFAULT_ICON;
     const unread = isUnread(item);
+    // 対応する画面がある通知だけ「開ける」見た目にする
+    const target = notificationTarget(item.link_path);
 
     return (
       <Pressable
         style={[styles.card, unread && styles.cardUnread]}
         onPress={() => {
           if (unread) markReadMutation.mutate(item.id);
+          if (target) router.push(target as never);
         }}
         accessibilityRole="button"
-        accessibilityLabel={`${item.title} ${unread ? "未読" : ""}`}
+        accessibilityLabel={`${item.title}${unread ? " 未読" : ""}${target ? " 開く" : ""}`}
       >
         <View style={[styles.iconContainer, { backgroundColor: iconCfg.bg }]}>
           <Icon source={iconCfg.icon} size={20} color={iconCfg.color} />
@@ -154,6 +161,9 @@ export default function NotificationsScreen() {
             </Text>
           )}
         </View>
+        {target && (
+          <Icon source="chevron-right" size={18} color={colors.textTertiary} />
+        )}
         {unread && <View style={styles.unreadDot} />}
       </Pressable>
     );

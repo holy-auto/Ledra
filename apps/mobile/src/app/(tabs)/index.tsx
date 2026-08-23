@@ -8,13 +8,14 @@ import {
 } from "react-native";
 import { Text, Icon, IconButton } from "react-native-paper";
 import { router } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import dayjs from "dayjs";
 import "dayjs/locale/ja";
 
-import { useQuery } from "@tanstack/react-query";
 import { useAuthStore } from "@/stores/authStore";
 import { supabase } from "@/lib/supabase";
 import { useTabContentInset } from "@/hooks/useTabContentInset";
+import { useUnreadNotifCount } from "@/hooks/useUnreadNotifCount";
 import { colors, radius, spacing, sizing, shadows } from "@/constants/tokens";
 import {
   ProgressRing,
@@ -105,6 +106,8 @@ const EMPTY_STATS: HomeStats = {
 
 export default function HomeScreen() {
   const tabInset = useTabContentInset();
+  // ヘッダー非表示（画面名の帯を出さない）なので上端は自前で空ける
+  const insets = useSafeAreaInsets();
   const { user, selectedStore } = useAuthStore();
   const [scope, setScope] = useState<Scope>("self");
   const [stats, setStats] = useState<HomeStats>(EMPTY_STATS);
@@ -114,22 +117,7 @@ export default function HomeScreen() {
   // ponytail: recalculated on every render so it stays current across midnight
   const today = dayjs();
 
-  // ponytail: notification badge — notifications テーブルの未読件数を使う
-  const { data: unreadNotifCount = 0 } = useQuery({
-    queryKey: ["notif-unread-count", user?.id],
-    queryFn: async () => {
-      if (!user?.id) return 0;
-      const { count, error } = await supabase
-        .from("notifications")
-        .select("id", { count: "exact", head: true })
-        .or(`user_id.is.null,user_id.eq.${user.id}`)
-        .is("read_at", null);
-      if (error) return 0;
-      return count ?? 0;
-    },
-    enabled: !!user?.id,
-    refetchInterval: 30_000,
-  });
+  const unreadNotifCount = useUnreadNotifCount();
 
   const loadStats = useCallback(async () => {
     if (!user?.tenantId) return;
@@ -358,8 +346,8 @@ export default function HomeScreen() {
         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
       }
     >
-      {/* ── 1. Header: date, greeting, store, search, bell ── */}
-      <View style={styles.header}>
+      {/* ── 1. Header: date, greeting, store, bell ── */}
+      <View style={[styles.header, { paddingTop: insets.top + spacing.sm }]}>
         <View style={styles.headerLeft}>
           <Text style={styles.dateText}>
             {today.format("M月D日（dd）").toUpperCase()}
@@ -372,14 +360,6 @@ export default function HomeScreen() {
           </Text>
         </View>
         <View style={styles.headerRight}>
-          <IconButton
-            icon="magnify"
-            size={sizing.iconMd}
-            iconColor={colors.textPrimary}
-            onPress={() => {}}
-            accessibilityLabel="検索"
-            style={styles.headerBtn}
-          />
           <View>
             <IconButton
               icon="bell-outline"

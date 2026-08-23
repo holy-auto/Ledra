@@ -4,6 +4,7 @@ import { Text, Icon, Snackbar } from "react-native-paper";
 import { router } from "expo-router";
 import { useAuthStore } from "@/stores/authStore";
 import { useTabContentInset } from "@/hooks/useTabContentInset";
+import { TabTopBar } from "@/components/TabTopBar";
 import { colors, radius, spacing, sizing, shadows } from "@/constants/tokens";
 
 /**
@@ -96,10 +97,26 @@ export default function MoreScreen() {
   const tabInset = useTabContentInset();
   const { user, selectedStore } = useAuthStore();
   const [snackbar, setSnackbar] = useState("");
+  const [menuSearch, setMenuSearch] = useState("");
+
+  // 検索語があればラベル一致の項目だけ残し、空になったセクションは出さない
+  const mq = menuSearch.trim().toLowerCase();
+  const visibleSections = mq
+    ? SECTIONS.map((sec) => ({
+        ...sec,
+        items: sec.items.filter((i) => i.label.toLowerCase().includes(mq)),
+      })).filter((sec) => sec.items.length > 0)
+    : SECTIONS;
 
   return (
     <>
-    <ScrollView style={styles.container} contentContainerStyle={[styles.content, { paddingBottom: tabInset }]}>
+    <View style={styles.container}>
+    <TabTopBar
+      search={menuSearch}
+      onSearchChange={setMenuSearch}
+      placeholder="メニューを検索"
+    />
+    <ScrollView contentContainerStyle={[styles.content, { paddingBottom: tabInset }]}>
       {/* Store info card — 店舗切替 */}
       <Pressable
         style={({ pressed }) => [styles.storeCard, pressed && styles.menuRowPressed]}
@@ -120,7 +137,7 @@ export default function MoreScreen() {
       </Pressable>
 
       {/* Menu sections */}
-      {SECTIONS.map((section) => (
+      {visibleSections.map((section) => (
         <View key={section.title} style={styles.section}>
           <Text style={styles.sectionTitle}>{section.title}</Text>
           <View style={styles.sectionCard}>
@@ -158,6 +175,7 @@ export default function MoreScreen() {
 
       <View style={{ height: spacing["4xl"] }} />
     </ScrollView>
+    </View>
     <Snackbar
       visible={!!snackbar}
       onDismiss={() => setSnackbar("")}

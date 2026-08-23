@@ -15,6 +15,7 @@ import { useAuthStore } from "@/stores/authStore";
 import { StatusBadge, SegmentedControl } from "@/components/ui";
 import { EmptyState } from "@/components/EmptyState";
 import { useTabContentInset } from "@/hooks/useTabContentInset";
+import { TabTopBar } from "@/components/TabTopBar";
 import { colors, spacing, radius, sizing, typography, shadows } from "@/constants/tokens";
 
 type CertFilter = "all" | "active" | "draft";
@@ -47,6 +48,7 @@ const FILTER_SEGMENTS: { value: CertFilter; label: string }[] = [
 
 export default function CertificatesScreen() {
   const tabInset = useTabContentInset();
+  const [search, setSearch] = useState("");
   const { user, selectedStore } = useAuthStore();
   const [filter, setFilter] = useState<CertFilter>("all");
 
@@ -83,8 +85,22 @@ export default function CertificatesScreen() {
     refetchInterval: 60_000,
   });
 
-  const filtered =
-    filter === "all" ? certs : certs.filter((c) => c.status === filter);
+  const q = search.trim().toLowerCase();
+  const filtered = certs
+    .filter((c) => filter === "all" || c.status === filter)
+    // 証明書番号・顧客名・車両（ナンバー/メーカー/車種）で横断検索
+    .filter(
+      (c) =>
+        !q ||
+        [
+          c.certificate_no,
+          c.customer_name,
+          c.service_type,
+          c.vehicle?.plate_display,
+          c.vehicle?.maker,
+          c.vehicle?.model,
+        ].some((v) => (v ?? "").toLowerCase().includes(q)),
+    );
 
   const onRefresh = useCallback(async () => {
     try {
@@ -168,6 +184,11 @@ export default function CertificatesScreen() {
 
   return (
     <View style={styles.container}>
+      <TabTopBar
+        search={search}
+        onSearchChange={setSearch}
+        placeholder="証明書番号・顧客名・車両で検索"
+      />
       {/* Filter tabs */}
       <View style={styles.filterContainer}>
         <SegmentedControl

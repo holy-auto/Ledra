@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useState, useMemo } from "react";
 import {
   View,
   StyleSheet,
@@ -14,6 +14,7 @@ import { supabase } from "@/lib/supabase";
 import { useAuthStore } from "@/stores/authStore";
 import { StatusBadge } from "@/components/ui";
 import { useTabContentInset } from "@/hooks/useTabContentInset";
+import { TabTopBar } from "@/components/TabTopBar";
 import { colors, spacing, radius, sizing, typography, shadows } from "@/constants/tokens";
 
 type WorkStatus = "arrived" | "in_progress" | "completed";
@@ -45,6 +46,7 @@ const STATUS_CONFIG: Record<
 
 export default function WorkScreen() {
   const tabInset = useTabContentInset();
+  const [search, setSearch] = useState("");
   const { user, selectedStore } = useAuthStore();
 
   const {
@@ -166,10 +168,34 @@ export default function WorkScreen() {
     );
   };
 
+  // 車両ナンバー・車種・顧客名・メニューで横断検索
+  const q = search.trim().toLowerCase();
+  const filtered = useMemo(
+    () =>
+      !q
+        ? items
+        : items.filter((i) =>
+            [
+              i.vehicle?.plate_display,
+              i.vehicle?.maker,
+              i.vehicle?.model,
+              i.customer?.name,
+              i.assigned_staff?.display_name,
+              ...i.reservation_items.map((r) => r.menu_item?.name),
+            ].some((v) => (v ?? "").toLowerCase().includes(q)),
+          ),
+    [items, q],
+  );
+
   return (
     <View style={styles.container}>
+      <TabTopBar
+        search={search}
+        onSearchChange={setSearch}
+        placeholder="ナンバー・車種・顧客名で検索"
+      />
       <FlatList
-        data={items}
+        data={filtered}
         keyExtractor={(item) => item.id}
         renderItem={renderItem}
         refreshControl={

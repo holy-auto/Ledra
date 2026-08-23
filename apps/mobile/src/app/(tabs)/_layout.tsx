@@ -56,7 +56,8 @@ export default function TabsLayout() {
           <Tabs.Screen
             key={t.name}
             name={t.name}
-            options={{ title: t.title, headerShown: t.name === "index" }}
+            // 画面名の帯は出さない。各画面が上部を検索窓（TabTopBar）や独自ヘッダーに使う
+            options={{ title: t.title, headerShown: false }}
           />
         ))}
       </Tabs>

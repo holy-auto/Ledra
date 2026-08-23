@@ -4,6 +4,45 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-08-23 モバイル: 画面名の帯を検索窓に置き換え、通知を全画面から到達可能に
+
+- **通知タップで該当画面へ遷移**: 通知一覧はこれまで既読にするだけで、本文に紐づく
+  画面へ行けなかった。`notifications.link_path` は管理画面向けの Web パス
+  （`/admin/...`）で入るため、モバイル側の対応パスへ変換する
+  `src/lib/notificationTarget.ts` を追加。対応画面が無い通知は `null` を返し、
+  chevron を出さない（押せそうに見えて何も起きない行を作らない）。
+  変換規則は `notificationTarget.check.ts` で検証（`npm test` に組込）。
+  **現状の制約**: 実際に発行されている `link_path` は `/admin/messages` と
+  `/admin/documents?doc_type=estimate` の2種のみで、どちらもモバイルに対応画面が
+  無いため今は遷移しない。対応画面を作った時点で PATH_MAP に1行足せば有効になる。
+- **日時選択の月表記を数字へ**: 飛び込み受付・予約作成の `DateTimePicker` が端末
+  ロケール既定（英語だと "Aug"）だった。`locale="ja-JP"` を指定し数字の年月日に固定。
+- **ベース背景を白に統一**: `colors.background` を `#F6F7F9` → `#FFFFFF`。
+  白地に白カード（`colors.surface`）が溶けるため、`shadows.card` の
+  `shadowOpacity` を 0.06 → 0.10 に上げてカードの輪郭を保った。
+- **画面名の帯を撤去し検索窓に置換**: 「作業」「車両」「証明」「その他」の各タブは
+  ヘッダーに画面名を出していたが、その情報はタブバーのアイコンで既に分かる。
+  一等地を検索に譲り、共通コンポーネント `components/TabTopBar.tsx`（検索窓＋通知ベル）
+  に置き換えた。ホームも同様にヘッダーを非表示にし、既存の日付＋挨拶ヘッダーを上端へ。
+  ヘッダーが無くなった分のセーフエリアは各画面で `insets.top` を自前で確保。
+  - 作業: ナンバー・メーカー・車種・顧客名・担当者・メニューを横断検索
+  - 車両: 既存の独自検索バーを TabTopBar に置換（重複解消）
+  - 証明: 証明書番号・顧客名・サービス・車両。既存のステータス絞り込みと直列に適用
+  - その他: メニュー項目名で絞り込み、空になったセクションは非表示
+  - `headerShown: false` は各 `_layout.tsx` の `screenOptions` ではなく
+    `Stack.Screen name="index"` 側に置いた。screenOptions に置くと、将来その配下へ
+    詳細画面を足したとき戻るボタンごと消える（過去に3回起きた不具合と同じ形）。
+- **通知をどの画面からも開けるように**: TabTopBar のベル（未読数バッジ付き）を全タブに常設。
+  未読件数は `hooks/useUnreadNotifCount.ts` に集約し、ホームのインラインクエリを置換。
+- **ホームの無反応な検索ボタンを撤去**: `onPress={() => {}}` で押しても何も起きなかった。
+  各タブに検索窓が付いたので役目が無い。
+- 対象: `components/TabTopBar.tsx`・`hooks/useUnreadNotifCount.ts`・
+  `lib/notificationTarget.ts`（+ check）が新規。`constants/tokens.ts`、
+  `(tabs)/_layout.tsx`、`(tabs)/{index,work,vehicles,certificates,more}` の
+  `_layout.tsx`/`index.tsx`、`app/notifications.tsx`、`reservations/new.tsx` を変更。
+- 検証: `tsc --noEmit` 型エラーなし。自己チェック4件すべて OK。`lint` エラー0
+  （警告は変更前 79 → 変更後 78 で、新規の警告なし）。
+
 ## 2026-08-22 モバイル: 規約・問い合わせ・ナレッジをアプリ内で完結させる
 
 - **規約・プライバシーポリシー**: 外部ブラウザへ飛ばすのをやめ、アプリ内で表示。

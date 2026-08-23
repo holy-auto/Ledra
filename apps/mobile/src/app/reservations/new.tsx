@@ -407,6 +407,9 @@ export default function ReservationNewScreen() {
               <DateTimePicker
                 value={selectedDate}
                 mode="date"
+                // 既定は端末ロケール。英語だと "Aug" 等になり分かりにくいので
+                // 日本語（数字の年月日）に固定する
+                locale="ja-JP"
                 display={Platform.OS === "ios" ? "spinner" : "default"}
                 onChange={(_, date) => {
                   setShowDatePicker(false);
@@ -418,6 +421,7 @@ export default function ReservationNewScreen() {
               <DateTimePicker
                 value={selectedDate}
                 mode="time"
+                locale="ja-JP"
                 display={Platform.OS === "ios" ? "spinner" : "default"}
                 onChange={(_, date) => {
                   setShowTimePicker(false);

@@ -16,6 +16,7 @@ import { useAuthStore } from "@/stores/authStore";
 import { StatusBadge } from "@/components/ui";
 import { EmptyState } from "@/components/EmptyState";
 import { useTabContentInset } from "@/hooks/useTabContentInset";
+import { TabTopBar } from "@/components/TabTopBar";
 import { colors, spacing, radius, sizing, typography, shadows } from "@/constants/tokens";
 
 interface VehicleItem {
@@ -134,27 +135,11 @@ export default function VehiclesScreen() {
 
   return (
     <View style={styles.container}>
-      {/* Search bar */}
-      <View style={styles.searchContainer}>
-        <View style={styles.searchBar}>
-          <Icon source="magnify" size={20} color={colors.textTertiary} />
-          <RNTextInput
-            style={styles.searchInput}
-            placeholder="車両を検索..."
-            placeholderTextColor={colors.textTertiary}
-            value={search}
-            onChangeText={setSearch}
-            autoCapitalize="none"
-            autoCorrect={false}
-          />
-          {search.length > 0 && (
-            <Pressable onPress={() => setSearch("")}>
-              <Icon source="close-circle" size={18} color={colors.textTertiary} />
-            </Pressable>
-          )}
-        </View>
-      </View>
-
+      <TabTopBar
+        search={search}
+        onSearchChange={setSearch}
+        placeholder="ナンバー・メーカー・車種で検索"
+      />
       <FlatList
         data={filtered}
         keyExtractor={(item) => item.id}
