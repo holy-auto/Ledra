@@ -12,6 +12,7 @@ import { canUseFeature } from "@/lib/billing/planFeatures";
 import { generateExplanation, type Audience } from "@/lib/ai/explainCertificate";
 import { modelForPlanTier } from "@/lib/ai/client";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
+import { CERT_AI_COLUMNS, certAiFields } from "@/lib/certificates/aiFields";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -50,11 +51,7 @@ export async function POST(req: NextRequest) {
     const { data: cert } = await admin
       .from("certificates")
       .select(
-        `
-        public_id, service_name, description, material_info,
-        warranty_period, created_at, expiry_date, work_areas,
-        customer_name, customer_id, vehicle_id, tenant_id
-      `,
+        `public_id, ${CERT_AI_COLUMNS}, created_at, expiry_date, customer_name, customer_id, vehicle_id, tenant_id`,
       )
       .eq("id", certificate_id)
       .eq("tenant_id", caller.tenantId)
@@ -74,7 +71,7 @@ export async function POST(req: NextRequest) {
     if (cert.vehicle_id) {
       const { data: v } = await admin
         .from("vehicles")
-        .select("maker, model, color, plate_display")
+        .select("maker, model, plate_display")
         .eq("id", cert.vehicle_id)
         .single();
       vehicleInfo = v ?? {};
@@ -88,19 +85,15 @@ export async function POST(req: NextRequest) {
         audience: audience satisfies Audience,
         certificate: {
           public_id: cert.public_id ?? "",
-          service_name: cert.service_name ?? "",
-          description: cert.description ?? undefined,
-          material_info: cert.material_info ?? undefined,
-          warranty_period: cert.warranty_period ?? undefined,
+          ...certAiFields(cert),
           issued_at: cert.created_at ?? "",
           expiry_date: cert.expiry_date ?? undefined,
-          work_areas: cert.work_areas ?? undefined,
+          // work_areas は certificates に列が無いので渡せない
           public_url: publicUrl,
         },
         vehicle: {
           maker: vehicleInfo.maker,
           model: vehicleInfo.model,
-          color: vehicleInfo.color,
           plate_display: vehicleInfo.plate_display,
         },
         shop: {

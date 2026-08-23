@@ -9,6 +9,7 @@ import {
   apiNotFound,
 } from "@/lib/api/response";
 import { insurerUserInviteSchema, insurerUserUpdateSchema, insurerUserDeleteSchema } from "@/lib/validations/insurer";
+import { insurerMaxUsers } from "@/types/insurer";
 
 export const runtime = "nodejs";
 
@@ -55,12 +56,11 @@ export async function GET() {
       email: emailMap.get(iu.user_id) ?? null,
     }));
 
-    // Fetch max_users from insurers table
-    const { data: insurer } = await admin.from("insurers").select("max_users").eq("id", caller.insurerId).maybeSingle();
+    // insurers に max_users 列は無い。上限はプランから決める
 
     return apiJson({
       users,
-      max_users: insurer?.max_users ?? 5,
+      max_users: insurerMaxUsers(caller.planTier),
     });
   } catch (e) {
     return apiInternalError(e, "insurer users list");
@@ -87,10 +87,9 @@ export async function POST(req: Request) {
 
     const { admin } = createInsurerScopedAdmin(caller.insurerId);
 
-    // Check max_users limit
-    const { data: insurer } = await admin.from("insurers").select("max_users").eq("id", caller.insurerId).maybeSingle();
+    // insurers に max_users 列は無い。上限はプランから決める
 
-    const maxUsers = insurer?.max_users ?? 5;
+    const maxUsers = insurerMaxUsers(caller.planTier);
 
     const { count: currentCount } = await admin
       .from("insurer_users")

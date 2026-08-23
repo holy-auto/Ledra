@@ -4,6 +4,7 @@ import { hasPermission } from "@/lib/auth/permissions";
 import { apiOk, apiUnauthorized, apiForbidden, apiInternalError } from "@/lib/api/response";
 import { parseJsonBody } from "@/lib/api/parseBody";
 import { mobileReservationCreateSchema } from "@/lib/validations/mobile";
+import { logTenantAuditEvent } from "@/lib/audit/tenantLog";
 
 export const dynamic = "force-dynamic";
 
@@ -76,12 +77,23 @@ export async function POST(request: NextRequest) {
         store_id: storeId ?? null,
         estimated_amount: body.estimated_amount ?? null,
         status: "confirmed",
-        created_by: caller.userId,
       })
       .select(MOBILE_RESERVATION_COLUMNS)
       .single();
 
     if (error) return apiInternalError(error, "reservations.create");
+
+    // reservations に created_by 列は無い（以前は書き込もうとして insert ごと
+    // 失敗していた＝モバイルからの予約作成が動いていなかった）。
+    // 作成者は監査ログに残す
+    await logTenantAuditEvent(caller.supabase, {
+      tenantId: caller.tenantId,
+      userId: caller.userId,
+      action: "reservation_created",
+      table: "reservations",
+      recordId: data.id as string,
+      req: request,
+    });
 
     return apiOk({ reservation: data }, 201);
   } catch (e) {

@@ -4,6 +4,7 @@ import { hasPermission } from "@/lib/auth/permissions";
 import { apiOk, apiUnauthorized, apiForbidden, apiNotFound, apiInternalError } from "@/lib/api/response";
 import { parseJsonBody } from "@/lib/api/parseBody";
 import { mobileRegisterCloseSchema } from "@/lib/validations/mobile";
+import { logTenantAuditEvent } from "@/lib/audit/tenantLog";
 
 export const dynamic = "force-dynamic";
 
@@ -57,13 +58,13 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     if (error) return apiInternalError(error, "registers.close");
 
     // Audit log
-    await caller.supabase.from("audit_logs").insert({
-      tenant_id: caller.tenantId,
-      table_name: "register_sessions",
-      record_id: session.id,
+    await logTenantAuditEvent(caller.supabase, {
+      tenantId: caller.tenantId,
+      userId: caller.userId,
       action: "register_session_closed",
-      performed_by: caller.userId,
-      ip_address: request.headers.get("x-forwarded-for") ?? request.headers.get("x-real-ip"),
+      table: "register_sessions",
+      recordId: session.id,
+      req: request,
     });
 
     return apiOk({ register_session: data });

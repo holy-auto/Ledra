@@ -164,13 +164,14 @@ export async function POST(req: NextRequest) {
 
     // Log the action to admin_audit_logs
     try {
+      // actor_tenant_id 列は admin_audit_logs に存在しないため meta に格納する
       await admin.from("admin_audit_logs").insert({
         actor_id: caller.userId,
-        actor_tenant_id: caller.tenantId,
         action: `platform.${action}`,
         target_type: "tenant",
         target_id: tenantId,
         meta: {
+          actor_tenant_id: caller.tenantId,
           tenant_name: tenant.name,
           params: params ?? {},
           result_message: result.message ?? "",

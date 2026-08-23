@@ -140,11 +140,11 @@ export async function markCodeUsed(id: string) {
  * no matched cert has a customer_id, returns null — the caller should
  * fall back to the legacy phone_hash + email scope.
  */
-async function resolveUniqueCustomerId(tenantId: string, phoneHash: string, email: string): Promise<string | null> {
+async function resolveUniqueCustomerId(tenantId: string, phoneHash: string): Promise<string | null> {
   const db = admin();
   const query = db
     .from("certificates")
-    .select("customer_id, customer_email")
+    .select("customer_id")
     .eq("tenant_id", tenantId)
     .neq("status", "void")
     .not("customer_id", "is", null)
@@ -153,14 +153,11 @@ async function resolveUniqueCustomerId(tenantId: string, phoneHash: string, emai
   const { data } = await query;
   if (!data || data.length === 0) return null;
 
-  const normalizedEmail = normalizeEmail(email);
-  const candidates = data.filter((row) => {
-    const certEmail = row.customer_email ? normalizeEmail(row.customer_email) : null;
-    // Match rows where email matches or cert email is null (legacy data).
-    return certEmail === null || certEmail === normalizedEmail;
-  });
-
-  const uniqueIds = new Set(candidates.map((r) => r.customer_id as string).filter(Boolean));
+  // certificates に customer_email 列は無いため、メールでの絞り込みはできない。
+  // 以前は存在しない列を SELECT していてクエリごと失敗し、この関数は常に null を
+  // 返していた（＝毎回 phone_hash + email のフォールバック経路に落ちていた）。
+  // 電話番号ハッシュで一意に定まるときだけ customer_id を確定させる。
+  const uniqueIds = new Set(data.map((r) => r.customer_id as string).filter(Boolean));
   if (uniqueIds.size !== 1) return null;
   return [...uniqueIds][0];
 }
@@ -172,7 +169,7 @@ export async function createSession(tenantId: string, email: string, phoneHash: 
 
   // Bake the resolved customer_id when unambiguous. Null is acceptable;
   // callers will fall back to phone_hash + email scoping.
-  const customerId = await resolveUniqueCustomerId(tenantId, phoneHash, email);
+  const customerId = await resolveUniqueCustomerId(tenantId, phoneHash);
 
   // phone_last4 (平文) はセッションに保存しない。証明書検索はハッシュ一本化済み。
   const { error } = await admin()

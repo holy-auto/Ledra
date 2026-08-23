@@ -144,7 +144,7 @@ export default async function AdminVehicleDetailPage({
 
   const { data: certs } = await supabase
     .from("certificates")
-    .select("id, public_id, certificate_no, service_type, created_at, status")
+    .select("id, public_id, public_id, service_type, created_at, status")
     .eq("tenant_id", tenantId)
     .eq("vehicle_id", id)
     .order("created_at", { ascending: false });
@@ -234,7 +234,7 @@ export default async function AdminVehicleDetailPage({
       kindLabel: "証明書発行",
       kindVariant: "certificate",
       title: `証明書を発行 (${c.service_type ?? "施工"})`,
-      description: c.certificate_no ? `No. ${c.certificate_no}` : null,
+      description: c.public_id ? `No. ${c.public_id}` : null,
       occurredAt: c.created_at,
       href: c.public_id ? `/admin/certificates/${c.public_id}` : undefined,
     });
@@ -428,7 +428,7 @@ export default async function AdminVehicleDetailPage({
                       key={row.id}
                       className="border-t border-border-default hover:bg-surface-hover transition-colors"
                     >
-                      <td className="px-4 py-3 text-primary">{row.certificate_no ?? "-"}</td>
+                      <td className="px-4 py-3 text-primary">{row.public_id ?? "-"}</td>
                       <td className="px-4 py-3 text-primary">{row.service_type ?? "-"}</td>
                       <td className="px-4 py-3 text-primary">{formatDate(row.created_at)}</td>
                       <td className="px-4 py-3 text-primary">{row.status ?? "-"}</td>

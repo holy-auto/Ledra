@@ -11,6 +11,7 @@ import { apiOk, apiUnauthorized, apiNotFound, apiInternalError } from "@/lib/api
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { summarizeCase, buildFallbackLines } from "@/lib/ai/caseSummary";
 import { startAiRouteUsage } from "@/lib/ai/recordRouteUsage";
+import { certAiFields } from "@/lib/certificates/aiFields";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -47,7 +48,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
         ? admin.from("vehicles").select("maker, model").eq("id", caseRow.vehicle_id).maybeSingle()
         : Promise.resolve({ data: null }),
       caseRow.certificate_id
-        ? admin.from("certificates").select("service_name, issued_at").eq("id", caseRow.certificate_id).maybeSingle()
+        ? admin.from("certificates").select("service_type, created_at").eq("id", caseRow.certificate_id).maybeSingle()
         : Promise.resolve({ data: null }),
       admin
         .from("insurer_case_messages")
@@ -63,12 +64,19 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       status: (caseRow.status as string) ?? "open",
       priority: (caseRow.priority as string) ?? "normal",
       vehicle: vehicleRes.data as { maker?: string; model?: string } | null,
-      certificate: certRes.data as { service_name?: string; issued_at?: string } | null,
-      recentMessages: ((msgRes.data ?? []) as Array<{ sender_type: string; content: string; created_at: string }>).map((m) => ({
-        author: m.sender_type,
-        body: m.content,
-        created_at: m.created_at,
-      })),
+      certificate: certRes.data
+        ? {
+            service_name: certAiFields(certRes.data).service_name,
+            issued_at: (certRes.data as { created_at?: string }).created_at,
+          }
+        : null,
+      recentMessages: ((msgRes.data ?? []) as Array<{ sender_type: string; content: string; created_at: string }>).map(
+        (m) => ({
+          author: m.sender_type,
+          body: m.content,
+          created_at: m.created_at,
+        }),
+      ),
     };
 
     const result = await summarizeCase(input).catch(() => buildFallbackLines(input));

@@ -89,7 +89,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         comment,
       })
       .select(
-        "id, job_order_id, reviewer_tenant_id, reviewed_tenant_id, rating, comment, published_at, created_at, updated_at",
+        "id, job_order_id, reviewer_tenant_id, reviewed_tenant_id, rating, comment, published_at, submitted_at, published_at",
       )
       .single();
 

@@ -36,10 +36,15 @@ jobs:
           PID_TSC=$!
           npm run test:coverage &
           PID_TEST=$!
+          # Supabase のクエリ文字列は tsc も lint も中身を見ない。実スキーマの
+          # スナップショットと突き合わせて、存在しない列・テーブルで落とす
+          npm run check:schema &
+          PID_SCHEMA=$!
           wait $PID_LINT || exit 1
           wait $PID_MIG || exit 1
           wait $PID_TSC || exit 1
           wait $PID_TEST || exit 1
+          wait $PID_SCHEMA || exit 1
 
   bundle-size:
     name: Client Bundle Size

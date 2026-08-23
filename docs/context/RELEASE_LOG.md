@@ -4,6 +4,49 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-08-23 Web の壊れたクエリ 189 箇所を修正 / スキーマ照合を Web+モバイル共通で CI に入れる
+
+- モバイルで見つけた「存在しない列を SELECT していてクエリごと 400 になる」不具合を
+  **Web 側にも展開して全面修正**。58 ファイル・189 箇所。残り 0 件。
+- 照合をモバイル専用から repo 直下の **`scripts/check-schema.mjs`** へ移し、
+  `src/`（select 2003 件 / 書き込み 699 件）と `apps/mobile/src/`（62 件 / 8 件）を
+  同じ仕組みで見る。`npm run check:schema` と CI、モバイルの `npm test` の三方から走る。
+- **検査そのものを先に直した**。最初は 334 件を報告したが、うち約 145 件が誤検知だった:
+  `.from("a").update(...)` の直後の `.from("b").select(...)` を取り違える／FK 列名での
+  埋め込み（`tenants:tenant_id(name)`）を解決できない／JSDoc の `@example` を実コードと見なす。
+  そのまま直しに入っていたら、壊れていない 145 箇所を書き換えていた。
+  併せて `${定数}` で列を持つ書き方を解決できるようにし（同名定数はファイル内優先）、
+  縮退を自前で実装している箇所は `schema-check-ignore:` で**理由を書かせて**除外する形にした。
+
+### 見つかった主な不具合（すべて 100% 失敗していたもの）
+
+| 症状 | 原因 |
+|---|---|
+| **監査ログが1行も残っていない** | `audit_logs` へのテナント側の書き込み6箇所が `table_name` / `record_id` / `performed_by` / `ip_address` という存在しない列を使用。実列は `actor_type` / `actor_user_id` / `target_public_id` / `query_json` / `ip`。しかも `actor_type` は NOT NULL なのに未設定。**証明書の有効化・取消、NFC の紐付け・書き込み、レジ締め、証明書の訂正が記録されていなかった** |
+| モバイルから予約を作れない | `reservations.created_by` が存在せず insert ごと失敗 |
+| 代理店の設定が表示も保存もできない | `agents` に `company_name` / `logo_url` / `commission_rate` / `bank_*` が無い（実列は `name` / `logo_asset_path` / `default_commission_rate`、銀行口座は列そのものが無い） |
+| 顧客ポータルの閲覧履歴が常に 500 | `audit_logs` の `target_type` / `actor_role` / `occurred_at` / `subject_customer_id` などをすべて存在しない列で読んでいた |
+| AI 下書き・AI 説明・アカデミーのフィードバック/事例要約が空入力 | `certificates` に `service_name` / `description` / `material_info` / `warranty_period` が無い（実列は `service_type` / `content_free_text` / `coating_products_json` / `expiry_value`） |
+| フォローアップ配信が動かない | `certificates.vehicle_maker` 等は列ではなく `vehicle_info_json` の中身 |
+| 保険会社の契約情報・ユーザー管理が 400 | `insurers.max_users` 列が無い → プラン別上限 `INSURER_MAX_USERS` に置き換え |
+| 受領サイン・署名リンクが開けない | `certificates.cert_type`、`vehicles.car_number` / `car_name` が無い |
+
+- 重複していた形は共有モジュールに集約した:
+  `lib/audit/tenantLog.ts`（監査ログの形を1箇所に）、
+  `lib/certificates/aiFields.ts`（AI に渡す証明書項目と実列の対応表）、
+  `lib/agents/profileColumns.ts`（代理店プロフィールの対応表）。
+- **保存先の列が無い項目は黙って捨てず、保存できないと返す**（代理店の銀行口座・ウェブサイト）。
+  証明書の取消理由は `meta` に残し、監査ログにも入れる。
+- 役目を終えていたコードを削除: 平文シークレットの暗号化バックフィル
+  （`lib/crypto/backfillSecrets.ts` と管理画面・API）。対象の平文列は
+  マイグレーション `20260428000000_tenant_secrets_drop_plaintext.sql` で削除済みで、
+  実行すると必ず失敗するだけの状態だった。
+- CI: lighthouse の `timeout-minutes` を 15 → 25 に変更。実測 14分04秒〜14分25秒で
+  余裕が1分を切っており、1度自前の上限で cancelled になっていた。
+- 検証: `tsc --noEmit` 型エラーなし / `vitest` 3813 件全通過（417 ファイル） /
+  `lint` エラー0・警告 1258 件で変更前後とも一致 / モバイル自己チェック9件 OK /
+  **照合を壊すと実際に落ちることを確認してから採用**。
+
 ## 2026-08-23 モバイル: 画面を横に切る仕切り線を撤去
 
 - 代表の指摘（車両詳細のヘッダー周辺の線）を受けて、**画面の上下の帯を区切る

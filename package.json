@@ -30,6 +30,7 @@
     "screenshots:capture": "tsx scripts/capture-screenshots.ts",
     "check:secrets-age": "tsx scripts/check-secrets-age.ts",
     "check:bundle-size": "node scripts/check-bundle-size.js",
+    "check:schema": "node scripts/check-schema.mjs",
     "build:analyze": "ANALYZE=true next build",
     "db:typegen": "supabase gen types typescript --project-id $SUPABASE_PROJECT_ID --schema public > src/types/db.generated.ts"
   },

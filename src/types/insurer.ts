@@ -10,6 +10,24 @@ export const INSURER_PLAN_RANK: Record<InsurerPlanTier, number> = {
   enterprise: 3,
 };
 
+/**
+ * プランごとのユーザー数上限。
+ * insurers テーブルに `max_users` 列は無く、以前はそれを SELECT していたため
+ * 契約情報とユーザー管理の画面が動いていなかった。上限はプランで決まるので
+ * ここに置く。
+ * ponytail: 上限。テナントごとに個別枠を売る運用になったら、
+ * insurers に列を足してこの表を既定値にする。
+ */
+export const INSURER_MAX_USERS: Record<InsurerPlanTier, number> = {
+  basic: 5,
+  pro: 20,
+  enterprise: 100,
+};
+
+export function insurerMaxUsers(plan: InsurerPlanTier): number {
+  return INSURER_MAX_USERS[plan] ?? INSURER_MAX_USERS.basic;
+}
+
 export const INSURER_ROLE_RANK: Record<InsurerRole, number> = {
   auditor: 1,
   viewer: 2,
@@ -17,15 +35,18 @@ export const INSURER_ROLE_RANK: Record<InsurerRole, number> = {
 };
 
 /** Features gated by insurer plan tier */
-export const INSURER_PLAN_FEATURES: Record<InsurerPlanTier, {
-  search: boolean;
-  view: boolean;
-  csv_export: boolean;
-  pdf_export: boolean;
-  bulk_user_import: boolean;
-  api_access: boolean;
-  max_users: number;
-}> = {
+export const INSURER_PLAN_FEATURES: Record<
+  InsurerPlanTier,
+  {
+    search: boolean;
+    view: boolean;
+    csv_export: boolean;
+    pdf_export: boolean;
+    bulk_user_import: boolean;
+    api_access: boolean;
+    max_users: number;
+  }
+> = {
   basic: {
     search: true,
     view: true,

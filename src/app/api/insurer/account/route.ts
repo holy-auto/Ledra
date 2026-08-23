@@ -13,7 +13,7 @@ export async function GET(_req: NextRequest) {
   const { admin } = createInsurerScopedAdmin(caller.insurerId);
   const { data: insurer, error } = await admin
     .from("insurers")
-    .select("id, name, slug, plan_tier, status, contact_email, contact_phone, address, max_users, created_at")
+    .select("id, name, slug, plan_tier, status, contact_email, contact_phone, address, created_at")
     .eq("id", caller.insurerId)
     .maybeSingle();
 
@@ -53,9 +53,7 @@ export async function PATCH(req: NextRequest) {
     .from("insurers")
     .update(update)
     .eq("id", caller.insurerId)
-    .select(
-      "id, name, slug, plan_tier, status, contact_email, contact_phone, address, max_users, created_at, updated_at",
-    )
+    .select("id, name, slug, plan_tier, status, contact_email, contact_phone, address, created_at, updated_at")
     .single();
 
   if (error) return apiInternalError(error, "insurer.account");

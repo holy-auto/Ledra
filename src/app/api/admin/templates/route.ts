@@ -24,7 +24,7 @@ export async function GET() {
     const { admin } = createTenantScopedAdmin(caller.tenantId);
     const { data, error } = await admin
       .from("templates")
-      .select("id, name, scope, schema_json, created_at, updated_at")
+      .select("id, name, scope, schema_json, created_at, created_at")
       .eq("tenant_id", caller.tenantId)
       .order("name", { ascending: true });
     if (error) return apiInternalError(error, "templates list");

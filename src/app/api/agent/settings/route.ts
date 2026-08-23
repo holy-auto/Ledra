@@ -1,8 +1,16 @@
 import { NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { apiJson, apiUnauthorized, apiForbidden, apiNotFound, apiInternalError } from "@/lib/api/response";
+import {
+  apiJson,
+  apiUnauthorized,
+  apiForbidden,
+  apiNotFound,
+  apiInternalError,
+  apiValidationError,
+} from "@/lib/api/response";
 import { parseJsonBody } from "@/lib/api/parseBody";
 import { agentSettingsUpdateSchema } from "@/lib/validations/agent-portal";
+import { AGENT_PROFILE_COLUMNS, toAgentPatch } from "@/lib/agents/profileColumns";
 
 export const dynamic = "force-dynamic";
 
@@ -26,9 +34,7 @@ export async function GET() {
     // Fetch agent profile
     const { data: profile, error: profileErr } = await supabase
       .from("agents")
-      .select(
-        "id, name, contact_name, contact_email, contact_phone, company_name, company_address, website_url, logo_url, status, commission_type, commission_rate, bank_name, bank_branch, bank_account_type, bank_account_number, bank_account_holder, stripe_account_id, stripe_onboarding_done, notes, created_at, updated_at",
-      )
+      .select(AGENT_PROFILE_COLUMNS)
       .eq("id", agentId)
       .single();
 
@@ -86,15 +92,22 @@ export async function PUT(request: NextRequest) {
 
     const parsed = await parseJsonBody(request, agentSettingsUpdateSchema);
     if (!parsed.ok) return parsed.response;
-    const updates: Record<string, unknown> = { ...parsed.data, updated_at: new Date().toISOString() };
+
+    // agents の実列に載せ替える。以前は検証済みの値をそのまま update に渡していたが、
+    // company_name / company_address / website_url / logo_url / commission_rate /
+    // bank_* は agents に**存在しない列**で、送られると update ごと失敗していた。
+    const { unsupported, patch } = toAgentPatch(parsed.data);
+    if (unsupported.length > 0) {
+      // 黙って捨てない。保存できない項目があることを呼び出し元に返す
+      return apiValidationError(`この項目は現在保存できません: ${unsupported.join(", ")}`);
+    }
+    const updates: Record<string, unknown> = { ...patch, updated_at: new Date().toISOString() };
 
     const { data: updated, error: updateErr } = await supabase
       .from("agents")
       .update(updates)
       .eq("id", agentId)
-      .select(
-        "id, name, contact_name, contact_email, contact_phone, company_name, company_address, website_url, logo_url, status, commission_type, commission_rate, bank_name, bank_branch, bank_account_type, bank_account_number, bank_account_holder, stripe_account_id, stripe_onboarding_done, notes, created_at, updated_at",
-      )
+      .select(AGENT_PROFILE_COLUMNS)
       .single();
 
     if (updateErr) {
