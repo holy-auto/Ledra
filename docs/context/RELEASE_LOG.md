@@ -184,6 +184,14 @@
 - 対象: どの画面・API・業種向けか
 ```
 
+## 2026-08-23 super_admin RLS修正・エラー表示改善 (PR #963)
+
+- 内容: `my_tenant_role()`関数で`super_admin`→`owner`にマッピングし、全テーブルのRLS書き込みポリシーがsuper_adminを許可するように修正。`StoresClient.tsx`のエラー表示を`data.message`優先に変更。
+- 対象: 全テーブルのRLSポリシー（stores, certificates, vehicles, customers等）、店舗管理画面。
+- 実装:
+  - `supabase/migrations/20260822000000_fix_super_admin_rls.sql` (新規): my_tenant_role()のCASE式追加
+  - `src/app/admin/stores/StoresClient.tsx`: エラーハンドリング3箇所で`data.message || data.error`に変更
+
 ## 2026-08-21 全画面デザイントークン適用 & 認証/オンボーディングフロー新設（branch claude/imp-000-implementation-r0eje1 / PR #926）
 
 - 内容: モバイルアプリの全41画面をLedraデザイントークン準拠にする最終仕上げ。
