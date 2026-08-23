@@ -41,6 +41,8 @@ export const metadata = {
     card: "summary_large_image",
     title: siteTitle,
     description: siteConfig.siteDescription,
+    site: siteConfig.twitterHandle,
+    creator: siteConfig.twitterHandle,
   },
   alternates: {
     canonical: "/",

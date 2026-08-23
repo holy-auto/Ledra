@@ -6,6 +6,7 @@ export const metadata: Metadata = {
   title: `お問い合わせ | ${siteConfig.siteName}`,
   description:
     "Ledraへのお問い合わせはこちらから。導入相談・料金・機能についてお気軽にご連絡ください。",
+  alternates: { canonical: "/contact" },
   openGraph: {
     title: `お問い合わせ | ${siteConfig.siteName}`,
     description:

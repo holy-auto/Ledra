@@ -87,6 +87,34 @@
    - Expo SDK 55 で `app.json` のトップレベル `splash` キー（レガシー形式）が今も有効かは未検証。
      `@expo/prebuild-config` のソースは読んで挙動を確認したが、実機で表示は確かめていない。
      単色だけなので破綻はしにくいが、出なければ `expo-splash-screen` の config plugin 形式へ移行する。
+
+## 2026-08-23 super_admin RLS不整合の修正方針: ヘルパー関数での一点修正
+
+1. 日付: 2026-08-23
+2. 起きたこと: super_adminユーザーが店舗登録しようとすると`internal_error`が表示され、登録できなかった。調査の結果、`my_tenant_role()`関数が`super_admin`をそのまま返すが、全テーブル（70+）のRLS書き込みポリシーが`owner`/`admin`のみを許可しており、super_adminが全書き込み操作でブロックされていた。
+3. 以前の考え: Next.js API層の権限チェック（`hasPermission`）でsuper_adminは全権限を持つため問題ないと考えていた。DB層のRLSとの不整合に気づいていなかった。
+4. 違和感・問題: API層は通るがDB層で拒否される。storesだけでなくcertificates, vehicles, customers等の全テーブルで同じ問題が潜在していた。
+5. 決めたこと: `my_tenant_role()`関数内で`super_admin`→`owner`にマッピングする一点修正。加えてフロントエンドのエラー表示を`data.error`（コード）から`data.message`（人間向けメッセージ）優先に変更。
+6. 捨てた選択肢: (a) 全RLSポリシー（70+）に`super_admin`を追加する案 — 差分が巨大で、今後ポリシー追加のたびに漏れるリスクがある。(b) API層でservice_role_keyを使いRLSをバイパスする案 — セキュリティリスクが高く、RLSの意味がなくなる。
+7. 判断理由: ヘルパー関数1箇所の修正で全既存・将来ポリシーに自動適用される。super_adminはownerの上位互換なので、RLS上ownerとして扱っても権限の不足は生じない（platform固有権限はAPI層で制御）。
+8. まだ答えが出ていないこと: super_admin固有のDB操作（将来のplatformテーブル等）が必要になった場合、my_tenant_role()のマッピングでは不十分になる可能性がある。その場合はRLSポリシー側に`super_admin`条件を追加する必要がある。
+9. 公開区分: 公開可
+
+## 2026-08-22 SEO/LLMO改善: llms.txt導入・メタデータ補完・canonical統一
+
+1. 日付: 2026-08-22
+2. 起きたこと: robots.tsでAIクローラー（GPTBot, ClaudeBot, PerplexityBot等）を許可済みだが、AI向け構造化テキスト（llms.txt）が未提供だった。ブログ・事例詳細ページにOG/Twitterメタデータ・JSON-LDがなく、法的ページにcanonical URLがなかった。
+3. 以前の考え: サイト全体のメタデータ基盤（Metadata API、JSON-LD 7種、動的sitemap、OG画像16件）は十分と考えていた。
+4. 違和感・問題: AIクローラーを許可しているのにAI向けの構造化テキストがない（LLMO未対策）。ブログ・事例の個別ページがSNSシェア・検索エンジンに対して不完全。/tokushoと/lawが同一内容なのにcanonicalが自己参照で重複コンテンツ扱いのリスク。Next.jsのtwitter metadataが子ルートで上書きされるためルートのtwitterHandle設定が効いていなかった。
+5. 決めたこと:
+   - llms.txt / llms-full.txt をRoute Handlerで動的生成（siteConfig + PLANSから自動追従）
+   - ブログ・事例にOG/Twitter + ArticleJsonLd追加（既存ArticleJsonLdにpathPrefix/articleType追加で汎用化）
+   - /tokushoのcanonical・og:urlを/lawに統一、sitemapから/tokusho除去
+   - 全記事ページのtwitter objectにsite/creatorを明示（Next.jsの置換挙動対策）
+   - llms.txt/llms-full.txtはsitemapに含めない（text/plainはSearch Consoleで警告になる）
+6. 捨てた選択肢: llms.txtを静的ファイルとして配置する案（料金・機能の変更に手動追従が必要になるため却下）。/tokushoを別ページとしてcanonical自己参照にする案（同一内容なので重複扱いのリスク）。
+7. 判断理由: LLMO対策はAIクローラー許可済みの状態では最もインパクトが大きい。既存パターン（news/[slug]のメタデータ構造、ArticleJsonLd）の再利用で最小差分。
+8. まだ答えが出ていないこと: llms-full.txtの内容拡充（動的な記事一覧の含め方等）。各ページのOG画像個別設定。
 9. 公開区分: 公開可
 
 ## 2026-08-16 LINEのモジュールチャネルは受付停止中。申請の再開を待たず、Messaging APIで自動化できる工程を全部Ledra側に寄せる
