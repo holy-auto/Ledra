@@ -8,7 +8,7 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "typecheck": "tsc --noEmit",
-    "test": "node src/lib/reservationSteps.check.ts && node src/lib/menuFilter.check.ts && node src/lib/legal.check.ts && node src/lib/notificationTarget.check.ts && node src/lib/appLockPolicy.check.ts",
+    "test": "node src/lib/reservationSteps.check.ts && node src/lib/menuFilter.check.ts && node src/lib/legal.check.ts && node src/lib/notificationTarget.check.ts && node src/lib/appLockPolicy.check.ts && node src/lib/document.check.ts",
     "lint": "expo lint"
   },
   "dependencies": {

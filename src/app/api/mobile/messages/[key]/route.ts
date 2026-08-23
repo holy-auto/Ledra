@@ -1,48 +1,42 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
-import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
+import { resolveMobileCaller } from "@/lib/auth/mobileAuth";
+import { requireMinRole } from "@/lib/auth/checkRole";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
-import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
+import { parseThreadKey } from "@/lib/messages/threadKey";
+import { withAttachmentUrls } from "@/lib/messages/attachments";
+import { fetchThreadMessages, markThreadRead, resolveThread } from "@/lib/messages/threads";
+import { sendCustomerLineText } from "@/lib/line/client";
 import {
-  apiJson,
+  apiOk,
   apiUnauthorized,
   apiForbidden,
   apiValidationError,
   apiNotFound,
   apiInternalError,
 } from "@/lib/api/response";
-import { sendCustomerLineText } from "@/lib/line/client";
-import { parseThreadKey } from "@/lib/messages/threadKey";
-import { withAttachmentUrls } from "@/lib/messages/attachments";
-import { sendLineImageFromForm } from "@/lib/messages/sendImage";
-import { fetchThreadMessages, markThreadRead, resolveThread } from "@/lib/messages/threads";
 
 export const dynamic = "force-dynamic";
 
 /**
- * 受信箱の 1 スレッド (会話) の取得 / 返信送信。
+ * 受信箱の 1 スレッドの取得 / 返信送信 / 既読化（モバイル）。
  *
- * thread key は受信箱一覧 (`/api/admin/messages`) が返す形:
- *   - "c:<customerId>"  customer に紐付いたスレッド
- *   - "l:<lineUserId>"  まだ customer 未紐付け (友だち追加直後など)
- *   - "e:<emailFrom>"   メール受信の未紐付けスレッド (返信不可)
- *
- * 解決・取得・既読化のロジックはモバイル版 (/api/mobile/messages/[key]) と
- * 共有するため src/lib/messages/threads.ts にある。
+ * 管理画面版 (/api/admin/messages/[key]) と同じロジックを共有し、
+ * 認証だけ Bearer トークンに差し替えたもの。画像送信は管理画面のみ
+ * （現場では文字だけ返せれば足りる。必要になったら multipart を足す）。
  */
 
 const sendSchema = z.object({
   body: z.string().trim().min(1, "メッセージを入力してください。").max(2000, "メッセージは 2000 文字以内です。"),
 });
 
-export async function GET(_req: NextRequest, ctx: { params: Promise<{ key: string }> }) {
+export async function GET(request: NextRequest, ctx: { params: Promise<{ key: string }> }) {
   try {
     const { key } = await ctx.params;
     const ref = parseThreadKey(key);
     if (ref.kind === "invalid") return apiValidationError("invalid thread key");
 
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
+    const caller = await resolveMobileCaller(request);
     if (!caller) return apiUnauthorized();
 
     const { admin } = createTenantScopedAdmin(caller.tenantId);
@@ -53,7 +47,7 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ key: strin
       await fetchThreadMessages(admin, caller.tenantId, resolved.customerId, resolved.lineUserId, resolved.emailFrom),
     );
 
-    return apiJson({
+    return apiOk({
       thread: {
         key,
         customer_id: resolved.customerId,
@@ -66,18 +60,17 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ key: strin
       can_send: !!resolved.lineUserId,
     });
   } catch (e) {
-    return apiInternalError(e, "message thread GET");
+    return apiInternalError(e, "mobile message thread GET");
   }
 }
 
-export async function POST(req: NextRequest, ctx: { params: Promise<{ key: string }> }) {
+export async function POST(request: NextRequest, ctx: { params: Promise<{ key: string }> }) {
   try {
     const { key } = await ctx.params;
     const ref = parseThreadKey(key);
     if (ref.kind === "invalid") return apiValidationError("invalid thread key");
 
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
+    const caller = await resolveMobileCaller(request);
     if (!caller) return apiUnauthorized();
     if (!requireMinRole(caller, "staff")) return apiForbidden();
 
@@ -92,22 +85,10 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ key: strin
       );
     }
 
-    // multipart は画像送信、JSON はテキスト送信
-    if ((req.headers.get("content-type") ?? "").includes("multipart/form-data")) {
-      const out = await sendLineImageFromForm({
-        form: await req.formData(),
-        tenantId: caller.tenantId,
-        customerId: resolved.customerId,
-        lineUserId: resolved.lineUserId,
-        sentByUserId: caller.userId,
-      });
-      if (!out.ok) return apiValidationError(out.message);
-      return apiJson({ ok: true, delivered: out.delivered });
-    }
-
-    const parsed = sendSchema.safeParse(await req.json().catch(() => ({})));
+    const parsed = sendSchema.safeParse(await request.json().catch(() => ({})));
     if (!parsed.success) return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
 
+    // 送信失敗でも履歴には outbound 行が残る (delivered=false)。呼び出し側で警告を出すこと。
     const delivered = await sendCustomerLineText({
       tenantId: caller.tenantId,
       customerId: resolved.customerId,
@@ -116,24 +97,20 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ key: strin
       sentByUserId: caller.userId,
     });
 
-    return apiJson({ ok: true, delivered });
+    return apiOk({ delivered });
   } catch (e) {
-    return apiInternalError(e, "message thread POST");
+    return apiInternalError(e, "mobile message thread POST");
   }
 }
 
-/**
- * PATCH /api/admin/messages/[key] — スレッドの inbound 未読を一括既読化する。
- * body 不要。スタッフがスレッドを開いた時点でクライアントから呼ぶ。
- */
-export async function PATCH(_req: NextRequest, ctx: { params: Promise<{ key: string }> }) {
+/** PATCH — スレッドの inbound 未読を一括既読化する。body 不要。 */
+export async function PATCH(request: NextRequest, ctx: { params: Promise<{ key: string }> }) {
   try {
     const { key } = await ctx.params;
     const ref = parseThreadKey(key);
     if (ref.kind === "invalid") return apiValidationError("invalid thread key");
 
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
+    const caller = await resolveMobileCaller(request);
     if (!caller) return apiUnauthorized();
     if (!requireMinRole(caller, "staff")) return apiForbidden();
 
@@ -142,8 +119,8 @@ export async function PATCH(_req: NextRequest, ctx: { params: Promise<{ key: str
     if (!resolved) return apiNotFound("thread not found");
 
     const marked = await markThreadRead(admin, caller.tenantId, resolved);
-    return apiJson({ ok: true, marked_read: marked });
+    return apiOk({ marked_read: marked });
   } catch (e) {
-    return apiInternalError(e, "message thread PATCH");
+    return apiInternalError(e, "mobile message thread PATCH");
   }
 }

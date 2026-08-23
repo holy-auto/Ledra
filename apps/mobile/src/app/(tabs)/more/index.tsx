@@ -47,6 +47,13 @@ const SECTIONS: MenuSection[] = [
     ],
   },
   {
+    title: "やり取り・帳票",
+    items: [
+      { icon: "chat-outline", label: "メッセージ", route: "/messages" },
+      { icon: "file-document-outline", label: "見積・請求", route: "/documents" },
+    ],
+  },
+  {
     title: "ナレッジ",
     items: [
       { icon: "book-open-variant", label: "現場ナレッジ", route: "/knowledge" },

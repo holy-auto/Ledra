@@ -18,6 +18,8 @@ const PATH_MAP: [webPrefix: string, mobilePrefix: string][] = [
   ["/admin/vehicles", "/vehicles"],
   ["/admin/customers", "/customers"],
   ["/admin/notifications", "/notifications"],
+  ["/admin/messages", "/messages"],
+  ["/admin/documents", "/documents"],
 ];
 
 /**
@@ -33,11 +35,17 @@ const MOBILE_ROUTES = [
   "/knowledge",
   "/work",
   "/pos",
-  "/nfc",
   "/settings",
-  "/legal",
   "/dashboard",
+  "/messages",
+  "/documents",
 ] as const;
+
+/**
+ * 配下の画面はあるが、素のパスには画面が無いもの（index.tsx が無い）。
+ * "/nfc" だけで飛ばすと未一致ルートの白画面になるため、子セグメント必須で扱う。
+ */
+const MOBILE_ROUTE_PREFIXES = ["/nfc", "/legal"] as const;
 
 /**
  * 単一スラッシュ区切りの安全な文字だけで出来たパスか。
@@ -47,21 +55,56 @@ const SAFE_PATH = /^(?:\/[\w.~%-]+)+$/;
 
 function isMobileRoute(path: string): boolean {
   if (!SAFE_PATH.test(path)) return false;
-  return MOBILE_ROUTES.some((r) => path === r || path.startsWith(`${r}/`));
+  if (MOBILE_ROUTES.some((r) => path === r || path.startsWith(`${r}/`))) return true;
+  return MOBILE_ROUTE_PREFIXES.some((r) => path.startsWith(`${r}/`));
+}
+
+/**
+ * クエリの引き継ぎ。既定では落とす（モバイル側の画面が解釈しないため）が、
+ * 落とすと意味が変わってしまうものだけ明示的に変換する。
+ *
+ * 通す条件は「モバイル側の画面がその値を実際に読む」こと。増やすときは
+ * 受け側の実装を確認してから足すこと。
+ */
+function translateQuery(mobilePath: string, search: string): string {
+  if (!search) return mobilePath;
+  const params = new URLSearchParams(search);
+
+  // /admin/messages?thread=c:xxx → /messages/c%3Axxx（会話を直接開く）
+  if (mobilePath === "/messages") {
+    const thread = params.get("thread");
+    if (thread && /^[cle]:[\w.@-]+$/.test(thread)) {
+      return `/messages/${encodeURIComponent(thread)}`;
+    }
+    return mobilePath;
+  }
+
+  // /admin/documents?doc_type=estimate → /documents?type=estimate
+  // Web 側は ?type= を読むが、通知の発行側は ?doc_type= を書いている。
+  // どちらで来ても拾う（受け側のモバイル画面は ?type= を読む）。
+  if (mobilePath === "/documents") {
+    const docType = params.get("doc_type") ?? params.get("type");
+    if (docType === "estimate" || docType === "invoice") {
+      return `/documents?type=${docType}`;
+    }
+    return mobilePath;
+  }
+
+  return mobilePath;
 }
 
 export function notificationTarget(linkPath: string | null): string | null {
   if (!linkPath) return null;
-  // クエリ・ハッシュはモバイル側の画面が解釈しないため落とす
-  const path = linkPath.split(/[?#]/)[0];
+  const [pathPart, searchPart = ""] = linkPath.split("#")[0].split("?");
+  const path = pathPart;
 
   for (const [web, mobile] of PATH_MAP) {
     const converted =
       path === web ? mobile : path.startsWith(`${web}/`) ? mobile + path.slice(web.length) : null;
     // 変換後もモバイルに実在する形かを確かめる（"/admin/vehicles//evil.com" 対策）
-    if (converted && isMobileRoute(converted)) return converted;
+    if (converted && isMobileRoute(converted)) return translateQuery(converted, searchPart);
   }
   // すでにモバイルのパス形式で入っている場合はそのまま使う
-  if (isMobileRoute(path)) return path;
+  if (isMobileRoute(path)) return translateQuery(path, searchPart);
   return null;
 }
