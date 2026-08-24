@@ -46,6 +46,25 @@ jobs:
           wait $PID_TEST || exit 1
           wait $PID_SCHEMA || exit 1
 
+  migrations-replay:
+    name: Migrations Replay
+    runs-on: ubuntu-latest
+    # マイグレーションを空の PostgreSQL に流し直して、再生できるかを確かめる。
+    # 本番だけが持っていて再生できないオブジェクトが 26 列分あった（2026-08-23）。
+    # 空 DB から再生できない限り、この種のずれは気づかないまま増え続ける。
+    # 3 分ほどかかるので他のチェックとは別ジョブにする
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: Start nothing (script boots its own postgres)
+        run: |
+          # ubuntu-latest には PostgreSQL 16 が入っている。スクリプトが
+          # 一時インスタンスを自分で initdb/起動するのでサービスは要らない
+          ls /usr/lib/postgresql/
+      - run: npm run check:migrations
+
   bundle-size:
     name: Client Bundle Size
     runs-on: ubuntu-latest

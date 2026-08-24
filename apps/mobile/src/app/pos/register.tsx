@@ -43,10 +43,12 @@ export default function PosRegisterScreen() {
   } = useQuery<RegisterSession | null>({
     queryKey: ["register-session", selectedStore?.id],
     queryFn: async () => {
+      // register_sessions に店舗は無い。レジ（registers）が店舗を持つので
+      // 埋め込みで内部結合して絞る
       const { data, error } = await supabase
         .from("register_sessions")
-        .select("*")
-        .eq("store_id", selectedStore!.id)
+        .select("*, registers!inner(store_id)")
+        .eq("registers.store_id", selectedStore!.id)
         .eq("tenant_id", user!.tenantId)
         .order("opened_at", { ascending: false })
         .limit(1)

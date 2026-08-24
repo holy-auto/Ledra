@@ -123,6 +123,86 @@ function checkSelect(sel, table, where) {
 }
 
 /**
+ * `.eq()` などフィルタの列名も見る。
+ *
+ * なぜ要るか: PostgREST は**フィルタの列が存在しなくても**クエリごと 400 を返す。
+ * `select` の列だけ見ていると、`.or("warranty_period.not.is.null")` のような
+ * 書き方が素通りする（実際に素通りしていた）。
+ *
+ * 誤検知を出さないため、**素直な識別子だけ**を照合する。次は見ない:
+ *   - `customers.name` のような埋め込み先の列（対象テーブルを決められない）
+ *   - `meta->>foo` のような JSON パス
+ *   - テンプレートリテラルで組んだ列名
+ * ponytail: 上限。埋め込み先のフィルタは対象外なので、そこは素通りする。
+ */
+const FILTER_CALL =
+  /\.(eq|neq|gt|gte|lt|lte|like|ilike|is|in|contains|containedBy|overlaps|filter|not|order)\(\s*(["'`])([^"'`]*)\2/g;
+const OR_CALL = /\.or\(\s*(["'`])([^"'`]*)\1/g;
+/** PostgREST の `.or()` に書ける演算子。これで始まらないものは列名の後ろではない */
+const OR_OPS = new Set([
+  "eq", "neq", "gt", "gte", "lt", "lte", "like", "ilike", "is", "in", "cs", "cd",
+  "sl", "sr", "nxl", "nxr", "adj", "ov", "fts", "plfts", "phfts", "wfts", "not",
+]);
+
+const PLAIN_COLUMN = /^[a-z_][a-z0-9_]*$/;
+
+function checkFilterColumn(col, table, where, how) {
+  if (!PLAIN_COLUMN.test(col)) return; // 埋め込み・JSON パス・テンプレートは対象外
+  const have = cols.get(table);
+  if (!have) return;
+  if (!have.has(col)) add(where, `${table}.${col} が存在しない（${how} のフィルタ）`);
+}
+
+/**
+ * `.from(...)` の直後から続く **`.メソッド(...)` の並びだけ**を切り出す。
+ *
+ * 文末（`;`）や次の `.from(` で切ると足りない。`Promise.all([...])` の中では
+ * `.from("nfc_tags")...is("uid", null),` の次に**別の変数のチェーン**が
+ * セミコロン無しで続くため、後ろのフィルタを吸い込んで誤検知する
+ * （実際に nfc_tags に対して 2 件の誤検知が出た）。
+ * メソッド呼び出しでなくなった時点で必ず止める。
+ */
+function methodChain(src, from) {
+  let i = from;
+  const start = i;
+  for (;;) {
+    while (i < src.length && /\s/.test(src[i])) i++;
+    if (src[i] !== ".") break;
+    let j = i + 1;
+    while (j < src.length && /[\w$]/.test(src[j])) j++;
+    while (j < src.length && /\s/.test(src[j])) j++;
+    if (src[j] !== "(") break; // `.data` のようなプロパティ参照で終わり
+    const end = balancedRange(src, j, "(", ")");
+    if (end === null) break;
+    i = j + 1 + end.length + 1; // "(" + 中身 + ")"
+  }
+  return src.slice(start, i);
+}
+
+/** 1つのチェーン（`.from(...)` から文末まで）のフィルタを全部見る */
+function checkFilters(chain, table, where) {
+  if (!cols.has(table)) return;
+  // 入れ子のチェーン（`.in("order_id", (await admin.from("x").eq("tenant_id", ...)))`）は
+  // 別テーブルのフィルタ。手前で切らないと親テーブルの列として誤検知する
+  const nested = chain.indexOf(".from(");
+  if (nested >= 0) chain = chain.slice(0, nested);
+  for (const m of chain.matchAll(FILTER_CALL)) {
+    // `.order("col", { referencedTable: "x" })` は別テーブルの列。対象外
+    if (m[1] === "order" && /referencedTable|foreignTable/.test(chain.slice(m.index, m.index + 160))) continue;
+    checkFilterColumn(m[3], table, where, `.${m[1]}()`);
+  }
+  for (const m of chain.matchAll(OR_CALL)) {
+    // `a.eq.1,b.is.null` の形。入れ子（`and(...)`）が入るものは見ない
+    if (m[2].includes("(")) continue;
+    for (const part of m[2].split(",")) {
+      const [col, op] = part.trim().split(".");
+      if (!col || !op || !OR_OPS.has(op)) continue;
+      checkFilterColumn(col, table, where, ".or()");
+    }
+  }
+}
+
+/**
  * 埋め込みの見出し（`alias:target!hint` / `target!hint` / `target`）から
  * 実テーブルを決める。PostgREST は target に **FK の列名** も書けるので
  * （`tenants:tenant_id(name)`）、target がテーブルでなければ別名で引き直す。
@@ -202,6 +282,7 @@ function checkMutation(body, table, where) {
 // `.from("x") ... .select(` の位置だけを見つける。中身は括弧の対応で取り出す
 // （`"a, b" + "c, d"` のような**連結**を1つ目のリテラルだけで判断すると、
 //  2つ目に混ざった存在しない列を見逃す。実際に見逃していた）
+const FROM_HEAD = /\.from\(\s*["'`](\w+)["'`]\s*\)/g;
 const SELECT_HEAD = /\.from\(\s*["'`](\w+)["'`]\s*\)((?:(?!\.from\()[\s\S]){0,500}?)\.select\(/g;
 const MUTATE = /\.from\(\s*["'`](\w+)["'`]\s*\)\s*\.(insert|update|upsert)\(\s*\{/g;
 // 書き込みのペイロードを**変数**で渡す形（.insert(certRow)）。同上
@@ -462,6 +543,11 @@ for (const { dir, minSelects, minMutations } of TARGETS) {
     const localObjects = collectObjectConsts(txt);
     const inComment = (i) => comments.some(([a, b]) => i >= a && i < b);
     const rel = (i) => `${relative(repoRoot, file)}:${txt.slice(0, i).split("\n").length}`;
+    // フィルタの列名。`.from(...)` に続く `.メソッド(...)` の並びだけを1本と見る
+    for (const m of txt.matchAll(FROM_HEAD)) {
+      if (inComment(m.index) || isOptedOut(txt, m.index)) continue;
+      checkFilters(methodChain(txt, m.index + m[0].length), m[1], rel(m.index));
+    }
     for (const m of txt.matchAll(SELECT_HEAD)) {
       if (inComment(m.index) || isOptedOut(txt, m.index)) continue;
       selects++;

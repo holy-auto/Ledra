@@ -101,6 +101,44 @@ describe("check-schema の解析", () => {
     expect(r.code).toBe(0);
   });
 
+  it("フィルタの列名も見る（存在しない列でフィルタしても 400 になる）", () => {
+    const r = runChecker(`supabase.from("agents").select("id").eq("${BAD}", 1);`);
+    expect(r.code).not.toBe(0);
+    expect(r.out).toContain(`agents.${BAD}`);
+  });
+
+  it(".or() の中の列名も見る", () => {
+    const r = runChecker(`supabase.from("agents").select("id").or("status.eq.active,${BAD}.is.null");`);
+    expect(r.code).not.toBe(0);
+    expect(r.out).toContain(`agents.${BAD}`);
+  });
+
+  it("埋め込み先のフィルタ（`表.列`）は対象外。誤検知しない", () => {
+    const r = runChecker(
+      `supabase.from("agents").select("id, tenants!inner(name)").eq("tenants.${BAD}", 1);`,
+    );
+    expect(r.code).toBe(0);
+  });
+
+  it("入れ子のチェーンのフィルタを親テーブルの列と取り違えない", () => {
+    const r = runChecker(
+      `await db.from("agents").select("id").in("id", (await db.from("tenants").select("id").eq("${BAD}", 1)).data);`,
+    );
+    // 内側は tenants のフィルタ。agents の列として報告してはいけない
+    expect(r.out).not.toContain(`agents.${BAD}`);
+  });
+
+  it("同じ文の中の**別の**チェーンのフィルタを吸い込まない", () => {
+    // Promise.all の要素が `;` 無しで続く形。実際にこれで 2 件誤検知した
+    const r = runChecker(
+      `await Promise.all([\n` +
+        `  supabase.from("agents").select("id").eq("status", "a"),\n` +
+        `  q5.eq("${BAD}", 1),\n` +
+        `]);`,
+    );
+    expect(r.out).not.toContain(`agents.${BAD}`);
+  });
+
   it("`.from(a).update(...)` の直後の `.from(b).select(...)` を取り違えない", () => {
     const r = runChecker(
       `await supabase.from("agents").update({ name: "A" }).eq("id", id);\n` +
