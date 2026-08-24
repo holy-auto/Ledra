@@ -159,6 +159,39 @@ describe("check-schema の解析", () => {
     expect(r.out).not.toContain(`agents.${BAD}`);
   });
 
+  it("select 文字列の中の `//` コメントを**埋め込みの別名として**飲み込まない", () => {
+    // モバイルの作業タブがこれで 400 のまま残っていた。`:` の後ろだけ見て
+    // 通していたので、コメントが別名の一部になって素通りしていた
+    const r = runChecker(
+      "supabase.from(\"reservations\").select(`\n" +
+        "  id,\n" +
+        "  // 説明をここに書くと PostgREST にそのまま送られる\n" +
+        "  customer:customers ( id, name )\n" +
+        "`);",
+    );
+    expect(r.code).not.toBe(0);
+    expect(r.out).toContain("埋め込みの別名として読めない");
+  });
+
+  it("**代入で足した**フィルタも見る（`if (q) query = query.or(...)`）", () => {
+    // これを見ていなかったせいで、証明書の検索が存在しない列で 400 になっていた
+    const r = runChecker(
+      `let query = supabase.from("agents").select("id");\n` + `if (q) query = query.or("${BAD}.ilike.%x%");\n`,
+    );
+    expect(r.code).not.toBe(0);
+    expect(r.out).toContain(`agents.${BAD}`);
+  });
+
+  it("同じ変数に**別のクエリ**を入れ直したら、そこから先は追わない", () => {
+    const r = runChecker(
+      `let query = supabase.from("agents").select("id");\n` +
+        `query = supabase.from("tenants").select("id");\n` +
+        `query = query.eq("${BAD}", 1);\n`,
+    );
+    // 2本目は tenants のフィルタ。agents の列として報告してはいけない
+    expect(r.out).not.toContain(`agents.${BAD}`);
+  });
+
   it("`.from(a).update(...)` の直後の `.from(b).select(...)` を取り違えない", () => {
     const r = runChecker(
       `await supabase.from("agents").update({ name: "A" }).eq("id", id);\n` +

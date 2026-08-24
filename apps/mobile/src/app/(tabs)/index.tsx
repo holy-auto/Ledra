@@ -14,6 +14,7 @@ import "dayjs/locale/ja";
 
 import { useAuthStore } from "@/stores/authStore";
 import { supabase } from "@/lib/supabase";
+import { scopeToStore } from "@/lib/storeScope";
 import { useTabContentInset } from "@/hooks/useTabContentInset";
 import { NotifBell } from "@/components/NotifBell";
 import { colors, radius, spacing, sizing, shadows } from "@/constants/tokens";
@@ -122,32 +123,31 @@ export default function HomeScreen() {
 
     // UTC 日付だと JST 09:00 前は前日を集計してしまう
     const todayStr = dayjs().format("YYYY-MM-DD");
-    // ponytail: skip store filter when id is empty (店舗なしで続行)
     const storeId = selectedStore?.id || null;
 
     let q1 = supabase
       .from("reservations")
       .select("id, status", { count: "exact" })
       .eq("tenant_id", user.tenantId);
-    if (storeId) q1 = q1.eq("store_id", storeId);
+    q1 = scopeToStore(q1, storeId);
 
     let q2 = supabase
       .from("reservations")
       .select("id, status, start_time, customer:customers ( name ), vehicle:vehicles ( plate_display, maker, model )")
       .eq("tenant_id", user.tenantId);
-    if (storeId) q2 = q2.eq("store_id", storeId);
+    q2 = scopeToStore(q2, storeId);
 
     let q3 = supabase
       .from("reservations")
       .select("id", { count: "exact", head: true })
       .eq("tenant_id", user.tenantId);
-    if (storeId) q3 = q3.eq("store_id", storeId);
+    q3 = scopeToStore(q3, storeId);
 
     let q5 = supabase
       .from("reservations")
       .select("id, scheduled_date, start_time, status, customer:customers ( name ), vehicle:vehicles ( plate_display, maker, model )")
       .eq("tenant_id", user.tenantId);
-    if (storeId) q5 = q5.eq("store_id", storeId);
+    q5 = scopeToStore(q5, storeId);
 
     const [todayRes, activeWork, awaitingPay, preparedTags, todayTimeline] =
       await Promise.all([

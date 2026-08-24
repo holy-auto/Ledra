@@ -4,6 +4,23 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-08-24 店舗で絞ると一覧が空になる不具合を修正（証明書・予約・作業・POS）
+
+- **モバイルの店舗絞り込みを `scopeToStore()` に集約した**（`apps/mobile/src/lib/storeScope.ts`）。
+  従来の `.eq("store_id", 店舗ID)` を「店舗一致 **または** 店舗未設定」に変更。
+  本番の `store_id` は certificates 45/45・reservations 169/169・payments 11/11 が
+  すべて null で、**店舗を選んでいる端末では一覧が必ず空**になっていた。
+  差し替えたのは9箇所（ホーム4・作業・証明書・予約・POS）。
+- **モバイルの作業タブが 400 を返し続けていた**のを修正。select 文字列の中に
+  `//` の注記が入っており、PostgREST がそれを列名として受け取っていた。
+- **`/api/admin/certificates` の検索が 400 になる**のを修正。`certificates` に無い
+  `plate_display` / `vehicle_maker` / `vehicle_model` で絞っていた。
+- **スキーマ照合の穴を2つ塞いだ**（`scripts/check-schema.mjs`）。
+  (1) 埋め込みの別名を `:` の後ろだけで判定していたため、select 内のコメントが
+  別名として飲み込まれて素通りしていた。(2) `query = query.or(...)` のように
+  代入で足したフィルタを見ていなかった。どちらも**壊れた状態で落ちることを確認**済み
+  （`scripts/__tests__/check-schema-parse.test.ts` に固定）。
+
 ## 2026-08-24 積み残し6件と判断待ち4件を実施 / OPEN_QUESTIONS 65件を棚卸し
 
 - **マイグレーションの再生を CI で見るようにした**。`npm run check:migrations` が

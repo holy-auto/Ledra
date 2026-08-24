@@ -11,6 +11,7 @@ import { router } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 
 import { supabase } from "@/lib/supabase";
+import { scopeToStore } from "@/lib/storeScope";
 import { useAuthStore } from "@/stores/authStore";
 import { StatusBadge } from "@/components/ui";
 import { useTabContentInset } from "@/hooks/useTabContentInset";
@@ -59,6 +60,12 @@ export default function WorkScreen() {
     queryFn: async () => {
       if (!user?.tenantId) return [];
 
+      // staff_members の SELECT は RLS で owner/admin 以上に限定されている。
+      // staff / viewer では埋め込みが null になり担当者が出ない（エラーにはならない）。
+      // 現場ロールにも見せるなら RLS を緩めるか、サーバ経由で引く必要がある。
+      //
+      // **この注記を select 文字列の中に書かないこと。** PostgREST は中身を
+      // そのまま列名として受け取るので、クエリごと 400 になり一覧が空になる。
       let query = supabase
         .from("reservations")
         .select(
@@ -66,9 +73,6 @@ export default function WorkScreen() {
           id, status, scheduled_date, start_time,
           customer:customers ( id, name ),
           vehicle:vehicles ( id, plate_display, maker, model ),
-          // staff_members の SELECT は RLS で owner/admin 以上に限定されている。
-          // staff / viewer では埋め込みが null になり担当者が出ない（エラーにはならない）。
-          // 現場ロールにも見せるなら RLS を緩めるか、サーバ経由で引く必要がある
           assigned_staff:staff_members ( id, name ),
           menu_items_json
         `
@@ -77,10 +81,7 @@ export default function WorkScreen() {
         .in("status", ["arrived", "in_progress"])
         .order("start_time", { ascending: true });
 
-      // ponytail: skip store filter when id is empty (店舗なしで続行)
-      if (selectedStore?.id) {
-        query = query.eq("store_id", selectedStore.id);
-      }
+      query = scopeToStore(query, selectedStore?.id);
 
       const { data, error } = await query;
       if (error) throw error;

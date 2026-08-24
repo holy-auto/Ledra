@@ -13,6 +13,7 @@ import { useQuery } from "@tanstack/react-query";
 import DateTimePicker from "@react-native-community/datetimepicker";
 
 import { supabase } from "@/lib/supabase";
+import { scopeToStore } from "@/lib/storeScope";
 import { useAuthStore } from "@/stores/authStore";
 import { StatusBadge } from "@/components/ui";
 import { EmptyState } from "@/components/EmptyState";
@@ -113,10 +114,7 @@ export default function ReservationsScreen() {
         .eq("scheduled_date", dateStr)
         .order("start_time", { ascending: true });
 
-      // ponytail: skip store filter when id is empty (店舗なしで続行)
-      if (selectedStore?.id) {
-        query = query.eq("store_id", selectedStore.id);
-      }
+      query = scopeToStore(query, selectedStore?.id);
 
       if (statusFilter !== "all") {
         query = query.eq("status", statusFilter);

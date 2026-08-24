@@ -11,6 +11,7 @@ import { router } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 
 import { supabase } from "@/lib/supabase";
+import { scopeToStore } from "@/lib/storeScope";
 import { useAuthStore } from "@/stores/authStore";
 import { StatusBadge, SegmentedControl } from "@/components/ui";
 import { EmptyState } from "@/components/EmptyState";
@@ -73,10 +74,7 @@ export default function CertificatesScreen() {
         .order("created_at", { ascending: false })
         .limit(200);
 
-      // ponytail: skip store filter when id is empty (店舗なしで続行)
-      if (selectedStore?.id) {
-        query = query.eq("store_id", selectedStore.id);
-      }
+      query = scopeToStore(query, selectedStore?.id);
 
       const { data, error } = await query;
       if (error) throw error;

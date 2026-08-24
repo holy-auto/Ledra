@@ -191,6 +191,42 @@ function methodChain(src, from) {
   return src.slice(start, i);
 }
 
+/**
+ * `let q = supabase.from("x")…` の `q` を取る。
+ * `const` は再代入できないので `let` / `var` だけを見る。
+ */
+const LET_BINDING = /(?:^|[;{}\n])\s*(?:let|var)\s+([A-Za-z_$][\w$]*)\s*(?::[^=;]*)?=\s*(?:await\s+)?[A-Za-z_$][\w$.]*\s*$/;
+function bindingBefore(src, fromIdx) {
+  const m = LET_BINDING.exec(src.slice(Math.max(0, fromIdx - 300), fromIdx));
+  return m ? m[1] : null;
+}
+
+/**
+ * 条件付きのフィルタを**代入で足していく**形（`if (q) query = query.or(...)`）。
+ *
+ * なぜ要るか: `methodChain` は `.from()` に続くメソッドの並びしか見ない。
+ * 代入で足したフィルタはそこに現れないので、まるごと素通りしていた。
+ * 実際に `/api/admin/certificates` の検索が `certificates.plate_display` という
+ * **存在しない列**でフィルタしていて、検索するたびに 400 になっていた
+ * （画面には「まだ証明書は発行されていません」と出る）。
+ *
+ * 変数名は使い回されるので、`q = q.…` 以外の代入が来たら打ち切る。
+ * ponytail: 上限。`applyFilters(q)` のように関数へ渡す形は追えない。
+ */
+function reassignChains(src, varName, from) {
+  const out = [];
+  const re = new RegExp(`\\b${varName}\\s*=\\s*(?!=)`, "g");
+  const cont = new RegExp(`^${varName}\\s*(?=\\.)`);
+  re.lastIndex = from;
+  for (let m; (m = re.exec(src)); ) {
+    const rhs = m.index + m[0].length;
+    const c = cont.exec(src.slice(rhs, rhs + varName.length + 8));
+    if (!c) break; // 別のものを入れ直した＝このクエリはここで終わり
+    out.push({ index: m.index, chain: methodChain(src, rhs + c[0].length) });
+  }
+  return out;
+}
+
 /** 1つのチェーン（`.from(...)` から文末まで）のフィルタを全部見る */
 function checkFilters(chain, table, where) {
   if (!cols.has(table)) return;
@@ -228,6 +264,13 @@ function checkEmbed(head, body, parent, where) {
   const target = parts.pop().split("!")[0].trim();
   const alias = parts.length ? parts.join(":").trim() : "";
   const ok = (n) => /^[a-z_][a-z0-9_]*$/.test(n) && cols.has(n);
+  // 別名は素直な識別子でなければならない。`:` の後ろだけ見て通していたせいで、
+  // select 文字列の中に書いた `//` コメントが**別名の一部として飲み込まれ**、
+  // 素通りしていた（モバイルの作業タブが 400 のまま残っていた）
+  if (alias && !/^[A-Za-z_$][\w$]*$/.test(alias)) {
+    add(where, `埋め込みの別名として読めない: ${JSON.stringify(alias)}`);
+    return;
+  }
   if (ok(target)) {
     checkSelect(body, target, where);
     return;
@@ -581,7 +624,12 @@ for (const { dir, minSelects, minMutations } of TARGETS) {
     // フィルタの列名。`.from(...)` に続く `.メソッド(...)` の並びだけを1本と見る
     for (const m of txt.matchAll(FROM_HEAD)) {
       if (inComment(m.index) || isOptedOut(txt, m.index)) continue;
-      checkFilters(methodChain(txt, m.index + m[0].length), m[1], rel(m.index));
+      const after = m.index + m[0].length;
+      const chain = methodChain(txt, after);
+      checkFilters(chain, m[1], rel(m.index));
+      // 後から `query = query.eq(...)` と足すフィルタも同じテーブルのもの
+      const v = bindingBefore(txt, m.index);
+      if (v) for (const r of reassignChains(txt, v, after + chain.length)) checkFilters(r.chain, m[1], rel(r.index));
     }
     for (const m of txt.matchAll(SELECT_HEAD)) {
       if (inComment(m.index) || isOptedOut(txt, m.index)) continue;

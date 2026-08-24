@@ -5,6 +5,7 @@ import { router } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 
 import { supabase } from "@/lib/supabase";
+import { scopeToStore } from "@/lib/storeScope";
 import { parseMenuItems } from "@/lib/reservationItems";
 import { useAuthStore } from "@/stores/authStore";
 import { colors, spacing, radius, typography, shadows } from "@/constants/tokens";
@@ -50,10 +51,7 @@ export default function PosScreen() {
         .eq("payment_status", "unpaid")
         .order("updated_at", { ascending: false });
 
-      // ponytail: skip store filter when id is empty (店舗なしで続行)
-      if (selectedStore?.id) {
-        query = query.eq("store_id", selectedStore.id);
-      }
+      query = scopeToStore(query, selectedStore?.id);
 
       const { data, error } = await query;
       if (error) throw error;
