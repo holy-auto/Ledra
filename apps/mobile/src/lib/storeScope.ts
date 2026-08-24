@@ -13,5 +13,10 @@
  */
 export function scopeToStore<Q extends { or(filter: string): Q }>(query: Q, storeId?: string | null): Q {
   if (!storeId) return query;
+  // `.or()` は文字列を組み立てて渡す。`,` や `(` が混ざると式が壊れて
+  // クエリごと 400 になり、**直そうとしている一覧がまた空になる**。
+  // 店舗 ID は DB 由来の UUID なので、その形でなければ絞らない
+  // （見えなくなるより、他店の行が混ざる方が害が小さい）。
+  if (!/^[0-9a-fA-F-]{36}$/.test(storeId)) return query;
   return query.or(`store_id.eq.${storeId},store_id.is.null`);
 }

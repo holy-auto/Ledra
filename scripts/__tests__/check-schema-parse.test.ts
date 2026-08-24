@@ -182,6 +182,64 @@ describe("check-schema の解析", () => {
     expect(r.out).toContain(`agents.${BAD}`);
   });
 
+  it("**包み直し**（`query = wrap(query)`）の後ろのフィルタも見る", () => {
+    // ここで打ち切ると、scopeToStore() を挟んだ5ファイルが全部見えなくなる
+    const r = runChecker(
+      `let query = supabase.from("agents").select("id");\n` +
+        `query = wrapIt(query, storeId);\n` +
+        `if (f) query = query.eq("${BAD}", f);\n`,
+    );
+    expect(r.code).not.toBe(0);
+    expect(r.out).toContain(`agents.${BAD}`);
+  });
+
+  it("深い字下げで**行が折れた**代入も見る", () => {
+    const r = runChecker(
+      `let query = supabase.from("agents").select("id");\n` +
+        `        query = query\n` +
+        `          .eq("${BAD}", 1);\n`,
+    );
+    expect(r.code).not.toBe(0);
+    expect(r.out).toContain(`agents.${BAD}`);
+  });
+
+  it("`$` で始まる変数名でも見る（正規表現のアンカーと取り違えない）", () => {
+    const r = runChecker(
+      `let $q = supabase.from("agents").select("id");\n` + `$q = $q.eq("${BAD}", 1);\n`,
+    );
+    expect(r.code).not.toBe(0);
+    expect(r.out).toContain(`agents.${BAD}`);
+  });
+
+  it("**別の関数の**同名変数を親テーブルの列と取り違えない", () => {
+    const r = runChecker(
+      `function load() {\n` +
+        `  let query = supabase.from("agents").select("id");\n` +
+        `  return query;\n` +
+        `}\n` +
+        `function applyTenantFilter(query) {\n` +
+        `  query = query.eq("${BAD}", 1);\n` +
+        `  return query;\n` +
+        `}\n`,
+    );
+    expect(r.out).not.toContain(`agents.${BAD}`);
+  });
+
+  it("JSDoc の中の代入の見本を実コードとして扱わない", () => {
+    const r = runChecker(
+      `let query = supabase.from("agents").select("id");\n` +
+        `/**\n * 使い方の例:\n *   query = query.eq("${BAD}", 1);\n */\n`,
+    );
+    expect(r.out).not.toContain(`agents.${BAD}`);
+  });
+
+  it("キャスト付きの列は**列名**を報告する（キャスト先ではない）", () => {
+    const r = runChecker(`supabase.from("agents").select("id, ${BAD}::text");`);
+    expect(r.code).not.toBe(0);
+    expect(r.out).toContain(`agents.${BAD}`);
+    expect(r.out).not.toContain("agents.text");
+  });
+
   it("同じ変数に**別のクエリ**を入れ直したら、そこから先は追わない", () => {
     const r = runChecker(
       `let query = supabase.from("agents").select("id");\n` +

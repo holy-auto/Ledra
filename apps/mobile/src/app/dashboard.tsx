@@ -105,8 +105,7 @@ export default function StoreDashboardScreen() {
       }
 
       // 4) 店舗ごとに集計
-      return stores.map((s): StoreMetrics => {
-        const sp = payments.filter((p) => p.store_id === s.id);
+      const metricsFor = (storeId: string, storeName: string, sp: PaymentRow[]): StoreMetrics => {
         const totalSales = sp.reduce((sum, p) => sum + p.amount, 0);
         const txCount = sp.length;
         const avgTicket = txCount === 0 ? 0 : Math.round(totalSales / txCount);
@@ -130,15 +129,17 @@ export default function StoreDashboardScreen() {
           .sort((a, b) => b.sales - a.sales)
           .slice(0, 3);
 
-        return {
-          storeId: s.id,
-          storeName: s.name,
-          totalSales,
-          txCount,
-          avgTicket,
-          topMenus,
-        };
-      });
+        return { storeId, storeName, totalSales, txCount, avgTicket, topMenus };
+      };
+
+      const rows = stores.map((s) =>
+        metricsFor(s.id, s.name, payments.filter((p) => p.store_id === s.id)),
+      );
+
+      // store_id の入っていない入金はどの店舗にも足せない。**落とさずに1行で出す。**
+      // 本番の payments は全件が null なので、黙って捨てると全店舗が 0 円に見える
+      const unassigned = payments.filter((p) => !p.store_id);
+      return unassigned.length ? [...rows, metricsFor("", "店舗未設定", unassigned)] : rows;
     },
     enabled: !!user?.tenantId,
   });

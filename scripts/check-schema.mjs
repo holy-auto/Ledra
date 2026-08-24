@@ -121,7 +121,9 @@ function checkSelect(sel, table, where) {
     const raw = t.trim();
     if (!raw || raw.includes("(")) continue;
     if (raw === "*") continue;
-    const col = raw.split(":").pop().split("::")[0].trim();
+    // キャストを先に落とす。順序を逆にすると `col::text` の `text` を列名として
+    // 見てしまい、本物の誤りが名前で出てこない
+    const col = raw.split("::")[0].split(":").pop().trim();
     // PostgREST の集計。certificate_images(count) は件数取得で、列名ではない
     if (col === "count") continue;
     if (!/^[a-z_][a-z0-9_]*$/.test(col)) {
@@ -213,18 +215,53 @@ function bindingBefore(src, fromIdx) {
  * 変数名は使い回されるので、`q = q.…` 以外の代入が来たら打ち切る。
  * ponytail: 上限。`applyFilters(q)` のように関数へ渡す形は追えない。
  */
-function reassignChains(src, varName, from) {
+function reassignChains(src, varName, from, until) {
   const out = [];
-  const re = new RegExp(`\\b${varName}\\s*=\\s*(?!=)`, "g");
-  const cont = new RegExp(`^${varName}\\s*(?=\\.)`);
+  // `$` は識別子にも正規表現のアンカーにも使える。`\b` では `$q` を拾えないので
+  // 「直前が識別子の一部でない」で見る（`foo.q = …` のような代入も除ける）
+  const v = varName.replace(/\$/g, "\\$");
+  const re = new RegExp(`(?<![\\w$.])${v}\\s*=\\s*(?!=)`, "g");
+  const cont = new RegExp(`^${v}\\s*(?=\\.)`);
   re.lastIndex = from;
-  for (let m; (m = re.exec(src)); ) {
+  for (let m; (m = re.exec(src)) && m.index < until; ) {
     const rhs = m.index + m[0].length;
-    const c = cont.exec(src.slice(rhs, rhs + varName.length + 8));
-    if (!c) break; // 別のものを入れ直した＝このクエリはここで終わり
+    // 別のクエリを入れ直したら、そこから先は別のテーブル
+    if (/^\s*(?:await\s+)?[A-Za-z_$][\w$.]*\s*\.\s*from\s*\(/.test(src.slice(rhs, rhs + 200))) break;
+    // `query = scopeToStore(query, …)` のような**包み直し**。ここで打ち切ると
+    // その後ろのフィルタが全部見えなくなるので、飛ばして次の代入を見る
+    const c = cont.exec(src.slice(rhs, rhs + varName.length + 64));
+    if (!c) continue;
     out.push({ index: m.index, chain: methodChain(src, rhs + c[0].length) });
   }
   return out;
+}
+
+/**
+ * `from` を含むブロックの終わり（対応する `}`）。
+ *
+ * なぜ要るか: 変数名は使い回される。`let query = …from("agents")` の後ろを
+ * ファイル末尾まで見ると、**別の関数の** `query = query.eq(...)` を
+ * agents の列として報告する（実際に誤検知した）。
+ * ponytail: 上限。コメントの中の `}` でも止まる（見落とすだけで誤検知はしない）。
+ */
+function enclosingBlockEnd(src, from) {
+  let d = 0;
+  let quote = null;
+  for (let i = from; i < src.length; i++) {
+    const c = src[i];
+    if (quote) {
+      if (c === "\\") i++;
+      else if (c === quote) quote = null;
+      continue;
+    }
+    if (c === '"' || c === "'" || c === "`") quote = c;
+    else if (c === "{") d++;
+    else if (c === "}") {
+      if (d === 0) return i;
+      d--;
+    }
+  }
+  return src.length;
 }
 
 /** 1つのチェーン（`.from(...)` から文末まで）のフィルタを全部見る */
@@ -629,7 +666,12 @@ for (const { dir, minSelects, minMutations } of TARGETS) {
       checkFilters(chain, m[1], rel(m.index));
       // 後から `query = query.eq(...)` と足すフィルタも同じテーブルのもの
       const v = bindingBefore(txt, m.index);
-      if (v) for (const r of reassignChains(txt, v, after + chain.length)) checkFilters(r.chain, m[1], rel(r.index));
+      if (v) {
+        for (const r of reassignChains(txt, v, after + chain.length, enclosingBlockEnd(txt, m.index))) {
+          if (inComment(r.index) || isOptedOut(txt, r.index)) continue;
+          checkFilters(r.chain, m[1], rel(r.index));
+        }
+      }
     }
     for (const m of txt.matchAll(SELECT_HEAD)) {
       if (inComment(m.index) || isOptedOut(txt, m.index)) continue;
