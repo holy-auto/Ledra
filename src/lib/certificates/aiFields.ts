@@ -12,7 +12,8 @@
  */
 
 /** AI 用に読む実在の列。SELECT にそのまま渡す */
-export const CERT_AI_COLUMNS = "service_type, content_free_text, coating_products_json, expiry_value";
+export const CERT_AI_COLUMNS =
+  "service_type, content_free_text, coating_products_json, expiry_value, content_preset_json";
 
 /** AI 側が受け取る形。以前の列名をそのまま使う（消費側の型を変えないため） */
 export interface CertAiFields {
@@ -20,6 +21,8 @@ export interface CertAiFields {
   description?: string;
   material_info?: string;
   warranty_period?: string;
+  /** 施工箇所。専用の列は無いが `content_preset_json.work_areas` に入っている */
+  work_areas?: string;
 }
 
 interface CertAiRow {
@@ -27,6 +30,7 @@ interface CertAiRow {
   content_free_text?: unknown;
   coating_products_json?: unknown;
   expiry_value?: unknown;
+  content_preset_json?: unknown;
 }
 
 const text = (v: unknown): string | undefined => (typeof v === "string" && v.trim() ? v : undefined);
@@ -52,6 +56,20 @@ function materialText(v: unknown): string | undefined {
   }
 }
 
+/**
+ * 施工箇所は専用の列を持たず、`content_preset_json.work_areas`（文字列の配列）に
+ * 入っている。AI の下書き経路がそこへ書いているのに、読む側が拾っていなかったので
+ * 「施工箇所: なし」で生成され続けていた。
+ */
+function workAreasText(v: unknown): string | undefined {
+  if (!v || typeof v !== "object") return undefined;
+  const areas = (v as { work_areas?: unknown }).work_areas;
+  if (typeof areas === "string") return text(areas);
+  if (!Array.isArray(areas)) return undefined;
+  const names = areas.map((a) => text(a)).filter(Boolean);
+  return names.length ? names.join("、") : undefined;
+}
+
 export function certAiFields(row: CertAiRow | null | undefined): CertAiFields {
   return {
     service_name: text(row?.service_type) ?? "",
@@ -60,12 +78,16 @@ export function certAiFields(row: CertAiRow | null | undefined): CertAiFields {
     // 保証期間は `expiry_value`（"3年" などの期間）。`warranty_period_end` は
     // 終了日なので別物 —— 期間を求めている消費側にはこちらを渡す
     warranty_period: text(row?.expiry_value),
+    work_areas: workAreasText(row?.content_preset_json),
   };
 }
 
 /**
- * `work_areas` / `category` / `photo_count` は certificates に列が無い。
- * 写真の枚数だけは `certificate_images` を数えれば出せる。
+ * 写真の枚数は `certificate_images` を数えて出す。
+ *
+ * `category` には専用の列も jsonb の保存先も無い。いちばん近いのは
+ * `service_type`（施工名）で、それは `service_name` として既に渡しているので、
+ * 同じ値を `category` として重ねて渡すことはしない。
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- supabase-js の型を展開すると TS2589 になる
 export async function certPhotoCount(db: any, certificateId: string): Promise<number> {

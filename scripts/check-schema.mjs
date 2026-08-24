@@ -59,10 +59,22 @@ const add = (where, what) => issues.push(`  ${where}  ${what}`);
  * かといって全部落とすと、正当な書き方（配列を map で作る insert）が止まる。
  * **件数を記録して、増えたら落とす。**減らすには対象を const に括り出すか
  * 文字列で書く。
+ *
+ * 54 → 32 に減らした内訳（2026-08-24）: `const rows = xs.map((x) => ({ ... }))`
+ * を読めるようにした。この形が最多で、読めるようにした結果
+ * `notifications.type`（実列は notification_type）という**100% 失敗していた
+ * 書き込み**が1件見つかった。
+ *
+ * 残っている 32 件の形:
+ *   - `const updates = parsed.data`（zod スキーマの検証結果をそのまま渡す）
+ *     → 列は zod スキーマ側にある。別ファイルの `z.object({...})` を読む必要があり、
+ *       `.omit()` / `.extend()` を追うと誤検知の危険が高いので手を付けていない
+ *   - 動的に組み立てる select 文字列
+ *   - `.map()` の中で分岐して形が変わるもの
  * ponytail: 上限。生成型 (db:typegen) でクエリを型付けすれば、この枠は要らなくなる。
  */
 const unresolved = [];
-const UNRESOLVED_BASELINE = 54;
+const UNRESOLVED_BASELINE = 32;
 const addUnresolved = (where, what) => unresolved.push(`  ${where}  ${what}`);
 
 /** select 文字列を走査する。埋め込み `alias:table ( ... )` は再帰的に見る */
@@ -497,11 +509,34 @@ function collectStringConsts(files) {
  */
 function collectObjectConsts(src) {
   const out = new Map();
+  const push = (name, at, body) => {
+    if (!out.has(name)) out.set(name, []);
+    out.get(name).push({ at, body });
+  };
+
+  // `const row = { ... }`
   const re = /(?:export\s+)?const\s+([A-Za-z_$][\w$]*)(?::[^=]*)?\s*=\s*\{/g;
   for (const m of src.matchAll(re)) {
     const open = src.indexOf("{", m.index + m[0].length - 1);
-    if (!out.has(m[1])) out.set(m[1], []);
-    out.get(m[1]).push({ at: m.index, body: balanced(src, open) });
+    push(m[1], m.index, balanced(src, open));
+  }
+
+  /**
+   * `const rows = items.map((x) => ({ ... }))` の形。
+   *
+   * 書き込みのペイロードを配列で組む書き方はこれが圧倒的に多く、
+   * 「中身を読めないクエリ」54 件のうち大半がこれだった。map の中の
+   * オブジェクトリテラルは行ごとに同じ形なので、1つ読めば列は分かる。
+   * ponytail: 上限。`.map()` の中で分岐して別の形を返す場合は最初の形しか見ない。
+   */
+  const mapRe =
+    // `=` と `.map(` の間に `;` や波括弧を挟ませない。挟ませると
+    // `let itemCount = 0;` の次の行の `const rows = xs.map(...)` を
+    // itemCount の定義として拾ってしまう（実際に拾っていた）
+    /(?:export\s+)?(?:const|let)\s+([A-Za-z_$][\w$]*)(?::[^=;{}]*)?\s*=\s*[^;{}]{0,200}?\.map\(\s*(?:async\s*)?\(?[^)=]{0,120}?\)?\s*=>\s*\(\s*\{/g;
+  for (const m of src.matchAll(mapRe)) {
+    const open = src.lastIndexOf("{", m.index + m[0].length);
+    push(m[1], m.index, balanced(src, open));
   }
   return out;
 }

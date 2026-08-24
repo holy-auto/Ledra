@@ -5,6 +5,7 @@ import { router, useLocalSearchParams } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { supabase } from "@/lib/supabase";
+import { mobileApi } from "@/lib/api";
 import { useAuthStore } from "@/stores/authStore";
 import { LedraButton } from "@/components/ui";
 import { colors, spacing, radius } from "@/constants/tokens";
@@ -104,35 +105,30 @@ export default function CertificateNewScreen() {
 
   const mutation = useMutation({
     mutationFn: async () => {
-      const { data, error } = await supabase
-        .from("certificates")
-        .insert({
-          tenant_id: user!.tenantId,
-          store_id: selectedStore!.id,
-          vehicle_id: form.vehicle_id || null,
-          service_type: form.service_type || null,
-          // content / vehicle_maker / vehicle_model / plate_display 列は存在しない。
-          // 施工内容は content_free_text、車両は発行時スナップショットの vehicle_info_json。
-          // public_id は DB 側の generate_public_id() が採番する
-          content_free_text:
-            [form.content_summary.trim(), form.notes.trim()].filter(Boolean).join("\n\n") || null,
-          status: "draft",
-          // customer_name は NOT NULL。顧客未選択でも空文字で通す（あとから編集できる）
+      // 直接 insert すると、テンプレートのスキーマ写し取り・メーカー認定テンプレートの
+      // 検証・撮影来歴の nonce 発行・車両履歴の記録を**全部飛ばす**。
+      // Web の発行画面と同じ処理を通すため、必ずサーバ経由で作る
+      return mobileApi<{ id: string | null; public_id: string }>("/certificates", {
+        method: "POST",
+        body: {
+          // customer_name はサーバ側で必須。顧客未選択なら車両の所有者名を使う
           customer_name: selectedVehicle?.customers?.name ?? "",
-          vehicle_info_json: {
-            maker: form.vehicle_maker.trim(),
-            model: form.vehicle_model.trim(),
-            plate: form.vehicle_plate.trim(),
-          },
-        })
-        .select("id")
-        .single();
-      if (error) throw error;
-      return data;
+          store_id: selectedStore?.id ?? null,
+          vehicle_id: form.vehicle_id || null,
+          vehicle_maker: form.vehicle_maker.trim(),
+          model: form.vehicle_model.trim(),
+          plate: form.vehicle_plate.trim(),
+          service_type: form.service_type || null,
+          content_free_text:
+            [form.content_summary.trim(), form.notes.trim()].filter(Boolean).join("\n\n"),
+        },
+      });
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["certificates"] });
-      router.replace(`/certificates/${data.id}`);
+      // 詳細画面は id（uuid）で引く。取れなければ一覧へ戻す
+      if (data.id) router.replace(`/certificates/${data.id}`);
+      else router.replace("/(tabs)/certificates");
     },
   });
 

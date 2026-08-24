@@ -26,6 +26,8 @@ import { supabase } from "@/lib/supabase";
 import { paymentIdOf, toPosItems } from "@/lib/pos";
 import { useAuthStore } from "@/stores/authStore";
 import { mobileApi } from "@/lib/api";
+import { useQrPaymentPoller } from "@/hooks/useQrPaymentPoller";
+import { paymentSegments, isQrFlow, isTerminalBusy } from "@/lib/posPayment";
 import { useTerminal } from "@/hooks/useTerminal";
 import { useTerminalStore } from "@/stores/terminalStore";
 import { LedraButton, SegmentedControl } from "@/components/ui";
@@ -75,40 +77,10 @@ function useDeviceType() {
     isAndroid: os === "android",
   };
 }
-
-function useQrPaymentPoller(
-  sessionId: string | null,
-  onPaid: () => void,
-) {
-  useEffect(() => {
-    if (!sessionId) return;
-    let active = true;
-    const poll = async () => {
-      while (active) {
-        await new Promise((r) => setTimeout(r, 3000));
-        try {
-          const res = await mobileApi<{ status: string }>(
-            `/pos/checkout/qr-status?session_id=${sessionId}`,
-          );
-          if (res.status === "paid" && active) {
-            active = false;
-            onPaid();
-          }
-        } catch {
-          // ignore
-        }
-      }
-    };
-    poll();
-    return () => {
-      active = false;
-    };
-  }, [sessionId, onPaid]);
-}
-
 export default function WalkInCheckoutScreen() {
   const { user, selectedStore } = useAuthStore();
-  const { isIPhone, isIPad, isAndroid } = useDeviceType();
+  const device = useDeviceType();
+  const { isIPhone, isIPad, isAndroid } = device;
   const { width: windowWidth } = useWindowDimensions();
   const insets = useSafeAreaInsets();
 
@@ -326,10 +298,8 @@ export default function WalkInCheckoutScreen() {
       }
 
       // QR決済（iPad/Android「カード」 or iPhone「QR」）
-      const isQrFlow =
-        ((isAndroid || isIPad) && paymentMethod === "card") ||
-        (isIPhone && paymentMethod === "qr");
-      if (isQrFlow) {
+      const qrFlow = isQrFlow(device, paymentMethod);
+      if (qrFlow) {
         const res = await mobileApi<{ url: string; session_id: string }>(
           "/pos/checkout/qr-session",
           {
@@ -379,34 +349,9 @@ export default function WalkInCheckoutScreen() {
     }
   }
 
-  const paymentSegments = (() => {
-    if (isIPad) {
-      return [
-        { value: "cash" as const, label: "現金" },
-        { value: "card" as const, label: "QR決済" },
-        { value: "bank_transfer" as const, label: "振込" },
-      ];
-    }
-    if (isIPhone) {
-      return [
-        { value: "cash" as const, label: "現金" },
-        { value: "card" as const, label: "カード" },
-        { value: "qr" as const, label: "QR" },
-        { value: "bank_transfer" as const, label: "振込" },
-      ];
-    }
-    return [
-      { value: "cash" as const, label: "現金" },
-      { value: "card" as const, label: "QR決済" },
-      { value: "bank_transfer" as const, label: "振込" },
-    ];
-  })();
+  const segments = paymentSegments(device);
 
-  const isProcessing =
-    paymentStatus === "collecting" ||
-    paymentStatus === "processing" ||
-    paymentStatus === "capturing" ||
-    paymentStatus === "creating";
+  const isProcessing = isTerminalBusy(paymentStatus);
 
   const isDisabled =
     processing ||
@@ -661,7 +606,7 @@ export default function WalkInCheckoutScreen() {
                 支払方法
               </Text>
               <SegmentedControl
-                segments={paymentSegments}
+                segments={segments}
                 value={paymentMethod}
                 onChange={(v) => {
                   setPaymentMethod(v as PaymentMethod);

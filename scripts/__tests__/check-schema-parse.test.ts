@@ -101,6 +101,26 @@ describe("check-schema の解析", () => {
     expect(r.code).toBe(0);
   });
 
+  it("`const rows = xs.map((x) => ({...}))` の書き込みも中身を見る", () => {
+    const r = runChecker(
+      `const rows = items.map((i) => ({ name: i.name, ${BAD}: i.v }));\n` +
+        `await db.from("agents").insert(rows);`,
+    );
+    expect(r.code).not.toBe(0);
+    expect(r.out).toContain(`agents.${BAD}`);
+  });
+
+  it("map の定義を**文をまたいで**別の変数と取り違えない", () => {
+    // `let n = 0;` の次の行の map を n の定義として拾っていた
+    const r = runChecker(
+      `let n = 0;\n` +
+        `const rows = items.map((i) => ({ name: i.name, ${BAD}: 1 }));\n` +
+        `await db.from("agents").insert(rows);`,
+    );
+    expect(r.code).not.toBe(0);
+    expect(r.out).toContain(`agents.${BAD}`);
+  });
+
   it("フィルタの列名も見る（存在しない列でフィルタしても 400 になる）", () => {
     const r = runChecker(`supabase.from("agents").select("id").eq("${BAD}", 1);`);
     expect(r.code).not.toBe(0);

@@ -9,6 +9,7 @@ describe("CERT_AI_COLUMNS", () => {
       "content_free_text",
       "coating_products_json",
       "expiry_value",
+      "content_preset_json",
     ]);
   });
 });
@@ -70,5 +71,30 @@ describe("certAiFields", () => {
     it("null は undefined", () => {
       expect(certAiFields({ coating_products_json: null }).material_info).toBeUndefined();
     });
+  });
+});
+
+describe("work_areas（施工箇所）", () => {
+  it("content_preset_json.work_areas を読む（専用の列は無い）", () => {
+    expect(
+      certAiFields({ content_preset_json: { ai_auto_draft: true, work_areas: ["ボンネット", "ルーフ"] } }).work_areas,
+    ).toBe("ボンネット、ルーフ");
+  });
+
+  it("文字列で入っていてもそのまま返す", () => {
+    expect(certAiFields({ content_preset_json: { work_areas: "全面" } }).work_areas).toBe("全面");
+  });
+
+  it("無い・空・型違いは undefined（AI 側は「なし」と表示する）", () => {
+    expect(certAiFields({}).work_areas).toBeUndefined();
+    expect(certAiFields({ content_preset_json: null }).work_areas).toBeUndefined();
+    expect(certAiFields({ content_preset_json: {} }).work_areas).toBeUndefined();
+    expect(certAiFields({ content_preset_json: { work_areas: [] } }).work_areas).toBeUndefined();
+    expect(certAiFields({ content_preset_json: { work_areas: ["", "  "] } }).work_areas).toBeUndefined();
+    expect(certAiFields({ content_preset_json: "文字列" }).work_areas).toBeUndefined();
+  });
+
+  it("SELECT する列に content_preset_json が入っている（入れ忘れると常に undefined になる）", () => {
+    expect(CERT_AI_COLUMNS.split(",").map((c) => c.trim())).toContain("content_preset_json");
   });
 });

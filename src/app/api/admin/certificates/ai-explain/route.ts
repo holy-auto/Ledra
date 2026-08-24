@@ -88,7 +88,6 @@ export async function POST(req: NextRequest) {
           ...certAiFields(cert),
           issued_at: cert.created_at ?? "",
           expiry_date: cert.expiry_date ?? undefined,
-          // work_areas は certificates に列が無いので渡せない
           public_url: publicUrl,
         },
         vehicle: {

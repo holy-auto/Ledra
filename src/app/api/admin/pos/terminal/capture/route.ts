@@ -1,92 +1,43 @@
-import { NextRequest, NextResponse } from "next/server";
-import Stripe from "stripe";
-import { getStripeClient } from "@/lib/stripe/client";
+import { NextRequest } from "next/server";
+
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
-import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { apiJson, apiUnauthorized, apiForbidden, apiValidationError, apiInternalError } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { posTerminalCaptureSchema } from "@/lib/validations/pos-capture";
+import { captureTerminalPayment } from "@/lib/pos/terminalCapture";
 
 export const dynamic = "force-dynamic";
 
 // ─── POST: Stripe Terminal 決済確認 + POS会計記録（Connect対応） ───
+// 記録の本体は @/lib/pos/terminalCapture（モバイルと共通）。
 export async function POST(req: NextRequest) {
-  // Each call retrieves a Stripe PaymentIntent and writes to pos_checkout.
-  // mobile_pos preset (10/min/IP) matches the equivalent mobile route and
-  // bounds replay if a session leaks.
-  const limited = await checkRateLimit(req, "mobile_pos");
-  if (limited) return limited;
-
   try {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
     if (!requireMinRole(caller, "staff")) return apiForbidden();
 
+    // 利用者単位で数える。IP 単位だと店舗の NAT で全端末がまとめて上限に当たり、
+    // **カードを切った直後に記録だけ弾かれる**（＝二重請求の入口）
+    const limited = await checkRateLimit(req, "mobile_pos", caller.userId);
+    if (limited) return limited;
+
     const parsed = posTerminalCaptureSchema.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) {
       return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
     }
-    const data2 = parsed.data;
-    if (!data2.payment_intent_id.startsWith("pi_")) {
+    if (!parsed.data.payment_intent_id.startsWith("pi_")) {
       return apiValidationError("invalid_payment_intent_id");
     }
-    const paymentIntentId = data2.payment_intent_id;
 
-    // テナントのStripe Connectアカウントを取得
-    const { admin } = createTenantScopedAdmin(caller.tenantId);
-    const { data: tenant } = await admin
-      .from("tenants")
-      .select("stripe_connect_account_id, stripe_connect_onboarded")
-      .eq("id", caller.tenantId)
-      .single();
-
-    const connectAccountId = tenant?.stripe_connect_account_id as string | null;
-    const isOnboarded = tenant?.stripe_connect_onboarded as boolean | null;
-
-    const stripe = getStripeClient();
-
-    const stripeOptions = connectAccountId && isOnboarded ? { stripeAccount: connectAccountId } : undefined;
-
-    // PaymentIntent のステータス確認（Connectアカウント対応）
-    const pi = await stripe.paymentIntents.retrieve(paymentIntentId, stripeOptions);
-
-    if (pi.status !== "succeeded") {
-      return apiValidationError(`payment_not_succeeded: status is "${pi.status}"`);
+    const res = await captureTerminalPayment(caller, parsed.data);
+    if (!res.ok) {
+      return res.kind === "validation"
+        ? apiValidationError(res.error)
+        : apiInternalError(res.error, "pos/terminal/capture");
     }
-
-    // pos_checkout RPC で支払記録 + 領収書作成
-    // pos_checkout は SECURITY DEFINER で、引数の tenant_id をそのまま使う。
-    // 未認証・他テナントから呼ばれないよう service_role 専用にしたので、
-    // 権限確認済みのこのルートからはサービスロールのクライアントで呼ぶ
-    const { data, error } = await admin.rpc("pos_checkout", {
-      p_tenant_id: caller.tenantId,
-      p_reservation_id: data2.reservation_id,
-      p_customer_id: data2.customer_id,
-      p_store_id: data2.store_id,
-      p_register_session_id: data2.register_session_id,
-      p_payment_method: "card",
-      p_amount: pi.amount,
-      p_received_amount: pi.amount,
-      p_items_json: data2.items_json ?? [],
-      p_tax_rate: data2.tax_rate,
-      p_note: data2.note,
-      p_create_receipt: true,
-      p_user_id: caller.userId,
-    });
-
-    if (error) {
-      return apiInternalError(error, "pos/terminal/capture");
-    }
-
-    return apiJson({
-      ok: true,
-      payment_intent_id: pi.id,
-      amount: pi.amount,
-      status: pi.status,
-      result: data,
-    });
+    return apiJson(res);
   } catch (e: unknown) {
     return apiInternalError(e, "pos/terminal/capture");
   }

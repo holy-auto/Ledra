@@ -72,7 +72,8 @@ export async function POST(req: NextRequest) {
       {
         certificate: {
           ...certAiFields(cert),
-          // work_areas / category / photo_count は certificates に列が無い
+          // 施工箇所は certAiFields が content_preset_json から拾う。
+          // category は保存先が無く、いちばん近い service_type は service_name として渡している
           photo_count: await certPhotoCount(admin, certificate_id),
         },
         qualityScore: qualityScore?.score ?? undefined,

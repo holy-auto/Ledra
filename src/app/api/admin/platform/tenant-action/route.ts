@@ -125,9 +125,12 @@ export async function POST(req: NextRequest) {
             tenant_id: tenantId,
             title: "運営からのお知らせ",
             body: message,
-            type: "platform_notification",
+            // 列名は notification_type。`type` は存在せず、この insert は
+            // 100% 失敗していた（戻り値も見ていなかったので誰も気づいていない）
+            notification_type: "platform_notification",
           }));
-          await admin.from("notifications").insert(notifications);
+          const { error: notifyErr } = await admin.from("notifications").insert(notifications);
+          if (notifyErr) throw new Error(`通知の作成に失敗しました: ${notifyErr.message}`);
         }
         result = { message: `${tenant.name} の ${userIds.length}名に通知を送信しました` };
         break;

@@ -15,6 +15,8 @@ import { toPosItems } from "@/lib/pos";
 import { parseMenuItems, menuItemsTotal, hasUnknownPrice } from "@/lib/reservationItems";
 import { useAuthStore } from "@/stores/authStore";
 import { mobileApi } from "@/lib/api";
+import { useQrPaymentPoller } from "@/hooks/useQrPaymentPoller";
+import { paymentSegments, isQrFlow, isTerminalBusy } from "@/lib/posPayment";
 import { useTerminal } from "@/hooks/useTerminal";
 import { useTerminalStore } from "@/stores/terminalStore";
 import { TapToPayButton } from "@/components/TapToPayButton";
@@ -58,39 +60,12 @@ type PaymentMethod = "cash" | "card" | "qr" | "bank_transfer";
 // ─────────────────────────────────────────────────────────────
 // QR決済ポーリング
 // ─────────────────────────────────────────────────────────────
-function useQrPaymentPoller(
-  sessionId: string | null,
-  onPaid: () => void
-) {
-  useEffect(() => {
-    if (!sessionId) return;
-    let active = true;
-    const poll = async () => {
-      while (active) {
-        await new Promise((r) => setTimeout(r, 3000));
-        try {
-          const res = await mobileApi<{ status: string }>(
-            `/pos/checkout/qr-status?session_id=${sessionId}`
-          );
-          if (res.status === "paid" && active) {
-            active = false;
-            onPaid();
-          }
-        } catch {
-          // ポーリング失敗は無視して継続
-        }
-      }
-    };
-    poll();
-    return () => { active = false; };
-  }, [sessionId, onPaid]);
-}
-
 // ─────────────────────────────────────────────────────────────
 export default function PosCheckoutScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { user, selectedStore } = useAuthStore();
-  const { isIPhone, isIPad, isAndroid } = useDeviceType();
+  const device = useDeviceType();
+  const { isIPhone, isIPad, isAndroid } = device;
 
   const defaultMethod: PaymentMethod = "cash";
   const [paymentMethod, setPaymentMethod] =
@@ -192,10 +167,8 @@ export default function PosCheckoutScreen() {
       }
 
       // B. QRコード決済
-      const isQrFlow =
-        ((isAndroid || isIPad) && paymentMethod === "card") ||
-        (isIPhone && paymentMethod === "qr");
-      if (isQrFlow) {
+      const qrFlow = isQrFlow(device, paymentMethod);
+      if (qrFlow) {
         const res = await mobileApi<{ url: string; session_id: string }>(
           "/pos/checkout/qr-session",
           {
@@ -231,10 +204,8 @@ export default function PosCheckoutScreen() {
     },
     onSuccess: (result) => {
       if (result === "cancelled") return;
-      const isQrFlow =
-        ((isAndroid || isIPad) && paymentMethod === "card") ||
-        (isIPhone && paymentMethod === "qr");
-      if (isQrFlow) return;
+      const qrFlow = isQrFlow(device, paymentMethod);
+      if (qrFlow) return;
       resetPayment();
       router.replace(`/pos/receipt/${id}`);
     },
@@ -251,28 +222,7 @@ export default function PosCheckoutScreen() {
   });
 
   // ── 支払い方法ボタン定義（端末別） ────────────────────────────
-  const paymentSegments = (() => {
-    if (isIPad) {
-      return [
-        { value: "cash" as const, label: "現金" },
-        { value: "card" as const, label: "QR決済" },
-        { value: "bank_transfer" as const, label: "振込" },
-      ];
-    }
-    if (isIPhone) {
-      return [
-        { value: "cash" as const, label: "現金" },
-        { value: "card" as const, label: "カード" },
-        { value: "qr" as const, label: "QR" },
-        { value: "bank_transfer" as const, label: "振込" },
-      ];
-    }
-    return [
-      { value: "cash" as const, label: "現金" },
-      { value: "card" as const, label: "QR決済" },
-      { value: "bank_transfer" as const, label: "振込" },
-    ];
-  })();
+  const segments = paymentSegments(device);
 
   // ── ローディング・エラー ───────────────────────────────────────
   if (isLoading) {
@@ -291,11 +241,7 @@ export default function PosCheckoutScreen() {
   }
 
   // ── 決済ボタンの無効化条件 ─────────────────────────────────────
-  const isProcessing =
-    paymentStatus === "collecting" ||
-    paymentStatus === "processing" ||
-    paymentStatus === "capturing" ||
-    paymentStatus === "creating";
+  const isProcessing = isTerminalBusy(paymentStatus);
 
   const isDisabled =
     checkoutMutation.isPending ||
@@ -482,7 +428,7 @@ export default function PosCheckoutScreen() {
               支払方法
             </Text>
             <SegmentedControl
-              segments={paymentSegments}
+              segments={segments}
               value={paymentMethod}
               onChange={(v) => {
                 setPaymentMethod(v as PaymentMethod);
