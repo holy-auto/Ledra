@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
 import { View, StyleSheet, ScrollView, Platform } from "react-native";
-import QRCode from "react-native-qrcode-svg";
 import {
   Text,
   TextInput,
@@ -16,8 +15,16 @@ import { parseMenuItems, menuItemsTotal, hasUnknownPrice } from "@/lib/reservati
 import { useAuthStore } from "@/stores/authStore";
 import { mobileApi } from "@/lib/api";
 import { useQrPaymentPoller } from "@/hooks/useQrPaymentPoller";
+import { CardEntryPanel } from "@/components/CardEntryPanel";
 import { useDeviceType } from "@/hooks/useDeviceType";
-import { paymentSegments, isQrFlow, isTapToPayFlow, isTerminalBusy } from "@/lib/posPayment";
+import {
+  paymentSegments,
+  isQrFlow,
+  isTapToPayFlow,
+  isTerminalBusy,
+  shouldOfferCardEntry,
+  recordedMethod,
+} from "@/lib/posPayment";
 import { useTerminal } from "@/hooks/useTerminal";
 import { useTerminalStore } from "@/stores/terminalStore";
 import { TapToPayButton } from "@/components/TapToPayButton";
@@ -60,6 +67,10 @@ export default function PosCheckoutScreen() {
   const [qrUrl, setQrUrl] = useState<string | null>(null);
   const [qrSessionId, setQrSessionId] = useState<string | null>(null);
   const [qrPolling, setQrPolling] = useState(false);
+  // タッチ決済が読めなかった直後だけ、カード番号入力への導線を出す
+  const [tapFailed, setTapFailed] = useState(false);
+  // その導線から始めた決済か。**カードとして記録する**ため（QR ではない）
+  const [cardEntry, setCardEntry] = useState(false);
 
   // Stripe Terminal（iPhone専用）
   const {
@@ -78,16 +89,6 @@ export default function PosCheckoutScreen() {
       initTerminal();
     }
   }, [isIPhone]);
-
-  // QRポーリング
-  // ハンドラの同一性が変わるとポーリングが毎回作り直され、3 秒待ちが
-  // 振り出しに戻る。useCallback で固定する（ウォークイン画面も同じ形）
-  const onQrPaid = useCallback(() => {
-    setQrPolling(false);
-    resetPayment();
-    router.replace(`/pos/receipt/${id}`);
-  }, [id]);
-  useQrPaymentPoller(qrPolling ? qrSessionId : null, onQrPaid);
 
   // ── 予約データ取得 ────────────────────────────────────────────
   const { data: reservation, isLoading } = useQuery<ReservationCheckout>({
@@ -117,6 +118,60 @@ export default function PosCheckoutScreen() {
   const priceUnknown = hasUnknownPrice(items);
   const received = parseInt(receivedAmount, 10) || 0;
   const change = paymentMethod === "cash" ? Math.max(0, received - total) : 0;
+
+  // QRポーリング
+  // ハンドラの同一性が変わるとポーリングが毎回作り直され、3 秒待ちが
+  // 振り出しに戻る。useCallback で固定する（ウォークイン画面も同じ形）
+  //
+  // **ここで会計を記録する。** 以前は記録せずレシート画面へ飛ばしていたので、
+  // カードは切られているのに payments に1行も残らなかった（レシートも出ない）。
+  // Stripe の webhook 側にも POS の Checkout を受ける処理は無い
+  const onQrPaid = useCallback(async () => {
+    setQrPolling(false);
+    resetPayment();
+    try {
+      await mobileApi("/pos/checkout", {
+        method: "POST",
+        body: {
+          reservation_id: id || null,
+          store_id: selectedStore?.id || null,
+          // タッチ決済の代わりに始めた分は、実体がカードなので card で残す
+          payment_method: recordedMethod(paymentMethod, cardEntry),
+          amount: total,
+          received_amount: total,
+          items_json: toPosItems(items),
+        },
+      });
+    } catch (err) {
+      setSnackbar(err instanceof Error ? err.message : "決済記録に失敗しました");
+    }
+    router.replace(`/pos/receipt/${id}`);
+  }, [id, selectedStore, paymentMethod, cardEntry, total, items, resetPayment]);
+  useQrPaymentPoller(qrPolling ? qrSessionId : null, onQrPaid);
+
+  /**
+   * Stripe Checkout のセッションを作って QR を出す。
+   * 通常の QR 決済と、タッチ決済が読めなかった時の逃げ道の**両方**から呼ぶ。
+   */
+  const startCardEntry = useCallback(
+    async (fromTapFailure: boolean) => {
+      const res = await mobileApi<{ url: string; session_id: string }>("/pos/checkout/qr-session", {
+        method: "POST",
+        body: {
+          amount: total,
+          reservation_id: id,
+          tenant_id: user!.tenantId,
+          store_id: selectedStore?.id ?? "",
+        },
+      });
+      setCardEntry(fromTapFailure);
+      setTapFailed(false);
+      setQrUrl(res.url);
+      setQrSessionId(res.session_id);
+      setQrPolling(true);
+    },
+    [total, id, user, selectedStore],
+  );
 
   // ── 決済ミューテーション ───────────────────────────────────────
   const checkoutMutation = useMutation({
@@ -155,21 +210,7 @@ export default function PosCheckoutScreen() {
       // B. QRコード決済
       const qrFlow = isQrFlow(device, paymentMethod);
       if (qrFlow) {
-        const res = await mobileApi<{ url: string; session_id: string }>(
-          "/pos/checkout/qr-session",
-          {
-            method: "POST",
-            body: {
-              amount: total,
-              reservation_id: id,
-              tenant_id: user!.tenantId,
-              store_id: selectedStore?.id ?? "",
-            },
-          }
-        );
-        setQrUrl(res.url);
-        setQrSessionId(res.session_id);
-        setQrPolling(true);
+        await startCardEntry(false);
         return;
       }
 
@@ -204,6 +245,8 @@ export default function PosCheckoutScreen() {
             JSON.stringify(err) ||
             "決済に失敗しました";
       setSnackbar(msg);
+      // タッチ決済が読めなかったときだけ、カード番号入力への導線を出す
+      if (isTapToPayFlow(device, paymentMethod)) setTapFailed(true);
     },
   });
 
@@ -370,39 +413,41 @@ export default function PosCheckoutScreen() {
           </View>
         )}
 
-        {/* ── QRコード表示エリア ──── */}
-        {isQrFlow(device, paymentMethod) &&
-          qrUrl && (
-          <View style={styles.qrCard}>
-            <Text style={styles.qrTitle}>
-              お客様のスマホでQRを読み込んでください
+        {/* ── タッチ決済が読めなかったときの逃げ道 ──── */}
+        {shouldOfferCardEntry(device, paymentMethod, tapFailed, !!qrUrl) && (
+          <View style={styles.tapFailedCard}>
+            <Text style={styles.tapFailedTitle}>タッチ決済ができませんでした</Text>
+            <Text style={styles.tapFailedDesc}>
+              カード番号を入力して決済に切り替えられます。
             </Text>
-            <View style={styles.qrCodeWrapper}>
-              <QRCode value={qrUrl} size={200} />
-            </View>
-            <Text style={styles.qrSubtext}>
-              ¥{total.toLocaleString()} · Stripe Checkout
-            </Text>
-            {qrPolling && (
-              <View style={styles.qrPollingRow}>
-                <ActivityIndicator size="small" color={colors.successDark} />
-                <Text style={styles.qrPollingText}>
-                  決済完了を確認中...
-                </Text>
-              </View>
-            )}
             <LedraButton
-              variant="outline"
-              style={{ marginTop: spacing.md }}
-              onPress={() => {
-                setQrUrl(null);
-                setQrSessionId(null);
-                setQrPolling(false);
+              style={{ marginTop: spacing.md, alignSelf: "stretch" }}
+              onPress={async () => {
+                try {
+                  await startCardEntry(true);
+                } catch (err) {
+                  setSnackbar(err instanceof Error ? err.message : "決済リンクを作れませんでした");
+                }
               }}
             >
-              QRをキャンセル
+              カード番号で決済する
             </LedraButton>
           </View>
+        )}
+
+        {/* ── カード番号入力（Stripe Checkout） ──── */}
+        {qrUrl && (
+          <CardEntryPanel
+            url={qrUrl}
+            amount={total}
+            polling={qrPolling}
+            onCancel={() => {
+              setQrUrl(null);
+              setQrSessionId(null);
+              setQrPolling(false);
+              setCardEntry(false);
+            }}
+          />
         )}
 
         {/* ── 支払い方法 ─────────────────────────────────────────── */}
@@ -599,40 +644,16 @@ const styles = StyleSheet.create({
     color: colors.primaryDark,
   },
   // QR card
-  qrCard: {
+  tapFailedCard: {
     marginHorizontal: spacing.lg,
     marginTop: spacing.lg,
-    backgroundColor: colors.successLight,
+    backgroundColor: colors.surface,
     borderRadius: radius.card,
     padding: spacing.lg,
-    alignItems: "center",
     ...shadows.card,
   },
-  qrTitle: {
-    ...typography.titleMedium,
-    color: colors.successDark,
-    marginBottom: spacing.md,
-  },
-  qrCodeWrapper: {
-    padding: spacing.lg,
-    backgroundColor: colors.surface,
-    borderRadius: radius.md,
-    marginBottom: spacing.md,
-  },
-  qrSubtext: {
-    ...typography.bodySmall,
-    color: colors.successDark,
-  },
-  qrPollingRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-    marginTop: spacing.md,
-  },
-  qrPollingText: {
-    ...typography.meta,
-    color: colors.successDark,
-  },
+  tapFailedTitle: { ...typography.titleMedium, color: colors.textPrimary },
+  tapFailedDesc: { ...typography.bodySmall, color: colors.textSecondary, marginTop: spacing.xs },
   // iPad QR hint
   ipadQrHint: {
     ...typography.meta,

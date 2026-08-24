@@ -49,6 +49,32 @@ export function isTapToPayFlow(device: DeviceKind, method: PaymentMethod): boole
   return device.isIPhone && method === "card";
 }
 
+/**
+ * タッチ決済が読めなかったときの「カード番号で決済」の導線を出すか。
+ *
+ * 出すのは**タッチ決済で失敗した直後だけ**。カード番号の入力は Stripe Checkout の
+ * 画面（＝ QR と同じ経路）でしてもらうので、既にリンクを出した後（`qrStarted`）は
+ * 出さない。支払方法を現金などに切り替えたら消える。
+ */
+export function shouldOfferCardEntry(
+  device: DeviceKind,
+  method: PaymentMethod,
+  tapFailed: boolean,
+  qrStarted: boolean,
+): boolean {
+  return tapFailed && !qrStarted && isTapToPayFlow(device, method);
+}
+
+/**
+ * 記録する支払方法。カード番号入力から始めた分は**カード**として残す。
+ *
+ * なぜ: 経路は QR（Stripe Checkout）と同じだが、実際に切られたのはカード。
+ * `qr` で記録すると日報のカード売上と QR 売上が入れ替わる。
+ */
+export function recordedMethod(method: PaymentMethod, fromCardEntry: boolean): PaymentMethod {
+  return fromCardEntry ? "card" : method;
+}
+
 /** Stripe Terminal が動作中（画面のボタンを止める条件） */
 export function isTerminalBusy(paymentStatus: string | null | undefined): boolean {
   return (

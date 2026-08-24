@@ -2,7 +2,14 @@
 // 実行: node apps/mobile/src/lib/posPayment.check.ts
 import assert from "node:assert";
 
-import { paymentSegments, isQrFlow, isTapToPayFlow, isTerminalBusy } from "./posPayment.ts";
+import {
+  paymentSegments,
+  isQrFlow,
+  isTapToPayFlow,
+  isTerminalBusy,
+  shouldOfferCardEntry,
+  recordedMethod,
+} from "./posPayment.ts";
 
 const iphone = { isIPhone: true, isIPad: false, isAndroid: false };
 const ipad = { isIPhone: false, isIPad: true, isAndroid: false };
@@ -51,5 +58,32 @@ for (const d of [iphone, ipad, android]) {
 // --- 端末の状態 ---
 for (const s of ["creating", "collecting", "processing", "capturing"]) assert.equal(isTerminalBusy(s), true);
 for (const s of [null, undefined, "idle", "succeeded", "failed", "cancelled"]) assert.equal(isTerminalBusy(s), false);
+
+// --- タッチ決済が読めなかったときの導線 ---
+// 出るのは iPhone の「カード」で失敗した直後だけ
+assert.equal(shouldOfferCardEntry(iphone, "card", true, false), true);
+// リンクを出した後は出さない（二重に決済を作らせない）
+assert.equal(shouldOfferCardEntry(iphone, "card", true, true), false);
+// 失敗していないのに出してはいけない
+assert.equal(shouldOfferCardEntry(iphone, "card", false, false), false);
+// 失敗のあと支払方法を変えたら消える
+for (const m of ["cash", "qr", "bank_transfer"] as const) {
+  assert.equal(shouldOfferCardEntry(iphone, m, true, false), false, m);
+}
+// iPad/Android にタッチ決済は無いので、そもそも出ない
+for (const d of [ipad, android]) {
+  for (const m of ["cash", "card", "qr", "bank_transfer"] as const) {
+    assert.equal(shouldOfferCardEntry(d, m, true, false), false, `${m}`);
+  }
+}
+
+// --- 記録する支払方法 ---
+// カード番号入力から始めた分は、経路が QR でも「カード」として残す
+assert.equal(recordedMethod("qr", true), "card");
+assert.equal(recordedMethod("card", true), "card");
+// 通常の QR 決済はそのまま
+assert.equal(recordedMethod("qr", false), "qr");
+assert.equal(recordedMethod("card", false), "card");
+assert.equal(recordedMethod("cash", false), "cash");
 
 console.log("posPayment.check.ts OK");

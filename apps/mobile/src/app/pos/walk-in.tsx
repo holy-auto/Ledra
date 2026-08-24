@@ -9,11 +9,9 @@ import {
   BackHandler,
   useWindowDimensions,
 } from "react-native";
-import QRCode from "react-native-qrcode-svg";
 import {
   Text,
   TextInput,
-  ActivityIndicator,
   Snackbar,
   IconButton,
   Icon,
@@ -27,8 +25,16 @@ import { paymentIdOf, toPosItems } from "@/lib/pos";
 import { useAuthStore } from "@/stores/authStore";
 import { mobileApi } from "@/lib/api";
 import { useQrPaymentPoller } from "@/hooks/useQrPaymentPoller";
+import { CardEntryPanel } from "@/components/CardEntryPanel";
 import { useDeviceType } from "@/hooks/useDeviceType";
-import { paymentSegments, isQrFlow, isTapToPayFlow, isTerminalBusy } from "@/lib/posPayment";
+import {
+  paymentSegments,
+  isQrFlow,
+  isTapToPayFlow,
+  isTerminalBusy,
+  shouldOfferCardEntry,
+  recordedMethod,
+} from "@/lib/posPayment";
 import { useTerminal } from "@/hooks/useTerminal";
 import { useTerminalStore } from "@/stores/terminalStore";
 import { LedraButton, SegmentedControl } from "@/components/ui";
@@ -98,6 +104,10 @@ export default function WalkInCheckoutScreen() {
   const [qrUrl, setQrUrl] = useState<string | null>(null);
   const [qrSessionId, setQrSessionId] = useState<string | null>(null);
   const [qrPolling, setQrPolling] = useState(false);
+  // タッチ決済が読めなかった直後だけ、カード番号入力への導線を出す
+  const [tapFailed, setTapFailed] = useState(false);
+  // その導線から始めた決済か。**カードとして記録する**ため（QR ではない）
+  const [cardEntry, setCardEntry] = useState(false);
 
   // Stripe Terminal（iPhone）
   const {
@@ -126,8 +136,9 @@ export default function WalkInCheckoutScreen() {
           body: {
             store_id: selectedStore?.id || null,
             // iPad/Android の「カード」は QR 経由なので card、iPhone の「QR」は qr。
-            // 固定で card と記録していたため、QR 売上がカード売上に混ざっていた
-            payment_method: paymentMethod,
+            // 固定で card と記録していたため、QR 売上がカード売上に混ざっていた。
+            // タッチ決済の代わりに始めた分は、実体がカードなので card で残す
+            payment_method: recordedMethod(paymentMethod, cardEntry),
             amount: total,
             received_amount: total,
             items_json: toPosItems(cart),
@@ -142,9 +153,28 @@ export default function WalkInCheckoutScreen() {
       setSnackbar(err instanceof Error ? err.message : "決済記録に失敗しました");
     }
     router.replace("/(tabs)");
-  }, [cart, total, selectedStore, paymentMethod, resetPayment]);
+  }, [cart, total, selectedStore, paymentMethod, cardEntry, resetPayment]);
 
   useQrPaymentPoller(qrPolling ? qrSessionId : null, onQrPaid);
+
+  /**
+   * Stripe Checkout のセッションを作って QR を出す。
+   * 通常の QR 決済と、タッチ決済が読めなかった時の逃げ道の**両方**から呼ぶ。
+   */
+  const startCardEntry = useCallback(
+    async (fromTapFailure: boolean) => {
+      const res = await mobileApi<{ url: string; session_id: string }>("/pos/checkout/qr-session", {
+        method: "POST",
+        body: { amount: total, tenant_id: user!.tenantId, store_id: selectedStore?.id ?? "" },
+      });
+      setCardEntry(fromTapFailure);
+      setTapFailed(false);
+      setQrUrl(res.url);
+      setQrSessionId(res.session_id);
+      setQrPolling(true);
+    },
+    [total, user, selectedStore],
+  );
 
   // 会計ステップでの端末バックは画面を閉じずに品目選択へ戻す。
   // そのまま pop させるとカートが黙って消える
@@ -283,20 +313,7 @@ export default function WalkInCheckoutScreen() {
       // QR決済（iPad/Android「カード」 or iPhone「QR」）
       const qrFlow = isQrFlow(device, paymentMethod);
       if (qrFlow) {
-        const res = await mobileApi<{ url: string; session_id: string }>(
-          "/pos/checkout/qr-session",
-          {
-            method: "POST",
-            body: {
-              amount: total,
-              tenant_id: user!.tenantId,
-              store_id: selectedStore?.id ?? "",
-            },
-          },
-        );
-        setQrUrl(res.url);
-        setQrSessionId(res.session_id);
-        setQrPolling(true);
+        await startCardEntry(false);
         setProcessing(false);
         return;
       }
@@ -327,6 +344,8 @@ export default function WalkInCheckoutScreen() {
             JSON.stringify(err) ||
             "決済に失敗しました";
       setSnackbar(msg);
+      // タッチ決済が読めなかったときだけ、カード番号入力への導線を出す
+      if (isTapToPayFlow(device, paymentMethod)) setTapFailed(true);
     } finally {
       setProcessing(false);
     }
@@ -547,37 +566,41 @@ export default function WalkInCheckoutScreen() {
             </View>
           </View>
 
-          {/* QRコード表示 */}
-          {isQrFlow(device, paymentMethod) &&
-            qrUrl && (
-            <View style={styles.qrCard}>
-              <Text style={styles.qrTitle}>
-                お客様のスマホでQRを読み込んでください
+          {/* タッチ決済が読めなかったときの逃げ道 */}
+          {shouldOfferCardEntry(device, paymentMethod, tapFailed, !!qrUrl) && (
+            <View style={styles.tapFailedCard}>
+              <Text style={styles.tapFailedTitle}>タッチ決済ができませんでした</Text>
+              <Text style={styles.tapFailedDesc}>
+                カード番号を入力して決済に切り替えられます。
               </Text>
-              <View style={styles.qrCodeWrapper}>
-                <QRCode value={qrUrl} size={200} />
-              </View>
-              <Text style={styles.qrSubtext}>
-                ¥{total.toLocaleString()} · Stripe Checkout
-              </Text>
-              {qrPolling && (
-                <View style={styles.qrPollingRow}>
-                  <ActivityIndicator size="small" color={colors.successDark} />
-                  <Text style={styles.qrPollingText}>決済完了を確認中...</Text>
-                </View>
-              )}
               <LedraButton
-                variant="outline"
-                style={{ marginTop: spacing.md }}
-                onPress={() => {
-                  setQrUrl(null);
-                  setQrSessionId(null);
-                  setQrPolling(false);
+                style={{ marginTop: spacing.md, alignSelf: "stretch" }}
+                onPress={async () => {
+                  try {
+                    await startCardEntry(true);
+                  } catch (err) {
+                    setSnackbar(err instanceof Error ? err.message : "決済リンクを作れませんでした");
+                  }
                 }}
               >
-                QRをキャンセル
+                カード番号で決済する
               </LedraButton>
             </View>
+          )}
+
+          {/* カード番号入力（Stripe Checkout）*/}
+          {qrUrl && (
+            <CardEntryPanel
+              url={qrUrl}
+              amount={total}
+              polling={qrPolling}
+              onCancel={() => {
+                setQrUrl(null);
+                setQrSessionId(null);
+                setQrPolling(false);
+                setCardEntry(false);
+              }}
+            />
           )}
 
           {/* 支払方法 */}
@@ -764,40 +787,16 @@ const styles = StyleSheet.create({
     ...typography.titleLarge,
     color: colors.textPrimary,
   },
-  qrCard: {
+  tapFailedCard: {
     marginHorizontal: spacing.lg,
     marginTop: spacing.lg,
-    backgroundColor: colors.successLight,
+    backgroundColor: colors.surface,
     borderRadius: radius.card,
     padding: spacing.lg,
-    alignItems: "center",
     ...shadows.card,
   },
-  qrTitle: {
-    ...typography.titleMedium,
-    color: colors.successDark,
-    marginBottom: spacing.md,
-  },
-  qrCodeWrapper: {
-    padding: spacing.lg,
-    backgroundColor: colors.surface,
-    borderRadius: radius.md,
-    marginBottom: spacing.md,
-  },
-  qrSubtext: {
-    ...typography.bodySmall,
-    color: colors.successDark,
-  },
-  qrPollingRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-    marginTop: spacing.md,
-  },
-  qrPollingText: {
-    ...typography.meta,
-    color: colors.successDark,
-  },
+  tapFailedTitle: { ...typography.titleMedium, color: colors.textPrimary },
+  tapFailedDesc: { ...typography.bodySmall, color: colors.textSecondary, marginTop: spacing.xs },
   cashInput: {
     backgroundColor: colors.surface,
     marginTop: spacing.md,
