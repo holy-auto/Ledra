@@ -26,17 +26,17 @@ assert.equal(paymentIdOf({ ok: true, result: { document_id: "d1" } }), null);
 // 予約側: amount は計算済み。そのまま使う
 assert.deepEqual(
   toPosItems([{ name: "洗車", quantity: 2, unitPrice: 1500, amount: 3000 }]),
-  [{ name: "洗車", quantity: 2, unit_price: 1500, amount: 3000 }],
+  [{ description: "洗車", quantity: 2, unit_price: 1500, amount: 3000 }],
 );
 
 // カート側: amount を持たないので単価×数量で補う
 assert.deepEqual(toPosItems([{ name: "コーティング", quantity: 3, unitPrice: 1000 }]), [
-  { name: "コーティング", quantity: 3, unit_price: 1000, amount: 3000 },
+  { description: "コーティング", quantity: 3, unit_price: 1000, amount: 3000 },
 ]);
 
 // 単価不明（予約側で amount=null）は 0。合計の出し方（menuItemsTotal）と揃える
 assert.deepEqual(toPosItems([{ name: "見積", quantity: 1, unitPrice: null, amount: null }]), [
-  { name: "見積", quantity: 1, unit_price: 0, amount: 0 },
+  { description: "見積", quantity: 1, unit_price: 0, amount: 0 },
 ]);
 
 // 送る明細の合計が画面の合計とずれない（ずれると領収書の金額が合わない）
@@ -48,5 +48,13 @@ assert.equal(
   toPosItems(cart).reduce((sum, i) => sum + i.amount, 0),
   cart.reduce((sum, i) => sum + i.unitPrice * i.quantity, 0),
 );
+
+// 品名のキーは帳票と同じ description。name で送ると Web/PDF で品名が消える
+assert.deepEqual(Object.keys(toPosItems([{ name: "A", quantity: 1, unitPrice: 1 }])[0]).sort(), [
+  "amount",
+  "description",
+  "quantity",
+  "unit_price",
+]);
 
 console.log("pos.check.ts OK");

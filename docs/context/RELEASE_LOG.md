@@ -13,12 +13,16 @@
   `management_kpi_stats`）と トリガ専用2本は `authenticated` も false、
   `service_role` のみ true。RLS ポリシー内で使う 19 本（`my_tenant_ids` など）は
   anon 実行可のまま＝公開ページの読み取りは影響なし。
-- **モバイルの POS 会計をサーバ経由に変えた**（3箇所）。
+- **モバイルの POS 会計をサーバ経由に変えた**（直接 RPC の呼び出し4箇所を削除）。
   `apps/mobile` からの `supabase.rpc("pos_checkout")` は 0 件になり、
   `/api/mobile/pos/checkout` と `/api/mobile/pos/terminal/capture` だけが入口になる。
   テナント ID と担当者はサーバがトークンから決めるので画面からは渡さない。
-  副産物として、直接 RPC では素通りしていた**レート制限・ロール確認・在庫の引き落とし**
-  がモバイルの会計にも効くようになった。
+  副産物として、直接 RPC では素通りしていた**レート制限とロール確認**が
+  モバイルの会計にも効くようになった（会計に `staff` 以上が要る）。
+  **在庫の引き落としは効かない** —— `deductInventoryForPosItems` は明細に
+  `inventory_item_id` がある行だけを見るが、モバイルの明細はそれを持たない。
+  加えて Tap to Pay が通る `/pos/terminal/capture` は在庫処理を呼んでいない。
+  OPEN_QUESTIONS に起票した。
 - **Tap to Pay が1回の決済で支払を2件作っていた不具合を修正**。
   `processCardPayment` は内部で `/pos/terminal/capture` を呼び、そこで
   `pos_checkout` が走って支払が1件できている。画面側はその後もう一度
@@ -29,6 +33,28 @@
 - 共通化: `apps/mobile/src/lib/pos.ts` に `paymentIdOf`（サーバの戻りから
   payment_id を取り出す）と `toPosItems`（画面の明細を pos_checkout の形へ揃える）。
   `pos.check.ts` で固定し、モバイルの `npm test` に追加（自己チェック 9 → 10 本）。
+- code-review 指摘の修正（同日）:
+  - **サーバがテナントを決めるようになったのに、その決め方に並び順が無かった。**
+    `resolveMobileCaller` は `tenant_memberships` を `.limit(1)` で引くだけで
+    `ORDER BY` が無く、複数テナントに属する利用者では呼ぶたびに違うテナントが
+    返り得た。アプリ側と `checkRole.ts` はどちらも「最も古いメンバーシップ」を
+    採るので、同じ並び順に揃えた。ずれると**別テナントに売上が載る**。
+  - **スマホで切った領収書は Web/PDF で品名が出ていなかった。** 帳票の明細の
+    正準キーは `description`（`DocumentItem` / Web POS / 表示側すべて）だが、
+    モバイルだけ `name` で送っていた。`pos_checkout` は `p_items_json` を
+    そのまま `documents.items_json` に入れるだけなので、表示側は
+    `item.description || "小計"` を出していた。`toPosItems` を
+    `description` に揃え、モバイルのレシート画面は旧データ用に
+    `description ?? name` で読む。
+  - **QR 決済がカード売上として記録されていた。** ウォークインの QR 完了処理が
+    `payment_method: "card"` 固定だった（iPhone の「QR」選択時も card）。
+    画面の選択値をそのまま渡すよう修正。iPad/Android の「カード」は QR 経由
+    なので card のままで正しい。
+  - **Tap to Pay を取り消したのにレシート画面へ進んでいた。** 取り消しは例外では
+    ないため mutation が成功扱いになり、支払が無いまま `onSuccess` が遷移して
+    いた。取り消しを戻り値で伝えて遷移を止める。
+  - 本番へ適用された記録バージョン（`20260823235804`）でマイグレーションを
+    置き直し、旧ファイル名（`20260823170000`）は中身を空にしたポインタにした。
 
 ## 2026-08-23 code-review 指摘の修正: 権限剥奪が効いていなかった / 代理店設定が保存できなかった
 

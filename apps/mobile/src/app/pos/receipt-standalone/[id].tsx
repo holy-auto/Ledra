@@ -22,7 +22,10 @@ interface StandalonePayment {
   document: {
     id: string;
     doc_number: string;
-    items_json: { name: string; quantity: number; unit_price: number; amount: number }[] | null;
+    // 品名は description（帳票の正準キー）。name は旧モバイルビルドが書いた行
+    items_json:
+      | { description?: string; name?: string; quantity: number; unit_price: number; amount: number }[]
+      | null;
     subtotal: number | null;
     tax: number | null;
     total: number | null;
@@ -172,7 +175,7 @@ export default function StandaloneReceiptScreen() {
             {items.map((item, index) => (
               <View key={index} style={styles.lineItem}>
                 <Text style={[styles.bodyText, { flex: 1 }]}>
-                  {item.name}
+                  {item.description ?? item.name}
                 </Text>
                 <Text style={styles.subText}>
                   x{item.quantity}

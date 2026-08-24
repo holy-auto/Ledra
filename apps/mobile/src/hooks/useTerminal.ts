@@ -364,6 +364,11 @@ export function useTerminal() {
       /** 予約と紐付けない walk-in 決済では undefined を許可 */
       reservationId?: string;
       storeId: string;
+      /**
+       * Stripe の PaymentIntent metadata に載せるだけ。**売上がどのテナントに
+       * 書かれるかはこの値では決まらない**（capture 側がトークンから決める）。
+       * 書き込み先を制御できると誤解しないこと
+       */
       tenantId: string;
       /**
        * 会計明細。capture（= サーバ側の pos_checkout）へそのまま渡す。

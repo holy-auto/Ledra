@@ -170,7 +170,9 @@ export default function WalkInCheckoutScreen() {
           method: "POST",
           body: {
             store_id: selectedStore?.id || null,
-            payment_method: "card",
+            // iPad/Android の「カード」は QR 経由なので card、iPhone の「QR」は qr。
+            // 固定で card と記録していたため、QR 売上がカード売上に混ざっていた
+            payment_method: paymentMethod,
             amount: total,
             received_amount: total,
             items_json: toPosItems(cart),
@@ -185,7 +187,7 @@ export default function WalkInCheckoutScreen() {
       setSnackbar(err instanceof Error ? err.message : "決済記録に失敗しました");
     }
     router.replace("/(tabs)");
-  }, [cart, total, selectedStore, resetPayment]);
+  }, [cart, total, selectedStore, paymentMethod, resetPayment]);
 
   useQrPaymentPoller(qrPolling ? qrSessionId : null, onQrPaid);
 

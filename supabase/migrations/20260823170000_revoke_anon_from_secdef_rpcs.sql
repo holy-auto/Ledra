@@ -50,40 +50,9 @@
 --           オーバーロード（同名で引数違い）も全て拾う。
 -- ============================================================
 
-do $$
-declare
-  r record;
-  -- (A) service_role だけが呼べればよい
-  server_only text[] := array[
-    'pos_checkout', 'upsert_agent_user', 'billing_analytics_stats', 'management_kpi_stats'
-  ];
-  -- (B) 利用者トークンで呼ぶ必要がある（anon だけ落とす）
-  user_token text[] := array[
-    'replace_staff_shifts',   -- 内部で auth.uid() と tenant_memberships を見ている
-    'insurer_audit_log',      -- 内部で auth.uid() を見ている
-    'dashboard_tenant_stats', -- 内部で membership を見ている
-    'agent_dashboard_stats',  -- 内部で auth.uid() を見ている
-    'agent_rankings',
-    'platform_agent_count', 'platform_insurer_count', 'platform_certificate_stats',
-    'platform_regional_stats', 'platform_tenant_category_stats'
-  ];
-  -- (C) トリガ専用
-  trigger_only text[] := array['certificate_versions_no_update', 'webauthn_assertions_no_update'];
-begin
-  for r in
-    select p.oid::regprocedure::text as sig, p.proname
-    from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-    where n.nspname = 'public'
-      and p.proname = any(server_only || user_token || trigger_only)
-  loop
-    if r.proname = any(server_only) then
-      execute format('revoke execute on function %s from public, anon, authenticated', r.sig);
-      execute format('grant  execute on function %s to service_role', r.sig);
-    elsif r.proname = any(user_token) then
-      execute format('revoke execute on function %s from public, anon', r.sig);
-      execute format('grant  execute on function %s to authenticated, service_role', r.sig);
-    else
-      execute format('revoke execute on function %s from public, anon, authenticated', r.sig);
-    end if;
-  end loop;
-end $$;
+-- ------------------------------------------------------------
+-- **このファイルは実行しない。** 本番へは `20260823235804` として適用された
+-- （適用時に採番されたバージョンがファイル名と一致しなかったため）。
+-- 実体は 20260823235804_revoke_anon_from_secdef_rpcs.sql にある。
+-- ファイルを消すとマイグレーションの履歴が飛ぶので、空のまま残す。
+-- ------------------------------------------------------------

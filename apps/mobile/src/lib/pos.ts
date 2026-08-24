@@ -12,9 +12,17 @@
  * しないので `node src/lib/pos.check.ts` で単体で動かせる。
  */
 
-/** POS の明細1行。pos_checkout の p_items_json に入る形 */
+/**
+ * POS の明細1行。`pos_checkout` は `p_items_json` を**そのまま**
+ * `documents.items_json` に入れるだけなので、ここは帳票の明細の形に揃える。
+ *
+ * 品名のキーは `description`。`DocumentItem`（src/types/document.ts）も
+ * Web の POS も帳票の表示側も `description` を使う。モバイルだけ `name` で
+ * 送っていたため、**スマホで切った領収書は Web/PDF で品名が出ず「小計」と
+ * 表示されていた**。
+ */
 export interface PosCheckoutItem {
-  name: string;
+  description: string;
   quantity: number;
   unit_price: number;
   amount: number;
@@ -36,7 +44,7 @@ export function toPosItems(
   }>,
 ): PosCheckoutItem[] {
   return items.map((it) => ({
-    name: it.name,
+    description: it.name,
     quantity: it.quantity,
     unit_price: it.unitPrice ?? 0,
     amount: it.amount ?? (it.unitPrice ?? 0) * it.quantity,

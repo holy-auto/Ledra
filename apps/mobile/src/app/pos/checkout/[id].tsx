@@ -183,7 +183,9 @@ export default function PosCheckoutScreen() {
           itemsJson: toPosItems(items),
         });
         if (!result.success) {
-          if (result.cancelled) return;
+          // 取り消しは失敗ではないが**会計は成立していない**。
+          // ここで素通りさせると onSuccess がレシート画面へ飛ばしてしまう
+          if (result.cancelled) return "cancelled" as const;
           throw new Error(result.error ?? "カード決済失敗");
         }
         return;
@@ -227,7 +229,8 @@ export default function PosCheckoutScreen() {
         },
       });
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
+      if (result === "cancelled") return;
       const isQrFlow =
         ((isAndroid || isIPad) && paymentMethod === "card") ||
         (isIPhone && paymentMethod === "qr");
