@@ -52,7 +52,10 @@ export const posQrSessionSchema = z.object({
     .uuid()
     .optional()
     .or(z.literal("").transform(() => undefined)),
-  tenant_id: z.string().uuid("tenant_id is required"),
+  // 旧ビルドが送ってくるので受けるが、**使わない**。入金先のテナントは
+  // サーバがトークンから決める（クライアントの申告で他テナントの
+  // Connect アカウントへ入金させない）
+  tenant_id: z.string().uuid().optional(),
   store_id: z
     .string()
     .uuid()

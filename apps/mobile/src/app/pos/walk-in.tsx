@@ -24,17 +24,10 @@ import { supabase } from "@/lib/supabase";
 import { paymentIdOf, toPosItems } from "@/lib/pos";
 import { useAuthStore } from "@/stores/authStore";
 import { mobileApi } from "@/lib/api";
-import { useQrPaymentPoller } from "@/hooks/useQrPaymentPoller";
+import { useCardEntry } from "@/hooks/useCardEntry";
 import { CardEntryPanel } from "@/components/CardEntryPanel";
 import { useDeviceType } from "@/hooks/useDeviceType";
-import {
-  paymentSegments,
-  isQrFlow,
-  isTapToPayFlow,
-  isTerminalBusy,
-  shouldOfferCardEntry,
-  recordedMethod,
-} from "@/lib/posPayment";
+import { paymentSegments, isQrFlow, isTapToPayFlow, isTerminalBusy, tapFailureAction } from "@/lib/posPayment";
 import { useTerminal } from "@/hooks/useTerminal";
 import { useTerminalStore } from "@/stores/terminalStore";
 import { LedraButton, SegmentedControl } from "@/components/ui";
@@ -101,13 +94,8 @@ export default function WalkInCheckoutScreen() {
   const [snackbar, setSnackbar] = useState("");
 
   // QR決済用
-  const [qrUrl, setQrUrl] = useState<string | null>(null);
-  const [qrSessionId, setQrSessionId] = useState<string | null>(null);
-  const [qrPolling, setQrPolling] = useState(false);
   // タッチ決済が読めなかった直後だけ、カード番号入力への導線を出す
   const [tapFailed, setTapFailed] = useState(false);
-  // その導線から始めた決済か。**カードとして記録する**ため（QR ではない）
-  const [cardEntry, setCardEntry] = useState(false);
 
   // Stripe Terminal（iPhone）
   const {
@@ -125,55 +113,29 @@ export default function WalkInCheckoutScreen() {
     if (isIPhone) initTerminal();
   }, [isIPhone]);
 
-  const onQrPaid = useCallback(async () => {
-    setQrPolling(false);
-    resetPayment();
+  // カード番号入力（Stripe Checkout）。金額の固定・記録・失効はフック側が持つ
+  const cardEntry = useCardEntry(
+    useCallback(
+      (paymentId: string | null) => {
+        resetPayment();
+        router.replace(paymentId ? `/pos/receipt-standalone/${paymentId}` : "/(tabs)");
+      },
+      [resetPayment],
+    ),
+  );
 
-    try {
-      const pId = paymentIdOf(
-        await mobileApi("/pos/checkout", {
-          method: "POST",
-          body: {
-            store_id: selectedStore?.id || null,
-            // iPad/Android の「カード」は QR 経由なので card、iPhone の「QR」は qr。
-            // 固定で card と記録していたため、QR 売上がカード売上に混ざっていた。
-            // タッチ決済の代わりに始めた分は、実体がカードなので card で残す
-            payment_method: recordedMethod(paymentMethod, cardEntry),
-            amount: total,
-            received_amount: total,
-            items_json: toPosItems(cart),
-          },
-        }),
-      );
-      if (pId) {
-        router.replace(`/pos/receipt-standalone/${pId}`);
-        return;
-      }
-    } catch (err) {
-      setSnackbar(err instanceof Error ? err.message : "決済記録に失敗しました");
-    }
-    router.replace("/(tabs)");
-  }, [cart, total, selectedStore, paymentMethod, cardEntry, resetPayment]);
-
-  useQrPaymentPoller(qrPolling ? qrSessionId : null, onQrPaid);
-
-  /**
-   * Stripe Checkout のセッションを作って QR を出す。
-   * 通常の QR 決済と、タッチ決済が読めなかった時の逃げ道の**両方**から呼ぶ。
-   */
   const startCardEntry = useCallback(
-    async (fromTapFailure: boolean) => {
-      const res = await mobileApi<{ url: string; session_id: string }>("/pos/checkout/qr-session", {
-        method: "POST",
-        body: { amount: total, tenant_id: user!.tenantId, store_id: selectedStore?.id ?? "" },
-      });
-      setCardEntry(fromTapFailure);
-      setTapFailed(false);
-      setQrUrl(res.url);
-      setQrSessionId(res.session_id);
-      setQrPolling(true);
-    },
-    [total, user, selectedStore],
+    (fromTapFailure: boolean) =>
+      cardEntry.start(
+        {
+          amount: total,
+          items: toPosItems(cart),
+          method: paymentMethod,
+          storeId: selectedStore?.id ?? null,
+        },
+        fromTapFailure,
+      ),
+    [cardEntry, total, cart, paymentMethod, selectedStore],
   );
 
   // 会計ステップでの端末バックは画面を閉じずに品目選択へ戻す。
@@ -303,6 +265,7 @@ export default function WalkInCheckoutScreen() {
           throw new Error(result.error ?? "カード決済失敗");
         }
         resetPayment();
+        setTapFailed(false); // 通ったら失敗の表示は残さない
         const tapPaymentId = paymentIdOf(result.receipt);
         router.replace(
           tapPaymentId ? `/pos/receipt-standalone/${tapPaymentId}` : "/(tabs)",
@@ -351,6 +314,14 @@ export default function WalkInCheckoutScreen() {
     }
   }
 
+  const tapAction = tapFailureAction(
+    device,
+    paymentMethod,
+    tapFailed,
+    !!cardEntry.url,
+    useTerminalStore((st) => st.pendingCapturePaymentIntentId),
+  );
+
   const segments = paymentSegments(device);
 
   const isProcessing = isTerminalBusy(paymentStatus);
@@ -358,13 +329,13 @@ export default function WalkInCheckoutScreen() {
   const isDisabled =
     processing ||
     isProcessing ||
-    qrPolling ||
+    cardEntry.polling ||
     cart.length === 0 ||
     total <= 0 ||
     (paymentMethod === "cash" && received < total);
 
   const submitLabel = (() => {
-    if (qrPolling) return "お客様の決済完了を待っています...";
+    if (cardEntry.polling) return "お客様の決済完了を待っています...";
     if (isTapToPayFlow(device, paymentMethod)) {
       if (paymentStatus === "collecting") return "カードをかざしてください";
       if (isProcessing) return "処理中...";
@@ -466,7 +437,7 @@ export default function WalkInCheckoutScreen() {
         <ScrollView style={styles.container} keyboardShouldPersistTaps="handled">
           {/* QR 提示中は金額を動かせない。Stripe が請求する額と
               pos_checkout に記帳する額がずれる */}
-          {!qrPolling && (
+          {!cardEntry.polling && (
             <Pressable
               style={styles.backToMenu}
               onPress={() => setStep("menu")}
@@ -494,7 +465,7 @@ export default function WalkInCheckoutScreen() {
                     <IconButton
                       icon="minus-circle-outline"
                       size={20}
-                      disabled={qrPolling}
+                      disabled={cardEntry.polling}
                       onPress={() => updateQuantity(index, -1)}
                     />
                     <Text style={styles.qtyText}>
@@ -503,14 +474,14 @@ export default function WalkInCheckoutScreen() {
                     <IconButton
                       icon="plus-circle-outline"
                       size={20}
-                      disabled={qrPolling}
+                      disabled={cardEntry.polling}
                       onPress={() => updateQuantity(index, 1)}
                     />
                     <IconButton
                       icon="delete-outline"
                       size={20}
                       iconColor={colors.danger}
-                      disabled={qrPolling}
+                      disabled={cardEntry.polling}
                       onPress={() => removeItem(index)}
                     />
                   </View>
@@ -560,51 +531,72 @@ export default function WalkInCheckoutScreen() {
                 icon="plus-circle"
                 iconColor={colors.textPrimary}
                 size={28}
-                disabled={qrPolling}
+                disabled={cardEntry.polling}
                 onPress={addCustomItem}
               />
             </View>
           </View>
 
-          {/* タッチ決済が読めなかったときの逃げ道 */}
-          {shouldOfferCardEntry(device, paymentMethod, tapFailed, !!qrUrl) && (
+          {/* タッチ決済が失敗した後の逃げ道 */}
+          {tapAction !== "none" && (
             <View style={styles.tapFailedCard}>
-              <Text style={styles.tapFailedTitle}>タッチ決済ができませんでした</Text>
+              <Text style={styles.tapFailedTitle}>
+                {tapAction === "retry_record" ? "決済は完了しています" : "タッチ決済ができませんでした"}
+              </Text>
               <Text style={styles.tapFailedDesc}>
-                カード番号を入力して決済に切り替えられます。
+                {tapAction === "retry_record"
+                  ? "カードは切れていますが、売上の記録に失敗しました。記録だけやり直してください（二重に請求されることはありません）。"
+                  : "カード番号を入力して決済に切り替えられます。"}
               </Text>
               <LedraButton
                 style={{ marginTop: spacing.md, alignSelf: "stretch" }}
+                disabled={cardEntry.starting || processing}
                 onPress={async () => {
                   try {
-                    await startCardEntry(true);
+                    // 記録のやり直しは processCardPayment に任せる。残っている
+                    // PaymentIntent の記録だけをやり直し、新しい決済は作らない
+                    if (tapAction === "retry_record") await handleCheckout();
+                    else await startCardEntry(true);
                   } catch (err) {
                     setSnackbar(err instanceof Error ? err.message : "決済リンクを作れませんでした");
                   }
                 }}
               >
-                カード番号で決済する
+                {tapAction === "retry_record" ? "記録をやり直す" : "カード番号で決済する"}
+              </LedraButton>
+            </View>
+          )}
+
+          {/* 決済は済んだが記録に失敗した */}
+          {cardEntry.recordError && (
+            <View style={styles.tapFailedCard}>
+              <Text style={styles.tapFailedTitle}>売上の記録に失敗しました</Text>
+              <Text style={styles.tapFailedDesc}>
+                決済は完了しています（{cardEntry.recordError}）。記録をやり直してください。
+              </Text>
+              <LedraButton
+                style={{ marginTop: spacing.md, alignSelf: "stretch" }}
+                onPress={() => cardEntry.retryRecord()}
+              >
+                記録をやり直す
               </LedraButton>
             </View>
           )}
 
           {/* カード番号入力（Stripe Checkout）*/}
-          {qrUrl && (
+          {cardEntry.url && (
             <CardEntryPanel
-              url={qrUrl}
+              url={cardEntry.url}
               amount={total}
-              polling={qrPolling}
-              onCancel={() => {
-                setQrUrl(null);
-                setQrSessionId(null);
-                setQrPolling(false);
-                setCardEntry(false);
-              }}
+              polling={cardEntry.polling}
+              mode={cardEntry.fromTapFailure ? "card-entry" : "qr"}
+              onCancel={() => cardEntry.cancel()}
+              onOpenError={() => setSnackbar("決済ページを開けませんでした。QRを読み取ってください")}
             />
           )}
 
           {/* 支払方法 */}
-          {!qrPolling && cart.length > 0 && (
+          {!cardEntry.polling && cart.length > 0 && (
             <View style={styles.card}>
               <Text style={styles.heading}>
                 支払方法
@@ -614,9 +606,9 @@ export default function WalkInCheckoutScreen() {
                 value={paymentMethod}
                 onChange={(v) => {
                   setPaymentMethod(v as PaymentMethod);
-                  setQrUrl(null);
-                  setQrSessionId(null);
-                  setQrPolling(false);
+                  // 支払方法を変えたら、前の失敗表示と作りかけのリンクは畳む
+                  setTapFailed(false);
+                  cardEntry.cancel();
                 }}
               />
               {paymentMethod === "cash" && (
@@ -652,7 +644,7 @@ export default function WalkInCheckoutScreen() {
           )}
 
           {/* 決済ボタン */}
-          {!qrPolling && cart.length > 0 && (
+          {!cardEntry.polling && cart.length > 0 && (
             <View style={styles.submitArea}>
               <LedraButton
                 icon="check-circle"

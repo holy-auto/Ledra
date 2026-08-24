@@ -14,17 +14,10 @@ import { toPosItems } from "@/lib/pos";
 import { parseMenuItems, menuItemsTotal, hasUnknownPrice } from "@/lib/reservationItems";
 import { useAuthStore } from "@/stores/authStore";
 import { mobileApi } from "@/lib/api";
-import { useQrPaymentPoller } from "@/hooks/useQrPaymentPoller";
+import { useCardEntry } from "@/hooks/useCardEntry";
 import { CardEntryPanel } from "@/components/CardEntryPanel";
 import { useDeviceType } from "@/hooks/useDeviceType";
-import {
-  paymentSegments,
-  isQrFlow,
-  isTapToPayFlow,
-  isTerminalBusy,
-  shouldOfferCardEntry,
-  recordedMethod,
-} from "@/lib/posPayment";
+import { paymentSegments, isQrFlow, isTapToPayFlow, isTerminalBusy, tapFailureAction } from "@/lib/posPayment";
 import { useTerminal } from "@/hooks/useTerminal";
 import { useTerminalStore } from "@/stores/terminalStore";
 import { TapToPayButton } from "@/components/TapToPayButton";
@@ -63,14 +56,8 @@ export default function PosCheckoutScreen() {
   const [receivedAmount, setReceivedAmount] = useState("");
   const [snackbar, setSnackbar] = useState("");
 
-  // QR決済用（Android）
-  const [qrUrl, setQrUrl] = useState<string | null>(null);
-  const [qrSessionId, setQrSessionId] = useState<string | null>(null);
-  const [qrPolling, setQrPolling] = useState(false);
   // タッチ決済が読めなかった直後だけ、カード番号入力への導線を出す
   const [tapFailed, setTapFailed] = useState(false);
-  // その導線から始めた決済か。**カードとして記録する**ため（QR ではない）
-  const [cardEntry, setCardEntry] = useState(false);
 
   // Stripe Terminal（iPhone専用）
   const {
@@ -119,58 +106,35 @@ export default function PosCheckoutScreen() {
   const received = parseInt(receivedAmount, 10) || 0;
   const change = paymentMethod === "cash" ? Math.max(0, received - total) : 0;
 
-  // QRポーリング
-  // ハンドラの同一性が変わるとポーリングが毎回作り直され、3 秒待ちが
-  // 振り出しに戻る。useCallback で固定する（ウォークイン画面も同じ形）
-  //
-  // **ここで会計を記録する。** 以前は記録せずレシート画面へ飛ばしていたので、
-  // カードは切られているのに payments に1行も残らなかった（レシートも出ない）。
-  // Stripe の webhook 側にも POS の Checkout を受ける処理は無い
-  const onQrPaid = useCallback(async () => {
-    setQrPolling(false);
-    resetPayment();
-    try {
-      await mobileApi("/pos/checkout", {
-        method: "POST",
-        body: {
-          reservation_id: id || null,
-          store_id: selectedStore?.id || null,
-          // タッチ決済の代わりに始めた分は、実体がカードなので card で残す
-          payment_method: recordedMethod(paymentMethod, cardEntry),
-          amount: total,
-          received_amount: total,
-          items_json: toPosItems(items),
-        },
-      });
-    } catch (err) {
-      setSnackbar(err instanceof Error ? err.message : "決済記録に失敗しました");
-    }
-    router.replace(`/pos/receipt/${id}`);
-  }, [id, selectedStore, paymentMethod, cardEntry, total, items, resetPayment]);
-  useQrPaymentPoller(qrPolling ? qrSessionId : null, onQrPaid);
+  // カード番号入力（Stripe Checkout）。金額の固定・記録・失効はフック側が持つ
+  const cardEntry = useCardEntry(
+    useCallback(() => {
+      resetPayment();
+      router.replace(`/pos/receipt/${id}`);
+    }, [id, resetPayment]),
+  );
 
-  /**
-   * Stripe Checkout のセッションを作って QR を出す。
-   * 通常の QR 決済と、タッチ決済が読めなかった時の逃げ道の**両方**から呼ぶ。
-   */
   const startCardEntry = useCallback(
-    async (fromTapFailure: boolean) => {
-      const res = await mobileApi<{ url: string; session_id: string }>("/pos/checkout/qr-session", {
-        method: "POST",
-        body: {
+    (fromTapFailure: boolean) =>
+      cardEntry.start(
+        {
           amount: total,
-          reservation_id: id,
-          tenant_id: user!.tenantId,
-          store_id: selectedStore?.id ?? "",
+          items: toPosItems(items),
+          method: paymentMethod,
+          reservationId: id,
+          storeId: selectedStore?.id ?? null,
         },
-      });
-      setCardEntry(fromTapFailure);
-      setTapFailed(false);
-      setQrUrl(res.url);
-      setQrSessionId(res.session_id);
-      setQrPolling(true);
-    },
-    [total, id, user, selectedStore],
+        fromTapFailure,
+      ),
+    [cardEntry, total, items, paymentMethod, id, selectedStore],
+  );
+
+  const tapAction = tapFailureAction(
+    device,
+    paymentMethod,
+    tapFailed,
+    !!cardEntry.url,
+    useTerminalStore((st) => st.pendingCapturePaymentIntentId),
   );
 
   // ── 決済ミューテーション ───────────────────────────────────────
@@ -230,6 +194,8 @@ export default function PosCheckoutScreen() {
       });
     },
     onSuccess: (result) => {
+      // 通った時点で失敗の表示は消す（記録のやり直しが通った場合を含む）
+      setTapFailed(false);
       if (result === "cancelled") return;
       const qrFlow = isQrFlow(device, paymentMethod);
       if (qrFlow) return;
@@ -275,7 +241,7 @@ export default function PosCheckoutScreen() {
   const isDisabled =
     checkoutMutation.isPending ||
     isProcessing ||
-    qrPolling ||
+    cardEntry.polling ||
     // 明細が無い・金額が読めない状態で押せると ¥0 の売上が立つ
     total <= 0 ||
     priceUnknown ||
@@ -285,7 +251,7 @@ export default function PosCheckoutScreen() {
   const submitLabel = (() => {
     if (priceUnknown) return "金額が確定できません（管理画面で確認）";
     if (total <= 0) return "明細がありません";
-    if (qrPolling) return "お客様の決済完了を待っています...";
+    if (cardEntry.polling) return "お客様の決済完了を待っています...";
     if (isTapToPayFlow(device, paymentMethod)) {
       if (paymentStatus === "collecting") return "カードをかざしてください";
       if (isProcessing) return "処理中...";
@@ -353,7 +319,7 @@ export default function PosCheckoutScreen() {
 
         {/* ── iPhone: Tap to Pay 専用ボタン ───────
              TapToPayButton component left as-is per task instructions */}
-        {isIPhone && !qrPolling && (
+        {isIPhone && !cardEntry.polling && (
           <View style={{ paddingHorizontal: spacing.lg, marginTop: spacing.lg }}>
             <TapToPayButton
               amountLabel={`¥${total.toLocaleString()}`}
@@ -413,16 +379,29 @@ export default function PosCheckoutScreen() {
           </View>
         )}
 
-        {/* ── タッチ決済が読めなかったときの逃げ道 ──── */}
-        {shouldOfferCardEntry(device, paymentMethod, tapFailed, !!qrUrl) && (
+        {/* ── タッチ決済が失敗した後の逃げ道 ──── */}
+        {tapAction !== "none" && (
           <View style={styles.tapFailedCard}>
-            <Text style={styles.tapFailedTitle}>タッチ決済ができませんでした</Text>
+            <Text style={styles.tapFailedTitle}>
+              {tapAction === "retry_record"
+                ? "決済は完了しています"
+                : "タッチ決済ができませんでした"}
+            </Text>
             <Text style={styles.tapFailedDesc}>
-              カード番号を入力して決済に切り替えられます。
+              {tapAction === "retry_record"
+                ? "カードは切れていますが、売上の記録に失敗しました。記録だけやり直してください（二重に請求されることはありません）。"
+                : "カード番号を入力して決済に切り替えられます。"}
             </Text>
             <LedraButton
               style={{ marginTop: spacing.md, alignSelf: "stretch" }}
+              disabled={cardEntry.starting || checkoutMutation.isPending}
               onPress={async () => {
+                if (tapAction === "retry_record") {
+                  // processCardPayment は残っている PaymentIntent の記録だけを
+                  // やり直す。新しい決済は作らない
+                  checkoutMutation.mutate();
+                  return;
+                }
                 try {
                   await startCardEntry(true);
                 } catch (err) {
@@ -430,28 +409,41 @@ export default function PosCheckoutScreen() {
                 }
               }}
             >
-              カード番号で決済する
+              {tapAction === "retry_record" ? "記録をやり直す" : "カード番号で決済する"}
+            </LedraButton>
+          </View>
+        )}
+
+        {/* ── 決済は済んだが記録に失敗した ──── */}
+        {cardEntry.recordError && (
+          <View style={styles.tapFailedCard}>
+            <Text style={styles.tapFailedTitle}>売上の記録に失敗しました</Text>
+            <Text style={styles.tapFailedDesc}>
+              決済は完了しています（{cardEntry.recordError}）。記録をやり直してください。
+            </Text>
+            <LedraButton
+              style={{ marginTop: spacing.md, alignSelf: "stretch" }}
+              onPress={() => cardEntry.retryRecord()}
+            >
+              記録をやり直す
             </LedraButton>
           </View>
         )}
 
         {/* ── カード番号入力（Stripe Checkout） ──── */}
-        {qrUrl && (
+        {cardEntry.url && (
           <CardEntryPanel
-            url={qrUrl}
+            url={cardEntry.url}
             amount={total}
-            polling={qrPolling}
-            onCancel={() => {
-              setQrUrl(null);
-              setQrSessionId(null);
-              setQrPolling(false);
-              setCardEntry(false);
-            }}
+            polling={cardEntry.polling}
+            mode={cardEntry.fromTapFailure ? "card-entry" : "qr"}
+            onCancel={() => cardEntry.cancel()}
+            onOpenError={() => setSnackbar("決済ページを開けませんでした。QRを読み取ってください")}
           />
         )}
 
         {/* ── 支払い方法 ─────────────────────────────────────────── */}
-        {!qrPolling && (
+        {!cardEntry.polling && (
           <View style={styles.card}>
             <Text style={styles.heading}>
               支払方法
@@ -461,9 +453,9 @@ export default function PosCheckoutScreen() {
               value={paymentMethod}
               onChange={(v) => {
                 setPaymentMethod(v as PaymentMethod);
-                setQrUrl(null);
-                setQrSessionId(null);
-                setQrPolling(false);
+                // 支払方法を変えたら、前の失敗表示と作りかけのリンクは畳む
+                setTapFailed(false);
+                cardEntry.cancel();
               }}
             />
 
@@ -503,7 +495,7 @@ export default function PosCheckoutScreen() {
         )}
 
         {/* ── 決済ボタン ─────────────────────────────────────────── */}
-        {!qrPolling && (
+        {!cardEntry.polling && (
           <View style={styles.submitArea}>
             <LedraButton
               icon={

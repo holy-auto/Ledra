@@ -7,7 +7,7 @@ import {
   isQrFlow,
   isTapToPayFlow,
   isTerminalBusy,
-  shouldOfferCardEntry,
+  tapFailureAction,
   recordedMethod,
 } from "./posPayment.ts";
 
@@ -59,21 +59,26 @@ for (const d of [iphone, ipad, android]) {
 for (const s of ["creating", "collecting", "processing", "capturing"]) assert.equal(isTerminalBusy(s), true);
 for (const s of [null, undefined, "idle", "succeeded", "failed", "cancelled"]) assert.equal(isTerminalBusy(s), false);
 
-// --- タッチ決済が読めなかったときの導線 ---
-// 出るのは iPhone の「カード」で失敗した直後だけ
-assert.equal(shouldOfferCardEntry(iphone, "card", true, false), true);
+// --- タッチ決済が失敗した後の導線 ---
+// 決済が成立していない → カード番号入力へ
+assert.equal(tapFailureAction(iphone, "card", true, false, null), "card_entry");
+// **カードは切られていて記録だけ失敗した → 決して新しい決済を作らない**
+assert.equal(tapFailureAction(iphone, "card", true, false, "pi_123"), "retry_record");
 // リンクを出した後は出さない（二重に決済を作らせない）
-assert.equal(shouldOfferCardEntry(iphone, "card", true, true), false);
+assert.equal(tapFailureAction(iphone, "card", true, true, null), "none");
+assert.equal(tapFailureAction(iphone, "card", true, true, "pi_123"), "none");
 // 失敗していないのに出してはいけない
-assert.equal(shouldOfferCardEntry(iphone, "card", false, false), false);
+assert.equal(tapFailureAction(iphone, "card", false, false, null), "none");
+assert.equal(tapFailureAction(iphone, "card", false, false, "pi_123"), "none");
 // 失敗のあと支払方法を変えたら消える
 for (const m of ["cash", "qr", "bank_transfer"] as const) {
-  assert.equal(shouldOfferCardEntry(iphone, m, true, false), false, m);
+  assert.equal(tapFailureAction(iphone, m, true, false, null), "none", m);
 }
 // iPad/Android にタッチ決済は無いので、そもそも出ない
 for (const d of [ipad, android]) {
   for (const m of ["cash", "card", "qr", "bank_transfer"] as const) {
-    assert.equal(shouldOfferCardEntry(d, m, true, false), false, `${m}`);
+    assert.equal(tapFailureAction(d, m, true, false, null), "none", `${m}`);
+    assert.equal(tapFailureAction(d, m, true, false, "pi_123"), "none", `${m}`);
   }
 }
 

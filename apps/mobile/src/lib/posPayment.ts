@@ -50,19 +50,25 @@ export function isTapToPayFlow(device: DeviceKind, method: PaymentMethod): boole
 }
 
 /**
- * タッチ決済が読めなかったときの「カード番号で決済」の導線を出すか。
+ * タッチ決済が失敗した後に出す導線。
  *
- * 出すのは**タッチ決済で失敗した直後だけ**。カード番号の入力は Stripe Checkout の
- * 画面（＝ QR と同じ経路）でしてもらうので、既にリンクを出した後（`qrStarted`）は
- * 出さない。支払方法を現金などに切り替えたら消える。
+ * - `retry_record`: **カードは既に切られている。** `pendingCapturePaymentIntentId`
+ *   が残っているのは「決済は通ったが Ledra への記録で落ちた」状態。ここで
+ *   新しい決済を作ると**客が二重に請求される**ので、記録のやり直しだけを出す。
+ * - `card_entry`: 決済自体が成立していない。カード番号入力（Stripe Checkout）へ。
+ * - `none`: 出さない。失敗していない／既にリンクを出した／支払方法を変えた。
  */
-export function shouldOfferCardEntry(
+export type TapFailureAction = "retry_record" | "card_entry" | "none";
+
+export function tapFailureAction(
   device: DeviceKind,
   method: PaymentMethod,
   tapFailed: boolean,
-  qrStarted: boolean,
-): boolean {
-  return tapFailed && !qrStarted && isTapToPayFlow(device, method);
+  cardEntryStarted: boolean,
+  pendingCapturePaymentIntentId: string | null | undefined,
+): TapFailureAction {
+  if (!tapFailed || cardEntryStarted || !isTapToPayFlow(device, method)) return "none";
+  return pendingCapturePaymentIntentId ? "retry_record" : "card_entry";
 }
 
 /**

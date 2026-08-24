@@ -22,16 +22,30 @@ export function CardEntryPanel({
   url,
   amount,
   polling,
+  mode = "qr",
   onCancel,
+  onOpenError,
 }: {
   url: string;
   amount: number;
   polling: boolean;
+  /**
+   * `card-entry` はタッチ決済が読めなかった後の経路。**この端末で開く**方が
+   * 先に必要になるので、見出しをそちらに寄せる（お客様のスマホが手元に無い
+   * ことがまさにこの経路に入る理由）。
+   */
+  mode?: "qr" | "card-entry";
   onCancel: () => void;
+  onOpenError?: () => void;
 }) {
+  const cardEntry = mode === "card-entry";
   return (
     <View style={styles.card}>
-      <Text style={styles.title}>お客様のスマホでQRを読み込んでください</Text>
+      <Text style={styles.title}>
+        {cardEntry
+          ? "この端末で開いて、お客様にカード番号を入力していただきます"
+          : "お客様のスマホでQRを読み込んでください"}
+      </Text>
       <View style={styles.codeWrapper}>
         <QRCode value={url} size={200} />
       </View>
@@ -43,14 +57,17 @@ export function CardEntryPanel({
         </View>
       )}
       <Text style={styles.hint}>
-        QRを読めないときは、この端末で開いてお客様にカード番号を入力していただけます。
+        {cardEntry
+          ? "お客様のスマホがある場合は、上のQRからでも決済できます。"
+          : "QRを読めないときは、この端末で開いてお客様にカード番号を入力していただけます。"}
       </Text>
       <LedraButton
-        variant="outline"
+        variant={cardEntry ? "primary" : "outline"}
         style={styles.action}
         onPress={() => {
-          // 開けなくても会計は QR 側で続けられる。ここで落とさない
-          Linking.openURL(url).catch(() => {});
+          // 開けない端末がある（ブラウザが無い / MDM で制限）。**黙って何も
+          // 起きないと、この経路では会計を終える手段が無くなる**ので必ず知らせる
+          Linking.openURL(url).catch(() => onOpenError?.());
         }}
       >
         この端末で開く（カード番号を入力）
