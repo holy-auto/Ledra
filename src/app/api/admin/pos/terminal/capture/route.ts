@@ -12,14 +12,19 @@ export const dynamic = "force-dynamic";
 // ─── POST: Stripe Terminal 決済確認 + POS会計記録（Connect対応） ───
 // 記録の本体は @/lib/pos/terminalCapture（モバイルと共通）。
 export async function POST(req: NextRequest) {
+  // 認証の**前**に IP で止める。ここを外すと、でたらめなトークンを投げるだけで
+  // auth.getUser() と membership の照会を無制限に走らせられる
+  const ipLimited = await checkRateLimit(req, "mobile_pos");
+  if (ipLimited) return ipLimited;
+
   try {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
     if (!requireMinRole(caller, "staff")) return apiForbidden();
 
-    // 利用者単位で数える。IP 単位だと店舗の NAT で全端末がまとめて上限に当たり、
-    // **カードを切った直後に記録だけ弾かれる**（＝二重請求の入口）
+    // IP に加えて利用者単位でも数える。IP だけだと店舗の NAT で全端末が
+    // まとめて上限に当たり、**カードを切った直後に記録だけ弾かれる**
     const limited = await checkRateLimit(req, "mobile_pos", caller.userId);
     if (limited) return limited;
 

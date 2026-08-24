@@ -77,6 +77,18 @@ export async function captureTerminalPayment(
       .maybeSingle();
 
     if (existing) {
+      // 記録済みの金額が Stripe 側と食い違っていたら、突き合わせのために残す。
+      // （通常は起きない。起きたら手で確認する必要がある）
+      if (typeof existing.amount === "number" && existing.amount !== pi.amount) {
+        logger.error("terminalCapture: 記録済みの金額が Stripe と一致しない", {
+          paymentId: existing.id,
+          recorded: existing.amount,
+          stripe: pi.amount,
+        });
+      }
+      // ponytail: 在庫の引き落としはここでは再試行しない。上限は「初回の
+      // 引き落としが失敗したまま再送されると、在庫だけ減らないままになる」こと。
+      // 現状 POS の明細は在庫と紐付いていない（OPEN_QUESTIONS 参照）ので実害は無い。
       return {
         ok: true,
         payment_intent_id: pi.id,
@@ -117,19 +129,38 @@ export async function captureTerminalPayment(
         .eq("id", paymentId)
         .eq("tenant_id", caller.tenantId);
       if (linkErr) {
-        logger.warn("terminalCapture: stripe_payment_intent_id の記録に失敗", {
+        // 23505 = 一意制約違反。上の事前確認と pos_checkout の間に別の要求が
+        // 同じ PaymentIntent を記録した、ということ。**支払が2件できている。**
+        // 黙って ok を返すと重複が見えなくなるので、失敗として返して気づかせる。
+        // ponytail: 上限。事前確認と作成の間の競合は塞げていない（作成は
+        // pos_checkout の中なので、PaymentIntent の ID を先に確保できない）。
+        // 恒久対応は pos_checkout に引数を足して同一トランザクションで埋めること。
+        const duplicate = (linkErr as { code?: string }).code === "23505";
+        logger.error("terminalCapture: stripe_payment_intent_id の記録に失敗", {
           paymentId,
+          paymentIntentId: pi.id,
+          duplicate,
           err: linkErr.message,
         });
+        if (duplicate) {
+          return {
+            ok: false,
+            kind: "internal",
+            error: new Error(
+              `同じ決済が二重に記録されました（payment_id=${paymentId} / payment_intent=${pi.id}）。` +
+                "経理で重複を確認してください。",
+            ),
+          };
+        }
       }
     }
 
-    // 在庫の引き落とし。`/pos/checkout` と同じ扱いにする（従来ここだけ抜けていた）
-    const { admin: outboxAdmin } = createTenantScopedAdmin(caller.tenantId);
+    // 在庫の引き落とし。`/pos/checkout` と同じ扱いにする（従来ここだけ抜けていた）。
+    // ここでは元から service-role のクライアントなので、outbox も同じものでよい
     const inventory = await deductInventoryForPosItems(admin, input.items_json, {
       tenantId: caller.tenantId,
       paymentId,
-      outboxAdmin,
+      outboxAdmin: admin,
     });
 
     return {

@@ -9,6 +9,8 @@
  * Server Action（"use server"）のファイルからは非 Action を export できないので、
  * 本体はこのモジュールに置き、actions.ts は薄い包みにする。
  */
+import "server-only";
+
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
@@ -57,8 +59,22 @@ export async function createCertificate(
   const tenantLogoPath = (tenantRow?.logo_asset_path as string | null) ?? null;
   const schema_snapshot = templateResult?.data?.schema_json ?? null;
 
-  // 発行した店舗。モバイルは選択中の店舗を送る。Web の発行画面は未指定
-  const store_id = String(formData.get("store_id") || "").trim() || null;
+  // 発行した店舗。モバイルは選択中の店舗を送る。Web の発行画面は未指定。
+  // **他テナントの店舗 ID を送られても通してはいけない**。certificates.store_id の
+  // FK は stores(id) だけで、テナントの条件が入っていない（RLS も行単位で
+  // tenant_id しか見ない）ので、ここで確かめる
+  const store_id_form = String(formData.get("store_id") || "").trim() || null;
+  let store_id: string | null = null;
+  if (store_id_form) {
+    const { data: storeRow } = await supabase
+      .from("stores")
+      .select("id")
+      .eq("id", store_id_form)
+      .eq("tenant_id", tenantId)
+      .maybeSingle();
+    if (!storeRow) return { ok: false, error: "store_not_in_tenant" };
+    store_id = store_id_form;
+  }
   const vehicle_id = String(formData.get("vehicle_id") || "").trim() || null;
   const vehicle_maker = String(formData.get("vehicle_maker") || "").trim();
   const vin_code = String(formData.get("vin_code") || "").trim() || null;

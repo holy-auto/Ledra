@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { View, StyleSheet, ScrollView, Platform } from "react-native";
 import QRCode from "react-native-qrcode-svg";
 import {
@@ -16,7 +16,8 @@ import { parseMenuItems, menuItemsTotal, hasUnknownPrice } from "@/lib/reservati
 import { useAuthStore } from "@/stores/authStore";
 import { mobileApi } from "@/lib/api";
 import { useQrPaymentPoller } from "@/hooks/useQrPaymentPoller";
-import { paymentSegments, isQrFlow, isTerminalBusy } from "@/lib/posPayment";
+import { useDeviceType } from "@/hooks/useDeviceType";
+import { paymentSegments, isQrFlow, isTapToPayFlow, isTerminalBusy } from "@/lib/posPayment";
 import { useTerminal } from "@/hooks/useTerminal";
 import { useTerminalStore } from "@/stores/terminalStore";
 import { TapToPayButton } from "@/components/TapToPayButton";
@@ -26,24 +27,6 @@ import { colors, spacing, radius, typography, shadows } from "@/constants/tokens
 // ─────────────────────────────────────────────────────────────
 // 端末種別の判定
 // ─────────────────────────────────────────────────────────────
-function useDeviceType() {
-  const [isTablet, setIsTablet] = useState(false);
-  useEffect(() => {
-    if (Platform.OS === "ios") {
-      const { width, height } =
-        require("react-native").Dimensions.get("window");
-      setIsTablet(Math.min(width, height) >= 768);
-    }
-  }, []);
-
-  const os = Platform.OS;
-  const isIPhone = os === "ios" && !isTablet;
-  const isIPad = os === "ios" && isTablet;
-  const isAndroid = os === "android";
-
-  return { isIPhone, isIPad, isAndroid, isTablet };
-}
-
 // ─────────────────────────────────────────────────────────────
 
 interface ReservationCheckout {
@@ -97,11 +80,14 @@ export default function PosCheckoutScreen() {
   }, [isIPhone]);
 
   // QRポーリング
-  useQrPaymentPoller(qrPolling ? qrSessionId : null, () => {
+  // ハンドラの同一性が変わるとポーリングが毎回作り直され、3 秒待ちが
+  // 振り出しに戻る。useCallback で固定する（ウォークイン画面も同じ形）
+  const onQrPaid = useCallback(() => {
     setQrPolling(false);
     resetPayment();
     router.replace(`/pos/receipt/${id}`);
-  });
+  }, [id]);
+  useQrPaymentPoller(qrPolling ? qrSessionId : null, onQrPaid);
 
   // ── 予約データ取得 ────────────────────────────────────────────
   const { data: reservation, isLoading } = useQuery<ReservationCheckout>({
@@ -136,7 +122,7 @@ export default function PosCheckoutScreen() {
   const checkoutMutation = useMutation({
     mutationFn: async () => {
       // A. iPhone: Tap to Pay
-      if (isIPhone && paymentMethod === "card") {
+      if (isTapToPayFlow(device, paymentMethod)) {
         if (readerStatus !== "connected") {
           const ok = await connectTapToPay();
           if (!ok) {
@@ -257,13 +243,12 @@ export default function PosCheckoutScreen() {
     if (priceUnknown) return "金額が確定できません（管理画面で確認）";
     if (total <= 0) return "明細がありません";
     if (qrPolling) return "お客様の決済完了を待っています...";
-    if (isIPhone && paymentMethod === "card") {
+    if (isTapToPayFlow(device, paymentMethod)) {
       if (paymentStatus === "collecting") return "カードをかざしてください";
       if (isProcessing) return "処理中...";
       return "Tap to Pay で決済";
     }
-    if ((isAndroid || isIPad) && paymentMethod === "card") return "QRコードを表示";
-    if (isIPhone && paymentMethod === "qr") return "QRコードを表示";
+    if (isQrFlow(device, paymentMethod)) return "QRコードを表示";
     return "決済確定";
   })();
 
@@ -348,7 +333,7 @@ export default function PosCheckoutScreen() {
         )}
 
         {/* ── iPhone: Tap to Pay ステータス ────────────────────── */}
-        {isIPhone && paymentMethod === "card" && isProcessing && (
+        {isTapToPayFlow(device, paymentMethod) && isProcessing && (
           <View style={styles.tapToPayStatus}>
             {paymentStatus === "collecting" ? (
               <>
@@ -386,8 +371,7 @@ export default function PosCheckoutScreen() {
         )}
 
         {/* ── QRコード表示エリア ──── */}
-        {(((isAndroid || isIPad) && paymentMethod === "card") ||
-          (isIPhone && paymentMethod === "qr")) &&
+        {isQrFlow(device, paymentMethod) &&
           qrUrl && (
           <View style={styles.qrCard}>
             <Text style={styles.qrTitle}>
@@ -478,9 +462,9 @@ export default function PosCheckoutScreen() {
           <View style={styles.submitArea}>
             <LedraButton
               icon={
-                isIPhone && paymentMethod === "card"
+                isTapToPayFlow(device, paymentMethod)
                   ? "contactless-payment"
-                  : (isAndroid || isIPad) && paymentMethod === "card"
+                  : isQrFlow(device, paymentMethod)
                     ? "qrcode"
                     : "check-circle"
               }

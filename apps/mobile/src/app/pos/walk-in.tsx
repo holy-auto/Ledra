@@ -27,7 +27,8 @@ import { paymentIdOf, toPosItems } from "@/lib/pos";
 import { useAuthStore } from "@/stores/authStore";
 import { mobileApi } from "@/lib/api";
 import { useQrPaymentPoller } from "@/hooks/useQrPaymentPoller";
-import { paymentSegments, isQrFlow, isTerminalBusy } from "@/lib/posPayment";
+import { useDeviceType } from "@/hooks/useDeviceType";
+import { paymentSegments, isQrFlow, isTapToPayFlow, isTerminalBusy } from "@/lib/posPayment";
 import { useTerminal } from "@/hooks/useTerminal";
 import { useTerminalStore } from "@/stores/terminalStore";
 import { LedraButton, SegmentedControl } from "@/components/ui";
@@ -59,24 +60,6 @@ interface CartItem {
 
 type PaymentMethod = "cash" | "card" | "qr" | "bank_transfer";
 
-/**
- * 決済手段の構成を決める端末種別。
- *
- * ponytail: ウィンドウ幅ではなく Platform.isPad（端末固有の事実）で判定する。
- * 幅で判定すると iPad の Split View 中に isIPad が反転し、選択済みの
- * paymentMethod が構成から消える（例: "qr" のまま iPad 構成になると
- * QR を出さずに p_payment_method: "qr" で記帳される）。
- * 見た目の列数は別途ウィンドウ幅から決める。
- */
-function useDeviceType() {
-  const os = Platform.OS;
-  const isIPad = os === "ios" && Platform.isPad;
-  return {
-    isIPhone: os === "ios" && !isIPad,
-    isIPad,
-    isAndroid: os === "android",
-  };
-}
 export default function WalkInCheckoutScreen() {
   const { user, selectedStore } = useAuthStore();
   const device = useDeviceType();
@@ -262,7 +245,7 @@ export default function WalkInCheckoutScreen() {
       const itemsJson = toPosItems(cart);
 
       // iPhone Tap to Pay
-      if (isIPhone && paymentMethod === "card") {
+      if (isTapToPayFlow(device, paymentMethod)) {
         if (readerStatus !== "connected") {
           const ok = await connectTapToPay();
           if (!ok) {
@@ -363,13 +346,12 @@ export default function WalkInCheckoutScreen() {
 
   const submitLabel = (() => {
     if (qrPolling) return "お客様の決済完了を待っています...";
-    if (isIPhone && paymentMethod === "card") {
+    if (isTapToPayFlow(device, paymentMethod)) {
       if (paymentStatus === "collecting") return "カードをかざしてください";
       if (isProcessing) return "処理中...";
       return "Tap to Pay で決済";
     }
-    if ((isAndroid || isIPad) && paymentMethod === "card") return "QRコードを表示";
-    if (isIPhone && paymentMethod === "qr") return "QRコードを表示";
+    if (isQrFlow(device, paymentMethod)) return "QRコードを表示";
     return "決済確定";
   })();
 
@@ -566,8 +548,7 @@ export default function WalkInCheckoutScreen() {
           </View>
 
           {/* QRコード表示 */}
-          {(((isAndroid || isIPad) && paymentMethod === "card") ||
-            (isIPhone && paymentMethod === "qr")) &&
+          {isQrFlow(device, paymentMethod) &&
             qrUrl && (
             <View style={styles.qrCard}>
               <Text style={styles.qrTitle}>

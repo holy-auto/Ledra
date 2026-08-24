@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { View, ScrollView, StyleSheet } from "react-native";
 import { TextInput, HelperText, Menu, Chip } from "react-native-paper";
 import { router, useLocalSearchParams } from "expo-router";
@@ -15,7 +15,7 @@ interface Vehicle {
   plate_display: string | null;
   maker: string | null;
   model: string | null;
-  customers: { name: string | null } | null;
+  customers: { id: string; name: string | null } | null;
 }
 
 const SERVICE_TYPES = [
@@ -33,6 +33,7 @@ export default function CertificateNewScreen() {
   const queryClient = useQueryClient();
 
   const [form, setForm] = useState({
+    customer_name: "",
     vehicle_id: "",
     vehicle_maker: "",
     vehicle_model: "",
@@ -45,6 +46,9 @@ export default function CertificateNewScreen() {
   const [vehicleMenuVisible, setVehicleMenuVisible] = useState(false);
   const [serviceMenuVisible, setServiceMenuVisible] = useState(false);
   const [selectedVehicle, setSelectedVehicle] = useState<Vehicle | null>(null);
+  // 「この画面で作る1枚」を表す鍵。失敗して押し直しても同じ鍵を送るので、
+  // サーバ側で重複が弾かれる。成功したら画面を離れるので使い回しの心配は無い
+  const idemKeyRef = useRef(`cert-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`);
 
   // Load vehicles for picker
   const { data: vehicles } = useQuery({
@@ -53,7 +57,7 @@ export default function CertificateNewScreen() {
       const { data, error } = await supabase
         .from("vehicles")
         // vehicles に customer_name 列は無い。顧客名は customers を埋め込む
-        .select("id, plate_display, maker, model, customers ( name )")
+        .select("id, plate_display, maker, model, customers ( id, name )")
         .eq("tenant_id", user!.tenantId)
         .order("created_at", { ascending: false })
         .limit(100);
@@ -82,7 +86,7 @@ export default function CertificateNewScreen() {
         const { data: v } = await supabase
           .from("vehicles")
           // vehicles に customer_name 列は無い。顧客名は customers を埋め込む
-        .select("id, plate_display, maker, model, customers ( name )")
+        .select("id, plate_display, maker, model, customers ( id, name )")
           .eq("id", data.vehicle_id)
           .single();
 
@@ -91,6 +95,8 @@ export default function CertificateNewScreen() {
           setSelectedVehicle(vehicle);
           setForm((prev) => ({
             ...prev,
+            // 顧客名はサーバ側で必須。車両の所有者が分かれば埋めておく
+            customer_name: prev.customer_name || (vehicle.customers?.name ?? ""),
             vehicle_id: vehicle.id,
             vehicle_maker: vehicle.maker ?? "",
             vehicle_model: vehicle.model ?? "",
@@ -110,9 +116,14 @@ export default function CertificateNewScreen() {
       // Web の発行画面と同じ処理を通すため、必ずサーバ経由で作る
       return mobileApi<{ id: string | null; public_id: string }>("/certificates", {
         method: "POST",
+        // 送信のたびに1つ決めて、同じ操作の再送では同じ鍵を送る。
+        // 鍵が無いとサーバの冪等ラッパーが素通りし、再送で証明書が2枚できる
+        headers: { "Idempotency-Key": idemKeyRef.current },
         body: {
-          // customer_name はサーバ側で必須。顧客未選択なら車両の所有者名を使う
-          customer_name: selectedVehicle?.customers?.name ?? "",
+          customer_name: form.customer_name.trim(),
+          // 顧客 ID を渡すと、サーバ側の「名前で似た顧客を探す」経路を通らずに済む。
+          // 同名の別人に紐付く事故と、顧客表の全件読み込みを両方避けられる
+          customer_id: selectedVehicle?.customers?.id ?? null,
           store_id: selectedStore?.id ?? null,
           vehicle_id: form.vehicle_id || null,
           vehicle_maker: form.vehicle_maker.trim(),
@@ -138,6 +149,9 @@ export default function CertificateNewScreen() {
     if (!form.vehicle_id && !form.vehicle_maker.trim() && !form.vehicle_model.trim()) {
       e.vehicle = "車両を選択するか、メーカー・車種を入力してください";
     }
+    // サーバ側（certCreateJsonSchema）で必須。ここで止めないと 400 になるだけで
+    // 画面から入力する手段が無くなる
+    if (!form.customer_name.trim()) e.customer_name = "顧客名を入力してください";
     if (!form.service_type) e.service_type = "サービス種別を選択してください";
     setErrors(e);
     return Object.keys(e).length === 0;
@@ -152,6 +166,8 @@ export default function CertificateNewScreen() {
     setSelectedVehicle(v);
     setForm((prev) => ({
       ...prev,
+      // 未入力なら車両の所有者名を入れる。既に打ってあれば尊重する
+      customer_name: prev.customer_name || (v.customers?.name ?? ""),
       vehicle_id: v.id,
       vehicle_maker: v.maker ?? "",
       vehicle_model: v.model ?? "",
@@ -209,6 +225,18 @@ export default function CertificateNewScreen() {
             マスタ連携中
           </Chip>
         )}
+
+        <TextInput
+          label="顧客名 *"
+          value={form.customer_name}
+          onChangeText={(v) => {
+            setForm((prev) => ({ ...prev, customer_name: v }));
+            if (errors.customer_name) setErrors((prev) => ({ ...prev, customer_name: "" }));
+          }}
+          mode="outlined"
+          style={styles.input}
+        />
+        {errors.customer_name && <HelperText type="error">{errors.customer_name}</HelperText>}
 
         {/* Manual vehicle entry fields */}
         <TextInput

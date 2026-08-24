@@ -6,6 +6,27 @@ import {
 } from "@stripe/stripe-terminal-react-native";
 import { mobileApi } from "@/lib/api";
 import type { PosCheckoutItem } from "@/lib/pos";
+
+/**
+ * 決済の記録（サーバ側の pos_checkout）。**カードを切った後に呼ぶ。**
+ * 同じ PaymentIntent で2回呼ばれてもサーバ側が2件目を作らない。
+ */
+function captureOnServer(
+  paymentIntentId: string,
+  reservationId: string | undefined,
+  storeId: string,
+  itemsJson: PosCheckoutItem[] | undefined,
+) {
+  return mobileApi<Record<string, unknown>>("/pos/terminal/capture", {
+    method: "POST",
+    body: {
+      payment_intent_id: paymentIntentId,
+      reservation_id: reservationId ?? null,
+      store_id: storeId || null,
+      items_json: itemsJson ?? [],
+    },
+  });
+}
 import { useTerminalStore } from "@/stores/terminalStore";
 
 /**
@@ -382,6 +403,21 @@ export function useTerminal() {
       store.setPaymentError(null);
 
       try {
+        // **カードを切った後で記録に失敗した分**があれば、新しく切り直さずに
+        // その PaymentIntent の記録だけをやり直す。ここを飛ばすと毎回新しい
+        // PaymentIntent が作られ、客は二重に請求される
+        // useCallback の依存に store を入れていないので、閉じ込めた古い値ではなく
+        // 現在値を読む（画面側も同じ形で getState() を使っている）
+        const pending = useTerminalStore.getState().pendingCapturePaymentIntentId;
+        if (pending) {
+          store.setPaymentStatus("capturing");
+          const receipt = await captureOnServer(pending, reservationId, storeId, itemsJson);
+          store.setPendingCapture(null);
+          store.setPaymentStatus("succeeded");
+          store.setLastReceiptData(receipt);
+          return { success: true, receipt };
+        }
+
         // 1. バックエンドで PaymentIntent 作成
         const intentData = await mobileApi<{ client_secret: string }>(
           "/pos/terminal/create-payment-intent",
@@ -431,20 +467,14 @@ export function useTerminal() {
 
         store.setPaymentStatus("capturing");
 
-        // 5. バックエンドでキャプチャ
-        const receipt = await mobileApi<Record<string, unknown>>(
-          "/pos/terminal/capture",
-          {
-            method: "POST",
-            body: {
-              payment_intent_id: confirmed.id,
-              reservation_id: reservationId ?? null,
-              store_id: storeId || null,
-              items_json: itemsJson ?? [],
-            },
-          }
-        );
+        // **ここから先で失敗しても、カードは既に切られている。**
+        // 記録だけをやり直せるように ID を残してから記録しに行く
+        store.setPendingCapture(confirmed.id);
 
+        // 5. バックエンドでキャプチャ
+        const receipt = await captureOnServer(confirmed.id, reservationId, storeId, itemsJson);
+
+        store.setPendingCapture(null);
         store.setPaymentStatus("succeeded");
         store.setLastReceiptData(receipt);
 
