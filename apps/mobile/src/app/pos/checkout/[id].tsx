@@ -11,6 +11,7 @@ import { useLocalSearchParams, router, Stack } from "expo-router";
 import { useQuery, useMutation } from "@tanstack/react-query";
 
 import { supabase } from "@/lib/supabase";
+import { toPosItems } from "@/lib/pos";
 import { parseMenuItems, menuItemsTotal, hasUnknownPrice } from "@/lib/reservationItems";
 import { useAuthStore } from "@/stores/authStore";
 import { mobileApi } from "@/lib/api";
@@ -171,36 +172,20 @@ export default function PosCheckoutScreen() {
             );
           }
         }
+        // 明細は capture（= サーバ側の pos_checkout）へ渡す。ここで別途
+        // pos_checkout を呼ぶと1回の決済で支払が2件できる
         const result = await processCardPayment({
           amountJpy: total,
           description: `Ledra POS - ${reservation?.customer?.name ?? "会計"}`,
           reservationId: id,
           storeId: selectedStore?.id || "",
           tenantId: user!.tenantId,
+          itemsJson: toPosItems(items),
         });
         if (!result.success) {
           if (result.cancelled) return;
           throw new Error(result.error ?? "カード決済失敗");
         }
-        const itemsJson = items.map((it) => ({
-          name: it.name,
-          quantity: it.quantity,
-          unit_price: it.unitPrice ?? 0,
-          amount: it.amount ?? 0,
-        }));
-        const { error } = await supabase.rpc("pos_checkout", {
-          p_tenant_id: user!.tenantId,
-          p_reservation_id: id || null,
-          p_customer_id: null,
-          p_store_id: selectedStore?.id || null,
-          p_register_session_id: null,
-          p_payment_method: "card",
-          p_amount: total,
-          p_received_amount: total,
-          p_items_json: itemsJson,
-          p_user_id: user!.id,
-        });
-        if (error) throw error;
         return;
       }
 
@@ -228,25 +213,19 @@ export default function PosCheckoutScreen() {
       }
 
       // C. 現金・QR(支払方法記録)・振込
-      const itemsJson = items.map((it) => ({
-        name: it.name,
-        quantity: it.quantity,
-        unit_price: it.unitPrice ?? 0,
-        amount: it.amount ?? 0,
-      }));
-      const { error } = await supabase.rpc("pos_checkout", {
-        p_tenant_id: user!.tenantId,
-        p_reservation_id: id || null,
-        p_customer_id: null,
-        p_store_id: selectedStore?.id || null,
-        p_register_session_id: null,
-        p_payment_method: paymentMethod,
-        p_amount: total,
-        p_received_amount: paymentMethod === "cash" ? received : total,
-        p_items_json: itemsJson,
-        p_user_id: user!.id,
+      // pos_checkout は呼び出し元を検査しないため端末からは直接呼ばない。
+      // テナントと担当者はサーバがトークンから決める
+      await mobileApi("/pos/checkout", {
+        method: "POST",
+        body: {
+          reservation_id: id || null,
+          store_id: selectedStore?.id || null,
+          payment_method: paymentMethod,
+          amount: total,
+          received_amount: paymentMethod === "cash" ? received : total,
+          items_json: toPosItems(items),
+        },
       });
-      if (error) throw error;
     },
     onSuccess: () => {
       const isQrFlow =

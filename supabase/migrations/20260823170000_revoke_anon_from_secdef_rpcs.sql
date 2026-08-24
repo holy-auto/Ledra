@@ -1,6 +1,11 @@
 -- ============================================================
 -- 未認証（anon）から呼べてはいけない SECURITY DEFINER 関数の EXECUTE を絞る
 --
+-- 適用状況: 2026-08-23 に本番へ適用済み。記録されたバージョンは
+--   `20260823235804`（このファイル名の 20260823170000 とは一致しない）。
+--   実行後に has_function_privilege で全16本の anon = false を確認済み。
+--   再度当たっても revoke/grant は冪等なので実害は無い。
+--
 -- 経緯:
 --   Supabase の security advisor の指摘を `has_function_privilege` で実測したところ、
 --   `anon` が `/rest/v1/rpc/<name>` から呼べる SECURITY DEFINER 関数が 53 本あった。

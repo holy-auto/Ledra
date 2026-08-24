@@ -5,6 +5,7 @@ import {
   type Reader,
 } from "@stripe/stripe-terminal-react-native";
 import { mobileApi } from "@/lib/api";
+import type { PosCheckoutItem } from "@/lib/pos";
 import { useTerminalStore } from "@/stores/terminalStore";
 
 /**
@@ -356,6 +357,7 @@ export function useTerminal() {
       reservationId,
       storeId,
       tenantId,
+      itemsJson,
     }: {
       amountJpy: number;
       description: string;
@@ -363,6 +365,13 @@ export function useTerminal() {
       reservationId?: string;
       storeId: string;
       tenantId: string;
+      /**
+       * 会計明細。capture（= サーバ側の pos_checkout）へそのまま渡す。
+       * ここで渡さないと明細も予約紐付けも無い支払だけが残るため、画面側が
+       * もう一度 pos_checkout を呼んでいた。結果 **1回の決済で支払が2件**
+       * 作られていたので、明細をここへ寄せて画面側の呼び出しを消した。
+       */
+      itemsJson?: PosCheckoutItem[];
     }) => {
       store.setPaymentStatus("creating");
       store.setPaymentError(null);
@@ -422,7 +431,12 @@ export function useTerminal() {
           "/pos/terminal/capture",
           {
             method: "POST",
-            body: { payment_intent_id: confirmed.id },
+            body: {
+              payment_intent_id: confirmed.id,
+              reservation_id: reservationId ?? null,
+              store_id: storeId || null,
+              items_json: itemsJson ?? [],
+            },
           }
         );
 

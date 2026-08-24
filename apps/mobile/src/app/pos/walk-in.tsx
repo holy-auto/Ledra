@@ -23,6 +23,7 @@ import { router, Stack } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 
 import { supabase } from "@/lib/supabase";
+import { paymentIdOf, toPosItems } from "@/lib/pos";
 import { useAuthStore } from "@/stores/authStore";
 import { mobileApi } from "@/lib/api";
 import { useTerminal } from "@/hooks/useTerminal";
@@ -164,27 +165,18 @@ export default function WalkInCheckoutScreen() {
     resetPayment();
 
     try {
-      const itemsJson = cart.map((item) => ({
-        name: item.name,
-        quantity: item.quantity,
-        unit_price: item.unitPrice,
-        amount: item.unitPrice * item.quantity,
-      }));
-      const { data, error } = await supabase.rpc("pos_checkout", {
-        p_tenant_id: user!.tenantId,
-        p_reservation_id: null,
-        p_customer_id: null,
-        p_store_id: selectedStore?.id || null,
-        p_register_session_id: null,
-        p_payment_method: "card",
-        p_amount: total,
-        p_received_amount: total,
-        p_items_json: itemsJson,
-        p_user_id: user!.id,
-      });
-      if (error) throw error;
-      const result = typeof data === "string" ? JSON.parse(data) : data;
-      const pId = result?.payment_id;
+      const pId = paymentIdOf(
+        await mobileApi("/pos/checkout", {
+          method: "POST",
+          body: {
+            store_id: selectedStore?.id || null,
+            payment_method: "card",
+            amount: total,
+            received_amount: total,
+            items_json: toPosItems(cart),
+          },
+        }),
+      );
       if (pId) {
         router.replace(`/pos/receipt-standalone/${pId}`);
         return;
@@ -193,7 +185,7 @@ export default function WalkInCheckoutScreen() {
       setSnackbar(err instanceof Error ? err.message : "決済記録に失敗しました");
     }
     router.replace("/(tabs)");
-  }, [cart, total, user, selectedStore, resetPayment]);
+  }, [cart, total, selectedStore, resetPayment]);
 
   useQrPaymentPoller(qrPolling ? qrSessionId : null, onQrPaid);
 
@@ -293,12 +285,7 @@ export default function WalkInCheckoutScreen() {
     setProcessing(true);
 
     try {
-      const itemsJson = cart.map((item) => ({
-        name: item.name,
-        quantity: item.quantity,
-        unit_price: item.unitPrice,
-        amount: item.unitPrice * item.quantity,
-      }));
+      const itemsJson = toPosItems(cart);
 
       // iPhone Tap to Pay
       if (isIPhone && paymentMethod === "card") {
@@ -312,11 +299,14 @@ export default function WalkInCheckoutScreen() {
             );
           }
         }
+        // 明細は capture（= サーバ側の pos_checkout）へ渡す。**ここで終える**。
+        // 以前は下の会計処理まで落ちていたため、1回の決済で支払が2件できていた
         const result = await processCardPayment({
           amountJpy: total,
           description: "Ledra POS - ウォークイン会計",
           storeId: selectedStore?.id || "",
           tenantId: user!.tenantId,
+          itemsJson,
         });
         if (!result.success) {
           if (result.cancelled) {
@@ -325,6 +315,12 @@ export default function WalkInCheckoutScreen() {
           }
           throw new Error(result.error ?? "カード決済失敗");
         }
+        resetPayment();
+        const tapPaymentId = paymentIdOf(result.receipt);
+        router.replace(
+          tapPaymentId ? `/pos/receipt-standalone/${tapPaymentId}` : "/(tabs)",
+        );
+        return;
       }
 
       // QR決済（iPad/Android「カード」 or iPhone「QR」）
@@ -350,29 +346,23 @@ export default function WalkInCheckoutScreen() {
         return;
       }
 
-      const { data, error } = await supabase.rpc("pos_checkout", {
-        p_tenant_id: user!.tenantId,
-        p_reservation_id: null,
-        p_customer_id: null,
-        p_store_id: selectedStore?.id || null,
-        p_register_session_id: null,
-        p_payment_method: paymentMethod,
-        p_amount: total,
-        p_received_amount: paymentMethod === "cash" ? received : total,
-        p_items_json: itemsJson,
-        p_user_id: user!.id,
-      });
-
-      if (error) throw error;
+      // pos_checkout は呼び出し元を検査しないため端末からは直接呼ばない。
+      // テナントと担当者はサーバがトークンから決める
+      const pId = paymentIdOf(
+        await mobileApi("/pos/checkout", {
+          method: "POST",
+          body: {
+            store_id: selectedStore?.id || null,
+            payment_method: paymentMethod,
+            amount: total,
+            received_amount: paymentMethod === "cash" ? received : total,
+            items_json: itemsJson,
+          },
+        }),
+      );
 
       resetPayment();
-      const result = typeof data === "string" ? JSON.parse(data) : data;
-      const pId = result?.payment_id;
-      if (pId) {
-        router.replace(`/pos/receipt-standalone/${pId}`);
-      } else {
-        router.replace("/(tabs)");
-      }
+      router.replace(pId ? `/pos/receipt-standalone/${pId}` : "/(tabs)");
     } catch (err) {
       const msg =
         err instanceof Error

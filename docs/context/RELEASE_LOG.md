@@ -4,6 +4,32 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-08-24 権限剥奪マイグレーションを本番適用 / モバイル POS をサーバ経由へ / Tap to Pay の二重計上を修正
+
+- **未認証から呼べていた SECURITY DEFINER 関数 16 本の EXECUTE を本番で絞った**
+  （記録バージョン `20260823235804`）。適用後に `has_function_privilege` で実測:
+  16 本すべて `anon = false`、うち呼び出し元の検査が無い4本
+  （`pos_checkout` / `upsert_agent_user` / `billing_analytics_stats` /
+  `management_kpi_stats`）と トリガ専用2本は `authenticated` も false、
+  `service_role` のみ true。RLS ポリシー内で使う 19 本（`my_tenant_ids` など）は
+  anon 実行可のまま＝公開ページの読み取りは影響なし。
+- **モバイルの POS 会計をサーバ経由に変えた**（3箇所）。
+  `apps/mobile` からの `supabase.rpc("pos_checkout")` は 0 件になり、
+  `/api/mobile/pos/checkout` と `/api/mobile/pos/terminal/capture` だけが入口になる。
+  テナント ID と担当者はサーバがトークンから決めるので画面からは渡さない。
+  副産物として、直接 RPC では素通りしていた**レート制限・ロール確認・在庫の引き落とし**
+  がモバイルの会計にも効くようになった。
+- **Tap to Pay が1回の決済で支払を2件作っていた不具合を修正**。
+  `processCardPayment` は内部で `/pos/terminal/capture` を呼び、そこで
+  `pos_checkout` が走って支払が1件できている。画面側はその後もう一度
+  `pos_checkout` を呼んでいた（ウォークインは `if` を抜けた後そのまま下の
+  会計処理へ落ちる作りだった）。明細を capture 側へ渡し、画面側の呼び出しを削除。
+  本番の `payments` は 11 件・最終 2026-03-23 の試験データのみで、
+  **実売上には到達していない**。
+- 共通化: `apps/mobile/src/lib/pos.ts` に `paymentIdOf`（サーバの戻りから
+  payment_id を取り出す）と `toPosItems`（画面の明細を pos_checkout の形へ揃える）。
+  `pos.check.ts` で固定し、モバイルの `npm test` に追加（自己チェック 9 → 10 本）。
+
 ## 2026-08-23 code-review 指摘の修正: 権限剥奪が効いていなかった / 代理店設定が保存できなかった
 
 - **用意した権限剥奪のマイグレーションは、実は何も変えていなかった。**
