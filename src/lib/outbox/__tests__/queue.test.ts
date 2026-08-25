@@ -132,8 +132,9 @@ describe("drainItems", () => {
     expect(remove).not.toHaveBeenCalled();
   });
 
-  it("keeps retrying statuses that can recover (401 / 429 / 5xx)", async () => {
-    for (const status of [401, 403, 408, 429, 500, 503]) {
+  it("keeps retrying statuses that can recover (401 / 404 / 429 / 5xx)", async () => {
+    // 404 は先行アイテム (証明書の作成) が未同期のときに後続で出るので恒久扱いにしない。
+    for (const status of [401, 403, 404, 408, 429, 500, 503]) {
       const markAttempt = vi.fn(async () => {});
       const markBlocked = vi.fn(async () => {});
       const doFetch = vi.fn(async () => mkResponse({ ok: false, status, text: "later" }));

@@ -115,19 +115,21 @@ export default function CertificateNewScreen() {
     const maker = form.vehicle_maker.trim();
     const model = form.vehicle_model.trim();
     const plate = form.vehicle_plate.trim();
-    if (!maker && !model && !plate) return null;
+
+    // ナンバーが無いと同一車両を identify できず、入庫のたびに別の vehicles 行が
+    // できてしまう。そうなると走行距離の履歴が1点ずつ分かれて意味を失うので、
+    // ナンバー未入力のときは作成しない (vehicle_id は null のまま = 従来の挙動)。
+    if (!plate) return null;
 
     // ナンバーはテナント内でほぼ一意なので、まず既存を探して重複作成を避ける
-    if (plate) {
-      const { data: byPlate } = await supabase
-        .from("vehicles")
-        .select("id")
-        .eq("tenant_id", user!.tenantId)
-        .eq("plate_display", plate)
-        .limit(1)
-        .maybeSingle();
-      if (byPlate?.id) return byPlate.id as string;
-    }
+    const { data: byPlate } = await supabase
+      .from("vehicles")
+      .select("id")
+      .eq("tenant_id", user!.tenantId)
+      .eq("plate_display", plate)
+      .limit(1)
+      .maybeSingle();
+    if (byPlate?.id) return byPlate.id as string;
 
     const { data: created, error } = await supabase
       .from("vehicles")

@@ -80,12 +80,24 @@ describe("POST /api/admin/certificates (JSON adapter)", () => {
     expect(res.status).toBe(401);
   });
 
-  it("maps other action errors to 400 validation error", async () => {
+  it("maps input-validation errors to 422 (permanent — the outbox must stop retrying)", async () => {
     mocks.createCertAction.mockResolvedValueOnce({ ok: false, error: "vehicle_required" });
     const res = (await POST(makeReq({ customer_name: "x", mileage_km: 35000 }))) as Response;
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(422);
     const body = (await res.json()) as { message: string };
     expect(body.message).toContain("vehicle_required");
+  });
+
+  it("maps unexpected action errors to 500 so the outbox keeps retrying", async () => {
+    // DB 障害などは createCertAction が error.message をそのまま返す。これを 4xx にすると
+    // オフラインキューが恒久失敗と誤判定し、未送信の証明書を止めてしまう
+    // (src/lib/outbox/queue.ts の isPermanentClientError)。
+    mocks.createCertAction.mockResolvedValueOnce({
+      ok: false,
+      error: 'duplicate key value violates unique constraint "certificates_pkey"',
+    });
+    const res = (await POST(makeReq({ customer_name: "x", mileage_km: 35000 }))) as Response;
+    expect(res.status).toBe(500);
   });
 
   it("returns 500 when createCertAction throws", async () => {

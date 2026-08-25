@@ -176,8 +176,17 @@ export async function enqueueOutbox(input: EnqueueInput): Promise<OutboxItem | n
 
 /** 現在のキュー件数を返す。0 件 / SSR / DB 失敗時は 0 を返す (UI は壊さない)。 */
 export async function countOutbox(): Promise<number> {
-  const r = await withStore<number>("readonly", (store) => store.count());
-  return r ?? 0;
+  // blocked は drain の対象外なので「同期待ち」には数えない。
+  // 数に入れるとバッジが「N 件 同期待ち」のまま減らず、同期を押しても
+  // 「同期待ちはありません」と出て食い違う。
+  const r = await withStore<OutboxItem[]>("readonly", (store) => store.getAll());
+  return (r ?? []).filter((it) => !it.blockedAt).length;
+}
+
+/** 恒久的に送れないと判定され、利用者の対応待ちになっているアイテム数。 */
+export async function countBlockedOutbox(): Promise<number> {
+  const r = await withStore<OutboxItem[]>("readonly", (store) => store.getAll());
+  return (r ?? []).filter((it) => it.blockedAt).length;
 }
 
 /**
@@ -329,15 +338,10 @@ export async function markOutboxBlocked(id: string, error: string): Promise<void
  * 時間をおけば通るので、従来どおり再送対象のままにする。
  */
 export function isPermanentClientError(status: number): boolean {
-  return (
-    status === 400 ||
-    status === 404 ||
-    status === 405 ||
-    status === 410 ||
-    status === 413 ||
-    status === 415 ||
-    status === 422
-  );
+  // 404 は入れない: 先行アイテム (証明書の作成) がまだ同期されていない段階で
+  // 後続 (発行・写真アップロード) が走ると 404 になり得るが、これは順番の問題で
+  // 次回の drain では通る。恒久扱いにすると後続が永久に発行されなくなる。
+  return status === 400 || status === 405 || status === 410 || status === 413 || status === 415 || status === 422;
 }
 
 export interface DrainResult {

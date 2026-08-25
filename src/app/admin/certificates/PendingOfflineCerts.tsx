@@ -54,7 +54,10 @@ export default function PendingOfflineCerts() {
   const refresh = useCallback(async () => {
     const all = await listOutbox();
     const certItems = all
-      .filter((it) => it.kind === "certificate_create")
+      // 証明書の作成に加え、恒久失敗になったものは種別を問わず出す。
+      // 発行 (certificate_activate) や写真アップロードが止まっているのに
+      // どこにも出ないと、利用者が気づけないまま証明書が draft のまま残る。
+      .filter((it) => it.kind === "certificate_create" || Boolean(it.blockedAt))
       .map<PendingItem>((it) => ({
         id: it.id,
         label: it.label,
@@ -131,7 +134,9 @@ export default function PendingOfflineCerts() {
         {items.map((it) => (
           <li key={it.id} className="flex items-center justify-between gap-3 py-2">
             <div className="min-w-0 flex-1">
-              <div className="font-medium text-primary truncate">{it.customerName ?? "(顧客名 未取得)"}</div>
+              <div className="font-medium text-primary truncate">
+                {it.customerName ?? it.label ?? "(顧客名 未取得)"}
+              </div>
               <div className="mt-0.5 flex items-center gap-2 text-xs text-muted">
                 <span>{formatRelative(it.createdAt)}</span>
                 {it.blocked ? (
