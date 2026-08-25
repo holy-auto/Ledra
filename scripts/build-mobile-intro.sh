@@ -63,13 +63,27 @@ ffmpeg -hide_banner -loglevel error -y -t "$CUT_SEC" -i "$MASTER" -filter_comple
   -an -c:v libx264 -crf 24 -preset slow -pix_fmt yuv420p -movflags +faststart \
   "$ASSETS/ledra-intro.mp4"
 
-# ネイティブスプラッシュは画像を持たせず、単色(#d6d0cb = 動画の背景クリーム)にしている。
+echo "==> スプラッシュ (背景と同色 = 見えないアイコン)"
+# 狙いは「単色スプラッシュ」だが、画像を持たせない設定は Expo からは選べない。
+#   @expo/prebuild-config/.../withAndroidSplashStyles.js:56-60 の addSplashScreenStyle は
+#   splashConfig を一切見ず、windowSplashScreenAnimatedIcon -> @drawable/splashscreen_logo を
+#   無条件に styles.xml へ書く。一方 drawable を書く withAndroidSplashImages.js:163 は
+#   if (image) で守られているので、image が無いと参照だけ残って AAPT2 が
+#   "resource drawable/splashscreen_logo not found" で落ちる（実際に15分ビルドして踏んだ）。
+# そこで背景と同じ #d6d0cb の単色 PNG を渡し、「描画はされるが見えない」形にする。
+# 透明 PNG ではなく単色にしているのは、アイコンが空のときアプリアイコンに
+# フォールバックする OEM 実装がありうるため。同色なら挙動に依存しない。
+#
+# フルブリードのスプラッシュ画像は Android では原理的に実現できない。
 # Android 12+ のスプラッシュAPIは「単色の上に中央のアイコン」しか描けず、
-# @expo/prebuild-config の legacy splash 経路では imageWidth が 200dp に
-# ハードコードされている(getAndroidSplashConfig.js)。つまりフルブリードの
-# スプラッシュ画像は Android では原理的に実現できない。
-# 動画のフレーム0はビネット以外ほぼ一様なクリームなので、単色で置き換えても
-# 再生開始の継ぎ目はほぼ見えない。iOS だけ全画面にすると挙動が割れるため揃えている。
+# legacy splash 経路では imageWidth が 200dp にハードコードされている
+# (getAndroidSplashConfig.js:52)。動画のフレーム0はビネット以外ほぼ一様な
+# クリームなので、単色で置き換えても再生開始の継ぎ目はほぼ見えない。
+# format=rgb24 はフィルタグラフの中に置くこと。外の -pix_fmt rgb24 だけだと
+# color ソースが YUV で作ってから変換するため d5cfca になり、背景色と1ずつずれる。
+ffmpeg -hide_banner -loglevel error -y \
+  -f lavfi -i "color=c=0xd6d0cb:s=512x512,format=rgb24" -frames:v 1 \
+  "$ASSETS/splash-icon.png"
 
 echo "==> アプリアイコン (iOS はアルファ不可なので白でフラット化)"
 MARK_H_ICON=620

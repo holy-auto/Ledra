@@ -13,6 +13,46 @@
 - 対象: どの画面・API・業種向けか
 ```
 
+## 2026-08-25 スプラッシュのリソース参照切れを修正し、CI の検査を拡張（PR #966 / branch claude/mobile-app-opening-animation-s2a6m3）
+
+- 内容: Android ビルドが `:app:processReleaseResources` で落ちていたのを直し、
+  同じクラスの事故を CI で拾えるようにした。
+
+  ```
+  error: resource drawable/splashscreen_logo (aka com.ledra.app:drawable/splashscreen_logo) not found.
+  ```
+
+- 原因: スプラッシュを単色にするため `app.json` から `splash.image` を消したが、
+  **Expo の prebuild は logo の参照だけ残す**。
+  - `withAndroidSplashStyles.js:56-60` の `addSplashScreenStyle` は `splashConfig` を一切見ず、
+    `windowSplashScreenAnimatedIcon → @drawable/splashscreen_logo` を無条件に書く
+  - drawable を書く `withAndroidSplashImages.js:163` は `if (image)` で守られており、
+    image が無ければ黙って何も書かない（さらに既存の logo を削除する）
+  - `getAndroidSplashConfig.js:41` は `if (config.splash)` とオブジェクトの真偽で判定するため、
+    `{ backgroundColor }` だけでも `image: undefined` を持つ非 null オブジェクトを返す
+  - `isLegacyConfig` は `props === undefined` で判定されるが、呼び出し元の
+    `expo-splash-screen/plugin/build/withSplashScreen.js:37` は `null` を渡す。`null !== undefined`
+    なので legacy 経路は到達不能
+
+  → **「logo を出さない」設定は app.json からは選べない。** `splash` キーごと消しても同じ所で落ちる。
+
+- 対処: `scripts/build-mobile-intro.sh` で**背景と同色 `#d6d0cb` の 512x512 単色 PNG** を生成し、
+  `app.json` の `splash.image` に戻した。描画はされるが背景と同色なので見えない。
+  透明 PNG にしなかったのは、アイコンが空のときアプリアイコンにフォールバックする
+  OEM 実装がありうるため（同色なら挙動に依存しない）。
+  生成は `format=rgb24` をフィルタグラフの中に置く。外の `-pix_fmt` だけだと色が
+  `d5cfca` になり背景と1ずつずれる（実測）。
+- CI の拡張: `scripts/check-native-config.mjs` に**リソース参照切れの検査**を追加した。
+  prebuild 済みの `res/values*` が参照する `@drawable` / `@mipmap` の実体が
+  存在するかを照合し、無ければ名前を出して exit 1 する。
+- 検証: `app.json` から `image` を消して prebuild し直し、**今回の事故そのものを再現**して
+  検査が `@drawable/splashscreen_logo` を名指しで落とすことを確認。
+  生成済みの drawable を削除した場合も同様に落ちる。
+  合成後の logo が 5 dpi すべてで一様な `#d6d0cb` であることも実測で確認した。
+- 限界: AAPT2 をこの環境で回せないため、最終的な証明は EAS ビルド。
+  参照を拾うのは `values` 系ディレクトリのみ（`drawable` 系まで広げると AppCompat の
+  `abc_textfield_*` が誤検知になる。実際に出した）。
+
 ## 2026-08-25 CI にネイティブ設定の検査を追加（PR #966 / branch claude/mobile-app-opening-animation-s2a6m3）
 
 - 内容: `Mobile CI` の `typecheck-test` ジョブに 2 ステップを追加した。
@@ -138,13 +178,16 @@
   - `src/app/_layout.tsx:88` にあった `if (!isReady) return null;`（起動処理中に何も描かない空白）を
     `<AppIntro>` に差し替えた。`SplashScreen.hideAsync()` は AppIntro 側が「動画を描画可能になってから」呼ぶ。
     先に呼ぶとデコード待ちの黒画面が挟まる。
-  - ネイティブスプラッシュは**画像を持たせず単色 `#d6d0cb`**（動画の背景クリーム）にした。
+  - ネイティブスプラッシュは見た目としては単色 `#d6d0cb`（動画の背景クリーム）。
     当初はフレーム0を全画面スプラッシュにする設計だったが、`@expo/prebuild-config` の
     legacy splash 経路は Android で `imageWidth` が 200dp にハードコードされており
-    （`getAndroidSplashConfig.js`）、そもそも Android 12+ のスプラッシュAPIは
+    （`getAndroidSplashConfig.js:52`）、そもそも Android 12+ のスプラッシュAPIは
     「単色の上に中央のアイコン」しか描けない。フルブリードのスプラッシュ画像は
     Android では原理的に実現できないため、両プラットフォームで単色に揃えた。
     フレーム0はビネット以外ほぼ一様なクリームなので、継ぎ目はほぼ見えない。
+  - **【2026-08-25 訂正】** 当初は「画像を持たせず単色」と書いていたが、**画像を持たせない設定は
+    Expo からは選べない**ことが実ビルドで判明した（下の 2026-08-25 エントリ参照）。
+    現在は背景と同色 `#d6d0cb` の単色 PNG を渡して「描画はされるが見えない」形にしている。
 - アセット生成 (`scripts/build-mobile-intro.sh` 新規、ffmpeg のみで完結):
   - マスター素材は 1920x1080 のキャンバスに 9:16 の縦パネルが白でピラーボックスされた形。
     `crop=608:970:656:0` でパネルを抜き、**同時に下端110pxを落として生成AIのウォーターマーク
@@ -157,7 +200,8 @@
   - 成果物: `ledra-intro.mp4`（1080x1920 / 2.00秒 / 60フレーム / 音声なし / 267KB）、
     `icon.png`（iOSはアルファ不可なので白でフラット化）、
     Androidアダプティブアイコンのフォアグラウンド／モノクロ。
-    Expo デフォルトのままだった `android-icon-background.png` と `splash-icon.png` は削除。
+    Expo デフォルトのままだった `android-icon-background.png` は削除。
+    `splash-icon.png` は Expo デフォルト素材を捨て、単色 `#d6d0cb` の 512x512 に置き換えた。
 - 検証: `npm run typecheck` / `npm test`（`introTiming.check.ts` を追加）。
   退場判定とスプラッシュ剥がし判定を `src/lib/introTiming.ts` の純関数に切り出し、
   assert ベースの自己チェックを置いた。**変異テストで3種のバグ（黒画面が挟まる／デコード失敗で

@@ -4,6 +4,11 @@
 // app.json 側が Expo デフォルト(24)のままで、Android の eas build が manifest merger で
 // 2 回落ちた。1 回あたり 12〜17 分。同じ事故を PR の段階で数秒で拾う。
 //
+// 2つ目の検査（リソース参照切れ）の動機: スプラッシュを単色にするため splash.image を消したら、
+// prebuild が styles.xml に @drawable/splashscreen_logo の参照だけ残し、実体を書かなかった。
+// prebuild は正常終了するので CI は緑のまま、15分後に AAPT2 が
+// "resource drawable/splashscreen_logo not found" で落ちた。これも完全に静的な事実。
+//
 // 実行: node scripts/check-native-config.mjs  （npm run check:native）
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -42,6 +47,21 @@ export function parseDeclaredMinSdk(gradleText) {
 /** プロジェクトの minSdk では足りないモジュールを返す。 */
 export function findBlockers(projectMinSdk, modules) {
   return modules.filter((m) => m.minSdk !== null && m.minSdk > projectMinSdk);
+}
+
+// リソース参照。@color や @style は AAR 側が持ちうるので見ない（誤検知の元）。
+// @drawable / @mipmap はアプリ自身の res/ に実体があるのが基本なので、ここだけ検査する。
+const RES_REF_RE = /@(?:drawable|mipmap)\/([A-Za-z0-9_]+)/g;
+
+/** res/ 以下の XML から参照されている drawable / mipmap 名を集める。 */
+export function collectResourceRefs(xmlText) {
+  return [...new Set([...xmlText.matchAll(RES_REF_RE)].map((m) => m[1]))];
+}
+
+/** 参照のうち実体が無いものを返す。existing は拡張子を落とした名前の集合。 */
+export function findMissingRefs(referenced, existing) {
+  const have = new Set(existing);
+  return [...new Set(referenced)].filter((name) => !have.has(name));
 }
 
 /**
@@ -135,6 +155,40 @@ function resolveProjectMinSdk(root) {
   return null;
 }
 
+/**
+ * prebuild が生成した res/ を読み、参照と実体を集める。android/ が無ければ null。
+ *
+ * 参照を拾うのは values 系ディレクトリだけ。ここはテーマやスタイルの配線で、
+ * アプリ自身が持つリソースを名指しする場所なので誤検知が出ない（実測: 参照は
+ * rn_edit_text_material と splashscreen_logo の2件のみ）。今回の事故も
+ * styles.xml の windowSplashScreenAnimatedIcon なのでここで捕まる。
+ *
+ * ponytail: drawable 系の XML も見に行くと、AppCompat の AAR が提供する
+ * abc_textfield_*_mtrl_alpha を参照する rn_edit_text_material.xml が
+ * 誤検知になる（実際に出した）。AAR のリソースまで解決するのは AAPT2 の仕事なので
+ * ここではやらない。values 系で足りなくなったら許可リスト付きで範囲を広げる。
+ */
+function scanGeneratedResources(root) {
+  const resDir = join(root, "android", "app", "src", "main", "res");
+  if (!existsSync(resDir)) return null;
+
+  const referenced = [];
+  const existing = [];
+  for (const dir of readdirSync(resDir, { withFileTypes: true })) {
+    if (!dir.isDirectory()) continue;
+    for (const file of readdirSync(join(resDir, dir.name))) {
+      if (/^(drawable|mipmap)/.test(dir.name)) {
+        existing.push(file.replace(/\.[^.]+$/, ""));
+      } else if (dir.name.startsWith("values") && file.endsWith(".xml")) {
+        referenced.push(
+          ...collectResourceRefs(readFileSync(join(resDir, dir.name, file), "utf8")),
+        );
+      }
+    }
+  }
+  return { referenced, existing };
+}
+
 function main() {
   const root = dirname(dirname(fileURLToPath(import.meta.url)));
   const project = resolveProjectMinSdk(root);
@@ -166,6 +220,22 @@ function main() {
     process.exit(1);
   }
 
+  // --- リソース参照切れ（prebuild 済みのときだけ） ---
+  const res = scanGeneratedResources(root);
+  if (res) {
+    const missing = findMissingRefs(res.referenced, res.existing);
+    if (missing.length > 0) {
+      console.error(
+        "リソース参照切れ: 生成された res/ が参照している drawable / mipmap の実体がありません。\n" +
+          missing.map((name) => `  - @drawable/${name}`).join("\n") +
+          "\n\nこのまま Android をビルドすると AAPT2 が " +
+          `"resource drawable/${missing[0]} not found" で落ちます。\n` +
+          "app.json の該当アセット指定（splash.image など）が消えていないか確認してください。",
+      );
+      process.exit(1);
+    }
+  }
+
   const declared = modules.filter((m) => m.minSdk !== null);
   console.log(
     `minSdk OK: プロジェクト ${project.value}（${project.source}）。` +
@@ -173,7 +243,10 @@ function main() {
       (declared.length > 0
         ? `（最大 ${Math.max(...declared.map((m) => m.minSdk))}）`
         : "") +
-      "。",
+      "。" +
+      (res
+        ? ` リソース参照 ${new Set(res.referenced).size} 件も実体を確認。`
+        : "（android/ が無いためリソース参照は未検査）"),
   );
 }
 

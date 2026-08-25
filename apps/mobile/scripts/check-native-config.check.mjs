@@ -6,7 +6,9 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
+  collectResourceRefs,
   findBlockers,
+  findMissingRefs,
   parseDeclaredMinSdk,
   parseExpoDefaultMinSdk,
 } from "./check-native-config.mjs";
@@ -72,6 +74,29 @@ assert.equal(parseExpoDefaultMinSdk("safeExtGet('minSdkVersion', 24)"), 24);
 assert.equal(parseExpoDefaultMinSdk('safeExtGet("compileSdkVersion", 36)'), null);
 assert.equal(parseExpoDefaultMinSdk("android { }"), null);
 
+// --- collectResourceRefs / findMissingRefs ---
+// 今回 15 分ビルドして踏んだ styles.xml の行そのもの
+const STYLES = `<resources>
+  <style name="Theme.App.SplashScreen" parent="Theme.SplashScreen">
+    <item name="windowSplashScreenBackground">@color/splashscreen_background</item>
+    <item name="windowSplashScreenAnimatedIcon">@drawable/splashscreen_logo</item>
+    <item name="postSplashScreenTheme">@style/AppTheme</item>
+  </style>
+</resources>`;
+// drawable は拾い、@color と @style は拾わない（AAR 側が持ちうるので誤検知の元）
+assert.deepEqual(collectResourceRefs(STYLES), ["splashscreen_logo"]);
+assert.deepEqual(collectResourceRefs('<item>@mipmap/ic_launcher</item>'), ["ic_launcher"]);
+assert.deepEqual(collectResourceRefs("<resources/>"), []);
+// 同じ参照が複数あっても1件
+assert.deepEqual(collectResourceRefs("@drawable/a @drawable/a @drawable/b"), ["a", "b"]);
+
+// 実体は拡張子を落とした名前で照合する（png でも xml でも同じ名前）
+assert.deepEqual(findMissingRefs(["splashscreen_logo"], ["splashscreen_logo"]), []);
+assert.deepEqual(findMissingRefs(["splashscreen_logo"], ["ic_launcher"]), [
+  "splashscreen_logo",
+]);
+assert.deepEqual(findMissingRefs([], ["ic_launcher"]), []);
+
 // --- 変異テスト ---
 // 上の2つの契約（コメント無視・safeExtGet 無視）が「たまたま通っている」だけでないことを
 // 確かめる。素朴に書くとこうなる、という実装を用意し、契約が実際に破れることを見る。
@@ -86,6 +111,20 @@ assert.equal(
   naive("        minSdkVersion safeExtGet('minSdkVersion', 24)"),
   24,
   "「直後の数字」制約が無ければ safeExtGet のデフォルト値を拾ってしまうはず",
+);
+
+// 参照集めから @drawable を外すと、今回の事故（splashscreen_logo の欠落）を見逃す。
+const colorOnly = (text) => [
+  ...new Set([...text.matchAll(/@color\/([A-Za-z0-9_]+)/g)].map((m) => m[1])),
+];
+assert.deepEqual(
+  findMissingRefs(colorOnly(STYLES), []),
+  ["splashscreen_background"],
+  "@drawable を見ない実装は splashscreen_logo を取りこぼすはず",
+);
+assert.ok(
+  !findMissingRefs(colorOnly(STYLES), []).includes("splashscreen_logo"),
+  "取りこぼしていることの確認",
 );
 
 // --- スモークテスト: 実際に起動して検査が走ることを確認する ---
