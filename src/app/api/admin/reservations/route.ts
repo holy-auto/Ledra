@@ -26,7 +26,7 @@ import { maybeAutoCategorizeReservationOnIntake } from "@/lib/ai/automation/acco
 import { maybeAutoProposeWorkflowForReservation } from "@/lib/ai/automation/workflowAuto";
 import { maybeAutoSuggestAssigneeForReservation } from "@/lib/ai/automation/assigneeAuto";
 import { createDraftPartInstallationForReservation } from "@/lib/parts/installationService";
-import { resolveStoreId } from "@/lib/stores/resolveStoreId";
+import { resolveStoreId, STORE_ERROR_MESSAGES } from "@/lib/stores/resolveStoreId";
 
 export const dynamic = "force-dynamic";
 
@@ -231,7 +231,7 @@ export async function POST(req: NextRequest) {
     // 作成した店舗。Web の作成画面に店舗の選択は無いので、有効な店舗が
     // 1つだけならサーバが入れる（店舗で絞る画面から見えなくなるのを防ぐ）
     const store = await resolveStoreId(supabase, caller.tenantId, input.store_id);
-    if (!store.ok) return apiValidationError(store.error);
+    if (!store.ok) return apiValidationError(STORE_ERROR_MESSAGES[store.error]);
 
     // 終日予約は時刻を持たない（NULL 保存）。誤って時刻が送られても正規化する。
     const isAllDay = input.all_day === true;
@@ -261,7 +261,7 @@ export async function POST(req: NextRequest) {
       .from("reservations")
       .insert(row)
       .select(
-        "id, tenant_id, customer_id, vehicle_id, title, menu_items_json, note, scheduled_date, all_day, start_time, end_time, assigned_user_id, assigned_staff_id, booth_id, status, estimated_amount, created_at, updated_at",
+        "id, tenant_id, store_id, customer_id, vehicle_id, title, menu_items_json, note, scheduled_date, all_day, start_time, end_time, assigned_user_id, assigned_staff_id, booth_id, status, estimated_amount, created_at, updated_at",
       )
       .single();
     if (error) {

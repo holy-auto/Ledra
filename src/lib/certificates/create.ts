@@ -11,7 +11,7 @@
  */
 import "server-only";
 
-import { resolveStoreId } from "@/lib/stores/resolveStoreId";
+import { resolveStoreId, STORE_ERROR_MESSAGES } from "@/lib/stores/resolveStoreId";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 
@@ -46,7 +46,10 @@ export async function createCertificate(
   const template_name = String(formData.get("template_name") || "");
 
   // Parallelize independent DB reads
-  const [{ data: tenantRow }, templateResult] = await Promise.all([
+  // 発行した店舗。モバイルは選択中の店舗を送る。Web の発行画面は未指定なので、
+  // 有効な店舗が1つだけならサーバが入れる（他テナントの店舗 ID は弾く）。
+  // テナント・テンプレートの読み取りと独立なので同じ Promise.all に載せる
+  const [{ data: tenantRow }, templateResult, resolvedStore] = await Promise.all([
     supabase.from("tenants").select("logo_asset_path").eq("id", tenantId).single(),
     template_id
       ? supabase
@@ -56,15 +59,13 @@ export async function createCertificate(
           .or(`tenant_id.eq.${tenantId},tenant_id.is.null`)
           .single()
       : Promise.resolve({ data: null }),
+    resolveStoreId(supabase, tenantId, String(formData.get("store_id") || "")),
   ]);
 
   const tenantLogoPath = (tenantRow?.logo_asset_path as string | null) ?? null;
   const schema_snapshot = templateResult?.data?.schema_json ?? null;
 
-  // 発行した店舗。モバイルは選択中の店舗を送る。Web の発行画面は未指定なので、
-  // 有効な店舗が1つだけならサーバが入れる（他テナントの店舗 ID は弾く）
-  const resolvedStore = await resolveStoreId(supabase, tenantId, String(formData.get("store_id") || ""));
-  if (!resolvedStore.ok) return { ok: false, error: resolvedStore.error };
+  if (!resolvedStore.ok) return { ok: false, error: STORE_ERROR_MESSAGES[resolvedStore.error] };
   const store_id = resolvedStore.storeId;
   const vehicle_id = String(formData.get("vehicle_id") || "").trim() || null;
   const vehicle_maker = String(formData.get("vehicle_maker") || "").trim();

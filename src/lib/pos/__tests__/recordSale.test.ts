@@ -166,12 +166,13 @@ describe("recordPosSale の店舗", () => {
     expect(a.rpc.mock.calls[0][1]).toMatchObject({ p_store_id: null });
   });
 
-  it("**他テナントの店舗 ID なら記録しない**（FK にテナントの条件が無い）", async () => {
+  it("**他テナントの店舗 ID は入れない**（外部キーにテナントの条件が無い）", async () => {
     const a = fakeAdmin({ requestedStoreFound: false });
     const res = await recordPosSale(a.admin, CALLER, { ...ARGS, store_id: "store-other" }, null);
-    expect(res.ok).toBe(false);
-    if (res.ok) return;
-    expect(String((res.error as Error).message)).toContain("store_not_in_tenant");
-    expect(a.rpc).not.toHaveBeenCalled();
+    expect(res.ok).toBe(true);
+    // **売上は記録する。** ここに来た時点でカードは切れているので、
+    // 失敗として返すと「金は取れたが記録が無い」が固定される
+    expect(a.rpc).toHaveBeenCalledTimes(1);
+    expect(a.rpc.mock.calls[0][1]).toMatchObject({ p_store_id: null });
   });
 });

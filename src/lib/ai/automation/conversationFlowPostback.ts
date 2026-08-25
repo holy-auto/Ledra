@@ -58,6 +58,7 @@ import {
 } from "@/lib/line/flow/messages";
 import { loadAiAutomationSettings, tenantEligibleForAiAutomation, notifyStaffOfAiAction } from "./policy";
 import { shouldRunConversationFlow, shouldAutoSendDocumentOnConfirm } from "./orchestrator";
+import { storeIdOrNull } from "@/lib/stores/resolveStoreId";
 
 /** 提示した日程候補を提示順のまま保持するための context キー。 */
 const SCHEDULE_CANDIDATES_KEY = "schedule_candidates";
@@ -456,6 +457,7 @@ async function handleSlotSelected(
   const { error } = await admin.from("reservations").insert({
     id: reservationId,
     tenant_id: tenantId,
+    store_id: await storeIdOrNull(admin, tenantId, "conversationFlowPostback"),
     customer_id: flow.customer_id,
     vehicle_id: vehicleId,
     title,

@@ -99,16 +99,28 @@ export async function recordPosSale(
   }
 
   // 会計した店舗。Web の POS には店舗の選択が無く、モバイルは送ってくるが
-  // **検証していなかった**（store_id の FK にテナントの条件が無い）。
-  // 記録の入口が1つなので、ここで決めれば現金・カード・QR の全経路に効く
+  // **検証していなかった**（store_id の外部キーにテナントの条件が無い）。
+  // 記録の入口が1つなので、ここで決めれば現金・カード・QR の全経路に効く。
+  //
+  // **店舗が決まらなくても売上は記録する。** ここに来た時点でカードは既に切れており
+  // （Terminal は succeeded、Checkout は paid を確認済み）、失敗として返すと
+  // `pos_checkout` が走らない ―― 同じ店舗 ID で再操作しても同じ所で落ちるので、
+  // **金は取れたのに payments も領収書も残らない**状態が固定される。
+  // 店舗は後から手で埋められるが、消えた売上は追えない
   const store = await resolveStoreId(admin, caller.tenantId, args.store_id);
-  if (!store.ok) return { ok: false, error: new Error(store.error) };
+  if (!store.ok) {
+    logger.error("recordPosSale: 店舗が決まらなかったので store_id を空で記録する", {
+      tenantId: caller.tenantId,
+      requestedStoreId: args.store_id ?? null,
+      reason: store.error,
+    });
+  }
 
   const { data, error } = await admin.rpc("pos_checkout", {
     p_tenant_id: caller.tenantId,
     p_reservation_id: args.reservation_id ?? null,
     p_customer_id: args.customer_id ?? null,
-    p_store_id: store.storeId,
+    p_store_id: store.ok ? store.storeId : null,
     p_register_session_id: args.register_session_id ?? null,
     p_payment_method: args.payment_method,
     p_amount: args.amount,

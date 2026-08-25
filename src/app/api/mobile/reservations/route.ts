@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { resolveMobileCaller } from "@/lib/auth/mobileAuth";
 import { hasPermission } from "@/lib/auth/permissions";
 import { apiOk, apiUnauthorized, apiForbidden, apiValidationError, apiInternalError } from "@/lib/api/response";
-import { resolveStoreId } from "@/lib/stores/resolveStoreId";
+import { resolveStoreId, STORE_ERROR_MESSAGES } from "@/lib/stores/resolveStoreId";
 import { parseJsonBody } from "@/lib/api/parseBody";
 import { mobileReservationCreateSchema } from "@/lib/validations/mobile";
 import { logTenantAuditEvent } from "@/lib/audit/tenantLog";
@@ -60,14 +60,14 @@ export async function POST(request: NextRequest) {
     const body = parsed.data;
     const { scheduled_date, customer_id } = body;
 
-    // **送られた店舗 ID を検証せずに入れていた。** store_id の FK は stores(id) だけで
+    // **送られた店舗 ID を検証せずに入れていた。** store_id の外部キーは stores(id) だけで
     // テナントの条件が無いので、他テナントの店舗の行として記録できてしまう
     const store = await resolveStoreId(
       caller.supabase,
       caller.tenantId,
       body.store_id ?? request.nextUrl.searchParams.get("store_id"),
     );
-    if (!store.ok) return apiValidationError(store.error);
+    if (!store.ok) return apiValidationError(STORE_ERROR_MESSAGES[store.error]);
 
     const { data, error } = await caller.supabase
       .from("reservations")
