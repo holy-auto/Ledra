@@ -51,9 +51,12 @@ export function findBlockers(projectMinSdk, modules) {
 
 // リソース参照。@color や @style は AAR 側が持ちうるので見ない（誤検知の元）。
 // @drawable / @mipmap はアプリ自身の res/ に実体があるのが基本なので、ここだけ検査する。
-const RES_REF_RE = /@(?:drawable|mipmap)\/([A-Za-z0-9_]+)/g;
+const RES_REF_RE = /@((?:drawable|mipmap)\/[A-Za-z0-9_]+)/g;
 
-/** res/ 以下の XML から参照されている drawable / mipmap 名を集める。 */
+/**
+ * res/ 以下の XML から参照を集める。`"drawable/splashscreen_logo"` の形で返す。
+ * 名前空間を落とさないのは、欠落を報告するときに AAPT2 と同じ文字列を出すため。
+ */
 export function collectResourceRefs(xmlText) {
   return [...new Set([...xmlText.matchAll(RES_REF_RE)].map((m) => m[1]))];
 }
@@ -61,7 +64,7 @@ export function collectResourceRefs(xmlText) {
 /** 参照のうち実体が無いものを返す。existing は拡張子を落とした名前の集合。 */
 export function findMissingRefs(referenced, existing) {
   const have = new Set(existing);
-  return [...new Set(referenced)].filter((name) => !have.has(name));
+  return [...new Set(referenced)].filter((ref) => !have.has(ref.split("/")[1]));
 }
 
 /**
@@ -178,7 +181,8 @@ function scanGeneratedResources(root) {
     if (!dir.isDirectory()) continue;
     for (const file of readdirSync(join(resDir, dir.name))) {
       if (/^(drawable|mipmap)/.test(dir.name)) {
-        existing.push(file.replace(/\.[^.]+$/, ""));
+        // ナインパッチ bg.9.png のリソース名は bg。`.9` も一緒に落とす。
+        existing.push(file.replace(/(\.9)?\.[^.]+$/, ""));
       } else if (dir.name.startsWith("values") && file.endsWith(".xml")) {
         referenced.push(
           ...collectResourceRefs(readFileSync(join(resDir, dir.name, file), "utf8")),
@@ -227,9 +231,9 @@ function main() {
     if (missing.length > 0) {
       console.error(
         "リソース参照切れ: 生成された res/ が参照している drawable / mipmap の実体がありません。\n" +
-          missing.map((name) => `  - @drawable/${name}`).join("\n") +
+          missing.map((ref) => `  - @${ref}`).join("\n") +
           "\n\nこのまま Android をビルドすると AAPT2 が " +
-          `"resource drawable/${missing[0]} not found" で落ちます。\n` +
+          `"resource ${missing[0]} not found" で落ちます。\n` +
           "app.json の該当アセット指定（splash.image など）が消えていないか確認してください。",
       );
       process.exit(1);
