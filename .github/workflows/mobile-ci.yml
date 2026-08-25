@@ -39,7 +39,7 @@ jobs:
         run: npm test --if-present
 
       # ここから下はネイティブ設定の検査。フルビルドの代わりではないが、
-      # 「20分ビルドして manifest merger で初めて分かる」クラスの事故を数分で拾う。
+      # 「17分ビルドして manifest merger で初めて分かる」クラスの事故を数秒で拾う。
       - name: Prebuild (Android)
         # app.json の設定ミス、参照アセットの欠落、自作 config plugin
         # (withNfcLocal / withRemoveTapToPayEntitlement) の例外はここで落ちる。
