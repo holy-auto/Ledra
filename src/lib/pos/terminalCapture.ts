@@ -16,6 +16,7 @@ import type Stripe from "stripe";
 import { getStripeClient } from "@/lib/stripe/client";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { deductInventoryForPosItems } from "@/lib/pos/inventoryDeduction";
+import { recordPosSale } from "@/lib/pos/recordSale";
 import { logger } from "@/lib/logger";
 
 export interface TerminalCaptureInput {
@@ -68,21 +69,37 @@ export async function captureTerminalPayment(
       return { ok: false, kind: "validation", error: `payment_not_succeeded: status is "${pi.status}"` };
     }
 
-    // ── 冪等: 同じ PaymentIntent が既に記録されていれば作り直さない ──
-    const { data: existing } = await admin
-      .from("payments")
-      .select("id, amount, document_id")
-      .eq("tenant_id", caller.tenantId)
-      .eq("stripe_payment_intent_id", pi.id)
-      .maybeSingle();
+    // 記録は共有の `recordPosSale()` に任せる。**同じ PaymentIntent なら1件しか作らない。**
+    // カード番号入力（Checkout）経路も同じ関数を通るので、片方だけ直る事故が起きない
+    const sale = await recordPosSale(
+      admin,
+      caller,
+      {
+        reservation_id: input.reservation_id,
+        customer_id: input.customer_id,
+        store_id: input.store_id,
+        register_session_id: input.register_session_id,
+        payment_method: "card",
+        // 金額は **Stripe 側の実額**を使う（端末から渡された値ではない）
+        amount: pi.amount,
+        received_amount: pi.amount,
+        items_json: input.items_json ?? [],
+        tax_rate: input.tax_rate,
+        note: input.note,
+        create_receipt: true,
+      },
+      pi.id,
+    );
 
-    if (existing) {
+    if (!sale.ok) return { ok: false, kind: "internal", error: sale.error };
+
+    if (sale.alreadyRecorded) {
       // 記録済みの金額が Stripe 側と食い違っていたら、突き合わせのために残す。
       // （通常は起きない。起きたら手で確認する必要がある）
-      if (typeof existing.amount === "number" && existing.amount !== pi.amount) {
+      if (sale.recordedAmount !== null && sale.recordedAmount !== pi.amount) {
         logger.error("terminalCapture: 記録済みの金額が Stripe と一致しない", {
-          paymentId: existing.id,
-          recorded: existing.amount,
+          paymentId: sale.paymentId,
+          recorded: sale.recordedAmount,
           stripe: pi.amount,
         });
       }
@@ -94,66 +111,13 @@ export async function captureTerminalPayment(
         payment_intent_id: pi.id,
         amount: pi.amount,
         status: pi.status,
-        result: { payment_id: existing.id, document_id: existing.document_id },
+        result: sale.result,
         already_recorded: true,
       };
     }
 
-    const { data, error } = await admin.rpc("pos_checkout", {
-      p_tenant_id: caller.tenantId,
-      p_reservation_id: input.reservation_id ?? null,
-      p_customer_id: input.customer_id ?? null,
-      p_store_id: input.store_id ?? null,
-      p_register_session_id: input.register_session_id ?? null,
-      p_payment_method: "card",
-      p_amount: pi.amount,
-      p_received_amount: pi.amount,
-      p_items_json: input.items_json ?? [],
-      p_tax_rate: input.tax_rate,
-      p_note: input.note ?? null,
-      p_create_receipt: true,
-      p_user_id: caller.userId,
-    });
-
-    if (error) return { ok: false, kind: "internal", error };
-
-    const paymentId = (data as { payment_id?: string | null } | null)?.payment_id ?? null;
-
-    // PaymentIntent の ID を残す。これが無いと後から突き合わせて重複を見つけられない。
-    // 上の一意インデックス（payments_stripe_payment_intent_id_key）と合わせて、
-    // 同じ決済で2件目が作られることを DB 側でも防ぐ
-    if (paymentId) {
-      const { error: linkErr } = await admin
-        .from("payments")
-        .update({ stripe_payment_intent_id: pi.id })
-        .eq("id", paymentId)
-        .eq("tenant_id", caller.tenantId);
-      if (linkErr) {
-        // 23505 = 一意制約違反。上の事前確認と pos_checkout の間に別の要求が
-        // 同じ PaymentIntent を記録した、ということ。**支払が2件できている。**
-        // 黙って ok を返すと重複が見えなくなるので、失敗として返して気づかせる。
-        // ponytail: 上限。事前確認と作成の間の競合は塞げていない（作成は
-        // pos_checkout の中なので、PaymentIntent の ID を先に確保できない）。
-        // 恒久対応は pos_checkout に引数を足して同一トランザクションで埋めること。
-        const duplicate = (linkErr as { code?: string }).code === "23505";
-        logger.error("terminalCapture: stripe_payment_intent_id の記録に失敗", {
-          paymentId,
-          paymentIntentId: pi.id,
-          duplicate,
-          err: linkErr.message,
-        });
-        if (duplicate) {
-          return {
-            ok: false,
-            kind: "internal",
-            error: new Error(
-              `同じ決済が二重に記録されました（payment_id=${paymentId} / payment_intent=${pi.id}）。` +
-                "経理で重複を確認してください。",
-            ),
-          };
-        }
-      }
-    }
+    const paymentId = sale.paymentId;
+    const data = sale.result;
 
     // 在庫の引き落とし。`/pos/checkout` と同じ扱いにする（従来ここだけ抜けていた）。
     // ここでは元から service-role のクライアントなので、outbox も同じものでよい

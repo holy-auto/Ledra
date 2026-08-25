@@ -22,6 +22,9 @@ import { useQrPaymentPoller } from "@/hooks/useQrPaymentPoller";
  *     支払リンクが生き残る。
  *  4. **やめる時はセッションを失効させる。** 端末で開いたページがそのまま
  *     残っていると、後から決済できてしまう（有効期限は30分）。
+ *  5. **同じ決済で売上を2件立てない。** 決済で切れた PaymentIntent を記録側へ
+ *     渡す。記録に失敗して店員がやり直しても、サーバが1件目を返すだけになる
+ *     （タッチ決済と同じ仕組み）。
  */
 export interface CardEntrySale {
   amount: number;
@@ -50,6 +53,9 @@ export function useCardEntry(onRecorded: (paymentId: string | null) => void) {
   const [recordError, setRecordError] = useState<string | null>(null);
   // リンクを作った時点の会計内容。**これで記録する**（画面の現在値ではない）
   const sale = useRef<CardEntrySale | null>(null);
+  // 決済で切れた PaymentIntent。**やり直しでも同じ値を送る**（送り直すたびに
+  // 変わると重複防止が効かない）
+  const paymentIntentId = useRef<string | null>(null);
 
   const record = useCallback(async () => {
     const s = sale.current;
@@ -65,11 +71,13 @@ export function useCardEntry(onRecorded: (paymentId: string | null) => void) {
             amount: s.amount,
             received_amount: s.amount,
             items_json: s.items,
+            stripe_payment_intent_id: paymentIntentId.current ?? undefined,
           },
         }),
       );
       setRecordError(null);
       sale.current = null;
+      paymentIntentId.current = null;
       setUrl(null);
       setSessionId(null);
       onRecorded(paymentId);
@@ -80,10 +88,14 @@ export function useCardEntry(onRecorded: (paymentId: string | null) => void) {
     }
   }, [fromTapFailure, onRecorded]);
 
-  const onPaid = useCallback(async () => {
-    setPolling(false);
-    await record();
-  }, [record]);
+  const onPaid = useCallback(
+    async (pi: string | null) => {
+      setPolling(false);
+      paymentIntentId.current = pi;
+      await record();
+    },
+    [record],
+  );
 
   useQrPaymentPoller(polling ? sessionId : null, onPaid);
 
@@ -102,6 +114,7 @@ export function useCardEntry(onRecorded: (paymentId: string | null) => void) {
           },
         });
         sale.current = next;
+        paymentIntentId.current = null;
         setFromTapFailure(tapFailure);
         setRecordError(null);
         setUrl(res.url);
@@ -122,6 +135,7 @@ export function useCardEntry(onRecorded: (paymentId: string | null) => void) {
     setFromTapFailure(false);
     setRecordError(null);
     sale.current = null;
+    paymentIntentId.current = null;
     if (!id) return;
     try {
       // 失効させないと、端末で開いたページから後で決済できてしまう

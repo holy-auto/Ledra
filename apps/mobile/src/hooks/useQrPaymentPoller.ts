@@ -11,7 +11,10 @@ import { mobileApi } from "@/lib/api";
  * ponytail: 3秒ごとの素朴なポーリング。上限は「アプリを閉じている間は進まない」こと。
  * webhook からのプッシュに変えるなら、この関数を差し替えれば両画面に効く。
  */
-export function useQrPaymentPoller(sessionId: string | null, onPaid: () => void) {
+export function useQrPaymentPoller(
+  sessionId: string | null,
+  onPaid: (paymentIntentId: string | null) => void,
+) {
   useEffect(() => {
     if (!sessionId) return;
     let active = true;
@@ -19,10 +22,13 @@ export function useQrPaymentPoller(sessionId: string | null, onPaid: () => void)
       while (active) {
         await new Promise((r) => setTimeout(r, 3000));
         try {
-          const res = await mobileApi<{ status: string }>(`/pos/checkout/qr-status?session_id=${sessionId}`);
+          const res = await mobileApi<{ status: string; payment_intent_id?: string | null }>(
+            `/pos/checkout/qr-status?session_id=${sessionId}`,
+          );
           if (res.status === "paid" && active) {
             active = false;
-            onPaid();
+            // PaymentIntent を記録側へ渡す。**これが重複記録を止める鍵**
+            onPaid(res.payment_intent_id ?? null);
           }
         } catch {
           // ポーリング失敗は無視して継続（電波が切れただけのことが多い）

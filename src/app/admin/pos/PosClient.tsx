@@ -438,6 +438,8 @@ export default function PosClient() {
                 items_json: checkoutItems,
                 tax_rate: 10,
                 note: note || undefined,
+                // 同じ決済で2件目を作らせない（記録をやり直しても増えない）
+                stripe_payment_intent_id: statusData.payment_intent_id ?? undefined,
                 create_receipt: true,
               }),
             });
