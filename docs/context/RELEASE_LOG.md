@@ -13,6 +13,27 @@
 - 対象: どの画面・API・業種向けか
 ```
 
+## 2026-08-25 CI にネイティブ設定の検査を追加（PR #966 / branch claude/mobile-app-opening-animation-s2a6m3）
+
+- 内容: `Mobile CI` の `typecheck-test` ジョブに 2 ステップを追加した。
+  - `npx expo prebuild --platform android --no-install` — `app.json`・config plugin の健全性検証
+  - `npm run check:native` — ネイティブ依存が要求する minSdk とプロジェクトの minSdk の整合検査
+- 追加ファイル:
+  - `apps/mobile/scripts/check-native-config.mjs` — 検査本体。
+    プロジェクトの minSdk を `android/gradle.properties`（prebuild 生成）→ `app.json` →
+    `expo-modules-core` の既定値 の順に解決し、`node_modules/*/android/build.gradle` が
+    宣言する minSdk と突き合わせて、足りなければ**モジュール名と必要な値を出して exit 1** する。
+  - `apps/mobile/scripts/check-native-config.check.mjs` — assert ベースの自己チェック（`npm test` に追加）。
+    変異テスト付き（保護を外した素朴な実装が契約を破ることを確認）。
+- 対象: モバイルアプリの CI。実行時の挙動は変えない。
+- 動機: minSdk 衝突（2026-08-24）が「17 分ビルドして初めて分かる」形だったため。
+  静的に分かる矛盾を PR の段階で数秒で拾う。
+- 検証: `app.json` の `minSdkVersion` を一時的に 24 に戻して実行し、
+  `@stripe/stripe-terminal-react-native: minSdk 26` を名指しして exit 1 することを確認。
+  `app.json` から設定ごと外した場合も、`expo-modules-core` の既定値 24 を読んで同様に落ちた。
+- 限界: フルビルドの代わりにはならない。Kotlin のコンパイルエラーや minSdk 以外の
+  manifest merger 衝突は依然として実ビルドまで分からない。iOS 側の同種検査は未実装。
+
 ## 2026-08-24 Android の minSdk を 26 に引き上げ（Android ビルドが一度も通っていなかったのを修正）（branch claude/mobile-app-opening-animation-s2a6m3）
 
 - 内容: `app.json` の `expo-build-properties` に `android.minSdkVersion: 26` を追加した。
