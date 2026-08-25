@@ -100,14 +100,63 @@ export default function CertificateNewScreen() {
     loadReservation();
   }, [reservationId, tenantId]);
 
+  /**
+   * 車両マスタを解決する。マスタ未選択でも必ず vehicle_id を返す。
+   *
+   * DBトリガー trg_sync_mileage_from_certificate は vehicle_id が null の行では
+   * 早期 return するため、ここで解決しておかないと必須にした走行距離が
+   * vehicle_mileage_logs に積まれない（しかもエラーは出ない）。
+   * WEB の createCertAction と同じ手順に揃えている:
+   * ナンバーで既存を探す → 見つからなければ新規作成。
+   */
+  async function resolveVehicleId(): Promise<string | null> {
+    if (form.vehicle_id) return form.vehicle_id;
+
+    const maker = form.vehicle_maker.trim();
+    const model = form.vehicle_model.trim();
+    const plate = form.vehicle_plate.trim();
+    if (!maker && !model && !plate) return null;
+
+    // ナンバーはテナント内でほぼ一意なので、まず既存を探して重複作成を避ける
+    if (plate) {
+      const { data: byPlate } = await supabase
+        .from("vehicles")
+        .select("id")
+        .eq("tenant_id", user!.tenantId)
+        .eq("plate_display", plate)
+        .limit(1)
+        .maybeSingle();
+      if (byPlate?.id) return byPlate.id as string;
+    }
+
+    const { data: created, error } = await supabase
+      .from("vehicles")
+      .insert({
+        tenant_id: user!.tenantId,
+        maker: maker || null,
+        model: model || null,
+        plate_display: plate || null,
+      })
+      .select("id")
+      .single();
+    // 車両の作成に失敗しても証明書の発行自体は止めない（WEB も同じ方針）。
+    // その場合 vehicle_id は null になり、走行距離は積まれない。
+    if (error) {
+      console.warn("[cert] auto vehicle create failed:", error);
+      return null;
+    }
+    return (created?.id as string) ?? null;
+  }
+
   const mutation = useMutation({
     mutationFn: async () => {
+      const vehicleId = await resolveVehicleId();
       const { data, error } = await supabase
         .from("certificates")
         .insert({
           tenant_id: user!.tenantId,
           store_id: selectedStore!.id,
-          vehicle_id: form.vehicle_id || null,
+          vehicle_id: vehicleId,
           service_type: form.service_type || null,
           content: {
             summary: form.content_summary.trim(),
@@ -120,11 +169,8 @@ export default function CertificateNewScreen() {
           plate_display: form.vehicle_plate.trim() || null,
           // 既存トリガー trg_sync_mileage_from_certificate が
           // maintenance_json->>'mileage' を vehicle_mileage_logs に落とす。
-          // 注意: そのトリガーは vehicle_id が null の行では早期 return する。
-          // モバイルは WEB の createCertAction と違って車両マスタの自動作成をせず、
-          // validate() はメーカー・車種の手入力だけでも通してしまうため、
-          // マスタ車両を選ばずに発行すると走行距離は履歴に積まれない。
-          // 車両マスタの自動作成は未実装（OPEN_QUESTIONS 2026-08-25）。
+          // トリガーは vehicle_id が null の行では早期 return するため、
+          // 上の resolveVehicleId() でマスタを解決してから insert している。
           maintenance_json: { mileage: parseMileageKm(form.mileage_km) },
         })
         .select("id")

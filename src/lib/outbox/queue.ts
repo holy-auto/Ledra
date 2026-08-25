@@ -167,6 +167,7 @@ export async function enqueueOutbox(input: EnqueueInput): Promise<OutboxItem | n
     attempts: 0,
     lastAttemptAt: null,
     lastError: null,
+    blockedAt: null,
   };
   const ok = await withStore("readwrite", (store) => store.add(item));
   if (ok == null) return null;
@@ -285,10 +286,66 @@ export async function markOutboxAttempt(id: string, error: string | null): Promi
   });
 }
 
+/**
+ * リクエスト内容が原因で恒久的に失敗したアイテムに印を付ける。
+ * 以後 drain の対象から外れるので、永久リトライで後続を巻き込まなくなる。
+ * 削除はしない（利用者が UI で内容を確認してから取り消せるようにするため）。
+ */
+export async function markOutboxBlocked(id: string, error: string): Promise<void> {
+  const db = await openDb();
+  if (!db) return;
+  await new Promise<void>((resolve) => {
+    const tx = db.transaction(STORE, "readwrite");
+    const store = tx.objectStore(STORE);
+    const getReq = store.get(id);
+    getReq.onsuccess = () => {
+      const cur = getReq.result as OutboxItem | undefined;
+      if (!cur) return;
+      const updated: OutboxItem = {
+        ...cur,
+        attempts: cur.attempts + 1,
+        lastAttemptAt: Date.now(),
+        lastError: error,
+        blockedAt: Date.now(),
+      };
+      store.put(updated);
+    };
+    tx.oncomplete = () => {
+      db.close();
+      resolve();
+    };
+    tx.onerror = () => {
+      db.close();
+      resolve();
+    };
+  });
+}
+
+/**
+ * そのステータスで再送しても結果が変わらないか。
+ *
+ * リクエスト内容が原因のもの (400 系の大半) は恒久的な失敗として扱う。
+ * 一方 401/403 は再ログインや権限付与で回復しうるし、408/429/5xx は
+ * 時間をおけば通るので、従来どおり再送対象のままにする。
+ */
+export function isPermanentClientError(status: number): boolean {
+  return (
+    status === 400 ||
+    status === 404 ||
+    status === 405 ||
+    status === 410 ||
+    status === 413 ||
+    status === 415 ||
+    status === 422
+  );
+}
+
 export interface DrainResult {
   attempted: number;
   succeeded: number;
   failed: number;
+  /** 恒久的な失敗として drain 対象から外したアイテム数 */
+  blocked: number;
   errors: { id: string; error: string }[];
 }
 
@@ -296,6 +353,8 @@ export interface DrainDeps {
   doFetch: typeof fetch;
   remove: (id: string) => Promise<void>;
   markAttempt: (id: string, error: string | null) => Promise<void>;
+  /** 恒久的に送れないアイテムに印を付ける (以後 drain 対象外) */
+  markBlocked: (id: string, error: string) => Promise<void>;
   /** 現在の online 状態を返す。false で中断 */
   isOnline: () => boolean;
   /** multipart item の Blob ref を解決する。テスト時はモック注入 */
@@ -330,9 +389,11 @@ async function buildFormData(item: OutboxItem, resolveBlob: NonNullable<DrainDep
  * - ループ中 isOnline() が false になったら break
  */
 export async function drainItems(items: OutboxItem[], deps: DrainDeps): Promise<DrainResult> {
-  const result: DrainResult = { attempted: 0, succeeded: 0, failed: 0, errors: [] };
+  const result: DrainResult = { attempted: 0, succeeded: 0, failed: 0, blocked: 0, errors: [] };
   for (const item of items) {
     if (!deps.isOnline()) break;
+    // 恒久的な失敗と判定済みのアイテムは、送っても同じ結果にしかならないので試行しない。
+    if (item.blockedAt) continue;
     result.attempted += 1;
     try {
       let body: BodyInit | undefined;
@@ -360,8 +421,16 @@ export async function drainItems(items: OutboxItem[], deps: DrainDeps): Promise<
         result.succeeded += 1;
       } else {
         const text = await res.text().catch(() => "");
-        await deps.markAttempt(item.id, `HTTP ${res.status}: ${text.slice(0, 200)}`);
-        result.failed += 1;
+        const error = `HTTP ${res.status}: ${text.slice(0, 200)}`;
+        if (isPermanentClientError(res.status)) {
+          // 例: 必須項目が増えた後に、それを持たない古いアイテムが残っているケース。
+          // 何度送っても 400 のままなので、印を付けて drain 対象から外す。
+          await deps.markBlocked(item.id, error);
+          result.blocked += 1;
+        } else {
+          await deps.markAttempt(item.id, error);
+          result.failed += 1;
+        }
         result.errors.push({ id: item.id, error: `HTTP ${res.status}` });
       }
     } catch (e) {
@@ -405,6 +474,7 @@ export async function drainOutbox(opts?: { abortOnOffline?: boolean }): Promise<
         doFetch: fetch.bind(globalThis),
         remove: removeOutboxItem,
         markAttempt: markOutboxAttempt,
+        markBlocked: markOutboxBlocked,
         isOnline: () =>
           abortOnOffline ? (typeof navigator === "undefined" ? true : navigator.onLine !== false) : true,
         resolveBlob: async (ref) => {

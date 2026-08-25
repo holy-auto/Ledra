@@ -31,6 +31,7 @@ describe("drainItems", () => {
   it("removes successfully-fetched items and counts succeeded", async () => {
     const remove = vi.fn(async () => {});
     const markAttempt = vi.fn(async () => {});
+    const markBlocked = vi.fn(async () => {});
     const doFetch = vi.fn(async () => mkResponse({ ok: true, status: 200 }));
     const items = [item({ id: "a" }), item({ id: "b" })];
 
@@ -38,6 +39,7 @@ describe("drainItems", () => {
       doFetch: doFetch as unknown as typeof fetch,
       remove,
       markAttempt,
+      markBlocked,
       isOnline: () => true,
     });
 
@@ -49,6 +51,7 @@ describe("drainItems", () => {
   it("treats 409 as already-processed and removes the item", async () => {
     const remove = vi.fn(async () => {});
     const markAttempt = vi.fn(async () => {});
+    const markBlocked = vi.fn(async () => {});
     const doFetch = vi.fn(async () => mkResponse({ ok: false, status: 409, text: "conflict" }));
     const items = [item({ id: "a" })];
 
@@ -56,6 +59,7 @@ describe("drainItems", () => {
       doFetch: doFetch as unknown as typeof fetch,
       remove,
       markAttempt,
+      markBlocked,
       isOnline: () => true,
     });
 
@@ -67,6 +71,7 @@ describe("drainItems", () => {
   it("marks attempt with HTTP error message on 5xx (keeps item)", async () => {
     const remove = vi.fn(async () => {});
     const markAttempt = vi.fn(async () => {});
+    const markBlocked = vi.fn(async () => {});
     const doFetch = vi.fn(async () => mkResponse({ ok: false, status: 503, text: "boom" }));
     const items = [item({ id: "a" })];
 
@@ -74,6 +79,7 @@ describe("drainItems", () => {
       doFetch: doFetch as unknown as typeof fetch,
       remove,
       markAttempt,
+      markBlocked,
       isOnline: () => true,
     });
 
@@ -85,6 +91,7 @@ describe("drainItems", () => {
   it("catches network errors and records them as markAttempt", async () => {
     const remove = vi.fn(async () => {});
     const markAttempt = vi.fn(async () => {});
+    const markBlocked = vi.fn(async () => {});
     const doFetch = vi.fn(async () => {
       throw new Error("net down");
     });
@@ -94,11 +101,73 @@ describe("drainItems", () => {
       doFetch: doFetch as unknown as typeof fetch,
       remove,
       markAttempt,
+      markBlocked,
       isOnline: () => true,
     });
 
     expect(result.failed).toBe(1);
     expect(markAttempt).toHaveBeenCalledWith("a", "net down");
+  });
+
+  it("blocks instead of retrying when the request itself is rejected (400)", async () => {
+    // 必須項目が増えた後に、それを持たない古いアイテムが残っているケース。
+    // 何度送っても 400 のままなので、markAttempt で無限に積み直してはいけない。
+    const remove = vi.fn(async () => {});
+    const markAttempt = vi.fn(async () => {});
+    const markBlocked = vi.fn(async () => {});
+    const doFetch = vi.fn(async () => mkResponse({ ok: false, status: 400, text: "mileage_required" }));
+
+    const result = await drainItems([item({ id: "a" })], {
+      doFetch: doFetch as unknown as typeof fetch,
+      remove,
+      markAttempt,
+      markBlocked,
+      isOnline: () => true,
+    });
+
+    expect(result).toMatchObject({ attempted: 1, succeeded: 0, failed: 0, blocked: 1 });
+    expect(markBlocked).toHaveBeenCalledWith("a", expect.stringContaining("mileage_required"));
+    expect(markAttempt).not.toHaveBeenCalled();
+    // 利用者が内容を確認して取り消せるよう、勝手に消さない
+    expect(remove).not.toHaveBeenCalled();
+  });
+
+  it("keeps retrying statuses that can recover (401 / 429 / 5xx)", async () => {
+    for (const status of [401, 403, 408, 429, 500, 503]) {
+      const markAttempt = vi.fn(async () => {});
+      const markBlocked = vi.fn(async () => {});
+      const doFetch = vi.fn(async () => mkResponse({ ok: false, status, text: "later" }));
+
+      const result = await drainItems([item({ id: "a" })], {
+        doFetch: doFetch as unknown as typeof fetch,
+        remove: vi.fn(async () => {}),
+        markAttempt,
+        markBlocked,
+        isOnline: () => true,
+      });
+
+      expect(result, `status ${status}`).toMatchObject({ failed: 1, blocked: 0 });
+      expect(markBlocked, `status ${status}`).not.toHaveBeenCalled();
+      expect(markAttempt, `status ${status}`).toHaveBeenCalled();
+    }
+  });
+
+  it("skips already-blocked items so they cannot starve the ones behind them", async () => {
+    const remove = vi.fn(async () => {});
+    const doFetch = vi.fn(async () => mkResponse({ ok: true, status: 200 }));
+    const items = [item({ id: "blocked", blockedAt: 1 }), item({ id: "fresh" })];
+
+    const result = await drainItems(items, {
+      doFetch: doFetch as unknown as typeof fetch,
+      remove,
+      markAttempt: vi.fn(async () => {}),
+      markBlocked: vi.fn(async () => {}),
+      isOnline: () => true,
+    });
+
+    expect(result).toMatchObject({ attempted: 1, succeeded: 1 });
+    expect(doFetch).toHaveBeenCalledTimes(1);
+    expect(remove).toHaveBeenCalledExactlyOnceWith("fresh");
   });
 
   it("breaks the loop when isOnline() becomes false", async () => {
@@ -110,6 +179,7 @@ describe("drainItems", () => {
       doFetch: doFetch as unknown as typeof fetch,
       remove: vi.fn(async () => {}),
       markAttempt: vi.fn(async () => {}),
+      markBlocked: vi.fn(async () => {}),
       isOnline: () => {
         calls += 1;
         // first 2 = online; 3rd call = offline
@@ -145,6 +215,7 @@ describe("drainItems", () => {
       doFetch: doFetch as unknown as typeof fetch,
       remove,
       markAttempt: vi.fn(async () => {}),
+      markBlocked: vi.fn(async () => {}),
       isOnline: () => true,
       resolveBlob,
     });
@@ -160,6 +231,7 @@ describe("drainItems", () => {
 
   it("marks attempt when multipart blob is missing", async () => {
     const markAttempt = vi.fn(async () => {});
+    const markBlocked = vi.fn(async () => {});
     const doFetch = vi.fn();
     const resolveBlob = vi.fn(async () => null);
 
@@ -178,6 +250,7 @@ describe("drainItems", () => {
       doFetch: doFetch as unknown as typeof fetch,
       remove: vi.fn(async () => {}),
       markAttempt,
+      markBlocked,
       isOnline: () => true,
       resolveBlob,
     });
@@ -194,6 +267,7 @@ describe("drainItems", () => {
       doFetch: doFetch as unknown as typeof fetch,
       remove: vi.fn(async () => {}),
       markAttempt: vi.fn(async () => {}),
+      markBlocked: vi.fn(async () => {}),
       isOnline: () => true,
     });
 
