@@ -95,7 +95,7 @@ VP は別契約・別 Intake・検証結果サンプル提出が必要でスコ�
 - **1.3 Spec Version**: **2.4**（代表確定。v0.2 プログラムは 2.2/2.4 を受付。注意: 契約上、申告版に製品が拘束されるため、Intake で提出するサンプルアセットが実際に **v2.4 準拠**のマニフェストを出力していることを要確認）
 - **1.4 Distinguished Name**:
   - CN: `Ledra`（対外プロダクト名）
-  - O: `株式会社HOLY`（登記名 / 英字表記【要確認】）
+  - O: `HOLY Inc.`（登記英字名。日本語登記名: 株式会社HOLY）
   - OU: （任意）
   - C: `JP`
 - **1.5 製品説明**: 自動車整備・ボディリペア・コーティング/PPF 店向けマルチテナント SaaS。
@@ -233,7 +233,7 @@ EOI フォームは外部（Google フォーム）で、登記情報を伴う。
 Conformance Program 本文 §Expression of Interest Form に記載。
 
 - 申請役割: **Generator Product（GP）**（VP・CA は今回選択しない。§3）。
-- 会社法的情報（登記どおり）: 法人名 `株式会社HOLY`（英字表記【要確認】）／登記住所: **東京都港区北青山1-3-1 アールキューブ青山3F**／
+- 会社法的情報（登記どおり）: 法人名 `株式会社HOLY`（英字: **HOLY Inc.**）／登記住所: **東京都港区北青山1-3-1 アールキューブ青山3F**／
   Reliable Method of Communication（第三者確認可能な連絡先）: **info@holy-inc.jp**。
 - 申告 Spec バージョン: **2.4**。
 - 想定 Max Assurance Level: **1**。
