@@ -120,7 +120,11 @@ export default function CertificateNewScreen() {
           plate_display: form.vehicle_plate.trim() || null,
           // 既存トリガー trg_sync_mileage_from_certificate が
           // maintenance_json->>'mileage' を vehicle_mileage_logs に落とす。
-          // WEB 側の createCertAction と同じ配管に合わせる。
+          // 注意: そのトリガーは vehicle_id が null の行では早期 return する。
+          // モバイルは WEB の createCertAction と違って車両マスタの自動作成をせず、
+          // validate() はメーカー・車種の手入力だけでも通してしまうため、
+          // マスタ車両を選ばずに発行すると走行距離は履歴に積まれない。
+          // 車両マスタの自動作成は未実装（OPEN_QUESTIONS 2026-08-25）。
           maintenance_json: { mileage: parseMileageKm(form.mileage_km) },
         })
         .select("id")

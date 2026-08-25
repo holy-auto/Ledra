@@ -96,7 +96,9 @@ export async function createCertAction(formData: FormData): Promise<CreateCertRe
   try {
     const raw = String(formData.get("maintenance_json") || "{}");
     const parsed = JSON.parse(raw);
-    if (typeof parsed === "object" && parsed !== null) maintenance_data = parsed;
+    // 配列を弾く: `typeof [] === "object"` なので素通りしてしまうが、配列に
+    // `.mileage` を代入しても JSON.stringify で消えるため、走行距離が黙って失われる。
+    if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) maintenance_data = parsed;
   } catch {
     // ignore parse errors — field is optional
   }
