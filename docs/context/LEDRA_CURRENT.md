@@ -13,6 +13,14 @@
 > （カードは切られているのに payments に残らず、レシートも出ない状態だった）。
 > 重複防止（PaymentIntent の一意制約）はこの経路にはまだ無い。
 
+> 2026-08-25 追記3: **モバイルの新ビルドは #926 のマージ・Web デプロイ後**。
+> 本番は `main` を配信しており、`/api/mobile/academy/lessons`（ナレッジ）と
+> `/api/mobile/documents`（帳票）は main に無い。カード番号決済も
+> `checkout_session_id` を main が知らない。先に配ると3箇所が壊れる。
+> なお **OTA（EAS Update）は動いていない**（`expo-updates` 未導入・channel 未設定）。
+> 今回は `app.json` の plugins と Permissions 文言が変わっているので、
+> どのみち本ビルドが要る。
+
 > 2026-08-25 追記2: **Web から作った行にも `store_id` が入るようになった。**
 > 選択 UI は作らず、`src/lib/stores/resolveStoreId.ts` でサーバが決める
 > （有効な店舗がちょうど1つならそれを入れる／2つ以上なら入れない／指定された

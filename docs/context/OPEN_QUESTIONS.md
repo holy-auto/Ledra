@@ -3,6 +3,29 @@
 > まだ決まっていないこと、判断に迷っていることを書く場所。決まったら
 > DECISION_LOG.md に移し、このファイルからは消す（削除履歴は git で追える）。
 
+## 追加（2026-08-25・モバイル配布）
+
+- **モバイルの新ビルドは PR #926 のマージ・Web デプロイ後に作る。** 代表判断は
+  「新しくビルドする」。ただし本番（`app.ledra.co.jp`）は `main` を配信しており、
+  #926 はドラフトのまま未マージ。今ビルドして配ると次が壊れる（2026-08-25 実測）:
+  - `/api/mobile/academy/lessons`（ナレッジ画面）が **main に存在しない** → 404
+  - `/api/mobile/documents`（帳票画面）が **main に存在しない** → 404
+  - カード番号決済はモバイルが `checkout_session_id` を送るが、main の
+    `/api/mobile/pos/checkout` はこの項目を知らない → 400
+  → **順序: #926 をマージ → Web デプロイ確認 → `eas build`。**
+- **OTA（EAS Update）は動いていない。** `expo-updates` 未導入・`eas.json` に
+  `channel` の記述なし・`app.json` の `updates` / `runtimeVersion` 未設定
+  （`apps/mobile/docs/EAS_UPDATE.md` が「設定済み」と書いていたので訂正した）。
+  そもそも今回は `app.json` の plugins と Permissions 文言が変わっているので、
+  OTA を有効化していても届かない。OTA を実際に整備するかは未定。→ 代表判断
+- **【要確認】`expo-font` が2版ロックされている**（`expo-font@57.0.1` と
+  `expo/node_modules/expo-font@55.0.8`）。`expo-doctor` が
+  「native builds は同一ネイティブモジュールを1版しか含められない」と警告する。
+  ただし `package-lock.json` は 2026-08-10 から変わっておらず、**このロックで
+  ビルドが落ちるかは未検証**。配布直前に依存解決を触るのは危険なので、
+  今回は手を入れていない。ビルドが落ちたら
+  `"overrides": { "expo-font": "~55.0.8" }` で1版に寄せる。
+
 ## 追加（2026-08-25・決済／店舗）
 
 > リーダー導入と「Web の作成経路で `store_id` を入れるか」は 2026-08-25 に決着し、
