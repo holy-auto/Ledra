@@ -40,7 +40,8 @@
 - 検証: `parseMileageKm` の単体テスト4件（正常・トリガーが捨てる値・単位付き/小数・桁間違い）、
   スキーマの必須化テスト、**オフライン往復（json→FormData→json）で値が落ちないテスト**を追加。
   既存テストのフィクスチャ14件を新しい契約に更新。`tsc` クリーン、全テスト **417ファイル 3,815件** 緑。
-  モバイル分は `apps/mobile` の依存が未インストールのため型検査・実機とも未検証。
+  モバイル分は**CI の `Mobile Typecheck & Unit Tests`（`apps/mobile` で `npm ci` → `tsc`）が緑**。
+  ローカルでは依存が未インストールで筆者が回せなかっただけで、型検査は通っている。未検証なのは実機動作のみ。
 - コードレビュー反映: (1) `maintenance_json` が常に非空になることで製造元品質フラグ `no_service_detail` が
   どの証明書でも立たなくなる回帰を修正（走行距離は「何をしたか」の記録ではないので施工内容の判定から除外。
   `src/lib/manufacturers/qualityFlags.ts`）。(2) `maintenance_json` に配列が来ると `typeof [] === "object"` で
