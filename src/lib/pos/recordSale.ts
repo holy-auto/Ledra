@@ -63,12 +63,25 @@ export async function recordPosSale(
 
   // ── 冪等: 同じ PaymentIntent が既に記録されていれば作り直さない ──
   if (pi) {
-    const { data: existing } = await admin
+    // 一意インデックスはテナントを見ない（列1本）。**照合もテナントで絞らない。**
+    // 絞ると他テナントに記録済みの PaymentIntent を見落とし、pos_checkout が
+    // 走った後で一意制約に当たる（売上と領収書だけが残る）
+    const { data: existing, error: lookupErr } = await admin
       .from("payments")
-      .select("id, amount, document_id")
-      .eq("tenant_id", caller.tenantId)
+      .select("id, tenant_id, amount, document_id")
       .eq("stripe_payment_intent_id", pi)
       .maybeSingle();
+
+    // **照合できなかったら作らない。** 失敗を「無かった」と読むと、
+    // 重複防止のための関数が重複を作る
+    if (lookupErr) return { ok: false, error: lookupErr };
+
+    if (existing && existing.tenant_id !== caller.tenantId) {
+      return {
+        ok: false,
+        error: new Error(`この決済は別のテナントに記録済みです（payment_intent=${pi}）。`),
+      };
+    }
 
     if (existing) {
       return {
@@ -129,6 +142,23 @@ export async function recordPosSale(
           ),
         };
       }
+    }
+
+    // 更新が0行に当たっても PostgREST は error=null を返す。**入ったことを確かめる。**
+    // 鍵が入っていない売上は、次に同じ決済を記録したときに重複になる
+    const { data: keyed } = await admin
+      .from("payments")
+      .select("stripe_payment_intent_id")
+      .eq("id", paymentId)
+      .maybeSingle();
+    if (keyed?.stripe_payment_intent_id !== pi) {
+      // ここで失敗にすると、操作者がやり直して**本当に**重複を作る（鍵が無いので
+      // 次回の照合も素通りする）。売上は残したまま、突き合わせのために記録する。
+      // ponytail: 上限。鍵の無い行は手で埋める必要がある
+      logger.error("recordPosSale: PaymentIntent の鍵が入らなかった（重複防止が効かない）", {
+        paymentId,
+        paymentIntentId: pi,
+      });
     }
   }
 

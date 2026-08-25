@@ -22,7 +22,7 @@ vi.mock("@/lib/pos/inventoryDeduction", () => ({
 }));
 
 /** `payments` に既存行があるかどうかだけを差し替えられる最小のダブル */
-function fakeAdmin(opts: { existingPayment: { id: string; document_id: string | null } | null }) {
+function fakeAdmin(opts: { existingPayment: { id: string; tenant_id: string; document_id: string | null } | null }) {
   const rpc = vi.fn().mockResolvedValue({ data: { payment_id: "pay-new" }, error: null });
   const updates: Array<Record<string, unknown>> = [];
 
@@ -39,12 +39,16 @@ function fakeAdmin(opts: { existingPayment: { id: string; document_id: string | 
       };
     }
     if (table === "payments") {
+      // `.eq()` の回数は呼び方で変わるので、何回でも繋げられるようにする
+      const chain = (result: () => Promise<unknown>) => {
+        const node: Record<string, unknown> = { eq: () => node, maybeSingle: result };
+        return node;
+      };
       return {
-        select: () => ({
-          eq: () => ({
-            eq: () => ({ maybeSingle: async () => ({ data: opts.existingPayment }) }),
-          }),
-        }),
+        select: (cols: string) =>
+          cols.includes("stripe_payment_intent_id")
+            ? chain(async () => ({ data: { stripe_payment_intent_id: "pi_123" }, error: null }))
+            : chain(async () => ({ data: opts.existingPayment, error: null })),
         update: (patch: Record<string, unknown>) => {
           updates.push(patch);
           return { eq: () => ({ eq: async () => ({ error: null }) }) };
@@ -95,7 +99,7 @@ describe("captureTerminalPayment", () => {
   });
 
   it("**同じ PaymentIntent で再送されたら2件目を作らない**（カードは既に切られている）", async () => {
-    current = fakeAdmin({ existingPayment: { id: "pay-existing", document_id: "doc-1" } });
+    current = fakeAdmin({ existingPayment: { id: "pay-existing", tenant_id: "t-1", document_id: "doc-1" } });
     retrieve.mockResolvedValue({ id: "pi_123", status: "succeeded", amount: 5000 });
 
     const res = await captureTerminalPayment(CALLER, INPUT);

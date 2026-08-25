@@ -33,16 +33,15 @@ export const posCheckoutSchema = z.object({
   items_json: z.any().optional(),
   note: nullableText(500),
   create_receipt: z.boolean().optional(),
-  // カード決済（Checkout / Terminal）で切れた PaymentIntent。**重複記録の防止に使う。**
-  // 現金・振込では付かないので任意。`pi_` 以外は冪等キーとして扱わない
-  stripe_payment_intent_id: z
-    .string()
-    .trim()
-    .max(200)
-    .nullable()
-    .optional()
-    .transform((v) => v || null)
-    .refine((v) => v === null || v.startsWith("pi_"), { message: "invalid_payment_intent_id" }),
+  // カード番号決済（Stripe Checkout）のセッション。**重複記録の防止に使う。**
+  //
+  // PaymentIntent を直接受けてはいけない。`pi_` で始まる文字列は誰でも作れるので、
+  // 記録済みの値を現金会計に付けて**売上を消す**ことができてしまう。
+  // サーバがこのセッションを Stripe から取り直し、支払済みであることと
+  // 金額を自分で確かめる（`resolvePaidCheckoutSession`）。
+  checkout_session_id: nullableText(200).refine((v) => v === null || v.startsWith("cs_"), {
+    message: "invalid_checkout_session",
+  }),
 });
 
 export const posCheckoutSessionSchema = z.object({

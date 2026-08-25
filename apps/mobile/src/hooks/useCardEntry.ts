@@ -22,9 +22,11 @@ import { useQrPaymentPoller } from "@/hooks/useQrPaymentPoller";
  *     支払リンクが生き残る。
  *  4. **やめる時はセッションを失効させる。** 端末で開いたページがそのまま
  *     残っていると、後から決済できてしまう（有効期限は30分）。
- *  5. **同じ決済で売上を2件立てない。** 決済で切れた PaymentIntent を記録側へ
- *     渡す。記録に失敗して店員がやり直しても、サーバが1件目を返すだけになる
- *     （タッチ決済と同じ仕組み）。
+ *  5. **同じ決済で売上を2件立てない。** 記録側へ **Checkout Session の ID** を渡す。
+ *     サーバがそれを Stripe から取り直し、支払済みであることと金額を自分で確かめ、
+ *     PaymentIntent を鍵にして1件しか作らない（タッチ決済と同じ仕組み）。
+ *     PaymentIntent をこちらから送らないのは、`pi_` の文字列なら誰でも作れて、
+ *     記録済みの値を混ぜると**売上を消せてしまう**から。
  */
 export interface CardEntrySale {
   amount: number;
@@ -53,13 +55,15 @@ export function useCardEntry(onRecorded: (paymentId: string | null) => void) {
   const [recordError, setRecordError] = useState<string | null>(null);
   // リンクを作った時点の会計内容。**これで記録する**（画面の現在値ではない）
   const sale = useRef<CardEntrySale | null>(null);
-  // 決済で切れた PaymentIntent。**やり直しでも同じ値を送る**（送り直すたびに
-  // 変わると重複防止が効かない）
-  const paymentIntentId = useRef<string | null>(null);
+  // 決済したセッション。**やり直しでも同じ値を送る**（変わると重複防止が効かない）
+  const paidSessionId = useRef<string | null>(null);
+  // 記録の多重送信を止める。やり直しボタンの二度押しで2件立つのを防ぐ
+  const recording = useRef(false);
 
   const record = useCallback(async () => {
     const s = sale.current;
-    if (!s) return;
+    if (!s || recording.current) return;
+    recording.current = true;
     try {
       const paymentId = paymentIdOf(
         await mobileApi("/pos/checkout", {
@@ -71,13 +75,13 @@ export function useCardEntry(onRecorded: (paymentId: string | null) => void) {
             amount: s.amount,
             received_amount: s.amount,
             items_json: s.items,
-            stripe_payment_intent_id: paymentIntentId.current ?? undefined,
+            checkout_session_id: paidSessionId.current ?? undefined,
           },
         }),
       );
       setRecordError(null);
       sale.current = null;
-      paymentIntentId.current = null;
+      paidSessionId.current = null;
       setUrl(null);
       setSessionId(null);
       onRecorded(paymentId);
@@ -85,17 +89,16 @@ export function useCardEntry(onRecorded: (paymentId: string | null) => void) {
       // **画面を移さない。** ここで移すと、決済は済んだのに売上が残らないまま
       // 店員が気づけない
       setRecordError(err instanceof Error ? err.message : "決済の記録に失敗しました");
+    } finally {
+      recording.current = false;
     }
   }, [fromTapFailure, onRecorded]);
 
-  const onPaid = useCallback(
-    async (pi: string | null) => {
-      setPolling(false);
-      paymentIntentId.current = pi;
-      await record();
-    },
-    [record],
-  );
+  const onPaid = useCallback(async () => {
+    setPolling(false);
+    paidSessionId.current = sessionId;
+    await record();
+  }, [record, sessionId]);
 
   useQrPaymentPoller(polling ? sessionId : null, onPaid);
 
@@ -114,7 +117,7 @@ export function useCardEntry(onRecorded: (paymentId: string | null) => void) {
           },
         });
         sale.current = next;
-        paymentIntentId.current = null;
+        paidSessionId.current = null;
         setFromTapFailure(tapFailure);
         setRecordError(null);
         setUrl(res.url);
@@ -135,7 +138,7 @@ export function useCardEntry(onRecorded: (paymentId: string | null) => void) {
     setFromTapFailure(false);
     setRecordError(null);
     sale.current = null;
-    paymentIntentId.current = null;
+    paidSessionId.current = null;
     if (!id) return;
     try {
       // 失効させないと、端末で開いたページから後で決済できてしまう

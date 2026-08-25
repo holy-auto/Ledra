@@ -7,6 +7,7 @@ import { apiJson, apiUnauthorized, apiForbidden, apiValidationError, apiInternal
 import { posCheckoutSchema } from "@/lib/validations/pos";
 import { deductInventoryForPosItems } from "@/lib/pos/inventoryDeduction";
 import { recordPosSale } from "@/lib/pos/recordSale";
+import { resolvePaidCheckoutSession } from "@/lib/pos/checkoutSession";
 
 export const dynamic = "force-dynamic";
 
@@ -40,7 +41,19 @@ export async function POST(req: NextRequest) {
     //
     // カード決済で PaymentIntent が付いていれば、**同じ決済では1件しか作らない**
     // （記録に失敗して店員がやり直しても二重に売上が立たない）
-    const sale = await recordPosSale(rpcAdmin, caller, data2, data2.stripe_payment_intent_id);
+    // カード番号決済（Checkout）なら、**サーバがセッションを取り直して**
+    // 支払済みであることと金額を確かめる。クライアントの申告は信じない
+    let paymentIntentId: string | null = null;
+    let args = data2;
+    if (data2.checkout_session_id) {
+      const paid = await resolvePaidCheckoutSession(rpcAdmin, caller.tenantId, data2.checkout_session_id);
+      if (!paid.ok) return apiValidationError(paid.error);
+      paymentIntentId = paid.paymentIntentId;
+      // 金額は Stripe の実額。カートを編集されていても請求額と一致させる
+      args = { ...data2, amount: paid.amountTotal, received_amount: paid.amountTotal };
+    }
+
+    const sale = await recordPosSale(rpcAdmin, caller, args, paymentIntentId);
     if (!sale.ok) {
       return apiInternalError(sale.error, "pos/checkout");
     }
@@ -53,7 +66,7 @@ export async function POST(req: NextRequest) {
     // 在庫紐付け商品があれば減算 (best-effort: 失敗してもレシートは確定)。
     // 失敗行は outbox `pos.inventory_deduction` に enqueue され、cron で再試行される。
     const { admin: outboxAdmin } = createTenantScopedAdmin(caller.tenantId);
-    const inventory = await deductInventoryForPosItems(supabase, data2.items_json, {
+    const inventory = await deductInventoryForPosItems(supabase, args.items_json, {
       tenantId: caller.tenantId,
       paymentId: sale.paymentId,
       outboxAdmin,
