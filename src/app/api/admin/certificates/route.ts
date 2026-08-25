@@ -56,12 +56,15 @@ export async function GET(req: NextRequest) {
     }
 
     if (q) {
-      // Search by public_id, customer_name, or vehicle-related fields
-      // plate_display and vehicle_maker/vehicle_model are denormalized on the certificates table
+      // 証明書ID と顧客名で探す。/admin/certificates の検索欄と同じ範囲。
+      //
+      // 以前はここに plate_display / vehicle_maker / vehicle_model も並べていたが、
+      // **certificates にその3列は無い**（車両はナンバーも車種も vehicle_info_json 側）。
+      // PostgREST は存在しない列でフィルタするとクエリごと 400 を返すので、
+      // 検索すると一覧が丸ごと空になっていた。車両での検索が要るなら
+      // vehicles を !inner で結合するか、json パスで引く形に作り直すこと。
       const safeQ = escapePostgrestValue(escapeIlike(q));
-      query = query.or(
-        `public_id.ilike.%${safeQ}%,customer_name.ilike.%${safeQ}%,plate_display.ilike.%${safeQ}%,vehicle_maker.ilike.%${safeQ}%,vehicle_model.ilike.%${safeQ}%`,
-      );
+      query = query.or(`public_id.ilike.%${safeQ}%,customer_name.ilike.%${safeQ}%`);
     }
 
     const { data: certificates, error } = await query;

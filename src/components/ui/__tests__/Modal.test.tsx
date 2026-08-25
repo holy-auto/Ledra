@@ -80,12 +80,7 @@ describe("Modal", () => {
 
   it("renders footer when provided", () => {
     render(
-      <Modal
-        open={true}
-        onClose={() => {}}
-        title="With Footer"
-        footer={<button>Save</button>}
-      >
+      <Modal open={true} onClose={() => {}} title="With Footer" footer={<button>Save</button>}>
         Content
       </Modal>,
     );

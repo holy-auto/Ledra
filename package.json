@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "lint:migrations": "node scripts/lint-migrations.js",
+    "check:migrations": "node scripts/replay-migrations.mjs",
     "audit:retry": "tsx scripts/audit-withRetry.ts",
     "audit:retry:strict": "tsx scripts/audit-withRetry.ts --strict",
     "test": "vitest run",
@@ -30,6 +31,7 @@
     "screenshots:capture": "tsx scripts/capture-screenshots.ts",
     "check:secrets-age": "tsx scripts/check-secrets-age.ts",
     "check:bundle-size": "node scripts/check-bundle-size.js",
+    "check:schema": "node scripts/check-schema.mjs",
     "build:analyze": "ANALYZE=true next build",
     "db:typegen": "supabase gen types typescript --project-id $SUPABASE_PROJECT_ID --schema public > src/types/db.generated.ts"
   },

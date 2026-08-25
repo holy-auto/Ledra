@@ -194,7 +194,7 @@ GPS 装着を要件にするか。利用者の不満の中心であり、Ledra �
 | 2026-04-07（バックフィル前） | 1 | あり |
 | 2026-05-08 〜 2026-08-21（バックフィル後） | 5 | **すべて NULL** |
 
-**修正**: `supabase/migrations/20260823000000_vehicles_vin_normalized_trigger.sql` を追加した。
+**修正**: `supabase/migrations/20260825000000_vehicles_vin_normalized_trigger.sql` を追加した。
 書き込み経路が5箇所以上（今後モバイル・外部 v1 API も増える）あるため、呼び出し元ごとに直すのではなく **DB トリガー1本**に寄せている。既存の `set_updated_at` と同じパターン。
 併せて、元のバックフィルに無かった **NFKC 正規化を追加**した。
 

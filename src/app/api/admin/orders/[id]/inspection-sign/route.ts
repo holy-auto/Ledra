@@ -3,7 +3,14 @@ import { z } from "zod";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
-import { apiJson, apiUnauthorized, apiNotFound, apiValidationError, apiForbidden, apiInternalError } from "@/lib/api/response";
+import {
+  apiJson,
+  apiUnauthorized,
+  apiNotFound,
+  apiValidationError,
+  apiForbidden,
+  apiInternalError,
+} from "@/lib/api/response";
 
 const schema = z.object({
   signature_data_url: z
@@ -93,9 +100,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     // 請求書メール自動送付（都度払いのみ。末締めは月末cronで処理）
     if (!order.billing_timing || order.billing_timing === "on_inspection") {
       const { sendOrderInvoiceEmail } = await import("@/lib/orders/orderInvoice");
-      sendOrderInvoiceEmail(id).catch((e: unknown) =>
-        console.error("[inspection-sign] invoice email failed:", e),
-      );
+      sendOrderInvoiceEmail(id).catch((e: unknown) => console.error("[inspection-sign] invoice email failed:", e));
     }
 
     return apiJson({ ok: true, order: data });

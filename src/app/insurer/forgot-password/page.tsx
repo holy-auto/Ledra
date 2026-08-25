@@ -41,9 +41,7 @@ export default function InsurerForgotPasswordPage() {
     <main className="mx-auto max-w-md space-y-6 p-6">
       <div className="space-y-2">
         <h1 className="text-2xl font-semibold tracking-tight">パスワード再設定</h1>
-        <p className="text-sm text-muted">
-          初回設定もこの画面から進められます。
-        </p>
+        <p className="text-sm text-muted">初回設定もこの画面から進められます。</p>
       </div>
 
       <form onSubmit={onSubmit} className="space-y-4 rounded-3xl border border-border-default bg-surface p-5 shadow-sm">

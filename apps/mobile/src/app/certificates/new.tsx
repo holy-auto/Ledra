@@ -1,19 +1,22 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { View, ScrollView, StyleSheet } from "react-native";
-import { TextInput, Button, HelperText, Menu, Chip } from "react-native-paper";
+import { TextInput, HelperText, Menu, Chip } from "react-native-paper";
 import { router, useLocalSearchParams } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { supabase } from "@/lib/supabase";
+import { mobileApi } from "@/lib/api";
 import { parseMileageKm } from "@/lib/mileage";
 import { useAuthStore } from "@/stores/authStore";
+import { LedraButton } from "@/components/ui";
+import { colors, spacing, radius } from "@/constants/tokens";
 
 interface Vehicle {
   id: string;
   plate_display: string | null;
   maker: string | null;
   model: string | null;
-  customer_name: string | null;
+  customers: { id: string; name: string | null } | null;
 }
 
 const SERVICE_TYPES = [
@@ -31,6 +34,7 @@ export default function CertificateNewScreen() {
   const queryClient = useQueryClient();
 
   const [form, setForm] = useState({
+    customer_name: "",
     vehicle_id: "",
     vehicle_maker: "",
     vehicle_model: "",
@@ -44,6 +48,9 @@ export default function CertificateNewScreen() {
   const [vehicleMenuVisible, setVehicleMenuVisible] = useState(false);
   const [serviceMenuVisible, setServiceMenuVisible] = useState(false);
   const [selectedVehicle, setSelectedVehicle] = useState<Vehicle | null>(null);
+  // 「この画面で作る1枚」を表す鍵。失敗して押し直しても同じ鍵を送るので、
+  // サーバ側で重複が弾かれる。成功したら画面を離れるので使い回しの心配は無い
+  const idemKeyRef = useRef(`cert-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`);
 
   // Load vehicles for picker
   const { data: vehicles } = useQuery({
@@ -51,12 +58,13 @@ export default function CertificateNewScreen() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("vehicles")
-        .select("id, plate_display, maker, model, customer_name")
+        // vehicles に customer_name 列は無い。顧客名は customers を埋め込む
+        .select("id, plate_display, maker, model, customers ( id, name )")
         .eq("tenant_id", user!.tenantId)
         .order("created_at", { ascending: false })
         .limit(100);
       if (error) throw error;
-      return data as Vehicle[];
+      return data as unknown as Vehicle[];
     },
     enabled: !!user?.tenantId,
   });
@@ -79,15 +87,18 @@ export default function CertificateNewScreen() {
 
         const { data: v } = await supabase
           .from("vehicles")
-          .select("id, plate_display, maker, model, customer_name")
+          // vehicles に customer_name 列は無い。顧客名は customers を埋め込む
+        .select("id, plate_display, maker, model, customers ( id, name )")
           .eq("id", data.vehicle_id)
           .single();
 
         if (v) {
-          const vehicle = v as Vehicle;
+          const vehicle = v as unknown as Vehicle;
           setSelectedVehicle(vehicle);
           setForm((prev) => ({
             ...prev,
+            // 顧客名はサーバ側で必須。車両の所有者が分かれば埋めておく
+            customer_name: prev.customer_name || (vehicle.customers?.name ?? ""),
             vehicle_id: vehicle.id,
             vehicle_maker: vehicle.maker ?? "",
             vehicle_model: vehicle.model ?? "",
@@ -100,89 +111,40 @@ export default function CertificateNewScreen() {
     loadReservation();
   }, [reservationId, tenantId]);
 
-  /**
-   * 車両マスタを解決する。マスタ未選択でも必ず vehicle_id を返す。
-   *
-   * DBトリガー trg_sync_mileage_from_certificate は vehicle_id が null の行では
-   * 早期 return するため、ここで解決しておかないと必須にした走行距離が
-   * vehicle_mileage_logs に積まれない（しかもエラーは出ない）。
-   * WEB の createCertAction と同じ手順に揃えている:
-   * ナンバーで既存を探す → 見つからなければ新規作成。
-   */
-  async function resolveVehicleId(): Promise<string | null> {
-    if (form.vehicle_id) return form.vehicle_id;
-
-    const maker = form.vehicle_maker.trim();
-    const model = form.vehicle_model.trim();
-    const plate = form.vehicle_plate.trim();
-
-    // ナンバーが無いと同一車両を identify できず、入庫のたびに別の vehicles 行が
-    // できてしまう。そうなると走行距離の履歴が1点ずつ分かれて意味を失うので、
-    // ナンバー未入力のときは作成しない (vehicle_id は null のまま = 従来の挙動)。
-    if (!plate) return null;
-
-    // ナンバーはテナント内でほぼ一意なので、まず既存を探して重複作成を避ける
-    const { data: byPlate } = await supabase
-      .from("vehicles")
-      .select("id")
-      .eq("tenant_id", user!.tenantId)
-      .eq("plate_display", plate)
-      .limit(1)
-      .maybeSingle();
-    if (byPlate?.id) return byPlate.id as string;
-
-    const { data: created, error } = await supabase
-      .from("vehicles")
-      .insert({
-        tenant_id: user!.tenantId,
-        maker: maker || null,
-        model: model || null,
-        plate_display: plate || null,
-      })
-      .select("id")
-      .single();
-    // 車両の作成に失敗しても証明書の発行自体は止めない（WEB も同じ方針）。
-    // その場合 vehicle_id は null になり、走行距離は積まれない。
-    if (error) {
-      console.warn("[cert] auto vehicle create failed:", error);
-      return null;
-    }
-    return (created?.id as string) ?? null;
-  }
-
   const mutation = useMutation({
     mutationFn: async () => {
-      const vehicleId = await resolveVehicleId();
-      const { data, error } = await supabase
-        .from("certificates")
-        .insert({
-          tenant_id: user!.tenantId,
-          store_id: selectedStore!.id,
-          vehicle_id: vehicleId,
+      // 直接 insert すると、テンプレートのスキーマ写し取り・メーカー認定テンプレートの
+      // 検証・撮影来歴の nonce 発行・車両履歴の記録を**全部飛ばす**。
+      // Web の発行画面と同じ処理を通すため、必ずサーバ経由で作る
+      return mobileApi<{ id: string | null; public_id: string }>("/certificates", {
+        method: "POST",
+        // 送信のたびに1つ決めて、同じ操作の再送では同じ鍵を送る。
+        // 鍵が無いとサーバの冪等ラッパーが素通りし、再送で証明書が2枚できる
+        headers: { "Idempotency-Key": idemKeyRef.current },
+        body: {
+          customer_name: form.customer_name.trim(),
+          // 顧客 ID を渡すと、サーバ側の「名前で似た顧客を探す」経路を通らずに済む。
+          // 同名の別人に紐付く事故と、顧客表の全件読み込みを両方避けられる
+          customer_id: selectedVehicle?.customers?.id ?? null,
+          store_id: selectedStore?.id ?? null,
+          vehicle_id: form.vehicle_id || null,
+          vehicle_maker: form.vehicle_maker.trim(),
+          model: form.vehicle_model.trim(),
+          plate: form.vehicle_plate.trim(),
           service_type: form.service_type || null,
-          content: {
-            summary: form.content_summary.trim(),
-            notes: form.notes.trim(),
-          },
-          status: "draft",
-          customer_name: selectedVehicle?.customer_name ?? null,
-          vehicle_maker: form.vehicle_maker.trim() || null,
-          vehicle_model: form.vehicle_model.trim() || null,
-          plate_display: form.vehicle_plate.trim() || null,
-          // 既存トリガー trg_sync_mileage_from_certificate が
-          // maintenance_json->>'mileage' を vehicle_mileage_logs に落とす。
-          // トリガーは vehicle_id が null の行では早期 return するため、
-          // 上の resolveVehicleId() でマスタを解決してから insert している。
-          maintenance_json: { mileage: parseMileageKm(form.mileage_km) },
-        })
-        .select("id")
-        .single();
-      if (error) throw error;
-      return data;
+          // サーバ (certCreateJsonSchema → createCertificate) が必須にしている。
+          // 走行距離は vehicle_mileage_logs のタイムラインになる。
+          mileage_km: parseMileageKm(form.mileage_km),
+          content_free_text:
+            [form.content_summary.trim(), form.notes.trim()].filter(Boolean).join("\n\n"),
+        },
+      });
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["certificates"] });
-      router.replace(`/certificates/${data.id}`);
+      // 詳細画面は id（uuid）で引く。取れなければ一覧へ戻す
+      if (data.id) router.replace(`/certificates/${data.id}`);
+      else router.replace("/(tabs)/certificates");
     },
   });
 
@@ -192,6 +154,9 @@ export default function CertificateNewScreen() {
     if (!form.vehicle_id && !form.vehicle_maker.trim() && !form.vehicle_model.trim()) {
       e.vehicle = "車両を選択するか、メーカー・車種を入力してください";
     }
+    // サーバ側（certCreateJsonSchema）で必須。ここで止めないと 400 になるだけで
+    // 画面から入力する手段が無くなる
+    if (!form.customer_name.trim()) e.customer_name = "顧客名を入力してください";
     if (!form.service_type) e.service_type = "サービス種別を選択してください";
     if (parseMileageKm(form.mileage_km) === null) {
       e.mileage_km = "走行距離（km）を入力してください（1以上の整数）";
@@ -209,6 +174,8 @@ export default function CertificateNewScreen() {
     setSelectedVehicle(v);
     setForm((prev) => ({
       ...prev,
+      // 未入力なら車両の所有者名を入れる。既に打ってあれば尊重する
+      customer_name: prev.customer_name || (v.customers?.name ?? ""),
       vehicle_id: v.id,
       vehicle_maker: v.maker ?? "",
       vehicle_model: v.model ?? "",
@@ -266,6 +233,18 @@ export default function CertificateNewScreen() {
             マスタ連携中
           </Chip>
         )}
+
+        <TextInput
+          label="顧客名 *"
+          value={form.customer_name}
+          onChangeText={(v) => {
+            setForm((prev) => ({ ...prev, customer_name: v }));
+            if (errors.customer_name) setErrors((prev) => ({ ...prev, customer_name: "" }));
+          }}
+          mode="outlined"
+          style={styles.input}
+        />
+        {errors.customer_name && <HelperText type="error">{errors.customer_name}</HelperText>}
 
         {/* Manual vehicle entry fields */}
         <TextInput
@@ -351,9 +330,7 @@ export default function CertificateNewScreen() {
           error={!!errors.mileage_km}
           style={styles.input}
         />
-        {errors.mileage_km && (
-          <HelperText type="error">{errors.mileage_km}</HelperText>
-        )}
+        {errors.mileage_km && <HelperText type="error">{errors.mileage_km}</HelperText>}
 
         <TextInput
           label="作業内容"
@@ -377,16 +354,14 @@ export default function CertificateNewScreen() {
           style={styles.input}
         />
 
-        <Button
-          mode="contained"
+        <LedraButton
           onPress={handleSubmit}
           loading={mutation.isPending}
           disabled={mutation.isPending}
-          buttonColor="#1a1a2e"
           style={styles.button}
         >
           下書き保存
-        </Button>
+        </LedraButton>
 
         {mutation.isError && (
           <HelperText type="error" style={styles.errorText}>
@@ -399,12 +374,16 @@ export default function CertificateNewScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#fafafa" },
-  form: { padding: 16 },
-  input: { marginBottom: 8, backgroundColor: "#ffffff" },
+  container: { flex: 1, backgroundColor: colors.background },
+  form: { padding: spacing.lg },
+  input: { marginBottom: spacing.sm, backgroundColor: colors.surface },
   menu: { maxHeight: 300 },
-  button: { marginTop: 16 },
-  errorText: { marginTop: 8 },
-  chip: { marginBottom: 8, alignSelf: "flex-start" },
-  chipText: { fontSize: 12 },
+  button: { marginTop: spacing.lg },
+  errorText: { marginTop: spacing.sm },
+  chip: {
+    marginBottom: spacing.sm,
+    alignSelf: "flex-start",
+    backgroundColor: colors.primaryLight,
+  },
+  chipText: { fontSize: 12, color: colors.primaryDark },
 });

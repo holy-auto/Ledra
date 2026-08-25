@@ -15,6 +15,7 @@ import { checkRateLimit } from "@/lib/api/rateLimit";
 import { resolveCertifiedTemplateForTenant } from "@/lib/manufacturers/certifiedTemplates";
 import { enqueueCertificateAnchor } from "@/lib/anchoring/certificateAnchorService";
 import { buildCertificateVersionRow, type CertificateVersionRow } from "@/lib/certificates/certificateVersion";
+import { logTenantAuditEvent } from "@/lib/audit/tenantLog";
 
 const certificateEditSchema = z
   .object({
@@ -72,7 +73,7 @@ export async function PUT(req: NextRequest) {
     const { data: cert, error: fetchError } = await admin
       .from("certificates")
       .select(
-        "id, tenant_id, public_id, status, customer_name, vehicle_info_json, content_free_text, content_preset_json, expiry_type, expiry_value, expiry_date, warranty_period_end, maintenance_date, warranty_exclusions, remarks, service_type, coating_products_json, ppf_coverage_json, maintenance_json, body_repair_json, accessory_json, certificate_no, current_version, manufacturer_id, manufacturer_template_id",
+        "id, tenant_id, public_id, status, customer_name, vehicle_info_json, content_free_text, content_preset_json, expiry_type, expiry_value, expiry_date, warranty_period_end, maintenance_date, warranty_exclusions, remarks, service_type, coating_products_json, ppf_coverage_json, maintenance_json, body_repair_json, accessory_json, current_version, manufacturer_id, manufacturer_template_id",
       )
       .eq("public_id", publicId)
       .eq("tenant_id", caller.tenantId)
@@ -152,14 +153,18 @@ export async function PUT(req: NextRequest) {
     });
 
     // Also log to audit_logs for general audit trail
-    await admin.from("audit_logs").insert({
-      tenant_id: caller.tenantId,
-      table_name: "certificates",
-      record_id: cert.id,
+    await logTenantAuditEvent(admin, {
+      tenantId: caller.tenantId,
+      userId: caller.userId,
       action: "certificate_edited",
-      old_values: Object.fromEntries(changes.map((c) => [c.field, c.old])),
-      new_values: Object.fromEntries(changes.map((c) => [c.field, c.new])),
-      performed_by: caller.userId,
+      table: "certificates",
+      recordId: cert.id as string,
+      targetPublicId: (cert.public_id as string | null) ?? null,
+      extra: {
+        old_values: Object.fromEntries(changes.map((c) => [c.field, c.old])),
+        new_values: Object.fromEntries(changes.map((c) => [c.field, c.new])),
+      },
+      req,
     });
 
     // 内容が変わったので証明書レコードの新しい digest を anchor queue に積む

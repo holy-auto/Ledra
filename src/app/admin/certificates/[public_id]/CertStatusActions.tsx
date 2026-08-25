@@ -62,9 +62,7 @@ export default function CertStatusActions({ publicId, status }: Props) {
       >
         無効化する
       </button>
-      {error && (
-        <p className="text-xs text-danger">{error}</p>
-      )}
+      {error && <p className="text-xs text-danger">{error}</p>}
     </div>
   );
 }

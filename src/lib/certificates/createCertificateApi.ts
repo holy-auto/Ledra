@@ -27,6 +27,9 @@ export const certCreateJsonSchema = z
     customer_id: z.string().uuid().nullable().optional(),
     customer_name: z.string().trim().min(1, "顧客名は必須です。").max(200),
 
+    // 発行した店舗。モバイルは選択中の店舗を送る（Web は未指定＝null のまま）
+    store_id: z.string().uuid().nullable().optional(),
+
     // 車両 (vehicle_id を渡すか、新規入力か、両方可)
     vehicle_id: z.string().uuid().nullable().optional(),
     vehicle_maker: z.string().trim().max(100).optional().default(""),
@@ -109,6 +112,7 @@ export function jsonToCertFormData(input: CertCreateJsonInput): FormData {
   // Customer / vehicle
   appendIf("customer_id", input.customer_id ?? undefined);
   appendIf("customer_name", input.customer_name);
+  appendIf("store_id", input.store_id ?? undefined);
   appendIf("vehicle_id", input.vehicle_id ?? undefined);
   appendIf("vehicle_maker", input.vehicle_maker);
   appendIf("model", input.model);

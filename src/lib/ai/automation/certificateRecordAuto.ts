@@ -201,16 +201,16 @@ export async function maybeAutoCreateDraftCertificateForReservation(
         vehicle_id: reservation.vehicle_id,
         customer_id: reservation.customer_id,
         customer_name: customerName,
-        service_name: serviceName,
-        description,
-        material_info: materials.length > 0 ? materials.join(", ") : null,
-        warranty_period: warranty,
+        // 施工名・説明・資材・保証期間の専用列は certificates に無い。
+        // 実列（service_type / content_free_text / coating_products_json /
+        // expiry_value）へ寄せる。以前はこの5列で insert ごと失敗しており、
+        // AI が下書きした証明書が1件も作られていなかった
+        expiry_value: warranty,
+        coating_products_json: materials.length > 0 ? materials : null,
         // 施工日 (発行 ≒ 今日) と保証期間テキストから保証終了日を自動算出して保存する。
         // 解釈できない期間なら null (cron 側でテキストからの算出にフォールバックする)。
         warranty_period_end: computeWarrantyEndDate(new Date().toISOString(), warranty),
-        content_free_text: freeText,
-        vehicle_maker: vehicleMaker,
-        vehicle_model: vehicleModel,
+        content_free_text: [freeText, description].filter(Boolean).join("\n\n") || null,
         vehicle_info_json: {
           maker: vehicleMaker,
           model: vehicleModel,
@@ -223,10 +223,9 @@ export async function maybeAutoCreateDraftCertificateForReservation(
           work_areas: workAreas,
           warranty_candidates: Array.isArray(draft?.warrantyCandidates) ? draft!.warrantyCandidates : [],
         },
-        // 大カテゴリー (coating / ppf / ...) が分かればワークフロー提案の手掛かりとして残す。
-        service_type: unit.category,
+        // 施工名は service_type が持つ。大カテゴリーしか無ければそちらを入れる
+        service_type: serviceName || unit.category,
         status: autoIssue ? "active" : "draft",
-        created_by: null,
       };
 
       const { data: cert, error: certErr } = await admin
