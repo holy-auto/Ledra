@@ -1087,6 +1087,22 @@ export const NAV_GROUPS: NavGroup[] = [
         ),
       },
       {
+        href: "/admin/settings/connections",
+        label: "外部サービス連携",
+        requiredPermission: "settings:view",
+        hub: true,
+        hubSection: "連携・課金",
+        icon: (
+          <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M7.5 21 3 16.5m0 0L7.5 12M3 16.5h13.5a4.5 4.5 0 0 0 0-9H15m1.5-4.5L21 7.5m0 0L16.5 12M21 7.5H7.5"
+            />
+          </svg>
+        ),
+      },
+      {
         href: "/admin/integrations",
         label: "API連携",
         requiredPermission: "settings:view",

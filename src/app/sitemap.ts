@@ -71,7 +71,7 @@ const staticPages: Array<{ path: string; changeFrequency: Freq; priority: number
   { path: "/privacy", changeFrequency: "yearly", priority: 0.4 },
   { path: "/terms", changeFrequency: "yearly", priority: 0.4 },
   { path: "/security-policy", changeFrequency: "yearly", priority: 0.4 },
-  { path: "/tokusho", changeFrequency: "yearly", priority: 0.4 },
+
 ];
 
 type Article = { slug: string; lastModified?: string };

@@ -247,8 +247,14 @@ export default function SettingsForm({
               URLを設定すると、同じ内容をSlackにも通知します（未設定ならSlack通知はスキップ）。
             </HelpTooltip>
           </div>
+          <p className="mb-3 text-xs text-secondary">
+            Slackにログインして投稿先チャンネルを選ぶだけで連携できます（Webhook URLの発行は不要）。
+            <a href="/admin/settings/connections" className="ml-1 text-accent underline">
+              連携ページを開く →
+            </a>
+          </p>
           <label className={labelCls}>
-            <span className={labelTextCls}>Slack Webhook URL（任意）</span>
+            <span className={labelTextCls}>Slack Webhook URL（手動設定・任意）</span>
             <input
               type="url"
               name="booking_notify_slack_webhook_url"

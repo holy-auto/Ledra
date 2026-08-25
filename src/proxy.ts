@@ -20,6 +20,9 @@ const PUBLIC_PREFIXES = [
   "/auth/callback",
   "/c/",
   "/customer/",
+  // 顧客マイページ (OTP / LINE ログイン)。Supabase auth ではなく専用 cookie で
+  // 認証するため、Supabase の getUser チェックは不要。
+  "/my",
   "/insurer/login",
   "/insurer/forgot-password",
   "/insurer/reset-password",

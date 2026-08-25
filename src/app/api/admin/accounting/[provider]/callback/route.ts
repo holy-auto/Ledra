@@ -17,7 +17,7 @@ import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { buildTokenWritePayload } from "@/lib/accounting/tokenStore";
 import { getAccountingProviderClient, isAccountingProvider } from "@/lib/accounting/registry";
 import { logger } from "@/lib/logger";
-import { verifyOAuthState } from "@/lib/accounting/oauthState";
+import { verifyOAuthState } from "@/lib/integrations/oauthState";
 
 export const dynamic = "force-dynamic";
 
@@ -70,7 +70,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ prov
     .from("tenant_memberships")
     .select("user_id, role")
     .eq("user_id", user.id)
-     .eq("tenant_id", tenantId)
+    .eq("tenant_id", tenantId)
     .limit(1)
     .maybeSingle();
   if (!membership) {

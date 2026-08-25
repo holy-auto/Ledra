@@ -190,6 +190,33 @@ export async function createSession(tenantId: string, email: string, phoneHash: 
   return { token, expiresAtIso: expires };
 }
 
+/**
+ * customer_id だけに紐づくセッションを作る (LINE ログイン用)。
+ *
+ * email / 電話下4桁を伴わないため、データ取得は必ず customer_id スコープの経路を通る
+ * (`listCertificatesForCustomer` 等の Phase 2 パス)。email 無しの顧客でもマイページに
+ * 入れるようにするための入口で、本人性は呼び出し側 (LINE 連携済み + 単回使用トークン)
+ * が担保する。
+ */
+export async function createSessionForCustomer(tenantId: string, customerId: string) {
+  const token = randomHex(32);
+  const expires = new Date(Date.now() + SESSION_TTL_DAYS * 24 * 60 * 60 * 1000).toISOString();
+
+  const { error } = await admin()
+    .from("customer_sessions")
+    .insert({
+      tenant_id: tenantId,
+      email: null,
+      phone_last4_hash: null,
+      session_hash: sessionHash(token),
+      customer_id: customerId,
+      expires_at: expires,
+    });
+  if (error) throw new Error(`createSessionForCustomer failed: ${error.message}`);
+
+  return { token, expiresAtIso: expires };
+}
+
 export async function revokeSessionByToken(token: string) {
   const sHash = sessionHash(token);
   const { error } = await admin()
@@ -211,9 +238,11 @@ export async function validateSession(tenantId: string, token: string) {
   if (!data) return null;
   if (data.revoked_at) return null;
   if (new Date(data.expires_at).getTime() < Date.now()) return null;
+  // email / phone_last4_hash は LINE ログインのセッションでは null。
+  // その場合 customer_id が必ず入る (DB 側の CHECK 制約で担保)。
   return data as {
-    email: string;
-    phone_last4_hash: string;
+    email: string | null;
+    phone_last4_hash: string | null;
     customer_id: string | null;
   };
 }

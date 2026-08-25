@@ -13,6 +13,257 @@
 - 対象: どの画面・API・業種向けか
 ```
 
+## 2026-08-23 super_admin RLS修正・エラー表示改善 (PR #963)
+
+- 内容: `my_tenant_role()`関数で`super_admin`→`owner`にマッピングし、全テーブルのRLS書き込みポリシーがsuper_adminを許可するように修正。`StoresClient.tsx`のエラー表示を`data.message`優先に変更。
+- 対象: 全テーブルのRLSポリシー（stores, certificates, vehicles, customers等）、店舗管理画面。
+- 実装:
+  - `supabase/migrations/20260822000000_fix_super_admin_rls.sql` (新規): my_tenant_role()のCASE式追加
+  - `src/app/admin/stores/StoresClient.tsx`: エラーハンドリング3箇所で`data.message || data.error`に変更
+
+## 2026-08-22 SEO/LLMO改善: llms.txt, OGメタデータ補完, canonical追加, Twitterハンドル設定 (PR #962)
+
+- 内容: AIクローラー向けllms.txt/llms-full.txtを新規追加、ブログ・事例詳細ページのOG/Twitter/JSON-LD補完、法的ページのcanonical URL追加、Twitterハンドル(@detailing_holy)の全ページ反映。
+- 対象: マーケティングサイト全体（SEO/LLMO/SNSシェア）。
+- 実装:
+  - `src/app/llms.txt/route.ts` (新規): siteConfigから動的生成する簡潔版AI向けテキスト
+  - `src/app/llms-full.txt/route.ts` (新規): 料金・機能・全ページリンク・キーワード含む詳細版
+  - `src/components/marketing/JsonLd.tsx`: ArticleJsonLdにpathPrefix/articleTypeパラメータ追加（後方互換）
+  - `src/app/(marketing)/blog/[slug]/page.tsx`: OG(article)/Twitter/BlogPosting JSON-LD追加
+  - `src/app/(marketing)/cases/[slug]/page.tsx`: OG(article)/Twitter/Article JSON-LD + publishedAt伝搬
+  - `src/app/(marketing)/news/[slug]/page.tsx`: twitter site/creator追加
+  - `src/lib/marketing/config.ts`: twitterHandle追加
+  - `src/app/layout.tsx`: twitter.site/creator反映
+  - `/privacy`, `/terms`, `/law`, `/contact`: canonical追加
+  - `/tokusho`: canonical・og:urlを/lawに統一、sitemapから除去
+
+## 2026-08-16 LINE連携の入力を「Channel ID と Secret の2つだけ」に（branch claude/multi-integration-login-opnzfh）
+
+- 内容: LINE公式アカウント連携で加盟店に求めていた7手順のうち3つを自動化し、入力を2値に削った。
+  モジュールチャネル（申請制・現在受付停止中）を待たず、申請不要の Messaging API だけで実現している。
+- 対象: 加盟店管理画面の LINE 連携（`/admin/settings/connections`）、全業種。
+- 実装 (`src/lib/line/provisioning.ts` 新規):
+  - **アクセストークンの自動発行**: `POST /v2/oauth/accessToken` (client_credentials)。
+    加盟店が LINE Developers Console で「チャネルアクセストークン（長期）」を発行してコピーする工程が消えた。
+  - **Webhook URL の自動設定**: `PUT /v2/bot/channel/webhook/endpoint`。
+    Ledra が表示した URL を加盟店が Console に貼り戻す工程（最も事故る工程）が消えた。
+  - **保存時の配送テスト**: `POST /v2/bot/channel/webhook/test`。
+    「保存はできたのに届かない」を保存の瞬間に検出する。
+  - **残作業の自動検出**: `GET /v2/bot/info` の `chatMode` と webhook の `active` を読み、
+    **API で変更できない2項目**（Webhookの利用ON / 応答モードをBotに）だけを、
+    その状態のときに限って1行ずつ案内する。全部済んでいれば「完了」と言い切る。
+  - **「接続を再確認」ボタン**（`action: "verify"`）: トークンを発行し直し、Webhook を設定し直して
+    配送テストまで実行する。失効時の手動復旧口も兼ねる。
+- 失効対策: 自動発行されるトークンは **30日で失効する**（手入力の長期トークンは無期限だった）。
+  放置すると30日後に通知が静かに全部止まるため、`tenants.line_channel_token_expires_at` に失効時刻を
+  保存し、送信直前に期限が3日以内なら自動で再発行する（`getLineConfig`）。再発行に失敗しても
+  既存トークンはまだ有効なので送信自体は止めない（ログのみ）。
+- 後方互換: 手入力の長期トークンで運用中の既存テナントは同カラムが NULL のままで再発行の対象外。
+  API も `channel_access_token` を任意で受け付け続けるため、既存の連携はそのまま動く。
+- 検証: 416ファイル 3804テスト green（新規17テスト: トークン発行のパラメータと失効時刻の計算 /
+  401の日本語メッセージ / Webhook の PUT 内容 / 残作業の判定3パターン / GET 404 を「未設定」として扱う /
+  手入力トークンは再発行しない / 失効判定7ケース）。`tsc` エラーなし、`lint:migrations` OK。
+
+## 2026-08-16 外部サービス連携を1画面に集約し、Slack を「ログインするだけ」に（branch claude/multi-integration-login-opnzfh）
+
+- 内容: 加盟店が連携のたびに開発者コンソールで ID・トークンを発行して貼り付ける手間を無くすため、
+  (1) 汎用 OAuth 基盤、(2) Slack のワンクリック連携、(3) 連携ページの集約、を実装した。
+  LINE は申請が必要な法人限定機能に依存するため調査のみ（`docs/line-module-channel-research.md`）。
+- 対象: 加盟店管理画面 `/admin/settings/connections`（新設）、全業種。
+- 実装:
+  - **汎用 OAuth 基盤** `src/lib/integrations/`。`OAuthProviderSpec` を実装した
+    プロバイダ定義1ファイルを `providers/` に置き `registry.ts` に1行足すと、
+    共通ルート `/api/admin/connect/[provider]`（GET=状態 / POST=認可URL / DELETE=解除）と
+    `/callback` がそのまま使える。新しい API ルートも DB マイグレーションも不要。
+    保存先は新テーブル `tenant_integrations`（`provider` に CHECK 制約を意図的に置かず、
+    連携先追加でマイグレーションが要らないようにしている）。トークンは既存の
+    envelope 暗号化（`@/lib/crypto/tenantSecrets`）で `_ciphertext` 列にのみ保管。
+  - **Slack 連携**（基盤の最初の実装）。`incoming-webhook` スコープのみを要求し、
+    bot トークンは保存しない（`storeTokens: false`）。受け取った webhook URL は
+    **既存の** `tenants.booking_notify_slack_webhook_ciphertext` に書くため、
+    通知の送信側 `src/lib/notifications/bookingNotify.ts` は1行も変えていない。
+    手入力フォームも従来どおり使え、既に設定済みのテナントはそのまま動く。
+    Slack が返した URL も手入力と同じ `isSlackIncomingWebhookUrl()` で
+    `hooks.slack.com/services/...` に限定する（顧客名・日時・備考を任意のサーバーへ
+    POST させないため。判定は設定フォームと共通化した）。
+  - **連携ページ集約** `/admin/settings/connections`。Slack / LINE / Square /
+    メール予約取り込み / NexPTG のセクションを店舗設定から移設し、Google カレンダー・
+    freee・マネーフォワード・Stripe への導線と接続状況を1画面にまとめた。各連携に
+    「ログインのみ / 発行作業あり」のラベルを出し、手間が残っている連携が分かるようにしている。
+  - `oauthState.ts` を `src/lib/accounting/` から `src/lib/integrations/` に移設（全連携共通化）。
+    署名鍵は `INTEGRATION_OAUTH_STATE_SECRET`、後方互換で
+    `ACCOUNTING_OAUTH_STATE_SECRET` → `FREEE_CLIENT_SECRET` にフォールバックする。
+    32文字未満の鍵は拒否するが、**既存の会計連携が突然切れないよう、長さチェックは
+    新しい env にのみ課している**。
+- 運営側の必要作業: Slack アプリを1度だけ登録し `SLACK_CLIENT_ID` / `SLACK_CLIENT_SECRET` /
+  `INTEGRATION_OAUTH_STATE_SECRET` を設定する。未設定の間は Slack カードが
+  「運営側の設定待ち」と表示され、ボタンは押せない（加盟店が失敗を踏まないようにするため）。
+- 検証: 全 411 ファイル 3744 テスト green。新規 18 テスト（認可URL組み立て / トークン交換 /
+  state の署名・provider不一致・改竄・期限切れ・短い鍵 / Slack の `ok:false` 拒否・
+  ホスト限定・解除時の webhook 列クリア）。`npm run build` 通過、`lint:migrations` OK。
+## 2026-08-15 連絡先が欠けているお客様に、マイページから自分で登録してもらう導線を追加
+
+- 内容: LINE連携だけで作られた顧客は email（や電話）が空で、メール通知が届かず PC など
+  LINE 以外からログインもできない。マイページに「お客様情報のご登録のお願い」を出し、
+  本人が入力して保存できるようにした（欠けている項目だけ表示）。LINE の連携案内メッセージにも、
+  email が無いお客様にだけ登録のお願いを 1 行添える。
+- 対象: 顧客マイページ（`/customer/[tenant]`）、`POST /api/customer/profile`（新規）、LINE通知。
+- 安全側: 更新できるのは**セッションに紐づいた customer_id の行のみ**（customer_id を持たない
+  旧 OTP セッションは 401。フォーム自体も出さないよう profile API が `canEditContact` を返す）。
+  **空欄を埋めるだけで、登録済みの値は上書きできない**（登録済み email はマイページの
+  ログイン identity そのもので、本人確認なしの差し替えは乗っ取り経路になるため。変更は店舗経由）。
+  同一テナント内で他の顧客が使っている email は拒否（重複チェックのクエリが失敗したときは
+  書き込まず 500＝fail-open にしない。`ilike` の `_`/`%` ワイルドカードで誤判定しないよう
+  候補を引いたうえで完全一致だけを見る）。ログには値そのものを残さず「どの項目を埋めたか」だけ記録。
+- 既存の登録フォーム（intake 招待）は使わなかった: あれは**身元が未知の新規客**向けで、
+  email/電話の一致による突合を通るため、既に customer_id が確定しているこのケースでは
+  重複顧客を作る危険がある。セッションで本人が確定している以上、その行を直接更新するのが素直。
+- 【要確認】入力された email は検証していない（確認コードを送っていない）。スタッフが管理画面から
+  入力する既存の経路も未検証なので、それに揃えた。誤入力の宛先に通知が飛ぶ余地は残る。
+- 検証: 新規テスト `src/app/api/customer/profile/__tests__/route.test.ts` 7件
+  （自分の行だけ更新・重複emailの拒否・customer_id 無しセッションの401・形式不正）。
+  ユニット全体 3756件パス、tsc エラー0、eslint/migrations lint OK。
+
+## 2026-08-15 email が無い顧客もマイページに入れるように（LINE連携＝本人性での単回使用トークンログイン）
+
+- 内容: マイページのログインは email 一致＋メール宛OTPのみで、email を持たない顧客
+  （受信箱からスタッフが作った顧客・登録フォームで email を空にした顧客）は入る手段が
+  無かった。LINE連携済みなら本人性は取れているので、連携時と「マイページ」受信時に
+  **単回使用・期限付き（既定7日、`PORTAL_LINE_LOGIN_TTL_MIN`）のログイントークン**を発行し、
+  `GET /my/line?t=` で `customer_id` 紐付きのポータルセッションに引き換える。
+  生トークンはDBに保存せず sha256+pepper のみ。tenant はトークン側の値を正とし、
+  URLパラメータでの上書きを許さない。期限切れ・使用済みは `/my` に戻し、LINEに
+  「マイページ」と送れば無料の応答メッセージで再発行できる旨を表示する。
+- 対象: 顧客マイページ（`/my/line`、`/customer/[tenant]`）、LINE通知。全業種共通。
+- DB: `supabase/migrations/20260815110000_customer_portal_line_login.sql`
+  （`customer_sessions` の email/下4桁ハッシュを NULL 許容化＋「customer_id があるか
+  email+下4桁が揃っているか」のCHECK / 新表 `customer_portal_login_tokens` /
+  `customer_inquiries` に customer_id 追加・下4桁ハッシュ NULL 許容 /
+  `customer_deletion_requests` の email NULL 許容）。CHECK は `NOT VALID` で追加してから
+  別途 `VALIDATE`（既存行の全走査で ACCESS EXCLUSIVE を取らないため）。索引は
+  `CONCURRENTLY` が要るので `20260815110001_customer_inquiries_customer_index.sql` に分離。
+  **適用は main マージ時に db-migrate ワークフローが自動で行う**（#917 で復旧済み）。
+  バージョンは #917 の `20260815000000/000001` と衝突していたため `20260815110000/110001` へ改番
+  （重複すると片方が「適用済み」と記録されたまま中身が実行されず、#917 が修復したドリフトそのものになる）。
+- Codex レビューでの修正: (1) `customer_sessions.customer_id` の外部キーを SET NULL → CASCADE に
+  変更し、`customer_inquiries` / `customer_deletion_requests` の CHECK は付けないことにした。
+  SET NULL のままだと LINE 由来の行（email も下4桁も無い）で顧客削除が CHECK 違反になり、
+  **個人情報の削除請求の実行そのものが失敗する**。(2) 連携の競合で敗者にもログインURLを
+  送っていた経路を塞いだ（条件付き UPDATE の結果を確認し、トークン発行の直前にも宛先が
+  現在の連携相手かを確認する）。(3) ログインリンクは GET で消費せず確認画面のボタン（POST）で
+  引き換える — LINE のリンクプレビューやクローラの先読みで単回使用トークンが焼き切れ、
+  実際にタップしたお客様が入れなくなるため。(4) 自己登録の重複チェックで `ilike` の
+  ワイルドカードをエスケープ（`%` を含むアドレスで検知漏れになる）。(5) 「空欄のときだけ
+  埋める」を UPDATE の条件にも入れて競合時の上書きを防止。(6) 電話番号は桁数も検証。
+- 秘匿: 案内本文には生のログイントークンが載るため、受信箱 (`customer_messages`) へ
+  記録する本文では `recordOutboundLineMessage` が `?t=` を伏せる（`maskPortalLoginToken`）。
+  伏せないと店舗スタッフが受信箱からコピーして顧客本人としてログインできてしまう。
+- 併せて修正: `/api/customer/list`・`/api/customer/inquiry` の認証ゲートが下4桁ハッシュ
+  必須だったため customer_id でも通るように。問い合わせ一覧は customer_id と下4桁ハッシュの
+  OR で引く（customer_id 列が無かった時代の行を取りこぼさないため）。`/my` を proxy の
+  PUBLIC_PREFIXES に追加（Supabase auth ではなく専用cookieで認証するため）。
+- 検証: 新規テスト `src/lib/__tests__/customerPortalLineLogin.test.ts` 8件
+  （ハッシュのみ保存・期限切れ/使用済み/並行クレーム負け/不正形式の拒否・tenantはトークン側優先）。
+  ユニット全体 3745件パス、tsc エラー0、eslint 追加警告0。
+
+## 2026-08-15 LINE連携が完了したら、マイページURLを自動でLINE送信（branch claude/customer-history-check-eoqjsy）
+
+- 内容: 顧客が LINE 連携を済ませても、マイページ（証明書・施工履歴・予約の閲覧口）の URL が
+  自動では届いていなかった。連携成立の共通チョークポイント `linkLineUserToCustomer()`
+  （`src/lib/line/linkCustomer.ts`）に「d. マイページ案内の送信」を追加し、3つの連携経路
+  （受信箱からの手動紐づけ / 連携コード / 登録フォーム intake 完了）すべてで 1 通だけ届くようにした。
+  本文組み立ては `buildPortalWelcomeText(tenantId)` に切り出し、`NEXT_PUBLIC_APP_URL` 未設定または
+  tenant slug 不明のときは **null を返して送信を見送る**（`/my?...` という壊れた相対リンクを
+  顧客に送らないため）。
+- 対象: 顧客向け LINE 通知。マイページ導線 `/my?tenant={slug}`。全業種共通。
+- コスト配慮: 連携コード経路は直後に**無料の応答メッセージ**を返しているので、そこへ案内を同梱し、
+  従量課金のプッシュは送らない（`suppressPortalMessage` オプションで抑止）。他の2経路はプッシュ 1 通。
+- 送信条件（自動コードレビューの指摘を受けて追加）: (1) 顧客に email が無ければ送らない
+  — マイページのログインはメール宛OTPのみで、email 無しの顧客はURLを開いても入れないため
+  （開けない導線を案内しない）。(2) 既に同じ LINE ユーザーで連携済みなら送らない（再連携での
+  二重送信・二重課金を防ぐ）。(3) 連携コードがグループ/ルームに送られた場合、URL入りの案内は
+  同梱しない（リプライは参加者全員に届くため。`linkPrompt.ts` と同じ 1:1 限定方針）。
+- 検証: 新規テスト `src/lib/line/__tests__/linkCustomer.test.ts` 7件パス（URL組み立て・末尾スラッシュ重複・
+  APP_URL未設定/slug不明のスキップ・プッシュ抑止・送信失敗時も連携は成功扱い）。
+  ユニット全体 3734件パス、tsc エラー0、eslint 追加警告0（既存の未使用変数警告1件のみ）。
+
+## 2026-08-15 本番DBマイグレーション失敗を Slack に通知するようにした（branch claude/issuance-failure-ug8bdo）
+
+- 内容: `db-migrate`（本番へのマイグレーション自動適用）が失敗したとき、Slack へ通知するステップを追加した。
+  同ジョブは 2026-08-02 から 08-15 までの**13日間ずっと赤**で、その間スキーマ変更が一切本番へ
+  届いていなかった。気づいたのは「証明書が発行できない」という本番障害の調査中で、
+  赤かったこと自体は誰も見ていなかった（#917）。
+- 実装: 記事ドラフト通知（`notify-article-pr.yml`）が既に使っている `SLACK_WEBHOOK_URL` を流用し、
+  新しいシークレットも仕組みも増やしていない。`if: failure()` なので成功時は無音（成功通知はノイズ）。
+  **配信できなかったら必ずステップを赤くする**設計にした——`set -euo pipefail`（jq 失敗時に空ボディを
+  POST して緑で終わるのを防ぐ）、`curl --fail-with-body`（Slack は無効な webhook にも HTTP 4xx を
+  返すが、`--fail` 系が無いと curl は exit 0 で未配信に気づけない）。`continue-on-error` は**付けていない**
+  ——このステップは `if: failure()` でしか動かず、その時点でジョブの結論は既に failure なので、
+  付けても「通知ステップ自身の失敗を隠す」効果しか無い（初版では付けており、レビュー指摘で撤去）。
+  シークレット未設定時は warning を出して skip（通知の不在で本来の失敗を隠さない）。
+  通知本文には、実際に踏んだ2つの失敗パターン（repo に無いリモートバージョン / out-of-order）と
+  それぞれの直し方を載せて、受け取った人がログを読む前に当たりを付けられるようにした。
+- 対象: `.github/workflows/db-migrate.yml`。
+- 検証: ワークフローYAMLから当該ステップの `run` ブロックを実際に取り出し、`curl`/`jq` をスタブ化して
+  4経路を実行確認。(1) 正常系＝有効なJSONを生成し、複数行コミットメッセージから1行目だけを抜く。
+  (2) `SLACK_WEBHOOK_URL` 未設定＝curl を呼ばず exit 0。(3) Slack が 4xx＝exit 22 で赤。
+  (4) jq 失敗＝exit 1 で赤。(3)(4) は初版では両方 exit 0（緑）で、レビュー指摘により修正した。
+  `workflow_dispatch` では `head_commit` が null になるため `github.sha` へフォールバックする
+  （マイグレーションを直した後の再実行はまさにこの経路）。
+- 限界: この経路は**失敗時にしか実行されない**ため、通常運用では動作確認されない
+  （「必要なときに壊れている」という、今回直した問題と同じ構造のリスクが残る）。
+
+## 2026-08-15 証明書の新規発行が全件失敗していたスキーマドリフトを修復し、db-migrate の停止も解消（branch claude/issuance-failure-ug8bdo）
+
+- 内容: 本番DBに `certificates.damage_map_json` が存在せず、証明書の新規発行が
+  PostgREST の "Could not find the 'damage_map_json' column of 'certificates' in the schema cache"
+  で**全件失敗**していた（発行 insert は傷マップ未使用でも常にこのキーを送るため、
+  傷マップを使わない発行も落ちる）。原因は `supabase_migrations.schema_migrations` に
+  「適用済み」と記録されているのに DDL が本番に反映されていないマイグレーションドリフト。
+  リポジトリの全マイグレーションを機械パースして本番の `information_schema` / `pg_class` と突合し
+  （テーブル250・列472・CONCURRENTLY索引180）、欠落していたのは**6ファイル・列3つ・索引3つ**と特定した:
+  `20260710000001`（`square_orders.receipt_document_id`）/ `20260710000002`（`idx_square_orders_receipt_document`）/
+  `20260711000003`（`idx_vehicles_public_id`, UNIQUE）/ `20260714000002`（`idx_part_installations_one_draft_per_reservation`, UNIQUE）/
+  `20260716000000`（`reservations.ai_assignee_suggestion`）/ `20260717000000`（`certificates.damage_map_json`）。
+  20260731144359 と同じ方式で、元ファイルは変更せず冪等な再適用マイグレーションを追加した。
+  索引2本は当初の列だけの突合では見落としており、自動コードレビューの指摘で気づいて追加した。
+  うち `idx_part_installations_one_draft_per_reservation` は性能用ではなく、
+  `src/lib/parts/installationService.ts` が「予約あたり下書き1件」の冪等性を一意制約違反(23505)に
+  依存して担保しているため、欠落は二重タップ・オフライン再送で下書きが複数できることを意味していた
+  （本番に重複は0件で、そのまま作成できることを確認済み）。
+- あわせて修復: この修復を本番へ届ける経路である GitHub Actions `db-migrate` 自体が
+  2026-08-02 以降ずっと赤で、`supabase db push` が
+  "Remote migration versions not found in local migrations directory." で停止していた
+  （OPEN_QUESTIONS 2026-08-05 追記で既知）。本番履歴にしか存在しなかった3バージョンを
+  リポジトリ側に揃えて解消した——`20260802154302` は既存ファイル
+  `20260802000000_fix_search_path_bare_refs_certificates_insurers.sql` の改名で対応し、
+  `20260802154541`（同 v2）と `20260804064418`（documents の SELECT ポリシー追加）は
+  本番 `schema_migrations.statements` から内容を復元してファイル化した。
+  さらに out-of-order で止まる `20260730100000` / `20260730200000`（vehicle_report 系、
+  いずれも本番未適用）を、適用済み最新 `20260805085225` より後の
+  `20260815100000` / `20260815100001` へ改名（DECISION_LOG 2026-07-21 の webauthn と同じ方式）。
+- 検証: 突合クエリで「本番履歴にあってリポジトリに無いバージョン」が0件、未適用4本すべてが
+  適用済み最新より後（out-of-order 無し）になったことを確認。`lint-migrations` 通過（257件検査）。
+- 対象: `/admin/certificates/new`（証明書の新規発行）。副次的に Square 領収書リンク、
+  入庫時の担当メカニック候補提案、および以後のマイグレーション自動適用全般。
+- 限界: 突合はテーブル・列・CONCURRENTLY索引までを対象にした。CHECK 制約・RLS ポリシー・
+  関数・テーブル定義内に書かれた索引のドリフトは未検証（2026-07-31 のドリフトはこの範囲を含んでいた）。
+  この範囲の自動突合は OPEN_QUESTIONS に起票済み。
+- 補足: CONCURRENTLY 索引180本のうち欠落は上記3本のみで、いずれも「記録済み・未実行」の
+  マイグレーションに属する。つまり CONCURRENTLY 自体は本番で正常に動いており、ドリフトの原因ではない。
+
+## 2026-08-15 車検証OCRの失敗理由を画面に表示（無反応の解消） (branch claude/vehicle-inspection-cert-reading-5347oo)
+
+- 内容: 車検証の読み取りが「押しても何も起きない」状態になり得た経路を修正。(1) `parseShakensho` が
+  Vision 呼び出しの例外を握りつぶして空データを返していたのをやめ、例外を投げるように変更（QRが
+  読めていれば `parseShakenshoAuto` がQR分だけ返して degrade）。(2) `/api/vehicles/parse-shakken` と
+  `/api/admin/vehicle-size/ocr` は OCR 基盤の失敗を 502 +「AI OCR に接続できませんでした」で返す。
+  (3) 表示判定を `src/lib/ocr/shakenshoAutofill.ts` に集約し、「AI自動入力が無効（設定/月次コスト上限）」
+  「1項目も読めなかった」「自動入力できた項目名」を全画面で同じ文言に統一。LINE の車検証自動登録は
+  従来どおりスタッフ引き継ぎに倒す（例外で止めない）。
+- 対象: 車両登録（`/admin/vehicles/new`）、車両編集（`/admin/vehicles/[id]/edit`）、
+  証明書発行の車両ピッカー（`/admin/certificates/new`）、車両サイズOCR（`VehicleSizeOCR`）
+
 ## 2026-08-10 品目選択を「純POSレジ型（常にカテゴリタブ＋グリッド表示）」に変更（予約作成・POS）
 
 - 内容: 前日の「検索/カテゴリで絞るまで隠す」段階表示（#903）を、代表の要望により純POSレジ型へ作り替え。
@@ -52,7 +303,7 @@
 - 残: 加盟店/税務向けの「封印の検証（ハッシュ再計算照合・TSトークン検証）」UIと電帳法の規程面は未実装。法的効力重視時は JIPDEC 認定TS局へURL差し替え（設定変更のみ）。
 
 ## 2026-08-06 レポート収益還元（実送金＋段階式）を9ラウンドの堅牢化後にマージ (PR #851 squash → main 9ced4f3)
-- **【要確認】本番反映**: `main` にコードはマージ済みだが、`20260730100000_vehicle_report_payout.sql` / `20260730200000_vehicle_report_tiers.sql` の**本番DB適用は未確認**。`DB migrate (apply to production)` ワークフローが Aug 2 以降失敗し続けている（OPEN_QUESTIONS 2026-08-05 の履歴ドリフト）。適用が確認できるまで「本番稼働」ではなく「main マージ済み・本番適用要確認」として扱う。
+- **【要確認】本番反映**: `main` にコードはマージ済みだが、**本番DB適用は未実施**（2026-08-15 時点で本番に `vehicle_report_tiers` テーブルと `vehicle_report_orders.tier_key`/`scope_*` が存在しないことを確認済み。「未確認」ではなく「未適用」と確定）。原因は `DB migrate (apply to production)` ワークフローが Aug 2 以降失敗し続けていたこと（OPEN_QUESTIONS 2026-08-05 の履歴ドリフト）。2026-08-15 の PR #917 でワークフローの停止を解消し、2ファイルを `20260815100000_vehicle_report_payout.sql` / `20260815100001_vehicle_report_tiers.sql` へ改名して適用対象に載せた。**#917 マージ時に本番へ適用される**ので、適用後に本番稼働として扱う。
 - 内容: 2026-07-30 実装分（蓄積台帳→人手承認→Stripe Connect 実送金→返金巻き戻し、段階式レポート＋スコープ按分）を仕上げて `main` にマージ。マージ前に Codex 自動レビュー9ラウンドで金銭移動・整合性を追い込み、以下の bounded 修正を反映:
   - **finalize-on-create ＋ 原子的 claim**: Stripe が `transfer.paid` を出さないため、送金作成直後に `status='approved' かつ transfer_id IS NULL` ガード付き UPDATE で `paid` 確定。並行 cancel/refund を取りこぼさない。
   - **返金巻き戻しの純粋関数化**: `reversalActionForStatus`（terminal→skip / transfer有→reverse / 無→cancel）と `postCancelClaimAction`（cancel-claim 0行時の再読込→reverse 判定）を切り出し単体テスト。並行 payout が送金済みにした行を無条件 cancel して資金を宙に浮かせる競合を解消。
@@ -253,7 +504,7 @@
 
 ## 2026-07-30 車両レポートの段階式ティア（部分/フル）＋スコープ按分 (branch claude/merchant-revenue-sharing-22tuq3)
 - 内容: 単一定額レポートを、無料サマリ→部分（直近N ヶ月）→全履歴フルの段階式へ拡張。開示範囲と還元対象を一致させる。
-  (1) スキーマ（`20260730200000_vehicle_report_tiers.sql`）: `vehicle_report_tiers`（tier_key/label/price_jpy/scope_type/scope_months/enabled/sort、直近1年¥1,500＋全履歴¥3,000 を seed）。`vehicle_report_orders` に `tier_key`/`scope_type`/`scope_months`/**`scope_from`（購入時アンカーの絶対カットオフ）**を追加。
+  (1) スキーマ（`20260815100001_vehicle_report_tiers.sql`、旧 `20260730200000` から改名）: `vehicle_report_tiers`（tier_key/label/price_jpy/scope_type/scope_months/enabled/sort、直近1年¥1,500＋全履歴¥3,000 を seed）。`vehicle_report_orders` に `tier_key`/`scope_type`/`scope_months`/**`scope_from`（購入時アンカーの絶対カットオフ）**を追加。
   (2) スコープ純粋関数（`src/lib/vehicleReport/tiers.ts`）: `scopeFromRow`/`scopeCutoffIso`/`isCreatedAtInScope`（カレンダー月・テスト7件）。`getReportTiers`/`getReportTierByKey`。
   (3) 課金配線: checkout が `tier` を受け取り、価格・スコープをティアから決定し `scope_from` を確定して保存（クライアント値は不使用）。access は `scopeFromIso` を返す。
   (4) 表示: `/v/[vin]` は購入スコープ（`scope_from` 絶対境界）内の記録のみ表示。部分購入者には全履歴レポートへのアップセル導線。会員（ログイン施工店）は従来どおり全表示。
@@ -265,7 +516,7 @@
 
 ## 2026-07-30 レポート収益還元の実送金（Connect 精算）＋返金巻き戻し (branch claude/merchant-revenue-sharing-22tuq3)
 - 内容: 蓄積台帳（PR #848）の後続。台帳の還元分を Stripe Connect で施工店へ実送金し、返金時に巻き戻す。既存の代理店コミッション精算と同型。
-  (1) スキーマ（`20260730100000_vehicle_report_payout.sql`）: `stripe_connect_transfers.source_type` に `vehicle_report`、`vehicle_report_orders.status` に `refunded` を追加（DROP/ADD CHECK, NOT VALID+VALIDATE）。
+  (1) スキーマ（`20260815100000_vehicle_report_payout.sql`、旧 `20260730100000` から改名）: `stripe_connect_transfers.source_type` に `vehicle_report`、`vehicle_report_orders.status` に `refunded` を追加（DROP/ADD CHECK, NOT VALID+VALIDATE）。
   (2) 精算: `src/lib/vehicleReport/payout.ts`。`payVehicleReportRevenueShare` は `approved` の share のみ送金（`metadata.source_type=vehicle_report`＋idempotencyKey、`stripe_transfer_id` を刻むだけで確定は webhook）。`settleApprovedRevenueShares` が一括精算。cron `/api/cron/vehicle-report-payout`（毎日 05:20 UTC・`withCronLock`）。
   (3) 確定: connect-webhook の `transfer.paid`→share を `paid`、`transfer.reversed`→`reversed`（agent_commission と同じ分岐に vehicle_report ケース追加）。
   (4) 承認ゲート（人手）: platform-admin API `GET /api/admin/platform/report-revenue`（一覧）＋ `PATCH .../<id>`（approve/pay/cancel）。還元率70%確定まで approve しなければ 1 円も動かない安全弁。

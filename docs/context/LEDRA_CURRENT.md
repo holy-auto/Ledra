@@ -4,7 +4,7 @@
 > 追わず、常に最新状態だけを保つ（履歴は DECISION_LOG.md / RELEASE_LOG.md 側）。
 > 大きな変化があったら都度上書きすること。
 
-最終更新: 2026-07-30
+最終更新: 2026-08-22
 
 > 2026-07-30 追記: 代理店ポータルの営業資料は2系統。(1)「常に最新の商品資料」欄＝
 > ライブデータから自動生成される製品資料（機能紹介/料金/比較表/セキュリティ/ROI/概要）で
@@ -26,8 +26,10 @@
 2026-07-27 に旧「WEB施工証明書SaaS」から刷新し、同日 PR TIMES の表記に合わせ「施工履歴プラットフォーム」に統一
 （施工証明書は主要機能の1つとして残す。買い手検索語は description/keywords 側で確保）。
 サイトの title/description/OGP・JSON-LD・robots は `src/lib/marketing/config.ts` の `siteConfig`
-（siteTagline / siteDescription / keywords / featureList）を単一情報源として参照する。
-詳細は DECISION_LOG.md / RELEASE_LOG.md 2026-07-27 を参照。
+（siteTagline / siteDescription / keywords / featureList / twitterHandle）を単一情報源として参照する。
+AIクローラー向けには `llms.txt`（簡潔版）と `llms-full.txt`（料金・機能・全リンク含む詳細版）を
+Route Handlerで動的提供（siteConfig + PLANSから自動追従）。Xハンドルは `@detailing_holy`。
+詳細は DECISION_LOG.md / RELEASE_LOG.md 2026-07-27, 2026-08-22 を参照。
 
 自動車整備 / ボディリペア / コーティング / PPF 店向けのマルチテナント SaaS。
 施工証明書発行、請求・帳票、顧客ポータル、予約、保険会社（損保）との案件連携、
@@ -54,6 +56,35 @@
   `qaAssistant`（施工ナレッジRAG）にフォールバック。承認インボックスは下書きごとに
   実データがある種別だけ「なぜ」（証明書=AI信頼度、発注=起票理由の実文言）を表示し、
   根拠データの無い請求書には表示しない（PR #819）。
+
+## 外部サービス連携（2026-08-16 時点）
+
+加盟店向けの連携はすべて `/admin/settings/connections` の1画面に集約している。
+方針は「加盟店は自分のアカウントでログインするだけ。開発者コンソールでの ID・
+トークン発行は求めない」。
+
+| 連携 | 接続方法 | 加盟店の発行作業 |
+| --- | --- | --- |
+| Slack（予約通知） | OAuth（汎用基盤） | 不要 |
+| Square（POS） | OAuth（個別実装） | 不要 |
+| freee / マネーフォワード | OAuth（個別実装） | 不要 |
+| Google カレンダー | OAuth（個別実装） | 不要 |
+| Stripe Connect | オンボーディングリンク | 不要 |
+| メール予約取り込み | 画面のトグル | 不要 |
+| **LINE公式アカウント** | Channel ID と Channel Secret の2値を貼るだけ（トークン発行・Webhook設定はLedraが自動） | **2値のコピーのみ** |
+| NexPTG（膜厚計） | Ledra 側が API キーを発行して相手アプリに設定 | 対象外（方向が逆） |
+
+新しい OAuth 連携は `src/lib/integrations/providers/*.ts` にプロバイダ定義を1ファイル
+足して `registry.ts` に1行加えるだけで載る（共通ルート `/api/admin/connect/[provider]`、
+共通テーブル `tenant_integrations`。新しい API ルートも DB マイグレーションも不要）。
+既存の Square / 会計 / Google カレンダーは稼働中のため個別実装のまま併存させている。
+
+LINE だけ「ログインのみ」になっていない。完全に消すにはモジュールチャネル（申請制）が必要だが
+**現在は申請の受付が停止中**のため、申請不要の Messaging API でできる自動化を先に実装した
+（2026-08-16。アクセストークンの自動発行・Webhook URL の自動設定・保存時の配送テスト・
+残作業の自動検出）。加盟店に残るのは Channel ID と Channel Secret のコピーのみ。
+自動発行トークンは30日で失効するため、送信直前に期限が近ければ自動で再発行する。
+詳細は `docs/line-module-channel-research.md` / OPEN_QUESTIONS.md。
 
 ## 技術スタック（package.json / README.md より）
 
