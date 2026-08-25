@@ -239,3 +239,38 @@ Conformance Program 本文 §Expression of Interest Form に記載。
 - 想定 Max Assurance Level: **1**。
 - 補足: EOI 提出後、Linux Foundation の署名サービスで GP 用 Legal Agreement に署名 → Intake Form 案内、
   という流れ（§1 ステップ2-3）。GPSA（§4）とサンプルアセットは Intake 後の証拠提出で使う。
+
+## 9. GP Legal Agreement（Generator Product Agreement v1.0）記入項目とレビュー要点
+
+出典: `conformance-public/legal-agreements/C2PA Generator Product Company Agreement v1.0 (Final 6-25-2025).pdf`
+（本セッションで pdfminer によりテキスト抽出して確認）。EOI 送信後、Linux Foundation の署名サービス
+経由で**署名可能な版**が届く。**リポジトリの PDF は "NOT FOR SIGNATURE" 透かし付きの参照用**なので、
+これ自体に署名しない。
+
+- 契約相手: Joint Development Foundation Projects, LLC — Coalition for Content Provenance and Authenticity
+  Series（デラウェア州 LLC、住所 2810 N Church St, PMB 57274 Wilmington, DE 19802-4447, USA）。
+- 署名者: 会社を拘束できる権限者（代表取締役 堀越友輔）。署名サービス上で社内の署名者へ転送も可。
+
+### 記入欄と Ledra の確定値
+
+| 契約書の欄 | 入力値 |
+|---|---|
+| Generator Product Company Name (Applicant) | HOLY Inc.（株式会社HOLY） |
+| Name of Contact Person | 堀越友輔（または実担当者）【代表確認】 |
+| Contact person's Phone No. | **【要確認: 電話番号】** |
+| Email Address for Notice | info@holy-inc.jp |
+| Location of Principal Office | 東京都港区北青山1-3-1 アールキューブ青山3F |
+| State of Incorporation | 様式は米国前提。**日本法人なので「Japan（Tokyo）」相当を記載**【要確認: 署名サービス上の表記指定】 |
+| Signed / Name / Title / Date | 署名／堀越友輔／Representative Director（代表取締役）／署名日 |
+
+### 署名前に代表（または顧問）が確認すべき主要条項
+
+- **準拠法・裁判管轄**: デラウェア州法。紛争は同州。
+- **補償（Indemnification）**: Applicant が第三者クレームから C2PA を補償する義務。
+- **秘密保持**: Non-Public Information と紛争解決手続きの秘密保持義務。
+- **商標ライセンス**: C2PA マークの使用は Conformance Program の範囲・ガイドライン内に限定。逸脱は禁止・取消あり。
+- **セキュリティ material change の90日是正**: C2PA がセキュリティ脅威対応で material change を要求した場合、
+  全 `conformant` GP に90日（別途通知の期間）以内に是正する義務。
+- **解約**: Applicant は10日前の書面通知でいつでも解約可（C2PA 側にも解約条項あり）。
+- **費用**: プログラム費用は無料（§7）。
+- 注意: 上記は本セッションの抽出に基づく要約であり、法的助言ではない。**契約は全文（PDF）を精読の上で署名**すること。
