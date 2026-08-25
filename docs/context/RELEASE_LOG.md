@@ -13,6 +13,39 @@
 - 対象: どの画面・API・業種向けか
 ```
 
+## 2026-08-24 Android の minSdk を 26 に引き上げ（Android ビルドが一度も通っていなかったのを修正）（branch claude/mobile-app-opening-animation-s2a6m3）
+
+- 内容: `app.json` の `expo-build-properties` に `android.minSdkVersion: 26` を追加した。
+- 対象: モバイルアプリの Android ビルド全般。
+- 経緯: 起動オープニングの実機確認のため `eas build --platform android --profile preview` を
+  回したところ、manifest merger で失敗した。
+
+  ```
+  uses-sdk:minSdkVersion 24 cannot be smaller than version 26
+  declared in library [:stripe_stripe-terminal-react-native]
+  ```
+
+- 原因（今回の変更とは無関係の既存問題）:
+  - `@stripe/stripe-terminal-react-native/android/build.gradle:43` が `minSdkVersion 26` を宣言している
+  - `app.json` の `expo-build-properties` には `ios.deploymentTarget` しか無く、
+    Android の minSdk 指定が存在しなかった（`origin/main` の app.json も同じ）
+  - よって Android の minSdk は Expo SDK 55 のデフォルト **24** のままで、24 < 26 で merger が落ちる
+  - **`main` で Android ビルドしても同じ所で落ちる**。これまでの実機確認は
+    `development-device`（iOS・Tap to Pay entitlement 保持）だったため、
+    Android 経路が一度も通っていなかっただけ
+- 全ネイティブモジュールの `android/build.gradle` を走査したところ、**24 を超える要求は
+  Stripe Terminal の 26 ただ1件**。26 に上げれば芋づる式の再失敗は起きない。
+  同 PR で追加した `expo-video` は minSdk を明示しておらず無関係。
+- `tools:overrideLibrary` で握り潰す案は採らなかった。Gradle 自身が
+  「may lead to runtime failures」と警告する通り、API 26 前提のコードが 24 の端末で
+  実行時に落ちるため。
+- **注意**: `expo doctor` が「16 packages out of date」と出すが、`npx expo install --check` を
+  鵜呑みにしないこと。その中の `react-native 0.83.10 expected / 0.83.6 found` は
+  **意図的な pin**（下記 2026-08-06 の項、0.86.0→0.83.6 に下げて `VirtualView` codegen エラーによる
+  実機起動不能を直した経緯）。一括更新すると再発する。
+  `expo-font` の重複（55.0.8 / 57.0.1、`expo-symbols` の `expo-font: *` 由来）も既存で、
+  `origin/main` のロックファイルに同じ状態で存在する。
+
 ## 2026-08-23 モバイルの起動直後に毎回入っていた2度目のちらつきを解消（branch claude/mobile-app-opening-animation-s2a6m3）
 
 - 内容: ログイン済みユーザーのコールドスタートで毎回発生していた画面の往復

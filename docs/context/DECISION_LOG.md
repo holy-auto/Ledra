@@ -23,6 +23,41 @@
 9. 公開区分: 公開可／要確認／非公開
 ```
 
+## 2026-08-24 Android 7.0/7.1 のサポートを落とす（minSdk 24 → 26）
+1. 日付: 2026-08-24
+2. 起きたこと: 起動オープニングの実機確認のため、初めて Android の `preview` ビルドを回した。
+   manifest merger が `uses-sdk:minSdkVersion 24 cannot be smaller than version 26 declared in
+   library [:stripe_stripe-terminal-react-native]` で失敗し、ビルドが通らなかった。
+3. 以前の考え: 実機確認は iOS の `development-device` プロファイルで行ってきたため、
+   Android も同じように出せるものと考えていた。対応する Android のバージョン下限について
+   意識したことは無く、`app.json` にも指定を置いていなかった。
+4. 違和感・問題: 調べると `@stripe/stripe-terminal-react-native/android/build.gradle:43` が
+   `minSdkVersion 26` を宣言している一方、`expo-build-properties` には
+   `ios.deploymentTarget` しか無く、Android は Expo SDK 55 のデフォルト 24 のままだった。
+   `origin/main` の app.json も同じなので、**Android ビルドはこれまで一度も通っていなかった**。
+   iOS だけで検証していたため気づく機会が無かった。
+5. 決めたこと: `app.json` の `expo-build-properties` に `android.minSdkVersion: 26` を追加する。
+   結果として **Android 7.0 / 7.1（API 24・25）が対象外**になる。
+6. 捨てた選択肢:
+   - **`tools:overrideLibrary` で merger を黙らせる**: minSdk 24 のまま出せるが、
+     Gradle 自身が「may lead to runtime failures」と警告する通り、API 26 前提のコードが
+     24 の端末で実行時に落ちる。ビルドが通るだけで動かないものを配るのは無意味。
+   - **Stripe Terminal を Android から外す**: POS（Tap to Pay）がプロダクトの中核機能なので不可。
+   - **minSdk を 24 のままにして Android を諦める**: eas.json に Play の internal track 設定が
+     既にあり、Android 配信は計画に入っている。ここで諦める理由が無い。
+7. 判断理由: 実質的に選択の余地が無い。アプリは Stripe Terminal をネイティブリンクしており、
+   API 26 未満の端末ではそもそも動作し得ないので、24 を維持しても「起動できない端末向けに
+   ビルドが通る」だけで得るものが無い。iOS 側も既に `deploymentTarget 16.0` かつ
+   `UIRequiredDeviceCapabilities` で A12 以上を要求しており、対応端末の考え方としても整合する。
+   全ネイティブモジュールを走査して 24 を超える要求が Stripe Terminal の1件だけであることを
+   確認済みなので、26 で打ち止めになる。
+8. まだ答えが出ていないこと:
+   - Android 7.x を使っている加盟店が実際に居るかは未確認。【要確認】
+     居た場合は端末の買い替えが必要になる（ただし Tap to Pay は元々使えない）。
+   - Android ビルドが一度も通っていなかったことが今回まで分からなかったのは、CI が
+     typecheck とユニットテストしか回していないため。ネイティブビルドを CI に載せるかは別途検討。
+9. 公開区分: 公開可
+
 ## 2026-08-23 起動のちらつきは selectedStore を永続化して直すのではなく、店舗の解決を起動処理に前倒しして直す
 1. 日付: 2026-08-23
 2. 起きたこと: 起動オープニング演出（PR #966）を入れた際、演出が消えた直後に
