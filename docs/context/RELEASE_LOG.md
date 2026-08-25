@@ -20,8 +20,8 @@
   - `npm run check:native` — ネイティブ依存が要求する minSdk とプロジェクトの minSdk の整合検査
 - 追加ファイル:
   - `apps/mobile/scripts/check-native-config.mjs` — 検査本体。
-    プロジェクトの minSdk を `android/gradle.properties`（prebuild 生成）→ `app.json` →
-    `expo-modules-core` の既定値 の順に解決し、`node_modules/*/android/build.gradle` が
+    プロジェクトの minSdk を `app.json` → `android/gradle.properties`（prebuild 生成）→
+    `expo-modules-core` の既定値 の順に解決し、`node_modules/*/android/build.gradle(.kts)` が
     宣言する minSdk と突き合わせて、足りなければ**モジュール名と必要な値を出して exit 1** する。
   - `apps/mobile/scripts/check-native-config.check.mjs` — assert ベースの自己チェック（`npm test` に追加）。
     変異テスト付き（保護を外した素朴な実装が契約を破ることを確認）。

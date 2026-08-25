@@ -7,7 +7,7 @@
 // 実行: node scripts/check-native-config.mjs  （npm run check:native）
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 
 // 「minSdk / minSdkVersion のあとに整数リテラルが *直接* 来る」宣言だけを拾う。
 // この「直接」が肝。node_modules の大半は
@@ -44,7 +44,15 @@ export function findBlockers(projectMinSdk, modules) {
   return modules.filter((m) => m.minSdk !== null && m.minSdk > projectMinSdk);
 }
 
-/** node_modules を掘って android/build.gradle を持つパッケージを列挙する。 */
+/**
+ * node_modules を掘って android/build.gradle(.kts) を持つパッケージを列挙する。
+ *
+ * ponytail: 見ているのは `<pkg>/android/` 直下だけ。react-native 本体は
+ * `ReactAndroid/build.gradle.kts` にあり、しかも値が
+ * `libs.versions.minSdk`（gradle のバージョンカタログ参照）なので拾えない
+ * （RN 0.83.6 は 24 で、プロジェクトの 26 を下回るため現状は無害）。
+ * カタログ参照を使うモジュールが増えたら、libs.versions.toml の解決を足す。
+ */
 function collectNativeModules(nodeModulesDir) {
   const found = [];
   const visit = (dir, scope) => {
@@ -57,8 +65,9 @@ function collectNativeModules(nodeModulesDir) {
         visit(pkgDir, `${entry.name}/`);
         continue;
       }
-      const gradle = join(pkgDir, "android", "build.gradle");
-      if (existsSync(gradle)) {
+      for (const file of ["build.gradle", "build.gradle.kts"]) {
+        const gradle = join(pkgDir, "android", file);
+        if (!existsSync(gradle)) continue;
         found.push({
           name: scope + entry.name,
           minSdk: parseDeclaredMinSdk(readFileSync(gradle, "utf8")),
@@ -89,22 +98,28 @@ export function parseExpoDefaultMinSdk(pluginGradleText) {
 
 /** プロジェクトの minSdk を決める。決められなければ null。 */
 function resolveProjectMinSdk(root) {
-  // 1. prebuild が生成した android/gradle.properties が本命。EAS が実際に使う値。
-  //    SDK 55 では build.gradle ではなくここに android.minSdkVersion=NN として出る。
+  // 1. app.json の expo-build-properties が唯一の真実。android/ は gitignore 済みの
+  //    生成物なので、古い android/ が残っていると現在の app.json を覆い隠す。
+  //    （実際に app.json=24 + 残留 gradle.properties=26 で「OK」と嘘をつくのを確認した）
+  const appJsonPath = join(root, "app.json");
+  if (existsSync(appJsonPath)) {
+    const appJson = JSON.parse(readFileSync(appJsonPath, "utf8"));
+    for (const plugin of appJson.expo?.plugins ?? []) {
+      if (Array.isArray(plugin) && plugin[0] === "expo-build-properties") {
+        const value = plugin[1]?.android?.minSdkVersion;
+        if (typeof value === "number") return { value, source: "app.json" };
+      }
+    }
+  }
+  // 2. app.json に設定が無い（または app.config.js を使っている）場合は、
+  //    prebuild が解決した結果を読む。SDK 55 は android.minSdkVersion=NN として
+  //    android/gradle.properties に出す。
   const generated = join(root, "android", "gradle.properties");
   if (existsSync(generated)) {
     const value = parseDeclaredMinSdk(readFileSync(generated, "utf8"));
     if (value !== null) return { value, source: "android/gradle.properties" };
   }
-  // 2. prebuild していない環境では app.json の expo-build-properties を読む。
-  const appJson = JSON.parse(readFileSync(join(root, "app.json"), "utf8"));
-  for (const plugin of appJson.expo?.plugins ?? []) {
-    if (Array.isArray(plugin) && plugin[0] === "expo-build-properties") {
-      const value = plugin[1]?.android?.minSdkVersion;
-      if (typeof value === "number") return { value, source: "app.json" };
-    }
-  }
-  // 3. どちらにも設定が無い＝Expo の既定値がそのまま使われる。
+  // 3. どちらにも無い＝Expo の既定値がそのまま使われる。
   //    まさにこの状態で今回の事故が起きたので、ここを黙って諦めると検査の意味が無い。
   const pluginGradle = join(
     root,
@@ -162,6 +177,8 @@ function main() {
   );
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  main();
-}
+// symlink 経由の起動で誤判定しないよう、argv[1] との文字列比較ではなく
+// Node 22.18+ の import.meta.main を使う。ガードが壊れて main() が呼ばれなくなると
+// 「無出力で exit 0」＝ CI が緑のまま何も検査しない状態になるので、
+// check-native-config.check.mjs が実際にこのファイルを起動して出力を確認している。
+if (import.meta.main) main();

@@ -1,6 +1,9 @@
 // check-native-config の自己チェック。フレームワーク不要。
 // 実行: node apps/mobile/scripts/check-native-config.check.mjs
 import assert from "node:assert";
+import { execFileSync } from "node:child_process";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import {
   findBlockers,
@@ -83,6 +86,18 @@ assert.equal(
   naive("        minSdkVersion safeExtGet('minSdkVersion', 24)"),
   24,
   "「直後の数字」制約が無ければ safeExtGet のデフォルト値を拾ってしまうはず",
+);
+
+// --- スモークテスト: 実際に起動して検査が走ることを確認する ---
+// 純粋関数のテストは、エントリポイントのガード（import.meta.main）が壊れて
+// main() が呼ばれなくなっても全部通ってしまう。その場合スクリプトは
+// 「無出力で exit 0」になり、CI は緑のまま何も検査しない。ここで実際に起動して塞ぐ。
+const scriptPath = join(dirname(fileURLToPath(import.meta.url)), "check-native-config.mjs");
+const output = execFileSync(process.execPath, [scriptPath], { encoding: "utf8" });
+assert.match(
+  output,
+  /minSdk OK: プロジェクト \d+/,
+  `起動しても検査が走っていない（ガードが壊れている可能性）。出力: ${JSON.stringify(output)}`,
 );
 
 console.log("check-native-config: ok");

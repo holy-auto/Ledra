@@ -40,7 +40,8 @@
 5. 決めたこと: 既存の `typecheck-test` ジョブの末尾に 2 ステップだけ足す。
    - `npx expo prebuild --platform android --no-install` — config plugin と app.json の健全性
    - `npm run check:native` — 新規 `apps/mobile/scripts/check-native-config.mjs`。
-     生成された `android/gradle.properties` の minSdk と、`node_modules/*/android/build.gradle`
+     `app.json` の minSdk（無ければ prebuild が生成した `android/gradle.properties`、
+     それも無ければ `expo-modules-core` の既定値）と、`node_modules/*/android/build.gradle(.kts)`
      が宣言する minSdk を突き合わせ、要求を満たさないモジュールを名指しして exit 1 する。
    **フルビルド（Gradle / Xcode）は CI に載せない。**
 6. 捨てた選択肢:
