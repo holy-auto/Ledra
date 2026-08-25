@@ -20,6 +20,10 @@ function fakeAdmin(opts: {
   updateError?: { code?: string; message: string } | null;
   /** 更新後の読み直しで返す鍵。省略時は「入った」ことにする */
   keyedAs?: string | null;
+  /** テナントの有効な店舗。省略時は1店舗（自動で入る） */
+  stores?: Array<{ id: string }>;
+  /** 指定された店舗がテナントのものか。省略時は「ある」 */
+  requestedStoreFound?: boolean;
 }) {
   const rpc = vi.fn().mockResolvedValue({ data: { payment_id: "pay-new" }, error: null });
   const updates: Array<Record<string, unknown>> = [];
@@ -34,6 +38,19 @@ function fakeAdmin(opts: {
   };
 
   const from = vi.fn((table: string) => {
+    if (table === "stores") {
+      // `.eq()` を重ねた末に `maybeSingle()`（指定の検証）か、そのまま await（一覧）
+      const list = opts.stores ?? [{ id: "store-1" }];
+      const node: Record<string, unknown> = {
+        eq: () => node,
+        limit: async () => ({ data: list, error: null }),
+        maybeSingle: async () => ({
+          data: opts.requestedStoreFound === false ? null : { id: "store-req" },
+          error: null,
+        }),
+      };
+      return { select: () => node };
+    }
     if (table !== "payments") throw new Error(`想定外のテーブル: ${table}`);
     return {
       select: (cols: string) => {
@@ -131,5 +148,30 @@ describe("recordPosSale の守り", () => {
     const a = fakeAdmin({ keyedAs: null });
     const res = await recordPosSale(a.admin, CALLER, ARGS, "pi_123");
     expect(res.ok).toBe(true);
+  });
+});
+
+describe("recordPosSale の店舗", () => {
+  it("店舗の指定が無ければ、有効な店舗が1つのときだけ自動で入れる", async () => {
+    const a = fakeAdmin({ stores: [{ id: "store-1" }] });
+    const res = await recordPosSale(a.admin, CALLER, ARGS, null);
+    expect(res.ok).toBe(true);
+    expect(a.rpc.mock.calls[0][1]).toMatchObject({ p_store_id: "store-1" });
+  });
+
+  it("有効な店舗が2つ以上なら**推測で入れない**", async () => {
+    const a = fakeAdmin({ stores: [{ id: "store-1" }, { id: "store-2" }] });
+    const res = await recordPosSale(a.admin, CALLER, ARGS, null);
+    expect(res.ok).toBe(true);
+    expect(a.rpc.mock.calls[0][1]).toMatchObject({ p_store_id: null });
+  });
+
+  it("**他テナントの店舗 ID なら記録しない**（FK にテナントの条件が無い）", async () => {
+    const a = fakeAdmin({ requestedStoreFound: false });
+    const res = await recordPosSale(a.admin, CALLER, { ...ARGS, store_id: "store-other" }, null);
+    expect(res.ok).toBe(false);
+    if (res.ok) return;
+    expect(String((res.error as Error).message)).toContain("store_not_in_tenant");
+    expect(a.rpc).not.toHaveBeenCalled();
   });
 });

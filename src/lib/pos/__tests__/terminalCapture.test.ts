@@ -38,6 +38,14 @@ function fakeAdmin(opts: { existingPayment: { id: string; tenant_id: string; doc
         }),
       };
     }
+    if (table === "stores") {
+      const node: Record<string, unknown> = {
+        eq: () => node,
+        limit: async () => ({ data: [{ id: "store-1" }], error: null }),
+        maybeSingle: async () => ({ data: { id: "store-1" }, error: null }),
+      };
+      return { select: () => node };
+    }
     if (table === "payments") {
       // `.eq()` の回数は呼び方で変わるので、何回でも繋げられるようにする
       const chain = (result: () => Promise<unknown>) => {

@@ -11,6 +11,9 @@
  * （`payments_stripe_payment_intent_id_key`、本番適用済み）と合わせて、
  * アプリ側と DB 側の両方で2件目を止める。
  *
+ * 会計した店舗（`store_id`）もここで決める。Web には店舗の選択が無く、
+ * モバイルは送ってくるが検証していなかった。入口が1つなので1箇所で足りる。
+ *
  * ponytail: 上限。事前確認と作成の間の競合は塞げていない（作成は pos_checkout の
  * 中なので、PaymentIntent の ID を先に確保できない）。そこに落ちたら一意制約が
  * 効いて **失敗として返る**（黙って ok にはしない）。恒久対応は pos_checkout に
@@ -19,6 +22,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { logger } from "@/lib/logger";
+import { resolveStoreId } from "@/lib/stores/resolveStoreId";
 
 /** `pos_checkout` に渡す引数（tenant_id と user_id は呼び出し側が持つ） */
 export interface PosSaleArgs {
@@ -94,11 +98,17 @@ export async function recordPosSale(
     }
   }
 
+  // 会計した店舗。Web の POS には店舗の選択が無く、モバイルは送ってくるが
+  // **検証していなかった**（store_id の FK にテナントの条件が無い）。
+  // 記録の入口が1つなので、ここで決めれば現金・カード・QR の全経路に効く
+  const store = await resolveStoreId(admin, caller.tenantId, args.store_id);
+  if (!store.ok) return { ok: false, error: new Error(store.error) };
+
   const { data, error } = await admin.rpc("pos_checkout", {
     p_tenant_id: caller.tenantId,
     p_reservation_id: args.reservation_id ?? null,
     p_customer_id: args.customer_id ?? null,
-    p_store_id: args.store_id ?? null,
+    p_store_id: store.storeId,
     p_register_session_id: args.register_session_id ?? null,
     p_payment_method: args.payment_method,
     p_amount: args.amount,
