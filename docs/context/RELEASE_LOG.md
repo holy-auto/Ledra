@@ -13,6 +13,35 @@
 - 対象: どの画面・API・業種向けか
 ```
 
+## 2026-08-25 証明書の走行距離を必須化（全施工種別・常時表示）
+
+- 内容: 走行距離を任意の付加情報から**必須項目**に変更し、整備テンプレート限定・折りたたみの中という配置をやめて、
+  施工種別を問わず車種選択の直後に常時表示するようにした。本番の走行距離タイムライン `vehicle_mileage_logs` が
+  0件だった（証明書45件すべてで値が空）のを解消するのが目的。
+- 対象: 証明書の新規作成（WEB管理画面・外部/オフラインJSON API・モバイル）。既存の証明書と編集画面は対象外。
+- 実装:
+  - `src/lib/maintenance/mileage.ts` (新規): `parseMileageKm()` / `MAX_MILEAGE_KM`。
+    判定条件は「DBトリガー `fn_sync_mileage_from_certificate` が捨てない値」＝1以上の整数・上限200万km。
+    空・0・負数・小数・`"35000km"` のような単位付き・桁間違いを弾く。フォームとサーバーで同じ関数を使う。
+  - `src/app/admin/certificates/new/CertNewFormWrapper.tsx`: 常時表示の必須入力を車両セクション直下に追加。
+    送信前チェックも追加（**オフライン経路は Server Action を通らずキューに積むため、ここを通さないと
+    「保存できたのに復帰後の同期で必ず失敗する」証明書が溜まる**）。`mileage_required` のエラー文言を追加。
+  - `src/app/admin/certificates/new/actions.ts`: 信頼境界としてサーバー側で必須チェック。
+    値は既存の `maintenance_json.mileage` に載せ、**既存トリガーに `vehicle_mileage_logs` へ落とさせる**
+    （新テーブル・新マイグレーションなし）。整備欄の描画は公開ページ・PDF とも `service_type === "maintenance"`
+    で閉じているため、コーティング等の証明書に整備欄が出ることはない。
+  - `src/app/admin/certificates/new/MaintenanceDetailsSection.tsx`: 重複する走行距離欄を削除（入力欄は1つに集約）。
+  - `src/lib/certificates/createCertificateApi.ts`: `certCreateJsonSchema` に `mileage_km` を必須で追加し、
+    JSON→FormData / FormData→JSON の両変換に載せた。ここを optional にすると
+    「フォームだけ必須・APIは素通り」の抜け道になるため。
+  - `apps/mobile/src/app/certificates/new.tsx` + `apps/mobile/src/lib/mileage.ts` (新規):
+    モバイルは Supabase へ直 insert していて Server Action を通らないため、同じ必須化を個別に実装。
+    パスエイリアスが無いので判定関数はミラーコピー（両者を揃える旨をコメントに明記）。
+- 検証: `parseMileageKm` の単体テスト4件（正常・トリガーが捨てる値・単位付き/小数・桁間違い）、
+  スキーマの必須化テスト、**オフライン往復（json→FormData→json）で値が落ちないテスト**を追加。
+  既存テストのフィクスチャ14件を新しい契約に更新。`tsc` クリーン、全テスト **417ファイル 3,815件** 緑。
+  モバイル分は `apps/mobile` の依存が未インストールのため型検査・実機とも未検証。
+
 ## 2026-08-23 入力された車体番号が車両パスポートに反映されないバグを修正（VIN正規化のトリガー化）
 
 - 内容: `vehicles.vin_code_normalized` を `vin_code` から自動導出する DB トリガーを追加し、取り残されていた行をバックフィルした。

@@ -5,6 +5,7 @@ import { router, useLocalSearchParams } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { supabase } from "@/lib/supabase";
+import { parseMileageKm } from "@/lib/mileage";
 import { useAuthStore } from "@/stores/authStore";
 
 interface Vehicle {
@@ -35,6 +36,7 @@ export default function CertificateNewScreen() {
     vehicle_model: "",
     vehicle_plate: "",
     service_type: "",
+    mileage_km: "",
     content_summary: "",
     notes: "",
   });
@@ -116,6 +118,10 @@ export default function CertificateNewScreen() {
           vehicle_maker: form.vehicle_maker.trim() || null,
           vehicle_model: form.vehicle_model.trim() || null,
           plate_display: form.vehicle_plate.trim() || null,
+          // 既存トリガー trg_sync_mileage_from_certificate が
+          // maintenance_json->>'mileage' を vehicle_mileage_logs に落とす。
+          // WEB 側の createCertAction と同じ配管に合わせる。
+          maintenance_json: { mileage: parseMileageKm(form.mileage_km) },
         })
         .select("id")
         .single();
@@ -135,6 +141,9 @@ export default function CertificateNewScreen() {
       e.vehicle = "車両を選択するか、メーカー・車種を入力してください";
     }
     if (!form.service_type) e.service_type = "サービス種別を選択してください";
+    if (parseMileageKm(form.mileage_km) === null) {
+      e.mileage_km = "走行距離（km）を入力してください（1以上の整数）";
+    }
     setErrors(e);
     return Object.keys(e).length === 0;
   }
@@ -275,6 +284,23 @@ export default function CertificateNewScreen() {
         </Menu>
         {errors.service_type && (
           <HelperText type="error">{errors.service_type}</HelperText>
+        )}
+
+        <TextInput
+          label="走行距離（km）*"
+          value={form.mileage_km}
+          onChangeText={(v) => {
+            setForm((prev) => ({ ...prev, mileage_km: v }));
+            if (errors.mileage_km) setErrors((prev) => ({ ...prev, mileage_km: "" }));
+          }}
+          mode="outlined"
+          keyboardType="number-pad"
+          placeholder="例: 35000"
+          error={!!errors.mileage_km}
+          style={styles.input}
+        />
+        {errors.mileage_km && (
+          <HelperText type="error">{errors.mileage_km}</HelperText>
         )}
 
         <TextInput

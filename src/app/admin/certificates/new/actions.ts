@@ -9,6 +9,7 @@ import { fuzzyMatchCustomer, type CustomerCandidate } from "@/lib/ai/customerFuz
 import { recordCoatingConsumableInstallations } from "@/lib/parts/coatingIntegration";
 import { issueCaptureNonce } from "@/lib/certificates/captureNonce";
 import { parseDamageMap } from "@/lib/certificates/damageMap";
+import { parseMileageKm } from "@/lib/maintenance/mileage";
 
 export type CreateCertResult =
   | { ok: true; public_id: string; status: "draft"; photo_required: boolean; capture_nonce: string | null }
@@ -166,6 +167,20 @@ export async function createCertAction(formData: FormData): Promise<CreateCertRe
 
   if (!customer_name) return { ok: false, error: "customer_name_required" };
   if (!vehicle_id && !vehicle_maker && !model) return { ok: false, error: "vehicle_required" };
+
+  // 走行距離は必須。入庫のたびに読める唯一の客観値で、車両パスポート・残価判定・
+  // 整備リマインダー・劣化予測がすべてこの時系列を入力にしている。
+  // 任意入力だった間は本番に1件も溜まらなかったため、ここを通さない発行を認めない。
+  // クライアント側でも同じ parseMileageKm で弾くが、ここが信頼境界。
+  const mileage_km = parseMileageKm(formData.get("mileage_km"));
+  if (mileage_km === null) return { ok: false, error: "mileage_required" };
+
+  // 既存の DB トリガー `trg_sync_mileage_from_certificate` が
+  // `maintenance_json->>'mileage'` を読んで `vehicle_mileage_logs` に落とすので、
+  // 整備以外の施工種別でもここに載せて配管を再利用する（新テーブルもマイグレーションも不要）。
+  // 整備内容ブロックの描画は公開ページ・PDF とも service_type === "maintenance"
+  // で閉じているため、コーティング等の証明書に整備欄が出てしまうことはない。
+  maintenance_data.mileage = mileage_km;
 
   // メーカー指定デザインを使う場合は、認定施工店であることを必ず再確認する。
   // クライアントから任意の id を差し込まれる可能性に備え、ここを抜くと
@@ -442,8 +457,6 @@ export async function createCertAction(formData: FormData): Promise<CreateCertRe
       console.error("recordCoatingConsumableInstallations failed", e);
     });
   }
-  const mileageKm = maintenance_data.mileage ? parseInt(String(maintenance_data.mileage), 10) : null;
-
   // Structured inspection findings → vehicle_inspection_findings
   let structured_findings: any[] = [];
   try {
@@ -477,7 +490,7 @@ export async function createCertAction(formData: FormData): Promise<CreateCertRe
             tenant_id: tenantId,
             vehicle_id: resolvedVehicleId,
             certificate_id: certificateId,
-            mileage_km: mileageKm ?? null,
+            mileage_km: mileage_km,
             finding_category: f.finding_category,
             finding_severity: f.finding_severity ?? "ok",
             finding_code: f.finding_code ?? null,
@@ -497,7 +510,7 @@ export async function createCertAction(formData: FormData): Promise<CreateCertRe
             certificate_id: certificateId,
             part_category: p.part_category,
             part_name: p.part_name,
-            mileage_at_replacement: mileageKm ?? null,
+            mileage_at_replacement: mileage_km,
             replaced_at: now,
             next_replacement_mileage_est: p.next_replacement_mileage_est ?? null,
           })),

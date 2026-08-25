@@ -53,6 +53,7 @@ describe("POST /api/admin/certificates (JSON adapter)", () => {
     const res = (await POST(
       makeReq({
         customer_name: "田中太郎",
+        mileage_km: 35000,
         vehicle_maker: "トヨタ",
         model: "プリウス",
         template_fields: { with_wax: true },
@@ -75,13 +76,13 @@ describe("POST /api/admin/certificates (JSON adapter)", () => {
 
   it("maps unauthorized result to 401", async () => {
     mocks.createCertAction.mockResolvedValueOnce({ ok: false, error: "unauthorized" });
-    const res = (await POST(makeReq({ customer_name: "x" }))) as Response;
+    const res = (await POST(makeReq({ customer_name: "x", mileage_km: 35000 }))) as Response;
     expect(res.status).toBe(401);
   });
 
   it("maps other action errors to 400 validation error", async () => {
     mocks.createCertAction.mockResolvedValueOnce({ ok: false, error: "vehicle_required" });
-    const res = (await POST(makeReq({ customer_name: "x" }))) as Response;
+    const res = (await POST(makeReq({ customer_name: "x", mileage_km: 35000 }))) as Response;
     expect(res.status).toBe(400);
     const body = (await res.json()) as { message: string };
     expect(body.message).toContain("vehicle_required");
@@ -89,7 +90,7 @@ describe("POST /api/admin/certificates (JSON adapter)", () => {
 
   it("returns 500 when createCertAction throws", async () => {
     mocks.createCertAction.mockRejectedValueOnce(new Error("boom"));
-    const res = (await POST(makeReq({ customer_name: "x" }))) as Response;
+    const res = (await POST(makeReq({ customer_name: "x", mileage_km: 35000 }))) as Response;
     expect(res.status).toBe(500);
   });
 });
