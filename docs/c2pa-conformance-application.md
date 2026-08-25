@@ -37,7 +37,9 @@
 8. **CA から本番証明書取得**: Trust List 上の認定 CA に Notice を提示し、本番 Claim Signing
    Certificate を取得。CPL 公開日前でも取得可。
 
+- **Conformance Program への登録は必須**。本番 Claim Signing Certificate は「適合認定（Notice of Conformance）→ 認定 CA から取得」の2段構えで、CA は CPL に `conformant` で載る GP にしか発行しない（出典 Conformance Program §Machine-Readable List Operation）。EOI フォームが登録の起点。
 - 費用: **無料**（申請料・掲載料ともゼロ。出典 Conformance Program §Business Requirements）。
+- **予定期間: 準備状況に応じて 2週間〜6ヶ月**（代表提供情報・2026-08。C2PA PDF には記載がなく、この期間はプログラム外部からの情報として扱う。未検証）。
 - 前提バージョン: 本 v0.2 プログラムは **Spec v2.2 / v2.4** を受付。Ledra は §1.3 で申告する。
 - 推奨: Intake 提出前に相互運用性テストを実施（プログラムが適合サンプルライブラリを提供）。
 
@@ -193,3 +195,47 @@ GCP Confidential VM 等）への移設＝ハードウェア RoT アテストの�
 > 追加の次アクション: AL1 掲載後・AL2 着手前に、Conformance Program へ「純 Backend・
 > エンドユーザーはアップロードのみの TOE で calling client / Edge subsystem をどう扱うか」を
 > 確認する（§6.2 の A/B 分岐＝AL2 可否の決定点）。
+
+## 7. 費用と予定期間・確定事項（2026-08 時点）
+
+出典区分: 【C2PA doc】=公式 PDF で確認、【代表提供】=このセッションで代表から共有された情報（未検証）。
+
+1. **プロセス／登録要否**【C2PA doc + 代表提供】: Conformance Program への登録は必須。**Expression of
+   Interest（関心表明）フォームから開始**する（§1 の8ステップ）。
+2. **要件（適合／セキュリティ評価範囲・証明書プロファイル）**【C2PA doc】: §2 のギャップ分析・§4 の GPSA
+   下書き・cert-profiles の各スキーマに準拠。GP/Backend/AL1 で申告。
+3. **費用**【C2PA doc + 代表提供】: プログラム費用は（現時点）**無料**。
+4. **予定期間**【代表提供】: **準備状況に応じて 2週間〜6ヶ月**。GPSA・サンプル・KMS 化の仕上がりが
+   期間を左右する（＝準備を前倒すほど短い）。
+5. **実施主体**【代表提供】: **日本企業でも申請・受託は可能**。多くの日本企業が関与している。Ledra
+   （株式会社HOLY）が申請主体になれる（国籍要件なし）。CA 選定や支援で日本企業を使う選択肢もある。
+
+### コスト構造（プログラム料以外＝エンジニアリング／インフラ／運用）
+
+円建ての具体額は Ledra のコストデータ・クラウド単価が未確定のため出さない（要確認）。相対比較のみ。
+
+| 区分 | AL1続行（AL2フォワード） | AL2移行で"追加"される分 |
+|---|---|---|
+| C2PAプログラム料 | ¥0 | ¥0（新レコード再申請も無料） |
+| 一次開発（人的） | 中: 鍵 env PEM→KMS 署名／CA 自動エンロール／GPSA 完成・サンプル／90日ポリシー・OWASP 文書化 | **大**: 署名を機密環境（Nitro Enclave 等）へ移設／モバイル端末アテステーション／HW RoT アテスト連携／HIDS・監査ログ・セグメンテーション＋証跡 |
+| インフラ（継続） | 小〜中: KMS 課金（推定・少額）＋CA 証明書（CA 依存・要確認） | **中〜大**: 機密コンピューティングは常時稼働（Vercel の scale-to-zero と段違い）／監視ツール |
+| 運用（継続） | 小: 鍵ローテ・依存スキャン（既存 CI） | **中〜大**: エンクレーブ/アテスト鍵管理・HIDS 監視・定期証跡・IR |
+
+- **費用差の本質**: AL2 は「サーバーレス→常時稼働の機密コンピューティング＋モバイル実装＋監視スタック」
+  への段差。AL1 は既存 Vercel/Supabase の延長線。
+- 見積りに必要な未確定情報: ①CA と証明書費用、②AL2 署名環境と署名リクエスト量→月額、
+  ③モバイルアテスト実装工数（iOS/Android）、④HIDS/監視・セグメンテーションの新設 or 既存流用。
+
+## 8. 今すぐ着手: Expression of Interest フォーム記入項目（GP）
+
+EOI フォームは外部（Google フォーム）で、登記情報を伴う。**このセッションからは送信できない**（アクセス不可・
+私的な法的情報を要し、外部・不可逆のため）。代表が下記を用意して送信する。フォーム URL は
+Conformance Program 本文 §Expression of Interest Form に記載。
+
+- 申請役割: **Generator Product（GP）**（VP・CA は今回選択しない。§3）。
+- 会社法的情報（登記どおり）: 法人名 `株式会社HOLY`（英字表記【要確認】）／登記住所【要確認】／
+  Reliable Method of Communication（第三者確認可能な連絡先: 代表メール info@holy-auto.com 等）。
+- 申告 Spec バージョン: 【要確認: 2.2 か 2.4】。
+- 想定 Max Assurance Level: **1**。
+- 補足: EOI 提出後、Linux Foundation の署名サービスで GP 用 Legal Agreement に署名 → Intake Form 案内、
+  という流れ（§1 ステップ2-3）。GPSA（§4）とサンプルアセットは Intake 後の証拠提出で使う。
