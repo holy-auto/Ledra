@@ -8,6 +8,7 @@ import {
   CERTIFICATE_BEFORE_AFTER_REQUIRED_MESSAGE,
 } from "@/lib/certificates/photoRequirement";
 import { triggerCertificateIssued } from "@/lib/certificates/issueHooks";
+import { logTenantAuditEvent } from "@/lib/audit/tenantLog";
 import {
   apiOk,
   apiUnauthorized,
@@ -67,13 +68,14 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     if (error) return apiInternalError(error, "certificates.activate");
 
     // Audit log
-    await caller.supabase.from("audit_logs").insert({
-      tenant_id: caller.tenantId,
-      table_name: "certificates",
-      record_id: id,
+    await logTenantAuditEvent(caller.supabase, {
+      tenantId: caller.tenantId,
+      userId: caller.userId,
       action: "certificate_activated",
-      performed_by: caller.userId,
-      ip_address: request.headers.get("x-forwarded-for") ?? request.headers.get("x-real-ip"),
+      table: "certificates",
+      recordId: id,
+      targetPublicId: cert.public_id as string,
+      req: request,
     });
 
     // 初回発行 (draft→active) の副作用 (保険案件 enqueue / フォローアップ) を発火。

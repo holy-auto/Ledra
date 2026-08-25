@@ -44,22 +44,14 @@ export async function checkAdminFeature(feature: FeatureKey, returnTo: string): 
     return { ok: true, tenantId: caller.tenantId, planTier: "pro", isActive: true };
   }
 
-  const { data: mem } = await supabase
-    .from("tenant_memberships")
-    .select("tenant_id")
-    .limit(1)
-    .single();
+  const { data: mem } = await supabase.from("tenant_memberships").select("tenant_id").limit(1).single();
 
   const tenantId = (mem?.tenant_id as string | undefined) ?? undefined;
   if (!tenantId) {
     return { ok: false, status: 400, reason: "no_tenant" };
   }
 
-  const { data: t, error } = await supabase
-    .from("tenants")
-    .select("plan_tier,is_active")
-    .eq("id", tenantId)
-    .single();
+  const { data: t, error } = await supabase.from("tenants").select("plan_tier,is_active").eq("id", tenantId).single();
 
   if (error || !t) {
     return { ok: false, status: 404, reason: "tenant_not_found" };
@@ -98,7 +90,10 @@ export async function checkAdminFeature(feature: FeatureKey, returnTo: string): 
  */
 export function billingDenyResponse(g: Gate, feature: FeatureKey, returnTo: string) {
   if (g.ok) {
-    return NextResponse.json({ error: "guard_unexpected_ok" }, { status: 500, headers: { "Cache-Control": "no-store" } });
+    return NextResponse.json(
+      { error: "guard_unexpected_ok" },
+      { status: 500, headers: { "Cache-Control": "no-store" } },
+    );
   }
 
   // Narrow to GateNg explicitly. With strict: false in tsconfig, TS doesn't
@@ -116,7 +111,8 @@ export function billingDenyResponse(g: Gate, feature: FeatureKey, returnTo: stri
   }
 
   const billing_url =
-    ng.billing_url ?? buildBillingDenyUrl({ reason: (ng.reason as BillingReason) ?? "plan", action: feature, returnTo });
+    ng.billing_url ??
+    buildBillingDenyUrl({ reason: (ng.reason as BillingReason) ?? "plan", action: feature, returnTo });
 
   return NextResponse.json(
     {
@@ -128,8 +124,6 @@ export function billingDenyResponse(g: Gate, feature: FeatureKey, returnTo: stri
       plan_tier: ng.planTier ?? null,
       is_active: ng.isActive ?? null,
     },
-    { status: ng.status ?? 402, headers: { "Cache-Control": "no-store" } }
+    { status: ng.status ?? 402, headers: { "Cache-Control": "no-store" } },
   );
 }
-
-

@@ -1,12 +1,6 @@
 import { useState } from "react";
 import { View, StyleSheet } from "react-native";
-import {
-  Text,
-  Button,
-  Card,
-  ActivityIndicator,
-  Icon,
-} from "react-native-paper";
+import { Text, ActivityIndicator, Icon } from "react-native-paper";
 import { useLocalSearchParams } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 import NfcManager, { NfcTech, Ndef } from "react-native-nfc-manager";
@@ -14,6 +8,8 @@ import NfcManager, { NfcTech, Ndef } from "react-native-nfc-manager";
 import { supabase } from "@/lib/supabase";
 import { useAuthStore } from "@/stores/authStore";
 import { mobileApi } from "@/lib/api";
+import { LedraButton } from "@/components/ui";
+import { colors, spacing, radius, typography, shadows } from "@/constants/tokens";
 
 type WriteState = "idle" | "writing" | "verifying" | "success" | "error";
 
@@ -21,12 +17,9 @@ const CERT_PUBLIC_BASE_URL = process.env.EXPO_PUBLIC_CERT_URL ?? "https://cert.l
 
 interface CertificateInfo {
   id: string;
-  certificate_no: string;
   public_id: string;
   customer_name: string | null;
-  vehicle_maker: string | null;
-  vehicle_model: string | null;
-  plate_display: string | null;
+  vehicle_info_json: { maker?: string; model?: string; plate?: string } | null;
   /** Resolved at fetch time. Non-null when the cert's vehicle has a VIN
    * with a published vehicle_passports row — write `/v/{vin}` instead of
    * `/c/{public_id}` so the same physical tag carries the cross-tenant
@@ -47,7 +40,9 @@ export default function NfcWriteScreen() {
       const { data, error } = await supabase
         .from("certificates")
         .select(
-          "id, certificate_no, public_id, customer_name, vehicle_maker, vehicle_model, plate_display, vehicle_id"
+          // certificate_no / vehicle_* / plate_display 列は存在しない。
+          // 番号は public_id、車両は発行時スナップショットの vehicle_info_json
+          "id, public_id, customer_name, vehicle_info_json, vehicle_id"
         )
         .eq("id", certificateId)
         .eq("tenant_id", user!.tenantId)
@@ -195,7 +190,7 @@ export default function NfcWriteScreen() {
   if (isLoading) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator />
+        <ActivityIndicator color={colors.primary} />
       </View>
     );
   }
@@ -203,7 +198,7 @@ export default function NfcWriteScreen() {
   if (!cert) {
     return (
       <View style={styles.center}>
-        <Text>証明書が見つかりません</Text>
+        <Text style={styles.emptyText}>証明書が見つかりません</Text>
       </View>
     );
   }
@@ -211,99 +206,83 @@ export default function NfcWriteScreen() {
   return (
     <View style={styles.container}>
       {/* Certificate Info */}
-      <Card style={styles.card} mode="outlined">
-        <Card.Content>
-          <Text variant="titleMedium" style={styles.certNo}>
-            {cert.certificate_no}
-          </Text>
-          {cert.customer_name && (
-            <Text variant="bodyMedium" style={styles.sub}>
-              {cert.customer_name}
-            </Text>
-          )}
-          <Text variant="bodySmall" style={styles.sub}>
-            {[cert.vehicle_maker, cert.vehicle_model, cert.plate_display]
-              .filter(Boolean)
-              .join(" ")}
-          </Text>
-        </Card.Content>
-      </Card>
+      <View style={styles.card}>
+        <Text style={styles.certNo}>{cert.public_id}</Text>
+        {cert.customer_name && (
+          <Text style={styles.sub}>{cert.customer_name}</Text>
+        )}
+        <Text style={styles.sub}>
+          {[
+            cert.vehicle_info_json?.maker,
+            cert.vehicle_info_json?.model,
+            cert.vehicle_info_json?.plate,
+          ]
+            .filter(Boolean)
+            .join(" ")}
+        </Text>
+      </View>
 
       <View style={styles.content}>
         {writeState === "idle" && (
           <>
-            <Icon source="nfc" size={64} color="#1a1a2e" />
-            <Text variant="bodyLarge" style={styles.instruction}>
+            <Icon source="nfc" size={64} color={colors.primary} />
+            <Text style={styles.instruction}>
               NFCタグをデバイスに近づけてください
             </Text>
-            <Button
-              mode="contained"
+            <LedraButton
               onPress={startWrite}
-              buttonColor="#1a1a2e"
               icon="nfc"
               style={styles.writeButton}
-              contentStyle={styles.writeButtonContent}
+              fullWidth={false}
             >
               書込み開始
-            </Button>
+            </LedraButton>
           </>
         )}
 
         {writeState === "writing" && (
           <>
-            <ActivityIndicator size="large" color="#1a1a2e" />
-            <Text variant="titleMedium" style={styles.statusText}>
-              書込み中...
-            </Text>
-            <Text variant="bodyMedium" style={styles.instruction}>
-              タグを離さないでください
-            </Text>
+            <ActivityIndicator size="large" color={colors.primary} />
+            <Text style={styles.statusText}>書込み中...</Text>
+            <Text style={styles.instruction}>タグを離さないでください</Text>
           </>
         )}
 
         {writeState === "verifying" && (
           <>
-            <ActivityIndicator size="large" color="#1a1a2e" />
-            <Text variant="titleMedium" style={styles.statusText}>
-              検証中...
-            </Text>
+            <ActivityIndicator size="large" color={colors.primary} />
+            <Text style={styles.statusText}>検証中...</Text>
           </>
         )}
 
         {writeState === "success" && (
           <>
-            <Icon source="check-circle" size={64} color="#166534" />
-            <Text variant="titleMedium" style={styles.successText}>
-              書込み完了
-            </Text>
-            <Text variant="bodyMedium" style={styles.instruction}>
+            <Icon source="check-circle" size={64} color={colors.successDark} />
+            <Text style={styles.successText}>書込み完了</Text>
+            <Text style={styles.instruction}>
               NFCタグへの書込みが正常に完了しました
             </Text>
-            <Button
-              mode="contained"
+            <LedraButton
               onPress={() => setWriteState("idle")}
-              buttonColor="#1a1a2e"
               style={styles.writeButton}
+              fullWidth={false}
             >
               別のタグに書込む
-            </Button>
+            </LedraButton>
           </>
         )}
 
         {writeState === "error" && (
           <>
-            <Icon source="alert-circle" size={64} color="#991b1b" />
-            <Text variant="bodyLarge" style={styles.errorText}>
-              {errorMessage}
-            </Text>
-            <Button
-              mode="contained"
+            <Icon source="alert-circle" size={64} color={colors.dangerDark} />
+            <Text style={styles.errorText}>{errorMessage}</Text>
+            <LedraButton
               onPress={startWrite}
-              buttonColor="#1a1a2e"
               style={styles.writeButton}
+              fullWidth={false}
             >
               再試行
-            </Button>
+            </LedraButton>
           </>
         )}
       </View>
@@ -312,42 +291,58 @@ export default function NfcWriteScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#fafafa" },
+  container: { flex: 1, backgroundColor: colors.background },
   center: { flex: 1, justifyContent: "center", alignItems: "center" },
-  card: { margin: 12, backgroundColor: "#ffffff" },
-  certNo: { fontWeight: "700", color: "#1a1a2e" },
-  sub: { color: "#71717a", marginTop: 4 },
+  emptyText: {
+    ...typography.body,
+    color: colors.textSecondary,
+  },
+  card: {
+    margin: spacing.md,
+    backgroundColor: colors.surface,
+    borderRadius: radius.card,
+    padding: spacing.lg,
+    ...shadows.card,
+  },
+  certNo: {
+    ...typography.titleMedium,
+    color: colors.textPrimary,
+  },
+  sub: {
+    ...typography.bodySmall,
+    color: colors.textSecondary,
+    marginTop: spacing.xs,
+  },
   content: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    padding: 24,
+    padding: spacing["2xl"],
   },
   instruction: {
-    color: "#71717a",
+    ...typography.body,
+    color: colors.textSecondary,
     textAlign: "center",
-    marginTop: 16,
+    marginTop: spacing.lg,
   },
   writeButton: {
-    marginTop: 24,
-    paddingHorizontal: 24,
-  },
-  writeButtonContent: {
-    paddingVertical: 8,
+    marginTop: spacing["2xl"],
+    paddingHorizontal: spacing["2xl"],
   },
   statusText: {
-    color: "#1a1a2e",
-    marginTop: 16,
-    fontWeight: "600",
+    ...typography.titleMedium,
+    color: colors.textPrimary,
+    marginTop: spacing.lg,
   },
   successText: {
-    color: "#166534",
-    marginTop: 16,
-    fontWeight: "600",
+    ...typography.titleMedium,
+    color: colors.successDark,
+    marginTop: spacing.lg,
   },
   errorText: {
-    color: "#991b1b",
+    ...typography.body,
+    color: colors.dangerDark,
     textAlign: "center",
-    marginTop: 16,
+    marginTop: spacing.lg,
   },
 });

@@ -32,10 +32,12 @@ export async function GET(req: NextRequest) {
   return withCronLock(supabase, "monthly-invoices", 3600, async () => {
     const result = await runMonthlyInvoices(today);
     return apiJson({ ok: true, ...result, date: today.toISOString().slice(0, 10) });
-  }).then((lockResult) => {
-    if (!lockResult.acquired) {
-      return apiJson({ ok: true, skipped: "lock-held" });
-    }
-    return lockResult.value as ReturnType<typeof apiJson>;
-  }).catch((e) => apiInternalError(e, "monthly-invoices cron"));
+  })
+    .then((lockResult) => {
+      if (!lockResult.acquired) {
+        return apiJson({ ok: true, skipped: "lock-held" });
+      }
+      return lockResult.value as ReturnType<typeof apiJson>;
+    })
+    .catch((e) => apiInternalError(e, "monthly-invoices cron"));
 }

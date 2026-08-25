@@ -1,11 +1,14 @@
 import { useState, useCallback } from "react";
-import { View, FlatList, StyleSheet } from "react-native";
-import { Searchbar, Card, Text, FAB, ActivityIndicator } from "react-native-paper";
+import { View, FlatList, StyleSheet, Pressable } from "react-native";
+import { Text, FAB, ActivityIndicator, Icon } from "react-native-paper";
+import { TextInput as RNTextInput } from "react-native";
 import { router } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 
 import { supabase } from "@/lib/supabase";
 import { useAuthStore } from "@/stores/authStore";
+import { EmptyState } from "@/components/EmptyState";
+import { colors, spacing, radius, typography, shadows } from "@/constants/tokens";
 
 interface Customer {
   id: string;
@@ -44,56 +47,95 @@ export default function CustomersIndexScreen() {
 
   const renderItem = useCallback(
     ({ item }: { item: Customer }) => (
-      <Card
+      <Pressable
         style={styles.card}
-        mode="outlined"
         onPress={() => router.push(`/customers/${item.id}`)}
+        accessibilityRole="button"
+        accessibilityLabel={`${item.name} ${item.phone ?? ""}`}
       >
-        <Card.Content>
-          <Text variant="titleMedium" style={styles.name}>
-            {item.name}
-          </Text>
-          {item.name_kana && (
-            <Text variant="bodySmall" style={styles.kana}>
-              {item.name_kana}
-            </Text>
-          )}
+        <View style={styles.cardHeader}>
+          <View style={styles.customerIcon}>
+            <Icon source="account" size={20} color={colors.primary} />
+          </View>
+          <View style={styles.cardHeaderText}>
+            <Text style={styles.name}>{item.name}</Text>
+            {item.name_kana && (
+              <Text style={styles.kana}>{item.name_kana}</Text>
+            )}
+          </View>
+        </View>
+
+        <View style={styles.metaRow}>
           {item.phone && (
-            <Text variant="bodySmall" style={styles.sub}>
-              {item.phone}
-            </Text>
+            <View style={styles.metaItem}>
+              <Icon source="phone-outline" size={14} color={colors.textTertiary} />
+              <Text style={styles.metaText}>{item.phone}</Text>
+            </View>
           )}
           {item.email && (
-            <Text variant="bodySmall" style={styles.sub}>
-              {item.email}
-            </Text>
+            <View style={styles.metaItem}>
+              <Icon source="email-outline" size={14} color={colors.textTertiary} />
+              <Text style={styles.metaText}>{item.email}</Text>
+            </View>
           )}
-        </Card.Content>
-      </Card>
+        </View>
+
+        <View style={styles.chevron}>
+          <Icon source="chevron-right" size={20} color={colors.textTertiary} />
+        </View>
+      </Pressable>
     ),
     []
   );
 
   return (
     <View style={styles.container}>
-      <Searchbar
-        placeholder="名前・電話番号で検索"
-        value={search}
-        onChangeText={setSearch}
-        style={styles.searchbar}
-      />
+      {/* Search bar */}
+      <View style={styles.searchContainer}>
+        <View style={styles.searchBar}>
+          <Icon source="magnify" size={20} color={colors.textTertiary} />
+          <RNTextInput
+            style={styles.searchInput}
+            placeholder="名前・電話番号で検索"
+            placeholderTextColor={colors.textTertiary}
+            value={search}
+            onChangeText={setSearch}
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+          {search.length > 0 && (
+            <Pressable onPress={() => setSearch("")}>
+              <Icon source="close-circle" size={18} color={colors.textTertiary} />
+            </Pressable>
+          )}
+        </View>
+      </View>
+
       {isLoading ? (
-        <ActivityIndicator style={styles.loading} />
+        <ActivityIndicator style={styles.loading} color={colors.primary} />
       ) : (
         <FlatList
           data={customers}
           keyExtractor={(item) => item.id}
           renderItem={renderItem}
-          contentContainerStyle={styles.list}
+          contentContainerStyle={styles.listContent}
           onRefresh={refetch}
           refreshing={isLoading}
           ListEmptyComponent={
-            <Text style={styles.empty}>顧客が見つかりません</Text>
+            search.trim() ? (
+              <View style={styles.empty}>
+                <Icon source="magnify" size={48} color={colors.textTertiary} />
+                <Text style={styles.emptyTitle}>
+                  「{search}」に一致する顧客はありません
+                </Text>
+              </View>
+            ) : (
+              <EmptyState
+                icon="account-group-outline"
+                title="顧客がまだ登録されていません"
+                description="顧客を登録すると、車両や証明書と紐付けて管理できます"
+              />
+            )
           }
         />
       )}
@@ -101,7 +143,7 @@ export default function CustomersIndexScreen() {
         icon="plus"
         label="新規"
         style={styles.fab}
-        color="#ffffff"
+        color={colors.textOnPrimary}
         onPress={() => router.push("/customers/new")}
       />
     </View>
@@ -109,24 +151,102 @@ export default function CustomersIndexScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#fafafa" },
-  searchbar: { margin: 12, backgroundColor: "#ffffff" },
-  list: { padding: 12, paddingBottom: 80 },
-  card: { marginBottom: 8, backgroundColor: "#ffffff" },
-  name: { fontWeight: "700", color: "#1a1a2e" },
-  kana: { color: "#71717a", marginTop: 2 },
-  sub: { color: "#71717a", marginTop: 2 },
-  loading: { marginTop: 32 },
-  empty: { textAlign: "center", color: "#71717a", marginTop: 32 },
+  container: { flex: 1, backgroundColor: colors.background },
+  searchContainer: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.sm,
+  },
+  searchBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    height: 44,
+    gap: spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  searchInput: {
+    flex: 1,
+    ...typography.body,
+    color: colors.textPrimary,
+    padding: 0,
+  },
+  listContent: {
+    padding: spacing.lg,
+    paddingBottom: spacing["3xl"],
+    gap: spacing.md,
+  },
+  card: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.card,
+    padding: spacing.lg,
+    ...shadows.card,
+    position: "relative",
+  },
+  cardHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+  },
+  customerIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: radius.md,
+    backgroundColor: colors.primaryLight,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  cardHeaderText: { flex: 1 },
+  name: {
+    ...typography.titleSmall,
+    color: colors.textPrimary,
+  },
+  kana: {
+    ...typography.meta,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
+  metaRow: {
+    flexDirection: "row",
+    gap: spacing.lg,
+    marginTop: spacing.md,
+    marginLeft: 52,
+  },
+  metaItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+  },
+  metaText: {
+    ...typography.meta,
+    color: colors.textTertiary,
+  },
+  chevron: {
+    position: "absolute",
+    right: spacing.lg,
+    top: "50%",
+    marginTop: -10,
+  },
+  loading: { marginTop: spacing["3xl"] },
+  empty: {
+    alignItems: "center",
+    paddingTop: 80,
+    gap: spacing.sm,
+  },
+  emptyTitle: {
+    ...typography.titleSmall,
+    color: colors.textPrimary,
+    marginTop: spacing.lg,
+    textAlign: "center",
+  },
   fab: {
     position: "absolute",
-    right: 16,
-    bottom: 24,
-    backgroundColor: "#3b82f6",
-    elevation: 6,
-    shadowColor: "#000",
-    shadowOpacity: 0.25,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 3 },
+    right: spacing.lg,
+    bottom: spacing["2xl"],
+    backgroundColor: colors.primary,
+    ...shadows.fab,
   },
 });

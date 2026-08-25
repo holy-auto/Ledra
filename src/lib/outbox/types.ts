@@ -11,11 +11,7 @@ export type OutboxMethod = "POST" | "PUT" | "PATCH" | "DELETE";
 
 /** UI に表示するためのカテゴリ。アイコン分岐に使う。 */
 export type OutboxKind =
-  | "certificate_create"
-  | "certificate_image_upload"
-  | "certificate_activate"
-  | "reservation_update"
-  | "other";
+  "certificate_create" | "certificate_image_upload" | "certificate_activate" | "reservation_update" | "other";
 
 /**
  * multipart アタッチメントの定義。実際の Blob は別 store (outbox_blobs) に保存し、

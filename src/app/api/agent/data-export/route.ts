@@ -87,8 +87,8 @@ export async function GET(req: NextRequest) {
     const { data: agentRow } = await admin
       .from("agents")
       .select(
-        "id, company_name, contact_name, email, phone, industry, status, " +
-          "stripe_connect_account_id, stripe_connect_onboarded, created_at, updated_at",
+        "id, name, contact_name, contact_email, contact_phone, address, status, " +
+          "stripe_account_id, stripe_onboarding_done, created_at, updated_at",
       )
       .eq("id", agentId)
       .maybeSingle();
