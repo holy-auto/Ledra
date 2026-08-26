@@ -83,9 +83,26 @@ export interface ShakenshoData {
  * Calculate vehicle size class from dimensions (mm).
  * Volume thresholds in cubic meters:
  *   SS: < 8.0, S: 8.0-10.0, M: 10.0-12.0, L: 12.0-14.0, LL: 14.0-16.0, XL: 16.0+
+ *
+ * **DB の `calc_size_class_from_volume()` と同じ規則。**同じ規則が2箇所にある
+ * ので、閾値が食い違わないことを `sqlTsParity.test.ts` がマイグレーション本文
+ * から読んで検証している。片方だけ変えるとテストが落ちる。
+ *
+ * 寸法が揃わないときは **null**（SQL が NULL を返すのと同じ）。以前は
+ * `number` を受けて必ず文字列を返していたので、NaN が来ると全比較が false に
+ * なって **`"XL"`（最も高い区分）** を返した。呼び出し元5箇所すべてが手前で
+ * ガードしていたので到達しなかったが、**ガードを5箇所に置くより関数側で1回
+ * 弾く方が小さい**。1箇所忘れたときの誤りが「一番高い区分で見積もる」なので
+ * 呼び出し元の記憶に頼らない。
  */
-export function calcSizeClass(length_mm: number, width_mm: number, height_mm: number): string {
-  const volume = (length_mm * width_mm * height_mm) / 1e9;
+export function calcSizeClass(
+  length_mm: number | null | undefined,
+  width_mm: number | null | undefined,
+  height_mm: number | null | undefined,
+): string | null {
+  const dims = [length_mm, width_mm, height_mm];
+  if (!dims.every((d) => typeof d === "number" && Number.isFinite(d) && d > 0)) return null;
+  const volume = (length_mm! * width_mm! * height_mm!) / 1e9;
   if (volume < 8.0) return "SS";
   if (volume < 10.0) return "S";
   if (volume < 12.0) return "M";
