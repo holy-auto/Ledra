@@ -4,6 +4,26 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-08-26 本番へのマイグレーション適用が復旧（4回目で成功・未適用7本を適用）
+
+- `db-migrate` が **success**（run 32915211501）。**3回連続の失敗から復旧した。**
+- 本番の `schema_migrations` は 422 → **429件**。適用されたのは:
+  `20260824020000_payments_stripe_pi_unique` /
+  `20260826000001_audit_logs_indexes` / `000002_repair_drift_20260823` /
+  `000003_revoke_anon_from_secdef_rpcs` / `000004_pin_function_search_path_round2` /
+  `000005_repair_unreplayable_objects` / `000006_revoke_anon_round2`。
+- 適用の効果を実データで確認:
+  - `payments_stripe_payment_intent_id_key`（決済の重複防止インデックス）**存在する**
+  - `search_path` が固定されていない SECURITY DEFINER 関数 **0本**
+  - 未認証（anon）から呼べる SECURITY DEFINER 関数 **22本**
+    （RLS ヘルパー19＋公開証明書1＋保険会社の自己登録2。想定どおり）
+- 4回かかった理由は1つ ―― **MCP で本番へ直接当てた3件**が
+  `db-migrate.yml` の2つの不変条件を壊し、さらにその修復中に
+  適用済みファイルを改名して1つ目の条件を再び壊したこと。
+- **次に同じことをしないための手順**: MCP で本番へ当てたら、その場で
+  同バージョン名のファイルを repo に置く。改名の前に本番の
+  `schema_migrations` と1件ずつ突き合わせ、**適用済みのものは改名しない**。
+
 ## 2026-08-26 db-migrate を3回目で緑にする — 適用済みのファイルを改名してはいけない
 
 - #972 のマージで `db-migrate` が**3回目**の失敗（run 32914468133）。
