@@ -1,7 +1,6 @@
 name: DB types regenerate
 
-# main に supabase/migrations/** の変更が入ったら、本番スキーマから
-# src/types/db.generated.ts を作り直して PR を出す。
+# 本番スキーマから src/types/db.generated.ts を作り直して PR を出す。
 #
 # 必要な GitHub Secret (1 本だけ):
 #   - SUPABASE_DB_URL … db-migrate.yml と同じものを使う。
@@ -10,13 +9,23 @@ name: DB types regenerate
 #   SUPABASE_PROJECT_ID が未設定のまま4回連続で失敗していた
 #   ("Access token not provided.")。db-migrate.yml が同じ理由で --db-url に
 #   寄せているので、シークレットを2本増やすのではなく既にある1本に合わせる。
+#
+# push ではなく db-migrate の完了を待つ理由: 両方とも
+# `push: main, paths: supabase/migrations/**` で起動していたため、db-migrate が
+# 本番へ適用している最中に typegen が同じDBを覗いていた。**適用途中のスキーマを
+# 「正」として PR に出す**のは、古い型より質が悪い。4回とも失敗していたので
+# 表面化しなかっただけで、--db-url に直すと届いてしまう。
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - "supabase/migrations/**"
+  workflow_run:
+    workflows: ["DB migrate (apply to production)"]
+    types: [completed]
   workflow_dispatch:
+
+# 同じDBへの introspect を並走させない
+concurrency:
+  group: db-typegen
+  cancel-in-progress: false
 
 permissions:
   contents: write
@@ -24,16 +33,17 @@ permissions:
 
 jobs:
   typegen:
+    # 適用が失敗したときのスキーマから型を作らない
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
 
+      # npm ci は入れない。このジョブが使うのはグローバルの supabase CLI と
+      # create-pull-request（自前バンドル）だけで、node_modules を一度も読まない
       - uses: actions/setup-node@v7
         with:
           node-version: 22
-          cache: npm
-
-      - run: npm ci --prefer-offline --no-audit
 
       - name: Install Supabase CLI
         run: npm install -g supabase
@@ -49,10 +59,19 @@ jobs:
             exit 1
           fi
           mkdir -p src/types
+          # --query-timeout の既定は 15s。--project-id のときは Supabase 側で
+          # 生成していたので効かなかったが、--db-url ではランナーから pooler 越しに
+          # カタログを引くのでこの上限に当たりうる（migrations は500本超）。
+          # 当たると接続不良にしか見えないエラーで落ちるので余裕を持たせる
           supabase gen types typescript \
             --db-url "$SUPABASE_DB_URL" \
             --schema public \
-            > src/types/db.generated.ts
+            --query-timeout 60s \
+            > src/types/db.generated.ts.tmp
+          # 出力先を直接潰さない。CLI はエラーも **stdout** に書くので
+          # （実測: `{"_tag":"Error",...}` がファイルに残る）、リダイレクト先を
+          # 本番のファイルにすると失敗時に型定義がエラーJSONに化ける
+          mv src/types/db.generated.ts.tmp src/types/db.generated.ts
 
       - name: Open PR if types changed
         uses: peter-evans/create-pull-request@v8
@@ -65,5 +84,8 @@ jobs:
           body: |
             自動生成された Supabase 型定義の更新です。
             `supabase/migrations/*` の変更を反映しています。
-          branch: chore/db-typegen-${{ github.run_id }}
+          # 固定名にする。run_id を混ぜると実行のたびに**別の PR**が開き、
+          # 同じタイトルの互いに衝突する PR が積み上がる（delete-branch は
+          # クローズ時にしか効かないので防げない）。固定なら既存 PR を更新する
+          branch: chore/db-typegen
           delete-branch: true

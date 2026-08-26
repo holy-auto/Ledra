@@ -12,16 +12,26 @@
   を回す。Vercel の GitHub 連携が 8/19〜8/22 のどこかで止まり、本番が `d2e4736`（8/17）
   のまま9コミット取り残されていた。デプロイ記録が Canceled も Error も含めて1件も
   作られていないため、リポジトリ側から明示的に叩ける経路を用意した。
-  `VERCEL_TOKEN` / `VERCEL_ORG_ID` / `VERCEL_PROJECT_ID` が**未設定なら緑のまま
-  スキップする**（ここで落とすと main が恒久的に赤くなり、本当の失敗が埋もれる）。
-  `vercel pull` を先に回すのは、Vercel 側に登録された環境変数を取り込むため。
+  `VERCEL_TOKEN` / `VERCEL_ORG_ID` / `VERCEL_PROJECT_ID` が**未設定でもジョブは
+  落とさない**（落とすと main が恒久的に赤くなり、本当の失敗が埋もれる。db-migrate は
+  2026-08-02〜08-15 の13日間それで見逃された）。ただし `::warning::` とサマリで
+  「デプロイしていません」と出す —— 印の付かない緑は「デプロイできている」と読め、
+  このワークフローが直そうとしている無音そのものになる。失敗時は `db-migrate.yml` と
+  同じ `SLACK_WEBHOOK_URL` へ通知する。`vercel pull` を先に回すのは Vercel 側に
+  登録された環境変数を取り込むため。CLI はバージョンを固定した（`@latest` だと
+  破壊的変更が PR も CI も通らずに本番へ直行する）。docs だけのマージでは走らせない。
 - **`db-typegen.yml`** — `--project-id` + アクセストークンをやめ、`db-migrate.yml` と
   同じ `SUPABASE_DB_URL` 1本に寄せた。4回連続で失敗していた原因は、
   `SUPABASE_PROJECT_ID` と `SUPABASE_ACCESS_TOKEN` が**空**だったこと。
   `db-migrate.yml` は同じ理由で既に `--db-url` へ移っており、db-typegen だけが
   取り残されていた（新しい判断ではなく、既存の規約への追従）。
   未設定時は CLI の `Access token not provided.` 任せにせず名指しで落とす。
-  `create-pull-request` は `add-paths` で生成物1ファイルだけに限定した。
+  `create-pull-request` は `add-paths` で生成物1ファイルだけに限定し、ブランチ名を
+  固定した（`run_id` を混ぜると実行のたびに別の PR が開き、同じタイトルの衝突する
+  PR が積み上がる）。起動も `push` から **db-migrate の成功後**に変更 —— 両方が
+  同じトリガーで並走しており、**適用途中のスキーマから型を作りうる**状態だった。
+  出力は一時ファイルに書いて成功時だけ差し替える（CLI はエラーも stdout に書くので、
+  直接リダイレクトすると失敗時に型定義がエラーJSONに化ける。実行して確認済み）。
 
 この修正で分かったこと: 実機テストの指摘⑦⑧（カード番号入力と QR が出ない）は
 モバイルの不具合ではなく、**本番が 8/17 のコードのままだったこと**が原因。

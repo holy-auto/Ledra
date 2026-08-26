@@ -33,7 +33,7 @@
     "check:bundle-size": "node scripts/check-bundle-size.js",
     "check:schema": "node scripts/check-schema.mjs",
     "build:analyze": "ANALYZE=true next build",
-    "db:typegen": "supabase gen types typescript --db-url \"$SUPABASE_DB_URL\" --schema public > src/types/db.generated.ts"
+    "db:typegen": "supabase gen types typescript --db-url \"${SUPABASE_DB_URL:?db-migrate.yml と同じ接続URIを設定してください}\" --schema public > src/types/db.generated.ts.tmp && mv src/types/db.generated.ts.tmp src/types/db.generated.ts"
   },
   "overrides": {
     "picomatch": "^4.0.4",
