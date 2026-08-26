@@ -1,0 +1,58 @@
+-- ============================================================
+-- 未認証（anon）から呼べてはいけない SECURITY DEFINER 関数の EXECUTE を絞る
+--
+-- 適用状況: 2026-08-23 に本番へ適用済み。記録されたバージョンは
+--   `20260823235804`（このファイル名の 20260823170000 とは一致しない）。
+--   実行後に has_function_privilege で全16本の anon = false を確認済み。
+--   再度当たっても revoke/grant は冪等なので実害は無い。
+--
+-- 経緯:
+--   Supabase の security advisor の指摘を `has_function_privilege` で実測したところ、
+--   `anon` が `/rest/v1/rpc/<name>` から呼べる SECURITY DEFINER 関数が 53 本あった。
+--   うち2本は**関数の中に呼び出し元の検査が無い**（`auth.uid()` も
+--   `tenant_memberships` も参照しない）:
+--
+--   - `pos_checkout(...)`      : 引数の p_tenant_id / p_user_id をそのまま使って
+--                                payments と documents を作る
+--   - `upsert_agent_user(...)` : agent_users に任意の role で upsert する
+--
+--   同じく検査が無く、テナント ID を引数で受け取るもの:
+--   - `billing_analytics_stats(p_tenant_id, p_customer_id)` / `management_kpi_stats(p_tenant_id)`
+--
+-- **重要（この migration を書き直した理由）**:
+--   最初は `revoke execute ... from anon` だけを書いていたが、これは**何も変えない**。
+--   関数の EXECUTE は既定で PUBLIC に付与されており、`anon` の権限はそこ由来なので、
+--   anon から revoke しても PUBLIC の付与（`=X/postgres`）が残る。
+--   PostgreSQL 16 で実測:
+--     作成直後          : has_function_privilege('anon', f, 'EXECUTE') = true, proacl = NULL
+--     revoke from anon  : true のまま（proacl = {=X/postgres,postgres=X/postgres}）
+--     revoke from public: false
+--   したがって **必ず PUBLIC から revoke し、必要なロールへ grant し直す**。
+--   既存の `20260616000002_lock_down_server_only_secdef_functions.sql` も同じ形。
+--
+-- 方針:
+--   (A) 呼び出し元の検査が無く、アプリ側のルートが既に権限確認をしているもの
+--       → PUBLIC / anon / authenticated から revoke し、service_role にだけ grant。
+--         アプリはサービスロールのクライアントで呼ぶよう合わせて変更した。
+--   (B) 関数の中で `auth.uid()` や membership を見ているもの、および利用者トークンで
+--       呼ぶ必要があるもの
+--       → PUBLIC / anon からのみ revoke し、authenticated と service_role に grant。
+--   (C) トリガ専用の関数（RPC から呼ぶ必要が一切無い）
+--       → PUBLIC / anon / authenticated から revoke。トリガは所有者の権限で動くので
+--         どのロールにも grant しない。
+--
+-- 対象外:
+--   - RLS ポリシーの中で参照される 19 本（`my_tenant_ids` など）。ポリシー内の関数は
+--     評価する側のロールで実行されるため、anon から剥奪すると公開ページが壊れる。
+--   - `register_insurer_v2`（保険会社の自己登録。anon が必要）。
+--
+-- 実装メモ: 関数が無い環境で止まらないよう、存在するものだけに当てる。
+--           オーバーロード（同名で引数違い）も全て拾う。
+-- ============================================================
+
+-- ------------------------------------------------------------
+-- **このファイルは実行しない。** 本番へは `20260823235804` として適用された
+-- （適用時に採番されたバージョンがファイル名と一致しなかったため）。
+-- 実体は 20260823235804_revoke_anon_from_secdef_rpcs.sql にある。
+-- ファイルを消すとマイグレーションの履歴が飛ぶので、空のまま残す。
+-- ------------------------------------------------------------

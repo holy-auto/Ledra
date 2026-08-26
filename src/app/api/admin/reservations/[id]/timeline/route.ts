@@ -59,11 +59,11 @@ export async function GET(_req: NextRequest, ctx: RouteContext) {
     if (cert?.id) {
       const { data } = await supabase
         .from("notification_logs")
-        .select("status, created_at")
+        .select("status, sent_at")
         .eq("type", "post_issue")
         .eq("target_id", cert.id)
         .eq("tenant_id", tenantId)
-        .order("created_at", { ascending: false })
+        .order("sent_at", { ascending: false })
         .limit(1)
         .maybeSingle();
       followUp = data ? { status: (data.status as string | null) ?? null } : null;

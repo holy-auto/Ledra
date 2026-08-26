@@ -9,13 +9,13 @@ interface CardProps extends HTMLAttributes<HTMLDivElement> {
 }
 
 const VARIANT_CLASSES: Record<CardVariant, string> = {
-  default:  "glass-card",
+  default: "glass-card",
   elevated: "glass-card shadow-lg",
-  inset:    "rounded-[var(--radius-lg)] bg-inset",
+  inset: "rounded-[var(--radius-lg)] bg-inset",
 };
 
 const PADDING_CLASSES: Record<NonNullable<CardProps["padding"]>, string> = {
-  none:    "",
+  none: "",
   compact: "p-4",
   default: "p-5",
 };
@@ -28,10 +28,7 @@ export default function Card({
   ...props
 }: CardProps) {
   return (
-    <div
-      className={`${VARIANT_CLASSES[variant]} ${PADDING_CLASSES[padding]} ${className}`}
-      {...props}
-    >
+    <div className={`${VARIANT_CLASSES[variant]} ${PADDING_CLASSES[padding]} ${className}`} {...props}>
       {children}
     </div>
   );

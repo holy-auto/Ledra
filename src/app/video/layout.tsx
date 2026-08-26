@@ -17,9 +17,7 @@ export const metadata: Metadata = {
 export default function VideoLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="ja">
-      <body className={`${notoSansJP.variable} font-[family-name:var(--font-noto)]`}>
-        {children}
-      </body>
+      <body className={`${notoSansJP.variable} font-[family-name:var(--font-noto)]`}>{children}</body>
     </html>
   );
 }
