@@ -84,16 +84,23 @@ export interface ShakenshoData {
  * Volume thresholds in cubic meters:
  *   SS: < 8.0, S: 8.0-10.0, M: 10.0-12.0, L: 12.0-14.0, LL: 14.0-16.0, XL: 16.0+
  *
- * **DB の `calc_size_class_from_volume()` と同じ規則。**同じ規則が2箇所にある
- * ので、閾値が食い違わないことを `sqlTsParity.test.ts` がマイグレーション本文
- * から読んで検証している。片方だけ変えるとテストが落ちる。
+ * **DB の `calc_size_class_from_volume()` と同じ答えを返すこと。**同じ規則が
+ * 2箇所にあるので、`supabase/__tests__/sqlTsParity.test.ts` がマイグレーション
+ * 本文から規則を読んで突き合わせている。片方だけ変えると落ちる。
  *
- * 寸法が揃わないときは **null**（SQL が NULL を返すのと同じ）。以前は
- * `number` を受けて必ず文字列を返していたので、NaN が来ると全比較が false に
- * なって **`"XL"`（最も高い区分）** を返した。呼び出し元5箇所すべてが手前で
- * ガードしていたので到達しなかったが、**ガードを5箇所に置くより関数側で1回
- * 弾く方が小さい**。1箇所忘れたときの誤りが「一番高い区分で見積もる」なので
- * 呼び出し元の記憶に頼らない。
+ * **小数第2位に丸めてから分類する。** SQL 側の呼び出しは4箇所とも
+ * `ROUND((l*w*h)/1000000000, 2)` を渡し、`vehicle_size_master.volume_m3` 自体も
+ * `numeric(5,2)` の生成列。丸めないと境界の直下で答えが割れる ——
+ * 4400×1765×1545mm は生の体積 11.99847 で TS は "M"、DB は ROUND して 12.00 で
+ * "L" になっていた。**サイズ区分は価格帯に効くので、これは金額が変わる。**
+ *
+ * 寸法が有限値でないときは **null**（SQL の `vol_m3 IS NULL THEN NULL` と同じ）。
+ * 以前は必ず文字列を返していたので、NaN が来ると全比較が false になって
+ * **"XL"（最も高い区分）** を返した。呼び出し元5箇所すべてが手前でガードして
+ * いたので到達しなかったが、**ガードを5箇所に置くより関数側で1回弾く方が
+ * 小さい**（CLAUDE.md「呼び出し元ごとでなく共有関数を1回直す」）。
+ * 0 や負値は弾かない —— SQL は 0 を NULL 扱いせず `0 < 8.0` で "SS" を返すので、
+ * ここで弾くと**新しいズレを作ってしまう。**
  */
 export function calcSizeClass(
   length_mm: number | null | undefined,
@@ -101,8 +108,9 @@ export function calcSizeClass(
   height_mm: number | null | undefined,
 ): string | null {
   const dims = [length_mm, width_mm, height_mm];
-  if (!dims.every((d) => typeof d === "number" && Number.isFinite(d) && d > 0)) return null;
-  const volume = (length_mm! * width_mm! * height_mm!) / 1e9;
+  if (!dims.every((d) => typeof d === "number" && Number.isFinite(d))) return null;
+  const raw = (length_mm! * width_mm! * height_mm!) / 1e9;
+  const volume = Math.round(raw * 100) / 100; // SQL 側の ROUND(_, 2) と揃える
   if (volume < 8.0) return "SS";
   if (volume < 10.0) return "S";
   if (volume < 12.0) return "M";
