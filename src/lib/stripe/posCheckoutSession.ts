@@ -12,7 +12,7 @@
  *
  * 決済手段を明示列挙しているのは意図的。dynamic payment methods に任せると
  * コンビニ払い・銀行振込のような**非同期決済**が候補に出てしまい、レジの
- * ポーリングが永久に paid にならない（客は店を出た、売上は立たない）。
+ * ポーリングが永久に paid にならない（客は帰った、売上は立たない）。
  * ここに足してよいのは即時確定する手段だけ。
  */
 import type Stripe from "stripe";
@@ -32,38 +32,63 @@ export const PAYPAY_MAX_JPY = 1_000_000;
 const PAYPAY = "paypay" as Stripe.Checkout.SessionCreateParams.PaymentMethodType;
 
 /**
- * ponytail: PayPay 非対応アカウントを毎回1往復無駄にしないための
- * プロセス内メモ。プロセスごと・TTL 付きなので、Stripe 側で審査が通れば
- * 遅くとも TTL 後には PayPay が出る。
- * 上限: インスタンス単位でしか効かない。恒久的にしたいなら
- * `account.updated` webhook で `capabilities.paypay_payments` を
- * tenants に同期して、この推測を捨てる。
+ * ponytail: PayPay を出せるアカウントかどうかのプロセス内メモ。毎回 1 往復
+ * 無駄にしないためだけのもので、真実は常に Stripe 側にある（TTL 経過後に
+ * また試すので、審査が通れば遅くとも TTL 後には PayPay が出る）。
+ * 上限: インスタンス単位でしか効かない。恒久的にしたいなら `account.updated`
+ * webhook で `capabilities.paypay_payments` を tenants に同期して、この推測を捨てる。
  */
-const PAYPAY_UNSUPPORTED_TTL_MS = 10 * 60_000;
-const paypayUnsupportedUntil = new Map<string, number>();
+const SUPPORTED_TTL_MS = 60 * 60_000;
+const UNSUPPORTED_TTL_MS = 10 * 60_000;
+const paypaySupport = new Map<string, { supported: boolean; until: number }>();
+
+/**
+ * 未知のアカウントを「探る」呼び出しは同時に 1 件までにする。
+ *
+ * なぜ要るか: 未有効化アカウントへの `paypay` 付き作成は 400 で落ちる。
+ * `getStripeClient()` の全呼び出しは `withRetry("stripe", ...)` を通っており、
+ * **非リトライ対象の失敗も circuit breaker の連続失敗に数えられる**
+ * （5連続で 30 秒 open → 請求書も Connect も巻き添え）。探りを 1 件に絞れば、
+ * 直後のカードのみ作成（成功）がカウンタを 0 に戻すので連続失敗が積み上がらない。
+ */
+let probing = false;
 
 function accountKey(options?: Stripe.RequestOptions): string {
   return options?.stripeAccount ?? "platform";
 }
 
-/** この金額・このアカウントで PayPay を候補に入れてよいか。 */
-export function shouldOfferPaypay(amountJpy: number, key: string): boolean {
-  if (!Number.isFinite(amountJpy) || amountJpy < PAYPAY_MIN_JPY || amountJpy > PAYPAY_MAX_JPY) return false;
-  const until = paypayUnsupportedUntil.get(key);
-  return until === undefined || until <= Date.now();
+function knownSupport(key: string): boolean | undefined {
+  const memo = paypaySupport.get(key);
+  if (memo === undefined || memo.until <= Date.now()) return undefined;
+  return memo.supported;
+}
+
+function remember(key: string, supported: boolean): void {
+  paypaySupport.set(key, {
+    supported,
+    until: Date.now() + (supported ? SUPPORTED_TTL_MS : UNSUPPORTED_TTL_MS),
+  });
+}
+
+/** PayPay で払える金額か。 */
+export function inPaypayRange(amountJpy: number): boolean {
+  return Number.isFinite(amountJpy) && amountJpy >= PAYPAY_MIN_JPY && amountJpy <= PAYPAY_MAX_JPY;
 }
 
 /**
  * PayPay 未有効化アカウントの 400 か。
  *
+ * stripe-node は `.type` に**クラス名**（`StripeInvalidRequestError`）を、
+ * `.rawType` に API の型（`invalid_request_error`）を入れる。片方だけ見ると
+ * 判定が常に false になり、**フォールバックが丸ごと死ぬ**ので両方見る。
+ *
  * カードは Connect オンボーディング済みが前提なので、`payment_method_types` を
- * 咎める 400 は実質 PayPay 側。取りこぼすと会計そのものが失敗するので、
- * 判定は広めに取り、カードのみでの再試行に賭ける（本当の失敗なら2回目で同じ
- * エラーが上がる）。
+ * 咎める 400 は実質 PayPay 側。取りこぼすと会計そのものが失敗するので判定は
+ * 広めに取り、カードのみでの再試行に賭ける（本当の失敗なら2回目で同じエラーが上がる）。
  */
 function isPaymentMethodRejection(err: unknown): boolean {
-  const e = err as { type?: string; param?: string; message?: string } | null;
-  if (e?.type !== "invalid_request_error") return false;
+  const e = err as { type?: string; rawType?: string; param?: string; message?: string } | null;
+  if (e?.rawType !== "invalid_request_error" && e?.type !== "StripeInvalidRequestError") return false;
   return /paypay|payment_method_types/i.test(`${e.param ?? ""} ${e.message ?? ""}`);
 }
 
@@ -78,17 +103,29 @@ export async function createPosCheckoutSession(
   options?: Stripe.RequestOptions,
 ): Promise<Stripe.Checkout.Session> {
   const key = accountKey(options);
+  const support = knownSupport(key);
+  // 未知のアカウントは 1 件ずつ探る。探り中の同時会計はカードのみで通す
+  // （PayPay が出ないだけで、会計は止まらない）
+  const probe = support === undefined && !probing;
 
-  if (shouldOfferPaypay(amountJpy, key)) {
+  if (inPaypayRange(amountJpy) && (support === true || probe)) {
+    if (probe) probing = true;
     try {
-      return await stripe.checkout.sessions.create({ ...params, payment_method_types: ["card", PAYPAY] }, options);
+      const session = await stripe.checkout.sessions.create(
+        { ...params, payment_method_types: ["card", PAYPAY] },
+        options,
+      );
+      remember(key, true);
+      return session;
     } catch (e) {
       if (!isPaymentMethodRejection(e)) throw e;
-      paypayUnsupportedUntil.set(key, Date.now() + PAYPAY_UNSUPPORTED_TTL_MS);
+      remember(key, false);
       logger.info("pos checkout: paypay unavailable, falling back to card", {
         account: key,
         error: e instanceof Error ? e.message : String(e),
       });
+    } finally {
+      if (probe) probing = false;
     }
   }
 
