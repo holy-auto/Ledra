@@ -83,14 +83,19 @@ export async function GET(req: NextRequest) {
     const { admin, tenantId } = createTenantScopedAdmin(caller.tenantId);
 
     // Fetch the tenant row itself (single row, separate query).
-    const { data: tenantRow } = await admin
+    // 法定の開示文書なので、取得に失敗したら部分的な内容を出さずに止める
+    // （以前は error を捨てており、存在しない列で 400 になっても tenant が null の
+    //  まま開示文書が出ていた）
+    const { data: tenantRow, error: tenantErr } = await admin
       .from("tenants")
+      // 注: tenants に updated_at 列は無い（文字列を連結していたため検査を素通りしていた）
       .select(
         "id, slug, name, category, prefecture, contact_email, contact_phone, registration_number, " +
-          "stripe_connect_account_id, stripe_connect_onboarded, plan_tier, created_at, updated_at",
+          "stripe_connect_account_id, stripe_connect_onboarded, plan_tier, created_at",
       )
       .eq("id", tenantId)
       .maybeSingle();
+    if (tenantErr) return apiInternalError(tenantErr, "admin/data-export tenant");
 
     const [
       certificates,

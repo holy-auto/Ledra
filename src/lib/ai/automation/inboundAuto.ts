@@ -32,6 +32,7 @@ import {
   shouldAutoReplyRoughEstimate,
   decideInboundCommit,
 } from "./orchestrator";
+import { storeIdOrNull } from "@/lib/stores/resolveStoreId";
 
 const AUTO_EXTRACT_ENDPOINT = "/api/line/webhook#auto-extract";
 
@@ -460,6 +461,7 @@ async function autoCreateReservation(
     const { error } = await admin.from("reservations").insert({
       id,
       tenant_id: input.tenantId,
+      store_id: await storeIdOrNull(admin, input.tenantId, "inboundAuto"),
       customer_id: input.customerId,
       vehicle_id: vehicleId,
       title,
@@ -552,7 +554,8 @@ async function autoCreateCustomer(
       id,
       tenant_id: input.tenantId,
       name: input.name,
-      source: `ai_auto_create_${input.channel ?? "unknown"}`,
+      // customers の実列は source_system（source は存在しない）
+      source_system: `ai_auto_create_${input.channel ?? "unknown"}`,
     };
     if (input.lineUserId) {
       row.line_user_id = input.lineUserId;

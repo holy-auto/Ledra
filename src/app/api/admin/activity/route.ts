@@ -95,7 +95,7 @@ export async function GET(req: NextRequest) {
       const reservationsPromise = (async () => {
         const { data, error } = await admin
           .from("reservations")
-          .select("id, scheduled_date, scheduled_time, created_at")
+          .select("id, scheduled_date, start_time, created_at")
           .eq("tenant_id", tenantId)
           .gte("created_at", since)
           .order("created_at", { ascending: false })
@@ -159,7 +159,7 @@ export async function GET(req: NextRequest) {
 
       for (const r of reservations) {
         const datePart = r.scheduled_date ?? "";
-        const timePart = r.scheduled_time ? ` ${r.scheduled_time}` : "";
+        const timePart = r.start_time ? ` ${r.start_time}` : "";
         activities.push({
           type: "reservation_created",
           title: "予約を登録",

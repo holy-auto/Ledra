@@ -190,6 +190,9 @@ export default function PosClient() {
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
   const [qrSessionId, setQrSessionId] = useState<string | null>(null);
   const [qrError, setQrError] = useState<string | null>(null);
+  // 決済は済んだが記録に失敗したセッション。**これがある間は新しいQRを出させない**
+  // （出すと客が二重に請求される）
+  const [pendingRecordSessionId, setPendingRecordSessionId] = useState<string | null>(null);
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // ── Mode switch reset ──
@@ -349,10 +352,86 @@ export default function PosClient() {
     };
   }, []);
 
+  /**
+   * 決済済みの Checkout Session を Ledra に記録する。
+   *
+   * **ポーリングの完了時と、記録に失敗した後のやり直しの両方から呼ぶ。**
+   * やり直しで新しいセッションを作ると**客が二重に請求される**ので、
+   * 同じ `sessionId` を送り直す（サーバが PaymentIntent で1件に抑える）。
+   */
+  const recordQrSale = useCallback(
+    async (sessionId: string) => {
+      setQrError(null);
+      setQrStep("recording");
+      try {
+        const checkoutRes = await fetch("/api/admin/pos/checkout", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            reservation_id: mode === "reservation" ? selected?.id : undefined,
+            customer_id:
+              mode === "reservation"
+                ? selected?.customer_id
+                : mode === "invoice"
+                  ? (loadedInvoice?.customer_id ?? undefined)
+                  : undefined,
+            payment_method: "card",
+            amount,
+            items_json: checkoutItems,
+            tax_rate: 10,
+            note: note || undefined,
+            // 同じ決済で2件目を作らせない。**サーバがこのセッションを Stripe から
+            // 取り直して**支払済みと金額を確かめる（こちらの申告は信じない）
+            checkout_session_id: sessionId,
+            create_receipt: true,
+          }),
+        });
+        const checkoutData = await checkoutRes.json();
+        if (!checkoutRes.ok) throw new Error(checkoutData?.error ?? "決済の記録に失敗しました");
+
+        // 応答は { ok, result, inventory }。封筒のまま入れると
+        // 会計完了パネルが「お会計 -」・領収書番号なしになる
+        setResult(checkoutData.result ?? checkoutData);
+        setPendingRecordSessionId(null);
+
+        if (mode === "invoice" && loadedInvoice) {
+          const payRes = await fetch("/api/admin/invoices", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              id: loadedInvoice.id,
+              status: "paid",
+              payment_date: new Date().toISOString().slice(0, 10),
+            }),
+          });
+          // 決済は完了しているため、入金ステータス更新の失敗は握り潰さず可視化する
+          if (!payRes.ok) {
+            setQrError(
+              "決済は完了しましたが、請求書の入金ステータス更新に失敗しました。請求書一覧から手動で入金処理してください。",
+            );
+          }
+        }
+        setQrStep("idle");
+        await mutate();
+      } catch (e) {
+        // **決済は済んでいる。**「記録中...」のまま止めると、店員はカードが
+        // 切られたことにも失敗にも気づけない。やり直せる状態にして見せる
+        setPendingRecordSessionId(sessionId);
+        setQrError(
+          (e instanceof Error ? e.message : "決済の記録に失敗しました") +
+            "（カードは決済済みです。「記録をやり直す」を押してください。新しくQRを出すと二重に請求されます）",
+        );
+        setQrStep("error");
+      }
+    },
+    [mode, selected, loadedInvoice, amount, checkoutItems, note, mutate],
+  );
+
   // ── QR Code card payment flow ──
   const handleCardPaymentQr = useCallback(async () => {
     setQrStep("creating");
     setQrError(null);
+    setPendingRecordSessionId(null);
     setQrDataUrl(null);
     setQrSessionId(null);
 
@@ -398,8 +477,12 @@ export default function PosClient() {
       // 3. ポーリング開始 (2秒間隔, 最大5分)
       let attempts = 0;
       const maxAttempts = 150; // 5分 = 150 x 2秒
+      // 通信が2秒より遅いと tick が重なる。`clearInterval` だけでは、既に走り出した
+      // 回を止められず **2回記録してしまう**
+      let done = false;
 
       pollingRef.current = setInterval(async () => {
+        if (done) return;
         attempts++;
         if (attempts > maxAttempts) {
           if (pollingRef.current) clearInterval(pollingRef.current);
@@ -416,54 +499,13 @@ export default function PosClient() {
           const statusData = await statusRes.json();
 
           if (statusData.payment_status === "paid") {
+            done = true;
             if (pollingRef.current) clearInterval(pollingRef.current);
             pollingRef.current = null;
             setQrStep("paid");
 
-            // 4. Ledra DB に記録
-            setQrStep("recording");
-            const checkoutRes = await fetch("/api/admin/pos/checkout", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                reservation_id: mode === "reservation" ? selected?.id : undefined,
-                customer_id:
-                  mode === "reservation"
-                    ? selected?.customer_id
-                    : mode === "invoice"
-                      ? (loadedInvoice?.customer_id ?? undefined)
-                      : undefined,
-                payment_method: "card",
-                amount,
-                items_json: checkoutItems,
-                tax_rate: 10,
-                note: note || undefined,
-                create_receipt: true,
-              }),
-            });
-            const checkoutData = await checkoutRes.json();
-            if (!checkoutRes.ok) throw new Error(checkoutData?.error ?? "決済の記録に失敗しました");
-
-            setResult(checkoutData);
-            if (mode === "invoice" && loadedInvoice) {
-              const payRes = await fetch("/api/admin/invoices", {
-                method: "PUT",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  id: loadedInvoice.id,
-                  status: "paid",
-                  payment_date: new Date().toISOString().slice(0, 10),
-                }),
-              });
-              // 決済は完了しているため、入金ステータス更新の失敗は握り潰さず可視化する
-              if (!payRes.ok) {
-                setQrError(
-                  "決済は完了しましたが、請求書の入金ステータス更新に失敗しました。請求書一覧から手動で入金処理してください。",
-                );
-              }
-            }
-            setQrStep("idle");
-            await mutate();
+            // 4. Ledra DB に記録（失敗しても同じセッションでやり直せる）
+            await recordQrSale(sessionId);
           } else if (statusData.status === "expired") {
             if (pollingRef.current) clearInterval(pollingRef.current);
             pollingRef.current = null;
@@ -471,14 +513,16 @@ export default function PosClient() {
             setQrStep("error");
           }
         } catch {
-          // ポーリング中のネットワークエラーは無視して次回リトライ
+          // ポーリング中のネットワークエラーは無視して次回リトライ。
+          // 記録の失敗は recordQrSale の中で拾って画面に出す
         }
       }, 2000);
     } catch (e) {
       setQrError(e instanceof Error ? e.message : "QRコードの生成に失敗しました");
       setQrStep("error");
     }
-  }, [selected, loadedInvoice, amount, checkoutItems, note, mutate, mode]);
+    // recordQrSale を入れないと、古い金額・明細のまま記録してしまう
+  }, [selected, loadedInvoice, amount, checkoutItems, note, mutate, mode, recordQrSale]);
 
   // ── Cancel QR payment ──
   const handleCancelQr = useCallback(() => {
@@ -490,6 +534,7 @@ export default function PosClient() {
     setQrDataUrl(null);
     setQrSessionId(null);
     setQrError(null);
+    setPendingRecordSessionId(null);
     setProcessing(false);
   }, []);
 
@@ -532,7 +577,7 @@ export default function PosClient() {
       });
       const j = await res.json();
       if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
-      setResult(j);
+      setResult(j.result ?? j);
       if (mode === "invoice" && loadedInvoice) {
         const payRes = await fetch("/api/admin/invoices", {
           method: "PUT",
@@ -1054,10 +1099,12 @@ export default function PosClient() {
                       </button>
                       <button
                         type="button"
-                        onClick={handleCheckout}
+                        onClick={() =>
+                          pendingRecordSessionId ? recordQrSale(pendingRecordSessionId) : handleCheckout()
+                        }
                         className="flex-1 rounded-xl bg-[#635BFF] py-2.5 text-sm font-semibold text-white shadow-lg transition-transform active:scale-95"
                       >
-                        {"再試行"}
+                        {pendingRecordSessionId ? "記録をやり直す" : "再試行"}
                       </button>
                     </div>
                   </div>

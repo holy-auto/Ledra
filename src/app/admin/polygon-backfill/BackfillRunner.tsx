@@ -109,23 +109,17 @@ export default function BackfillRunner({ enabled }: { enabled: boolean }) {
         <div className="grid gap-4 sm:grid-cols-3 text-sm">
           <div className="rounded-xl bg-base p-4">
             <div className="text-xs text-muted">未記録</div>
-            <div className="mt-1 text-2xl font-semibold text-warning">
-              {loading ? "…" : (stats?.pending ?? 0)}
-            </div>
+            <div className="mt-1 text-2xl font-semibold text-warning">{loading ? "…" : (stats?.pending ?? 0)}</div>
             <div className="text-xs text-muted">件</div>
           </div>
           <div className="rounded-xl bg-base p-4">
             <div className="text-xs text-muted">記録済</div>
-            <div className="mt-1 text-2xl font-semibold text-success">
-              {loading ? "…" : (stats?.anchored ?? 0)}
-            </div>
+            <div className="mt-1 text-2xl font-semibold text-success">{loading ? "…" : (stats?.anchored ?? 0)}</div>
             <div className="text-xs text-muted">件</div>
           </div>
           <div className="rounded-xl bg-base p-4">
             <div className="text-xs text-muted">最大バッチサイズ</div>
-            <div className="mt-1 text-2xl font-semibold text-primary">
-              {stats?.max_batch_size ?? 20}
-            </div>
+            <div className="mt-1 text-2xl font-semibold text-primary">{stats?.max_batch_size ?? 20}</div>
             <div className="text-xs text-muted">件/リクエスト</div>
           </div>
         </div>
@@ -138,7 +132,9 @@ export default function BackfillRunner({ enabled }: { enabled: boolean }) {
               min={1}
               max={stats?.max_batch_size ?? 20}
               value={limit}
-              onChange={(e) => setLimit(Math.max(1, Math.min(stats?.max_batch_size ?? 20, Number(e.target.value) || 1)))}
+              onChange={(e) =>
+                setLimit(Math.max(1, Math.min(stats?.max_batch_size ?? 20, Number(e.target.value) || 1)))
+              }
               className="w-28 rounded-lg border border-border-default bg-base px-3 py-2 text-sm text-primary"
             />
           </div>
@@ -150,12 +146,7 @@ export default function BackfillRunner({ enabled }: { enabled: boolean }) {
           >
             {running ? "記録中…" : `${limit} 件をアンカリング`}
           </button>
-          <button
-            type="button"
-            onClick={fetchStats}
-            disabled={loading}
-            className="btn-secondary"
-          >
+          <button type="button" onClick={fetchStats} disabled={loading} className="btn-secondary">
             残件数を再取得
           </button>
         </div>
@@ -167,9 +158,7 @@ export default function BackfillRunner({ enabled }: { enabled: boolean }) {
         ) : null}
 
         {error ? (
-          <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-400">
-            {error}
-          </div>
+          <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-400">{error}</div>
         ) : null}
       </section>
 
@@ -181,21 +170,18 @@ export default function BackfillRunner({ enabled }: { enabled: boolean }) {
               <div className="mt-1 text-lg font-semibold text-primary">最終実行結果</div>
             </div>
             <div className="flex flex-wrap gap-2 text-xs">
-              <span className="rounded-full bg-neutral-500/10 px-2.5 py-1 text-muted">
-                処理 {lastRun.processed}
-              </span>
-              <span className="rounded-full bg-success-dim px-2.5 py-1 text-success">
-                新規 {lastRun.anchored}
-              </span>
+              <span className="rounded-full bg-neutral-500/10 px-2.5 py-1 text-muted">処理 {lastRun.processed}</span>
+              <span className="rounded-full bg-success-dim px-2.5 py-1 text-success">新規 {lastRun.anchored}</span>
               {lastRun.reused > 0 ? (
-                <span className="rounded-full bg-sky-500/10 px-2.5 py-1 text-sky-400" title="既にオンチェーン記録済みだったのでガスを消費せず tx を再利用">
+                <span
+                  className="rounded-full bg-sky-500/10 px-2.5 py-1 text-sky-400"
+                  title="既にオンチェーン記録済みだったのでガスを消費せず tx を再利用"
+                >
                   再利用 {lastRun.reused}
                 </span>
               ) : null}
               {lastRun.failed > 0 ? (
-                <span className="rounded-full bg-red-500/10 px-2.5 py-1 text-red-400">
-                  失敗 {lastRun.failed}
-                </span>
+                <span className="rounded-full bg-red-500/10 px-2.5 py-1 text-red-400">失敗 {lastRun.failed}</span>
               ) : null}
             </div>
           </div>
@@ -217,13 +203,7 @@ export default function BackfillRunner({ enabled }: { enabled: boolean }) {
                           : "text-muted"
                   }
                 >
-                  {r.status === "anchored"
-                    ? "✓"
-                    : r.status === "reused"
-                      ? "↻"
-                      : r.status === "failed"
-                        ? "✗"
-                        : "—"}
+                  {r.status === "anchored" ? "✓" : r.status === "reused" ? "↻" : r.status === "failed" ? "✗" : "—"}
                 </span>
                 <span className="font-mono text-muted">{r.sha256_prefix || "-"}</span>
                 {r.grade_before && r.grade_after && r.grade_before !== r.grade_after ? (

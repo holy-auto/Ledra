@@ -4,12 +4,25 @@ import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { parsePagination } from "@/lib/api/pagination";
 import { escapeIlike, escapePostgrestValue } from "@/lib/sanitize";
-import { apiJson, apiOk, apiUnauthorized, apiValidationError, apiInternalError } from "@/lib/api/response";
+import { apiJson, apiOk, apiUnauthorized, apiValidationError, apiInternalError, apiError } from "@/lib/api/response";
 import { withIdempotency } from "@/lib/api/idempotency";
 import { createCertAction } from "@/app/admin/certificates/new/actions";
 import { certCreateJsonSchema, jsonToCertFormData } from "@/lib/certificates/createCertificateApi";
 import { recordCertIdempotency } from "@/lib/certificates/idempotencyMap";
 import { logger } from "@/lib/logger";
+
+/**
+ * `createCertAction` が返す「入力が原因」のエラーコード。
+ * ここに無いものは DB 障害などの想定外エラーとして 5xx で返し、オフラインキューに
+ * 再送させる。ここに足し忘れると一時障害扱いになり無限に再送されるので、
+ * createCertAction に検証を足したらここにも足すこと。
+ */
+const ACTION_VALIDATION_ERRORS = new Set([
+  "customer_name_required",
+  "vehicle_required",
+  "mileage_required",
+  "not_certified_for_manufacturer_template",
+]);
 
 export const dynamic = "force-dynamic";
 
@@ -43,12 +56,15 @@ export async function GET(req: NextRequest) {
     }
 
     if (q) {
-      // Search by public_id, customer_name, or vehicle-related fields
-      // plate_display and vehicle_maker/vehicle_model are denormalized on the certificates table
+      // 証明書ID と顧客名で探す。/admin/certificates の検索欄と同じ範囲。
+      //
+      // 以前はここに plate_display / vehicle_maker / vehicle_model も並べていたが、
+      // **certificates にその3列は無い**（車両はナンバーも車種も vehicle_info_json 側）。
+      // PostgREST は存在しない列でフィルタするとクエリごと 400 を返すので、
+      // 検索すると一覧が丸ごと空になっていた。車両での検索が要るなら
+      // vehicles を !inner で結合するか、json パスで引く形に作り直すこと。
       const safeQ = escapePostgrestValue(escapeIlike(q));
-      query = query.or(
-        `public_id.ilike.%${safeQ}%,customer_name.ilike.%${safeQ}%,plate_display.ilike.%${safeQ}%,vehicle_maker.ilike.%${safeQ}%,vehicle_model.ilike.%${safeQ}%`,
-      );
+      query = query.or(`public_id.ilike.%${safeQ}%,customer_name.ilike.%${safeQ}%`);
     }
 
     const { data: certificates, error } = await query;
@@ -94,7 +110,13 @@ export async function POST(req: NextRequest): Promise<Response> {
       const result = await createCertAction(formData);
       if (!result.ok) {
         if (result.error === "unauthorized") return apiUnauthorized();
-        return apiValidationError(result.error);
+        // 入力が原因のもの (再送しても結果が変わらない) と、DB 障害など一時的なものを
+        // 分けて返す。両方 400 にすると、オフラインキューが一時障害を恒久失敗と誤判定して
+        // 未送信の証明書を止めてしまう (src/lib/outbox/queue.ts の isPermanentClientError)。
+        if (ACTION_VALIDATION_ERRORS.has(result.error)) {
+          return apiError({ code: "validation_error", message: result.error, status: 422 });
+        }
+        return apiError({ code: "internal_error", message: result.error, status: 500 });
       }
 
       // 作成成功時、idempotency-key が指定されていれば永続マッピングを記録する。

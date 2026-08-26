@@ -33,6 +33,15 @@ export const posCheckoutSchema = z.object({
   items_json: z.any().optional(),
   note: nullableText(500),
   create_receipt: z.boolean().optional(),
+  // カード番号決済（Stripe Checkout）のセッション。**重複記録の防止に使う。**
+  //
+  // PaymentIntent を直接受けてはいけない。`pi_` で始まる文字列は誰でも作れるので、
+  // 記録済みの値を現金会計に付けて**売上を消す**ことができてしまう。
+  // サーバがこのセッションを Stripe から取り直し、支払済みであることと
+  // 金額を自分で確かめる（`resolvePaidCheckoutSession`）。
+  checkout_session_id: nullableText(200).refine((v) => v === null || v.startsWith("cs_"), {
+    message: "invalid_checkout_session",
+  }),
 });
 
 export const posCheckoutSessionSchema = z.object({
@@ -52,7 +61,10 @@ export const posQrSessionSchema = z.object({
     .uuid()
     .optional()
     .or(z.literal("").transform(() => undefined)),
-  tenant_id: z.string().uuid("tenant_id is required"),
+  // 旧ビルドが送ってくるので受けるが、**使わない**。入金先のテナントは
+  // サーバがトークンから決める（クライアントの申告で他テナントの
+  // Connect アカウントへ入金させない）
+  tenant_id: z.string().uuid().optional(),
   store_id: z
     .string()
     .uuid()
