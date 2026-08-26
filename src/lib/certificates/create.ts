@@ -12,6 +12,7 @@
 import "server-only";
 
 import { resolveStoreId, STORE_ERROR_MESSAGES } from "@/lib/stores/resolveStoreId";
+import { linksToReservation } from "@/lib/certificates/linkToReservation";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 
@@ -368,9 +369,18 @@ export async function createCertificate(
       if (!craftsman_staff_id) craftsman_staff_id = (jobRes.assigned_staff_id as string | null) ?? null;
       // 証明書側で確定した車両/顧客と矛盾しない場合のみ「この案件から発行」とみなす。
       // 取り違え（別案件を「作成済」に誤マーク）を防ぐため、不一致なら紐付けない。
-      const vehicleOk = resolvedVehicleId ? jobRes.vehicle_id === resolvedVehicleId : true;
-      const customerOk = resolvedCustomerId ? jobRes.customer_id === resolvedCustomerId : true;
-      if (vehicleOk && customerOk) linked_reservation_id = reservation_id_form;
+      // 判定は linksToReservation（このファイルの先頭）に切り出してテストしてある
+      if (
+        linksToReservation(
+          {
+            vehicle_id: (jobRes.vehicle_id as string | null) ?? null,
+            customer_id: (jobRes.customer_id as string | null) ?? null,
+          },
+          { vehicleId: resolvedVehicleId ?? null, customerId: resolvedCustomerId ?? null },
+        )
+      ) {
+        linked_reservation_id = reservation_id_form;
+      }
     }
   }
   if (!craftsman_staff_id && !reservationFound && resolvedVehicleId) {

@@ -122,6 +122,11 @@ export default function CertificateNewScreen() {
         // 鍵が無いとサーバの冪等ラッパーが素通りし、再送で証明書が2枚できる
         headers: { "Idempotency-Key": idemKeyRef.current },
         body: {
+          // **案件から来たら必ず送る。** これが無いと証明書が予約に紐づかず、
+          // 作業詳細の「施工写真を撮影」が予約IDで証明書を探しても永久に0件になる
+          // （本番の証明書45件すべて reservation_id が null だった）。
+          // 画面は reservationId を車両の事前入力にだけ使っていて、送っていなかった
+          reservation_id: reservationId ?? null,
           customer_name: form.customer_name.trim(),
           // 顧客 ID を渡すと、サーバ側の「名前で似た顧客を探す」経路を通らずに済む。
           // 同名の別人に紐付く事故と、顧客表の全件読み込みを両方避けられる
