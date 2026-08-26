@@ -82,6 +82,9 @@
   （DECISION_LOG 2026-08-25）。iOS 側の同じ構造——`expo-build-properties` の
   `ios.deploymentTarget 16.0` と、CocoaPods の各 pod が要求する最低 iOS バージョンの整合——は
   **検査していない**。同種の事故が iOS で起きうるかは未確認。【要確認】
+  なお 2026-08-26 に発生したスプラッシュのリソース参照切れについては、prebuild を回して
+  **iOS では起きない**ことを確認済み（DECISION_LOG 2026-08-25 の該当エントリ）。
+  ただしそれとこの論点は別問題で、本項の CocoaPods 整合は依然として未検査。
 - 選択肢: 案A `pod install` を CI（macOS ランナー）で回して整合を見る。確実だが macOS ランナーは
   ubuntu の約10倍のコストで、`Podfile.lock` 生成のためだけに回すには重い。案B Podspec の
   `deployment_target` を静的に走査する検査を書く（Android と同じ作り、ubuntu で動く）。

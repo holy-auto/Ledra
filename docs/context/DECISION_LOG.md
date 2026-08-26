@@ -245,8 +245,17 @@
    - **同色 PNG が Android 12+ で本当に不可視かは実機未確認。**【要確認】
      円形マスクの内外が同じ `#d6d0cb` なので成立するはずだが、誤っていれば
      クリーム色の円が一瞬見えて動画開始時に消える。
-   - iOS は今回の変更以降ビルドしていない。同じ `splash.image` を使うので参照切れは
-     起きないはずだが未確認。
+   - **iOS で同じ参照切れは起きない（確認済み）。** `npx expo prebuild --platform ios --no-install`
+     を回して生成物を確かめた。`ios/Ledra/SplashScreen.storyboard` が参照する
+     `SplashScreenLegacy` は `Images.xcassets/SplashScreenLegacy.imageset/` に
+     `image.png` / `@2x` / `@3x` の3枚とも実在し（各1942バイト）、3枚とも全画素が `d6d0cb`。
+     `SplashScreenBackground.colorset` も `r 0.839215686 / g 0.815686275 / b 0.796078431`
+     ＝ `#d6d0cb` で背景と完全一致していた。
+     理由は asset catalog の `Contents.json` がファイル名を列挙する形だから。参照と実体が
+     同じ処理で書かれるので、Android の非対称（styles.xml への参照は無条件・drawable の
+     書き出しは `if (image)`）が iOS には存在しない。
+   - ただし **iOS の実ビルドは未実施**。確認したのは prebuild の生成物までで、
+     Xcode のコンパイル・署名・`pod install` は通していない。
 9. 公開区分: 公開可
 
 ## 2026-08-25 ネイティブビルドは CI に載せず、prebuild + 静的検査で止める
