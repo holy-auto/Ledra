@@ -45,15 +45,20 @@ UI 側にも `InspectionOcrIntake`（カメラ直行 →取り込み → **下�
       → `mileage_km` が null か `parseMileageKm` を通らない値なら **何も入力しない**。
       走行距離欄は OCR ボタンの有無に関わらず常時表示の手入力欄。
 - [x] 1-4. AI自動化: **OCR 由来の未確認値のままでは自動発行しない**（draft に留め承認インボックスへ）
-      → 作成経路ごとに必須化するのをやめ、**発行 (draft→active) のチョークポイント 2 本**
-      （`PUT /api/admin/certificates/status` と `POST /api/certificates/activate-by-key`）で
-      走行距離を必須にした。写真必須ルールと同じ場所・同じ形。
+      → 作成経路ごとに必須化するのをやめ、**発行 (draft→active) のチョークポイント 3 本**
+      （`PUT /api/admin/certificates/status`・`POST /api/certificates/activate-by-key`・
+      `POST /api/mobile/certificates/[id]/activate`）で走行距離を必須にした。
+      写真必須ルールと同じ場所・同じ形。
       `certificateRecordAuto.ts` は insert で直接 active を作れるため、そこにも同じ条件を課して
       走行距離が無い限り `status: "draft"` に落ちるようにした。
 
 **なぜ発行時ゲートにしたか**: 作成経路は Web / モバイル / 外部API (`POST /api/certificates/create`)
 / AI自動起票 / オフライン再送 と 5 本あり、増える。前回「全経路に入れた」と書いて 2 本漏らした。
-active になる道は 2 本しかないので、そこを塞げば経路が増えても漏れない。
+active になる道は 3 本しかないので、そこを塞げば経路が増えても漏れない。
+（当初これを「2 本」と数えてモバイルの 1 本を漏らし、`/code-review` で指摘されて直した。
+人が数える限り漏れるので、発行副作用 `triggerCertificateIssued` を発火するファイルを
+走査して全部ゲートを通っているか確かめるテストを足した:
+`src/lib/certificates/__tests__/activationGates.test.ts`）
 `POST /api/certificates/create` は必ず `status: "draft"` で作るため、この 1 箇所で回収できる。
 
 ### 依頼2: 編集APIと遡及入力

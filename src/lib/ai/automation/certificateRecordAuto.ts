@@ -230,8 +230,8 @@ export async function maybeAutoCreateDraftCertificateForReservation(
       };
 
       // 走行距離が確定していない証明書は自動発行しない。
-      // 発行チョークポイント (PUT /api/admin/certificates/status と
-      // /api/certificates/activate-by-key) は走行距離を必須にしているが、この経路は
+      // 発行チョークポイント 3 本 (admin status / activate-by-key / mobile activate) は
+      // 走行距離を必須にしているが、この経路は
       // insert で直接 active を作れてしまうため、同じ条件をここでも課す。AI 下書きに
       // メーター情報は無いので実際には常に draft となり、承認インボックスで人が
       // メーター写真 (OCR) を確認して走行距離を入れてから発行する

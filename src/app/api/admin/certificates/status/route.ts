@@ -125,8 +125,8 @@ export async function PUT(req: Request) {
         return apiValidationError(CERTIFICATE_BEFORE_AFTER_REQUIRED_MESSAGE);
       }
       // 走行距離必須ルール: 発行の瞬間に一度だけ強制する。作成経路 (Web / モバイル /
-      // 外部 API / AI 自動起票) は増減するが、active になる道はここと
-      // activate-by-key の 2 本しかないため、ここで塞げば漏れが出ない。
+      // 外部 API / AI 自動起票) は増減するが、active になる道は 3 本しかないため、
+      // そこを塞げば漏れが出ない (activationGates.test.ts が数え漏れを検出する)。
       if (certificateMileageKm(cert.maintenance_json) === null) {
         return apiValidationError(CERTIFICATE_MILEAGE_REQUIRED_MESSAGE);
       }

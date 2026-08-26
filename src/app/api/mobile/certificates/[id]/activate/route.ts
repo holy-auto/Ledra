@@ -7,6 +7,7 @@ import {
   certificateHasRequiredBeforeAfterMedia,
   CERTIFICATE_BEFORE_AFTER_REQUIRED_MESSAGE,
 } from "@/lib/certificates/photoRequirement";
+import { certificateMileageKm, CERTIFICATE_MILEAGE_REQUIRED_MESSAGE } from "@/lib/maintenance/mileage";
 import { triggerCertificateIssued } from "@/lib/certificates/issueHooks";
 import { logTenantAuditEvent } from "@/lib/audit/tenantLog";
 import {
@@ -32,7 +33,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const { data: cert } = await caller.supabase
       .from("certificates")
       .select(
-        "id, status, public_id, customer_id, customer_name, vehicle_info_json, service_type, created_by, reservation_id",
+        "id, status, public_id, customer_id, customer_name, vehicle_info_json, service_type, created_by, reservation_id, maintenance_json",
       )
       .eq("id", id)
       .eq("tenant_id", caller.tenantId)
@@ -55,6 +56,11 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     );
     if (!hasBeforeAfter) {
       return apiValidationError(CERTIFICATE_BEFORE_AFTER_REQUIRED_MESSAGE);
+    }
+
+    // 走行距離必須ルール (発行の 3 経路すべてで同じ判定)。
+    if (certificateMileageKm(cert.maintenance_json) === null) {
+      return apiValidationError(CERTIFICATE_MILEAGE_REQUIRED_MESSAGE);
     }
 
     const { data, error } = await caller.supabase

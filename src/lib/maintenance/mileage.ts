@@ -36,7 +36,7 @@ export const CERTIFICATE_MILEAGE_REQUIRED_MESSAGE =
 /**
  * 証明書の `maintenance_json` から確定済みの走行距離を取り出す。
  *
- * 発行のチョークポイント (status / activate-by-key) で使う。作成経路ごとに
+ * 発行のチョークポイント3本 (admin status / activate-by-key / mobile activate) で使う。作成経路ごとに
  * 必須化すると AI 自動起票・外部 API・取り込みのような「人が入力画面を通らない」
  * 経路が漏れるため、写真必須ルールと同じく **発行の瞬間** に一度だけ強制する。
  * OCR で自動入力した値もここを通る前に人が発行操作をするので、

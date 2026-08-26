@@ -121,8 +121,9 @@ Route Handlerで動的提供（siteConfig + PLANSから自動追従）。Xハン
 `vehicle_mileage_logs` に走行距離タイムラインとして落とす。判定ルールは `src/lib/maintenance/mileage.ts`
 （`parseMileageKm()` / `certificateMileageKm()`）に集約している。
 
-強制する場所は**発行のチョークポイント2本だけ**:
-`PUT /api/admin/certificates/status` と `POST /api/certificates/activate-by-key`。
+強制する場所は**発行のチョークポイント3本だけ**:
+`PUT /api/admin/certificates/status`・`POST /api/certificates/activate-by-key`・
+`POST /api/mobile/certificates/[id]/activate`。
 写真必須ルール（`certificateHasRequiredPhotos`）と同じ位置・同じ形。
 作成経路（Web / モバイル / 外部API `POST /api/certificates/create` / AI自動起票 / オフライン再送）は
 どれも `draft` で作るため、経路が増えてもここを通らずに `active` になることはない。
@@ -135,7 +136,8 @@ OCR は鮮明度（`confidence` / ブレ・反射・欠けの `warnings`）を�
 **最終確認は人間** —— OCR は下書きを埋めるだけで、発行操作をするのは人。
 
 編集API（`PUT /api/certificates/edit`）では走行距離を**入れられるが消せない**。
-これがそのまま既存証明書への遡及入力の経路になる。
+証明書詳細の編集フォームに走行距離欄（メーターOCR付き）があり、発行前の下書きと
+必須化より前に作られた証明書の遡及入力を兼ねる。
 
 このタイムラインは整備リマインダー（`src/lib/cron/serviceReminders.ts`）・劣化予測・車両パスポートの
 走行距離履歴が共通で参照する。2026-08-25 以前は任意入力だったため本番の記録は0件で、

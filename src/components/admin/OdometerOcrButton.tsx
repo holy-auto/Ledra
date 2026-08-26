@@ -79,7 +79,7 @@ export default function OdometerOcrButton({ disabled, onRead }: Props) {
         setMsg({
           tone: "warn",
           text: [
-            `${km.toLocaleString()} km と読みました。**数字が合っているか確認してください。**`,
+            `${km.toLocaleString()} km と読みました。数字が合っているか必ず確認してください。`,
             ...(shaky ? ["読み取りの確度が低めです（撮り直すとより確実です）"] : []),
             ...warnings,
           ].join(" / "),

@@ -95,7 +95,7 @@ export async function POST(req: NextRequest): Promise<Response> {
       return apiValidationError(CERTIFICATE_BEFORE_AFTER_REQUIRED_MESSAGE);
     }
 
-    // 走行距離必須ルール (status ルートと同じ。active になる道はこの 2 本のみ)。
+    // 走行距離必須ルール (発行の 3 経路すべてで同じ判定)。
     if (certificateMileageKm(cert.maintenance_json) === null) {
       return apiValidationError(CERTIFICATE_MILEAGE_REQUIRED_MESSAGE);
     }

@@ -6,15 +6,19 @@
 
 ## 2026-08-26 走行距離の必須化を「発行の瞬間」へ移し、メーター写真の OCR 取り込みを足した
 
-- **必須化の場所を発行のチョークポイント2本へ移した。**
-  `PUT /api/admin/certificates/status`（draft→active / void→active）と
-  `POST /api/certificates/activate-by-key`（オフライン発行）で、
+- **必須化の場所を発行のチョークポイント3本へ移した。**
+  `PUT /api/admin/certificates/status`（draft→active / void→active）・
+  `POST /api/certificates/activate-by-key`（オフライン発行）・
+  `POST /api/mobile/certificates/[id]/activate`（モバイル発行）で、
   `maintenance_json.mileage` が有効値でなければ 400 で止める。
   判定は `certificateMileageKm()`（`src/lib/maintenance/mileage.ts`）1つ。
   写真必須ルール（`certificateHasRequiredPhotos`）と同じ位置・同じ形。
 - **これで作成経路を1本も触らずに全経路が塞がる。** `POST /api/certificates/create` は
   必ず `status: "draft"` で作るため、外部APIから作られた証明書もこの2本を必ず通る。
   作成経路（Web / モバイル / 外部API / AI自動起票 / オフライン再送）が増えても漏れない。
+  発行経路の数え漏れ自体を防ぐため、`triggerCertificateIssued` を発火するファイルを走査して
+  全部がゲートを通っているか確かめるテストを足した
+  （`src/lib/certificates/__tests__/activationGates.test.ts`）。
 - **AI自動起票は走行距離が無い限り発行しない。** `certificateRecordAuto.ts` は
   insert で直接 `active` を作れる唯一の経路なので、そこにも同じ条件を課した。
   結果として自動発行は `draft` に落ち、承認インボックスで人が確認して発行する。
@@ -28,6 +32,11 @@
   不正値（0・負・小数・`"35000km"`・配列）は 400。
   この編集APIがそのまま**遡及入力の経路**になる（DBトリガーは `UPDATE OF maintenance_json`
   でも発火し、`vehicle_mileage_logs` に積まれる）。専用画面は作っていない。
+- **証明書詳細の編集フォームに走行距離欄を足した**（メーターOCRボタン付き）。
+  発行前の下書きと、必須化より前に作られた証明書の遡及入力を兼ねる唯一の窓口。
+  空欄で保存しても既存値は消えない。
+- 使われていない Server Action `activateCertAction` / `voidCertAction` と
+  `CertStatusActions.tsx` を削除した（どこからも描画されておらず、写真ゲートも通らない経路だった）。
 - 既存45件の一括バックフィルはしない（施工時点のメーター値の復元元が無い。
   判る分だけ編集APIから入れる）。詳細は `docs/mileage-followup-checklist.md`。
 
