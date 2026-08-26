@@ -23,6 +23,7 @@ import { fuzzyMatchCustomer, type CustomerCandidate } from "@/lib/ai/customerFuz
 import { recordCoatingConsumableInstallations } from "@/lib/parts/coatingIntegration";
 import { issueCaptureNonce } from "@/lib/certificates/captureNonce";
 import { parseDamageMap } from "@/lib/certificates/damageMap";
+import { parseMileageKm } from "@/lib/maintenance/mileage";
 
 export type CreateCertResult =
   | { ok: true; public_id: string; status: "draft"; photo_required: boolean; capture_nonce: string | null }
@@ -120,7 +121,9 @@ export async function createCertificate(
   try {
     const raw = String(formData.get("maintenance_json") || "{}");
     const parsed = JSON.parse(raw);
-    if (typeof parsed === "object" && parsed !== null) maintenance_data = parsed;
+    // 配列を弾く: `typeof [] === "object"` なので素通りしてしまうが、配列に
+    // `.mileage` を代入しても JSON.stringify で消えるため、走行距離が黙って失われる。
+    if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) maintenance_data = parsed;
   } catch {
     // ignore parse errors — field is optional
   }
@@ -191,6 +194,20 @@ export async function createCertificate(
 
   if (!customer_name) return { ok: false, error: "customer_name_required" };
   if (!vehicle_id && !vehicle_maker && !model) return { ok: false, error: "vehicle_required" };
+
+  // 走行距離は必須。入庫のたびに読める唯一の客観値で、車両パスポート・残価判定・
+  // 整備リマインダー・劣化予測がすべてこの時系列を入力にしている。
+  // 任意入力だった間は本番に1件も溜まらなかったため、ここを通さない発行を認めない。
+  // Web・モバイル・外部APIはすべてこの関数を通るので、検証はここ1箇所で足りる。
+  const mileage_km = parseMileageKm(formData.get("mileage_km"));
+  if (mileage_km === null) return { ok: false, error: "mileage_required" };
+
+  // 既存の DB トリガー `trg_sync_mileage_from_certificate` が
+  // `maintenance_json->>'mileage'` を読んで `vehicle_mileage_logs` に落とすので、
+  // 整備以外の施工種別でもここに載せて配管を再利用する（新テーブルもマイグレーションも不要）。
+  // 整備内容ブロックの描画は公開ページ・PDF とも service_type === "maintenance"
+  // で閉じているため、コーティング等の証明書に整備欄が出てしまうことはない。
+  maintenance_data.mileage = mileage_km;
 
   // メーカー指定デザインを使う場合は、認定施工店であることを必ず再確認する。
   // クライアントから任意の id を差し込まれる可能性に備え、ここを抜くと
@@ -477,7 +494,7 @@ export async function createCertificate(
       console.error("recordCoatingConsumableInstallations failed", e);
     });
   }
-  const mileageKm = maintenance_data.mileage ? parseInt(String(maintenance_data.mileage), 10) : null;
+  const mileageKm = mileage_km;
 
   // Structured inspection findings → vehicle_inspection_findings
   let structured_findings: any[] = [];

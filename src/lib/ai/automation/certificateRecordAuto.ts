@@ -22,6 +22,7 @@ import { logger } from "@/lib/logger";
 import { logAutoActionExecuted } from "@/lib/audit/aiAuditLog";
 import { triggerCertificateIssued } from "@/lib/certificates/issueHooks";
 import { computeWarrantyEndDate } from "@/lib/ai/followUpContent";
+import { certificateMileageKm } from "@/lib/maintenance/mileage";
 import { loadAiAutomationSettings } from "./policy";
 import { shouldAutoCreateDraftCertificate, shouldAutoIssueCertificate } from "./orchestrator";
 
@@ -186,7 +187,7 @@ export async function maybeAutoCreateDraftCertificateForReservation(
       }
 
       const draftConfidence = typeof draft?.confidence === "number" ? draft.confidence : 0;
-      const autoIssue = shouldAutoIssueCertificate(settings, {
+      const autoIssueEligible = shouldAutoIssueCertificate(settings, {
         hasDraft: !!draft,
         photoQualityPassed: false,
         tamperingCheckPassed: false,
@@ -225,8 +226,18 @@ export async function maybeAutoCreateDraftCertificateForReservation(
         },
         // 施工名は service_type が持つ。大カテゴリーしか無ければそちらを入れる
         service_type: serviceName || unit.category,
-        status: autoIssue ? "active" : "draft",
+        status: "draft",
       };
+
+      // 走行距離が確定していない証明書は自動発行しない。
+      // 発行チョークポイント 3 本 (admin status / activate-by-key / mobile activate) は
+      // 走行距離を必須にしているが、この経路は
+      // insert で直接 active を作れてしまうため、同じ条件をここでも課す。AI 下書きに
+      // メーター情報は無いので実際には常に draft となり、承認インボックスで人が
+      // メーター写真 (OCR) を確認して走行距離を入れてから発行する
+      // = 「読み取りは自動・最終確認は人間」。
+      const autoIssue = autoIssueEligible && certificateMileageKm(certRow.maintenance_json) !== null;
+      certRow.status = autoIssue ? "active" : "draft";
 
       const { data: cert, error: certErr } = await admin
         .from("certificates")

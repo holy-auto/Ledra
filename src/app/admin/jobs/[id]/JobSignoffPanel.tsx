@@ -103,7 +103,7 @@ export default function JobSignoffPanel({ reservationId }: { reservationId: stri
     setErr(null);
     try {
       const res = await fetch("/api/admin/certificates/status", {
-        method: "POST",
+        method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ public_id: data.certificate.public_id, status: "active" }),
       });
