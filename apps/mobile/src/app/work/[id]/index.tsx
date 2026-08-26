@@ -1,4 +1,5 @@
 import { useState, useCallback } from "react";
+import dayjs from "dayjs";
 import {
   View,
   StyleSheet,
@@ -14,12 +15,16 @@ import {
   TextInput,
   Snackbar,
   ActivityIndicator,
+  Dialog,
+  Portal,
+  Checkbox,
 } from "react-native-paper";
 import { useLocalSearchParams, router, Stack } from "expo-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { supabase } from "@/lib/supabase";
-import { parseMenuItems } from "@/lib/reservationItems";
+import { parseMenuItems, menuItemsTotal } from "@/lib/reservationItems";
+import { confirmationState } from "@/lib/confirmationState";
 import { useAuthStore } from "@/stores/authStore";
 import {
   ProgressRing,
@@ -102,6 +107,11 @@ export default function WorkDetailScreen() {
   const [activeTab, setActiveTab] = useState<TabKey>("overview");
   const [subStatus, setSubStatus] = useState("");
   const [progressNote, setProgressNote] = useState("");
+  /** 使用部品・資材の追加ダイアログ */
+  const [partsVisible, setPartsVisible] = useState(false);
+  const [addingIds, setAddingIds] = useState<string[]>([]);
+  /** お客様確認の詳細ダイアログ */
+  const [confirmVisible, setConfirmVisible] = useState(false);
   const [snackbar, setSnackbar] = useState("");
 
   const { data: work, isLoading } = useQuery<WorkOrder>({
@@ -143,6 +153,44 @@ export default function WorkDetailScreen() {
       return (data?.id as string | undefined) ?? null;
     },
     enabled: !!id && !!user?.tenantId,
+  });
+
+  /**
+   * お客様確認の進捗。**「未確認」のベタ書きをやめて実データを出す。**
+   * 届いたのか（notification_sent_at）／確認されたのか（signed_at）が
+   * 分からないと、催促していいのかどうかが判断できない。
+   */
+  const { data: confirmation } = useQuery({
+    queryKey: ["work-confirmation", id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("signature_sessions")
+        .select("id, status, notification_sent_at, signed_at, remind_count, last_reminded_at, notified_channel, expires_at")
+        .eq("reservation_id", id)
+        .eq("tenant_id", user!.tenantId)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!id && !!user?.tenantId,
+  });
+
+  /** 追加できる品目。予約作成画面と同じ条件で引く */
+  const { data: menuItems = [] } = useQuery<{ id: string; name: string; unit_price: number; category_large: string | null }[]>({
+    queryKey: ["menu-items-work", user?.tenantId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("menu_items")
+        .select("id, name, unit_price, category_large")
+        .eq("tenant_id", user!.tenantId)
+        .eq("is_active", true)
+        .order("sort_order");
+      if (error) throw error;
+      return data ?? [];
+    },
+    enabled: !!user?.tenantId && partsVisible,
   });
 
   const { data: photos = [] } = useQuery<WorkPhoto[]>({
@@ -195,6 +243,53 @@ export default function WorkDetailScreen() {
     },
     onError: () => setSnackbar("更新に失敗しました"),
   });
+
+  /**
+   * 使用部品・資材を**この案件に追加する**。予約作成時にしか書けなかったので、
+   * 現場で「1つ足りない」に気づいても直せなかった。
+   * 既存の明細に足す（置き換えない）。見積額も足した分だけ引き上げる。
+   */
+  const addPartsMutation = useMutation({
+    mutationFn: async () => {
+      // **既存行は正規化せずそのまま残す。** parseMenuItems の戻り値で
+      // 上書きすると保存形が変わり、他の読み手（Web・集計）が壊れる
+      const existing = Array.isArray(work?.menu_items_json) ? (work.menu_items_json as unknown[]) : [];
+      const added = addingIds.map((mid) => {
+        const mi = menuItems.find((m) => m.id === mid);
+        return { menu_item_id: mid, name: mi?.name ?? "メニュー", price: mi?.unit_price ?? 0 };
+      });
+      const next = [...existing, ...added];
+      const { error } = await supabase
+        .from("reservations")
+        .update({
+          menu_items_json: next,
+          // 合計は正準のパーサに任せる（単価不明の行の扱いを1箇所に寄せる）
+          estimated_amount: menuItemsTotal(parseMenuItems(next)),
+        })
+        .eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["work-order", id] });
+      setAddingIds([]);
+      setPartsVisible(false);
+      setSnackbar("追加しました");
+    },
+    onError: () => setSnackbar("追加に失敗しました"),
+  });
+
+  const confirm = confirmationState(confirmation);
+  const confirmState = {
+    label: confirm.label,
+    color:
+      confirm.tone === "done"
+        ? colors.success
+        : confirm.tone === "problem"
+          ? colors.danger
+          : confirm.tone === "waiting"
+            ? colors.warning
+            : colors.textSecondary,
+  };
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -336,7 +431,7 @@ export default function WorkDetailScreen() {
           <>
             {/* Quick Info Cards */}
             <View style={styles.quickInfoRow}>
-              <Pressable style={styles.quickInfoCard}>
+              <Pressable style={styles.quickInfoCard} onPress={() => setPartsVisible(true)}>
                 <Icon source="wrench" size={20} color={colors.primary} />
                 <Text style={styles.quickInfoLabel}>使用部品・資材</Text>
                 <Text style={styles.quickInfoValue}>
@@ -345,16 +440,17 @@ export default function WorkDetailScreen() {
                 <Icon source="chevron-right" size={16} color={colors.textTertiary} />
               </Pressable>
 
-              <Pressable style={styles.quickInfoCard}>
+              <Pressable style={styles.quickInfoCard} onPress={() => setConfirmVisible(true)}>
                 <Icon source="account-check-outline" size={20} color={colors.primary} />
                 <Text style={styles.quickInfoLabel}>お客様確認</Text>
-                <Text style={[styles.quickInfoValue, { color: colors.warning }]}>
-                  未確認
+                <Text style={[styles.quickInfoValue, { color: confirmState.color }]}>
+                  {confirmState.label}
                 </Text>
                 <Icon source="chevron-right" size={16} color={colors.textTertiary} />
               </Pressable>
 
-              <Pressable style={styles.quickInfoCard}>
+              {/* 備考は**空でも開く**。書き足すためにこそ開きたい */}
+              <Pressable style={styles.quickInfoCard} onPress={() => setActiveTab("work")}>
                 <Icon source="note-text-outline" size={20} color={colors.primary} />
                 <Text style={styles.quickInfoLabel}>備考</Text>
                 <Text style={styles.quickInfoValue}>
@@ -523,6 +619,102 @@ export default function WorkDetailScreen() {
 
         <View style={{ height: 40 }} />
       </ScrollView>
+
+      <Portal>
+        {/* 使用部品・資材を後から足す。予約作成時にしか書けなかった */}
+        <Dialog visible={partsVisible} onDismiss={() => setPartsVisible(false)}>
+          <Dialog.Title>使用部品・資材</Dialog.Title>
+          <Dialog.ScrollArea style={styles.dialogScroll}>
+            <ScrollView>
+              <Text style={styles.dialogSectionLabel}>この案件の明細</Text>
+              {parseMenuItems(work.menu_items_json).length === 0 ? (
+                <Text style={styles.dialogEmpty}>まだありません</Text>
+              ) : (
+                parseMenuItems(work.menu_items_json).map((mi, i) => (
+                  <Text key={`${mi.menu_item_id ?? mi.name}-${i}`} style={styles.dialogRow}>
+                    ・{mi.name}
+                    {mi.amount != null ? `　¥${mi.amount.toLocaleString()}` : "　（金額不明）"}
+                  </Text>
+                ))
+              )}
+
+              <Text style={styles.dialogSectionLabel}>追加する</Text>
+              {menuItems.length === 0 ? (
+                <Text style={styles.dialogEmpty}>品目を読み込んでいます...</Text>
+              ) : (
+                menuItems.map((m) => (
+                  <Checkbox.Item
+                    key={m.id}
+                    label={`${m.name}　¥${(m.unit_price ?? 0).toLocaleString()}`}
+                    status={addingIds.includes(m.id) ? "checked" : "unchecked"}
+                    onPress={() =>
+                      setAddingIds((prev) =>
+                        prev.includes(m.id) ? prev.filter((x) => x !== m.id) : [...prev, m.id],
+                      )
+                    }
+                  />
+                ))
+              )}
+            </ScrollView>
+          </Dialog.ScrollArea>
+          <Dialog.Actions>
+            <Pressable onPress={() => setPartsVisible(false)} style={styles.dialogBtn}>
+              <Text style={styles.dialogBtnText}>閉じる</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => addPartsMutation.mutate()}
+              disabled={addingIds.length === 0 || addPartsMutation.isPending}
+              style={styles.dialogBtn}
+            >
+              <Text
+                style={[
+                  styles.dialogBtnText,
+                  { color: addingIds.length === 0 ? colors.textTertiary : colors.primary },
+                ]}
+              >
+                {addingIds.length > 0 ? `${addingIds.length}件を追加` : "追加"}
+              </Text>
+            </Pressable>
+          </Dialog.Actions>
+        </Dialog>
+
+        {/* お客様確認の進捗。「送っていない」と「届いたが未確認」を分けて出す */}
+        <Dialog visible={confirmVisible} onDismiss={() => setConfirmVisible(false)}>
+          <Dialog.Title>お客様確認</Dialog.Title>
+          <Dialog.Content>
+            <Text style={[styles.dialogStatus, { color: confirmState.color }]}>{confirm.label}</Text>
+            <Text style={styles.dialogRow}>{confirm.detail}</Text>
+            {confirmation?.notification_sent_at && (
+              <Text style={styles.dialogRow}>
+                送信: {dayjs(confirmation.notification_sent_at).format("M/D HH:mm")}
+                {confirmation.notified_channel ? `（${confirmation.notified_channel}）` : ""}
+              </Text>
+            )}
+            {confirmation?.signed_at && (
+              <Text style={styles.dialogRow}>
+                確認: {dayjs(confirmation.signed_at).format("M/D HH:mm")}
+              </Text>
+            )}
+            {!!confirmation?.remind_count && (
+              <Text style={styles.dialogRow}>
+                催促: {confirmation.remind_count}回
+                {confirmation.last_reminded_at
+                  ? `（最終 ${dayjs(confirmation.last_reminded_at).format("M/D HH:mm")}）`
+                  : ""}
+              </Text>
+            )}
+            {/* ponytail: 上限。開封は記録していないので「読んだか」までは出せない */}
+            <Text style={styles.dialogNote}>
+              お客様が開いたかどうかは記録していないため分かりません。
+            </Text>
+          </Dialog.Content>
+          <Dialog.Actions>
+            <Pressable onPress={() => setConfirmVisible(false)} style={styles.dialogBtn}>
+              <Text style={styles.dialogBtnText}>閉じる</Text>
+            </Pressable>
+          </Dialog.Actions>
+        </Dialog>
+      </Portal>
 
       <Snackbar
         visible={!!snackbar}
@@ -756,4 +948,12 @@ const styles = StyleSheet.create({
     textAlign: "center",
     paddingVertical: spacing.lg,
   },
+  dialogScroll: { maxHeight: 420 },
+  dialogSectionLabel: { ...typography.label, color: colors.textSecondary, marginTop: spacing.md, marginBottom: spacing.xs },
+  dialogEmpty: { ...typography.bodySmall, color: colors.textTertiary },
+  dialogRow: { ...typography.bodySmall, color: colors.textPrimary, marginBottom: spacing.xs },
+  dialogStatus: { ...typography.titleMedium, marginBottom: spacing.sm },
+  dialogNote: { ...typography.meta, color: colors.textTertiary, marginTop: spacing.md },
+  dialogBtn: { paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
+  dialogBtnText: { ...typography.label, color: colors.primary },
 });
