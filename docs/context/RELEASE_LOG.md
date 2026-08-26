@@ -1098,7 +1098,6 @@ supabase migration repair --status reverted 20260825000000
 ```
 
 ## 2026-08-25 恒久失敗キューの取りこぼしを修正（コードレビュー2巡目の反映）
-
 - 内容: 前項の修正に対するコードレビューで、恒久失敗の判定が**別の壊し方をしていた**ことが分かり6件を修正した。
 - 実装:
   - `src/app/api/admin/certificates/route.ts`: **`/api/admin/certificates` はあらゆる失敗を 400 で返していた**。
@@ -1125,9 +1124,7 @@ supabase migration repair --status reverted 20260825000000
   AI自動化 (`src/lib/ai/automation/certificateRecordAuto.ts`) と `POST /api/certificates/create` は
   `maintenance_json` を書かないため走行距離が積まれない。どちらも人が値を入力する画面が無く、
   必須化しても満たしようがないため今回は変更していない。OPEN_QUESTIONS 2026-08-25 に起票。
-
 ## 2026-08-25 オフラインキューの永久リトライを止め、モバイルの車両マスタ自動作成を実装
-
 - 内容: 走行距離必須化のコードレビューで残していた2件を修正した。どちらも「静かに失敗する」状態を解消するもの。
 - 対象: オフライン送信キュー（全機能）、モバイルの証明書作成、`/admin/certificates` の保留中証明書UI。
 - 実装:
@@ -1150,9 +1147,7 @@ supabase migration repair --status reverted 20260825000000
   既存の drain テスト8箇所を新しい `DrainDeps` に更新。
   モバイルは依存をインストールして**ローカルで型検査・単体テストとも緑**（CI の `Mobile Typecheck & Unit Tests` も緑）。
   `tsc` クリーン / 変更ファイルの `eslint` エラー0 / 全テスト **417ファイル 3,820件** 緑。
-
 ## 2026-08-25 証明書の走行距離を必須化（全施工種別・常時表示）
-
 - 内容: 走行距離を任意の付加情報から**必須項目**に変更し、整備テンプレート限定・折りたたみの中という配置をやめて、
   施工種別を問わず車種選択の直後に常時表示するようにした。本番の走行距離タイムライン `vehicle_mileage_logs` が
   0件だった（証明書45件すべてで値が空）のを解消するのが目的。
@@ -1187,9 +1182,7 @@ supabase migration repair --status reverted 20260825000000
   (3) モバイルは車両マスタを自動作成しないため、マスタ未選択だとトリガーが早期 return して走行距離が
   積まれない点をコメントで明示し OPEN_QUESTIONS に起票（挙動自体は未修正）。
   (4) デプロイ前にオフラインキューへ滞留したアイテムが 400 で永久リトライになる件も OPEN_QUESTIONS に起票。
-
 ## 2026-08-23 入力された車体番号が車両パスポートに反映されないバグを修正（VIN正規化のトリガー化）
-
 - 内容: `vehicles.vin_code_normalized` を `vin_code` から自動導出する DB トリガーを追加し、取り残されていた行をバックフィルした。
   マイグレーション `20260424000004` はこの列を追加して**一度だけ**バックフィルしたが、以降この列を埋める仕組みが無く、
   アプリ側の書き込み経路（車両作成API・CSVインポート・車検証OCRからの作成・パスポートupsert・管理画面の新規/編集フォーム）は
@@ -1220,17 +1213,13 @@ supabase migration repair --status reverted 20260825000000
   再適用の冪等性を確認。正規化ルールが JS 側の `normalizeVin()` と
 全10ケース（全角・ハイフン・NBSP・U+3000・BOM・プレースホルダ含む）で一致することも突き合わせた。
 正規化ルールを壊した版・バックフィルを外した版のそれぞれで自己検証が実際に落ちること（検証が空回りしていないこと）も確認済み。
-
 ## 2026-08-23 super_admin RLS修正・エラー表示改善 (PR #963)
-
 - 内容: `my_tenant_role()`関数で`super_admin`→`owner`にマッピングし、全テーブルのRLS書き込みポリシーがsuper_adminを許可するように修正。`StoresClient.tsx`のエラー表示を`data.message`優先に変更。
 - 対象: 全テーブルのRLSポリシー（stores, certificates, vehicles, customers等）、店舗管理画面。
 - 実装:
   - `supabase/migrations/20260822000000_fix_super_admin_rls.sql` (新規): my_tenant_role()のCASE式追加
   - `src/app/admin/stores/StoresClient.tsx`: エラーハンドリング3箇所で`data.message || data.error`に変更
-
 ## 2026-08-21 全画面デザイントークン適用 & 認証/オンボーディングフロー新設（branch claude/imp-000-implementation-r0eje1 / PR #926）
-
 - 内容: モバイルアプリの全41画面をLedraデザイントークン準拠にする最終仕上げ。
   - **既存28画面の一括トークン移行**: hardcoded colors→tokens, Card→View+card styles,
     Button→LedraButton, Chip→StatusBadge, SegmentedButtons→SegmentedControl,
@@ -1244,9 +1233,7 @@ supabase migration repair --status reverted 20260825000000
 - 対象: モバイルアプリ（`apps/mobile/`）。全41画面（スクリーン）がデザイントークン準拠。
 - 検証: `npx tsc --noEmit` 通過、`expo lint` エラー0件、テスト通過。
   32ファイル変更、+4903行/-2859行。
-
 ## 2026-08-21 UI-040/060/070 モバイルアプリ UI リデザイン Phase 2（branch claude/imp-000-implementation-r0eje1 / PR #926）
-
 - 内容: Phase 1（UI-010/020/030）に続き、残りの主要画面をLedraデザイントークンベースに全面リデザイン。
   - **UI-040（作業リスト & Job Hub）**: 作業一覧を StatusBadge+車両アイコン+メタ行のカード形式に再構成。
     作業詳細を Vehicle heroカード+ProgressRing+NEXT ACTION+ステッパー+5タブ（概要/作業/証拠/書類/履歴）の
@@ -1260,9 +1247,7 @@ supabase migration repair --status reverted 20260825000000
 - 対象: モバイルアプリ（`apps/mobile/`）。ウェブ管理画面は対象外。
 - 検証: `npx tsc --noEmit` 通過、`npm run lint` エラー0件、全3806テスト通過。
   7ファイル変更、+2217行/-571行。
-
 ## 2026-08-20 UI-010/020/030 モバイルアプリ UI リデザイン Phase 1（branch claude/imp-000-implementation-r0eje1 / PR #926）
-
 - 内容: Ledra_UIUX_Development_Specification_v2.0 のリファレンス画像を視覚目標として、
   モバイル Expo アプリ（`apps/mobile/`）の UI を全面リデザイン。3タスクを一括実装。
   - **UI-010（デザインシステム基盤）**: `apps/mobile/src/constants/tokens.ts` を新規作成し、
@@ -1283,6 +1268,16 @@ supabase migration repair --status reverted 20260825000000
 - 検証: `npx tsc --noEmit`（モバイル・ルート両方）通過、`npm run lint` エラー0件。
   25ファイル変更、+2589行/-552行。
 
+## 2026-08-19 IMP-001 実装ガードレール & 正準ドメイン語彙（branch impl/IMP-001-domain-vocabulary / PR #927）
+
+- 内容: v2.0 の6状態軸（Job/Step/Severity/Certificate/Payment/Sync）を正準語彙モジュール
+  `src/lib/domain/states.ts`（値集合+型+型ガード）と `src/lib/domain/labels.ts`
+  （ja/en ラベル、ja は v2.0 Appendix A 準拠、未収録ロケールは ja フォールバック）として新設。
+  ADR 6本（`docs/adr/0001`〜`0006`）と「アドホック状態禁止」ルール（CLAUDE.md）を追加。
+  ユニットテスト29件（値集合・型ガード・legacy 値拒否・ラベル網羅・フォールバック）。
+  既存の稼働コード・DB には変更なし。
+- 対象: 開発基盤（ユーザー向け画面の変更なし）。
+
 ## 2026-08-19 IMP-000 リポジトリ監査 & 実装ベースライン（branch claude/imp-000-implementation-r0eje1 / PR #926）
 
 - 内容: v2.0 仕様書（UI/UX & Development Specification v2.0）の実装に先立つリポジトリ監査。
@@ -1293,7 +1288,6 @@ supabase migration repair --status reverted 20260825000000
 - 対象: 開発プロセス（ユーザー向け機能の変更なし）。
 
 ## 2026-08-22 SEO/LLMO改善: llms.txt, OGメタデータ補完, canonical追加, Twitterハンドル設定 (PR #962)
-
 - 内容: AIクローラー向けllms.txt/llms-full.txtを新規追加、ブログ・事例詳細ページのOG/Twitter/JSON-LD補完、法的ページのcanonical URL追加、Twitterハンドル(@detailing_holy)の全ページ反映。
 - 対象: マーケティングサイト全体（SEO/LLMO/SNSシェア）。
 - 実装:
