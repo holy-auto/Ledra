@@ -4,50 +4,66 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
-## 2026-08-26 VIN トリガーのマイグレーションを `20260825000000` へ戻す（本番適用の停止を解除）
+## 2026-08-26 VIN トリガーのマイグレーションを元の `20260825000000` へ戻した（2度の停止と復旧）
 
-#976 の改名後も `db-migrate` は失敗していた（run 32948320109）。エラーが
-out-of-order から `Remote migration versions not found in local migrations
-directory.` に変わっており、**`20260825000000` は既に本番へ適用済み**だった。
+PR #967 のマージ後、`db-migrate`（本番への自動適用）が**2回止まった**。
+どちらも同じファイル `vehicles_vin_normalized_trigger` が原因。
 
-本番で3点確認:
+**1回目（out-of-order・run 32947490344）**
 
-- `schema_migrations` に `20260825000000_vehicles_vin_normalized_trigger` の記録
-- トリガー `trg_vehicles_vin_normalized` が `vehicles` に実在
-- VIN を持つ車両 **7/7** が `vin_code_normalized` 済み（2026-08-26 08:4x 時点の実測。
-  マイグレーション冒頭のコメントが書かれた時点は6台で、その後1台増えた）
+```
+Found local migration files to be inserted before the last migration on remote database.
+supabase/migrations/20260825000000_vehicles_vin_normalized_trigger.sql
+```
 
-適用済みを改名したことで不変条件1（本番の全バージョンに repo のファイルがある）
-を壊していたので、ファイル名を元に戻した。中身は無変更。これで本番にあって
-repo に無いバージョンは0件、未適用も0件になる。
+PR #967 の作業中に、`main` とのバージョン衝突を避けて `20260823000000` → `20260825000000` へ
+改名した。その後 `main` に #971〜#974 が入り本番の適用済み最新が `20260826000006` まで進んだため、
+マージ時点で「適用済み最新より古い未適用ファイル」になっていた。
 
-**「適用済みを改名した」の2度目**。1度目は `20260823000000_audit_logs_reconcile`
-（#972 で改名 → #973 で復元）、2度目が今回の VIN トリガー（#976 → 本 PR）。
-改名の可否は CI のエラー文ではなく、本番の台帳をバージョン名で名指しして
-引いて判断する。`db-migrate.yml` の手順書と Slack 通知の文面にもこの条件を書いた
-—— **今回の事故を生んだのは、その文面の「out-of-order → 後ろの日付へ改名する」
-という無条件の助言そのものだった。**
+**2回目（remote にあるバージョンのファイルが repo に無い・run 32948320109）**
 
-## 2026-08-26 VIN トリガーのマイグレーションを `20260826000007` へ改名（本番適用の停止を解除）
+1回目の対処として `20260826000007` へ改名した（PR #976）。ところが**その間に
+`20260825000000` が本番へ適用されていた**（`supabase_migrations.schema_migrations` に
+`20260825000000 / vehicles_vin_normalized_trigger` が存在することを実データで確認）。
+適用済みのバージョンを改名したので、今度は invariant 1 に抵触した。
 
-> **この改名は撤回した。**対象は既に本番へ適用済みで、改名によって別の停止を
-> 招いた。経緯は上の「`20260825000000` へ戻す」エントリを参照。
+```
+Remote migration versions not found in local migrations directory.
+supabase migration repair --status reverted 20260825000000
+```
 
-- PR #967 をマージした直後、`db-migrate`（本番への自動適用）が **out-of-order で停止**した。
-  ```
-  Found local migration files to be inserted before the last migration on remote database.
-  supabase/migrations/20260825000000_vehicles_vin_normalized_trigger.sql
-  ```
-- 原因: PR #967 の作業中に、`main` 側とのバージョン衝突を避けて `20260823000000` →
-  `20260825000000` へ改名した。その後 `main` に #971〜#974 が入り、本番の適用済み最新が
-  **`20260826000006`** まで進んだ。マージ時点で `20260825000000` は「適用済み最新より古い
-  未適用ファイル」になっていた。
-- 対処: `20260826000007_vehicles_vin_normalized_trigger.sql` へ改名（中身は変更なし）。
-  `--include-all` での強制適用は採らない（DECISION_LOG 2026-07-21 の方針どおり、
-  後発ファイルを一意な後ろの日付へ改名する運用に統一する）。
-- **CI は全緑だった。** `lint-migrations` は同一バージョンの重複しか見ておらず、
-  `Migrations Replay` は空DBからの再生なので、どちらも「本番の適用済み最新との前後関係」を
-  見ていない。マージ前に本番の `schema_migrations` を確認していれば防げた。
+これは #973 が直したのと**同じ間違い**である（「改名してよいのは未適用のものだけ」）。
+
+**対処**: `20260825000000_vehicles_vin_normalized_trigger.sql` へ戻す。中身は一貫して無変更。
+これで repo と本番の台帳が一致し、未適用のファイルも無くなる。
+`supabase migration repair` は使わない（本番データの書き換えは代表判断）。
+
+**本番のスキーマは正しく入っている**（実データで確認・2026-08-26）:
+
+| 確認項目 | 実測 |
+| --- | --- |
+| `vin_normalize()` 関数 | 存在する |
+| `trg_vehicles_vin_normalized` トリガー | 存在する |
+| 車体番号ありで正規化列が NULL の車両 | **0台**（全25台中） |
+
+つまり4か月間 `/v/[vin]` から引けなかった車両は、これで全部引けるようになっている。
+
+**再発防止**: マイグレーションを含む PR は、マージ**直前**に本番の `schema_migrations` と
+突き合わせる。`lint-migrations` は同一バージョンの重複しか見ず、`Migrations Replay` は
+空DBからの再生なので、**どちらも本番の状態を見ていない**（詳細は DECISION_LOG 2026-08-26）。
+
+**補足（本 PR）**
+
+- 本番で実体まで確認した: トリガー `trg_vehicles_vin_normalized` が `vehicles` に実在し、
+  VIN を持つ車両 **7/7** が `vin_code_normalized` 済み（2026-08-26 08:4x 実測。
+  マイグレーション冒頭のコメント時点は6台で、その後1台増えた）。記録だけでなく
+  バックフィルまで走っていた。
+- **「適用済みを改名した」はこれで2度目。**1度目は `20260823000000_audit_logs_reconcile`
+  （#972 で改名 → #973 で復元）。
+- **事故を生んだのは `db-migrate.yml` の手順書そのものだった。** 運用コメントと Slack 通知が
+  「out-of-order → 後ろの日付へ改名する」と**無条件に**書いており、「本番に入っていないことを
+  確かめてから」が抜けていた。2回とも、その一文どおりに動いた結果である。両方に条件と
+  確かめ方（バージョン名で名指しして引く／降順 LIMIT で代用しない）を書いた。
 
 ## 2026-08-26 デプロイと型生成の自動化を復旧させる
 
