@@ -3,6 +3,7 @@
  * PUT /api/admin/certificates/status の「写真添付必須」ゲートを検証する。
  *
  * - draft→active で写真が無い → 400 (発行ブロック)、update も発行フックも走らない
+ * - draft→active で走行距離が無い → 400 (発行ブロック)
  * - draft→active で写真あり → 200、発行フック (triggerCertificateIssued) が 1 回
  * - void→active (再発行) で写真あり → 200 だが発行フックは走らない (二重通知防止)
  */
@@ -82,6 +83,8 @@ const CERT = {
   vehicle_info_json: { model: "プリウス", plate: "品川 300 あ 12-34" },
   service_type: "coating",
   created_by: "u1",
+  // 走行距離必須ルール (2026-08-25〜): 発行には maintenance_json.mileage が要る。
+  maintenance_json: { mileage: 35000 },
 };
 
 beforeEach(() => {
@@ -136,6 +139,22 @@ describe("PUT /api/admin/certificates/status — photo gate", () => {
     // draft→active 以外 (再発行/void 等) は証明書レコードアンカーを直接 queue する
     expect(mocks.enqueue).toHaveBeenCalledTimes(1);
     expect(mocks.enqueue.mock.calls[0][0]).toMatchObject({ tenantId: "tenant-1", certificateId: "c1" });
+  });
+
+  it.each([
+    ["maintenance_json ごと無い", undefined],
+    ["mileage キーが無い", { work_type: "オイル交換" }],
+    ["mileage が 0", { mileage: 0 }],
+    ["mileage が数値でない", { mileage: "35000km" }],
+    ["maintenance_json が配列", [{ mileage: 35000 }]],
+  ])("draft→active で走行距離が確定していない (%s) と 400 でブロックする", async (_label, maintenance) => {
+    mocks.fetchResult = { data: { ...CERT, status: "draft", maintenance_json: maintenance }, error: null };
+    mocks.hasPhotos.mockResolvedValue(true);
+
+    const res = (await PUT(req({ public_id: "P-1", status: "active" }))) as Response;
+    expect(res.status).toBe(400);
+    expect(mocks.update).not.toHaveBeenCalled();
+    expect(mocks.issued).not.toHaveBeenCalled();
   });
 
   it("coating で Before/After 写真が無いと 400 でブロックする", async () => {

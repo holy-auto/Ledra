@@ -114,16 +114,33 @@ Route Handlerで動的提供（siteConfig + PLANSから自動追従）。Xハン
   実データがある種別だけ「なぜ」（証明書=AI信頼度、発注=起票理由の実文言）を表示し、
   根拠データの無い請求書には表示しない（PR #819）。
 
-## 走行距離の記録（2026-08-25 必須化）
+## 走行距離の記録（2026-08-25 必須化 / 2026-08-26 発行時ゲートへ移動）
 
-証明書の発行時に**走行距離の入力を必須**にしている（施工種別を問わず、車種選択の直後に常時表示）。
+証明書に**走行距離が無ければ発行できない**（施工種別を問わず、全テナント一律・サーバ強制）。
 値は `certificates.maintenance_json.mileage` に入り、DBトリガー `trg_sync_mileage_from_certificate` が
-`vehicle_mileage_logs` に走行距離タイムラインとして落とす。判定ルールは `src/lib/maintenance/mileage.ts` の
-`parseMileageKm()` に集約し、WEBフォーム・Server Action・外部/オフラインJSON API・モバイルが同じ条件で弾く。
+`vehicle_mileage_logs` に走行距離タイムラインとして落とす。判定ルールは `src/lib/maintenance/mileage.ts`
+（`parseMileageKm()` / `certificateMileageKm()`）に集約している。
+
+強制する場所は**発行のチョークポイント2本だけ**:
+`PUT /api/admin/certificates/status` と `POST /api/certificates/activate-by-key`。
+写真必須ルール（`certificateHasRequiredPhotos`）と同じ位置・同じ形。
+作成経路（Web / モバイル / 外部API `POST /api/certificates/create` / AI自動起票 / オフライン再送）は
+どれも `draft` で作るため、経路が増えてもここを通らずに `active` になることはない。
+AI自動起票（`certificateRecordAuto.ts`）だけは insert で直接 `active` を作れるので、
+そこにも同じ条件を課してある（走行距離が無ければ `draft` に落ち、承認インボックスへ）。
+
+入力は手入力が既定で、メーター写真からの OCR 取り込み（`OdometerOcrButton` →
+`/api/admin/inspection-records/ocr` の `target=odometer`）が補助として付く。
+OCR は鮮明度（`confidence` / ブレ・反射・欠けの `warnings`）を出し、読めなければ何も入力しない。
+**最終確認は人間** —— OCR は下書きを埋めるだけで、発行操作をするのは人。
+
+編集API（`PUT /api/certificates/edit`）では走行距離を**入れられるが消せない**。
+これがそのまま既存証明書への遡及入力の経路になる。
 
 このタイムラインは整備リマインダー（`src/lib/cron/serviceReminders.ts`）・劣化予測・車両パスポートの
 走行距離履歴が共通で参照する。2026-08-25 以前は任意入力だったため本番の記録は0件で、
-これらの機能は実質的に入力ゼロの上で動いていた。詳細は DECISION_LOG / RELEASE_LOG 2026-08-25。
+これらの機能は実質的に入力ゼロの上で動いていた。既存45件は遡及せず、タイムラインは
+実質「次回入庫から」始まる。詳細は DECISION_LOG / RELEASE_LOG 2026-08-25 と 2026-08-26。
 
 ## 外部サービス連携（2026-08-16 時点）
 

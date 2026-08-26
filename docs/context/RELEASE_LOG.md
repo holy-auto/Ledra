@@ -4,6 +4,33 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-08-26 走行距離の必須化を「発行の瞬間」へ移し、メーター写真の OCR 取り込みを足した
+
+- **必須化の場所を発行のチョークポイント2本へ移した。**
+  `PUT /api/admin/certificates/status`（draft→active / void→active）と
+  `POST /api/certificates/activate-by-key`（オフライン発行）で、
+  `maintenance_json.mileage` が有効値でなければ 400 で止める。
+  判定は `certificateMileageKm()`（`src/lib/maintenance/mileage.ts`）1つ。
+  写真必須ルール（`certificateHasRequiredPhotos`）と同じ位置・同じ形。
+- **これで作成経路を1本も触らずに全経路が塞がる。** `POST /api/certificates/create` は
+  必ず `status: "draft"` で作るため、外部APIから作られた証明書もこの2本を必ず通る。
+  作成経路（Web / モバイル / 外部API / AI自動起票 / オフライン再送）が増えても漏れない。
+- **AI自動起票は走行距離が無い限り発行しない。** `certificateRecordAuto.ts` は
+  insert で直接 `active` を作れる唯一の経路なので、そこにも同じ条件を課した。
+  結果として自動発行は `draft` に落ち、承認インボックスで人が確認して発行する。
+- **証明書フォームにメーター撮影→OCR 取り込みを足した**（`OdometerOcrButton`）。
+  既存の `/api/admin/inspection-records/ocr`（`target=odometer`）をそのまま呼ぶ。
+  `confidence < 0.7` と `warnings`（ブレ / 反射 / 一部欠け）は加工せず画面に出し、
+  撮り直しを促す。読めなければ**何も入力しない** —— 常時表示の手入力欄にフォールバックする。
+  OCR は下書きを埋めるだけで、発行するのは人（＝最終確認は人間）。
+- **編集API (`PUT /api/certificates/edit`) は「入れられるが消せない」。**
+  既存値がある状態で `mileage` の無い `maintenance_json` を送っても既存値を引き継ぐ。
+  不正値（0・負・小数・`"35000km"`・配列）は 400。
+  この編集APIがそのまま**遡及入力の経路**になる（DBトリガーは `UPDATE OF maintenance_json`
+  でも発火し、`vehicle_mileage_logs` に積まれる）。専用画面は作っていない。
+- 既存45件の一括バックフィルはしない（施工時点のメーター値の復元元が無い。
+  判る分だけ編集APIから入れる）。詳細は `docs/mileage-followup-checklist.md`。
+
 ## 2026-08-25 Web から作った行にも `store_id` が入るようにした
 
 - **`src/lib/stores/resolveStoreId.ts` を1つ作り、作成経路をそこへ通した。**

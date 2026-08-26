@@ -9,6 +9,7 @@ import {
   certificateHasRequiredBeforeAfterMedia,
   CERTIFICATE_BEFORE_AFTER_REQUIRED_MESSAGE,
 } from "@/lib/certificates/photoRequirement";
+import { certificateMileageKm, CERTIFICATE_MILEAGE_REQUIRED_MESSAGE } from "@/lib/maintenance/mileage";
 import { triggerCertificateIssued } from "@/lib/certificates/issueHooks";
 import { enqueueCertificateAnchor } from "@/lib/anchoring/certificateAnchorService";
 import { getActorAssurance } from "@/lib/auth/mfa";
@@ -78,7 +79,7 @@ export async function PUT(req: Request) {
     const { data: cert, error: fetchErr } = await admin
       .from("certificates")
       .select(
-        "id, vehicle_id, status, customer_id, customer_name, vehicle_info_json, service_type, created_by, reservation_id",
+        "id, vehicle_id, status, customer_id, customer_name, vehicle_info_json, service_type, created_by, reservation_id, maintenance_json",
       )
       .eq("tenant_id", caller.tenantId)
       .eq("public_id", publicId)
@@ -122,6 +123,12 @@ export async function PUT(req: Request) {
       );
       if (!hasBeforeAfter) {
         return apiValidationError(CERTIFICATE_BEFORE_AFTER_REQUIRED_MESSAGE);
+      }
+      // 走行距離必須ルール: 発行の瞬間に一度だけ強制する。作成経路 (Web / モバイル /
+      // 外部 API / AI 自動起票) は増減するが、active になる道はここと
+      // activate-by-key の 2 本しかないため、ここで塞げば漏れが出ない。
+      if (certificateMileageKm(cert.maintenance_json) === null) {
+        return apiValidationError(CERTIFICATE_MILEAGE_REQUIRED_MESSAGE);
       }
     }
 

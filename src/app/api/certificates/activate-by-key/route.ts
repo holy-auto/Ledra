@@ -11,6 +11,7 @@ import {
   certificateHasRequiredBeforeAfterMedia,
   CERTIFICATE_BEFORE_AFTER_REQUIRED_MESSAGE,
 } from "@/lib/certificates/photoRequirement";
+import { certificateMileageKm, CERTIFICATE_MILEAGE_REQUIRED_MESSAGE } from "@/lib/maintenance/mileage";
 import { triggerCertificateIssued } from "@/lib/certificates/issueHooks";
 import { logCertificateAction, getRequestMeta } from "@/lib/audit/certificateLog";
 import {
@@ -63,7 +64,7 @@ export async function POST(req: NextRequest): Promise<Response> {
     const { data: cert, error: fetchErr } = await admin
       .from("certificates")
       .select(
-        "id, public_id, status, vehicle_id, customer_id, customer_name, vehicle_info_json, service_type, created_by, reservation_id",
+        "id, public_id, status, vehicle_id, customer_id, customer_name, vehicle_info_json, service_type, created_by, reservation_id, maintenance_json",
       )
       .eq("tenant_id", caller.tenantId)
       .eq("id", found.certificate_id)
@@ -92,6 +93,11 @@ export async function POST(req: NextRequest): Promise<Response> {
     );
     if (!hasBeforeAfter) {
       return apiValidationError(CERTIFICATE_BEFORE_AFTER_REQUIRED_MESSAGE);
+    }
+
+    // 走行距離必須ルール (status ルートと同じ。active になる道はこの 2 本のみ)。
+    if (certificateMileageKm(cert.maintenance_json) === null) {
+      return apiValidationError(CERTIFICATE_MILEAGE_REQUIRED_MESSAGE);
     }
 
     const { data: updated, error: updateErr } = await admin

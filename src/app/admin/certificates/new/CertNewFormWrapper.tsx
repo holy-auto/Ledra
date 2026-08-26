@@ -23,6 +23,7 @@ import PhotoUploadSection, { type PhotoUploadHandle } from "./PhotoUploadSection
 import ManufacturerTemplatePicker from "./ManufacturerTemplatePicker";
 import CertFormProgressRail from "./CertFormProgressRail";
 import { parseMileageKm, MAX_MILEAGE_KM } from "@/lib/maintenance/mileage";
+import OdometerOcrButton from "@/components/admin/OdometerOcrButton";
 import Button from "@/components/ui/Button";
 import HelpTooltip from "@/components/ui/HelpTooltip";
 import type { PlanTier } from "@/lib/billing/planFeatures";
@@ -148,6 +149,7 @@ export default function CertNewFormWrapper({
   const [isPending, startTransition] = useTransition();
   const [submitStatus, setSubmitStatus] = useState<"active" | "draft">("active");
   const [error, setError] = useState<string | null>(null);
+  const mileageRef = useRef<HTMLInputElement | null>(null);
   const [uploadProgress, setUploadProgress] = useState<string | null>(null);
   const [savingDefault, setSavingDefault] = useState(false);
   const [defaultSaveMsg, setDefaultSaveMsg] = useState<string | null>(null);
@@ -761,6 +763,7 @@ export default function CertNewFormWrapper({
               走行距離（km）<span className="ml-1 text-xs font-normal text-red-600">必須</span>
             </span>
             <input
+              ref={mileageRef}
               type="number"
               name="mileage_km"
               inputMode="numeric"
@@ -775,6 +778,14 @@ export default function CertNewFormWrapper({
               メーターの数字をそのまま入力してください。次回整備時期の判定と、車両パスポートの走行距離履歴になります。
             </span>
           </label>
+          {/* 撮って読ませる導線。読み取り値は下書きで、確定（送信）は人が行う。 */}
+          <div className="mt-2">
+            <OdometerOcrButton
+              onRead={(km) => {
+                if (mileageRef.current) mileageRef.current.value = String(km);
+              }}
+            />
+          </div>
         </section>
 
         {/* ━━━ 4. 施工写真（写真ファースト：車種の直後に配置） ━━━ */}

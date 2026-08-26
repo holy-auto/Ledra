@@ -16,6 +16,7 @@ import { resolveCertifiedTemplateForTenant } from "@/lib/manufacturers/certified
 import { enqueueCertificateAnchor } from "@/lib/anchoring/certificateAnchorService";
 import { buildCertificateVersionRow, type CertificateVersionRow } from "@/lib/certificates/certificateVersion";
 import { logTenantAuditEvent } from "@/lib/audit/tenantLog";
+import { mergeMileageOnEdit } from "@/lib/maintenance/mileage";
 
 const certificateEditSchema = z
   .object({
@@ -95,6 +96,16 @@ export async function PUT(req: NextRequest) {
         changes.push({ field, label, old: oldVal ?? null, new: newVal ?? null });
         updatePayload[field] = newVal;
       }
+    }
+
+    // 走行距離は「入れられるが、消せない」(判定は mergeMileageOnEdit に集約)。
+    if ("maintenance_json" in updatePayload) {
+      const merged = mergeMileageOnEdit(
+        (cert as Record<string, unknown>).maintenance_json,
+        updatePayload.maintenance_json ?? {},
+      );
+      if (!merged.ok) return apiValidationError(merged.error);
+      updatePayload.maintenance_json = merged.maintenanceJson;
     }
 
     // メーカー指定デザインの切替もここで扱う。null への切替は常に許可
