@@ -583,6 +583,16 @@ export default function WalkInCheckoutScreen() {
             </View>
           )}
 
+          {/* 支払リンクを作れなかった */}
+          {cardEntry.startError && (
+            <View style={styles.tapFailedCard}>
+              <Text style={styles.tapFailedTitle}>支払リンクを作れませんでした</Text>
+              <Text style={styles.tapFailedDesc}>
+                {cardEntry.startError}（現金での会計は続けられます）
+              </Text>
+            </View>
+          )}
+
           {/* カード番号入力（Stripe Checkout）*/}
           {cardEntry.url && (
             <CardEntryPanel

@@ -44,6 +44,12 @@ export interface CardEntryState {
   fromTapFailure: boolean;
   /** 決済は済んだが記録に失敗した。画面を移さずに再試行させる */
   recordError: string | null;
+  /**
+   * 支払リンクを作れなかった。**黙って戻ると「押しても何も起きない」に見える。**
+   * 実際、旧サーバは `tenant_id` を必須にしていて新アプリの要求を 400 で弾き、
+   * 画面には何も出ないまま会計が進められなくなっていた
+   */
+  startError: string | null;
 }
 
 export function useCardEntry(onRecorded: (paymentId: string | null) => void) {
@@ -53,6 +59,7 @@ export function useCardEntry(onRecorded: (paymentId: string | null) => void) {
   const [starting, setStarting] = useState(false);
   const [fromTapFailure, setFromTapFailure] = useState(false);
   const [recordError, setRecordError] = useState<string | null>(null);
+  const [startError, setStartError] = useState<string | null>(null);
   // リンクを作った時点の会計内容。**これで記録する**（画面の現在値ではない）
   const sale = useRef<CardEntrySale | null>(null);
   // 決済したセッション。**やり直しでも同じ値を送る**（変わると重複防止が効かない）
@@ -107,6 +114,7 @@ export function useCardEntry(onRecorded: (paymentId: string | null) => void) {
       // 二度押し・セッションの二重作成を止める
       if (starting || sessionId) return;
       setStarting(true);
+      setStartError(null);
       try {
         const res = await mobileApi<{ url: string; session_id: string }>("/pos/checkout/qr-session", {
           method: "POST",
@@ -123,6 +131,10 @@ export function useCardEntry(onRecorded: (paymentId: string | null) => void) {
         setUrl(res.url);
         setSessionId(res.session_id);
         setPolling(true);
+      } catch (err) {
+        // ここで握って画面に出す。投げっぱなしにすると未処理の rejection になり、
+        // 店員には「ボタンが効かない」としか見えない
+        setStartError(err instanceof Error ? err.message : "支払リンクを作れませんでした");
       } finally {
         setStarting(false);
       }
@@ -148,6 +160,6 @@ export function useCardEntry(onRecorded: (paymentId: string | null) => void) {
     }
   }, [sessionId]);
 
-  const state: CardEntryState = { url, polling, starting, fromTapFailure, recordError };
+  const state: CardEntryState = { url, polling, starting, fromTapFailure, recordError, startError };
   return { ...state, start, cancel, retryRecord: record };
 }
