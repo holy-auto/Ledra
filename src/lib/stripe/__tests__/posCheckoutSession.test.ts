@@ -10,10 +10,10 @@
  *  5. PayPay の金額上限・下限を外れた会計に PayPay を出さない
  *  6. 決済手段と無関係な失敗を握り潰さない
  */
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import Stripe from "stripe";
 
-import { createPosCheckoutSession } from "@/lib/stripe/posCheckoutSession";
+import { createPosCheckoutSession, __resetSupportMemoForTest } from "@/lib/stripe/posCheckoutSession";
 import { PAYPAY_MAX_JPY, PAYPAY_MIN_JPY } from "@/lib/stripe/paymentMethods";
 
 vi.mock("@/lib/logger", () => ({
@@ -44,6 +44,8 @@ async function settle(stripe: Stripe, account: string, rounds = 4) {
 }
 
 describe("createPosCheckoutSession", () => {
+  beforeEach(() => __resetSupportMemoForTest());
+
   it("全部使える店では card + PayPay + Alipay + WeChat Pay を提示する", async () => {
     const { stripe, create } = fakeStripe(() => ({ id: "cs_1" }));
 
@@ -124,6 +126,42 @@ describe("createPosCheckoutSession", () => {
     expect(second.id).toBe("cs_5");
     expect(methodsOf(slow.mock.calls[1][0])).toEqual(["card"]);
     expect(create).not.toHaveBeenCalled();
+  });
+
+  it("特定できない 400 で、実績のある手段まで消さない", async () => {
+    let failNext = false;
+    const { stripe, create } = fakeStripe((params) => {
+      // 「card, alipay, wechat_pay のいずれかにしろ」という選択肢の列挙。
+      // 候補が複数出るので「どれが悪いか」は特定できない
+      if (failNext && methodsOf(params).length > 1) {
+        failNext = false;
+        return stripeError("payment_method_types must be one of card, alipay, wechat_pay", "payment_method_types");
+      }
+      return { id: "cs_6" };
+    });
+
+    await settle(stripe, "acct_enum"); // 3 手段とも実績が付く
+    failNext = true;
+    await createPosCheckoutSession(stripe, 10_000, PARAMS, { stripeAccount: "acct_enum" });
+
+    // 巻き添えで実績を消さない → 次の会計でも 3 手段を提示する
+    await createPosCheckoutSession(stripe, 10_000, PARAMS, { stripeAccount: "acct_enum" });
+    expect(methodsOf(create.mock.calls.at(-1)![0])).toEqual(["card", "paypay", "alipay", "wechat_pay"]);
+  });
+
+  it("金額制限で断られた手段を「その店では使えない」と記録しない", async () => {
+    let rejected = false;
+    const { stripe, create } = fakeStripe((params) => {
+      if (methodsOf(params).includes("alipay") && !rejected) {
+        rejected = true;
+        return stripeError("Amount must be no more than the maximum for alipay", "payment_method_types[2]");
+      }
+      return { id: "cs_7" };
+    });
+
+    await settle(stripe, "acct_amount");
+
+    expect(methodsOf(create.mock.calls.at(-1)![0])).toContain("alipay");
   });
 
   it("特定できない失敗はそのまま投げる（カードのみで投げ直さない）", async () => {

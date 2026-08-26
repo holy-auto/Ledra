@@ -99,11 +99,31 @@ export async function createPosCheckoutSession(
           },
           options,
         ),
-      { scope: "payment_method", onDrop: (method) => remember(account, method, false) },
+      {
+        scope: "payment_method",
+        // 送っているのは ["card", ...候補]。位置での名指しを正しく読むため
+        indexBase: 1,
+        // **恒久的な理由でないものを実績にしない。**
+        //  - 金額制限: その会計で出せなかっただけ。次の会計では出せる
+        //  - bulk（どれが悪いか特定できず全部外した）: 実績のある手段まで
+        //    巻き添えで消さない。ただし**今回足した未知の手段**は、それが
+        //    原因である可能性が高いので記録する（でないと毎回1往復無駄になる）
+        onDrop: (method, info) => {
+          if (/amount|minimum|maximum|limit|too (small|large)/i.test(info.message)) return;
+          if (info.bulk && method !== exploring) return;
+          remember(account, method, false);
+        },
+      },
     );
     used.forEach((method) => remember(account, method, true));
     return value;
   } finally {
     if (exploring !== null) probing = false;
   }
+}
+
+/** テスト専用 —— プロセス内メモを消す。 */
+export function __resetSupportMemoForTest(): void {
+  support.clear();
+  probing = false;
 }

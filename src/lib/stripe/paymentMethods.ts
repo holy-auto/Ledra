@@ -39,18 +39,16 @@ export const PAYPAY_METHOD = "paypay" as PosPaymentMethod;
  */
 export const OPTIONAL_POS_METHODS: ReadonlyArray<{
   type: PosPaymentMethod;
-  label: string;
   /** その会計で出せるか（金額制限のある手段がある）。 */
   eligible?: (amountJpy: number) => boolean;
 }> = [
-  {
-    type: PAYPAY_METHOD,
-    label: "PayPay",
-    eligible: (amount) => amount >= PAYPAY_MIN_JPY && amount <= PAYPAY_MAX_JPY,
-  },
-  { type: "alipay", label: "Alipay" },
-  { type: "wechat_pay", label: "WeChat Pay" },
+  { type: PAYPAY_METHOD, eligible: (amount) => amount >= PAYPAY_MIN_JPY && amount <= PAYPAY_MAX_JPY },
+  { type: "alipay" },
+  { type: "wechat_pay" },
 ];
+// ここに手段を足したら、レジの案内文のラベル（`PosClient.tsx` の
+// `QR_METHOD_LABELS`）にも足すこと。無いと Stripe の画面には出るのに
+// 「〜が使えます」に名前が出ない。
 
 /**
  * Connect アカウント作成時に一緒に申請する capability。
@@ -79,6 +77,11 @@ type RejectionScope = keyof typeof REJECTION_FIELD;
 /** 「全部外して作り直す」を表す番兵。個別に特定できなかったときの逃げ道。 */
 const DROP_ALL = "*";
 
+/** `payment_method_types[1]` / `capabilities[paypay_payments]` の括弧の中身。 */
+function bracketed(param: string | undefined): string | null {
+  return param?.match(/\[([^\]]+)\]/)?.[1] ?? null;
+}
+
 /**
  * Stripe の 400 が「この候補のせい」だと言っているか。言っているならその候補名。
  *
@@ -86,45 +89,96 @@ const DROP_ALL = "*";
  * `.rawType` に API の型（`invalid_request_error`）を入れる。片方だけ見ると
  * 判定が常に false になり、**フォールバックが丸ごと死ぬ**ので両方見る。
  *
- * 特定できない 400（権限不足など）は `null` を返してそのまま投げる。無関係な
- * 失敗を握り潰すと、原因が「なぜか PayPay が出ない」だけになって追えなくなる。
+ * 特定は「送った位置」→「名指しの引用」→「本文に1つだけ出る候補」の順で厳しく
+ * 見る。**本文に複数の候補が出る場合は特定しない**（「must be one of card,
+ * alipay, ...」のような選択肢の列挙を「Alipay が悪い」と読むと、動いている手段を
+ * 落としてしまう）。特定できない 400（権限不足など）は `null` を返してそのまま
+ * 投げる —— 無関係な失敗を握り潰すと、原因が「なぜか出ない」だけになって追えない。
+ *
+ * @param indexBase 候補の前に固定で送っている要素数（レジは先頭が `card` なので 1）。
  */
-export function rejectedExtra(err: unknown, candidates: readonly string[], scope: RejectionScope): string | null {
+export function rejectedExtra(
+  err: unknown,
+  candidates: readonly string[],
+  scope: RejectionScope,
+  indexBase = 0,
+): string | null {
   const e = err as { type?: string; rawType?: string; param?: string; message?: string } | null;
   if (e?.rawType !== "invalid_request_error" && e?.type !== "StripeInvalidRequestError") return null;
   if (!candidates.length) return null;
 
-  const text = `${e.param ?? ""} ${e.message ?? ""}`;
-  // 1. エラーが候補名を名指ししている（"The payment method type provided: paypay is invalid"）
-  const named = candidates.find((c) => text.toLowerCase().includes(c.toLowerCase()));
-  if (named) return named;
-  // 2. 名指しは無いが、こちらが足したフィールドを咎めている → 全部外して作り直す
+  const param = e.param ?? "";
+  const message = e.message ?? "";
+  const text = `${param} ${message}`.toLowerCase();
+
+  // 1. 送った位置・キーで名指しされている（もっとも確か）
+  const key = bracketed(param);
+  if (key !== null) {
+    const index = Number(key);
+    if (Number.isInteger(index)) return candidates[index - indexBase] ?? DROP_ALL;
+    const byKey = candidates.find((c) => c.toLowerCase() === key.toLowerCase());
+    if (byKey) return byKey;
+  }
+
+  // 2. 本文が値を引用している（"The payment method type provided: paypay is invalid"）
+  const quoted = message.match(/provided:?\s*['"`]?([a-z_]+)['"`]?|['"`]([a-z_]+)['"`]/i);
+  const quotedName = (quoted?.[1] ?? quoted?.[2])?.toLowerCase();
+  const byQuote = candidates.find((c) => c.toLowerCase() === quotedName);
+  if (byQuote) return byQuote;
+
+  // 3. 本文に**1つだけ**候補が出る。複数出るなら選択肢の列挙なので特定しない
+  const mentioned = candidates.filter((c) => text.includes(c.toLowerCase()));
+  if (mentioned.length === 1) return mentioned[0];
+
+  // 4. こちらが足したフィールドを咎めている → 全部外して作り直す
   return text.includes(REJECTION_FIELD[scope]) ? DROP_ALL : null;
+}
+
+/** 候補を外した理由。**bulk（特定できずに全部外した）を実績として記録しないこと。** */
+export interface DropInfo {
+  /** 個別に名指しされたのではなく、まとめて外した。 */
+  bulk: boolean;
+  /** Stripe のエラー本文（金額制限など、恒久的でない理由の判別に使う）。 */
+  message: string;
 }
 
 /**
  * 「オプションの候補を付けて実行 → 断られた候補だけ外して再実行」を繰り返す。
  *
- * 候補は毎回1つ以上減るので、試行回数は `extras.length + 1` を超えない。
+ * `maxDrops` は**連続失敗の上限**。`getStripeClient()` の全呼び出しは
+ * `withRetry("stripe", ...)` を通っており、非リトライ対象の 400 も共有の
+ * circuit breaker の連続失敗に数えられる（5連続で30秒 open → 無関係な Stripe
+ * 呼び出しまで巻き添え）。上限に達したら**残りをまとめて外して**最後の1回を投げる。
  */
 export async function withOptionalExtras<T>(
   extras: readonly string[],
   run: (extras: string[]) => Promise<T>,
-  opts: { scope: RejectionScope; onDrop?: (name: string) => void },
+  opts: {
+    scope: RejectionScope;
+    indexBase?: number;
+    maxDrops?: number;
+    onDrop?: (name: string, info: DropInfo) => void;
+  },
 ): Promise<{ value: T; extras: string[] }> {
+  const maxDrops = opts.maxDrops ?? 2;
   let current = [...extras];
+  let failures = 0;
+
   for (;;) {
     try {
       return { value: await run(current), extras: current };
     } catch (e) {
-      const rejected = rejectedExtra(e, current, opts.scope);
+      const rejected = rejectedExtra(e, current, opts.scope, opts.indexBase);
       if (!rejected) throw e;
-      const dropped = rejected === DROP_ALL ? current : [rejected];
-      dropped.forEach((name) => opts.onDrop?.(name));
+      failures++;
+      const bulk = rejected === DROP_ALL || failures >= maxDrops;
+      const dropped = bulk ? current : [rejected];
+      const message = e instanceof Error ? e.message : String(e);
+      dropped.forEach((name) => opts.onDrop?.(name, { bulk: bulk && rejected === DROP_ALL, message }));
       logger.info("stripe: dropping payment option rejected by Stripe", {
         scope: opts.scope,
         dropped: dropped.join(","),
-        error: e instanceof Error ? e.message : String(e),
+        error: message,
       });
       current = current.filter((x) => !dropped.includes(x));
     }
@@ -173,8 +227,17 @@ export async function createAccountWithCapabilities(
       ),
     {
       scope: "capability",
-      onDrop: (name) => capabilityRejectedUntil.set(name, Date.now() + CAPABILITY_RETRY_TTL_MS),
+      // bulk（どれが悪いか特定できずに全部外した）を「この capability は無効」と
+      // 記録すると、巻き添えで正常な申請まで出さなくなる
+      onDrop: (name, info) => {
+        if (!info.bulk) capabilityRejectedUntil.set(name, Date.now() + CAPABILITY_RETRY_TTL_MS);
+      },
     },
   );
   return value;
+}
+
+/** テスト専用 —— プロセス内メモを消す。 */
+export function __resetCapabilityMemoForTest(): void {
+  capabilityRejectedUntil.clear();
 }

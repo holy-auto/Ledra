@@ -9,10 +9,14 @@
  *     （400 の連発で共有の circuit breaker が開くと、接続そのものが 500 になる）
  *  4. 決済手段と無関係な失敗は握り潰さない
  */
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import Stripe from "stripe";
 
-import { createAccountWithCapabilities, REQUESTED_CAPABILITIES } from "@/lib/stripe/paymentMethods";
+import {
+  createAccountWithCapabilities,
+  REQUESTED_CAPABILITIES,
+  __resetCapabilityMemoForTest,
+} from "@/lib/stripe/paymentMethods";
 
 vi.mock("@/lib/logger", () => ({
   logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
@@ -36,6 +40,10 @@ const PARAMS: Stripe.AccountCreateParams = { type: "standard", country: "JP" };
 const requested = (params: Stripe.AccountCreateParams) => Object.keys(params.capabilities ?? {});
 
 describe("createAccountWithCapabilities", () => {
+  // プロセス内メモはテストをまたいで残る。消さないと後続のテストが
+  // 「一度も要求しなかった」ことを検証してしまう（実際に素通りしていた）
+  beforeEach(() => __resetCapabilityMemoForTest());
+
   it("作成と同時に決済手段の capability をまとめて要求する", async () => {
     const { stripe, create } = fakeStripe(() => ({ id: "acct_1" }));
 
@@ -79,6 +87,21 @@ describe("createAccountWithCapabilities", () => {
     expect(account.id).toBe("acct_3");
     expect(create).toHaveBeenCalledTimes(1);
     expect(requested(create.mock.calls[0][0])).not.toContain("paypay_payments");
+  });
+
+  it("どれが悪いか特定できないときは、正常な申請まで無効と記録しない", async () => {
+    let calls = 0;
+    const { stripe, create } = fakeStripe(() =>
+      calls++ === 0 ? stripeError("capabilities is invalid", "capabilities") : { id: "acct_4" },
+    );
+
+    await createAccountWithCapabilities(stripe, PARAMS);
+    create.mockClear();
+    calls = 1; // 2 回目は成功させる
+    await createAccountWithCapabilities(stripe, PARAMS);
+
+    // 巻き添えで外した分は覚えない → 次はまた全部要求する
+    expect(requested(create.mock.calls[0][0])).toEqual([...REQUESTED_CAPABILITIES]);
   });
 
   it("特定できない失敗はそのまま投げる", async () => {
