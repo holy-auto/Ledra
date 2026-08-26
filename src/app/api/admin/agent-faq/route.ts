@@ -32,7 +32,7 @@ export async function GET(request: NextRequest) {
 
     // Categories are reference data — never paginate; the list is small.
     const [catRes, faqRes] = await Promise.all([
-      admin.from("agent_faq_categories").select("id, name, sort_order, created_at, updated_at").order("sort_order"),
+      admin.from("agent_faq_categories").select("id, name, sort_order, created_at").order("sort_order"),
       faqQuery,
     ]);
 

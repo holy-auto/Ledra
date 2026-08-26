@@ -27,23 +27,11 @@ type CertRow = {
   created_at: string;
 };
 
-function InfoItem({
-  label,
-  value,
-  mono,
-}: {
-  label: string;
-  value: string;
-  mono?: boolean;
-}) {
+function InfoItem({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
   return (
     <div>
       <div className="text-xs font-medium text-muted">{label}</div>
-      <div
-        className={`mt-1 text-sm font-semibold text-primary ${mono ? "font-mono" : ""}`}
-      >
-        {value}
-      </div>
+      <div className={`mt-1 text-sm font-semibold text-primary ${mono ? "font-mono" : ""}`}>{value}</div>
     </div>
   );
 }
@@ -57,7 +45,9 @@ export default function InsurerVehicleDetailPage() {
   const [vehicle, setVehicle] = useState<Vehicle | null>(null);
   const [certs, setCerts] = useState<CertRow[]>([]);
   const [err, setErr] = useState<string | null>(null);
-  const [relatedCases, setRelatedCases] = useState<Array<{id: string; case_number: string; title: string; status: string}>>([]);
+  const [relatedCases, setRelatedCases] = useState<
+    Array<{ id: string; case_number: string; title: string; status: string }>
+  >([]);
 
   useEffect(() => {
     (async () => {
@@ -86,7 +76,7 @@ export default function InsurerVehicleDetailPage() {
           const casesRes = await fetch(`/api/insurer/cases?vehicle_id=${vehicleId}`);
           if (casesRes.ok) {
             const casesJson = await casesRes.json();
-            setRelatedCases(Array.isArray(casesJson) ? casesJson : casesJson?.cases ?? []);
+            setRelatedCases(Array.isArray(casesJson) ? casesJson : (casesJson?.cases ?? []));
           }
         } catch {}
       } catch (e: any) {
@@ -102,10 +92,7 @@ export default function InsurerVehicleDetailPage() {
       <header className="space-y-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <Link
-              href="/insurer/vehicles"
-              className="text-sm text-muted hover:text-secondary"
-            >
+            <Link href="/insurer/vehicles" className="text-sm text-muted hover:text-secondary">
               &larr; 車両検索へ
             </Link>
           </div>
@@ -121,35 +108,21 @@ export default function InsurerVehicleDetailPage() {
         <div className="inline-flex rounded-full border border-border-default bg-surface px-3 py-1 text-[11px] font-semibold tracking-[0.22em] text-secondary">
           VEHICLE DETAIL
         </div>
-        <h1 className="text-3xl font-bold tracking-tight text-primary">
-          車両詳細
-        </h1>
+        <h1 className="text-3xl font-bold tracking-tight text-primary">車両詳細</h1>
       </header>
 
-      {err && (
-        <div className="rounded-2xl border border-red-200 bg-red-50 p-5 text-sm text-red-700">
-          {err}
-        </div>
-      )}
+      {err && <div className="rounded-2xl border border-red-200 bg-red-50 p-5 text-sm text-red-700">{err}</div>}
 
       {vehicle && (
         <>
           <section className="rounded-2xl border border-border-default bg-surface p-5 shadow-sm">
-            <div className="mb-3 text-xs font-semibold tracking-[0.18em] text-muted">
-              VEHICLE INFO
-            </div>
+            <div className="mb-3 text-xs font-semibold tracking-[0.18em] text-muted">VEHICLE INFO</div>
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               <InfoItem label="車台番号" value={vehicle.vin_code || "-"} mono />
               <InfoItem label="メーカー" value={vehicle.maker || "-"} />
               <InfoItem label="車種" value={vehicle.model || "-"} />
-              <InfoItem
-                label="年式"
-                value={vehicle.year?.toString() ?? "-"}
-              />
-              <InfoItem
-                label="ナンバー"
-                value={vehicle.plate_display || "-"}
-              />
+              <InfoItem label="年式" value={vehicle.year?.toString() ?? "-"} />
+              <InfoItem label="ナンバー" value={vehicle.plate_display || "-"} />
               <InfoItem label="サイズ" value={vehicle.size_class || "-"} />
               <InfoItem label="施工店" value={vehicle.tenant_name || "-"} />
             </div>
@@ -158,18 +131,11 @@ export default function InsurerVehicleDetailPage() {
           <section className="rounded-2xl border border-border-default bg-surface p-5 shadow-sm">
             <div className="mb-4 flex items-center justify-between">
               <div>
-                <div className="text-xs font-semibold tracking-[0.18em] text-muted">
-                  CERTIFICATES
-                </div>
-                <div className="mt-1 text-base font-semibold text-primary">
-                  証明書履歴
-                </div>
+                <div className="text-xs font-semibold tracking-[0.18em] text-muted">CERTIFICATES</div>
+                <div className="mt-1 text-base font-semibold text-primary">証明書履歴</div>
               </div>
               <div className="text-sm text-muted">
-                <span className="font-semibold text-primary">
-                  {certs.length}
-                </span>{" "}
-                件
+                <span className="font-semibold text-primary">{certs.length}</span> 件
               </div>
             </div>
 
@@ -177,61 +143,30 @@ export default function InsurerVehicleDetailPage() {
               <table className="min-w-full text-sm">
                 <thead className="bg-inset">
                   <tr>
-                    <th className="p-3 text-left font-semibold text-secondary">
-                      証明書ID
-                    </th>
-                    <th className="p-3 text-left font-semibold text-secondary">
-                      ステータス
-                    </th>
-                    <th className="p-3 text-left font-semibold text-secondary">
-                      顧客名
-                    </th>
-                    <th className="p-3 text-left font-semibold text-secondary">
-                      施工種別
-                    </th>
-                    <th className="p-3 text-left font-semibold text-secondary">
-                      証明書番号
-                    </th>
-                    <th className="p-3 text-left font-semibold text-secondary">
-                      作成日時
-                    </th>
-                    <th className="p-3 text-left font-semibold text-secondary">
-                      操作
-                    </th>
+                    <th className="p-3 text-left font-semibold text-secondary">証明書ID</th>
+                    <th className="p-3 text-left font-semibold text-secondary">ステータス</th>
+                    <th className="p-3 text-left font-semibold text-secondary">顧客名</th>
+                    <th className="p-3 text-left font-semibold text-secondary">施工種別</th>
+                    <th className="p-3 text-left font-semibold text-secondary">証明書番号</th>
+                    <th className="p-3 text-left font-semibold text-secondary">作成日時</th>
+                    <th className="p-3 text-left font-semibold text-secondary">操作</th>
                   </tr>
                 </thead>
                 <tbody>
                   {certs.map((c) => (
-                    <tr
-                      key={c.certificate_id}
-                      className="border-t hover:bg-inset"
-                    >
-                      <td className="p-3 font-mono text-xs text-secondary">
-                        {c.public_id}
-                      </td>
+                    <tr key={c.certificate_id} className="border-t hover:bg-inset">
+                      <td className="p-3 font-mono text-xs text-secondary">{c.public_id}</td>
                       <td className="p-3">
                         <span
-                          className={
-                            c.status === "void"
-                              ? "font-medium text-red-600"
-                              : "font-medium text-emerald-600"
-                          }
+                          className={c.status === "void" ? "font-medium text-red-600" : "font-medium text-emerald-600"}
                         >
                           {c.status === "active" ? "有効" : "無効"}
                         </span>
                       </td>
-                      <td className="p-3 text-secondary">
-                        {c.customer_name}
-                      </td>
-                      <td className="p-3 text-secondary">
-                        {c.service_type || "-"}
-                      </td>
-                      <td className="p-3 text-secondary">
-                        {c.certificate_no || "-"}
-                      </td>
-                      <td className="p-3 whitespace-nowrap text-secondary">
-                        {formatDateTime(c.created_at)}
-                      </td>
+                      <td className="p-3 text-secondary">{c.customer_name}</td>
+                      <td className="p-3 text-secondary">{c.service_type || "-"}</td>
+                      <td className="p-3 text-secondary">{c.certificate_no || "-"}</td>
+                      <td className="p-3 whitespace-nowrap text-secondary">{formatDateTime(c.created_at)}</td>
                       <td className="p-3">
                         <Link
                           href={`/insurer/c/${encodeURIComponent(c.public_id)}`}
@@ -244,10 +179,7 @@ export default function InsurerVehicleDetailPage() {
                   ))}
                   {certs.length === 0 && (
                     <tr>
-                      <td
-                        colSpan={7}
-                        className="p-8 text-center text-sm text-muted"
-                      >
+                      <td colSpan={7} className="p-8 text-center text-sm text-muted">
                         この車両に関連する証明書がありません。
                       </td>
                     </tr>
@@ -263,7 +195,11 @@ export default function InsurerVehicleDetailPage() {
               <h2 className="text-lg font-bold text-primary">関連案件 ({relatedCases.length})</h2>
               <div className="space-y-2">
                 {relatedCases.map((c) => (
-                  <Link key={c.id} href={`/insurer/cases/${c.id}`} className="flex items-center justify-between rounded-xl border border-border-subtle px-4 py-3 hover:bg-inset">
+                  <Link
+                    key={c.id}
+                    href={`/insurer/cases/${c.id}`}
+                    className="flex items-center justify-between rounded-xl border border-border-subtle px-4 py-3 hover:bg-inset"
+                  >
                     <div>
                       <span className="font-mono text-xs text-muted">{c.case_number}</span>
                       <span className="ml-2 text-sm font-medium text-primary">{c.title}</span>

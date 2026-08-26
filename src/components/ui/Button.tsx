@@ -13,11 +13,11 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 const VARIANT_CLASS: Record<ButtonVariant, string> = {
-  primary:   "btn-primary",
+  primary: "btn-primary",
   secondary: "btn-secondary",
-  ghost:     "btn-ghost",
-  danger:    "btn-danger",
-  outline:   "btn-outline",
+  ghost: "btn-ghost",
+  danger: "btn-danger",
+  outline: "btn-outline",
 };
 
 const Button = forwardRef<HTMLButtonElement, ButtonProps>(

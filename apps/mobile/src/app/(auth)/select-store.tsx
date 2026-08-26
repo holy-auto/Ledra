@@ -1,12 +1,15 @@
 import { useCallback, useEffect, useState } from "react";
-import { View, StyleSheet, FlatList } from "react-native";
-import { Text, Card, Button, ActivityIndicator } from "react-native-paper";
-import { router } from "expo-router";
+import { View, StyleSheet, FlatList, Pressable } from "react-native";
+import { Text, ActivityIndicator, Icon } from "react-native-paper";
+import { router, useLocalSearchParams } from "expo-router";
 
 import { fetchActiveStores, type ActiveStore } from "@/lib/auth";
 import { useAuthStore } from "@/stores/authStore";
+import { LedraButton } from "@/components/ui";
+import { colors, spacing, radius, typography, shadows, sizing } from "@/constants/tokens";
 
 export default function SelectStoreScreen() {
+  const { fromSignup } = useLocalSearchParams<{ fromSignup?: string }>();
   const [stores, setStores] = useState<ActiveStore[]>([]);
   const [loading, setLoading] = useState(true);
   // 取得失敗と「店舗が0個」を区別する。混同すると、通信が切れているだけなのに
@@ -17,12 +20,14 @@ export default function SelectStoreScreen() {
   const [reloadKey, setReloadKey] = useState(0);
   const { user, setSelectedStore } = useAuthStore();
 
+  const nextRoute = fromSignup === "1" ? "/(auth)/biometric-setup" : "/(tabs)";
+
   const handleSelect = useCallback(
     (store: ActiveStore) => {
       setSelectedStore({ id: store.id, name: store.name });
-      router.replace("/(tabs)");
+      router.replace(nextRoute as never);
     },
-    [setSelectedStore]
+    [setSelectedStore, nextRoute]
   );
 
   useEffect(() => {
@@ -74,7 +79,7 @@ export default function SelectStoreScreen() {
   if (loading) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator size="large" />
+        <ActivityIndicator size="large" color={colors.primary} />
       </View>
     );
   }
@@ -84,21 +89,21 @@ export default function SelectStoreScreen() {
   if (loadFailed) {
     return (
       <View style={styles.center}>
-        <Text variant="titleMedium">店舗情報を取得できませんでした</Text>
-        <Text variant="bodyMedium" style={styles.subtext}>
+        <Icon source="wifi-off" size={48} color={colors.textTertiary} />
+        <Text style={styles.emptyTitle}>店舗情報を取得できませんでした</Text>
+        <Text style={styles.emptyDesc}>
           通信状況を確認して、もう一度お試しください
         </Text>
-        <Button
-          mode="contained"
+        <LedraButton
           onPress={() => {
             setLoading(true);
             setLoadFailed(false);
             setReloadKey((n) => n + 1);
           }}
-          style={{ marginTop: 24 }}
+          style={styles.continueButton}
         >
           再試行
-        </Button>
+        </LedraButton>
       </View>
     );
   }
@@ -106,12 +111,12 @@ export default function SelectStoreScreen() {
   if (stores.length === 0) {
     return (
       <View style={styles.center}>
-        <Text variant="titleMedium">店舗が登録されていません</Text>
-        <Text variant="bodyMedium" style={styles.subtext}>
+        <Icon source="store-off-outline" size={48} color={colors.textTertiary} />
+        <Text style={styles.emptyTitle}>店舗が登録されていません</Text>
+        <Text style={styles.emptyDesc}>
           店舗なしで続行するか、管理者に設定を依頼してください
         </Text>
-        <Button
-          mode="contained"
+        <LedraButton
           onPress={() => {
             // 「店舗なしで続行」モード:
             //   selectedStore を非 null にしないと (tabs)/_layout が
@@ -120,25 +125,26 @@ export default function SelectStoreScreen() {
             //   selectedStore?.id || null に正規化されるので
             //   "invalid input syntax for type uuid" は発生しない。
             setSelectedStore({ id: "", name: user?.tenantName ?? "本店" });
-            router.replace("/(tabs)");
+            router.replace(nextRoute as never);
           }}
-          style={{ marginTop: 24 }}
+          style={styles.continueButton}
         >
           続行する
-        </Button>
+        </LedraButton>
       </View>
     );
   }
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <Text variant="headlineSmall" style={styles.title}>
-          店舗を選択
-        </Text>
-        <Text variant="bodyMedium" style={styles.subtitle}>
-          {user?.tenantName}
-        </Text>
+      {/* Branded header bar */}
+      <View style={styles.brandBar}>
+        <Text style={styles.brandTitle}>Ledra</Text>
+      </View>
+
+      <View style={styles.headerSection}>
+        <Text style={styles.screenTitle}>店舗を選択</Text>
+        <Text style={styles.tenantName}>{user?.tenantName}</Text>
       </View>
 
       <FlatList
@@ -146,25 +152,30 @@ export default function SelectStoreScreen() {
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.list}
         renderItem={({ item }) => (
-          <Card
+          <Pressable
             style={styles.card}
             onPress={() => handleSelect(item)}
-            mode="outlined"
+            accessibilityRole="button"
+            accessibilityLabel={`${item.name}を選択`}
           >
-            <Card.Content>
-              <Text variant="titleMedium">{item.name}</Text>
+            <View style={styles.storeIcon}>
+              <Icon source="store" size={sizing.iconMd} color={colors.primary} />
+            </View>
+            <View style={styles.cardContent}>
+              <Text style={styles.storeName}>{item.name}</Text>
               {item.address && (
-                <Text variant="bodySmall" style={styles.address}>
+                <Text style={styles.storeAddress} numberOfLines={1}>
                   {item.address}
                 </Text>
               )}
               {item.is_default && (
-                <Text variant="labelSmall" style={styles.defaultBadge}>
-                  デフォルト
-                </Text>
+                <View style={styles.defaultBadge}>
+                  <Text style={styles.defaultBadgeText}>デフォルト</Text>
+                </View>
               )}
-            </Card.Content>
-          </Card>
+            </View>
+            <Icon source="chevron-right" size={sizing.iconMd} color={colors.textTertiary} />
+          </Pressable>
         )}
       />
     </View>
@@ -172,31 +183,98 @@ export default function SelectStoreScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#fafafa" },
+  container: { flex: 1, backgroundColor: colors.background },
   center: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    padding: 24,
+    padding: spacing["2xl"],
+    backgroundColor: colors.background,
+    gap: spacing.sm,
   },
-  header: {
-    padding: 24,
-    paddingTop: 60,
+  brandBar: {
+    backgroundColor: colors.primary,
+    paddingTop: 56,
+    paddingBottom: spacing.lg,
+    paddingHorizontal: spacing["2xl"],
+    alignItems: "center",
   },
-  title: { fontWeight: "700", color: "#1a1a2e" },
-  subtitle: { color: "#71717a", marginTop: 4 },
-  subtext: { color: "#71717a", marginTop: 8 },
-  list: { padding: 16, gap: 12 },
-  card: { backgroundColor: "#ffffff" },
-  address: { color: "#71717a", marginTop: 4 },
+  brandTitle: {
+    ...typography.titleLarge,
+    color: colors.textOnPrimary,
+    letterSpacing: 2,
+  },
+  headerSection: {
+    paddingHorizontal: spacing["2xl"],
+    paddingTop: spacing["2xl"],
+    paddingBottom: spacing.sm,
+  },
+  screenTitle: {
+    ...typography.titleLarge,
+    color: colors.textPrimary,
+  },
+  tenantName: {
+    ...typography.body,
+    color: colors.textSecondary,
+    marginTop: spacing.xs,
+  },
+  list: {
+    padding: spacing.lg,
+    paddingBottom: spacing["3xl"],
+    gap: spacing.md,
+  },
+  card: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.card,
+    padding: spacing.lg,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    ...shadows.card,
+  },
+  storeIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: radius.md,
+    backgroundColor: colors.primaryLight,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  cardContent: {
+    flex: 1,
+  },
+  storeName: {
+    ...typography.titleSmall,
+    color: colors.textPrimary,
+  },
+  storeAddress: {
+    ...typography.meta,
+    color: colors.textSecondary,
+    marginTop: spacing.xs,
+  },
   defaultBadge: {
-    color: "#1a1a2e",
-    marginTop: 8,
-    backgroundColor: "#e6f4fe",
+    backgroundColor: colors.primaryLight,
     alignSelf: "flex-start",
-    paddingHorizontal: 8,
+    paddingHorizontal: spacing.sm,
     paddingVertical: 2,
-    borderRadius: 4,
-    overflow: "hidden",
+    borderRadius: radius.sm,
+    marginTop: spacing.sm,
+  },
+  defaultBadgeText: {
+    ...typography.labelSmall,
+    color: colors.primary,
+  },
+  emptyTitle: {
+    ...typography.titleSmall,
+    color: colors.textPrimary,
+    marginTop: spacing.lg,
+  },
+  emptyDesc: {
+    ...typography.bodySmall,
+    color: colors.textSecondary,
+    textAlign: "center",
+  },
+  continueButton: {
+    marginTop: spacing["2xl"],
   },
 });

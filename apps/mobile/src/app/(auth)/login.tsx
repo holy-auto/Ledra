@@ -5,12 +5,15 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  Pressable,
 } from "react-native";
-import { Text, TextInput, Button, HelperText } from "react-native-paper";
+import { Text, TextInput, HelperText } from "react-native-paper";
 import { router } from "expo-router";
 
 import { fetchUserProfile, resolveDefaultStore, signIn } from "@/lib/auth";
 import { useAuthStore } from "@/stores/authStore";
+import { LedraButton } from "@/components/ui";
+import { colors, spacing, radius, typography, shadows, sizing } from "@/constants/tokens";
 
 export default function LoginScreen() {
   const [email, setEmail] = useState("");
@@ -72,19 +75,19 @@ export default function LoginScreen() {
       behavior={Platform.OS === "ios" ? "padding" : "height"}
     >
       <ScrollView
-        contentContainerStyle={styles.container}
+        contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
       >
-        <View style={styles.header}>
-          <Text variant="headlineLarge" style={styles.title}>
-            Ledra
-          </Text>
-          <Text variant="bodyLarge" style={styles.subtitle}>
-            業務管理アプリ
+        {/* Branded header */}
+        <View style={styles.brandHeader}>
+          <Text style={styles.brandTitle}>Ledra</Text>
+          <Text style={styles.brandSubtitle}>
+            アカウントにログインしてください
           </Text>
         </View>
 
-        <View style={styles.form}>
+        {/* Form card */}
+        <View style={styles.formCard}>
           <TextInput
             label="メールアドレス"
             value={email}
@@ -95,6 +98,8 @@ export default function LoginScreen() {
             mode="outlined"
             style={styles.input}
             disabled={loading}
+            outlineColor={colors.border}
+            activeOutlineColor={colors.primary}
           />
 
           <TextInput
@@ -105,6 +110,8 @@ export default function LoginScreen() {
             mode="outlined"
             style={styles.input}
             disabled={loading}
+            outlineColor={colors.border}
+            activeOutlineColor={colors.primary}
             right={
               <TextInput.Icon
                 icon={showPassword ? "eye-off" : "eye"}
@@ -113,31 +120,56 @@ export default function LoginScreen() {
             }
           />
 
+          <Pressable
+            onPress={() => router.push("/(auth)/forgot-password")}
+            style={styles.forgotLink}
+          >
+            <Text style={styles.forgotText}>パスワードをお忘れの方</Text>
+          </Pressable>
+
           {error ? (
             <HelperText type="error" visible>
               {error}
             </HelperText>
           ) : null}
 
-          <Button
-            mode="contained"
+          <LedraButton
             onPress={handleLogin}
             loading={loading}
             disabled={loading}
-            style={styles.button}
-            contentStyle={styles.buttonContent}
           >
             ログイン
-          </Button>
+          </LedraButton>
 
-          <Button
-            mode="text"
+          {/* Divider */}
+          <View style={styles.dividerRow}>
+            <View style={styles.dividerLine} />
+            <Text style={styles.dividerText}>または</Text>
+            <View style={styles.dividerLine} />
+          </View>
+
+          {/* Google sign-in (visual only) */}
+          <LedraButton
+            variant="outline"
+            icon="google"
+            onPress={() => {
+              // ponytail: Google sign-in not implemented yet
+            }}
+          >
+            Googleでログイン
+          </LedraButton>
+
+          {/* Sign-up link */}
+          <Pressable
             onPress={() => router.push("/(auth)/signup")}
             disabled={loading}
-            style={styles.linkButton}
+            style={styles.bottomLink}
           >
-            新規登録（施工店の方）はこちら
-          </Button>
+            <Text style={styles.bottomLinkText}>
+              アカウントをお持ちでない方は{" "}
+              <Text style={styles.bottomLinkBold}>新規登録</Text>
+            </Text>
+          </Pressable>
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -145,39 +177,76 @@ export default function LoginScreen() {
 }
 
 const styles = StyleSheet.create({
-  flex: { flex: 1, backgroundColor: "#fafafa" },
-  container: {
+  flex: { flex: 1, backgroundColor: colors.background },
+  scrollContent: {
     flexGrow: 1,
-    justifyContent: "center",
-    padding: 24,
   },
-  header: {
+  brandHeader: {
+    backgroundColor: colors.primary,
+    paddingTop: 80,
+    paddingBottom: spacing["4xl"],
+    paddingHorizontal: spacing["2xl"],
     alignItems: "center",
-    marginBottom: 48,
   },
-  title: {
-    fontWeight: "700",
-    color: "#1a1a2e",
+  brandTitle: {
+    ...typography.hero,
+    fontSize: 36,
+    color: colors.textOnPrimary,
     letterSpacing: 2,
   },
-  subtitle: {
-    marginTop: 8,
-    color: "#71717a",
+  brandSubtitle: {
+    ...typography.body,
+    color: "rgba(255, 255, 255, 0.8)",
+    marginTop: spacing.sm,
   },
-  form: {
-    gap: 12,
+  formCard: {
+    backgroundColor: colors.surface,
+    borderTopLeftRadius: radius.hero,
+    borderTopRightRadius: radius.hero,
+    marginTop: -spacing.lg,
+    paddingHorizontal: spacing["2xl"],
+    paddingTop: spacing["3xl"],
+    paddingBottom: spacing["4xl"],
+    flex: 1,
+    gap: spacing.md,
   },
   input: {
-    backgroundColor: "#ffffff",
+    backgroundColor: colors.surface,
   },
-  button: {
-    marginTop: 12,
-    borderRadius: 12,
+  forgotLink: {
+    alignSelf: "flex-end",
   },
-  buttonContent: {
-    paddingVertical: 6,
+  forgotText: {
+    ...typography.bodySmall,
+    color: colors.primary,
   },
-  linkButton: {
-    marginTop: 4,
+  dividerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginVertical: spacing.sm,
+    gap: spacing.md,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: colors.divider,
+  },
+  dividerText: {
+    ...typography.meta,
+    color: colors.textTertiary,
+  },
+  bottomLink: {
+    alignItems: "center",
+    marginTop: spacing.lg,
+    minHeight: sizing.touchTarget,
+    justifyContent: "center",
+  },
+  bottomLinkText: {
+    ...typography.bodySmall,
+    color: colors.textSecondary,
+  },
+  bottomLinkBold: {
+    ...typography.label,
+    color: colors.primary,
   },
 });

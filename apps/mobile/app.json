@@ -16,7 +16,6 @@
       "bundleIdentifier": "com.ledra.app",
       "infoPlist": {
         "NFCReaderUsageDescription": "Ledraは証明書NFCタグの読み取りと書き込みに使用します",
-        "NSCameraUsageDescription": "Ledraは施工写真の撮影に使用します",
         "ITSAppUsesNonExemptEncryption": false,
         "UIRequiredDeviceCapabilities": ["arm64", "iphone-ipad-minimum-performance-a12"]
       },
@@ -81,18 +80,23 @@
         }
       ],
       "expo-router",
-      "expo-secure-store",
+      [
+        "expo-secure-store",
+        {
+          "faceIDPermission": "Ledraのロック解除に Face ID を使用します"
+        }
+      ],
       "expo-video",
       [
         "expo-camera",
         {
-          "cameraPermission": "Ledraは施工写真の撮影に使用します"
+          "cameraPermission": "Ledraは施工写真の撮影と、顧客へ送る画像の撮影に使用します"
         }
       ],
       [
         "expo-image-picker",
         {
-          "photosPermission": "Ledraは施工写真の選択に使用します"
+          "photosPermission": "Ledraは施工写真の選択と、顧客へ送る画像の選択に使用します"
         }
       ],
       [

@@ -129,18 +129,12 @@ export default function QuoteAiDraftPanel({ customerId, onApply }: Props) {
 
       {open && (
         <div className="px-4 pb-4 space-y-3 border-t border-accent/20">
-          <p className="text-xs text-muted mt-3">
-            過去類似請求書 + 車両サイズ係数で明細・合計・条件文を生成します。
-          </p>
+          <p className="text-xs text-muted mt-3">過去類似請求書 + 車両サイズ係数で明細・合計・条件文を生成します。</p>
 
           <div className="grid gap-2 sm:grid-cols-2">
             <label className="space-y-1">
               <div className="text-xs text-muted">車両</div>
-              <select
-                value={vehicleId}
-                onChange={(e) => setVehicleId(e.target.value)}
-                className="select-field text-sm"
-              >
+              <select value={vehicleId} onChange={(e) => setVehicleId(e.target.value)} className="select-field text-sm">
                 <option value="">選択してください</option>
                 {vehicles.map((v) => (
                   <option key={v.id} value={v.id}>
@@ -184,7 +178,8 @@ export default function QuoteAiDraftPanel({ customerId, onApply }: Props) {
               <ul className="text-xs text-secondary space-y-1">
                 {draft.items.map((it, i) => (
                   <li key={i}>
-                    <span className="text-primary">{it.description}</span> ¥{it.unit_price.toLocaleString("ja-JP")} × {it.quantity}
+                    <span className="text-primary">{it.description}</span> ¥{it.unit_price.toLocaleString("ja-JP")} ×{" "}
+                    {it.quantity}
                     {it.rationale && <div className="text-[10px] opacity-70 ml-3">{it.rationale}</div>}
                   </li>
                 ))}
