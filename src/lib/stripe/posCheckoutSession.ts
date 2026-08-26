@@ -18,18 +18,7 @@
 import type Stripe from "stripe";
 
 import { logger } from "@/lib/logger";
-
-/** PayPay の1回あたりの決済上限・下限（Stripe のドキュメント記載値）。 */
-export const PAYPAY_MIN_JPY = 50;
-export const PAYPAY_MAX_JPY = 1_000_000;
-
-/**
- * ponytail: `paypay` は SDK v20.4.1 (apiVersion 2026-02-25.clover) の
- * PaymentMethodType union にまだ無い（public preview のため）。API 側は受ける
- * 想定だが型が追いついていないのでここだけキャストする。
- * 上限: SDK が `paypay` を型に入れたらキャストごと削除して union に足すだけでよい。
- */
-const PAYPAY = "paypay" as Stripe.Checkout.SessionCreateParams.PaymentMethodType;
+import { isPaypayRejection, PAYPAY_MAX_JPY, PAYPAY_METHOD, PAYPAY_MIN_JPY } from "@/lib/stripe/paypay";
 
 /**
  * ponytail: PayPay を出せるアカウントかどうかのプロセス内メモ。毎回 1 往復
@@ -76,23 +65,6 @@ export function inPaypayRange(amountJpy: number): boolean {
 }
 
 /**
- * PayPay 未有効化アカウントの 400 か。
- *
- * stripe-node は `.type` に**クラス名**（`StripeInvalidRequestError`）を、
- * `.rawType` に API の型（`invalid_request_error`）を入れる。片方だけ見ると
- * 判定が常に false になり、**フォールバックが丸ごと死ぬ**ので両方見る。
- *
- * カードは Connect オンボーディング済みが前提なので、`payment_method_types` を
- * 咎める 400 は実質 PayPay 側。取りこぼすと会計そのものが失敗するので判定は
- * 広めに取り、カードのみでの再試行に賭ける（本当の失敗なら2回目で同じエラーが上がる）。
- */
-function isPaymentMethodRejection(err: unknown): boolean {
-  const e = err as { type?: string; rawType?: string; param?: string; message?: string } | null;
-  if (e?.rawType !== "invalid_request_error" && e?.type !== "StripeInvalidRequestError") return false;
-  return /paypay|payment_method_types/i.test(`${e.param ?? ""} ${e.message ?? ""}`);
-}
-
-/**
  * POS 用の Checkout Session を作る。`payment_method_types` は呼び出し側では
  * 指定しない（ここが決める）。
  */
@@ -112,13 +84,13 @@ export async function createPosCheckoutSession(
     if (probe) probing = true;
     try {
       const session = await stripe.checkout.sessions.create(
-        { ...params, payment_method_types: ["card", PAYPAY] },
+        { ...params, payment_method_types: ["card", PAYPAY_METHOD] },
         options,
       );
       remember(key, true);
       return session;
     } catch (e) {
-      if (!isPaymentMethodRejection(e)) throw e;
+      if (!isPaypayRejection(e)) throw e;
       remember(key, false);
       logger.info("pos checkout: paypay unavailable, falling back to card", {
         account: key,

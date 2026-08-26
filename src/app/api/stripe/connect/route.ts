@@ -7,6 +7,7 @@ import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { apiJson, apiUnauthorized, apiNotFound, apiInternalError, apiValidationError } from "@/lib/api/response";
 import { stripeConnectCreateSchema } from "@/lib/validations/stripe";
 import { checkRateLimit } from "@/lib/api/rateLimit";
+import { createAccountRequestingPaypay } from "@/lib/stripe/paypay";
 
 export const dynamic = "force-dynamic";
 
@@ -78,7 +79,11 @@ export async function POST(req: NextRequest) {
 
     // Create account if not exists (or was just cleared above)
     if (!accountId) {
-      const account = await stripe.accounts.create({
+      // PayPay の利用申請も同時に出す。後から有効化するには加盟店が自分の
+      // Stripe ダッシュボードで別途申請することになるので、**必要な情報を
+      // このオンボーディングの1回で集めきる**。要求が通らない環境では
+      // PayPay 抜きで作られる（接続そのものは止めない）
+      const account = await createAccountRequestingPaypay(stripe, {
         type: "standard",
         country: "JP",
         business_profile: {

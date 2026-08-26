@@ -3,6 +3,20 @@
 > まだ決まっていないこと、判断に迷っていることを書く場所。決まったら
 > DECISION_LOG.md に移し、このファイルからは消す（削除履歴は git で追える）。
 
+## 追加（2026-08-26・PayPay の申請導線）
+
+- **capability 名 `paypay_payments` が正しいか【要確認】。** Connect 作成時に
+  要求するようにしたが、実 API で確かめていない。違っていてもフォールバックで
+  従来通り接続できるが、その場合 PayPay は永久に出ない（`logger.warn` に残る）。
+- **既に接続済みの加盟店はまとめられない。** capability の要求は作成時にしか
+  足せないため、既存店は Stripe ダッシュボードから自分で申請することになる。
+  Ledra の画面内で完結させるなら Connect 埋め込みコンポーネント
+  （payment method settings）を入れる案がある。→ 代表判断
+- **PayPay を要求すると、使わない店にもオンボーディングの入力が増える可能性。**
+  増分が大きいなら「PayPay も申請する」のチェックボックスに変える（1行）。→ 代表判断
+- **PayPay の申請が保留の間もカード決済は開始できるか。** 推定では影響しない
+  （`charges_enabled` は card_payments に紐づく）が未確認。
+
 ## 追加（2026-08-26・PayPay 対応）
 
 - **Stripe API が実際に `paypay` を受けるか未検証。** PayPay は public preview

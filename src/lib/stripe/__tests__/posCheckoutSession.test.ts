@@ -11,7 +11,8 @@
 import { describe, it, expect, vi } from "vitest";
 import Stripe from "stripe";
 
-import { createPosCheckoutSession, PAYPAY_MAX_JPY, PAYPAY_MIN_JPY } from "@/lib/stripe/posCheckoutSession";
+import { createPosCheckoutSession } from "@/lib/stripe/posCheckoutSession";
+import { PAYPAY_MAX_JPY, PAYPAY_MIN_JPY } from "@/lib/stripe/paypay";
 
 vi.mock("@/lib/logger", () => ({
   logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },

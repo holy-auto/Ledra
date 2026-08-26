@@ -4,6 +4,28 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-08-26 PayPay の利用申請を Connect オンボーディングと同時に出す
+
+代表の「まとめて最初に審査を投げられると嬉しい」から。**新規接続分はまとめられる。**
+
+- `stripe.accounts.create` で `capabilities.paypay_payments` を要求するようにした
+  （`src/lib/stripe/paypay.ts` の `createAccountRequestingPaypay`）。Stripe の
+  オンボーディングが PayPay に必要な情報も**同じ入力フローで**集めるので、
+  加盟店の入力は1回で済む。要求が通らない環境では PayPay 抜きで作り直す
+  （ここで落とすと加盟店が決済そのものを繋げられない）。落ちたことは
+  `logger.warn` に残す —— 無音だと「PayPay がいつまでも出ない」だけになる。
+- PayPay 関連の定数・エラー判定を `src/lib/stripe/paypay.ts` に集約し、
+  POS の Checkout 側（`posCheckoutSession.ts`）と共有した。
+
+検証: `tsc` / `vitest` 3943件（PayPay 関連は新規3件を含む8件）/ `eslint` 0 errors。
+
+**まとめられないもの**: 既に Connect 接続済みの加盟店。作成時にしか要求を
+足せないため、既存店は Stripe ダッシュボードから自分で申請する必要がある。
+Ledra の画面内で完結させるなら Connect 埋め込みコンポーネント
+（payment method settings）を入れる案がある（未実装）。
+**未検証**: capability 名 `paypay_payments` は実 API で確認していない【要確認】。
+違っていてもフォールバックで従来通り接続できる。
+
 ## 2026-08-26 店頭QR会計に PayPay を出せるようにした（有効な店だけ自動で）
 
 代表からの質問「実際のQRコード決済は使えるのか」から。**使えなかった。**
