@@ -25,12 +25,12 @@ vi.mock("@/lib/square/qrCheckout", () => ({
 }));
 
 /** `payments` の既記録だけを返す最小のダブル。 */
-function fakeAdmin(recorded: string[] = []) {
+function fakeAdmin(recorded: string[] = [], error: { message: string } | null = null) {
   const node: Record<string, unknown> = {
     select: () => node,
     eq: () => node,
     not: () => node,
-    gte: async () => ({ data: recorded.map((id) => ({ square_payment_id: id })), error: null }),
+    gte: async () => ({ data: error ? null : recorded.map((id) => ({ square_payment_id: id })), error }),
   };
   return { from: () => node } as never;
 }
@@ -70,6 +70,28 @@ describe("resolveTerminalSale", () => {
       error: "square_not_completed: FAILED",
     });
   });
+
+  it("決済が複数ある会計は記帳しない（先頭だけ記帳すると売上が小さくなる）", async () => {
+    getTerminalCheckout.mockResolvedValue({ id: "co_1", status: "COMPLETED", payment_ids: ["a", "b"] });
+
+    expect(await resolveTerminalSale(fakeAdmin(), "t1", "co_1")).toEqual({ ok: false, error: "square_payment_split" });
+    expect(getPayment).not.toHaveBeenCalled();
+  });
+
+  it("端末に出した額と実際の受取額が違うときは記帳しない", async () => {
+    getTerminalCheckout.mockResolvedValue({
+      id: "co_1",
+      status: "COMPLETED",
+      payment_ids: ["sqpmt_1"],
+      amount_money: { amount: 12_345 },
+    });
+    getPayment.mockResolvedValue({ id: "sqpmt_1", status: "COMPLETED", amount_money: { amount: 10_000 } });
+
+    expect(await resolveTerminalSale(fakeAdmin(), "t1", "co_1")).toEqual({
+      ok: false,
+      error: "square_amount_mismatch: 12345 != 10000",
+    });
+  });
 });
 
 describe("resolvePosAppSale", () => {
@@ -90,6 +112,19 @@ describe("resolvePosAppSale", () => {
     await resolvePosAppSale(fakeAdmin(["sqpmt_old"]), "t1", 8_800);
 
     expect(findRecentPayment.mock.calls[0][0]).toMatchObject({ excludeIds: ["sqpmt_old"] });
+  });
+
+  it("既記録の照合に失敗したら引き当てない（今回の売上が消える経路を塞ぐ）", async () => {
+    findRecentPayment.mockResolvedValue({
+      ok: true,
+      payment: { id: "x", status: "COMPLETED", amount_money: { amount: 8_800 } },
+    });
+
+    expect(await resolvePosAppSale(fakeAdmin([], { message: "boom" }), "t1", 8_800)).toEqual({
+      ok: false,
+      error: "square_recorded_lookup_failed",
+    });
+    expect(findRecentPayment).not.toHaveBeenCalled();
   });
 
   it("特定できないときは記帳しない", async () => {

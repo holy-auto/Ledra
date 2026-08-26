@@ -215,6 +215,11 @@ export default function PosClient() {
    * Square が繋がっていない店は null のまま＝従来どおり「記録だけ」。
    */
   const [squareMode, setSquareMode] = useState<"terminal" | "pos_app" | null>(null);
+  /**
+   * Square の冪等キー。**やり直しても端末に2つ目のQRを出さないため**、
+   * 会計をやめる（キャンセル・完了）まで同じ値を使う。
+   */
+  const squareRef = useRef<string | null>(null);
   // 決済は済んだが記録に失敗したセッション。**これがある間は新しいQRを出させない**
   // （出すと客が二重に請求される）
   /** 記録に失敗した決済の再送内容。**決済は済んでいるので同じ本文で送り直す。** */
@@ -370,6 +375,8 @@ export default function PosClient() {
     setQrDataUrl(null);
     setQrSessionId(null);
     setQrError(null);
+    setSquareMode(null);
+    squareRef.current = null;
     if (pollingRef.current) {
       clearInterval(pollingRef.current);
       pollingRef.current = null;
@@ -420,7 +427,9 @@ export default function PosClient() {
           }),
         });
         const checkoutData = await checkoutRes.json();
-        if (!checkoutRes.ok) throw new Error(checkoutData?.error ?? "決済の記録に失敗しました");
+        // `error` はコード（validation_error 等）。**人が読むのは message**
+        if (!checkoutRes.ok)
+          throw new Error(checkoutData?.message ?? checkoutData?.error ?? "決済の記録に失敗しました");
 
         // 応答は { ok, result, inventory }。封筒のまま入れると
         // 会計完了パネルが「お会計 -」・領収書番号なしになる
@@ -445,14 +454,22 @@ export default function PosClient() {
           }
         }
         setQrStep("idle");
+        setSquareMode(null);
+        squareRef.current = null;
         await mutate();
       } catch (e) {
         // **決済は済んでいる。**「記録中...」のまま止めると、店員はカードが
         // 切られたことにも失敗にも気づけない。やり直せる状態にして見せる
         setPendingRecord(paid);
+        // 引き当て（Square アプリ経路）は「決済が見つからない」ことがある。
+        // **決済済みと断定しない** —— 断定すると、払われていない会計を
+        // 記録し直そうとして店員が混乱する
+        const uncertain = paid.square_reconcile === true;
         setQrError(
           (e instanceof Error ? e.message : "決済の記録に失敗しました") +
-            "（決済は完了しています。「記録をやり直す」を押してください。新しくQRを出すと二重に請求されます）",
+            (uncertain
+              ? "（Square 側の決済が確認できませんでした。会計が済んでいれば「記録をやり直す」を押してください）"
+              : "（決済は完了しています。「記録をやり直す」を押してください。新しくQRを出すと二重に請求されます）"),
         );
         setQrStep("error");
       }
@@ -462,6 +479,8 @@ export default function PosClient() {
 
   // ── QR Code card payment flow ──
   const handleCardPaymentQr = useCallback(async () => {
+    // Square の経路が残っていると、カードのQRではなく Square の案内が出る
+    setSquareMode(null);
     setQrStep("creating");
     setQrError(null);
     setPendingRecord(null);
@@ -577,6 +596,7 @@ export default function PosClient() {
     setQrError(null);
     setPendingRecord(null);
     setSquareMode(null);
+    squareRef.current = null;
     setProcessing(false);
   }, [squareMode, qrSessionId]);
 
@@ -591,6 +611,8 @@ export default function PosClient() {
    * @returns Square で処理した場合 true。false なら従来どおり「記録だけ」に落とす
    */
   const handleSquareQr = useCallback(async (): Promise<boolean> => {
+    // 同じ会計のやり直しでは同じキーを使う（端末に2つ目のQRを出さない）
+    squareRef.current ??= crypto.randomUUID().slice(0, 32);
     setQrError(null);
     setPendingRecord(null);
     setQrStep("creating");
@@ -600,16 +622,17 @@ export default function PosClient() {
       const res = await fetch("/api/admin/square/qr-checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ amount, note: note || undefined }),
+        body: JSON.stringify({ amount, note: note || undefined, reference_id: squareRef.current ?? undefined }),
       });
-      // 未接続（409）は「Square を使っていない店」。会計を止めず、
-      // 従来どおり QR決済として記録だけする
-      if (res.status === 409) {
+      const data = await res.json();
+      // 未接続（409 / square_not_connected）だけが「Square を使っていない店」。
+      // **トークン切れをここに混ぜない** —— 混ぜると、決済していないのに
+      // 記録だけされて領収書が出る
+      if (res.status === 409 && data?.reason === "not_connected") {
         setQrStep("idle");
         return false;
       }
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.message ?? data?.error ?? "Square の会計を開始できませんでした");
+      if (!res.ok) throw new Error(data?.message ?? "Square の会計を開始できませんでした");
       created = data;
     } catch (e) {
       setQrError(e instanceof Error ? e.message : "Square の会計を開始できませんでした");
@@ -638,6 +661,11 @@ export default function PosClient() {
       if (++attempts > 150) {
         if (pollingRef.current) clearInterval(pollingRef.current);
         pollingRef.current = null;
+        // **端末のQRを消してから終える。** 残すと、会計を諦めた後で客が読んで
+        // 決済でき、その分は Ledra に残らない
+        void fetch(`/api/admin/square/qr-checkout?id=${encodeURIComponent(checkoutId)}`, { method: "DELETE" }).catch(
+          () => {},
+        );
         setQrError("決済がタイムアウトしました。端末の画面を確認してください。");
         setQrStep("error");
         return;

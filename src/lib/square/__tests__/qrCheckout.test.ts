@@ -19,10 +19,11 @@ vi.mock("@/lib/square/client", () => ({
 const NOW = new Date("2026-08-26T12:00:00Z");
 const base = { accessToken: "tok", locationId: "L1", amountJpy: 10_000, withinMinutes: 30, now: NOW };
 
-function payment(over: Partial<{ id: string; status: string; amount: number }> = {}) {
+function payment(over: Partial<{ id: string; status: string; amount: number; source: string }> = {}) {
   return {
     id: over.id ?? "sqpmt_1",
     status: over.status ?? "COMPLETED",
+    source_type: over.source ?? "WALLET",
     amount_money: { amount: over.amount ?? 10_000, currency: "JPY" },
   };
 }
@@ -50,6 +51,14 @@ describe("findRecentPayment", () => {
     squareFetch.mockResolvedValue({ payments: [payment({ id: "a" }), payment({ id: "b" })] });
 
     expect(await findRecentPayment(base)).toEqual({ ok: false, reason: "ambiguous" });
+  });
+
+  it("Square アプリで切った同額のカード・現金は引き当てない", async () => {
+    squareFetch.mockResolvedValue({
+      payments: [payment({ id: "card", source: "CARD" }), payment({ id: "cash", source: "CASH" })],
+    });
+
+    expect(await findRecentPayment(base)).toEqual({ ok: false, reason: "not_found" });
   });
 
   it("既に記録済みの決済は候補から外す", async () => {

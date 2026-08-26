@@ -45,12 +45,22 @@ export async function resolveTerminalSale(
   const checkout = await getTerminalCheckout(c.ctx.accessToken, checkoutId);
   if (checkout.status !== "COMPLETED") return { ok: false, error: `square_checkout_not_completed: ${checkout.status}` };
 
-  const paymentId = checkout.payment_ids?.[0];
-  if (!paymentId) return { ok: false, error: "square_payment_missing" };
+  const paymentIds = checkout.payment_ids ?? [];
+  if (paymentIds.length === 0) return { ok: false, error: "square_payment_missing" };
+  // **分割払いは扱わない。** 先頭だけ記帳すると、実際に受け取った額より
+  // 小さい売上が立つ（差額は誰も気づかない）
+  if (paymentIds.length > 1) return { ok: false, error: "square_payment_split" };
 
-  const payment = await getPayment(c.ctx.accessToken, paymentId);
+  const payment = await getPayment(c.ctx.accessToken, paymentIds[0]);
   const result = verified(payment);
-  return result.ok ? { ...result, brand: paymentBrand(payment) } : result;
+  if (!result.ok) return result;
+
+  // 端末に出した額と実際に受け取った額の食い違いを通さない
+  const requested = checkout.amount_money?.amount;
+  if (typeof requested === "number" && requested !== result.amountTotal) {
+    return { ok: false, error: `square_amount_mismatch: ${requested} != ${result.amountTotal}` };
+  }
+  return { ...result, brand: paymentBrand(payment) };
 }
 
 /**
@@ -69,12 +79,16 @@ export async function resolvePosAppSale(
   if (!c.ok) return { ok: false, error: c.error };
   if (!c.ctx.locationId) return { ok: false, error: "square_location_missing" };
 
-  const { data: recorded } = await admin
+  const { data: recorded, error: recordedErr } = await admin
     .from("payments")
     .select("square_payment_id")
     .eq("tenant_id", tenantId)
     .not("square_payment_id", "is", null)
     .gte("created_at", new Date(now.getTime() - RECONCILE_WINDOW_MINUTES * 60_000).toISOString());
+
+  // **照合できなかったら引き当てない。** 空リストとして進むと、記録済みの決済を
+  // もう一度引き当てて「記録済み」と返り、**今回の売上が立たないまま完了に見える**
+  if (recordedErr) return { ok: false, error: "square_recorded_lookup_failed" };
 
   const found = await findRecentPayment({
     accessToken: c.ctx.accessToken,

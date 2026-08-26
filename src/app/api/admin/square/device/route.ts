@@ -28,9 +28,16 @@ const createSchema = z.object({ name: z.string().trim().min(1).max(40).default("
 
 function squareError(e: unknown) {
   if (e instanceof SquareNotConnectedError) {
+    const notConnected = e.reason === "not_connected";
     return apiJson(
-      { error: e.message, message: "Square が接続されていません。設定から接続してください。" },
-      { status: 409 },
+      {
+        error: e.message,
+        reason: e.reason,
+        message: notConnected
+          ? "Square が接続されていません。設定から接続してください。"
+          : "Square の接続が切れています。設定から接続し直してください。",
+      },
+      { status: notConnected ? 409 : 502 },
     );
   }
   if (e instanceof SquareApiError) return apiJson({ error: "square_api_error", message: e.detail }, { status: 502 });

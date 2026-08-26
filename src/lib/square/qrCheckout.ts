@@ -124,6 +124,9 @@ export async function findRecentPayment(params: {
   const candidates = (res.payments ?? []).filter(
     (p) =>
       p.status === "COMPLETED" &&
+      // **QR（ウォレット）決済だけを見る。** Square アプリで切った同額のカード・
+      // 現金まで候補に入れると、それを引き当てるか「特定できない」になる
+      p.source_type === "WALLET" &&
       p.amount_money?.amount === params.amountJpy &&
       (p.amount_money?.currency ?? "JPY") === "JPY" &&
       !exclude.has(p.id),

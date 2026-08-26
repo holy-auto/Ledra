@@ -21,7 +21,7 @@ export interface SquareContext {
 }
 
 export class SquareNotConnectedError extends Error {
-  constructor(readonly reason: "not_connected" | "token_unavailable" | "token_refresh_failed") {
+  constructor(readonly reason: "not_connected" | "token_unavailable" | "token_refresh_failed" | "lookup_failed") {
     super(`square_${reason}`);
     this.name = "SquareNotConnectedError";
   }
@@ -68,7 +68,7 @@ async function refreshToken(
  * 「Square 未接続」として扱う（会計そのものは止めない）。
  */
 export async function getSquareContext(admin: SupabaseClient, tenantId: string): Promise<SquareContext> {
-  const { data: conn } = await admin
+  const { data: conn, error } = await admin
     .from("square_connections")
     .select(
       "id, status, square_access_token_ciphertext, square_refresh_token_ciphertext, square_token_expires_at, square_location_ids, square_terminal_device_id",
@@ -76,6 +76,9 @@ export async function getSquareContext(admin: SupabaseClient, tenantId: string):
     .eq("tenant_id", tenantId)
     .maybeSingle();
 
+  // **照合できなかったことを「繋がっていない」と読まない。** 読むと、Square を
+  // 使っている店の会計が「記録だけ」に落ちて、誰も課金されないまま領収書が出る
+  if (error) throw new SquareNotConnectedError("lookup_failed");
   if (!conn || conn.status !== "active") throw new SquareNotConnectedError("not_connected");
 
   let accessToken = await readSecret(
