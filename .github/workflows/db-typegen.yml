@@ -1,5 +1,16 @@
 name: DB types regenerate
 
+# main に supabase/migrations/** の変更が入ったら、本番スキーマから
+# src/types/db.generated.ts を作り直して PR を出す。
+#
+# 必要な GitHub Secret (1 本だけ):
+#   - SUPABASE_DB_URL … db-migrate.yml と同じものを使う。
+#
+#   link 方式 (--project-id) をやめた理由: SUPABASE_ACCESS_TOKEN と
+#   SUPABASE_PROJECT_ID が未設定のまま4回連続で失敗していた
+#   ("Access token not provided.")。db-migrate.yml が同じ理由で --db-url に
+#   寄せているので、シークレットを2本増やすのではなく既にある1本に合わせる。
+
 on:
   push:
     branches: [main]
@@ -29,18 +40,26 @@ jobs:
 
       - name: Generate DB types
         env:
-          SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
         run: |
+          # 未設定を CLI のメッセージ任せにしない。"Access token not provided." は
+          # 原因が「シークレットが空」だと読み取れず、切り分けに時間を取られた
+          if [ -z "$SUPABASE_DB_URL" ]; then
+            echo "::error::SUPABASE_DB_URL が未設定です（db-migrate.yml と同じ値を登録してください）"
+            exit 1
+          fi
           mkdir -p src/types
           supabase gen types typescript \
-            --project-id "$SUPABASE_PROJECT_ID" \
+            --db-url "$SUPABASE_DB_URL" \
             --schema public \
             > src/types/db.generated.ts
 
       - name: Open PR if types changed
         uses: peter-evans/create-pull-request@v8
         with:
+          # 生成物だけをコミットする。既定は作業ツリー全体なので、CLI が
+          # supabase/.temp/ などを落とすとそれごと PR に入ってしまう
+          add-paths: src/types/db.generated.ts
           commit-message: "chore(db): regenerate Supabase types"
           title: "chore(db): regenerate Supabase types"
           body: |

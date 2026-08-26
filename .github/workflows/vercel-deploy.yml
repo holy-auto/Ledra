@@ -1,0 +1,70 @@
+name: Vercel deploy (production)
+
+# main へのマージを本番へデプロイする。
+#
+# なぜ要るか: Vercel の GitHub 連携が 2026/08/19〜08/22 のどこかで止まり、
+# 本番が d2e4736 (8/17) のまま 9 コミット取り残された。デプロイ記録が
+# 1件も作られていない（Canceled も Error も無い）ので、リポジトリ側から
+# 明示的に叩ける経路を用意する。
+#
+# 必要な GitHub Secret (3 本):
+#   - VERCEL_TOKEN       … Vercel → Account Settings → Tokens
+#   - VERCEL_ORG_ID      … .vercel/project.json の orgId
+#   - VERCEL_PROJECT_ID  … .vercel/project.json の projectId
+#
+# **未設定なら緑のままスキップする。** ここで失敗させると main が恒久的に
+# 赤くなり、本当の失敗が埋もれる。設定された瞬間から実際にデプロイされる。
+#
+# 注意: Vercel 側の Git 連携が復活すると二重にデプロイされる。復活させる
+# 場合は Vercel の Settings → Git で自動デプロイを切るか、この workflow を
+# workflow_dispatch のみに変えること。
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  # 連続マージで古い方が後着しないように直列化する
+  group: vercel-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Check secrets
+        id: check
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: |
+          if [ -z "$VERCEL_TOKEN" ] || [ -z "$VERCEL_ORG_ID" ] || [ -z "$VERCEL_PROJECT_ID" ]; then
+            echo "::notice::VERCEL_TOKEN / VERCEL_ORG_ID / VERCEL_PROJECT_ID が未設定のためスキップしました"
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Deploy to production
+        if: steps.check.outputs.ready == 'true'
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: |
+          set -euo pipefail
+          # pull を先に回すのは、Vercel 側に登録された環境変数を取り込むため。
+          # 省くと Supabase の URL などが無いままビルドされる
+          npx --yes vercel@latest pull --yes --environment=production --token="$VERCEL_TOKEN"
+          npx --yes vercel@latest build --prod --token="$VERCEL_TOKEN"
+          url=$(npx --yes vercel@latest deploy --prebuilt --prod --token="$VERCEL_TOKEN")
+          echo "deployed: $url"
+          echo "デプロイ先: $url" >> "$GITHUB_STEP_SUMMARY"

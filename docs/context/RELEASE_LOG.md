@@ -4,6 +4,32 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-08-26 デプロイと型生成の自動化を復旧させる
+
+止まっていた2つの workflow への対応。**どちらも失敗ではなく無音だった。**
+
+- **`vercel-deploy.yml`（新規）** — main へのマージで `vercel pull → build → deploy --prod`
+  を回す。Vercel の GitHub 連携が 8/19〜8/22 のどこかで止まり、本番が `d2e4736`（8/17）
+  のまま9コミット取り残されていた。デプロイ記録が Canceled も Error も含めて1件も
+  作られていないため、リポジトリ側から明示的に叩ける経路を用意した。
+  `VERCEL_TOKEN` / `VERCEL_ORG_ID` / `VERCEL_PROJECT_ID` が**未設定なら緑のまま
+  スキップする**（ここで落とすと main が恒久的に赤くなり、本当の失敗が埋もれる）。
+  `vercel pull` を先に回すのは、Vercel 側に登録された環境変数を取り込むため。
+- **`db-typegen.yml`** — `--project-id` + アクセストークンをやめ、`db-migrate.yml` と
+  同じ `SUPABASE_DB_URL` 1本に寄せた。4回連続で失敗していた原因は、
+  `SUPABASE_PROJECT_ID` と `SUPABASE_ACCESS_TOKEN` が**空**だったこと。
+  `db-migrate.yml` は同じ理由で既に `--db-url` へ移っており、db-typegen だけが
+  取り残されていた（新しい判断ではなく、既存の規約への追従）。
+  未設定時は CLI の `Access token not provided.` 任せにせず名指しで落とす。
+  `create-pull-request` は `add-paths` で生成物1ファイルだけに限定した。
+
+この修正で分かったこと: 実機テストの指摘⑦⑧（カード番号入力と QR が出ない）は
+モバイルの不具合ではなく、**本番が 8/17 のコードのままだったこと**が原因。
+本番の `posQrSessionSchema` は `tenant_id` を必須にしており、新アプリは送らない。
+本番に存在しない mobile API も6本ある（`/api/mobile/certificates`・`/documents`・
+`/academy/lessons` と `/[id]`・`/messages` と `/[key]`）。
+**モバイルを再ビルドしても、Web をデプロイするまで直らない。**
+
 ## 2026-08-26 実機テストの指摘8件に対応（モバイル）
 
 代表の実機テストで出た8件。**5件は「ボタンはあるが `onPress` が空」**だった。
