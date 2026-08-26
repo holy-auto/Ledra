@@ -114,6 +114,10 @@ export default function CertificateDetailScreen() {
   const [snackbar, setSnackbar] = useState("");
   const [savingId, setSavingId] = useState<string | null>(null);
   const [qrVisible, setQrVisible] = useState(false);
+  /** 拡大表示中の写真。タップで開く */
+  const [preview, setPreview] = useState<CertImage | null>(null);
+  /** 読み込めなかった写真。**黙って空白にすると「出ない」としか分からない** */
+  const [brokenIds, setBrokenIds] = useState<string[]>([]);
 
   const { data: cert, isLoading } = useQuery({
     queryKey: ["certificate", id],
@@ -381,14 +385,32 @@ export default function CertificateDetailScreen() {
 
               return (
                 <View key={img.id} style={styles.imageCard}>
-                  <Image
-                    source={{
-                      uri: assetUrl(img.thumbnail_path ?? img.storage_path),
-                    }}
-                    style={styles.image}
-                    resizeMode="cover"
-                    accessibilityLabel={`証明書画像 (${img.stage ?? "未指定"})`}
-                  />
+                  {/* タップで拡大。一覧のサムネイルだけでは施工内容を確認できない */}
+                  <Pressable
+                    onPress={() => setPreview(img)}
+                    accessibilityRole="imagebutton"
+                    accessibilityLabel={`証明書画像を拡大 (${img.stage ?? "未指定"})`}
+                  >
+                    {brokenIds.includes(img.id) ? (
+                      <View style={[styles.image, styles.imageBroken]}>
+                        <Icon source="image-off" size={24} color={colors.textSecondary} />
+                        <Text style={styles.imageBrokenText}>読み込めません</Text>
+                      </View>
+                    ) : (
+                      <Image
+                        source={{
+                          uri: assetUrl(img.thumbnail_path ?? img.storage_path),
+                        }}
+                        style={styles.image}
+                        resizeMode="cover"
+                        // 失敗を握りつぶすと「写真が出ない」の原因が切り分けられない
+                        onError={() =>
+                          setBrokenIds((prev) => (prev.includes(img.id) ? prev : [...prev, img.id]))
+                        }
+                        accessibilityLabel={`証明書画像 (${img.stage ?? "未指定"})`}
+                      />
+                    )}
+                  </Pressable>
                   <View style={styles.imageBadges}>
                     {stageCfg && (
                       <StatusBadge
@@ -492,6 +514,39 @@ export default function CertificateDetailScreen() {
               <Text style={[styles.dialogBtnText, { color: colors.danger }]}>
                 無効化
               </Text>
+            </Pressable>
+          </Dialog.Actions>
+        </Dialog>
+
+        {/* 施工写真の拡大表示。サムネイルでは施工内容を確認できない */}
+        <Dialog visible={!!preview} onDismiss={() => setPreview(null)}>
+          <Dialog.Content style={styles.previewContent}>
+            {preview && (
+              <>
+                <Image
+                  source={{ uri: assetUrl(preview.medium_path ?? preview.storage_path) }}
+                  style={styles.previewImage}
+                  resizeMode="contain"
+                  accessibilityLabel={`証明書画像 (${preview.stage ?? "未指定"})`}
+                />
+                <Text style={styles.qrCaption}>
+                  {preview.stage ? (STAGE_MAP[preview.stage] ?? STAGE_MAP.unspecified).label : "段階未指定"}
+                </Text>
+              </>
+            )}
+          </Dialog.Content>
+          <Dialog.Actions>
+            <Pressable
+              onPress={() => {
+                if (preview) saveToDevice(preview);
+              }}
+              disabled={!preview || savingId === preview?.id}
+              style={styles.dialogBtn}
+            >
+              <Text style={styles.dialogBtnText}>端末に保存</Text>
+            </Pressable>
+            <Pressable onPress={() => setPreview(null)} style={styles.dialogBtn}>
+              <Text style={styles.dialogBtnText}>閉じる</Text>
             </Pressable>
           </Dialog.Actions>
         </Dialog>
@@ -804,4 +859,8 @@ const styles = StyleSheet.create({
   },
   qrContent: { alignItems: "center", gap: spacing.md },
   qrCaption: { ...typography.meta, color: colors.textSecondary, textAlign: "center" },
+  imageBroken: { alignItems: "center", justifyContent: "center", gap: spacing.xs, backgroundColor: colors.surfaceVariant },
+  imageBrokenText: { ...typography.meta, color: colors.textSecondary },
+  previewContent: { alignItems: "center", gap: spacing.sm },
+  previewImage: { width: "100%", height: 320, borderRadius: radius.md },
 });
