@@ -20,7 +20,7 @@ node scripts/replay-migrations.mjs --keep   # 終了後も DB を残す（調査
 同じ調査で、**本番にあるのに再生では作られないテーブルが 5 つ**見つかった
 （`signature_sessions` / `signature_audit_logs` / `vehicle_mileage_logs` /
 `vehicle_inspection_findings` / `vehicle_part_replacements`）。
-これらは `20260824000000_repair_unreplayable_objects.sql` で本番の定義そのまま
+これらは `20260826000005_repair_unreplayable_objects.sql` で本番の定義そのまま
 書き起こしてある（`if not exists` なので本番では no-op）。
 
 ## 再生の仕組み
