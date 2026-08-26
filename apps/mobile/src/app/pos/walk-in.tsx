@@ -1,31 +1,55 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { View, StyleSheet, ScrollView, Pressable, Platform } from "react-native";
-import QRCode from "react-native-qrcode-svg";
+import {
+  View,
+  StyleSheet,
+  ScrollView,
+  FlatList,
+  Pressable,
+  Platform,
+  BackHandler,
+  useWindowDimensions,
+} from "react-native";
 import {
   Text,
-  Card,
-  Button,
-  Divider,
-  SegmentedButtons,
   TextInput,
-  ActivityIndicator,
   Snackbar,
   IconButton,
+  Icon,
 } from "react-native-paper";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router, Stack } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 
 import { supabase } from "@/lib/supabase";
+import { paymentIdOf, toPosItems } from "@/lib/pos";
 import { useAuthStore } from "@/stores/authStore";
 import { mobileApi } from "@/lib/api";
+import { useCardEntry } from "@/hooks/useCardEntry";
+import { CardEntryPanel } from "@/components/CardEntryPanel";
+import { PosNoticeCard } from "@/components/PosNoticeCard";
+import { useDeviceType } from "@/hooks/useDeviceType";
+import { paymentSegments, isQrFlow, isTapToPayFlow, isTerminalBusy, tapFailureAction } from "@/lib/posPayment";
 import { useTerminal } from "@/hooks/useTerminal";
 import { useTerminalStore } from "@/stores/terminalStore";
+import { LedraButton, SegmentedControl } from "@/components/ui";
+import { padToColumns } from "@/lib/menuFilter";
+import {
+  useMenuFilter,
+  MenuFilterBar,
+  MenuTile,
+  MenuTileSpacer,
+} from "@/components/MenuPicker";
+import { colors, spacing, radius, sizing, typography, shadows } from "@/constants/tokens";
+import { useMenuItems } from "@/hooks/useMenuItems";
 
 interface MenuItem {
   id: string;
   name: string;
   unit_price: number;
   description: string | null;
+  category_large: string | null;
+  category_medium: string | null;
+  category_small: string | null;
 }
 
 interface CartItem {
@@ -37,58 +61,15 @@ interface CartItem {
 
 type PaymentMethod = "cash" | "card" | "qr" | "bank_transfer";
 
-function useDeviceType() {
-  const [isTablet, setIsTablet] = useState(false);
-  useEffect(() => {
-    if (Platform.OS === "ios") {
-      const { width, height } =
-        require("react-native").Dimensions.get("window");
-      setIsTablet(Math.min(width, height) >= 768);
-    }
-  }, []);
-
-  const os = Platform.OS;
-  const isIPhone = os === "ios" && !isTablet;
-  const isIPad = os === "ios" && isTablet;
-  const isAndroid = os === "android";
-
-  return { isIPhone, isIPad, isAndroid };
-}
-
-function useQrPaymentPoller(
-  sessionId: string | null,
-  onPaid: () => void,
-) {
-  useEffect(() => {
-    if (!sessionId) return;
-    let active = true;
-    const poll = async () => {
-      while (active) {
-        await new Promise((r) => setTimeout(r, 3000));
-        try {
-          const res = await mobileApi<{ status: string }>(
-            `/pos/checkout/qr-status?session_id=${sessionId}`,
-          );
-          if (res.status === "paid" && active) {
-            active = false;
-            onPaid();
-          }
-        } catch {
-          // ignore
-        }
-      }
-    };
-    poll();
-    return () => {
-      active = false;
-    };
-  }, [sessionId, onPaid]);
-}
-
 export default function WalkInCheckoutScreen() {
   const { user, selectedStore } = useAuthStore();
-  const { isIPhone, isIPad, isAndroid } = useDeviceType();
+  const device = useDeviceType();
+  const { isIPhone, isIPad, isAndroid } = device;
+  const { width: windowWidth } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
 
+  // POS レジ同様、品目選択と会計を 2 ステップに分ける（1 画面に積むと品数増加で破綻する）
+  const [step, setStep] = useState<"menu" | "checkout">("menu");
   const [cart, setCart] = useState<CartItem[]>([]);
   const [customName, setCustomName] = useState("");
   const [customPrice, setCustomPrice] = useState("");
@@ -96,20 +77,27 @@ export default function WalkInCheckoutScreen() {
   const [receivedAmount, setReceivedAmount] = useState("");
   const [processing, setProcessing] = useState(false);
 
-  // total / received / change を上に移動 (React Compiler の temporal-dead-zone
-  // エラー回避: onQrPaid useCallback が total を参照するため)
   const total = useMemo(
     () => cart.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0),
     [cart],
   );
+  const itemCount = useMemo(
+    () => cart.reduce((n, item) => n + item.quantity, 0),
+    [cart],
+  );
+  // タイルに数量バッジを出すための menuItemId → 数量
+  const cartQty = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const c of cart) if (c.menuItemId) m.set(c.menuItemId, c.quantity);
+    return m;
+  }, [cart]);
   const received = parseInt(receivedAmount, 10) || 0;
   const change = paymentMethod === "cash" ? Math.max(0, received - total) : 0;
   const [snackbar, setSnackbar] = useState("");
 
   // QR決済用
-  const [qrUrl, setQrUrl] = useState<string | null>(null);
-  const [qrSessionId, setQrSessionId] = useState<string | null>(null);
-  const [qrPolling, setQrPolling] = useState(false);
+  // タッチ決済が読めなかった直後だけ、カード番号入力への導線を出す
+  const [tapFailed, setTapFailed] = useState(false);
 
   // Stripe Terminal（iPhone）
   const {
@@ -127,64 +115,61 @@ export default function WalkInCheckoutScreen() {
     if (isIPhone) initTerminal();
   }, [isIPhone]);
 
-  const onQrPaid = useCallback(async () => {
-    setQrPolling(false);
-    resetPayment();
+  // カード番号入力（Stripe Checkout）。金額の固定・記録・失効はフック側が持つ
+  const cardEntry = useCardEntry(
+    useCallback(
+      (paymentId: string | null) => {
+        resetPayment();
+        router.replace(paymentId ? `/pos/receipt-standalone/${paymentId}` : "/(tabs)");
+      },
+      [resetPayment],
+    ),
+  );
 
-    // Stripe側で決済成功 → DBにも payments/documents を記録
-    try {
-      const itemsJson = cart.map((item) => ({
-        name: item.name,
-        quantity: item.quantity,
-        unit_price: item.unitPrice,
-        amount: item.unitPrice * item.quantity,
-      }));
-      // 任意UUIDは空文字列だと PG が "invalid input syntax for type uuid"
-      // で落ちるため明示的に null に正規化する。
-      // 店舗未設定（select-store の "店舗が登録されていません" 経路）で
-      // selectedStore.id が "" になる現象の保険。
-      const { data, error } = await supabase.rpc("pos_checkout", {
-        p_tenant_id: user!.tenantId,
-        p_reservation_id: null,
-        p_customer_id: null,
-        p_store_id: selectedStore?.id || null,
-        p_register_session_id: null,
-        p_payment_method: "card",
-        p_amount: total,
-        p_received_amount: total,
-        p_items_json: itemsJson,
-        p_user_id: user!.id,
-      });
-      if (error) throw error;
-      const result = typeof data === "string" ? JSON.parse(data) : data;
-      const pId = result?.payment_id;
-      if (pId) {
-        router.replace(`/pos/receipt-standalone/${pId}`);
-        return;
-      }
-    } catch (err) {
-      setSnackbar(err instanceof Error ? err.message : "決済記録に失敗しました");
-    }
-    router.replace("/(tabs)");
-  }, [cart, total, user, selectedStore, resetPayment]);
+  const startCardEntry = useCallback(
+    (fromTapFailure: boolean) =>
+      cardEntry.start(
+        {
+          amount: total,
+          items: toPosItems(cart),
+          method: paymentMethod,
+          storeId: selectedStore?.id ?? null,
+        },
+        fromTapFailure,
+      ),
+    [cardEntry, total, cart, paymentMethod, selectedStore],
+  );
 
-  useQrPaymentPoller(qrPolling ? qrSessionId : null, onQrPaid);
+  // 会計ステップでの端末バックは画面を閉じずに品目選択へ戻す。
+  // そのまま pop させるとカートが黙って消える
+  useEffect(() => {
+    if (step !== "checkout") return;
+    const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+      setStep("menu");
+      return true;
+    });
+    return () => sub.remove();
+  }, [step]);
 
   // メニュー取得
-  const { data: menuItems = [] } = useQuery<MenuItem[]>({
-    queryKey: ["menu-items", user?.tenantId],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("menu_items")
-        .select("id, name, unit_price, description")
-        .eq("tenant_id", user!.tenantId)
-        .eq("is_active", true)
-        .order("sort_order");
-      if (error) throw error;
-      return data as MenuItem[];
-    },
-    enabled: !!user?.tenantId,
-  });
+  const { data: menuItems = [] } = useMenuItems();
+
+  // 検索・カテゴリの絞り込みは飛び込み受付と共通（components/MenuPicker）
+  const {
+    search: menuSearch,
+    setSearch: setMenuSearch,
+    categories,
+    activeCategory,
+    changeCategory,
+    filtered: filteredMenuItems,
+  } = useMenuFilter(menuItems);
+
+  const numColumns = windowWidth >= 700 ? 4 : windowWidth >= 500 ? 3 : 2;
+
+  const gridData = useMemo(
+    () => padToColumns(filteredMenuItems, numColumns),
+    [filteredMenuItems, numColumns],
+  );
 
   function addMenuItem(item: MenuItem) {
     setCart((prev) => {
@@ -238,15 +223,10 @@ export default function WalkInCheckoutScreen() {
     setProcessing(true);
 
     try {
-      const itemsJson = cart.map((item) => ({
-        name: item.name,
-        quantity: item.quantity,
-        unit_price: item.unitPrice,
-        amount: item.unitPrice * item.quantity,
-      }));
+      const itemsJson = toPosItems(cart);
 
       // iPhone Tap to Pay
-      if (isIPhone && paymentMethod === "card") {
+      if (isTapToPayFlow(device, paymentMethod)) {
         if (readerStatus !== "connected") {
           const ok = await connectTapToPay();
           if (!ok) {
@@ -257,11 +237,14 @@ export default function WalkInCheckoutScreen() {
             );
           }
         }
+        // 明細は capture（= サーバ側の pos_checkout）へ渡す。**ここで終える**。
+        // 以前は下の会計処理まで落ちていたため、1回の決済で支払が2件できていた
         const result = await processCardPayment({
           amountJpy: total,
           description: "Ledra POS - ウォークイン会計",
           storeId: selectedStore?.id || "",
           tenantId: user!.tenantId,
+          itemsJson,
         });
         if (!result.success) {
           if (result.cancelled) {
@@ -270,57 +253,40 @@ export default function WalkInCheckoutScreen() {
           }
           throw new Error(result.error ?? "カード決済失敗");
         }
+        resetPayment();
+        setTapFailed(false); // 通ったら失敗の表示は残さない
+        const tapPaymentId = paymentIdOf(result.receipt);
+        router.replace(
+          tapPaymentId ? `/pos/receipt-standalone/${tapPaymentId}` : "/(tabs)",
+        );
+        return;
       }
 
       // QR決済（iPad/Android「カード」 or iPhone「QR」）
-      const isQrFlow =
-        ((isAndroid || isIPad) && paymentMethod === "card") ||
-        (isIPhone && paymentMethod === "qr");
-      if (isQrFlow) {
-        const res = await mobileApi<{ url: string; session_id: string }>(
-          "/pos/checkout/qr-session",
-          {
-            method: "POST",
-            body: {
-              amount: total,
-              tenant_id: user!.tenantId,
-              store_id: selectedStore?.id ?? "",
-            },
-          },
-        );
-        setQrUrl(res.url);
-        setQrSessionId(res.session_id);
-        setQrPolling(true);
+      const qrFlow = isQrFlow(device, paymentMethod);
+      if (qrFlow) {
+        await startCardEntry(false);
         setProcessing(false);
         return;
       }
 
-      // pos_checkout RPC呼び出し（予約なし）
-      // 任意UUIDは空文字列だと PG が "invalid input syntax for type uuid"
-      // で落ちるため明示的に null に正規化する。
-      const { data, error } = await supabase.rpc("pos_checkout", {
-        p_tenant_id: user!.tenantId,
-        p_reservation_id: null,
-        p_customer_id: null,
-        p_store_id: selectedStore?.id || null,
-        p_register_session_id: null,
-        p_payment_method: paymentMethod,
-        p_amount: total,
-        p_received_amount: paymentMethod === "cash" ? received : total,
-        p_items_json: itemsJson,
-        p_user_id: user!.id,
-      });
-
-      if (error) throw error;
+      // pos_checkout は呼び出し元を検査しないため端末からは直接呼ばない。
+      // テナントと担当者はサーバがトークンから決める
+      const pId = paymentIdOf(
+        await mobileApi("/pos/checkout", {
+          method: "POST",
+          body: {
+            store_id: selectedStore?.id || null,
+            payment_method: paymentMethod,
+            amount: total,
+            received_amount: paymentMethod === "cash" ? received : total,
+            items_json: itemsJson,
+          },
+        }),
+      );
 
       resetPayment();
-      const result = typeof data === "string" ? JSON.parse(data) : data;
-      const pId = result?.payment_id;
-      if (pId) {
-        router.replace(`/pos/receipt-standalone/${pId}`);
-      } else {
-        router.replace("/(tabs)");
-      }
+      router.replace(pId ? `/pos/receipt-standalone/${pId}` : "/(tabs)");
     } catch (err) {
       const msg =
         err instanceof Error
@@ -330,99 +296,205 @@ export default function WalkInCheckoutScreen() {
             JSON.stringify(err) ||
             "決済に失敗しました";
       setSnackbar(msg);
+      // タッチ決済が読めなかったときだけ、カード番号入力への導線を出す
+      if (isTapToPayFlow(device, paymentMethod)) setTapFailed(true);
     } finally {
       setProcessing(false);
     }
   }
 
-  const paymentButtons = (() => {
-    if (isIPad) {
-      return [
-        { value: "cash", label: "現金" },
-        { value: "card", label: "QR決済" },
-        { value: "bank_transfer", label: "振込" },
-      ];
-    }
-    if (isIPhone) {
-      // iPhone: Tap to Pay は専用ボタン (TapToPayButton) で上部に表示
-      return [
-        { value: "cash", label: "現金" },
-        { value: "card", label: "カード" },
-        { value: "qr", label: "QR" },
-        { value: "bank_transfer", label: "振込" },
-      ];
-    }
-    return [
-      { value: "cash", label: "現金" },
-      { value: "card", label: "QR決済" },
-      { value: "bank_transfer", label: "振込" },
-    ];
-  })();
+  const tapAction = tapFailureAction(
+    device,
+    paymentMethod,
+    tapFailed,
+    !!cardEntry.url,
+    useTerminalStore((st) => st.pendingCapturePaymentIntentId),
+  );
 
-  const isProcessing =
-    paymentStatus === "collecting" ||
-    paymentStatus === "processing" ||
-    paymentStatus === "capturing" ||
-    paymentStatus === "creating";
+  const segments = paymentSegments(device);
+
+  const isProcessing = isTerminalBusy(paymentStatus);
 
   const isDisabled =
     processing ||
     isProcessing ||
-    qrPolling ||
+    cardEntry.polling ||
     cart.length === 0 ||
     total <= 0 ||
     (paymentMethod === "cash" && received < total);
 
   const submitLabel = (() => {
-    if (qrPolling) return "お客様の決済完了を待っています...";
-    if (isIPhone && paymentMethod === "card") {
+    if (cardEntry.polling) return "お客様の決済完了を待っています...";
+    if (isTapToPayFlow(device, paymentMethod)) {
       if (paymentStatus === "collecting") return "カードをかざしてください";
       if (isProcessing) return "処理中...";
       return "Tap to Pay で決済";
     }
-    if ((isAndroid || isIPad) && paymentMethod === "card") return "QRコードを表示";
-    if (isIPhone && paymentMethod === "qr") return "QRコードを表示";
+    if (isQrFlow(device, paymentMethod)) return "QRコードを表示";
     return "決済確定";
   })();
 
   return (
     <>
-      <Stack.Screen options={{ title: "ウォークイン会計" }} />
-      <ScrollView style={styles.container}>
-        {/* メニューから追加 */}
-        <Card style={styles.card} mode="outlined">
-          <Card.Content>
-            <Text variant="titleMedium" style={styles.heading}>
-              メニューから追加
-            </Text>
-            <View style={styles.menuGrid}>
-              {menuItems.map((item) => (
-                <Pressable
-                  key={item.id}
-                  style={styles.menuChip}
-                  onPress={() => addMenuItem(item)}
-                >
-                  <Text variant="labelMedium" style={styles.menuChipLabel} numberOfLines={1}>
-                    {item.name}
-                  </Text>
-                  <Text variant="labelSmall" style={styles.menuChipPrice}>
-                    ¥{item.unit_price.toLocaleString()}
-                  </Text>
-                </Pressable>
-              ))}
-              {menuItems.length === 0 && (
-                <Text variant="bodySmall" style={styles.emptyText}>
-                  メニューが未登録です
-                </Text>
-              )}
-            </View>
-          </Card.Content>
-        </Card>
+      <Stack.Screen
+        options={{
+          title: step === "menu" ? "品目を選ぶ" : "会計",
+          // headerLeft は条件付きスプレッドで渡さないこと。setOptions はマージなので
+          // 会計ステップで設定した headerLeft がキーとして残り、品目選択に戻った後も
+          // 「品目選択へ戻る」ハンドラのままになって押しても何も起きなくなる
+          headerLeft: () => (
+            <Pressable
+              onPress={() => {
+                if (step === "checkout") {
+                  setStep("menu");
+                } else if (router.canGoBack()) {
+                  router.back();
+                } else {
+                  router.replace("/(tabs)");
+                }
+              }}
+              hitSlop={8}
+              style={styles.headerBack}
+              accessibilityRole="button"
+              accessibilityLabel={step === "checkout" ? "品目選択に戻る" : "戻る"}
+            >
+              <Icon source="chevron-left" size={28} color={colors.textPrimary} />
+            </Pressable>
+          ),
+        }}
+      />
 
-        {/* カスタム品目 */}
-        <Card style={styles.card} mode="outlined">
-          <Card.Content>
-            <Text variant="titleMedium" style={styles.heading}>
+      {step === "menu" ? (
+        <View style={styles.container}>
+          {/* 検索 + カテゴリタブ（グリッドと分離して常時固定） */}
+          <View style={styles.pickerHeader}>
+            <MenuFilterBar
+              categories={categories}
+              activeCategory={activeCategory}
+              onCategoryChange={changeCategory}
+              search={menuSearch}
+              onSearchChange={setMenuSearch}
+            />
+          </View>
+
+          {/* 等幅タイルグリッド。FlatList なので品目が増えても描画は画面分だけ */}
+          <FlatList
+            key={numColumns}
+            data={gridData}
+            numColumns={numColumns}
+            keyExtractor={(item, i) => item?.id ?? `pad-${i}`}
+            columnWrapperStyle={styles.gridRow}
+            contentContainerStyle={styles.gridContent}
+            keyboardShouldPersistTaps="handled"
+            renderItem={({ item }) =>
+              item ? (
+                <MenuTile
+                  name={item.name}
+                  price={item.unit_price}
+                  badge={cartQty.get(item.id) ?? 0}
+                  onPress={() => addMenuItem(item)}
+                />
+              ) : (
+                <MenuTileSpacer />
+              )
+            }
+            ListEmptyComponent={
+              <Text style={styles.emptyText}>
+                {menuItems.length === 0
+                  ? "メニューが未登録です"
+                  : "該当するメニューがありません"}
+              </Text>
+            }
+          />
+
+          {/* 合計バー */}
+          <View
+            style={[styles.bottomBar, { paddingBottom: insets.bottom + spacing.md }]}
+          >
+            <View style={{ flex: 1 }}>
+              <Text style={styles.barCount}>{itemCount}点</Text>
+              <Text style={styles.barTotal}>¥{total.toLocaleString()}</Text>
+            </View>
+            {/* カートが空でも進めること。カスタム品目（自由入力）は会計側にあり、
+                メニュー未登録の店舗や都度見積りの会計はそこからしか作れない */}
+            <LedraButton icon="arrow-right" onPress={() => setStep("checkout")}>
+              明細・支払い
+            </LedraButton>
+          </View>
+        </View>
+      ) : (
+        <ScrollView style={styles.container} keyboardShouldPersistTaps="handled">
+          {/* QR 提示中は金額を動かせない。Stripe が請求する額と
+              pos_checkout に記帳する額がずれる */}
+          {!cardEntry.polling && (
+            <Pressable
+              style={styles.backToMenu}
+              onPress={() => setStep("menu")}
+              accessibilityRole="button"
+            >
+              <Text style={styles.backToMenuText}>← 品目を追加する</Text>
+            </Pressable>
+          )}
+
+          {/* カート明細 */}
+          {cart.length > 0 ? (
+            <View style={styles.card}>
+              <Text style={styles.heading}>
+                明細
+              </Text>
+              {cart.map((item, index) => (
+                <View key={`${item.menuItemId ?? "custom"}-${index}`} style={styles.cartItem}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.bodyText}>{item.name}</Text>
+                    <Text style={styles.subText}>
+                      ¥{item.unitPrice.toLocaleString()} × {item.quantity}
+                    </Text>
+                  </View>
+                  <View style={styles.qtyControls}>
+                    <IconButton
+                      icon="minus-circle-outline"
+                      size={20}
+                      disabled={cardEntry.polling}
+                      onPress={() => updateQuantity(index, -1)}
+                    />
+                    <Text style={styles.qtyText}>
+                      {item.quantity}
+                    </Text>
+                    <IconButton
+                      icon="plus-circle-outline"
+                      size={20}
+                      disabled={cardEntry.polling}
+                      onPress={() => updateQuantity(index, 1)}
+                    />
+                    <IconButton
+                      icon="delete-outline"
+                      size={20}
+                      iconColor={colors.danger}
+                      disabled={cardEntry.polling}
+                      onPress={() => removeItem(index)}
+                    />
+                  </View>
+                </View>
+              ))}
+              <View style={styles.divider} />
+              <View style={styles.totalRow}>
+                <Text style={styles.totalLabel}>
+                  合計
+                </Text>
+                <Text style={styles.totalAmount}>
+                  ¥{total.toLocaleString()}
+                </Text>
+              </View>
+            </View>
+          ) : (
+            <View style={styles.card}>
+              <Text style={styles.emptyText}>明細がありません</Text>
+            </View>
+          )}
+
+          {/* カスタム品目 */}
+          <View style={styles.card}>
+            <Text style={styles.heading}>
               カスタム品目
             </Text>
             <View style={styles.customRow}>
@@ -446,119 +518,95 @@ export default function WalkInCheckoutScreen() {
               />
               <IconButton
                 icon="plus-circle"
-                iconColor="#1a1a2e"
+                iconColor={colors.textPrimary}
                 size={28}
+                disabled={cardEntry.polling}
                 onPress={addCustomItem}
               />
             </View>
-          </Card.Content>
-        </Card>
+          </View>
 
-        {/* カート明細 */}
-        {cart.length > 0 && (
-          <Card style={styles.card} mode="outlined">
-            <Card.Content>
-              <Text variant="titleMedium" style={styles.heading}>
-                明細
+          {/* タッチ決済が失敗した後の逃げ道 */}
+          {tapAction !== "none" && (
+            <View style={styles.tapFailedCard}>
+              <Text style={styles.tapFailedTitle}>
+                {tapAction === "retry_record" ? "決済は完了しています" : "タッチ決済ができませんでした"}
               </Text>
-              {cart.map((item, index) => (
-                <View key={`${item.menuItemId ?? "custom"}-${index}`} style={styles.cartItem}>
-                  <View style={{ flex: 1 }}>
-                    <Text variant="bodyMedium">{item.name}</Text>
-                    <Text variant="bodySmall" style={styles.subText}>
-                      ¥{item.unitPrice.toLocaleString()} × {item.quantity}
-                    </Text>
-                  </View>
-                  <View style={styles.qtyControls}>
-                    <IconButton
-                      icon="minus-circle-outline"
-                      size={20}
-                      onPress={() => updateQuantity(index, -1)}
-                    />
-                    <Text variant="bodyMedium" style={{ fontWeight: "600" }}>
-                      {item.quantity}
-                    </Text>
-                    <IconButton
-                      icon="plus-circle-outline"
-                      size={20}
-                      onPress={() => updateQuantity(index, 1)}
-                    />
-                    <IconButton
-                      icon="delete-outline"
-                      size={20}
-                      iconColor="#ef4444"
-                      onPress={() => removeItem(index)}
-                    />
-                  </View>
-                </View>
-              ))}
-              <Divider style={{ marginVertical: 12 }} />
-              <View style={styles.totalRow}>
-                <Text variant="titleMedium" style={{ fontWeight: "700" }}>
-                  合計
-                </Text>
-                <Text variant="headlineSmall" style={{ fontWeight: "700", color: "#1a1a2e" }}>
-                  ¥{total.toLocaleString()}
-                </Text>
-              </View>
-            </Card.Content>
-          </Card>
-        )}
-
-        {/* QRコード表示 */}
-        {(((isAndroid || isIPad) && paymentMethod === "card") ||
-          (isIPhone && paymentMethod === "qr")) &&
-          qrUrl && (
-          <Card style={[styles.card, { backgroundColor: "#f0fdf4" }]} mode="outlined">
-            <Card.Content style={{ alignItems: "center", paddingVertical: 16 }}>
-              <Text variant="titleMedium" style={{ fontWeight: "700", color: "#15803d", marginBottom: 12 }}>
-                お客様のスマホでQRを読み込んでください
+              <Text style={styles.tapFailedDesc}>
+                {tapAction === "retry_record"
+                  ? "カードは切れていますが、売上の記録に失敗しました。記録だけやり直してください（二重に請求されることはありません）。"
+                  : "カード番号を入力して決済に切り替えられます。"}
               </Text>
-              <View style={{ padding: 16, backgroundColor: "#ffffff", borderRadius: 12, marginBottom: 12 }}>
-                <QRCode value={qrUrl} size={200} />
-              </View>
-              <Text variant="bodySmall" style={{ color: "#15803d" }}>
-                ¥{total.toLocaleString()} · Stripe Checkout
-              </Text>
-              {qrPolling && (
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginTop: 12 }}>
-                  <ActivityIndicator size="small" color="#15803d" />
-                  <Text style={{ color: "#15803d", fontSize: 13 }}>決済完了を確認中...</Text>
-                </View>
-              )}
-              <Button
-                mode="outlined"
-                textColor="#ef4444"
-                style={{ marginTop: 12 }}
-                onPress={() => {
-                  setQrUrl(null);
-                  setQrSessionId(null);
-                  setQrPolling(false);
+              <LedraButton
+                style={{ marginTop: spacing.md, alignSelf: "stretch" }}
+                disabled={cardEntry.starting || processing}
+                onPress={async () => {
+                  try {
+                    // 記録のやり直しは processCardPayment に任せる。残っている
+                    // PaymentIntent の記録だけをやり直し、新しい決済は作らない
+                    if (tapAction === "retry_record") await handleCheckout();
+                    else await startCardEntry(true);
+                  } catch (err) {
+                    setSnackbar(err instanceof Error ? err.message : "決済リンクを作れませんでした");
+                  }
                 }}
               >
-                QRをキャンセル
-              </Button>
-            </Card.Content>
-          </Card>
-        )}
+                {tapAction === "retry_record" ? "記録をやり直す" : "カード番号で決済する"}
+              </LedraButton>
+            </View>
+          )}
 
-        {/* 支払方法 */}
-        {!qrPolling && cart.length > 0 && (
-          <Card style={styles.card} mode="outlined">
-            <Card.Content>
-              <Text variant="titleMedium" style={styles.heading}>
+          {/* 決済は済んだが記録に失敗した */}
+          {cardEntry.recordError && (
+            <View style={styles.tapFailedCard}>
+              <Text style={styles.tapFailedTitle}>売上の記録に失敗しました</Text>
+              <Text style={styles.tapFailedDesc}>
+                決済は完了しています（{cardEntry.recordError}）。記録をやり直してください。
+              </Text>
+              <LedraButton
+                style={{ marginTop: spacing.md, alignSelf: "stretch" }}
+                onPress={() => cardEntry.retryRecord()}
+              >
+                記録をやり直す
+              </LedraButton>
+            </View>
+          )}
+
+          {/* 支払リンクを作れなかった */}
+          {cardEntry.startError && (
+            <PosNoticeCard
+              title="支払リンクを作れませんでした"
+              description={`${cardEntry.startError}（現金での会計は続けられます）`}
+            />
+          )}
+
+          {/* カード番号入力（Stripe Checkout）*/}
+          {cardEntry.url && (
+            <CardEntryPanel
+              url={cardEntry.url}
+              amount={total}
+              polling={cardEntry.polling}
+              mode={cardEntry.fromTapFailure ? "card-entry" : "qr"}
+              onCancel={() => cardEntry.cancel()}
+              onOpenError={() => setSnackbar("決済ページを開けませんでした。QRを読み取ってください")}
+            />
+          )}
+
+          {/* 支払方法 */}
+          {!cardEntry.polling && cart.length > 0 && (
+            <View style={styles.card}>
+              <Text style={styles.heading}>
                 支払方法
               </Text>
-              <SegmentedButtons
+              <SegmentedControl
+                segments={segments}
                 value={paymentMethod}
-                onValueChange={(v) => {
+                onChange={(v) => {
                   setPaymentMethod(v as PaymentMethod);
-                  setQrUrl(null);
-                  setQrSessionId(null);
-                  setQrPolling(false);
+                  // 支払方法を変えたら、前の失敗表示と作りかけのリンクは畳む
+                  setTapFailed(false);
+                  cardEntry.cancel();
                 }}
-                buttons={paymentButtons}
-                style={{ marginBottom: 12 }}
               />
               {paymentMethod === "cash" && (
                 <>
@@ -568,46 +616,57 @@ export default function WalkInCheckoutScreen() {
                     value={receivedAmount}
                     onChangeText={setReceivedAmount}
                     keyboardType="numeric"
-                    style={{ backgroundColor: "#ffffff", marginBottom: 8 }}
+                    style={styles.cashInput}
                     right={<TextInput.Affix text="円" />}
                   />
                   <View style={styles.changeRow}>
-                    <Text variant="bodyMedium">おつり:</Text>
+                    <Text style={styles.bodyText}>おつり:</Text>
+                    {/* change は Math.max で 0 に丸めてあるので、色は
+                        預かり額が足りているかで決める */}
                     <Text
-                      variant="titleMedium"
-                      style={{ fontWeight: "700", color: change >= 0 ? "#10b981" : "#ef4444" }}
+                      style={[
+                        styles.totalLabel,
+                        {
+                          color:
+                            received >= total ? colors.success : colors.danger,
+                        },
+                      ]}
                     >
                       ¥{change.toLocaleString()}
                     </Text>
                   </View>
                 </>
               )}
-            </Card.Content>
-          </Card>
-        )}
+            </View>
+          )}
 
-        {/* 決済ボタン */}
-        {!qrPolling && cart.length > 0 && (
-          <View style={styles.submitArea}>
-            <Button
-              mode="contained"
-              icon="check-circle"
-              onPress={handleCheckout}
-              loading={processing || isProcessing}
-              disabled={isDisabled}
-              style={styles.submitButton}
-              buttonColor="#1a1a2e"
-              contentStyle={{ paddingVertical: 8 }}
-            >
-              {submitLabel}
-            </Button>
-          </View>
-        )}
+          {/* 決済ボタン */}
+          {!cardEntry.polling && cart.length > 0 && (
+            <View style={styles.submitArea}>
+              <LedraButton
+                icon="check-circle"
+                onPress={handleCheckout}
+                loading={processing || isProcessing}
+                disabled={isDisabled}
+              >
+                {submitLabel}
+              </LedraButton>
+            </View>
+          )}
 
-        <View style={{ height: 40 }} />
-      </ScrollView>
+          <View style={{ height: spacing["4xl"] }} />
+        </ScrollView>
+      )}
 
-      <Snackbar visible={!!snackbar} onDismiss={() => setSnackbar("")} duration={3000}>
+      <Snackbar
+        visible={!!snackbar}
+        onDismiss={() => setSnackbar("")}
+        duration={3000}
+        style={{ backgroundColor: colors.textPrimary }}
+        // Android は兄弟同士の重なりを elevation で決める。合計バーが
+        // elevation 3 を持つので、既定（0）のままだと通知が完全に隠れる
+        wrapperStyle={{ elevation: 8 }}
+      >
         {snackbar}
       </Snackbar>
     </>
@@ -615,44 +674,128 @@ export default function WalkInCheckoutScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#fafafa" },
-  card: { marginHorizontal: 16, marginTop: 16, backgroundColor: "#ffffff" },
-  heading: { fontWeight: "700", color: "#1a1a2e", marginBottom: 8 },
-  subText: { color: "#71717a" },
-  menuGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  menuChip: {
-    backgroundColor: "#f4f4f5",
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderWidth: 1,
-    borderColor: "#e4e4e7",
+  headerBack: {
+    width: sizing.touchTarget,
+    height: sizing.touchTarget,
+    alignItems: "center",
+    justifyContent: "center",
   },
-  menuChipLabel: { color: "#1a1a2e", fontWeight: "600" },
-  menuChipPrice: { color: "#71717a", marginTop: 2 },
-  emptyText: { color: "#71717a" },
-  customRow: { flexDirection: "row", alignItems: "center", gap: 8 },
-  input: { backgroundColor: "#ffffff" },
+  container: { flex: 1, backgroundColor: colors.background },
+  card: {
+    marginHorizontal: spacing.lg,
+    marginTop: spacing.lg,
+    backgroundColor: colors.surface,
+    borderRadius: radius.card,
+    padding: spacing.lg,
+    ...shadows.card,
+  },
+  heading: {
+    ...typography.titleMedium,
+    color: colors.textPrimary,
+    marginBottom: spacing.sm,
+  },
+  subText: {
+    ...typography.bodySmall,
+    color: colors.textSecondary,
+  },
+  bodyText: {
+    ...typography.body,
+    color: colors.textPrimary,
+  },
+  emptyText: {
+    ...typography.bodySmall,
+    color: colors.textSecondary,
+  },
+  pickerHeader: {
+    backgroundColor: colors.surface,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.sm,
+  },
+  gridContent: {
+    padding: spacing.lg,
+    gap: spacing.sm,
+  },
+  gridRow: { gap: spacing.sm },
+  bottomBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md,
+    backgroundColor: colors.surface,
+    ...shadows.bar,
+  },
+  barCount: {
+    ...typography.meta,
+    color: colors.textSecondary,
+  },
+  barTotal: {
+    ...typography.titleLarge,
+    color: colors.textPrimary,
+  },
+  backToMenu: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.lg,
+  },
+  backToMenuText: {
+    ...typography.label,
+    color: colors.primary,
+  },
+  customRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  input: { backgroundColor: colors.surface },
   cartItem: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 4,
+    paddingVertical: spacing.xs,
   },
   qtyControls: {
     flexDirection: "row",
     alignItems: "center",
+  },
+  qtyText: {
+    ...typography.body,
+    fontWeight: "600",
+    color: colors.textPrimary,
+  },
+  divider: {
+    height: 1,
+    backgroundColor: colors.divider,
+    marginVertical: spacing.md,
   },
   totalRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
   },
+  totalLabel: {
+    ...typography.titleMedium,
+    color: colors.textPrimary,
+  },
+  totalAmount: {
+    ...typography.titleLarge,
+    color: colors.textPrimary,
+  },
+  tapFailedCard: {
+    marginHorizontal: spacing.lg,
+    marginTop: spacing.lg,
+    backgroundColor: colors.surface,
+    borderRadius: radius.card,
+    padding: spacing.lg,
+    ...shadows.card,
+  },
+  tapFailedTitle: { ...typography.titleMedium, color: colors.textPrimary },
+  tapFailedDesc: { ...typography.bodySmall, color: colors.textSecondary, marginTop: spacing.xs },
+  cashInput: {
+    backgroundColor: colors.surface,
+    marginTop: spacing.md,
+    marginBottom: spacing.sm,
+  },
   changeRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingVertical: 8,
+    paddingVertical: spacing.sm,
   },
-  submitArea: { padding: 16 },
-  submitButton: { borderRadius: 8 },
+  submitArea: { padding: spacing.lg },
 });

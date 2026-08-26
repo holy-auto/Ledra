@@ -128,16 +128,12 @@ export default function InsurerSettingsNotificationsPage() {
       {/* Header */}
       <div className="mb-8">
         <h1 className="text-2xl font-bold text-primary">通知設定</h1>
-        <p className="mt-1 text-sm text-muted">
-          メール通知の受信設定を管理します
-        </p>
+        <p className="mt-1 text-sm text-muted">メール通知の受信設定を管理します</p>
       </div>
 
       {/* Error */}
       {err && (
-        <div className="mb-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {err}
-        </div>
+        <div className="mb-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{err}</div>
       )}
 
       {/* Success */}
@@ -158,27 +154,16 @@ export default function InsurerSettingsNotificationsPage() {
       {!loading && (
         <div className="rounded-2xl border border-border-default bg-surface">
           <div className="border-b border-border-subtle px-6 py-4">
-            <h2 className="text-base font-semibold text-primary">
-              メール通知
-            </h2>
-            <p className="text-sm text-muted">
-              各種イベントのメール通知のオン/オフを切り替えます
-            </p>
+            <h2 className="text-base font-semibold text-primary">メール通知</h2>
+            <p className="text-sm text-muted">各種イベントのメール通知のオン/オフを切り替えます</p>
           </div>
 
           <div className="divide-y divide-neutral-100">
             {PREF_ITEMS.map((item) => (
-              <div
-                key={item.key}
-                className="flex items-center justify-between px-6 py-4"
-              >
+              <div key={item.key} className="flex items-center justify-between px-6 py-4">
                 <div className="min-w-0 flex-1 pr-4">
-                  <div className="text-sm font-medium text-primary">
-                    {item.label}
-                  </div>
-                  <div className="mt-0.5 text-xs text-muted">
-                    {item.description}
-                  </div>
+                  <div className="text-sm font-medium text-primary">{item.label}</div>
+                  <div className="mt-0.5 text-xs text-muted">{item.description}</div>
                 </div>
 
                 {/* Toggle switch */}

@@ -15,6 +15,8 @@ import { checkRateLimit } from "@/lib/api/rateLimit";
 import { resolveCertifiedTemplateForTenant } from "@/lib/manufacturers/certifiedTemplates";
 import { enqueueCertificateAnchor } from "@/lib/anchoring/certificateAnchorService";
 import { buildCertificateVersionRow, type CertificateVersionRow } from "@/lib/certificates/certificateVersion";
+import { logTenantAuditEvent } from "@/lib/audit/tenantLog";
+import { mergeMileageOnEdit } from "@/lib/maintenance/mileage";
 
 const certificateEditSchema = z
   .object({
@@ -72,13 +74,26 @@ export async function PUT(req: NextRequest) {
     const { data: cert, error: fetchError } = await admin
       .from("certificates")
       .select(
-        "id, tenant_id, public_id, status, customer_name, vehicle_info_json, content_free_text, content_preset_json, expiry_type, expiry_value, expiry_date, warranty_period_end, maintenance_date, warranty_exclusions, remarks, service_type, coating_products_json, ppf_coverage_json, maintenance_json, body_repair_json, accessory_json, certificate_no, current_version, manufacturer_id, manufacturer_template_id",
+        "id, tenant_id, public_id, status, customer_name, vehicle_info_json, content_free_text, content_preset_json, expiry_type, expiry_value, expiry_date, warranty_period_end, maintenance_date, warranty_exclusions, remarks, service_type, coating_products_json, ppf_coverage_json, maintenance_json, body_repair_json, accessory_json, current_version, manufacturer_id, manufacturer_template_id",
       )
       .eq("public_id", publicId)
       .eq("tenant_id", caller.tenantId)
       .single();
 
     if (fetchError || !cert) return apiNotFound("証明書が見つかりません。");
+
+    // 走行距離は「入れられるが、消せない」(判定は mergeMileageOnEdit に集約)。
+    // 差分を取る**前**に正規化する。後ろでやると、履歴 (certificate_edit_histories /
+    // certificate_versions) に補完前の値が残り、実際に保存された値とずれる。
+    // また「走行距離しか違わない payload」で版だけ上がって再アンカリングが走るのも防ぐ。
+    if ("maintenance_json" in body) {
+      const merged = mergeMileageOnEdit(
+        (cert as Record<string, unknown>).maintenance_json,
+        body.maintenance_json ?? {},
+      );
+      if (!merged.ok) return apiValidationError(merged.error);
+      body.maintenance_json = merged.maintenanceJson;
+    }
 
     // Build update payload & track changes
     const changes: Array<{ field: string; label: string; old: unknown; new: unknown }> = [];
@@ -152,14 +167,18 @@ export async function PUT(req: NextRequest) {
     });
 
     // Also log to audit_logs for general audit trail
-    await admin.from("audit_logs").insert({
-      tenant_id: caller.tenantId,
-      table_name: "certificates",
-      record_id: cert.id,
+    await logTenantAuditEvent(admin, {
+      tenantId: caller.tenantId,
+      userId: caller.userId,
       action: "certificate_edited",
-      old_values: Object.fromEntries(changes.map((c) => [c.field, c.old])),
-      new_values: Object.fromEntries(changes.map((c) => [c.field, c.new])),
-      performed_by: caller.userId,
+      table: "certificates",
+      recordId: cert.id as string,
+      targetPublicId: (cert.public_id as string | null) ?? null,
+      extra: {
+        old_values: Object.fromEntries(changes.map((c) => [c.field, c.old])),
+        new_values: Object.fromEntries(changes.map((c) => [c.field, c.new])),
+      },
+      req,
     });
 
     // 内容が変わったので証明書レコードの新しい digest を anchor queue に積む

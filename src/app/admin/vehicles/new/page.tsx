@@ -6,6 +6,7 @@ import Button from "@/components/ui/Button";
 import FirstUseInlineGuide from "@/components/ui/FirstUseInlineGuide";
 import HelpTooltip from "@/components/ui/HelpTooltip";
 import ShakenshoScanner from "@/components/vehicles/ShakenshoScanner";
+import { autofillMessage, type ShakenshoAutofillResponse } from "@/lib/ocr/shakenshoAutofill";
 
 type Customer = { id: string; name: string; phone: string | null };
 
@@ -65,15 +66,14 @@ export default function AdminVehicleNewPage() {
       .catch(() => {});
   }, [prefillCustomerId]);
 
-  function applyExtracted(x: {
-    maker?: string | null;
-    model?: string | null;
-    year?: number | null;
-    vin_code?: string | null;
-    plate_display?: string | null;
-    size_class?: string | null;
-    expiry_date?: string | null;
-  }) {
+  /** 読み取り結果をフォームへ反映し、1 項目も入らなければ理由を表示する。 */
+  function applyExtracted(res: ShakenshoAutofillResponse) {
+    const msg = autofillMessage(res);
+    if (msg.type === "error") {
+      setErr(msg.text);
+      return;
+    }
+    const x = res.extracted ?? {};
     if (x.maker) setMaker(x.maker);
     if (x.model) setModel(x.model);
     if (x.year) setYear(String(x.year));
@@ -212,7 +212,7 @@ export default function AdminVehicleNewPage() {
         setErr(j?.message || "車検証の読み取りに失敗しました。");
         return;
       }
-      applyExtracted(j.extracted);
+      applyExtracted(j);
       applyCustomerSuggestion(j.customer_suggestion);
     } catch (e: unknown) {
       setErr(String((e as Error)?.message ?? e));
@@ -251,7 +251,7 @@ export default function AdminVehicleNewPage() {
         setErr(j?.message || "二次元コードの解析に失敗しました。画像アップロードをお試しください。");
         return;
       }
-      applyExtracted(j.extracted);
+      applyExtracted(j);
     } catch (e: unknown) {
       setErr(String((e as Error)?.message ?? e));
     } finally {

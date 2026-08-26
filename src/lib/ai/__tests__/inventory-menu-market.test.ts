@@ -6,9 +6,7 @@ import { translationCacheKey, SUPPORTED_LANGUAGES } from "../translateContent";
 describe("suggestPosDeductions", () => {
   it("uses link rows verbatim with confidence 1.0", async () => {
     const out = await suggestPosDeductions({
-      sales: [
-        { menu_item_id: "m1", menu_item_name: "ガラスコート", service_category: "coating", sold_quantity: 2 },
-      ],
+      sales: [{ menu_item_id: "m1", menu_item_name: "ガラスコート", service_category: "coating", sold_quantity: 2 }],
       skus: [{ id: "sku1", name: "Crystal Pro 9H" }],
       links: [{ menu_item_id: "m1", sku_id: "sku1", quantity: 50 }],
       history: [],
@@ -20,9 +18,7 @@ describe("suggestPosDeductions", () => {
 
   it("falls back to history when no link exists", async () => {
     const out = await suggestPosDeductions({
-      sales: [
-        { menu_item_id: "m2", menu_item_name: "PPF 全面", service_category: "ppf", sold_quantity: 1 },
-      ],
+      sales: [{ menu_item_id: "m2", menu_item_name: "PPF 全面", service_category: "ppf", sold_quantity: 1 }],
       skus: [{ id: "sku2", name: "PPF Film 1.5m" }],
       links: [],
       history: [{ service_category: "ppf", sku_id: "sku2", avg_quantity: 8 }],

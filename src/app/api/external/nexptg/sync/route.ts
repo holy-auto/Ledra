@@ -38,8 +38,7 @@ export const dynamic = "force-dynamic";
  */
 
 type ExtractedKey =
-  | { ok: true; key: string; source: "x-api-key" | "basic-auth" }
-  | { ok: false; reason: "no-header" | "invalid-basic" };
+  { ok: true; key: string; source: "x-api-key" | "basic-auth" } | { ok: false; reason: "no-header" | "invalid-basic" };
 
 /** Basic 認証 / x-api-key ヘッダのどちらからでも APIキーを抽出する */
 function extractApiKey(req: NextRequest): ExtractedKey {

@@ -125,9 +125,12 @@ export async function POST(req: NextRequest) {
             tenant_id: tenantId,
             title: "運営からのお知らせ",
             body: message,
-            type: "platform_notification",
+            // 列名は notification_type。`type` は存在せず、この insert は
+            // 100% 失敗していた（戻り値も見ていなかったので誰も気づいていない）
+            notification_type: "platform_notification",
           }));
-          await admin.from("notifications").insert(notifications);
+          const { error: notifyErr } = await admin.from("notifications").insert(notifications);
+          if (notifyErr) throw new Error(`通知の作成に失敗しました: ${notifyErr.message}`);
         }
         result = { message: `${tenant.name} の ${userIds.length}名に通知を送信しました` };
         break;
@@ -164,13 +167,14 @@ export async function POST(req: NextRequest) {
 
     // Log the action to admin_audit_logs
     try {
+      // actor_tenant_id 列は admin_audit_logs に存在しないため meta に格納する
       await admin.from("admin_audit_logs").insert({
         actor_id: caller.userId,
-        actor_tenant_id: caller.tenantId,
         action: `platform.${action}`,
         target_type: "tenant",
         target_id: tenantId,
         meta: {
+          actor_tenant_id: caller.tenantId,
           tenant_name: tenant.name,
           params: params ?? {},
           result_message: result.message ?? "",

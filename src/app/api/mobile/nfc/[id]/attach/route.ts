@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { resolveMobileCaller } from "@/lib/auth/mobileAuth";
 import { hasPermission } from "@/lib/auth/permissions";
+import { logTenantAuditEvent } from "@/lib/audit/tenantLog";
 import {
   apiOk,
   apiUnauthorized,
@@ -56,13 +57,13 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     if (error) return apiInternalError(error, "nfc.attach");
 
     // Audit log
-    await caller.supabase.from("audit_logs").insert({
-      tenant_id: caller.tenantId,
-      table_name: "nfc_tags",
-      record_id: tag.id,
+    await logTenantAuditEvent(caller.supabase, {
+      tenantId: caller.tenantId,
+      userId: caller.userId,
       action: "nfc_tag_attached",
-      performed_by: caller.userId,
-      ip_address: request.headers.get("x-forwarded-for") ?? request.headers.get("x-real-ip"),
+      table: "nfc_tags",
+      recordId: tag.id,
+      req: request,
     });
 
     return apiOk({ nfc_tag: data });

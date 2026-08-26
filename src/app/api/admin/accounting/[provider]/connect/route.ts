@@ -7,7 +7,7 @@
  */
 
 import { NextRequest } from "next/server";
-import { createOAuthState } from "@/lib/accounting/oauthState";
+import { createOAuthState } from "@/lib/integrations/oauthState";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
