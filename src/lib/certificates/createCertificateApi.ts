@@ -14,6 +14,7 @@
  */
 
 import { z } from "zod";
+import { parseMileageKm } from "@/lib/maintenance/mileage";
 
 /**
  * 証明書発行リクエストの JSON 形式。
@@ -36,6 +37,14 @@ export const certCreateJsonSchema = z
     plate: z.string().trim().max(50).optional().default(""),
     vin_code: z.string().trim().max(50).nullable().optional(),
     size_class: z.string().trim().max(20).nullable().optional(),
+
+    // 走行距離（必須）。Server Action 側の parseMileageKm と同じ条件で弾く。
+    // オフライン同期も外部連携もこのスキーマを通るので、ここを optional にすると
+    // フォームだけ必須・API は素通り、という抜け道になる。
+    mileage_km: z
+      .union([z.number(), z.string()])
+      .refine((v) => parseMileageKm(v) !== null, "走行距離（km）は必須です。1以上の整数で入力してください。")
+      .transform((v) => parseMileageKm(v) as number),
 
     // テンプレート
     template_id: z.string().uuid().optional().default(""),
@@ -110,6 +119,7 @@ export function jsonToCertFormData(input: CertCreateJsonInput): FormData {
   appendIf("plate", input.plate);
   appendIf("vin_code", input.vin_code ?? undefined);
   appendIf("size_class", input.size_class ?? undefined);
+  appendIf("mileage_km", String(input.mileage_km));
 
   // Template
   appendIf("template_id", input.template_id);
@@ -235,6 +245,7 @@ export function formDataToCertJson(fd: FormData): Record<string, unknown> {
     "plate",
     "vin_code",
     "size_class",
+    "mileage_km",
     "template_id",
     "template_name",
     "manufacturer_template_id",

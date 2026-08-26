@@ -31,6 +31,62 @@
 **未検証**: 本番キーが無いため、Stripe API が実際に `paypay` を受けるかは
 未確認。PayPay は public preview（clover 2025-09-30）で SDK v20.4.1 の型にも
 まだ無い。受けなければフォールバックが働き、これまで通りカードのみで動く。
+## 2026-08-26 VIN トリガーのマイグレーションを `20260826000007` へ改名（本番適用の停止を解除）
+
+- PR #967 をマージした直後、`db-migrate`（本番への自動適用）が **out-of-order で停止**した。
+  ```
+  Found local migration files to be inserted before the last migration on remote database.
+  supabase/migrations/20260825000000_vehicles_vin_normalized_trigger.sql
+  ```
+- 原因: PR #967 の作業中に、`main` 側とのバージョン衝突を避けて `20260823000000` →
+  `20260825000000` へ改名した。その後 `main` に #971〜#974 が入り、本番の適用済み最新が
+  **`20260826000006`** まで進んだ。マージ時点で `20260825000000` は「適用済み最新より古い
+  未適用ファイル」になっていた。
+- 対処: `20260826000007_vehicles_vin_normalized_trigger.sql` へ改名（中身は変更なし）。
+  `--include-all` での強制適用は採らない（DECISION_LOG 2026-07-21 の方針どおり、
+  後発ファイルを一意な後ろの日付へ改名する運用に統一する）。
+- **CI は全緑だった。** `lint-migrations` は同一バージョンの重複しか見ておらず、
+  `Migrations Replay` は空DBからの再生なので、どちらも「本番の適用済み最新との前後関係」を
+  見ていない。マージ前に本番の `schema_migrations` を確認していれば防げた。
+
+## 2026-08-26 デプロイと型生成の自動化を復旧させる
+
+止まっていた2つの workflow への対応。**どちらも失敗ではなく無音だった。**
+
+- **`vercel-deploy.yml`（新規・手動実行のみ）** — `vercel pull → build → deploy --prod`
+  を回す。Vercel の GitHub 連携が 8/19〜8/22 のどこかで止まり、本番が `d2e4736`（8/17）
+  のまま9コミット取り残されていた。デプロイ記録が Canceled も Error も含めて1件も
+  作られていないため、リポジトリ側から明示的に叩ける経路を用意した。
+  `VERCEL_TOKEN` / `VERCEL_ORG_ID` / `VERCEL_PROJECT_ID` が**未設定でもジョブは
+  落とさない**（落とすと main が恒久的に赤くなり、本当の失敗が埋もれる。db-migrate は
+  2026-08-02〜08-15 の13日間それで見逃された）。ただし `::warning::` とサマリで
+  「デプロイしていません」と出す —— 印の付かない緑は「デプロイできている」と読め、
+  このワークフローが直そうとしている無音そのものになる。失敗時は `db-migrate.yml` と
+  同じ `SLACK_WEBHOOK_URL` へ通知する。**2026-08-26 02:28 に Vercel の Git 連携が
+  復活した**（PR #975 で Preview が Ready）ため、二重デプロイを避けて起動を
+  `workflow_dispatch` のみにした。push ブロックはコメントで残してあり、また
+  無音で止まったら外せば戻せる。`vercel pull` を先に回すのは Vercel 側に
+  登録された環境変数を取り込むため。CLI はバージョンを固定した（`@latest` だと
+  破壊的変更が PR も CI も通らずに本番へ直行する）。docs だけのマージでは走らせない。
+- **`db-typegen.yml`** — `--project-id` + アクセストークンをやめ、`db-migrate.yml` と
+  同じ `SUPABASE_DB_URL` 1本に寄せた。4回連続で失敗していた原因は、
+  `SUPABASE_PROJECT_ID` と `SUPABASE_ACCESS_TOKEN` が**空**だったこと。
+  `db-migrate.yml` は同じ理由で既に `--db-url` へ移っており、db-typegen だけが
+  取り残されていた（新しい判断ではなく、既存の規約への追従）。
+  未設定時は CLI の `Access token not provided.` 任せにせず名指しで落とす。
+  `create-pull-request` は `add-paths` で生成物1ファイルだけに限定し、ブランチ名を
+  固定した（`run_id` を混ぜると実行のたびに別の PR が開き、同じタイトルの衝突する
+  PR が積み上がる）。起動も `push` から **db-migrate の成功後**に変更 —— 両方が
+  同じトリガーで並走しており、**適用途中のスキーマから型を作りうる**状態だった。
+  出力は一時ファイルに書いて成功時だけ差し替える（CLI はエラーも stdout に書くので、
+  直接リダイレクトすると失敗時に型定義がエラーJSONに化ける。実行して確認済み）。
+
+この修正で分かったこと: 実機テストの指摘⑦⑧（カード番号入力と QR が出ない）は
+モバイルの不具合ではなく、**本番が 8/17 のコードのままだったこと**が原因。
+本番の `posQrSessionSchema` は `tenant_id` を必須にしており、新アプリは送らない。
+本番に存在しない mobile API も6本ある（`/api/mobile/certificates`・`/documents`・
+`/academy/lessons` と `/[id]`・`/messages` と `/[key]`）。
+**モバイルを再ビルドしても、Web をデプロイするまで直らない。**
 
 ## 2026-08-26 実機テストの指摘8件に対応（モバイル）
 
@@ -85,6 +141,48 @@
 - **次に同じことをしないための手順**: MCP で本番へ当てたら、その場で
   同バージョン名のファイルを repo に置く。改名の前に本番の
   `schema_migrations` と1件ずつ突き合わせ、**適用済みのものは改名しない**。
+
+## 2026-08-26 走行距離の必須化を「発行の瞬間」へ移し、メーター写真の OCR 取り込みを足した
+
+- **必須化の場所を発行のチョークポイント3本へ移した。**
+  `PUT /api/admin/certificates/status`（draft→active / void→active）・
+  `POST /api/certificates/activate-by-key`（オフライン発行）・
+  `POST /api/mobile/certificates/[id]/activate`（モバイル発行）で、
+  `maintenance_json.mileage` が有効値でなければ 400 で止める。
+  判定は `certificateMileageKm()`（`src/lib/maintenance/mileage.ts`）1つ。
+  写真必須ルール（`certificateHasRequiredPhotos`）と同じ位置・同じ形。
+- **これで作成経路を1本も触らずに全経路が塞がる。** `POST /api/certificates/create` は
+  必ず `status: "draft"` で作るため、外部APIから作られた証明書もこの3本を必ず通る。
+  作成経路（Web / モバイル / 外部API / AI自動起票 / オフライン再送）が増えても漏れない。
+  発行経路の数え漏れ自体を防ぐため、`triggerCertificateIssued` を発火するファイルを走査して
+  全部がゲートを通っているか確かめるテストを足した
+  （`src/lib/certificates/__tests__/activationGates.test.ts`）。
+- **AI自動起票は走行距離が無い限り発行しない。** `certificateRecordAuto.ts` は
+  insert で直接 `active` を作れる唯一の経路なので、そこにも同じ条件を課した。
+  結果として自動発行は `draft` に落ち、承認インボックスで人が確認して発行する。
+- **証明書フォームにメーター撮影→OCR 取り込みを足した**（`OdometerOcrButton`）。
+  既存の `/api/admin/inspection-records/ocr`（`target=odometer`）をそのまま呼ぶ。
+  `confidence < 0.7` と `warnings`（ブレ / 反射 / 一部欠け）は加工せず画面に出し、
+  撮り直しを促す。読めなければ**何も入力しない** —— 常時表示の手入力欄にフォールバックする。
+  OCR は下書きを埋めるだけで、発行するのは人（＝最終確認は人間）。
+- **編集API (`PUT /api/certificates/edit`) は「入れられるが消せない」。**
+  既存値がある状態で `mileage` の無い `maintenance_json` を送っても既存値を引き継ぐ。
+  不正値（0・負・小数・`"35000km"`・配列）は 400。
+  この編集APIがそのまま**遡及入力の経路**になる（DBトリガーは `UPDATE OF maintenance_json`
+  でも発火し、`vehicle_mileage_logs` に積まれる）。専用画面は作っていない。
+- **証明書詳細の編集フォームに走行距離欄を足した**（メーターOCRボタン付き）。
+  発行前の下書きと、必須化より前に作られた証明書の遡及入力を兼ねる唯一の窓口。
+  空欄で保存しても既存値は消えない。
+- 使われていない Server Action `activateCertAction` / `voidCertAction` と
+  `CertStatusActions.tsx` を削除した（どこからも描画されておらず、写真ゲートも通らない経路だった）。
+- **走行距離ゲートは初回発行 (draft→active) のみ。** `void→active` の再発行に掛けると、
+  必須化より前の走行距離なしの証明書を void した瞬間に戻せなくなる
+  （編集フォームは void 中は出ないので入力窓口が無い）。
+- **承認インボックスと案件サインオフの「発行」ボタンを修正した。** どちらも
+  `POST /api/admin/certificates/status` を叩いていたが、このルートは `PUT` しか
+  公開していないため 405 で必ず失敗していた（今回の変更以前からの不具合）。
+- 既存45件の一括バックフィルはしない（施工時点のメーター値の復元元が無い。
+  判る分だけ編集APIから入れる）。詳細は `docs/mileage-followup-checklist.md`。
 
 ## 2026-08-26 db-migrate を3回目で緑にする — 適用済みのファイルを改名してはいけない
 
@@ -872,6 +970,130 @@
 - 内容: 何を実装・変更したか
 - 対象: どの画面・API・業種向けか
 ```
+
+## 2026-08-25 恒久失敗キューの取りこぼしを修正（コードレビュー2巡目の反映）
+
+- 内容: 前項の修正に対するコードレビューで、恒久失敗の判定が**別の壊し方をしていた**ことが分かり6件を修正した。
+- 実装:
+  - `src/app/api/admin/certificates/route.ts`: **`/api/admin/certificates` はあらゆる失敗を 400 で返していた**。
+    DB障害のような一時的なエラーまで 400 になるため、新しい恒久失敗判定が
+    「二度と送れない」と誤認して未送信の証明書を止めてしまう状態だった。
+    入力が原因のコード（`ACTION_VALIDATION_ERRORS`）は **422**、それ以外は **500** に分けた。
+  - `src/lib/outbox/queue.ts`: **404 を恒久扱いから外した**。証明書の作成がまだ同期されていない段階で
+    後続（発行・写真アップロード）が走ると 404 になりうるが、これは順番の問題で次回の drain では通る。
+  - `public/sw.js`: **Background Sync 側に drain ループのもう1つのコピーがあり、前項の修正が入っていなかった**。
+    タブを閉じている間だけ永久リトライが復活する状態だったので、`isPermanentClientError` / `markBlocked` を同じ規則で実装。
+    両者を必ずそろえる旨をコメントに明記。
+  - `src/lib/outbox/queue.ts`: `countOutbox()` が blocked を数えていたため、バッジが
+    「N 件 同期待ち」のまま減らないのに同期を押すと「同期待ちはありません」と出る食い違いがあった。blocked を除外。
+  - `src/app/admin/certificates/PendingOfflineCerts.tsx`: 恒久失敗は**種別を問わず**表示するようにした。
+    発行 (`certificate_activate`) や写真アップロードが止まっているのにどこにも出ないと、
+    証明書が draft のまま残っていることに利用者が気づけない。
+  - `apps/mobile/src/app/certificates/new.tsx`: 車両マスタの自動作成を**ナンバー入力時のみ**に限定。
+    ナンバーが無いと同一車両を identify できず、入庫のたびに別の `vehicles` 行ができて
+    走行距離の履歴が1点ずつ分かれてしまうため。
+- 検証: API のステータス分岐テスト2件（入力エラー→422 / 想定外エラー→500）を追加。
+  404 を再送継続側に移したテストも更新。`node --check public/sw.js` 通過。
+  モバイルはローカルで型検査緑。`tsc` クリーン / 全テスト **417ファイル 3,821件** 緑。
+- **未対応（正直な記録）**: 「証明書を作る経路を洗い出して全部に入れた」と前項に書いたが、これは不正確だった。
+  AI自動化 (`src/lib/ai/automation/certificateRecordAuto.ts`) と `POST /api/certificates/create` は
+  `maintenance_json` を書かないため走行距離が積まれない。どちらも人が値を入力する画面が無く、
+  必須化しても満たしようがないため今回は変更していない。OPEN_QUESTIONS 2026-08-25 に起票。
+
+## 2026-08-25 オフラインキューの永久リトライを止め、モバイルの車両マスタ自動作成を実装
+
+- 内容: 走行距離必須化のコードレビューで残していた2件を修正した。どちらも「静かに失敗する」状態を解消するもの。
+- 対象: オフライン送信キュー（全機能）、モバイルの証明書作成、`/admin/certificates` の保留中証明書UI。
+- 実装:
+  - `src/lib/outbox/types.ts`: `OutboxItem.blockedAt` を追加。恒久的に送れないと判定した時刻。
+  - `src/lib/outbox/queue.ts`:
+    - `isPermanentClientError()` を追加。**400 / 404 / 405 / 410 / 413 / 415 / 422** は再送しても結果が変わらないので恒久扱い。
+      **401 / 403**（再ログイン・権限付与で回復）と **408 / 429 / 5xx**（時間をおけば通る）は従来どおり再送を続ける。
+    - `drainItems` が恒久エラーで `markBlocked` を呼び、`blockedAt` の付いたアイテムは以後スキップする。
+      これで**永久リトライが後続アイテムの送信機会を食い潰すことがなくなる**。
+    - `markOutboxBlocked()` を追加。**削除はしない** — 利用者が内容を確認してから取り消せるようにするため。
+    - `DrainResult` に `blocked` を追加。
+  - `src/app/admin/certificates/PendingOfflineCerts.tsx`: 恒久失敗のアイテムを「作り直しが必要」として明示し、
+    「この内容では発行できないため再送を止めています。取消してから作り直してください」と案内。同期結果メッセージにも件数を出す。
+  - `apps/mobile/src/app/certificates/new.tsx`: `resolveVehicleId()` を追加し、車両マスタ未選択でも
+    **ナンバーで既存を探す → 無ければ新規作成**して `vehicle_id` を埋める（WEB の `createCertAction` と同じ手順）。
+    トリガー `fn_sync_mileage_from_certificate` は `vehicle_id` が null だと早期 return するため、
+    これが無いとマスタ未選択の発行で走行距離が積まれなかった。車両作成に失敗しても証明書の発行自体は止めない。
+- 検証: outbox のテスト3件を追加（400で再送を止める／401・403・408・429・500・503は再送を続ける／
+  blocked済みは後続を止めない）。**恒久エラー判定を潰すと実際に落ちること**も確認。
+  既存の drain テスト8箇所を新しい `DrainDeps` に更新。
+  モバイルは依存をインストールして**ローカルで型検査・単体テストとも緑**（CI の `Mobile Typecheck & Unit Tests` も緑）。
+  `tsc` クリーン / 変更ファイルの `eslint` エラー0 / 全テスト **417ファイル 3,820件** 緑。
+
+## 2026-08-25 証明書の走行距離を必須化（全施工種別・常時表示）
+
+- 内容: 走行距離を任意の付加情報から**必須項目**に変更し、整備テンプレート限定・折りたたみの中という配置をやめて、
+  施工種別を問わず車種選択の直後に常時表示するようにした。本番の走行距離タイムライン `vehicle_mileage_logs` が
+  0件だった（証明書45件すべてで値が空）のを解消するのが目的。
+- 対象: 証明書の新規作成（WEB管理画面・外部/オフラインJSON API・モバイル）。既存の証明書と編集画面は対象外。
+- 実装:
+  - `src/lib/maintenance/mileage.ts` (新規): `parseMileageKm()` / `MAX_MILEAGE_KM`。
+    判定条件は「DBトリガー `fn_sync_mileage_from_certificate` が捨てない値」＝1以上の整数・上限200万km。
+    空・0・負数・小数・`"35000km"` のような単位付き・桁間違いを弾く。フォームとサーバーで同じ関数を使う。
+  - `src/app/admin/certificates/new/CertNewFormWrapper.tsx`: 常時表示の必須入力を車両セクション直下に追加。
+    送信前チェックも追加（**オフライン経路は Server Action を通らずキューに積むため、ここを通さないと
+    「保存できたのに復帰後の同期で必ず失敗する」証明書が溜まる**）。`mileage_required` のエラー文言を追加。
+  - `src/app/admin/certificates/new/actions.ts`: 信頼境界としてサーバー側で必須チェック。
+    値は既存の `maintenance_json.mileage` に載せ、**既存トリガーに `vehicle_mileage_logs` へ落とさせる**
+    （新テーブル・新マイグレーションなし）。整備欄の描画は公開ページ・PDF とも `service_type === "maintenance"`
+    で閉じているため、コーティング等の証明書に整備欄が出ることはない。
+  - `src/app/admin/certificates/new/MaintenanceDetailsSection.tsx`: 重複する走行距離欄を削除（入力欄は1つに集約）。
+  - `src/lib/certificates/createCertificateApi.ts`: `certCreateJsonSchema` に `mileage_km` を必須で追加し、
+    JSON→FormData / FormData→JSON の両変換に載せた。ここを optional にすると
+    「フォームだけ必須・APIは素通り」の抜け道になるため。
+  - `apps/mobile/src/app/certificates/new.tsx` + `apps/mobile/src/lib/mileage.ts` (新規):
+    モバイルは Supabase へ直 insert していて Server Action を通らないため、同じ必須化を個別に実装。
+    パスエイリアスが無いので判定関数はミラーコピー（両者を揃える旨をコメントに明記）。
+- 検証: `parseMileageKm` の単体テスト4件（正常・トリガーが捨てる値・単位付き/小数・桁間違い）、
+  スキーマの必須化テスト、**オフライン往復（json→FormData→json）で値が落ちないテスト**を追加。
+  既存テストのフィクスチャ14件を新しい契約に更新。`tsc` クリーン、全テスト **417ファイル 3,815件** 緑。
+  モバイル分は**CI の `Mobile Typecheck & Unit Tests`（`apps/mobile` で `npm ci` → `tsc`）が緑**。
+  ローカルでは依存が未インストールで筆者が回せなかっただけで、型検査は通っている。未検証なのは実機動作のみ。
+- コードレビュー反映: (1) `maintenance_json` が常に非空になることで製造元品質フラグ `no_service_detail` が
+  どの証明書でも立たなくなる回帰を修正（走行距離は「何をしたか」の記録ではないので施工内容の判定から除外。
+  `src/lib/manufacturers/qualityFlags.ts`）。(2) `maintenance_json` に配列が来ると `typeof [] === "object"` で
+  素通りし、配列への `.mileage` 代入が JSON 化で消えて走行距離が黙って失われる問題を修正（配列を弾く）。
+  (3) モバイルは車両マスタを自動作成しないため、マスタ未選択だとトリガーが早期 return して走行距離が
+  積まれない点をコメントで明示し OPEN_QUESTIONS に起票（挙動自体は未修正）。
+  (4) デプロイ前にオフラインキューへ滞留したアイテムが 400 で永久リトライになる件も OPEN_QUESTIONS に起票。
+
+## 2026-08-23 入力された車体番号が車両パスポートに反映されないバグを修正（VIN正規化のトリガー化）
+
+- 内容: `vehicles.vin_code_normalized` を `vin_code` から自動導出する DB トリガーを追加し、取り残されていた行をバックフィルした。
+  マイグレーション `20260424000004` はこの列を追加して**一度だけ**バックフィルしたが、以降この列を埋める仕組みが無く、
+  アプリ側の書き込み経路（車両作成API・CSVインポート・車検証OCRからの作成・パスポートupsert・管理画面の新規/編集フォーム）は
+  いずれも `vin_code` しか書いていなかった。結果、**バックフィル以降に入力された車体番号はすべて NULL のまま**で、
+  `/v/[vin]`（車両パスポート）・有料車両履歴レポート・加盟店への収益還元のいずれからも引けなくなっていた。
+  本番実測では車体番号入力済み6台のうち5台（2026-05-08〜2026-08-21に作成）がこの状態だった。
+- 対象: 車両パスポート `/v/[vin]`、車両履歴レポート（`src/lib/vehicleReport/*`）、加盟店収益還元、外部 v1 API のVIN照会。
+  車両を作るすべての経路（Web管理画面・CSVインポート・車検証OCR・モバイル・外部API）。
+- 実装:
+  - `supabase/migrations/20260826000007_vehicles_vin_normalized_trigger.sql` (新規):
+    - `set_vehicle_vin_normalized()` + `BEFORE INSERT OR UPDATE` トリガー。書き込み経路が5箇所以上あるため、
+      呼び出し元ごとではなく DB 側の一点で担保する（既存の `set_updated_at` と同じパターン）。
+    - 元のバックフィルに無かった **NFKC 正規化を追加**。全角で入力された車体番号も引けるようになる。
+      式はアプリ側の `src/lib/passport/normalizeVin.ts` と一致（NFKC → 大文字化 → 空白とハイフンの除去）。
+    - 取り残された行のバックフィル（`IS DISTINCT FROM` 条件で冪等）。
+    - 自己検証を同梱: (1) トリガーが実際に正規化するかを一時テーブルで確認、(2) 車体番号があるのに引けない車両が
+      残っていないかを確認。どちらか壊れていればマイグレーションが例外で落ちる。
+  - `src/lib/passport/getPassportData.ts`: `/v/[vin]` の VIN 照合を `trim().toUpperCase()` から
+    共通ヘルパー `normalizeVin()` に変更。保存側を正規化しても照合側がハイフン・全角を処理していなかったため、
+    `/v/JH4-DC5-3001` のような URL では車両を引けなかった（コードレビューで発見）。
+    生の入力を正規化しているのはここ1箇所だけで、他の `trim().toUpperCase()` は正規化済みの値への防御的な呼び出し。
+  - `src/lib/passport/__tests__/normalizeVin.test.ts`: U+FEFF（BOM）を除去するケースを追加。
+    PostgreSQL の `\s` は U+FEFF に一致しないため、SQL 側では明示的に列挙して JS と挙動を揃えている。
+- 既知の副作用（意図的）: VIN を編集すると正規化キーが変わり、`vehicle_report_orders`・`vehicle_passports` が
+  旧キーに取り残される。カスケードは範囲外として OPEN_QUESTIONS に起票（現時点でレポート購入実績0件のため実害なし）。
+- 検証: ローカルの PostgreSQL 16 に修正前の本番状態（正規化済み1件・取り残し5件・全角VIN・重複VIN・NULL/空白VIN・値が古い行）を
+  再現して適用。バックフィル結果・新規INSERT時の正規化・VIN編集時の再正規化・VIN削除時のクリア・無関係な列のUPDATEで壊れないこと・
+  再適用の冪等性を確認。正規化ルールが JS 側の `normalizeVin()` と
+全10ケース（全角・ハイフン・NBSP・U+3000・BOM・プレースホルダ含む）で一致することも突き合わせた。
+正規化ルールを壊した版・バックフィルを外した版のそれぞれで自己検証が実際に落ちること（検証が空回りしていないこと）も確認済み。
 
 ## 2026-08-23 super_admin RLS修正・エラー表示改善 (PR #963)
 
