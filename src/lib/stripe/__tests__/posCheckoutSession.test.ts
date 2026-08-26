@@ -102,6 +102,18 @@ describe("createPosCheckoutSession", () => {
     expect(create).not.toHaveBeenCalled();
   });
 
+  it("capability のエラーを PayPay 非対応と誤読しない（権限を絞られた店から PayPay が消える）", async () => {
+    const { stripe, create } = fakeStripe(() =>
+      stripeError("invalid_request_error", "This account is missing required capabilities", "capabilities"),
+    );
+
+    await expect(
+      createPosCheckoutSession(stripe, 10_000, PARAMS, { stripeAccount: "acct_restricted" }),
+    ).rejects.toThrow("missing required capabilities");
+    // カードのみで投げ直さない（同じ失敗を2回出すだけ）
+    expect(create).toHaveBeenCalledTimes(1);
+  });
+
   it("PayPay と無関係な失敗はそのまま投げる", async () => {
     const { stripe, create } = fakeStripe(() =>
       stripeError("invalid_request_error", "account is not enabled for charges"),

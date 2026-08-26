@@ -26,6 +26,20 @@ export const PAYPAY_METHOD = "paypay" as Stripe.Checkout.SessionCreateParams.Pay
 export const PAYPAY_CAPABILITY = "paypay_payments";
 
 /**
+ * 呼び出しごとに「PayPay が原因の 400」と見なす語。
+ *
+ * **経路をまたいで広げないこと。** 決済作成の経路で `capabilities` まで拾うと、
+ * 権限を制限されたアカウントのエラーを「PayPay 非対応」と誤読して、その店から
+ * 10分間 PayPay を消してしまう（しかも作成を2回投げる）。
+ */
+const REJECTION_PATTERNS = {
+  /** Checkout Session 作成（`payment_method_types` に paypay を入れた）。 */
+  payment_method: /paypay|payment_method_types/i,
+  /** Connect アカウント作成（`capabilities` に paypay を入れた）。 */
+  capability: /paypay|capabilities/i,
+} as const;
+
+/**
  * PayPay を扱えないアカウント／API に対する 400 か。
  *
  * stripe-node は `.type` に**クラス名**（`StripeInvalidRequestError`）を、
@@ -35,11 +49,24 @@ export const PAYPAY_CAPABILITY = "paypay_payments";
  * 判定は広めに取り、PayPay 抜きでの再試行に賭ける（本当の失敗なら2回目で
  * 同じエラーが上がる）。取りこぼすと会計やアカウント接続そのものが失敗する。
  */
-export function isPaypayRejection(err: unknown): boolean {
+export function isPaypayRejection(err: unknown, scope: keyof typeof REJECTION_PATTERNS): boolean {
   const e = err as { type?: string; rawType?: string; param?: string; message?: string } | null;
   if (e?.rawType !== "invalid_request_error" && e?.type !== "StripeInvalidRequestError") return false;
-  return /paypay|payment_method_types|capabilities/i.test(`${e.param ?? ""} ${e.message ?? ""}`);
+  return REJECTION_PATTERNS[scope].test(`${e.param ?? ""} ${e.message ?? ""}`);
 }
+
+/**
+ * ponytail: capability を要求できない環境だと分かったら、以後は要求しない。
+ *
+ * なぜ要るか: 要求が通らない環境では**アカウントを作るたびに 400 を1回出す**
+ * ことになる。`getStripeClient()` は全呼び出しが `withRetry("stripe", ...)` を
+ * 通っており、非リトライ対象の失敗も circuit breaker の連続失敗に数えられる
+ * （5連続で30秒 open → 直後のフォールバックすら弾かれて接続が 500 になる）。
+ * 上限: プロセス単位・TTL 付きの推測。Stripe が対応したら遅くとも TTL 後に
+ * また要求する。
+ */
+const CAPABILITY_UNSUPPORTED_TTL_MS = 60 * 60_000;
+let capabilityUnsupportedUntil = 0;
 
 /**
  * Connect アカウントを作る。**PayPay の利用申請も同時に出す。**
@@ -56,6 +83,8 @@ export async function createAccountRequestingPaypay(
   stripe: Stripe,
   params: Stripe.AccountCreateParams,
 ): Promise<Stripe.Account> {
+  if (capabilityUnsupportedUntil > Date.now()) return stripe.accounts.create(params);
+
   try {
     return await stripe.accounts.create({
       ...params,
@@ -65,7 +94,8 @@ export async function createAccountRequestingPaypay(
       } as Stripe.AccountCreateParams.Capabilities,
     });
   } catch (e) {
-    if (!isPaypayRejection(e)) throw e;
+    if (!isPaypayRejection(e, "capability")) throw e;
+    capabilityUnsupportedUntil = Date.now() + CAPABILITY_UNSUPPORTED_TTL_MS;
     // 無音で落とすと「PayPay がいつまでも出ない」だけの状態になり原因が追えない
     logger.warn("stripe connect: paypay capability not requestable, creating account without it", {
       capability: PAYPAY_CAPABILITY,

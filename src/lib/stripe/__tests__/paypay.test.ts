@@ -61,6 +61,23 @@ describe("createAccountRequestingPaypay", () => {
     expect(create.mock.calls[1][0].capabilities).toBeUndefined();
   });
 
+  it("要求できないと分かったら、以後は要求せず 1 回で作る（400 の連発で共有の circuit breaker を開けない）", async () => {
+    const { stripe, create } = fakeStripe((params) =>
+      requestsPaypay(params)
+        ? stripeError("invalid_request_error", "paypay_payments is not a valid capability", "capabilities")
+        : { id: "acct_3" },
+    );
+
+    await createAccountRequestingPaypay(stripe, PARAMS);
+    create.mockClear();
+
+    const account = await createAccountRequestingPaypay(stripe, PARAMS);
+
+    expect(account.id).toBe("acct_3");
+    expect(create).toHaveBeenCalledTimes(1);
+    expect(create.mock.calls[0][0].capabilities).toBeUndefined();
+  });
+
   it("PayPay と無関係な失敗はそのまま投げる", async () => {
     const { stripe, create } = fakeStripe(() => stripeError("invalid_request_error", "country is not supported"));
 

@@ -90,7 +90,7 @@ export async function createPosCheckoutSession(
       remember(key, true);
       return session;
     } catch (e) {
-      if (!isPaypayRejection(e)) throw e;
+      if (!isPaypayRejection(e, "payment_method")) throw e;
       remember(key, false);
       logger.info("pos checkout: paypay unavailable, falling back to card", {
         account: key,
