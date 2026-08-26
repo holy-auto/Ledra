@@ -70,7 +70,7 @@ begin
 end $$;
 
 -- ── search_path の固め直し ────────────────────────────────
--- 20260824000000_repair_unreplayable_objects.sql で書き起こした関数のうち、
+-- 20260826000005_repair_unreplayable_objects.sql で書き起こした関数のうち、
 -- 本番でまだ可変（`'public','auth'` など）のものをリポジトリの規約
 -- （SECURITY DEFINER は search_path = '' 必須）に合わせる。
 --
