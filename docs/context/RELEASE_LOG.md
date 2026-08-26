@@ -14,7 +14,7 @@
   判定は `certificateMileageKm()`（`src/lib/maintenance/mileage.ts`）1つ。
   写真必須ルール（`certificateHasRequiredPhotos`）と同じ位置・同じ形。
 - **これで作成経路を1本も触らずに全経路が塞がる。** `POST /api/certificates/create` は
-  必ず `status: "draft"` で作るため、外部APIから作られた証明書もこの2本を必ず通る。
+  必ず `status: "draft"` で作るため、外部APIから作られた証明書もこの3本を必ず通る。
   作成経路（Web / モバイル / 外部API / AI自動起票 / オフライン再送）が増えても漏れない。
   発行経路の数え漏れ自体を防ぐため、`triggerCertificateIssued` を発火するファイルを走査して
   全部がゲートを通っているか確かめるテストを足した
@@ -37,6 +37,12 @@
   空欄で保存しても既存値は消えない。
 - 使われていない Server Action `activateCertAction` / `voidCertAction` と
   `CertStatusActions.tsx` を削除した（どこからも描画されておらず、写真ゲートも通らない経路だった）。
+- **走行距離ゲートは初回発行 (draft→active) のみ。** `void→active` の再発行に掛けると、
+  必須化より前の走行距離なしの証明書を void した瞬間に戻せなくなる
+  （編集フォームは void 中は出ないので入力窓口が無い）。
+- **承認インボックスと案件サインオフの「発行」ボタンを修正した。** どちらも
+  `POST /api/admin/certificates/status` を叩いていたが、このルートは `PUT` しか
+  公開していないため 405 で必ず失敗していた（今回の変更以前からの不具合）。
 - 既存45件の一括バックフィルはしない（施工時点のメーター値の復元元が無い。
   判る分だけ編集APIから入れる）。詳細は `docs/mileage-followup-checklist.md`。
 

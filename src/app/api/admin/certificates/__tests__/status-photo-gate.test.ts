@@ -157,6 +157,17 @@ describe("PUT /api/admin/certificates/status — photo gate", () => {
     expect(mocks.issued).not.toHaveBeenCalled();
   });
 
+  it("void→active の再発行は走行距離が無くてもブロックしない（戻せなくなるため）", async () => {
+    // 必須化より前に作られた証明書を void すると、編集フォームが出ないので
+    // 走行距離を入れる窓口が無い。ここで弾くと二度と戻せなくなる。
+    mocks.fetchResult = { data: { ...CERT, status: "void", maintenance_json: null }, error: null };
+    mocks.hasPhotos.mockResolvedValue(true);
+
+    const res = (await PUT(req({ public_id: "P-1", status: "active" }))) as Response;
+    expect(res.status).toBe(200);
+    expect(mocks.update).toHaveBeenCalledTimes(1);
+  });
+
   it("coating で Before/After 写真が無いと 400 でブロックする", async () => {
     mocks.fetchResult = { data: { ...CERT, status: "draft" }, error: null };
     mocks.hasPhotos.mockResolvedValue(true);

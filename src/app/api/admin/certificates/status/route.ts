@@ -127,7 +127,12 @@ export async function PUT(req: Request) {
       // 走行距離必須ルール: 発行の瞬間に一度だけ強制する。作成経路 (Web / モバイル /
       // 外部 API / AI 自動起票) は増減するが、active になる道は 3 本しかないため、
       // そこを塞げば漏れが出ない (activationGates.test.ts が数え漏れを検出する)。
-      if (certificateMileageKm(cert.maintenance_json) === null) {
+      //
+      // ただし **初回発行 (draft→active) のみ**。void→active の再発行にも掛けると、
+      // 必須化より前に作られた走行距離なしの証明書を void した瞬間、二度と戻せなくなる
+      // (編集フォームは void 中は出ないので入力する窓口が無い)。再発行は「以前発行した
+      // 内容を戻す」操作なので、そこで新たに走行距離を要求する意味も無い。
+      if (currentStatus === "draft" && certificateMileageKm(cert.maintenance_json) === null) {
         return apiValidationError(CERTIFICATE_MILEAGE_REQUIRED_MESSAGE);
       }
     }

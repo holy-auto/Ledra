@@ -29,13 +29,20 @@ function walk(dir: string, out: string[] = []): string[] {
 }
 
 /**
- * 発行副作用 (`triggerCertificateIssued`) を発火しているソース = 発行経路。
- * ステータスの書き方 (`status: newStatus` / `certRow.status = ...`) は経路ごとに違うので、
- * 「何を書いているか」ではなく「発行として扱っているか」で数える。
+ * 証明書を発行 (active 化) しているソースを拾う。
+ *
+ * 2つの合図の**和**で数える。片方だけだと漏れる:
+ *  - `triggerCertificateIssued(` を発火している = 発行として扱っている
+ *    （ステータスの書き方は経路ごとに違う: `status: newStatus` / `certRow.status = ...`）
+ *  - `certificates` に `status: "active"` を書き込んでいる
+ *    （削除済みの `activateCertAction` は発行フックを発火せずにこれだけをしていた）
  */
 function isIssuancePath(file: string, src: string): boolean {
   if (file.endsWith(join("lib", "certificates", "issueHooks.ts"))) return false; // 定義元
-  return /triggerCertificateIssued\(/.test(src);
+  if (/triggerCertificateIssued\(/.test(src)) return true;
+  if (!/from\("certificates"\)/.test(src)) return false;
+  // `status === "active"` のような比較は拾わない (オブジェクトリテラルのみ)。
+  return /\.(update|insert)\(/.test(src) && /status:\s*"active"/.test(src);
 }
 
 describe("証明書を active にする経路", () => {
