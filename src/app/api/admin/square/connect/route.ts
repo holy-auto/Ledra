@@ -59,7 +59,13 @@ export async function POST(req: NextRequest) {
     // 設定されていない (or 空) 場合は実リクエストの origin を fallback として使う。
     const baseUrl = (process.env.NEXT_PUBLIC_APP_URL || req.nextUrl.origin).replace(/\/+$/, "");
     const redirectUri = `${baseUrl}/api/admin/square/callback`;
-    const scopes = "ORDERS_READ+PAYMENTS_READ+MERCHANT_PROFILE_READ";
+    // 売上の取り込み（READ）に加えて、**Ledra から QR コード決済を起こす**ための
+    // 権限を要求する。PAYMENTS_WRITE = 決済の作成、DEVICE_CREDENTIAL_MANAGEMENT =
+    // Square 端末のペアリング。
+    // 既に接続済みのテナントは、権限が増えたぶん**繋ぎ直しが必要**（古いトークンは
+    // 新しい権限を持たない）。決済を起こそうとした時点で Square が 403 を返すので、
+    // 画面には「Square を接続し直してください」と出す。
+    const scopes = "ORDERS_READ+PAYMENTS_READ+PAYMENTS_WRITE+MERCHANT_PROFILE_READ+DEVICE_CREDENTIAL_MANAGEMENT";
     const state = caller.tenantId;
 
     const authUrl =

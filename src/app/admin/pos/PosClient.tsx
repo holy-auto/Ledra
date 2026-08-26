@@ -208,9 +208,22 @@ export default function PosClient() {
   // 実際に提示した決済手段。PayPay は Stripe 側で店舗ごとに審査が要るので、
   // 有効な店だけ案内文に出す（出せない店に「PayPay可」と出さない）
   const [qrMethods, setQrMethods] = useState<string[]>([]);
+  /**
+   * Square 経由の QR コード決済の経路。
+   *  - "terminal": Square 端末にマルチブランド QR が出る（Ledra から移動しない）
+   *  - "pos_app": 端末が無い店。Square アプリで会計してもらい、戻って取り込む
+   * Square が繋がっていない店は null のまま＝従来どおり「記録だけ」。
+   */
+  const [squareMode, setSquareMode] = useState<"terminal" | "pos_app" | null>(null);
   // 決済は済んだが記録に失敗したセッション。**これがある間は新しいQRを出させない**
   // （出すと客が二重に請求される）
-  const [pendingRecordSessionId, setPendingRecordSessionId] = useState<string | null>(null);
+  /** 記録に失敗した決済の再送内容。**決済は済んでいるので同じ本文で送り直す。** */
+  const [pendingRecord, setPendingRecord] = useState<{
+    payment_method: string;
+    checkout_session_id?: string;
+    square_checkout_id?: string;
+    square_reconcile?: boolean;
+  } | null>(null);
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // ── Mode switch reset ──
@@ -377,8 +390,13 @@ export default function PosClient() {
    * やり直しで新しいセッションを作ると**客が二重に請求される**ので、
    * 同じ `sessionId` を送り直す（サーバが PaymentIntent で1件に抑える）。
    */
-  const recordQrSale = useCallback(
-    async (sessionId: string) => {
+  const recordPaidSale = useCallback(
+    async (paid: {
+      payment_method: string;
+      checkout_session_id?: string;
+      square_checkout_id?: string;
+      square_reconcile?: boolean;
+    }) => {
       setQrError(null);
       setQrStep("recording");
       try {
@@ -393,14 +411,11 @@ export default function PosClient() {
                 : mode === "invoice"
                   ? (loadedInvoice?.customer_id ?? undefined)
                   : undefined,
-            payment_method: "card",
+            ...paid,
             amount,
             items_json: checkoutItems,
             tax_rate: 10,
             note: note || undefined,
-            // 同じ決済で2件目を作らせない。**サーバがこのセッションを Stripe から
-            // 取り直して**支払済みと金額を確かめる（こちらの申告は信じない）
-            checkout_session_id: sessionId,
             create_receipt: true,
           }),
         });
@@ -410,7 +425,7 @@ export default function PosClient() {
         // 応答は { ok, result, inventory }。封筒のまま入れると
         // 会計完了パネルが「お会計 -」・領収書番号なしになる
         setResult(checkoutData.result ?? checkoutData);
-        setPendingRecordSessionId(null);
+        setPendingRecord(null);
 
         if (mode === "invoice" && loadedInvoice) {
           const payRes = await fetch("/api/admin/invoices", {
@@ -434,10 +449,10 @@ export default function PosClient() {
       } catch (e) {
         // **決済は済んでいる。**「記録中...」のまま止めると、店員はカードが
         // 切られたことにも失敗にも気づけない。やり直せる状態にして見せる
-        setPendingRecordSessionId(sessionId);
+        setPendingRecord(paid);
         setQrError(
           (e instanceof Error ? e.message : "決済の記録に失敗しました") +
-            "（カードは決済済みです。「記録をやり直す」を押してください。新しくQRを出すと二重に請求されます）",
+            "（決済は完了しています。「記録をやり直す」を押してください。新しくQRを出すと二重に請求されます）",
         );
         setQrStep("error");
       }
@@ -449,7 +464,7 @@ export default function PosClient() {
   const handleCardPaymentQr = useCallback(async () => {
     setQrStep("creating");
     setQrError(null);
-    setPendingRecordSessionId(null);
+    setPendingRecord(null);
     setQrDataUrl(null);
     setQrSessionId(null);
 
@@ -524,7 +539,7 @@ export default function PosClient() {
             setQrStep("paid");
 
             // 4. Ledra DB に記録（失敗しても同じセッションでやり直せる）
-            await recordQrSale(sessionId);
+            await recordPaidSale({ payment_method: "card", checkout_session_id: sessionId });
           } else if (statusData.status === "expired") {
             if (pollingRef.current) clearInterval(pollingRef.current);
             pollingRef.current = null;
@@ -533,15 +548,15 @@ export default function PosClient() {
           }
         } catch {
           // ポーリング中のネットワークエラーは無視して次回リトライ。
-          // 記録の失敗は recordQrSale の中で拾って画面に出す
+          // 記録の失敗は recordPaidSale の中で拾って画面に出す
         }
       }, 2000);
     } catch (e) {
       setQrError(e instanceof Error ? e.message : "QRコードの生成に失敗しました");
       setQrStep("error");
     }
-    // recordQrSale を入れないと、古い金額・明細のまま記録してしまう
-  }, [selected, loadedInvoice, amount, checkoutItems, note, mutate, mode, recordQrSale]);
+    // recordPaidSale を入れないと、古い金額・明細のまま記録してしまう
+  }, [selected, loadedInvoice, amount, checkoutItems, note, mutate, mode, recordPaidSale]);
 
   // ── Cancel QR payment ──
   const handleCancelQr = useCallback(() => {
@@ -549,13 +564,107 @@ export default function PosClient() {
       clearInterval(pollingRef.current);
       pollingRef.current = null;
     }
+    // 端末に出した QR を消す。残すと、**現金会計に切り替えた後で客が読んで
+    // 二重に払える**（失敗しても店員の操作は止めない）
+    if (squareMode === "terminal" && qrSessionId) {
+      void fetch(`/api/admin/square/qr-checkout?id=${encodeURIComponent(qrSessionId)}`, { method: "DELETE" }).catch(
+        () => {},
+      );
+    }
     setQrStep("idle");
     setQrDataUrl(null);
     setQrSessionId(null);
     setQrError(null);
-    setPendingRecordSessionId(null);
+    setPendingRecord(null);
+    setSquareMode(null);
     setProcessing(false);
-  }, []);
+  }, [squareMode, qrSessionId]);
+
+  /**
+   * Square 経由の QR コード決済（PayPay / d払い / 楽天ペイ / au PAY / メルペイ /
+   * WeChat Pay / Alipay+）。
+   *
+   * Square の QR は**対面決済専用**で、Square の端末かアプリでしか表示できない。
+   * 端末が繋がっていればそこに出し（店員は Ledra から移動しない）、無ければ
+   * Square アプリで会計してもらって Ledra が実績を引き当てる。
+   *
+   * @returns Square で処理した場合 true。false なら従来どおり「記録だけ」に落とす
+   */
+  const handleSquareQr = useCallback(async (): Promise<boolean> => {
+    setQrError(null);
+    setPendingRecord(null);
+    setQrStep("creating");
+
+    let created: { mode: "terminal" | "pos_app"; checkout_id: string | null };
+    try {
+      const res = await fetch("/api/admin/square/qr-checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ amount, note: note || undefined }),
+      });
+      // 未接続（409）は「Square を使っていない店」。会計を止めず、
+      // 従来どおり QR決済として記録だけする
+      if (res.status === 409) {
+        setQrStep("idle");
+        return false;
+      }
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.message ?? data?.error ?? "Square の会計を開始できませんでした");
+      created = data;
+    } catch (e) {
+      setQrError(e instanceof Error ? e.message : "Square の会計を開始できませんでした");
+      setQrStep("error");
+      return true;
+    }
+
+    setSquareMode(created.mode);
+
+    if (created.mode === "pos_app" || !created.checkout_id) {
+      // 店員が Square アプリで会計 → 戻って「取り込む」を押す
+      setQrStep("showing");
+      return true;
+    }
+
+    const checkoutId = created.checkout_id;
+    setQrSessionId(checkoutId);
+    setQrStep("showing");
+
+    // 端末の状態をポーリング（2秒間隔・最大5分）。
+    // 通信が2秒より遅いと tick が重なるので、完了したら二度と入らないようにする
+    let attempts = 0;
+    let done = false;
+    pollingRef.current = setInterval(async () => {
+      if (done) return;
+      if (++attempts > 150) {
+        if (pollingRef.current) clearInterval(pollingRef.current);
+        pollingRef.current = null;
+        setQrError("決済がタイムアウトしました。端末の画面を確認してください。");
+        setQrStep("error");
+        return;
+      }
+      try {
+        const statusRes = await fetch(`/api/admin/square/qr-checkout?id=${encodeURIComponent(checkoutId)}`);
+        if (!statusRes.ok) return;
+        const status = await statusRes.json();
+        if (status.paid) {
+          done = true;
+          if (pollingRef.current) clearInterval(pollingRef.current);
+          pollingRef.current = null;
+          setQrStep("paid");
+          await recordPaidSale({ payment_method: "qr", square_checkout_id: checkoutId });
+        } else if (status.status === "CANCELED") {
+          done = true;
+          if (pollingRef.current) clearInterval(pollingRef.current);
+          pollingRef.current = null;
+          setQrError(`決済がキャンセルされました${status.cancel_reason ? `（${status.cancel_reason}）` : ""}。`);
+          setQrStep("error");
+        }
+      } catch {
+        // ポーリング中のネットワークエラーは無視して次回リトライ
+      }
+    }, 2000);
+    return true;
+  }, [amount, note, recordPaidSale]);
 
   // ── Main checkout handler ──
   const handleCheckout = useCallback(async () => {
@@ -570,7 +679,17 @@ export default function PosClient() {
       return;
     }
 
-    // 現金・QR・振込・その他: 即 pos_checkout
+    // QR決済: Square が繋がっていれば Square 経由で決済する。
+    // 繋がっていない店は従来どおり「記録だけ」（他社端末で会計した分の記帳）
+    if (paymentMethod === "qr") {
+      setProcessing(true);
+      setError(null);
+      const handled = await handleSquareQr();
+      setProcessing(false);
+      if (handled) return;
+    }
+
+    // 現金・振込・その他（と Square 未接続の QR決済）: 即 pos_checkout
     setProcessing(true);
     setError(null);
     try {
@@ -633,6 +752,7 @@ export default function PosClient() {
     selected,
     loadedInvoice,
     handleCardPaymentQr,
+    handleSquareQr,
   ]);
 
   // ── Render ──
@@ -1016,7 +1136,7 @@ export default function PosClient() {
                   {"次の会計へ"}
                 </button>
               </div>
-            ) : qrStep !== "idle" && paymentMethod === "card" ? (
+            ) : qrStep !== "idle" && (paymentMethod === "card" || paymentMethod === "qr") ? (
               /* ── QR Code payment screen ── */
               <div className="glass-card space-y-4 rounded-2xl p-6">
                 {(qrStep === "showing" || qrStep === "paid" || qrStep === "recording") && (
@@ -1024,7 +1144,48 @@ export default function PosClient() {
                     {/* Amount */}
                     <div className="text-3xl font-bold text-primary">{formatJpy(amount)}</div>
 
-                    {qrStep === "showing" && qrDataUrl ? (
+                    {qrStep === "showing" && squareMode === "terminal" ? (
+                      <>
+                        <p className="text-sm font-semibold text-primary">{"Square 端末にQRコードを表示しました"}</p>
+                        <p className="text-xs text-secondary">
+                          {"PayPay / d払い / 楽天ペイ / au PAY / メルペイ / WeChat Pay / Alipay+（お店で有効なもの）"}
+                        </p>
+                        <div className="flex items-center justify-center gap-2 text-sm text-info-text">
+                          <div className="h-4 w-4 animate-spin rounded-full border-2 border-info-text border-t-transparent" />
+                          {"決済待ち..."}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={handleCancelQr}
+                          className="w-full rounded-xl border border-border-subtle bg-surface py-2.5 text-sm font-medium text-secondary transition-colors hover:bg-surface-hover"
+                        >
+                          {"キャンセル"}
+                        </button>
+                      </>
+                    ) : qrStep === "showing" && squareMode === "pos_app" ? (
+                      <>
+                        <p className="text-sm font-semibold text-primary">{"Square アプリで会計してください"}</p>
+                        <p className="text-xs text-secondary">
+                          {
+                            "Square のQRコード決済は対面専用のため、Square アプリか Square 端末でのみ表示できます。会計後にこの画面へ戻って取り込んでください。"
+                          }
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => recordPaidSale({ payment_method: "qr", square_reconcile: true })}
+                          className="btn-primary w-full rounded-xl py-3 text-sm font-medium"
+                        >
+                          {"Ledra に取り込む"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleCancelQr}
+                          className="w-full rounded-xl border border-border-subtle bg-surface py-2.5 text-sm font-medium text-secondary transition-colors hover:bg-surface-hover"
+                        >
+                          {"キャンセル"}
+                        </button>
+                      </>
+                    ) : qrStep === "showing" && qrDataUrl ? (
                       <>
                         {/* QR Code */}
                         <div className="flex justify-center">
@@ -1123,12 +1284,10 @@ export default function PosClient() {
                       </button>
                       <button
                         type="button"
-                        onClick={() =>
-                          pendingRecordSessionId ? recordQrSale(pendingRecordSessionId) : handleCheckout()
-                        }
+                        onClick={() => (pendingRecord ? recordPaidSale(pendingRecord) : handleCheckout())}
                         className="flex-1 rounded-xl bg-[#635BFF] py-2.5 text-sm font-semibold text-white shadow-lg transition-transform active:scale-95"
                       >
-                        {pendingRecordSessionId ? "記録をやり直す" : "再試行"}
+                        {pendingRecord ? "記録をやり直す" : "再試行"}
                       </button>
                     </div>
                   </div>

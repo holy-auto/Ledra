@@ -8,6 +8,7 @@ import { posCheckoutSchema } from "@/lib/validations/pos";
 import { deductInventoryForPosItems } from "@/lib/pos/inventoryDeduction";
 import { recordPosSale } from "@/lib/pos/recordSale";
 import { resolvePaidCheckoutSession } from "@/lib/pos/checkoutSession";
+import { resolvePosAppSale, resolveTerminalSale } from "@/lib/pos/squareSale";
 
 export const dynamic = "force-dynamic";
 
@@ -45,6 +46,7 @@ export async function POST(req: NextRequest) {
     // カード番号決済（Checkout）なら、**サーバがセッションを取り直して**
     // 支払済みであることと金額を確かめる。クライアントの申告は信じない
     let paymentIntentId: string | null = null;
+    let squarePaymentId: string | null = null;
     let args = input;
     if (input.checkout_session_id) {
       const paid = await resolvePaidCheckoutSession(rpcAdmin, caller.tenantId, input.checkout_session_id);
@@ -61,7 +63,25 @@ export async function POST(req: NextRequest) {
       };
     }
 
-    const sale = await recordPosSale(rpcAdmin, caller, args, paymentIntentId);
+    // Square 経由の QR コード決済（PayPay / d払い / 楽天ペイ / au PAY / メルペイ /
+    // WeChat Pay / Alipay+）。Stripe と同じく**サーバが Square から取り直して**
+    // 支払済みと金額を確かめ、payment_id を冪等キーにする
+    if (input.square_checkout_id || input.square_reconcile) {
+      const paid = input.square_checkout_id
+        ? await resolveTerminalSale(rpcAdmin, caller.tenantId, input.square_checkout_id)
+        : await resolvePosAppSale(rpcAdmin, caller.tenantId, input.amount);
+      if (!paid.ok) return apiValidationError(paid.error);
+      squarePaymentId = paid.squarePaymentId;
+      args = {
+        ...args,
+        amount: paid.amountTotal,
+        received_amount: paid.amountTotal,
+        // ブランドが何であれ Ledra の会計手段は「QR決済」
+        payment_method: "qr",
+      };
+    }
+
+    const sale = await recordPosSale(rpcAdmin, caller, args, paymentIntentId, squarePaymentId);
     if (!sale.ok) {
       return apiInternalError(sale.error, "mobile/pos/checkout");
     }
