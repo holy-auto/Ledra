@@ -50,8 +50,15 @@ export async function POST(req: NextRequest) {
       const paid = await resolvePaidCheckoutSession(rpcAdmin, caller.tenantId, input.checkout_session_id);
       if (!paid.ok) return apiValidationError(paid.error);
       paymentIntentId = paid.paymentIntentId;
-      // 金額は Stripe の実額。カートを編集されていても請求額と一致させる
-      args = { ...input, amount: paid.amountTotal, received_amount: paid.amountTotal };
+      // 金額は Stripe の実額。カートを編集されていても請求額と一致させる。
+      // 会計手段も Stripe の実績を優先する（PayPay で払われた会計を
+      // 「カード」で記帳するとレジ締めが合わない）
+      args = {
+        ...input,
+        amount: paid.amountTotal,
+        received_amount: paid.amountTotal,
+        payment_method: paid.paymentMethod ?? input.payment_method,
+      };
     }
 
     const sale = await recordPosSale(rpcAdmin, caller, args, paymentIntentId);

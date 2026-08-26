@@ -4,6 +4,34 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-08-26 店頭QR会計に PayPay を出せるようにした（有効な店だけ自動で）
+
+代表からの質問「実際のQRコード決済は使えるのか」から。**使えなかった。**
+店頭 QR 会計は `payment_method_types: ["card"]` 固定で、QR を見せてカードで
+払ってもらうものだった。POS の支払方法「QR決済」は Stripe を通らず記録だけ。
+
+- **`src/lib/stripe/posCheckoutSession.ts` を新設**し、Web/モバイル両方の POS が
+  ここから Checkout Session を作るようにした。`card` に加えて `paypay` を提示し、
+  **Stripe が PayPay を拒否したらカードのみで作り直す**。PayPay は Stripe 側で
+  店舗ごとの申請・審査が要るため、有効化していない店で会計が落ちてはいけない。
+  拒否されたアカウントは10分間おぼえて毎回1往復無駄にしない。
+- **決済手段の明示列挙は維持**（dynamic payment methods に任せない）。コンビニ
+  払い・銀行振込のような非同期決済が候補に出ると、レジのポーリングが永久に
+  paid にならず「客は帰ったのに売上が立たない」ことになる。
+- **記帳の手段を Stripe の実績から決めるようにした**（`resolvePaidCheckoutSession`）。
+  PayPay で払われた会計を「カード」で記帳するとレジ締めの突合が合わない。
+  charge の `payment_method_details.type` を見て `paypay → qr` / `card → card`。
+  クライアントの申告は従来どおり信じない。
+- 画面の案内文は実際に提示した手段に合わせる（PayPay を出せない店に
+  「PayPay 可」と表示しない）。
+- 請求書の決済リンクは元から `payment_method_types` を指定していないので変更なし
+  （Stripe ダッシュボードで有効化すれば出る）。
+
+検証: `tsc` / `vitest`（新規4件を含む POS・Stripe 系 128件）/ `eslint` 0 errors。
+**未検証**: 本番キーが無いため、Stripe API が実際に `paypay` を受けるかは
+未確認。PayPay は public preview（clover 2025-09-30）で SDK v20.4.1 の型にも
+まだ無い。受けなければフォールバックが働き、これまで通りカードのみで動く。
+
 ## 2026-08-26 実機テストの指摘8件に対応（モバイル）
 
 代表の実機テストで出た8件。**5件は「ボタンはあるが `onPress` が空」**だった。

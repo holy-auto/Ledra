@@ -190,6 +190,9 @@ export default function PosClient() {
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
   const [qrSessionId, setQrSessionId] = useState<string | null>(null);
   const [qrError, setQrError] = useState<string | null>(null);
+  // 実際に提示した決済手段。PayPay は Stripe 側で店舗ごとに審査が要るので、
+  // 有効な店だけ案内文に出す（出せない店に「PayPay可」と出さない）
+  const [qrMethods, setQrMethods] = useState<string[]>([]);
   // 決済は済んだが記録に失敗したセッション。**これがある間は新しいQRを出させない**
   // （出すと客が二重に請求される）
   const [pendingRecordSessionId, setPendingRecordSessionId] = useState<string | null>(null);
@@ -462,6 +465,7 @@ export default function PosClient() {
 
       const sessionId = data.session_id as string;
       const checkoutUrl = data.url as string;
+      setQrMethods(Array.isArray(data.payment_method_types) ? (data.payment_method_types as string[]) : []);
 
       // 2. QRコード生成
       const qrUrl = await QRCode.toDataURL(checkoutUrl, {
@@ -1023,7 +1027,11 @@ export default function PosClient() {
                         <p className="text-sm font-semibold text-primary">
                           {"お客様のスマートフォンでスキャンしてお支払いください"}
                         </p>
-                        <p className="text-xs text-secondary">{"カード / Apple Pay / Google Pay が使えます"}</p>
+                        <p className="text-xs text-secondary">
+                          {qrMethods.includes("paypay")
+                            ? "カード / Apple Pay / Google Pay / PayPay が使えます"
+                            : "カード / Apple Pay / Google Pay が使えます"}
+                        </p>
 
                         {/* Spinner */}
                         <div className="flex items-center justify-center gap-2 text-sm text-info-text">
