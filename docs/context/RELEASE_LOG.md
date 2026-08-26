@@ -987,6 +987,59 @@ supabase migration repair --status reverted 20260825000000
 - 対象: どの画面・API・業種向けか
 ```
 
+## 2026-08-10 LINE自動返信（ナレッジ）に「次の行動」誘導ボタンを追加（branch claude/line-chatbot-ledra-dy2fiq）
+
+- 内容: LINE のナレッジ自動返信（`knowledgeReplyAuto.ts`）が回答をプレーンテキストで
+  返すだけで会話が途切れやすかった問題に対し、回答の末尾に quick-reply 誘導ボタン
+  （「お見積りをお願いしたい」「スタッフに相談したい」）を添付できるようにした。
+  タップで既存の見積り会話フロー（`awaiting_quote_detail` を作成し車検証/車種+年式を依頼）
+  開始、またはスタッフ引き継ぎ（`human_takeover`＋通知）に繋がる。既存の
+  `sendCustomerLineButtons` / `handleFlowPostback` / `createFlow` / `buildQuoteDetailAsk` を
+  再利用し、状態機械（`states.ts`）とDBスキーマは変更なし。
+  - 新 postback: `flow:start_quote` / `flow:consult`（`conversationFlowPostback.ts` が
+    状態非依存で処理。`parseFlowPostback` で判定）。
+  - ボタン定義は `buildFollowupButtons()`（`src/lib/line/flow/messages.ts`、単一情報源）。
+  - **会話フロー opt-in（`shouldRunConversationFlow`）が有効なテナントのみ**ボタン化。
+    OFF のテナントは従来どおりテキスト送信で挙動不変（blast radius 最小）。
+- 挙動の要点（自動コードレビュー Codex を2ラウンド回して堅牢化）:
+  - `flow:consult`（相談）: スタッフへ通知＋お客様へ相談受付案内し、以降の自動処理を止める
+    `human_takeover` 状態を**永続化**する（進行中フローがあれば検証＋1回再試行で落とし、無ければ
+    マーカーを新規作成）。単発相談でもボットが再応答しない。マーカーは 72h で失効し getActiveFlow
+    が無視して自動応答が自然復帰する。**失効行 rot の対策**として `createFlow` に「同一キーの失効
+    済み進行中行を expired へ掃除するスイープ」を追加した（一意インデックスは `state NOT IN
+    (closed,expired)` で張られ他に失効スイープが無いため、これが無いと期限切れ human_takeover 行が
+    残って同一キーの createFlow が永久に失敗する rot が起きる）。
+  - `flow:start_quote`（見積り）: **紐付け顧客のみ** `awaiting_quote_detail` を作成（未紐付けは
+    フローを作らずスタッフ引き継ぎ＝詰まり防止）。本番 webhook は customerId を渡さないため
+    `line_user_id` から顧客を解決し、フロー作成・照会のキーを inbound 側（customer_id 優先）と
+    一致させる。施工内容が未知の入口なので施工内容＋車種年式を**テキストで**依頼
+    （`buildQuoteDetailAskWithService`。車検証写真は `awaiting_quote_detail` で OCR 未配線のため
+    求めない）。
+  - `inboundAuto`: 返信・**予約自動起票の前**にフロー状態を一度見て、`human_takeover` の間は
+    顧客向け自動処理（予約起票・ナレッジ・概算・フロー開始）を全て止める（受信箱の下書き＝受動
+    抽出は残す）。進行中フローがある間は誘導ボタンを付けない（`attachButtons` を渡す）。
+  - webhook（`client.ts`）: `maybeAutoProcessInboundMessage` の**前**に送る決定的な定型返信
+    （「予約」→予約リンク、未紐付けの連携案内）も `human_takeover` 中は抑止する（`isHumanTakeoverActive`。
+    返す定型返信が実際にある回のみ判定してホットパスに無駄なクエリを足さない）。これで AI 層・
+    決定的層の両方で takeover が一貫して効く。
+- 対象: LINE 受信の AI 自動応答（全業種、Standard プラン以上・opt-in）。
+- 検証: 単体テスト追加（`conversationFlowPostback.test.ts`・`knowledgeReplyAuto.test.ts`・
+  `inboundAutoReplyGate.test.ts`）。automation+line 全体で 200 件パス、tsc/eslint エラー0。
+- フロー照会のキー堅牢化: `getActiveFlow` を `customer_id` **または** `line_user_id` の
+  いずれか一致に変更（全 LINE フローは line_user_id を持つ）。未紐付けで作った行を後から
+  紐付いた顧客 ID で照会しても取りこぼさず、紐付け前後で進行中フローを見失って抑止/前進が
+  切れる問題を解消（この keying 不整合は複数の経路で再発していた根本原因）。
+- 配信失敗の後始末: `start_quote` で `createFlow` 後に LINE push が失敗した場合、作った
+  `awaiting_quote_detail` 行を `expired` に落とす（届いていない詳細依頼のフローが残って以降の
+  ボタン再提示・見積り前進を 72h 塞ぐのを防ぐ）。takeover 遷移時は `expires_at` を今から 72h に
+  更新し、競合作成で `createFlow` が弾かれた場合は最新フローを読み直して落とす。
+- 未対応（別PR/フェーズ）: `awaiting_quote_detail` 中の車検証写真→OCR 配線、未紐付け客の
+  自動登録導線（現状は未紐付けはスタッフ引き継ぎ）。
+- 補足: 「FAQで答えられる内容そのものを増やす」のは `tenant_line_knowledge` への登録
+  （データ運用）であり本PRの範囲外。本PRは「登録済みFAQに答えた後の誘導UX」を担当。
+  概算見積り返信（`quoteReplyAuto`）へのボタン適用は、現行文面「ご来店時に承ります」と
+  誘導が矛盾するため後続PRに回した。
+
 ## 2026-08-25 恒久失敗キューの取りこぼしを修正（コードレビュー2巡目の反映）
 - 内容: 前項の修正に対するコードレビューで、恒久失敗の判定が**別の壊し方をしていた**ことが分かり6件を修正した。
 - 実装:

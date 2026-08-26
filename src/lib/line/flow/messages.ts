@@ -36,6 +36,42 @@ export function buildQuoteDetailAsk(): string {
 }
 
 /**
+ * ナレッジ自動返信の末尾に添える「次の行動」誘導ボタン。会話フロー opt-in 済み
+ * テナントのみ添付する (postback を handleFlowPostback が状態非依存で捌けるため)。
+ *   - `flow:start_quote` … 見積りフロー (awaiting_quote_detail) を開始
+ *   - `flow:consult`     … スタッフ引き継ぎ (human_takeover) + 通知
+ * どちらも interpret.ts の状態遷移ではなく、conversationFlowPostback が直接処理する。
+ */
+export function buildFollowupButtons(): FlowButton[] {
+  return [
+    { label: "お見積りをお願いしたい", data: "flow:start_quote" },
+    { label: "スタッフに相談したい", data: "flow:consult" },
+  ];
+}
+
+/**
+ * 施工内容が不明な入口 (FAQ後の「お見積り」ボタン等) で、施工内容 **と** 車両を
+ * まとめて依頼する文面。buildQuoteDetailAsk は車両しか聞かないため、元問い合わせに
+ * 施工内容が無いフローでこれを使わないと、車両だけ返ってきて正式見積りに進めない
+ * (maybeAdvanceQuoteFlowOnDetail は service と vehicle の両方を要求する)。
+ *
+ * 車検証の「写真」は求めない: awaiting_quote_detail 中の画像は OCR フロー
+ * (handleVehiclePhotoMessage は awaiting_vehicle_photo 専用) に配線されておらず、
+ * 送られてもスタッフ記録止まりでフローが進まないため。テキストで受け取れる項目のみ聞く。
+ */
+export function buildQuoteDetailAskWithService(): string {
+  return [
+    "【お見積りについて】",
+    "正式なお見積りをお作りするために、下記をこのトークにご返信ください。",
+    "",
+    "① ご希望の施工内容（例: ボディコーティング、キズ・へこみ修理 など）",
+    "② お車の「車種・年式」（例: アルファード 2022年式）",
+    "",
+    "いただいた内容をもとに担当が正式なお見積りをお作りしてお送りします。",
+  ].join("\n");
+}
+
+/**
  * 詳細を受領し正式見積書の下書きを用意したことの顧客向けお礼・案内。
  * 送付そのものはスタッフが内容確認のうえ行う (壁3) ため「担当より」と明示する。
  */

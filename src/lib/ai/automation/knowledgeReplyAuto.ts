@@ -25,8 +25,9 @@ import {
 } from "@/lib/ai/knowledgeReply";
 import { fastModelForPlanTier } from "@/lib/ai/client";
 import { startAiRouteUsage } from "@/lib/ai/recordRouteUsage";
-import { sendCustomerLineText } from "@/lib/line/client";
+import { sendCustomerLineText, sendCustomerLineButtons } from "@/lib/line/client";
 import { fetchRecentConversation, type ConversationTurn } from "@/lib/line/messageStore";
+import { buildFollowupButtons } from "@/lib/line/flow/messages";
 import { logger } from "@/lib/logger";
 import { logAutoActionExecuted } from "@/lib/audit/aiAuditLog";
 import { loadAiAutomationSettings, type AiAutomationSettings } from "./policy";
@@ -56,6 +57,13 @@ export interface MaybeAutoReplyKnowledgeParams {
   tenant?: { plan_tier: string | null; is_active: boolean | null; name?: string | null };
   /** 呼び出し元が抽出用に取得済みの会話文脈。渡されなければ自前で取得する。 */
   history?: ConversationTurn[];
+  /**
+   * 回答の末尾に「次の行動」誘導ボタン (お見積り依頼 / スタッフ相談) を添えるか。
+   * 呼び出し元 (inboundAuto) が「会話フロー opt-in ON かつ進行中フロー無し」のときだけ
+   * true を渡す。進行中フローがある間にボタンを出すと、start_quote が二重開始で無反応に
+   * なるため。既定 false (従来どおりテキストのみ)。
+   */
+  attachButtons?: boolean;
 }
 
 function hasText(k: { title?: string | null; content?: string | null }): k is KnowledgeEntry {
@@ -145,12 +153,23 @@ export async function maybeAutoReplyKnowledge(params: MaybeAutoReplyKnowledgePar
       return false;
     }
 
-    const delivered = await sendCustomerLineText({
-      tenantId,
-      customerId: customerId ?? null,
-      lineUserId,
-      body: reply,
-    });
+    // 回答の末尾に「次の行動」誘導ボタン (お見積り依頼 / スタッフ相談) を添えるか。
+    // 判断は呼び出し元 (inboundAuto) が会話フロー状態を見て決める (attachButtons)。
+    // ボタン無しなら従来どおりテキストのみ (opt-in OFF テナントは挙動不変)。
+    const delivered = params.attachButtons
+      ? await sendCustomerLineButtons({
+          tenantId,
+          customerId: customerId ?? null,
+          lineUserId,
+          text: reply,
+          buttons: buildFollowupButtons(),
+        })
+      : await sendCustomerLineText({
+          tenantId,
+          customerId: customerId ?? null,
+          lineUserId,
+          body: reply,
+        });
     if (!delivered) {
       usage.record({ tenantId, outcome: "error", meta: { auto: true, committed: false } });
       return false;
