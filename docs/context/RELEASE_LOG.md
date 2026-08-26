@@ -4,6 +4,24 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-08-26 VIN トリガーのマイグレーションを `20260826000007` へ改名（本番適用の停止を解除）
+
+- PR #967 をマージした直後、`db-migrate`（本番への自動適用）が **out-of-order で停止**した。
+  ```
+  Found local migration files to be inserted before the last migration on remote database.
+  supabase/migrations/20260825000000_vehicles_vin_normalized_trigger.sql
+  ```
+- 原因: PR #967 の作業中に、`main` 側とのバージョン衝突を避けて `20260823000000` →
+  `20260825000000` へ改名した。その後 `main` に #971〜#974 が入り、本番の適用済み最新が
+  **`20260826000006`** まで進んだ。マージ時点で `20260825000000` は「適用済み最新より古い
+  未適用ファイル」になっていた。
+- 対処: `20260826000007_vehicles_vin_normalized_trigger.sql` へ改名（中身は変更なし）。
+  `--include-all` での強制適用は採らない（DECISION_LOG 2026-07-21 の方針どおり、
+  後発ファイルを一意な後ろの日付へ改名する運用に統一する）。
+- **CI は全緑だった。** `lint-migrations` は同一バージョンの重複しか見ておらず、
+  `Migrations Replay` は空DBからの再生なので、どちらも「本番の適用済み最新との前後関係」を
+  見ていない。マージ前に本番の `schema_migrations` を確認していれば防げた。
+
 ## 2026-08-26 実機テストの指摘8件に対応（モバイル）
 
 代表の実機テストで出た8件。**5件は「ボタンはあるが `onPress` が空」**だった。
@@ -989,7 +1007,7 @@
 - 対象: 車両パスポート `/v/[vin]`、車両履歴レポート（`src/lib/vehicleReport/*`）、加盟店収益還元、外部 v1 API のVIN照会。
   車両を作るすべての経路（Web管理画面・CSVインポート・車検証OCR・モバイル・外部API）。
 - 実装:
-  - `supabase/migrations/20260825000000_vehicles_vin_normalized_trigger.sql` (新規):
+  - `supabase/migrations/20260826000007_vehicles_vin_normalized_trigger.sql` (新規):
     - `set_vehicle_vin_normalized()` + `BEFORE INSERT OR UPDATE` トリガー。書き込み経路が5箇所以上あるため、
       呼び出し元ごとではなく DB 側の一点で担保する（既存の `set_updated_at` と同じパターン）。
     - 元のバックフィルに無かった **NFKC 正規化を追加**。全角で入力された車体番号も引けるようになる。
