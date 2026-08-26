@@ -159,6 +159,12 @@ export default function CertificateDetailScreen() {
    */
   async function openPdf() {
     if (!cert) return;
+    // 公開ルートは active 以外を 404 にする。Linking 自体は成功するので
+    // catch に入らず、**端末のブラウザに生の JSON が出る**。手前で止める
+    if (cert.status !== "active") {
+      setSnackbar("PDFは有効化してから発行できます");
+      return;
+    }
     const url = certPdfUrl(cert.public_id);
     if (!url) {
       setSnackbar("PDFのURLが設定されていません（EXPO_PUBLIC_API_URL）");
@@ -274,6 +280,7 @@ export default function CertificateDetailScreen() {
   const issuedDate = cert.signed_at ? dayjs(cert.signed_at).format("YYYY/M/D") : null;
 
   return (
+    <>
     <ScrollView style={styles.container}>
       {/* ─── Status Hero (ref 04: VERIFIED shield badge) ─── */}
       <View style={styles.statusHero}>
@@ -582,16 +589,19 @@ export default function CertificateDetailScreen() {
         </View>
       )}
 
-      <Snackbar
-        visible={!!snackbar}
-        onDismiss={() => setSnackbar("")}
-        duration={3000}
-      >
-        {snackbar}
-      </Snackbar>
-
       <View style={{ height: spacing["3xl"] }} />
     </ScrollView>
+
+    {/* **ScrollView の外に置く。** 中に置くと position:absolute の bottom:0 が
+        スクロール内容の末尾に付き、画面外に出て「何も起きない」ように見える */}
+    <Snackbar
+      visible={!!snackbar}
+      onDismiss={() => setSnackbar("")}
+      duration={3000}
+    >
+      {snackbar}
+    </Snackbar>
+    </>
   );
 }
 

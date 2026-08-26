@@ -16,6 +16,7 @@ import { useAuthStore } from "@/stores/authStore";
 import { mobileApi } from "@/lib/api";
 import { useCardEntry } from "@/hooks/useCardEntry";
 import { CardEntryPanel } from "@/components/CardEntryPanel";
+import { PosNoticeCard } from "@/components/PosNoticeCard";
 import { useDeviceType } from "@/hooks/useDeviceType";
 import { paymentSegments, isQrFlow, isTapToPayFlow, isTerminalBusy, tapFailureAction } from "@/lib/posPayment";
 import { useTerminal } from "@/hooks/useTerminal";
@@ -432,12 +433,10 @@ export default function PosCheckoutScreen() {
 
         {/* ── 支払リンクを作れなかった ──── */}
         {cardEntry.startError && (
-          <View style={styles.tapFailedCard}>
-            <Text style={styles.tapFailedTitle}>支払リンクを作れませんでした</Text>
-            <Text style={styles.tapFailedDesc}>
-              {cardEntry.startError}（現金・振込での会計は続けられます）
-            </Text>
-          </View>
+          <PosNoticeCard
+            title="支払リンクを作れませんでした"
+            description={`${cardEntry.startError}（現金・振込での会計は続けられます）`}
+          />
         )}
 
         {/* ── カード番号入力（Stripe Checkout） ──── */}

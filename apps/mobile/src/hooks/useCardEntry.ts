@@ -145,6 +145,9 @@ export function useCardEntry(onRecorded: (paymentId: string | null) => void) {
   const cancel = useCallback(async () => {
     const id = sessionId;
     setPolling(false);
+    // 失敗の表示も一緒に消す。残すと、現金で会計し終えた画面に
+    // 「支払リンクを作れませんでした」が出たままになる
+    setStartError(null);
     setUrl(null);
     setSessionId(null);
     setFromTapFailure(false);

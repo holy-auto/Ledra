@@ -10,10 +10,11 @@ import { useAuthStore } from "@/stores/authStore";
 import { mobileApi } from "@/lib/api";
 import { LedraButton } from "@/components/ui";
 import { colors, spacing, radius, typography, shadows } from "@/constants/tokens";
+import { publicCertUrl, passportUrl } from "@/lib/certificateLinks";
 
 type WriteState = "idle" | "writing" | "verifying" | "success" | "error";
 
-const CERT_PUBLIC_BASE_URL = process.env.EXPO_PUBLIC_CERT_URL ?? "https://cert.ledra.co.jp";
+
 
 interface CertificateInfo {
   id: string;
@@ -89,9 +90,18 @@ export default function NfcWriteScreen() {
 
     // Prefer the vehicle passport URL when one exists — single tag carries
     // the cross-tenant lifetime view. Fall back to the per-cert page otherwise.
+    //
+    // URL の組み立ては QR・共有と同じ lib/certificateLinks に寄せる。
+    // ここだけ別の既定ドメイン（cert.ledra.co.jp）を持っていて、QR と
+    // **違うドメインをタグに焼いていた**。タグは書いたら向き先を直せない
     const certUrl = cert.passport_vin
-      ? `${CERT_PUBLIC_BASE_URL}/v/${encodeURIComponent(cert.passport_vin)}`
-      : `${CERT_PUBLIC_BASE_URL}/c/${cert.public_id}`;
+      ? passportUrl(cert.passport_vin)
+      : publicCertUrl(cert.public_id);
+    if (!certUrl) {
+      setWriteState("error");
+      setErrorMessage("公開URLが設定されていないため書き込めません（EXPO_PUBLIC_API_URL）");
+      return;
+    }
 
     try {
       const isSupported = await NfcManager.isSupported();

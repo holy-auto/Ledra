@@ -21,3 +21,13 @@ export function certPdfUrl(publicId: string, api = process.env.EXPO_PUBLIC_API_U
   if (!api || !publicId) return null;
   return `${trimSlash(api)}/api/certificate/pdf?pid=${encodeURIComponent(publicId)}`;
 }
+
+/**
+ * 車両パスポートの公開ページ。NFC タグは証明書より優先してこちらを書く。
+ * `EXPO_PUBLIC_CERTIFICATE_BASE_URL` は `/c` 込みなので、こちらは API の
+ * オリジンから組み立てる。
+ */
+export function passportUrl(vin: string, api = process.env.EXPO_PUBLIC_API_URL): string | null {
+  if (!api || !vin) return null;
+  return `${trimSlash(api)}/v/${encodeURIComponent(vin)}`;
+}

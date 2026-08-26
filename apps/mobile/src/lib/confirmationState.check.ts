@@ -4,42 +4,40 @@ import { confirmationState } from "./confirmationState.ts";
 
 const NOW = new Date("2026-08-26T00:00:00Z");
 
-// 行が無ければ「未送信」
-assert.equal(confirmationState(null, NOW).label, "未送信");
+// 行が無い／未依頼（本番169件すべてがこの状態）
+assert.equal(confirmationState(null, NOW).label, "未依頼");
+assert.equal(confirmationState({ signoff_status: "not_requested" }, NOW).label, "未依頼");
 
-// **送っていない と 届いたが未確認 を分ける。**（次にする行動が違う）
-assert.equal(confirmationState({ status: "pending" }, NOW).label, "未送信");
+// **依頼していない と 依頼したが未確認 を分ける。**（次にする行動が違う）
 assert.equal(
-  confirmationState({ status: "pending", notification_sent_at: "2026-08-25T00:00:00Z" }, NOW).label,
-  "送信済み・未確認",
+  confirmationState({ signoff_status: "awaiting", signoff_requested_at: "2026-08-25T00:00:00Z" }, NOW).label,
+  "依頼済み・未確認",
 );
 
-// 署名済みが最優先。期限切れでも「確認済み」を上書きしない
+// 署名済みが最優先。期限を過ぎていても「確認済み」を上書きしない
 assert.equal(
   confirmationState(
-    { status: "signed", signed_at: "2026-08-25T00:00:00Z", expires_at: "2026-08-24T00:00:00Z" },
+    { signoff_status: "signed", signed_off_at: "2026-08-25T00:00:00Z", signoff_deadline: "2026-08-24T00:00:00Z" },
     NOW,
   ).label,
   "確認済み",
 );
 
-// 期限切れは「待つ」ではなく「送り直す」
-const expired = confirmationState(
-  { status: "pending", notification_sent_at: "2026-08-20T00:00:00Z", expires_at: "2026-08-25T00:00:00Z" },
+// 期限超過は「待つ」ではなく「催促／依頼し直す」
+const overdue = confirmationState(
+  { signoff_status: "awaiting", signoff_deadline: "2026-08-25T00:00:00Z" },
   NOW,
 );
-assert.equal(expired.label, "期限切れ");
-assert.equal(expired.tone, "problem");
+assert.equal(overdue.label, "期限超過");
+assert.equal(overdue.tone, "problem");
 
-// 期限が未来なら送信済み扱いのまま
+// 期限が未来なら依頼済みのまま
 assert.equal(
-  confirmationState(
-    { status: "pending", notification_sent_at: "2026-08-25T00:00:00Z", expires_at: "2026-08-27T00:00:00Z" },
-    NOW,
-  ).label,
-  "送信済み・未確認",
+  confirmationState({ signoff_status: "awaiting", signoff_deadline: "2026-08-27T00:00:00Z" }, NOW).label,
+  "依頼済み・未確認",
 );
 
-assert.equal(confirmationState({ status: "cancelled" }, NOW).label, "取消");
+// 期限が無ければ超過の判定はしない（deadline が未設定でも「依頼済み」）
+assert.equal(confirmationState({ signoff_status: "awaiting" }, NOW).label, "依頼済み・未確認");
 
 console.log("confirmationState.check.ts OK");
