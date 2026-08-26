@@ -37,6 +37,7 @@ import {
   MenuTileSpacer,
 } from "@/components/MenuPicker";
 import { colors, spacing, radius, typography, shadows } from "@/constants/tokens";
+import { useMenuItems } from "@/hooks/useMenuItems";
 
 interface Customer {
   id: string;
@@ -119,20 +120,7 @@ export default function ReservationNewScreen() {
   });
 
   // Menu items
-  const { data: menuItems = [] } = useQuery<MenuItem[]>({
-    queryKey: ["menu-items-res", user?.tenantId],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("menu_items")
-        .select("id, name, unit_price, category_large")
-        .eq("tenant_id", user!.tenantId)
-        .eq("is_active", true)
-        .order("sort_order");
-      if (error) throw error;
-      return data ?? [];
-    },
-    enabled: !!user?.tenantId,
-  });
+  const { data: menuItems = [] } = useMenuItems();
 
   // Submit
   const createMutation = useMutation({

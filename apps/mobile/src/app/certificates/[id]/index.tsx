@@ -7,7 +7,10 @@ import {
   Image,
   Alert,
   Pressable,
+  Linking,
+  Share,
 } from "react-native";
+import QRCode from "react-native-qrcode-svg";
 import {
   Text,
   Icon,
@@ -32,6 +35,7 @@ import { File, Paths } from "expo-file-system";
 import { supabase } from "@/lib/supabase";
 import { useAuthStore } from "@/stores/authStore";
 import { mobileApi } from "@/lib/api";
+import { publicCertUrl, certPdfUrl } from "@/lib/certificateLinks";
 import { StatusBadge, LedraButton } from "@/components/ui";
 import { colors, spacing, radius, typography, shadows } from "@/constants/tokens";
 
@@ -48,6 +52,7 @@ interface CertImage {
 function assetUrl(path: string): string {
   return supabase.storage.from("assets").getPublicUrl(path).data.publicUrl;
 }
+
 
 interface CertificateDetail {
   id: string;
@@ -108,6 +113,11 @@ export default function CertificateDetailScreen() {
   const [voidReason, setVoidReason] = useState("");
   const [snackbar, setSnackbar] = useState("");
   const [savingId, setSavingId] = useState<string | null>(null);
+  const [qrVisible, setQrVisible] = useState(false);
+  /** 拡大表示中の写真。タップで開く */
+  const [preview, setPreview] = useState<CertImage | null>(null);
+  /** 読み込めなかった写真。**黙って空白にすると「出ない」としか分からない** */
+  const [brokenIds, setBrokenIds] = useState<string[]>([]);
 
   const { data: cert, isLoading } = useQuery({
     queryKey: ["certificate", id],
@@ -141,6 +151,47 @@ export default function CertificateDetailScreen() {
     },
     enabled: !!id && !!user?.tenantId,
   });
+
+  /**
+   * PDF は公開ルートを端末のブラウザで開く。アプリ内で生成しない。
+   * Web と同じ 1 本の生成経路（/api/certificate/pdf）を使うので、
+   * レイアウトが 2 実装に分かれない。
+   */
+  async function openPdf() {
+    if (!cert) return;
+    // 公開ルートは active 以外を 404 にする。Linking 自体は成功するので
+    // catch に入らず、**端末のブラウザに生の JSON が出る**。手前で止める
+    if (cert.status !== "active") {
+      setSnackbar("PDFは有効化してから発行できます");
+      return;
+    }
+    const url = certPdfUrl(cert.public_id);
+    if (!url) {
+      setSnackbar("PDFのURLが設定されていません（EXPO_PUBLIC_API_URL）");
+      return;
+    }
+    // 開けない端末がある（ブラウザ無し / MDM 制限）。黙って何も起きないと
+    // 「押しても反応しない」に見えるので必ず知らせる
+    try {
+      await Linking.openURL(url);
+    } catch {
+      setSnackbar("PDFを開けませんでした");
+    }
+  }
+
+  async function shareCertificate() {
+    if (!cert) return;
+    const url = publicCertUrl(cert.public_id);
+    if (!url) {
+      setSnackbar("公開URLが設定されていません（EXPO_PUBLIC_CERTIFICATE_BASE_URL）");
+      return;
+    }
+    try {
+      await Share.share({ message: `施工証明書 ${cert.public_id}\n${url}`, url });
+    } catch {
+      setSnackbar("共有できませんでした");
+    }
+  }
 
   async function saveToDevice(img: CertImage) {
     if (!MediaLibrary) {
@@ -229,6 +280,7 @@ export default function CertificateDetailScreen() {
   const issuedDate = cert.signed_at ? dayjs(cert.signed_at).format("YYYY/M/D") : null;
 
   return (
+    <>
     <ScrollView style={styles.container}>
       {/* ─── Status Hero (ref 04: VERIFIED shield badge) ─── */}
       <View style={styles.statusHero}>
@@ -340,14 +392,32 @@ export default function CertificateDetailScreen() {
 
               return (
                 <View key={img.id} style={styles.imageCard}>
-                  <Image
-                    source={{
-                      uri: assetUrl(img.thumbnail_path ?? img.storage_path),
-                    }}
-                    style={styles.image}
-                    resizeMode="cover"
-                    accessibilityLabel={`証明書画像 (${img.stage ?? "未指定"})`}
-                  />
+                  {/* タップで拡大。一覧のサムネイルだけでは施工内容を確認できない */}
+                  <Pressable
+                    onPress={() => setPreview(img)}
+                    accessibilityRole="imagebutton"
+                    accessibilityLabel={`証明書画像を拡大 (${img.stage ?? "未指定"})`}
+                  >
+                    {brokenIds.includes(img.id) ? (
+                      <View style={[styles.image, styles.imageBroken]}>
+                        <Icon source="image-off" size={24} color={colors.textSecondary} />
+                        <Text style={styles.imageBrokenText}>読み込めません</Text>
+                      </View>
+                    ) : (
+                      <Image
+                        source={{
+                          uri: assetUrl(img.thumbnail_path ?? img.storage_path),
+                        }}
+                        style={styles.image}
+                        resizeMode="cover"
+                        // 失敗を握りつぶすと「写真が出ない」の原因が切り分けられない
+                        onError={() =>
+                          setBrokenIds((prev) => (prev.includes(img.id) ? prev : [...prev, img.id]))
+                        }
+                        accessibilityLabel={`証明書画像 (${img.stage ?? "未指定"})`}
+                      />
+                    )}
+                  </Pressable>
                   <View style={styles.imageBadges}>
                     {stageCfg && (
                       <StatusBadge
@@ -385,13 +455,9 @@ export default function CertificateDetailScreen() {
 
       {/* ─── Action Buttons (ref 04: PDF/QRコード/共有) ─── */}
       <View style={styles.actionRow}>
-        <ActionCard icon="file-pdf-box" label="PDF" onPress={() => {}} />
-        <ActionCard icon="qrcode" label="QRコード" onPress={() => {}} />
-        <ActionCard
-          icon="share-variant"
-          label="共有"
-          onPress={() => {}}
-        />
+        <ActionCard icon="file-pdf-box" label="PDF" onPress={openPdf} />
+        <ActionCard icon="qrcode" label="QRコード" onPress={() => setQrVisible(true)} />
+        <ActionCard icon="share-variant" label="共有" onPress={shareCertificate} />
       </View>
 
       {/* ─── Status Actions ─── */}
@@ -458,6 +524,61 @@ export default function CertificateDetailScreen() {
             </Pressable>
           </Dialog.Actions>
         </Dialog>
+
+        {/* 施工写真の拡大表示。サムネイルでは施工内容を確認できない */}
+        <Dialog visible={!!preview} onDismiss={() => setPreview(null)}>
+          <Dialog.Content style={styles.previewContent}>
+            {preview && (
+              <>
+                <Image
+                  source={{ uri: assetUrl(preview.medium_path ?? preview.storage_path) }}
+                  style={styles.previewImage}
+                  resizeMode="contain"
+                  accessibilityLabel={`証明書画像 (${preview.stage ?? "未指定"})`}
+                />
+                <Text style={styles.qrCaption}>
+                  {preview.stage ? (STAGE_MAP[preview.stage] ?? STAGE_MAP.unspecified).label : "段階未指定"}
+                </Text>
+              </>
+            )}
+          </Dialog.Content>
+          <Dialog.Actions>
+            <Pressable
+              onPress={() => {
+                if (preview) saveToDevice(preview);
+              }}
+              disabled={!preview || savingId === preview?.id}
+              style={styles.dialogBtn}
+            >
+              <Text style={styles.dialogBtnText}>端末に保存</Text>
+            </Pressable>
+            <Pressable onPress={() => setPreview(null)} style={styles.dialogBtn}>
+              <Text style={styles.dialogBtnText}>閉じる</Text>
+            </Pressable>
+          </Dialog.Actions>
+        </Dialog>
+
+        {/* お客様に読んでもらう公開URLのQR。印刷や画面提示に使う */}
+        <Dialog visible={qrVisible} onDismiss={() => setQrVisible(false)}>
+          <Dialog.Title>証明書のQRコード</Dialog.Title>
+          <Dialog.Content style={styles.qrContent}>
+            {cert && publicCertUrl(cert.public_id) ? (
+              <>
+                <QRCode value={publicCertUrl(cert.public_id)!} size={220} />
+                <Text style={styles.qrCaption}>{cert.public_id}</Text>
+              </>
+            ) : (
+              <Text style={styles.qrCaption}>
+                公開URLが設定されていません（EXPO_PUBLIC_CERTIFICATE_BASE_URL）
+              </Text>
+            )}
+          </Dialog.Content>
+          <Dialog.Actions>
+            <Pressable onPress={() => setQrVisible(false)} style={styles.dialogBtn}>
+              <Text style={styles.dialogBtnText}>閉じる</Text>
+            </Pressable>
+          </Dialog.Actions>
+        </Dialog>
       </Portal>
 
       {(activateMutation.isError || voidMutation.isError) && (
@@ -468,16 +589,19 @@ export default function CertificateDetailScreen() {
         </View>
       )}
 
-      <Snackbar
-        visible={!!snackbar}
-        onDismiss={() => setSnackbar("")}
-        duration={3000}
-      >
-        {snackbar}
-      </Snackbar>
-
       <View style={{ height: spacing["3xl"] }} />
     </ScrollView>
+
+    {/* **ScrollView の外に置く。** 中に置くと position:absolute の bottom:0 が
+        スクロール内容の末尾に付き、画面外に出て「何も起きない」ように見える */}
+    <Snackbar
+      visible={!!snackbar}
+      onDismiss={() => setSnackbar("")}
+      duration={3000}
+    >
+      {snackbar}
+    </Snackbar>
+    </>
   );
 }
 
@@ -743,4 +867,10 @@ const styles = StyleSheet.create({
     color: colors.danger,
     textAlign: "center",
   },
+  qrContent: { alignItems: "center", gap: spacing.md },
+  qrCaption: { ...typography.meta, color: colors.textSecondary, textAlign: "center" },
+  imageBroken: { alignItems: "center", justifyContent: "center", gap: spacing.xs, backgroundColor: colors.surfaceVariant },
+  imageBrokenText: { ...typography.meta, color: colors.textSecondary },
+  previewContent: { alignItems: "center", gap: spacing.sm },
+  previewImage: { width: "100%", height: 320, borderRadius: radius.md },
 });
