@@ -18,19 +18,27 @@ name: Vercel deploy (production)
 # 読めてしまい、**このワークフローが直そうとしている無音そのもの**になる。
 # なので ::warning:: とサマリで、緑のまま目に入る形にする。
 #
-# 注意: Vercel 側の Git 連携が復活すると二重にデプロイされる。復活させる
-# 場合は Vercel の Settings → Git で自動デプロイを切るか、この workflow を
-# workflow_dispatch のみに変えること。
+# **今は手動実行のみ。** 2026-08-26 02:28 に Vercel の Git 連携が復活し
+# （PR #975 で Preview が Building → Ready）、自動デプロイが戻った。push で
+# 起動すると同じコミットを二重にデプロイする。停止の原因がプラン上限だった
+# 場合、二重ビルドはその原因を自分で作り直すことになる。
+#
+# 連携がまた無音で止まったら、下の push ブロックのコメントを外せば
+# リポジトリ側から自動で回せる（そのときは Vercel の Settings → Git で
+# 自動デプロイを切ること）。それまでは「連携が死んでも手で回せる」ための
+# 非常用レバーとして置いておく。
+#
+# on:
+#   push:
+#     branches: [main]
+#     # 事業ログの更新だけのマージで本番ビルドを回さない。CLAUDE.md が
+#     # 「各作業終了時に事業ログへ反映」を求めているので docs だけの main
+#     # マージは日常的に起きる
+#     paths-ignore:
+#       - "docs/**"
+#       - "**/*.md"
 
 on:
-  push:
-    branches: [main]
-    # 事業ログの更新だけのマージで本番ビルドを回さない。CLAUDE.md が
-    # 「各作業終了時に事業ログへ反映」を求めているので docs だけの main
-    # マージは日常的に起きる
-    paths-ignore:
-      - "docs/**"
-      - "**/*.md"
   workflow_dispatch:
 
 concurrency:
@@ -106,6 +114,7 @@ jobs:
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          # workflow_dispatch では head_commit が無く null になるため SHA へフォールバック
           COMMIT_MSG: ${{ github.event.head_commit.message || github.sha }}
         run: |
           set -euo pipefail

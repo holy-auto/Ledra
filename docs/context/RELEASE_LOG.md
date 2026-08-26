@@ -8,7 +8,7 @@
 
 止まっていた2つの workflow への対応。**どちらも失敗ではなく無音だった。**
 
-- **`vercel-deploy.yml`（新規）** — main へのマージで `vercel pull → build → deploy --prod`
+- **`vercel-deploy.yml`（新規・手動実行のみ）** — `vercel pull → build → deploy --prod`
   を回す。Vercel の GitHub 連携が 8/19〜8/22 のどこかで止まり、本番が `d2e4736`（8/17）
   のまま9コミット取り残されていた。デプロイ記録が Canceled も Error も含めて1件も
   作られていないため、リポジトリ側から明示的に叩ける経路を用意した。
@@ -17,7 +17,10 @@
   2026-08-02〜08-15 の13日間それで見逃された）。ただし `::warning::` とサマリで
   「デプロイしていません」と出す —— 印の付かない緑は「デプロイできている」と読め、
   このワークフローが直そうとしている無音そのものになる。失敗時は `db-migrate.yml` と
-  同じ `SLACK_WEBHOOK_URL` へ通知する。`vercel pull` を先に回すのは Vercel 側に
+  同じ `SLACK_WEBHOOK_URL` へ通知する。**2026-08-26 02:28 に Vercel の Git 連携が
+  復活した**（PR #975 で Preview が Ready）ため、二重デプロイを避けて起動を
+  `workflow_dispatch` のみにした。push ブロックはコメントで残してあり、また
+  無音で止まったら外せば戻せる。`vercel pull` を先に回すのは Vercel 側に
   登録された環境変数を取り込むため。CLI はバージョンを固定した（`@latest` だと
   破壊的変更が PR も CI も通らずに本番へ直行する）。docs だけのマージでは走らせない。
 - **`db-typegen.yml`** — `--project-id` + アクセストークンをやめ、`db-migrate.yml` と
