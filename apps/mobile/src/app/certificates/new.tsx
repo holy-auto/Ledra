@@ -6,6 +6,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { supabase } from "@/lib/supabase";
 import { mobileApi } from "@/lib/api";
+import { parseMileageKm } from "@/lib/mileage";
 import { useAuthStore } from "@/stores/authStore";
 import { LedraButton } from "@/components/ui";
 import { colors, spacing, radius } from "@/constants/tokens";
@@ -39,6 +40,7 @@ export default function CertificateNewScreen() {
     vehicle_model: "",
     vehicle_plate: "",
     service_type: "",
+    mileage_km: "",
     content_summary: "",
     notes: "",
   });
@@ -135,6 +137,9 @@ export default function CertificateNewScreen() {
           model: form.vehicle_model.trim(),
           plate: form.vehicle_plate.trim(),
           service_type: form.service_type || null,
+          // サーバ (certCreateJsonSchema → createCertificate) が必須にしている。
+          // 走行距離は vehicle_mileage_logs のタイムラインになる。
+          mileage_km: parseMileageKm(form.mileage_km),
           content_free_text:
             [form.content_summary.trim(), form.notes.trim()].filter(Boolean).join("\n\n"),
         },
@@ -158,6 +163,9 @@ export default function CertificateNewScreen() {
     // 画面から入力する手段が無くなる
     if (!form.customer_name.trim()) e.customer_name = "顧客名を入力してください";
     if (!form.service_type) e.service_type = "サービス種別を選択してください";
+    if (parseMileageKm(form.mileage_km) === null) {
+      e.mileage_km = "走行距離（km）を入力してください（1以上の整数）";
+    }
     setErrors(e);
     return Object.keys(e).length === 0;
   }
@@ -313,6 +321,21 @@ export default function CertificateNewScreen() {
         {errors.service_type && (
           <HelperText type="error">{errors.service_type}</HelperText>
         )}
+
+        <TextInput
+          label="走行距離（km）*"
+          value={form.mileage_km}
+          onChangeText={(v) => {
+            setForm((prev) => ({ ...prev, mileage_km: v }));
+            if (errors.mileage_km) setErrors((prev) => ({ ...prev, mileage_km: "" }));
+          }}
+          mode="outlined"
+          keyboardType="number-pad"
+          placeholder="例: 35000"
+          error={!!errors.mileage_km}
+          style={styles.input}
+        />
+        {errors.mileage_km && <HelperText type="error">{errors.mileage_km}</HelperText>}
 
         <TextInput
           label="作業内容"

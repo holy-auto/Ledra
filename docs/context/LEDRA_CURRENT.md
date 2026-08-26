@@ -156,6 +156,36 @@ Route Handlerで動的提供（siteConfig + PLANSから自動追従）。Xハン
   実データがある種別だけ「なぜ」（証明書=AI信頼度、発注=起票理由の実文言）を表示し、
   根拠データの無い請求書には表示しない（PR #819）。
 
+## 走行距離の記録（2026-08-25 必須化 / 2026-08-26 発行時ゲートへ移動）
+
+証明書に**走行距離が無ければ発行できない**（施工種別を問わず、全テナント一律・サーバ強制）。
+値は `certificates.maintenance_json.mileage` に入り、DBトリガー `trg_sync_mileage_from_certificate` が
+`vehicle_mileage_logs` に走行距離タイムラインとして落とす。判定ルールは `src/lib/maintenance/mileage.ts`
+（`parseMileageKm()` / `certificateMileageKm()`）に集約している。
+
+強制する場所は**発行のチョークポイント3本だけ**:
+`PUT /api/admin/certificates/status`・`POST /api/certificates/activate-by-key`・
+`POST /api/mobile/certificates/[id]/activate`。
+写真必須ルール（`certificateHasRequiredPhotos`）と同じ位置・同じ形。
+作成経路（Web / モバイル / 外部API `POST /api/certificates/create` / AI自動起票 / オフライン再送）は
+どれも `draft` で作るため、経路が増えてもここを通らずに `active` になることはない。
+AI自動起票（`certificateRecordAuto.ts`）だけは insert で直接 `active` を作れるので、
+そこにも同じ条件を課してある（走行距離が無ければ `draft` に落ち、承認インボックスへ）。
+
+入力は手入力が既定で、メーター写真からの OCR 取り込み（`OdometerOcrButton` →
+`/api/admin/inspection-records/ocr` の `target=odometer`）が補助として付く。
+OCR は鮮明度（`confidence` / ブレ・反射・欠けの `warnings`）を出し、読めなければ何も入力しない。
+**最終確認は人間** —— OCR は下書きを埋めるだけで、発行操作をするのは人。
+
+編集API（`PUT /api/certificates/edit`）では走行距離を**入れられるが消せない**。
+証明書詳細の編集フォームに走行距離欄（メーターOCR付き）があり、発行前の下書きと
+必須化より前に作られた証明書の遡及入力を兼ねる。
+
+このタイムラインは整備リマインダー（`src/lib/cron/serviceReminders.ts`）・劣化予測・車両パスポートの
+走行距離履歴が共通で参照する。2026-08-25 以前は任意入力だったため本番の記録は0件で、
+これらの機能は実質的に入力ゼロの上で動いていた。既存45件は遡及せず、タイムラインは
+実質「次回入庫から」始まる。詳細は DECISION_LOG / RELEASE_LOG 2026-08-25 と 2026-08-26。
+
 ## 外部サービス連携（2026-08-16 時点）
 
 加盟店向けの連携はすべて `/admin/settings/connections` の1画面に集約している。
@@ -184,6 +214,20 @@ LINE だけ「ログインのみ」になっていない。完全に消すには
 残作業の自動検出）。加盟店に残るのは Channel ID と Channel Secret のコピーのみ。
 自動発行トークンは30日で失効するため、送信直前に期限が近ければ自動で再発行する。
 詳細は `docs/line-module-channel-research.md` / OPEN_QUESTIONS.md。
+
+## 検討中の新規事業: 信用回復ローン（2026-08-23 時点）
+
+Ledra と自動車ローンを組み合わせた「信用回復ローン」をパートナーと立ち上げる方針。**まだ検討段階でパートナー未定。**
+
+- **Ledra は貸さない・保証しない。**組成主体は指定信用情報機関（CIC / JICC）の加盟会員である信販会社または貸金業者に限定する。
+  市場に既にある「自社ローン」は支払い実績が信用情報機関に登録されないため、完済しても信用は回復しない。
+  「信用回復」を事実にできるのは加盟会員が組成したときだけで、ここが提携相手の第1選定基準になる。
+- Ledra の役割は3点: 担保（車）の状態証明＝改ざん検知付き施工履歴、契約後の担保モニタリング、全国の実行ネットワーク。
+  この形なら Ledra 側に新たな業登録は要らない（見込み。弁護士確認中）。
+- Phase 0 は**新規コード0行**。既存の `/v/[vin]` 有料車両履歴レポートをそのまま与信レポートとして提携先に見せる。
+- **ボトルネックはデータ量。**本番の VIN 付き車両は実測1台（登録24台）で、Phase 1 以降は現時点では成立しない。
+  パートナー交渉より「VIN 入力率を上げる」が最優先。
+- 詳細は `docs/credit-recovery-loan-partnership-2026-08.md`、判断の経緯は DECISION_LOG / OPEN_QUESTIONS 2026-08-23。
 
 ## 技術スタック（package.json / README.md より）
 
