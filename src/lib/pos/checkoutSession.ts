@@ -87,8 +87,8 @@ export async function resolvePaidCheckoutSession(
 /**
  * 実際に使われた決済手段を Ledra の会計手段に落とす。
  *
- * PayPay は Ledra 側の「QR決済」に当たる。Apple Pay / Google Pay は Stripe 上
- * `card` として来るので、これまで通りカード。
+ * PayPay / Alipay / WeChat Pay は Ledra 側の「QR決済」に当たる。
+ * Apple Pay / Google Pay は Stripe 上 `card` として来るので、これまで通りカード。
  */
 function resolvePaymentMethod(session: Stripe.Checkout.Session): ResolvedPaymentMethod | null {
   const intent = typeof session.payment_intent === "string" ? null : session.payment_intent;
@@ -98,6 +98,6 @@ function resolvePaymentMethod(session: Stripe.Checkout.Session): ResolvedPayment
   // switch にできる。
   const type: string | undefined = charge?.payment_method_details?.type;
   if (type === "card") return "card";
-  if (type === "paypay") return "qr";
+  if (type === "paypay" || type === "alipay" || type === "wechat_pay") return "qr";
   return null;
 }

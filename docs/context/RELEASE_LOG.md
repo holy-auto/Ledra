@@ -4,6 +4,36 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-08-26 使える決済手段を全部載せる（Alipay / WeChat Pay / コンビニ / 銀行振込 / Link）
+
+代表の「組み込める奴は全部組み込んで」から。**「使える手段は自動で増える。
+使えない手段があっても既存の機能は落ちない」**という1つの形に統一した。
+
+- **店頭 QR 会計**（同期確定の手段のみ）: `card` に加えて **PayPay / Alipay /
+  WeChat Pay** を提示する。断られた手段**だけ**を外して作り直すので、
+  「Alipay が無効な店から PayPay まで消える」ことがない
+  （`withOptionalExtras` in `src/lib/stripe/paymentMethods.ts`）。
+  WeChat Pay は Checkout で `payment_method_options.wechat_pay.client` が
+  必須なので、出すときだけ付ける。
+- **未知の手段の探りは1会計につき1つ**。未有効化の手段を付けた作成は 400 で
+  落ち、`withRetry("stripe")` の共有 circuit breaker（5連続失敗で30秒 open）に
+  数えられるため。数回の会計でその店の使える手段が確定し、以後は往復ゼロ。
+- **Connect 作成時の同時申請を4つに拡張**: `paypay_payments` /
+  `konbini_payments` / `jp_bank_transfer_payments` / `link_payments`。
+  通らない capability は個別に外す（1つの巻き添えで全部落とさない）。
+  Alipay / WeChat Pay はこの API バージョンに capability が無いため対象外。
+- **コンビニ払い・銀行振込はコード変更不要**。請求書の決済リンクは
+  `payment_method_types` を指定しておらず、加盟店が Stripe で有効化すれば
+  自動で候補に入る（レジには出さない —— 入金確定が後日でポーリングが完了しない）。
+- 記帳は Stripe の実績から決める形を維持し、**Alipay / WeChat Pay も「QR決済」**
+  として記録する。画面の案内文も実際に提示した手段だけを並べる。
+
+検証: `tsc` / `vitest` 3946件（決済手段まわり 11件）/ `eslint` 0 errors。
+
+**Stripe では扱えないもの**: d払い・au PAY・楽天ペイ・メルペイ（SDK の
+決済手段 union に存在しない）。各社と直接契約して店舗の端末で決済し、Ledra には
+従来通り「QR決済」として記帳する形になる。
+
 ## 2026-08-26 PayPay の利用申請を Connect オンボーディングと同時に出す
 
 代表の「まとめて最初に審査を投げられると嬉しい」から。**新規接続分はまとめられる。**

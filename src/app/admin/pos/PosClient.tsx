@@ -138,6 +138,21 @@ const PAYMENT_STATUS_MAP: Record<
 /*  Component                                     */
 /* ────────────────────────────────────────────── */
 
+/**
+ * 決済手段の案内文。カード（Apple Pay / Google Pay 含む）は常に出るので
+ * ここには入れない。**その店で実際に提示した手段だけ**を並べる
+ * （有効化していない店に「PayPay 可」と出さない）。
+ */
+const QR_METHOD_LABELS: Record<string, string> = {
+  paypay: "PayPay",
+  alipay: "Alipay",
+  wechat_pay: "WeChat Pay",
+};
+
+function qrMethodLabel(method: string): string {
+  return QR_METHOD_LABELS[method] ?? "";
+}
+
 export default function PosClient() {
   // ── Mode ──
   const [mode, setMode] = useState<PosMode>("reservation");
@@ -1028,9 +1043,10 @@ export default function PosClient() {
                           {"お客様のスマートフォンでスキャンしてお支払いください"}
                         </p>
                         <p className="text-xs text-secondary">
-                          {qrMethods.includes("paypay")
-                            ? "カード / Apple Pay / Google Pay / PayPay が使えます"
-                            : "カード / Apple Pay / Google Pay が使えます"}
+                          {["カード", "Apple Pay", "Google Pay", ...qrMethods.map(qrMethodLabel).filter(Boolean)].join(
+                            " / ",
+                          )}
+                          {" が使えます"}
                         </p>
 
                         {/* Spinner */}
