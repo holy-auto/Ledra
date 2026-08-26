@@ -65,6 +65,45 @@ supabase migration repair --status reverted 20260825000000
   確かめてから」が抜けていた。2回とも、その一文どおりに動いた結果である。両方に条件と
   確かめ方（バージョン名で名指しして引く／降順 LIMIT で代用しない）を書いた。
 
+## 2026-08-26 本番マイグレーション停止の根因を特定 —— 台帳に書く経路が2つあった
+
+`db-migrate` が今日2回止まった件を、症状ではなく根因まで追った。
+
+**本番の `supabase_migrations.schema_migrations` に書く経路は2つある。**
+
+| 経路 | 順序チェック | ログの出どころ | 失敗通知 |
+| --- | --- | --- | --- |
+| `db-migrate.yml`（`supabase db push --db-url`） | **する**（out-of-order で exit 1） | GitHub Actions | Slack |
+| **Supabase の GitHub 連携（Branching）** | **しない** | Supabase 側のみ | なし |
+
+Supabase 側に既定ブランチ `main` が本番プロジェクトへ紐づいている
+（`list_branches` で `is_default: true`・`project_ref` が親と同一）。`main` への push で
+`supabase/migrations/**` を本番へ適用する。
+
+**実測（postgres_logs・2026-08-26）**:
+
+```
+08:23:34  db-migrate が out-of-order で exit 1
+          （このとき supabase migration list は 20260825000000 を「未適用」と表示）
+08:23:56  別のクライアントが schema_migrations をブートストラップし、
+          同じファイルの6文を実行して台帳へ入れた（created_by は null = CLI 経路）
+```
+
+**22秒**。この差を知らずに「`db-migrate` が未適用と言っているから改名してよい」と判断すると、
+条件1（本番にあるバージョンのファイルが repo に必要）を壊して次の run を別のエラーで止める。
+今日それを踏んだ。#971 / #972 / #973 の停止も同じ二重書き込みで説明がつく。
+
+**この変更で入れたもの**: `db-migrate.yml` の不変条件コメントに、経路が2つある事実・22秒の実測・
+「失敗ログを根拠に改名しない。失敗した後は必ず台帳を引き直す」を明記した。
+
+**恒久対策は未実施**: 書き手を1つに絞る（Supabase ダッシュボードの Integrations で本番への
+自動適用を切る）。本番プロジェクトの設定変更であり、開いている PR #938 / #941 の
+プレビュー環境にも影響するため代表判断待ち → `OPEN_QUESTIONS.md`。
+
+**副次的にわかったこと**: プレビューブランチ2本（PR #938 / #941）が `MIGRATIONS_FAILED` のまま
+残っており、同時プレビューブランチ数の上限に達している。これが**全 PR で `Supabase Preview` が
+cancelled になる**原因。どちらも PR が開いたままなので、こちらの判断では消していない。
+
 ## 2026-08-26 デプロイと型生成の自動化を復旧させる
 
 止まっていた2つの workflow への対応。**どちらも失敗ではなく無音だった。**
