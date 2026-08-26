@@ -2,7 +2,8 @@
  * Connect アカウント作成時の決済手段の同時申請の検証。
  *
  * 守りたいこと:
- *  1. 使える決済手段の申請を作成時にまとめて出す（加盟店の手続きを1回で終える）
+ *  0. **選ばれていない決済手段を勝手に申請しない**（Ledra から強制しない）
+ *  1. 選ばれた分は作成時にまとめて申請する（加盟店の手続きを1回で終える）
  *  2. 通らない capability があっても**アカウント接続そのものは成功する**。
  *     しかも通らなかった分だけ外す（1つの巻き添えで全部落とさない）
  *  3. 一度断られた capability を毎回投げ直さない
@@ -14,7 +15,7 @@ import Stripe from "stripe";
 
 import {
   createAccountWithCapabilities,
-  REQUESTED_CAPABILITIES,
+  OPTIONAL_CAPABILITY_IDS,
   __resetCapabilityMemoForTest,
 } from "@/lib/stripe/paymentMethods";
 
@@ -44,15 +45,33 @@ describe("createAccountWithCapabilities", () => {
   // 「一度も要求しなかった」ことを検証してしまう（実際に素通りしていた）
   beforeEach(() => __resetCapabilityMemoForTest());
 
-  it("作成と同時に決済手段の capability をまとめて要求する", async () => {
-    const { stripe, create } = fakeStripe(() => ({ id: "acct_1" }));
+  it("何も選ばれていなければ、追加の申請はしない", async () => {
+    const { stripe, create } = fakeStripe(() => ({ id: "acct_0" }));
 
     const account = await createAccountWithCapabilities(stripe, PARAMS);
 
+    expect(account.id).toBe("acct_0");
+    expect(create).toHaveBeenCalledTimes(1);
+    expect(create.mock.calls[0][0].capabilities).toBeUndefined();
+  });
+
+  it("選ばれた決済手段だけを作成と同時に要求する", async () => {
+    const { stripe, create } = fakeStripe(() => ({ id: "acct_1" }));
+
+    const account = await createAccountWithCapabilities(stripe, PARAMS, [...OPTIONAL_CAPABILITY_IDS]);
+
     expect(account.id).toBe("acct_1");
     expect(create).toHaveBeenCalledTimes(1);
-    expect(requested(create.mock.calls[0][0])).toEqual([...REQUESTED_CAPABILITIES]);
+    expect(requested(create.mock.calls[0][0])).toEqual([...OPTIONAL_CAPABILITY_IDS]);
     expect(create.mock.calls[0][0].country).toBe("JP"); // 呼び出し側のパラメータは維持
+  });
+
+  it("許可リストに無い capability は要求しない（渡された値をそのまま Stripe に送らない）", async () => {
+    const { stripe, create } = fakeStripe(() => ({ id: "acct_x" }));
+
+    await createAccountWithCapabilities(stripe, PARAMS, ["card_issuing", "treasury"]);
+
+    expect(create.mock.calls[0][0].capabilities).toBeUndefined();
   });
 
   it("通らない capability だけを外して作る（1つの巻き添えで全部落とさない）", async () => {
@@ -62,7 +81,7 @@ describe("createAccountWithCapabilities", () => {
         : { id: "acct_2" },
     );
 
-    const account = await createAccountWithCapabilities(stripe, PARAMS);
+    const account = await createAccountWithCapabilities(stripe, PARAMS, [...OPTIONAL_CAPABILITY_IDS]);
 
     expect(account.id).toBe("acct_2");
     expect(create).toHaveBeenCalledTimes(2);
@@ -80,9 +99,9 @@ describe("createAccountWithCapabilities", () => {
         : { id: "acct_3" },
     );
 
-    await createAccountWithCapabilities(stripe, PARAMS);
+    await createAccountWithCapabilities(stripe, PARAMS, [...OPTIONAL_CAPABILITY_IDS]);
     create.mockClear();
-    const account = await createAccountWithCapabilities(stripe, PARAMS);
+    const account = await createAccountWithCapabilities(stripe, PARAMS, [...OPTIONAL_CAPABILITY_IDS]);
 
     expect(account.id).toBe("acct_3");
     expect(create).toHaveBeenCalledTimes(1);
@@ -95,19 +114,21 @@ describe("createAccountWithCapabilities", () => {
       calls++ === 0 ? stripeError("capabilities is invalid", "capabilities") : { id: "acct_4" },
     );
 
-    await createAccountWithCapabilities(stripe, PARAMS);
+    await createAccountWithCapabilities(stripe, PARAMS, [...OPTIONAL_CAPABILITY_IDS]);
     create.mockClear();
     calls = 1; // 2 回目は成功させる
-    await createAccountWithCapabilities(stripe, PARAMS);
+    await createAccountWithCapabilities(stripe, PARAMS, [...OPTIONAL_CAPABILITY_IDS]);
 
     // 巻き添えで外した分は覚えない → 次はまた全部要求する
-    expect(requested(create.mock.calls[0][0])).toEqual([...REQUESTED_CAPABILITIES]);
+    expect(requested(create.mock.calls[0][0])).toEqual([...OPTIONAL_CAPABILITY_IDS]);
   });
 
   it("特定できない失敗はそのまま投げる", async () => {
     const { stripe, create } = fakeStripe(() => stripeError("country is not supported"));
 
-    await expect(createAccountWithCapabilities(stripe, PARAMS)).rejects.toThrow("country is not supported");
+    await expect(createAccountWithCapabilities(stripe, PARAMS, [...OPTIONAL_CAPABILITY_IDS])).rejects.toThrow(
+      "country is not supported",
+    );
     expect(create).toHaveBeenCalledTimes(1);
   });
 });

@@ -14,6 +14,7 @@
 import type Stripe from "stripe";
 
 import { logger } from "@/lib/logger";
+import { OPTIONAL_CAPABILITY_IDS } from "@/lib/stripe/optionalCapabilities";
 
 /** PayPay の1回あたりの決済上限・下限（Stripe のドキュメント記載値）。 */
 export const PAYPAY_MIN_JPY = 50;
@@ -50,22 +51,8 @@ export const OPTIONAL_POS_METHODS: ReadonlyArray<{
 // `QR_METHOD_LABELS`）にも足すこと。無いと Stripe の画面には出るのに
 // 「〜が使えます」に名前が出ない。
 
-/**
- * Connect アカウント作成時に一緒に申請する capability。
- *
- * ここに並べた分は Stripe のオンボーディングが**同じ入力フローで**必要情報を
- * 集めるので、加盟店の手続きが1回で済む（後から足すには加盟店自身が Stripe
- * ダッシュボードで申請することになる）。
- *
- * Alipay / WeChat Pay はこの API バージョンに対応する capability が無い
- * （SDK の Capabilities に存在しない）ため、ここには入れられない。
- */
-export const REQUESTED_CAPABILITIES = [
-  "paypay_payments", // 【要確認】実 API で未検証。拒否されればこれだけ外れる
-  "konbini_payments",
-  "jp_bank_transfer_payments",
-  "link_payments",
-] as const;
+// 申請できる決済手段の一覧は、画面とサーバで同じものを見る
+export { OPTIONAL_CAPABILITIES, OPTIONAL_CAPABILITY_IDS } from "@/lib/stripe/optionalCapabilities";
 
 const REJECTION_FIELD = {
   payment_method: "payment_method_types",
@@ -198,18 +185,22 @@ const CAPABILITY_RETRY_TTL_MS = 60 * 60_000;
 const capabilityRejectedUntil = new Map<string, number>();
 
 /**
- * Connect アカウントを作る。**使えそうな決済手段の利用申請も同時に出す。**
+ * Connect アカウントを作る。**加盟店が選んだ決済手段の申請も同時に出す。**
  *
- * 後から有効化するには加盟店が自分の Stripe ダッシュボードで別途申請すること
- * になるので、Stripe のオンボーディングが必要情報を**1回の入力で**集めきる形にする。
- * 通らない capability は個別に外して作り直す（接続そのものは絶対に止めない）。
+ * `requested` が空なら追加の申請はしない（＝カード決済だけで接続する）。
+ * 選ばれた分は Stripe のオンボーディングが必要情報を1回の入力で集めるので、
+ * 加盟店の手続きが1回で済む。通らない capability は個別に外して作り直す
+ * （接続そのものは絶対に止めない）。
  */
 export async function createAccountWithCapabilities(
   stripe: Stripe,
   params: Stripe.AccountCreateParams,
+  requested: readonly string[] = [],
 ): Promise<Stripe.Account> {
   const now = Date.now();
-  const wanted = REQUESTED_CAPABILITIES.filter((c) => (capabilityRejectedUntil.get(c) ?? 0) <= now);
+  const wanted = requested.filter(
+    (c) => OPTIONAL_CAPABILITY_IDS.includes(c) && (capabilityRejectedUntil.get(c) ?? 0) <= now,
+  );
 
   const { value } = await withOptionalExtras(
     wanted,

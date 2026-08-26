@@ -56,6 +56,13 @@ export async function POST(req: NextRequest) {
 
     if (!tenant) return apiNotFound("tenant_not_found");
 
+    // アカウントを作る前に読む。**選ばれた決済手段は作成時にしか要求できない**
+    // ので、作成の後でパースしていては間に合わない
+    const parsed = stripeConnectCreateSchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
+    }
+
     const stripe = getStripe();
     let accountId = tenant.stripe_connect_account_id as string | null;
 
@@ -79,27 +86,28 @@ export async function POST(req: NextRequest) {
 
     // Create account if not exists (or was just cleared above)
     if (!accountId) {
-      // PayPay・コンビニ払い・銀行振込・Link の利用申請も同時に出す。後から
-      // 有効化するには加盟店が自分の Stripe ダッシュボードで別途申請することに
-      // なるので、**必要な情報をこのオンボーディングの1回で集めきる**。
-      // 通らない capability は個別に外して作られる（接続そのものは止めない）
-      const account = await createAccountWithCapabilities(stripe, {
-        type: "standard",
-        country: "JP",
-        business_profile: {
-          name: (tenant.name as string) || undefined,
+      // 加盟店が選んだ決済手段（PayPay・コンビニ払い・銀行振込・Link）の申請も
+      // 同時に出す。**選ばなければ何も要求しない** —— 申請すると審査に必要な
+      // 入力が増えるので、使うかどうかは加盟店が決める（後から Stripe の
+      // ダッシュボードでも申請できる）。通らない capability は個別に外して
+      // 作られる（接続そのものは止めない）
+      const account = await createAccountWithCapabilities(
+        stripe,
+        {
+          type: "standard",
+          country: "JP",
+          business_profile: {
+            name: (tenant.name as string) || undefined,
+          },
         },
-      });
+        parsed.data.capabilities ?? [],
+      );
       accountId = account.id;
 
       await admin.from("tenants").update({ stripe_connect_account_id: accountId }).eq("id", caller.tenantId);
     }
 
     // Generate onboarding link
-    const parsed = stripeConnectCreateSchema.safeParse(await req.json().catch(() => ({})));
-    if (!parsed.success) {
-      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
-    }
     const returnUrl = safeUrl(req, parsed.data.return_url);
     const refreshUrl = safeUrl(req, parsed.data.refresh_url);
 
