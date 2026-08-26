@@ -3,6 +3,30 @@
 > まだ決まっていないこと、判断に迷っていることを書く場所。決まったら
 > DECISION_LOG.md に移し、このファイルからは消す（削除履歴は git で追える）。
 
+## 追加（2026-08-26・デプロイ/CI）
+
+- **Vercel が止まった原因は結局分からないまま復活した。** 8/19〜8/26 02:28 の間、
+  デプロイ記録が1件も作られなかった。原因が分からないと**また同じことが起きても
+  気づけない**。デプロイ記録が1件も作られない
+  症状は「GitHub App の連携外れ」「プラン上限に到達」「自動デプロイ無効」の
+  どれでも起きる。この環境からは `ledra.co.jp` / `app.ledra.co.jp` へ出られない
+  （プロキシが CONNECT 403）ので確認できない。**代表が Vercel の Settings → Git と
+  Usage / Billing を見る必要がある。**【要確認】 → 代表判断
+- **`VERCEL_TOKEN` / `VERCEL_ORG_ID` / `VERCEL_PROJECT_ID` が未登録。** 追加した
+  `vercel-deploy.yml` は3本が揃うまでスキップする（`::warning::` は出る）。
+  いまは Vercel の連携が生きているので急がないが、**非常用レバーとして効かせるなら
+  登録が要る**。`ORG_ID` と `PROJECT_ID` は `.vercel/project.json` にある。 → 代表対応
+- **本番が `eb99600` に追いついているか。** Vercel の連携は 2026-08-26 02:28 に
+  復活したが、`eb99600`（#974 のマージ）は 02:08 でその前。次の main への push で
+  追いつくはずだが、追いつかなければ Vercel のダッシュボードから手動 Redeploy が要る。
+  この環境からは本番を叩けない（プロキシが CONNECT 403）。**代表の確認が必要**【要確認】
+- **`vercel-deploy.yml` を自動に戻すか。** 連携が復活したので、いまは二重デプロイを
+  避けて `workflow_dispatch` のみにしてある。連携がまた無音で止まったら push ブロックの
+  コメントを外せば自動に戻せる（そのときは Vercel 側の自動デプロイを切ること）。 → 代表判断
+- **`db-typegen.yml` の修正を通しで検証できていない。** 本番の接続URIがこの環境に
+  無いため。`--db-url` が存在することは CLI のヘルプで確認済み。
+  `workflow_dispatch` から手動実行すれば確かめられる。
+
 ## 追加（2026-08-26・モバイル実機テスト）
 
 - **お客様確認の依頼を送る導線がモバイルに無い。** 表示は `reservations.signoff_*`
@@ -723,21 +747,7 @@
 
 ---
 
-# 環境設定・権限（コード外の作業）（4件）
-
-## db-typegen（DB types regenerate）が本番シークレット未設定で失敗し続けている
-- 状況: `.github/workflows/db-typegen.yml` の `supabase gen types` ステップが毎回
-  "Access token not provided" で失敗。ログ上 `SUPABASE_ACCESS_TOKEN` / `SUPABASE_PROJECT_ID` が
-  ともに空。#798・#803 のマージ後 run（commit 3c23ed0d / b4dbc1c7）で確認。マイグレーション改名とは
-  無関係の、リポジトリ側 Actions シークレット未設定が原因。
-- 影響範囲: `src/types/db.generated.ts` の自動再生成が回らない。ただし型はコミット済みを使うため
-  アプリのビルド/挙動には影響なし（`type` は text＋CHECK 制約で、CHECK は生成型に出ないため news 追加でも
-  型は変わらない）。放置すると将来スキーマ変更時に生成型がドリフトし得る。`db-migrate`（本番適用）とは別物で、
-  そちらは成功している。
-- 選択肢: (a) GitHub Actions Secrets に `SUPABASE_ACCESS_TOKEN`＋`SUPABASE_PROJECT_ID` を設定して復旧。
-  (b) シークレット未設定時は typegen を skip（`if:` ガード）にして赤を消す。
-- 次のアクション: リポジトリ管理権限を持つ人が Secrets を設定（(a)）。設定できない/回さない方針なら (b) で明示 skip 化。
-- 起票日: 2026-07-21
+# 環境設定・権限（コード外の作業）（3件）
 
 ## メールリンク/サインアップ確認/SSO のログイン成立に必要な Supabase・ドメイン設定（コード外）
 - 状況: 2026-08-02 実査。magic-link は auth.flow_state に「code 発行済み・未交換」が複数残り交換が systemic に
