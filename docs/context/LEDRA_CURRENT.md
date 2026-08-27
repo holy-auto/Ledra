@@ -14,12 +14,15 @@
 > push（ここで初めて CI が走る）→ 緑 → squash」で通す運用にした。
 > **GitHub がベースを自動付け替えするのはベースブランチが削除されたときだけ**で、
 > squash マージでは起きない（私が「自動でやってくれる」と伝えたのは誤りだった）。
-> **#980・#928・#929・#930・#931・#932・#933 をマージ済み（7本）。#934 は代表判断待ち。**
+> **#980・#928〜#934 をマージ済み（8本）。**
 > #933 は代表の「正しく無いのが載るのはあかんな」を受けて、**正準遷移表の足りない辺を
 > 8件直してから**通した（根拠は ADR・稼働中コード・同ファイル内の矛盾に限定。
 > 根拠の無い3件はモジュール先頭に未解決として明記）。
-> #934 は **`/code-review` と Codex が独立に同じ結論**に着いたので修正を止めた ——
-> `src/lib/sync/` は実際の outbox が持っていない情報を前提にしている。
+> #934 は **`/code-review` と Codex が独立に同じ結論**に着いたので修正を止め ——
+> `src/lib/sync/` は実際の outbox が持っていない情報を前提にしていた。代表判断は
+> **(b) `src/lib/sync/`（型・競合検出）を削除し、`sync.*` のイベント名と
+> `EVENT_RISK` の格付けだけ残す**。同期層の設計は IMP-032 で outbox の実際の
+> 契約から作り直す（詳細は DECISION_LOG 2026-08-27）。
 > #930〜#932 が足したモジュールは**稼働中コードからの import が 0 件**なので、
 > マージしても実行時の挙動は変わらない。
 > **Codex は 01:06 に利用上限へ達した**ため、以降は `/code-review` で代替している。
@@ -300,6 +303,14 @@ Sentry · Resend (+ SendGrid fallback) · Anthropic (Opus 4.8 / Sonnet 4.6 / Hai
   （SegmentedControl/StatusBadge/StatusCard/NextActionCard/ProgressCard/Alert/IconButton/
   BottomSheet）+ Badge dot + Button xl。v2.0 の色トークン値は不採用・既存デザインシステム維持
   （DECISION_LOG 2026-08-19）。
+- **IMP-016（オフライン同期キュー・競合検出基盤）部分**: `src/lib/sync/`
+  （同期キュー型・競合検出ヘルパー）は**削除**した。`/code-review` と Codex が
+  独立に同じ結論に着いた —— 実際の outbox（`src/lib/outbox/`）が持っていない情報
+  （メソッド別ステータス・tenant・恒久ブロック状態）を前提にした型・関数だった
+  （DECISION_LOG 2026-08-27）。**イベントカタログの `sync.*` 5 イベント＋
+  `EVENT_RISK` の格付けだけ残す**（`src/lib/events/catalogue.ts`）。
+  同期層の型・競合解決は IMP-032（SYNC_CENTER）で outbox の実際の契約に
+  合わせて設計し直す。
 - **IMP-015（状態機械・遷移表・Certificate Gate 型）完了**: `src/lib/domain/transitions.ts`
   （正準 6 軸の遷移表＋汎用遷移検証関数）、`src/lib/domain/certificateGate.ts`
   （v2.0 §19.4 の 10 条件型定義）。既存値→正準値マッピングは各消費タスクで段階的に

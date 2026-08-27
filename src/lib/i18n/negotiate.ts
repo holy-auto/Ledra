@@ -43,7 +43,10 @@ export function negotiateLocale(input: { headers: Headers } | Headers): Locale {
     const primary = tag.split("-")[0];
     if (isSupportedLocale(primary)) return primary;
     // Alias (e.g. "tl" → "fil")
-    if (primary in LOCALE_ALIASES) return LOCALE_ALIASES[primary];
+    // `in` は Object.prototype 由来のキーも真になる。`Accept-Language: constructor`
+    // で Object コンストラクタ（関数）を Locale として返してしまう。ヘッダは
+    // クライアントが自由に送れるので、own property だけ見る。
+    if (Object.hasOwn(LOCALE_ALIASES, primary)) return LOCALE_ALIASES[primary];
   }
 
   return DEFAULT_LOCALE;
