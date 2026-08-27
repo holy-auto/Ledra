@@ -8,6 +8,7 @@
  * Usage:
  *   NEXT_PUBLIC_SUPABASE_URL=https://placeholder.supabase.co \
  *   NEXT_PUBLIC_SUPABASE_ANON_KEY=placeholder \
+ *   SUPABASE_SERVICE_ROLE_KEY=placeholder \
  *   npx tsx scripts/render-template-preview.ts [docType] [outPath]
  *   例: ... npx tsx scripts/render-template-preview.ts invoice out/invoice.pdf
  */
@@ -21,14 +22,14 @@ const outPath = path.resolve(process.argv[3] || `out/template-${docType}.pdf`);
 const doc: DocForPdf = {
   id: "sample",
   doc_type: docType,
-  doc_number: "EST-202604-001",
+  doc_number: "SAMPLE-202604-001",
   issued_at: "2026-04-22",
   due_date: "2026-05-31",
   subtotal: 112950,
   tax: 11295,
   total: 124245,
   tax_rate: 10,
-  note: "お見積りの有効期限は発行日から30日間です。",
+  note: "備考欄はこの位置に表示されます。",
   items_json: [
     { description: "サンプル商品A", quantity: 1, unit: "個", unit_price: 57750, amount: 57750 },
     { description: "サンプル商品B", quantity: 2, unit: "個", unit_price: 17600, amount: 35200 },
@@ -43,7 +44,7 @@ const doc: DocForPdf = {
   recipient_postal_code: "150-0001",
   recipient_address: "東京都渋谷区神宮前1-2-3",
   recipient_phone: "03-1111-2222",
-  subject: "○○商品 一式",
+  subject: "〇〇商品 一式",
   period_start: "2026-04-01",
   period_end: "2026-04-30",
   payment_terms: "月末締翌月末払",
