@@ -255,6 +255,10 @@ Sentry · Resend (+ SendGrid fallback) · Anthropic (Opus 4.8 / Sonnet 4.6 / Hai
 
 - 「Ledra UI/UX & Development Specification v2.0」（2026-08-19）と、それを36タスク
   （IMP-000〜IMP-054）に分解した「Claude Code Implementation Guide v1.0」を実装基準線として採用。
+- **IMP-013（権限エンジン・店舗スコープ基盤）完了**: v2.0 §16 の不足分を型・純粋関数で
+  補完。正準権限動詞 7 種の型定義と既存 Permission→正準動詞マッピング、操作リスクレベル
+  4 段階分類、店舗スコープ型と判定関数群（hasStoreAccess/effectiveStoreRole/
+  isStoreManager/accessibleStoreIds）。既存 Permission 55 種・RLS 240 テーブルは変更なし。
 - **IMP-012（認証・招待・端末・step-up 基盤）完了**: v2.0 §15 の認証基盤を型・状態機械・
   ヘルパーとして整備。(1) 正準オンボーディングフロー状態機械（INVITED→LANGUAGE_SET→
   OTP_VERIFIED→STORE_ASSIGNED→BIOMETRIC_ENROLLED→ACTIVE）。(2) 汎用 OTP モジュール
