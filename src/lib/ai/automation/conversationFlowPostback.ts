@@ -37,8 +37,14 @@ import { syncCreateEvent } from "@/lib/gcal/client";
 import { calcItems } from "@/lib/documents/calcItems";
 import { logger } from "@/lib/logger";
 import { logAutoActionExecuted } from "@/lib/audit/aiAuditLog";
-import { getActiveFlow, getFlowByQuoteDoc, advanceFlow, type ConversationFlowRow } from "@/lib/line/flow/flowStore";
-import { interpretReply } from "@/lib/line/flow/interpret";
+import {
+  getActiveFlow,
+  getFlowByQuoteDoc,
+  createFlow,
+  advanceFlow,
+  type ConversationFlowRow,
+} from "@/lib/line/flow/flowStore";
+import { interpretReply, parseFlowPostback } from "@/lib/line/flow/interpret";
 import { fetchFlowScheduleCandidates, type FlowScheduleCandidate } from "@/lib/line/flow/scheduleCandidates";
 import { fetchAddonRecommendations } from "@/lib/line/flow/addonCandidates";
 import type { RecommendedOption } from "@/lib/ai/optionRecommend";
@@ -47,6 +53,7 @@ import { maybeAutoCategorizeReservationOnIntake } from "./accountingAuto";
 import { maybeAutoProposeWorkflowForReservation } from "./workflowAuto";
 import {
   buildQuoteApprovalAsk,
+  buildQuoteDetailAskWithService,
   buildScheduleHandoff,
   buildQuoteConsultHandoff,
   buildScheduleCandidatesAsk,
@@ -58,6 +65,7 @@ import {
 } from "@/lib/line/flow/messages";
 import { loadAiAutomationSettings, tenantEligibleForAiAutomation, notifyStaffOfAiAction } from "./policy";
 import { shouldRunConversationFlow, shouldAutoSendDocumentOnConfirm } from "./orchestrator";
+import { storeIdOrNull } from "@/lib/stores/resolveStoreId";
 
 /** 提示した日程候補を提示順のまま保持するための context キー。 */
 const SCHEDULE_CANDIDATES_KEY = "schedule_candidates";
@@ -79,6 +87,22 @@ interface SelectedOptionRecord {
 
 type Admin = ReturnType<typeof createServiceRoleAdmin>;
 type FlowRow = ConversationFlowRow;
+
+/** line_user_id から紐付け済み顧客 ID を 1 件解決する。未紐付け/失敗時は null (投げない)。 */
+async function resolveCustomerIdByLineUser(admin: Admin, tenantId: string, lineUserId: string): Promise<string | null> {
+  try {
+    const { data } = await admin
+      .from("customers")
+      .select("id")
+      .eq("tenant_id", tenantId)
+      .eq("line_user_id", lineUserId)
+      .limit(1)
+      .maybeSingle();
+    return (data?.id as string | undefined) ?? null;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * 正式見積書の送付 (draft→sent) を受けて、紐づくフローを可否待ちへ進め、
@@ -156,7 +180,26 @@ export async function handleFlowPostback(params: {
     if (!shouldRunConversationFlow(settings)) return false;
 
     const admin = createServiceRoleAdmin("AI conversation flow (postback) — no auth session");
-    const flow = await getActiveFlow(admin, tenantId, { customerId: params.customerId, lineUserId });
+
+    // 本番 webhook は handleFlowPostback に customerId を渡さない。紐付け済み顧客の
+    // フローは inbound テキスト処理側で customer_id をキーに引かれる (getActiveFlow は
+    // customerId を優先) ため、ここで line_user_id から顧客を解決し、フロー作成・照会の
+    // キーを一致させる。これが無いと、ボタンで作った詳細フロー/相談マーカーが
+    // customer_id=null で作られ、次の受信で見つからず前進・抑止が効かない。
+    const resolvedCustomerId = params.customerId ?? (await resolveCustomerIdByLineUser(admin, tenantId, lineUserId));
+
+    // 状態非依存の誘導ボタン (FAQ/ナレッジ返信の末尾に添付したもの)。フロー生成・
+    // 引き継ぎであり状態機械の遷移ではないため、interpretReply ではなく
+    // parseFlowPostback で直接判定し、進行中フローの有無で分岐する。
+    const pb = parseFlowPostback(params.data);
+    if (pb?.event === "start_quote") {
+      return handleFollowupStartQuote(admin, tenantId, lineUserId, resolvedCustomerId, params.data);
+    }
+    if (pb?.event === "consult") {
+      return handleFollowupConsult(admin, tenantId, lineUserId, resolvedCustomerId, params.data);
+    }
+
+    const flow = await getActiveFlow(admin, tenantId, { customerId: resolvedCustomerId, lineUserId });
     if (!flow) return false;
 
     const event = interpretReply(flow.state, { postbackData: params.data });
@@ -347,6 +390,200 @@ export async function handleFlowPostback(params: {
 }
 
 /**
+ * FAQ/ナレッジ返信に添えた「お見積りをお願いしたい」ボタン (flow:start_quote) の処理。
+ * 進行中フローが無ければ awaiting_quote_detail フローを作成し、詳細 (車検証 or 車種+年式)
+ * を依頼する (maybeStartQuoteFlow と同じ入口メッセージ buildQuoteDetailAsk を再利用)。
+ * 進行中フローがあれば二重開始せず false を返す (呼び出し元→受信箱記録+スタッフ通知に
+ * フォールバック)。呼び出し元 (handleFlowPostback) の catch で保護されるため投げてよい。
+ */
+async function handleFollowupStartQuote(
+  admin: Admin,
+  tenantId: string,
+  lineUserId: string,
+  customerId: string | null,
+  data: string,
+): Promise<boolean> {
+  if (!(await tenantEligibleForAiAutomation(admin, tenantId))) return false;
+
+  const existing = await getActiveFlow(admin, tenantId, { customerId, lineUserId });
+
+  // 未紐付けの LINE ユーザーは見積りフローを完了できない (正式見積りの下書き作成に顧客
+  // レコードが必要で、maybeAdvanceQuoteFlowOnDetail は顧客不在なら false を返す)。
+  // 詰まるフローを作らず、スタッフへ引き継ぐ (顧客登録は担当が行う)。
+  if (!customerId) {
+    return followupStaffHandoff(admin, tenantId, lineUserId, null, existing, data, {
+      recordBody: "「お見積りをお願いしたい」を選択",
+      staffTitle: "お見積りのご希望（未登録のお客様）— ご対応をお願いします",
+      staffBody: "未登録のお客様がLINEで見積りをご希望です。ご登録のうえお見積りをご案内ください。",
+    });
+  }
+
+  // 進行中フローがあれば二重開始しない。詳細待ちなら無反応を避けて依頼を再送する
+  // (履歴に残った古いボタンの再タップ対策)。それ以外の進行中状態はスタッフ対応に委ねる。
+  if (existing) {
+    if (existing.state === "awaiting_quote_detail") {
+      await recordInboundLineMessage({
+        tenantId,
+        lineUserId,
+        body: "「お見積りをお願いしたい」を選択",
+        rawEvent: { flow_postback: data },
+      });
+      await sendCustomerLineText({ tenantId, customerId, lineUserId, body: buildQuoteDetailAskWithService() });
+      return true;
+    }
+    return false;
+  }
+
+  const flow = await createFlow(admin, {
+    tenantId,
+    customerId,
+    lineUserId,
+    state: "awaiting_quote_detail",
+    context: { source: "followup_button" },
+  });
+  if (!flow) return false; // 一意制約競合など。二重送信しない。
+
+  // 顧客のボタン操作をスレッドに残す (postback は受信箱に出ないため)。
+  await recordInboundLineMessage({
+    tenantId,
+    lineUserId,
+    body: "「お見積りをお願いしたい」を選択",
+    rawEvent: { flow_postback: data },
+  });
+
+  // FAQ後のボタン開始は施工内容が未知。車両だけ聞くと service 欠落で見積りに進めないため、
+  // 施工内容+車両をテキストでまとめて依頼する (maybeAdvanceQuoteFlowOnDetail が両方を要求)。
+  const delivered = await sendCustomerLineText({
+    tenantId,
+    customerId,
+    lineUserId,
+    body: buildQuoteDetailAskWithService(),
+  });
+  if (!delivered) {
+    // 依頼文面が届かなかったのに awaiting_quote_detail 行を残すと、以降の受信でこの
+    // フローが見えてしまい (詳細を送っていないのに) ボタン再提示も見積り前進も塞がれる。
+    // 作った行を expired に落として、次回のボタン/フロー開始を妨げない。
+    await advanceFlow(admin, flow, { toState: "expired", expectState: "awaiting_quote_detail" });
+    logger.warn("[conversationFlowPostback] followup start_quote delivery failed", { tenantId, lineUserId });
+    return false;
+  }
+
+  await logAutoActionExecuted({
+    tenantId,
+    actionKey: "inbound_message.auto_conversation_flow",
+    resource: { kind: "line_user", id: lineUserId },
+    detail: { flow_id: flow.id, state: "awaiting_quote_detail", trigger: "followup_button" },
+  });
+  return true;
+}
+
+/**
+ * FAQ/ナレッジ返信に添えた「スタッフに相談したい」ボタン (flow:consult) の処理。
+ * スタッフへ通知し、顧客へ相談受付の案内を返す。呼び出し元 (handleFlowPostback) の
+ * catch で保護されるため投げてよい。
+ */
+async function handleFollowupConsult(
+  admin: Admin,
+  tenantId: string,
+  lineUserId: string,
+  customerId: string | null,
+  data: string,
+): Promise<boolean> {
+  if (!(await tenantEligibleForAiAutomation(admin, tenantId))) return false;
+
+  // 冪等性: 既に human_takeover (相談受付済み) なら二重通知・二重返信しない
+  // (LINE の postback 再配信や、履歴に残ったボタンの再タップに対して安全にする)。
+  const existing = await getActiveFlow(admin, tenantId, { customerId, lineUserId });
+  if (existing?.state === "human_takeover") return true;
+
+  return followupStaffHandoff(admin, tenantId, lineUserId, customerId, existing, data, {
+    recordBody: "「スタッフに相談したい」を選択",
+    staffTitle: "お客様が相談をご希望です — ご対応をお願いします",
+    staffBody: "お客様がLINEで「スタッフに相談したい」を選択されました。トークでご対応ください。",
+  });
+}
+
+/**
+ * 誘導ボタン (相談 / 未登録の見積り希望) からスタッフへ引き継ぐ共通処理。
+ * 通知とお客様への案内に加え、以降の顧客向け自動処理を止める `human_takeover` 状態を
+ * 永続化する: 進行中フローがあればそれを human_takeover へ落とし (検証+1回再試行)、無ければ
+ * human_takeover マーカーを新規作成する。これにより単発の相談でも「担当が対応」と伝えた後に
+ * ボットが再応答しない。
+ *
+ * マーカーは expires_at (72h) を持ち、超過後は getActiveFlow が無視して自動応答が自然復帰する。
+ * 失効行が一意インデックスを塞ぐ問題 (state が human_takeover のまま残る) は createFlow 側の
+ * 失効スイープが同一キー作成時に掃除するため、rot しない。
+ */
+async function followupStaffHandoff(
+  admin: Admin,
+  tenantId: string,
+  lineUserId: string,
+  customerId: string | null,
+  existing: FlowRow | null,
+  data: string,
+  copy: { recordBody: string; staffTitle: string; staffBody: string },
+): Promise<boolean> {
+  await recordInboundLineMessage({ tenantId, lineUserId, body: copy.recordBody, rawEvent: { flow_postback: data } });
+
+  if (existing && existing.state !== "human_takeover") {
+    // 進行中フローを human_takeover へ落として自動進行を止める。advanceFlow は楽観ロック
+    // 不一致/DB失敗で false を返すため、取りこぼしたら最新状態を読み直して1回再試行。
+    // refreshExpiry で失効窓を今から 72h に延長する (古いフローの残り時間を引き継がない)。
+    const ok = await advanceFlow(admin, existing, {
+      toState: "human_takeover",
+      contextPatch: { consult_requested: true },
+      expectState: existing.state,
+      refreshExpiry: true,
+    });
+    if (!ok) {
+      const fresh = await getActiveFlow(admin, tenantId, { customerId, lineUserId });
+      if (fresh && fresh.state !== "human_takeover") {
+        await advanceFlow(admin, fresh, {
+          toState: "human_takeover",
+          contextPatch: { consult_requested: true },
+          expectState: fresh.state,
+          refreshExpiry: true,
+        });
+      }
+    }
+  } else if (!existing) {
+    // 進行中フローが無ければ durable な human_takeover マーカーを作成する (単発相談の抑止)。
+    // createFlow が同一キーの失効行を掃除するため、期限切れマーカーによる rot は起きない。
+    const created = await createFlow(admin, {
+      tenantId,
+      customerId,
+      lineUserId,
+      state: "human_takeover",
+      context: { consult_requested: true, source: "followup_button" },
+    });
+    if (!created) {
+      // 競合: getActiveFlow の後・insert の前に別フローができた (start_quote と consult の
+      // 同時押し等) と一意制約で弾かれる。今あるフローを読み直して human_takeover に落とす
+      // — でないと「担当が対応」と伝えたのに競合フローが自動のまま残る。
+      const fresh = await getActiveFlow(admin, tenantId, { customerId, lineUserId });
+      if (fresh && fresh.state !== "human_takeover") {
+        await advanceFlow(admin, fresh, {
+          toState: "human_takeover",
+          contextPatch: { consult_requested: true },
+          expectState: fresh.state,
+          refreshExpiry: true,
+        });
+      }
+    }
+  }
+
+  await sendCustomerLineText({ tenantId, customerId, lineUserId, body: buildQuoteConsultHandoff() });
+  await notifyStaffOfAiAction(admin, tenantId, copy.staffTitle, copy.staffBody);
+  await logAutoActionExecuted({
+    tenantId,
+    actionKey: "inbound_message.auto_conversation_flow",
+    resource: { kind: "line_user", id: lineUserId },
+    detail: { state: "human_takeover", trigger: "followup_button" },
+  });
+  return true;
+}
+
+/**
  * 提示済みの日程候補から `index` 番目が選ばれたことを受けて、直前の空き状況を
  * 再検証してから予約を自動作成する (Phase 1b-3)。埋まっていればスタッフに引き継ぐ。
  * 呼び出し元 (handleFlowPostback) の catch で保護されるため、ここでは投げてよい。
@@ -456,6 +693,7 @@ async function handleSlotSelected(
   const { error } = await admin.from("reservations").insert({
     id: reservationId,
     tenant_id: tenantId,
+    store_id: await storeIdOrNull(admin, tenantId, "conversationFlowPostback"),
     customer_id: flow.customer_id,
     vehicle_id: vehicleId,
     title,

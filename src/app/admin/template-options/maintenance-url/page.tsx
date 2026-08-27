@@ -26,7 +26,8 @@ export default function MaintenanceUrlPage() {
           setMaintenanceLabel(footer.maintenance_label ?? "メンテナンス情報");
           setShowMaintenanceQr(footer.show_maintenance_qr ?? false);
         }
-      } catch {} finally {
+      } catch {
+      } finally {
         setLoading(false);
       }
     })();
@@ -84,16 +85,16 @@ export default function MaintenanceUrlPage() {
       {!loading && !configId && (
         <div className="glass-card p-4 text-sm text-muted">
           テンプレート設定が見つかりません。先に
-          <Link href="/admin/template-options/gallery" className="underline text-accent">テンプレートを選択</Link>
+          <Link href="/admin/template-options/gallery" className="underline text-accent">
+            テンプレートを選択
+          </Link>
           してください。
         </div>
       )}
 
       {!loading && configId && (
         <div className="glass-card p-5 space-y-4">
-          <div className="text-xs font-semibold tracking-[0.18em] text-muted">
-            メンテナンス案内設定
-          </div>
+          <div className="text-xs font-semibold tracking-[0.18em] text-muted">メンテナンス案内設定</div>
           <div className="text-xs text-muted">
             施工証明書のフッターに表示するメンテナンス案内URLを設定します。
             QRコードを有効にすると、証明書にQRコードとして表示されます。
@@ -108,9 +109,7 @@ export default function MaintenanceUrlPage() {
               onChange={(e) => setMaintenanceUrl(e.target.value)}
               placeholder="https://example.com/maintenance-guide"
             />
-            <span className="text-xs text-muted">
-              メンテナンスガイドのWebページURLを入力してください
-            </span>
+            <span className="text-xs text-muted">メンテナンスガイドのWebページURLを入力してください</span>
           </label>
 
           <label className="block">
@@ -136,12 +135,7 @@ export default function MaintenanceUrlPage() {
           </label>
 
           <div className="pt-2">
-            <button
-              type="button"
-              className="btn-primary"
-              disabled={saving}
-              onClick={handleSave}
-            >
+            <button type="button" className="btn-primary" disabled={saving} onClick={handleSave}>
               {saving ? "保存中..." : "設定を保存"}
             </button>
           </div>

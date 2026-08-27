@@ -118,7 +118,9 @@ export default function QuizPlayerPage({ params }: { params: Promise<{ id: strin
         <h1 className="text-xl font-bold text-primary mt-2 flex items-center gap-2">
           <span>📝</span> 理解度チェック
         </h1>
-        <p className="text-sm text-muted mt-1">{questions.length} 問・70% 以上で合格 → レッスン完了が自動マークされます</p>
+        <p className="text-sm text-muted mt-1">
+          {questions.length} 問・70% 以上で合格 → レッスン完了が自動マークされます
+        </p>
       </div>
 
       {/* 結果 */}
@@ -187,7 +189,9 @@ export default function QuizPlayerPage({ params }: { params: Promise<{ id: strin
                       <span className="text-muted mr-2">{String.fromCharCode(65 + i)}.</span>
                       {c}
                       {r && isCorrect && <span className="float-right text-success">✓ 正解</span>}
-                      {r && isUserChoice && !isCorrect && <span className="float-right text-warning">あなたの回答</span>}
+                      {r && isUserChoice && !isCorrect && (
+                        <span className="float-right text-warning">あなたの回答</span>
+                      )}
                     </button>
                   );
                 })}

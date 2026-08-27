@@ -92,7 +92,9 @@ export async function mobileApi<T = unknown>(
     }
 
     throw new ApiError(
-      errorBody.error || `API Error: ${response.status}`,
+      // サーバは { error: コード, message: 日本語 } を返す。コードを表に出すと
+      // 画面に "validation_error" と出てしまうので、人間向けの文を優先する
+      errorBody.message || errorBody.error || `API Error: ${response.status}`,
       response.status,
       errorBody
     );
@@ -140,7 +142,9 @@ export async function mobileMultipart<T = unknown>(path: string, form: FormData)
       await handleUnauthorized();
     }
     throw new ApiError(
-      errorBody.error || `API Error: ${response.status}`,
+      // サーバは { error: コード, message: 日本語 } を返す。コードを表に出すと
+      // 画面に "validation_error" と出てしまうので、人間向けの文を優先する
+      errorBody.message || errorBody.error || `API Error: ${response.status}`,
       response.status,
       errorBody
     );

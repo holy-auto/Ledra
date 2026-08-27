@@ -26,7 +26,9 @@ export default function BillingTimingSection() {
   useEffect(() => {
     fetch("/api/admin/billing-settings")
       .then((r) => r.json())
-      .then((j) => { if (j.billing_timing) setCurrent(j.billing_timing); })
+      .then((j) => {
+        if (j.billing_timing) setCurrent(j.billing_timing);
+      })
       .finally(() => setLoading(false));
   }, []);
 
@@ -65,9 +67,7 @@ export default function BillingTimingSection() {
           <label
             key={opt.value}
             className={`flex items-start gap-3 rounded-xl border p-4 cursor-pointer transition-colors ${
-              current === opt.value
-                ? "border-accent bg-accent/5"
-                : "border-border hover:border-border-hover"
+              current === opt.value ? "border-accent bg-accent/5" : "border-border hover:border-border-hover"
             }`}
           >
             <input
