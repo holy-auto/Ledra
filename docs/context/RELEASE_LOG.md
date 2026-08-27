@@ -134,6 +134,38 @@ Ledra の画面内で完結させるなら Connect 埋め込みコンポーネ�
 未確認。PayPay は public preview（clover 2025-09-30）で SDK v20.4.1 の型にも
 まだ無い。受けなければフォールバックが働き、これまで通りカードのみで動く。
 ## 2026-08-26 VIN トリガーのマイグレーションを `20260826000007` へ改名（本番適用の停止を解除）
+
+## 2026-08-26 SQL と TS の二重実装を機械的に突き合わせる（サイズ区分の丸め違いを修正）
+
+「ズレは全部直さなあかん」への対応。洗い出した二重実装は2組だけだった
+（`check_reservation_overlap()` は TS 側が RPC を呼ぶだけで実装が1つ ——
+これが本来の形）。
+
+**実害のあるズレが1件あった。** `calcSizeClass()` は生の体積で分類していたが、
+SQL 側は呼び出し4箇所すべてが `ROUND((l*w*h)/1000000000, 2)` を渡し、
+`vehicle_size_master.volume_m3` 自体も `numeric(5,2)` の生成列だった。
+
+    4400×1765×1545mm → 生の体積 11.99847
+      TS  : 11.99847 < 12.0     → "M"
+      DB  : ROUND して 12.00    → "L"
+
+**サイズ区分は価格帯に効くので、これは金額が変わる。** TS 側も丸めるよう修正。
+現時点で食い違うデータは確認されていない（潜在的なズレ）。
+
+あわせて `calcSizeClass` の入力ガードを関数側へ1回だけ置いた（`NaN` で
+"XL"＝最も高い区分を返していた。呼び出し元5箇所すべてがガードしていたので
+到達しなかったが、5箇所の記憶に頼らない）。0 と負値は**弾かない** ——
+SQL は `0 < 8.0` で "SS" を返すので、弾くと新しいズレを作る。
+
+**`supabase/__tests__/sqlTsParity.test.ts` を追加。** DB を起動せず、
+マイグレーション本文から規則を抽出して TS と突き合わせる。既存の静的監査
+（`posReceiptCounter` / `partInstallations`）と同じ置き場・同じ作法。
+
+初版は**ズレを検出できていなかった**。`/code-review` が3つのプローブで再現:
+`public.` 修飾つきの後発再定義が見えない / 文字クラスから文字を消すと assert
+ごと消える / `NFKC` の一致がコメント本文で満たされる。いずれも緑のまま通って
+いた。修正後は3つとも落ちることを実行確認した。
+
 ## 2026-08-26 VIN トリガーのマイグレーションを元の `20260825000000` へ戻した（2度の停止と復旧）
 
 PR #967 のマージ後、`db-migrate`（本番への自動適用）が**2回止まった**。
@@ -1117,6 +1149,69 @@ supabase migration repair --status reverted 20260825000000
 - 対象: どの画面・API・業種向けか
 ```
 
+## 2026-08-19 IMP-011 i18n 基盤 & 自動車用語集（branch impl/IMP-011-i18n-foundation / PR #929）
+
+- 内容: v2.0 §17 の i18n 基盤を整備。(1) ロケール登録を 6 言語（ja/en/vi/id/fil/hi）に
+  統一（`src/lib/i18n/locales.ts` を単一定義源化、`labels.ts` の `DOMAIN_LOCALES` は再エクスポートに変更）。
+  (2) メッセージファイル 4 言語追加（`messages/{vi,id,fil,hi}.json` 各 8 エラーキー）。
+  (3) ドメインラベル全 6 軸を 6 言語化（~188 ラベル文字列）。(4) 自動車翻訳用語集
+  （`src/lib/i18n/glossary.ts` ~28 用語、`getGlossaryForLocale()` で translateContent.ts 連携可）。
+  (5) `WithTranslations<T>` UGC 翻訳分離型（`src/lib/i18n/translated.ts` 型定義のみ）。
+  (6) `LOCALE_LABELS` マップ（言語選択 UI 用）。vi/id/fil/hi 翻訳は推定、正式検証は IMP-051。
+- 対象: 開発基盤（画面変更なし。IMP-012/020/024/026/051 の前提条件）。
+## 2026-08-10 LINE自動返信（ナレッジ）に「次の行動」誘導ボタンを追加（branch claude/line-chatbot-ledra-dy2fiq）
+
+- 内容: LINE のナレッジ自動返信（`knowledgeReplyAuto.ts`）が回答をプレーンテキストで
+  返すだけで会話が途切れやすかった問題に対し、回答の末尾に quick-reply 誘導ボタン
+  （「お見積りをお願いしたい」「スタッフに相談したい」）を添付できるようにした。
+  タップで既存の見積り会話フロー（`awaiting_quote_detail` を作成し車検証/車種+年式を依頼）
+  開始、またはスタッフ引き継ぎ（`human_takeover`＋通知）に繋がる。既存の
+  `sendCustomerLineButtons` / `handleFlowPostback` / `createFlow` / `buildQuoteDetailAsk` を
+  再利用し、状態機械（`states.ts`）とDBスキーマは変更なし。
+  - 新 postback: `flow:start_quote` / `flow:consult`（`conversationFlowPostback.ts` が
+    状態非依存で処理。`parseFlowPostback` で判定）。
+  - ボタン定義は `buildFollowupButtons()`（`src/lib/line/flow/messages.ts`、単一情報源）。
+  - **会話フロー opt-in（`shouldRunConversationFlow`）が有効なテナントのみ**ボタン化。
+    OFF のテナントは従来どおりテキスト送信で挙動不変（blast radius 最小）。
+- 挙動の要点（自動コードレビュー Codex を2ラウンド回して堅牢化）:
+  - `flow:consult`（相談）: スタッフへ通知＋お客様へ相談受付案内し、以降の自動処理を止める
+    `human_takeover` 状態を**永続化**する（進行中フローがあれば検証＋1回再試行で落とし、無ければ
+    マーカーを新規作成）。単発相談でもボットが再応答しない。マーカーは 72h で失効し getActiveFlow
+    が無視して自動応答が自然復帰する。**失効行 rot の対策**として `createFlow` に「同一キーの失効
+    済み進行中行を expired へ掃除するスイープ」を追加した（一意インデックスは `state NOT IN
+    (closed,expired)` で張られ他に失効スイープが無いため、これが無いと期限切れ human_takeover 行が
+    残って同一キーの createFlow が永久に失敗する rot が起きる）。
+  - `flow:start_quote`（見積り）: **紐付け顧客のみ** `awaiting_quote_detail` を作成（未紐付けは
+    フローを作らずスタッフ引き継ぎ＝詰まり防止）。本番 webhook は customerId を渡さないため
+    `line_user_id` から顧客を解決し、フロー作成・照会のキーを inbound 側（customer_id 優先）と
+    一致させる。施工内容が未知の入口なので施工内容＋車種年式を**テキストで**依頼
+    （`buildQuoteDetailAskWithService`。車検証写真は `awaiting_quote_detail` で OCR 未配線のため
+    求めない）。
+  - `inboundAuto`: 返信・**予約自動起票の前**にフロー状態を一度見て、`human_takeover` の間は
+    顧客向け自動処理（予約起票・ナレッジ・概算・フロー開始）を全て止める（受信箱の下書き＝受動
+    抽出は残す）。進行中フローがある間は誘導ボタンを付けない（`attachButtons` を渡す）。
+  - webhook（`client.ts`）: `maybeAutoProcessInboundMessage` の**前**に送る決定的な定型返信
+    （「予約」→予約リンク、未紐付けの連携案内）も `human_takeover` 中は抑止する（`isHumanTakeoverActive`。
+    返す定型返信が実際にある回のみ判定してホットパスに無駄なクエリを足さない）。これで AI 層・
+    決定的層の両方で takeover が一貫して効く。
+- 対象: LINE 受信の AI 自動応答（全業種、Standard プラン以上・opt-in）。
+- 検証: 単体テスト追加（`conversationFlowPostback.test.ts`・`knowledgeReplyAuto.test.ts`・
+  `inboundAutoReplyGate.test.ts`）。automation+line 全体で 200 件パス、tsc/eslint エラー0。
+- フロー照会のキー堅牢化: `getActiveFlow` を `customer_id` **または** `line_user_id` の
+  いずれか一致に変更（全 LINE フローは line_user_id を持つ）。未紐付けで作った行を後から
+  紐付いた顧客 ID で照会しても取りこぼさず、紐付け前後で進行中フローを見失って抑止/前進が
+  切れる問題を解消（この keying 不整合は複数の経路で再発していた根本原因）。
+- 配信失敗の後始末: `start_quote` で `createFlow` 後に LINE push が失敗した場合、作った
+  `awaiting_quote_detail` 行を `expired` に落とす（届いていない詳細依頼のフローが残って以降の
+  ボタン再提示・見積り前進を 72h 塞ぐのを防ぐ）。takeover 遷移時は `expires_at` を今から 72h に
+  更新し、競合作成で `createFlow` が弾かれた場合は最新フローを読み直して落とす。
+- 未対応（別PR/フェーズ）: `awaiting_quote_detail` 中の車検証写真→OCR 配線、未紐付け客の
+  自動登録導線（現状は未紐付けはスタッフ引き継ぎ）。
+- 補足: 「FAQで答えられる内容そのものを増やす」のは `tenant_line_knowledge` への登録
+  （データ運用）であり本PRの範囲外。本PRは「登録済みFAQに答えた後の誘導UX」を担当。
+  概算見積り返信（`quoteReplyAuto`）へのボタン適用は、現行文面「ご来店時に承ります」と
+  誘導が矛盾するため後続PRに回した。
+
 ## 2026-08-25 恒久失敗キューの取りこぼしを修正（コードレビュー2巡目の反映）
 - 内容: 前項の修正に対するコードレビューで、恒久失敗の判定が**別の壊し方をしていた**ことが分かり6件を修正した。
 - 実装:
@@ -1288,6 +1383,20 @@ supabase migration repair --status reverted 20260825000000
 - 検証: `npx tsc --noEmit`（モバイル・ルート両方）通過、`npm run lint` エラー0件。
   25ファイル変更、+2589行/-552行。
 
+## 2026-08-19 IMP-010 デザイントークン & 共有コンポーネント基盤（branch impl/IMP-010-design-tokens / PR #928）
+
+- 内容: v2.0 §3 の不足 UI プリミティブ8つを新設 — SegmentedControl（ピル型切替、3箇所の
+  重複実装の共通化先）/ StatusBadge（Badge+statusMaps の定型接続）/ StatusCard /
+  NextActionCard / ProgressCard（円形進捗+ゼロ除算ガード）/ Alert（169箇所のインライン
+  警告 div の共通化先）/ IconButton（44px タッチターゲット）/ BottomSheet（モバイル用、
+  共通 a11y フック useDialogA11y=フォーカストラップ+復元付き）。既存部品への追加:
+  Badge に dot、Button に xl（48px CTA）。statusMaps に SEVERITY_VARIANT_MAP
+  （正準 Severity → 表示 variant）。使用0件の旧 `src/components/StatusBadge.tsx`
+  （独自スタイル二重管理）を削除。予約ステータスの中央マップ追加は既存2定義
+  （pos-constants / ReservationsClient）との配色衝突が判明したため見送り
+  （統合は IMP-022 で判断）。DESIGN_SYSTEM.md のコンポーネント表を新設分まで更新。
+- 対象: 開発基盤（既存画面の見た目は不変。新部品は IMP-020 以降の画面で使用）。
+
 ## 2026-08-19 IMP-001 実装ガードレール & 正準ドメイン語彙（branch impl/IMP-001-domain-vocabulary / PR #927）
 
 - 内容: v2.0 の6状態軸（Job/Step/Severity/Certificate/Payment/Sync）を正準語彙モジュール
@@ -1321,6 +1430,7 @@ supabase migration repair --status reverted 20260825000000
   - `src/app/layout.tsx`: twitter.site/creator反映
   - `/privacy`, `/terms`, `/law`, `/contact`: canonical追加
   - `/tokusho`: canonical・og:urlを/lawに統一、sitemapから除去
+
 
 ## 2026-08-16 LINE連携の入力を「Channel ID と Secret の2つだけ」に（branch claude/multi-integration-login-opnzfh）
 

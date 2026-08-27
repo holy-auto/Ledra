@@ -6,6 +6,14 @@
 
 最終更新: 2026-08-26
 
+> 2026-08-26 追記11: **SQL と TS の二重実装を機械的に突き合わせるようにした。**
+> 二重実装は2組だけ（VIN 正規化とサイズ区分）。`check_reservation_overlap` は
+> TS が RPC を呼ぶだけで実装が1つ ——**これが本来の形**。
+> **実害のあるズレが1件**: サイズ区分を TS が生の体積で、DB が `ROUND(_,2)` した
+> 体積で分類していた（4400×1765×1545mm で TS="M" / DB="L"、**価格帯が変わる**）。
+> TS 側を丸めるよう修正。検証は `supabase/__tests__/sqlTsParity.test.ts`（DB 不要）。
+> **初版は検出できておらず**、code-review のプローブ3件で再現 → 修正済み。
+
 > 2026-08-26 追記10: **決済手段の申請は Ledra から強制しない。** Connect 接続時の
 > capability 要求を選択制にし（既定は何も要求しない）、接続画面に「一緒に申請する
 > 決済手段（任意）」のチェックを出した。選ばなくても接続でき、後から Stripe の
@@ -144,6 +152,7 @@
 > `/api/mobile/pos/checkout` 経由になったため、**配布済みの旧ビルドでは会計が
 > 失敗する**（新ビルドの配布が要る）。残り 37 関数と search_path 固定
 > （`20260823170001`）は未適用。詳細は DECISION_LOG / RELEASE_LOG 2026-08-24。
+
 
 最終更新: 2026-08-19
 
@@ -287,7 +296,16 @@ Sentry · Resend (+ SendGrid fallback) · Anthropic (Opus 4.8 / Sonnet 4.6 / Hai
 
 - 「Ledra UI/UX & Development Specification v2.0」（2026-08-19）と、それを36タスク
   （IMP-000〜IMP-054）に分解した「Claude Code Implementation Guide v1.0」を実装基準線として採用。
+- **IMP-011（i18n 基盤 & 自動車用語集）完了**: ロケール登録を 6 言語（ja/en/vi/id/fil/hi）に
+  統一（`src/lib/i18n/locales.ts` が単一定義源）。メッセージファイル 4 言語追加、ドメインラベル
+  全 6 軸を 6 言語化、自動車翻訳用語集（~28 用語）、`WithTranslations<T>` UGC 翻訳分離型を新設。
+  vi/id/fil/hi 翻訳は推定（正式検証は IMP-051）。画面移行・ルーティング変更・DB マイグレーションなし。
 
+
+- **IMP-010（デザイントークン & 共有コンポーネント基盤）完了**: 不足 UI プリミティブ8つ
+  （SegmentedControl/StatusBadge/StatusCard/NextActionCard/ProgressCard/Alert/IconButton/
+  BottomSheet）+ Badge dot + Button xl。v2.0 の色トークン値は不採用・既存デザインシステム維持
+  （DECISION_LOG 2026-08-19）。
 - **IMP-001（実装ガードレール & 正準ドメイン語彙）完了**: `src/lib/domain/{states,labels}.ts`
   （6軸の正準値+ロケール別ラベル）、`docs/adr/0001`〜`0006`、アドホック状態禁止ルール
   （CLAUDE.md）。既存語彙との統一・マッピングは IMP-015 で判断（ADR-0002）。
@@ -353,6 +371,7 @@ Sentry · Resend (+ SendGrid fallback) · Anthropic (Opus 4.8 / Sonnet 4.6 / Hai
   （`expo-image-picker` は導入済みなので再ビルド不要。iOS の HEIC は
   `preferredAssetRepresentationMode: "compatible"` で JPEG に変換させる）。
   詳細は DECISION_LOG / RELEASE_LOG 2026-08-23。
+
 
 
 ## 直近の開発フォーカス（git log 直近30件より、2026-07 時点）
