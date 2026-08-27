@@ -2,7 +2,7 @@
  * 統一ドメインイベントカタログ（IMP-014）。
  *
  * v2.0 §20 / Appendix B: Core Event Catalogue。
- * 既存の AuditEventType（27種）+ 未型化 2 種 + webhook topics（8種）を
+ * 既存の AuditEventType（23種）+ 未型化 2 種 + webhook topics（8種）を
  * 統一命名規約 `resource.action` で網羅する。
  *
  * 目的:
