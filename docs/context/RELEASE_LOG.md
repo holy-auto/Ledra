@@ -4,6 +4,43 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-08-27 配布資料のフォント崩れ・ハイフン混入・段組の破綻を直す
+
+代表から「ただ単に横にするだけならだれでもできる。バランス、見やすさを重視して
+ないと意味がない」「フォントが崩れてる。これは初期のころから散々言ってるやつ」。
+スクリーンショットで指摘された3件はいずれも実在の不具合だった。
+
+**1. フォント崩れ（サブセットにグリフが無い）。**
+`public/fonts/NotoSansJP-*.ttf` は日本語サブセット（7,466 グリフ）で記号の収録が薄い。
+全8資料の描画文字列 1,633 本を機械的に走査したところ、**8文字が非収録**だった。
+
+    ① ② ③  U+2460-2462   service-overview（「摩擦」3枚のカード見出し）
+    ✓       U+2713        pricing-overview（機能別比較表の対応印が全部豆腐）
+    →       U+2192        features / security / operation-guide / glossary
+    ※       U+203B        case-studies / roi-template
+    ₂       U+2082        glossary（SiO₂）
+    μ       U+03BC        glossary（膜厚 μm）
+
+**「初期から言われていた」のに直らなかったのは、PDF を開かない限り見えない
+不具合だったから。**対策は2層にした。(a) `pdfSafe()`（旧 `stripEmoji`）に置換表
+`GLYPH_FALLBACKS` を追加。`FEATURE_COMPARISON` や `GLOSSARY` は web と共有していて
+ブラウザでは正常に出るので、元データは触らず PDF に入る手前でだけ置き換える
+（`μ`→`µ` MICRO SIGN は収録済みで見た目が同じ）。(b) **グリフ網羅テスト**を追加し、
+react-pdf の要素ツリーを歩いて実際に描く文字を全部集め、非収録が1文字でも残れば落とす。
+
+**2. 本文にハイフンが生えていた。** react-pdf の既定のハイフネーションが日本語にも
+効き、「QRコードで-顧客に即共有」のように本文中へハイフンを挿していた。
+`Font.registerHyphenationCallback((w) => [w])` で単語を割らない実装に差し替え。
+
+**3. 段組の破綻。** 左列・右列に全カードを積む作りだったため列ごとに独立して
+改ページされ、**右列の最後の1枚だけが次ページに落ちて左半分が丸ごと空いて**いた。
+A4 横で天地が 34% 狭くなり顕在化した。`CardGrid` を追加してカードを2枚1組の行に並べ、
+行単位で `wrap={false}`。改ページは必ず行の境で起き、左右の高さも揃う。
+`i % 2` のパリティ分割は削除。
+
+検証: marketing 73 件パス、全体 452 files / 4,293 tests パス、tsc 0 / eslint 0。
+ページ数は8本とも変化なし。
+
 ## 2026-08-27 HP のダウンロード資料を刷新（6本 → 8本 / 自前ページ採番を廃止）
 
 `/resources` と代理店ポータルで配っている提供資料を、内容・本数・デザインの3点で更新した。
@@ -56,6 +93,99 @@ Square 連携・電子署名を現状に直し、会計連携（freee / マネ�
 (c) ガイド文言の絵文字が落ちていること（埋め込みフォントに絵文字グリフが無く豆腐になる）
 を確認する。今回のページ数のズレは、このテストが検出した。
 
+## 2026-08-27 「正しく無いのが載るのはあかん」——遷移表を直してから通した（#933）／同期基盤は止めた（#934）
+
+### #933: 正準遷移表の足りない辺を8件直してからマージ
+
+`/code-review` が11件の「足りない辺」を出した。**現場を知らずに書き足さない**ため、
+リポジトリの中に根拠があるものだけを直した。根拠は3種類 —— ADR、稼働中のコード、
+同じファイル内の矛盾。
+
+| 直した辺 | 根拠 |
+|---|---|
+| `UNPAID → PAID` / `→ PARTIALLY_PAID` | `StorefrontBilling.tsx:55-64` の「入金を記録 (本日)」が未入金の請求書へ `status:"paid"` を**直接書いている**。稼働中の1手操作 |
+| `UNKNOWN → UNPAID` | §11.3 が禁じるのは「**UNKNOWN のまま**再決済」であって、照合して結果を確定させることではない |
+| `READY → NOT_READY` | ADR-0005 決定1 の 10 条件には**後から崩れるもの**がある |
+| `ISSUING → READY` / `VERIFYING → ISSUING` | ADR-0005 決定3。ジョブが動かす以上、**ジョブは失敗する** |
+| `PENDING_CORRECTION` を `ISSUING` → `READY`/`NOT_READY` | READY を飛ばすのは決定4 が代表承認を求める「Gate バイパス」 |
+| Severity の表をコメントに合わせる | コメントは「CRITICAL → NORMAL の直接降格だけ禁止」と書いていたが、表は `NORMAL → RESOLVED` も塞いでいた |
+| `COMPLETED → IN_PROGRESS` | 同ファイルの `JOB_TRANSITIONS` が手戻りを許しているのに工程が再開できなかった |
+| `SYNCING → PENDING` | 中断した同期に、起きていない `FAILED`（サーバに拒否された）を書くしかなかった |
+| `CHECKED_IN → NO_SHOW` を**削除** | 入庫済みは「来店なし」になりえない |
+
+**8件すべてを元に戻す mutation probe で11テストが落ちる**ことを確認した。
+根拠の無い3件（REVOKED の到達範囲・部分キャプチャ・着手済み工程の SKIPPED）は
+書き足さず、モジュール先頭に未解決として明記した。
+
+あわせてレビューが見つけた実在の欠陥も直した ——
+`isValidTransition` が `"toString"` で TypeError、`isTerminalState` が未知の状態を
+「終端」と答える（稼働中の `reservations.status` の `completed` が完了扱いに化ける）。
+
+### #934: 同期基盤は、修正を止めて設計の話として上げた
+
+`/code-review` で5件直した直後に **Codex が同じ `src/lib/sync/` に7件返した。**
+指摘が収束していないので1件ずつ潰すのをやめた。**二人のレビュアーが独立に
+同じ結論に着いている** —— この module は「outbox がこういう情報をくれる」前提で
+設計されているが、実際の outbox はその情報を持っていない。
+
+- 409 を拾う経路が**二重に**塞がっている（`queue.ts:423` と `public/sw.js:359`）
+- **ETag/version の楽観ロックはリポジトリに1件も無い。**409 はすべて重複・多重防止
+- `OutboxItem` に tenant 欄が無く、`IdleAutoLogout` はキューを消さない
+- `MenuItemsClient.tsx:299` の `kind:"other"` を `SyncResourceType` が表せない
+- 証明書のオフライン作成は意図的に3種を順に積むのに、全部「競合」になる
+- outbox が二度と送らないと決めたアイテムに「再試行」を出すことになる
+
+### ついでに直した既存コードの穴（IMP-016 とは無関係）
+
+- **`otp.ts`**: 壊れた有効期限で OTP が失効しなかった（`NaN < Date.now()` は false）
+- **`permissionVerbs.ts`**: `platform:operations` が「閲覧」に分類されていた。
+  未知の動詞の既定も `VIEW` → **`MANAGE`** に変更（低リスク側に倒さない）
+- **prototype 素引きが4ファイル**: `transitions.ts`・`conflict.ts`・`negotiate.ts`・
+  `catalogue.ts`。`table["constructor"]` が関数を返し、`?.` も `?? null` も捕まえない
+- **`vehicle.created`** が「統一カタログ」に無く、足したら今度は `EVENT_RISK` 未登録で
+  同義の `vehicle.registered`（medium）と格付けが割れた
+
+## 2026-08-27 積み上がっていた実装 PR を main へ通し始めた（#928〜#932 マージ）
+
+前のセッションが #928 → #929 → … → #951 と**前の PR をベースにして22本積み上げて**
+いた。1本ずつ main へベースを付け替えて通す運用に切り替え、**6本をマージ**した。
+
+| PR | 内容 | 状態 |
+|---|---|---|
+| #980 | SQL↔TS パリティテスト、`calcSizeClass` の丸めを SQL に合わせる | マージ済 |
+| #928 | IMP-010 デザイントークン & 共有コンポーネント | マージ済 |
+| #929 | IMP-011 i18n 基盤（6言語・用語集・翻訳分離型） | マージ済 |
+| #930 | IMP-012 認証基盤（オンボーディング・OTP・端末・step-up・招待） | マージ済 |
+| #931 | IMP-013 権限エンジン・店舗スコープ | マージ済 |
+| #932 | IMP-014 ドメインイベント・監査・冪等 | マージ済 |
+| #933 | IMP-015 状態機械・遷移表・Certificate Gate 型 | **マージ済**（遷移表を直してから） |
+| #934 | IMP-016 オフライン同期キュー・競合検出 | **代表判断待ち**（下記） |
+
+**#930〜#932 が追加したモジュールは、いずれも稼働中コードからの import が 0 件**
+（`src/lib/auth/*`・`lib/events`・`lib/sync`・`lib/domain/{transitions,certificateGate}`）。
+配線は後続タスクで行うので、マージしても実行時の挙動は変わらない。
+#929 の `SUPPORTED_LOCALES` 2→6 も、唯一の実行時消費者 `responseI18n.ts` に
+呼び出し元が 0 件なので同じ。
+
+### 途中で見つけて直したもの
+
+- **`useDialogA11y`**: フォーカストラップが `display:none` / `hidden` / `tabindex="-1"`
+  の要素を候補に含めており、「最後の要素」を取り違えて**フォーカスがダイアログの外へ
+  抜けていた**。body スクロールロックも、閉じたダイアログがマウントされるだけで
+  他のモーダルのロックを解除していた。`Modal.tsx` / `Drawer.tsx` を同じ hook に
+  載せ替えて**書き込み口を1つに**した（-126 行）。
+- **`negotiateLocale`**: `Accept-Language: tl;q=0` が `fil` を返していた。
+  RFC 9110 で `q=0` は「受け入れ不可」。候補から外していなかった。
+- **`ProgressCard`**: `percent={0 / 0}` で `aria-valuenow="NaN"` と見える `NaN%` を
+  描画していた。clamp は NaN を素通しする。
+- **`WithTranslations`**: 「`shop_announcements.translations` の形式化」と書きながら、
+  そのテーブルが実際に書いている `zh` を型が弾いていた（UI ロケール6言語に無い）。
+  翻訳先の集合を型引数にした。
+- **`isValidTransition`**: `"toString"` を渡すと `TypeError` で落ちていた。
+  `?.` は prototype 由来の値を守らない。`isTerminalState` は未知の状態を
+  「終端」と答えており、`reservations.status` の `completed` が完了扱いになった。
+
+いずれも mutation probe（修正を戻すと落ちること）を実行確認したテストを添えた。
 ## 2026-08-26 LINEで顧客が予約を自分でキャンセルできるセルフ対応（第一弾・キャンセルのみ、branch claude/line-chatbot-ledra-dy2fiq）
 
 - 内容: これまで `cancel` intent は抽出しても人手に回していたが、顧客が LINE で「予約を
@@ -1101,6 +1231,26 @@ supabase migration repair --status reverted 20260825000000
 - 内容: 何を実装・変更したか
 - 対象: どの画面・API・業種向けか
 ```
+
+## 2026-08-19 IMP-016 オフライン同期キュー・競合検出基盤（branch impl/IMP-016-offline-sync / PR #TBD）
+
+- 内容: v2.0 §14 のオフライン同期基盤を型・純粋関数で整備。(1) 同期キュー型
+  （`SyncQueueItem` — 既存 OutboxItem を正準 SyncState に接続。`SyncResourceType` 8 種で
+  ドメインレベルのリソース分類）。(2) 競合検出・解決型（`SyncConflict` 3 種別 ×
+  `ConflictResolutionStrategy` 4 方針。HTTP レスポンスからの競合検出関数。重複キュー
+  検出関数）。(3) リソースタイプ別デフォルト解決戦略（証明書・部品＝手動、予約・顧客＝
+  クライアント優先）。(4) 同期ドメインイベント 5 種を DOMAIN_EVENT_TYPES に追加
+  （sync.started/completed/failed/conflict_detected/conflict_resolved）。(5) 同期サマリー
+  型（`SyncSummary` — SYNC_CENTER 画面の状態別件数表示用）。既存の outbox インフラ
+  （IndexedDB キュー・Background Sync・SW）は変更なし。DB マイグレーションなし。
+  テスト 30 件。
+- 対象: 開発基盤（IMP-032 SYNC_CENTER 画面・IMP-023 作業エビデンス・IMP-053 エラー契約の前提条件）。
+- **後日訂正（2026-08-27）**: (1)〜(3)・(5) の `src/lib/sync/`（型・競合検出ヘルパー）は
+  **削除した。**`/code-review` と Codex が独立に、実際の outbox（`src/lib/outbox/`）が
+  持たない情報（メソッド別ステータス・tenant・恒久ブロック状態）を前提にしていると
+  指摘し、修正が収束しなかったため（DECISION_LOG 2026-08-27）。(4) の `sync.*` 5
+  イベントと `EVENT_RISK` の格付けだけ残した。同期層の型・競合解決は IMP-032 で
+  outbox の実際の契約に合わせて設計し直す。
 
 ## 2026-08-19 IMP-015 状態機械・遷移表・Certificate Gate 型（branch impl/IMP-015-state-machines / PR #TBD）
 

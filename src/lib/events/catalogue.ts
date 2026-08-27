@@ -48,6 +48,10 @@ export const DOMAIN_EVENT_TYPES = [
 
   // 車両
   "vehicle.registered",
+  // 稼働中の webhook が実際に投げている名前（`webhook-topics.ts` と
+  // `api/vehicles/create/route.ts:60` の `emitEntityWebhook`）。
+  // 「統一カタログ」に無いと、既存の発火が表せない／弾かれる。
+  "vehicle.created",
   "vehicle.updated",
 
   // メンバー
@@ -98,6 +102,13 @@ export const DOMAIN_EVENT_TYPES = [
 
   // メモ
   "note.created",
+
+  // 同期（IMP-016: オフライン同期ライフサイクル）
+  "sync.started",
+  "sync.completed",
+  "sync.failed",
+  "sync.conflict_detected",
+  "sync.conflict_resolved",
 ] as const;
 
 export type DomainEventType = (typeof DOMAIN_EVENT_TYPES)[number];
@@ -170,5 +181,8 @@ export const LEGACY_EVENT_MAP: Record<string, DomainEventType> = {
  * 未知の値は null（呼び出し側で判断）。
  */
 export function fromLegacyEventType(legacy: string): DomainEventType | null {
-  return LEGACY_EVENT_MAP[legacy] ?? null;
+  // 素引きだと `"constructor"` や `"toString"` が Object.prototype 由来の
+  // 関数を返し、`?? null` では捕まらない（戻り値の型は嘘になる）。
+  // 過去のイベント文字列はこの型に縛られていないので own property だけ見る。
+  return Object.hasOwn(LEGACY_EVENT_MAP, legacy) ? LEGACY_EVENT_MAP[legacy] : null;
 }
