@@ -125,8 +125,12 @@ describe("CERTIFICATE_TRANSITIONS", () => {
     expect(isValidTransition(CERTIFICATE_TRANSITIONS, "VERIFYING", "PENDING_CORRECTION")).toBe(true);
   });
 
-  it("PENDING_CORRECTION → ISSUING（修正版発行）は有効", () => {
-    expect(isValidTransition(CERTIFICATE_TRANSITIONS, "PENDING_CORRECTION", "ISSUING")).toBe(true);
+  it("PENDING_CORRECTION → Gate 再評価（READY / NOT_READY）へ戻る", () => {
+    // 以前は ISSUING へ直行していたが、それは Gate バイパスに当たる
+    // （ADR-0005 決定4）。訂正でどの条件が崩れたかは評価器が決める。
+    expect(isValidTransition(CERTIFICATE_TRANSITIONS, "PENDING_CORRECTION", "READY")).toBe(true);
+    expect(isValidTransition(CERTIFICATE_TRANSITIONS, "PENDING_CORRECTION", "NOT_READY")).toBe(true);
+    expect(isValidTransition(CERTIFICATE_TRANSITIONS, "PENDING_CORRECTION", "ISSUING")).toBe(false);
   });
 
   it("SUPERSEDED / REVOKED は終端", () => {
@@ -171,10 +175,13 @@ describe("SYNC_TRANSITIONS", () => {
 // ── ステップ（Step）遷移 ──
 
 describe("STEP_TRANSITIONS", () => {
-  it("COMPLETED / SKIPPED / CANCELED は終端", () => {
-    expect(isTerminalState(STEP_TRANSITIONS, "COMPLETED")).toBe(true);
+  it("SKIPPED / CANCELED は終端。COMPLETED は手戻りで再開できる", () => {
     expect(isTerminalState(STEP_TRANSITIONS, "SKIPPED")).toBe(true);
     expect(isTerminalState(STEP_TRANSITIONS, "CANCELED")).toBe(true);
+    // COMPLETED を終端にすると、案件が IN_PROGRESS へ戻ったときに
+    // やり直す対象が1つも無い状態になる（JOB_TRANSITIONS は手戻りを許している）。
+    expect(isTerminalState(STEP_TRANSITIONS, "COMPLETED")).toBe(false);
+    expect(validNextStates(STEP_TRANSITIONS, "COMPLETED")).toEqual(["IN_PROGRESS"]);
   });
 
   it("WAITING_APPROVAL → COMPLETED（承認）/ IN_PROGRESS（差し戻し）は有効", () => {
@@ -260,5 +267,70 @@ describe("表に無い状態を渡したとき", () => {
     expect(r).not.toBeNull();
     expect(r!.reason).toContain("定義されていません");
     expect(r!.reason).not.toContain("終端");
+  });
+});
+
+// 現場の操作が遷移表で表せることを固定する。
+// どの期待値も、リポジトリの中に根拠がある（ADR・稼働中コード・同ファイル内の整合）。
+describe("現場の操作が表せること", () => {
+  it("店頭の現金入金を1手で記録できる（UNPAID → PAID）", () => {
+    // 根拠: admin/invoices/StorefrontBilling.tsx の「入金を記録 (本日)」が
+    // 未入金の請求書へ status:"paid" を直接書いている。
+    expect(isValidTransition(PAYMENT_TRANSITIONS, "UNPAID", "PAID")).toBe(true);
+    // 頭金も同じ経路。payment_entries は総額未満の金額を記録できる。
+    expect(isValidTransition(PAYMENT_TRANSITIONS, "UNPAID", "PARTIALLY_PAID")).toBe(true);
+  });
+
+  it("照合で「入金されていなかった」と確定できる（UNKNOWN → UNPAID）", () => {
+    expect(isValidTransition(PAYMENT_TRANSITIONS, "UNKNOWN", "UNPAID")).toBe(true);
+    // §11.3 が禁じるのは「UNKNOWN のまま再決済」。UNKNOWN から直接 PENDING は塞いだまま。
+    expect(isValidTransition(PAYMENT_TRANSITIONS, "UNKNOWN", "PENDING")).toBe(false);
+  });
+
+  it("発行・検証ジョブが失敗しても戻れる（固まらない）", () => {
+    // 根拠: ADR-0005 決定3。ISSUING / VERIFYING はバックエンドのジョブが動かす。
+    expect(isTerminalState(CERTIFICATE_TRANSITIONS, "ISSUING")).toBe(false);
+    expect(isValidTransition(CERTIFICATE_TRANSITIONS, "ISSUING", "READY")).toBe(true);
+    expect(isValidTransition(CERTIFICATE_TRANSITIONS, "VERIFYING", "ISSUING")).toBe(true);
+  });
+
+  it("Gate 条件が後から崩れたら READY から降りられる", () => {
+    // 根拠: ADR-0005 決定1 の 10 条件には、後から崩れうるものが含まれる。
+    expect(isValidTransition(CERTIFICATE_TRANSITIONS, "READY", "NOT_READY")).toBe(true);
+  });
+
+  it("訂正版は Gate を通り直す（ISSUING へ直行しない）", () => {
+    // 根拠: ADR-0005 決定4。Gate バイパスは代表の明示的な承認なしに行わない。
+    expect(isValidTransition(CERTIFICATE_TRANSITIONS, "PENDING_CORRECTION", "ISSUING")).toBe(false);
+    expect(isValidTransition(CERTIFICATE_TRANSITIONS, "PENDING_CORRECTION", "READY")).toBe(true);
+    expect(isValidTransition(CERTIFICATE_TRANSITIONS, "PENDING_CORRECTION", "NOT_READY")).toBe(true);
+  });
+
+  it("軽微な指摘を昇格させずに閉じられる（NORMAL → RESOLVED）", () => {
+    expect(isValidTransition(SEVERITY_TRANSITIONS, "NORMAL", "RESOLVED")).toBe(true);
+    // 表の唯一の禁止は CRITICAL → NORMAL の直接降格。コメントと表を一致させた。
+    expect(isValidTransition(SEVERITY_TRANSITIONS, "CRITICAL", "NORMAL")).toBe(false);
+    expect(isValidTransition(SEVERITY_TRANSITIONS, "CRITICAL", "HIGH")).toBe(true);
+    expect(isValidTransition(SEVERITY_TRANSITIONS, "HIGH", "NORMAL")).toBe(true);
+  });
+
+  it("手戻りした案件の工程を再開できる", () => {
+    // 根拠: 同じファイルの JOB_TRANSITIONS が手戻りを許している。
+    expect(isValidTransition(JOB_TRANSITIONS, "CERTIFICATE_PROCESSING", "WAITING_REVIEW")).toBe(true);
+    expect(isValidTransition(JOB_TRANSITIONS, "WAITING_REVIEW", "IN_PROGRESS")).toBe(true);
+    // 案件が戻れるなら、工程も戻れないと「やり直す対象が1つも無い」状態になる。
+    expect(isValidTransition(STEP_TRANSITIONS, "COMPLETED", "IN_PROGRESS")).toBe(true);
+  });
+
+  it("中断した同期を積み直せる（嘘の FAILED を書かない）", () => {
+    expect(isValidTransition(SYNC_TRANSITIONS, "SYNCING", "PENDING")).toBe(true);
+  });
+
+  it("入庫済みの案件は「来店なし」にできない", () => {
+    expect(isValidTransition(JOB_TRANSITIONS, "CHECKED_IN", "NO_SHOW")).toBe(false);
+    // 誤操作の抜け道は CANCELED。
+    expect(isValidTransition(JOB_TRANSITIONS, "CHECKED_IN", "CANCELED")).toBe(true);
+    // 来店前なら NO_SHOW は正しい。
+    expect(isValidTransition(JOB_TRANSITIONS, "SCHEDULED", "NO_SHOW")).toBe(true);
   });
 });
