@@ -4,6 +4,17 @@
 > （新しい順）。実装の詳細は RELEASE_LOG.md、迷っている段階のものは
 > OPEN_QUESTIONS.md に書く。
 
+## 2026-08-27 IMP-016 の同期基盤は型・競合検出を削除し、イベント名だけ残す
+1. 日付: 2026-08-27
+2. 起きたこと: PR #934（IMP-016 オフライン同期）で `/code-review` の指摘5件を直した直後、Codex が同じ `src/lib/sync/` に7件返した。指摘が収束していないので修正を止め、前提と実際の対応表を PR コメントに上げて代表判断を仰いだ。代表の回答は「(b) `src/lib/sync/` を外し、`sync.*` のイベント名と `EVENT_RISK` の格付けだけ通す」。
+3. 以前の考え: `SyncQueueItem`（既存 `OutboxItem` の上位ビュー）と `SyncConflict` 検出関数を用意すれば、IMP-032（SYNC_CENTER）はそれを組み立てるだけで済む。
+4. 違和感・問題: **`src/lib/sync/` は、実際の outbox（`src/lib/outbox/`）が持っていない情報を前提にしていた。**(a) 409 を拾う経路が `queue.ts:423` と `public/sw.js:359` の**二重に**塞がれており、`DrainResult` にメソッドもステータスも残らないので `detectConflictFromResponse` は到達不能。(b) このリポジトリの 409 に ETag/version の楽観ロックは1件も無く、すべて重複・多重防止。`version_mismatch` と分類して `client_wins` で再送すると、サーバが重複として弾いたリクエストを送り直すことになる。(c) `OutboxItem` に tenant 欄が無く、`IdleAutoLogout` はサインアウト時にキューを消さない。(d) `MenuItemsClient.tsx:299` の `kind:"other"` を `SyncResourceType` が表せない。(e) 証明書のオフライン作成は意図的に3操作を順に積むのに、全部「競合」と判定される。(f) outbox が `markBlocked` で恒久停止したアイテムを `SyncState` が表せず `FAILED`（→ PENDING 可）にするしかない。
+5. 決めたこと: (a) `src/lib/sync/types.ts` と `conflict.ts`（テスト含む）を**削除**する。(b) `catalogue.ts` の `sync.*` 5イベントと、それに対応する `EVENT_RISK` の格付け（`sync.conflict_detected`/`sync.conflict_resolved`/`sync.failed` を medium）は**残す**。イベント名は実装がどうなっても正しい単なる語彙だから。(c) IMP-016 とは無関係に見つかった既存コードの穴（`otp.ts` の壊れた有効期限、`permissionVerbs.ts` の `platform:operations` 誤分類、`negotiate.ts`/`catalogue.ts` の prototype 素引き4件）は削除の対象にせず、そのまま残す。(d) 同期層の型・競合解決の設計は IMP-032 に送る——outbox 側の変更（アイテム単位のステータス返却、enqueue 時の tenant 保存）が先に要るので、型を先に決めても解決しない。
+6. 捨てた選択肢: (a) このままマージして IMP-032 で作り直す＝**下流タスクが間違った型を前提に設計を始める**リスクの方が、作り直しの手間より大きいと判断された。(b) 7件も1件ずつ直す＝収束しない見込みが高く、部分修正が新しい穴を作りうる（実際 `vehicle.created` を足したときに `EVENT_RISK` の格付けが割れた）。
+7. 判断理由: 「指摘が収束しなくなったら、それは個々のバグではなく前提のズレ」（2026-08-27 の別エントリ）。二人のレビュアーが独立に同じ結論に着いたのは、個々の見落としではなく設計の前提そのものが違うという強い signal だった。イベント名だけ残すのは、そこだけは「未配線でも間違いようがない」部分だから。
+8. まだ答えが出ていないこと: (a) outbox 側の変更（アイテム単位のステータス返却・enqueue 時の tenant 保存）を誰が・いつ行うか。IMP-032 着手前に決める必要がある。(b) Severity の `CRITICAL → ACTION` の読み方の割れ（IMP-015/IMP-016 で逆向きに直された）は未解決のまま。
+9. 公開区分: 公開可（「型を先に決めても実装側の制約は解決しない」「レビューの指摘が収束しないのは前提のズレの兆候」は発信可。テナント名・接続情報は出さない）
+
 ## 2026-08-26 LINE予約セルフ対応は「キャンセルのみ・前日まで・即時自動反映」で第一弾を切る（変更は後続）
 1. 日付: 2026-08-26
 2. 起きたこと: PR #908（LINEナレッジ返信のボタン誘導）マージ後、代表の依頼「予約変更/キャンセルのセルフ対応」に着手。調査で cancel/change_reservation intent は抽出済みだが全て人手に回している現状を確認。3点（スコープ・締め切り・反映方式）を代表に確認した。
@@ -300,6 +311,32 @@
 8. まだ答えが出ていないこと: 未解決の部分（重ければ OPEN_QUESTIONS.md にも起票）
 9. 公開区分: 公開可／要確認／非公開
 ```
+
+## 2026-08-19 IMP-016 同期キュー型を既存 OutboxItem のビューとして定義、IDB 新ストアは作らない
+
+1. 日付: 2026-08-19
+2. 起きたこと: IMP-016（オフライン同期基盤）で、既存の IndexedDB outbox（`OutboxItem`）と
+   正準 SyncState を接続する方法を決める必要があった。
+3. 以前の考え: 未検討。outbox は実装レベル（HTTP リクエストキュー）、SyncState はドメインレベル
+   （リソース同期状態）で別世界だった。
+4. 違和感・問題: SyncState.CONFLICT が定義済みだが、競合を検出・表現する型が存在しない。
+   OutboxItem にはリソース種別やテナント ID がなく、SYNC_CENTER 画面のフィルタや
+   クロステナント安全性を型レベルで表現できない。
+5. 決めたこと: `SyncQueueItem` を `OutboxItem` の上位ビュー（メモリ上の wrapper）として
+   定義し、IDB に新ストアは作らない。`listOutbox()` → `mapToSyncQueueItem()` の変換で
+   生成する設計。競合検出は HTTP レスポンスコードベース（409=version_mismatch、
+   404/410+PUT/PATCH=resource_deleted）。リソースタイプ別のデフォルト解決戦略を定義
+   （証明書・部品＝手動、予約・顧客＝クライアント優先）。
+6. 捨てた選択肢: (a) IDB に sync_queue ストアを新設し OutboxItem とは別に管理 →
+   二重管理になり整合性リスクが増える。(b) OutboxItem 自体に SyncState フィールドを
+   追加 → 既存の outbox コード全体に影響し、変更範囲が大きすぎる。
+7. 判断理由: 既存 outbox インフラは安定稼働中。ビューとして上位型を被せれば、既存コードを
+   変更せずに SYNC_CENTER 画面（IMP-032）が必要とする情報を提供できる。Ponytail 原則
+   （最小差分）に合致。
+8. まだ答えが出ていないこと: `OutboxItem` → `SyncQueueItem` の実際のマッピング実装は
+   IMP-032（SYNC_CENTER 画面）で行う。OutboxKind から SyncResourceType への変換表は
+   そのタイミングで定義する。
+9. 公開区分: 公開可
 
 ## 2026-08-19 IMP-015 遷移表のみ定義し、既存値→正準値マッピングは各消費タスクで段階的導入
 
