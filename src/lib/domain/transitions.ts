@@ -111,18 +111,41 @@ export const SYNC_TRANSITIONS: Record<SyncState, readonly SyncState[]> = {
  *   isValidTransition(JOB_TRANSITIONS, "SCHEDULED", "CHECKED_IN") // true
  *   isValidTransition(PAYMENT_TRANSITIONS, "UNKNOWN", "PENDING")  // false
  */
+/**
+ * 表に載っている状態か。**素の `table[from]` を使わない。**
+ * `"toString"` や `"constructor"` は Object.prototype 経由で関数を返すので
+ * `?.includes(...)` が TypeError を投げ、`"__proto__"` も同様に化ける。
+ * 型は S に絞っていても、値はクライアント由来の文字列で来る（境界防御）。
+ */
+function known<S extends string>(table: Readonly<Record<S, readonly S[]>>, state: S): readonly S[] | null {
+  return Object.hasOwn(table, state) ? table[state] : null;
+}
+
 export function isValidTransition<S extends string>(table: Readonly<Record<S, readonly S[]>>, from: S, to: S): boolean {
-  return table[from]?.includes(to) ?? false;
+  return known(table, from)?.includes(to) ?? false;
 }
 
-/** 現在の状態から遷移可能な状態の一覧を返す。 */
+/** 現在の状態から遷移可能な状態の一覧を返す。未知の状態は空配列。 */
 export function validNextStates<S extends string>(table: Readonly<Record<S, readonly S[]>>, current: S): readonly S[] {
-  return table[current] ?? [];
+  return known(table, current) ?? [];
 }
 
-/** 状態が終端（遷移先なし）か。 */
+/**
+ * 状態が終端（遷移先なし）か。
+ *
+ * **未知の状態は終端ではない（false）。**表に無いだけの値を「終わっている」と
+ * 答えると、`reservations.status` の `completed` / `in_progress` のような
+ * 稼働中の既存語彙が、正準値と暗黙に同一視されたうえ「完了済み」に化ける
+ * （CLAUDE.md のドメイン状態語彙ルール）。未知かどうかは isKnownState で聞く。
+ */
 export function isTerminalState<S extends string>(table: Readonly<Record<S, readonly S[]>>, state: S): boolean {
-  return (table[state]?.length ?? 0) === 0;
+  const next = known(table, state);
+  return next !== null && next.length === 0;
+}
+
+/** 状態がこの遷移表に定義されているか。 */
+export function isKnownState<S extends string>(table: Readonly<Record<S, readonly S[]>>, state: S): boolean {
+  return known(table, state) !== null;
 }
 
 // ── 遷移拒否 ──
@@ -148,6 +171,12 @@ export function rejectTransition<S extends string>(
   to: S,
 ): TransitionRejection | null {
   if (isValidTransition(table, from, to)) return null;
+
+  // 未知の状態を「終端」と言わない。表に無い値について
+  // 「遷移先が無い」と断定するのは、確かめていない事実の主張になる。
+  if (!isKnownState(table, from)) {
+    return { from, to, axis, reason: `${from} は ${axis} の状態として定義されていません。` };
+  }
 
   const next = validNextStates(table, from);
   const reason =

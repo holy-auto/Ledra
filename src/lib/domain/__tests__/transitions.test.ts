@@ -9,8 +9,10 @@ import {
   isValidTransition,
   validNextStates,
   isTerminalState,
+  isKnownState,
   rejectTransition,
 } from "../transitions";
+import type { JobState } from "../states";
 import { JOB_STATES, STEP_STATES, SEVERITIES, CERTIFICATE_STATES, PAYMENT_STATES, SYNC_STATES } from "../states";
 import { CERTIFICATE_GATE_CONDITIONS, isCertificateGateCondition } from "../certificateGate";
 
@@ -223,5 +225,40 @@ describe("CertificateGateCondition", () => {
   it("型ガードが無効な値を拒否する", () => {
     expect(isCertificateGateCondition("unknown_condition")).toBe(false);
     expect(isCertificateGateCondition(null)).toBe(false);
+  });
+});
+
+// 型は正準値に絞っていても、実行時に来るのはクライアント由来の文字列。
+// Object.prototype 由来のキーと、稼働中の既存語彙（reservations.status の
+// completed / in_progress）を入れたときの振る舞いを固定する。
+describe("表に無い状態を渡したとき", () => {
+  // 型の外の値をわざと入れる。`@ts-expect-error` は使わない ——
+  // 別の型エラー（未 import など）まで一緒に吸ってしまうため。
+  const bad = (v: string) => v as unknown as JobState;
+
+  it("Object.prototype 由来のキーで例外を投げない", () => {
+    for (const k of ["toString", "__proto__", "constructor", "hasOwnProperty", "valueOf"]) {
+      expect(() => isValidTransition(JOB_TRANSITIONS, bad(k), "VERIFIED")).not.toThrow();
+      expect(isValidTransition(JOB_TRANSITIONS, bad(k), "VERIFIED")).toBe(false);
+      expect(validNextStates(JOB_TRANSITIONS, bad(k))).toEqual([]);
+    }
+  });
+
+  it("未知の状態を終端と答えない", () => {
+    // 既存の稼働中語彙。正準値と暗黙に同一視しない（CLAUDE.md）
+    for (const k of ["completed", "in_progress", "toString", "cancelled"]) {
+      expect(isTerminalState(JOB_TRANSITIONS, bad(k))).toBe(false);
+      expect(isKnownState(JOB_TRANSITIONS, bad(k))).toBe(false);
+    }
+    // 本物の終端は true のまま
+    expect(isTerminalState(JOB_TRANSITIONS, "VERIFIED")).toBe(true);
+    expect(isKnownState(JOB_TRANSITIONS, "VERIFIED")).toBe(true);
+  });
+
+  it("拒否理由が「終端」ではなく「未定義」と言う", () => {
+    const r = rejectTransition(JOB_TRANSITIONS, "job", bad("completed"), "VERIFIED");
+    expect(r).not.toBeNull();
+    expect(r!.reason).toContain("定義されていません");
+    expect(r!.reason).not.toContain("終端");
   });
 });
