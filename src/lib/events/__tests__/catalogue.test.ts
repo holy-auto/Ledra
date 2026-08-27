@@ -153,4 +153,10 @@ describe("稼働中の webhook 名がカタログにあること", () => {
     // webhook-topics.ts と api/vehicles/create/route.ts:60 が実際に投げている名前。
     expect(isDomainEventType("vehicle.created")).toBe(true);
   });
+
+  it("vehicle.created と vehicle.registered が同じ格付けになる", () => {
+    // 同義なのに片方だけ登録すると、同じ操作が別のリスクで扱われる。
+    expect(eventRisk("vehicle.created")).toBe(eventRisk("vehicle.registered"));
+    expect(eventRisk("vehicle.created")).not.toBe("low");
+  });
 });

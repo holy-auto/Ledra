@@ -127,6 +127,10 @@ const EVENT_RISK: Partial<Record<DomainEventType, RiskLevel>> = {
 
   // Medium — 通常のデータ変更
   "vehicle.registered": "medium",
+  // 同義。`api/vehicles/create/route.ts:60` と
+  // `lib/vehicles/createFromShakensho.ts:65` が実際に投げている名前で、
+  // 登録し忘れると `?? "low"` に落ちて **同じ操作が別の格付けになる。**
+  "vehicle.created": "medium",
   "vehicle.updated": "medium",
   "customer.created": "medium",
   "customer.updated": "medium",
