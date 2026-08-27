@@ -105,6 +105,12 @@ describe("PAYMENT_TRANSITIONS", () => {
   it("PARTIALLY_REFUNDED → REFUNDED のみ（完全返金への遷移）", () => {
     expect(validNextStates(PAYMENT_TRANSITIONS, "PARTIALLY_REFUNDED")).toEqual(["REFUNDED"]);
   });
+
+  // 代表判断（2026-08-27）: 照合で部分入金・過入金だったと判明するケースがある。
+  it("UNKNOWN → PARTIALLY_PAID / OVERPAID は有効（照合で部分・過入金と判明）", () => {
+    expect(isValidTransition(PAYMENT_TRANSITIONS, "UNKNOWN", "PARTIALLY_PAID")).toBe(true);
+    expect(isValidTransition(PAYMENT_TRANSITIONS, "UNKNOWN", "OVERPAID")).toBe(true);
+  });
 });
 
 // ── 証明書（Certificate）遷移 ──
@@ -137,6 +143,12 @@ describe("CERTIFICATE_TRANSITIONS", () => {
     expect(isTerminalState(CERTIFICATE_TRANSITIONS, "SUPERSEDED")).toBe(true);
     expect(isTerminalState(CERTIFICATE_TRANSITIONS, "REVOKED")).toBe(true);
   });
+
+  // 代表判断（2026-08-27）: 公開前でも重大な問題が起きた記録を残す必要がある。
+  it("ISSUING / VERIFYING → REVOKED は有効（公開前の無効化記録）", () => {
+    expect(isValidTransition(CERTIFICATE_TRANSITIONS, "ISSUING", "REVOKED")).toBe(true);
+    expect(isValidTransition(CERTIFICATE_TRANSITIONS, "VERIFYING", "REVOKED")).toBe(true);
+  });
 });
 
 // ── 緊急度（Severity）遷移 ──
@@ -153,6 +165,11 @@ describe("SEVERITY_TRANSITIONS", () => {
   it("RESOLVED → 再開は全レベルへ可能", () => {
     expect(isValidTransition(SEVERITY_TRANSITIONS, "RESOLVED", "NORMAL")).toBe(true);
     expect(isValidTransition(SEVERITY_TRANSITIONS, "RESOLVED", "CRITICAL")).toBe(true);
+  });
+
+  // 代表判断（2026-08-27）: CRITICAL → NORMAL の直行のみ禁止という読み方で確定。
+  it("CRITICAL → ACTION は有効（一段ずつでない部分的な降格も許可）", () => {
+    expect(isValidTransition(SEVERITY_TRANSITIONS, "CRITICAL", "ACTION")).toBe(true);
   });
 });
 
@@ -187,6 +204,12 @@ describe("STEP_TRANSITIONS", () => {
   it("WAITING_APPROVAL → COMPLETED（承認）/ IN_PROGRESS（差し戻し）は有効", () => {
     expect(isValidTransition(STEP_TRANSITIONS, "WAITING_APPROVAL", "COMPLETED")).toBe(true);
     expect(isValidTransition(STEP_TRANSITIONS, "WAITING_APPROVAL", "IN_PROGRESS")).toBe(true);
+  });
+
+  // 代表判断（2026-08-27）: 着手後に不要と判明する運用がある。
+  it("IN_PROGRESS / BLOCKED → SKIPPED は有効（着手後に不要と判明）", () => {
+    expect(isValidTransition(STEP_TRANSITIONS, "IN_PROGRESS", "SKIPPED")).toBe(true);
+    expect(isValidTransition(STEP_TRANSITIONS, "BLOCKED", "SKIPPED")).toBe(true);
   });
 });
 

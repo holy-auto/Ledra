@@ -12,24 +12,12 @@
  * （「いつ・なぜ遷移するか」）であり、ここで定義するのは構造的制約
  * （「何から何へ遷移できるか」）。両者は補完関係。
  *
- * 未解決（代表判断待ち。**根拠が無いので書き足していない**）:
- * 1. REVOKED は VERIFIED からしか届かない。発行途中（ISSUING / VERIFYING）で
- *    重大な問題が分かった場合、いまは NOT_READY へ降ろして止めることしかできない。
- *    ADR-0004 決定4 は「重大問題は REVOKED を使い、無効化された事実を第三者が
- *    確認できる形で公開する」と書いているが、**公開前の版に「無効化した」記録が
- *    要るのかは、業務側の判断**（第三者は元々その版を見ていない）。
- * 2. UNKNOWN からの結果確定は PAID / UNPAID / CANCELED の3つだけ。部分的に
- *    キャプチャされた（PARTIALLY_PAID）・多く引かれた（OVERPAID）ケースが実際に
- *    起きるかは、この環境からは確かめられない。
- * 3. 開始済みの工程（IN_PROGRESS / BLOCKED）は SKIPPED にできない。着手後に
- *    「やっぱり不要」となる運用があるかは未確認。
- * 4. Severity の `CRITICAL → ACTION` を許すかどうか、**読み方が割れている。**
- *    IMP-016 のブランチは同じ食い違いを逆向きに直そうとしており、コメントを
- *    「CRITICAL からは HIGH または RESOLVED のみ」に書き換えていた（＝表を正とする）。
- *    こちらは「CRITICAL → NORMAL の直接降格だけ禁止」というコメントを正とし、
- *    表を緩めた。**どちらも内部では筋が通っており、どちらが業務に合うかは未確認。**
- *    なお `NORMAL → RESOLVED`（軽微な指摘を昇格させずに閉じる）は、
- *    どちらの読み方でも塞がっていた理由が説明されていない。
+ * 未解決だった4件は代表判断で解決済み（2026-08-27、DECISION_LOG参照）:
+ * 1. REVOKED は ISSUING / VERIFYING からも遷移可（公開前でも無効化の記録を残す）。
+ * 2. UNKNOWN → PARTIALLY_PAID / OVERPAID を追加（照合で部分・過入金の判明があり得る）。
+ * 3. IN_PROGRESS / BLOCKED → SKIPPED を許可（着手後に不要と判明する運用がある）。
+ * 4. Severity の CRITICAL → ACTION は許可のまま（現状の表を正とする。
+ *    NORMAL への直接降格のみ禁止という読み方で確定）。
  *
  * 既存値→正準値のマッピングについて（ADR-0002 の IMP-015 判断事項）:
  * TS 層マッピングは各消費タスク（IMP-028 証明書 / IMP-031 案件状態 /
@@ -64,8 +52,9 @@ export const JOB_TRANSITIONS: Record<JobState, readonly JobState[]> = {
 export const STEP_TRANSITIONS: Record<StepState, readonly StepState[]> = {
   NOT_STARTED: ["READY", "SKIPPED", "CANCELED"],
   READY: ["IN_PROGRESS", "SKIPPED", "CANCELED"],
-  IN_PROGRESS: ["BLOCKED", "WAITING_APPROVAL", "COMPLETED", "CANCELED"],
-  BLOCKED: ["IN_PROGRESS", "CANCELED"],
+  // SKIPPED も可（代表判断・2026-08-27）: 着手後に不要と判明する運用がある。
+  IN_PROGRESS: ["BLOCKED", "WAITING_APPROVAL", "COMPLETED", "SKIPPED", "CANCELED"],
+  BLOCKED: ["IN_PROGRESS", "SKIPPED", "CANCELED"],
   WAITING_APPROVAL: ["COMPLETED", "IN_PROGRESS", "CANCELED"],
   // **終端にしない。**同じファイルの JOB_TRANSITIONS が手戻りを許しており
   // （CERTIFICATE_PROCESSING → WAITING_REVIEW → IN_PROGRESS）、案件が
@@ -109,9 +98,10 @@ export const CERTIFICATE_TRANSITIONS: Record<CertificateState, readonly Certific
   READY: ["ISSUING", "NOT_READY"],
   // 発行ジョブが失敗したら READY へ戻して再試行する。Gate 自体は満たしたままなので
   // NOT_READY ではなく READY。条件が崩れていれば READY → NOT_READY が拾う。
-  ISSUING: ["VERIFYING", "READY"],
-  // 検証ジョブが失敗したら ISSUING からやり直す。
-  VERIFYING: ["VERIFIED", "PENDING_CORRECTION", "ISSUING"],
+  // REVOKED も可（代表判断・2026-08-27）: 公開前でも重大な問題が起きた記録を残す。
+  ISSUING: ["VERIFYING", "READY", "REVOKED"],
+  // 検証ジョブが失敗したら ISSUING からやり直す。REVOKED は上記 ISSUING と同じ理由。
+  VERIFYING: ["VERIFIED", "PENDING_CORRECTION", "ISSUING", "REVOKED"],
   VERIFIED: ["SUPERSEDED", "REVOKED"],
   // **ISSUING へ直行させない。**READY を飛ばすと、訂正で崩れたかもしれない
   // Gate 条件（必須証跡・必要承認・未処理訂正なし）を再評価しないまま発行することになり、
@@ -148,7 +138,9 @@ export const PAYMENT_TRANSITIONS: Record<PaymentState, readonly PaymentState[]> 
   // CANCELED（キャンセルされた、という別の意味）しかない。
   // UNPAID へ落ちた後の UNPAID → PENDING は、結果が**確定した後**の再請求なので
   // §11.3 が禁じる「UNKNOWN のままの盲目リトライ」には当たらない。
-  UNKNOWN: ["PAID", "UNPAID", "CANCELED"],
+  // PARTIALLY_PAID / OVERPAID も可（代表判断・2026-08-27）: 照合で部分入金・
+  // 過入金だったと判明するケースが実際にある。
+  UNKNOWN: ["PAID", "UNPAID", "PARTIALLY_PAID", "OVERPAID", "CANCELED"],
 };
 
 // ── 同期（Sync）遷移表 v2.0 §14.2 ──

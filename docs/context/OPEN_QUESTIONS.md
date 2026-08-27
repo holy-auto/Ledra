@@ -5,12 +5,9 @@
 
 ## 追加（2026-08-27・IMP-016 同期基盤）
 
-- **Severity の `CRITICAL → ACTION` を許すかどうか、読み方が割れている。**
-  IMP-015 はコメントを正として表を緩め、IMP-016 のブランチは表を正としてコメントを
-  「CRITICAL からは HIGH または RESOLVED のみ」に書き換えていた。どちらも内部では
-  筋が通る。`NORMAL → RESOLVED` が塞がっていた理由は、どちらの読み方でも
-  説明されていない。`src/lib/domain/transitions.ts` 冒頭の未解決リストにも記録済み。
-  → 代表判断待ち
+（Severity の `CRITICAL → ACTION` を許すかどうかの読み方の割れは、代表判断で解決済み
+（2026-08-27。現状の表＝ACTIONへの部分的な降格も許可、を正とする）。詳細は
+DECISION_LOG「遷移表の未解決4件を代表判断で解決」参照。）
 
 （`src/lib/sync/` の型・競合検出をめぐる項目5件は、モジュール自体を削除したことで
 解消した。詳細は DECISION_LOG 2026-08-27「レビューの指摘が収束しなくなったら…」を
@@ -18,27 +15,19 @@
 
 ## 追加（2026-08-27・スタック PR の消化）
 
-- **IMP-015 の遷移表に足りない辺 11 件（代表判断待ち）。** `src/lib/domain/transitions.ts`
-  は稼働中コードからの import が 0 件なので今は誰も壊れないが、消費タスク
-  （IMP-028/031/027/016）が使う前に決める必要がある。特に効く2件:
-  - **`UNPAID → PAID` が無い** → 店頭の現金入金を1手で記録できず、架空の `PENDING` を挟むことになる
-  - **`UNKNOWN → UNPAID` が無い** → 決済結果不明の照合で「入金されていなかった」と分かっても、
-    `PAID`（受け取っていない金を受領済みにする）か `CANCELED`（別の意味）しか書けない
-
-  残り9件は PR #933 のコメントに表で出してある（Certificate の失敗経路・`READY → NOT_READY`・
-  訂正版の Gate 再評価、Severity の `NORMAL → RESOLVED`、Step の再開、Sync の積み直し、
-  Job の `CHECKED_IN → NO_SHOW` が許可されている件）。 → 代表判断待ち
+（`src/lib/domain/transitions.ts` の遷移表の足りない辺 11 件のうち、8 件は #933 で
+ADR・稼働中コードを根拠に修正済み。残る 3 件（REVOKED 到達性・支払い UNKNOWN 解決先・
+着手後 SKIPPED）に加えて、#933/#934 のマージで新たに生じた Severity `CRITICAL → ACTION`
+の読み方の割れも合わせた計 4 件を、2026-08-27 に代表判断で解決済み。詳細は
+DECISION_LOG「遷移表の未解決4件を代表判断で解決」参照。）
 
 - **v2.0 §19.1 の仕様書本文がこのリポジトリに無い。** そのため遷移表を**書かれた仕様と
   突き合わせられていない**。照合できたのは `docs/adr/` と稼働中コードだけ。
   仕様書をリポジトリに置くか、置かない方針なら遷移表の正しさを何で担保するかを決める。【要確認】
 
-- **`.husky/pre-push` がエラーを握りつぶしてテストを飛ばす。** `push.default` が未設定
-  （＝`simple`）のとき、**ローカルのブランチ名がリモート側の名前と違う**と
-  `@{push}` が `fatal: cannot resolve 'simple' push to a single destination` で解決できない。
-  それを `2>/dev/null` が握りつぶし、パイプが空になり、**空ストリームに対する `grep -qv` は 1 を返す**
-  ので `else` 枝（「doc-only push, skipping vitest」）に落ちる。フック本体と同じパイプで再現済み。
-  直すなら `git diff` の失敗を検知して**飛ばさずに落とす**（fail-closed）形にする。 → 代表判断待ち
+（`.husky/pre-push` がブランチ名不一致時に `@{push}` のエラーを `2>/dev/null` で
+握りつぶし、doc-only 判定に落ちてテストを飛ばす件は、代表判断で**現状維持（修正しない）**
+に決定（2026-08-27）。詳細は DECISION_LOG「遷移表の未解決4件を代表判断で解決」参照。）
 
 - **スタックした PR に CI を走らせる手段が無い。** `ci.yml` は `branches: [main, staging]` の
   `push` / `pull_request` でしか起動せず、`workflow_dispatch` も無い。ベース付け替えと
