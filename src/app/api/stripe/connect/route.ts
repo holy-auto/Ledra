@@ -65,6 +65,9 @@ export async function POST(req: NextRequest) {
 
     const stripe = getStripe();
     let accountId = tenant.stripe_connect_account_id as string | null;
+    // 画面に返す: この接続で実際に申請できた決済手段と、既存アカウントだったか
+    let requestedCapabilities: string[] = [];
+    const hadAccount = !!accountId;
 
     // 保存済み account_id があっても、Stripe 側で削除済み・mode 不一致
     // (test ⇄ live) などで参照できないことがある。その場合は accountLinks.create
@@ -91,7 +94,7 @@ export async function POST(req: NextRequest) {
       // 入力が増えるので、使うかどうかは加盟店が決める（後から Stripe の
       // ダッシュボードでも申請できる）。通らない capability は個別に外して
       // 作られる（接続そのものは止めない）
-      const account = await createAccountWithCapabilities(
+      const created = await createAccountWithCapabilities(
         stripe,
         {
           type: "standard",
@@ -102,7 +105,8 @@ export async function POST(req: NextRequest) {
         },
         parsed.data.capabilities ?? [],
       );
-      accountId = account.id;
+      accountId = created.account.id;
+      requestedCapabilities = created.requested;
 
       await admin.from("tenants").update({ stripe_connect_account_id: accountId }).eq("id", caller.tenantId);
     }
@@ -121,6 +125,11 @@ export async function POST(req: NextRequest) {
     return apiJson({
       ok: true,
       account_id: accountId,
+      // 選んだのに申請できなかった分を画面が知れるようにする。**黙って落とすと
+      // 「申請したのに Stripe が何も聞いてこない」だけの状態になる**
+      requested_capabilities: requestedCapabilities,
+      // 既存アカウントには作成時にしか capability を足せない
+      account_existed: hadAccount && !!tenant.stripe_connect_account_id,
       onboarding_url: accountLink.url,
     });
   } catch (e) {

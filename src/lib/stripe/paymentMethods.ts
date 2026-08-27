@@ -158,10 +158,12 @@ export async function withOptionalExtras<T>(
       const rejected = rejectedExtra(e, current, opts.scope, opts.indexBase);
       if (!rejected) throw e;
       failures++;
-      const bulk = rejected === DROP_ALL || failures >= maxDrops;
-      const dropped = bulk ? current : [rejected];
+      // 上限に達したら残りもまとめて外す。ただし**名指しされた1つ以外は
+      // 「断られた」と記録しない** —— Stripe が拒否していない手段まで
+      // 使えない扱いにすると、次に選んだ店にも出なくなる
+      const dropped = rejected === DROP_ALL || failures >= maxDrops ? current : [rejected];
       const message = e instanceof Error ? e.message : String(e);
-      dropped.forEach((name) => opts.onDrop?.(name, { bulk: bulk && rejected === DROP_ALL, message }));
+      dropped.forEach((name) => opts.onDrop?.(name, { bulk: name !== rejected, message }));
       logger.info("stripe: dropping payment option rejected by Stripe", {
         scope: opts.scope,
         dropped: dropped.join(","),
@@ -196,13 +198,21 @@ export async function createAccountWithCapabilities(
   stripe: Stripe,
   params: Stripe.AccountCreateParams,
   requested: readonly string[] = [],
-): Promise<Stripe.Account> {
+): Promise<{ account: Stripe.Account; requested: string[] }> {
   const now = Date.now();
-  const wanted = requested.filter(
-    (c) => OPTIONAL_CAPABILITY_IDS.includes(c) && (capabilityRejectedUntil.get(c) ?? 0) <= now,
-  );
+  const selected = requested.filter((c) => OPTIONAL_CAPABILITY_IDS.includes(c));
+  const wanted = selected.filter((c) => (capabilityRejectedUntil.get(c) ?? 0) <= now);
 
-  const { value } = await withOptionalExtras(
+  // **加盟店が選んだのに要求しなかった分は黙って捨てない。** 捨てると
+  // 「申請したのに Stripe が何も聞いてこない」だけの状態になり、原因が追えない
+  const suppressed = selected.filter((c) => !wanted.includes(c));
+  if (suppressed.length) {
+    logger.warn("stripe connect: skipped capabilities rejected earlier in this process", {
+      suppressed: suppressed.join(","),
+    });
+  }
+
+  const { value, extras } = await withOptionalExtras(
     wanted,
     (caps) =>
       stripe.accounts.create(
@@ -218,14 +228,14 @@ export async function createAccountWithCapabilities(
       ),
     {
       scope: "capability",
-      // bulk（どれが悪いか特定できずに全部外した）を「この capability は無効」と
+      // bulk（どれが悪いか特定できずに外した）を「この capability は無効」と
       // 記録すると、巻き添えで正常な申請まで出さなくなる
       onDrop: (name, info) => {
         if (!info.bulk) capabilityRejectedUntil.set(name, Date.now() + CAPABILITY_RETRY_TTL_MS);
       },
     },
   );
-  return value;
+  return { account: value, requested: extras };
 }
 
 /** テスト専用 —— プロセス内メモを消す。 */

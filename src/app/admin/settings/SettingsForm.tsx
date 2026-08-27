@@ -356,6 +356,21 @@ function StripeConnectSection({ connectStatus }: { connectStatus: ConnectStatus 
       });
       const j = await parseJsonSafe(res);
       if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
+
+      // 選んだのに申請できなかった分を伝える。**黙って進むと「申請したのに
+      // Stripe が何も聞いてこない」だけの状態になり、店側は気づけない**
+      const requested: string[] = Array.isArray(j?.requested_capabilities) ? j.requested_capabilities : [];
+      const missing = wantedCapabilities.filter((c) => !requested.includes(c));
+      if (missing.length) {
+        const labels = missing.map((id) => OPTIONAL_CAPABILITIES.find((c) => c.id === id)?.label ?? id).join(" / ");
+        const reason = j?.account_existed
+          ? "既に作成済みの Stripe アカウントには、後から一緒に申請できません。"
+          : "この環境では申請を受け付けられませんでした。";
+        alert(
+          `${labels} は今回申請していません。\n${reason}\nStripe のダッシュボード（設定 → 決済手段）から申請してください。`,
+        );
+      }
+
       if (j?.onboarding_url) {
         window.location.href = j.onboarding_url;
       }

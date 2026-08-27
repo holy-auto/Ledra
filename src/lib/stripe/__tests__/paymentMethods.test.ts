@@ -48,7 +48,7 @@ describe("createAccountWithCapabilities", () => {
   it("何も選ばれていなければ、追加の申請はしない", async () => {
     const { stripe, create } = fakeStripe(() => ({ id: "acct_0" }));
 
-    const account = await createAccountWithCapabilities(stripe, PARAMS);
+    const { account } = await createAccountWithCapabilities(stripe, PARAMS);
 
     expect(account.id).toBe("acct_0");
     expect(create).toHaveBeenCalledTimes(1);
@@ -58,7 +58,7 @@ describe("createAccountWithCapabilities", () => {
   it("選ばれた決済手段だけを作成と同時に要求する", async () => {
     const { stripe, create } = fakeStripe(() => ({ id: "acct_1" }));
 
-    const account = await createAccountWithCapabilities(stripe, PARAMS, [...OPTIONAL_CAPABILITY_IDS]);
+    const { account } = await createAccountWithCapabilities(stripe, PARAMS, [...OPTIONAL_CAPABILITY_IDS]);
 
     expect(account.id).toBe("acct_1");
     expect(create).toHaveBeenCalledTimes(1);
@@ -81,7 +81,7 @@ describe("createAccountWithCapabilities", () => {
         : { id: "acct_2" },
     );
 
-    const account = await createAccountWithCapabilities(stripe, PARAMS, [...OPTIONAL_CAPABILITY_IDS]);
+    const { account } = await createAccountWithCapabilities(stripe, PARAMS, [...OPTIONAL_CAPABILITY_IDS]);
 
     expect(account.id).toBe("acct_2");
     expect(create).toHaveBeenCalledTimes(2);
@@ -101,7 +101,7 @@ describe("createAccountWithCapabilities", () => {
 
     await createAccountWithCapabilities(stripe, PARAMS, [...OPTIONAL_CAPABILITY_IDS]);
     create.mockClear();
-    const account = await createAccountWithCapabilities(stripe, PARAMS, [...OPTIONAL_CAPABILITY_IDS]);
+    const { account } = await createAccountWithCapabilities(stripe, PARAMS, [...OPTIONAL_CAPABILITY_IDS]);
 
     expect(account.id).toBe("acct_3");
     expect(create).toHaveBeenCalledTimes(1);
@@ -121,6 +121,45 @@ describe("createAccountWithCapabilities", () => {
 
     // 巻き添えで外した分は覚えない → 次はまた全部要求する
     expect(requested(create.mock.calls[0][0])).toEqual([...OPTIONAL_CAPABILITY_IDS]);
+  });
+
+  it("上限に達して残りをまとめて外しても、断られていない手段を「無効」と記録しない", async () => {
+    // konbini → jp_bank_transfer と2回断られ、3回目は上限で残り（paypay / link）も外れる
+    const rejectOrder = ["konbini_payments", "jp_bank_transfer_payments"];
+    let round = 0;
+    const { stripe, create } = fakeStripe((params) => {
+      const caps = requested(params);
+      const target = rejectOrder[round];
+      if (target && caps.includes(target)) {
+        round++;
+        return stripeError(`${target} is not a valid capability`, "capabilities");
+      }
+      return { id: "acct_bulk" };
+    });
+
+    await createAccountWithCapabilities(stripe, PARAMS, [...OPTIONAL_CAPABILITY_IDS]);
+
+    // 次の店が PayPay と Link を選んだら、ちゃんと要求される
+    create.mockClear();
+    round = 99; // もう断らない
+    await createAccountWithCapabilities(stripe, PARAMS, ["paypay_payments", "link_payments"]);
+
+    expect(requested(create.mock.calls[0][0])).toEqual(["paypay_payments", "link_payments"]);
+  });
+
+  it("要求できた手段を返す（選んだのに出せなかった分を画面が知れる）", async () => {
+    const { stripe } = fakeStripe((params) =>
+      requested(params).includes("paypay_payments")
+        ? stripeError("paypay_payments is not a valid capability", "capabilities")
+        : { id: "acct_r" },
+    );
+
+    const first = await createAccountWithCapabilities(stripe, PARAMS, ["paypay_payments", "link_payments"]);
+    expect(first.requested).toEqual(["link_payments"]);
+
+    // 2 回目は最初から要求しない → 返り値にも出ない
+    const second = await createAccountWithCapabilities(stripe, PARAMS, ["paypay_payments", "link_payments"]);
+    expect(second.requested).toEqual(["link_payments"]);
   });
 
   it("特定できない失敗はそのまま投げる", async () => {
