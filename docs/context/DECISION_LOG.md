@@ -290,6 +290,37 @@
 9. 公開区分: 公開可／要確認／非公開
 ```
 
+## 2026-08-19 IMP-014 ドメインイベントを「統一カタログ・型付きエンベロープ・リスク推定」のみで実装し、既存 audit / outbox は変更しない
+
+1. 日付: 2026-08-19
+2. 起きたこと: IMP-014（ドメインイベント・監査・冪等）の実装範囲を決定する必要があった。
+   v2.0 §20 は Core Event Catalogue（29 イベント）、統一イベントエンベロープ、
+   イベント→優先度→通知パイプラインを定義している。現状は AuditEventType 27 種
+   （certificateLog.ts）+ 未型化 2 種 + outbox 5 ステータス + webhook 8 トピック +
+   冪等 3 系統が別個に稼働中。
+3. 以前の考え: ドメインイベント統合は audit_logs / vehicle_histories / outbox_events の
+   書き込み系を統一パイプラインに統合する大規模リファクタリング。
+4. 違和感・問題: (a) 3 系統（監査・outbox・通知）が独立しており、同じ業務イベントを
+   異なる型・異なるテーブルに書き込む。(b) AuditEventType は snake_case、WebhookTopic は
+   resource.action 形式で命名規約が不統一。(c) progress_update / thickness_measurement の
+   2 種が型定義なし（文字列直書き）。(d) イベントに actor / store scope / risk level の
+   メタデータがない。
+5. 決めたこと: (1) 統一イベントカタログ（resource.action 命名、33 型）を単一定義源として
+   作成。(2) 既存 AuditEventType→DomainEventType の完全マッピングを提供（段階的移行）。
+   (3) 型付きイベントエンベロープ（actor・テナント・店舗・リスク・冪等キー・バージョン）を
+   定義。(4) イベント型別リスクレベル推定を提供。既存の AuditEventType / WebhookTopic /
+   logAuditEvent / vehicle_histories 書き込み / outbox は変更しない。
+6. 捨てた選択肢: (a) 既存 logAuditEvent を DomainEvent ベースに書き換え → 呼び出し元
+   42 箇所の変更、リグレッションリスク。(b) outbox_events と vehicle_histories を統合テーブルに
+   → DB マイグレーション + RLS 変更が必要。(c) イベントパイプライン（publish→subscribe→
+   notify）を実装 → IMP-044 の範囲、今は型だけで十分。
+7. 判断理由: Ponytail 原則（最小差分）。既存 3 系統が稼働中のまま、v2.0 イベントカタログの
+   型安全な定義と移行パスを提供する。パイプライン統合は IMP-044 に委ねる。
+8. まだ答えが出ていないこと: (a) vehicle_histories の type カラムに CHECK 制約を追加する
+   時期と方法。(b) イベントバージョニングポリシー（version フィールドのインクリメント規則）。
+   (c) 冪等 3 系統の統合方法。
+9. 公開区分: 公開可
+
 ## 2026-08-19 IMP-013 権限エンジンを「語彙定義・店舗スコープ型・判定関数」のみで実装し、既存 Permission 体系は変更しない
 
 1. 日付: 2026-08-19

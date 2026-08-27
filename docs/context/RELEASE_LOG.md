@@ -1018,6 +1018,18 @@ supabase migration repair --status reverted 20260825000000
 - 対象: どの画面・API・業種向けか
 ```
 
+## 2026-08-19 IMP-014 ドメインイベント・監査・冪等基盤（branch impl/IMP-014-domain-events / PR #932）
+
+- 内容: v2.0 §20 / Appendix B のドメインイベント基盤を型・純粋関数で整備。(1) 統一ドメイン
+  イベントカタログ（`resource.action` 命名規約で 33 イベント型を網羅。既存 AuditEventType 27 種
+  + AiAuditAction 1 種 + 未型化 2 種 + webhook topics 由来 3 種）。(2) 既存 AuditEventType→
+  DomainEventType マッピング（段階的移行用）。(3) 型付きドメインイベントエンベロープ
+  （actor 5 種・テナント/店舗スコープ・リスクレベル・冪等キー・バージョン・subject 参照）。
+  (4) イベント型別リスクレベル推定（IMP-013 operationRisk と整合）。既存の AuditEventType /
+  WebhookTopic / logAuditEvent / emitTenantEvent は変更なし。DB マイグレーション・
+  パイプライン変更なし。
+- 対象: 開発基盤（IMP-044 イベントパイプライン・IMP-015 状態機械の前提条件）。
+
 ## 2026-08-19 IMP-013 権限エンジン・店舗スコープ基盤（branch impl/IMP-013-permission-engine / PR #931）
 
 - 内容: v2.0 §16 の不足分を型・純粋関数で補完。(1) 正準権限動詞 7 種（VIEW/EDIT/CONFIRM/
