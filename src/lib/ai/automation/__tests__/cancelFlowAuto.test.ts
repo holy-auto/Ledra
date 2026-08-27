@@ -130,6 +130,18 @@ describe("maybeStartCancelFlow", () => {
     expect(mocks.sendCustomerLineButtons).toHaveBeenCalledTimes(1);
   });
 
+  it("drops the created flow to expired when the prompt fails to deliver (no dangling flow)", async () => {
+    seedReservations([{ id: "r-future", scheduled_date: "2026-09-01", start_time: "10:00:00", title: "コーティング" }]);
+    mocks.sendCustomerLineButtons.mockResolvedValue(false);
+    const handled = await maybeStartCancelFlow(baseParams());
+    expect(handled).toBe(false);
+    // 作った awaiting_cancel_* 行を expired に落とし、72h 塞ぎを防ぐ。
+    const expired = mocks.store.updates.find(
+      (u) => u.table === "line_conversation_flows" && u.payload.state === "expired",
+    );
+    expect(expired).toBeTruthy();
+  });
+
   it("does not start a second flow when one is already active", async () => {
     mocks.store.tables.line_conversation_flows = [
       {

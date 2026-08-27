@@ -931,4 +931,32 @@ describe("handleFlowPostback — 予約キャンセルのセルフ対応", () =>
     expect(handled).toBe(false);
     expect(mocks.cancelReservationById).not.toHaveBeenCalled();
   });
+
+  it("選択で確認ボタンが届かなければ awaiting_cancel_confirm を残さず expired に落とす", async () => {
+    mocks.shouldAutoSelfCancel.mockReturnValue(true);
+    mocks.sendCustomerLineButtons.mockResolvedValue(false);
+    seedCancelFlow({
+      state: "awaiting_cancel_pick",
+      reservation_id: null,
+      context_json: {
+        purpose: "cancel",
+        cancel_candidates: [{ id: "r-1", scheduled_date: "2026-09-01", start_time: "10:00:00", title: "A" }],
+      },
+    });
+    const handled = await handleFlowPostback({ tenantId: TENANT, lineUserId: LINE_USER, data: "flow:cancel_pick:0" });
+    expect(handled).toBe(false);
+    expect(
+      mocks.store.updates.some((u) => u.table === "line_conversation_flows" && u.payload.state === "expired"),
+    ).toBe(true);
+  });
+
+  it("flow:consult は会話フロー OFF でも自己キャンセル opt-in が ON なら受ける (死にボタン回避)", async () => {
+    mocks.shouldRunConversationFlow.mockReturnValue(false);
+    mocks.shouldAutoSelfCancel.mockReturnValue(true);
+    // 進行中フロー無し → durable な human_takeover マーカーを作って引き継ぐ。
+    const handled = await handleFlowPostback({ tenantId: TENANT, lineUserId: LINE_USER, data: "flow:consult" });
+    expect(handled).toBe(true);
+    const marker = mocks.store.inserts.find((i) => i.table === "line_conversation_flows");
+    expect(marker?.payload.state).toBe("human_takeover");
+  });
 });

@@ -213,7 +213,9 @@ export async function handleFlowPostback(params: {
     if (flowOptIn && pb?.event === "start_quote") {
       return handleFollowupStartQuote(admin, tenantId, lineUserId, resolvedCustomerId, params.data);
     }
-    if (flowOptIn && pb?.event === "consult") {
+    // consult は会話フローだけでなくキャンセル選択画面 (buildCancelPickAsk) にも出るため、
+    // self-cancel のみ有効なテナントでも「スタッフに相談したい」が死にボタンにならないよう受ける。
+    if ((flowOptIn || selfCancelOptIn) && pb?.event === "consult") {
       return handleFollowupConsult(admin, tenantId, lineUserId, resolvedCustomerId, params.data);
     }
 
@@ -416,13 +418,20 @@ export async function handleFlowPostback(params: {
       });
       if (!ok) return false;
       const msg = buildCancelConfirmAsk(chosen);
-      await sendCustomerLineButtons({
+      const delivered = await sendCustomerLineButtons({
         tenantId,
         customerId: flow.customer_id,
         lineUserId,
         text: msg.text,
         buttons: msg.buttons,
       });
+      if (!delivered) {
+        // 確認ボタンが届かなければ awaiting_cancel_confirm 行を残さない (ボタンが無いと
+        // 顧客は確定も取消もできず、72h 失効まで他フローも塞がるため)。expired に落とす。
+        await advanceFlow(admin, flow, { toState: "expired", expectState: "awaiting_cancel_confirm" });
+        logger.warn("[conversationFlowPostback] cancel-confirm delivery failed", { tenantId, lineUserId });
+        return false;
+      }
       return true;
     }
 
@@ -510,14 +519,22 @@ async function handleCancelDecision(
     reservationId: flow.reservation_id,
     customerId: flow.customer_id,
     reason: "顧客がLINEでキャンセル",
+    // 締め切りは実 DB 値でも再検証する (提示後にスタッフが当日へ日程変更した場合、
+    // context スナップショット依存の上の pre-check では拾えないため二重ガード)。
+    cutoffDate: todayJst(),
   });
   if (!result.ok) {
     await sendCustomerLineText({ tenantId, customerId: flow.customer_id, lineUserId, body: buildCancelHandoff() });
+    const tooLate = result.reason === "too_late";
     await notifyStaffOfAiAction(
       admin,
       tenantId,
-      "予約キャンセルが完了できませんでした — ご対応をお願いします",
-      "LINE からのセルフキャンセルが完了できませんでした。手動でご確認ください。",
+      tooLate
+        ? "予約キャンセルのご希望（当日・直前）— ご対応をお願いします"
+        : "予約キャンセルが完了できませんでした — ご対応をお願いします",
+      tooLate
+        ? "当日・直前になったため自動キャンセルせずスタッフ対応に切り替えました。ご確認ください。"
+        : "LINE からのセルフキャンセルが完了できませんでした。手動でご確認ください。",
     );
     return true;
   }

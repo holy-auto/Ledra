@@ -78,6 +78,47 @@ describe("cancelReservationById", () => {
     expect(result).toEqual({ ok: false, reason: "not_found" });
   });
 
+  it("rejects with too_late when scheduled_date is on/before the cutoff (day-of / past)", async () => {
+    seed({
+      id: "res-1",
+      tenant_id: TENANT,
+      customer_id: CUSTOMER,
+      status: "confirmed",
+      scheduled_date: "2026-08-27",
+      gcal_event_id: "g1",
+    });
+    const result = await cancelReservationById(admin(), {
+      tenantId: TENANT,
+      reservationId: "res-1",
+      customerId: CUSTOMER,
+      cutoffDate: "2026-08-27", // 当日 = 締め切り以下なので拒否
+    });
+
+    expect(result).toEqual({ ok: false, reason: "too_late" });
+    expect(mocks.store.updates.find((u) => u.table === "reservations")).toBeUndefined();
+    expect(mocks.syncDeleteEvent).not.toHaveBeenCalled();
+  });
+
+  it("allows cancel when scheduled_date is after the cutoff (until day before)", async () => {
+    seed({
+      id: "res-1",
+      tenant_id: TENANT,
+      customer_id: CUSTOMER,
+      status: "confirmed",
+      scheduled_date: "2026-08-28",
+      gcal_event_id: "g1",
+    });
+    const result = await cancelReservationById(admin(), {
+      tenantId: TENANT,
+      reservationId: "res-1",
+      customerId: CUSTOMER,
+      cutoffDate: "2026-08-27",
+    });
+
+    expect(result).toEqual({ ok: true, alreadyFinal: false });
+    expect(mocks.syncDeleteEvent).toHaveBeenCalledWith(TENANT, "res-1", "g1");
+  });
+
   it("cancels without a gcal event (no calendar sync needed)", async () => {
     seed({ id: "res-1", tenant_id: TENANT, customer_id: CUSTOMER, status: "confirmed", gcal_event_id: null });
     const result = await cancelReservationById(admin(), {

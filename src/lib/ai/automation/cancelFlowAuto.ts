@@ -14,7 +14,7 @@
  *   - 進行中フローがあれば割り込まない (二重開始しない)
  */
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
-import { createFlow, getActiveFlow } from "@/lib/line/flow/flowStore";
+import { createFlow, getActiveFlow, advanceFlow } from "@/lib/line/flow/flowStore";
 import { resolveCustomerIdByLineUser, CANCEL_CANDIDATES_KEY } from "./conversationFlowPostback";
 import { sendCustomerLineText, sendCustomerLineButtons } from "@/lib/line/client";
 import {
@@ -138,6 +138,10 @@ export async function maybeStartCancelFlow(params: MaybeStartCancelFlowParams): 
       buttons: msg.buttons,
     });
     if (!delivered) {
+      // 提示ボタンが届かなければ作った行を expired に落とす。残すと awaiting_cancel_* が
+      // getActiveFlow に引っかかり、顧客はボタンが無く前進できないまま 72h 失効まで
+      // 他フロー (見積り等) の開始も塞がれる (handleFollowupStartQuote と同じ後始末)。
+      await advanceFlow(admin, flow, { toState: "expired", expectState: flow.state });
       logger.warn("[cancelFlowAuto] cancel prompt delivery failed", { tenantId, lineUserId });
       return false;
     }
