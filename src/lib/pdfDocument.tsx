@@ -28,7 +28,8 @@ Font.register({
   ],
 });
 
-const DOC_TYPE_LABELS: Record<string, string> = {
+/** 帳票種別 → 表示名。プレビュー用スクリプトが種別一覧の唯一の出所として参照する。 */
+export const DOC_TYPE_LABELS: Record<string, string> = {
   estimate: "見積書",
   delivery: "納品書",
   purchase_order: "発注書",

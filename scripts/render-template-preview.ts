@@ -17,26 +17,29 @@
  */
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { renderDocumentPdf, type DocForPdf, type TenantForDocPdf } from "@/lib/pdfDocument";
+import { DOC_TYPE_LABELS, renderDocumentPdf, type DocForPdf, type TenantForDocPdf } from "@/lib/pdfDocument";
 
-/** pdfDocument.tsx の DOC_TYPE_LABELS と同じ並び */
-const DOC_TYPES = [
-  "estimate",
-  "delivery",
-  "purchase_order",
-  "order_confirmation",
-  "inspection",
-  "receipt",
-  "invoice",
-  "consolidated_invoice",
-  "staff_invoice",
-];
+const DOC_TYPES = Object.keys(DOC_TYPE_LABELS);
 
 const flags = process.argv.slice(2).filter((a) => a.startsWith("--"));
 const positional = process.argv.slice(2).filter((a) => !a.startsWith("--"));
 const withReduced = flags.includes("--reduced");
 const target = positional[0] || "estimate";
 const docTypes = target === "all" ? DOC_TYPES : [target];
+
+const unknownFlags = flags.filter((f) => f !== "--reduced");
+if (unknownFlags.length > 0) {
+  console.error(`不明なフラグ: ${unknownFlags.join(", ")}（使えるのは --reduced のみ）`);
+  process.exit(1);
+}
+if (target !== "all" && !DOC_TYPES.includes(target)) {
+  console.error(`不明な帳票種別: ${target}\n指定できるのは all / ${DOC_TYPES.join(" / ")}`);
+  process.exit(1);
+}
+if (target === "all" && positional[1]) {
+  console.error("all と出力先パスは同時に指定できません（out/template-<種別>.pdf へ出力されます）");
+  process.exit(1);
+}
 
 const items: DocForPdf["items_json"] = [
   { description: "サンプル商品A", quantity: 1, unit: "個", unit_price: 57750, amount: 57750 },
@@ -104,11 +107,7 @@ const tenant: TenantForDocPdf = {
 
 void (async () => {
   for (const docType of docTypes) {
-    const outPath = path.resolve(
-      docTypes.length === 1 && positional[1]
-        ? positional[1]
-        : `out/template-${docType}${withReduced ? "-reduced" : ""}.pdf`,
-    );
+    const outPath = path.resolve(positional[1] ?? `out/template-${docType}${withReduced ? "-reduced" : ""}.pdf`);
     const buf = await renderDocumentPdf({ ...doc, doc_type: docType }, tenant, null);
     mkdirSync(path.dirname(outPath), { recursive: true });
     writeFileSync(outPath, buf);
