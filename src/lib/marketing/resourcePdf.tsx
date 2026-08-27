@@ -61,24 +61,33 @@ const colors = {
 };
 
 const styles = StyleSheet.create({
+  /**
+   * 版面は A4 横（842×595pt）。提案書として投影する前提で横位置にし、
+   * かつ A4 に余白なく刷れる形にしている（16:9 だと紙に帯が出る）。
+   * 縦位置より天地が 34% 狭く左右が 46% 広いので、余白は左右を厚く取り、
+   * 天地は詰める。
+   */
   page: {
     fontFamily: "NotoSansJP",
     backgroundColor: colors.bg,
     color: colors.text,
-    padding: 48,
+    paddingHorizontal: 56,
+    paddingTop: 42,
+    paddingBottom: 54,
   },
   pageTitle: {
-    fontSize: 8.5,
+    fontSize: 9,
     fontWeight: 700,
     color: colors.accent,
-    marginBottom: 7,
-    letterSpacing: 2.6,
+    marginBottom: 8,
+    letterSpacing: 3,
   },
   h1: {
-    fontSize: 25,
+    fontSize: 32,
     fontWeight: 700,
-    lineHeight: 1.24,
-    marginBottom: 16,
+    lineHeight: 1.2,
+    marginBottom: 14,
+    letterSpacing: -0.4,
     color: colors.text,
   },
   h2: {
@@ -89,10 +98,12 @@ const styles = StyleSheet.create({
     color: colors.text,
   },
   lead: {
-    fontSize: 12,
+    fontSize: 13,
     color: colors.mute,
-    lineHeight: 1.7,
+    lineHeight: 1.65,
     marginBottom: 14,
+    // 横位置は行長が伸びすぎると読みにくい。リード文だけ行長を制限する。
+    maxWidth: 620,
   },
   body: {
     fontSize: 10.5,
@@ -120,7 +131,7 @@ const styles = StyleSheet.create({
   },
   grid2: {
     flexDirection: "row",
-    gap: 10,
+    gap: 16,
   },
   gridItem: {
     flex: 1,
@@ -132,15 +143,15 @@ const styles = StyleSheet.create({
   gradientBar: {
     height: 4,
     backgroundColor: colors.border,
-    borderLeftWidth: 64,
+    borderLeftWidth: 88,
     borderLeftColor: colors.accent,
-    marginBottom: 22,
+    marginBottom: 20,
   },
   footer: {
     position: "absolute",
-    bottom: 26,
-    left: 48,
-    right: 48,
+    bottom: 24,
+    left: 56,
+    right: 56,
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
@@ -151,13 +162,13 @@ const styles = StyleSheet.create({
     color: colors.mute2,
   },
   tagline: {
-    marginTop: 28,
-    paddingLeft: 12,
-    borderLeftWidth: 2,
+    marginTop: 24,
+    paddingLeft: 14,
+    borderLeftWidth: 3,
     borderLeftColor: colors.gold,
-    fontSize: 14,
+    fontSize: 17,
     fontWeight: 700,
-    lineHeight: 1.5,
+    lineHeight: 1.45,
     color: colors.accent2,
   },
   bullet: {
@@ -262,7 +273,7 @@ function Footer() {
 
 function Page1Cover() {
   return (
-    <Page size="A4" style={styles.page}>
+    <Page size="A4" orientation="landscape" style={styles.page}>
       <Text style={styles.pageTitle}>SERVICE OVERVIEW</Text>
       <View style={styles.gradientBar} />
       <Text style={styles.h1}>記録を、業界の共通言語にする。</Text>
@@ -274,7 +285,7 @@ function Page1Cover() {
         施工店・代理店・保険会社・顧客の4ポータルが、同じ「施工の事実」を役割に応じて閲覧・検証できる設計により、業界全体の記録文化を一段引き上げます。
       </Text>
 
-      <View style={[styles.card, { marginTop: 26 }]}>
+      <View style={[styles.card, { marginTop: 26 }]} wrap={false}>
         <Text style={styles.cardTitle}>この資料でお伝えすること</Text>
         <Text style={styles.bullet}>• Ledra が解決する3つの業界課題</Text>
         <Text style={styles.bullet}>• 主要機能と、施工店が得られる業務変化</Text>
@@ -291,7 +302,7 @@ function Page1Cover() {
 
 function Page2Problems() {
   return (
-    <Page size="A4" style={styles.page}>
+    <Page size="A4" orientation="landscape" style={styles.page}>
       <Text style={styles.pageTitle}>01 PROBLEM</Text>
       <View style={styles.gradientBar} />
       <Text style={styles.h1}>いま、施工現場の記録に起きていること</Text>
@@ -299,19 +310,19 @@ function Page2Problems() {
         職人の仕事は確かでも、その確かさを「あとから証明できない」という課題が業界全体に残っています。
       </Text>
 
-      <View style={styles.card}>
+      <View style={styles.card} wrap={false}>
         <Text style={styles.cardTitle}>① 伝わらない摩擦</Text>
         <Text style={styles.cardDesc}>
           紙・個人スマホ・Excel に散在する施工記録。同じ精度で顧客・保険会社・次の担当者に届ける共通フォーマットがない。
         </Text>
       </View>
-      <View style={styles.card}>
+      <View style={styles.card} wrap={false}>
         <Text style={styles.cardTitle}>② 消える摩擦</Text>
         <Text style={styles.cardDesc}>
           紙はなくなり、担当者は変わる。3年後に「この車両に何の施工をしたか」を確実に答えられる記録が残っていない。
         </Text>
       </View>
-      <View style={styles.card}>
+      <View style={styles.card} wrap={false}>
         <Text style={styles.cardTitle}>③ 疑われる摩擦</Text>
         <Text style={styles.cardDesc}>
           事故や事後対応の場面で、「本当にその時の写真か」「あとから直していないか」という不信に、紙やスマホ写真では十分答えられない。
@@ -329,7 +340,7 @@ function Page2Problems() {
 
 function Page3Features() {
   return (
-    <Page size="A4" style={styles.page}>
+    <Page size="A4" orientation="landscape" style={styles.page}>
       <Text style={styles.pageTitle}>02 WHAT IT DELIVERS</Text>
       <View style={styles.gradientBar} />
       <Text style={styles.h1}>Ledra が提供するもの</Text>
@@ -337,23 +348,23 @@ function Page3Features() {
 
       <View style={styles.grid2}>
         <View style={styles.gridItem}>
-          <View style={styles.card}>
+          <View style={styles.card} wrap={false}>
             <Text style={styles.cardTitle}>デジタル施工証明書</Text>
             <Text style={styles.cardDesc}>
               写真・施工内容・施工者・日時を、ワンクリックで発行。QRコードで顧客に即共有。
             </Text>
           </View>
-          <View style={styles.card}>
+          <View style={styles.card} wrap={false}>
             <Text style={styles.cardTitle}>車両・顧客 360° ビュー</Text>
             <Text style={styles.cardDesc}>1台・1人の履歴を、証明書・予約・請求までタイムラインで横断参照。</Text>
           </View>
-          <View style={styles.card}>
+          <View style={styles.card} wrap={false}>
             <Text style={styles.cardTitle}>案件ワークフロー・POS・帳票</Text>
             <Text style={styles.cardDesc}>
               受付から引渡しまでを1つのワークスペースで。Tap to Pay 決済、請求書 PDF 自動生成、Google Calendar 同期。
             </Text>
           </View>
-          <View style={styles.card}>
+          <View style={styles.card} wrap={false}>
             <Text style={styles.cardTitle}>現場モバイル</Text>
             <Text style={styles.cardDesc}>
               スマホ・タブレット前提の UI で、撮影から証明書発行までを現場の速度で。PWA
@@ -362,26 +373,26 @@ function Page3Features() {
           </View>
         </View>
         <View style={styles.gridItem}>
-          <View style={styles.card}>
+          <View style={styles.card} wrap={false}>
             <Text style={styles.cardTitle}>保険・代理店連携</Text>
             <Text style={styles.cardDesc}>
               保険会社ポータルで検索・査定・案件管理。代理店ポータルで紹介・コミッション管理。
             </Text>
           </View>
-          <View style={styles.card}>
+          <View style={styles.card} wrap={false}>
             <Text style={styles.cardTitle}>改ざん防止（Polygon anchoring / C2PA）</Text>
             <Text style={styles.cardDesc}>
               施工写真の SHA-256 ハッシュを Polygon に刻印。写真には C2PA 署名も付与。第三者が独立に検証可能。
             </Text>
           </View>
-          <View style={styles.card}>
+          <View style={styles.card} wrap={false}>
             <Text style={styles.cardTitle}>既存ツールとの連携</Text>
             <Text style={styles.cardDesc}>
               Stripe / Square / Google Calendar /
               LINE、freee・マネーフォワードの会計連携と接続。置き換えではなく、橋渡し。
             </Text>
           </View>
-          <View style={styles.card}>
+          <View style={styles.card} wrap={false}>
             <Text style={styles.cardTitle}>経営分析・ナレッジ</Text>
             <Text style={styles.cardDesc}>
               売上・顧客・パートナーランクをダッシュボードで可視化。施工手順のナレッジ共有で、品質を人ではなくチームに残します。
@@ -397,7 +408,7 @@ function Page3Features() {
 
 function Page4NextSteps() {
   return (
-    <Page size="A4" style={styles.page}>
+    <Page size="A4" orientation="landscape" style={styles.page}>
       <Text style={styles.pageTitle}>03 NEXT STEPS</Text>
       <View style={styles.gradientBar} />
       <Text style={styles.h1}>次のステップ</Text>
@@ -448,7 +459,7 @@ export function ServiceOverviewPdf() {
 
 function PricingCover() {
   return (
-    <Page size="A4" style={styles.page}>
+    <Page size="A4" orientation="landscape" style={styles.page}>
       <Text style={styles.pageTitle}>PRICING OVERVIEW</Text>
       <View style={styles.gradientBar} />
       <Text style={styles.h1}>料金プラン詳細</Text>
@@ -457,7 +468,7 @@ function PricingCover() {
         の各プランに含まれる機能・対応件数・サポート範囲・オプション料金・キャンペーン情報を、見積提示にそのまま使える粒度でまとめた一次資料です。
       </Text>
 
-      <View style={[styles.card, { marginTop: 18 }]}>
+      <View style={[styles.card, { marginTop: 18 }]} wrap={false}>
         <Text style={styles.cardTitle}>この資料の構成</Text>
         <Text style={styles.bullet}>
           • {Object.keys(PLANS).length}プラン（
@@ -472,7 +483,7 @@ function PricingCover() {
         <Text style={styles.bullet}>• NFCタグ価格と初期100店舗限定キャンペーン</Text>
       </View>
 
-      <View style={[styles.card, { marginTop: 12 }]}>
+      <View style={[styles.card, { marginTop: 12 }]} wrap={false}>
         <Text style={styles.cardTitle}>料金の基本方針</Text>
         <Text style={styles.cardDesc}>
           ・すべて月額税抜表示（別途消費税）。年間契約で{ANNUAL_DISCOUNT_PERCENT}%割引。{"\n"}
@@ -511,7 +522,7 @@ function PlanCard({
   recommended?: boolean;
 }) {
   return (
-    <View style={[styles.card, { padding: 12, marginVertical: 4 }]}>
+    <View style={[styles.card, { padding: 12, marginVertical: 4 }]} wrap={false}>
       {recommended && <Text style={styles.pill}>RECOMMENDED</Text>}
       <Text style={styles.cardTitle}>{name}</Text>
       <View style={styles.priceLine}>
@@ -538,7 +549,7 @@ function PlanCard({
 
 function PricingPlans() {
   return (
-    <Page size="A4" style={styles.page}>
+    <Page size="A4" orientation="landscape" style={styles.page}>
       <Text style={styles.pageTitle}>01 PLANS</Text>
       <View style={styles.gradientBar} />
       <Text style={styles.h1}>4プランの基本料金</Text>
@@ -601,7 +612,7 @@ function PricingPlans() {
 
 function PricingComparison() {
   return (
-    <Page size="A4" style={styles.page}>
+    <Page size="A4" orientation="landscape" style={styles.page}>
       <Text style={styles.pageTitle}>02 COMPARISON</Text>
       <View style={styles.gradientBar} />
       <Text style={styles.h1}>機能別比較表</Text>
@@ -637,7 +648,7 @@ function PricingComparison() {
 
 function PricingTemplateAndAddons() {
   return (
-    <Page size="A4" style={styles.page}>
+    <Page size="A4" orientation="landscape" style={styles.page}>
       <Text style={styles.pageTitle}>03 TEMPLATE & OPTIONS</Text>
       <View style={styles.gradientBar} />
       <Text style={styles.h1}>テンプレートとオプション</Text>
@@ -645,7 +656,7 @@ function PricingTemplateAndAddons() {
       <Text style={styles.h2}>ブランド証明書テンプレート</Text>
       <View style={styles.grid2}>
         <View style={styles.gridItem}>
-          <View style={styles.card}>
+          <View style={styles.card} wrap={false}>
             <Text style={styles.cardTitle}>{TEMPLATE_OPTIONS.preset.name}</Text>
             <View style={styles.priceLine}>
               <Text style={styles.priceMain}>{TEMPLATE_OPTIONS.preset.price}</Text>
@@ -661,7 +672,7 @@ function PricingTemplateAndAddons() {
           </View>
         </View>
         <View style={styles.gridItem}>
-          <View style={styles.card}>
+          <View style={styles.card} wrap={false}>
             <Text style={styles.pill}>RECOMMENDED</Text>
             <Text style={styles.cardTitle}>{TEMPLATE_OPTIONS.custom.name}</Text>
             <View style={styles.priceLine}>
@@ -716,7 +727,7 @@ function PricingTemplateAndAddons() {
 
 function PricingCampaignAndNfc() {
   return (
-    <Page size="A4" style={styles.page}>
+    <Page size="A4" orientation="landscape" style={styles.page}>
       <Text style={styles.pageTitle}>04 NFC & CAMPAIGN</Text>
       <View style={styles.gradientBar} />
       <Text style={styles.h1}>NFCタグ & キャンペーン</Text>
@@ -737,7 +748,7 @@ function PricingCampaignAndNfc() {
       ))}
 
       <Text style={[styles.h2, { marginTop: 24 }]}>初期{LAUNCH_CAMPAIGN.maxSlots}店舗限定キャンペーン</Text>
-      <View style={styles.card}>
+      <View style={styles.card} wrap={false}>
         <Text style={styles.cardTitle}>適用条件</Text>
         <Text style={styles.bullet}>• 対象プラン: {LAUNCH_CAMPAIGN.plans.map((p) => PLANS[p].name).join(" / ")}</Text>
         <Text style={styles.bullet}>• 対象枠: 先着 {LAUNCH_CAMPAIGN.maxSlots} 店舗</Text>
@@ -783,7 +794,7 @@ export function PricingOverviewPdf() {
 
 function FeaturesCover() {
   return (
-    <Page size="A4" style={styles.page}>
+    <Page size="A4" orientation="landscape" style={styles.page}>
       <Text style={styles.pageTitle}>FEATURES DEEP DIVE</Text>
       <View style={styles.gradientBar} />
       <Text style={styles.h1}>Ledra 機能紹介</Text>
@@ -792,7 +803,7 @@ function FeaturesCover() {
         の全機能を、役割横断でご紹介します。
       </Text>
 
-      <View style={[styles.card, { marginTop: 18 }]}>
+      <View style={[styles.card, { marginTop: 18 }]} wrap={false}>
         <Text style={styles.cardTitle}>本資料の読み方</Text>
         {/* 件数はベタ書きにしない ―― 機能を1つ足した瞬間に資料が嘘をつくため。 */}
         <Text style={styles.bullet}>
@@ -818,7 +829,7 @@ function FeaturesCover() {
 
 function FeaturesFourPortal() {
   return (
-    <Page size="A4" style={styles.page}>
+    <Page size="A4" orientation="landscape" style={styles.page}>
       <Text style={styles.pageTitle}>00 OVERVIEW</Text>
       <View style={styles.gradientBar} />
       <Text style={styles.h1}>ひとつの記録を、4ポータルで共有</Text>
@@ -828,13 +839,13 @@ function FeaturesFourPortal() {
 
       <View style={styles.grid2}>
         <View style={styles.gridItem}>
-          <View style={styles.card}>
+          <View style={styles.card} wrap={false}>
             <Text style={styles.cardTitle}>Admin（施工店）</Text>
             <Text style={styles.cardDesc}>
               証明書の発行・管理、車両・顧客、予約・作業・POS・請求、経営ダッシュボード。現場運用の中心。
             </Text>
           </View>
-          <View style={styles.card}>
+          <View style={styles.card} wrap={false}>
             <Text style={styles.cardTitle}>Insurer（保険会社）</Text>
             <Text style={styles.cardDesc}>
               証明書の検索・照会、案件管理、地域別・パートナー別の集計分析。査定の一次資料として。
@@ -842,13 +853,13 @@ function FeaturesFourPortal() {
           </View>
         </View>
         <View style={styles.gridItem}>
-          <View style={styles.card}>
+          <View style={styles.card} wrap={false}>
             <Text style={styles.cardTitle}>Agent（代理店）</Text>
             <Text style={styles.cardDesc}>
               施工店の紹介、コミッション管理、電子署名による契約締結、担当施工店のパフォーマンスレポート。
             </Text>
           </View>
-          <View style={styles.card}>
+          <View style={styles.card} wrap={false}>
             <Text style={styles.cardTitle}>Customer（顧客）</Text>
             <Text style={styles.cardDesc}>
               受け取った証明書をスマホで閲覧・共有。QR/URL/NFC の3経路でアクセス。車両の過去履歴も確認。
@@ -869,7 +880,7 @@ function FeaturesFourPortal() {
 
 function FeatureGroupPage({ group, index }: { group: FeatureGroup; index: number }) {
   return (
-    <Page size="A4" style={styles.page}>
+    <Page size="A4" orientation="landscape" style={styles.page}>
       <Text style={styles.pageTitle}>
         {String(index + 1).padStart(2, "0")} {group.title.toUpperCase()}
       </Text>
@@ -882,7 +893,7 @@ function FeatureGroupPage({ group, index }: { group: FeatureGroup; index: number
           {group.features
             .filter((_, i) => i % 2 === 0)
             .map((f) => (
-              <View key={f.title} style={styles.card}>
+              <View key={f.title} style={styles.card} wrap={false}>
                 <Text style={styles.cardTitle}>{f.title}</Text>
                 <Text style={styles.cardDesc}>{f.description}</Text>
               </View>
@@ -892,7 +903,7 @@ function FeatureGroupPage({ group, index }: { group: FeatureGroup; index: number
           {group.features
             .filter((_, i) => i % 2 === 1)
             .map((f) => (
-              <View key={f.title} style={styles.card}>
+              <View key={f.title} style={styles.card} wrap={false}>
                 <Text style={styles.cardTitle}>{f.title}</Text>
                 <Text style={styles.cardDesc}>{f.description}</Text>
               </View>
@@ -907,7 +918,7 @@ function FeatureGroupPage({ group, index }: { group: FeatureGroup; index: number
 
 function FeaturesClosing() {
   return (
-    <Page size="A4" style={styles.page}>
+    <Page size="A4" orientation="landscape" style={styles.page}>
       <Text style={styles.pageTitle}>{String(FEATURE_GROUPS.length + 1).padStart(2, "0")} NEXT STEPS</Text>
       <View style={styles.gradientBar} />
       <Text style={styles.h1}>次のステップ</Text>
@@ -923,20 +934,20 @@ function FeaturesClosing() {
       <Text style={styles.bullet}>• 現場スタッフのモバイル端末利用状況</Text>
 
       <Text style={[styles.h2, { marginTop: 18 }]}>よくいただくご質問</Text>
-      <View style={styles.card}>
+      <View style={styles.card} wrap={false}>
         <Text style={styles.cardTitle}>Q. 既存の顧客・車両データは移行できますか？</Text>
         <Text style={styles.cardDesc}>
           はい。CSV インポート機能で一括移行可能です。テンプレートをお渡ししますので、移行作業は平均
           1〜2日で完了します。
         </Text>
       </View>
-      <View style={styles.card}>
+      <View style={styles.card} wrap={false}>
         <Text style={styles.cardTitle}>Q. 現場スタッフへの教育はどのくらい必要ですか？</Text>
         <Text style={styles.cardDesc}>
           タブレット/スマホ前提の UI なので、初回 30 分のトレーニングで発行フローに慣れていただけます。
         </Text>
       </View>
-      <View style={styles.card}>
+      <View style={styles.card} wrap={false}>
         <Text style={styles.cardTitle}>Q. API や Webhook で自社システムと連携できますか？</Text>
         <Text style={styles.cardDesc}>
           プロプランで提供。テナント固有の API キー・Webhook
@@ -1105,7 +1116,7 @@ const SECURITY_BLOCKS: SecurityBlock[] = [
 
 function SecurityCover() {
   return (
-    <Page size="A4" style={styles.page}>
+    <Page size="A4" orientation="landscape" style={styles.page}>
       <Text style={styles.pageTitle}>SECURITY WHITEPAPER</Text>
       <View style={styles.gradientBar} />
       <Text style={styles.h1}>Ledra セキュリティ ホワイトペーパー</Text>
@@ -1114,7 +1125,7 @@ function SecurityCover() {
         記録の信頼を仕組みで守るための、技術担当者・情報セキュリティ担当者向け一次資料です。
       </Text>
 
-      <View style={[styles.card, { marginTop: 16 }]}>
+      <View style={[styles.card, { marginTop: 16 }]} wrap={false}>
         <Text style={styles.cardTitle}>本資料の想定読者</Text>
         <Text style={styles.bullet}>• 情報システム部門・セキュリティ責任者</Text>
         <Text style={styles.bullet}>• 導入審査・監査対応を行う担当者</Text>
@@ -1140,7 +1151,7 @@ function SecurityCover() {
 
 function SecurityLayers() {
   return (
-    <Page size="A4" style={styles.page}>
+    <Page size="A4" orientation="landscape" style={styles.page}>
       <Text style={styles.pageTitle}>00 LAYER MODEL</Text>
       <View style={styles.gradientBar} />
       <Text style={styles.h1}>セキュリティ3層モデル</Text>
@@ -1148,21 +1159,21 @@ function SecurityLayers() {
         通信・保存・ペイロードの3層で、独立に働く防御を重ねています。どれか1層が突破されても、他の層で被害を局所化する設計です。
       </Text>
 
-      <View style={styles.card}>
+      <View style={styles.card} wrap={false}>
         <Text style={styles.cardTitle}>層1: 通信 (Transport)</Text>
         <Text style={styles.cardDesc}>
           TLS 1.2+ による経路全体の暗号化。HSTS により HTTPS ダウングレードを防止。内部サービス間も mTLS
           相当の境界で分離。
         </Text>
       </View>
-      <View style={styles.card}>
+      <View style={styles.card} wrap={false}>
         <Text style={styles.cardTitle}>層2: 保存 (At-Rest)</Text>
         <Text style={styles.cardDesc}>
           Postgres は AES-256
           によるディスク暗号化。オブジェクトストレージは転送時・保管時ともに暗号化。バックアップも同様の暗号化を継承。
         </Text>
       </View>
-      <View style={styles.card}>
+      <View style={styles.card} wrap={false}>
         <Text style={styles.cardTitle}>層3: ペイロード (Data-Level)</Text>
         <Text style={styles.cardDesc}>
           DB 内部の機微データにアプリ層のハッシュ化・pepper 適用を追加。DB
@@ -1182,7 +1193,7 @@ function SecurityLayers() {
 
 function SecurityBlockPage({ block, index }: { block: SecurityBlock; index: number }) {
   return (
-    <Page size="A4" style={styles.page}>
+    <Page size="A4" orientation="landscape" style={styles.page}>
       <Text style={styles.pageTitle}>
         {String(index + 1).padStart(2, "0")} {block.title.replace(/^\d+\.\s*/, "").toUpperCase()}
       </Text>
@@ -1191,7 +1202,7 @@ function SecurityBlockPage({ block, index }: { block: SecurityBlock; index: numb
       <Text style={[styles.lead, { marginBottom: 10 }]}>{block.lead}</Text>
 
       {block.items.map((it) => (
-        <View key={it.title} style={styles.card}>
+        <View key={it.title} style={styles.card} wrap={false}>
           <Text style={styles.cardTitle}>{it.title}</Text>
           <Text style={styles.cardDesc}>{it.desc}</Text>
         </View>
@@ -1204,7 +1215,7 @@ function SecurityBlockPage({ block, index }: { block: SecurityBlock; index: numb
 
 function SecurityPolygonFlow() {
   return (
-    <Page size="A4" style={styles.page}>
+    <Page size="A4" orientation="landscape" style={styles.page}>
       <Text style={styles.pageTitle}>06 POLYGON ANCHORING</Text>
       <View style={styles.gradientBar} />
       <Text style={styles.h1}>Polygon anchoring フロー</Text>
@@ -1226,7 +1237,7 @@ function SecurityPolygonFlow() {
         3. Polygon 上の LedraAnchor コントラクトを読み出し、ハッシュ一致を Polygonscan 等で確認。
       </Text>
 
-      <View style={[styles.card, { marginTop: 10 }]}>
+      <View style={[styles.card, { marginTop: 10 }]} wrap={false}>
         <Text style={styles.cardTitle}>設計上の要点</Text>
         <Text style={styles.bullet}>• Ledra 側ストレージが改変されても、Polygon 上の記録との比較で検知可能。</Text>
         <Text style={styles.bullet}>• 写真そのものは C2PA 署名で独立検証。チェーン上にはハッシュのみ記録。</Text>
@@ -1243,7 +1254,7 @@ function SecurityPolygonFlow() {
 
 function SecurityDataLifecycle() {
   return (
-    <Page size="A4" style={styles.page}>
+    <Page size="A4" orientation="landscape" style={styles.page}>
       <Text style={styles.pageTitle}>07 DATA LIFECYCLE</Text>
       <View style={styles.gradientBar} />
       <Text style={styles.h1}>データライフサイクル</Text>
@@ -1290,19 +1301,19 @@ function SecurityDataLifecycle() {
 
 function SecurityClosing() {
   return (
-    <Page size="A4" style={styles.page}>
+    <Page size="A4" orientation="landscape" style={styles.page}>
       <Text style={styles.pageTitle}>08 COMPLIANCE & CONTACT</Text>
       <View style={styles.gradientBar} />
       <Text style={styles.h1}>認証・インシデント対応・お問い合わせ</Text>
 
       <Text style={styles.h2}>認証取得状況</Text>
-      <View style={styles.card}>
+      <View style={styles.card} wrap={false}>
         <Text style={styles.cardTitle}>ISMS (ISO/IEC 27001)</Text>
         <Text style={styles.cardDesc}>
           取得準備中。取得時期は本ホワイトペーパーおよび /security ページにて告知します。
         </Text>
       </View>
-      <View style={styles.card}>
+      <View style={styles.card} wrap={false}>
         <Text style={styles.cardTitle}>プライバシーマーク</Text>
         <Text style={styles.cardDesc}>取得準備中。社内ポリシー整備・教育実施を先行して進めています。</Text>
       </View>
@@ -1357,7 +1368,7 @@ export function SecurityWhitepaperPdf() {
 
 function CasesCover() {
   return (
-    <Page size="A4" style={styles.page}>
+    <Page size="A4" orientation="landscape" style={styles.page}>
       <Text style={styles.pageTitle}>CASE STUDIES</Text>
       <View style={styles.gradientBar} />
       <Text style={styles.h1}>導入事例集（パイロット版）</Text>
@@ -1366,14 +1377,14 @@ function CasesCover() {
         は正式サービスを開始したばかりです。本資料は、先行導入いただくパイロット企業様の事例をどのように記録・共有していくのか、そしてどんな指標で変化を語っていくのかを整理した、サービス現在地のスナップショットです。
       </Text>
 
-      <View style={[styles.card, { marginTop: 14 }]}>
+      <View style={[styles.card, { marginTop: 14 }]} wrap={false}>
         <Text style={styles.cardTitle}>本資料の立ち位置</Text>
         <Text style={styles.bullet}>• 事例は随時アップデート。公開次第、本資料 v1.x として差し替えます。</Text>
         <Text style={styles.bullet}>• 現時点では、業界別の典型的な導入パターンと計測フレームを提示します。</Text>
         <Text style={styles.bullet}>• 実在の数値はパイロット企業様の同意取得後に順次反映します。</Text>
       </View>
 
-      <View style={[styles.card, { marginTop: 10 }]}>
+      <View style={[styles.card, { marginTop: 10 }]} wrap={false}>
         <Text style={styles.cardTitle}>このドキュメントで得られる情報</Text>
         <Text style={styles.bullet}>• 事例で扱う定量・定性指標（6種類）</Text>
         <Text style={styles.bullet}>• 5業種（コーティング / フィルム / ラッピング / 板金 / 整備）での変化パターン</Text>
@@ -1389,7 +1400,7 @@ function CasesCover() {
 
 function CasesMetrics() {
   return (
-    <Page size="A4" style={styles.page}>
+    <Page size="A4" orientation="landscape" style={styles.page}>
       <Text style={styles.pageTitle}>01 METRICS</Text>
       <View style={styles.gradientBar} />
       <Text style={styles.h1}>事例で扱う指標</Text>
@@ -1521,7 +1532,7 @@ const INDUSTRY_PATTERNS: IndustryPattern[] = [
 
 function CasesIndustryPatternPage({ pattern, index }: { pattern: IndustryPattern; index: number }) {
   return (
-    <Page size="A4" style={styles.page}>
+    <Page size="A4" orientation="landscape" style={styles.page}>
       <Text style={styles.pageTitle}>{String(index + 2).padStart(2, "0")} INDUSTRY PATTERN</Text>
       <View style={styles.gradientBar} />
       <Text style={styles.h1}>{pattern.industry}</Text>
@@ -1557,7 +1568,7 @@ function CasesIndustryPatternPage({ pattern, index }: { pattern: IndustryPattern
 
 function CasesPilotProgram() {
   return (
-    <Page size="A4" style={styles.page}>
+    <Page size="A4" orientation="landscape" style={styles.page}>
       <Text style={styles.pageTitle}>PILOT PROGRAM</Text>
       <View style={styles.gradientBar} />
       <Text style={styles.h1}>パイロット参加の流れ</Text>
@@ -1566,19 +1577,19 @@ function CasesPilotProgram() {
       </Text>
 
       <Text style={styles.h2}>3ステップ</Text>
-      <View style={styles.card}>
+      <View style={styles.card} wrap={false}>
         <Text style={styles.cardTitle}>Step 1: 事前ヒアリング（約 60 分）</Text>
         <Text style={styles.cardDesc}>
           貴社の現状業務・課題・数値の捉え方をお聞きし、事例で扱う指標と取材範囲を合意します。
         </Text>
       </View>
-      <View style={styles.card}>
+      <View style={styles.card} wrap={false}>
         <Text style={styles.cardTitle}>Step 2: 導入・運用定着（約 4〜12 週）</Text>
         <Text style={styles.cardDesc}>
           通常の導入支援と並行して、before の数値を記録。運用定着後、after の数値を同じ基準で採集します。
         </Text>
       </View>
-      <View style={styles.card}>
+      <View style={styles.card} wrap={false}>
         <Text style={styles.cardTitle}>Step 3: 取材・記事化・公開（約 2〜3 週）</Text>
         <Text style={styles.cardDesc}>
           現場インタビュー・写真撮影は Ledra 側で手配。草案・数値確認・公開タイミングも貴社にて最終承認後に反映します。
@@ -1603,7 +1614,7 @@ function CasesPilotProgram() {
 
 function CasesClosing() {
   return (
-    <Page size="A4" style={styles.page}>
+    <Page size="A4" orientation="landscape" style={styles.page}>
       <Text style={styles.pageTitle}>NEXT STEPS</Text>
       <View style={styles.gradientBar} />
       <Text style={styles.h1}>次のステップ</Text>
@@ -1622,7 +1633,7 @@ function CasesClosing() {
       <Text style={styles.bullet}>• 既存で利用している会計・予約・決済ツール一覧</Text>
       <Text style={styles.bullet}>• 事例化に際して外せない条件（匿名化・非公開項目など）</Text>
 
-      <View style={[styles.card, { marginTop: 16 }]}>
+      <View style={[styles.card, { marginTop: 16 }]} wrap={false}>
         <Text style={styles.cardTitle}>よくいただくご質問</Text>
         <Text style={[styles.cardDesc, { marginBottom: 8 }]}>Q. 事例は必ず実名公開ですか？</Text>
         <Text style={[styles.cardDesc, { marginBottom: 8 }]}>
@@ -1643,7 +1654,7 @@ function CasesClosing() {
 
 function CasesPublishedPage({ cases }: { cases: ContentEntry[] }) {
   return (
-    <Page size="A4" style={styles.page}>
+    <Page size="A4" orientation="landscape" style={styles.page}>
       <Text style={styles.pageTitle}>PUBLISHED CASES</Text>
       <View style={styles.gradientBar} />
       <Text style={styles.h1}>公開済みの導入事例</Text>
@@ -1653,7 +1664,7 @@ function CasesPublishedPage({ cases }: { cases: ContentEntry[] }) {
       </Text>
 
       {cases.map((c) => (
-        <View key={c.frontmatter.slug} style={styles.card}>
+        <View key={c.frontmatter.slug} style={styles.card} wrap={false}>
           <Text style={styles.cardTitle}>{c.frontmatter.title}</Text>
           <Text style={[styles.cardDesc, { marginBottom: 4 }]}>
             {[c.frontmatter.industry, c.frontmatter.company].filter(Boolean).join(" · ")}
@@ -1745,7 +1756,7 @@ function roiScenario({
 
 function RoiCover() {
   return (
-    <Page size="A4" style={styles.page}>
+    <Page size="A4" orientation="landscape" style={styles.page}>
       <Text style={styles.pageTitle}>ROI WORKSHEET</Text>
       <View style={styles.gradientBar} />
       <Text style={styles.h1}>ROI シミュレーション 計算テンプレート</Text>
@@ -1754,7 +1765,7 @@ function RoiCover() {
         導入時の年間削減効果を試算するための計算テンプレートです。経営会議・社内稟議の一次資料としてご活用ください。
       </Text>
 
-      <View style={[styles.card, { marginTop: 14 }]}>
+      <View style={[styles.card, { marginTop: 14 }]} wrap={false}>
         <Text style={styles.cardTitle}>この資料の使い方</Text>
         <Text style={styles.bullet}>• P.2 の計算式を読み、前提を確認。</Text>
         <Text style={styles.bullet}>• P.3 の記入欄に貴社の数値を書き込む。</Text>
@@ -1763,7 +1774,7 @@ function RoiCover() {
         <Text style={styles.bullet}>• P.7 の依頼フォーマットで個別ヒアリング試算を依頼。</Text>
       </View>
 
-      <View style={[styles.card, { marginTop: 10 }]}>
+      <View style={[styles.card, { marginTop: 10 }]} wrap={false}>
         <Text style={styles.cardTitle}>WEB 版シミュレーター</Text>
         <Text style={styles.cardDesc}>
           リアルタイムで再計算したい場合は Web 版をご利用ください: https://ledra.co.jp/roi{"\n"}本 PDF
@@ -1779,7 +1790,7 @@ function RoiCover() {
 
 function RoiFormula() {
   return (
-    <Page size="A4" style={styles.page}>
+    <Page size="A4" orientation="landscape" style={styles.page}>
       <Text style={styles.pageTitle}>01 FORMULA</Text>
       <View style={styles.gradientBar} />
       <Text style={styles.h1}>計算式と前提</Text>
@@ -1810,19 +1821,19 @@ function RoiFormula() {
       </View>
 
       <Text style={styles.h2}>計算式</Text>
-      <View style={styles.card}>
+      <View style={styles.card} wrap={false}>
         <Text style={styles.cardTitle}>年間 節約時間（時）</Text>
         <Text style={styles.cardDesc}>= A × (B − {ROI_AFTER_MIN_PER_CERT}) × 12 ÷ 60</Text>
       </View>
-      <View style={styles.card}>
+      <View style={styles.card} wrap={false}>
         <Text style={styles.cardTitle}>年間 人件費削減額（円）</Text>
         <Text style={styles.cardDesc}>= 年間 節約時間 × C</Text>
       </View>
-      <View style={styles.card}>
+      <View style={styles.card} wrap={false}>
         <Text style={styles.cardTitle}>年間 再発行/紛失対応削減額（円）</Text>
         <Text style={styles.cardDesc}>= D × 0.8</Text>
       </View>
-      <View style={[styles.card, { borderColor: colors.accent }]}>
+      <View style={[styles.card, { borderColor: colors.accent }]} wrap={false}>
         <Text style={styles.cardTitle}>年間 総削減額（円）</Text>
         <Text style={styles.cardDesc}>= 年間 人件費削減額 + 年間 再発行/紛失対応削減額</Text>
       </View>
@@ -1840,7 +1851,7 @@ function RoiFormula() {
 function RoiWorksheet() {
   const blankLine = "_______________________________";
   return (
-    <Page size="A4" style={styles.page}>
+    <Page size="A4" orientation="landscape" style={styles.page}>
       <Text style={styles.pageTitle}>02 WORKSHEET</Text>
       <View style={styles.gradientBar} />
       <Text style={styles.h1}>記入シート</Text>
@@ -1849,35 +1860,35 @@ function RoiWorksheet() {
       </Text>
 
       <Text style={styles.h2}>入力</Text>
-      <View style={styles.card}>
+      <View style={styles.card} wrap={false}>
         <Text style={styles.cardTitle}>A. 月間の施工証明書発行数</Text>
         <Text style={styles.body}>{blankLine} 件 / 月</Text>
       </View>
-      <View style={styles.card}>
+      <View style={styles.card} wrap={false}>
         <Text style={styles.cardTitle}>B. 1件あたりの事務時間（現状）</Text>
         <Text style={styles.body}>{blankLine} 分 / 件</Text>
         <Text style={styles.cardDesc}>例: 写真整理 + Excel 入力 + 印刷 + 封入 + 保管のすべて合算</Text>
       </View>
-      <View style={styles.card}>
+      <View style={styles.card} wrap={false}>
         <Text style={styles.cardTitle}>C. 担当者の時給相当</Text>
         <Text style={styles.body}>{blankLine} 円 / 時</Text>
         <Text style={styles.cardDesc}>月給 ÷ 160 を目安に。社会保険等を含める場合は月給×1.25 ÷ 160。</Text>
       </View>
-      <View style={styles.card}>
+      <View style={styles.card} wrap={false}>
         <Text style={styles.cardTitle}>D. 書類再発行・紛失対応の年間コスト</Text>
         <Text style={styles.body}>{blankLine} 円 / 年</Text>
       </View>
 
       <Text style={styles.h2}>計算結果（記入欄）</Text>
-      <View style={styles.card}>
+      <View style={styles.card} wrap={false}>
         <Text style={styles.cardTitle}>年間 節約時間</Text>
         <Text style={styles.body}>{blankLine} 時間</Text>
       </View>
-      <View style={styles.card}>
+      <View style={styles.card} wrap={false}>
         <Text style={styles.cardTitle}>年間 人件費削減額</Text>
         <Text style={styles.body}>{blankLine} 円</Text>
       </View>
-      <View style={[styles.card, { borderColor: colors.accent }]}>
+      <View style={[styles.card, { borderColor: colors.accent }]} wrap={false}>
         <Text style={styles.cardTitle}>年間 総削減額</Text>
         <Text style={styles.body}>{blankLine} 円</Text>
       </View>
@@ -1889,7 +1900,7 @@ function RoiWorksheet() {
 
 function RoiLossModel() {
   return (
-    <Page size="A4" style={styles.page}>
+    <Page size="A4" orientation="landscape" style={styles.page}>
       <Text style={styles.pageTitle}>03 LOSS MODEL</Text>
       <View style={styles.gradientBar} />
       <Text style={styles.h1}>3つのロスの換算モデル</Text>
@@ -1897,7 +1908,7 @@ function RoiLossModel() {
         Ledra が解消する業務ロスは大きく3種類。自社でどのロスが大きいかを見極める参考に。
       </Text>
 
-      <View style={styles.card}>
+      <View style={styles.card} wrap={false}>
         <Text style={styles.cardTitle}>ロス1: 事務時間のロス</Text>
         <Text style={styles.cardDesc}>
           紙・Excel での作成・郵送・保管・検索にかかる時間。変数 A × B を中心に算出。Ledra では1件
@@ -1908,7 +1919,7 @@ function RoiLossModel() {
         </Text>
       </View>
 
-      <View style={styles.card}>
+      <View style={styles.card} wrap={false}>
         <Text style={styles.cardTitle}>ロス2: 再発行のロス</Text>
         <Text style={styles.cardDesc}>
           紛失・問い合わせ・再発行・郵送のコスト。変数 D。Ledra 導入後は顧客ポータル・QR
@@ -1919,7 +1930,7 @@ function RoiLossModel() {
         </Text>
       </View>
 
-      <View style={styles.card}>
+      <View style={styles.card} wrap={false}>
         <Text style={styles.cardTitle}>ロス3: 信頼のロス（金額換算しづらい領域）</Text>
         <Text style={styles.cardDesc}>
           改ざん疑念による査定・精算の遅延、SNS での誤情報対応、競合比較時の「説明コスト」。Polygon anchoring + C2PA
@@ -1953,7 +1964,7 @@ function RoiReferenceTable() {
   ];
 
   return (
-    <Page size="A4" style={styles.page}>
+    <Page size="A4" orientation="landscape" style={styles.page}>
       <Text style={styles.pageTitle}>04 REFERENCE SCALES</Text>
       <View style={styles.gradientBar} />
       <Text style={styles.h1}>代表スケール別の試算値（参考）</Text>
@@ -2008,7 +2019,7 @@ function RoiSensitivity() {
     return { minutes: m, labor: r.laborSavingYen, total: r.totalSavingYen };
   });
   return (
-    <Page size="A4" style={styles.page}>
+    <Page size="A4" orientation="landscape" style={styles.page}>
       <Text style={styles.pageTitle}>05 SENSITIVITY</Text>
       <View style={styles.gradientBar} />
       <Text style={styles.h1}>感度分析（1件あたり事務時間 × 金額）</Text>
@@ -2046,7 +2057,7 @@ function RoiSensitivity() {
 
 function RoiClosing() {
   return (
-    <Page size="A4" style={styles.page}>
+    <Page size="A4" orientation="landscape" style={styles.page}>
       <Text style={styles.pageTitle}>06 NEXT STEPS</Text>
       <View style={styles.gradientBar} />
       <Text style={styles.h1}>個別ヒアリング試算のご依頼</Text>
@@ -2168,7 +2179,7 @@ const guideStyles = StyleSheet.create({
 function OperationGuideCover() {
   const guideCount = OPERATION_GUIDE_GROUPS.reduce((n, g) => n + g.guides.length, 0);
   return (
-    <Page size="A4" style={styles.page}>
+    <Page size="A4" orientation="landscape" style={styles.page}>
       <Text style={styles.pageTitle}>OPERATION GUIDE</Text>
       <View style={styles.gradientBar} />
       <Text style={styles.h1}>運用スタートガイド</Text>
@@ -2178,7 +2189,7 @@ function OperationGuideCover() {
         {guideCount}の操作を画面の流れどおりに並べています。
       </Text>
 
-      <View style={[styles.card, { marginTop: 18 }]}>
+      <View style={[styles.card, { marginTop: 18 }]} wrap={false}>
         <Text style={styles.cardTitle}>この資料の構成</Text>
         {OPERATION_GUIDE_GROUPS.map((g, i) => (
           <Text key={g.id} style={styles.bullet}>
@@ -2188,7 +2199,7 @@ function OperationGuideCover() {
         ))}
       </View>
 
-      <View style={[styles.card, { marginTop: 10 }]}>
+      <View style={[styles.card, { marginTop: 10 }]} wrap={false}>
         <Text style={styles.cardTitle}>使い方</Text>
         <Text style={styles.bullet}>• 導入研修の配布資料として、そのまま印刷してお使いいただけます。</Text>
         <Text style={styles.bullet}>
@@ -2205,7 +2216,7 @@ function OperationGuideCover() {
 
 function OperationGuideGroupPage({ group, index }: { group: GuideGroup; index: number }) {
   return (
-    <Page size="A4" style={styles.page} wrap>
+    <Page size="A4" orientation="landscape" style={styles.page} wrap>
       <Text style={styles.pageTitle} fixed>
         {String(index + 1).padStart(2, "0")} {stripEmoji(group.label)}
       </Text>
@@ -2235,7 +2246,7 @@ function OperationGuideGroupPage({ group, index }: { group: GuideGroup; index: n
 
 function OperationGuideClosing() {
   return (
-    <Page size="A4" style={styles.page}>
+    <Page size="A4" orientation="landscape" style={styles.page}>
       <Text style={styles.pageTitle}>SUPPORT</Text>
       <View style={styles.gradientBar} />
       <Text style={styles.h1}>困ったときの窓口</Text>
@@ -2323,7 +2334,7 @@ function GlossaryCover() {
   const sections = listGlossaryByCategory();
   const termCount = sections.reduce((n, s) => n + s.terms.length, 0);
   return (
-    <Page size="A4" style={styles.page}>
+    <Page size="A4" orientation="landscape" style={styles.page}>
       <Text style={styles.pageTitle}>GLOSSARY</Text>
       <View style={styles.gradientBar} />
       <Text style={styles.h1}>自動車施工・記録の用語集</Text>
@@ -2332,7 +2343,7 @@ function GlossaryCover() {
         語を、事実ベースでまとめました。新人研修の副読本、保険会社・代理店との認識合わせ、商談時の共通言語づくりにお使いください。
       </Text>
 
-      <View style={[styles.card, { marginTop: 18 }]}>
+      <View style={[styles.card, { marginTop: 18 }]} wrap={false}>
         <Text style={styles.cardTitle}>収録カテゴリ</Text>
         {sections.map((s, i) => (
           <Text key={s.category} style={styles.bullet}>
@@ -2342,7 +2353,7 @@ function GlossaryCover() {
         ))}
       </View>
 
-      <View style={[styles.card, { marginTop: 10 }]}>
+      <View style={[styles.card, { marginTop: 10 }]} wrap={false}>
         <Text style={styles.cardTitle}>編集方針</Text>
         <Text style={styles.bullet}>
           • 定義は一般に受け入れられた事実のみ。製品固有の誇張・未確認の数値は載せません。
@@ -2367,7 +2378,7 @@ function GlossaryCategoryPage({
 }) {
   const meta = GLOSSARY_CATEGORIES[category];
   return (
-    <Page size="A4" style={styles.page} wrap>
+    <Page size="A4" orientation="landscape" style={styles.page} wrap>
       <Text style={styles.pageTitle} fixed>
         {String(index + 1).padStart(2, "0")} {stripEmoji(meta.label)}
       </Text>

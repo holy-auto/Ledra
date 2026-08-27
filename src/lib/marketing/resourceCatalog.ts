@@ -46,7 +46,7 @@ export const RESOURCE_CATALOG: readonly Resource[] = [
     description:
       "Ledra がどんな課題を解くサービスか、4ポータル設計、初期導入の流れをコンパクトにまとめた基本資料です。最初の1本としてお勧めします。",
     badge: "最初にお勧め",
-    pageCount: 4,
+    pageCount: 6,
     downloadUrl: "/api/marketing/resources/service-overview/pdf",
   },
   {
@@ -54,8 +54,7 @@ export const RESOURCE_CATALOG: readonly Resource[] = [
     title: "機能紹介資料",
     description:
       "証明書発行・車両管理・POS・帳票・分析・連携など、全機能をカテゴリ別に詳説。Admin/Agent/Insurer/Customer の4ポータル構成も収録。",
-    // 機能カテゴリ1つにつき1ページ増える（表紙 + 4ポータル + 8カテゴリ + 次のステップ）。
-    pageCount: 11,
+    pageCount: 15,
     downloadUrl: "/api/marketing/resources/features-deep-dive/pdf",
   },
   {
@@ -64,7 +63,7 @@ export const RESOURCE_CATALOG: readonly Resource[] = [
     description:
       "暗号化方式・鍵管理・RLS設計・監査ログ仕様・Polygon anchoring の動作・データライフサイクルを、技術担当者・情報セキュリティ担当者向けにまとめた資料です。",
     badge: "技術者向け",
-    pageCount: 10,
+    pageCount: 15,
     downloadUrl: "/api/marketing/resources/security-whitepaper/pdf",
   },
   {
@@ -73,7 +72,7 @@ export const RESOURCE_CATALOG: readonly Resource[] = [
     description:
       "先行導入いただいているパイロット企業様の導入背景・運用の変化・成果を業種別にまとめた事例集。現時点ではパイロット版として、計測フレームと業界別の変化パターンをまとめています。記事が公開されるたびに PDF にも順次反映します。",
     badge: "随時更新",
-    pageCount: 9,
+    pageCount: 13,
     downloadUrl: "/api/marketing/resources/case-studies/pdf",
   },
   {
@@ -81,7 +80,7 @@ export const RESOURCE_CATALOG: readonly Resource[] = [
     title: "ROIシミュレーション計算テンプレート",
     description:
       "月間発行数・紙管理に要する時間・書類再発行頻度から、年間の削減効果を算出する記入テンプレート。計算式・代表スケール参考値・感度分析まで収録。",
-    pageCount: 8,
+    pageCount: 10,
     downloadUrl: "/api/marketing/resources/roi-template/pdf",
   },
   {
@@ -89,7 +88,7 @@ export const RESOURCE_CATALOG: readonly Resource[] = [
     title: "料金プラン詳細資料",
     description:
       "各プランに含まれる機能・対応件数・サポート範囲・オプション料金まで、見積提示に必要な情報をまとめた資料です。",
-    pageCount: 6,
+    pageCount: 10,
     downloadUrl: "/api/marketing/resources/pricing-overview/pdf",
   },
   {
@@ -98,7 +97,7 @@ export const RESOURCE_CATALOG: readonly Resource[] = [
     description:
       "証明書発行・予約・POS会計といった日常業務から、店舗設定・スタッフ招待・2要素認証まで、管理画面の操作手順を画面の流れどおりにまとめた手順書。導入研修の配布資料としてそのままお使いいただけます。",
     badge: "導入時に",
-    pageCount: 9,
+    pageCount: 13,
     downloadUrl: "/api/marketing/resources/operation-guide/pdf",
   },
   {
@@ -106,7 +105,7 @@ export const RESOURCE_CATALOG: readonly Resource[] = [
     title: "自動車施工・記録の用語集",
     description:
       "コーティング・板金・保険査定・デジタル証明の用語を、事実ベースの定義でまとめた用語集。新人研修の副読本、保険会社・代理店との認識合わせにどうぞ。",
-    pageCount: 6,
+    pageCount: 7,
     downloadUrl: "/api/marketing/resources/glossary/pdf",
   },
 ] as const;
