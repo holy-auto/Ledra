@@ -218,6 +218,85 @@ export function buildReservationConfirmed(candidate: FlowScheduleCandidate): str
   ].join("\n");
 }
 
+/** キャンセル対象予約の表示に必要な最小形。listReservationsForCustomer の行から作れる。 */
+export interface CancelTargetReservation {
+  id: string;
+  scheduled_date: string;
+  start_time: string | null;
+  title: string | null;
+}
+
+/** 予約1件を「7/20(月) 10:00〜 内容」の1行に整形する (start_time 無しは終日扱い)。 */
+function formatReservationLine(r: CancelTargetReservation): string {
+  const when = r.start_time
+    ? `${formatDateJa(r.scheduled_date)} ${formatTimeShort(r.start_time)}〜`
+    : `${formatDateJa(r.scheduled_date)}（終日）`;
+  return r.title?.trim() ? `${when} ${r.title.trim()}` : when;
+}
+
+/**
+ * キャンセル対象の予約が複数あるとき、どれをキャンセルするかボタンで選ばせる。
+ * 「スタッフに相談」は既存の consult (→ human_takeover + 通知) を再利用する。
+ */
+export function buildCancelPickAsk(reservations: CancelTargetReservation[]): FlowButtonMessage {
+  return {
+    text: ["ご予約のキャンセルですね。どのご予約をキャンセルしますか？", "対象を下のボタンからお選びください。"].join(
+      "\n",
+    ),
+    buttons: [
+      ...reservations.map((r, i) => ({
+        // ラベルは送信時に 20 文字へ丸められる (sendCustomerLineButtons)。
+        label: formatReservationLine(r),
+        data: `flow:cancel_pick:${i}`,
+      })),
+      { label: "スタッフに相談したい", data: "flow:consult" },
+    ],
+  };
+}
+
+/** キャンセル実行前の最終確認 (破壊的操作なので必ず挟む)。 */
+export function buildCancelConfirmAsk(reservation: CancelTargetReservation): FlowButtonMessage {
+  return {
+    text: [
+      "下記のご予約をキャンセルします。よろしいですか？",
+      "",
+      `📅 ${formatReservationLine(reservation)}`,
+      "",
+      "キャンセルする場合は「はい、キャンセルします」を、やめる場合は「やめる」をお選びください。",
+    ].join("\n"),
+    buttons: [
+      { label: "はい、キャンセルします", data: "flow:cancel_confirm" },
+      { label: "やめる", data: "flow:cancel_abort" },
+    ],
+  };
+}
+
+/** キャンセル完了の案内 (フローのクローズ文面)。 */
+export function buildCancelDone(reservation: CancelTargetReservation): string {
+  return [
+    "ご予約をキャンセルしました。",
+    `📅 ${formatReservationLine(reservation)}`,
+    "",
+    "またのご利用をお待ちしております。",
+  ].join("\n");
+}
+
+/** キャンセルを取りやめたときの案内 (予約は維持)。 */
+export function buildCancelAborted(): string {
+  return "キャンセルを取りやめました。ご予約はそのままお承りしております。";
+}
+
+/**
+ * セルフキャンセルできない場合 (当日/直前・対象予約なし・未紐付け等) にスタッフへ
+ * 引き継ぐ案内。当日以降の変更は電話等での調整が要るため人手に回す。
+ */
+export function buildCancelHandoff(): string {
+  return [
+    "ご予約の変更・キャンセルについて、担当より確認のうえご連絡いたします。",
+    "お急ぎの場合はお電話でもお問い合わせいただけます。",
+  ].join("\n");
+}
+
 /**
  * 入庫日の朝、未登録車両の車検証撮影を依頼する文面 (Phase 3)。
  * `awaiting_vehicle_photo` の入口メッセージ。

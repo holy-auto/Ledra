@@ -33,6 +33,8 @@
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { sendCustomerLineText, sendCustomerLineButtons } from "@/lib/line/client";
 import { recordInboundLineMessage } from "@/lib/line/messageStore";
+import { cancelReservationById } from "@/lib/reservations/mutate";
+import { todayJst } from "@/lib/gantt/board";
 import { syncCreateEvent } from "@/lib/gcal/client";
 import { calcItems } from "@/lib/documents/calcItems";
 import { logger } from "@/lib/logger";
@@ -62,9 +64,14 @@ import {
   buildOptionRecommendAsk,
   buildOptionAddedAck,
   buildFinalQuoteApprovalAsk,
+  buildCancelConfirmAsk,
+  buildCancelDone,
+  buildCancelAborted,
+  buildCancelHandoff,
+  type CancelTargetReservation,
 } from "@/lib/line/flow/messages";
 import { loadAiAutomationSettings, tenantEligibleForAiAutomation, notifyStaffOfAiAction } from "./policy";
-import { shouldRunConversationFlow, shouldAutoSendDocumentOnConfirm } from "./orchestrator";
+import { shouldRunConversationFlow, shouldAutoSendDocumentOnConfirm, shouldAutoSelfCancel } from "./orchestrator";
 import { storeIdOrNull } from "@/lib/stores/resolveStoreId";
 
 /** 提示した日程候補を提示順のまま保持するための context キー。 */
@@ -77,6 +84,8 @@ const OPTION_CANDIDATES_KEY = "option_candidates";
 // states.ts の awaiting_option_confirm 遷移をループに変え、ここを追記
 // (スプレッド) に変更する必要がある。
 const SELECTED_OPTIONS_KEY = "selected_options";
+/** キャンセルフローで提示した対象予約 (index→予約) を保持する context キー。cancelFlowAuto と共有。 */
+export const CANCEL_CANDIDATES_KEY = "cancel_candidates";
 
 /** context_json[SELECTED_OPTIONS_KEY] の要素の形。 */
 interface SelectedOptionRecord {
@@ -89,7 +98,11 @@ type Admin = ReturnType<typeof createServiceRoleAdmin>;
 type FlowRow = ConversationFlowRow;
 
 /** line_user_id から紐付け済み顧客 ID を 1 件解決する。未紐付け/失敗時は null (投げない)。 */
-async function resolveCustomerIdByLineUser(admin: Admin, tenantId: string, lineUserId: string): Promise<string | null> {
+export async function resolveCustomerIdByLineUser(
+  admin: Admin,
+  tenantId: string,
+  lineUserId: string,
+): Promise<string | null> {
   try {
     const { data } = await admin
       .from("customers")
@@ -177,7 +190,11 @@ export async function handleFlowPostback(params: {
   try {
     if (!lineUserId) return false;
     const settings = await loadAiAutomationSettings(tenantId);
-    if (!shouldRunConversationFlow(settings)) return false;
+    // 会話フロー系 (見積り・誘導ボタン) と予約キャンセルは別 opt-in。どちらかが有効なら
+    // postback を処理する (キャンセルのボタンは会話フロー OFF のテナントでも出るため)。
+    const flowOptIn = shouldRunConversationFlow(settings);
+    const selfCancelOptIn = shouldAutoSelfCancel(settings);
+    if (!flowOptIn && !selfCancelOptIn) return false;
 
     const admin = createServiceRoleAdmin("AI conversation flow (postback) — no auth session");
 
@@ -191,11 +208,14 @@ export async function handleFlowPostback(params: {
     // 状態非依存の誘導ボタン (FAQ/ナレッジ返信の末尾に添付したもの)。フロー生成・
     // 引き継ぎであり状態機械の遷移ではないため、interpretReply ではなく
     // parseFlowPostback で直接判定し、進行中フローの有無で分岐する。
+    // start_quote / consult は会話フロー機能なので flowOptIn 有効時のみ。
     const pb = parseFlowPostback(params.data);
-    if (pb?.event === "start_quote") {
+    if (flowOptIn && pb?.event === "start_quote") {
       return handleFollowupStartQuote(admin, tenantId, lineUserId, resolvedCustomerId, params.data);
     }
-    if (pb?.event === "consult") {
+    // consult は会話フローだけでなくキャンセル選択画面 (buildCancelPickAsk) にも出るため、
+    // self-cancel のみ有効なテナントでも「スタッフに相談したい」が死にボタンにならないよう受ける。
+    if ((flowOptIn || selfCancelOptIn) && pb?.event === "consult") {
       return handleFollowupConsult(admin, tenantId, lineUserId, resolvedCustomerId, params.data);
     }
 
@@ -379,6 +399,50 @@ export async function handleFlowPostback(params: {
       return true;
     }
 
+    // 予約キャンセル: 対象が複数のとき、どれを消すか選択された。
+    if (flow.state === "awaiting_cancel_pick" && event.type === "cancel_pick_selected") {
+      const candidates = (flow.context_json[CANCEL_CANDIDATES_KEY] as CancelTargetReservation[] | undefined) ?? [];
+      const chosen = candidates[event.index];
+      if (!chosen) return false;
+      await recordInboundLineMessage({
+        tenantId,
+        lineUserId,
+        body: `キャンセル対象「${chosen.scheduled_date}」を選択`,
+        rawEvent: { flow_postback: params.data },
+      });
+      // 選んだ予約を reservation_id に確定して確認待ちへ (楽観ロック)。
+      const ok = await advanceFlow(admin, flow, {
+        toState: "awaiting_cancel_confirm",
+        reservationId: chosen.id,
+        expectState: "awaiting_cancel_pick",
+      });
+      if (!ok) return false;
+      const msg = buildCancelConfirmAsk(chosen);
+      const delivered = await sendCustomerLineButtons({
+        tenantId,
+        customerId: flow.customer_id,
+        lineUserId,
+        text: msg.text,
+        buttons: msg.buttons,
+      });
+      if (!delivered) {
+        // 確認ボタンが届かなければ awaiting_cancel_confirm 行を残さない (ボタンが無いと
+        // 顧客は確定も取消もできず、72h 失効まで他フローも塞がるため)。expired に落とす。
+        await advanceFlow(admin, flow, { toState: "expired", expectState: "awaiting_cancel_confirm" });
+        logger.warn("[conversationFlowPostback] cancel-confirm delivery failed", { tenantId, lineUserId });
+        return false;
+      }
+      return true;
+    }
+
+    // 予約キャンセル: 実行 or 取りやめの最終確認。
+    if (
+      flow.state === "awaiting_cancel_confirm" &&
+      (event.type === "cancel_confirmed" || event.type === "cancel_aborted")
+    ) {
+      return handleCancelDecision(admin, tenantId, flow, lineUserId, event.type === "cancel_confirmed", params.data);
+    }
+
     return false;
   } catch (e) {
     logger.warn("[conversationFlowPostback] handleFlowPostback threw", {
@@ -387,6 +451,113 @@ export async function handleFlowPostback(params: {
     });
     return false;
   }
+}
+
+/**
+ * 予約キャンセルの最終確認 (awaiting_cancel_confirm) を処理する。confirmed=true なら
+ * 予約を cancelled にして完了、false なら取りやめ。呼び出し元 (handleFlowPostback) の
+ * catch で保護されるため投げてよい。
+ *
+ * 実行前に closed へ楽観クレームして postback 再配信・連打での二重キャンセルを防ぎ、
+ * 確定直前に「前日まで」を再検証する (提示後に当日入りしていたらスタッフ引き継ぎ)。
+ */
+async function handleCancelDecision(
+  admin: Admin,
+  tenantId: string,
+  flow: FlowRow,
+  lineUserId: string,
+  confirmed: boolean,
+  data: string,
+): Promise<boolean> {
+  await recordInboundLineMessage({
+    tenantId,
+    lineUserId,
+    body: confirmed ? "「はい、キャンセルします」を選択" : "「やめる」を選択",
+    rawEvent: { flow_postback: data },
+  });
+
+  // 取りやめ → そのまま closed + 案内 (予約は維持)。
+  if (!confirmed) {
+    await advanceFlow(admin, flow, { toState: "closed", expectState: "awaiting_cancel_confirm" });
+    await sendCustomerLineText({ tenantId, customerId: flow.customer_id, lineUserId, body: buildCancelAborted() });
+    return true;
+  }
+
+  // 実行前に closed を楽観クレーム (二重実行防止)。通ったリクエストだけがキャンセルを行う。
+  const claimed = await advanceFlow(admin, flow, { toState: "closed", expectState: "awaiting_cancel_confirm" });
+  if (!claimed) return false;
+
+  const candidates = (flow.context_json[CANCEL_CANDIDATES_KEY] as CancelTargetReservation[] | undefined) ?? [];
+  const target = candidates.find((c) => c.id === flow.reservation_id) ?? null;
+
+  // 対象未確定 (想定外) → スタッフ引き継ぎ。
+  if (!flow.reservation_id || !flow.customer_id) {
+    await sendCustomerLineText({ tenantId, customerId: flow.customer_id, lineUserId, body: buildCancelHandoff() });
+    await notifyStaffOfAiAction(
+      admin,
+      tenantId,
+      "予約キャンセルのご希望 — ご対応をお願いします",
+      "セルフキャンセルの対象予約を特定できませんでした。ご確認ください。",
+    );
+    return true;
+  }
+
+  // 確定直前の「前日まで」再検証: 提示後に日付が当日入りしていたらスタッフ対応へ切替。
+  if (target && target.scheduled_date <= todayJst()) {
+    await sendCustomerLineText({ tenantId, customerId: flow.customer_id, lineUserId, body: buildCancelHandoff() });
+    await notifyStaffOfAiAction(
+      admin,
+      tenantId,
+      "予約キャンセルのご希望（当日・直前）— ご対応をお願いします",
+      "当日・直前になったため自動キャンセルせずスタッフ対応に切り替えました。ご確認ください。",
+    );
+    return true;
+  }
+
+  const result = await cancelReservationById(admin, {
+    tenantId,
+    reservationId: flow.reservation_id,
+    customerId: flow.customer_id,
+    reason: "顧客がLINEでキャンセル",
+    // 締め切りは実 DB 値でも再検証する (提示後にスタッフが当日へ日程変更した場合、
+    // context スナップショット依存の上の pre-check では拾えないため二重ガード)。
+    cutoffDate: todayJst(),
+  });
+  if (!result.ok) {
+    await sendCustomerLineText({ tenantId, customerId: flow.customer_id, lineUserId, body: buildCancelHandoff() });
+    const tooLate = result.reason === "too_late";
+    await notifyStaffOfAiAction(
+      admin,
+      tenantId,
+      tooLate
+        ? "予約キャンセルのご希望（当日・直前）— ご対応をお願いします"
+        : "予約キャンセルが完了できませんでした — ご対応をお願いします",
+      tooLate
+        ? "当日・直前になったため自動キャンセルせずスタッフ対応に切り替えました。ご確認ください。"
+        : "LINE からのセルフキャンセルが完了できませんでした。手動でご確認ください。",
+    );
+    return true;
+  }
+
+  await sendCustomerLineText({
+    tenantId,
+    customerId: flow.customer_id,
+    lineUserId,
+    body: target ? buildCancelDone(target) : "ご予約をキャンセルしました。",
+  });
+  await notifyStaffOfAiAction(
+    admin,
+    tenantId,
+    "ご予約がキャンセルされました（LINEセルフ）",
+    `お客様が LINE でご予約をキャンセルされました${target ? `（${target.scheduled_date}）` : ""}。カレンダー・代車の空き等をご確認ください。`,
+  );
+  await logAutoActionExecuted({
+    tenantId,
+    actionKey: "inbound_message.auto_self_cancel",
+    resource: { kind: "reservation", id: flow.reservation_id },
+    detail: { flow_id: flow.id, state: "closed", cancelled: true, already_final: result.alreadyFinal },
+  });
+  return true;
 }
 
 /**

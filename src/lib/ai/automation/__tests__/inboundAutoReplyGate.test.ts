@@ -16,12 +16,14 @@ const mocks = vi.hoisted(() => ({
   shouldAutoReplyKnowledge: vi.fn(),
   shouldAutoReplyRoughEstimate: vi.fn(),
   shouldRunConversationFlow: vi.fn(),
+  shouldAutoSelfCancel: vi.fn(),
   decideInboundCommit: vi.fn(),
   extractInboundReservation: vi.fn(),
   fetchRecentConversation: vi.fn(),
   maybeAutoDraftQuoteFromInbound: vi.fn(),
   maybeAutoReplyRoughEstimate: vi.fn(),
   maybeAutoReplyKnowledge: vi.fn(),
+  maybeStartCancelFlow: vi.fn(),
   usageRecord: vi.fn(),
   store: null as unknown as FakeStore,
 }));
@@ -35,8 +37,10 @@ vi.mock("../orchestrator", () => ({
   shouldAutoReplyKnowledge: mocks.shouldAutoReplyKnowledge,
   shouldAutoReplyRoughEstimate: mocks.shouldAutoReplyRoughEstimate,
   shouldRunConversationFlow: mocks.shouldRunConversationFlow,
+  shouldAutoSelfCancel: mocks.shouldAutoSelfCancel,
   decideInboundCommit: mocks.decideInboundCommit,
 }));
+vi.mock("../cancelFlowAuto", () => ({ maybeStartCancelFlow: mocks.maybeStartCancelFlow }));
 vi.mock("../quoteDraftAuto", () => ({ maybeAutoDraftQuoteFromInbound: mocks.maybeAutoDraftQuoteFromInbound }));
 vi.mock("../quoteReplyAuto", () => ({ maybeAutoReplyRoughEstimate: mocks.maybeAutoReplyRoughEstimate }));
 vi.mock("../knowledgeReplyAuto", () => ({ maybeAutoReplyKnowledge: mocks.maybeAutoReplyKnowledge }));
@@ -76,11 +80,13 @@ beforeEach(() => {
   mocks.shouldAutoReplyKnowledge.mockReturnValue(false);
   mocks.shouldAutoReplyRoughEstimate.mockReturnValue(false);
   mocks.shouldRunConversationFlow.mockReturnValue(false);
+  mocks.shouldAutoSelfCancel.mockReturnValue(false);
   mocks.decideInboundCommit.mockReturnValue({ create: false, reason: "auto_create_off" });
   mocks.fetchRecentConversation.mockResolvedValue([]);
   mocks.extractInboundReservation.mockResolvedValue({ intent: "inquiry_only", confidence: 0.9, ai: true });
   mocks.maybeAutoReplyKnowledge.mockResolvedValue(false);
   mocks.maybeAutoReplyRoughEstimate.mockResolvedValue(false);
+  mocks.maybeStartCancelFlow.mockResolvedValue(false);
 });
 
 describe("maybeAutoProcessInboundMessage auto-reply gating", () => {
@@ -241,5 +247,29 @@ describe("maybeAutoProcessInboundMessage auto-reply gating", () => {
     const arg = mocks.maybeAutoReplyRoughEstimate.mock.calls[0][0];
     expect(arg.vehicleText).toBe("キャデラック エスカレード");
     expect(arg.service).toBe("コーティング");
+  });
+
+  it("routes a cancel intent to the self-cancel flow and skips knowledge/estimate replies", async () => {
+    mocks.shouldAutoSelfCancel.mockReturnValue(true);
+    mocks.shouldAutoReplyKnowledge.mockReturnValue(true);
+    mocks.shouldAutoReplyRoughEstimate.mockReturnValue(true);
+    mocks.extractInboundReservation.mockResolvedValue({ intent: "cancel", confidence: 0.9, ai: true });
+    mocks.maybeStartCancelFlow.mockResolvedValue(true);
+    await maybeAutoProcessInboundMessage({ ...baseParams(), text: "予約をキャンセルしたい" });
+
+    expect(mocks.maybeStartCancelFlow).toHaveBeenCalledTimes(1);
+    expect(mocks.maybeStartCancelFlow.mock.calls[0][0].intent).toBe("cancel");
+    // キャンセルフローを起こしたら他の自動返信は走らせない。
+    expect(mocks.maybeAutoReplyKnowledge).not.toHaveBeenCalled();
+    expect(mocks.maybeAutoReplyRoughEstimate).not.toHaveBeenCalled();
+  });
+
+  it("does not touch the self-cancel flow for non-cancel intents", async () => {
+    mocks.shouldAutoSelfCancel.mockReturnValue(true);
+    mocks.shouldAutoReplyKnowledge.mockReturnValue(true);
+    mocks.extractInboundReservation.mockResolvedValue({ intent: "inquiry_only", confidence: 0.9, ai: true });
+    await maybeAutoProcessInboundMessage(baseParams());
+    expect(mocks.maybeStartCancelFlow).not.toHaveBeenCalled();
+    expect(mocks.maybeAutoReplyKnowledge).toHaveBeenCalledTimes(1);
   });
 });

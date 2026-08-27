@@ -4,6 +4,58 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-08-27 「正しく無いのが載るのはあかん」——遷移表を直してから通した（#933）／同期基盤は止めた（#934）
+
+### #933: 正準遷移表の足りない辺を8件直してからマージ
+
+`/code-review` が11件の「足りない辺」を出した。**現場を知らずに書き足さない**ため、
+リポジトリの中に根拠があるものだけを直した。根拠は3種類 —— ADR、稼働中のコード、
+同じファイル内の矛盾。
+
+| 直した辺 | 根拠 |
+|---|---|
+| `UNPAID → PAID` / `→ PARTIALLY_PAID` | `StorefrontBilling.tsx:55-64` の「入金を記録 (本日)」が未入金の請求書へ `status:"paid"` を**直接書いている**。稼働中の1手操作 |
+| `UNKNOWN → UNPAID` | §11.3 が禁じるのは「**UNKNOWN のまま**再決済」であって、照合して結果を確定させることではない |
+| `READY → NOT_READY` | ADR-0005 決定1 の 10 条件には**後から崩れるもの**がある |
+| `ISSUING → READY` / `VERIFYING → ISSUING` | ADR-0005 決定3。ジョブが動かす以上、**ジョブは失敗する** |
+| `PENDING_CORRECTION` を `ISSUING` → `READY`/`NOT_READY` | READY を飛ばすのは決定4 が代表承認を求める「Gate バイパス」 |
+| Severity の表をコメントに合わせる | コメントは「CRITICAL → NORMAL の直接降格だけ禁止」と書いていたが、表は `NORMAL → RESOLVED` も塞いでいた |
+| `COMPLETED → IN_PROGRESS` | 同ファイルの `JOB_TRANSITIONS` が手戻りを許しているのに工程が再開できなかった |
+| `SYNCING → PENDING` | 中断した同期に、起きていない `FAILED`（サーバに拒否された）を書くしかなかった |
+| `CHECKED_IN → NO_SHOW` を**削除** | 入庫済みは「来店なし」になりえない |
+
+**8件すべてを元に戻す mutation probe で11テストが落ちる**ことを確認した。
+根拠の無い3件（REVOKED の到達範囲・部分キャプチャ・着手済み工程の SKIPPED）は
+書き足さず、モジュール先頭に未解決として明記した。
+
+あわせてレビューが見つけた実在の欠陥も直した ——
+`isValidTransition` が `"toString"` で TypeError、`isTerminalState` が未知の状態を
+「終端」と答える（稼働中の `reservations.status` の `completed` が完了扱いに化ける）。
+
+### #934: 同期基盤は、修正を止めて設計の話として上げた
+
+`/code-review` で5件直した直後に **Codex が同じ `src/lib/sync/` に7件返した。**
+指摘が収束していないので1件ずつ潰すのをやめた。**二人のレビュアーが独立に
+同じ結論に着いている** —— この module は「outbox がこういう情報をくれる」前提で
+設計されているが、実際の outbox はその情報を持っていない。
+
+- 409 を拾う経路が**二重に**塞がっている（`queue.ts:423` と `public/sw.js:359`）
+- **ETag/version の楽観ロックはリポジトリに1件も無い。**409 はすべて重複・多重防止
+- `OutboxItem` に tenant 欄が無く、`IdleAutoLogout` はキューを消さない
+- `MenuItemsClient.tsx:299` の `kind:"other"` を `SyncResourceType` が表せない
+- 証明書のオフライン作成は意図的に3種を順に積むのに、全部「競合」になる
+- outbox が二度と送らないと決めたアイテムに「再試行」を出すことになる
+
+### ついでに直した既存コードの穴（IMP-016 とは無関係）
+
+- **`otp.ts`**: 壊れた有効期限で OTP が失効しなかった（`NaN < Date.now()` は false）
+- **`permissionVerbs.ts`**: `platform:operations` が「閲覧」に分類されていた。
+  未知の動詞の既定も `VIEW` → **`MANAGE`** に変更（低リスク側に倒さない）
+- **prototype 素引きが4ファイル**: `transitions.ts`・`conflict.ts`・`negotiate.ts`・
+  `catalogue.ts`。`table["constructor"]` が関数を返し、`?.` も `?? null` も捕まえない
+- **`vehicle.created`** が「統一カタログ」に無く、足したら今度は `EVENT_RISK` 未登録で
+  同義の `vehicle.registered`（medium）と格付けが割れた
+
 ## 2026-08-27 積み上がっていた実装 PR を main へ通し始めた（#928〜#932 マージ）
 
 前のセッションが #928 → #929 → … → #951 と**前の PR をベースにして22本積み上げて**
@@ -17,7 +69,8 @@
 | #930 | IMP-012 認証基盤（オンボーディング・OTP・端末・step-up・招待） | マージ済 |
 | #931 | IMP-013 権限エンジン・店舗スコープ | マージ済 |
 | #932 | IMP-014 ドメインイベント・監査・冪等 | マージ済 |
-| #933 | IMP-015 状態機械・遷移表・Certificate Gate 型 | **代表判断待ち** |
+| #933 | IMP-015 状態機械・遷移表・Certificate Gate 型 | **マージ済**（遷移表を直してから） |
+| #934 | IMP-016 オフライン同期キュー・競合検出 | **代表判断待ち**（下記） |
 
 **#930〜#932 が追加したモジュールは、いずれも稼働中コードからの import が 0 件**
 （`src/lib/auth/*`・`lib/events`・`lib/sync`・`lib/domain/{transitions,certificateGate}`）。
@@ -44,6 +97,37 @@
   「終端」と答えており、`reservations.status` の `completed` が完了扱いになった。
 
 いずれも mutation probe（修正を戻すと落ちること）を実行確認したテストを添えた。
+## 2026-08-26 LINEで顧客が予約を自分でキャンセルできるセルフ対応（第一弾・キャンセルのみ、branch claude/line-chatbot-ledra-dy2fiq）
+
+- 内容: これまで `cancel` intent は抽出しても人手に回していたが、顧客が LINE で「予約を
+  キャンセルしたい」と送った時点で、**本人の今後の予約を提示→確認ボタン→即時キャンセル**
+  （`status=cancelled`＋`cancelled_at`/`cancel_reason`＋Google カレンダー削除＋スタッフ通知）
+  を自動化した。会話フロー基盤（`line_conversation_flows` 状態機械）を再利用。
+  - 締め切りは **作業日の前日まで**（`scheduled_date > 今日(JST, todayJst)`）。当日・過去・
+    対象なし・未紐付けはスタッフ引き継ぎ。反映は**即時自動**（合意事項）。
+  - 破壊的操作のため必ず確認ボタン（`flow:cancel_confirm`/`flow:cancel_abort`）を挟み、
+    **本人の予約のみ**対象（`cancelReservationById` が tenant＋customer 一致を検証、既
+    cancelled/completed は冪等 no-op）。確定直前に締め切りを再検証、closed 楽観クレームで
+    二重実行を防止。
+  - 新状態 `awaiting_cancel_pick`/`awaiting_cancel_confirm`、新イベント（`states.ts`/`interpret.ts`）。
+    共有ヘルパー `src/lib/reservations/mutate.ts`（キャンセル＋gcal 削除）、起点 IO
+    `src/lib/ai/automation/cancelFlowAuto.ts`、実行は `conversationFlowPostback.ts`。
+  - opt-in `inbound_message.auto_self_cancel`（既定 OFF、`actionCatalog.ts`/`orchestrator.ts`）。
+    会話フロー opt-in とは独立（キャンセルのボタン postback は会話フロー OFF でも処理）。
+- 対象: LINE 受信の AI 自動応答（全業種、Standard プラン以上・opt-in）。#908 とは別 PR。
+- 検証: 単体テスト追加（`reservations/mutate`・`cancelFlowAuto`・`conversationFlowPostback`・
+  `inboundAutoReplyGate`・`interpret`・`states`）。automation+line+reservations 全 274 件パス、tsc/eslint エラー0。
+- コードレビュー由来の追加ハードニング（同 PR、`/code-review`）:
+  - 提示ボタン（キャンセル確認）が届かなければ作った `awaiting_cancel_*` 行を `expired` に落とす
+    （残すと顧客はボタン無しで前進できず 72h 他フローも塞がる）。`cancelFlowAuto` と pick→confirm の両経路。
+  - 「スタッフに相談したい」（`flow:consult`）を **self-cancel のみ有効なテナントでも受ける**
+    （キャンセル選択画面にも出るボタンなので、会話フロー OFF だと死にボタンになっていた）。
+  - 締め切り「前日まで」を **確定直前の実 DB 値**でも検証（`cancelReservationById(cutoffDate)`）。
+    提示スナップショット依存の pre-check に加え、提示後にスタッフが当日へ日程変更した場合も安全。
+  - `cancelReservationById` の UPDATE に `.select("id")` を付け、ガードで 0 行更新になったケースを
+    成功と誤認しない（冪等 no-op として `alreadyFinal:true`）。
+- スコープ外（後続PR）: 日程変更（reschedule、既存の日程候補提示＋既存予約 UPDATE の再利用）、
+  リマインダーへのキャンセルボタン添付、admin route.ts のキャンセル処理の共有ヘルパー寄せ。
 
 ## 2026-08-26 SQL と TS の二重実装を機械的に突き合わせる（サイズ区分の丸め違いを修正）
 
@@ -1058,6 +1142,20 @@ supabase migration repair --status reverted 20260825000000
 - 内容: 何を実装・変更したか
 - 対象: どの画面・API・業種向けか
 ```
+
+## 2026-08-19 IMP-015 状態機械・遷移表・Certificate Gate 型（branch impl/IMP-015-state-machines / PR #TBD）
+
+- 内容: v2.0 §19 の状態機械基盤を型・純粋関数で整備。(1) 正準 6 軸（Job/Step/Severity/
+  Certificate/Payment/Sync）の遷移表（`Record<State, readonly State[]>`）。
+  (2) 汎用遷移検証関数（`isValidTransition` / `validNextStates` / `isTerminalState`）と
+  拒否理由生成（`rejectTransition`）。(3) Certificate Gate 10 条件の型定義
+  （v2.0 §19.4 / ADR-0005。評価器の実装は IMP-028）。(4) UNKNOWN → PENDING 禁止
+  （v2.0 §11.3）・CRITICAL → NORMAL 直接降格禁止を遷移表で構造的に表現。
+  既存の signoff 状態機械・photoRequirement・API ルートの遷移ロジックは変更なし。
+  DB マイグレーションなし。テスト 54 件。
+- 対象: 開発基盤（IMP-016 オフライン同期・IMP-028 Certificate Gate・IMP-031 例外状態の前提条件）。
+- ADR-0002 判断事項（既存値→正準値マッピング方針）: TS 層マッピングは各消費タスクで
+  段階的に導入する。IMP-015 では遷移表のみ定義し変換関数は作らない。
 
 ## 2026-08-19 IMP-014 ドメインイベント・監査・冪等基盤（branch impl/IMP-014-domain-events / PR #932）
 

@@ -14,7 +14,12 @@
 > push（ここで初めて CI が走る）→ 緑 → squash」で通す運用にした。
 > **GitHub がベースを自動付け替えするのはベースブランチが削除されたときだけ**で、
 > squash マージでは起きない（私が「自動でやってくれる」と伝えたのは誤りだった）。
-> **#980・#928・#929・#930・#931・#932 をマージ済み。#933 は代表判断待ち。**
+> **#980・#928・#929・#930・#931・#932・#933 をマージ済み（7本）。#934 は代表判断待ち。**
+> #933 は代表の「正しく無いのが載るのはあかんな」を受けて、**正準遷移表の足りない辺を
+> 8件直してから**通した（根拠は ADR・稼働中コード・同ファイル内の矛盾に限定。
+> 根拠の無い3件はモジュール先頭に未解決として明記）。
+> #934 は **`/code-review` と Codex が独立に同じ結論**に着いたので修正を止めた ——
+> `src/lib/sync/` は実際の outbox が持っていない情報を前提にしている。
 > #930〜#932 が足したモジュールは**稼働中コードからの import が 0 件**なので、
 > マージしても実行時の挙動は変わらない。
 > **Codex は 01:06 に利用上限へ達した**ため、以降は `/code-review` で代替している。
@@ -295,6 +300,10 @@ Sentry · Resend (+ SendGrid fallback) · Anthropic (Opus 4.8 / Sonnet 4.6 / Hai
   （SegmentedControl/StatusBadge/StatusCard/NextActionCard/ProgressCard/Alert/IconButton/
   BottomSheet）+ Badge dot + Button xl。v2.0 の色トークン値は不採用・既存デザインシステム維持
   （DECISION_LOG 2026-08-19）。
+- **IMP-015（状態機械・遷移表・Certificate Gate 型）完了**: `src/lib/domain/transitions.ts`
+  （正準 6 軸の遷移表＋汎用遷移検証関数）、`src/lib/domain/certificateGate.ts`
+  （v2.0 §19.4 の 10 条件型定義）。既存値→正準値マッピングは各消費タスクで段階的に
+  導入する方針を確定（DECISION_LOG 2026-08-19）。テスト 54 件。
 - **IMP-001（実装ガードレール & 正準ドメイン語彙）完了**: `src/lib/domain/{states,labels}.ts`
   （6軸の正準値+ロケール別ラベル）、`docs/adr/0001`〜`0006`、アドホック状態禁止ルール
   （CLAUDE.md）。既存語彙との統一・マッピングは IMP-015 で判断（ADR-0002）。
