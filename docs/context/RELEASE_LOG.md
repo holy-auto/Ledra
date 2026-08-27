@@ -1242,6 +1242,20 @@ supabase migration repair --status reverted 20260825000000
 - 検証: `npx tsc --noEmit`（モバイル・ルート両方）通過、`npm run lint` エラー0件。
   25ファイル変更、+2589行/-552行。
 
+## 2026-08-19 IMP-010 デザイントークン & 共有コンポーネント基盤（branch impl/IMP-010-design-tokens / PR #928）
+
+- 内容: v2.0 §3 の不足 UI プリミティブ8つを新設 — SegmentedControl（ピル型切替、3箇所の
+  重複実装の共通化先）/ StatusBadge（Badge+statusMaps の定型接続）/ StatusCard /
+  NextActionCard / ProgressCard（円形進捗+ゼロ除算ガード）/ Alert（169箇所のインライン
+  警告 div の共通化先）/ IconButton（44px タッチターゲット）/ BottomSheet（モバイル用、
+  共通 a11y フック useDialogA11y=フォーカストラップ+復元付き）。既存部品への追加:
+  Badge に dot、Button に xl（48px CTA）。statusMaps に SEVERITY_VARIANT_MAP
+  （正準 Severity → 表示 variant）。使用0件の旧 `src/components/StatusBadge.tsx`
+  （独自スタイル二重管理）を削除。予約ステータスの中央マップ追加は既存2定義
+  （pos-constants / ReservationsClient）との配色衝突が判明したため見送り
+  （統合は IMP-022 で判断）。DESIGN_SYSTEM.md のコンポーネント表を新設分まで更新。
+- 対象: 開発基盤（既存画面の見た目は不変。新部品は IMP-020 以降の画面で使用）。
+
 ## 2026-08-19 IMP-001 実装ガードレール & 正準ドメイン語彙（branch impl/IMP-001-domain-vocabulary / PR #927）
 
 - 内容: v2.0 の6状態軸（Job/Step/Severity/Certificate/Payment/Sync）を正準語彙モジュール
@@ -1275,6 +1289,7 @@ supabase migration repair --status reverted 20260825000000
   - `src/app/layout.tsx`: twitter.site/creator反映
   - `/privacy`, `/terms`, `/law`, `/contact`: canonical追加
   - `/tokusho`: canonical・og:urlを/lawに統一、sitemapから除去
+
 
 ## 2026-08-16 LINE連携の入力を「Channel ID と Secret の2つだけ」に（branch claude/multi-integration-login-opnzfh）
 

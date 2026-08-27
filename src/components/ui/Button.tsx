@@ -3,7 +3,8 @@
 import { forwardRef, type ButtonHTMLAttributes, type ReactNode } from "react";
 
 type ButtonVariant = "primary" | "secondary" | "ghost" | "danger" | "outline";
-type ButtonSize = "sm" | "md" | "lg";
+/** xl = 現場向け主要CTA(48px、v2.0 §3.4)。既存画面の md/lg には影響しない追加サイズ。 */
+type ButtonSize = "sm" | "md" | "lg" | "xl";
 
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: ButtonVariant;
