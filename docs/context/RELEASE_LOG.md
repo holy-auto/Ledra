@@ -1265,6 +1265,11 @@ supabase migration repair --status reverted 20260825000000
 - 対象: 開発基盤（IMP-016 オフライン同期・IMP-028 Certificate Gate・IMP-031 例外状態の前提条件）。
 - ADR-0002 判断事項（既存値→正準値マッピング方針）: TS 層マッピングは各消費タスクで
   段階的に導入する。IMP-015 では遷移表のみ定義し変換関数は作らない。
+- **後日追記（2026-08-27）**: 根拠が無く保留していた4件を代表判断で追加。
+  証明書 REVOKED を ISSUING/VERIFYING からも遷移可に、支払い UNKNOWN の解決先に
+  PARTIALLY_PAID/OVERPAID を追加、工程 IN_PROGRESS/BLOCKED から SKIPPED を許可、
+  Severity CRITICAL→ACTION は現状の表（許可のまま）で確定。詳細は DECISION_LOG
+  「遷移表の未解決4件を代表判断で解決」参照。テスト 6 件追加（mutation-probe 検証済み）。
 
 ## 2026-08-19 IMP-014 ドメインイベント・監査・冪等基盤（branch impl/IMP-014-domain-events / PR #932）
 
