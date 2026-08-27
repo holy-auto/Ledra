@@ -184,7 +184,13 @@ export async function recordPosSale(
 
     // 更新が0行に当たっても PostgREST は error=null を返す。**入ったことを確かめる。**
     // 鍵が入っていない売上は、次に同じ決済を記録したときに重複になる
-    const { data: keyed } = await admin.from("payments").select(key.column).eq("id", paymentId).maybeSingle();
+    // 列名は**定数で書く**。動的にすると `check:schema` がクエリの中身を読めず、
+    // 存在しない列を書いても気づけないクエリが1件増える
+    const { data: keyed } = await admin
+      .from("payments")
+      .select("stripe_payment_intent_id, square_payment_id")
+      .eq("id", paymentId)
+      .maybeSingle();
     if ((keyed as Record<string, string | null> | null)?.[key.column] !== key.value) {
       // ここで失敗にすると、操作者がやり直して**本当に**重複を作る（鍵が無いので
       // 次回の照合も素通りする）。売上は残したまま、突き合わせのために記録する。
