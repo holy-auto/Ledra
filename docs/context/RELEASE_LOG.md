@@ -1063,6 +1063,12 @@ supabase migration repair --status reverted 20260825000000
   （IndexedDB キュー・Background Sync・SW）は変更なし。DB マイグレーションなし。
   テスト 30 件。
 - 対象: 開発基盤（IMP-032 SYNC_CENTER 画面・IMP-023 作業エビデンス・IMP-053 エラー契約の前提条件）。
+- **後日訂正（2026-08-27）**: (1)〜(3)・(5) の `src/lib/sync/`（型・競合検出ヘルパー）は
+  **削除した。**`/code-review` と Codex が独立に、実際の outbox（`src/lib/outbox/`）が
+  持たない情報（メソッド別ステータス・tenant・恒久ブロック状態）を前提にしていると
+  指摘し、修正が収束しなかったため（DECISION_LOG 2026-08-27）。(4) の `sync.*` 5
+  イベントと `EVENT_RISK` の格付けだけ残した。同期層の型・競合解決は IMP-032 で
+  outbox の実際の契約に合わせて設計し直す。
 
 ## 2026-08-19 IMP-015 状態機械・遷移表・Certificate Gate 型（branch impl/IMP-015-state-machines / PR #TBD）
 

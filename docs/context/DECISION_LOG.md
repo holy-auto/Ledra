@@ -4,6 +4,17 @@
 > （新しい順）。実装の詳細は RELEASE_LOG.md、迷っている段階のものは
 > OPEN_QUESTIONS.md に書く。
 
+## 2026-08-27 IMP-016 の同期基盤は型・競合検出を削除し、イベント名だけ残す
+1. 日付: 2026-08-27
+2. 起きたこと: PR #934（IMP-016 オフライン同期）で `/code-review` の指摘5件を直した直後、Codex が同じ `src/lib/sync/` に7件返した。指摘が収束していないので修正を止め、前提と実際の対応表を PR コメントに上げて代表判断を仰いだ。代表の回答は「(b) `src/lib/sync/` を外し、`sync.*` のイベント名と `EVENT_RISK` の格付けだけ通す」。
+3. 以前の考え: `SyncQueueItem`（既存 `OutboxItem` の上位ビュー）と `SyncConflict` 検出関数を用意すれば、IMP-032（SYNC_CENTER）はそれを組み立てるだけで済む。
+4. 違和感・問題: **`src/lib/sync/` は、実際の outbox（`src/lib/outbox/`）が持っていない情報を前提にしていた。**(a) 409 を拾う経路が `queue.ts:423` と `public/sw.js:359` の**二重に**塞がれており、`DrainResult` にメソッドもステータスも残らないので `detectConflictFromResponse` は到達不能。(b) このリポジトリの 409 に ETag/version の楽観ロックは1件も無く、すべて重複・多重防止。`version_mismatch` と分類して `client_wins` で再送すると、サーバが重複として弾いたリクエストを送り直すことになる。(c) `OutboxItem` に tenant 欄が無く、`IdleAutoLogout` はサインアウト時にキューを消さない。(d) `MenuItemsClient.tsx:299` の `kind:"other"` を `SyncResourceType` が表せない。(e) 証明書のオフライン作成は意図的に3操作を順に積むのに、全部「競合」と判定される。(f) outbox が `markBlocked` で恒久停止したアイテムを `SyncState` が表せず `FAILED`（→ PENDING 可）にするしかない。
+5. 決めたこと: (a) `src/lib/sync/types.ts` と `conflict.ts`（テスト含む）を**削除**する。(b) `catalogue.ts` の `sync.*` 5イベントと、それに対応する `EVENT_RISK` の格付け（`sync.conflict_detected`/`sync.conflict_resolved`/`sync.failed` を medium）は**残す**。イベント名は実装がどうなっても正しい単なる語彙だから。(c) IMP-016 とは無関係に見つかった既存コードの穴（`otp.ts` の壊れた有効期限、`permissionVerbs.ts` の `platform:operations` 誤分類、`negotiate.ts`/`catalogue.ts` の prototype 素引き4件）は削除の対象にせず、そのまま残す。(d) 同期層の型・競合解決の設計は IMP-032 に送る——outbox 側の変更（アイテム単位のステータス返却、enqueue 時の tenant 保存）が先に要るので、型を先に決めても解決しない。
+6. 捨てた選択肢: (a) このままマージして IMP-032 で作り直す＝**下流タスクが間違った型を前提に設計を始める**リスクの方が、作り直しの手間より大きいと判断された。(b) 7件も1件ずつ直す＝収束しない見込みが高く、部分修正が新しい穴を作りうる（実際 `vehicle.created` を足したときに `EVENT_RISK` の格付けが割れた）。
+7. 判断理由: 「指摘が収束しなくなったら、それは個々のバグではなく前提のズレ」（2026-08-27 の別エントリ）。二人のレビュアーが独立に同じ結論に着いたのは、個々の見落としではなく設計の前提そのものが違うという強い signal だった。イベント名だけ残すのは、そこだけは「未配線でも間違いようがない」部分だから。
+8. まだ答えが出ていないこと: (a) outbox 側の変更（アイテム単位のステータス返却・enqueue 時の tenant 保存）を誰が・いつ行うか。IMP-032 着手前に決める必要がある。(b) Severity の `CRITICAL → ACTION` の読み方の割れ（IMP-015/IMP-016 で逆向きに直された）は未解決のまま。
+9. 公開区分: 公開可（「型を先に決めても実装側の制約は解決しない」「レビューの指摘が収束しないのは前提のズレの兆候」は発信可。テナント名・接続情報は出さない）
+
 ## 2026-08-26 LINE予約セルフ対応は「キャンセルのみ・前日まで・即時自動反映」で第一弾を切る（変更は後続）
 1. 日付: 2026-08-26
 2. 起きたこと: PR #908（LINEナレッジ返信のボタン誘導）マージ後、代表の依頼「予約変更/キャンセルのセルフ対応」に着手。調査で cancel/change_reservation intent は抽出済みだが全て人手に回している現状を確認。3点（スコープ・締め切り・反映方式）を代表に確認した。
