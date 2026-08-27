@@ -3,21 +3,30 @@
 import { useCallback, useEffect, type RefObject } from "react";
 
 /**
- * ダイアログ系(BottomSheet 等)の共通アクセシビリティ挙動:
+ * ダイアログ系(BottomSheet / Modal / Drawer)の共通アクセシビリティ挙動:
  * Escape で閉じる / Tab フォーカストラップ / 開いたら先頭要素へフォーカス /
- * body スクロールロック。Modal.tsx / Drawer.tsx に重複している同一ロジックの共通化
- * (既存2ファイルの載せ替えは挙動退行を避けるため別タスク。新設コンポーネントはこちらを使う)。
+ * body スクロールロック。**3コンポーネントすべてがここを通る。**
  */
 /**
- * body のスクロールロックはページに1つしかない資源なので、開いている
- * ダイアログの数を数えて最後の1つが元に戻す。Modal.tsx / Drawer.tsx は今も
- * 直に body を触っているが、こちらが**元の値を覚えて戻す**ので併用できる。
+ * body スクロールロックはページに1つしかない資源なので、開いている
+ * ダイアログの数を数え、最後の1つが閉じたときだけ元の値へ戻す。
+ *
+ * ponytail: 数えているのはこの hook を通る要素だけ。
+ * `ImageMarkupModal.tsx` と `ScreenshotLightboxImage.tsx` は今も直に body を
+ * 触っている。あちらは開く前の値を保存して戻す形なので単独・入れ子では
+ * 噛み合うが、**「あちらが開いている最中にこちらの最後の1つが閉じる」順序**
+ * だけは取りこぼす(こちらが復元した値をあちらが後から上書きする)。
+ * 直すならその2つもこの hook 経由にする。
  */
 let lockCount = 0;
 let previousOverflow = "";
 
 /**
  * 表示されていない要素をフォーカストラップから外す。
+ * (Tab 順から外れている要素 —— `tabindex="-1"` の付いた button など —— は
+ *  呼び出し側で `el.tabIndex >= 0` により別途除外する。セレクタの
+ *  `button:not([disabled])` の枝が先に当たるので、末尾の
+ *  `[tabindex]:not([tabindex="-1"])` では弾けない。)
  * レスポンシブで `display:none` になっているボタンや `hidden` 属性の要素を
  * 含めると、ブラウザは Tab 移動でそこを飛ばすので「最後の要素」を取り違え、
  * **フォーカスがダイアログの外へ抜ける。**
@@ -44,7 +53,7 @@ export default function useDialogA11y(open: boolean, onClose: () => void, panelR
       root.querySelectorAll<HTMLElement>(
         'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
       ),
-    ).filter((el) => !isHidden(el, root));
+    ).filter((el) => el.tabIndex >= 0 && !isHidden(el, root));
   }, [panelRef]);
 
   useEffect(() => {
