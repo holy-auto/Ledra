@@ -121,7 +121,7 @@ export default function StoresClient() {
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || "追加に失敗しました");
+        throw new Error(data.message || data.error || "追加に失敗しました");
       }
       setAddMemberUserId("");
       await fetchStoreMembers(membersStoreId);
@@ -200,7 +200,7 @@ export default function StoresClient() {
 
       if (!res.ok) {
         const data = await res.json();
-        throw new Error(data.error || "保存に失敗しました");
+        throw new Error(data.message || data.error || "保存に失敗しました");
       }
 
       resetForm();
@@ -232,7 +232,7 @@ export default function StoresClient() {
       const res = await fetch(`/api/admin/stores?id=${store.id}`, { method: "DELETE" });
       if (!res.ok) {
         const data = await res.json();
-        throw new Error(data.error || "削除に失敗しました");
+        throw new Error(data.message || data.error || "削除に失敗しました");
       }
       fetchStores();
     } catch (err: unknown) {

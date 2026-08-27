@@ -10,13 +10,7 @@
  */
 
 export type DetectedMime =
-  | "image/jpeg"
-  | "image/png"
-  | "image/gif"
-  | "image/webp"
-  | "image/heic"
-  | "video/mp4"
-  | "video/quicktime";
+  "image/jpeg" | "image/png" | "image/gif" | "image/webp" | "image/heic" | "video/mp4" | "video/quicktime";
 
 /**
  * バッファ先頭のマジックバイトから MIME を判定する。

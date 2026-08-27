@@ -1,6 +1,7 @@
 import { calendar_v3, calendar } from "@googleapis/calendar";
 import { OAuth2Client } from "google-auth-library";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
+import { storeIdOrNull } from "@/lib/stores/resolveStoreId";
 
 /**
  * Google Calendar 連携クライアント
@@ -383,6 +384,9 @@ async function pullOneCalendar(
     return;
   }
 
+  // 取り込んだ予約の店舗。イベントごとに引かないよう1回だけ解決する
+  const storeId = await storeIdOrNull(admin, tenantId, "gcal pull");
+
   for (const event of events) {
     if (!event.id) continue;
 
@@ -468,6 +472,7 @@ async function pullOneCalendar(
         .from("reservations")
         .insert({
           tenant_id: tenantId,
+          store_id: storeId,
           title,
           note,
           scheduled_date: startDate,
