@@ -21,6 +21,8 @@ import {
 import { FEATURE_GROUPS, type FeatureGroup } from "@/lib/marketing/features";
 import { listContent, type ContentEntry } from "@/lib/marketing/content";
 import { notoSansJpDataUrl } from "@/lib/marketing/pdfFonts";
+import { OPERATION_GUIDE_GROUPS, type GuideGroup } from "@/lib/operationGuides";
+import { GLOSSARY_CATEGORIES, listGlossaryByCategory, type GlossaryCategory } from "@/lib/marketing/glossary";
 
 let fontsRegistered = false;
 function ensureFonts() {
@@ -35,14 +37,21 @@ function ensureFonts() {
   fontsRegistered = true;
 }
 
+/**
+ * PDF パレット。DESIGN_SYSTEM.md のダークテーマ・トークンに揃えている
+ * （`--bg-base` / `--bg-surface-solid` / `--accent-blue` / `--accent-gold`）。
+ * サイト本体と紙面の印象を一致させるのが目的なので、ここに独自色を足さない。
+ */
 const colors = {
-  bg: "#060a12",
-  bgAlt: "#0b111c",
+  bg: "#060a12", // --bg-base (dark)
+  surface: "#0d1525", // --bg-surface-solid (dark)
   text: "#ffffff",
+  body: "#c7cfdd",
   mute: "#8e99b0",
   mute2: "#5f6a81",
-  accent: "#60a5fa",
+  accent: "#4d9fff", // --accent-blue (dark)
   accent2: "#a78bfa",
+  gold: "#b08d3f", // --accent-gold（章扉・格式の差し色。全面ゴールド化はしない）
   border: "#1a2233",
 };
 
@@ -54,15 +63,16 @@ const styles = StyleSheet.create({
     padding: 48,
   },
   pageTitle: {
-    fontSize: 9,
-    color: colors.mute2,
-    marginBottom: 6,
-    letterSpacing: 2,
+    fontSize: 8.5,
+    fontWeight: 700,
+    color: colors.accent,
+    marginBottom: 7,
+    letterSpacing: 2.6,
   },
   h1: {
-    fontSize: 24,
+    fontSize: 25,
     fontWeight: 700,
-    lineHeight: 1.25,
+    lineHeight: 1.24,
     marginBottom: 16,
     color: colors.text,
   },
@@ -81,15 +91,16 @@ const styles = StyleSheet.create({
   },
   body: {
     fontSize: 10.5,
-    color: "#c8cfdd",
+    color: colors.body,
     lineHeight: 1.75,
     marginBottom: 8,
   },
   card: {
+    backgroundColor: colors.surface,
     border: `1pt solid ${colors.border}`,
-    borderRadius: 6,
+    borderRadius: 7,
     padding: 14,
-    marginVertical: 6,
+    marginVertical: 5,
   },
   cardTitle: {
     fontSize: 12,
@@ -109,30 +120,44 @@ const styles = StyleSheet.create({
   gridItem: {
     flex: 1,
   },
+  /**
+   * 章扉のルール。全幅の暗いトラックの上に、左端 64pt だけアクセント色を乗せる
+   * （`borderLeft` を色付きセグメントとして使うことで、View 1つで二色帯にしている）。
+   */
   gradientBar: {
-    height: 3,
-    backgroundColor: colors.accent,
+    height: 4,
+    backgroundColor: colors.border,
+    borderLeftWidth: 64,
+    borderLeftColor: colors.accent,
     marginBottom: 22,
   },
   footer: {
     position: "absolute",
-    bottom: 28,
+    bottom: 26,
     left: 48,
     right: 48,
     flexDirection: "row",
     justifyContent: "space-between",
+    alignItems: "center",
+    borderTopWidth: 0.5,
+    borderTopColor: colors.border,
+    paddingTop: 8,
     fontSize: 8,
     color: colors.mute2,
   },
   tagline: {
-    marginTop: 30,
+    marginTop: 28,
+    paddingLeft: 12,
+    borderLeftWidth: 2,
+    borderLeftColor: colors.gold,
     fontSize: 14,
     fontWeight: 700,
+    lineHeight: 1.5,
     color: colors.accent2,
   },
   bullet: {
     fontSize: 10.5,
-    color: "#c8cfdd",
+    color: colors.body,
     lineHeight: 1.7,
     marginBottom: 4,
     paddingLeft: 14,
@@ -161,57 +186,71 @@ const styles = StyleSheet.create({
   },
   pill: {
     alignSelf: "flex-start",
-    fontSize: 8,
-    color: colors.accent,
-    borderWidth: 1,
-    borderColor: colors.accent,
+    fontSize: 7.5,
+    fontWeight: 700,
+    letterSpacing: 1,
+    color: colors.bg,
+    backgroundColor: colors.accent,
     borderRadius: 3,
-    paddingHorizontal: 5,
-    paddingVertical: 1,
-    marginBottom: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    marginBottom: 7,
   },
   tableRow: {
     flexDirection: "row",
     borderBottomWidth: 0.5,
     borderBottomColor: colors.border,
-    paddingVertical: 5,
+    paddingVertical: 6,
+    paddingHorizontal: 8,
   },
   tableHead: {
     flexDirection: "row",
+    backgroundColor: colors.surface,
     borderBottomWidth: 1,
     borderBottomColor: colors.accent,
-    paddingBottom: 5,
+    paddingVertical: 6,
+    paddingHorizontal: 8,
     marginTop: 8,
   },
   th: {
     fontSize: 9,
     fontWeight: 700,
+    letterSpacing: 0.6,
     color: colors.mute,
   },
   td: {
     fontSize: 9.5,
-    color: "#c8cfdd",
+    color: colors.body,
     lineHeight: 1.5,
   },
   col1: { flex: 2 },
   col2: { flex: 1, textAlign: "right" },
 });
 
-const updated = new Date().toLocaleDateString("ja-JP", {
-  year: "numeric",
-  month: "long",
-  day: "numeric",
-});
+/**
+ * 「更新: YYYY年M月D日」。**呼ぶたびに評価する**こと。
+ * モジュールスコープの定数にすると Node プロセスが生きている限り値が固定され、
+ * 「常に最新版が出る」はずの資料のフッターだけが起動日で止まる。
+ */
+function updatedLabel(): string {
+  return new Date().toLocaleDateString("ja-JP", { year: "numeric", month: "long", day: "numeric" });
+}
 
 /* ────────────────────────────────────────────────────────── */
 
-function Footer({ pageLabel }: { pageLabel: string }) {
+/**
+ * ページ番号は react-pdf の `render` に採番させる。
+ *
+ * 以前は各ページが `pageLabel="3 / 5"` を自前で持っていたが、中身が A4 に
+ * 収まらず溢れると勝手に改ページが入り、実物 6 ページの資料が「5」と刷る
+ * 状態になっていた（料金プラン詳細・ROI テンプレートで実際に発生）。
+ * 総数を数えるのをやめれば、機能やオプションが増えて溢れても番号は正しい。
+ */
+function Footer() {
   return (
     <View style={styles.footer} fixed>
       <Text>Ledra | 自動車整備・コーティング店の施工履歴プラットフォーム</Text>
-      <Text>
-        {pageLabel} · 更新: {updated}
-      </Text>
+      <Text fixed render={({ pageNumber, totalPages }) => `${pageNumber} / ${totalPages} · 更新: ${updatedLabel()}`} />
     </View>
   );
 }
@@ -240,7 +279,7 @@ function Page1Cover() {
       </View>
 
       <Text style={styles.tagline}>自動車整備・コーティング店の施工履歴プラットフォーム — Ledra</Text>
-      <Footer pageLabel="1 / 4" />
+      <Footer />
     </Page>
   );
 }
@@ -278,7 +317,7 @@ function Page2Problems() {
         Ledra はこの3つの摩擦を、記録の「かたち」だけを変えることで解きます。
       </Text>
 
-      <Footer pageLabel="2 / 4" />
+      <Footer />
     </Page>
   );
 }
@@ -304,8 +343,17 @@ function Page3Features() {
             <Text style={styles.cardDesc}>1台・1人の履歴を、証明書・予約・請求までタイムラインで横断参照。</Text>
           </View>
           <View style={styles.card}>
-            <Text style={styles.cardTitle}>POS・請求書・予約</Text>
-            <Text style={styles.cardDesc}>Tap to Pay 決済、請求書 PDF 自動生成、Google Calendar 同期。</Text>
+            <Text style={styles.cardTitle}>案件ワークフロー・POS・帳票</Text>
+            <Text style={styles.cardDesc}>
+              受付から引渡しまでを1つのワークスペースで。Tap to Pay 決済、請求書 PDF 自動生成、Google Calendar 同期。
+            </Text>
+          </View>
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>現場モバイル</Text>
+            <Text style={styles.cardDesc}>
+              スマホ・タブレット前提の UI で、撮影から証明書発行までを現場の速度で。PWA
+              対応で通信が不安定な場所でも動きます。
+            </Text>
           </View>
         </View>
         <View style={styles.gridItem}>
@@ -324,14 +372,20 @@ function Page3Features() {
           <View style={styles.card}>
             <Text style={styles.cardTitle}>既存ツールとの連携</Text>
             <Text style={styles.cardDesc}>
-              Stripe / Google Calendar / LINE と接続。置き換えではなく、橋渡し。 Square /
-              電子署名サービスはロードマップ上で順次対応予定。
+              Stripe / Square / Google Calendar /
+              LINE、freee・マネーフォワードの会計連携と接続。置き換えではなく、橋渡し。
+            </Text>
+          </View>
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>経営分析・ナレッジ</Text>
+            <Text style={styles.cardDesc}>
+              売上・顧客・パートナーランクをダッシュボードで可視化。施工手順のナレッジ共有で、品質を人ではなくチームに残します。
             </Text>
           </View>
         </View>
       </View>
 
-      <Footer pageLabel="3 / 4" />
+      <Footer />
     </Page>
   );
 }
@@ -360,7 +414,7 @@ function Page4NextSteps() {
       <Text style={[styles.tagline, { marginTop: 40 }]}>記録を、業界の共通言語にする。</Text>
       <Text style={[styles.body, { color: colors.mute2, marginTop: 4 }]}>— Ledra チーム</Text>
 
-      <Footer pageLabel="4 / 4" />
+      <Footer />
     </Page>
   );
 }
@@ -388,7 +442,6 @@ export function ServiceOverviewPdf() {
  * ══════════════════════════════════════════════════════════════════ */
 
 function PricingCover() {
-  const pageTotal = 5;
   return (
     <Page size="A4" style={styles.page}>
       <Text style={styles.pageTitle}>PRICING OVERVIEW</Text>
@@ -401,8 +454,14 @@ function PricingCover() {
 
       <View style={[styles.card, { marginTop: 18 }]}>
         <Text style={styles.cardTitle}>この資料の構成</Text>
-        <Text style={styles.bullet}>• 4プラン（フリー / スターター / スタンダード / プロ）の料金と上限</Text>
-        <Text style={styles.bullet}>• 機能別比較表（10項目）</Text>
+        <Text style={styles.bullet}>
+          • {Object.keys(PLANS).length}プラン（
+          {Object.values(PLANS)
+            .map((p) => p.name)
+            .join(" / ")}
+          ）の料金と上限
+        </Text>
+        <Text style={styles.bullet}>• 機能別比較表（{FEATURE_COMPARISON.length}項目）</Text>
         <Text style={styles.bullet}>• ブランド証明書テンプレートのオプション料金</Text>
         <Text style={styles.bullet}>• 追加店舗・ユーザー・サポート等のオプション料金</Text>
         <Text style={styles.bullet}>• NFCタグ価格と初期100店舗限定キャンペーン</Text>
@@ -418,7 +477,7 @@ function PricingCover() {
       </View>
 
       <Text style={styles.tagline}>記録を、業界の共通言語にする。</Text>
-      <Footer pageLabel={`1 / ${pageTotal}`} />
+      <Footer />
     </Page>
   );
 }
@@ -473,7 +532,6 @@ function PlanCard({
 }
 
 function PricingPlans() {
-  const pageTotal = 5;
   return (
     <Page size="A4" style={styles.page}>
       <Text style={styles.pageTitle}>01 PLANS</Text>
@@ -531,13 +589,12 @@ function PricingPlans() {
         </View>
       </View>
 
-      <Footer pageLabel={`2 / ${pageTotal}`} />
+      <Footer />
     </Page>
   );
 }
 
 function PricingComparison() {
-  const pageTotal = 5;
   return (
     <Page size="A4" style={styles.page}>
       <Text style={styles.pageTitle}>02 COMPARISON</Text>
@@ -568,13 +625,12 @@ function PricingComparison() {
       <Text style={styles.bullet}>• プラン間のアップグレードはいつでも可能（日割り計算）。</Text>
       <Text style={styles.bullet}>• ダウングレードは次回更新時から適用されます。</Text>
 
-      <Footer pageLabel={`3 / ${pageTotal}`} />
+      <Footer />
     </Page>
   );
 }
 
 function PricingTemplateAndAddons() {
-  const pageTotal = 5;
   return (
     <Page size="A4" style={styles.page}>
       <Text style={styles.pageTitle}>03 TEMPLATE & OPTIONS</Text>
@@ -648,13 +704,12 @@ function PricingTemplateAndAddons() {
         );
       })}
 
-      <Footer pageLabel={`4 / ${pageTotal}`} />
+      <Footer />
     </Page>
   );
 }
 
 function PricingCampaignAndNfc() {
-  const pageTotal = 5;
   return (
     <Page size="A4" style={styles.page}>
       <Text style={styles.pageTitle}>04 NFC & CAMPAIGN</Text>
@@ -693,7 +748,7 @@ function PricingCampaignAndNfc() {
       <Text style={styles.bullet}>• 請求は月末締め・翌月末払い。クレジットカードまたは口座振替にて承ります。</Text>
       <Text style={styles.bullet}>• 大規模導入・グループ法人・業種特化オプションは別途お見積りいたします。</Text>
 
-      <Footer pageLabel={`5 / ${pageTotal}`} />
+      <Footer />
     </Page>
   );
 }
@@ -722,7 +777,6 @@ export function PricingOverviewPdf() {
  * ══════════════════════════════════════════════════════════════════ */
 
 function FeaturesCover() {
-  const pageTotal = 2 + FEATURE_GROUPS.length + 1;
   return (
     <Page size="A4" style={styles.page}>
       <Text style={styles.pageTitle}>FEATURES DEEP DIVE</Text>
@@ -735,7 +789,11 @@ function FeaturesCover() {
 
       <View style={[styles.card, { marginTop: 18 }]}>
         <Text style={styles.cardTitle}>本資料の読み方</Text>
-        <Text style={styles.bullet}>• 8カテゴリ、合計約38の機能を、業務の順番に沿って並べています。</Text>
+        {/* 件数はベタ書きにしない ―― 機能を1つ足した瞬間に資料が嘘をつくため。 */}
+        <Text style={styles.bullet}>
+          • {FEATURE_GROUPS.length}カテゴリ、合計{FEATURE_GROUPS.reduce((n, g) => n + g.features.length, 0)}
+          の機能を、業務の順番に沿って並べています。
+        </Text>
         <Text style={styles.bullet}>• Admin / Agent / Insurer / Customer の4ポータルで利用可能な機能を明示。</Text>
         <Text style={styles.bullet}>• 料金・契約条件は別紙「料金プラン詳細資料」をご参照ください。</Text>
       </View>
@@ -748,13 +806,12 @@ function FeaturesCover() {
       ))}
 
       <Text style={styles.tagline}>記録を、業界の共通言語にする。</Text>
-      <Footer pageLabel={`1 / ${pageTotal}`} />
+      <Footer />
     </Page>
   );
 }
 
 function FeaturesFourPortal() {
-  const pageTotal = 2 + FEATURE_GROUPS.length + 1;
   return (
     <Page size="A4" style={styles.page}>
       <Text style={styles.pageTitle}>00 OVERVIEW</Text>
@@ -800,12 +857,12 @@ function FeaturesFourPortal() {
       <Text style={styles.bullet}>• RLS（行レベルセキュリティ）で、役割に応じて自動的に見える範囲を絞り込み。</Text>
       <Text style={styles.bullet}>• 4ポータル間の権限委譲・切替はワンクリック。テナント境界は常に明確。</Text>
 
-      <Footer pageLabel={`2 / ${pageTotal}`} />
+      <Footer />
     </Page>
   );
 }
 
-function FeatureGroupPage({ group, index, pageTotal }: { group: FeatureGroup; index: number; pageTotal: number }) {
+function FeatureGroupPage({ group, index }: { group: FeatureGroup; index: number }) {
   return (
     <Page size="A4" style={styles.page}>
       <Text style={styles.pageTitle}>
@@ -838,13 +895,12 @@ function FeatureGroupPage({ group, index, pageTotal }: { group: FeatureGroup; in
         </View>
       </View>
 
-      <Footer pageLabel={`${index + 3} / ${pageTotal}`} />
+      <Footer />
     </Page>
   );
 }
 
 function FeaturesClosing() {
-  const pageTotal = 2 + FEATURE_GROUPS.length + 1;
   return (
     <Page size="A4" style={styles.page}>
       <Text style={styles.pageTitle}>{String(FEATURE_GROUPS.length + 1).padStart(2, "0")} NEXT STEPS</Text>
@@ -888,14 +944,13 @@ function FeaturesClosing() {
       <Text style={styles.body}>Email: info@ledra.co.jp</Text>
       <Text style={styles.body}>料金詳細: https://ledra.co.jp/pricing</Text>
 
-      <Footer pageLabel={`${pageTotal} / ${pageTotal}`} />
+      <Footer />
     </Page>
   );
 }
 
 export function FeaturesDeepDivePdf() {
   ensureFonts();
-  const pageTotal = 2 + FEATURE_GROUPS.length + 1;
   return (
     <Document
       title="Ledra 機能紹介資料"
@@ -907,7 +962,7 @@ export function FeaturesDeepDivePdf() {
       {FeaturesCover()}
       {FeaturesFourPortal()}
       {FEATURE_GROUPS.map((g, i) => (
-        <React.Fragment key={g.id}>{FeatureGroupPage({ group: g, index: i, pageTotal })}</React.Fragment>
+        <React.Fragment key={g.id}>{FeatureGroupPage({ group: g, index: i })}</React.Fragment>
       ))}
       {FeaturesClosing()}
     </Document>
@@ -1043,8 +1098,6 @@ const SECURITY_BLOCKS: SecurityBlock[] = [
   },
 ];
 
-const SECURITY_PAGE_TOTAL = 1 + 1 + SECURITY_BLOCKS.length + 3; // cover + 3-layer + 5 blocks + polygon + lifecycle + close
-
 function SecurityCover() {
   return (
     <Page size="A4" style={styles.page}>
@@ -1075,7 +1128,7 @@ function SecurityCover() {
       <Text style={styles.bullet}>08. 認証取得状況・インシデント対応・窓口</Text>
 
       <Text style={styles.tagline}>記録の信頼を、仕組みで守る。</Text>
-      <Footer pageLabel={`1 / ${SECURITY_PAGE_TOTAL}`} />
+      <Footer />
     </Page>
   );
 }
@@ -1117,7 +1170,7 @@ function SecurityLayers() {
       <Text style={styles.bullet}>• ペイロード層のソルト/ペッパーはアプリケーションシークレットとしてのみ管理。</Text>
       <Text style={styles.bullet}>• 監査証跡は各層で独立に採取し、時刻同期のみ共通化。</Text>
 
-      <Footer pageLabel={`2 / ${SECURITY_PAGE_TOTAL}`} />
+      <Footer />
     </Page>
   );
 }
@@ -1139,13 +1192,12 @@ function SecurityBlockPage({ block, index }: { block: SecurityBlock; index: numb
         </View>
       ))}
 
-      <Footer pageLabel={`${index + 3} / ${SECURITY_PAGE_TOTAL}`} />
+      <Footer />
     </Page>
   );
 }
 
 function SecurityPolygonFlow() {
-  const n = 3 + SECURITY_BLOCKS.length;
   return (
     <Page size="A4" style={styles.page}>
       <Text style={styles.pageTitle}>06 POLYGON ANCHORING</Text>
@@ -1179,13 +1231,12 @@ function SecurityPolygonFlow() {
         </Text>
       </View>
 
-      <Footer pageLabel={`${n} / ${SECURITY_PAGE_TOTAL}`} />
+      <Footer />
     </Page>
   );
 }
 
 function SecurityDataLifecycle() {
-  const n = 4 + SECURITY_BLOCKS.length;
   return (
     <Page size="A4" style={styles.page}>
       <Text style={styles.pageTitle}>07 DATA LIFECYCLE</Text>
@@ -1227,7 +1278,7 @@ function SecurityDataLifecycle() {
       <Text style={styles.bullet}>• 個別の顧客情報削除依頼は、本人確認後 30 日以内に対応。</Text>
       <Text style={styles.bullet}>• 全データの CSV / JSON エクスポートは、Admin 権限者がいつでも取得可能。</Text>
 
-      <Footer pageLabel={`${n} / ${SECURITY_PAGE_TOTAL}`} />
+      <Footer />
     </Page>
   );
 }
@@ -1268,7 +1319,7 @@ function SecurityClosing() {
         ページおよび最新版ホワイトペーパーに反映します。
       </Text>
 
-      <Footer pageLabel={`${SECURITY_PAGE_TOTAL} / ${SECURITY_PAGE_TOTAL}`} />
+      <Footer />
     </Page>
   );
 }
@@ -1299,18 +1350,7 @@ export function SecurityWhitepaperPdf() {
  * Case Studies — 導入事例集（パイロット版）
  * ══════════════════════════════════════════════════════════════════ */
 
-/**
- * Page total for the case-studies PDF is dynamic because the "Published
- * cases" page only appears when there is at least one live MDX entry.
- *
- * Static layout (no published cases): 2 framing + 5 industry patterns
- * + pilot program + closing = 9.
- */
-function casesPageTotal(publishedCount: number): number {
-  return 9 + (publishedCount > 0 ? 1 : 0);
-}
-
-function CasesCover({ pageTotal }: { pageTotal: number }) {
+function CasesCover() {
   return (
     <Page size="A4" style={styles.page}>
       <Text style={styles.pageTitle}>CASE STUDIES</Text>
@@ -1337,12 +1377,12 @@ function CasesCover({ pageTotal }: { pageTotal: number }) {
       </View>
 
       <Text style={styles.tagline}>あなたの1社目が、業界の記録文化を作る。</Text>
-      <Footer pageLabel={`1 / ${pageTotal}`} />
+      <Footer />
     </Page>
   );
 }
 
-function CasesMetrics({ pageTotal }: { pageTotal: number }) {
+function CasesMetrics() {
   return (
     <Page size="A4" style={styles.page}>
       <Text style={styles.pageTitle}>01 METRICS</Text>
@@ -1389,7 +1429,7 @@ function CasesMetrics({ pageTotal }: { pageTotal: number }) {
       <Text style={styles.bullet}>• 新規顧客からの信頼獲得エピソード（QR/NFC 体験）</Text>
       <Text style={styles.bullet}>• 保険会社・代理店との連携における摩擦の減り方</Text>
 
-      <Footer pageLabel={`2 / ${pageTotal}`} />
+      <Footer />
     </Page>
   );
 }
@@ -1474,15 +1514,7 @@ const INDUSTRY_PATTERNS: IndustryPattern[] = [
   },
 ];
 
-function CasesIndustryPatternPage({
-  pattern,
-  index,
-  pageTotal,
-}: {
-  pattern: IndustryPattern;
-  index: number;
-  pageTotal: number;
-}) {
+function CasesIndustryPatternPage({ pattern, index }: { pattern: IndustryPattern; index: number }) {
   return (
     <Page size="A4" style={styles.page}>
       <Text style={styles.pageTitle}>{String(index + 2).padStart(2, "0")} INDUSTRY PATTERN</Text>
@@ -1513,15 +1545,15 @@ function CasesIndustryPatternPage({
         ※ 上記はパイロット設計段階での想定パターンです。実数値は実施企業様ごとに異なります。
       </Text>
 
-      <Footer pageLabel={`${index + 3} / ${pageTotal}`} />
+      <Footer />
     </Page>
   );
 }
 
-function CasesPilotProgram({ pageNumber, pageTotal }: { pageNumber: number; pageTotal: number }) {
+function CasesPilotProgram() {
   return (
     <Page size="A4" style={styles.page}>
-      <Text style={styles.pageTitle}>{String(pageNumber).padStart(2, "0")} PILOT PROGRAM</Text>
+      <Text style={styles.pageTitle}>PILOT PROGRAM</Text>
       <View style={styles.gradientBar} />
       <Text style={styles.h1}>パイロット参加の流れ</Text>
       <Text style={[styles.lead, { marginBottom: 10 }]}>
@@ -1559,15 +1591,15 @@ function CasesPilotProgram({ pageNumber, pageTotal }: { pageNumber: number; page
       <Text style={styles.bullet}>• 優先機能リクエスト受付（ロードマップ反映）</Text>
       <Text style={styles.bullet}>• Ledra 公式イベント・ウェビナーでの登壇機会</Text>
 
-      <Footer pageLabel={`${pageNumber} / ${pageTotal}`} />
+      <Footer />
     </Page>
   );
 }
 
-function CasesClosing({ pageTotal }: { pageTotal: number }) {
+function CasesClosing() {
   return (
     <Page size="A4" style={styles.page}>
-      <Text style={styles.pageTitle}>{String(pageTotal).padStart(2, "0")} NEXT STEPS</Text>
+      <Text style={styles.pageTitle}>NEXT STEPS</Text>
       <View style={styles.gradientBar} />
       <Text style={styles.h1}>次のステップ</Text>
 
@@ -1599,23 +1631,15 @@ function CasesClosing({ pageTotal }: { pageTotal: number }) {
 
       <Text style={[styles.tagline, { marginTop: 30 }]}>記録を、業界の共通言語にする。</Text>
 
-      <Footer pageLabel={`${pageTotal} / ${pageTotal}`} />
+      <Footer />
     </Page>
   );
 }
 
-function CasesPublishedPage({
-  cases,
-  pageNumber,
-  pageTotal,
-}: {
-  cases: ContentEntry[];
-  pageNumber: number;
-  pageTotal: number;
-}) {
+function CasesPublishedPage({ cases }: { cases: ContentEntry[] }) {
   return (
     <Page size="A4" style={styles.page}>
-      <Text style={styles.pageTitle}>{String(pageNumber).padStart(2, "0")} PUBLISHED CASES</Text>
+      <Text style={styles.pageTitle}>PUBLISHED CASES</Text>
       <View style={styles.gradientBar} />
       <Text style={styles.h1}>公開済みの導入事例</Text>
       <Text style={[styles.lead, { marginBottom: 10 }]}>
@@ -1640,7 +1664,7 @@ function CasesPublishedPage({
       <Text style={[styles.cardDesc, { marginTop: 14 }]}>
         最終更新は各記事のページにてご確認ください。本資料の PDF 版は、記事の追加に合わせて順次差し替えます。
       </Text>
-      <Footer pageLabel={`${pageNumber} / ${pageTotal}`} />
+      <Footer />
     </Page>
   );
 }
@@ -1656,13 +1680,6 @@ export async function CaseStudiesPdf(): Promise<React.ReactElement<DocumentProps
     console.error("[resource pdf] listContent(cases) failed:", err);
   }
 
-  const hasPublished = cases.length > 0;
-  const pageTotal = casesPageTotal(cases.length);
-  // Fixed layout: cover(1), metrics(2), 5 industry patterns(3-7),
-  // optional published(8), pilot(8 or 9), closing(9 or 10).
-  const publishedNo = hasPublished ? 8 : null;
-  const pilotNo = hasPublished ? 9 : 8;
-
   return (
     <Document
       title="Ledra 導入事例集（パイロット版）"
@@ -1671,16 +1688,14 @@ export async function CaseStudiesPdf(): Promise<React.ReactElement<DocumentProps
       creator="Ledra"
       producer="Ledra"
     >
-      {CasesCover({ pageTotal })}
-      {CasesMetrics({ pageTotal })}
+      {CasesCover()}
+      {CasesMetrics()}
       {INDUSTRY_PATTERNS.map((p, i) => (
-        <React.Fragment key={p.industry}>
-          {CasesIndustryPatternPage({ pattern: p, index: i, pageTotal })}
-        </React.Fragment>
+        <React.Fragment key={p.industry}>{CasesIndustryPatternPage({ pattern: p, index: i })}</React.Fragment>
       ))}
-      {hasPublished && publishedNo !== null ? CasesPublishedPage({ cases, pageNumber: publishedNo, pageTotal }) : null}
-      {CasesPilotProgram({ pageNumber: pilotNo, pageTotal })}
-      {CasesClosing({ pageTotal })}
+      {cases.length > 0 ? CasesPublishedPage({ cases }) : null}
+      {CasesPilotProgram()}
+      {CasesClosing()}
     </Document>
   );
 }
@@ -1689,7 +1704,6 @@ export async function CaseStudiesPdf(): Promise<React.ReactElement<DocumentProps
  * ROI Worksheet — ROI シミュレーション計算テンプレート
  * ══════════════════════════════════════════════════════════════════ */
 
-const ROI_PAGE_TOTAL = 7;
 const ROI_AFTER_MIN_PER_CERT = 3;
 
 function yen(n: number): string {
@@ -1753,7 +1767,7 @@ function RoiCover() {
       </View>
 
       <Text style={styles.tagline}>数字で語れる一歩を、最小の時間で。</Text>
-      <Footer pageLabel={`1 / ${ROI_PAGE_TOTAL}`} />
+      <Footer />
     </Page>
   );
 }
@@ -1813,7 +1827,7 @@ function RoiFormula() {
         は、顧客ポータル・QR による自己解決率の実績値を保守的に適用。
       </Text>
 
-      <Footer pageLabel={`2 / ${ROI_PAGE_TOTAL}`} />
+      <Footer />
     </Page>
   );
 }
@@ -1863,7 +1877,7 @@ function RoiWorksheet() {
         <Text style={styles.body}>{blankLine} 円</Text>
       </View>
 
-      <Footer pageLabel={`3 / ${ROI_PAGE_TOTAL}`} />
+      <Footer />
     </Page>
   );
 }
@@ -1912,7 +1926,7 @@ function RoiLossModel() {
         </Text>
       </View>
 
-      <Footer pageLabel={`4 / ${ROI_PAGE_TOTAL}`} />
+      <Footer />
     </Page>
   );
 }
@@ -1977,7 +1991,7 @@ function RoiReferenceTable() {
         ※ 数値はすべて、本資料の計算式および前提条件に基づく推定です。実効果は業態・既存業務・人員構成により変動します。
       </Text>
 
-      <Footer pageLabel={`5 / ${ROI_PAGE_TOTAL}`} />
+      <Footer />
     </Page>
   );
 }
@@ -2020,7 +2034,7 @@ function RoiSensitivity() {
         • 1件 30 分以上: 書類業務が施工能力のボトルネックになっている可能性。人員体制見直しと併せた効果を検討。
       </Text>
 
-      <Footer pageLabel={`6 / ${ROI_PAGE_TOTAL}`} />
+      <Footer />
     </Page>
   );
 }
@@ -2054,7 +2068,7 @@ function RoiClosing() {
 
       <Text style={[styles.tagline, { marginTop: 24 }]}>数字は、意思決定の速度を変える。</Text>
 
-      <Footer pageLabel={`${ROI_PAGE_TOTAL} / ${ROI_PAGE_TOTAL}`} />
+      <Footer />
     </Page>
   );
 }
@@ -2076,6 +2090,315 @@ export function RoiTemplatePdf() {
       {RoiReferenceTable()}
       {RoiSensitivity()}
       {RoiClosing()}
+    </Document>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════════
+ * Operation Guide — 運用スタートガイド
+ *
+ * `OPERATION_GUIDE_GROUPS`（HelpDrawer / /guide / 代理店ヘルプセンターと
+ * 同じデータ）から丸ごと生成する。手順を1つ足せば PDF にも自動で載るので、
+ * 本部が資料を差し替える運用が要らない。
+ * ══════════════════════════════════════════════════════════════════ */
+
+/**
+ * 埋め込みフォント (NotoSansJP) に絵文字グリフが無く、そのまま流すと豆腐に
+ * なる。ガイド本文には `🪪` などが混ざるため、描画前に落とす。
+ */
+export function stripEmoji(s: string): string {
+  return s
+    .replace(/\p{Extended_Pictographic}️?/gu, "")
+    .replace(/[ 　]{2,}/g, " ")
+    .replace(/「\s+/g, "「")
+    .trim();
+}
+
+const guideStyles = StyleSheet.create({
+  guide: {
+    backgroundColor: colors.surface,
+    border: `1pt solid ${colors.border}`,
+    borderRadius: 7,
+    padding: 12,
+    marginBottom: 8,
+  },
+  guideTitle: {
+    fontSize: 11.5,
+    fontWeight: 700,
+    color: colors.text,
+    marginBottom: 6,
+  },
+  step: {
+    flexDirection: "row",
+    marginBottom: 4,
+  },
+  stepNo: {
+    width: 16,
+    fontSize: 9,
+    fontWeight: 700,
+    color: colors.accent,
+  },
+  stepBody: {
+    flex: 1,
+  },
+  stepTitle: {
+    fontSize: 9.5,
+    fontWeight: 700,
+    color: colors.text,
+  },
+  stepDesc: {
+    fontSize: 9,
+    color: colors.mute,
+    lineHeight: 1.55,
+  },
+});
+
+function OperationGuideCover() {
+  const guideCount = OPERATION_GUIDE_GROUPS.reduce((n, g) => n + g.guides.length, 0);
+  return (
+    <Page size="A4" style={styles.page}>
+      <Text style={styles.pageTitle}>OPERATION GUIDE</Text>
+      <View style={styles.gradientBar} />
+      <Text style={styles.h1}>運用スタートガイド</Text>
+      <Text style={styles.lead}>
+        Ledra
+        を導入した店舗が、初日から迷わず回せるようにするための操作手順書です。証明書の発行・予約・会計といった日常業務から、店舗設定・スタッフ招待まで、
+        {guideCount}の操作を画面の流れどおりに並べています。
+      </Text>
+
+      <View style={[styles.card, { marginTop: 18 }]}>
+        <Text style={styles.cardTitle}>この資料の構成</Text>
+        {OPERATION_GUIDE_GROUPS.map((g, i) => (
+          <Text key={g.id} style={styles.bullet}>
+            {String(i + 1).padStart(2, "0")}. {g.label}（{g.guides.length}項目）{g.intro ? ` — ${g.intro}` : ""}
+          </Text>
+        ))}
+      </View>
+
+      <View style={[styles.card, { marginTop: 10 }]}>
+        <Text style={styles.cardTitle}>使い方</Text>
+        <Text style={styles.bullet}>• 導入研修の配布資料として、そのまま印刷してお使いいただけます。</Text>
+        <Text style={styles.bullet}>
+          • 同じ内容は管理画面の右下ヘルプボタン、および ledra.co.jp/guide からも参照できます。
+        </Text>
+        <Text style={styles.bullet}>• 機能追加に合わせて本 PDF も自動で更新されます（差し替え不要）。</Text>
+      </View>
+
+      <Text style={styles.tagline}>迷ったら、この1冊に戻れる。</Text>
+      <Footer />
+    </Page>
+  );
+}
+
+function OperationGuideGroupPage({ group, index }: { group: GuideGroup; index: number }) {
+  return (
+    <Page size="A4" style={styles.page} wrap>
+      <Text style={styles.pageTitle} fixed>
+        {String(index + 1).padStart(2, "0")} {group.label}
+      </Text>
+      <View style={styles.gradientBar} fixed />
+      <Text style={styles.h1}>{group.label}</Text>
+      {group.intro && <Text style={[styles.lead, { marginBottom: 10 }]}>{group.intro}</Text>}
+
+      {group.guides.map((guide) => (
+        <View key={guide.id} style={guideStyles.guide} wrap={false}>
+          <Text style={guideStyles.guideTitle}>{stripEmoji(guide.title)}</Text>
+          {guide.steps.map((step, i) => (
+            <View key={step.title} style={guideStyles.step}>
+              <Text style={guideStyles.stepNo}>{i + 1}.</Text>
+              <View style={guideStyles.stepBody}>
+                <Text style={guideStyles.stepTitle}>{stripEmoji(step.title)}</Text>
+                <Text style={guideStyles.stepDesc}>{stripEmoji(step.description)}</Text>
+              </View>
+            </View>
+          ))}
+        </View>
+      ))}
+
+      <Footer />
+    </Page>
+  );
+}
+
+function OperationGuideClosing() {
+  return (
+    <Page size="A4" style={styles.page}>
+      <Text style={styles.pageTitle}>SUPPORT</Text>
+      <View style={styles.gradientBar} />
+      <Text style={styles.h1}>困ったときの窓口</Text>
+      <Text style={styles.lead}>
+        手順どおりに進めても解決しない場合は、画面の状態がわかるスクリーンショットを添えてご連絡ください。
+      </Text>
+
+      <Text style={styles.h2}>問い合わせ先</Text>
+      <Text style={styles.body}>サポート: https://ledra.co.jp/support</Text>
+      <Text style={styles.body}>Email: info@ledra.co.jp</Text>
+      <Text style={styles.body}>操作ガイド（Web 版・随時更新）: https://ledra.co.jp/guide</Text>
+      <Text style={styles.body}>よくあるご質問: https://ledra.co.jp/faq</Text>
+
+      <Text style={[styles.h2, { marginTop: 18 }]}>お伝えいただけると早いこと</Text>
+      <Text style={styles.bullet}>• どの画面で、どの操作をしたときに起きたか</Text>
+      <Text style={styles.bullet}>• 表示されたメッセージの文言（あれば）</Text>
+      <Text style={styles.bullet}>• 使用端末（PC / スマホ / タブレット）とブラウザ</Text>
+
+      <Text style={styles.tagline}>記録を、業界の共通言語にする。</Text>
+      <Footer />
+    </Page>
+  );
+}
+
+export function OperationGuidePdf() {
+  ensureFonts();
+  return (
+    <Document
+      title="Ledra 運用スタートガイド"
+      author="Ledra"
+      subject="Ledra の日常業務・店舗設定・便利機能の操作手順書"
+      creator="Ledra"
+      producer="Ledra"
+    >
+      {OperationGuideCover()}
+      {OPERATION_GUIDE_GROUPS.map((g, i) => (
+        <React.Fragment key={g.id}>{OperationGuideGroupPage({ group: g, index: i })}</React.Fragment>
+      ))}
+      {OperationGuideClosing()}
+    </Document>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════════
+ * Glossary — 業界用語集
+ *
+ * `/glossary` と同じ `GLOSSARY` を使う。用語を足せば PDF にも載る。
+ * ══════════════════════════════════════════════════════════════════ */
+
+const glossaryStyles = StyleSheet.create({
+  term: {
+    borderBottomWidth: 0.5,
+    borderBottomColor: colors.border,
+    paddingVertical: 8,
+  },
+  termHead: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    marginBottom: 3,
+  },
+  termName: {
+    fontSize: 12,
+    fontWeight: 700,
+    color: colors.text,
+  },
+  termReading: {
+    fontSize: 8.5,
+    color: colors.mute2,
+    marginLeft: 8,
+    flex: 1,
+  },
+  termDef: {
+    fontSize: 9.5,
+    color: colors.body,
+    lineHeight: 1.65,
+  },
+  termLink: {
+    fontSize: 8.5,
+    color: colors.accent,
+    marginTop: 3,
+  },
+});
+
+function GlossaryCover() {
+  const sections = listGlossaryByCategory();
+  const termCount = sections.reduce((n, s) => n + s.terms.length, 0);
+  return (
+    <Page size="A4" style={styles.page}>
+      <Text style={styles.pageTitle}>GLOSSARY</Text>
+      <View style={styles.gradientBar} />
+      <Text style={styles.h1}>自動車施工・記録の用語集</Text>
+      <Text style={styles.lead}>
+        コーティング・板金・保険査定・デジタル証明の現場で使われる{termCount}
+        語を、事実ベースでまとめました。新人研修の副読本、保険会社・代理店との認識合わせ、商談時の共通言語づくりにお使いください。
+      </Text>
+
+      <View style={[styles.card, { marginTop: 18 }]}>
+        <Text style={styles.cardTitle}>収録カテゴリ</Text>
+        {sections.map((s, i) => (
+          <Text key={s.category} style={styles.bullet}>
+            {String(i + 1).padStart(2, "0")}. {GLOSSARY_CATEGORIES[s.category].label}（{s.terms.length}語） —{" "}
+            {GLOSSARY_CATEGORIES[s.category].description}
+          </Text>
+        ))}
+      </View>
+
+      <View style={[styles.card, { marginTop: 10 }]}>
+        <Text style={styles.cardTitle}>編集方針</Text>
+        <Text style={styles.bullet}>
+          • 定義は一般に受け入れられた事実のみ。製品固有の誇張・未確認の数値は載せません。
+        </Text>
+        <Text style={styles.bullet}>• 各語の詳細と関連語は ledra.co.jp/glossary で参照できます。</Text>
+      </View>
+
+      <Text style={styles.tagline}>同じ言葉で話せると、記録は早く正確になる。</Text>
+      <Footer />
+    </Page>
+  );
+}
+
+function GlossaryCategoryPage({
+  category,
+  terms,
+  index,
+}: {
+  category: GlossaryCategory;
+  terms: ReturnType<typeof listGlossaryByCategory>[number]["terms"];
+  index: number;
+}) {
+  const meta = GLOSSARY_CATEGORIES[category];
+  return (
+    <Page size="A4" style={styles.page} wrap>
+      <Text style={styles.pageTitle} fixed>
+        {String(index + 1).padStart(2, "0")} {meta.label}
+      </Text>
+      <View style={styles.gradientBar} fixed />
+      <Text style={styles.h1}>{meta.label}</Text>
+      <Text style={[styles.lead, { marginBottom: 6 }]}>{meta.description}</Text>
+
+      {terms.map((t) => (
+        <View key={t.slug} style={glossaryStyles.term} wrap={false}>
+          <View style={glossaryStyles.termHead}>
+            <Text style={glossaryStyles.termName}>{t.term}</Text>
+            <Text style={glossaryStyles.termReading}>{t.reading}</Text>
+          </View>
+          <Text style={glossaryStyles.termDef}>{t.definition}</Text>
+          {t.seeAlso && (
+            <Text style={glossaryStyles.termLink}>
+              → {t.seeAlso.label}: https://ledra.co.jp{t.seeAlso.href}
+            </Text>
+          )}
+        </View>
+      ))}
+
+      <Footer />
+    </Page>
+  );
+}
+
+export function GlossaryPdf() {
+  ensureFonts();
+  const sections = listGlossaryByCategory();
+  return (
+    <Document
+      title="Ledra 自動車施工・記録の用語集"
+      author="Ledra"
+      subject="コーティング・板金・保険査定・デジタル証明の用語集"
+      creator="Ledra"
+      producer="Ledra"
+    >
+      {GlossaryCover()}
+      {sections.map((s, i) => (
+        <React.Fragment key={s.category}>
+          {GlossaryCategoryPage({ category: s.category, terms: s.terms, index: i })}
+        </React.Fragment>
+      ))}
     </Document>
   );
 }
@@ -2143,5 +2466,13 @@ export const RESOURCE_PDFS: Record<string, ResourcePdfEntry> = {
   "roi-template": {
     filename: ({ locale }) => localizedFilename("Ledra_ROI_Template", locale),
     doc: () => <RoiTemplatePdf />,
+  },
+  "operation-guide": {
+    filename: ({ locale }) => localizedFilename("Ledra_Operation_Guide", locale),
+    doc: () => <OperationGuidePdf />,
+  },
+  glossary: {
+    filename: ({ locale }) => localizedFilename("Ledra_Glossary", locale),
+    doc: () => <GlossaryPdf />,
   },
 };
