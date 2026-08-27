@@ -2,55 +2,37 @@ import { useState } from "react";
 import { View, StyleSheet, FlatList, Image, Alert } from "react-native";
 import {
   Text,
-  Button,
   ActivityIndicator,
   Snackbar,
-  SegmentedButtons,
   IconButton,
-  Card,
 } from "react-native-paper";
 import { useLocalSearchParams, Stack } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import * as ImagePicker from "expo-image-picker";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { supabase } from "@/lib/supabase";
 import { mobileApi, mobileMultipart } from "@/lib/api";
 import { STAGE_OPTIONS, type CertificatePhotoStage } from "@/lib/photoStage";
-
-/** 撮影してまだアップロードしていないローカル写真。端末ギャラリーには保存しない一時URI。 */
-interface StagedPhoto {
-  uri: string;
-  name: string;
-  type: string;
-}
+import { appendImage, pickImageFromCamera, type PickedImage } from "@/lib/pickImage";
+import { LedraButton, SegmentedControl } from "@/components/ui";
+import { colors, spacing, radius, typography, shadows } from "@/constants/tokens";
 
 interface NonceResponse {
   capture_nonce: string | null;
   public_id: string | null;
 }
 
-/** uri 拡張子から multipart 用の MIME を推定（最終判定はサーバの magic bytes）。 */
-function guessType(uri: string): { ext: string; mime: string } {
-  const ext = (uri.split(".").pop()?.split("?")[0] ?? "jpg").toLowerCase();
-  const mime =
-    ext === "png"
-      ? "image/png"
-      : ext === "webp"
-        ? "image/webp"
-        : ext === "heic" || ext === "heif"
-          ? "image/heic"
-          : "image/jpeg";
-  return { ext, mime };
-}
+const STAGE_SEGMENTS = STAGE_OPTIONS.map((o) => ({ value: o.value, label: o.label }));
 
 export default function CertificatePhotosScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const queryClient = useQueryClient();
 
   const [stage, setStage] = useState<Exclude<CertificatePhotoStage, "unspecified">>("in_progress");
-  const [staged, setStaged] = useState<StagedPhoto[]>([]);
+  const [staged, setStaged] = useState<PickedImage[]>([]);
   const [uploading, setUploading] = useState(false);
   const [snackbar, setSnackbar] = useState("");
+  const insets = useSafeAreaInsets();
 
   // 証明書の public_id（アップロードに必須）と既存枚数を取得。
   const { data: cert, isLoading } = useQuery({
@@ -74,24 +56,12 @@ export default function CertificatePhotosScreen() {
 
   async function takePhoto() {
     // カメラ限定（ライブラリ選択は不可）。その場で撮った新鮮な写真だけを受け付ける。
-    const { status } = await ImagePicker.requestCameraPermissionsAsync();
-    if (status !== "granted") {
-      Alert.alert("権限エラー", "カメラへのアクセスを許可してください");
+    const result = await pickImageFromCamera();
+    if (!result.ok) {
+      if (!result.cancelled) Alert.alert("撮影できません", result.message);
       return;
     }
-    const result = await ImagePicker.launchCameraAsync({
-      mediaTypes: ["images"],
-      quality: 0.8,
-      allowsEditing: false,
-    });
-    if (result.canceled || !result.assets?.[0]) return;
-
-    const a = result.assets[0];
-    const { ext, mime } = guessType(a.uri);
-    setStaged((prev) => [
-      ...prev,
-      { uri: a.uri, name: a.fileName ?? `capture-${prev.length + 1}.${ext}`, type: a.mimeType ?? mime },
-    ]);
+    setStaged((prev) => [...prev, result.image]);
   }
 
   function removeStaged(uri: string) {
@@ -115,8 +85,7 @@ export default function CertificatePhotosScreen() {
 
       const form = new FormData();
       for (const p of staged) {
-        // React Native の FormData ファイル形式。
-        form.append("photos", { uri: p.uri, name: p.name, type: p.type } as unknown as Blob);
+        appendImage(form, "photos", p);
       }
       form.append("stage", stage);
       form.append("public_id", publicId);
@@ -151,13 +120,11 @@ export default function CertificatePhotosScreen() {
       <Stack.Screen options={{ title: "施工写真" }} />
       <View style={styles.container}>
         <View style={styles.stageBox}>
-          <Text variant="labelMedium" style={styles.stageLabel}>
-            撮影段階
-          </Text>
-          <SegmentedButtons
+          <Text style={styles.stageLabel}>撮影段階</Text>
+          <SegmentedControl
+            segments={STAGE_SEGMENTS}
             value={stage}
-            onValueChange={(v) => setStage(v as Exclude<CertificatePhotoStage, "unspecified">)}
-            buttons={STAGE_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
+            onChange={(v) => setStage(v as Exclude<CertificatePhotoStage, "unspecified">)}
           />
         </View>
 
@@ -172,60 +139,64 @@ export default function CertificatePhotosScreen() {
               <IconButton
                 icon="close-circle"
                 size={20}
-                iconColor="#991b1b"
+                iconColor={colors.danger}
                 style={styles.removeBtn}
                 onPress={() => removeStaged(item.uri)}
               />
             </View>
           )}
           ListHeaderComponent={
-            <Card style={styles.infoCard} mode="outlined">
-              <Card.Content>
-                <Text variant="bodySmall" style={styles.infoText}>
-                  アップロード済み: {uploadedCount}枚 / 撮影待ち: {staged.length}枚
-                </Text>
-                <Text variant="bodySmall" style={styles.hint}>
-                  写真はカメラ撮影のみ・端末には保存されずDBに直接保存されます。
-                </Text>
-              </Card.Content>
-            </Card>
+            <View style={styles.infoCard}>
+              <Text style={styles.infoText}>
+                アップロード済み: {uploadedCount}枚 / 撮影待ち: {staged.length}枚
+              </Text>
+              <Text style={styles.hint}>
+                写真はカメラ撮影のみ・端末には保存されずDBに直接保存されます。
+              </Text>
+            </View>
           }
           ListEmptyComponent={
-            <View style={styles.center}>
-              <Text variant="bodyMedium" style={styles.emptyText}>
+            <View style={styles.emptyCenter}>
+              <Text style={styles.emptyText}>
                 「撮影」で施工写真を追加してください
               </Text>
             </View>
           }
         />
 
-        <View style={styles.footer}>
-          <Button
-            mode="outlined"
+        <View style={[styles.footer, { paddingBottom: spacing.md + insets.bottom }]}>
+          <LedraButton
+            variant="outline"
             icon="camera"
             onPress={takePhoto}
             disabled={uploading}
             style={styles.actionButton}
-            textColor="#1a1a2e"
+            fullWidth={false}
           >
             撮影
-          </Button>
-          <Button
-            mode="contained"
+          </LedraButton>
+          <LedraButton
             icon="cloud-upload"
             onPress={upload}
             loading={uploading}
             disabled={uploading || staged.length === 0}
             style={styles.actionButton}
-            buttonColor="#1a1a2e"
-            contentStyle={{ paddingVertical: 8 }}
+            fullWidth={false}
           >
             アップロード ({staged.length})
-          </Button>
+          </LedraButton>
         </View>
       </View>
 
-      <Snackbar visible={!!snackbar} onDismiss={() => setSnackbar("")} duration={3000}>
+      <Snackbar
+        visible={!!snackbar}
+        onDismiss={() => setSnackbar("")}
+        duration={3000}
+        style={{ backgroundColor: colors.textPrimary }}
+        // Android は兄弟同士の重なりを elevation で決める。下の固定バーが
+        // elevation 3 を持つので、既定（0）のままだと通知が完全に隠れる
+        wrapperStyle={{ elevation: 8 }}
+      >
         {snackbar}
       </Snackbar>
     </>
@@ -233,30 +204,49 @@ export default function CertificatePhotosScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#fafafa" },
+  container: { flex: 1, backgroundColor: colors.background },
   center: { flex: 1, justifyContent: "center", alignItems: "center", paddingTop: 64 },
   stageBox: {
-    padding: 12,
-    backgroundColor: "#ffffff",
-    borderBottomWidth: 1,
-    borderBottomColor: "#e4e4e7",
+    padding: spacing.md,
+    backgroundColor: colors.surface,
   },
-  stageLabel: { color: "#71717a", marginBottom: 8 },
-  grid: { padding: 4 },
-  infoCard: { margin: 8, backgroundColor: "#ffffff" },
-  infoText: { color: "#1a1a2e", fontWeight: "600" },
-  hint: { color: "#71717a", marginTop: 4 },
-  thumbBox: { flex: 1 / 3, aspectRatio: 1, padding: 4 },
-  thumb: { flex: 1, borderRadius: 8, backgroundColor: "#e4e4e7" },
+  stageLabel: {
+    ...typography.label,
+    color: colors.textSecondary,
+    marginBottom: spacing.sm,
+  },
+  grid: { padding: spacing.xs },
+  infoCard: {
+    margin: spacing.sm,
+    backgroundColor: colors.surface,
+    borderRadius: radius.card,
+    padding: spacing.lg,
+    ...shadows.card,
+  },
+  infoText: {
+    ...typography.bodySmall,
+    color: colors.textPrimary,
+    fontWeight: "600",
+  },
+  hint: {
+    ...typography.meta,
+    color: colors.textSecondary,
+    marginTop: spacing.xs,
+  },
+  thumbBox: { flex: 1 / 3, aspectRatio: 1, padding: spacing.xs },
+  thumb: { flex: 1, borderRadius: radius.sm, backgroundColor: colors.border },
   removeBtn: { position: "absolute", top: -8, right: -8, margin: 0 },
-  emptyText: { color: "#71717a" },
+  emptyCenter: { flex: 1, justifyContent: "center", alignItems: "center", paddingTop: 64 },
+  emptyText: {
+    ...typography.body,
+    color: colors.textSecondary,
+  },
   footer: {
     flexDirection: "row",
-    gap: 8,
-    padding: 12,
-    backgroundColor: "#ffffff",
-    borderTopWidth: 1,
-    borderTopColor: "#e4e4e7",
+    gap: spacing.sm,
+    padding: spacing.md,
+    backgroundColor: colors.surface,
+    ...shadows.bar,
   },
-  actionButton: { flex: 1, borderRadius: 8 },
+  actionButton: { flex: 1 },
 });

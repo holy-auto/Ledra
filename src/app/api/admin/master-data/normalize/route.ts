@@ -79,11 +79,17 @@ export async function POST(req: NextRequest) {
     return apiOk({
       ai_disabled: false,
       normalized: {
-        maker: makerPolicy === "manual" ? parsed.data.maker ?? null : normalizeMaker(parsed.data.maker ?? null),
-        model: makerPolicy === "manual" ? parsed.data.model ?? null : normalizeModel(parsed.data.model ?? null),
-        address: addressPolicy === "manual" ? parsed.data.address ?? null : normalizeAddress(parsed.data.address ?? null).full,
+        maker: makerPolicy === "manual" ? (parsed.data.maker ?? null) : normalizeMaker(parsed.data.maker ?? null),
+        model: makerPolicy === "manual" ? (parsed.data.model ?? null) : normalizeModel(parsed.data.model ?? null),
+        address:
+          addressPolicy === "manual"
+            ? (parsed.data.address ?? null)
+            : normalizeAddress(parsed.data.address ?? null).full,
         prefecture: addressPolicy === "manual" ? null : normalizeAddress(parsed.data.address ?? null).prefecture,
-        postal_code: addressPolicy === "manual" ? parsed.data.postal_code ?? null : normalizePostalCode(parsed.data.postal_code ?? null),
+        postal_code:
+          addressPolicy === "manual"
+            ? (parsed.data.postal_code ?? null)
+            : normalizePostalCode(parsed.data.postal_code ?? null),
         customer_name: normalizeCustomerName(parsed.data.customer_name ?? null),
       },
     });

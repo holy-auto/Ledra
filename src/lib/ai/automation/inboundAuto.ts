@@ -17,6 +17,7 @@ import { canUseFeature, normalizePlanTier } from "@/lib/billing/planFeatures";
 import { extractInboundReservation } from "@/lib/ai/inboundReservationExtract";
 import { deterministicServiceVehicle } from "@/lib/ai/deterministicInboundParse";
 import { fetchRecentConversation } from "@/lib/line/messageStore";
+import { getActiveFlow } from "@/lib/line/flow/flowStore";
 import { fastModelForPlanTier } from "@/lib/ai/client";
 import { startAiRouteUsage } from "@/lib/ai/recordRouteUsage";
 import { logger } from "@/lib/logger";
@@ -30,8 +31,10 @@ import {
   shouldAutoExtractInbound,
   shouldAutoReplyKnowledge,
   shouldAutoReplyRoughEstimate,
+  shouldRunConversationFlow,
   decideInboundCommit,
 } from "./orchestrator";
+import { storeIdOrNull } from "@/lib/stores/resolveStoreId";
 
 const AUTO_EXTRACT_ENDPOINT = "/api/line/webhook#auto-extract";
 
@@ -182,6 +185,33 @@ export async function maybeAutoProcessInboundMessage(params: MaybeAutoProcessPar
       }
     }
 
+    // 会話フロー opt-in 済みなら、進行中フローの状態を一度だけ見て顧客向け自動処理を制御する。
+    // 予約の自動起票より**前に**判定する: human_takeover (「スタッフに相談したい」ボタンが
+    // 残す durable マーカー) の間は、予約自動起票を含む顧客向け自動処理をすべて止める
+    // (相談希望なのに予約が自動確定されるのを防ぐ)。受信箱の下書き (ai_extracted) は上で
+    // 保存済みなので、受動的な抽出は残しつつ能動的な起票・返信だけを止める。マーカーは
+    // 72h で失効し自動応答は自然復帰する。
+    //   - human_takeover … 以降を全てスキップして return。
+    //   - その他の進行中フロー (見積り詳細待ち等) … 処理は続けるが誘導ボタンは付けない
+    //     (start_quote は進行中フローがあると二重開始で無反応になるため)。
+    //   - フロー無し … 誘導ボタンを添付する。
+    let attachFollowupButtons = false;
+    if (shouldRunConversationFlow(settings)) {
+      const activeFlow = await getActiveFlow(admin, tenantId, {
+        customerId: resolvedCustomerId,
+        lineUserId: params.lineUserId,
+      });
+      if (activeFlow?.state === "human_takeover") {
+        usage.record({
+          tenantId,
+          outcome: "ok",
+          meta: { auto: true, suppressed: "human_takeover", channel: params.channel ?? "line" },
+        });
+        return;
+      }
+      attachFollowupButtons = !activeFlow;
+    }
+
     const decision = decideInboundCommit(settings, result, { knownCustomerId: resolvedCustomerId });
     let committedReservationId: string | null = null;
 
@@ -298,6 +328,7 @@ export async function maybeAutoProcessInboundMessage(params: MaybeAutoProcessPar
       settings,
       tenant,
       history,
+      attachButtons: attachFollowupButtons,
     });
 
     // 価格問い合わせ → 概算見積りを LINE で完全自動返信 (opt-in / 未紐付け客も対象 /
@@ -460,6 +491,7 @@ async function autoCreateReservation(
     const { error } = await admin.from("reservations").insert({
       id,
       tenant_id: input.tenantId,
+      store_id: await storeIdOrNull(admin, input.tenantId, "inboundAuto"),
       customer_id: input.customerId,
       vehicle_id: vehicleId,
       title,
@@ -552,7 +584,8 @@ async function autoCreateCustomer(
       id,
       tenant_id: input.tenantId,
       name: input.name,
-      source: `ai_auto_create_${input.channel ?? "unknown"}`,
+      // customers の実列は source_system（source は存在しない）
+      source_system: `ai_auto_create_${input.channel ?? "unknown"}`,
     };
     if (input.lineUserId) {
       row.line_user_id = input.lineUserId;

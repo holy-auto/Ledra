@@ -12,7 +12,10 @@ on:
 jobs:
   lighthouse:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # 実測 14分04秒〜14分25秒で、15分だと毎回1分を切る余裕しかなく
+    # ランナーの遅い日に自前の上限で cancelled になる（実際に1度発生）。
+    # numberOfRuns を減らすと計測のばらつきが増えるので、時間の方を広げる
+    timeout-minutes: 25
     permissions:
       pull-requests: write
     # ジョブレベルで定義: ビルドだけでなく LHCI が起動する `npm run start` にも必要。
