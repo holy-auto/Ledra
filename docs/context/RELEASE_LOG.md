@@ -4,6 +4,99 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-08-27 「正しく無いのが載るのはあかん」——遷移表を直してから通した（#933）／同期基盤は止めた（#934）
+
+### #933: 正準遷移表の足りない辺を8件直してからマージ
+
+`/code-review` が11件の「足りない辺」を出した。**現場を知らずに書き足さない**ため、
+リポジトリの中に根拠があるものだけを直した。根拠は3種類 —— ADR、稼働中のコード、
+同じファイル内の矛盾。
+
+| 直した辺 | 根拠 |
+|---|---|
+| `UNPAID → PAID` / `→ PARTIALLY_PAID` | `StorefrontBilling.tsx:55-64` の「入金を記録 (本日)」が未入金の請求書へ `status:"paid"` を**直接書いている**。稼働中の1手操作 |
+| `UNKNOWN → UNPAID` | §11.3 が禁じるのは「**UNKNOWN のまま**再決済」であって、照合して結果を確定させることではない |
+| `READY → NOT_READY` | ADR-0005 決定1 の 10 条件には**後から崩れるもの**がある |
+| `ISSUING → READY` / `VERIFYING → ISSUING` | ADR-0005 決定3。ジョブが動かす以上、**ジョブは失敗する** |
+| `PENDING_CORRECTION` を `ISSUING` → `READY`/`NOT_READY` | READY を飛ばすのは決定4 が代表承認を求める「Gate バイパス」 |
+| Severity の表をコメントに合わせる | コメントは「CRITICAL → NORMAL の直接降格だけ禁止」と書いていたが、表は `NORMAL → RESOLVED` も塞いでいた |
+| `COMPLETED → IN_PROGRESS` | 同ファイルの `JOB_TRANSITIONS` が手戻りを許しているのに工程が再開できなかった |
+| `SYNCING → PENDING` | 中断した同期に、起きていない `FAILED`（サーバに拒否された）を書くしかなかった |
+| `CHECKED_IN → NO_SHOW` を**削除** | 入庫済みは「来店なし」になりえない |
+
+**8件すべてを元に戻す mutation probe で11テストが落ちる**ことを確認した。
+根拠の無い3件（REVOKED の到達範囲・部分キャプチャ・着手済み工程の SKIPPED）は
+書き足さず、モジュール先頭に未解決として明記した。
+
+あわせてレビューが見つけた実在の欠陥も直した ——
+`isValidTransition` が `"toString"` で TypeError、`isTerminalState` が未知の状態を
+「終端」と答える（稼働中の `reservations.status` の `completed` が完了扱いに化ける）。
+
+### #934: 同期基盤は、修正を止めて設計の話として上げた
+
+`/code-review` で5件直した直後に **Codex が同じ `src/lib/sync/` に7件返した。**
+指摘が収束していないので1件ずつ潰すのをやめた。**二人のレビュアーが独立に
+同じ結論に着いている** —— この module は「outbox がこういう情報をくれる」前提で
+設計されているが、実際の outbox はその情報を持っていない。
+
+- 409 を拾う経路が**二重に**塞がっている（`queue.ts:423` と `public/sw.js:359`）
+- **ETag/version の楽観ロックはリポジトリに1件も無い。**409 はすべて重複・多重防止
+- `OutboxItem` に tenant 欄が無く、`IdleAutoLogout` はキューを消さない
+- `MenuItemsClient.tsx:299` の `kind:"other"` を `SyncResourceType` が表せない
+- 証明書のオフライン作成は意図的に3種を順に積むのに、全部「競合」になる
+- outbox が二度と送らないと決めたアイテムに「再試行」を出すことになる
+
+### ついでに直した既存コードの穴（IMP-016 とは無関係）
+
+- **`otp.ts`**: 壊れた有効期限で OTP が失効しなかった（`NaN < Date.now()` は false）
+- **`permissionVerbs.ts`**: `platform:operations` が「閲覧」に分類されていた。
+  未知の動詞の既定も `VIEW` → **`MANAGE`** に変更（低リスク側に倒さない）
+- **prototype 素引きが4ファイル**: `transitions.ts`・`conflict.ts`・`negotiate.ts`・
+  `catalogue.ts`。`table["constructor"]` が関数を返し、`?.` も `?? null` も捕まえない
+- **`vehicle.created`** が「統一カタログ」に無く、足したら今度は `EVENT_RISK` 未登録で
+  同義の `vehicle.registered`（medium）と格付けが割れた
+
+## 2026-08-27 積み上がっていた実装 PR を main へ通し始めた（#928〜#932 マージ）
+
+前のセッションが #928 → #929 → … → #951 と**前の PR をベースにして22本積み上げて**
+いた。1本ずつ main へベースを付け替えて通す運用に切り替え、**6本をマージ**した。
+
+| PR | 内容 | 状態 |
+|---|---|---|
+| #980 | SQL↔TS パリティテスト、`calcSizeClass` の丸めを SQL に合わせる | マージ済 |
+| #928 | IMP-010 デザイントークン & 共有コンポーネント | マージ済 |
+| #929 | IMP-011 i18n 基盤（6言語・用語集・翻訳分離型） | マージ済 |
+| #930 | IMP-012 認証基盤（オンボーディング・OTP・端末・step-up・招待） | マージ済 |
+| #931 | IMP-013 権限エンジン・店舗スコープ | マージ済 |
+| #932 | IMP-014 ドメインイベント・監査・冪等 | マージ済 |
+| #933 | IMP-015 状態機械・遷移表・Certificate Gate 型 | **マージ済**（遷移表を直してから） |
+| #934 | IMP-016 オフライン同期キュー・競合検出 | **代表判断待ち**（下記） |
+
+**#930〜#932 が追加したモジュールは、いずれも稼働中コードからの import が 0 件**
+（`src/lib/auth/*`・`lib/events`・`lib/sync`・`lib/domain/{transitions,certificateGate}`）。
+配線は後続タスクで行うので、マージしても実行時の挙動は変わらない。
+#929 の `SUPPORTED_LOCALES` 2→6 も、唯一の実行時消費者 `responseI18n.ts` に
+呼び出し元が 0 件なので同じ。
+
+### 途中で見つけて直したもの
+
+- **`useDialogA11y`**: フォーカストラップが `display:none` / `hidden` / `tabindex="-1"`
+  の要素を候補に含めており、「最後の要素」を取り違えて**フォーカスがダイアログの外へ
+  抜けていた**。body スクロールロックも、閉じたダイアログがマウントされるだけで
+  他のモーダルのロックを解除していた。`Modal.tsx` / `Drawer.tsx` を同じ hook に
+  載せ替えて**書き込み口を1つに**した（-126 行）。
+- **`negotiateLocale`**: `Accept-Language: tl;q=0` が `fil` を返していた。
+  RFC 9110 で `q=0` は「受け入れ不可」。候補から外していなかった。
+- **`ProgressCard`**: `percent={0 / 0}` で `aria-valuenow="NaN"` と見える `NaN%` を
+  描画していた。clamp は NaN を素通しする。
+- **`WithTranslations`**: 「`shop_announcements.translations` の形式化」と書きながら、
+  そのテーブルが実際に書いている `zh` を型が弾いていた（UI ロケール6言語に無い）。
+  翻訳先の集合を型引数にした。
+- **`isValidTransition`**: `"toString"` を渡すと `TypeError` で落ちていた。
+  `?.` は prototype 由来の値を守らない。`isTerminalState` は未知の状態を
+  「終端」と答えており、`reservations.status` の `completed` が完了扱いになった。
+
+いずれも mutation probe（修正を戻すと落ちること）を実行確認したテストを添えた。
 ## 2026-08-26 LINEで顧客が予約を自分でキャンセルできるセルフ対応（第一弾・キャンセルのみ、branch claude/line-chatbot-ledra-dy2fiq）
 
 - 内容: これまで `cancel` intent は抽出しても人手に回していたが、顧客が LINE で「予約を

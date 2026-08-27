@@ -16,6 +16,43 @@
 解消した。詳細は DECISION_LOG 2026-08-27「レビューの指摘が収束しなくなったら…」を
 参照。同期層の設計は IMP-032 で outbox の実際の契約から作り直す。）
 
+## 追加（2026-08-27・スタック PR の消化）
+
+- **IMP-015 の遷移表に足りない辺 11 件（代表判断待ち）。** `src/lib/domain/transitions.ts`
+  は稼働中コードからの import が 0 件なので今は誰も壊れないが、消費タスク
+  （IMP-028/031/027/016）が使う前に決める必要がある。特に効く2件:
+  - **`UNPAID → PAID` が無い** → 店頭の現金入金を1手で記録できず、架空の `PENDING` を挟むことになる
+  - **`UNKNOWN → UNPAID` が無い** → 決済結果不明の照合で「入金されていなかった」と分かっても、
+    `PAID`（受け取っていない金を受領済みにする）か `CANCELED`（別の意味）しか書けない
+
+  残り9件は PR #933 のコメントに表で出してある（Certificate の失敗経路・`READY → NOT_READY`・
+  訂正版の Gate 再評価、Severity の `NORMAL → RESOLVED`、Step の再開、Sync の積み直し、
+  Job の `CHECKED_IN → NO_SHOW` が許可されている件）。 → 代表判断待ち
+
+- **v2.0 §19.1 の仕様書本文がこのリポジトリに無い。** そのため遷移表を**書かれた仕様と
+  突き合わせられていない**。照合できたのは `docs/adr/` と稼働中コードだけ。
+  仕様書をリポジトリに置くか、置かない方針なら遷移表の正しさを何で担保するかを決める。【要確認】
+
+- **`.husky/pre-push` がエラーを握りつぶしてテストを飛ばす。** `push.default` が未設定
+  （＝`simple`）のとき、**ローカルのブランチ名がリモート側の名前と違う**と
+  `@{push}` が `fatal: cannot resolve 'simple' push to a single destination` で解決できない。
+  それを `2>/dev/null` が握りつぶし、パイプが空になり、**空ストリームに対する `grep -qv` は 1 を返す**
+  ので `else` 枝（「doc-only push, skipping vitest」）に落ちる。フック本体と同じパイプで再現済み。
+  直すなら `git diff` の失敗を検知して**飛ばさずに落とす**（fail-closed）形にする。 → 代表判断待ち
+
+- **スタックした PR に CI を走らせる手段が無い。** `ci.yml` は `branches: [main, staging]` の
+  `push` / `pull_request` でしか起動せず、`workflow_dispatch` も無い。ベース付け替えと
+  `ready_for_review` は既定の `pull_request` トリガーに含まれない。
+  `workflow_dispatch` を足すか、`types` に `ready_for_review` を足すかは未定。 → 方針未定
+
+- **Codex が利用上限に達した（2026-08-27 01:06）。** 以降の PR には Codex レビューが付かない。
+  CLAUDE.md の代替運用どおり `/code-review` を回しているが、クレジット追加や
+  アップグレードをするかは代表判断。 → 代表判断待ち
+
+- **`certificateGate.ts` の `isCertificateGateCondition` が `states.ts` の `makeGuard` を
+  手で書き直している。** 同じイディオムが同一フォルダに2つあるので、`makeGuard` を
+  固めても Gate 条件だけ取り残される。今回は触っていない。 → 未着手
+
 ## 追加（2026-08-26・マイグレーション運用 2）
 
 - **`20260825000000` がいつ・どの経路で適用されたか特定できていない。** `fa14d46` の
