@@ -1,7 +1,7 @@
 "use client";
 
 import type { LayoutConfig } from "@/types/documentTemplate";
-import type { DocType } from "@/types/document";
+import { hasNoHonorificPrefix, type DocType } from "@/types/document";
 
 const DOC_TYPE_LABELS: Record<DocType, string> = {
   estimate: "見積書",
@@ -40,14 +40,6 @@ const ISSUED_LABEL: Record<DocType, string> = {
 };
 
 /**
- * 自社が発行する書類（相手への敬称ではなく自社の行為を表す）は「御」を付けない。
- * src/lib/pdfDocument.tsx の NO_HONORIFIC_PREFIX_DOC_TYPES と同じ判定。
- * pdfDocument.tsx はサーバー専用モジュール（fs, @react-pdf/renderer）を import
- * しているため、クライアントコンポーネントのここでは値だけ複製する。
- */
-const NO_HONORIFIC_PREFIX_DOC_TYPES = new Set<DocType>(["purchase_order", "order_confirmation", "inspection"]);
-
-/**
  * HTML live preview of a document template.
  *
  * Mirrors the layout from src/lib/pdfDocument.tsx as closely as practical.
@@ -56,9 +48,7 @@ const NO_HONORIFIC_PREFIX_DOC_TYPES = new Set<DocType>(["purchase_order", "order
  */
 export default function LayoutPreview({ layout, docType }: { layout: LayoutConfig; docType: DocType }) {
   const label =
-    layout.title.prefix && !NO_HONORIFIC_PREFIX_DOC_TYPES.has(docType)
-      ? `御${DOC_TYPE_LABELS[docType]}`
-      : DOC_TYPE_LABELS[docType];
+    layout.title.prefix && !hasNoHonorificPrefix(docType) ? `御${DOC_TYPE_LABELS[docType]}` : DOC_TYPE_LABELS[docType];
 
   const issuerBlock = (
     <div

@@ -2635,3 +2635,19 @@ supabase migration repair --status reverted 20260825000000
 - `@react-navigation/native-stack` の直 import をやめ、`Stack` の props から型を借用
   （expo-router の推移的依存にしか無く、インストール方式によっては解決に失敗する）。
 - 検証: ナビゲーションを**双方向**で照合（リンク→ファイル / 画面→到達導線）。欠落・孤立ともゼロ。
+
+## 2026-08-27 帳票PDF: 発注書・発注請書・検収書のタイトルから「御」を撤去
+
+- 対象: `src/lib/pdfDocument.tsx`（全帳票 PDF 生成）、admin の帳票テンプレート編集画面
+  （`TemplatesClient.tsx` / `LayoutPreview.tsx`）。
+- 変更: purchase_order（発注書）/ order_confirmation（発注請書）/ inspection（検収書）の
+  3種別は、本文の挨拶文が自社主語（「発注いたします」「検収いたしました」）のため、
+  テナントの「御」プレフィックス設定に関わらずタイトルへ常に付けないようにした
+  （`src/types/document.ts` の `hasNoHonorificPrefix()` を唯一の出所として参照）。
+- 編集画面: 該当3種を選択しているときは「御」プレフィックスのトグルを disabled にし、
+  「発注書・発注請書・検収書は自社が発行する書類のため、「御」は常に付きません。」と
+  ヒント文を表示。設定しても反映されない状態を防ぐ。
+- 経緯: PR #985（帳票の基本テンプレートを PDF プレビューするスクリプト追加）で全9種別を
+  実際に出力して目視確認した際に発覚。判断は DECISION_LOG.md 2026-08-27 を参照。
+- 影響なし: 見積書・納品書・領収書・請求書・合算請求書・外注請求書の6種は変更なし
+  （引き続きテナントの `layout.title.prefix` 設定に従う）。
