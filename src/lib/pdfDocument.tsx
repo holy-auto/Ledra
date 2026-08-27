@@ -41,6 +41,13 @@ export const DOC_TYPE_LABELS: Record<string, string> = {
   staff_invoice: "外注請求書",
 };
 
+/**
+ * 自社が発行する書類（相手への敬称ではなく自社の行為を表す）は「御」を付けない。
+ * 挨拶文が「発注いたします」「検収いたしました」など自社主語のため、
+ * layout.title.prefix（テナント設定）に関わらず常に抑止する。
+ */
+export const NO_HONORIFIC_PREFIX_DOC_TYPES = new Set(["purchase_order", "order_confirmation", "inspection"]);
+
 /** 帳票種別ごとの挨拶文 */
 const DOC_TYPE_GREETINGS: Record<string, string> = {
   estimate: "下記のとおりお見積り申し上げます。",
@@ -315,7 +322,8 @@ export async function renderDocumentPdf(
   const s = buildStyles(layout);
 
   const baseLabel = DOC_TYPE_LABELS[doc.doc_type] ?? doc.doc_type;
-  const docLabel = layout.title.prefix ? `御${baseLabel}` : baseLabel;
+  const docLabel =
+    layout.title.prefix && !NO_HONORIFIC_PREFIX_DOC_TYPES.has(doc.doc_type) ? `御${baseLabel}` : baseLabel;
   const issuedLabel = ISSUED_LABEL[doc.doc_type] ?? "発行日";
   const greeting = DOC_TYPE_GREETINGS[doc.doc_type] ?? "下記のとおりご案内申し上げます。";
 
