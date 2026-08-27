@@ -34,6 +34,17 @@ describe("t()", () => {
   it("uses DEFAULT_LOCALE when none is specified", () => {
     expect(t("errors.unauthorized")).toBe(t("errors.unauthorized", DEFAULT_LOCALE));
   });
+
+  it("translates a key in new locales (IMP-011)", () => {
+    expect(t("errors.unauthorized", "vi")).toBe("Yêu cầu đăng nhập.");
+    expect(t("errors.unauthorized", "id")).toBe("Autentikasi diperlukan.");
+    expect(t("errors.unauthorized", "fil")).toBe("Kailangan mag-login.");
+    expect(t("errors.unauthorized", "hi")).toBe("लॉगिन आवश्यक है।");
+  });
+
+  it("interpolates in new locales", () => {
+    expect(t("errors.missing_field", "vi", { field: "email" })).toBe("email là bắt buộc.");
+  });
 });
 
 describe("getTranslator()", () => {
@@ -45,9 +56,13 @@ describe("getTranslator()", () => {
 });
 
 describe("isSupportedLocale()", () => {
-  it("accepts known locales", () => {
+  it("accepts known locales (6 languages, IMP-011)", () => {
     expect(isSupportedLocale("ja")).toBe(true);
     expect(isSupportedLocale("en")).toBe(true);
+    expect(isSupportedLocale("vi")).toBe(true);
+    expect(isSupportedLocale("id")).toBe(true);
+    expect(isSupportedLocale("fil")).toBe(true);
+    expect(isSupportedLocale("hi")).toBe(true);
   });
 
   it("rejects unknown locales", () => {
@@ -78,6 +93,8 @@ describe("negotiateLocale()", () => {
   it("matches by primary language tag when full tag is unsupported", () => {
     expect(negotiateLocale(withAcceptLanguage("en-US"))).toBe("en");
     expect(negotiateLocale(withAcceptLanguage("ja-JP"))).toBe("ja");
+    expect(negotiateLocale(withAcceptLanguage("vi-VN"))).toBe("vi");
+    expect(negotiateLocale(withAcceptLanguage("hi-IN"))).toBe("hi");
   });
 
   it("respects q-value priority", () => {
@@ -87,12 +104,26 @@ describe("negotiateLocale()", () => {
     expect(negotiateLocale(withAcceptLanguage("en;q=0.5,ja;q=0.9"))).toBe("ja");
   });
 
+  // RFC 9110 §12.5.4: q=0 は「その言語は受け入れ不可」。
+  // 候補から外さないと、別名解決や直接一致で「拒否された言語」を返してしまう。
+  it("q=0 の言語は選ばない", () => {
+    expect(negotiateLocale(withAcceptLanguage("tl;q=0"))).toBe("ja"); // 別名 tl→fil を経由しない
+    expect(negotiateLocale(withAcceptLanguage("vi;q=0"))).toBe("ja"); // 直接一致もしない
+    expect(negotiateLocale(withAcceptLanguage("en-US;q=0"))).toBe("ja"); // 前方一致もしない
+    expect(negotiateLocale(withAcceptLanguage("vi;q=0,en;q=0.3"))).toBe("en"); // 残りから選ぶ
+  });
+
   it("falls through unsupported locales", () => {
     expect(negotiateLocale(withAcceptLanguage("fr,de,it"))).toBe(DEFAULT_LOCALE);
   });
 
   it("picks the first supported locale in a long list", () => {
     expect(negotiateLocale(withAcceptLanguage("fr,de,en,ja"))).toBe("en");
+  });
+
+  it("maps tl (Tagalog) to fil (Filipino)", () => {
+    expect(negotiateLocale(withAcceptLanguage("tl"))).toBe("fil");
+    expect(negotiateLocale(withAcceptLanguage("tl-PH"))).toBe("fil");
   });
 
   it("accepts a Request-shaped object", () => {
