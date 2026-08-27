@@ -28,6 +28,14 @@
 > **Codex は 01:06 に利用上限へ達した**ため、以降は `/code-review` で代替している。
 > #933 では15件のうち4件が実在し修正、残り11件は遷移表の設計論点として保留。
 
+> 2026-08-27 追記2: **#935（IMP-020）着手前に、遷移表の未解決4件を代表判断で解決した。**
+> REVOKED は ISSUING/VERIFYING からも遷移可、支払い UNKNOWN の解決先に
+> PARTIALLY_PAID/OVERPAID を追加、工程 IN_PROGRESS/BLOCKED から SKIPPED を許可、
+> Severity CRITICAL→ACTION は現状の表を維持（許可のまま）。詳細は DECISION_LOG
+> 「遷移表の未解決4件を代表判断で解決」参照。あわせて `.husky/pre-push` の
+> エラー握りつぶし（ブランチ名不一致時に vitest が飛ばされる件）は代表判断で
+> 現状維持（修正しない）。
+
 > 2026-08-26 追記6: **SQL と TS の二重実装を機械的に突き合わせるようにした。**
 > 二重実装は2組だけ（VIN 正規化とサイズ区分）。`check_reservation_overlap` は
 > TS が RPC を呼ぶだけで実装が1つ ——**これが本来の形**。
