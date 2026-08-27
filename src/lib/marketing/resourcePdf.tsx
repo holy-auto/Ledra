@@ -38,21 +38,26 @@ function ensureFonts() {
 }
 
 /**
- * PDF パレット。DESIGN_SYSTEM.md のダークテーマ・トークンに揃えている
- * （`--bg-base` / `--bg-surface-solid` / `--accent-blue` / `--accent-gold`）。
- * サイト本体と紙面の印象を一致させるのが目的なので、ここに独自色を足さない。
+ * PDF パレット。globals.css のライトテーマ・トークンを引いている。
+ * 独自色を足さない ―― サイト本体と紙面の印象を一致させるのが目的。
+ *
+ * **地と面の役割だけ、意図的に web と逆にしている。**
+ * web は `--bg-base #f5f5f7` の上に `--bg-surface-solid #ffffff` のカードを置くが、
+ * 紙では地がA4全面を覆うため、そのままだと**刷るたびに全面が薄いグレーになる**
+ * （トナーを食い、プリンタによっては帯が出る）。地を白、カードを `#f5f5f7` の
+ * 淡いトーンにして、印刷したときに情報の区切りだけがインクを使う形にする。
  */
 const colors = {
-  bg: "#060a12", // --bg-base (dark)
-  surface: "#0d1525", // --bg-surface-solid (dark)
-  text: "#ffffff",
-  body: "#c7cfdd",
-  mute: "#8e99b0",
-  mute2: "#5f6a81",
-  accent: "#4d9fff", // --accent-blue (dark)
-  accent2: "#a78bfa",
+  bg: "#ffffff", // 紙の地。web の --bg-base とは役割を入れ替えている（上記）
+  surface: "#f5f5f7", // カード・表ヘッダの面。web の --bg-base の値
+  text: "#1d1d1f", // --text-primary
+  body: "#424247", // --text-secondary（本文）
+  mute: "#555560", // --text-ink2（2番手テキストが沈むのを防ぐ中間階調）
+  mute2: "#6e6e73", // --text-muted（フッタ・注記）
+  accent: "#0071e3", // --accent-blue
+  accent2: "#8944ab", // --accent-violet-text（白地で読める violet）
   gold: "#b08d3f", // --accent-gold（章扉・格式の差し色。全面ゴールド化はしない）
-  border: "#1a2233",
+  border: "#d9d9d9", // --border-strong rgba(0,0,0,0.15) を白地に合成した値
 };
 
 const styles = StyleSheet.create({
