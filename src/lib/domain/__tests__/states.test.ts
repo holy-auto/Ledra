@@ -98,11 +98,14 @@ describe("ロケール別ラベル", () => {
     expect(paymentStateLabel("paid" as never, "en")).toBe("paid");
   });
 
-  it("未収録ロケールは ja にフォールバックする(6言語すべてで解決可能)", () => {
+  it("6言語すべてでラベルが解決可能(IMP-011 で全ロケール収録)", () => {
     for (const locale of DOMAIN_LOCALES) {
       expect(jobStateLabel("SCHEDULED", locale)).toBeTruthy();
     }
-    expect(jobStateLabel("SCHEDULED", "vi")).toBe("予定");
-    expect(paymentStateLabel("PAID", "hi")).toBe("入金完了");
+    // vi/hi は IMP-011 でラベル収録済み — ja フォールバックではなく各言語の訳語を返す
+    expect(jobStateLabel("SCHEDULED", "vi")).toBe("Đã lên lịch");
+    expect(paymentStateLabel("PAID", "hi")).toBe("भुगतान पूर्ण");
+    expect(stepStateLabel("COMPLETED", "id")).toBe("Selesai");
+    expect(severityLabel("CRITICAL", "fil")).toBe("Kritikal");
   });
 });

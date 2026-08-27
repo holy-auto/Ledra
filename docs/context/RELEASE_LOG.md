@@ -36,6 +36,37 @@
 - スコープ外（後続PR）: 日程変更（reschedule、既存の日程候補提示＋既存予約 UPDATE の再利用）、
   リマインダーへのキャンセルボタン添付、admin route.ts のキャンセル処理の共有ヘルパー寄せ。
 
+## 2026-08-26 SQL と TS の二重実装を機械的に突き合わせる（サイズ区分の丸め違いを修正）
+
+「ズレは全部直さなあかん」への対応。洗い出した二重実装は2組だけだった
+（`check_reservation_overlap()` は TS 側が RPC を呼ぶだけで実装が1つ ——
+これが本来の形）。
+
+**実害のあるズレが1件あった。** `calcSizeClass()` は生の体積で分類していたが、
+SQL 側は呼び出し4箇所すべてが `ROUND((l*w*h)/1000000000, 2)` を渡し、
+`vehicle_size_master.volume_m3` 自体も `numeric(5,2)` の生成列だった。
+
+    4400×1765×1545mm → 生の体積 11.99847
+      TS  : 11.99847 < 12.0     → "M"
+      DB  : ROUND して 12.00    → "L"
+
+**サイズ区分は価格帯に効くので、これは金額が変わる。** TS 側も丸めるよう修正。
+現時点で食い違うデータは確認されていない（潜在的なズレ）。
+
+あわせて `calcSizeClass` の入力ガードを関数側へ1回だけ置いた（`NaN` で
+"XL"＝最も高い区分を返していた。呼び出し元5箇所すべてがガードしていたので
+到達しなかったが、5箇所の記憶に頼らない）。0 と負値は**弾かない** ——
+SQL は `0 < 8.0` で "SS" を返すので、弾くと新しいズレを作る。
+
+**`supabase/__tests__/sqlTsParity.test.ts` を追加。** DB を起動せず、
+マイグレーション本文から規則を抽出して TS と突き合わせる。既存の静的監査
+（`posReceiptCounter` / `partInstallations`）と同じ置き場・同じ作法。
+
+初版は**ズレを検出できていなかった**。`/code-review` が3つのプローブで再現:
+`public.` 修飾つきの後発再定義が見えない / 文字クラスから文字を消すと assert
+ごと消える / `NFKC` の一致がコメント本文で満たされる。いずれも緑のまま通って
+いた。修正後は3つとも落ちることを実行確認した。
+
 ## 2026-08-26 VIN トリガーのマイグレーションを元の `20260825000000` へ戻した（2度の停止と復旧）
 
 PR #967 のマージ後、`db-migrate`（本番への自動適用）が**2回止まった**。
@@ -1019,6 +1050,47 @@ supabase migration repair --status reverted 20260825000000
 - 対象: どの画面・API・業種向けか
 ```
 
+## 2026-08-19 IMP-014 ドメインイベント・監査・冪等基盤（branch impl/IMP-014-domain-events / PR #932）
+
+- 内容: v2.0 §20 / Appendix B のドメインイベント基盤を型・純粋関数で整備。(1) 統一ドメイン
+  イベントカタログ（`resource.action` 命名規約で 33 イベント型を網羅。既存 AuditEventType 27 種
+  + AiAuditAction 1 種 + 未型化 2 種 + webhook topics 由来 3 種）。(2) 既存 AuditEventType→
+  DomainEventType マッピング（段階的移行用）。(3) 型付きドメインイベントエンベロープ
+  （actor 5 種・テナント/店舗スコープ・リスクレベル・冪等キー・バージョン・subject 参照）。
+  (4) イベント型別リスクレベル推定（IMP-013 operationRisk と整合）。既存の AuditEventType /
+  WebhookTopic / logAuditEvent / emitTenantEvent は変更なし。DB マイグレーション・
+  パイプライン変更なし。
+- 対象: 開発基盤（IMP-044 イベントパイプライン・IMP-015 状態機械の前提条件）。
+
+## 2026-08-19 IMP-013 権限エンジン・店舗スコープ基盤（branch impl/IMP-013-permission-engine / PR #931）
+
+- 内容: v2.0 §16 の不足分を型・純粋関数で補完。(1) 正準権限動詞 7 種（VIEW/EDIT/CONFIRM/
+  APPROVE/ISSUE/MANAGE/EXPORT）の型定義と既存 Permission→正準動詞マッピング。
+  (2) 操作リスクレベル 4 段階（low/medium/high/critical）の分類と判定関数（IMP-012
+  step-up 認証と連携）。(3) 店舗スコープ型（store_memberships DB スキーマ対応）と
+  判定関数群（hasStoreAccess/effectiveStoreRole/isStoreManager/accessibleStoreIds）。
+  既存の Permission 型・ROLE_PERMISSIONS マトリクスは変更なし。DB マイグレーションなし。
+- 対象: 開発基盤（IMP-014 ドメインイベント・監査の前提条件）。
+
+## 2026-08-19 IMP-012 認証・招待・端末・step-up 基盤（branch impl/IMP-012-auth-foundation / PR #930）
+
+- 内容: v2.0 §15 の認証基盤を型・状態機械・ヘルパーとして整備。(1) 正準オンボーディング
+  フロー状態機械（6 ステップ: INVITED→ACTIVE）。(2) 汎用 OTP モジュール（生成・HMAC ハッシュ・
+  タイミングセーフ検証）。(3) ユーザー端末管理型（登録・信頼度3段階・遠隔失効）。
+  (4) Step-up 認証（7 操作カテゴリの要件マップ・利用可能手段判定）。(5) 招待フロー型
+  （ロケール選択付き・トークン検証・有効期限）。DB マイグレーション・画面実装なし。
+- 対象: 開発基盤（IMP-013 権限エンジンの前提条件）。
+
+## 2026-08-19 IMP-011 i18n 基盤 & 自動車用語集（branch impl/IMP-011-i18n-foundation / PR #929）
+
+- 内容: v2.0 §17 の i18n 基盤を整備。(1) ロケール登録を 6 言語（ja/en/vi/id/fil/hi）に
+  統一（`src/lib/i18n/locales.ts` を単一定義源化、`labels.ts` の `DOMAIN_LOCALES` は再エクスポートに変更）。
+  (2) メッセージファイル 4 言語追加（`messages/{vi,id,fil,hi}.json` 各 8 エラーキー）。
+  (3) ドメインラベル全 6 軸を 6 言語化（~188 ラベル文字列）。(4) 自動車翻訳用語集
+  （`src/lib/i18n/glossary.ts` ~28 用語、`getGlossaryForLocale()` で translateContent.ts 連携可）。
+  (5) `WithTranslations<T>` UGC 翻訳分離型（`src/lib/i18n/translated.ts` 型定義のみ）。
+  (6) `LOCALE_LABELS` マップ（言語選択 UI 用）。vi/id/fil/hi 翻訳は推定、正式検証は IMP-051。
+- 対象: 開発基盤（画面変更なし。IMP-012/020/024/026/051 の前提条件）。
 ## 2026-08-10 LINE自動返信（ナレッジ）に「次の行動」誘導ボタンを追加（branch claude/line-chatbot-ledra-dy2fiq）
 
 - 内容: LINE のナレッジ自動返信（`knowledgeReplyAuto.ts`）が回答をプレーンテキストで
@@ -1243,6 +1315,20 @@ supabase migration repair --status reverted 20260825000000
 - 検証: `npx tsc --noEmit`（モバイル・ルート両方）通過、`npm run lint` エラー0件。
   25ファイル変更、+2589行/-552行。
 
+## 2026-08-19 IMP-010 デザイントークン & 共有コンポーネント基盤（branch impl/IMP-010-design-tokens / PR #928）
+
+- 内容: v2.0 §3 の不足 UI プリミティブ8つを新設 — SegmentedControl（ピル型切替、3箇所の
+  重複実装の共通化先）/ StatusBadge（Badge+statusMaps の定型接続）/ StatusCard /
+  NextActionCard / ProgressCard（円形進捗+ゼロ除算ガード）/ Alert（169箇所のインライン
+  警告 div の共通化先）/ IconButton（44px タッチターゲット）/ BottomSheet（モバイル用、
+  共通 a11y フック useDialogA11y=フォーカストラップ+復元付き）。既存部品への追加:
+  Badge に dot、Button に xl（48px CTA）。statusMaps に SEVERITY_VARIANT_MAP
+  （正準 Severity → 表示 variant）。使用0件の旧 `src/components/StatusBadge.tsx`
+  （独自スタイル二重管理）を削除。予約ステータスの中央マップ追加は既存2定義
+  （pos-constants / ReservationsClient）との配色衝突が判明したため見送り
+  （統合は IMP-022 で判断）。DESIGN_SYSTEM.md のコンポーネント表を新設分まで更新。
+- 対象: 開発基盤（既存画面の見た目は不変。新部品は IMP-020 以降の画面で使用）。
+
 ## 2026-08-19 IMP-001 実装ガードレール & 正準ドメイン語彙（branch impl/IMP-001-domain-vocabulary / PR #927）
 
 - 内容: v2.0 の6状態軸（Job/Step/Severity/Certificate/Payment/Sync）を正準語彙モジュール
@@ -1276,6 +1362,7 @@ supabase migration repair --status reverted 20260825000000
   - `src/app/layout.tsx`: twitter.site/creator反映
   - `/privacy`, `/terms`, `/law`, `/contact`: canonical追加
   - `/tokusho`: canonical・og:urlを/lawに統一、sitemapから除去
+
 
 ## 2026-08-16 LINE連携の入力を「Channel ID と Secret の2つだけ」に（branch claude/multi-integration-login-opnzfh）
 

@@ -1,5 +1,5 @@
 /**
- * 正準ドメイン状態のロケール別 UI ラベル(IMP-001)。
+ * 正準ドメイン状態のロケール別 UI ラベル(IMP-001 作成、IMP-011 で 6 言語化)。
  *
  * ドメインコード(大文字の正準値)は翻訳・表示の都合で変更しない。表示文言は
  * このラベルマップだけを差し替える(v2.0 §17、docs/adr/0002)。
@@ -9,15 +9,15 @@
  * StepState / SyncState は仕様書に UI ラベルの定義がないため、本実装で定めた
  * (仕様引用ではない)。
  *
- * ponytail: 収録ロケールは当面 ja/en の2つ。6言語(vi/id/fil/hi 追加)と翻訳キー化・
- * フォールバック規則の整備は IMP-011 で行い、その際に本マップは i18n 基盤へ載せ替え可。
+ * vi/id/fil/hi ラベルは IMP-011 でベストエフォート翻訳。正式検証は IMP-051。
  */
 import type { CertificateState, JobState, PaymentState, Severity, StepState, SyncState } from "./states";
+import { SUPPORTED_LOCALES, DEFAULT_LOCALE, type Locale } from "@/lib/i18n/locales";
 
-/** v2.0 §17.1 の初期重点6言語。ラベル未収録のロケールは ja にフォールバックする。 */
-export const DOMAIN_LOCALES = ["ja", "en", "vi", "id", "fil", "hi"] as const;
-export type DomainLocale = (typeof DOMAIN_LOCALES)[number];
-export const DEFAULT_DOMAIN_LOCALE: DomainLocale = "ja";
+/** ロケール定義源は src/lib/i18n/locales.ts に統一(IMP-011)。後方互換のため再エクスポート。 */
+export const DOMAIN_LOCALES = SUPPORTED_LOCALES;
+export type DomainLocale = Locale;
+export const DEFAULT_DOMAIN_LOCALE = DEFAULT_LOCALE;
 
 type LabelMaps<T extends string> = { readonly ja: Record<T, string> } & Partial<
   Record<DomainLocale, Record<T, string>>
@@ -52,6 +52,62 @@ const JOB_STATE_LABELS: LabelMaps<JobState> = {
     NO_SHOW: "No-show",
     PARTIALLY_COMPLETED: "Partially completed",
   },
+  vi: {
+    SCHEDULED: "Đã lên lịch",
+    CHECKED_IN: "Đã nhận xe",
+    IN_PROGRESS: "Đang thực hiện",
+    PAUSED: "Tạm dừng",
+    WAITING_REVIEW: "Chờ kiểm tra",
+    WAITING_CUSTOMER: "Chờ khách hàng",
+    WAITING_PAYMENT: "Chờ thanh toán",
+    CERTIFICATE_PROCESSING: "Đang xử lý chứng nhận",
+    VERIFIED: "VERIFIED",
+    CANCELED: "Đã hủy",
+    NO_SHOW: "Không đến",
+    PARTIALLY_COMPLETED: "Hoàn thành một phần",
+  },
+  id: {
+    SCHEDULED: "Dijadwalkan",
+    CHECKED_IN: "Sudah masuk",
+    IN_PROGRESS: "Sedang dikerjakan",
+    PAUSED: "Dijeda",
+    WAITING_REVIEW: "Menunggu peninjauan",
+    WAITING_CUSTOMER: "Menunggu pelanggan",
+    WAITING_PAYMENT: "Menunggu pembayaran",
+    CERTIFICATE_PROCESSING: "Memproses sertifikat",
+    VERIFIED: "VERIFIED",
+    CANCELED: "Dibatalkan",
+    NO_SHOW: "Tidak hadir",
+    PARTIALLY_COMPLETED: "Selesai sebagian",
+  },
+  fil: {
+    SCHEDULED: "Naka-iskedyul",
+    CHECKED_IN: "Nai-check in",
+    IN_PROGRESS: "Isinasagawa",
+    PAUSED: "Pansamantalang huminto",
+    WAITING_REVIEW: "Naghihintay ng pagsusuri",
+    WAITING_CUSTOMER: "Naghihintay ng kustomer",
+    WAITING_PAYMENT: "Naghihintay ng bayad",
+    CERTIFICATE_PROCESSING: "Pinoproseso ang sertipiko",
+    VERIFIED: "VERIFIED",
+    CANCELED: "Kinansela",
+    NO_SHOW: "Hindi dumating",
+    PARTIALLY_COMPLETED: "Bahagyang natapos",
+  },
+  hi: {
+    SCHEDULED: "निर्धारित",
+    CHECKED_IN: "चेक-इन हुआ",
+    IN_PROGRESS: "कार्य जारी",
+    PAUSED: "रुका हुआ",
+    WAITING_REVIEW: "समीक्षा की प्रतीक्षा",
+    WAITING_CUSTOMER: "ग्राहक की प्रतीक्षा",
+    WAITING_PAYMENT: "भुगतान की प्रतीक्षा",
+    CERTIFICATE_PROCESSING: "प्रमाणपत्र प्रसंस्करण",
+    VERIFIED: "VERIFIED",
+    CANCELED: "रद्द",
+    NO_SHOW: "उपस्थित नहीं",
+    PARTIALLY_COMPLETED: "आंशिक रूप से पूर्ण",
+  },
 };
 
 const STEP_STATE_LABELS: LabelMaps<StepState> = {
@@ -75,6 +131,46 @@ const STEP_STATE_LABELS: LabelMaps<StepState> = {
     SKIPPED: "Skipped",
     CANCELED: "Canceled",
   },
+  vi: {
+    NOT_STARTED: "Chưa bắt đầu",
+    READY: "Sẵn sàng",
+    IN_PROGRESS: "Đang thực hiện",
+    BLOCKED: "Bị chặn",
+    WAITING_APPROVAL: "Chờ phê duyệt",
+    COMPLETED: "Hoàn thành",
+    SKIPPED: "Bỏ qua",
+    CANCELED: "Đã hủy",
+  },
+  id: {
+    NOT_STARTED: "Belum dimulai",
+    READY: "Siap",
+    IN_PROGRESS: "Sedang dikerjakan",
+    BLOCKED: "Diblokir",
+    WAITING_APPROVAL: "Menunggu persetujuan",
+    COMPLETED: "Selesai",
+    SKIPPED: "Dilewati",
+    CANCELED: "Dibatalkan",
+  },
+  fil: {
+    NOT_STARTED: "Hindi pa nagsisimula",
+    READY: "Handa na",
+    IN_PROGRESS: "Isinasagawa",
+    BLOCKED: "Naharang",
+    WAITING_APPROVAL: "Naghihintay ng pag-apruba",
+    COMPLETED: "Tapos na",
+    SKIPPED: "Nilaktawan",
+    CANCELED: "Kinansela",
+  },
+  hi: {
+    NOT_STARTED: "शुरू नहीं हुआ",
+    READY: "तैयार",
+    IN_PROGRESS: "कार्य जारी",
+    BLOCKED: "अवरुद्ध",
+    WAITING_APPROVAL: "स्वीकृति की प्रतीक्षा",
+    COMPLETED: "पूर्ण",
+    SKIPPED: "छोड़ा गया",
+    CANCELED: "रद्द",
+  },
 };
 
 const SEVERITY_LABELS: LabelMaps<Severity> = {
@@ -92,6 +188,10 @@ const SEVERITY_LABELS: LabelMaps<Severity> = {
     CRITICAL: "Critical",
     RESOLVED: "Resolved",
   },
+  vi: { NORMAL: "Bình thường", ACTION: "Cần xử lý", HIGH: "Cao", CRITICAL: "Khẩn cấp", RESOLVED: "Đã giải quyết" },
+  id: { NORMAL: "Normal", ACTION: "Perlu tindakan", HIGH: "Tinggi", CRITICAL: "Kritis", RESOLVED: "Terselesaikan" },
+  fil: { NORMAL: "Normal", ACTION: "Kailangang aksyunan", HIGH: "Mataas", CRITICAL: "Kritikal", RESOLVED: "Nalutas" },
+  hi: { NORMAL: "सामान्य", ACTION: "कार्रवाई आवश्यक", HIGH: "उच्च", CRITICAL: "गंभीर", RESOLVED: "हल हो गया" },
 };
 
 const CERTIFICATE_STATE_LABELS: LabelMaps<CertificateState> = {
@@ -114,6 +214,46 @@ const CERTIFICATE_STATE_LABELS: LabelMaps<CertificateState> = {
     PENDING_CORRECTION: "Correction pending",
     SUPERSEDED: "Superseded",
     REVOKED: "Revoked",
+  },
+  vi: {
+    NOT_READY: "Chưa sẵn sàng",
+    READY: "Đủ điều kiện cấp",
+    ISSUING: "Đang cấp",
+    VERIFYING: "Đang xác minh",
+    VERIFIED: "VERIFIED",
+    PENDING_CORRECTION: "Chờ chỉnh sửa",
+    SUPERSEDED: "Có bản mới",
+    REVOKED: "Đã thu hồi",
+  },
+  id: {
+    NOT_READY: "Belum siap",
+    READY: "Siap diterbitkan",
+    ISSUING: "Sedang menerbitkan",
+    VERIFYING: "Sedang memverifikasi",
+    VERIFIED: "VERIFIED",
+    PENDING_CORRECTION: "Menunggu koreksi",
+    SUPERSEDED: "Ada versi baru",
+    REVOKED: "Dicabut",
+  },
+  fil: {
+    NOT_READY: "Hindi pa handa",
+    READY: "Handa na i-isyu",
+    ISSUING: "Ini-isyu",
+    VERIFYING: "Bine-verify",
+    VERIFIED: "VERIFIED",
+    PENDING_CORRECTION: "Naghihintay ng pagwawasto",
+    SUPERSEDED: "May bagong bersyon",
+    REVOKED: "Binawi",
+  },
+  hi: {
+    NOT_READY: "तैयार नहीं",
+    READY: "जारी करने योग्य",
+    ISSUING: "जारी हो रहा है",
+    VERIFYING: "सत्यापन जारी",
+    VERIFIED: "VERIFIED",
+    PENDING_CORRECTION: "सुधार लंबित",
+    SUPERSEDED: "नया संस्करण उपलब्ध",
+    REVOKED: "रद्द किया गया",
   },
 };
 
@@ -140,6 +280,50 @@ const PAYMENT_STATE_LABELS: LabelMaps<PaymentState> = {
     CANCELED: "Canceled",
     UNKNOWN: "Unknown",
   },
+  vi: {
+    UNPAID: "Chưa thanh toán",
+    PENDING: "Đang xử lý",
+    PARTIALLY_PAID: "Thanh toán một phần",
+    PAID: "Đã thanh toán",
+    OVERPAID: "Thanh toán dư",
+    REFUNDED: "Đã hoàn tiền",
+    PARTIALLY_REFUNDED: "Hoàn tiền một phần",
+    CANCELED: "Đã hủy",
+    UNKNOWN: "Chưa rõ",
+  },
+  id: {
+    UNPAID: "Belum dibayar",
+    PENDING: "Diproses",
+    PARTIALLY_PAID: "Dibayar sebagian",
+    PAID: "Lunas",
+    OVERPAID: "Kelebihan bayar",
+    REFUNDED: "Dikembalikan",
+    PARTIALLY_REFUNDED: "Dikembalikan sebagian",
+    CANCELED: "Dibatalkan",
+    UNKNOWN: "Tidak diketahui",
+  },
+  fil: {
+    UNPAID: "Hindi pa bayad",
+    PENDING: "Pinoproseso",
+    PARTIALLY_PAID: "Bahagyang bayad",
+    PAID: "Bayad na",
+    OVERPAID: "Labis ang bayad",
+    REFUNDED: "Naibalik ang bayad",
+    PARTIALLY_REFUNDED: "Bahagyang naibalik",
+    CANCELED: "Kinansela",
+    UNKNOWN: "Hindi alam",
+  },
+  hi: {
+    UNPAID: "अवैतनिक",
+    PENDING: "प्रसंस्करण में",
+    PARTIALLY_PAID: "आंशिक भुगतान",
+    PAID: "भुगतान पूर्ण",
+    OVERPAID: "अतिरिक्त भुगतान",
+    REFUNDED: "वापसी पूर्ण",
+    PARTIALLY_REFUNDED: "आंशिक वापसी",
+    CANCELED: "रद्द",
+    UNKNOWN: "अज्ञात",
+  },
 };
 
 const SYNC_STATE_LABELS: LabelMaps<SyncState> = {
@@ -157,6 +341,28 @@ const SYNC_STATE_LABELS: LabelMaps<SyncState> = {
     FAILED: "Failed",
     CONFLICT: "Conflict",
   },
+  vi: {
+    SYNCED: "Đã đồng bộ",
+    PENDING: "Chờ đồng bộ",
+    SYNCING: "Đang đồng bộ",
+    FAILED: "Thất bại",
+    CONFLICT: "Xung đột",
+  },
+  id: {
+    SYNCED: "Tersinkron",
+    PENDING: "Menunggu sinkronisasi",
+    SYNCING: "Sedang sinkronisasi",
+    FAILED: "Gagal",
+    CONFLICT: "Konflik",
+  },
+  fil: {
+    SYNCED: "Na-sync",
+    PENDING: "Naghihintay ng sync",
+    SYNCING: "Nagsi-sync",
+    FAILED: "Nabigo",
+    CONFLICT: "Salungatan",
+  },
+  hi: { SYNCED: "सिंक हो गया", PENDING: "सिंक लंबित", SYNCING: "सिंक हो रहा है", FAILED: "विफल", CONFLICT: "विरोध" },
 };
 
 function pick<T extends string>(maps: LabelMaps<T>, code: T, locale: DomainLocale): string {

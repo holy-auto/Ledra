@@ -1,0 +1,12 @@
+{
+  "errors": {
+    "invalid_payload": "Hindi wasto ang nilalaman ng kahilingan.",
+    "missing_field": "Kinakailangan ang {field}.",
+    "invalid_id": "Hindi wastong ID.",
+    "unauthorized": "Kailangan mag-login.",
+    "forbidden": "Wala kang pahintulot na gawin ang aksyon na ito.",
+    "not_found": "Hindi natagpuan.",
+    "rate_limited": "Masyadong maraming kahilingan. Pakisubukan muli mamaya.",
+    "internal_error": "May naganap na error sa server."
+  }
+}
