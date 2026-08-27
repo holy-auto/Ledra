@@ -142,6 +142,13 @@ const EVENT_RISK: Partial<Record<DomainEventType, RiskLevel>> = {
   "insurer_case.status_changed": "medium",
   "progress.updated": "medium",
   "thickness.measured": "medium",
+
+  // 同期（IMP-016）。**競合は medium 以上にする** —— 未登録だと `?? "low"` に
+  // 落ちて、証明書の競合が進捗メモより下に格付けされる。
+  "sync.conflict_detected": "medium",
+  "sync.conflict_resolved": "medium",
+  "sync.failed": "medium",
+  // 開始・完了そのものは通常の進行なので low のまま（未登録＝low）。
 };
 
 /** イベント型のデフォルトリスクレベル。未登録（閲覧系）は "low"。 */

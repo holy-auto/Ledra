@@ -178,9 +178,14 @@ describe("recommendedStrategy()", () => {
     expect(recommendedStrategy("resource_deleted", "certificate")).toBe("manual");
   });
 
-  it("duplicate_pending は常に retry", () => {
+  it("duplicate_pending は、自動解決してよいリソースだけ retry", () => {
+    // 自動解決してよいと表が言っているリソースだけ retry。
     expect(recommendedStrategy("duplicate_pending", "reservation")).toBe("retry");
-    expect(recommendedStrategy("duplicate_pending", "certificate")).toBe("retry");
+    // **manual のリソースは重複でも人が見る。**以前は無条件に retry を返しており、
+    // 同じ請求書への金額編集が2件並ぶと人の確認なしにキュー順で後勝ちになっていた。
+    expect(recommendedStrategy("duplicate_pending", "certificate")).toBe("manual");
+    expect(recommendedStrategy("duplicate_pending", "invoice")).toBe("manual");
+    expect(recommendedStrategy("duplicate_pending", "part_installation")).toBe("manual");
   });
 
   it("version_mismatch はリソースタイプのデフォルトに従う", () => {
@@ -279,5 +284,38 @@ describe("detectDuplicatePending()", () => {
 
   it("空配列 → 空マップ", () => {
     expect(detectDuplicatePending([]).size).toBe(0);
+  });
+});
+
+// 値は IndexedDB 由来の文字列で来る。型で絞っていても実行時は素の string。
+describe("表に無い値を渡したとき", () => {
+  const bad = (v: string) => v as never;
+
+  it("Object.prototype 由来のキーで戦略に関数が漏れない", () => {
+    for (const k of ["constructor", "toString", "__proto__", "valueOf"]) {
+      const r = recommendedStrategy("version_mismatch", bad(k));
+      expect(typeof r).toBe("string");
+      expect(r).toBe("manual"); // 表に無いものは自動解決しない
+    }
+  });
+
+  it("未知の競合種別で undefined を返さない", () => {
+    const r = recommendedStrategy(bad("bogus"), "reservation");
+    expect(r).toBe("manual");
+  });
+});
+
+describe("サーバ本文の扱い", () => {
+  it("本文が空でも説明が消えない", () => {
+    // `??` は空文字を通す。空の 409/404 本文はよくある。
+    const c = detectConflictFromResponse(409, "PUT", "");
+    expect(c?.description).toBe("サーバ側で変更が競合しています");
+    const d = detectConflictFromResponse(404, "PUT", "   ");
+    expect(d?.description).toBe("対象リソースがサーバ上で削除されています");
+  });
+
+  it("長すぎる本文は切る（プロキシの HTML がそのまま入らない）", () => {
+    const c = detectConflictFromResponse(409, "PATCH", "x".repeat(5000));
+    expect(c?.description.length).toBe(200);
   });
 });

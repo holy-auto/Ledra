@@ -33,17 +33,35 @@ export const DEFAULT_RESOLUTION_STRATEGY: Record<SyncResourceType, ConflictResol
  * 競合種別ごとの推奨解決戦略。
  *
  * resource_deleted は常に手動（削除されたリソースへの変更は要確認）。
- * duplicate_pending は再試行（キュー内の重複は自然解消する可能性あり）。
- * version_mismatch はリソースタイプのデフォルトに従う。
+ * duplicate_pending / version_mismatch は**リソースタイプの方針に従う**。
+ *
+ * duplicate_pending を無条件に "retry" にしていたが、それだと
+ * `DEFAULT_RESOLUTION_STRATEGY` が certificate / certificate_image / invoice /
+ * part_installation に付けた `"manual"`（証跡整合性が最重要・金額変更は要確認）を
+ * **この関数が黙って上書きする。**同じ請求書への金額編集が2件キューに並ぶと、
+ * 人の確認なしにキュー順で送られて後勝ちになる。自然解消しうるのは
+ * 「自動解決してよい」と表が言っているリソースだけ。
  */
 export function recommendedStrategy(kind: ConflictKind, resourceType: SyncResourceType): ConflictResolutionStrategy {
+  // 表に無いリソースタイプは自動解決しない。`DEFAULT_RESOLUTION_STRATEGY[x]` を
+  // 素で引くと `"constructor"` が Object コンストラクタ（関数）を返し、
+  // ConflictResolutionStrategy として扱われる。値は IndexedDB 由来の文字列で来る
+  // （src/lib/domain/transitions.ts の known() と同じ理由の境界防御）。
+  const byResource: ConflictResolutionStrategy = Object.hasOwn(DEFAULT_RESOLUTION_STRATEGY, resourceType)
+    ? DEFAULT_RESOLUTION_STRATEGY[resourceType]
+    : "manual";
+
   switch (kind) {
     case "resource_deleted":
       return "manual";
     case "duplicate_pending":
-      return "retry";
+      // 表が manual と言っているリソースは、重複でも人が見る。
+      return byResource === "manual" ? "manual" : "retry";
     case "version_mismatch":
-      return DEFAULT_RESOLUTION_STRATEGY[resourceType];
+      return byResource;
+    default:
+      // 未知の kind で undefined を返さない（呼び出し側の型は非 null）。
+      return "manual";
   }
 }
 
@@ -62,6 +80,17 @@ export function recommendedStrategy(kind: ConflictKind, resourceType: SyncResour
  * ponytail: 既存 outbox の drain ループは変更しない。この関数は
  * drain 結果を後処理する層（IMP-032）で使う。
  */
+/**
+ * サーバ本文を画面に出せる形にする。
+ * `??` は空文字を通すので、本文が空の 409/404（よくある）で説明が消える。
+ * 長さも切る —— プロキシの HTML エラーページがそのまま入りうる。
+ * 既存の drainItems も `.slice(0, 200)` している。
+ */
+function describe(serverMessage: string | undefined, fallback: string): string {
+  const trimmed = serverMessage?.trim();
+  return trimmed ? trimmed.slice(0, 200) : fallback;
+}
+
 export function detectConflictFromResponse(
   status: number,
   method: string,
@@ -73,14 +102,14 @@ export function detectConflictFromResponse(
     return {
       kind: "version_mismatch",
       detectedAt: Date.now(),
-      description: serverMessage ?? "サーバ側で変更が競合しています",
+      description: describe(serverMessage, "サーバ側で変更が競合しています"),
     };
   }
   if ((status === 404 || status === 410) && (method === "PUT" || method === "PATCH")) {
     return {
       kind: "resource_deleted",
       detectedAt: Date.now(),
-      description: serverMessage ?? "対象リソースがサーバ上で削除されています",
+      description: describe(serverMessage, "対象リソースがサーバ上で削除されています"),
     };
   }
   return null;

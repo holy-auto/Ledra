@@ -3,6 +3,51 @@
 > まだ決まっていないこと、判断に迷っていることを書く場所。決まったら
 > DECISION_LOG.md に移し、このファイルからは消す（削除履歴は git で追える）。
 
+## 追加（2026-08-27・IMP-016 同期基盤）
+
+- **`detectConflictFromResponse()` は、いまのアプリの唯一の drain 経路からは呼べない。**
+  `src/lib/outbox/queue.ts:423` は `if (res.ok || res.status === 409)` で**メソッドを問わず**
+  409 を成功として削除し、`DrainResult` は件数と `errors: {id, error}` しか持たない
+  （メソッドもステータスも残らない）。つまり `PUT/PATCH 409 → version_mismatch` の枝は
+  **到達不能**。使うには drainItems がアイテム単位でステータスを報告する必要があるが、
+  この PR は「既存 outbox の drain ループは変更しない」と明記している。 → IMP-032 で判断
+
+- **このリポジトリの 409 は「バージョン不一致」ではない。** 見つかった 409 はすべて
+  「既に処理済み／処理中／貸出中／既にメンバー」の重複・多重防止で、
+  `If-Match` / ETag / version による楽観ロックは**1件も無い**（`grep` 確認済み）。
+  409 を `version_mismatch` と分類し、`reservation` の既定 `client_wins` で再送すると、
+  **サーバが重複として弾いたリクエストを送り直す**ことになる。処理中（in-flight）の
+  409 では二重適用になりうる。`conflict.ts` の関数ヘッダ自身も「409 は冪等性キーの
+  不一致」と書いており、内部で食い違っている。 → 分類の再設計が要る
+
+- **`resource_deleted` の枝も実質使われない。** `PUT /api/admin/reservations` は
+  `.single()` で終わるので、対象行が消えていると 500（`apiInternalError`）になる。
+  `detectConflictFromResponse(500, "PUT")` は null を返す（テストで固定済み）ので、
+  この枝が拾うはずの削除ケースがただのサーバエラーとして無限リトライされる。
+
+- **`SyncState` に「恒久的に止めた」状態が無い。** outbox は 400/405/410/413/415/422 で
+  `markBlocked` し、以後 drain 対象から外す（`queue.ts:344,400`。UI は「作り直しが必要」と
+  表示）。`SyncQueueItem` にその欄が無く、`SYNC_STATES` にも該当が無いので `FAILED` に
+  なるしかない。`FAILED: ["PENDING"]` なので、**二度と送られないアイテムに「再試行」を
+  出す**ことになる。 → 6軸目の語彙を増やすかは代表判断
+
+- **`SyncQueueItem` の `tenantId` / `resourceType` / `resourceId` が `OutboxItem` に無い。**
+  オフライン作成の証明書は同期完了まで `public_id` を持たず、キューには
+  `cert_idempotency_key` しか無いので `resourceId` に入れる値が無い。`tenantId` は現在の
+  セッションからしか取れず、テナントを切り替えた後に写すと**別テナントの札が付く**
+  （この欄のコメントが防ぐと言っている当のもの）。DECISION_LOG は `OutboxItem` を触るのは
+  影響が大きいとして見送っているが、宣言している `listOutbox() → mapToSyncQueueItem()` の
+  ビューはその欄を必要とする。 → IMP-032 で判断
+
+- **Severity の `CRITICAL → ACTION` を許すかどうか、読み方が割れている。**
+  IMP-015 はコメントを正として表を緩め、IMP-016 のブランチは表を正としてコメントを
+  「CRITICAL からは HIGH または RESOLVED のみ」に書き換えていた。どちらも内部では
+  筋が通る。`NORMAL → RESOLVED` が塞がっていた理由は、どちらの読み方でも
+  説明されていない。 → 代表判断待ち
+
+- **`OutboxKind` → `SyncResourceType` の変換表が無い**（DECISION_LOG の IMP-016 項目 8 で
+  IMP-032 送り）。 → IMP-032
+
 ## 追加（2026-08-26・マイグレーション運用 2）
 
 - **`20260825000000` がいつ・どの経路で適用されたか特定できていない。** `fa14d46` の

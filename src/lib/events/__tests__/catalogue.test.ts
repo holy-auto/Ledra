@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { eventRisk } from "../domainEvent";
 import {
   DOMAIN_EVENT_TYPES,
   isDomainEventType,
@@ -126,5 +127,15 @@ describe("fromLegacyEventType()", () => {
 
   it("returns null for unknown", () => {
     expect(fromLegacyEventType("unknown_type")).toBeNull();
+  });
+});
+
+// リスクは `?? "low"` に落ちるので、登録し忘れが静かに起きる。
+describe("eventRisk() — sync イベント", () => {
+  it("競合と失敗は low のままにしない", () => {
+    // 未登録だと証明書の競合が進捗メモ（medium）より下に格付けされる。
+    expect(eventRisk("sync.conflict_detected")).not.toBe("low");
+    expect(eventRisk("sync.conflict_resolved")).not.toBe("low");
+    expect(eventRisk("sync.failed")).not.toBe("low");
   });
 });

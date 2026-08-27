@@ -291,7 +291,6 @@ Sentry · Resend (+ SendGrid fallback) · Anthropic (Opus 4.8 / Sonnet 4.6 / Hai
   導入する方針を確定（DECISION_LOG 2026-08-19）。テスト 54 件。
 - **IMP-001（実装ガードレール & 正準ドメイン語彙）完了**: `src/lib/domain/{states,labels}.ts`
   （6軸の正準値+ロケール別ラベル）、`docs/adr/0001`〜`0006`、アドホック状態禁止ルール
-  （CLAUDE.md）。既存語彙との統一・マッピングは IMP-015 で判断済み。
   （CLAUDE.md）。既存語彙との統一・マッピングは IMP-015 で判断（ADR-0002）。
 - 起点タスク **IMP-000（リポジトリ監査 & 実装ベースライン）完了**。成果物:
   - `docs/implementation/current-architecture.md` — 実査に基づく現状マップ＋検証ベースライン＋不可逆リスク台帳
