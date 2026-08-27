@@ -131,6 +131,7 @@
 > 失敗する**（新ビルドの配布が要る）。残り 37 関数と search_path 固定
 > （`20260823170001`）は未適用。詳細は DECISION_LOG / RELEASE_LOG 2026-08-24。
 
+
 最終更新: 2026-08-19
 
 > 2026-07-30 追記: 代理店ポータルの営業資料は2系統。(1)「常に最新の商品資料」欄＝
@@ -273,7 +274,36 @@ Sentry · Resend (+ SendGrid fallback) · Anthropic (Opus 4.8 / Sonnet 4.6 / Hai
 
 - 「Ledra UI/UX & Development Specification v2.0」（2026-08-19）と、それを36タスク
   （IMP-000〜IMP-054）に分解した「Claude Code Implementation Guide v1.0」を実装基準線として採用。
+- **IMP-014（ドメインイベント・監査・冪等基盤）完了**: v2.0 §20 / Appendix B のドメインイベント
+  基盤を型・純粋関数で整備。統一イベントカタログ（`resource.action` 命名、33 型）、既存
+  AuditEventType→DomainEventType マッピング、型付きイベントエンベロープ（actor/tenant/
+  store/risk/version/idempotencyKey）、イベント型別リスクレベル推定。既存の audit / outbox /
+  webhook-topics は変更なし。
+- **IMP-013（権限エンジン・店舗スコープ基盤）完了**: v2.0 §16 の不足分を型・純粋関数で
+  補完。正準権限動詞 7 種の型定義と既存 Permission→正準動詞マッピング、操作リスクレベル
+  4 段階分類、店舗スコープ型と判定関数群（hasStoreAccess/effectiveStoreRole/
+  isStoreManager/accessibleStoreIds）。既存 Permission 55 種・RLS 240 テーブルは変更なし。
+- **IMP-012（認証・招待・端末・step-up 基盤）完了**: v2.0 §15 の認証基盤を型・状態機械・
+  ヘルパーとして整備。(1) 正準オンボーディングフロー状態機械（INVITED→LANGUAGE_SET→
+  OTP_VERIFIED→STORE_ASSIGNED→BIOMETRIC_ENROLLED→ACTIVE）。(2) 汎用 OTP モジュール
+  （HMAC-SHA256 ハッシュ・タイミングセーフ検証・スタッフ OTP にも使える抽象化）。
+  (3) ユーザー端末管理型（デバイス登録・信頼度判定・遠隔失効）。(4) Step-up 認証
+  （操作別要件マップ・利用可能手段判定）。(5) 招待フロー型（ロケール選択付き・
+  トークン検証）。DB マイグレーション・画面実装なし（IMP-013 の前提条件充足が目的）。
+- **IMP-011（i18n 基盤 & 自動車用語集）完了**: ロケール登録を 6 言語（ja/en/vi/id/fil/hi）に
+  統一（`src/lib/i18n/locales.ts` が単一定義源）。メッセージファイル 4 言語追加、ドメインラベル
+  全 6 軸を 6 言語化、自動車翻訳用語集（~28 用語）、`WithTranslations<T>` UGC 翻訳分離型を新設。
+  vi/id/fil/hi 翻訳は推定（正式検証は IMP-051）。画面移行・ルーティング変更・DB マイグレーションなし。
 
+
+- **IMP-010（デザイントークン & 共有コンポーネント基盤）完了**: 不足 UI プリミティブ8つ
+  （SegmentedControl/StatusBadge/StatusCard/NextActionCard/ProgressCard/Alert/IconButton/
+  BottomSheet）+ Badge dot + Button xl。v2.0 の色トークン値は不採用・既存デザインシステム維持
+  （DECISION_LOG 2026-08-19）。
+- **IMP-015（状態機械・遷移表・Certificate Gate 型）完了**: `src/lib/domain/transitions.ts`
+  （正準 6 軸の遷移表＋汎用遷移検証関数）、`src/lib/domain/certificateGate.ts`
+  （v2.0 §19.4 の 10 条件型定義）。既存値→正準値マッピングは各消費タスクで段階的に
+  導入する方針を確定（DECISION_LOG 2026-08-19）。テスト 54 件。
 - **IMP-001（実装ガードレール & 正準ドメイン語彙）完了**: `src/lib/domain/{states,labels}.ts`
   （6軸の正準値+ロケール別ラベル）、`docs/adr/0001`〜`0006`、アドホック状態禁止ルール
   （CLAUDE.md）。既存語彙との統一・マッピングは IMP-015 で判断（ADR-0002）。
@@ -339,6 +369,7 @@ Sentry · Resend (+ SendGrid fallback) · Anthropic (Opus 4.8 / Sonnet 4.6 / Hai
   （`expo-image-picker` は導入済みなので再ビルド不要。iOS の HEIC は
   `preferredAssetRepresentationMode: "compatible"` で JPEG に変換させる）。
   詳細は DECISION_LOG / RELEASE_LOG 2026-08-23。
+
 
 
 ## 直近の開発フォーカス（git log 直近30件より、2026-07 時点）

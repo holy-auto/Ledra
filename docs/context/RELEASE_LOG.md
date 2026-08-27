@@ -56,6 +56,38 @@ Square 連携・電子署名を現状に直し、会計連携（freee / マネ�
 (c) ガイド文言の絵文字が落ちていること（埋め込みフォントに絵文字グリフが無く豆腐になる）
 を確認する。今回のページ数のズレは、このテストが検出した。
 
+## 2026-08-26 LINEで顧客が予約を自分でキャンセルできるセルフ対応（第一弾・キャンセルのみ、branch claude/line-chatbot-ledra-dy2fiq）
+
+- 内容: これまで `cancel` intent は抽出しても人手に回していたが、顧客が LINE で「予約を
+  キャンセルしたい」と送った時点で、**本人の今後の予約を提示→確認ボタン→即時キャンセル**
+  （`status=cancelled`＋`cancelled_at`/`cancel_reason`＋Google カレンダー削除＋スタッフ通知）
+  を自動化した。会話フロー基盤（`line_conversation_flows` 状態機械）を再利用。
+  - 締め切りは **作業日の前日まで**（`scheduled_date > 今日(JST, todayJst)`）。当日・過去・
+    対象なし・未紐付けはスタッフ引き継ぎ。反映は**即時自動**（合意事項）。
+  - 破壊的操作のため必ず確認ボタン（`flow:cancel_confirm`/`flow:cancel_abort`）を挟み、
+    **本人の予約のみ**対象（`cancelReservationById` が tenant＋customer 一致を検証、既
+    cancelled/completed は冪等 no-op）。確定直前に締め切りを再検証、closed 楽観クレームで
+    二重実行を防止。
+  - 新状態 `awaiting_cancel_pick`/`awaiting_cancel_confirm`、新イベント（`states.ts`/`interpret.ts`）。
+    共有ヘルパー `src/lib/reservations/mutate.ts`（キャンセル＋gcal 削除）、起点 IO
+    `src/lib/ai/automation/cancelFlowAuto.ts`、実行は `conversationFlowPostback.ts`。
+  - opt-in `inbound_message.auto_self_cancel`（既定 OFF、`actionCatalog.ts`/`orchestrator.ts`）。
+    会話フロー opt-in とは独立（キャンセルのボタン postback は会話フロー OFF でも処理）。
+- 対象: LINE 受信の AI 自動応答（全業種、Standard プラン以上・opt-in）。#908 とは別 PR。
+- 検証: 単体テスト追加（`reservations/mutate`・`cancelFlowAuto`・`conversationFlowPostback`・
+  `inboundAutoReplyGate`・`interpret`・`states`）。automation+line+reservations 全 274 件パス、tsc/eslint エラー0。
+- コードレビュー由来の追加ハードニング（同 PR、`/code-review`）:
+  - 提示ボタン（キャンセル確認）が届かなければ作った `awaiting_cancel_*` 行を `expired` に落とす
+    （残すと顧客はボタン無しで前進できず 72h 他フローも塞がる）。`cancelFlowAuto` と pick→confirm の両経路。
+  - 「スタッフに相談したい」（`flow:consult`）を **self-cancel のみ有効なテナントでも受ける**
+    （キャンセル選択画面にも出るボタンなので、会話フロー OFF だと死にボタンになっていた）。
+  - 締め切り「前日まで」を **確定直前の実 DB 値**でも検証（`cancelReservationById(cutoffDate)`）。
+    提示スナップショット依存の pre-check に加え、提示後にスタッフが当日へ日程変更した場合も安全。
+  - `cancelReservationById` の UPDATE に `.select("id")` を付け、ガードで 0 行更新になったケースを
+    成功と誤認しない（冪等 no-op として `alreadyFinal:true`）。
+- スコープ外（後続PR）: 日程変更（reschedule、既存の日程候補提示＋既存予約 UPDATE の再利用）、
+  リマインダーへのキャンセルボタン添付、admin route.ts のキャンセル処理の共有ヘルパー寄せ。
+
 ## 2026-08-26 SQL と TS の二重実装を機械的に突き合わせる（サイズ区分の丸め違いを修正）
 
 「ズレは全部直さなあかん」への対応。洗い出した二重実装は2組だけだった
@@ -1070,6 +1102,61 @@ supabase migration repair --status reverted 20260825000000
 - 対象: どの画面・API・業種向けか
 ```
 
+## 2026-08-19 IMP-015 状態機械・遷移表・Certificate Gate 型（branch impl/IMP-015-state-machines / PR #TBD）
+
+- 内容: v2.0 §19 の状態機械基盤を型・純粋関数で整備。(1) 正準 6 軸（Job/Step/Severity/
+  Certificate/Payment/Sync）の遷移表（`Record<State, readonly State[]>`）。
+  (2) 汎用遷移検証関数（`isValidTransition` / `validNextStates` / `isTerminalState`）と
+  拒否理由生成（`rejectTransition`）。(3) Certificate Gate 10 条件の型定義
+  （v2.0 §19.4 / ADR-0005。評価器の実装は IMP-028）。(4) UNKNOWN → PENDING 禁止
+  （v2.0 §11.3）・CRITICAL → NORMAL 直接降格禁止を遷移表で構造的に表現。
+  既存の signoff 状態機械・photoRequirement・API ルートの遷移ロジックは変更なし。
+  DB マイグレーションなし。テスト 54 件。
+- 対象: 開発基盤（IMP-016 オフライン同期・IMP-028 Certificate Gate・IMP-031 例外状態の前提条件）。
+- ADR-0002 判断事項（既存値→正準値マッピング方針）: TS 層マッピングは各消費タスクで
+  段階的に導入する。IMP-015 では遷移表のみ定義し変換関数は作らない。
+
+## 2026-08-19 IMP-014 ドメインイベント・監査・冪等基盤（branch impl/IMP-014-domain-events / PR #932）
+
+- 内容: v2.0 §20 / Appendix B のドメインイベント基盤を型・純粋関数で整備。(1) 統一ドメイン
+  イベントカタログ（`resource.action` 命名規約で 33 イベント型を網羅。既存 AuditEventType 27 種
+  + AiAuditAction 1 種 + 未型化 2 種 + webhook topics 由来 3 種）。(2) 既存 AuditEventType→
+  DomainEventType マッピング（段階的移行用）。(3) 型付きドメインイベントエンベロープ
+  （actor 5 種・テナント/店舗スコープ・リスクレベル・冪等キー・バージョン・subject 参照）。
+  (4) イベント型別リスクレベル推定（IMP-013 operationRisk と整合）。既存の AuditEventType /
+  WebhookTopic / logAuditEvent / emitTenantEvent は変更なし。DB マイグレーション・
+  パイプライン変更なし。
+- 対象: 開発基盤（IMP-044 イベントパイプライン・IMP-015 状態機械の前提条件）。
+
+## 2026-08-19 IMP-013 権限エンジン・店舗スコープ基盤（branch impl/IMP-013-permission-engine / PR #931）
+
+- 内容: v2.0 §16 の不足分を型・純粋関数で補完。(1) 正準権限動詞 7 種（VIEW/EDIT/CONFIRM/
+  APPROVE/ISSUE/MANAGE/EXPORT）の型定義と既存 Permission→正準動詞マッピング。
+  (2) 操作リスクレベル 4 段階（low/medium/high/critical）の分類と判定関数（IMP-012
+  step-up 認証と連携）。(3) 店舗スコープ型（store_memberships DB スキーマ対応）と
+  判定関数群（hasStoreAccess/effectiveStoreRole/isStoreManager/accessibleStoreIds）。
+  既存の Permission 型・ROLE_PERMISSIONS マトリクスは変更なし。DB マイグレーションなし。
+- 対象: 開発基盤（IMP-014 ドメインイベント・監査の前提条件）。
+
+## 2026-08-19 IMP-012 認証・招待・端末・step-up 基盤（branch impl/IMP-012-auth-foundation / PR #930）
+
+- 内容: v2.0 §15 の認証基盤を型・状態機械・ヘルパーとして整備。(1) 正準オンボーディング
+  フロー状態機械（6 ステップ: INVITED→ACTIVE）。(2) 汎用 OTP モジュール（生成・HMAC ハッシュ・
+  タイミングセーフ検証）。(3) ユーザー端末管理型（登録・信頼度3段階・遠隔失効）。
+  (4) Step-up 認証（7 操作カテゴリの要件マップ・利用可能手段判定）。(5) 招待フロー型
+  （ロケール選択付き・トークン検証・有効期限）。DB マイグレーション・画面実装なし。
+- 対象: 開発基盤（IMP-013 権限エンジンの前提条件）。
+
+## 2026-08-19 IMP-011 i18n 基盤 & 自動車用語集（branch impl/IMP-011-i18n-foundation / PR #929）
+
+- 内容: v2.0 §17 の i18n 基盤を整備。(1) ロケール登録を 6 言語（ja/en/vi/id/fil/hi）に
+  統一（`src/lib/i18n/locales.ts` を単一定義源化、`labels.ts` の `DOMAIN_LOCALES` は再エクスポートに変更）。
+  (2) メッセージファイル 4 言語追加（`messages/{vi,id,fil,hi}.json` 各 8 エラーキー）。
+  (3) ドメインラベル全 6 軸を 6 言語化（~188 ラベル文字列）。(4) 自動車翻訳用語集
+  （`src/lib/i18n/glossary.ts` ~28 用語、`getGlossaryForLocale()` で translateContent.ts 連携可）。
+  (5) `WithTranslations<T>` UGC 翻訳分離型（`src/lib/i18n/translated.ts` 型定義のみ）。
+  (6) `LOCALE_LABELS` マップ（言語選択 UI 用）。vi/id/fil/hi 翻訳は推定、正式検証は IMP-051。
+- 対象: 開発基盤（画面変更なし。IMP-012/020/024/026/051 の前提条件）。
 ## 2026-08-10 LINE自動返信（ナレッジ）に「次の行動」誘導ボタンを追加（branch claude/line-chatbot-ledra-dy2fiq）
 
 - 内容: LINE のナレッジ自動返信（`knowledgeReplyAuto.ts`）が回答をプレーンテキストで
@@ -1294,6 +1381,20 @@ supabase migration repair --status reverted 20260825000000
 - 検証: `npx tsc --noEmit`（モバイル・ルート両方）通過、`npm run lint` エラー0件。
   25ファイル変更、+2589行/-552行。
 
+## 2026-08-19 IMP-010 デザイントークン & 共有コンポーネント基盤（branch impl/IMP-010-design-tokens / PR #928）
+
+- 内容: v2.0 §3 の不足 UI プリミティブ8つを新設 — SegmentedControl（ピル型切替、3箇所の
+  重複実装の共通化先）/ StatusBadge（Badge+statusMaps の定型接続）/ StatusCard /
+  NextActionCard / ProgressCard（円形進捗+ゼロ除算ガード）/ Alert（169箇所のインライン
+  警告 div の共通化先）/ IconButton（44px タッチターゲット）/ BottomSheet（モバイル用、
+  共通 a11y フック useDialogA11y=フォーカストラップ+復元付き）。既存部品への追加:
+  Badge に dot、Button に xl（48px CTA）。statusMaps に SEVERITY_VARIANT_MAP
+  （正準 Severity → 表示 variant）。使用0件の旧 `src/components/StatusBadge.tsx`
+  （独自スタイル二重管理）を削除。予約ステータスの中央マップ追加は既存2定義
+  （pos-constants / ReservationsClient）との配色衝突が判明したため見送り
+  （統合は IMP-022 で判断）。DESIGN_SYSTEM.md のコンポーネント表を新設分まで更新。
+- 対象: 開発基盤（既存画面の見た目は不変。新部品は IMP-020 以降の画面で使用）。
+
 ## 2026-08-19 IMP-001 実装ガードレール & 正準ドメイン語彙（branch impl/IMP-001-domain-vocabulary / PR #927）
 
 - 内容: v2.0 の6状態軸（Job/Step/Severity/Certificate/Payment/Sync）を正準語彙モジュール
@@ -1327,6 +1428,7 @@ supabase migration repair --status reverted 20260825000000
   - `src/app/layout.tsx`: twitter.site/creator反映
   - `/privacy`, `/terms`, `/law`, `/contact`: canonical追加
   - `/tokusho`: canonical・og:urlを/lawに統一、sitemapから除去
+
 
 ## 2026-08-16 LINE連携の入力を「Channel ID と Secret の2つだけ」に（branch claude/multi-integration-login-opnzfh）
 

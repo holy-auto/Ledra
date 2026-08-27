@@ -69,6 +69,15 @@ export function interpretReply(
       }
       case "cancel":
         return { type: "handoff" };
+      case "cancel_pick": {
+        // `flow:cancel_pick:<index>` — index はキャンセル対象予約配列への添字。
+        const index = parseCandidateIndex(pb.arg);
+        return index === null ? null : { type: "cancel_pick_selected", index };
+      }
+      case "cancel_confirm":
+        return { type: "cancel_confirmed" };
+      case "cancel_abort":
+        return { type: "cancel_aborted" };
       default:
         return null;
     }

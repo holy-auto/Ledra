@@ -1,0 +1,12 @@
+{
+  "errors": {
+    "invalid_payload": "Isi permintaan tidak valid.",
+    "missing_field": "{field} wajib diisi.",
+    "invalid_id": "ID tidak valid.",
+    "unauthorized": "Autentikasi diperlukan.",
+    "forbidden": "Anda tidak memiliki izin untuk melakukan tindakan ini.",
+    "not_found": "Tidak ditemukan.",
+    "rate_limited": "Terlalu banyak permintaan. Silakan coba lagi nanti.",
+    "internal_error": "Terjadi kesalahan server."
+  }
+}

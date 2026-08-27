@@ -12,6 +12,10 @@
  */
 import jaMessages from "../../../messages/ja.json";
 import enMessages from "../../../messages/en.json";
+import viMessages from "../../../messages/vi.json";
+import idMessages from "../../../messages/id.json";
+import filMessages from "../../../messages/fil.json";
+import hiMessages from "../../../messages/hi.json";
 import { DEFAULT_LOCALE, type Locale } from "./locales";
 
 type MessageTree = { [key: string]: string | MessageTree };
@@ -19,6 +23,10 @@ type MessageTree = { [key: string]: string | MessageTree };
 const MESSAGES: Record<Locale, MessageTree> = {
   ja: jaMessages as MessageTree,
   en: enMessages as MessageTree,
+  vi: viMessages as MessageTree,
+  id: idMessages as MessageTree,
+  fil: filMessages as MessageTree,
+  hi: hiMessages as MessageTree,
 };
 
 function lookup(tree: MessageTree, path: string): string | undefined {
