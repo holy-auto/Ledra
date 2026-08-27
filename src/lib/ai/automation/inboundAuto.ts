@@ -27,11 +27,13 @@ import { maybeAutoDraftQuoteFromInbound } from "./quoteDraftAuto";
 import { maybeAutoReplyRoughEstimate } from "./quoteReplyAuto";
 import { maybeAutoReplyKnowledge } from "./knowledgeReplyAuto";
 import { maybeStartQuoteFlow, maybeAdvanceQuoteFlowOnDetail } from "./conversationFlowAuto";
+import { maybeStartCancelFlow } from "./cancelFlowAuto";
 import {
   shouldAutoExtractInbound,
   shouldAutoReplyKnowledge,
   shouldAutoReplyRoughEstimate,
   shouldRunConversationFlow,
+  shouldAutoSelfCancel,
   decideInboundCommit,
 } from "./orchestrator";
 import { storeIdOrNull } from "@/lib/stores/resolveStoreId";
@@ -94,7 +96,9 @@ export async function maybeAutoProcessInboundMessage(params: MaybeAutoProcessPar
     const wantExtract = shouldAutoExtractInbound(settings);
     const wantKnowledgeReply = shouldAutoReplyKnowledge(settings);
     const wantEstimateReply = shouldAutoReplyRoughEstimate(settings);
-    if (!wantExtract && !wantKnowledgeReply && !wantEstimateReply) return;
+    // キャンセルのセルフ対応も intent の抽出結果に依存するため、これ単独 opt-in でも抽出を走らせる。
+    const wantSelfCancel = shouldAutoSelfCancel(settings);
+    if (!wantExtract && !wantKnowledgeReply && !wantEstimateReply && !wantSelfCancel) return;
 
     // プラン / 有効性チェック (webhook には auth セッションが無いので DB から直接読む)。
     const admin = createServiceRoleAdmin("AI auto-extract inbound — LINE webhook lacks auth session");
@@ -210,6 +214,29 @@ export async function maybeAutoProcessInboundMessage(params: MaybeAutoProcessPar
         return;
       }
       attachFollowupButtons = !activeFlow;
+    }
+
+    // 予約キャンセルのセルフ対応 (opt-in / 内部で fail-soft)。intent=cancel なら本人の予約を
+    // 提示して確認ボタンで即時キャンセルさせる。予約自動起票・他の自動返信より**前に**判定し、
+    // 処理したら早期 return する (キャンセル希望に予約起票や見積り返信を重ねない)。
+    if (wantSelfCancel && result.intent === "cancel") {
+      const cancelStarted = await maybeStartCancelFlow({
+        tenantId,
+        customerId: resolvedCustomerId,
+        lineUserId: params.lineUserId,
+        intent: result.intent,
+        messageId,
+        channel: params.channel ?? "line",
+        settings,
+      });
+      if (cancelStarted) {
+        usage.record({
+          tenantId,
+          outcome: "ok",
+          meta: { auto: true, self_cancel: true, channel: params.channel ?? "line" },
+        });
+        return;
+      }
     }
 
     const decision = decideInboundCommit(settings, result, { knownCustomerId: resolvedCustomerId });

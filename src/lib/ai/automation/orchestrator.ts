@@ -76,6 +76,11 @@ export function shouldRunConversationFlow(settings: AiAutomationSettings): boole
   return resolveAutoAction(settings, "inbound_message.auto_conversation_flow");
 }
 
+/** 顧客が LINE で予約を自分でキャンセルできるか (inbound_message.auto_self_cancel)。 */
+export function shouldAutoSelfCancel(settings: AiAutomationSettings): boolean {
+  return resolveAutoAction(settings, "inbound_message.auto_self_cancel");
+}
+
 export interface InboundExtractionLike {
   intent?: string | null;
   confidence?: number | null;

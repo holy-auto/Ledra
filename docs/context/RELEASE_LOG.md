@@ -4,6 +4,38 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-08-26 LINEで顧客が予約を自分でキャンセルできるセルフ対応（第一弾・キャンセルのみ、branch claude/line-chatbot-ledra-dy2fiq）
+
+- 内容: これまで `cancel` intent は抽出しても人手に回していたが、顧客が LINE で「予約を
+  キャンセルしたい」と送った時点で、**本人の今後の予約を提示→確認ボタン→即時キャンセル**
+  （`status=cancelled`＋`cancelled_at`/`cancel_reason`＋Google カレンダー削除＋スタッフ通知）
+  を自動化した。会話フロー基盤（`line_conversation_flows` 状態機械）を再利用。
+  - 締め切りは **作業日の前日まで**（`scheduled_date > 今日(JST, todayJst)`）。当日・過去・
+    対象なし・未紐付けはスタッフ引き継ぎ。反映は**即時自動**（合意事項）。
+  - 破壊的操作のため必ず確認ボタン（`flow:cancel_confirm`/`flow:cancel_abort`）を挟み、
+    **本人の予約のみ**対象（`cancelReservationById` が tenant＋customer 一致を検証、既
+    cancelled/completed は冪等 no-op）。確定直前に締め切りを再検証、closed 楽観クレームで
+    二重実行を防止。
+  - 新状態 `awaiting_cancel_pick`/`awaiting_cancel_confirm`、新イベント（`states.ts`/`interpret.ts`）。
+    共有ヘルパー `src/lib/reservations/mutate.ts`（キャンセル＋gcal 削除）、起点 IO
+    `src/lib/ai/automation/cancelFlowAuto.ts`、実行は `conversationFlowPostback.ts`。
+  - opt-in `inbound_message.auto_self_cancel`（既定 OFF、`actionCatalog.ts`/`orchestrator.ts`）。
+    会話フロー opt-in とは独立（キャンセルのボタン postback は会話フロー OFF でも処理）。
+- 対象: LINE 受信の AI 自動応答（全業種、Standard プラン以上・opt-in）。#908 とは別 PR。
+- 検証: 単体テスト追加（`reservations/mutate`・`cancelFlowAuto`・`conversationFlowPostback`・
+  `inboundAutoReplyGate`・`interpret`・`states`）。automation+line+reservations 全 274 件パス、tsc/eslint エラー0。
+- コードレビュー由来の追加ハードニング（同 PR、`/code-review`）:
+  - 提示ボタン（キャンセル確認）が届かなければ作った `awaiting_cancel_*` 行を `expired` に落とす
+    （残すと顧客はボタン無しで前進できず 72h 他フローも塞がる）。`cancelFlowAuto` と pick→confirm の両経路。
+  - 「スタッフに相談したい」（`flow:consult`）を **self-cancel のみ有効なテナントでも受ける**
+    （キャンセル選択画面にも出るボタンなので、会話フロー OFF だと死にボタンになっていた）。
+  - 締め切り「前日まで」を **確定直前の実 DB 値**でも検証（`cancelReservationById(cutoffDate)`）。
+    提示スナップショット依存の pre-check に加え、提示後にスタッフが当日へ日程変更した場合も安全。
+  - `cancelReservationById` の UPDATE に `.select("id")` を付け、ガードで 0 行更新になったケースを
+    成功と誤認しない（冪等 no-op として `alreadyFinal:true`）。
+- スコープ外（後続PR）: 日程変更（reschedule、既存の日程候補提示＋既存予約 UPDATE の再利用）、
+  リマインダーへのキャンセルボタン添付、admin route.ts のキャンセル処理の共有ヘルパー寄せ。
+
 ## 2026-08-26 SQL と TS の二重実装を機械的に突き合わせる（サイズ区分の丸め違いを修正）
 
 「ズレは全部直さなあかん」への対応。洗い出した二重実装は2組だけだった
