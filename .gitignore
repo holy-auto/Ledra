@@ -6,6 +6,9 @@
 
 # scratch / temporary files (e.g. generated PDFs for review)
 /tmp/
+
+# UI reference images (visual targets, not committed to repo)
+/references/
 .pnp.*
 .yarn/*
 !.yarn/patches

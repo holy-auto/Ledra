@@ -17,9 +17,7 @@ describe("suggestCaseAssignees", () => {
       users,
       rules: [{ condition_type: "category", condition_value: "coating", assign_to: "u2", is_active: true }],
     });
-    expect(out.candidates).toEqual([
-      expect.objectContaining({ user_id: "u2", method: "rule", score: 1.0 }),
-    ]);
+    expect(out.candidates).toEqual([expect.objectContaining({ user_id: "u2", method: "rule", score: 1.0 })]);
   });
 
   it("ignores inactive rules", async () => {

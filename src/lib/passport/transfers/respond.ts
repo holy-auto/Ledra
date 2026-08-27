@@ -241,8 +241,7 @@ async function notifyShopAccepted(args: {
 }
 
 export type RejectResult =
-  | { ok: true }
-  | { ok: false; reason: "not_found" | "not_pending" | "expired"; message: string };
+  { ok: true } | { ok: false; reason: "not_found" | "not_pending" | "expired"; message: string };
 
 export async function rejectTransferByToken(rawToken: string): Promise<RejectResult> {
   let tokenHash: string;
@@ -287,8 +286,7 @@ export async function rejectTransferByToken(rawToken: string): Promise<RejectRes
 }
 
 export type CancelResult =
-  | { ok: true }
-  | { ok: false; reason: "not_found" | "not_pending" | "forbidden"; message: string };
+  { ok: true } | { ok: false; reason: "not_found" | "not_pending" | "forbidden"; message: string };
 
 /** Cancel a pending transfer by id. Only the initiating tenant can cancel. */
 export async function cancelTransferById(args: { transferId: string; tenantId: string }): Promise<CancelResult> {

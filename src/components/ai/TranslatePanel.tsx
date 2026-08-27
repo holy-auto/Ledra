@@ -160,8 +160,7 @@ export default function TranslatePanel({ getText, kind = "general", onReplace }:
             <div className="rounded-lg border border-accent/20 bg-surface px-3 py-2 space-y-2">
               <div className="flex items-center justify-between text-[11px] text-muted">
                 <span>
-                  訳文 ({LANG_LABEL[lang]})
-                  {confidence != null && ` · 信頼度 ${Math.round(confidence * 100)}%`}
+                  訳文 ({LANG_LABEL[lang]}){confidence != null && ` · 信頼度 ${Math.round(confidence * 100)}%`}
                   {!ai && " · キャッシュ / フォールバック"}
                 </span>
                 <div className="flex gap-2">
@@ -169,11 +168,7 @@ export default function TranslatePanel({ getText, kind = "general", onReplace }:
                     {copied ? "✓ コピー済" : "コピー"}
                   </button>
                   {onReplace && (
-                    <button
-                      type="button"
-                      onClick={() => onReplace(translated)}
-                      className="underline text-accent"
-                    >
+                    <button type="button" onClick={() => onReplace(translated)} className="underline text-accent">
                       本文を置換
                     </button>
                   )}

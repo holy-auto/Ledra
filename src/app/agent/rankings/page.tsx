@@ -25,7 +25,10 @@ export default function AgentRankingsPage() {
   useEffect(() => {
     (async () => {
       const { data: u } = await supabase.auth.getUser();
-      if (!u?.user) { window.location.href = "/agent/login"; return; }
+      if (!u?.user) {
+        window.location.href = "/agent/login";
+        return;
+      }
       setReady(true);
     })();
   }, [supabase]);
@@ -83,11 +86,19 @@ export default function AgentRankingsPage() {
             <div>
               <div className="text-sm font-semibold text-primary">あなたの順位</div>
               <div className="mt-1 flex flex-wrap gap-4 text-sm">
-                <span>紹介 <strong>{selfRank.referral_count}</strong>件</span>
-                <span>契約 <strong>{selfRank.contracted_count}</strong>件</span>
-                <span>成約率 <strong>{selfRank.conversion_rate}%</strong></span>
+                <span>
+                  紹介 <strong>{selfRank.referral_count}</strong>件
+                </span>
+                <span>
+                  契約 <strong>{selfRank.contracted_count}</strong>件
+                </span>
+                <span>
+                  成約率 <strong>{selfRank.conversion_rate}%</strong>
+                </span>
                 {selfRank.total_commission !== null && (
-                  <span>コミッション <strong>{formatJpy(selfRank.total_commission)}</strong></span>
+                  <span>
+                    コミッション <strong>{formatJpy(selfRank.total_commission)}</strong>
+                  </span>
                 )}
               </div>
             </div>
@@ -97,7 +108,9 @@ export default function AgentRankingsPage() {
 
       {loading ? (
         <div className="animate-pulse space-y-2">
-          {[1, 2, 3, 4, 5].map((i) => <div key={i} className="h-14 rounded-2xl bg-surface-hover" />)}
+          {[1, 2, 3, 4, 5].map((i) => (
+            <div key={i} className="h-14 rounded-2xl bg-surface-hover" />
+          ))}
         </div>
       ) : rankings.length === 0 ? (
         <div className="rounded-2xl border border-border-default bg-surface p-8 text-center text-sm text-muted">
@@ -123,9 +136,11 @@ export default function AgentRankingsPage() {
                 >
                   <td className="p-3 text-center">
                     {r.rank <= 3 ? (
-                      <span className={`inline-flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold text-white ${
-                        r.rank === 1 ? "bg-amber-400" : r.rank === 2 ? "bg-neutral-400" : "bg-amber-700"
-                      }`}>
+                      <span
+                        className={`inline-flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold text-white ${
+                          r.rank === 1 ? "bg-amber-400" : r.rank === 2 ? "bg-neutral-400" : "bg-amber-700"
+                        }`}
+                      >
                         {r.rank}
                       </span>
                     ) : (
