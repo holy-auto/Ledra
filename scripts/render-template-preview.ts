@@ -9,19 +9,56 @@
  *   NEXT_PUBLIC_SUPABASE_URL=https://placeholder.supabase.co \
  *   NEXT_PUBLIC_SUPABASE_ANON_KEY=placeholder \
  *   SUPABASE_SERVICE_ROLE_KEY=placeholder \
- *   npx tsx scripts/render-template-preview.ts [docType] [outPath]
- *   例: ... npx tsx scripts/render-template-preview.ts invoice out/invoice.pdf
+ *   npx tsx scripts/render-template-preview.ts [docType|all] [outPath] [--reduced]
+ *
+ *   例: ... render-template-preview.ts invoice out/invoice.pdf
+ *       ... render-template-preview.ts all                      # 全9種を out/ へ
+ *       ... render-template-preview.ts invoice --reduced        # 軽減税率(8%)行を含める
  */
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { renderDocumentPdf, type DocForPdf, type TenantForDocPdf } from "@/lib/pdfDocument";
 
-const docType = process.argv[2] || "estimate";
-const outPath = path.resolve(process.argv[3] || `out/template-${docType}.pdf`);
+/** pdfDocument.tsx の DOC_TYPE_LABELS と同じ並び */
+const DOC_TYPES = [
+  "estimate",
+  "delivery",
+  "purchase_order",
+  "order_confirmation",
+  "inspection",
+  "receipt",
+  "invoice",
+  "consolidated_invoice",
+  "staff_invoice",
+];
+
+const flags = process.argv.slice(2).filter((a) => a.startsWith("--"));
+const positional = process.argv.slice(2).filter((a) => !a.startsWith("--"));
+const withReduced = flags.includes("--reduced");
+const target = positional[0] || "estimate";
+const docTypes = target === "all" ? DOC_TYPES : [target];
+
+const items: DocForPdf["items_json"] = [
+  { description: "サンプル商品A", quantity: 1, unit: "個", unit_price: 57750, amount: 57750 },
+  { description: "サンプル商品B", quantity: 2, unit: "個", unit_price: 17600, amount: 35200 },
+  { description: "施工費", quantity: 1, unit: "式", unit_price: 20000, amount: 20000 },
+];
+if (withReduced) {
+  // 軽減税率対象行。小計・消費税・合計は breakdown から再計算されるので stored 値は触らない。
+  items.push({
+    description: "サンプル飲料（軽減税率対象）",
+    quantity: 2,
+    unit: "本",
+    unit_price: 500,
+    amount: 1000,
+    tax_category: 8,
+    is_reduced_rate: true,
+  });
+}
 
 const doc: DocForPdf = {
   id: "sample",
-  doc_type: docType,
+  doc_type: "estimate",
   doc_number: "SAMPLE-202604-001",
   issued_at: "2026-04-22",
   due_date: "2026-05-31",
@@ -30,11 +67,7 @@ const doc: DocForPdf = {
   total: 124245,
   tax_rate: 10,
   note: "備考欄はこの位置に表示されます。",
-  items_json: [
-    { description: "サンプル商品A", quantity: 1, unit: "個", unit_price: 57750, amount: 57750 },
-    { description: "サンプル商品B", quantity: 2, unit: "個", unit_price: 17600, amount: 35200 },
-    { description: "施工費", quantity: 1, unit: "式", unit_price: 20000, amount: 20000 },
-  ],
+  items_json: items,
   is_invoice_compliant: true,
   show_seal: true,
   show_logo: true,
@@ -70,8 +103,15 @@ const tenant: TenantForDocPdf = {
 };
 
 void (async () => {
-  const buf = await renderDocumentPdf(doc, tenant, null);
-  mkdirSync(path.dirname(outPath), { recursive: true });
-  writeFileSync(outPath, buf);
-  console.log(outPath);
+  for (const docType of docTypes) {
+    const outPath = path.resolve(
+      docTypes.length === 1 && positional[1]
+        ? positional[1]
+        : `out/template-${docType}${withReduced ? "-reduced" : ""}.pdf`,
+    );
+    const buf = await renderDocumentPdf({ ...doc, doc_type: docType }, tenant, null);
+    mkdirSync(path.dirname(outPath), { recursive: true });
+    writeFileSync(outPath, buf);
+    console.log(outPath);
+  }
 })();
