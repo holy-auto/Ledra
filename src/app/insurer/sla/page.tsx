@@ -142,20 +142,12 @@ export default function InsurerSlaPage() {
         <div className="inline-flex rounded-full border border-border-default bg-surface px-3 py-1 text-[11px] font-semibold tracking-[0.18em] text-secondary">
           SLA管理
         </div>
-        <h1 className="text-3xl font-bold tracking-tight text-primary">
-          SLA管理
-        </h1>
-        <p className="text-sm text-muted">
-          優先度別の対応期限と、期限に近い・超過した案件を管理します
-        </p>
+        <h1 className="text-3xl font-bold tracking-tight text-primary">SLA管理</h1>
+        <p className="text-sm text-muted">優先度別の対応期限と、期限に近い・超過した案件を管理します</p>
       </header>
 
       {/* error */}
-      {err && (
-        <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {err}
-        </div>
-      )}
+      {err && <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{err}</div>}
 
       {/* SLA config card */}
       <div className="rounded-2xl border border-border-default bg-surface p-6">
@@ -211,11 +203,7 @@ export default function InsurerSlaPage() {
               >
                 キャンセル
               </button>
-              <button
-                type="submit"
-                disabled={saving}
-                className="btn-primary disabled:opacity-50"
-              >
+              <button type="submit" disabled={saving} className="btn-primary disabled:opacity-50">
                 {saving ? "保存中…" : "保存"}
               </button>
             </div>
@@ -223,18 +211,13 @@ export default function InsurerSlaPage() {
         ) : (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {(["urgent", "high", "normal", "low"] as const).map((key) => (
-              <div
-                key={key}
-                className="rounded-xl border border-border-subtle bg-inset p-4 text-center"
-              >
+              <div key={key} className="rounded-xl border border-border-subtle bg-inset p-4 text-center">
                 <span
                   className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold mb-2 ${PRIORITY_COLORS[key]}`}
                 >
                   {PRIORITY_LABELS[key]}
                 </span>
-                <p className="text-2xl font-bold text-primary">
-                  {formatThreshold(config[key])}
-                </p>
+                <p className="text-2xl font-bold text-primary">{formatThreshold(config[key])}</p>
               </div>
             ))}
           </div>
@@ -268,23 +251,17 @@ export default function InsurerSlaPage() {
                   >
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
-                        <span className="font-mono text-xs text-muted">
-                          {c.case_number}
-                        </span>
+                        <span className="font-mono text-xs text-muted">{c.case_number}</span>
                         <span
                           className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${PRIORITY_COLORS[c.priority] ?? PRIORITY_COLORS.normal}`}
                         >
                           {PRIORITY_LABELS[c.priority] ?? c.priority}
                         </span>
                       </div>
-                      <p className="text-sm font-medium text-primary truncate">
-                        {c.title}
-                      </p>
+                      <p className="text-sm font-medium text-primary truncate">{c.title}</p>
                     </div>
                     <div className="flex items-center gap-3 shrink-0">
-                      <span className="text-sm font-semibold text-red-700">
-                        {formatHours(c.remaining_hours)}
-                      </span>
+                      <span className="text-sm font-semibold text-red-700">{formatHours(c.remaining_hours)}</span>
                       <Link
                         href={`/insurer/cases/${c.id}`}
                         className="text-sm font-medium text-blue-600 hover:text-blue-800 hover:underline"
@@ -309,9 +286,7 @@ export default function InsurerSlaPage() {
               )}
             </h2>
             {atRisk.length === 0 ? (
-              <p className="text-sm text-muted">
-                SLA期限が近い案件はありません
-              </p>
+              <p className="text-sm text-muted">SLA期限が近い案件はありません</p>
             ) : (
               <div className="space-y-2">
                 {atRisk.map((c) => (
@@ -321,23 +296,17 @@ export default function InsurerSlaPage() {
                   >
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
-                        <span className="font-mono text-xs text-muted">
-                          {c.case_number}
-                        </span>
+                        <span className="font-mono text-xs text-muted">{c.case_number}</span>
                         <span
                           className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${PRIORITY_COLORS[c.priority] ?? PRIORITY_COLORS.normal}`}
                         >
                           {PRIORITY_LABELS[c.priority] ?? c.priority}
                         </span>
                       </div>
-                      <p className="text-sm font-medium text-primary truncate">
-                        {c.title}
-                      </p>
+                      <p className="text-sm font-medium text-primary truncate">{c.title}</p>
                     </div>
                     <div className="flex items-center gap-3 shrink-0">
-                      <span className="text-sm font-semibold text-amber-700">
-                        {formatHours(c.remaining_hours)}
-                      </span>
+                      <span className="text-sm font-semibold text-amber-700">{formatHours(c.remaining_hours)}</span>
                       <Link
                         href={`/insurer/cases/${c.id}`}
                         className="text-sm font-medium text-blue-600 hover:text-blue-800 hover:underline"

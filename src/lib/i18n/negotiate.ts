@@ -31,7 +31,9 @@ export function negotiateLocale(input: { headers: Headers } | Headers): Locale {
       const q = qPart ? Number(qPart.trim().slice(2)) : 1;
       return { tag: tag.trim().toLowerCase(), q: Number.isFinite(q) ? q : 0 };
     })
-    .filter((e) => e.tag.length > 0)
+    // RFC 9110 §12.5.4: q=0 は「その言語は受け入れ不可」。候補から外す。
+    // 外さないと `tl;q=0` が別名解決で fil を返し、`vi;q=0` が vi を返す。
+    .filter((e) => e.tag.length > 0 && e.q > 0)
     .sort((a, b) => b.q - a.q);
 
   for (const { tag } of ranked) {
