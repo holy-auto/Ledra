@@ -34,7 +34,60 @@ function ensureFonts() {
       { src: notoSansJpDataUrl(700), fontWeight: 700 },
     ],
   });
+  // react-pdf の既定は英単語を音節で割ってハイフンを挿す。日本語にこれが効くと
+  // 「QRコードで-顧客に即共有」のように**本文中にハイフンが生える**。
+  // 単語を割らない実装に差し替える（折り返し位置は行分割側が決める）。
+  Font.registerHyphenationCallback((word) => [word]);
   fontsRegistered = true;
+}
+
+/* ──────────────────────────────────────────────────────────────
+ * 文字の安全網
+ *
+ * `public/fonts/NotoSansJP-*.ttf` は**日本語サブセット**（7,466 グリフ）で、
+ * 記号の収録が薄い。グリフの無い文字を流すと .notdef ＝ 豆腐になり、
+ * PDF を開くまで誰も気づかない。実際、料金プランの機能別比較表は
+ * `FEATURE_COMPARISON` の `✓` が全部豆腐だった。
+ *
+ * 対策は2層:
+ *   1. ここで、無いと分かっている文字を収録済みの字に置き換える
+ *   2. `__tests__/resourcePdf.render.test.tsx` が全8資料の描画文字列を走査し、
+ *      グリフの無い文字が1つでも残っていたら落とす（新しい記号を足した時に気づける）
+ *
+ * `FEATURE_COMPARISON` や `GLOSSARY` は web 側とも共有しているデータで、
+ * ブラウザでは `✓` も `μ` も普通に出る。**元データは触らず、PDF に入る手前で
+ * だけ置き換える**のがこの関数の役割。
+ * ────────────────────────────────────────────────────────────── */
+
+/** サブセットに無い文字 → 収録されている代替。追加時はテストが検出する。 */
+const GLYPH_FALLBACKS: Record<string, string> = {
+  "✓": "あり", // 比較表の「対応」印。非対応の "—" と対で読める語にする
+  "→": "»", // U+2192 は非収録。U+00BB は収録済み
+  "①": "1.",
+  "②": "2.",
+  "③": "3.",
+  "※": "*",
+  "₂": "2", // SiO₂ → SiO2
+  μ: "µ", // GREEK SMALL MU (U+03BC) は非収録、MICRO SIGN (U+00B5) は収録済み。見た目は同じ
+};
+
+const GLYPH_FALLBACK_RE = new RegExp(`[${Object.keys(GLYPH_FALLBACKS).join("")}]`, "g");
+
+/**
+ * 絵文字を落とす。`Extended_Pictographic` だけでは足りない ―― 国旗
+ * (`🇯🇵` = 地域表示記号2つ)、キーキャップ (`1️⃣` = 数字 + FE0F + 20E3)、
+ * 肌色 (`👍🏽` の `🏽`) は別プロパティで、落とし残すとそこだけ豆腐になる。
+ */
+const EMOJI_CHARS = /[\p{Extended_Pictographic}\p{Emoji_Modifier}\p{Regional_Indicator}‍️⃣]/gu;
+
+/** PDF に流す文字列は必ずこれを通す。絵文字を落とし、非収録の記号を置き換える。 */
+export function pdfSafe(s: string): string {
+  return s
+    .replace(EMOJI_CHARS, "")
+    .replace(GLYPH_FALLBACK_RE, (c) => GLYPH_FALLBACKS[c] ?? c)
+    .replace(/[ 　]{2,}/g, " ")
+    .replace(/「\s+/g, "「")
+    .trim();
 }
 
 /**
@@ -311,19 +364,19 @@ function Page2Problems() {
       </Text>
 
       <View style={styles.card} wrap={false}>
-        <Text style={styles.cardTitle}>① 伝わらない摩擦</Text>
+        <Text style={styles.cardTitle}>01 伝わらない摩擦</Text>
         <Text style={styles.cardDesc}>
           紙・個人スマホ・Excel に散在する施工記録。同じ精度で顧客・保険会社・次の担当者に届ける共通フォーマットがない。
         </Text>
       </View>
       <View style={styles.card} wrap={false}>
-        <Text style={styles.cardTitle}>② 消える摩擦</Text>
+        <Text style={styles.cardTitle}>02 消える摩擦</Text>
         <Text style={styles.cardDesc}>
           紙はなくなり、担当者は変わる。3年後に「この車両に何の施工をしたか」を確実に答えられる記録が残っていない。
         </Text>
       </View>
       <View style={styles.card} wrap={false}>
-        <Text style={styles.cardTitle}>③ 疑われる摩擦</Text>
+        <Text style={styles.cardTitle}>03 疑われる摩擦</Text>
         <Text style={styles.cardDesc}>
           事故や事後対応の場面で、「本当にその時の写真か」「あとから直していないか」という不信に、紙やスマホ写真では十分答えられない。
         </Text>
@@ -346,60 +399,39 @@ function Page3Features() {
       <Text style={styles.h1}>Ledra が提供するもの</Text>
       <Text style={styles.lead}>施工証明だけではありません。現場の1日の時間の形全体を穏やかに更新します。</Text>
 
-      <View style={styles.grid2}>
-        <View style={styles.gridItem}>
-          <View style={styles.card} wrap={false}>
-            <Text style={styles.cardTitle}>デジタル施工証明書</Text>
-            <Text style={styles.cardDesc}>
-              写真・施工内容・施工者・日時を、ワンクリックで発行。QRコードで顧客に即共有。
-            </Text>
-          </View>
-          <View style={styles.card} wrap={false}>
-            <Text style={styles.cardTitle}>車両・顧客 360° ビュー</Text>
-            <Text style={styles.cardDesc}>1台・1人の履歴を、証明書・予約・請求までタイムラインで横断参照。</Text>
-          </View>
-          <View style={styles.card} wrap={false}>
-            <Text style={styles.cardTitle}>案件ワークフロー・POS・帳票</Text>
-            <Text style={styles.cardDesc}>
-              受付から引渡しまでを1つのワークスペースで。Tap to Pay 決済、請求書 PDF 自動生成、Google Calendar 同期。
-            </Text>
-          </View>
-          <View style={styles.card} wrap={false}>
-            <Text style={styles.cardTitle}>現場モバイル</Text>
-            <Text style={styles.cardDesc}>
-              スマホ・タブレット前提の UI で、撮影から証明書発行までを現場の速度で。PWA
-              対応で通信が不安定な場所でも動きます。
-            </Text>
-          </View>
-        </View>
-        <View style={styles.gridItem}>
-          <View style={styles.card} wrap={false}>
-            <Text style={styles.cardTitle}>保険・代理店連携</Text>
-            <Text style={styles.cardDesc}>
-              保険会社ポータルで検索・査定・案件管理。代理店ポータルで紹介・コミッション管理。
-            </Text>
-          </View>
-          <View style={styles.card} wrap={false}>
-            <Text style={styles.cardTitle}>改ざん防止（Polygon anchoring / C2PA）</Text>
-            <Text style={styles.cardDesc}>
-              施工写真の SHA-256 ハッシュを Polygon に刻印。写真には C2PA 署名も付与。第三者が独立に検証可能。
-            </Text>
-          </View>
-          <View style={styles.card} wrap={false}>
-            <Text style={styles.cardTitle}>既存ツールとの連携</Text>
-            <Text style={styles.cardDesc}>
-              Stripe / Square / Google Calendar /
-              LINE、freee・マネーフォワードの会計連携と接続。置き換えではなく、橋渡し。
-            </Text>
-          </View>
-          <View style={styles.card} wrap={false}>
-            <Text style={styles.cardTitle}>経営分析・ナレッジ</Text>
-            <Text style={styles.cardDesc}>
-              売上・顧客・パートナーランクをダッシュボードで可視化。施工手順のナレッジ共有で、品質を人ではなくチームに残します。
-            </Text>
-          </View>
-        </View>
-      </View>
+      <CardGrid
+        items={[
+          {
+            title: "デジタル施工証明書",
+            desc: "写真・施工内容・施工者・日時を、ワンクリックで発行。QRコードで顧客に即共有。",
+          },
+          {
+            title: "保険・代理店連携",
+            desc: "保険会社ポータルで検索・査定・案件管理。代理店ポータルで紹介・コミッション管理。",
+          },
+          { title: "車両・顧客 360° ビュー", desc: "1台・1人の履歴を、証明書・予約・請求までタイムラインで横断参照。" },
+          {
+            title: "改ざん防止（Polygon anchoring / C2PA）",
+            desc: "施工写真の SHA-256 ハッシュを Polygon に刻印。写真には C2PA 署名も付与。第三者が独立に検証可能。",
+          },
+          {
+            title: "案件ワークフロー・POS・帳票",
+            desc: "受付から引渡しまでを1つのワークスペースで。Tap to Pay 決済、請求書 PDF 自動生成、Google Calendar 同期。",
+          },
+          {
+            title: "既存ツールとの連携",
+            desc: "Stripe / Square / Google Calendar / LINE、freee・マネーフォワードの会計連携と接続。置き換えではなく、橋渡し。",
+          },
+          {
+            title: "現場モバイル",
+            desc: "スマホ・タブレット前提の UI で、撮影から証明書発行までを現場の速度で。PWA 対応で通信が不安定な場所でも動きます。",
+          },
+          {
+            title: "経営分析・ナレッジ",
+            desc: "売上・顧客・パートナーランクをダッシュボードで可視化。施工手順のナレッジ共有で、品質を人ではなくチームに残します。",
+          },
+        ]}
+      />
 
       <Footer />
     </Page>
@@ -627,11 +659,11 @@ function PricingComparison() {
       </View>
       {FEATURE_COMPARISON.map((row) => (
         <View key={row.feature} style={styles.tableRow}>
-          <Text style={[styles.td, { flex: 2.4 }]}>{row.feature}</Text>
-          <Text style={[styles.td, { flex: 1, textAlign: "right" }]}>{row.free}</Text>
-          <Text style={[styles.td, { flex: 1, textAlign: "right" }]}>{row.starter}</Text>
-          <Text style={[styles.td, { flex: 1.2, textAlign: "right" }]}>{row.standard}</Text>
-          <Text style={[styles.td, { flex: 1, textAlign: "right" }]}>{row.pro}</Text>
+          <Text style={[styles.td, { flex: 2.4 }]}>{pdfSafe(row.feature)}</Text>
+          <Text style={[styles.td, { flex: 1, textAlign: "right" }]}>{pdfSafe(row.free)}</Text>
+          <Text style={[styles.td, { flex: 1, textAlign: "right" }]}>{pdfSafe(row.starter)}</Text>
+          <Text style={[styles.td, { flex: 1.2, textAlign: "right" }]}>{pdfSafe(row.standard)}</Text>
+          <Text style={[styles.td, { flex: 1, textAlign: "right" }]}>{pdfSafe(row.pro)}</Text>
         </View>
       ))}
 
@@ -837,36 +869,26 @@ function FeaturesFourPortal() {
         施工店・代理店・保険会社・顧客は、同じ「事実」を役割に応じた最適な形で受け取ります。
       </Text>
 
-      <View style={styles.grid2}>
-        <View style={styles.gridItem}>
-          <View style={styles.card} wrap={false}>
-            <Text style={styles.cardTitle}>Admin（施工店）</Text>
-            <Text style={styles.cardDesc}>
-              証明書の発行・管理、車両・顧客、予約・作業・POS・請求、経営ダッシュボード。現場運用の中心。
-            </Text>
-          </View>
-          <View style={styles.card} wrap={false}>
-            <Text style={styles.cardTitle}>Insurer（保険会社）</Text>
-            <Text style={styles.cardDesc}>
-              証明書の検索・照会、案件管理、地域別・パートナー別の集計分析。査定の一次資料として。
-            </Text>
-          </View>
-        </View>
-        <View style={styles.gridItem}>
-          <View style={styles.card} wrap={false}>
-            <Text style={styles.cardTitle}>Agent（代理店）</Text>
-            <Text style={styles.cardDesc}>
-              施工店の紹介、コミッション管理、電子署名による契約締結、担当施工店のパフォーマンスレポート。
-            </Text>
-          </View>
-          <View style={styles.card} wrap={false}>
-            <Text style={styles.cardTitle}>Customer（顧客）</Text>
-            <Text style={styles.cardDesc}>
-              受け取った証明書をスマホで閲覧・共有。QR/URL/NFC の3経路でアクセス。車両の過去履歴も確認。
-            </Text>
-          </View>
-        </View>
-      </View>
+      <CardGrid
+        items={[
+          {
+            title: "Admin（施工店）",
+            desc: "証明書の発行・管理、車両・顧客、予約・作業・POS・請求、経営ダッシュボード。現場運用の中心。",
+          },
+          {
+            title: "Agent（代理店）",
+            desc: "施工店の紹介、コミッション管理、電子署名による契約締結、担当施工店のパフォーマンスレポート。",
+          },
+          {
+            title: "Insurer（保険会社）",
+            desc: "証明書の検索・照会、案件管理、地域別・パートナー別の集計分析。査定の一次資料として。",
+          },
+          {
+            title: "Customer（顧客）",
+            desc: "受け取った証明書をスマホで閲覧・共有。QR/URL/NFC の3経路でアクセス。車両の過去履歴も確認。",
+          },
+        ]}
+      />
 
       <Text style={[styles.h2, { marginTop: 12 }]}>共通する設計思想</Text>
       <Text style={styles.bullet}>• 「記録は1つ・見え方は4つ」。同じ証明書を役割ごとに最適化して提示。</Text>
@@ -888,28 +910,7 @@ function FeatureGroupPage({ group, index }: { group: FeatureGroup; index: number
       <Text style={styles.h1}>{group.title}</Text>
       <Text style={[styles.lead, { marginBottom: 10 }]}>{group.subtitle}</Text>
 
-      <View style={styles.grid2}>
-        <View style={styles.gridItem}>
-          {group.features
-            .filter((_, i) => i % 2 === 0)
-            .map((f) => (
-              <View key={f.title} style={styles.card} wrap={false}>
-                <Text style={styles.cardTitle}>{f.title}</Text>
-                <Text style={styles.cardDesc}>{f.description}</Text>
-              </View>
-            ))}
-        </View>
-        <View style={styles.gridItem}>
-          {group.features
-            .filter((_, i) => i % 2 === 1)
-            .map((f) => (
-              <View key={f.title} style={styles.card} wrap={false}>
-                <Text style={styles.cardTitle}>{f.title}</Text>
-                <Text style={styles.cardDesc}>{f.description}</Text>
-              </View>
-            ))}
-        </View>
-      </View>
+      <CardGrid items={group.features.map((f) => ({ title: f.title, desc: f.description }))} />
 
       <Footer />
     </Page>
@@ -1290,7 +1291,7 @@ function SecurityDataLifecycle() {
       </View>
 
       <Text style={styles.h2}>データ削除・エクスポート</Text>
-      <Text style={styles.bullet}>• 退会時はテナント単位で論理削除 → 30 日後に物理削除。</Text>
+      <Text style={styles.bullet}>• 退会時はテナント単位で論理削除し、30 日後に物理削除。</Text>
       <Text style={styles.bullet}>• 個別の顧客情報削除依頼は、本人確認後 30 日以内に対応。</Text>
       <Text style={styles.bullet}>• 全データの CSV / JSON エクスポートは、Admin 権限者がいつでも取得可能。</Text>
 
@@ -1558,7 +1559,7 @@ function CasesIndustryPatternPage({ pattern, index }: { pattern: IndustryPattern
       </View>
 
       <Text style={[styles.cardDesc, { marginTop: 14 }]}>
-        ※ 上記はパイロット設計段階での想定パターンです。実数値は実施企業様ごとに異なります。
+        ＊ 上記はパイロット設計段階での想定パターンです。実数値は実施企業様ごとに異なります。
       </Text>
 
       <Footer />
@@ -1839,7 +1840,7 @@ function RoiFormula() {
       </View>
 
       <Text style={[styles.cardDesc, { marginTop: 8 }]}>
-        ※ Ledra 導入後の1件あたり事務時間は {ROI_AFTER_MIN_PER_CERT} 分として固定（他社平均）。 ※ 再発行削減係数 0.8
+        ＊ Ledra 導入後の1件あたり事務時間は {ROI_AFTER_MIN_PER_CERT} 分として固定（他社平均）。 ＊ 再発行削減係数 0.8
         は、顧客ポータル・QR による自己解決率の実績値を保守的に適用。
       </Text>
 
@@ -2004,7 +2005,8 @@ function RoiReferenceTable() {
       </Text>
 
       <Text style={[styles.cardDesc, { marginTop: 14 }]}>
-        ※ 数値はすべて、本資料の計算式および前提条件に基づく推定です。実効果は業態・既存業務・人員構成により変動します。
+        ＊
+        数値はすべて、本資料の計算式および前提条件に基づく推定です。実効果は業態・既存業務・人員構成により変動します。
       </Text>
 
       <Footer />
@@ -2119,22 +2121,32 @@ export function RoiTemplatePdf() {
  * ══════════════════════════════════════════════════════════════════ */
 
 /**
- * 埋め込みフォント (NotoSansJP) に絵文字グリフが無く、そのまま流すと豆腐に
- * なる。ガイド本文には `🪪` などが混ざるため、描画前に落とす。
+ * カードを **2枚1組の行** に並べる。
  *
- * `Extended_Pictographic` だけでは足りない ―― 国旗 (`🇯🇵` = 地域表示記号2つ)、
- * キーキャップ (`1️⃣` = 数字 + FE0F + 20E3)、肌色 (`👍🏽` の `🏽`) は別プロパティで、
- * 落とし残すとそこだけ豆腐になる。データモジュール側に今そういう文字が無くても、
- * 後から足された時に silently 壊れないよう、まとめて対象にする。
+ * 以前は左列・右列に全カードを積んでいたが、列ごとに独立して改ページされるため、
+ * 右列の最後の1枚だけが次ページに落ちて**左半分が丸ごと空く**ことがあった
+ * （A4 横にして天地が狭くなり、実際に発生した）。行単位にして `wrap={false}` を
+ * 付ければ、改ページは必ず行の境で起き、左右の高さも揃う。
  */
-const EMOJI_CHARS = /[\p{Extended_Pictographic}\p{Emoji_Modifier}\p{Regional_Indicator}‍️⃣]/gu;
-
-export function stripEmoji(s: string): string {
-  return s
-    .replace(EMOJI_CHARS, "")
-    .replace(/[ 　]{2,}/g, " ")
-    .replace(/「\s+/g, "「")
-    .trim();
+function CardGrid({ items }: { items: { title: string; desc: string }[] }) {
+  const rows: (typeof items)[] = [];
+  for (let i = 0; i < items.length; i += 2) rows.push(items.slice(i, i + 2));
+  return (
+    <>
+      {rows.map((row) => (
+        <View key={row[0].title} style={styles.grid2} wrap={false}>
+          {row.map((it) => (
+            <View key={it.title} style={[styles.gridItem, styles.card]}>
+              <Text style={styles.cardTitle}>{pdfSafe(it.title)}</Text>
+              <Text style={styles.cardDesc}>{pdfSafe(it.desc)}</Text>
+            </View>
+          ))}
+          {/* 奇数枚のときに最後の1枚が全幅に伸びないよう、空きを1つ噛ませる */}
+          {row.length === 1 && <View style={styles.gridItem} />}
+        </View>
+      ))}
+    </>
+  );
 }
 
 const guideStyles = StyleSheet.create({
@@ -2193,8 +2205,8 @@ function OperationGuideCover() {
         <Text style={styles.cardTitle}>この資料の構成</Text>
         {OPERATION_GUIDE_GROUPS.map((g, i) => (
           <Text key={g.id} style={styles.bullet}>
-            {String(i + 1).padStart(2, "0")}. {stripEmoji(g.label)}（{g.guides.length}項目）
-            {g.intro ? ` — ${stripEmoji(g.intro)}` : ""}
+            {String(i + 1).padStart(2, "0")}. {pdfSafe(g.label)}（{g.guides.length}項目）
+            {g.intro ? ` — ${pdfSafe(g.intro)}` : ""}
           </Text>
         ))}
       </View>
@@ -2218,21 +2230,21 @@ function OperationGuideGroupPage({ group, index }: { group: GuideGroup; index: n
   return (
     <Page size="A4" orientation="landscape" style={styles.page} wrap>
       <Text style={styles.pageTitle} fixed>
-        {String(index + 1).padStart(2, "0")} {stripEmoji(group.label)}
+        {String(index + 1).padStart(2, "0")} {pdfSafe(group.label)}
       </Text>
       <View style={styles.gradientBar} fixed />
-      <Text style={styles.h1}>{stripEmoji(group.label)}</Text>
-      {group.intro && <Text style={[styles.lead, { marginBottom: 10 }]}>{stripEmoji(group.intro)}</Text>}
+      <Text style={styles.h1}>{pdfSafe(group.label)}</Text>
+      {group.intro && <Text style={[styles.lead, { marginBottom: 10 }]}>{pdfSafe(group.intro)}</Text>}
 
       {group.guides.map((guide) => (
         <View key={guide.id} style={guideStyles.guide} wrap={false}>
-          <Text style={guideStyles.guideTitle}>{stripEmoji(guide.title)}</Text>
+          <Text style={guideStyles.guideTitle}>{pdfSafe(guide.title)}</Text>
           {guide.steps.map((step, i) => (
             <View key={step.title} style={guideStyles.step}>
               <Text style={guideStyles.stepNo}>{i + 1}.</Text>
               <View style={guideStyles.stepBody}>
-                <Text style={guideStyles.stepTitle}>{stripEmoji(step.title)}</Text>
-                <Text style={guideStyles.stepDesc}>{stripEmoji(step.description)}</Text>
+                <Text style={guideStyles.stepTitle}>{pdfSafe(step.title)}</Text>
+                <Text style={guideStyles.stepDesc}>{pdfSafe(step.description)}</Text>
               </View>
             </View>
           ))}
@@ -2347,8 +2359,8 @@ function GlossaryCover() {
         <Text style={styles.cardTitle}>収録カテゴリ</Text>
         {sections.map((s, i) => (
           <Text key={s.category} style={styles.bullet}>
-            {String(i + 1).padStart(2, "0")}. {stripEmoji(GLOSSARY_CATEGORIES[s.category].label)}（{s.terms.length}語）
-            — {stripEmoji(GLOSSARY_CATEGORIES[s.category].description)}
+            {String(i + 1).padStart(2, "0")}. {pdfSafe(GLOSSARY_CATEGORIES[s.category].label)}（{s.terms.length}語） —{" "}
+            {pdfSafe(GLOSSARY_CATEGORIES[s.category].description)}
           </Text>
         ))}
       </View>
@@ -2380,22 +2392,22 @@ function GlossaryCategoryPage({
   return (
     <Page size="A4" orientation="landscape" style={styles.page} wrap>
       <Text style={styles.pageTitle} fixed>
-        {String(index + 1).padStart(2, "0")} {stripEmoji(meta.label)}
+        {String(index + 1).padStart(2, "0")} {pdfSafe(meta.label)}
       </Text>
       <View style={styles.gradientBar} fixed />
-      <Text style={styles.h1}>{stripEmoji(meta.label)}</Text>
-      <Text style={[styles.lead, { marginBottom: 6 }]}>{stripEmoji(meta.description)}</Text>
+      <Text style={styles.h1}>{pdfSafe(meta.label)}</Text>
+      <Text style={[styles.lead, { marginBottom: 6 }]}>{pdfSafe(meta.description)}</Text>
 
       {terms.map((t) => (
         <View key={t.slug} style={glossaryStyles.term} wrap={false}>
           <View style={glossaryStyles.termHead}>
-            <Text style={glossaryStyles.termName}>{stripEmoji(t.term)}</Text>
-            <Text style={glossaryStyles.termReading}>{stripEmoji(t.reading)}</Text>
+            <Text style={glossaryStyles.termName}>{pdfSafe(t.term)}</Text>
+            <Text style={glossaryStyles.termReading}>{pdfSafe(t.reading)}</Text>
           </View>
-          <Text style={glossaryStyles.termDef}>{stripEmoji(t.definition)}</Text>
+          <Text style={glossaryStyles.termDef}>{pdfSafe(t.definition)}</Text>
           {t.seeAlso && (
             <Text style={glossaryStyles.termLink}>
-              → {stripEmoji(t.seeAlso.label)}: https://ledra.co.jp{t.seeAlso.href}
+              参考: {pdfSafe(t.seeAlso.label)} https://ledra.co.jp{t.seeAlso.href}
             </Text>
           )}
         </View>

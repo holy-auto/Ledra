@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { renderToBuffer } from "@react-pdf/renderer";
-import { RESOURCE_PDFS, stripEmoji } from "../resourcePdf";
+import { createRequire } from "module";
+import { RESOURCE_PDFS, pdfSafe } from "../resourcePdf";
 import { RESOURCE_CATALOG } from "../resourceCatalog";
 import { OPERATION_GUIDE_GROUPS } from "@/lib/operationGuides";
 import { GLOSSARY, GLOSSARY_CATEGORIES } from "../glossary";
@@ -32,7 +33,7 @@ describe("marketing resource PDFs", () => {
   }
 });
 
-describe("stripEmoji", () => {
+describe("pdfSafe", () => {
   // 実装より広い判定で確かめる（実装と同じプロパティで検査すると、実装の
   // 取りこぼしをテストも同じだけ取りこぼす）。
   const EMOJI = /[\p{Extended_Pictographic}\p{Emoji_Modifier}\p{Regional_Indicator}\u200D\uFE0F\u20E3]/u;
@@ -52,19 +53,85 @@ describe("stripEmoji", () => {
     // 元データには絵文字が実在する（このテスト自体が無意味になっていないことの確認）。
     expect(sourceTexts.some((t) => EMOJI.test(t))).toBe(true);
     for (const t of sourceTexts) {
-      expect(EMOJI.test(stripEmoji(t)), `絵文字が残っている: ${t}`).toBe(false);
+      expect(EMOJI.test(pdfSafe(t)), `絵文字が残っている: ${t}`).toBe(false);
     }
   });
 
   it("Extended_Pictographic 以外の絵文字（国旗・キーキャップ・肌色・ZWJ）も落とす", () => {
     for (const s of ["🇯🇵", "1️⃣", "👍🏽", "👩‍💻", "❤️"]) {
-      expect(EMOJI.test(stripEmoji(s)), `落とし残し: ${s}`).toBe(false);
+      expect(EMOJI.test(pdfSafe(s)), `落とし残し: ${s}`).toBe(false);
     }
   });
 
   it("絵文字を消しても日本語・記号はそのまま残す", () => {
-    expect(stripEmoji("🪪 証明書発行")).toBe("証明書発行");
-    expect(stripEmoji("Cmd+K で素早く移動・検索")).toBe("Cmd+K で素早く移動・検索");
-    expect(stripEmoji("車両 360° ビュー")).toBe("車両 360° ビュー");
+    expect(pdfSafe("🪪 証明書発行")).toBe("証明書発行");
+    expect(pdfSafe("Cmd+K で素早く移動・検索")).toBe("Cmd+K で素早く移動・検索");
+    expect(pdfSafe("車両 360° ビュー")).toBe("車両 360° ビュー");
+  });
+});
+
+/**
+ * 埋め込みフォントに**グリフが無い文字**を PDF に流すと .notdef ＝ 豆腐になり、
+ * ファイルを開くまで誰も気づかない（実際、料金プランの比較表は `✓` が
+ * 全部豆腐のまま出ていた）。全8資料が実際に描く文字列を走査して、
+ * サブセットで出せない文字が1つも残っていないことを確かめる。
+ */
+describe("グリフ網羅", () => {
+  const require_ = createRequire(process.cwd() + "/package.json");
+
+  /** react-pdf の要素ツリーから、実際に描画される文字列を集める。 */
+  function collectText(node: unknown, out: string[], depth = 0): void {
+    if (node == null || typeof node === "boolean" || depth > 80) return;
+    if (typeof node === "string" || typeof node === "number") {
+      out.push(String(node));
+      return;
+    }
+    if (Array.isArray(node)) {
+      for (const n of node) collectText(n, out, depth + 1);
+      return;
+    }
+    const el = node as { type?: unknown; props?: Record<string, unknown> };
+    if (!el.props) return;
+    // 機能コンポーネントは呼び出して展開する（しないと <Xxx /> で walk が止まる）
+    if (typeof el.type === "function") {
+      collectText((el.type as (p: unknown) => unknown)(el.props), out, depth + 1);
+      return;
+    }
+    if (typeof el.props.render === "function") {
+      out.push(String((el.props.render as (o: unknown) => unknown)({ pageNumber: 1, totalPages: 1 })));
+    }
+    collectText(el.props.children, out, depth + 1);
+  }
+
+  it("全8資料の描画文字に、サブセットで出せない文字が無い", async () => {
+    const font = require_("fontkit").openSync("public/fonts/NotoSansJP-400.ttf") as {
+      hasGlyphForCodePoint(cp: number): boolean;
+    };
+    // 検査自体が空振りしていないことの確認（"✓" は意図的に非収録）
+    expect(font.hasGlyphForCodePoint("✓".codePointAt(0)!)).toBe(false);
+
+    const missing: string[] = [];
+    for (const [key, entry] of Object.entries(RESOURCE_PDFS)) {
+      const texts: string[] = [];
+      collectText(await entry.doc({ locale: "ja" }), texts);
+      expect(texts.length, `${key}: 文字列が1つも集まらなかった（walk が壊れている）`).toBeGreaterThan(20);
+      for (const t of texts) {
+        for (const ch of t) {
+          const cp = ch.codePointAt(0)!;
+          if (cp === 10 || cp === 9) continue;
+          if (!font.hasGlyphForCodePoint(cp)) {
+            missing.push(`${key}: "${ch}" (U+${cp.toString(16).toUpperCase().padStart(4, "0")})`);
+          }
+        }
+      }
+    }
+    expect([...new Set(missing)], "グリフの無い文字が残っている（pdfSafe の置換表に足す）").toEqual([]);
+  }, 180_000);
+
+  it("pdfSafe が非収録の記号を収録済みの字に置き換える", () => {
+    expect(pdfSafe("✓")).toBe("あり");
+    expect(pdfSafe("膜厚 μm")).toBe("膜厚 µm");
+    expect(pdfSafe("SiO₂")).toBe("SiO2");
+    expect(pdfSafe("① 伝わらない摩擦")).toBe("1. 伝わらない摩擦");
   });
 });
