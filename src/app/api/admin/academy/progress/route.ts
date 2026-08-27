@@ -22,7 +22,9 @@ export async function GET() {
     // 進捗 (なくても 0 ベースで返す)
     const { data: progressRow } = await supabase
       .from("academy_progress")
-      .select("level, total_score, lessons_completed, certs_reviewed, cases_submitted, standard_level, last_activity_at")
+      .select(
+        "level, total_score, lessons_completed, certs_reviewed, cases_submitted, standard_level, last_activity_at",
+      )
       .eq("user_id", caller.userId)
       .eq("tenant_id", caller.tenantId)
       .maybeSingle();
@@ -48,10 +50,7 @@ export async function GET() {
     const recentIds = (completions ?? []).slice(0, 10).map((c) => c.lesson_id);
     let lessonMap: Record<string, { title: string; level: string }> = {};
     if (recentIds.length > 0) {
-      const { data: lessons } = await supabase
-        .from("academy_lessons")
-        .select("id, title, level")
-        .in("id", recentIds);
+      const { data: lessons } = await supabase.from("academy_lessons").select("id, title, level").in("id", recentIds);
       lessonMap = Object.fromEntries(
         (lessons ?? []).map((l) => [l.id, { title: l.title as string, level: l.level as string }]),
       );

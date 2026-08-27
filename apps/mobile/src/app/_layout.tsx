@@ -10,13 +10,16 @@ import { theme } from "@/constants/theme";
 import { queryClient } from "@/lib/queryClient";
 import { useAuthInit } from "@/hooks/useAuthInit";
 import { bindUnauthorizedHandler, mobileApi } from "@/lib/api";
+import { signOutEverywhere } from "@/lib/signOut";
 import { OfflineBanner } from "@/components/OfflineBanner";
+import { AppLockGate } from "@/components/AppLockGate";
 import { initSentry, setSentryUser } from "@/lib/sentry";
 import { useAuthStore } from "@/stores/authStore";
 import { ToastProvider } from "@/components/ToastProvider";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { useTapToPayWarmup } from "@/hooks/useTapToPayWarmup";
 import { registerForPushNotifications } from "@/lib/push";
+import { stackScreenOptions } from "@/components/screenOptions";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -50,8 +53,8 @@ function PushRegisterGate() {
 }
 
 // 401 受信時のグローバルハンドラ: store を初期化して /login へリダイレクト
-bindUnauthorizedHandler(() => {
-  useAuthStore.getState().reset();
+bindUnauthorizedHandler(async () => {
+  await signOutEverywhere();
   router.replace("/(auth)/login");
 });
 
@@ -123,8 +126,26 @@ export default function RootLayout() {
                 />
                 <Stack.Screen name="work" options={{ headerShown: false }} />
                 <Stack.Screen name="pos" options={{ headerShown: false }} />
-                <Stack.Screen name="dashboard" />
+                <Stack.Screen name="knowledge" options={{ headerShown: false }} />
+                <Stack.Screen name="legal" options={{ headerShown: false }} />
+                {/* Stack を持たない単体画面。ヘッダーを出さないと戻る導線が無くなる */}
+                <Stack.Screen
+                  name="notifications"
+                  options={{
+                    ...stackScreenOptions,
+                    headerShown: true,
+                    title: "通知",
+                  }}
+                />
+                {/* dashboard は画面側で title を設定するのでここでは指定しない */}
+                <Stack.Screen
+                  name="dashboard"
+                  options={{ ...stackScreenOptions, headerShown: true }}
+                />
               </Stack>
+
+              {/* 画面ツリーの最後＝最前面。ロック中は全画面を覆う */}
+              <AppLockGate />
             </ToastProvider>
           </PaperProvider>
         </StripeTerminalProvider>

@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => ({
   shouldAutoExtractInbound: vi.fn(),
   shouldAutoReplyKnowledge: vi.fn(),
   shouldAutoReplyRoughEstimate: vi.fn(),
+  shouldRunConversationFlow: vi.fn(),
   decideInboundCommit: vi.fn(),
   extractInboundReservation: vi.fn(),
   fetchRecentConversation: vi.fn(),
@@ -33,6 +34,7 @@ vi.mock("../orchestrator", () => ({
   shouldAutoExtractInbound: mocks.shouldAutoExtractInbound,
   shouldAutoReplyKnowledge: mocks.shouldAutoReplyKnowledge,
   shouldAutoReplyRoughEstimate: mocks.shouldAutoReplyRoughEstimate,
+  shouldRunConversationFlow: mocks.shouldRunConversationFlow,
   decideInboundCommit: mocks.decideInboundCommit,
 }));
 vi.mock("../quoteDraftAuto", () => ({ maybeAutoDraftQuoteFromInbound: mocks.maybeAutoDraftQuoteFromInbound }));
@@ -73,6 +75,7 @@ beforeEach(() => {
   mocks.shouldAutoExtractInbound.mockReturnValue(false);
   mocks.shouldAutoReplyKnowledge.mockReturnValue(false);
   mocks.shouldAutoReplyRoughEstimate.mockReturnValue(false);
+  mocks.shouldRunConversationFlow.mockReturnValue(false);
   mocks.decideInboundCommit.mockReturnValue({ create: false, reason: "auto_create_off" });
   mocks.fetchRecentConversation.mockResolvedValue([]);
   mocks.extractInboundReservation.mockResolvedValue({ intent: "inquiry_only", confidence: 0.9, ai: true });
@@ -147,6 +150,83 @@ describe("maybeAutoProcessInboundMessage auto-reply gating", () => {
     const arg = mocks.maybeAutoReplyRoughEstimate.mock.calls[0][0];
     expect(arg.service).toBe("ガラスコーティング");
     expect(arg.vehicleText).toBe("レクサス LX");
+  });
+
+  it("suppresses customer-facing auto-replies while the active flow is human_takeover", async () => {
+    // 「スタッフに相談したい」ボタンが残す durable マーカー。以降の自動返信を止める。
+    mocks.shouldAutoReplyKnowledge.mockReturnValue(true);
+    mocks.shouldAutoReplyRoughEstimate.mockReturnValue(true);
+    mocks.shouldRunConversationFlow.mockReturnValue(true);
+    mocks.store.tables.line_conversation_flows = [
+      {
+        id: "flow-ht",
+        tenant_id: TENANT,
+        customer_id: null,
+        line_user_id: "Uabc123",
+        state: "human_takeover",
+        quote_doc_id: null,
+        context_json: {},
+      },
+    ];
+    await maybeAutoProcessInboundMessage(baseParams());
+    expect(mocks.maybeAutoReplyKnowledge).not.toHaveBeenCalled();
+    expect(mocks.maybeAutoReplyRoughEstimate).not.toHaveBeenCalled();
+  });
+
+  it("suppresses reservation auto-creation while the active flow is human_takeover", async () => {
+    // human_takeover 中は予約自動起票も止める（相談希望なのに予約が自動確定されないよう、
+    // 判定を起票の前に置く）。
+    mocks.shouldRunConversationFlow.mockReturnValue(true);
+    mocks.decideInboundCommit.mockReturnValue({ create: true, reason: "ok" });
+    mocks.extractInboundReservation.mockResolvedValue({
+      intent: "new_reservation",
+      confidence: 0.9,
+      ai: true,
+      scheduled_date: "2026-09-01",
+      service: "コーティング",
+    });
+    mocks.store.tables.line_conversation_flows = [
+      {
+        id: "flow-ht",
+        tenant_id: TENANT,
+        customer_id: "cust-1",
+        line_user_id: "Uabc123",
+        state: "human_takeover",
+        quote_doc_id: null,
+        context_json: {},
+      },
+    ];
+    await maybeAutoProcessInboundMessage({ ...baseParams(), customerId: "cust-1" });
+    expect(mocks.store.inserts.find((i) => i.table === "reservations")).toBeUndefined();
+    expect(mocks.maybeAutoReplyKnowledge).not.toHaveBeenCalled();
+  });
+
+  it("passes attachButtons=true to the knowledge reply when no flow is active", async () => {
+    mocks.shouldAutoReplyKnowledge.mockReturnValue(true);
+    mocks.shouldRunConversationFlow.mockReturnValue(true);
+    mocks.store.tables.line_conversation_flows = [];
+    await maybeAutoProcessInboundMessage(baseParams());
+    expect(mocks.maybeAutoReplyKnowledge).toHaveBeenCalledTimes(1);
+    expect(mocks.maybeAutoReplyKnowledge.mock.calls[0][0].attachButtons).toBe(true);
+  });
+
+  it("passes attachButtons=false to the knowledge reply when a non-takeover flow is active", async () => {
+    mocks.shouldAutoReplyKnowledge.mockReturnValue(true);
+    mocks.shouldRunConversationFlow.mockReturnValue(true);
+    mocks.store.tables.line_conversation_flows = [
+      {
+        id: "flow-detail",
+        tenant_id: TENANT,
+        customer_id: null,
+        line_user_id: "Uabc123",
+        state: "awaiting_quote_detail",
+        quote_doc_id: null,
+        context_json: {},
+      },
+    ];
+    await maybeAutoProcessInboundMessage(baseParams());
+    expect(mocks.maybeAutoReplyKnowledge).toHaveBeenCalledTimes(1);
+    expect(mocks.maybeAutoReplyKnowledge.mock.calls[0][0].attachButtons).toBe(false);
   });
 
   it("recognizes an American car via the vehicle_size_master vocabulary (not in the built-in dict)", async () => {
