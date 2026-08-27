@@ -139,3 +139,18 @@ describe("eventRisk() — sync イベント", () => {
     expect(eventRisk("sync.failed")).not.toBe("low");
   });
 });
+
+describe("fromLegacyEventType() — 表に無い値", () => {
+  it("Object.prototype 由来のキーで関数を返さない", () => {
+    for (const k of ["constructor", "toString", "__proto__", "valueOf"]) {
+      expect(fromLegacyEventType(k)).toBeNull();
+    }
+  });
+});
+
+describe("稼働中の webhook 名がカタログにあること", () => {
+  it("vehicle.created が表せる", () => {
+    // webhook-topics.ts と api/vehicles/create/route.ts:60 が実際に投げている名前。
+    expect(isDomainEventType("vehicle.created")).toBe(true);
+  });
+});
