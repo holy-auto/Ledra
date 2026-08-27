@@ -255,6 +255,13 @@ Sentry · Resend (+ SendGrid fallback) · Anthropic (Opus 4.8 / Sonnet 4.6 / Hai
 
 - 「Ledra UI/UX & Development Specification v2.0」（2026-08-19）と、それを36タスク
   （IMP-000〜IMP-054）に分解した「Claude Code Implementation Guide v1.0」を実装基準線として採用。
+- **IMP-012（認証・招待・端末・step-up 基盤）完了**: v2.0 §15 の認証基盤を型・状態機械・
+  ヘルパーとして整備。(1) 正準オンボーディングフロー状態機械（INVITED→LANGUAGE_SET→
+  OTP_VERIFIED→STORE_ASSIGNED→BIOMETRIC_ENROLLED→ACTIVE）。(2) 汎用 OTP モジュール
+  （HMAC-SHA256 ハッシュ・タイミングセーフ検証・スタッフ OTP にも使える抽象化）。
+  (3) ユーザー端末管理型（デバイス登録・信頼度判定・遠隔失効）。(4) Step-up 認証
+  （操作別要件マップ・利用可能手段判定）。(5) 招待フロー型（ロケール選択付き・
+  トークン検証）。DB マイグレーション・画面実装なし（IMP-013 の前提条件充足が目的）。
 - **IMP-011（i18n 基盤 & 自動車用語集）完了**: ロケール登録を 6 言語（ja/en/vi/id/fil/hi）に
   統一（`src/lib/i18n/locales.ts` が単一定義源）。メッセージファイル 4 言語追加、ドメインラベル
   全 6 軸を 6 言語化、自動車翻訳用語集（~28 用語）、`WithTranslations<T>` UGC 翻訳分離型を新設。
