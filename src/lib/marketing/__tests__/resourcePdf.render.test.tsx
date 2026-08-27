@@ -3,6 +3,7 @@ import { renderToBuffer } from "@react-pdf/renderer";
 import { RESOURCE_PDFS, stripEmoji } from "../resourcePdf";
 import { RESOURCE_CATALOG } from "../resourceCatalog";
 import { OPERATION_GUIDE_GROUPS } from "@/lib/operationGuides";
+import { GLOSSARY, GLOSSARY_CATEGORIES } from "../glossary";
 
 /**
  * PDF のページツリーは `<< /Type /Pages /Count N ... >>` という非圧縮の辞書として
@@ -32,21 +33,38 @@ describe("marketing resource PDFs", () => {
 });
 
 describe("stripEmoji", () => {
-  const EMOJI = /\p{Extended_Pictographic}/u;
+  // 実装より広い判定で確かめる（実装と同じプロパティで検査すると、実装の
+  // 取りこぼしをテストも同じだけ取りこぼす）。
+  const EMOJI = /[\p{Extended_Pictographic}\p{Emoji_Modifier}\p{Regional_Indicator}\u200D\uFE0F\u20E3]/u;
 
-  it("運用ガイドの文言から絵文字を落とす（埋め込みフォントに絵文字グリフが無く豆腐になるため）", () => {
-    const texts = OPERATION_GUIDE_GROUPS.flatMap((g) =>
-      g.guides.flatMap((guide) => [guide.title, ...guide.steps.flatMap((s) => [s.title, s.description])]),
-    );
+  /** PDF に流し込んでいるデータモジュールの文字列を全部集める。 */
+  const sourceTexts = [
+    ...OPERATION_GUIDE_GROUPS.flatMap((g) => [
+      g.label,
+      g.intro ?? "",
+      ...g.guides.flatMap((guide) => [guide.title, ...guide.steps.flatMap((s) => [s.title, s.description])]),
+    ]),
+    ...Object.values(GLOSSARY_CATEGORIES).flatMap((c) => [c.label, c.description]),
+    ...GLOSSARY.flatMap((t) => [t.term, t.reading, t.definition, t.seeAlso?.label ?? ""]),
+  ];
+
+  it("PDF に流す全データから絵文字を落とす（埋め込みフォントに絵文字グリフが無く豆腐になるため）", () => {
     // 元データには絵文字が実在する（このテスト自体が無意味になっていないことの確認）。
-    expect(texts.some((t) => EMOJI.test(t))).toBe(true);
-    for (const t of texts) {
+    expect(sourceTexts.some((t) => EMOJI.test(t))).toBe(true);
+    for (const t of sourceTexts) {
       expect(EMOJI.test(stripEmoji(t)), `絵文字が残っている: ${t}`).toBe(false);
+    }
+  });
+
+  it("Extended_Pictographic 以外の絵文字（国旗・キーキャップ・肌色・ZWJ）も落とす", () => {
+    for (const s of ["🇯🇵", "1️⃣", "👍🏽", "👩‍💻", "❤️"]) {
+      expect(EMOJI.test(stripEmoji(s)), `落とし残し: ${s}`).toBe(false);
     }
   });
 
   it("絵文字を消しても日本語・記号はそのまま残す", () => {
     expect(stripEmoji("🪪 証明書発行")).toBe("証明書発行");
     expect(stripEmoji("Cmd+K で素早く移動・検索")).toBe("Cmd+K で素早く移動・検索");
+    expect(stripEmoji("車両 360° ビュー")).toBe("車両 360° ビュー");
   });
 });

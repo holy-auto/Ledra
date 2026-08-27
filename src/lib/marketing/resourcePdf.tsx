@@ -2105,10 +2105,17 @@ export function RoiTemplatePdf() {
 /**
  * 埋め込みフォント (NotoSansJP) に絵文字グリフが無く、そのまま流すと豆腐に
  * なる。ガイド本文には `🪪` などが混ざるため、描画前に落とす。
+ *
+ * `Extended_Pictographic` だけでは足りない ―― 国旗 (`🇯🇵` = 地域表示記号2つ)、
+ * キーキャップ (`1️⃣` = 数字 + FE0F + 20E3)、肌色 (`👍🏽` の `🏽`) は別プロパティで、
+ * 落とし残すとそこだけ豆腐になる。データモジュール側に今そういう文字が無くても、
+ * 後から足された時に silently 壊れないよう、まとめて対象にする。
  */
+const EMOJI_CHARS = /[\p{Extended_Pictographic}\p{Emoji_Modifier}\p{Regional_Indicator}‍️⃣]/gu;
+
 export function stripEmoji(s: string): string {
   return s
-    .replace(/\p{Extended_Pictographic}️?/gu, "")
+    .replace(EMOJI_CHARS, "")
     .replace(/[ 　]{2,}/g, " ")
     .replace(/「\s+/g, "「")
     .trim();
@@ -2170,7 +2177,8 @@ function OperationGuideCover() {
         <Text style={styles.cardTitle}>この資料の構成</Text>
         {OPERATION_GUIDE_GROUPS.map((g, i) => (
           <Text key={g.id} style={styles.bullet}>
-            {String(i + 1).padStart(2, "0")}. {g.label}（{g.guides.length}項目）{g.intro ? ` — ${g.intro}` : ""}
+            {String(i + 1).padStart(2, "0")}. {stripEmoji(g.label)}（{g.guides.length}項目）
+            {g.intro ? ` — ${stripEmoji(g.intro)}` : ""}
           </Text>
         ))}
       </View>
@@ -2194,11 +2202,11 @@ function OperationGuideGroupPage({ group, index }: { group: GuideGroup; index: n
   return (
     <Page size="A4" style={styles.page} wrap>
       <Text style={styles.pageTitle} fixed>
-        {String(index + 1).padStart(2, "0")} {group.label}
+        {String(index + 1).padStart(2, "0")} {stripEmoji(group.label)}
       </Text>
       <View style={styles.gradientBar} fixed />
-      <Text style={styles.h1}>{group.label}</Text>
-      {group.intro && <Text style={[styles.lead, { marginBottom: 10 }]}>{group.intro}</Text>}
+      <Text style={styles.h1}>{stripEmoji(group.label)}</Text>
+      {group.intro && <Text style={[styles.lead, { marginBottom: 10 }]}>{stripEmoji(group.intro)}</Text>}
 
       {group.guides.map((guide) => (
         <View key={guide.id} style={guideStyles.guide} wrap={false}>
@@ -2323,8 +2331,8 @@ function GlossaryCover() {
         <Text style={styles.cardTitle}>収録カテゴリ</Text>
         {sections.map((s, i) => (
           <Text key={s.category} style={styles.bullet}>
-            {String(i + 1).padStart(2, "0")}. {GLOSSARY_CATEGORIES[s.category].label}（{s.terms.length}語） —{" "}
-            {GLOSSARY_CATEGORIES[s.category].description}
+            {String(i + 1).padStart(2, "0")}. {stripEmoji(GLOSSARY_CATEGORIES[s.category].label)}（{s.terms.length}語）
+            — {stripEmoji(GLOSSARY_CATEGORIES[s.category].description)}
           </Text>
         ))}
       </View>
@@ -2356,22 +2364,22 @@ function GlossaryCategoryPage({
   return (
     <Page size="A4" style={styles.page} wrap>
       <Text style={styles.pageTitle} fixed>
-        {String(index + 1).padStart(2, "0")} {meta.label}
+        {String(index + 1).padStart(2, "0")} {stripEmoji(meta.label)}
       </Text>
       <View style={styles.gradientBar} fixed />
-      <Text style={styles.h1}>{meta.label}</Text>
-      <Text style={[styles.lead, { marginBottom: 6 }]}>{meta.description}</Text>
+      <Text style={styles.h1}>{stripEmoji(meta.label)}</Text>
+      <Text style={[styles.lead, { marginBottom: 6 }]}>{stripEmoji(meta.description)}</Text>
 
       {terms.map((t) => (
         <View key={t.slug} style={glossaryStyles.term} wrap={false}>
           <View style={glossaryStyles.termHead}>
-            <Text style={glossaryStyles.termName}>{t.term}</Text>
-            <Text style={glossaryStyles.termReading}>{t.reading}</Text>
+            <Text style={glossaryStyles.termName}>{stripEmoji(t.term)}</Text>
+            <Text style={glossaryStyles.termReading}>{stripEmoji(t.reading)}</Text>
           </View>
-          <Text style={glossaryStyles.termDef}>{t.definition}</Text>
+          <Text style={glossaryStyles.termDef}>{stripEmoji(t.definition)}</Text>
           {t.seeAlso && (
             <Text style={glossaryStyles.termLink}>
-              → {t.seeAlso.label}: https://ledra.co.jp{t.seeAlso.href}
+              → {stripEmoji(t.seeAlso.label)}: https://ledra.co.jp{t.seeAlso.href}
             </Text>
           )}
         </View>
