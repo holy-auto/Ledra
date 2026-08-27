@@ -4,6 +4,29 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-08-26 LINEで顧客が予約を自分でキャンセルできるセルフ対応（第一弾・キャンセルのみ、branch claude/line-chatbot-ledra-dy2fiq）
+
+- 内容: これまで `cancel` intent は抽出しても人手に回していたが、顧客が LINE で「予約を
+  キャンセルしたい」と送った時点で、**本人の今後の予約を提示→確認ボタン→即時キャンセル**
+  （`status=cancelled`＋`cancelled_at`/`cancel_reason`＋Google カレンダー削除＋スタッフ通知）
+  を自動化した。会話フロー基盤（`line_conversation_flows` 状態機械）を再利用。
+  - 締め切りは **作業日の前日まで**（`scheduled_date > 今日(JST, todayJst)`）。当日・過去・
+    対象なし・未紐付けはスタッフ引き継ぎ。反映は**即時自動**（合意事項）。
+  - 破壊的操作のため必ず確認ボタン（`flow:cancel_confirm`/`flow:cancel_abort`）を挟み、
+    **本人の予約のみ**対象（`cancelReservationById` が tenant＋customer 一致を検証、既
+    cancelled/completed は冪等 no-op）。確定直前に締め切りを再検証、closed 楽観クレームで
+    二重実行を防止。
+  - 新状態 `awaiting_cancel_pick`/`awaiting_cancel_confirm`、新イベント（`states.ts`/`interpret.ts`）。
+    共有ヘルパー `src/lib/reservations/mutate.ts`（キャンセル＋gcal 削除）、起点 IO
+    `src/lib/ai/automation/cancelFlowAuto.ts`、実行は `conversationFlowPostback.ts`。
+  - opt-in `inbound_message.auto_self_cancel`（既定 OFF、`actionCatalog.ts`/`orchestrator.ts`）。
+    会話フロー opt-in とは独立（キャンセルのボタン postback は会話フロー OFF でも処理）。
+- 対象: LINE 受信の AI 自動応答（全業種、Standard プラン以上・opt-in）。#908 とは別 PR。
+- 検証: 単体テスト追加（`reservations/mutate`・`cancelFlowAuto`・`conversationFlowPostback`・
+  `inboundAutoReplyGate`・`interpret`・`states`）。automation+line+reservations 全 269 件パス、tsc/eslint エラー0。
+- スコープ外（後続PR）: 日程変更（reschedule、既存の日程候補提示＋既存予約 UPDATE の再利用）、
+  リマインダーへのキャンセルボタン添付、admin route.ts のキャンセル処理の共有ヘルパー寄せ。
+
 ## 2026-08-26 VIN トリガーのマイグレーションを元の `20260825000000` へ戻した（2度の停止と復旧）
 
 PR #967 のマージ後、`db-migrate`（本番への自動適用）が**2回止まった**。

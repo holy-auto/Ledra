@@ -5,6 +5,9 @@ const mocks = vi.hoisted(() => ({
   loadAiAutomationSettings: vi.fn(),
   shouldRunConversationFlow: vi.fn(),
   shouldAutoSendDocumentOnConfirm: vi.fn(),
+  shouldAutoSelfCancel: vi.fn(),
+  cancelReservationById: vi.fn(),
+  todayJst: vi.fn(),
   sendCustomerLineText: vi.fn(),
   sendCustomerLineButtons: vi.fn(),
   recordInboundLineMessage: vi.fn(),
@@ -27,7 +30,10 @@ vi.mock("../policy", async (importOriginal) => {
 vi.mock("../orchestrator", () => ({
   shouldRunConversationFlow: mocks.shouldRunConversationFlow,
   shouldAutoSendDocumentOnConfirm: mocks.shouldAutoSendDocumentOnConfirm,
+  shouldAutoSelfCancel: mocks.shouldAutoSelfCancel,
 }));
+vi.mock("@/lib/reservations/mutate", () => ({ cancelReservationById: mocks.cancelReservationById }));
+vi.mock("@/lib/gantt/board", () => ({ todayJst: mocks.todayJst }));
 vi.mock("@/lib/line/client", () => ({
   sendCustomerLineText: mocks.sendCustomerLineText,
   sendCustomerLineButtons: mocks.sendCustomerLineButtons,
@@ -61,6 +67,9 @@ beforeEach(() => {
   mocks.loadAiAutomationSettings.mockResolvedValue({});
   mocks.shouldRunConversationFlow.mockReturnValue(true);
   mocks.shouldAutoSendDocumentOnConfirm.mockReturnValue(true);
+  mocks.shouldAutoSelfCancel.mockReturnValue(false);
+  mocks.cancelReservationById.mockResolvedValue({ ok: true, alreadyFinal: false });
+  mocks.todayJst.mockReturnValue("2026-08-26");
   mocks.sendCustomerLineText.mockResolvedValue(true);
   mocks.sendCustomerLineButtons.mockResolvedValue(true);
   mocks.recordInboundLineMessage.mockResolvedValue({ ok: true });
@@ -824,5 +833,102 @@ describe("handleFlowPostback — 誘導ボタン (FAQ返信の末尾)", () => {
     const handled = await handleFlowPostback({ tenantId: TENANT, lineUserId: LINE_USER, data: "flow:start_quote" });
     expect(handled).toBe(false);
     expect(mocks.store.inserts.find((i) => i.table === "line_conversation_flows")).toBeUndefined();
+  });
+});
+
+describe("handleFlowPostback — 予約キャンセルのセルフ対応", () => {
+  function seedCancelFlow(over: Record<string, unknown> = {}) {
+    mocks.store.tables.line_conversation_flows = [
+      {
+        id: "cf-1",
+        tenant_id: TENANT,
+        customer_id: CUSTOMER,
+        line_user_id: LINE_USER,
+        state: "awaiting_cancel_confirm",
+        reservation_id: "r-1",
+        quote_doc_id: null,
+        context_json: {
+          purpose: "cancel",
+          cancel_candidates: [
+            { id: "r-1", scheduled_date: "2026-09-01", start_time: "10:00:00", title: "コーティング" },
+          ],
+        },
+        ...over,
+      },
+    ];
+  }
+
+  it("実行: flow:cancel_confirm で予約をキャンセルし closed にする", async () => {
+    mocks.shouldAutoSelfCancel.mockReturnValue(true);
+    seedCancelFlow();
+    const handled = await handleFlowPostback({ tenantId: TENANT, lineUserId: LINE_USER, data: "flow:cancel_confirm" });
+    expect(handled).toBe(true);
+    expect(mocks.cancelReservationById).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ tenantId: TENANT, reservationId: "r-1", customerId: CUSTOMER }),
+    );
+    const upd = mocks.store.updates.find((u) => u.table === "line_conversation_flows");
+    expect(upd?.payload.state).toBe("closed");
+    expect(mocks.sendCustomerLineText).toHaveBeenCalled();
+  });
+
+  it("取りやめ: flow:cancel_abort は closed にするがキャンセルは実行しない", async () => {
+    mocks.shouldAutoSelfCancel.mockReturnValue(true);
+    seedCancelFlow();
+    const handled = await handleFlowPostback({ tenantId: TENANT, lineUserId: LINE_USER, data: "flow:cancel_abort" });
+    expect(handled).toBe(true);
+    expect(mocks.cancelReservationById).not.toHaveBeenCalled();
+    const upd = mocks.store.updates.find((u) => u.table === "line_conversation_flows");
+    expect(upd?.payload.state).toBe("closed");
+  });
+
+  it("選択: flow:cancel_pick:<i> で対象を確定し確認へ進める", async () => {
+    mocks.shouldAutoSelfCancel.mockReturnValue(true);
+    seedCancelFlow({
+      state: "awaiting_cancel_pick",
+      reservation_id: null,
+      context_json: {
+        purpose: "cancel",
+        cancel_candidates: [
+          { id: "r-1", scheduled_date: "2026-09-01", start_time: "10:00:00", title: "A" },
+          { id: "r-2", scheduled_date: "2026-09-05", start_time: "14:00:00", title: "B" },
+        ],
+      },
+    });
+    const handled = await handleFlowPostback({ tenantId: TENANT, lineUserId: LINE_USER, data: "flow:cancel_pick:1" });
+    expect(handled).toBe(true);
+    const upd = mocks.store.updates.find((u) => u.table === "line_conversation_flows");
+    expect(upd?.payload.state).toBe("awaiting_cancel_confirm");
+    expect(upd?.payload.reservation_id).toBe("r-2");
+    expect(mocks.sendCustomerLineButtons).toHaveBeenCalled();
+    expect(mocks.cancelReservationById).not.toHaveBeenCalled();
+  });
+
+  it("確定直前の再検証: 当日入りしていたら実行せずスタッフ引き継ぎ", async () => {
+    mocks.shouldAutoSelfCancel.mockReturnValue(true);
+    mocks.todayJst.mockReturnValue("2026-09-01");
+    seedCancelFlow(); // 候補 r-1 は 2026-09-01 = 当日
+    const handled = await handleFlowPostback({ tenantId: TENANT, lineUserId: LINE_USER, data: "flow:cancel_confirm" });
+    expect(handled).toBe(true);
+    expect(mocks.cancelReservationById).not.toHaveBeenCalled();
+    expect(mocks.sendCustomerLineText).toHaveBeenCalled();
+  });
+
+  it("会話フロー OFF でも自己キャンセル opt-in が ON なら処理する", async () => {
+    mocks.shouldRunConversationFlow.mockReturnValue(false);
+    mocks.shouldAutoSelfCancel.mockReturnValue(true);
+    seedCancelFlow();
+    const handled = await handleFlowPostback({ tenantId: TENANT, lineUserId: LINE_USER, data: "flow:cancel_confirm" });
+    expect(handled).toBe(true);
+    expect(mocks.cancelReservationById).toHaveBeenCalled();
+  });
+
+  it("会話フロー OFF かつ自己キャンセル OFF なら何もしない", async () => {
+    mocks.shouldRunConversationFlow.mockReturnValue(false);
+    mocks.shouldAutoSelfCancel.mockReturnValue(false);
+    seedCancelFlow();
+    const handled = await handleFlowPostback({ tenantId: TENANT, lineUserId: LINE_USER, data: "flow:cancel_confirm" });
+    expect(handled).toBe(false);
+    expect(mocks.cancelReservationById).not.toHaveBeenCalled();
   });
 });
