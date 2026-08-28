@@ -4,7 +4,7 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
-## 2026-08-27 IMP-020（#935）: ナビゲーション基盤は残し、モバイル画面は main の実装を採用
+## 2026-08-28 IMP-020（#935）: ナビゲーション基盤は残し、モバイル画面は main の実装を採用
 
 - 内容: (1) `src/lib/navigation/tabs.ts`（正準タブ定義 `CANONICAL_TABS`/`WEB_TABS`/
   `MOBILE_TABS`）・`quickCreate.ts`（権限ゲート+コンテキスト継承付き Quick Create、
@@ -19,6 +19,29 @@
   Web の CommandPalette は権限ゲート付き Quick Create に対応。モバイル FAB との統合・
   Role別スコープ切替 UI は未着手（IMP-021 待ち）。
 - テスト: `src/lib/navigation/__tests__/navigation.test.ts` 28件追加。
+- **`/code-review` の指摘5件を修正**（うち1件は重大）:
+  1. **`src/lib/sync/` の復活**: main が #934 で削除済みのモジュールが、#935 の
+     分岐時点がその削除より前だったため衝突なしで復活していた。再度削除。
+     詳細は DECISION_LOG「マージが『衝突なし』で削除済みモジュールを復活させる
+     ことがある」参照。
+  2. `QUICK_CREATE_ACTIONS` の予約/顧客 href が存在しない `/admin/*/new` を
+     指していた（実際は一覧ページの `?create=1` でモーダルを開く方式）。href を
+     修正し、`ReservationsClient.tsx`/`ReservationsModeSwitch.tsx` に
+     `?create=1` 対応を追加（`CustomersClient`/`CustomersModeSwitch` と同じ規約）。
+     `applyCreateContext()` も、href が既にクエリを持つ場合に `&` で連結するよう修正
+     （`?` が2つできるバグを防止）。
+  3. `inferCreateContext()` の正規表現が `/admin/vehicles/new` 等の `new` を
+     ID として誤って拾っていた（`vehicleId: "new"` のような存在しない ID が
+     混入しうる）。`new` を除外するよう修正。
+  4. `MobileTabBar.tsx` の権限フィルタが、`TAB_HREFS` と `TABS` が同じ配列から
+     作られているため常に true になる死んだ分岐だった。削除して簡素化
+     （意図（正準タブは権限で消さない）はコメントに残す）。
+  5. `CommandPalette.tsx` のエンティティ→チップ変換が `entityResultsToChips()`
+     （`src/lib/search/entities.ts`）と同種のロジックを手で再実装しており将来
+     ズレる可能性がある。型が異なり単純な流用はできないため、ponytail コメントで
+     並存を明記するに留めた（未着手）。
+  テスト6件追加（`/new` 除外・`?create=1` href・クエリ連結）。全 4348 テスト通過、
+  `tsc --noEmit` クリーン、lint 0 エラー。
 
 ## 2026-08-27 「正しく無いのが載るのはあかん」——遷移表を直してから通した（#933）／同期基盤は止めた（#934）
 
