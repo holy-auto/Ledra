@@ -7,7 +7,9 @@
  */
 
 import React from "react";
-import { Document, Page, Text, View, StyleSheet, Font, type DocumentProps } from "@react-pdf/renderer";
+import { existsSync } from "node:fs";
+import path from "node:path";
+import { Document, Page, Text, View, StyleSheet, Font, Image, type DocumentProps } from "@react-pdf/renderer";
 import {
   PLANS,
   TEMPLATE_OPTIONS,
@@ -339,12 +341,11 @@ function Page1Cover() {
       </Text>
 
       <View style={[styles.card, { marginTop: 26 }]} wrap={false}>
-        <Text style={styles.cardTitle}>この資料でお伝えすること</Text>
-        <Text style={styles.bullet}>• Ledra が解決する3つの業界課題</Text>
-        <Text style={styles.bullet}>• 主要機能と、施工店が得られる業務変化</Text>
-        <Text style={styles.bullet}>• 信頼の土台を作る技術（Polygon anchoring / C2PA）</Text>
-        <Text style={styles.bullet}>• 導入プロセスとサポート体制</Text>
-        <Text style={styles.bullet}>• ご相談の窓口と次のステップ</Text>
+        <Text style={styles.cardTitle}>本日お話しすること</Text>
+        <Text style={styles.bullet}>01. 課題 — いま、施工現場の記録に起きていること</Text>
+        <Text style={styles.bullet}>02. 解決 — Ledra が現場の1日をどう変えるか</Text>
+        <Text style={styles.bullet}>03. 信頼 — 「あとから直していない」を証明する技術</Text>
+        <Text style={styles.bullet}>04. 導入 — 始め方と、伴走の中身</Text>
       </View>
 
       <Text style={styles.tagline}>自動車整備・コーティング店の施工履歴プラットフォーム — Ledra</Text>
@@ -441,7 +442,7 @@ function Page3Features() {
 function Page4NextSteps() {
   return (
     <Page size="A4" orientation="landscape" style={styles.page}>
-      <Text style={styles.pageTitle}>03 NEXT STEPS</Text>
+      <Text style={styles.pageTitle}>04 NEXT STEPS</Text>
       <View style={styles.gradientBar} />
       <Text style={styles.h1}>次のステップ</Text>
       <Text style={styles.lead}>無料プランから始められます。導入支援・トレーニングは担当チームが伴走します。</Text>
@@ -467,6 +468,47 @@ function Page4NextSteps() {
   );
 }
 
+function PageTrust() {
+  return (
+    <Page size="A4" orientation="landscape" style={styles.page}>
+      <Text style={styles.pageTitle}>03 TRUST</Text>
+      <View style={styles.gradientBar} />
+      <Text style={styles.h1}>「あとから直していない」を、第三者が確かめられる</Text>
+      <Text style={styles.lead}>
+        記録が信用されるかどうかは、発行元の主張ではなく、第三者が独立に検証できるかで決まります。Ledra
+        は写真そのものと、写真が存在した時刻の両方に証拠を残します。
+      </Text>
+
+      <CardGrid
+        items={[
+          {
+            title: "写真に出自を焼き込む（C2PA）",
+            desc: "撮影・編集の履歴を含む署名付きコンテンツクレデンシャルを写真に埋め込む。SNS 等で再配布されても出自を追跡できます。",
+          },
+          {
+            title: "ハッシュをブロックチェーンに刻む（Polygon）",
+            desc: "施工写真の SHA-256 ハッシュを Polygon に記録。Ledra 側のデータが差し替えられても、チェーン上の記録との差分で検知できます。",
+          },
+          {
+            title: "編集履歴が残る",
+            desc: "証明書への編集は差分付きで保存。「誰が、いつ、何を変えたか」を後から確認できます。",
+          },
+          {
+            title: "発行元を署名で示す",
+            desc: "ECDSA P-256 の署名情報を証明書に付与。発行元の同一性を Ledra Verify API で検証できます。",
+          },
+        ]}
+      />
+
+      <Text style={[styles.cardDesc, { marginTop: 10 }]}>
+        ＊ 証明書コンテンツ全体のハッシュ刻印と日次バッチ Merkle はコントラクトを準備済み、配線はロードマップ対応です。
+      </Text>
+
+      <Footer />
+    </Page>
+  );
+}
+
 export function ServiceOverviewPdf() {
   ensureFonts();
   return (
@@ -478,8 +520,70 @@ export function ServiceOverviewPdf() {
       producer="Ledra"
     >
       {Page1Cover()}
+
+      {SectionDivider({
+        no: "01",
+        title: "課題",
+        lead: "職人の仕事は確かでも、その確かさを「あとから証明できない」。この一点が、業界全体に3つの摩擦を生んでいます。",
+      })}
       {Page2Problems()}
+
+      {SectionDivider({
+        no: "02",
+        title: "解決",
+        lead: "記録の「かたち」だけを変えます。やることは増やさず、現場の1日の流れはそのままに。",
+      })}
       {Page3Features()}
+      {/* 画面キャプチャは未取得ならページごと出ない（scripts/capture-screenshots.ts で取得） */}
+      {ScreenshotSlide({
+        eyebrow: "02 SCREEN — 証明書発行",
+        title: "撮って、選んで、発行まで数分",
+        lead: "施工写真と作業内容を選ぶだけ。テンプレートは店舗ごとにブランド設定済みなので、体裁を整える手間がありません。",
+        points: [
+          "写真は撮影時点で C2PA 署名とハッシュ化",
+          "発行と同時に QR・URL・NFC の3経路で共有可能",
+          "テンプレートは店舗のロゴ・配色を反映",
+        ],
+        file: "admin/certs-new.png",
+        caption: "施工店ポータル / 証明書の新規発行",
+      })}
+      {ScreenshotSlide({
+        eyebrow: "02 SCREEN — 顧客 360°",
+        title: "1台・1人の履歴が、1画面に集まる",
+        lead: "証明書・予約・請求・車両をタイムラインで横断参照。担当が変わっても、履歴は途切れません。",
+        points: [
+          "「あの車にいつ何をしたか」を探す時間が消える",
+          "車検・再施工の提案根拠がその場で出せる",
+          "退職・代替わりでも記録が個人に紐づかない",
+        ],
+        file: "admin/customers-detail.png",
+        caption: "施工店ポータル / 顧客の 360° ビュー",
+      })}
+      {ScreenshotSlide({
+        eyebrow: "02 SCREEN — 保険会社連携",
+        title: "査定側も、同じ事実を見る",
+        lead: "保険会社は自分のポータルから証明書を検索・照会できます。FAX や PDF の往復が要りません。",
+        points: [
+          "車両単位で過去の施工・修理履歴を照会",
+          "写真の改ざん検知結果も同じ画面で確認",
+          "見える範囲は RLS で役割ごとに自動で絞り込み",
+        ],
+        file: "insurer/search.png",
+        caption: "保険会社ポータル / 証明書の検索",
+      })}
+
+      {SectionDivider({
+        no: "03",
+        title: "信頼",
+        lead: "記録が信用されるかどうかは、発行元の主張ではなく、第三者が独立に検証できるかで決まります。",
+      })}
+      {PageTrust()}
+
+      {SectionDivider({
+        no: "04",
+        title: "導入",
+        lead: "無料プランから始められます。データ移行も現場トレーニングも、担当チームが伴走します。",
+      })}
       {Page4NextSteps()}
     </Document>
   );
@@ -2146,6 +2250,155 @@ function CardGrid({ items }: { items: { title: string; desc: string }[] }) {
         </View>
       ))}
     </>
+  );
+}
+
+/* ──────────────────────────────────────────────────────────────
+ * プレゼンの骨格
+ *
+ * 資料は投影・対面提示で使う前提なので、「カードを敷き詰めた紙面」ではなく
+ * **章扉で区切られた流れ**にする。読み手が今どの話をしているか見失わないよう、
+ * 章扉 → 主張 → 根拠（画面や機能）の順で並べる。
+ * ────────────────────────────────────────────────────────────── */
+
+const deckStyles = StyleSheet.create({
+  /** 章扉。地をアクセントの淡色で塗り、番号を大きく置く */
+  dividerPage: {
+    fontFamily: "NotoSansJP",
+    backgroundColor: colors.surface,
+    color: colors.text,
+    paddingHorizontal: 56,
+    paddingTop: 42,
+    paddingBottom: 54,
+    justifyContent: "center",
+  },
+  dividerNo: {
+    fontSize: 64,
+    fontWeight: 700,
+    color: colors.accent,
+    letterSpacing: -2,
+    marginBottom: 4,
+  },
+  dividerTitle: {
+    fontSize: 34,
+    fontWeight: 700,
+    color: colors.text,
+    letterSpacing: -0.5,
+    marginBottom: 12,
+  },
+  dividerLead: {
+    fontSize: 14,
+    color: colors.mute,
+    lineHeight: 1.7,
+    maxWidth: 560,
+    paddingLeft: 14,
+    borderLeftWidth: 3,
+    borderLeftColor: colors.gold,
+  },
+  /** 画面キャプチャのスライド: 左に説明、右に画面 */
+  shotRow: {
+    flexDirection: "row",
+    gap: 20,
+    marginTop: 4,
+  },
+  shotText: {
+    flex: 1,
+    paddingTop: 4,
+  },
+  shotFrame: {
+    flex: 1.55,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 6,
+    padding: 4,
+    backgroundColor: colors.surface,
+  },
+  shotImage: {
+    objectFit: "contain",
+  },
+  shotCaption: {
+    fontSize: 8.5,
+    color: colors.mute2,
+    marginTop: 5,
+  },
+});
+
+/**
+ * `public/screenshots/` 配下の画面キャプチャ。
+ *
+ * キャプチャは `scripts/capture-screenshots.ts` が Supabase のデモテナント
+ * （`ledra-motors-demo`）にログインして撮る。**リポジトリには入っていない**ので、
+ * 無ければその枠ごと出さない ―― 未取得のまま空枠や壊れた画像を刷らないため。
+ */
+function screenshotFile(rel: string): string | null {
+  const abs = path.join(process.cwd(), "public", "screenshots", rel);
+  return existsSync(abs) ? abs : null;
+}
+
+export function hasScreenshot(rel: string): boolean {
+  return screenshotFile(rel) !== null;
+}
+
+/** 章扉スライド。 */
+function SectionDivider({ no, title, lead }: { no: string; title: string; lead: string }) {
+  return (
+    <Page size="A4" orientation="landscape" style={deckStyles.dividerPage}>
+      <Text style={deckStyles.dividerNo}>{no}</Text>
+      <Text style={deckStyles.dividerTitle}>{pdfSafe(title)}</Text>
+      <Text style={deckStyles.dividerLead}>{pdfSafe(lead)}</Text>
+      <Footer />
+    </Page>
+  );
+}
+
+/**
+ * 画面キャプチャのスライド。キャプチャが未取得なら**ページごと出さない**
+ * （`null` を返す。react-pdf は Document の子の null を無視する）。
+ */
+function ScreenshotSlide({
+  eyebrow,
+  title,
+  lead,
+  points,
+  file,
+  caption,
+}: {
+  eyebrow: string;
+  title: string;
+  lead: string;
+  points: string[];
+  file: string;
+  caption: string;
+}) {
+  const src = screenshotFile(file);
+  if (!src) return null;
+  return (
+    <Page size="A4" orientation="landscape" style={styles.page}>
+      <Text style={styles.pageTitle}>{eyebrow}</Text>
+      <View style={styles.gradientBar} />
+      <Text style={styles.h1}>{pdfSafe(title)}</Text>
+
+      <View style={deckStyles.shotRow}>
+        <View style={deckStyles.shotText}>
+          <Text style={[styles.lead, { maxWidth: undefined }]}>{pdfSafe(lead)}</Text>
+          {points.map((p) => (
+            <Text key={p} style={styles.bullet}>
+              • {pdfSafe(p)}
+            </Text>
+          ))}
+        </View>
+        <View style={deckStyles.shotFrame}>
+          {/* react-pdf の Image は DOM の img ではなく alt を受け取らない。
+              jsx-a11y の規則は PDF プリミティブには当たらないので個別に外す。
+              代替テキストの役割は下の caption が担う。 */}
+          {/* eslint-disable-next-line jsx-a11y/alt-text */}
+          <Image src={src} style={deckStyles.shotImage} />
+          <Text style={deckStyles.shotCaption}>{pdfSafe(caption)}</Text>
+        </View>
+      </View>
+
+      <Footer />
+    </Page>
   );
 }
 

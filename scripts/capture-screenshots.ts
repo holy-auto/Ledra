@@ -299,7 +299,11 @@ async function captureAgent(browser: ReturnType<typeof chromium.launch> extends 
 
 async function main() {
   console.log("📸 Capturing screenshots from", BASE_URL);
-  const browser = await chromium.launch({ headless: true });
+  // この環境（および CI）のプリインストール Chromium を使う。Playwright の
+  // バージョンが上がると同梱ブラウザのリビジョンが変わり、ダウンロードを
+  // 禁止している実行環境では起動できなくなるため、パスが指定されていれば従う。
+  const executablePath = process.env.PLAYWRIGHT_CHROMIUM_PATH || undefined;
+  const browser = await chromium.launch({ headless: true, executablePath });
   const failures: string[] = [];
 
   await captureAdmin(browser).catch((e) => {

@@ -46,7 +46,9 @@ export const RESOURCE_CATALOG: readonly Resource[] = [
     description:
       "Ledra がどんな課題を解くサービスか、4ポータル設計、初期導入の流れをコンパクトにまとめた基本資料です。最初の1本としてお勧めします。",
     badge: "最初にお勧め",
-    pageCount: 6,
+    // この資料だけページ数を宣言しない。画面キャプチャ（public/screenshots/）が
+    // 揃っているかで 11〜14 ページの間で変わるため、固定値は必ず嘘になる。
+    // ―― 総数を宣言できるのは、中身が実行環境に依存しない資料だけ。
     downloadUrl: "/api/marketing/resources/service-overview/pdf",
   },
   {
