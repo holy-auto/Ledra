@@ -105,6 +105,18 @@ describe("exchangeCodeForToken", () => {
 });
 
 describe("oauthState", () => {
+  it("binds a state to the initiating user when requested", () => {
+    const state = createOAuthState({ tenantId: "t1", provider: "gcal", userId: "owner-1" });
+    expect(verifyOAuthState({ state, provider: "gcal", expectedUserId: "owner-1" })).toEqual({
+      ok: true,
+      tenantId: "t1",
+    });
+    expect(verifyOAuthState({ state, provider: "gcal", expectedUserId: "other-user" })).toEqual({
+      ok: false,
+      reason: "user_mismatch",
+    });
+  });
+
   it("同じ provider なら tenantId を復元できる", () => {
     const state = createOAuthState({ tenantId: "t1", provider: "slack" });
     expect(verifyOAuthState({ state, provider: "slack" })).toEqual({ ok: true, tenantId: "t1" });

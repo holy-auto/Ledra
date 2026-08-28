@@ -18,6 +18,7 @@ const CalendarView = dynamic(() => import("./CalendarView"), {
 });
 const VoiceMemoPanel = dynamic(() => import("@/app/admin/certificates/new/VoiceMemoPanel"), { ssr: false });
 import { canUseFeature, normalizePlanTier } from "@/lib/billing/planFeatures";
+import { businessDateString } from "@/lib/datetime";
 import { formatDate, formatJpy } from "@/lib/format";
 import { fetcher } from "@/lib/swr";
 import type { WorkflowStep } from "@/components/workflow/WorkflowTemplateEditor";
@@ -143,8 +144,7 @@ const labelTextCls = "text-xs font-semibold text-secondary tracking-wide upperca
 export default function ReservationsClient() {
   // ローカル(端末)日付の YYYY-MM-DD。toISOString() は UTC 変換されるため、JST 深夜帯
   // (00:00〜08:59) だと日付が1日前にずれる — ブラウザのローカル時計から直接組み立てる。
-  const now = new Date();
-  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  const today = businessDateString();
 
   // Filters
   const [statusFilter, setStatusFilter] = useState("all");

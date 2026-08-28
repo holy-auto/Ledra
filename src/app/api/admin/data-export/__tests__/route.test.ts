@@ -20,7 +20,14 @@ const { resolveCallerMock, requireMinRoleMock, checkRateLimitMock, fromMock } = 
 }));
 
 vi.mock("@/lib/supabase/server", () => ({
-  createClient: () => Promise.resolve({}),
+  createClient: () =>
+    Promise.resolve({
+      auth: {
+        mfa: {
+          getAuthenticatorAssuranceLevel: () => Promise.resolve({ data: { currentLevel: "aal2" } }),
+        },
+      },
+    }),
 }));
 
 vi.mock("@/lib/supabase/admin", () => ({
@@ -59,7 +66,7 @@ function chainList(rows: Array<Record<string, unknown>>) {
   return {
     select: () => ({
       eq: () => ({
-        limit: () => Promise.resolve({ data: rows, error: null }),
+        range: () => Promise.resolve({ data: rows, error: null }),
       }),
     }),
   };
@@ -71,15 +78,6 @@ function chainSingle(row: Record<string, unknown> | null) {
       eq: () => ({
         maybeSingle: () => Promise.resolve({ data: row, error: null }),
       }),
-    }),
-  };
-}
-
-function chainInsert() {
-  return {
-    insert: () => ({
-      then: (resolve: () => unknown) => Promise.resolve(undefined).then(resolve),
-      catch: (_: unknown) => Promise.resolve(undefined),
     }),
   };
 }
@@ -144,7 +142,7 @@ describe("GET /api/admin/data-export", () => {
           return {
             select: () => ({
               eq: () => ({
-                limit: () => Promise.resolve({ data: [], error: null }),
+                range: () => Promise.resolve({ data: [], error: null }),
               }),
             }),
             insert: () => ({
@@ -184,7 +182,7 @@ describe("GET /api/admin/data-export", () => {
     requireMinRoleMock.mockReturnValueOnce(true);
 
     const eqMock = vi.fn().mockReturnValue({
-      limit: () => Promise.resolve({ data: [], error: null }),
+      range: () => Promise.resolve({ data: [], error: null }),
       maybeSingle: () => Promise.resolve({ data: null, error: null }),
     });
 

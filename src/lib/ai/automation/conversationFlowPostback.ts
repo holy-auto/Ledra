@@ -33,12 +33,20 @@
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { sendCustomerLineText, sendCustomerLineButtons } from "@/lib/line/client";
 import { recordInboundLineMessage } from "@/lib/line/messageStore";
+import { cancelReservationById } from "@/lib/reservations/mutate";
+import { todayJst } from "@/lib/gantt/board";
 import { syncCreateEvent } from "@/lib/gcal/client";
 import { calcItems } from "@/lib/documents/calcItems";
 import { logger } from "@/lib/logger";
 import { logAutoActionExecuted } from "@/lib/audit/aiAuditLog";
-import { getActiveFlow, getFlowByQuoteDoc, advanceFlow, type ConversationFlowRow } from "@/lib/line/flow/flowStore";
-import { interpretReply } from "@/lib/line/flow/interpret";
+import {
+  getActiveFlow,
+  getFlowByQuoteDoc,
+  createFlow,
+  advanceFlow,
+  type ConversationFlowRow,
+} from "@/lib/line/flow/flowStore";
+import { interpretReply, parseFlowPostback } from "@/lib/line/flow/interpret";
 import { fetchFlowScheduleCandidates, type FlowScheduleCandidate } from "@/lib/line/flow/scheduleCandidates";
 import { fetchAddonRecommendations } from "@/lib/line/flow/addonCandidates";
 import type { RecommendedOption } from "@/lib/ai/optionRecommend";
@@ -47,6 +55,7 @@ import { maybeAutoCategorizeReservationOnIntake } from "./accountingAuto";
 import { maybeAutoProposeWorkflowForReservation } from "./workflowAuto";
 import {
   buildQuoteApprovalAsk,
+  buildQuoteDetailAskWithService,
   buildScheduleHandoff,
   buildQuoteConsultHandoff,
   buildScheduleCandidatesAsk,
@@ -55,9 +64,15 @@ import {
   buildOptionRecommendAsk,
   buildOptionAddedAck,
   buildFinalQuoteApprovalAsk,
+  buildCancelConfirmAsk,
+  buildCancelDone,
+  buildCancelAborted,
+  buildCancelHandoff,
+  type CancelTargetReservation,
 } from "@/lib/line/flow/messages";
 import { loadAiAutomationSettings, tenantEligibleForAiAutomation, notifyStaffOfAiAction } from "./policy";
-import { shouldRunConversationFlow, shouldAutoSendDocumentOnConfirm } from "./orchestrator";
+import { shouldRunConversationFlow, shouldAutoSendDocumentOnConfirm, shouldAutoSelfCancel } from "./orchestrator";
+import { storeIdOrNull } from "@/lib/stores/resolveStoreId";
 
 /** 提示した日程候補を提示順のまま保持するための context キー。 */
 const SCHEDULE_CANDIDATES_KEY = "schedule_candidates";
@@ -69,6 +84,8 @@ const OPTION_CANDIDATES_KEY = "option_candidates";
 // states.ts の awaiting_option_confirm 遷移をループに変え、ここを追記
 // (スプレッド) に変更する必要がある。
 const SELECTED_OPTIONS_KEY = "selected_options";
+/** キャンセルフローで提示した対象予約 (index→予約) を保持する context キー。cancelFlowAuto と共有。 */
+export const CANCEL_CANDIDATES_KEY = "cancel_candidates";
 
 /** context_json[SELECTED_OPTIONS_KEY] の要素の形。 */
 interface SelectedOptionRecord {
@@ -79,6 +96,26 @@ interface SelectedOptionRecord {
 
 type Admin = ReturnType<typeof createServiceRoleAdmin>;
 type FlowRow = ConversationFlowRow;
+
+/** line_user_id から紐付け済み顧客 ID を 1 件解決する。未紐付け/失敗時は null (投げない)。 */
+export async function resolveCustomerIdByLineUser(
+  admin: Admin,
+  tenantId: string,
+  lineUserId: string,
+): Promise<string | null> {
+  try {
+    const { data } = await admin
+      .from("customers")
+      .select("id")
+      .eq("tenant_id", tenantId)
+      .eq("line_user_id", lineUserId)
+      .limit(1)
+      .maybeSingle();
+    return (data?.id as string | undefined) ?? null;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * 正式見積書の送付 (draft→sent) を受けて、紐づくフローを可否待ちへ進め、
@@ -153,10 +190,36 @@ export async function handleFlowPostback(params: {
   try {
     if (!lineUserId) return false;
     const settings = await loadAiAutomationSettings(tenantId);
-    if (!shouldRunConversationFlow(settings)) return false;
+    // 会話フロー系 (見積り・誘導ボタン) と予約キャンセルは別 opt-in。どちらかが有効なら
+    // postback を処理する (キャンセルのボタンは会話フロー OFF のテナントでも出るため)。
+    const flowOptIn = shouldRunConversationFlow(settings);
+    const selfCancelOptIn = shouldAutoSelfCancel(settings);
+    if (!flowOptIn && !selfCancelOptIn) return false;
 
     const admin = createServiceRoleAdmin("AI conversation flow (postback) — no auth session");
-    const flow = await getActiveFlow(admin, tenantId, { customerId: params.customerId, lineUserId });
+
+    // 本番 webhook は handleFlowPostback に customerId を渡さない。紐付け済み顧客の
+    // フローは inbound テキスト処理側で customer_id をキーに引かれる (getActiveFlow は
+    // customerId を優先) ため、ここで line_user_id から顧客を解決し、フロー作成・照会の
+    // キーを一致させる。これが無いと、ボタンで作った詳細フロー/相談マーカーが
+    // customer_id=null で作られ、次の受信で見つからず前進・抑止が効かない。
+    const resolvedCustomerId = params.customerId ?? (await resolveCustomerIdByLineUser(admin, tenantId, lineUserId));
+
+    // 状態非依存の誘導ボタン (FAQ/ナレッジ返信の末尾に添付したもの)。フロー生成・
+    // 引き継ぎであり状態機械の遷移ではないため、interpretReply ではなく
+    // parseFlowPostback で直接判定し、進行中フローの有無で分岐する。
+    // start_quote / consult は会話フロー機能なので flowOptIn 有効時のみ。
+    const pb = parseFlowPostback(params.data);
+    if (flowOptIn && pb?.event === "start_quote") {
+      return handleFollowupStartQuote(admin, tenantId, lineUserId, resolvedCustomerId, params.data);
+    }
+    // consult は会話フローだけでなくキャンセル選択画面 (buildCancelPickAsk) にも出るため、
+    // self-cancel のみ有効なテナントでも「スタッフに相談したい」が死にボタンにならないよう受ける。
+    if ((flowOptIn || selfCancelOptIn) && pb?.event === "consult") {
+      return handleFollowupConsult(admin, tenantId, lineUserId, resolvedCustomerId, params.data);
+    }
+
+    const flow = await getActiveFlow(admin, tenantId, { customerId: resolvedCustomerId, lineUserId });
     if (!flow) return false;
 
     const event = interpretReply(flow.state, { postbackData: params.data });
@@ -336,6 +399,50 @@ export async function handleFlowPostback(params: {
       return true;
     }
 
+    // 予約キャンセル: 対象が複数のとき、どれを消すか選択された。
+    if (flow.state === "awaiting_cancel_pick" && event.type === "cancel_pick_selected") {
+      const candidates = (flow.context_json[CANCEL_CANDIDATES_KEY] as CancelTargetReservation[] | undefined) ?? [];
+      const chosen = candidates[event.index];
+      if (!chosen) return false;
+      await recordInboundLineMessage({
+        tenantId,
+        lineUserId,
+        body: `キャンセル対象「${chosen.scheduled_date}」を選択`,
+        rawEvent: { flow_postback: params.data },
+      });
+      // 選んだ予約を reservation_id に確定して確認待ちへ (楽観ロック)。
+      const ok = await advanceFlow(admin, flow, {
+        toState: "awaiting_cancel_confirm",
+        reservationId: chosen.id,
+        expectState: "awaiting_cancel_pick",
+      });
+      if (!ok) return false;
+      const msg = buildCancelConfirmAsk(chosen);
+      const delivered = await sendCustomerLineButtons({
+        tenantId,
+        customerId: flow.customer_id,
+        lineUserId,
+        text: msg.text,
+        buttons: msg.buttons,
+      });
+      if (!delivered) {
+        // 確認ボタンが届かなければ awaiting_cancel_confirm 行を残さない (ボタンが無いと
+        // 顧客は確定も取消もできず、72h 失効まで他フローも塞がるため)。expired に落とす。
+        await advanceFlow(admin, flow, { toState: "expired", expectState: "awaiting_cancel_confirm" });
+        logger.warn("[conversationFlowPostback] cancel-confirm delivery failed", { tenantId, lineUserId });
+        return false;
+      }
+      return true;
+    }
+
+    // 予約キャンセル: 実行 or 取りやめの最終確認。
+    if (
+      flow.state === "awaiting_cancel_confirm" &&
+      (event.type === "cancel_confirmed" || event.type === "cancel_aborted")
+    ) {
+      return handleCancelDecision(admin, tenantId, flow, lineUserId, event.type === "cancel_confirmed", params.data);
+    }
+
     return false;
   } catch (e) {
     logger.warn("[conversationFlowPostback] handleFlowPostback threw", {
@@ -344,6 +451,307 @@ export async function handleFlowPostback(params: {
     });
     return false;
   }
+}
+
+/**
+ * 予約キャンセルの最終確認 (awaiting_cancel_confirm) を処理する。confirmed=true なら
+ * 予約を cancelled にして完了、false なら取りやめ。呼び出し元 (handleFlowPostback) の
+ * catch で保護されるため投げてよい。
+ *
+ * 実行前に closed へ楽観クレームして postback 再配信・連打での二重キャンセルを防ぎ、
+ * 確定直前に「前日まで」を再検証する (提示後に当日入りしていたらスタッフ引き継ぎ)。
+ */
+async function handleCancelDecision(
+  admin: Admin,
+  tenantId: string,
+  flow: FlowRow,
+  lineUserId: string,
+  confirmed: boolean,
+  data: string,
+): Promise<boolean> {
+  await recordInboundLineMessage({
+    tenantId,
+    lineUserId,
+    body: confirmed ? "「はい、キャンセルします」を選択" : "「やめる」を選択",
+    rawEvent: { flow_postback: data },
+  });
+
+  // 取りやめ → そのまま closed + 案内 (予約は維持)。
+  if (!confirmed) {
+    await advanceFlow(admin, flow, { toState: "closed", expectState: "awaiting_cancel_confirm" });
+    await sendCustomerLineText({ tenantId, customerId: flow.customer_id, lineUserId, body: buildCancelAborted() });
+    return true;
+  }
+
+  // 実行前に closed を楽観クレーム (二重実行防止)。通ったリクエストだけがキャンセルを行う。
+  const claimed = await advanceFlow(admin, flow, { toState: "closed", expectState: "awaiting_cancel_confirm" });
+  if (!claimed) return false;
+
+  const candidates = (flow.context_json[CANCEL_CANDIDATES_KEY] as CancelTargetReservation[] | undefined) ?? [];
+  const target = candidates.find((c) => c.id === flow.reservation_id) ?? null;
+
+  // 対象未確定 (想定外) → スタッフ引き継ぎ。
+  if (!flow.reservation_id || !flow.customer_id) {
+    await sendCustomerLineText({ tenantId, customerId: flow.customer_id, lineUserId, body: buildCancelHandoff() });
+    await notifyStaffOfAiAction(
+      admin,
+      tenantId,
+      "予約キャンセルのご希望 — ご対応をお願いします",
+      "セルフキャンセルの対象予約を特定できませんでした。ご確認ください。",
+    );
+    return true;
+  }
+
+  // 確定直前の「前日まで」再検証: 提示後に日付が当日入りしていたらスタッフ対応へ切替。
+  if (target && target.scheduled_date <= todayJst()) {
+    await sendCustomerLineText({ tenantId, customerId: flow.customer_id, lineUserId, body: buildCancelHandoff() });
+    await notifyStaffOfAiAction(
+      admin,
+      tenantId,
+      "予約キャンセルのご希望（当日・直前）— ご対応をお願いします",
+      "当日・直前になったため自動キャンセルせずスタッフ対応に切り替えました。ご確認ください。",
+    );
+    return true;
+  }
+
+  const result = await cancelReservationById(admin, {
+    tenantId,
+    reservationId: flow.reservation_id,
+    customerId: flow.customer_id,
+    reason: "顧客がLINEでキャンセル",
+    // 締め切りは実 DB 値でも再検証する (提示後にスタッフが当日へ日程変更した場合、
+    // context スナップショット依存の上の pre-check では拾えないため二重ガード)。
+    cutoffDate: todayJst(),
+  });
+  if (!result.ok) {
+    await sendCustomerLineText({ tenantId, customerId: flow.customer_id, lineUserId, body: buildCancelHandoff() });
+    const tooLate = result.reason === "too_late";
+    await notifyStaffOfAiAction(
+      admin,
+      tenantId,
+      tooLate
+        ? "予約キャンセルのご希望（当日・直前）— ご対応をお願いします"
+        : "予約キャンセルが完了できませんでした — ご対応をお願いします",
+      tooLate
+        ? "当日・直前になったため自動キャンセルせずスタッフ対応に切り替えました。ご確認ください。"
+        : "LINE からのセルフキャンセルが完了できませんでした。手動でご確認ください。",
+    );
+    return true;
+  }
+
+  await sendCustomerLineText({
+    tenantId,
+    customerId: flow.customer_id,
+    lineUserId,
+    body: target ? buildCancelDone(target) : "ご予約をキャンセルしました。",
+  });
+  await notifyStaffOfAiAction(
+    admin,
+    tenantId,
+    "ご予約がキャンセルされました（LINEセルフ）",
+    `お客様が LINE でご予約をキャンセルされました${target ? `（${target.scheduled_date}）` : ""}。カレンダー・代車の空き等をご確認ください。`,
+  );
+  await logAutoActionExecuted({
+    tenantId,
+    actionKey: "inbound_message.auto_self_cancel",
+    resource: { kind: "reservation", id: flow.reservation_id },
+    detail: { flow_id: flow.id, state: "closed", cancelled: true, already_final: result.alreadyFinal },
+  });
+  return true;
+}
+
+/**
+ * FAQ/ナレッジ返信に添えた「お見積りをお願いしたい」ボタン (flow:start_quote) の処理。
+ * 進行中フローが無ければ awaiting_quote_detail フローを作成し、詳細 (車検証 or 車種+年式)
+ * を依頼する (maybeStartQuoteFlow と同じ入口メッセージ buildQuoteDetailAsk を再利用)。
+ * 進行中フローがあれば二重開始せず false を返す (呼び出し元→受信箱記録+スタッフ通知に
+ * フォールバック)。呼び出し元 (handleFlowPostback) の catch で保護されるため投げてよい。
+ */
+async function handleFollowupStartQuote(
+  admin: Admin,
+  tenantId: string,
+  lineUserId: string,
+  customerId: string | null,
+  data: string,
+): Promise<boolean> {
+  if (!(await tenantEligibleForAiAutomation(admin, tenantId))) return false;
+
+  const existing = await getActiveFlow(admin, tenantId, { customerId, lineUserId });
+
+  // 未紐付けの LINE ユーザーは見積りフローを完了できない (正式見積りの下書き作成に顧客
+  // レコードが必要で、maybeAdvanceQuoteFlowOnDetail は顧客不在なら false を返す)。
+  // 詰まるフローを作らず、スタッフへ引き継ぐ (顧客登録は担当が行う)。
+  if (!customerId) {
+    return followupStaffHandoff(admin, tenantId, lineUserId, null, existing, data, {
+      recordBody: "「お見積りをお願いしたい」を選択",
+      staffTitle: "お見積りのご希望（未登録のお客様）— ご対応をお願いします",
+      staffBody: "未登録のお客様がLINEで見積りをご希望です。ご登録のうえお見積りをご案内ください。",
+    });
+  }
+
+  // 進行中フローがあれば二重開始しない。詳細待ちなら無反応を避けて依頼を再送する
+  // (履歴に残った古いボタンの再タップ対策)。それ以外の進行中状態はスタッフ対応に委ねる。
+  if (existing) {
+    if (existing.state === "awaiting_quote_detail") {
+      await recordInboundLineMessage({
+        tenantId,
+        lineUserId,
+        body: "「お見積りをお願いしたい」を選択",
+        rawEvent: { flow_postback: data },
+      });
+      await sendCustomerLineText({ tenantId, customerId, lineUserId, body: buildQuoteDetailAskWithService() });
+      return true;
+    }
+    return false;
+  }
+
+  const flow = await createFlow(admin, {
+    tenantId,
+    customerId,
+    lineUserId,
+    state: "awaiting_quote_detail",
+    context: { source: "followup_button" },
+  });
+  if (!flow) return false; // 一意制約競合など。二重送信しない。
+
+  // 顧客のボタン操作をスレッドに残す (postback は受信箱に出ないため)。
+  await recordInboundLineMessage({
+    tenantId,
+    lineUserId,
+    body: "「お見積りをお願いしたい」を選択",
+    rawEvent: { flow_postback: data },
+  });
+
+  // FAQ後のボタン開始は施工内容が未知。車両だけ聞くと service 欠落で見積りに進めないため、
+  // 施工内容+車両をテキストでまとめて依頼する (maybeAdvanceQuoteFlowOnDetail が両方を要求)。
+  const delivered = await sendCustomerLineText({
+    tenantId,
+    customerId,
+    lineUserId,
+    body: buildQuoteDetailAskWithService(),
+  });
+  if (!delivered) {
+    // 依頼文面が届かなかったのに awaiting_quote_detail 行を残すと、以降の受信でこの
+    // フローが見えてしまい (詳細を送っていないのに) ボタン再提示も見積り前進も塞がれる。
+    // 作った行を expired に落として、次回のボタン/フロー開始を妨げない。
+    await advanceFlow(admin, flow, { toState: "expired", expectState: "awaiting_quote_detail" });
+    logger.warn("[conversationFlowPostback] followup start_quote delivery failed", { tenantId, lineUserId });
+    return false;
+  }
+
+  await logAutoActionExecuted({
+    tenantId,
+    actionKey: "inbound_message.auto_conversation_flow",
+    resource: { kind: "line_user", id: lineUserId },
+    detail: { flow_id: flow.id, state: "awaiting_quote_detail", trigger: "followup_button" },
+  });
+  return true;
+}
+
+/**
+ * FAQ/ナレッジ返信に添えた「スタッフに相談したい」ボタン (flow:consult) の処理。
+ * スタッフへ通知し、顧客へ相談受付の案内を返す。呼び出し元 (handleFlowPostback) の
+ * catch で保護されるため投げてよい。
+ */
+async function handleFollowupConsult(
+  admin: Admin,
+  tenantId: string,
+  lineUserId: string,
+  customerId: string | null,
+  data: string,
+): Promise<boolean> {
+  if (!(await tenantEligibleForAiAutomation(admin, tenantId))) return false;
+
+  // 冪等性: 既に human_takeover (相談受付済み) なら二重通知・二重返信しない
+  // (LINE の postback 再配信や、履歴に残ったボタンの再タップに対して安全にする)。
+  const existing = await getActiveFlow(admin, tenantId, { customerId, lineUserId });
+  if (existing?.state === "human_takeover") return true;
+
+  return followupStaffHandoff(admin, tenantId, lineUserId, customerId, existing, data, {
+    recordBody: "「スタッフに相談したい」を選択",
+    staffTitle: "お客様が相談をご希望です — ご対応をお願いします",
+    staffBody: "お客様がLINEで「スタッフに相談したい」を選択されました。トークでご対応ください。",
+  });
+}
+
+/**
+ * 誘導ボタン (相談 / 未登録の見積り希望) からスタッフへ引き継ぐ共通処理。
+ * 通知とお客様への案内に加え、以降の顧客向け自動処理を止める `human_takeover` 状態を
+ * 永続化する: 進行中フローがあればそれを human_takeover へ落とし (検証+1回再試行)、無ければ
+ * human_takeover マーカーを新規作成する。これにより単発の相談でも「担当が対応」と伝えた後に
+ * ボットが再応答しない。
+ *
+ * マーカーは expires_at (72h) を持ち、超過後は getActiveFlow が無視して自動応答が自然復帰する。
+ * 失効行が一意インデックスを塞ぐ問題 (state が human_takeover のまま残る) は createFlow 側の
+ * 失効スイープが同一キー作成時に掃除するため、rot しない。
+ */
+async function followupStaffHandoff(
+  admin: Admin,
+  tenantId: string,
+  lineUserId: string,
+  customerId: string | null,
+  existing: FlowRow | null,
+  data: string,
+  copy: { recordBody: string; staffTitle: string; staffBody: string },
+): Promise<boolean> {
+  await recordInboundLineMessage({ tenantId, lineUserId, body: copy.recordBody, rawEvent: { flow_postback: data } });
+
+  if (existing && existing.state !== "human_takeover") {
+    // 進行中フローを human_takeover へ落として自動進行を止める。advanceFlow は楽観ロック
+    // 不一致/DB失敗で false を返すため、取りこぼしたら最新状態を読み直して1回再試行。
+    // refreshExpiry で失効窓を今から 72h に延長する (古いフローの残り時間を引き継がない)。
+    const ok = await advanceFlow(admin, existing, {
+      toState: "human_takeover",
+      contextPatch: { consult_requested: true },
+      expectState: existing.state,
+      refreshExpiry: true,
+    });
+    if (!ok) {
+      const fresh = await getActiveFlow(admin, tenantId, { customerId, lineUserId });
+      if (fresh && fresh.state !== "human_takeover") {
+        await advanceFlow(admin, fresh, {
+          toState: "human_takeover",
+          contextPatch: { consult_requested: true },
+          expectState: fresh.state,
+          refreshExpiry: true,
+        });
+      }
+    }
+  } else if (!existing) {
+    // 進行中フローが無ければ durable な human_takeover マーカーを作成する (単発相談の抑止)。
+    // createFlow が同一キーの失効行を掃除するため、期限切れマーカーによる rot は起きない。
+    const created = await createFlow(admin, {
+      tenantId,
+      customerId,
+      lineUserId,
+      state: "human_takeover",
+      context: { consult_requested: true, source: "followup_button" },
+    });
+    if (!created) {
+      // 競合: getActiveFlow の後・insert の前に別フローができた (start_quote と consult の
+      // 同時押し等) と一意制約で弾かれる。今あるフローを読み直して human_takeover に落とす
+      // — でないと「担当が対応」と伝えたのに競合フローが自動のまま残る。
+      const fresh = await getActiveFlow(admin, tenantId, { customerId, lineUserId });
+      if (fresh && fresh.state !== "human_takeover") {
+        await advanceFlow(admin, fresh, {
+          toState: "human_takeover",
+          contextPatch: { consult_requested: true },
+          expectState: fresh.state,
+          refreshExpiry: true,
+        });
+      }
+    }
+  }
+
+  await sendCustomerLineText({ tenantId, customerId, lineUserId, body: buildQuoteConsultHandoff() });
+  await notifyStaffOfAiAction(admin, tenantId, copy.staffTitle, copy.staffBody);
+  await logAutoActionExecuted({
+    tenantId,
+    actionKey: "inbound_message.auto_conversation_flow",
+    resource: { kind: "line_user", id: lineUserId },
+    detail: { state: "human_takeover", trigger: "followup_button" },
+  });
+  return true;
 }
 
 /**
@@ -456,6 +864,7 @@ async function handleSlotSelected(
   const { error } = await admin.from("reservations").insert({
     id: reservationId,
     tenant_id: tenantId,
+    store_id: await storeIdOrNull(admin, tenantId, "conversationFlowPostback"),
     customer_id: flow.customer_id,
     vehicle_id: vehicleId,
     title,

@@ -131,8 +131,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
     // Polygon ネットワーク (write 設定を使う - 受領サインは作成時点のネットワークと同一)
     const polygonNetwork = (process.env.POLYGON_NETWORK?.toLowerCase() === "amoy" ? "amoy" : "polygon") as
-      | "polygon"
-      | "amoy";
+      "polygon" | "amoy";
     const explorerUrl = buildExplorerUrl(receipt.anchor_tx_hash, polygonNetwork);
 
     return apiOk({
