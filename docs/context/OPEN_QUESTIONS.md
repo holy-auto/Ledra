@@ -3,6 +3,28 @@
 > まだ決まっていないこと、判断に迷っていることを書く場所。決まったら
 > DECISION_LOG.md に移し、このファイルからは消す（削除履歴は git で追える）。
 
+## 追加（2026-08-28・マージ手順の穴）
+
+- **「main で削除済みのファイルが、古いブランチとのマージで衝突なしに復活する」ケースを
+  機械的に検出する方法が無い。** #935 で `src/lib/sync/`（#934 で削除済み）が実際に
+  復活し、`git status --diff-filter=U` では検出できず `/code-review` で見つかった。
+  残り20本弱のスタック PR は同じ危険を抱える（main 側で削除されたファイルが、各 PR の
+  分岐時点にはまだ存在していた場合すべて）。`git log --diff-filter=D --name-only main`
+  で main の削除履歴を洗い出し、マージ後の作業ツリーと突き合わせるスクリプトが
+  要るか、毎回 `/code-review` に頼るかは未定。詳細は DECISION_LOG
+  「マージが『衝突なし』で削除済みモジュールを復活させることがある」参照。 → 方針未定
+
+## 追加（2026-08-28・#935 IMP-020 マージ）
+
+- **モバイルの Quick Create FAB（`QuickCreateSheet.tsx`）と `src/lib/navigation/quickCreate.ts` が未統合。**
+  FAB は固定4項目（車両登録/顧客登録/予約作成/作業開始）で権限ゲート・コンテキスト継承なし。
+  `quickCreate.ts` 側（権限ゲート+コンテキスト継承、5項目）は現状 Web の CommandPalette からしか
+  使われていない。統合するかどうか、するなら FAB 側の項目数・文言をどちらに合わせるかは未定。→ 未着手
+
+- **`src/lib/navigation/scope.ts`（Role別ワークスコープ: 自分/店舗/全店舗）が実 UI と未連携。**
+  型定義（`WORK_SCOPES` / `availableScopes` / `defaultScope`）のみで、既存の StoreSelector
+  との統合や、実際のスコープ切替 UI（IMP-021 予定）はまだない。→ IMP-021 待ち
+
 ## 追加（2026-08-27・IMP-016 同期基盤）
 
 （Severity の `CRITICAL → ACTION` を許すかどうかの読み方の割れは、代表判断で解決済み
