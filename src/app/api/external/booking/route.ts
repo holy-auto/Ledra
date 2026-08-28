@@ -11,6 +11,7 @@ import { notifyNewBooking } from "@/lib/notifications/bookingNotify";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { logger } from "@/lib/logger";
 import { storeIdOrNull } from "@/lib/stores/resolveStoreId";
+import { findTenantIdByExternalApiKey } from "@/lib/security/tenantPrivateSecrets";
 
 const externalBookingSchema = z.object({
   tenant_slug: z
@@ -93,10 +94,10 @@ export async function POST(req: NextRequest) {
 
     const admin = createServiceRoleAdmin("public booking — looks up tenant from slug, no caller context");
 
-    // テナント解決 + API キー検証（同時に行いタイミング攻撃を防ぐ）
+    // テナント解決後、隔離テーブルのハッシュで API キーを照合する。
     const { data: tenant } = await admin
       .from("tenants")
-      .select("id, name, external_api_key")
+      .select("id, name")
       .eq("slug", tenantSlug)
       .eq("is_active", true)
       .single();
@@ -109,21 +110,8 @@ export async function POST(req: NextRequest) {
     // キー未設定テナントへの予約作成は拒否する (以前は共有 CRON_SECRET へ
     // フォールバックしていたが、CRON_SECRET を知る者が任意のキー未設定テナントに
     // 予約を作成できる弱い認証だったため廃止)。
-    const expectedKey = tenant.external_api_key;
-    if (!expectedKey) {
-      return apiError({
-        code: "unauthorized",
-        message: "この店舗では外部予約APIが有効化されていません (external_api_key 未設定)。",
-        status: 401,
-      });
-    }
-    // Use timingSafeEqual to prevent timing-based API key enumeration.
-    const apiKeyValid = (() => {
-      const a = Buffer.from(apiKey, "utf8");
-      const b = Buffer.from(expectedKey, "utf8");
-      return a.length === b.length && crypto.timingSafeEqual(a, b);
-    })();
-    if (!apiKeyValid) {
+    const keyTenantId = await findTenantIdByExternalApiKey(admin, apiKey);
+    if (keyTenantId !== tenant.id) {
       return apiError({ code: "unauthorized", message: "Invalid API key", status: 401 });
     }
 

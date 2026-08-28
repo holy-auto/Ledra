@@ -4,7 +4,37 @@
 > 追わず、常に最新状態だけを保つ（履歴は DECISION_LOG.md / RELEASE_LOG.md 側）。
 > 大きな変化があったら都度上書きすること。
 
-最終更新: 2026-08-26
+最終更新: 2026-08-27
+
+> 2026-08-27 追記1: **積み上がっていた実装 PR を main へ通し始めた。**
+> #928〜#951 の22本が「前の PR をベース」に積み上がっており、**その間 CI が
+> 一度も走っていなかった**（`ci.yml` は `branches: [main, staging]` でしか起動せず、
+> ベース付け替えも ready 化も既定のトリガーに入っていない）。1本ずつ
+> 「ベースを main へ**手動**付け替え → main を取り込み → 衝突解決 → ローカル検証 →
+> push（ここで初めて CI が走る）→ 緑 → squash」で通す運用にした。
+> **GitHub がベースを自動付け替えするのはベースブランチが削除されたときだけ**で、
+> squash マージでは起きない（私が「自動でやってくれる」と伝えたのは誤りだった）。
+> **#980・#928〜#934 をマージ済み（8本）。**
+> #933 は代表の「正しく無いのが載るのはあかんな」を受けて、**正準遷移表の足りない辺を
+> 8件直してから**通した（根拠は ADR・稼働中コード・同ファイル内の矛盾に限定。
+> 根拠の無い3件はモジュール先頭に未解決として明記）。
+> #934 は **`/code-review` と Codex が独立に同じ結論**に着いたので修正を止め ——
+> `src/lib/sync/` は実際の outbox が持っていない情報を前提にしていた。代表判断は
+> **(b) `src/lib/sync/`（型・競合検出）を削除し、`sync.*` のイベント名と
+> `EVENT_RISK` の格付けだけ残す**。同期層の設計は IMP-032 で outbox の実際の
+> 契約から作り直す（詳細は DECISION_LOG 2026-08-27）。
+> #930〜#932 が足したモジュールは**稼働中コードからの import が 0 件**なので、
+> マージしても実行時の挙動は変わらない。
+> **Codex は 01:06 に利用上限へ達した**ため、以降は `/code-review` で代替している。
+> #933 では15件のうち4件が実在し修正、残り11件は遷移表の設計論点として保留。
+
+> 2026-08-27 追記2: **#935（IMP-020）着手前に、遷移表の未解決4件を代表判断で解決した。**
+> REVOKED は ISSUING/VERIFYING からも遷移可、支払い UNKNOWN の解決先に
+> PARTIALLY_PAID/OVERPAID を追加、工程 IN_PROGRESS/BLOCKED から SKIPPED を許可、
+> Severity CRITICAL→ACTION は現状の表を維持（許可のまま）。詳細は DECISION_LOG
+> 「遷移表の未解決4件を代表判断で解決」参照。あわせて `.husky/pre-push` の
+> エラー握りつぶし（ブランチ名不一致時に vitest が飛ばされる件）は代表判断で
+> 現状維持（修正しない）。
 
 > 2026-08-26 追記11: **SQL と TS の二重実装を機械的に突き合わせるようにした。**
 > 二重実装は2組だけ（VIN 正規化とサイズ区分）。`check_reservation_overlap` は
@@ -296,6 +326,22 @@ Sentry · Resend (+ SendGrid fallback) · Anthropic (Opus 4.8 / Sonnet 4.6 / Hai
 
 - 「Ledra UI/UX & Development Specification v2.0」（2026-08-19）と、それを36タスク
   （IMP-000〜IMP-054）に分解した「Claude Code Implementation Guide v1.0」を実装基準線として採用。
+- **IMP-014（ドメインイベント・監査・冪等基盤）完了**: v2.0 §20 / Appendix B のドメインイベント
+  基盤を型・純粋関数で整備。統一イベントカタログ（`resource.action` 命名、33 型）、既存
+  AuditEventType→DomainEventType マッピング、型付きイベントエンベロープ（actor/tenant/
+  store/risk/version/idempotencyKey）、イベント型別リスクレベル推定。既存の audit / outbox /
+  webhook-topics は変更なし。
+- **IMP-013（権限エンジン・店舗スコープ基盤）完了**: v2.0 §16 の不足分を型・純粋関数で
+  補完。正準権限動詞 7 種の型定義と既存 Permission→正準動詞マッピング、操作リスクレベル
+  4 段階分類、店舗スコープ型と判定関数群（hasStoreAccess/effectiveStoreRole/
+  isStoreManager/accessibleStoreIds）。既存 Permission 55 種・RLS 240 テーブルは変更なし。
+- **IMP-012（認証・招待・端末・step-up 基盤）完了**: v2.0 §15 の認証基盤を型・状態機械・
+  ヘルパーとして整備。(1) 正準オンボーディングフロー状態機械（INVITED→LANGUAGE_SET→
+  OTP_VERIFIED→STORE_ASSIGNED→BIOMETRIC_ENROLLED→ACTIVE）。(2) 汎用 OTP モジュール
+  （HMAC-SHA256 ハッシュ・タイミングセーフ検証・スタッフ OTP にも使える抽象化）。
+  (3) ユーザー端末管理型（デバイス登録・信頼度判定・遠隔失効）。(4) Step-up 認証
+  （操作別要件マップ・利用可能手段判定）。(5) 招待フロー型（ロケール選択付き・
+  トークン検証）。DB マイグレーション・画面実装なし（IMP-013 の前提条件充足が目的）。
 - **IMP-011（i18n 基盤 & 自動車用語集）完了**: ロケール登録を 6 言語（ja/en/vi/id/fil/hi）に
   統一（`src/lib/i18n/locales.ts` が単一定義源）。メッセージファイル 4 言語追加、ドメインラベル
   全 6 軸を 6 言語化、自動車翻訳用語集（~28 用語）、`WithTranslations<T>` UGC 翻訳分離型を新設。
@@ -306,6 +352,18 @@ Sentry · Resend (+ SendGrid fallback) · Anthropic (Opus 4.8 / Sonnet 4.6 / Hai
   （SegmentedControl/StatusBadge/StatusCard/NextActionCard/ProgressCard/Alert/IconButton/
   BottomSheet）+ Badge dot + Button xl。v2.0 の色トークン値は不採用・既存デザインシステム維持
   （DECISION_LOG 2026-08-19）。
+- **IMP-016（オフライン同期キュー・競合検出基盤）部分**: `src/lib/sync/`
+  （同期キュー型・競合検出ヘルパー）は**削除**した。`/code-review` と Codex が
+  独立に同じ結論に着いた —— 実際の outbox（`src/lib/outbox/`）が持っていない情報
+  （メソッド別ステータス・tenant・恒久ブロック状態）を前提にした型・関数だった
+  （DECISION_LOG 2026-08-27）。**イベントカタログの `sync.*` 5 イベント＋
+  `EVENT_RISK` の格付けだけ残す**（`src/lib/events/catalogue.ts`）。
+  同期層の型・競合解決は IMP-032（SYNC_CENTER）で outbox の実際の契約に
+  合わせて設計し直す。
+- **IMP-015（状態機械・遷移表・Certificate Gate 型）完了**: `src/lib/domain/transitions.ts`
+  （正準 6 軸の遷移表＋汎用遷移検証関数）、`src/lib/domain/certificateGate.ts`
+  （v2.0 §19.4 の 10 条件型定義）。既存値→正準値マッピングは各消費タスクで段階的に
+  導入する方針を確定（DECISION_LOG 2026-08-19）。テスト 54 件。
 - **IMP-001（実装ガードレール & 正準ドメイン語彙）完了**: `src/lib/domain/{states,labels}.ts`
   （6軸の正準値+ロケール別ラベル）、`docs/adr/0001`〜`0006`、アドホック状態禁止ルール
   （CLAUDE.md）。既存語彙との統一・マッピングは IMP-015 で判断（ADR-0002）。

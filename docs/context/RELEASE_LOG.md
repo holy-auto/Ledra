@@ -135,6 +135,131 @@ Ledra の画面内で完結させるなら Connect 埋め込みコンポーネ�
 まだ無い。受けなければフォールバックが働き、これまで通りカードのみで動く。
 ## 2026-08-26 VIN トリガーのマイグレーションを `20260826000007` へ改名（本番適用の停止を解除）
 
+## 2026-08-27 「正しく無いのが載るのはあかん」——遷移表を直してから通した（#933）／同期基盤は止めた（#934）
+
+### #933: 正準遷移表の足りない辺を8件直してからマージ
+
+`/code-review` が11件の「足りない辺」を出した。**現場を知らずに書き足さない**ため、
+リポジトリの中に根拠があるものだけを直した。根拠は3種類 —— ADR、稼働中のコード、
+同じファイル内の矛盾。
+
+| 直した辺 | 根拠 |
+|---|---|
+| `UNPAID → PAID` / `→ PARTIALLY_PAID` | `StorefrontBilling.tsx:55-64` の「入金を記録 (本日)」が未入金の請求書へ `status:"paid"` を**直接書いている**。稼働中の1手操作 |
+| `UNKNOWN → UNPAID` | §11.3 が禁じるのは「**UNKNOWN のまま**再決済」であって、照合して結果を確定させることではない |
+| `READY → NOT_READY` | ADR-0005 決定1 の 10 条件には**後から崩れるもの**がある |
+| `ISSUING → READY` / `VERIFYING → ISSUING` | ADR-0005 決定3。ジョブが動かす以上、**ジョブは失敗する** |
+| `PENDING_CORRECTION` を `ISSUING` → `READY`/`NOT_READY` | READY を飛ばすのは決定4 が代表承認を求める「Gate バイパス」 |
+| Severity の表をコメントに合わせる | コメントは「CRITICAL → NORMAL の直接降格だけ禁止」と書いていたが、表は `NORMAL → RESOLVED` も塞いでいた |
+| `COMPLETED → IN_PROGRESS` | 同ファイルの `JOB_TRANSITIONS` が手戻りを許しているのに工程が再開できなかった |
+| `SYNCING → PENDING` | 中断した同期に、起きていない `FAILED`（サーバに拒否された）を書くしかなかった |
+| `CHECKED_IN → NO_SHOW` を**削除** | 入庫済みは「来店なし」になりえない |
+
+**8件すべてを元に戻す mutation probe で11テストが落ちる**ことを確認した。
+根拠の無い3件（REVOKED の到達範囲・部分キャプチャ・着手済み工程の SKIPPED）は
+書き足さず、モジュール先頭に未解決として明記した。
+
+あわせてレビューが見つけた実在の欠陥も直した ——
+`isValidTransition` が `"toString"` で TypeError、`isTerminalState` が未知の状態を
+「終端」と答える（稼働中の `reservations.status` の `completed` が完了扱いに化ける）。
+
+### #934: 同期基盤は、修正を止めて設計の話として上げた
+
+`/code-review` で5件直した直後に **Codex が同じ `src/lib/sync/` に7件返した。**
+指摘が収束していないので1件ずつ潰すのをやめた。**二人のレビュアーが独立に
+同じ結論に着いている** —— この module は「outbox がこういう情報をくれる」前提で
+設計されているが、実際の outbox はその情報を持っていない。
+
+- 409 を拾う経路が**二重に**塞がっている（`queue.ts:423` と `public/sw.js:359`）
+- **ETag/version の楽観ロックはリポジトリに1件も無い。**409 はすべて重複・多重防止
+- `OutboxItem` に tenant 欄が無く、`IdleAutoLogout` はキューを消さない
+- `MenuItemsClient.tsx:299` の `kind:"other"` を `SyncResourceType` が表せない
+- 証明書のオフライン作成は意図的に3種を順に積むのに、全部「競合」になる
+- outbox が二度と送らないと決めたアイテムに「再試行」を出すことになる
+
+### ついでに直した既存コードの穴（IMP-016 とは無関係）
+
+- **`otp.ts`**: 壊れた有効期限で OTP が失効しなかった（`NaN < Date.now()` は false）
+- **`permissionVerbs.ts`**: `platform:operations` が「閲覧」に分類されていた。
+  未知の動詞の既定も `VIEW` → **`MANAGE`** に変更（低リスク側に倒さない）
+- **prototype 素引きが4ファイル**: `transitions.ts`・`conflict.ts`・`negotiate.ts`・
+  `catalogue.ts`。`table["constructor"]` が関数を返し、`?.` も `?? null` も捕まえない
+- **`vehicle.created`** が「統一カタログ」に無く、足したら今度は `EVENT_RISK` 未登録で
+  同義の `vehicle.registered`（medium）と格付けが割れた
+
+## 2026-08-27 積み上がっていた実装 PR を main へ通し始めた（#928〜#932 マージ）
+
+前のセッションが #928 → #929 → … → #951 と**前の PR をベースにして22本積み上げて**
+いた。1本ずつ main へベースを付け替えて通す運用に切り替え、**6本をマージ**した。
+
+| PR | 内容 | 状態 |
+|---|---|---|
+| #980 | SQL↔TS パリティテスト、`calcSizeClass` の丸めを SQL に合わせる | マージ済 |
+| #928 | IMP-010 デザイントークン & 共有コンポーネント | マージ済 |
+| #929 | IMP-011 i18n 基盤（6言語・用語集・翻訳分離型） | マージ済 |
+| #930 | IMP-012 認証基盤（オンボーディング・OTP・端末・step-up・招待） | マージ済 |
+| #931 | IMP-013 権限エンジン・店舗スコープ | マージ済 |
+| #932 | IMP-014 ドメインイベント・監査・冪等 | マージ済 |
+| #933 | IMP-015 状態機械・遷移表・Certificate Gate 型 | **マージ済**（遷移表を直してから） |
+| #934 | IMP-016 オフライン同期キュー・競合検出 | **代表判断待ち**（下記） |
+
+**#930〜#932 が追加したモジュールは、いずれも稼働中コードからの import が 0 件**
+（`src/lib/auth/*`・`lib/events`・`lib/sync`・`lib/domain/{transitions,certificateGate}`）。
+配線は後続タスクで行うので、マージしても実行時の挙動は変わらない。
+#929 の `SUPPORTED_LOCALES` 2→6 も、唯一の実行時消費者 `responseI18n.ts` に
+呼び出し元が 0 件なので同じ。
+
+### 途中で見つけて直したもの
+
+- **`useDialogA11y`**: フォーカストラップが `display:none` / `hidden` / `tabindex="-1"`
+  の要素を候補に含めており、「最後の要素」を取り違えて**フォーカスがダイアログの外へ
+  抜けていた**。body スクロールロックも、閉じたダイアログがマウントされるだけで
+  他のモーダルのロックを解除していた。`Modal.tsx` / `Drawer.tsx` を同じ hook に
+  載せ替えて**書き込み口を1つに**した（-126 行）。
+- **`negotiateLocale`**: `Accept-Language: tl;q=0` が `fil` を返していた。
+  RFC 9110 で `q=0` は「受け入れ不可」。候補から外していなかった。
+- **`ProgressCard`**: `percent={0 / 0}` で `aria-valuenow="NaN"` と見える `NaN%` を
+  描画していた。clamp は NaN を素通しする。
+- **`WithTranslations`**: 「`shop_announcements.translations` の形式化」と書きながら、
+  そのテーブルが実際に書いている `zh` を型が弾いていた（UI ロケール6言語に無い）。
+  翻訳先の集合を型引数にした。
+- **`isValidTransition`**: `"toString"` を渡すと `TypeError` で落ちていた。
+  `?.` は prototype 由来の値を守らない。`isTerminalState` は未知の状態を
+  「終端」と答えており、`reservations.status` の `completed` が完了扱いになった。
+
+いずれも mutation probe（修正を戻すと落ちること）を実行確認したテストを添えた。
+## 2026-08-26 LINEで顧客が予約を自分でキャンセルできるセルフ対応（第一弾・キャンセルのみ、branch claude/line-chatbot-ledra-dy2fiq）
+
+- 内容: これまで `cancel` intent は抽出しても人手に回していたが、顧客が LINE で「予約を
+  キャンセルしたい」と送った時点で、**本人の今後の予約を提示→確認ボタン→即時キャンセル**
+  （`status=cancelled`＋`cancelled_at`/`cancel_reason`＋Google カレンダー削除＋スタッフ通知）
+  を自動化した。会話フロー基盤（`line_conversation_flows` 状態機械）を再利用。
+  - 締め切りは **作業日の前日まで**（`scheduled_date > 今日(JST, todayJst)`）。当日・過去・
+    対象なし・未紐付けはスタッフ引き継ぎ。反映は**即時自動**（合意事項）。
+  - 破壊的操作のため必ず確認ボタン（`flow:cancel_confirm`/`flow:cancel_abort`）を挟み、
+    **本人の予約のみ**対象（`cancelReservationById` が tenant＋customer 一致を検証、既
+    cancelled/completed は冪等 no-op）。確定直前に締め切りを再検証、closed 楽観クレームで
+    二重実行を防止。
+  - 新状態 `awaiting_cancel_pick`/`awaiting_cancel_confirm`、新イベント（`states.ts`/`interpret.ts`）。
+    共有ヘルパー `src/lib/reservations/mutate.ts`（キャンセル＋gcal 削除）、起点 IO
+    `src/lib/ai/automation/cancelFlowAuto.ts`、実行は `conversationFlowPostback.ts`。
+  - opt-in `inbound_message.auto_self_cancel`（既定 OFF、`actionCatalog.ts`/`orchestrator.ts`）。
+    会話フロー opt-in とは独立（キャンセルのボタン postback は会話フロー OFF でも処理）。
+- 対象: LINE 受信の AI 自動応答（全業種、Standard プラン以上・opt-in）。#908 とは別 PR。
+- 検証: 単体テスト追加（`reservations/mutate`・`cancelFlowAuto`・`conversationFlowPostback`・
+  `inboundAutoReplyGate`・`interpret`・`states`）。automation+line+reservations 全 274 件パス、tsc/eslint エラー0。
+- コードレビュー由来の追加ハードニング（同 PR、`/code-review`）:
+  - 提示ボタン（キャンセル確認）が届かなければ作った `awaiting_cancel_*` 行を `expired` に落とす
+    （残すと顧客はボタン無しで前進できず 72h 他フローも塞がる）。`cancelFlowAuto` と pick→confirm の両経路。
+  - 「スタッフに相談したい」（`flow:consult`）を **self-cancel のみ有効なテナントでも受ける**
+    （キャンセル選択画面にも出るボタンなので、会話フロー OFF だと死にボタンになっていた）。
+  - 締め切り「前日まで」を **確定直前の実 DB 値**でも検証（`cancelReservationById(cutoffDate)`）。
+    提示スナップショット依存の pre-check に加え、提示後にスタッフが当日へ日程変更した場合も安全。
+  - `cancelReservationById` の UPDATE に `.select("id")` を付け、ガードで 0 行更新になったケースを
+    成功と誤認しない（冪等 no-op として `alreadyFinal:true`）。
+- スコープ外（後続PR）: 日程変更（reschedule、既存の日程候補提示＋既存予約 UPDATE の再利用）、
+  リマインダーへのキャンセルボタン添付、admin route.ts のキャンセル処理の共有ヘルパー寄せ。
+
 ## 2026-08-26 SQL と TS の二重実装を機械的に突き合わせる（サイズ区分の丸め違いを修正）
 
 「ズレは全部直さなあかん」への対応。洗い出した二重実装は2組だけだった
@@ -1148,6 +1273,76 @@ supabase migration repair --status reverted 20260825000000
 - 内容: 何を実装・変更したか
 - 対象: どの画面・API・業種向けか
 ```
+
+## 2026-08-19 IMP-016 オフライン同期キュー・競合検出基盤（branch impl/IMP-016-offline-sync / PR #TBD）
+
+- 内容: v2.0 §14 のオフライン同期基盤を型・純粋関数で整備。(1) 同期キュー型
+  （`SyncQueueItem` — 既存 OutboxItem を正準 SyncState に接続。`SyncResourceType` 8 種で
+  ドメインレベルのリソース分類）。(2) 競合検出・解決型（`SyncConflict` 3 種別 ×
+  `ConflictResolutionStrategy` 4 方針。HTTP レスポンスからの競合検出関数。重複キュー
+  検出関数）。(3) リソースタイプ別デフォルト解決戦略（証明書・部品＝手動、予約・顧客＝
+  クライアント優先）。(4) 同期ドメインイベント 5 種を DOMAIN_EVENT_TYPES に追加
+  （sync.started/completed/failed/conflict_detected/conflict_resolved）。(5) 同期サマリー
+  型（`SyncSummary` — SYNC_CENTER 画面の状態別件数表示用）。既存の outbox インフラ
+  （IndexedDB キュー・Background Sync・SW）は変更なし。DB マイグレーションなし。
+  テスト 30 件。
+- 対象: 開発基盤（IMP-032 SYNC_CENTER 画面・IMP-023 作業エビデンス・IMP-053 エラー契約の前提条件）。
+- **後日訂正（2026-08-27）**: (1)〜(3)・(5) の `src/lib/sync/`（型・競合検出ヘルパー）は
+  **削除した。**`/code-review` と Codex が独立に、実際の outbox（`src/lib/outbox/`）が
+  持たない情報（メソッド別ステータス・tenant・恒久ブロック状態）を前提にしていると
+  指摘し、修正が収束しなかったため（DECISION_LOG 2026-08-27）。(4) の `sync.*` 5
+  イベントと `EVENT_RISK` の格付けだけ残した。同期層の型・競合解決は IMP-032 で
+  outbox の実際の契約に合わせて設計し直す。
+
+## 2026-08-19 IMP-015 状態機械・遷移表・Certificate Gate 型（branch impl/IMP-015-state-machines / PR #TBD）
+
+- 内容: v2.0 §19 の状態機械基盤を型・純粋関数で整備。(1) 正準 6 軸（Job/Step/Severity/
+  Certificate/Payment/Sync）の遷移表（`Record<State, readonly State[]>`）。
+  (2) 汎用遷移検証関数（`isValidTransition` / `validNextStates` / `isTerminalState`）と
+  拒否理由生成（`rejectTransition`）。(3) Certificate Gate 10 条件の型定義
+  （v2.0 §19.4 / ADR-0005。評価器の実装は IMP-028）。(4) UNKNOWN → PENDING 禁止
+  （v2.0 §11.3）・CRITICAL → NORMAL 直接降格禁止を遷移表で構造的に表現。
+  既存の signoff 状態機械・photoRequirement・API ルートの遷移ロジックは変更なし。
+  DB マイグレーションなし。テスト 54 件。
+- 対象: 開発基盤（IMP-016 オフライン同期・IMP-028 Certificate Gate・IMP-031 例外状態の前提条件）。
+- ADR-0002 判断事項（既存値→正準値マッピング方針）: TS 層マッピングは各消費タスクで
+  段階的に導入する。IMP-015 では遷移表のみ定義し変換関数は作らない。
+- **後日追記（2026-08-27）**: 根拠が無く保留していた4件を代表判断で追加。
+  証明書 REVOKED を ISSUING/VERIFYING からも遷移可に、支払い UNKNOWN の解決先に
+  PARTIALLY_PAID/OVERPAID を追加、工程 IN_PROGRESS/BLOCKED から SKIPPED を許可、
+  Severity CRITICAL→ACTION は現状の表（許可のまま）で確定。詳細は DECISION_LOG
+  「遷移表の未解決4件を代表判断で解決」参照。テスト 6 件追加（mutation-probe 検証済み）。
+
+## 2026-08-19 IMP-014 ドメインイベント・監査・冪等基盤（branch impl/IMP-014-domain-events / PR #932）
+
+- 内容: v2.0 §20 / Appendix B のドメインイベント基盤を型・純粋関数で整備。(1) 統一ドメイン
+  イベントカタログ（`resource.action` 命名規約で 33 イベント型を網羅。既存 AuditEventType 27 種
+  + AiAuditAction 1 種 + 未型化 2 種 + webhook topics 由来 3 種）。(2) 既存 AuditEventType→
+  DomainEventType マッピング（段階的移行用）。(3) 型付きドメインイベントエンベロープ
+  （actor 5 種・テナント/店舗スコープ・リスクレベル・冪等キー・バージョン・subject 参照）。
+  (4) イベント型別リスクレベル推定（IMP-013 operationRisk と整合）。既存の AuditEventType /
+  WebhookTopic / logAuditEvent / emitTenantEvent は変更なし。DB マイグレーション・
+  パイプライン変更なし。
+- 対象: 開発基盤（IMP-044 イベントパイプライン・IMP-015 状態機械の前提条件）。
+
+## 2026-08-19 IMP-013 権限エンジン・店舗スコープ基盤（branch impl/IMP-013-permission-engine / PR #931）
+
+- 内容: v2.0 §16 の不足分を型・純粋関数で補完。(1) 正準権限動詞 7 種（VIEW/EDIT/CONFIRM/
+  APPROVE/ISSUE/MANAGE/EXPORT）の型定義と既存 Permission→正準動詞マッピング。
+  (2) 操作リスクレベル 4 段階（low/medium/high/critical）の分類と判定関数（IMP-012
+  step-up 認証と連携）。(3) 店舗スコープ型（store_memberships DB スキーマ対応）と
+  判定関数群（hasStoreAccess/effectiveStoreRole/isStoreManager/accessibleStoreIds）。
+  既存の Permission 型・ROLE_PERMISSIONS マトリクスは変更なし。DB マイグレーションなし。
+- 対象: 開発基盤（IMP-014 ドメインイベント・監査の前提条件）。
+
+## 2026-08-19 IMP-012 認証・招待・端末・step-up 基盤（branch impl/IMP-012-auth-foundation / PR #930）
+
+- 内容: v2.0 §15 の認証基盤を型・状態機械・ヘルパーとして整備。(1) 正準オンボーディング
+  フロー状態機械（6 ステップ: INVITED→ACTIVE）。(2) 汎用 OTP モジュール（生成・HMAC ハッシュ・
+  タイミングセーフ検証）。(3) ユーザー端末管理型（登録・信頼度3段階・遠隔失効）。
+  (4) Step-up 認証（7 操作カテゴリの要件マップ・利用可能手段判定）。(5) 招待フロー型
+  （ロケール選択付き・トークン検証・有効期限）。DB マイグレーション・画面実装なし。
+- 対象: 開発基盤（IMP-013 権限エンジンの前提条件）。
 
 ## 2026-08-19 IMP-011 i18n 基盤 & 自動車用語集（branch impl/IMP-011-i18n-foundation / PR #929）
 

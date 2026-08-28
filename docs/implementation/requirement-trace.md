@@ -130,7 +130,7 @@ Payment Policy(v2.0 §11.3: Consumer PAID / B2B CREDIT_APPROVED / Insurance INSU
 | §17 | Localization & Terminology | 自前 i18n 基盤(`src/lib/i18n/`)。6言語(ja/en/vi/id/fil/hi)のロケール登録・メッセージ・ドメインラベル・自動車用語集・original/translated 分離型(IMP-011 で実装)。AI 翻訳 `translateContent` は別系統 | 部分 | **基盤は完了。画面適用はゼロのまま**(ハードコード日本語の移行は範囲外、docs/operations/i18n.md 方針)。vi/id/fil/hi の訳語検証は IMP-051 | IMP-011(基盤済) / IMP-051(訳語検証) |
 | §18 | Privacy / Data Access / Retention | データ保持 cron(`data-retention`)+顧客削除リクエスト(`customer_deletion_requests`)+PII 開示制御(保険 `is_pii_disclosed()`)+`docs/data-retention.md` | 部分 | データクラス4分類・可視性4レベルの体系なし。公開レンディションのマスキングなし。Export 監査は部分(`document_share_log` 等) | IMP-050 |
 | §19 | State Machines & Certificate Gate | サインオフ状態機械(`computeSignoffState`: 順序ゲート+SLA+写真充足)+写真ゲートのサーバ側チョークポイント3箇所 | 別方式 | v2.0 の単一バックエンド Certificate Gate 評価器(10条件)はない。ゲート条件が写真+サインオフに分散。無効遷移の網羅的拒否表なし | IMP-015, 028, 031 |
-| §20 | Event Architecture / NEXT ACTION / Prediction | `vehicle_histories`(AuditEventType 27種)+`outbox_events`+冪等性3系統(current-architecture.md §6)。AI `jobNextAction`/`nextActionAuto` | 部分 | v2.0 Core Event Catalogue(29イベント)との命名・網羅差。イベント→優先度再計算→通知評価のパイプラインなし。scheduled/predicted/actual の3分離は部分(`estimated_min` 等) | IMP-014, 044 |
+| §20 | Event Architecture / NEXT ACTION / Prediction | `vehicle_histories`(AuditEventType 23種)+`outbox_events`+冪等性3系統(current-architecture.md §6)。AI `jobNextAction`/`nextActionAuto` | 部分 | v2.0 Core Event Catalogue(29イベント)との命名・網羅差。イベント→優先度再計算→通知評価のパイプラインなし。scheduled/predicted/actual の3分離は部分(`estimated_min` 等) | IMP-014, 044 |
 | §21 | Analytics & Management | `/admin/management`(KPI)+ダッシュボード+価格/スタッフ/工程/課金分析+店舗利用状況 | 部分 | v2.0 指標セット(VERIFIED率・Evidence不足率・レビュー待ち時間等)は未実装。スタッフ表示は実績分析であり capacity visibility 方式ではない | IMP-041, 046 |
 | §22 | Screen IDs & Requirement IDs | 本書(トレーサビリティ確立) | 部分 | 個別要件 ID の採番は仕様書側に存在しない(前文参照) | IMP-000, 001 |
 | §23 | QA / Acceptance Criteria | Playwright 15 spec(認可・公開ページ・シード付きフルフロー)。ただし CI から E2E 削除済み(実バックエンド依存) | 部分 | v2.0 必須 E2E(正常フロー+例外10種)は未自動化。CI で E2E が回らない | IMP-052 |
@@ -187,9 +187,9 @@ Payment Policy(v2.0 §11.3: Consumer PAID / B2B CREDIT_APPROVED / Insurance INSU
 | IMP-011 | 1 / P0 | §17, L10N(i18n 基盤・用語集) | **完了**。6言語のロケール登録統一・`messages/{vi,id,fil,hi}.json`・ドメインラベル6言語・自動車用語集・original/translated 分離型。画面移行と next-intl 配線は範囲外 | 001 |
 | IMP-012 | 1 / P0 | §15, AUTH_*(認証・招待・端末・step-up) | password 認証+WebAuthn 操作ゲートあり。正準フロー(Invite→OTP→生体)・端末管理なし(別方式) | 000, 001, 011 |
 | IMP-013 | 1 / P0 | §16(権限エンジン・店舗スコープ) | Role5段+Permission55種+RLS240 稼働。権限動詞・Assignment/Risk 軸なし(部分) | 001, 012 |
-| IMP-014 | 1 / P0 | §20, Appendix B(ドメインイベント・監査・冪等) | AuditEventType27種+outbox+冪等3系統あり。イベントカタログ網羅・パイプラインなし(部分) | 001, 013 |
-| IMP-015 | 1 / P0 | §19(状態機械) | サインオフ状態機械+写真ゲートあり。正準軸の遷移表・拒否理由なし(別方式) | 001, 014 |
-| IMP-016 | 1 / P0 | §14(オフライン永続・同期キュー・競合) | Web outbox+SW あり。モバイルなし。CONFLICT なし(部分) | 001, 014, 015 |
+| IMP-014 | 1 / P0 | §20, Appendix B(ドメインイベント・監査・冪等) | AuditEventType23種+outbox+冪等3系統あり。イベントカタログ網羅・パイプラインなし(部分) | 001, 013 |
+| IMP-015 | 1 / P0 | §19(状態機械) | **実装済み**(2026-08-19): 正準6軸遷移表(`src/lib/domain/transitions.ts`)+汎用遷移検証関数+Certificate Gate 10条件型定義(`certificateGate.ts`)。既存値→正準値マッピングは消費タスク(IMP-028/031/027)で段階的導入。既存signoff/photoRequirement変更なし。残っていた設計論点4件(REVOKED到達性・支払いUNKNOWN解決先・着手後SKIPPED・Severity CRITICAL→ACTION)は2026-08-27に代表判断で解決済み(DECISION_LOG参照) | 001, 014 |
+| IMP-016 | 1 / P0 | §14(オフライン永続・同期キュー・競合) | **部分**(2026-08-27): 同期ドメインイベント5種をカタログに追加(`src/lib/events/catalogue.ts`)+EVENT_RISK格付け。同期キュー型・競合検出ヘルパー(`src/lib/sync/`)は削除 — 実際の outbox(`src/lib/outbox/`)が持たない情報(メソッド別ステータス/tenant/恒久ブロック状態)を前提にしていたため(DECISION_LOG 2026-08-27)。型・競合解決の設計はIMP-032へ | 001, 014, 015, 032 |
 | IMP-020 | 2 / P0 | §2, §4, HOME 他(ナビ・検索・Quick Create) | 5タブ実値不一致。横断検索部分。Quick Create なし(部分) | 010, 011, 013 |
 | IMP-021 | 2 / P0 | §5, HOME(3秒理解ホーム) | ダッシュボード稼働。NEXT ACTION 中心設計なし(別方式) | 010, 013, 015, 020 |
 | IMP-022 | 2 / P0 | §6, WORK_LIST/JOB_HUB | `/admin/jobs/[id]` 統合ワークスペースあり。情報階層・工程CTA規律は未適用(部分) | 015, 020, 021 |
