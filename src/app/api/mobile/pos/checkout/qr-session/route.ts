@@ -7,6 +7,7 @@ import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { apiJson, apiUnauthorized, apiForbidden, apiValidationError, apiInternalError } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { posQrSessionSchema } from "@/lib/validations/pos";
+import { createPosCheckoutSession } from "@/lib/stripe/posCheckoutSession";
 
 export const dynamic = "force-dynamic";
 
@@ -123,9 +124,8 @@ export async function POST(req: NextRequest) {
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://ledra.co.jp";
     const successUrl = `${baseUrl}/pos/qr-complete?reservation_id=${reservationId}`;
 
-    const sessionParams: Stripe.Checkout.SessionCreateParams = {
+    const sessionParams: Omit<Stripe.Checkout.SessionCreateParams, "payment_method_types"> = {
       mode: "payment",
-      payment_method_types: ["card"],
       line_items: [
         {
           price_data: {
@@ -160,12 +160,13 @@ export async function POST(req: NextRequest) {
     // → フィー: なし（POS決済はプラットフォームフィー不要）
     const stripeOptions = connectAccountId ? { stripeAccount: connectAccountId } : undefined;
 
-    const session = await stripe.checkout.sessions.create(sessionParams, stripeOptions);
+    const session = await createPosCheckoutSession(stripe, amount, sessionParams, stripeOptions);
 
     return apiJson({
       url: session.url,
       session_id: session.id,
       connect_account: connectAccountId ?? null,
+      payment_method_types: session.payment_method_types,
     });
   } catch (e) {
     return apiInternalError(e, "mobile/pos/checkout/qr-session");

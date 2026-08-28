@@ -13,11 +13,26 @@
  * 記録すると、請求額と売上が食い違う。
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
+import type Stripe from "stripe";
 
 import { getStripeClient } from "@/lib/stripe/client";
 
+/** POS の会計手段（`pos_constants.PAYMENT_METHODS` の値）。 */
+export type ResolvedPaymentMethod = "card" | "qr";
+
 export type ResolvedCheckoutSale =
-  { ok: true; paymentIntentId: string | null; amountTotal: number } | { ok: false; error: string };
+  | {
+      ok: true;
+      paymentIntentId: string | null;
+      amountTotal: number;
+      /**
+       * 実際に使われた決済手段。PayPay で払われた会計を「カード」で記帳すると
+       * レジ締めの突合が合わなくなるので、**Stripe 側の実績**から決める。
+       * 判別できなければ null（呼び出し側の申告のまま記録する）。
+       */
+      paymentMethod: ResolvedPaymentMethod | null;
+    }
+  | { ok: false; error: string };
 
 export async function resolvePaidCheckoutSession(
   admin: SupabaseClient,
@@ -40,6 +55,9 @@ export async function resolvePaidCheckoutSession(
   try {
     session = await stripe.checkout.sessions.retrieve(
       sessionId,
+      // 実際の決済手段は charge にしか出ない（`payment_method_types` は
+      // 「提示した候補」であって「使われた手段」ではない）
+      { expand: ["payment_intent.latest_charge"] },
       connectAccountId ? { stripeAccount: connectAccountId } : undefined,
     );
   } catch {
@@ -62,5 +80,24 @@ export async function resolvePaidCheckoutSession(
     paymentIntentId:
       typeof session.payment_intent === "string" ? session.payment_intent : (session.payment_intent?.id ?? null),
     amountTotal: session.amount_total,
+    paymentMethod: resolvePaymentMethod(session),
   };
+}
+
+/**
+ * 実際に使われた決済手段を Ledra の会計手段に落とす。
+ *
+ * PayPay / Alipay / WeChat Pay は Ledra 側の「QR決済」に当たる。
+ * Apple Pay / Google Pay は Stripe 上 `card` として来るので、これまで通りカード。
+ */
+function resolvePaymentMethod(session: Stripe.Checkout.Session): ResolvedPaymentMethod | null {
+  const intent = typeof session.payment_intent === "string" ? null : session.payment_intent;
+  const charge = typeof intent?.latest_charge === "string" ? null : intent?.latest_charge;
+  // ponytail: `paypay` は SDK v20.4.1 の PaymentMethodDetails 型にまだ無い
+  // （public preview）ので string で比較する。SDK が追いついたら union のまま
+  // switch にできる。
+  const type: string | undefined = charge?.payment_method_details?.type;
+  if (type === "card") return "card";
+  if (type === "paypay" || type === "alipay" || type === "wechat_pay") return "qr";
+  return null;
 }

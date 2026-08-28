@@ -1,7 +1,8 @@
 /**
  * POS の売上を **PaymentIntent 単位で1回だけ** 記録する。
  *
- * **タッチ決済（Terminal）・カード番号入力（Checkout）・Web の QR 決済がここを通る。**
+ * **タッチ決済（Terminal）・カード番号入力（Checkout）・Web の QR 決済・
+ * Square 経由の QR コード決済がここを通る。**
  *
  * なぜ要るか: カードはこの記録より**先に**切れている。記録が失敗して操作者が
  * やり直すと、`pos_checkout` が2度呼ばれて**同じ決済で売上が2件立つ**。
@@ -51,10 +52,23 @@ export type RecordPosSaleResult =
     }
   | { ok: false; error: unknown };
 
-/** `pi_` で始まる文字列だけを冪等キーとして扱う */
-function paymentIntentKey(id: string | null | undefined): string | null {
-  const v = (id ?? "").trim();
-  return v.startsWith("pi_") ? v : null;
+/** 冪等キー: どの列にどの値を入れるか（Stripe の PaymentIntent / Square の payment）。 */
+interface IdempotencyKey {
+  column: "stripe_payment_intent_id" | "square_payment_id";
+  value: string;
+}
+
+/**
+ * 冪等キーを決める。`pi_` で始まる文字列だけを Stripe の鍵として扱う。
+ * Square の payment_id は接頭辞が定まっていないので、**呼び出し側が
+ * Square から取り直して確かめたもの**（`squarePaymentId`）だけを受ける。
+ */
+function resolveKey(paymentIntentId?: string | null, squarePaymentId?: string | null): IdempotencyKey | null {
+  const pi = (paymentIntentId ?? "").trim();
+  if (pi.startsWith("pi_")) return { column: "stripe_payment_intent_id", value: pi };
+  const sq = (squarePaymentId ?? "").trim();
+  if (sq) return { column: "square_payment_id", value: sq };
+  return null;
 }
 
 export async function recordPosSale(
@@ -62,18 +76,19 @@ export async function recordPosSale(
   caller: { tenantId: string; userId: string },
   args: PosSaleArgs,
   paymentIntentId?: string | null,
+  squarePaymentId?: string | null,
 ): Promise<RecordPosSaleResult> {
-  const pi = paymentIntentKey(paymentIntentId);
+  const key = resolveKey(paymentIntentId, squarePaymentId);
 
-  // ── 冪等: 同じ PaymentIntent が既に記録されていれば作り直さない ──
-  if (pi) {
+  // ── 冪等: 同じ決済が既に記録されていれば作り直さない ──
+  if (key) {
     // 一意インデックスはテナントを見ない（列1本）。**照合もテナントで絞らない。**
     // 絞ると他テナントに記録済みの PaymentIntent を見落とし、pos_checkout が
     // 走った後で一意制約に当たる（売上と領収書だけが残る）
     const { data: existing, error: lookupErr } = await admin
       .from("payments")
       .select("id, tenant_id, amount, document_id")
-      .eq("stripe_payment_intent_id", pi)
+      .eq(key.column, key.value)
       .maybeSingle();
 
     // **照合できなかったら作らない。** 失敗を「無かった」と読むと、
@@ -83,7 +98,7 @@ export async function recordPosSale(
     if (existing && existing.tenant_id !== caller.tenantId) {
       return {
         ok: false,
-        error: new Error(`この決済は別のテナントに記録済みです（payment_intent=${pi}）。`),
+        error: new Error(`この決済は別のテナントに記録済みです（${key.column}=${key.value}）。`),
       };
     }
 
@@ -136,22 +151,23 @@ export async function recordPosSale(
 
   const paymentId = (data as { payment_id?: string | null } | null)?.payment_id ?? null;
 
-  // PaymentIntent の ID を残す。これが無いと、後から突き合わせて重複を見つけられない
-  if (pi && paymentId) {
+  // 決済の ID を残す。これが無いと、後から突き合わせて重複を見つけられない
+  if (key && paymentId) {
     const { error: linkErr } = await admin
       .from("payments")
-      .update({ stripe_payment_intent_id: pi })
+      .update({ [key.column]: key.value })
       .eq("id", paymentId)
       .eq("tenant_id", caller.tenantId);
 
     if (linkErr) {
-      // 23505 = 一意制約違反。事前確認と作成の間に別の要求が同じ PaymentIntent を
+      // 23505 = 一意制約違反。事前確認と作成の間に別の要求が同じ決済を
       // 記録した、ということ。**支払が2件できている。**
       // 黙って ok を返すと重複が見えなくなるので、失敗として返して気づかせる
       const duplicate = (linkErr as { code?: string }).code === "23505";
-      logger.error("recordPosSale: stripe_payment_intent_id の記録に失敗", {
+      logger.error("recordPosSale: 決済 ID の記録に失敗", {
         paymentId,
-        paymentIntentId: pi,
+        column: key.column,
+        value: key.value,
         duplicate,
         err: linkErr.message,
       });
@@ -159,7 +175,7 @@ export async function recordPosSale(
         return {
           ok: false,
           error: new Error(
-            `同じ決済が二重に記録されました（payment_id=${paymentId} / payment_intent=${pi}）。` +
+            `同じ決済が二重に記録されました（payment_id=${paymentId} / ${key.column}=${key.value}）。` +
               "経理で重複を確認してください。",
           ),
         };
@@ -168,18 +184,21 @@ export async function recordPosSale(
 
     // 更新が0行に当たっても PostgREST は error=null を返す。**入ったことを確かめる。**
     // 鍵が入っていない売上は、次に同じ決済を記録したときに重複になる
+    // 列名は**定数で書く**。動的にすると `check:schema` がクエリの中身を読めず、
+    // 存在しない列を書いても気づけないクエリが1件増える
     const { data: keyed } = await admin
       .from("payments")
-      .select("stripe_payment_intent_id")
+      .select("stripe_payment_intent_id, square_payment_id")
       .eq("id", paymentId)
       .maybeSingle();
-    if (keyed?.stripe_payment_intent_id !== pi) {
+    if ((keyed as Record<string, string | null> | null)?.[key.column] !== key.value) {
       // ここで失敗にすると、操作者がやり直して**本当に**重複を作る（鍵が無いので
       // 次回の照合も素通りする）。売上は残したまま、突き合わせのために記録する。
       // ponytail: 上限。鍵の無い行は手で埋める必要がある
-      logger.error("recordPosSale: PaymentIntent の鍵が入らなかった（重複防止が効かない）", {
+      logger.error("recordPosSale: 決済の鍵が入らなかった（重複防止が効かない）", {
         paymentId,
-        paymentIntentId: pi,
+        column: key.column,
+        value: key.value,
       });
     }
   }

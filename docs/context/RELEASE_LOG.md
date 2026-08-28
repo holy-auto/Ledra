@@ -4,6 +4,137 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-08-26 決済手段の申請は「選べる」形にする（Ledra からは強制しない）＋手順書
+
+代表の方針「Ledra 側としては強制しない」「Square はアカウント作成のオンボーディングで
+やるようになってるはず」を受けて、申請の扱いを変えた。
+
+- **Connect 作成時の capability 一括要求をやめ、選択制にした**（既定は何も要求
+  しない）。接続画面に「一緒に申請する決済手段（任意）」のチェックを出し、
+  選ばれた分だけ要求する。許可リストに無い値は無視する（渡された値をそのまま
+  Stripe に送らない）。**選ばなくても接続でき、後から Stripe のダッシュボードで
+  いつでも申請できる**ことを画面にも書いた。
+- 申請できる手段の一覧を `src/lib/stripe/optionalCapabilities.ts` に切り出し、
+  画面とサーバで同じものを見るようにした（サーバ専用の依存を持たせない）。
+- **`docs/payment-methods-setup.md` を新設**。加盟店がやること（Stripe 接続 →
+  決済手段の有効化 → Square 接続・端末ペアリング）と、代表が本番前に1回ずつ
+  通す確認手順（Stripe のテスト環境・Square Sandbox）、うまくいかないときの
+  見どころを1枚にまとめた。
+
+検証: `tsc` / `vitest` 3996件（新規2件: 選ばれていなければ要求しない・許可リスト外を
+要求しない）/ `eslint` 0 errors。
+
+## 2026-08-26 Square 経由で d払い・楽天ペイ・au PAY・メルペイを Ledra から決済する
+
+代表の「ほかのやつは別のシステムの API を活用しよう」から。Stripe が対応して
+いない4ブランドは **Square** で出す。Square は日本で主要7種の QR コード決済
+（PayPay / d払い / 楽天ペイ / au PAY / メルペイ / WeChat Pay / Alipay+）に対応し、
+**申請1回で全ブランド**が使える（手数料3.25%）。Ledra は既に Square と OAuth
+連携済み（従来は売上の取り込みのみ）。
+
+- **端末あり**: Terminal API で `payment_type: "QR_CODE"` のチェックアウトを作ると、
+  Square 端末がマルチブランド QR を表示する。**店員は Ledra から移動しない。**
+  設定画面から端末をペアリングできる（デバイスコードを発行 → 端末に入力）。
+- **端末なし**: Square の QR は**対面決済専用**で Square のアプリ/端末でしか
+  表示できないため、Square アプリで会計 → Ledra に戻って「取り込む」。
+  Ledra が Square の実績（直近30分・同額・同店舗）を引き当てて記帳する。
+  **候補が1件に絞れないときは記帳しない**（同額の会計が重なると取り違えるため）。
+- 記帳は Stripe 側と同じ形 —— **サーバが Square から取り直して**完了と金額を
+  確かめ、`payments.square_payment_id`（部分一意インデックス）で二重計上を止める。
+  `recordPosSale` の冪等キーを「列＋値」に一般化した。
+- Square の OAuth 権限に `PAYMENTS_WRITE` と `DEVICE_CREDENTIAL_MANAGEMENT` を追加。
+  **既存の接続は繋ぎ直しが必要**（古いトークンは新しい権限を持たない）。
+- Square 未接続の店は従来どおり「QR決済＝記録だけ」。会計は止まらない。
+
+検証: `tsc` / `vitest` 3960件（Square 関連 新規9件）/ `eslint` 0 errors。
+
+**未検証**: Square API を実際に叩いていない（この環境から `developer.squareup.com`
+にも本番キーにも届かない）。Terminal API の `payment_type: "QR_CODE"`・
+デバイスコードの発行・決済の引き当ては、Sandbox（日本ロケーション）で
+1回ずつ通す必要がある【要確認】。
+**未実装**: モバイルアプリ側の導線（サーバの API は共通で使える）。
+
+## 2026-08-26 使える決済手段を全部載せる（Alipay / WeChat Pay / コンビニ / 銀行振込 / Link）
+
+代表の「組み込める奴は全部組み込んで」から。**「使える手段は自動で増える。
+使えない手段があっても既存の機能は落ちない」**という1つの形に統一した。
+
+- **店頭 QR 会計**（同期確定の手段のみ）: `card` に加えて **PayPay / Alipay /
+  WeChat Pay** を提示する。断られた手段**だけ**を外して作り直すので、
+  「Alipay が無効な店から PayPay まで消える」ことがない
+  （`withOptionalExtras` in `src/lib/stripe/paymentMethods.ts`）。
+  WeChat Pay は Checkout で `payment_method_options.wechat_pay.client` が
+  必須なので、出すときだけ付ける。
+- **未知の手段の探りは1会計につき1つ**。未有効化の手段を付けた作成は 400 で
+  落ち、`withRetry("stripe")` の共有 circuit breaker（5連続失敗で30秒 open）に
+  数えられるため。数回の会計でその店の使える手段が確定し、以後は往復ゼロ。
+- **Connect 作成時の同時申請を4つに拡張**: `paypay_payments` /
+  `konbini_payments` / `jp_bank_transfer_payments` / `link_payments`。
+  通らない capability は個別に外す（1つの巻き添えで全部落とさない）。
+  Alipay / WeChat Pay はこの API バージョンに capability が無いため対象外。
+- **コンビニ払い・銀行振込はコード変更不要**。請求書の決済リンクは
+  `payment_method_types` を指定しておらず、加盟店が Stripe で有効化すれば
+  自動で候補に入る（レジには出さない —— 入金確定が後日でポーリングが完了しない）。
+- 記帳は Stripe の実績から決める形を維持し、**Alipay / WeChat Pay も「QR決済」**
+  として記録する。画面の案内文も実際に提示した手段だけを並べる。
+
+検証: `tsc` / `vitest` 3946件（決済手段まわり 11件）/ `eslint` 0 errors。
+
+**Stripe では扱えないもの**: d払い・au PAY・楽天ペイ・メルペイ（SDK の
+決済手段 union に存在しない）。各社と直接契約して店舗の端末で決済し、Ledra には
+従来通り「QR決済」として記帳する形になる。
+
+## 2026-08-26 PayPay の利用申請を Connect オンボーディングと同時に出す
+
+代表の「まとめて最初に審査を投げられると嬉しい」から。**新規接続分はまとめられる。**
+
+- `stripe.accounts.create` で `capabilities.paypay_payments` を要求するようにした
+  （`src/lib/stripe/paypay.ts` の `createAccountRequestingPaypay`）。Stripe の
+  オンボーディングが PayPay に必要な情報も**同じ入力フローで**集めるので、
+  加盟店の入力は1回で済む。要求が通らない環境では PayPay 抜きで作り直す
+  （ここで落とすと加盟店が決済そのものを繋げられない）。落ちたことは
+  `logger.warn` に残す —— 無音だと「PayPay がいつまでも出ない」だけになる。
+- PayPay 関連の定数・エラー判定を `src/lib/stripe/paypay.ts` に集約し、
+  POS の Checkout 側（`posCheckoutSession.ts`）と共有した。
+
+検証: `tsc` / `vitest` 3943件（PayPay 関連は新規3件を含む8件）/ `eslint` 0 errors。
+
+**まとめられないもの**: 既に Connect 接続済みの加盟店。作成時にしか要求を
+足せないため、既存店は Stripe ダッシュボードから自分で申請する必要がある。
+Ledra の画面内で完結させるなら Connect 埋め込みコンポーネント
+（payment method settings）を入れる案がある（未実装）。
+**未検証**: capability 名 `paypay_payments` は実 API で確認していない【要確認】。
+違っていてもフォールバックで従来通り接続できる。
+
+## 2026-08-26 店頭QR会計に PayPay を出せるようにした（有効な店だけ自動で）
+
+代表からの質問「実際のQRコード決済は使えるのか」から。**使えなかった。**
+店頭 QR 会計は `payment_method_types: ["card"]` 固定で、QR を見せてカードで
+払ってもらうものだった。POS の支払方法「QR決済」は Stripe を通らず記録だけ。
+
+- **`src/lib/stripe/posCheckoutSession.ts` を新設**し、Web/モバイル両方の POS が
+  ここから Checkout Session を作るようにした。`card` に加えて `paypay` を提示し、
+  **Stripe が PayPay を拒否したらカードのみで作り直す**。PayPay は Stripe 側で
+  店舗ごとの申請・審査が要るため、有効化していない店で会計が落ちてはいけない。
+  拒否されたアカウントは10分間おぼえて毎回1往復無駄にしない。
+- **決済手段の明示列挙は維持**（dynamic payment methods に任せない）。コンビニ
+  払い・銀行振込のような非同期決済が候補に出ると、レジのポーリングが永久に
+  paid にならず「客は帰ったのに売上が立たない」ことになる。
+- **記帳の手段を Stripe の実績から決めるようにした**（`resolvePaidCheckoutSession`）。
+  PayPay で払われた会計を「カード」で記帳するとレジ締めの突合が合わない。
+  charge の `payment_method_details.type` を見て `paypay → qr` / `card → card`。
+  クライアントの申告は従来どおり信じない。
+- 画面の案内文は実際に提示した手段に合わせる（PayPay を出せない店に
+  「PayPay 可」と表示しない）。
+- 請求書の決済リンクは元から `payment_method_types` を指定していないので変更なし
+  （Stripe ダッシュボードで有効化すれば出る）。
+
+検証: `tsc` / `vitest`（新規4件を含む POS・Stripe 系 128件）/ `eslint` 0 errors。
+**未検証**: 本番キーが無いため、Stripe API が実際に `paypay` を受けるかは
+未確認。PayPay は public preview（clover 2025-09-30）で SDK v20.4.1 の型にも
+まだ無い。受けなければフォールバックが働き、これまで通りカードのみで動く。
+## 2026-08-26 VIN トリガーのマイグレーションを `20260826000007` へ改名（本番適用の停止を解除）
+
 ## 2026-08-27 「正しく無いのが載るのはあかん」——遷移表を直してから通した（#933）／同期基盤は止めた（#934）
 
 ### #933: 正準遷移表の足りない辺を8件直してからマージ

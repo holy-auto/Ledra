@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import Stripe from "stripe";
 import { getStripeClient } from "@/lib/stripe/client";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
@@ -7,6 +6,7 @@ import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
 import { apiJson, apiUnauthorized, apiForbidden, apiValidationError, apiInternalError } from "@/lib/api/response";
 import { posCheckoutSessionSchema } from "@/lib/validations/pos";
+import { createPosCheckoutSession } from "@/lib/stripe/posCheckoutSession";
 
 export const dynamic = "force-dynamic";
 
@@ -53,10 +53,11 @@ export async function POST(req: NextRequest) {
       process.env.NEXT_PUBLIC_BASE_URL ||
       `${req.headers.get("x-forwarded-proto") || "https"}://${req.headers.get("host")}`;
 
-    const session = await stripe.checkout.sessions.create(
+    const session = await createPosCheckoutSession(
+      stripe,
+      amount,
       {
         mode: "payment",
-        payment_method_types: ["card"],
         line_items: [
           {
             price_data: {
@@ -84,6 +85,8 @@ export async function POST(req: NextRequest) {
     return apiJson({
       session_id: session.id,
       url: session.url,
+      // 画面の案内文が「カードのみ」か「PayPay も」かを実際のセッションに合わせる
+      payment_method_types: session.payment_method_types,
     });
   } catch (e: unknown) {
     return apiInternalError(e, "pos/checkout-session");
