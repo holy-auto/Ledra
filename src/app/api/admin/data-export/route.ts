@@ -33,33 +33,40 @@ import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
 import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
 import { apiUnauthorized, apiForbidden, apiJson, apiInternalError } from "@/lib/api/response";
 import { logger } from "@/lib/logger";
+import { requireAal2OrResponse } from "@/lib/auth/stepUpGuard";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+export const maxDuration = 300;
 
-interface ExportSection {
-  table: string;
-  count: number;
-  rows: Array<Record<string, unknown>>;
-}
+const EXPORT_PAGE_SIZE = 1_000;
 
-async function fetchAll(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  admin: any,
-  tenantId: string,
-  table: string,
-  columns = "*",
-  limit = 10_000,
-): Promise<ExportSection> {
-  const { data, error } = await admin.from(table).select(columns).eq("tenant_id", tenantId).limit(limit);
+type ExportSpec = { key: string; table: string; columns?: string; maxRows?: number };
 
-  if (error) {
-    logger.warn("admin/data-export: section query failed", { table, tenantId, error: error.message });
-    return { table, count: 0, rows: [] };
-  }
-  const rows = (data ?? []) as Array<Record<string, unknown>>;
-  return { table, count: rows.length, rows };
-}
+const EXPORT_SPECS: ExportSpec[] = [
+  { key: "certificates", table: "certificates" },
+  { key: "customers", table: "customers" },
+  { key: "customer_branches", table: "customer_branches" },
+  { key: "vehicles", table: "vehicles" },
+  { key: "invoices", table: "invoices" },
+  { key: "reservations", table: "reservations" },
+  { key: "vehicle_histories", table: "vehicle_histories" },
+  {
+    key: "tenant_memberships",
+    table: "tenant_memberships",
+    columns: "id, tenant_id, user_id, role, created_at, revoked_at",
+  },
+  {
+    key: "ai_automation_settings",
+    table: "tenant_ai_automation_settings",
+    columns: "enabled, field_policies, confidence_threshold, source_policies, updated_at, updated_by",
+  },
+  {
+    key: "ai_usage_logs_recent",
+    table: "ai_usage_logs",
+    columns: "endpoint, model, outcome, input_tokens, output_tokens, confidence, latency_ms, created_at",
+    maxRows: 1_000,
+  },
+];
 
 export async function GET(req: NextRequest) {
   try {
@@ -69,6 +76,8 @@ export async function GET(req: NextRequest) {
     if (!requireMinRole(caller, "owner")) {
       return apiForbidden("テナントオーナーのみ実行可能です。");
     }
+    const stepUpDenied = await requireAal2OrResponse(supabase);
+    if (stepUpDenied) return stepUpDenied;
 
     // Rate limit: 3/h per (tenant, user).
     const rlKey = `data-export:${caller.tenantId}:${caller.userId || getClientIp(req)}`;
@@ -97,104 +106,79 @@ export async function GET(req: NextRequest) {
       .maybeSingle();
     if (tenantErr) return apiInternalError(tenantErr, "admin/data-export tenant");
 
-    const [
-      certificates,
-      customers,
-      customerBranches,
-      vehicles,
-      invoices,
-      reservations,
-      vehicleHistories,
-      memberships,
-      aiSettings,
-      aiUsageRecent,
-    ] = await Promise.all([
-      fetchAll(admin, tenantId, "certificates"),
-      fetchAll(admin, tenantId, "customers"),
-      // 法人顧客の支店 (住所・電話・担当者などの PII を含む)
-      fetchAll(admin, tenantId, "customer_branches"),
-      fetchAll(admin, tenantId, "vehicles"),
-      fetchAll(admin, tenantId, "invoices"),
-      fetchAll(admin, tenantId, "reservations"),
-      fetchAll(admin, tenantId, "vehicle_histories", "*", 50_000),
-      // memberships: don't leak password hashes; only ids + roles.
-      fetchAll(admin, tenantId, "tenant_memberships", "id, tenant_id, user_id, role, created_at, revoked_at"),
-      // GDPR: AI 自動入力設定のスナップショット (どんなポリシーで AI が動いていたか)
-      fetchAll(
-        admin,
-        tenantId,
-        "tenant_ai_automation_settings",
-        "enabled, field_policies, confidence_threshold, source_policies, updated_at, updated_by",
-      ),
-      // GDPR: AI 利用ログ (直近 1000 件、トークン数 / outcome / confidence)
-      fetchAll(
-        admin,
-        tenantId,
-        "ai_usage_logs",
-        "endpoint, model, outcome, input_tokens, output_tokens, confidence, latency_ms, created_at",
-        1000,
-      ),
-    ]);
-
     const generatedAt = new Date().toISOString();
     const filename = `ledra-tenant-export-${tenantId.slice(0, 8)}-${generatedAt.slice(0, 10)}.json`;
 
-    // Audit log — best-effort, must not block the response.
-    void (async () => {
-      try {
-        await admin.from("vehicle_histories").insert({
-          tenant_id: tenantId,
-          type: "admin_data_export",
-          title: "管理者によるテナントデータエクスポート",
-          description: `Exported by user ${caller.userId} from IP ${getClientIp(req)}`,
-          performed_at: generatedAt,
-        });
-      } catch (e: unknown) {
-        logger.warn("admin/data-export audit log failed", { error: e });
-      }
-    })();
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream<Uint8Array>({
+      async start(controller) {
+        const write = (value: string) => controller.enqueue(encoder.encode(value));
+        const counts: Record<string, number> = {};
+        try {
+          write(
+            JSON.stringify({
+              schema_version: "1.1",
+              generated_at: generatedAt,
+              tenant: tenantRow,
+              exported_by: { user_id: caller.userId, role: caller.role },
+            }).slice(0, -1) + ',"sections":{',
+          );
 
-    const payload = {
-      schema_version: "1.0",
-      generated_at: generatedAt,
-      tenant: tenantRow,
-      exported_by: { user_id: caller.userId, role: caller.role },
-      sections: {
-        certificates,
-        customers,
-        customer_branches: customerBranches,
-        vehicles,
-        invoices,
-        reservations,
-        vehicle_histories: vehicleHistories,
-        tenant_memberships: memberships,
-        ai_automation_settings: aiSettings,
-        ai_usage_logs_recent: aiUsageRecent,
-      },
-      metadata: {
-        notice:
-          "本データは個人情報保護法第33条 (保有個人データの開示) および " +
-          "GDPR 第15条 (アクセス権) に基づいて出力されました。" +
-          "他テナントの情報は含まれていません。",
-        excluded:
-          "tenant_secrets (暗号化済み) / auth.users (Supabase 直接管理) / " +
-          "stripe_customer 詳細 (Stripe ダッシュボード経由で取得) は対象外です。",
-      },
-    };
+          for (let specIndex = 0; specIndex < EXPORT_SPECS.length; specIndex++) {
+            const spec = EXPORT_SPECS[specIndex];
+            if (specIndex > 0) write(",");
+            write(`${JSON.stringify(spec.key)}:{"table":${JSON.stringify(spec.table)},"rows":[`);
 
-    logger.info("admin data export issued", {
-      tenantId,
-      userId: caller.userId,
-      counts: {
-        certificates: certificates.count,
-        customers: customers.count,
-        vehicles: vehicles.count,
-        invoices: invoices.count,
-        reservations: reservations.count,
+            let written = 0;
+            const maximum = spec.maxRows ?? Number.MAX_SAFE_INTEGER;
+            while (written < maximum) {
+              const from = written;
+              const to = Math.min(from + EXPORT_PAGE_SIZE, maximum) - 1;
+              const requested = to - from + 1;
+              const { data, error } = await admin
+                .from(spec.table)
+                .select(spec.columns ?? "*")
+                .eq("tenant_id", tenantId)
+                .range(from, to);
+              if (error) throw new Error(`${spec.table} export failed: ${error.message}`);
+              const rows = (data ?? []) as unknown as Array<Record<string, unknown>>;
+              for (const row of rows) {
+                if (written > 0) write(",");
+                write(JSON.stringify(row));
+                written++;
+              }
+              if (rows.length < requested) break;
+            }
+            counts[spec.key] = written;
+            write(`],"count":${written}}`);
+          }
+
+          write(
+            `},"metadata":${JSON.stringify({
+              notice:
+                "本データは個人情報保護法第33条 (保有個人データの開示) および GDPR 第15条 (アクセス権) に基づいて出力されました。他テナントの情報は含まれていません。",
+              excluded:
+                "tenant_secrets (暗号化済み) / auth.users (Supabase 直接管理) / stripe_customer 詳細 (Stripe ダッシュボード経由で取得) は対象外です。",
+            })}}`,
+          );
+          controller.close();
+
+          await admin.from("vehicle_histories").insert({
+            tenant_id: tenantId,
+            type: "admin_data_export",
+            title: "管理者によるテナントデータエクスポート",
+            description: `Exported by user ${caller.userId} from IP ${getClientIp(req)}`,
+            performed_at: generatedAt,
+          });
+          logger.info("admin data export streamed", { tenantId, userId: caller.userId, counts });
+        } catch (error) {
+          logger.error("admin data export stream failed", { tenantId, error });
+          controller.error(error);
+        }
       },
     });
 
-    return new Response(JSON.stringify(payload, null, 2), {
+    return new Response(stream, {
       status: 200,
       headers: {
         "content-type": "application/json; charset=utf-8",

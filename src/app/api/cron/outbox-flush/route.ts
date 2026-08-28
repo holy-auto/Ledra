@@ -24,8 +24,9 @@ import { logger } from "@/lib/logger";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-const BATCH_SIZE = 100;
+const BATCH_SIZE = 200;
 const MAX_ATTEMPTS = 8;
+const CONCURRENCY = 8;
 
 export async function GET(req: NextRequest) {
   const { authorized, error: authErr } = verifyCronRequest(req);
@@ -43,6 +44,7 @@ export async function GET(req: NextRequest) {
       return processOutboxBatch(admin, dispatchers, {
         batchSize: BATCH_SIZE,
         maxAttempts: MAX_ATTEMPTS,
+        concurrency: CONCURRENCY,
       });
     });
 

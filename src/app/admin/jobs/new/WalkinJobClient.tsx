@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import Card from "@/components/ui/Card";
 import MessageExtractPanel from "./MessageExtractPanel";
+import { businessDateString } from "@/lib/datetime";
 
 /**
  * WalkinJobClient
@@ -25,7 +26,7 @@ type Vehicle = {
   plate_display: string | null;
 };
 
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => businessDateString();
 
 export default function WalkinJobClient() {
   const router = useRouter();

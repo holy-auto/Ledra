@@ -3665,6 +3665,19 @@
 "tenant_id",
 "updated_at"
 ],
+"tenant_private_secrets": [
+"created_at",
+"email_inbound_token_ciphertext",
+"email_inbound_token_hash",
+"email_inbound_token_legacy",
+"external_api_key_hash",
+"external_api_key_last4",
+"external_api_key_legacy",
+"gcal_refresh_token_ciphertext",
+"gcal_refresh_token_legacy",
+"tenant_id",
+"updated_at"
+],
 "tenant_webhooks": [
 "created_at",
 "description",
@@ -3698,12 +3711,9 @@
 "default_template_id",
 "default_warranty_exclusions",
 "email_inbound_enabled",
-"email_inbound_token",
-"external_api_key",
 "gcal_calendar_id",
 "gcal_last_synced_at",
 "gcal_read_calendars",
-"gcal_refresh_token",
 "gcal_sync_enabled",
 "google_review_url",
 "id",

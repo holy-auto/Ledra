@@ -101,13 +101,32 @@ export async function POST(req: NextRequest) {
     let skipped = 0;
     const errors: Array<{ row_index: number; error: string }> = [];
 
-    // 名寄せ用の候補を 1 回だけ読み込む。メール完全一致で拾えない表記揺れを
-    // 氏名+電話の類似度で既存顧客に寄せ、重複顧客の増殖を防ぐ (AI 判定はオフ)。
-    const { data: candData } = await admin
-      .from("customers")
-      .select("id, name, name_kana, phone, email")
-      .eq("tenant_id", tenantId);
+    // 全顧客を読み込まず、CSV に現れるメール/電話と一致する候補だけを DB 側で抽出する。
+    // 顧客総数が増えても取込メモリと名寄せ計算量が取込行数にだけ比例する。
+    const candidateEmails = [
+      ...new Set(
+        parsed.rows
+          .map((r) =>
+            String(normalizeCsvRow(r).email ?? "")
+              .trim()
+              .toLowerCase(),
+          )
+          .filter(Boolean),
+      ),
+    ];
+    const candidatePhones = [
+      ...new Set(parsed.rows.map((r) => String(normalizeCsvRow(r).phone ?? "").replace(/[^0-9]/g, "")).filter(Boolean)),
+    ];
+    const { data: candData, error: candidateError } = await admin.rpc("match_customer_import_candidates", {
+      p_tenant_id: tenantId,
+      p_emails: candidateEmails,
+      p_phones: candidatePhones,
+    });
+    if (candidateError) return apiInternalError(candidateError, "customers bulk import candidate lookup");
     const candidates = (candData ?? []) as CustomerCandidate[];
+    const candidateByEmail = new Map(
+      candidates.filter((c) => c.email).map((c) => [String(c.email).trim().toLowerCase(), c.id]),
+    );
 
     for (let i = 0; i < parsed.rows.length; i++) {
       const raw = parsed.rows[i];
@@ -120,16 +139,7 @@ export async function POST(req: NextRequest) {
       const v = row.data;
 
       // Look up existing by email when present.
-      let existingId: string | null = null;
-      if (v.email) {
-        const { data: ex } = await admin
-          .from("customers")
-          .select("id")
-          .eq("tenant_id", tenantId)
-          .eq("email", v.email)
-          .maybeSingle();
-        existingId = (ex as { id: string } | null)?.id ?? null;
-      }
+      let existingId: string | null = v.email ? (candidateByEmail.get(v.email.trim().toLowerCase()) ?? null) : null;
 
       // メールで拾えなければ氏名+電話の名寄せで既存顧客に寄せる (重複防止)。
       // ただし氏名のみの行は同名別人を誤って統合し得るため、電話 or メールの
@@ -196,6 +206,7 @@ export async function POST(req: NextRequest) {
           inserted += 1;
           // 同一取込内の後続行が重複作成しないよう候補へ追加。
           candidates.push(created as CustomerCandidate);
+          if (v.email) candidateByEmail.set(v.email.trim().toLowerCase(), created.id as string);
         }
       }
     }
