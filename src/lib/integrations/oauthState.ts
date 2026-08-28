@@ -23,6 +23,7 @@ const MIN_SECRET_LENGTH = 32;
 type OAuthStatePayload = {
   tenantId: string;
   provider: string;
+  userId?: string;
   nonce: string;
   exp: number;
 };
@@ -50,10 +51,12 @@ function signPayload(payload: string, secret: string): string {
 export function createOAuthState({
   tenantId,
   provider,
+  userId,
   ttlSeconds = DEFAULT_TTL_SECONDS,
 }: {
   tenantId: string;
   provider: string;
+  userId?: string;
   ttlSeconds?: number;
 }): string {
   const secret = getStateSecret();
@@ -62,6 +65,7 @@ export function createOAuthState({
   const payloadObj: OAuthStatePayload = {
     tenantId,
     provider,
+    ...(userId ? { userId } : {}),
     nonce: randomBytes(16).toString("base64url"),
     exp: Math.floor(Date.now() / 1000) + ttlSeconds,
   };
@@ -74,9 +78,11 @@ export function createOAuthState({
 export function verifyOAuthState({
   state,
   provider,
+  expectedUserId,
 }: {
   state: string;
   provider: string;
+  expectedUserId?: string;
 }): { ok: true; tenantId: string } | { ok: false; reason: string } {
   let secret: string;
   try {
@@ -106,6 +112,7 @@ export function verifyOAuthState({
   if (!parsed.tenantId || !parsed.provider || !parsed.nonce || !parsed.exp)
     return { ok: false, reason: "incomplete_payload" };
   if (parsed.provider !== provider) return { ok: false, reason: "provider_mismatch" };
+  if (expectedUserId && parsed.userId !== expectedUserId) return { ok: false, reason: "user_mismatch" };
   if (parsed.exp < Math.floor(Date.now() / 1000)) return { ok: false, reason: "expired" };
 
   return { ok: true, tenantId: parsed.tenantId };

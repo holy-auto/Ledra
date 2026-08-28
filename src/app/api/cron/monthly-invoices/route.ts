@@ -6,6 +6,7 @@ import { withCronLock } from "@/lib/cron/lock";
 import { runMonthlyInvoices } from "@/lib/orders/monthlyInvoice";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 300;
 
 /**
  * GET /api/cron/monthly-invoices
