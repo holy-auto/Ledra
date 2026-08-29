@@ -4,6 +4,18 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-08-29 日程変更の空き計算を「自予約除外」に精緻化（後片付け、branch claude/line-chatbot-ledra-dy2fiq）
+
+- 内容: 日程変更（#987）で残していた「同日内変更時に候補が過少に見えうる」を解消。
+  `fetchFlowScheduleCandidates` に `excludeReservationId` を追加し、動かす対象の予約を
+  空き計算から除外する（`reservations` クエリに `.neq("id", …)`）。候補提示（1件/複数の両経路）と
+  確定直前の再検証の 3 箇所で対象予約 ID を渡す。これで同日内の時間帯変更でも、対象予約が
+  自分の旧枠を占有したまま数えられて候補が減る/自枠に弾かれることが無くなる（二重予約は従来どおり起きない）。
+- あわせて `reservations/mutate.ts` の ponytail コメントを更新: admin route.ts のキャンセル/変更を
+  共有ヘルパーへ寄せる単一情報源化は**行わない**方針に修正（認可モデルが異なるため。詳細は DECISION_LOG）。
+- 対象: LINE 日程変更のセルフ対応（opt-in `inbound_message.auto_self_reschedule`）。
+- 検証: `rescheduleFlowAuto` で `excludeReservationId` 引き渡しをアサート。全体 4386 件パス、tsc/eslint エラー0。
+
 ## 2026-08-29 LINEで顧客が予約の日程を自分で変更できるセルフ対応（reschedule、branch claude/line-chatbot-ledra-dy2fiq）
 
 - 内容: キャンセルのセルフ対応（#983）に続く第二弾。顧客が LINE で「予約の日程を変更したい」

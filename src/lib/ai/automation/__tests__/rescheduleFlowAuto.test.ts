@@ -122,11 +122,12 @@ describe("maybeStartRescheduleFlow", () => {
     expect(flow?.payload.state).toBe("awaiting_reschedule_slot");
     expect(flow?.payload.reservation_id).toBe("r-future");
     expect(mocks.sendCustomerLineButtons).toHaveBeenCalledTimes(1);
-    // 変更先候補は「前日まで」= 当日 (TODAY) を含めず翌日起点で取得する。
+    // 変更先候補は「前日まで」= 当日 (TODAY) を含めず翌日起点で取得し、動かす対象の予約は
+    // 空き計算から除外する (自分の枠に自分がぶつからないように)。
     expect(mocks.fetchFlowScheduleCandidates).toHaveBeenCalledWith(
       expect.anything(),
       TENANT,
-      expect.objectContaining({ fromDate: "2026-08-27" }),
+      expect.objectContaining({ fromDate: "2026-08-27", excludeReservationId: "r-future" }),
     );
   });
 

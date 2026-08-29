@@ -159,7 +159,11 @@ export async function maybeStartRescheduleFlow(params: MaybeStartRescheduleFlowP
     // 1 件 → 新しい日程候補を取得。空きが無ければスタッフ引き継ぎ (フローは作らない)。
     // 「前日まで」= 変更先も当日は不可なので翌日起点で候補を出す。
     const target = eligible[0];
-    const slots = await fetchFlowScheduleCandidates(admin, tenantId, { limit: 3, fromDate: addDays(today, 1) });
+    const slots = await fetchFlowScheduleCandidates(admin, tenantId, {
+      limit: 3,
+      fromDate: addDays(today, 1),
+      excludeReservationId: target.id,
+    });
     if (slots.length === 0) {
       await sendCustomerLineText({ tenantId, customerId, lineUserId, body: buildCancelHandoff() });
       await notifyStaffOfAiAction(

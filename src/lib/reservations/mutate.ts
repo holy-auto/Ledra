@@ -4,8 +4,14 @@
  * 共有ロジックをここに置く。webhook / fire-and-forget から呼ばれるため fail-soft
  * (throw せず結果で返す)。
  *
- * ponytail: いずれ `src/app/api/admin/reservations/route.ts` の DELETE/PUT も本ヘルパーに
- * 寄せて単一情報源化できる。現状は blast radius を抑えて admin ルートは据え置き。
+ * ponytail: 当初は `src/app/api/admin/reservations/route.ts` の DELETE/PUT も本ヘルパーへ
+ * 寄せて単一情報源化する想定だったが、精査の結果まとめない。理由は認可モデルが異なるため:
+ * 管理ルートは呼び出し元の RLS セッション + RBAC で「テナント内の任意の予約」を対象に
+ * (所有者ガードなしで) 操作し、更新項目も多い (status/日時/parts/完了フック等)。一方この
+ * ヘルパーは service-role + `customer_id` 所有者ガードが必須 (セルフ操作の要)。両者を統合すると
+ * 管理ルートの RLS 防御を弱めるか、ヘルパーにモードフラグを足して肥大化させるかになり、
+ * どちらも clarity/security を損なう。gcal 同期・キャンセル/変更の「意味」は共通だが、
+ * 実装は別のまま保つのが正しい (共通化は net-negative)。
  */
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { syncDeleteEvent, syncUpdateEvent } from "@/lib/gcal/client";
