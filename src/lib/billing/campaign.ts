@@ -44,11 +44,7 @@ export async function resolveCampaign(
   if (!couponId) return null; // キャンペーン未設定
 
   // 既にキャンペーン適用済みか
-  const { data: tenant } = await supabase
-    .from("tenants")
-    .select("campaign_slug")
-    .eq("id", tenantId)
-    .maybeSingle();
+  const { data: tenant } = await supabase.from("tenants").select("campaign_slug").eq("id", tenantId).maybeSingle();
 
   if (tenant?.campaign_slug === LAUNCH_100_SLUG) {
     // 再契約の場合でも適用済みならスキップ

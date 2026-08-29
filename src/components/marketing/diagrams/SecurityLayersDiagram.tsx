@@ -41,7 +41,15 @@ export function SecurityLayersDiagram({ className = "" }: { className?: string }
       </defs>
 
       {/* Caption */}
-      <text x="380" y="36" textAnchor="middle" fill="rgba(255,255,255,0.5)" fontSize="11" fontWeight="600" letterSpacing="3">
+      <text
+        x="380"
+        y="36"
+        textAnchor="middle"
+        fill="rgba(255,255,255,0.5)"
+        fontSize="11"
+        fontWeight="600"
+        letterSpacing="3"
+      >
         THREE LAYERS OF PROTECTION
       </text>
 

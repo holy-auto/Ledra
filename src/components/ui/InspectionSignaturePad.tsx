@@ -50,21 +50,24 @@ export default function InspectionSignaturePad({ onSign, onCancel, orderTitle }:
     lastPos.current = getPos(e, canvas);
   }, []);
 
-  const draw = useCallback((e: React.MouseEvent | React.TouchEvent) => {
-    if (!drawing) return;
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    e.preventDefault();
-    const ctx = canvas.getContext("2d");
-    if (!ctx || !lastPos.current) return;
-    const pos = getPos(e, canvas);
-    ctx.beginPath();
-    ctx.moveTo(lastPos.current.x, lastPos.current.y);
-    ctx.lineTo(pos.x, pos.y);
-    ctx.stroke();
-    lastPos.current = pos;
-    setHasStrokes(true);
-  }, [drawing]);
+  const draw = useCallback(
+    (e: React.MouseEvent | React.TouchEvent) => {
+      if (!drawing) return;
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      e.preventDefault();
+      const ctx = canvas.getContext("2d");
+      if (!ctx || !lastPos.current) return;
+      const pos = getPos(e, canvas);
+      ctx.beginPath();
+      ctx.moveTo(lastPos.current.x, lastPos.current.y);
+      ctx.lineTo(pos.x, pos.y);
+      ctx.stroke();
+      lastPos.current = pos;
+      setHasStrokes(true);
+    },
+    [drawing],
+  );
 
   const endDraw = useCallback(() => {
     setDrawing(false);
@@ -143,25 +146,17 @@ export default function InspectionSignaturePad({ onSign, onCancel, orderTitle }:
                 onTouchEnd={endDraw}
               />
             </div>
-            {!hasStrokes && (
-              <p className="text-[11px] text-muted text-center">↑ ここにサインしてください</p>
-            )}
+            {!hasStrokes && <p className="text-[11px] text-muted text-center">↑ ここにサインしてください</p>}
           </div>
 
           <p className="text-[11px] text-muted leading-relaxed">
-            このサインにより、上記の作業内容を検収承認したことを確認します。
-            サインは記録として保存されます。
+            このサインにより、上記の作業内容を検収承認したことを確認します。 サインは記録として保存されます。
           </p>
         </div>
 
         {/* Footer */}
         <div className="px-5 py-4 border-t border-border flex gap-2 justify-end">
-          <button
-            type="button"
-            className="btn-secondary text-sm"
-            onClick={onCancel}
-            disabled={submitting}
-          >
+          <button type="button" className="btn-secondary text-sm" onClick={onCancel} disabled={submitting}>
             キャンセル
           </button>
           <button

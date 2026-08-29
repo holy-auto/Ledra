@@ -36,7 +36,7 @@ export async function POST(req: NextRequest) {
     // 案件を取得
     const { data: insCase } = await admin
       .from("insurer_cases")
-      .select("id, insurer_id, certificate_id, vehicle_id, tenant_id, claim_amount, created_at")
+      .select("id, insurer_id, certificate_id, vehicle_id, tenant_id, meta, created_at")
       .eq("id", case_id)
       .eq("insurer_id", caller.insurerId)
       .maybeSingle();
@@ -89,7 +89,8 @@ export async function POST(req: NextRequest) {
     }
 
     const result = await checkFraudPatterns({
-      claimAmount: (insCase as any).claim_amount ?? null,
+      // claim_amount 列は insurer_cases に無い。金額は meta に入る運用
+      claimAmount: ((insCase as any).meta as { claim_amount?: number } | null)?.claim_amount ?? null,
       certificateStatus: certStatus,
       existingClaimsForCertificate,
       claimsLast7Days: last7 ?? 1,

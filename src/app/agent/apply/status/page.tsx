@@ -3,10 +3,10 @@
 import { useState } from "react";
 
 const STATUS_LABELS: Record<string, { label: string; color: string; bg: string }> = {
-  submitted:    { label: "申請済み", color: "text-secondary", bg: "bg-inset" },
-  under_review: { label: "審査中",  color: "text-accent",    bg: "bg-blue-50" },
-  approved:     { label: "承認済み", color: "text-emerald-700", bg: "bg-emerald-50" },
-  rejected:     { label: "却下",    color: "text-red-600",   bg: "bg-red-50" },
+  submitted: { label: "申請済み", color: "text-secondary", bg: "bg-inset" },
+  under_review: { label: "審査中", color: "text-accent", bg: "bg-blue-50" },
+  approved: { label: "承認済み", color: "text-emerald-700", bg: "bg-emerald-50" },
+  rejected: { label: "却下", color: "text-red-600", bg: "bg-red-50" },
 };
 
 type StatusResult = {
@@ -70,9 +70,7 @@ export default function AgentApplyStatusPage() {
 
         <div className="text-center">
           <h1 className="text-xl font-bold text-primary">申請状況の確認</h1>
-          <p className="text-sm text-muted mt-1">
-            申請番号とメールアドレスで申請状況を確認できます。
-          </p>
+          <p className="text-sm text-muted mt-1">申請番号とメールアドレスで申請状況を確認できます。</p>
         </div>
 
         <div className="grid gap-4">
@@ -118,15 +116,11 @@ export default function AgentApplyStatusPage() {
             <div className="grid grid-cols-2 gap-4 text-sm">
               <div>
                 <p className="text-muted">申請日</p>
-                <p className="text-primary font-medium">
-                  {new Date(result.created_at).toLocaleDateString("ja-JP")}
-                </p>
+                <p className="text-primary font-medium">{new Date(result.created_at).toLocaleDateString("ja-JP")}</p>
               </div>
               <div>
                 <p className="text-muted">最終更新</p>
-                <p className="text-primary font-medium">
-                  {new Date(result.updated_at).toLocaleDateString("ja-JP")}
-                </p>
+                <p className="text-primary font-medium">{new Date(result.updated_at).toLocaleDateString("ja-JP")}</p>
               </div>
             </div>
 
@@ -134,10 +128,7 @@ export default function AgentApplyStatusPage() {
               <div className="bg-red-50 border border-red-200 rounded-lg p-4">
                 <p className="text-sm text-muted mb-1">却下理由</p>
                 <p className="text-sm text-red-700 whitespace-pre-wrap">{result.rejection_reason}</p>
-                <a
-                  href="/agent/apply"
-                  className="inline-block mt-3 text-sm text-accent hover:underline"
-                >
+                <a href="/agent/apply" className="inline-block mt-3 text-sm text-accent hover:underline">
                   再申請はこちら
                 </a>
               </div>
@@ -148,10 +139,7 @@ export default function AgentApplyStatusPage() {
                 <p className="text-sm text-emerald-700">
                   申請が承認されました。ログイン情報をメールでお送りしています。
                 </p>
-                <a
-                  href="/agent/login"
-                  className="inline-block mt-2 text-sm text-accent hover:underline"
-                >
+                <a href="/agent/login" className="inline-block mt-2 text-sm text-accent hover:underline">
                   ログインはこちら
                 </a>
               </div>
@@ -160,9 +148,13 @@ export default function AgentApplyStatusPage() {
         )}
 
         <p className="text-center text-sm text-muted">
-          <a href="/agent/apply" className="text-accent hover:underline">新規申請</a>
+          <a href="/agent/apply" className="text-accent hover:underline">
+            新規申請
+          </a>
           {" | "}
-          <a href="/agent/login" className="text-accent hover:underline">ログイン</a>
+          <a href="/agent/login" className="text-accent hover:underline">
+            ログイン
+          </a>
         </p>
       </div>
     </main>

@@ -119,12 +119,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ short_id: 
       base64,
       mediaType: mime as "image/jpeg" | "image/png" | "image/webp",
       expected: expected as
-        | "driver_license"
-        | "mynumber_card_front"
-        | "residence_card"
-        | "passport"
-        | "health_insurance_card"
-        | undefined,
+        "driver_license" | "mynumber_card_front" | "residence_card" | "passport" | "health_insurance_card" | undefined,
     });
 
     // OCR 実行ぶんをテナント (店舗) の月次キャップに計上 (顧客向けでも課金は店舗側)。

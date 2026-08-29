@@ -13,6 +13,7 @@ import { generateCertificateDraft } from "@/lib/ai/draftCertificate";
 import { modelForPlanTier } from "@/lib/ai/client";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { loadAiAutomationSettings, filterDraftByPolicy, isSourceAllowed } from "@/lib/ai/automation/policy";
+import { CERT_AI_COLUMNS, certAiFields } from "@/lib/certificates/aiFields";
 
 const aiDraftSchema = z
   .object({
@@ -76,7 +77,7 @@ export async function POST(req: NextRequest) {
     if (vehicle_id) {
       const { data } = await admin
         .from("vehicles")
-        .select("maker, model, year, color, vin")
+        .select("maker, model, year, vin_code")
         .eq("id", vehicle_id)
         .eq("tenant_id", caller.tenantId)
         .single();
@@ -89,7 +90,7 @@ export async function POST(req: NextRequest) {
       const { data } = await admin
         .from("hearings")
         .select(
-          "service_types, budget_range, parking_type, customer_requests, vehicle_maker, vehicle_model, vehicle_year, vehicle_color",
+          "service_type, budget_range, parking_environment, additional_requests, vehicle_maker, vehicle_model, vehicle_year, vehicle_color",
         )
         .eq("id", hearing_id)
         .eq("tenant_id", caller.tenantId)
@@ -112,19 +113,12 @@ export async function POST(req: NextRequest) {
     const { data: similar } = allowSimilar
       ? await admin
           .from("certificates")
-          .select("service_name, description, material_info, warranty_period")
+          .select(CERT_AI_COLUMNS)
           .eq("tenant_id", caller.tenantId)
-          .not("service_name", "is", null)
+          .not("service_type", "is", null)
           .order("created_at", { ascending: false })
           .limit(5)
-      : {
-          data: [] as Array<{
-            service_name: string | null;
-            description: string | null;
-            material_info: string | null;
-            warranty_period: string | null;
-          }>,
-        };
+      : { data: [] as Array<Record<string, unknown>> };
 
     const draft = await generateCertificateDraft(
       {
@@ -132,22 +126,19 @@ export async function POST(req: NextRequest) {
           maker: vehicle.maker as string | undefined,
           model: vehicle.model as string | undefined,
           year: vehicle.year as number | undefined,
-          color: vehicle.color as string | undefined,
-          vin: vehicle.vin as string | undefined,
+          vin: vehicle.vin_code as string | undefined,
         },
         hearing: hearing
           ? {
-              service_types: hearing.service_types as string[] | undefined,
+              // hearings.service_type は単数の text。AI 側は配列を取る
+              service_types: hearing.service_type ? [hearing.service_type as string] : undefined,
               budget_range: hearing.budget_range as string | undefined,
-              parking_type: hearing.parking_type as string | undefined,
-              customer_requests: hearing.customer_requests as string | undefined,
+              parking_type: hearing.parking_environment as string | undefined,
+              customer_requests: hearing.additional_requests as string | undefined,
             }
           : undefined,
         similarCertificates: (similar ?? []).map((s) => ({
-          service_name: s.service_name ?? "",
-          description: s.description ?? undefined,
-          material_info: s.material_info ?? undefined,
-          warranty_period: s.warranty_period ?? undefined,
+          ...certAiFields(s),
         })),
         photoDescriptions: undefined, // Vision解析は別途
         templateCategory: template_category,

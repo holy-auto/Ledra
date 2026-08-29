@@ -35,10 +35,22 @@ describe("nextFlowState", () => {
       "awaiting_schedule_pick",
       "awaiting_vehicle_photo",
       "processing_vehicle_photo",
+      "awaiting_cancel_pick",
+      "awaiting_cancel_confirm",
     ];
     for (const s of states) {
       expect(nextFlowState(s, { type: "handoff" })).toBe("human_takeover");
     }
+  });
+
+  it("advances the cancel flow: pick → confirm → closed (either confirmed or aborted ends it)", () => {
+    expect(nextFlowState("awaiting_cancel_pick", { type: "cancel_pick_selected", index: 0 })).toBe(
+      "awaiting_cancel_confirm",
+    );
+    expect(nextFlowState("awaiting_cancel_confirm", { type: "cancel_confirmed" })).toBe("closed");
+    expect(nextFlowState("awaiting_cancel_confirm", { type: "cancel_aborted" })).toBe("closed");
+    // 無関係なイベントでは進まない。
+    expect(nextFlowState("awaiting_cancel_confirm", { type: "slot_selected", index: 0 })).toBeNull();
   });
 
   it("claims the vehicle-photo side-flow (processing_vehicle_photo) on photo_received, then leaves closing to the IO layer", () => {

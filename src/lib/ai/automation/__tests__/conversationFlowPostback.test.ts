@@ -5,6 +5,9 @@ const mocks = vi.hoisted(() => ({
   loadAiAutomationSettings: vi.fn(),
   shouldRunConversationFlow: vi.fn(),
   shouldAutoSendDocumentOnConfirm: vi.fn(),
+  shouldAutoSelfCancel: vi.fn(),
+  cancelReservationById: vi.fn(),
+  todayJst: vi.fn(),
   sendCustomerLineText: vi.fn(),
   sendCustomerLineButtons: vi.fn(),
   recordInboundLineMessage: vi.fn(),
@@ -27,7 +30,10 @@ vi.mock("../policy", async (importOriginal) => {
 vi.mock("../orchestrator", () => ({
   shouldRunConversationFlow: mocks.shouldRunConversationFlow,
   shouldAutoSendDocumentOnConfirm: mocks.shouldAutoSendDocumentOnConfirm,
+  shouldAutoSelfCancel: mocks.shouldAutoSelfCancel,
 }));
+vi.mock("@/lib/reservations/mutate", () => ({ cancelReservationById: mocks.cancelReservationById }));
+vi.mock("@/lib/gantt/board", () => ({ todayJst: mocks.todayJst }));
 vi.mock("@/lib/line/client", () => ({
   sendCustomerLineText: mocks.sendCustomerLineText,
   sendCustomerLineButtons: mocks.sendCustomerLineButtons,
@@ -61,6 +67,9 @@ beforeEach(() => {
   mocks.loadAiAutomationSettings.mockResolvedValue({});
   mocks.shouldRunConversationFlow.mockReturnValue(true);
   mocks.shouldAutoSendDocumentOnConfirm.mockReturnValue(true);
+  mocks.shouldAutoSelfCancel.mockReturnValue(false);
+  mocks.cancelReservationById.mockResolvedValue({ ok: true, alreadyFinal: false });
+  mocks.todayJst.mockReturnValue("2026-08-26");
   mocks.sendCustomerLineText.mockResolvedValue(true);
   mocks.sendCustomerLineButtons.mockResolvedValue(true);
   mocks.recordInboundLineMessage.mockResolvedValue({ ok: true });
@@ -663,5 +672,291 @@ describe("handleFlowPostback — slot selection (Phase 1b-3)", () => {
 
     const inserted = mocks.store.inserts.find((i) => i.table === "reservations");
     expect(inserted?.payload.vehicle_id).toBeNull();
+  });
+});
+
+describe("handleFlowPostback — 誘導ボタン (FAQ返信の末尾)", () => {
+  /** LINE_USER を CUSTOMER に紐付ける (start_quote は紐付け顧客が前提)。 */
+  function linkCustomer() {
+    mocks.store.tables.customers = [{ id: CUSTOMER, tenant_id: TENANT, line_user_id: LINE_USER }];
+  }
+
+  it("flow:start_quote は紐付け顧客なら awaiting_quote_detail を customer_id 付きで作成し施工内容+車両を依頼する", async () => {
+    linkCustomer();
+    mocks.store.tables.line_conversation_flows = [];
+    const handled = await handleFlowPostback({ tenantId: TENANT, lineUserId: LINE_USER, data: "flow:start_quote" });
+    expect(handled).toBe(true);
+
+    const inserted = mocks.store.inserts.find((i) => i.table === "line_conversation_flows");
+    expect(inserted?.payload.state).toBe("awaiting_quote_detail");
+    // 本番 webhook は customerId を渡さないため line_user_id から解決してキーを一致させる。
+    expect(inserted?.payload.customer_id).toBe(CUSTOMER);
+    expect(mocks.sendCustomerLineText).toHaveBeenCalledTimes(1);
+    // 施工内容が未知なので車両だけでなく施工内容も聞く (見積りに進めるため)。
+    expect(mocks.sendCustomerLineText.mock.calls[0][0].body).toContain("施工内容");
+  });
+
+  it("flow:start_quote は未紐付けユーザーなら見積りフローを作らずスタッフ引き継ぎ (human_takeover) にする", async () => {
+    // 未紐付けだと見積り下書きが作れずフローが詰まるため、awaiting_quote_detail は作らず
+    // human_takeover マーカー＋通知でスタッフ対応に回す。
+    mocks.store.tables.line_conversation_flows = [];
+    const handled = await handleFlowPostback({ tenantId: TENANT, lineUserId: LINE_USER, data: "flow:start_quote" });
+    expect(handled).toBe(true);
+    const flowInsert = mocks.store.inserts.find((i) => i.table === "line_conversation_flows");
+    expect(flowInsert?.payload.state).toBe("human_takeover");
+    expect(mocks.store.inserts.find((i) => i.table === "notifications")).toBeDefined();
+  });
+
+  it("flow:start_quote は配信失敗時に作成した awaiting_quote_detail 行を expired に落とす", async () => {
+    linkCustomer();
+    mocks.store.tables.line_conversation_flows = [];
+    mocks.sendCustomerLineText.mockResolvedValueOnce(false);
+    const handled = await handleFlowPostback({ tenantId: TENANT, lineUserId: LINE_USER, data: "flow:start_quote" });
+    expect(handled).toBe(false);
+    // 届かなかった詳細依頼のフロー行を残すと以降を塞ぐため expired にする。
+    const expire = mocks.store.updates.find(
+      (u) => u.table === "line_conversation_flows" && u.filters.state === "awaiting_quote_detail",
+    );
+    expect(expire?.payload.state).toBe("expired");
+  });
+
+  it("flow:start_quote は詳細待ちの進行中フローには詳細依頼を再送する (無反応にしない)", async () => {
+    linkCustomer();
+    mocks.store.tables.line_conversation_flows = [
+      {
+        id: "flow-x",
+        tenant_id: TENANT,
+        customer_id: CUSTOMER,
+        line_user_id: LINE_USER,
+        state: "awaiting_quote_detail",
+        quote_doc_id: null,
+        context_json: {},
+      },
+    ];
+    const handled = await handleFlowPostback({ tenantId: TENANT, lineUserId: LINE_USER, data: "flow:start_quote" });
+    expect(handled).toBe(true);
+    // 二重開始はしない (新規フローを作らない) が、詳細依頼は再送する。
+    expect(mocks.store.inserts.find((i) => i.table === "line_conversation_flows")).toBeUndefined();
+    expect(mocks.sendCustomerLineText).toHaveBeenCalledTimes(1);
+  });
+
+  it("flow:start_quote は詳細待ち以外の進行中フローでは false (スタッフ対応に委ねる)", async () => {
+    linkCustomer();
+    mocks.store.tables.line_conversation_flows = [
+      {
+        id: "flow-x2",
+        tenant_id: TENANT,
+        customer_id: CUSTOMER,
+        line_user_id: LINE_USER,
+        state: "awaiting_quote_ok",
+        quote_doc_id: DOC,
+        context_json: {},
+      },
+    ];
+    const handled = await handleFlowPostback({ tenantId: TENANT, lineUserId: LINE_USER, data: "flow:start_quote" });
+    expect(handled).toBe(false);
+    expect(mocks.sendCustomerLineText).not.toHaveBeenCalled();
+  });
+
+  it("flow:consult はフロー不在時も durable な human_takeover マーカーを作り、通知＋案内する", async () => {
+    // 失効マーカーの rot は createFlow の失効スイープが掃除するため安全に永続化できる。
+    mocks.store.tables.line_conversation_flows = [];
+    const handled = await handleFlowPostback({ tenantId: TENANT, lineUserId: LINE_USER, data: "flow:consult" });
+    expect(handled).toBe(true);
+    expect(mocks.store.inserts.find((i) => i.table === "notifications")).toBeDefined();
+    expect(mocks.sendCustomerLineText).toHaveBeenCalledTimes(1);
+    const flowInsert = mocks.store.inserts.find((i) => i.table === "line_conversation_flows");
+    expect(flowInsert?.payload.state).toBe("human_takeover");
+  });
+
+  it("flow:consult は進行中フローがあれば human_takeover に落とす (新規作成はしない)", async () => {
+    mocks.store.tables.line_conversation_flows = [
+      {
+        id: "flow-y",
+        tenant_id: TENANT,
+        customer_id: null,
+        line_user_id: LINE_USER,
+        state: "awaiting_quote_ok",
+        quote_doc_id: DOC,
+        context_json: {},
+      },
+    ];
+    const handled = await handleFlowPostback({ tenantId: TENANT, lineUserId: LINE_USER, data: "flow:consult" });
+    expect(handled).toBe(true);
+    const upd = mocks.store.updates.find((u) => u.table === "line_conversation_flows");
+    expect(upd?.payload.state).toBe("human_takeover");
+    expect(mocks.store.inserts.find((i) => i.table === "line_conversation_flows")).toBeUndefined();
+  });
+
+  it("flow:consult は既に human_takeover なら冪等に no-op (二重通知しない)", async () => {
+    mocks.store.tables.line_conversation_flows = [
+      {
+        id: "flow-z",
+        tenant_id: TENANT,
+        customer_id: null,
+        line_user_id: LINE_USER,
+        state: "human_takeover",
+        quote_doc_id: null,
+        context_json: {},
+      },
+    ];
+    const handled = await handleFlowPostback({ tenantId: TENANT, lineUserId: LINE_USER, data: "flow:consult" });
+    expect(handled).toBe(true);
+    expect(mocks.store.inserts.find((i) => i.table === "notifications")).toBeUndefined();
+    expect(mocks.sendCustomerLineText).not.toHaveBeenCalled();
+  });
+
+  it("getActiveFlow は customer_id または line_user_id のどちらでもマッチする (紐付け前後で見失わない)", async () => {
+    // 未紐付け時に line_user_id で作った human_takeover マーカーを、後から紐付いた顧客の
+    // customerId で照会しても取りこぼさない (単一キー固定だと見失って抑止が切れる)。
+    linkCustomer();
+    mocks.store.tables.line_conversation_flows = [
+      {
+        id: "flow-mk",
+        tenant_id: TENANT,
+        customer_id: null,
+        line_user_id: LINE_USER,
+        state: "human_takeover",
+        quote_doc_id: null,
+        context_json: {},
+      },
+    ];
+    // consult は既存 human_takeover を見つけたら冪等 no-op になる = マーカーを発見できた証拠。
+    const handled = await handleFlowPostback({ tenantId: TENANT, lineUserId: LINE_USER, data: "flow:consult" });
+    expect(handled).toBe(true);
+    expect(mocks.store.inserts.find((i) => i.table === "notifications")).toBeUndefined();
+    expect(mocks.sendCustomerLineText).not.toHaveBeenCalled();
+  });
+
+  it("会話フロー opt-in OFF なら何もしない (false)", async () => {
+    mocks.shouldRunConversationFlow.mockReturnValue(false);
+    const handled = await handleFlowPostback({ tenantId: TENANT, lineUserId: LINE_USER, data: "flow:start_quote" });
+    expect(handled).toBe(false);
+    expect(mocks.store.inserts.find((i) => i.table === "line_conversation_flows")).toBeUndefined();
+  });
+});
+
+describe("handleFlowPostback — 予約キャンセルのセルフ対応", () => {
+  function seedCancelFlow(over: Record<string, unknown> = {}) {
+    mocks.store.tables.line_conversation_flows = [
+      {
+        id: "cf-1",
+        tenant_id: TENANT,
+        customer_id: CUSTOMER,
+        line_user_id: LINE_USER,
+        state: "awaiting_cancel_confirm",
+        reservation_id: "r-1",
+        quote_doc_id: null,
+        context_json: {
+          purpose: "cancel",
+          cancel_candidates: [
+            { id: "r-1", scheduled_date: "2026-09-01", start_time: "10:00:00", title: "コーティング" },
+          ],
+        },
+        ...over,
+      },
+    ];
+  }
+
+  it("実行: flow:cancel_confirm で予約をキャンセルし closed にする", async () => {
+    mocks.shouldAutoSelfCancel.mockReturnValue(true);
+    seedCancelFlow();
+    const handled = await handleFlowPostback({ tenantId: TENANT, lineUserId: LINE_USER, data: "flow:cancel_confirm" });
+    expect(handled).toBe(true);
+    expect(mocks.cancelReservationById).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ tenantId: TENANT, reservationId: "r-1", customerId: CUSTOMER }),
+    );
+    const upd = mocks.store.updates.find((u) => u.table === "line_conversation_flows");
+    expect(upd?.payload.state).toBe("closed");
+    expect(mocks.sendCustomerLineText).toHaveBeenCalled();
+  });
+
+  it("取りやめ: flow:cancel_abort は closed にするがキャンセルは実行しない", async () => {
+    mocks.shouldAutoSelfCancel.mockReturnValue(true);
+    seedCancelFlow();
+    const handled = await handleFlowPostback({ tenantId: TENANT, lineUserId: LINE_USER, data: "flow:cancel_abort" });
+    expect(handled).toBe(true);
+    expect(mocks.cancelReservationById).not.toHaveBeenCalled();
+    const upd = mocks.store.updates.find((u) => u.table === "line_conversation_flows");
+    expect(upd?.payload.state).toBe("closed");
+  });
+
+  it("選択: flow:cancel_pick:<i> で対象を確定し確認へ進める", async () => {
+    mocks.shouldAutoSelfCancel.mockReturnValue(true);
+    seedCancelFlow({
+      state: "awaiting_cancel_pick",
+      reservation_id: null,
+      context_json: {
+        purpose: "cancel",
+        cancel_candidates: [
+          { id: "r-1", scheduled_date: "2026-09-01", start_time: "10:00:00", title: "A" },
+          { id: "r-2", scheduled_date: "2026-09-05", start_time: "14:00:00", title: "B" },
+        ],
+      },
+    });
+    const handled = await handleFlowPostback({ tenantId: TENANT, lineUserId: LINE_USER, data: "flow:cancel_pick:1" });
+    expect(handled).toBe(true);
+    const upd = mocks.store.updates.find((u) => u.table === "line_conversation_flows");
+    expect(upd?.payload.state).toBe("awaiting_cancel_confirm");
+    expect(upd?.payload.reservation_id).toBe("r-2");
+    expect(mocks.sendCustomerLineButtons).toHaveBeenCalled();
+    expect(mocks.cancelReservationById).not.toHaveBeenCalled();
+  });
+
+  it("確定直前の再検証: 当日入りしていたら実行せずスタッフ引き継ぎ", async () => {
+    mocks.shouldAutoSelfCancel.mockReturnValue(true);
+    mocks.todayJst.mockReturnValue("2026-09-01");
+    seedCancelFlow(); // 候補 r-1 は 2026-09-01 = 当日
+    const handled = await handleFlowPostback({ tenantId: TENANT, lineUserId: LINE_USER, data: "flow:cancel_confirm" });
+    expect(handled).toBe(true);
+    expect(mocks.cancelReservationById).not.toHaveBeenCalled();
+    expect(mocks.sendCustomerLineText).toHaveBeenCalled();
+  });
+
+  it("会話フロー OFF でも自己キャンセル opt-in が ON なら処理する", async () => {
+    mocks.shouldRunConversationFlow.mockReturnValue(false);
+    mocks.shouldAutoSelfCancel.mockReturnValue(true);
+    seedCancelFlow();
+    const handled = await handleFlowPostback({ tenantId: TENANT, lineUserId: LINE_USER, data: "flow:cancel_confirm" });
+    expect(handled).toBe(true);
+    expect(mocks.cancelReservationById).toHaveBeenCalled();
+  });
+
+  it("会話フロー OFF かつ自己キャンセル OFF なら何もしない", async () => {
+    mocks.shouldRunConversationFlow.mockReturnValue(false);
+    mocks.shouldAutoSelfCancel.mockReturnValue(false);
+    seedCancelFlow();
+    const handled = await handleFlowPostback({ tenantId: TENANT, lineUserId: LINE_USER, data: "flow:cancel_confirm" });
+    expect(handled).toBe(false);
+    expect(mocks.cancelReservationById).not.toHaveBeenCalled();
+  });
+
+  it("選択で確認ボタンが届かなければ awaiting_cancel_confirm を残さず expired に落とす", async () => {
+    mocks.shouldAutoSelfCancel.mockReturnValue(true);
+    mocks.sendCustomerLineButtons.mockResolvedValue(false);
+    seedCancelFlow({
+      state: "awaiting_cancel_pick",
+      reservation_id: null,
+      context_json: {
+        purpose: "cancel",
+        cancel_candidates: [{ id: "r-1", scheduled_date: "2026-09-01", start_time: "10:00:00", title: "A" }],
+      },
+    });
+    const handled = await handleFlowPostback({ tenantId: TENANT, lineUserId: LINE_USER, data: "flow:cancel_pick:0" });
+    expect(handled).toBe(false);
+    expect(
+      mocks.store.updates.some((u) => u.table === "line_conversation_flows" && u.payload.state === "expired"),
+    ).toBe(true);
+  });
+
+  it("flow:consult は会話フロー OFF でも自己キャンセル opt-in が ON なら受ける (死にボタン回避)", async () => {
+    mocks.shouldRunConversationFlow.mockReturnValue(false);
+    mocks.shouldAutoSelfCancel.mockReturnValue(true);
+    // 進行中フロー無し → durable な human_takeover マーカーを作って引き継ぐ。
+    const handled = await handleFlowPostback({ tenantId: TENANT, lineUserId: LINE_USER, data: "flow:consult" });
+    expect(handled).toBe(true);
+    const marker = mocks.store.inserts.find((i) => i.table === "line_conversation_flows");
+    expect(marker?.payload.state).toBe("human_takeover");
   });
 });
