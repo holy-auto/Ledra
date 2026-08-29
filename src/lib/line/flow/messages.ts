@@ -72,6 +72,17 @@ export function buildQuoteDetailAskWithService(): string {
 }
 
 /**
+ * 車検証写真から車両は読み取れたが、施工内容がまだ分からない (FAQ ボタン起点等) ときに、
+ * 車両を確認済みと伝えたうえで施工内容だけを尋ねる文面。写真から得た車両は context に保持する。
+ */
+export function buildQuoteServiceAskAfterPhoto(vehicleText: string): string {
+  return [
+    `車検証を確認しました（${vehicleText}）。ありがとうございます。`,
+    "お見積りのため、ご希望の施工内容をこのトークにご返信ください（例: ボディコーティング、キズ・へこみ修理 など）。",
+  ].join("\n");
+}
+
+/**
  * 詳細を受領し正式見積書の下書きを用意したことの顧客向けお礼・案内。
  * 送付そのものはスタッフが内容確認のうえ行う (壁3) ため「担当より」と明示する。
  */
@@ -224,6 +235,10 @@ export interface CancelTargetReservation {
   scheduled_date: string;
   start_time: string | null;
   title: string | null;
+  /** 実所要時間(分)。日程変更で変更先候補を絞り、元予約の長さを保つために使う。不明なら null/未設定。 */
+  duration_minutes?: number | null;
+  /** 元予約が代車を使っているか。日程変更で空き代車のある日だけ候補にするために使う。 */
+  needs_loaner?: boolean;
 }
 
 /** 予約1件を「7/20(月) 10:00〜 内容」の1行に整形する (start_time 無しは終日扱い)。 */
@@ -340,6 +355,65 @@ export function buildRescheduleSlotAsk(
       { label: "その他の日程を相談する", data: "flow:cancel" },
     ],
   };
+}
+
+/** 作業状況の問い合わせに返す対象予約の最小形 (+ 進捗)。 */
+export interface WorkStatusReservation {
+  status: string;
+  scheduled_date: string;
+  start_time: string | null;
+  title: string | null;
+  progress_pct?: number | null;
+}
+
+/**
+ * 予約・作業の状況問い合わせへの返信文 (顧客向け)。稼働中の reservations.status 5 値
+ * (confirmed/arrived/in_progress/completed) に対する顧客向け文言。正準 JobState への
+ * マッピングは持たない (ADR-0002 / IMP-015 まで)。未知値は無難なフォールバック。
+ */
+export function buildWorkStatusReply(r: WorkStatusReservation): string {
+  const line = formatReservationLine({
+    id: "",
+    scheduled_date: r.scheduled_date,
+    start_time: r.start_time,
+    title: r.title,
+  });
+  switch (r.status) {
+    case "confirmed":
+      return [`ご予約を承っております。`, `📅 ${line}`, "当日お待ちしております。"].join("\n");
+    case "arrived":
+      return [
+        "お車をお預かりしております。順番に作業を進めておりますので、いましばらくお待ちください。",
+        `📅 ${line}`,
+      ].join("\n");
+    case "in_progress":
+      return [
+        "ただいま作業を進めております。",
+        `📅 ${line}`,
+        // progress_pct は DB 既定が 0 (未設定と 0% が区別できない) ため、0 は「未設定」とみなし出さない。
+        typeof r.progress_pct === "number" && r.progress_pct > 0 ? `進捗の目安: ${Math.round(r.progress_pct)}%` : null,
+        "完了しましたらご連絡いたします。",
+      ]
+        .filter(Boolean)
+        .join("\n");
+    case "completed":
+      return ["作業は完了しております。", `📅 ${line}`, "ありがとうございました。ご確認をお願いいたします。"].join(
+        "\n",
+      );
+    default:
+      // 想定外の status。状況を断定せず、担当確認に寄せる無難な文面。
+      return ["ご予約を承っております。", `📅 ${line}`, "詳しい進捗は担当より確認のうえご連絡いたします。"].join("\n");
+  }
+}
+
+/**
+ * 作業状況を自動で答えられない場合 (本人の予約が見つからない・未紐付け等) のスタッフ引き継ぎ案内。
+ */
+export function buildWorkStatusHandoff(): string {
+  return [
+    "ご予約状況について、担当より確認のうえご連絡いたします。",
+    "お急ぎの場合はお電話でもお問い合わせいただけます。",
+  ].join("\n");
 }
 
 /**

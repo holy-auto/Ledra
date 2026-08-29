@@ -93,6 +93,196 @@ Square 連携・電子署名を現状に直し、会計連携（freee / マネ�
 (c) ガイド文言の絵文字が落ちていること（埋め込みフォントに絵文字グリフが無く豆腐になる）
 を確認する。今回のページ数のズレは、このテストが検出した。
 
+## 2026-08-29 certificate_images_guard を元の 20260820000000 へ戻す（本番は元の名前で既に適用済みだった）
+
+- 内容: PR #996 の改名（20260820000000→20260829000000）マージ後、db-migrate.yml が今度は逆方向の
+  "Remote migration versions not found in local migrations directory." で失敗した。本番の
+  `schema_migrations` を直接確認したところ、`20260820000000/certificate_images_guard` が
+  **元の名前のまま既に適用済み**だった（適用経緯は未確認）。改名（#996）は既に適用済みの
+  ファイルを改名してしまっていたことになる——DECISION_LOG 2026-07-21／run #973 が警告している
+  失敗パターンにそのまま該当。`20260829000000_certificate_images_guard.sql` を
+  `20260820000000_certificate_images_guard.sql` へ戻し（SQL は無変更）、
+  `supabase/__tests__/certificateImagesGuard.test.ts` のファイル名参照も元に戻した。
+- 検証: `lint:migrations`（282件）OK・`check:schema` OK・`certificateImagesGuard.test.ts`（6件）OK・
+  本番の適用済み全バージョンとローカルの全ファイルを機械的に突き合わせ、20260816010000 以降の
+  差分ゼロを確認。
+- 対象: GitHub Actions `DB migrate (apply to production)` ワークフロー。
+- 限界: 20260820000000 が本番へ適用された正確な経緯（誰が・いつ）は未確認。改名前に本番の
+  記録を都度再確認する運用を徹底する必要がある（DECISION_LOG 参照）。
+
+## 2026-08-29 certificate_images_guard マイグレーションを改名し db-migrate の out-of-order 停止を解消
+
+- 内容: PR #994 のマージ後、db-migrate.yml が
+  "Found local migration files to be inserted before the last migration on remote database."
+  で失敗した。`certificate_images_guard.sql`（PR #938 のドラフトが2026-08-20に作成、
+  レビュー待ちの間に main が7本進んだ）が未適用のまま本番の適用済み最新（20260828000003）より
+  古い日付になっていたため。`20260820000000_certificate_images_guard.sql` を
+  `20260829000000_certificate_images_guard.sql` へ改名（SQL は無変更）。
+  `supabase/__tests__/certificateImagesGuard.test.ts` のファイル名参照も同時に更新。
+  このリポジトリで同じ停止は run #972・#976・#977 に続き4回目（DECISION_LOG 2026-07-21 の
+  既存手順をそのまま適用）。
+- 検証: `lint:migrations`（282件）OK・`check:schema` OK・`certificateImagesGuard.test.ts`（6件）OK。
+- 対象: GitHub Actions `DB migrate (apply to production)` ワークフロー。
+  `certificate_images_guard` トリガーの実体（保護ロジック）は無変更。
+- 限界: レビュー待ちの長い PR が自身のマイグレーションバージョンを陳腐化させる構造的な
+  問題は未解決。OPEN_QUESTIONS に起票。
+
+## 2026-08-29 日程候補の精度向上: 日程変更で元予約の所要時間・代車・カテゴリを考慮（branch claude/line-chatbot-ledra-dy2fiq）
+
+- 内容: LINE の日程変更（reschedule）セルフ対応で提示する日程候補が、これまで所要時間も代車も
+  カテゴリも無視して「空いている枠」を一律に出していた。動かす対象の既存予約が持つ
+  **実所要時間（end−start）・代車要否（loaner_car_id）** を使って候補を絞り、作業はあるが
+  カテゴリ不明なので **受入制限枠は提案しない（excludeRestricted）** ようにした。
+  - 副次バグの解消: 変更確定時に候補の end_time をそのまま新予約の end_time にしていたため、
+    1時間の作業を3時間枠に移すと**予約が枠いっぱい（3時間）に膨らんでいた**。所要時間を
+    渡すことで end_time が実作業時間（start+所要）に揃い、元予約の長さを保つ。
+  - 所要時間に収まらない枠（fits=false）は顧客に提示しない（入れない枠を選べないように）。
+- 実装:
+  - `fetchFlowScheduleCandidates` に `estimatedMinutes` / `needsLoaner` / `excludeRestricted` を追加。
+    needsLoaner 時は `loaner_cars` / `loaner_car_loans` を読んで空き代車を日別算出。fits=false を除外。
+  - 代車の空き計算を純粋関数 `computeFreeLoanersByDate`（`booking/candidates.ts`）に切り出し、
+    `booking-candidates` route（管理UI）と LINE 会話フローで**単一情報源**にした（在庫計算の二重実装を防止）。
+  - `reservationDurationMinutes`（純粋関数）で end−start を分換算（終日/時刻なし/逆転は null）。
+  - reschedule フロー起点・pick→slot・確定直前の再検証の3経路すべてで同じ条件を渡し、
+    再検証の end_time 一致判定が壊れないようにした。
+- 見積り（新規予約）フローは施工内容→品目→カテゴリ/所要時間の解決層が無く所要時間が不明なため
+  従来どおり（estimatedMinutes=null）。人手（considerStaff）は今回スコープ外。マイグレーション不要。
+- 検証: `candidates`（computeFreeLoanersByDate）／`scheduleCandidates`（所要フィルタ・代車ゲート・
+  制限枠除外の結合）／`rescheduleFlowAuto`（元予約から所要・代車を渡すこと）テスト追加。
+- コードレビュー由来の追加修正（同 PR、`/code-review`）:
+  - **【重大】limit 食い潰しの解消**: `fits` 除外を `proposeCandidates` の `limit` 集計**後**に
+    かけていたため、短い枠が先に limit を消費して入る枠が取りこぼされ、空き枠があるのに
+    スタッフ引き継ぎになり得た。`proposeCandidates` に `onlyFitting` を追加し push（=limit 集計）
+    より前に fits=false を除外。回帰テスト追加。
+  - 確定直前の再検証を `start_time` 一致のみで同定（end_time は所要時間からの導出値なので照合に
+    使わない。target 欠落時の誤コンフリクトを回避）。
+  - reschedule テストで `reservationDurationMinutes` を本物（importActual）で検証。
+- 全体 4444 件パス、tsc/eslint エラー0。
+- #2「見積りフロー改善」の2件目。後続: 概算見積りにボタン誘導＋文面整合・停滞フローの再促し。
+
+## 2026-08-29 IMP-023（#938）マージ後、本番にだけ存在した未追跡マイグレーションを復旧（db-migrate 停止解消）
+
+- 内容: PR #938（証跡凍結ガード）を main へ squash merge 後、`db-migrate.yml` が
+  "Remote migration versions not found in local migrations directory." で失敗した。
+  本番 `cahybswpduchptvyvdkk` の `supabase_migrations.schema_migrations` を直接確認したところ、
+  `20260828000003 / user_interface_preferences`（tenant_id・user_id・display_mode・
+  onboarding_completed_at を持つテーブル。RLS 有効・SELECT ポリシーのみ）が本番にのみ記録されており、
+  このリポジトリの git 履歴（squash 済み main を含め全履歴検索）に一度も出現していなかった。
+  作成者・適用時期は特定できていない（このセッションの作業ではない）。DECISION_LOG 2026-07-21／
+  過去3回（run #971・#973 ほか）と同じパターン（Supabase MCP の `apply_migration` による本番直接適用
+  はリポジトリにファイルを残さない）。過去3件と異なり同一内容の別ファイルが repo に無いため、
+  空プレースホルダではなく本番の `statements` をそのまま採録した
+  `supabase/migrations/20260828000003_user_interface_preferences.sql` を追加して復旧した。
+  `supabase migration repair`（本番台帳の書き換え）は使っていない——本番へは一切書き込んでいない。
+- 検証: `lint:migrations`（281件検査）OK・`check:schema` OK（このテーブルはアプリコード未参照のため
+  クエリ照合には影響なし）。
+- 対象: GitHub Actions `DB migrate (apply to production)` ワークフロー全般（以後のマイグレーション
+  自動適用）。`user_interface_preferences` テーブル自体はアプリコードから未参照で機能への影響なし。
+- 限界: このテーブルの利用目的・書き込み経路（RLS に INSERT/UPDATE ポリシーが無い）は未確認
+  【要確認】。誰が・いつ本番へ適用したかも特定できていない。OPEN_QUESTIONS に起票。
+
+## 2026-08-29 見積りフロー改善①: 見積り詳細待ちの車検証写真をOCRで取り込む（branch claude/line-chatbot-ledra-dy2fiq）
+
+- 内容: 見積り会話フローの詳細待ち（`awaiting_quote_detail`）中に顧客が車検証写真を送ると、
+  これまでは OCR に配線されておらず「車種+年式テキスト」しか先に進めなかった。今回、写真を
+  OCR（既存 `parseShakenshoAuto` を再利用）して車両（メーカー/型式/初度登録）を読み取り、
+  見積りフローを前進させる。
+  - 施工内容が既に context にあれば、写真の車両で正式見積り下書きまで作成（`maybeAdvanceQuoteFlowOnDetail`）。
+  - 施工内容が未知（FAQ ボタン起点等）なら、読み取った車両を context に保持し施工内容だけ聞き返す
+    （車両を捨てない）。
+  - 車検証として読めない画像・車名不読は未処理（false）で通常の受信箱記録（スタッフ対応）に委ねる。
+- 実装: `conversationFlowAuto.maybeAdvanceQuoteFlowOnPhoto`、文面 `buildQuoteServiceAskAfterPhoto`、
+  `client.ts` の画像処理で車両撮影フロー（`handleVehiclePhotoMessage`）に該当しなければ本ハンドラを試す。
+  OCR は身分証書類ソース（`identity_documents`）許可時のみ（既存 parse-shakken と同ゲート）。
+  opt-in は既存の会話フロー（`inbound_message.auto_conversation_flow`）。マイグレーション不要。
+- 検証: `conversationFlowAuto`（施工内容ありで draft／未知なら車両保持＋施工内容聞き返し／不読は未処理／
+  フロー不在／ソース OFF）テスト追加。全体 4419 件パス、tsc/eslint エラー0（既存 client.ts の `text` 警告のみ）。
+- コードレビュー由来の追加修正（同 PR、`/code-review`）:
+  - **二重下書き防止（重要）**: `maybeAdvanceQuoteFlowOnDetail` を「下書き作成の前に quote_drafted を
+    排他クレーム」する構造に変更（写真/テキストの再配信・連投で見積り下書き・お礼が二重に作られていた
+    既存レースを解消。材料なしなら詳細待ちへ戻す）。写真経路もこれに合流。
+  - 画像バイト列の Buffer コピーを 1 回に（2 ハンドラで二重確保していた）。
+  - 未処理時に写真を二重記録しないよう記録タイミングを整理。
+- #2「見積りフロー改善」の1件目。後続: 日程候補の精度向上・概算見積りにボタン誘導・停滞フローの再促し。
+
+## 2026-08-29 IMP-023（#938）: 証跡凍結ガード。main 取り込み時に本番マイグレーションの設計不備を4件修正
+
+- 内容: v2.0 §7 の証跡凍結ガード（`certificate_images_guard` DB トリガー）と必須ショット進捗計算
+  （`evidenceProgress.ts`）を main へ統合。実装内容そのものは元の #938 のドラフト
+  （2026-08-20、詳細は同日付の RELEASE_LOG エントリ参照）から変わらないが、
+  **本番 DB へ自動適用されるマイグレーションを含むため、取り込み時の `/code-review` で
+  4件の指摘を修正**した（うち1件は代表判断で公開区分「マイグレーション適用してマージ」の
+  明示確認を得た上でのマージ）:
+  1. **expired 証明書の凍結解除ループホール（重大）**: `NOT IN ('active', 'void')` を
+     「制限なし」条件にしていたため、保証期間満了で自動的に expired へ遷移した瞬間
+     （`cron/maintenance`）に凍結が解除され、まさに紛争が起きやすい満了後に写真の
+     削除・改ざんが自由になる設計になっていた。`= 'draft'` のみを制限なしとする条件に
+     修正（active/void/expired をすべて保護）。詳細は DECISION_LOG「IMP-023 凍結ガードの
+     draft/expired 同列扱いは誤りだったため expired も保護対象に修正」参照。
+  2. **DELETE API のストレージ削除順序**: `/api/certificates/images/[id]` が DB 行の
+     ガード付き削除より先にストレージから実ファイルを消していたため、トリガーに
+     ブロックされて 409 を返しても実ファイルは既に失われる状態だった。DB 削除を先に
+     実行する順序へ修正。
+  3. **polygon-backfill の書き込みエラー握りつぶし**: アンカー結果の UPDATE
+     （`polygon_tx_hash`+`authenticity_grade` を1文にまとめていた）がガードにより
+     拒否されても戻り値の error を見ておらず、成功扱いのまま進んでいた。tx hash の
+     UPDATE（非保護列）と authenticity_grade の UPDATE（保護列）を分離し、後者が
+     ブロックされてもアンカー自体の前進を止めないよう修正。
+  4. **certificate_id の付け替えが証跡列チェックをすり抜ける穴**: 凍結保護対象の
+     証跡列リストに `certificate_id` が含まれておらず、別証明書への付け替えで
+     実質的に証跡を切り離せる潜在的な穴があった。リストに追加。
+  - `evidenceProgress.ts` の同じ stage を共有する複数の必須ショットが同じ写真を
+    二重にカウントするバグも合わせて修正（現時点で UI 未接続のため実害はなし、
+    ミューテーションプローブ検証済みのテストを追加）。
+  - `supabase/__tests__/certificateImagesGuard.test.ts` を新設（既存
+    `partInstallations.test.ts` と同方式の静的 SQL 監査）。
+- **同一 PR への Codex（`chatgpt-codex-connector[bot]`）レビューでさらに2件を追加修正**:
+  5. **保護対象列の不足**: `processUploadedPhoto.ts` がアップロード時に一度だけ書き込む
+     証跡フィールド（c2pa_manifest/c2pa_verified/external_c2pa_*/capture_nonce/
+     capture_binding_reason/device_attestation_*/exif_*/gps_check_verdict/
+     gps_distance_bucket/deepfake_score/deepfake_verdict）が凍結保護リストから漏れており、
+     真正性判定の根拠そのものを発行後に書き換えられる状態だった。全16列を追加
+     （polygon_tx_hash/polygon_network は事後アンカリングの正規更新のため意図的に対象外）。
+  6. **polygon-backfill のグレード更新失敗を一律ガード扱いにしていた**: ガード拒否
+     （P0001）以外の理由（ネットワーク断等）で失敗しても区別せず warn ログにしていたため、
+     一時的な失敗が永久に再試行されなくなる恐れがあった。P0001 かどうかで
+     ログレベルを分離。
+  - **Codex は同時に、この移行が対応しきれていない3つの既知の限界も指摘**（マイグレーション
+    ファイルのコメントに明記、この PR ではスコープ外）: (a) ガードが親ステータスを
+    ロック無しで SELECT するだけなので、証明書の activate と写真 DELETE が真に同時に
+    走ると理論上すり抜けられる TOCTOU（(b) certificates.status 自体は本ガードの対象外
+    のため、active→draft のような逆方向遷移を直接 UPDATE されると凍結が解除される、
+    (c) 親 certificates 行自体を削除する（ON DELETE CASCADE）と子の写真行はガードの
+    「親が見つからない」＝「制限なし」判定に該当し、削除経路がすり抜ける。これら3件は
+    `certificates` 側の別ガード・ロック機構が必要な、より大きな変更のため、IMP-030
+    以降での対応を代表に提案・確認中。
+- 検証: tsc/vitest(4408件)/lint/check:schema/lint:migrations すべて green。マイグレーションは
+  main マージ後に `db-migrate.yml` が自動的に本番へ適用する（承認ゲートなし）。
+
+## 2026-08-29 予約・作業状況の問い合わせにLINEで自動返信（新規、branch claude/line-chatbot-ledra-dy2fiq）
+
+- 内容: 顧客が LINE で「作業どうなってる?」「いつ仕上がる?」等（intent=status_inquiry）と送ると、
+  その顧客本人の直近予約の状況を自動返信する。対象選択は「作業中/来店受付（進行中）→ 直近の未来予約 →
+  直近の完了」の優先順。稼働中の `reservations.status`（confirmed/arrived/in_progress/completed）に
+  対応する顧客向け文言で返し、in_progress は `progress_pct` があれば進捗も添える。
+- 本人確認: line_user_id 紐付け済みのお客様のみ（他人の予約状況を漏らさない）。未紐付け・対象なしは
+  スタッフ引き継ぎ。opt-in `inbound_message.auto_status_reply`（既定 OFF、Standard+・AI 有効）。
+- 実装: 新 intent `status_inquiry`（`inboundReservationExtract`）、起点 IO `statusReplyAuto.ts`、
+  文面 `buildWorkStatusReply`/`buildWorkStatusHandoff`（`messages.ts`）、`inboundAuto` で
+  キャンセル/変更の後・他返信の前に判定し早期 return。
+- 正準 JobState へのマッピングは持たない（ADR-0002 / IMP-015 まで）。稼働中の 5 値だけを顧客向けに翻訳。
+- 検証: statusReplyAuto（opt-in/対象選択優先順/未紐付け/対象なし/進捗表示）＋ inboundAuto ゲートの
+  テスト追加。全体 4414 件パス、tsc/eslint エラー0。
+- コードレビュー由来の追加修正（同 PR、`/code-review`）:
+  - **越境情報開示の防止（重要）**: 顧客解決を**必ず line_user_id 紐付けから**行うよう変更。inboundAuto が
+    AI 抽出のメール/電話から解決した customerId を渡してきても信用しない（本文に他人のメールを書いた
+    未紐付けユーザーに他人の予約状況を返さない）。回帰テスト追加。
+  - status_inquiry を `knowledgeReplyAuto` の許可 intent に追加（status 返信 OFF のテナントで、状況質問が
+    ナレッジ返信に拾われなくなる回帰を防ぐ。can_answer 判定があるので過剰返信しない）。
+  - `progress_pct` が 0（DB 既定）のとき「進捗 0%」を出さない（未設定と 0% を区別できないため）。
+  - 予約取得クエリのエラーを「予約なし」と誤断定せず引き継ぎに寄せる（ログも残す）。
+- スコープ外（後続）: 証明書・支払い状況の案内、複数予約の一覧提示、作業ステップ単位の詳細。
+
 ## 2026-08-29 予約前日リマインダー（キャンセル/変更ボタン付き、新規、branch claude/line-chatbot-ledra-dy2fiq）
 
 - 内容: 翌日(JST)に未キャンセル予約があり LINE 紐付け済みのお客様へ、前日夕方に LINE で
@@ -1397,6 +1587,17 @@ supabase migration repair --status reverted 20260825000000
 - 内容: 何を実装・変更したか
 - 対象: どの画面・API・業種向けか
 ```
+
+## 2026-08-20 IMP-023 §7 JOB_EVIDENCE — 証跡凍結ガード・必須ショット進捗（branch impl/IMP-023-evidence / PR #938）
+
+- 内容: v2.0 §7 の証跡撮影基盤ギャップを2件クローズ。(1) `certificate_images_guard` DB
+  トリガー — 発行済み(active)/取消済み(void)証明書に紐づく写真行の DELETE を DB レベルで
+  ブロック。証跡列(sha256/original_sha256/perceptual_hash/stage/authenticity_grade/
+  tsa_token/tsa_authority/tsa_timestamp_at/c2pa_manifest_cid/storage_path)の破壊的 UPDATE
+  も拒否。非証跡列(sort_order 等)の更新は許可。DELETE API route にトリガーエラーの 409
+  ハンドリング追加。(2) `evidenceProgress.ts` — 工程ガイドの必須ショット宣言とアップロード
+  済み写真の stage タグを突合せ、進捗(total/fulfilled/missing)を返す純関数。テスト 8 件。
+- 対象: 証明書写真システム。設計原則 10「原本証跡は不変/追記のみ」の充足。IMP-024/026 の前提条件。
 
 ## 2026-08-20 IMP-022 §6 Work List & Job Hub — ステータス統一・情報階層・CTA規律（branch impl/IMP-022-work-list-job-hub / PR #937）
 

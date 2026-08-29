@@ -86,7 +86,9 @@ export async function maybeAutoReplyKnowledge(params: MaybeAutoReplyKnowledgePar
     // 許可 intent のみ返信する (fail-closed)。cancel / change_reservation は
     // スタッフが操作するため、ナレッジ返信で「対応済み」と誤認させない。
     // intent の enum が将来増えても、明示的に許可するまで自動返信しない。
-    if (!["inquiry_only", "new_reservation", "other"].includes(params.intent)) return false;
+    // status_inquiry も許可する: 専用の状況返信 (auto_status_reply) が OFF のテナントでも、
+    // 状況を尋ねる一般質問がナレッジで拾えるように (can_answer 判定があるので過剰返信はしない)。
+    if (!["inquiry_only", "new_reservation", "other", "status_inquiry"].includes(params.intent)) return false;
 
     const settings = params.settings ?? (await loadAiAutomationSettings(tenantId));
     if (!shouldAutoReplyKnowledge(settings)) return false;

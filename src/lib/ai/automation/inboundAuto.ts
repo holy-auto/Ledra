@@ -29,6 +29,7 @@ import { maybeAutoReplyKnowledge } from "./knowledgeReplyAuto";
 import { maybeStartQuoteFlow, maybeAdvanceQuoteFlowOnDetail } from "./conversationFlowAuto";
 import { maybeStartCancelFlow } from "./cancelFlowAuto";
 import { maybeStartRescheduleFlow } from "./rescheduleFlowAuto";
+import { maybeReplyWorkStatus } from "./statusReplyAuto";
 import {
   shouldAutoExtractInbound,
   shouldAutoReplyKnowledge,
@@ -36,6 +37,7 @@ import {
   shouldRunConversationFlow,
   shouldAutoSelfCancel,
   shouldAutoSelfReschedule,
+  shouldAutoReplyStatus,
   decideInboundCommit,
 } from "./orchestrator";
 import { storeIdOrNull } from "@/lib/stores/resolveStoreId";
@@ -101,7 +103,16 @@ export async function maybeAutoProcessInboundMessage(params: MaybeAutoProcessPar
     // キャンセル/日程変更のセルフ対応も intent の抽出結果に依存するため、これ単独 opt-in でも抽出を走らせる。
     const wantSelfCancel = shouldAutoSelfCancel(settings);
     const wantSelfReschedule = shouldAutoSelfReschedule(settings);
-    if (!wantExtract && !wantKnowledgeReply && !wantEstimateReply && !wantSelfCancel && !wantSelfReschedule) return;
+    const wantStatusReply = shouldAutoReplyStatus(settings);
+    if (
+      !wantExtract &&
+      !wantKnowledgeReply &&
+      !wantEstimateReply &&
+      !wantSelfCancel &&
+      !wantSelfReschedule &&
+      !wantStatusReply
+    )
+      return;
 
     // プラン / 有効性チェック (webhook には auth セッションが無いので DB から直接読む)。
     const admin = createServiceRoleAdmin("AI auto-extract inbound — LINE webhook lacks auth session");
@@ -260,6 +271,28 @@ export async function maybeAutoProcessInboundMessage(params: MaybeAutoProcessPar
           tenantId,
           outcome: "ok",
           meta: { auto: true, self_reschedule: true, channel: params.channel ?? "line" },
+        });
+        return;
+      }
+    }
+
+    // 予約・作業の状況問い合わせに自動返信 (opt-in / 内部で fail-soft)。intent=status_inquiry なら
+    // 本人の直近予約の状況を返す。予約起票・他の自動返信より**前に**判定し、処理したら早期 return する。
+    if (wantStatusReply && result.intent === "status_inquiry") {
+      const statusReplied = await maybeReplyWorkStatus({
+        tenantId,
+        customerId: resolvedCustomerId,
+        lineUserId: params.lineUserId,
+        intent: result.intent,
+        messageId,
+        channel: params.channel ?? "line",
+        settings,
+      });
+      if (statusReplied) {
+        usage.record({
+          tenantId,
+          outcome: "ok",
+          meta: { auto: true, status_reply: true, channel: params.channel ?? "line" },
         });
         return;
       }

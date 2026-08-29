@@ -676,6 +676,10 @@ async function handleReschedulePick(
     limit: 3,
     fromDate: addDays(todayJst(), 1),
     excludeReservationId: chosen.id,
+    // 変更先候補を選んだ予約の実所要時間・代車要否で絞る (rescheduleFlowAuto 単一対象時と同条件)。
+    estimatedMinutes: chosen.duration_minutes,
+    needsLoaner: chosen.needs_loaner,
+    excludeRestricted: true,
   });
   if (slots.length === 0) {
     const ok = await advanceFlow(admin, flow, {
@@ -769,8 +773,14 @@ async function handleRescheduleSlot(
     limit: 50,
     // reservation_id は上の !flow.reservation_id ガードで truthy が保証済み。
     excludeReservationId: flow.reservation_id,
+    // 提示時と同条件で再取得し、空き/所要/代車/カテゴリの制約を効かせる。
+    estimatedMinutes: target?.duration_minutes,
+    needsLoaner: target?.needs_loaner,
+    excludeRestricted: true,
   });
-  const stillAvailable = fresh.some((c) => c.start_time === chosen.start_time && c.end_time === chosen.end_time);
+  // 同一日 (restrictToDate) 内では 1 枠始点=1 候補なので start_time の一致だけで同定できる。
+  // end_time は所要時間から導出される値なので照合に使わない (target 欠落時の false 不一致を避ける)。
+  const stillAvailable = fresh.some((c) => c.start_time === chosen.start_time);
   if (!stillAvailable) {
     // 変更希望は未達のまま (顧客はまだ日程を動かしたい)。closed のままにせず human_takeover に
     // 移し、スタッフがトークを引き継いで別日程を調整できるようにする (handleSlotSelected と同様)。
