@@ -916,9 +916,27 @@ export function PricingOverviewPdf() {
       producer="Ledra"
     >
       {PricingCover()}
+
+      {SectionDivider({
+        no: "01",
+        title: "プラン",
+        lead: "発行ボリュームと運用規模で選ぶ4プラン。含まれるもの・上限を、見積にそのまま使える粒度で並べます。",
+      })}
       {PricingPlans()}
       {PricingComparison()}
+
+      {SectionDivider({
+        no: "02",
+        title: "オプション",
+        lead: "証明書テンプレートのブランド化と、店舗・ユーザー・サポートの追加。必要になったぶんだけ足せます。",
+      })}
       {PricingTemplateAndAddons()}
+
+      {SectionDivider({
+        no: "03",
+        title: "NFC とキャンペーン",
+        lead: "現場でかざして呼び出す NFC タグの価格と、初期店舗限定の適用条件です。",
+      })}
       {PricingCampaignAndNfc()}
     </Document>
   );
@@ -1081,10 +1099,30 @@ export function FeaturesDeepDivePdf() {
       producer="Ledra"
     >
       {FeaturesCover()}
+
+      {SectionDivider({
+        no: "01",
+        title: "全体像",
+        lead: "施工店・代理店・保険会社・顧客。4者が同じ「施工の事実」を、役割に応じた形で受け取ります。",
+      })}
       {FeaturesFourPortal()}
+
+      {/* カテゴリごとの章扉は付けない。カテゴリは FEATURE_GROUPS の増減で変わるので、
+          章立てを固定すると新しいカテゴリが章の外に落ちる。ここは1つの章として通す。 */}
+      {SectionDivider({
+        no: "02",
+        title: "機能",
+        lead: "業務の順番に沿って、カテゴリごとに見ていきます。料金・契約条件は別紙「料金プラン詳細資料」をご参照ください。",
+      })}
       {FEATURE_GROUPS.map((g, i) => (
         <React.Fragment key={g.id}>{FeatureGroupPage({ group: g, index: i })}</React.Fragment>
       ))}
+
+      {SectionDivider({
+        no: "03",
+        title: "次のステップ",
+        lead: "ご興味のある機能について、デモ画面とご一緒にご説明できます。",
+      })}
       {FeaturesClosing()}
     </Document>
   );
@@ -1456,12 +1494,36 @@ export function SecurityWhitepaperPdf() {
       producer="Ledra"
     >
       {SecurityCover()}
+
+      {SectionDivider({
+        no: "01",
+        title: "守り方",
+        lead: "通信・保存・ペイロードの3層で、独立に働く防御を重ねています。どれか1層が破られても、被害を局所化する設計です。",
+      })}
       {SecurityLayers()}
       {SECURITY_BLOCKS.map((b, i) => (
         <React.Fragment key={b.id}>{SecurityBlockPage({ block: b, index: i })}</React.Fragment>
       ))}
+
+      {SectionDivider({
+        no: "02",
+        title: "改ざん防止",
+        lead: "写真ハッシュの刻印から、第三者による独立検証まで。Ledra 側のデータが変わっても検知できる根拠です。",
+      })}
       {SecurityPolygonFlow()}
+
+      {SectionDivider({
+        no: "03",
+        title: "データの扱い",
+        lead: "テナント境界・保管期間・削除とエクスポート。預けたデータがどう扱われ、いつ消えるかを明示します。",
+      })}
       {SecurityDataLifecycle()}
+
+      {SectionDivider({
+        no: "04",
+        title: "体制",
+        lead: "認証取得の進捗、インシデント時に何がどの順で起きるか、報告の窓口です。",
+      })}
       {SecurityClosing()}
     </Document>
   );
@@ -1810,11 +1872,29 @@ export async function CaseStudiesPdf(): Promise<React.ReactElement<DocumentProps
       producer="Ledra"
     >
       {CasesCover()}
+
+      {SectionDivider({
+        no: "01",
+        title: "何を測るか",
+        lead: "事例を「良かった」で終わらせないために、定量・定性の両面で測る項目を先に合意します。",
+      })}
       {CasesMetrics()}
+
+      {SectionDivider({
+        no: "02",
+        title: "業種別の変化",
+        lead: "コーティング・フィルム・ラッピング・板金・整備。業種ごとに、導入前後で何が変わるかのパターンです。",
+      })}
       {INDUSTRY_PATTERNS.map((p, i) => (
         <React.Fragment key={p.industry}>{CasesIndustryPatternPage({ pattern: p, index: i })}</React.Fragment>
       ))}
       {cases.length > 0 ? CasesPublishedPage({ cases }) : null}
+
+      {SectionDivider({
+        no: "03",
+        title: "参加する",
+        lead: "事例記事は Ledra 編集部が伴走して制作します。貴社の追加負担なく、業界への発信素材としてお使いいただけます。",
+      })}
       {CasesPilotProgram()}
       {CasesClosing()}
     </Document>
@@ -2206,8 +2286,26 @@ export function RoiTemplatePdf() {
       producer="Ledra"
     >
       {RoiCover()}
+
+      {SectionDivider({
+        no: "01",
+        title: "計算式",
+        lead: "何をどう足し引きして削減額を出すのか。前提を先に開いておきます。",
+      })}
       {RoiFormula()}
+
+      {SectionDivider({
+        no: "02",
+        title: "記入する",
+        lead: "自社の数字を書き込むワークシートです。印刷してそのままお使いいただけます。",
+      })}
       {RoiWorksheet()}
+
+      {SectionDivider({
+        no: "03",
+        title: "確かめる",
+        lead: "見落としがちな損失、規模別の参考値、前提が外れたときの振れ幅。出した数字を自分で疑うための材料です。",
+      })}
       {RoiLossModel()}
       {RoiReferenceTable()}
       {RoiSensitivity()}
@@ -2547,8 +2645,18 @@ export function OperationGuidePdf() {
       producer="Ledra"
     >
       {OperationGuideCover()}
+
+      {/* グループがそのまま章になる。章扉はデータから作るので、
+          グループが増えても章立ての外に落ちない。 */}
       {OPERATION_GUIDE_GROUPS.map((g, i) => (
-        <React.Fragment key={g.id}>{OperationGuideGroupPage({ group: g, index: i })}</React.Fragment>
+        <React.Fragment key={g.id}>
+          {SectionDivider({
+            no: String(i + 1).padStart(2, "0"),
+            title: g.label,
+            lead: g.intro ?? "",
+          })}
+          {OperationGuideGroupPage({ group: g, index: i })}
+        </React.Fragment>
       ))}
       {OperationGuideClosing()}
     </Document>

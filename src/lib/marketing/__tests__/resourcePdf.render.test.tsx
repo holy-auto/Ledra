@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { renderToBuffer } from "@react-pdf/renderer";
+import { readFileSync } from "fs";
 import { createRequire } from "module";
 import { RESOURCE_PDFS, pdfSafe } from "../resourcePdf";
 import { RESOURCE_CATALOG } from "../resourceCatalog";
@@ -133,5 +134,28 @@ describe("グリフ網羅", () => {
     expect(pdfSafe("膜厚 μm")).toBe("膜厚 µm");
     expect(pdfSafe("SiO₂")).toBe("SiO2");
     expect(pdfSafe("① 伝わらない摩擦")).toBe("1. 伝わらない摩擦");
+  });
+});
+
+/**
+ * PDF が差し込む画面キャプチャのファイル名と、撮影スクリプトが出力する
+ * ファイル名の突き合わせ。
+ *
+ * 両者がズレると**撮影しても永久にスライドが出ない**（ScreenshotSlide は
+ * ファイルが無ければ黙ってページごと消えるため、失敗が表に出ない）。
+ * リポジトリにキャプチャを置いていないので実物では確かめられない。
+ * `sqlTsParity.test.ts` と同じく、相手側のソースをテキストとして読んで照合する。
+ */
+describe("画面キャプチャのファイル名", () => {
+  it("PDF が参照する全キャプチャを、撮影スクリプトが出力する", () => {
+    const pdfSrc = readFileSync("src/lib/marketing/resourcePdf.tsx", "utf8");
+    const captureSrc = readFileSync("scripts/capture-screenshots.ts", "utf8");
+
+    const referenced = [...pdfSrc.matchAll(/file:\s*"([^"]+\.png)"/g)].map((m) => m[1]);
+    // 検査が空振りしていないことの確認（ScreenshotSlide を消したら気づける）
+    expect(referenced.length, "PDF が参照するキャプチャが1つも見つからない").toBeGreaterThan(0);
+
+    const missing = referenced.filter((f) => !captureSrc.includes(`"${f}"`));
+    expect(missing, "撮影スクリプトが出力しないファイルを PDF が参照している").toEqual([]);
   });
 });

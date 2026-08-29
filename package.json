@@ -20,6 +20,7 @@
     "format:check": "prettier --check \"src/**/*.{ts,tsx,js,jsx,json,css}\"",
     "prepare": "husky",
     "demo:setup": "tsx scripts/setup-demo-agent.ts",
+    "screenshots": "tsx scripts/capture-screenshots.ts",
     "demo:setup-insurer": "tsx scripts/setup-demo-insurer.ts",
     "demo:setup-manufacturer": "tsx scripts/setup-demo-manufacturer.ts",
     "demo:setup-tenant": "tsx scripts/setup-demo-tenant.ts",
