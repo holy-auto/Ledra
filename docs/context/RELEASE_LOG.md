@@ -4,6 +4,39 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-08-29 IMP-021（#936）: 3秒理解ホーム。main 取り込み時に重大な復活バグと初期表示スコープの問題を修正
+
+- 内容: v2.0 §5 のダッシュボード「3秒理解」（NEXT ACTION セクション・今日の進捗
+  ProgressCard・3段階ワークスコープ切替 HomeScopeToggle）を main へ統合。実装内容
+  そのものは元の #936 のドラフト（2026-08-19、詳細は同日付の RELEASE_LOG エントリ
+  参照）から変わらない。
+- **main への取り込み時の `/code-review` で5件を修正**（うち2件は重大）:
+  1. **`src/lib/sync/` の復活（2回目）**: #935 で一度直した「main で削除済みの
+     モジュールが古いブランチとのマージで衝突なしに復活する」バグが、#936 でも
+     同じ理由で再発した。今回は機械的な検出方法を実際に作って検証し（DECISION_LOG
+     「削除済みファイルの復活を機械的に検出する方法を作り、検証した」参照）、それで
+     見つけて再度削除した。
+  2. **ダッシュボード初期表示スコープの回帰**: `defaultScope(caller.role)` を
+     無指定時のフォールバックに使うと、staff/viewer は今まで見えていた店舗全体の
+     タスクが「自分の分だけ」に縮み、viewer はトグルが出ないため戻す手段も無くなる
+     ところだった。代表判断が出るまで現状維持（"store" 固定）に変更。詳細は
+     DECISION_LOG「IMP-021 の初期表示スコープは代表判断が出るまで既存の
+     tenant-wide 表示を維持」参照。
+  3. 新規テスト2件が UTC より遅いタイムゾーン（米国等）で失敗するバグを修正
+     （`now` を深夜0時UTCから正午UTCへ変更、既存の姉妹テストと同じ規約）。
+  4. `TodayOverviewSection` と `TodayTasksWidget` が同一リクエスト内で
+     `fetchTodaySignals` を同じ引数で二重に呼んでいた（DB クエリが2倍）。
+     `fetchTodaySignals` を React `cache()` でラップして解消。
+  5. 死んだコード2件を削除: `WorkScopeProvider.tsx`（呼び出し元ゼロの投機的な
+     抽象化）、`TodayTasksScopeToggle.tsx`（HomeScopeToggle に統合済みで
+     import 元ゼロ）。
+- まだ答えが出ていないこと: staff/viewer の初期表示スコープを self にすべきか
+  現状維持でよいかは代表判断待ち。`todayTasks.ts` の日付計算が正のUTCオフセット
+  （JST 等）で1日ずれる既存バグを発見したが、今回のスコープ外として保留
+  （OPEN_QUESTIONS 参照）。
+- テスト: 既存5件 + 修正後全通過。全4391テスト通過、`tsc --noEmit` クリーン、
+  lint 0 エラー。
+
 ## 2026-08-28 IMP-020（#935）: ナビゲーション基盤は残し、モバイル画面は main の実装を採用
 
 - 内容: (1) `src/lib/navigation/tabs.ts`（正準タブ定義 `CANONICAL_TABS`/`WEB_TABS`/
@@ -1181,6 +1214,19 @@ supabase migration repair --status reverted 20260825000000
 - 内容: 何を実装・変更したか
 - 対象: どの画面・API・業種向けか
 ```
+
+## 2026-08-19 IMP-021 §5 HOME — 3秒理解ホーム（branch impl/IMP-021-home / PR #936）
+
+- 内容: v2.0 §5 のダッシュボード「3秒理解」を実装。(1) NEXT ACTION セクション —
+  今日のタスクタイル（todayTasks.ts ベース）から最優先 1 件を NextActionCard で提示。
+  優先度→Severity 自動変換（urgent→CRITICAL、warn→HIGH、normal→ACTION）、
+  CTA ボタン付き。(2) 今日の進捗 ProgressCard — 当日予約の完了/合計を円形プログレスで表示。
+  (3) WorkScopeProvider — React Context（自分/店舗/全店舗 3 段階切替、URL params 連動）。
+  (4) HomeScopeToggle — SegmentedControl ベースの 3 段階スコープ切替（旧 2 段階から拡張、
+  PageHeader の actions に配置）。(5) ダッシュボードレイアウト再構築 — NEXT ACTION →
+  Progress → Approval → Setup → QuickActions → TodayTasks → Stats の順に再配置。
+  新 DB クエリ・マイグレーションなし（既存 fetchTodaySignals を再利用）。テスト 13 件。
+- 対象: 管理画面ダッシュボード。IMP-022（Work List）・IMP-029（Job Detail）の前提条件。
 
 ## 2026-08-19 IMP-016 オフライン同期キュー・競合検出基盤（branch impl/IMP-016-offline-sync / PR #TBD）
 
