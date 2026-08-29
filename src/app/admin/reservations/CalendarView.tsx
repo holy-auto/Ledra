@@ -1,6 +1,7 @@
 "use client";
 
 import { memo, useMemo, useState } from "react";
+import { reservationStatusDisplay } from "@/lib/domain/jobStatusDisplay";
 
 type Reservation = {
   id: string;
@@ -18,14 +19,6 @@ interface CalendarViewProps {
 }
 
 const WEEKDAYS = ["日", "月", "火", "水", "木", "金", "土"];
-
-const STATUS_CONFIG: Record<string, { bg: string; text: string; dot: string }> = {
-  confirmed: { bg: "bg-accent-dim", text: "text-accent-text", dot: "bg-accent" },
-  arrived: { bg: "bg-warning-dim", text: "text-warning-text", dot: "bg-warning" },
-  in_progress: { bg: "bg-violet-dim", text: "text-violet-text", dot: "bg-violet" },
-  completed: { bg: "bg-success-dim", text: "text-success-text", dot: "bg-success" },
-  cancelled: { bg: "bg-inset", text: "text-secondary", dot: "bg-muted" },
-};
 
 function getMonthDays(year: number, month: number) {
   const firstDay = new Date(year, month, 1).getDay();
@@ -243,7 +236,7 @@ const CalendarView = memo(function CalendarView({ reservations, onDateClick }: C
               {activeRes.length > 0 && cell.isCurrentMonth && (
                 <div className="space-y-0.5">
                   {activeRes.slice(0, 2).map((r) => {
-                    const sc = STATUS_CONFIG[r.status] ?? STATUS_CONFIG.confirmed;
+                    const sc = reservationStatusDisplay(r.status);
                     return (
                       <div
                         key={r.id}

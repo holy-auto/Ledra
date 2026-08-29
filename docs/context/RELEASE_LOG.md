@@ -21,6 +21,27 @@
   ※ fake admin は列projectionを模さないため単体では観測不能。canonical route とのパリティで担保。
 - 検証: `rescheduleFlowAuto` で `excludeReservationId` 引き渡しをアサート。全体 4386 件パス、tsc/eslint エラー0。
 
+## 2026-08-29 IMP-022（#937）: Work List & Job Hub。main 取り込み時に3度目の復活バグを修正、検出をスクリプト化
+
+- 内容: v2.0 §6 の Work List & Job Hub（ステータス表示の単一定義源
+  `jobStatusDisplay.ts`・情報階層・CTA規律）を main へ統合。実装内容そのものは
+  元の #937 のドラフト（2026-08-20、詳細は同日付の RELEASE_LOG エントリ参照）
+  から変わらない。
+- **main への取り込み時の `/code-review` で `src/lib/sync/` と
+  `WorkScopeProvider.tsx` の復活（3回目）を検出・修正**: #935・#936 で二度
+  発生し二度直したはずの「main で削除済みのファイルが古いブランチとの
+  マージで衝突なしに復活する」バグが、#937 でも三度目の発生をした。今回は
+  #936 時点で「検証済み」としていた検出手順（main の履歴を `git log
+  --diff-filter=D` で辿る方式）自体に構造的な欠陥があったと判明: main の
+  squash マージでは、1本のスタック PR 内で完結した「追加してから削除」が
+  main の履歴に一切残らないため、main の履歴を情報源にする限り原理的に
+  検出できない。検出方法を「main の履歴」ではなく「今回マージしている PR
+  自身のコミットが当該ファイルを触っているか」に置き換え、
+  `scripts/check-resurrected-files.sh`（`npm run check:resurrected`）として
+  スクリプト化した。ミューテーションプローブ（削除前=検出・削除後=クリーン）
+  で動作確認済み。詳細は DECISION_LOG「削除済みファイルの復活検出を3度目の
+  失敗を経てスクリプト化した」参照。
+
 ## 2026-08-29 LINEで顧客が予約の日程を自分で変更できるセルフ対応（reschedule、branch claude/line-chatbot-ledra-dy2fiq）
 
 - 内容: キャンセルのセルフ対応（#983）に続く第二弾。顧客が LINE で「予約の日程を変更したい」
@@ -1262,6 +1283,19 @@ supabase migration repair --status reverted 20260825000000
 - 内容: 何を実装・変更したか
 - 対象: どの画面・API・業種向けか
 ```
+
+## 2026-08-20 IMP-022 §6 Work List & Job Hub — ステータス統一・情報階層・CTA規律（branch impl/IMP-022-work-list-job-hub / PR #937）
+
+- 内容: v2.0 §6 の Work List & Job Hub を実装。(1) 予約ステータス表示統一
+  (`src/lib/domain/jobStatusDisplay.ts` — 5値×色/ラベル/ヒント/BadgeVariant の単一定義源。
+  ReservationsClient/CalendarView/JobStatusPanel/StorefrontJobWorkflow の 4 箇所の重複
+  STATUS_CONFIG を置換)。(2) ステッパー情報階層 — 現ステップを拡大(border-2, text-sm,
+  px-3.5)、完了/未着手を圧縮(text-[11px], px-2.5)。JobStatusPanel + JobSignoffPanel
+  の両ステッパーに適用。(3) CTA 規律 — Next Actions セクションをステータスで出し分け:
+  作業前(confirmed/arrived)は証明書/請求書非表示、完了後は予約編集非表示、キャンセルは
+  全非表示。(4) types.ts の STATUS_FLOW/STATUS_LABEL/STATUS_HINT を共有モジュールからの
+  再エクスポートに置換。新 DB クエリ・マイグレーションなし。テスト 7 件。
+- 対象: 案件ワークフロー画面、予約一覧/カレンダー。IMP-023/024/026/027/028 の前提条件。
 
 ## 2026-08-19 IMP-021 §5 HOME — 3秒理解ホーム（branch impl/IMP-021-home / PR #936）
 

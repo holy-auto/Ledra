@@ -8,6 +8,7 @@ import BigActionButton from "@/components/pos/BigActionButton";
 import POSSection from "@/components/pos/POSSection";
 import { formatDate, formatJpy } from "@/lib/format";
 import { enqueueOrFetch } from "@/lib/outbox/enqueueOrFetch";
+import { STATUS_FLOW, STATUS_LABEL } from "./types";
 
 /**
  * StorefrontJobWorkflow
@@ -77,15 +78,7 @@ type Document = {
   due_date: string | null;
 };
 
-const STATUS_FLOW = ["confirmed", "arrived", "in_progress", "completed"] as const;
-
-const STATUS_LABEL: Record<string, string> = {
-  confirmed: "予約確定",
-  arrived: "来店・受付",
-  in_progress: "作業中",
-  completed: "完了・納車",
-  cancelled: "キャンセル",
-};
+// ponytail: STATUS_FLOW / STATUS_LABEL は ./types 経由で jobStatusDisplay.ts から取得。
 
 const ADVANCE_LABEL: Record<string, string> = {
   confirmed: "来店受付する",
