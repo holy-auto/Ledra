@@ -342,6 +342,34 @@ export function buildRescheduleSlotAsk(
   };
 }
 
+/**
+ * 予約前日リマインダー。明日のご予約を知らせ、opt-in に応じてキャンセル/日程変更ボタンを添える。
+ * ボタン (flow:start_cancel / flow:start_reschedule) は状態非依存で handleFlowPostback が捌く。
+ * どちらのボタンも出ない (両 opt-in OFF) 場合は text だけ返す。
+ */
+export function buildReservationReminder(
+  reservation: CancelTargetReservation,
+  opts: { withCancel: boolean; withReschedule: boolean },
+): { text: string; buttons: FlowButton[] } {
+  const buttons: FlowButton[] = [];
+  if (opts.withReschedule) buttons.push({ label: "日程を変更する", data: "flow:start_reschedule" });
+  if (opts.withCancel) buttons.push({ label: "予約をキャンセルする", data: "flow:start_cancel" });
+  const canSelf = buttons.length > 0;
+  return {
+    text: [
+      "【ご予約のリマインダー】",
+      "明日、下記のご予約をお承りしております。",
+      "",
+      `📅 ${formatReservationLine(reservation)}`,
+      "",
+      canSelf
+        ? "ご来店をお待ちしております。ご変更・キャンセルは下のボタンからどうぞ。"
+        : "ご来店を心よりお待ちしております。",
+    ].join("\n"),
+    buttons,
+  };
+}
+
 /** 日程変更の完了案内 (フローのクローズ文面)。 */
 export function buildRescheduleDone(candidate: FlowScheduleCandidate): string {
   return [

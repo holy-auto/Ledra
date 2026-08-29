@@ -86,6 +86,11 @@ export function shouldAutoSelfReschedule(settings: AiAutomationSettings): boolea
   return resolveAutoAction(settings, "inbound_message.auto_self_reschedule");
 }
 
+/** 予約前日リマインダーを LINE で自動送信するか (reservation.auto_day_before_reminder)。 */
+export function shouldSendDayBeforeReminder(settings: AiAutomationSettings): boolean {
+  return resolveAutoAction(settings, "reservation.auto_day_before_reminder");
+}
+
 export interface InboundExtractionLike {
   intent?: string | null;
   confidence?: number | null;
