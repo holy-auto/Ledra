@@ -4,7 +4,22 @@
 > 追わず、常に最新状態だけを保つ（履歴は DECISION_LOG.md / RELEASE_LOG.md 側）。
 > 大きな変化があったら都度上書きすること。
 
-最終更新: 2026-08-28
+最終更新: 2026-08-29
+
+> 2026-08-29 追記: **#936（IMP-021、3秒理解ホーム）を main へ統合。取り込み時の
+> `/code-review` で重大な問題2件を修正した。**
+> (1) `src/lib/sync/`（#934 で削除済み）が **#935 と同じ理由で2回目の復活**を
+> していた ——「main で削除済みのファイルが、削除より前に分岐した古いブランチとの
+> マージで衝突なしに復活する」構造的な穴。今回は機械的な検出手順を実際に作って
+> 検証し（`comm` で作業ツリー限定のファイルを洗い出し→各ファイルの main 削除履歴を
+> 確認）、以降のスタック PR マージすべてで実行する運用にした。
+> (2) ダッシュボードの初期表示スコープが `defaultScope(caller.role)` に配線されており、
+> **staff/viewer は無指定時に今まで見えていた店舗全体のタスクが「自分の分だけ」に
+> 縮み、viewer はトグルが出ないため戻す手段も無い**ところだった。**"store"（店舗全体）
+> 固定に変更し、代表確認済み（店舗全体表示を恒久維持）。**
+> ほか、テストのタイムゾーン依存バグ・DB クエリの二重発行・死んだコード2件も修正。
+> `todayTasks.ts` の日付計算が正のUTCオフセットで1日ずれる既存バグを発見したが
+> 今回のスコープ外（OPEN_QUESTIONS 参照）。詳細は DECISION_LOG / RELEASE_LOG 2026-08-29。
 
 > 2026-08-28 追記: **#935（IMP-020）のモバイル画面6ファイルは main の実装を採用した。**
 > main を取り込んで衝突を解決する過程で、モバイルアプリの5タブ画面（タブバー本体・
@@ -329,6 +344,12 @@ Sentry · Resend (+ SendGrid fallback) · Anthropic (Opus 4.8 / Sonnet 4.6 / Hai
   （SegmentedControl/StatusBadge/StatusCard/NextActionCard/ProgressCard/Alert/IconButton/
   BottomSheet）+ Badge dot + Button xl。v2.0 の色トークン値は不採用・既存デザインシステム維持
   （DECISION_LOG 2026-08-19）。
+- **IMP-021（§5 HOME — 3秒理解ホーム）完了**: ダッシュボードに NEXT ACTION セクション
+  （最優先タスク 1 件を NextActionCard で提示）と今日の進捗 ProgressCard を追加。
+  3 段階ワークスコープ切替（HomeScopeToggle — SegmentedControl ベース、自分/店舗/全店舗）。
+  WorkScopeProvider（React Context）を新設。レイアウトを v2.0 §5 準拠に再構築
+  （NEXT ACTION → 進捗 → 承認 → セットアップ → クイックアクション → タスク → 統計）。
+  新 DB クエリなし（既存 fetchTodaySignals 再利用）。テスト 13 件。
 - **IMP-016（オフライン同期キュー・競合検出基盤）部分**: `src/lib/sync/`
   （同期キュー型・競合検出ヘルパー）は**削除**した。`/code-review` と Codex が
   独立に同じ結論に着いた —— 実際の outbox（`src/lib/outbox/`）が持っていない情報

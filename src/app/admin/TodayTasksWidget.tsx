@@ -2,7 +2,8 @@ import Link from "next/link";
 import { type TaskTile } from "@/lib/admin/todayTasks";
 import { fetchTodaySignals, tilesFromSignals, fetchStoredDailyDigest } from "@/lib/admin/fetchTodaySignals";
 import { buildDeterministicDigest } from "@/lib/admin/dailyDigest";
-import TodayTasksScopeToggle from "./TodayTasksScopeToggle";
+// ponytail: 旧 TodayTasksScopeToggle は IMP-021 の HomeScopeToggle に統合。
+// scope はページ上部のトグルで一括切替し、ここへは props で渡される。
 
 /**
  * 「今日のタスク」ウィジェット (server component)。
@@ -89,15 +90,13 @@ export default async function TodayTasksWidget({
   ]);
   const tiles = tilesFromSignals(signals);
 
-  const showToggle = currentUserId != null;
+  // ponytail: scope 表示は HomeScopeToggle がページ全体で統一。
+  // ここではラベル補足だけ。
   const headerRow = (
-    <div className="flex items-center justify-between gap-3 flex-wrap mb-3">
-      <h2 className="text-sm font-semibold tracking-[0.18em] text-muted">
-        今日のタスク
-        {effectiveScope === "mine" && <span className="ml-2 text-[11px] text-accent">(あなた担当のみ)</span>}
-      </h2>
-      {showToggle && <TodayTasksScopeToggle scope={effectiveScope} />}
-    </div>
+    <h2 className="text-sm font-semibold tracking-[0.18em] text-muted mb-3">
+      今日のタスク
+      {effectiveScope === "mine" && <span className="ml-2 text-[11px] text-accent">(あなた担当のみ)</span>}
+    </h2>
   );
 
   // タスク 0 件のときも空のセクションは出さず、ポジティブな 1 行だけ表示
