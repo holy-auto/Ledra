@@ -115,7 +115,7 @@ Payment Policy(v2.0 §11.3: Consumer PAID / B2B CREDIT_APPROVED / Insurance INSU
 | §2 | サーフェス・IA(5タブ、Role別スコープ) | モバイル5タブ実値: ホーム/作業/車両/証明/その他(`apps/mobile/src/app/(tabs)/_layout.tsx`。v2.0 正準と一致。IMP-020 着手後、別途 main で先行実装された)。admin は slim ナビ+AIに聞く | 部分 | タブ構造自体は一致。Role別スコープ切替(自分/店舗/全店舗)は StoreSelector が近いが `src/lib/navigation/scope.ts`(WORK_SCOPES 型定義)とは未連携 | IMP-020, 033, 034 |
 | §3 | デザインシステム・アクセシビリティ | `src/app/globals.css`(Tailwind 4 CSS-first トークン)+`DESIGN_SYSTEM.md`+`src/components/ui/`(49コンポーネント)。Lighthouse CI a11y ≥0.9 | 部分 | v2.0 トークン実値(Primary #155EEF 等)との照合は未実施。WCAG AA の体系的監査なし | IMP-010, 051 |
 | §4 | グローバルナビ・検索・Quick Create | 横断検索(顧客/車両/証明書/請求書)+CommandPalette(エンティティ検索+コンテキスト継承 Quick Create、IMP-020)+AskLedraBar。モバイルの Quick Create FAB(`QuickCreateSheet.tsx`)は固定4項目で権限ゲート・コンテキスト継承なし | 部分 | VIN/部品/Serial 横断検索・カテゴリ別 Deep Link なし。モバイル FAB と `src/lib/navigation/quickCreate.ts` の統合は未着手 | IMP-020 |
-| §5 | Home(今日・今・次、NEXT ACTION) | `/admin`(ダッシュボード+TodayTasksWidget+承認インボックス)、mobile ホームタブ | 別方式 | NEXT ACTION 1件大表示・説明可能な優先度理由・要対応件数ベルの体系なし。AI の `jobNextAction` は存在するが Home の中心ではない | IMP-021, 044 |
+| §5 | Home(今日・今・次、NEXT ACTION) | `/admin`(ダッシュボード+NextActionSection+TodayProgressCard+TodayTasksWidget+承認インボックス)、mobile ホームタブ | 実装済み | NEXT ACTION 1件大表示(NextActionCard)+今日の進捗(ProgressCard)+3段階スコープ切替。説明可能な優先度理由はタイル hint で表示。priority エンジン(IMP-044)で高度化予定 | IMP-021, 044 |
 | §6 | Work List & Job Hub | `/admin/reservations`(一覧+カレンダー)+`/admin/jobs/[id]`(統合ワークスペース: ステータス/サインオフ/写真/部品/点検/証明書ドラフト/AI) | 部分 | Job Hub の情報階層(現工程最強調・完了圧縮)は未適用。「作業完了=証明書発行」CTA の禁止はサインオフ分離で概ね充足 | IMP-022 |
 | §7 | Evidence / Photo / Voice | 段階タグ4値(`src/lib/certificateImages/stage.ts`)+before/after 必須ゲート+単回撮影 nonce+真正性グレード+改ざん検知 AI。音声は Web のみ(`VoiceMemoPanel`+Haiku 構造化→フォーム確認) | 部分 | 必須ショットチェックリスト(4/5 進捗)なし。モバイル音声入力なし。証明書写真の DB 行削除が可能で完全 append-only ではない(部品側は凍結ガードあり) | IMP-023, 024 |
 | §8 | Parts & Installation Integrity | `src/lib/parts/`(3-way match、凍結ガード、OTP 署名、TSA、アンカー)+`/admin/parts-integrity` | 実装済み | v2.0 の Part statuses 語彙とは差異あり(実値: `draft/installed/customer_verified/disputed/voided`)。Certificate Gate との自動連動は部分 | IMP-040 |
@@ -143,7 +143,7 @@ Payment Policy(v2.0 §11.3: Consumer PAID / B2B CREDIT_APPROVED / Insurance INSU
 | AUTH_INVITE | 招待/言語/OTP 入口 | `/join`(招待参加+メール検証) | 部分(言語選択なし) | IMP-012 |
 | AUTH_OTP | OTP 検証 | 顧客のみ `/customer/[tenant]/login`+`/my`(メール6桁)。スタッフ OTP ログインなし | 部分 | IMP-012 |
 | AUTH_BIOMETRIC | 生体登録 | なし(WebAuthn は操作署名用 `src/lib/webauthn/`) | なし | IMP-012 |
-| HOME | 今日/次/問題 | `/admin`(ダッシュボード)+mobile `(tabs)/index` | 別方式 | IMP-021 |
+| HOME | 今日/次/問題 | `/admin`(ダッシュボード — NextAction+Progress+Tasks)+mobile `(tabs)/index` | 実装済み | IMP-021 |
 | WORK_LIST | 作業一覧 | `/admin/reservations`+mobile `(tabs)/work` | 部分 | IMP-022 |
 | JOB_HUB | 1台の案件ハブ | `/admin/jobs/[id]`(統合ワークスペース) | 部分 | IMP-022 |
 | JOB_EVIDENCE | 証跡撮影 | `/admin/certificates/[public_id]`(写真)+mobile `certificates/[id]/photos` | 部分 | IMP-023 |
@@ -191,7 +191,7 @@ Payment Policy(v2.0 §11.3: Consumer PAID / B2B CREDIT_APPROVED / Insurance INSU
 | IMP-015 | 1 / P0 | §19(状態機械) | **実装済み**(2026-08-19): 正準6軸遷移表(`src/lib/domain/transitions.ts`)+汎用遷移検証関数+Certificate Gate 10条件型定義(`certificateGate.ts`)。既存値→正準値マッピングは消費タスク(IMP-028/031/027)で段階的導入。既存signoff/photoRequirement変更なし。残っていた設計論点4件(REVOKED到達性・支払いUNKNOWN解決先・着手後SKIPPED・Severity CRITICAL→ACTION)は2026-08-27に代表判断で解決済み(DECISION_LOG参照) | 001, 014 |
 | IMP-016 | 1 / P0 | §14(オフライン永続・同期キュー・競合) | **部分**(2026-08-27): 同期ドメインイベント5種をカタログに追加(`src/lib/events/catalogue.ts`)+EVENT_RISK格付け。同期キュー型・競合検出ヘルパー(`src/lib/sync/`)は削除 — 実際の outbox(`src/lib/outbox/`)が持たない情報(メソッド別ステータス/tenant/恒久ブロック状態)を前提にしていたため(DECISION_LOG 2026-08-27)。型・競合解決の設計はIMP-032へ | 001, 014, 015, 032 |
 | IMP-020 | 2 / P0 | §2, §4, HOME 他(ナビ・検索・Quick Create) | **部分**(2026-08-28): 5タブ構造は v2.0 正準と一致(main で先行実装済み)。`src/lib/navigation/`(正準タブ・Quick Create・スコープ型定義)+CommandPalette 強化(エンティティ検索+コンテキスト継承 Quick Create)+Web サイドバーの `WEB_TABS` 参照化を追加。**当初計画していたモバイル画面自体(タブバー本体・車両/証明書一覧・その他メニュー)は、ドラフト後に main 側で独立に実装済みだったため、稼働中の実装を優先しそちらを採用**(DECISION_LOG 2026-08-27)。モバイル FAB の Quick Create 統合・Role別スコープ切替は未着手 | 010, 011, 013 |
-| IMP-021 | 2 / P0 | §5, HOME(3秒理解ホーム) | ダッシュボード稼働。NEXT ACTION 中心設計なし(別方式) | 010, 013, 015, 020 |
+| IMP-021 | 2 / P0 | §5, HOME(3秒理解ホーム) | **実装済み**(2026-08-19): NEXT ACTION セクション(最優先タイル→NextActionCard)+今日の進捗 ProgressCard+3段階スコープ切替(HomeScopeToggle→SegmentedControl)+WorkScopeProvider(React Context)+レイアウト再構築。既存 fetchTodaySignals 再利用、新DBクエリなし。IMP-044 で priority エンジン高度化予定 | 010, 013, 015, 020 |
 | IMP-022 | 2 / P0 | §6, WORK_LIST/JOB_HUB | `/admin/jobs/[id]` 統合ワークスペースあり。情報階層・工程CTA規律は未適用(部分) | 015, 020, 021 |
 | IMP-023 | 2 / P0 | §7, JOB_EVIDENCE(証跡撮影・必須ショット・不変連鎖) | 撮影パイプライン(nonce/TSA/grade)は深い。必須ショットチェックリスト・完全 append-only なし(部分) | 016, 022 |
 | IMP-024 | 2 / P0 | §7(音声→AI構造化→人間確認) | Web のみ実装(VoiceMemoPanel+Haiku)。モバイルなし(部分) | 011, 016, 022 |
