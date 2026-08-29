@@ -37,6 +37,8 @@ describe("nextFlowState", () => {
       "processing_vehicle_photo",
       "awaiting_cancel_pick",
       "awaiting_cancel_confirm",
+      "awaiting_reschedule_pick",
+      "awaiting_reschedule_slot",
     ];
     for (const s of states) {
       expect(nextFlowState(s, { type: "handoff" })).toBe("human_takeover");
@@ -51,6 +53,15 @@ describe("nextFlowState", () => {
     expect(nextFlowState("awaiting_cancel_confirm", { type: "cancel_aborted" })).toBe("closed");
     // 無関係なイベントでは進まない。
     expect(nextFlowState("awaiting_cancel_confirm", { type: "slot_selected", index: 0 })).toBeNull();
+  });
+
+  it("advances the reschedule flow: pick → slot → closed", () => {
+    expect(nextFlowState("awaiting_reschedule_pick", { type: "reschedule_pick_selected", index: 0 })).toBe(
+      "awaiting_reschedule_slot",
+    );
+    expect(nextFlowState("awaiting_reschedule_slot", { type: "reschedule_slot_selected", index: 0 })).toBe("closed");
+    // 通常の slot_selected (見積りフロー) では日程変更は進まない。
+    expect(nextFlowState("awaiting_reschedule_slot", { type: "slot_selected", index: 0 })).toBeNull();
   });
 
   it("claims the vehicle-photo side-flow (processing_vehicle_photo) on photo_received, then leaves closing to the IO layer", () => {
