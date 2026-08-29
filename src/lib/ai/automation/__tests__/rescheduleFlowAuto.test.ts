@@ -32,9 +32,12 @@ vi.mock("@/lib/line/client", () => ({
   sendCustomerLineText: mocks.sendCustomerLineText,
   sendCustomerLineButtons: mocks.sendCustomerLineButtons,
 }));
-vi.mock("@/lib/line/flow/scheduleCandidates", () => ({
-  fetchFlowScheduleCandidates: mocks.fetchFlowScheduleCandidates,
-}));
+vi.mock("@/lib/line/flow/scheduleCandidates", async (importActual) => {
+  // fetchFlowScheduleCandidates だけ差し替え、reservationDurationMinutes は本物を使う
+  // (duration→estimatedMinutes の配線を本番実装に対して検証するため)。
+  const actual = await importActual<typeof import("@/lib/line/flow/scheduleCandidates")>();
+  return { ...actual, fetchFlowScheduleCandidates: mocks.fetchFlowScheduleCandidates };
+});
 vi.mock("@/lib/gantt/board", () => ({ todayJst: mocks.todayJst }));
 vi.mock("@/lib/audit/aiAuditLog", () => ({ logAutoActionExecuted: mocks.logAutoActionExecuted }));
 vi.mock("@/lib/logger", () => ({
@@ -115,7 +118,16 @@ describe("maybeStartRescheduleFlow", () => {
   });
 
   it("goes straight to slot selection for a single eligible reservation", async () => {
-    seedReservations([{ id: "r-future", scheduled_date: "2026-09-01", start_time: "10:00:00", title: "コーティング" }]);
+    seedReservations([
+      {
+        id: "r-future",
+        scheduled_date: "2026-09-01",
+        start_time: "10:00:00",
+        end_time: "12:00:00",
+        title: "コーティング",
+        loaner_car_id: "loaner-1",
+      },
+    ]);
     const handled = await maybeStartRescheduleFlow(baseParams());
     expect(handled).toBe(true);
     const flow = mocks.store.inserts.find((i) => i.table === "line_conversation_flows");
@@ -123,11 +135,18 @@ describe("maybeStartRescheduleFlow", () => {
     expect(flow?.payload.reservation_id).toBe("r-future");
     expect(mocks.sendCustomerLineButtons).toHaveBeenCalledTimes(1);
     // 変更先候補は「前日まで」= 当日 (TODAY) を含めず翌日起点で取得し、動かす対象の予約は
-    // 空き計算から除外する (自分の枠に自分がぶつからないように)。
+    // 空き計算から除外する。さらに元予約の実所要時間 (10:00→12:00=120分)・代車要否
+    // (loaner_car_id あり)・カテゴリ不明時の制限枠除外を渡して候補精度を上げる。
     expect(mocks.fetchFlowScheduleCandidates).toHaveBeenCalledWith(
       expect.anything(),
       TENANT,
-      expect.objectContaining({ fromDate: "2026-08-27", excludeReservationId: "r-future" }),
+      expect.objectContaining({
+        fromDate: "2026-08-27",
+        excludeReservationId: "r-future",
+        estimatedMinutes: 120,
+        needsLoaner: true,
+        excludeRestricted: true,
+      }),
     );
   });
 

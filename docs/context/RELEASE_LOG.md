@@ -21,6 +21,39 @@
 - 限界: レビュー待ちの長い PR が自身のマイグレーションバージョンを陳腐化させる構造的な
   問題は未解決。OPEN_QUESTIONS に起票。
 
+## 2026-08-29 日程候補の精度向上: 日程変更で元予約の所要時間・代車・カテゴリを考慮（branch claude/line-chatbot-ledra-dy2fiq）
+
+- 内容: LINE の日程変更（reschedule）セルフ対応で提示する日程候補が、これまで所要時間も代車も
+  カテゴリも無視して「空いている枠」を一律に出していた。動かす対象の既存予約が持つ
+  **実所要時間（end−start）・代車要否（loaner_car_id）** を使って候補を絞り、作業はあるが
+  カテゴリ不明なので **受入制限枠は提案しない（excludeRestricted）** ようにした。
+  - 副次バグの解消: 変更確定時に候補の end_time をそのまま新予約の end_time にしていたため、
+    1時間の作業を3時間枠に移すと**予約が枠いっぱい（3時間）に膨らんでいた**。所要時間を
+    渡すことで end_time が実作業時間（start+所要）に揃い、元予約の長さを保つ。
+  - 所要時間に収まらない枠（fits=false）は顧客に提示しない（入れない枠を選べないように）。
+- 実装:
+  - `fetchFlowScheduleCandidates` に `estimatedMinutes` / `needsLoaner` / `excludeRestricted` を追加。
+    needsLoaner 時は `loaner_cars` / `loaner_car_loans` を読んで空き代車を日別算出。fits=false を除外。
+  - 代車の空き計算を純粋関数 `computeFreeLoanersByDate`（`booking/candidates.ts`）に切り出し、
+    `booking-candidates` route（管理UI）と LINE 会話フローで**単一情報源**にした（在庫計算の二重実装を防止）。
+  - `reservationDurationMinutes`（純粋関数）で end−start を分換算（終日/時刻なし/逆転は null）。
+  - reschedule フロー起点・pick→slot・確定直前の再検証の3経路すべてで同じ条件を渡し、
+    再検証の end_time 一致判定が壊れないようにした。
+- 見積り（新規予約）フローは施工内容→品目→カテゴリ/所要時間の解決層が無く所要時間が不明なため
+  従来どおり（estimatedMinutes=null）。人手（considerStaff）は今回スコープ外。マイグレーション不要。
+- 検証: `candidates`（computeFreeLoanersByDate）／`scheduleCandidates`（所要フィルタ・代車ゲート・
+  制限枠除外の結合）／`rescheduleFlowAuto`（元予約から所要・代車を渡すこと）テスト追加。
+- コードレビュー由来の追加修正（同 PR、`/code-review`）:
+  - **【重大】limit 食い潰しの解消**: `fits` 除外を `proposeCandidates` の `limit` 集計**後**に
+    かけていたため、短い枠が先に limit を消費して入る枠が取りこぼされ、空き枠があるのに
+    スタッフ引き継ぎになり得た。`proposeCandidates` に `onlyFitting` を追加し push（=limit 集計）
+    より前に fits=false を除外。回帰テスト追加。
+  - 確定直前の再検証を `start_time` 一致のみで同定（end_time は所要時間からの導出値なので照合に
+    使わない。target 欠落時の誤コンフリクトを回避）。
+  - reschedule テストで `reservationDurationMinutes` を本物（importActual）で検証。
+- 全体 4444 件パス、tsc/eslint エラー0。
+- #2「見積りフロー改善」の2件目。後続: 概算見積りにボタン誘導＋文面整合・停滞フローの再促し。
+
 ## 2026-08-29 IMP-023（#938）マージ後、本番にだけ存在した未追跡マイグレーションを復旧（db-migrate 停止解消）
 
 - 内容: PR #938（証跡凍結ガード）を main へ squash merge 後、`db-migrate.yml` が
