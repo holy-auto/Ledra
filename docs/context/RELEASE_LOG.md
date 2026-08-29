@@ -38,6 +38,23 @@
 - 検証: tsc/vitest(4407件)/lint/check:schema/lint:migrations すべて green。マイグレーションは
   main マージ後に `db-migrate.yml` が自動的に本番へ適用する（承認ゲートなし）。
 
+## 2026-08-29 日程変更の空き計算を「自予約除外」に精緻化（後片付け、branch claude/line-chatbot-ledra-dy2fiq）
+
+- 内容: 日程変更（#987）で残していた「同日内変更時に候補が過少に見えうる」を解消。
+  `fetchFlowScheduleCandidates` に `excludeReservationId` を追加し、動かす対象の予約を
+  空き計算から除外する（`reservations` クエリに `.neq("id", …)`）。候補提示（1件/複数の両経路）と
+  確定直前の再検証の 3 箇所で対象予約 ID を渡す。これで同日内の時間帯変更でも、対象予約が
+  自分の旧枠を占有したまま数えられて候補が減る/自枠に弾かれることが無くなる（二重予約は従来どおり起きない）。
+- あわせて `reservations/mutate.ts` の ponytail コメントを更新: admin route.ts のキャンセル/変更を
+  共有ヘルパーへ寄せる単一情報源化は**行わない**方針に修正（認可モデルが異なるため。詳細は DECISION_LOG）。
+- 対象: LINE 日程変更のセルフ対応（opt-in `inbound_message.auto_self_reschedule`）。
+- コードレビュー由来の追加修正: `fetchFlowScheduleCandidates` の予約取得に **`all_day` を追加**。
+  終日予約はその日の全枠を占有するが、未取得だと `proposeCandidates` の占有判定をすり抜け、満杯の
+  終日予約がある日にも候補が出て二重予約になりうる既存バグを修正（canonical な booking-candidates
+  route と同じ理由で `all_day` を含める）。LINE の見積り→日程提示フローにも効く共有関数の修正。
+  ※ fake admin は列projectionを模さないため単体では観測不能。canonical route とのパリティで担保。
+- 検証: `rescheduleFlowAuto` で `excludeReservationId` 引き渡しをアサート。全体 4386 件パス、tsc/eslint エラー0。
+
 ## 2026-08-29 IMP-022（#937）: Work List & Job Hub。main 取り込み時に3度目の復活バグを修正、検出をスクリプト化
 
 - 内容: v2.0 §6 の Work List & Job Hub（ステータス表示の単一定義源

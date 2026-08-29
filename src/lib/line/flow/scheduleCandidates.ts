@@ -35,12 +35,20 @@ function todayYmd(): string {
  * `restrictToDate` を渡すと、その日 1 日だけを対象に再判定する
  * (スロット選択時の直前再検証用)。`fromDate` を渡すと候補の起点日を差し替える
  * (既定は今日。日程変更は「前日まで」= 当日への変更を避けるため翌日起点を渡す)。
+ * `excludeReservationId` を渡すと、その予約を空き計算から除外する (日程変更で、動かす対象の
+ * 予約が自分自身の枠を占有したまま数えられて候補が過少に見えるのを防ぐ)。
  * 取得失敗時は空配列 (fail-soft)。
  */
 export async function fetchFlowScheduleCandidates(
   admin: Admin,
   tenantId: string,
-  opts: { limit?: number; days?: number; restrictToDate?: string; fromDate?: string } = {},
+  opts: {
+    limit?: number;
+    days?: number;
+    restrictToDate?: string;
+    fromDate?: string;
+    excludeReservationId?: string;
+  } = {},
 ): Promise<FlowScheduleCandidate[]> {
   const limit = opts.limit ?? 3;
   const days = opts.days ?? 14;
@@ -49,6 +57,19 @@ export async function fetchFlowScheduleCandidates(
   const from = dates[0];
   const to = dates[dates.length - 1];
 
+  let resvQuery = admin
+    .from("reservations")
+    // all_day も取得する: 終日予約はその日の全枠を占有するが、未取得だと proposeCandidates の
+    // 占有判定 (r.all_day || 時間帯重複) をすり抜けて満杯の日に候補が出てしまう
+    // (二重予約。canonical な booking-candidates route と同じ理由で all_day を含める)。
+    .select("scheduled_date, start_time, end_time, all_day")
+    .eq("tenant_id", tenantId)
+    .neq("status", "cancelled")
+    .gte("scheduled_date", from)
+    .lte("scheduled_date", to);
+  // 日程変更中は、動かす対象の予約を空き計算から除外する (自分の枠に自分がぶつからないように)。
+  if (opts.excludeReservationId) resvQuery = resvQuery.neq("id", opts.excludeReservationId);
+
   const [slotsRes, closedRes, resvRes] = await Promise.all([
     admin
       .from("external_booking_slots")
@@ -56,13 +77,7 @@ export async function fetchFlowScheduleCandidates(
       .eq("tenant_id", tenantId)
       .eq("is_active", true),
     admin.from("closed_days").select("type, day_of_week, closed_date").eq("tenant_id", tenantId),
-    admin
-      .from("reservations")
-      .select("scheduled_date, start_time, end_time")
-      .eq("tenant_id", tenantId)
-      .neq("status", "cancelled")
-      .gte("scheduled_date", from)
-      .lte("scheduled_date", to),
+    resvQuery,
   ]);
   if (slotsRes.error || closedRes.error || resvRes.error) return [];
 
@@ -85,4 +100,9 @@ type ProposeSlotRow = {
   accepted_categories: string[] | null;
 };
 type ProposeClosedRow = { type: "weekly" | "specific"; day_of_week?: number | null; closed_date?: string | null };
-type ProposeReservationRow = { scheduled_date: string; start_time: string; end_time: string };
+type ProposeReservationRow = {
+  scheduled_date: string;
+  start_time: string;
+  end_time: string;
+  all_day?: boolean | null;
+};
