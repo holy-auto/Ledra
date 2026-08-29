@@ -181,17 +181,6 @@ export async function maybeAdvanceQuoteFlowOnPhoto(params: MaybeAdvanceQuoteFlow
     if (!maker) return false;
     const vehicleText = [maker, model, firstReg].filter(Boolean).join(" ");
 
-    // 顧客の送信をスレッドに残す (画像は client.ts が line-media に保存済み。その参照も記録)。
-    await recordInboundLineMessage({
-      tenantId,
-      lineUserId,
-      body: "[車検証の写真を送信]",
-      rawEvent: { flow_photo: true, flow: "quote_detail" },
-      lineMessageId: params.lineMessageId ?? null,
-      attachmentPath: params.attachmentPath ?? null,
-      attachmentContentType: params.attachmentContentType ?? null,
-    });
-
     // 施工内容が context にあれば、写真の車両を詳細として見積り draft まで進める。
     const advanced = await maybeAdvanceQuoteFlowOnDetail({
       tenantId,
@@ -202,20 +191,32 @@ export async function maybeAdvanceQuoteFlowOnPhoto(params: MaybeAdvanceQuoteFlow
       channel: params.channel ?? "line",
       settings,
     });
-    if (advanced) return true;
+    if (!advanced) {
+      // 施工内容がまだ無い → 読み取った車両を context に保持し、施工内容だけ聞き返す
+      // (車両を捨てず、次の施工内容テキストで draft まで進めるようにする)。
+      await advanceFlow(admin, flow, {
+        toState: "awaiting_quote_detail",
+        contextPatch: { vehicle_text: vehicleText },
+        expectState: "awaiting_quote_detail",
+      });
+      await sendCustomerLineText({
+        tenantId,
+        customerId: flow.customer_id,
+        lineUserId,
+        body: buildQuoteServiceAskAfterPhoto(vehicleText),
+      });
+    }
 
-    // 施工内容がまだ無い → 読み取った車両を context に保持し、施工内容だけ聞き返す
-    // (車両を捨てず、次の施工内容テキストで draft まで進めるようにする)。
-    await advanceFlow(admin, flow, {
-      toState: "awaiting_quote_detail",
-      contextPatch: { vehicle_text: vehicleText },
-      expectState: "awaiting_quote_detail",
-    });
-    await sendCustomerLineText({
+    // 顧客の送信をスレッドに残すのは**最後**に (途中で失敗したら false を返し、client 側の
+    // 通常記録に一本化して二重記録を避ける)。画像は client.ts が line-media に保存済み。
+    await recordInboundLineMessage({
       tenantId,
-      customerId: flow.customer_id,
       lineUserId,
-      body: buildQuoteServiceAskAfterPhoto(vehicleText),
+      body: "[車検証の写真を送信]",
+      rawEvent: { flow_photo: true, flow: "quote_detail" },
+      lineMessageId: params.lineMessageId ?? null,
+      attachmentPath: params.attachmentPath ?? null,
+      attachmentContentType: params.attachmentContentType ?? null,
     });
     return true;
   } catch (e) {
@@ -281,6 +282,16 @@ export async function maybeAdvanceQuoteFlowOnDetail(params: MaybeAdvanceQuoteFlo
     if (!tenant || tenant.is_active === false) return false;
     if (!canUseFeature(normalizePlanTier(tenant.plan_tier), "ai_invoice_quote")) return false;
 
+    // 下書き作成の**前に** awaiting_quote_detail → quote_drafted を排他クレームする。
+    // LINE の再配信・連投で同じ詳細 (テキスト/写真) が二重に届いても、下書き作成・お礼送信は
+    // 1 回だけになる (クレームに負けた側は即 true で返し、二重の下書き/返信を作らない)。
+    const claimed = await advanceFlow(admin, flow, {
+      toState: "quote_drafted",
+      contextPatch: { service, vehicle_text: vehicleText },
+      expectState: "awaiting_quote_detail",
+    });
+    if (!claimed) return true; // 併走/再配信で既に処理中。二重にしない。
+
     const usage = startAiRouteUsage(FLOW_QUOTE_ENDPOINT);
     const draft = await createInboundQuoteDraft(admin, {
       tenantId,
@@ -292,16 +303,17 @@ export async function maybeAdvanceQuoteFlowOnDetail(params: MaybeAdvanceQuoteFlo
       origin: "conversation_flow",
     });
     if (!draft) {
-      // 見積り材料が皆無。フローは保持し (スタッフが対応)、他の自動返信はしない。
+      // 見積り材料が皆無。詳細待ちへ戻してフローを保持し (スタッフが対応)、他の自動返信はしない。
+      await advanceFlow(admin, flow, { toState: "awaiting_quote_detail", expectState: "quote_drafted" });
       usage.record({ tenantId, outcome: "error", meta: { auto: true, committed: false } });
       return true;
     }
 
+    // クレーム済みなので state は quote_drafted のまま、doc_id だけ紐付ける。
     await advanceFlow(admin, flow, {
       toState: "quote_drafted",
       quoteDocId: draft.docId,
-      contextPatch: { service, vehicle_text: vehicleText },
-      expectState: "awaiting_quote_detail",
+      expectState: "quote_drafted",
     });
 
     await sendCustomerLineText({

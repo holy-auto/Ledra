@@ -177,9 +177,10 @@ describe("maybeAdvanceQuoteFlowOnDetail", () => {
       origin: "conversation_flow",
     });
 
-    // フローが quote_drafted に進み quote_doc_id が入る。
-    const upd = mocks.store.updates.find((u) => u.table === "line_conversation_flows");
-    expect(upd?.payload).toMatchObject({ state: "quote_drafted", quote_doc_id: "doc-1" });
+    // まず quote_drafted を排他クレーム、その後 doc_id を紐付ける (2 回更新)。
+    const flowUpds = mocks.store.updates.filter((u) => u.table === "line_conversation_flows");
+    expect(flowUpds[0].payload.state).toBe("quote_drafted");
+    expect(flowUpds.some((u) => u.payload.quote_doc_id === "doc-1")).toBe(true);
 
     expect(mocks.sendCustomerLineText).toHaveBeenCalledTimes(1);
     expect(mocks.sendCustomerLineText.mock.calls[0][0].body).toContain("正式なお見積り");
