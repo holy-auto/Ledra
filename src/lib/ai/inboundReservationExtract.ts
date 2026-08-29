@@ -46,7 +46,7 @@ const ExtractSchema = z.object({
   date_text: z.string().optional(),
   service: z.string().optional(),
   note: z.string().max(400).optional(),
-  intent: z.enum(["new_reservation", "change_reservation", "cancel", "inquiry_only", "other"]),
+  intent: z.enum(["new_reservation", "change_reservation", "cancel", "status_inquiry", "inquiry_only", "other"]),
   confidence: z.number().min(0).max(1),
 });
 
@@ -59,7 +59,7 @@ export interface InboundExtractResult {
   date_text?: string;
   service?: string;
   note?: string;
-  intent: "new_reservation" | "change_reservation" | "cancel" | "inquiry_only" | "other";
+  intent: "new_reservation" | "change_reservation" | "cancel" | "status_inquiry" | "inquiry_only" | "other";
   confidence: number;
   ai: boolean;
 }
@@ -92,6 +92,8 @@ intent:
 - new_reservation: 新規予約 / 来店希望
 - change_reservation: 既存予約の変更
 - cancel: キャンセル
+- status_inquiry: 既存予約・作業の進捗/状況の問い合わせ (例: 「私の車の作業どうなってる?」
+  「そろそろ終わりますか」「いつ仕上がりますか」「予約は入ってますか」)
 - inquiry_only: 質問のみ (予約意思なし)
 - other: 上記以外
 

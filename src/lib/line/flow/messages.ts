@@ -342,6 +342,65 @@ export function buildRescheduleSlotAsk(
   };
 }
 
+/** 作業状況の問い合わせに返す対象予約の最小形 (+ 進捗)。 */
+export interface WorkStatusReservation {
+  status: string;
+  scheduled_date: string;
+  start_time: string | null;
+  title: string | null;
+  progress_pct?: number | null;
+}
+
+/**
+ * 予約・作業の状況問い合わせへの返信文 (顧客向け)。稼働中の reservations.status 5 値
+ * (confirmed/arrived/in_progress/completed) に対する顧客向け文言。正準 JobState への
+ * マッピングは持たない (ADR-0002 / IMP-015 まで)。未知値は無難なフォールバック。
+ */
+export function buildWorkStatusReply(r: WorkStatusReservation): string {
+  const line = formatReservationLine({
+    id: "",
+    scheduled_date: r.scheduled_date,
+    start_time: r.start_time,
+    title: r.title,
+  });
+  switch (r.status) {
+    case "confirmed":
+      return [`ご予約を承っております。`, `📅 ${line}`, "当日お待ちしております。"].join("\n");
+    case "arrived":
+      return [
+        "お車をお預かりしております。順番に作業を進めておりますので、いましばらくお待ちください。",
+        `📅 ${line}`,
+      ].join("\n");
+    case "in_progress":
+      return [
+        "ただいま作業を進めております。",
+        `📅 ${line}`,
+        // progress_pct は DB 既定が 0 (未設定と 0% が区別できない) ため、0 は「未設定」とみなし出さない。
+        typeof r.progress_pct === "number" && r.progress_pct > 0 ? `進捗の目安: ${Math.round(r.progress_pct)}%` : null,
+        "完了しましたらご連絡いたします。",
+      ]
+        .filter(Boolean)
+        .join("\n");
+    case "completed":
+      return ["作業は完了しております。", `📅 ${line}`, "ありがとうございました。ご確認をお願いいたします。"].join(
+        "\n",
+      );
+    default:
+      // 想定外の status。状況を断定せず、担当確認に寄せる無難な文面。
+      return ["ご予約を承っております。", `📅 ${line}`, "詳しい進捗は担当より確認のうえご連絡いたします。"].join("\n");
+  }
+}
+
+/**
+ * 作業状況を自動で答えられない場合 (本人の予約が見つからない・未紐付け等) のスタッフ引き継ぎ案内。
+ */
+export function buildWorkStatusHandoff(): string {
+  return [
+    "ご予約状況について、担当より確認のうえご連絡いたします。",
+    "お急ぎの場合はお電話でもお問い合わせいただけます。",
+  ].join("\n");
+}
+
 /**
  * 予約前日リマインダー。明日のご予約を知らせ、opt-in に応じてキャンセル/日程変更ボタンを添える。
  * ボタン (flow:start_cancel / flow:start_reschedule) は状態非依存で handleFlowPostback が捌く。
