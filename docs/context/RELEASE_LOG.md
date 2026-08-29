@@ -4,6 +4,30 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-08-29 見積りフロー改善①: 見積り詳細待ちの車検証写真をOCRで取り込む（branch claude/line-chatbot-ledra-dy2fiq）
+
+- 内容: 見積り会話フローの詳細待ち（`awaiting_quote_detail`）中に顧客が車検証写真を送ると、
+  これまでは OCR に配線されておらず「車種+年式テキスト」しか先に進めなかった。今回、写真を
+  OCR（既存 `parseShakenshoAuto` を再利用）して車両（メーカー/型式/初度登録）を読み取り、
+  見積りフローを前進させる。
+  - 施工内容が既に context にあれば、写真の車両で正式見積り下書きまで作成（`maybeAdvanceQuoteFlowOnDetail`）。
+  - 施工内容が未知（FAQ ボタン起点等）なら、読み取った車両を context に保持し施工内容だけ聞き返す
+    （車両を捨てない）。
+  - 車検証として読めない画像・車名不読は未処理（false）で通常の受信箱記録（スタッフ対応）に委ねる。
+- 実装: `conversationFlowAuto.maybeAdvanceQuoteFlowOnPhoto`、文面 `buildQuoteServiceAskAfterPhoto`、
+  `client.ts` の画像処理で車両撮影フロー（`handleVehiclePhotoMessage`）に該当しなければ本ハンドラを試す。
+  OCR は身分証書類ソース（`identity_documents`）許可時のみ（既存 parse-shakken と同ゲート）。
+  opt-in は既存の会話フロー（`inbound_message.auto_conversation_flow`）。マイグレーション不要。
+- 検証: `conversationFlowAuto`（施工内容ありで draft／未知なら車両保持＋施工内容聞き返し／不読は未処理／
+  フロー不在／ソース OFF）テスト追加。全体 4419 件パス、tsc/eslint エラー0（既存 client.ts の `text` 警告のみ）。
+- コードレビュー由来の追加修正（同 PR、`/code-review`）:
+  - **二重下書き防止（重要）**: `maybeAdvanceQuoteFlowOnDetail` を「下書き作成の前に quote_drafted を
+    排他クレーム」する構造に変更（写真/テキストの再配信・連投で見積り下書き・お礼が二重に作られていた
+    既存レースを解消。材料なしなら詳細待ちへ戻す）。写真経路もこれに合流。
+  - 画像バイト列の Buffer コピーを 1 回に（2 ハンドラで二重確保していた）。
+  - 未処理時に写真を二重記録しないよう記録タイミングを整理。
+- #2「見積りフロー改善」の1件目。後続: 日程候補の精度向上・概算見積りにボタン誘導・停滞フローの再促し。
+
 ## 2026-08-29 IMP-023（#938）: 証跡凍結ガード。main 取り込み時に本番マイグレーションの設計不備を4件修正
 
 - 内容: v2.0 §7 の証跡凍結ガード（`certificate_images_guard` DB トリガー）と必須ショット進捗計算
