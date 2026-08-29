@@ -28,12 +28,14 @@ import { maybeAutoReplyRoughEstimate } from "./quoteReplyAuto";
 import { maybeAutoReplyKnowledge } from "./knowledgeReplyAuto";
 import { maybeStartQuoteFlow, maybeAdvanceQuoteFlowOnDetail } from "./conversationFlowAuto";
 import { maybeStartCancelFlow } from "./cancelFlowAuto";
+import { maybeStartRescheduleFlow } from "./rescheduleFlowAuto";
 import {
   shouldAutoExtractInbound,
   shouldAutoReplyKnowledge,
   shouldAutoReplyRoughEstimate,
   shouldRunConversationFlow,
   shouldAutoSelfCancel,
+  shouldAutoSelfReschedule,
   decideInboundCommit,
 } from "./orchestrator";
 import { storeIdOrNull } from "@/lib/stores/resolveStoreId";
@@ -96,9 +98,10 @@ export async function maybeAutoProcessInboundMessage(params: MaybeAutoProcessPar
     const wantExtract = shouldAutoExtractInbound(settings);
     const wantKnowledgeReply = shouldAutoReplyKnowledge(settings);
     const wantEstimateReply = shouldAutoReplyRoughEstimate(settings);
-    // キャンセルのセルフ対応も intent の抽出結果に依存するため、これ単独 opt-in でも抽出を走らせる。
+    // キャンセル/日程変更のセルフ対応も intent の抽出結果に依存するため、これ単独 opt-in でも抽出を走らせる。
     const wantSelfCancel = shouldAutoSelfCancel(settings);
-    if (!wantExtract && !wantKnowledgeReply && !wantEstimateReply && !wantSelfCancel) return;
+    const wantSelfReschedule = shouldAutoSelfReschedule(settings);
+    if (!wantExtract && !wantKnowledgeReply && !wantEstimateReply && !wantSelfCancel && !wantSelfReschedule) return;
 
     // プラン / 有効性チェック (webhook には auth セッションが無いので DB から直接読む)。
     const admin = createServiceRoleAdmin("AI auto-extract inbound — LINE webhook lacks auth session");
@@ -234,6 +237,29 @@ export async function maybeAutoProcessInboundMessage(params: MaybeAutoProcessPar
           tenantId,
           outcome: "ok",
           meta: { auto: true, self_cancel: true, channel: params.channel ?? "line" },
+        });
+        return;
+      }
+    }
+
+    // 予約の日程変更のセルフ対応 (opt-in / 内部で fail-soft)。intent=change_reservation なら本人の
+    // 予約を提示し、新しい日程候補ボタンで即時変更させる。キャンセルと同様、予約自動起票・他の
+    // 自動返信より**前に**判定し、処理したら早期 return する。
+    if (wantSelfReschedule && result.intent === "change_reservation") {
+      const rescheduleStarted = await maybeStartRescheduleFlow({
+        tenantId,
+        customerId: resolvedCustomerId,
+        lineUserId: params.lineUserId,
+        intent: result.intent,
+        messageId,
+        channel: params.channel ?? "line",
+        settings,
+      });
+      if (rescheduleStarted) {
+        usage.record({
+          tenantId,
+          outcome: "ok",
+          meta: { auto: true, self_reschedule: true, channel: params.channel ?? "line" },
         });
         return;
       }

@@ -22,6 +22,8 @@ export type FlowState =
   | "processing_vehicle_photo" // 受信した写真を OCR/登録処理中 (排他クレーム。二重配信でのレース防止)
   | "awaiting_cancel_pick" // キャンセル: 対象予約が複数あり、どれを消すか選択待ち
   | "awaiting_cancel_confirm" // キャンセル: 対象予約を確定し、実行の最終可否待ち
+  | "awaiting_reschedule_pick" // 日程変更: 対象予約が複数あり、どれを変更するか選択待ち
+  | "awaiting_reschedule_slot" // 日程変更: 新しい日程候補を提示、選択待ち
   | "human_takeover" // スタッフ引き継ぎ (自動進行停止)
   | "closed" // 正常終了
   | "expired"; // 放置失効
@@ -40,6 +42,8 @@ export type FlowEvent =
   | { type: "cancel_pick_selected"; index: number } // キャンセル: 提示した対象予約配列の index を選択
   | { type: "cancel_confirmed" } // キャンセル: 実行の最終確認で「はい」
   | { type: "cancel_aborted" } // キャンセル: 最終確認で「やめる」
+  | { type: "reschedule_pick_selected"; index: number } // 日程変更: 提示した対象予約配列の index を選択
+  | { type: "reschedule_slot_selected"; index: number } // 日程変更: 提示した新日程候補配列の index を選択
   | { type: "handoff" }; // 想定外/NG → スタッフ引き継ぎ
 
 /** 終端状態か (これ以上自動では進めない)。 */
@@ -102,6 +106,13 @@ export function nextFlowState(state: FlowState, event: FlowEvent): FlowState | n
       if (event.type === "cancel_confirmed") return "closed";
       if (event.type === "cancel_aborted") return "closed";
       return null;
+    case "awaiting_reschedule_pick":
+      // 変更対象の予約を選択 → 新日程の候補提示へ。どの予約かは context/reservation_id で保持する。
+      return event.type === "reschedule_pick_selected" ? "awaiting_reschedule_slot" : null;
+    case "awaiting_reschedule_slot":
+      // 新しい日程を選択 → IO 層が予約の日時を更新してから closed へ。
+      // 「その他の日程を相談する」(handoff) は上の共通口で human_takeover に落ちる。
+      return event.type === "reschedule_slot_selected" ? "closed" : null;
     case "scheduled":
       return null; // engine が closed に落とす
     case "awaiting_vehicle_photo":

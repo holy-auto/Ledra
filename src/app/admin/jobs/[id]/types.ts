@@ -148,20 +148,14 @@ export type JobDocument = {
   due_date: string | null;
 };
 
-export const STATUS_FLOW = ["confirmed", "arrived", "in_progress", "completed"] as const;
+// ponytail: IMP-022 — 予約ステータス表示の単一定義源は jobStatusDisplay.ts。
+// 後方互換の再エクスポート。新コードは直接 jobStatusDisplay を import すること。
+export { RESERVATION_STATUS_FLOW as STATUS_FLOW } from "@/lib/domain/jobStatusDisplay";
+import { RESERVATION_STATUS_DISPLAY } from "@/lib/domain/jobStatusDisplay";
 
-export const STATUS_LABEL: Record<string, string> = {
-  confirmed: "予約確定",
-  arrived: "来店・受付",
-  in_progress: "作業中",
-  completed: "完了・納車",
-  cancelled: "キャンセル",
-};
-
-export const STATUS_HINT: Record<string, string> = {
-  confirmed: "予約を受け付けました。来店確認を待ちます。",
-  arrived: "お客様が来店しました。作業を開始してください。",
-  in_progress: "作業中です。完了したら証明書発行 → 納車に進みます。",
-  completed: "作業が完了しました。請求書発行 → 入金確認を行います。",
-  cancelled: "この予約はキャンセルされています。",
-};
+export const STATUS_LABEL: Record<string, string> = Object.fromEntries(
+  Object.entries(RESERVATION_STATUS_DISPLAY).map(([k, v]) => [k, v.label]),
+);
+export const STATUS_HINT: Record<string, string> = Object.fromEntries(
+  Object.entries(RESERVATION_STATUS_DISPLAY).map(([k, v]) => [k, v.hint]),
+);

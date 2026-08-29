@@ -93,6 +93,100 @@ Square 連携・電子署名を現状に直し、会計連携（freee / マネ�
 (c) ガイド文言の絵文字が落ちていること（埋め込みフォントに絵文字グリフが無く豆腐になる）
 を確認する。今回のページ数のズレは、このテストが検出した。
 
+## 2026-08-29 予約前日リマインダー（キャンセル/変更ボタン付き、新規、branch claude/line-chatbot-ledra-dy2fiq）
+
+- 内容: 翌日(JST)に未キャンセル予約があり LINE 紐付け済みのお客様へ、前日夕方に LINE で
+  「明日ご予約です」を自動送信する新規 cron。self-cancel / self-reschedule の opt-in が ON なら、
+  そのままキャンセル/日程変更できるボタン（`flow:start_cancel` / `flow:start_reschedule`）を添える
+  （タップで既存のセルフ対応フローが起動）。予約1件につき1回だけ（`notification_logs` で dedup）。
+- opt-in `reservation.auto_day_before_reminder`（既定 OFF、`actionCatalog.ts`/`orchestrator.ts`）。
+  Standard+・AI 有効・`followup_opt_out` 尊重。LINE 紐付けが無ければ送らない（ボタン前提のため）。
+- 実装: cron ロジック `src/lib/cron/reservationReminders.ts`、route `/api/cron/reservation-reminders`
+  （UTC 09:00 = JST 18:00、`vercel.json` 登録）、メッセージ `buildReservationReminder`、postback
+  ハンドラ `flow:start_cancel`/`flow:start_reschedule`（`conversationFlowPostback`、循環回避で動的 import、
+  起動不可なら consult フォールバック）。
+- マイグレーション不要: opt-in は既存 `tenant_ai_automation_settings.auto_actions`(JSON)、通知記録は
+  既存 `notification_logs`（`type`/`target_type` は自由記述 text、`channel="line"` は既存 check 適合）。
+- 検証: cron 本体（明日抽出・dedup・opt-out/未紐付けスキップ・ボタン有無・失敗ログ）＋ postback
+  ハンドラのテスト追加。全体 4404 件パス、tsc/eslint エラー0。
+- コードレビュー由来の追加ハードニング（同 PR、`/code-review`）:
+  - opt-in テナント発見を **tenant_id キーセットページング**に（PostgREST 既定 1000 行上限で
+    opt-in 済みテナントを無言で取りこぼさない。followUp.ts と同じ理由）。
+  - discovery クエリの失敗を throw させ **`sendCronFailureAlert` に上げる**（全滅を「0 件成功」で
+    隠さない）。テナント単位の失敗は個別に握って他テナントを止めない。
+  - リマインダーのボタン起動が false（主因=進行中フロー有り）のとき、consult フォールバックで
+    **無関係なフローを human_takeover に奪わない** no-op に（見積り等の進行中フローを守る）。
+- スコープ外（後続）: 送信時刻のテナント個別設定、メール併用、複数日前（2日前等）の追加。
+
+## 2026-08-29 日程変更の空き計算を「自予約除外」に精緻化（後片付け、branch claude/line-chatbot-ledra-dy2fiq）
+
+- 内容: 日程変更（#987）で残していた「同日内変更時に候補が過少に見えうる」を解消。
+  `fetchFlowScheduleCandidates` に `excludeReservationId` を追加し、動かす対象の予約を
+  空き計算から除外する（`reservations` クエリに `.neq("id", …)`）。候補提示（1件/複数の両経路）と
+  確定直前の再検証の 3 箇所で対象予約 ID を渡す。これで同日内の時間帯変更でも、対象予約が
+  自分の旧枠を占有したまま数えられて候補が減る/自枠に弾かれることが無くなる（二重予約は従来どおり起きない）。
+- あわせて `reservations/mutate.ts` の ponytail コメントを更新: admin route.ts のキャンセル/変更を
+  共有ヘルパーへ寄せる単一情報源化は**行わない**方針に修正（認可モデルが異なるため。詳細は DECISION_LOG）。
+- 対象: LINE 日程変更のセルフ対応（opt-in `inbound_message.auto_self_reschedule`）。
+- コードレビュー由来の追加修正: `fetchFlowScheduleCandidates` の予約取得に **`all_day` を追加**。
+  終日予約はその日の全枠を占有するが、未取得だと `proposeCandidates` の占有判定をすり抜け、満杯の
+  終日予約がある日にも候補が出て二重予約になりうる既存バグを修正（canonical な booking-candidates
+  route と同じ理由で `all_day` を含める）。LINE の見積り→日程提示フローにも効く共有関数の修正。
+  ※ fake admin は列projectionを模さないため単体では観測不能。canonical route とのパリティで担保。
+- 検証: `rescheduleFlowAuto` で `excludeReservationId` 引き渡しをアサート。全体 4386 件パス、tsc/eslint エラー0。
+
+## 2026-08-29 IMP-022（#937）: Work List & Job Hub。main 取り込み時に3度目の復活バグを修正、検出をスクリプト化
+
+- 内容: v2.0 §6 の Work List & Job Hub（ステータス表示の単一定義源
+  `jobStatusDisplay.ts`・情報階層・CTA規律）を main へ統合。実装内容そのものは
+  元の #937 のドラフト（2026-08-20、詳細は同日付の RELEASE_LOG エントリ参照）
+  から変わらない。
+- **main への取り込み時の `/code-review` で `src/lib/sync/` と
+  `WorkScopeProvider.tsx` の復活（3回目）を検出・修正**: #935・#936 で二度
+  発生し二度直したはずの「main で削除済みのファイルが古いブランチとの
+  マージで衝突なしに復活する」バグが、#937 でも三度目の発生をした。今回は
+  #936 時点で「検証済み」としていた検出手順（main の履歴を `git log
+  --diff-filter=D` で辿る方式）自体に構造的な欠陥があったと判明: main の
+  squash マージでは、1本のスタック PR 内で完結した「追加してから削除」が
+  main の履歴に一切残らないため、main の履歴を情報源にする限り原理的に
+  検出できない。検出方法を「main の履歴」ではなく「今回マージしている PR
+  自身のコミットが当該ファイルを触っているか」に置き換え、
+  `scripts/check-resurrected-files.sh`（`npm run check:resurrected`）として
+  スクリプト化した。ミューテーションプローブ（削除前=検出・削除後=クリーン）
+  で動作確認済み。詳細は DECISION_LOG「削除済みファイルの復活検出を3度目の
+  失敗を経てスクリプト化した」参照。
+
+## 2026-08-29 LINEで顧客が予約の日程を自分で変更できるセルフ対応（reschedule、branch claude/line-chatbot-ledra-dy2fiq）
+
+- 内容: キャンセルのセルフ対応（#983）に続く第二弾。顧客が LINE で「予約の日程を変更したい」
+  （intent=change_reservation）と送った時点で、**本人の今後の予約を提示（複数なら選択）→
+  空いている新しい日程候補をボタンで選択→即時反映**（`scheduled_date`/`start_time`/`end_time`
+  を更新＋Google カレンダー更新＋スタッフ通知）を自動化した。会話フロー基盤を再利用。
+  - 締め切りは**作業日の前日まで**（キャンセルと同じ `scheduled_date > todayJst()`）。当日・過去・
+    対象なし・**空き候補なし**・未紐付けはスタッフ引き継ぎ。反映は即時自動。
+  - 新状態 `awaiting_reschedule_pick`/`awaiting_reschedule_slot`、新イベント
+    `reschedule_pick_selected`/`reschedule_slot_selected`（`states.ts`/`interpret.ts`）。
+    共有ヘルパー `rescheduleReservationById`（`reservations/mutate.ts`：日時更新＋gcal 更新、
+    所有者＋締め切り＋終端ガード、`.select("id")` で 0 行更新を成功と誤認しない）。起点 IO
+    `ai/automation/rescheduleFlowAuto.ts`、実行は `conversationFlowPostback.ts`。
+  - 安全性: 確定直前に空き状況を再検証（埋まっていれば conflict 引き継ぎ）、closed 楽観クレームで
+    二重更新防止、締め切りを実 DB 値で再検証。候補ボタン配信失敗時は行を `expired` に落とす。
+  - 「その他の日程を相談する」（既存 `flow:cancel`→handoff）で人手にも切替可能。consult ボタンは
+    self-reschedule のみ有効なテナントでも受ける（死にボタン回避）。
+  - opt-in `inbound_message.auto_self_reschedule`（既定 OFF、`actionCatalog.ts`/`orchestrator.ts`）。
+    会話フロー・自己キャンセルの opt-in とは独立。
+- 対象: LINE 受信の AI 自動応答（全業種、Standard プラン以上・opt-in）。#983 とは別 PR。
+- 検証: 単体テスト追加（`reservations/mutate`・`rescheduleFlowAuto`・`conversationFlowPostback`・
+  `inboundAutoReplyGate`・`interpret`・`states`）。automation+line+reservations 299 件、全体 4373 件パス、tsc/eslint エラー0。
+- コードレビュー由来の追加ハードニング（同 PR、`/code-review`）:
+  - 変更先の日程も「前日まで」に揃える。`fetchFlowScheduleCandidates(fromDate)` を追加し、日程変更の
+    候補は**翌日起点**で出す（当日への自己変更を防ぐ。締め切りの対象を旧日付だけでなく新日付にも適用）。
+  - 変更先が埋まっていた場合、`closed` のままにせず `human_takeover` へ移す（スタッフがトークを
+    引き継いで別日程を調整できるように。`handleSlotSelected` と挙動を揃える）。
+  - 「その他の日程を相談する」引き継ぎに `logAutoActionExecuted` を追加（見積りフロー側と監査粒度を統一）。
+- スコープ外（後続）: リマインダー本文へのキャンセル/変更ボタン添付、admin route.ts のキャンセル/
+  変更処理を共有ヘルパーへ寄せる単一情報源化。
+
 ## 2026-08-29 IMP-021（#936）: 3秒理解ホーム。main 取り込み時に重大な復活バグと初期表示スコープの問題を修正
 
 - 内容: v2.0 §5 のダッシュボード「3秒理解」（NEXT ACTION セクション・今日の進捗
@@ -1303,6 +1397,19 @@ supabase migration repair --status reverted 20260825000000
 - 内容: 何を実装・変更したか
 - 対象: どの画面・API・業種向けか
 ```
+
+## 2026-08-20 IMP-022 §6 Work List & Job Hub — ステータス統一・情報階層・CTA規律（branch impl/IMP-022-work-list-job-hub / PR #937）
+
+- 内容: v2.0 §6 の Work List & Job Hub を実装。(1) 予約ステータス表示統一
+  (`src/lib/domain/jobStatusDisplay.ts` — 5値×色/ラベル/ヒント/BadgeVariant の単一定義源。
+  ReservationsClient/CalendarView/JobStatusPanel/StorefrontJobWorkflow の 4 箇所の重複
+  STATUS_CONFIG を置換)。(2) ステッパー情報階層 — 現ステップを拡大(border-2, text-sm,
+  px-3.5)、完了/未着手を圧縮(text-[11px], px-2.5)。JobStatusPanel + JobSignoffPanel
+  の両ステッパーに適用。(3) CTA 規律 — Next Actions セクションをステータスで出し分け:
+  作業前(confirmed/arrived)は証明書/請求書非表示、完了後は予約編集非表示、キャンセルは
+  全非表示。(4) types.ts の STATUS_FLOW/STATUS_LABEL/STATUS_HINT を共有モジュールからの
+  再エクスポートに置換。新 DB クエリ・マイグレーションなし。テスト 7 件。
+- 対象: 案件ワークフロー画面、予約一覧/カレンダー。IMP-023/024/026/027/028 の前提条件。
 
 ## 2026-08-19 IMP-021 §5 HOME — 3秒理解ホーム（branch impl/IMP-021-home / PR #936）
 
@@ -2927,3 +3034,19 @@ supabase migration repair --status reverted 20260825000000
 - `@react-navigation/native-stack` の直 import をやめ、`Stack` の props から型を借用
   （expo-router の推移的依存にしか無く、インストール方式によっては解決に失敗する）。
 - 検証: ナビゲーションを**双方向**で照合（リンク→ファイル / 画面→到達導線）。欠落・孤立ともゼロ。
+
+## 2026-08-27 帳票PDF: 発注書・発注請書・検収書のタイトルから「御」を撤去
+
+- 対象: `src/lib/pdfDocument.tsx`（全帳票 PDF 生成）、admin の帳票テンプレート編集画面
+  （`TemplatesClient.tsx` / `LayoutPreview.tsx`）。
+- 変更: purchase_order（発注書）/ order_confirmation（発注請書）/ inspection（検収書）の
+  3種別は、本文の挨拶文が自社主語（「発注いたします」「検収いたしました」）のため、
+  テナントの「御」プレフィックス設定に関わらずタイトルへ常に付けないようにした
+  （`src/types/document.ts` の `hasNoHonorificPrefix()` を唯一の出所として参照）。
+- 編集画面: 該当3種を選択しているときは「御」プレフィックスのトグルを disabled にし、
+  「発注書・発注請書・検収書は自社が発行する書類のため、「御」は常に付きません。」と
+  ヒント文を表示。設定しても反映されない状態を防ぐ。
+- 経緯: PR #985（帳票の基本テンプレートを PDF プレビューするスクリプト追加）で全9種別を
+  実際に出力して目視確認した際に発覚。判断は DECISION_LOG.md 2026-08-27 を参照。
+- 影響なし: 見積書・納品書・領収書・請求書・合算請求書・外注請求書の6種は変更なし
+  （引き続きテナントの `layout.title.prefix` 設定に従う）。

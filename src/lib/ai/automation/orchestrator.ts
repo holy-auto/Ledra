@@ -81,6 +81,16 @@ export function shouldAutoSelfCancel(settings: AiAutomationSettings): boolean {
   return resolveAutoAction(settings, "inbound_message.auto_self_cancel");
 }
 
+/** 顧客が LINE で予約の日程を自分で変更できるか (inbound_message.auto_self_reschedule)。 */
+export function shouldAutoSelfReschedule(settings: AiAutomationSettings): boolean {
+  return resolveAutoAction(settings, "inbound_message.auto_self_reschedule");
+}
+
+/** 予約前日リマインダーを LINE で自動送信するか (reservation.auto_day_before_reminder)。 */
+export function shouldSendDayBeforeReminder(settings: AiAutomationSettings): boolean {
+  return resolveAutoAction(settings, "reservation.auto_day_before_reminder");
+}
+
 export interface InboundExtractionLike {
   intent?: string | null;
   confidence?: number | null;

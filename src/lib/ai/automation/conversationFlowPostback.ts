@@ -33,7 +33,7 @@
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { sendCustomerLineText, sendCustomerLineButtons } from "@/lib/line/client";
 import { recordInboundLineMessage } from "@/lib/line/messageStore";
-import { cancelReservationById } from "@/lib/reservations/mutate";
+import { cancelReservationById, rescheduleReservationById } from "@/lib/reservations/mutate";
 import { todayJst } from "@/lib/gantt/board";
 import { syncCreateEvent } from "@/lib/gcal/client";
 import { calcItems } from "@/lib/documents/calcItems";
@@ -48,6 +48,7 @@ import {
 } from "@/lib/line/flow/flowStore";
 import { interpretReply, parseFlowPostback } from "@/lib/line/flow/interpret";
 import { fetchFlowScheduleCandidates, type FlowScheduleCandidate } from "@/lib/line/flow/scheduleCandidates";
+import { addDays } from "@/lib/booking/slots";
 import { fetchAddonRecommendations } from "@/lib/line/flow/addonCandidates";
 import type { RecommendedOption } from "@/lib/ai/optionRecommend";
 import { matchVehicleByText, type VehicleTextCandidate } from "@/lib/vehicles/matchByText";
@@ -68,14 +69,25 @@ import {
   buildCancelDone,
   buildCancelAborted,
   buildCancelHandoff,
+  buildRescheduleSlotAsk,
+  buildRescheduleDone,
   type CancelTargetReservation,
 } from "@/lib/line/flow/messages";
 import { loadAiAutomationSettings, tenantEligibleForAiAutomation, notifyStaffOfAiAction } from "./policy";
-import { shouldRunConversationFlow, shouldAutoSendDocumentOnConfirm, shouldAutoSelfCancel } from "./orchestrator";
+import {
+  shouldRunConversationFlow,
+  shouldAutoSendDocumentOnConfirm,
+  shouldAutoSelfCancel,
+  shouldAutoSelfReschedule,
+} from "./orchestrator";
 import { storeIdOrNull } from "@/lib/stores/resolveStoreId";
 
-/** 提示した日程候補を提示順のまま保持するための context キー。 */
-const SCHEDULE_CANDIDATES_KEY = "schedule_candidates";
+/** 提示した日程候補を提示順のまま保持するための context キー。日程変更フローとも共有。 */
+export const SCHEDULE_CANDIDATES_KEY = "schedule_candidates";
+/** 日程変更フローで変更対象の候補予約 (index→予約) を保持する context キー。rescheduleFlowAuto と共有。 */
+export const RESCHEDULE_CANDIDATES_KEY = "reschedule_candidates";
+/** 日程変更フローで確定した変更対象予約 (表示・gcal 更新用) を保持する context キー。rescheduleFlowAuto と共有。 */
+export const RESCHEDULE_TARGET_KEY = "reschedule_target";
 /** 提示したオプション候補を提示順のまま保持するための context キー。 */
 const OPTION_CANDIDATES_KEY = "option_candidates";
 // ponytail: 追加が確定したオプション (最終見積り再送の要否判定・予約の
@@ -194,7 +206,8 @@ export async function handleFlowPostback(params: {
     // postback を処理する (キャンセルのボタンは会話フロー OFF のテナントでも出るため)。
     const flowOptIn = shouldRunConversationFlow(settings);
     const selfCancelOptIn = shouldAutoSelfCancel(settings);
-    if (!flowOptIn && !selfCancelOptIn) return false;
+    const selfRescheduleOptIn = shouldAutoSelfReschedule(settings);
+    if (!flowOptIn && !selfCancelOptIn && !selfRescheduleOptIn) return false;
 
     const admin = createServiceRoleAdmin("AI conversation flow (postback) — no auth session");
 
@@ -213,10 +226,44 @@ export async function handleFlowPostback(params: {
     if (flowOptIn && pb?.event === "start_quote") {
       return handleFollowupStartQuote(admin, tenantId, lineUserId, resolvedCustomerId, params.data);
     }
-    // consult は会話フローだけでなくキャンセル選択画面 (buildCancelPickAsk) にも出るため、
-    // self-cancel のみ有効なテナントでも「スタッフに相談したい」が死にボタンにならないよう受ける。
-    if ((flowOptIn || selfCancelOptIn) && pb?.event === "consult") {
+    // consult は会話フローだけでなくキャンセル/日程変更の選択画面 (buildCancelPickAsk /
+    // buildReschedulePickAsk) にも出るため、self-cancel / self-reschedule のみ有効なテナントでも
+    // 「スタッフに相談したい」が死にボタンにならないよう受ける。
+    if ((flowOptIn || selfCancelOptIn || selfRescheduleOptIn) && pb?.event === "consult") {
       return handleFollowupConsult(admin, tenantId, lineUserId, resolvedCustomerId, params.data);
+    }
+
+    // 予約前日リマインダー等に添えたセルフ操作ボタン。既存の self-cancel / self-reschedule
+    // フローをボタンから起動する (intent 抽出を経ずに直接開始)。cancelFlowAuto/rescheduleFlowAuto は
+    // 本モジュールを import しているため、循環回避で動的 import する。
+    // 起動できない (false) 主因は「進行中フローがある」で、その場合に consult へ落とすと無関係な
+    // フロー (見積り等) を human_takeover に奪ってしまう。maybeStart* は対象なし/未紐付けを自前で
+    // スタッフ引き継ぎ済み (true 返し) なので、false のときは何もしない no-op にして進行中フローを守る。
+    if (selfCancelOptIn && pb?.event === "start_cancel") {
+      const { maybeStartCancelFlow } = await import("./cancelFlowAuto");
+      await maybeStartCancelFlow({
+        tenantId,
+        customerId: resolvedCustomerId,
+        lineUserId,
+        intent: "cancel",
+        messageId: null,
+        channel: "line",
+        settings,
+      });
+      return true;
+    }
+    if (selfRescheduleOptIn && pb?.event === "start_reschedule") {
+      const { maybeStartRescheduleFlow } = await import("./rescheduleFlowAuto");
+      await maybeStartRescheduleFlow({
+        tenantId,
+        customerId: resolvedCustomerId,
+        lineUserId,
+        intent: "change_reservation",
+        messageId: null,
+        channel: "line",
+        settings,
+      });
+      return true;
     }
 
     const flow = await getActiveFlow(admin, tenantId, { customerId: resolvedCustomerId, lineUserId });
@@ -443,6 +490,45 @@ export async function handleFlowPostback(params: {
       return handleCancelDecision(admin, tenantId, flow, lineUserId, event.type === "cancel_confirmed", params.data);
     }
 
+    // 日程変更: 対象が複数のとき、どれを変更するか選択された → 新日程候補の提示へ。
+    if (flow.state === "awaiting_reschedule_pick" && event.type === "reschedule_pick_selected") {
+      return handleReschedulePick(admin, tenantId, flow, lineUserId, event.index, params.data);
+    }
+
+    // 日程変更: 新しい日程が選択された → 予約の日時を更新して完了。
+    if (flow.state === "awaiting_reschedule_slot" && event.type === "reschedule_slot_selected") {
+      return handleRescheduleSlot(admin, tenantId, flow, lineUserId, event.index, params.data);
+    }
+
+    // 日程変更: 「その他の日程を相談する」(flow:cancel → handoff)。提示候補が合わないので引き継ぐ。
+    if (flow.state === "awaiting_reschedule_slot" && event.type === "handoff") {
+      await recordInboundLineMessage({
+        tenantId,
+        lineUserId,
+        body: "「その他の日程を相談する」を選択",
+        rawEvent: { flow_postback: params.data },
+      });
+      await advanceFlow(admin, flow, {
+        toState: "human_takeover",
+        contextPatch: { reschedule_decision: "consult" },
+        expectState: "awaiting_reschedule_slot",
+      });
+      await sendCustomerLineText({ tenantId, customerId: flow.customer_id, lineUserId, body: buildScheduleHandoff() });
+      await notifyStaffOfAiAction(
+        admin,
+        tenantId,
+        "日程変更のご相談希望 — ご対応をお願いします",
+        "お客様が提示した日程候補以外への変更をご希望です。代車の空きとあわせて日程をご相談ください。",
+      );
+      await logAutoActionExecuted({
+        tenantId,
+        actionKey: "inbound_message.auto_self_reschedule",
+        resource: { kind: "line_user", id: lineUserId },
+        detail: { flow_id: flow.id, state: "human_takeover", reschedule_decision: "consult" },
+      });
+      return true;
+    }
+
     return false;
   } catch (e) {
     logger.warn("[conversationFlowPostback] handleFlowPostback threw", {
@@ -556,6 +642,196 @@ async function handleCancelDecision(
     actionKey: "inbound_message.auto_self_cancel",
     resource: { kind: "reservation", id: flow.reservation_id },
     detail: { flow_id: flow.id, state: "closed", cancelled: true, already_final: result.alreadyFinal },
+  });
+  return true;
+}
+
+/**
+ * 日程変更: 変更対象が複数のとき選択された予約を確定し、新しい日程候補を提示する
+ * (awaiting_reschedule_pick → awaiting_reschedule_slot)。空き候補が無ければスタッフ引き継ぎ。
+ * 呼び出し元 (handleFlowPostback) の catch で保護されるため投げてよい。
+ */
+async function handleReschedulePick(
+  admin: Admin,
+  tenantId: string,
+  flow: FlowRow,
+  lineUserId: string,
+  index: number,
+  data: string,
+): Promise<boolean> {
+  const candidates = (flow.context_json[RESCHEDULE_CANDIDATES_KEY] as CancelTargetReservation[] | undefined) ?? [];
+  const chosen = candidates[index];
+  if (!chosen) return false;
+
+  await recordInboundLineMessage({
+    tenantId,
+    lineUserId,
+    body: `日程変更の対象「${chosen.scheduled_date}」を選択`,
+    rawEvent: { flow_postback: data },
+  });
+
+  // 新しい日程候補を取得。1 件も無ければスタッフ引き継ぎ (advanceFlow が楽観ロック=二重処理防止)。
+  // 「前日まで」= 変更先も当日は不可なので翌日起点で候補を出す。動かす対象の予約は空き計算から除外。
+  const slots = await fetchFlowScheduleCandidates(admin, tenantId, {
+    limit: 3,
+    fromDate: addDays(todayJst(), 1),
+    excludeReservationId: chosen.id,
+  });
+  if (slots.length === 0) {
+    const ok = await advanceFlow(admin, flow, {
+      toState: "human_takeover",
+      contextPatch: { reschedule_decision: "no_candidates" },
+      expectState: "awaiting_reschedule_pick",
+    });
+    if (!ok) return false;
+    await sendCustomerLineText({ tenantId, customerId: flow.customer_id, lineUserId, body: buildScheduleHandoff() });
+    await notifyStaffOfAiAction(
+      admin,
+      tenantId,
+      "日程変更の候補が見つかりません — ご対応をお願いします",
+      "お客様が予約の日程変更をご希望ですが、空き日程候補が見つかりませんでした。代車の空きとあわせてご相談ください。",
+    );
+    return true;
+  }
+
+  // 選んだ予約を reservation_id に確定し、候補を context に保持して日程選択待ちへ (楽観ロック)。
+  const claimed = await advanceFlow(admin, flow, {
+    toState: "awaiting_reschedule_slot",
+    reservationId: chosen.id,
+    contextPatch: { [RESCHEDULE_TARGET_KEY]: chosen, [SCHEDULE_CANDIDATES_KEY]: slots },
+    expectState: "awaiting_reschedule_pick",
+  });
+  if (!claimed) return false;
+
+  const msg = buildRescheduleSlotAsk(chosen, slots);
+  const delivered = await sendCustomerLineButtons({
+    tenantId,
+    customerId: flow.customer_id,
+    lineUserId,
+    text: msg.text,
+    buttons: msg.buttons,
+  });
+  if (!delivered) {
+    // 候補ボタンが届かなければ行を残さない (ボタン無しで前進できず 72h 塞ぐため)。expired に落とす。
+    await advanceFlow(admin, flow, { toState: "expired", expectState: "awaiting_reschedule_slot" });
+    logger.warn("[conversationFlowPostback] reschedule-slot delivery failed", { tenantId, lineUserId });
+    return false;
+  }
+  return true;
+}
+
+/**
+ * 日程変更: 新しい日程が選択されたら、直前の空き状況を再検証してから予約の日時を更新する
+ * (awaiting_reschedule_slot → closed)。実行前に closed を楽観クレームして二重更新を防ぎ、
+ * 確定直前に「前日まで」と空き状況を再検証する。埋まっていれば/締め切り超過ならスタッフ引き継ぎ。
+ * 呼び出し元 (handleFlowPostback) の catch で保護されるため投げてよい。
+ */
+async function handleRescheduleSlot(
+  admin: Admin,
+  tenantId: string,
+  flow: FlowRow,
+  lineUserId: string,
+  index: number,
+  data: string,
+): Promise<boolean> {
+  const slots = (flow.context_json[SCHEDULE_CANDIDATES_KEY] as FlowScheduleCandidate[] | undefined) ?? [];
+  const chosen = slots[index];
+  if (!chosen) return false;
+  const target = (flow.context_json[RESCHEDULE_TARGET_KEY] as CancelTargetReservation | undefined) ?? null;
+
+  await recordInboundLineMessage({
+    tenantId,
+    lineUserId,
+    body: `新しい日程「${chosen.date} ${chosen.start_time.slice(0, 5)}〜」を選択`,
+    rawEvent: { flow_postback: data },
+  });
+
+  // 実行前に closed を楽観クレーム (postback 再配信・連打での二重更新を防ぐ)。通ったものだけ実行。
+  const claimed = await advanceFlow(admin, flow, { toState: "closed", expectState: "awaiting_reschedule_slot" });
+  if (!claimed) return false;
+
+  // 対象未確定 (想定外) → スタッフ引き継ぎ。
+  if (!flow.reservation_id || !flow.customer_id) {
+    await sendCustomerLineText({ tenantId, customerId: flow.customer_id, lineUserId, body: buildCancelHandoff() });
+    await notifyStaffOfAiAction(
+      admin,
+      tenantId,
+      "日程変更のご希望 — ご対応をお願いします",
+      "日程変更の対象予約を特定できませんでした。ご確認ください。",
+    );
+    return true;
+  }
+
+  // 直前に他のお客様と重なっていないか、選んだ日 1 日分だけ再取得して確認する。
+  // 動かす対象の予約自身は空き計算から除外する (同日内変更で自分の旧枠に自分がぶつからないように)。
+  const fresh = await fetchFlowScheduleCandidates(admin, tenantId, {
+    restrictToDate: chosen.date,
+    limit: 50,
+    // reservation_id は上の !flow.reservation_id ガードで truthy が保証済み。
+    excludeReservationId: flow.reservation_id,
+  });
+  const stillAvailable = fresh.some((c) => c.start_time === chosen.start_time && c.end_time === chosen.end_time);
+  if (!stillAvailable) {
+    // 変更希望は未達のまま (顧客はまだ日程を動かしたい)。closed のままにせず human_takeover に
+    // 移し、スタッフがトークを引き継いで別日程を調整できるようにする (handleSlotSelected と同様)。
+    await advanceFlow(admin, flow, {
+      toState: "human_takeover",
+      contextPatch: { reschedule_conflict: true },
+      expectState: "closed",
+    });
+    await sendCustomerLineText({
+      tenantId,
+      customerId: flow.customer_id,
+      lineUserId,
+      body: buildScheduleConflictHandoff(),
+    });
+    await notifyStaffOfAiAction(
+      admin,
+      tenantId,
+      "変更先の日程が埋まりました — ご対応をお願いします",
+      "お客様が選んだ変更先の日程がちょうど埋まってしまいました。改めて日程のご相談をお願いします。",
+    );
+    return true;
+  }
+
+  const result = await rescheduleReservationById(admin, {
+    tenantId,
+    reservationId: flow.reservation_id,
+    customerId: flow.customer_id,
+    newDate: chosen.date,
+    newStartTime: chosen.start_time,
+    newEndTime: chosen.end_time,
+    // 締め切り「前日まで」を実 DB 値でも再検証 (提示後にスタッフが当日へ日程変更した場合の二重ガード)。
+    cutoffDate: todayJst(),
+  });
+  if (!result.ok) {
+    const tooLate = result.reason === "too_late";
+    await sendCustomerLineText({ tenantId, customerId: flow.customer_id, lineUserId, body: buildCancelHandoff() });
+    await notifyStaffOfAiAction(
+      admin,
+      tenantId,
+      tooLate
+        ? "日程変更のご希望（当日・直前）— ご対応をお願いします"
+        : "日程変更が完了できませんでした — ご対応をお願いします",
+      tooLate
+        ? "当日・直前になったため自動で日程変更せずスタッフ対応に切り替えました。ご確認ください。"
+        : "LINE からのセルフ日程変更が完了できませんでした。手動でご確認ください。",
+    );
+    return true;
+  }
+
+  await sendCustomerLineText({ tenantId, customerId: flow.customer_id, lineUserId, body: buildRescheduleDone(chosen) });
+  await notifyStaffOfAiAction(
+    admin,
+    tenantId,
+    "ご予約の日程が変更されました（LINEセルフ）",
+    `お客様が LINE で予約の日程を変更されました（${target ? `${target.scheduled_date} → ` : ""}${chosen.date} ${chosen.start_time.slice(0, 5)}〜）。カレンダー・代車の空き等をご確認ください。`,
+  );
+  await logAutoActionExecuted({
+    tenantId,
+    actionKey: "inbound_message.auto_self_reschedule",
+    resource: { kind: "reservation", id: flow.reservation_id },
+    detail: { flow_id: flow.id, state: "closed", new_date: chosen.date, new_start_time: chosen.start_time },
   });
   return true;
 }
