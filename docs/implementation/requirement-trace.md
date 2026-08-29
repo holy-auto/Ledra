@@ -117,7 +117,7 @@ Payment Policy(v2.0 §11.3: Consumer PAID / B2B CREDIT_APPROVED / Insurance INSU
 | §4 | グローバルナビ・検索・Quick Create | 横断検索(顧客/車両/証明書/請求書)+CommandPalette(エンティティ検索+コンテキスト継承 Quick Create、IMP-020)+AskLedraBar。モバイルの Quick Create FAB(`QuickCreateSheet.tsx`)は固定4項目で権限ゲート・コンテキスト継承なし | 部分 | VIN/部品/Serial 横断検索・カテゴリ別 Deep Link なし。モバイル FAB と `src/lib/navigation/quickCreate.ts` の統合は未着手 | IMP-020 |
 | §5 | Home(今日・今・次、NEXT ACTION) | `/admin`(ダッシュボード+NextActionSection+TodayProgressCard+TodayTasksWidget+承認インボックス)、mobile ホームタブ | 実装済み | NEXT ACTION 1件大表示(NextActionCard)+今日の進捗(ProgressCard)+3段階スコープ切替。説明可能な優先度理由はタイル hint で表示。priority エンジン(IMP-044)で高度化予定 | IMP-021, 044 |
 | §6 | Work List & Job Hub | `/admin/reservations`(一覧+カレンダー)+`/admin/jobs/[id]`(統合ワークスペース: ステータス/サインオフ/写真/部品/点検/証明書ドラフト/AI) | 実装済み | ステータス表示統一(5値の単一定義源)+情報階層(現ステップ拡大・完了圧縮)+CTA規律(ステータス別表示)。「作業完了=証明書発行」CTA禁止はサインオフ分離で充足 | IMP-022 |
-| §7 | Evidence / Photo / Voice | 段階タグ4値(`src/lib/certificateImages/stage.ts`)+before/after 必須ゲート+単回撮影 nonce+真正性グレード+改ざん検知 AI。音声は Web のみ(`VoiceMemoPanel`+Haiku 構造化→フォーム確認) | 部分 | 必須ショットチェックリスト(4/5 進捗)なし。モバイル音声入力なし。証明書写真の DB 行削除が可能で完全 append-only ではない(部品側は凍結ガードあり) | IMP-023, 024 |
+| §7 | Evidence / Photo / Voice | 段階タグ4値(`src/lib/certificateImages/stage.ts`)+before/after 必須ゲート+単回撮影 nonce+真正性グレード+改ざん検知 AI+凍結ガード(`certificate_images_guard`)。必須ショット進捗(`evidenceProgress.ts`)。音声は Web のみ(`VoiceMemoPanel`+Haiku 構造化→フォーム確認) | 実装済み | モバイル音声入力なし(IMP-024)。UI側の必須ショット進捗表示の接続は IMP-024 or 画面タスクで | IMP-023, 024 |
 | §8 | Parts & Installation Integrity | `src/lib/parts/`(3-way match、凍結ガード、OTP 署名、TSA、アンカー)+`/admin/parts-integrity` | 実装済み | v2.0 の Part statuses 語彙とは差異あり(実値: `draft/installed/customer_verified/disputed/voided`)。Certificate Gate との自動連動は部分 | IMP-040 |
 | §9 | Vehicle Digital Passport | `/admin/vehicles/[id]`+`/v/[vin]`(公開履歴)+`vehicle_passports`(所有権移転)+車検証 OCR | 部分 | 前所有者 PII 遮断の体系的検証は未実施。顧客関係は `vehicles.customer_id` 直付けで関係モデル分離は部分 | IMP-025 |
 | §10 | Customer Confirmation Web | 受領サイン `/sign/receipt/[token]`(下4桁2FA+同意文言版管理+内容スナップショット)、部品確認 `/parts/confirm/[token]`、板金進捗 `/track/[token]` | 実装済み | 「気になる点を伝える」→ Customer Issue 作成→請求/証明ブロックの流れはない(問い合わせ `customer_inquiries` は別系統) | IMP-026 |
@@ -146,7 +146,7 @@ Payment Policy(v2.0 §11.3: Consumer PAID / B2B CREDIT_APPROVED / Insurance INSU
 | HOME | 今日/次/問題 | `/admin`(ダッシュボード — NextAction+Progress+Tasks)+mobile `(tabs)/index` | 実装済み | IMP-021 |
 | WORK_LIST | 作業一覧 | `/admin/reservations`+mobile `(tabs)/work` | 部分 | IMP-022 |
 | JOB_HUB | 1台の案件ハブ | `/admin/jobs/[id]`(統合ワークスペース) | 部分 | IMP-022 |
-| JOB_EVIDENCE | 証跡撮影 | `/admin/certificates/[public_id]`(写真)+mobile `certificates/[id]/photos` | 部分 | IMP-023 |
+| JOB_EVIDENCE | 証跡撮影 | `/admin/certificates/[public_id]`(写真)+mobile `certificates/[id]/photos`+凍結ガード+進捗計算 | 実装済み | IMP-023 |
 | JOB_DOCUMENTS | 見積/請求/決済/確認 | `/admin/invoices`+`/admin/payment-ledger` | 部分 | IMP-027, 043 |
 | VEHICLE_LIST | 車両検索/一覧 | `/admin/vehicles` | 実装済み | IMP-025 |
 | VEHICLE_DETAIL | 車両パスポート | `/admin/vehicles/[id]`+公開 `/v/[vin]` | 部分 | IMP-025 |
@@ -172,7 +172,7 @@ Payment Policy(v2.0 §11.3: Consumer PAID / B2B CREDIT_APPROVED / Insurance INSU
 | 7 | 予測は事実ではない(scheduled/predicted/actual 分離) | `estimated_min`(予定)と `started_at/completed_at/duration_sec`(実績)は分離。predicted 系フィールドなし | 部分 | IMP-014, 044 |
 | 8 | AI は構造化/提案/予測、重要記録は人間確定 | `src/lib/ai/automation/policy.ts`(FieldPolicy: manual/suggest/自動、confidence 未満は suggest デモート、壁3安全弁) | 実装済み | IMP-024 |
 | 9 | 車両 identity は顧客 PII から独立 | `vehicles` は独立エンティティ+`vehicle_passports` 所有権移転あり。顧客紐付けは `vehicles.customer_id` 直付け | 部分 | IMP-025, 050 |
-| 10 | 原本証跡は不変/追記のみ(黙示上書き禁止) | 部品側は凍結ガード(`20260603000001_part_installations_guard.sql`)+TSA。証明書写真は DB 行削除が可能 | 部分 | IMP-023, 030 |
+| 10 | 原本証跡は不変/追記のみ(黙示上書き禁止) | 部品側は凍結ガード(`part_installations_guard`)+TSA。証明書写真も凍結ガード(`certificate_images_guard` — active/void 時 DELETE 不可+証跡列変更不可) | 実装済み | IMP-023, 030 |
 | 11 | オフラインでも作業継続、正式証明は同期後 | Web PWA outbox で部分実現。モバイルは検知のみ | 部分 | IMP-016, 032 |
 | 12 | 初期6言語 ja/en/vi/id/fil/hi | 6ロケール登録・メッセージ・ドメインラベル収録済(IMP-011)。**画面適用はゼロのまま** | 部分 | IMP-051(訳語検証) |
 | 13 | 20代に洗練・40〜60代に自明のビジュアル | `DESIGN_SYSTEM.md` に設計原則あり。v2.0 トークンとの照合未実施 | 部分 | IMP-010, 051 |
@@ -193,7 +193,7 @@ Payment Policy(v2.0 §11.3: Consumer PAID / B2B CREDIT_APPROVED / Insurance INSU
 | IMP-020 | 2 / P0 | §2, §4, HOME 他(ナビ・検索・Quick Create) | **部分**(2026-08-28): 5タブ構造は v2.0 正準と一致(main で先行実装済み)。`src/lib/navigation/`(正準タブ・Quick Create・スコープ型定義)+CommandPalette 強化(エンティティ検索+コンテキスト継承 Quick Create)+Web サイドバーの `WEB_TABS` 参照化を追加。**当初計画していたモバイル画面自体(タブバー本体・車両/証明書一覧・その他メニュー)は、ドラフト後に main 側で独立に実装済みだったため、稼働中の実装を優先しそちらを採用**(DECISION_LOG 2026-08-27)。モバイル FAB の Quick Create 統合・Role別スコープ切替は未着手 | 010, 011, 013 |
 | IMP-021 | 2 / P0 | §5, HOME(3秒理解ホーム) | **実装済み**(2026-08-19): NEXT ACTION セクション(最優先タイル→NextActionCard)+今日の進捗 ProgressCard+3段階スコープ切替(HomeScopeToggle→SegmentedControl)+WorkScopeProvider(React Context)+レイアウト再構築。既存 fetchTodaySignals 再利用、新DBクエリなし。IMP-044 で priority エンジン高度化予定 | 010, 013, 015, 020 |
 | IMP-022 | 2 / P0 | §6, WORK_LIST/JOB_HUB | **実装済み**(2026-08-20): ステータス表示統一(`jobStatusDisplay.ts` — 5値×色/ラベル/ヒント/variant の単一定義源。ReservationsClient/CalendarView/JobStatusPanel/StorefrontJobWorkflow の4箇所の重複 STATUS_CONFIG を置換)+ステッパー情報階層(現ステップ拡大・完了/未着手圧縮。JobStatusPanel+JobSignoffPanel 両方)+CTA規律(Next Actions をステータスで出し分け: 作業前は証明書/請求書非表示、完了後は予約編集非表示) | 015, 020, 021 |
-| IMP-023 | 2 / P0 | §7, JOB_EVIDENCE(証跡撮影・必須ショット・不変連鎖) | 撮影パイプライン(nonce/TSA/grade)は深い。必須ショットチェックリスト・完全 append-only なし(部分) | 016, 022 |
+| IMP-023 | 2 / P0 | §7, JOB_EVIDENCE(証跡撮影・必須ショット・不変連鎖) | **実装済み**(2026-08-20): (1) `certificate_images_guard` DB トリガー — active/void 証明書の写真行 DELETE 禁止+証跡列(sha256/stage/grade/TSA/C2PA/storage_path)の破壊的 UPDATE 禁止。DELETE API route にトリガーエラーの 409 ハンドリング追加。(2) `evidenceProgress.ts` — 必須ショットとアップロード済み写真の stage 突合せ進捗計算(純関数)。テスト 8 件 | 016, 022 |
 | IMP-024 | 2 / P0 | §7(音声→AI構造化→人間確認) | Web のみ実装(VoiceMemoPanel+Haiku)。モバイルなし(部分) | 011, 016, 022 |
 | IMP-025 | 2 / P0 | §9, VEHICLE_*(車両パスポート基盤) | 車両管理+公開履歴+所有権移転あり。PII 遮断の体系検証未(部分) | 013, 015 |
 | IMP-026 | 2 / P0 | §10(顧客確認 Web) | 署名付き URL 確認フロー複数系統で稼働。Raise Concern→ブロックなし(実装済み〜部分) | 011, 022, 023, 025 |
