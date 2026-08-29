@@ -638,8 +638,12 @@ async function handleReschedulePick(
   });
 
   // 新しい日程候補を取得。1 件も無ければスタッフ引き継ぎ (advanceFlow が楽観ロック=二重処理防止)。
-  // 「前日まで」= 変更先も当日は不可なので翌日起点で候補を出す。
-  const slots = await fetchFlowScheduleCandidates(admin, tenantId, { limit: 3, fromDate: addDays(todayJst(), 1) });
+  // 「前日まで」= 変更先も当日は不可なので翌日起点で候補を出す。動かす対象の予約は空き計算から除外。
+  const slots = await fetchFlowScheduleCandidates(admin, tenantId, {
+    limit: 3,
+    fromDate: addDays(todayJst(), 1),
+    excludeReservationId: chosen.id,
+  });
   if (slots.length === 0) {
     const ok = await advanceFlow(admin, flow, {
       toState: "human_takeover",
@@ -726,10 +730,13 @@ async function handleRescheduleSlot(
   }
 
   // 直前に他のお客様と重なっていないか、選んだ日 1 日分だけ再取得して確認する。
-  // ponytail: 同日内変更のとき、変更対象の予約自身がその日の枠を1つ占有している扱いのまま
-  // 数えるため候補が過少に見えうる (候補生成時と同条件なので二重予約は起きない)。天井: 厳密化は
-  // 自予約を除外した空き再計算が要る。
-  const fresh = await fetchFlowScheduleCandidates(admin, tenantId, { restrictToDate: chosen.date, limit: 50 });
+  // 動かす対象の予約自身は空き計算から除外する (同日内変更で自分の旧枠に自分がぶつからないように)。
+  const fresh = await fetchFlowScheduleCandidates(admin, tenantId, {
+    restrictToDate: chosen.date,
+    limit: 50,
+    // reservation_id は上の !flow.reservation_id ガードで truthy が保証済み。
+    excludeReservationId: flow.reservation_id,
+  });
   const stillAvailable = fresh.some((c) => c.start_time === chosen.start_time && c.end_time === chosen.end_time);
   if (!stillAvailable) {
     // 変更希望は未達のまま (顧客はまだ日程を動かしたい)。closed のままにせず human_takeover に
