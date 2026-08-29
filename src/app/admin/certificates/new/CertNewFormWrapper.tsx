@@ -22,6 +22,8 @@ import AccessoryDetailsSection from "./AccessoryDetailsSection";
 import PhotoUploadSection, { type PhotoUploadHandle } from "./PhotoUploadSection";
 import ManufacturerTemplatePicker from "./ManufacturerTemplatePicker";
 import CertFormProgressRail from "./CertFormProgressRail";
+import { parseMileageKm, MAX_MILEAGE_KM } from "@/lib/maintenance/mileage";
+import OdometerOcrButton from "@/components/admin/OdometerOcrButton";
 import Button from "@/components/ui/Button";
 import HelpTooltip from "@/components/ui/HelpTooltip";
 import type { PlanTier } from "@/lib/billing/planFeatures";
@@ -147,6 +149,7 @@ export default function CertNewFormWrapper({
   const [isPending, startTransition] = useTransition();
   const [submitStatus, setSubmitStatus] = useState<"active" | "draft">("active");
   const [error, setError] = useState<string | null>(null);
+  const mileageRef = useRef<HTMLInputElement | null>(null);
   const [uploadProgress, setUploadProgress] = useState<string | null>(null);
   const [savingDefault, setSavingDefault] = useState(false);
   const [defaultSaveMsg, setDefaultSaveMsg] = useState<string | null>(null);
@@ -350,6 +353,17 @@ export default function CertNewFormWrapper({
       return;
     }
 
+    // 走行距離もここで弾く。オフライン経路は createCertAction を通らずキューに積むため、
+    // ここを通さないと「保存できたのに復帰後の同期で必ず失敗する」証明書が溜まる。
+    if (parseMileageKm(formData.get("mileage_km")) === null) {
+      setError("走行距離（km）を入力してください。メーターの数字を半角数字で入力します。");
+      form.querySelector<HTMLElement>("[data-mileage-field]")?.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
+      return;
+    }
+
     const attachedFiles = photoRef.current?.getFiles() ?? [];
 
     // 写真添付必須ルール (全テナント一律): 発行には施工写真が 1 枚以上必要。
@@ -459,7 +473,9 @@ export default function CertNewFormWrapper({
             ? "車両情報を入力してください（マスタ選択またはメーカー・車種を手入力）。"
             : errCode === "customer_name_required"
               ? "お客様名を入力してください。"
-              : `エラー: ${errCode}`,
+              : errCode === "mileage_required"
+                ? "走行距離（km）を入力してください。メーターの数字を半角数字で入力します。"
+                : `エラー: ${errCode}`,
         );
         return;
       }
@@ -737,6 +753,39 @@ export default function CertNewFormWrapper({
               </div>
             </div>
           )}
+
+          {/* 走行距離（必須）。整備テンプレート限定・折りたたみの中だった頃は本番に1件も
+              溜まらなかったため、施工種別を問わず常時表示の必須項目としてここに置く。
+              入庫のたびに読める唯一の客観値で、車両パスポート・整備リマインダー・
+              劣化予測・残価判定がすべてこの時系列を入力にしている。 */}
+          <label className="mt-4 block space-y-1.5" data-mileage-field>
+            <span className="text-sm font-medium text-secondary">
+              走行距離（km）<span className="ml-1 text-xs font-normal text-red-600">必須</span>
+            </span>
+            <input
+              ref={mileageRef}
+              type="number"
+              name="mileage_km"
+              inputMode="numeric"
+              min={1}
+              max={MAX_MILEAGE_KM}
+              step={1}
+              required
+              placeholder="例: 35000"
+              className="w-full rounded-lg border border-border-default bg-surface px-2.5 py-2 text-sm text-primary placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent"
+            />
+            <span className="block text-xs text-muted">
+              メーターの数字をそのまま入力してください。次回整備時期の判定と、車両パスポートの走行距離履歴になります。
+            </span>
+          </label>
+          {/* 撮って読ませる導線。読み取り値は下書きで、確定（送信）は人が行う。 */}
+          <div className="mt-2">
+            <OdometerOcrButton
+              onRead={(km) => {
+                if (mileageRef.current) mileageRef.current.value = String(km);
+              }}
+            />
+          </div>
         </section>
 
         {/* ━━━ 4. 施工写真（写真ファースト：車種の直後に配置） ━━━ */}

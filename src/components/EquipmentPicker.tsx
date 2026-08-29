@@ -50,11 +50,7 @@ export default function EquipmentPicker({ selected, onChange }: EquipmentPickerP
   /* toggle item */
   const toggle = useCallback(
     (name: string) => {
-      onChange(
-        selected.includes(name)
-          ? selected.filter((s) => s !== name)
-          : [...selected, name],
-      );
+      onChange(selected.includes(name) ? selected.filter((s) => s !== name) : [...selected, name]);
     },
     [selected, onChange],
   );
@@ -133,9 +129,7 @@ export default function EquipmentPicker({ selected, onChange }: EquipmentPickerP
   }
 
   if (loading) {
-    return (
-      <div className="text-sm text-muted py-4">装備マスタを読み込み中...</div>
-    );
+    return <div className="text-sm text-muted py-4">装備マスタを読み込み中...</div>;
   }
 
   return (
@@ -151,18 +145,14 @@ export default function EquipmentPicker({ selected, onChange }: EquipmentPickerP
               type="button"
               onClick={() => setActiveTab(cat)}
               className={`relative inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
-                isActive
-                  ? "bg-accent text-white"
-                  : "bg-surface-hover text-secondary hover:bg-border-default"
+                isActive ? "bg-accent text-white" : "bg-surface-hover text-secondary hover:bg-border-default"
               }`}
             >
               {CATEGORY_LABELS[cat] ?? cat}
               {count > 0 && (
                 <span
                   className={`inline-flex h-4 min-w-4 items-center justify-center rounded-full text-[10px] font-bold ${
-                    isActive
-                      ? "bg-white/25 text-white"
-                      : "bg-accent/15 text-accent"
+                    isActive ? "bg-white/25 text-white" : "bg-accent/15 text-accent"
                   }`}
                 >
                   {count}
@@ -207,16 +197,12 @@ export default function EquipmentPicker({ selected, onChange }: EquipmentPickerP
 
       {/* Selected items from other categories (not in master) */}
       {(() => {
-        const allMasterNames = new Set(
-          Object.values(equipment).flatMap((items) => items.map((i) => i.name)),
-        );
+        const allMasterNames = new Set(Object.values(equipment).flatMap((items) => items.map((i) => i.name)));
         const customSelected = selected.filter((s) => !allMasterNames.has(s));
         if (customSelected.length === 0) return null;
         return (
           <div className="space-y-1.5">
-            <div className="text-[10px] font-semibold text-muted tracking-wider">
-              カスタム装備
-            </div>
+            <div className="text-[10px] font-semibold text-muted tracking-wider">カスタム装備</div>
             <div className="flex flex-wrap gap-2">
               {customSelected.map((name) => (
                 <button
@@ -259,9 +245,7 @@ export default function EquipmentPicker({ selected, onChange }: EquipmentPickerP
 
       {/* Add custom + CSV import */}
       <div className="rounded-lg border border-border-subtle bg-surface-hover p-3 space-y-3">
-        <div className="text-[10px] font-semibold text-muted tracking-wider">
-          カスタム装備を追加
-        </div>
+        <div className="text-[10px] font-semibold text-muted tracking-wider">カスタム装備を追加</div>
         <div className="flex gap-2">
           <select
             className="select-field text-xs flex-shrink-0"
@@ -299,11 +283,7 @@ export default function EquipmentPicker({ selected, onChange }: EquipmentPickerP
         </div>
 
         <div className="flex items-center gap-2">
-          <button
-            type="button"
-            className="btn-ghost text-xs"
-            onClick={() => csvInputRef.current?.click()}
-          >
+          <button type="button" className="btn-ghost text-xs" onClick={() => csvInputRef.current?.click()}>
             <svg
               className="mr-1 inline-block h-3.5 w-3.5"
               fill="none"
@@ -319,9 +299,7 @@ export default function EquipmentPicker({ selected, onChange }: EquipmentPickerP
             </svg>
             CSVインポート
           </button>
-          <span className="text-[10px] text-muted">
-            カンマ区切り or 1行1装備のCSVファイル
-          </span>
+          <span className="text-[10px] text-muted">カンマ区切り or 1行1装備のCSVファイル</span>
           <input
             ref={csvInputRef}
             type="file"

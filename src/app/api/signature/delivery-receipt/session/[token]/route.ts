@@ -50,11 +50,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ toke
         certificates (
           id,
           public_id,
-          cert_type,
           service_type,
           created_at,
           customer_name,
-          vehicles ( car_number, car_name ),
+          vehicles ( plate_display, maker, model ),
           stores   ( name )
         )
       `,
@@ -105,11 +104,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ toke
     const cert = session.certificates as unknown as {
       id: string;
       public_id: string;
-      cert_type: string | null;
       service_type: string | null;
       created_at: string;
       customer_name: string | null;
-      vehicles: { car_number: string | null; car_name: string | null } | null;
+      vehicles: { plate_display: string | null; maker: string | null; model: string | null } | null;
       stores: { name: string } | null;
     } | null;
 
@@ -159,7 +157,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ toke
         ? {
             id: cert.id,
             public_id: cert.public_id,
-            cert_type: cert.cert_type,
+            // cert_type 列は certificates に無い。種別は service_type が持つ
+            cert_type: null,
             service_type: cert.service_type,
             created_at: cert.created_at,
             customer_name: cert.customer_name,

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { fetchUserProfile } from "@/lib/auth";
 import { useAuthStore } from "@/stores/authStore";
+import { initAppLockState } from "@/stores/appLockStore";
 
 /**
  * アプリ起動時の認証状態初期化
@@ -30,7 +31,12 @@ export function useAuthInit() {
       } catch {
         if (mounted) setUser(null);
       } finally {
-        if (mounted) setIsReady(true);
+        if (mounted) {
+          // 描画が始まる前にロック状態を確定させる。あとから決めると
+          // 1フレームだけ中身が見える
+          initAppLockState();
+          setIsReady(true);
+        }
       }
     }
 
