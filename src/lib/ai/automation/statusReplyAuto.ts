@@ -81,8 +81,11 @@ export async function maybeReplyWorkStatus(params: MaybeReplyWorkStatusParams): 
     const admin = createServiceRoleAdmin("AI status reply — LINE webhook lacks auth session");
     if (!(await tenantEligibleForAiAutomation(admin, tenantId))) return false;
 
-    // 本人確認: 紐付け済み顧客のみ。未紐付けは本人の予約を特定できず、他人の状況を答えないため引き継ぐ。
-    const customerId = params.customerId ?? (await resolveCustomerIdByLineUser(admin, tenantId, lineUserId));
+    // 本人確認: **必ず line_user_id 紐付けから解決する**。呼び出し元 (inboundAuto) の
+    // customerId は AI 抽出したメール/電話から解決されている場合があり、それを信用すると
+    // 「メールに他人のアドレスを書いた未紐付けユーザー」に他人の予約状況を漏らしうる。
+    // 状況の開示は確認ボタンを挟まず即返信するため、本人性はここで LINE 紐付けに限定する。
+    const customerId = await resolveCustomerIdByLineUser(admin, tenantId, lineUserId);
     if (!customerId) {
       await sendCustomerLineText({ tenantId, customerId: null, lineUserId, body: buildWorkStatusHandoff() });
       await notifyStaffOfAiAction(
@@ -95,7 +98,10 @@ export async function maybeReplyWorkStatus(params: MaybeReplyWorkStatusParams): 
     }
 
     // 本人の未キャンセル予約 (直近)。過去の完了も含めたいので日付では絞らず新しい順に少量取る。
-    const { data } = await admin
+    // ponytail: limit(20) の降順取得は、未来予約が 20 件超あるとき「最も近い未来予約」を取り逃す
+    // 余地がある (整備店の 1 顧客で未来 20 件超は非現実的なので当面許容)。天井: 上限拡大 or
+    // 未来昇順・過去降順の 2 クエリに分ける。
+    const { data, error } = await admin
       .from("reservations")
       .select("id, status, scheduled_date, start_time, title, progress_pct")
       .eq("tenant_id", tenantId)
@@ -103,6 +109,12 @@ export async function maybeReplyWorkStatus(params: MaybeReplyWorkStatusParams): 
       .neq("status", "cancelled")
       .order("scheduled_date", { ascending: false })
       .limit(20);
+    // クエリ失敗を「予約なし」と誤って断定しない (無いのか失敗なのか区別できないため引き継ぎに寄せる)。
+    if (error) {
+      logger.warn("[statusReplyAuto] reservation select failed", { tenantId, err: error.message });
+      await sendCustomerLineText({ tenantId, customerId, lineUserId, body: buildWorkStatusHandoff() });
+      return true;
+    }
     const rows = ((data as ReservationRow[] | null) ?? []).filter((r) => r.status !== "cancelled");
 
     const target = pickRelevant(rows, todayJst());

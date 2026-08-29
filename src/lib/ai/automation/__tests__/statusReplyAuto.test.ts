@@ -81,6 +81,29 @@ describe("maybeReplyWorkStatus", () => {
     expect(mocks.notifyStaffOfAiAction).toHaveBeenCalled();
   });
 
+  it("never trusts a passed customerId that isn't the LINE-linked one (no cross-customer disclosure)", async () => {
+    // 攻撃者: 未紐付け LINE ユーザーが本文に他人のメールを書き、inboundAuto がそのメールから
+    // customerId を解決して渡してきても、LINE 紐付けが無ければ他人の状況を答えない。
+    mocks.resolveCustomerIdByLineUser.mockResolvedValue(null);
+    seedReservations([
+      {
+        id: "victim-r",
+        status: "in_progress",
+        scheduled_date: TODAY,
+        start_time: "09:00:00",
+        title: "被害者の予約",
+        progress_pct: 50,
+      },
+    ]);
+    const handled = await maybeReplyWorkStatus(baseParams({ customerId: "victim-customer-id" }));
+    expect(handled).toBe(true);
+    // 状況ではなく引き継ぎ文面のみ。被害者の予約内容は一切出さない。
+    const body = mocks.sendCustomerLineText.mock.calls[0][0].body as string;
+    expect(body).toContain("担当より");
+    expect(body).not.toContain("被害者");
+    expect(mocks.logAutoActionExecuted).not.toHaveBeenCalled();
+  });
+
   it("hands off when the customer has no (non-cancelled) reservation", async () => {
     seedReservations([
       {

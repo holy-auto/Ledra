@@ -375,7 +375,8 @@ export function buildWorkStatusReply(r: WorkStatusReservation): string {
       return [
         "ただいま作業を進めております。",
         `📅 ${line}`,
-        typeof r.progress_pct === "number" ? `進捗の目安: ${Math.round(r.progress_pct)}%` : null,
+        // progress_pct は DB 既定が 0 (未設定と 0% が区別できない) ため、0 は「未設定」とみなし出さない。
+        typeof r.progress_pct === "number" && r.progress_pct > 0 ? `進捗の目安: ${Math.round(r.progress_pct)}%` : null,
         "完了しましたらご連絡いたします。",
       ]
         .filter(Boolean)
