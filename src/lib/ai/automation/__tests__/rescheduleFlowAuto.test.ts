@@ -32,19 +32,12 @@ vi.mock("@/lib/line/client", () => ({
   sendCustomerLineText: mocks.sendCustomerLineText,
   sendCustomerLineButtons: mocks.sendCustomerLineButtons,
 }));
-vi.mock("@/lib/line/flow/scheduleCandidates", () => ({
-  fetchFlowScheduleCandidates: mocks.fetchFlowScheduleCandidates,
-  // 実物の純粋関数をそのまま使う (duration 計算はモックしない)。
-  reservationDurationMinutes: (start: string | null, end: string | null) => {
-    if (!start || !end) return null;
-    const toMin = (t: string) => {
-      const [h, m] = t.slice(0, 5).split(":").map(Number);
-      return (h || 0) * 60 + (m || 0);
-    };
-    const d = toMin(end) - toMin(start);
-    return d > 0 ? d : null;
-  },
-}));
+vi.mock("@/lib/line/flow/scheduleCandidates", async (importActual) => {
+  // fetchFlowScheduleCandidates だけ差し替え、reservationDurationMinutes は本物を使う
+  // (duration→estimatedMinutes の配線を本番実装に対して検証するため)。
+  const actual = await importActual<typeof import("@/lib/line/flow/scheduleCandidates")>();
+  return { ...actual, fetchFlowScheduleCandidates: mocks.fetchFlowScheduleCandidates };
+});
 vi.mock("@/lib/gantt/board", () => ({ todayJst: mocks.todayJst }));
 vi.mock("@/lib/audit/aiAuditLog", () => ({ logAutoActionExecuted: mocks.logAutoActionExecuted }));
 vi.mock("@/lib/logger", () => ({

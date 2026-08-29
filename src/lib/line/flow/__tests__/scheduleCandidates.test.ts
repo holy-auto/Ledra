@@ -62,6 +62,56 @@ describe("fetchFlowScheduleCandidates", () => {
     expect(fits).toEqual([{ date: DATE, start_time: "09:00", end_time: "09:30" }]);
   });
 
+  it("does not let too-short slots starve the limit budget (fitting slot still surfaces)", async () => {
+    // 同日に短い枠3つ (先頭) と入る枠1つ。limit=1 でも入る枠が取りこぼされないこと
+    // (fits=false が limit を食い潰さない = onlyFitting が push 前に効く)。
+    mocks.store.tables.external_booking_slots = [
+      {
+        tenant_id: TENANT,
+        is_active: true,
+        day_of_week: DOW,
+        start_time: "09:00:00",
+        end_time: "09:30:00",
+        max_bookings: 1,
+        accepted_categories: null,
+      },
+      {
+        tenant_id: TENANT,
+        is_active: true,
+        day_of_week: DOW,
+        start_time: "10:00:00",
+        end_time: "10:30:00",
+        max_bookings: 1,
+        accepted_categories: null,
+      },
+      {
+        tenant_id: TENANT,
+        is_active: true,
+        day_of_week: DOW,
+        start_time: "11:00:00",
+        end_time: "11:30:00",
+        max_bookings: 1,
+        accepted_categories: null,
+      },
+      {
+        tenant_id: TENANT,
+        is_active: true,
+        day_of_week: DOW,
+        start_time: "13:00:00",
+        end_time: "15:00:00",
+        max_bookings: 1,
+        accepted_categories: null,
+      },
+    ];
+    const admin = makeFakeAdmin(mocks.store);
+    const c = await fetchFlowScheduleCandidates(admin, TENANT, {
+      restrictToDate: DATE,
+      estimatedMinutes: 120,
+      limit: 1,
+    });
+    expect(c).toEqual([{ date: DATE, start_time: "13:00", end_time: "15:00" }]);
+  });
+
   it("gates on loaner availability only when needsLoaner is set", async () => {
     seedSlot();
     // 稼働代車1台。同日 14:00-15:00 の別予約がその代車を押さえている (枠とは重ならない)。

@@ -26,7 +26,15 @@
   従来どおり（estimatedMinutes=null）。人手（considerStaff）は今回スコープ外。マイグレーション不要。
 - 検証: `candidates`（computeFreeLoanersByDate）／`scheduleCandidates`（所要フィルタ・代車ゲート・
   制限枠除外の結合）／`rescheduleFlowAuto`（元予約から所要・代車を渡すこと）テスト追加。
-  全体 4443 件パス、tsc/eslint エラー0。
+- コードレビュー由来の追加修正（同 PR、`/code-review`）:
+  - **【重大】limit 食い潰しの解消**: `fits` 除外を `proposeCandidates` の `limit` 集計**後**に
+    かけていたため、短い枠が先に limit を消費して入る枠が取りこぼされ、空き枠があるのに
+    スタッフ引き継ぎになり得た。`proposeCandidates` に `onlyFitting` を追加し push（=limit 集計）
+    より前に fits=false を除外。回帰テスト追加。
+  - 確定直前の再検証を `start_time` 一致のみで同定（end_time は所要時間からの導出値なので照合に
+    使わない。target 欠落時の誤コンフリクトを回避）。
+  - reschedule テストで `reservationDurationMinutes` を本物（importActual）で検証。
+- 全体 4444 件パス、tsc/eslint エラー0。
 - #2「見積りフロー改善」の2件目。後続: 概算見積りにボタン誘導＋文面整合・停滞フローの再促し。
 
 ## 2026-08-29 見積りフロー改善①: 見積り詳細待ちの車検証写真をOCRで取り込む（branch claude/line-chatbot-ledra-dy2fiq）

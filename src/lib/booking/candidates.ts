@@ -82,6 +82,12 @@ export interface ProposeCandidatesOptions {
    * スロット時間帯を実際にカバーするスタッフのみを在籍としてカウントする。
    */
   staffShiftsByDate?: Record<string, Array<{ staffId: string; start: number | null; end: number | null }>>;
+  /**
+   * 所要時間に収まらない枠 (fits=false) を候補に含めない。既定 false (管理UIは「入らない枠」も
+   * 表示して fits で示すため)。true にすると fits=false の枠を limit 集計より前に除外するので、
+   * 短い枠が先に limit を食い潰して後続の入る枠が取りこぼされるのを防ぐ (顧客向け提示で使う)。
+   */
+  onlyFitting?: boolean;
   /** 返す候補数の上限（既定 20）。 */
   limit?: number;
 }
@@ -99,6 +105,7 @@ export function proposeCandidates(opts: ProposeCandidatesOptions): Candidate[] {
   const considerStaff = opts.considerStaff ?? false;
   const staffShiftsByDate = opts.staffShiftsByDate ?? {};
   const excludeRestricted = opts.excludeRestricted ?? false;
+  const onlyFitting = opts.onlyFitting ?? false;
   const limit = opts.limit ?? 20;
 
   // 指定スロット [start,end) をカバーするシフトの、在籍スタッフ実人数（重複除去）。
@@ -178,6 +185,9 @@ export function proposeCandidates(opts: ProposeCandidatesOptions): Candidate[] {
       if (remaining <= 0) continue;
 
       const fits = estimatedMinutes == null ? true : slotEnd - slotStart >= estimatedMinutes;
+      // 入らない枠を出さない指定のときは、push (=limit 集計) より前に除外する。
+      // これをしないと短い枠が先に limit を食い潰し、後続の入る枠が取りこぼされる。
+      if (onlyFitting && !fits) continue;
       // 候補の実際の終了時刻（所要時間ぶん）。人手判定もこの実作業時間帯で見る。
       const endMin = estimatedMinutes == null ? slotEnd : Math.min(slotStart + estimatedMinutes, slotEnd);
 

@@ -129,13 +129,13 @@ export async function fetchFlowScheduleCandidates(
     excludeRestricted: opts.excludeRestricted ?? false,
     needsLoaner,
     freeLoanersByDate,
+    // 顧客向けなので所要時間に入らない枠は提示しない。onlyFitting により fits=false は limit
+    // 集計より前に除外される (短い枠が先に limit を食い潰して入る枠を取りこぼすのを防ぐ)。
+    // estimatedMinutes 未指定なら全 fits=true なので無害。
+    onlyFitting: true,
     limit,
   });
-  // 所要時間に収まらない枠 (fits=false) は提示しない (顧客が入らない枠を選べないように)。
-  // estimatedMinutes 未指定なら proposeCandidates が全 fits=true を返すのでこのフィルタは無害。
-  return candidates
-    .filter((c) => c.fits)
-    .map((c) => ({ date: c.date, start_time: c.start_time, end_time: c.end_time }));
+  return candidates.map((c) => ({ date: c.date, start_time: c.start_time, end_time: c.end_time }));
 }
 
 type ProposeSlotRow = {
