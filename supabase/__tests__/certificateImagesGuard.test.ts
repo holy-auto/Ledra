@@ -11,7 +11,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 const MIG = join(__dirname, "..", "migrations");
-const guard = readFileSync(join(MIG, "20260820000000_certificate_images_guard.sql"), "utf-8");
+const guard = readFileSync(join(MIG, "20260829000000_certificate_images_guard.sql"), "utf-8");
 
 /** `-- コメント` を除去して、ドキュメント文に対する誤検知を防ぐ。 */
 const strip = (s: string) => s.replace(/--[^\n]*\n/g, "\n");

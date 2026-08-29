@@ -4,6 +4,23 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-08-29 certificate_images_guard マイグレーションを改名し db-migrate の out-of-order 停止を解消
+
+- 内容: PR #994 のマージ後、db-migrate.yml が
+  "Found local migration files to be inserted before the last migration on remote database."
+  で失敗した。`certificate_images_guard.sql`（PR #938 のドラフトが2026-08-20に作成、
+  レビュー待ちの間に main が7本進んだ）が未適用のまま本番の適用済み最新（20260828000003）より
+  古い日付になっていたため。`20260820000000_certificate_images_guard.sql` を
+  `20260829000000_certificate_images_guard.sql` へ改名（SQL は無変更）。
+  `supabase/__tests__/certificateImagesGuard.test.ts` のファイル名参照も同時に更新。
+  このリポジトリで同じ停止は run #972・#976・#977 に続き4回目（DECISION_LOG 2026-07-21 の
+  既存手順をそのまま適用）。
+- 検証: `lint:migrations`（282件）OK・`check:schema` OK・`certificateImagesGuard.test.ts`（6件）OK。
+- 対象: GitHub Actions `DB migrate (apply to production)` ワークフロー。
+  `certificate_images_guard` トリガーの実体（保護ロジック）は無変更。
+- 限界: レビュー待ちの長い PR が自身のマイグレーションバージョンを陳腐化させる構造的な
+  問題は未解決。OPEN_QUESTIONS に起票。
+
 ## 2026-08-29 IMP-023（#938）マージ後、本番にだけ存在した未追跡マイグレーションを復旧（db-migrate 停止解消）
 
 - 内容: PR #938（証跡凍結ガード）を main へ squash merge 後、`db-migrate.yml` が
