@@ -66,7 +66,8 @@ export type AutomationActionKey =
   | "inbound_message.auto_conversation_flow"
   | "manager.auto_daily_digest"
   | "vehicle.auto_capture_via_line"
-  | "inbound_message.auto_self_cancel";
+  | "inbound_message.auto_self_cancel"
+  | "inbound_message.auto_self_reschedule";
 
 export interface AutomationActionDef {
   key: AutomationActionKey;
@@ -462,6 +463,16 @@ export const AUTOMATION_ACTIONS: readonly AutomationActionDef[] = [
     defaultEnabled: false,
     guard:
       "AI 有効 + Standard プラン以上 + LINE 受信 + intent=cancel + 本人の前日以前の予約 + 顧客本人確認 (line_user_id 紐付け)",
+  },
+  {
+    key: "inbound_message.auto_self_reschedule",
+    workflow: "inbound_message",
+    label: "LINEで顧客が予約の日程を自分で変更できるようにする",
+    description:
+      "顧客が LINE で「予約の日程を変更したい」と送った時点で、その顧客本人の今後の予約を提示し (複数あれば選択)、空いている新しい日程候補をボタンで選んでもらって即時反映する (scheduled_date/start_time/end_time を更新し Google カレンダーも更新、スタッフへ通知)。セルフで変更できるのは作業日の前日まで。当日・直前や対象予約・空き候補が無い場合はスタッフに引き継ぐ。本人の予約のみが対象。opt-in / 既定 OFF。",
+    defaultEnabled: false,
+    guard:
+      "AI 有効 + Standard プラン以上 + LINE 受信 + intent=change_reservation + 本人の前日以前の予約 + 顧客本人確認 (line_user_id 紐付け) + 空き日程候補あり",
   },
 ];
 

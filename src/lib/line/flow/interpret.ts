@@ -78,6 +78,16 @@ export function interpretReply(
         return { type: "cancel_confirmed" };
       case "cancel_abort":
         return { type: "cancel_aborted" };
+      case "reschedule_pick": {
+        // `flow:reschedule_pick:<index>` — index は変更対象予約配列への添字。
+        const index = parseCandidateIndex(pb.arg);
+        return index === null ? null : { type: "reschedule_pick_selected", index };
+      }
+      case "reschedule_slot": {
+        // `flow:reschedule_slot:<index>` — index は新日程候補配列への添字。
+        const index = parseCandidateIndex(pb.arg);
+        return index === null ? null : { type: "reschedule_slot_selected", index };
+      }
       default:
         return null;
     }

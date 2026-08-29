@@ -298,6 +298,61 @@ export function buildCancelHandoff(): string {
 }
 
 /**
+ * 日程変更の対象予約が複数あるとき、どれを変更するかボタンで選ばせる。
+ * 「スタッフに相談」は既存の consult (→ human_takeover + 通知) を再利用する。
+ * 対象予約の表示は CancelTargetReservation と同形 (予約サマリ) を共用する。
+ */
+export function buildReschedulePickAsk(reservations: CancelTargetReservation[]): FlowButtonMessage {
+  return {
+    text: ["ご予約の日程変更ですね。どのご予約を変更しますか？", "対象を下のボタンからお選びください。"].join("\n"),
+    buttons: [
+      ...reservations.map((r, i) => ({
+        label: formatReservationLine(r),
+        data: `flow:reschedule_pick:${i}`,
+      })),
+      { label: "スタッフに相談したい", data: "flow:consult" },
+    ],
+  };
+}
+
+/**
+ * 日程変更する予約を確定したうえで、新しい日程候補をボタンで提示する。
+ * 現在の予約日時を明示し、候補ボタン (flow:reschedule_slot:<i>) と
+ * 「その他の日程を相談する」(既存 flow:cancel → handoff) を並べる。
+ */
+export function buildRescheduleSlotAsk(
+  target: CancelTargetReservation,
+  candidates: FlowScheduleCandidate[],
+): FlowButtonMessage {
+  return {
+    text: [
+      "下記のご予約の新しい日程をお選びください。",
+      "",
+      `現在: ${formatReservationLine(target)}`,
+      "",
+      "変更後の日時を下の候補からお選びください（合わなければ「その他の日程を相談する」からどうぞ）。",
+    ].join("\n"),
+    buttons: [
+      ...candidates.map((c, i) => ({
+        label: `${formatDateJa(c.date)} ${formatTimeShort(c.start_time)}〜`,
+        data: `flow:reschedule_slot:${i}`,
+      })),
+      { label: "その他の日程を相談する", data: "flow:cancel" },
+    ],
+  };
+}
+
+/** 日程変更の完了案内 (フローのクローズ文面)。 */
+export function buildRescheduleDone(candidate: FlowScheduleCandidate): string {
+  return [
+    "ご予約の日程を変更しました。",
+    `📅 ${formatDateJa(candidate.date)} ${formatTimeShort(candidate.start_time)}〜${formatTimeShort(candidate.end_time)}`,
+    "",
+    "ご来店を心よりお待ちしております。",
+  ].join("\n");
+}
+
+/**
  * 入庫日の朝、未登録車両の車検証撮影を依頼する文面 (Phase 3)。
  * `awaiting_vehicle_photo` の入口メッセージ。
  */
