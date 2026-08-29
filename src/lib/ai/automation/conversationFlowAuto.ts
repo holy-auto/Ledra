@@ -21,9 +21,15 @@ import { startAiRouteUsage } from "@/lib/ai/recordRouteUsage";
 import { logger } from "@/lib/logger";
 import { logAutoActionExecuted } from "@/lib/audit/aiAuditLog";
 import { getActiveFlow, createFlow, advanceFlow } from "@/lib/line/flow/flowStore";
-import { buildQuoteDetailAsk, buildFormalQuoteComingAck } from "@/lib/line/flow/messages";
+import { recordInboundLineMessage } from "@/lib/line/messageStore";
+import {
+  buildQuoteDetailAsk,
+  buildFormalQuoteComingAck,
+  buildQuoteServiceAskAfterPhoto,
+} from "@/lib/line/flow/messages";
+import { parseShakenshoAuto } from "@/lib/ocr/shakensho";
 import { createInboundQuoteDraft } from "./quoteDraftCore";
-import { loadAiAutomationSettings, type AiAutomationSettings } from "./policy";
+import { loadAiAutomationSettings, isSourceAllowed, type AiAutomationSettings } from "./policy";
 import { shouldRunConversationFlow } from "./orchestrator";
 
 const FLOW_QUOTE_ENDPOINT = "/api/line/webhook#flow-quote-draft";
@@ -116,6 +122,108 @@ export async function maybeStartQuoteFlow(params: MaybeStartQuoteFlowParams): Pr
       tenantId,
       err: e instanceof Error ? e.message : String(e),
     });
+  }
+}
+
+export interface MaybeAdvanceQuoteFlowOnPhotoParams {
+  tenantId: string;
+  customerId?: string | null;
+  lineUserId?: string | null;
+  imageBuffer: Buffer;
+  attachmentPath?: string | null;
+  attachmentContentType?: string | null;
+  lineMessageId?: string | null;
+  channel?: string;
+}
+
+/**
+ * `awaiting_quote_detail` 中に顧客が車検証写真を送ってきたとき、OCR で車両を読み取り、
+ * それを詳細として見積りフローを進める (車種+年式テキストの代わりに写真で答えられるようにする)。
+ *
+ * - 施工内容が既に context にあれば maybeAdvanceQuoteFlowOnDetail が draft まで作る。
+ * - 施工内容が未知 (FAQ ボタン起点等) なら、読み取った車両を context に保持して施工内容だけ聞き返す。
+ * - OCR 失敗・車名を読めない画像は未処理 (false) を返し、通常の受信箱記録 (スタッフ対応) に委ねる。
+ *
+ * 返り値 true = この画像をフロー詳細として処理した (呼び出し側=client.ts は通常記録をスキップ)。
+ * 失敗しても投げない。
+ */
+export async function maybeAdvanceQuoteFlowOnPhoto(params: MaybeAdvanceQuoteFlowOnPhotoParams): Promise<boolean> {
+  const { tenantId } = params;
+  try {
+    const lineUserId = params.lineUserId?.trim();
+    if (!lineUserId) return false;
+
+    const settings = await loadAiAutomationSettings(tenantId);
+    if (!shouldRunConversationFlow(settings)) return false;
+    // 車検証 OCR は身分証書類ソースが許可されているときだけ (parse-shakken ルートと同じゲート)。
+    if (!isSourceAllowed(settings, "identity_documents")) return false;
+
+    const admin = createServiceRoleAdmin("AI conversation flow (quote photo) — LINE webhook lacks auth session");
+    const flow = await getActiveFlow(admin, tenantId, { customerId: params.customerId, lineUserId });
+    if (!flow || flow.state !== "awaiting_quote_detail") return false;
+
+    // OCR。読み取れない画像 (車検証でない・不鮮明) は未処理にして通常記録へフォールバック。
+    let maker: string | undefined;
+    let model: string | undefined;
+    let firstReg: string | undefined;
+    try {
+      const { data } = await parseShakenshoAuto(params.imageBuffer, { requireFields: ["maker"] });
+      maker = data.maker || undefined;
+      model = data.model || undefined;
+      firstReg = data.first_registration || undefined;
+    } catch (e) {
+      logger.warn("[conversationFlowAuto] quote-photo OCR failed", {
+        tenantId,
+        err: e instanceof Error ? e.message : String(e),
+      });
+      return false;
+    }
+    if (!maker) return false;
+    const vehicleText = [maker, model, firstReg].filter(Boolean).join(" ");
+
+    // 顧客の送信をスレッドに残す (画像は client.ts が line-media に保存済み。その参照も記録)。
+    await recordInboundLineMessage({
+      tenantId,
+      lineUserId,
+      body: "[車検証の写真を送信]",
+      rawEvent: { flow_photo: true, flow: "quote_detail" },
+      lineMessageId: params.lineMessageId ?? null,
+      attachmentPath: params.attachmentPath ?? null,
+      attachmentContentType: params.attachmentContentType ?? null,
+    });
+
+    // 施工内容が context にあれば、写真の車両を詳細として見積り draft まで進める。
+    const advanced = await maybeAdvanceQuoteFlowOnDetail({
+      tenantId,
+      customerId: params.customerId ?? null,
+      lineUserId,
+      vehicleText,
+      messageId: params.lineMessageId ?? null,
+      channel: params.channel ?? "line",
+      settings,
+    });
+    if (advanced) return true;
+
+    // 施工内容がまだ無い → 読み取った車両を context に保持し、施工内容だけ聞き返す
+    // (車両を捨てず、次の施工内容テキストで draft まで進めるようにする)。
+    await advanceFlow(admin, flow, {
+      toState: "awaiting_quote_detail",
+      contextPatch: { vehicle_text: vehicleText },
+      expectState: "awaiting_quote_detail",
+    });
+    await sendCustomerLineText({
+      tenantId,
+      customerId: flow.customer_id,
+      lineUserId,
+      body: buildQuoteServiceAskAfterPhoto(vehicleText),
+    });
+    return true;
+  } catch (e) {
+    logger.warn("[conversationFlowAuto] maybeAdvanceQuoteFlowOnPhoto threw", {
+      tenantId,
+      err: e instanceof Error ? e.message : String(e),
+    });
+    return false;
   }
 }
 

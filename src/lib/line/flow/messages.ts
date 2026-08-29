@@ -72,6 +72,17 @@ export function buildQuoteDetailAskWithService(): string {
 }
 
 /**
+ * 車検証写真から車両は読み取れたが、施工内容がまだ分からない (FAQ ボタン起点等) ときに、
+ * 車両を確認済みと伝えたうえで施工内容だけを尋ねる文面。写真から得た車両は context に保持する。
+ */
+export function buildQuoteServiceAskAfterPhoto(vehicleText: string): string {
+  return [
+    `車検証を確認しました（${vehicleText}）。ありがとうございます。`,
+    "お見積りのため、ご希望の施工内容をこのトークにご返信ください（例: ボディコーティング、キズ・へこみ修理 など）。",
+  ].join("\n");
+}
+
+/**
  * 詳細を受領し正式見積書の下書きを用意したことの顧客向けお礼・案内。
  * 送付そのものはスタッフが内容確認のうえ行う (壁3) ため「担当より」と明示する。
  */
