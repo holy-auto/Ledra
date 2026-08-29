@@ -19,9 +19,12 @@ export interface FlowButtonMessage {
 /**
  * 正式見積りのための詳細情報 (車検証写真 or 車種+年式) を依頼する文面。
  *
- * 概算見積りを送らなかった (rough-estimate opt-in OFF の) ケースの入口メッセージ。
- * 概算を送った直後は文面が矛盾する (概算は「詳細はご来店で」/ こちらは「送れば
- * 見積り送付」) ため、呼び出し側で概算送信済みなら本フロー開始をスキップする。
+ * 入口は2つ: (1) 概算を送らなかったケースで inboundAuto が直接フロー開始する経路、
+ * (2) 概算返信に添えた「お見積りをお願いしたい」ボタン (flow:start_quote) を顧客が
+ * タップする経路。概算返信は誘導ボタン添付時に締めの文面を「正式はLINEで承ります
+ * （車検証でより正確に）」に揃える (buildRoughEstimateMessage の canContinueOnLine) ため、
+ * このメッセージ（車検証等で精度を上げる案内）と矛盾しない。概算送信直後の**自動**
+ * フロー開始は従来どおりスキップし (二重送信回避)、続きはボタンのタップに委ねる。
  */
 export function buildQuoteDetailAsk(): string {
   return [
