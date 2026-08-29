@@ -68,7 +68,8 @@ export type AutomationActionKey =
   | "vehicle.auto_capture_via_line"
   | "inbound_message.auto_self_cancel"
   | "inbound_message.auto_self_reschedule"
-  | "reservation.auto_day_before_reminder";
+  | "reservation.auto_day_before_reminder"
+  | "inbound_message.auto_status_reply";
 
 export interface AutomationActionDef {
   key: AutomationActionKey;
@@ -484,6 +485,15 @@ export const AUTOMATION_ACTIONS: readonly AutomationActionDef[] = [
     defaultEnabled: false,
     guard:
       "AI 有効 + Standard プラン以上 + 翌日(JST)の未キャンセル予約 + 顧客が line_user_id 紐付け済み + フォローアップ拒否でない。ボタンは self_cancel / self_reschedule の opt-in に応じて出す。",
+  },
+  {
+    key: "inbound_message.auto_status_reply",
+    workflow: "inbound_message",
+    label: "LINEで予約・作業の状況問い合わせに自動で答える",
+    description:
+      "顧客が LINE で「作業どうなってる?」「いつ仕上がる?」など予約・作業の状況を尋ねたら、その顧客本人の直近の予約状況 (予約確定/来店受付/作業中/完了) を自動で返す。line_user_id 紐付け済みのお客様のみ (本人の予約しか答えない)。特定できない場合はスタッフに引き継ぐ。opt-in / 既定 OFF。",
+    defaultEnabled: false,
+    guard: "AI 有効 + Standard プラン以上 + LINE 受信 + intent=status_inquiry + 顧客本人確認 (line_user_id 紐付け)",
   },
 ];
 
