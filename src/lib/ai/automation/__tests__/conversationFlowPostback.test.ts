@@ -1025,6 +1025,10 @@ describe("handleFlowPostback — 予約の日程変更のセルフ対応", () =>
     expect(upd?.payload.reservation_id).toBe("r-2");
     expect(mocks.sendCustomerLineButtons).toHaveBeenCalled();
     expect(mocks.rescheduleReservationById).not.toHaveBeenCalled();
+    // 変更先候補は「前日まで」= 当日 (mocked today 2026-08-26) を含めず翌日以降のみ。
+    const offered = (upd?.payload.context_json?.schedule_candidates ?? []) as Array<{ date: string }>;
+    expect(offered.length).toBeGreaterThan(0);
+    expect(offered.every((c) => c.date > "2026-08-26")).toBe(true);
   });
 
   it("選択で空き候補が無ければスタッフ引き継ぎ (human_takeover)", async () => {
@@ -1093,6 +1097,9 @@ describe("handleFlowPostback — 予約の日程変更のセルフ対応", () =>
     expect(handled).toBe(true);
     expect(mocks.rescheduleReservationById).not.toHaveBeenCalled();
     expect(mocks.sendCustomerLineText.mock.calls[0][0].body).toContain("埋まって");
+    // 変更希望は未達 → closed のままにせず human_takeover に移してスタッフが引き継げるようにする。
+    const states = mocks.store.updates.filter((u) => u.table === "line_conversation_flows").map((u) => u.payload.state);
+    expect(states).toContain("human_takeover");
   });
 
   it("確定直前の締め切り超過 (helper が too_late) はスタッフ引き継ぎ", async () => {

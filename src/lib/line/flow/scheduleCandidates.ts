@@ -33,18 +33,19 @@ function todayYmd(): string {
 /**
  * 受付可能な日程候補を最大 `limit` 件返す。
  * `restrictToDate` を渡すと、その日 1 日だけを対象に再判定する
- * (スロット選択時の直前再検証用)。取得失敗時は空配列 (fail-soft)。
+ * (スロット選択時の直前再検証用)。`fromDate` を渡すと候補の起点日を差し替える
+ * (既定は今日。日程変更は「前日まで」= 当日への変更を避けるため翌日起点を渡す)。
+ * 取得失敗時は空配列 (fail-soft)。
  */
 export async function fetchFlowScheduleCandidates(
   admin: Admin,
   tenantId: string,
-  opts: { limit?: number; days?: number; restrictToDate?: string } = {},
+  opts: { limit?: number; days?: number; restrictToDate?: string; fromDate?: string } = {},
 ): Promise<FlowScheduleCandidate[]> {
   const limit = opts.limit ?? 3;
   const days = opts.days ?? 14;
-  const dates = opts.restrictToDate
-    ? [opts.restrictToDate]
-    : Array.from({ length: days }, (_, i) => addDays(todayYmd(), i));
+  const base = opts.fromDate ?? todayYmd();
+  const dates = opts.restrictToDate ? [opts.restrictToDate] : Array.from({ length: days }, (_, i) => addDays(base, i));
   const from = dates[0];
   const to = dates[dates.length - 1];
 

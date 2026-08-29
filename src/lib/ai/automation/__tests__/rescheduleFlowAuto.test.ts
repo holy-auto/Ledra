@@ -122,6 +122,12 @@ describe("maybeStartRescheduleFlow", () => {
     expect(flow?.payload.state).toBe("awaiting_reschedule_slot");
     expect(flow?.payload.reservation_id).toBe("r-future");
     expect(mocks.sendCustomerLineButtons).toHaveBeenCalledTimes(1);
+    // 変更先候補は「前日まで」= 当日 (TODAY) を含めず翌日起点で取得する。
+    expect(mocks.fetchFlowScheduleCandidates).toHaveBeenCalledWith(
+      expect.anything(),
+      TENANT,
+      expect.objectContaining({ fromDate: "2026-08-27" }),
+    );
   });
 
   it("hands off when a single eligible reservation has no available new slots", async () => {

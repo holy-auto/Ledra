@@ -26,6 +26,12 @@
 - 対象: LINE 受信の AI 自動応答（全業種、Standard プラン以上・opt-in）。#983 とは別 PR。
 - 検証: 単体テスト追加（`reservations/mutate`・`rescheduleFlowAuto`・`conversationFlowPostback`・
   `inboundAutoReplyGate`・`interpret`・`states`）。automation+line+reservations 299 件、全体 4373 件パス、tsc/eslint エラー0。
+- コードレビュー由来の追加ハードニング（同 PR、`/code-review`）:
+  - 変更先の日程も「前日まで」に揃える。`fetchFlowScheduleCandidates(fromDate)` を追加し、日程変更の
+    候補は**翌日起点**で出す（当日への自己変更を防ぐ。締め切りの対象を旧日付だけでなく新日付にも適用）。
+  - 変更先が埋まっていた場合、`closed` のままにせず `human_takeover` へ移す（スタッフがトークを
+    引き継いで別日程を調整できるように。`handleSlotSelected` と挙動を揃える）。
+  - 「その他の日程を相談する」引き継ぎに `logAutoActionExecuted` を追加（見積りフロー側と監査粒度を統一）。
 - スコープ外（後続）: リマインダー本文へのキャンセル/変更ボタン添付、admin route.ts のキャンセル/
   変更処理を共有ヘルパーへ寄せる単一情報源化。
 

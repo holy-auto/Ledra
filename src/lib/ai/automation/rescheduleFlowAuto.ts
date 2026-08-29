@@ -23,6 +23,7 @@ import {
 } from "./conversationFlowPostback";
 import { sendCustomerLineText, sendCustomerLineButtons } from "@/lib/line/client";
 import { fetchFlowScheduleCandidates } from "@/lib/line/flow/scheduleCandidates";
+import { addDays } from "@/lib/booking/slots";
 import {
   buildReschedulePickAsk,
   buildRescheduleSlotAsk,
@@ -156,8 +157,9 @@ export async function maybeStartRescheduleFlow(params: MaybeStartRescheduleFlowP
     }
 
     // 1 件 → 新しい日程候補を取得。空きが無ければスタッフ引き継ぎ (フローは作らない)。
+    // 「前日まで」= 変更先も当日は不可なので翌日起点で候補を出す。
     const target = eligible[0];
-    const slots = await fetchFlowScheduleCandidates(admin, tenantId, { limit: 3 });
+    const slots = await fetchFlowScheduleCandidates(admin, tenantId, { limit: 3, fromDate: addDays(today, 1) });
     if (slots.length === 0) {
       await sendCustomerLineText({ tenantId, customerId, lineUserId, body: buildCancelHandoff() });
       await notifyStaffOfAiAction(

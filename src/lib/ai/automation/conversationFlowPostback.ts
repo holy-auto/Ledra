@@ -48,6 +48,7 @@ import {
 } from "@/lib/line/flow/flowStore";
 import { interpretReply, parseFlowPostback } from "@/lib/line/flow/interpret";
 import { fetchFlowScheduleCandidates, type FlowScheduleCandidate } from "@/lib/line/flow/scheduleCandidates";
+import { addDays } from "@/lib/booking/slots";
 import { fetchAddonRecommendations } from "@/lib/line/flow/addonCandidates";
 import type { RecommendedOption } from "@/lib/ai/optionRecommend";
 import { matchVehicleByText, type VehicleTextCandidate } from "@/lib/vehicles/matchByText";
@@ -486,6 +487,12 @@ export async function handleFlowPostback(params: {
         "日程変更のご相談希望 — ご対応をお願いします",
         "お客様が提示した日程候補以外への変更をご希望です。代車の空きとあわせて日程をご相談ください。",
       );
+      await logAutoActionExecuted({
+        tenantId,
+        actionKey: "inbound_message.auto_self_reschedule",
+        resource: { kind: "line_user", id: lineUserId },
+        detail: { flow_id: flow.id, state: "human_takeover", reschedule_decision: "consult" },
+      });
       return true;
     }
 
@@ -631,7 +638,8 @@ async function handleReschedulePick(
   });
 
   // 新しい日程候補を取得。1 件も無ければスタッフ引き継ぎ (advanceFlow が楽観ロック=二重処理防止)。
-  const slots = await fetchFlowScheduleCandidates(admin, tenantId, { limit: 3 });
+  // 「前日まで」= 変更先も当日は不可なので翌日起点で候補を出す。
+  const slots = await fetchFlowScheduleCandidates(admin, tenantId, { limit: 3, fromDate: addDays(todayJst(), 1) });
   if (slots.length === 0) {
     const ok = await advanceFlow(admin, flow, {
       toState: "human_takeover",
@@ -724,6 +732,13 @@ async function handleRescheduleSlot(
   const fresh = await fetchFlowScheduleCandidates(admin, tenantId, { restrictToDate: chosen.date, limit: 50 });
   const stillAvailable = fresh.some((c) => c.start_time === chosen.start_time && c.end_time === chosen.end_time);
   if (!stillAvailable) {
+    // 変更希望は未達のまま (顧客はまだ日程を動かしたい)。closed のままにせず human_takeover に
+    // 移し、スタッフがトークを引き継いで別日程を調整できるようにする (handleSlotSelected と同様)。
+    await advanceFlow(admin, flow, {
+      toState: "human_takeover",
+      contextPatch: { reschedule_conflict: true },
+      expectState: "closed",
+    });
     await sendCustomerLineText({
       tenantId,
       customerId: flow.customer_id,
