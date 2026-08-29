@@ -58,6 +58,31 @@
 - 検証: tsc/vitest(4408件)/lint/check:schema/lint:migrations すべて green。マイグレーションは
   main マージ後に `db-migrate.yml` が自動的に本番へ適用する（承認ゲートなし）。
 
+## 2026-08-29 予約前日リマインダー（キャンセル/変更ボタン付き、新規、branch claude/line-chatbot-ledra-dy2fiq）
+
+- 内容: 翌日(JST)に未キャンセル予約があり LINE 紐付け済みのお客様へ、前日夕方に LINE で
+  「明日ご予約です」を自動送信する新規 cron。self-cancel / self-reschedule の opt-in が ON なら、
+  そのままキャンセル/日程変更できるボタン（`flow:start_cancel` / `flow:start_reschedule`）を添える
+  （タップで既存のセルフ対応フローが起動）。予約1件につき1回だけ（`notification_logs` で dedup）。
+- opt-in `reservation.auto_day_before_reminder`（既定 OFF、`actionCatalog.ts`/`orchestrator.ts`）。
+  Standard+・AI 有効・`followup_opt_out` 尊重。LINE 紐付けが無ければ送らない（ボタン前提のため）。
+- 実装: cron ロジック `src/lib/cron/reservationReminders.ts`、route `/api/cron/reservation-reminders`
+  （UTC 09:00 = JST 18:00、`vercel.json` 登録）、メッセージ `buildReservationReminder`、postback
+  ハンドラ `flow:start_cancel`/`flow:start_reschedule`（`conversationFlowPostback`、循環回避で動的 import、
+  起動不可なら consult フォールバック）。
+- マイグレーション不要: opt-in は既存 `tenant_ai_automation_settings.auto_actions`(JSON)、通知記録は
+  既存 `notification_logs`（`type`/`target_type` は自由記述 text、`channel="line"` は既存 check 適合）。
+- 検証: cron 本体（明日抽出・dedup・opt-out/未紐付けスキップ・ボタン有無・失敗ログ）＋ postback
+  ハンドラのテスト追加。全体 4404 件パス、tsc/eslint エラー0。
+- コードレビュー由来の追加ハードニング（同 PR、`/code-review`）:
+  - opt-in テナント発見を **tenant_id キーセットページング**に（PostgREST 既定 1000 行上限で
+    opt-in 済みテナントを無言で取りこぼさない。followUp.ts と同じ理由）。
+  - discovery クエリの失敗を throw させ **`sendCronFailureAlert` に上げる**（全滅を「0 件成功」で
+    隠さない）。テナント単位の失敗は個別に握って他テナントを止めない。
+  - リマインダーのボタン起動が false（主因=進行中フロー有り）のとき、consult フォールバックで
+    **無関係なフローを human_takeover に奪わない** no-op に（見積り等の進行中フローを守る）。
+- スコープ外（後続）: 送信時刻のテナント個別設定、メール併用、複数日前（2日前等）の追加。
+
 ## 2026-08-29 日程変更の空き計算を「自予約除外」に精緻化（後片付け、branch claude/line-chatbot-ledra-dy2fiq）
 
 - 内容: 日程変更（#987）で残していた「同日内変更時に候補が過少に見えうる」を解消。
@@ -2985,3 +3010,19 @@ supabase migration repair --status reverted 20260825000000
 - `@react-navigation/native-stack` の直 import をやめ、`Stack` の props から型を借用
   （expo-router の推移的依存にしか無く、インストール方式によっては解決に失敗する）。
 - 検証: ナビゲーションを**双方向**で照合（リンク→ファイル / 画面→到達導線）。欠落・孤立ともゼロ。
+
+## 2026-08-27 帳票PDF: 発注書・発注請書・検収書のタイトルから「御」を撤去
+
+- 対象: `src/lib/pdfDocument.tsx`（全帳票 PDF 生成）、admin の帳票テンプレート編集画面
+  （`TemplatesClient.tsx` / `LayoutPreview.tsx`）。
+- 変更: purchase_order（発注書）/ order_confirmation（発注請書）/ inspection（検収書）の
+  3種別は、本文の挨拶文が自社主語（「発注いたします」「検収いたしました」）のため、
+  テナントの「御」プレフィックス設定に関わらずタイトルへ常に付けないようにした
+  （`src/types/document.ts` の `hasNoHonorificPrefix()` を唯一の出所として参照）。
+- 編集画面: 該当3種を選択しているときは「御」プレフィックスのトグルを disabled にし、
+  「発注書・発注請書・検収書は自社が発行する書類のため、「御」は常に付きません。」と
+  ヒント文を表示。設定しても反映されない状態を防ぐ。
+- 経緯: PR #985（帳票の基本テンプレートを PDF プレビューするスクリプト追加）で全9種別を
+  実際に出力して目視確認した際に発覚。判断は DECISION_LOG.md 2026-08-27 を参照。
+- 影響なし: 見積書・納品書・領収書・請求書・合算請求書・外注請求書の6種は変更なし
+  （引き続きテナントの `layout.title.prefix` 設定に従う）。

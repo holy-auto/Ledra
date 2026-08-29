@@ -67,7 +67,8 @@ export type AutomationActionKey =
   | "manager.auto_daily_digest"
   | "vehicle.auto_capture_via_line"
   | "inbound_message.auto_self_cancel"
-  | "inbound_message.auto_self_reschedule";
+  | "inbound_message.auto_self_reschedule"
+  | "reservation.auto_day_before_reminder";
 
 export interface AutomationActionDef {
   key: AutomationActionKey;
@@ -473,6 +474,16 @@ export const AUTOMATION_ACTIONS: readonly AutomationActionDef[] = [
     defaultEnabled: false,
     guard:
       "AI 有効 + Standard プラン以上 + LINE 受信 + intent=change_reservation + 本人の前日以前の予約 + 顧客本人確認 (line_user_id 紐付け) + 空き日程候補あり",
+  },
+  {
+    key: "reservation.auto_day_before_reminder",
+    workflow: "inbound_message",
+    label: "予約前日にLINEでリマインダーを送る（キャンセル/変更ボタン付き）",
+    description:
+      "翌日に予約があるお客様へ、前日の夕方に LINE で「明日ご予約です」のリマインダーを自動送信する。self-cancel / self-reschedule の opt-in が ON なら、そのままキャンセル/日程変更できるボタンを添える（タップで既存のセルフ対応フローが起動）。line_user_id 紐付け済みのお客様のみ。予約1件につき1回だけ送る。opt-in / 既定 OFF。",
+    defaultEnabled: false,
+    guard:
+      "AI 有効 + Standard プラン以上 + 翌日(JST)の未キャンセル予約 + 顧客が line_user_id 紐付け済み + フォローアップ拒否でない。ボタンは self_cancel / self_reschedule の opt-in に応じて出す。",
   },
 ];
 

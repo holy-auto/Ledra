@@ -233,6 +233,39 @@ export async function handleFlowPostback(params: {
       return handleFollowupConsult(admin, tenantId, lineUserId, resolvedCustomerId, params.data);
     }
 
+    // 予約前日リマインダー等に添えたセルフ操作ボタン。既存の self-cancel / self-reschedule
+    // フローをボタンから起動する (intent 抽出を経ずに直接開始)。cancelFlowAuto/rescheduleFlowAuto は
+    // 本モジュールを import しているため、循環回避で動的 import する。
+    // 起動できない (false) 主因は「進行中フローがある」で、その場合に consult へ落とすと無関係な
+    // フロー (見積り等) を human_takeover に奪ってしまう。maybeStart* は対象なし/未紐付けを自前で
+    // スタッフ引き継ぎ済み (true 返し) なので、false のときは何もしない no-op にして進行中フローを守る。
+    if (selfCancelOptIn && pb?.event === "start_cancel") {
+      const { maybeStartCancelFlow } = await import("./cancelFlowAuto");
+      await maybeStartCancelFlow({
+        tenantId,
+        customerId: resolvedCustomerId,
+        lineUserId,
+        intent: "cancel",
+        messageId: null,
+        channel: "line",
+        settings,
+      });
+      return true;
+    }
+    if (selfRescheduleOptIn && pb?.event === "start_reschedule") {
+      const { maybeStartRescheduleFlow } = await import("./rescheduleFlowAuto");
+      await maybeStartRescheduleFlow({
+        tenantId,
+        customerId: resolvedCustomerId,
+        lineUserId,
+        intent: "change_reservation",
+        messageId: null,
+        channel: "line",
+        settings,
+      });
+      return true;
+    }
+
     const flow = await getActiveFlow(admin, tenantId, { customerId: resolvedCustomerId, lineUserId });
     if (!flow) return false;
 
