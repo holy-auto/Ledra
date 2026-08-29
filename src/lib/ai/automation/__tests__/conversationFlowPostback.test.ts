@@ -6,7 +6,9 @@ const mocks = vi.hoisted(() => ({
   shouldRunConversationFlow: vi.fn(),
   shouldAutoSendDocumentOnConfirm: vi.fn(),
   shouldAutoSelfCancel: vi.fn(),
+  shouldAutoSelfReschedule: vi.fn(),
   cancelReservationById: vi.fn(),
+  rescheduleReservationById: vi.fn(),
   todayJst: vi.fn(),
   sendCustomerLineText: vi.fn(),
   sendCustomerLineButtons: vi.fn(),
@@ -31,8 +33,12 @@ vi.mock("../orchestrator", () => ({
   shouldRunConversationFlow: mocks.shouldRunConversationFlow,
   shouldAutoSendDocumentOnConfirm: mocks.shouldAutoSendDocumentOnConfirm,
   shouldAutoSelfCancel: mocks.shouldAutoSelfCancel,
+  shouldAutoSelfReschedule: mocks.shouldAutoSelfReschedule,
 }));
-vi.mock("@/lib/reservations/mutate", () => ({ cancelReservationById: mocks.cancelReservationById }));
+vi.mock("@/lib/reservations/mutate", () => ({
+  cancelReservationById: mocks.cancelReservationById,
+  rescheduleReservationById: mocks.rescheduleReservationById,
+}));
 vi.mock("@/lib/gantt/board", () => ({ todayJst: mocks.todayJst }));
 vi.mock("@/lib/line/client", () => ({
   sendCustomerLineText: mocks.sendCustomerLineText,
@@ -68,7 +74,9 @@ beforeEach(() => {
   mocks.shouldRunConversationFlow.mockReturnValue(true);
   mocks.shouldAutoSendDocumentOnConfirm.mockReturnValue(true);
   mocks.shouldAutoSelfCancel.mockReturnValue(false);
+  mocks.shouldAutoSelfReschedule.mockReturnValue(false);
   mocks.cancelReservationById.mockResolvedValue({ ok: true, alreadyFinal: false });
+  mocks.rescheduleReservationById.mockResolvedValue({ ok: true });
   mocks.todayJst.mockReturnValue("2026-08-26");
   mocks.sendCustomerLineText.mockResolvedValue(true);
   mocks.sendCustomerLineButtons.mockResolvedValue(true);
@@ -958,5 +966,177 @@ describe("handleFlowPostback — 予約キャンセルのセルフ対応", () =>
     expect(handled).toBe(true);
     const marker = mocks.store.inserts.find((i) => i.table === "line_conversation_flows");
     expect(marker?.payload.state).toBe("human_takeover");
+  });
+});
+
+describe("handleFlowPostback — 予約の日程変更のセルフ対応", () => {
+  function todayYmd(): string {
+    const t = new Date();
+    return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}-${String(t.getDate()).padStart(2, "0")}`;
+  }
+  // seedOpenSlots は全曜日 09:00-18:00 を空けるため、今日が常に 1 件目の候補になる。
+  const CANDIDATE = { date: todayYmd(), start_time: "09:00", end_time: "18:00" };
+  const TARGET = { id: "r-1", scheduled_date: "2026-09-01", start_time: "10:00:00", title: "コーティング" };
+
+  function seedRescheduleSlot(over: Record<string, unknown> = {}) {
+    mocks.store.tables.line_conversation_flows = [
+      {
+        id: "cf-1",
+        tenant_id: TENANT,
+        customer_id: CUSTOMER,
+        line_user_id: LINE_USER,
+        state: "awaiting_reschedule_slot",
+        reservation_id: "r-1",
+        quote_doc_id: null,
+        context_json: { purpose: "reschedule", reschedule_target: TARGET, schedule_candidates: [CANDIDATE] },
+        ...over,
+      },
+    ];
+  }
+
+  it("選択: flow:reschedule_pick:<i> で対象を確定し新日程候補の提示へ進める", async () => {
+    mocks.shouldAutoSelfReschedule.mockReturnValue(true);
+    seedOpenSlots(mocks.store);
+    mocks.store.tables.line_conversation_flows = [
+      {
+        id: "cf-1",
+        tenant_id: TENANT,
+        customer_id: CUSTOMER,
+        line_user_id: LINE_USER,
+        state: "awaiting_reschedule_pick",
+        reservation_id: null,
+        context_json: {
+          purpose: "reschedule",
+          reschedule_candidates: [
+            { id: "r-1", scheduled_date: "2026-09-01", start_time: "10:00:00", title: "A" },
+            { id: "r-2", scheduled_date: "2026-09-05", start_time: "14:00:00", title: "B" },
+          ],
+        },
+      },
+    ];
+    const handled = await handleFlowPostback({
+      tenantId: TENANT,
+      lineUserId: LINE_USER,
+      data: "flow:reschedule_pick:1",
+    });
+    expect(handled).toBe(true);
+    const upd = mocks.store.updates.find((u) => u.table === "line_conversation_flows");
+    expect(upd?.payload.state).toBe("awaiting_reschedule_slot");
+    expect(upd?.payload.reservation_id).toBe("r-2");
+    expect(mocks.sendCustomerLineButtons).toHaveBeenCalled();
+    expect(mocks.rescheduleReservationById).not.toHaveBeenCalled();
+    // 変更先候補は「前日まで」= 当日 (mocked today 2026-08-26) を含めず翌日以降のみ。
+    const offered = (upd?.payload.context_json?.schedule_candidates ?? []) as Array<{ date: string }>;
+    expect(offered.length).toBeGreaterThan(0);
+    expect(offered.every((c) => c.date > "2026-08-26")).toBe(true);
+  });
+
+  it("選択で空き候補が無ければスタッフ引き継ぎ (human_takeover)", async () => {
+    mocks.shouldAutoSelfReschedule.mockReturnValue(true);
+    // seedOpenSlots しない → 候補ゼロ件。
+    mocks.store.tables.line_conversation_flows = [
+      {
+        id: "cf-1",
+        tenant_id: TENANT,
+        customer_id: CUSTOMER,
+        line_user_id: LINE_USER,
+        state: "awaiting_reschedule_pick",
+        reservation_id: null,
+        context_json: {
+          purpose: "reschedule",
+          reschedule_candidates: [{ id: "r-1", scheduled_date: "2026-09-01", start_time: "10:00:00", title: "A" }],
+        },
+      },
+    ];
+    const handled = await handleFlowPostback({
+      tenantId: TENANT,
+      lineUserId: LINE_USER,
+      data: "flow:reschedule_pick:0",
+    });
+    expect(handled).toBe(true);
+    const upd = mocks.store.updates.find((u) => u.table === "line_conversation_flows");
+    expect(upd?.payload.state).toBe("human_takeover");
+    expect(mocks.sendCustomerLineText).toHaveBeenCalled();
+  });
+
+  it("実行: flow:reschedule_slot で予約の日時を更新し closed にする", async () => {
+    mocks.shouldAutoSelfReschedule.mockReturnValue(true);
+    seedOpenSlots(mocks.store); // 再検証の空き枠。
+    seedRescheduleSlot();
+    const handled = await handleFlowPostback({
+      tenantId: TENANT,
+      lineUserId: LINE_USER,
+      data: "flow:reschedule_slot:0",
+    });
+    expect(handled).toBe(true);
+    expect(mocks.rescheduleReservationById).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        tenantId: TENANT,
+        reservationId: "r-1",
+        customerId: CUSTOMER,
+        newDate: CANDIDATE.date,
+        newStartTime: CANDIDATE.start_time,
+        newEndTime: CANDIDATE.end_time,
+      }),
+    );
+    const upd = mocks.store.updates.find((u) => u.table === "line_conversation_flows");
+    expect(upd?.payload.state).toBe("closed");
+    expect(mocks.sendCustomerLineText.mock.calls[0][0].body).toContain("変更しました");
+  });
+
+  it("再検証: 変更先が埋まっていたら更新せずスタッフ引き継ぎ", async () => {
+    mocks.shouldAutoSelfReschedule.mockReturnValue(true);
+    // seedOpenSlots しない → 再検証で空き無し = 埋まった扱い。
+    seedRescheduleSlot();
+    const handled = await handleFlowPostback({
+      tenantId: TENANT,
+      lineUserId: LINE_USER,
+      data: "flow:reschedule_slot:0",
+    });
+    expect(handled).toBe(true);
+    expect(mocks.rescheduleReservationById).not.toHaveBeenCalled();
+    expect(mocks.sendCustomerLineText.mock.calls[0][0].body).toContain("埋まって");
+    // 変更希望は未達 → closed のままにせず human_takeover に移してスタッフが引き継げるようにする。
+    const states = mocks.store.updates.filter((u) => u.table === "line_conversation_flows").map((u) => u.payload.state);
+    expect(states).toContain("human_takeover");
+  });
+
+  it("確定直前の締め切り超過 (helper が too_late) はスタッフ引き継ぎ", async () => {
+    mocks.shouldAutoSelfReschedule.mockReturnValue(true);
+    mocks.rescheduleReservationById.mockResolvedValue({ ok: false, reason: "too_late" });
+    seedOpenSlots(mocks.store);
+    seedRescheduleSlot();
+    const handled = await handleFlowPostback({
+      tenantId: TENANT,
+      lineUserId: LINE_USER,
+      data: "flow:reschedule_slot:0",
+    });
+    expect(handled).toBe(true);
+    expect(mocks.sendCustomerLineText).toHaveBeenCalled();
+  });
+
+  it("「その他の日程を相談する」(flow:cancel) はスタッフ引き継ぎ", async () => {
+    mocks.shouldAutoSelfReschedule.mockReturnValue(true);
+    seedRescheduleSlot();
+    const handled = await handleFlowPostback({ tenantId: TENANT, lineUserId: LINE_USER, data: "flow:cancel" });
+    expect(handled).toBe(true);
+    const upd = mocks.store.updates.find((u) => u.table === "line_conversation_flows");
+    expect(upd?.payload.state).toBe("human_takeover");
+    expect(mocks.rescheduleReservationById).not.toHaveBeenCalled();
+  });
+
+  it("会話フロー OFF でも自己日程変更 opt-in が ON なら処理する", async () => {
+    mocks.shouldRunConversationFlow.mockReturnValue(false);
+    mocks.shouldAutoSelfReschedule.mockReturnValue(true);
+    seedOpenSlots(mocks.store);
+    seedRescheduleSlot();
+    const handled = await handleFlowPostback({
+      tenantId: TENANT,
+      lineUserId: LINE_USER,
+      data: "flow:reschedule_slot:0",
+    });
+    expect(handled).toBe(true);
+    expect(mocks.rescheduleReservationById).toHaveBeenCalled();
   });
 });

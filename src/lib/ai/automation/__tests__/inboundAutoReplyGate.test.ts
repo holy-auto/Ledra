@@ -17,6 +17,7 @@ const mocks = vi.hoisted(() => ({
   shouldAutoReplyRoughEstimate: vi.fn(),
   shouldRunConversationFlow: vi.fn(),
   shouldAutoSelfCancel: vi.fn(),
+  shouldAutoSelfReschedule: vi.fn(),
   decideInboundCommit: vi.fn(),
   extractInboundReservation: vi.fn(),
   fetchRecentConversation: vi.fn(),
@@ -24,6 +25,7 @@ const mocks = vi.hoisted(() => ({
   maybeAutoReplyRoughEstimate: vi.fn(),
   maybeAutoReplyKnowledge: vi.fn(),
   maybeStartCancelFlow: vi.fn(),
+  maybeStartRescheduleFlow: vi.fn(),
   usageRecord: vi.fn(),
   store: null as unknown as FakeStore,
 }));
@@ -38,9 +40,11 @@ vi.mock("../orchestrator", () => ({
   shouldAutoReplyRoughEstimate: mocks.shouldAutoReplyRoughEstimate,
   shouldRunConversationFlow: mocks.shouldRunConversationFlow,
   shouldAutoSelfCancel: mocks.shouldAutoSelfCancel,
+  shouldAutoSelfReschedule: mocks.shouldAutoSelfReschedule,
   decideInboundCommit: mocks.decideInboundCommit,
 }));
 vi.mock("../cancelFlowAuto", () => ({ maybeStartCancelFlow: mocks.maybeStartCancelFlow }));
+vi.mock("../rescheduleFlowAuto", () => ({ maybeStartRescheduleFlow: mocks.maybeStartRescheduleFlow }));
 vi.mock("../quoteDraftAuto", () => ({ maybeAutoDraftQuoteFromInbound: mocks.maybeAutoDraftQuoteFromInbound }));
 vi.mock("../quoteReplyAuto", () => ({ maybeAutoReplyRoughEstimate: mocks.maybeAutoReplyRoughEstimate }));
 vi.mock("../knowledgeReplyAuto", () => ({ maybeAutoReplyKnowledge: mocks.maybeAutoReplyKnowledge }));
@@ -81,12 +85,14 @@ beforeEach(() => {
   mocks.shouldAutoReplyRoughEstimate.mockReturnValue(false);
   mocks.shouldRunConversationFlow.mockReturnValue(false);
   mocks.shouldAutoSelfCancel.mockReturnValue(false);
+  mocks.shouldAutoSelfReschedule.mockReturnValue(false);
   mocks.decideInboundCommit.mockReturnValue({ create: false, reason: "auto_create_off" });
   mocks.fetchRecentConversation.mockResolvedValue([]);
   mocks.extractInboundReservation.mockResolvedValue({ intent: "inquiry_only", confidence: 0.9, ai: true });
   mocks.maybeAutoReplyKnowledge.mockResolvedValue(false);
   mocks.maybeAutoReplyRoughEstimate.mockResolvedValue(false);
   mocks.maybeStartCancelFlow.mockResolvedValue(false);
+  mocks.maybeStartRescheduleFlow.mockResolvedValue(false);
 });
 
 describe("maybeAutoProcessInboundMessage auto-reply gating", () => {
@@ -271,5 +277,28 @@ describe("maybeAutoProcessInboundMessage auto-reply gating", () => {
     await maybeAutoProcessInboundMessage(baseParams());
     expect(mocks.maybeStartCancelFlow).not.toHaveBeenCalled();
     expect(mocks.maybeAutoReplyKnowledge).toHaveBeenCalledTimes(1);
+  });
+
+  it("routes a change_reservation intent to the self-reschedule flow and skips knowledge/estimate replies", async () => {
+    mocks.shouldAutoSelfReschedule.mockReturnValue(true);
+    mocks.shouldAutoReplyKnowledge.mockReturnValue(true);
+    mocks.shouldAutoReplyRoughEstimate.mockReturnValue(true);
+    mocks.extractInboundReservation.mockResolvedValue({ intent: "change_reservation", confidence: 0.9, ai: true });
+    mocks.maybeStartRescheduleFlow.mockResolvedValue(true);
+    await maybeAutoProcessInboundMessage({ ...baseParams(), text: "予約の日程を変更したい" });
+
+    expect(mocks.maybeStartRescheduleFlow).toHaveBeenCalledTimes(1);
+    expect(mocks.maybeStartRescheduleFlow.mock.calls[0][0].intent).toBe("change_reservation");
+    // 日程変更フローを起こしたら他の自動返信は走らせない。
+    expect(mocks.maybeAutoReplyKnowledge).not.toHaveBeenCalled();
+    expect(mocks.maybeAutoReplyRoughEstimate).not.toHaveBeenCalled();
+  });
+
+  it("does not touch the self-reschedule flow for non-change intents", async () => {
+    mocks.shouldAutoSelfReschedule.mockReturnValue(true);
+    mocks.shouldAutoReplyKnowledge.mockReturnValue(true);
+    mocks.extractInboundReservation.mockResolvedValue({ intent: "inquiry_only", confidence: 0.9, ai: true });
+    await maybeAutoProcessInboundMessage(baseParams());
+    expect(mocks.maybeStartRescheduleFlow).not.toHaveBeenCalled();
   });
 });
