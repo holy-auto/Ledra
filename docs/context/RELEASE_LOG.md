@@ -4,6 +4,40 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-08-29 IMP-023（#938）: 証跡凍結ガード。main 取り込み時に本番マイグレーションの設計不備を4件修正
+
+- 内容: v2.0 §7 の証跡凍結ガード（`certificate_images_guard` DB トリガー）と必須ショット進捗計算
+  （`evidenceProgress.ts`）を main へ統合。実装内容そのものは元の #938 のドラフト
+  （2026-08-20、詳細は同日付の RELEASE_LOG エントリ参照）から変わらないが、
+  **本番 DB へ自動適用されるマイグレーションを含むため、取り込み時の `/code-review` で
+  4件の指摘を修正**した（うち1件は代表判断で公開区分「マイグレーション適用してマージ」の
+  明示確認を得た上でのマージ）:
+  1. **expired 証明書の凍結解除ループホール（重大）**: `NOT IN ('active', 'void')` を
+     「制限なし」条件にしていたため、保証期間満了で自動的に expired へ遷移した瞬間
+     （`cron/maintenance`）に凍結が解除され、まさに紛争が起きやすい満了後に写真の
+     削除・改ざんが自由になる設計になっていた。`= 'draft'` のみを制限なしとする条件に
+     修正（active/void/expired をすべて保護）。詳細は DECISION_LOG「IMP-023 凍結ガードの
+     draft/expired 同列扱いは誤りだったため expired も保護対象に修正」参照。
+  2. **DELETE API のストレージ削除順序**: `/api/certificates/images/[id]` が DB 行の
+     ガード付き削除より先にストレージから実ファイルを消していたため、トリガーに
+     ブロックされて 409 を返しても実ファイルは既に失われる状態だった。DB 削除を先に
+     実行する順序へ修正。
+  3. **polygon-backfill の書き込みエラー握りつぶし**: アンカー結果の UPDATE
+     （`polygon_tx_hash`+`authenticity_grade` を1文にまとめていた）がガードにより
+     拒否されても戻り値の error を見ておらず、成功扱いのまま進んでいた。tx hash の
+     UPDATE（非保護列）と authenticity_grade の UPDATE（保護列）を分離し、後者が
+     ブロックされてもアンカー自体の前進を止めないよう修正。
+  4. **certificate_id の付け替えが証跡列チェックをすり抜ける穴**: 凍結保護対象の
+     証跡列リストに `certificate_id` が含まれておらず、別証明書への付け替えで
+     実質的に証跡を切り離せる潜在的な穴があった。リストに追加。
+  - `evidenceProgress.ts` の同じ stage を共有する複数の必須ショットが同じ写真を
+    二重にカウントするバグも合わせて修正（現時点で UI 未接続のため実害はなし、
+    ミューテーションプローブ検証済みのテストを追加）。
+  - `supabase/__tests__/certificateImagesGuard.test.ts` を新設（既存
+    `partInstallations.test.ts` と同方式の静的 SQL 監査）。
+- 検証: tsc/vitest(4407件)/lint/check:schema/lint:migrations すべて green。マイグレーションは
+  main マージ後に `db-migrate.yml` が自動的に本番へ適用する（承認ゲートなし）。
+
 ## 2026-08-29 IMP-022（#937）: Work List & Job Hub。main 取り込み時に3度目の復活バグを修正、検出をスクリプト化
 
 - 内容: v2.0 §6 の Work List & Job Hub（ステータス表示の単一定義源

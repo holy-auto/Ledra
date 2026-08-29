@@ -6,6 +6,18 @@
 
 最終更新: 2026-08-29
 
+> 2026-08-29 追記: **#938（IMP-023、証跡凍結ガード）を main へ統合。代表確認
+> （「マイグレーション適用してマージ」）の上で本番マイグレーションを含めて取り込んだ。
+> 取り込み時の `/code-review` で本番 DB トリガーの設計不備を検出——`certificate_images_guard`
+> が `expired`（保証期間満了で自動遷移）を「制限なし」扱いにしており、まさに紛争が
+> 起きやすい満了後に写真の削除・改ざんが自由になる状態だった。** `= 'draft'` のみを
+> 制限なしとする条件に修正（active/void/expired をすべて保護）。あわせて
+> `certificate_id` の付け替えで証跡を切り離せる穴を塞ぎ、DELETE API のストレージ削除順序
+> （ガード付き DB 削除より先に実ファイルを消していた）と polygon-backfill の書き込み
+> エラー握りつぶしを修正。`src/lib/certificateImages/evidenceProgress.ts` の同一 stage
+> 二重カウントバグも修正（UI 未接続のため実害なし）。詳細は DECISION_LOG「IMP-023
+> 凍結ガードの draft/expired 同列扱いは誤りだったため expired も保護対象に修正」参照。
+
 > 2026-08-29 追記: **#937（IMP-022、Work List & Job Hub）を main へ統合。取り込み時の
 > `/code-review` で `src/lib/sync/` と `WorkScopeProvider.tsx` の復活を検出——
 > #935・#936 に続く3回目の発生。** 今回判明したのは、#936 時点で「検証済み」として
@@ -358,11 +370,15 @@ Sentry · Resend (+ SendGrid fallback) · Anthropic (Opus 4.8 / Sonnet 4.6 / Hai
   BottomSheet）+ Badge dot + Button xl。v2.0 の色トークン値は不採用・既存デザインシステム維持
   （DECISION_LOG 2026-08-19）。
 - **IMP-023（§7 JOB_EVIDENCE — 証跡凍結ガード・必須ショット進捗）完了**:
-  (1) `certificate_images_guard` DB トリガーで発行済み/取消済み証明書の写真行 DELETE を
-  DB レベルでブロック。証跡列 10 列の破壊的 UPDATE も拒否（sort_order 等の表示列は許可）。
-  DELETE API route にトリガーエラーの 409 ハンドリング追加。設計原則 10 充足。
+  (1) `certificate_images_guard` DB トリガーで発行済み/取消済み/**期限切れ**証明書の
+  写真行 DELETE を DB レベルでブロック（draft のみ制限なし）。証跡列 11 列
+  （+`certificate_id`）の破壊的 UPDATE も拒否（sort_order 等の表示列は許可）。
+  DELETE API route にトリガーエラーの 409 ハンドリング追加（ストレージ削除は
+  ガード付き DB 削除の後に実行）。設計原則 10 充足。
   (2) `evidenceProgress.ts` — 必須ショット宣言とアップロード済み stage の突合せ進捗計算
-  （純関数）。テスト 8 件。
+  （純関数、同一 stage の複数必須ショットが写真を二重カウントしないよう消費型で算出）。
+  テスト 9 件。main 取り込み時の `/code-review` で expired ループホール等4件を修正
+  （DECISION_LOG 2026-08-29 参照）。
 - **IMP-022（§6 Work List & Job Hub）完了**: 予約ステータス表示を単一定義源
   （`src/lib/domain/jobStatusDisplay.ts` — 5 値×色/ラベル/ヒント/variant）に統一し、
   4 箇所の重複 STATUS_CONFIG を置換。ステッパー情報階層（現ステップ拡大・完了/未着手圧縮）を

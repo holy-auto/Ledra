@@ -2,21 +2,30 @@
 -- 証明書写真 証跡凍結ガード (IMP-023 §7 / ADR-0003)
 --
 -- 設計原則 10「原本証跡は不変/追記のみ（黙示上書き禁止）」。
--- 部品側 (part_installations_guard) と同パターンで、発行済み or 取消済みの
--- 証明書に紐づく写真行の削除・証跡列の破壊的変更を DB レベルで防ぐ。
+-- 部品側 (part_installations_guard) と同パターンで、発行済み・取消済み・
+-- 期限切れの証明書に紐づく写真行の削除・証跡列の破壊的変更を DB レベルで防ぐ。
 --
--- 保護対象: certificates.status が 'active'(発行済み) または 'void'(取消済み) の
--- 証明書に紐づく certificate_images 行。
+-- 保護対象: certificates.status が 'draft'(作業中) 以外——すなわち
+-- 'active'(発行済み)・'void'(取消済み)・'expired'(期限切れ)——の証明書に
+-- 紐づく certificate_images 行。
+--
+-- 'expired' も保護対象に含める理由: expired は「一度 active だった証明書が
+-- 保証期間満了で自動遷移した」状態であり(`src/app/api/cron/maintenance/route.ts`
+-- が毎日 active→expired を自動実行)、撮影当時の原本証跡としての価値は
+-- 期限満了後も変わらない。むしろ紛争は保証期間の終わり際〜満了後に顕在化しやすく、
+-- draft(作業中で撮り直しが日常的)と同列に扱うと発行済み証跡の不変性が失われる。
 --
 -- ルール:
---   DELETE: active/void の親を持つ行は削除不可。
---   UPDATE: active/void の親を持つ行の証跡列
+--   DELETE: draft 以外の親を持つ行は削除不可。
+--   UPDATE: draft 以外の親を持つ行の証跡列
 --           (sha256, original_sha256, perceptual_hash, stage, authenticity_grade,
 --            tsa_token, tsa_authority, tsa_timestamp_at, c2pa_manifest_cid,
---            storage_path) の変更を拒否。他列 (sort_order 等) は許可。
+--            storage_path, certificate_id) の変更を拒否。他列 (sort_order 等) は許可。
+--           certificate_id も含めるのは、別証明書への付け替えで凍結済み証跡を
+--           実質的に切り離せてしまうのを防ぐため(service-role からの直接 SQL も含む)。
 --   INSERT: 制限なし（追記は許可）。
 --
--- draft/expired の証明書は作業中のため DELETE/UPDATE を許容する。
+-- draft の証明書のみ、作業中の撮り直しフローのため DELETE/UPDATE を許容する。
 -- =============================================================================
 
 CREATE OR REPLACE FUNCTION public.certificate_images_guard()
@@ -33,16 +42,16 @@ BEGIN
   FROM public.certificates
   WHERE id = OLD.certificate_id;
 
-  -- 親が active/void でなければ制限なし
-  IF v_cert_status IS NULL OR v_cert_status NOT IN ('active', 'void') THEN
+  -- 親が draft (または見つからない) なら制限なし
+  IF v_cert_status IS NULL OR v_cert_status = 'draft' THEN
     IF TG_OP = 'DELETE' THEN RETURN OLD; END IF;
     RETURN NEW;
   END IF;
 
-  -- DELETE: active/void の親を持つ行は削除不可
+  -- DELETE: draft 以外の親を持つ行は削除不可
   IF TG_OP = 'DELETE' THEN
     RAISE EXCEPTION
-      'certificate_images: 発行済み/取消済み証明書の写真は削除できません (id=%, cert_status=%)',
+      'certificate_images: 発行済み/取消済み/期限切れ証明書の写真は削除できません (id=%, cert_status=%)',
       OLD.id, v_cert_status;
   END IF;
 
@@ -57,9 +66,10 @@ BEGIN
   OR NEW.tsa_timestamp_at    IS DISTINCT FROM OLD.tsa_timestamp_at
   OR NEW.c2pa_manifest_cid   IS DISTINCT FROM OLD.c2pa_manifest_cid
   OR NEW.storage_path        IS DISTINCT FROM OLD.storage_path
+  OR NEW.certificate_id      IS DISTINCT FROM OLD.certificate_id
   THEN
     RAISE EXCEPTION
-      'certificate_images: 発行済み/取消済み証明書の証跡列は変更できません (id=%, cert_status=%)',
+      'certificate_images: 発行済み/取消済み/期限切れ証明書の証跡列は変更できません (id=%, cert_status=%)',
       OLD.id, v_cert_status;
   END IF;
 
