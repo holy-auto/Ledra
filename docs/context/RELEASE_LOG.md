@@ -37,6 +37,27 @@
 - 全体 4444 件パス、tsc/eslint エラー0。
 - #2「見積りフロー改善」の2件目。後続: 概算見積りにボタン誘導＋文面整合・停滞フローの再促し。
 
+## 2026-08-29 IMP-023（#938）マージ後、本番にだけ存在した未追跡マイグレーションを復旧（db-migrate 停止解消）
+
+- 内容: PR #938（証跡凍結ガード）を main へ squash merge 後、`db-migrate.yml` が
+  "Remote migration versions not found in local migrations directory." で失敗した。
+  本番 `cahybswpduchptvyvdkk` の `supabase_migrations.schema_migrations` を直接確認したところ、
+  `20260828000003 / user_interface_preferences`（tenant_id・user_id・display_mode・
+  onboarding_completed_at を持つテーブル。RLS 有効・SELECT ポリシーのみ）が本番にのみ記録されており、
+  このリポジトリの git 履歴（squash 済み main を含め全履歴検索）に一度も出現していなかった。
+  作成者・適用時期は特定できていない（このセッションの作業ではない）。DECISION_LOG 2026-07-21／
+  過去3回（run #971・#973 ほか）と同じパターン（Supabase MCP の `apply_migration` による本番直接適用
+  はリポジトリにファイルを残さない）。過去3件と異なり同一内容の別ファイルが repo に無いため、
+  空プレースホルダではなく本番の `statements` をそのまま採録した
+  `supabase/migrations/20260828000003_user_interface_preferences.sql` を追加して復旧した。
+  `supabase migration repair`（本番台帳の書き換え）は使っていない——本番へは一切書き込んでいない。
+- 検証: `lint:migrations`（281件検査）OK・`check:schema` OK（このテーブルはアプリコード未参照のため
+  クエリ照合には影響なし）。
+- 対象: GitHub Actions `DB migrate (apply to production)` ワークフロー全般（以後のマイグレーション
+  自動適用）。`user_interface_preferences` テーブル自体はアプリコードから未参照で機能への影響なし。
+- 限界: このテーブルの利用目的・書き込み経路（RLS に INSERT/UPDATE ポリシーが無い）は未確認
+  【要確認】。誰が・いつ本番へ適用したかも特定できていない。OPEN_QUESTIONS に起票。
+
 ## 2026-08-29 見積りフロー改善①: 見積り詳細待ちの車検証写真をOCRで取り込む（branch claude/line-chatbot-ledra-dy2fiq）
 
 - 内容: 見積り会話フローの詳細待ち（`awaiting_quote_detail`）中に顧客が車検証写真を送ると、
