@@ -4,6 +4,24 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-08-29 予約前日リマインダー（キャンセル/変更ボタン付き、新規、branch claude/line-chatbot-ledra-dy2fiq）
+
+- 内容: 翌日(JST)に未キャンセル予約があり LINE 紐付け済みのお客様へ、前日夕方に LINE で
+  「明日ご予約です」を自動送信する新規 cron。self-cancel / self-reschedule の opt-in が ON なら、
+  そのままキャンセル/日程変更できるボタン（`flow:start_cancel` / `flow:start_reschedule`）を添える
+  （タップで既存のセルフ対応フローが起動）。予約1件につき1回だけ（`notification_logs` で dedup）。
+- opt-in `reservation.auto_day_before_reminder`（既定 OFF、`actionCatalog.ts`/`orchestrator.ts`）。
+  Standard+・AI 有効・`followup_opt_out` 尊重。LINE 紐付けが無ければ送らない（ボタン前提のため）。
+- 実装: cron ロジック `src/lib/cron/reservationReminders.ts`、route `/api/cron/reservation-reminders`
+  （UTC 09:00 = JST 18:00、`vercel.json` 登録）、メッセージ `buildReservationReminder`、postback
+  ハンドラ `flow:start_cancel`/`flow:start_reschedule`（`conversationFlowPostback`、循環回避で動的 import、
+  起動不可なら consult フォールバック）。
+- マイグレーション不要: opt-in は既存 `tenant_ai_automation_settings.auto_actions`(JSON)、通知記録は
+  既存 `notification_logs`（`type`/`target_type` は自由記述 text、`channel="line"` は既存 check 適合）。
+- 検証: cron 本体（明日抽出・dedup・opt-out/未紐付けスキップ・ボタン有無・失敗ログ）＋ postback
+  ハンドラのテスト追加。全体 4404 件パス、tsc/eslint エラー0。
+- スコープ外（後続）: 送信時刻のテナント個別設定、メール併用、複数日前（2日前等）の追加。
+
 ## 2026-08-29 日程変更の空き計算を「自予約除外」に精緻化（後片付け、branch claude/line-chatbot-ledra-dy2fiq）
 
 - 内容: 日程変更（#987）で残していた「同日内変更時に候補が過少に見えうる」を解消。

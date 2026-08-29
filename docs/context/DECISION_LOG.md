@@ -4,6 +4,17 @@
 > （新しい順）。実装の詳細は RELEASE_LOG.md、迷っている段階のものは
 > OPEN_QUESTIONS.md に書く。
 
+## 2026-08-29 予約前日リマインダーは「AI opt-in ＋ 専用 cron」で作る（マイグレーションを避ける）
+1. 日付: 2026-08-29
+2. 起きたこと: 残タスク「リマインダー本文へのキャンセル/変更ボタン添付」に着手。既存 cron を調べたところ、顧客への「予約前日リマインダー」を LINE 送信する仕組みは存在せず（あるのは車検・整備・フォローアップ等のライフサイクル通知）、これは新規機能だと判明。代表に確認し「作る（opt-in・前日送信）」と合意。
+3. 以前の考え: 「既存リマインダーにボタンを足すだけ」の小改修だと想定していた。
+4. 違和感・問題: (a) 顧客リマインダーの家（follow-up cron）は `follow_up_settings.enabled` のテナントだけを回す。予約前日リマインダーをそこに相乗りさせると、follow-up を切っているが予約リマインダーは欲しいテナントを取りこぼす。(b) opt-in をどこに置くか: follow_up_settings の新カラム（要マイグレーション）か、AI 自動化の auto_actions（JSON、マイグレーション不要）か。(c) このリポジトリは直近マイグレーションで繰り返し事故（VIN トリガーの out-of-order、"Remote migration versions not found"、削除ファイルの復活）を起こしている。
+5. 決めたこと: (a) opt-in は **AI 自動化アクション `reservation.auto_day_before_reminder`**（`auto_actions` JSON、既定 OFF）。ボタンが起動する self-cancel/self-reschedule と同じ opt-in ファミリーに揃え、かつ**マイグレーション不要**にする。(b) 相乗りせず **専用 cron route** `/api/cron/reservation-reminders`（UTC 09:00 = JST 18:00）を新設し、opt-in 済みテナントを `tenant_ai_automation_settings` から発見して回す。(c) 通知記録は既存 `notification_logs`（`type`/`target_type` は自由記述 text なので新値 `reservation_reminder` を追加でき、`channel="line"` は既存 check に適合）。(d) LINE 紐付けが無ければ送らない（前日リマインダーはボタン前提。メール併用は後続）。
+6. 捨てた選択肢: (A) follow_up_settings に `reservation_reminder_enabled` カラム追加＋follow-up cron のサブジョブ化＝コードは最小だが、(i) マイグレーションが要り直近の事故傾向を踏まえるとリスク、(ii) follow-up マスタ ON に結合し、ボタンが依存する AI opt-in（self-cancel/reschedule）と別ファミリーに分かれて gating が跨る。(B) 既存 follow-up route に2つ目のループを差し込む＝route/vercel 登録は再利用できるが、無関係な関心事を1 route に同居させ可読性を落とす。専用 route の方が明快。(C) notification_logs に type の enum/check があると仮定して新マイグレーション＝実際には free-form text で不要だった（確認済み）。
+7. 判断理由: 「YAGNI／標準機能で済むか」。この環境の弱点はマイグレーション運用なので、既存の JSON opt-in と free-form な通知ログを使い、DB スキーマ変更ゼロで機能を成立させるのが最小リスク。専用 cron の追加コード（route＋vercel 1エントリ＋テナント発見）は、マイグレーション事故のコストより明らかに安い。opt-in を self-serve と同じファミリーに置くことで、リマインダー→ボタン→フローの gating が一貫する。
+8. まだ答えが出ていないこと: 送信時刻のテナント個別設定（今は JST 18:00 固定）。メール併用（今は LINE 紐付けのみ）。2日前等の複数タイミング。opt-in 済みテナントの発見は全 `tenant_ai_automation_settings` 行を読んで in-code フィルタ（テナント数が数千規模になれば JSON パスの SQL フィルタ等に置換が要る／cron 日次なので当面可）。
+9. 公開区分: 公開可（「機能追加でも DB スキーマ変更を避ける設計判断」「opt-in を既存ファミリーに揃える」考え方。テナントID・本番データ・接続情報は含まない）。
+
 ## 2026-08-29 admin route.ts のキャンセル/変更処理は共有ヘルパーへ寄せない（認可モデルが異なるため統合は net-negative）
 1. 日付: 2026-08-29
 2. 起きたこと: 日程変更（#987）まで完了後、残タスク「admin route.ts のキャンセル/変更を共有ヘルパー（cancelReservationById / rescheduleReservationById）へ寄せて単一情報源化」に着手し、route.ts の PUT/DELETE を精査した。

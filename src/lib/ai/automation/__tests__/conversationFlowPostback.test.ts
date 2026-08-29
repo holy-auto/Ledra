@@ -9,6 +9,8 @@ const mocks = vi.hoisted(() => ({
   shouldAutoSelfReschedule: vi.fn(),
   cancelReservationById: vi.fn(),
   rescheduleReservationById: vi.fn(),
+  maybeStartCancelFlow: vi.fn(),
+  maybeStartRescheduleFlow: vi.fn(),
   todayJst: vi.fn(),
   sendCustomerLineText: vi.fn(),
   sendCustomerLineButtons: vi.fn(),
@@ -39,6 +41,8 @@ vi.mock("@/lib/reservations/mutate", () => ({
   cancelReservationById: mocks.cancelReservationById,
   rescheduleReservationById: mocks.rescheduleReservationById,
 }));
+vi.mock("../cancelFlowAuto", () => ({ maybeStartCancelFlow: mocks.maybeStartCancelFlow }));
+vi.mock("../rescheduleFlowAuto", () => ({ maybeStartRescheduleFlow: mocks.maybeStartRescheduleFlow }));
 vi.mock("@/lib/gantt/board", () => ({ todayJst: mocks.todayJst }));
 vi.mock("@/lib/line/client", () => ({
   sendCustomerLineText: mocks.sendCustomerLineText,
@@ -77,6 +81,8 @@ beforeEach(() => {
   mocks.shouldAutoSelfReschedule.mockReturnValue(false);
   mocks.cancelReservationById.mockResolvedValue({ ok: true, alreadyFinal: false });
   mocks.rescheduleReservationById.mockResolvedValue({ ok: true });
+  mocks.maybeStartCancelFlow.mockResolvedValue(true);
+  mocks.maybeStartRescheduleFlow.mockResolvedValue(true);
   mocks.todayJst.mockReturnValue("2026-08-26");
   mocks.sendCustomerLineText.mockResolvedValue(true);
   mocks.sendCustomerLineButtons.mockResolvedValue(true);
@@ -1138,5 +1144,46 @@ describe("handleFlowPostback — 予約の日程変更のセルフ対応", () =>
     });
     expect(handled).toBe(true);
     expect(mocks.rescheduleReservationById).toHaveBeenCalled();
+  });
+});
+
+describe("handleFlowPostback — リマインダーのセルフ操作ボタン", () => {
+  it("flow:start_cancel は self-cancel opt-in が ON なら cancel フローを起動する", async () => {
+    mocks.shouldAutoSelfCancel.mockReturnValue(true);
+    const handled = await handleFlowPostback({ tenantId: TENANT, lineUserId: LINE_USER, data: "flow:start_cancel" });
+    expect(handled).toBe(true);
+    expect(mocks.maybeStartCancelFlow).toHaveBeenCalledTimes(1);
+    expect(mocks.maybeStartCancelFlow.mock.calls[0][0].intent).toBe("cancel");
+  });
+
+  it("flow:start_reschedule は self-reschedule opt-in が ON なら reschedule フローを起動する", async () => {
+    mocks.shouldAutoSelfReschedule.mockReturnValue(true);
+    const handled = await handleFlowPostback({
+      tenantId: TENANT,
+      lineUserId: LINE_USER,
+      data: "flow:start_reschedule",
+    });
+    expect(handled).toBe(true);
+    expect(mocks.maybeStartRescheduleFlow).toHaveBeenCalledTimes(1);
+    expect(mocks.maybeStartRescheduleFlow.mock.calls[0][0].intent).toBe("change_reservation");
+  });
+
+  it("フロー起動不可 (opt-in が実行時 OFF 等で false) ならスタッフ相談にフォールバックする", async () => {
+    mocks.shouldAutoSelfCancel.mockReturnValue(true);
+    mocks.maybeStartCancelFlow.mockResolvedValue(false);
+    const handled = await handleFlowPostback({ tenantId: TENANT, lineUserId: LINE_USER, data: "flow:start_cancel" });
+    expect(handled).toBe(true);
+    // 進行中フロー無し → durable な human_takeover マーカーを作って引き継ぐ (consult フォールバック)。
+    const marker = mocks.store.inserts.find((i) => i.table === "line_conversation_flows");
+    expect(marker?.payload.state).toBe("human_takeover");
+  });
+
+  it("flow:start_cancel は self-cancel opt-in が OFF なら受けない", async () => {
+    mocks.shouldAutoSelfCancel.mockReturnValue(false);
+    // 会話フローだけ ON にして先頭ゲートは通す (start_cancel 分岐は selfCancelOptIn を要求)。
+    mocks.shouldRunConversationFlow.mockReturnValue(true);
+    const handled = await handleFlowPostback({ tenantId: TENANT, lineUserId: LINE_USER, data: "flow:start_cancel" });
+    expect(handled).toBe(false);
+    expect(mocks.maybeStartCancelFlow).not.toHaveBeenCalled();
   });
 });
