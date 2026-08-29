@@ -59,7 +59,10 @@ export async function fetchFlowScheduleCandidates(
 
   let resvQuery = admin
     .from("reservations")
-    .select("scheduled_date, start_time, end_time")
+    // all_day も取得する: 終日予約はその日の全枠を占有するが、未取得だと proposeCandidates の
+    // 占有判定 (r.all_day || 時間帯重複) をすり抜けて満杯の日に候補が出てしまう
+    // (二重予約。canonical な booking-candidates route と同じ理由で all_day を含める)。
+    .select("scheduled_date, start_time, end_time, all_day")
     .eq("tenant_id", tenantId)
     .neq("status", "cancelled")
     .gte("scheduled_date", from)
@@ -97,4 +100,9 @@ type ProposeSlotRow = {
   accepted_categories: string[] | null;
 };
 type ProposeClosedRow = { type: "weekly" | "specific"; day_of_week?: number | null; closed_date?: string | null };
-type ProposeReservationRow = { scheduled_date: string; start_time: string; end_time: string };
+type ProposeReservationRow = {
+  scheduled_date: string;
+  start_time: string;
+  end_time: string;
+  all_day?: boolean | null;
+};

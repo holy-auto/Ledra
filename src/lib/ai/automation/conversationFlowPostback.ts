@@ -734,7 +734,8 @@ async function handleRescheduleSlot(
   const fresh = await fetchFlowScheduleCandidates(admin, tenantId, {
     restrictToDate: chosen.date,
     limit: 50,
-    excludeReservationId: flow.reservation_id ?? undefined,
+    // reservation_id は上の !flow.reservation_id ガードで truthy が保証済み。
+    excludeReservationId: flow.reservation_id,
   });
   const stillAvailable = fresh.some((c) => c.start_time === chosen.start_time && c.end_time === chosen.end_time);
   if (!stillAvailable) {

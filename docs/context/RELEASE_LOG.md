@@ -14,6 +14,11 @@
 - あわせて `reservations/mutate.ts` の ponytail コメントを更新: admin route.ts のキャンセル/変更を
   共有ヘルパーへ寄せる単一情報源化は**行わない**方針に修正（認可モデルが異なるため。詳細は DECISION_LOG）。
 - 対象: LINE 日程変更のセルフ対応（opt-in `inbound_message.auto_self_reschedule`）。
+- コードレビュー由来の追加修正: `fetchFlowScheduleCandidates` の予約取得に **`all_day` を追加**。
+  終日予約はその日の全枠を占有するが、未取得だと `proposeCandidates` の占有判定をすり抜け、満杯の
+  終日予約がある日にも候補が出て二重予約になりうる既存バグを修正（canonical な booking-candidates
+  route と同じ理由で `all_day` を含める）。LINE の見積り→日程提示フローにも効く共有関数の修正。
+  ※ fake admin は列projectionを模さないため単体では観測不能。canonical route とのパリティで担保。
 - 検証: `rescheduleFlowAuto` で `excludeReservationId` 引き渡しをアサート。全体 4386 件パス、tsc/eslint エラー0。
 
 ## 2026-08-29 LINEで顧客が予約の日程を自分で変更できるセルフ対応（reschedule、branch claude/line-chatbot-ledra-dy2fiq）
