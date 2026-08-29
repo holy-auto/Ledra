@@ -4,6 +4,22 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-08-29 予約・作業状況の問い合わせにLINEで自動返信（新規、branch claude/line-chatbot-ledra-dy2fiq）
+
+- 内容: 顧客が LINE で「作業どうなってる?」「いつ仕上がる?」等（intent=status_inquiry）と送ると、
+  その顧客本人の直近予約の状況を自動返信する。対象選択は「作業中/来店受付（進行中）→ 直近の未来予約 →
+  直近の完了」の優先順。稼働中の `reservations.status`（confirmed/arrived/in_progress/completed）に
+  対応する顧客向け文言で返し、in_progress は `progress_pct` があれば進捗も添える。
+- 本人確認: line_user_id 紐付け済みのお客様のみ（他人の予約状況を漏らさない）。未紐付け・対象なしは
+  スタッフ引き継ぎ。opt-in `inbound_message.auto_status_reply`（既定 OFF、Standard+・AI 有効）。
+- 実装: 新 intent `status_inquiry`（`inboundReservationExtract`）、起点 IO `statusReplyAuto.ts`、
+  文面 `buildWorkStatusReply`/`buildWorkStatusHandoff`（`messages.ts`）、`inboundAuto` で
+  キャンセル/変更の後・他返信の前に判定し早期 return。
+- 正準 JobState へのマッピングは持たない（ADR-0002 / IMP-015 まで）。稼働中の 5 値だけを顧客向けに翻訳。
+- 検証: statusReplyAuto（opt-in/対象選択優先順/未紐付け/対象なし/進捗表示）＋ inboundAuto ゲートの
+  テスト追加。全体 4413 件パス、tsc/eslint エラー0。
+- スコープ外（後続）: 証明書・支払い状況の案内、複数予約の一覧提示、作業ステップ単位の詳細。
+
 ## 2026-08-29 予約前日リマインダー（キャンセル/変更ボタン付き、新規、branch claude/line-chatbot-ledra-dy2fiq）
 
 - 内容: 翌日(JST)に未キャンセル予約があり LINE 紐付け済みのお客様へ、前日夕方に LINE で

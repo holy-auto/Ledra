@@ -91,6 +91,11 @@ export function shouldSendDayBeforeReminder(settings: AiAutomationSettings): boo
   return resolveAutoAction(settings, "reservation.auto_day_before_reminder");
 }
 
+/** 予約・作業の状況問い合わせに LINE で自動返信するか (inbound_message.auto_status_reply)。 */
+export function shouldAutoReplyStatus(settings: AiAutomationSettings): boolean {
+  return resolveAutoAction(settings, "inbound_message.auto_status_reply");
+}
+
 export interface InboundExtractionLike {
   intent?: string | null;
   confidence?: number | null;
