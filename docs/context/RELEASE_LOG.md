@@ -4,6 +4,23 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-08-29 certificate_images_guard を元の 20260820000000 へ戻す（本番は元の名前で既に適用済みだった）
+
+- 内容: PR #996 の改名（20260820000000→20260829000000）マージ後、db-migrate.yml が今度は逆方向の
+  "Remote migration versions not found in local migrations directory." で失敗した。本番の
+  `schema_migrations` を直接確認したところ、`20260820000000/certificate_images_guard` が
+  **元の名前のまま既に適用済み**だった（適用経緯は未確認）。改名（#996）は既に適用済みの
+  ファイルを改名してしまっていたことになる——DECISION_LOG 2026-07-21／run #973 が警告している
+  失敗パターンにそのまま該当。`20260829000000_certificate_images_guard.sql` を
+  `20260820000000_certificate_images_guard.sql` へ戻し（SQL は無変更）、
+  `supabase/__tests__/certificateImagesGuard.test.ts` のファイル名参照も元に戻した。
+- 検証: `lint:migrations`（282件）OK・`check:schema` OK・`certificateImagesGuard.test.ts`（6件）OK・
+  本番の適用済み全バージョンとローカルの全ファイルを機械的に突き合わせ、20260816010000 以降の
+  差分ゼロを確認。
+- 対象: GitHub Actions `DB migrate (apply to production)` ワークフロー。
+- 限界: 20260820000000 が本番へ適用された正確な経緯（誰が・いつ）は未確認。改名前に本番の
+  記録を都度再確認する運用を徹底する必要がある（DECISION_LOG 参照）。
+
 ## 2026-08-29 certificate_images_guard マイグレーションを改名し db-migrate の out-of-order 停止を解消
 
 - 内容: PR #994 のマージ後、db-migrate.yml が
