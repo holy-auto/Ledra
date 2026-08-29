@@ -5,12 +5,6 @@
 
 ## 追加（2026-08-29・#936 IMP-021 マージ）
 
-- **staff/viewer のダッシュボード初期表示スコープは self（自分の分だけ）にすべきか、
-  現状維持の tenant-wide（店舗全体）のままでよいか。** `defaultScope()` の定義
-  （admin+ は store、それ以外は self）をそのまま使うと稼働中の挙動が変わるため、
-  今回は現状維持側（"store" 固定）に倒した。詳細は DECISION_LOG「IMP-021 の初期表示
-  スコープは代表判断が出るまで既存の tenant-wide 表示を維持」参照。 → 代表判断待ち
-
 - **`todayTasks.ts` の `startOfDayStr()` が正のUTCオフセット（JST 等）で日付を
   1日早く判定する。** `new Date(d.getFullYear(), d.getMonth(), d.getDate())`
   でローカル日付から真夜中の Date を作り、その後 `.toISOString()` で UTC に
