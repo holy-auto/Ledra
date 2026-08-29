@@ -176,20 +176,29 @@ export default function JobSignoffPanel({ reservationId }: { reservationId: stri
         )}
       </div>
 
-      {/* 5 ステップ・トラッカー */}
-      <ol className="flex flex-wrap items-center gap-2">
+      {/* ponytail: IMP-022 情報階層 — 現ステップを視覚的に最大化。 */}
+      <ol className="flex flex-wrap items-center gap-1.5">
         {STEP_ORDER.map((key, i) => {
           const step = state.steps[key];
           const style = STATE_STYLE[step.state];
+          const isCurrent = step.state === "current" || step.state === "blocked";
           return (
-            <li key={key} className="flex items-center gap-2">
-              <div className={`flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-medium ${style.cls}`}>
-                <span className="flex h-5 w-5 items-center justify-center rounded-full bg-surface/60 text-[11px] font-bold">
-                  {step.state === "done" ? "✓" : i + 1}
+            <li key={key} className="flex items-center gap-1.5">
+              <div
+                className={`flex items-center rounded-full border font-medium ${style.cls} ${
+                  isCurrent ? "gap-2 border-2 px-3.5 py-1.5 text-sm" : "gap-1.5 px-2.5 py-0.5 text-[11px]"
+                }`}
+              >
+                <span
+                  className={`flex items-center justify-center rounded-full bg-surface/60 font-bold ${
+                    isCurrent ? "h-5 w-5 text-[11px]" : "h-4 w-4 text-[10px]"
+                  }`}
+                >
+                  {step.state === "done" ? "✓" : style.icon}
                 </span>
                 {STEP_LABEL[key]}
               </div>
-              {i < STEP_ORDER.length - 1 && <span className="text-muted">→</span>}
+              {i < STEP_ORDER.length - 1 && <span className="text-muted text-[10px]">→</span>}
             </li>
           );
         })}

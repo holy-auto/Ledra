@@ -6,6 +6,19 @@
 
 最終更新: 2026-08-29
 
+> 2026-08-29 追記: **#937（IMP-022、Work List & Job Hub）を main へ統合。取り込み時の
+> `/code-review` で `src/lib/sync/` と `WorkScopeProvider.tsx` の復活を検出——
+> #935・#936 に続く3回目の発生。** 今回判明したのは、#936 時点で「検証済み」として
+> いた検出方法（main の履歴を辿って削除有無を確認）自体が、main の squash マージ運用と
+> 根本的に相性が悪いという構造的欠陥だった——1本のスタック PR 内で完結した
+> 「追加してから削除」は squash 後の main の履歴に一切残らないため、main の履歴を
+> 情報源にする限り原理的に検出できない。**検出方法を「マージ対象 PR 自身のコミットが
+> そのファイルを触っているか」に置き換え、`scripts/check-resurrected-files.sh`
+> （`npm run check:resurrected`）としてスクリプト化した**（ミューテーションプローブで
+> 検出・非検出の両方を確認済み）。以降のスタック PR マージすべてでこのスクリプトを
+> 実行する。詳細は DECISION_LOG「削除済みファイルの復活検出を3度目の失敗を経て
+> スクリプト化した」参照。
+
 > 2026-08-29 追記: **#936（IMP-021、3秒理解ホーム）を main へ統合。取り込み時の
 > `/code-review` で重大な問題2件を修正した。**
 > (1) `src/lib/sync/`（#934 で削除済み）が **#935 と同じ理由で2回目の復活**を
@@ -344,6 +357,11 @@ Sentry · Resend (+ SendGrid fallback) · Anthropic (Opus 4.8 / Sonnet 4.6 / Hai
   （SegmentedControl/StatusBadge/StatusCard/NextActionCard/ProgressCard/Alert/IconButton/
   BottomSheet）+ Badge dot + Button xl。v2.0 の色トークン値は不採用・既存デザインシステム維持
   （DECISION_LOG 2026-08-19）。
+- **IMP-022（§6 Work List & Job Hub）完了**: 予約ステータス表示を単一定義源
+  （`src/lib/domain/jobStatusDisplay.ts` — 5 値×色/ラベル/ヒント/variant）に統一し、
+  4 箇所の重複 STATUS_CONFIG を置換。ステッパー情報階層（現ステップ拡大・完了/未着手圧縮）を
+  JobStatusPanel + JobSignoffPanel に適用。Next Actions CTA をステータスで出し分け
+  （作業前は証明書/請求書非表示、完了後は予約編集非表示、キャンセルは全非表示）。テスト 7 件。
 - **IMP-021（§5 HOME — 3秒理解ホーム）完了**: ダッシュボードに NEXT ACTION セクション
   （最優先タスク 1 件を NextActionCard で提示）と今日の進捗 ProgressCard を追加。
   3 段階ワークスコープ切替（HomeScopeToggle — SegmentedControl ベース、自分/店舗/全店舗）。
