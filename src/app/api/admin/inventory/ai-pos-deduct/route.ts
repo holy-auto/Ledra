@@ -74,8 +74,10 @@ export async function POST(req: NextRequest) {
     // 在庫 / 紐付け / 消費統計テーブルは別 migration で追加予定。
     // 未マイグレーション環境では graceful degrade して空 suggestion を返す。
     const [skusRes, linksRes, historyRes] = await Promise.all([
+      // schema-check-ignore: 未作成のテーブル。下の isMissingTableError で縮退する
       admin.from("inventory_skus").select("id, name, category, unit").eq("tenant_id", tenantId),
       admin
+        // schema-check-ignore: 未作成のテーブル。下の isMissingTableError で縮退する
         .from("menu_item_inventory_links")
         .select("menu_item_id, sku_id, quantity")
         .eq("tenant_id", tenantId)
@@ -84,6 +86,7 @@ export async function POST(req: NextRequest) {
           parsed.data.sales.map((s) => s.menu_item_id),
         ),
       admin
+        // schema-check-ignore: 未作成のテーブル。下の isMissingTableError で縮退する
         .from("inventory_consumption_stats")
         .select("service_category, sku_id, avg_quantity")
         .eq("tenant_id", tenantId),

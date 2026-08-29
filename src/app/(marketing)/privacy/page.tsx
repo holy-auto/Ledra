@@ -1,6 +1,11 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { siteConfig } from "@/lib/marketing/config";
+import { getLegalDocument, type LegalBlock } from "@/lib/legal/documents";
+
+// 本文は src/lib/legal/documents.ts が単一定義源。
+// モバイルアプリ（app/legal/[doc]）も同じ内容を /api/legal/privacy から読む。
+const doc = getLegalDocument("privacy");
 
 function Article({ children }: { children: ReactNode }) {
   return (
@@ -10,113 +15,41 @@ function Article({ children }: { children: ReactNode }) {
   );
 }
 
-function H2({ children }: { children: ReactNode }) {
-  return <h2 className="mb-3 mt-10 text-lg font-bold text-white">{children}</h2>;
-}
-
-function P({ children }: { children: ReactNode }) {
-  return <p className="mb-4 text-sm leading-relaxed text-white">{children}</p>;
-}
-
-function Ul({ children }: { children: ReactNode }) {
-  return <ul className="mb-4 list-disc space-y-1 pl-5 text-sm text-white">{children}</ul>;
+function Block({ block }: { block: LegalBlock }) {
+  if (block.type === "h2") {
+    return <h2 className="mb-3 mt-10 text-lg font-bold text-white">{block.text}</h2>;
+  }
+  if (block.type === "ul") {
+    return (
+      <ul className="mb-4 list-disc space-y-1 pl-5 text-sm text-white">
+        {block.items.map((item) => (
+          <li key={item}>{item}</li>
+        ))}
+      </ul>
+    );
+  }
+  if (block.type === "contact") {
+    return (
+      <p className="mb-4 whitespace-pre-line text-sm leading-relaxed text-white">
+        {block.before}
+        <a href={`mailto:${block.email}`} className="font-medium text-blue-400 hover:underline">
+          {block.email}
+        </a>
+        {block.after}
+      </p>
+    );
+  }
+  return <p className="mb-4 text-sm leading-relaxed text-white">{block.text}</p>;
 }
 
 export default function PrivacyPage() {
-  const updated = "2026年4月22日";
-
   return (
     <Article>
-      <h1 className="mb-2 text-3xl font-bold text-white">プライバシーポリシー</h1>
-      <p className="mb-10 text-sm text-white">最終更新日：{updated}</p>
-
-      <P>
-        {siteConfig.siteName}（以下「当社」）は、お客様の個人情報の保護を重要な責務と認識し、
-        個人情報保護法その他の関連法令を遵守の上、以下のとおりプライバシーポリシー（以下「本ポリシー」）を定めます。
-      </P>
-
-      <H2>1. 取得する情報</H2>
-      <P>当社は以下の情報を取得することがあります。</P>
-      <Ul>
-        <li>氏名・会社名・部署名・役職</li>
-        <li>メールアドレス・電話番号</li>
-        <li>車両情報（登録番号、車台番号など）</li>
-        <li>施工内容・施工日時</li>
-        <li>
-          施工写真に含まれる位置情報（GPS）
-          ※撮影場所の整合性確認のためにアップロード処理中に照合のみ行い、座標そのものは保存しません（保存する画像からも位置情報は除去します）
-        </li>
-        <li>
-          出張作業の作業場所の位置情報（スタッフが作業開始／完了時に取得したもの）
-          ※スタッフの運用目的に限定して最小権限で管理し、一定期間経過後に自動削除します
-        </li>
-        <li>ログイン情報・利用履歴・IPアドレス・Cookieなどの技術情報</li>
-        <li>お問い合わせ時にご提供いただいた情報</li>
-        <li>
-          資料請求・デモ依頼・ROIシミュレーター・メルマガ登録など、マーケティングサイト上のフォームにご入力いただいた情報
-          （業態、拠点数、検討時期、リファラ、UTMパラメータを含みます）
-        </li>
-      </Ul>
-
-      <H2>2. 利用目的</H2>
-      <P>取得した情報は以下の目的で利用します。</P>
-      <Ul>
-        <li>サービスの提供・運営・改善</li>
-        <li>施工証明書の発行・管理・共有</li>
-        <li>施工写真・作業記録の真正性確認（撮影場所の整合性チェック）</li>
-        <li>保険会社への証明書情報の提供（ユーザーが許可した場合）</li>
-        <li>お問い合わせ・資料請求・デモ依頼への対応</li>
-        <li>サービスに関するご案内・メールマガジンの配信</li>
-        <li>マーケティングサイトの改善・アクセス解析</li>
-        <li>利用規約違反・不正行為への対応</li>
-        <li>法令に基づく対応</li>
-      </Ul>
-
-      <H2>3. 第三者提供</H2>
-      <P>当社は、以下のいずれかに該当する場合を除き、個人情報を第三者に提供しません。</P>
-      <Ul>
-        <li>ご本人の同意がある場合</li>
-        <li>法令に基づく場合</li>
-        <li>業務委託先（クラウドインフラ事業者等）に必要な範囲で提供する場合 ※委託先に対しては適切な監督を行います</li>
-        <li>事業の承継に伴い情報を引き継ぐ場合</li>
-      </Ul>
-
-      <H2>4. Cookieの利用</H2>
-      <P>
-        当社のウェブサイトはCookieを使用しています。必須のCookie以外は、サイト訪問時にお示しするバナーでの同意後にのみ設定されます。
-        アクセス解析には PostHog を利用しており、収集データは同社のプライバシーポリシーに従って管理されます。
-        Cookieはブラウザの設定で無効化でき、バナーで選択した同意状態もブラウザCookie（365日）として保持されます。
-      </P>
-
-      <H2>5. 安全管理措置</H2>
-      <P>
-        個人情報への不正アクセス・紛失・破壊・改ざん・漏洩を防止するため、 適切な技術的・組織的安全管理措置を講じます。
-      </P>
-
-      <H2>6. 開示・訂正・削除の請求</H2>
-      <P>
-        ご本人から個人情報の開示・訂正・利用停止・削除等のご請求があった場合、
-        本人確認の上、法令の定めに従って対応します。 ご請求は下記お問い合わせ先までご連絡ください。
-      </P>
-
-      <H2>7. 未成年者について</H2>
-      <P>本サービスは事業者を対象としており、未成年者を対象としていません。 18歳未満の方はご利用いただけません。</P>
-
-      <H2>8. ポリシーの変更</H2>
-      <P>
-        本ポリシーは法令の改正やサービス内容の変更に伴い、予告なく改定することがあります。
-        改定後のポリシーはウェブサイトへの掲載をもって効力を生じます。
-      </P>
-
-      <H2>9. お問い合わせ</H2>
-      <P>
-        個人情報の取り扱いに関するお問い合わせは、以下までご連絡ください。
-        <br />
-        メール：
-        <a href={`mailto:${siteConfig.contactEmail}`} className="font-medium text-blue-400 hover:underline">
-          {siteConfig.contactEmail}
-        </a>
-      </P>
+      <h1 className="mb-2 text-3xl font-bold text-white">{doc.title}</h1>
+      <p className="mb-10 text-sm text-white">最終更新日：{doc.updated}</p>
+      {doc.blocks.map((block, i) => (
+        <Block key={i} block={block} />
+      ))}
     </Article>
   );
 }
@@ -124,6 +57,7 @@ export default function PrivacyPage() {
 export const metadata: Metadata = {
   title: `プライバシーポリシー | ${siteConfig.siteName}`,
   description: "Ledraのプライバシーポリシーです。",
+  alternates: { canonical: "/privacy" },
   openGraph: {
     title: `プライバシーポリシー | ${siteConfig.siteName}`,
     description: "Ledraのプライバシーポリシーです。",

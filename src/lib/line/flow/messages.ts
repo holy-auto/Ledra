@@ -36,6 +36,42 @@ export function buildQuoteDetailAsk(): string {
 }
 
 /**
+ * ナレッジ自動返信の末尾に添える「次の行動」誘導ボタン。会話フロー opt-in 済み
+ * テナントのみ添付する (postback を handleFlowPostback が状態非依存で捌けるため)。
+ *   - `flow:start_quote` … 見積りフロー (awaiting_quote_detail) を開始
+ *   - `flow:consult`     … スタッフ引き継ぎ (human_takeover) + 通知
+ * どちらも interpret.ts の状態遷移ではなく、conversationFlowPostback が直接処理する。
+ */
+export function buildFollowupButtons(): FlowButton[] {
+  return [
+    { label: "お見積りをお願いしたい", data: "flow:start_quote" },
+    { label: "スタッフに相談したい", data: "flow:consult" },
+  ];
+}
+
+/**
+ * 施工内容が不明な入口 (FAQ後の「お見積り」ボタン等) で、施工内容 **と** 車両を
+ * まとめて依頼する文面。buildQuoteDetailAsk は車両しか聞かないため、元問い合わせに
+ * 施工内容が無いフローでこれを使わないと、車両だけ返ってきて正式見積りに進めない
+ * (maybeAdvanceQuoteFlowOnDetail は service と vehicle の両方を要求する)。
+ *
+ * 車検証の「写真」は求めない: awaiting_quote_detail 中の画像は OCR フロー
+ * (handleVehiclePhotoMessage は awaiting_vehicle_photo 専用) に配線されておらず、
+ * 送られてもスタッフ記録止まりでフローが進まないため。テキストで受け取れる項目のみ聞く。
+ */
+export function buildQuoteDetailAskWithService(): string {
+  return [
+    "【お見積りについて】",
+    "正式なお見積りをお作りするために、下記をこのトークにご返信ください。",
+    "",
+    "① ご希望の施工内容（例: ボディコーティング、キズ・へこみ修理 など）",
+    "② お車の「車種・年式」（例: アルファード 2022年式）",
+    "",
+    "いただいた内容をもとに担当が正式なお見積りをお作りしてお送りします。",
+  ].join("\n");
+}
+
+/**
  * 詳細を受領し正式見積書の下書きを用意したことの顧客向けお礼・案内。
  * 送付そのものはスタッフが内容確認のうえ行う (壁3) ため「担当より」と明示する。
  */
@@ -179,6 +215,140 @@ export function buildReservationConfirmed(candidate: FlowScheduleCandidate): str
     `📅 ${formatDateJa(candidate.date)} ${formatTimeShort(candidate.start_time)}〜${formatTimeShort(candidate.end_time)}`,
     "",
     "ご来店を心よりお待ちしております。ありがとうございました！",
+  ].join("\n");
+}
+
+/** キャンセル対象予約の表示に必要な最小形。listReservationsForCustomer の行から作れる。 */
+export interface CancelTargetReservation {
+  id: string;
+  scheduled_date: string;
+  start_time: string | null;
+  title: string | null;
+}
+
+/** 予約1件を「7/20(月) 10:00〜 内容」の1行に整形する (start_time 無しは終日扱い)。 */
+function formatReservationLine(r: CancelTargetReservation): string {
+  const when = r.start_time
+    ? `${formatDateJa(r.scheduled_date)} ${formatTimeShort(r.start_time)}〜`
+    : `${formatDateJa(r.scheduled_date)}（終日）`;
+  return r.title?.trim() ? `${when} ${r.title.trim()}` : when;
+}
+
+/**
+ * キャンセル対象の予約が複数あるとき、どれをキャンセルするかボタンで選ばせる。
+ * 「スタッフに相談」は既存の consult (→ human_takeover + 通知) を再利用する。
+ */
+export function buildCancelPickAsk(reservations: CancelTargetReservation[]): FlowButtonMessage {
+  return {
+    text: ["ご予約のキャンセルですね。どのご予約をキャンセルしますか？", "対象を下のボタンからお選びください。"].join(
+      "\n",
+    ),
+    buttons: [
+      ...reservations.map((r, i) => ({
+        // ラベルは送信時に 20 文字へ丸められる (sendCustomerLineButtons)。
+        label: formatReservationLine(r),
+        data: `flow:cancel_pick:${i}`,
+      })),
+      { label: "スタッフに相談したい", data: "flow:consult" },
+    ],
+  };
+}
+
+/** キャンセル実行前の最終確認 (破壊的操作なので必ず挟む)。 */
+export function buildCancelConfirmAsk(reservation: CancelTargetReservation): FlowButtonMessage {
+  return {
+    text: [
+      "下記のご予約をキャンセルします。よろしいですか？",
+      "",
+      `📅 ${formatReservationLine(reservation)}`,
+      "",
+      "キャンセルする場合は「はい、キャンセルします」を、やめる場合は「やめる」をお選びください。",
+    ].join("\n"),
+    buttons: [
+      { label: "はい、キャンセルします", data: "flow:cancel_confirm" },
+      { label: "やめる", data: "flow:cancel_abort" },
+    ],
+  };
+}
+
+/** キャンセル完了の案内 (フローのクローズ文面)。 */
+export function buildCancelDone(reservation: CancelTargetReservation): string {
+  return [
+    "ご予約をキャンセルしました。",
+    `📅 ${formatReservationLine(reservation)}`,
+    "",
+    "またのご利用をお待ちしております。",
+  ].join("\n");
+}
+
+/** キャンセルを取りやめたときの案内 (予約は維持)。 */
+export function buildCancelAborted(): string {
+  return "キャンセルを取りやめました。ご予約はそのままお承りしております。";
+}
+
+/**
+ * セルフキャンセルできない場合 (当日/直前・対象予約なし・未紐付け等) にスタッフへ
+ * 引き継ぐ案内。当日以降の変更は電話等での調整が要るため人手に回す。
+ */
+export function buildCancelHandoff(): string {
+  return [
+    "ご予約の変更・キャンセルについて、担当より確認のうえご連絡いたします。",
+    "お急ぎの場合はお電話でもお問い合わせいただけます。",
+  ].join("\n");
+}
+
+/**
+ * 日程変更の対象予約が複数あるとき、どれを変更するかボタンで選ばせる。
+ * 「スタッフに相談」は既存の consult (→ human_takeover + 通知) を再利用する。
+ * 対象予約の表示は CancelTargetReservation と同形 (予約サマリ) を共用する。
+ */
+export function buildReschedulePickAsk(reservations: CancelTargetReservation[]): FlowButtonMessage {
+  return {
+    text: ["ご予約の日程変更ですね。どのご予約を変更しますか？", "対象を下のボタンからお選びください。"].join("\n"),
+    buttons: [
+      ...reservations.map((r, i) => ({
+        label: formatReservationLine(r),
+        data: `flow:reschedule_pick:${i}`,
+      })),
+      { label: "スタッフに相談したい", data: "flow:consult" },
+    ],
+  };
+}
+
+/**
+ * 日程変更する予約を確定したうえで、新しい日程候補をボタンで提示する。
+ * 現在の予約日時を明示し、候補ボタン (flow:reschedule_slot:<i>) と
+ * 「その他の日程を相談する」(既存 flow:cancel → handoff) を並べる。
+ */
+export function buildRescheduleSlotAsk(
+  target: CancelTargetReservation,
+  candidates: FlowScheduleCandidate[],
+): FlowButtonMessage {
+  return {
+    text: [
+      "下記のご予約の新しい日程をお選びください。",
+      "",
+      `現在: ${formatReservationLine(target)}`,
+      "",
+      "変更後の日時を下の候補からお選びください（合わなければ「その他の日程を相談する」からどうぞ）。",
+    ].join("\n"),
+    buttons: [
+      ...candidates.map((c, i) => ({
+        label: `${formatDateJa(c.date)} ${formatTimeShort(c.start_time)}〜`,
+        data: `flow:reschedule_slot:${i}`,
+      })),
+      { label: "その他の日程を相談する", data: "flow:cancel" },
+    ],
+  };
+}
+
+/** 日程変更の完了案内 (フローのクローズ文面)。 */
+export function buildRescheduleDone(candidate: FlowScheduleCandidate): string {
+  return [
+    "ご予約の日程を変更しました。",
+    `📅 ${formatDateJa(candidate.date)} ${formatTimeShort(candidate.start_time)}〜${formatTimeShort(candidate.end_time)}`,
+    "",
+    "ご来店を心よりお待ちしております。",
   ].join("\n");
 }
 
