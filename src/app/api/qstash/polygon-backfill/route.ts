@@ -137,13 +137,26 @@ async function handler(req: NextRequest) {
                 .update({ authenticity_grade: nextGrade })
                 .eq("id", img.id);
               if (gradeError) {
-                // 発行済み/取消済み/期限切れの親を持つ画像は certificate_images_guard で
-                // 証跡列の変更が拒否される。想定内のブロックなのでエラー扱いにはしない
-                // (tx hash は既に記録済みで前進はしている。等級の上書きだけが凍結される)。
-                console.warn("[polygon-backfill] grade upgrade blocked (frozen evidence?)", {
-                  imageId: img.id,
-                  error: gradeError.message,
-                });
+                // certificate_images_guard が拒否するのは P0001 のみ。それ以外
+                // (ネットワーク断等の一時的失敗)は tx hash が既に書き込み済みで
+                // polygon_tx_hash IS NULL の対象から外れてしまい、このまま握り
+                // つぶすと等級の底上げ機会を永久に失う。想定内のガード拒否と
+                // 見分けられるよう error でログし、原因調査できるようにする。
+                const isGuardRejection =
+                  gradeError.code === "P0001" && gradeError.message?.includes("certificate_images");
+                if (isGuardRejection) {
+                  // 発行済み/取消済み/期限切れの親を持つ画像は仕様どおりのブロック。
+                  // tx hash は既に記録済みで前進はしている(等級の上書きだけが凍結される)。
+                  console.warn("[polygon-backfill] grade upgrade blocked (frozen evidence)", {
+                    imageId: img.id,
+                    error: gradeError.message,
+                  });
+                } else {
+                  console.error("[polygon-backfill] grade update failed unexpectedly (not a freeze guard rejection)", {
+                    imageId: img.id,
+                    error: gradeError.message,
+                  });
+                }
               }
             }
           }

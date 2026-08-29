@@ -35,7 +35,27 @@
     ミューテーションプローブ検証済みのテストを追加）。
   - `supabase/__tests__/certificateImagesGuard.test.ts` を新設（既存
     `partInstallations.test.ts` と同方式の静的 SQL 監査）。
-- 検証: tsc/vitest(4407件)/lint/check:schema/lint:migrations すべて green。マイグレーションは
+- **同一 PR への Codex（`chatgpt-codex-connector[bot]`）レビューでさらに2件を追加修正**:
+  5. **保護対象列の不足**: `processUploadedPhoto.ts` がアップロード時に一度だけ書き込む
+     証跡フィールド（c2pa_manifest/c2pa_verified/external_c2pa_*/capture_nonce/
+     capture_binding_reason/device_attestation_*/exif_*/gps_check_verdict/
+     gps_distance_bucket/deepfake_score/deepfake_verdict）が凍結保護リストから漏れており、
+     真正性判定の根拠そのものを発行後に書き換えられる状態だった。全16列を追加
+     （polygon_tx_hash/polygon_network は事後アンカリングの正規更新のため意図的に対象外）。
+  6. **polygon-backfill のグレード更新失敗を一律ガード扱いにしていた**: ガード拒否
+     （P0001）以外の理由（ネットワーク断等）で失敗しても区別せず warn ログにしていたため、
+     一時的な失敗が永久に再試行されなくなる恐れがあった。P0001 かどうかで
+     ログレベルを分離。
+  - **Codex は同時に、この移行が対応しきれていない3つの既知の限界も指摘**（マイグレーション
+    ファイルのコメントに明記、この PR ではスコープ外）: (a) ガードが親ステータスを
+    ロック無しで SELECT するだけなので、証明書の activate と写真 DELETE が真に同時に
+    走ると理論上すり抜けられる TOCTOU（(b) certificates.status 自体は本ガードの対象外
+    のため、active→draft のような逆方向遷移を直接 UPDATE されると凍結が解除される、
+    (c) 親 certificates 行自体を削除する（ON DELETE CASCADE）と子の写真行はガードの
+    「親が見つからない」＝「制限なし」判定に該当し、削除経路がすり抜ける。これら3件は
+    `certificates` 側の別ガード・ロック機構が必要な、より大きな変更のため、IMP-030
+    以降での対応を代表に提案・確認中。
+- 検証: tsc/vitest(4408件)/lint/check:schema/lint:migrations すべて green。マイグレーションは
   main マージ後に `db-migrate.yml` が自動的に本番へ適用する（承認ゲートなし）。
 
 ## 2026-08-29 日程変更の空き計算を「自予約除外」に精緻化（後片付け、branch claude/line-chatbot-ledra-dy2fiq）

@@ -33,7 +33,7 @@ describe("certificate_images_guard migration", () => {
     expect(guardSql).toMatch(/TG_OP = 'DELETE'[\s\S]*RAISE EXCEPTION/);
   });
 
-  it("証跡列10種+certificate_id の変更を拒否", () => {
+  it("アップロード時に一度だけ書き込まれる証跡列すべての変更を拒否", () => {
     for (const col of [
       "sha256",
       "original_sha256",
@@ -44,11 +44,33 @@ describe("certificate_images_guard migration", () => {
       "tsa_authority",
       "tsa_timestamp_at",
       "c2pa_manifest_cid",
+      "c2pa_manifest",
+      "c2pa_verified",
+      "external_c2pa_present",
+      "external_c2pa_verified",
+      "external_c2pa_signer",
+      "capture_nonce",
+      "capture_binding_reason",
+      "device_attestation_provider",
+      "device_attestation_token_hash",
+      "device_attestation_verified",
+      "exif_captured_at",
+      "exif_device_model",
+      "exif_gps_stripped",
+      "gps_check_verdict",
+      "gps_distance_bucket",
+      "deepfake_score",
+      "deepfake_verdict",
       "storage_path",
       "certificate_id",
     ]) {
       expect(guardSql).toMatch(new RegExp(`NEW\\.${col}\\s+IS DISTINCT FROM OLD\\.${col}`));
     }
+  });
+
+  it("polygon_tx_hash/polygon_network は対象外（active な証明書への事後アンカリングを妨げない）", () => {
+    expect(guardSql).not.toMatch(/NEW\.polygon_tx_hash\s+IS DISTINCT FROM OLD\.polygon_tx_hash/);
+    expect(guardSql).not.toMatch(/NEW\.polygon_network\s+IS DISTINCT FROM OLD\.polygon_network/);
   });
 
   it("トリガーは BEFORE UPDATE OR DELETE で1本のみ", () => {
