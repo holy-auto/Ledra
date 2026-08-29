@@ -124,6 +124,17 @@ describe("buildRoughEstimateMessage", () => {
     expect(body).toContain("LINEで承ります");
     expect(body).not.toContain("正式・詳細なお見積りはご来店時に承ります");
   });
+  it("drops the visit-only line in the no-amount branch when continuing on LINE (no contradiction)", () => {
+    const body = buildRoughEstimateMessage({
+      service: "コーティング",
+      vehicleText: "不明車",
+      totalInclTax: 0,
+      canContinueOnLine: true,
+    });
+    // 金額なし＋ボタン継続時は「お車を拝見して＝来店前提」の一文を出さない（closing と矛盾するため）。
+    expect(body).not.toContain("お車を拝見して");
+    expect(body).toContain("LINEで承ります");
+  });
 });
 
 describe("buildMissingInfoMessage", () => {

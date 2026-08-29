@@ -20,7 +20,13 @@
 - 実装: `quoteReplyAuto` に `attachButtons`／`buildRoughEstimateMessage` に `canContinueOnLine` を追加、
   `inboundAuto` から `attachFollowupButtons` を配線（ナレッジ返信と同じ値）。マイグレーション不要。
 - 検証: `quoteReplyAuto`（ボタン付き=`sendCustomerLineButtons`＋start_quote/consult＋LINE整合文面／
-  未指定=素テキスト＋来店文面）テスト追加。全体 4447 件パス、tsc/eslint エラー0。
+  未指定=素テキスト＋来店文面）テスト追加。
+- コードレビュー由来の追加修正（同 PR、`/code-review`）:
+  - 金額なし分岐（総額0）でも `canContinueOnLine` 時は「お車を拝見して＝来店前提」の一文を出さない
+    （締めの「LINEで承ります」と矛盾していた文面整合の取りこぼしを解消）。
+  - `actionCatalog` の本アクション説明を「来店に誘導」からボタンで LINE 見積りフローへも誘導する旨に更新
+    （runtime 挙動と capability 説明のドリフト解消）。
+- 全体 4448 件パス、tsc/eslint エラー0。
 - #2「見積りフロー改善」の3件目。後続: 停滞フローの再促し（最後の1件）。
 
 ## 2026-08-29 日程候補の精度向上: 日程変更で元予約の所要時間・代車・カテゴリを考慮（branch claude/line-chatbot-ledra-dy2fiq）

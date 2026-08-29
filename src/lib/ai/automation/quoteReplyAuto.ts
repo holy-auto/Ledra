@@ -155,7 +155,12 @@ export function buildRoughEstimateMessage(input: {
       `※${closing}`,
     ].join("\n");
   }
-  return ["【お見積りについて】", ...head, "", "お見積りはお車を拝見してのご案内になります。", closing].join("\n");
+  // 金額を出せないケース。ボタンで LINE 継続するときは「お車を拝見して＝来店前提」の一文が
+  // closing (LINEで承ります) と矛盾するため出さない。ボタン無し時のみ従来の来店前提文を残す。
+  const noAmount = ["【お見積りについて】", ...head, ""];
+  if (!input.canContinueOnLine) noAmount.push("お見積りはお車を拝見してのご案内になります。");
+  noAmount.push(closing);
+  return noAmount.join("\n");
 }
 
 /**
