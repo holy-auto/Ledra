@@ -6,6 +6,15 @@
 
 最終更新: 2026-08-29
 
+> 2026-08-29 追記: **IMP-023 の db-migrate.yml が最終的に green になり、`certificate_images_guard`
+> トリガーが本番へ実適用されていることを直接確認した**（PR #938→#994→#996→#998 の4段階、
+> 詳細は各エントリ参照）。本番の `pg_trigger`/`pg_proc` を直接 SELECT し、
+> `trg_certificate_images_guard`（BEFORE DELETE OR UPDATE ON certificate_images）と
+> 関数本体が、修正済みの内容（`draft` のみ制限なし・保護対象27列・`search_path=''`）と
+> 完全一致することを確認済み。途中、本番にのみ存在した未追跡マイグレーション
+> （user_interface_preferences）と、レビュー待ちの間に自分自身が out-of-order になる
+> 問題が連続発生し、都度 DECISION_LOG 2026-07-21 の確立済み手順で復旧した。
+
 > 2026-08-29 追記: **#938（IMP-023、証跡凍結ガード）を main へ統合。代表確認
 > （「マイグレーション適用してマージ」）の上で本番マイグレーションを含めて取り込んだ。
 > 取り込み時の `/code-review` で本番 DB トリガーの設計不備を検出——`certificate_images_guard`
