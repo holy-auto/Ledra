@@ -1168,14 +1168,27 @@ describe("handleFlowPostback — リマインダーのセルフ操作ボタン",
     expect(mocks.maybeStartRescheduleFlow.mock.calls[0][0].intent).toBe("change_reservation");
   });
 
-  it("フロー起動不可 (opt-in が実行時 OFF 等で false) ならスタッフ相談にフォールバックする", async () => {
+  it("フロー起動不可 (進行中フロー有り等で false) でも無関係なフローを奪わず no-op で終える", async () => {
     mocks.shouldAutoSelfCancel.mockReturnValue(true);
     mocks.maybeStartCancelFlow.mockResolvedValue(false);
+    // 進行中の見積りフローがある状態でリマインダーのキャンセルボタンを押した想定。
+    mocks.store.tables.line_conversation_flows = [
+      {
+        id: "flow-x",
+        tenant_id: TENANT,
+        customer_id: CUSTOMER,
+        line_user_id: LINE_USER,
+        state: "awaiting_quote_ok",
+        context_json: {},
+      },
+    ];
     const handled = await handleFlowPostback({ tenantId: TENANT, lineUserId: LINE_USER, data: "flow:start_cancel" });
     expect(handled).toBe(true);
-    // 進行中フロー無し → durable な human_takeover マーカーを作って引き継ぐ (consult フォールバック)。
-    const marker = mocks.store.inserts.find((i) => i.table === "line_conversation_flows");
-    expect(marker?.payload.state).toBe("human_takeover");
+    // 進行中フローを human_takeover に奪わない (consult フォールバックしない)。
+    const hijack = mocks.store.updates.find(
+      (u) => u.table === "line_conversation_flows" && u.payload.state === "human_takeover",
+    );
+    expect(hijack).toBeUndefined();
   });
 
   it("flow:start_cancel は self-cancel opt-in が OFF なら受けない", async () => {

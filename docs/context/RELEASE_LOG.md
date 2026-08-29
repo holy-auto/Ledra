@@ -20,6 +20,13 @@
   既存 `notification_logs`（`type`/`target_type` は自由記述 text、`channel="line"` は既存 check 適合）。
 - 検証: cron 本体（明日抽出・dedup・opt-out/未紐付けスキップ・ボタン有無・失敗ログ）＋ postback
   ハンドラのテスト追加。全体 4404 件パス、tsc/eslint エラー0。
+- コードレビュー由来の追加ハードニング（同 PR、`/code-review`）:
+  - opt-in テナント発見を **tenant_id キーセットページング**に（PostgREST 既定 1000 行上限で
+    opt-in 済みテナントを無言で取りこぼさない。followUp.ts と同じ理由）。
+  - discovery クエリの失敗を throw させ **`sendCronFailureAlert` に上げる**（全滅を「0 件成功」で
+    隠さない）。テナント単位の失敗は個別に握って他テナントを止めない。
+  - リマインダーのボタン起動が false（主因=進行中フロー有り）のとき、consult フォールバックで
+    **無関係なフローを human_takeover に奪わない** no-op に（見積り等の進行中フローを守る）。
 - スコープ外（後続）: 送信時刻のテナント個別設定、メール併用、複数日前（2日前等）の追加。
 
 ## 2026-08-29 日程変更の空き計算を「自予約除外」に精緻化（後片付け、branch claude/line-chatbot-ledra-dy2fiq）
