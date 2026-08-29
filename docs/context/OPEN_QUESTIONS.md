@@ -22,6 +22,30 @@
   DECISION_LOG 2026-07-21 時点から未決のまま。今回のように「適用直後に同名ファイルを置く」を
   徹底しないと同じ停止が再発する。
 
+## 追加（2026-08-29・#938 IMP-023 マージ、Codex レビュー指摘）
+
+`certificate_images_guard`（証跡凍結ガード）は親 `certificates.status` を都度
+SELECT で読んで判定する設計のため、以下3つの回避経路が理論上残っている
+（マイグレーションのコメントにも明記済み）。いずれも「アプリの正規の操作」
+経由ではなく、テナントの owner/admin/staff 権限がある前提での直接 SQL・
+極端なタイミング競合が必要。この PR ではスコープ外として出荷するかどうか、
+代表確認中。
+
+- **(a) activate との TOCTOU 競合**: 証明書の activate（draft→active）と、
+  同じ写真行への DELETE が真に同時に走ると、ガードのロック無し SELECT が
+  古い draft を読んで削除を許してしまう可能性。
+- **(b) certificates.status の逆方向遷移で凍結解除**: `certificates` テーブル
+  自体には遷移を制限するガードがなく、active/void/expired から draft へ
+  直接 UPDATE されると、それ以降その証明書の写真は無制限に編集・削除できる。
+- **(c) 親行の CASCADE 削除で凍結をすり抜け**: 親 `certificates` 行自体が
+  削除される（`ON DELETE CASCADE`）と、子の `certificate_images` 側からは
+  「親が見つからない」＝「制限なし」に見えるため、削除経路自体が凍結を
+  すり抜ける。
+
+対応するには `certificates` 側にも遷移ガード（またはロック）が必要で、
+`certificate_images_guard` 単体の修正では閉じられない。IMP-030（訂正・
+supersede・Integrity Incident・revoke）が該当タスクの候補。
+
 ## 追加（2026-08-29・#936 IMP-021 マージ）
 
 - **`todayTasks.ts` の `startOfDayStr()` が正のUTCオフセット（JST 等）で日付を

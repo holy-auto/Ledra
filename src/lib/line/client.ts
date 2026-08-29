@@ -397,15 +397,30 @@ export async function handleWebhookEvents(
         attachment = fetched ? { path: fetched.path, contentType: fetched.contentType } : null;
         if (isImage && fetched?.buf) {
           try {
+            // 画像バイト列のコピーは 1 回だけ (数 MB になりうるので二重確保しない)。
+            const imageBuffer = Buffer.from(fetched.buf);
             const { handleVehiclePhotoMessage } = await import("@/lib/ai/automation/vehicleCaptureAuto");
             flowHandled = await handleVehiclePhotoMessage({
               tenantId,
               lineUserId: event.source.userId,
-              imageBuffer: Buffer.from(fetched.buf),
+              imageBuffer,
               attachmentPath: fetched.path,
               attachmentContentType: fetched.contentType,
               lineMessageId: msg.id ?? null,
             });
+            // 車両撮影フローでなければ、見積り詳細待ち (awaiting_quote_detail) 中の
+            // 車検証写真として OCR → 見積りフロー前進を試みる。
+            if (!flowHandled) {
+              const { maybeAdvanceQuoteFlowOnPhoto } = await import("@/lib/ai/automation/conversationFlowAuto");
+              flowHandled = await maybeAdvanceQuoteFlowOnPhoto({
+                tenantId,
+                lineUserId: event.source.userId,
+                imageBuffer,
+                attachmentPath: fetched.path,
+                attachmentContentType: fetched.contentType,
+                lineMessageId: msg.id ?? null,
+              });
+            }
           } catch {
             flowHandled = false; // fail-soft: 通常の受信箱記録にフォールバック
           }
