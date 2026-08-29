@@ -18,6 +18,7 @@ import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { resolveCertifiedTemplateForTenant } from "@/lib/manufacturers/certifiedTemplates";
 import { issueCaptureNonce } from "@/lib/certificates/captureNonce";
+import { storeIdOrNull } from "@/lib/stores/resolveStoreId";
 
 export const dynamic = "force-dynamic";
 
@@ -109,6 +110,12 @@ export async function POST(req: Request) {
     // PUT /api/admin/certificates/status で発行 (active 化) させる。
     const insertRow = {
       tenant_id: caller.tenantId,
+      // この経路は createCertificate を通らないので、店舗もここで決める
+      store_id: await storeIdOrNull(
+        createTenantScopedAdmin(caller.tenantId).admin,
+        caller.tenantId,
+        "certificates/create",
+      ),
       status: "draft" as const,
       customer_name: b.customer_name,
 

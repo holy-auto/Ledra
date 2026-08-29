@@ -14,7 +14,7 @@ import type { TaskTile } from "@/lib/admin/todayTasks";
  * タイルの priority ソートは todayTasks.ts で確定済み。最上位タイルがそのまま NEXT ACTION。
  */
 
-const TONE_TO_SEVERITY: Record<TaskTile["tone"], Severity> = {
+export const TONE_TO_SEVERITY: Record<TaskTile["tone"], Severity> = {
   urgent: "CRITICAL",
   warn: "HIGH",
   normal: "ACTION",

@@ -61,13 +61,20 @@ export default async function ConnectionsPage({
   const { admin } = createTenantScopedAdmin(tenantId);
 
   // 連携状態は tenants の各列 + 個別テーブルに散っているため、ここで 1 度だけ束ねる。
-  const [tenantRes, squareRes, accountingRes, generic] = await Promise.all([
+  const [tenantRes, secretRes, squareRes, accountingRes, generic] = await Promise.all([
     admin
       .from("tenants")
       .select(
-        "line_enabled, email_inbound_enabled, gcal_refresh_token, gcal_sync_enabled, stripe_connect_onboarded, booking_notify_slack_webhook_ciphertext, external_api_key",
+        "line_enabled, email_inbound_enabled, gcal_sync_enabled, stripe_connect_onboarded, booking_notify_slack_webhook_ciphertext",
       )
       .eq("id", tenantId)
+      .maybeSingle(),
+    admin
+      .from("tenant_private_secrets")
+      .select(
+        "gcal_refresh_token_ciphertext, gcal_refresh_token_legacy, external_api_key_hash, external_api_key_legacy",
+      )
+      .eq("tenant_id", tenantId)
       .maybeSingle(),
     admin
       .from("square_connections")
@@ -79,7 +86,9 @@ export default async function ConnectionsPage({
   ]);
 
   const t = (tenantRes.data ?? null) as Record<string, unknown> | null;
-  const statusLoadFailed = !!tenantRes.error || !!squareRes.error || !!accountingRes.error || generic.failed;
+  const secrets = (secretRes.data ?? null) as Record<string, unknown> | null;
+  const statusLoadFailed =
+    !!tenantRes.error || !!secretRes.error || !!squareRes.error || !!accountingRes.error || generic.failed;
 
   const squareRow = squareRes.data as Record<string, unknown> | null;
   const initialSquareConnection: SquareConnection | null = squareRow
@@ -114,7 +123,10 @@ export default async function ConnectionsPage({
     slack: { connected: slackConfigured, detail: slackRow?.external_account_name ?? undefined },
     line: { connected: !!t?.line_enabled },
     email_inbound: { connected: !!t?.email_inbound_enabled },
-    gcal: { connected: !!t?.gcal_refresh_token && !!t?.gcal_sync_enabled },
+    gcal: {
+      connected:
+        !!(secrets?.gcal_refresh_token_ciphertext || secrets?.gcal_refresh_token_legacy) && !!t?.gcal_sync_enabled,
+    },
     freee: {
       connected: accounting.freee?.status === "active",
       detail: accounting.freee?.external_company_name ?? undefined,
@@ -127,7 +139,7 @@ export default async function ConnectionsPage({
     square: { connected: initialSquareConnection?.status === "active" },
     // NexPTG は Ledra 側が発行した API キーを相手アプリに入れる方向なので、
     // 「キーを発行済みか」を接続状態とみなす（総覧に出す以上、実状態を見る）。
-    nexptg: { connected: !!t?.external_api_key },
+    nexptg: { connected: !!(secrets?.external_api_key_hash || secrets?.external_api_key_legacy) },
   };
 
   const connectedCount = INTEGRATION_CATALOG.filter((e) => rows[e.id]?.connected).length;

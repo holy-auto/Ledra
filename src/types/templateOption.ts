@@ -6,11 +6,7 @@
 export type TemplateOptionType = "preset" | "custom";
 
 /** 制作オーダー種別 */
-export type TemplateOrderType =
-  | "preset_setup"
-  | "custom_production"
-  | "modification"
-  | "additional";
+export type TemplateOrderType = "preset_setup" | "custom_production" | "modification" | "additional";
 
 /** オーダーステータス */
 export type TemplateOrderStatus =
@@ -27,27 +23,13 @@ export type TemplateOrderStatus =
   | "cancelled";
 
 /** オプションサブスクステータス */
-export type OptionSubscriptionStatus =
-  | "active"
-  | "past_due"
-  | "cancelled"
-  | "suspended";
+export type OptionSubscriptionStatus = "active" | "past_due" | "cancelled" | "suspended";
 
 /** アセット種別 */
-export type TemplateAssetType =
-  | "logo"
-  | "brand_guide"
-  | "reference"
-  | "seal"
-  | "other";
+export type TemplateAssetType = "logo" | "brand_guide" | "reference" | "seal" | "other";
 
 /** ログアクション種別 */
-export type OrderLogAction =
-  | "status_change"
-  | "comment"
-  | "asset_upload"
-  | "revision_request"
-  | "config_update";
+export type OrderLogAction = "status_change" | "comment" | "asset_upload" | "revision_request" | "config_update";
 
 // ---- config_json 構造 ----
 

@@ -71,9 +71,7 @@ export default function InsurerResetPasswordPage() {
     <main className="mx-auto max-w-md space-y-6 p-6">
       <div className="space-y-2">
         <h1 className="text-2xl font-semibold tracking-tight">新しいパスワードを設定</h1>
-        <p className="text-sm text-muted">
-          初回設定・再設定の両方で使います。
-        </p>
+        <p className="text-sm text-muted">初回設定・再設定の両方で使います。</p>
       </div>
 
       <form onSubmit={onSubmit} className="space-y-4 rounded-3xl border border-border-default bg-surface p-5 shadow-sm">

@@ -31,7 +31,9 @@ export function negotiateLocale(input: { headers: Headers } | Headers): Locale {
       const q = qPart ? Number(qPart.trim().slice(2)) : 1;
       return { tag: tag.trim().toLowerCase(), q: Number.isFinite(q) ? q : 0 };
     })
-    .filter((e) => e.tag.length > 0)
+    // RFC 9110 §12.5.4: q=0 は「その言語は受け入れ不可」。候補から外す。
+    // 外さないと `tl;q=0` が別名解決で fil を返し、`vi;q=0` が vi を返す。
+    .filter((e) => e.tag.length > 0 && e.q > 0)
     .sort((a, b) => b.q - a.q);
 
   for (const { tag } of ranked) {
@@ -41,7 +43,10 @@ export function negotiateLocale(input: { headers: Headers } | Headers): Locale {
     const primary = tag.split("-")[0];
     if (isSupportedLocale(primary)) return primary;
     // Alias (e.g. "tl" → "fil")
-    if (primary in LOCALE_ALIASES) return LOCALE_ALIASES[primary];
+    // `in` は Object.prototype 由来のキーも真になる。`Accept-Language: constructor`
+    // で Object コンストラクタ（関数）を Locale として返してしまう。ヘッダは
+    // クライアントが自由に送れるので、own property だけ見る。
+    if (Object.hasOwn(LOCALE_ALIASES, primary)) return LOCALE_ALIASES[primary];
   }
 
   return DEFAULT_LOCALE;
