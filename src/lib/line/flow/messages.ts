@@ -235,6 +235,10 @@ export interface CancelTargetReservation {
   scheduled_date: string;
   start_time: string | null;
   title: string | null;
+  /** 実所要時間(分)。日程変更で変更先候補を絞り、元予約の長さを保つために使う。不明なら null/未設定。 */
+  duration_minutes?: number | null;
+  /** 元予約が代車を使っているか。日程変更で空き代車のある日だけ候補にするために使う。 */
+  needs_loaner?: boolean;
 }
 
 /** 予約1件を「7/20(月) 10:00〜 内容」の1行に整形する (start_time 無しは終日扱い)。 */

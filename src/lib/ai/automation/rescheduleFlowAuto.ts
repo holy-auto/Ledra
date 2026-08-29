@@ -22,7 +22,7 @@ import {
   SCHEDULE_CANDIDATES_KEY,
 } from "./conversationFlowPostback";
 import { sendCustomerLineText, sendCustomerLineButtons } from "@/lib/line/client";
-import { fetchFlowScheduleCandidates } from "@/lib/line/flow/scheduleCandidates";
+import { fetchFlowScheduleCandidates, reservationDurationMinutes } from "@/lib/line/flow/scheduleCandidates";
 import { addDays } from "@/lib/booking/slots";
 import {
   buildReschedulePickAsk,
@@ -90,7 +90,8 @@ export async function maybeStartRescheduleFlow(params: MaybeStartRescheduleFlowP
     const today = todayJst();
     const { data } = await admin
       .from("reservations")
-      .select("id, scheduled_date, start_time, title, status")
+      // end_time / loaner_car_id は変更先候補の精度向上 (実所要時間・代車要否) に使う。
+      .select("id, scheduled_date, start_time, end_time, title, status, loaner_car_id")
       .eq("tenant_id", tenantId)
       .eq("customer_id", customerId)
       .gt("scheduled_date", today)
@@ -102,13 +103,22 @@ export async function maybeStartRescheduleFlow(params: MaybeStartRescheduleFlowP
         id: string;
         scheduled_date: string;
         start_time: string | null;
+        end_time: string | null;
         title: string | null;
         status: string | null;
+        loaner_car_id: string | null;
       }> | null) ?? [];
     // クエリ (gt/neq) に加えてコード側でも締め切り・状態を確認する (二重ガード)。
     const eligible: CancelTargetReservation[] = rows
       .filter((r) => r.status !== "cancelled" && r.status !== "completed" && r.scheduled_date > today)
-      .map((r) => ({ id: r.id, scheduled_date: r.scheduled_date, start_time: r.start_time, title: r.title }));
+      .map((r) => ({
+        id: r.id,
+        scheduled_date: r.scheduled_date,
+        start_time: r.start_time,
+        title: r.title,
+        duration_minutes: reservationDurationMinutes(r.start_time, r.end_time),
+        needs_loaner: !!r.loaner_car_id,
+      }));
 
     // 対象なし (当日/過去のみ、または予約なし) → スタッフ引き継ぎ。
     if (eligible.length === 0) {
@@ -163,6 +173,11 @@ export async function maybeStartRescheduleFlow(params: MaybeStartRescheduleFlowP
       limit: 3,
       fromDate: addDays(today, 1),
       excludeReservationId: target.id,
+      // 変更先候補を元予約の実所要時間・代車要否で絞る。作業はあるがカテゴリ不明なので
+      // 受入制限枠は提案しない (excludeRestricted)。
+      estimatedMinutes: target.duration_minutes,
+      needsLoaner: target.needs_loaner,
+      excludeRestricted: true,
     });
     if (slots.length === 0) {
       await sendCustomerLineText({ tenantId, customerId, lineUserId, body: buildCancelHandoff() });

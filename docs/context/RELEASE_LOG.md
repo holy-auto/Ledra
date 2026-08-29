@@ -4,6 +4,31 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-08-29 日程候補の精度向上: 日程変更で元予約の所要時間・代車・カテゴリを考慮（branch claude/line-chatbot-ledra-dy2fiq）
+
+- 内容: LINE の日程変更（reschedule）セルフ対応で提示する日程候補が、これまで所要時間も代車も
+  カテゴリも無視して「空いている枠」を一律に出していた。動かす対象の既存予約が持つ
+  **実所要時間（end−start）・代車要否（loaner_car_id）** を使って候補を絞り、作業はあるが
+  カテゴリ不明なので **受入制限枠は提案しない（excludeRestricted）** ようにした。
+  - 副次バグの解消: 変更確定時に候補の end_time をそのまま新予約の end_time にしていたため、
+    1時間の作業を3時間枠に移すと**予約が枠いっぱい（3時間）に膨らんでいた**。所要時間を
+    渡すことで end_time が実作業時間（start+所要）に揃い、元予約の長さを保つ。
+  - 所要時間に収まらない枠（fits=false）は顧客に提示しない（入れない枠を選べないように）。
+- 実装:
+  - `fetchFlowScheduleCandidates` に `estimatedMinutes` / `needsLoaner` / `excludeRestricted` を追加。
+    needsLoaner 時は `loaner_cars` / `loaner_car_loans` を読んで空き代車を日別算出。fits=false を除外。
+  - 代車の空き計算を純粋関数 `computeFreeLoanersByDate`（`booking/candidates.ts`）に切り出し、
+    `booking-candidates` route（管理UI）と LINE 会話フローで**単一情報源**にした（在庫計算の二重実装を防止）。
+  - `reservationDurationMinutes`（純粋関数）で end−start を分換算（終日/時刻なし/逆転は null）。
+  - reschedule フロー起点・pick→slot・確定直前の再検証の3経路すべてで同じ条件を渡し、
+    再検証の end_time 一致判定が壊れないようにした。
+- 見積り（新規予約）フローは施工内容→品目→カテゴリ/所要時間の解決層が無く所要時間が不明なため
+  従来どおり（estimatedMinutes=null）。人手（considerStaff）は今回スコープ外。マイグレーション不要。
+- 検証: `candidates`（computeFreeLoanersByDate）／`scheduleCandidates`（所要フィルタ・代車ゲート・
+  制限枠除外の結合）／`rescheduleFlowAuto`（元予約から所要・代車を渡すこと）テスト追加。
+  全体 4443 件パス、tsc/eslint エラー0。
+- #2「見積りフロー改善」の2件目。後続: 概算見積りにボタン誘導＋文面整合・停滞フローの再促し。
+
 ## 2026-08-29 見積りフロー改善①: 見積り詳細待ちの車検証写真をOCRで取り込む（branch claude/line-chatbot-ledra-dy2fiq）
 
 - 内容: 見積り会話フローの詳細待ち（`awaiting_quote_detail`）中に顧客が車検証写真を送ると、

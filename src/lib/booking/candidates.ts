@@ -216,3 +216,44 @@ export function proposeCandidates(opts: ProposeCandidatesOptions): Candidate[] {
   }
   return out;
 }
+
+/**
+ * 日付ごとの空き代車台数を算出する（純粋関数）。押さえ済み = ①その日の未キャンセル予約に
+ * 割り当てられた稼働代車 ＋ ②現在貸出中（未返却）で返却予定日が対象日以降（または無期限）の代車。
+ * `proposeCandidates({ needsLoaner:true, freeLoanersByDate })` にそのまま渡せる形で返す。
+ * booking-candidates route と LINE 会話フロー（日程変更）で同一の在庫計算を共有するための単一情報源。
+ */
+export function computeFreeLoanersByDate(
+  dates: string[],
+  activeLoanerIds: Set<string> | Iterable<string>,
+  reservations: Array<{ scheduled_date: string; loaner_car_id?: string | null }>,
+  openLoans: Array<{ loaner_car_id: string; return_due_at: string | null }>,
+): Record<string, number> {
+  const active = activeLoanerIds instanceof Set ? activeLoanerIds : new Set(activeLoanerIds);
+  const total = active.size;
+
+  // ① 予約割当（日別）: date → その日に押さえられている稼働代車ID
+  const assignedByDate = new Map<string, Set<string>>();
+  for (const r of reservations) {
+    if (!r.loaner_car_id || !active.has(r.loaner_car_id)) continue;
+    const key = r.scheduled_date.slice(0, 10);
+    let set = assignedByDate.get(key);
+    if (!set) assignedByDate.set(key, (set = new Set()));
+    set.add(r.loaner_car_id);
+  }
+  // ② 現在貸出中（未返却）: {代車ID, 返却予定日}
+  const loans = openLoans.map((l) => ({
+    id: l.loaner_car_id,
+    due: l.return_due_at ? l.return_due_at.slice(0, 10) : null,
+  }));
+
+  const out: Record<string, number> = {};
+  for (const date of dates) {
+    const committed = new Set(assignedByDate.get(date) ?? []);
+    for (const l of loans) {
+      if (active.has(l.id) && (l.due === null || l.due >= date)) committed.add(l.id);
+    }
+    out[date] = Math.max(0, total - committed.size);
+  }
+  return out;
+}
