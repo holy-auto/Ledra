@@ -34,6 +34,7 @@ type ErrorCode =
   | "plan_limit"
   | "db_error"
   | "auth_error"
+  | "step_up_required"
   | "internal_error"
   | "invalid_idempotency_key"
   | "idempotency_conflict"

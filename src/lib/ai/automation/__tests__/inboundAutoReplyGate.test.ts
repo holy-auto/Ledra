@@ -15,12 +15,19 @@ const mocks = vi.hoisted(() => ({
   shouldAutoExtractInbound: vi.fn(),
   shouldAutoReplyKnowledge: vi.fn(),
   shouldAutoReplyRoughEstimate: vi.fn(),
+  shouldRunConversationFlow: vi.fn(),
+  shouldAutoSelfCancel: vi.fn(),
+  shouldAutoSelfReschedule: vi.fn(),
+  shouldAutoReplyStatus: vi.fn(),
   decideInboundCommit: vi.fn(),
   extractInboundReservation: vi.fn(),
   fetchRecentConversation: vi.fn(),
   maybeAutoDraftQuoteFromInbound: vi.fn(),
   maybeAutoReplyRoughEstimate: vi.fn(),
   maybeAutoReplyKnowledge: vi.fn(),
+  maybeStartCancelFlow: vi.fn(),
+  maybeStartRescheduleFlow: vi.fn(),
+  maybeReplyWorkStatus: vi.fn(),
   usageRecord: vi.fn(),
   store: null as unknown as FakeStore,
 }));
@@ -33,8 +40,15 @@ vi.mock("../orchestrator", () => ({
   shouldAutoExtractInbound: mocks.shouldAutoExtractInbound,
   shouldAutoReplyKnowledge: mocks.shouldAutoReplyKnowledge,
   shouldAutoReplyRoughEstimate: mocks.shouldAutoReplyRoughEstimate,
+  shouldRunConversationFlow: mocks.shouldRunConversationFlow,
+  shouldAutoSelfCancel: mocks.shouldAutoSelfCancel,
+  shouldAutoSelfReschedule: mocks.shouldAutoSelfReschedule,
+  shouldAutoReplyStatus: mocks.shouldAutoReplyStatus,
   decideInboundCommit: mocks.decideInboundCommit,
 }));
+vi.mock("../cancelFlowAuto", () => ({ maybeStartCancelFlow: mocks.maybeStartCancelFlow }));
+vi.mock("../rescheduleFlowAuto", () => ({ maybeStartRescheduleFlow: mocks.maybeStartRescheduleFlow }));
+vi.mock("../statusReplyAuto", () => ({ maybeReplyWorkStatus: mocks.maybeReplyWorkStatus }));
 vi.mock("../quoteDraftAuto", () => ({ maybeAutoDraftQuoteFromInbound: mocks.maybeAutoDraftQuoteFromInbound }));
 vi.mock("../quoteReplyAuto", () => ({ maybeAutoReplyRoughEstimate: mocks.maybeAutoReplyRoughEstimate }));
 vi.mock("../knowledgeReplyAuto", () => ({ maybeAutoReplyKnowledge: mocks.maybeAutoReplyKnowledge }));
@@ -73,11 +87,18 @@ beforeEach(() => {
   mocks.shouldAutoExtractInbound.mockReturnValue(false);
   mocks.shouldAutoReplyKnowledge.mockReturnValue(false);
   mocks.shouldAutoReplyRoughEstimate.mockReturnValue(false);
+  mocks.shouldRunConversationFlow.mockReturnValue(false);
+  mocks.shouldAutoSelfCancel.mockReturnValue(false);
+  mocks.shouldAutoSelfReschedule.mockReturnValue(false);
+  mocks.shouldAutoReplyStatus.mockReturnValue(false);
   mocks.decideInboundCommit.mockReturnValue({ create: false, reason: "auto_create_off" });
   mocks.fetchRecentConversation.mockResolvedValue([]);
   mocks.extractInboundReservation.mockResolvedValue({ intent: "inquiry_only", confidence: 0.9, ai: true });
   mocks.maybeAutoReplyKnowledge.mockResolvedValue(false);
   mocks.maybeAutoReplyRoughEstimate.mockResolvedValue(false);
+  mocks.maybeStartCancelFlow.mockResolvedValue(false);
+  mocks.maybeStartRescheduleFlow.mockResolvedValue(false);
+  mocks.maybeReplyWorkStatus.mockResolvedValue(false);
 });
 
 describe("maybeAutoProcessInboundMessage auto-reply gating", () => {
@@ -149,6 +170,83 @@ describe("maybeAutoProcessInboundMessage auto-reply gating", () => {
     expect(arg.vehicleText).toBe("レクサス LX");
   });
 
+  it("suppresses customer-facing auto-replies while the active flow is human_takeover", async () => {
+    // 「スタッフに相談したい」ボタンが残す durable マーカー。以降の自動返信を止める。
+    mocks.shouldAutoReplyKnowledge.mockReturnValue(true);
+    mocks.shouldAutoReplyRoughEstimate.mockReturnValue(true);
+    mocks.shouldRunConversationFlow.mockReturnValue(true);
+    mocks.store.tables.line_conversation_flows = [
+      {
+        id: "flow-ht",
+        tenant_id: TENANT,
+        customer_id: null,
+        line_user_id: "Uabc123",
+        state: "human_takeover",
+        quote_doc_id: null,
+        context_json: {},
+      },
+    ];
+    await maybeAutoProcessInboundMessage(baseParams());
+    expect(mocks.maybeAutoReplyKnowledge).not.toHaveBeenCalled();
+    expect(mocks.maybeAutoReplyRoughEstimate).not.toHaveBeenCalled();
+  });
+
+  it("suppresses reservation auto-creation while the active flow is human_takeover", async () => {
+    // human_takeover 中は予約自動起票も止める（相談希望なのに予約が自動確定されないよう、
+    // 判定を起票の前に置く）。
+    mocks.shouldRunConversationFlow.mockReturnValue(true);
+    mocks.decideInboundCommit.mockReturnValue({ create: true, reason: "ok" });
+    mocks.extractInboundReservation.mockResolvedValue({
+      intent: "new_reservation",
+      confidence: 0.9,
+      ai: true,
+      scheduled_date: "2026-09-01",
+      service: "コーティング",
+    });
+    mocks.store.tables.line_conversation_flows = [
+      {
+        id: "flow-ht",
+        tenant_id: TENANT,
+        customer_id: "cust-1",
+        line_user_id: "Uabc123",
+        state: "human_takeover",
+        quote_doc_id: null,
+        context_json: {},
+      },
+    ];
+    await maybeAutoProcessInboundMessage({ ...baseParams(), customerId: "cust-1" });
+    expect(mocks.store.inserts.find((i) => i.table === "reservations")).toBeUndefined();
+    expect(mocks.maybeAutoReplyKnowledge).not.toHaveBeenCalled();
+  });
+
+  it("passes attachButtons=true to the knowledge reply when no flow is active", async () => {
+    mocks.shouldAutoReplyKnowledge.mockReturnValue(true);
+    mocks.shouldRunConversationFlow.mockReturnValue(true);
+    mocks.store.tables.line_conversation_flows = [];
+    await maybeAutoProcessInboundMessage(baseParams());
+    expect(mocks.maybeAutoReplyKnowledge).toHaveBeenCalledTimes(1);
+    expect(mocks.maybeAutoReplyKnowledge.mock.calls[0][0].attachButtons).toBe(true);
+  });
+
+  it("passes attachButtons=false to the knowledge reply when a non-takeover flow is active", async () => {
+    mocks.shouldAutoReplyKnowledge.mockReturnValue(true);
+    mocks.shouldRunConversationFlow.mockReturnValue(true);
+    mocks.store.tables.line_conversation_flows = [
+      {
+        id: "flow-detail",
+        tenant_id: TENANT,
+        customer_id: null,
+        line_user_id: "Uabc123",
+        state: "awaiting_quote_detail",
+        quote_doc_id: null,
+        context_json: {},
+      },
+    ];
+    await maybeAutoProcessInboundMessage(baseParams());
+    expect(mocks.maybeAutoReplyKnowledge).toHaveBeenCalledTimes(1);
+    expect(mocks.maybeAutoReplyKnowledge.mock.calls[0][0].attachButtons).toBe(false);
+  });
+
   it("recognizes an American car via the vehicle_size_master vocabulary (not in the built-in dict)", async () => {
     // 固定辞書に無いアメ車も、vehicle_size_master に登録されていれば認識される。
     mocks.shouldAutoReplyRoughEstimate.mockReturnValue(true);
@@ -161,5 +259,74 @@ describe("maybeAutoProcessInboundMessage auto-reply gating", () => {
     const arg = mocks.maybeAutoReplyRoughEstimate.mock.calls[0][0];
     expect(arg.vehicleText).toBe("キャデラック エスカレード");
     expect(arg.service).toBe("コーティング");
+  });
+
+  it("routes a cancel intent to the self-cancel flow and skips knowledge/estimate replies", async () => {
+    mocks.shouldAutoSelfCancel.mockReturnValue(true);
+    mocks.shouldAutoReplyKnowledge.mockReturnValue(true);
+    mocks.shouldAutoReplyRoughEstimate.mockReturnValue(true);
+    mocks.extractInboundReservation.mockResolvedValue({ intent: "cancel", confidence: 0.9, ai: true });
+    mocks.maybeStartCancelFlow.mockResolvedValue(true);
+    await maybeAutoProcessInboundMessage({ ...baseParams(), text: "予約をキャンセルしたい" });
+
+    expect(mocks.maybeStartCancelFlow).toHaveBeenCalledTimes(1);
+    expect(mocks.maybeStartCancelFlow.mock.calls[0][0].intent).toBe("cancel");
+    // キャンセルフローを起こしたら他の自動返信は走らせない。
+    expect(mocks.maybeAutoReplyKnowledge).not.toHaveBeenCalled();
+    expect(mocks.maybeAutoReplyRoughEstimate).not.toHaveBeenCalled();
+  });
+
+  it("does not touch the self-cancel flow for non-cancel intents", async () => {
+    mocks.shouldAutoSelfCancel.mockReturnValue(true);
+    mocks.shouldAutoReplyKnowledge.mockReturnValue(true);
+    mocks.extractInboundReservation.mockResolvedValue({ intent: "inquiry_only", confidence: 0.9, ai: true });
+    await maybeAutoProcessInboundMessage(baseParams());
+    expect(mocks.maybeStartCancelFlow).not.toHaveBeenCalled();
+    expect(mocks.maybeAutoReplyKnowledge).toHaveBeenCalledTimes(1);
+  });
+
+  it("routes a change_reservation intent to the self-reschedule flow and skips knowledge/estimate replies", async () => {
+    mocks.shouldAutoSelfReschedule.mockReturnValue(true);
+    mocks.shouldAutoReplyKnowledge.mockReturnValue(true);
+    mocks.shouldAutoReplyRoughEstimate.mockReturnValue(true);
+    mocks.extractInboundReservation.mockResolvedValue({ intent: "change_reservation", confidence: 0.9, ai: true });
+    mocks.maybeStartRescheduleFlow.mockResolvedValue(true);
+    await maybeAutoProcessInboundMessage({ ...baseParams(), text: "予約の日程を変更したい" });
+
+    expect(mocks.maybeStartRescheduleFlow).toHaveBeenCalledTimes(1);
+    expect(mocks.maybeStartRescheduleFlow.mock.calls[0][0].intent).toBe("change_reservation");
+    // 日程変更フローを起こしたら他の自動返信は走らせない。
+    expect(mocks.maybeAutoReplyKnowledge).not.toHaveBeenCalled();
+    expect(mocks.maybeAutoReplyRoughEstimate).not.toHaveBeenCalled();
+  });
+
+  it("does not touch the self-reschedule flow for non-change intents", async () => {
+    mocks.shouldAutoSelfReschedule.mockReturnValue(true);
+    mocks.shouldAutoReplyKnowledge.mockReturnValue(true);
+    mocks.extractInboundReservation.mockResolvedValue({ intent: "inquiry_only", confidence: 0.9, ai: true });
+    await maybeAutoProcessInboundMessage(baseParams());
+    expect(mocks.maybeStartRescheduleFlow).not.toHaveBeenCalled();
+  });
+
+  it("routes a status_inquiry intent to the status reply and skips knowledge/estimate replies", async () => {
+    mocks.shouldAutoReplyStatus.mockReturnValue(true);
+    mocks.shouldAutoReplyKnowledge.mockReturnValue(true);
+    mocks.shouldAutoReplyRoughEstimate.mockReturnValue(true);
+    mocks.extractInboundReservation.mockResolvedValue({ intent: "status_inquiry", confidence: 0.9, ai: true });
+    mocks.maybeReplyWorkStatus.mockResolvedValue(true);
+    await maybeAutoProcessInboundMessage({ ...baseParams(), text: "私の車の作業どうなってますか？" });
+
+    expect(mocks.maybeReplyWorkStatus).toHaveBeenCalledTimes(1);
+    expect(mocks.maybeReplyWorkStatus.mock.calls[0][0].intent).toBe("status_inquiry");
+    expect(mocks.maybeAutoReplyKnowledge).not.toHaveBeenCalled();
+    expect(mocks.maybeAutoReplyRoughEstimate).not.toHaveBeenCalled();
+  });
+
+  it("does not touch the status reply for non-status intents", async () => {
+    mocks.shouldAutoReplyStatus.mockReturnValue(true);
+    mocks.shouldAutoReplyKnowledge.mockReturnValue(true);
+    mocks.extractInboundReservation.mockResolvedValue({ intent: "inquiry_only", confidence: 0.9, ai: true });
+    await maybeAutoProcessInboundMessage(baseParams());
+    expect(mocks.maybeReplyWorkStatus).not.toHaveBeenCalled();
   });
 });

@@ -63,6 +63,16 @@ describe("verifyOtp()", () => {
     expect(result).toEqual({ valid: true });
   });
 
+  it("壊れた有効期限は「期限切れ」として弾く（fail closed）", () => {
+    // `new Date("こわれた").getTime()` は NaN。`NaN < Date.now()` は false なので、
+    // 以前は保存値が壊れているだけで**有効期限の無い OTP** になっていた。
+    for (const broken of ["こわれた", "", "not-a-date", "2026-13-45T99:99:99Z"]) {
+      const r = verifyOtp(code, hash, SCOPE, SECRET, broken, 0);
+      expect(r.valid).toBe(false);
+      if (!r.valid) expect(r.reason).toBe("expired");
+    }
+  });
+
   it("rejects an expired code", () => {
     const result = verifyOtp(code, hash, SCOPE, SECRET, pastExpiry, 0);
     expect(result).toEqual({ valid: false, reason: "expired" });

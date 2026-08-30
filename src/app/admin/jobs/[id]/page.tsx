@@ -83,7 +83,7 @@ export default async function JobWorkflowPage({ params }: { params: Promise<{ id
     reservation.customer_id
       ? supabase
           .from("customers")
-          .select("id, name, email, phone, company_name")
+          .select("id, name, email, phone, short_name")
           .eq("id", reservation.customer_id)
           .eq("tenant_id", tenantId)
           .single()
@@ -91,7 +91,7 @@ export default async function JobWorkflowPage({ params }: { params: Promise<{ id
     reservation.vehicle_id
       ? supabase
           .from("vehicles")
-          .select("id, maker, model, year, plate_display, vin")
+          .select("id, maker, model, year, plate_display, vin_code")
           .eq("id", reservation.vehicle_id)
           .eq("tenant_id", tenantId)
           .single()

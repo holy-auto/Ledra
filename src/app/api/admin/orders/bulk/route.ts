@@ -9,7 +9,10 @@ import { apiJson, apiUnauthorized, apiValidationError, apiInternalError } from "
 import { orderCreateSchema } from "@/lib/validations/order";
 
 const bulkSchema = z.object({
-  orders: z.array(orderCreateSchema).min(1, "orders must be a non-empty array").max(200, "最大200件まで一括インポートできます"),
+  orders: z
+    .array(orderCreateSchema)
+    .min(1, "orders must be a non-empty array")
+    .max(200, "最大200件まで一括インポートできます"),
 });
 
 /**
@@ -51,7 +54,17 @@ export async function POST(req: NextRequest) {
 
     for (let i = 0; i < parsed.data.orders.length; i++) {
       const order = parsed.data.orders[i];
-      const { to_tenant_id, title, description, category, budget, deadline, vehicle_id, requester_email, requester_company } = order;
+      const {
+        to_tenant_id,
+        title,
+        description,
+        category,
+        budget,
+        deadline,
+        vehicle_id,
+        requester_email,
+        requester_company,
+      } = order;
 
       const insertPayload: Record<string, unknown> = {
         public_id: makePublicId(),
