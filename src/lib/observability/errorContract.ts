@@ -175,8 +175,10 @@ export function createStructuredError(input: CreateStructuredErrorInput): Struct
       backoff: input.retry?.backoff,
       baseDelaySeconds: input.retry?.baseDelaySeconds,
     },
-    recovery: input.recovery ?? [{ kind: "none", label: "対応不要" }],
-    context: input.context,
+    // 呼び出し元が共有オブジェクト/配列を渡して後から変更しても、生成済みの
+    // エラーには影響しないようコピーする（IMP-050 exportAudit.ts と同パターン）。
+    recovery: input.recovery ? [...input.recovery] : [{ kind: "none", label: "対応不要" }],
+    context: input.context ? { ...input.context } : undefined,
     source: input.source,
   };
 }
@@ -199,7 +201,10 @@ export const structuredErrors = {
       detail: opts?.detail,
       dataSafety: "safe",
       retry: { retryable: false },
-      recovery: [{ kind: "none", label: "入力内容を修正してください" }],
+      // "none" は「対応不要」の意味であり、ユーザーに修正を求めるこのケースには
+      // 合わない。システムは自動再試行しない(retryable: false)が、ユーザーが
+      // 入力を直して再送信するアクションはあるため "retry" とする。
+      recovery: [{ kind: "retry", label: "入力内容を修正してください" }],
       source: opts?.source,
     });
   },
@@ -208,7 +213,14 @@ export const structuredErrors = {
   externalService(
     service: string,
     message: string,
-    opts?: { dataSafety?: DataSafetyLevel; retryAfterSeconds?: number; source?: string },
+    opts?: {
+      dataSafety?: DataSafetyLevel;
+      /** ユーザー向け「あとN秒待ってください」表示に使う秒数。 */
+      retryAfterSeconds?: number;
+      /** システムの自動再試行(指数バックオフ)の基準秒数。retryAfterSeconds とは独立。 */
+      baseDelaySeconds?: number;
+      source?: string;
+    },
   ): StructuredError {
     return createStructuredError({
       category: "external_service",
@@ -219,7 +231,7 @@ export const structuredErrors = {
         retryable: true,
         maxAttempts: 3,
         backoff: "exponential",
-        baseDelaySeconds: opts?.retryAfterSeconds ?? 2,
+        baseDelaySeconds: opts?.baseDelaySeconds ?? 2,
       },
       recovery: [
         {
@@ -318,13 +330,16 @@ export function requiresImmediateAttention(error: StructuredError): boolean {
  */
 export function toSentryContext(error: StructuredError): Record<string, unknown> {
   return {
+    // error.context を先に展開する。固定フィールドを後に置くことで、
+    // context のキーが category/source 等の名前と衝突しても固定値が優先される
+    // （任意の context で監視用の固定フィールドが上書きされるのを防ぐ）。
+    ...error.context,
     category: error.category,
     code: error.code,
     data_safety: error.dataSafety,
     retryable: error.retry.retryable,
     recovery_kinds: error.recovery.map((r) => r.kind).join(","),
     source: error.source,
-    ...error.context,
   };
 }
 
