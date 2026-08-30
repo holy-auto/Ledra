@@ -79,9 +79,5 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  return (
-    <ThemeContext.Provider value={{ mode, resolved, setMode }}>
-      {children}
-    </ThemeContext.Provider>
-  );
+  return <ThemeContext.Provider value={{ mode, resolved, setMode }}>{children}</ThemeContext.Provider>;
 }

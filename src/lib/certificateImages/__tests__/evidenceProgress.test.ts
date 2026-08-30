@@ -76,4 +76,23 @@ describe("computeEvidenceProgress", () => {
     expect(result.complete).toBe(true);
     expect(result.items[0].required).toBe(1);
   });
+
+  it("does not let one photo satisfy two required shots sharing the same stage", () => {
+    const required: RequiredShot[] = [
+      { stage: "intake_before", label: "施工前の全体写真" },
+      { stage: "intake_before", label: "傷口の接写" },
+    ];
+    // 1枚しかアップロードされていない → 片方しか満たせない
+    const result = computeEvidenceProgress(required, ["intake_before"]);
+    expect(result.complete).toBe(false);
+    expect(result.fulfilled).toBe(1);
+    expect(result.items[0].fulfilled).toBe(true);
+    expect(result.items[1].fulfilled).toBe(false);
+    expect(result.missing).toHaveLength(1);
+    expect(result.missing[0].label).toBe("傷口の接写");
+
+    // 2枚あれば両方満たせる
+    const both = computeEvidenceProgress(required, ["intake_before", "intake_before"]);
+    expect(both.complete).toBe(true);
+  });
 });

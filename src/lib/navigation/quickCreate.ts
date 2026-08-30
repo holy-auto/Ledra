@@ -34,16 +34,19 @@ export type QuickCreateAction = {
  */
 export const QUICK_CREATE_ACTIONS: readonly QuickCreateAction[] = [
   {
+    // ponytail: reservations/customers に /new ページは無い。一覧ページの
+    // ?create=1 でモーダルを自動オープンする既存の規約に合わせる
+    // （CustomersModeSwitch と同じ規約。ReservationsClient にも今回配線した）。
     id: "reservation",
     label: "新規予約",
-    href: "/admin/reservations/new",
+    href: "/admin/reservations?create=1",
     permission: "reservations:create",
     section: "新規作成",
   },
   {
     id: "customer",
     label: "新規顧客",
-    href: "/admin/customers/new",
+    href: "/admin/customers?create=1",
     permission: "customers:create",
     section: "新規作成",
   },
@@ -88,10 +91,13 @@ export type CreateContext = {
   jobId?: string;
 };
 
+// `new` は作成画面自体のパス（例: /admin/vehicles/new）であって ID ではない。
+// 除外しないと「新規作成画面を開いた状態で Quick Create を開く」と
+// vehicleId="new" のような存在しない ID がコンテキストに紛れ込む。
 const CONTEXT_PATTERNS: { pattern: RegExp; extract: (m: RegExpMatchArray) => CreateContext }[] = [
-  { pattern: /^\/admin\/customers\/([^/]+)$/, extract: (m) => ({ customerId: m[1] }) },
-  { pattern: /^\/admin\/vehicles\/([^/]+)$/, extract: (m) => ({ vehicleId: m[1] }) },
-  { pattern: /^\/admin\/jobs\/([^/]+)$/, extract: (m) => ({ jobId: m[1] }) },
+  { pattern: /^\/admin\/customers\/(?!new$)([^/]+)$/, extract: (m) => ({ customerId: m[1] }) },
+  { pattern: /^\/admin\/vehicles\/(?!new$)([^/]+)$/, extract: (m) => ({ vehicleId: m[1] }) },
+  { pattern: /^\/admin\/jobs\/(?!new$)([^/]+)$/, extract: (m) => ({ jobId: m[1] }) },
 ];
 
 /** 現在のパスからコンテキストを抽出する。 */
@@ -106,8 +112,11 @@ export function inferCreateContext(pathname: string): CreateContext {
 /**
  * Quick Create の遷移先 URL にコンテキストをクエリパラメータとして付与する。
  *
- * 例: "/admin/reservations/new" + { customerId: "abc" }
- *   → "/admin/reservations/new?customerId=abc"
+ * 例: "/admin/certificates/new" + { customerId: "abc" }
+ *   → "/admin/certificates/new?customerId=abc"
+ *
+ * href 側が既にクエリを持つ場合（例: "/admin/reservations?create=1"）も
+ * `&` で正しく連結する（`?` を2つ生成しない）。
  */
 export function applyCreateContext(href: string, ctx: CreateContext): string {
   const params = new URLSearchParams();
@@ -115,5 +124,6 @@ export function applyCreateContext(href: string, ctx: CreateContext): string {
   if (ctx.vehicleId) params.set("vehicleId", ctx.vehicleId);
   if (ctx.jobId) params.set("jobId", ctx.jobId);
   const qs = params.toString();
-  return qs ? `${href}?${qs}` : href;
+  if (!qs) return href;
+  return `${href}${href.includes("?") ? "&" : "?"}${qs}`;
 }

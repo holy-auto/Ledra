@@ -54,21 +54,25 @@ export function computeEvidenceProgress(
   required: readonly RequiredShot[],
   uploadedStages: readonly string[],
 ): EvidenceProgress {
-  // stage ごとのアップロード枚数を集計
-  const counts = new Map<string, number>();
+  // stage ごとのアップロード残数を集計。stage は施工前/作業中/施工後の粗い
+  // 4値しかなく、同じ stage を宣言する必須ショットが複数ありうる
+  // (例: 施工前の全体写真+傷口接写を両方必須にする)。宣言順に消費するので、
+  // 同じ写真が複数の必須項目を二重に満たしたことにはならない。
+  const remaining = new Map<string, number>();
   for (const s of uploadedStages) {
-    counts.set(s, (counts.get(s) ?? 0) + 1);
+    remaining.set(s, (remaining.get(s) ?? 0) + 1);
   }
 
   const items: ShotProgress[] = required.map((r) => {
     const needed = r.minCount ?? 1;
-    const uploaded = counts.get(r.stage) ?? 0;
+    const available = remaining.get(r.stage) ?? 0;
+    remaining.set(r.stage, Math.max(0, available - needed));
     return {
       stage: r.stage,
       label: r.label,
       required: needed,
-      uploaded,
-      fulfilled: uploaded >= needed,
+      uploaded: available,
+      fulfilled: available >= needed,
     };
   });
 

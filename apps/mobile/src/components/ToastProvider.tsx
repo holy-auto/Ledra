@@ -87,6 +87,9 @@ export function ToastProvider({ children }: { children: ReactNode }) {
         onDismiss={() => setVisible(false)}
         duration={duration}
         style={{ backgroundColor: VARIANT_COLORS[variant] }}
+        // Android は兄弟同士の重なりを elevation で決める。画面下端の固定バーは
+        // elevation 3 で浮かせているので、既定（0）のままだと通知が隠れる
+        wrapperStyle={{ elevation: 8 }}
       >
         {message}
       </Snackbar>

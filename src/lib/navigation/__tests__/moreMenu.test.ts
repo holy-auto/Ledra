@@ -1,6 +1,5 @@
 import { describe, it, expect } from "vitest";
 import { MORE_SECTIONS, MORE_MENU_ITEMS, filterMoreMenuItems, groupMoreMenuItems } from "../moreMenu";
-import type { MoreMenuItem } from "../moreMenu";
 import type { Permission } from "@/lib/auth/permissions";
 import { hasPermission } from "@/lib/auth/permissions";
 

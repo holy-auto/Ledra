@@ -160,8 +160,8 @@ export default function NexPTGConnectSection() {
           <li>Android: レポート保存時に自動同期 / iOS: 手動で同期ボタンを押下</li>
         </ol>
         <p className="mt-2 text-xs">
-          ※ NexPTGアプリはBasic認証のみサポートのため、Password欄にAPIキーを入れる運用です。<br />
-          ※ このキーは外部予約API（/api/external/booking）と共通です。再発行すると両方の連携が一度切断されます。
+          ※ NexPTGアプリはBasic認証のみサポートのため、Password欄にAPIキーを入れる運用です。
+          <br />※ このキーは外部予約API（/api/external/booking）と共通です。再発行すると両方の連携が一度切断されます。
         </p>
       </details>
 

@@ -41,22 +41,9 @@ export default function VehicleListActions() {
 
   return (
     <>
-      <input
-        ref={csvInputRef}
-        type="file"
-        accept=".csv,text/csv"
-        className="hidden"
-        onChange={onCsvChange}
-      />
-      {importResult && (
-        <span className="text-xs text-secondary">{importResult}</span>
-      )}
-      <Button
-        type="button"
-        variant="secondary"
-        loading={importing}
-        onClick={() => csvInputRef.current?.click()}
-      >
+      <input ref={csvInputRef} type="file" accept=".csv,text/csv" className="hidden" onChange={onCsvChange} />
+      {importResult && <span className="text-xs text-secondary">{importResult}</span>}
+      <Button type="button" variant="secondary" loading={importing} onClick={() => csvInputRef.current?.click()}>
         CSVから一括登録
       </Button>
       <Link href="/admin/vehicles/new" className="btn-primary">

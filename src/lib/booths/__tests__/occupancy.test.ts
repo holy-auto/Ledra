@@ -126,6 +126,17 @@ describe("computeBoothUtilization", () => {
     const u = computeBoothUtilization(booth, res);
     expect(u.occupiedMinutes).toBe(0);
   });
+
+  it("no_show は稼働率から除外（completed は含める）", () => {
+    const booth = mkBooth();
+    const res = [
+      mkRes({ id: "r1", boothId: "b1", startTime: "09:00", endTime: "12:00", status: "no_show" }),
+      mkRes({ id: "r2", boothId: "b1", startTime: "13:00", endTime: "14:00", status: "completed" }),
+    ];
+    const u = computeBoothUtilization(booth, res);
+    // no_show(3h)は含まれず、completed(1h=60min)のみカウントされる
+    expect(u.occupiedMinutes).toBe(60);
+  });
 });
 
 // ── detectCapacityConflicts ──
@@ -271,6 +282,22 @@ describe("findAvailableBooths", () => {
       mkRes({ id: "r1", boothId: "b1", startTime: "09:00", endTime: "12:00", status: "completed" }),
       mkRes({ id: "r2", boothId: "b1", startTime: "10:00", endTime: "14:00", status: "no_show" }),
     ];
+    const result = findAvailableBooths(booths, res, 10);
+    expect(result[0].currentlyFree).toBe(true);
+    expect(result[0].freeSlots).toEqual([{ start: 8, end: 19 }]);
+  });
+
+  it("逆転時刻（end <= start）は終日占有扱いにせず無視", () => {
+    const booths = [mkBooth({ id: "b1" })];
+    const res = [mkRes({ id: "r1", boothId: "b1", startTime: "12:00", endTime: "09:00" })];
+    const result = findAvailableBooths(booths, res, 10);
+    expect(result[0].currentlyFree).toBe(true);
+    expect(result[0].freeSlots).toEqual([{ start: 8, end: 19 }]);
+  });
+
+  it("片方だけ設定（データ不備）は終日占有扱いにせず無視", () => {
+    const booths = [mkBooth({ id: "b1" })];
+    const res = [mkRes({ id: "r1", boothId: "b1", startTime: "09:00", endTime: null })];
     const result = findAvailableBooths(booths, res, 10);
     expect(result[0].currentlyFree).toBe(true);
     expect(result[0].freeSlots).toEqual([{ start: 8, end: 19 }]);
