@@ -18,8 +18,8 @@ test.describe("顧客ポータル — 基本表示", () => {
   test("顧客ログインページが表示される", async ({ page }) => {
     await page.goto(`/customer/${config!.tenantSlug}/login`);
     await expect(page.locator("body")).not.toContainText("500");
-    // OTP 入力フォームが存在する
-    await expect(page.locator("input")).toBeVisible();
+    // OTP 入力フォームが存在する（メール・電話下4桁の2つの input が常に表示される）
+    await expect(page.locator("input").first()).toBeVisible();
   });
 
   test("無効なテナントスラグはエラー表示", async ({ page }) => {
