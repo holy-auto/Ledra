@@ -378,6 +378,12 @@ Sentry · Resend (+ SendGrid fallback) · Anthropic (Opus 4.8 / Sonnet 4.6 / Hai
   （SegmentedControl/StatusBadge/StatusCard/NextActionCard/ProgressCard/Alert/IconButton/
   BottomSheet）+ Badge dot + Button xl。v2.0 の色トークン値は不採用・既存デザインシステム維持
   （DECISION_LOG 2026-08-19）。
+- **IMP-052（§23 E2E_SUITE — 必須 E2E テストスイート）完了**:
+  v2.0 §23 必須 E2E を Playwright で実装。正常ワークフロー8テスト（ダッシュボード→予約→
+  作業詳細→証明書→車両→顧客→請求書）、例外フロー8テスト（API 4: 予約更新バリデーション/
+  証明書無効化/ステータス遷移/証明書ステータスAPI + UI 4: settings/404/POS/search）、
+  顧客確認4テスト、WCAG AA 9テスト（公開4+管理4+全違反レポート1）。
+  CI E2E ジョブ復元（secrets ゲート付き）。全テスト環境変数ゲートで secrets 未設定時は自動 skip。
 - **IMP-051（§3.5 ACCESSIBILITY_I18N_AUDIT — アクセシビリティ監査＆翻訳QA基盤）完了**:
   WCAG 2.1 AA コントラスト比チェッカー（5関数）、WCAG AA 監査フレームワーク型定義
   （19基準＋10コンポーネントARIA要件マップ）、翻訳品質保証ユーティリティ（キー過不足検出・
