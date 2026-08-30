@@ -28,10 +28,12 @@ export interface ReplyDraftInput {
   /** お客様の登録車両 (例: "トヨタ アルファード")。分かれば文脈に添える。 */
   vehicle?: string | null;
   /**
-   * 店舗ナレッジ (LINE 自動返信と同じソース)。回答の事実根拠にする。
+   * 店舗ナレッジ (tenant_line_knowledge の enabled)。回答の最優先の事実根拠。
    * 空なら従来どおり会話文脈のみで下書きする。
    */
   knowledge?: KnowledgeEntry[];
+  /** 全テナント共有ナレッジ (global_line_knowledge の enabled)。参考。店舗ナレッジと矛盾時は店舗優先。 */
+  sharedKnowledge?: KnowledgeEntry[];
 }
 
 export interface ReplyDraftResult {
@@ -67,14 +69,48 @@ confidence: 0.0〜1.0 で、文脈の明瞭さに基づく自己評価。
 
 ${untrustedNotice("会話履歴")}`.trim();
 
-/** 店舗ナレッジをプロンプトに載せる facts 文字列に整形する (空なら null)。 */
-export function knowledgeFacts(entries: KnowledgeEntry[] | undefined): string | null {
+/**
+ * ナレッジをプロンプトに載せる facts 文字列に整形する (空なら null)。
+ * このルートは対話的 (スタッフが下書き生成を待つ) なので、注入量を上限で抑える。
+ * 店舗ナレッジ→共通ナレッジの順で予算を割り当て、店舗ナレッジの優先を明示する。
+ */
+const MAX_KNOWLEDGE_CHARS = 4000;
+
+function renderKnowledgeBlock(
+  label: string,
+  entries: KnowledgeEntry[] | undefined,
+  budget: number,
+): { text: string; used: number } | null {
   const usable = (entries ?? []).filter((e) => e.content?.trim());
   if (usable.length === 0) return null;
-  const lines = usable.map((e) =>
-    e.title?.trim() ? `- ${e.title.trim()}: ${e.content.trim()}` : `- ${e.content.trim()}`,
-  );
-  return `店舗ナレッジ (回答の根拠。これに反する内容は書かない):\n${lines.join("\n")}`;
+  const lines: string[] = [];
+  let used = 0;
+  for (const e of usable) {
+    // 複数行の本文は 1 行に畳む (箇条書きが崩れて別の事実に見えるのを防ぐ)。
+    const content = e.content.trim().replace(/\s*\n\s*/g, " ");
+    const line = e.title?.trim() ? `- ${e.title.trim()}: ${content}` : `- ${content}`;
+    if (used + line.length > budget) break; // 予算超過分は載せない (対話的ルートの遅延/コスト抑制)。
+    lines.push(line);
+    used += line.length;
+  }
+  if (lines.length === 0) return null;
+  return { text: `${label}:\n${lines.join("\n")}`, used };
+}
+
+export function knowledgeFacts(
+  tenant: KnowledgeEntry[] | undefined,
+  shared?: KnowledgeEntry[] | undefined,
+): string | null {
+  const blocks: string[] = [];
+  let budget = MAX_KNOWLEDGE_CHARS;
+  const t = renderKnowledgeBlock("店舗ナレッジ (最優先。これに反する内容は書かない)", tenant, budget);
+  if (t) {
+    blocks.push(t.text);
+    budget -= t.used;
+  }
+  const s = renderKnowledgeBlock("共通ナレッジ (参考。店舗ナレッジと矛盾する場合は店舗ナレッジを優先)", shared, budget);
+  if (s) blocks.push(s.text);
+  return blocks.length > 0 ? blocks.join("\n\n") : null;
 }
 
 const EMPTY: ReplyDraftResult = { draft_reply: "", confidence: 0, ai: false };
@@ -92,7 +128,7 @@ export async function generateReplyDraft(input: ReplyDraftInput, opts?: { model?
   if (input.customerName) facts.push(`顧客名: ${input.customerName}`);
   if (input.vehicle?.trim()) facts.push(`お客様の登録車両: ${input.vehicle.trim()}`);
   // 店舗ナレッジ (LINE 自動返信と同じソース) を回答の根拠として先に載せる。
-  const kFacts = knowledgeFacts(input.knowledge);
+  const kFacts = knowledgeFacts(input.knowledge, input.sharedKnowledge);
   if (kFacts) facts.push(kFacts);
   // 直近 12 ターンだけ文脈に渡す (長すぎる履歴を避ける)。
   const recent = input.turns.slice(-12);

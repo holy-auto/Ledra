@@ -19,6 +19,18 @@ describe("knowledgeFacts", () => {
     expect(out).toContain("- 定休日は水曜");
     expect(out).not.toContain("無視");
   });
+
+  it("labels tenant and shared blocks separately with tenant precedence", () => {
+    const out = knowledgeFacts([{ title: "定休日", content: "水曜" }], [{ title: "共通", content: "参考情報" }]);
+    expect(out).toContain("店舗ナレッジ (最優先。これに反する内容は書かない)");
+    expect(out).toContain("共通ナレッジ (参考。店舗ナレッジと矛盾する場合は店舗ナレッジを優先)");
+  });
+
+  it("collapses multi-line content onto a single bullet", () => {
+    const out = knowledgeFacts([{ title: "営業時間", content: "平日10-19時\n土曜は10-17時" }]);
+    expect(out).toContain("- 営業時間: 平日10-19時 土曜は10-17時");
+    expect(out).not.toContain("\n土曜");
+  });
 });
 
 describe("generateReplyDraft", () => {

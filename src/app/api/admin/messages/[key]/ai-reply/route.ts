@@ -146,22 +146,19 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ key: strin
         .order("created_at", { ascending: true })
         .limit(SHARED_KNOWLEDGE_LIMIT),
       customerId
-        ? admin
-            .from("vehicles")
-            .select("maker, model")
-            .eq("tenant_id", tenantId)
-            .eq("customer_id", customerId)
-            .limit(1)
-            .maybeSingle()
-        : Promise.resolve({ data: null }),
+        ? admin.from("vehicles").select("maker, model").eq("tenant_id", tenantId).eq("customer_id", customerId).limit(2)
+        : Promise.resolve({ data: [] }),
     ]);
 
-    const knowledge: KnowledgeEntry[] = [
-      ...((tenantKnowledgeRes.data as KnowledgeEntry[] | null) ?? []),
-      ...((sharedKnowledgeRes.data as KnowledgeEntry[] | null) ?? []),
-    ];
-    const v = vehicleRes.data as { maker: string | null; model: string | null } | null;
-    const vehicle = v ? [v.maker, v.model].filter((s): s is string => !!s && s.trim().length > 0).join(" ") : null;
+    const tenantKnowledge = (tenantKnowledgeRes.data as KnowledgeEntry[] | null) ?? [];
+    const sharedKnowledge = (sharedKnowledgeRes.data as KnowledgeEntry[] | null) ?? [];
+    // 登録車両は「1台に確定できるとき」だけ文脈に添える。複数台あるとどの車の話か特定できず、
+    // 誤った車種を事実として渡してしまうため、その場合は付けない (スタッフの判断に委ねる)。
+    const vehicles = (vehicleRes.data as Array<{ maker: string | null; model: string | null }> | null) ?? [];
+    const vehicle =
+      vehicles.length === 1
+        ? [vehicles[0].maker, vehicles[0].model].filter((s): s is string => !!s && s.trim().length > 0).join(" ")
+        : "";
 
     const result = await generateReplyDraft(
       {
@@ -169,7 +166,8 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ key: strin
         customerName,
         shopName: (tenantRes.data?.name as string | null) ?? null,
         vehicle: vehicle || null,
-        knowledge,
+        knowledge: tenantKnowledge,
+        sharedKnowledge,
       },
       { model: fastModelForPlanTier(caller.planTier) },
     );
