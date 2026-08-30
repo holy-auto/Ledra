@@ -4,6 +4,20 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-08-30 IMP-040（#950）の code-review 指摘を修正。遷移表を transitions.ts へ統合、プロトタイプ汚染防止
+
+- 内容: `/code-review` の3件の指摘を修正。`PART_INSTALLATION_TRANSITIONS` を
+  `states.ts` から `transitions.ts` へ移設し、他6軸と同じ `Record<S, readonly S[]>`
+  型・`isValidTransition()` ヘルパーに統一（素の `table[from]` アクセスによる
+  `TypeError`（`"toString"` 等 Object.prototype 由来キー）を解消）。`transitions.ts`
+  のヘッダコメントを「6軸」→「7軸」に更新。DB 凍結ガード
+  （`part_installations_guard`）との関係を説明するコメントを、実際のトリガー内容に
+  基づいて修正（TS 表の方が厳しく、両者はスコープが異なる旨を明記）。テストを
+  `states.test.ts` から `transitions.test.ts` へ移設し、プロトタイプ汚染防止テストを
+  追加。
+- 検証: tsc --noEmit / vitest run(4786件) / lint(0エラー) / check:schema /
+  lint:migrations すべて green。
+
 ## 2026-08-30 IMP-040（#950）を main へ取り込み。部品装着インテグリティ 正準語彙
 
 - 内容: IMP-040（部品装着状態の正準語彙7軸目、branch impl/IMP-040-parts-integrity）を

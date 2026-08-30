@@ -4,6 +4,18 @@
 > （新しい順）。実装の詳細は RELEASE_LOG.md、迷っている段階のものは
 > OPEN_QUESTIONS.md に書く。
 
+## 2026-08-30 IMP-040（#950）の code-review 指摘を修正。PartInstallation 遷移表を transitions.ts へ統合、DB ガードとの関係の誤記を修正
+
+1. 日付: 2026-08-30
+2. 起きたこと: PR #950 に `/code-review` を実行し3件の指摘を得た。(a) `states.ts` に追加した `isValidPartInstallationTransition()` が素の `table[from]` アクセスを使っており、`"toString"` 等 `Object.prototype` 由来のキーを渡すと `TypeError` を投げる（他 6 軸の遷移表がすでに `transitions.ts` の `known()`/`isValidTransition()` で防いでいるのと同じ穴。実際に Node で再現: `TypeError: targets.includes is not a function`）。(b) `PART_INSTALLATION_TRANSITIONS` が他 6 軸と違う場所（`states.ts`）に、違う安全性（`Partial<Record>` + 素の添字アクセス）で定義されており、`transitions.ts` の「7軸の遷移可否の単一定義源」という自身の目的表明と矛盾していた。(c) 新遷移表のコメント「DB 凍結ガード(part_installations_guard)準拠」が不正確——実際の DB トリガーは `customer_verified`/`voided` 到達後の不変性と `customer_verified` 到達時のゲート（署名・ハッシュ一致等）しか強制しておらず、DRAFT→DISPUTED や DRAFT→VOIDED のような、この表がブロックする遷移までは拒否しない（TS 表の方が厳しい）。
+3. 以前の考え: `PART_INSTALLATION_STATES`（値）と同じファイル（`states.ts`）に遷移表も置けば、7軸目の定義がひとまとまりになって分かりやすいと考えていた。
+4. 違和感・問題: 6軸（Job/Step/Severity/Certificate/Payment/Sync）は「値は states.ts、遷移表は transitions.ts」という分離が既に確立していた。7軸目だけこの分離を破ると、`isValidTransition()` という既存の安全なジェネリックヘルパーを使わない独自実装が生まれ、まさに`transitions.ts` 自身が「素の `table[from]` を使わない」と明記して防いでいた不具合を再現した。
+5. 決めたこと: `PART_INSTALLATION_TRANSITIONS` を `transitions.ts` に移設（他 6 軸と同型の `Record<PartInstallationState, readonly PartInstallationState[]>`、`VOIDED: []` を明示）。`states.ts` の `isValidPartInstallationTransition()` は削除し、呼び出し側は他6軸と同じく `isValidTransition(PART_INSTALLATION_TRANSITIONS, from, to)` を直接使う。`transitions.ts` のヘッダコメントを「6軸」→「7軸」に更新。DB ガードとの関係を説明するコメントを、実際のトリガー内容（`part_installations_guard`）に基づいて書き直した。テストも `states.test.ts` から `transitions.test.ts` の `AXES` 配列・専用 describe ブロックへ移設し、他6軸と同じプロトタイプ汚染防止テストを追加。
+6. 捨てた選択肢: (a) `states.ts` にテーブルを残し、`isValidPartInstallationTransition()` の中身だけ `Object.hasOwn` ガードに直す — Finding 1 は直るが、二重管理という Finding 2 の指摘は残る。(b) 何もしない（呼び出し元ゼロだから実害なしとして先送り） — `transitions.ts` 自身が「7軸の単一定義源」であることを謳っている以上、新設の7軸目がそれを満たさない状態を残すのは一貫性を欠く。
+7. 判断理由: 既存の安全なジェネリックヘルパー（`isValidTransition`）が存在するのに新しい軸だけ独自実装するのは、まさに二重管理から不整合が生まれる典型パターン（IMP-027/028/030 で繰り返し確認済み）。
+8. まだ答えが出ていないこと: なし。
+9. 公開区分: 公開可（コードの整合性修正。金額・テナント名・接続情報は含まない）
+
 ## 2026-08-30 IMP-040（#950）を main へ取り込み。resurrection パターン14度目
 
 1. 日付: 2026-08-30

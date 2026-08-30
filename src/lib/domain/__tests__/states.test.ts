@@ -3,7 +3,6 @@ import {
   CERTIFICATE_STATES,
   JOB_STATES,
   PART_INSTALLATION_STATES,
-  PART_INSTALLATION_TRANSITIONS,
   PAYMENT_STATES,
   SEVERITIES,
   STEP_STATES,
@@ -15,7 +14,6 @@ import {
   isSeverity,
   isStepState,
   isSyncState,
-  isValidPartInstallationTransition,
 } from "../states";
 import {
   DOMAIN_LOCALES,
@@ -82,47 +80,7 @@ describe("型ガード(不正値の扱い)", () => {
   });
 });
 
-describe("PartInstallation 遷移表", () => {
-  it("DRAFT → INSTALLED のみ許可", () => {
-    expect(isValidPartInstallationTransition("DRAFT", "INSTALLED")).toBe(true);
-    expect(isValidPartInstallationTransition("DRAFT", "CUSTOMER_VERIFIED")).toBe(false);
-    expect(isValidPartInstallationTransition("DRAFT", "VOIDED")).toBe(false);
-  });
-
-  it("INSTALLED → CUSTOMER_VERIFIED / DISPUTED / VOIDED を許可", () => {
-    expect(isValidPartInstallationTransition("INSTALLED", "CUSTOMER_VERIFIED")).toBe(true);
-    expect(isValidPartInstallationTransition("INSTALLED", "DISPUTED")).toBe(true);
-    expect(isValidPartInstallationTransition("INSTALLED", "VOIDED")).toBe(true);
-    expect(isValidPartInstallationTransition("INSTALLED", "DRAFT")).toBe(false);
-  });
-
-  it("CUSTOMER_VERIFIED → VOIDED のみ許可（完全凍結の唯一の例外）", () => {
-    expect(isValidPartInstallationTransition("CUSTOMER_VERIFIED", "VOIDED")).toBe(true);
-    expect(isValidPartInstallationTransition("CUSTOMER_VERIFIED", "INSTALLED")).toBe(false);
-    expect(isValidPartInstallationTransition("CUSTOMER_VERIFIED", "DISPUTED")).toBe(false);
-  });
-
-  it("DISPUTED → CUSTOMER_VERIFIED / VOIDED を許可", () => {
-    expect(isValidPartInstallationTransition("DISPUTED", "CUSTOMER_VERIFIED")).toBe(true);
-    expect(isValidPartInstallationTransition("DISPUTED", "VOIDED")).toBe(true);
-    expect(isValidPartInstallationTransition("DISPUTED", "INSTALLED")).toBe(false);
-  });
-
-  it("VOIDED は終端状態 — 遷移先なし", () => {
-    for (const target of PART_INSTALLATION_STATES) {
-      expect(isValidPartInstallationTransition("VOIDED", target)).toBe(false);
-    }
-  });
-
-  it("遷移表のキーと値はすべて正準値", () => {
-    for (const [from, targets] of Object.entries(PART_INSTALLATION_TRANSITIONS)) {
-      expect(isPartInstallationState(from)).toBe(true);
-      for (const to of targets as readonly string[]) {
-        expect(isPartInstallationState(to)).toBe(true);
-      }
-    }
-  });
-});
+// PartInstallation の遷移表テストは transitions.test.ts（他 6 軸と同じ場所）に移設。
 
 describe("ロケール別ラベル", () => {
   it.each(AXES)("$name: 収録ロケールのマップは全正準値を網羅し空文字がない", ({ name, values }) => {
