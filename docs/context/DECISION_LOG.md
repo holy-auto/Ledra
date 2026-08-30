@@ -4,6 +4,18 @@
 > （新しい順）。実装の詳細は RELEASE_LOG.md、迷っている段階のものは
 > OPEN_QUESTIONS.md に書く。
 
+## 2026-08-30 IMP-043（#953）を main へ取り込み。resurrection パターン17度目、未使用importを修正
+
+1. 日付: 2026-08-30
+2. 起きたこと: IMP-043（見積/請求ワークフロー型基盤 — 承認スナップショット・帳票版管理・POS ブリッジ、branch impl/IMP-043-estimate-invoice-workflow）を main へ取り込む際、main と分岐した72ファイルが衝突した。65ファイルは phantom conflict で一括解決。残り7ファイル（DECISION_LOG.md/LEDRA_CURRENT.md/RELEASE_LOG.md/requirement-trace.md/`src/lib/domain/states.ts`/`labels.ts`/`__tests__/states.test.ts`）はこのPR自身が変更していたため手動再適用した。このPRは v2.0 正準語彙の8軸目（`DOCUMENT_CORRECTION_STATES`、ADR-0004 帳票訂正リクエスト状態）を states.ts/labels.ts/__tests__/states.test.ts の同一PRで追加しており ADR-0002 準拠。resurrection チェックで `WorkScopeProvider.tsx`（17度目の再発）とスキップ済み PR #947 の `src/lib/sync/` 一式8ファイルが今回も復活していたため削除。`documents/` 配下3ファイル（PR 自身の新規ファイル）は `sync/` への依存なし（grep で確認済み）。マージ後の lint で新規1件（`states.test.ts` が `documentCorrectionStateLabel` を import しているが未使用 — PR 自身が導入した AXES テーブル駆動テストは関数を直接呼ばず `__DOMAIN_LABEL_MAPS` 経由のため）を検出、修正して基準線（1256件）に復帰。
+3. 以前の考え: なし（#948〜952 で確立した手順の踏襲）。
+4. 違和感・問題: 特になし。
+5. 決めたこと: 確立済みの手順をそのまま適用。
+6. 捨てた選択肢: なし。
+7. 判断理由: 確立済みの手順が引き続き有効に機能した。
+8. まだ答えが出ていないこと: なし。
+9. 公開区分: 公開可（マージ手順の技術的な経緯。金額・テナント名・接続情報は含まない）
+
 ## 2026-08-30 IMP-042（#952）の code-review 指摘を修正。key 重複時の挙動不一致・非 readonly なスナップショット・ドキュメント誤記を解消
 
 1. 日付: 2026-08-30
