@@ -14,7 +14,8 @@
  */
 
 import type { DocumentItem, DocType, DocumentStatus } from "@/types/document";
-import { type DocumentCorrectionState, isValidDocumentCorrectionTransition } from "@/lib/domain/states";
+import type { DocumentCorrectionState } from "@/lib/domain/states";
+import { DOCUMENT_CORRECTION_TRANSITIONS, isValidTransition } from "@/lib/domain/transitions";
 
 // ── 型 ──
 
@@ -124,11 +125,19 @@ export function isCorrectable(status: DocumentStatus): boolean {
 /**
  * 訂正リクエストの状態遷移が有効か判定する。
  *
- * 正準遷移表 (states.ts DOCUMENT_CORRECTION_TRANSITIONS) に委譲。
+ * 正準遷移表 (transitions.ts DOCUMENT_CORRECTION_TRANSITIONS) に委譲。
  * 小文字の DB 値を大文字の正準値に変換して判定する。
+ *
+ * 名前に注意: src/lib/certificates/correction.ts にも同名の関数が存在するが、
+ * 別の状態集合（証明書は5状態・cancelled を含む、帳票は4状態）を扱う別物。
+ * このモジュールからは isValidDocumentCorrectionStatusTransition としてのみ公開する。
  */
-export function isValidCorrectionTransition(from: DocumentCorrectionStatus, to: DocumentCorrectionStatus): boolean {
-  return isValidDocumentCorrectionTransition(
+export function isValidDocumentCorrectionStatusTransition(
+  from: DocumentCorrectionStatus,
+  to: DocumentCorrectionStatus,
+): boolean {
+  return isValidTransition(
+    DOCUMENT_CORRECTION_TRANSITIONS,
     from.toUpperCase() as DocumentCorrectionState,
     to.toUpperCase() as DocumentCorrectionState,
   );

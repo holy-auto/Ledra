@@ -35,12 +35,19 @@ const VERB_MAP: Record<string, PermissionVerb> = {
   void: "APPROVE", // 証明書無効化は承認行為
   manage: "MANAGE",
   operate: "MANAGE",
+  // `platform:operations`（プラットフォーム運用）が抜けていた。無いと下の
+  // フォールバックに落ちて、**特権操作が「閲覧」に分類される。**
+  operations: "MANAGE",
 };
 
 /** 既存 Permission から正準動詞を導出する。 */
 export function canonicalVerb(permission: Permission): PermissionVerb {
-  const verb = permission.split(":")[1];
-  return VERB_MAP[verb] ?? "VIEW";
+  const verb = permission.split(":")[1] ?? "";
+  // 表に無い動詞は **MANAGE** にする（fail closed）。この値は監査レベルと
+  // step-up の判断に入るので、分からないものを "VIEW"（＝低リスク）と
+  // 答えると監視が緩む方向に外れる。素引きを避けるのは、
+  // `VERB_MAP["constructor"]` が関数を返すため（境界防御）。
+  return Object.hasOwn(VERB_MAP, verb) ? VERB_MAP[verb] : "MANAGE";
 }
 
 // ── リスクレベル ──

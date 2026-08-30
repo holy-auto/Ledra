@@ -75,6 +75,15 @@ describe("enrichJobWithBoothContext", () => {
     expect(result.action).toBe("follow_up_overdue");
     // overdue が先に判定されるため boothHint は付かない
     // （arrived + ブース未割当でも overdue が勝つ）
+    expect(result.boothHint).toBeUndefined();
+    expect(result.priority).toBe("high");
+    expect(result.priorityAdjusted).toBe(false);
+  });
+
+  it("期限超過請求があれば定員超過より優先（boothHint を上書きしない）", () => {
+    const result = enrichJobWithBoothContext(mkInput({ hasOverdueInvoice: true, boothCapacityExceeded: true }));
+    expect(result.action).toBe("follow_up_overdue");
+    expect(result.boothHint).toBeUndefined();
   });
 });
 

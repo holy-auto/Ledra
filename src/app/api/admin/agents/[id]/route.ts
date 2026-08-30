@@ -48,7 +48,7 @@ export async function GET(_request: NextRequest, ctx: RouteContext) {
         .order("period_start", { ascending: false }),
       admin
         .from("agent_users")
-        .select("id, agent_id, user_id, role, display_name, email, created_at, updated_at")
+        .select("id, agent_id, user_id, role, display_name, created_at, updated_at")
         .eq("agent_id", id)
         .order("created_at", { ascending: true }),
     ]);

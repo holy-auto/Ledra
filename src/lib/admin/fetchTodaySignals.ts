@@ -8,8 +8,12 @@
  * LLM は一切使わない — ここで確定した件数がそのまま「事実」になり、
  * サマリ生成 AI はこの数値を言い換えるだけ (AI が事実を作らないための土台)。
  */
+import { cache } from "react";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { deriveTodayTasks, type TaskTile } from "@/lib/admin/todayTasks";
+import { businessDateString } from "@/lib/datetime";
+
+export { businessDateString } from "@/lib/datetime";
 
 /**
  * 「営業日」の日付文字列 (YYYY-MM-DD) を JST で返す。
@@ -19,10 +23,6 @@ import { deriveTodayTasks, type TaskTile } from "@/lib/admin/todayTasks";
  * 日中に消える。Ledra は国内向けなので JST (UTC+9・DST なし) を営業日とする。
  * ponytail: 店舗別タイムゾーンには未対応 (全店 JST 前提)。海外展開時に店舗 tz を持つ。
  */
-export function businessDateString(now: Date = new Date()): string {
-  return new Date(now.getTime() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
-}
-
 export interface TodaySignals {
   reservations: Array<{ id: string; status: string | null; scheduled_date: string; title?: string | null }>;
   invoices: Array<{ id: string; status: string | null; total: number | null; due_date: string | null }>;
@@ -34,20 +34,35 @@ export interface TodaySignals {
 /**
  * テナントの当日シグナルを並列取得する。scope="mine" + currentUserId 指定時は
  * reservation 系のみ担当ユーザで絞る (請求・証明書は店全体のまま)。
+ *
+ * ponytail: 同一リクエスト内で TodayOverviewSection と TodayTasksWidget が同じ
+ * (tenantId, scope, currentUserId) で呼ぶため、内部を React cache() でラップし
+ * 二重フェッチを防ぐ。cache() は引数を参照ではなく値で比較するため、呼び出し側
+ * ごとに新しく作る opts オブジェクトのままだと効かない — プリミティブ引数の
+ * 内部実装を挟むのはそのため。
  */
 export async function fetchTodaySignals(
   tenantId: string,
   opts?: { scope?: "tenant" | "mine"; currentUserId?: string | null; now?: Date },
 ): Promise<TodaySignals> {
+  return fetchTodaySignalsCached(tenantId, opts?.scope ?? "tenant", opts?.currentUserId ?? null, opts?.now?.getTime());
+}
+
+const fetchTodaySignalsCached = cache(async function fetchTodaySignalsImpl(
+  tenantId: string,
+  scope: "tenant" | "mine",
+  currentUserId: string | null,
+  nowMs: number | undefined,
+): Promise<TodaySignals> {
   const { admin } = createTenantScopedAdmin(tenantId);
-  const realNow = opts?.now ?? new Date();
+  const realNow = nowMs !== undefined ? new Date(nowMs) : new Date();
   // 「今日」は営業タイムゾーン (JST) で判定する。digest_date (businessDateString) と
   // 揃え、UTC 日付とのズレでダッシュボードのタイルと保存済みサマリが食い違うのを防ぐ。
   const jstNow = new Date(realNow.getTime() + 9 * 60 * 60 * 1000);
   const todayStr = jstNow.toISOString().slice(0, 10);
   const dormantCutoff = new Date(jstNow.getTime() - 180 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
-  const effectiveScope = opts?.scope === "mine" && opts?.currentUserId ? "mine" : "tenant";
+  const effectiveScope = scope === "mine" && currentUserId ? "mine" : "tenant";
 
   let reservationsQ = admin
     .from("reservations")
@@ -56,8 +71,8 @@ export async function fetchTodaySignals(
     .or(`status.eq.in_progress,scheduled_date.eq.${todayStr}`)
     .neq("status", "cancelled")
     .limit(200);
-  if (effectiveScope === "mine" && opts?.currentUserId) {
-    reservationsQ = reservationsQ.eq("assigned_user_id", opts.currentUserId);
+  if (effectiveScope === "mine" && currentUserId) {
+    reservationsQ = reservationsQ.eq("assigned_user_id", currentUserId);
   }
 
   const [reservationsRes, invoicesRes, certsRes, churnRes] = await Promise.all([
@@ -95,7 +110,7 @@ export async function fetchTodaySignals(
     churnRiskCustomerCount: dormantCustomerIds.size,
     now: jstNow,
   };
-}
+});
 
 /** シグナルからタイル (決定論) を導く薄いラッパ。 */
 export function tilesFromSignals(signals: TodaySignals): TaskTile[] {

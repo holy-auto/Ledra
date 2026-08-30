@@ -12,6 +12,7 @@ import { canUseFeature } from "@/lib/billing/planFeatures";
 import { generateCertificateFeedback } from "@/lib/ai/academyFeedback";
 import { fastModelForPlanTier } from "@/lib/ai/client";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
+import { CERT_AI_COLUMNS, certAiFields, certPhotoCount } from "@/lib/certificates/aiFields";
 
 const academyFeedbackSchema = z.object({
   certificate_id: z.string().uuid("certificate_id が必要です"),
@@ -44,7 +45,7 @@ export async function POST(req: NextRequest) {
     // 証明書情報取得
     const { data: cert } = await admin
       .from("certificates")
-      .select("service_name, description, material_info, warranty_period, work_areas, category, photo_count")
+      .select(CERT_AI_COLUMNS)
       .eq("id", certificate_id)
       .eq("tenant_id", caller.tenantId)
       .single();
@@ -63,19 +64,17 @@ export async function POST(req: NextRequest) {
       .from("academy_cases")
       .select("id, ai_summary")
       .eq("is_published", true)
-      .eq("category", cert.category ?? "")
+      // certificates に category 列は無いので、施工種別で近い事例を引く
+      .eq("category", (certAiFields(cert).service_name || null) ?? "")
       .limit(3);
 
     const feedback = await generateCertificateFeedback(
       {
         certificate: {
-          service_name: cert.service_name ?? "",
-          description: cert.description ?? undefined,
-          material_info: cert.material_info ?? undefined,
-          warranty_period: cert.warranty_period ?? undefined,
-          work_areas: cert.work_areas ?? undefined,
-          photo_count: cert.photo_count ?? 0,
-          category: cert.category ?? undefined,
+          ...certAiFields(cert),
+          // 施工箇所は certAiFields が content_preset_json から拾う。
+          // category は保存先が無く、いちばん近い service_type は service_name として渡している
+          photo_count: await certPhotoCount(admin, certificate_id),
         },
         qualityScore: qualityScore?.score ?? undefined,
         missingFields: qualityScore?.missing_fields ?? undefined,

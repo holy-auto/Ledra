@@ -11,7 +11,7 @@
  */
 
 import type { CertificateState } from "@/lib/domain/states";
-import { CERTIFICATE_TRANSITIONS } from "@/lib/domain/transitions";
+import { CERTIFICATE_TRANSITIONS, isValidTransition } from "@/lib/domain/transitions";
 
 // ── 版遷移結果 ──
 
@@ -37,8 +37,7 @@ export type SupersedeResult = {
  * @returns 遷移結果
  */
 export function evaluateSupersede(oldVersionState: CertificateState): SupersedeResult {
-  const allowed = CERTIFICATE_TRANSITIONS[oldVersionState];
-  if (!allowed.includes("SUPERSEDED")) {
+  if (!isValidTransition(CERTIFICATE_TRANSITIONS, oldVersionState, "SUPERSEDED")) {
     return {
       valid: false,
       reason: `状態 "${oldVersionState}" から SUPERSEDED への遷移は許可されていません。VERIFIED 状態の証明書のみ supersede 可能です。`,
@@ -67,11 +66,10 @@ export type RevokeResult = {
  * @returns 遷移結果
  */
 export function evaluateRevoke(currentState: CertificateState): RevokeResult {
-  const allowed = CERTIFICATE_TRANSITIONS[currentState];
-  if (!allowed.includes("REVOKED")) {
+  if (!isValidTransition(CERTIFICATE_TRANSITIONS, currentState, "REVOKED")) {
     return {
       valid: false,
-      reason: `状態 "${currentState}" から REVOKED への遷移は許可されていません。VERIFIED 状態の証明書のみ revoke 可能です。`,
+      reason: `状態 "${currentState}" から REVOKED への遷移は許可されていません。VERIFIED / ISSUING / VERIFYING 状態の証明書のみ revoke 可能です。`,
     };
   }
 
@@ -103,7 +101,9 @@ export function resolveVersionRedirect(state: CertificateState, latestPublicId?:
     return {
       shouldRedirect: true,
       message: "この証明書には新しい版があります。最新版をご確認ください。",
-      redirectToPublicId: latestPublicId,
+      // latestPublicId 省略時はキー自体を含めない（undefined を「リダイレクト先不明」と
+      // 「リダイレクト先が空文字」で区別できなくする代入をしない）。
+      ...(latestPublicId && { redirectToPublicId: latestPublicId }),
     };
   }
 

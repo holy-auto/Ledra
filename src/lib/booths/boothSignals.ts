@@ -8,7 +8,7 @@
  * DB・API・UI の変更なし（型基盤先行パターン）。
  */
 import type { BoothInfo, BoothReservation } from "./occupancy";
-import { peakConcurrent, detectCapacityConflicts, computeBoothUtilization } from "./occupancy";
+import { detectCapacityConflicts, computeBoothUtilization, NON_OCCUPYING } from "./occupancy";
 
 // ── 型 ──
 
@@ -59,9 +59,7 @@ export function deriveBoothSignals(input: BoothSignalInput): BoothSignal[] {
   const signals: BoothSignal[] = [];
 
   // 1. ブース未割当のアクティブ予約
-  const unassigned = reservations.filter(
-    (r) => !r.boothId && r.status !== "cancelled" && r.status !== "completed" && r.status !== "no_show",
-  );
+  const unassigned = reservations.filter((r) => !r.boothId && !NON_OCCUPYING.has(r.status));
   if (unassigned.length > 0) {
     signals.push({
       kind: "assign_booth",
@@ -84,9 +82,7 @@ export function deriveBoothSignals(input: BoothSignalInput): BoothSignal[] {
     if (boothRes.length === 0) continue;
 
     // 定員超過・空き判定には終端ステータスを除外（占有していない）
-    const activeBoothRes = boothRes.filter(
-      (r) => r.status !== "cancelled" && r.status !== "completed" && r.status !== "no_show",
-    );
+    const activeBoothRes = boothRes.filter((r) => !NON_OCCUPYING.has(r.status));
 
     // 2a. 定員超過
     const conflicts = detectCapacityConflicts(booth, activeBoothRes);

@@ -4,13 +4,7 @@ import Link from "next/link";
 import * as Sentry from "@sentry/nextjs";
 import { useEffect } from "react";
 
-export default function LoginError({
-  error,
-  reset,
-}: {
-  error: Error & { digest?: string };
-  reset: () => void;
-}) {
+export default function LoginError({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {
   useEffect(() => {
     Sentry.captureException(error);
   }, [error]);
@@ -19,14 +13,7 @@ export default function LoginError({
     <main className="min-h-screen flex items-center justify-center bg-base p-6">
       <div className="glass-card w-full max-w-sm space-y-6 p-8 text-center">
         <div className="mx-auto w-14 h-14 rounded-2xl bg-red-50 dark:bg-red-500/10 flex items-center justify-center">
-          <svg
-            width="28"
-            height="28"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="#ef4444"
-            strokeWidth={1.5}
-          >
+          <svg width="28" height="28" fill="none" viewBox="0 0 24 24" stroke="#ef4444" strokeWidth={1.5}>
             <path
               strokeLinecap="round"
               strokeLinejoin="round"
@@ -35,19 +22,11 @@ export default function LoginError({
           </svg>
         </div>
 
-        <h1 className="text-xl font-bold text-primary">
-          ログインページの読み込みに失敗しました
-        </h1>
+        <h1 className="text-xl font-bold text-primary">ログインページの読み込みに失敗しました</h1>
 
-        <p className="text-sm text-secondary">
-          しばらくしてからもう一度お試しください。
-        </p>
+        <p className="text-sm text-secondary">しばらくしてからもう一度お試しください。</p>
 
-        {error.digest && (
-          <p className="text-xs text-muted font-mono">
-            エラーID: {error.digest}
-          </p>
-        )}
+        {error.digest && <p className="text-xs text-muted font-mono">エラーID: {error.digest}</p>}
 
         <div className="flex gap-3 justify-center">
           <button onClick={() => reset()} className="btn-primary">
