@@ -4,6 +4,22 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-08-30 IMP-027（#942）を main へ取り込み。PaymentState 導出層・Policy 評価器、code-review 由来の修正4件
+
+- 内容: IMP-027（§11 支払いモデル、branch impl/IMP-027-payment-model）を main へ取り込んだ。
+  46ファイルの phantom conflict（main 側を採用）＋ resurrection 5ファイル（WorkScopeProvider.tsx /
+  sync/* を7度目の再削除）を解消。`/code-review` 指摘6件のうち4件を修正:
+  - `evaluateInsurance()` に UNKNOWN/CANCELED ガードを追加（保険承認後に決済が不明/取消に
+    なっても `met: true` を返していたバグ。盲目リトライ禁止原則に反していた）。テスト2件追加
+  - `derivePoSPaymentState` の exhaustiveness チェック変数を返り値として使い、未使用変数
+    lint warning を解消
+  - `derivePaymentState` の JSDoc に既存実装済みの「total <= 0 → PAID」分岐を追記
+  - b2b の支払いサイクル未設定メッセージが `signoff/state.ts` と文言重複していたため、
+    クロスリファレンスコメントを追加（統合はスコープ外として見送り）
+  - 残り2件（B2B都度払いの CREDIT_APPROVED 未実装、payment/ 配下の呼び出し元ゼロ）は
+    既存の設計方針の範囲内として不採用。詳細は DECISION_LOG 参照
+- tsc/lint/vitest(4540件+新規2件)/check:schema/lint:migrations/check:migrations すべて green。
+
 ## 2026-08-30 IMP-026（#941）マージ後、db-migrate.yml が out-of-order で失敗——本番は直接確認したところ既に正しく適用済みだった
 
 - 内容: PR #941 squash マージ後、`db-migrate.yml` が `customer_concerns` migration の

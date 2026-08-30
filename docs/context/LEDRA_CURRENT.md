@@ -4,7 +4,7 @@
 > 追わず、常に最新状態だけを保つ（履歴は DECISION_LOG.md / RELEASE_LOG.md 側）。
 > 大きな変化があったら都度上書きすること。
 
-最終更新: 2026-08-29
+最終更新: 2026-08-30
 
 > 2026-08-29 追記: **IMP-023 の db-migrate.yml が最終的に green になり、`certificate_images_guard`
 > トリガーが本番へ実適用されていることを直接確認した**（PR #938→#994→#996→#998 の4段階、
@@ -378,6 +378,12 @@ Sentry · Resend (+ SendGrid fallback) · Anthropic (Opus 4.8 / Sonnet 4.6 / Hai
   （SegmentedControl/StatusBadge/StatusCard/NextActionCard/ProgressCard/Alert/IconButton/
   BottomSheet）+ Badge dot + Button xl。v2.0 の色トークン値は不採用・既存デザインシステム維持
   （DECISION_LOG 2026-08-19）。
+- **IMP-027（§11 支払いモデル — PaymentState 導出層・Policy 評価器）完了**:
+  既存3系統（documents/payments/reservations）の支払いステータスから正準 `PaymentState`（9値）を
+  導出する純関数3本+ Certificate Gate の `payment_policy_met` を評価する Policy 評価器
+  （consumer/b2b/insurance の3ポリシー）。DBマイグレーションなし。main 取り込み時の
+  `/code-review` で保険ポリシーの UNKNOWN/CANCELED ゲート漏れ（承認後に決済が不明/取消でも
+  met:true を返すバグ）を発見・修正。Certificate Gate への実統合は IMP-028。
 - **IMP-026（§10 顧客確認Web — 「気になる点を伝える」懸念提起フロー）完了**:
   確認フロー4系統（受領サイン・部品確認・板金同意・進捗追跡）に「気になる点を伝える」UI を統合。
   `customer_concerns` テーブル（DBマイグレーション）+ 顧客API（トークン→テナント逆引き）+

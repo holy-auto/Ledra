@@ -4,6 +4,18 @@
 > （新しい順）。実装の詳細は RELEASE_LOG.md、迷っている段階のものは
 > OPEN_QUESTIONS.md に書く。
 
+## 2026-08-30 IMP-027（#942）を main へ取り込み。code-review 指摘のうち保険ポリシーのUNKNOWN/CANCELEDゲート漏れを修正、B2B/callerゼロの2件は既存方針の範囲内として不採用
+
+1. 日付: 2026-08-30
+2. 起きたこと: IMP-027（PaymentState 導出層・Policy 評価器、branch impl/IMP-027-payment-model）を main へ取り込む際、main と分岐した46ファイルが add/add・content 衝突した（いずれも IMP-027 自身のコミットが触っていないファイル。IMP-020〜026 の後発実装との phantom conflict）。加えて `src/lib/navigation/WorkScopeProvider.tsx` と `src/lib/sync/*`（4ファイル）が7度目の復活をした（`check-resurrected-files.sh` が今回は ORIG_BASE を直前の IMP-026 tip に取れたため正しく検出）。`/code-review` で6件の指摘を受けた。
+3. 以前の考え: IMP-027 は「純関数のみ・呼び出し元なし」の基盤層 PR として、他の IMP-0xx（IMP-012/013/014/016）と同じ設計方針で書かれたはずだった。
+4. 違和感・問題: 6件の指摘のうち4件は実際のバグ・改善点だった: (a) `evaluateInsurance()` が `paymentState` を一切見ておらず、保険承認後に決済が UNKNOWN/CANCELED になっても `met: true` を返す——`evaluatePaymentPolicy` 自身の JSDoc（「UNKNOWN 状態では条件不成立」「CANCELED は条件不成立」）に反する。consumer/b2b は UNKNOWN をゲートしているのに insurance だけ漏れていた。(b) `derivePoSPaymentState` の exhaustiveness チェック用 `_exhaustive: never` が未使用変数として lint warning。(c) `derivePaymentState` の JSDoc 番号付きロジックが実装済みの「total <= 0 → PAID」分岐を書き漏らしていた。(d) b2b の支払いサイクル未設定メッセージが `src/lib/signoff/state.ts` の④会計ステップと一字一句同じ文言で、片方だけ変更されるとお客様への案内が食い違う。残り2件は指摘の前提が本 repo の既存方針と食い違っていた: (e) 「B2B都度払いの条件が v2.0 §11.3 の named state CREDIT_APPROVED でなく支払い金額(PAID)を見ている」——`requirement-trace.md` §1.5 で既にこの対応度の低さ（「該当なし」）を記録済みで、insurance 同様の Phase 2 簡易実装として PR 本文にも明記済み。(f) 「payment/ 配下に呼び出し元が1つも無いのは IMP-015（2026-08-19）で却下した設計の再現」——DECISION_LOG 2026-08-19 の IMP-015 エントリを実際に読むと、却下されたのは「既存値→正準値の**変換マップ**を全軸一括で先に作ること」であり、「型・純関数を呼び出し元なしで先に実装し、消費は後続タスクに委ねる」という設計自体は IMP-012/013/014/016 で**繰り返し採用**されてきた本プロジェクトの標準パターン（各エントリで「画面/ルートは後続タスクに委ねる」と明記）。
+5. 決めたこと: (a)(b)(c)(d) を修正: `evaluateInsurance` に UNKNOWN/CANCELED ガードを追加しテスト2件追加、`_exhaustive` を返り値として使い lint warning を解消、JSDoc に total<=0 分岐を追記、signoff/state.ts との文言重複箇所にクロスリファレンスコメントを追加（構造分離を優先し、統合はしない——後述）。(e)(f) は不採用（根拠は上記4参照）。復活5ファイルは mv による除去で対処（確立済み手順）。
+6. 捨てた選択肢: (a) b2b/insurance の文言重複を signoff/state.ts と payment/policy.ts で共通定数に切り出す案 — 既存の稼働中モジュール（signoff/state.ts）を、呼び出し元がまだ無い新設の基盤層 PR から触ることになり、スコープが広がる。コメントでの相互参照のみに留めた。(b) CREDIT_APPROVED を新たな入力フィールドとして PaymentPolicyContext に追加する案 — 「法人の与信承認」という概念自体が既存データに存在しない（requirement-trace.md 確認済み）ため、この PR 単独では実装できない。IMP-028 以降で必要になった時点で判断する。
+7. 判断理由: 実際のバグ（insurance の UNKNOWN/CANCELED ゲート漏れ）は Certificate Gate の盲目リトライ禁止原則（ADR-0002）に直結するため確実に修正。一方で「本 PR の設計方針が過去の決定と矛盾する」という指摘は、実際に過去の DECISION_LOG エントリを読んで裏取りするまでは信頼できない典型例だった——読んだ結果、矛盾ではなく本プロジェクトの一貫した標準パターンだと判明した。
+8. まだ答えが出ていないこと: (a) B2B の CREDIT_APPROVED（与信承認）データソースが本番のどこにも存在しない——IMP-028 で Certificate Gate に統合する際、この設計判断（PAID で代用）を維持するか改めて検討が必要。(b) signoff/state.ts と payment/policy.ts の文言重複は、両方を書き換える画面統合タスクが来た時点で一本化を検討する。
+9. 公開区分: 公開可（実装の技術的な経緯。金額・テナント名・接続情報は含まない）
+
 ## 2026-08-30 IMP-026（#941）マージ後、db-migrate.yml が out-of-order で失敗——本番は直接確認したところ既に正しく適用済みだった
 
 1. 日付: 2026-08-30
