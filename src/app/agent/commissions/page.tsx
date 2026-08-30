@@ -37,9 +37,7 @@ export default function AgentCommissionsPage() {
 
   // Filter state
   const now = new Date();
-  const [periodFrom, setPeriodFrom] = useState(
-    `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`,
-  );
+  const [periodFrom, setPeriodFrom] = useState(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`);
   const [periodTo, setPeriodTo] = useState(periodFrom);
 
   // Auth check
@@ -64,15 +62,10 @@ export default function AgentCommissionsPage() {
         const json = await res.json();
         if (!cancelled) {
           setCommissions(json.commissions ?? []);
-          setSummary(
-            json.summary ?? { total_earned: 0, pending: 0, this_month: 0 },
-          );
+          setSummary(json.summary ?? { total_earned: 0, pending: 0, this_month: 0 });
         }
       } catch (e: unknown) {
-        if (!cancelled)
-          setError(
-            e instanceof Error ? e.message : "エラーが発生しました",
-          );
+        if (!cancelled) setError(e instanceof Error ? e.message : "エラーが発生しました");
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -108,12 +101,8 @@ export default function AgentCommissionsPage() {
       <div className="flex flex-wrap items-end justify-between gap-4 pb-2">
         <div className="space-y-1">
           <span className="section-tag">COMMISSIONS</span>
-          <h1 className="text-[28px] font-semibold tracking-tight text-primary leading-tight">
-            コミッション履歴
-          </h1>
-          <p className="text-[14px] text-secondary leading-relaxed">
-            紹介手数料の履歴・集計を確認できます。
-          </p>
+          <h1 className="text-[28px] font-semibold tracking-tight text-primary leading-tight">コミッション履歴</h1>
+          <p className="text-[14px] text-secondary leading-relaxed">紹介手数料の履歴・集計を確認できます。</p>
         </div>
       </div>
 
@@ -129,21 +118,15 @@ export default function AgentCommissionsPage() {
           <div className="grid gap-4 sm:grid-cols-3">
             <div className="glass-card p-5">
               <div className="text-xs text-muted">累計獲得額</div>
-              <div className="mt-1 text-xl font-bold text-primary">
-                {formatJpy(summary.total_earned)}
-              </div>
+              <div className="mt-1 text-xl font-bold text-primary">{formatJpy(summary.total_earned)}</div>
             </div>
             <div className="glass-card p-5">
               <div className="text-xs text-muted">未払い（ペンディング）</div>
-              <div className="mt-1 text-xl font-bold text-primary">
-                {formatJpy(summary.pending)}
-              </div>
+              <div className="mt-1 text-xl font-bold text-primary">{formatJpy(summary.pending)}</div>
             </div>
             <div className="glass-card p-5">
               <div className="text-xs text-muted">今月の獲得額</div>
-              <div className="mt-1 text-xl font-bold text-primary">
-                {formatJpy(summary.this_month)}
-              </div>
+              <div className="mt-1 text-xl font-bold text-primary">{formatJpy(summary.this_month)}</div>
             </div>
           </div>
 
@@ -180,9 +163,7 @@ export default function AgentCommissionsPage() {
                   <th className="px-4 py-3 font-medium">紹介先ショップ</th>
                   <th className="px-4 py-3 font-medium text-right">基本額</th>
                   <th className="px-4 py-3 font-medium text-right">料率</th>
-                  <th className="px-4 py-3 font-medium text-right">
-                    コミッション額
-                  </th>
+                  <th className="px-4 py-3 font-medium text-right">コミッション額</th>
                   <th className="px-4 py-3 font-medium">ステータス</th>
                   <th className="px-4 py-3 font-medium">支払日</th>
                 </tr>
@@ -190,45 +171,29 @@ export default function AgentCommissionsPage() {
               <tbody>
                 {commissions.length === 0 ? (
                   <tr>
-                    <td
-                      colSpan={7}
-                      className="px-4 py-10 text-center text-muted"
-                    >
+                    <td colSpan={7} className="px-4 py-10 text-center text-muted">
                       該当するコミッション履歴がありません。
                     </td>
                   </tr>
                 ) : (
                   commissions.map((c) => {
-                    const status = getStatusEntry(
-                      AGENT_COMMISSION_STATUS_MAP,
-                      c.status,
-                    );
+                    const status = getStatusEntry(AGENT_COMMISSION_STATUS_MAP, c.status);
                     return (
                       <tr
                         key={c.id}
                         className="border-b border-border-default hover:bg-surface-hover/40 transition-colors"
                       >
                         <td className="px-4 py-3 text-primary">{c.period}</td>
-                        <td className="px-4 py-3 text-primary">
-                          {c.referral_shop_name}
-                        </td>
-                        <td className="px-4 py-3 text-right text-secondary">
-                          {formatJpy(c.base_amount)}
-                        </td>
-                        <td className="px-4 py-3 text-right text-secondary">
-                          {(c.rate * 100).toFixed(1)}%
-                        </td>
+                        <td className="px-4 py-3 text-primary">{c.referral_shop_name}</td>
+                        <td className="px-4 py-3 text-right text-secondary">{formatJpy(c.base_amount)}</td>
+                        <td className="px-4 py-3 text-right text-secondary">{(c.rate * 100).toFixed(1)}%</td>
                         <td className="px-4 py-3 text-right font-medium text-primary">
                           {formatJpy(c.commission_amount)}
                         </td>
                         <td className="px-4 py-3">
-                          <Badge variant={status.variant}>
-                            {status.label}
-                          </Badge>
+                          <Badge variant={status.variant}>{status.label}</Badge>
                         </td>
-                        <td className="px-4 py-3 text-secondary">
-                          {c.paid_at ? formatDateTime(c.paid_at) : "-"}
-                        </td>
+                        <td className="px-4 py-3 text-secondary">{c.paid_at ? formatDateTime(c.paid_at) : "-"}</td>
                       </tr>
                     );
                   })

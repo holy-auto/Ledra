@@ -25,6 +25,7 @@ import { startAiRouteUsage } from "@/lib/ai/recordRouteUsage";
 import { logger } from "@/lib/logger";
 import { loadAiAutomationSettings, filterDraftByPolicy, isSourceAllowed } from "./policy";
 import { shouldAutoDraftCertificate } from "./orchestrator";
+import { CERT_AI_COLUMNS, certAiFields } from "@/lib/certificates/aiFields";
 
 const AUTO_DRAFT_ENDPOINT = "/api/admin/reservations#auto-draft-certificate";
 
@@ -102,7 +103,7 @@ export async function maybeAutoDraftCertificateForReservation(params: MaybeAutoD
     // 車両情報
     const { data: vehicle } = await admin
       .from("vehicles")
-      .select("maker, model, year, color, vin")
+      .select("maker, model, year, vin_code")
       .eq("id", reservation.vehicle_id)
       .maybeSingle();
     if (!vehicle) return;
@@ -112,9 +113,9 @@ export async function maybeAutoDraftCertificateForReservation(params: MaybeAutoD
     const { data: similar } = allowSimilar
       ? await admin
           .from("certificates")
-          .select("service_name, description, material_info, warranty_period")
+          .select(CERT_AI_COLUMNS)
           .eq("tenant_id", tenantId)
-          .not("service_name", "is", null)
+          .not("service_type", "is", null)
           .order("created_at", { ascending: false })
           .limit(5)
       : { data: [] as Array<Record<string, unknown>> };
@@ -123,15 +124,9 @@ export async function maybeAutoDraftCertificateForReservation(params: MaybeAutoD
       maker: vehicle.maker as string | undefined,
       model: vehicle.model as string | undefined,
       year: vehicle.year as number | undefined,
-      color: vehicle.color as string | undefined,
-      vin: vehicle.vin as string | undefined,
+      vin: vehicle.vin_code as string | undefined,
     };
-    const similarInput = (similar ?? []).map((s) => ({
-      service_name: (s.service_name as string | null) ?? "",
-      description: (s.description as string | null) ?? undefined,
-      material_info: (s.material_info as string | null) ?? undefined,
-      warranty_period: (s.warranty_period as string | null) ?? undefined,
-    }));
+    const similarInput = (similar ?? []).map((s) => certAiFields(s));
     const model = fastModelForPlanTier(tenant.plan_tier);
 
     // 複数種類の作業依頼は大カテゴリー単位で 1 枚ずつ下書きを作る。

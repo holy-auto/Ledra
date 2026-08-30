@@ -3,6 +3,7 @@ import { parseJsonSafe } from "@/lib/api/safeJson";
 
 import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import useSWR from "swr";
 import PageHeader from "@/components/ui/PageHeader";
 import Button from "@/components/ui/Button";
@@ -23,6 +24,7 @@ const CalendarView = dynamic(() => import("./CalendarView"), {
 });
 const VoiceMemoPanel = dynamic(() => import("@/app/admin/certificates/new/VoiceMemoPanel"), { ssr: false });
 import { canUseFeature, normalizePlanTier } from "@/lib/billing/planFeatures";
+import { businessDateString } from "@/lib/datetime";
 import { formatDate, formatJpy } from "@/lib/format";
 import { fetcher } from "@/lib/swr";
 import type { WorkflowStep } from "@/components/workflow/WorkflowTemplateEditor";
@@ -112,10 +114,14 @@ const labelTextCls = "text-xs font-semibold text-secondary tracking-wide upperca
 // ─── Component ───────────────────────────────────────────
 
 export default function ReservationsClient() {
+  // Quick Create などから ?create=1 で遷移してきたら新規予約フォームを自動で開く
+  // （CustomersClient と同じ規約）。
+  const searchParams = useSearchParams();
+  const autoOpenCreate = searchParams.get("create") === "1";
+
   // ローカル(端末)日付の YYYY-MM-DD。toISOString() は UTC 変換されるため、JST 深夜帯
   // (00:00〜08:59) だと日付が1日前にずれる — ブラウザのローカル時計から直接組み立てる。
-  const now = new Date();
-  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  const today = businessDateString();
 
   // Filters
   const [statusFilter, setStatusFilter] = useState("all");
@@ -170,7 +176,7 @@ export default function ReservationsClient() {
   const [canAiNote, setCanAiNote] = useState(false);
 
   // Form
-  const [showForm, setShowForm] = useState(false);
+  const [showForm, setShowForm] = useState(autoOpenCreate);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [formTitle, setFormTitle] = useState("");
   const [formCustomerId, setFormCustomerId] = useState("");
@@ -312,6 +318,13 @@ export default function ReservationsClient() {
     } catch {
       setVehicles([]);
     }
+  }, []);
+
+  // ?create=1 で自動オープンした場合、通常は「+ 新規予約」ボタンが行う
+  // 車両一覧の取得（openCreateForm 内の fetchVehicles）が走らないので、ここで補う。
+  useEffect(() => {
+    if (autoOpenCreate) fetchVehicles();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {

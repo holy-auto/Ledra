@@ -124,10 +124,7 @@ export default function InsurerUsersPage() {
     }
   };
 
-  const handleUpdateUser = async (
-    userId: string,
-    updates: { role?: string; is_active?: boolean },
-  ) => {
+  const handleUpdateUser = async (userId: string, updates: { role?: string; is_active?: boolean }) => {
     setSaving(true);
     try {
       const res = await fetch("/api/insurer/users", {
@@ -158,14 +155,10 @@ export default function InsurerUsersPage() {
           <div className="inline-flex rounded-full border border-border-default bg-surface px-3 py-1 text-[11px] font-semibold tracking-[0.22em] text-secondary">
             USERS
           </div>
-          <h1 className="text-3xl font-bold tracking-tight text-primary">
-            ユーザー管理
-          </h1>
+          <h1 className="text-3xl font-bold tracking-tight text-primary">ユーザー管理</h1>
         </header>
         <div className="rounded-2xl border border-border-default bg-surface p-8 text-center shadow-sm">
-          <p className="text-sm text-muted">
-            このページは管理者のみアクセスできます。
-          </p>
+          <p className="text-sm text-muted">このページは管理者のみアクセスできます。</p>
         </div>
       </div>
     );
@@ -179,17 +172,13 @@ export default function InsurerUsersPage() {
         <div className="inline-flex rounded-full border border-border-default bg-surface px-3 py-1 text-[11px] font-semibold tracking-[0.22em] text-secondary">
           USERS
         </div>
-        <h1 className="text-3xl font-bold tracking-tight text-primary">
-          ユーザー管理
-        </h1>
+        <h1 className="text-3xl font-bold tracking-tight text-primary">ユーザー管理</h1>
       </header>
 
       {/* Summary + Invite Button */}
       <div className="flex items-center justify-between rounded-2xl border border-border-default bg-surface p-5 shadow-sm">
         <div className="text-sm text-secondary">
-          現在{" "}
-          <span className="font-bold text-primary">{activeCount}</span> /{" "}
-          {maxUsers} ユーザー（有効）
+          現在 <span className="font-bold text-primary">{activeCount}</span> / {maxUsers} ユーザー（有効）
         </div>
         <button
           onClick={() => setShowInvite(!showInvite)}
@@ -203,14 +192,10 @@ export default function InsurerUsersPage() {
       {/* Invite Form */}
       {showInvite && (
         <div className="rounded-2xl border border-border-default bg-surface p-5 shadow-sm">
-          <div className="mb-4 text-xs font-semibold tracking-[0.18em] text-muted">
-            新規ユーザー招待
-          </div>
+          <div className="mb-4 text-xs font-semibold tracking-[0.18em] text-muted">新規ユーザー招待</div>
           <div className="grid gap-4 sm:grid-cols-3">
             <div>
-              <label className="mb-1 block text-xs font-medium text-muted">
-                メールアドレス *
-              </label>
+              <label className="mb-1 block text-xs font-medium text-muted">メールアドレス *</label>
               <input
                 type="email"
                 value={inviteEmail}
@@ -220,9 +205,7 @@ export default function InsurerUsersPage() {
               />
             </div>
             <div>
-              <label className="mb-1 block text-xs font-medium text-muted">
-                表示名
-              </label>
+              <label className="mb-1 block text-xs font-medium text-muted">表示名</label>
               <input
                 type="text"
                 value={inviteName}
@@ -232,9 +215,7 @@ export default function InsurerUsersPage() {
               />
             </div>
             <div>
-              <label className="mb-1 block text-xs font-medium text-muted">
-                ロール *
-              </label>
+              <label className="mb-1 block text-xs font-medium text-muted">ロール *</label>
               <select
                 value={inviteRole}
                 onChange={(e) => setInviteRole(e.target.value)}
@@ -246,9 +227,7 @@ export default function InsurerUsersPage() {
               </select>
             </div>
           </div>
-          {inviteError && (
-            <p className="mt-3 text-sm text-red-600">{inviteError}</p>
-          )}
+          {inviteError && <p className="mt-3 text-sm text-red-600">{inviteError}</p>}
           <div className="mt-4 flex gap-2">
             <button
               onClick={handleInvite}
@@ -271,63 +250,39 @@ export default function InsurerUsersPage() {
       )}
 
       {/* Error */}
-      {error && (
-        <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-          {error}
-        </div>
-      )}
+      {error && <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div>}
 
       {/* Users Table */}
       <div className="rounded-2xl border border-border-default bg-surface shadow-sm">
         <div className="p-5 pb-0">
-          <div className="mb-4 text-xs font-semibold tracking-[0.18em] text-muted">
-            USER LIST
-          </div>
+          <div className="mb-4 text-xs font-semibold tracking-[0.18em] text-muted">USER LIST</div>
         </div>
         {loading ? (
           <div className="p-5 text-sm text-muted">読み込み中...</div>
         ) : users.length === 0 ? (
-          <div className="p-5 text-sm text-muted">
-            ユーザーが登録されていません。
-          </div>
+          <div className="p-5 text-sm text-muted">ユーザーが登録されていません。</div>
         ) : (
           <div className="overflow-x-auto">
             <table className="min-w-full text-sm">
               <thead className="bg-inset">
                 <tr>
-                  <th className="p-3 text-left font-semibold text-secondary">
-                    名前
-                  </th>
-                  <th className="p-3 text-left font-semibold text-secondary">
-                    メール
-                  </th>
-                  <th className="p-3 text-left font-semibold text-secondary">
-                    ロール
-                  </th>
-                  <th className="p-3 text-left font-semibold text-secondary">
-                    ステータス
-                  </th>
-                  <th className="p-3 text-left font-semibold text-secondary">
-                    操作
-                  </th>
+                  <th className="p-3 text-left font-semibold text-secondary">名前</th>
+                  <th className="p-3 text-left font-semibold text-secondary">メール</th>
+                  <th className="p-3 text-left font-semibold text-secondary">ロール</th>
+                  <th className="p-3 text-left font-semibold text-secondary">ステータス</th>
+                  <th className="p-3 text-left font-semibold text-secondary">操作</th>
                 </tr>
               </thead>
               <tbody>
                 {users.map((user) => (
                   <tr key={user.id} className="border-t border-border-subtle">
-                    <td className="p-3 font-medium text-primary">
-                      {user.display_name || "-"}
-                    </td>
-                    <td className="p-3 text-secondary">
-                      {user.email || "-"}
-                    </td>
+                    <td className="p-3 font-medium text-primary">{user.display_name || "-"}</td>
+                    <td className="p-3 text-secondary">{user.email || "-"}</td>
                     <td className="p-3">
                       {editingId === user.id ? (
                         <select
                           defaultValue={user.role}
-                          onChange={(e) =>
-                            handleUpdateUser(user.id, { role: e.target.value })
-                          }
+                          onChange={(e) => handleUpdateUser(user.id, { role: e.target.value })}
                           disabled={saving}
                           className="rounded-lg border border-border-default bg-inset px-2 py-1 text-xs focus:border-neutral-400 focus:outline-none"
                         >
@@ -344,9 +299,7 @@ export default function InsurerUsersPage() {
                     <td className="p-3">
                       <span
                         className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-                          user.is_active
-                            ? "bg-emerald-100 text-emerald-800"
-                            : "bg-surface-hover text-muted"
+                          user.is_active ? "bg-emerald-100 text-emerald-800" : "bg-surface-hover text-muted"
                         }`}
                       >
                         {user.is_active ? "有効" : "無効"}

@@ -15,12 +15,12 @@
  * 残りはデフォルト met:true のスタブ。後続タスクが実装時にここへ追加する。
  */
 
-import type {
-  CertificateGateCondition,
-  GateConditionResult,
-  CertificateGateResult,
-} from "@/lib/domain/certificateGate";
-import { MIN_CERTIFICATE_PHOTOS } from "./photoRequirement";
+import type { GateConditionResult, CertificateGateResult } from "@/lib/domain/certificateGate";
+import {
+  MIN_CERTIFICATE_PHOTOS,
+  CERTIFICATE_BEFORE_AFTER_REQUIRED_MESSAGE,
+  requiresBeforeAfterMedia,
+} from "./photoRequirement";
 
 // ── 評価器の入力コンテキスト ──
 
@@ -58,10 +58,6 @@ export type CertificateGateInput = {
   /** 必要承認完了。デフォルト true（未設計）。 */
   approvalsComplete?: boolean;
 };
-
-// ── Before/After 必須の service_type ──
-
-const BEFORE_AFTER_REQUIRED: ReadonlySet<string> = new Set(["coating", "ppf"]);
 
 // ── 評価器本体 ──
 
@@ -112,12 +108,12 @@ function evaluateRequiredEvidence(input: CertificateGateInput): GateConditionRes
     };
   }
 
-  // コーティング・PPF は Before/After メディアも必須
-  if (BEFORE_AFTER_REQUIRED.has(input.serviceType ?? "") && !input.hasBeforeAfterMedia) {
+  // コーティング・PPF は Before/After メディアも必須（一覧は photoRequirement.ts を単一定義源とする）
+  if (requiresBeforeAfterMedia(input.serviceType) && !input.hasBeforeAfterMedia) {
     return {
       condition: "required_evidence_present",
       met: false,
-      detail: "コーティング・PPF施工証明書の発行には施工前後(Before/After)の写真が必要です。",
+      detail: CERTIFICATE_BEFORE_AFTER_REQUIRED_MESSAGE,
     };
   }
 

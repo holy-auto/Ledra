@@ -45,8 +45,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ toke
           id,
           public_id,
           created_at,
-          cert_type,
-          vehicles ( car_number, car_name ),
+          service_type,
+          vehicles ( plate_display, maker, model ),
           stores   ( name )
         )
       `,
@@ -102,8 +102,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ toke
       id: string;
       public_id: string;
       created_at: string;
-      cert_type: string | null;
-      vehicles: { car_number: string | null; car_name: string | null } | null;
+      service_type: string | null;
+      vehicles: { plate_display: string | null; maker: string | null; model: string | null } | null;
       stores: { name: string } | null;
     } | null;
 

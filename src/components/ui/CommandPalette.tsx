@@ -103,6 +103,12 @@ export default function CommandPalette() {
           return;
         }
         const data: EntitySearchResults = await res.json();
+        // ponytail: entityResultsToChips()（src/lib/search/entities.ts）と同種の
+        // フィールド抽出を手で再実装している。あちらは section 無しの EntityChip
+        // （ラベルに「（顧客）」等を埋め込む）、こちらは CommandPalette 用に
+        // section 別に出したいので型が合わず、そのまま流用していない。
+        // 2つのマッピングが将来ズレる可能性がある — 直すなら entityResultsToChips
+        // 側を「生のフィールド」を返す形に分解し、ラベル整形は呼び出し側に委ねる。
         const chips: AdminCommand[] = [];
 
         for (const c of data.customers) {
