@@ -85,6 +85,18 @@ describe("findPlaceholderMismatches()", () => {
     };
     expect(findPlaceholderMismatches(messages, "ja")).toEqual([]);
   });
+
+  it("空文字の翻訳（未着手のスタブ）はプレースホルダ欠落として検出する", () => {
+    // キー自体が無い（undefined）場合はスキップするが、空文字は
+    // 「翻訳したがプレースホルダが全部消えた」実際の不一致として扱う。
+    const messages = {
+      ja: { msg: "{name}さん" },
+      vi: { msg: "" },
+    };
+    const result = findPlaceholderMismatches(messages, "ja");
+    expect(result).toHaveLength(1);
+    expect(result[0]).toEqual({ key: "msg", locale: "vi", missing: ["name"], extra: [] });
+  });
 });
 
 describe("computeTranslationCoverage()", () => {
