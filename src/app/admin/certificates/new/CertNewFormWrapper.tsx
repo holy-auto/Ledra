@@ -1026,6 +1026,17 @@ export default function CertNewFormWrapper({
                 placeholder="その他の特記事項があれば記入してください"
               />
             </label>
+            {canAiDraft && (
+              <VoiceMemoPanel
+                variant="note"
+                onApply={(note) => {
+                  const el = formRef.current?.querySelector<HTMLTextAreaElement>("textarea[name='remarks']");
+                  if (el) {
+                    el.value = el.value.trim() ? `${el.value.trim()}\n${note}` : note;
+                  }
+                }}
+              />
+            )}
           </section>
         </details>
 

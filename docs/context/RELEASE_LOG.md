@@ -4,6 +4,24 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-08-29 IMP-024（#939）を main へ取り込み。squash 履歴の断絶で4度目の復活をしていた src/lib/sync/・WorkScopeProvider.tsx を再削除、VoiceMemoPanel の同時録音競合を修正
+
+- 内容: IMP-024（音声メモ統合、branch impl/IMP-024-voice）を main へ取り込む際、37 ファイルが
+  add/add 衝突。衝突していないファイルまで精査したところ、main の squash 済み履歴からは既に
+  除かれている `src/lib/sync/`（index.ts・types.ts・conflict.ts・テスト）と
+  `src/lib/navigation/WorkScopeProvider.tsx` が、衝突すら起こさずに作業ツリーへ復活していた
+  （#935・#936・#937 に続く4度目）。`scripts/check-resurrected-files.sh` は今回誤って
+  「OK」を返しており（ORIG_BASE が IMP-021 より前まで遡っていたため、削除される前の
+  「追加」イベント自体が判定範囲に入ってしまった）、手動の `/code-review` で発見。5ファイルを
+  再度削除。
+- 内容2: 同じ `/code-review` で、証明書作成フォームに VoiceMemoPanel が2つ（施工内容用・
+  備考用）並ぶ設計になったことで、片方が録音中にもう片方の `rec.start()` がマイクを奪う
+  競合を検出。モジュールスコープの排他ロックで、同時に1つのパネルしか録音できないよう修正。
+- 対象: `src/lib/sync/`・`WorkScopeProvider.tsx`（削除）、`VoiceMemoPanel.tsx`（排他ロック）、
+  `CertNewFormWrapper.tsx`（死んだ dispatchEvent 呼び出しも削除）。詳細は DECISION_LOG
+  「IMP-024（#939）を main へ取り込み。squash 履歴の断絶で4度目の復活をしていた
+  src/lib/sync/・WorkScopeProvider.tsx を再削除」参照。
+
 ## 2026-08-29 certificate_images_guard を元の 20260820000000 へ戻す（本番は元の名前で既に適用済みだった）
 
 - 内容: PR #996 の改名（20260820000000→20260829000000）マージ後、db-migrate.yml が今度は逆方向の
@@ -320,6 +338,19 @@
   （OPEN_QUESTIONS 参照）。
 - テスト: 既存5件 + 修正後全通過。全4391テスト通過、`tsc --noEmit` クリーン、
   lint 0 エラー。
+
+## 2026-08-20 IMP-024 §7 音声→AI構造化→人間確認 — オフライン検知・多言語音声・備考接続（branch impl/IMP-024-voice / PR #939）
+
+- 内容: v2.0 §7 の音声メモ→AI構造化パイプラインの統合ギャップ3件をクローズ。
+  (1) VoiceMemoPanel にオフライン検知追加 — `navigator.onLine` チェックで AI 呼び出し前に
+  明示的エラー表示（従来は無言のネットワークエラー）。
+  (2) `speechLang` prop + `LOCALE_SPEECH_LANG` マッピング追加 — Web Speech API の
+  `SpeechRecognition.lang` をハードコード `ja-JP` から呼び出し側が指定可能に（6言語対応
+  の基盤）。
+  (3) 証明書作成フォームの備考欄に VoiceMemoPanel(note variant)接続 — feature audit
+  指摘の「ほぼゼロ工数」ギャップをクローズ。
+  モバイル音声入力は未実装（OPEN_QUESTIONS.md に設計選択肢が記録済み、iOS マイク権限未設定）。
+- 対象: 証明書作成フォーム、音声メモパネル、i18n ロケール基盤。IMP-026 の前提条件。
 
 ## 2026-08-28 IMP-020（#935）: ナビゲーション基盤は残し、モバイル画面は main の実装を採用
 

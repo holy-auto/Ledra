@@ -26,6 +26,8 @@ type CommonProps = {
   serviceType?: string;
   vehicleHint?: string;
   customerHint?: string;
+  /** BCP 47 音声認識言語。省略時 "ja-JP"。 */
+  speechLang?: string;
 };
 type CertVariantProps = CommonProps & {
   variant?: "certificate";
@@ -56,9 +58,15 @@ function getSpeechRecognitionCtor(): null | (new () => SpeechRecognitionInstance
   return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null;
 }
 
+// ブラウザの SpeechRecognition は同時に1セッションしか動かせないため、同一ページに
+// 複数の VoiceMemoPanel（施工内容用・備考用）があっても録音は常に1つに制限する。
+// ponytail: プロセス内グローバル変数によるロック（複数タブ間では効かない）。
+let activeRecorderId: symbol | null = null;
+
 export default function VoiceMemoPanel(props: Props) {
-  const { serviceType, vehicleHint, customerHint } = props;
+  const { serviceType, vehicleHint, customerHint, speechLang } = props;
   const isNote = props.variant === "note";
+  const [instanceId] = useState(() => Symbol("voice-memo-panel"));
   const [open, setOpen] = useState(false);
   const [supported, setSupported] = useState(true);
   const [recording, setRecording] = useState(false);
@@ -78,7 +86,7 @@ export default function VoiceMemoPanel(props: Props) {
     const rec = new Ctor();
     rec.continuous = true;
     rec.interimResults = true;
-    rec.lang = "ja-JP";
+    rec.lang = speechLang ?? "ja-JP";
     rec.onresult = (ev: any) => {
       let finalText = "";
       let interimText = "";
@@ -95,6 +103,7 @@ export default function VoiceMemoPanel(props: Props) {
       setRecording(false);
     };
     rec.onend = () => {
+      if (activeRecorderId === instanceId) activeRecorderId = null;
       setRecording(false);
       setInterim("");
     };
@@ -105,16 +114,22 @@ export default function VoiceMemoPanel(props: Props) {
       } catch {
         // already stopped
       }
+      if (activeRecorderId === instanceId) activeRecorderId = null;
     };
-  }, []);
+  }, [speechLang, instanceId]);
 
   const startRecording = () => {
     setError(null);
     setApplied(false);
     const rec = recRef.current;
     if (!rec) return;
+    if (activeRecorderId && activeRecorderId !== instanceId) {
+      setError("他の音声メモが録音中です。先に停止してください。");
+      return;
+    }
     try {
       rec.start();
+      activeRecorderId = instanceId;
       setRecording(true);
     } catch (e: any) {
       setError(e?.message ?? "録音を開始できませんでした");
@@ -123,6 +138,7 @@ export default function VoiceMemoPanel(props: Props) {
 
   const stopRecording = () => {
     recRef.current?.stop();
+    if (activeRecorderId === instanceId) activeRecorderId = null;
     setRecording(false);
   };
 
@@ -130,6 +146,14 @@ export default function VoiceMemoPanel(props: Props) {
     const finalTranscript = (transcript + (interim ? ` ${interim}` : "")).trim();
     if (!finalTranscript) {
       setError("音声メモが空です");
+      return;
+    }
+    // ponytail: navigator.onLine は「リンクがあるか」だけを見る簡易判定で、
+    // キャプティブポータルや死んだ上流回線は検知できない（その場合は下の fetch が
+    // 通常のネットワークエラーとして落ちる）。実接続確認が要るなら疎通用エンドポイントへの
+    // 事前 fetch に上げる。
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      setError("オフラインのため AI 整形を実行できません。接続を確認してください。");
       return;
     }
     setGenerating(true);

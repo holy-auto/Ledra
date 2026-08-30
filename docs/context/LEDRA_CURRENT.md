@@ -378,6 +378,15 @@ Sentry · Resend (+ SendGrid fallback) · Anthropic (Opus 4.8 / Sonnet 4.6 / Hai
   （SegmentedControl/StatusBadge/StatusCard/NextActionCard/ProgressCard/Alert/IconButton/
   BottomSheet）+ Badge dot + Button xl。v2.0 の色トークン値は不採用・既存デザインシステム維持
   （DECISION_LOG 2026-08-19）。
+- **IMP-024（§7 音声→AI構造化→人間確認 — オフライン検知・多言語音声・備考接続）完了**:
+  VoiceMemoPanel に3つの統合ギャップをクローズ。(1) オフライン検知 — AI 呼び出し前に
+  `navigator.onLine` チェック、明示的エラー表示。(2) `speechLang` prop + `LOCALE_SPEECH_LANG`
+  マッピング — Web Speech API の言語をハードコード ja-JP から呼び出し側指定に。
+  (3) 証明書備考欄に VoiceMemoPanel(note variant)接続。モバイル音声は未実装(設計選択未解決)。
+  main 取り込み時の `/code-review` で、squash 履歴の断絶により `src/lib/sync/` と
+  `WorkScopeProvider.tsx`（過去に4度目の復活・いずれも代表判断/コードレビューで削除済み）
+  の再削除、および1画面に2つになった VoiceMemoPanel の同時録音競合をモジュールスコープの
+  排他ロックで修正。
 - **IMP-023（§7 JOB_EVIDENCE — 証跡凍結ガード・必須ショット進捗）完了**:
   (1) `certificate_images_guard` DB トリガーで発行済み/取消済み/**期限切れ**証明書の
   写真行 DELETE を DB レベルでブロック（draft のみ制限なし）。証跡列 11 列
