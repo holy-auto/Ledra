@@ -70,7 +70,8 @@ export type AutomationActionKey =
   | "inbound_message.auto_self_reschedule"
   | "reservation.auto_day_before_reminder"
   | "inbound_message.auto_status_reply"
-  | "inbound_message.auto_flow_nudge";
+  | "inbound_message.auto_flow_nudge"
+  | "inbound_message.auto_capture_knowledge";
 
 export interface AutomationActionDef {
   key: AutomationActionKey;
@@ -486,6 +487,16 @@ export const AUTOMATION_ACTIONS: readonly AutomationActionDef[] = [
     defaultEnabled: false,
     guard:
       "AI 有効 + Standard プラン以上 + 翌日(JST)の未キャンセル予約 + 顧客が line_user_id 紐付け済み + フォローアップ拒否でない。ボタンは self_cancel / self_reschedule の opt-in に応じて出す。",
+  },
+  {
+    key: "inbound_message.auto_capture_knowledge",
+    workflow: "inbound_message",
+    label: "スタッフのLINE返信からFAQを自動学習（レビュー承認制）",
+    description:
+      "スタッフが受信箱から LINE で顧客に返信した内容が『他のお客様にも当てはまる FAQ・店舗ポリシー』を含むとき、AI が個人情報や固有値を除いた汎用 Q&A に一般化し、LINE ナレッジに『停止中（レビュー待ち）』で自動登録する。管理者が設定画面で承認（有効化）してはじめて自動返信の回答ソースになる。良い回答が特定スタッフの頭の中に留まるのを防ぎ、Bot のカバー範囲を実際の返信から育てる。opt-in / 既定 OFF。",
+    defaultEnabled: false,
+    guard:
+      "AI 有効 + Standard プラン以上。再利用可能な FAQ を含む返信のみ（雑談・個別対応・確認待ち等は対象外）。ナレッジ上限（既定50件）到達時と重複時はスキップ。登録は必ず enabled=false（承認するまで Bot は使わない）。",
   },
   {
     key: "inbound_message.auto_flow_nudge",
