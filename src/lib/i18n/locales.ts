@@ -23,3 +23,16 @@ export const LOCALE_LABELS: Record<Locale, string> = {
 export function isSupportedLocale(value: unknown): value is Locale {
   return typeof value === "string" && (SUPPORTED_LOCALES as readonly string[]).includes(value);
 }
+
+/**
+ * Locale → BCP 47 音声認識タグ。Web Speech API の `lang` に渡す。
+ * ponytail: 国名サフィックスは最多話者の国。必要になったら地域切替を追加。
+ */
+export const LOCALE_SPEECH_LANG: Record<Locale, string> = {
+  ja: "ja-JP",
+  en: "en-US",
+  vi: "vi-VN",
+  id: "id-ID",
+  fil: "fil-PH",
+  hi: "hi-IN",
+};

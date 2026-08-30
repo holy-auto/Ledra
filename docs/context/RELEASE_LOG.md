@@ -29,6 +29,78 @@
 - 全体 4448 件パス、tsc/eslint エラー0。
 - #2「見積りフロー改善」の3件目。後続: 停滞フローの再促し（最後の1件）。
 
+## 2026-08-30 IMP-025（#940）を main へ取り込み。PII シールドの穴3件を修正、resurrection バグを5度目の再削除
+
+- 内容: IMP-025（車両パスポート PII シールド、branch impl/IMP-025-vehicle-passport）を main へ
+  取り込む際、`/code-review` で本 PR 自身の PII シールド実装に3件の穴を発見・修正。
+  (1) `PIIFieldOverlap` はトップレベル `keyof` しか見ないため、`PassportVerifyResponse` の
+  入れ子オブジェクト（vehicle/summary/meta_anchor/certificates[]）内の将来的な PII 追加を
+  検知できなかった — 4つの入れ子形状を個別にチェックする assertion を追加。
+  (2) `PublicTransferView` のチェックだけ共有レジストリを使わずハードコードされており、
+  `current_owner_email`/`current_owner_name` の重複を見逃していた — `PIIFieldOverlap` ベースに
+  統一し、`from_owner_email`/`from_owner_name` をレジストリに登録。
+  (3) `VEHICLE_TABLE_PII_COLUMNS` が `customer_name`/`customer_email`/`customer_phone_masked`
+  （マイグレーション20260321000002で既にDROP済み・実在しない列）を列挙する一方、実在する
+  `plate_display`（ナンバープレート）が未登録だった — レジストリを実スキーマに合わせて修正。
+  加えて、IMP-024 と同じ squash 履歴の断絶で `src/lib/sync/`・`WorkScopeProvider.tsx` が
+  5度目の復活をしていたため再削除（IMP-025 が IMP-024 の再削除前のコミットから fork していたため）。
+- 対象: `src/lib/passport/piiFields.ts`、`src/lib/vehicles/customerRelation.ts`、
+  `src/lib/passport/__tests__/piiShield.test.ts`、`docs/context/OPEN_QUESTIONS.md`
+  （未記載だった2件の未解決事項を追記）。詳細は DECISION_LOG「IMP-025（#940）を main へ
+  取り込み。PII シールドの穴3件を `/code-review` で発見・修正」参照。
+
+## 2026-08-29 IMP-024（#939）を main へ取り込み。squash 履歴の断絶で4度目の復活をしていた src/lib/sync/・WorkScopeProvider.tsx を再削除、VoiceMemoPanel の同時録音競合を修正
+
+- 内容: IMP-024（音声メモ統合、branch impl/IMP-024-voice）を main へ取り込む際、37 ファイルが
+  add/add 衝突。衝突していないファイルまで精査したところ、main の squash 済み履歴からは既に
+  除かれている `src/lib/sync/`（index.ts・types.ts・conflict.ts・テスト）と
+  `src/lib/navigation/WorkScopeProvider.tsx` が、衝突すら起こさずに作業ツリーへ復活していた
+  （#935・#936・#937 に続く4度目）。`scripts/check-resurrected-files.sh` は今回誤って
+  「OK」を返しており（ORIG_BASE が IMP-021 より前まで遡っていたため、削除される前の
+  「追加」イベント自体が判定範囲に入ってしまった）、手動の `/code-review` で発見。5ファイルを
+  再度削除。
+- 内容2: 同じ `/code-review` で、証明書作成フォームに VoiceMemoPanel が2つ（施工内容用・
+  備考用）並ぶ設計になったことで、片方が録音中にもう片方の `rec.start()` がマイクを奪う
+  競合を検出。モジュールスコープの排他ロックで、同時に1つのパネルしか録音できないよう修正。
+- 対象: `src/lib/sync/`・`WorkScopeProvider.tsx`（削除）、`VoiceMemoPanel.tsx`（排他ロック）、
+  `CertNewFormWrapper.tsx`（死んだ dispatchEvent 呼び出しも削除）。詳細は DECISION_LOG
+  「IMP-024（#939）を main へ取り込み。squash 履歴の断絶で4度目の復活をしていた
+  src/lib/sync/・WorkScopeProvider.tsx を再削除」参照。
+
+## 2026-08-29 certificate_images_guard を元の 20260820000000 へ戻す（本番は元の名前で既に適用済みだった）
+
+- 内容: PR #996 の改名（20260820000000→20260829000000）マージ後、db-migrate.yml が今度は逆方向の
+  "Remote migration versions not found in local migrations directory." で失敗した。本番の
+  `schema_migrations` を直接確認したところ、`20260820000000/certificate_images_guard` が
+  **元の名前のまま既に適用済み**だった（適用経緯は未確認）。改名（#996）は既に適用済みの
+  ファイルを改名してしまっていたことになる——DECISION_LOG 2026-07-21／run #973 が警告している
+  失敗パターンにそのまま該当。`20260829000000_certificate_images_guard.sql` を
+  `20260820000000_certificate_images_guard.sql` へ戻し（SQL は無変更）、
+  `supabase/__tests__/certificateImagesGuard.test.ts` のファイル名参照も元に戻した。
+- 検証: `lint:migrations`（282件）OK・`check:schema` OK・`certificateImagesGuard.test.ts`（6件）OK・
+  本番の適用済み全バージョンとローカルの全ファイルを機械的に突き合わせ、20260816010000 以降の
+  差分ゼロを確認。
+- 対象: GitHub Actions `DB migrate (apply to production)` ワークフロー。
+- 限界: 20260820000000 が本番へ適用された正確な経緯（誰が・いつ）は未確認。改名前に本番の
+  記録を都度再確認する運用を徹底する必要がある（DECISION_LOG 参照）。
+
+## 2026-08-29 certificate_images_guard マイグレーションを改名し db-migrate の out-of-order 停止を解消
+
+- 内容: PR #994 のマージ後、db-migrate.yml が
+  "Found local migration files to be inserted before the last migration on remote database."
+  で失敗した。`certificate_images_guard.sql`（PR #938 のドラフトが2026-08-20に作成、
+  レビュー待ちの間に main が7本進んだ）が未適用のまま本番の適用済み最新（20260828000003）より
+  古い日付になっていたため。`20260820000000_certificate_images_guard.sql` を
+  `20260829000000_certificate_images_guard.sql` へ改名（SQL は無変更）。
+  `supabase/__tests__/certificateImagesGuard.test.ts` のファイル名参照も同時に更新。
+  このリポジトリで同じ停止は run #972・#976・#977 に続き4回目（DECISION_LOG 2026-07-21 の
+  既存手順をそのまま適用）。
+- 検証: `lint:migrations`（282件）OK・`check:schema` OK・`certificateImagesGuard.test.ts`（6件）OK。
+- 対象: GitHub Actions `DB migrate (apply to production)` ワークフロー。
+  `certificate_images_guard` トリガーの実体（保護ロジック）は無変更。
+- 限界: レビュー待ちの長い PR が自身のマイグレーションバージョンを陳腐化させる構造的な
+  問題は未解決。OPEN_QUESTIONS に起票。
+
 ## 2026-08-29 日程候補の精度向上: 日程変更で元予約の所要時間・代車・カテゴリを考慮（branch claude/line-chatbot-ledra-dy2fiq）
 
 - 内容: LINE の日程変更（reschedule）セルフ対応で提示する日程候補が、これまで所要時間も代車も
@@ -311,6 +383,34 @@
   （OPEN_QUESTIONS 参照）。
 - テスト: 既存5件 + 修正後全通過。全4391テスト通過、`tsc --noEmit` クリーン、
   lint 0 エラー。
+
+## 2026-08-20 IMP-025 §9 車両パスポート基盤 — PII遮断体系検証・車両顧客関係型モデル（branch impl/IMP-025-vehicle-passport / PR #940）
+
+- 内容: v2.0 §9 車両デジタルパスポートの残ギャップ2件をクローズ。
+  (1) PII遮断体系検証 — `piiFields.ts` でコンパイル時型アサーション4型分（PassportCertCard /
+  PassportData / PassportVerifyResponse / PublicTransferView）を導入。公開サーフェスの型キーが
+  PII フィールドと重複しないことを TS 型レベルで保証。`piiShield.test.ts` で実行時検証18件
+  （クエリ SELECT 列監査、フィールド形状検証、前所有者 PII 非露出検証）。
+  (2) 車両顧客関係型モデル — ADR-0006 に基づく `customerRelation.ts` を新設。
+  `VehicleCustomerRelation` / `VehicleRelationEndReason` / `PublicVehicleIdentity` 型と
+  `VEHICLE_TABLE_PII_COLUMNS` / `PASSPORT_TABLE_PII_COLUMNS` レジストリを定義。
+  DB マイグレーション（`vehicle_customer_relationships` テーブル化）は IMP-050 に委譲。
+  車両パスポートの既存インフラ（DB / 公開ページ / 所有権移転 / API / メタアンカー）は
+  変更なし — これらは既に稼働中。
+- 対象: パスポート公開サーフェス全般。IMP-026/050 の前提条件。
+
+## 2026-08-20 IMP-024 §7 音声→AI構造化→人間確認 — オフライン検知・多言語音声・備考接続（branch impl/IMP-024-voice / PR #939）
+
+- 内容: v2.0 §7 の音声メモ→AI構造化パイプラインの統合ギャップ3件をクローズ。
+  (1) VoiceMemoPanel にオフライン検知追加 — `navigator.onLine` チェックで AI 呼び出し前に
+  明示的エラー表示（従来は無言のネットワークエラー）。
+  (2) `speechLang` prop + `LOCALE_SPEECH_LANG` マッピング追加 — Web Speech API の
+  `SpeechRecognition.lang` をハードコード `ja-JP` から呼び出し側が指定可能に（6言語対応
+  の基盤）。
+  (3) 証明書作成フォームの備考欄に VoiceMemoPanel(note variant)接続 — feature audit
+  指摘の「ほぼゼロ工数」ギャップをクローズ。
+  モバイル音声入力は未実装（OPEN_QUESTIONS.md に設計選択肢が記録済み、iOS マイク権限未設定）。
+- 対象: 証明書作成フォーム、音声メモパネル、i18n ロケール基盤。IMP-026 の前提条件。
 
 ## 2026-08-28 IMP-020（#935）: ナビゲーション基盤は残し、モバイル画面は main の実装を採用
 

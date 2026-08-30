@@ -117,9 +117,9 @@ Payment Policy(v2.0 §11.3: Consumer PAID / B2B CREDIT_APPROVED / Insurance INSU
 | §4 | グローバルナビ・検索・Quick Create | 横断検索(顧客/車両/証明書/請求書)+CommandPalette(エンティティ検索+コンテキスト継承 Quick Create、IMP-020)+AskLedraBar。モバイルの Quick Create FAB(`QuickCreateSheet.tsx`)は固定4項目で権限ゲート・コンテキスト継承なし | 部分 | VIN/部品/Serial 横断検索・カテゴリ別 Deep Link なし。モバイル FAB と `src/lib/navigation/quickCreate.ts` の統合は未着手 | IMP-020 |
 | §5 | Home(今日・今・次、NEXT ACTION) | `/admin`(ダッシュボード+NextActionSection+TodayProgressCard+TodayTasksWidget+承認インボックス)、mobile ホームタブ | 実装済み | NEXT ACTION 1件大表示(NextActionCard)+今日の進捗(ProgressCard)+3段階スコープ切替。説明可能な優先度理由はタイル hint で表示。priority エンジン(IMP-044)で高度化予定 | IMP-021, 044 |
 | §6 | Work List & Job Hub | `/admin/reservations`(一覧+カレンダー)+`/admin/jobs/[id]`(統合ワークスペース: ステータス/サインオフ/写真/部品/点検/証明書ドラフト/AI) | 実装済み | ステータス表示統一(5値の単一定義源)+情報階層(現ステップ拡大・完了圧縮)+CTA規律(ステータス別表示)。「作業完了=証明書発行」CTA禁止はサインオフ分離で充足 | IMP-022 |
-| §7 | Evidence / Photo / Voice | 段階タグ4値(`src/lib/certificateImages/stage.ts`)+before/after 必須ゲート+単回撮影 nonce+真正性グレード+改ざん検知 AI+凍結ガード(`certificate_images_guard`)。必須ショット進捗(`evidenceProgress.ts`)。音声は Web のみ(`VoiceMemoPanel`+Haiku 構造化→フォーム確認) | 実装済み | モバイル音声入力なし(IMP-024)。UI側の必須ショット進捗表示の接続は IMP-024 or 画面タスクで | IMP-023, 024 |
+| §7 | Evidence / Photo / Voice | 段階タグ4値(`src/lib/certificateImages/stage.ts`)+before/after 必須ゲート+単回撮影 nonce+真正性グレード+改ざん検知 AI+凍結ガード(`certificate_images_guard`)。必須ショット進捗(`evidenceProgress.ts`)。音声は Web のみ(`VoiceMemoPanel`+Haiku 構造化→フォーム確認)+オフライン検知+多言語音声認識(LOCALE_SPEECH_LANG)+備考欄接続 | 実装済み | モバイル音声入力なし(設計選択未解決)。UI文字列のi18n化は docs/operations/i18n.md 方針で先送り | IMP-023, 024 |
 | §8 | Parts & Installation Integrity | `src/lib/parts/`(3-way match、凍結ガード、OTP 署名、TSA、アンカー)+`/admin/parts-integrity` | 実装済み | v2.0 の Part statuses 語彙とは差異あり(実値: `draft/installed/customer_verified/disputed/voided`)。Certificate Gate との自動連動は部分 | IMP-040 |
-| §9 | Vehicle Digital Passport | `/admin/vehicles/[id]`+`/v/[vin]`(公開履歴)+`vehicle_passports`(所有権移転)+車検証 OCR | 部分 | 前所有者 PII 遮断の体系的検証は未実施。顧客関係は `vehicles.customer_id` 直付けで関係モデル分離は部分 | IMP-025 |
+| §9 | Vehicle Digital Passport | `/admin/vehicles/[id]`+`/v/[vin]`(公開履歴)+`vehicle_passports`(所有権移転)+車検証 OCR+PII遮断検証(`piiFields.ts`コンパイル時型アサーション+18テスト)+車両顧客関係型(`customerRelation.ts`) | 実装済み | 顧客関係DBマイグレーション(`vehicle_customer_relationships`テーブル化)はIMP-050に委譲。レガシーPII列(`vehicles.customer_name/email/phone_masked`)のDROPはIMP-050。モバイル車両タブはプレースホルダのみ(IMP-033) | IMP-025 |
 | §10 | Customer Confirmation Web | 受領サイン `/sign/receipt/[token]`(下4桁2FA+同意文言版管理+内容スナップショット)、部品確認 `/parts/confirm/[token]`、板金進捗 `/track/[token]` | 実装済み | 「気になる点を伝える」→ Customer Issue 作成→請求/証明ブロックの流れはない(問い合わせ `customer_inquiries` は別系統) | IMP-026 |
 | §11 | Estimate / Invoice / Payment | `documents` 統合モデル(9帳票種+遷移マップ `nextStatusesFor()`)+`payment_entries` 売掛元帳+Stripe/Square/Tap to Pay | 部分 | PaymentState 語彙差(§1.5)。UNKNOWN/OVERPAID/PENDING なし。Payment Policy 評価器なし。Provider 分離は UI 上概ね充足 | IMP-027, 043 |
 | §12 | Certificate / Integrity / Correction | 写真ゲート+void+編集履歴(`certificate_edit_histories`)+content hash(`certificate_versions` Phase 1)+アンカー2層 | 部分 | READY→ISSUING→VERIFYING→VERIFIED の自動遷移なし(§1.4)。SUPERSEDED 版遷移・旧QR誘導なし。REVOKED 相当の void 公開表示はあり | IMP-028, 030 |
@@ -149,7 +149,7 @@ Payment Policy(v2.0 §11.3: Consumer PAID / B2B CREDIT_APPROVED / Insurance INSU
 | JOB_EVIDENCE | 証跡撮影 | `/admin/certificates/[public_id]`(写真)+mobile `certificates/[id]/photos`+凍結ガード+進捗計算 | 実装済み | IMP-023 |
 | JOB_DOCUMENTS | 見積/請求/決済/確認 | `/admin/invoices`+`/admin/payment-ledger` | 部分 | IMP-027, 043 |
 | VEHICLE_LIST | 車両検索/一覧 | `/admin/vehicles` | 実装済み | IMP-025 |
-| VEHICLE_DETAIL | 車両パスポート | `/admin/vehicles/[id]`+公開 `/v/[vin]` | 部分 | IMP-025 |
+| VEHICLE_DETAIL | 車両パスポート | `/admin/vehicles/[id]`+公開 `/v/[vin]`+PII遮断検証済み | 実装済み | IMP-025 |
 | CERTIFICATE_LIST | 証明書一覧 | `/admin/certificates` | 実装済み | IMP-028 |
 | CERTIFICATE_DETAIL | 証明書+整合性+版 | `/admin/certificates/[public_id]`+公開 `/c/[public_id]` | 部分(状態軸差 §1.4) | IMP-028 |
 | MORE | その他メニュー | mobile `(tabs)/more` | 部分 | IMP-033 |
@@ -171,7 +171,7 @@ Payment Policy(v2.0 §11.3: Consumer PAID / B2B CREDIT_APPROVED / Insurance INSU
 | 6 | PaymentState.UNKNOWN は失敗ではない/盲目リトライ禁止 | UNKNOWN に相当する状態が存在しない | なし | IMP-027 |
 | 7 | 予測は事実ではない(scheduled/predicted/actual 分離) | `estimated_min`(予定)と `started_at/completed_at/duration_sec`(実績)は分離。predicted 系フィールドなし | 部分 | IMP-014, 044 |
 | 8 | AI は構造化/提案/予測、重要記録は人間確定 | `src/lib/ai/automation/policy.ts`(FieldPolicy: manual/suggest/自動、confidence 未満は suggest デモート、壁3安全弁) | 実装済み | IMP-024 |
-| 9 | 車両 identity は顧客 PII から独立 | `vehicles` は独立エンティティ+`vehicle_passports` 所有権移転あり。顧客紐付けは `vehicles.customer_id` 直付け | 部分 | IMP-025, 050 |
+| 9 | 車両 identity は顧客 PII から独立 | `vehicles` は独立エンティティ+`vehicle_passports` 所有権移転あり。公開サーフェスのPII遮断はコンパイル時型アサーション+テスト18件で検証済み。顧客紐付けは `vehicles.customer_id` 直付け(関係型モデル定義済み、DBマイグレーションはIMP-050) | 実装済み | IMP-025, 050 |
 | 10 | 原本証跡は不変/追記のみ(黙示上書き禁止) | 部品側は凍結ガード(`part_installations_guard`)+TSA。証明書写真も凍結ガード(`certificate_images_guard` — active/void 時 DELETE 不可+証跡列変更不可) | 実装済み | IMP-023, 030 |
 | 11 | オフラインでも作業継続、正式証明は同期後 | Web PWA outbox で部分実現。モバイルは検知のみ | 部分 | IMP-016, 032 |
 | 12 | 初期6言語 ja/en/vi/id/fil/hi | 6ロケール登録・メッセージ・ドメインラベル収録済(IMP-011)。**画面適用はゼロのまま** | 部分 | IMP-051(訳語検証) |
@@ -194,8 +194,8 @@ Payment Policy(v2.0 §11.3: Consumer PAID / B2B CREDIT_APPROVED / Insurance INSU
 | IMP-021 | 2 / P0 | §5, HOME(3秒理解ホーム) | **実装済み**(2026-08-19): NEXT ACTION セクション(最優先タイル→NextActionCard)+今日の進捗 ProgressCard+3段階スコープ切替(HomeScopeToggle→SegmentedControl)+WorkScopeProvider(React Context)+レイアウト再構築。既存 fetchTodaySignals 再利用、新DBクエリなし。IMP-044 で priority エンジン高度化予定 | 010, 013, 015, 020 |
 | IMP-022 | 2 / P0 | §6, WORK_LIST/JOB_HUB | **実装済み**(2026-08-20): ステータス表示統一(`jobStatusDisplay.ts` — 5値×色/ラベル/ヒント/variant の単一定義源。ReservationsClient/CalendarView/JobStatusPanel/StorefrontJobWorkflow の4箇所の重複 STATUS_CONFIG を置換)+ステッパー情報階層(現ステップ拡大・完了/未着手圧縮。JobStatusPanel+JobSignoffPanel 両方)+CTA規律(Next Actions をステータスで出し分け: 作業前は証明書/請求書非表示、完了後は予約編集非表示) | 015, 020, 021 |
 | IMP-023 | 2 / P0 | §7, JOB_EVIDENCE(証跡撮影・必須ショット・不変連鎖) | **実装済み**(2026-08-20): (1) `certificate_images_guard` DB トリガー — active/void 証明書の写真行 DELETE 禁止+証跡列(sha256/stage/grade/TSA/C2PA/storage_path)の破壊的 UPDATE 禁止。DELETE API route にトリガーエラーの 409 ハンドリング追加。(2) `evidenceProgress.ts` — 必須ショットとアップロード済み写真の stage 突合せ進捗計算(純関数)。テスト 8 件 | 016, 022 |
-| IMP-024 | 2 / P0 | §7(音声→AI構造化→人間確認) | Web のみ実装(VoiceMemoPanel+Haiku)。モバイルなし(部分) | 011, 016, 022 |
-| IMP-025 | 2 / P0 | §9, VEHICLE_*(車両パスポート基盤) | 車両管理+公開履歴+所有権移転あり。PII 遮断の体系検証未(部分) | 013, 015 |
+| IMP-024 | 2 / P0 | §7(音声→AI構造化→人間確認) | **実装済み**(2026-08-20): (1) VoiceMemoPanel にオフライン検知(navigator.onLine チェック→明示エラー)。(2) `speechLang` prop + `LOCALE_SPEECH_LANG` マッピング(6言語BCP47対応)。(3) 証明書備考欄に VoiceMemoPanel(note variant)接続。モバイル音声は未実装(設計選択未解決、OPEN_QUESTIONS.md) | 011, 016, 022 |
+| IMP-025 | 2 / P0 | §9, VEHICLE_*(車両パスポート基盤) | **実装済み**(2026-08-20): (1) PII遮断体系検証 — `piiFields.ts` でコンパイル時型アサーション(PassportCertCard/PassportData/PassportVerifyResponse/PublicTransferView の4型がPIIフィールドと重複しないことをTS型レベルで保証)。`piiShield.test.ts` で実行時検証18件(クエリSELECT列監査、フィールド形状検証、前所有者PII非露出検証)。(2) 車両顧客関係型モデル — `customerRelation.ts` でADR-0006に基づく関係エンティティ型(`VehicleCustomerRelation`/`VehicleRelationEndReason`/`PublicVehicleIdentity`)とPIIフィールドレジストリ(`VEHICLE_TABLE_PII_COLUMNS`/`PASSPORT_TABLE_PII_COLUMNS`)を定義。DBマイグレーションはIMP-050に委譲 | 013, 015 |
 | IMP-026 | 2 / P0 | §10(顧客確認 Web) | 署名付き URL 確認フロー複数系統で稼働。Raise Concern→ブロックなし(実装済み〜部分) | 011, 022, 023, 025 |
 | IMP-027 | 2 / P0 | §11, JOB_DOCUMENTS(支払モデル・Policy) | 売掛元帳+返金あり。UNKNOWN/OVERPAID/Policy 評価器なし(部分) | 013, 014, 015, 022 |
 | IMP-028 | 2 / P0 | §12, CERTIFICATE_*(Certificate Gate・発行・公開検証) | 写真ゲート+公開検証+アンカー2層あり。単一 Gate 評価器・状態遷移なし(部分) | 015, 023, 026, 027 |
