@@ -4,6 +4,30 @@
 > （新しい順）。実装の詳細は RELEASE_LOG.md、迷っている段階のものは
 > OPEN_QUESTIONS.md に書く。
 
+## 2026-08-30 IMP-042（#952）の code-review 指摘を修正。key 重複時の挙動不一致・非 readonly なスナップショット・ドキュメント誤記を解消
+
+1. 日付: 2026-08-30
+2. 起きたこと: PR #952 マージ後の `/code-review` で4件の指摘。うち3件を確認・修正: (1) `diffTemplateSteps()`/`isSnapshotStale()` は `new Map(steps.map(s=>[s.key,s]))` で key 重複時に最後の出現を採用する一方、`resolveStepFromSnapshot()` は `Array.find()` で最初の出現を採用しており、同じ「key で step を識別する」という前提のもとで2つの関数群が異なる規則を使っていた。テンプレートエディタ（`WorkflowTemplateEditor.tsx`）の key 生成ロジック（`generateKey(label, index)`）に一意性保証がないため、削除→追加の操作で key 重複が実際に発生しうることを確認した。(2) `WorkflowSnapshot.steps` の型が可変の `TemplateStep[]` になっており、JSDoc・モジュールヘッダで「不変スナップショット」と説明している内容と型レベルで矛盾していた。(3) モジュールヘッダのコメントが存在しない型名「TemplateSnapshot」を参照していた（正しくは `WorkflowSnapshot`）。残り1件（RELEASE_LOG.md/requirement-trace.md の「テスト20件」という記載が実際のテスト数21件と不一致）はドキュメント修正のみで対応（`vitest run` で実数を確認）。
+3. 以前の考え: マージ時点では `templateVersion.ts` は型基盤先行パターンとして問題なしと判断していた。
+4. 違和感・問題: 同一モジュール内で「key の重複」という同じ前提外のケースに対し、Map ベースの関数群と Array.find ベースの関数群が異なる answer を返す状態は、片方だけ直しても矛盾が残る典型例。
+5. 決めたこと: 両方を Array.find と同じ「最初の出現を採用」に統一する `keyByFirstOccurrence()` ヘルパーを新設し、`diffTemplateSteps()` で使用（`isSnapshotStale()` は内部で `diffTemplateSteps()` を呼ぶため自動的に揃う）。`WorkflowSnapshot.steps` を `readonly TemplateStep[]` に変更。モジュールヘッダのコメントを修正。ドキュメントのテスト件数を実数（21件、修正後22件）に訂正。回帰テスト1件追加。
+6. 捨てた選択肢: key 重複自体をこのモジュールでエラーにする案 — key の一意性はテンプレートエディタ側の責務であり、このモジュールは「渡された steps をどう扱うか」の純関数群にとどめるべきと判断し不採用。
+7. 判断理由: 一意性を強制する変更はテンプレートエディタ側の別モジュールに踏み込むスコープ拡大であり、型基盤先行パターンの原則（消費側の責任は消費側で）に反する。挙動の内部一貫性を直すだけで、レビューが指摘した「同じ入力に対して関数によって答えが変わる」という実害は解消される。
+8. まだ答えが出ていないこと: テンプレートエディタ側で key の一意性をどう保証するか（バリデーション追加は別タスク）。
+9. 公開区分: 公開可（コードレビューで見つかった型基盤コードの論理バグ修正。金額・テナント名・接続情報は含まない）
+
+## 2026-08-30 IMP-042（#952）を main へ取り込み。resurrection パターン16度目
+
+1. 日付: 2026-08-30
+2. 起きたこと: IMP-042（ワークフローテンプレート版管理・スナップショット型基盤、branch impl/IMP-042-workflow-versioning）を main へ取り込む際、main と分岐した69ファイルが衝突した。65ファイルは phantom conflict で一括解決。残り4ファイル（DECISION_LOG.md/LEDRA_CURRENT.md/RELEASE_LOG.md/requirement-trace.md）はこのPR自身が変更していたため手動再適用した。resurrection チェックで `WorkScopeProvider.tsx`（16度目の再発）とスキップ済み PR #947 の `src/lib/sync/` 一式8ファイルが今回も復活していたため削除。`templateVersion.ts`（IMP-042 自身の新規ファイル）は `sync/` への依存なし（grep で確認済み）。
+3. 以前の考え: なし（#948〜951 で確立した手順の踏襲）。
+4. 違和感・問題: 特になし。
+5. 決めたこと: 確立済みの手順をそのまま適用。
+6. 捨てた選択肢: なし。
+7. 判断理由: 確立済みの手順が引き続き有効に機能した。
+8. まだ答えが出ていないこと: なし。
+9. 公開区分: 公開可（マージ手順の技術的な経緯。金額・テナント名・接続情報は含まない）
+
 ## 2026-08-30 IMP-041（#951）の code-review 指摘を修正。データ不備の終日占有誤判定・no_show の稼働率誤カウントを解消
 
 1. 日付: 2026-08-30
@@ -461,6 +485,18 @@
 7. 判断理由: 「現場を知らずに書き足さない」の裏返しで、ここでは「現場を知らずに稼働中の挙動を狭めない」。staff/viewer のデフォルトを self にすべきかどうかは製品判断であり、この環境からは判断できない。
 8. まだ答えが出ていないこと: staff/viewer のダッシュボード初期表示は本当に self（自分の分だけ）にすべきか、それとも現状維持（tenant-wide）のままでよいか。代表判断待ち。
 9. 公開区分: 公開可（実装の技術的な経緯であり、金額・テナント名・接続情報は含まない）
+
+## 2026-08-20 IMP-042 ワークフローテンプレート版管理（スナップショット方式）
+
+1. 日付: 2026-08-20
+2. 起きたこと: IMP-042（§9 WORKFLOW_BUILDER 版管理テンプレート）の実装。テンプレート編集は in-place 上書きで、実行中ジョブの版凍結がない。テンプレートを編集すると進行中のすべてのジョブが新しい steps を参照してしまう。
+3. 以前の考え: `workflow_templates` テーブルにバージョン列を追加して版管理する方法を想定していた。
+4. 違和感・問題: (a) テンプレート編集と進行中ジョブの独立性がない。(b) ステップの追加・削除・並替えが進行中ジョブの progress_pct やステップ遷移を壊す。(c) WorkflowStep（TemplateStep）型が Zod スキーマ・API ルート・クライアントコンポーネント・DB マイグレーションなど 6 箇所以上で重複定義されていた。
+5. 決めたこと: (a) `TemplateStep` を `templateVersion.ts` に正準型として定義。(b) `WorkflowSnapshot` 型 — ジョブ開始時にテンプレートを deep copy で凍結し、reservations テーブルに jsonb 格納する想定。(c) 差分検出 `diffTemplateSteps()` — key ベースで added/removed/modified/reordered を分類。(d) 鮮度判定 `isSnapshotStale()` — updated_at 高速パス＋steps 内容比較。(e) ヘルパー `resolveStepFromSnapshot()` / `computeSnapshotProgress()`。DB マイグレーション（`reservations.workflow_snapshot` jsonb 列追加等）は消費タスクで実施。
+6. 捨てた選択肢: (a) workflow_templates にバージョン列を追加し版ごとにレコード管理 — スナップショット方式の方が単純で、既存 JSONB パターンと一致する。(b) 今すぐ DB マイグレーション実施 — コンシューマ（start-workflow API 等）がまだないため YAGNI。型基盤先行パターンに従い型と純関数のみ先行。(c) 6 箇所の WorkflowStep 型を今すぐ統一 — 影響範囲が広く、各消費箇所の修正は個別タスクで実施。
+7. 判断理由: スナップショット方式は既存の JSONB 格納パターン（`reservations.workflow_template_id` + steps 参照）と整合する。ジョブ単位で凍結するため、テンプレートの任意の編集から完全に独立。型基盤を先に確定させることで、下流の start-workflow API や管理画面の「テンプレート更新警告」が安全に構築できる。
+8. まだ答えが出ていないこと: (a) `reservations.workflow_snapshot` 列の DB マイグレーション時期（start-workflow API 実装時）。(b) 6 箇所以上の WorkflowStep 型重複の統一タイミング。(c) スナップショットが stale な場合の管理画面 UX（警告のみ or 更新反映オプション）。
+9. 公開区分: 公開可
 
 ## 2026-08-20 IMP-041 ブース占有予測・NEXT ACTION シグナルの型基盤方式
 

@@ -4,6 +4,28 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-08-30 IMP-042（#952）の code-review 指摘を修正。key 重複時の挙動不一致・非 readonly なスナップショット・ドキュメント誤記を解消
+
+- 内容: `src/lib/workflow/templateVersion.ts` の `diffTemplateSteps()`/`isSnapshotStale()`（Map ベース、
+  key 重複時に最後の出現を採用）と `resolveStepFromSnapshot()`（Array.find、最初の出現を採用）の
+  挙動不一致を `keyByFirstOccurrence()` ヘルパーで統一（最初の出現を採用に揃える）。
+  `WorkflowSnapshot.steps` を `readonly TemplateStep[]` に変更（JSDoc の「不変スナップショット」
+  という説明と型を一致させる）。モジュールヘッダの誤記（存在しない型名「TemplateSnapshot」）を
+  `WorkflowSnapshot` に修正。RELEASE_LOG.md/requirement-trace.md の「テスト20件」を実数の21件に訂正。
+  回帰テスト1件追加。
+- 検証: tsc --noEmit / vitest run(4851件、新規1件追加) / lint(0エラー、1256警告=基準線) /
+  check:schema / lint:migrations すべて green。
+- 対応PR: #952
+
+## 2026-08-30 IMP-042（#952）を main へ取り込み。ワークフローテンプレート版管理・スナップショット型基盤
+
+- 内容: IMP-042（ワークフローテンプレート版管理・スナップショット型基盤、branch impl/IMP-042-workflow-versioning）を
+  main へ取り込んだ。69ファイルの phantom conflict（65ファイル一括解決、4ファイル手動）＋
+  resurrection（WorkScopeProvider.tsx を16度目の再削除、スキップ済み PR #947 の
+  `src/lib/sync/` 一式8ファイルも合わせて削除）を解消。
+- 検証: tsc --noEmit / vitest run(4850件) / lint(0エラー、1256警告=基準線) / check:schema /
+  lint:migrations すべて green。
+
 ## 2026-08-30 IMP-041（#951）の code-review 指摘を修正。データ不備の終日占有誤判定・no_show の稼働率誤カウントを解消
 
 - 内容: `src/lib/booths/occupancy.ts` の `findAvailableBooths()` と `countConcurrentAt()` が、
@@ -644,6 +666,22 @@
   （OPEN_QUESTIONS 参照）。
 - テスト: 既存5件 + 修正後全通過。全4391テスト通過、`tsc --noEmit` クリーン、
   lint 0 エラー。
+
+## 2026-08-20 IMP-042 WORKFLOW_BUILDER 版管理テンプレート型基盤（branch impl/IMP-042-workflow-versioning）
+
+- 内容: ワークフローテンプレートの版管理（バージョニング + ジョブ実行時凍結）の型基盤を実装。
+  - `src/lib/workflow/templateVersion.ts`: 版管理の型定義と純関数
+    - `WorkflowSnapshot` — ジョブ開始時にテンプレートを凍結する不変スナップショット型
+    - `TemplateStep` — 6+ 箇所に散在していた WorkflowStep 型の正準共有定義
+    - `createWorkflowSnapshot()` — テンプレートから deep copy スナップショットを生成
+    - `diffTemplateSteps()` — 2 つの steps 配列を key ベースで比較（added/removed/modified/reordered）
+    - `isSnapshotStale()` — 凍結スナップショットと現行テンプレートの乖離判定
+    - `resolveStepFromSnapshot()` — 凍結スナップショットからステップ解決
+    - `computeSnapshotProgress()` — 凍結スナップショットからの進捗計算
+  - テスト 21 件追加
+- 対象: 全施工店（ワークフローテンプレート利用店舗）
+- 依存: IMP-015, IMP-013
+- 注記: DB マイグレーション（reservations.workflow_snapshot jsonb 列追加等）は消費タスクで実施。型基盤先行パターン。
 
 ## 2026-08-20 IMP-041 §21 設備/リフト稼働 占有予測・NEXT ACTION シグナル（branch impl/IMP-041-booth-occupancy）
 
