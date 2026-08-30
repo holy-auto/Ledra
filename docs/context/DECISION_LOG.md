@@ -4,6 +4,18 @@
 > （新しい順）。実装の詳細は RELEASE_LOG.md、迷っている段階のものは
 > OPEN_QUESTIONS.md に書く。
 
+## 2026-08-30 IMP-050（#957）を main へ取り込み。resurrection パターン21度目
+
+1. 日付: 2026-08-30
+2. 起きたこと: PR #957（IMP-050、プライバシー・データ分類・可視性・マスキング基盤）のベースを main へ retarget し、origin/main をマージ。競合85件のうち81件は PR 自身の差分に無いファイル（`git diff` で PR 独自コミットの差分に含まれないことを確認、origin/main 側を採用）、4件（DECISION_LOG.md/LEDRA_CURRENT.md/RELEASE_LOG.md/requirement-trace.md）は PR 自身の事業ログ追記との真の競合で、origin/main を土台にして PR の追記内容を正しい位置に手動で復元。マージ後、`src/lib/navigation/WorkScopeProvider.tsx` と `src/lib/sync/` 一式が21回目の resurrection として復活（PR #947 スキップに起因、`src/lib/privacy/` からの依存ゼロを確認済み）。
+3. 以前の考え: なし（機械的なマージ手順）。
+4. 違和感・問題: resurrection パターンが21回連続で発生しており、スタック内の全 PR が同じ根本原因（PR #947 IMP-032 のスキップに伴う古いベース）を共有していることを改めて確認。
+5. 決めたこと: 85件の競合を phantom（81件、`git checkout --theirs`）と genuine（4件、手動再現）に分類して解決。resurrection ファイル一式をスクラッチパッドへ退避し `git add -A` で削除を確定。
+6. 捨てた選択肢: なし。
+7. 判断理由: 既存の確立済みパイプライン手順（PR #948 以降で一貫して適用）をそのまま踏襲。
+8. まだ答えが出ていないこと: PR #947（IMP-032）自体の扱いは未解決のまま（DECISION_LOG 2026-08-30「PR #947（IMP-032）をスキップ」参照）。resurrection は残りのスタック（#958〜#961）でも継続発生する見込み。
+9. 公開区分: 公開可（マージ作業のメカニクス。機密・個人情報なし）。
+
 ## 2026-08-30 IMP-046（#956）の code-review 指摘を修正。NON_OCCUPYING重複定義・型の意図しない拡大・ドキュメント不整合を解消
 
 1. 日付: 2026-08-30
