@@ -4,6 +4,18 @@
 > （新しい順）。実装の詳細は RELEASE_LOG.md、迷っている段階のものは
 > OPEN_QUESTIONS.md に書く。
 
+## 2026-08-30 IMP-050（#957）の code-review 指摘を修正。VEHICLE/PASSPORT_PUBLIC_RULES の PII 列挙漏れ・hash 戦略のドキュメント矛盾・pii の可視性要件誤り・ドキュメント件数誤記を解消
+
+1. 日付: 2026-08-30
+2. 起きたこと: PR #957 マージ後の `/code-review` で5件の指摘。すべて確認・修正: (1) `VEHICLE_PUBLIC_RULES`（rendition.ts）が `customerRelation.ts` の `VEHICLE_TABLE_PII_COLUMNS`（単一定義源、["customer_id","notes","plate_display"]）と手書きで独立に重複定義されており、既にテーブルから削除済みの customer_name/customer_email/customer_phone_masked を列挙する一方、実在する PII 列 plate_display（ナンバープレート）が抜けていた。(2) `PASSPORT_PUBLIC_RULES` も同様に `PASSPORT_TABLE_PII_COLUMNS` と独立定義で、前所有者の PII（from_owner_name/from_owner_email）が抜けており、passport_ownership_transfers の「前所有者の PII を新所有者に見せない」という設計意図に反していた。(3) `applyMask()` の "hash" 戦略が、自身の JSDoc（「呼び出し側が事前にハッシュ済みの値を渡し、'sha256:&lt;hex8桁&gt;' 形式に整形する」）を無視し、`value` を一切使わず固定文字列 `"[MASKED]"` を返していた。(4) `DEFAULT_REQUIRED_VISIBILITY` が pii を owner_only（データ主体本人のみ）に要求しており、`canAccess()` の順序規則上、テナントスタッフ（tenant_internal）が通常業務で必要とする顧客氏名・電話番号等の pii フィールドに一切アクセスできない設定になっていた（未使用・未テストのため潜在バグ）。(5) RELEASE_LOG.md/LEDRA_CURRENT.md/requirement-trace.md/DECISION_LOG.md の「FIELD_CLASSIFICATIONS 19エントリ」「テスト64件（内訳 classification 10 + visibility 11 + rendition 22 + exportAudit 21）」がいずれも実数（20エントリ、67件、内訳 classification 16 + visibility 21 + rendition 20 + exportAudit 10）と不一致だった。
+3. 以前の考え: マージ時点では `src/lib/privacy/` の4モジュールは既存パターン（certificates_public・VEHICLE_TABLE_PII_COLUMNS・is_pii_disclosed）の型安全な一般化として問題なしと判断していた。
+4. 違和感・問題: (1)(2) は IMP-040/043 等で繰り返し発生している「既存の単一定義源を参照せず手書きで複製し、後から乖離する」という同一パターンの再発。しかも本モジュール自身が「既存パターンを型安全に再現する」ことを目的として書かれていたにもかかわらず、その既存パターンの現在値（VEHICLE_TABLE_PII_COLUMNS のコメントに明記された削除済みカラムの情報）を参照していなかった。(3) は JSDoc に書かれた契約と実装が一致していない典型例。(4) は「pii の閲覧に owner_only を要求する」設定が、正準語彙で言う「pii」の実運用（スタッフが日常的に扱う顧客情報）と整合しておらず、この関数が実際に配線されればスタッフ業務を止めていた。まだどこからも呼ばれていないため実害はまだ発生していない。
+5. 決めたこと: (1)(2) `VEHICLE_PUBLIC_RULES`/`PASSPORT_PUBLIC_RULES` を手書きリストから `VEHICLE_TABLE_PII_COLUMNS`/`PASSPORT_TABLE_PII_COLUMNS` の `.map()` 生成に変更し、乖離が構造的に起こらないようにした。(3) `applyMask()` の hash 戦略を JSDoc 通り `` `sha256:${String(value).slice(0, 8)}` `` に修正。(4) `DEFAULT_REQUIRED_VISIBILITY.pii`/`.confidential` を `tenant_internal` に変更（restricted のみ owner_only を維持——認証情報・暗号化シークレットはスタッフにも見せない）。(5) ドキュメント4ファイルの件数を実数に訂正。回帰テスト4件追加（VEHICLE/PASSPORT_PUBLIC_RULES を単一定義源と突き合わせるテスト2件、hash のフォーマット修正1件、DEFAULT_REQUIRED_VISIBILITY の3件）。
+6. 捨てた選択肢: (a) VEHICLE_PUBLIC_RULES/PASSPORT_PUBLIC_RULES の抜けている列だけを個別に手書き追加…同じ乖離が将来また起こるため、単一定義源からの生成に変更する方を選んだ。(b) DEFAULT_REQUIRED_VISIBILITY.restricted も tenant_internal に緩和…restricted は認証情報等でありテナントスタッフにも見せるべきでないため、owner_only（実質「通常の閲覧経路では誰も満たせない」フロア）のまま維持。
+7. 判断理由: CLAUDE.md の「バグ修正は根本原因、対症療法ではない」方針に沿い、手書き複製という共通の根本原因を単一定義源からの生成に置き換えて解消した。可視性のデフォルト値は、正準語彙上の pii（顧客氏名・電話番号等）が実運用でテナントスタッフに日常的に必要とされる情報である以上、tenant_internal を要求するのが正しいデフォルトだと判断した。
+8. まだ答えが出ていないこと: `createRendition`/`DEFAULT_REQUIRED_VISIBILITY` を実際の API レスポンス生成へ統合するタイミング（現時点では型基盤のみで、呼び出し元ゼロを確認済み）。hash 戦略を実際に使う定義済みルールは現時点でまだ無い。
+9. 公開区分: 公開可（コードレビューで見つかった型基盤コードの論理バグ修正。テーブル名・カラム名は docs/information-asset-inventory.md で公開相当。金額・テナント名・個人情報は含まない）。
+
 ## 2026-08-30 IMP-050（#957）を main へ取り込み。resurrection パターン21度目
 
 1. 日付: 2026-08-30
@@ -599,7 +611,7 @@
 2. 起きたこと: v2.0 §18 のプライバシー・データ保護基盤を実装する段階。既存コードベースを精査した結果、PII 遮断（customerRelation.ts のコンパイル時型アサーション）、公開ビュー（certificates_public の customer_name/content_free_text NULL 化）、エクスポート4ルート（admin/customer/agent/insurer）、保持 cron、削除リクエストなど、個別のプライバシー機構は既に散在していた。
 3. 以前の考え: 「可視性4レベル・マスク公開なし（部分）」と requirement-trace に記録していた。各機構が個別に動いており体系的な分類・可視性モデルが無かった。
 4. 違和感・問題: 既存の certificates_public ビュー（SQL）と customerRelation.ts の PII カラムリストが同じ「フィールドレベルのアクセス制御」を別の方式で実装しており、新テーブル追加時にどちらのパターンに従うか不明確。エクスポート監査も vehicle_histories へのベストエフォート記録のみで統一フォーマットなし。
-5. 決めたこと: 4モジュール構成の純関数基盤として一般化。(a) データ分類（ISO 27001 A.5.12 の4分類を型化、19フィールド登録）。(b) 可視性モデル（既存 is_pii_disclosed を partner_shared レベルとして一般化、ViewerContext→有効レベル解決）。(c) レンディションマスキング（ADR-0003「マスキングは公開レンディション側で行い、原本バイトは後処理しない」を一般化、certificates_public/VEHICLE_TABLE_PII_COLUMNS/パスポートの3パターンを定義済みルールとして型安全に再現）。(d) エクスポート監査（4スコープの統一イベントフォーマット、頻度異常検出）。IO なし、DB マイグレーションなし。
+5. 決めたこと: 4モジュール構成の純関数基盤として一般化。(a) データ分類（ISO 27001 A.5.12 の4分類を型化、20フィールド登録）。(b) 可視性モデル（既存 is_pii_disclosed を partner_shared レベルとして一般化、ViewerContext→有効レベル解決）。(c) レンディションマスキング（ADR-0003「マスキングは公開レンディション側で行い、原本バイトは後処理しない」を一般化、certificates_public/VEHICLE_TABLE_PII_COLUMNS/パスポートの3パターンを定義済みルールとして型安全に再現）。(d) エクスポート監査（4スコープの統一イベントフォーマット、頻度異常検出）。IO なし、DB マイグレーションなし。
 6. 捨てた選択肢: (a) DB マイグレーション込みで data_classification カラムを全テーブルに追加…型基盤先行の方針に反し、稼働中の本番に不要な変更。(b) 既存 certificates_public ビューを TS 側 createRendition に置き換え…SQL ビューは RLS と一体で動いており撤去は危険、共存が安全。(c) crypto 依存の実ハッシュマスキング…hash 戦略は形式のみで呼び出し側が事前ハッシュする設計（依存最小化）。
 7. 判断理由: 既存コードの実績あるパターン（certificates_public の NULL 化、PII カラムリスト、is_pii_disclosed 開示フラグ）を壊さず型で一般化する最小差分。新コードが既存パターンを消費する形（CERTIFICATE_PUBLIC_RULES が certificates_public と同じ効果を TS 側で再現）なので、移行も段階的に可能。
 8. まだ答えが出ていないこと: createRendition を API レスポンス生成に統合するタイミング（現時点では型基盤のみ）。FIELD_CLASSIFICATIONS レジストリの拡張方針（新テーブル追加時に自動検出するか手動登録か）。エクスポート監査イベントの永続化先（専用テーブル vs ドメインイベントカタログ統合）。

@@ -8,6 +8,7 @@ import {
   PASSPORT_PUBLIC_RULES,
   type MaskingRule,
 } from "../rendition";
+import { VEHICLE_TABLE_PII_COLUMNS, PASSPORT_TABLE_PII_COLUMNS } from "@/lib/vehicles/customerRelation";
 
 describe("MASKING_STRATEGIES", () => {
   it("4 戦略が定義されている", () => {
@@ -40,8 +41,8 @@ describe("applyMask", () => {
     expect(applyMask("hi", "truncate", { keepChars: 5 })).toBe("hi");
   });
 
-  it("hash → '[MASKED]'", () => {
-    expect(applyMask("anything", "hash")).toBe("[MASKED]");
+  it("hash → 'sha256:' + 値の先頭8文字（呼び出し側が事前にハッシュ済みの値を渡す前提）", () => {
+    expect(applyMask("deadbeefcafe0123", "hash")).toBe("sha256:deadbeef");
   });
 
   it("null 入力 → null（全戦略共通）", () => {
@@ -112,15 +113,18 @@ describe("定義済みルール", () => {
     }
   });
 
-  it("VEHICLE_PUBLIC_RULES — PII 5 カラムを nullify", () => {
-    expect(VEHICLE_PUBLIC_RULES).toHaveLength(5);
+  it("VEHICLE_PUBLIC_RULES — VEHICLE_TABLE_PII_COLUMNS（単一定義源）と完全一致", () => {
+    // 手書きの固定リストにすると、テーブル側でカラムが増減しても追随せず乖離する
+    // （customer_name 等は既に削除済み・plate_display が抜けていたバグの回帰防止）。
+    expect(VEHICLE_PUBLIC_RULES.map((r) => r.field).sort()).toEqual([...VEHICLE_TABLE_PII_COLUMNS].sort());
     for (const r of VEHICLE_PUBLIC_RULES) {
       expect(r.strategy).toBe("nullify");
     }
   });
 
-  it("PASSPORT_PUBLIC_RULES — オーナー PII を partner_shared 未満で nullify", () => {
-    expect(PASSPORT_PUBLIC_RULES).toHaveLength(2);
+  it("PASSPORT_PUBLIC_RULES — PASSPORT_TABLE_PII_COLUMNS（単一定義源）と完全一致", () => {
+    // from_owner_name/from_owner_email（前所有者 PII）が抜けていたバグの回帰防止。
+    expect(PASSPORT_PUBLIC_RULES.map((r) => r.field).sort()).toEqual([...PASSPORT_TABLE_PII_COLUMNS].sort());
     for (const r of PASSPORT_PUBLIC_RULES) {
       expect(r.appliesBelow).toBe("partner_shared");
       expect(r.strategy).toBe("nullify");

@@ -11,6 +11,7 @@
  */
 
 import { VISIBILITY_ORDER, type VisibilityLevel } from "./visibility";
+import { VEHICLE_TABLE_PII_COLUMNS, PASSPORT_TABLE_PII_COLUMNS } from "@/lib/vehicles/customerRelation";
 
 // ── マスキング戦略 ──
 
@@ -63,8 +64,9 @@ export function applyMask(
       return str.slice(0, keep) + "***";
     }
     case "hash":
-      // ponytail: 実際のハッシュは caller が渡す。ここではフォーマットのみ。
-      return `[MASKED]`;
+      // ponytail: 実際のハッシュ計算は行わない。value は呼び出し側が
+      // 事前にハッシュ済みの値を渡す前提で、フォーマットのみ整形する。
+      return `sha256:${String(value).slice(0, 8)}`;
   }
 }
 
@@ -113,21 +115,26 @@ export const CERTIFICATE_PUBLIC_RULES: readonly MaskingRule[] = [
 
 /**
  * 車両レコードの公開レンディション用ルール。
- * VEHICLE_TABLE_PII_COLUMNS に対応。
+ * VEHICLE_TABLE_PII_COLUMNS（customerRelation.ts の単一定義源）から生成。
+ * 手書きの固定リストにすると、テーブル側でカラムが増減しても追随せず
+ * 乖離する（実際に customer_name/customer_email/customer_phone_masked は
+ * 既にテーブルから削除済みで、残っている plate_display が抜けていた）。
  */
-export const VEHICLE_PUBLIC_RULES: readonly MaskingRule[] = [
-  { field: "customer_name", appliesBelow: "tenant_internal", strategy: "nullify" },
-  { field: "customer_email", appliesBelow: "tenant_internal", strategy: "nullify" },
-  { field: "customer_phone_masked", appliesBelow: "tenant_internal", strategy: "nullify" },
-  { field: "customer_id", appliesBelow: "tenant_internal", strategy: "nullify" },
-  { field: "notes", appliesBelow: "tenant_internal", strategy: "nullify" },
-];
+export const VEHICLE_PUBLIC_RULES: readonly MaskingRule[] = VEHICLE_TABLE_PII_COLUMNS.map((field) => ({
+  field,
+  appliesBelow: "tenant_internal",
+  strategy: "nullify",
+}));
 
 /**
  * パスポートの公開レンディション用ルール。
- * 所有者 PII はパートナー開示同意がなければマスク。
+ * PASSPORT_TABLE_PII_COLUMNS（customerRelation.ts の単一定義源）から生成。
+ * 現所有者・前所有者いずれの PII もパートナー開示同意がなければマスク
+ * （前所有者の PII を新所有者に見せない、という passport_ownership_transfers
+ * の設計意図を含む）。
  */
-export const PASSPORT_PUBLIC_RULES: readonly MaskingRule[] = [
-  { field: "current_owner_name", appliesBelow: "partner_shared", strategy: "nullify" },
-  { field: "current_owner_email", appliesBelow: "partner_shared", strategy: "nullify" },
-];
+export const PASSPORT_PUBLIC_RULES: readonly MaskingRule[] = PASSPORT_TABLE_PII_COLUMNS.map((field) => ({
+  field,
+  appliesBelow: "partner_shared",
+  strategy: "nullify",
+}));

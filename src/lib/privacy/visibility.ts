@@ -77,8 +77,10 @@ export function resolveVisibility(viewer: ViewerContext): VisibilityLevel {
 /**
  * データ分類ごとに要求される最低可視性レベル。
  *
- * restricted/pii → owner_only 以上でないと閲覧不可
- * confidential → tenant_internal 以上
+ * restricted → owner_only 以上（実質、通常の閲覧経路では誰も満たせない。
+ *   認証情報・暗号化シークレット等はテナントスタッフにも見せない前提）
+ * pii/confidential → tenant_internal 以上（テナントスタッフは通常業務で
+ *   閲覧可能。パートナー・公開は開示同意やマスキングなしに閲覧不可）
  * public → 制限なし
  *
  * ponytail: このマッピングはデフォルト方針。個別エンティティが
@@ -86,7 +88,7 @@ export function resolveVisibility(viewer: ViewerContext): VisibilityLevel {
  */
 export const DEFAULT_REQUIRED_VISIBILITY: Record<DataClassification, VisibilityLevel> = {
   restricted: "owner_only",
-  pii: "owner_only",
+  pii: "tenant_internal",
   confidential: "tenant_internal",
   public: "public",
 };

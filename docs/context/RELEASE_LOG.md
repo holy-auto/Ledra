@@ -4,6 +4,11 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-08-30 IMP-050（#957）の code-review 指摘を修正。VEHICLE/PASSPORT_PUBLIC_RULES の PII 列挙漏れ・hash 戦略のドキュメント矛盾・pii の可視性要件誤り・ドキュメント件数誤記を解消
+
+- 内容: `VEHICLE_PUBLIC_RULES`/`PASSPORT_PUBLIC_RULES`（rendition.ts）を、手書きの固定リストから `VEHICLE_TABLE_PII_COLUMNS`/`PASSPORT_TABLE_PII_COLUMNS`（customerRelation.ts の単一定義源）の `.map()` 生成に変更。既に削除済みの customer_name/customer_email/customer_phone_masked を列挙しつつ実在する plate_display が抜けていたバグ、前所有者 PII（from_owner_name/from_owner_email）が抜けていたバグを解消。`applyMask()` の hash 戦略を JSDoc 通り `sha256:<値の先頭8文字>` を返すよう修正（従来は `value` を無視して固定文字列 `[MASKED]` を返していた）。`DEFAULT_REQUIRED_VISIBILITY.pii`/`.confidential` を `owner_only`→`tenant_internal` に修正（テナントスタッフが通常業務で pii にアクセスできない設定になっていた、未配線のため実害は未発生）。RELEASE_LOG.md/LEDRA_CURRENT.md/requirement-trace.md/DECISION_LOG.md の「FIELD_CLASSIFICATIONS 19エントリ」「テスト64件」を実数（20エントリ、67件）に訂正。回帰テスト4件追加。
+- 検証: tsc --noEmit clean / vitest run 5107件全通過（498ファイル、privacy 67件含む） / lint 0エラー・1256警告=基準線 / check:schema OK / lint:migrations OK。
+
 ## 2026-08-30 IMP-050（#957）を main へ取り込み。プライバシー・データ分類・可視性・マスキング基盤
 
 - 内容: PR #957 のベースを main へ retarget し、origin/main をマージ。競合85件（phantom 81件 + genuine 4件〔事業ログ4ファイル〕）を解決。resurrection パターン21度目（`WorkScopeProvider.tsx`・`src/lib/sync/`、`src/lib/privacy/` からの依存ゼロを確認して削除）。
@@ -786,7 +791,7 @@
 - 内容: v2.0 §18 が要求するプライバシー・データ保護基盤を4モジュールの純関数で実装。
   - `src/lib/privacy/classification.ts`: 4段階データ分類（ISO 27001 A.5.12 準拠）
     - `DataClassification` 型（restricted/pii/confidential/public）
-    - `FIELD_CLASSIFICATIONS` レジストリ（19エントリ: customers/vehicles/invoices/tenant_secrets）
+    - `FIELD_CLASSIFICATIONS` レジストリ（20エントリ: customers/vehicles/invoices/tenant_secrets）
     - `getFieldClassification()` — テーブル.カラム→分類ルックアップ
     - `maxClassification()` — フィールド群の最厳分類
     - `findClassificationViolations()` — 閾値超過フィールド検出
@@ -804,7 +809,7 @@
     - `createExportAuditEntry()` — 監査エントリ生成
     - `detectAbnormalExportFrequency()` — 頻度異常検出
 - 対象: 既存 PII 遮断（customerRelation.ts）・公開ビュー（certificates_public）・エクスポートルートの型安全な一般化
-- テスト: 64件（classification 10 + visibility 11 + rendition 22 + exportAudit 21）
+- テスト: 67件（classification 16 + visibility 21 + rendition 20 + exportAudit 10）
 - 依存: なし（純関数モジュール、IO なし）
 
 ## 2026-08-20 IMP-046 §21 ANALYTICS_STORE — 運用KPI・キャパシティ分析（branch impl/IMP-046-analytics-kpi）

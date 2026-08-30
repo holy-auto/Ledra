@@ -380,10 +380,10 @@ Sentry · Resend (+ SendGrid fallback) · Anthropic (Opus 4.8 / Sonnet 4.6 / Hai
   （DECISION_LOG 2026-08-19）。
 - **IMP-050（§18 SECURITY_PRIVACY — プライバシー・データ分類・可視性・マスキング基盤）完了**:
   v2.0 §18 のプライバシー・データ保護基盤を4モジュールの純関数で実装。4段階データ分類
-  （restricted/pii/confidential/public、ISO 27001 A.5.12 準拠、19フィールド登録）、
+  （restricted/pii/confidential/public、ISO 27001 A.5.12 準拠、20フィールド登録）、
   4段階可視性モデル（owner_only→public、ViewerContext→有効レベル解決）、レンディション
   マスキング（ADR-0003 一般化、4戦略、定義済みルール3セット）、エクスポート監査イベント
-  （4スコープ統一フォーマット、頻度異常検出）。テスト64件。IO なし。
+  （4スコープ統一フォーマット、頻度異常検出）。テスト67件。IO なし。
 - **IMP-046（§21 ANALYTICS_STORE — 運用KPI・キャパシティ分析）完了**:
   v2.0 §21 の運用指標セットとキャパシティ可視化を純関数計算器で実装。
   運用KPI 6本（VERIFIED到達率・証跡充足率・レビュー待ち時間・サイクルタイム・SLA遵守率・

@@ -5,6 +5,7 @@ import {
   canAccess,
   resolveVisibility,
   findHiddenFields,
+  DEFAULT_REQUIRED_VISIBILITY,
   type ViewerContext,
   type FieldVisibilityRule,
 } from "../visibility";
@@ -105,5 +106,24 @@ describe("findHiddenFields", () => {
 
   it("owner_only → 全表示", () => {
     expect(findHiddenFields(rules, "owner_only")).toEqual([]);
+  });
+});
+
+describe("DEFAULT_REQUIRED_VISIBILITY", () => {
+  it("pii/confidential は tenant_internal（テナントスタッフは通常業務で閲覧可能）", () => {
+    // pii を owner_only にすると canAccess("owner_only", "tenant_internal") が false になり、
+    // 顧客氏名・電話番号等を通常業務で見るスタッフ自身が弾かれてしまう回帰の防止。
+    expect(DEFAULT_REQUIRED_VISIBILITY.pii).toBe("tenant_internal");
+    expect(DEFAULT_REQUIRED_VISIBILITY.confidential).toBe("tenant_internal");
+    expect(canAccess(DEFAULT_REQUIRED_VISIBILITY.pii, "tenant_internal")).toBe(true);
+  });
+
+  it("restricted は owner_only（テナントスタッフでも閲覧不可のまま）", () => {
+    expect(DEFAULT_REQUIRED_VISIBILITY.restricted).toBe("owner_only");
+    expect(canAccess(DEFAULT_REQUIRED_VISIBILITY.restricted, "tenant_internal")).toBe(false);
+  });
+
+  it("public は制限なし", () => {
+    expect(DEFAULT_REQUIRED_VISIBILITY.public).toBe("public");
   });
 });
