@@ -21,7 +21,14 @@
   ゲート `shouldNudgeStalledFlows`（orchestrator）、文面 `buildQuoteDetailNudge`（messages）。
   **マイグレーション不要**（notification_logs の type/target_type は自由文字列）。
 - 検証: `flowNudges`（停滞のみ対象・新しい/失効は除外・dedup・未紐付けは送る・opt-out除外・
-  失敗ログ）テスト8件追加。全体 4474 件パス、tsc/eslint エラー0（既存 actionCatalog の `_key` 警告のみ）。
+  失敗ログ）テスト8件追加。
+- コードレビュー由来の追加修正（同 PR、`/code-review`）:
+  - dedup ログ insert のエラーを握りつぶさず warn で可視化（送信成功後に insert 失敗すると翌日
+    二重送信になり得るため。undo 不可なので送信自体は成功扱いのまま可視化）。
+  - 停滞フロー取得に `order(updated_at asc)+limit(500)` を追加（PostgREST 既定行上限で無言に
+    切れるのを避け、失効が近い会話から優先。溢れは翌日に dedup 済みで拾う）。
+  - コード側の時刻再判定をエポックミリ秒比較に変更（ISO 文字列のオフセット表記差による誤判定を回避）。
+- 全体 4474 件パス、tsc/eslint エラー0（既存 actionCatalog の `_key` 警告のみ）。
 - #2「見積りフロー改善」の4件目（最後）。これで #2 の4項目が完了。
 
 ## 2026-08-29 見積りフロー改善③: 概算見積りに「正式見積り/相談」ボタン誘導＋文面整合（branch claude/line-chatbot-ledra-dy2fiq）

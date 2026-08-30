@@ -22,6 +22,13 @@ type Admin = ReturnType<typeof createServiceRoleAdmin>;
 /** 最後の活動からこの時間ご返信が無ければ再促し対象 (既定 24h)。 */
 export const NUDGE_AFTER_HOURS = 24;
 
+/**
+ * 1 回の実行で 1 テナントあたり処理する上限。PostgREST の既定行上限で無言に切れるのを避けつつ、
+ * 失効が近い (updated_at が古い) 会話から優先する。溢れた分は翌日の実行で拾う (dedup 済みは除外)。
+ * ponytail: 天井=1テナント500停滞会話/日。恒常的に超えるならテナント内もキーセットページングする。
+ */
+const MAX_NUDGES_PER_TENANT_RUN = 500;
+
 type FlowRow = {
   id: string;
   customer_id: string | null;
@@ -45,27 +52,33 @@ export async function processStalledFlowNudges(
   const { tenantId } = params;
   const now = params.now ?? new Date();
   try {
+    const nowMs = now.getTime();
+    const cutoffMs = nowMs - NUDGE_AFTER_HOURS * 3600_000;
     const nowIso = now.toISOString();
-    const cutoffIso = new Date(now.getTime() - NUDGE_AFTER_HOURS * 3600_000).toISOString();
+    const cutoffIso = new Date(cutoffMs).toISOString();
 
     // 見積り詳細待ちのまま停滞 (updated_at が cutoff より古い) かつ未失効 (expires_at 未来) の会話。
+    // 失効が近い (updated_at が古い) 順に、1 実行あたり上限まで取得する。
     const { data: flowData, error: flowErr } = await admin
       .from("line_conversation_flows")
       .select("id, customer_id, line_user_id, updated_at, expires_at")
       .eq("tenant_id", tenantId)
       .eq("state", "awaiting_quote_detail")
       .lt("updated_at", cutoffIso)
-      .gt("expires_at", nowIso);
+      .gt("expires_at", nowIso)
+      .order("updated_at", { ascending: true })
+      .limit(MAX_NUDGES_PER_TENANT_RUN);
     if (flowErr) {
       logger.warn("[flowNudges] flow select failed", { tenantId, err: flowErr.message });
       return 0;
     }
     // push には line_user_id 必須。.lt/.gt が効かない環境でも取りこぼさないようコード側でも再判定する。
+    // 時刻はエポックミリ秒で比較する (ISO 文字列のオフセット表記差 (Z vs +00:00) による誤判定を避ける)。
     const flows = ((flowData as FlowRow[] | null) ?? []).filter(
       (f) =>
         !!f.line_user_id &&
-        (f.updated_at == null || f.updated_at < cutoffIso) &&
-        (f.expires_at == null || f.expires_at > nowIso),
+        (f.updated_at == null || new Date(f.updated_at).getTime() < cutoffMs) &&
+        (f.expires_at == null || new Date(f.expires_at).getTime() > nowMs),
     );
     if (flows.length === 0) return 0;
 
@@ -108,8 +121,10 @@ export async function processStalledFlowNudges(
         body: buildQuoteDetailNudge(),
       });
 
-      // 結果に関わらずログを残して再送ループ/二重送信を防ぐ (失敗は logs で可視化)。
-      await admin.from("notification_logs").insert({
+      // 結果に関わらず dedup ログを残して再送ループ/二重送信を防ぐ (失敗は logs で可視化)。
+      // 送信成功後にこの insert が失敗すると翌日の実行で二重送信になり得るため、エラーを
+      // 握りつぶさず warn で可視化する (undo はできないので送信自体は成功扱いのまま)。
+      const { error: logErr } = await admin.from("notification_logs").insert({
         tenant_id: tenantId,
         type: "flow_nudge",
         target_type: "conversation_flow",
@@ -118,6 +133,13 @@ export async function processStalledFlowNudges(
         channel: "line",
         status: ok ? "sent" : "failed",
       });
+      if (logErr) {
+        logger.warn("[flowNudges] dedup log insert failed (risk of re-nudge next run)", {
+          tenantId,
+          flowId: f.id,
+          err: logErr.message,
+        });
+      }
 
       if (ok) sent++;
     }
