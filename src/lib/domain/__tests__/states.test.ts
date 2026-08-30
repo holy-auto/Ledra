@@ -23,7 +23,6 @@ import {
   DOMAIN_LOCALES,
   __DOMAIN_LABEL_MAPS,
   certificateStateLabel,
-  documentCorrectionStateLabel,
   jobStateLabel,
   partInstallationStateLabel,
   paymentStateLabel,
