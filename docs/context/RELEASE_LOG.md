@@ -14,6 +14,30 @@
 - 内容: PR #957 のベースを main へ retarget し、origin/main をマージ。競合85件（phantom 81件 + genuine 4件〔事業ログ4ファイル〕）を解決。resurrection パターン21度目（`WorkScopeProvider.tsx`・`src/lib/sync/`、`src/lib/privacy/` からの依存ゼロを確認して削除）。
 - 検証: tsc --noEmit clean / vitest run 5104件全通過（498ファイル、privacy 64件含む） / lint 0エラー・1256警告=基準線 / check:schema OK / lint:migrations OK。
 
+## 2026-08-30 LINE属人性の低減②: 受信箱のAI返信ドラフトを店舗ナレッジ根拠付きに強化（branch claude/line-chatbot-ledra-dy2fiq）
+
+- 背景: 受信箱（`/admin/messages`）の「AI返信ドラフト」は会話文脈だけから下書きしており、
+  営業時間・料金体系・対応可否などの店舗方針は担当者個人の知識頼み（属人性）。誰が返信しても
+  店舗方針に沿った一定品質の下書きになるよう、ドラフト生成を**店舗ナレッジで根拠づける**。
+- 内容: `generateReplyDraft` に `knowledge`（LINE 自動返信と同じ `tenant_line_knowledge` +
+  `global_line_knowledge` の enabled のみ）と `vehicle`（お客様の登録車両）を追加。プロンプトで
+  「店舗ナレッジがあればそれを事実の根拠にし、ナレッジに無いことは店舗方針として断定せず
+  『確認の上ご連絡します』と添える（推測でナレッジを補完しない）」を指示。ナレッジが無ければ
+  従来どおり会話文脈のみで下書き（挙動不変）。
+- 実装: `src/lib/ai/replyDraft.ts`（`knowledge`/`vehicle` 入力・`knowledgeFacts` 整形・プロンプト強化）、
+  `src/app/api/admin/messages/[key]/ai-reply/route.ts`（enabled ナレッジ + 登録車両を並列取得して渡す）。
+  ナレッジは自動返信と同じ enabled ソースを流用。**マイグレーション不要**。ドラフトは人が編集して
+  送る前提なので壁3・外向き自動送信には影響なし。
+- 検証: `replyDraft`（`knowledgeFacts` の整形/空スキップ、inbound 無しは空ドラフト）テスト追加。
+- コードレビュー由来の追加修正（同 PR、`/code-review`）:
+  - tenant と global を1リストに混ぜて優先関係を失っていたのを、**「店舗ナレッジ(最優先)」/
+    「共通ナレッジ(参考・矛盾時は店舗優先)」の2ブロック**に分離（`knowledgeReply` と同じ優先規則）。
+  - 登録車両は**1台に確定できるときだけ**添える（複数台は誤った車種を渡すため付けない）。
+  - 対話的ルートなのでナレッジ注入を `MAX_KNOWLEDGE_CHARS`（4000字）で上限化（遅延/コスト抑制）。
+  - 本文の改行を1行に畳む（箇条書きが崩れて別の事実に見えるのを防ぐ）。
+- 全体 5054 件パス、tsc/eslint エラー0。
+- 「LINE属人性の低減」の2件目。プラン: 既存の AI 返信ドラフトと同じ（Standard+）。
+
 ## 2026-08-30 LINE属人性の低減①: スタッフ返信からのナレッジ自動蓄積（学習・レビュー承認制）（branch claude/line-chatbot-ledra-dy2fiq）
 
 - 背景: LINE 自動返信の回答ソース（`tenant_line_knowledge`）は手動登録に依存し、良い回答が特定
