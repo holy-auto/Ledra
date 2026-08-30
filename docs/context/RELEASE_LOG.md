@@ -4,21 +4,42 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
-## 2026-08-30 IMP-026（#941）を main へ取り込み。実在しない列名の参照を修正、resurrection バグを6度目の再削除
+## 2026-08-30 IMP-026（#941）を main へ取り込み。check:schema・`/code-review`・Migrations Replay で計11件を修正、resurrection バグを6度目の再削除
 
 - 内容: IMP-026（顧客懸念提起フロー、branch impl/IMP-026-customer-concern）を main へ取り込む際、
-  マージ後の標準検証（`npm run check:schema`）で本PR自身のバグを発見・修正。
-  (1) `src/app/api/customer/concerns/route.ts` が `part_confirmation_signatures` テーブルの
-  存在しない列 `part_installation_id` を SELECT していた（実列名は `installation_id`） —
-  本番デプロイ後は `parts_confirmation` 経由の懸念提起が PostgREST の 400 で失敗する状態
-  だった。列名を修正。
-  (2) 本PR自身が新設した `customer_concerns` テーブルが `scripts/schema.snapshot.json` に
-  未登録で、テーブル参照全件が「存在しない」として検出されていた — マイグレーション DDL
-  から列名を書き起こして登録。
+  マージ後の標準検証（`npm run check:schema`）・`/code-review`・CI の Migrations Replay で
+  本PR自身のバグ11件を発見・修正。
+  (1) `part_confirmation_signatures` の存在しない列 `part_installation_id` を SELECT していた
+  （実列名 `installation_id`）— 本番では `parts_confirmation` 経由の懸念提起が 400 で失敗する
+  状態だった。
+  (2) 新設 `customer_concerns` テーブルが `scripts/schema.snapshot.json` に未登録だった —
+  マイグレーション DDL から書き起こして登録。
+  (3) `hasUnresolvedConcerns`（IMP-028 Certificate Gate 用のブロック判定）がクエリエラー時に
+  fail-open していた — fail-closed（エラー時 true）に変更。
+  (4) 同関数が tenant_id でスコープしておらず `src/lib/supabase/admin.ts` の CRITICAL 規約に
+  反していた — `tenantId` 必須引数を追加。
+  (5) `delivery_receipt`/`body_repair_consent` の token 解決が `purpose` 列を見ておらず、
+  他フローのトークンと取り違えうる状態だった — 既存コードと同じ `purpose` フィルタを追加。
+  (6) `customer_concerns` の Slack 通知が `customer_inquiries`（別系統と明言）と同じ webhook を
+  共用していた — 専用の `SLACK_CUSTOMER_CONCERN_WEBHOOK_URL` を新設。
+  (7) `z.enum(X as unknown as [string, ...string[]])` という型消去キャストを4箇所で全廃
+  （`readonly T[]` 型注釈を外しタプル推論に任せるだけで解決）。
+  (8) 懸念を再オープンした際に旧 `resolved_by`/`resolved_at` が残るバグを修正。
+  (9) `hasUnresolvedConcerns`（過去にOR ロジックのリグレッション歴あり）にテスト7件を新設。
+  修正・プッシュ後、CI の Migrations Replay（空DBからの全マイグレーション再生）が新規失敗し、
+  マイグレーション自身のバグ2件を追加で発見・修正。
+  (10) `resolved_by UUID REFERENCES profiles(id)` と RLS ポリシー2箇所が存在しないテーブル
+  `profiles` を参照 — `auth.users(id)` / `public.my_tenant_ids()`（既存の確立済みパターン）に修正。
+  (11) `EXECUTE FUNCTION update_updated_at()` が存在しない関数を参照 — 実在する
+  `set_updated_at()` に修正。`npm run check:migrations` で「再生 OK（既知の9件を除く。増減なし）」
+  まで確認。
   加えて、IMP-024/025 と同じ squash 履歴の断絶で `src/lib/sync/`・`WorkScopeProvider.tsx` が
   6度目の復活をしていたため再削除。
-- 対象: `src/app/api/customer/concerns/route.ts`、`scripts/schema.snapshot.json`。詳細は
-  DECISION_LOG「IMP-026（#941）を main へ取り込み。check:schema が実在しない列名を検出」参照。
+- 対象: `src/app/api/customer/concerns/route.ts`、`src/app/api/admin/concerns/[id]/route.ts`、
+  `src/lib/concerns/{blockCheck,types}.ts`、`scripts/schema.snapshot.json`、`.env.example`、
+  `supabase/migrations/20260820010000_customer_concerns.sql`。
+  詳細は DECISION_LOG「IMP-026（#941）を main へ取り込み。check:schema・`/code-review`・
+  CI の Migrations Replay で計11件を発見・対応」参照。
 
 ## 2026-08-30 IMP-025（#940）を main へ取り込み。PII シールドの穴3件を修正、resurrection バグを5度目の再削除
 

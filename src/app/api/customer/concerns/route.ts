@@ -7,12 +7,12 @@ import { notifySlack } from "@/lib/slack";
 import { CONCERN_SOURCES, CONCERN_CATEGORIES, CONCERN_CATEGORY_LABELS } from "@/lib/concerns/types";
 
 const concernSchema = z.object({
-  source_type: z.enum(CONCERN_SOURCES as unknown as [string, ...string[]]),
+  source_type: z.enum(CONCERN_SOURCES),
   source_token: z.string().trim().min(1).max(200),
   customer_name: z.string().trim().max(100).optional(),
   customer_email: z.string().email().max(254).optional(),
   concern_text: z.string().trim().min(1, "内容を入力してください").max(2000, "2000文字以内で入力してください"),
-  category: z.enum(CONCERN_CATEGORIES as unknown as [string, ...string[]]).optional(),
+  category: z.enum(CONCERN_CATEGORIES).optional(),
 });
 
 /**
@@ -62,7 +62,10 @@ export async function POST(req: NextRequest) {
 
     // Slack 通知(fire-and-forget)
     try {
-      await notifySlack(process.env.SLACK_CUSTOMER_INQUIRY_WEBHOOK_URL, {
+      // customer_inquiries(一般問い合わせ)とは別系統のため専用 webhook を使う。
+      // 未設定の間は無言でスキップ(notifySlack の仕様) — 誤って一般問い合わせ
+      // チャンネルに混ぜない。
+      await notifySlack(process.env.SLACK_CUSTOMER_CONCERN_WEBHOOK_URL, {
         text: `:warning: 顧客懸念: *${categoryLabel(category)}*`,
         fields: [
           { title: "発生源", value: sourceLabel(source_type), short: true },
@@ -89,11 +92,13 @@ async function resolveSourceContext(
 ): Promise<{ tenantId: string; jobId?: string; certificateId?: string } | null> {
   switch (sourceType) {
     case "delivery_receipt": {
-      // signature_sessions テーブルから解決
+      // signature_sessions テーブルから解決。purpose で他フロー(body_repair_consent 等)
+      // のトークンとの混同を防ぐ(src/app/api/signature/delivery-receipt/*.ts と同じ規約)。
       const { data } = await supabase
         .from("signature_sessions")
         .select("tenant_id, certificate_id")
         .eq("token", token)
+        .eq("purpose", "delivery_receipt")
         .maybeSingle();
       if (!data) return null;
       // certificate_id からジョブを逆引き(certificates.reservation_id)
@@ -132,10 +137,13 @@ async function resolveSourceContext(
       return { tenantId: data.tenant_id, jobId };
     }
     case "body_repair_consent": {
+      // purpose で delivery_receipt トークンとの混同を防ぐ
+      // (src/app/api/admin/body-repair-jobs/[id]/consent-request/route.ts と同じ値)。
       const { data } = await supabase
         .from("signature_sessions")
         .select("tenant_id, certificate_id")
         .eq("token", token)
+        .in("purpose", ["estimate_consent", "change_consent"])
         .maybeSingle();
       if (!data) return null;
       return {

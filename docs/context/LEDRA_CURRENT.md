@@ -383,9 +383,12 @@ Sentry · Resend (+ SendGrid fallback) · Anthropic (Opus 4.8 / Sonnet 4.6 / Hai
   `customer_concerns` テーブル（DBマイグレーション）+ 顧客API（トークン→テナント逆引き）+
   管理者API（GET/PATCH）+ ブロック判定ヘルパー（`hasUnresolvedConcerns` — IMP-028 用）。
   customer_inquiries（一般問い合わせ）とは別系統。Certificate Gate への実際の統合は IMP-028。
-  main 取り込み時の `check:schema` で実在しない列名参照（`part_installation_id` →
-  実列名 `installation_id`。本番では 400 で失敗していた箇所）を発見・修正。
-  resurrection バグ（`src/lib/sync/`・`WorkScopeProvider.tsx`）も6度目の再削除。
+  main 取り込み時の `check:schema`・`/code-review`・CI の Migrations Replay で計11件発見・修正:
+  実在しない列名参照（`part_installation_id` → `installation_id`）、ブロック判定ヘルパーの
+  fail-open/tenant scoping 漏れ、token の purpose 未検証、Slack webhook 混在、型消去キャスト、
+  再オープン時の解決記録残存、テスト未整備、マイグレーション自身の実在しないテーブル/関数参照
+  （`profiles`→`auth.users`+`my_tenant_ids()`、`update_updated_at`→`set_updated_at`）。
+  resurrection バグも6度目の再削除。
 - **IMP-025（§9 車両パスポート基盤 — PII遮断体系検証・車両顧客関係型モデル）完了**:
   パスポート公開サーフェスの PII 遮断をコンパイル時型アサーション（4型分）+テスト18件で体系的に検証。
   ADR-0006 に基づく車両顧客関係型モデル(`customerRelation.ts`)を新設 — 型のみ、DB変更なし。
