@@ -4,6 +4,30 @@
 > （新しい順）。実装の詳細は RELEASE_LOG.md、迷っている段階のものは
 > OPEN_QUESTIONS.md に書く。
 
+## 2026-08-30 IMP-045（#955）の code-review 指摘を修正。ガード3関数のチェック順不一致・重複ロジック・不要なキャストを解消
+
+1. 日付: 2026-08-30
+2. 起きたこと: PR #955 マージ後の `/code-review` で3件の指摘。すべて確認・修正: (1) `validateRoleChange()` は `owner_protected` を `insufficient_rank` より先にチェックしていたが、`validateMemberRemoval()`/`validateMemberSuspension()` は逆順（`insufficient_rank` が先）だった。権限のない操作者が owner を対象に操作した場合、`validateRoleChange()` だけが「owner_protected」という、対象が owner であることを明かす理由コードを返してしまい、他の2関数（権限不足のみを返す）と挙動が食い違っていた。(2) `!(ASSIGNABLE_ROLES as readonly string[]).includes(input.newRole)` — `ASSIGNABLE_ROLES` は既に `Role[]`、`input.newRole` は `Role` 型であり、キャストなしで型チェックが通ることを確認済み。不要な複雑化。(3) `hasMinRole(role, "admin") && adminOrAboveCount <= 1` という最終管理者判定ロジックが `validateMemberRemoval()`/`validateMemberSuspension()`/`wouldLoseLastAdmin()` の3箇所に重複していた（`wouldLoseLastAdmin()` 自体が単一定義源のはずだったが、他の2関数が呼び出さず再実装していた）。
+3. 以前の考え: マージ時点では `membership.ts` は型基盤先行パターンとして問題なしと判断していた。
+4. 違和感・問題: (1) は「3つの似たガード関数」を実装する際、チェック順という細部が意識的に統一されていなかった典型例。(3) は `wouldLoseLastAdmin()` 自体のコメントが「複数の validate 関数から個別に判定しているが」と重複を前提にした書き方をしており、意図的な重複であるかのように読めたが、実際には単に呼び出し忘れだった。
+5. 決めたこと: (1) `validateRoleChange()` のチェック順を他の2関数と揃え、`insufficient_rank` を `owner_protected` より先に判定するよう変更（権限のない操作者に対象の役職を明かさない）。(2) 不要なキャストを削除。(3) `validateMemberRemoval()`/`validateMemberSuspension()`/`validateRoleChange()` すべてで `wouldLoseLastAdmin()` を呼び出すよう統一し、`wouldLoseLastAdmin()` 自身のコメントも「単一定義源」であることを明記するよう更新。回帰テスト2件追加（チェック順一貫性、3関数横断の一貫性）。
+6. 捨てた選択肢: なし（3件とも明確な単一の正しい修正がある）。
+7. 判断理由: (1) は情報漏洩に類する実害があるバグであり修正必須。(3) は CLAUDE.md の「バグ修正は根本原因、対症療法ではない」方針に沿い、`wouldLoseLastAdmin()` を実際に単一定義源にした（コメントを直すだけでなく、呼び出し側も統一）。
+8. まだ答えが出ていないこと: なし。
+9. 公開区分: 公開可（コードレビューで見つかった型基盤コードの論理バグ修正。金額・テナント名・接続情報は含まない）
+
+## 2026-08-30 IMP-045（#955）を main へ取り込み。resurrection パターン19度目、ドキュメントのテスト件数訂正（33→36件）
+
+1. 日付: 2026-08-30
+2. 起きたこと: IMP-045（スタッフメンバーシップ管理ガード — 移籍・停止・最終管理者保護、branch impl/IMP-045-staff-management）を main へ取り込む際、main と分岐した80ファイルが衝突した。75ファイルは phantom conflict で一括解決。残り5ファイル（DECISION_LOG.md/LEDRA_CURRENT.md/RELEASE_LOG.md/requirement-trace.md/`src/lib/auth/permissionVerbs.ts`）はこのPR自身が変更していたため手動再適用した。このPRは branch 内で既に1度 code-review 修正パス（最終admin降格保護・移籍先重複チェック・死コード除去、テスト33→36件）を経ており、requirement-trace.md の件数は36に更新済みだったが、LEDRA_CURRENT.md/RELEASE_LOG.md は旧い33件のまま取り残されていたため、再適用時に3ファイルとも実数（36件）へ揃えた。resurrection チェックで `WorkScopeProvider.tsx`（19度目の再発）とスキップ済み PR #947 の `src/lib/sync/` 一式8ファイルが今回も復活していたため削除。`staff/` 配下2ファイル（PR 自身の新規ファイル）は `sync/` への依存なし（grep で確認済み）。
+3. 以前の考え: なし（#948〜954 で確立した手順の踏襲）。
+4. 違和感・問題: 同一PR内の複数ドキュメントファイルが同じ数値（テスト件数）について異なる値を記録している状態は、どちらが正か分からなくなる典型例。今回は最新のソース（テスト実行結果）を基準に揃えた。
+5. 決めたこと: 確立済みの手順をそのまま適用し、ドキュメント間の数値不整合も実数に統一。
+6. 捨てた選択肢: なし。
+7. 判断理由: 確立済みの手順が引き続き有効に機能した。
+8. まだ答えが出ていないこと: なし。
+9. 公開区分: 公開可（マージ手順の技術的な経緯。金額・テナント名・接続情報は含まない）
+
 ## 2026-08-30 IMP-044（#954）の code-review 指摘を修正。ブースシグナルの重複排除誤爆・follow_up_overdue上書き・イベント件数ドキュメント誤記を解消
 
 1. 日付: 2026-08-30
@@ -533,6 +557,18 @@
 7. 判断理由: 「現場を知らずに書き足さない」の裏返しで、ここでは「現場を知らずに稼働中の挙動を狭めない」。staff/viewer のデフォルトを self にすべきかどうかは製品判断であり、この環境からは判断できない。
 8. まだ答えが出ていないこと: staff/viewer のダッシュボード初期表示は本当に self（自分の分だけ）にすべきか、それとも現状維持（tenant-wide）のままでよいか。代表判断待ち。
 9. 公開区分: 公開可（実装の技術的な経緯であり、金額・テナント名・接続情報は含まない）
+
+## 2026-08-20 IMP-045 STAFF_MANAGEMENT — Permission文字列改名見送り＆最終管理者保護の実装判断
+
+1. 日付: 2026-08-20
+2. 起きたこと: IMP-013 の permissionVerbs.ts に「Permission 文字列自体の改名は将来タスク（IMP-045 判断）」とコメントされていた。IMP-045 実装時に判断が必要。同時に、requirement-trace が「移籍・停止・最終管理者保護は【要確認】(部分)」と記録していた。
+3. 以前の考え: 既存の 55 種の Permission 文字列（`resource:verb` 形式）を v2.0 正準動詞（VIEW/EDIT/CONFIRM/APPROVE/ISSUE/MANAGE/EXPORT）に一括改名する案があった。
+4. 違和感・問題: 一括改名すると (a) ROLE_PERMISSIONS マトリクスの 55 行の書き換え、(b) 40+ の API ルートの `requirePermission()` 呼び出しの書き換え、(c) クライアント側の `can()` 呼び出しの書き換えが必要。既存の VERB_MAP は 7 行で十分に機能している。
+5. 決めたこと: (a) Permission 文字列の改名は見送り。VERB_MAP の翻訳レイヤーで十分。(b) 最終管理者保護は純関数ガード `validateMemberRemoval()` / `validateMemberSuspension()` / `wouldLoseLastAdmin()` で実装。(c) メンバー停止は `MembershipState` 型（active/suspended/deactivated）で定義。(d) 店舗間移籍は `validateStoreTransfer()` で型基盤を提供。
+6. 捨てた選択肢: Permission 文字列の一括改名。DB カラム `tenant_memberships.state` の追加（マイグレーションは消費タスクで）。
+7. 判断理由: 改名コスト（55 文字列 × 3 層の書き換え）に対し、VERB_MAP 翻訳レイヤーで step-up 認証・リスクレベル分類が既に機能している。改名しても実行時の動作は変わらない。最終管理者保護は API ルートで ad-hoc に書かれていた自己変更防止をリユーザブルな純関数に集約した。
+8. まだ答えが出ていないこと: (a) `tenant_memberships` テーブルへの `state` カラム追加のタイミング。(b) 停止中メンバーのログイン挙動（Supabase Auth のユーザー無効化との連携）。(c) 移籍の履歴記録（DomainEvent で追跡するか、専用テーブルか）。
+9. 公開区分: 公開可
 
 ## 2026-08-20 IMP-044 Priority/NEXT ACTION エンジン — 統一スコアリングサービス
 

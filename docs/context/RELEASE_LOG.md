@@ -4,6 +4,28 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-08-30 IMP-045（#955）の code-review 指摘を修正。ガード3関数のチェック順不一致・重複ロジック・不要なキャストを解消
+
+- 内容: `src/lib/staff/membership.ts` の `validateRoleChange()` のチェック順を
+  `validateMemberRemoval()`/`validateMemberSuspension()` と統一（`insufficient_rank` を
+  `owner_protected` より先に判定し、権限のない操作者に対象の役職を明かさない）。
+  `ASSIGNABLE_ROLES.includes()` の不要な型キャストを削除。3つのガード関数すべてで
+  最終管理者判定に `wouldLoseLastAdmin()` を呼び出すよう統一（重複実装を解消）。
+  回帰テスト2件追加。
+- 検証: tsc --noEmit / vitest run(4999件) / lint(0エラー、1256警告=基準線) / check:schema /
+  lint:migrations すべて green。
+
+## 2026-08-30 IMP-045（#955）を main へ取り込み。スタッフメンバーシップ管理ガード — 移籍・停止・最終管理者保護
+
+- 内容: IMP-045（スタッフメンバーシップ管理ガード、branch impl/IMP-045-staff-management）を
+  main へ取り込んだ。80ファイルの phantom conflict（75ファイル一括解決、5ファイル手動）＋
+  resurrection（WorkScopeProvider.tsx を19度目の再削除、スキップ済み PR #947 の
+  `src/lib/sync/` 一式8ファイルも合わせて削除）を解消。LEDRA_CURRENT.md/RELEASE_LOG.md が
+  旧いテスト件数（33件）のまま取り残されていたのを、branch 内で既に更新済みだった
+  requirement-trace.md の実数（36件）に揃えた。
+- 検証: tsc --noEmit / vitest run(4997件) / lint(0エラー、1256警告=基準線) / check:schema /
+  lint:migrations すべて green。
+
 ## 2026-08-30 IMP-044（#954）の code-review 指摘を修正。ブースシグナルの重複排除誤爆・follow_up_overdue上書き・イベント件数ドキュメント誤記を解消
 
 - 内容: `src/lib/priority/scorer.ts` の `scoreBoothSignal()` の `actionKey` に `reservationIds` を
@@ -732,6 +754,21 @@
 - 対象: 型定義・ロジック層（src/lib/priority/）。UI 変更・DB マイグレーションなし。
 - 依存: IMP-014, IMP-021, IMP-041
 - 下流: IMP-046（経営分析 KPI — 優先度スコアの集計）
+
+## 2026-08-20 IMP-045 §16 STAFF_MANAGEMENT — メンバーシップ管理ガード（branch impl/IMP-045-staff-management）
+
+- 内容: 既存スタッフ管理基盤の欠損3領域（移籍・停止・最終管理者保護）を純関数ガードで補完。
+  - `src/lib/staff/membership.ts`: メンバーシップ管理の型定義と純粋ガード関数
+    - `MembershipState` 型（active/suspended/deactivated）
+    - `validateRoleChange()` — ロール変更ガード（自己変更・owner保護・権限・ASSIGNABLE_ROLES）
+    - `validateMemberRemoval()` — 削除ガード（最終管理者保護: admin以上が1名以下なら拒否）
+    - `validateMemberSuspension()` — 停止/無効化ガード（suspend→suspended、deactivate→deactivated）
+    - `validateStoreTransfer()` — 店舗間移籍ガード（ロール引継ぎ、admin以上必須）
+    - `wouldLoseLastAdmin()` — 汎用最終管理者チェック
+  - `src/lib/auth/permissionVerbs.ts`: Permission文字列改名見送りの判断をコメント更新
+- 対象: テナント管理画面（/admin/members、/admin/stores）のバックエンドガードロジック
+- テスト: 36件（コードレビュー修正で3件追加: 最終admin降格保護・移籍先重複チェック）
+- 設計判断: Permission文字列の一括改名は見送り（VERB_MAPによる翻訳レイヤーが十分に機能しており、55種の文字列改名コストに見合わない）
 
 ## 2026-08-20 IMP-043 §11 見積/請求ワークフロー — 承認スナップショット・版管理・POS ブリッジ型基盤（branch impl/IMP-043-estimate-invoice-workflow）
 
