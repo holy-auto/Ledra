@@ -47,12 +47,19 @@ export interface EnrichedJobSuggestion extends JobNextActionSuggestion {
  * pickJobNextActionCandidate の結果をブース文脈で調整する。
  *
  * ルール:
- * 1. arrived / in_progress でブース未割当 → priority を high に引き上げ + ヒント追加
- * 2. 定員超過 → ヒントを追加（priority は元のまま。定員超過の解消はブース管理の責務）
- * 3. それ以外 → 元のまま返す
+ * 1. follow_up_overdue（期限超過請求）→ 金銭の督促が最優先。ブースのヒントは付けない
+ * 2. arrived / in_progress でブース未割当 → priority を high に引き上げ + ヒント追加
+ * 3. 定員超過 → ヒントを追加（priority は元のまま。定員超過の解消はブース管理の責務）
+ * 4. それ以外 → 元のまま返す
  */
 export function enrichJobWithBoothContext(input: JobWithBoothContext): EnrichedJobSuggestion {
   const base = pickJobNextActionCandidate(input);
+
+  // follow_up_overdue は他のどのブース文脈より優先する（金銭 > ブース）。
+  // ここで早期リターンしないと、下の2分岐がヒント・priority を上書きしてしまう。
+  if (base.action === "follow_up_overdue") {
+    return { ...base, priorityAdjusted: false };
+  }
 
   // arrived / in_progress でブース未割当 — 作業場所がない
   if (!input.hasBoothAssigned && (input.status === "arrived" || input.status === "in_progress")) {

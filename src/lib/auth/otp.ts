@@ -69,7 +69,11 @@ export function verifyOtp(
   maxAttempts: number = OTP_DEFAULT_MAX_ATTEMPTS,
 ): OtpVerifyResult {
   if (attempts >= maxAttempts) return { valid: false, reason: "max_attempts" };
-  if (new Date(expiresAt).getTime() < Date.now()) return { valid: false, reason: "expired" };
+  // **壊れた期限は期限切れ扱いにする（fail closed）。**
+  // `new Date("こわれた").getTime()` は NaN で、`NaN < Date.now()` は false なので、
+  // 以前は保存値が壊れているだけで**有効期限の無い OTP** になっていた。
+  const expiresMs = new Date(expiresAt).getTime();
+  if (!Number.isFinite(expiresMs) || expiresMs < Date.now()) return { valid: false, reason: "expired" };
 
   const inputHash = hashOtp(input, scope, secret);
   // ponytail: タイミングセーフ比較。hex 文字列同士なのでバイト長は常に一致。

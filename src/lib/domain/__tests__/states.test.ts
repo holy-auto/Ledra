@@ -2,10 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   CERTIFICATE_STATES,
   DOCUMENT_CORRECTION_STATES,
-  DOCUMENT_CORRECTION_TRANSITIONS,
   JOB_STATES,
   PART_INSTALLATION_STATES,
-  PART_INSTALLATION_TRANSITIONS,
   PAYMENT_STATES,
   SEVERITIES,
   STEP_STATES,
@@ -18,14 +16,11 @@ import {
   isSeverity,
   isStepState,
   isSyncState,
-  isValidDocumentCorrectionTransition,
-  isValidPartInstallationTransition,
 } from "../states";
 import {
   DOMAIN_LOCALES,
   __DOMAIN_LABEL_MAPS,
   certificateStateLabel,
-  documentCorrectionStateLabel,
   jobStateLabel,
   partInstallationStateLabel,
   paymentStateLabel,
@@ -88,76 +83,7 @@ describe("型ガード(不正値の扱い)", () => {
   });
 });
 
-describe("PartInstallation 遷移表", () => {
-  it("DRAFT → INSTALLED のみ許可", () => {
-    expect(isValidPartInstallationTransition("DRAFT", "INSTALLED")).toBe(true);
-    expect(isValidPartInstallationTransition("DRAFT", "CUSTOMER_VERIFIED")).toBe(false);
-    expect(isValidPartInstallationTransition("DRAFT", "VOIDED")).toBe(false);
-  });
-
-  it("INSTALLED → CUSTOMER_VERIFIED / DISPUTED / VOIDED を許可", () => {
-    expect(isValidPartInstallationTransition("INSTALLED", "CUSTOMER_VERIFIED")).toBe(true);
-    expect(isValidPartInstallationTransition("INSTALLED", "DISPUTED")).toBe(true);
-    expect(isValidPartInstallationTransition("INSTALLED", "VOIDED")).toBe(true);
-    expect(isValidPartInstallationTransition("INSTALLED", "DRAFT")).toBe(false);
-  });
-
-  it("CUSTOMER_VERIFIED → VOIDED のみ許可（完全凍結の唯一の例外）", () => {
-    expect(isValidPartInstallationTransition("CUSTOMER_VERIFIED", "VOIDED")).toBe(true);
-    expect(isValidPartInstallationTransition("CUSTOMER_VERIFIED", "INSTALLED")).toBe(false);
-    expect(isValidPartInstallationTransition("CUSTOMER_VERIFIED", "DISPUTED")).toBe(false);
-  });
-
-  it("DISPUTED → CUSTOMER_VERIFIED / VOIDED を許可", () => {
-    expect(isValidPartInstallationTransition("DISPUTED", "CUSTOMER_VERIFIED")).toBe(true);
-    expect(isValidPartInstallationTransition("DISPUTED", "VOIDED")).toBe(true);
-    expect(isValidPartInstallationTransition("DISPUTED", "INSTALLED")).toBe(false);
-  });
-
-  it("VOIDED は終端状態 — 遷移先なし", () => {
-    for (const target of PART_INSTALLATION_STATES) {
-      expect(isValidPartInstallationTransition("VOIDED", target)).toBe(false);
-    }
-  });
-
-  it("遷移表のキーと値はすべて正準値", () => {
-    for (const [from, targets] of Object.entries(PART_INSTALLATION_TRANSITIONS)) {
-      expect(isPartInstallationState(from)).toBe(true);
-      for (const to of targets as readonly string[]) {
-        expect(isPartInstallationState(to)).toBe(true);
-      }
-    }
-  });
-});
-
-describe("DocumentCorrection 遷移表(ADR-0004)", () => {
-  it("PENDING → APPROVED / REJECTED のみ許可", () => {
-    expect(isValidDocumentCorrectionTransition("PENDING", "APPROVED")).toBe(true);
-    expect(isValidDocumentCorrectionTransition("PENDING", "REJECTED")).toBe(true);
-    expect(isValidDocumentCorrectionTransition("PENDING", "APPLIED")).toBe(false);
-  });
-
-  it("APPROVED → APPLIED のみ許可", () => {
-    expect(isValidDocumentCorrectionTransition("APPROVED", "APPLIED")).toBe(true);
-    expect(isValidDocumentCorrectionTransition("APPROVED", "PENDING")).toBe(false);
-  });
-
-  it("REJECTED / APPLIED は終端状態", () => {
-    for (const target of DOCUMENT_CORRECTION_STATES) {
-      expect(isValidDocumentCorrectionTransition("REJECTED", target)).toBe(false);
-      expect(isValidDocumentCorrectionTransition("APPLIED", target)).toBe(false);
-    }
-  });
-
-  it("遷移表のキーと値はすべて正準値", () => {
-    for (const [from, targets] of Object.entries(DOCUMENT_CORRECTION_TRANSITIONS)) {
-      expect(isDocumentCorrectionState(from)).toBe(true);
-      for (const to of targets as readonly string[]) {
-        expect(isDocumentCorrectionState(to)).toBe(true);
-      }
-    }
-  });
-});
+// PartInstallation / DocumentCorrection の遷移表テストは transitions.test.ts（他の軸と同じ場所）に移設。
 
 describe("ロケール別ラベル", () => {
   it.each(AXES)("$name: 収録ロケールのマップは全正準値を網羅し空文字がない", ({ name, values }) => {

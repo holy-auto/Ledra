@@ -228,12 +228,8 @@ export default function AgentTrainingPage() {
                     )}
                   </div>
                   <h3 className="mt-2 text-sm font-semibold text-primary">{course.title}</h3>
-                  {course.description && (
-                    <p className="mt-1 text-xs text-muted line-clamp-2">{course.description}</p>
-                  )}
-                  {course.duration_min && (
-                    <div className="mt-1 text-[11px] text-muted">約 {course.duration_min}分</div>
-                  )}
+                  {course.description && <p className="mt-1 text-xs text-muted line-clamp-2">{course.description}</p>}
+                  {course.duration_min && <div className="mt-1 text-[11px] text-muted">約 {course.duration_min}分</div>}
 
                   {/* Progress bar */}
                   {status !== "not_started" && hasContent && (

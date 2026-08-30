@@ -36,7 +36,10 @@ export default function AgentCampaignsPage() {
   useEffect(() => {
     (async () => {
       const { data: u } = await supabase.auth.getUser();
-      if (!u?.user) { window.location.href = "/agent/login"; return; }
+      if (!u?.user) {
+        window.location.href = "/agent/login";
+        return;
+      }
       setReady(true);
       const res = await fetch("/api/agent/campaigns");
       if (res.ok) {
@@ -53,12 +56,13 @@ export default function AgentCampaignsPage() {
 
   const renderCampaign = (c: Campaign, isActive: boolean) => {
     const tm = TYPE_MAP[c.campaign_type] ?? TYPE_MAP.other;
-    const daysLeft = isActive
-      ? Math.max(0, Math.ceil((new Date(c.end_date).getTime() - Date.now()) / 86400000))
-      : null;
+    const daysLeft = isActive ? Math.max(0, Math.ceil((new Date(c.end_date).getTime() - Date.now()) / 86400000)) : null;
 
     return (
-      <div key={c.id} className={`rounded-2xl border bg-surface p-5 shadow-sm ${isActive ? "border-emerald-200" : "border-border-default"}`}>
+      <div
+        key={c.id}
+        className={`rounded-2xl border bg-surface p-5 shadow-sm ${isActive ? "border-emerald-200" : "border-border-default"}`}
+      >
         {c.banner_text && isActive && (
           <div className="mb-3 rounded-xl bg-gradient-to-r from-emerald-50 to-blue-50 px-4 py-2 text-sm font-medium text-emerald-800">
             {c.banner_text}
@@ -72,7 +76,9 @@ export default function AgentCampaignsPage() {
             </div>
             {c.description && <p className="mt-1 text-sm text-muted">{c.description}</p>}
             <div className="mt-2 flex flex-wrap gap-3 text-xs text-muted">
-              <span>{formatDate(c.start_date)} 〜 {formatDate(c.end_date)}</span>
+              <span>
+                {formatDate(c.start_date)} 〜 {formatDate(c.end_date)}
+              </span>
               {c.bonus_rate && <span className="font-semibold text-emerald-600">+{c.bonus_rate}%</span>}
               {c.bonus_fixed && <span className="font-semibold text-emerald-600">+{formatJpy(c.bonus_fixed)}</span>}
             </div>
@@ -100,7 +106,9 @@ export default function AgentCampaignsPage() {
 
       {loading ? (
         <div className="animate-pulse space-y-3">
-          {[1, 2].map((i) => <div key={i} className="h-24 rounded-2xl bg-surface-hover" />)}
+          {[1, 2].map((i) => (
+            <div key={i} className="h-24 rounded-2xl bg-surface-hover" />
+          ))}
         </div>
       ) : (
         <>

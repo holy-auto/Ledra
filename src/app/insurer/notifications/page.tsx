@@ -6,10 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 
 /* ── notification type config ── */
 
-const TYPE_CONFIG: Record<
-  string,
-  { icon: string; label: string; color: string }
-> = {
+const TYPE_CONFIG: Record<string, { icon: string; label: string; color: string }> = {
   case_update: { icon: "📋", label: "案件更新", color: "blue" },
   pii_approved: { icon: "✅", label: "PII開示承認", color: "emerald" },
   pii_rejected: { icon: "❌", label: "PII開示却下", color: "red" },
@@ -100,9 +97,7 @@ export default function InsurerNotificationsPage() {
   /* mark single as read */
   async function markAsRead(id: string) {
     // Optimistically update
-    setNotifications((prev) =>
-      prev.map((n) => (n.id === id ? { ...n, is_read: true } : n)),
-    );
+    setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, is_read: true } : n)));
     setUnreadCount((c) => Math.max(0, c - 1));
 
     try {
@@ -155,11 +150,7 @@ export default function InsurerNotificationsPage() {
       <div className="mb-6 flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-primary">通知センター</h1>
-          {unreadCount > 0 && (
-            <p className="mt-1 text-sm text-muted">
-              {unreadCount}件の未読通知
-            </p>
-          )}
+          {unreadCount > 0 && <p className="mt-1 text-sm text-muted">{unreadCount}件の未読通知</p>}
         </div>
 
         {unreadCount > 0 && (
@@ -174,9 +165,7 @@ export default function InsurerNotificationsPage() {
 
       {/* Error */}
       {err && (
-        <div className="mb-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {err}
-        </div>
+        <div className="mb-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{err}</div>
       )}
 
       {/* Loading */}
@@ -202,9 +191,7 @@ export default function InsurerNotificationsPage() {
             const content = (
               <div
                 className={`flex items-start gap-4 rounded-2xl border p-4 transition ${
-                  n.is_read
-                    ? "border-border-default bg-surface"
-                    : "border-blue-200 bg-blue-50/50"
+                  n.is_read ? "border-border-default bg-surface" : "border-blue-200 bg-blue-50/50"
                 } hover:shadow-sm`}
               >
                 {/* Icon */}
@@ -218,9 +205,7 @@ export default function InsurerNotificationsPage() {
                 <div className="min-w-0 flex-1">
                   <div className="flex items-start justify-between gap-2">
                     <div>
-                      <span
-                        className={`inline-block rounded-md px-2 py-0.5 text-xs font-medium ${typeColor(n.type)}`}
-                      >
+                      <span className={`inline-block rounded-md px-2 py-0.5 text-xs font-medium ${typeColor(n.type)}`}>
                         {cfg.label}
                       </span>
                       <h3
@@ -230,43 +215,26 @@ export default function InsurerNotificationsPage() {
                       </h3>
                     </div>
                     <div className="flex flex-shrink-0 items-center gap-2">
-                      {!n.is_read && (
-                        <span className="h-2 w-2 rounded-full bg-blue-500" />
-                      )}
-                      <span className="text-xs text-muted whitespace-nowrap">
-                        {relativeTime(n.created_at)}
-                      </span>
+                      {!n.is_read && <span className="h-2 w-2 rounded-full bg-blue-500" />}
+                      <span className="text-xs text-muted whitespace-nowrap">{relativeTime(n.created_at)}</span>
                     </div>
                   </div>
 
-                  {n.body && (
-                    <p className="mt-1 text-sm text-muted line-clamp-2">
-                      {n.body}
-                    </p>
-                  )}
+                  {n.body && <p className="mt-1 text-sm text-muted line-clamp-2">{n.body}</p>}
                 </div>
               </div>
             );
 
             if (n.link) {
               return (
-                <Link
-                  key={n.id}
-                  href={n.link}
-                  onClick={() => handleClick(n)}
-                  className="block"
-                >
+                <Link key={n.id} href={n.link} onClick={() => handleClick(n)} className="block">
                   {content}
                 </Link>
               );
             }
 
             return (
-              <div
-                key={n.id}
-                onClick={() => handleClick(n)}
-                className="cursor-pointer"
-              >
+              <div key={n.id} onClick={() => handleClick(n)} className="cursor-pointer">
                 {content}
               </div>
             );

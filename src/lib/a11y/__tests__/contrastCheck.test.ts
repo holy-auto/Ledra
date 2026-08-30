@@ -115,4 +115,12 @@ describe("checkColorPair()", () => {
     // 丸め後なので 2 桁以下
     expect(!decimals || decimals.length <= 2).toBe(true);
   });
+
+  it("丸め後に 4.5 になる境界値は丸め前の真の比率で判定する", () => {
+    // #0080AA on #FFFFFF の真の比率は約 4.4986:1（AA 未達）だが、
+    // 表示用に小数点2桁へ丸めると 4.5 になり誤って合格扱いされうる。
+    const result = checkColorPair("#0080AA", "#FFFFFF");
+    expect(result.ratio).toBe(4.5);
+    expect(result.passes).toBe(false);
+  });
 });

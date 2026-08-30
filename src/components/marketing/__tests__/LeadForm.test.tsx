@@ -51,12 +51,7 @@ describe("LeadForm", () => {
   });
 
   it("shows success pane after submit", async () => {
-    render(
-      <LeadForm
-        source="contact"
-        success={{ title: "送信完了", body: "ありがとうございます。" }}
-      />,
-    );
+    render(<LeadForm source="contact" success={{ title: "送信完了", body: "ありがとうございます。" }} />);
     fireEvent.change(screen.getByLabelText(/お名前/), { target: { value: "A" } });
     fireEvent.change(screen.getByLabelText(/会社名/), { target: { value: "B" } });
     fireEvent.change(screen.getByLabelText(/役職/), { target: { value: "C" } });
@@ -91,12 +86,7 @@ describe("LeadForm", () => {
   });
 
   it("renders optional industry/locations/timing fields when configured", () => {
-    render(
-      <LeadForm
-        source="document_shop"
-        fields={{ industry: true, locations: true, timing: true }}
-      />,
-    );
+    render(<LeadForm source="document_shop" fields={{ industry: true, locations: true, timing: true }} />);
     expect(screen.getByLabelText(/業態/)).toBeDefined();
     expect(screen.getByLabelText(/拠点数/)).toBeDefined();
     expect(screen.getByLabelText(/検討時期/)).toBeDefined();
