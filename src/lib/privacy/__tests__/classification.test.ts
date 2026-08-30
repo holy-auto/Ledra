@@ -8,6 +8,7 @@ import {
   FIELD_CLASSIFICATIONS,
   DATA_CLASSIFICATIONS,
 } from "../classification";
+import { VEHICLE_TABLE_PII_COLUMNS } from "@/lib/vehicles/customerRelation";
 
 describe("DATA_CLASSIFICATIONS", () => {
   it("4 分類が定義されている", () => {
@@ -42,8 +43,8 @@ describe("stricterOf", () => {
 describe("getFieldClassification", () => {
   it("登録済みフィールドの分類を返す", () => {
     expect(getFieldClassification("customers", "name")).toBe("pii");
-    expect(getFieldClassification("tenant_secrets", "encrypted_value")).toBe("restricted");
-    expect(getFieldClassification("invoices", "total_amount")).toBe("confidential");
+    expect(getFieldClassification("tenants", "line_channel_secret_ciphertext")).toBe("restricted");
+    expect(getFieldClassification("invoices", "total")).toBe("confidential");
   });
 
   it("未登録フィールド → デフォルト confidential", () => {
@@ -59,7 +60,7 @@ describe("maxClassification", () => {
   it("フィールド群の最も厳しい分類を返す", () => {
     const fields = [
       { table: "customers", column: "name" }, // pii
-      { table: "invoices", column: "total_amount" }, // confidential
+      { table: "invoices", column: "total" }, // confidential
     ];
     expect(maxClassification(fields)).toBe("pii");
   });
@@ -72,7 +73,7 @@ describe("maxClassification", () => {
   it("restricted が含まれれば restricted", () => {
     const fields = [
       { table: "customers", column: "name" }, // pii
-      { table: "tenant_secrets", column: "encrypted_value" }, // restricted
+      { table: "tenants", column: "line_channel_secret_ciphertext" }, // restricted
     ];
     expect(maxClassification(fields)).toBe("restricted");
   });
@@ -80,14 +81,14 @@ describe("maxClassification", () => {
 
 describe("findClassificationViolations", () => {
   it("閾値以下 → 違反なし", () => {
-    const fields = [{ table: "invoices", column: "total_amount" }]; // confidential
+    const fields = [{ table: "invoices", column: "total" }]; // confidential
     expect(findClassificationViolations(fields, "confidential")).toEqual([]);
   });
 
   it("PII フィールドが public 閾値を超える → 違反", () => {
     const fields = [
       { table: "customers", column: "name" }, // pii > public
-      { table: "invoices", column: "total_amount" }, // confidential > public
+      { table: "invoices", column: "total" }, // confidential > public
     ];
     const violations = findClassificationViolations(fields, "public");
     expect(violations).toHaveLength(2);
@@ -108,8 +109,25 @@ describe("FIELD_CLASSIFICATIONS レジストリ", () => {
     }
   });
 
-  it("vehicles の PII カラム 5 件が登録されている", () => {
-    const vehiclePii = FIELD_CLASSIFICATIONS.filter((e) => e.table === "vehicles" && e.classification === "pii");
-    expect(vehiclePii.length).toBe(5);
+  it("vehicles の PII カラムは VEHICLE_TABLE_PII_COLUMNS（単一定義源）と完全一致", () => {
+    // 手書きの固定リストにすると、テーブル側でカラムが増減しても追随せず乖離する
+    // （customer_name 等は既に削除済み・plate_display が抜けていたバグの回帰防止）。
+    const vehiclePii = FIELD_CLASSIFICATIONS.filter((e) => e.table === "vehicles" && e.classification === "pii").map(
+      (e) => e.column,
+    );
+    expect(vehiclePii.sort()).toEqual([...VEHICLE_TABLE_PII_COLUMNS].sort());
+  });
+
+  it("実在しないテーブル/カラム名を登録しない（tenant_secrets・hearings.content・invoices.total_amount 等）", () => {
+    const badRefs = [
+      { table: "tenant_secrets", column: "encrypted_value" },
+      { table: "hearings", column: "content" },
+      { table: "invoices", column: "total_amount" },
+      { table: "insurer_cases", column: "claim_amount" },
+    ];
+    for (const bad of badRefs) {
+      const found = FIELD_CLASSIFICATIONS.some((e) => e.table === bad.table && e.column === bad.column);
+      expect(found).toBe(false);
+    }
   });
 });

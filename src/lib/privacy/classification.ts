@@ -12,6 +12,8 @@
  * 純関数。IO なし。
  */
 
+import { VEHICLE_TABLE_PII_COLUMNS } from "@/lib/vehicles/customerRelation";
+
 // ── 分類レベル ──
 
 export const DATA_CLASSIFICATIONS = ["restricted", "pii", "confidential", "public"] as const;
@@ -55,34 +57,77 @@ export type FieldClassificationEntry = {
 export const FIELD_CLASSIFICATIONS: readonly FieldClassificationEntry[] = [
   // ── Restricted ──
   { table: "auth.users", column: "encrypted_password", classification: "restricted", reason: "認証情報" },
+  // ponytail: tenant_secrets という専用テーブルは存在しない。実際の暗号化シークレットは
+  // tenants/square_connections の *_ciphertext カラムに保存されている（VEHICLE_TABLE_PII_COLUMNS
+  // と同様、手書きの架空カラム名で登録すると getFieldClassification() が常に外れて
+  // defaultClassification（confidential）にフォールバックしてしまう）。
   {
-    table: "tenant_secrets",
-    column: "encrypted_value",
+    table: "tenants",
+    column: "line_channel_secret_ciphertext",
     classification: "restricted",
-    reason: "AES-256-GCM 暗号化シークレット",
+    reason: "LINE暗号化シークレット",
+  },
+  {
+    table: "tenants",
+    column: "line_channel_access_token_ciphertext",
+    classification: "restricted",
+    reason: "LINE暗号化アクセストークン",
+  },
+  {
+    table: "square_connections",
+    column: "square_access_token_ciphertext",
+    classification: "restricted",
+    reason: "Square暗号化アクセストークン",
+  },
+  {
+    table: "square_connections",
+    column: "square_refresh_token_ciphertext",
+    classification: "restricted",
+    reason: "Square暗号化リフレッシュトークン",
   },
 
   // ── PII ──
   { table: "customers", column: "name", classification: "pii", reason: "顧客氏名" },
   { table: "customers", column: "email", classification: "pii", reason: "顧客メール" },
   { table: "customers", column: "phone", classification: "pii", reason: "顧客電話番号" },
-  { table: "vehicles", column: "customer_name", classification: "pii", reason: "顧客氏名（レガシー）" },
-  { table: "vehicles", column: "customer_email", classification: "pii", reason: "顧客メール（レガシー）" },
-  { table: "vehicles", column: "customer_phone_masked", classification: "pii", reason: "顧客電話番号（レガシー）" },
-  { table: "vehicles", column: "customer_id", classification: "pii", reason: "顧客 FK（間接 PII）" },
-  { table: "vehicles", column: "notes", classification: "pii", reason: "自由記述（PII 含みうる）" },
+  // vehicles の PII カラムは VEHICLE_TABLE_PII_COLUMNS（customerRelation.ts の単一定義源）から
+  // 生成する。手書きリストにすると rendition.ts の VEHICLE_PUBLIC_RULES と同じ乖離が起こる
+  // （customer_name 等は削除済み、plate_display が抜けていた）。
+  ...VEHICLE_TABLE_PII_COLUMNS.map(
+    (column) => ({ table: "vehicles", column, classification: "pii", reason: "車両テーブルの顧客/車両PII" }) as const,
+  ),
   { table: "vehicle_passports", column: "current_owner_name", classification: "pii", reason: "所有者氏名" },
   { table: "vehicle_passports", column: "current_owner_email", classification: "pii", reason: "所有者メール" },
+  { table: "passport_ownership_transfers", column: "from_owner_name", classification: "pii", reason: "前所有者氏名" },
+  {
+    table: "passport_ownership_transfers",
+    column: "from_owner_email",
+    classification: "pii",
+    reason: "前所有者メール",
+  },
   { table: "certificates", column: "customer_name", classification: "pii", reason: "顧客氏名" },
   { table: "certificates", column: "content_free_text", classification: "pii", reason: "PII 含みうる自由記述" },
-  { table: "hearings", column: "content", classification: "pii", reason: "ヒアリング内容" },
+  // hearings に content カラムは無い。実際の PII は氏名・連絡先・車両識別情報の個別カラム。
+  { table: "hearings", column: "customer_name", classification: "pii", reason: "顧客氏名" },
+  { table: "hearings", column: "customer_phone", classification: "pii", reason: "顧客電話番号" },
+  { table: "hearings", column: "customer_email", classification: "pii", reason: "顧客メール" },
+  { table: "hearings", column: "vehicle_plate", classification: "pii", reason: "ナンバープレート" },
+  { table: "hearings", column: "vehicle_vin", classification: "pii", reason: "車台番号" },
   { table: "reservations", column: "work_lat", classification: "pii", reason: "顧客宅位置情報" },
   { table: "reservations", column: "work_lng", classification: "pii", reason: "顧客宅位置情報" },
 
   // ── Confidential ──
-  { table: "invoices", column: "total_amount", classification: "confidential", reason: "決済情報" },
+  { table: "invoices", column: "total", classification: "confidential", reason: "決済情報" },
   { table: "tenants", column: "stripe_customer_id", classification: "confidential", reason: "決済 ID" },
-  { table: "insurer_cases", column: "claim_amount", classification: "confidential", reason: "保険案件金額" },
+  // insurer_cases.claim_amount という単独カラムは無く、claim_amount を含む案件情報は
+  // meta（jsonb）に格納されている。FieldClassificationEntry はフラットなカラム単位の
+  // モデルのため、jsonb 全体を confidential として登録する。
+  {
+    table: "insurer_cases",
+    column: "meta",
+    classification: "confidential",
+    reason: "保険案件情報（claim_amount 含む jsonb）",
+  },
 ] as const;
 
 // ── ルックアップ ──

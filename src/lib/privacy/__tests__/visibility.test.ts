@@ -33,17 +33,27 @@ describe("canAccess", () => {
     expect(canAccess("tenant_internal", "tenant_internal")).toBe(true);
   });
 
-  it("上位（より特権が高い）→ true", () => {
-    expect(canAccess("tenant_internal", "owner_only")).toBe(true);
-  });
-
   it("下位（より特権が低い）→ false", () => {
     expect(canAccess("tenant_internal", "public")).toBe(false);
   });
 
-  it("public は全レベルからアクセス可", () => {
+  it("public は全レベルからアクセス可（owner_only 含む）", () => {
     expect(canAccess("public", "owner_only")).toBe(true);
     expect(canAccess("public", "public")).toBe(true);
+  });
+
+  it("owner_only はネストした特権階層に含まれない — 本人であっても tenant_internal/partner_shared/restricted(owner_only要求)へは自動昇格しない", () => {
+    // Codex レビュー指摘（P1）の回帰防止: 顧客は自分のPIIの「所有者」であって、
+    // テナントスタッフより「上位の特権者」ではない。
+    expect(canAccess("tenant_internal", "owner_only")).toBe(false);
+    expect(canAccess("partner_shared", "owner_only")).toBe(false);
+  });
+
+  it("owner_only 要求のフィールドは owner_only 閲覧者のみ閲覧可（本人限定）", () => {
+    expect(canAccess("owner_only", "owner_only")).toBe(true);
+    expect(canAccess("owner_only", "tenant_internal")).toBe(false);
+    expect(canAccess("owner_only", "partner_shared")).toBe(false);
+    expect(canAccess("owner_only", "public")).toBe(false);
   });
 });
 
@@ -104,8 +114,11 @@ describe("findHiddenFields", () => {
     expect(findHiddenFields(rules, "tenant_internal")).toEqual([]);
   });
 
-  it("owner_only → 全表示", () => {
-    expect(findHiddenFields(rules, "owner_only")).toEqual([]);
+  it("owner_only → service_type（public要求）のみ表示、tenant_internal/partner_shared要求は非表示", () => {
+    // Codex レビュー指摘（P1）の回帰防止: owner_only はネストした特権階層に含まれないため、
+    // 「データ主体本人」であっても tenant_internal/partner_shared 要求のフィールドは見えない。
+    const hidden = findHiddenFields(rules, "owner_only");
+    expect(hidden.sort()).toEqual(["customer_name", "owner_email"]);
   });
 });
 

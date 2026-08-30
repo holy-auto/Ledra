@@ -20,7 +20,14 @@ import type { DataClassification } from "./classification";
 export const VISIBILITY_LEVELS = ["owner_only", "tenant_internal", "partner_shared", "public"] as const;
 export type VisibilityLevel = (typeof VISIBILITY_LEVELS)[number];
 
-/** 可視性の厳密さ順序（0 = 最も制限的＝最上位特権） */
+/**
+ * 可視性の厳密さ順序（0 = 最も制限的）。
+ *
+ * この数値順序は tenant_internal → partner_shared → public の3レベルにのみ
+ * 「特権のネスト」（数値が小さいほど広く見える）として適用される。owner_only
+ * はこの階層に含まれない独立した軸で、`canAccess()` が別扱いする
+ * （「データ主体本人である」ことは tenant_internal 以上の特権を意味しない）。
+ */
 export const VISIBILITY_ORDER: Record<VisibilityLevel, number> = {
   owner_only: 0,
   tenant_internal: 1,
@@ -28,18 +35,32 @@ export const VISIBILITY_ORDER: Record<VisibilityLevel, number> = {
   public: 3,
 };
 
-/** a が b より制限的か */
+/** a が b より制限的か（owner_only 同士・tenant_internal/partner_shared/public 間の比較にのみ使う） */
 export function isMoreRestrictive(a: VisibilityLevel, b: VisibilityLevel): boolean {
   return VISIBILITY_ORDER[a] < VISIBILITY_ORDER[b];
 }
 
 /**
  * requiredLevel 以上の閲覧権を actualLevel が持っているか。
- * order が小さいほど特権が高い（owner_only=0 が最上位）。
- * 例: required = "tenant_internal", actual = "owner_only" → true（上位は閲覧可）
- *      required = "tenant_internal", actual = "public" → false（下位は閲覧不可）
+ *
+ * tenant_internal → partner_shared → public はネストした「特権の強さ」の階層
+ * （order が小さいほど広く閲覧可）。owner_only はこの階層に含まれない独立した軸
+ * — 「データ主体本人である」ことは、階層上位の tenant_internal/partner_shared を
+ * 自動的に満たさない。含めてしまうと、顧客が自分のPIIを閲覧できるという理由だけで
+ * 他人のテナント内部データや restricted な認証情報にまでアクセスできてしまう
+ * （Codex レビュー指摘、P1: 顧客は自分のデータの「所有者」であって、
+ * テナントスタッフより「上位の特権者」ではない）。
+ *
+ * 例: required = "tenant_internal", actual = "owner_only" → false（本人以外の
+ *      階層には自動昇格しない。本人向けフィールドは requiredLevel="owner_only" 側で判定）
+ *      required = "public", actual = "owner_only" → true（public は誰でも閲覧可）
+ *      required = "owner_only", actual = "owner_only" → true（本人向けフィールドは本人のみ）
+ *      required = "tenant_internal", actual = "public" → false（下位は閲覧不可、既存どおり）
  */
 export function canAccess(requiredLevel: VisibilityLevel, actualLevel: VisibilityLevel): boolean {
+  if (requiredLevel === "public") return true;
+  if (requiredLevel === "owner_only") return actualLevel === "owner_only";
+  if (actualLevel === "owner_only") return false; // 本人であることは tenant_internal/partner_shared を満たさない
   return VISIBILITY_ORDER[actualLevel] <= VISIBILITY_ORDER[requiredLevel];
 }
 
@@ -60,7 +81,8 @@ export interface ViewerContext {
  * 閲覧者コンテキストから有効な可視性レベルを解決する。
  *
  * 判定順:
- * 1. データ主体本人 → owner_only（全レベルアクセス可）
+ * 1. データ主体本人 → owner_only（本人向けフィールドのみ閲覧可。tenant_internal
+ *    以上の階層へは自動昇格しない — canAccess() 参照）
  * 2. テナントスタッフ以上 → tenant_internal
  * 3. パートナーで開示同意あり → partner_shared
  * 4. それ以外 → public

@@ -54,6 +54,25 @@ describe("createExportAuditEntry", () => {
     expect(entry.schemaVersion).toBe("2.0");
     expect(entry.requestIp).toBe("192.168.1.1");
   });
+
+  it("呼び出し側の配列/オブジェクトを後から変更しても監査エントリは変わらない（参照ではなくコピー）", () => {
+    const tablesIncluded = ["vehicles"];
+    const rowCounts = { vehicles: 1 };
+    const entry = createExportAuditEntry({
+      scope: "admin",
+      actorId: "user_123",
+      scopeId: "tenant_abc",
+      tablesIncluded,
+      rowCounts,
+      exportedAt: "2024-01-15T10:00:00Z",
+    });
+
+    tablesIncluded.push("certificates");
+    rowCounts.vehicles = 999;
+
+    expect(entry.tablesIncluded).toEqual(["vehicles"]);
+    expect(entry.rowCounts).toEqual({ vehicles: 1 });
+  });
 });
 
 describe("detectAbnormalExportFrequency", () => {

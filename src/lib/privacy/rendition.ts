@@ -79,12 +79,18 @@ export function applyMask(
  * 該当フィールドにマスキングを適用する。
  *
  * 非破壊: 新しいオブジェクトを返す（元のレコードは変更しない）。
+ *
+ * 戻り値の型: マスク適用フィールドは null または string になりうるため、
+ * `T` をそのまま返すと呼び出し側が元の型（例: string）のメソッドを呼んで
+ * 実行時に落ちる。全フィールドを `T[K] | string | null` に広げて反映する。
  */
+export type Redacted<T> = { [K in keyof T]: T[K] | string | null };
+
 export function createRendition<T extends Record<string, unknown>>(
   original: T,
   rules: readonly MaskingRule[],
   viewerLevel: VisibilityLevel,
-): T {
+): Redacted<T> {
   const result = { ...original };
   const viewerOrder = VISIBILITY_ORDER[viewerLevel];
 
@@ -99,7 +105,7 @@ export function createRendition<T extends Record<string, unknown>>(
     }
   }
 
-  return result;
+  return result as Redacted<T>;
 }
 
 // ── 定義済みルール（certificates_public パターンの一般化） ──
