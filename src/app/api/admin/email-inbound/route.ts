@@ -5,6 +5,8 @@ import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
 import { apiOk, apiUnauthorized, apiForbidden, apiInternalError, apiValidationError } from "@/lib/api/response";
 import { buildInboundAddress, generateInboundToken, inboundEmailDomain } from "@/lib/email/inboundAddress";
+import { requireAal2OrResponse } from "@/lib/auth/stepUpGuard";
+import { readInboundEmailToken, writeInboundEmailToken } from "@/lib/security/tenantPrivateSecrets";
 
 export const dynamic = "force-dynamic";
 
@@ -18,19 +20,18 @@ export async function GET() {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
-    if (!requireMinRole(caller, "admin")) return apiForbidden();
+    if (!requireMinRole(caller, "owner")) return apiForbidden("テナントオーナーのみ操作できます。");
 
     const { admin } = createTenantScopedAdmin(caller.tenantId);
-    const { data: tenant, error } = await admin
-      .from("tenants")
-      .select("email_inbound_token, email_inbound_enabled")
-      .eq("id", caller.tenantId)
-      .single();
+    const [{ data: tenant, error }, token] = await Promise.all([
+      admin.from("tenants").select("email_inbound_enabled").eq("id", caller.tenantId).single(),
+      readInboundEmailToken(admin, caller.tenantId),
+    ]);
     if (error) throw error;
 
     return apiOk({
       enabled: !!tenant?.email_inbound_enabled,
-      address: buildInboundAddress(tenant?.email_inbound_token),
+      address: buildInboundAddress(token),
       domain_configured: !!inboundEmailDomain(),
     });
   } catch (e) {
@@ -45,30 +46,25 @@ export async function POST(req: NextRequest) {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
-    if (!requireMinRole(caller, "admin")) return apiForbidden();
+    if (!requireMinRole(caller, "owner")) return apiForbidden("テナントオーナーのみ操作できます。");
+    const stepUpDenied = await requireAal2OrResponse(supabase);
+    if (stepUpDenied) return stepUpDenied;
 
     const parsed = schema.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
 
     const { admin } = createTenantScopedAdmin(caller.tenantId);
-    const { data: current, error: readErr } = await admin
-      .from("tenants")
-      .select("email_inbound_token")
-      .eq("id", caller.tenantId)
-      .single();
-    if (readErr) throw readErr;
-
     // 有効化時にトークンが無ければ発行する (無効化ではトークンは温存し再有効化を容易に)。
-    const update: { email_inbound_enabled: boolean; email_inbound_token?: string } = {
-      email_inbound_enabled: parsed.data.enabled,
-    };
-    let token = (current?.email_inbound_token as string | null) ?? null;
+    let token = await readInboundEmailToken(admin, caller.tenantId);
     if (parsed.data.enabled && !token) {
       token = generateInboundToken();
-      update.email_inbound_token = token;
+      await writeInboundEmailToken(admin, caller.tenantId, token);
     }
 
-    const { error: upErr } = await admin.from("tenants").update(update).eq("id", caller.tenantId);
+    const { error: upErr } = await admin
+      .from("tenants")
+      .update({ email_inbound_enabled: parsed.data.enabled })
+      .eq("id", caller.tenantId);
     if (upErr) throw upErr;
 
     return apiOk({

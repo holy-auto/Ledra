@@ -115,17 +115,17 @@ async function resolveSourceContext(
     case "parts_confirmation": {
       const { data } = await supabase
         .from("part_confirmation_signatures")
-        .select("tenant_id, part_installation_id")
+        .select("tenant_id, installation_id")
         .eq("token", token)
         .maybeSingle();
       if (!data) return null;
-      // part_installation_id → reservation_id
+      // installation_id → reservation_id
       let jobId: string | undefined;
-      if (data.part_installation_id) {
+      if (data.installation_id) {
         const { data: pi } = await supabase
           .from("part_installations")
           .select("reservation_id")
-          .eq("id", data.part_installation_id)
+          .eq("id", data.installation_id)
           .maybeSingle();
         jobId = pi?.reservation_id ?? undefined;
       }

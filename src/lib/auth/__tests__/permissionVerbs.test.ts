@@ -69,3 +69,18 @@ describe("operationRisk()", () => {
     expect(operationRisk("stores:view")).toBe("low");
   });
 });
+
+describe("canonicalVerb() — 分からないものを低リスク側に倒さない", () => {
+  it("platform:operations は MANAGE（VIEW ではない）", () => {
+    // 抜けていると特権操作が「閲覧」に分類され、監査と step-up の判断が緩む。
+    expect(canonicalVerb("platform:operations")).toBe("MANAGE");
+  });
+
+  it("表に無い動詞は MANAGE（fail closed）", () => {
+    for (const p of ["x:unknownverb", "y:constructor", "z:toString"]) {
+      const v = canonicalVerb(p as Parameters<typeof canonicalVerb>[0]);
+      expect(typeof v).toBe("string");
+      expect(v).toBe("MANAGE");
+    }
+  });
+});
