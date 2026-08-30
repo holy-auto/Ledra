@@ -4,6 +4,102 @@
 > （新しい順）。実装の詳細は RELEASE_LOG.md、迷っている段階のものは
 > OPEN_QUESTIONS.md に書く。
 
+## 2026-08-30 IMP-050（#957）Codex 利用上限到達後、`/code-review`（Claude 自身）で2件を追加修正
+
+1. 日付: 2026-08-30
+2. 起きたこと: Codex が利用上限に達したため、`/code-review` を実行して最終確認。2件を発見・修正: (1) 直前の hash 戦略修正（`/^[0-9a-f]+$/i` で16進数文字列かを検証）が、0-9 の数字のみで構成される生の値（電話番号「09012345678」・クレジットカード番号「4111111111111111」等）も「16進数字」の部分集合として誤って「ハッシュ済み」と判定してしまい、その先頭8桁を "sha256:" ラベル付きで露出する——直前に修正したメールアドレスの露出と全く同じバグ class の再発だった。(2) `docs/context/LEDRA_CURRENT.md`（「76件」）と `docs/implementation/requirement-trace.md`（「67件」）のテスト件数が、実際のテスト数（79件、直前の修正で3件追加）とどちらも食い違っていた——5回目の Codex 修正コミット自身がテストを追加したにもかかわらず、件数表記の更新が追いついていなかった。
+3. 以前の考え: 5回目の Codex レビュー対応で判明していた指摘はすべて解消し、これで完了と判断していた。
+4. 違和感・問題: (1) は「短い machine 生成の16進文字列」と「短い純粋数字の生値」を区別する検証が甘かった——桁数の下限（8文字）だけでは実際の電話番号等の長さと重なってしまう。(2) はこのモジュールで6回目の「テスト件数のドキュメント記載が実数と食い違う」パターンの再発——テストを追加するコミットのたびに、影響する全ドキュメント（今回は2ファイル）を機械的に洗い出す必要があった。
+5. 決めたこと: (1) 16進数チェックの桁数下限を8文字から32文字（MD5相当のハッシュ長）に引き上げ、短い数字列が誤判定されないようにした。(2) 両ファイルの件数を実数（79件）に統一。回帰テスト1件追加（電話番号・クレジットカード番号ライクな短い数字列のフォールバック確認）。
+6. 捨てた選択肢: なし。
+7. 判断理由: CLAUDE.md の「推測で事実を補わない」「バグ修正は根本原因」の方針に沿った、確認済みの単純な修正。
+8. まだ答えが出ていないこと: owner_only の設計トレードオフ（前々々回のエントリ参照）は依然未解決。この PR の code-review サイクルはこれで完了と判断し、CI 確認後にマージへ進む。
+9. 公開区分: 公開可（コードレビューで見つかった型基盤コードの論理バグ修正・ドキュメント正確性の是正。個人情報は含まない）。
+
+## 2026-08-30 IMP-050（#957）へ5回目（最終）に届いた Codex レビュー3件を修正。以降 Codex は利用上限に到達
+
+1. 日付: 2026-08-30
+2. 起きたこと: 3件とも実在バグとして確認・修正: (1) `docs/context/LEDRA_CURRENT.md` の IMP-050 エントリが requirement-trace.md/OPEN_QUESTIONS.md の訂正後も「完了」のままで、事業の現状スナップショットとして不整合だった（テスト件数「67件」も古いまま）。(2) `isMoreRestrictive()` が owner_only を含む比較でも `VISIBILITY_ORDER` の生数値比較をしており、`canAccess()` で owner_only を独立軸に分離したにもかかわらず、この関数だけ古い「線形階層」の意味論のまま残っていた（4回連続で繰り返している「1関数だけ直して姉妹関数を見落とす」パターンの5度目）。(3) `applyMask()` の hash 戦略が、呼び出し側が誤って生の値（メールアドレス等）を渡した場合に、その値の先頭8文字を "sha256:" ラベル付きで返しており、本当にハッシュ化されたかのように見えて実は生データの一部を露出していた。この直後、Codex がコードレビューの利用上限に到達した旨のコメントが届き、以降このセッション中に追加のレビューは来ない見込み。
+3. 以前の考え: 4回目の修正（暗号化カラム登録漏れ・truncate短小値露出・maxClassificationのフェイルオープン）で、判明していた指摘はすべて解消したと判断していた。
+4. 違和感・問題: (2) は特に、`canAccess()` を4回にわたって慎重に再設計してきたにもかかわらず、同じファイル内の兄弟関数 `isMoreRestrictive()` の意味論が古いまま取り残されていたことに気づけなかった——1つのモジュール内でも、関連する複数の関数が同じ前提（ここでは「owner_only は階層に含まれるか」）を共有している場合、1箇所を変えたら他の箇所も全部洗い出す必要がある。
+5. 決めたこと: (1) LEDRA_CURRENT.md のステータス文言を「部分（型基盤のみ、統合未着手）」に統一し、テスト件数を76件に更新。(2) `isMoreRestrictive()` を、owner_only が絡む比較は常に false を返すよう修正（tenant_internal/partner_shared/public 同士の比較のみ従来どおりの線形比較）。(3) `applyMask()` の hash 戦略に、値が16進数文字列（ハッシュ値の見た目）であることを検証するチェックを追加し、そうでなければ完全 redact（"***"）にフォールバック。回帰テスト3件追加。
+6. 捨てた選択肢: なし（3件とも明確な単一の正しい修正がある）。
+7. 判断理由: (1)(2)(3) いずれも CLAUDE.md の「推測で事実を補わない」「バグ修正は根本原因」の方針に沿った、確認済みの単純な修正。
+8. まだ答えが出ていないこと: owner_only の設計トレードオフ（前々回のエントリ参照）は依然未解決。Codex が利用上限に達したため、これ以降の指摘は `/code-review`（Claude 自身によるレビュー）でのみ検出される見込み——追加で1回実行し、残存指摘がないか最終確認する。
+9. 公開区分: 公開可（コードレビューで見つかった型基盤コードの論理バグ修正。個人情報は含まない）。
+
+## 2026-08-30 IMP-050（#957）へ4回目に届いた Codex レビュー3件を修正。暗号化カラム登録漏れ・truncate短小値露出・maxClassificationのフェイルオープン
+
+1. 日付: 2026-08-30
+2. 起きたこと: 3件とも実在バグとして確認・修正: (1) `FIELD_CLASSIFICATIONS` の restricted 登録が前回追加した4カラム（LINE×2・Square×2）に留まっており、`grep -rn "_ciphertext" supabase/migrations/` で確認したところ、実際には `supply_partner_credentials`（3カラム）・`accounting_integrations`（2カラム）・`tenant_integrations`（2カラム）・`tenant_private_secrets`（ciphertext 2・hash 2・legacy平文 3）・`tenants.booking_notify_slack_webhook_ciphertext` の計15カラムが未登録で confidential にフォールバックしていた。(2) `applyMask()` の truncate 戦略が `keepChars >= 文字列長` の場合に無条件で値をそのまま返しており、短い機密値（PIN 等）が keepChars の設定次第で全文字露出しうる状態だった。(3) `maxClassification()` が個々の未登録フィールドの穴埋めに `defaultClassification`（既定 "public"）をそのまま使っており、呼び出し側が未指定の場合、新規の未登録センシティブカラムが誤って "public" 扱いになるフェイルオープンだった。
+3. 以前の考え: 前回（2回目）の修正で customers・vehicles・certificates・invoices・insurer_cases の実在しないカラム名を全て解消したと判断していたが、restricted カラムの列挙は LINE/Square の4例のみで、他の暗号化テーブルまで横展開できていなかった。
+4. 違和感・問題: (1) は「一部の実例だけ直して、同じパターンの他の発生源を横展開しなかった」という、このモジュールで4回連続発生しているパターンの再発——今回は `supabase/migrations/` 全体を `_ciphertext` で横断検索することで、初めて網羅的に確認した。(2)(3) はいずれも「境界値・デフォルト値の扱いが安全側に倒れていない」という同じ性質のバグ。
+5. 決めたこと: (1) 確認できた15カラムを追加登録し、レジストリのコメントに「2026-08-30時点で確認した全カラム、自動検出機構は未実装につき新規追加時は手動更新が必要」と明記。(2) truncate を `keep = min(keepChars, floor(文字列長/2))` に変更し、どんな短い値でも常に半分以下しか残らないよう保証。(3) `maxClassification()` の個々のフィールド取得を `getFieldClassification(f.table, f.column)`（引数省略、自身の安全な既定値 confidential を使う）に変更し、defaultClassification は空配列時の戻り値としてのみ使うよう限定。回帰テスト4件追加・2件更新。
+6. 捨てた選択肢: なし（3件とも明確な単一の正しい修正がある）。
+7. 判断理由: (1) は CLAUDE.md の「バグ修正は根本原因、対症療法ではない」方針に沿い、今回は"横展開の徹底"として全体を横断検索した。(2)(3) は「境界値・デフォルト値は安全側に倒す」というセキュリティ機構の基本原則に沿った修正。
+8. まだ答えが出ていないこと: `FIELD_CLASSIFICATIONS` の restricted 登録は依然として手動更新に依存しており、将来新しい暗号化カラムが追加された際に追随を忘れるリスクは残る（自動検出機構は明示的にスコープ外）。owner_only の設計トレードオフ（前回のエントリ参照）も未解決。
+9. 公開区分: 公開可（コードレビューで見つかった型基盤コードの論理バグ修正。テーブル名・カラム名はマイグレーションファイルとして既に公開相当。暗号化されたシークレットの値そのものは含まない）。
+
+## 2026-08-30 IMP-050（#957）へ3回目に届いた Codex レビュー4件のうち2件を修正、owner_only の設計トレードオフは OPEN_QUESTIONS へ
+
+1. 日付: 2026-08-30
+2. 起きたこと: 前回の修正（owner_only を tenant_internal 以上のネスト階層から独立させる P1 修正）を push した直後、その修正自体に対する3回目の Codex レビューが届いた。4件のうち2件は実在バグとして確認・修正: (1) `createRendition()` が `canAccess()` を呼ばず、`VISIBILITY_ORDER` の生比較を独自に実装したままだった——`visibility.ts` 側で `canAccess()` の意味論を変更したにもかかわらず、同じ判定を持つ `rendition.ts` 側の実装が追随しておらず、owner_only 閲覧者に対して一切マスクがかからなくなっていた（自分自身が前回修正で作った不整合）。(2) `CERTIFICATE_PUBLIC_RULES` が customer_name/content_free_text の2フィールドしかマスクしておらず、`create.ts`/`certificateVersion.ts` が明示的に PII と識別している `vehicle_info_json`（maker/model/plate を含む）が対象外だった。残り2件（同一論点の表裏）は、単純な修正では解決しない設計トレードオフと判明: (3)「restricted を owner_only にマッピングしても、canAccess('owner_only','owner_only') が true になったため、データ主体本人が restricted まで見られてしまう」。(4)「pii/confidential を tenant_internal にマッピングしたため、canAccess('tenant_internal','owner_only') が false になり、データ主体本人が自分自身の pii すら見られなくなった」。(3)(4) は同じ owner_only という値に「本人限定データ」と「誰にも見せない床」という矛盾する2つの意味を持たせていることが根本原因で、線形階層モデルのままでは両立しない。
+3. 以前の考え: 前回の P1 修正（owner_only の階層分離）で「本人であることが他人のテナント内部データへ昇格しない」問題は解決したと判断していた。
+4. 違和感・問題: (1)(2) は、これまで4回連続で繰り返している「1つのモジュール・1つの関数を直しても、同じ判定ロジックを独自に再実装している姉妹関数を見落とす」パターンの再発。(3)(4) は、自動レビューの指摘を鵜呑みに追いかけて反応的にパッチし続けると、Finding が収束せず「直すたびに別の反対方向の指摘に化ける」状態に陥ることの実例——CLAUDE.md にも近い方針があるとおり、収束しないレビュー往復はどこかで打ち切り、設計判断として一段上に切り出す必要がある。
+5. 決めたこと: (1) `createRendition()` を `canAccess()` 呼び出しに統一（独自の VISIBILITY_ORDER 比較を削除）。既存テスト「owner_only → 全フィールド可視」は前回の P1 修正と矛盾する旧仕様のアサーションだったため、「owner_only → tenant_internal/partner_shared 要求のフィールドはマスクされる」に更新。(2) `vehicle_info_json` を `FIELD_CLASSIFICATIONS`/`CERTIFICATE_PUBLIC_RULES` 両方に追加。(3)(4) はこの PR では解決せず、`DEFAULT_REQUIRED_VISIBILITY` の JSDoc に既知の限界として明記（本人が自分のレコードを見る際はこの汎用機構をバイパスする必要がある、という制約付き）、OPEN_QUESTIONS.md に設計判断待ちとして記録。回帰テスト2件更新。
+6. 捨てた選択肢: (a) owner_only を再びネスト階層に戻す…(3) の restricted 漏洩リスクが復活するため不採用。(b) この場で5段階目の VisibilityLevel（例: system_only）を新設して根本解決する…現時点で本モジュールは呼び出し元ゼロであり、実際の統合要件（誰がどう isDataSubject を渡すか）が固まっていない段階で型を確定させるのは時期尚早と判断し、統合タスク着手前の設計判断として OPEN_QUESTIONS に切り出す方を選んだ。
+7. 判断理由: (1)(2) は明確な単一の正しい修正がある「バグ報告」として扱い、確認の上で修正した。(3)(4) は「収束しないレビュー往復はどこかで打ち切り、設計判断として一段上に切り出す」という判断——盲目的に反応し続けるより、トレードオフを言語化してから改めて判断する方が、結果的に手戻りが少ない。
+8. まだ答えが出ていないこと: owner_only の設計トレードオフの最終解（OPEN_QUESTIONS.md 参照）。実際に API/UI へ統合するタスクに着手する前に確定させる必要がある。
+9. 公開区分: 公開可（コードレビューで見つかった型基盤コードの論理バグ修正、および設計トレードオフの言語化。個人情報は含まない）。
+
+## 2026-08-30 IMP-050（#957）へ2回目に届いた Codex レビュー7件を修正、うち2件は既存の意図的設計と確認し不採用
+
+1. 日付: 2026-08-30
+2. 起きたこと: 前回の Codex レビュー修正を push した直後、さらに旧コミット（`6b4f1b0665`、直前の修正 push 前の状態）に対する2回目の Codex レビューが届いた。7件のうち5件は現行コード（`d6724d92` 以降）にもまだ残る実在バグとして確認・修正: (1) `FIELD_CLASSIFICATIONS` の customers エントリが name/email/phone のみで、実在する name_kana/postal_code/address/birth_date/note/line_user_id が未登録（`customers` テーブルの実マイグレーションで確認）。(2) `maxClassification()` が非空配列でも `result` の初期値を `defaultClassification` にしており、呼び出し側が全フィールドより厳しいデフォルトを渡すと常にそのデフォルトが最大値として勝ってしまう。(3) `readonly MaskingRule[]` は配列要素の入れ替えは防ぐが、`RULES[0].appliesBelow = "public"` のようなプロパティ代入は型チェッカーを迂回されると防げず、実行時の凍結が無かった。(4) `applyMask()` の truncate 戦略で `keepChars` に負値を渡すと `String.slice(0, -1)` が末尾からのオフセットとして解釈され、ほぼ全文字が露出する。残り2件は実スキーマ・既存コードと照合した結果、既存の意図的な設計と確認し不採用: (5)「`PASSPORT_TABLE_PII_COLUMNS` に `to_owner_email`/`to_owner_name`/`message` が抜けている」という指摘は、`piiFields.ts` の `PublicTransferView` 検証コメントに明記済みの意図的設計（受領者本人には自分宛ての to_owner_*/message を見せる。前所有者の from_owner_* のみ隠す）と一致しない誤検知だった。
+3. 以前の考え: 直前の修正で `/code-review` の5件 + Codex 1回目の7件（うち2件重複）をすべて解消し尽くしたと判断していた。
+4. 違和感・問題: (1)(2)(3)(4) は「rendition.ts の VEHICLE_PUBLIC_RULES だけ直して classification.ts の同型の重複を見落とした」という前回と同じパターンの繰り返し——1つのモジュールの1関数を直しても、姉妹関数・姉妹レジストリに同種のバグが残っていないか横展開する習慣が必要だった。(5) は自動レビューツールが「既存コードのコメントに明記された設計意図」を読み取れず、表面的なパターン（`from_owner_*` を隠すなら `to_owner_*` も対称的に隠すべき、という直感）で誤検知した例——確認せず反射的に直すと、既に意図的にレビュー済みの正しい挙動を壊すところだった。
+5. 決めたこと: (1) customers の PII エントリを6件追加。(2) `maxClassification()` を `result` の初期値を `undefined` にしてから最初のフィールドで確定するよう修正（defaultClassification は未登録フィールドの穴埋め専用に限定）。(3) `frozenRules()` ヘルパーを追加し、`CERTIFICATE_PUBLIC_RULES`/`VEHICLE_PUBLIC_RULES`/`PASSPORT_PUBLIC_RULES` の各要素と配列自体を `Object.freeze()`。(4) `truncate` の `keepChars` を `Math.max(0, ...)` でクランプ。(5) は修正せず、レビューコメントで「意図的設計と確認済み、`piiFields.ts` 参照」と返信するに留めた。回帰テスト4件追加。
+6. 捨てた選択肢: (a) Codex の指摘5をそのまま実装し `to_owner_*`/`message` を PASSPORT_TABLE_PII_COLUMNS に追加…`PublicTransferView` の compile-time PII 検証が意図的に許可している露出を壊し、受領者が自分宛ての通知内容を見られなくなる回帰を生むため不採用。
+7. 判断理由: 自動レビューの指摘は「バグ報告」として扱い実スキーマ・既存コードで裏取りする（CLAUDE.md の推測禁止の方針）。裏取りの結果、指摘が正しければ直し（4件）、既存の明示的な設計意図と矛盾すれば不採用と判断する（1件、理由付きで却下）——盲目的に全指摘を実装しないことも品質の一部。
+8. まだ答えが出ていないこと: なし（今回の指摘はすべて確認済み）。
+9. 公開区分: 公開可（コードレビューで見つかった型基盤コードの論理バグ修正、および自動レビューの誤検知を確認・却下した判断。テーブル名・カラム名は公開相当。個人情報は含まない）。
+
+## 2026-08-30 IMP-050（#957）へ PR オープン中に届いた Codex レビュー7件を修正。分類レジストリの架空カラム名・owner_only の特権昇格バグ・監査エントリの参照保持・要件トレースの過大表記を解消
+
+1. 日付: 2026-08-30
+2. 起きたこと: PR #957 がまだ open（未マージ）の状態で Codex（`chatgpt-codex-connector[bot]`）のレビューが届き、7件の指摘（P1×1種2件重複、P2×5件）。すべて実スキーマ（`supabase/migrations/`）と照合して確認・修正: (1) `FIELD_CLASSIFICATIONS`（classification.ts）の vehicles PII エントリが rendition.ts の `VEHICLE_PUBLIC_RULES` と同じ手書き複製で、削除済みカラムを列挙し実在する plate_display が抜けていた（前回の code-review 修正が rendition.ts のみに留まり、classification.ts の同型の重複に気づいていなかった）。(2) `tenant_secrets.encrypted_value` という実在しないテーブル/カラムを登録しており、実際の暗号化シークレット（`tenants.line_channel_secret_ciphertext` 等、`square_connections.*_ciphertext`）が一切登録されず `confidential`（自分自身の前回修正で `tenant_internal` から閲覧可能に変更済み）にフォールバックしていた。(3) `hearings.content` という実在しないカラムを登録しており、実際の PII カラム（customer_name/customer_phone/customer_email/vehicle_plate/vehicle_vin）が無登録だった。(4) `invoices.total_amount`（実際は `total`）、`insurer_cases.claim_amount`（実際は `meta` jsonb 内）も同様に実在しないカラム名だった。(5) `createRendition()` の戻り値型が入力 `T` のままで、マスク適用後に null/string になりうるフィールドを型上は元の型のまま返しており、呼び出し側が実行時にクラッシュしうる（型安全性の欠如）。(6) `resolveVisibility()`/`canAccess()` の設計が「データ主体本人（owner_only）」を「最上位特権」としてネストした階層に組み込んでおり、`isDataSubject: true` の閲覧者が自分の PII だけでなく tenant_internal・restricted（`auth.users.encrypted_password` 等）のフィールドまで通過してしまう構造的バグ（P1、Codex が2箇所で重複指摘）。(7) `createExportAuditEntry()` が呼び出し側の `tablesIncluded`/`rowCounts` を参照のまま保持しており、生成後に呼び出し側が同じ配列/オブジェクトを再利用・変更すると監査記録の中身が後から変わりうる。(8) requirement-trace.md の §18/IMP-050 が「実装済み」と記載されていたが、4エクスポートルートいずれも `createExportAuditEntry()`/`createRendition()` を呼んでおらず（呼び出し元ゼロを確認済み）、統合・enforcement が一切無い状態を「完了」と表記すると残りの統合作業が見落とされるリスクがあった。
+3. 以前の考え: 直前の `/code-review` で5件を修正し尽くしたと判断していたが、rendition.ts の手書き複製パターンが classification.ts にも同型で存在すること、および visibility.ts の階層設計そのものの構造的欠陥までは検証していなかった。
+4. 違和感・問題: (1)-(4) は前回修正した「単一定義源から生成する」パターンを rendition.ts にしか適用しておらず、同じ根本原因（v2.0 仕様書時点の想定カラム名を、実装時に実スキーマと突き合わせずそのまま書いた）が classification.ts のレジストリ全体に残っていた——1箇所直しても「同じ根本原因の別の発生源」を見落とせば再発することの実例。(6) は「所有者だから何でも見られる」という直感的だが誤った設計で、実際には「本人限定の情報を見られる権利」と「テナント内部データを見られる権限」は別の軸であるべきだった。
+5. 決めたこと: (1)-(4) `FIELD_CLASSIFICATIONS` の vehicles エントリを `VEHICLE_TABLE_PII_COLUMNS` から生成、`tenant_secrets`→実在する4つの ciphertext カラム、`hearings.content`→実カラム5件、`invoices.total_amount`→`total`、`insurer_cases.claim_amount`→`meta`（jsonb 全体を confidential として登録）に修正。(5) `createRendition()` の戻り値型を `Redacted<T> = { [K in keyof T]: T[K] | string | null }` に変更。(6) `canAccess()` を再設計: owner_only は tenant_internal/partner_shared/public のネスト階層に含まれない独立軸とし、`requiredLevel === "owner_only"` は `actualLevel === "owner_only"` のときのみ true、`actualLevel === "owner_only"` は `requiredLevel === "public"` 以外では階層を自動的に満たさない。(7) `createExportAuditEntry()` で `tablesIncluded`/`rowCounts` をコピーして保持するよう変更。(8) requirement-trace.md の §18/IMP-050 ステータスを「実装済み」→「部分（型基盤のみ、統合未着手）」に訂正。回帰テスト7件追加（classification 1件、visibility 3件、exportAudit 1件、既存2件の書き換えも含む）。
+6. 捨てた選択肢: (a) insurer_cases.claim_amount を単純に削除しレジストリから外す…claim_amount を含む案件情報全体（meta jsonb）は依然として confidential なので、meta 列自体を登録する方が実態に近い。(b) canAccess() の owner_only 特権を残したまま、DEFAULT_REQUIRED_VISIBILITY 側だけで restricted への到達を防ぐ…FieldVisibilityRule を直接使う将来の呼び出し側まで安全にならないため、根本の canAccess() 自体を直す方を選んだ。
+7. 判断理由: (1)-(4)(7) は CLAUDE.md の「バグ修正は根本原因、対症療法ではない」方針そのもの——1箇所のパターン修正で終わらせず、同じ根本原因が他にも残っていないか横展開して確認した。(6) は「本人であることは所有者権限であって、他人のデータへの特権ではない」という原則に沿った設計修正。(8) は「推測で事実を補わない」——統合されていない機能を「完了」と書くと、後続タスクがそこで止まる。
+8. まだ答えが出ていないこと: `createRendition`/`createExportAuditEntry`/`FIELD_CLASSIFICATIONS` を実際の API レスポンス生成・エクスポートルートへ統合するタイミング（下流タスク）。owner_only を要求する具体的なフィールド（現状 DEFAULT_REQUIRED_VISIBILITY 経由では restricted のみが該当し、実質的に「誰も満たさない」フロアとして機能する）を将来どのエンティティに使うか。
+9. 公開区分: 公開可（コードレビューで見つかった型基盤コードの論理バグ修正。テーブル名・カラム名は docs/information-asset-inventory.md や既存マイグレーションで公開相当。金額・テナント名・個人情報は含まない）。
+
+## 2026-08-30 IMP-050（#957）の code-review 指摘を修正。VEHICLE/PASSPORT_PUBLIC_RULES の PII 列挙漏れ・hash 戦略のドキュメント矛盾・pii の可視性要件誤り・ドキュメント件数誤記を解消
+
+1. 日付: 2026-08-30
+2. 起きたこと: PR #957 マージ後の `/code-review` で5件の指摘。すべて確認・修正: (1) `VEHICLE_PUBLIC_RULES`（rendition.ts）が `customerRelation.ts` の `VEHICLE_TABLE_PII_COLUMNS`（単一定義源、["customer_id","notes","plate_display"]）と手書きで独立に重複定義されており、既にテーブルから削除済みの customer_name/customer_email/customer_phone_masked を列挙する一方、実在する PII 列 plate_display（ナンバープレート）が抜けていた。(2) `PASSPORT_PUBLIC_RULES` も同様に `PASSPORT_TABLE_PII_COLUMNS` と独立定義で、前所有者の PII（from_owner_name/from_owner_email）が抜けており、passport_ownership_transfers の「前所有者の PII を新所有者に見せない」という設計意図に反していた。(3) `applyMask()` の "hash" 戦略が、自身の JSDoc（「呼び出し側が事前にハッシュ済みの値を渡し、'sha256:&lt;hex8桁&gt;' 形式に整形する」）を無視し、`value` を一切使わず固定文字列 `"[MASKED]"` を返していた。(4) `DEFAULT_REQUIRED_VISIBILITY` が pii を owner_only（データ主体本人のみ）に要求しており、`canAccess()` の順序規則上、テナントスタッフ（tenant_internal）が通常業務で必要とする顧客氏名・電話番号等の pii フィールドに一切アクセスできない設定になっていた（未使用・未テストのため潜在バグ）。(5) RELEASE_LOG.md/LEDRA_CURRENT.md/requirement-trace.md/DECISION_LOG.md の「FIELD_CLASSIFICATIONS 19エントリ」「テスト64件（内訳 classification 10 + visibility 11 + rendition 22 + exportAudit 21）」がいずれも実数（20エントリ、67件、内訳 classification 16 + visibility 21 + rendition 20 + exportAudit 10）と不一致だった。
+3. 以前の考え: マージ時点では `src/lib/privacy/` の4モジュールは既存パターン（certificates_public・VEHICLE_TABLE_PII_COLUMNS・is_pii_disclosed）の型安全な一般化として問題なしと判断していた。
+4. 違和感・問題: (1)(2) は IMP-040/043 等で繰り返し発生している「既存の単一定義源を参照せず手書きで複製し、後から乖離する」という同一パターンの再発。しかも本モジュール自身が「既存パターンを型安全に再現する」ことを目的として書かれていたにもかかわらず、その既存パターンの現在値（VEHICLE_TABLE_PII_COLUMNS のコメントに明記された削除済みカラムの情報）を参照していなかった。(3) は JSDoc に書かれた契約と実装が一致していない典型例。(4) は「pii の閲覧に owner_only を要求する」設定が、正準語彙で言う「pii」の実運用（スタッフが日常的に扱う顧客情報）と整合しておらず、この関数が実際に配線されればスタッフ業務を止めていた。まだどこからも呼ばれていないため実害はまだ発生していない。
+5. 決めたこと: (1)(2) `VEHICLE_PUBLIC_RULES`/`PASSPORT_PUBLIC_RULES` を手書きリストから `VEHICLE_TABLE_PII_COLUMNS`/`PASSPORT_TABLE_PII_COLUMNS` の `.map()` 生成に変更し、乖離が構造的に起こらないようにした。(3) `applyMask()` の hash 戦略を JSDoc 通り `` `sha256:${String(value).slice(0, 8)}` `` に修正。(4) `DEFAULT_REQUIRED_VISIBILITY.pii`/`.confidential` を `tenant_internal` に変更（restricted のみ owner_only を維持——認証情報・暗号化シークレットはスタッフにも見せない）。(5) ドキュメント4ファイルの件数を実数に訂正。回帰テスト4件追加（VEHICLE/PASSPORT_PUBLIC_RULES を単一定義源と突き合わせるテスト2件、hash のフォーマット修正1件、DEFAULT_REQUIRED_VISIBILITY の3件）。
+6. 捨てた選択肢: (a) VEHICLE_PUBLIC_RULES/PASSPORT_PUBLIC_RULES の抜けている列だけを個別に手書き追加…同じ乖離が将来また起こるため、単一定義源からの生成に変更する方を選んだ。(b) DEFAULT_REQUIRED_VISIBILITY.restricted も tenant_internal に緩和…restricted は認証情報等でありテナントスタッフにも見せるべきでないため、owner_only（実質「通常の閲覧経路では誰も満たせない」フロア）のまま維持。
+7. 判断理由: CLAUDE.md の「バグ修正は根本原因、対症療法ではない」方針に沿い、手書き複製という共通の根本原因を単一定義源からの生成に置き換えて解消した。可視性のデフォルト値は、正準語彙上の pii（顧客氏名・電話番号等）が実運用でテナントスタッフに日常的に必要とされる情報である以上、tenant_internal を要求するのが正しいデフォルトだと判断した。
+8. まだ答えが出ていないこと: `createRendition`/`DEFAULT_REQUIRED_VISIBILITY` を実際の API レスポンス生成へ統合するタイミング（現時点では型基盤のみで、呼び出し元ゼロを確認済み）。hash 戦略を実際に使う定義済みルールは現時点でまだ無い。
+9. 公開区分: 公開可（コードレビューで見つかった型基盤コードの論理バグ修正。テーブル名・カラム名は docs/information-asset-inventory.md で公開相当。金額・テナント名・個人情報は含まない）。
+
+## 2026-08-30 IMP-050（#957）を main へ取り込み。resurrection パターン21度目
+
+1. 日付: 2026-08-30
+2. 起きたこと: PR #957（IMP-050、プライバシー・データ分類・可視性・マスキング基盤）のベースを main へ retarget し、origin/main をマージ。競合85件のうち81件は PR 自身の差分に無いファイル（`git diff` で PR 独自コミットの差分に含まれないことを確認、origin/main 側を採用）、4件（DECISION_LOG.md/LEDRA_CURRENT.md/RELEASE_LOG.md/requirement-trace.md）は PR 自身の事業ログ追記との真の競合で、origin/main を土台にして PR の追記内容を正しい位置に手動で復元。マージ後、`src/lib/navigation/WorkScopeProvider.tsx` と `src/lib/sync/` 一式が21回目の resurrection として復活（PR #947 スキップに起因、`src/lib/privacy/` からの依存ゼロを確認済み）。
+3. 以前の考え: なし（機械的なマージ手順）。
+4. 違和感・問題: resurrection パターンが21回連続で発生しており、スタック内の全 PR が同じ根本原因（PR #947 IMP-032 のスキップに伴う古いベース）を共有していることを改めて確認。
+5. 決めたこと: 85件の競合を phantom（81件、`git checkout --theirs`）と genuine（4件、手動再現）に分類して解決。resurrection ファイル一式をスクラッチパッドへ退避し `git add -A` で削除を確定。
+6. 捨てた選択肢: なし。
+7. 判断理由: 既存の確立済みパイプライン手順（PR #948 以降で一貫して適用）をそのまま踏襲。
+8. まだ答えが出ていないこと: PR #947（IMP-032）自体の扱いは未解決のまま（DECISION_LOG 2026-08-30「PR #947（IMP-032）をスキップ」参照）。resurrection は残りのスタック（#958〜#961）でも継続発生する見込み。
+9. 公開区分: 公開可（マージ作業のメカニクス。機密・個人情報なし）。
+
 ## 2026-08-30 ナレッジ自動蓄積は「enabled=false レビュー承認制」＋既存テーブル再利用（新テーブル/常時ON即反映を採らない）
 
 1. 日付: 2026-08-30
@@ -593,6 +689,17 @@
 7. 判断理由: 「現場を知らずに書き足さない」の裏返しで、ここでは「現場を知らずに稼働中の挙動を狭めない」。staff/viewer のデフォルトを self にすべきかどうかは製品判断であり、この環境からは判断できない。
 8. まだ答えが出ていないこと: staff/viewer のダッシュボード初期表示は本当に self（自分の分だけ）にすべきか、それとも現状維持（tenant-wide）のままでよいか。代表判断待ち。
 9. 公開区分: 公開可（実装の技術的な経緯であり、金額・テナント名・接続情報は含まない）
+
+## 2026-08-20 IMP-050 プライバシー・データ保護基盤を既存パターンの型安全一般化として実装
+1. 日付: 2026-08-20
+2. 起きたこと: v2.0 §18 のプライバシー・データ保護基盤を実装する段階。既存コードベースを精査した結果、PII 遮断（customerRelation.ts のコンパイル時型アサーション）、公開ビュー（certificates_public の customer_name/content_free_text NULL 化）、エクスポート4ルート（admin/customer/agent/insurer）、保持 cron、削除リクエストなど、個別のプライバシー機構は既に散在していた。
+3. 以前の考え: 「可視性4レベル・マスク公開なし（部分）」と requirement-trace に記録していた。各機構が個別に動いており体系的な分類・可視性モデルが無かった。
+4. 違和感・問題: 既存の certificates_public ビュー（SQL）と customerRelation.ts の PII カラムリストが同じ「フィールドレベルのアクセス制御」を別の方式で実装しており、新テーブル追加時にどちらのパターンに従うか不明確。エクスポート監査も vehicle_histories へのベストエフォート記録のみで統一フォーマットなし。
+5. 決めたこと: 4モジュール構成の純関数基盤として一般化。(a) データ分類（ISO 27001 A.5.12 の4分類を型化、20フィールド登録）。(b) 可視性モデル（既存 is_pii_disclosed を partner_shared レベルとして一般化、ViewerContext→有効レベル解決）。(c) レンディションマスキング（ADR-0003「マスキングは公開レンディション側で行い、原本バイトは後処理しない」を一般化、certificates_public/VEHICLE_TABLE_PII_COLUMNS/パスポートの3パターンを定義済みルールとして型安全に再現）。(d) エクスポート監査（4スコープの統一イベントフォーマット、頻度異常検出）。IO なし、DB マイグレーションなし。
+6. 捨てた選択肢: (a) DB マイグレーション込みで data_classification カラムを全テーブルに追加…型基盤先行の方針に反し、稼働中の本番に不要な変更。(b) 既存 certificates_public ビューを TS 側 createRendition に置き換え…SQL ビューは RLS と一体で動いており撤去は危険、共存が安全。(c) crypto 依存の実ハッシュマスキング…hash 戦略は形式のみで呼び出し側が事前ハッシュする設計（依存最小化）。
+7. 判断理由: 既存コードの実績あるパターン（certificates_public の NULL 化、PII カラムリスト、is_pii_disclosed 開示フラグ）を壊さず型で一般化する最小差分。新コードが既存パターンを消費する形（CERTIFICATE_PUBLIC_RULES が certificates_public と同じ効果を TS 側で再現）なので、移行も段階的に可能。
+8. まだ答えが出ていないこと: createRendition を API レスポンス生成に統合するタイミング（現時点では型基盤のみ）。FIELD_CLASSIFICATIONS レジストリの拡張方針（新テーブル追加時に自動検出するか手動登録か）。エクスポート監査イベントの永続化先（専用テーブル vs ドメインイベントカタログ統合）。
+9. 公開区分: 公開可（「既存の個別プライバシー機構を型安全な一般フレームワークに昇華する」設計判断は発信可。ISO 27001 A.5.12 参照も公知。テーブル名・カラム名は docs/information-asset-inventory.md で既に公開相当）。
 
 ## 2026-08-20 IMP-046 ANALYTICS_STORE — 運用KPI計算器とキャパシティ分析の設計判断
 
