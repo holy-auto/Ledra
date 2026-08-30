@@ -39,6 +39,23 @@ export function buildQuoteDetailAsk(): string {
 }
 
 /**
+ * 見積り詳細待ち (awaiting_quote_detail) のまま一定時間ご返信が無いお客様への、
+ * 失効前の「再促し (nudge)」。1会話につき1回だけ送る (cron・flowNudges.ts)。
+ * 催促にならないやわらかい文面で、車検証写真 or 車種+年式のどちらでも返せる旨を再掲する。
+ */
+export function buildQuoteDetailNudge(): string {
+  return [
+    "その後、お見積りのご検討はいかがでしょうか？",
+    "正式なお見積りをお作りできますので、下記のいずれかをこのトークにお送りください。",
+    "",
+    "◯ 車検証のお写真",
+    "◯ または「車種・年式」（例: アルファード 2022年式）",
+    "",
+    "ご不明な点があれば、このままご返信ください。",
+  ].join("\n");
+}
+
+/**
  * ナレッジ自動返信の末尾に添える「次の行動」誘導ボタン。会話フロー opt-in 済み
  * テナントのみ添付する (postback を handleFlowPostback が状態非依存で捌けるため)。
  *   - `flow:start_quote` … 見積りフロー (awaiting_quote_detail) を開始
