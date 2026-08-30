@@ -133,7 +133,7 @@ Payment Policy(v2.0 §11.3: Consumer PAID / B2B CREDIT_APPROVED / Insurance INSU
 | §20 | Event Architecture / NEXT ACTION / Prediction | `vehicle_histories`(AuditEventType 23種)+`outbox_events`+冪等性3系統(current-architecture.md §6)。AI `jobNextAction`/`nextActionAuto` | 部分 | v2.0 Core Event Catalogue(29イベント)との命名・網羅差。イベント→優先度再計算→通知評価のパイプラインなし。scheduled/predicted/actual の3分離は部分(`estimated_min` 等) | IMP-014, 044 |
 | §21 | Analytics & Management | `/admin/management`(KPI)+ダッシュボード+価格/スタッフ/工程/課金分析+店舗利用状況 | 部分 | v2.0 指標セット(VERIFIED率・Evidence不足率・レビュー待ち時間等)は未実装。スタッフ表示は実績分析であり capacity visibility 方式ではない | IMP-041, 046 |
 | §22 | Screen IDs & Requirement IDs | 本書(トレーサビリティ確立) | 部分 | 個別要件 ID の採番は仕様書側に存在しない(前文参照) | IMP-000, 001 |
-| §23 | QA / Acceptance Criteria | Playwright 45 spec(既存15+新規30)。正常ワークフロー8+例外フロー9+顧客確認4+WCAG AA 9。CI E2E ジョブ復元(secrets ゲート付き) | 実装済み | — | IMP-052 |
+| §23 | QA / Acceptance Criteria | Playwright 18 spec ファイル(既存14+新規4)、新規テスト30件: 正常ワークフロー8+例外フロー9+顧客確認4+WCAG AA 9。CI E2E ジョブ復元(secrets ゲート付き) | 実装済み | — | IMP-052 |
 | §24 | Delivery Priorities & Handoff | 本書 §6(P0 充足サマリ)+`docs/implementation/` | 部分 | P0 リリースゲートは IMP-054 で実施 | IMP-054 |
 
 ## 3. 正準画面 ID トレース(18件)
