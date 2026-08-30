@@ -1,0 +1,255 @@
+/**
+ * IMP-046: 設備キャパシティ分析（v2.0 §21 capacity visibility）。
+ *
+ * IMP-041 occupancy.ts が単一ブースの稼働率・空き検索を提供するが、
+ * v2.0 §21 が要求する「店舗全体のキャパシティ可視化」が欠落していた。
+ * また、capacity > 1 のブースの時間帯別占有分解は IMP-041 で IMP-046 に
+ * 明示的に委ねられていた（occupancy.ts L330, L347）。
+ *
+ * 本モジュールは:
+ * 1. 全ブースのフリート稼働率サマリー
+ * 2. capacity > 1 ブースの時間帯別占有分解（time-band decomposition）
+ * 3. スタッフ負荷分析（担当ジョブ数ベース）
+ *
+ * を純関数で提供する。IO なし。
+ *
+ * 依存:
+ * - IMP-041 occupancy.ts（BoothInfo, BoothReservation, BoothUtilization,
+ *   computeBoothUtilization, detectCapacityConflicts を再利用）
+ */
+
+import type { BoothInfo, BoothReservation, BoothUtilization } from "@/lib/booths/occupancy";
+import { computeBoothUtilization, detectCapacityConflicts, NON_OCCUPYING } from "@/lib/booths/occupancy";
+import { parseTimeToHours, SHIFT_START, SHIFT_END } from "@/lib/gantt/board";
+
+// ── 時間帯別占有分解（capacity > 1 対応） ──
+
+export interface CapacityTimeBand {
+  /** 時間帯の開始（時単位、例: 9.0） */
+  start: number;
+  /** 時間帯の終了 */
+  end: number;
+  /** この時間帯の同時占有数 */
+  concurrent: number;
+  /** ブースの定員 */
+  capacity: number;
+  /** 空き = capacity - concurrent（0 以上） */
+  available: number;
+}
+
+/**
+ * ブースの1日をイベント駆動で時間帯分解し、各帯の占有レベルを返す。
+ *
+ * capacity > 1 のブースでは、同時予約数が時間帯ごとに変化するため
+ * 単純な gap 計算では空きを正確に表現できない。
+ * スイープラインで同時数が変化する境界ごとに帯を切り出す。
+ *
+ * IMP-041 occupancy.ts L330/L347 から委ねられた実装。
+ */
+export function decomposeTimeBands(
+  booth: BoothInfo,
+  reservations: readonly BoothReservation[],
+  shiftStart = SHIFT_START,
+  shiftEnd = SHIFT_END,
+): CapacityTimeBand[] {
+  // occupancy.ts の NON_OCCUPYING を再利用（終端ステータスの定義を重複させない）
+  const boothRes = reservations.filter((r) => r.boothId === booth.id && !NON_OCCUPYING.has(r.status));
+
+  // イベント生成
+  const events: Array<{ time: number; delta: 1 | -1 }> = [];
+  let allDayCount = 0;
+
+  for (const r of boothRes) {
+    const s = parseTimeToHours(r.startTime);
+    const e = parseTimeToHours(r.endTime);
+    if (s != null && e != null && e > s) {
+      const cs = Math.max(shiftStart, s);
+      const ce = Math.min(shiftEnd, e);
+      if (ce > cs) {
+        events.push({ time: cs, delta: 1 });
+        events.push({ time: ce, delta: -1 });
+      }
+    } else if (s == null && e == null) {
+      allDayCount++;
+    }
+  }
+
+  // 同時刻は終了を先に
+  events.sort((a, b) => (a.time === b.time ? a.delta - b.delta : a.time - b.time));
+
+  // 帯を切り出す
+  const bands: CapacityTimeBand[] = [];
+  let cursor = shiftStart;
+  let depth = allDayCount;
+
+  for (const ev of events) {
+    if (ev.time > cursor) {
+      bands.push({
+        start: cursor,
+        end: ev.time,
+        concurrent: depth,
+        capacity: booth.capacity,
+        available: Math.max(0, booth.capacity - depth),
+      });
+    }
+    depth += ev.delta;
+    cursor = ev.time;
+  }
+
+  // 最後の帯（最終イベント→営業終了）
+  if (cursor < shiftEnd) {
+    bands.push({
+      start: cursor,
+      end: shiftEnd,
+      concurrent: depth,
+      capacity: booth.capacity,
+      available: Math.max(0, booth.capacity - depth),
+    });
+  }
+
+  return bands;
+}
+
+// ── フリート稼働率サマリー ──
+
+export interface FleetUtilizationSummary {
+  /** 全ブース数（非アクティブ含む） */
+  totalBooths: number;
+  /** アクティブなブース数 */
+  activeBooths: number;
+  /** アクティブブースの平均稼働率 (0–100) */
+  avgUtilizationPct: number;
+  /** アクティブブースの最大稼働率 (0–100) */
+  peakUtilizationPct: number;
+  /** 全ブースのキャパシティ超過時間帯の数 */
+  totalConflicts: number;
+  /** 各ブースの稼働詳細 */
+  boothDetails: BoothUtilization[];
+}
+
+/**
+ * 全ブースの稼働率を集計してサマリーを返す。
+ *
+ * ManagementClient の KPI セクションに設備稼働の概況を追加するための
+ * データソース。
+ */
+export function computeFleetUtilization(
+  booths: readonly BoothInfo[],
+  reservations: readonly BoothReservation[],
+  shiftStart = SHIFT_START,
+  shiftEnd = SHIFT_END,
+): FleetUtilizationSummary {
+  const activeBooths = booths.filter((b) => b.isActive);
+  const details = activeBooths.map((b) => computeBoothUtilization(b, reservations, shiftStart, shiftEnd));
+
+  let totalConflicts = 0;
+  for (const b of activeBooths) {
+    totalConflicts += detectCapacityConflicts(b, reservations, shiftStart, shiftEnd).length;
+  }
+
+  const avgPct =
+    details.length > 0 ? Math.round(details.reduce((s, d) => s + d.utilizationPct, 0) / details.length) : 0;
+  const peakPct = details.length > 0 ? Math.max(...details.map((d) => d.utilizationPct)) : 0;
+
+  return {
+    totalBooths: booths.length,
+    activeBooths: activeBooths.length,
+    avgUtilizationPct: avgPct,
+    peakUtilizationPct: peakPct,
+    totalConflicts,
+    boothDetails: details,
+  };
+}
+
+// ── スタッフ負荷分析 ──
+
+/** スタッフの担当ジョブ。呼び出し側が reservations から組み立て。 */
+export interface StaffJob {
+  staffId: string;
+  /** 見積作業時間（分） */
+  estimatedMinutes: number | null;
+  /** 実績作業時間（分）。完了済みなら actual、進行中なら経過時間。 */
+  actualMinutes: number | null;
+}
+
+export interface StaffLoadSummary {
+  staffId: string;
+  /** 担当ジョブ数 */
+  jobCount: number;
+  /** 見積合計（分） */
+  totalEstimatedMinutes: number;
+  /** 実績合計（分） */
+  totalActualMinutes: number;
+  /**
+   * 負荷率 (0–100)。実績合計 / 営業時間。
+   * ponytail: 営業時間は shiftEnd - shiftStart から算出。
+   * 100% 超えは残業を意味する。
+   */
+  loadPct: number;
+  /** 見積 vs 実績の効率（見積 / 実績）。1.0 = 予定通り、> 1.0 = 速い。 */
+  efficiencyRatio: number | null;
+}
+
+export interface StaffCapacitySummary {
+  /** 分析対象のスタッフ数 */
+  totalStaff: number;
+  /** 平均負荷率 (0–100) */
+  avgLoadPct: number;
+  /** 最大負荷率 */
+  peakLoadPct: number;
+  /** 負荷率 80% 超のスタッフ数 */
+  overloadedCount: number;
+  /** 負荷率 30% 未満のスタッフ数 */
+  underutilizedCount: number;
+  /** 各スタッフの詳細 */
+  staffDetails: StaffLoadSummary[];
+}
+
+/**
+ * スタッフの負荷分析を算出。
+ *
+ * ジョブの見積・実績時間からスタッフごとの負荷率を計算し、
+ * 過負荷/遊休のスタッフを識別する。
+ */
+export function computeStaffCapacity(
+  jobs: readonly StaffJob[],
+  shiftStart = SHIFT_START,
+  shiftEnd = SHIFT_END,
+): StaffCapacitySummary {
+  const shiftMinutes = (shiftEnd - shiftStart) * 60;
+  const byStaff = new Map<string, { jobCount: number; totalEstimated: number; totalActual: number }>();
+
+  for (const j of jobs) {
+    const entry = byStaff.get(j.staffId) ?? { jobCount: 0, totalEstimated: 0, totalActual: 0 };
+    entry.jobCount++;
+    entry.totalEstimated += j.estimatedMinutes ?? 0;
+    entry.totalActual += j.actualMinutes ?? 0;
+    byStaff.set(j.staffId, entry);
+  }
+
+  const details: StaffLoadSummary[] = [...byStaff.entries()].map(([staffId, entry]) => {
+    const loadPct = shiftMinutes > 0 ? Math.round((entry.totalActual / shiftMinutes) * 100) : 0;
+    const efficiencyRatio =
+      entry.totalActual > 0 ? Math.round((entry.totalEstimated / entry.totalActual) * 100) / 100 : null;
+
+    return {
+      staffId,
+      jobCount: entry.jobCount,
+      totalEstimatedMinutes: entry.totalEstimated,
+      totalActualMinutes: entry.totalActual,
+      loadPct,
+      efficiencyRatio,
+    };
+  });
+
+  const avgLoadPct = details.length > 0 ? Math.round(details.reduce((s, d) => s + d.loadPct, 0) / details.length) : 0;
+
+  return {
+    totalStaff: details.length,
+    avgLoadPct,
+    peakLoadPct: details.length > 0 ? Math.max(...details.map((d) => d.loadPct)) : 0,
+    overloadedCount: details.filter((d) => d.loadPct > 80).length,
+    underutilizedCount: details.filter((d) => d.loadPct < 30).length,
+    staffDetails: details,
+  };
+}

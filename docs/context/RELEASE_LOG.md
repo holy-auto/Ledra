@@ -4,6 +4,27 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-08-30 IMP-046（#956）の code-review 指摘を修正。NON_OCCUPYING重複定義・型の意図しない拡大・ドキュメント不整合を解消
+
+- 内容: `src/lib/analytics/capacityAnalytics.ts` の `decomposeTimeBands()` が終端ステータス除外を
+  生の文字列比較で再実装していたのを、`occupancy.ts` の `NON_OCCUPYING` を import して再利用する
+  よう修正。`src/lib/analytics/operationalKpi.ts` の `JobTimeline.currentState` の型を
+  `JobState | string`（`string` に collapse し型安全性を失っていた）から `JobState` のみに変更。
+  `computeVerifiedRate()` の JSDoc 冒頭の分母説明が SUPERSEDED 除外に言及しておらず、直後の
+  ponytail コメント・実装と矛盾していたのを修正。テストタイトルの数値誤記（50%→実際は45%）を
+  修正。RELEASE_LOG.md/LEDRA_CURRENT.md/requirement-trace.md の「テスト40件」を実数（41件）に訂正。
+- 検証: tsc --noEmit / vitest run(5040件) / lint(0エラー、1256警告=基準線) / check:schema /
+  lint:migrations すべて green。
+
+## 2026-08-30 IMP-046（#956）を main へ取り込み。運用KPI計算・設備キャパシティ分析
+
+- 内容: IMP-046（運用KPI計算・設備キャパシティ分析、branch impl/IMP-046-analytics-kpi）を
+  main へ取り込んだ。82ファイルの phantom conflict（78ファイル一括解決、4ファイル手動）＋
+  resurrection（WorkScopeProvider.tsx を20度目の再削除、スキップ済み PR #947 の
+  `src/lib/sync/` 一式8ファイルも合わせて削除）を解消。
+- 検証: tsc --noEmit / vitest run(5040件) / lint(0エラー、1256警告=基準線) / check:schema /
+  lint:migrations すべて green。
+
 ## 2026-08-30 IMP-045（#955）の code-review 指摘を修正。ガード3関数のチェック順不一致・重複ロジック・不要なキャストを解消
 
 - 内容: `src/lib/staff/membership.ts` の `validateRoleChange()` のチェック順を
@@ -755,6 +776,25 @@
 - 依存: IMP-014, IMP-021, IMP-041
 - 下流: IMP-046（経営分析 KPI — 優先度スコアの集計）
 
+## 2026-08-20 IMP-046 §21 ANALYTICS_STORE — 運用KPI・キャパシティ分析（branch impl/IMP-046-analytics-kpi）
+
+- 内容: v2.0 §21 が要求する運用指標とキャパシティ可視化の純関数計算器を実装。
+  - `src/lib/analytics/operationalKpi.ts`: 運用KPI計算器6本
+    - `computeVerifiedRate()` — 証明書VERIFIED到達率
+    - `computeEvidenceSufficiencyRate()` — 証跡充足率
+    - `computeAvgReviewWaitHours()` — 平均レビュー待ち時間（作業完了→VERIFIED）
+    - `computeAvgCycleTimeHours()` — 平均ジョブサイクルタイム（SCHEDULED→VERIFIED）
+    - `computeSlaComplianceRate()` — SLA遵守率（IMP-029 EscalationResult消費）
+    - `computeDailyThroughput()` — 日次スループット
+    - `computeOperationalKPIs()` — 一括算出（部分入力可）
+  - `src/lib/analytics/capacityAnalytics.ts`: キャパシティ分析
+    - `decomposeTimeBands()` — capacity>1ブースの時間帯別占有分解（IMP-041 L330/L347から委ねられた実装）
+    - `computeFleetUtilization()` — 全ブースフリート稼働率サマリー
+    - `computeStaffCapacity()` — スタッフ負荷分析（負荷率・効率・過負荷/遊休識別）
+- 対象: 経営ダッシュボード（/admin/management）のデータソース拡張
+- テスト: 41件（operationalKpi 26 + capacityAnalytics 15）
+- 依存: IMP-041（BoothUtilization再利用）、IMP-029（EscalationStage型参照）、IMP-001（CertificateState/JobState型参照）
+
 ## 2026-08-20 IMP-045 §16 STAFF_MANAGEMENT — メンバーシップ管理ガード（branch impl/IMP-045-staff-management）
 
 - 内容: 既存スタッフ管理基盤の欠損3領域（移籍・停止・最終管理者保護）を純関数ガードで補完。
@@ -930,7 +970,7 @@
   per_job=PAID必須, 未設定=ブロック) / insurance(保険: insurerApproved=Phase2) の3ポリシー。
   Certificate Gate `payment_policy_met` 条件の実装基盤。
   (3) UNKNOWN 盲目リトライ禁止 — `isBlindRetryBlocked()` + 全ポリシーで UNKNOWN 不成立。
-  テスト40件。
+  テスト41件。
 - 対象: バックエンド型定義・ロジック層（src/lib/payment/）。UI 変更・DB マイグレーションなし。
 
 ## 2026-08-20 IMP-026 §10 顧客確認Web — 「気になる点を伝える」懸念提起フロー（branch impl/IMP-026-customer-concern / PR #941）
