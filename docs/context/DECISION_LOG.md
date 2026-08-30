@@ -4,6 +4,18 @@
 > （新しい順）。実装の詳細は RELEASE_LOG.md、迷っている段階のものは
 > OPEN_QUESTIONS.md に書く。
 
+## 2026-08-30 IMP-054（#961）へ Codex レビュー4件を反映。P0充足サマリを「7/10実装済み」から「3/10実装済み」へ再是正
+
+1. 日付: 2026-08-30
+2. 起きたこと: PR #961 マージ時の自己是正（本ファイル同日の別エントリ参照）で requirement-trace.md の P0 充足サマリを「10項目中9項目実装済み」から「7項目実装済み」へ修正し PR を公開したところ、Codex から4件の指摘を受けた: (1) Invite/OTP/Biometricを✅としたが、モバイルの `apps/mobile/src/app/(auth)/verify-otp.tsx` は実際のOTP検証APIを呼ばずタイムアウトのみで「検証済み」にするプレースホルダのままで6桁ならどんな値でも通り、`biometric-setup.tsx` も生体認証登録をスキップ可能。(2) Payment+Certificate+VERIFIEDを部分としたが、IMP-027だけでなくIMP-028（Certificate Gate）も独立して未完了 — `gateEvaluator.ts` の各条件は `?? true`（フェイルオープン）で判定され、`evaluateCertificateGate()` を呼ぶ本番ルートが1つも存在しない。(3) Role/Permissionを✅としたが、§16監査行は既に「部分」と明記しており、新設した `operationRisk()`/`storeScope.ts` は本番の認可強制経路から呼ばれていない（membership/eventsでの型利用のみ）。(4) Basic Notificationsを✅としたが、§13監査行は既に「部分」と明記しており、統合dispatch未実装・既存個別通知モジュールは中央エンジンへ未移行。
+3. 以前の考え: requirement-trace.md の全36 IMPタスク行を実際に読み直して「5タスクが部分」と是正すれば十分だと考えていた。P0充足サマリの10項目についても、対応するIMPタスクが「実装済み」であれば連動して✅にしてよいと判断していた。
+4. 違和感・問題: この判断は誤りだった。本書には既に §1〜§24 のセクション単位でより粒度の細かい監査行が存在しており（例: §13 Notification、§15 認証、§16 Permission、§17 Localization はいずれも既に「部分」と明記済み）、P0サマリはそれらと直接照合せず、IMPタスク行だけを見て独自に判定していたため、既存の詳細監査結果と矛盾する結論（「実装済み」）を出してしまっていた。加えて、Invite/OTP/Biometricの実際のモバイル画面までは確認しておらず、型基盤（オンボーディング状態機械等）が存在することと、それが実際の画面コードから呼ばれていることを混同していた。
+5. 決めたこと: P0充足サマリの全10項目を、対応する既存の§行の状態（実装済み/部分/なし）と直接照合する方式に改め、矛盾を解消した。結果、10項目中「実装済み」と言えるのは3項目（Workflow+Photo Evidence+Voice・Vehicle・Customer Confirmation）のみで、残り7項目（Invite/OTP/Biometric・Home/Work List/Job Hub・Payment state+Certificate+VERIFIED・Role/Permission・Basic Offline/Sync・Basic Notifications・Localization foundation）は部分。IMP-054行のサマリ文言も「7/10→3/10」に更新。
+6. 捨てた選択肢: Codexの指摘の一部（例: Role/Permissionの§16との矛盾）だけを直し、残り（Invite/OTP/Biometricのモバイル画面問題等）は「別タスクの責務」として今回は見送る — 4件とも独立して検証可能かつ実際に反証されたため、まとめて是正する方が一貫性を保てると判断し不採用。
+7. 判断理由: IMPタスク単位の完了（各タスク自身が定義したスコープを満たしたか）と、v2.0 §24.1 のP0要件単位の完了（そのケーパビリティが実際に本番で動くか）は別の軸であり、混同すると「型基盤は追加されたが本番未接続」の状態を「完了」と誤認する。この誤認パターンが7項目中6項目で共通して見られたことは、IMP-050〜054のような「型基盤先行」設計方針そのものが持つ構造的リスク（統合作業が後回しにされたまま追跡されなくなる）を示しており、単発のドキュメント誤記ではなく本サマリ表の設計自体を修正する必要があった。
+8. まだ答えが出ていないこと: 上記7項目の統合作業（モバイルOTP実装・Certificate Gate統合・権限強制接続・通知dispatch統合・SYNC_CENTER再設計・Payment Policy実装・i18n画面適用）の担当・優先順位は未定。
+9. 公開区分: 公開可
+
 ## 2026-08-30 IMP-051（#958）の code-review 指摘を修正。コントラスト判定の丸め誤差・プレースホルダ検出の空文字スキップ・qa.ts の型/関数重複を解消
 
 1. 日付: 2026-08-30

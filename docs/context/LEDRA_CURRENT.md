@@ -383,8 +383,13 @@ Sentry · Resend (+ SendGrid fallback) · Anthropic (Opus 4.8 / Sonnet 4.6 / Hai
   （IMP-016・020・027・032・050）が部分または未着手**。IMP-032（SYNC_CENTER 同期レイヤ）は
   PR #947 がユーザー判断でスキップ中、扱い未定（`OPEN_QUESTIONS.md` 参照）。IMP-020（モバイル
   FAB Quick Create統合・Role別スコープ切替）・IMP-027（Payment Policy評価器）も未着手部分あり。
-  IMP-011/012/013/014 の requirement-trace.md 行を実装済みに是正。P0 充足サマリ 10 項目中
-  7項目✅・3項目⚠️部分（原案の「全36完了」は誤りと判明したためマージ時に是正）。
+  IMP-011/012/013/014 の requirement-trace.md 行を実装済みに是正（IMPタスク単位）。
+  **v2.0 §24.1 の P0充足サマリ（10のLedra Core要件、IMPタスク単位とは別軸）は、既存の
+  §1〜§24詳細監査行と直接照合した結果 3/10 のみ実装済み**（Workflow+Photo Evidence+Voice・
+  Vehicle・Customer Confirmation）で残り7項目は部分（モバイルOTP検証がプレースホルダ・
+  Certificate Gateが本番未接続・権限強制ヘルパーが未接続・通知dispatch未統合等）。
+  原案の「全36完了」、および一次是正の「P0サマリ7/10✅」はいずれも誤りと判明したため
+  Codexレビュー指摘を受けて再是正。
 - **IMP-053（§14.4 OBSERVABILITY_ERROR_CONTRACT — 構造化エラー契約）完了**:
   v2.0 §14.4 の構造化エラー契約型基盤。StructuredError 型（データ安全性4段階・エラー分類
   11種・再試行ポリシー・復旧アクション7種）、createStructuredError ファクトリ、6プリセット
