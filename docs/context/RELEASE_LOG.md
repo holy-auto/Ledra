@@ -4,6 +4,21 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-08-30 IMP-041（#951）の code-review 指摘を修正。データ不備の終日占有誤判定・no_show の稼働率誤カウントを解消
+
+- 内容: `src/lib/booths/occupancy.ts` の `findAvailableBooths()` と `countConcurrentAt()` が、
+  開始/終了時刻が片方欠損または逆転しているデータ不備の予約を「終日占有」として誤判定していた
+  問題を修正（`toEvents()` と同じ判定に統一）。`computeBoothUtilization()` が `no_show` を
+  稼働時間にカウントしていた問題を修正（`completed` は維持、`no_show` のみ除外する
+  `NOT_ACTUAL_WORK` を新設）。`boothSignals.ts` 内の終端ステータス除外チェックが3箇所で
+  重複していたのを `occupancy.ts` の `NON_OCCUPYING`（export 化）に統一。`peakConcurrent`/
+  `predictBoothFreeAt` の呼び出し前提（単一ブース分に絞り込み済みであること）を docstring に
+  明記。`predictBoothFreeAt` の既知のギャップ（終了時刻超過中で estimatedMinutes もない
+  in_progress 予約を捕捉できない）を ponytail コメントで明記。
+- 検証: tsc --noEmit / vitest run(4829件、新規4件追加) / lint(0エラー、1256警告=基準線) /
+  check:schema / lint:migrations すべて green。
+- 対応PR: #951
+
 ## 2026-08-30 IMP-041（#951）を main へ取り込み。ブース占有予測・NEXT ACTION シグナル型基盤
 
 - 内容: IMP-041（ブース占有予測・NEXT ACTION シグナル型基盤、branch impl/IMP-041-booth-occupancy）を

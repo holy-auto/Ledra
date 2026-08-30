@@ -4,6 +4,18 @@
 > （新しい順）。実装の詳細は RELEASE_LOG.md、迷っている段階のものは
 > OPEN_QUESTIONS.md に書く。
 
+## 2026-08-30 IMP-041（#951）の code-review 指摘を修正。データ不備の終日占有誤判定・no_show の稼働率誤カウントを解消
+
+1. 日付: 2026-08-30
+2. 起きたこと: PR #951 マージ後の `/code-review` で6件の指摘。うち2件を確認・修正: (1) `findAvailableBooths()` の空き時間帯計算が、開始/終了どちらか片方だけ設定または逆転（end<=start）したデータ不備の予約を「終日占有」として扱っていた — 兄弟関数 `toEvents()` は同じデータ不備を明示的に無視する設計であり、この不一致は修正対象。合わせて `countConcurrentAt()`（同じ `findAvailableBooths()` 内部で `currentlyFree` 判定に使用）にも同型のバグを発見し、同じ修正を適用（レビュー指摘には含まれていなかったが、同一原因・同一ファイルの双子バグのため合わせて修正）。(2) `computeBoothUtilization()` が `no_show`（実際には来店せずブースを未使用）を稼働時間にカウントしており、`boothSignals.ts` の `deriveBoothSignals()` がこの値をそのまま `booth_overloaded` シグナルの閾値判定に使っていたため、no_show の多いブースで誤った過負荷アラートが出る経路が実在した。加えて `boothSignals.ts` 内の終端ステータス除外チェック（`cancelled`/`completed`/`no_show`）が3箇所に同じ条件式で重複していたため、`occupancy.ts` の `NON_OCCUPYING` を export して1箇所に統合。残り2件（`peakConcurrent`/`predictBoothFreeAt` が単一ブース分の絞り込み済み配列を前提とする点の docstring 不足、`predictBoothFreeAt` が終了時刻超過中で estimatedMinutes もない in_progress 予約を捕捉できない既知のギャップ）はコメント追記のみで対応。残り1件（`computeBoothUtilization` 内部での `peakConcurrent` 二重走査によるパフォーマンス非効率）は正しさに影響しないため YAGNI で見送り。
+3. 以前の考え: マージ時点では `occupancy.ts`/`boothSignals.ts` はテスト済み・型基盤先行パターンとして問題なしと判断していた。
+4. 違和感・問題: 「時間未設定 → 終日占有」という設計判断自体は正しいが、それを「データ不備（片方だけ設定・逆転）」まで同じ分岐で拾ってしまうコードが3箇所（`toEvents`／`findAvailableBooths` の occupied 計算／`countConcurrentAt`）に分散し、うち1箇所（`toEvents`）だけが正しく書かれていた。同じ判定ロジックを複数箇所に手書きすると、修正が一部にしか反映されない典型例。
+5. 決めたこと: 3箇所とも `toEvents()` と同じ判定（両方 null → 終日、両方設定かつ end>start → その区間、それ以外は無視）に統一。`computeBoothUtilization()` は no_show のみ除外する `NOT_ACTUAL_WORK` を新設（completed は稼働実績として維持）。`boothSignals.ts` の重複3箇所は `NON_OCCUPYING` の再利用に統一。
+6. 捨てた選択肢: `countConcurrentAt` のバグはレビュー指摘の対象外だったため直さずに残す案 — CLAUDE.md の「バグ修正は根本原因、対症療法ではない」方針と矛盾するため採用せず。
+7. 判断理由: 同一ファイル内で同じデータ不備パターンを2箇所が正しく無視し1箇所だけ誤って終日占有扱いにする状態を残すと、次にどちらかを個別に直した人が「もう直っているはず」と誤認しやすい。no_show については、IMP-031 で `no_show` が実際に DB へ書き込まれるようになった時点でこの誤カウントが本番の NEXT ACTION アラートに現れる可能性があった（現状は DB CHECK 制約により no_show は未使用のため実害なし）。
+8. まだ答えが出ていないこと: `predictBoothFreeAt()` の「estimatedMinutes もなく終了時刻超過中の in_progress 予約」のフォールバック方針は未決定（IMP-044 配線時に決める、ponytail コメントで明記済み）。
+9. 公開区分: 公開可（コードレビューで見つかった型基盤コードの論理バグ修正。金額・テナント名・接続情報は含まない）
+
 ## 2026-08-30 IMP-041（#951）を main へ取り込み。resurrection パターン15度目、未使用importを修正
 
 1. 日付: 2026-08-30
