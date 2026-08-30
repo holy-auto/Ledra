@@ -4,6 +4,174 @@
 > （新しい順）。実装の詳細は RELEASE_LOG.md、迷っている段階のものは
 > OPEN_QUESTIONS.md に書く。
 
+## 2026-08-30 IMP-045（#955）の code-review 指摘を修正。ガード3関数のチェック順不一致・重複ロジック・不要なキャストを解消
+
+1. 日付: 2026-08-30
+2. 起きたこと: PR #955 マージ後の `/code-review` で3件の指摘。すべて確認・修正: (1) `validateRoleChange()` は `owner_protected` を `insufficient_rank` より先にチェックしていたが、`validateMemberRemoval()`/`validateMemberSuspension()` は逆順（`insufficient_rank` が先）だった。権限のない操作者が owner を対象に操作した場合、`validateRoleChange()` だけが「owner_protected」という、対象が owner であることを明かす理由コードを返してしまい、他の2関数（権限不足のみを返す）と挙動が食い違っていた。(2) `!(ASSIGNABLE_ROLES as readonly string[]).includes(input.newRole)` — `ASSIGNABLE_ROLES` は既に `Role[]`、`input.newRole` は `Role` 型であり、キャストなしで型チェックが通ることを確認済み。不要な複雑化。(3) `hasMinRole(role, "admin") && adminOrAboveCount <= 1` という最終管理者判定ロジックが `validateMemberRemoval()`/`validateMemberSuspension()`/`wouldLoseLastAdmin()` の3箇所に重複していた（`wouldLoseLastAdmin()` 自体が単一定義源のはずだったが、他の2関数が呼び出さず再実装していた）。
+3. 以前の考え: マージ時点では `membership.ts` は型基盤先行パターンとして問題なしと判断していた。
+4. 違和感・問題: (1) は「3つの似たガード関数」を実装する際、チェック順という細部が意識的に統一されていなかった典型例。(3) は `wouldLoseLastAdmin()` 自体のコメントが「複数の validate 関数から個別に判定しているが」と重複を前提にした書き方をしており、意図的な重複であるかのように読めたが、実際には単に呼び出し忘れだった。
+5. 決めたこと: (1) `validateRoleChange()` のチェック順を他の2関数と揃え、`insufficient_rank` を `owner_protected` より先に判定するよう変更（権限のない操作者に対象の役職を明かさない）。(2) 不要なキャストを削除。(3) `validateMemberRemoval()`/`validateMemberSuspension()`/`validateRoleChange()` すべてで `wouldLoseLastAdmin()` を呼び出すよう統一し、`wouldLoseLastAdmin()` 自身のコメントも「単一定義源」であることを明記するよう更新。回帰テスト2件追加（チェック順一貫性、3関数横断の一貫性）。
+6. 捨てた選択肢: なし（3件とも明確な単一の正しい修正がある）。
+7. 判断理由: (1) は情報漏洩に類する実害があるバグであり修正必須。(3) は CLAUDE.md の「バグ修正は根本原因、対症療法ではない」方針に沿い、`wouldLoseLastAdmin()` を実際に単一定義源にした（コメントを直すだけでなく、呼び出し側も統一）。
+8. まだ答えが出ていないこと: なし。
+9. 公開区分: 公開可（コードレビューで見つかった型基盤コードの論理バグ修正。金額・テナント名・接続情報は含まない）
+
+## 2026-08-30 IMP-045（#955）を main へ取り込み。resurrection パターン19度目、ドキュメントのテスト件数訂正（33→36件）
+
+1. 日付: 2026-08-30
+2. 起きたこと: IMP-045（スタッフメンバーシップ管理ガード — 移籍・停止・最終管理者保護、branch impl/IMP-045-staff-management）を main へ取り込む際、main と分岐した80ファイルが衝突した。75ファイルは phantom conflict で一括解決。残り5ファイル（DECISION_LOG.md/LEDRA_CURRENT.md/RELEASE_LOG.md/requirement-trace.md/`src/lib/auth/permissionVerbs.ts`）はこのPR自身が変更していたため手動再適用した。このPRは branch 内で既に1度 code-review 修正パス（最終admin降格保護・移籍先重複チェック・死コード除去、テスト33→36件）を経ており、requirement-trace.md の件数は36に更新済みだったが、LEDRA_CURRENT.md/RELEASE_LOG.md は旧い33件のまま取り残されていたため、再適用時に3ファイルとも実数（36件）へ揃えた。resurrection チェックで `WorkScopeProvider.tsx`（19度目の再発）とスキップ済み PR #947 の `src/lib/sync/` 一式8ファイルが今回も復活していたため削除。`staff/` 配下2ファイル（PR 自身の新規ファイル）は `sync/` への依存なし（grep で確認済み）。
+3. 以前の考え: なし（#948〜954 で確立した手順の踏襲）。
+4. 違和感・問題: 同一PR内の複数ドキュメントファイルが同じ数値（テスト件数）について異なる値を記録している状態は、どちらが正か分からなくなる典型例。今回は最新のソース（テスト実行結果）を基準に揃えた。
+5. 決めたこと: 確立済みの手順をそのまま適用し、ドキュメント間の数値不整合も実数に統一。
+6. 捨てた選択肢: なし。
+7. 判断理由: 確立済みの手順が引き続き有効に機能した。
+8. まだ答えが出ていないこと: なし。
+9. 公開区分: 公開可（マージ手順の技術的な経緯。金額・テナント名・接続情報は含まない）
+
+## 2026-08-30 IMP-044（#954）の code-review 指摘を修正。ブースシグナルの重複排除誤爆・follow_up_overdue上書き・イベント件数ドキュメント誤記を解消
+
+1. 日付: 2026-08-30
+2. 起きたこと: PR #954 マージ後の `/code-review` で3件の指摘。すべて確認・修正: (1) `scoreBoothSignal()` の `actionKey` が `booth:{boothId}:{kind}` のみで構成されており、同じブース・同じ kind（例: capacity_exceeded）で時間帯が異なる複数のウィンドウが同一キーに衝突していた。`boothSignals.ts` の `detectCapacityConflicts()` は同じブースで午前・夕方など複数の定員超過ウィンドウを別々の `BoothSignal` として返しうるため、`scoreAndRank()` の重複排除（同一 actionKey は最高スコア採用）が2件目以降を静かに握り潰す — 安全に直結するシグナルが消える経路が実在した。(2) `enrichJobWithBoothContext()` の「arrived/in_progress でブース未割当」「定員超過」の2分岐が、`base.action` が既に `follow_up_overdue`（期限超過請求の督促、最優先）であっても無条件に boothHint と priority を上書きしていた。既存テストのコメントは「overdue が先に判定されるため boothHint は付かない」と主張していたが、実際にはそのアサーションが書かれておらず、コードもそれを保証していなかった（コメントは願望で、実装はそれを満たしていなかった）。(3) RELEASE_LOG.md/LEDRA_CURRENT.md/requirement-trace.md が `PRIORITY_TRIGGERS` を「13 ドメインイベント」と記載していたが、実際の配列要素は12件（`eventType:` の実エントリを数え直して確認）。RELEASE_LOG.md のテスト件数内訳も boothJobIntegration と eventTriggers が入れ替わっていた（正しくは boothJobIntegration 11 + eventTriggers 10）。
+3. 以前の考え: マージ時点では `scorer.ts`/`boothJobIntegration.ts`/`eventTriggers.ts` は型基盤先行パターンとして問題なしと判断していた。
+4. 違和感・問題: (1)(2) は「型基盤先行・ゼロ呼び出し元」だからといって正しさの検証を省略してよいわけではないことを示す実例。特に(2)は「コメントに書いた意図」と「実装」が一致しているかをテストで検証していなかった典型例。
+5. 決めたこと: (1) `scoreBoothSignal()` の actionKey に `reservationIds`（カンマ結合）を含めて一意性を確保。`ScoreInput.boothSignals` の Pick 型にも `reservationIds` を追加。(2) `enrichJobWithBoothContext()` の先頭に `base.action === "follow_up_overdue"` の早期リターンを追加し、ブース系の2分岐より確実に優先させる。(3) ドキュメントの「13」を実数「12」に、テスト件数内訳の入れ替わりを訂正。回帰テスト3件追加（重複排除誤爆防止2件、follow_up_overdue優先1件）。
+6. 捨てた選択肢: (1) について boothId+kind+window（start/end）を actionKey に含める案 — `scoreBoothSignal()` の入力型に window 情報がなく、追加すると型変更の影響範囲が広がる。reservationIds は既に `BoothSignal` に含まれており、ウィンドウごとに内容が異なるため十分な識別子になる。
+7. 判断理由: (1)(2) は正しさに影響する実バグであり修正必須。(3) は CLAUDE.md の「推測で事実を補わない」方針に反する記録上の誤りであり、実数を数え直して訂正した。
+8. まだ答えが出ていないこと: なし。
+9. 公開区分: 公開可（コードレビューで見つかった型基盤コードの論理バグ修正。金額・テナント名・接続情報は含まない）
+
+## 2026-08-30 IMP-044（#954）を main へ取り込み。resurrection パターン18度目、未使用import2件を修正
+
+1. 日付: 2026-08-30
+2. 起きたこと: IMP-044（Priority/NEXT ACTION エンジン — 統一スコアリング・ブース統合・イベントパイプライン、branch impl/IMP-044-priority-engine）を main へ取り込む際、main と分岐した75ファイルが衝突した。71ファイルは phantom conflict で一括解決。残り4ファイル（DECISION_LOG.md/LEDRA_CURRENT.md/RELEASE_LOG.md/requirement-trace.md）はこのPR自身が変更していたため手動再適用した。RELEASE_LOG.md の PR 自身の元コミットには、新エントリの見出しと本文の間に直前エントリ（IMP-043）の本文が挟まる軽微な構成ミスがあったため、再適用時に正しい構成（見出し直後に本文）へ修正した。resurrection チェックで `WorkScopeProvider.tsx`（18度目の再発）とスキップ済み PR #947 の `src/lib/sync/` 一式8ファイルが今回も復活していたため削除。`priority/` 配下3ファイル（PR 自身の新規ファイル）は `sync/` への依存なし（grep で確認済み）。マージ後の lint で新規2件（`eventTriggers.test.ts`/`scorer.test.ts` の未使用 import）を検出、修正して基準線（1256件）に復帰。
+3. 以前の考え: なし（#948〜953 で確立した手順の踏襲）。
+4. 違和感・問題: 特になし。
+5. 決めたこと: 確立済みの手順をそのまま適用。
+6. 捨てた選択肢: なし。
+7. 判断理由: 確立済みの手順が引き続き有効に機能した。
+8. まだ答えが出ていないこと: なし。
+9. 公開区分: 公開可（マージ手順の技術的な経緯。金額・テナント名・接続情報は含まない）
+
+## 2026-08-30 IMP-043（#953）の code-review 指摘を修正。DocumentCorrection遷移表のプロトタイプ汚染ガード欠如・POSブリッジの完全性欠落・関数名衝突を解消
+
+1. 日付: 2026-08-30
+2. 起きたこと: PR #953 マージ後の `/code-review` で3件の指摘。すべて確認・修正: (1) `isValidDocumentCorrectionTransition()`（states.ts）が `DOCUMENT_CORRECTION_TRANSITIONS[from]` を生の bracket access で参照しており、`from="toString"` 等で `Object.prototype` 由来の値を拾って `TypeError` を投げる — PR #950（PartInstallation）で既に修正した同型のバグを、8軸目として新規追加された本 PR がそのまま再導入していた。IMP-040/041/042 いずれの code-review でも同種のバグが繰り返し見つかっており、`transitions.ts` が「単一定義源」を掲げている以上、新しい状態軸を追加する際は必ずそこで `isValidTransition()` を再利用する運用を徹底する必要がある。(2) `bridgePosToLedger()`（posLedgerBridge.ts）の JSDoc は「completed は entries に分類」と網羅的な分類を謳っているが、`documentId` はあるのに `amount`・`refundAmount` が両方 0 以下（`payments.amount` に `CHECK(amount>0)` 制約はなく、実際に発生しうる）の取引が `entries`・`refundEntries`・`unbridgeable` のどれにも入らず消えていた。(3) `documentVersion.ts` の `isValidCorrectionTransition()` が `src/lib/certificates/correction.ts` の同名関数（5状態・cancelled 含む）と名前が完全一致しており、扱う状態集合（帳票は4状態）が異なるため、将来 import 元を取り違える危険があった。
+3. 以前の考え: マージ時点では `documentVersion.ts`/`posLedgerBridge.ts`/`states.ts` の追加分は型基盤先行パターンとして問題なしと判断していた。
+4. 違和感・問題: (1) は「新しい状態軸を追加するたびに同じ脆弱パターンが再発する」という構造的な問題（PR #950 の教訓が横展開されていなかった）。(3) は命名の一貫性チェックを欠いたまま2つの類似機能モジュールが独立に育った結果。
+5. 決めたこと: (1) `DOCUMENT_CORRECTION_TRANSITIONS` と検証ロジックを `transitions.ts` に移設し、他7軸と同じ `isValidTransition()` を再利用（states.ts には状態一覧・型ガードのみ残す）。対応して `states.test.ts` の遷移表テストを `transitions.test.ts` に移設（PartInstallation と同じ扱い）。(2) `bridgePosToLedger()` に「amount・refundAmount とも0以下は unbridgeable に分類」を追加し、全取引がいずれかのバケツに必ず入ることを保証。(3) `documentVersion.ts` 側の関数を `isValidDocumentCorrectionStatusTransition()` に改名し、状態集合の違い（4状態 vs 証明書の5状態）をコメントで明記。
+6. 捨てた選択肢: (3) について、証明書側を改名する案 — 証明書の `isValidCorrectionTransition()` は IMP-030 から存在し呼び出し元も多いため、後発の帳票側を改名する方が影響範囲が小さい。
+7. 判断理由: (1)(2) は正しさに影響する実バグであり修正必須。(3) は実行時バグではないが、CLAUDE.md の「バグ修正は根本原因、対症療法ではない」方針に沿い、将来の import 取り違えという実害が具体的に想定できるため修正した。
+8. まだ答えが出ていないこと: なし。
+9. 公開区分: 公開可（コードレビューで見つかった型基盤コードの論理バグ修正。金額・テナント名・接続情報は含まない）
+
+## 2026-08-30 IMP-043（#953）を main へ取り込み。resurrection パターン17度目、未使用importを修正
+
+1. 日付: 2026-08-30
+2. 起きたこと: IMP-043（見積/請求ワークフロー型基盤 — 承認スナップショット・帳票版管理・POS ブリッジ、branch impl/IMP-043-estimate-invoice-workflow）を main へ取り込む際、main と分岐した72ファイルが衝突した。65ファイルは phantom conflict で一括解決。残り7ファイル（DECISION_LOG.md/LEDRA_CURRENT.md/RELEASE_LOG.md/requirement-trace.md/`src/lib/domain/states.ts`/`labels.ts`/`__tests__/states.test.ts`）はこのPR自身が変更していたため手動再適用した。このPRは v2.0 正準語彙の8軸目（`DOCUMENT_CORRECTION_STATES`、ADR-0004 帳票訂正リクエスト状態）を states.ts/labels.ts/__tests__/states.test.ts の同一PRで追加しており ADR-0002 準拠。resurrection チェックで `WorkScopeProvider.tsx`（17度目の再発）とスキップ済み PR #947 の `src/lib/sync/` 一式8ファイルが今回も復活していたため削除。`documents/` 配下3ファイル（PR 自身の新規ファイル）は `sync/` への依存なし（grep で確認済み）。マージ後の lint で新規1件（`states.test.ts` が `documentCorrectionStateLabel` を import しているが未使用 — PR 自身が導入した AXES テーブル駆動テストは関数を直接呼ばず `__DOMAIN_LABEL_MAPS` 経由のため）を検出、修正して基準線（1256件）に復帰。
+3. 以前の考え: なし（#948〜952 で確立した手順の踏襲）。
+4. 違和感・問題: 特になし。
+5. 決めたこと: 確立済みの手順をそのまま適用。
+6. 捨てた選択肢: なし。
+7. 判断理由: 確立済みの手順が引き続き有効に機能した。
+8. まだ答えが出ていないこと: なし。
+9. 公開区分: 公開可（マージ手順の技術的な経緯。金額・テナント名・接続情報は含まない）
+
+## 2026-08-30 IMP-042（#952）の code-review 指摘を修正。key 重複時の挙動不一致・非 readonly なスナップショット・ドキュメント誤記を解消
+
+1. 日付: 2026-08-30
+2. 起きたこと: PR #952 マージ後の `/code-review` で4件の指摘。うち3件を確認・修正: (1) `diffTemplateSteps()`/`isSnapshotStale()` は `new Map(steps.map(s=>[s.key,s]))` で key 重複時に最後の出現を採用する一方、`resolveStepFromSnapshot()` は `Array.find()` で最初の出現を採用しており、同じ「key で step を識別する」という前提のもとで2つの関数群が異なる規則を使っていた。テンプレートエディタ（`WorkflowTemplateEditor.tsx`）の key 生成ロジック（`generateKey(label, index)`）に一意性保証がないため、削除→追加の操作で key 重複が実際に発生しうることを確認した。(2) `WorkflowSnapshot.steps` の型が可変の `TemplateStep[]` になっており、JSDoc・モジュールヘッダで「不変スナップショット」と説明している内容と型レベルで矛盾していた。(3) モジュールヘッダのコメントが存在しない型名「TemplateSnapshot」を参照していた（正しくは `WorkflowSnapshot`）。残り1件（RELEASE_LOG.md/requirement-trace.md の「テスト20件」という記載が実際のテスト数21件と不一致）はドキュメント修正のみで対応（`vitest run` で実数を確認）。
+3. 以前の考え: マージ時点では `templateVersion.ts` は型基盤先行パターンとして問題なしと判断していた。
+4. 違和感・問題: 同一モジュール内で「key の重複」という同じ前提外のケースに対し、Map ベースの関数群と Array.find ベースの関数群が異なる answer を返す状態は、片方だけ直しても矛盾が残る典型例。
+5. 決めたこと: 両方を Array.find と同じ「最初の出現を採用」に統一する `keyByFirstOccurrence()` ヘルパーを新設し、`diffTemplateSteps()` で使用（`isSnapshotStale()` は内部で `diffTemplateSteps()` を呼ぶため自動的に揃う）。`WorkflowSnapshot.steps` を `readonly TemplateStep[]` に変更。モジュールヘッダのコメントを修正。ドキュメントのテスト件数を実数（21件、修正後22件）に訂正。回帰テスト1件追加。
+6. 捨てた選択肢: key 重複自体をこのモジュールでエラーにする案 — key の一意性はテンプレートエディタ側の責務であり、このモジュールは「渡された steps をどう扱うか」の純関数群にとどめるべきと判断し不採用。
+7. 判断理由: 一意性を強制する変更はテンプレートエディタ側の別モジュールに踏み込むスコープ拡大であり、型基盤先行パターンの原則（消費側の責任は消費側で）に反する。挙動の内部一貫性を直すだけで、レビューが指摘した「同じ入力に対して関数によって答えが変わる」という実害は解消される。
+8. まだ答えが出ていないこと: テンプレートエディタ側で key の一意性をどう保証するか（バリデーション追加は別タスク）。
+9. 公開区分: 公開可（コードレビューで見つかった型基盤コードの論理バグ修正。金額・テナント名・接続情報は含まない）
+
+## 2026-08-30 IMP-042（#952）を main へ取り込み。resurrection パターン16度目
+
+1. 日付: 2026-08-30
+2. 起きたこと: IMP-042（ワークフローテンプレート版管理・スナップショット型基盤、branch impl/IMP-042-workflow-versioning）を main へ取り込む際、main と分岐した69ファイルが衝突した。65ファイルは phantom conflict で一括解決。残り4ファイル（DECISION_LOG.md/LEDRA_CURRENT.md/RELEASE_LOG.md/requirement-trace.md）はこのPR自身が変更していたため手動再適用した。resurrection チェックで `WorkScopeProvider.tsx`（16度目の再発）とスキップ済み PR #947 の `src/lib/sync/` 一式8ファイルが今回も復活していたため削除。`templateVersion.ts`（IMP-042 自身の新規ファイル）は `sync/` への依存なし（grep で確認済み）。
+3. 以前の考え: なし（#948〜951 で確立した手順の踏襲）。
+4. 違和感・問題: 特になし。
+5. 決めたこと: 確立済みの手順をそのまま適用。
+6. 捨てた選択肢: なし。
+7. 判断理由: 確立済みの手順が引き続き有効に機能した。
+8. まだ答えが出ていないこと: なし。
+9. 公開区分: 公開可（マージ手順の技術的な経緯。金額・テナント名・接続情報は含まない）
+
+## 2026-08-30 IMP-041（#951）の code-review 指摘を修正。データ不備の終日占有誤判定・no_show の稼働率誤カウントを解消
+
+1. 日付: 2026-08-30
+2. 起きたこと: PR #951 マージ後の `/code-review` で6件の指摘。うち2件を確認・修正: (1) `findAvailableBooths()` の空き時間帯計算が、開始/終了どちらか片方だけ設定または逆転（end<=start）したデータ不備の予約を「終日占有」として扱っていた — 兄弟関数 `toEvents()` は同じデータ不備を明示的に無視する設計であり、この不一致は修正対象。合わせて `countConcurrentAt()`（同じ `findAvailableBooths()` 内部で `currentlyFree` 判定に使用）にも同型のバグを発見し、同じ修正を適用（レビュー指摘には含まれていなかったが、同一原因・同一ファイルの双子バグのため合わせて修正）。(2) `computeBoothUtilization()` が `no_show`（実際には来店せずブースを未使用）を稼働時間にカウントしており、`boothSignals.ts` の `deriveBoothSignals()` がこの値をそのまま `booth_overloaded` シグナルの閾値判定に使っていたため、no_show の多いブースで誤った過負荷アラートが出る経路が実在した。加えて `boothSignals.ts` 内の終端ステータス除外チェック（`cancelled`/`completed`/`no_show`）が3箇所に同じ条件式で重複していたため、`occupancy.ts` の `NON_OCCUPYING` を export して1箇所に統合。残り2件（`peakConcurrent`/`predictBoothFreeAt` が単一ブース分の絞り込み済み配列を前提とする点の docstring 不足、`predictBoothFreeAt` が終了時刻超過中で estimatedMinutes もない in_progress 予約を捕捉できない既知のギャップ）はコメント追記のみで対応。残り1件（`computeBoothUtilization` 内部での `peakConcurrent` 二重走査によるパフォーマンス非効率）は正しさに影響しないため YAGNI で見送り。
+3. 以前の考え: マージ時点では `occupancy.ts`/`boothSignals.ts` はテスト済み・型基盤先行パターンとして問題なしと判断していた。
+4. 違和感・問題: 「時間未設定 → 終日占有」という設計判断自体は正しいが、それを「データ不備（片方だけ設定・逆転）」まで同じ分岐で拾ってしまうコードが3箇所（`toEvents`／`findAvailableBooths` の occupied 計算／`countConcurrentAt`）に分散し、うち1箇所（`toEvents`）だけが正しく書かれていた。同じ判定ロジックを複数箇所に手書きすると、修正が一部にしか反映されない典型例。
+5. 決めたこと: 3箇所とも `toEvents()` と同じ判定（両方 null → 終日、両方設定かつ end>start → その区間、それ以外は無視）に統一。`computeBoothUtilization()` は no_show のみ除外する `NOT_ACTUAL_WORK` を新設（completed は稼働実績として維持）。`boothSignals.ts` の重複3箇所は `NON_OCCUPYING` の再利用に統一。
+6. 捨てた選択肢: `countConcurrentAt` のバグはレビュー指摘の対象外だったため直さずに残す案 — CLAUDE.md の「バグ修正は根本原因、対症療法ではない」方針と矛盾するため採用せず。
+7. 判断理由: 同一ファイル内で同じデータ不備パターンを2箇所が正しく無視し1箇所だけ誤って終日占有扱いにする状態を残すと、次にどちらかを個別に直した人が「もう直っているはず」と誤認しやすい。no_show については、IMP-031 で `no_show` が実際に DB へ書き込まれるようになった時点でこの誤カウントが本番の NEXT ACTION アラートに現れる可能性があった（現状は DB CHECK 制約により no_show は未使用のため実害なし）。
+8. まだ答えが出ていないこと: `predictBoothFreeAt()` の「estimatedMinutes もなく終了時刻超過中の in_progress 予約」のフォールバック方針は未決定（IMP-044 配線時に決める、ponytail コメントで明記済み）。
+9. 公開区分: 公開可（コードレビューで見つかった型基盤コードの論理バグ修正。金額・テナント名・接続情報は含まない）
+
+## 2026-08-30 IMP-041（#951）を main へ取り込み。resurrection パターン15度目、未使用importを修正
+
+1. 日付: 2026-08-30
+2. 起きたこと: IMP-041（ブース占有予測・NEXT ACTION シグナル型基盤、branch impl/IMP-041-booth-occupancy）を main へ取り込む際、main と分岐した65ファイルが衝突した。61ファイルは phantom conflict で一括解決。残り4ファイル（DECISION_LOG.md/LEDRA_CURRENT.md/RELEASE_LOG.md/requirement-trace.md）はこのPR自身が変更していたため手動再適用した。resurrection チェックで `WorkScopeProvider.tsx`（15度目の再発）とスキップ済み PR #947 の `src/lib/sync/` 一式8ファイルが今回も復活していたため削除。`occupancy.ts`/`boothSignals.ts`（IMP-041 自身の新規ファイル）は `sync/` への依存なし（grep で確認済み）。マージ後の lint で新規1件（`boothSignals.ts` が `peakConcurrent` を import しているが未使用——同名のオブジェクトプロパティアクセス `c.peakConcurrent` はあるが import した関数自体は呼ばれていない）を検出、修正して基準線（1256件）に復帰。
+3. 以前の考え: なし（#948〜950 で確立した手順の踏襲）。
+4. 違和感・問題: 特になし。
+5. 決めたこと: 確立済みの手順をそのまま適用。
+6. 捨てた選択肢: なし。
+7. 判断理由: 確立済みの手順が引き続き有効に機能した。
+8. まだ答えが出ていないこと: なし。
+9. 公開区分: 公開可（マージ手順の技術的な経緯。金額・テナント名・接続情報は含まない）
+
+## 2026-08-30 IMP-040（#950）の code-review 指摘を修正。PartInstallation 遷移表を transitions.ts へ統合、DB ガードとの関係の誤記を修正
+
+1. 日付: 2026-08-30
+2. 起きたこと: PR #950 に `/code-review` を実行し3件の指摘を得た。(a) `states.ts` に追加した `isValidPartInstallationTransition()` が素の `table[from]` アクセスを使っており、`"toString"` 等 `Object.prototype` 由来のキーを渡すと `TypeError` を投げる（他 6 軸の遷移表がすでに `transitions.ts` の `known()`/`isValidTransition()` で防いでいるのと同じ穴。実際に Node で再現: `TypeError: targets.includes is not a function`）。(b) `PART_INSTALLATION_TRANSITIONS` が他 6 軸と違う場所（`states.ts`）に、違う安全性（`Partial<Record>` + 素の添字アクセス）で定義されており、`transitions.ts` の「7軸の遷移可否の単一定義源」という自身の目的表明と矛盾していた。(c) 新遷移表のコメント「DB 凍結ガード(part_installations_guard)準拠」が不正確——実際の DB トリガーは `customer_verified`/`voided` 到達後の不変性と `customer_verified` 到達時のゲート（署名・ハッシュ一致等）しか強制しておらず、DRAFT→DISPUTED や DRAFT→VOIDED のような、この表がブロックする遷移までは拒否しない（TS 表の方が厳しい）。
+3. 以前の考え: `PART_INSTALLATION_STATES`（値）と同じファイル（`states.ts`）に遷移表も置けば、7軸目の定義がひとまとまりになって分かりやすいと考えていた。
+4. 違和感・問題: 6軸（Job/Step/Severity/Certificate/Payment/Sync）は「値は states.ts、遷移表は transitions.ts」という分離が既に確立していた。7軸目だけこの分離を破ると、`isValidTransition()` という既存の安全なジェネリックヘルパーを使わない独自実装が生まれ、まさに`transitions.ts` 自身が「素の `table[from]` を使わない」と明記して防いでいた不具合を再現した。
+5. 決めたこと: `PART_INSTALLATION_TRANSITIONS` を `transitions.ts` に移設（他 6 軸と同型の `Record<PartInstallationState, readonly PartInstallationState[]>`、`VOIDED: []` を明示）。`states.ts` の `isValidPartInstallationTransition()` は削除し、呼び出し側は他6軸と同じく `isValidTransition(PART_INSTALLATION_TRANSITIONS, from, to)` を直接使う。`transitions.ts` のヘッダコメントを「6軸」→「7軸」に更新。DB ガードとの関係を説明するコメントを、実際のトリガー内容（`part_installations_guard`）に基づいて書き直した。テストも `states.test.ts` から `transitions.test.ts` の `AXES` 配列・専用 describe ブロックへ移設し、他6軸と同じプロトタイプ汚染防止テストを追加。
+6. 捨てた選択肢: (a) `states.ts` にテーブルを残し、`isValidPartInstallationTransition()` の中身だけ `Object.hasOwn` ガードに直す — Finding 1 は直るが、二重管理という Finding 2 の指摘は残る。(b) 何もしない（呼び出し元ゼロだから実害なしとして先送り） — `transitions.ts` 自身が「7軸の単一定義源」であることを謳っている以上、新設の7軸目がそれを満たさない状態を残すのは一貫性を欠く。
+7. 判断理由: 既存の安全なジェネリックヘルパー（`isValidTransition`）が存在するのに新しい軸だけ独自実装するのは、まさに二重管理から不整合が生まれる典型パターン（IMP-027/028/030 で繰り返し確認済み）。
+8. まだ答えが出ていないこと: なし。
+9. 公開区分: 公開可（コードの整合性修正。金額・テナント名・接続情報は含まない）
+
+## 2026-08-30 IMP-040（#950）を main へ取り込み。resurrection パターン14度目
+
+1. 日付: 2026-08-30
+2. 起きたこと: IMP-040（部品装着状態の正準語彙7軸目、branch impl/IMP-040-parts-integrity）を main へ取り込む際、main と分岐した66ファイルが衝突した。59ファイルは phantom conflict で一括解決。残り7ファイル（DECISION_LOG.md/LEDRA_CURRENT.md/RELEASE_LOG.md/requirement-trace.md/`states.ts`/`labels.ts`/`states.test.ts`）はこのPR自身が変更していたため手動再適用した（正準語彙3ファイルは origin/main 側に変更が無かったため PR 自身の最終版をそのまま採用）。resurrection チェックで `WorkScopeProvider.tsx`（14度目の再発）とスキップ済み PR #947 の `src/lib/sync/` 一式8ファイルが今回も復活していた。両方削除。`partsIntegrity.ts`/`partsIntegrity.test.ts`（IMP-040 自身の新規ファイル）は `sync/` への依存なし（grep で確認済み）。
+3. 以前の考え: なし（#948/#949 で確立した手順の踏襲）。
+4. 違和感・問題: 特になし。正準語彙ファイル（states.ts/labels.ts/states.test.ts）への変更を含む初めてのケースだったが、他 PR による割り込み変更が無かったため単純に PR 自身の最終版を採用するだけで済んだ。
+5. 決めたこと: 確立済みの手順をそのまま適用。
+6. 捨てた選択肢: なし。
+7. 判断理由: `git show origin/main:<file>` と PR 分岐前の base 版を diff して無変更であることを確認してから PR 自身の最終版を採用する、という安全な手順を踏んだ（既存の genuinely-touched ファイル処理の応用）。
+8. まだ答えが出ていないこと: なし。
+9. 公開区分: 公開可（マージ手順の技術的な経緯。金額・テナント名・接続情報は含まない）
+
+## 2026-08-30 IMP-034（#949）を main へ取り込み。resurrection パターン13度目
+
+1. 日付: 2026-08-30
+2. 起きたこと: IMP-034（タブレット 2-pane・共用端末型基盤、branch impl/IMP-034-tablet-shared-device）を main へ取り込む際、main と分岐した63ファイルが衝突した。58ファイルは phantom conflict で一括解決。残り5ファイル（DECISION_LOG.md/LEDRA_CURRENT.md/RELEASE_LOG.md/requirement-trace.md/`src/lib/navigation/index.ts`）はこのPR自身が変更していたため手動再適用した。resurrection チェックで `WorkScopeProvider.tsx`（13度目の再発）と、スキップ済み PR #947（IMP-032）の `src/lib/sync/` 一式8ファイルが今回も復活していた（IMP-034 のブランチも IMP-032 のブランチ系列の上に積まれているため、#948 と同じ帰結）。両方削除。`deviceClass.ts`/`tabletLayout.ts`/`sharedDevice.ts`（IMP-034 自身の新規ファイル）は `sync/` への依存なし（grep で確認済み）。
+3. 以前の考え: なし（#948 で確立した手順の踏襲）。
+4. 違和感・問題: 特になし。PR #947 をスキップして以降のスタック PR（#948, #949）は両方とも同じ「IMP-032 ブランチの上に積まれているため sync/ 一式が resurrection として復活する」パターンを辿っており、予見済みの挙動だった。
+5. 決めたこと: 確立済みの手順（phantom conflict 一括解決→genuinely-touched ファイルは main を base に手動再適用→resurrection チェック→WorkScopeProvider.tsx と sync/ 一式を削除→lint/tsc/vitest→check:schema/lint:migrations）をそのまま適用。
+6. 捨てた選択肢: なし。
+7. 判断理由: #948 で確立した判断基準（moreMenu.ts と同様、deviceClass.ts/tabletLayout.ts/sharedDevice.ts も sync/ への実コード依存が無いことを確認済み）をそのまま適用できた。
+8. まだ答えが出ていないこと: なし。残りのスタック PR（#950〜）も IMP-032 ブランチの子孫である限り、同じ resurrection が続く見込み。
+9. 公開区分: 公開可（マージ手順の技術的な経緯。金額・テナント名・接続情報は含まない）
+
+## 2026-08-30 IMP-033（#948）を main へ取り込み。スキップした IMP-032 の同期レイヤ一式が再度復活していたため削除
+
+1. 日付: 2026-08-30
+2. 起きたこと: IMP-033（MORE メニュー IA 型基盤、branch impl/IMP-033-more-menu）を main へ取り込む際、main と分岐した62ファイルが衝突した。57ファイルは phantom conflict で一括解決。残り5ファイル（DECISION_LOG.md/LEDRA_CURRENT.md/RELEASE_LOG.md/requirement-trace.md/`src/lib/navigation/index.ts`）はこのPR自身が変更していたため手動再適用した。resurrection チェック（`comm -23`）で `WorkScopeProvider.tsx`（12度目の再発）に加え、`src/lib/sync/` 一式（`types.ts`・`conflict.ts` に加え、スキップした PR #947 が追加した `mapper.ts`・`resolver.ts`・`summary.ts`・`syncCenter.test.ts` も含む8ファイル全部）が復活していた——IMP-033 は IMP-032 のブランチの上に積まれていたため、当然の帰結。`moreMenu.ts` は `sync_center` という項目 id・ルート文字列を持つのみで `src/lib/sync/` への import は無いことを確認済みのため、ディレクトリごと削除して問題なし。
+3. 以前の考え: resurrection チェックはこれまで「main で削除済みのファイルが古い分岐から無衝突で復活する」パターンのみを想定していた。
+4. 違和感・問題: 今回は単なる「削除済みファイルの復活」ではなく、「ユーザー判断でスキップした未マージPRの成果物一式が、後続PRのマージ経由で main に紛れ込む」という新しい経路だった。中身を見ずに `comm -23` の結果だけを機械的に「いつもの resurrection」として削除していたら見逃していたリスクがある（今回は事前に PR #947 の内容を把握済みだったため即座に気づけた）。
+5. 決めたこと: `WorkScopeProvider.tsx` と `src/lib/sync/` 全体（8ファイル）を削除。`moreMenu.ts`/`moreMenu.test.ts`（IMP-033 自身の新規ファイル）はそのまま残す。lint で新規に検出された未使用 import（`moreMenu.test.ts` の `MoreMenuItem` 型）を1件修正し基準線（1256件）に復帰。
+6. 捨てた選択肢: なし。
+7. 判断理由: PR #947 のスキップは「outbox の実際の契約が整うまで同期レイヤを main に入れない」という明示的なユーザー判断であり、後続PRのマージ経由であっても間接的に main へ入れてしまうことはその判断に反する。
+8. まだ答えが出ていないこと: なし（IMP-032 自体の再設計は別途、OPEN_QUESTIONS 参照）。
+9. 公開区分: 公開可（マージ手順の技術的な経緯。金額・テナント名・接続情報は含まない）
+
 ## 2026-08-30 「無料プラン利用者が勝手にプラン画面に飛ばされる」クレームの原因を特定・修正。BillingFetchGuard が課金と無関係な403も課金拒否と誤認していた
 
 1. 日付: 2026-08-30
@@ -15,6 +183,18 @@
 7. 判断理由: 402はこのコードベースで billing guard 以外が使わないことを実測（grep で確認）済みなので、402のみ無条件許容を維持しても安全。403は用途が広いため `billing_url` の有無という既存のマーカー（enforceBilling/checkAdminFeature が必ず付与している）で正確に絞り込むのが、既存の設計を壊さない最小修正。
 8. まだ答えが出ていないこと: クレームを送った利用者のテナントの実際の plan_tier とアカウント role は未確認（動画のみで判断、【要確認】）。また `/admin/settings` が role に関わらず全ウィジェットを無条件マウントする設計自体（権限不足の子コンポーネントの fetch がガード完了前に発火するレース）は温存されており、同種の「意図しない403」は他のガード対象外ウィジェットでも起こりうる。
 9. 公開区分: 要確認（不具合の技術的原因は公開可。動画に映っていたテナント名「ディフェンソール」は非公開）
+
+## 2026-08-30 PR #947（IMP-032）をスキップ。削除済み src/lib/sync/types.ts・conflict.ts を前提にした設計で、2026-08-27 の代表判断と矛盾する
+
+1. 日付: 2026-08-30
+2. 起きたこと: スタック PR マージの順番で PR #947（IMP-032、SYNC_CENTER 同期レイヤ）に着手しようとしたところ、`src/lib/sync/mapper.ts` が main で既に削除済みの `src/lib/sync/types.ts`・`conflict.ts` を import していることに気づいた。PR #947 は 2026-08-20 作成（削除判断より前）で、削除前の `src/lib/sync/` をそのまま前提にしている。`extractTenantId()` の実装を読むと、tenant_id 不明時に `"unknown"` へフォールバックする実装になっており、これは代表が 2026-08-27 に明示的に問題視した6件のうちの1件（「`OutboxItem` に tenant 欄が無い」）に対する、まさに拒否済みの回避策と同じ形だった。このまま main とマージすると `types.ts`/`conflict.ts` が消えて import エラーでビルドが壊れる。
+3. 以前の考え: スタック PR は「衝突を解決してマージする」の機械的な繰り返しで進められる、という前提でパイプラインを回していた。
+4. 違和感・問題: この PR は機械的な衝突解決の対象ではない。DECISION_LOG「2026-08-27 IMP-016 の同期基盤は型・競合検出を削除し、イベント名だけ残す」に「同期層の型・競合解決の設計は IMP-032 に送る——outbox 側の変更（アイテム単位のステータス返却、enqueue 時の tenant 保存）が先に要るので、型を先に決めても解決しない」「まだ答えが出ていないこと: outbox 側の変更を誰が・いつ行うかを IMP-032 着手前に決める必要がある」と明記されており、この「誰が・いつ」は今も未決定のまま。PR #947 をそのままマージすることは、代表が明示的に拒否した設計を無言で復活させることになる。
+5. 決めたこと: ユーザーに状況を提示し判断を仰いだところ、「PR #947 をスキップして次へ進める」との回答を得た。PR #947 はドラフトのまま保留し、スタックの次の PR（#948 以降）へ進む。outbox 契約からの作り直しは別途専用タスクとして着手する。
+6. 捨てた選択肢: (a) 私の判断で `types.ts`/`conflict.ts` を最小限復元してマージする — 代表が明示的に拒否した設計を独断で復活させることになるため却下。(b) 私の判断でこの場で outbox（`queue.ts`/`types.ts`）を作り直す — 本番で稼働中のコードへの広範な変更を、スタック PR マージ作業の片手間で行うのはリスクが大きく、かつ「独断の範囲を超えている」という同じ問題（2026-08-27 のエントリで既に一度確認済みの原則）に当たるため、ユーザー確認なしには着手しないこととした。
+7. 判断理由: 2026-08-27 のエントリ自身が「`src/lib/sync/` を私の判断で削除する＝設計の否定であり、下流5タスクに効く。独断の範囲を超えている」と明言しており、同じ原則は「作り直す」判断にも同様に適用されるべきと考えた。
+8. まだ答えが出ていないこと: outbox 側の変更（アイテム単位のステータス返却・enqueue 時の tenant 保存）を誰が・いつ行うか。IMP-032 の実際の再設計はいつ着手するか。PR #947 は現状ドラフトのまま放置されるため、いつか棚卸しが必要。
+9. 公開区分: 公開可（設計判断の技術的な経緯。金額・テナント名・接続情報は含まない）
 
 ## 2026-08-27 生成物は「開いて見る」まで検証したことにならない（グリフ網羅を機械化する）
 1. 日付: 2026-08-27
@@ -410,6 +590,102 @@
 7. 判断理由: 「現場を知らずに書き足さない」の裏返しで、ここでは「現場を知らずに稼働中の挙動を狭めない」。staff/viewer のデフォルトを self にすべきかどうかは製品判断であり、この環境からは判断できない。
 8. まだ答えが出ていないこと: staff/viewer のダッシュボード初期表示は本当に self（自分の分だけ）にすべきか、それとも現状維持（tenant-wide）のままでよいか。代表判断待ち。
 9. 公開区分: 公開可（実装の技術的な経緯であり、金額・テナント名・接続情報は含まない）
+
+## 2026-08-20 IMP-045 STAFF_MANAGEMENT — Permission文字列改名見送り＆最終管理者保護の実装判断
+
+1. 日付: 2026-08-20
+2. 起きたこと: IMP-013 の permissionVerbs.ts に「Permission 文字列自体の改名は将来タスク（IMP-045 判断）」とコメントされていた。IMP-045 実装時に判断が必要。同時に、requirement-trace が「移籍・停止・最終管理者保護は【要確認】(部分)」と記録していた。
+3. 以前の考え: 既存の 55 種の Permission 文字列（`resource:verb` 形式）を v2.0 正準動詞（VIEW/EDIT/CONFIRM/APPROVE/ISSUE/MANAGE/EXPORT）に一括改名する案があった。
+4. 違和感・問題: 一括改名すると (a) ROLE_PERMISSIONS マトリクスの 55 行の書き換え、(b) 40+ の API ルートの `requirePermission()` 呼び出しの書き換え、(c) クライアント側の `can()` 呼び出しの書き換えが必要。既存の VERB_MAP は 7 行で十分に機能している。
+5. 決めたこと: (a) Permission 文字列の改名は見送り。VERB_MAP の翻訳レイヤーで十分。(b) 最終管理者保護は純関数ガード `validateMemberRemoval()` / `validateMemberSuspension()` / `wouldLoseLastAdmin()` で実装。(c) メンバー停止は `MembershipState` 型（active/suspended/deactivated）で定義。(d) 店舗間移籍は `validateStoreTransfer()` で型基盤を提供。
+6. 捨てた選択肢: Permission 文字列の一括改名。DB カラム `tenant_memberships.state` の追加（マイグレーションは消費タスクで）。
+7. 判断理由: 改名コスト（55 文字列 × 3 層の書き換え）に対し、VERB_MAP 翻訳レイヤーで step-up 認証・リスクレベル分類が既に機能している。改名しても実行時の動作は変わらない。最終管理者保護は API ルートで ad-hoc に書かれていた自己変更防止をリユーザブルな純関数に集約した。
+8. まだ答えが出ていないこと: (a) `tenant_memberships` テーブルへの `state` カラム追加のタイミング。(b) 停止中メンバーのログイン挙動（Supabase Auth のユーザー無効化との連携）。(c) 移籍の履歴記録（DomainEvent で追跡するか、専用テーブルか）。
+9. 公開区分: 公開可
+
+## 2026-08-20 IMP-044 Priority/NEXT ACTION エンジン — 統一スコアリングサービス
+
+1. 日付: 2026-08-20
+2. 起きたこと: IMP-044（§20.2 Priority/NEXT ACTION エンジン）の実装。3 つの独立した優先度システム（ダッシュボードタイル `deriveTodayTasks` / ジョブ次アクション `pickJobNextActionCandidate` / 顧客シグナル `deriveSignals`）+ ブースシグナル（IMP-041）が個別に動作しており、統一的なスコアリング・ランキングのサービスがなかった。
+3. 以前の考え: IMP-021 でダッシュボードのタイル優先順序（priority 0-3）をそのまま NEXT ACTION の導出に使うことを決めた。`pickJobNextActionCandidate` は Job 単位、`deriveSignals` は顧客単位で独立。ブースシグナルは IMP-041 で型定義済みだが `pickJobNextActionCandidate` に未統合。
+4. 違和感・問題: (a) 各ソースが異なる priority 表現（数値 0-3 / "high"|"med"|"low" / "high"|"medium"|"low"）を使い、横断比較が不可能。(b) ブースシグナルがジョブの次アクションに反映されない。(c) どのドメインイベントが優先度再計算をトリガーすべきかの定義がない。(d) スコアの根拠が不透明（なぜこのアクションが上位か説明できない）。
+5. 決めたこと: 3 モジュール構成で型基盤先行。(1) `scorer.ts` — 4ソースを統一スコア（0-100, 高い=緊急）に正規化する純関数群。重複排除（actionKey）+ 説明可能性（reason フィールド）。(2) `boothJobIntegration.ts` — `enrichJobWithBoothContext()` で pickJobNextActionCandidate の結果にブース文脈を注入。既存関数のシグネチャは変えない。(3) `eventTriggers.ts` — PRIORITY_TRIGGERS マッピング（12イベント）と `toPriorityRecalcRequest()` ファクトリ。IO 実装（キューイング・pub/sub）は消費タスク。
+6. 捨てた選択肢: (a) 機械学習ベースの優先度スコアリング — 訓練データがなく、説明可能性が低い。(b) 各ソースの priority 表現を統一する（全て "high"|"med"|"low" に）— 既存の呼び出し元が多く、破壊的変更。(c) pickJobNextActionCandidate のシグネチャにブース引数を追加 — 呼び出し元 2 箇所（nextActionAuto.ts + ダッシュボード）に影響。ラッパー方式のほうが影響ゼロ。
+7. 判断理由: Ponytail 原則。既存 3 システムの出力をそのまま正規化する「加算型」アプローチなら、既存コードへの変更ゼロ。スコアのバンド幅（dashboard 90/70/50/30、booth 88/62/38、job 85/60/35、customer 80/55/30）はソースの性質を反映（ダッシュボードはテナント全体、ブースは安全直結で高め、顧客は個別対応で控えめ）。
+8. まだ答えが出ていないこと: (a) スコアのバンド幅の最適値（実運用データでのチューニングが必要）。(b) パイプラインの IO 実装方式（QStash vs after() vs cron、既存 3 冪等系統との統合）。(c) UI 層での ScoredAction[] の表示方式。
+9. 公開区分: 公開可
+
+## 2026-08-20 IMP-043 見積/請求ワークフロー — 承認スナップショット・版管理・POS ブリッジ
+
+1. 日付: 2026-08-20
+2. 起きたこと: IMP-043（§11 見積/請求ワークフロー）の実装。documents 統合モデル（9 帳票種 + 遷移マップ + PDF + 送付履歴）と PaymentState 導出層（IMP-027）は完了済みだが、顧客承認額の版管理、POS→元帳自動ブリッジ、返金元帳エントリが未実装。
+3. 以前の考え: 見積の status=accepted で「承認済み」として扱っていた。承認時の金額・明細の凍結はなく、LINE フローの awaiting_quote_ok→yes も flow state の遷移のみで、承認額の記録はなかった。
+4. 違和感・問題: (a) 見積承認後に明細を編集すると、顧客が承認した金額と実際の金額が乖離する（「いつの間にか数字が変わった」問題 — ADR-0004）。(b) 帳票の確定後編集は integrity_seal（ハッシュ）で検出できるが、版履歴の追跡がない。(c) POS 決済（payments テーブル）と売掛元帳（payment_entries）が別系統で、POS 入金の元帳反映が手動のみ。(d) payment_entries は CHECK(amount > 0) で返金エントリを記録できない。
+5. 決めたこと: (a) 見積承認スナップショット（`estimateApproval.ts`）— 承認時の明細・金額を deep copy で凍結し、差分検出で再承認要否を判定。3 承認方法。(b) 帳票版管理（`documentVersion.ts`、ADR-0004 準拠）— DocumentVersion 型 + DocumentCorrectionRequest（5 カテゴリ×4 ステータス遷移表）。invoice 系 + estimate の確定済みのみ訂正ワークフロー必須。(c) POS→元帳ブリッジ（`posLedgerBridge.ts`）— POS 取引をプロバイダ別 PaymentMethod マッピング付きで LedgerEntryInput に変換。返金は RefundLedgerEntryInput に分離、記帳方式（negative_entry / separate_table）は DB 設計で決定。
+6. 捨てた選択肢: (a) 帳票テーブルに version 列追加して版ごとにレコード管理 → ADR-0004 の Correction Record パターンの方が証明書（IMP-030）と統一的。(b) POS→元帳を webhook トリガーで自動実行 → コンシューマ（webhook ハンドラ）がまだないので YAGNI。型基盤のみ先行。(c) 返金を payment_entries の amount CHECK 制約を変更して負値許可 → DB マイグレーションを伴うため消費タスクに委譲。2 方式（negative/separate_table）を純関数で提供し、DB 設計時に決定。
+7. 判断理由: ADR-0004「訂正は上書きではなく版の追加」を帳票にも適用することで、証明書の版管理（IMP-030）と同一パターンで設計。見積承認スナップショットは IMP-042 の WorkflowSnapshot と同じ凍結パターン。POS ブリッジは recordInvoicePaymentBalance の referenceNo 冪等性キーと同じ方式で重複記帳を防止。
+8. まだ答えが出ていないこと: (a) DB マイグレーション — document_versions テーブル、documents.approval_snapshot 列の追加時期。(b) 返金の帳簿記帳方式（negative_entry vs separate_table）の最終決定。(c) LINE フローの awaiting_quote_ok→yes 時に自動で approval_snapshot を作成する統合タイミング。(d) 見積改定時の顧客への再承認通知方法。
+9. 公開区分: 公開可
+
+## 2026-08-20 IMP-042 ワークフローテンプレート版管理（スナップショット方式）
+
+1. 日付: 2026-08-20
+2. 起きたこと: IMP-042（§9 WORKFLOW_BUILDER 版管理テンプレート）の実装。テンプレート編集は in-place 上書きで、実行中ジョブの版凍結がない。テンプレートを編集すると進行中のすべてのジョブが新しい steps を参照してしまう。
+3. 以前の考え: `workflow_templates` テーブルにバージョン列を追加して版管理する方法を想定していた。
+4. 違和感・問題: (a) テンプレート編集と進行中ジョブの独立性がない。(b) ステップの追加・削除・並替えが進行中ジョブの progress_pct やステップ遷移を壊す。(c) WorkflowStep（TemplateStep）型が Zod スキーマ・API ルート・クライアントコンポーネント・DB マイグレーションなど 6 箇所以上で重複定義されていた。
+5. 決めたこと: (a) `TemplateStep` を `templateVersion.ts` に正準型として定義。(b) `WorkflowSnapshot` 型 — ジョブ開始時にテンプレートを deep copy で凍結し、reservations テーブルに jsonb 格納する想定。(c) 差分検出 `diffTemplateSteps()` — key ベースで added/removed/modified/reordered を分類。(d) 鮮度判定 `isSnapshotStale()` — updated_at 高速パス＋steps 内容比較。(e) ヘルパー `resolveStepFromSnapshot()` / `computeSnapshotProgress()`。DB マイグレーション（`reservations.workflow_snapshot` jsonb 列追加等）は消費タスクで実施。
+6. 捨てた選択肢: (a) workflow_templates にバージョン列を追加し版ごとにレコード管理 — スナップショット方式の方が単純で、既存 JSONB パターンと一致する。(b) 今すぐ DB マイグレーション実施 — コンシューマ（start-workflow API 等）がまだないため YAGNI。型基盤先行パターンに従い型と純関数のみ先行。(c) 6 箇所の WorkflowStep 型を今すぐ統一 — 影響範囲が広く、各消費箇所の修正は個別タスクで実施。
+7. 判断理由: スナップショット方式は既存の JSONB 格納パターン（`reservations.workflow_template_id` + steps 参照）と整合する。ジョブ単位で凍結するため、テンプレートの任意の編集から完全に独立。型基盤を先に確定させることで、下流の start-workflow API や管理画面の「テンプレート更新警告」が安全に構築できる。
+8. まだ答えが出ていないこと: (a) `reservations.workflow_snapshot` 列の DB マイグレーション時期（start-workflow API 実装時）。(b) 6 箇所以上の WorkflowStep 型重複の統一タイミング。(c) スナップショットが stale な場合の管理画面 UX（警告のみ or 更新反映オプション）。
+9. 公開区分: 公開可
+
+## 2026-08-20 IMP-041 ブース占有予測・NEXT ACTION シグナルの型基盤方式
+
+1. 日付: 2026-08-20
+2. 起きたこと: IMP-041（§21 設備/リフト稼働）の実装。既存のブース管理（CRUD・日次占有表示）とガントチャート（スタッフ軸）はあるが、占有予測と NEXT ACTION 連動がない。IMP-044（NEXT ACTION エンジン拡張）と IMP-046（経営分析 KPI）がこれに依存。
+3. 以前の考え: `BoothsClient.tsx` の `maxConcurrent()` がクライアント側で同時占有ピークを計算していた。サーバー側で再利用できる形ではなかった。
+4. 違和感・問題: (a) 占有計算ロジックがクライアントコンポーネントに閉じている、(b) ブース状態が NEXT ACTION パイプラインに一切流れない、(c) 定員超過検出・稼働率計算・空き予測がない。
+5. 決めたこと: 型基盤先行パターンで純関数モジュール 2 つを追加。(1) `occupancy.ts` — スイープラインアルゴリズムによる占有予測 5 関数。(2) `boothSignals.ts` — NEXT ACTION 用ブースシグナル導出。DB・API・UI 変更なし。Gantt モジュールの `parseTimeToHours` と `SHIFT_*` 定数を再利用。
+6. 捨てた選択肢: (a) BoothsClient の maxConcurrent() をそのまま共有モジュールに移動 → クライアントコンポーネントの依存が変わるため影響範囲が広い。(b) capacity>1 ブースの詳細な時間帯分解 → 現時点で使うコンシューマがいないので YAGNI（IMP-046 で必要になったら拡張）。(c) 占有計算を Gantt モジュール内に追加 → Gantt はスタッフ軸、ブース占有はブース軸で関心が異なる。
+7. 判断理由: IMP-044 と IMP-046 が具体的なコンシューマ。型と純関数を先に確定させることで、下流タスクが安全に拡張できる。BoothsClient の maxConcurrent() はそのまま残す（リファクタリングは影響範囲に見合わない）。
+8. まだ答えが出ていないこと: capacity>1 ブースの詳細な時間帯別空き計算（IMP-046 で判断）。ブースシグナルの `pickJobNextActionCandidate()` への統合方式（IMP-044 で判断）。
+9. 公開区分: 公開可
+
+## 2026-08-20 IMP-040 部品装着状態を正準語彙 7 軸目に追加
+
+1. 日付: 2026-08-20
+2. 起きたこと: IMP-040（§8 部品装着インテグリティ）の語彙差を解消する作業。3-way match・凍結ガード・OTP 署名・TSA・アンカーなど機能は実装済みだが、Part Installation の状態語彙が `src/lib/domain/states.ts` の正準定義に含まれていなかった。DB CHECK 制約と admin ページの STATUS_LABEL に小文字で散在するのみ。
+3. 以前の考え: 6 軸（Job/Step/Severity/Certificate/Payment/Sync）で正準語彙は完結していた。部品装着は独自の `src/lib/parts/` 内で完結し、正準語彙への統合は不要と考えていた。
+4. 違和感・問題: (a) Part Installation の状態値は DB の CHECK 制約・admin ページの STATUS_LABEL・サービスコードの文字列リテラルの 3 箇所に重複定義。(b) 型ガードがなく、不正な状態値を TS レベルで検出できない。(c) 遷移表がなく、凍結ガードのルールがコード上で形式化されていない（DB トリガーのみ）。(d) 6 言語ラベルがなく、admin ページは ja ハードコードのみ。
+5. 決めたこと: (a) `PART_INSTALLATION_STATES` を 7 軸目として `states.ts` に追加（UPPERCASE 正準値: DRAFT/INSTALLED/CUSTOMER_VERIFIED/DISPUTED/VOIDED）。(b) 遷移表 `PART_INSTALLATION_TRANSITIONS` と `isValidPartInstallationTransition()` を同ファイルに追加。(c) `labels.ts` に 6 言語ラベル追加（ja は既存 admin UI 表記と一致）。(d) `derivePartsIntegrityOk()` で Certificate Gate 条件を findings から導出。(e) DB 実装値(小文字)との対応マッピングは作らない（ADR-0002 準拠、IMP-015 で判断）。
+6. 捨てた選択肢: (a) Integrity Finding Rules も states.ts に追加 — finding rule は状態機械ではなく分類値のため、正準語彙に含めない。既存の `integrityChecks.ts` の `FindingRule` 型で十分。(b) Finding statuses を正準軸に追加 — 内部の運用状態（open/acknowledged/resolved/dismissed）であり v2.0 §19 の対象外。(c) admin ページの STATUS_LABEL/RULE_LABEL を labels.ts に統合 — UI 変更はスコープ外（型基盤先行）。
+7. 判断理由: 「1 つの status カラムに混ぜない」(ADR-0002) の原則に沿って独立軸として追加。UPPERCASE 正準値は既存 6 軸と同じパターン。遷移表は DB トリガーの凍結ガードをコードレベルで形式化し、TS の型安全性を活用可能にする。
+8. まだ答えが出ていないこと: DB 実装値(小文字)→正準値(UPPERCASE)のマッピングをいつ・どこに入れるか（IMP-015 の範囲）。admin ページの重複 STATUS_LABEL/RULE_LABEL をいつ labels.ts の正準ラベルに置き換えるか。
+9. 公開区分: 公開可（「部品装着の状態管理を正準語彙に統一」「DB トリガーの凍結ルールをコードで形式化」の設計知見）
+
+## 2026-08-20 IMP-034 タブレットレイアウト方式 — 2-pane 画面マッピング + 共用端末モード
+
+1. 日付: 2026-08-20
+2. 起きたこと: IMP-034（タブレット 2-pane / 共用端末）の実装に着手。既存は useIsMobile() による 1024px 二値判定のみ。タブレット帯域（768-1024px）の区別も共用端末の概念もなかった。
+3. 以前の考え: モバイルとデスクトップの二値で十分。タブレットはモバイル表示で対応。
+4. 違和感・問題: (a) 整備工場ではタブレットが主力端末だが、一覧→詳細→戻るの繰り返しが非効率。(b) 複数スタッフが 1 台のタブレットを共用するが、毎回フルログインが必要。(c) 768-1024px 帯域にモバイル UI を表示すると余白が多く非効率。
+5. 決めたこと: (a) 3 段階デバイスクラス（mobile/tablet/desktop）を `deviceClass.ts` に定義。768px/1024px ブレークポイント。(b) タブレット横持ちで作業/車両/証明書/顧客の 4 画面ペアを 2-pane 表示可能とする `tabletLayout.ts`。(c) 共用端末モード型（personal/shared）と切替認証方式（pin/biometric/full_auth）を `sharedDevice.ts` に定義。端末信頼度と連携して認証方式を自動決定。
+6. 捨てた選択肢: (a) 3-column（sidebar + list + detail）— サイドバーを畳むタブレットでは 2-pane で十分。desktop は既存サイドバーがあるため 2-pane 不要。(b) タブレットブレークポイントを独自値にする — Tailwind md(768)/lg(1024) と一致させた方が CSS との整合性が高い。
+7. 判断理由: 整備工場の現場でタブレット横持ちで作業一覧を見ながら詳細を確認するユースケースが最も頻度が高い。共用端末の PIN 切替は IMP-012 の端末信頼度と組み合わせることで、trusted 端末なら biometric、recognized なら PIN、unknown ならフルログインと段階的に安全性を担保。
+8. まだ答えが出ていないこと: (a) タブレット縦持ちの挙動（暫定: mobile と同じスタック表示）。(b) 2-pane のリサイズ操作（ドラッグ可否）。(c) 共用端末の PIN 桁数・有効期限。
+9. 公開区分: 公開可
+
+## 2026-08-20 IMP-033 MORE メニュー項目の管理方式 — 正準レジストリ vs 各画面ハードコード
+
+1. 日付: 2026-08-20
+2. 起きたこと: IMP-033 MORE タブ IA の実装に着手。モバイル `more/index.tsx` に 7 項目がハードコードされており、Web 側 `settingsHub.ts` の hub 項目群とは独立して管理されていた。両者に権限ゲートの有無、項目の重複、プラットフォーム差異がある。
+3. 以前の考え: モバイルとWebは別物として各画面でハードコード管理。
+4. 違和感・問題: (a) モバイルに権限フィルタリングが一切ない（viewer でもPOS・設定が見える）。(b) 項目の追加・削除が 2 箇所で必要。(c) SYNC_CENTER の導線を追加する場所が不定。
+5. 決めたこと: `src/lib/navigation/moreMenu.ts` に `MORE_MENU_ITEMS` 正準リストを定義し、`filterMoreMenuItems(can, platform)` で権限×プラットフォーム別の項目を返す。セクション分類（業務/デバイス・連携/管理/システム）で構造化。
+6. 捨てた選択肢: (a) Web 側 `NAV_GROUPS` の `hub: true` をそのままモバイルにも流用 — Web 固有の hubSection/platformOnly/orgUserVisible ゲートがモバイルに不適合。(b) モバイル `more/index.tsx` 内にだけ権限フィルタを追加 — 二重管理が残る。
+7. 判断理由: tabs.ts（IMP-020）で確立した「データ定義は `src/lib/navigation/`、描画は消費側」パターンの踏襲。settingsHub.ts の HubEntry/HubGate パターンとは意味的に揃えつつ、モバイル向けにシンプルな Permission ベースのゲートに絞る。
+8. まだ答えが出ていないこと: (a) SYNC_CENTER の最終配置（MORE タブ内 vs サイドバー直接）— 暫定で MORE 内に「同期センター」項目を配置。(b) Web SettingsHub の既存 hub 項目と MORE_MENU_ITEMS の統合タイミング（消費側タスク）。
+9. 公開区分: 公開可
 
 ## 2026-08-20 IMP-031 例外フローの型基盤方式 — 純関数評価器 vs DB CHECK+API 一括変更
 

@@ -26,3 +26,23 @@ export {
 
 // ── ワークスコープ ──
 export { WORK_SCOPES, WORK_SCOPE_LABELS, availableScopes, defaultScope, type WorkScope } from "./scope";
+
+// ── MORE メニュー (IMP-033) ──
+export {
+  MORE_SECTIONS,
+  MORE_MENU_ITEMS,
+  filterMoreMenuItems,
+  groupMoreMenuItems,
+  type MoreSection,
+  type MoreMenuItem,
+} from "./moreMenu";
+
+// ── デバイスクラス・タブレットレイアウト (IMP-034) ──
+export { BREAKPOINTS, DEVICE_CLASSES, resolveDeviceClass, isMobileOrTablet, type DeviceClass } from "./deviceClass";
+export {
+  TABLET_PANE_SCREENS,
+  resolveLayoutMode,
+  findPaneConfig,
+  type TabletPaneConfig,
+  type LayoutMode,
+} from "./tabletLayout";
