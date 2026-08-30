@@ -120,10 +120,15 @@ export function scoreCustomerAction(
  * high → 88, med → 62, low → 38。
  * ブース問題は安全・運営に直結するため job よりわずかに高め。
  */
-export function scoreBoothSignal(signal: Pick<BoothSignal, "kind" | "boothId" | "message" | "priority">): ScoredAction {
+export function scoreBoothSignal(
+  signal: Pick<BoothSignal, "kind" | "boothId" | "message" | "priority" | "reservationIds">,
+): ScoredAction {
   const base = { high: 88, med: 62, low: 38 }[signal.priority];
   return {
-    actionKey: `booth:${signal.boothId ?? "unassigned"}:${signal.kind}`,
+    // reservationIds も含める — 同じブース・同じ kind でも時間帯が異なる複数の
+    // capacity_exceeded ウィンドウが同時に存在しうるため、boothId:kind だけでは
+    // scoreAndRank の重複排除が別ウィンドウの警告を誤って1件に潰してしまう。
+    actionKey: `booth:${signal.boothId ?? "unassigned"}:${signal.kind}:${signal.reservationIds.join(",")}`,
     score: base,
     source: "booth",
     label: signal.message,
@@ -146,7 +151,7 @@ export interface ScoreInput {
     customerId: string;
     action: Pick<NextAction, "id" | "label" | "reason" | "cta" | "priority">;
   }>;
-  boothSignals?: ReadonlyArray<Pick<BoothSignal, "kind" | "boothId" | "message" | "priority">>;
+  boothSignals?: ReadonlyArray<Pick<BoothSignal, "kind" | "boothId" | "message" | "priority" | "reservationIds">>;
 }
 
 /**

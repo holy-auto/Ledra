@@ -1,6 +1,8 @@
 import { calendar_v3, calendar } from "@googleapis/calendar";
 import { OAuth2Client } from "google-auth-library";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
+import { storeIdOrNull } from "@/lib/stores/resolveStoreId";
+import { readGcalRefreshToken, writeGcalRefreshToken } from "@/lib/security/tenantPrivateSecrets";
 
 /**
  * Google Calendar 連携クライアント
@@ -43,13 +45,10 @@ export async function exchangeCodeAndSave(code: string, tenantId: string): Promi
   const { tokens } = await oauth2.getToken(code);
 
   const { admin } = createTenantScopedAdmin(tenantId);
-  await admin
-    .from("tenants")
-    .update({
-      gcal_refresh_token: tokens.refresh_token,
-      gcal_sync_enabled: true,
-    })
-    .eq("id", tenantId);
+  if (!tokens.refresh_token) throw new Error("Google did not return a refresh token");
+  await writeGcalRefreshToken(admin, tenantId, tokens.refresh_token);
+  const { error } = await admin.from("tenants").update({ gcal_sync_enabled: true }).eq("id", tenantId);
+  if (error) throw error;
 }
 
 /** テナントの Google Calendar クライアントを取得 */
@@ -60,13 +59,15 @@ async function getCalendarClient(tenantId: string): Promise<{
   const { admin } = createTenantScopedAdmin(tenantId);
   const { data: tenant } = await admin
     .from("tenants")
-    .select("gcal_refresh_token, gcal_calendar_id, gcal_sync_enabled")
+    .select("gcal_calendar_id, gcal_sync_enabled")
     .eq("id", tenantId)
     .single();
 
-  if (!tenant?.gcal_sync_enabled || !tenant.gcal_refresh_token) return null;
+  if (!tenant?.gcal_sync_enabled) return null;
+  const refreshToken = await readGcalRefreshToken(admin, tenantId);
+  if (!refreshToken) return null;
 
-  const oauth2 = getOAuth2Client(tenant.gcal_refresh_token);
+  const oauth2 = getOAuth2Client(refreshToken);
   const cal = calendar({ version: "v3", auth: oauth2 });
   const calendarId = (tenant.gcal_calendar_id as string) || "primary";
 
@@ -383,6 +384,9 @@ async function pullOneCalendar(
     return;
   }
 
+  // 取り込んだ予約の店舗。イベントごとに引かないよう1回だけ解決する
+  const storeId = await storeIdOrNull(admin, tenantId, "gcal pull");
+
   for (const event of events) {
     if (!event.id) continue;
 
@@ -468,6 +472,7 @@ async function pullOneCalendar(
         .from("reservations")
         .insert({
           tenant_id: tenantId,
+          store_id: storeId,
           title,
           note,
           scheduled_date: startDate,

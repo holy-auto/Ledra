@@ -7,11 +7,7 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-export default async function AgentSignPage({
-  params,
-}: {
-  params: Promise<{ token: string }>;
-}) {
+export default async function AgentSignPage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
   return <AgentSignClient token={token} />;
 }

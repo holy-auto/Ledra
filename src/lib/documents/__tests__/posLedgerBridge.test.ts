@@ -89,6 +89,13 @@ describe("bridgePosToLedger", () => {
     expect(result.entries[0].referenceNo).toBe("pos-tx-99");
   });
 
+  it("documentId ありだが amount・refundAmount とも 0 以下 → unbridgeable（消えない）", () => {
+    const result = bridgePosToLedger([mkTx({ amount: 0, refundAmount: 0 })]);
+    expect(result.entries).toHaveLength(0);
+    expect(result.refundEntries).toHaveLength(0);
+    expect(result.unbridgeable).toHaveLength(1);
+  });
+
   it("複数取引を一括処理", () => {
     const result = bridgePosToLedger([
       mkTx({ id: "1" }),

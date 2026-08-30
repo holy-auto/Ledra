@@ -23,8 +23,9 @@ import type { DocumentPaymentContext, PosPaymentContext } from "./types";
  * 6. paid > total      → OVERPAID
  * 7. paid === total    → PAID
  * 8. paid > 0          → PARTIALLY_PAID
- * 9. overdue           → UNPAID（未入金だが期限超過。PaymentState に overdue はない）
- * 10. sent/accepted    → UNPAID
+ * 9. total <= 0        → PAID（無料サービス・クレジットノート等は自動的に支払い済み扱い）
+ * 10. overdue          → UNPAID（未入金だが期限超過。PaymentState に overdue はない）
+ * 11. sent/accepted    → UNPAID
  */
 export function deriveDocumentPaymentState(ctx: DocumentPaymentContext): PaymentState {
   const { documentStatus, total, paid, refunded, pendingAsync } = ctx;
@@ -77,9 +78,9 @@ export function derivePoSPaymentState(ctx: PosPaymentContext): PaymentState {
     case "voided":
       return "CANCELED";
     default: {
-      // ponytail: PosPaymentStatus 拡張時に未処理値を検出
+      // ponytail: PosPaymentStatus 拡張時に未処理値をコンパイル時に検出
       const _exhaustive: never = ctx.status;
-      return "UNKNOWN";
+      return _exhaustive;
     }
   }
 }

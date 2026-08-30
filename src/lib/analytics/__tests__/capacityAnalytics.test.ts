@@ -56,10 +56,14 @@ describe("decomposeTimeBands", () => {
     ]);
   });
 
-  it("cancelled/completed/no_show は除外", () => {
+  it("cancelled/completed/no_show は除外（occupancy.ts の NON_OCCUPYING を再利用）", () => {
     const bands = decomposeTimeBands(
       mkBooth(),
-      [mkRes({ status: "cancelled" }), mkRes({ id: "r-2", status: "completed" })],
+      [
+        mkRes({ status: "cancelled" }),
+        mkRes({ id: "r-2", status: "completed" }),
+        mkRes({ id: "r-3", status: "no_show" }),
+      ],
       9,
       17,
     );
@@ -90,7 +94,7 @@ describe("decomposeTimeBands", () => {
 // ── computeFleetUtilization ──
 
 describe("computeFleetUtilization", () => {
-  it("2ブース、各50%稼働 → 平均50%", () => {
+  it("2ブース、各約45%稼働 → 平均45%", () => {
     const booths = [mkBooth({ id: "b1" }), mkBooth({ id: "b2" })];
     // b1: 09-14 = 5h/11h ≈ 45%, b2: 09-14 = 5h/11h ≈ 45%
     const reservations = [

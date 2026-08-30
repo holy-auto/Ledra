@@ -74,6 +74,14 @@ jobs:
           #      out-of-order として停止する (--include-all で強制適用もできるが、
           #      順序不変性が崩れ他環境の再現性が濁るため DECISION_LOG 2026-07-21 で
           #      不採用。後発ファイルを一意な後ろの日付へ改名する運用に統一する)。
+          #      **改名してよいのは本番に無いバージョンだけ。** 改名の前に必ず
+          #      本番の台帳をバージョン名で名指しして引く:
+          #        select version from supabase_migrations.schema_migrations
+          #         where version = '<改名したいバージョン>';
+          #      降順 LIMIT で代用しない (小さいバージョンは枠外に落ちる)。
+          #      適用済みを改名すると条件1を壊し、次の run が別のエラーで止まる。
+          #      2026-08-25 の audit_logs_reconcile と 2026-08-26 の VIN トリガーで
+          #      2回起きている。
           supabase db push --db-url "$SUPABASE_DB_URL"
 
       # 失敗したら Slack へ通知する。
@@ -129,7 +137,7 @@ jobs:
                     text: ("*このまま放置すると、以降のスキーマ変更が本番に届きません。*\n直近のコミット: " + $title) } },
                 { type: "context", elements: [
                   { type: "mrkdwn",
-                    text: "よくある原因: (1) 本番 schema_migrations にあるバージョンのファイルが repo に無い → 該当ファイルを追加する。(2) 新しいマイグレーションの日付が適用済み最新より古い (out-of-order) → 後ろの日付へ改名する。" }
+                    text: "よくある原因: (1) 本番 schema_migrations にあるバージョンのファイルが repo に無い → 該当ファイルを追加する。(2) 新しいマイグレーションの日付が適用済み最新より古い (out-of-order) → 後ろの日付へ改名する。*ただし改名してよいのは本番に無いバージョンだけ。* 改名前に `select version from supabase_migrations.schema_migrations where version = '<対象>'` で名指しして引くこと（降順 LIMIT で代用しない）。適用済みを改名すると条件1を壊し、次の run が別のエラーで止まる — 2026-08 に2回起きている。" }
                 ] },
                 { type: "actions", elements: [
                   { type: "button", style: "danger",

@@ -33,10 +33,7 @@ export type ParsePaginationOptions = {
  * @param req - NextRequest or URL search params source
  * @param opts - オプション
  */
-export function parsePagination(
-  req: { url: string },
-  opts?: ParsePaginationOptions | number,
-): PaginationParams {
+export function parsePagination(req: { url: string }, opts?: ParsePaginationOptions | number): PaginationParams {
   // 後方互換: 第2引数が数値なら defaultPerPage として扱う
   const { defaultPerPage = DEFAULT_PER_PAGE, maxPerPage = MAX_PER_PAGE } =
     typeof opts === "number" ? { defaultPerPage: opts, maxPerPage: MAX_PER_PAGE } : (opts ?? {});

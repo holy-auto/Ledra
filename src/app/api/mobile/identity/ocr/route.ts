@@ -116,12 +116,7 @@ export async function POST(req: NextRequest) {
       base64,
       mediaType: mime as "image/jpeg" | "image/png" | "image/webp",
       expected: expected as
-        | "driver_license"
-        | "mynumber_card_front"
-        | "residence_card"
-        | "passport"
-        | "health_insurance_card"
-        | undefined,
+        "driver_license" | "mynumber_card_front" | "residence_card" | "passport" | "health_insurance_card" | undefined,
     });
 
     usage.record({

@@ -11,6 +11,7 @@ import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { generateAcademyCaseSummary } from "@/lib/ai/academyFeedback";
 import { fastModelForPlanTier } from "@/lib/ai/client";
 import { canUseFeature } from "@/lib/billing/planFeatures";
+import { CERT_AI_COLUMNS, certAiFields, certPhotoCount } from "@/lib/certificates/aiFields";
 
 const academyCaseActionSchema = z.object({
   case_id: z.string().uuid("case_id が必要です"),
@@ -112,7 +113,7 @@ export async function POST(req: NextRequest) {
       if (existingCase.certificate_id) {
         const { data: cert } = await admin
           .from("certificates")
-          .select("service_name, description, material_info, photo_count")
+          .select(CERT_AI_COLUMNS)
           .eq("id", existingCase.certificate_id)
           .single();
 
@@ -120,12 +121,13 @@ export async function POST(req: NextRequest) {
           try {
             const summary = await generateAcademyCaseSummary(
               {
-                serviceName: cert.service_name ?? "",
-                description: cert.description ?? undefined,
-                materialInfo: cert.material_info ?? undefined,
+                serviceName: certAiFields(cert).service_name,
+                description: certAiFields(cert).description,
+                materialInfo: certAiFields(cert).material_info,
                 category: existingCase.category,
                 qualityScore: existingCase.quality_score,
-                photoCount: cert.photo_count ?? 0,
+                // photo_count 列は無いので certificate_images を数える
+                photoCount: await certPhotoCount(admin, existingCase.certificate_id),
               },
               { model: fastModelForPlanTier(caller.planTier) },
             );

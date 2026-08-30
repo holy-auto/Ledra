@@ -65,10 +65,10 @@ describe("evaluateNoShow", () => {
     expect(result.newState).toBe("NO_SHOW");
   });
 
-  it("CHECKED_IN → NO_SHOW: valid", () => {
+  it("CHECKED_IN → NO_SHOW: invalid（入庫済みの案件は来店なしになりえない。JOB_TRANSITIONS 参照）", () => {
     const result = evaluateNoShow("CHECKED_IN");
-    expect(result.valid).toBe(true);
-    expect(result.newState).toBe("NO_SHOW");
+    expect(result.valid).toBe(false);
+    expect(result.reason).toBeDefined();
   });
 
   it("IN_PROGRESS → NO_SHOW: invalid（作業開始後）", () => {

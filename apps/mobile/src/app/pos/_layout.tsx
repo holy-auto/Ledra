@@ -1,13 +1,10 @@
 import { Stack } from "expo-router";
+import { stackScreenOptions } from "@/components/screenOptions";
 
 export default function PosLayout() {
   return (
-    <Stack
-      screenOptions={{
-        headerStyle: { backgroundColor: "#ffffff" },
-        headerTintColor: "#1a1a2e",
-      }}
-    >
+    <Stack screenOptions={stackScreenOptions}>
+      <Stack.Screen name="index" options={{ title: "会計" }} />
       <Stack.Screen name="checkout/[id]" options={{ title: "会計" }} />
       <Stack.Screen name="walk-in" options={{ title: "ウォークイン会計" }} />
       <Stack.Screen name="receipt/[id]" options={{ title: "レシート" }} />
