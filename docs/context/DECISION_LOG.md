@@ -4,6 +4,18 @@
 > （新しい順）。実装の詳細は RELEASE_LOG.md、迷っている段階のものは
 > OPEN_QUESTIONS.md に書く。
 
+## 2026-08-30 IMP-046（#956）の code-review 指摘を修正。NON_OCCUPYING重複定義・型の意図しない拡大・ドキュメント不整合を解消
+
+1. 日付: 2026-08-30
+2. 起きたこと: PR #956 マージ後の `/code-review` で5件の指摘。すべて確認・修正: (1) `decomposeTimeBands()`（capacityAnalytics.ts）が終端ステータスの除外条件（cancelled/completed/no_show）を生の文字列比較で再実装しており、`occupancy.ts` が「重複定義を避けるため」に export した `NON_OCCUPYING` を使っていなかった。(2) `JobTimeline.currentState` の型が `JobState | string` になっており、TypeScript の型合併規則により `string` に collapse していて、正準語彙を参照する意図（JSDoc「型参照のみ」）が実際には型安全性を提供していなかった。(3) `computeVerifiedRate()` の JSDoc 冒頭の分母説明が「NOT_READY 以外のすべて」と書かれており、直後の ponytail コメント・実装コードが実際に行っている SUPERSEDED の除外と矛盾していた（この関数は本 PR 自身の code-review 修正でコミット `a54a9112` により SUPERSEDED 除外が追加されたが、冒頭の説明文だけ更新されずに残っていた）。(4) `capacityAnalytics.test.ts` のテストタイトルが「2ブース、各50%稼働 → 平均50%」だが、実際のアサーションは45%（コメントで明記済み）で、テスト名と検証内容が食い違っていた。(5) RELEASE_LOG.md/LEDRA_CURRENT.md/requirement-trace.md の「テスト40件（operationalKpi 22 + capacityAnalytics 18）」が実数（41件、operationalKpi 26 + capacityAnalytics 15）と不一致だった。
+3. 以前の考え: マージ時点では `operationalKpi.ts`/`capacityAnalytics.ts` は型基盤先行パターンとして問題なしと判断していた。
+4. 違和感・問題: (1) は IMP-041 時点で「重複定義を避けるため export した」という明示的な設計意図があったにもかかわらず、後続の消費モジュールがそれを使わず再実装してしまった典型例。(3) は「同一PR内の別コミットで実装を修正したが、説明文の一部だけ直し忘れた」という、複数コミットにまたがる修正でよく起きるパターン。
+5. 決めたこと: (1) `occupancy.ts` の `NON_OCCUPYING` を import して再利用するよう修正。(2) `JobTimeline.currentState` の型を `JobState` のみに変更（テストの既存値は全て正準値のため型エラーなし）。(3) `computeVerifiedRate()` の JSDoc 冒頭を SUPERSEDED 除外を含む正確な説明に修正。(4) テストタイトルを実際の値（45%）に修正。(5) ドキュメントのテスト件数を実数に訂正。回帰テスト0件追加（既存テストの修正のみ、`no_show` ケースを既存テストに追加）。
+6. 捨てた選択肢: なし（5件とも明確な単一の正しい修正がある）。
+7. 判断理由: (1) は CLAUDE.md の「バグ修正は根本原因、対症療法ではない」方針に沿い、単一定義源を実際に単一にした。(2) は型安全性の実効化。(3)(4)(5) は CLAUDE.md の「推測で事実を補わない」方針に沿った記録の正確性回復。
+8. まだ答えが出ていないこと: なし。
+9. 公開区分: 公開可（コードレビューで見つかった型基盤コードの論理バグ修正。金額・テナント名・接続情報は含まない）
+
 ## 2026-08-30 IMP-046（#956）を main へ取り込み。resurrection パターン20度目
 
 1. 日付: 2026-08-30
