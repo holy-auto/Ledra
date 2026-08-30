@@ -5,7 +5,7 @@
  * テンプレートを編集すると、進行中のすべてのジョブが新しい steps を参照してしまう。
  *
  * 本モジュールは版管理の型定義と純関数を提供する。
- * - TemplateSnapshot: ジョブ開始時にテンプレートを凍結するスナップショット
+ * - WorkflowSnapshot: ジョブ開始時にテンプレートを凍結するスナップショット
  * - diffTemplateSteps: 2つの steps 配列を比較
  * - isSnapshotStale: 凍結スナップショットが現行テンプレートと乖離しているか
  *
@@ -38,8 +38,8 @@ export interface WorkflowSnapshot {
   /** スナップショット時点のテンプレート名。 */
   templateName: string;
   serviceType: string;
-  /** 凍結した steps。 */
-  steps: TemplateStep[];
+  /** 凍結した steps（不変 — 呼び出し側で変更しないこと）。 */
+  steps: readonly TemplateStep[];
   /** スナップショット取得時刻（ISO 8601）。 */
   frozenAt: string;
   /** テンプレートの updated_at（同一性チェック用）。 */
@@ -67,6 +67,19 @@ export interface TemplateStepsDiff {
 }
 
 // ── 純関数 ──
+
+/**
+ * key をインデックスにした Map を作る。key 重複時は最初の出現を採用する
+ * （`resolveStepFromSnapshot` の Array.find と挙動を揃えるため。key はテンプレート
+ * エディタ側で一意性を強制していない — 重複自体は本モジュールの関知しない業務不変条件）。
+ */
+function keyByFirstOccurrence(steps: readonly TemplateStep[]): Map<string, TemplateStep> {
+  const map = new Map<string, TemplateStep>();
+  for (const s of steps) {
+    if (!map.has(s.key)) map.set(s.key, s);
+  }
+  return map;
+}
 
 /**
  * テンプレートの現在の状態からスナップショットを作成する。
@@ -103,8 +116,9 @@ export function createWorkflowSnapshot(template: {
  * フィールドの差異を検出する。
  */
 export function diffTemplateSteps(before: readonly TemplateStep[], after: readonly TemplateStep[]): TemplateStepsDiff {
-  const beforeMap = new Map(before.map((s) => [s.key, s]));
-  const afterMap = new Map(after.map((s) => [s.key, s]));
+  // key 重複時は最初の出現を採用（resolveStepFromSnapshot の Array.find と挙動を揃える）
+  const beforeMap = keyByFirstOccurrence(before);
+  const afterMap = keyByFirstOccurrence(after);
 
   const added: StepDiffEntry[] = [];
   const removed: StepDiffEntry[] = [];
