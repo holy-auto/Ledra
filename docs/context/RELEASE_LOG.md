@@ -4,6 +4,15 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-08-30 IMP-029（#944）を main へ取り込み。中央通知エンジン型基盤、lint警告4件を修正
+
+- 内容: IMP-029（中央通知エンジン型基盤、branch impl/IMP-029-notification-engine）を main へ
+  取り込んだ。50ファイルの phantom conflict（46ファイル一括解決、4ファイル手動）＋resurrection
+  5ファイル（WorkScopeProvider.tsx / sync/* を9度目の再削除）を解消。新規テストファイル
+  （`notifications.test.ts`）の未使用import2件・未使用変数1件・`any`1件を修正（lint基準線
+  1256件に復帰）。
+- 検証: tsc/lint(0エラー・警告1256件)/vitest(4594件)/check:schema/lint:migrations すべて green。
+
 ## 2026-08-30 IMP-028（#943）を main へ取り込み。PR #942 のマージがIMP-027自身のDECISION_LOG/RELEASE_LOGエントリを無音で欠落させていたのを復元
 
 - 内容: IMP-028（Certificate Gate 単一評価器、branch impl/IMP-028-certificate-gate）を main へ
@@ -498,6 +507,22 @@
   （OPEN_QUESTIONS 参照）。
 - テスト: 既存5件 + 修正後全通過。全4391テスト通過、`tsc --noEmit` クリーン、
   lint 0 エラー。
+
+## 2026-08-20 IMP-029 §13 通知・エスカレーション・Deep Link 中央通知エンジン型基盤（branch impl/IMP-029-notification-engine）
+
+- 内容: v2.0 §13 の中央通知エンジン型基盤を `src/lib/notifications/` に実装。
+  既存の用途別通知モジュール（bookingNotify, SLA cron 等）は変更せず共存。
+  - `types.ts`: 18 タイプカタログ（booking_created, order_created, sla_overdue 等）、
+    Severity 3 段（urgent/action_required/informational）、Channel 6 種、Category 11 種。
+    `isActionRequired()` で要対応判定、`getTypeConfig()` で未知タイプの安全フォールバック。
+  - `deepLink.ts`: 10 エンティティ × 3 ロール（admin/insurer/customer）の Deep Link 生成。
+    実ルート構造（`/admin/jobs/{id}`, `/insurer/cases/{id}` 等）に合致。
+  - `escalation.ts`: insurer-sla-alerts cron の純関数部分を汎用化した SLA エスカレーション評価器。
+    `evaluateEscalation()` + `shouldEscalate()`（重複抑止・エスカレーション遷移）。
+  - `routing.ts`: `resolveChannels()`（disable/add override 付き）、`countActionRequired()`
+    （未読 × urgent/action_required）、`groupByCategory()`、`filterBySeverity()`。
+  - テスト 35 件（types 5 + deepLink 9 + escalation 10 + routing 11）。
+- 対象: 全テナント・保険会社共通の通知基盤。DB マイグレーションなし。
 
 ## 2026-08-20 IMP-028 §12 Certificate Gate 単一評価器（branch impl/IMP-028-certificate-gate）
 
