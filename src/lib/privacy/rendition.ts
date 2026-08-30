@@ -40,7 +40,8 @@ export interface MaskingRule {
  *
  * - nullify: null を返す
  * - redact: redactedValue（デフォルト "***"）を返す
- * - truncate: 先頭 keepChars 文字 + "***" を返す
+ * - truncate: 先頭 min(keepChars, 文字列長/2) 文字 + "***" を返す
+ *   （短い値でも常に半分以下しか残さない。全文字露出を防ぐ）
  * - hash: "sha256:<hex8桁>" 形式のプレースホルダを返す
  *   （ponytail: 実際のハッシュ計算は crypto 依存になるため、
  *   呼び出し側が事前にハッシュして渡す設計。ここでは形式のみ）
@@ -62,8 +63,12 @@ export function applyMask(
       // 負値は String.slice が末尾からのオフセットとして解釈し、
       // ほぼ全文字を残してしまう（例: keepChars: -1 で末尾1文字以外が露出）。
       // 0 未満は 0 にクランプする。
-      const keep = Math.max(0, opts?.keepChars ?? 0);
-      if (keep >= str.length) return str;
+      const requested = Math.max(0, opts?.keepChars ?? 0);
+      // keepChars が値の長さ以上だと、以前は無条件マスクなしで値をそのまま
+      // 返していた——短い機密値（PIN 等）が keepChars の設定次第で全文字
+      // 露出しうる（Codex レビュー指摘）。常に半分以下しか残さないことで、
+      // どんな短い値でも最低限マスクがかかることを保証する。
+      const keep = Math.min(requested, Math.floor(str.length / 2));
       return str.slice(0, keep) + "***";
     }
     case "hash":

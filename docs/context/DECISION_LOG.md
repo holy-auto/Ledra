@@ -4,6 +4,18 @@
 > （新しい順）。実装の詳細は RELEASE_LOG.md、迷っている段階のものは
 > OPEN_QUESTIONS.md に書く。
 
+## 2026-08-30 IMP-050（#957）へ4回目に届いた Codex レビュー3件を修正。暗号化カラム登録漏れ・truncate短小値露出・maxClassificationのフェイルオープン
+
+1. 日付: 2026-08-30
+2. 起きたこと: 3件とも実在バグとして確認・修正: (1) `FIELD_CLASSIFICATIONS` の restricted 登録が前回追加した4カラム（LINE×2・Square×2）に留まっており、`grep -rn "_ciphertext" supabase/migrations/` で確認したところ、実際には `supply_partner_credentials`（3カラム）・`accounting_integrations`（2カラム）・`tenant_integrations`（2カラム）・`tenant_private_secrets`（ciphertext 2・hash 2・legacy平文 3）・`tenants.booking_notify_slack_webhook_ciphertext` の計15カラムが未登録で confidential にフォールバックしていた。(2) `applyMask()` の truncate 戦略が `keepChars >= 文字列長` の場合に無条件で値をそのまま返しており、短い機密値（PIN 等）が keepChars の設定次第で全文字露出しうる状態だった。(3) `maxClassification()` が個々の未登録フィールドの穴埋めに `defaultClassification`（既定 "public"）をそのまま使っており、呼び出し側が未指定の場合、新規の未登録センシティブカラムが誤って "public" 扱いになるフェイルオープンだった。
+3. 以前の考え: 前回（2回目）の修正で customers・vehicles・certificates・invoices・insurer_cases の実在しないカラム名を全て解消したと判断していたが、restricted カラムの列挙は LINE/Square の4例のみで、他の暗号化テーブルまで横展開できていなかった。
+4. 違和感・問題: (1) は「一部の実例だけ直して、同じパターンの他の発生源を横展開しなかった」という、このモジュールで4回連続発生しているパターンの再発——今回は `supabase/migrations/` 全体を `_ciphertext` で横断検索することで、初めて網羅的に確認した。(2)(3) はいずれも「境界値・デフォルト値の扱いが安全側に倒れていない」という同じ性質のバグ。
+5. 決めたこと: (1) 確認できた15カラムを追加登録し、レジストリのコメントに「2026-08-30時点で確認した全カラム、自動検出機構は未実装につき新規追加時は手動更新が必要」と明記。(2) truncate を `keep = min(keepChars, floor(文字列長/2))` に変更し、どんな短い値でも常に半分以下しか残らないよう保証。(3) `maxClassification()` の個々のフィールド取得を `getFieldClassification(f.table, f.column)`（引数省略、自身の安全な既定値 confidential を使う）に変更し、defaultClassification は空配列時の戻り値としてのみ使うよう限定。回帰テスト4件追加・2件更新。
+6. 捨てた選択肢: なし（3件とも明確な単一の正しい修正がある）。
+7. 判断理由: (1) は CLAUDE.md の「バグ修正は根本原因、対症療法ではない」方針に沿い、今回は"横展開の徹底"として全体を横断検索した。(2)(3) は「境界値・デフォルト値は安全側に倒す」というセキュリティ機構の基本原則に沿った修正。
+8. まだ答えが出ていないこと: `FIELD_CLASSIFICATIONS` の restricted 登録は依然として手動更新に依存しており、将来新しい暗号化カラムが追加された際に追随を忘れるリスクは残る（自動検出機構は明示的にスコープ外）。owner_only の設計トレードオフ（前回のエントリ参照）も未解決。
+9. 公開区分: 公開可（コードレビューで見つかった型基盤コードの論理バグ修正。テーブル名・カラム名はマイグレーションファイルとして既に公開相当。暗号化されたシークレットの値そのものは含まない）。
+
 ## 2026-08-30 IMP-050（#957）へ3回目に届いた Codex レビュー4件のうち2件を修正、owner_only の設計トレードオフは OPEN_QUESTIONS へ
 
 1. 日付: 2026-08-30

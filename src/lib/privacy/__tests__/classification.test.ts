@@ -85,6 +85,13 @@ describe("maxClassification", () => {
     const fields = [{ table: "invoices", column: "total" }]; // confidential
     expect(maxClassification(fields, "pii")).toBe("confidential");
   });
+
+  it("非空配列内の未登録フィールドは confidential にフェイルクローズする（Codex レビュー指摘: 'public' を渡しても危険側に倒さない）", () => {
+    // defaultClassification="public" を渡しても、未登録の新規センシティブ
+    // カラムが誤って public 扱いにならないことを確認。
+    const fields = [{ table: "unknown_new_table", column: "unknown_new_column" }];
+    expect(maxClassification(fields, "public")).toBe("confidential");
+  });
 });
 
 describe("findClassificationViolations", () => {

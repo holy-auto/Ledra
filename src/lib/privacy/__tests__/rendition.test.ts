@@ -37,8 +37,13 @@ describe("applyMask", () => {
     expect(applyMask("hello", "truncate")).toBe("***");
   });
 
-  it("truncate keepChars >= 文字列長 → そのまま", () => {
-    expect(applyMask("hi", "truncate", { keepChars: 5 })).toBe("hi");
+  it("truncate keepChars >= 文字列長 → 半分以下にクランプしてマスク（Codex レビュー指摘: 以前は無条件で全文字露出していた）", () => {
+    // "hi" は長さ2、floor(2/2)=1文字までしか残さない。
+    expect(applyMask("hi", "truncate", { keepChars: 5 })).toBe("h***");
+  });
+
+  it("truncate 短い機密値（PIN 等）でも常に半分以下しか残らない", () => {
+    expect(applyMask("123", "truncate", { keepChars: 10 })).toBe("1***"); // floor(3/2)=1
   });
 
   it("truncate keepChars が負値 → 0 にクランプ（Codex レビュー指摘: 末尾からのオフセットで露出しない）", () => {
@@ -61,7 +66,8 @@ describe("applyMask", () => {
   });
 
   it("数値入力 → truncate は文字列化してから切る", () => {
-    expect(applyMask(12345, "truncate", { keepChars: 3 })).toBe("123***");
+    // "12345" は長さ5、floor(5/2)=2文字までしか残さない。
+    expect(applyMask(12345, "truncate", { keepChars: 3 })).toBe("12***");
   });
 });
 

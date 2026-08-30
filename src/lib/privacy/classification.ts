@@ -58,9 +58,12 @@ export const FIELD_CLASSIFICATIONS: readonly FieldClassificationEntry[] = [
   // ── Restricted ──
   { table: "auth.users", column: "encrypted_password", classification: "restricted", reason: "認証情報" },
   // ponytail: tenant_secrets という専用テーブルは存在しない。実際の暗号化シークレットは
-  // tenants/square_connections の *_ciphertext カラムに保存されている（VEHICLE_TABLE_PII_COLUMNS
-  // と同様、手書きの架空カラム名で登録すると getFieldClassification() が常に外れて
-  // defaultClassification（confidential）にフォールバックしてしまう）。
+  // 複数テーブルの *_ciphertext/*_hash/*_legacy カラムに保存されている（架空のテーブル名で
+  // 登録すると getFieldClassification() が常に外れて confidential にフォールバックし、
+  // DEFAULT_REQUIRED_VISIBILITY 経由でテナントスタッフに開示されてしまう）。以下は
+  // `grep -rn "_ciphertext" supabase/migrations/` で確認した現時点の全カラム
+  // （2026-08-30 時点）。新しい暗号化カラムを追加したら、この一覧にも追加すること
+  // ——自動検出機構は未実装（スコープ外、将来課題）。
   {
     table: "tenants",
     column: "line_channel_secret_ciphertext",
@@ -84,6 +87,98 @@ export const FIELD_CLASSIFICATIONS: readonly FieldClassificationEntry[] = [
     column: "square_refresh_token_ciphertext",
     classification: "restricted",
     reason: "Square暗号化リフレッシュトークン",
+  },
+  {
+    table: "tenants",
+    column: "booking_notify_slack_webhook_ciphertext",
+    classification: "restricted",
+    reason: "Slack Webhook URL（暗号化）",
+  },
+  {
+    table: "supply_partner_credentials",
+    column: "api_key_ciphertext",
+    classification: "restricted",
+    reason: "供給パートナーAPIキー（暗号化）",
+  },
+  {
+    table: "supply_partner_credentials",
+    column: "api_secret_ciphertext",
+    classification: "restricted",
+    reason: "供給パートナーAPIシークレット（暗号化）",
+  },
+  {
+    table: "supply_partner_credentials",
+    column: "webhook_secret_ciphertext",
+    classification: "restricted",
+    reason: "Webhook署名検証シークレット（暗号化）",
+  },
+  {
+    table: "accounting_integrations",
+    column: "access_token_ciphertext",
+    classification: "restricted",
+    reason: "会計連携OAuthアクセストークン（暗号化）",
+  },
+  {
+    table: "accounting_integrations",
+    column: "refresh_token_ciphertext",
+    classification: "restricted",
+    reason: "会計連携OAuthリフレッシュトークン（暗号化）",
+  },
+  {
+    table: "tenant_integrations",
+    column: "access_token_ciphertext",
+    classification: "restricted",
+    reason: "外部連携OAuthアクセストークン（暗号化）",
+  },
+  {
+    table: "tenant_integrations",
+    column: "refresh_token_ciphertext",
+    classification: "restricted",
+    reason: "外部連携OAuthリフレッシュトークン（暗号化）",
+  },
+  {
+    table: "tenant_private_secrets",
+    column: "gcal_refresh_token_ciphertext",
+    classification: "restricted",
+    reason: "Googleカレンダー連携トークン（暗号化）",
+  },
+  {
+    table: "tenant_private_secrets",
+    column: "email_inbound_token_ciphertext",
+    classification: "restricted",
+    reason: "受信メールトークン（暗号化）",
+  },
+  {
+    table: "tenant_private_secrets",
+    column: "external_api_key_hash",
+    classification: "restricted",
+    reason: "外部APIキーのハッシュ",
+  },
+  {
+    table: "tenant_private_secrets",
+    column: "email_inbound_token_hash",
+    classification: "restricted",
+    reason: "受信メールトークンのハッシュ",
+  },
+  // *_legacy は暗号化移行中の平文シークレットの一時退避先（マイグレーション
+  // コメント参照）。暗号化列より一段と機密性が高い。
+  {
+    table: "tenant_private_secrets",
+    column: "gcal_refresh_token_legacy",
+    classification: "restricted",
+    reason: "移行中の平文トークン",
+  },
+  {
+    table: "tenant_private_secrets",
+    column: "external_api_key_legacy",
+    classification: "restricted",
+    reason: "移行中の平文APIキー",
+  },
+  {
+    table: "tenant_private_secrets",
+    column: "email_inbound_token_legacy",
+    classification: "restricted",
+    reason: "移行中の平文トークン",
   },
 
   // ── PII ──
@@ -179,7 +274,12 @@ export function maxClassification(
   if (fields.length === 0) return defaultClassification;
   let result: DataClassification | undefined;
   for (const f of fields) {
-    const c = getFieldClassification(f.table, f.column, defaultClassification);
+    // defaultClassification は空配列の場合にのみ使う。個々の未登録フィールドは
+    // getFieldClassification() 自身の安全なデフォルト（confidential）に
+    // フェイルクローズする——ここで defaultClassification（既定 "public"）を
+    // 渡すと、呼び出し側が指定しなかった場合に新規の未登録センシティブ
+    // カラムが "public" 扱いになってしまう（Codex レビュー指摘）。
+    const c = getFieldClassification(f.table, f.column);
     result = result === undefined ? c : stricterOf(result, c);
   }
   return result as DataClassification;
