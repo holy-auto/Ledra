@@ -130,6 +130,18 @@ describe("diffTemplateSteps", () => {
     const diff = diffTemplateSteps(before, after);
     expect(diff.modified[0].changedFields).toContain("required_photos");
   });
+
+  it("key 重複時は最初の出現を採用（resolveStepFromSnapshot と同じ規則）", () => {
+    // 同じ key "dup" が2件 — 2件目は無視され、1件目基準で比較される
+    const before = [mkStep({ key: "dup", label: "1件目", estimated_min: 10 })];
+    const after = [
+      mkStep({ key: "dup", label: "1件目", estimated_min: 10 }),
+      mkStep({ key: "dup", label: "2件目", estimated_min: 999 }),
+    ];
+    const diff = diffTemplateSteps(before, after);
+    // 1件目同士は同一なので変更なし。2件目は無視されるため added にも modified にも現れない
+    expect(diff.hasChanges).toBe(false);
+  });
 });
 
 // ── isSnapshotStale ──

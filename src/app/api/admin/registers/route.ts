@@ -3,6 +3,7 @@ import { createClient as createSupabaseServerClient } from "@/lib/supabase/serve
 import { resolveCallerWithRole, requirePermission } from "@/lib/auth/checkRole";
 import { apiJson, apiUnauthorized, apiForbidden, apiValidationError, apiInternalError } from "@/lib/api/response";
 import { registerCreateSchema, registerUpdateSchema } from "@/lib/validations/register";
+import { resolveStoreId, STORE_ERROR_MESSAGES } from "@/lib/stores/resolveStoreId";
 
 export const dynamic = "force-dynamic";
 
@@ -90,23 +91,17 @@ export async function POST(req: NextRequest) {
     }
     const { name, store_id: storeId, is_active, sort_order } = parsed.data;
 
-    // store_idがテナントに属するか確認
-    const { data: store } = await supabase
-      .from("stores")
-      .select("id")
-      .eq("id", storeId)
-      .eq("tenant_id", caller.tenantId)
-      .single();
-
-    if (!store) {
-      return apiValidationError("指定された店舗が見つかりません");
+    // store_idがテナントに属するか確認（作成経路で共通の判定を使う）
+    const store = await resolveStoreId(supabase, caller.tenantId, storeId);
+    if (!store.ok) {
+      return apiValidationError(STORE_ERROR_MESSAGES[store.error]);
     }
 
     const { data: register, error } = await supabase
       .from("registers")
       .insert({
         tenant_id: caller.tenantId,
-        store_id: storeId,
+        store_id: store.storeId,
         name,
         is_active,
         sort_order,

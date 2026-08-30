@@ -40,16 +40,16 @@ export type DeepLinkRole = "admin" | "insurer" | "customer";
  *
  * ponytail: 未知のエンティティは null を返す。呼び出し側で
  * フォールバック（ダッシュボードへのリンク等）を決める。
+ *
+ * customer ロールは tenantSlug が必要なため buildDeepLink 側で
+ * 先に分岐・return 済み。ここには admin/insurer しか来ない。
  */
-function entityPath(entity: DeepLinkEntity, id: string, role: DeepLinkRole): string | null {
+function entityPath(entity: DeepLinkEntity, id: string, role: Exclude<DeepLinkRole, "customer">): string | null {
   switch (role) {
     case "admin":
       return adminPath(entity, id);
     case "insurer":
       return insurerPath(entity, id);
-    case "customer":
-      // customer パスは tenantSlug が必要。buildDeepLink で組み立てる。
-      return null;
     default:
       return null;
   }

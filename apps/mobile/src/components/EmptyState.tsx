@@ -1,5 +1,7 @@
 import { View, StyleSheet } from "react-native";
-import { Text, Button, Icon } from "react-native-paper";
+import { Text, Icon } from "react-native-paper";
+import { LedraButton } from "@/components/ui";
+import { colors, spacing } from "@/constants/tokens";
 
 interface Props {
   icon?: string;
@@ -18,7 +20,7 @@ export function EmptyState({
 }: Props) {
   return (
     <View style={styles.container}>
-      <Icon source={icon} size={48} color="#a1a1aa" />
+      <Icon source={icon} size={48} color={colors.textTertiary} />
       <Text variant="titleMedium" style={styles.title}>
         {title}
       </Text>
@@ -28,9 +30,14 @@ export function EmptyState({
         </Text>
       )}
       {actionLabel && onAction && (
-        <Button mode="contained" onPress={onAction} style={styles.button}>
+        <LedraButton
+          variant="primary"
+          onPress={onAction}
+          style={styles.button}
+          fullWidth={false}
+        >
           {actionLabel}
-        </Button>
+        </LedraButton>
       )}
     </View>
   );
@@ -41,19 +48,19 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    padding: 32,
+    padding: spacing["3xl"],
   },
   title: {
-    marginTop: 16,
-    color: "#18181b",
+    marginTop: spacing.lg,
+    color: colors.textPrimary,
     textAlign: "center",
   },
   description: {
-    marginTop: 8,
-    color: "#71717a",
+    marginTop: spacing.sm,
+    color: colors.textSecondary,
     textAlign: "center",
   },
   button: {
-    marginTop: 24,
+    marginTop: spacing["2xl"],
   },
 });

@@ -21,6 +21,12 @@ describe("normalizeVin", () => {
     expect(normalizeVin("ＪＨ４ＤＣ５")).toBe("JH4DC5");
   });
 
+  it("strips a zero-width BOM", () => {
+    // PostgreSQL's `\s` does not match U+FEFF, so the SQL rule in migration
+    // 20260823000000 lists it explicitly to stay identical to this helper.
+    expect(normalizeVin("JH4\uFEFFDC5")).toBe("JH4DC5");
+  });
+
   it("returns empty string for whitespace-only input", () => {
     expect(normalizeVin("  \t\n  ")).toBe("");
   });

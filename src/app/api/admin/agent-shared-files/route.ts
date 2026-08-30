@@ -34,9 +34,7 @@ export async function GET(request: NextRequest) {
     const { admin } = createTenantScopedAdmin(caller.tenantId);
     const { data, error } = await admin
       .from("agent_shared_files")
-      .select(
-        "id, agent_id, uploaded_by, direction, file_name, file_size, file_type, storage_path, note, created_at, updated_at",
-      )
+      .select("id, agent_id, uploaded_by, direction, file_name, file_size, file_type, storage_path, note, created_at")
       .eq("agent_id", agentId)
       .order("created_at", { ascending: false });
 
@@ -105,9 +103,7 @@ export async function POST(request: NextRequest) {
         storage_path: storagePath,
         note: note?.trim() || null,
       })
-      .select(
-        "id, agent_id, uploaded_by, direction, file_name, file_size, file_type, storage_path, note, created_at, updated_at",
-      )
+      .select("id, agent_id, uploaded_by, direction, file_name, file_size, file_type, storage_path, note, created_at")
       .single();
 
     if (insertErr) throw insertErr;

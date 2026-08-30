@@ -97,8 +97,7 @@ export default function QuizEditorPage({ params }: { params: Promise<{ id: strin
   };
 
   const addQuestion = () => setQuestions((qs) => [...qs, { ...EMPTY_Q, choices: ["", ""] }]);
-  const removeQuestion = (idx: number) =>
-    setQuestions((qs) => qs.filter((_, i) => i !== idx));
+  const removeQuestion = (idx: number) => setQuestions((qs) => qs.filter((_, i) => i !== idx));
   const moveQuestion = (idx: number, dir: -1 | 1) => {
     setQuestions((qs) => {
       const next = [...qs];

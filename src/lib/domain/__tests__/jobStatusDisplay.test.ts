@@ -2,6 +2,7 @@ import { describe, test, expect } from "vitest";
 import {
   RESERVATION_STATUS_DISPLAY,
   RESERVATION_STATUS_FLOW,
+  LIVE_RESERVATION_STATUSES,
   reservationStatusDisplay,
   type ReservationStatus,
 } from "../jobStatusDisplay";
@@ -35,6 +36,24 @@ describe("RESERVATION_STATUS_FLOW", () => {
 
   test("cancelled を含まない", () => {
     expect(RESERVATION_STATUS_FLOW).not.toContain("cancelled");
+  });
+});
+
+describe("LIVE_RESERVATION_STATUSES", () => {
+  test("DB CHECK 制約が許可する5値ちょうど（IMP-031の例外3値は含まない）", () => {
+    expect(LIVE_RESERVATION_STATUSES).toEqual(["confirmed", "arrived", "in_progress", "completed", "cancelled"]);
+  });
+
+  test("paused/no_show/partially_completed を含まない（未マイグレーション。含めるとフィルタが常に0件になる）", () => {
+    expect(LIVE_RESERVATION_STATUSES).not.toContain("paused");
+    expect(LIVE_RESERVATION_STATUSES).not.toContain("no_show");
+    expect(LIVE_RESERVATION_STATUSES).not.toContain("partially_completed");
+  });
+
+  test("全値が RESERVATION_STATUS_DISPLAY に存在する（タイポ防止）", () => {
+    for (const s of LIVE_RESERVATION_STATUSES) {
+      expect(RESERVATION_STATUS_DISPLAY[s]).toBeDefined();
+    }
   });
 });
 

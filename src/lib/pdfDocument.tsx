@@ -6,6 +6,7 @@ import { notoSansJpDataUrl } from "@/lib/marketing/pdfFonts";
 import { fmtJpy, fmtDate, fmtTotal } from "@/lib/pdf/format";
 import { itemContentLines } from "@/lib/documents/itemDisplay";
 import { DEFAULT_LAYOUT, type LayoutConfig, mergeLayout } from "@/types/documentTemplate";
+import { hasNoHonorificPrefix } from "@/types/document";
 import {
   buildTaxBreakdown,
   hasMultipleRates,
@@ -28,7 +29,8 @@ Font.register({
   ],
 });
 
-const DOC_TYPE_LABELS: Record<string, string> = {
+/** 帳票種別 → 表示名。プレビュー用スクリプトが種別一覧の唯一の出所として参照する。 */
+export const DOC_TYPE_LABELS: Record<string, string> = {
   estimate: "見積書",
   delivery: "納品書",
   purchase_order: "発注書",
@@ -314,7 +316,7 @@ export async function renderDocumentPdf(
   const s = buildStyles(layout);
 
   const baseLabel = DOC_TYPE_LABELS[doc.doc_type] ?? doc.doc_type;
-  const docLabel = layout.title.prefix ? `御${baseLabel}` : baseLabel;
+  const docLabel = layout.title.prefix && !hasNoHonorificPrefix(doc.doc_type) ? `御${baseLabel}` : baseLabel;
   const issuedLabel = ISSUED_LABEL[doc.doc_type] ?? "発行日";
   const greeting = DOC_TYPE_GREETINGS[doc.doc_type] ?? "下記のとおりご案内申し上げます。";
 

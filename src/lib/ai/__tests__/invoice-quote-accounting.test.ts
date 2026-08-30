@@ -28,9 +28,7 @@ describe("buildDeterministicInvoiceDraft", () => {
       serviceCategory: "コーティング",
       menuItems: [],
     });
-    expect(draft.items).toEqual([
-      { description: "コーティング 一式", quantity: 1, unit: "式", unit_price: 45000 },
-    ]);
+    expect(draft.items).toEqual([{ description: "コーティング 一式", quantity: 1, unit: "式", unit_price: 45000 }]);
     expect(draft.recipient_name).toBe("アクメ商事 御中");
   });
 
@@ -124,22 +122,14 @@ describe("categorizeAccountingLines", () => {
   });
 
   it("falls back to fallbackCode when no rule matches and no API key", async () => {
-    const out = await categorizeAccountingLines(
-      [{ description: "とても特殊な明細", amount: 1000 }],
-      accounts,
-      "411",
-    );
+    const out = await categorizeAccountingLines([{ description: "とても特殊な明細", amount: 1000 }], accounts, "411");
     expect(out.lines[0].method).toBe("fallback");
     expect(out.lines[0].suggested_code).toBe("411");
     expect(out.lines[0].confidence).toBe(0);
   });
 
   it("respects fallbackCode when label exists in accounts", async () => {
-    const out = await categorizeAccountingLines(
-      [{ description: "不明な明細", amount: 1000 }],
-      accounts,
-      "411",
-    );
+    const out = await categorizeAccountingLines([{ description: "不明な明細", amount: 1000 }], accounts, "411");
     expect(out.lines[0].suggested_label).toBe("売上高");
   });
 });

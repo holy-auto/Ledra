@@ -57,7 +57,10 @@ export default function AgentInvoicesPage() {
   useEffect(() => {
     (async () => {
       const { data: u } = await supabase.auth.getUser();
-      if (!u?.user) { window.location.href = "/agent/login"; return; }
+      if (!u?.user) {
+        window.location.href = "/agent/login";
+        return;
+      }
       setReady(true);
       const res = await fetch("/api/agent/invoices");
       if (res.ok) setInvoices((await res.json()).invoices ?? []);
@@ -92,12 +95,18 @@ export default function AgentInvoicesPage() {
           <button onClick={() => setSelectedInvoice(null)} className="text-sm text-muted hover:text-secondary">
             &larr; 請求書一覧に戻る
           </button>
-          <button onClick={printInvoice} className="rounded-xl border border-border-default bg-surface px-4 py-2 text-sm font-medium text-secondary hover:bg-inset">
+          <button
+            onClick={printInvoice}
+            className="rounded-xl border border-border-default bg-surface px-4 py-2 text-sm font-medium text-secondary hover:bg-inset"
+          >
             印刷 / PDF
           </button>
         </div>
 
-        <div className="rounded-2xl border border-border-default bg-surface p-8 shadow-sm print:shadow-none print:border-0" id="invoice-print">
+        <div
+          className="rounded-2xl border border-border-default bg-surface p-8 shadow-sm print:shadow-none print:border-0"
+          id="invoice-print"
+        >
           {/* Invoice header */}
           <div className="flex items-start justify-between border-b border-border-default pb-6">
             <div>
@@ -202,7 +211,9 @@ export default function AgentInvoicesPage() {
 
       {loading ? (
         <div className="animate-pulse space-y-3">
-          {[1, 2, 3].map((i) => <div key={i} className="h-16 rounded-2xl bg-surface-hover" />)}
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="h-16 rounded-2xl bg-surface-hover" />
+          ))}
         </div>
       ) : invoices.length === 0 ? (
         <div className="rounded-2xl border border-border-default bg-surface p-8 text-center text-sm text-muted">
@@ -231,7 +242,9 @@ export default function AgentInvoicesPage() {
                       {formatDate(inv.period_start)} 〜 {formatDate(inv.period_end)}
                     </td>
                     <td className="p-3 text-right font-mono font-bold text-primary">{formatJpy(inv.total)}</td>
-                    <td className="p-3"><Badge variant={st.variant}>{st.label}</Badge></td>
+                    <td className="p-3">
+                      <Badge variant={st.variant}>{st.label}</Badge>
+                    </td>
                     <td className="p-3 text-muted">{inv.issued_at ? formatDate(inv.issued_at) : "-"}</td>
                     <td className="p-3">
                       <button
