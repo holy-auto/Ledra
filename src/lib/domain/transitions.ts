@@ -4,8 +4,8 @@
  * v2.0 §19: 各正準状態軸の有効な遷移を定義し、無効な遷移を構造的に拒否する。
  *
  * 目的:
- * - 7 軸（Job / Step / Severity / Certificate / Payment / Sync / PartInstallation）の
- *   遷移可否の単一定義源
+ * - 8 軸（Job / Step / Severity / Certificate / Payment / Sync / PartInstallation /
+ *   DocumentCorrection）の遷移可否の単一定義源
  * - 無効遷移の拒否理由メッセージ
  * - 終端状態の明示（遷移先なし = terminal）
  *
@@ -34,6 +34,7 @@ import type {
   PaymentState,
   SyncState,
   PartInstallationState,
+  DocumentCorrectionState,
 } from "./states";
 
 // ── 案件（Job）遷移表 v2.0 §19.1 ──
@@ -182,6 +183,14 @@ export const PART_INSTALLATION_TRANSITIONS: Record<PartInstallationState, readon
   CUSTOMER_VERIFIED: ["VOIDED"],
   DISPUTED: ["CUSTOMER_VERIFIED", "VOIDED"],
   VOIDED: [],
+};
+
+// ── 帳票訂正リクエスト（DocumentCorrection）遷移表 ADR-0004（IMP-043） ──
+export const DOCUMENT_CORRECTION_TRANSITIONS: Record<DocumentCorrectionState, readonly DocumentCorrectionState[]> = {
+  PENDING: ["APPROVED", "REJECTED"],
+  APPROVED: ["APPLIED"],
+  REJECTED: [],
+  APPLIED: [],
 };
 
 // ── 汎用遷移検証 ──

@@ -4,6 +4,30 @@
 > （新しい順）。実装の詳細は RELEASE_LOG.md、迷っている段階のものは
 > OPEN_QUESTIONS.md に書く。
 
+## 2026-08-30 IMP-043（#953）の code-review 指摘を修正。DocumentCorrection遷移表のプロトタイプ汚染ガード欠如・POSブリッジの完全性欠落・関数名衝突を解消
+
+1. 日付: 2026-08-30
+2. 起きたこと: PR #953 マージ後の `/code-review` で3件の指摘。すべて確認・修正: (1) `isValidDocumentCorrectionTransition()`（states.ts）が `DOCUMENT_CORRECTION_TRANSITIONS[from]` を生の bracket access で参照しており、`from="toString"` 等で `Object.prototype` 由来の値を拾って `TypeError` を投げる — PR #950（PartInstallation）で既に修正した同型のバグを、8軸目として新規追加された本 PR がそのまま再導入していた。IMP-040/041/042 いずれの code-review でも同種のバグが繰り返し見つかっており、`transitions.ts` が「単一定義源」を掲げている以上、新しい状態軸を追加する際は必ずそこで `isValidTransition()` を再利用する運用を徹底する必要がある。(2) `bridgePosToLedger()`（posLedgerBridge.ts）の JSDoc は「completed は entries に分類」と網羅的な分類を謳っているが、`documentId` はあるのに `amount`・`refundAmount` が両方 0 以下（`payments.amount` に `CHECK(amount>0)` 制約はなく、実際に発生しうる）の取引が `entries`・`refundEntries`・`unbridgeable` のどれにも入らず消えていた。(3) `documentVersion.ts` の `isValidCorrectionTransition()` が `src/lib/certificates/correction.ts` の同名関数（5状態・cancelled 含む）と名前が完全一致しており、扱う状態集合（帳票は4状態）が異なるため、将来 import 元を取り違える危険があった。
+3. 以前の考え: マージ時点では `documentVersion.ts`/`posLedgerBridge.ts`/`states.ts` の追加分は型基盤先行パターンとして問題なしと判断していた。
+4. 違和感・問題: (1) は「新しい状態軸を追加するたびに同じ脆弱パターンが再発する」という構造的な問題（PR #950 の教訓が横展開されていなかった）。(3) は命名の一貫性チェックを欠いたまま2つの類似機能モジュールが独立に育った結果。
+5. 決めたこと: (1) `DOCUMENT_CORRECTION_TRANSITIONS` と検証ロジックを `transitions.ts` に移設し、他7軸と同じ `isValidTransition()` を再利用（states.ts には状態一覧・型ガードのみ残す）。対応して `states.test.ts` の遷移表テストを `transitions.test.ts` に移設（PartInstallation と同じ扱い）。(2) `bridgePosToLedger()` に「amount・refundAmount とも0以下は unbridgeable に分類」を追加し、全取引がいずれかのバケツに必ず入ることを保証。(3) `documentVersion.ts` 側の関数を `isValidDocumentCorrectionStatusTransition()` に改名し、状態集合の違い（4状態 vs 証明書の5状態）をコメントで明記。
+6. 捨てた選択肢: (3) について、証明書側を改名する案 — 証明書の `isValidCorrectionTransition()` は IMP-030 から存在し呼び出し元も多いため、後発の帳票側を改名する方が影響範囲が小さい。
+7. 判断理由: (1)(2) は正しさに影響する実バグであり修正必須。(3) は実行時バグではないが、CLAUDE.md の「バグ修正は根本原因、対症療法ではない」方針に沿い、将来の import 取り違えという実害が具体的に想定できるため修正した。
+8. まだ答えが出ていないこと: なし。
+9. 公開区分: 公開可（コードレビューで見つかった型基盤コードの論理バグ修正。金額・テナント名・接続情報は含まない）
+
+## 2026-08-30 IMP-043（#953）を main へ取り込み。resurrection パターン17度目、未使用importを修正
+
+1. 日付: 2026-08-30
+2. 起きたこと: IMP-043（見積/請求ワークフロー型基盤 — 承認スナップショット・帳票版管理・POS ブリッジ、branch impl/IMP-043-estimate-invoice-workflow）を main へ取り込む際、main と分岐した72ファイルが衝突した。65ファイルは phantom conflict で一括解決。残り7ファイル（DECISION_LOG.md/LEDRA_CURRENT.md/RELEASE_LOG.md/requirement-trace.md/`src/lib/domain/states.ts`/`labels.ts`/`__tests__/states.test.ts`）はこのPR自身が変更していたため手動再適用した。このPRは v2.0 正準語彙の8軸目（`DOCUMENT_CORRECTION_STATES`、ADR-0004 帳票訂正リクエスト状態）を states.ts/labels.ts/__tests__/states.test.ts の同一PRで追加しており ADR-0002 準拠。resurrection チェックで `WorkScopeProvider.tsx`（17度目の再発）とスキップ済み PR #947 の `src/lib/sync/` 一式8ファイルが今回も復活していたため削除。`documents/` 配下3ファイル（PR 自身の新規ファイル）は `sync/` への依存なし（grep で確認済み）。マージ後の lint で新規1件（`states.test.ts` が `documentCorrectionStateLabel` を import しているが未使用 — PR 自身が導入した AXES テーブル駆動テストは関数を直接呼ばず `__DOMAIN_LABEL_MAPS` 経由のため）を検出、修正して基準線（1256件）に復帰。
+3. 以前の考え: なし（#948〜952 で確立した手順の踏襲）。
+4. 違和感・問題: 特になし。
+5. 決めたこと: 確立済みの手順をそのまま適用。
+6. 捨てた選択肢: なし。
+7. 判断理由: 確立済みの手順が引き続き有効に機能した。
+8. まだ答えが出ていないこと: なし。
+9. 公開区分: 公開可（マージ手順の技術的な経緯。金額・テナント名・接続情報は含まない）
+
 ## 2026-08-30 IMP-042（#952）の code-review 指摘を修正。key 重複時の挙動不一致・非 readonly なスナップショット・ドキュメント誤記を解消
 
 1. 日付: 2026-08-30
@@ -485,6 +509,18 @@
 7. 判断理由: 「現場を知らずに書き足さない」の裏返しで、ここでは「現場を知らずに稼働中の挙動を狭めない」。staff/viewer のデフォルトを self にすべきかどうかは製品判断であり、この環境からは判断できない。
 8. まだ答えが出ていないこと: staff/viewer のダッシュボード初期表示は本当に self（自分の分だけ）にすべきか、それとも現状維持（tenant-wide）のままでよいか。代表判断待ち。
 9. 公開区分: 公開可（実装の技術的な経緯であり、金額・テナント名・接続情報は含まない）
+
+## 2026-08-20 IMP-043 見積/請求ワークフロー — 承認スナップショット・版管理・POS ブリッジ
+
+1. 日付: 2026-08-20
+2. 起きたこと: IMP-043（§11 見積/請求ワークフロー）の実装。documents 統合モデル（9 帳票種 + 遷移マップ + PDF + 送付履歴）と PaymentState 導出層（IMP-027）は完了済みだが、顧客承認額の版管理、POS→元帳自動ブリッジ、返金元帳エントリが未実装。
+3. 以前の考え: 見積の status=accepted で「承認済み」として扱っていた。承認時の金額・明細の凍結はなく、LINE フローの awaiting_quote_ok→yes も flow state の遷移のみで、承認額の記録はなかった。
+4. 違和感・問題: (a) 見積承認後に明細を編集すると、顧客が承認した金額と実際の金額が乖離する（「いつの間にか数字が変わった」問題 — ADR-0004）。(b) 帳票の確定後編集は integrity_seal（ハッシュ）で検出できるが、版履歴の追跡がない。(c) POS 決済（payments テーブル）と売掛元帳（payment_entries）が別系統で、POS 入金の元帳反映が手動のみ。(d) payment_entries は CHECK(amount > 0) で返金エントリを記録できない。
+5. 決めたこと: (a) 見積承認スナップショット（`estimateApproval.ts`）— 承認時の明細・金額を deep copy で凍結し、差分検出で再承認要否を判定。3 承認方法。(b) 帳票版管理（`documentVersion.ts`、ADR-0004 準拠）— DocumentVersion 型 + DocumentCorrectionRequest（5 カテゴリ×4 ステータス遷移表）。invoice 系 + estimate の確定済みのみ訂正ワークフロー必須。(c) POS→元帳ブリッジ（`posLedgerBridge.ts`）— POS 取引をプロバイダ別 PaymentMethod マッピング付きで LedgerEntryInput に変換。返金は RefundLedgerEntryInput に分離、記帳方式（negative_entry / separate_table）は DB 設計で決定。
+6. 捨てた選択肢: (a) 帳票テーブルに version 列追加して版ごとにレコード管理 → ADR-0004 の Correction Record パターンの方が証明書（IMP-030）と統一的。(b) POS→元帳を webhook トリガーで自動実行 → コンシューマ（webhook ハンドラ）がまだないので YAGNI。型基盤のみ先行。(c) 返金を payment_entries の amount CHECK 制約を変更して負値許可 → DB マイグレーションを伴うため消費タスクに委譲。2 方式（negative/separate_table）を純関数で提供し、DB 設計時に決定。
+7. 判断理由: ADR-0004「訂正は上書きではなく版の追加」を帳票にも適用することで、証明書の版管理（IMP-030）と同一パターンで設計。見積承認スナップショットは IMP-042 の WorkflowSnapshot と同じ凍結パターン。POS ブリッジは recordInvoicePaymentBalance の referenceNo 冪等性キーと同じ方式で重複記帳を防止。
+8. まだ答えが出ていないこと: (a) DB マイグレーション — document_versions テーブル、documents.approval_snapshot 列の追加時期。(b) 返金の帳簿記帳方式（negative_entry vs separate_table）の最終決定。(c) LINE フローの awaiting_quote_ok→yes 時に自動で approval_snapshot を作成する統合タイミング。(d) 見積改定時の顧客への再承認通知方法。
+9. 公開区分: 公開可
 
 ## 2026-08-20 IMP-042 ワークフローテンプレート版管理（スナップショット方式）
 

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   CERTIFICATE_STATES,
+  DOCUMENT_CORRECTION_STATES,
   JOB_STATES,
   PART_INSTALLATION_STATES,
   PAYMENT_STATES,
@@ -8,6 +9,7 @@ import {
   STEP_STATES,
   SYNC_STATES,
   isCertificateState,
+  isDocumentCorrectionState,
   isJobState,
   isPartInstallationState,
   isPaymentState,
@@ -35,6 +37,7 @@ const AXES = [
   { name: "payment", values: PAYMENT_STATES, guard: isPaymentState, expected: 9 },
   { name: "sync", values: SYNC_STATES, guard: isSyncState, expected: 5 },
   { name: "partInstallation", values: PART_INSTALLATION_STATES, guard: isPartInstallationState, expected: 5 },
+  { name: "documentCorrection", values: DOCUMENT_CORRECTION_STATES, guard: isDocumentCorrectionState, expected: 4 },
 ] as const;
 
 describe("正準語彙の値集合(v2.0 Appendix A)", () => {
@@ -80,7 +83,7 @@ describe("型ガード(不正値の扱い)", () => {
   });
 });
 
-// PartInstallation の遷移表テストは transitions.test.ts（他 6 軸と同じ場所）に移設。
+// PartInstallation / DocumentCorrection の遷移表テストは transitions.test.ts（他の軸と同じ場所）に移設。
 
 describe("ロケール別ラベル", () => {
   it.each(AXES)("$name: 収録ロケールのマップは全正準値を網羅し空文字がない", ({ name, values }) => {
