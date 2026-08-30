@@ -12,6 +12,11 @@
 
 const JST_OFFSET = "+09:00";
 
+/** 国内店舗の営業日を YYYY-MM-DD で返す。ブラウザ/サーバーの TZ に依存しない。 */
+export function businessDateString(now: Date = new Date()): string {
+  return new Date(now.getTime() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
+}
+
 /** 既に Z / ±HH:MM のオフセットを持つか。 */
 function hasTimezone(s: string): boolean {
   return /[zZ]$|[+-]\d{2}:?\d{2}$/.test(s);

@@ -10,6 +10,7 @@
  */
 
 import type { CertificateState } from "@/lib/domain/states";
+import { isValidTransition } from "@/lib/domain/transitions";
 
 // ── 訂正リクエスト状態 ──
 
@@ -92,7 +93,7 @@ export function evaluateCorrectionEligibility(
 ): CorrectionEligibility {
   // VERIFIED のみ訂正可能
   if (certificateState !== "VERIFIED") {
-    const reasons: Record<string, string> = {
+    const reasons: Partial<Record<CertificateState, string>> = {
       NOT_READY: "証明書が発行準備中です。通常の編集で内容を修正してください。",
       READY: "証明書が発行準備中です。通常の編集で内容を修正してください。",
       ISSUING: "証明書が発行処理中です。完了後に訂正リクエストを提出してください。",
@@ -131,7 +132,7 @@ const CORRECTION_STATUS_TRANSITIONS: Record<CorrectionRequestStatus, readonly Co
  * 訂正リクエストの状態遷移が有効かを検証する。
  */
 export function isValidCorrectionTransition(from: CorrectionRequestStatus, to: CorrectionRequestStatus): boolean {
-  return CORRECTION_STATUS_TRANSITIONS[from].includes(to);
+  return isValidTransition(CORRECTION_STATUS_TRANSITIONS, from, to);
 }
 
 // ── 未処理訂正の有無判定（Certificate Gate 用） ──

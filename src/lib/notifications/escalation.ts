@@ -68,7 +68,9 @@ export function evaluateEscalation(
   thresholds: SlaThresholds,
   nowMs: number,
 ): EscalationResult {
-  const thresholdHours = thresholds[priority as keyof SlaThresholds] ?? thresholds.normal;
+  const thresholdHours = Object.hasOwn(thresholds, priority)
+    ? thresholds[priority as keyof SlaThresholds]
+    : thresholds.normal;
   const elapsedHours = (nowMs - createdAtMs) / (1000 * 60 * 60);
   const remainingHours = thresholdHours - elapsedHours;
   const remainingRatio = thresholdHours > 0 ? remainingHours / thresholdHours : 0;

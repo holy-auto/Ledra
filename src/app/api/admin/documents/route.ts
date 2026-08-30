@@ -16,12 +16,11 @@ import {
 } from "@/lib/api/response";
 import { documentCreateSchema, documentUpdateSchema, documentDeleteSchema } from "@/lib/validations/document";
 import { resolveBaseUrl } from "@/lib/url";
-import { maybeAutoSendDocumentOnConfirm } from "@/lib/ai/automation/documentAuto";
 import { insertDocWithRetry } from "@/lib/invoice/invoiceNumber";
 import { autoRegisterMenuItems } from "@/lib/documents/autoRegisterMenuItems";
 import { calcItems } from "@/lib/documents/calcItems";
 import { isValidRegistrationNumber } from "@/lib/invoice/taxBreakdown";
-import { recordInvoicePaymentBalance } from "@/lib/invoice/recordPayment";
+import { recordPaymentOnPaid, runDocumentFinalizeEffects } from "@/lib/documents/statusEffects";
 import { sealDocumentOnFinalize, stripClientIntegritySeal, type SealableDocument } from "@/lib/documents/documentSeal";
 
 export const dynamic = "force-dynamic";
@@ -503,24 +502,18 @@ export async function PUT(req: NextRequest) {
     // 請求書が「入金済」に更新されたら売掛元帳 (payment_entries) にも残高分を記帳して
     // 消込を整合させる (status=paid だけだと元帳上は未消込のまま残るため)。
     // 記帳失敗は status 更新 (主) を巻き戻さず log のみ (best-effort)。
-    if (body.status === "paid" && (data?.doc_type === "invoice" || data?.doc_type === "consolidated_invoice")) {
-      try {
-        await recordInvoicePaymentBalance(admin, {
-          tenantId: caller.tenantId,
-          documentId: data.id,
-          total: Number(data.total ?? 0),
-          customerId: (data.customer_id as string | null) ?? null,
-          paymentMethod: "cash",
-          paymentDate: (data.payment_date as string | null) ?? new Date().toISOString().slice(0, 10),
-          // 手動「入金済」更新は referenceNo が無く、連打で二重記帳し得る。
-          // document + 金額で決まる安定キーを渡し、recordPayment 側の重複ガードに拾わせる。
-          referenceNo: `manual:${data.id}:${Math.round(Number(data.total ?? 0))}`,
-          recordedBy: caller.userId,
-          notes: "請求書を入金済に更新 (自動記帳)",
-        });
-      } catch (ledgerErr) {
-        console.error("documents PUT: ledger entry failed (non-blocking)", ledgerErr);
-      }
+    if (body.status === "paid" && data) {
+      await recordPaymentOnPaid(admin, {
+        tenantId: caller.tenantId,
+        actorUserId: caller.userId,
+        document: {
+          id: data.id as string,
+          doc_type: data.doc_type as string,
+          total: (data.total as number | null) ?? null,
+          customer_id: (data.customer_id as string | null) ?? null,
+          payment_date: (data.payment_date as string | null) ?? null,
+        },
+      });
     }
 
     // 確定 (draft→sent) の瞬間に、opt-in 済みテナントでは顧客へ自動送付する。
@@ -529,39 +522,11 @@ export async function PUT(req: NextRequest) {
     // Stripe セッション / 外部送信の途中で送付が欠落しうる。ステータス更新自体は
     // 既にコミット済みなのでレスポンスは成功扱いのまま。
     if (priorStatus === "draft" && data?.status === "sent") {
-      const baseUrl = resolveBaseUrl({ req });
-      const isEstimate = data?.doc_type === "estimate";
-      after(async () => {
-        // 電帳法「真実性の確保」: 確定した帳票に内容ハッシュ＋TS 封印を付ける（best-effort）。
-        try {
-          await sealDocumentOnFinalize(
-            admin,
-            caller.tenantId,
-            data as SealableDocument & { id: string; meta_json?: unknown },
-          );
-        } catch (sealErr) {
-          console.error("documents PUT: integrity seal failed (non-blocking)", sealErr);
-        }
-        try {
-          await maybeAutoSendDocumentOnConfirm({
-            tenantId: caller.tenantId,
-            documentId: id,
-            actorUserId: caller.userId,
-            baseUrl,
-          });
-        } catch {
-          // maybeAutoSendDocumentOnConfirm は内部で握り潰すが、二重で保護する。
-        }
-        // 見積書の送付なら、その見積りに紐づく会話フローを可否待ちへ進め、
-        // 顧客に可否ボタンを送る (opt-in / 該当フロー無しは no-op / 内部で fail-soft)。
-        if (isEstimate) {
-          try {
-            const { maybeAdvanceFlowOnQuoteSent } = await import("@/lib/ai/automation/conversationFlowPostback");
-            await maybeAdvanceFlowOnQuoteSent({ tenantId: caller.tenantId, documentId: id });
-          } catch {
-            // fail-soft
-          }
-        }
+      runDocumentFinalizeEffects(admin, {
+        tenantId: caller.tenantId,
+        actorUserId: caller.userId,
+        baseUrl: resolveBaseUrl({ req }),
+        document: data as SealableDocument & { id: string; doc_type: string; meta_json?: unknown },
       });
     }
 

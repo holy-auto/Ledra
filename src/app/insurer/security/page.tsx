@@ -150,14 +150,10 @@ export default function InsurerSecurityPage() {
           <div className="inline-flex rounded-full border border-border-default bg-surface px-3 py-1 text-[11px] font-semibold tracking-[0.22em] text-secondary">
             SECURITY
           </div>
-          <h1 className="text-3xl font-bold tracking-tight text-primary">
-            セキュリティ設定
-          </h1>
+          <h1 className="text-3xl font-bold tracking-tight text-primary">セキュリティ設定</h1>
         </header>
         <div className="rounded-2xl border border-border-default bg-surface p-8 text-center shadow-sm">
-          <p className="text-sm text-muted">
-            このページは管理者のみアクセスできます。
-          </p>
+          <p className="text-sm text-muted">このページは管理者のみアクセスできます。</p>
         </div>
       </div>
     );
@@ -169,9 +165,7 @@ export default function InsurerSecurityPage() {
         <div className="inline-flex rounded-full border border-border-default bg-surface px-3 py-1 text-[11px] font-semibold tracking-[0.22em] text-secondary">
           SECURITY
         </div>
-        <h1 className="text-3xl font-bold tracking-tight text-primary">
-          セキュリティ設定
-        </h1>
+        <h1 className="text-3xl font-bold tracking-tight text-primary">セキュリティ設定</h1>
       </header>
 
       {/* Save feedback */}
@@ -195,12 +189,8 @@ export default function InsurerSecurityPage() {
         <>
           {/* Section 1: IP Whitelist */}
           <div className="rounded-2xl border border-border-default bg-surface p-5 shadow-sm">
-            <div className="mb-4 text-xs font-semibold tracking-[0.18em] text-muted">
-              IP ACCESS CONTROL
-            </div>
-            <h2 className="mb-4 text-lg font-bold text-primary">
-              IP許可リスト
-            </h2>
+            <div className="mb-4 text-xs font-semibold tracking-[0.18em] text-muted">IP ACCESS CONTROL</div>
+            <h2 className="mb-4 text-lg font-bold text-primary">IP許可リスト</h2>
 
             {/* Enable toggle */}
             <div className="mb-6 flex items-center gap-3">
@@ -208,22 +198,16 @@ export default function InsurerSecurityPage() {
                 onClick={handleToggleWhitelist}
                 disabled={saving}
                 className={`relative h-6 w-11 rounded-full transition-colors ${
-                  settings.ip_whitelist_enabled
-                    ? "bg-neutral-900"
-                    : "bg-neutral-300"
+                  settings.ip_whitelist_enabled ? "bg-neutral-900" : "bg-neutral-300"
                 }`}
               >
                 <span
                   className={`absolute top-0.5 block h-5 w-5 rounded-full bg-surface shadow transition-transform ${
-                    settings.ip_whitelist_enabled
-                      ? "translate-x-5"
-                      : "translate-x-0.5"
+                    settings.ip_whitelist_enabled ? "translate-x-5" : "translate-x-0.5"
                   }`}
                 />
               </button>
-              <span className="text-sm text-secondary">
-                IP制限を有効にする
-              </span>
+              <span className="text-sm text-secondary">IP制限を有効にする</span>
               {settings.ip_whitelist_enabled && (
                 <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700">
                   有効
@@ -239,9 +223,7 @@ export default function InsurerSecurityPage() {
                     key={ip}
                     className="flex items-center justify-between rounded-xl border border-border-subtle bg-inset px-4 py-2"
                   >
-                    <span className="font-mono text-sm text-secondary">
-                      {ip}
-                    </span>
+                    <span className="font-mono text-sm text-secondary">{ip}</span>
                     <button
                       onClick={() => handleRemoveIp(ip)}
                       disabled={saving}
@@ -253,9 +235,7 @@ export default function InsurerSecurityPage() {
                 ))}
               </div>
             ) : (
-              <p className="mb-4 text-sm text-muted">
-                許可IPアドレスが登録されていません。
-              </p>
+              <p className="mb-4 text-sm text-muted">許可IPアドレスが登録されていません。</p>
             )}
 
             {/* Add IP input */}
@@ -281,31 +261,22 @@ export default function InsurerSecurityPage() {
                 追加
               </button>
             </div>
-            {ipError && (
-              <p className="mt-2 text-sm text-red-600">{ipError}</p>
-            )}
+            {ipError && <p className="mt-2 text-sm text-red-600">{ipError}</p>}
 
-            {settings.ip_whitelist_enabled &&
-              settings.ip_whitelist.length === 0 && (
-                <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
-                  IP制限が有効ですが、許可IPが登録されていません。全てのアクセスがブロックされる可能性があります。
-                </div>
-              )}
+            {settings.ip_whitelist_enabled && settings.ip_whitelist.length === 0 && (
+              <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+                IP制限が有効ですが、許可IPが登録されていません。全てのアクセスがブロックされる可能性があります。
+              </div>
+            )}
           </div>
 
           {/* Section 2: Session Settings */}
           <div className="rounded-2xl border border-border-default bg-surface p-5 shadow-sm">
-            <div className="mb-4 text-xs font-semibold tracking-[0.18em] text-muted">
-              SESSION SETTINGS
-            </div>
-            <h2 className="mb-4 text-lg font-bold text-primary">
-              セッション設定
-            </h2>
+            <div className="mb-4 text-xs font-semibold tracking-[0.18em] text-muted">SESSION SETTINGS</div>
+            <h2 className="mb-4 text-lg font-bold text-primary">セッション設定</h2>
 
             <div>
-              <label className="mb-2 block text-sm font-medium text-secondary">
-                自動ログアウト時間
-              </label>
+              <label className="mb-2 block text-sm font-medium text-secondary">自動ログアウト時間</label>
               <div className="flex flex-wrap gap-2">
                 {TIMEOUT_OPTIONS.map((opt) => (
                   <button
@@ -322,9 +293,7 @@ export default function InsurerSecurityPage() {
                   </button>
                 ))}
               </div>
-              <p className="mt-2 text-xs text-muted">
-                設定した時間操作がない場合、自動的にログアウトされます。
-              </p>
+              <p className="mt-2 text-xs text-muted">設定した時間操作がない場合、自動的にログアウトされます。</p>
             </div>
           </div>
         </>

@@ -32,8 +32,7 @@ export function isLeadTokenFormat(value: string): boolean {
 type AdminLike = SupabaseClient<any, any, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
 
 export type CreateLeadResult =
-  | { ok: true; leadId: string; leadToken: string; attributedTenantIds: string[] }
-  | { ok: false; error: string };
+  { ok: true; leadId: string; leadToken: string; attributedTenantIds: string[] } | { ok: false; error: string };
 
 /**
  * partner が VIN を照会した時に呼ばれる。

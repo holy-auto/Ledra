@@ -85,8 +85,7 @@ export default function LessonForm({
         publish_as_platform: publishAsPlatform,
       };
 
-      const url =
-        mode === "create" ? "/api/admin/academy/lessons" : `/api/admin/academy/lessons/${initial.id}`;
+      const url = mode === "create" ? "/api/admin/academy/lessons" : `/api/admin/academy/lessons/${initial.id}`;
       const method = mode === "create" ? "POST" : "PATCH";
 
       const res = await fetch(url, {
@@ -110,9 +109,7 @@ export default function LessonForm({
   return (
     <div className="space-y-5">
       {error && (
-        <div className="p-3 bg-warning-dim border border-warning/30 rounded-lg text-sm text-warning">
-          {error}
-        </div>
+        <div className="p-3 bg-warning-dim border border-warning/30 rounded-lg text-sm text-warning">{error}</div>
       )}
 
       <Field label="タイトル" required>
@@ -233,11 +230,7 @@ export default function LessonForm({
 
       {canPublishAsPlatform && mode === "create" && (
         <label className="flex items-center gap-2 text-sm text-secondary">
-          <input
-            type="checkbox"
-            checked={publishAsPlatform}
-            onChange={(e) => setPublishAsPlatform(e.target.checked)}
-          />
+          <input type="checkbox" checked={publishAsPlatform} onChange={(e) => setPublishAsPlatform(e.target.checked)} />
           運営公式コンテンツとして投稿 (tenant_id を持たない)
         </label>
       )}

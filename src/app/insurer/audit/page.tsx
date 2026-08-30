@@ -136,14 +136,10 @@ export default function InsurerAuditPage() {
           <div className="inline-flex rounded-full border border-border-default bg-surface px-3 py-1 text-[11px] font-semibold tracking-[0.22em] text-secondary">
             AUDIT LOG
           </div>
-          <h1 className="text-3xl font-bold tracking-tight text-primary">
-            操作ログ
-          </h1>
+          <h1 className="text-3xl font-bold tracking-tight text-primary">操作ログ</h1>
         </header>
         <div className="rounded-2xl border border-border-default bg-surface p-8 text-center shadow-sm">
-          <p className="text-sm text-muted">
-            このページは管理者または監査者のみアクセスできます。
-          </p>
+          <p className="text-sm text-muted">このページは管理者または監査者のみアクセスできます。</p>
         </div>
       </div>
     );
@@ -155,21 +151,15 @@ export default function InsurerAuditPage() {
         <div className="inline-flex rounded-full border border-border-default bg-surface px-3 py-1 text-[11px] font-semibold tracking-[0.22em] text-secondary">
           AUDIT LOG
         </div>
-        <h1 className="text-3xl font-bold tracking-tight text-primary">
-          操作ログ
-        </h1>
+        <h1 className="text-3xl font-bold tracking-tight text-primary">操作ログ</h1>
       </header>
 
       {/* Filters */}
       <div className="rounded-2xl border border-border-default bg-surface p-5 shadow-sm">
-        <div className="mb-3 text-xs font-semibold tracking-[0.18em] text-muted">
-          FILTERS
-        </div>
+        <div className="mb-3 text-xs font-semibold tracking-[0.18em] text-muted">FILTERS</div>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <div>
-            <label className="mb-1 block text-xs font-medium text-muted">
-              操作種別
-            </label>
+            <label className="mb-1 block text-xs font-medium text-muted">操作種別</label>
             <select
               value={filterAction}
               onChange={(e) => setFilterAction(e.target.value)}
@@ -183,9 +173,7 @@ export default function InsurerAuditPage() {
             </select>
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-muted">
-              ユーザー
-            </label>
+            <label className="mb-1 block text-xs font-medium text-muted">ユーザー</label>
             <select
               value={filterUser}
               onChange={(e) => setFilterUser(e.target.value)}
@@ -200,9 +188,7 @@ export default function InsurerAuditPage() {
             </select>
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-muted">
-              開始日
-            </label>
+            <label className="mb-1 block text-xs font-medium text-muted">開始日</label>
             <input
               type="date"
               value={filterDateFrom}
@@ -211,9 +197,7 @@ export default function InsurerAuditPage() {
             />
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-muted">
-              終了日
-            </label>
+            <label className="mb-1 block text-xs font-medium text-muted">終了日</label>
             <input
               type="date"
               value={filterDateTo}
@@ -227,51 +211,30 @@ export default function InsurerAuditPage() {
       {/* Log Table */}
       <div className="rounded-2xl border border-border-default bg-surface shadow-sm">
         <div className="p-5 pb-0">
-          <div className="mb-4 text-xs font-semibold tracking-[0.18em] text-muted">
-            LOG ENTRIES
-          </div>
+          <div className="mb-4 text-xs font-semibold tracking-[0.18em] text-muted">LOG ENTRIES</div>
         </div>
         {loading && logs.length === 0 ? (
           <div className="p-5 text-sm text-muted">読み込み中...</div>
         ) : logs.length === 0 ? (
-          <div className="p-5 text-sm text-muted">
-            該当する操作ログがありません。
-          </div>
+          <div className="p-5 text-sm text-muted">該当する操作ログがありません。</div>
         ) : (
           <>
             <div className="overflow-x-auto">
               <table className="min-w-full text-sm">
                 <thead className="bg-inset">
                   <tr>
-                    <th className="p-3 text-left font-semibold text-secondary">
-                      日時
-                    </th>
-                    <th className="p-3 text-left font-semibold text-secondary">
-                      ユーザー
-                    </th>
-                    <th className="p-3 text-left font-semibold text-secondary">
-                      操作
-                    </th>
-                    <th className="p-3 text-left font-semibold text-secondary">
-                      詳細
-                    </th>
-                    <th className="p-3 text-left font-semibold text-secondary">
-                      IP
-                    </th>
+                    <th className="p-3 text-left font-semibold text-secondary">日時</th>
+                    <th className="p-3 text-left font-semibold text-secondary">ユーザー</th>
+                    <th className="p-3 text-left font-semibold text-secondary">操作</th>
+                    <th className="p-3 text-left font-semibold text-secondary">詳細</th>
+                    <th className="p-3 text-left font-semibold text-secondary">IP</th>
                   </tr>
                 </thead>
                 <tbody>
                   {logs.map((log) => (
-                    <tr
-                      key={log.id}
-                      className="border-t border-border-subtle"
-                    >
-                      <td className="whitespace-nowrap p-3 text-secondary">
-                        {formatDateTime(log.created_at)}
-                      </td>
-                      <td className="p-3 text-secondary">
-                        {log.user_display_name || "-"}
-                      </td>
+                    <tr key={log.id} className="border-t border-border-subtle">
+                      <td className="whitespace-nowrap p-3 text-secondary">{formatDateTime(log.created_at)}</td>
+                      <td className="p-3 text-secondary">{log.user_display_name || "-"}</td>
                       <td className="p-3">
                         <span className="rounded-full bg-surface-hover px-2 py-0.5 text-xs font-medium text-secondary">
                           {ACTION_LABELS[log.action] ?? log.action}
@@ -280,9 +243,7 @@ export default function InsurerAuditPage() {
                       <td className="max-w-xs truncate p-3 font-mono text-xs text-muted">
                         {log.meta ? formatMeta(log.meta) : "-"}
                       </td>
-                      <td className="p-3 text-xs text-muted">
-                        {log.ip ?? "-"}
-                      </td>
+                      <td className="p-3 text-xs text-muted">{log.ip ?? "-"}</td>
                     </tr>
                   ))}
                 </tbody>

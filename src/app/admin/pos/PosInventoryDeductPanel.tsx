@@ -124,9 +124,7 @@ export default function PosInventoryDeductPanel({ sales }: { sales: Sale[] }) {
         ))}
       </ul>
 
-      <div className="text-[10px] text-muted">
-        ※ 自動引落は次フェーズで実装予定 (現状は推定の確認のみ)
-      </div>
+      <div className="text-[10px] text-muted">※ 自動引落は次フェーズで実装予定 (現状は推定の確認のみ)</div>
     </section>
   );
 }

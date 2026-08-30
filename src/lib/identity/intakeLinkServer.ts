@@ -15,6 +15,7 @@
  */
 import crypto from "crypto";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
+import { resolveStoreId } from "@/lib/stores/resolveStoreId";
 import { createIntakeInvitation, type CreatedIntake } from "@/lib/identity/intakeServer";
 import { encryptSecret, decryptSecret } from "@/lib/crypto/secretBox";
 
@@ -72,13 +73,17 @@ export async function createStoreLink(input: CreateStoreLinkInput): Promise<Crea
   const tokenCipher = await encryptSecret(rawToken);
   const { admin } = createTenantScopedAdmin(input.tenantId);
 
+  // 「店舗用の」リンクなのに実測 1/1 件が null だった。createIntakeInvitation と同じ理由
+  const store = await resolveStoreId(admin, input.tenantId, input.storeId);
+  if (!store.ok) throw new Error(store.error);
+
   for (let i = 0; i < 3; i++) {
     const shortId = generateShortId();
     const { data, error } = await admin
       .from("customer_intake_links")
       .insert({
         tenant_id: input.tenantId,
-        store_id: input.storeId ?? null,
+        store_id: store.storeId,
         token_hash: tokenHash,
         token_cipher: tokenCipher,
         short_id: shortId,
