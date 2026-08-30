@@ -4,6 +4,15 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-08-30 IMP-029（#944）を main へ取り込み。中央通知エンジン型基盤、lint警告4件を修正
+
+- 内容: IMP-029（中央通知エンジン型基盤、branch impl/IMP-029-notification-engine）を main へ
+  取り込んだ。50ファイルの phantom conflict（46ファイル一括解決、4ファイル手動）＋resurrection
+  5ファイル（WorkScopeProvider.tsx / sync/* を9度目の再削除）を解消。新規テストファイル
+  （`notifications.test.ts`）の未使用import2件・未使用変数1件・`any`1件を修正（lint基準線
+  1256件に復帰）。
+- 検証: tsc/lint(0エラー・警告1256件)/vitest(4594件)/check:schema/lint:migrations すべて green。
+
 ## 2026-08-30 IMP-028（#943）を main へ取り込み。PR #942 のマージがIMP-027自身のDECISION_LOG/RELEASE_LOGエントリを無音で欠落させていたのを復元
 
 - 内容: IMP-028（Certificate Gate 単一評価器、branch impl/IMP-028-certificate-gate）を main へ

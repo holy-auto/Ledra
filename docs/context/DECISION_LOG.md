@@ -4,6 +4,18 @@
 > （新しい順）。実装の詳細は RELEASE_LOG.md、迷っている段階のものは
 > OPEN_QUESTIONS.md に書く。
 
+## 2026-08-30 IMP-029（#944）を main へ取り込み。lint警告4件（新規テストファイルの未使用importと any）を修正
+
+1. 日付: 2026-08-30
+2. 起きたこと: IMP-029（中央通知エンジン型基盤、branch impl/IMP-029-notification-engine）を main へ取り込む際、main と分岐した50ファイルが衝突した。46ファイルは phantom conflict（このPR自身のコミットが触っていない）で一括解決。残り4ファイル（DECISION_LOG.md/LEDRA_CURRENT.md/RELEASE_LOG.md/requirement-trace.md）はこのPR自身が変更していたため個別に手当てし、IMP-028（#943）マージ時に確立した手順（`checkout --theirs` で main の内容を base にしてから、PR自身の diff を正しい年代順位置に手動で再適用）を今回も適用。`grep` でPR自身の元エントリが main に存在することも確認済み（今回は自動マージによる欠落なし）。resurrection パターンが9度目の再発（`WorkScopeProvider.tsx`/`sync/*`）。lint 1260件（既存基準線1256件から+4）を検出、`src/lib/notifications/__tests__/notifications.test.ts` の未使用import 2件・未使用変数1件・`any` 1件を修正し基準線に復帰。
+3. 以前の考え: なし（前回確立した手順の踏襲）。
+4. 違和感・問題: 特になし。IMP-028（#943）で確立した「docs 4ファイルは衝突の有無に関わらず内容を grep で確認する」手順が、今回も有効に機能した。
+5. 決めたこと: 確立済みの merge 手順（phantom conflict 一括解決→genuinely-touched ファイルは main を base に手動再適用→resurrection チェック→lint/tsc/vitest→lint 差分検出時は原因ファイルを個別 eslint で特定して修正）をそのまま適用。
+6. 捨てた選択肢: なし。
+7. 判断理由: 前回（IMP-028）で発見した「衝突なし=正しい、ではない」という教訓を踏まえ、docs ファイルの内容確認を省略しない運用を継続した。
+8. まだ答えが出ていないこと: なし。
+9. 公開区分: 公開可（マージ手順の技術的な経緯。金額・テナント名・接続情報は含まない）
+
 ## 2026-08-30 IMP-028（#943）を main へ取り込み。PR #942 の自動マージ(無衝突)がDECISION_LOG/RELEASE_LOGのIMP-027自身のエントリを2件とも無音で欠落させていたことを発見・復元
 
 1. 日付: 2026-08-30

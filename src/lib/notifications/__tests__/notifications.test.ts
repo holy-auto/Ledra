@@ -10,10 +10,11 @@ import {
   isNotificationType,
   getTypeConfig,
 } from "../types";
-import type { NotificationType, NotificationTypeConfig } from "../types";
+import type { NotificationTypeConfig } from "../types";
 
 // ── deepLink ──
-import { DEEP_LINK_ENTITIES, buildDeepLink, buildCertificatePublicLink } from "../deepLink";
+import { buildDeepLink, buildCertificatePublicLink } from "../deepLink";
+import type { DeepLinkEntity } from "../deepLink";
 
 // ── escalation ──
 import { DEFAULT_SLA_THRESHOLDS, AT_RISK_RATIO, evaluateEscalation, shouldEscalate } from "../escalation";
@@ -27,9 +28,9 @@ import { resolveChannels, countActionRequired, groupByCategory, filterBySeverity
 
 describe("types", () => {
   it("全カタログエントリに必須フィールドがある", () => {
-    const entries = Object.entries(NOTIFICATION_TYPE_CATALOG) as [string, NotificationTypeConfig][];
+    const entries = Object.values(NOTIFICATION_TYPE_CATALOG) as NotificationTypeConfig[];
     expect(entries.length).toBeGreaterThanOrEqual(18);
-    for (const [key, config] of entries) {
+    for (const config of entries) {
       expect(NOTIFICATION_SEVERITIES).toContain(config.severity);
       expect(config.defaultChannels.length).toBeGreaterThan(0);
       for (const ch of config.defaultChannels) {
@@ -99,7 +100,7 @@ describe("deepLink", () => {
     ];
     for (const [entity, expected] of cases) {
       const result = buildDeepLink(BASE, {
-        entity: entity as any,
+        entity: entity as DeepLinkEntity,
         id: "id1",
         role: "admin",
       });
