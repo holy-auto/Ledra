@@ -13,6 +13,7 @@ import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { withRetry } from "@/lib/http/withRetry";
 import { getAnthropicClient, AI_MODEL_FAST } from "@/lib/ai/client";
 import { wrapUntrusted, untrustedNotice } from "@/lib/ai/promptSafety";
+import type { KnowledgeEntry } from "@/lib/ai/knowledgeReply";
 
 export interface ReplyDraftTurn {
   direction: "inbound" | "outbound";
@@ -24,6 +25,13 @@ export interface ReplyDraftInput {
   turns: ReplyDraftTurn[];
   customerName?: string | null;
   shopName?: string | null;
+  /** お客様の登録車両 (例: "トヨタ アルファード")。分かれば文脈に添える。 */
+  vehicle?: string | null;
+  /**
+   * 店舗ナレッジ (LINE 自動返信と同じソース)。回答の事実根拠にする。
+   * 空なら従来どおり会話文脈のみで下書きする。
+   */
+  knowledge?: KnowledgeEntry[];
 }
 
 export interface ReplyDraftResult {
@@ -43,7 +51,11 @@ LINE で届いた顧客メッセージへの返信ドラフトを 1 件作成し
 返信ドラフト (draft_reply) のルール:
 - 150〜250 字程度、敬体 (です / ます)
 - 直近の顧客メッセージの意図に具体的に応答する
-- 確定情報 (金額・予約日時・在庫の有無) は断定しない。必要なら
+- **「店舗ナレッジ」が与えられている場合は、それを事実の根拠にする**。営業時間・料金体系・
+  対応可否・保証などの店舗方針は、ナレッジに書かれている内容に忠実に答える。ナレッジに
+  無いことは店舗方針として断定せず、"確認の上、改めてご連絡いたします。" と添える
+  (ナレッジを推測で補完しない)。
+- 確定情報 (個別の金額・予約日時・在庫の有無) は断定しない。必要なら
   "確認の上、改めてご連絡いたします。" と添える
 - 来店予約や見積りの依頼には前向きに、次の一歩を促す
 - 絵文字 / 顔文字 / 過度な感嘆符は使わない
@@ -51,9 +63,19 @@ LINE で届いた顧客メッセージへの返信ドラフトを 1 件作成し
 - 署名や店舗名の定型文は付けない (送信時にスタッフが調整する)
 
 confidence: 0.0〜1.0 で、文脈の明瞭さに基づく自己評価。
-最新の顧客発言が曖昧・情報不足なら低めにする。
+最新の顧客発言が曖昧・情報不足なら低めにする。ナレッジで根拠づけられた回答ほど高くしてよい。
 
 ${untrustedNotice("会話履歴")}`.trim();
+
+/** 店舗ナレッジをプロンプトに載せる facts 文字列に整形する (空なら null)。 */
+export function knowledgeFacts(entries: KnowledgeEntry[] | undefined): string | null {
+  const usable = (entries ?? []).filter((e) => e.content?.trim());
+  if (usable.length === 0) return null;
+  const lines = usable.map((e) =>
+    e.title?.trim() ? `- ${e.title.trim()}: ${e.content.trim()}` : `- ${e.content.trim()}`,
+  );
+  return `店舗ナレッジ (回答の根拠。これに反する内容は書かない):\n${lines.join("\n")}`;
+}
 
 const EMPTY: ReplyDraftResult = { draft_reply: "", confidence: 0, ai: false };
 
@@ -68,6 +90,10 @@ export async function generateReplyDraft(input: ReplyDraftInput, opts?: { model?
   const facts: string[] = [];
   if (input.shopName) facts.push(`店舗: ${input.shopName}`);
   if (input.customerName) facts.push(`顧客名: ${input.customerName}`);
+  if (input.vehicle?.trim()) facts.push(`お客様の登録車両: ${input.vehicle.trim()}`);
+  // 店舗ナレッジ (LINE 自動返信と同じソース) を回答の根拠として先に載せる。
+  const kFacts = knowledgeFacts(input.knowledge);
+  if (kFacts) facts.push(kFacts);
   // 直近 12 ターンだけ文脈に渡す (長すぎる履歴を避ける)。
   const recent = input.turns.slice(-12);
   const convoFull = recent.map((t) => `${t.direction === "inbound" ? "顧客" : "店舗"}: ${t.body.trim()}`).join("\n");
