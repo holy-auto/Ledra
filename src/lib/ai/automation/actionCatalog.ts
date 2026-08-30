@@ -69,7 +69,8 @@ export type AutomationActionKey =
   | "inbound_message.auto_self_cancel"
   | "inbound_message.auto_self_reschedule"
   | "reservation.auto_day_before_reminder"
-  | "inbound_message.auto_status_reply";
+  | "inbound_message.auto_status_reply"
+  | "inbound_message.auto_flow_nudge";
 
 export interface AutomationActionDef {
   key: AutomationActionKey;
@@ -485,6 +486,16 @@ export const AUTOMATION_ACTIONS: readonly AutomationActionDef[] = [
     defaultEnabled: false,
     guard:
       "AI 有効 + Standard プラン以上 + 翌日(JST)の未キャンセル予約 + 顧客が line_user_id 紐付け済み + フォローアップ拒否でない。ボタンは self_cancel / self_reschedule の opt-in に応じて出す。",
+  },
+  {
+    key: "inbound_message.auto_flow_nudge",
+    workflow: "inbound_message",
+    label: "見積り待ちで止まったLINE会話に、車検証/車種年式のご返信をやさしく再促し",
+    description:
+      "お見積りの詳細（車検証のお写真 or 車種・年式）を依頼したまま一定時間ご返信が無い会話（awaiting_quote_detail）へ、失効（72h）する前に1回だけ『その後いかがでしょうか』の再促しを LINE で自動送信する。放置された見積りリードの取りこぼしを減らす。1会話につき1回だけ。opt-in / 既定 OFF。",
+    defaultEnabled: false,
+    guard:
+      "AI 有効 + Standard プラン以上 + 会話が awaiting_quote_detail のまま一定時間（既定24h）停滞 + 未失効 + line_user_id 紐付け済み + フォローアップ拒否でない。会話1件につき1回だけ（notification_logs で重複防止）。",
   },
   {
     key: "inbound_message.auto_status_reply",

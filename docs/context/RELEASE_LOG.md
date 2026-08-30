@@ -4,6 +4,26 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-08-30 見積りフロー改善④: 停滞した見積り会話フローの再促し（nudge）cron（branch claude/line-chatbot-ledra-dy2fiq）
+
+- 内容: お見積りの詳細（車検証写真 or 車種+年式）を依頼したまま一定時間ご返信が無い会話
+  （`awaiting_quote_detail`）は、これまで 72h で黙って失効するだけで、放置された見積りリードを
+  取りこぼしていた。失効前に **1回だけ「その後いかがでしょうか」の再促しを LINE で自動送信**する
+  cron を追加（opt-in・既定 OFF）。
+  - 対象は `awaiting_quote_detail` のみ（車検証/車種年式の再送だけで先へ進める“無状態”な再促しで、
+    過去メッセージのボタン=日程/キャンセル候補の陳腐化を気にせず送れるため）。日程選択待ち等の
+    再促しは古い候補ボタンの作り直しが要るため今回スコープ外。
+  - 条件: 最終活動から既定24h停滞（`updated_at`）＋未失効（`expires_at` 未来）＋ line_user_id 紐付け
+    ＋フォローアップ拒否でない。1会話につき1回（`notification_logs` type=flow_nudge で重複防止）。
+- 実装: `src/lib/cron/flowNudges.ts`（`processStalledFlowNudges`）＋ `src/app/api/cron/flow-nudges/route.ts`
+  （reservation-reminders と同じ cron-auth・`withCronLock`・opt-in テナントのキーセットページング）＋
+  `vercel.json` に `0 10 * * *` を追加。opt-in キー `inbound_message.auto_flow_nudge`（actionCatalog）、
+  ゲート `shouldNudgeStalledFlows`（orchestrator）、文面 `buildQuoteDetailNudge`（messages）。
+  **マイグレーション不要**（notification_logs の type/target_type は自由文字列）。
+- 検証: `flowNudges`（停滞のみ対象・新しい/失効は除外・dedup・未紐付けは送る・opt-out除外・
+  失敗ログ）テスト8件追加。全体 4474 件パス、tsc/eslint エラー0（既存 actionCatalog の `_key` 警告のみ）。
+- #2「見積りフロー改善」の4件目（最後）。これで #2 の4項目が完了。
+
 ## 2026-08-29 見積りフロー改善③: 概算見積りに「正式見積り/相談」ボタン誘導＋文面整合（branch claude/line-chatbot-ledra-dy2fiq）
 
 - 内容: LINE の概算見積り自動返信が「正式・詳細なお見積りはご来店時に承ります」で終わる**行き止まり**で、
