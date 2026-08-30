@@ -4,6 +4,18 @@
 > （新しい順）。実装の詳細は RELEASE_LOG.md、迷っている段階のものは
 > OPEN_QUESTIONS.md に書く。
 
+## 2026-08-30 IMP-025（#940）を main へ取り込み。PII シールドの穴3件を `/code-review` で発見・修正、resurrection バグを5度目の再削除
+
+1. 日付: 2026-08-30
+2. 起きたこと: IMP-025（#940, branch impl/IMP-025-vehicle-passport）を main へ取り込む際、(a) IMP-024 と同じ squash 履歴の断絶で `src/lib/sync/`・`WorkScopeProvider.tsx` が5度目の復活（IMP-025 は IMP-024 の pre-fix コミットから分岐していたため、IMP-024 の再削除より前の状態を引き継いでいた）、(b) `/code-review` で本 PR 自身の PII シールド実装（`piiFields.ts`/`customerRelation.ts`）に3件の穴を発見。
+3. 以前の考え: PII シールドは「コンパイル時型アサーション + テスト18件」で体系的に検証済みという認識だった。
+4. 違和感・問題: (i) `PIIFieldOverlap` はトップレベルの `keyof` しか見ないため、`PassportVerifyResponse` の入れ子オブジェクト（`vehicle`/`summary`/`meta_anchor`/`certificates[]`）内に将来 PII が追加されても検知できない。(ii) `PublicTransferView` のチェックだけ共有レジストリを使わず4件のリテラル文字列をハードコードしており、`current_owner_email`/`current_owner_name` の重複を見逃す設計になっていた。(iii) `VEHICLE_TABLE_PII_COLUMNS` に列挙された `customer_name`/`customer_email`/`customer_phone_masked` はマイグレーション `20260321000002` で `vehicles` テーブルから既に DROP 済みで実在せず、逆に実在する `plate_display`（ナンバープレート）が未登録だった。
+5. 決めたこと: (a) resurrection ファイル5件を再度削除（IMP-024 と同じ mv+`git add -A` 手順）。(b) `piiFields.ts` に `PassportVerifyResponse` の入れ子形状ごとの個別チェックを追加（ponytail: 汎用的な再帰型ウォーカーではなく、現存する入れ子形状を個別に列挙——理由は判断理由参照）。(c) `PublicTransferView` のチェックを共有レジストリ (`PIIFieldOverlap`) ベースに統一し、`from_owner_email`/`from_owner_name` を `PASSPORT_TABLE_PII_COLUMNS` に登録。(d) `VEHICLE_TABLE_PII_COLUMNS` から廃止済み3列を削除し `plate_display` を追加、`piiShield.test.ts` の期待値も更新。(e) OPEN_QUESTIONS.md 未記載だった2件の未解決事項を追記。
+6. 捨てた選択肢: (a) 汎用的な再帰型 PII ウォーカー（`type DeepPIIOverlap<T> = ...`）の実装 — 配列・union・optional・循環参照等のエッジケースを抱え込むリスクが、現時点で存在する4つの入れ子形状を個別列挙するコストを上回る。将来入れ子が増えたら再検討（ponytail コメントに明記）。(b) `check-resurrected-files.sh` 自体の改修 — IMP-024 の同種インシデントで既に「別タスクで検討」と決めており、本 PR のスコープでも変えない。
+7. 判断理由: PII シールドはセキュリティ上重要なガードであり、`/code-review` の指摘は「このモジュール自身が主張する保証（"catches regressions"）を実際には満たしていない」という核心的な指摘だったため、後回しにせず本 PR 内で修正した。resurrection 再削除は IMP-024 と全く同じ根本原因（fork 元が pre-fix コミット）であり、対応も同一手順を踏襲。
+8. まだ答えが出ていないこと: 残り約16本のスタック PR のうち、IMP-024 の pre-fix コミットより後に fork されたものは無い（全て IMP-023 以前から分岐）ため、この特定の resurrection パターン（sync/・WorkScopeProvider）は今後も毎回発生する見込み——マージ手順に「resurrection ファイルの手動確認」を毎回組み込む運用は継続するが、恒久的な自動検出は未解決のまま。
+9. 公開区分: 公開可（マージ手順とセキュリティレビューの技術的な経緯。金額・テナント名・接続情報は含まない）
+
 ## 2026-08-29 IMP-024（#939）を main へ取り込み。squash 履歴の断絶で4度目の復活をしていた src/lib/sync/・WorkScopeProvider.tsx を再削除
 
 1. 日付: 2026-08-29

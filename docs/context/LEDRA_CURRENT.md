@@ -383,6 +383,9 @@ Sentry · Resend (+ SendGrid fallback) · Anthropic (Opus 4.8 / Sonnet 4.6 / Hai
   ADR-0006 に基づく車両顧客関係型モデル(`customerRelation.ts`)を新設 — 型のみ、DB変更なし。
   車両パスポートの既存インフラ（10マイグレーション、公開ページ、所有権移転、API、メタアンカー、
   ペイウォール、収益分配）は変更不要 — 既に稼働中。DB マイグレーション（関係テーブル化）は IMP-050 に委譲。
+  main 取り込み時の `/code-review` で PII シールド自体の穴3件（入れ子形状の未検査・
+  `PublicTransferView` チェックの共有レジストリ未使用・廃止済み列の登録残存/新列の未登録）を
+  発見・修正。resurrection バグ（`src/lib/sync/`・`WorkScopeProvider.tsx`）も5度目の再削除。
 - **IMP-024（§7 音声→AI構造化→人間確認 — オフライン検知・多言語音声・備考接続）完了**:
   VoiceMemoPanel に3つの統合ギャップをクローズ。(1) オフライン検知 — AI 呼び出し前に
   `navigator.onLine` チェック、明示的エラー表示。(2) `speechLang` prop + `LOCALE_SPEECH_LANG`

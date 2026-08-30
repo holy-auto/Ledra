@@ -4,6 +4,26 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-08-30 IMP-025（#940）を main へ取り込み。PII シールドの穴3件を修正、resurrection バグを5度目の再削除
+
+- 内容: IMP-025（車両パスポート PII シールド、branch impl/IMP-025-vehicle-passport）を main へ
+  取り込む際、`/code-review` で本 PR 自身の PII シールド実装に3件の穴を発見・修正。
+  (1) `PIIFieldOverlap` はトップレベル `keyof` しか見ないため、`PassportVerifyResponse` の
+  入れ子オブジェクト（vehicle/summary/meta_anchor/certificates[]）内の将来的な PII 追加を
+  検知できなかった — 4つの入れ子形状を個別にチェックする assertion を追加。
+  (2) `PublicTransferView` のチェックだけ共有レジストリを使わずハードコードされており、
+  `current_owner_email`/`current_owner_name` の重複を見逃していた — `PIIFieldOverlap` ベースに
+  統一し、`from_owner_email`/`from_owner_name` をレジストリに登録。
+  (3) `VEHICLE_TABLE_PII_COLUMNS` が `customer_name`/`customer_email`/`customer_phone_masked`
+  （マイグレーション20260321000002で既にDROP済み・実在しない列）を列挙する一方、実在する
+  `plate_display`（ナンバープレート）が未登録だった — レジストリを実スキーマに合わせて修正。
+  加えて、IMP-024 と同じ squash 履歴の断絶で `src/lib/sync/`・`WorkScopeProvider.tsx` が
+  5度目の復活をしていたため再削除（IMP-025 が IMP-024 の再削除前のコミットから fork していたため）。
+- 対象: `src/lib/passport/piiFields.ts`、`src/lib/vehicles/customerRelation.ts`、
+  `src/lib/passport/__tests__/piiShield.test.ts`、`docs/context/OPEN_QUESTIONS.md`
+  （未記載だった2件の未解決事項を追記）。詳細は DECISION_LOG「IMP-025（#940）を main へ
+  取り込み。PII シールドの穴3件を `/code-review` で発見・修正」参照。
+
 ## 2026-08-29 IMP-024（#939）を main へ取り込み。squash 履歴の断絶で4度目の復活をしていた src/lib/sync/・WorkScopeProvider.tsx を再削除、VoiceMemoPanel の同時録音競合を修正
 
 - 内容: IMP-024（音声メモ統合、branch impl/IMP-024-voice）を main へ取り込む際、37 ファイルが
