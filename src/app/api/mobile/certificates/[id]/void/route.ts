@@ -2,6 +2,7 @@ import { parseJsonSafe } from "@/lib/api/safeJson";
 import { NextRequest } from "next/server";
 import { resolveMobileCaller } from "@/lib/auth/mobileAuth";
 import { hasPermission } from "@/lib/auth/permissions";
+import { logTenantAuditEvent } from "@/lib/audit/tenantLog";
 import {
   apiOk,
   apiUnauthorized,
@@ -29,7 +30,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     const { data: cert } = await caller.supabase
       .from("certificates")
-      .select("id, status")
+      .select("id, status, public_id, meta")
       .eq("id", id)
       .eq("tenant_id", caller.tenantId)
       .single();
@@ -39,24 +40,31 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return apiValidationError(`Cannot void: current status is "${cert.status}", expected "active"`);
     }
 
+    // 取消理由の専用列は certificates に無い（void_reason は part_installations 側）。
+    // Web の取消は理由を残していないが、モバイルは入力を必須にしているので
+    // 捨てずに meta へ残す。既存の meta を潰さないよう読み込んでから重ねる
+    const meta = { ...((cert.meta as Record<string, unknown> | null) ?? {}), void_reason: body.reason };
+
     const { data, error } = await caller.supabase
       .from("certificates")
-      .update({ status: "void", void_reason: body.reason })
+      .update({ status: "void", meta })
       .eq("id", id)
       .eq("tenant_id", caller.tenantId)
-      .select("id, public_id, vehicle_id, tenant_id, status, void_reason, created_at, updated_at")
+      .select("id, public_id, vehicle_id, tenant_id, status, meta, created_at, updated_at")
       .single();
 
     if (error) return apiInternalError(error, "certificates.void");
 
     // Audit log
-    await caller.supabase.from("audit_logs").insert({
-      tenant_id: caller.tenantId,
-      table_name: "certificates",
-      record_id: id,
+    await logTenantAuditEvent(caller.supabase, {
+      tenantId: caller.tenantId,
+      userId: caller.userId,
       action: "certificate_voided",
-      performed_by: caller.userId,
-      ip_address: request.headers.get("x-forwarded-for") ?? request.headers.get("x-real-ip"),
+      table: "certificates",
+      recordId: id,
+      targetPublicId: (cert.public_id as string | null) ?? null,
+      extra: { void_reason: body.reason },
+      req: request,
     });
 
     return apiOk({ certificate: data });

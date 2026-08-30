@@ -85,39 +85,23 @@ export default async function AgentHubPage() {
 
       <Card padding="compact" variant="inset">
         <p className="text-[13px] text-secondary leading-relaxed">
-          従来 7 つに分散していた代理店向け管理画面をここから横断的にアクセスできます。
-          個別の URL (<code className="px-1 py-0.5 rounded bg-border-subtle dark:bg-[rgba(255,255,255,0.07)]">/admin/agent-*</code>) も引き続き利用可能です。
+          従来 7 つに分散していた代理店向け管理画面をここから横断的にアクセスできます。 個別の URL (
+          <code className="px-1 py-0.5 rounded bg-border-subtle dark:bg-[rgba(255,255,255,0.07)]">/admin/agent-*</code>)
+          も引き続き利用可能です。
         </p>
       </Card>
 
       <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {HUB_CARDS.map((card) => (
-          <Link
-            key={card.href}
-            href={card.href}
-            className="group block rounded-[var(--radius-lg)] transition-all"
-          >
+          <Link key={card.href} href={card.href} className="group block rounded-[var(--radius-lg)] transition-all">
             <Card padding="default" className="h-full transition-shadow hover:shadow-md">
               <div className="flex flex-col gap-2">
-                <span className="text-[10px] font-medium tracking-[0.14em] text-secondary uppercase">
-                  {card.tag}
-                </span>
-                <h2 className="text-[16px] font-semibold text-primary leading-tight">
-                  {card.title}
-                </h2>
-                <p className="text-[13px] text-secondary leading-relaxed">
-                  {card.description}
-                </p>
+                <span className="text-[10px] font-medium tracking-[0.14em] text-secondary uppercase">{card.tag}</span>
+                <h2 className="text-[16px] font-semibold text-primary leading-tight">{card.title}</h2>
+                <p className="text-[13px] text-secondary leading-relaxed">{card.description}</p>
                 <span className="mt-2 inline-flex items-center gap-1 text-[12px] font-medium text-accent transition-transform group-hover:translate-x-0.5">
                   開く
-                  <svg
-                    width="14"
-                    height="14"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                    strokeWidth={2}
-                  >
+                  <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
                   </svg>
                 </span>

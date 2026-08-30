@@ -43,6 +43,9 @@ export const reservationCreateSchema = z.object({
   workflow_template_id: nullableUuid,
   // この予約で使う代車。日程候補の代車空き判定に使う。
   loaner_car_id: nullableUuid,
+  // 作成する店舗。未指定ならサーバが決める（`resolveStoreId`）。
+  // 他テナントの店舗 ID はサーバ側で弾く
+  store_id: nullableUuid,
   note: z
     .string()
     .trim()

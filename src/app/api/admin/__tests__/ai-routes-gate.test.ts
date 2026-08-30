@@ -48,8 +48,7 @@ vi.mock("@/lib/supabase/admin", () => ({
 }));
 vi.mock("@/lib/auth/checkRole", () => ({
   resolveCallerWithRole: mocks.resolveCaller,
-  requireMinRole: (caller: any, min: string) =>
-    ["admin", "owner"].includes(caller?.role) || min === "member",
+  requireMinRole: (caller: any, min: string) => ["admin", "owner"].includes(caller?.role) || min === "member",
 }));
 vi.mock("@/lib/api/insurerAuth", () => ({
   resolveInsurerCaller: mocks.resolveInsurer,
