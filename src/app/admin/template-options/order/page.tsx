@@ -27,7 +27,8 @@ export default function OrderPage() {
         const res = await fetch("/api/template-options/orders");
         const j = await res.json();
         setOrders(j.orders ?? []);
-      } catch {} finally {
+      } catch {
+      } finally {
         setLoading(false);
       }
     })();
@@ -110,16 +111,24 @@ export default function OrderPage() {
               {orders.map((order) => (
                 <tr key={order.id} className="border-t border-border-default hover:bg-surface-hover transition-colors">
                   <td className="p-3 text-primary">
-                    {order.order_type === "custom_production" ? "オリジナル制作" :
-                     order.order_type === "preset_setup" ? "テンプレ設定" :
-                     order.order_type === "modification" ? "修正依頼" : "追加制作"}
+                    {order.order_type === "custom_production"
+                      ? "オリジナル制作"
+                      : order.order_type === "preset_setup"
+                        ? "テンプレ設定"
+                        : order.order_type === "modification"
+                          ? "修正依頼"
+                          : "追加制作"}
                   </td>
                   <td className="p-3">
-                    <span className={`inline-block px-2 py-0.5 rounded-full text-xs ${
-                      order.status === "active" ? "bg-success-dim text-success" :
-                      order.status === "cancelled" ? "bg-red-900/30 text-red-400" :
-                      "bg-accent-dim text-accent"
-                    }`}>
+                    <span
+                      className={`inline-block px-2 py-0.5 rounded-full text-xs ${
+                        order.status === "active"
+                          ? "bg-success-dim text-success"
+                          : order.status === "cancelled"
+                            ? "bg-red-900/30 text-red-400"
+                            : "bg-accent-dim text-accent"
+                      }`}
+                    >
                       {ORDER_STATUS_LABELS[order.status] ?? order.status}
                     </span>
                   </td>

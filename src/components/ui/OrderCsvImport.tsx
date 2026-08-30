@@ -3,8 +3,16 @@
 import { useRef, useState } from "react";
 import Button from "@/components/ui/Button";
 
-const CSV_HEADERS = ["title", "category", "description", "budget", "deadline", "requester_email", "requester_company"] as const;
-type CsvField = typeof CSV_HEADERS[number];
+const CSV_HEADERS = [
+  "title",
+  "category",
+  "description",
+  "budget",
+  "deadline",
+  "requester_email",
+  "requester_company",
+] as const;
+type CsvField = (typeof CSV_HEADERS)[number];
 
 interface CsvRow {
   title: string;
@@ -53,8 +61,10 @@ function parseCSV(text: string): ParsedRow[] {
     const errors: string[] = [];
     if (!data.title) errors.push("件名(title)は必須です");
     if (data.budget && isNaN(Number(data.budget))) errors.push("予算(budget)は数値で入力してください");
-    if (data.deadline && !/^\d{4}-\d{2}-\d{2}$/.test(data.deadline)) errors.push("納期(deadline)はYYYY-MM-DD形式で入力してください");
-    if (data.requester_email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.requester_email)) errors.push("メールアドレスの形式が不正です");
+    if (data.deadline && !/^\d{4}-\d{2}-\d{2}$/.test(data.deadline))
+      errors.push("納期(deadline)はYYYY-MM-DD形式で入力してください");
+    if (data.requester_email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.requester_email))
+      errors.push("メールアドレスの形式が不正です");
     rows.push({ index: i, data, errors });
   }
   return rows;
@@ -71,8 +81,10 @@ function splitCsvLine(line: string): string[] {
   for (let i = 0; i < line.length; i++) {
     const ch = line[i];
     if (ch === '"') {
-      if (inQuotes && line[i + 1] === '"') { current += '"'; i++; }
-      else inQuotes = !inQuotes;
+      if (inQuotes && line[i + 1] === '"') {
+        current += '"';
+        i++;
+      } else inQuotes = !inQuotes;
     } else if (ch === "," && !inQuotes) {
       result.push(current);
       current = "";
@@ -150,7 +162,8 @@ export default function OrderCsvImport({ onImported }: Props) {
 
   const downloadTemplate = () => {
     const header = CSV_HEADERS.join(",");
-    const example = "PPF施工依頼（フロントバンパー）,PPF施工,ランクルフロントバンパー全面,80000,2026-06-30,billing@example.co.jp,株式会社サンプル";
+    const example =
+      "PPF施工依頼（フロントバンパー）,PPF施工,ランクルフロントバンパー全面,80000,2026-06-30,billing@example.co.jp,株式会社サンプル";
     const blob = new Blob(["﻿" + header + "\n" + example], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -211,7 +224,10 @@ export default function OrderCsvImport({ onImported }: Props) {
         <div className="glass-card overflow-hidden">
           <div className="flex items-center justify-between px-5 py-3 border-b border-border">
             <div className="text-sm font-semibold text-primary">
-              プレビュー <span className="text-muted font-normal">（{rows.length}行 / 有効:{validRows.length}行）</span>
+              プレビュー{" "}
+              <span className="text-muted font-normal">
+                （{rows.length}行 / 有効:{validRows.length}行）
+              </span>
             </div>
             {validRows.length > 0 && (
               <Button onClick={handleImport} loading={importing} disabled={importing}>
@@ -235,18 +251,19 @@ export default function OrderCsvImport({ onImported }: Props) {
               </thead>
               <tbody className="divide-y divide-border">
                 {rows.map((row) => (
-                  <tr
-                    key={row.index}
-                    className={row.errors.length > 0 ? "bg-red-500/5" : "hover:bg-surface-hover"}
-                  >
+                  <tr key={row.index} className={row.errors.length > 0 ? "bg-red-500/5" : "hover:bg-surface-hover"}>
                     <td className="px-3 py-2 text-muted">{row.index}</td>
-                    <td className="px-3 py-2 text-primary font-medium max-w-[200px] truncate">{row.data.title || "—"}</td>
+                    <td className="px-3 py-2 text-primary font-medium max-w-[200px] truncate">
+                      {row.data.title || "—"}
+                    </td>
                     <td className="px-3 py-2 text-secondary">{row.data.category || "—"}</td>
                     <td className="px-3 py-2 text-secondary">
                       {row.data.budget ? `¥${Number(row.data.budget).toLocaleString("ja-JP")}` : "—"}
                     </td>
                     <td className="px-3 py-2 text-secondary">{row.data.deadline || "—"}</td>
-                    <td className="px-3 py-2 text-secondary max-w-[160px] truncate">{row.data.requester_email || "—"}</td>
+                    <td className="px-3 py-2 text-secondary max-w-[160px] truncate">
+                      {row.data.requester_email || "—"}
+                    </td>
                     <td className="px-3 py-2">
                       {row.errors.length > 0 ? (
                         <span className="text-red-500" title={row.errors.join(", ")}>
@@ -265,11 +282,13 @@ export default function OrderCsvImport({ onImported }: Props) {
           {hasErrors && (
             <div className="px-5 py-3 border-t border-border bg-red-500/5 space-y-1">
               <p className="text-xs font-semibold text-red-500">エラーがある行はインポートされません:</p>
-              {rows.filter((r) => r.errors.length > 0).map((r) => (
-                <p key={r.index} className="text-[11px] text-red-400">
-                  行{r.index}: {r.errors.join(" / ")}
-                </p>
-              ))}
+              {rows
+                .filter((r) => r.errors.length > 0)
+                .map((r) => (
+                  <p key={r.index} className="text-[11px] text-red-400">
+                    行{r.index}: {r.errors.join(" / ")}
+                  </p>
+                ))}
             </div>
           )}
         </div>

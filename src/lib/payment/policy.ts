@@ -80,6 +80,8 @@ function evaluateB2B(paymentState: PaymentState, billingCycle: string | null): P
   if (paymentState === "UNKNOWN") return UNKNOWN_RESULT("b2b");
 
   // 支払いサイクル未設定 → 設定を促す
+  // 注意: この文言は src/lib/signoff/state.ts の④会計ステップと同一。
+  // 文言を変えるときは両方揃えること(片方だけ変わると案内が食い違う)。
   if (!billingCycle) {
     return {
       policy: "b2b",
@@ -100,6 +102,13 @@ function evaluateB2B(paymentState: PaymentState, billingCycle: string | null): P
 
 function evaluateInsurance(ctx: PaymentPolicyContext): PaymentPolicyResult {
   // ponytail: Phase 2。insurerApproved フラグで簡易判定。
+  // UNKNOWN/CANCELED は保険承認の有無に関係なく不成立(このファイル先頭の JSDoc の
+  // 「UNKNOWN 状態では条件不成立」「CANCELED は条件不成立」は insurance にも適用される。
+  // 承認後に決済が UNKNOWN/取消になるケース＝盲目リトライ禁止原則の対象)。
+  if (ctx.paymentState === "UNKNOWN") return UNKNOWN_RESULT("insurance");
+  if (ctx.paymentState === "CANCELED") {
+    return { policy: "insurance", met: false, reason: "決済が取り消されています。" };
+  }
   if (ctx.insurerApproved) {
     return { policy: "insurance", met: true };
   }

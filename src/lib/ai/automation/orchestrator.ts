@@ -76,6 +76,31 @@ export function shouldRunConversationFlow(settings: AiAutomationSettings): boole
   return resolveAutoAction(settings, "inbound_message.auto_conversation_flow");
 }
 
+/** 顧客が LINE で予約を自分でキャンセルできるか (inbound_message.auto_self_cancel)。 */
+export function shouldAutoSelfCancel(settings: AiAutomationSettings): boolean {
+  return resolveAutoAction(settings, "inbound_message.auto_self_cancel");
+}
+
+/** 顧客が LINE で予約の日程を自分で変更できるか (inbound_message.auto_self_reschedule)。 */
+export function shouldAutoSelfReschedule(settings: AiAutomationSettings): boolean {
+  return resolveAutoAction(settings, "inbound_message.auto_self_reschedule");
+}
+
+/** 予約前日リマインダーを LINE で自動送信するか (reservation.auto_day_before_reminder)。 */
+export function shouldSendDayBeforeReminder(settings: AiAutomationSettings): boolean {
+  return resolveAutoAction(settings, "reservation.auto_day_before_reminder");
+}
+
+/** 停滞した見積り会話フローに再促し (nudge) を送るか (inbound_message.auto_flow_nudge)。 */
+export function shouldNudgeStalledFlows(settings: AiAutomationSettings): boolean {
+  return resolveAutoAction(settings, "inbound_message.auto_flow_nudge");
+}
+
+/** 予約・作業の状況問い合わせに LINE で自動返信するか (inbound_message.auto_status_reply)。 */
+export function shouldAutoReplyStatus(settings: AiAutomationSettings): boolean {
+  return resolveAutoAction(settings, "inbound_message.auto_status_reply");
+}
+
 export interface InboundExtractionLike {
   intent?: string | null;
   confidence?: number | null;

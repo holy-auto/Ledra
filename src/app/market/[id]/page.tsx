@@ -11,22 +11,33 @@ export const dynamic = "force-dynamic";
 
 const statusLabel = (s: string) => {
   switch (s) {
-    case "listed": return "出品中";
-    case "reserved": return "商談中";
-    case "sold": return "成約済";
-    case "draft": return "下書き";
-    case "withdrawn": return "取下げ";
-    default: return s;
+    case "listed":
+      return "出品中";
+    case "reserved":
+      return "商談中";
+    case "sold":
+      return "成約済";
+    case "draft":
+      return "下書き";
+    case "withdrawn":
+      return "取下げ";
+    default:
+      return s;
   }
 };
 
 const statusVariant = (s: string) => {
   switch (s) {
-    case "listed": return "success" as const;
-    case "reserved": return "warning" as const;
-    case "sold": return "info" as const;
-    case "withdrawn": return "danger" as const;
-    default: return "default" as const;
+    case "listed":
+      return "success" as const;
+    case "reserved":
+      return "warning" as const;
+    case "sold":
+      return "info" as const;
+    case "withdrawn":
+      return "danger" as const;
+    default:
+      return "default" as const;
   }
 };
 
@@ -37,11 +48,7 @@ export default async function MarketVehicleDetailPage({ params }: { params: Prom
   const caller = await resolveCallerWithRole(supabase);
   if (!caller) redirect(`/login?next=/market/${id}`);
 
-  const { data: vehicles } = await supabase
-    .from("market_vehicles")
-    .select("*")
-    .eq("id", id)
-    .eq("status", "listed");
+  const { data: vehicles } = await supabase.from("market_vehicles").select("*").eq("id", id).eq("status", "listed");
 
   if (!vehicles || vehicles.length === 0) notFound();
   const vehicle = vehicles[0];
@@ -79,7 +86,9 @@ export default async function MarketVehicleDetailPage({ params }: { params: Prom
   return (
     <main className="mx-auto max-w-5xl px-6 py-10">
       <div className="mb-6">
-        <Link href="/market" className="text-sm text-accent hover:underline">← 在庫一覧に戻る</Link>
+        <Link href="/market" className="text-sm text-accent hover:underline">
+          ← 在庫一覧に戻る
+        </Link>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -119,7 +128,9 @@ export default async function MarketVehicleDetailPage({ params }: { params: Prom
           {/* Quick specs */}
           <div className="flex gap-3 text-sm text-secondary flex-wrap">
             {vehicle.year && <span className="glass-card px-3 py-1.5">{vehicle.year}年式</span>}
-            {vehicle.mileage != null && <span className="glass-card px-3 py-1.5">{vehicle.mileage.toLocaleString()} km</span>}
+            {vehicle.mileage != null && (
+              <span className="glass-card px-3 py-1.5">{vehicle.mileage.toLocaleString()} km</span>
+            )}
             {vehicle.color && <span className="glass-card px-3 py-1.5">{vehicle.color}</span>}
             {vehicle.transmission && <span className="glass-card px-3 py-1.5">{vehicle.transmission}</span>}
             {vehicle.fuel_type && <span className="glass-card px-3 py-1.5">{vehicle.fuel_type}</span>}
@@ -131,12 +142,18 @@ export default async function MarketVehicleDetailPage({ params }: { params: Prom
       <section className="glass-card p-5 mt-6">
         <div className="text-xs font-semibold tracking-[0.18em] text-muted mb-4">SPECIFICATIONS</div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-1">
-          {specRows.map(([label, value]) => value && (
-            <div key={label} className="flex items-center justify-between py-2 border-b border-border-subtle text-sm">
-              <span className="text-muted">{label}</span>
-              <span className="text-primary font-medium">{value}</span>
-            </div>
-          ))}
+          {specRows.map(
+            ([label, value]) =>
+              value && (
+                <div
+                  key={label}
+                  className="flex items-center justify-between py-2 border-b border-border-subtle text-sm"
+                >
+                  <span className="text-muted">{label}</span>
+                  <span className="text-primary font-medium">{value}</span>
+                </div>
+              ),
+          )}
         </div>
       </section>
 
@@ -162,7 +179,10 @@ export default async function MarketVehicleDetailPage({ params }: { params: Prom
           <div className="text-xs font-semibold tracking-[0.18em] text-muted mb-3">FEATURES</div>
           <div className="flex flex-wrap gap-2">
             {vehicle.features.map((f: string, i: number) => (
-              <span key={i} className="inline-flex items-center rounded-full border border-border-subtle bg-surface-hover px-3 py-1 text-xs text-secondary">
+              <span
+                key={i}
+                className="inline-flex items-center rounded-full border border-border-subtle bg-surface-hover px-3 py-1 text-xs text-secondary"
+              >
                 {f}
               </span>
             ))}
