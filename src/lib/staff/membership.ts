@@ -59,10 +59,11 @@ export type RoleChangeResult =
 /**
  * ロール変更が許可されるかを判定する。
  *
- * ルール:
+ * ルール（チェック順は validateMemberRemoval / validateMemberSuspension と統一 —
+ * 権限不足を先に判定することで、権限のない操作者に対象の役職を明かさない）:
  * 1. 自分自身のロールは変更不可（管理者不在を防ぐ）
- * 2. owner のロールは変更不可（owner は特殊。移譲は別フロー）
- * 3. 操作者は admin 以上が必要
+ * 2. 操作者は admin 以上が必要
+ * 3. owner のロールは変更不可（owner は特殊。移譲は別フロー）
  * 4. 変更先は ASSIGNABLE_ROLES (admin/staff/viewer) のみ
  * 5. admin 以上 → staff/viewer への降格時、最後の admin なら拒否
  */
@@ -70,17 +71,19 @@ export function validateRoleChange(input: RoleChangeInput): RoleChangeResult {
   if (input.callerId === input.targetId) {
     return { allowed: false, reason: "self_change" };
   }
-  if (input.currentRole === "owner" || input.currentRole === "super_admin") {
-    return { allowed: false, reason: "owner_protected" };
-  }
   if (!hasMinRole(input.callerRole, "admin")) {
     return { allowed: false, reason: "insufficient_rank" };
   }
-  if (!(ASSIGNABLE_ROLES as readonly string[]).includes(input.newRole)) {
+  if (input.currentRole === "owner" || input.currentRole === "super_admin") {
+    return { allowed: false, reason: "owner_protected" };
+  }
+  if (!ASSIGNABLE_ROLES.includes(input.newRole)) {
     return { allowed: false, reason: "unassignable_role" };
   }
   // admin→staff/viewer 降格で admin 以上が 0 になるケースを防ぐ
-  if (hasMinRole(input.currentRole, "admin") && !hasMinRole(input.newRole, "admin") && input.adminOrAboveCount <= 1) {
+  // （wouldLoseLastAdmin は currentRole が admin 以上か・残数が1以下かを判定。
+  //   ここでは「実際に admin 未満へ降格するか」も併せて見る必要がある）
+  if (!hasMinRole(input.newRole, "admin") && wouldLoseLastAdmin(input.currentRole, input.adminOrAboveCount)) {
     return { allowed: false, reason: "last_admin" };
   }
   return { allowed: true };
@@ -124,9 +127,9 @@ export function validateMemberRemoval(input: MemberRemovalInput): MemberRemovalR
   if (input.targetRole === "owner" || input.targetRole === "super_admin") {
     return { allowed: false, reason: "owner_protected" };
   }
-  // ponytail: admin 削除時、残り admin が 0 になるケースを防ぐ。
+  // admin 削除時、残り admin が 0 になるケースを防ぐ。
   // owner は admin 以上なので adminOrAboveCount に含まれる。
-  if (hasMinRole(input.targetRole, "admin") && input.adminOrAboveCount <= 1) {
+  if (wouldLoseLastAdmin(input.targetRole, input.adminOrAboveCount)) {
     return { allowed: false, reason: "last_admin" };
   }
   return { allowed: true };
@@ -170,7 +173,7 @@ export function validateMemberSuspension(input: MemberSuspensionInput): MemberSu
   if (input.targetRole === "owner" || input.targetRole === "super_admin") {
     return { allowed: false, reason: "owner_protected" };
   }
-  if (hasMinRole(input.targetRole, "admin") && input.adminOrAboveCount <= 1) {
+  if (wouldLoseLastAdmin(input.targetRole, input.adminOrAboveCount)) {
     return { allowed: false, reason: "last_admin" };
   }
   return { allowed: true, newState: input.action === "suspend" ? "suspended" : "deactivated" };
@@ -228,11 +231,9 @@ export function validateStoreTransfer(input: StoreTransferInput): StoreTransferR
 /**
  * テナントの最終管理者（admin 以上が全員消えるケース）を防ぐ汎用ガード。
  *
- * ロール変更・削除・停止のいずれでも使える。
+ * validateMemberRemoval() / validateMemberSuspension() / validateRoleChange() が
+ * 内部で使う単一定義源。バッチ操作等で呼び出し側が直接使いたいケースのためにも公開する。
  * 「対象者が admin 以上で、かつ残り admin 以上が 1 名以下」なら true。
- *
- * ponytail: 複数の validate 関数から個別に判定しているが、
- * 呼び出し側が直接使いたいケース（バッチ操作等）のために公開。
  */
 export function wouldLoseLastAdmin(targetRole: Role, adminOrAboveCount: number): boolean {
   return hasMinRole(targetRole, "admin") && adminOrAboveCount <= 1;

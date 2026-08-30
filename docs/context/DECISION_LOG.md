@@ -4,6 +4,18 @@
 > （新しい順）。実装の詳細は RELEASE_LOG.md、迷っている段階のものは
 > OPEN_QUESTIONS.md に書く。
 
+## 2026-08-30 IMP-045（#955）の code-review 指摘を修正。ガード3関数のチェック順不一致・重複ロジック・不要なキャストを解消
+
+1. 日付: 2026-08-30
+2. 起きたこと: PR #955 マージ後の `/code-review` で3件の指摘。すべて確認・修正: (1) `validateRoleChange()` は `owner_protected` を `insufficient_rank` より先にチェックしていたが、`validateMemberRemoval()`/`validateMemberSuspension()` は逆順（`insufficient_rank` が先）だった。権限のない操作者が owner を対象に操作した場合、`validateRoleChange()` だけが「owner_protected」という、対象が owner であることを明かす理由コードを返してしまい、他の2関数（権限不足のみを返す）と挙動が食い違っていた。(2) `!(ASSIGNABLE_ROLES as readonly string[]).includes(input.newRole)` — `ASSIGNABLE_ROLES` は既に `Role[]`、`input.newRole` は `Role` 型であり、キャストなしで型チェックが通ることを確認済み。不要な複雑化。(3) `hasMinRole(role, "admin") && adminOrAboveCount <= 1` という最終管理者判定ロジックが `validateMemberRemoval()`/`validateMemberSuspension()`/`wouldLoseLastAdmin()` の3箇所に重複していた（`wouldLoseLastAdmin()` 自体が単一定義源のはずだったが、他の2関数が呼び出さず再実装していた）。
+3. 以前の考え: マージ時点では `membership.ts` は型基盤先行パターンとして問題なしと判断していた。
+4. 違和感・問題: (1) は「3つの似たガード関数」を実装する際、チェック順という細部が意識的に統一されていなかった典型例。(3) は `wouldLoseLastAdmin()` 自体のコメントが「複数の validate 関数から個別に判定しているが」と重複を前提にした書き方をしており、意図的な重複であるかのように読めたが、実際には単に呼び出し忘れだった。
+5. 決めたこと: (1) `validateRoleChange()` のチェック順を他の2関数と揃え、`insufficient_rank` を `owner_protected` より先に判定するよう変更（権限のない操作者に対象の役職を明かさない）。(2) 不要なキャストを削除。(3) `validateMemberRemoval()`/`validateMemberSuspension()`/`validateRoleChange()` すべてで `wouldLoseLastAdmin()` を呼び出すよう統一し、`wouldLoseLastAdmin()` 自身のコメントも「単一定義源」であることを明記するよう更新。回帰テスト2件追加（チェック順一貫性、3関数横断の一貫性）。
+6. 捨てた選択肢: なし（3件とも明確な単一の正しい修正がある）。
+7. 判断理由: (1) は情報漏洩に類する実害があるバグであり修正必須。(3) は CLAUDE.md の「バグ修正は根本原因、対症療法ではない」方針に沿い、`wouldLoseLastAdmin()` を実際に単一定義源にした（コメントを直すだけでなく、呼び出し側も統一）。
+8. まだ答えが出ていないこと: なし。
+9. 公開区分: 公開可（コードレビューで見つかった型基盤コードの論理バグ修正。金額・テナント名・接続情報は含まない）
+
 ## 2026-08-30 IMP-045（#955）を main へ取り込み。resurrection パターン19度目、ドキュメントのテスト件数訂正（33→36件）
 
 1. 日付: 2026-08-30

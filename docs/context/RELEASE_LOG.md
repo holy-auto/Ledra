@@ -4,6 +4,17 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-08-30 IMP-045（#955）の code-review 指摘を修正。ガード3関数のチェック順不一致・重複ロジック・不要なキャストを解消
+
+- 内容: `src/lib/staff/membership.ts` の `validateRoleChange()` のチェック順を
+  `validateMemberRemoval()`/`validateMemberSuspension()` と統一（`insufficient_rank` を
+  `owner_protected` より先に判定し、権限のない操作者に対象の役職を明かさない）。
+  `ASSIGNABLE_ROLES.includes()` の不要な型キャストを削除。3つのガード関数すべてで
+  最終管理者判定に `wouldLoseLastAdmin()` を呼び出すよう統一（重複実装を解消）。
+  回帰テスト2件追加。
+- 検証: tsc --noEmit / vitest run(4999件) / lint(0エラー、1256警告=基準線) / check:schema /
+  lint:migrations すべて green。
+
 ## 2026-08-30 IMP-045（#955）を main へ取り込み。スタッフメンバーシップ管理ガード — 移籍・停止・最終管理者保護
 
 - 内容: IMP-045（スタッフメンバーシップ管理ガード、branch impl/IMP-045-staff-management）を
