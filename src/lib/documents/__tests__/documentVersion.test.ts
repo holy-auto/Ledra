@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   isVersionTracked,
   isCorrectable,
-  isValidCorrectionTransition,
+  isValidDocumentCorrectionStatusTransition,
   computeVersionDiff,
   requiresCorrectionWorkflow,
 } from "../documentVersion";
@@ -31,31 +31,31 @@ describe("isCorrectable", () => {
   });
 });
 
-// ── isValidCorrectionTransition ──
+// ── isValidDocumentCorrectionStatusTransition ──
 
-describe("isValidCorrectionTransition", () => {
+describe("isValidDocumentCorrectionStatusTransition", () => {
   it("pending → approved: valid", () => {
-    expect(isValidCorrectionTransition("pending", "approved")).toBe(true);
+    expect(isValidDocumentCorrectionStatusTransition("pending", "approved")).toBe(true);
   });
 
   it("pending → rejected: valid", () => {
-    expect(isValidCorrectionTransition("pending", "rejected")).toBe(true);
+    expect(isValidDocumentCorrectionStatusTransition("pending", "rejected")).toBe(true);
   });
 
   it("approved → applied: valid", () => {
-    expect(isValidCorrectionTransition("approved", "applied")).toBe(true);
+    expect(isValidDocumentCorrectionStatusTransition("approved", "applied")).toBe(true);
   });
 
   it("pending → applied: invalid（承認をスキップできない）", () => {
-    expect(isValidCorrectionTransition("pending", "applied")).toBe(false);
+    expect(isValidDocumentCorrectionStatusTransition("pending", "applied")).toBe(false);
   });
 
   it("rejected → approved: invalid（却下後の承認はできない）", () => {
-    expect(isValidCorrectionTransition("rejected", "approved")).toBe(false);
+    expect(isValidDocumentCorrectionStatusTransition("rejected", "approved")).toBe(false);
   });
 
   it("applied → pending: invalid（適用後の巻き戻しはできない）", () => {
-    expect(isValidCorrectionTransition("applied", "pending")).toBe(false);
+    expect(isValidDocumentCorrectionStatusTransition("applied", "pending")).toBe(false);
   });
 });
 

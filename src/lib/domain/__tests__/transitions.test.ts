@@ -7,13 +7,14 @@ import {
   PAYMENT_TRANSITIONS,
   SYNC_TRANSITIONS,
   PART_INSTALLATION_TRANSITIONS,
+  DOCUMENT_CORRECTION_TRANSITIONS,
   isValidTransition,
   validNextStates,
   isTerminalState,
   isKnownState,
   rejectTransition,
 } from "../transitions";
-import type { JobState, PartInstallationState } from "../states";
+import type { JobState, PartInstallationState, DocumentCorrectionState } from "../states";
 import {
   JOB_STATES,
   STEP_STATES,
@@ -22,7 +23,9 @@ import {
   PAYMENT_STATES,
   SYNC_STATES,
   PART_INSTALLATION_STATES,
+  DOCUMENT_CORRECTION_STATES,
   isPartInstallationState,
+  isDocumentCorrectionState,
 } from "../states";
 import { CERTIFICATE_GATE_CONDITIONS, isCertificateGateCondition } from "../certificateGate";
 
@@ -36,6 +39,7 @@ const AXES = [
   { name: "payment", table: PAYMENT_TRANSITIONS, states: PAYMENT_STATES },
   { name: "sync", table: SYNC_TRANSITIONS, states: SYNC_STATES },
   { name: "partInstallation", table: PART_INSTALLATION_TRANSITIONS, states: PART_INSTALLATION_STATES },
+  { name: "documentCorrection", table: DOCUMENT_CORRECTION_TRANSITIONS, states: DOCUMENT_CORRECTION_STATES },
 ] as const;
 
 describe("遷移表の構造", () => {
@@ -271,6 +275,47 @@ describe("PART_INSTALLATION_TRANSITIONS", () => {
     for (const k of ["toString", "__proto__", "constructor", "hasOwnProperty", "valueOf"]) {
       expect(() => isValidTransition(PART_INSTALLATION_TRANSITIONS, bad(k), "VOIDED")).not.toThrow();
       expect(isValidTransition(PART_INSTALLATION_TRANSITIONS, bad(k), "VOIDED")).toBe(false);
+    }
+  });
+});
+
+// ── 帳票訂正リクエスト（DocumentCorrection）遷移 ADR-0004 ──
+
+describe("DOCUMENT_CORRECTION_TRANSITIONS", () => {
+  it("PENDING → APPROVED / REJECTED のみ許可", () => {
+    expect(isValidTransition(DOCUMENT_CORRECTION_TRANSITIONS, "PENDING", "APPROVED")).toBe(true);
+    expect(isValidTransition(DOCUMENT_CORRECTION_TRANSITIONS, "PENDING", "REJECTED")).toBe(true);
+    expect(isValidTransition(DOCUMENT_CORRECTION_TRANSITIONS, "PENDING", "APPLIED")).toBe(false);
+  });
+
+  it("APPROVED → APPLIED のみ許可", () => {
+    expect(isValidTransition(DOCUMENT_CORRECTION_TRANSITIONS, "APPROVED", "APPLIED")).toBe(true);
+    expect(isValidTransition(DOCUMENT_CORRECTION_TRANSITIONS, "APPROVED", "PENDING")).toBe(false);
+  });
+
+  it("REJECTED / APPLIED は終端状態", () => {
+    expect(isTerminalState(DOCUMENT_CORRECTION_TRANSITIONS, "REJECTED")).toBe(true);
+    expect(isTerminalState(DOCUMENT_CORRECTION_TRANSITIONS, "APPLIED")).toBe(true);
+    for (const target of DOCUMENT_CORRECTION_STATES) {
+      expect(isValidTransition(DOCUMENT_CORRECTION_TRANSITIONS, "REJECTED", target)).toBe(false);
+      expect(isValidTransition(DOCUMENT_CORRECTION_TRANSITIONS, "APPLIED", target)).toBe(false);
+    }
+  });
+
+  it("遷移表のキーと値はすべて正準値", () => {
+    for (const [from, targets] of Object.entries(DOCUMENT_CORRECTION_TRANSITIONS)) {
+      expect(isDocumentCorrectionState(from)).toBe(true);
+      for (const to of targets as readonly string[]) {
+        expect(isDocumentCorrectionState(to)).toBe(true);
+      }
+    }
+  });
+
+  it("Object.prototype 由来のキーで例外を投げない（プロトタイプ汚染防止）", () => {
+    const bad = (v: string) => v as unknown as DocumentCorrectionState;
+    for (const k of ["toString", "__proto__", "constructor", "hasOwnProperty", "valueOf"]) {
+      expect(() => isValidTransition(DOCUMENT_CORRECTION_TRANSITIONS, bad(k), "APPLIED")).not.toThrow();
+      expect(isValidTransition(DOCUMENT_CORRECTION_TRANSITIONS, bad(k), "APPLIED")).toBe(false);
     }
   });
 });

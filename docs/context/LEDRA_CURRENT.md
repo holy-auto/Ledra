@@ -382,7 +382,7 @@ Sentry · Resend (+ SendGrid fallback) · Anthropic (Opus 4.8 / Sonnet 4.6 / Hai
   見積承認スナップショット（承認時の明細・金額凍結 + 差分検出 + 再承認要否判定）、
   帳票版管理（ADR-0004 準拠、訂正ワークフロー型定義 + 遷移表）、
   POS→売掛元帳ブリッジ（POS 取引→LedgerEntryInput 変換、プロバイダ別マッピング、返金分離）。
-  DB マイグレーション・UI 変更は消費タスクで実施。テスト 54 件。
+  DB マイグレーション・UI 変更は消費タスクで実施。テスト 56 件。
 - **IMP-042（WORKFLOW_BUILDER 版管理テンプレート型基盤）完了**:
   ワークフローテンプレートの版管理型基盤。WorkflowSnapshot（ジョブ開始時テンプレート凍結）+
   TemplateStep 正準共有型（6+ 箇所の散在型定義を統一）+ diffTemplateSteps（steps 差分比較）+

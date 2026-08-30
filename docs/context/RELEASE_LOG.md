@@ -4,6 +4,19 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-08-30 IMP-043（#953）の code-review 指摘を修正。DocumentCorrection遷移表のプロトタイプ汚染ガード欠如・POSブリッジの完全性欠落・関数名衝突を解消
+
+- 内容: `src/lib/domain/states.ts` の `DOCUMENT_CORRECTION_TRANSITIONS`/`isValidDocumentCorrectionTransition()`
+  を `transitions.ts` に移設し、他7軸と同じ `isValidTransition()`（`Object.hasOwn` ガード付き）を
+  再利用するよう統一（PR #950 の PartInstallation と同じ修正パターン）。`src/lib/documents/posLedgerBridge.ts`
+  の `bridgePosToLedger()` に、`documentId` はあるが `amount`・`refundAmount` とも0以下の取引を
+  `unbridgeable` に分類する処理を追加（従来はどのバケツにも入らず消えていた）。
+  `src/lib/documents/documentVersion.ts` の `isValidCorrectionTransition()` を
+  `isValidDocumentCorrectionStatusTransition()` に改名（`certificates/correction.ts` の
+  同名・別状態集合の関数との名前衝突を解消）。回帰テスト2件追加。
+- 検証: tsc --noEmit / vitest run(4920件) / lint(0エラー、1256警告=基準線) / check:schema /
+  lint:migrations すべて green。
+
 ## 2026-08-30 IMP-043（#953）を main へ取り込み。見積/請求ワークフロー型基盤 — 承認スナップショット・帳票版管理・POS ブリッジ
 
 - 内容: IMP-043（見積/請求ワークフロー型基盤、branch impl/IMP-043-estimate-invoice-workflow）を
@@ -688,13 +701,13 @@
   3 承認方法（customer_web/verbal_confirmation/message_reply）。
   (2) 帳票版管理（ADR-0004「訂正は上書きではなく版の追加」準拠）— `DocumentVersion` 型
   （版番号+ハッシュ+合計）、`DocumentCorrectionRequest`（5 カテゴリ×4 ステータス）、
-  遷移表 `isValidCorrectionTransition()`、`requiresCorrectionWorkflow()`（invoice 系
+  遷移表 `isValidDocumentCorrectionStatusTransition()`、`requiresCorrectionWorkflow()`（invoice 系
   + estimate の確定済みのみ対象）。
   (3) POS→元帳ブリッジ — `bridgePosToLedger()` で POS 取引を `LedgerEntryInput` に
   変換。プロバイダ別 PaymentMethod 自動マッピング。voided 除外、帳票なし→unbridgeable
   分類、返金→`RefundLedgerEntryInput` 分離。`computeRefundRecording()` で negative_entry
   / separate_table の 2 方式を提供。
-  テスト 54 件。
+  テスト 56 件。
 - 対象: 型定義・ロジック層（src/lib/documents/）。UI 変更・DB マイグレーションなし。
 
 ## 2026-08-20 IMP-042 WORKFLOW_BUILDER 版管理テンプレート型基盤（branch impl/IMP-042-workflow-versioning）

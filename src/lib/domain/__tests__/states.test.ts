@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import {
   CERTIFICATE_STATES,
   DOCUMENT_CORRECTION_STATES,
-  DOCUMENT_CORRECTION_TRANSITIONS,
   JOB_STATES,
   PART_INSTALLATION_STATES,
   PAYMENT_STATES,
@@ -17,7 +16,6 @@ import {
   isSeverity,
   isStepState,
   isSyncState,
-  isValidDocumentCorrectionTransition,
 } from "../states";
 import {
   DOMAIN_LOCALES,
@@ -85,36 +83,7 @@ describe("型ガード(不正値の扱い)", () => {
   });
 });
 
-// PartInstallation の遷移表テストは transitions.test.ts（他 6 軸と同じ場所）に移設。
-
-describe("DocumentCorrection 遷移表(ADR-0004)", () => {
-  it("PENDING → APPROVED / REJECTED のみ許可", () => {
-    expect(isValidDocumentCorrectionTransition("PENDING", "APPROVED")).toBe(true);
-    expect(isValidDocumentCorrectionTransition("PENDING", "REJECTED")).toBe(true);
-    expect(isValidDocumentCorrectionTransition("PENDING", "APPLIED")).toBe(false);
-  });
-
-  it("APPROVED → APPLIED のみ許可", () => {
-    expect(isValidDocumentCorrectionTransition("APPROVED", "APPLIED")).toBe(true);
-    expect(isValidDocumentCorrectionTransition("APPROVED", "PENDING")).toBe(false);
-  });
-
-  it("REJECTED / APPLIED は終端状態", () => {
-    for (const target of DOCUMENT_CORRECTION_STATES) {
-      expect(isValidDocumentCorrectionTransition("REJECTED", target)).toBe(false);
-      expect(isValidDocumentCorrectionTransition("APPLIED", target)).toBe(false);
-    }
-  });
-
-  it("遷移表のキーと値はすべて正準値", () => {
-    for (const [from, targets] of Object.entries(DOCUMENT_CORRECTION_TRANSITIONS)) {
-      expect(isDocumentCorrectionState(from)).toBe(true);
-      for (const to of targets as readonly string[]) {
-        expect(isDocumentCorrectionState(to)).toBe(true);
-      }
-    }
-  });
-});
+// PartInstallation / DocumentCorrection の遷移表テストは transitions.test.ts（他の軸と同じ場所）に移設。
 
 describe("ロケール別ラベル", () => {
   it.each(AXES)("$name: 収録ロケールのマップは全正準値を網羅し空文字がない", ({ name, values }) => {

@@ -4,6 +4,18 @@
 > （新しい順）。実装の詳細は RELEASE_LOG.md、迷っている段階のものは
 > OPEN_QUESTIONS.md に書く。
 
+## 2026-08-30 IMP-043（#953）の code-review 指摘を修正。DocumentCorrection遷移表のプロトタイプ汚染ガード欠如・POSブリッジの完全性欠落・関数名衝突を解消
+
+1. 日付: 2026-08-30
+2. 起きたこと: PR #953 マージ後の `/code-review` で3件の指摘。すべて確認・修正: (1) `isValidDocumentCorrectionTransition()`（states.ts）が `DOCUMENT_CORRECTION_TRANSITIONS[from]` を生の bracket access で参照しており、`from="toString"` 等で `Object.prototype` 由来の値を拾って `TypeError` を投げる — PR #950（PartInstallation）で既に修正した同型のバグを、8軸目として新規追加された本 PR がそのまま再導入していた。IMP-040/041/042 いずれの code-review でも同種のバグが繰り返し見つかっており、`transitions.ts` が「単一定義源」を掲げている以上、新しい状態軸を追加する際は必ずそこで `isValidTransition()` を再利用する運用を徹底する必要がある。(2) `bridgePosToLedger()`（posLedgerBridge.ts）の JSDoc は「completed は entries に分類」と網羅的な分類を謳っているが、`documentId` はあるのに `amount`・`refundAmount` が両方 0 以下（`payments.amount` に `CHECK(amount>0)` 制約はなく、実際に発生しうる）の取引が `entries`・`refundEntries`・`unbridgeable` のどれにも入らず消えていた。(3) `documentVersion.ts` の `isValidCorrectionTransition()` が `src/lib/certificates/correction.ts` の同名関数（5状態・cancelled 含む）と名前が完全一致しており、扱う状態集合（帳票は4状態）が異なるため、将来 import 元を取り違える危険があった。
+3. 以前の考え: マージ時点では `documentVersion.ts`/`posLedgerBridge.ts`/`states.ts` の追加分は型基盤先行パターンとして問題なしと判断していた。
+4. 違和感・問題: (1) は「新しい状態軸を追加するたびに同じ脆弱パターンが再発する」という構造的な問題（PR #950 の教訓が横展開されていなかった）。(3) は命名の一貫性チェックを欠いたまま2つの類似機能モジュールが独立に育った結果。
+5. 決めたこと: (1) `DOCUMENT_CORRECTION_TRANSITIONS` と検証ロジックを `transitions.ts` に移設し、他7軸と同じ `isValidTransition()` を再利用（states.ts には状態一覧・型ガードのみ残す）。対応して `states.test.ts` の遷移表テストを `transitions.test.ts` に移設（PartInstallation と同じ扱い）。(2) `bridgePosToLedger()` に「amount・refundAmount とも0以下は unbridgeable に分類」を追加し、全取引がいずれかのバケツに必ず入ることを保証。(3) `documentVersion.ts` 側の関数を `isValidDocumentCorrectionStatusTransition()` に改名し、状態集合の違い（4状態 vs 証明書の5状態）をコメントで明記。
+6. 捨てた選択肢: (3) について、証明書側を改名する案 — 証明書の `isValidCorrectionTransition()` は IMP-030 から存在し呼び出し元も多いため、後発の帳票側を改名する方が影響範囲が小さい。
+7. 判断理由: (1)(2) は正しさに影響する実バグであり修正必須。(3) は実行時バグではないが、CLAUDE.md の「バグ修正は根本原因、対症療法ではない」方針に沿い、将来の import 取り違えという実害が具体的に想定できるため修正した。
+8. まだ答えが出ていないこと: なし。
+9. 公開区分: 公開可（コードレビューで見つかった型基盤コードの論理バグ修正。金額・テナント名・接続情報は含まない）
+
 ## 2026-08-30 IMP-043（#953）を main へ取り込み。resurrection パターン17度目、未使用importを修正
 
 1. 日付: 2026-08-30
