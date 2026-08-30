@@ -4,6 +4,11 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-08-30 IMP-050（#957）へ2回目に届いた Codex レビュー7件を修正、うち2件は既存の意図的設計と確認し不採用
+
+- 内容: `FIELD_CLASSIFICATIONS`（classification.ts）に customers の実在 PII カラム6件（name_kana/postal_code/address/birth_date/note/line_user_id）を追加。`maxClassification()` の非空配列集計に `defaultClassification` が混入するバグを修正。`CERTIFICATE_PUBLIC_RULES`/`VEHICLE_PUBLIC_RULES`/`PASSPORT_PUBLIC_RULES` を `Object.freeze()` で実行時に凍結（`readonly` は型上の防御のみで、プロパティ代入は防げなかった）。`applyMask()` の truncate 戦略で `keepChars` に負値を渡すと末尾からのオフセットとして解釈され露出する不具合を `Math.max(0, ...)` でクランプして修正。「`PASSPORT_TABLE_PII_COLUMNS` に to_owner_email/to_owner_name/message が抜けている」という指摘は、`piiFields.ts` の `PublicTransferView` 検証コメントに明記済みの意図的設計（受領者本人には自分宛てのデータを見せる）と一致しないため不採用と確認・返信。回帰テスト4件追加。
+- 検証: tsc --noEmit clean / vitest run 5128件全通過（500ファイル、privacy 74件含む） / lint 0エラー・1256警告=基準線 / check:schema OK / lint:migrations OK。
+
 ## 2026-08-30 IMP-050（#957）へ PR オープン中に届いた Codex レビュー7件を修正
 
 - 内容: `FIELD_CLASSIFICATIONS`（classification.ts）の vehicles PII エントリを `VEHICLE_TABLE_PII_COLUMNS` から生成するよう修正（rendition.ts と同じ乖離バグが残っていた）。実在しない `tenant_secrets.encrypted_value`/`hearings.content`/`invoices.total_amount`/`insurer_cases.claim_amount` を実スキーマの列名（`tenants.line_channel_secret_ciphertext` 等の ciphertext 4列、hearings の実PII5列、`invoices.total`、`insurer_cases.meta`）に修正。`createRendition()` の戻り値型を `Redacted<T>`（マスク後の null/string を反映）に変更。`canAccess()`（visibility.ts）を再設計し、owner_only（データ主体本人）を tenant_internal/partner_shared/public のネスト階層から独立させた——本人であることが tenant_internal 以上や restricted なフィールドへの特権に自動昇格してしまう構造的バグ（P1、未配線のため実害は未発生）を解消。`createExportAuditEntry()` が呼び出し側の配列/オブジェクトを参照のまま保持していたのをコピー保持に変更。requirement-trace.md の §18/IMP-050 ステータスを「実装済み」から「部分（型基盤のみ、統合未着手）」に訂正——4エクスポートルートいずれも新モジュールを未呼び出しであることを確認。回帰テスト7件追加。

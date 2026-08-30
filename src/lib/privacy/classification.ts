@@ -88,8 +88,14 @@ export const FIELD_CLASSIFICATIONS: readonly FieldClassificationEntry[] = [
 
   // ── PII ──
   { table: "customers", column: "name", classification: "pii", reason: "顧客氏名" },
+  { table: "customers", column: "name_kana", classification: "pii", reason: "顧客氏名（カナ）" },
   { table: "customers", column: "email", classification: "pii", reason: "顧客メール" },
   { table: "customers", column: "phone", classification: "pii", reason: "顧客電話番号" },
+  { table: "customers", column: "postal_code", classification: "pii", reason: "顧客住所（郵便番号）" },
+  { table: "customers", column: "address", classification: "pii", reason: "顧客住所" },
+  { table: "customers", column: "birth_date", classification: "pii", reason: "生年月日" },
+  { table: "customers", column: "note", classification: "pii", reason: "自由記述（PII 含みうる）" },
+  { table: "customers", column: "line_user_id", classification: "pii", reason: "外部ID（LINE連携）" },
   // vehicles の PII カラムは VEHICLE_TABLE_PII_COLUMNS（customerRelation.ts の単一定義源）から
   // 生成する。手書きリストにすると rendition.ts の VEHICLE_PUBLIC_RULES と同じ乖離が起こる
   // （customer_name 等は削除済み、plate_display が抜けていた）。
@@ -152,18 +158,24 @@ export function getFieldClassification(
 /**
  * フィールド群の最高（最も厳しい）分類を返す。
  * 空配列 → defaultClassification。
+ *
+ * defaultClassification は「未登録フィールドの分類」としてのみ使う
+ * （getFieldClassification の第3引数に渡す）。非空配列の集計にそのまま
+ * 混ぜ込むと、defaultClassification が実在フィールドより厳しい場合に
+ * 常にその値が最大値として勝ってしまう（例: 全フィールドが confidential
+ * でも defaultClassification="pii" を渡すと結果が pii になる）。
  */
 export function maxClassification(
   fields: readonly { table: string; column: string }[],
   defaultClassification: DataClassification = "public",
 ): DataClassification {
   if (fields.length === 0) return defaultClassification;
-  let result = defaultClassification;
+  let result: DataClassification | undefined;
   for (const f of fields) {
     const c = getFieldClassification(f.table, f.column, defaultClassification);
-    result = stricterOf(result, c);
+    result = result === undefined ? c : stricterOf(result, c);
   }
-  return result;
+  return result as DataClassification;
 }
 
 /**

@@ -4,6 +4,18 @@
 > （新しい順）。実装の詳細は RELEASE_LOG.md、迷っている段階のものは
 > OPEN_QUESTIONS.md に書く。
 
+## 2026-08-30 IMP-050（#957）へ2回目に届いた Codex レビュー7件を修正、うち2件は既存の意図的設計と確認し不採用
+
+1. 日付: 2026-08-30
+2. 起きたこと: 前回の Codex レビュー修正を push した直後、さらに旧コミット（`6b4f1b0665`、直前の修正 push 前の状態）に対する2回目の Codex レビューが届いた。7件のうち5件は現行コード（`d6724d92` 以降）にもまだ残る実在バグとして確認・修正: (1) `FIELD_CLASSIFICATIONS` の customers エントリが name/email/phone のみで、実在する name_kana/postal_code/address/birth_date/note/line_user_id が未登録（`customers` テーブルの実マイグレーションで確認）。(2) `maxClassification()` が非空配列でも `result` の初期値を `defaultClassification` にしており、呼び出し側が全フィールドより厳しいデフォルトを渡すと常にそのデフォルトが最大値として勝ってしまう。(3) `readonly MaskingRule[]` は配列要素の入れ替えは防ぐが、`RULES[0].appliesBelow = "public"` のようなプロパティ代入は型チェッカーを迂回されると防げず、実行時の凍結が無かった。(4) `applyMask()` の truncate 戦略で `keepChars` に負値を渡すと `String.slice(0, -1)` が末尾からのオフセットとして解釈され、ほぼ全文字が露出する。残り2件は実スキーマ・既存コードと照合した結果、既存の意図的な設計と確認し不採用: (5)「`PASSPORT_TABLE_PII_COLUMNS` に `to_owner_email`/`to_owner_name`/`message` が抜けている」という指摘は、`piiFields.ts` の `PublicTransferView` 検証コメントに明記済みの意図的設計（受領者本人には自分宛ての to_owner_*/message を見せる。前所有者の from_owner_* のみ隠す）と一致しない誤検知だった。
+3. 以前の考え: 直前の修正で `/code-review` の5件 + Codex 1回目の7件（うち2件重複）をすべて解消し尽くしたと判断していた。
+4. 違和感・問題: (1)(2)(3)(4) は「rendition.ts の VEHICLE_PUBLIC_RULES だけ直して classification.ts の同型の重複を見落とした」という前回と同じパターンの繰り返し——1つのモジュールの1関数を直しても、姉妹関数・姉妹レジストリに同種のバグが残っていないか横展開する習慣が必要だった。(5) は自動レビューツールが「既存コードのコメントに明記された設計意図」を読み取れず、表面的なパターン（`from_owner_*` を隠すなら `to_owner_*` も対称的に隠すべき、という直感）で誤検知した例——確認せず反射的に直すと、既に意図的にレビュー済みの正しい挙動を壊すところだった。
+5. 決めたこと: (1) customers の PII エントリを6件追加。(2) `maxClassification()` を `result` の初期値を `undefined` にしてから最初のフィールドで確定するよう修正（defaultClassification は未登録フィールドの穴埋め専用に限定）。(3) `frozenRules()` ヘルパーを追加し、`CERTIFICATE_PUBLIC_RULES`/`VEHICLE_PUBLIC_RULES`/`PASSPORT_PUBLIC_RULES` の各要素と配列自体を `Object.freeze()`。(4) `truncate` の `keepChars` を `Math.max(0, ...)` でクランプ。(5) は修正せず、レビューコメントで「意図的設計と確認済み、`piiFields.ts` 参照」と返信するに留めた。回帰テスト4件追加。
+6. 捨てた選択肢: (a) Codex の指摘5をそのまま実装し `to_owner_*`/`message` を PASSPORT_TABLE_PII_COLUMNS に追加…`PublicTransferView` の compile-time PII 検証が意図的に許可している露出を壊し、受領者が自分宛ての通知内容を見られなくなる回帰を生むため不採用。
+7. 判断理由: 自動レビューの指摘は「バグ報告」として扱い実スキーマ・既存コードで裏取りする（CLAUDE.md の推測禁止の方針）。裏取りの結果、指摘が正しければ直し（4件）、既存の明示的な設計意図と矛盾すれば不採用と判断する（1件、理由付きで却下）——盲目的に全指摘を実装しないことも品質の一部。
+8. まだ答えが出ていないこと: なし（今回の指摘はすべて確認済み）。
+9. 公開区分: 公開可（コードレビューで見つかった型基盤コードの論理バグ修正、および自動レビューの誤検知を確認・却下した判断。テーブル名・カラム名は公開相当。個人情報は含まない）。
+
 ## 2026-08-30 IMP-050（#957）へ PR オープン中に届いた Codex レビュー7件を修正。分類レジストリの架空カラム名・owner_only の特権昇格バグ・監査エントリの参照保持・要件トレースの過大表記を解消
 
 1. 日付: 2026-08-30

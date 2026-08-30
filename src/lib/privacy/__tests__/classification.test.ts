@@ -77,6 +77,14 @@ describe("maxClassification", () => {
     ];
     expect(maxClassification(fields)).toBe("restricted");
   });
+
+  it("非空配列では defaultClassification が最大値の計算に混入しない（Codex レビュー指摘）", () => {
+    // 全フィールドが confidential でも、defaultClassification に "pii"（より厳しい値）
+    // を渡すと、修正前は結果が誤って "pii" になっていた。defaultClassification は
+    // 未登録フィールドの穴埋め用であり、登録済みフィールドの集計に混ぜてはならない。
+    const fields = [{ table: "invoices", column: "total" }]; // confidential
+    expect(maxClassification(fields, "pii")).toBe("confidential");
+  });
 });
 
 describe("findClassificationViolations", () => {
@@ -128,6 +136,23 @@ describe("FIELD_CLASSIFICATIONS レジストリ", () => {
     for (const bad of badRefs) {
       const found = FIELD_CLASSIFICATIONS.some((e) => e.table === bad.table && e.column === bad.column);
       expect(found).toBe(false);
+    }
+  });
+
+  it("customers の実在する PII カラムを網羅する（Codex レビュー指摘: name_kana/postal_code/address/birth_date 等が未登録だった）", () => {
+    const expectedPii = [
+      "name",
+      "name_kana",
+      "email",
+      "phone",
+      "postal_code",
+      "address",
+      "birth_date",
+      "note",
+      "line_user_id",
+    ];
+    for (const column of expectedPii) {
+      expect(getFieldClassification("customers", column)).toBe("pii");
     }
   });
 });

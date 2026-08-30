@@ -22,15 +22,15 @@ export type MaskingStrategy = (typeof MASKING_STRATEGIES)[number];
 
 export interface MaskingRule {
   /** 対象フィールド名 */
-  field: string;
+  readonly field: string;
   /** この可視性レベル未満の閲覧者に適用 */
-  appliesBelow: VisibilityLevel;
+  readonly appliesBelow: VisibilityLevel;
   /** 適用する戦略 */
-  strategy: MaskingStrategy;
+  readonly strategy: MaskingStrategy;
   /** redact 時の置換文字列（デフォルト: "***"） */
-  redactedValue?: string;
+  readonly redactedValue?: string;
   /** truncate 時の保持文字数（デフォルト: 0） */
-  keepChars?: number;
+  readonly keepChars?: number;
 }
 
 // ── マスキング適用 ──
@@ -59,7 +59,10 @@ export function applyMask(
       return opts?.redactedValue ?? "***";
     case "truncate": {
       const str = String(value);
-      const keep = opts?.keepChars ?? 0;
+      // 負値は String.slice が末尾からのオフセットとして解釈し、
+      // ほぼ全文字を残してしまう（例: keepChars: -1 で末尾1文字以外が露出）。
+      // 0 未満は 0 にクランプする。
+      const keep = Math.max(0, opts?.keepChars ?? 0);
       if (keep >= str.length) return str;
       return str.slice(0, keep) + "***";
     }
@@ -111,13 +114,24 @@ export function createRendition<T extends Record<string, unknown>>(
 // ── 定義済みルール（certificates_public パターンの一般化） ──
 
 /**
+ * ルール配列を実行時に凍結する。`readonly MaskingRule[]` は型上の防御でしかなく、
+ * `RULES[0].appliesBelow = "public"` のようなプロパティ代入は防げない
+ * （コンパイラを迂回する呼び出し元がいれば、プロセス内で共有ポリシーが
+ * グローバルに書き換わってしまう）。各要素と配列自体を Object.freeze する。
+ */
+function frozenRules(rules: readonly MaskingRule[]): readonly MaskingRule[] {
+  for (const r of rules) Object.freeze(r);
+  return Object.freeze(rules);
+}
+
+/**
  * 証明書の公開レンディション用ルール。
  * certificates_public ビュー（SQL）と同じ効果を TS 側で再現。
  */
-export const CERTIFICATE_PUBLIC_RULES: readonly MaskingRule[] = [
+export const CERTIFICATE_PUBLIC_RULES: readonly MaskingRule[] = frozenRules([
   { field: "customer_name", appliesBelow: "tenant_internal", strategy: "nullify" },
   { field: "content_free_text", appliesBelow: "tenant_internal", strategy: "nullify" },
-];
+]);
 
 /**
  * 車両レコードの公開レンディション用ルール。
@@ -126,21 +140,26 @@ export const CERTIFICATE_PUBLIC_RULES: readonly MaskingRule[] = [
  * 乖離する（実際に customer_name/customer_email/customer_phone_masked は
  * 既にテーブルから削除済みで、残っている plate_display が抜けていた）。
  */
-export const VEHICLE_PUBLIC_RULES: readonly MaskingRule[] = VEHICLE_TABLE_PII_COLUMNS.map((field) => ({
-  field,
-  appliesBelow: "tenant_internal",
-  strategy: "nullify",
-}));
+export const VEHICLE_PUBLIC_RULES: readonly MaskingRule[] = frozenRules(
+  VEHICLE_TABLE_PII_COLUMNS.map((field) => ({
+    field,
+    appliesBelow: "tenant_internal",
+    strategy: "nullify",
+  })),
+);
 
 /**
  * パスポートの公開レンディション用ルール。
  * PASSPORT_TABLE_PII_COLUMNS（customerRelation.ts の単一定義源）から生成。
  * 現所有者・前所有者いずれの PII もパートナー開示同意がなければマスク
  * （前所有者の PII を新所有者に見せない、という passport_ownership_transfers
- * の設計意図を含む）。
+ * の設計意図を含む）。to_owner_email/to_owner_name/message は受領者本人に
+ * 見せる意図的な公開データのため対象外（piiFields.ts の PublicTransferView 検証と一致）。
  */
-export const PASSPORT_PUBLIC_RULES: readonly MaskingRule[] = PASSPORT_TABLE_PII_COLUMNS.map((field) => ({
-  field,
-  appliesBelow: "partner_shared",
-  strategy: "nullify",
-}));
+export const PASSPORT_PUBLIC_RULES: readonly MaskingRule[] = frozenRules(
+  PASSPORT_TABLE_PII_COLUMNS.map((field) => ({
+    field,
+    appliesBelow: "partner_shared",
+    strategy: "nullify",
+  })),
+);

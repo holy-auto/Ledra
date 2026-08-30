@@ -41,6 +41,11 @@ describe("applyMask", () => {
     expect(applyMask("hi", "truncate", { keepChars: 5 })).toBe("hi");
   });
 
+  it("truncate keepChars が負値 → 0 にクランプ（Codex レビュー指摘: 末尾からのオフセットで露出しない）", () => {
+    // String.slice(0, -1) は末尾1文字以外を残してしまう。0 にクランプすれば全マスク。
+    expect(applyMask("tanaka@example.com", "truncate", { keepChars: -1 })).toBe("***");
+  });
+
   it("hash → 'sha256:' + 値の先頭8文字（呼び出し側が事前にハッシュ済みの値を渡す前提）", () => {
     expect(applyMask("deadbeefcafe0123", "hash")).toBe("sha256:deadbeef");
   });
@@ -129,5 +134,16 @@ describe("定義済みルール", () => {
       expect(r.appliesBelow).toBe("partner_shared");
       expect(r.strategy).toBe("nullify");
     }
+  });
+
+  it("定義済みルールは実行時に凍結されている（Codex レビュー指摘: readonly は型上の防御でしかない）", () => {
+    // readonly MaskingRule[] は arr[0] = ... を防ぐが、arr[0].appliesBelow = ... という
+    // プロパティ代入は型チェッカーを迂回すれば通ってしまう。Object.freeze で実行時に防ぐ。
+    expect(() => {
+      (CERTIFICATE_PUBLIC_RULES[0] as { appliesBelow: string }).appliesBelow = "public";
+    }).toThrow();
+    expect(() => {
+      (VEHICLE_PUBLIC_RULES as MaskingRule[]).push({ field: "x", appliesBelow: "public", strategy: "nullify" });
+    }).toThrow();
   });
 });
