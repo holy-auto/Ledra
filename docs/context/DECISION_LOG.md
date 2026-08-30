@@ -4,6 +4,18 @@
 > （新しい順）。実装の詳細は RELEASE_LOG.md、迷っている段階のものは
 > OPEN_QUESTIONS.md に書く。
 
+## 2026-08-30 IMP-031（#946）の code-review 指摘を修正。表示定義の追加が予約一覧の絞り込みに常時0件の選択肢を混入させていた
+
+1. 日付: 2026-08-30
+2. 起きたこと: PR #946 に `/code-review` を実行し2件の指摘を得た。うち重大な方: `jobStatusDisplay.ts` の `RESERVATION_STATUS_DISPLAY` に paused/no_show/partially_completed の表示定義を追加したところ、`src/app/admin/reservations/ReservationsClient.tsx` の絞り込み `<select>` が `Object.entries(RESERVATION_STATUS_DISPLAY)` を無条件に列挙して選択肢を組み立てていたため、この3値が管理画面の絞り込みに実際に選べる選択肢として現れてしまっていた。選択すると API（`/api/admin/reservations`）は `.eq("status", value)` をそのまま投げるが、`reservations.status` の DB CHECK 制約は現在も従来の5値のみを許可しており（DB マイグレーション未実施、IMP-031 自身のスコープ通り）、この3値は実データに存在し得ない。選んでも常に0件になり、admin にはそれが「機能していない選択肢」だとわかる手がかりが何もない。もう1件: `JobExceptionEvent.fromState` が `string` 型で、同じ型の `toState`（`JobState`）や全評価器の入力パラメータ（すべて `JobState`）と非対称だった。
+3. 以前の考え: `jobStatusDisplay.ts` への表示定義追加は「型基盤先行」の一環として、DB・API に影響しない純粋な追加だと想定していた。
+4. 違和感・問題: `RESERVATION_STATUS_DISPLAY` は既存の稼働中 UI（予約一覧の絞り込み、カレンダー表示等）がそのまま `Object.entries()` で列挙・参照している共有の lookup オブジェクトだった。IMP-027〜030 の「型基盤先行」パターンは新規ファイル・新規関数がゼロ呼び出し元であることが前提だったが、今回は既存の共有定義オブジェクトにキーを追加する形だったため、「呼び出し元がない」という前提が成立せず、追加した瞬間に既存の稼働中コンシューマへ意図せず伝播した。
+5. 決めたこと: `jobStatusDisplay.ts` に `LIVE_RESERVATION_STATUSES`（DB CHECK 制約が現在許可する5値）を新設し、`ReservationsClient.tsx` の絞り込み選択肢の組み立てをこの定数ベースに変更（`RESERVATION_STATUS_DISPLAY` の素の列挙をやめる）。`RESERVATION_STATUS_DISPLAY` 自体はそのまま維持（`reservationStatusDisplay()` 経由の実際の DB 値表示・将来の DB マイグレーション後の消費先としては引き続き必要）。`JobExceptionEvent.fromState` を `JobState` 型に修正。
+6. 捨てた選択肢: `RESERVATION_STATUS_DISPLAY` から3値を一旦削除し、DB マイグレーション実施時にまとめて追加する案 — 型定義自体は害がなく（`reservationStatusDisplay()` 等の他の消費箇所は実際の DB 値でしか呼ばれないため3値が増えても無害）、削除すると IMP-031 の本来の目的（表示定義の先行実装）を損なうため却下。
+7. 判断理由: 「型基盤先行で新規ファイルはゼロ呼び出し元」という前提は、既存の共有オブジェクトに追加する変更には当てはまらない。既存コンシューマ（特に `Object.entries()`/`Object.values()` で無条件に列挙する箇所）への影響を都度確認する必要がある、という教訓。
+8. まだ答えが出ていないこと: なし。
+9. 公開区分: 公開可（UI の技術的な経緯。金額・テナント名・接続情報は含まない）
+
 ## 2026-08-30 IMP-031（#946）を main へ取り込み。evaluateNoShow() の JSDoc・テスト・requirement-trace.md が CHECKED_IN→NO_SHOW を誤って許可としていた記述を修正
 
 1. 日付: 2026-08-30

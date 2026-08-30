@@ -171,8 +171,8 @@ export type JobExceptionEvent = {
   id: string;
   reservationId: string;
   tenantId: string;
-  /** 遷移前の状態。 */
-  fromState: string;
+  /** 遷移前の状態。全評価器の入力が JobState 型であることに合わせる。 */
+  fromState: JobState;
   /** 遷移後の状態。 */
   toState: JobState;
   /** 例外の種別。 */

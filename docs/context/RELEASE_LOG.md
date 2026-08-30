@@ -4,6 +4,19 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-08-30 IMP-031（#946）の code-review 指摘を修正。予約絞り込みの常時0件になる選択肢混入・型の非対称を解消
+
+- 内容: `/code-review` の2件の指摘を両方修正。`jobStatusDisplay.ts` に
+  `LIVE_RESERVATION_STATUSES`（`reservations.status` の DB CHECK 制約が現在許可
+  する5値）を新設し、`ReservationsClient.tsx` の絞り込み `<select>` がこれをベースに
+  選択肢を組み立てるよう変更（`RESERVATION_STATUS_DISPLAY` の無条件列挙をやめる）。
+  IMP-031 で追加した paused/no_show/partially_completed の表示定義は、DB マイグレーション
+  未実施のため実データに存在せず、以前は絞り込みで選べても常に0件になっていた。
+  `JobExceptionEvent.fromState` を `string` から `JobState` に修正（`toState` や
+  全評価器の入力パラメータとの非対称を解消）。回帰テスト3件を追加。
+- 検証: tsc --noEmit / vitest run(4714件) / lint(0エラー) / check:schema /
+  lint:migrations すべて green。
+
 ## 2026-08-30 IMP-031（#946）を main へ取り込み。案件例外フロー型基盤、evaluateNoShow() の記述誤りを修正
 
 - 内容: IMP-031（案件例外フロー型基盤、branch impl/IMP-031-job-exceptions）を main へ
