@@ -4,6 +4,18 @@
 > （新しい順）。実装の詳細は RELEASE_LOG.md、迷っている段階のものは
 > OPEN_QUESTIONS.md に書く。
 
+## 2026-08-30 IMP-034（#949）を main へ取り込み。resurrection パターン13度目
+
+1. 日付: 2026-08-30
+2. 起きたこと: IMP-034（タブレット 2-pane・共用端末型基盤、branch impl/IMP-034-tablet-shared-device）を main へ取り込む際、main と分岐した63ファイルが衝突した。58ファイルは phantom conflict で一括解決。残り5ファイル（DECISION_LOG.md/LEDRA_CURRENT.md/RELEASE_LOG.md/requirement-trace.md/`src/lib/navigation/index.ts`）はこのPR自身が変更していたため手動再適用した。resurrection チェックで `WorkScopeProvider.tsx`（13度目の再発）と、スキップ済み PR #947（IMP-032）の `src/lib/sync/` 一式8ファイルが今回も復活していた（IMP-034 のブランチも IMP-032 のブランチ系列の上に積まれているため、#948 と同じ帰結）。両方削除。`deviceClass.ts`/`tabletLayout.ts`/`sharedDevice.ts`（IMP-034 自身の新規ファイル）は `sync/` への依存なし（grep で確認済み）。
+3. 以前の考え: なし（#948 で確立した手順の踏襲）。
+4. 違和感・問題: 特になし。PR #947 をスキップして以降のスタック PR（#948, #949）は両方とも同じ「IMP-032 ブランチの上に積まれているため sync/ 一式が resurrection として復活する」パターンを辿っており、予見済みの挙動だった。
+5. 決めたこと: 確立済みの手順（phantom conflict 一括解決→genuinely-touched ファイルは main を base に手動再適用→resurrection チェック→WorkScopeProvider.tsx と sync/ 一式を削除→lint/tsc/vitest→check:schema/lint:migrations）をそのまま適用。
+6. 捨てた選択肢: なし。
+7. 判断理由: #948 で確立した判断基準（moreMenu.ts と同様、deviceClass.ts/tabletLayout.ts/sharedDevice.ts も sync/ への実コード依存が無いことを確認済み）をそのまま適用できた。
+8. まだ答えが出ていないこと: なし。残りのスタック PR（#950〜）も IMP-032 ブランチの子孫である限り、同じ resurrection が続く見込み。
+9. 公開区分: 公開可（マージ手順の技術的な経緯。金額・テナント名・接続情報は含まない）
+
 ## 2026-08-30 IMP-033（#948）を main へ取り込み。スキップした IMP-032 の同期レイヤ一式が再度復活していたため削除
 
 1. 日付: 2026-08-30
@@ -401,6 +413,18 @@
 7. 判断理由: 「現場を知らずに書き足さない」の裏返しで、ここでは「現場を知らずに稼働中の挙動を狭めない」。staff/viewer のデフォルトを self にすべきかどうかは製品判断であり、この環境からは判断できない。
 8. まだ答えが出ていないこと: staff/viewer のダッシュボード初期表示は本当に self（自分の分だけ）にすべきか、それとも現状維持（tenant-wide）のままでよいか。代表判断待ち。
 9. 公開区分: 公開可（実装の技術的な経緯であり、金額・テナント名・接続情報は含まない）
+
+## 2026-08-20 IMP-034 タブレットレイアウト方式 — 2-pane 画面マッピング + 共用端末モード
+
+1. 日付: 2026-08-20
+2. 起きたこと: IMP-034（タブレット 2-pane / 共用端末）の実装に着手。既存は useIsMobile() による 1024px 二値判定のみ。タブレット帯域（768-1024px）の区別も共用端末の概念もなかった。
+3. 以前の考え: モバイルとデスクトップの二値で十分。タブレットはモバイル表示で対応。
+4. 違和感・問題: (a) 整備工場ではタブレットが主力端末だが、一覧→詳細→戻るの繰り返しが非効率。(b) 複数スタッフが 1 台のタブレットを共用するが、毎回フルログインが必要。(c) 768-1024px 帯域にモバイル UI を表示すると余白が多く非効率。
+5. 決めたこと: (a) 3 段階デバイスクラス（mobile/tablet/desktop）を `deviceClass.ts` に定義。768px/1024px ブレークポイント。(b) タブレット横持ちで作業/車両/証明書/顧客の 4 画面ペアを 2-pane 表示可能とする `tabletLayout.ts`。(c) 共用端末モード型（personal/shared）と切替認証方式（pin/biometric/full_auth）を `sharedDevice.ts` に定義。端末信頼度と連携して認証方式を自動決定。
+6. 捨てた選択肢: (a) 3-column（sidebar + list + detail）— サイドバーを畳むタブレットでは 2-pane で十分。desktop は既存サイドバーがあるため 2-pane 不要。(b) タブレットブレークポイントを独自値にする — Tailwind md(768)/lg(1024) と一致させた方が CSS との整合性が高い。
+7. 判断理由: 整備工場の現場でタブレット横持ちで作業一覧を見ながら詳細を確認するユースケースが最も頻度が高い。共用端末の PIN 切替は IMP-012 の端末信頼度と組み合わせることで、trusted 端末なら biometric、recognized なら PIN、unknown ならフルログインと段階的に安全性を担保。
+8. まだ答えが出ていないこと: (a) タブレット縦持ちの挙動（暫定: mobile と同じスタック表示）。(b) 2-pane のリサイズ操作（ドラッグ可否）。(c) 共用端末の PIN 桁数・有効期限。
+9. 公開区分: 公開可
 
 ## 2026-08-20 IMP-033 MORE メニュー項目の管理方式 — 正準レジストリ vs 各画面ハードコード
 

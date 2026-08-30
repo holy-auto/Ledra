@@ -204,7 +204,7 @@ Payment Policy(v2.0 §11.3: Consumer PAID / B2B CREDIT_APPROVED / Insurance INSU
 | IMP-031 | 3 / P0 | §19.1 例外(cancel/no-show/pause/追加作業) | **実装済み**(2026-08-20): 例外遷移評価器5本(`jobExceptions.ts`)— evaluateCancel(8状態→CANCELED)/evaluateNoShow(SCHEDULED→NO_SHOW。CHECKED_IN不可=入庫済みは来店なしになりえない)/evaluatePause(IN_PROGRESS→PAUSED)/evaluateResume(PAUSED→IN_PROGRESS, NO_SHOW→SCHEDULED, PARTIALLY_COMPLETED→IN_PROGRESS)/evaluatePartialComplete(IN_PROGRESS→PARTIALLY_COMPLETED)。全てJOB_TRANSITIONSベース。例外メタデータ型: CancelReasonCategory(6)/PauseReasonCategory(6)/NoShowAction(3)/PartialCompleteReason(5)/JobExceptionEvent。スコープ変更型: ScopeChangeCategory(5)/ScopeChangeRecord/requiresApproval()。jobStatusDisplay.ts: paused/no_show/partially_completedの表示構成追加(ReservationStatus 5→8値)。isExceptionState()ヘルパー。DBマイグレーション・APIルート変更なし(型基盤先行)。テスト51件 | 015, 022, 027, 030 |
 | IMP-032 | 3 / P0 | §14, SYNC_CENTER | なし(OfflineBanner+PendingOfflineCerts が部分) | 016, 020 |
 | IMP-033 | 3 / P0 | §2, MORE(その他メニュー IA) | **実装済み** | 010, 013, 020, 032 |
-| IMP-034 | 3 / P0 | §2, §4(タブレット2-pane・共用端末) | レスポンシブは admin Web 側のみ。タブレット専用レイアウト・ユーザー切替なし(なし〜部分) | 010, 021, 022, 023, 033 |
+| IMP-034 | 3 / P0 | §2, §4(タブレット2-pane・共用端末) | **実装済み** | 010, 021, 022, 023, 033 |
 | IMP-040 | 4 / P1 | §8(部品・装着インテグリティ) | 3-way match+凍結ガード+OTP署名+TSA+アンカーで深い(実装済み。語彙差あり) | 023, 030 |
 | IMP-041 | 4 / P1 | §21(設備/リフト稼働) | ブース管理+ガントあり。占有予測・NEXT ACTION 連動なし(部分) | 014, 021, 022 |
 | IMP-042 | 4 / P1 | WORKFLOW_BUILDER(版管理テンプレート) | エディタあり。テンプレ版管理・実行中ジョブの版凍結なし(部分) | 015, 013 |

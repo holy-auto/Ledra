@@ -36,3 +36,13 @@ export {
   type MoreSection,
   type MoreMenuItem,
 } from "./moreMenu";
+
+// ── デバイスクラス・タブレットレイアウト (IMP-034) ──
+export { BREAKPOINTS, DEVICE_CLASSES, resolveDeviceClass, isMobileOrTablet, type DeviceClass } from "./deviceClass";
+export {
+  TABLET_PANE_SCREENS,
+  resolveLayoutMode,
+  findPaneConfig,
+  type TabletPaneConfig,
+  type LayoutMode,
+} from "./tabletLayout";

@@ -4,6 +4,15 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-08-30 IMP-034（#949）を main へ取り込み。タブレット 2-pane・共用端末 型基盤
+
+- 内容: IMP-034（タブレット 2-pane・共用端末型基盤、branch impl/IMP-034-tablet-shared-device）
+  を main へ取り込んだ。63ファイルの phantom conflict（58ファイル一括解決、5ファイル手動）＋
+  resurrection（WorkScopeProvider.tsx を13度目の再削除、スキップ済み PR #947 の
+  `src/lib/sync/` 一式8ファイルも合わせて削除）を解消。
+- 検証: tsc --noEmit / vitest run(4760件) / lint(0エラー) / check:schema /
+  lint:migrations すべて green。
+
 ## 2026-08-30 IMP-033（#948）を main へ取り込み。MORE メニュー IA 型基盤
 
 - 内容: IMP-033（MORE メニュー IA 型基盤、branch impl/IMP-033-more-menu）を main へ
@@ -587,6 +596,19 @@
   （OPEN_QUESTIONS 参照）。
 - テスト: 既存5件 + 修正後全通過。全4391テスト通過、`tsc --noEmit` クリーン、
   lint 0 エラー。
+
+## 2026-08-20 IMP-034 §2/§4 タブレット 2-pane・共用端末 型基盤（branch impl/IMP-034-tablet-shared-device）
+
+- 内容: v2.0 §2/§4 のタブレット 2-pane レイアウトと共用端末ユーザー切替の型基盤を実装。
+  - `src/lib/navigation/deviceClass.ts`: 3 段階デバイスクラス（mobile/tablet/desktop）、
+    ブレークポイント定数（768px/1024px）、`resolveDeviceClass()` 判定関数。
+  - `src/lib/navigation/tabletLayout.ts`: タブレット 2-pane 画面マッピング（作業/車両/証明書/顧客の 4 ペア）、
+    ペイン幅比率定義、`resolveLayoutMode()` / `findPaneConfig()` レイアウト解決関数。
+  - `src/lib/auth/sharedDevice.ts`: 共用端末セッションモード（personal/shared）、
+    切替認証方式（pin/biometric/full_auth）、端末信頼度連携、自動ロック設定。
+  - テスト 29 件（ナビゲーション計 78 件）。
+  - UI コンポーネント・認証フロー変更なし（型基盤のみ）。
+- 対象: タブレット端末最適化 / 整備工場共用端末
 
 ## 2026-08-20 IMP-033 §2 MORE メニュー IA 型基盤（branch impl/IMP-033-more-menu）
 
