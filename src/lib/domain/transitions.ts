@@ -4,7 +4,8 @@
  * v2.0 §19: 各正準状態軸の有効な遷移を定義し、無効な遷移を構造的に拒否する。
  *
  * 目的:
- * - 6 軸（Job / Step / Severity / Certificate / Payment / Sync）の遷移可否の単一定義源
+ * - 8 軸（Job / Step / Severity / Certificate / Payment / Sync / PartInstallation /
+ *   DocumentCorrection）の遷移可否の単一定義源
  * - 無効遷移の拒否理由メッセージ
  * - 終端状態の明示（遷移先なし = terminal）
  *
@@ -25,7 +26,16 @@
  * 変換関数は作らない（誤った同一視の焼き込み防止を維持）。
  */
 
-import type { JobState, StepState, Severity, CertificateState, PaymentState, SyncState } from "./states";
+import type {
+  JobState,
+  StepState,
+  Severity,
+  CertificateState,
+  PaymentState,
+  SyncState,
+  PartInstallationState,
+  DocumentCorrectionState,
+} from "./states";
 
 // ── 案件（Job）遷移表 v2.0 §19.1 ──
 
@@ -155,6 +165,32 @@ export const SYNC_TRANSITIONS: Record<SyncState, readonly SyncState[]> = {
   SYNCING: ["SYNCED", "FAILED", "CONFLICT", "PENDING"],
   FAILED: ["PENDING"],
   CONFLICT: ["PENDING"],
+};
+
+// ── 部品装着（PartInstallation）遷移表 v2.0 §8（IMP-040） ──
+//
+// これは states.ts の JSDoc が説明する「業務レベルの状態機械」（DRAFT → INSTALLED →
+// CUSTOMER_VERIFIED、DISPUTED は別枝、VOIDED は理由必須の唯一の脱出口）であり、
+// DB の完全凍結ガード（supabase/migrations/20260603000001_part_installations_guard.sql
+// の part_installations_guard トリガー）とはスコープが異なる。DB 側は
+// 「customer_verified 到達後の不変性」と「customer_verified への到達に署名・
+// document_hash 一致・電話一致・保証グレード充足のゲートを課す」ことしか強制しておらず、
+// DRAFT→DISPUTED や DRAFT→VOIDED のような、この表が禁止する遷移までは DB は拒否しない
+// （この表の方が厳しい）。両者は補完関係であり、どちらか一方が他方の代替にはならない。
+export const PART_INSTALLATION_TRANSITIONS: Record<PartInstallationState, readonly PartInstallationState[]> = {
+  DRAFT: ["INSTALLED"],
+  INSTALLED: ["CUSTOMER_VERIFIED", "DISPUTED", "VOIDED"],
+  CUSTOMER_VERIFIED: ["VOIDED"],
+  DISPUTED: ["CUSTOMER_VERIFIED", "VOIDED"],
+  VOIDED: [],
+};
+
+// ── 帳票訂正リクエスト（DocumentCorrection）遷移表 ADR-0004（IMP-043） ──
+export const DOCUMENT_CORRECTION_TRANSITIONS: Record<DocumentCorrectionState, readonly DocumentCorrectionState[]> = {
+  PENDING: ["APPROVED", "REJECTED"],
+  APPROVED: ["APPLIED"],
+  REJECTED: [],
+  APPLIED: [],
 };
 
 // ── 汎用遷移検証 ──

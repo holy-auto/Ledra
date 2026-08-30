@@ -36,6 +36,166 @@
 - 全体 4769 件パス、tsc/eslint エラー0（既存 actionCatalog の `_key` 警告のみ）。
 - 「LINE属人性の低減」の1件目。opt-in・既定 OFF なので既存テナントの挙動は不変。
 
+## 2026-08-30 IMP-046（#956）の code-review 指摘を修正。NON_OCCUPYING重複定義・型の意図しない拡大・ドキュメント不整合を解消
+
+- 内容: `src/lib/analytics/capacityAnalytics.ts` の `decomposeTimeBands()` が終端ステータス除外を
+  生の文字列比較で再実装していたのを、`occupancy.ts` の `NON_OCCUPYING` を import して再利用する
+  よう修正。`src/lib/analytics/operationalKpi.ts` の `JobTimeline.currentState` の型を
+  `JobState | string`（`string` に collapse し型安全性を失っていた）から `JobState` のみに変更。
+  `computeVerifiedRate()` の JSDoc 冒頭の分母説明が SUPERSEDED 除外に言及しておらず、直後の
+  ponytail コメント・実装と矛盾していたのを修正。テストタイトルの数値誤記（50%→実際は45%）を
+  修正。RELEASE_LOG.md/LEDRA_CURRENT.md/requirement-trace.md の「テスト40件」を実数（41件）に訂正。
+- 検証: tsc --noEmit / vitest run(5040件) / lint(0エラー、1256警告=基準線) / check:schema /
+  lint:migrations すべて green。
+
+## 2026-08-30 IMP-046（#956）を main へ取り込み。運用KPI計算・設備キャパシティ分析
+
+- 内容: IMP-046（運用KPI計算・設備キャパシティ分析、branch impl/IMP-046-analytics-kpi）を
+  main へ取り込んだ。82ファイルの phantom conflict（78ファイル一括解決、4ファイル手動）＋
+  resurrection（WorkScopeProvider.tsx を20度目の再削除、スキップ済み PR #947 の
+  `src/lib/sync/` 一式8ファイルも合わせて削除）を解消。
+- 検証: tsc --noEmit / vitest run(5040件) / lint(0エラー、1256警告=基準線) / check:schema /
+  lint:migrations すべて green。
+
+## 2026-08-30 IMP-045（#955）の code-review 指摘を修正。ガード3関数のチェック順不一致・重複ロジック・不要なキャストを解消
+
+- 内容: `src/lib/staff/membership.ts` の `validateRoleChange()` のチェック順を
+  `validateMemberRemoval()`/`validateMemberSuspension()` と統一（`insufficient_rank` を
+  `owner_protected` より先に判定し、権限のない操作者に対象の役職を明かさない）。
+  `ASSIGNABLE_ROLES.includes()` の不要な型キャストを削除。3つのガード関数すべてで
+  最終管理者判定に `wouldLoseLastAdmin()` を呼び出すよう統一（重複実装を解消）。
+  回帰テスト2件追加。
+- 検証: tsc --noEmit / vitest run(4999件) / lint(0エラー、1256警告=基準線) / check:schema /
+  lint:migrations すべて green。
+
+## 2026-08-30 IMP-045（#955）を main へ取り込み。スタッフメンバーシップ管理ガード — 移籍・停止・最終管理者保護
+
+- 内容: IMP-045（スタッフメンバーシップ管理ガード、branch impl/IMP-045-staff-management）を
+  main へ取り込んだ。80ファイルの phantom conflict（75ファイル一括解決、5ファイル手動）＋
+  resurrection（WorkScopeProvider.tsx を19度目の再削除、スキップ済み PR #947 の
+  `src/lib/sync/` 一式8ファイルも合わせて削除）を解消。LEDRA_CURRENT.md/RELEASE_LOG.md が
+  旧いテスト件数（33件）のまま取り残されていたのを、branch 内で既に更新済みだった
+  requirement-trace.md の実数（36件）に揃えた。
+- 検証: tsc --noEmit / vitest run(4997件) / lint(0エラー、1256警告=基準線) / check:schema /
+  lint:migrations すべて green。
+
+## 2026-08-30 IMP-044（#954）の code-review 指摘を修正。ブースシグナルの重複排除誤爆・follow_up_overdue上書き・イベント件数ドキュメント誤記を解消
+
+- 内容: `src/lib/priority/scorer.ts` の `scoreBoothSignal()` の `actionKey` に `reservationIds` を
+  含めるよう修正（同じブース・同じ kind で時間帯が異なる複数の定員超過ウィンドウが
+  `scoreAndRank()` の重複排除で握り潰されていた問題を解消）。`src/lib/priority/boothJobIntegration.ts`
+  の `enrichJobWithBoothContext()` に `base.action === "follow_up_overdue"` の早期リターンを追加し、
+  期限超過請求の督促がブース関連のヒント・priority 上書きより確実に優先されるよう修正。
+  RELEASE_LOG.md/LEDRA_CURRENT.md/requirement-trace.md の「PRIORITY_TRIGGERS は13ドメインイベント」を
+  実数12に、テスト件数内訳の boothJobIntegration/eventTriggers の入れ替わりを訂正。回帰テスト3件追加。
+- 検証: tsc --noEmit / vitest run(4961件) / lint(0エラー、1256警告=基準線) / check:schema /
+  lint:migrations すべて green。
+
+## 2026-08-30 IMP-044（#954）を main へ取り込み。Priority/NEXT ACTION エンジン — 統一スコアリング・ブース統合・イベントパイプライン
+
+- 内容: IMP-044（Priority/NEXT ACTION エンジン、branch impl/IMP-044-priority-engine）を
+  main へ取り込んだ。75ファイルの phantom conflict（71ファイル一括解決、4ファイル手動）＋
+  resurrection（WorkScopeProvider.tsx を18度目の再削除、スキップ済み PR #947 の
+  `src/lib/sync/` 一式8ファイルも合わせて削除）を解消。lint 新規2件
+  （`eventTriggers.test.ts`/`scorer.test.ts` の未使用 import）を修正。
+- 検証: tsc --noEmit / vitest run(4958件) / lint(0エラー、1256警告=基準線) / check:schema /
+  lint:migrations すべて green。
+
+## 2026-08-30 IMP-043（#953）の code-review 指摘を修正。DocumentCorrection遷移表のプロトタイプ汚染ガード欠如・POSブリッジの完全性欠落・関数名衝突を解消
+
+- 内容: `src/lib/domain/states.ts` の `DOCUMENT_CORRECTION_TRANSITIONS`/`isValidDocumentCorrectionTransition()`
+  を `transitions.ts` に移設し、他7軸と同じ `isValidTransition()`（`Object.hasOwn` ガード付き）を
+  再利用するよう統一（PR #950 の PartInstallation と同じ修正パターン）。`src/lib/documents/posLedgerBridge.ts`
+  の `bridgePosToLedger()` に、`documentId` はあるが `amount`・`refundAmount` とも0以下の取引を
+  `unbridgeable` に分類する処理を追加（従来はどのバケツにも入らず消えていた）。
+  `src/lib/documents/documentVersion.ts` の `isValidCorrectionTransition()` を
+  `isValidDocumentCorrectionStatusTransition()` に改名（`certificates/correction.ts` の
+  同名・別状態集合の関数との名前衝突を解消）。回帰テスト2件追加。
+- 検証: tsc --noEmit / vitest run(4920件) / lint(0エラー、1256警告=基準線) / check:schema /
+  lint:migrations すべて green。
+
+## 2026-08-30 IMP-043（#953）を main へ取り込み。見積/請求ワークフロー型基盤 — 承認スナップショット・帳票版管理・POS ブリッジ
+
+- 内容: IMP-043（見積/請求ワークフロー型基盤、branch impl/IMP-043-estimate-invoice-workflow）を
+  main へ取り込んだ。72ファイルの phantom conflict（65ファイル一括解決、7ファイル手動）＋
+  resurrection（WorkScopeProvider.tsx を17度目の再削除、スキップ済み PR #947 の
+  `src/lib/sync/` 一式8ファイルも合わせて削除）を解消。v2.0 正準語彙の8軸目
+  `DOCUMENT_CORRECTION_STATES`（ADR-0004 帳票訂正リクエスト状態）を states.ts/labels.ts/
+  __tests__/states.test.ts の同一PRで追加（ADR-0002 準拠）。lint 新規1件（`states.test.ts`
+  の未使用 import `documentCorrectionStateLabel`）を修正。
+- 検証: tsc --noEmit / vitest run(4914件) / lint(0エラー、1256警告=基準線) / check:schema /
+  lint:migrations すべて green。
+
+## 2026-08-30 IMP-042（#952）の code-review 指摘を修正。key 重複時の挙動不一致・非 readonly なスナップショット・ドキュメント誤記を解消
+
+- 内容: `src/lib/workflow/templateVersion.ts` の `diffTemplateSteps()`/`isSnapshotStale()`（Map ベース、
+  key 重複時に最後の出現を採用）と `resolveStepFromSnapshot()`（Array.find、最初の出現を採用）の
+  挙動不一致を `keyByFirstOccurrence()` ヘルパーで統一（最初の出現を採用に揃える）。
+  `WorkflowSnapshot.steps` を `readonly TemplateStep[]` に変更（JSDoc の「不変スナップショット」
+  という説明と型を一致させる）。モジュールヘッダの誤記（存在しない型名「TemplateSnapshot」）を
+  `WorkflowSnapshot` に修正。RELEASE_LOG.md/requirement-trace.md の「テスト20件」を実数の21件に訂正。
+  回帰テスト1件追加。
+- 検証: tsc --noEmit / vitest run(4851件、新規1件追加) / lint(0エラー、1256警告=基準線) /
+  check:schema / lint:migrations すべて green。
+- 対応PR: #952
+
+## 2026-08-30 IMP-042（#952）を main へ取り込み。ワークフローテンプレート版管理・スナップショット型基盤
+
+- 内容: IMP-042（ワークフローテンプレート版管理・スナップショット型基盤、branch impl/IMP-042-workflow-versioning）を
+  main へ取り込んだ。69ファイルの phantom conflict（65ファイル一括解決、4ファイル手動）＋
+  resurrection（WorkScopeProvider.tsx を16度目の再削除、スキップ済み PR #947 の
+  `src/lib/sync/` 一式8ファイルも合わせて削除）を解消。
+- 検証: tsc --noEmit / vitest run(4850件) / lint(0エラー、1256警告=基準線) / check:schema /
+  lint:migrations すべて green。
+
+## 2026-08-30 IMP-041（#951）の code-review 指摘を修正。データ不備の終日占有誤判定・no_show の稼働率誤カウントを解消
+
+- 内容: `src/lib/booths/occupancy.ts` の `findAvailableBooths()` と `countConcurrentAt()` が、
+  開始/終了時刻が片方欠損または逆転しているデータ不備の予約を「終日占有」として誤判定していた
+  問題を修正（`toEvents()` と同じ判定に統一）。`computeBoothUtilization()` が `no_show` を
+  稼働時間にカウントしていた問題を修正（`completed` は維持、`no_show` のみ除外する
+  `NOT_ACTUAL_WORK` を新設）。`boothSignals.ts` 内の終端ステータス除外チェックが3箇所で
+  重複していたのを `occupancy.ts` の `NON_OCCUPYING`（export 化）に統一。`peakConcurrent`/
+  `predictBoothFreeAt` の呼び出し前提（単一ブース分に絞り込み済みであること）を docstring に
+  明記。`predictBoothFreeAt` の既知のギャップ（終了時刻超過中で estimatedMinutes もない
+  in_progress 予約を捕捉できない）を ponytail コメントで明記。
+- 検証: tsc --noEmit / vitest run(4829件、新規4件追加) / lint(0エラー、1256警告=基準線) /
+  check:schema / lint:migrations すべて green。
+- 対応PR: #951
+
+## 2026-08-30 IMP-041（#951）を main へ取り込み。ブース占有予測・NEXT ACTION シグナル型基盤
+
+- 内容: IMP-041（ブース占有予測・NEXT ACTION シグナル型基盤、branch impl/IMP-041-booth-occupancy）を
+  main へ取り込んだ。65ファイルの phantom conflict（61ファイル一括解決、4ファイル手動）＋
+  resurrection（WorkScopeProvider.tsx を15度目の再削除、スキップ済み PR #947 の
+  `src/lib/sync/` 一式8ファイルも合わせて削除）を解消。lint 新規1件（`boothSignals.ts`
+  の未使用 import `peakConcurrent`）を修正。
+- 検証: tsc --noEmit / vitest run(4825件) / lint(0エラー) / check:schema /
+  lint:migrations すべて green。
+
+## 2026-08-30 IMP-040（#950）の code-review 指摘を修正。遷移表を transitions.ts へ統合、プロトタイプ汚染防止
+
+- 内容: `/code-review` の3件の指摘を修正。`PART_INSTALLATION_TRANSITIONS` を
+  `states.ts` から `transitions.ts` へ移設し、他6軸と同じ `Record<S, readonly S[]>`
+  型・`isValidTransition()` ヘルパーに統一（素の `table[from]` アクセスによる
+  `TypeError`（`"toString"` 等 Object.prototype 由来キー）を解消）。`transitions.ts`
+  のヘッダコメントを「6軸」→「7軸」に更新。DB 凍結ガード
+  （`part_installations_guard`）との関係を説明するコメントを、実際のトリガー内容に
+  基づいて修正（TS 表の方が厳しく、両者はスコープが異なる旨を明記）。テストを
+  `states.test.ts` から `transitions.test.ts` へ移設し、プロトタイプ汚染防止テストを
+  追加。
+- 検証: tsc --noEmit / vitest run(4786件) / lint(0エラー) / check:schema /
+  lint:migrations すべて green。
+
+## 2026-08-30 IMP-040（#950）を main へ取り込み。部品装着インテグリティ 正準語彙
+
+- 内容: IMP-040（部品装着状態の正準語彙7軸目、branch impl/IMP-040-parts-integrity）を
+  main へ取り込んだ。66ファイルの phantom conflict（59ファイル一括解決、7ファイル手動）＋
+  resurrection（WorkScopeProvider.tsx を14度目の再削除、スキップ済み PR #947 の
+  `src/lib/sync/` 一式8ファイルも合わせて削除）を解消。
+- 検証: tsc --noEmit / vitest run(4781件) / lint(0エラー) / check:schema /
+  lint:migrations すべて green。
+
 ## 2026-08-30 IMP-034（#949）を main へ取り込み。タブレット 2-pane・共用端末 型基盤
 
 - 内容: IMP-034（タブレット 2-pane・共用端末型基盤、branch impl/IMP-034-tablet-shared-device）
@@ -629,6 +789,122 @@
 - テスト: 既存5件 + 修正後全通過。全4391テスト通過、`tsc --noEmit` クリーン、
   lint 0 エラー。
 
+## 2026-08-20 IMP-044 §20.2 Priority/NEXT ACTION エンジン（branch impl/IMP-044-priority-engine）
+
+- 内容: 3 つの独立した優先度システム + ブースシグナルを統一スコアリングサービスに統合する型基盤を実装。
+  - `src/lib/priority/scorer.ts`: 統一スコアリングサービス
+    - `ScoredAction` 型 — 全シグナルソースを統一スコア (0-100) で表現、actionKey で重複排除
+    - `scoreTile()` / `scoreJobSuggestion()` / `scoreCustomerAction()` / `scoreBoothSignal()` — 各ソースの priority 表現を統一スコアに正規化
+    - `scoreAndRank()` — 全ソースを統合・重複排除・降順ソート。limit で上位 N 件に絞り込み可
+  - `src/lib/priority/boothJobIntegration.ts`: ブース→ジョブ次アクション統合
+    - `enrichJobWithBoothContext()` — pickJobNextActionCandidate の結果をブース文脈で調整（未割当 → priority:high 引き上げ、定員超過 → ヒント追加）
+    - `boothSignalsForReservation()` / `deriveBoothContextForJob()` — シグナル→ジョブ文脈変換ヘルパ
+  - `src/lib/priority/eventTriggers.ts`: イベント→優先度パイプライン型定義
+    - `PRIORITY_TRIGGERS` — 12 ドメインイベントの優先度影響マッピング
+    - `isPriorityAffecting()` / `getPriorityTrigger()` — イベント型から影響判定
+    - `toPriorityRecalcRequest()` — DomainEvent から再計算リクエスト生成
+  - テスト 38 件追加（scorer 17 + boothJobIntegration 11 + eventTriggers 10）
+- 対象: 型定義・ロジック層（src/lib/priority/）。UI 変更・DB マイグレーションなし。
+- 依存: IMP-014, IMP-021, IMP-041
+- 下流: IMP-046（経営分析 KPI — 優先度スコアの集計）
+
+## 2026-08-20 IMP-046 §21 ANALYTICS_STORE — 運用KPI・キャパシティ分析（branch impl/IMP-046-analytics-kpi）
+
+- 内容: v2.0 §21 が要求する運用指標とキャパシティ可視化の純関数計算器を実装。
+  - `src/lib/analytics/operationalKpi.ts`: 運用KPI計算器6本
+    - `computeVerifiedRate()` — 証明書VERIFIED到達率
+    - `computeEvidenceSufficiencyRate()` — 証跡充足率
+    - `computeAvgReviewWaitHours()` — 平均レビュー待ち時間（作業完了→VERIFIED）
+    - `computeAvgCycleTimeHours()` — 平均ジョブサイクルタイム（SCHEDULED→VERIFIED）
+    - `computeSlaComplianceRate()` — SLA遵守率（IMP-029 EscalationResult消費）
+    - `computeDailyThroughput()` — 日次スループット
+    - `computeOperationalKPIs()` — 一括算出（部分入力可）
+  - `src/lib/analytics/capacityAnalytics.ts`: キャパシティ分析
+    - `decomposeTimeBands()` — capacity>1ブースの時間帯別占有分解（IMP-041 L330/L347から委ねられた実装）
+    - `computeFleetUtilization()` — 全ブースフリート稼働率サマリー
+    - `computeStaffCapacity()` — スタッフ負荷分析（負荷率・効率・過負荷/遊休識別）
+- 対象: 経営ダッシュボード（/admin/management）のデータソース拡張
+- テスト: 41件（operationalKpi 26 + capacityAnalytics 15）
+- 依存: IMP-041（BoothUtilization再利用）、IMP-029（EscalationStage型参照）、IMP-001（CertificateState/JobState型参照）
+
+## 2026-08-20 IMP-045 §16 STAFF_MANAGEMENT — メンバーシップ管理ガード（branch impl/IMP-045-staff-management）
+
+- 内容: 既存スタッフ管理基盤の欠損3領域（移籍・停止・最終管理者保護）を純関数ガードで補完。
+  - `src/lib/staff/membership.ts`: メンバーシップ管理の型定義と純粋ガード関数
+    - `MembershipState` 型（active/suspended/deactivated）
+    - `validateRoleChange()` — ロール変更ガード（自己変更・owner保護・権限・ASSIGNABLE_ROLES）
+    - `validateMemberRemoval()` — 削除ガード（最終管理者保護: admin以上が1名以下なら拒否）
+    - `validateMemberSuspension()` — 停止/無効化ガード（suspend→suspended、deactivate→deactivated）
+    - `validateStoreTransfer()` — 店舗間移籍ガード（ロール引継ぎ、admin以上必須）
+    - `wouldLoseLastAdmin()` — 汎用最終管理者チェック
+  - `src/lib/auth/permissionVerbs.ts`: Permission文字列改名見送りの判断をコメント更新
+- 対象: テナント管理画面（/admin/members、/admin/stores）のバックエンドガードロジック
+- テスト: 36件（コードレビュー修正で3件追加: 最終admin降格保護・移籍先重複チェック）
+- 設計判断: Permission文字列の一括改名は見送り（VERB_MAPによる翻訳レイヤーが十分に機能しており、55種の文字列改名コストに見合わない）
+
+## 2026-08-20 IMP-043 §11 見積/請求ワークフロー — 承認スナップショット・版管理・POS ブリッジ型基盤（branch impl/IMP-043-estimate-invoice-workflow）
+
+- 内容: v2.0 §11 Estimate/Invoice/Payment の残ギャップ「顧客承認額の版管理」
+  「POS→元帳自動ブリッジ」「返金元帳エントリ」の型基盤を実装。ADR-0004 準拠。
+  (1) 見積承認スナップショット — `createApprovalSnapshot()` で承認時の明細・金額を
+  deep copy 凍結。`diffEstimateRevision()` で承認後の編集差分を検出し再承認要否を判定。
+  3 承認方法（customer_web/verbal_confirmation/message_reply）。
+  (2) 帳票版管理（ADR-0004「訂正は上書きではなく版の追加」準拠）— `DocumentVersion` 型
+  （版番号+ハッシュ+合計）、`DocumentCorrectionRequest`（5 カテゴリ×4 ステータス）、
+  遷移表 `isValidDocumentCorrectionStatusTransition()`、`requiresCorrectionWorkflow()`（invoice 系
+  + estimate の確定済みのみ対象）。
+  (3) POS→元帳ブリッジ — `bridgePosToLedger()` で POS 取引を `LedgerEntryInput` に
+  変換。プロバイダ別 PaymentMethod 自動マッピング。voided 除外、帳票なし→unbridgeable
+  分類、返金→`RefundLedgerEntryInput` 分離。`computeRefundRecording()` で negative_entry
+  / separate_table の 2 方式を提供。
+  テスト 56 件。
+- 対象: 型定義・ロジック層（src/lib/documents/）。UI 変更・DB マイグレーションなし。
+
+## 2026-08-20 IMP-042 WORKFLOW_BUILDER 版管理テンプレート型基盤（branch impl/IMP-042-workflow-versioning）
+
+- 内容: ワークフローテンプレートの版管理（バージョニング + ジョブ実行時凍結）の型基盤を実装。
+  - `src/lib/workflow/templateVersion.ts`: 版管理の型定義と純関数
+    - `WorkflowSnapshot` — ジョブ開始時にテンプレートを凍結する不変スナップショット型
+    - `TemplateStep` — 6+ 箇所に散在していた WorkflowStep 型の正準共有定義
+    - `createWorkflowSnapshot()` — テンプレートから deep copy スナップショットを生成
+    - `diffTemplateSteps()` — 2 つの steps 配列を key ベースで比較（added/removed/modified/reordered）
+    - `isSnapshotStale()` — 凍結スナップショットと現行テンプレートの乖離判定
+    - `resolveStepFromSnapshot()` — 凍結スナップショットからステップ解決
+    - `computeSnapshotProgress()` — 凍結スナップショットからの進捗計算
+  - テスト 21 件追加
+- 対象: 全施工店（ワークフローテンプレート利用店舗）
+- 依存: IMP-015, IMP-013
+- 注記: DB マイグレーション（reservations.workflow_snapshot jsonb 列追加等）は消費タスクで実施。型基盤先行パターン。
+
+## 2026-08-20 IMP-041 §21 設備/リフト稼働 占有予測・NEXT ACTION シグナル（branch impl/IMP-041-booth-occupancy）
+
+- 内容: ブース占有予測とNEXT ACTIONブースシグナルの型基盤を実装。
+  - `src/lib/booths/occupancy.ts`: ブース占有予測の純関数群
+    - `peakConcurrent()` — スイープラインによる同時占有ピーク計算（BoothsClient.maxConcurrent のサーバー側版）
+    - `computeBoothUtilization()` — 営業時間に対する稼働率（0–100%）
+    - `detectCapacityConflicts()` — 定員超過の時間帯検出
+    - `predictBoothFreeAt()` — in_progress 予約の終了時刻から空き推定
+    - `findAvailableBooths()` — 指定時刻の空きブース検索（空き時間帯リスト付き）
+  - `src/lib/booths/boothSignals.ts`: NEXT ACTION ブースシグナル
+    - `BoothSignalKind` 4種: booth_freed / assign_booth / capacity_exceeded / booth_overloaded
+    - `deriveBoothSignals()` — 予約・ブース状態からアクション可能シグナルを導出
+  - テスト 41 件追加（occupancy 27 + signals 9 + duration 5）、全 4550 件通過
+- 対象: 全施工店（ブース管理機能利用店舗）
+- 依存: IMP-014, IMP-021, IMP-022
+- 下流: IMP-044（NEXT ACTION エンジン拡張）、IMP-046（経営分析 KPI）
+
+## 2026-08-20 IMP-040 §8 部品装着インテグリティ 正準語彙（branch impl/IMP-040-parts-integrity）
+
+- 内容: v2.0 §8 の部品装着状態を正準ドメイン語彙の 7 軸目として追加。
+  - `src/lib/domain/states.ts`: `PART_INSTALLATION_STATES`（DRAFT/INSTALLED/CUSTOMER_VERIFIED/DISPUTED/VOIDED）、
+    型ガード `isPartInstallationState`、正準遷移表 `PART_INSTALLATION_TRANSITIONS`、
+    遷移検証関数 `isValidPartInstallationTransition()`。
+  - `src/lib/domain/labels.ts`: 6 言語ラベル（ja: 既存 admin/parts-integrity UI 表記と一致）。
+  - `src/lib/parts/partsIntegrity.ts`: Certificate Gate 部品整合性条件の導出関数
+    `derivePartsIntegrityOk()` — 未解決 critical findings でブロック。
+- 対象: 型基盤。UI・DB 変更なし。DB 実装値(小文字)との対応は IMP-015 に委ねる(ADR-0002 準拠)。
+- テスト: 51 件（domain/states 37 件 + parts/partsIntegrity 7 件）
+
 ## 2026-08-20 IMP-034 §2/§4 タブレット 2-pane・共用端末 型基盤（branch impl/IMP-034-tablet-shared-device）
 
 - 内容: v2.0 §2/§4 のタブレット 2-pane レイアウトと共用端末ユーザー切替の型基盤を実装。
@@ -726,7 +1002,7 @@
   per_job=PAID必須, 未設定=ブロック) / insurance(保険: insurerApproved=Phase2) の3ポリシー。
   Certificate Gate `payment_policy_met` 条件の実装基盤。
   (3) UNKNOWN 盲目リトライ禁止 — `isBlindRetryBlocked()` + 全ポリシーで UNKNOWN 不成立。
-  テスト40件。
+  テスト41件。
 - 対象: バックエンド型定義・ロジック層（src/lib/payment/）。UI 変更・DB マイグレーションなし。
 
 ## 2026-08-20 IMP-026 §10 顧客確認Web — 「気になる点を伝える」懸念提起フロー（branch impl/IMP-026-customer-concern / PR #941）

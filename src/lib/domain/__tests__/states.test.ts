@@ -1,13 +1,17 @@
 import { describe, expect, it } from "vitest";
 import {
   CERTIFICATE_STATES,
+  DOCUMENT_CORRECTION_STATES,
   JOB_STATES,
+  PART_INSTALLATION_STATES,
   PAYMENT_STATES,
   SEVERITIES,
   STEP_STATES,
   SYNC_STATES,
   isCertificateState,
+  isDocumentCorrectionState,
   isJobState,
+  isPartInstallationState,
   isPaymentState,
   isSeverity,
   isStepState,
@@ -18,6 +22,7 @@ import {
   __DOMAIN_LABEL_MAPS,
   certificateStateLabel,
   jobStateLabel,
+  partInstallationStateLabel,
   paymentStateLabel,
   severityLabel,
   stepStateLabel,
@@ -31,6 +36,8 @@ const AXES = [
   { name: "certificate", values: CERTIFICATE_STATES, guard: isCertificateState, expected: 8 },
   { name: "payment", values: PAYMENT_STATES, guard: isPaymentState, expected: 9 },
   { name: "sync", values: SYNC_STATES, guard: isSyncState, expected: 5 },
+  { name: "partInstallation", values: PART_INSTALLATION_STATES, guard: isPartInstallationState, expected: 5 },
+  { name: "documentCorrection", values: DOCUMENT_CORRECTION_STATES, guard: isDocumentCorrectionState, expected: 4 },
 ] as const;
 
 describe("正準語彙の値集合(v2.0 Appendix A)", () => {
@@ -68,7 +75,15 @@ describe("型ガード(不正値の扱い)", () => {
       expect(isPaymentState(legacy)).toBe(false);
     }
   });
+
+  it("part_installations の小文字 DB 値は正準値として受理しない", () => {
+    for (const dbVal of ["draft", "installed", "customer_verified", "disputed", "voided"]) {
+      expect(isPartInstallationState(dbVal)).toBe(false);
+    }
+  });
 });
+
+// PartInstallation / DocumentCorrection の遷移表テストは transitions.test.ts（他の軸と同じ場所）に移設。
 
 describe("ロケール別ラベル", () => {
   it.each(AXES)("$name: 収録ロケールのマップは全正準値を網羅し空文字がない", ({ name, values }) => {
@@ -107,5 +122,24 @@ describe("ロケール別ラベル", () => {
     expect(paymentStateLabel("PAID", "hi")).toBe("भुगतान पूर्ण");
     expect(stepStateLabel("COMPLETED", "id")).toBe("Selesai");
     expect(severityLabel("CRITICAL", "fil")).toBe("Kritikal");
+  });
+
+  it("PartInstallation ラベル — ja は既存 UI 表記と一致", () => {
+    expect(partInstallationStateLabel("DRAFT")).toBe("下書き");
+    expect(partInstallationStateLabel("INSTALLED")).toBe("装着済み（未確定）");
+    expect(partInstallationStateLabel("CUSTOMER_VERIFIED")).toBe("確定済み（完全凍結）");
+    expect(partInstallationStateLabel("DISPUTED")).toBe("係争中");
+    expect(partInstallationStateLabel("VOIDED")).toBe("取消済み");
+  });
+
+  it("PartInstallation ラベル — en", () => {
+    expect(partInstallationStateLabel("INSTALLED", "en")).toBe("Installed (unconfirmed)");
+    expect(partInstallationStateLabel("CUSTOMER_VERIFIED", "en")).toBe("Verified (frozen)");
+  });
+
+  it("PartInstallation ラベル — 6言語すべてで解決可能", () => {
+    for (const locale of DOMAIN_LOCALES) {
+      expect(partInstallationStateLabel("INSTALLED", locale)).toBeTruthy();
+    }
   });
 });

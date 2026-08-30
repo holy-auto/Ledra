@@ -378,6 +378,39 @@ Sentry · Resend (+ SendGrid fallback) · Anthropic (Opus 4.8 / Sonnet 4.6 / Hai
   （SegmentedControl/StatusBadge/StatusCard/NextActionCard/ProgressCard/Alert/IconButton/
   BottomSheet）+ Badge dot + Button xl。v2.0 の色トークン値は不採用・既存デザインシステム維持
   （DECISION_LOG 2026-08-19）。
+- **IMP-046（§21 ANALYTICS_STORE — 運用KPI・キャパシティ分析）完了**:
+  v2.0 §21 の運用指標セットとキャパシティ可視化を純関数計算器で実装。
+  運用KPI 6本（VERIFIED到達率・証跡充足率・レビュー待ち時間・サイクルタイム・SLA遵守率・
+  日次スループット）+ capacity>1 ブースの時間帯別占有分解（IMP-041委譲実装）+
+  フリート稼働率サマリー + スタッフ負荷分析（過負荷/遊休識別）。テスト41件。
+- **IMP-045（§16 STAFF_MANAGEMENT — メンバーシップ管理ガード）完了**:
+  既存スタッフ管理基盤の欠損3領域を純関数ガードで補完。ロール変更ガード（owner保護・
+  ASSIGNABLE_ROLES制限・最終admin降格保護）、メンバー削除ガード（最終管理者保護）、停止/無効化ガード
+  （MembershipState型: active/suspended/deactivated）、店舗間移籍ガード（ロール引継ぎ・移籍先重複チェック）。
+  Permission文字列改名は見送り（VERB_MAP翻訳レイヤーで十分と判断）。テスト36件。
+- **IMP-044（§20.2 Priority/NEXT ACTION エンジン）完了**:
+  統一優先度スコアリングサービス。4 ソース（ダッシュボードタイル / ジョブ次アクション /
+  顧客シグナル / ブースシグナル）を統一スコア（0-100）に正規化する `scoreAndRank()`。
+  ブース→ジョブ統合（`enrichJobWithBoothContext()` で未割当・定員超過を反映）。
+  イベント→優先度パイプライン（12 ドメインイベントの影響マッピング + 再計算リクエスト生成）。
+  IO なし・型基盤先行。テスト 38 件。
+- **IMP-043（§11 見積/請求ワークフロー — 承認スナップショット・版管理・POS ブリッジ）完了**:
+  見積承認スナップショット（承認時の明細・金額凍結 + 差分検出 + 再承認要否判定）、
+  帳票版管理（ADR-0004 準拠、訂正ワークフロー型定義 + 遷移表）、
+  POS→売掛元帳ブリッジ（POS 取引→LedgerEntryInput 変換、プロバイダ別マッピング、返金分離）。
+  DB マイグレーション・UI 変更は消費タスクで実施。テスト 56 件。
+- **IMP-042（WORKFLOW_BUILDER 版管理テンプレート型基盤）完了**:
+  ワークフローテンプレートの版管理型基盤。WorkflowSnapshot（ジョブ開始時テンプレート凍結）+
+  TemplateStep 正準共有型（6+ 箇所の散在型定義を統一）+ diffTemplateSteps（steps 差分比較）+
+  isSnapshotStale（凍結スナップショット乖離判定）。DB マイグレーションは消費タスクで実施。テスト 20 件。
+- **IMP-041（§21 設備/リフト稼働 占有予測・NEXT ACTION シグナル）完了**:
+  ブース占有予測の純関数群（peakConcurrent/稼働率/定員超過検出/空き推定/空きブース検索）+
+  NEXT ACTION ブースシグナル（booth_freed/assign_booth/capacity_exceeded/booth_overloaded の
+  4 種導出）。IMP-044（NEXT ACTION エンジン）と IMP-046（経営分析 KPI）の前提条件。テスト 41 件。
+- **IMP-040（§8 部品装着インテグリティ 正準語彙）完了**:
+  正準ドメイン語彙 7 軸目 `PART_INSTALLATION_STATES`（5 値）+ 遷移表 + 6 言語ラベル。
+  Certificate Gate 部品整合性条件の導出関数 `derivePartsIntegrityOk()` 追加。
+  DB 実装値(小文字)との対応は IMP-015 に委ねる。テスト 51 件。
 - **IMP-034（§2/§4 タブレット 2-pane・共用端末 型基盤）完了**:
   3 段階デバイスクラス（mobile/tablet/desktop）、タブレット 2-pane 画面マッピング（4 ペア）、
   共用端末セッションモード・切替認証方式を型定義。UI コンポーネント・認証フロー変更なし。
