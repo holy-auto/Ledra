@@ -4,6 +4,15 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-08-30 IMP-042（#952）を main へ取り込み。ワークフローテンプレート版管理・スナップショット型基盤
+
+- 内容: IMP-042（ワークフローテンプレート版管理・スナップショット型基盤、branch impl/IMP-042-workflow-versioning）を
+  main へ取り込んだ。69ファイルの phantom conflict（65ファイル一括解決、4ファイル手動）＋
+  resurrection（WorkScopeProvider.tsx を16度目の再削除、スキップ済み PR #947 の
+  `src/lib/sync/` 一式8ファイルも合わせて削除）を解消。
+- 検証: tsc --noEmit / vitest run(4850件) / lint(0エラー、1256警告=基準線) / check:schema /
+  lint:migrations すべて green。
+
 ## 2026-08-30 IMP-041（#951）の code-review 指摘を修正。データ不備の終日占有誤判定・no_show の稼働率誤カウントを解消
 
 - 内容: `src/lib/booths/occupancy.ts` の `findAvailableBooths()` と `countConcurrentAt()` が、

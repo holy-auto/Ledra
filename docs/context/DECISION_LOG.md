@@ -4,6 +4,18 @@
 > （新しい順）。実装の詳細は RELEASE_LOG.md、迷っている段階のものは
 > OPEN_QUESTIONS.md に書く。
 
+## 2026-08-30 IMP-042（#952）を main へ取り込み。resurrection パターン16度目
+
+1. 日付: 2026-08-30
+2. 起きたこと: IMP-042（ワークフローテンプレート版管理・スナップショット型基盤、branch impl/IMP-042-workflow-versioning）を main へ取り込む際、main と分岐した69ファイルが衝突した。65ファイルは phantom conflict で一括解決。残り4ファイル（DECISION_LOG.md/LEDRA_CURRENT.md/RELEASE_LOG.md/requirement-trace.md）はこのPR自身が変更していたため手動再適用した。resurrection チェックで `WorkScopeProvider.tsx`（16度目の再発）とスキップ済み PR #947 の `src/lib/sync/` 一式8ファイルが今回も復活していたため削除。`templateVersion.ts`（IMP-042 自身の新規ファイル）は `sync/` への依存なし（grep で確認済み）。
+3. 以前の考え: なし（#948〜951 で確立した手順の踏襲）。
+4. 違和感・問題: 特になし。
+5. 決めたこと: 確立済みの手順をそのまま適用。
+6. 捨てた選択肢: なし。
+7. 判断理由: 確立済みの手順が引き続き有効に機能した。
+8. まだ答えが出ていないこと: なし。
+9. 公開区分: 公開可（マージ手順の技術的な経緯。金額・テナント名・接続情報は含まない）
+
 ## 2026-08-30 IMP-041（#951）の code-review 指摘を修正。データ不備の終日占有誤判定・no_show の稼働率誤カウントを解消
 
 1. 日付: 2026-08-30
