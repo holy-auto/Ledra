@@ -4,6 +4,15 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-08-30 IMP-046（#956）を main へ取り込み。運用KPI計算・設備キャパシティ分析
+
+- 内容: IMP-046（運用KPI計算・設備キャパシティ分析、branch impl/IMP-046-analytics-kpi）を
+  main へ取り込んだ。82ファイルの phantom conflict（78ファイル一括解決、4ファイル手動）＋
+  resurrection（WorkScopeProvider.tsx を20度目の再削除、スキップ済み PR #947 の
+  `src/lib/sync/` 一式8ファイルも合わせて削除）を解消。
+- 検証: tsc --noEmit / vitest run(5040件) / lint(0エラー、1256警告=基準線) / check:schema /
+  lint:migrations すべて green。
+
 ## 2026-08-30 IMP-045（#955）の code-review 指摘を修正。ガード3関数のチェック順不一致・重複ロジック・不要なキャストを解消
 
 - 内容: `src/lib/staff/membership.ts` の `validateRoleChange()` のチェック順を
