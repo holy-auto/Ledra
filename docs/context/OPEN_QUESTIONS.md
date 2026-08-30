@@ -3,6 +3,39 @@
 > まだ決まっていないこと、判断に迷っていることを書く場所。決まったら
 > DECISION_LOG.md に移し、このファイルからは消す（削除履歴は git で追える）。
 
+## 追加（2026-08-30・PR #956 IMP-046 マージ後の遅延 Codex レビュー、8件の指摘未修正）
+
+- **`src/lib/analytics/capacityAnalytics.ts` / `operationalKpi.ts`（IMP-046、main へ
+  commit `dc6deaf0` としてマージ済み）に対し、マージ後に遅延到着した Codex レビューが
+  8件の指摘（すべて P2）を投稿した。PR #956 は既にクローズ済みのため
+  再オープンせず、別PRでの修正が必要（未着手）。**
+  1. `computeFleetUtilization()`（capacityAnalytics.ts ~L143）: `computeBoothUtilization()`
+     （IMP-041 occupancy.ts）が capacity>1 を考慮せず、稼働率を過大評価する。
+  2. `computeStaffCapacity()`（~L214-228）: ジョブ0件のスタッフが `byStaff` に
+     一切現れず、`totalStaff`/`underutilizedCount`/`avgLoadPct` から漏れる。
+  3. `computeStaffCapacity()`（~L251-252）: 過負荷/遊休判定が丸め後の `loadPct`
+     に対して行われ、境界値（例: 80.3%→80）が誤分類される。
+  4. `computeStaffCapacity()`（~L226）: `actualMinutes: null` のジョブが 0 扱いになり、
+     見積のみの予定ジョブで埋まったスタッフが 0% 負荷と報告される。
+  5. `computeAvgReviewWaitHours()` / `computeAvgCycleTimeHours()`（operationalKpi.ts
+     ~L116-145）: 不正なタイムスタンプが `NaN` を生み、`hours < 0` では弾けず
+     平均全体が `NaN` に汚染される。
+  6. `computeVerifiedRate()`（~L94-102）: VERIFIED→REVOKED 遷移後の証明書が分母
+     （REVOKED込み）には残るが分子（VERIFIED）から消え、「到達率」の定義と
+     矛盾する。REVOKED は VERIFIED 到達前にも起こり得るため単純な救済不可、
+     定義自体の決め直しが必要（設計判断が要る）。
+  7. `computeSlaComplianceRate()`（~L152-155）: `EscalationStage = "at_risk" |
+     "overdue"` のうち `at_risk`（まだ期限内）を非遵守扱いにしており、
+     「SLA遵守率」という名称と整合しない可能性がある（意図的な厳格判定か、
+     命名変更が要るかは要判断）。
+  8. `computeDailyThroughput()`（~L159-161）: 小数第1位への丸めにより、
+     期間が長く件数が少ない場合（例: 30日で1件≈0.03/日）に非ゼロの実績が
+     0 に潰れる。
+  - 全件、mainの現行コードを直接読んで独立検証済み（確実）。`spawn_task` ツールが
+    2回連続でタイムアウトしたため、正式なフォローアップタスクとして登録できず、
+    ここに記録することで見失いを防ぐ。次にこのファイルを確認したセッションが
+    `spawn_task` で切り出すか、直接ブランチを切って修正すること。
+
 ## 追加（2026-08-30・「その他」タブが勝手にプラン画面へ飛ぶ不具合の調査）
 
 - **クレームを送った利用者のテナントの実際の役割(role)・plan_tierが未確認。**
