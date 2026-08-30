@@ -9,11 +9,17 @@
 - 内容: PR #941 squash マージ後、`db-migrate.yml` が `customer_concerns` migration の
   out-of-order エラーで失敗した。本番 `supabase_migrations.schema_migrations` を直接
   SELECT し、`statements` 列の全文が私の最終修正版（`auth.users(id)` / `set_updated_at()` /
-  `public.my_tenant_ids()`）と一致することを確認。`customer_concerns` テーブルの実際の
-  列・FK 制約も `pg_constraint` から直接確認し、同じ内容が本番に存在することを確認した。
+  `public.my_tenant_ids()`）と一致することを確認。さらに `customer_concerns` の実オブジェクト
+  （列・FK制約・CHECK制約4本・インデックス4本・updated_at トリガー・RLS有効化・SELECT/UPDATE
+  ポリシー2本、anon INSERTポリシーは無し=修正版どおり）も全種別 `pg_constraint`/`pg_indexes`/
+  `pg_trigger`/`pg_policies`/`pg_class` から直接照会し、修正版と一致することを確認した
+  （Codex レビュー指摘を受け、列・FKのみだった初回確認を全オブジェクト種別へ拡張）。
   db-migrate.yml の実行はこの1回のみで、再実行や後続実行は無い——にもかかわらず本番には
-  正しい内容が存在しており、git 経由の CI とは別経路（この repo で既知の運用: Supabase MCP
-  の apply_migration 等）で適用されたと推定。適用者・時期は特定できていない。
+  正しい内容が存在する。git 経由の CI とは別経路で適用されたと推定するが、候補として
+  挙げていた「Supabase MCP の apply_migration」は誤りと判明（apply_migration は呼び出し時刻
+  ベースでバージョンを自動採番するため元の版番号 `20260820010000` のままでは載らない。
+  Codex レビュー指摘で訂正）。版番号を保てる経路としては手動 `supabase db push --include-all`
+  が最有力候補だが未検証。適用者・時期は特定できていない。
   `db-migrate.yml` の手動再実行（workflow_dispatch）を試みたが、現在のトークン権限では
   403 で拒否され、手動での green 化確認はできなかった。
 - 対象: `supabase/migrations/20260820010000_customer_concerns.sql`（本番）。次に
