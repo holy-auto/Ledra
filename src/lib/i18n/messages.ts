@@ -18,7 +18,7 @@ import filMessages from "../../../messages/fil.json";
 import hiMessages from "../../../messages/hi.json";
 import { DEFAULT_LOCALE, type Locale } from "./locales";
 
-type MessageTree = { [key: string]: string | MessageTree };
+export type MessageTree = { [key: string]: string | MessageTree };
 
 const MESSAGES: Record<Locale, MessageTree> = {
   ja: jaMessages as MessageTree,
@@ -29,7 +29,7 @@ const MESSAGES: Record<Locale, MessageTree> = {
   hi: hiMessages as MessageTree,
 };
 
-function lookup(tree: MessageTree, path: string): string | undefined {
+export function lookup(tree: MessageTree, path: string): string | undefined {
   const parts = path.split(".");
   let cur: string | MessageTree | undefined = tree;
   for (const part of parts) {
