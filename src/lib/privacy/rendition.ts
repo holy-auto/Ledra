@@ -10,7 +10,7 @@
  * 純関数。IO なし。
  */
 
-import { VISIBILITY_ORDER, type VisibilityLevel } from "./visibility";
+import { canAccess, type VisibilityLevel } from "./visibility";
 import { VEHICLE_TABLE_PII_COLUMNS, PASSPORT_TABLE_PII_COLUMNS } from "@/lib/vehicles/customerRelation";
 
 // ── マスキング戦略 ──
@@ -78,8 +78,10 @@ export function applyMask(
 /**
  * レコードにマスキングルールを適用してレンディションを生成する。
  *
- * viewerLevel が rule.appliesBelow より低い（制限的な）場合、
- * 該当フィールドにマスキングを適用する。
+ * viewerLevel が rule.appliesBelow の閲覧権を持たない場合（`canAccess()` が
+ * false を返す場合）、該当フィールドにマスキングを適用する。owner_only な
+ * 閲覧者は「本人向けフィールド」以外は tenant_internal/partner_shared 要求の
+ * フィールドを自動的には見られない（visibility.ts の canAccess() 参照）。
  *
  * 非破壊: 新しいオブジェクトを返す（元のレコードは変更しない）。
  *
@@ -95,12 +97,14 @@ export function createRendition<T extends Record<string, unknown>>(
   viewerLevel: VisibilityLevel,
 ): Redacted<T> {
   const result = { ...original };
-  const viewerOrder = VISIBILITY_ORDER[viewerLevel];
 
   for (const rule of rules) {
-    const thresholdOrder = VISIBILITY_ORDER[rule.appliesBelow];
-    // viewerLevel が appliesBelow より下位（数値が大きい＝特権が低い）場合にマスク適用
-    if (viewerOrder > thresholdOrder && rule.field in result) {
+    // canAccess() を単一の判定源として使う（以前はここで VISIBILITY_ORDER を
+    // 直接比較する独自ロジックを持っており、visibility.ts 側で canAccess() の
+    // 意味論を変更した際に追随できず、owner_only 閲覧者に対して一切マスクが
+    // かからなくなっていた——同じ判定を2箇所に実装すると、片方だけ直しても
+    // もう片方が古い意味論のまま残るバグの典型例）。
+    if (!canAccess(rule.appliesBelow, viewerLevel) && rule.field in result) {
       (result as Record<string, unknown>)[rule.field] = applyMask(result[rule.field as keyof T], rule.strategy, {
         redactedValue: rule.redactedValue,
         keepChars: rule.keepChars,
@@ -131,6 +135,11 @@ function frozenRules(rules: readonly MaskingRule[]): readonly MaskingRule[] {
 export const CERTIFICATE_PUBLIC_RULES: readonly MaskingRule[] = frozenRules([
   { field: "customer_name", appliesBelow: "tenant_internal", strategy: "nullify" },
   { field: "content_free_text", appliesBelow: "tenant_internal", strategy: "nullify" },
+  // vehicle_info_json は { maker, model, plate } を含む（create.ts）。
+  // certificateVersion.ts が PII と明示している既存フィールドで、
+  // certificates_public ビュー自身の2フィールドのみのマスキングが
+  // 元々不完全だったことの回帰防止（Codex レビュー指摘）。
+  { field: "vehicle_info_json", appliesBelow: "tenant_internal", strategy: "nullify" },
 ]);
 
 /**

@@ -99,14 +99,28 @@ export function resolveVisibility(viewer: ViewerContext): VisibilityLevel {
 /**
  * データ分類ごとに要求される最低可視性レベル。
  *
- * restricted → owner_only 以上（実質、通常の閲覧経路では誰も満たせない。
- *   認証情報・暗号化シークレット等はテナントスタッフにも見せない前提）
- * pii/confidential → tenant_internal 以上（テナントスタッフは通常業務で
- *   閲覧可能。パートナー・公開は開示同意やマスキングなしに閲覧不可）
+ * restricted → owner_only（canAccess() 上は「厳密一致のみ」だが、restricted
+ *   分類自体が本人の概念を持たないテーブル——auth.users/tenants/
+ *   square_connections の暗号化カラム——に付くため、実運用ではこの経路
+ *   自体を通さず findClassificationViolations() でレンダリング前に弾く
+ *   のが正しい防御。この owner_only 指定は迂回された場合の保険であり、
+ *   唯一の防御ではない）
+ * pii/confidential → tenant_internal（テナントスタッフは通常業務で閲覧可能）
  * public → 制限なし
  *
- * ponytail: このマッピングはデフォルト方針。個別エンティティが
- * 上書きする場合は FieldVisibilityRule で指定。
+ * ponytail（既知の限界）: このマッピングは「第三者・テナントスタッフから
+ * 見た最低要件」を表し、「データ主体本人が自分自身のレコードを見る」ケースは
+ * カバーしない——本人であっても pii/confidential 要求のフィールドは
+ * canAccess() 上 tenant_internal を満たさないため、findHiddenFields()/
+ * createRendition() をこのマッピングのまま本人向けにも適用すると、
+ * 本人自身のデータまで隠れる。これは owner_only を tenant_internal 以上に
+ * 自動昇格させると restricted への迂回経路が復活するため（Codex レビュー
+ * で往復して確認済みのトレードオフ）、意図的に残した制約。
+ * 「本人は自分のレコードを見られるようにしたい」呼び出し側は、
+ * viewer.isDataSubject と「このレコードが本人のものか」を個別に判定し、
+ * 真であれば findHiddenFields()/createRendition() を経由せず生データを返す
+ * 判断を呼び出し側自身で行う必要がある。
+ * 個別エンティティが上書きする場合は FieldVisibilityRule で指定。
  */
 export const DEFAULT_REQUIRED_VISIBILITY: Record<DataClassification, VisibilityLevel> = {
   restricted: "owner_only",

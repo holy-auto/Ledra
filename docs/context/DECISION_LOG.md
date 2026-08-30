@@ -4,6 +4,18 @@
 > （新しい順）。実装の詳細は RELEASE_LOG.md、迷っている段階のものは
 > OPEN_QUESTIONS.md に書く。
 
+## 2026-08-30 IMP-050（#957）へ3回目に届いた Codex レビュー4件のうち2件を修正、owner_only の設計トレードオフは OPEN_QUESTIONS へ
+
+1. 日付: 2026-08-30
+2. 起きたこと: 前回の修正（owner_only を tenant_internal 以上のネスト階層から独立させる P1 修正）を push した直後、その修正自体に対する3回目の Codex レビューが届いた。4件のうち2件は実在バグとして確認・修正: (1) `createRendition()` が `canAccess()` を呼ばず、`VISIBILITY_ORDER` の生比較を独自に実装したままだった——`visibility.ts` 側で `canAccess()` の意味論を変更したにもかかわらず、同じ判定を持つ `rendition.ts` 側の実装が追随しておらず、owner_only 閲覧者に対して一切マスクがかからなくなっていた（自分自身が前回修正で作った不整合）。(2) `CERTIFICATE_PUBLIC_RULES` が customer_name/content_free_text の2フィールドしかマスクしておらず、`create.ts`/`certificateVersion.ts` が明示的に PII と識別している `vehicle_info_json`（maker/model/plate を含む）が対象外だった。残り2件（同一論点の表裏）は、単純な修正では解決しない設計トレードオフと判明: (3)「restricted を owner_only にマッピングしても、canAccess('owner_only','owner_only') が true になったため、データ主体本人が restricted まで見られてしまう」。(4)「pii/confidential を tenant_internal にマッピングしたため、canAccess('tenant_internal','owner_only') が false になり、データ主体本人が自分自身の pii すら見られなくなった」。(3)(4) は同じ owner_only という値に「本人限定データ」と「誰にも見せない床」という矛盾する2つの意味を持たせていることが根本原因で、線形階層モデルのままでは両立しない。
+3. 以前の考え: 前回の P1 修正（owner_only の階層分離）で「本人であることが他人のテナント内部データへ昇格しない」問題は解決したと判断していた。
+4. 違和感・問題: (1)(2) は、これまで4回連続で繰り返している「1つのモジュール・1つの関数を直しても、同じ判定ロジックを独自に再実装している姉妹関数を見落とす」パターンの再発。(3)(4) は、自動レビューの指摘を鵜呑みに追いかけて反応的にパッチし続けると、Finding が収束せず「直すたびに別の反対方向の指摘に化ける」状態に陥ることの実例——CLAUDE.md にも近い方針があるとおり、収束しないレビュー往復はどこかで打ち切り、設計判断として一段上に切り出す必要がある。
+5. 決めたこと: (1) `createRendition()` を `canAccess()` 呼び出しに統一（独自の VISIBILITY_ORDER 比較を削除）。既存テスト「owner_only → 全フィールド可視」は前回の P1 修正と矛盾する旧仕様のアサーションだったため、「owner_only → tenant_internal/partner_shared 要求のフィールドはマスクされる」に更新。(2) `vehicle_info_json` を `FIELD_CLASSIFICATIONS`/`CERTIFICATE_PUBLIC_RULES` 両方に追加。(3)(4) はこの PR では解決せず、`DEFAULT_REQUIRED_VISIBILITY` の JSDoc に既知の限界として明記（本人が自分のレコードを見る際はこの汎用機構をバイパスする必要がある、という制約付き）、OPEN_QUESTIONS.md に設計判断待ちとして記録。回帰テスト2件更新。
+6. 捨てた選択肢: (a) owner_only を再びネスト階層に戻す…(3) の restricted 漏洩リスクが復活するため不採用。(b) この場で5段階目の VisibilityLevel（例: system_only）を新設して根本解決する…現時点で本モジュールは呼び出し元ゼロであり、実際の統合要件（誰がどう isDataSubject を渡すか）が固まっていない段階で型を確定させるのは時期尚早と判断し、統合タスク着手前の設計判断として OPEN_QUESTIONS に切り出す方を選んだ。
+7. 判断理由: (1)(2) は明確な単一の正しい修正がある「バグ報告」として扱い、確認の上で修正した。(3)(4) は「収束しないレビュー往復はどこかで打ち切り、設計判断として一段上に切り出す」という判断——盲目的に反応し続けるより、トレードオフを言語化してから改めて判断する方が、結果的に手戻りが少ない。
+8. まだ答えが出ていないこと: owner_only の設計トレードオフの最終解（OPEN_QUESTIONS.md 参照）。実際に API/UI へ統合するタスクに着手する前に確定させる必要がある。
+9. 公開区分: 公開可（コードレビューで見つかった型基盤コードの論理バグ修正、および設計トレードオフの言語化。個人情報は含まない）。
+
 ## 2026-08-30 IMP-050（#957）へ2回目に届いた Codex レビュー7件を修正、うち2件は既存の意図的設計と確認し不採用
 
 1. 日付: 2026-08-30

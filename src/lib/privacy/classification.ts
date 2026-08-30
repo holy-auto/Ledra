@@ -113,6 +113,13 @@ export const FIELD_CLASSIFICATIONS: readonly FieldClassificationEntry[] = [
   },
   { table: "certificates", column: "customer_name", classification: "pii", reason: "顧客氏名" },
   { table: "certificates", column: "content_free_text", classification: "pii", reason: "PII 含みうる自由記述" },
+  // certificateVersion.ts が明示的に PII と識別している（maker/model/plate を含む jsonb）。
+  {
+    table: "certificates",
+    column: "vehicle_info_json",
+    classification: "pii",
+    reason: "車両情報（ナンバー含む jsonb）",
+  },
   // hearings に content カラムは無い。実際の PII は氏名・連絡先・車両識別情報の個別カラム。
   { table: "hearings", column: "customer_name", classification: "pii", reason: "顧客氏名" },
   { table: "hearings", column: "customer_phone", classification: "pii", reason: "顧客電話番号" },

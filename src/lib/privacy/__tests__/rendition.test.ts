@@ -73,9 +73,19 @@ describe("createRendition", () => {
 
   const original = { name: "田中", email: "tanaka@example.com", id: "abc" };
 
-  it("owner_only → 全フィールド可視", () => {
+  it("owner_only → tenant_internal/partner_shared 要求のフィールドはマスクされる（自動昇格しない）", () => {
+    // 旧仕様「owner_only は全フィールド可視」は VISIBILITY_ORDER の生比較を
+    // 直接使っていた頃の名残で、canAccess() を owner_only 非ネスト化した際に
+    // ここだけ追随できていなかった（Codex レビュー指摘、P1）。
+    // owner_only 要求のルールが無いここでは、owner_only 閲覧者は本人向け
+    // フィールド以外（tenant_internal/partner_shared 要求）は見えない。
+    // 「本人自身のレコードなら見せたい」というケースは、この汎用機構では
+    // 解決しない既知の限界——呼び出し側が isDataSubject と「このレコードが
+    // 本人のものか」を個別に確認してから呼ぶ必要がある（DEFAULT_REQUIRED_
+    // VISIBILITY の JSDoc 参照）。
     const r = createRendition(original, rules, "owner_only");
-    expect(r).toEqual(original);
+    expect(r.name).toBeNull();
+    expect(r.email).toBe("***");
   });
 
   it("tenant_internal → name 可視、email 可視（partner_shared 未満ではない）", () => {
@@ -109,9 +119,15 @@ describe("createRendition", () => {
 });
 
 describe("定義済みルール", () => {
-  it("CERTIFICATE_PUBLIC_RULES — customer_name, content_free_text を nullify", () => {
-    expect(CERTIFICATE_PUBLIC_RULES).toHaveLength(2);
-    expect(CERTIFICATE_PUBLIC_RULES.map((r) => r.field).sort()).toEqual(["content_free_text", "customer_name"]);
+  it("CERTIFICATE_PUBLIC_RULES — customer_name, content_free_text, vehicle_info_json を nullify", () => {
+    // vehicle_info_json（maker/model/plate を含む）が抜けていたバグの回帰防止
+    // （Codex レビュー指摘: certificates_public ビュー自身のマスキングが元々不完全だった）。
+    expect(CERTIFICATE_PUBLIC_RULES).toHaveLength(3);
+    expect(CERTIFICATE_PUBLIC_RULES.map((r) => r.field).sort()).toEqual([
+      "content_free_text",
+      "customer_name",
+      "vehicle_info_json",
+    ]);
     for (const r of CERTIFICATE_PUBLIC_RULES) {
       expect(r.strategy).toBe("nullify");
       expect(r.appliesBelow).toBe("tenant_internal");
