@@ -42,9 +42,11 @@ export interface MaskingRule {
  * - redact: redactedValue（デフォルト "***"）を返す
  * - truncate: 先頭 min(keepChars, 文字列長/2) 文字 + "***" を返す
  *   （短い値でも常に半分以下しか残さない。全文字露出を防ぐ）
- * - hash: "sha256:<hex8桁>" 形式のプレースホルダを返す
+ * - hash: 16進数文字列（事前ハッシュ済みの値）なら "sha256:<hex8桁>" 形式に
+ *   整形して返す。16進数でない生の値（メール等）が渡された場合は
+ *   "sha256:" ラベルで生の値の一部を露出させないよう "***" にフォールバック
  *   （ponytail: 実際のハッシュ計算は crypto 依存になるため、
- *   呼び出し側が事前にハッシュして渡す設計。ここでは形式のみ）
+ *   呼び出し側が事前にハッシュして渡す設計。ここでは形式検証と整形のみ）
  */
 export function applyMask(
   value: unknown,
@@ -71,10 +73,18 @@ export function applyMask(
       const keep = Math.min(requested, Math.floor(str.length / 2));
       return str.slice(0, keep) + "***";
     }
-    case "hash":
-      // ponytail: 実際のハッシュ計算は行わない。value は呼び出し側が
-      // 事前にハッシュ済みの値を渡す前提で、フォーマットのみ整形する。
-      return `sha256:${String(value).slice(0, 8)}`;
+    case "hash": {
+      // ponytail: 実際のハッシュ計算は行わない（crypto 依存を避けるための
+      // 明示的な設計判断）。value は呼び出し側が事前にハッシュ済みの値を
+      // 渡す前提だが、契約は型で強制されない。生の値（メール等）がそのまま
+      // 渡されると、先頭8文字を "sha256:" 付きで返してしまい、ハッシュ化
+      // されたかのように見えて実は生の値の一部が露出する（Codex レビュー
+      // 指摘）。16進数文字列（ハッシュ値の見た目）であることを検証し、
+      // そうでなければ完全 redact にフォールバックする。
+      const str = String(value);
+      const looksPreHashed = /^[0-9a-f]+$/i.test(str) && str.length >= 8;
+      return looksPreHashed ? `sha256:${str.slice(0, 8)}` : "***";
+    }
   }
 }
 

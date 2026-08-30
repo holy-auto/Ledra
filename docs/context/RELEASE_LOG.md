@@ -4,6 +4,11 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-08-30 IMP-050（#957）へ5回目（最終）に届いた Codex レビュー3件を修正。以降 Codex は利用上限に到達
+
+- 内容: `docs/context/LEDRA_CURRENT.md` の IMP-050 ステータスを「部分（統合未着手）」に統一（テスト件数76件へ更新）。`isMoreRestrictive()` が owner_only を含む比較でも古い線形階層の意味論のままだったのを、owner_only が絡む比較は常に false を返すよう修正（`canAccess()` の再設計に追随）。`applyMask()` の hash 戦略が生の値（メール等）を "sha256:" ラベル付きで一部露出しうる不具合を、16進数文字列であることを検証しそうでなければ完全 redact にフォールバックするよう修正。回帰テスト3件追加。この直後、Codex がコードレビューの利用上限に到達した旨のコメントが届いた。
+- 検証: tsc --noEmit clean / vitest run 5132件全通過（500ファイル、privacy 78件含む） / lint 0エラー・1256警告=基準線 / check:schema OK / lint:migrations OK。
+
 ## 2026-08-30 IMP-050（#957）へ4回目に届いた Codex レビュー3件を修正。暗号化カラム登録漏れ・truncate短小値露出・maxClassificationのフェイルオープン
 
 - 内容: `FIELD_CLASSIFICATIONS` の restricted 登録を全体横断検索（`grep -rn "_ciphertext" supabase/migrations/`）で洗い出し、supply_partner_credentials/accounting_integrations/tenant_integrations/tenant_private_secrets/tenants の計15カラムを追加登録（前回は LINE/Square の4例のみ）。`applyMask()` の truncate 戦略で `keepChars` が値の長さ以上でも常に半分以下しか残らないよう修正（PIN 等の短い値が全文字露出する不具合）。`maxClassification()` の個々のフィールド取得を `getFieldClassification()` の安全な既定値（confidential）に統一し、`defaultClassification`（既定 "public"）が未登録の新規センシティブカラムに誤って適用されるフェイルオープンを解消。回帰テスト4件追加・2件更新。

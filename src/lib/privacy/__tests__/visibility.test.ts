@@ -17,14 +17,21 @@ describe("VISIBILITY_LEVELS", () => {
 });
 
 describe("isMoreRestrictive", () => {
-  it("owner_only > tenant_internal > partner_shared > public", () => {
-    expect(isMoreRestrictive("owner_only", "tenant_internal")).toBe(true);
+  it("tenant_internal > partner_shared > public（この3レベルはネスト階層として比較可能）", () => {
     expect(isMoreRestrictive("tenant_internal", "partner_shared")).toBe(true);
     expect(isMoreRestrictive("partner_shared", "public")).toBe(true);
   });
 
   it("同レベル → false", () => {
     expect(isMoreRestrictive("public", "public")).toBe(false);
+  });
+
+  it("owner_only が絡む比較は常に false（独立した軸のため順序比較できない、Codex レビュー指摘）", () => {
+    // 数値比較をそのまま使うと owner_only=0 が「最も制限的」として階層に
+    // 巻き戻ってしまう——canAccess() が owner_only を独立させたのと矛盾する。
+    expect(isMoreRestrictive("owner_only", "tenant_internal")).toBe(false);
+    expect(isMoreRestrictive("tenant_internal", "owner_only")).toBe(false);
+    expect(isMoreRestrictive("owner_only", "public")).toBe(false);
   });
 });
 

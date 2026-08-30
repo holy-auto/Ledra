@@ -55,6 +55,12 @@ describe("applyMask", () => {
     expect(applyMask("deadbeefcafe0123", "hash")).toBe("sha256:deadbeef");
   });
 
+  it("hash に生の値（16進数でない）を渡すと '***' にフォールバックする（Codex レビュー指摘: 生の値を sha256 と偽らない）", () => {
+    // メールアドレス等の生の値を誤って渡した場合、先頭8文字を "sha256:" と
+    // 偽って一部露出させてはならない。
+    expect(applyMask("tanaka@example.com", "hash")).toBe("***");
+  });
+
   it("null 入力 → null（全戦略共通）", () => {
     for (const s of MASKING_STRATEGIES) {
       expect(applyMask(null, s)).toBeNull();

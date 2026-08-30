@@ -35,8 +35,19 @@ export const VISIBILITY_ORDER: Record<VisibilityLevel, number> = {
   public: 3,
 };
 
-/** a が b より制限的か（owner_only 同士・tenant_internal/partner_shared/public 間の比較にのみ使う） */
+/**
+ * a が b より制限的か。
+ *
+ * owner_only は独立した軸のため tenant_internal/partner_shared/public とは
+ * 順序比較できない——「より制限的」とも「より緩い」とも言えない、非順序関係
+ * （canAccess() 参照）。どちらか一方だけが owner_only の場合は false を返す
+ * （数値比較をそのまま使うと、呼び出し側が「2つのルールのうち厳しい方」を
+ * 選ぶ目的でこの関数を使った際に、owner_only を階層に巻き戻してしまう
+ * ——Codex レビュー指摘）。owner_only 同士、または tenant_internal/
+ * partner_shared/public 同士の比較にのみ意味のある結果を返す。
+ */
 export function isMoreRestrictive(a: VisibilityLevel, b: VisibilityLevel): boolean {
+  if (a === "owner_only" || b === "owner_only") return false;
   return VISIBILITY_ORDER[a] < VISIBILITY_ORDER[b];
 }
 
