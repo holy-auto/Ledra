@@ -4,6 +4,18 @@
 > （新しい順）。実装の詳細は RELEASE_LOG.md、迷っている段階のものは
 > OPEN_QUESTIONS.md に書く。
 
+## 2026-08-30 IMP-030（#945）を main へ取り込み。gateEvaluator.ts の genuinely-touched マージを手動再適用
+
+1. 日付: 2026-08-30
+2. 起きたこと: IMP-030（証明書訂正・supersede・Integrity Incident・revoke 型基盤、branch impl/IMP-030-correction-supersede-revoke）を main へ取り込む際、main と分岐した53ファイルが衝突した。48ファイルは phantom conflict で一括解決。残り5ファイル（DECISION_LOG.md/LEDRA_CURRENT.md/RELEASE_LOG.md/requirement-trace.md/`src/lib/certificates/gateEvaluator.ts`）はこのPR自身が変更していたため手動再適用した。`gateEvaluator.ts` は IMP-028（#943）の code-review 修正（Before/After 判定の単一定義源化）と IMP-030 自身の変更（`no_pending_corrections` 条件の実装接続）の両方が同じファイルに触れていたため、main の内容（#943 修正込み）を base に IMP-030 の3箇所の diff hunk（import 追加・型定義・関数本体）を手動で再適用した。resurrection パターンが10度目の再発（`WorkScopeProvider.tsx`/`sync/*`）。
+3. 以前の考え: なし（IMP-028/029 で確立した手順の踏襲）。
+4. 違和感・問題: 特になし。今回は genuinely-touched ファイルが docs 4件に加えてコードファイル1件（`gateEvaluator.ts`）だった点が過去2回と異なるが、同じ「main を base に PR 自身の diff を手動再適用」の手順がそのまま機能した。
+5. 決めたこと: 確立済みの merge 手順を適用。`gateEvaluator.ts` は diff の3箇所（import、型定義の `correctionRequests` フィールド追加、`evaluateNoPendingCorrections` 関数本体）を個別に確認し、#943 修正部分（`requiresBeforeAfterMedia`/`CERTIFICATE_BEFORE_AFTER_REQUIRED_MESSAGE` の使用）と重ならないことを確認してから適用した。
+6. 捨てた選択肢: なし。
+7. 判断理由: コードファイルの genuinely-touched マージでも、docsファイルと同じ「diff を個別確認し手動再適用」の原則が安全に機能する。3-way merge に任せず明示的に確認することで、#943 の修正が誤って失われるリスクを排除した。
+8. まだ答えが出ていないこと: なし。
+9. 公開区分: 公開可（マージ手順の技術的な経緯。金額・テナント名・接続情報は含まない）
+
 ## 2026-08-30 IMP-029（#944）を main へ取り込み。lint警告4件（新規テストファイルの未使用importと any）を修正
 
 1. 日付: 2026-08-30

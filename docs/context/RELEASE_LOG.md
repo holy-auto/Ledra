@@ -4,6 +4,16 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-08-30 IMP-030（#945）を main へ取り込み。証明書訂正・Integrity Incident・revoke型基盤
+
+- 内容: IMP-030（証明書訂正・supersede・Integrity Incident・revoke 型基盤、
+  branch impl/IMP-030-correction-supersede-revoke）を main へ取り込んだ。53ファイルの
+  phantom conflict（48ファイル一括解決、5ファイル手動）＋resurrection 5ファイル
+  （WorkScopeProvider.tsx / sync/* を10度目の再削除）を解消。`gateEvaluator.ts` は
+  IMP-028（#943）の code-review 修正と本PR自身の変更が同一ファイルに重なっていたため、
+  main の内容を base に本PRの3箇所の diff hunk を個別確認の上で手動再適用した。
+- 検証: tsc/lint(0エラー・警告1256件)/vitest(4652件)/check:schema/lint:migrations すべて green。
+
 ## 2026-08-30 IMP-029（#944）を main へ取り込み。中央通知エンジン型基盤、lint警告4件を修正
 
 - 内容: IMP-029（中央通知エンジン型基盤、branch impl/IMP-029-notification-engine）を main へ
