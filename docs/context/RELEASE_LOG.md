@@ -4,6 +4,28 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-08-30 IMP-044（#954）の code-review 指摘を修正。ブースシグナルの重複排除誤爆・follow_up_overdue上書き・イベント件数ドキュメント誤記を解消
+
+- 内容: `src/lib/priority/scorer.ts` の `scoreBoothSignal()` の `actionKey` に `reservationIds` を
+  含めるよう修正（同じブース・同じ kind で時間帯が異なる複数の定員超過ウィンドウが
+  `scoreAndRank()` の重複排除で握り潰されていた問題を解消）。`src/lib/priority/boothJobIntegration.ts`
+  の `enrichJobWithBoothContext()` に `base.action === "follow_up_overdue"` の早期リターンを追加し、
+  期限超過請求の督促がブース関連のヒント・priority 上書きより確実に優先されるよう修正。
+  RELEASE_LOG.md/LEDRA_CURRENT.md/requirement-trace.md の「PRIORITY_TRIGGERS は13ドメインイベント」を
+  実数12に、テスト件数内訳の boothJobIntegration/eventTriggers の入れ替わりを訂正。回帰テスト3件追加。
+- 検証: tsc --noEmit / vitest run(4961件) / lint(0エラー、1256警告=基準線) / check:schema /
+  lint:migrations すべて green。
+
+## 2026-08-30 IMP-044（#954）を main へ取り込み。Priority/NEXT ACTION エンジン — 統一スコアリング・ブース統合・イベントパイプライン
+
+- 内容: IMP-044（Priority/NEXT ACTION エンジン、branch impl/IMP-044-priority-engine）を
+  main へ取り込んだ。75ファイルの phantom conflict（71ファイル一括解決、4ファイル手動）＋
+  resurrection（WorkScopeProvider.tsx を18度目の再削除、スキップ済み PR #947 の
+  `src/lib/sync/` 一式8ファイルも合わせて削除）を解消。lint 新規2件
+  （`eventTriggers.test.ts`/`scorer.test.ts` の未使用 import）を修正。
+- 検証: tsc --noEmit / vitest run(4958件) / lint(0エラー、1256警告=基準線) / check:schema /
+  lint:migrations すべて green。
+
 ## 2026-08-30 IMP-043（#953）の code-review 指摘を修正。DocumentCorrection遷移表のプロトタイプ汚染ガード欠如・POSブリッジの完全性欠落・関数名衝突を解消
 
 - 内容: `src/lib/domain/states.ts` の `DOCUMENT_CORRECTION_TRANSITIONS`/`isValidDocumentCorrectionTransition()`
@@ -691,6 +713,25 @@
   （OPEN_QUESTIONS 参照）。
 - テスト: 既存5件 + 修正後全通過。全4391テスト通過、`tsc --noEmit` クリーン、
   lint 0 エラー。
+
+## 2026-08-20 IMP-044 §20.2 Priority/NEXT ACTION エンジン（branch impl/IMP-044-priority-engine）
+
+- 内容: 3 つの独立した優先度システム + ブースシグナルを統一スコアリングサービスに統合する型基盤を実装。
+  - `src/lib/priority/scorer.ts`: 統一スコアリングサービス
+    - `ScoredAction` 型 — 全シグナルソースを統一スコア (0-100) で表現、actionKey で重複排除
+    - `scoreTile()` / `scoreJobSuggestion()` / `scoreCustomerAction()` / `scoreBoothSignal()` — 各ソースの priority 表現を統一スコアに正規化
+    - `scoreAndRank()` — 全ソースを統合・重複排除・降順ソート。limit で上位 N 件に絞り込み可
+  - `src/lib/priority/boothJobIntegration.ts`: ブース→ジョブ次アクション統合
+    - `enrichJobWithBoothContext()` — pickJobNextActionCandidate の結果をブース文脈で調整（未割当 → priority:high 引き上げ、定員超過 → ヒント追加）
+    - `boothSignalsForReservation()` / `deriveBoothContextForJob()` — シグナル→ジョブ文脈変換ヘルパ
+  - `src/lib/priority/eventTriggers.ts`: イベント→優先度パイプライン型定義
+    - `PRIORITY_TRIGGERS` — 12 ドメインイベントの優先度影響マッピング
+    - `isPriorityAffecting()` / `getPriorityTrigger()` — イベント型から影響判定
+    - `toPriorityRecalcRequest()` — DomainEvent から再計算リクエスト生成
+  - テスト 38 件追加（scorer 17 + boothJobIntegration 11 + eventTriggers 10）
+- 対象: 型定義・ロジック層（src/lib/priority/）。UI 変更・DB マイグレーションなし。
+- 依存: IMP-014, IMP-021, IMP-041
+- 下流: IMP-046（経営分析 KPI — 優先度スコアの集計）
 
 ## 2026-08-20 IMP-043 §11 見積/請求ワークフロー — 承認スナップショット・版管理・POS ブリッジ型基盤（branch impl/IMP-043-estimate-invoice-workflow）
 
