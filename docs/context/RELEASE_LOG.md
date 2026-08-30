@@ -4,6 +4,23 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-08-30 IMP-026（#941）マージ後、db-migrate.yml が out-of-order で失敗——本番は直接確認したところ既に正しく適用済みだった
+
+- 内容: PR #941 squash マージ後、`db-migrate.yml` が `customer_concerns` migration の
+  out-of-order エラーで失敗した。本番 `supabase_migrations.schema_migrations` を直接
+  SELECT し、`statements` 列の全文が私の最終修正版（`auth.users(id)` / `set_updated_at()` /
+  `public.my_tenant_ids()`）と一致することを確認。`customer_concerns` テーブルの実際の
+  列・FK 制約も `pg_constraint` から直接確認し、同じ内容が本番に存在することを確認した。
+  db-migrate.yml の実行はこの1回のみで、再実行や後続実行は無い——にもかかわらず本番には
+  正しい内容が存在しており、git 経由の CI とは別経路（この repo で既知の運用: Supabase MCP
+  の apply_migration 等）で適用されたと推定。適用者・時期は特定できていない。
+  `db-migrate.yml` の手動再実行（workflow_dispatch）を試みたが、現在のトークン権限では
+  403 で拒否され、手動での green 化確認はできなかった。
+- 対象: `supabase/migrations/20260820010000_customer_concerns.sql`（本番）。次に
+  migrations を含む PR（IMP-027 以降）のマージ時、db-migrate.yml がこのファイルで
+  再度 out-of-order にならないか確認する。詳細は DECISION_LOG「IMP-026（#941）マージ後、
+  db-migrate.yml が out-of-order で失敗」参照。
+
 ## 2026-08-30 IMP-026（#941）を main へ取り込み。check:schema・`/code-review`・Migrations Replay で計11件を修正、resurrection バグを6度目の再削除
 
 - 内容: IMP-026（顧客懸念提起フロー、branch impl/IMP-026-customer-concern）を main へ取り込む際、

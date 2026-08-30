@@ -4,6 +4,18 @@
 > （新しい順）。実装の詳細は RELEASE_LOG.md、迷っている段階のものは
 > OPEN_QUESTIONS.md に書く。
 
+## 2026-08-30 IMP-026（#941）マージ後、db-migrate.yml が out-of-order で失敗——本番は直接確認したところ既に正しく適用済みだった
+
+1. 日付: 2026-08-30
+2. 起きたこと: PR #941 を main へ squash マージ後、`db-migrate.yml`（本番 DB マイグレーション適用）が「Found local migration files to be inserted before the last migration on remote database... supabase/migrations/20260820010000_customer_concerns.sql」で失敗した（`supabase db push` の実行ログで `20260820010000` の Remote 列が空欄と表示）。本番 `supabase_migrations.schema_migrations` を直接 SELECT したところ、**`20260820010000` は既にレコードとして存在し、`statements` 列の内容も私の最終修正版（`resolved_by → auth.users(id)`、`EXECUTE FUNCTION set_updated_at()`、RLS ポリシーの `public.my_tenant_ids()`）と一字一句一致していた**。さらに `customer_concerns` テーブルの実際の列・FK 制約（`pg_constraint` を直接照会）も同じ内容で本番に存在することを確認した。
+3. 以前の考え: db-migrate.yml が失敗した以上、この PR のマイグレーションは本番に適用されていないと考えていた。
+4. 違和感・問題: `db-migrate.yml` の実行は1回のみ（this run が main への唯一の db-migrate.yml 実行、再実行や後続実行は無いことを `list_workflow_runs` で確認済み）。にもかかわらず本番には正しい内容が存在する。db-migrate.yml のコメント自身が「Supabase MCP の apply_migration で本番へ直接当てたときは、必ず同バージョン名のファイルを repo にも足す」という運用を明記しており、この repo ではマイグレーションが git 経由の CI とは別経路（Supabase MCP の apply_migration や Supabase 側の GitHub 連携等）で直接本番へ当たることが既知の運用として存在する。**適用者・時期は特定できていない**（このセッションの可視範囲でこのファイルに対して apply_migration を呼んだ記録はない）。推定: db-migrate.yml がリモートのマイグレーション一覧を取得した直後（2026-08-30 03:16:20頃）から、私が直接 SELECT で確認した時点までの間に、何らかの経路で本番へ適用された。未検証。
+5. 決めたこと: (a) 本番の実際のスキーマ（テーブル・列・FK制約・statements 全文）を直接照会し、リポジトリの最終版マイグレーションファイルと一致することを確認——ledger の「適用済み」表示を鵜呑みにせず、実際の DDL まで見るという本セッション一貫の方針を今回も貫いた。(b) `db-migrate.yml` を手動再実行（workflow_dispatch）しようとしたが、現在のトークン権限では 403 で拒否された（`Resource not accessible by integration`）。手動での green 化確認はできなかった。(c) 次に supabase/migrations/ に変更が入る PR（IMP-027 以降のいずれか）で db-migrate.yml が自然に再実行されるので、そこでこの特定ファイルが正しく「既に適用済み」として扱われるか（out-of-order エラーが再発しないか）を確認する。
+6. 捨てた選択肢: (a) `--include-all` を使って再度 push を試す — 本番に既に存在するオブジェクトに対して `CREATE INDEX`（IF NOT EXISTS 無し）を再実行すると「already exists」で別のエラーになる可能性が高く、危険。(b) 本番データを追加で書き換える — 既に正しい状態なので不要。
+7. 判断理由: db-migrate.yml の「赤」という表面的なシグナルより、本番の実際の DDL を直接見るほうが信頼できる（この repo の migration drift の歴史全体を通じて一貫して正しかった方針）。手動再実行の権限が無い以上、次の自然なトリガーを待つほかない。
+8. まだ答えが出ていないこと: (a) 誰が・いつ・どの経路でこのマイグレーションを本番へ適用したか特定できていない。(b) 次回 db-migrate.yml が走ったときに、この out-of-order 表示が再発しないかは未検証（次の migrations 変更 PR で確認する）。
+9. 公開区分: 公開可（マージ手順の技術的な経緯。金額・テナント名・接続情報は含まない）
+
 ## 2026-08-30 IMP-026（#941）を main へ取り込み。check:schema・`/code-review`・CI の Migrations Replay で計11件を発見・対応、resurrection バグを6度目の再削除
 
 1. 日付: 2026-08-30

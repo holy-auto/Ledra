@@ -3,6 +3,18 @@
 > まだ決まっていないこと、判断に迷っていることを書く場所。決まったら
 > DECISION_LOG.md に移し、このファイルからは消す（削除履歴は git で追える）。
 
+## 追加（2026-08-30・IMP-026 マージ時の db-migrate.yml 失敗調査）
+
+- **`customer_concerns` マイグレーションが git 経由の CI 以外の経路で本番へ適用された経緯が
+  不明。** db-migrate.yml の唯一の実行は out-of-order で失敗したが、本番には正しい内容が
+  既に存在していた（DECISION_LOG 参照）。適用者・時期を特定する手段が今のところ無い
+  （Postgres 標準のメタデータにオブジェクト作成時刻は残らない）。次に同様の事象が起きた
+  ときに備え、適用経路を特定できるログ・監査の仕組みが要るか検討の余地がある。
+- **db-migrate.yml の workflow_dispatch を手動実行する権限が現在のセッションには無い
+  （403 Resource not accessible by integration）。** 次回同様の状況で手動再実行による
+  green 化確認が必要になった場合、権限のある人（代表またはリポジトリ管理者）に依頼する
+  運用が要るか、GitHub App の権限設定を見直すか判断が必要。
+
 ## 追加（2026-08-20・IMP-025 車両顧客関係モデル実装時）
 
 - **`vehicles.customer_name/customer_email/customer_phone_masked` のレガシー列 DROP タイミング。**
