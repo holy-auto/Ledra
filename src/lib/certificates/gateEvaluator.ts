@@ -15,11 +15,7 @@
  * 残りはデフォルト met:true のスタブ。後続タスクが実装時にここへ追加する。
  */
 
-import type {
-  CertificateGateCondition,
-  GateConditionResult,
-  CertificateGateResult,
-} from "@/lib/domain/certificateGate";
+import type { GateConditionResult, CertificateGateResult } from "@/lib/domain/certificateGate";
 import { MIN_CERTIFICATE_PHOTOS } from "./photoRequirement";
 
 // ── 評価器の入力コンテキスト ──
