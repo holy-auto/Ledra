@@ -202,6 +202,15 @@ describe("escalation", () => {
     expect(result.remainingRatio).toBeLessThanOrEqual(AT_RISK_RATIO);
   });
 
+  it("未知の priority(Object.prototype のプロパティ名含む)は normal にフォールバック", () => {
+    const now = Date.now();
+    // "constructor" は thresholds に own property として存在しないため normal(72h) を使うべき。
+    // ブラケットアクセスだけだと Object.prototype.constructor を拾ってしまう回帰を防ぐ。
+    const result = evaluateEscalation(hoursAgo(10, now), "constructor", thresholds, now);
+    expect(result.thresholdHours).toBe(thresholds.normal);
+    expect(result.remainingHours).toBeCloseTo(62, 0);
+  });
+
   it("残り0以下で overdue", () => {
     const now = Date.now();
     // urgent=4h、5時間経過 → 残り-1時間
