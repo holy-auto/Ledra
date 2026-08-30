@@ -21,7 +21,7 @@ export async function GET(request: NextRequest) {
 
     let query = admin
       .from("agent_notifications")
-      .select("id, agent_id, user_id, type, title, body, link, is_read, created_at, updated_at, agents(name)", {
+      .select("id, agent_id, user_id, type, title, body, link, is_read, created_at, agents(name)", {
         count: "exact",
       })
       .order("created_at", { ascending: false });
@@ -73,7 +73,7 @@ export async function POST(request: NextRequest) {
         link: body.link ?? null,
         is_read: false,
       })
-      .select("id, agent_id, user_id, type, title, body, link, is_read, created_at, updated_at")
+      .select("id, agent_id, user_id, type, title, body, link, is_read, created_at")
       .single();
 
     if (error) return apiInternalError(error, "agent-notifications");

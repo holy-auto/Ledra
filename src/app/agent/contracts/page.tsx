@@ -59,11 +59,7 @@ export default function AgentContractsPage() {
           window.open(data.signing_url, "_blank", "noopener,noreferrer");
           // Optimistically mark as viewed in local state
           setContracts((prev) =>
-            prev.map((c) =>
-              c.id === contract.id && c.status === "sent"
-                ? { ...c, status: "viewed" }
-                : c,
-            ),
+            prev.map((c) => (c.id === contract.id && c.status === "sent" ? { ...c, status: "viewed" } : c)),
           );
         }
       }
@@ -78,15 +74,23 @@ export default function AgentContractsPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-primary">契約書</h1>
-        <p className="text-sm text-muted mt-1">
-          本部から送付された契約書・署名依頼を確認できます。
-        </p>
+        <p className="text-sm text-muted mt-1">本部から送付された契約書・署名依頼を確認できます。</p>
       </div>
 
       {demoNotice && (
         <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 flex items-start gap-2">
-          <svg className="mt-0.5 h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
+          <svg
+            className="mt-0.5 h-4 w-4 shrink-0"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth={2}
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z"
+            />
           </svg>
           {demoNotice}
         </div>
@@ -95,9 +99,7 @@ export default function AgentContractsPage() {
       {loading ? (
         <div className="glass-card p-8 text-center text-muted">読み込み中...</div>
       ) : contracts.length === 0 ? (
-        <div className="glass-card p-8 text-center text-muted">
-          契約書はまだありません。
-        </div>
+        <div className="glass-card p-8 text-center text-muted">契約書はまだありません。</div>
       ) : (
         <div className="glass-card divide-y divide-default">
           {contracts.map((c) => {
@@ -130,15 +132,37 @@ export default function AgentContractsPage() {
                         {openingId === c.id ? (
                           <>
                             <svg className="animate-spin h-3.5 w-3.5" viewBox="0 0 24 24">
-                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                              <circle
+                                className="opacity-25"
+                                cx="12"
+                                cy="12"
+                                r="10"
+                                stroke="currentColor"
+                                strokeWidth="4"
+                                fill="none"
+                              />
+                              <path
+                                className="opacity-75"
+                                fill="currentColor"
+                                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                              />
                             </svg>
                             開いています...
                           </>
                         ) : (
                           <>
-                            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                            <svg
+                              className="h-3.5 w-3.5"
+                              fill="none"
+                              viewBox="0 0 24 24"
+                              stroke="currentColor"
+                              strokeWidth={2}
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"
+                              />
                             </svg>
                             契約書を開く
                           </>

@@ -24,10 +24,7 @@ export const dynamic = "force-dynamic";
 const questionSchema = z.object({
   id: z.string().uuid().optional(), // 既存IDは無視 (一括置換)
   question: z.string().trim().min(1, "質問文を入力してください").max(1000),
-  choices: z
-    .array(z.string().trim().min(1).max(300))
-    .min(2, "選択肢は2つ以上必要です")
-    .max(6, "選択肢は6つまでです"),
+  choices: z.array(z.string().trim().min(1).max(300)).min(2, "選択肢は2つ以上必要です").max(6, "選択肢は6つまでです"),
   correct_index: z.number().int().min(0).max(5),
   explanation: z.string().trim().max(2000).optional().nullable(),
 });
@@ -42,11 +39,7 @@ async function isAuthor(
   userId: string,
   isSuperAdmin: boolean,
 ): Promise<{ exists: boolean; isAuthor: boolean }> {
-  const { data } = await supabase
-    .from("academy_lessons")
-    .select("id, author_user_id")
-    .eq("id", lessonId)
-    .maybeSingle();
+  const { data } = await supabase.from("academy_lessons").select("id, author_user_id").eq("id", lessonId).maybeSingle();
   if (!data) return { exists: false, isAuthor: false };
   return { exists: true, isAuthor: data.author_user_id === userId || isSuperAdmin };
 }
@@ -58,12 +51,7 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
 
-    const { exists, isAuthor: canEdit } = await isAuthor(
-      supabase,
-      id,
-      caller.userId,
-      caller.role === "super_admin",
-    );
+    const { exists, isAuthor: canEdit } = await isAuthor(supabase, id, caller.userId, caller.role === "super_admin");
     if (!exists) return apiNotFound("レッスンが見つかりません");
 
     const { data, error } = await supabase
@@ -98,12 +86,7 @@ export async function PUT(req: NextRequest, ctx: { params: Promise<{ id: string 
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
 
-    const { exists, isAuthor: canEdit } = await isAuthor(
-      supabase,
-      id,
-      caller.userId,
-      caller.role === "super_admin",
-    );
+    const { exists, isAuthor: canEdit } = await isAuthor(supabase, id, caller.userId, caller.role === "super_admin");
     if (!exists) return apiNotFound("レッスンが見つかりません");
     if (!canEdit) return apiForbidden("クイズの編集は作者のみ可能です");
 
@@ -120,10 +103,7 @@ export async function PUT(req: NextRequest, ctx: { params: Promise<{ id: string 
     }
 
     // 既存削除 → 再挿入 (一括置換)
-    const { error: delErr } = await supabase
-      .from("academy_quiz_questions")
-      .delete()
-      .eq("lesson_id", id);
+    const { error: delErr } = await supabase.from("academy_quiz_questions").delete().eq("lesson_id", id);
     if (delErr) return apiInternalError(delErr);
 
     if (parsed.data.questions.length === 0) {

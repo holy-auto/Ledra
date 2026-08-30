@@ -90,9 +90,9 @@ export function normalizeAddress(raw: string | null | undefined): NormalizedAddr
 /** "1500043" / "150 0043" / "150-0043" / "1500043 " などを "150-0043" に。 */
 export function normalizePostalCode(raw: string | null | undefined): string | null {
   if (!raw) return null;
-  const digits = raw.replace(/[^\d０-９]/g, "").replace(/[０-９]/g, (c) =>
-    String.fromCharCode(c.charCodeAt(0) - 0xfee0),
-  );
+  const digits = raw
+    .replace(/[^\d０-９]/g, "")
+    .replace(/[０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0));
   if (digits.length !== 7) return null;
   return `${digits.slice(0, 3)}-${digits.slice(3)}`;
 }
@@ -103,8 +103,5 @@ export function normalizePostalCode(raw: string | null | undefined): string | nu
  */
 export function normalizeCustomerName(raw: string | null | undefined): string | null {
   if (!raw) return null;
-  return raw
-    .replace(/[　]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim() || null;
+  return raw.replace(/[　]+/g, " ").replace(/\s+/g, " ").trim() || null;
 }

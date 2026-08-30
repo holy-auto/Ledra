@@ -128,8 +128,7 @@ export function buildDeliveryReceiptPayload(args: {
 export const SECONDARY_FACTOR_MAX_ATTEMPTS = 3;
 
 export type SecondaryFactorResult =
-  | { ok: true }
-  | { ok: false; reason: "invalid_format" | "mismatch" | "locked"; attempts: number };
+  { ok: true } | { ok: false; reason: "invalid_format" | "mismatch" | "locked"; attempts: number };
 
 /**
  * 顧客が入力した電話番号下4桁を、セッションに保存された

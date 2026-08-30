@@ -81,9 +81,9 @@ describe("pickJobNextActionCandidate", () => {
   });
 
   it("recommends thank-you when completed and settled", () => {
-    expect(
-      pickJobNextActionCandidate({ ...base, status: "completed", hasActiveCertificate: true }).action,
-    ).toBe("send_thanks");
+    expect(pickJobNextActionCandidate({ ...base, status: "completed", hasActiveCertificate: true }).action).toBe(
+      "send_thanks",
+    );
   });
 
   it("returns close action for cancelled jobs", () => {
@@ -98,21 +98,15 @@ describe("evaluateTimerDeviation", () => {
   });
 
   it("warns at +20%", () => {
-    expect(evaluateTimerDeviation({ actualMinutes: 75, estimatedMinutes: 60, finalized: false })).toBe(
-      "warn_over",
-    );
+    expect(evaluateTimerDeviation({ actualMinutes: 75, estimatedMinutes: 60, finalized: false })).toBe("warn_over");
   });
 
   it("alerts at +50%", () => {
-    expect(evaluateTimerDeviation({ actualMinutes: 95, estimatedMinutes: 60, finalized: false })).toBe(
-      "alert_over",
-    );
+    expect(evaluateTimerDeviation({ actualMinutes: 95, estimatedMinutes: 60, finalized: false })).toBe("alert_over");
   });
 
   it("warns on big shortening when finalized only", () => {
-    expect(evaluateTimerDeviation({ actualMinutes: 25, estimatedMinutes: 60, finalized: true })).toBe(
-      "warn_short",
-    );
+    expect(evaluateTimerDeviation({ actualMinutes: 25, estimatedMinutes: 60, finalized: true })).toBe("warn_short");
     // Not finalized → still a normal in-progress state.
     expect(evaluateTimerDeviation({ actualMinutes: 25, estimatedMinutes: 60, finalized: false })).toBe("ok");
   });

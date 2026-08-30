@@ -43,10 +43,7 @@ const {
 }));
 
 vi.mock("@/lib/supabase/server", () => ({
-  createClient: () =>
-    Promise.resolve({
-      /* user-scoped — only used by resolveCallerWithRole */
-    }),
+  createClient: () => Promise.resolve({/* user-scoped — only used by resolveCallerWithRole */}),
 }));
 
 vi.mock("@/lib/auth/checkRole", () => ({
