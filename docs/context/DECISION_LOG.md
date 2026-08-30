@@ -4,6 +4,30 @@
 > （新しい順）。実装の詳細は RELEASE_LOG.md、迷っている段階のものは
 > OPEN_QUESTIONS.md に書く。
 
+## 2026-08-30 IMP-031（#946）の code-review 指摘を修正。表示定義の追加が予約一覧の絞り込みに常時0件の選択肢を混入させていた
+
+1. 日付: 2026-08-30
+2. 起きたこと: PR #946 に `/code-review` を実行し2件の指摘を得た。うち重大な方: `jobStatusDisplay.ts` の `RESERVATION_STATUS_DISPLAY` に paused/no_show/partially_completed の表示定義を追加したところ、`src/app/admin/reservations/ReservationsClient.tsx` の絞り込み `<select>` が `Object.entries(RESERVATION_STATUS_DISPLAY)` を無条件に列挙して選択肢を組み立てていたため、この3値が管理画面の絞り込みに実際に選べる選択肢として現れてしまっていた。選択すると API（`/api/admin/reservations`）は `.eq("status", value)` をそのまま投げるが、`reservations.status` の DB CHECK 制約は現在も従来の5値のみを許可しており（DB マイグレーション未実施、IMP-031 自身のスコープ通り）、この3値は実データに存在し得ない。選んでも常に0件になり、admin にはそれが「機能していない選択肢」だとわかる手がかりが何もない。もう1件: `JobExceptionEvent.fromState` が `string` 型で、同じ型の `toState`（`JobState`）や全評価器の入力パラメータ（すべて `JobState`）と非対称だった。
+3. 以前の考え: `jobStatusDisplay.ts` への表示定義追加は「型基盤先行」の一環として、DB・API に影響しない純粋な追加だと想定していた。
+4. 違和感・問題: `RESERVATION_STATUS_DISPLAY` は既存の稼働中 UI（予約一覧の絞り込み、カレンダー表示等）がそのまま `Object.entries()` で列挙・参照している共有の lookup オブジェクトだった。IMP-027〜030 の「型基盤先行」パターンは新規ファイル・新規関数がゼロ呼び出し元であることが前提だったが、今回は既存の共有定義オブジェクトにキーを追加する形だったため、「呼び出し元がない」という前提が成立せず、追加した瞬間に既存の稼働中コンシューマへ意図せず伝播した。
+5. 決めたこと: `jobStatusDisplay.ts` に `LIVE_RESERVATION_STATUSES`（DB CHECK 制約が現在許可する5値）を新設し、`ReservationsClient.tsx` の絞り込み選択肢の組み立てをこの定数ベースに変更（`RESERVATION_STATUS_DISPLAY` の素の列挙をやめる）。`RESERVATION_STATUS_DISPLAY` 自体はそのまま維持（`reservationStatusDisplay()` 経由の実際の DB 値表示・将来の DB マイグレーション後の消費先としては引き続き必要）。`JobExceptionEvent.fromState` を `JobState` 型に修正。
+6. 捨てた選択肢: `RESERVATION_STATUS_DISPLAY` から3値を一旦削除し、DB マイグレーション実施時にまとめて追加する案 — 型定義自体は害がなく（`reservationStatusDisplay()` 等の他の消費箇所は実際の DB 値でしか呼ばれないため3値が増えても無害）、削除すると IMP-031 の本来の目的（表示定義の先行実装）を損なうため却下。
+7. 判断理由: 「型基盤先行で新規ファイルはゼロ呼び出し元」という前提は、既存の共有オブジェクトに追加する変更には当てはまらない。既存コンシューマ（特に `Object.entries()`/`Object.values()` で無条件に列挙する箇所）への影響を都度確認する必要がある、という教訓。
+8. まだ答えが出ていないこと: なし。
+9. 公開区分: 公開可（UI の技術的な経緯。金額・テナント名・接続情報は含まない）
+
+## 2026-08-30 IMP-031（#946）を main へ取り込み。evaluateNoShow() の JSDoc・テスト・requirement-trace.md が CHECKED_IN→NO_SHOW を誤って許可としていた記述を修正
+
+1. 日付: 2026-08-30
+2. 起きたこと: IMP-031（案件例外フロー型基盤、branch impl/IMP-031-job-exceptions）を main へ取り込む際、main と分岐した53ファイルが衝突した。48ファイルは phantom conflict で一括解決。残り5ファイル（DECISION_LOG.md/LEDRA_CURRENT.md/RELEASE_LOG.md/requirement-trace.md/`src/lib/domain/jobStatusDisplay.ts`）はこのPR自身が変更していたため手動再適用した（`jobStatusDisplay.ts` は main 側に変更がなかったため PR 自身の最終版をそのまま採用）。resurrection パターンが11度目の再発（`WorkScopeProvider.tsx`/`sync/*`）。マージ後の `vitest run` で `evaluateNoShow()` の「CHECKED_IN → NO_SHOW: valid」テストが失敗。原因を調査したところ、`evaluateNoShow()` の実装自体は正しく `isValidTransition(JOB_TRANSITIONS, ...)` に委譲していたが、`JOB_TRANSITIONS.CHECKED_IN` は IMP-015 の実際のマージ済み内容（`5efd6e87`、コミットメッセージ「NO_SHOW は入れない。入庫済みの案件は「来店なし」になりえない」）では最初から NO_SHOW を含んでおらず、IMP-031 の JSDoc・テスト・PR概要・requirement-trace.md の記述（「SCHEDULED/CHECKED_IN → NO_SHOW」）は IMP-015 の未整理な中間ブランチコミット（squash 前、`67759a4a`）を参照して書かれた誤りだった。
+3. 以前の考え: IMP-031 実装時点で「SCHEDULED・CHECKED_IN のどちらからも来店なしにできる」という前提で JSDoc・テストを書いていた。
+4. 違和感・問題: `evaluateNoShow()` 自体は `JOB_TRANSITIONS` を単一定義源として正しく参照する設計になっていたため、実装バグではなくドキュメント・テストの側が先に確立していた正準ルールと食い違っていた。二重管理を避ける設計（評価器が遷移表に委譲）が、逆に「テストが古い前提のまま書かれていても実装は正しく動く」ことを見えにくくしていた。
+5. 決めたこと: `evaluateNoShow()` の JSDoc を実際の `JOB_TRANSITIONS` の内容（SCHEDULED のみ→NO_SHOW、理由付き）に合わせて修正。テストの「CHECKED_IN → NO_SHOW: valid」を「CHECKED_IN → NO_SHOW: invalid」に修正。requirement-trace.md の IMP-031 行の該当記述も修正。
+6. 捨てた選択肢: `JOB_TRANSITIONS.CHECKED_IN` に NO_SHOW を追加してテスト側に合わせる案 — IMP-015 で明示的に「入庫済みの案件は来店なしになりえない」という業務理由付きで除外された既存の代表判断を、無関係な IMP-031 のマージ作業中に覆すべきではないため却下。
+7. 判断理由: 遷移ルールの単一定義源は `JOB_TRANSITIONS`（IMP-015）であり、既に理由付きで確定している。ドキュメント・テストが古い前提を引きずっていただけなので、そちらを正準ルールに合わせるのが正しい修正。
+8. まだ答えが出ていないこと: なし。
+9. 公開区分: 公開可（マージ手順とドキュメント整合性の技術的な経緯。金額・テナント名・接続情報は含まない）
+
 ## 2026-08-30 IMP-030（#945）の code-review 指摘を修正。revoke 可否判定が代表判断(2026-08-27)と矛盾していたバグを解消
 
 1. 日付: 2026-08-30
@@ -341,6 +365,18 @@
 7. 判断理由: 「現場を知らずに書き足さない」の裏返しで、ここでは「現場を知らずに稼働中の挙動を狭めない」。staff/viewer のデフォルトを self にすべきかどうかは製品判断であり、この環境からは判断できない。
 8. まだ答えが出ていないこと: staff/viewer のダッシュボード初期表示は本当に self（自分の分だけ）にすべきか、それとも現状維持（tenant-wide）のままでよいか。代表判断待ち。
 9. 公開区分: 公開可（実装の技術的な経緯であり、金額・テナント名・接続情報は含まない）
+
+## 2026-08-20 IMP-031 例外フローの型基盤方式 — 純関数評価器 vs DB CHECK+API 一括変更
+
+1. 日付: 2026-08-20
+2. 起きたこと: v2.0 §19.1 の例外フロー（cancel/no-show/pause/partial-completion/追加作業）の実装に着手。既存は `cancelled` のみ実装済み（`reservations.status` CHECK 制約に含まれ、API ルートで処理）。PAUSED/NO_SHOW/PARTIALLY_COMPLETED は正準型（`states.ts`）・遷移表（`transitions.ts`）・ラベル（`labels.ts`）が定義済みだが、DB・API・UI が未実装。
+3. 以前の考え: DB の CHECK 制約拡張（3 値追加）+ メタデータカラム + API ルート変更を一括実装する案。
+4. 違和感・問題: CHECK 制約変更は既存の予約管理全体に影響する。API ルート（admin/reservations、advance 等）の変更箇所が多く、一括実装はレビュー困難。IMP-030 と同様、型基盤を先に確定してから DB/API を追加するほうが安全。
+5. 決めたこと: (a) 例外遷移評価器 5 本を JOB_TRANSITIONS ベースの純関数で実装。(b) 例外メタデータ型（CancelReasonCategory 等）を型定義。(c) スコープ変更型（ScopeChangeRecord）を型定義。(d) jobStatusDisplay.ts に 3 状態の表示構成を追加。DB マイグレーション・API ルート変更は後続タスクで実施。
+6. 捨てた選択肢: (a) DB CHECK + API + UI 一括実装 — 影響範囲が大きく PR が肥大化。既存の予約管理を壊すリスク。(b) cancel 以外は全て「後で」 — 表示構成すら定義しないと、IMP-043（見積・請求）等の下流が例外状態を処理できない。
+7. 判断理由: IMP-027〜030 と一貫した「型基盤先行」パターン。遷移評価器が先に存在すれば、DB マイグレーション時に「評価器の検証をそのまま DB トリガーに転写」できる。jobStatusDisplay の拡張は下流タスクの前提（中断中・来店なしの表示が必要）。
+8. まだ答えが出ていないこと: `reservations.status` CHECK 制約の変更タイミング（ALTER ... NOT VALID + VALIDATE パターン）。追加作業のスコープ変更を menu_items_json の版管理で実現するか、別テーブルで管理するか。NO_SHOW 後の GCal イベント削除ポリシー。
+9. 公開区分: 公開可
 
 ## 2026-08-20 IMP-030 訂正・revoke の型基盤方式 — 型基盤先行 vs DB+ルート一括実装
 

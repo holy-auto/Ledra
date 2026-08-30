@@ -4,6 +4,32 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-08-30 IMP-031（#946）の code-review 指摘を修正。予約絞り込みの常時0件になる選択肢混入・型の非対称を解消
+
+- 内容: `/code-review` の2件の指摘を両方修正。`jobStatusDisplay.ts` に
+  `LIVE_RESERVATION_STATUSES`（`reservations.status` の DB CHECK 制約が現在許可
+  する5値）を新設し、`ReservationsClient.tsx` の絞り込み `<select>` がこれをベースに
+  選択肢を組み立てるよう変更（`RESERVATION_STATUS_DISPLAY` の無条件列挙をやめる）。
+  IMP-031 で追加した paused/no_show/partially_completed の表示定義は、DB マイグレーション
+  未実施のため実データに存在せず、以前は絞り込みで選べても常に0件になっていた。
+  `JobExceptionEvent.fromState` を `string` から `JobState` に修正（`toState` や
+  全評価器の入力パラメータとの非対称を解消）。回帰テスト3件を追加。
+- 検証: tsc --noEmit / vitest run(4714件) / lint(0エラー) / check:schema /
+  lint:migrations すべて green。
+
+## 2026-08-30 IMP-031（#946）を main へ取り込み。案件例外フロー型基盤、evaluateNoShow() の記述誤りを修正
+
+- 内容: IMP-031（案件例外フロー型基盤、branch impl/IMP-031-job-exceptions）を main へ
+  取り込んだ。53ファイルの phantom conflict（48ファイル一括解決、5ファイル手動）＋
+  resurrection 5ファイル（WorkScopeProvider.tsx / sync/* を11度目の再削除）を解消。
+  マージ後の全体テストで `evaluateNoShow()` の「CHECKED_IN → NO_SHOW: valid」テストが
+  失敗したため調査。実装は `JOB_TRANSITIONS`（IMP-015 で確定、CHECKED_IN→NO_SHOW は
+  明示的に除外）へ正しく委譲していたが、JSDoc・テスト・requirement-trace.md の記述
+  （「SCHEDULED/CHECKED_IN → NO_SHOW」）が IMP-015 の squash 前の中間コミットを参照した
+  誤りだったため、実際の正準ルール（SCHEDULED のみ→NO_SHOW）に合わせて3箇所を修正。
+- 検証: tsc --noEmit / vitest run(4711件) / lint(0エラー) / check:schema /
+  lint:migrations すべて green。
+
 ## 2026-08-30 IMP-030（#945）の code-review 指摘を修正。revoke 可否判定の不整合・プロトタイプ汚染防止
 
 - 内容: `/code-review` の5件の指摘のうち4件を修正。`evaluateRevokeEligibility()`
@@ -533,6 +559,22 @@
   （OPEN_QUESTIONS 参照）。
 - テスト: 既存5件 + 修正後全通過。全4391テスト通過、`tsc --noEmit` クリーン、
   lint 0 エラー。
+
+## 2026-08-20 IMP-031 §19.1 例外フロー（cancel/no-show/pause/追加作業）型基盤（branch impl/IMP-031-job-exceptions）
+
+- 内容: v2.0 §19.1 の案件例外フローの型基盤と遷移評価器を実装。
+  - `src/lib/domain/jobExceptions.ts`:
+    - 例外遷移評価器 5 本（evaluateCancel / evaluateNoShow / evaluatePause /
+      evaluateResume / evaluatePartialComplete）。全て JOB_TRANSITIONS を参照し
+      遷移ルールを二重管理しない。
+    - 例外メタデータ型: CancelReasonCategory(6) / PauseReasonCategory(6) /
+      NoShowAction(3) / PartialCompleteReason(5) / JobExceptionEvent。
+    - スコープ変更型: ScopeChangeCategory(5) / ScopeChangeRecord / requiresApproval()。
+    - isExceptionState() ヘルパー。
+  - `src/lib/domain/jobStatusDisplay.ts` 変更: paused / no_show / partially_completed
+    の表示構成追加（ReservationStatus を 5→8 値に拡張）。
+  - テスト 51 件。DB マイグレーション・API ルート変更なし。
+- 対象: 案件管理全般（予約の例外状態遷移）
 
 ## 2026-08-20 IMP-030 §12.3-12.4 訂正・supersede・Integrity Incident・revoke 型基盤（branch impl/IMP-030-correction-supersede-revoke）
 
