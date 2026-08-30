@@ -378,6 +378,11 @@ Sentry · Resend (+ SendGrid fallback) · Anthropic (Opus 4.8 / Sonnet 4.6 / Hai
   （SegmentedControl/StatusBadge/StatusCard/NextActionCard/ProgressCard/Alert/IconButton/
   BottomSheet）+ Badge dot + Button xl。v2.0 の色トークン値は不採用・既存デザインシステム維持
   （DECISION_LOG 2026-08-19）。
+- **IMP-053（§14.4 OBSERVABILITY_ERROR_CONTRACT — 構造化エラー契約）完了**:
+  v2.0 §14.4 の構造化エラー契約型基盤。StructuredError 型（データ安全性4段階・エラー分類
+  11種・再試行ポリシー・復旧アクション7種）、createStructuredError ファクトリ、6プリセット
+  （validation/externalService/stateTransition/dataIntegrity/timeout/concurrency）、
+  Sentry 変換・クライアントペイロード抽出ユーティリティ。既存 response.ts 変更なし。テスト24件。
 - **IMP-052（§23 E2E_SUITE — 必須 E2E テストスイート）完了**:
   v2.0 §23 必須 E2E を Playwright で実装。正常ワークフロー8テスト（ダッシュボード→予約→
   作業詳細→証明書→車両→顧客→請求書）、例外フロー8テスト（API 4: 予約更新バリデーション/
