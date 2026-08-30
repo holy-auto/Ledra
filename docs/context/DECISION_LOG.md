@@ -4,6 +4,18 @@
 > （新しい順）。実装の詳細は RELEASE_LOG.md、迷っている段階のものは
 > OPEN_QUESTIONS.md に書く。
 
+## 2026-08-30 IMP-026（#941）マージ後、db-migrate.yml が out-of-order で失敗——本番は直接確認したところ既に正しく適用済みだった
+
+1. 日付: 2026-08-30
+2. 起きたこと: PR #941 を main へ squash マージ後、`db-migrate.yml`（本番 DB マイグレーション適用）が「Found local migration files to be inserted before the last migration on remote database... supabase/migrations/20260820010000_customer_concerns.sql」で失敗した（`supabase db push` の実行ログで `20260820010000` の Remote 列が空欄と表示）。本番 `supabase_migrations.schema_migrations` を直接 SELECT したところ、**`20260820010000` は既にレコードとして存在し、`statements` 列の内容も私の最終修正版（`resolved_by → auth.users(id)`、`EXECUTE FUNCTION set_updated_at()`、RLS ポリシーの `public.my_tenant_ids()`）と一字一句一致していた**。さらに `customer_concerns` の実際のオブジェクトを直接照会し、列・FK 制約（`pg_constraint`）だけでなく **CHECK 制約4本・インデックス4本（+pkey）・`trg_customer_concerns_updated_at` トリガー・RLS 有効化（`pg_class.relrowsecurity=true`）・SELECT/UPDATE ポリシー2本（anon INSERT ポリシーは無し=修正版どおり）**まで全オブジェクト種別を照合し、すべて修正版マイグレーションの内容と一致することを確認した（初回投稿時は列・FKのみの確認だったため、Codex レビュー指摘を受けて追加検証した）。
+3. 以前の考え: db-migrate.yml が失敗した以上、この PR のマイグレーションは本番に適用されていないと考えていた。また「Supabase MCP の apply_migration で当たった可能性がある」と考えていたが、これは誤りだった(後述)。
+4. 違和感・問題: `db-migrate.yml` の実行は1回のみ（this run が main への唯一の db-migrate.yml 実行、再実行や後続実行は無いことを `list_workflow_runs` で確認済み）。Supabase CLI の out-of-order チェックは SQL 実行前のプリフライトで全体を止める仕様のため、この1回の CI 実行そのものがこの migration を適用したとは考えにくい。にもかかわらず本番には正しい内容が存在する。**初回投稿時は候補経路に「Supabase MCP の apply_migration」を挙げていたが、これは誤り**——`apply_migration` は呼び出し時刻ベースでバージョンを自動採番するため(本 repo の DECISION_LOG 2026-08-25 等で既知)、元ファイルと同じ `20260820010000` という版番号のまま台帳に載ることはあり得ない(Codex レビュー指摘で訂正)。版番号を保ったまま適用できる経路として矛盾しないのは、**`supabase db push --include-all` をローカル等 CI 外から手動実行した**ケース(このフラグは「remote history に無い migration を対象に含める」ためのもので、当時 `20260820010000` がまだ remote history に無ければ対象になり、出力の版番号も元ファイルのまま)。**適用者・時期・経路とも特定できていない**（このセッションの可視範囲でこのファイルに対して apply_migration・db push いずれも呼んだ記録はない）。推定: db-migrate.yml がリモートのマイグレーション一覧を取得した直後（2026-08-30 03:16:20頃）から、私が直接 SELECT で確認した時点までの間に、何らかの経路(推定: 手動 `db push --include-all` が最有力候補、断定はできない)で本番へ適用された。未検証。
+5. 決めたこと: (a) 本番の実際のスキーマ（テーブル・列・FK制約・CHECK制約・インデックス・トリガー・RLS有効化・ポリシー・statements 全文）を直接照会し、リポジトリの最終版マイグレーションファイルと一致することを確認——ledger の「適用済み」表示を鵜呑みにせず、実際の DDL を全オブジェクト種別まで見るという本セッション一貫の方針を今回も貫いた。(b) `db-migrate.yml` を手動再実行（workflow_dispatch）しようとしたが、現在のトークン権限では 403 で拒否された（`Resource not accessible by integration`）。手動での green 化確認はできなかった。(c) 次に supabase/migrations/ に変更が入る PR（IMP-027 以降のいずれか）で db-migrate.yml が自然に再実行されるので、そこでこの特定ファイルが正しく「既に適用済み」として扱われるか（out-of-order エラーが再発しないか）を確認する。
+6. 捨てた選択肢: (a) `--include-all` を使って再度 push を試す — 当初「本番に既に存在するオブジェクトに CREATE INDEX を再実行し already exists になる」を理由に不採用としていたが、これは誤り。`20260820010000` は確認時点で既に remote history に記録済みであり、`--include-all` はそもそも remote history に無い migration を対象にするフラグなので、この migration 自体は対象にならない(Codex レビュー指摘で訂正)。今回不採用にした実際の理由は「既に正しく適用済みであり、再度何かを push する必要が無い」という点のみ。(b) 本番データを追加で書き換える — 既に正しい状態なので不要。
+7. 判断理由: db-migrate.yml の「赤」という表面的なシグナルより、本番の実際の DDL を直接見るほうが信頼できる（この repo の migration drift の歴史全体を通じて一貫して正しかった方針）。手動再実行の権限が無い以上、次の自然なトリガーを待つほかない。
+8. まだ答えが出ていないこと: (a) 誰が・いつ・どの経路でこのマイグレーションを本番へ適用したか特定できていない(推定は手動 `db push --include-all` だが未検証)。(b) 次回 db-migrate.yml が走ったときに、この out-of-order 表示が再発しないかは未検証（次の migrations 変更 PR で確認する）。
+9. 公開区分: 公開可（マージ手順の技術的な経緯。金額・テナント名・接続情報は含まない）
+
 ## 2026-08-30 停滞フロー再促しは awaiting_quote_detail に限定（無状態な再送で安全に送れる範囲）
 
 1. 日付: 2026-08-30
