@@ -378,6 +378,11 @@ Sentry · Resend (+ SendGrid fallback) · Anthropic (Opus 4.8 / Sonnet 4.6 / Hai
   （SegmentedControl/StatusBadge/StatusCard/NextActionCard/ProgressCard/Alert/IconButton/
   BottomSheet）+ Badge dot + Button xl。v2.0 の色トークン値は不採用・既存デザインシステム維持
   （DECISION_LOG 2026-08-19）。
+- **IMP-051（§3.5 ACCESSIBILITY_I18N_AUDIT — アクセシビリティ監査＆翻訳QA基盤）完了**:
+  WCAG 2.1 AA コントラスト比チェッカー（5関数）、WCAG AA 監査フレームワーク型定義
+  （19基準＋10コンポーネントARIA要件マップ）、翻訳品質保証ユーティリティ（キー過不足検出・
+  プレースホルダ整合性・カバレッジ算出・用語集ギャップ検出の4関数）。デザイントークン検証と
+  翻訳抜け自動検出のCI基盤。IO なし。テスト46件。
 - **IMP-050（§18 SECURITY_PRIVACY — プライバシー・データ分類・可視性・マスキング基盤）部分（型基盤のみ、統合未着手）**:
   v2.0 §18 のプライバシー・データ保護基盤を4モジュールの純関数で実装。4段階データ分類
   （restricted/pii/confidential/public、ISO 27001 A.5.12 準拠、実在するテーブル・カラム名を

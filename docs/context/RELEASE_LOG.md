@@ -4,6 +4,11 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-08-30 IMP-051（#958）の code-review 指摘を修正。コントラスト判定の丸め誤差・プレースホルダ検出の空文字スキップ・qa.ts の型/関数重複を解消
+
+- 内容: `checkColorPair()` の AA 判定を丸め前の生の比率で行うよう修正（境界値での誤合格を防止）。`findPlaceholderMismatches()` の欠落判定を falsy チェックから `undefined` チェックに変更（空文字翻訳のプレースホルダ欠落を検出可能に）。`qa.ts` の `MessageTree`/`lookup()` 重複を `messages.ts` からの import に統一。`computeTranslationCoverage()` の `flattenKeys()` 二重計算を解消。回帰テスト2件追加（44→46件）。`findGlossaryGaps()` の空文字チェックは意図的挙動と判断し不採用。
+- 検証: tsc --noEmit clean / vitest run 5179件全通過（503ファイル、a11y/i18n 46件含む） / lint 0エラー・1256警告=基準線 / check:schema OK / lint:migrations OK。
+
 ## 2026-08-30 IMP-050（#957）Codex 利用上限到達後、`/code-review`（Claude 自身）で2件を追加修正
 
 - 内容: `applyMask()` の hash 戦略の16進数チェックが、電話番号・クレジットカード番号等の短い純粋数字の生値も「ハッシュ済み」と誤判定していたのを、桁数下限を32文字（MD5相当）に引き上げて修正。`LEDRA_CURRENT.md`（76件）/`requirement-trace.md`（67件）のテスト件数を実数（79件）に統一。回帰テスト1件追加。
@@ -871,6 +876,27 @@
 - 対象: 型定義・ロジック層（src/lib/priority/）。UI 変更・DB マイグレーションなし。
 - 依存: IMP-014, IMP-021, IMP-041
 - 下流: IMP-046（経営分析 KPI — 優先度スコアの集計）
+
+## 2026-08-20 IMP-051 §3.5 ACCESSIBILITY_I18N_AUDIT — アクセシビリティ監査フレームワーク＆翻訳QA基盤（branch impl/IMP-051-accessibility-i18n-audit）
+
+- 内容: v2.0 §3.5 が要求するアクセシビリティ・多言語品質保証の型基盤を2モジュール群で実装。
+  - `src/lib/a11y/contrastCheck.ts`: WCAG 2.1 SC 1.4.3 準拠コントラスト比チェッカー
+    - `parseHexColor()` — #RGB / #RRGGBB パース
+    - `relativeLuminance()` — WCAG 相対輝度計算
+    - `contrastRatio()` — 2色のコントラスト比(1:1〜21:1)
+    - `meetsWcagAA()` — 3コンテキスト(normal/large/ui)での AA 判定
+    - `checkColorPair()` — hex ペアのワンショット検証
+  - `src/lib/a11y/auditTypes.ts`: WCAG AA 監査フレームワーク型定義
+    - `WCAG_AA_KEY_CRITERIA` — Ledra に関連する WCAG 2.1 Level AA 基準 19 件
+    - `COMPONENT_ARIA_MAP` — 10 コンポーネントの ARIA 要件マップ(Modal/Drawer/BottomSheet/Alert/StatusBadge/IconButton/SegmentedControl/Tabs/ProgressCard/Toast)
+    - `A11yFinding` / `A11yAuditResult` — 監査結果構造化型
+  - `src/lib/i18n/qa.ts`: 翻訳品質保証ユーティリティ
+    - `findMissingTranslations()` — 全ロケール間のキー過不足検出
+    - `findPlaceholderMismatches()` — {var} プレースホルダ整合性チェック
+    - `computeTranslationCoverage()` — ロケール別カバレッジ算出
+    - `findGlossaryGaps()` — 用語集エントリの翻訳欠落検出
+- 対象: 全画面・全コンポーネント。CI でのデザイントークンリグレッション検出、翻訳抜け自動チェックの基礎。
+- DB/API/UI 変更なし（型基盤先行）。テスト 46 件。
 
 ## 2026-08-20 IMP-050 §18 SECURITY_PRIVACY — プライバシー・データ分類・可視性・マスキング基盤（branch impl/IMP-050-privacy-classification）
 
