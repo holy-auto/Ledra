@@ -4,6 +4,11 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-08-30 IMP-053（#960）を main へ取り込み。構造化エラー契約
+
+- 内容: v2.0 §14.4 の構造化エラー契約型基盤（`src/lib/observability/errorContract.ts`）を main へマージ。squash merge、コミット `45b138b0`。
+- 検証: tsc --noEmit clean / vitest run 5203件全通過（504ファイル、observability 24件含む） / lint 0エラー・1256警告=基準線 / check:schema OK / lint:migrations OK。CI（Lint/TypeCheck/Tests・CodeQL・Migrations Replay・Client Bundle Size・E2E Tests(skip経路)）全通過。
+
 ## 2026-08-30 IMP-052（#959）を main へ取り込み。v2.0 §23 必須 E2E テストスイート
 
 - 内容: v2.0 §23 の必須 E2E テスト（`e2e/{workflow-flow,exception-flows,customer-confirmation,accessibility}.spec.ts` 計29件）と CI E2E ジョブ復元（secrets ゲート付き）を main へマージ。squash merge、コミット `13323cb9`。
