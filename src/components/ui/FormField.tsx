@@ -9,14 +9,7 @@ interface FormFieldProps {
   className?: string;
 }
 
-export default function FormField({
-  label,
-  required = false,
-  hint,
-  error,
-  children,
-  className = "",
-}: FormFieldProps) {
+export default function FormField({ label, required = false, hint, error, children, className = "" }: FormFieldProps) {
   return (
     <div className={`space-y-1 ${className}`}>
       <div className="text-xs text-muted">

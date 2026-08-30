@@ -130,6 +130,10 @@ export async function GET(req: NextRequest) {
       status: session.status,
       payment_status: session.payment_status,
       amount_total: session.amount_total,
+      // 記録側の重複防止キー。これが無いと、記録をやり直したときに
+      // **同じ決済で売上が2件立つ**
+      payment_intent_id:
+        typeof session.payment_intent === "string" ? session.payment_intent : (session.payment_intent?.id ?? null),
     });
   } catch (e: unknown) {
     return apiInternalError(e, "pos/checkout-session GET");

@@ -1,15 +1,17 @@
 import { useState } from "react";
 import { View, ScrollView, StyleSheet } from "react-native";
-import { TextInput, Button, HelperText } from "react-native-paper";
+import { TextInput, HelperText } from "react-native-paper";
 import { router } from "expo-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { supabase } from "@/lib/supabase";
 import { useAuthStore } from "@/stores/authStore";
 import IdentityScanButton from "@/components/IdentityScanButton";
+import { LedraButton } from "@/components/ui";
+import { colors, spacing } from "@/constants/tokens";
 
 export default function CustomerNewScreen() {
-  const { user, selectedStore } = useAuthStore();
+  const { user } = useAuthStore();
   const queryClient = useQueryClient();
 
   const [form, setForm] = useState({
@@ -28,8 +30,8 @@ export default function CustomerNewScreen() {
       const { data, error } = await supabase
         .from("customers")
         .insert({
+          // customers に store_id 列は無い（顧客はテナント単位）
           tenant_id: user!.tenantId,
-          store_id: selectedStore!.id,
           name: form.name.trim(),
           name_kana: form.name_kana.trim() || null,
           email: form.email.trim() || null,
@@ -145,16 +147,14 @@ export default function CustomerNewScreen() {
           style={styles.input}
         />
 
-        <Button
-          mode="contained"
+        <LedraButton
           onPress={handleSubmit}
           loading={mutation.isPending}
           disabled={mutation.isPending}
-          buttonColor="#1a1a2e"
           style={styles.button}
         >
           登録する
-        </Button>
+        </LedraButton>
 
         {mutation.isError && (
           <HelperText type="error" style={styles.errorText}>
@@ -167,9 +167,9 @@ export default function CustomerNewScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#fafafa" },
-  form: { padding: 16 },
-  input: { marginBottom: 8, backgroundColor: "#ffffff" },
-  button: { marginTop: 16 },
-  errorText: { marginTop: 8 },
+  container: { flex: 1, backgroundColor: colors.background },
+  form: { padding: spacing.lg },
+  input: { marginBottom: spacing.sm, backgroundColor: colors.surface },
+  button: { marginTop: spacing.lg },
+  errorText: { marginTop: spacing.sm },
 });
