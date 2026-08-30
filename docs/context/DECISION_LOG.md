@@ -4,6 +4,18 @@
 > （新しい順）。実装の詳細は RELEASE_LOG.md、迷っている段階のものは
 > OPEN_QUESTIONS.md に書く。
 
+## 2026-08-30 IMP-044（#954）を main へ取り込み。resurrection パターン18度目、未使用import2件を修正
+
+1. 日付: 2026-08-30
+2. 起きたこと: IMP-044（Priority/NEXT ACTION エンジン — 統一スコアリング・ブース統合・イベントパイプライン、branch impl/IMP-044-priority-engine）を main へ取り込む際、main と分岐した75ファイルが衝突した。71ファイルは phantom conflict で一括解決。残り4ファイル（DECISION_LOG.md/LEDRA_CURRENT.md/RELEASE_LOG.md/requirement-trace.md）はこのPR自身が変更していたため手動再適用した。RELEASE_LOG.md の PR 自身の元コミットには、新エントリの見出しと本文の間に直前エントリ（IMP-043）の本文が挟まる軽微な構成ミスがあったため、再適用時に正しい構成（見出し直後に本文）へ修正した。resurrection チェックで `WorkScopeProvider.tsx`（18度目の再発）とスキップ済み PR #947 の `src/lib/sync/` 一式8ファイルが今回も復活していたため削除。`priority/` 配下3ファイル（PR 自身の新規ファイル）は `sync/` への依存なし（grep で確認済み）。マージ後の lint で新規2件（`eventTriggers.test.ts`/`scorer.test.ts` の未使用 import）を検出、修正して基準線（1256件）に復帰。
+3. 以前の考え: なし（#948〜953 で確立した手順の踏襲）。
+4. 違和感・問題: 特になし。
+5. 決めたこと: 確立済みの手順をそのまま適用。
+6. 捨てた選択肢: なし。
+7. 判断理由: 確立済みの手順が引き続き有効に機能した。
+8. まだ答えが出ていないこと: なし。
+9. 公開区分: 公開可（マージ手順の技術的な経緯。金額・テナント名・接続情報は含まない）
+
 ## 2026-08-30 IMP-043（#953）の code-review 指摘を修正。DocumentCorrection遷移表のプロトタイプ汚染ガード欠如・POSブリッジの完全性欠落・関数名衝突を解消
 
 1. 日付: 2026-08-30
