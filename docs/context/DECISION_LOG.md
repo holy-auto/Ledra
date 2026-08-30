@@ -4,6 +4,18 @@
 > （新しい順）。実装の詳細は RELEASE_LOG.md、迷っている段階のものは
 > OPEN_QUESTIONS.md に書く。
 
+## 2026-08-30 IMP-044（#954）の code-review 指摘を修正。ブースシグナルの重複排除誤爆・follow_up_overdue上書き・イベント件数ドキュメント誤記を解消
+
+1. 日付: 2026-08-30
+2. 起きたこと: PR #954 マージ後の `/code-review` で3件の指摘。すべて確認・修正: (1) `scoreBoothSignal()` の `actionKey` が `booth:{boothId}:{kind}` のみで構成されており、同じブース・同じ kind（例: capacity_exceeded）で時間帯が異なる複数のウィンドウが同一キーに衝突していた。`boothSignals.ts` の `detectCapacityConflicts()` は同じブースで午前・夕方など複数の定員超過ウィンドウを別々の `BoothSignal` として返しうるため、`scoreAndRank()` の重複排除（同一 actionKey は最高スコア採用）が2件目以降を静かに握り潰す — 安全に直結するシグナルが消える経路が実在した。(2) `enrichJobWithBoothContext()` の「arrived/in_progress でブース未割当」「定員超過」の2分岐が、`base.action` が既に `follow_up_overdue`（期限超過請求の督促、最優先）であっても無条件に boothHint と priority を上書きしていた。既存テストのコメントは「overdue が先に判定されるため boothHint は付かない」と主張していたが、実際にはそのアサーションが書かれておらず、コードもそれを保証していなかった（コメントは願望で、実装はそれを満たしていなかった）。(3) RELEASE_LOG.md/LEDRA_CURRENT.md/requirement-trace.md が `PRIORITY_TRIGGERS` を「13 ドメインイベント」と記載していたが、実際の配列要素は12件（`eventType:` の実エントリを数え直して確認）。RELEASE_LOG.md のテスト件数内訳も boothJobIntegration と eventTriggers が入れ替わっていた（正しくは boothJobIntegration 11 + eventTriggers 10）。
+3. 以前の考え: マージ時点では `scorer.ts`/`boothJobIntegration.ts`/`eventTriggers.ts` は型基盤先行パターンとして問題なしと判断していた。
+4. 違和感・問題: (1)(2) は「型基盤先行・ゼロ呼び出し元」だからといって正しさの検証を省略してよいわけではないことを示す実例。特に(2)は「コメントに書いた意図」と「実装」が一致しているかをテストで検証していなかった典型例。
+5. 決めたこと: (1) `scoreBoothSignal()` の actionKey に `reservationIds`（カンマ結合）を含めて一意性を確保。`ScoreInput.boothSignals` の Pick 型にも `reservationIds` を追加。(2) `enrichJobWithBoothContext()` の先頭に `base.action === "follow_up_overdue"` の早期リターンを追加し、ブース系の2分岐より確実に優先させる。(3) ドキュメントの「13」を実数「12」に、テスト件数内訳の入れ替わりを訂正。回帰テスト3件追加（重複排除誤爆防止2件、follow_up_overdue優先1件）。
+6. 捨てた選択肢: (1) について boothId+kind+window（start/end）を actionKey に含める案 — `scoreBoothSignal()` の入力型に window 情報がなく、追加すると型変更の影響範囲が広がる。reservationIds は既に `BoothSignal` に含まれており、ウィンドウごとに内容が異なるため十分な識別子になる。
+7. 判断理由: (1)(2) は正しさに影響する実バグであり修正必須。(3) は CLAUDE.md の「推測で事実を補わない」方針に反する記録上の誤りであり、実数を数え直して訂正した。
+8. まだ答えが出ていないこと: なし。
+9. 公開区分: 公開可（コードレビューで見つかった型基盤コードの論理バグ修正。金額・テナント名・接続情報は含まない）
+
 ## 2026-08-30 IMP-044（#954）を main へ取り込み。resurrection パターン18度目、未使用import2件を修正
 
 1. 日付: 2026-08-30
@@ -528,7 +540,7 @@
 2. 起きたこと: IMP-044（§20.2 Priority/NEXT ACTION エンジン）の実装。3 つの独立した優先度システム（ダッシュボードタイル `deriveTodayTasks` / ジョブ次アクション `pickJobNextActionCandidate` / 顧客シグナル `deriveSignals`）+ ブースシグナル（IMP-041）が個別に動作しており、統一的なスコアリング・ランキングのサービスがなかった。
 3. 以前の考え: IMP-021 でダッシュボードのタイル優先順序（priority 0-3）をそのまま NEXT ACTION の導出に使うことを決めた。`pickJobNextActionCandidate` は Job 単位、`deriveSignals` は顧客単位で独立。ブースシグナルは IMP-041 で型定義済みだが `pickJobNextActionCandidate` に未統合。
 4. 違和感・問題: (a) 各ソースが異なる priority 表現（数値 0-3 / "high"|"med"|"low" / "high"|"medium"|"low"）を使い、横断比較が不可能。(b) ブースシグナルがジョブの次アクションに反映されない。(c) どのドメインイベントが優先度再計算をトリガーすべきかの定義がない。(d) スコアの根拠が不透明（なぜこのアクションが上位か説明できない）。
-5. 決めたこと: 3 モジュール構成で型基盤先行。(1) `scorer.ts` — 4ソースを統一スコア（0-100, 高い=緊急）に正規化する純関数群。重複排除（actionKey）+ 説明可能性（reason フィールド）。(2) `boothJobIntegration.ts` — `enrichJobWithBoothContext()` で pickJobNextActionCandidate の結果にブース文脈を注入。既存関数のシグネチャは変えない。(3) `eventTriggers.ts` — PRIORITY_TRIGGERS マッピング（13イベント）と `toPriorityRecalcRequest()` ファクトリ。IO 実装（キューイング・pub/sub）は消費タスク。
+5. 決めたこと: 3 モジュール構成で型基盤先行。(1) `scorer.ts` — 4ソースを統一スコア（0-100, 高い=緊急）に正規化する純関数群。重複排除（actionKey）+ 説明可能性（reason フィールド）。(2) `boothJobIntegration.ts` — `enrichJobWithBoothContext()` で pickJobNextActionCandidate の結果にブース文脈を注入。既存関数のシグネチャは変えない。(3) `eventTriggers.ts` — PRIORITY_TRIGGERS マッピング（12イベント）と `toPriorityRecalcRequest()` ファクトリ。IO 実装（キューイング・pub/sub）は消費タスク。
 6. 捨てた選択肢: (a) 機械学習ベースの優先度スコアリング — 訓練データがなく、説明可能性が低い。(b) 各ソースの priority 表現を統一する（全て "high"|"med"|"low" に）— 既存の呼び出し元が多く、破壊的変更。(c) pickJobNextActionCandidate のシグネチャにブース引数を追加 — 呼び出し元 2 箇所（nextActionAuto.ts + ダッシュボード）に影響。ラッパー方式のほうが影響ゼロ。
 7. 判断理由: Ponytail 原則。既存 3 システムの出力をそのまま正規化する「加算型」アプローチなら、既存コードへの変更ゼロ。スコアのバンド幅（dashboard 90/70/50/30、booth 88/62/38、job 85/60/35、customer 80/55/30）はソースの性質を反映（ダッシュボードはテナント全体、ブースは安全直結で高め、顧客は個別対応で控えめ）。
 8. まだ答えが出ていないこと: (a) スコアのバンド幅の最適値（実運用データでのチューニングが必要）。(b) パイプラインの IO 実装方式（QStash vs after() vs cron、既存 3 冪等系統との統合）。(c) UI 層での ScoredAction[] の表示方式。

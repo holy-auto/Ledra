@@ -124,8 +124,14 @@ describe("scoreBoothSignal", () => {
   });
 
   it("boothId null → actionKey に 'unassigned'", () => {
-    const result = scoreBoothSignal(mkBoothSignal({ boothId: null, kind: "assign_booth" }));
-    expect(result.actionKey).toBe("booth:unassigned:assign_booth");
+    const result = scoreBoothSignal(mkBoothSignal({ boothId: null, kind: "assign_booth", reservationIds: ["r1"] }));
+    expect(result.actionKey).toBe("booth:unassigned:assign_booth:r1");
+  });
+
+  it("同じブース・同じ kind でも reservationIds が異なれば actionKey が異なる（複数ウィンドウの重複排除誤爆防止）", () => {
+    const morning = scoreBoothSignal(mkBoothSignal({ reservationIds: ["r1", "r2"] }));
+    const evening = scoreBoothSignal(mkBoothSignal({ reservationIds: ["r3", "r4"] }));
+    expect(morning.actionKey).not.toBe(evening.actionKey);
   });
 });
 
@@ -182,6 +188,16 @@ describe("scoreAndRank", () => {
 
   it("空入力 → 空配列", () => {
     expect(scoreAndRank({})).toEqual([]);
+  });
+
+  it("同じブース・同じ kind の複数ウィンドウ（朝と夕方の定員超過）を両方保持する", () => {
+    const result = scoreAndRank({
+      boothSignals: [
+        mkBoothSignal({ reservationIds: ["morning-1", "morning-2"], message: "朝の定員超過" }),
+        mkBoothSignal({ reservationIds: ["evening-1", "evening-2"], message: "夕方の定員超過" }),
+      ],
+    });
+    expect(result).toHaveLength(2);
   });
 
   it("全 ScoredAction に reason があること（説明可能性）", () => {
