@@ -702,6 +702,18 @@
 8. まだ答えが出ていないこと: staff/viewer のダッシュボード初期表示は本当に self（自分の分だけ）にすべきか、それとも現状維持（tenant-wide）のままでよいか。代表判断待ち。
 9. 公開区分: 公開可（実装の技術的な経緯であり、金額・テナント名・接続情報は含まない）
 
+## 2026-08-20 IMP-053 OBSERVABILITY_ERROR_CONTRACT — 構造化エラー契約の設計判断
+
+1. 日付: 2026-08-20
+2. 起きたこと: v2.0 §14.4 が「全エラーが is_data_safe を答える」構造化エラー契約を要求。既存は ErrorCode（13値）+ apiInternalError（Sentry自動送信）+ sendCronFailureAlert（メール+Sentry二重通知）。エラーの「データ安全性」「復旧手段」「再試行可否」を構造的に表現する型がなかった。
+3. 以前の考え: ErrorCode と HTTP ステータスコードでエラー分類は十分と考えていた。Sentry にはエラーが送られるが、「データが安全か」「何をすべきか」はケースバイケースで判断していた。
+4. 違和感・問題: (a) 外部サービス障害（Stripe/Supabase/Polygon RPC）時に「データは安全か」を即答できない。(b) cron 失敗時の復旧手順がコード内に記述されておらず、属人的。(c) 楽観ロック衝突・状態遷移違反のリトライ可否がルート毎に異なる。(d) Sentry アラートの優先度付けにデータ安全性の構造化情報がない。
+5. 決めたこと: (a) `StructuredError` 型を定義 — 4問（データ安全性・分類・再試行・復旧）に全エラーが答える構造。(b) 6プリセットファクトリ（validation/externalService/stateTransition/dataIntegrity/timeout/concurrency）。(c) Sentry 変換（`toSentryContext()`）とクライアントペイロード変換（`toClientPayload()`）のユーティリティ。(d) 既存の response.ts / cronAlert.ts は変更しない — 消費側の段階的統合。
+6. 捨てた選択肢: (a) response.ts の apiError() を直接拡張 — 560+ ルートハンドラの一括変更が必要。型基盤を先に整備し段階移行が安全。(b) エラークラス階層（class AppError extends Error）— 既存コードは関数ベース（apiInternalError 等）でクラスを使っていない。パターンを壊さない。(c) loading discipline（0.3s/2s 閾値）の型化 — エラー契約とは別軸。UI コンポーネントの責務であり、ここには含めない。
+7. 判断理由: 型基盤先行原則の継続。IO なしの純関数で、既存コードに影響を与えずに構造を提供。DataSafetyLevel の4段階は「安全→部分的→不明→不整合確認」の運用判断にそのまま使える。プリセットは既存の API パターン（バリデーション→safe、外部サービス→unknown、状態遷移→safe）を反映。
+8. まだ答えが出ていないこと: (a) 既存560+ルートの段階的移行計画（優先度の高い決済・証明書ルートから）。(b) クライアント側エラー表示コンポーネントへの統合。(c) Sentry ダッシュボードでの dataSafety タグによるアラート分類設定。
+9. 公開区分: 公開可
+
 ## 2026-08-20 IMP-052 E2E_SUITE — E2E テスト設計と CI ゲーティング判断
 
 1. 日付: 2026-08-20
