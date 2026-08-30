@@ -24,8 +24,16 @@
   `shouldCaptureKnowledge`（orchestrator）。既存のナレッジ設定 UI は停止中エントリの表示・有効化・
   編集・削除に対応済みのため、レビュー導線は**追加 UI なし**。**マイグレーション不要**。
 - 検証: `knowledgeCaptureAuto`（再利用 FAQ を enabled=false 保存＋監査／opt-in OFF／再利用不可／
-  低 confidence／上限到達／重複／プラン対象外）テスト7件追加。全体 4767 件パス、tsc/eslint エラー0
-  （既存 actionCatalog の `_key` 警告のみ）。
+  低 confidence／上限到達／重複／プラン対象外）テスト追加。
+- コードレビュー由来の追加修正（同 PR、`/code-review`）:
+  - 会話文脈の取得を既存ヘルパー `fetchRecentConversation` に置換（両キー OR＝リンク前の
+    customer_id=NULL 期間の質問も拾う／配信失敗 outbound を除外／古い順）。ハンドロールの
+    弱いクエリを廃し、correctness 2件＋重複実装1件をまとめて解消。
+  - 未承認（enabled=false）候補の上限 `MAX_PENDING_DRAFTS`（10件）を追加。候補が全枠（50件）を
+    食い潰して手動登録を塞ぐのを防止。既存ナレッジ取得を1クエリに集約（上限・未承認数・重複判定を共用）。
+  - AI 呼び出し前に短文返信（12字未満の「承知しました」等）を足切り（無駄な AI コスト削減）。
+  - 再利用不可・低 confidence の正常スキップを outcome:"ok" に（AI エラー率を汚さない）。
+- 全体 4769 件パス、tsc/eslint エラー0（既存 actionCatalog の `_key` 警告のみ）。
 - 「LINE属人性の低減」の1件目。opt-in・既定 OFF なので既存テナントの挙動は不変。
 
 ## 2026-08-30 IMP-034（#949）を main へ取り込み。タブレット 2-pane・共用端末 型基盤

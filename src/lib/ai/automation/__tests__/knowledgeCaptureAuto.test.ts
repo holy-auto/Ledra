@@ -129,6 +129,23 @@ describe("maybeCaptureKnowledgeFromReply", () => {
     expect(mocks.store.inserts.find((i) => i.table === "tenant_line_knowledge")).toBeUndefined();
   });
 
+  it("skips a trivial short reply without calling the AI", async () => {
+    expect(await maybeCaptureKnowledgeFromReply(baseParams({ staffReplyBody: "承知しました" }))).toBe(false);
+    expect(mocks.generateKnowledgeCandidate).not.toHaveBeenCalled();
+  });
+
+  it("stops capturing when too many unapproved (enabled=false) drafts are pending", async () => {
+    const pending = Array.from({ length: 10 }, (_, i) => ({
+      tenant_id: TENANT,
+      title: `draft${i}`,
+      content: `c${i}`,
+      enabled: false,
+    }));
+    seed(pending, [{ tenant_id: TENANT, customer_id: CUSTOMER, direction: "inbound", body: "施工時間は？" }]);
+    expect(await maybeCaptureKnowledgeFromReply(baseParams())).toBe(false);
+    expect(mocks.generateKnowledgeCandidate).not.toHaveBeenCalled();
+  });
+
   it("does nothing when the tenant is not eligible (plan/active gate)", async () => {
     mocks.tenantEligibleForAiAutomation.mockResolvedValue(false);
     expect(await maybeCaptureKnowledgeFromReply(baseParams())).toBe(false);

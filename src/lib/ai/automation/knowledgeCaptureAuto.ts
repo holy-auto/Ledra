@@ -14,6 +14,7 @@ import { fastModelForPlanTier } from "@/lib/ai/client";
 import { generateKnowledgeCandidate } from "@/lib/ai/knowledgeCapture";
 import { KNOWLEDGE_LIMIT } from "@/lib/ai/knowledgeReply";
 import type { ReplyDraftTurn } from "@/lib/ai/replyDraft";
+import { fetchRecentConversation } from "@/lib/line/messageStore";
 import { startAiRouteUsage } from "@/lib/ai/recordRouteUsage";
 import { logAutoActionExecuted } from "@/lib/audit/aiAuditLog";
 import { logger } from "@/lib/logger";
@@ -23,6 +24,13 @@ import { shouldCaptureKnowledge } from "./orchestrator";
 const ENDPOINT = "/api/admin/messages/[key]#auto-capture-knowledge";
 /** レビュー待ちに積む最低 confidence。承認ゲートがあるので過度に厳しくはしない。 */
 const CAPTURE_CONFIDENCE_MIN = 0.5;
+/**
+ * レビュー未承認 (enabled=false) の自動候補の上限。全体の KNOWLEDGE_LIMIT を候補で
+ * 食い潰して手動登録を塞がないよう、未承認の溜まり過ぎを止める (レビューを促す)。
+ */
+const MAX_PENDING_DRAFTS = 10;
+/** AI 呼び出し前の安価な足切り: この文字数未満の返信 (「はい」「承知しました」等) は学習しない。 */
+const MIN_REPLY_CHARS = 12;
 
 /** タイトル/本文の正規化 (重複判定用。空白除去・小文字化)。 */
 function normalize(s: string): string {
@@ -54,39 +62,42 @@ export async function maybeCaptureKnowledgeFromReply(params: MaybeCaptureKnowled
     const settings = params.settings ?? (await loadAiAutomationSettings(tenantId));
     if (!shouldCaptureKnowledge(settings)) return false;
 
+    // 安価な足切り: 定型の短い返信 (「はい」「承知しました」等) は AI に掛けず学習しない。
+    const reply = params.staffReplyBody.trim();
+    if (reply.length < MIN_REPLY_CHARS) return false;
+
     const admin = createServiceRoleAdmin("AI knowledge capture — fire-and-forget from admin reply");
     if (!(await tenantEligibleForAiAutomation(admin, tenantId))) return false;
 
-    // 上限に達していれば新規候補を積まない (登録済みと合わせて KNOWLEDGE_LIMIT を超えない)。
-    const { count, error: countErr } = await admin
+    // 既存ナレッジを 1 回だけ取得し、上限・未承認溜まり・重複判定に使い回す。
+    const { data: existingRows, error: existErr } = await admin
       .from("tenant_line_knowledge")
-      .select("id", { count: "exact", head: true })
-      .eq("tenant_id", tenantId);
-    if (countErr) {
-      logger.warn("[knowledgeCaptureAuto] count failed", { tenantId, err: countErr.message });
+      .select("title, content, enabled")
+      .eq("tenant_id", tenantId)
+      .limit(KNOWLEDGE_LIMIT);
+    if (existErr) {
+      logger.warn("[knowledgeCaptureAuto] existing fetch failed", { tenantId, err: existErr.message });
       return false;
     }
-    if ((count ?? 0) >= KNOWLEDGE_LIMIT) return false;
+    const existing =
+      (existingRows as Array<{ title: string | null; content: string | null; enabled: boolean | null }> | null) ?? [];
+    // 上限到達なら積まない (登録済みと合わせて KNOWLEDGE_LIMIT を超えない)。
+    if (existing.length >= KNOWLEDGE_LIMIT) return false;
+    // 未承認 (enabled=false) の候補が溜まり過ぎなら止める (全枠を候補で食い潰し手動登録を塞がない)。
+    if (existing.filter((e) => e.enabled === false).length >= MAX_PENDING_DRAFTS) return false;
 
-    // 直近メッセージ (古い順) を集める。customer_id 優先、無ければ line_user_id。
-    const turns: ReplyDraftTurn[] = [];
-    const col = params.customerId ? "customer_id" : "line_user_id";
-    const val = params.customerId ?? params.lineUserId;
-    const { data: msgs } = await admin
-      .from("customer_messages")
-      .select("direction, body, created_at")
-      .eq("tenant_id", tenantId)
-      .eq(col, val as string)
-      .order("created_at", { ascending: false })
-      .limit(12);
-    for (const m of ((msgs as Array<{ direction: string; body: string | null }> | null) ?? []).reverse()) {
-      turns.push({ direction: m.direction === "outbound" ? "outbound" : "inbound", body: m.body ?? "" });
-    }
+    // 直近メッセージ (古い順・両キー OR・配信失敗 outbound 除外) を既存ヘルパーで取得。
+    // ConversationTurn(text/date) → ReplyDraftTurn(body) にマッピングする。
+    const convo = await fetchRecentConversation(
+      tenantId,
+      { customerId: params.customerId, lineUserId: params.lineUserId },
+      { limit: 12 },
+    );
+    const turns: ReplyDraftTurn[] = convo.map((t) => ({ direction: t.direction, body: t.text }));
     // 送信直後で customer_messages に未反映でも、送った返信を文脈に必ず含める
     // (末尾がその返信でなければ outbound として補う)。
-    const reply = params.staffReplyBody.trim();
     const last = turns[turns.length - 1];
-    if (reply && (!last || last.direction !== "outbound" || last.body.trim() !== reply)) {
+    if (!last || last.direction !== "outbound" || last.body.trim() !== reply) {
       turns.push({ direction: "outbound", body: reply });
     }
 
@@ -98,19 +109,15 @@ export async function maybeCaptureKnowledgeFromReply(params: MaybeCaptureKnowled
       { model: fastModelForPlanTier(params.planTier ?? null) },
     );
     if (!candidate.reusable || candidate.confidence < CAPTURE_CONFIDENCE_MIN) {
-      usage.record({ tenantId, outcome: candidate.ai ? "ok" : "error", meta: { auto: true, captured: false } });
+      // 再利用不可・低 confidence は失敗ではなく正常なスキップ (AI エラー率を汚さない)。
+      usage.record({ tenantId, outcome: "ok", meta: { auto: true, captured: false, ai: candidate.ai } });
       return false;
     }
 
     // 重複回避: 既存エントリ (enabled 問わず) と正規化タイトル/本文が一致するものはスキップ。
-    const { data: existing } = await admin
-      .from("tenant_line_knowledge")
-      .select("title, content")
-      .eq("tenant_id", tenantId)
-      .limit(KNOWLEDGE_LIMIT);
     const titleN = normalize(candidate.title);
     const contentN = normalize(candidate.content);
-    const dup = ((existing as Array<{ title: string | null; content: string | null }> | null) ?? []).some(
+    const dup = existing.some(
       (e) => (titleN && normalize(e.title ?? "") === titleN) || normalize(e.content ?? "") === contentN,
     );
     if (dup) {
