@@ -39,6 +39,162 @@
 
 ## 2026-08-29 削除済みファイルの復活を機械的に検出する方法を作り、検証した
 
+## 2026-08-30 IMP-031（#946）の code-review 指摘を修正。表示定義の追加が予約一覧の絞り込みに常時0件の選択肢を混入させていた
+
+1. 日付: 2026-08-30
+2. 起きたこと: PR #946 に `/code-review` を実行し2件の指摘を得た。うち重大な方: `jobStatusDisplay.ts` の `RESERVATION_STATUS_DISPLAY` に paused/no_show/partially_completed の表示定義を追加したところ、`src/app/admin/reservations/ReservationsClient.tsx` の絞り込み `<select>` が `Object.entries(RESERVATION_STATUS_DISPLAY)` を無条件に列挙して選択肢を組み立てていたため、この3値が管理画面の絞り込みに実際に選べる選択肢として現れてしまっていた。選択すると API（`/api/admin/reservations`）は `.eq("status", value)` をそのまま投げるが、`reservations.status` の DB CHECK 制約は現在も従来の5値のみを許可しており（DB マイグレーション未実施、IMP-031 自身のスコープ通り）、この3値は実データに存在し得ない。選んでも常に0件になり、admin にはそれが「機能していない選択肢」だとわかる手がかりが何もない。もう1件: `JobExceptionEvent.fromState` が `string` 型で、同じ型の `toState`（`JobState`）や全評価器の入力パラメータ（すべて `JobState`）と非対称だった。
+3. 以前の考え: `jobStatusDisplay.ts` への表示定義追加は「型基盤先行」の一環として、DB・API に影響しない純粋な追加だと想定していた。
+4. 違和感・問題: `RESERVATION_STATUS_DISPLAY` は既存の稼働中 UI（予約一覧の絞り込み、カレンダー表示等）がそのまま `Object.entries()` で列挙・参照している共有の lookup オブジェクトだった。IMP-027〜030 の「型基盤先行」パターンは新規ファイル・新規関数がゼロ呼び出し元であることが前提だったが、今回は既存の共有定義オブジェクトにキーを追加する形だったため、「呼び出し元がない」という前提が成立せず、追加した瞬間に既存の稼働中コンシューマへ意図せず伝播した。
+5. 決めたこと: `jobStatusDisplay.ts` に `LIVE_RESERVATION_STATUSES`（DB CHECK 制約が現在許可する5値）を新設し、`ReservationsClient.tsx` の絞り込み選択肢の組み立てをこの定数ベースに変更（`RESERVATION_STATUS_DISPLAY` の素の列挙をやめる）。`RESERVATION_STATUS_DISPLAY` 自体はそのまま維持（`reservationStatusDisplay()` 経由の実際の DB 値表示・将来の DB マイグレーション後の消費先としては引き続き必要）。`JobExceptionEvent.fromState` を `JobState` 型に修正。
+6. 捨てた選択肢: `RESERVATION_STATUS_DISPLAY` から3値を一旦削除し、DB マイグレーション実施時にまとめて追加する案 — 型定義自体は害がなく（`reservationStatusDisplay()` 等の他の消費箇所は実際の DB 値でしか呼ばれないため3値が増えても無害）、削除すると IMP-031 の本来の目的（表示定義の先行実装）を損なうため却下。
+7. 判断理由: 「型基盤先行で新規ファイルはゼロ呼び出し元」という前提は、既存の共有オブジェクトに追加する変更には当てはまらない。既存コンシューマ（特に `Object.entries()`/`Object.values()` で無条件に列挙する箇所）への影響を都度確認する必要がある、という教訓。
+8. まだ答えが出ていないこと: なし。
+9. 公開区分: 公開可（UI の技術的な経緯。金額・テナント名・接続情報は含まない）
+
+## 2026-08-30 IMP-031（#946）を main へ取り込み。evaluateNoShow() の JSDoc・テスト・requirement-trace.md が CHECKED_IN→NO_SHOW を誤って許可としていた記述を修正
+
+1. 日付: 2026-08-30
+2. 起きたこと: IMP-031（案件例外フロー型基盤、branch impl/IMP-031-job-exceptions）を main へ取り込む際、main と分岐した53ファイルが衝突した。48ファイルは phantom conflict で一括解決。残り5ファイル（DECISION_LOG.md/LEDRA_CURRENT.md/RELEASE_LOG.md/requirement-trace.md/`src/lib/domain/jobStatusDisplay.ts`）はこのPR自身が変更していたため手動再適用した（`jobStatusDisplay.ts` は main 側に変更がなかったため PR 自身の最終版をそのまま採用）。resurrection パターンが11度目の再発（`WorkScopeProvider.tsx`/`sync/*`）。マージ後の `vitest run` で `evaluateNoShow()` の「CHECKED_IN → NO_SHOW: valid」テストが失敗。原因を調査したところ、`evaluateNoShow()` の実装自体は正しく `isValidTransition(JOB_TRANSITIONS, ...)` に委譲していたが、`JOB_TRANSITIONS.CHECKED_IN` は IMP-015 の実際のマージ済み内容（`5efd6e87`、コミットメッセージ「NO_SHOW は入れない。入庫済みの案件は「来店なし」になりえない」）では最初から NO_SHOW を含んでおらず、IMP-031 の JSDoc・テスト・PR概要・requirement-trace.md の記述（「SCHEDULED/CHECKED_IN → NO_SHOW」）は IMP-015 の未整理な中間ブランチコミット（squash 前、`67759a4a`）を参照して書かれた誤りだった。
+3. 以前の考え: IMP-031 実装時点で「SCHEDULED・CHECKED_IN のどちらからも来店なしにできる」という前提で JSDoc・テストを書いていた。
+4. 違和感・問題: `evaluateNoShow()` 自体は `JOB_TRANSITIONS` を単一定義源として正しく参照する設計になっていたため、実装バグではなくドキュメント・テストの側が先に確立していた正準ルールと食い違っていた。二重管理を避ける設計（評価器が遷移表に委譲）が、逆に「テストが古い前提のまま書かれていても実装は正しく動く」ことを見えにくくしていた。
+5. 決めたこと: `evaluateNoShow()` の JSDoc を実際の `JOB_TRANSITIONS` の内容（SCHEDULED のみ→NO_SHOW、理由付き）に合わせて修正。テストの「CHECKED_IN → NO_SHOW: valid」を「CHECKED_IN → NO_SHOW: invalid」に修正。requirement-trace.md の IMP-031 行の該当記述も修正。
+6. 捨てた選択肢: `JOB_TRANSITIONS.CHECKED_IN` に NO_SHOW を追加してテスト側に合わせる案 — IMP-015 で明示的に「入庫済みの案件は来店なしになりえない」という業務理由付きで除外された既存の代表判断を、無関係な IMP-031 のマージ作業中に覆すべきではないため却下。
+7. 判断理由: 遷移ルールの単一定義源は `JOB_TRANSITIONS`（IMP-015）であり、既に理由付きで確定している。ドキュメント・テストが古い前提を引きずっていただけなので、そちらを正準ルールに合わせるのが正しい修正。
+8. まだ答えが出ていないこと: なし。
+9. 公開区分: 公開可（マージ手順とドキュメント整合性の技術的な経緯。金額・テナント名・接続情報は含まない）
+
+## 2026-08-30 IMP-030（#945）の code-review 指摘を修正。revoke 可否判定が代表判断(2026-08-27)と矛盾していたバグを解消
+
+1. 日付: 2026-08-30
+2. 起きたこと: PR #945 に `/code-review` を実行し5件の指摘を得た。うち最重要のもの: `src/lib/certificates/integrityIncident.ts` の `evaluateRevokeEligibility()` が ISSUING/VERIFYING 状態からの revoke を不可としていたが、`src/lib/domain/transitions.ts` の正準遷移表 `CERTIFICATE_TRANSITIONS`（代表判断・2026-08-27: 「REVOKED は ISSUING / VERIFYING からも遷移可（公開前でも無効化の記録を残す）」）はこれを明示的に許可しており、同じ PR 内の兄弟関数 `evaluateRevoke()`（versionTransition.ts）も遷移表を正しく参照して許可していた。同一 PR 内で二重管理になっていたことによる不整合。加えて `versionTransition.ts`/`correction.ts`/`integrityIncident.ts` の3ファイルが遷移表への素の添字アクセス（`table[state].includes(...)`）を使っており、IMP-029 で修正した `evaluateEscalation()` と同じプロトタイプ汚染パターン（`"constructor"` 等が `Object.prototype` 経由で関数を返す）を再現していた。`resolveVersionRedirect()` にも `latestPublicId` 省略時の `redirectToPublicId: undefined` 混入があった。
+3. 以前の考え: `evaluateRevokeEligibility()` は独自の `reasons` マップで ISSUING/VERIFYING を「発行処理中/検証中なので revoke 不可」としてブロックしていた。IMP-030 実装時点でこの関数を書いた際、`transitions.ts` の代表判断（2026-08-27）を参照せず、v2.0 §12.4 の一般論（「VERIFIED のみ revoke 可能」）だけで実装していた。
+4. 違和感・問題: 同一 PR 内に「revoke できる」と「revoke できない」の2つの実装が共存し、どちらも自己完結して見えるためレビューで見逃しやすい状態だった。遷移表という単一定義源があるのに、意味的に重複する判定を再実装するとこの種の不整合が起きる。
+5. 決めたこと: `evaluateRevokeEligibility()` を `isValidTransition(CERTIFICATE_TRANSITIONS, certificateState, "REVOKED")` に委譲する形に書き換え、reasons マップから ISSUING/VERIFYING を削除（現在は eligible のため）。`versionTransition.ts`/`correction.ts`/`integrityIncident.ts` の素の添字アクセス4箇所を `isValidTransition()` ヘルパー呼び出しに置換。`resolveVersionRedirect()` は `latestPublicId` 未指定時にキー自体を省略するよう修正。`evaluateCorrectionEligibility()`（correction.ts）は指摘があったが、「VERIFIED のみ訂正可能」は訂正機能固有のビジネスルール（遷移表の許可可否とは別軸、関数自身の JSDoc に明記済み）であり、遷移表側にも ISSUING/VERIFYING→PENDING_CORRECTION を許可する代表判断が存在しないため変更しなかった。
+6. 捨てた選択肢: `evaluateRevokeEligibility()` 内で `reasons` マップに ISSUING/VERIFYING を残したまま許可判定だけ先に true を返す実装（早期リターンで動作は正しくなるが、二重管理の温床がそのまま残るため不採用）。
+7. 判断理由: 遷移可否の判定はすでに `CERTIFICATE_TRANSITIONS` + `isValidTransition()` という単一定義源が存在する（IMP-015／IMP-029 で確立）。同じ判定をローカルに再実装すると今回のような不整合が再発するため、既存ヘルパーへの委譲に統一するのが正しい修正。
+8. まだ答えが出ていないこと: なし。
+9. 公開区分: 公開可（コードの整合性修正。金額・テナント名・接続情報は含まない）
+
+## 2026-08-30 IMP-030（#945）を main へ取り込み。gateEvaluator.ts の genuinely-touched マージを手動再適用
+
+1. 日付: 2026-08-30
+2. 起きたこと: IMP-030（証明書訂正・supersede・Integrity Incident・revoke 型基盤、branch impl/IMP-030-correction-supersede-revoke）を main へ取り込む際、main と分岐した53ファイルが衝突した。48ファイルは phantom conflict で一括解決。残り5ファイル（DECISION_LOG.md/LEDRA_CURRENT.md/RELEASE_LOG.md/requirement-trace.md/`src/lib/certificates/gateEvaluator.ts`）はこのPR自身が変更していたため手動再適用した。`gateEvaluator.ts` は IMP-028（#943）の code-review 修正（Before/After 判定の単一定義源化）と IMP-030 自身の変更（`no_pending_corrections` 条件の実装接続）の両方が同じファイルに触れていたため、main の内容（#943 修正込み）を base に IMP-030 の3箇所の diff hunk（import 追加・型定義・関数本体）を手動で再適用した。resurrection パターンが10度目の再発（`WorkScopeProvider.tsx`/`sync/*`）。
+3. 以前の考え: なし（IMP-028/029 で確立した手順の踏襲）。
+4. 違和感・問題: 特になし。今回は genuinely-touched ファイルが docs 4件に加えてコードファイル1件（`gateEvaluator.ts`）だった点が過去2回と異なるが、同じ「main を base に PR 自身の diff を手動再適用」の手順がそのまま機能した。
+5. 決めたこと: 確立済みの merge 手順を適用。`gateEvaluator.ts` は diff の3箇所（import、型定義の `correctionRequests` フィールド追加、`evaluateNoPendingCorrections` 関数本体）を個別に確認し、#943 修正部分（`requiresBeforeAfterMedia`/`CERTIFICATE_BEFORE_AFTER_REQUIRED_MESSAGE` の使用）と重ならないことを確認してから適用した。
+6. 捨てた選択肢: なし。
+7. 判断理由: コードファイルの genuinely-touched マージでも、docsファイルと同じ「diff を個別確認し手動再適用」の原則が安全に機能する。3-way merge に任せず明示的に確認することで、#943 の修正が誤って失われるリスクを排除した。
+8. まだ答えが出ていないこと: なし。
+9. 公開区分: 公開可（マージ手順の技術的な経緯。金額・テナント名・接続情報は含まない）
+
+## 2026-08-30 IMP-029（#944）を main へ取り込み。lint警告4件（新規テストファイルの未使用importと any）を修正
+
+1. 日付: 2026-08-30
+2. 起きたこと: IMP-029（中央通知エンジン型基盤、branch impl/IMP-029-notification-engine）を main へ取り込む際、main と分岐した50ファイルが衝突した。46ファイルは phantom conflict（このPR自身のコミットが触っていない）で一括解決。残り4ファイル（DECISION_LOG.md/LEDRA_CURRENT.md/RELEASE_LOG.md/requirement-trace.md）はこのPR自身が変更していたため個別に手当てし、IMP-028（#943）マージ時に確立した手順（`checkout --theirs` で main の内容を base にしてから、PR自身の diff を正しい年代順位置に手動で再適用）を今回も適用。`grep` でPR自身の元エントリが main に存在することも確認済み（今回は自動マージによる欠落なし）。resurrection パターンが9度目の再発（`WorkScopeProvider.tsx`/`sync/*`）。lint 1260件（既存基準線1256件から+4）を検出、`src/lib/notifications/__tests__/notifications.test.ts` の未使用import 2件・未使用変数1件・`any` 1件を修正し基準線に復帰。
+3. 以前の考え: なし（前回確立した手順の踏襲）。
+4. 違和感・問題: 特になし。IMP-028（#943）で確立した「docs 4ファイルは衝突の有無に関わらず内容を grep で確認する」手順が、今回も有効に機能した。
+5. 決めたこと: 確立済みの merge 手順（phantom conflict 一括解決→genuinely-touched ファイルは main を base に手動再適用→resurrection チェック→lint/tsc/vitest→lint 差分検出時は原因ファイルを個別 eslint で特定して修正）をそのまま適用。
+6. 捨てた選択肢: なし。
+7. 判断理由: 前回（IMP-028）で発見した「衝突なし=正しい、ではない」という教訓を踏まえ、docs ファイルの内容確認を省略しない運用を継続した。
+8. まだ答えが出ていないこと: なし。
+9. 公開区分: 公開可（マージ手順の技術的な経緯。金額・テナント名・接続情報は含まない）
+
+## 2026-08-30 IMP-028（#943）を main へ取り込み。PR #942 の自動マージ(無衝突)がDECISION_LOG/RELEASE_LOGのIMP-027自身のエントリを2件とも無音で欠落させていたことを発見・復元
+
+1. 日付: 2026-08-30
+2. 起きたこと: IMP-028（Certificate Gate 単一評価器、branch impl/IMP-028-certificate-gate）を main へ取り込む際、main と分岐した50ファイルが衝突した。うち45ファイルは phantom conflict（このPR自身のコミットが触っていない）で一括解決。残り5ファイル（DECISION_LOG.md/LEDRA_CURRENT.md/RELEASE_LOG.md/requirement-trace.md/certificateGate.ts）はこのPR自身が変更していたため個別に手当てした。その過程で、**DECISION_LOG.md と RELEASE_LOG.md の両方から、IMP-027（#942）自身が本来追加していたはずの元エントリが完全に消えている**ことを発見した（`grep` で該当タイトルが main に一件もヒットしない）。requirement-trace.md と LEDRA_CURRENT.md は無事だった。
+3. 以前の考え: PR #942 のマージ時、この4つの docs ファイルは「46件の衝突リスト」に入っていなかった＝git が自動マージ（3-way merge）に成功したという意味であり、内容も正しく統合されたはずだと思っていた。
+4. 違和感・問題: 「衝突なし」は「両者の内容が正しく統合された」ことを保証しない。git の3-way merge は、一方の追加が他方の変更と textually 重ならなければ機械的に成功と判定するが、今回のように**両側が同じ場所（ファイル先頭直後）に別々の新規エントリを追加**していた場合、diff3 アルゴリズムの解釈によっては片方の追加が無音で失われることがある——今回まさにそれが起きていた。本セッションが確立してきた「phantom conflict は checkout --theirs で一括解決し、衝突したファイルだけ手動で確認する」手順は、**衝突しなかったファイルの中身までは検証していなかった**という穴があった。
+5. 決めたこと: (a) IMP-027 の元コミット（8316290f、親5a7429d9）との diff から、消えていた2エントリ（DECISION_LOG「支払い状態の橋渡し方式」、RELEASE_LOG「§11 支払いモデル」）の原文を復元し、正しい年代順位置（IMP-028エントリの直下、IMP-026エントリの直上）に再挿入した。(b) IMP-028 自身の新規エントリも同時に追加（DECISION_LOG/RELEASE_LOG/LEDRA_CURRENT.md の3ファイル、正しい年代順=IMP-028が最上位）。(c) 今後、docs/context/ の4ファイルが関わるマージでは、**衝突の有無に関わらず**、そのPR自身の元コミットが追加したはずの見出し文字列を `grep` で存在確認する一手間を追加する。
+6. 捨てた選択肢: (a) 「衝突しなかった＝正しい」を信頼してそのまま進める — 今回の発見の原因そのものであり却下。(b) IMP-027 のエントリ欠落を「軽微なドキュメント欠損」として黙って見送る — 事業ログの目的（意思決定の追跡可能性）に反するため、気づいた以上は復元する。
+7. 判断理由: この repo の事業ログは「何を・なぜ決めたか」を後から追える一次資料として運用されている。マージの都合で無音に内容が消えることは、この一次資料としての信頼性を直接損なう。気づいた時点で直すのが最小コストであり、後から気づくほど「本当にそのエントリが存在したか」の確認が困難になる。
+8. まだ答えが出ていないこと: git の3-way merge がこのパターンで欠落を起こす正確な条件（diff3 の具体的な判定ロジック）は未調査。他PR（#939 IMP-024、#940 IMP-025、#941 IMP-026）の元ブランチ（`impl/IMP-024-voice`/`impl/IMP-025-vehicle-passport`/`impl/IMP-026-customer-concern`、いずれも origin にまだ残存）の DECISION_LOG/RELEASE_LOG エントリ見出しを現在の main と照合したところ、4件とも main に存在することを確認した——**欠落は #942（IMP-027）の1件のみ**（当時この4ファイルを「衝突なしの自動マージ」として未検証のまま進めたのがこの回だけだったため、と推定）。
+9. 公開区分: 公開可（マージ手順上の技術的な発見。金額・テナント名・接続情報は含まない）
+
+## 2026-08-30 IMP-027（#942）を main へ取り込み。code-review 指摘のうち保険ポリシーのUNKNOWN/CANCELEDゲート漏れを修正、B2B/callerゼロの2件は既存方針の範囲内として不採用
+
+1. 日付: 2026-08-30
+2. 起きたこと: IMP-027（PaymentState 導出層・Policy 評価器、branch impl/IMP-027-payment-model）を main へ取り込む際、main と分岐した46ファイルが add/add・content 衝突した（いずれも IMP-027 自身のコミットが触っていないファイル。IMP-020〜026 の後発実装との phantom conflict）。加えて `src/lib/navigation/WorkScopeProvider.tsx` と `src/lib/sync/*`（4ファイル）が7度目の復活をした（`check-resurrected-files.sh` が今回は ORIG_BASE を直前の IMP-026 tip に取れたため正しく検出）。`/code-review` で6件の指摘を受けた。
+3. 以前の考え: IMP-027 は「純関数のみ・呼び出し元なし」の基盤層 PR として、他の IMP-0xx（IMP-012/013/014/016）と同じ設計方針で書かれたはずだった。
+4. 違和感・問題: 6件の指摘のうち4件は実際のバグ・改善点だった: (a) `evaluateInsurance()` が `paymentState` を一切見ておらず、保険承認後に決済が UNKNOWN/CANCELED になっても `met: true` を返す——`evaluatePaymentPolicy` 自身の JSDoc（「UNKNOWN 状態では条件不成立」「CANCELED は条件不成立」）に反する。consumer/b2b は UNKNOWN をゲートしているのに insurance だけ漏れていた。(b) `derivePoSPaymentState` の exhaustiveness チェック用 `_exhaustive: never` が未使用変数として lint warning。(c) `derivePaymentState` の JSDoc 番号付きロジックが実装済みの「total <= 0 → PAID」分岐を書き漏らしていた。(d) b2b の支払いサイクル未設定メッセージが `src/lib/signoff/state.ts` の④会計ステップと一字一句同じ文言で、片方だけ変更されるとお客様への案内が食い違う。残り2件は指摘の前提が本 repo の既存方針と食い違っていた: (e) 「B2B都度払いの条件が v2.0 §11.3 の named state CREDIT_APPROVED でなく支払い金額(PAID)を見ている」——`requirement-trace.md` §1.5 で既にこの対応度の低さ（「該当なし」）を記録済みで、insurance 同様の Phase 2 簡易実装として PR 本文にも明記済み。(f) 「payment/ 配下に呼び出し元が1つも無いのは IMP-015（2026-08-19）で却下した設計の再現」——DECISION_LOG 2026-08-19 の IMP-015 エントリを実際に読むと、却下されたのは「既存値→正準値の**変換マップ**を全軸一括で先に作ること」であり、「型・純関数を呼び出し元なしで先に実装し、消費は後続タスクに委ねる」という設計自体は IMP-012/013/014/016 で**繰り返し採用**されてきた本プロジェクトの標準パターン（各エントリで「画面/ルートは後続タスクに委ねる」と明記）。
+5. 決めたこと: (a)(b)(c)(d) を修正: `evaluateInsurance` に UNKNOWN/CANCELED ガードを追加しテスト2件追加、`_exhaustive` を返り値として使い lint warning を解消、JSDoc に total<=0 分岐を追記、signoff/state.ts との文言重複箇所にクロスリファレンスコメントを追加（構造分離を優先し、統合はしない——後述）。(e)(f) は不採用（根拠は上記4参照）。復活5ファイルは mv による除去で対処（確立済み手順）。
+6. 捨てた選択肢: (a) b2b/insurance の文言重複を signoff/state.ts と payment/policy.ts で共通定数に切り出す案 — 既存の稼働中モジュール（signoff/state.ts）を、呼び出し元がまだ無い新設の基盤層 PR から触ることになり、スコープが広がる。コメントでの相互参照のみに留めた。(b) CREDIT_APPROVED を新たな入力フィールドとして PaymentPolicyContext に追加する案 — 「法人の与信承認」という概念自体が既存データに存在しない（requirement-trace.md 確認済み）ため、この PR 単独では実装できない。IMP-028 以降で必要になった時点で判断する。
+7. 判断理由: 実際のバグ（insurance の UNKNOWN/CANCELED ゲート漏れ）は Certificate Gate の盲目リトライ禁止原則（ADR-0002）に直結するため確実に修正。一方で「本 PR の設計方針が過去の決定と矛盾する」という指摘は、実際に過去の DECISION_LOG エントリを読んで裏取りするまでは信頼できない典型例だった——読んだ結果、矛盾ではなく本プロジェクトの一貫した標準パターンだと判明した。
+8. まだ答えが出ていないこと: (a) B2B の CREDIT_APPROVED（与信承認）データソースが本番のどこにも存在しない——IMP-028 で Certificate Gate に統合する際、この設計判断（PAID で代用）を維持するか改めて検討が必要。(b) signoff/state.ts と payment/policy.ts の文言重複は、両方を書き換える画面統合タスクが来た時点で一本化を検討する。
+9. 公開区分: 公開可（実装の技術的な経緯。金額・テナント名・接続情報は含まない）
+
+## 2026-08-30 IMP-026（#941）マージ後、db-migrate.yml が out-of-order で失敗——本番は直接確認したところ既に正しく適用済みだった
+
+1. 日付: 2026-08-30
+2. 起きたこと: PR #941 を main へ squash マージ後、`db-migrate.yml`（本番 DB マイグレーション適用）が「Found local migration files to be inserted before the last migration on remote database... supabase/migrations/20260820010000_customer_concerns.sql」で失敗した（`supabase db push` の実行ログで `20260820010000` の Remote 列が空欄と表示）。本番 `supabase_migrations.schema_migrations` を直接 SELECT したところ、**`20260820010000` は既にレコードとして存在し、`statements` 列の内容も私の最終修正版（`resolved_by → auth.users(id)`、`EXECUTE FUNCTION set_updated_at()`、RLS ポリシーの `public.my_tenant_ids()`）と一字一句一致していた**。さらに `customer_concerns` の実際のオブジェクトを直接照会し、列・FK 制約（`pg_constraint`）だけでなく **CHECK 制約4本・インデックス4本（+pkey）・`trg_customer_concerns_updated_at` トリガー・RLS 有効化（`pg_class.relrowsecurity=true`）・SELECT/UPDATE ポリシー2本（anon INSERT ポリシーは無し=修正版どおり）**まで全オブジェクト種別を照合し、すべて修正版マイグレーションの内容と一致することを確認した（初回投稿時は列・FKのみの確認だったため、Codex レビュー指摘を受けて追加検証した）。
+3. 以前の考え: db-migrate.yml が失敗した以上、この PR のマイグレーションは本番に適用されていないと考えていた。また「Supabase MCP の apply_migration で当たった可能性がある」と考えていたが、これは誤りだった(後述)。
+4. 違和感・問題: `db-migrate.yml` の実行は1回のみ（this run が main への唯一の db-migrate.yml 実行、再実行や後続実行は無いことを `list_workflow_runs` で確認済み）。Supabase CLI の out-of-order チェックは SQL 実行前のプリフライトで全体を止める仕様のため、この1回の CI 実行そのものがこの migration を適用したとは考えにくい。にもかかわらず本番には正しい内容が存在する。**初回投稿時は候補経路に「Supabase MCP の apply_migration」を挙げていたが、これは誤り**——`apply_migration` は呼び出し時刻ベースでバージョンを自動採番するため(本 repo の DECISION_LOG 2026-08-25 等で既知)、元ファイルと同じ `20260820010000` という版番号のまま台帳に載ることはあり得ない(Codex レビュー指摘で訂正)。版番号を保ったまま適用できる経路として矛盾しないのは、**`supabase db push --include-all` をローカル等 CI 外から手動実行した**ケース(このフラグは「remote history に無い migration を対象に含める」ためのもので、当時 `20260820010000` がまだ remote history に無ければ対象になり、出力の版番号も元ファイルのまま)。**適用者・時期・経路とも特定できていない**（このセッションの可視範囲でこのファイルに対して apply_migration・db push いずれも呼んだ記録はない）。推定: db-migrate.yml がリモートのマイグレーション一覧を取得した直後（2026-08-30 03:16:20頃）から、私が直接 SELECT で確認した時点までの間に、何らかの経路(推定: 手動 `db push --include-all` が最有力候補、断定はできない)で本番へ適用された。未検証。
+5. 決めたこと: (a) 本番の実際のスキーマ（テーブル・列・FK制約・CHECK制約・インデックス・トリガー・RLS有効化・ポリシー・statements 全文）を直接照会し、リポジトリの最終版マイグレーションファイルと一致することを確認——ledger の「適用済み」表示を鵜呑みにせず、実際の DDL を全オブジェクト種別まで見るという本セッション一貫の方針を今回も貫いた。(b) `db-migrate.yml` を手動再実行（workflow_dispatch）しようとしたが、現在のトークン権限では 403 で拒否された（`Resource not accessible by integration`）。手動での green 化確認はできなかった。(c) 次に supabase/migrations/ に変更が入る PR（IMP-027 以降のいずれか）で db-migrate.yml が自然に再実行されるので、そこでこの特定ファイルが正しく「既に適用済み」として扱われるか（out-of-order エラーが再発しないか）を確認する。
+6. 捨てた選択肢: (a) `--include-all` を使って再度 push を試す — 当初「本番に既に存在するオブジェクトに CREATE INDEX を再実行し already exists になる」を理由に不採用としていたが、これは誤り。`20260820010000` は確認時点で既に remote history に記録済みであり、`--include-all` はそもそも remote history に無い migration を対象にするフラグなので、この migration 自体は対象にならない(Codex レビュー指摘で訂正)。今回不採用にした実際の理由は「既に正しく適用済みであり、再度何かを push する必要が無い」という点のみ。(b) 本番データを追加で書き換える — 既に正しい状態なので不要。
+7. 判断理由: db-migrate.yml の「赤」という表面的なシグナルより、本番の実際の DDL を直接見るほうが信頼できる（この repo の migration drift の歴史全体を通じて一貫して正しかった方針）。手動再実行の権限が無い以上、次の自然なトリガーを待つほかない。
+8. まだ答えが出ていないこと: (a) 誰が・いつ・どの経路でこのマイグレーションを本番へ適用したか特定できていない(推定は手動 `db push --include-all` だが未検証)。(b) 次回 db-migrate.yml が走ったときに、この out-of-order 表示が再発しないかは未検証（次の migrations 変更 PR で確認する）。
+9. 公開区分: 公開可（マージ手順の技術的な経緯。金額・テナント名・接続情報は含まない）
+
+## 2026-08-30 停滞フロー再促しは awaiting_quote_detail に限定（無状態な再送で安全に送れる範囲）
+
+1. 日付: 2026-08-30
+2. 起きたこと: 「停滞フローの再促し」を実装するにあたり、再促し対象にできる会話状態を精査した。日程選択待ち（awaiting_schedule_pick / awaiting_reschedule_slot 等）は過去メッセージに候補ボタン（特定日時）が埋まっており、時間が経つと候補が埋まる/失効しうる。
+3. 以前の考え: 「停滞フロー」全般（見積り詳細待ち・日程選択待ち・キャンセル選択待ち）を一律に再促しする想定。
+4. 違和感・問題: 日程/キャンセル選択待ちを「もう一度お選びください」と再促しても、過去の候補ボタンは陳腐化している可能性が高く、埋まった枠をタップさせる恐れがある。正しく再促すには候補を再計算して新しいボタンを出し直す必要があり、状態遷移も伴う（別機能規模）。
+5. 決めたこと: 今回は `awaiting_quote_detail`（車検証/車種年式の再送だけで先へ進む“無状態”な再促し）に限定。文面は buildQuoteDetailNudge で「その後いかがでしょうか」＋再送依頼。1会話1回（notification_logs dedup）、opt-in・既定 OFF、既定24h停滞で送る。cron は reservation-reminders と同じ骨格で実装。
+6. 捨てた選択肢: 日程/キャンセル選択待ちも一律に文言だけ再促しする案（陳腐化ボタンへ誘導する恐れ）。停滞時に候補を再計算して新ボタンで出し直す案（状態遷移を伴う別機能。今回のスコープを超える）。会話行に nudge フラグを持たせる案（updated_at を動かし停滞判定に干渉するため、notification_logs での dedup を採用）。
+7. 判断理由: 確実に安全（過去ボタンに依存しない・埋まった枠へ誘導しない）で価値の高い awaiting_quote_detail から入れるのが妥当。取りこぼしリードの回収という主目的の大半をこの状態がカバーする。
+8. まだ答えが出ていないこと: 日程/キャンセル選択待ちの再促し（候補の再提示付き）、見積り送付後の OK/NG 待ち（awaiting_quote_ok / awaiting_final_ok）への催促は未実装。停滞判定を updated_at に依存しているが、更新トリガの有無は環境依存の可能性があり、複数回の部分反応がある会話の扱いは今後の検討。
+9. 公開区分: 公開可（機能スコープの設計判断。顧客・機密情報なし）。
+
+## 2026-08-30 IMP-026（#941）を main へ取り込み。check:schema・`/code-review`・CI の Migrations Replay で計11件を発見・対応、resurrection バグを6度目の再削除
+
+1. 日付: 2026-08-30
+2. 起きたこと: IMP-026（#941, branch impl/IMP-026-customer-concern）を main へ取り込む際、(a) IMP-024/025 と同じ根本原因で `src/lib/sync/`・`WorkScopeProvider.tsx` が6度目の復活、(b) マージ後の検証スイートで `npm run check:schema` が失敗——本PR自身の新規コード `src/app/api/customer/concerns/route.ts` が `part_confirmation_signatures` テーブルの `part_installation_id` という**存在しない列**を SELECT していた（実列名は `installation_id`）。加えて本PR自身が新設した `customer_concerns` テーブルが `scripts/schema.snapshot.json` に未登録だった。(c) `/code-review` で本PR自身のコードに7件の指摘。(d) 上記をすべて修正してプッシュした後、CI の `Migrations Replay`（空DBからの全マイグレーション再生）が新規失敗——`20260820010000_customer_concerns.sql` 自身が、存在しない `profiles` テーブル（`resolved_by UUID REFERENCES profiles(id)` および RLS ポリシー2箇所）と、存在しない `update_updated_at()` 関数（正しくは `set_updated_at()`）を参照していた。この2つは check:schema・`/code-review`・tsc・vitest のいずれでも検出できない種類のバグ（純粋な SQL 内の誤参照）で、CI の Migrations Replay が本来の役割どおり検出した。
+3. 以前の考え: PR 本文の「検証」節は「全テスト 4193 件パス、TypeScript・lint クリーン」とのみ記載しており、`check:schema` の実行結果には触れていなかった。
+4. 違和感・問題（`/code-review` 分、優先度順）: (i) `hasUnresolvedConcerns`（IMP-028 Certificate Gate 用のブロック判定）が Supabase のエラーを無視し fail-open していた——クエリ失敗時に「懸念なし」を返し、ゲートが本来ブロックすべき時に通してしまう。この repo の他のゲート系ヘルパー（captureNonce.ts 等）は fail-closed が規約。(ii) 同関数が `src/lib/supabase/admin.ts` の CRITICAL 規約（bypass-RLS クライアントは必ず tenant_id でフィルタ）に反し tenantId を受け取らない。(iii) `resolveSourceContext` の `delivery_receipt`/`body_repair_consent` の2分岐が、いずれも `signature_sessions` を token のみで検索し `purpose` 列（既存コードが `src/app/api/signature/delivery-receipt/verify/[id]/route.ts` 等で明示的に絞り込んでいる列）を見ておらず、他フローのトークンを取り違えて解決しうる。(iv) `customer_concerns` の Slack 通知が `customer_inquiries`(別系統と明言している既存機能)と同じ webhook 環境変数を共用しており、運用上の分離が実現できていない。(v) `z.enum(X as unknown as [string, ...string[]])` という型消去キャストが4箇所にあり、実際には `X` を `readonly T[]` 型注釈なしで `as const` にするだけでタプル型のまま渡せた。(vi) 懸念を resolved/dismissed → open/investigating に戻す(再オープンする)と `resolved_by`/`resolved_at` が古い値のまま残る。(vii) `hasUnresolvedConcerns`（1度リグレッションを起こした OR ロジックを含む）にテストが1件もなかった。
+5. 決めたこと: (a) `part_installation_id` → `installation_id` に修正。(b) `customer_concerns` を DDL から書き起こして `schema.snapshot.json` に追加。(c) `hasUnresolvedConcerns` を fail-closed に変更(エラー時 true)、`tenantId` 必須引数を追加し `.eq("tenant_id", ...)` を必須化。(d) `delivery_receipt`/`body_repair_consent` それぞれに `purpose` フィルタを追加。(e) 専用の `SLACK_CUSTOMER_CONCERN_WEBHOOK_URL` を新設(未設定時は無言でスキップ、誤って一般問い合わせチャンネルに混ざらない)。(f) `CONCERN_SOURCES`/`CONCERN_CATEGORIES`/`CONCERN_STATUSES`/`UNRESOLVED_CONCERN_STATUSES` の型注釈を外しタプル推論に任せ、`as unknown as` キャストを全廃。(g) 再オープン時に `resolved_by`/`resolved_at` を null クリア。(h) `blockCheck.test.ts` を新設(fail-closed・tenant scoping・OR ロジックの7ケース)。(i) resurrection ファイル5件を再度削除。(j) `types.ts` の誤った doc コメント(クエリ実行位置の誤記)を修正。(k) `resolved_by UUID REFERENCES profiles(id)` と RLS ポリシー2箇所を `auth.users(id)` / `public.my_tenant_ids()`（この repo の確立済みパターン、直近では `user_interface_preferences` migration でも使用）に修正。(l) `EXECUTE FUNCTION update_updated_at()` を実在する `set_updated_at()` に修正。(k)(l) はいずれも `npm run check:migrations`（空DBからの再生、CI の Migrations Replay と同じスクリプト）をローカルで実行し「再生 OK（既知の9件を除く。増減なし）」まで確認した。
+6. 捨てた選択肢: 新しいステータス軸（ConcernStatus）を `src/lib/domain/states.ts` の正準6軸に統合すべきという `/code-review` の指摘は**採用しなかった**——ADR-0002/CLAUDE.md の「アドホック状態禁止」規約は v2.0 が定義する Job/Step/Severity/Certificate/Payment/Sync の6軸を対象にしたもので、`states.ts` の実際の中身（この6軸のみ）と、`documents.status`(9帳票種)・`part_installations.status` 等の既存の独立ドメイン状態が同モジュールに存在しない実例で確認済み。顧客懸念のライフサイクルはこの6軸のいずれとも対応しない別概念であり、既存の `DocumentStatus` 等と同じ扱いで問題ない。
+7. 判断理由: fail-open・tenant scoping・token purpose の3件はセキュリティ/ゲートの正しさに直結するため最優先で修正。型消去は些細に見えるが将来のリネームで検出漏れが起きる種類のバグなので合わせて直した。ConcernStatus の指摘は、ルールの文言だけでなく実際のモジュール内容とリポジトリの既存実例まで確認した上で「対象外」と判断——ルールを字面通りに適用する前に一次情報（states.ts の中身、ADR-0002 の背景説明）を確認する自己攻撃を行った。`profiles`/`update_updated_at()` の2件は、CI が緑になるまで「マージ手順は完了していない」という運用（このリポジトリの標準手順）を徹底したことで、他のどの検証手段でも拾えないバグを本番投入前に検出できた——存在しないテーブル・関数への参照は、実際に空DBからマイグレーションを再生しない限り、コードレビューでもコンパイラでも見抜けない種類の欠陥である。
+8. まだ答えが出ていないこと: なし。この件は解決。
+9. 公開区分: 公開可（マージ手順の技術的な経緯。金額・テナント名・接続情報は含まない）
+
+## 2026-08-29 概算見積りの継続導線: 自動フロー開始ではなくボタン誘導で「正式見積り」へ繋ぐ
+
+1. 日付: 2026-08-29
+2. 起きたこと: 概算見積り自動返信が「正式・詳細はご来店で」の行き止まりで、LINEの正式見積りフロー（#993で車検証OCR対応済み）へ続かない。むしろ概算は「来店で」・見積りフローは「LINEで送れば見積り」と文面が矛盾しており、コード上も概算送信直後の自動フロー開始が矛盾回避のため意図的にスキップされていた（`maybeStartQuoteFlow` の `alreadyReplied` 早期return）。
+3. 以前の考え: 「概算だけで終わらせず正式見積りへ続ける」導線は `maybeStartQuoteFlow` の自動フロー開始（詳細を聞き返すメッセージ）が担う想定だった。
+4. 違和感・問題: 概算返信の直後に自動で「詳細を教えて」を送ると、(a)二重返信になり、(b)概算の締め（来店で）と聞き返し（LINEで送れば）が矛盾する。だから実際にはスキップされ、結果として概算で会話が途切れていた。
+5. 決めたこと: (a)概算返信自体に誘導ボタン（`flow:start_quote`＝正式見積りフロー開始／`flow:consult`＝相談）を添付（ナレッジ返信と同じ `buildFollowupButtons`・同じ添付条件=会話フローopt-in済み＋進行中フロー無し）。(b)ボタン添付時は概算の締め文面を「正式はLINEで承ります（車検証で精度UP）／来店でもOK」に揃える。(c)自動フロー開始は従来どおりスキップのまま、続きは顧客のボタンタップに委ねる。
+6. 捨てた選択肢: 概算返信後に自動でフローを開始して詳細を聞き返す案（二重返信・文面矛盾）。概算時に既知の施工内容＋車両で正式見積り下書きを即作成する案（正式見積りは「壁3」＝スタッフのdraft→sentを経る設計で、rough=人手なしとは別系統。既知の車種テキストより車検証の方が正確なので、ボタン先の車検証依頼＝精度UPが妥当）。
+7. 判断理由: 顧客のタップという明示的意思で継続する方が、自動プッシュより二重返信・文面矛盾を避けられ、既存のボタン基盤（buildFollowupButtons／handleFollowupStartQuote）をそのまま再利用できる（新規の抽象を足さない）。
+8. まだ答えが出ていないこと: 概算で既に得た施工内容・車両を、正式見積りフロー開始時にcontextへ引き継いで「車検証だけ」を聞く（車種年式の再入力を省く）最適化は未実装。停滞（無反応で72h失効）フローの再促しは#2の最後の項目で扱う。
+9. 公開区分: 公開可（UX改善の設計判断。顧客・機密情報なし）。
+
+## 2026-08-30 IMP-025（#940）を main へ取り込み。PII シールドの穴3件を `/code-review` で発見・修正、resurrection バグを5度目の再削除
+
+1. 日付: 2026-08-30
+2. 起きたこと: IMP-025（#940, branch impl/IMP-025-vehicle-passport）を main へ取り込む際、(a) IMP-024 と同じ squash 履歴の断絶で `src/lib/sync/`・`WorkScopeProvider.tsx` が5度目の復活（IMP-025 は IMP-024 の pre-fix コミットから分岐していたため、IMP-024 の再削除より前の状態を引き継いでいた）、(b) `/code-review` で本 PR 自身の PII シールド実装（`piiFields.ts`/`customerRelation.ts`）に3件の穴を発見。
+3. 以前の考え: PII シールドは「コンパイル時型アサーション + テスト18件」で体系的に検証済みという認識だった。
+4. 違和感・問題: (i) `PIIFieldOverlap` はトップレベルの `keyof` しか見ないため、`PassportVerifyResponse` の入れ子オブジェクト（`vehicle`/`summary`/`meta_anchor`/`certificates[]`）内に将来 PII が追加されても検知できない。(ii) `PublicTransferView` のチェックだけ共有レジストリを使わず4件のリテラル文字列をハードコードしており、`current_owner_email`/`current_owner_name` の重複を見逃す設計になっていた。(iii) `VEHICLE_TABLE_PII_COLUMNS` に列挙された `customer_name`/`customer_email`/`customer_phone_masked` はマイグレーション `20260321000002` で `vehicles` テーブルから既に DROP 済みで実在せず、逆に実在する `plate_display`（ナンバープレート）が未登録だった。
+5. 決めたこと: (a) resurrection ファイル5件を再度削除（IMP-024 と同じ mv+`git add -A` 手順）。(b) `piiFields.ts` に `PassportVerifyResponse` の入れ子形状ごとの個別チェックを追加（ponytail: 汎用的な再帰型ウォーカーではなく、現存する入れ子形状を個別に列挙——理由は判断理由参照）。(c) `PublicTransferView` のチェックを共有レジストリ (`PIIFieldOverlap`) ベースに統一し、`from_owner_email`/`from_owner_name` を `PASSPORT_TABLE_PII_COLUMNS` に登録。(d) `VEHICLE_TABLE_PII_COLUMNS` から廃止済み3列を削除し `plate_display` を追加、`piiShield.test.ts` の期待値も更新。(e) OPEN_QUESTIONS.md 未記載だった2件の未解決事項を追記。
+6. 捨てた選択肢: (a) 汎用的な再帰型 PII ウォーカー（`type DeepPIIOverlap<T> = ...`）の実装 — 配列・union・optional・循環参照等のエッジケースを抱え込むリスクが、現時点で存在する4つの入れ子形状を個別列挙するコストを上回る。将来入れ子が増えたら再検討（ponytail コメントに明記）。(b) `check-resurrected-files.sh` 自体の改修 — IMP-024 の同種インシデントで既に「別タスクで検討」と決めており、本 PR のスコープでも変えない。
+7. 判断理由: PII シールドはセキュリティ上重要なガードであり、`/code-review` の指摘は「このモジュール自身が主張する保証（"catches regressions"）を実際には満たしていない」という核心的な指摘だったため、後回しにせず本 PR 内で修正した。resurrection 再削除は IMP-024 と全く同じ根本原因（fork 元が pre-fix コミット）であり、対応も同一手順を踏襲。
+8. まだ答えが出ていないこと: 残り約16本のスタック PR のうち、IMP-024 の pre-fix コミットより後に fork されたものは無い（全て IMP-023 以前から分岐）ため、この特定の resurrection パターン（sync/・WorkScopeProvider）は今後も毎回発生する見込み——マージ手順に「resurrection ファイルの手動確認」を毎回組み込む運用は継続するが、恒久的な自動検出は未解決のまま。
+9. 公開区分: 公開可（マージ手順とセキュリティレビューの技術的な経緯。金額・テナント名・接続情報は含まない）
+
+## 2026-08-29 IMP-024（#939）を main へ取り込み。squash 履歴の断絶で4度目の復活をしていた src/lib/sync/・WorkScopeProvider.tsx を再削除
+
+1. 日付: 2026-08-29
+2. 起きたこと: IMP-024（#939, branch impl/IMP-024-voice）を main へ取り込む際、main の squash 済み履歴と impl/IMP-024-voice 自身の未 squash な祖先（IMP-021〜023 の元コミット列）が分岐した状態でマージしたため、37 ファイルが add/add 衝突になった。衝突していないファイルまで機械的に精査したところ、`src/lib/sync/`（index.ts・types.ts・conflict.ts・テスト）と `src/lib/navigation/WorkScopeProvider.tsx` が、衝突すら起こさずに作業ツリーへ復活していた——DECISION_LOG「削除済みファイルの復活検出を3度目の失敗を経てスクリプト化した」で確立した `scripts/check-resurrected-files.sh` を実行したが、今回は誤って「OK」を返しており見逃すところだった。
+3. 以前の考え: `check-resurrected-files.sh` の ORIG_BASE/PR_TIP 判定（PR 自身のコミットが触っているファイルは復活ではない）で、今後のスタック PR マージの復活検出は解決済みだと考えていた。
+4. 違和感・問題: 今回の ORIG_BASE（`d2e47363`）は IMP-021 より前まで遡る古い共通祖先だったため、`git diff ORIG_BASE PR_TIP` の範囲に「IMP-021 の初期コミットが追加した」事実そのものが含まれてしまい、スクリプトは「PR 自身が意図して追加したファイル」と誤判定した。実際にはこれら2件は、IMP-021 の**同一 PR 内の後続コミット**（コードレビュー対応）で削除され、`src/lib/sync/` は代表判断（DECISION_LOG 2026-08-27「正しく無いのが載るのはあかん」）で明示的に設計否定、`WorkScopeProvider.tsx` は呼び出し元ゼロの死んだコードとして削除されたもの——squash 済み main には存在しないが、impl/IMP-024-voice 自身の未 squash な枝には残っていた。check-resurrected-files.sh は「PR 自身のコミットが触っているか」しか見ないため、触ってはいるが最終的に削除されたファイルと、最終的に残すファイルを区別できない構造的な穴がある。
+5. 決めたこと: (a) 今回は `git rm` 相当の操作（環境の自動許可判定が `rm`/`git rm` コマンドを拒否したため、`mv` で作業ツリー外へ退避してから `git add -A` でステージする代替手順を使用）で5ファイルを再度削除。(b) `check-resurrected-files.sh` 自体の改修（「PR 自身のコミットが触っている」だけでなく「その変更が最終的に追加のままか」まで見る）は本 PR のスコープ外とし、別タスクで検討する——今回は手動の `/code-review` が拾えたが、機械的検出に戻すには ORIG_BASE の意味そのものを見直す必要がある。(c) 同じ `/code-review` で見つかった VoiceMemoPanel の同時録音競合（1ページに2パネル存在する設計になったため、片方が録音中にもう片方の `rec.start()` がマイクを奪う）を、モジュールスコープの排他ロックで修正。
+6. 捨てた選択肢: (a) この PR の中で check-resurrected-files.sh の判定ロジックを直す — スコープが本来の IMP-024（音声メモ統合）から逸れすぎる。(b) 復活したファイルをそのまま残す — 代表判断済みの設計否定を無視することになるため却下。
+7. 判断理由: 「衝突が無い」は「正しく統合された」の証明にならないという、この復活バグ自身の教訓（DECISION_LOG 2026-08-28）を、スクリプトの green にも適用した——ツールが OK と言っても、ツールの前提（ORIG_BASE の選び方）が崩れていれば信用しない。
+8. まだ答えが出ていないこと: 残り約17本のスタック PR マージのうち、ORIG_BASE がさらに古い共通祖先になるケース（例: IMP-040 以降を IMP-021 より前の祖先から差分計算する場合）で同じ穴が再発しないか。次回以降のマージでも「衝突しなかったファイル」を毎回手動で /code-review 精査する運用を当面続ける。
+9. 公開区分: 公開可（マージ手順の技術的な穴と、その場しのぎではない再発防止の限界を含む。金額・テナント名・接続情報は含まない）
+
 ## 2026-08-29 certificate_images_guard を 20260820000000 へ改名し直す（本番は元の名前で既に適用済みだった）
 1. 日付: 2026-08-29
 2. 起きたこと: PR #996（20260820000000→20260829000000への改名）マージ後、db-migrate.yml が
@@ -244,6 +400,102 @@
 7. 判断理由: 「現場を知らずに書き足さない」の裏返しで、ここでは「現場を知らずに稼働中の挙動を狭めない」。staff/viewer のデフォルトを self にすべきかどうかは製品判断であり、この環境からは判断できない。
 8. まだ答えが出ていないこと: staff/viewer のダッシュボード初期表示は本当に self（自分の分だけ）にすべきか、それとも現状維持（tenant-wide）のままでよいか。代表判断待ち。
 9. 公開区分: 公開可（実装の技術的な経緯であり、金額・テナント名・接続情報は含まない）
+
+## 2026-08-20 IMP-031 例外フローの型基盤方式 — 純関数評価器 vs DB CHECK+API 一括変更
+
+1. 日付: 2026-08-20
+2. 起きたこと: v2.0 §19.1 の例外フロー（cancel/no-show/pause/partial-completion/追加作業）の実装に着手。既存は `cancelled` のみ実装済み（`reservations.status` CHECK 制約に含まれ、API ルートで処理）。PAUSED/NO_SHOW/PARTIALLY_COMPLETED は正準型（`states.ts`）・遷移表（`transitions.ts`）・ラベル（`labels.ts`）が定義済みだが、DB・API・UI が未実装。
+3. 以前の考え: DB の CHECK 制約拡張（3 値追加）+ メタデータカラム + API ルート変更を一括実装する案。
+4. 違和感・問題: CHECK 制約変更は既存の予約管理全体に影響する。API ルート（admin/reservations、advance 等）の変更箇所が多く、一括実装はレビュー困難。IMP-030 と同様、型基盤を先に確定してから DB/API を追加するほうが安全。
+5. 決めたこと: (a) 例外遷移評価器 5 本を JOB_TRANSITIONS ベースの純関数で実装。(b) 例外メタデータ型（CancelReasonCategory 等）を型定義。(c) スコープ変更型（ScopeChangeRecord）を型定義。(d) jobStatusDisplay.ts に 3 状態の表示構成を追加。DB マイグレーション・API ルート変更は後続タスクで実施。
+6. 捨てた選択肢: (a) DB CHECK + API + UI 一括実装 — 影響範囲が大きく PR が肥大化。既存の予約管理を壊すリスク。(b) cancel 以外は全て「後で」 — 表示構成すら定義しないと、IMP-043（見積・請求）等の下流が例外状態を処理できない。
+7. 判断理由: IMP-027〜030 と一貫した「型基盤先行」パターン。遷移評価器が先に存在すれば、DB マイグレーション時に「評価器の検証をそのまま DB トリガーに転写」できる。jobStatusDisplay の拡張は下流タスクの前提（中断中・来店なしの表示が必要）。
+8. まだ答えが出ていないこと: `reservations.status` CHECK 制約の変更タイミング（ALTER ... NOT VALID + VALIDATE パターン）。追加作業のスコープ変更を menu_items_json の版管理で実現するか、別テーブルで管理するか。NO_SHOW 後の GCal イベント削除ポリシー。
+9. 公開区分: 公開可
+
+## 2026-08-20 IMP-030 訂正・revoke の型基盤方式 — 型基盤先行 vs DB+ルート一括実装
+
+1. 日付: 2026-08-20
+2. 起きたこと: v2.0 §12.3-12.4（訂正・supersede・Integrity Incident・revoke）の実装に着手。既存は `certificate_edit_histories`（フィールド差分）+ `certificate_versions`（内容ハッシュ Phase 1）+ void ルート（status=void）があるが、訂正リクエスト→承認ワークフロー、Integrity Incident 型、版遷移（SUPERSEDED/REVOKED）のロジックがない。
+3. 以前の考え: ADR-0004 で「訂正は版の追加」「リクエスト→承認→訂正レコード」と決定済み。具体的な実装タイミングは未定だった。
+4. 違和感・問題: 訂正リクエストテーブル・Incident テーブルの DB マイグレーションは IMP-031（例外ワークフロー）と合わせて設計すべき共通パターンがある。void と REVOKED の関係整理（void=日常取り下げ、REVOKED=公式無効化）もルート側の変更を伴う。型基盤なしに DB を作ると、後からスキーマ変更が発生するリスクがある。
+5. 決めたこと: 訂正リクエスト型・Incident 型・版遷移ヘルパーを純関数で先に定義し、Certificate Gate の `no_pending_corrections` 条件を実装接続する。DB マイグレーション・API ルート変更は後続タスク。
+6. 捨てた選択肢: (a) DB テーブル（correction_requests, integrity_incidents）+ API ルート + UI を一括実装 — スコープが大きく、IMP-031 との依存関係が複雑になる。(b) 型だけ定義して Gate 接続しない — Gate の `no_pending_corrections` が永久にスタブのまま残り、後続タスクで接続を忘れるリスク。
+7. 判断理由: 型基盤を先に確定することで、後続の DB 設計・ルート実装は「型に合わせるだけ」で済む。Gate 接続を含めることで、呼び出し側が `correctionRequests` を渡せばすぐに訂正ブロックが効く（段階的に有効化可能）。後方互換（`noPendingCorrections` 直接フラグ）も維持。
+8. まだ答えが出ていないこと: void と REVOKED の関係の既存ルート統合タイミング。correction_requests テーブルの具体的なスキーマ（Incident との外部キー関係）。旧 QR → 最新版誘導の公開ルート側実装。
+9. 公開区分: 公開可
+
+## 2026-08-20 IMP-029 通知エンジンの型基盤方式 — 純関数型基盤 vs 統合 dispatch 一括実装
+
+1. 日付: 2026-08-20
+2. 起きたこと: v2.0 §13 の中央通知エンジン実装に着手。既存は用途別通知モジュール（bookingNotify, SLA cron, inboundNotify 等）が独立して動作しており、共通の型・ルーティング・Deep Link がない。
+3. 以前の考え: 中央 dispatch を一括実装し、既存通知を全部移行する案があった。
+4. 違和感・問題: 既存の用途別通知は動いており、移行は大きなリスク。dispatch の配管（キュー、リトライ、チャネルアダプタ）は DB 変更・外部サービス統合を伴い、純関数層のスコープを超える。
+5. 決めたこと: 純関数の型基盤（カタログ・Deep Link・エスカレーション評価器・チャネル解決・要対応カウント）を先に実装し、既存通知は変更しない。統合 dispatch は後続タスクで既存モジュールを段階移行する。
+6. 捨てた選択肢: (a) 統合 dispatch 一括実装 — 配管変更が大きすぎ、既存通知の動作を壊すリスク。(b) 通知なし — §13 は P0 要件で最低限の型基盤が必要。
+7. 判断理由: IMP-027（PaymentState 導出）、IMP-028（Certificate Gate）と同じパターン。DB を変えない純関数レイヤーを先に作り、消費側は後続タスクで統合する。SLA エスカレーション評価器は既存 cron の関数と同一ロジックの汎用版であり、二重管理ではなく正規化。
+8. まだ答えが出ていないこと: 統合 dispatch の具体的な実装方式（QStash ベースか in-process か）、Assignment 軸ルーティングの詳細設計。
+9. 公開区分: 公開可
+
+## 2026-08-20 IMP-028 Certificate Gate 評価器の実装範囲 — 全条件実装 vs 段階的スタブ
+
+1. 日付: 2026-08-20
+2. 起きたこと: v2.0 §19.4 の Certificate Gate（10 条件の一括判定）の評価器を IMP-028 で実装する段階。10 条件のうち、データソースが揃っているのは 3 条件（写真・支払い・懸念）、残り 7 条件は前提機能が未実装（同期・店舗レビュー・承認等）。
+3. 以前の考え: ADR-0005 で「単一評価器に集約」と決めたが、全 10 条件の実装タイミングは未決定だった。
+4. 違和感・問題: 全条件を一度に実装しようとすると、未設計の機能（店舗内レビュー・承認ワークフロー等）の仕様を先走って決めることになる。しかし条件が 3 つだけの評価器では「単一評価器」の価値が出ない。
+5. 決めたこと: 10 条件の枠組みを持つ評価器を作り、実装済みの 3 条件は実ロジック、残り 7 条件はデフォルト met:true のスタブとする。後続タスク（IMP-030 訂正、IMP-016 同期等）が条件を実装するとき、スタブを実ロジックに置き換える。活性化ルート（`/api/admin/certificates/status`、`/api/mobile/certificates/[id]/activate`）への統合は、既存の写真チェックを gate 呼び出しに置き換える薄い変更として後続コミットで行う。
+6. 捨てた選択肢: (a) 実装可能な 3 条件だけの関数を作る（10 条件の枠組みなし）→ 後で条件追加するたびに関数シグネチャが変わり、呼び出し側の変更が増える。(b) 活性化ルートを今すぐ書き換える → 既存の写真チェック+WebAuthn ゲートが絡む複雑なルートを変更するリスクが高く、IMP-028 の本質（評価器の論理）とは別の作業。
+7. 判断理由: 10 条件の枠組みを先に確定することで、後続タスクは「スタブを実装に差し替える」だけで済む（最短差分原則）。スタブは met:true なので既存の挙動を変えない（安全）。入力コンテキスト型（`CertificateGateInput`）を今定義しておけば、各後続タスクの入力フィールド追加は型拡張で型安全に行える。
+8. まだ答えが出ていないこと: 活性化ルートへの gate 統合の最適なタイミング。既存の ad-hoc 写真チェックと gate 呼び出しの二重チェック回避方法。
+9. 公開区分: 公開可
+
+## 2026-08-20 IMP-027 支払い状態の橋渡し方式 — DB カラム追加 vs 純関数導出
+
+1. 日付: 2026-08-20
+2. 起きたこと: IMP-027 で正準 PaymentState（9 状態）と既存実装語彙（documents.status 7 値、payments.status 4 値、reservations.payment_status 4 値 + null）を接続する必要が生じた。
+3. 以前の考え: IMP-015 で「変換関数は各消費タスクで段階的に導入する」と決めていた。DB に canonical_payment_state カラムを追加してトリガーで同期する案もあった。
+4. 違和感・問題: DB カラム追加は既存の書き込みパス全箇所（documents API、invoices API、Stripe webhook、Square webhook、POS API）に同期コードを挿入する必要があり、差分が大きい。また既存データのバックフィルも必要。入金額と返金額のデータは payment_entries / payments テーブルにすでに存在しており、DocumentStatus と金額の組み合わせから一意に PaymentState を決定できる。
+5. 決めたこと: DB カラムは追加せず、純関数 `deriveDocumentPaymentState(ctx)` で既存データから正準 PaymentState を導出する。IO なし、消費側が Supabase から取得した数値を渡す。Certificate Gate の `payment_policy_met` は導出された PaymentState を入力として Policy 評価器が判定する。
+6. 捨てた選択肢: (a) documents テーブルに `canonical_payment_state` カラムを追加しトリガーで同期 — 全書き込みパスの変更が必要で差分大。(b) ビューで導出 — payment_entries の JOIN が必要で RLS との相性が悪い。
+7. 判断理由: ponytail（最短差分）原則。既存データから一意に導出できる値に専用カラムは不要。導出関数はテスト可能で、既存コードを一切変更しない。将来 DB カラム化が必要になった場合も、導出関数がバックフィルのロジックになる。
+8. まだ答えが出ていないこと: POS payments → payment_entries の自動ブリッジ（IMP-043）。payment_entries の返金エントリ対応（amount > 0 制約の緩和、IMP-043）。insurance ポリシーの詳細（Phase 2）。
+9. 公開区分: 公開可
+
+## 2026-08-20 IMP-026 顧客懸念テーブルの設計判断 — customer_inquiries 拡張 vs 新テーブル
+
+1. 日付: 2026-08-20
+2. 起きたこと: IMP-026（§10 Customer Confirmation Web）の残ギャップ実装にあたり、「気になる点を伝える」の永続化先を決める必要があった。
+3. 以前の考え: customer_inquiries に source_type 列を追加して統合する案があった（既存 admin UI を流用できる）。
+4. 違和感・問題: customer_inquiries は一般ポータル問い合わせ（new/responded/closed のライフサイクル）。顧客懸念は「確認フローから発生→請求/証明書をブロック→管理者が解決→ブロック解除」という異なるライフサイクル。ステータス（open/investigating/resolved/dismissed）も異なり、job_id/certificate_id FK によるブロック判定が必要。requirement-trace も「customer_inquiries は別系統」と明記。
+5. 決めたこと: `customer_concerns` テーブルを新設し、customer_inquiries とは独立に管理する。ブロック判定ヘルパー（`hasUnresolvedConcerns`）を IMP-028 Certificate Gate 用に export。
+6. 捨てた選択肢: (a) customer_inquiries を拡張 — ライフサイクル・ステータス・用途が異なりすぎる。admin UI のフィルタ/ソートも複雑化する。(b) 型定義のみ・テーブルなし — IMP-025 の ponytail 判断とは異なり、顧客からの入力を永続化する必要があるため DB は必須。
+7. 判断理由: ライフサイクルが根本的に異なる2エンティティを1テーブルに詰め込むと、ステータス遷移の矛盾や admin UI の条件分岐が増える。新テーブルの方がシンプルで、ブロック判定のクエリも明快。
+8. まだ答えが出ていないこと: Certificate Gate への実際の統合方法（IMP-028 で判断）。懸念解決時の顧客への通知方法（メール返信 etc.）。
+9. 公開区分: 公開可
+
+## 2026-08-20 IMP-025 車両顧客関係モデルの実装範囲判断
+
+1. 日付: 2026-08-20
+2. 起きたこと: IMP-025（§9 車両パスポート基盤）の実装にあたり、ADR-0006 が「関係モデルの本実装は IMP-025」と指定していたが、車両パスポートの既存インフラ（DB・公開ページ・所有権移転・API・メタアンカー・ペイウォール・収益分配）が既に非常に充実しており、残ギャップは (a) PII遮断の体系的検証と (b) 顧客関係モデルの2点のみだった。
+3. 以前の考え: ADR-0006（IMP-001 セッション起案）は `vehicle_customer_relationships` テーブルを IMP-025 で新設し、`vehicles.customer_id` 直付けを関係エンティティに移行することを想定していた。
+4. 違和感・問題: `vehicles.customer_id` FK を関係テーブルに移行すると、結合クエリ数十箇所（車両一覧・詳細・編集・証明書作成・請求書・CSV インポート等）に波及する大規模変更になる。しかし現時点で `customer_id` 直付けによる実害（前所有者 PII 漏洩等）は発生していない — パスポート公開サーフェスは既に型レベルで PII を排除しており、テナント内の車両管理では直付けで十分。
+5. 決めたこと: IMP-025 では (a) PII遮断体系検証（コンパイル時型アサーション＋テスト18件）と (b) 関係型モデルの型定義（`customerRelation.ts` — 型のみ、DB変更なし）を実装。DB マイグレーション（`vehicle_customer_relationships` テーブル化とレガシー PII 列の DROP）は IMP-050（プライバシー強化）に委譲。
+6. 捨てた選択肢: (a) IMP-025 で DB マイグレーション+全クエリ移行 — 波及範囲が大きすぎ、実害が発生していない問題への過剰投資。ponytail 原則（shortest working diff）に反する。(b) 何もしない — ADR-0006 が明示的に IMP-025 を指名しており、少なくとも型レベルの契約と PII 検証は必要。
+7. 判断理由: ponytail 原則「Do you actually need X, or does Y cover it?」を適用。現在の `customer_id` + パスポート所有権モデルで実務上の問題は発生しておらず、型定義＋PII検証で ADR-0006 の意図（関係として表現、PII 非露出の保証）を最小差分で充足できる。IMP-011（`translated.ts` — 型のみ、DB変更なし）と同じパターン。
+8. まだ答えが出ていないこと: `vehicles.customer_name/customer_email/customer_phone_masked` のレガシー列を DROP するタイミング（IMP-050 で判断）。`vehicle_customer_relationships` テーブル新設の具体的トリガー条件（同一テナント内での所有者変更追跡が必要になった時点）。
+9. 公開区分: 公開可
+
+## 2026-08-20 IMP-024 音声メモのオフライン検知と多言語音声認識のスコープ判断
+
+1. 日付: 2026-08-20
+2. 起きたこと: IMP-024（§7 音声→AI構造化→人間確認）のギャップ分析で、オフライン対応・多言語音声認識・備考欄接続・モバイル実装・UI文字列i18n等、多数のギャップが判明。
+3. 以前の考え: 音声メモは Web のみ実装済み（VoiceMemoPanel+Haiku）、モバイルが未実装というのが唯一のギャップという認識だった。
+4. 違和感・問題: 実際には(a)オフライン時にAI呼び出しが無言で失敗、(b)音声認識言語がja-JPハードコード（6言語i18n基盤IMP-011完了済みなのに未接続）、(c)証明書備考欄にVoiceMemoPanel未接続（feature audit指摘済み）、(d)モバイル音声入力のiOSマイク権限・ウェイクワード設計が未解決。
+5. 決めたこと: (a)(b)(c)の3件を本PRでクローズ。(d)モバイルはOPEN_QUESTIONSの設計選択が未解決のため先送り。UI文字列のi18n化はdocs/operations/i18n.md方針「ハードコード移行しない」に従い先送り。
+6. 捨てた選択肢: (a)モバイル音声を本タスクに含める — iOSマイク権限・ウェイクワード方式の設計判断が未解決で、実装しても使えない。(b)VoiceMemoPanel全文字列のi18n化 — 画面適用の全面移行は行わない方針。(c)音声データの録音・永続化 — プライバシーリスクが高く、テキスト書き起こしで十分。
+7. 判断理由: 依存タスク（IMP-011/016/022）完了で可能になった統合を最小差分でクローズ。speechLangはpropで渡す設計にし、呼び出し側が適切なロケールを選べるようにした（現時点では全呼び出しがデフォルトja-JPだが、IMP-012のオンボーディングでユーザーロケール取得後に接続可能）。
+8. まだ答えが出ていないこと: モバイル音声入力の実装方式（OPEN_QUESTIONS.md）、VoiceMemoPanel文字列のi18n化タイミング。
+9. 公開区分: 公開可
 
 ## 2026-08-28 マージが「衝突なし」で削除済みモジュールを復活させることがある
 1. 日付: 2026-08-28

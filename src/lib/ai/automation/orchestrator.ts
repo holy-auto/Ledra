@@ -91,6 +91,11 @@ export function shouldSendDayBeforeReminder(settings: AiAutomationSettings): boo
   return resolveAutoAction(settings, "reservation.auto_day_before_reminder");
 }
 
+/** 停滞した見積り会話フローに再促し (nudge) を送るか (inbound_message.auto_flow_nudge)。 */
+export function shouldNudgeStalledFlows(settings: AiAutomationSettings): boolean {
+  return resolveAutoAction(settings, "inbound_message.auto_flow_nudge");
+}
+
 /** 予約・作業の状況問い合わせに LINE で自動返信するか (inbound_message.auto_status_reply)。 */
 export function shouldAutoReplyStatus(settings: AiAutomationSettings): boolean {
   return resolveAutoAction(settings, "inbound_message.auto_status_reply");

@@ -25,6 +25,18 @@ v2.0 §9 / §18.2: 車両は顧客 identity から独立した永続エンティ
 4. 公開証明・第三者検証は PII なしで成立させる(現行の `certificate_anchors.canonical_json`
    が PII 非含有を型で保証している方針を維持する)。
 
+## 実装状況(2026-08-20, IMP-025)
+
+- 決定1: `certificate_anchors.canonical_json` が PII 非含有を型で保証(既存)。
+  パスポート公開サーフェス(`PassportCertCard`/`PassportData`/`PassportVerifyResponse`/
+  `PublicTransferView`)の PII 非含有をコンパイル時型アサーション(`piiFields.ts`)
+  +テスト18件(`piiShield.test.ts`)で体系的に検証済み。
+- 決定2: 関係型モデルを `src/lib/vehicles/customerRelation.ts` に型定義。
+  `VehicleCustomerRelation`/`VehicleRelationEndReason`/`PublicVehicleIdentity`
+  +`VEHICLE_TABLE_PII_COLUMNS`/`PASSPORT_TABLE_PII_COLUMNS` レジストリ。
+  DB マイグレーション(`vehicle_customer_relationships` テーブル化)は IMP-050 に委譲。
+- 決定3/4: 未着手(IMP-050 スコープ)。
+
 ## 影響
 
 - 「車両を売ったら履歴が消える/前の持ち主の情報が見える」という事故を構造的に防ぐ。

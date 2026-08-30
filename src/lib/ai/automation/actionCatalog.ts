@@ -69,7 +69,8 @@ export type AutomationActionKey =
   | "inbound_message.auto_self_cancel"
   | "inbound_message.auto_self_reschedule"
   | "reservation.auto_day_before_reminder"
-  | "inbound_message.auto_status_reply";
+  | "inbound_message.auto_status_reply"
+  | "inbound_message.auto_flow_nudge";
 
 export interface AutomationActionDef {
   key: AutomationActionKey;
@@ -395,7 +396,7 @@ export const AUTOMATION_ACTIONS: readonly AutomationActionDef[] = [
     workflow: "quote",
     label: "受信メッセージに概算見積りを自動返信",
     description:
-      "「ヴェルファイアのコーティングいくら？」のような価格問い合わせを LINE で受信した時点で、車両・過去の請求実績から概算金額を『レンジ (〜幅)』で自動返信する。返すのは概算のみで、正式・詳細なお見積りは案内文で来店に誘導する (詳細見積りは来店対応)。未紐付けの新規客にも返信する。金額の外向き送信を伴うため opt-in / 既定 OFF。",
+      "「ヴェルファイアのコーティングいくら？」のような価格問い合わせを LINE で受信した時点で、車両・過去の請求実績から概算金額を『レンジ (〜幅)』で自動返信する。返すのは概算のみ。会話フロー opt-in 済みなら概算の直後に『お見積りをお願いしたい / スタッフに相談』ボタンを添え、正式なお見積りは LINE の見積りフロー (または来店) へ誘導する。未紐付けの新規客にも返信する。金額の外向き送信を伴うため opt-in / 既定 OFF。",
     defaultEnabled: false,
     guard:
       "AI 有効 + Standard プラン以上 + LINE 受信。施工内容と車両が読み取れれば概算金額を返信、どちらか読み取れなくても価格問い合わせらしい文面なら不足情報を聞き返す。ナレッジ自動返信が同じメッセージに返信済みの場合はスキップ (二重返信防止)",
@@ -485,6 +486,16 @@ export const AUTOMATION_ACTIONS: readonly AutomationActionDef[] = [
     defaultEnabled: false,
     guard:
       "AI 有効 + Standard プラン以上 + 翌日(JST)の未キャンセル予約 + 顧客が line_user_id 紐付け済み + フォローアップ拒否でない。ボタンは self_cancel / self_reschedule の opt-in に応じて出す。",
+  },
+  {
+    key: "inbound_message.auto_flow_nudge",
+    workflow: "inbound_message",
+    label: "見積り待ちで止まったLINE会話に、車検証/車種年式のご返信をやさしく再促し",
+    description:
+      "お見積りの詳細（車検証のお写真 or 車種・年式）を依頼したまま一定時間ご返信が無い会話（awaiting_quote_detail）へ、失効（72h）する前に1回だけ『その後いかがでしょうか』の再促しを LINE で自動送信する。放置された見積りリードの取りこぼしを減らす。1会話につき1回だけ。opt-in / 既定 OFF。",
+    defaultEnabled: false,
+    guard:
+      "AI 有効 + Standard プラン以上 + 会話が awaiting_quote_detail のまま一定時間（既定24h）停滞 + 未失効 + line_user_id 紐付け済み + フォローアップ拒否でない。会話1件につき1回だけ（notification_logs で重複防止）。",
   },
   {
     key: "inbound_message.auto_status_reply",

@@ -1037,6 +1037,24 @@
 "revoked_at",
 "session_hash"
 ],
+"customer_concerns": [
+"admin_response",
+"category",
+"certificate_id",
+"concern_text",
+"created_at",
+"customer_email",
+"customer_name",
+"id",
+"job_id",
+"resolved_at",
+"resolved_by",
+"source_token",
+"source_type",
+"status",
+"tenant_id",
+"updated_at"
+],
 "customer_inquiries": [
 "admin_reply",
 "ai_category",

@@ -11,8 +11,12 @@
 
 import type { BadgeVariant } from "@/lib/statusMaps";
 
-/** DB に実在する reservations.status の 5 値。 */
-export type ReservationStatus = "confirmed" | "arrived" | "in_progress" | "completed" | "cancelled";
+/**
+ * DB に実在する reservations.status の値。
+ * 既存 5 値 + IMP-031 で追加予定の 3 値（DB マイグレーション前に表示定義を先行）。
+ */
+export type ReservationStatus =
+  "confirmed" | "arrived" | "in_progress" | "completed" | "cancelled" | "paused" | "no_show" | "partially_completed";
 
 export interface ReservationStatusDisplay {
   label: string;
@@ -69,10 +73,46 @@ export const RESERVATION_STATUS_DISPLAY: Record<ReservationStatus, ReservationSt
     dot: "bg-muted",
     variant: "danger",
   },
+  // ── IMP-031: 例外状態 ──
+  paused: {
+    label: "中断中",
+    hint: "作業を中断しています。再開すると作業中に戻ります。",
+    bg: "bg-warning-dim",
+    text: "text-warning-text",
+    dot: "bg-warning",
+    variant: "warning",
+  },
+  no_show: {
+    label: "来店なし",
+    hint: "お客様が来店しませんでした。再予約またはキャンセルしてください。",
+    bg: "bg-inset",
+    text: "text-secondary",
+    dot: "bg-muted",
+    variant: "danger",
+  },
+  partially_completed: {
+    label: "部分終了",
+    hint: "一部工程が完了しました。残りの工程は後日対応します。",
+    bg: "bg-accent-dim",
+    text: "text-accent-text",
+    dot: "bg-accent",
+    variant: "info",
+  },
 };
 
 /** レガシーフロー (テンプレートなし) のステータス進行順。 */
 export const RESERVATION_STATUS_FLOW = ["confirmed", "arrived", "in_progress", "completed"] as const;
+
+/**
+ * `reservations.status` の DB CHECK 制約が現在許可している値（IMP-031 時点）。
+ *
+ * ponytail: paused/no_show/partially_completed は表示定義のみ先行実装済みだが、
+ * DB マイグレーション未実施のため実データには存在しない。フィルタの選択肢等、
+ * 実際の DB 値と突き合わせる UI はこの定数を使うこと（`RESERVATION_STATUS_DISPLAY`
+ * を素で列挙すると、DB が絶対に一致しない選択肢を選べてしまう）。
+ * 3値のマイグレーション実施時にこの配列も更新する。
+ */
+export const LIVE_RESERVATION_STATUSES = ["confirmed", "arrived", "in_progress", "completed", "cancelled"] as const;
 
 /**
  * 安全な lookup。未知のステータス文字列にもフォールバックを返す。

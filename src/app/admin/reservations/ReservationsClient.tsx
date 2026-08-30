@@ -14,6 +14,7 @@ import { menuCategoriesOf, filterMenuItems } from "@/lib/reservations/menuFilter
 import {
   RESERVATION_STATUS_FLOW,
   RESERVATION_STATUS_DISPLAY,
+  LIVE_RESERVATION_STATUSES,
   reservationStatusDisplay,
 } from "@/lib/domain/jobStatusDisplay";
 import dynamic from "next/dynamic";
@@ -94,9 +95,12 @@ type WorkflowTemplate = {
 
 // ─── Constants ───────────────────────────────────────────
 
+// LIVE_RESERVATION_STATUSES に絞る: RESERVATION_STATUS_DISPLAY を素で列挙すると、
+// DB マイグレーション未実施の IMP-031 例外状態(paused/no_show/partially_completed)が
+// 選択肢に混ざり、選んでも常に0件になる罠になる。
 const STATUS_OPTIONS = [
   { value: "all", label: "すべて" },
-  ...Object.entries(RESERVATION_STATUS_DISPLAY).map(([value, d]) => ({ value, label: d.label })),
+  ...LIVE_RESERVATION_STATUSES.map((value) => ({ value, label: RESERVATION_STATUS_DISPLAY[value].label })),
 ];
 
 // ponytail: IMP-022 — STATUS_CONFIG / STATUS_FLOW は jobStatusDisplay.ts に統合。

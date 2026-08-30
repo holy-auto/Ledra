@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   shouldAutoReplyRoughEstimate: vi.fn(),
   generateQuoteFromVehicle: vi.fn(),
   sendCustomerLineText: vi.fn(),
+  sendCustomerLineButtons: vi.fn(),
   logAutoActionExecuted: vi.fn(),
   usageRecord: vi.fn(),
   store: null as unknown as FakeStore,
@@ -22,7 +23,10 @@ vi.mock("@/lib/ai/quoteFromVehicle", () => ({
 }));
 vi.mock("@/lib/ai/client", () => ({ fastModelForPlanTier: () => "claude-haiku" }));
 vi.mock("@/lib/ai/recordRouteUsage", () => ({ startAiRouteUsage: () => ({ record: mocks.usageRecord }) }));
-vi.mock("@/lib/line/client", () => ({ sendCustomerLineText: mocks.sendCustomerLineText }));
+vi.mock("@/lib/line/client", () => ({
+  sendCustomerLineText: mocks.sendCustomerLineText,
+  sendCustomerLineButtons: mocks.sendCustomerLineButtons,
+}));
 vi.mock("@/lib/audit/aiAuditLog", () => ({ logAutoActionExecuted: mocks.logAutoActionExecuted }));
 vi.mock("@/lib/logger", () => ({
   logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn(), child: () => ({}) },
@@ -80,6 +84,7 @@ beforeEach(() => {
     confidence: 0.8,
   });
   mocks.sendCustomerLineText.mockResolvedValue(true);
+  mocks.sendCustomerLineButtons.mockResolvedValue(true);
 });
 
 describe("roughEstimateRange", () => {
@@ -108,6 +113,28 @@ describe("buildRoughEstimateMessage", () => {
     expect(body).not.toContain("概算金額");
     expect(body).toContain("ご来店時");
   });
+  it("aligns the closing to LINE continuation when canContinueOnLine is set", () => {
+    const body = buildRoughEstimateMessage({
+      service: "コーティング",
+      vehicleText: "ヴェルファイア",
+      totalInclTax: 110000,
+      canContinueOnLine: true,
+    });
+    // 「来店のみ」の締めを出さず、LINE で正式見積りへ続けられる旨に揃える。
+    expect(body).toContain("LINEで承ります");
+    expect(body).not.toContain("正式・詳細なお見積りはご来店時に承ります");
+  });
+  it("drops the visit-only line in the no-amount branch when continuing on LINE (no contradiction)", () => {
+    const body = buildRoughEstimateMessage({
+      service: "コーティング",
+      vehicleText: "不明車",
+      totalInclTax: 0,
+      canContinueOnLine: true,
+    });
+    // 金額なし＋ボタン継続時は「お車を拝見して＝来店前提」の一文を出さない（closing と矛盾するため）。
+    expect(body).not.toContain("お車を拝見して");
+    expect(body).toContain("LINEで承ります");
+  });
 });
 
 describe("buildMissingInfoMessage", () => {
@@ -129,6 +156,25 @@ describe("maybeAutoReplyRoughEstimate", () => {
     expect(mocks.logAutoActionExecuted).toHaveBeenCalledWith(
       expect.objectContaining({ actionKey: "quote.auto_reply_rough_estimate" }),
     );
+  });
+
+  it("attaches follow-up buttons and LINE-aligned copy when attachButtons is set", async () => {
+    await maybeAutoReplyRoughEstimate({ ...baseParams(), attachButtons: true });
+    // ボタン付き送信を使い、素のテキスト送信は使わない。
+    expect(mocks.sendCustomerLineButtons).toHaveBeenCalledTimes(1);
+    expect(mocks.sendCustomerLineText).not.toHaveBeenCalled();
+    const arg = mocks.sendCustomerLineButtons.mock.calls[0][0];
+    expect(arg.text).toContain("¥93,000〜¥127,000");
+    expect(arg.text).toContain("LINEで承ります");
+    // buildFollowupButtons: お見積り依頼 (flow:start_quote) と相談 (flow:consult)。
+    expect(arg.buttons.map((b: { data: string }) => b.data)).toEqual(["flow:start_quote", "flow:consult"]);
+  });
+
+  it("uses plain text (no buttons) and store-visit copy when attachButtons is not set", async () => {
+    await maybeAutoReplyRoughEstimate(baseParams());
+    expect(mocks.sendCustomerLineButtons).not.toHaveBeenCalled();
+    expect(mocks.sendCustomerLineText).toHaveBeenCalledTimes(1);
+    expect(mocks.sendCustomerLineText.mock.calls[0][0].body).toContain("ご来店時");
   });
 
   it("also replies to an unknown (unlinked) LINE user", async () => {

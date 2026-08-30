@@ -4,7 +4,7 @@
 > 追わず、常に最新状態だけを保つ（履歴は DECISION_LOG.md / RELEASE_LOG.md 側）。
 > 大きな変化があったら都度上書きすること。
 
-最終更新: 2026-08-29
+最終更新: 2026-08-30
 
 > 2026-08-29 追記: **IMP-023 の db-migrate.yml が最終的に green になり、`certificate_images_guard`
 > トリガーが本番へ実適用されていることを直接確認した**（PR #938→#994→#996→#998 の4段階、
@@ -397,6 +397,69 @@ Sentry · Resend (+ SendGrid fallback) · Anthropic (Opus 4.8 / Sonnet 4.6 / Hai
   （SegmentedControl/StatusBadge/StatusCard/NextActionCard/ProgressCard/Alert/IconButton/
   BottomSheet）+ Badge dot + Button xl。v2.0 の色トークン値は不採用・既存デザインシステム維持
   （DECISION_LOG 2026-08-19）。
+- **IMP-031（§19.1 例外フロー cancel/no-show/pause/追加作業 型基盤）完了**:
+  案件例外フローの遷移評価器 5 本（evaluateCancel/evaluateNoShow/evaluatePause/
+  evaluateResume/evaluatePartialComplete）を JOB_TRANSITIONS ベースで実装。
+  例外メタデータ型（CancelReasonCategory 6/PauseReasonCategory 6/NoShowAction 3/
+  PartialCompleteReason 5/JobExceptionEvent）、スコープ変更型（ScopeChangeCategory 5/
+  ScopeChangeRecord/requiresApproval）を定義。jobStatusDisplay.ts に paused/no_show/
+  partially_completed の表示構成を追加（ReservationStatus 5→8 値）。
+  DB マイグレーション・API ルート変更なし。テスト 51 件。
+- **IMP-030（§12.3-12.4 訂正・supersede・Integrity Incident・revoke 型基盤）完了**:
+  訂正リクエスト型（5 状態 × 5 カテゴリ + 訂正可否判定 + 状態遷移検証）、
+  Integrity Incident 型（6 カテゴリ × 3 重大度 × 5 状態 + revoke 可否判定 + 即時 revoke 判定）、
+  版遷移ヘルパー（evaluateSupersede/evaluateRevoke/resolveVersionRedirect）を
+  `src/lib/certificates/` に実装。Certificate Gate の `no_pending_corrections` 条件を
+  実装接続（`correctionRequests` 入力追加、後方互換あり）。DB マイグレーションなし。
+  code-review で revoke 可否判定の遷移表との不整合（ISSUING/VERIFYING を誤ってブロック）
+  とプロトタイプ汚染耐性の欠如を検出・修正、遷移可否判定はすべて `isValidTransition()`
+  に統一（DECISION_LOG 2026-08-30）。テスト 65 件。
+- **IMP-029（§13 通知・エスカレーション・Deep Link 中央通知エンジン型基盤）完了**:
+  中央通知エンジンの型基盤を `src/lib/notifications/` に実装。(1) 通知タイプカタログ
+  （18 タイプ × Severity 3 段 × Channel 6 種 × Category 11 種）、(2) Deep Link 生成
+  （10 エンティティ × 3 ロール、実ルート構造に合致）、(3) SLA エスカレーション評価器
+  （insurer-sla-alerts cron の純関数部分を汎用化）、(4) チャネル解決・要対応カウント・
+  カテゴリグルーピング・重要度フィルタ。既存の用途別通知モジュールは変更なし（共存）。
+  DB マイグレーションなし（純関数方式）。テスト 35 件。
+- **IMP-028（§12 Certificate Gate 単一評価器）完了**:
+  v2.0 §19.4 / ADR-0005 の Certificate Gate 10 条件を一括判定する純関数 `evaluateCertificateGate()`
+  を `src/lib/certificates/gateEvaluator.ts` に実装。実装済み条件: required_evidence_present
+  （写真枚数＋Before/After）、payment_policy_met（IMP-027 連携）、no_unresolved_alerts
+  （IMP-026 連携）。残り 7 条件はデフォルト met:true のスタブ。活性化ルートへの統合は後続。テスト 17 件。
+- **IMP-027（§11 支払いモデル — PaymentState 導出層・Policy 評価器）完了**:
+  既存3系統（documents/payments/reservations）の支払いステータスから正準 `PaymentState`（9値）を
+  導出する純関数3本+ Certificate Gate の `payment_policy_met` を評価する Policy 評価器
+  （consumer/b2b/insurance の3ポリシー）。DBマイグレーションなし。main 取り込み時の
+  `/code-review` で保険ポリシーの UNKNOWN/CANCELED ゲート漏れ（承認後に決済が不明/取消でも
+  met:true を返すバグ）を発見・修正。Certificate Gate への実統合は IMP-028。
+- **IMP-026（§10 顧客確認Web — 「気になる点を伝える」懸念提起フロー）完了**:
+  確認フロー4系統（受領サイン・部品確認・板金同意・進捗追跡）に「気になる点を伝える」UI を統合。
+  `customer_concerns` テーブル（DBマイグレーション）+ 顧客API（トークン→テナント逆引き）+
+  管理者API（GET/PATCH）+ ブロック判定ヘルパー（`hasUnresolvedConcerns` — IMP-028 用）。
+  customer_inquiries（一般問い合わせ）とは別系統。Certificate Gate への実際の統合は IMP-028。
+  main 取り込み時の `check:schema`・`/code-review`・CI の Migrations Replay で計11件発見・修正:
+  実在しない列名参照（`part_installation_id` → `installation_id`）、ブロック判定ヘルパーの
+  fail-open/tenant scoping 漏れ、token の purpose 未検証、Slack webhook 混在、型消去キャスト、
+  再オープン時の解決記録残存、テスト未整備、マイグレーション自身の実在しないテーブル/関数参照
+  （`profiles`→`auth.users`+`my_tenant_ids()`、`update_updated_at`→`set_updated_at`）。
+  resurrection バグも6度目の再削除。
+- **IMP-025（§9 車両パスポート基盤 — PII遮断体系検証・車両顧客関係型モデル）完了**:
+  パスポート公開サーフェスの PII 遮断をコンパイル時型アサーション（4型分）+テスト18件で体系的に検証。
+  ADR-0006 に基づく車両顧客関係型モデル(`customerRelation.ts`)を新設 — 型のみ、DB変更なし。
+  車両パスポートの既存インフラ（10マイグレーション、公開ページ、所有権移転、API、メタアンカー、
+  ペイウォール、収益分配）は変更不要 — 既に稼働中。DB マイグレーション（関係テーブル化）は IMP-050 に委譲。
+  main 取り込み時の `/code-review` で PII シールド自体の穴3件（入れ子形状の未検査・
+  `PublicTransferView` チェックの共有レジストリ未使用・廃止済み列の登録残存/新列の未登録）を
+  発見・修正。resurrection バグ（`src/lib/sync/`・`WorkScopeProvider.tsx`）も5度目の再削除。
+- **IMP-024（§7 音声→AI構造化→人間確認 — オフライン検知・多言語音声・備考接続）完了**:
+  VoiceMemoPanel に3つの統合ギャップをクローズ。(1) オフライン検知 — AI 呼び出し前に
+  `navigator.onLine` チェック、明示的エラー表示。(2) `speechLang` prop + `LOCALE_SPEECH_LANG`
+  マッピング — Web Speech API の言語をハードコード ja-JP から呼び出し側指定に。
+  (3) 証明書備考欄に VoiceMemoPanel(note variant)接続。モバイル音声は未実装(設計選択未解決)。
+  main 取り込み時の `/code-review` で、squash 履歴の断絶により `src/lib/sync/` と
+  `WorkScopeProvider.tsx`（過去に4度目の復活・いずれも代表判断/コードレビューで削除済み）
+  の再削除、および1画面に2つになった VoiceMemoPanel の同時録音競合をモジュールスコープの
+  排他ロックで修正。
 - **IMP-023（§7 JOB_EVIDENCE — 証跡凍結ガード・必須ショット進捗）完了**:
   (1) `certificate_images_guard` DB トリガーで発行済み/取消済み/**期限切れ**証明書の
   写真行 DELETE を DB レベルでブロック（draft のみ制限なし）。証跡列 11 列

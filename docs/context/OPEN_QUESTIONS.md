@@ -29,6 +29,31 @@
 
 ## 追加（2026-08-28・マージ手順の穴）
 
+## 追加（2026-08-30・IMP-026 マージ時の db-migrate.yml 失敗調査）
+
+- **`customer_concerns` マイグレーションが git 経由の CI 以外の経路で本番へ適用された経緯が
+  不明。** db-migrate.yml の唯一の実行は out-of-order で失敗したが、本番には正しい内容が
+  既に存在していた（DECISION_LOG 参照）。適用者・時期を特定する手段が今のところ無い
+  （Postgres 標準のメタデータにオブジェクト作成時刻は残らない）。次に同様の事象が起きた
+  ときに備え、適用経路を特定できるログ・監査の仕組みが要るか検討の余地がある。
+- **db-migrate.yml の workflow_dispatch を手動実行する権限が現在のセッションには無い
+  （403 Resource not accessible by integration）。** 次回同様の状況で手動再実行による
+  green 化確認が必要になった場合、権限のある人（代表またはリポジトリ管理者）に依頼する
+  運用が要るか、GitHub App の権限設定を見直すか判断が必要。
+
+## 追加（2026-08-20・IMP-025 車両顧客関係モデル実装時）
+
+- **`vehicles.customer_name/customer_email/customer_phone_masked` のレガシー列 DROP タイミング。**
+  これらは既にマイグレーション `20260321000002` で `vehicles` テーブルから削除済みだが、
+  `customerRelation.ts` の `VEHICLE_TABLE_PII_COLUMNS`（PII 参照レジストリ）には長らく
+  残存していた（IMP-025 の `/code-review` で発見・削除済み）。「削除済み列を DROP する
+  タイミング」自体は元々 IMP-050（プライバシー強化）に委譲する判断だったが、実質的には
+  既に完了している。IMP-050 着手時に本項目が二重管理になっていないか確認すること。
+- **`vehicle_customer_relationships` テーブル新設の具体的トリガー条件。** IMP-025 で型定義
+  （`customerRelation.ts` の `VehicleCustomerRelation` 等）のみ導入し、DB マイグレーションは
+  「同一テナント内での所有者変更追跡が必要になった時点」まで先送りした。その時点をどう
+  判定するか（機能要求ベースか、件数閾値か）は未定。IMP-050 で判断。
+
 ## 追加（2026-08-29・certificate_images_guard 改名時）
 
 - **レビュー待ちの長い PR が自分自身のマイグレーションバージョンを陳腐化させる。**
