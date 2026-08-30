@@ -4,6 +4,23 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-08-30 「その他」タブが勝手にプラン画面へ飛ぶ不具合を修正（BillingFetchGuard の403誤判定）
+
+- 内容: `/admin/settings`（モバイル下部タブ「その他」）を開くと、`settings:view`
+  権限を持たない役割（staff/viewer）のアカウントでは即座に「請求・プラン」画面へ
+  強制遷移してしまっていた。原因はページが無条件マウントする `FollowUpSettings`
+  が `GET /api/admin/follow-up-settings` を叩き、権限不足で `apiForbidden()`（課金
+  と無関係な素の403）を返すのに対し、全 `/admin/*` 画面にグローバル設置されている
+  `BillingFetchGuard`（`src/app/admin/BillingFetchGuard.tsx`）が「402/403なら
+  `billing_url` が無くても既定で `/admin/billing` へ強制遷移」する実装だったため。
+  402（このアプリでは billing guard 専用）は従来どおり無条件に課金拒否とみなし、
+  403は `x-billing-url` ヘッダーまたは応答 body の `billing_url` を確認できた時
+  だけ課金拒否とみなすよう修正（fetch hook・XHR hook 両方）。判定ロジックを
+  `isBillingDenial(status, billingUrl)` として切り出し単体テストを追加。
+- 検証: `vitest run src/app/admin/__tests__/BillingFetchGuard.test.tsx`（4件）green。
+  `tsc --noEmit` / `eslint` は変更ファイルにエラーなし。
+- 経緯: DECISION_LOG 2026-08-30 参照。
+
 ## 2026-08-30 IMP-031（#946）の code-review 指摘を修正。予約絞り込みの常時0件になる選択肢混入・型の非対称を解消
 
 - 内容: `/code-review` の2件の指摘を両方修正。`jobStatusDisplay.ts` に
