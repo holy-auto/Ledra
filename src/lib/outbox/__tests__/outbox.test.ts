@@ -8,10 +8,8 @@ vi.mock("@/lib/logger", () => ({
 function makeAdmin(rows: Array<Record<string, unknown>>, opts: { claim?: Array<{ id: string }> } = {}) {
   const updates: Array<{ id: string; patch: Record<string, unknown> }> = [];
   let inserted: Record<string, unknown> | null = null;
-  // in_flight claim (`.update().eq("id").eq("status").select("id")`) の戻り行
-  const claimRows = opts.claim ?? [{ id: "claimed" }];
 
-  const builder = (table: string) => {
+  const builder = () => {
     const state = { selectCols: "", filters: [] as Array<[string, unknown]>, orderField: "", limit: 0 };
     const chain: Record<string, unknown> = {
       select(cols: string) {
@@ -48,7 +46,7 @@ function makeAdmin(rows: Array<Record<string, unknown>>, opts: { claim?: Array<{
             return updateChain;
           },
           lte: () => Promise.resolve({ error: null }),
-          select: () => Promise.resolve({ data: claimRows, error: null }),
+          select: () => Promise.resolve({ data: [], error: null }),
         };
         return updateChain;
       },
@@ -56,7 +54,10 @@ function makeAdmin(rows: Array<Record<string, unknown>>, opts: { claim?: Array<{
     return chain;
   };
   return {
-    admin: { from: builder } as unknown as Parameters<typeof processOutboxBatch>[0],
+    admin: {
+      from: builder,
+      rpc: () => Promise.resolve({ data: opts.claim?.length === 0 ? [] : rows, error: null }),
+    } as unknown as Parameters<typeof processOutboxBatch>[0],
     updates,
     getInserted: () => inserted,
   };
@@ -108,8 +109,7 @@ describe("processOutboxBatch", () => {
     const result = await processOutboxBatch(admin, { demo: dispatcher }, { batchSize: 10 });
     expect(result).toEqual({ processed: 1, delivered: 1, errored: 0, dead: 0 });
     expect(dispatcher).toHaveBeenCalledOnce();
-    // Two updates: first to in_flight, second to delivered.
-    expect(updates.map((u) => u.patch.status)).toEqual(["in_flight", "delivered"]);
+    expect(updates.map((u) => u.patch.status)).toEqual(["delivered"]);
   });
 
   it("retries with backoff when dispatcher fails", async () => {
@@ -163,12 +163,11 @@ describe("processOutboxBatch", () => {
 
     const result = await processOutboxBatch(admin, { demo: dispatcher });
     expect(dispatcher).not.toHaveBeenCalled();
-    expect(result).toEqual({ processed: 1, delivered: 0, errored: 0, dead: 0 });
-    // claim を試みた update だけが記録され、delivered 等は走らない
-    expect(updates.map((u) => u.patch.status)).toEqual(["in_flight"]);
+    expect(result).toEqual({ processed: 0, delivered: 0, errored: 0, dead: 0 });
+    expect(updates).toHaveLength(0);
   });
 
-  it("warns and skips events whose topic has no dispatcher", async () => {
+  it("retries events whose topic has no dispatcher", async () => {
     const rows = [
       { id: "e4", tenant_id: "t", topic: "unknown", payload: {}, aggregate_id: null, attempts: 0, status: "pending" },
     ];
@@ -176,6 +175,7 @@ describe("processOutboxBatch", () => {
     const result = await processOutboxBatch(admin, {});
     expect(result.processed).toBe(1);
     expect(result.delivered).toBe(0);
-    expect(updates).toHaveLength(0);
+    expect(result.errored).toBe(1);
+    expect(updates.at(-1)?.patch.status).toBe("pending");
   });
 });

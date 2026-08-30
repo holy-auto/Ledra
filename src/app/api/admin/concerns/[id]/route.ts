@@ -13,9 +13,9 @@ import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
 import { CONCERN_STATUSES, CONCERN_CATEGORIES } from "@/lib/concerns/types";
 
 const patchSchema = z.object({
-  status: z.enum(CONCERN_STATUSES as unknown as [string, ...string[]]).optional(),
+  status: z.enum(CONCERN_STATUSES).optional(),
   admin_response: z.string().trim().max(2000).optional(),
-  category: z.enum(CONCERN_CATEGORIES as unknown as [string, ...string[]]).optional(),
+  category: z.enum(CONCERN_CATEGORIES).optional(),
 });
 
 interface RouteContext {
@@ -54,6 +54,10 @@ export async function PATCH(req: Request, ctx: RouteContext) {
       if (parsed.data.status === "resolved" || parsed.data.status === "dismissed") {
         updates.resolved_by = caller.userId;
         updates.resolved_at = new Date().toISOString();
+      } else {
+        // open/investigating へ戻す(再オープン)ときは、以前の解決記録を残さない
+        updates.resolved_by = null;
+        updates.resolved_at = null;
       }
     }
     if (parsed.data.admin_response !== undefined) {

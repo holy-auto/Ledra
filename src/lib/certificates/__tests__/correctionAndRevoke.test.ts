@@ -103,6 +103,10 @@ describe("correction", () => {
     it("pending → applied: false（承認を飛ばせない）", () => {
       expect(isValidCorrectionTransition("pending", "applied")).toBe(false);
     });
+    it("未知の状態(Object.prototype のプロパティ名)は false（プロトタイプ汚染防止）", () => {
+      // @ts-expect-error -- 境界防御の検証。実行時は文字列がそのまま来る想定。
+      expect(isValidCorrectionTransition("constructor", "approved")).toBe(false);
+    });
   });
 
   describe("hasPendingOrApprovedCorrection", () => {
@@ -164,6 +168,22 @@ describe("integrityIncident", () => {
       expect(result.eligible).toBe(false);
       expect(result.reason).toContain("最新版");
     });
+
+    it("ISSUING → eligible（代表判断・2026-08-27: 公開前でも無効化の記録を残す）", () => {
+      const result = evaluateRevokeEligibility("ISSUING");
+      expect(result.eligible).toBe(true);
+    });
+
+    it("VERIFYING → eligible（代表判断・2026-08-27）", () => {
+      const result = evaluateRevokeEligibility("VERIFYING");
+      expect(result.eligible).toBe(true);
+    });
+
+    it("PENDING_CORRECTION → not eligible（訂正完了を待つ）", () => {
+      const result = evaluateRevokeEligibility("PENDING_CORRECTION");
+      expect(result.eligible).toBe(false);
+      expect(result.reason).toContain("訂正");
+    });
   });
 
   describe("isValidIncidentTransition", () => {
@@ -190,6 +210,10 @@ describe("integrityIncident", () => {
     });
     it("reported → revoked: false（確認を飛ばせない）", () => {
       expect(isValidIncidentTransition("reported", "revoked")).toBe(false);
+    });
+    it("未知の状態(Object.prototype のプロパティ名)は false（プロトタイプ汚染防止）", () => {
+      // @ts-expect-error -- 境界防御の検証。実行時は文字列がそのまま来る想定。
+      expect(isValidIncidentTransition("constructor", "confirmed")).toBe(false);
     });
   });
 
@@ -256,6 +280,17 @@ describe("versionTransition", () => {
       const result = evaluateRevoke("REVOKED");
       expect(result.valid).toBe(false);
     });
+
+    it("ISSUING → REVOKED: valid（代表判断・2026-08-27）", () => {
+      const result = evaluateRevoke("ISSUING");
+      expect(result.valid).toBe(true);
+      expect(result.newState).toBe("REVOKED");
+    });
+
+    it("VERIFYING → REVOKED: valid（代表判断・2026-08-27）", () => {
+      const result = evaluateRevoke("VERIFYING");
+      expect(result.valid).toBe(true);
+    });
   });
 
   describe("resolveVersionRedirect", () => {
@@ -276,6 +311,12 @@ describe("versionTransition", () => {
       const result = resolveVersionRedirect("VERIFIED");
       expect(result.shouldRedirect).toBe(false);
       expect(result.message).toBeUndefined();
+    });
+
+    it("SUPERSEDED without latestPublicId → redirectToPublicId キー自体が無い", () => {
+      const result = resolveVersionRedirect("SUPERSEDED");
+      expect(result.shouldRedirect).toBe(true);
+      expect("redirectToPublicId" in result).toBe(false);
     });
   });
 });

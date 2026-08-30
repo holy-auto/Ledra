@@ -11,11 +11,7 @@ export type OutboxMethod = "POST" | "PUT" | "PATCH" | "DELETE";
 
 /** UI に表示するためのカテゴリ。アイコン分岐に使う。 */
 export type OutboxKind =
-  | "certificate_create"
-  | "certificate_image_upload"
-  | "certificate_activate"
-  | "reservation_update"
-  | "other";
+  "certificate_create" | "certificate_image_upload" | "certificate_activate" | "reservation_update" | "other";
 
 /**
  * multipart アタッチメントの定義。実際の Blob は別 store (outbox_blobs) に保存し、
@@ -64,6 +60,16 @@ export interface OutboxItem {
   lastAttemptAt: number | null;
   /** 直近エラーメッセージ。成功した場合は item ごと削除されるため null のみ */
   lastError: string | null;
+  /**
+   * 恒久的に送れないと判定された時刻 (unix ms)。null / undefined なら通常の再送対象。
+   *
+   * 400 のようにリクエスト内容そのものが原因のエラーは、何度送っても同じ結果にしかならない。
+   * これを普通の失敗として扱うと `drainOutbox` が永久にリトライし続け、後続アイテムの
+   * 送信機会も食い潰す。ここに時刻が入ったアイテムは drain の対象から外し、
+   * UI (`PendingOfflineCerts`) が「作り直しが必要」として利用者に見せる。
+   * 勝手に消さないのは、利用者が内容を確認してから取り消せるようにするため。
+   */
+  blockedAt?: number | null;
 }
 
 export type EnqueueInput = Pick<OutboxItem, "url" | "method" | "label" | "kind"> &

@@ -29,7 +29,7 @@ CREATE TABLE IF NOT EXISTS customer_concerns (
   -- ステータス管理
   status        TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'investigating', 'resolved', 'dismissed')),
   admin_response TEXT,
-  resolved_by   UUID REFERENCES profiles(id),
+  resolved_by   UUID REFERENCES auth.users(id),
   resolved_at   TIMESTAMPTZ,
 
   created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -45,7 +45,7 @@ CREATE INDEX idx_customer_concerns_source ON customer_concerns (source_token);
 -- updated_at 自動更新トリガー(既存の汎用関数を使用)
 CREATE TRIGGER trg_customer_concerns_updated_at
   BEFORE UPDATE ON customer_concerns
-  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+  FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 -- RLS
 ALTER TABLE customer_concerns ENABLE ROW LEVEL SECURITY;
@@ -57,14 +57,10 @@ ALTER TABLE customer_concerns ENABLE ROW LEVEL SECURITY;
 -- 管理者(テナント内)が閲覧・更新できる
 CREATE POLICY customer_concerns_admin_select ON customer_concerns
   FOR SELECT TO authenticated
-  USING (tenant_id IN (
-    SELECT tenant_id FROM profiles WHERE id = auth.uid()
-  ));
+  USING (tenant_id IN (SELECT public.my_tenant_ids()));
 
 CREATE POLICY customer_concerns_admin_update ON customer_concerns
   FOR UPDATE TO authenticated
-  USING (tenant_id IN (
-    SELECT tenant_id FROM profiles WHERE id = auth.uid()
-  ));
+  USING (tenant_id IN (SELECT public.my_tenant_ids()));
 
 -- service_role は全操作可能(暗黙)

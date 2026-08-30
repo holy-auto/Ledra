@@ -4,8 +4,8 @@ import { redirect } from "next/navigation";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { logger } from "@/lib/logger";
-import { availableScopes, defaultScope, type WorkScope } from "@/lib/navigation/scope";
-import { fetchTodaySignals } from "@/lib/admin/fetchTodaySignals";
+import { availableScopes, type WorkScope } from "@/lib/navigation/scope";
+import { fetchTodaySignals, tilesFromSignals } from "@/lib/admin/fetchTodaySignals";
 import PageHeader from "@/components/ui/PageHeader";
 import DashboardCharts from "./DashboardCharts";
 import OnboardingTour from "./OnboardingTour";
@@ -433,11 +433,15 @@ async function TodayOverviewSection({
   currentUserId: string | null;
 }) {
   const signals = await fetchTodaySignals(tenantId, { scope, currentUserId });
+  // NextActionSection は「今日の来店」がすべて completed だと空タイルで null を返す
+  // （今日の予約自体はある＝Progress は表示する）。null のときに [1fr_auto] グリッドへ
+  // Progress 1個だけ流すと auto ではなく 1fr（本来 NextAction 用の広い列）に入ってしまう。
+  const hasNextAction = tilesFromSignals(signals).length > 0;
   const nextAction = <NextActionSection signals={signals} />;
   const progress = <TodayProgressCard signals={signals} scope={scope} />;
 
   return (
-    <div className="grid gap-4 sm:grid-cols-[1fr_auto]">
+    <div className={`grid gap-4 ${hasNextAction ? "sm:grid-cols-[1fr_auto]" : ""}`}>
       {nextAction}
       {progress}
     </div>
@@ -460,8 +464,13 @@ export default async function AdminHome({
   // 後方互換: 旧 `tasks=mine` も受容する。
   const allowed = availableScopes(caller.role);
   const rawScope = sp.scope ?? (sp.tasks === "mine" ? "self" : null);
-  const workScope: WorkScope =
-    rawScope && allowed.includes(rawScope as WorkScope) ? (rawScope as WorkScope) : defaultScope(caller.role);
+  // ponytail: 無指定時のフォールバックは defaultScope(caller.role) を使わず、
+  // 常に "store"（既存の tenant-wide 表示）に固定する。defaultScope() は
+  // admin 未満のロールに "self" を返すため、staff/viewer が今まで見えていた
+  // 店舗全体のタスクが、何も選んでいないだけで「自分の分だけ」に縮む
+  // （viewer は availableScopes が self のみでトグル自体出ないため戻す手段も無い）。
+  // 挙動を変えるなら明示的な代表判断が要る。
+  const workScope: WorkScope = rawScope && allowed.includes(rawScope as WorkScope) ? (rawScope as WorkScope) : "store";
 
   // ponytail: fetchTodaySignals は "tenant"/"mine" を受けるので変換する。
   // all_stores は store と同挙動（単一テナント前提）。
@@ -705,7 +714,7 @@ export default async function AdminHome({
         tag="管理画面"
         title="ダッシュボード"
         description="施工証明書の管理状況を一目で確認"
-        actions={<HomeScopeToggle scope={workScope} scopes={allowed} defaultScopeValue={defaultScope(caller.role)} />}
+        actions={<HomeScopeToggle scope={workScope} scopes={allowed} defaultScopeValue="store" />}
       />
       <DashboardModeSwitch adminContent={adminContent} />
     </div>

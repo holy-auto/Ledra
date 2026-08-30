@@ -1,23 +1,20 @@
 import { describe, it, expect } from "vitest";
-import { deriveTodayTasks, type TaskTile } from "../todayTasks";
-import type { Severity } from "@/lib/domain/states";
+import { deriveTodayTasks } from "../todayTasks";
+import { TONE_TO_SEVERITY } from "@/app/admin/NextActionSection";
 
 /**
  * IMP-021: ダッシュボード NEXT ACTION の導出テスト。
  *
  * NextActionSection は tilesFromSignals の先頭タイルを NEXT ACTION として表示する。
  * ここでは deriveTodayTasks の優先度順序が NextActionCard のセマンティクスに
- * 正しく対応することを検証する。
+ * 正しく対応することを検証する。TONE_TO_SEVERITY は NextActionSection の実物を
+ * 使う（コピーを持つと本体の変更をテストが追えなくなる）。
  */
 
-const TONE_TO_SEVERITY: Record<TaskTile["tone"], Severity> = {
-  urgent: "CRITICAL",
-  warn: "HIGH",
-  normal: "ACTION",
-};
-
 describe("NEXT ACTION 導出", () => {
-  const now = new Date("2025-06-15T09:00:00+09:00");
+  // 深夜0時UTC（JST 09:00）は境界値でTZに弱い（todayTasks.test.ts と同じ理由で
+  // 正午UTCを使う）。JST 21:00 = UTC 12:00。
+  const now = new Date("2025-06-15T21:00:00+09:00");
   const today = "2025-06-15";
 
   it("作業中案件がある場合、それが最優先", () => {
