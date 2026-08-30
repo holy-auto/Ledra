@@ -383,7 +383,10 @@ Sentry · Resend (+ SendGrid fallback) · Anthropic (Opus 4.8 / Sonnet 4.6 / Hai
   Integrity Incident 型（6 カテゴリ × 3 重大度 × 5 状態 + revoke 可否判定 + 即時 revoke 判定）、
   版遷移ヘルパー（evaluateSupersede/evaluateRevoke/resolveVersionRedirect）を
   `src/lib/certificates/` に実装。Certificate Gate の `no_pending_corrections` 条件を
-  実装接続（`correctionRequests` 入力追加、後方互換あり）。DB マイグレーションなし。テスト 57 件。
+  実装接続（`correctionRequests` 入力追加、後方互換あり）。DB マイグレーションなし。
+  code-review で revoke 可否判定の遷移表との不整合（ISSUING/VERIFYING を誤ってブロック）
+  とプロトタイプ汚染耐性の欠如を検出・修正、遷移可否判定はすべて `isValidTransition()`
+  に統一（DECISION_LOG 2026-08-30）。テスト 65 件。
 - **IMP-029（§13 通知・エスカレーション・Deep Link 中央通知エンジン型基盤）完了**:
   中央通知エンジンの型基盤を `src/lib/notifications/` に実装。(1) 通知タイプカタログ
   （18 タイプ × Severity 3 段 × Channel 6 種 × Category 11 種）、(2) Deep Link 生成

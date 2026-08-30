@@ -4,6 +4,18 @@
 > （新しい順）。実装の詳細は RELEASE_LOG.md、迷っている段階のものは
 > OPEN_QUESTIONS.md に書く。
 
+## 2026-08-30 IMP-030（#945）の code-review 指摘を修正。revoke 可否判定が代表判断(2026-08-27)と矛盾していたバグを解消
+
+1. 日付: 2026-08-30
+2. 起きたこと: PR #945 に `/code-review` を実行し5件の指摘を得た。うち最重要のもの: `src/lib/certificates/integrityIncident.ts` の `evaluateRevokeEligibility()` が ISSUING/VERIFYING 状態からの revoke を不可としていたが、`src/lib/domain/transitions.ts` の正準遷移表 `CERTIFICATE_TRANSITIONS`（代表判断・2026-08-27: 「REVOKED は ISSUING / VERIFYING からも遷移可（公開前でも無効化の記録を残す）」）はこれを明示的に許可しており、同じ PR 内の兄弟関数 `evaluateRevoke()`（versionTransition.ts）も遷移表を正しく参照して許可していた。同一 PR 内で二重管理になっていたことによる不整合。加えて `versionTransition.ts`/`correction.ts`/`integrityIncident.ts` の3ファイルが遷移表への素の添字アクセス（`table[state].includes(...)`）を使っており、IMP-029 で修正した `evaluateEscalation()` と同じプロトタイプ汚染パターン（`"constructor"` 等が `Object.prototype` 経由で関数を返す）を再現していた。`resolveVersionRedirect()` にも `latestPublicId` 省略時の `redirectToPublicId: undefined` 混入があった。
+3. 以前の考え: `evaluateRevokeEligibility()` は独自の `reasons` マップで ISSUING/VERIFYING を「発行処理中/検証中なので revoke 不可」としてブロックしていた。IMP-030 実装時点でこの関数を書いた際、`transitions.ts` の代表判断（2026-08-27）を参照せず、v2.0 §12.4 の一般論（「VERIFIED のみ revoke 可能」）だけで実装していた。
+4. 違和感・問題: 同一 PR 内に「revoke できる」と「revoke できない」の2つの実装が共存し、どちらも自己完結して見えるためレビューで見逃しやすい状態だった。遷移表という単一定義源があるのに、意味的に重複する判定を再実装するとこの種の不整合が起きる。
+5. 決めたこと: `evaluateRevokeEligibility()` を `isValidTransition(CERTIFICATE_TRANSITIONS, certificateState, "REVOKED")` に委譲する形に書き換え、reasons マップから ISSUING/VERIFYING を削除（現在は eligible のため）。`versionTransition.ts`/`correction.ts`/`integrityIncident.ts` の素の添字アクセス4箇所を `isValidTransition()` ヘルパー呼び出しに置換。`resolveVersionRedirect()` は `latestPublicId` 未指定時にキー自体を省略するよう修正。`evaluateCorrectionEligibility()`（correction.ts）は指摘があったが、「VERIFIED のみ訂正可能」は訂正機能固有のビジネスルール（遷移表の許可可否とは別軸、関数自身の JSDoc に明記済み）であり、遷移表側にも ISSUING/VERIFYING→PENDING_CORRECTION を許可する代表判断が存在しないため変更しなかった。
+6. 捨てた選択肢: `evaluateRevokeEligibility()` 内で `reasons` マップに ISSUING/VERIFYING を残したまま許可判定だけ先に true を返す実装（早期リターンで動作は正しくなるが、二重管理の温床がそのまま残るため不採用）。
+7. 判断理由: 遷移可否の判定はすでに `CERTIFICATE_TRANSITIONS` + `isValidTransition()` という単一定義源が存在する（IMP-015／IMP-029 で確立）。同じ判定をローカルに再実装すると今回のような不整合が再発するため、既存ヘルパーへの委譲に統一するのが正しい修正。
+8. まだ答えが出ていないこと: なし。
+9. 公開区分: 公開可（コードの整合性修正。金額・テナント名・接続情報は含まない）
+
 ## 2026-08-30 IMP-030（#945）を main へ取り込み。gateEvaluator.ts の genuinely-touched マージを手動再適用
 
 1. 日付: 2026-08-30

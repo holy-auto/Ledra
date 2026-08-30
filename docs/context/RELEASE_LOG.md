@@ -4,6 +4,22 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-08-30 IMP-030（#945）の code-review 指摘を修正。revoke 可否判定の不整合・プロトタイプ汚染防止
+
+- 内容: `/code-review` の5件の指摘のうち4件を修正。`evaluateRevokeEligibility()`
+  （integrityIncident.ts）が正準遷移表 `CERTIFICATE_TRANSITIONS`（代表判断・2026-08-27:
+  REVOKED は ISSUING/VERIFYING からも遷移可）と矛盾し、同一PR内の兄弟関数
+  `evaluateRevoke()` と食い違っていたバグを `isValidTransition()` への委譲で解消。
+  `versionTransition.ts`/`correction.ts`/`integrityIncident.ts` の遷移表への素の
+  添字アクセス4箇所（IMP-029 の `evaluateEscalation()` と同種のプロトタイプ汚染
+  パターン）を `isValidTransition()` ヘルパーに置換。`resolveVersionRedirect()` の
+  `redirectToPublicId: undefined` 混入を修正。reasons マップの型を
+  `Partial<Record<CertificateState, string>>` に強化。`evaluateCorrectionEligibility()`
+  は独自のビジネスルール（VERIFIED のみ訂正可能）であり遷移表の許可可否とは別軸のため
+  変更不要と判断。回帰テスト6件を追加。
+- 検証: tsc --noEmit / vitest run(4660件) / lint(0エラー) / check:schema /
+  lint:migrations すべて green。
+
 ## 2026-08-30 IMP-030（#945）を main へ取り込み。証明書訂正・Integrity Incident・revoke型基盤
 
 - 内容: IMP-030（証明書訂正・supersede・Integrity Incident・revoke 型基盤、
