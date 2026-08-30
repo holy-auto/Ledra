@@ -882,6 +882,19 @@
 - 依存: IMP-014, IMP-021, IMP-041
 - 下流: IMP-046（経営分析 KPI — 優先度スコアの集計）
 
+## 2026-08-20 IMP-052 §23 E2E_SUITE — 必須 E2E テストスイート（branch impl/IMP-052-e2e-suite）
+
+- 内容: v2.0 §23 が要求する必須 E2E テスト（正常ワークフロー・例外10種・顧客確認・WCAG AA）を Playwright で実装。
+  - `e2e/helpers/env.ts`: E2E 環境変数ヘルパー（adminCreds / customerPortalConfig。adminCreds は既存 `helpers/auth.ts` の `hasAdminCreds()` を再エクスポート）
+  - `e2e/helpers/a11y.ts`: axe-core WCAG AA ランタイム検証ラッパー（動的 import で未インストール時 skip）
+  - `e2e/workflow-flow.spec.ts`: 正常ワークフロー 8 テスト（ダッシュボード → 予約一覧 → 作業詳細 → 証明書 → 車両 → 顧客 → 請求書）
+  - `e2e/exception-flows.spec.ts`: 例外フロー 8 テスト（API 4: 予約更新バリデーション/証明書無効化/ステータス遷移/証明書ステータスAPI + UI 4: settings/404/POS/search）
+  - `e2e/customer-confirmation.spec.ts`: 顧客確認フロー 4 テスト（ログイン/無効テナント/公開証明書/パスポート）
+  - `e2e/accessibility.spec.ts`: WCAG AA 9 テスト（公開4 + 管理4 + 全違反レポート1）
+  - `.github/workflows/ci.yml`: E2E ジョブ復元（secrets ゲート — E2E_USER_EMAIL 未設定時は自動スキップ）
+- 対象: 全テナント（管理画面・顧客ポータル・公開ページ）
+- 設計判断: テストは全て環境変数ゲート付き。secrets 未設定の fork/外部 CI では全 skip。critical impact のみ fail（a11y）。既存 14 spec の auth gate / smoke check パターンを踏襲。
+
 ## 2026-08-20 IMP-051 §3.5 ACCESSIBILITY_I18N_AUDIT — アクセシビリティ監査フレームワーク＆翻訳QA基盤（branch impl/IMP-051-accessibility-i18n-audit）
 
 - 内容: v2.0 §3.5 が要求するアクセシビリティ・多言語品質保証の型基盤を2モジュール群で実装。
