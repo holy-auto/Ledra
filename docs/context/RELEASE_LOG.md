@@ -4,6 +4,32 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-08-30 IMP-030（#945）の code-review 指摘を修正。revoke 可否判定の不整合・プロトタイプ汚染防止
+
+- 内容: `/code-review` の5件の指摘のうち4件を修正。`evaluateRevokeEligibility()`
+  （integrityIncident.ts）が正準遷移表 `CERTIFICATE_TRANSITIONS`（代表判断・2026-08-27:
+  REVOKED は ISSUING/VERIFYING からも遷移可）と矛盾し、同一PR内の兄弟関数
+  `evaluateRevoke()` と食い違っていたバグを `isValidTransition()` への委譲で解消。
+  `versionTransition.ts`/`correction.ts`/`integrityIncident.ts` の遷移表への素の
+  添字アクセス4箇所（IMP-029 の `evaluateEscalation()` と同種のプロトタイプ汚染
+  パターン）を `isValidTransition()` ヘルパーに置換。`resolveVersionRedirect()` の
+  `redirectToPublicId: undefined` 混入を修正。reasons マップの型を
+  `Partial<Record<CertificateState, string>>` に強化。`evaluateCorrectionEligibility()`
+  は独自のビジネスルール（VERIFIED のみ訂正可能）であり遷移表の許可可否とは別軸のため
+  変更不要と判断。回帰テスト6件を追加。
+- 検証: tsc --noEmit / vitest run(4660件) / lint(0エラー) / check:schema /
+  lint:migrations すべて green。
+
+## 2026-08-30 IMP-030（#945）を main へ取り込み。証明書訂正・Integrity Incident・revoke型基盤
+
+- 内容: IMP-030（証明書訂正・supersede・Integrity Incident・revoke 型基盤、
+  branch impl/IMP-030-correction-supersede-revoke）を main へ取り込んだ。53ファイルの
+  phantom conflict（48ファイル一括解決、5ファイル手動）＋resurrection 5ファイル
+  （WorkScopeProvider.tsx / sync/* を10度目の再削除）を解消。`gateEvaluator.ts` は
+  IMP-028（#943）の code-review 修正と本PR自身の変更が同一ファイルに重なっていたため、
+  main の内容を base に本PRの3箇所の diff hunk を個別確認の上で手動再適用した。
+- 検証: tsc/lint(0エラー・警告1256件)/vitest(4652件)/check:schema/lint:migrations すべて green。
+
 ## 2026-08-30 IMP-029（#944）を main へ取り込み。中央通知エンジン型基盤、lint警告4件を修正
 
 - 内容: IMP-029（中央通知エンジン型基盤、branch impl/IMP-029-notification-engine）を main へ
@@ -507,6 +533,23 @@
   （OPEN_QUESTIONS 参照）。
 - テスト: 既存5件 + 修正後全通過。全4391テスト通過、`tsc --noEmit` クリーン、
   lint 0 エラー。
+
+## 2026-08-20 IMP-030 §12.3-12.4 訂正・supersede・Integrity Incident・revoke 型基盤（branch impl/IMP-030-correction-supersede-revoke）
+
+- 内容: v2.0 §12.3-12.4 / ADR-0004 の訂正ワークフロー・Integrity Incident・版遷移の
+  型基盤を `src/lib/certificates/` に実装。
+  - `correction.ts`: 訂正リクエスト型（5 状態 × 5 カテゴリ）+ 訂正可否判定
+    （VERIFIED + 未処理訂正なしのみ許可）+ 状態遷移検証 + Gate 条件用
+    `hasPendingOrApprovedCorrection()`。
+  - `integrityIncident.ts`: Integrity Incident 型（6 カテゴリ × 3 重大度 × 5 状態）
+    + revoke 可否判定 + 即時 revoke 判定（critical=全即時、high+tampering=即時）。
+  - `versionTransition.ts`: `evaluateSupersede()`（VERIFIED→SUPERSEDED）+
+    `evaluateRevoke()`（VERIFIED→REVOKED）+ `resolveVersionRedirect()`
+    （旧版アクセス時の誘導情報）。
+  - `gateEvaluator.ts` 変更: `no_pending_corrections` 条件を実装接続。
+    `correctionRequests` 入力追加、後方互換あり。
+  - テスト 57 件（correction 21 + integrityIncident 15 + versionTransition 7 + gate 統合 7 + 定数 7）。
+- 対象: 全テナント共通の証明書訂正・無効化基盤。DB マイグレーションなし。
 
 ## 2026-08-20 IMP-029 §13 通知・エスカレーション・Deep Link 中央通知エンジン型基盤（branch impl/IMP-029-notification-engine）
 

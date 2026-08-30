@@ -21,6 +21,7 @@ import {
   CERTIFICATE_BEFORE_AFTER_REQUIRED_MESSAGE,
   requiresBeforeAfterMedia,
 } from "./photoRequirement";
+import { hasPendingOrApprovedCorrection, type CorrectionRequestStatus } from "./correction";
 
 // ── 評価器の入力コンテキスト ──
 
@@ -53,7 +54,9 @@ export type CertificateGateInput = {
   inStoreReviewDone?: boolean;
   /** 顧客確認が最新版。デフォルト true（受領サイン・部品確認は別系統で管理）。 */
   customerConfirmationCurrent?: boolean;
-  /** 未処理訂正なし。デフォルト true（IMP-030 で実装）。 */
+  /** 未処理訂正なし。訂正リクエスト一覧を渡す。空配列 or 省略 = 訂正なし（通過）。 */
+  correctionRequests?: readonly { status: CorrectionRequestStatus }[];
+  /** @deprecated noPendingCorrections の直接指定。correctionRequests が優先。 */
   noPendingCorrections?: boolean;
   /** 必要承認完了。デフォルト true（未設計）。 */
   approvalsComplete?: boolean;
@@ -176,12 +179,15 @@ function evaluatePaymentPolicy(input: CertificateGateInput): GateConditionResult
 }
 
 function evaluateNoPendingCorrections(input: CertificateGateInput): GateConditionResult {
-  // ponytail: IMP-030 で訂正版管理を実装。現在は常に通過。
-  const met = input.noPendingCorrections ?? true;
+  // correctionRequests が渡されていればそちらで判定、なければ直接フラグ or デフォルト true
+  const hasPending = input.correctionRequests
+    ? hasPendingOrApprovedCorrection(input.correctionRequests)
+    : !(input.noPendingCorrections ?? true);
+
   return {
     condition: "no_pending_corrections",
-    met,
-    ...(!met && { detail: "未処理の訂正依頼があります。" }),
+    met: !hasPending,
+    ...(hasPending && { detail: "未処理の訂正依頼があります。訂正完了後に発行してください。" }),
   };
 }
 

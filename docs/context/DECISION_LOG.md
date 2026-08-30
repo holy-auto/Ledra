@@ -4,6 +4,30 @@
 > （新しい順）。実装の詳細は RELEASE_LOG.md、迷っている段階のものは
 > OPEN_QUESTIONS.md に書く。
 
+## 2026-08-30 IMP-030（#945）の code-review 指摘を修正。revoke 可否判定が代表判断(2026-08-27)と矛盾していたバグを解消
+
+1. 日付: 2026-08-30
+2. 起きたこと: PR #945 に `/code-review` を実行し5件の指摘を得た。うち最重要のもの: `src/lib/certificates/integrityIncident.ts` の `evaluateRevokeEligibility()` が ISSUING/VERIFYING 状態からの revoke を不可としていたが、`src/lib/domain/transitions.ts` の正準遷移表 `CERTIFICATE_TRANSITIONS`（代表判断・2026-08-27: 「REVOKED は ISSUING / VERIFYING からも遷移可（公開前でも無効化の記録を残す）」）はこれを明示的に許可しており、同じ PR 内の兄弟関数 `evaluateRevoke()`（versionTransition.ts）も遷移表を正しく参照して許可していた。同一 PR 内で二重管理になっていたことによる不整合。加えて `versionTransition.ts`/`correction.ts`/`integrityIncident.ts` の3ファイルが遷移表への素の添字アクセス（`table[state].includes(...)`）を使っており、IMP-029 で修正した `evaluateEscalation()` と同じプロトタイプ汚染パターン（`"constructor"` 等が `Object.prototype` 経由で関数を返す）を再現していた。`resolveVersionRedirect()` にも `latestPublicId` 省略時の `redirectToPublicId: undefined` 混入があった。
+3. 以前の考え: `evaluateRevokeEligibility()` は独自の `reasons` マップで ISSUING/VERIFYING を「発行処理中/検証中なので revoke 不可」としてブロックしていた。IMP-030 実装時点でこの関数を書いた際、`transitions.ts` の代表判断（2026-08-27）を参照せず、v2.0 §12.4 の一般論（「VERIFIED のみ revoke 可能」）だけで実装していた。
+4. 違和感・問題: 同一 PR 内に「revoke できる」と「revoke できない」の2つの実装が共存し、どちらも自己完結して見えるためレビューで見逃しやすい状態だった。遷移表という単一定義源があるのに、意味的に重複する判定を再実装するとこの種の不整合が起きる。
+5. 決めたこと: `evaluateRevokeEligibility()` を `isValidTransition(CERTIFICATE_TRANSITIONS, certificateState, "REVOKED")` に委譲する形に書き換え、reasons マップから ISSUING/VERIFYING を削除（現在は eligible のため）。`versionTransition.ts`/`correction.ts`/`integrityIncident.ts` の素の添字アクセス4箇所を `isValidTransition()` ヘルパー呼び出しに置換。`resolveVersionRedirect()` は `latestPublicId` 未指定時にキー自体を省略するよう修正。`evaluateCorrectionEligibility()`（correction.ts）は指摘があったが、「VERIFIED のみ訂正可能」は訂正機能固有のビジネスルール（遷移表の許可可否とは別軸、関数自身の JSDoc に明記済み）であり、遷移表側にも ISSUING/VERIFYING→PENDING_CORRECTION を許可する代表判断が存在しないため変更しなかった。
+6. 捨てた選択肢: `evaluateRevokeEligibility()` 内で `reasons` マップに ISSUING/VERIFYING を残したまま許可判定だけ先に true を返す実装（早期リターンで動作は正しくなるが、二重管理の温床がそのまま残るため不採用）。
+7. 判断理由: 遷移可否の判定はすでに `CERTIFICATE_TRANSITIONS` + `isValidTransition()` という単一定義源が存在する（IMP-015／IMP-029 で確立）。同じ判定をローカルに再実装すると今回のような不整合が再発するため、既存ヘルパーへの委譲に統一するのが正しい修正。
+8. まだ答えが出ていないこと: なし。
+9. 公開区分: 公開可（コードの整合性修正。金額・テナント名・接続情報は含まない）
+
+## 2026-08-30 IMP-030（#945）を main へ取り込み。gateEvaluator.ts の genuinely-touched マージを手動再適用
+
+1. 日付: 2026-08-30
+2. 起きたこと: IMP-030（証明書訂正・supersede・Integrity Incident・revoke 型基盤、branch impl/IMP-030-correction-supersede-revoke）を main へ取り込む際、main と分岐した53ファイルが衝突した。48ファイルは phantom conflict で一括解決。残り5ファイル（DECISION_LOG.md/LEDRA_CURRENT.md/RELEASE_LOG.md/requirement-trace.md/`src/lib/certificates/gateEvaluator.ts`）はこのPR自身が変更していたため手動再適用した。`gateEvaluator.ts` は IMP-028（#943）の code-review 修正（Before/After 判定の単一定義源化）と IMP-030 自身の変更（`no_pending_corrections` 条件の実装接続）の両方が同じファイルに触れていたため、main の内容（#943 修正込み）を base に IMP-030 の3箇所の diff hunk（import 追加・型定義・関数本体）を手動で再適用した。resurrection パターンが10度目の再発（`WorkScopeProvider.tsx`/`sync/*`）。
+3. 以前の考え: なし（IMP-028/029 で確立した手順の踏襲）。
+4. 違和感・問題: 特になし。今回は genuinely-touched ファイルが docs 4件に加えてコードファイル1件（`gateEvaluator.ts`）だった点が過去2回と異なるが、同じ「main を base に PR 自身の diff を手動再適用」の手順がそのまま機能した。
+5. 決めたこと: 確立済みの merge 手順を適用。`gateEvaluator.ts` は diff の3箇所（import、型定義の `correctionRequests` フィールド追加、`evaluateNoPendingCorrections` 関数本体）を個別に確認し、#943 修正部分（`requiresBeforeAfterMedia`/`CERTIFICATE_BEFORE_AFTER_REQUIRED_MESSAGE` の使用）と重ならないことを確認してから適用した。
+6. 捨てた選択肢: なし。
+7. 判断理由: コードファイルの genuinely-touched マージでも、docsファイルと同じ「diff を個別確認し手動再適用」の原則が安全に機能する。3-way merge に任せず明示的に確認することで、#943 の修正が誤って失われるリスクを排除した。
+8. まだ答えが出ていないこと: なし。
+9. 公開区分: 公開可（マージ手順の技術的な経緯。金額・テナント名・接続情報は含まない）
+
 ## 2026-08-30 IMP-029（#944）を main へ取り込み。lint警告4件（新規テストファイルの未使用importと any）を修正
 
 1. 日付: 2026-08-30
@@ -317,6 +341,18 @@
 7. 判断理由: 「現場を知らずに書き足さない」の裏返しで、ここでは「現場を知らずに稼働中の挙動を狭めない」。staff/viewer のデフォルトを self にすべきかどうかは製品判断であり、この環境からは判断できない。
 8. まだ答えが出ていないこと: staff/viewer のダッシュボード初期表示は本当に self（自分の分だけ）にすべきか、それとも現状維持（tenant-wide）のままでよいか。代表判断待ち。
 9. 公開区分: 公開可（実装の技術的な経緯であり、金額・テナント名・接続情報は含まない）
+
+## 2026-08-20 IMP-030 訂正・revoke の型基盤方式 — 型基盤先行 vs DB+ルート一括実装
+
+1. 日付: 2026-08-20
+2. 起きたこと: v2.0 §12.3-12.4（訂正・supersede・Integrity Incident・revoke）の実装に着手。既存は `certificate_edit_histories`（フィールド差分）+ `certificate_versions`（内容ハッシュ Phase 1）+ void ルート（status=void）があるが、訂正リクエスト→承認ワークフロー、Integrity Incident 型、版遷移（SUPERSEDED/REVOKED）のロジックがない。
+3. 以前の考え: ADR-0004 で「訂正は版の追加」「リクエスト→承認→訂正レコード」と決定済み。具体的な実装タイミングは未定だった。
+4. 違和感・問題: 訂正リクエストテーブル・Incident テーブルの DB マイグレーションは IMP-031（例外ワークフロー）と合わせて設計すべき共通パターンがある。void と REVOKED の関係整理（void=日常取り下げ、REVOKED=公式無効化）もルート側の変更を伴う。型基盤なしに DB を作ると、後からスキーマ変更が発生するリスクがある。
+5. 決めたこと: 訂正リクエスト型・Incident 型・版遷移ヘルパーを純関数で先に定義し、Certificate Gate の `no_pending_corrections` 条件を実装接続する。DB マイグレーション・API ルート変更は後続タスク。
+6. 捨てた選択肢: (a) DB テーブル（correction_requests, integrity_incidents）+ API ルート + UI を一括実装 — スコープが大きく、IMP-031 との依存関係が複雑になる。(b) 型だけ定義して Gate 接続しない — Gate の `no_pending_corrections` が永久にスタブのまま残り、後続タスクで接続を忘れるリスク。
+7. 判断理由: 型基盤を先に確定することで、後続の DB 設計・ルート実装は「型に合わせるだけ」で済む。Gate 接続を含めることで、呼び出し側が `correctionRequests` を渡せばすぐに訂正ブロックが効く（段階的に有効化可能）。後方互換（`noPendingCorrections` 直接フラグ）も維持。
+8. まだ答えが出ていないこと: void と REVOKED の関係の既存ルート統合タイミング。correction_requests テーブルの具体的なスキーマ（Incident との外部キー関係）。旧 QR → 最新版誘導の公開ルート側実装。
+9. 公開区分: 公開可
 
 ## 2026-08-20 IMP-029 通知エンジンの型基盤方式 — 純関数型基盤 vs 統合 dispatch 一括実装
 
