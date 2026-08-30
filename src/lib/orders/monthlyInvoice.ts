@@ -144,139 +144,145 @@ export async function runMonthlyInvoices(targetDate?: Date): Promise<{ sent: num
   let sent = 0;
   let errors = 0;
 
-  for (const [fromTenantId, tenantOrders] of grouped) {
-    try {
-      // 送付先メールは requester_email（全行同じはずだが最初の値を使用）
-      const firstOrder = tenantOrders[0];
-      const recipientEmail = firstOrder.requester_email as string | null;
-      if (!recipientEmail) {
-        logger.info("[monthlyInvoice] skipped — no requester_email", { fromTenantId });
-        continue;
-      }
+  const tenantGroups = [...grouped.entries()];
+  const CONCURRENCY = 3;
+  for (let offset = 0; offset < tenantGroups.length; offset += CONCURRENCY) {
+    await Promise.all(
+      tenantGroups.slice(offset, offset + CONCURRENCY).map(async ([fromTenantId, tenantOrders]) => {
+        try {
+          // 送付先メールは requester_email（全行同じはずだが最初の値を使用）
+          const firstOrder = tenantOrders[0];
+          const recipientEmail = firstOrder.requester_email as string | null;
+          if (!recipientEmail) {
+            logger.info("[monthlyInvoice] skipped — no requester_email", { fromTenantId });
+            return;
+          }
 
-      const recipientCompany = firstOrder.requester_company as string | null;
+          const recipientCompany = firstOrder.requester_company as string | null;
 
-      // 集計
-      const totalAmount = tenantOrders.reduce((sum, o) => sum + ((o.accepted_amount as number) ?? 0), 0);
-      if (totalAmount === 0) continue;
+          // 集計
+          const totalAmount = tenantOrders.reduce((sum, o) => sum + ((o.accepted_amount as number) ?? 0), 0);
+          if (totalAmount === 0) return;
 
-      // 請求書番号（例: CINV-202604-1A2B3C4D5E6F）
-      // ponytail: テナント UUID 先頭 12 hex を採番に使う簡易方式。DB シーケンス等の
-      //   永続採番は未実装で、真の一意性は保証しない（4 hex では衝突しやすかったのを
-      //   12 hex に広げ実用上の衝突確率を無視できる水準にする）。月次×テナントで
-      //   採番を永続化する場合は別途シーケンス/採番テーブルへ移行する。
-      const dateStr = ym.replace("-", ""); // YYYYMM (JST)
-      const shortId = fromTenantId.replace(/-/g, "").slice(0, 12).toUpperCase();
-      const invoiceNumber = `CINV-${dateStr}-${shortId}`;
+          // 請求書番号（例: CINV-202604-1A2B3C4D5E6F）
+          // ponytail: テナント UUID 先頭 12 hex を採番に使う簡易方式。DB シーケンス等の
+          //   永続採番は未実装で、真の一意性は保証しない（4 hex では衝突しやすかったのを
+          //   12 hex に広げ実用上の衝突確率を無視できる水準にする）。月次×テナントで
+          //   採番を永続化する場合は別途シーケンス/採番テーブルへ移行する。
+          const dateStr = ym.replace("-", ""); // YYYYMM (JST)
+          const shortId = fromTenantId.replace(/-/g, "").slice(0, 12).toUpperCase();
+          const invoiceNumber = `CINV-${dateStr}-${shortId}`;
 
-      // 施工店情報（最初の受注テナントを代表として使用）
-      const tenant = firstOrder.to_tenant as unknown as TenantForPdf | null;
-      if (!tenant) continue;
+          // 施工店情報（最初の受注テナントを代表として使用）
+          const tenant = firstOrder.to_tenant as unknown as TenantForPdf | null;
+          if (!tenant) return;
 
-      // PDF 生成
-      const feeRate = (firstOrder.platform_fee_rate as number) ?? 0.1;
-      const feeRatePct = Math.round(feeRate * 100);
+          // PDF 生成
+          const feeRate = (firstOrder.platform_fee_rate as number) ?? 0.1;
+          const feeRatePct = Math.round(feeRate * 100);
 
-      const items = tenantOrders.map((o) => {
-        const amount = (o.accepted_amount as number) ?? 0;
-        const fee = Math.round(amount * feeRate);
-        return {
-          description: `${o.title as string}${o.category ? ` (${o.category as string})` : ""}`,
-          quantity: 1,
-          unit_price: amount,
-          amount,
-          note: `手数料${feeRatePct}%: ${fmtJpy(fee)} / 施工店受取: ${fmtJpy(amount - fee)}`,
-        };
-      });
+          const items = tenantOrders.map((o) => {
+            const amount = (o.accepted_amount as number) ?? 0;
+            const fee = Math.round(amount * feeRate);
+            return {
+              description: `${o.title as string}${o.category ? ` (${o.category as string})` : ""}`,
+              quantity: 1,
+              unit_price: amount,
+              amount,
+              note: `手数料${feeRatePct}%: ${fmtJpy(fee)} / 施工店受取: ${fmtJpy(amount - fee)}`,
+            };
+          });
 
-      const platformFeeTotal = Math.round(totalAmount * feeRate);
-      const payoutTotal = totalAmount - platformFeeTotal;
-      const noteLines = [
-        `【合算請求書 — ${billingMonthStr}分】`,
-        `対象案件数: ${tenantOrders.length}件`,
-        `プラットフォーム手数料（${feeRatePct}%）計: ${fmtJpy(platformFeeTotal)}`,
-        `施工店受取合計（${100 - feeRatePct}%）: ${fmtJpy(payoutTotal)}`,
-        ``,
-        `入金確認後、各施工店へ自動送金いたします。`,
-      ];
+          const platformFeeTotal = Math.round(totalAmount * feeRate);
+          const payoutTotal = totalAmount - platformFeeTotal;
+          const noteLines = [
+            `【合算請求書 — ${billingMonthStr}分】`,
+            `対象案件数: ${tenantOrders.length}件`,
+            `プラットフォーム手数料（${feeRatePct}%）計: ${fmtJpy(platformFeeTotal)}`,
+            `施工店受取合計（${100 - feeRatePct}%）: ${fmtJpy(payoutTotal)}`,
+            ``,
+            `入金確認後、各施工店へ自動送金いたします。`,
+          ];
 
-      const invoiceData = {
-        id: `monthly-${dateStr}-${fromTenantId.slice(0, 8)}`,
-        invoice_number: invoiceNumber,
-        status: "sent",
-        issued_at: now.toISOString(),
-        due_date: dueDateIso,
-        subtotal: totalAmount,
-        tax: 0,
-        total: totalAmount,
-        tax_rate: 0,
-        items_json: items,
-        note: noteLines.join("\n"),
-        recipient_name: recipientCompany ?? recipientEmail,
-        show_seal: false,
-        show_logo: true,
-        show_bank_info: !!tenant.bank_info,
-      };
+          const invoiceData = {
+            id: `monthly-${dateStr}-${fromTenantId.slice(0, 8)}`,
+            invoice_number: invoiceNumber,
+            status: "sent",
+            issued_at: now.toISOString(),
+            due_date: dueDateIso,
+            subtotal: totalAmount,
+            tax: 0,
+            total: totalAmount,
+            tax_rate: 0,
+            items_json: items,
+            note: noteLines.join("\n"),
+            recipient_name: recipientCompany ?? recipientEmail,
+            show_seal: false,
+            show_logo: true,
+            show_bank_info: !!tenant.bank_info,
+          };
 
-      let pdfBuffer: Buffer;
-      try {
-        pdfBuffer = await renderInvoicePdf(invoiceData, tenant, recipientCompany ?? null);
-      } catch (e) {
-        logger.error("[monthlyInvoice] pdf failed", { fromTenantId, error: String(e) });
-        errors++;
-        continue;
-      }
+          let pdfBuffer: Buffer;
+          try {
+            pdfBuffer = await renderInvoicePdf(invoiceData, tenant, recipientCompany ?? null);
+          } catch (e) {
+            logger.error("[monthlyInvoice] pdf failed", { fromTenantId, error: String(e) });
+            errors++;
+            return;
+          }
 
-      // メール送付
-      const emailResult = await sendResendEmail({
-        to: recipientEmail,
-        subject: `【合算請求書】${invoiceNumber} — ${billingMonthStr}分（${tenantOrders.length}件）`,
-        html: buildConsolidatedEmailHtml({
-          invoiceNumber,
-          requesterCompany: recipientCompany,
-          totalAmount,
-          orderCount: tenantOrders.length,
-          dueDateStr,
-          billingMonthStr,
-        }),
-        attachments: [{ filename: `${invoiceNumber}.pdf`, content: pdfBuffer.toString("base64") }],
-        idempotencyKey: `monthly-invoice-${dateStr}-${fromTenantId}`,
-      });
+          // メール送付
+          const emailResult = await sendResendEmail({
+            to: recipientEmail,
+            subject: `【合算請求書】${invoiceNumber} — ${billingMonthStr}分（${tenantOrders.length}件）`,
+            html: buildConsolidatedEmailHtml({
+              invoiceNumber,
+              requesterCompany: recipientCompany,
+              totalAmount,
+              orderCount: tenantOrders.length,
+              dueDateStr,
+              billingMonthStr,
+            }),
+            attachments: [{ filename: `${invoiceNumber}.pdf`, content: pdfBuffer.toString("base64") }],
+            idempotencyKey: `monthly-invoice-${dateStr}-${fromTenantId}`,
+          });
 
-      if (!emailResult.ok) {
-        logger.error("[monthlyInvoice] email failed", { fromTenantId, error: emailResult.error });
-        errors++;
-        continue;
-      }
+          if (!emailResult.ok) {
+            logger.error("[monthlyInvoice] email failed", { fromTenantId, error: emailResult.error });
+            errors++;
+            return;
+          }
 
-      // 全案件の invoice_sent_at を更新
-      const nowIso = now.toISOString();
-      await supabase
-        .from("job_orders")
-        .update({
-          invoice_number: invoiceNumber,
-          invoice_sent_at: nowIso,
-          invoice_due_date: dueDateIso,
-          platform_fee_amount: null, // 個別ではなく合算で管理
-          payout_amount: null,
-        })
-        .in(
-          "id",
-          tenantOrders.map((o) => o.id),
-        );
+          // 全案件の invoice_sent_at を更新
+          const nowIso = now.toISOString();
+          await supabase
+            .from("job_orders")
+            .update({
+              invoice_number: invoiceNumber,
+              invoice_sent_at: nowIso,
+              invoice_due_date: dueDateIso,
+              platform_fee_amount: null, // 個別ではなく合算で管理
+              payout_amount: null,
+            })
+            .in(
+              "id",
+              tenantOrders.map((o) => o.id),
+            );
 
-      logger.info("[monthlyInvoice] sent", {
-        fromTenantId,
-        invoiceNumber,
-        orderCount: tenantOrders.length,
-        totalAmount,
-        to: recipientEmail,
-      });
-      sent++;
-    } catch (e) {
-      logger.error("[monthlyInvoice] tenant processing failed", { fromTenantId, error: String(e) });
-      errors++;
-    }
+          logger.info("[monthlyInvoice] sent", {
+            fromTenantId,
+            invoiceNumber,
+            orderCount: tenantOrders.length,
+            totalAmount,
+            to: recipientEmail,
+          });
+          sent++;
+        } catch (e) {
+          logger.error("[monthlyInvoice] tenant processing failed", { fromTenantId, error: String(e) });
+          errors++;
+        }
+      }),
+    );
   }
 
   return { sent, errors };

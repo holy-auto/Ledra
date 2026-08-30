@@ -17,15 +17,18 @@ export const INSURER_ROLE_RANK: Record<InsurerRole, number> = {
 };
 
 /** Features gated by insurer plan tier */
-export const INSURER_PLAN_FEATURES: Record<InsurerPlanTier, {
-  search: boolean;
-  view: boolean;
-  csv_export: boolean;
-  pdf_export: boolean;
-  bulk_user_import: boolean;
-  api_access: boolean;
-  max_users: number;
-}> = {
+export const INSURER_PLAN_FEATURES: Record<
+  InsurerPlanTier,
+  {
+    search: boolean;
+    view: boolean;
+    csv_export: boolean;
+    pdf_export: boolean;
+    bulk_user_import: boolean;
+    api_access: boolean;
+    max_users: number;
+  }
+> = {
   basic: {
     search: true,
     view: true,

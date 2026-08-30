@@ -26,12 +26,14 @@ describe("PII compile-time assertions", () => {
 // ---------------------------------------------------------------------------
 describe("PII field registries", () => {
   it("VEHICLE_TABLE_PII_COLUMNS covers known PII columns", () => {
-    const expected = ["customer_name", "customer_email", "customer_phone_masked", "customer_id", "notes"];
+    // customer_name/customer_email/customer_phone_masked were dropped from
+    // `vehicles` in migration 20260321000002 — not current columns.
+    const expected = ["customer_id", "notes", "plate_display"];
     expect([...VEHICLE_TABLE_PII_COLUMNS].sort()).toEqual(expected.sort());
   });
 
   it("PASSPORT_TABLE_PII_COLUMNS covers owner PII columns", () => {
-    const expected = ["current_owner_email", "current_owner_name"];
+    const expected = ["current_owner_email", "current_owner_name", "from_owner_email", "from_owner_name"];
     expect([...PASSPORT_TABLE_PII_COLUMNS].sort()).toEqual(expected.sort());
   });
 });

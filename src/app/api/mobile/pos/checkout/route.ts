@@ -6,6 +6,8 @@ import { checkRateLimit } from "@/lib/api/rateLimit";
 import { apiJson, apiUnauthorized, apiForbidden, apiValidationError, apiInternalError } from "@/lib/api/response";
 import { posCheckoutSchema } from "@/lib/validations/pos";
 import { deductInventoryForPosItems } from "@/lib/pos/inventoryDeduction";
+import { recordPosSale } from "@/lib/pos/recordSale";
+import { resolvePaidCheckoutSession } from "@/lib/pos/checkoutSession";
 
 export const dynamic = "force-dynamic";
 
@@ -33,32 +35,40 @@ export async function POST(req: NextRequest) {
     }
     const input = parsed.data;
 
-    const { data, error } = await client.rpc("pos_checkout", {
-      p_tenant_id: caller.tenantId,
-      p_reservation_id: input.reservation_id,
-      p_customer_id: input.customer_id,
-      p_store_id: input.store_id,
-      p_register_session_id: input.register_session_id,
-      p_payment_method: input.payment_method,
-      p_amount: input.amount,
-      p_received_amount: input.received_amount ?? null,
-      p_items_json: input.items_json ?? [],
-      p_tax_rate: input.tax_rate,
-      p_note: input.note,
-      p_create_receipt: input.create_receipt !== false,
-      p_user_id: caller.userId,
-    });
-
-    if (error) {
-      return apiInternalError(error, "mobile/pos/checkout");
+    const { admin: rpcAdmin } = createTenantScopedAdmin(caller.tenantId);
+    // pos_checkout は SECURITY DEFINER で、引数の tenant_id をそのまま使う。
+    // 未認証・他テナントから呼ばれないよう service_role 専用にしたので、
+    // 権限確認済みのこのルートからはサービスロールのクライアントで呼ぶ。
+    //
+    // カード決済で PaymentIntent が付いていれば、**同じ決済では1件しか作らない**
+    // （記録に失敗して店員がやり直しても二重に売上が立たない）
+    // カード番号決済（Checkout）なら、**サーバがセッションを取り直して**
+    // 支払済みであることと金額を確かめる。クライアントの申告は信じない
+    let paymentIntentId: string | null = null;
+    let args = input;
+    if (input.checkout_session_id) {
+      const paid = await resolvePaidCheckoutSession(rpcAdmin, caller.tenantId, input.checkout_session_id);
+      if (!paid.ok) return apiValidationError(paid.error);
+      paymentIntentId = paid.paymentIntentId;
+      // 金額は Stripe の実額。カートを編集されていても請求額と一致させる
+      args = { ...input, amount: paid.amountTotal, received_amount: paid.amountTotal };
     }
 
+    const sale = await recordPosSale(rpcAdmin, caller, args, paymentIntentId);
+    if (!sale.ok) {
+      return apiInternalError(sale.error, "mobile/pos/checkout");
+    }
+    if (sale.alreadyRecorded) {
+      // 在庫は初回に引き落とし済み。ここで再度引くと二重に減る
+      return apiJson({ ok: true, result: sale.result, already_recorded: true });
+    }
+    const data = sale.result;
+
     // 在庫紐付け商品があれば減算 (best-effort + outbox リトライ)
-    const result = data as { payment_id?: string | null } | null;
     const { admin: outboxAdmin } = createTenantScopedAdmin(caller.tenantId);
-    const inventory = await deductInventoryForPosItems(client, input.items_json, {
+    const inventory = await deductInventoryForPosItems(client, args.items_json, {
       tenantId: caller.tenantId,
-      paymentId: result?.payment_id ?? null,
+      paymentId: sale.paymentId,
       outboxAdmin,
     });
 

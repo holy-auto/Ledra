@@ -11,7 +11,7 @@ type InboxResponse = { sections: InboxSection[]; total: number };
 async function runAction(kind: InboxActionKind, id: string): Promise<Response> {
   if (kind === "issue_certificate") {
     return fetch("/api/admin/certificates/status", {
-      method: "POST",
+      method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ public_id: id, status: "active" }),
     });

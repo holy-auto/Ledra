@@ -10,6 +10,7 @@ import POSSection from "@/components/pos/POSSection";
 import { KanbanBoard, KanbanColumn } from "@/components/pos/KanbanBoard";
 import KanbanCard from "@/components/pos/KanbanCard";
 import { formatJpy } from "@/lib/format";
+import { businessDateString } from "@/lib/datetime";
 
 /**
  * StorefrontDashboard
@@ -43,8 +44,6 @@ type ReservationsResponse = {
   reservations: ReservationRow[];
 };
 
-const today = () => new Date().toISOString().slice(0, 10);
-
 const STATUS_LABEL: Record<string, string> = {
   confirmed: "予約確定",
   arrived: "受付済み",
@@ -58,13 +57,15 @@ export default function StorefrontDashboard() {
   const [advancingId, setAdvancingId] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
-  const { data, mutate, isLoading } = useSWR<ReservationsResponse>("/api/admin/reservations", fetcher, {
-    refreshInterval: 30_000,
-    revalidateOnFocus: true,
+  const d = businessDateString();
+  const storefrontKey = `/api/admin/reservations?view=storefront&date=${d}`;
+  const { data, mutate, isLoading } = useSWR<ReservationsResponse>(storefrontKey, fetcher, {
+    refreshInterval: 60_000,
+    revalidateOnFocus: false,
+    keepPreviousData: true,
   });
 
   const all = useMemo(() => data?.reservations ?? [], [data]);
-  const d = today();
 
   const todays = useMemo(() => all.filter((r) => r.scheduled_date === d && r.status !== "cancelled"), [all, d]);
   const confirmedToday = useMemo(() => todays.filter((r) => r.status === "confirmed"), [todays]);

@@ -67,39 +67,22 @@ export default async function TradesHubPage() {
 
       <Card padding="compact" variant="inset">
         <p className="text-[13px] text-secondary leading-relaxed">
-          取引に関連する機能が分散しがちだった画面を集約しました。
-          ファネル (リード → 商談 → 受発注 → 完了) を意識しながら各画面に移動できます。
+          取引に関連する機能が分散しがちだった画面を集約しました。 ファネル (リード → 商談 → 受発注 → 完了)
+          を意識しながら各画面に移動できます。
         </p>
       </Card>
 
       <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {HUB_CARDS.map((card) => (
-          <Link
-            key={card.href}
-            href={card.href}
-            className="group block rounded-[var(--radius-lg)] transition-all"
-          >
+          <Link key={card.href} href={card.href} className="group block rounded-[var(--radius-lg)] transition-all">
             <Card padding="default" className="h-full transition-shadow hover:shadow-md">
               <div className="flex flex-col gap-2">
-                <span className="text-[10px] font-medium tracking-[0.14em] text-secondary uppercase">
-                  {card.tag}
-                </span>
-                <h2 className="text-[16px] font-semibold text-primary leading-tight">
-                  {card.title}
-                </h2>
-                <p className="text-[13px] text-secondary leading-relaxed">
-                  {card.description}
-                </p>
+                <span className="text-[10px] font-medium tracking-[0.14em] text-secondary uppercase">{card.tag}</span>
+                <h2 className="text-[16px] font-semibold text-primary leading-tight">{card.title}</h2>
+                <p className="text-[13px] text-secondary leading-relaxed">{card.description}</p>
                 <span className="mt-2 inline-flex items-center gap-1 text-[12px] font-medium text-accent transition-transform group-hover:translate-x-0.5">
                   開く
-                  <svg
-                    width="14"
-                    height="14"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                    strokeWidth={2}
-                  >
+                  <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
                   </svg>
                 </span>

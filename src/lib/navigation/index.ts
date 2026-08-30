@@ -26,4 +26,3 @@ export {
 
 // ── ワークスコープ ──
 export { WORK_SCOPES, WORK_SCOPE_LABELS, availableScopes, defaultScope, type WorkScope } from "./scope";
-export { WorkScopeProvider, useWorkScope } from "./WorkScopeProvider";

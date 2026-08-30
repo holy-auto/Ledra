@@ -34,11 +34,15 @@ export default function ProgressCard({
   children,
   className = "",
 }: ProgressCardProps) {
+  // clamp は NaN を素通しする(Math.max(NaN, 0) は NaN)。呼び出し元が
+  // `percent={0 / 0}` のような空集合の計算を渡すと aria-valuenow="NaN" と
+  // 見える "NaN%" と壊れた dash offset を描画するので、先に 0 へ倒す。
+  const finite = (n: number) => (Number.isFinite(n) ? n : 0);
   const ratio =
     percentProp != null
-      ? Math.min(Math.max(percentProp, 0), 100) / 100
+      ? Math.min(Math.max(finite(percentProp), 0), 100) / 100
       : total > 0
-        ? Math.min(Math.max(completed / total, 0), 1)
+        ? Math.min(Math.max(finite(completed / total), 0), 1)
         : 0;
   const percent = Math.round(ratio * 100);
   return (

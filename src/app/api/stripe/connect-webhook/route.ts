@@ -577,13 +577,13 @@ export async function POST(req: NextRequest) {
         // agent
         const { data: agent } = await supabase
           .from("agents")
-          .select("id, stripe_connect_onboarded")
-          .eq("stripe_connect_account_id", account.id)
+          .select("id, stripe_onboarding_done")
+          .eq("stripe_account_id", account.id)
           .limit(1)
           .maybeSingle();
 
-        if (agent && agent.stripe_connect_onboarded !== onboarded) {
-          await supabase.from("agents").update({ stripe_connect_onboarded: onboarded }).eq("id", agent.id);
+        if (agent && agent.stripe_onboarding_done !== onboarded) {
+          await supabase.from("agents").update({ stripe_onboarding_done: onboarded }).eq("id", agent.id);
           console.info("connect-webhook: agent connect synced", { accountId: account.id, onboarded });
 
           if (onboarded && agent.id) {

@@ -153,8 +153,18 @@ export default function AgentSharedFilesPage() {
                 <p className="text-sm text-muted">アップロード中...</p>
               ) : (
                 <>
-                  <svg className="w-8 h-8 text-muted mx-auto mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 16.5V9.75m0 0l3 3m-3-3l-3 3M6.75 19.5a4.5 4.5 0 01-1.41-8.775 5.25 5.25 0 0110.233-2.33 3 3 0 013.758 3.848A3.752 3.752 0 0118 19.5H6.75z" />
+                  <svg
+                    className="w-8 h-8 text-muted mx-auto mb-2"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    strokeWidth={1.5}
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M12 16.5V9.75m0 0l3 3m-3-3l-3 3M6.75 19.5a4.5 4.5 0 01-1.41-8.775 5.25 5.25 0 0110.233-2.33 3 3 0 013.758 3.848A3.752 3.752 0 0118 19.5H6.75z"
+                    />
                   </svg>
                   <p className="text-sm text-muted">クリックしてファイルを選択（PDF・画像・Word・Excel、10MB以下）</p>
                 </>
@@ -172,9 +182,7 @@ export default function AgentSharedFilesPage() {
             key={tab.key}
             onClick={() => setFilter(tab.key)}
             className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-              filter === tab.key
-                ? "bg-accent text-white"
-                : "bg-inset text-secondary hover:bg-surface-active"
+              filter === tab.key ? "bg-accent text-white" : "bg-inset text-secondary hover:bg-surface-active"
             }`}
           >
             {tab.label}
@@ -186,16 +194,16 @@ export default function AgentSharedFilesPage() {
       {loading ? (
         <div className="glass-card p-8 text-center text-muted">読み込み中...</div>
       ) : files.length === 0 ? (
-        <div className="glass-card p-8 text-center text-muted">
-          ファイルはまだありません。
-        </div>
+        <div className="glass-card p-8 text-center text-muted">ファイルはまだありません。</div>
       ) : (
         <div className="glass-card divide-y divide-default">
           {files.map((f) => {
             const dirEntry = getStatusEntry(SHARED_FILE_DIRECTION_MAP, f.direction);
             return (
               <div key={f.id} className="flex items-center gap-4 px-6 py-4">
-                <div className={`w-10 h-10 rounded-lg flex items-center justify-center text-xs font-bold shrink-0 ${getFileColor(f.file_type)}`}>
+                <div
+                  className={`w-10 h-10 rounded-lg flex items-center justify-center text-xs font-bold shrink-0 ${getFileColor(f.file_type)}`}
+                >
                   {getFileIcon(f.file_type)}
                 </div>
                 <div className="flex-1 min-w-0">
@@ -209,10 +217,7 @@ export default function AgentSharedFilesPage() {
                     {f.note && <span className="truncate max-w-[200px]">{f.note}</span>}
                   </div>
                 </div>
-                <button
-                  onClick={() => handleDownload(f.id)}
-                  className="btn-secondary text-xs shrink-0"
-                >
+                <button onClick={() => handleDownload(f.id)} className="btn-secondary text-xs shrink-0">
                   ダウンロード
                 </button>
               </div>
