@@ -19,7 +19,7 @@
  */
 
 import type { BoothInfo, BoothReservation, BoothUtilization } from "@/lib/booths/occupancy";
-import { computeBoothUtilization, detectCapacityConflicts } from "@/lib/booths/occupancy";
+import { computeBoothUtilization, detectCapacityConflicts, NON_OCCUPYING } from "@/lib/booths/occupancy";
 import { parseTimeToHours, SHIFT_START, SHIFT_END } from "@/lib/gantt/board";
 
 // ── 時間帯別占有分解（capacity > 1 対応） ──
@@ -52,9 +52,8 @@ export function decomposeTimeBands(
   shiftStart = SHIFT_START,
   shiftEnd = SHIFT_END,
 ): CapacityTimeBand[] {
-  const boothRes = reservations.filter(
-    (r) => r.boothId === booth.id && r.status !== "cancelled" && r.status !== "completed" && r.status !== "no_show",
-  );
+  // occupancy.ts の NON_OCCUPYING を再利用（終端ステータスの定義を重複させない）
+  const boothRes = reservations.filter((r) => r.boothId === booth.id && !NON_OCCUPYING.has(r.status));
 
   // イベント生成
   const events: Array<{ time: number; delta: 1 | -1 }> = [];

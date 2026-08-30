@@ -69,6 +69,24 @@ describe("Quick Create アクション", () => {
       expect(action.section).toBe("新規作成");
     }
   });
+
+  // 予約・顧客には /new ページが無く、一覧ページの ?create=1 でモーダルを
+  // 自動オープンする（ReservationsClient / CustomersClient と同じ規約）。
+  it("予約・顧客は /new ではなく ?create=1（該当ページに /new が無いため）", () => {
+    const reservation = QUICK_CREATE_ACTIONS.find((a) => a.id === "reservation");
+    const customer = QUICK_CREATE_ACTIONS.find((a) => a.id === "customer");
+    expect(reservation?.href).toBe("/admin/reservations?create=1");
+    expect(customer?.href).toBe("/admin/customers?create=1");
+  });
+
+  it("車両・証明書・請求書は /new ページを持つので href もそのまま", () => {
+    const vehicle = QUICK_CREATE_ACTIONS.find((a) => a.id === "vehicle");
+    const certificate = QUICK_CREATE_ACTIONS.find((a) => a.id === "certificate");
+    const invoice = QUICK_CREATE_ACTIONS.find((a) => a.id === "invoice");
+    expect(vehicle?.href).toBe("/admin/vehicles/new");
+    expect(certificate?.href).toBe("/admin/certificates/new");
+    expect(invoice?.href).toBe("/admin/invoices/new");
+  });
 });
 
 describe("inferCreateContext()", () => {
@@ -96,6 +114,14 @@ describe("inferCreateContext()", () => {
     // /admin/customers/abc-123/edit のようなサブルートはマッチしない
     expect(inferCreateContext("/admin/customers/abc-123/edit")).toEqual({});
   });
+
+  // "new" は作成画面自体のパスセグメントであって ID ではない。
+  // 除外しないと vehicleId="new" のような存在しない ID が紛れ込む。
+  it("/new ページは ID として拾わない（顧客・車両・ジョブ）", () => {
+    expect(inferCreateContext("/admin/customers/new")).toEqual({});
+    expect(inferCreateContext("/admin/vehicles/new")).toEqual({});
+    expect(inferCreateContext("/admin/jobs/new")).toEqual({});
+  });
 });
 
 describe("applyCreateContext()", () => {
@@ -113,6 +139,14 @@ describe("applyCreateContext()", () => {
     const result = applyCreateContext("/admin/reservations/new", { customerId: "a", vehicleId: "b" });
     expect(result).toContain("customerId=a");
     expect(result).toContain("vehicleId=b");
+  });
+
+  // href 側が既に ?create=1 を持つ場合（予約・顧客）に `?` が2つできると
+  // 不正な URL になる。`&` で連結すること。
+  it("href が既にクエリを持つ場合は & で連結する（? を2つ作らない）", () => {
+    expect(applyCreateContext("/admin/reservations?create=1", { customerId: "abc" })).toBe(
+      "/admin/reservations?create=1&customerId=abc",
+    );
   });
 });
 

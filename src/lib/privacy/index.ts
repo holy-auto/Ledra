@@ -37,6 +37,7 @@ export {
   MASKING_STRATEGIES,
   type MaskingStrategy,
   type MaskingRule,
+  type Redacted,
   applyMask,
   createRendition,
   CERTIFICATE_PUBLIC_RULES,

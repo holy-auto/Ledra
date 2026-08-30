@@ -88,6 +88,12 @@ describe("validateRoleChange", () => {
     expect(result).toEqual({ allowed: false, reason: "unassignable_role" });
   });
 
+  it("権限不足の操作者が owner を対象にした場合、insufficient_rank を返す（owner_protected で対象の役職を漏らさない）", () => {
+    // validateMemberRemoval / validateMemberSuspension と同じチェック順に統一
+    const result = validateRoleChange(mkRoleChange({ callerRole: "staff", currentRole: "owner" }));
+    expect(result).toEqual({ allowed: false, reason: "insufficient_rank" });
+  });
+
   it("super_admin への昇格は不可", () => {
     const result = validateRoleChange(mkRoleChange({ newRole: "super_admin" }));
     expect(result).toEqual({ allowed: false, reason: "unassignable_role" });
@@ -251,5 +257,24 @@ describe("wouldLoseLastAdmin", () => {
 
   it("viewer → false", () => {
     expect(wouldLoseLastAdmin("viewer", 1)).toBe(false);
+  });
+});
+
+// ── validateRoleChange / validateMemberRemoval / validateMemberSuspension のチェック順一貫性 ──
+
+describe("3つのガード関数のチェック順一貫性（権限不足を役職保護より先に判定）", () => {
+  it("権限不足の操作者が owner を対象にした場合、3関数とも insufficient_rank を返す", () => {
+    expect(validateRoleChange(mkRoleChange({ callerRole: "staff", currentRole: "owner" }))).toEqual({
+      allowed: false,
+      reason: "insufficient_rank",
+    });
+    expect(validateMemberRemoval(mkRemoval({ callerRole: "staff", targetRole: "owner" }))).toEqual({
+      allowed: false,
+      reason: "insufficient_rank",
+    });
+    expect(validateMemberSuspension(mkSuspension({ callerRole: "staff", targetRole: "owner" }))).toEqual({
+      allowed: false,
+      reason: "insufficient_rank",
+    });
   });
 });

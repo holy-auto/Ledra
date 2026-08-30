@@ -43,9 +43,7 @@ export async function GET(req: NextRequest) {
 
       // rating_avg * rating_count をスコアとして降順に並べる
       // Supabase では computed column で order できないため、十分な件数を取得してアプリ側でソート
-      const { data, error } = await query
-        .order("rating_avg", { ascending: false })
-        .limit(limitParam * 5); // 多めに取ってアプリ側でスコアソート
+      const { data, error } = await query.order("rating_avg", { ascending: false }).limit(limitParam * 5); // 多めに取ってアプリ側でスコアソート
 
       if (error) return apiInternalError(error);
 
@@ -94,34 +92,35 @@ export async function GET(req: NextRequest) {
       }
 
       // テナント名を一括取得
-      const tenantIds = [...new Set((rewards as Array<{ tenant_id: string | null }>)
-        .map((r) => r.tenant_id)
-        .filter(Boolean))] as string[];
+      const tenantIds = [
+        ...new Set((rewards as Array<{ tenant_id: string | null }>).map((r) => r.tenant_id).filter(Boolean)),
+      ] as string[];
 
       let tenantMap: Record<string, string> = {};
       if (tenantIds.length > 0) {
-        const { data: tenants } = await supabase
-          .from("tenants")
-          .select("id, name")
-          .in("id", tenantIds);
+        const { data: tenants } = await supabase.from("tenants").select("id, name").in("id", tenantIds);
         tenantMap = Object.fromEntries((tenants ?? []).map((t) => [t.id, t.name as string]));
       }
 
-      const enriched = (rewards as Array<{
-        author_user_id: string;
-        tenant_id: string | null;
-        lesson_count: number;
-        total_amount_jpy: number;
-        period_month: string;
-        qualifying_lessons: Array<{ id: string; title: string; rating_avg: number; rating_count: number }>;
-      }>).map((r) => ({
+      const enriched = (
+        rewards as Array<{
+          author_user_id: string;
+          tenant_id: string | null;
+          lesson_count: number;
+          total_amount_jpy: number;
+          period_month: string;
+          qualifying_lessons: Array<{ id: string; title: string; rating_avg: number; rating_count: number }>;
+        }>
+      ).map((r) => ({
         author_user_id: r.author_user_id,
         tenant_id: r.tenant_id,
         tenant_name: r.tenant_id ? (tenantMap[r.tenant_id] ?? "加盟店") : "運営",
         lesson_count: r.lesson_count,
         total_amount_jpy: r.total_amount_jpy,
         period_month: r.period_month,
-        top_lesson: (r.qualifying_lessons as Array<{ id: string; title: string; rating_avg: number; rating_count: number }>)[0] ?? null,
+        top_lesson:
+          (r.qualifying_lessons as Array<{ id: string; title: string; rating_avg: number; rating_count: number }>)[0] ??
+          null,
       }));
 
       return apiOk({

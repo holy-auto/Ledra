@@ -12,9 +12,20 @@ import { parseTimeToHours, SHIFT_START, SHIFT_END } from "@/lib/gantt/board";
 /**
  * ブースを占有しない終端ステータス。
  * cancelled は toEvents で除外。completed/no_show は「作業終了 → ブースは空き」。
- * computeBoothUtilization は完了作業も稼働実績に含めるため、この定数は使わない。
+ * computeBoothUtilization は完了作業も稼働実績に含めるため、この定数は使わない
+ * （no_show だけを別途除外する。下記コメント参照）。
+ *
+ * boothSignals.ts でも同じ判定が必要なため export する（重複定義を避ける）。
  */
-const NON_OCCUPYING = new Set(["cancelled", "completed", "no_show"]);
+export const NON_OCCUPYING = new Set(["cancelled", "completed", "no_show"]);
+
+/**
+ * 稼働率計算から除外するステータス。
+ * NON_OCCUPYING と違い completed は含めない — 完了作業は実際にブースを
+ * 使った実績なので稼働率にはカウントする。no_show は実際には来店せず
+ * ブースを使っていないので除外する（cancelled は toEvents 側で除外済み）。
+ */
+const NOT_ACTUAL_WORK = new Set(["no_show"]);
 
 // ── 入力型 ──
 
@@ -124,6 +135,9 @@ function toEvents(
  *
  * BoothsClient.tsx の maxConcurrent() と同じスイープラインアルゴリズムだが、
  * サーバー側で呼べる純関数として切り出したもの。
+ *
+ * 注意: 他の公開関数（computeBoothUtilization 等）と異なり booth 引数を取らない —
+ * reservations は呼び出し側が単一ブース分に絞り込み済みであること。
  */
 export function peakConcurrent(
   reservations: readonly BoothReservation[],
@@ -152,7 +166,8 @@ export function computeBoothUtilization(
   shiftStart = SHIFT_START,
   shiftEnd = SHIFT_END,
 ): BoothUtilization {
-  const boothRes = reservations.filter((r) => r.boothId === booth.id);
+  // no_show は実際にはブースを使っていないので稼働率から除外（completed は含める）
+  const boothRes = reservations.filter((r) => r.boothId === booth.id && !NOT_ACTUAL_WORK.has(r.status));
   const { events, allDayIds } = toEvents(boothRes, shiftStart, shiftEnd);
 
   const totalMinutes = (shiftEnd - shiftStart) * 60;
@@ -270,6 +285,15 @@ export function detectCapacityConflicts(
  * nowHours 時点で進行中（in_progress）の予約の終了時刻を返す。
  * 終了時刻がない場合は estimatedMinutes から推定。
  * 空いていれば null。
+ *
+ * 注意: peakConcurrent 同様、reservations は呼び出し側が単一ブース分に
+ * 絞り込み済みであること（booth 引数を取らない）。
+ *
+ * ponytail: in_progress だが endTime が既に過ぎており estimatedMinutes も
+ * ない予約は、latestEnd に反映されない（結果 null → 呼び出し側が「空き」と
+ * 誤読しうる）。実際は超過作業中で占有継続の可能性が高い。IMP-044 でこの
+ * 関数を配線する際、正しいフォールバック（例: nowHours 自体を終了見込みとする）
+ * を決めること。
  */
 export function predictBoothFreeAt(reservations: readonly BoothReservation[], nowHours: number): number | null {
   let latestEnd: number | null = null;
@@ -309,20 +333,24 @@ export function findAvailableBooths(
     .map((booth) => {
       const boothRes = allReservations.filter((r) => r.boothId === booth.id && !NON_OCCUPYING.has(r.status));
 
-      // 予約時間帯を収集してソート
+      // 予約時間帯を収集してソート（toEvents と同じ判定: 逆転・片方欠損はデータ不備として無視）
       const occupied: Array<{ start: number; end: number }> = [];
       for (const r of boothRes) {
         const s = parseTimeToHours(r.startTime);
         const e = parseTimeToHours(r.endTime);
-        if (s != null && e != null && e > s) {
-          occupied.push({
-            start: Math.max(shiftStart, s),
-            end: Math.min(shiftEnd, e),
-          });
-        } else {
+        if (s != null && e != null) {
+          if (e > s) {
+            occupied.push({
+              start: Math.max(shiftStart, s),
+              end: Math.min(shiftEnd, e),
+            });
+          }
+          // e <= s は逆転データ不備 → 無視
+        } else if (s == null && e == null) {
           // 時間未設定 → 終日
           occupied.push({ start: shiftStart, end: shiftEnd });
         }
+        // 片方だけ設定 → データ不備、無視
       }
       occupied.sort((a, b) => a.start - b.start);
 
@@ -380,7 +408,7 @@ function mergeIntervals(intervals: Array<{ start: number; end: number }>): Array
   return result;
 }
 
-/** 指定時刻の同時予約数を返す。 */
+/** 指定時刻の同時予約数を返す（toEvents と同じ判定: 逆転・片方欠損は無視）。 */
 function countConcurrentAt(
   reservations: readonly BoothReservation[],
   atHours: number,
@@ -393,13 +421,15 @@ function countConcurrentAt(
     const s = parseTimeToHours(r.startTime);
     const e = parseTimeToHours(r.endTime);
     if (s != null && e != null) {
+      if (e <= s) continue; // 逆転データ不備 → 無視
       const cs = Math.max(shiftStart, s);
       const ce = Math.min(shiftEnd, e);
       if (cs <= atHours && atHours < ce) count++;
-    } else {
+    } else if (s == null && e == null) {
       // 時間未設定 → 終日
       count++;
     }
+    // 片方だけ設定 → データ不備、無視
   }
   return count;
 }

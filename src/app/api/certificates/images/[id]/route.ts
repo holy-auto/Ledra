@@ -33,14 +33,9 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
 
     if (!imageRow) return apiNotFound("画像が見つかりません。");
 
-    // Delete from storage first (non-fatal if storage delete fails — DB row removal is canonical)
-    const { error: storageError } = await admin.storage.from(CERTIFICATE_IMAGE_BUCKET).remove([imageRow.storage_path]);
-
-    if (storageError) {
-      console.error("[image delete] storage remove error", storageError);
-    }
-
-    // Delete DB row
+    // Delete DB row first (guarded by certificate_images_guard trigger — must
+    // run before the storage removal, otherwise a blocked delete would have
+    // already destroyed the actual photo bytes with no way to recover them).
     const { error: dbError } = await admin
       .from("certificate_images")
       .delete()
@@ -48,15 +43,24 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
       .eq("tenant_id", caller.tenantId);
 
     if (dbError) {
-      // ponytail: certificate_images_guard trigger raises P0001 when cert is active/void
+      // ponytail: certificate_images_guard trigger raises P0001 when cert is not draft
       if (dbError.code === "P0001" && dbError.message?.includes("certificate_images")) {
         return Response.json(
-          { error: "発行済みまたは取消済みの証明書に紐づく写真は削除できません。" },
+          { error: "発行済み・取消済み・期限切れの証明書に紐づく写真は削除できません。" },
           { status: 409 },
         );
       }
       console.error("[image delete] db delete error", dbError);
       return apiInternalError(dbError, "image delete");
+    }
+
+    // DB row removal is canonical; the storage object is now safe to delete
+    // (non-fatal if it fails — an orphaned file is a minor leak, not a
+    // dangling reference).
+    const { error: storageError } = await admin.storage.from(CERTIFICATE_IMAGE_BUCKET).remove([imageRow.storage_path]);
+
+    if (storageError) {
+      console.error("[image delete] storage remove error", storageError);
     }
 
     // 画像削除で image_sha256_set が変わるため証明書レコードの新しい digest を anchor

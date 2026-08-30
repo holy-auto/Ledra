@@ -71,20 +71,23 @@ export type PublicVehicleIdentity = {
 /**
  * Fields that constitute customer PII in the vehicles table.
  * These must NEVER appear in public passport or API responses.
+ * (`customer_name`/`customer_email`/`customer_phone_masked` were dropped from
+ * this table in migration 20260321000002 — customer contact data now lives
+ * only in the `customers` table.)
  */
-export const VEHICLE_TABLE_PII_COLUMNS = [
-  "customer_name",
-  "customer_email",
-  "customer_phone_masked",
-  "customer_id",
-  "notes",
-] as const;
+export const VEHICLE_TABLE_PII_COLUMNS = ["customer_id", "notes", "plate_display"] as const;
 
 /**
- * Fields that constitute customer PII in the vehicle_passports table.
- * Exposed only to authenticated admin views, never to public surfaces.
+ * Fields that constitute customer PII in the vehicle_passports /
+ * passport_ownership_transfers tables. Exposed only to authenticated admin
+ * views, never to public surfaces.
  */
-export const PASSPORT_TABLE_PII_COLUMNS = ["current_owner_email", "current_owner_name"] as const;
+export const PASSPORT_TABLE_PII_COLUMNS = [
+  "current_owner_email",
+  "current_owner_name",
+  "from_owner_email",
+  "from_owner_name",
+] as const;
 
 /**
  * Compile-time assertion: ensures a type's keys don't include PII fields.

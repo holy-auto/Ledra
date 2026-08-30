@@ -11,10 +11,15 @@ import { UNRESOLVED_CONCERN_STATUSES } from "./types";
 /**
  * 指定ジョブまたは証明書に未解決の顧客懸念があるか判定。
  *
- * @returns 未解決の懸念がある場合 true
+ * ゲート判定なので fail-closed: クエリがエラーになった場合は「不明」を
+ * 「ブロックすべき」として扱う（true を返す）— src/lib/supabase/admin.ts の
+ * tenant_id 必須フィルタと同じ理由で、判定不能を「ブロックなし」に倒さない。
+ *
+ * @returns 未解決の懸念がある場合、またはクエリ失敗時に true
  */
 export async function hasUnresolvedConcerns(
   supabase: SupabaseClient,
+  tenantId: string,
   opts: { jobId?: string; certificateId?: string },
 ): Promise<boolean> {
   if (!opts.jobId && !opts.certificateId) return false;
@@ -25,11 +30,13 @@ export async function hasUnresolvedConcerns(
   if (opts.jobId) orParts.push(`job_id.eq.${opts.jobId}`);
   if (opts.certificateId) orParts.push(`certificate_id.eq.${opts.certificateId}`);
 
-  const { count } = await supabase
+  const { count, error } = await supabase
     .from("customer_concerns")
     .select("id", { count: "exact", head: true })
+    .eq("tenant_id", tenantId)
     .in("status", [...UNRESOLVED_CONCERN_STATUSES])
     .or(orParts.join(","));
 
+  if (error) return true;
   return (count ?? 0) > 0;
 }

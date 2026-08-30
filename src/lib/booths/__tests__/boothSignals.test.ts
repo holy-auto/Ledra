@@ -86,6 +86,17 @@ describe("deriveBoothSignals", () => {
     expect(overloaded!.priority).toBe("med");
   });
 
+  it("no_show の予約は稼働率に含まれず booth_overloaded を誤発火させない", () => {
+    // no_show(10h)のみ。稼働率計算から除外されれば utilizationPct=0 のまま
+    const signals = deriveBoothSignals(
+      mkInput({
+        reservations: [mkRes({ id: "r1", boothId: "b1", startTime: "08:00", endTime: "18:00", status: "no_show" })],
+        utilizationThreshold: 90,
+      }),
+    );
+    expect(signals.find((s) => s.kind === "booth_overloaded")).toBeUndefined();
+  });
+
   it("完了した予約 + 待機中の未割当予約 → booth_freed シグナル", () => {
     const signals = deriveBoothSignals(
       mkInput({

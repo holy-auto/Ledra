@@ -83,6 +83,8 @@ export function checkColorPair(
 ): { ratio: number; passes: boolean } {
   const fg = parseHexColor(fgHex);
   const bg = parseHexColor(bgHex);
-  const ratio = Math.round(contrastRatio(fg, bg) * 100) / 100;
-  return { ratio, passes: meetsWcagAA(ratio, context) };
+  const rawRatio = contrastRatio(fg, bg);
+  // 判定は丸め前の値で行う。表示用に丸めた値で判定すると、
+  // 例えば真の比率 4.4986:1（AA 未達）が 4.5 に丸まって誤って合格になる。
+  return { ratio: Math.round(rawRatio * 100) / 100, passes: meetsWcagAA(rawRatio, context) };
 }
