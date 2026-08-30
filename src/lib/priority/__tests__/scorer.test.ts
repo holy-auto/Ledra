@@ -1,12 +1,5 @@
 import { describe, it, expect } from "vitest";
-import {
-  scoreTile,
-  scoreJobSuggestion,
-  scoreCustomerAction,
-  scoreBoothSignal,
-  scoreAndRank,
-  type ScoredAction,
-} from "../scorer";
+import { scoreTile, scoreJobSuggestion, scoreCustomerAction, scoreBoothSignal, scoreAndRank } from "../scorer";
 import type { TaskTile } from "@/lib/admin/todayTasks";
 import type { JobNextActionSuggestion } from "@/lib/ai/jobNextAction";
 import type { NextAction } from "@/lib/customers/signals";
