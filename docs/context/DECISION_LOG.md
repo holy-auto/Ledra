@@ -4,6 +4,18 @@
 > （新しい順）。実装の詳細は RELEASE_LOG.md、迷っている段階のものは
 > OPEN_QUESTIONS.md に書く。
 
+## 2026-08-30 IMP-025（#940）を main へ取り込み。PII シールドの穴3件を `/code-review` で発見・修正、resurrection バグを5度目の再削除
+
+1. 日付: 2026-08-30
+2. 起きたこと: IMP-025（#940, branch impl/IMP-025-vehicle-passport）を main へ取り込む際、(a) IMP-024 と同じ squash 履歴の断絶で `src/lib/sync/`・`WorkScopeProvider.tsx` が5度目の復活（IMP-025 は IMP-024 の pre-fix コミットから分岐していたため、IMP-024 の再削除より前の状態を引き継いでいた）、(b) `/code-review` で本 PR 自身の PII シールド実装（`piiFields.ts`/`customerRelation.ts`）に3件の穴を発見。
+3. 以前の考え: PII シールドは「コンパイル時型アサーション + テスト18件」で体系的に検証済みという認識だった。
+4. 違和感・問題: (i) `PIIFieldOverlap` はトップレベルの `keyof` しか見ないため、`PassportVerifyResponse` の入れ子オブジェクト（`vehicle`/`summary`/`meta_anchor`/`certificates[]`）内に将来 PII が追加されても検知できない。(ii) `PublicTransferView` のチェックだけ共有レジストリを使わず4件のリテラル文字列をハードコードしており、`current_owner_email`/`current_owner_name` の重複を見逃す設計になっていた。(iii) `VEHICLE_TABLE_PII_COLUMNS` に列挙された `customer_name`/`customer_email`/`customer_phone_masked` はマイグレーション `20260321000002` で `vehicles` テーブルから既に DROP 済みで実在せず、逆に実在する `plate_display`（ナンバープレート）が未登録だった。
+5. 決めたこと: (a) resurrection ファイル5件を再度削除（IMP-024 と同じ mv+`git add -A` 手順）。(b) `piiFields.ts` に `PassportVerifyResponse` の入れ子形状ごとの個別チェックを追加（ponytail: 汎用的な再帰型ウォーカーではなく、現存する入れ子形状を個別に列挙——理由は判断理由参照）。(c) `PublicTransferView` のチェックを共有レジストリ (`PIIFieldOverlap`) ベースに統一し、`from_owner_email`/`from_owner_name` を `PASSPORT_TABLE_PII_COLUMNS` に登録。(d) `VEHICLE_TABLE_PII_COLUMNS` から廃止済み3列を削除し `plate_display` を追加、`piiShield.test.ts` の期待値も更新。(e) OPEN_QUESTIONS.md 未記載だった2件の未解決事項を追記。
+6. 捨てた選択肢: (a) 汎用的な再帰型 PII ウォーカー（`type DeepPIIOverlap<T> = ...`）の実装 — 配列・union・optional・循環参照等のエッジケースを抱え込むリスクが、現時点で存在する4つの入れ子形状を個別列挙するコストを上回る。将来入れ子が増えたら再検討（ponytail コメントに明記）。(b) `check-resurrected-files.sh` 自体の改修 — IMP-024 の同種インシデントで既に「別タスクで検討」と決めており、本 PR のスコープでも変えない。
+7. 判断理由: PII シールドはセキュリティ上重要なガードであり、`/code-review` の指摘は「このモジュール自身が主張する保証（"catches regressions"）を実際には満たしていない」という核心的な指摘だったため、後回しにせず本 PR 内で修正した。resurrection 再削除は IMP-024 と全く同じ根本原因（fork 元が pre-fix コミット）であり、対応も同一手順を踏襲。
+8. まだ答えが出ていないこと: 残り約16本のスタック PR のうち、IMP-024 の pre-fix コミットより後に fork されたものは無い（全て IMP-023 以前から分岐）ため、この特定の resurrection パターン（sync/・WorkScopeProvider）は今後も毎回発生する見込み——マージ手順に「resurrection ファイルの手動確認」を毎回組み込む運用は継続するが、恒久的な自動検出は未解決のまま。
+9. 公開区分: 公開可（マージ手順とセキュリティレビューの技術的な経緯。金額・テナント名・接続情報は含まない）
+
 ## 2026-08-29 IMP-024（#939）を main へ取り込み。squash 履歴の断絶で4度目の復活をしていた src/lib/sync/・WorkScopeProvider.tsx を再削除
 
 1. 日付: 2026-08-29
@@ -221,6 +233,18 @@
 7. 判断理由: 「現場を知らずに書き足さない」の裏返しで、ここでは「現場を知らずに稼働中の挙動を狭めない」。staff/viewer のデフォルトを self にすべきかどうかは製品判断であり、この環境からは判断できない。
 8. まだ答えが出ていないこと: staff/viewer のダッシュボード初期表示は本当に self（自分の分だけ）にすべきか、それとも現状維持（tenant-wide）のままでよいか。代表判断待ち。
 9. 公開区分: 公開可（実装の技術的な経緯であり、金額・テナント名・接続情報は含まない）
+
+## 2026-08-20 IMP-025 車両顧客関係モデルの実装範囲判断
+
+1. 日付: 2026-08-20
+2. 起きたこと: IMP-025（§9 車両パスポート基盤）の実装にあたり、ADR-0006 が「関係モデルの本実装は IMP-025」と指定していたが、車両パスポートの既存インフラ（DB・公開ページ・所有権移転・API・メタアンカー・ペイウォール・収益分配）が既に非常に充実しており、残ギャップは (a) PII遮断の体系的検証と (b) 顧客関係モデルの2点のみだった。
+3. 以前の考え: ADR-0006（IMP-001 セッション起案）は `vehicle_customer_relationships` テーブルを IMP-025 で新設し、`vehicles.customer_id` 直付けを関係エンティティに移行することを想定していた。
+4. 違和感・問題: `vehicles.customer_id` FK を関係テーブルに移行すると、結合クエリ数十箇所（車両一覧・詳細・編集・証明書作成・請求書・CSV インポート等）に波及する大規模変更になる。しかし現時点で `customer_id` 直付けによる実害（前所有者 PII 漏洩等）は発生していない — パスポート公開サーフェスは既に型レベルで PII を排除しており、テナント内の車両管理では直付けで十分。
+5. 決めたこと: IMP-025 では (a) PII遮断体系検証（コンパイル時型アサーション＋テスト18件）と (b) 関係型モデルの型定義（`customerRelation.ts` — 型のみ、DB変更なし）を実装。DB マイグレーション（`vehicle_customer_relationships` テーブル化とレガシー PII 列の DROP）は IMP-050（プライバシー強化）に委譲。
+6. 捨てた選択肢: (a) IMP-025 で DB マイグレーション+全クエリ移行 — 波及範囲が大きすぎ、実害が発生していない問題への過剰投資。ponytail 原則（shortest working diff）に反する。(b) 何もしない — ADR-0006 が明示的に IMP-025 を指名しており、少なくとも型レベルの契約と PII 検証は必要。
+7. 判断理由: ponytail 原則「Do you actually need X, or does Y cover it?」を適用。現在の `customer_id` + パスポート所有権モデルで実務上の問題は発生しておらず、型定義＋PII検証で ADR-0006 の意図（関係として表現、PII 非露出の保証）を最小差分で充足できる。IMP-011（`translated.ts` — 型のみ、DB変更なし）と同じパターン。
+8. まだ答えが出ていないこと: `vehicles.customer_name/customer_email/customer_phone_masked` のレガシー列を DROP するタイミング（IMP-050 で判断）。`vehicle_customer_relationships` テーブル新設の具体的トリガー条件（同一テナント内での所有者変更追跡が必要になった時点）。
+9. 公開区分: 公開可
 
 ## 2026-08-20 IMP-024 音声メモのオフライン検知と多言語音声認識のスコープ判断
 
