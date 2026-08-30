@@ -1033,7 +1033,6 @@ export default function CertNewFormWrapper({
                   const el = formRef.current?.querySelector<HTMLTextAreaElement>("textarea[name='remarks']");
                   if (el) {
                     el.value = el.value.trim() ? `${el.value.trim()}\n${note}` : note;
-                    el.dispatchEvent(new Event("input", { bubbles: true }));
                   }
                 }}
               />

@@ -383,6 +383,10 @@ Sentry · Resend (+ SendGrid fallback) · Anthropic (Opus 4.8 / Sonnet 4.6 / Hai
   `navigator.onLine` チェック、明示的エラー表示。(2) `speechLang` prop + `LOCALE_SPEECH_LANG`
   マッピング — Web Speech API の言語をハードコード ja-JP から呼び出し側指定に。
   (3) 証明書備考欄に VoiceMemoPanel(note variant)接続。モバイル音声は未実装(設計選択未解決)。
+  main 取り込み時の `/code-review` で、squash 履歴の断絶により `src/lib/sync/` と
+  `WorkScopeProvider.tsx`（過去に4度目の復活・いずれも代表判断/コードレビューで削除済み）
+  の再削除、および1画面に2つになった VoiceMemoPanel の同時録音競合をモジュールスコープの
+  排他ロックで修正。
 - **IMP-023（§7 JOB_EVIDENCE — 証跡凍結ガード・必須ショット進捗）完了**:
   (1) `certificate_images_guard` DB トリガーで発行済み/取消済み/**期限切れ**証明書の
   写真行 DELETE を DB レベルでブロック（draft のみ制限なし）。証跡列 11 列
