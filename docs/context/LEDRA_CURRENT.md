@@ -384,7 +384,7 @@ Sentry · Resend (+ SendGrid fallback) · Anthropic (Opus 4.8 / Sonnet 4.6 / Hai
   登録）、4段階可視性モデル（owner_only→public、ViewerContext→有効レベル解決。owner_only は
   tenant_internal 以上のネスト階層から独立した軸だが、本人が自分の pii を見るケースは未解決
   ——OPEN_QUESTIONS.md 参照）、レンディションマスキング（ADR-0003 一般化、4戦略、定義済みルール
-  3セット）、エクスポート監査イベント（4スコープ統一フォーマット、頻度異常検出）。テスト76件。
+  3セット）、エクスポート監査イベント（4スコープ統一フォーマット、頻度異常検出）。テスト79件。
   IO なし。API/UI/エクスポートルートへの統合は未着手（呼び出し元ゼロ、下流タスク）。
 - **IMP-046（§21 ANALYTICS_STORE — 運用KPI・キャパシティ分析）完了**:
   v2.0 §21 の運用指標セットとキャパシティ可視化を純関数計算器で実装。

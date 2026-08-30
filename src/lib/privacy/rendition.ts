@@ -81,8 +81,11 @@ export function applyMask(
       // されたかのように見えて実は生の値の一部が露出する（Codex レビュー
       // 指摘）。16進数文字列（ハッシュ値の見た目）であることを検証し、
       // そうでなければ完全 redact にフォールバックする。
+      // 桁数は32文字（MD5相当）以上を要求する——8文字だと純粋な数字の
+      // 生値（電話番号・クレジットカード番号等、0-9 は16進数字の部分集合）
+      // まで「ハッシュ済み」と誤判定してしまう（/code-review 指摘）。
       const str = String(value);
-      const looksPreHashed = /^[0-9a-f]+$/i.test(str) && str.length >= 8;
+      const looksPreHashed = /^[0-9a-f]+$/i.test(str) && str.length >= 32;
       return looksPreHashed ? `sha256:${str.slice(0, 8)}` : "***";
     }
   }

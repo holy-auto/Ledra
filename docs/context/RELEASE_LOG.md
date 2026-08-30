@@ -4,6 +4,11 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-08-30 IMP-050（#957）Codex 利用上限到達後、`/code-review`（Claude 自身）で2件を追加修正
+
+- 内容: `applyMask()` の hash 戦略の16進数チェックが、電話番号・クレジットカード番号等の短い純粋数字の生値も「ハッシュ済み」と誤判定していたのを、桁数下限を32文字（MD5相当）に引き上げて修正。`LEDRA_CURRENT.md`（76件）/`requirement-trace.md`（67件）のテスト件数を実数（79件）に統一。回帰テスト1件追加。
+- 検証: tsc --noEmit clean / vitest run 5133件全通過（500ファイル、privacy 79件含む） / lint 0エラー・1256警告=基準線 / check:schema OK / lint:migrations OK。
+
 ## 2026-08-30 IMP-050（#957）へ5回目（最終）に届いた Codex レビュー3件を修正。以降 Codex は利用上限に到達
 
 - 内容: `docs/context/LEDRA_CURRENT.md` の IMP-050 ステータスを「部分（統合未着手）」に統一（テスト件数76件へ更新）。`isMoreRestrictive()` が owner_only を含む比較でも古い線形階層の意味論のままだったのを、owner_only が絡む比較は常に false を返すよう修正（`canAccess()` の再設計に追随）。`applyMask()` の hash 戦略が生の値（メール等）を "sha256:" ラベル付きで一部露出しうる不具合を、16進数文字列であることを検証しそうでなければ完全 redact にフォールバックするよう修正。回帰テスト3件追加。この直後、Codex がコードレビューの利用上限に到達した旨のコメントが届いた。

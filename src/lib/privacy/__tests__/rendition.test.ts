@@ -51,14 +51,20 @@ describe("applyMask", () => {
     expect(applyMask("tanaka@example.com", "truncate", { keepChars: -1 })).toBe("***");
   });
 
-  it("hash → 'sha256:' + 値の先頭8文字（呼び出し側が事前にハッシュ済みの値を渡す前提）", () => {
-    expect(applyMask("deadbeefcafe0123", "hash")).toBe("sha256:deadbeef");
+  it("hash → 'sha256:' + 値の先頭8文字（呼び出し側が事前にハッシュ済みの値を渡す前提、MD5相当の32文字以上）", () => {
+    const md5Like = "deadbeefcafe0123deadbeefcafe0123"; // 32文字の16進数
+    expect(applyMask(md5Like, "hash")).toBe("sha256:deadbeef");
   });
 
   it("hash に生の値（16進数でない）を渡すと '***' にフォールバックする（Codex レビュー指摘: 生の値を sha256 と偽らない）", () => {
     // メールアドレス等の生の値を誤って渡した場合、先頭8文字を "sha256:" と
     // 偽って一部露出させてはならない。
     expect(applyMask("tanaka@example.com", "hash")).toBe("***");
+  });
+
+  it("hash に短い純粋数字（電話番号・クレジットカード番号等）を渡すと '***' にフォールバックする（/code-review 指摘: 0-9 は16進数字の部分集合のため誤判定しうる）", () => {
+    expect(applyMask("09012345678", "hash")).toBe("***");
+    expect(applyMask("4111111111111111", "hash")).toBe("***");
   });
 
   it("null 入力 → null（全戦略共通）", () => {
