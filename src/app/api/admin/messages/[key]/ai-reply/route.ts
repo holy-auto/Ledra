@@ -27,6 +27,7 @@ import { canUseFeature } from "@/lib/billing/planFeatures";
 import { loadAiAutomationSettings } from "@/lib/ai/automation/policy";
 import { startAiRouteUsage } from "@/lib/ai/recordRouteUsage";
 import { generateReplyDraft, type ReplyDraftTurn } from "@/lib/ai/replyDraft";
+import { type KnowledgeEntry, KNOWLEDGE_LIMIT, SHARED_KNOWLEDGE_LIMIT } from "@/lib/ai/knowledgeReply";
 import { fastModelForPlanTier } from "@/lib/ai/client";
 import { parseThreadKey } from "@/lib/messages/threadKey";
 
@@ -126,14 +127,47 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ key: strin
       return apiOk({ ai_disabled: false, draft: null, reason: "no_messages" });
     }
 
-    // 店舗名 (トーン調整用)。
-    const { data: tenant } = await admin.from("tenants").select("name").eq("id", tenantId).maybeSingle();
+    // 店舗名 (トーン調整用) / 店舗ナレッジ (回答根拠) / お客様の登録車両 (文脈) を並列取得。
+    // ナレッジは LINE 自動返信と同じソース (enabled のみ)。人が下書きを編集して送るため、
+    // 自動返信より緩めに文脈へ載せてよい。
+    const [tenantRes, tenantKnowledgeRes, sharedKnowledgeRes, vehicleRes] = await Promise.all([
+      admin.from("tenants").select("name").eq("id", tenantId).maybeSingle(),
+      admin
+        .from("tenant_line_knowledge")
+        .select("title, content")
+        .eq("tenant_id", tenantId)
+        .eq("enabled", true)
+        .order("created_at", { ascending: true })
+        .limit(KNOWLEDGE_LIMIT),
+      admin
+        .from("global_line_knowledge")
+        .select("title, content")
+        .eq("enabled", true)
+        .order("created_at", { ascending: true })
+        .limit(SHARED_KNOWLEDGE_LIMIT),
+      customerId
+        ? admin.from("vehicles").select("maker, model").eq("tenant_id", tenantId).eq("customer_id", customerId).limit(2)
+        : Promise.resolve({ data: [] }),
+    ]);
+
+    const tenantKnowledge = (tenantKnowledgeRes.data as KnowledgeEntry[] | null) ?? [];
+    const sharedKnowledge = (sharedKnowledgeRes.data as KnowledgeEntry[] | null) ?? [];
+    // 登録車両は「1台に確定できるとき」だけ文脈に添える。複数台あるとどの車の話か特定できず、
+    // 誤った車種を事実として渡してしまうため、その場合は付けない (スタッフの判断に委ねる)。
+    const vehicles = (vehicleRes.data as Array<{ maker: string | null; model: string | null }> | null) ?? [];
+    const vehicle =
+      vehicles.length === 1
+        ? [vehicles[0].maker, vehicles[0].model].filter((s): s is string => !!s && s.trim().length > 0).join(" ")
+        : "";
 
     const result = await generateReplyDraft(
       {
         turns,
         customerName,
-        shopName: (tenant?.name as string | null) ?? null,
+        shopName: (tenantRes.data?.name as string | null) ?? null,
+        vehicle: vehicle || null,
+        knowledge: tenantKnowledge,
+        sharedKnowledge,
       },
       { model: fastModelForPlanTier(caller.planTier) },
     );

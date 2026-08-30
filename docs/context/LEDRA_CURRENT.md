@@ -378,6 +378,14 @@ Sentry · Resend (+ SendGrid fallback) · Anthropic (Opus 4.8 / Sonnet 4.6 / Hai
   （SegmentedControl/StatusBadge/StatusCard/NextActionCard/ProgressCard/Alert/IconButton/
   BottomSheet）+ Badge dot + Button xl。v2.0 の色トークン値は不採用・既存デザインシステム維持
   （DECISION_LOG 2026-08-19）。
+- **IMP-050（§18 SECURITY_PRIVACY — プライバシー・データ分類・可視性・マスキング基盤）部分（型基盤のみ、統合未着手）**:
+  v2.0 §18 のプライバシー・データ保護基盤を4モジュールの純関数で実装。4段階データ分類
+  （restricted/pii/confidential/public、ISO 27001 A.5.12 準拠、実在するテーブル・カラム名を
+  登録）、4段階可視性モデル（owner_only→public、ViewerContext→有効レベル解決。owner_only は
+  tenant_internal 以上のネスト階層から独立した軸だが、本人が自分の pii を見るケースは未解決
+  ——OPEN_QUESTIONS.md 参照）、レンディションマスキング（ADR-0003 一般化、4戦略、定義済みルール
+  3セット）、エクスポート監査イベント（4スコープ統一フォーマット、頻度異常検出）。テスト79件。
+  IO なし。API/UI/エクスポートルートへの統合は未着手（呼び出し元ゼロ、下流タスク）。
 - **IMP-046（§21 ANALYTICS_STORE — 運用KPI・キャパシティ分析）完了**:
   v2.0 §21 の運用指標セットとキャパシティ可視化を純関数計算器で実装。
   運用KPI 6本（VERIFIED到達率・証跡充足率・レビュー待ち時間・サイクルタイム・SLA遵守率・
