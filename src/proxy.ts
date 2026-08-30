@@ -5,6 +5,7 @@ import { resolveRequestId } from "@/lib/logger";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { buildCspHeader } from "@/lib/security/csp";
 import { UTM_COOKIE, utmToPersist } from "@/lib/marketing/utm";
+import { requireAal2OrResponse, requiresAal2ForRequest } from "@/lib/auth/stepUpGuard";
 
 /**
  * Generate a cryptographically random nonce for CSP script-src.
@@ -180,6 +181,27 @@ export async function proxy(request: NextRequest) {
   if (csrfResponse) {
     csrfResponse.headers.set("x-request-id", requestId);
     return csrfResponse;
+  }
+
+  // One fail-closed step-up boundary for every platform-wide operation,
+  // secret mutation/OAuth callback, and the tenant-wide PII export.
+  if (requiresAal2ForRequest(pathname, request.method)) {
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    if (!url || !key) {
+      return NextResponse.json({ error: "auth_unavailable" }, { status: 503 });
+    }
+    const stepUpClient = createServerClient(url, key, {
+      cookies: {
+        getAll: () => request.cookies.getAll(),
+        setAll: () => {},
+      },
+    });
+    const denied = await requireAal2OrResponse(stepUpClient);
+    if (denied) {
+      denied.headers.set("x-request-id", requestId);
+      return denied;
+    }
   }
 
   // Block unreleased features — redirect to admin dashboard

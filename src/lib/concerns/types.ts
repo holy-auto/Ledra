@@ -10,7 +10,7 @@
 /** 懸念の発生源 — 4 つの確認フローに対応 */
 export type ConcernSource = "delivery_receipt" | "parts_confirmation" | "body_repair_consent" | "body_repair_tracking";
 
-export const CONCERN_SOURCES: readonly ConcernSource[] = [
+export const CONCERN_SOURCES = [
   "delivery_receipt",
   "parts_confirmation",
   "body_repair_consent",
@@ -20,13 +20,7 @@ export const CONCERN_SOURCES: readonly ConcernSource[] = [
 /** 懸念カテゴリ */
 export type ConcernCategory = "work_quality" | "wrong_parts" | "pricing" | "damage" | "other";
 
-export const CONCERN_CATEGORIES: readonly ConcernCategory[] = [
-  "work_quality",
-  "wrong_parts",
-  "pricing",
-  "damage",
-  "other",
-] as const;
+export const CONCERN_CATEGORIES = ["work_quality", "wrong_parts", "pricing", "damage", "other"] as const;
 
 export const CONCERN_CATEGORY_LABELS: Record<ConcernCategory, string> = {
   work_quality: "仕上がりの品質",
@@ -39,7 +33,7 @@ export const CONCERN_CATEGORY_LABELS: Record<ConcernCategory, string> = {
 /** 懸念ステータス */
 export type ConcernStatus = "open" | "investigating" | "resolved" | "dismissed";
 
-export const CONCERN_STATUSES: readonly ConcernStatus[] = ["open", "investigating", "resolved", "dismissed"] as const;
+export const CONCERN_STATUSES = ["open", "investigating", "resolved", "dismissed"] as const;
 
 export const CONCERN_STATUS_LABELS: Record<ConcernStatus, string> = {
   open: "未対応",
@@ -81,9 +75,8 @@ export interface CreateConcernInput {
 }
 
 /**
- * 未解決の懸念があるかチェック — IMP-028 の Certificate Gate で使用。
- *
- * ponytail: DB クエリは呼び出し側が supabase client を渡す。
- * この関数は条件生成だけ行い、実際のクエリは Gate 評価器内で実行される。
+ * 「未解決」とみなすステータス — `src/lib/concerns/blockCheck.ts` の
+ * `hasUnresolvedConcerns()` が実際のクエリでこの一覧を `.in("status", ...)` に使う。
+ * IMP-028 の Certificate Gate はそのヘルパーを呼び出して使う。
  */
-export const UNRESOLVED_CONCERN_STATUSES: readonly ConcernStatus[] = ["open", "investigating"];
+export const UNRESOLVED_CONCERN_STATUSES = ["open", "investigating"] as const;

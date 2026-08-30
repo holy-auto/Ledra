@@ -71,21 +71,13 @@ export function getRepairMethodLabel(code: string): string {
 }
 
 /** 修理種別選択肢 */
-export const REPAIR_TYPE_OPTIONS = Object.entries(REPAIR_TYPE_LABELS).map(
-  ([value, label]) => ({ value, label })
-);
+export const REPAIR_TYPE_OPTIONS = Object.entries(REPAIR_TYPE_LABELS).map(([value, label]) => ({ value, label }));
 
 /** 修理箇所選択肢 */
-export const REPAIR_PANEL_OPTIONS = Object.entries(REPAIR_PANEL_LABELS).map(
-  ([value, label]) => ({ value, label })
-);
+export const REPAIR_PANEL_OPTIONS = Object.entries(REPAIR_PANEL_LABELS).map(([value, label]) => ({ value, label }));
 
 /** 塗装タイプ選択肢 */
-export const PAINT_TYPE_OPTIONS = Object.entries(PAINT_TYPE_LABELS).map(
-  ([value, label]) => ({ value, label })
-);
+export const PAINT_TYPE_OPTIONS = Object.entries(PAINT_TYPE_LABELS).map(([value, label]) => ({ value, label }));
 
 /** 修理方法選択肢 */
-export const REPAIR_METHOD_OPTIONS = Object.entries(REPAIR_METHOD_LABELS).map(
-  ([value, label]) => ({ value, label })
-);
+export const REPAIR_METHOD_OPTIONS = Object.entries(REPAIR_METHOD_LABELS).map(([value, label]) => ({ value, label }));

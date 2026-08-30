@@ -27,18 +27,19 @@ test.describe("正常ワークフロー — 予約→証明書発行", () => {
     await loginAsAdmin(page, creds!.email, creds!.password);
     await page.goto("/admin/reservations");
     await expect(page.locator("body")).not.toContainText("500");
-    await expect(page.locator("table, [role='table'], [data-testid='reservation-list']")).toBeVisible();
+    // 予約一覧は viewMode に関わらずページヘッダーが必ず表示される
+    // （実装はテーブルではなく日付グループ化されたカード表示）
+    await expect(page.getByRole("heading", { name: "予約管理" })).toBeVisible();
   });
 
   test("作業詳細画面が開ける", async ({ page }) => {
     await loginAsAdmin(page, creds!.email, creds!.password);
     await page.goto("/admin/reservations");
-    // 最初の予約行をクリック
-    const firstRow = page.locator("table tbody tr, [data-testid='reservation-row']").first();
-    if (await firstRow.isVisible()) {
-      await firstRow.click();
-      // 作業詳細画面に遷移（URL に /reservations/ を含む）
-      await page.waitForURL(/\/reservations\/|\/jobs\//);
+    // 最初の予約カードのタイトルリンク（/admin/jobs/{id}）をクリック
+    const firstJobLink = page.locator('a[href^="/admin/jobs/"]').first();
+    if (await firstJobLink.isVisible()) {
+      await firstJobLink.click();
+      await page.waitForURL(/\/jobs\//);
     }
   });
 
@@ -51,16 +52,20 @@ test.describe("正常ワークフロー — 予約→証明書発行", () => {
   test("証明書詳細→公開ページリンクが機能する", async ({ page }) => {
     await loginAsAdmin(page, creds!.email, creds!.password);
     const request = await authedRequest(page.context(), page.url());
-    // デモ証明書を取得
-    const res = await request.get("/api/admin/certificates?limit=1");
-    if (res.ok()) {
-      const json = (await res.json()) as { certificates?: Array<{ public_id?: string }> };
-      const cert = json.certificates?.[0];
-      if (cert?.public_id) {
-        // 公開ページにアクセス
-        await page.goto(`/certificates/${cert.public_id}`);
-        await expect(page.locator("body")).not.toContainText("500");
+    try {
+      // デモ証明書を取得
+      const res = await request.get("/api/admin/certificates?limit=1");
+      if (res.ok()) {
+        const json = (await res.json()) as { certificates?: Array<{ public_id?: string }> };
+        const cert = json.certificates?.[0];
+        if (cert?.public_id) {
+          // 公開ページにアクセス
+          await page.goto(`/certificates/${cert.public_id}`);
+          await expect(page.locator("body")).not.toContainText("500");
+        }
       }
+    } finally {
+      await request.dispose();
     }
   });
 
@@ -68,9 +73,10 @@ test.describe("正常ワークフロー — 予約→証明書発行", () => {
     await loginAsAdmin(page, creds!.email, creds!.password);
     await page.goto("/admin/vehicles");
     await expect(page.locator("body")).not.toContainText("500");
-    const firstRow = page.locator("table tbody tr, [data-testid='vehicle-row']").first();
-    if (await firstRow.isVisible()) {
-      await firstRow.click();
+    // 行(<tr>)自体はクリック不可。行内の「詳細」リンクをクリックする。
+    const firstDetailLink = page.locator('table tbody tr a[href^="/admin/vehicles/"]').first();
+    if (await firstDetailLink.isVisible()) {
+      await firstDetailLink.click();
       await page.waitForURL(/\/vehicles\//);
     }
   });

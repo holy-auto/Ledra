@@ -2,8 +2,8 @@
  * 正準ドメイン状態語彙(IMP-001)。
  *
  * 出典: Ledra UI/UX & Development Specification v2.0 §19 / Appendix A。
- * 7軸(Job / Step / Severity / Certificate / Payment / Sync / PartInstallation)は
- * 独立した関心事であり、1つの status カラムに混ぜない。新しいステータス文字列・遷移を
+ * 8軸(Job / Step / Severity / Certificate / Payment / Sync / PartInstallation /
+ * DocumentCorrection)は独立した関心事であり、1つの status カラムに混ぜない。新しいステータス文字列・遷移を
  * 追加する場合は、必ず本モジュールと __tests__ を先に更新すること(docs/adr/0002 参照)。
  *
  * 注意: これは v2.0 語彙の正準定義であり、稼働中の実装語彙
@@ -100,32 +100,13 @@ export const isSyncState = makeGuard(SYNC_STATES);
  * 状態機械: DRAFT → INSTALLED → CUSTOMER_VERIFIED（完全凍結）。
  * DISPUTED / VOIDED は別枝。CUSTOMER_VERIFIED 後の唯一の遷移は → VOIDED（理由必須）。
  * DB 実装値は小文字(draft/installed/...)。正準語彙との対応は IMP-015 で判断する。
+ *
+ * 遷移表は `PART_INSTALLATION_TRANSITIONS`（他 6 軸と同じく ./transitions に定義）。
+ * 検証は `isValidTransition(PART_INSTALLATION_TRANSITIONS, from, to)` を使う。
  */
 export const PART_INSTALLATION_STATES = ["DRAFT", "INSTALLED", "CUSTOMER_VERIFIED", "DISPUTED", "VOIDED"] as const;
 export type PartInstallationState = (typeof PART_INSTALLATION_STATES)[number];
 export const isPartInstallationState = makeGuard(PART_INSTALLATION_STATES);
-
-/**
- * 部品装着の正準遷移表。v2.0 §8 + DB 凍結ガード(part_installations_guard)準拠。
- *
- * key = 遷移元、value = 遷移先の配列。定義にない遷移は不正。
- * VOIDED は終端状態（遷移先なし）。
- */
-export const PART_INSTALLATION_TRANSITIONS: Readonly<
-  Partial<Record<PartInstallationState, readonly PartInstallationState[]>>
-> = {
-  DRAFT: ["INSTALLED"],
-  INSTALLED: ["CUSTOMER_VERIFIED", "DISPUTED", "VOIDED"],
-  CUSTOMER_VERIFIED: ["VOIDED"],
-  DISPUTED: ["CUSTOMER_VERIFIED", "VOIDED"],
-  // VOIDED: 終端 — 遷移先なし
-} as const;
-
-/** 遷移が正準遷移表に存在するか判定する。 */
-export function isValidPartInstallationTransition(from: PartInstallationState, to: PartInstallationState): boolean {
-  const targets = PART_INSTALLATION_TRANSITIONS[from];
-  return targets != null && (targets as readonly string[]).includes(to);
-}
 
 /**
  * 帳票訂正リクエストの状態。ADR-0004 準拠（IMP-043）。
@@ -133,24 +114,10 @@ export function isValidPartInstallationTransition(from: PartInstallationState, t
  * pending → approved / rejected → applied の一方向フロー。
  * 確定済み帳票（sent/accepted/overdue）の修正に使用。
  * document_corrections テーブルの status 列に格納する想定。
+ *
+ * 遷移表は `DOCUMENT_CORRECTION_TRANSITIONS`（他 7 軸と同じく ./transitions に定義）。
+ * 検証は `isValidTransition(DOCUMENT_CORRECTION_TRANSITIONS, from, to)` を使う。
  */
 export const DOCUMENT_CORRECTION_STATES = ["PENDING", "APPROVED", "REJECTED", "APPLIED"] as const;
 export type DocumentCorrectionState = (typeof DOCUMENT_CORRECTION_STATES)[number];
 export const isDocumentCorrectionState = makeGuard(DOCUMENT_CORRECTION_STATES);
-
-export const DOCUMENT_CORRECTION_TRANSITIONS: Readonly<
-  Partial<Record<DocumentCorrectionState, readonly DocumentCorrectionState[]>>
-> = {
-  PENDING: ["APPROVED", "REJECTED"],
-  APPROVED: ["APPLIED"],
-  // REJECTED: 終端 — 再提出は新規リクエスト
-  // APPLIED: 終端 — 適用済み
-} as const;
-
-export function isValidDocumentCorrectionTransition(
-  from: DocumentCorrectionState,
-  to: DocumentCorrectionState,
-): boolean {
-  const targets = DOCUMENT_CORRECTION_TRANSITIONS[from];
-  return targets != null && (targets as readonly string[]).includes(to);
-}

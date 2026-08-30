@@ -3,6 +3,21 @@ import { sendExpiryReminder, sendFollowUpEmail, sendMaintenanceReminder } from "
 import { sendMaintenanceLineMessage } from "@/lib/line/client";
 import { normalizePlanTier } from "@/lib/billing/planFeatures";
 import { fastModelForPlanTier } from "@/lib/ai/client";
+
+/**
+ * 車両情報は certificates の列ではなく `vehicle_info_json`（{maker, model, year, plate}）
+ * に入っている。色は certificates にも vehicles にも無いので送れない。
+ * 以前は vehicle_maker / vehicle_model / vehicle_color という**実在しない列**を
+ * SELECT していたため、フォローアップ配信のクエリが毎回 400 で落ちていた。
+ */
+function vehicleInfoOf(json: unknown): { vehicleMaker?: string; vehicleModel?: string } {
+  const v = (json ?? {}) as { maker?: unknown; model?: unknown };
+  return {
+    vehicleMaker: typeof v.maker === "string" && v.maker ? v.maker : undefined,
+    vehicleModel: typeof v.model === "string" && v.model ? v.model : undefined,
+  };
+}
+
 import {
   generateFollowUpContent,
   getSeasonalTrigger,
@@ -169,7 +184,7 @@ export async function processExpiryReminders(
   for (const { days, dateStr } of targetDates) {
     const { data: certs } = await supabase
       .from("certificates")
-      .select("id, customer_id, customer_name, service_name, expiry_date")
+      .select("id, customer_id, customer_name, service_type, expiry_date")
       .eq("tenant_id", setting.tenant_id)
       .eq("expiry_date", dateStr)
       .neq("status", "void");
@@ -206,7 +221,7 @@ export async function processExpiryReminders(
         shopName,
         customerEmail: customer.email,
         customerName: customer.name ?? cert.customer_name ?? "お客様",
-        certificateLabel: cert.service_name ?? "施工証明書",
+        certificateLabel: cert.service_type ?? "施工証明書",
         expiryDate: cert.expiry_date,
         daysUntil: days,
       });
@@ -244,9 +259,7 @@ export async function processRegularFollowUps(
 
     const { data: certs } = await supabase
       .from("certificates")
-      .select(
-        "id, customer_id, customer_name, service_name, created_at, warranty_period, vehicle_maker, vehicle_model, vehicle_color",
-      )
+      .select("id, customer_id, customer_name, service_type, created_at, expiry_value, vehicle_info_json")
       .eq("tenant_id", setting.tenant_id)
       .neq("status", "void")
       .gte("created_at", `${dateStr}T00:00:00`)
@@ -292,17 +305,15 @@ export async function processRegularFollowUps(
         customerName: customer.name ?? cert.customer_name ?? "お客様",
         customerEmail: customer.email,
         lineUserId: customer.line_user_id,
-        serviceName: cert.service_name ?? "施工証明書",
+        serviceName: cert.service_type ?? "施工証明書",
         issuedAt: cert.created_at,
-        warrantyPeriod: cert.warranty_period,
+        warrantyPeriod: cert.expiry_value,
         trigger,
         notifType,
         shopName,
         shopPhone: tenant.phone ?? undefined,
         planTier,
-        vehicleMaker: cert.vehicle_maker,
-        vehicleModel: cert.vehicle_model,
-        vehicleColor: cert.vehicle_color,
+        ...vehicleInfoOf(cert.vehicle_info_json),
       });
       if (ok) sent++;
     }
@@ -325,9 +336,7 @@ export async function processPostIssueFollowUps(
   let sent = 0;
   const { data: newCerts } = await supabase
     .from("certificates")
-    .select(
-      "id, customer_id, customer_name, service_name, created_at, warranty_period, vehicle_maker, vehicle_model, vehicle_color",
-    )
+    .select("id, customer_id, customer_name, service_type, created_at, expiry_value, vehicle_info_json")
     .eq("tenant_id", setting.tenant_id)
     .neq("status", "void")
     .gte("created_at", `${todayStr}T00:00:00`)
@@ -372,17 +381,15 @@ export async function processPostIssueFollowUps(
       customerName: customer.name ?? cert.customer_name ?? "お客様",
       customerEmail: customer.email,
       lineUserId: customer.line_user_id,
-      serviceName: cert.service_name ?? "施工証明書",
+      serviceName: cert.service_type ?? "施工証明書",
       issuedAt: cert.created_at,
-      warrantyPeriod: cert.warranty_period,
+      warrantyPeriod: cert.expiry_value,
       trigger: "post_issue",
       notifType: "post_issue",
       shopName,
       shopPhone: tenant.phone ?? undefined,
       planTier,
-      vehicleMaker: cert.vehicle_maker,
-      vehicleModel: cert.vehicle_model,
-      vehicleColor: cert.vehicle_color,
+      ...vehicleInfoOf(cert.vehicle_info_json),
     });
     if (ok) sent++;
   }
@@ -407,9 +414,7 @@ export async function processFirstReminderFollowUps(
 
   const { data: certs } = await supabase
     .from("certificates")
-    .select(
-      "id, customer_id, customer_name, service_name, created_at, warranty_period, vehicle_maker, vehicle_model, vehicle_color",
-    )
+    .select("id, customer_id, customer_name, service_type, created_at, expiry_value, vehicle_info_json")
     .eq("tenant_id", setting.tenant_id)
     .neq("status", "void")
     .gte("created_at", `${dateStr}T00:00:00`)
@@ -456,17 +461,15 @@ export async function processFirstReminderFollowUps(
       customerName: customer.name ?? cert.customer_name ?? "お客様",
       customerEmail: customer.email,
       lineUserId: customer.line_user_id,
-      serviceName: cert.service_name ?? "施工証明書",
+      serviceName: cert.service_type ?? "施工証明書",
       issuedAt: cert.created_at,
-      warrantyPeriod: cert.warranty_period,
+      warrantyPeriod: cert.expiry_value,
       trigger: "first_reminder",
       notifType,
       shopName,
       shopPhone: tenant.phone ?? undefined,
       planTier,
-      vehicleMaker: cert.vehicle_maker,
-      vehicleModel: cert.vehicle_model,
-      vehicleColor: cert.vehicle_color,
+      ...vehicleInfoOf(cert.vehicle_info_json),
     });
     if (ok) sent++;
   }
@@ -488,11 +491,11 @@ export async function processWarrantyEndFollowUps(
   const { data: activeCerts } = await supabase
     .from("certificates")
     .select(
-      "id, customer_id, customer_name, service_name, created_at, warranty_period, warranty_period_end, vehicle_maker, vehicle_model, vehicle_color",
+      "id, customer_id, customer_name, service_type, created_at, expiry_value, warranty_period_end, vehicle_info_json",
     )
     .eq("tenant_id", setting.tenant_id)
     // 保証期間テキスト or 算出済みの保証終了日 のいずれかがあるものを対象にする。
-    .or("warranty_period.not.is.null,warranty_period_end.not.is.null")
+    .or("expiry_value.not.is.null,warranty_period_end.not.is.null")
     .neq("status", "void");
 
   const filtered = (activeCerts ?? []).filter((cert) => {
@@ -501,7 +504,7 @@ export async function processWarrantyEndFollowUps(
     // (年だけでなく月にも対応)。いずれも JST 暦日基準の日数差で比較する (実行時刻に非依存)。
     const daysUntilEnd = cert.warranty_period_end
       ? daysUntilJstDate(cert.warranty_period_end)
-      : getDaysUntilWarrantyEnd(cert.created_at, cert.warranty_period);
+      : getDaysUntilWarrantyEnd(cert.created_at, cert.expiry_value);
     return daysUntilEnd !== null && daysUntilEnd === warrantyEndDays;
   });
 
@@ -543,17 +546,15 @@ export async function processWarrantyEndFollowUps(
       customerName: customer.name ?? cert.customer_name ?? "お客様",
       customerEmail: customer.email,
       lineUserId: customer.line_user_id,
-      serviceName: cert.service_name ?? "施工証明書",
+      serviceName: cert.service_type ?? "施工証明書",
       issuedAt: cert.created_at,
-      warrantyPeriod: cert.warranty_period,
+      warrantyPeriod: cert.expiry_value,
       trigger: "warranty_end",
       notifType,
       shopName,
       shopPhone: tenant.phone ?? undefined,
       planTier,
-      vehicleMaker: cert.vehicle_maker,
-      vehicleModel: cert.vehicle_model,
-      vehicleColor: cert.vehicle_color,
+      ...vehicleInfoOf(cert.vehicle_info_json),
     });
     if (ok) sent++;
   }
@@ -723,7 +724,7 @@ export async function processMaintenanceReminders(
 
     const { data: certs } = await supabase
       .from("certificates")
-      .select("id, customer_id, customer_name, service_name, service_type, vehicle_id, expiry_value, created_at")
+      .select("id, customer_id, customer_name, service_type, vehicle_id, expiry_value, created_at")
       .eq("tenant_id", setting.tenant_id)
       .neq("status", "void")
       .gte("created_at", `${dateStr}T00:00:00`)
@@ -766,13 +767,13 @@ export async function processMaintenanceReminders(
 
     // 車両情報 (AI パーソナライズ用)。失敗してもメインフローは止めない。
     const vehicleIds = [...new Set(eligibleCerts.map((c) => c.vehicle_id).filter(Boolean))] as string[];
-    type VehicleRow = { id: string; maker: string | null; model: string | null; color: string | null };
+    // 色は vehicles にも certificates にも列が無い（以前は color を SELECT していて 400 になっていた）
+    type VehicleRow = { id: string; maker: string | null; model: string | null };
     const vehicleMap = new Map<string, VehicleRow>();
     if (vehicleIds.length) {
-      const { data: vehicles } = (await supabase
-        .from("vehicles")
-        .select("id, maker, model, color")
-        .in("id", vehicleIds)) as { data: VehicleRow[] | null };
+      const { data: vehicles } = (await supabase.from("vehicles").select("id, maker, model").in("id", vehicleIds)) as {
+        data: VehicleRow[] | null;
+      };
       for (const v of vehicles ?? []) vehicleMap.set(v.id, v);
     }
 
@@ -788,7 +789,7 @@ export async function processMaintenanceReminders(
       if (!customer.line_user_id && !customer.email) continue;
 
       const customerName = customer.name ?? cert.customer_name ?? "お客様";
-      const certLabel = cert.service_name ?? "施工証明書";
+      const certLabel = cert.service_type ?? "施工証明書";
 
       // Standard / Pro プランでは AI で文面をパーソナライズ。生成された
       // `lineMessage` は LINE 配信に使う。AI 失敗時はテンプレートにフォールバック。
@@ -807,7 +808,6 @@ export async function processMaintenanceReminders(
             vehicle: {
               maker: vehicle?.maker ?? undefined,
               model: vehicle?.model ?? undefined,
-              color: vehicle?.color ?? undefined,
             },
             shop: { name: shopName, phone: tenant.phone ?? undefined },
             daysElapsed: m * 30,

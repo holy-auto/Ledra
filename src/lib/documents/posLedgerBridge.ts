@@ -100,6 +100,7 @@ function mapProviderToMethod(provider: string): PaymentMethod {
  * - voided 取引は無視（元帳に反映しない）
  * - refunded / partial_refund は refundEntries に分類
  * - completed は entries に分類
+ * - documentId はあるが amount・refundAmount とも 0 以下（データ不備）は unbridgeable に分類
  *
  * 冪等性: providerTransactionId を referenceNo として渡す。
  * 消費側の recordInvoicePaymentBalance が同一 reference_no の重複記帳を防止する。
@@ -149,6 +150,12 @@ export function bridgePosToLedger(transactions: readonly PosTransaction[]): PosB
         referenceNo: `refund-${refNo}`,
         notes: `POS 返金 (${tx.provider})`,
       });
+    }
+
+    // amount・refundAmount とも 0 以下（payments.amount に amount>0 の CHECK 制約はない）
+    // → entries にも refundEntries にも入らず消えてしまうデータ不備。unbridgeable で拾う。
+    if (tx.amount <= 0 && tx.refundAmount <= 0) {
+      unbridgeable.push(tx);
     }
   }
 

@@ -7,6 +7,7 @@ import {
   toClientPayload,
   type StructuredError,
   type DataSafetyLevel,
+  type RecoveryAction,
 } from "../errorContract";
 
 // ── createStructuredError ──
@@ -59,6 +60,22 @@ describe("createStructuredError", () => {
     expect(err.retry.maxAttempts).toBeUndefined();
     expect(err.retry.backoff).toBeUndefined();
   });
+
+  it("context / recovery は参照ではなくコピーされる（呼び出し元の後続変更が波及しない）", () => {
+    const context: Record<string, unknown> = { step: 1 };
+    const recovery: RecoveryAction[] = [{ kind: "retry", label: "再試行" }];
+    const err = createStructuredError({
+      category: "unknown",
+      code: "test",
+      message: "test",
+      context,
+      recovery,
+    });
+    context.step = 2;
+    recovery.push({ kind: "refresh", label: "リフレッシュ" });
+    expect(err.context).toEqual({ step: 1 });
+    expect(err.recovery).toEqual([{ kind: "retry", label: "再試行" }]);
+  });
 });
 
 // ── structuredErrors プリセット ──
@@ -92,6 +109,14 @@ describe("structuredErrors プリセット", () => {
   it("externalService: dataSafety を上書き可能", () => {
     const err = structuredErrors.externalService("supabase", "DB エラー", { dataSafety: "partial" });
     expect(err.dataSafety).toBe("partial");
+  });
+
+  it("externalService: retryAfterSeconds(ユーザー向け表示)と baseDelaySeconds(自動再試行の間隔)は独立している", () => {
+    // retryAfterSeconds だけを指定しても、システムの自動バックオフ間隔(baseDelaySeconds)は
+    // デフォルトの 2 秒のまま変わらない。
+    const err = structuredErrors.externalService("stripe", "エラー", { retryAfterSeconds: 60 });
+    expect(err.retry.baseDelaySeconds).toBe(2);
+    expect(err.recovery.find((r) => r.kind === "retry_after")?.retryAfterSeconds).toBe(60);
   });
 
   it("stateTransition: safe + 遷移情報がコンテキストに含まれる", () => {
@@ -173,6 +198,18 @@ describe("toSentryContext", () => {
     expect(ctx.service).toBe("stripe");
     // recovery_kinds はカンマ区切り
     expect(typeof ctx.recovery_kinds).toBe("string");
+  });
+
+  it("context のキーが固定フィールド名と衝突しても固定値が優先される", () => {
+    const err = createStructuredError({
+      category: "external_service",
+      code: "ext_error",
+      message: "エラー",
+      source: "/api/webhooks/stripe",
+      context: { source: "attacker-controlled-value" },
+    });
+    const ctx = toSentryContext(err);
+    expect(ctx.source).toBe("/api/webhooks/stripe");
   });
 });
 

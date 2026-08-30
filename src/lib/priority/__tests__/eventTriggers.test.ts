@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { PRIORITY_TRIGGERS, isPriorityAffecting, getPriorityTrigger, toPriorityRecalcRequest } from "../eventTriggers";
-import { DOMAIN_EVENT_TYPES, isDomainEventType } from "@/lib/events/catalogue";
+import { isDomainEventType } from "@/lib/events/catalogue";
 import { createDomainEvent } from "@/lib/events/domainEvent";
 
 // ── PRIORITY_TRIGGERS ──

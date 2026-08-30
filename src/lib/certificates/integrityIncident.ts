@@ -11,6 +11,7 @@
  */
 
 import type { CertificateState } from "@/lib/domain/states";
+import { CERTIFICATE_TRANSITIONS, isValidTransition } from "@/lib/domain/transitions";
 
 // ── Incident カテゴリ ──
 
@@ -86,25 +87,27 @@ export type RevokeEligibility = {
 /**
  * 証明書が revoke 可能かを判定する。
  *
- * v2.0 §12.4 ルール:
- * - VERIFIED のみ revoke 可能（draft/ready 段階は削除で対応）
+ * v2.0 §12.4 ルール（正準遷移表 CERTIFICATE_TRANSITIONS が単一定義源）:
+ * - VERIFIED は revoke 可能
+ * - ISSUING / VERIFYING も revoke 可能（代表判断・2026-08-27、
+ *   src/lib/domain/transitions.ts 参照）: 公開前でも重大な問題が起きた
+ *   記録を残す。draft/ready 段階（NOT_READY/READY）は削除で対応。
  * - 既に REVOKED は不可
  * - SUPERSEDED は不可（旧版は既に最新版に置き換え済み）
+ * - PENDING_CORRECTION は不可（訂正完了を待つ）
  *
  * ponytail: void（既存の日常取り下げ）との違いは重大度。
  * revoke は Integrity Incident に紐づく公式無効化で、公開検証ページに
  * 「この証明書は無効化されました」と表示される。
  */
 export function evaluateRevokeEligibility(certificateState: CertificateState): RevokeEligibility {
-  if (certificateState === "VERIFIED") {
+  if (isValidTransition(CERTIFICATE_TRANSITIONS, certificateState, "REVOKED")) {
     return { eligible: true };
   }
 
-  const reasons: Record<string, string> = {
+  const reasons: Partial<Record<CertificateState, string>> = {
     NOT_READY: "発行準備中の証明書は revoke ではなく削除で対応してください。",
     READY: "発行準備中の証明書は revoke ではなく削除で対応してください。",
-    ISSUING: "発行処理中です。完了後に revoke を検討してください。",
-    VERIFYING: "検証中です。完了後に revoke を検討してください。",
     PENDING_CORRECTION: "訂正処理中です。訂正完了後に revoke を検討してください。",
     SUPERSEDED: "この版は既に新しい版に置き換え済みです。最新版で操作してください。",
     REVOKED: "この証明書は既に無効化されています。",
@@ -130,7 +133,7 @@ const INCIDENT_STATUS_TRANSITIONS: Record<IncidentStatus, readonly IncidentStatu
  * Incident の状態遷移が有効かを検証する。
  */
 export function isValidIncidentTransition(from: IncidentStatus, to: IncidentStatus): boolean {
-  return INCIDENT_STATUS_TRANSITIONS[from].includes(to);
+  return isValidTransition(INCIDENT_STATUS_TRANSITIONS, from, to);
 }
 
 // ── 即時 revoke 判定 ──

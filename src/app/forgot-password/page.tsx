@@ -16,7 +16,7 @@ export default function ForgotPasswordPage() {
     setError(null);
 
     const form = new FormData(e.currentTarget);
-    const email = (form.get("email") as string || "").trim();
+    const email = ((form.get("email") as string) || "").trim();
 
     if (!email) {
       setError("メールアドレスを入力してください。");
@@ -54,11 +54,17 @@ export default function ForgotPasswordPage() {
           </div>
           <div className="text-accent">
             <svg className="mx-auto w-12 h-12" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 0 1-2.25 2.25h-15a2.25 2.25 0 0 1-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25m19.5 0v.243a2.25 2.25 0 0 1-1.07 1.916l-7.5 4.615a2.25 2.25 0 0 1-2.36 0L3.32 8.91a2.25 2.25 0 0 1-1.07-1.916V6.75" />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M21.75 6.75v10.5a2.25 2.25 0 0 1-2.25 2.25h-15a2.25 2.25 0 0 1-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25m19.5 0v.243a2.25 2.25 0 0 1-1.07 1.916l-7.5 4.615a2.25 2.25 0 0 1-2.36 0L3.32 8.91a2.25 2.25 0 0 1-1.07-1.916V6.75"
+              />
             </svg>
           </div>
           <h1 className="text-xl font-bold text-primary">メール送信完了</h1>
-          <p className="text-sm text-secondary">パスワードリセット用のリンクをメールで送信しました。メールをご確認ください。</p>
+          <p className="text-sm text-secondary">
+            パスワードリセット用のリンクをメールで送信しました。メールをご確認ください。
+          </p>
           <Link href="/login" className="btn-primary w-full inline-block text-center">
             ログインページに戻る
           </Link>
@@ -89,16 +95,8 @@ export default function ForgotPasswordPage() {
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-xs font-semibold tracking-[0.12em] text-muted mb-1">
-              メールアドレス
-            </label>
-            <input
-              name="email"
-              type="email"
-              placeholder="you@example.com"
-              className="input-field w-full"
-              required
-            />
+            <label className="block text-xs font-semibold tracking-[0.12em] text-muted mb-1">メールアドレス</label>
+            <input name="email" type="email" placeholder="you@example.com" className="input-field w-full" required />
           </div>
 
           <button

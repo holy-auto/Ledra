@@ -7,9 +7,10 @@
  * 純関数。IO なし。
  */
 
-// ── 型定義 ──
+import type { MessageTree } from "./messages";
+import { lookup } from "./messages";
 
-type MessageTree = { [key: string]: string | MessageTree };
+// ── 型定義 ──
 
 export interface MissingTranslation {
   locale: string;
@@ -52,17 +53,6 @@ function flattenKeys(tree: MessageTree, prefix = ""): string[] {
 function extractPlaceholders(template: string): string[] {
   const matches = template.match(/\{(\w+)\}/g);
   return matches ? matches.map((m) => m.slice(1, -1)).sort() : [];
-}
-
-/** ドットパスで MessageTree から値を取得 */
-function lookup(tree: MessageTree, path: string): string | undefined {
-  const parts = path.split(".");
-  let cur: string | MessageTree | undefined = tree;
-  for (const part of parts) {
-    if (typeof cur !== "object" || cur === null) return undefined;
-    cur = cur[part];
-  }
-  return typeof cur === "string" ? cur : undefined;
 }
 
 // ── 翻訳抜け検出 ──
@@ -111,7 +101,9 @@ export function findPlaceholderMismatches(
     for (const key of baseKeys) {
       const baseVal = lookup(baseTree, key);
       const localeVal = lookup(tree, key);
-      if (!baseVal || !localeVal) continue;
+      // undefined（キー自体が無い）のみスキップする。空文字は「翻訳が
+      // 空になっている」実際の不一致なので、プレースホルダ比較にかける。
+      if (baseVal === undefined || localeVal === undefined) continue;
 
       const basePh = extractPlaceholders(baseVal);
       const localePh = extractPlaceholders(localeVal);
@@ -136,19 +128,20 @@ export function findPlaceholderMismatches(
  */
 export function computeTranslationCoverage(messages: Record<string, MessageTree>): TranslationCoverage {
   const locales = Object.keys(messages);
-  const allKeys = new Set(locales.flatMap((l) => flattenKeys(messages[l])));
+  const perLocaleKeys = locales.map((l) => new Set(flattenKeys(messages[l])));
+  const allKeys = new Set(perLocaleKeys.flatMap((s) => [...s]));
   const total = allKeys.size;
 
   const perLocale: TranslationCoverage["perLocale"] = {};
   let sumPercent = 0;
 
-  for (const locale of locales) {
-    const keys = new Set(flattenKeys(messages[locale]));
+  locales.forEach((locale, i) => {
+    const keys = perLocaleKeys[i];
     const translated = [...allKeys].filter((k) => keys.has(k)).length;
     const percent = total > 0 ? Math.round((translated / total) * 10000) / 100 : 100;
     perLocale[locale] = { total, translated, percent };
     sumPercent += percent;
-  }
+  });
 
   return {
     perLocale,

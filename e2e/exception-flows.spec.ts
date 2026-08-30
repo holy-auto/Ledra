@@ -18,50 +18,69 @@ const creds = adminCreds();
 test.describe("例外フロー — API レベル検証", () => {
   test.skip(!creds, "E2E_USER_EMAIL / E2E_USER_PASSWORD が未設定");
 
-  test("予約キャンセル: 不正な予約 ID で 404", async ({ page }) => {
+  test("予約更新: 不正な ID 形式はバリデーションエラー", async ({ page }) => {
     await loginAsAdmin(page, creds!.email, creds!.password);
     const request = await authedRequest(page.context(), page.url());
-    const res = await request.post("/api/admin/reservations/00000000-0000-0000-0000-000000000000/cancel");
-    expect([400, 404, 422]).toContain(res.status());
+    try {
+      // 予約の更新（キャンセル含む）は PUT /api/admin/reservations に
+      // { id, ...更新フィールド } を渡す形。専用の /cancel エンドポイントは無い。
+      const res = await request.put("/api/admin/reservations", {
+        data: { id: "not-a-uuid", status: "cancelled" },
+      });
+      // 通常はスキーマバリデーションで 400。デモテナントのプランが starter 未満だと
+      // billing gate が先に 402 を返す（enforceBilling、reservation_update）。
+      expect([400, 402]).toContain(res.status());
+    } finally {
+      await request.dispose();
+    }
   });
 
-  test("証明書無効化: 認証済みで不正 ID は 404", async ({ page }) => {
+  test("証明書無効化: 不正な public_id は 404", async ({ page }) => {
     await loginAsAdmin(page, creds!.email, creds!.password);
     const request = await authedRequest(page.context(), page.url());
-    const res = await request.post("/api/admin/certificates/void", {
-      data: { certificateId: "00000000-0000-0000-0000-000000000000", reason: "test" },
-    });
-    expect([400, 404, 422]).toContain(res.status());
+    try {
+      // certificateVoidSchema が要求するフィールドは public_id のみ
+      const res = await request.post("/api/admin/certificates/void", {
+        data: { public_id: "nonexistent-public-id-00000000" },
+      });
+      expect(res.status()).toBe(404);
+    } finally {
+      await request.dispose();
+    }
   });
 
-  test("見積承認: 不正な見積 ID でエラー", async ({ page }) => {
+  test("作業ステータス更新: 不正なステータス値はリジェクト", async ({ page }) => {
     await loginAsAdmin(page, creds!.email, creds!.password);
     const request = await authedRequest(page.context(), page.url());
-    const res = await request.post("/api/admin/estimates/00000000-0000-0000-0000-000000000000/approve");
-    expect([400, 404, 422, 405]).toContain(res.status());
+    try {
+      // reservationUpdateSchema の status は enum のため、未知の値は
+      // DB 参照前にスキーマバリデーションで弾かれる（PATCH ではなく PUT、id は body 側）。
+      // billing gate（starter 未満で 402）については上のテストと同様。
+      const res = await request.put("/api/admin/reservations", {
+        data: { id: "00000000-0000-0000-0000-000000000000", status: "INVALID_STATUS" },
+      });
+      expect([400, 402]).toContain(res.status());
+    } finally {
+      await request.dispose();
+    }
   });
 
-  test("作業ステータス更新: 不正な遷移はリジェクト", async ({ page }) => {
+  test("証明書ステータス変更: 不正な public_id は 404（写真ゲート自体は単体テストで検証済み）", async ({
+    page,
+  }) => {
     await loginAsAdmin(page, creds!.email, creds!.password);
     const request = await authedRequest(page.context(), page.url());
-    // 存在しない予約への PATCH
-    const res = await request.patch("/api/admin/reservations/00000000-0000-0000-0000-000000000000", {
-      data: { status: "INVALID_STATUS" },
-    });
-    expect([400, 404, 422]).toContain(res.status());
-  });
-
-  test("写真なし証明書発行: Certificate Gate が拒否する", async ({ page }) => {
-    await loginAsAdmin(page, creds!.email, creds!.password);
-    const request = await authedRequest(page.context(), page.url());
-    // 写真要件を満たさない証明書のステータス変更を試行
-    const res = await request.post("/api/certificates/create", {
-      data: {
-        reservation_id: "00000000-0000-0000-0000-000000000000",
-        force: false,
-      },
-    });
-    expect([400, 404, 422]).toContain(res.status());
+    try {
+      // draft→active の写真必須ゲート本体は
+      // src/app/api/admin/certificates/__tests__/status-photo-gate.test.ts で検証済み。
+      // ここでは E2E としてエンドポイントの存在・認証・not-found ハンドリングを確認する。
+      const res = await request.put("/api/admin/certificates/status", {
+        data: { public_id: "nonexistent-public-id-00000000", status: "active" },
+      });
+      expect(res.status()).toBe(404);
+    } finally {
+      await request.dispose();
+    }
   });
 });
 
