@@ -16,6 +16,18 @@
 8. まだ答えが出ていないこと: 日程/キャンセル選択待ちの再促し（候補の再提示付き）、見積り送付後の OK/NG 待ち（awaiting_quote_ok / awaiting_final_ok）への催促は未実装。停滞判定を updated_at に依存しているが、更新トリガの有無は環境依存の可能性があり、複数回の部分反応がある会話の扱いは今後の検討。
 9. 公開区分: 公開可（機能スコープの設計判断。顧客・機密情報なし）。
 
+## 2026-08-30 IMP-026（#941）を main へ取り込み。check:schema・`/code-review`・CI の Migrations Replay で計11件を発見・対応、resurrection バグを6度目の再削除
+
+1. 日付: 2026-08-30
+2. 起きたこと: IMP-026（#941, branch impl/IMP-026-customer-concern）を main へ取り込む際、(a) IMP-024/025 と同じ根本原因で `src/lib/sync/`・`WorkScopeProvider.tsx` が6度目の復活、(b) マージ後の検証スイートで `npm run check:schema` が失敗——本PR自身の新規コード `src/app/api/customer/concerns/route.ts` が `part_confirmation_signatures` テーブルの `part_installation_id` という**存在しない列**を SELECT していた（実列名は `installation_id`）。加えて本PR自身が新設した `customer_concerns` テーブルが `scripts/schema.snapshot.json` に未登録だった。(c) `/code-review` で本PR自身のコードに7件の指摘。(d) 上記をすべて修正してプッシュした後、CI の `Migrations Replay`（空DBからの全マイグレーション再生）が新規失敗——`20260820010000_customer_concerns.sql` 自身が、存在しない `profiles` テーブル（`resolved_by UUID REFERENCES profiles(id)` および RLS ポリシー2箇所）と、存在しない `update_updated_at()` 関数（正しくは `set_updated_at()`）を参照していた。この2つは check:schema・`/code-review`・tsc・vitest のいずれでも検出できない種類のバグ（純粋な SQL 内の誤参照）で、CI の Migrations Replay が本来の役割どおり検出した。
+3. 以前の考え: PR 本文の「検証」節は「全テスト 4193 件パス、TypeScript・lint クリーン」とのみ記載しており、`check:schema` の実行結果には触れていなかった。
+4. 違和感・問題（`/code-review` 分、優先度順）: (i) `hasUnresolvedConcerns`（IMP-028 Certificate Gate 用のブロック判定）が Supabase のエラーを無視し fail-open していた——クエリ失敗時に「懸念なし」を返し、ゲートが本来ブロックすべき時に通してしまう。この repo の他のゲート系ヘルパー（captureNonce.ts 等）は fail-closed が規約。(ii) 同関数が `src/lib/supabase/admin.ts` の CRITICAL 規約（bypass-RLS クライアントは必ず tenant_id でフィルタ）に反し tenantId を受け取らない。(iii) `resolveSourceContext` の `delivery_receipt`/`body_repair_consent` の2分岐が、いずれも `signature_sessions` を token のみで検索し `purpose` 列（既存コードが `src/app/api/signature/delivery-receipt/verify/[id]/route.ts` 等で明示的に絞り込んでいる列）を見ておらず、他フローのトークンを取り違えて解決しうる。(iv) `customer_concerns` の Slack 通知が `customer_inquiries`(別系統と明言している既存機能)と同じ webhook 環境変数を共用しており、運用上の分離が実現できていない。(v) `z.enum(X as unknown as [string, ...string[]])` という型消去キャストが4箇所にあり、実際には `X` を `readonly T[]` 型注釈なしで `as const` にするだけでタプル型のまま渡せた。(vi) 懸念を resolved/dismissed → open/investigating に戻す(再オープンする)と `resolved_by`/`resolved_at` が古い値のまま残る。(vii) `hasUnresolvedConcerns`（1度リグレッションを起こした OR ロジックを含む）にテストが1件もなかった。
+5. 決めたこと: (a) `part_installation_id` → `installation_id` に修正。(b) `customer_concerns` を DDL から書き起こして `schema.snapshot.json` に追加。(c) `hasUnresolvedConcerns` を fail-closed に変更(エラー時 true)、`tenantId` 必須引数を追加し `.eq("tenant_id", ...)` を必須化。(d) `delivery_receipt`/`body_repair_consent` それぞれに `purpose` フィルタを追加。(e) 専用の `SLACK_CUSTOMER_CONCERN_WEBHOOK_URL` を新設(未設定時は無言でスキップ、誤って一般問い合わせチャンネルに混ざらない)。(f) `CONCERN_SOURCES`/`CONCERN_CATEGORIES`/`CONCERN_STATUSES`/`UNRESOLVED_CONCERN_STATUSES` の型注釈を外しタプル推論に任せ、`as unknown as` キャストを全廃。(g) 再オープン時に `resolved_by`/`resolved_at` を null クリア。(h) `blockCheck.test.ts` を新設(fail-closed・tenant scoping・OR ロジックの7ケース)。(i) resurrection ファイル5件を再度削除。(j) `types.ts` の誤った doc コメント(クエリ実行位置の誤記)を修正。(k) `resolved_by UUID REFERENCES profiles(id)` と RLS ポリシー2箇所を `auth.users(id)` / `public.my_tenant_ids()`（この repo の確立済みパターン、直近では `user_interface_preferences` migration でも使用）に修正。(l) `EXECUTE FUNCTION update_updated_at()` を実在する `set_updated_at()` に修正。(k)(l) はいずれも `npm run check:migrations`（空DBからの再生、CI の Migrations Replay と同じスクリプト）をローカルで実行し「再生 OK（既知の9件を除く。増減なし）」まで確認した。
+6. 捨てた選択肢: 新しいステータス軸（ConcernStatus）を `src/lib/domain/states.ts` の正準6軸に統合すべきという `/code-review` の指摘は**採用しなかった**——ADR-0002/CLAUDE.md の「アドホック状態禁止」規約は v2.0 が定義する Job/Step/Severity/Certificate/Payment/Sync の6軸を対象にしたもので、`states.ts` の実際の中身（この6軸のみ）と、`documents.status`(9帳票種)・`part_installations.status` 等の既存の独立ドメイン状態が同モジュールに存在しない実例で確認済み。顧客懸念のライフサイクルはこの6軸のいずれとも対応しない別概念であり、既存の `DocumentStatus` 等と同じ扱いで問題ない。
+7. 判断理由: fail-open・tenant scoping・token purpose の3件はセキュリティ/ゲートの正しさに直結するため最優先で修正。型消去は些細に見えるが将来のリネームで検出漏れが起きる種類のバグなので合わせて直した。ConcernStatus の指摘は、ルールの文言だけでなく実際のモジュール内容とリポジトリの既存実例まで確認した上で「対象外」と判断——ルールを字面通りに適用する前に一次情報（states.ts の中身、ADR-0002 の背景説明）を確認する自己攻撃を行った。`profiles`/`update_updated_at()` の2件は、CI が緑になるまで「マージ手順は完了していない」という運用（このリポジトリの標準手順）を徹底したことで、他のどの検証手段でも拾えないバグを本番投入前に検出できた——存在しないテーブル・関数への参照は、実際に空DBからマイグレーションを再生しない限り、コードレビューでもコンパイラでも見抜けない種類の欠陥である。
+8. まだ答えが出ていないこと: なし。この件は解決。
+9. 公開区分: 公開可（マージ手順の技術的な経緯。金額・テナント名・接続情報は含まない）
+
 ## 2026-08-29 概算見積りの継続導線: 自動フロー開始ではなくボタン誘導で「正式見積り」へ繋ぐ
 
 1. 日付: 2026-08-29
@@ -257,6 +269,18 @@
 7. 判断理由: 「現場を知らずに書き足さない」の裏返しで、ここでは「現場を知らずに稼働中の挙動を狭めない」。staff/viewer のデフォルトを self にすべきかどうかは製品判断であり、この環境からは判断できない。
 8. まだ答えが出ていないこと: staff/viewer のダッシュボード初期表示は本当に self（自分の分だけ）にすべきか、それとも現状維持（tenant-wide）のままでよいか。代表判断待ち。
 9. 公開区分: 公開可（実装の技術的な経緯であり、金額・テナント名・接続情報は含まない）
+
+## 2026-08-20 IMP-026 顧客懸念テーブルの設計判断 — customer_inquiries 拡張 vs 新テーブル
+
+1. 日付: 2026-08-20
+2. 起きたこと: IMP-026（§10 Customer Confirmation Web）の残ギャップ実装にあたり、「気になる点を伝える」の永続化先を決める必要があった。
+3. 以前の考え: customer_inquiries に source_type 列を追加して統合する案があった（既存 admin UI を流用できる）。
+4. 違和感・問題: customer_inquiries は一般ポータル問い合わせ（new/responded/closed のライフサイクル）。顧客懸念は「確認フローから発生→請求/証明書をブロック→管理者が解決→ブロック解除」という異なるライフサイクル。ステータス（open/investigating/resolved/dismissed）も異なり、job_id/certificate_id FK によるブロック判定が必要。requirement-trace も「customer_inquiries は別系統」と明記。
+5. 決めたこと: `customer_concerns` テーブルを新設し、customer_inquiries とは独立に管理する。ブロック判定ヘルパー（`hasUnresolvedConcerns`）を IMP-028 Certificate Gate 用に export。
+6. 捨てた選択肢: (a) customer_inquiries を拡張 — ライフサイクル・ステータス・用途が異なりすぎる。admin UI のフィルタ/ソートも複雑化する。(b) 型定義のみ・テーブルなし — IMP-025 の ponytail 判断とは異なり、顧客からの入力を永続化する必要があるため DB は必須。
+7. 判断理由: ライフサイクルが根本的に異なる2エンティティを1テーブルに詰め込むと、ステータス遷移の矛盾や admin UI の条件分岐が増える。新テーブルの方がシンプルで、ブロック判定のクエリも明快。
+8. まだ答えが出ていないこと: Certificate Gate への実際の統合方法（IMP-028 で判断）。懸念解決時の顧客への通知方法（メール返信 etc.）。
+9. 公開区分: 公開可
 
 ## 2026-08-20 IMP-025 車両顧客関係モデルの実装範囲判断
 
