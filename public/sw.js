@@ -253,6 +253,41 @@ function deleteItem(db, id, blobRefs) {
   });
 }
 
+/**
+ * そのステータスで再送しても結果が変わらないか。
+ *
+ * src/lib/outbox/queue.ts の isPermanentClientError と同じ規則。SW は別コピーなので、
+ * 片方だけ直すとタブを閉じている間だけ永久リトライが復活する。必ず両方そろえること。
+ * 404 は入れない (先行アイテムが未同期のときの一時的な 404 があるため)。
+ */
+function isPermanentClientError(status) {
+  return (
+    status === 400 || status === 405 || status === 410 || status === 413 || status === 415 || status === 422
+  );
+}
+
+/** 恒久的に送れないアイテムに印を付ける。削除はしない (UI で利用者が確認して取り消す)。 */
+function markBlocked(db, id, error) {
+  return new Promise((resolve) => {
+    const tx = db.transaction(OUTBOX_ITEMS_STORE, "readwrite");
+    const store = tx.objectStore(OUTBOX_ITEMS_STORE);
+    const getReq = store.get(id);
+    getReq.onsuccess = () => {
+      const cur = getReq.result;
+      if (!cur) return;
+      const updated = Object.assign({}, cur, {
+        attempts: (cur.attempts || 0) + 1,
+        lastAttemptAt: Date.now(),
+        lastError: error,
+        blockedAt: Date.now(),
+      });
+      store.put(updated);
+    };
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => resolve();
+  });
+}
+
 function markAttempt(db, id, error) {
   return new Promise((resolve) => {
     const tx = db.transaction(OUTBOX_ITEMS_STORE, "readwrite");
@@ -299,6 +334,8 @@ async function drainOutbox() {
   for (const item of items) {
     // OS は SW を起こしてくれているが念のため (タイミング次第で false に振れる)
     if (typeof navigator !== "undefined" && navigator.onLine === false) break;
+    // 恒久的な失敗と判定済みのものは送っても同じ結果にしかならない
+    if (item.blockedAt) continue;
     try {
       let body;
       let headers = Object.assign({}, item.headers || {});
@@ -324,7 +361,12 @@ async function drainOutbox() {
         await deleteItem(db, item.id, blobRefs);
       } else {
         const text = await res.text().catch(() => "");
-        await markAttempt(db, item.id, "HTTP " + res.status + ": " + text.slice(0, 200));
+        const error = "HTTP " + res.status + ": " + text.slice(0, 200);
+        if (isPermanentClientError(res.status)) {
+          await markBlocked(db, item.id, error);
+        } else {
+          await markAttempt(db, item.id, error);
+        }
       }
     } catch (e) {
       await markAttempt(db, item.id, e && e.message ? e.message : String(e));

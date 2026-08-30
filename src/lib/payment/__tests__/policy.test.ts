@@ -102,6 +102,18 @@ describe("evaluatePaymentPolicy — insurance", () => {
     expect(result.met).toBe(false);
     expect(result.reason).toContain("保険会社の承認");
   });
+
+  it("承認済みでも決済状態が UNKNOWN なら不成立(盲目リトライ禁止)", () => {
+    const result = evaluatePaymentPolicy({ ...base, insurerApproved: true, paymentState: "UNKNOWN" });
+    expect(result.met).toBe(false);
+    expect(result.reason).toContain("決済結果が不明");
+  });
+
+  it("承認済みでも決済状態が CANCELED なら不成立", () => {
+    const result = evaluatePaymentPolicy({ ...base, insurerApproved: true, paymentState: "CANCELED" });
+    expect(result.met).toBe(false);
+    expect(result.reason).toContain("取り消され");
+  });
 });
 
 describe("isBlindRetryBlocked", () => {
@@ -121,6 +133,7 @@ describe("UNKNOWN からの盲目リトライ禁止", () => {
       { customerType: "individual", billingCycle: null, paymentState: "UNKNOWN" },
       { customerType: "corporate", billingCycle: "per_job", paymentState: "UNKNOWN" },
       { customerType: "individual", billingCycle: null, paymentState: "UNKNOWN", insurerApproved: false },
+      { customerType: "individual", billingCycle: null, paymentState: "UNKNOWN", insurerApproved: true },
     ];
     for (const ctx of contexts) {
       expect(evaluatePaymentPolicy(ctx).met).toBe(false);

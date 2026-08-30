@@ -153,12 +153,8 @@ export default function InsurerTemplatesPage() {
           <div className="inline-flex rounded-full border border-border-default bg-surface px-3 py-1 text-[11px] font-semibold tracking-[0.18em] text-secondary">
             テンプレート管理
           </div>
-          <h1 className="text-3xl font-bold tracking-tight text-primary">
-            カスタム案件テンプレート
-          </h1>
-          <p className="text-sm text-muted">
-            よく使う案件パターンをテンプレートとして保存できます
-          </p>
+          <h1 className="text-3xl font-bold tracking-tight text-primary">カスタム案件テンプレート</h1>
+          <p className="text-sm text-muted">よく使う案件パターンをテンプレートとして保存できます</p>
         </div>
         <button
           onClick={() => {
@@ -173,13 +169,8 @@ export default function InsurerTemplatesPage() {
 
       {/* create/edit form */}
       {showForm && (
-        <form
-          onSubmit={handleSubmit}
-          className="rounded-2xl border border-border-default bg-surface p-6 space-y-4"
-        >
-          <h2 className="text-lg font-bold text-primary">
-            {editingId ? "テンプレート編集" : "新規テンプレート作成"}
-          </h2>
+        <form onSubmit={handleSubmit} className="rounded-2xl border border-border-default bg-surface p-6 space-y-4">
+          <h2 className="text-lg font-bold text-primary">{editingId ? "テンプレート編集" : "新規テンプレート作成"}</h2>
 
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="sm:col-span-2">
@@ -211,9 +202,7 @@ export default function InsurerTemplatesPage() {
             </div>
 
             <div>
-              <label className="mb-1 block text-sm font-medium text-secondary">
-                カテゴリ
-              </label>
+              <label className="mb-1 block text-sm font-medium text-secondary">カテゴリ</label>
               <input
                 type="text"
                 value={formCategory}
@@ -224,9 +213,7 @@ export default function InsurerTemplatesPage() {
             </div>
 
             <div>
-              <label className="mb-1 block text-sm font-medium text-secondary">
-                デフォルト優先度
-              </label>
+              <label className="mb-1 block text-sm font-medium text-secondary">デフォルト優先度</label>
               <select
                 value={formPriority}
                 onChange={(e) => setFormPriority(e.target.value)}
@@ -240,9 +227,7 @@ export default function InsurerTemplatesPage() {
             </div>
 
             <div className="sm:col-span-2">
-              <label className="mb-1 block text-sm font-medium text-secondary">
-                説明テンプレート
-              </label>
+              <label className="mb-1 block text-sm font-medium text-secondary">説明テンプレート</label>
               <textarea
                 value={formDesc}
                 onChange={(e) => setFormDesc(e.target.value)}
@@ -273,11 +258,7 @@ export default function InsurerTemplatesPage() {
       )}
 
       {/* error */}
-      {err && (
-        <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {err}
-        </div>
-      )}
+      {err && <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{err}</div>}
 
       {/* template list */}
       {busy ? (
@@ -287,9 +268,7 @@ export default function InsurerTemplatesPage() {
       ) : templates.length === 0 ? (
         <div className="rounded-2xl border border-border-default bg-surface p-12 text-center">
           <p className="text-muted">カスタムテンプレートがありません</p>
-          <p className="mt-1 text-sm text-muted">
-            「新規テンプレート作成」ボタンから作成できます
-          </p>
+          <p className="mt-1 text-sm text-muted">「新規テンプレート作成」ボタンから作成できます</p>
         </div>
       ) : (
         <div className="space-y-3">
@@ -301,27 +280,17 @@ export default function InsurerTemplatesPage() {
               <div className="flex items-start justify-between gap-4">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1">
-                    <h3 className="text-base font-semibold text-primary truncate">
-                      {t.name}
-                    </h3>
+                    <h3 className="text-base font-semibold text-primary truncate">{t.name}</h3>
                     <span
                       className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${PRIORITY_COLORS[t.default_priority] ?? PRIORITY_COLORS.normal}`}
                     >
                       {PRIORITY_LABELS[t.default_priority] ?? t.default_priority}
                     </span>
                   </div>
-                  <p className="text-sm text-secondary truncate">
-                    タイトル: {t.title_template}
-                  </p>
-                  {t.category && (
-                    <p className="text-sm text-muted mt-0.5">
-                      カテゴリ: {t.category}
-                    </p>
-                  )}
+                  <p className="text-sm text-secondary truncate">タイトル: {t.title_template}</p>
+                  {t.category && <p className="text-sm text-muted mt-0.5">カテゴリ: {t.category}</p>}
                   {t.description_template && (
-                    <p className="text-sm text-muted mt-1 line-clamp-2">
-                      {t.description_template}
-                    </p>
+                    <p className="text-sm text-muted mt-1 line-clamp-2">{t.description_template}</p>
                   )}
                 </div>
                 <div className="flex items-center gap-2 shrink-0">

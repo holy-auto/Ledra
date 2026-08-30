@@ -19,7 +19,7 @@ type Referral = {
 };
 
 type MonthlyCommission = {
-  month: string;       // "2026-01" etc.
+  month: string; // "2026-01" etc.
   total_amount: number;
 };
 
@@ -42,15 +42,7 @@ function Skeleton({ className = "" }: { className?: string }) {
   return <div className={`animate-pulse rounded-lg bg-surface-hover ${className}`} />;
 }
 
-function StatCard({
-  label,
-  value,
-  sub,
-}: {
-  label: string;
-  value: string;
-  sub?: string;
-}) {
+function StatCard({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
     <div className="rounded-2xl border border-border-default bg-[var(--bg-surface)] p-5 shadow-sm">
       <div className="text-xs font-semibold tracking-[0.18em] text-muted">{label}</div>
@@ -105,7 +97,6 @@ export default function AgentDashboardPage() {
   return (
     <div className="min-h-screen">
       <div className="mx-auto max-w-7xl space-y-6">
-
         {/* ── Header ── */}
         <header className="flex flex-wrap items-start justify-between gap-4">
           <div className="space-y-3">
@@ -123,10 +114,7 @@ export default function AgentDashboardPage() {
           </div>
 
           <div className="flex gap-3 items-center">
-            <Link
-              href="/agent/referrals/new"
-              className="btn-primary"
-            >
+            <Link href="/agent/referrals/new" className="btn-primary">
               新規紹介を作成
             </Link>
             <button
@@ -142,7 +130,9 @@ export default function AgentDashboardPage() {
         {isPending && (
           <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
             <div className="flex items-start gap-3">
-              <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-200 text-amber-800 text-xs font-bold">!</div>
+              <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-200 text-amber-800 text-xs font-bold">
+                !
+              </div>
               <div>
                 <div className="text-sm font-semibold text-amber-800">仮登録中</div>
                 <p className="mt-1 text-sm text-amber-700">
@@ -155,17 +145,16 @@ export default function AgentDashboardPage() {
         )}
 
         {/* ── Error ── */}
-        {err && (
-          <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-            {err}
-          </div>
-        )}
+        {err && <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{err}</div>}
 
         {/* ── Loading Skeleton ── */}
         {!data && !err && (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {Array.from({ length: 4 }).map((_, i) => (
-              <div key={i} className="rounded-2xl border border-border-default bg-[var(--bg-surface)] p-5 shadow-sm space-y-3">
+              <div
+                key={i}
+                className="rounded-2xl border border-border-default bg-[var(--bg-surface)] p-5 shadow-sm space-y-3"
+              >
                 <Skeleton className="h-3 w-20" />
                 <Skeleton className="h-7 w-28" />
                 <Skeleton className="h-3 w-16" />
@@ -178,35 +167,21 @@ export default function AgentDashboardPage() {
         {data && (
           <>
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              <StatCard
-                label="紹介総数"
-                value={String(data.total_referrals)}
-                sub="全期間の紹介件数"
-              />
+              <StatCard label="紹介総数" value={String(data.total_referrals)} sub="全期間の紹介件数" />
               <StatCard
                 label="契約成立数"
                 value={String(data.contracted_referrals)}
                 sub={`成約率 ${(data.conversion_rate * 100).toFixed(1)}%`}
               />
-              <StatCard
-                label="今月のコミッション"
-                value={formatJpy(data.this_month_commission)}
-                sub="当月発生分"
-              />
-              <StatCard
-                label="累計コミッション"
-                value={formatJpy(data.total_commission)}
-                sub="全期間合計"
-              />
+              <StatCard label="今月のコミッション" value={formatJpy(data.this_month_commission)} sub="当月発生分" />
+              <StatCard label="累計コミッション" value={formatJpy(data.total_commission)} sub="全期間合計" />
             </div>
 
             {/* ── Announcements + Conversion Row ── */}
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="rounded-2xl border border-border-default bg-[var(--bg-surface)] p-5 shadow-sm">
                 <div className="text-xs font-semibold tracking-[0.18em] text-muted">CONVERSION</div>
-                <div className="mt-2 text-2xl font-bold text-primary">
-                  {(data.conversion_rate * 100).toFixed(1)}%
-                </div>
+                <div className="mt-2 text-2xl font-bold text-primary">{(data.conversion_rate * 100).toFixed(1)}%</div>
                 <div className="mt-3 h-2 rounded-full bg-surface-hover overflow-hidden">
                   <div
                     className="h-full rounded-full bg-accent transition-all"
@@ -220,9 +195,7 @@ export default function AgentDashboardPage() {
 
               <div className="rounded-2xl border border-border-default bg-[var(--bg-surface)] p-5 shadow-sm">
                 <div className="text-xs font-semibold tracking-[0.18em] text-muted">ANNOUNCEMENTS</div>
-                <div className="mt-2 text-2xl font-bold text-primary">
-                  {data.unread_announcements}
-                </div>
+                <div className="mt-2 text-2xl font-bold text-primary">{data.unread_announcements}</div>
                 <div className="mt-1 text-sm text-muted">未読のお知らせ</div>
                 {data.unread_announcements > 0 && (
                   <Link
@@ -242,10 +215,7 @@ export default function AgentDashboardPage() {
                   <div className="text-xs font-semibold tracking-[0.18em] text-muted">RECENT REFERRALS</div>
                   <div className="mt-1 text-base font-semibold text-primary">最近の紹介</div>
                 </div>
-                <Link
-                  href="/agent/referrals"
-                  className="text-sm font-medium text-accent hover:underline"
-                >
+                <Link href="/agent/referrals" className="text-sm font-medium text-accent hover:underline">
                   すべて表示
                 </Link>
               </div>
@@ -271,9 +241,7 @@ export default function AgentDashboardPage() {
                           <td className="p-3">
                             <Badge variant={s.variant}>{s.label}</Badge>
                           </td>
-                          <td className="p-3 whitespace-nowrap text-secondary">
-                            {formatDateTime(r.created_at)}
-                          </td>
+                          <td className="p-3 whitespace-nowrap text-secondary">{formatDateTime(r.created_at)}</td>
                           <td className="p-3">
                             <Link
                               href={`/agent/referrals/${encodeURIComponent(r.id)}`}
@@ -310,18 +278,14 @@ export default function AgentDashboardPage() {
                     const pct = (m.total_amount / chartMax) * 100;
                     return (
                       <div key={m.month} className="flex flex-1 flex-col items-center gap-1">
-                        <div className="text-[10px] font-medium text-secondary">
-                          {formatJpy(m.total_amount)}
-                        </div>
+                        <div className="text-[10px] font-medium text-secondary">{formatJpy(m.total_amount)}</div>
                         <div className="w-full flex items-end" style={{ height: "160px" }}>
                           <div
                             className="w-full rounded-t-md bg-accent transition-all"
                             style={{ height: `${Math.max(pct, 2)}%` }}
                           />
                         </div>
-                        <div className="text-[10px] text-muted whitespace-nowrap">
-                          {m.month.slice(5)}月
-                        </div>
+                        <div className="text-[10px] text-muted whitespace-nowrap">{m.month.slice(5)}月</div>
                       </div>
                     );
                   })}
@@ -343,9 +307,7 @@ export default function AgentDashboardPage() {
                   NEW REFERRAL
                 </div>
                 <div className="mt-2 text-base font-semibold text-primary">新規紹介を作成</div>
-                <p className="mt-1 text-sm text-muted">
-                  新しい施工店をLedraに紹介します。
-                </p>
+                <p className="mt-1 text-sm text-muted">新しい施工店をLedraに紹介します。</p>
               </Link>
               <Link
                 href="/agent/commissions"
@@ -355,14 +317,11 @@ export default function AgentDashboardPage() {
                   COMMISSIONS
                 </div>
                 <div className="mt-2 text-base font-semibold text-primary">コミッション一覧</div>
-                <p className="mt-1 text-sm text-muted">
-                  支払い履歴と明細を確認できます。
-                </p>
+                <p className="mt-1 text-sm text-muted">支払い履歴と明細を確認できます。</p>
               </Link>
             </div>
           </>
         )}
-
       </div>
     </div>
   );
