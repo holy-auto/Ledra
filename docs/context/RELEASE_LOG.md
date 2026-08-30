@@ -4,6 +4,11 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-08-30 IMP-051（#958）を main へ取り込み。アクセシビリティ監査フレームワーク＆翻訳QA基盤
+
+- 内容: v2.0 §3.5 のアクセシビリティ・多言語品質保証型基盤（`src/lib/a11y/{contrastCheck,auditTypes}.ts`、`src/lib/i18n/qa.ts`）を main へマージ。squash merge、コミット `6b59a72b`。
+- 検証: tsc --noEmit clean / vitest run 5179件全通過（503ファイル） / lint 0エラー・1256警告=基準線 / check:schema OK / lint:migrations OK。CI（Lint/TypeCheck/Tests・CodeQL・Migrations Replay・Client Bundle Size）全通過。
+
 ## 2026-08-30 IMP-051（#958）の code-review 指摘を修正。コントラスト判定の丸め誤差・プレースホルダ検出の空文字スキップ・qa.ts の型/関数重複を解消
 
 - 内容: `checkColorPair()` の AA 判定を丸め前の生の比率で行うよう修正（境界値での誤合格を防止）。`findPlaceholderMismatches()` の欠落判定を falsy チェックから `undefined` チェックに変更（空文字翻訳のプレースホルダ欠落を検出可能に）。`qa.ts` の `MessageTree`/`lookup()` 重複を `messages.ts` からの import に統一。`computeTranslationCoverage()` の `flattenKeys()` 二重計算を解消。回帰テスト2件追加（44→46件）。`findGlossaryGaps()` の空文字チェックは意図的挙動と判断し不採用。
