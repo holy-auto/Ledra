@@ -378,6 +378,10 @@ Sentry · Resend (+ SendGrid fallback) · Anthropic (Opus 4.8 / Sonnet 4.6 / Hai
   （SegmentedControl/StatusBadge/StatusCard/NextActionCard/ProgressCard/Alert/IconButton/
   BottomSheet）+ Badge dot + Button xl。v2.0 の色トークン値は不採用・既存デザインシステム維持
   （DECISION_LOG 2026-08-19）。
+- **IMP-040（§8 部品装着インテグリティ 正準語彙）完了**:
+  正準ドメイン語彙 7 軸目 `PART_INSTALLATION_STATES`（5 値）+ 遷移表 + 6 言語ラベル。
+  Certificate Gate 部品整合性条件の導出関数 `derivePartsIntegrityOk()` 追加。
+  DB 実装値(小文字)との対応は IMP-015 に委ねる。テスト 51 件。
 - **IMP-034（§2/§4 タブレット 2-pane・共用端末 型基盤）完了**:
   3 段階デバイスクラス（mobile/tablet/desktop）、タブレット 2-pane 画面マッピング（4 ペア）、
   共用端末セッションモード・切替認証方式を型定義。UI コンポーネント・認証フロー変更なし。

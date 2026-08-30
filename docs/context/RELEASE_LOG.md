@@ -4,6 +4,29 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-08-30 IMP-040（#950）の code-review 指摘を修正。遷移表を transitions.ts へ統合、プロトタイプ汚染防止
+
+- 内容: `/code-review` の3件の指摘を修正。`PART_INSTALLATION_TRANSITIONS` を
+  `states.ts` から `transitions.ts` へ移設し、他6軸と同じ `Record<S, readonly S[]>`
+  型・`isValidTransition()` ヘルパーに統一（素の `table[from]` アクセスによる
+  `TypeError`（`"toString"` 等 Object.prototype 由来キー）を解消）。`transitions.ts`
+  のヘッダコメントを「6軸」→「7軸」に更新。DB 凍結ガード
+  （`part_installations_guard`）との関係を説明するコメントを、実際のトリガー内容に
+  基づいて修正（TS 表の方が厳しく、両者はスコープが異なる旨を明記）。テストを
+  `states.test.ts` から `transitions.test.ts` へ移設し、プロトタイプ汚染防止テストを
+  追加。
+- 検証: tsc --noEmit / vitest run(4786件) / lint(0エラー) / check:schema /
+  lint:migrations すべて green。
+
+## 2026-08-30 IMP-040（#950）を main へ取り込み。部品装着インテグリティ 正準語彙
+
+- 内容: IMP-040（部品装着状態の正準語彙7軸目、branch impl/IMP-040-parts-integrity）を
+  main へ取り込んだ。66ファイルの phantom conflict（59ファイル一括解決、7ファイル手動）＋
+  resurrection（WorkScopeProvider.tsx を14度目の再削除、スキップ済み PR #947 の
+  `src/lib/sync/` 一式8ファイルも合わせて削除）を解消。
+- 検証: tsc --noEmit / vitest run(4781件) / lint(0エラー) / check:schema /
+  lint:migrations すべて green。
+
 ## 2026-08-30 IMP-034（#949）を main へ取り込み。タブレット 2-pane・共用端末 型基盤
 
 - 内容: IMP-034（タブレット 2-pane・共用端末型基盤、branch impl/IMP-034-tablet-shared-device）
@@ -596,6 +619,18 @@
   （OPEN_QUESTIONS 参照）。
 - テスト: 既存5件 + 修正後全通過。全4391テスト通過、`tsc --noEmit` クリーン、
   lint 0 エラー。
+
+## 2026-08-20 IMP-040 §8 部品装着インテグリティ 正準語彙（branch impl/IMP-040-parts-integrity）
+
+- 内容: v2.0 §8 の部品装着状態を正準ドメイン語彙の 7 軸目として追加。
+  - `src/lib/domain/states.ts`: `PART_INSTALLATION_STATES`（DRAFT/INSTALLED/CUSTOMER_VERIFIED/DISPUTED/VOIDED）、
+    型ガード `isPartInstallationState`、正準遷移表 `PART_INSTALLATION_TRANSITIONS`、
+    遷移検証関数 `isValidPartInstallationTransition()`。
+  - `src/lib/domain/labels.ts`: 6 言語ラベル（ja: 既存 admin/parts-integrity UI 表記と一致）。
+  - `src/lib/parts/partsIntegrity.ts`: Certificate Gate 部品整合性条件の導出関数
+    `derivePartsIntegrityOk()` — 未解決 critical findings でブロック。
+- 対象: 型基盤。UI・DB 変更なし。DB 実装値(小文字)との対応は IMP-015 に委ねる(ADR-0002 準拠)。
+- テスト: 51 件（domain/states 37 件 + parts/partsIntegrity 7 件）
 
 ## 2026-08-20 IMP-034 §2/§4 タブレット 2-pane・共用端末 型基盤（branch impl/IMP-034-tablet-shared-device）
 

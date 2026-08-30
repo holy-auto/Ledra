@@ -6,14 +6,24 @@ import {
   CERTIFICATE_TRANSITIONS,
   PAYMENT_TRANSITIONS,
   SYNC_TRANSITIONS,
+  PART_INSTALLATION_TRANSITIONS,
   isValidTransition,
   validNextStates,
   isTerminalState,
   isKnownState,
   rejectTransition,
 } from "../transitions";
-import type { JobState } from "../states";
-import { JOB_STATES, STEP_STATES, SEVERITIES, CERTIFICATE_STATES, PAYMENT_STATES, SYNC_STATES } from "../states";
+import type { JobState, PartInstallationState } from "../states";
+import {
+  JOB_STATES,
+  STEP_STATES,
+  SEVERITIES,
+  CERTIFICATE_STATES,
+  PAYMENT_STATES,
+  SYNC_STATES,
+  PART_INSTALLATION_STATES,
+  isPartInstallationState,
+} from "../states";
 import { CERTIFICATE_GATE_CONDITIONS, isCertificateGateCondition } from "../certificateGate";
 
 // ── 遷移表の構造テスト ──
@@ -25,6 +35,7 @@ const AXES = [
   { name: "certificate", table: CERTIFICATE_TRANSITIONS, states: CERTIFICATE_STATES },
   { name: "payment", table: PAYMENT_TRANSITIONS, states: PAYMENT_STATES },
   { name: "sync", table: SYNC_TRANSITIONS, states: SYNC_STATES },
+  { name: "partInstallation", table: PART_INSTALLATION_TRANSITIONS, states: PART_INSTALLATION_STATES },
 ] as const;
 
 describe("遷移表の構造", () => {
@@ -210,6 +221,57 @@ describe("STEP_TRANSITIONS", () => {
   it("IN_PROGRESS / BLOCKED → SKIPPED は有効（着手後に不要と判明）", () => {
     expect(isValidTransition(STEP_TRANSITIONS, "IN_PROGRESS", "SKIPPED")).toBe(true);
     expect(isValidTransition(STEP_TRANSITIONS, "BLOCKED", "SKIPPED")).toBe(true);
+  });
+});
+
+// ── 部品装着（PartInstallation）遷移 ──
+
+describe("PART_INSTALLATION_TRANSITIONS", () => {
+  it("DRAFT → INSTALLED のみ許可", () => {
+    expect(isValidTransition(PART_INSTALLATION_TRANSITIONS, "DRAFT", "INSTALLED")).toBe(true);
+    expect(isValidTransition(PART_INSTALLATION_TRANSITIONS, "DRAFT", "CUSTOMER_VERIFIED")).toBe(false);
+    expect(isValidTransition(PART_INSTALLATION_TRANSITIONS, "DRAFT", "VOIDED")).toBe(false);
+  });
+
+  it("INSTALLED → CUSTOMER_VERIFIED / DISPUTED / VOIDED を許可", () => {
+    expect(isValidTransition(PART_INSTALLATION_TRANSITIONS, "INSTALLED", "CUSTOMER_VERIFIED")).toBe(true);
+    expect(isValidTransition(PART_INSTALLATION_TRANSITIONS, "INSTALLED", "DISPUTED")).toBe(true);
+    expect(isValidTransition(PART_INSTALLATION_TRANSITIONS, "INSTALLED", "VOIDED")).toBe(true);
+    expect(isValidTransition(PART_INSTALLATION_TRANSITIONS, "INSTALLED", "DRAFT")).toBe(false);
+  });
+
+  it("CUSTOMER_VERIFIED → VOIDED のみ許可（完全凍結の唯一の例外）", () => {
+    expect(isValidTransition(PART_INSTALLATION_TRANSITIONS, "CUSTOMER_VERIFIED", "VOIDED")).toBe(true);
+    expect(isValidTransition(PART_INSTALLATION_TRANSITIONS, "CUSTOMER_VERIFIED", "INSTALLED")).toBe(false);
+    expect(isValidTransition(PART_INSTALLATION_TRANSITIONS, "CUSTOMER_VERIFIED", "DISPUTED")).toBe(false);
+  });
+
+  it("DISPUTED → CUSTOMER_VERIFIED / VOIDED を許可", () => {
+    expect(isValidTransition(PART_INSTALLATION_TRANSITIONS, "DISPUTED", "CUSTOMER_VERIFIED")).toBe(true);
+    expect(isValidTransition(PART_INSTALLATION_TRANSITIONS, "DISPUTED", "VOIDED")).toBe(true);
+    expect(isValidTransition(PART_INSTALLATION_TRANSITIONS, "DISPUTED", "INSTALLED")).toBe(false);
+  });
+
+  it("VOIDED は終端状態", () => {
+    expect(isTerminalState(PART_INSTALLATION_TRANSITIONS, "VOIDED")).toBe(true);
+    expect(validNextStates(PART_INSTALLATION_TRANSITIONS, "VOIDED")).toEqual([]);
+  });
+
+  it("遷移表のキーと値はすべて正準値", () => {
+    for (const [from, targets] of Object.entries(PART_INSTALLATION_TRANSITIONS)) {
+      expect(isPartInstallationState(from)).toBe(true);
+      for (const to of targets as readonly string[]) {
+        expect(isPartInstallationState(to)).toBe(true);
+      }
+    }
+  });
+
+  it("Object.prototype 由来のキーで例外を投げない（プロトタイプ汚染防止）", () => {
+    const bad = (v: string) => v as unknown as PartInstallationState;
+    for (const k of ["toString", "__proto__", "constructor", "hasOwnProperty", "valueOf"]) {
+      expect(() => isValidTransition(PART_INSTALLATION_TRANSITIONS, bad(k), "VOIDED")).not.toThrow();
+      expect(isValidTransition(PART_INSTALLATION_TRANSITIONS, bad(k), "VOIDED")).toBe(false);
+    }
   });
 });
 

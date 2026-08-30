@@ -4,6 +4,30 @@
 > （新しい順）。実装の詳細は RELEASE_LOG.md、迷っている段階のものは
 > OPEN_QUESTIONS.md に書く。
 
+## 2026-08-30 IMP-040（#950）の code-review 指摘を修正。PartInstallation 遷移表を transitions.ts へ統合、DB ガードとの関係の誤記を修正
+
+1. 日付: 2026-08-30
+2. 起きたこと: PR #950 に `/code-review` を実行し3件の指摘を得た。(a) `states.ts` に追加した `isValidPartInstallationTransition()` が素の `table[from]` アクセスを使っており、`"toString"` 等 `Object.prototype` 由来のキーを渡すと `TypeError` を投げる（他 6 軸の遷移表がすでに `transitions.ts` の `known()`/`isValidTransition()` で防いでいるのと同じ穴。実際に Node で再現: `TypeError: targets.includes is not a function`）。(b) `PART_INSTALLATION_TRANSITIONS` が他 6 軸と違う場所（`states.ts`）に、違う安全性（`Partial<Record>` + 素の添字アクセス）で定義されており、`transitions.ts` の「7軸の遷移可否の単一定義源」という自身の目的表明と矛盾していた。(c) 新遷移表のコメント「DB 凍結ガード(part_installations_guard)準拠」が不正確——実際の DB トリガーは `customer_verified`/`voided` 到達後の不変性と `customer_verified` 到達時のゲート（署名・ハッシュ一致等）しか強制しておらず、DRAFT→DISPUTED や DRAFT→VOIDED のような、この表がブロックする遷移までは拒否しない（TS 表の方が厳しい）。
+3. 以前の考え: `PART_INSTALLATION_STATES`（値）と同じファイル（`states.ts`）に遷移表も置けば、7軸目の定義がひとまとまりになって分かりやすいと考えていた。
+4. 違和感・問題: 6軸（Job/Step/Severity/Certificate/Payment/Sync）は「値は states.ts、遷移表は transitions.ts」という分離が既に確立していた。7軸目だけこの分離を破ると、`isValidTransition()` という既存の安全なジェネリックヘルパーを使わない独自実装が生まれ、まさに`transitions.ts` 自身が「素の `table[from]` を使わない」と明記して防いでいた不具合を再現した。
+5. 決めたこと: `PART_INSTALLATION_TRANSITIONS` を `transitions.ts` に移設（他 6 軸と同型の `Record<PartInstallationState, readonly PartInstallationState[]>`、`VOIDED: []` を明示）。`states.ts` の `isValidPartInstallationTransition()` は削除し、呼び出し側は他6軸と同じく `isValidTransition(PART_INSTALLATION_TRANSITIONS, from, to)` を直接使う。`transitions.ts` のヘッダコメントを「6軸」→「7軸」に更新。DB ガードとの関係を説明するコメントを、実際のトリガー内容（`part_installations_guard`）に基づいて書き直した。テストも `states.test.ts` から `transitions.test.ts` の `AXES` 配列・専用 describe ブロックへ移設し、他6軸と同じプロトタイプ汚染防止テストを追加。
+6. 捨てた選択肢: (a) `states.ts` にテーブルを残し、`isValidPartInstallationTransition()` の中身だけ `Object.hasOwn` ガードに直す — Finding 1 は直るが、二重管理という Finding 2 の指摘は残る。(b) 何もしない（呼び出し元ゼロだから実害なしとして先送り） — `transitions.ts` 自身が「7軸の単一定義源」であることを謳っている以上、新設の7軸目がそれを満たさない状態を残すのは一貫性を欠く。
+7. 判断理由: 既存の安全なジェネリックヘルパー（`isValidTransition`）が存在するのに新しい軸だけ独自実装するのは、まさに二重管理から不整合が生まれる典型パターン（IMP-027/028/030 で繰り返し確認済み）。
+8. まだ答えが出ていないこと: なし。
+9. 公開区分: 公開可（コードの整合性修正。金額・テナント名・接続情報は含まない）
+
+## 2026-08-30 IMP-040（#950）を main へ取り込み。resurrection パターン14度目
+
+1. 日付: 2026-08-30
+2. 起きたこと: IMP-040（部品装着状態の正準語彙7軸目、branch impl/IMP-040-parts-integrity）を main へ取り込む際、main と分岐した66ファイルが衝突した。59ファイルは phantom conflict で一括解決。残り7ファイル（DECISION_LOG.md/LEDRA_CURRENT.md/RELEASE_LOG.md/requirement-trace.md/`states.ts`/`labels.ts`/`states.test.ts`）はこのPR自身が変更していたため手動再適用した（正準語彙3ファイルは origin/main 側に変更が無かったため PR 自身の最終版をそのまま採用）。resurrection チェックで `WorkScopeProvider.tsx`（14度目の再発）とスキップ済み PR #947 の `src/lib/sync/` 一式8ファイルが今回も復活していた。両方削除。`partsIntegrity.ts`/`partsIntegrity.test.ts`（IMP-040 自身の新規ファイル）は `sync/` への依存なし（grep で確認済み）。
+3. 以前の考え: なし（#948/#949 で確立した手順の踏襲）。
+4. 違和感・問題: 特になし。正準語彙ファイル（states.ts/labels.ts/states.test.ts）への変更を含む初めてのケースだったが、他 PR による割り込み変更が無かったため単純に PR 自身の最終版を採用するだけで済んだ。
+5. 決めたこと: 確立済みの手順をそのまま適用。
+6. 捨てた選択肢: なし。
+7. 判断理由: `git show origin/main:<file>` と PR 分岐前の base 版を diff して無変更であることを確認してから PR 自身の最終版を採用する、という安全な手順を踏んだ（既存の genuinely-touched ファイル処理の応用）。
+8. まだ答えが出ていないこと: なし。
+9. 公開区分: 公開可（マージ手順の技術的な経緯。金額・テナント名・接続情報は含まない）
+
 ## 2026-08-30 IMP-034（#949）を main へ取り込み。resurrection パターン13度目
 
 1. 日付: 2026-08-30
@@ -413,6 +437,18 @@
 7. 判断理由: 「現場を知らずに書き足さない」の裏返しで、ここでは「現場を知らずに稼働中の挙動を狭めない」。staff/viewer のデフォルトを self にすべきかどうかは製品判断であり、この環境からは判断できない。
 8. まだ答えが出ていないこと: staff/viewer のダッシュボード初期表示は本当に self（自分の分だけ）にすべきか、それとも現状維持（tenant-wide）のままでよいか。代表判断待ち。
 9. 公開区分: 公開可（実装の技術的な経緯であり、金額・テナント名・接続情報は含まない）
+
+## 2026-08-20 IMP-040 部品装着状態を正準語彙 7 軸目に追加
+
+1. 日付: 2026-08-20
+2. 起きたこと: IMP-040（§8 部品装着インテグリティ）の語彙差を解消する作業。3-way match・凍結ガード・OTP 署名・TSA・アンカーなど機能は実装済みだが、Part Installation の状態語彙が `src/lib/domain/states.ts` の正準定義に含まれていなかった。DB CHECK 制約と admin ページの STATUS_LABEL に小文字で散在するのみ。
+3. 以前の考え: 6 軸（Job/Step/Severity/Certificate/Payment/Sync）で正準語彙は完結していた。部品装着は独自の `src/lib/parts/` 内で完結し、正準語彙への統合は不要と考えていた。
+4. 違和感・問題: (a) Part Installation の状態値は DB の CHECK 制約・admin ページの STATUS_LABEL・サービスコードの文字列リテラルの 3 箇所に重複定義。(b) 型ガードがなく、不正な状態値を TS レベルで検出できない。(c) 遷移表がなく、凍結ガードのルールがコード上で形式化されていない（DB トリガーのみ）。(d) 6 言語ラベルがなく、admin ページは ja ハードコードのみ。
+5. 決めたこと: (a) `PART_INSTALLATION_STATES` を 7 軸目として `states.ts` に追加（UPPERCASE 正準値: DRAFT/INSTALLED/CUSTOMER_VERIFIED/DISPUTED/VOIDED）。(b) 遷移表 `PART_INSTALLATION_TRANSITIONS` と `isValidPartInstallationTransition()` を同ファイルに追加。(c) `labels.ts` に 6 言語ラベル追加（ja は既存 admin UI 表記と一致）。(d) `derivePartsIntegrityOk()` で Certificate Gate 条件を findings から導出。(e) DB 実装値(小文字)との対応マッピングは作らない（ADR-0002 準拠、IMP-015 で判断）。
+6. 捨てた選択肢: (a) Integrity Finding Rules も states.ts に追加 — finding rule は状態機械ではなく分類値のため、正準語彙に含めない。既存の `integrityChecks.ts` の `FindingRule` 型で十分。(b) Finding statuses を正準軸に追加 — 内部の運用状態（open/acknowledged/resolved/dismissed）であり v2.0 §19 の対象外。(c) admin ページの STATUS_LABEL/RULE_LABEL を labels.ts に統合 — UI 変更はスコープ外（型基盤先行）。
+7. 判断理由: 「1 つの status カラムに混ぜない」(ADR-0002) の原則に沿って独立軸として追加。UPPERCASE 正準値は既存 6 軸と同じパターン。遷移表は DB トリガーの凍結ガードをコードレベルで形式化し、TS の型安全性を活用可能にする。
+8. まだ答えが出ていないこと: DB 実装値(小文字)→正準値(UPPERCASE)のマッピングをいつ・どこに入れるか（IMP-015 の範囲）。admin ページの重複 STATUS_LABEL/RULE_LABEL をいつ labels.ts の正準ラベルに置き換えるか。
+9. 公開区分: 公開可（「部品装着の状態管理を正準語彙に統一」「DB トリガーの凍結ルールをコードで形式化」の設計知見）
 
 ## 2026-08-20 IMP-034 タブレットレイアウト方式 — 2-pane 画面マッピング + 共用端末モード
 
