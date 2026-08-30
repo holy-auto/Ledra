@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { BODY_REPAIR_STAGES, BODY_REPAIR_STAGE_LABEL, type BodyRepairStage } from "@/lib/validations/body-repair-job";
+import RaiseConcernButton from "@/components/customer/RaiseConcernButton";
 
 export const metadata: Metadata = {
   title: "車体整備 進捗状況 | Ledra",
@@ -122,6 +123,11 @@ export default async function TrackPage({ params }: PageProps) {
           );
         })}
       </ol>
+
+      {/* IMP-026: 気になる点を伝える */}
+      <div style={{ marginTop: 20 }}>
+        <RaiseConcernButton sourceType="body_repair_tracking" sourceToken={token} variant="light" />
+      </div>
 
       <p style={{ fontSize: 12, color: "#999", marginTop: 20 }}>
         進捗は施工店の作業に応じて更新されます。ご不明点は施工店までお問い合わせください。
