@@ -20,7 +20,16 @@
   同骨格）＋ `vercel.json` に `*/30 * * * *`。opt-in キー `inbound_message.auto_unanswered_alert`、ゲート
   `shouldAlertUnansweredThreads`。**マイグレーション不要**（notification_logs の type は自由文字列）。
 - 検証: `unansweredAlerts`（最新inboundで通知＋ログ／最新outboundは対象外／猶予内は対象外／dedup／
-  未登録は「未登録のお客様」表記）テスト5件追加。全体 5059 件パス、tsc/eslint エラー0。
+  未登録は「未登録のお客様」表記）テスト追加。
+- コードレビュー由来の追加修正（同 PR、`/code-review`）:
+  - メッセージ走査を `.limit(1000)` から **created_at キーセットのページング**に変更（メッセージ量の
+    多いテナントでスレッド最新が 1000 件外にこぼれ未返信を取りこぼす問題を解消。上限は
+    `MAX_SCAN_PAGES` で頭打ち＋ponytail コメント明記）。
+  - スレッドキーを **line_user_id 優先**に（顧客リンク前後で不変。customer_id バックフィルの遅延/失敗で
+    同一会話が2スレッドに割れ誤アラートするのを防ぐ）。
+  - `notifyStaffOfAiAction` を `Promise<boolean>` に変更し、**通知に失敗したら dedup ログを残さず次回
+    再試行**（アラート取りこぼし防止）。dedup ログ insert 失敗も warn で可視化。
+- 全体 5060 件パス、tsc/eslint エラー0（既存の `_key`/`policy` 警告のみ）。
 - 「LINE属人性の低減」の3件目（アラート部分）。担当割り当て（assignee 付与・担当別フィルタ）は
   スキーマ/UI を伴うため後続。次は④会話の要約・引き継ぎ。
 

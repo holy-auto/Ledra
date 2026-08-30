@@ -36,7 +36,7 @@ function seed(
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mocks.notifyStaffOfAiAction.mockResolvedValue(undefined);
+  mocks.notifyStaffOfAiAction.mockResolvedValue(true);
   seed();
 });
 
@@ -74,6 +74,13 @@ describe("processUnansweredThreadAlerts", () => {
     });
     expect(await run()).toBe(0);
     expect(mocks.notifyStaffOfAiAction).not.toHaveBeenCalled();
+  });
+
+  it("does not write a dedup log when the staff notification could not be created (so it retries next run)", async () => {
+    mocks.notifyStaffOfAiAction.mockResolvedValue(false);
+    seed([{ id: "m1", customer_id: CUSTOMER, direction: "inbound", created_at: STALE }]);
+    expect(await run()).toBe(0);
+    expect(mocks.store.inserts.find((i) => i.table === "notification_logs")).toBeUndefined();
   });
 
   it("labels an unlinked thread as 未登録のお客様", async () => {
