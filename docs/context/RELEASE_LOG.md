@@ -4,6 +4,17 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-08-30 IMP-045（#955）を main へ取り込み。スタッフメンバーシップ管理ガード — 移籍・停止・最終管理者保護
+
+- 内容: IMP-045（スタッフメンバーシップ管理ガード、branch impl/IMP-045-staff-management）を
+  main へ取り込んだ。80ファイルの phantom conflict（75ファイル一括解決、5ファイル手動）＋
+  resurrection（WorkScopeProvider.tsx を19度目の再削除、スキップ済み PR #947 の
+  `src/lib/sync/` 一式8ファイルも合わせて削除）を解消。LEDRA_CURRENT.md/RELEASE_LOG.md が
+  旧いテスト件数（33件）のまま取り残されていたのを、branch 内で既に更新済みだった
+  requirement-trace.md の実数（36件）に揃えた。
+- 検証: tsc --noEmit / vitest run(4997件) / lint(0エラー、1256警告=基準線) / check:schema /
+  lint:migrations すべて green。
+
 ## 2026-08-30 IMP-044（#954）の code-review 指摘を修正。ブースシグナルの重複排除誤爆・follow_up_overdue上書き・イベント件数ドキュメント誤記を解消
 
 - 内容: `src/lib/priority/scorer.ts` の `scoreBoothSignal()` の `actionKey` に `reservationIds` を
