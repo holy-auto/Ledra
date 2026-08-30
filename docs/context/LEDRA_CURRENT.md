@@ -378,6 +378,12 @@ Sentry · Resend (+ SendGrid fallback) · Anthropic (Opus 4.8 / Sonnet 4.6 / Hai
   （SegmentedControl/StatusBadge/StatusCard/NextActionCard/ProgressCard/Alert/IconButton/
   BottomSheet）+ Badge dot + Button xl。v2.0 の色トークン値は不採用・既存デザインシステム維持
   （DECISION_LOG 2026-08-19）。
+- **IMP-033（§2 MORE メニュー IA 型基盤）完了**:
+  MORE（その他）タブの項目構成を正準定義する `src/lib/navigation/moreMenu.ts` を実装。
+  MoreMenuItem 型（10 項目、4 セクション）、権限ベースフィルタリング、
+  プラットフォーム別表示制御（NFC 系はモバイル専用）、セクショングループ化。
+  現行モバイル 7 項目を網羅しつつ、メンバー管理・店舗管理・同期センターを追加。
+  UI コンポーネント変更なし（消費側が filterMoreMenuItems 経由で参照）。テスト 21 件。
 - **IMP-031（§19.1 例外フロー cancel/no-show/pause/追加作業 型基盤）完了**:
   案件例外フローの遷移評価器 5 本（evaluateCancel/evaluateNoShow/evaluatePause/
   evaluateResume/evaluatePartialComplete）を JOB_TRANSITIONS ベースで実装。

@@ -4,6 +4,17 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-08-30 IMP-033（#948）を main へ取り込み。MORE メニュー IA 型基盤
+
+- 内容: IMP-033（MORE メニュー IA 型基盤、branch impl/IMP-033-more-menu）を main へ
+  取り込んだ。62ファイルの phantom conflict（57ファイル一括解決、5ファイル手動）＋
+  resurrection（WorkScopeProvider.tsx を12度目の再削除、加えてスキップ済み PR #947
+  が追加した `src/lib/sync/` 一式8ファイルも合わせて削除——IMP-033 のブランチが
+  IMP-032 のブランチの上に積まれていたための帰結）を解消。lint 新規1件
+  （未使用 import）を修正し基準線に復帰。
+- 検証: tsc --noEmit / vitest run(4731件) / lint(0エラー) / check:schema /
+  lint:migrations すべて green。
+
 ## 2026-08-30 「その他」タブが勝手にプラン画面へ飛ぶ不具合を修正（BillingFetchGuard の403誤判定）
 
 - 内容: `/admin/settings`（モバイル下部タブ「その他」）を開くと、`settings:view`
@@ -576,6 +587,17 @@
   （OPEN_QUESTIONS 参照）。
 - テスト: 既存5件 + 修正後全通過。全4391テスト通過、`tsc --noEmit` クリーン、
   lint 0 エラー。
+
+## 2026-08-20 IMP-033 §2 MORE メニュー IA 型基盤（branch impl/IMP-033-more-menu）
+
+- 内容: v2.0 §2 MORE（その他）タブの項目構成を正準定義する型基盤を実装。
+  - `src/lib/navigation/moreMenu.ts`: MoreMenuItem 型、MORE_MENU_ITEMS 正準リスト（10 項目、4 セクション）、
+    権限ベースフィルタリング(`filterMoreMenuItems`)、セクショングループ化(`groupMoreMenuItems`)。
+  - 現行モバイル 7 項目 + メンバー管理・店舗管理・同期センターを追加。
+  - プラットフォーム別表示制御（NFC 系はモバイル専用）。
+  - テスト 21 件（既存 28 件 + 新規 21 件 = ナビゲーション計 49 件）。
+  - UI コンポーネント変更なし（消費側が `filterMoreMenuItems` 経由で使う）。
+- 対象: モバイル「その他」タブ / Web 設定ハブの項目定義
 
 ## 2026-08-20 IMP-031 §19.1 例外フロー（cancel/no-show/pause/追加作業）型基盤（branch impl/IMP-031-job-exceptions）
 

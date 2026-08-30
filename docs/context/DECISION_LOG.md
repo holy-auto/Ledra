@@ -4,6 +4,18 @@
 > （新しい順）。実装の詳細は RELEASE_LOG.md、迷っている段階のものは
 > OPEN_QUESTIONS.md に書く。
 
+## 2026-08-30 IMP-033（#948）を main へ取り込み。スキップした IMP-032 の同期レイヤ一式が再度復活していたため削除
+
+1. 日付: 2026-08-30
+2. 起きたこと: IMP-033（MORE メニュー IA 型基盤、branch impl/IMP-033-more-menu）を main へ取り込む際、main と分岐した62ファイルが衝突した。57ファイルは phantom conflict で一括解決。残り5ファイル（DECISION_LOG.md/LEDRA_CURRENT.md/RELEASE_LOG.md/requirement-trace.md/`src/lib/navigation/index.ts`）はこのPR自身が変更していたため手動再適用した。resurrection チェック（`comm -23`）で `WorkScopeProvider.tsx`（12度目の再発）に加え、`src/lib/sync/` 一式（`types.ts`・`conflict.ts` に加え、スキップした PR #947 が追加した `mapper.ts`・`resolver.ts`・`summary.ts`・`syncCenter.test.ts` も含む8ファイル全部）が復活していた——IMP-033 は IMP-032 のブランチの上に積まれていたため、当然の帰結。`moreMenu.ts` は `sync_center` という項目 id・ルート文字列を持つのみで `src/lib/sync/` への import は無いことを確認済みのため、ディレクトリごと削除して問題なし。
+3. 以前の考え: resurrection チェックはこれまで「main で削除済みのファイルが古い分岐から無衝突で復活する」パターンのみを想定していた。
+4. 違和感・問題: 今回は単なる「削除済みファイルの復活」ではなく、「ユーザー判断でスキップした未マージPRの成果物一式が、後続PRのマージ経由で main に紛れ込む」という新しい経路だった。中身を見ずに `comm -23` の結果だけを機械的に「いつもの resurrection」として削除していたら見逃していたリスクがある（今回は事前に PR #947 の内容を把握済みだったため即座に気づけた）。
+5. 決めたこと: `WorkScopeProvider.tsx` と `src/lib/sync/` 全体（8ファイル）を削除。`moreMenu.ts`/`moreMenu.test.ts`（IMP-033 自身の新規ファイル）はそのまま残す。lint で新規に検出された未使用 import（`moreMenu.test.ts` の `MoreMenuItem` 型）を1件修正し基準線（1256件）に復帰。
+6. 捨てた選択肢: なし。
+7. 判断理由: PR #947 のスキップは「outbox の実際の契約が整うまで同期レイヤを main に入れない」という明示的なユーザー判断であり、後続PRのマージ経由であっても間接的に main へ入れてしまうことはその判断に反する。
+8. まだ答えが出ていないこと: なし（IMP-032 自体の再設計は別途、OPEN_QUESTIONS 参照）。
+9. 公開区分: 公開可（マージ手順の技術的な経緯。金額・テナント名・接続情報は含まない）
+
 ## 2026-08-30 「無料プラン利用者が勝手にプラン画面に飛ばされる」クレームの原因を特定・修正。BillingFetchGuard が課金と無関係な403も課金拒否と誤認していた
 
 1. 日付: 2026-08-30
@@ -389,6 +401,18 @@
 7. 判断理由: 「現場を知らずに書き足さない」の裏返しで、ここでは「現場を知らずに稼働中の挙動を狭めない」。staff/viewer のデフォルトを self にすべきかどうかは製品判断であり、この環境からは判断できない。
 8. まだ答えが出ていないこと: staff/viewer のダッシュボード初期表示は本当に self（自分の分だけ）にすべきか、それとも現状維持（tenant-wide）のままでよいか。代表判断待ち。
 9. 公開区分: 公開可（実装の技術的な経緯であり、金額・テナント名・接続情報は含まない）
+
+## 2026-08-20 IMP-033 MORE メニュー項目の管理方式 — 正準レジストリ vs 各画面ハードコード
+
+1. 日付: 2026-08-20
+2. 起きたこと: IMP-033 MORE タブ IA の実装に着手。モバイル `more/index.tsx` に 7 項目がハードコードされており、Web 側 `settingsHub.ts` の hub 項目群とは独立して管理されていた。両者に権限ゲートの有無、項目の重複、プラットフォーム差異がある。
+3. 以前の考え: モバイルとWebは別物として各画面でハードコード管理。
+4. 違和感・問題: (a) モバイルに権限フィルタリングが一切ない（viewer でもPOS・設定が見える）。(b) 項目の追加・削除が 2 箇所で必要。(c) SYNC_CENTER の導線を追加する場所が不定。
+5. 決めたこと: `src/lib/navigation/moreMenu.ts` に `MORE_MENU_ITEMS` 正準リストを定義し、`filterMoreMenuItems(can, platform)` で権限×プラットフォーム別の項目を返す。セクション分類（業務/デバイス・連携/管理/システム）で構造化。
+6. 捨てた選択肢: (a) Web 側 `NAV_GROUPS` の `hub: true` をそのままモバイルにも流用 — Web 固有の hubSection/platformOnly/orgUserVisible ゲートがモバイルに不適合。(b) モバイル `more/index.tsx` 内にだけ権限フィルタを追加 — 二重管理が残る。
+7. 判断理由: tabs.ts（IMP-020）で確立した「データ定義は `src/lib/navigation/`、描画は消費側」パターンの踏襲。settingsHub.ts の HubEntry/HubGate パターンとは意味的に揃えつつ、モバイル向けにシンプルな Permission ベースのゲートに絞る。
+8. まだ答えが出ていないこと: (a) SYNC_CENTER の最終配置（MORE タブ内 vs サイドバー直接）— 暫定で MORE 内に「同期センター」項目を配置。(b) Web SettingsHub の既存 hub 項目と MORE_MENU_ITEMS の統合タイミング（消費側タスク）。
+9. 公開区分: 公開可
 
 ## 2026-08-20 IMP-031 例外フローの型基盤方式 — 純関数評価器 vs DB CHECK+API 一括変更
 
