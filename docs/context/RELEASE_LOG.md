@@ -4,6 +4,31 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-08-30 IMP-041（#951）の code-review 指摘を修正。データ不備の終日占有誤判定・no_show の稼働率誤カウントを解消
+
+- 内容: `src/lib/booths/occupancy.ts` の `findAvailableBooths()` と `countConcurrentAt()` が、
+  開始/終了時刻が片方欠損または逆転しているデータ不備の予約を「終日占有」として誤判定していた
+  問題を修正（`toEvents()` と同じ判定に統一）。`computeBoothUtilization()` が `no_show` を
+  稼働時間にカウントしていた問題を修正（`completed` は維持、`no_show` のみ除外する
+  `NOT_ACTUAL_WORK` を新設）。`boothSignals.ts` 内の終端ステータス除外チェックが3箇所で
+  重複していたのを `occupancy.ts` の `NON_OCCUPYING`（export 化）に統一。`peakConcurrent`/
+  `predictBoothFreeAt` の呼び出し前提（単一ブース分に絞り込み済みであること）を docstring に
+  明記。`predictBoothFreeAt` の既知のギャップ（終了時刻超過中で estimatedMinutes もない
+  in_progress 予約を捕捉できない）を ponytail コメントで明記。
+- 検証: tsc --noEmit / vitest run(4829件、新規4件追加) / lint(0エラー、1256警告=基準線) /
+  check:schema / lint:migrations すべて green。
+- 対応PR: #951
+
+## 2026-08-30 IMP-041（#951）を main へ取り込み。ブース占有予測・NEXT ACTION シグナル型基盤
+
+- 内容: IMP-041（ブース占有予測・NEXT ACTION シグナル型基盤、branch impl/IMP-041-booth-occupancy）を
+  main へ取り込んだ。65ファイルの phantom conflict（61ファイル一括解決、4ファイル手動）＋
+  resurrection（WorkScopeProvider.tsx を15度目の再削除、スキップ済み PR #947 の
+  `src/lib/sync/` 一式8ファイルも合わせて削除）を解消。lint 新規1件（`boothSignals.ts`
+  の未使用 import `peakConcurrent`）を修正。
+- 検証: tsc --noEmit / vitest run(4825件) / lint(0エラー) / check:schema /
+  lint:migrations すべて green。
+
 ## 2026-08-30 IMP-040（#950）の code-review 指摘を修正。遷移表を transitions.ts へ統合、プロトタイプ汚染防止
 
 - 内容: `/code-review` の3件の指摘を修正。`PART_INSTALLATION_TRANSITIONS` を
@@ -619,6 +644,23 @@
   （OPEN_QUESTIONS 参照）。
 - テスト: 既存5件 + 修正後全通過。全4391テスト通過、`tsc --noEmit` クリーン、
   lint 0 エラー。
+
+## 2026-08-20 IMP-041 §21 設備/リフト稼働 占有予測・NEXT ACTION シグナル（branch impl/IMP-041-booth-occupancy）
+
+- 内容: ブース占有予測とNEXT ACTIONブースシグナルの型基盤を実装。
+  - `src/lib/booths/occupancy.ts`: ブース占有予測の純関数群
+    - `peakConcurrent()` — スイープラインによる同時占有ピーク計算（BoothsClient.maxConcurrent のサーバー側版）
+    - `computeBoothUtilization()` — 営業時間に対する稼働率（0–100%）
+    - `detectCapacityConflicts()` — 定員超過の時間帯検出
+    - `predictBoothFreeAt()` — in_progress 予約の終了時刻から空き推定
+    - `findAvailableBooths()` — 指定時刻の空きブース検索（空き時間帯リスト付き）
+  - `src/lib/booths/boothSignals.ts`: NEXT ACTION ブースシグナル
+    - `BoothSignalKind` 4種: booth_freed / assign_booth / capacity_exceeded / booth_overloaded
+    - `deriveBoothSignals()` — 予約・ブース状態からアクション可能シグナルを導出
+  - テスト 41 件追加（occupancy 27 + signals 9 + duration 5）、全 4550 件通過
+- 対象: 全施工店（ブース管理機能利用店舗）
+- 依存: IMP-014, IMP-021, IMP-022
+- 下流: IMP-044（NEXT ACTION エンジン拡張）、IMP-046（経営分析 KPI）
 
 ## 2026-08-20 IMP-040 §8 部品装着インテグリティ 正準語彙（branch impl/IMP-040-parts-integrity）
 

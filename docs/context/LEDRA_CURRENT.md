@@ -378,6 +378,10 @@ Sentry · Resend (+ SendGrid fallback) · Anthropic (Opus 4.8 / Sonnet 4.6 / Hai
   （SegmentedControl/StatusBadge/StatusCard/NextActionCard/ProgressCard/Alert/IconButton/
   BottomSheet）+ Badge dot + Button xl。v2.0 の色トークン値は不採用・既存デザインシステム維持
   （DECISION_LOG 2026-08-19）。
+- **IMP-041（§21 設備/リフト稼働 占有予測・NEXT ACTION シグナル）完了**:
+  ブース占有予測の純関数群（peakConcurrent/稼働率/定員超過検出/空き推定/空きブース検索）+
+  NEXT ACTION ブースシグナル（booth_freed/assign_booth/capacity_exceeded/booth_overloaded の
+  4 種導出）。IMP-044（NEXT ACTION エンジン）と IMP-046（経営分析 KPI）の前提条件。テスト 41 件。
 - **IMP-040（§8 部品装着インテグリティ 正準語彙）完了**:
   正準ドメイン語彙 7 軸目 `PART_INSTALLATION_STATES`（5 値）+ 遷移表 + 6 言語ラベル。
   Certificate Gate 部品整合性条件の導出関数 `derivePartsIntegrityOk()` 追加。

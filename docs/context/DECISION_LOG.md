@@ -4,6 +4,30 @@
 > （新しい順）。実装の詳細は RELEASE_LOG.md、迷っている段階のものは
 > OPEN_QUESTIONS.md に書く。
 
+## 2026-08-30 IMP-041（#951）の code-review 指摘を修正。データ不備の終日占有誤判定・no_show の稼働率誤カウントを解消
+
+1. 日付: 2026-08-30
+2. 起きたこと: PR #951 マージ後の `/code-review` で6件の指摘。うち2件を確認・修正: (1) `findAvailableBooths()` の空き時間帯計算が、開始/終了どちらか片方だけ設定または逆転（end<=start）したデータ不備の予約を「終日占有」として扱っていた — 兄弟関数 `toEvents()` は同じデータ不備を明示的に無視する設計であり、この不一致は修正対象。合わせて `countConcurrentAt()`（同じ `findAvailableBooths()` 内部で `currentlyFree` 判定に使用）にも同型のバグを発見し、同じ修正を適用（レビュー指摘には含まれていなかったが、同一原因・同一ファイルの双子バグのため合わせて修正）。(2) `computeBoothUtilization()` が `no_show`（実際には来店せずブースを未使用）を稼働時間にカウントしており、`boothSignals.ts` の `deriveBoothSignals()` がこの値をそのまま `booth_overloaded` シグナルの閾値判定に使っていたため、no_show の多いブースで誤った過負荷アラートが出る経路が実在した。加えて `boothSignals.ts` 内の終端ステータス除外チェック（`cancelled`/`completed`/`no_show`）が3箇所に同じ条件式で重複していたため、`occupancy.ts` の `NON_OCCUPYING` を export して1箇所に統合。残り2件（`peakConcurrent`/`predictBoothFreeAt` が単一ブース分の絞り込み済み配列を前提とする点の docstring 不足、`predictBoothFreeAt` が終了時刻超過中で estimatedMinutes もない in_progress 予約を捕捉できない既知のギャップ）はコメント追記のみで対応。残り1件（`computeBoothUtilization` 内部での `peakConcurrent` 二重走査によるパフォーマンス非効率）は正しさに影響しないため YAGNI で見送り。
+3. 以前の考え: マージ時点では `occupancy.ts`/`boothSignals.ts` はテスト済み・型基盤先行パターンとして問題なしと判断していた。
+4. 違和感・問題: 「時間未設定 → 終日占有」という設計判断自体は正しいが、それを「データ不備（片方だけ設定・逆転）」まで同じ分岐で拾ってしまうコードが3箇所（`toEvents`／`findAvailableBooths` の occupied 計算／`countConcurrentAt`）に分散し、うち1箇所（`toEvents`）だけが正しく書かれていた。同じ判定ロジックを複数箇所に手書きすると、修正が一部にしか反映されない典型例。
+5. 決めたこと: 3箇所とも `toEvents()` と同じ判定（両方 null → 終日、両方設定かつ end>start → その区間、それ以外は無視）に統一。`computeBoothUtilization()` は no_show のみ除外する `NOT_ACTUAL_WORK` を新設（completed は稼働実績として維持）。`boothSignals.ts` の重複3箇所は `NON_OCCUPYING` の再利用に統一。
+6. 捨てた選択肢: `countConcurrentAt` のバグはレビュー指摘の対象外だったため直さずに残す案 — CLAUDE.md の「バグ修正は根本原因、対症療法ではない」方針と矛盾するため採用せず。
+7. 判断理由: 同一ファイル内で同じデータ不備パターンを2箇所が正しく無視し1箇所だけ誤って終日占有扱いにする状態を残すと、次にどちらかを個別に直した人が「もう直っているはず」と誤認しやすい。no_show については、IMP-031 で `no_show` が実際に DB へ書き込まれるようになった時点でこの誤カウントが本番の NEXT ACTION アラートに現れる可能性があった（現状は DB CHECK 制約により no_show は未使用のため実害なし）。
+8. まだ答えが出ていないこと: `predictBoothFreeAt()` の「estimatedMinutes もなく終了時刻超過中の in_progress 予約」のフォールバック方針は未決定（IMP-044 配線時に決める、ponytail コメントで明記済み）。
+9. 公開区分: 公開可（コードレビューで見つかった型基盤コードの論理バグ修正。金額・テナント名・接続情報は含まない）
+
+## 2026-08-30 IMP-041（#951）を main へ取り込み。resurrection パターン15度目、未使用importを修正
+
+1. 日付: 2026-08-30
+2. 起きたこと: IMP-041（ブース占有予測・NEXT ACTION シグナル型基盤、branch impl/IMP-041-booth-occupancy）を main へ取り込む際、main と分岐した65ファイルが衝突した。61ファイルは phantom conflict で一括解決。残り4ファイル（DECISION_LOG.md/LEDRA_CURRENT.md/RELEASE_LOG.md/requirement-trace.md）はこのPR自身が変更していたため手動再適用した。resurrection チェックで `WorkScopeProvider.tsx`（15度目の再発）とスキップ済み PR #947 の `src/lib/sync/` 一式8ファイルが今回も復活していたため削除。`occupancy.ts`/`boothSignals.ts`（IMP-041 自身の新規ファイル）は `sync/` への依存なし（grep で確認済み）。マージ後の lint で新規1件（`boothSignals.ts` が `peakConcurrent` を import しているが未使用——同名のオブジェクトプロパティアクセス `c.peakConcurrent` はあるが import した関数自体は呼ばれていない）を検出、修正して基準線（1256件）に復帰。
+3. 以前の考え: なし（#948〜950 で確立した手順の踏襲）。
+4. 違和感・問題: 特になし。
+5. 決めたこと: 確立済みの手順をそのまま適用。
+6. 捨てた選択肢: なし。
+7. 判断理由: 確立済みの手順が引き続き有効に機能した。
+8. まだ答えが出ていないこと: なし。
+9. 公開区分: 公開可（マージ手順の技術的な経緯。金額・テナント名・接続情報は含まない）
+
 ## 2026-08-30 IMP-040（#950）の code-review 指摘を修正。PartInstallation 遷移表を transitions.ts へ統合、DB ガードとの関係の誤記を修正
 
 1. 日付: 2026-08-30
@@ -437,6 +461,18 @@
 7. 判断理由: 「現場を知らずに書き足さない」の裏返しで、ここでは「現場を知らずに稼働中の挙動を狭めない」。staff/viewer のデフォルトを self にすべきかどうかは製品判断であり、この環境からは判断できない。
 8. まだ答えが出ていないこと: staff/viewer のダッシュボード初期表示は本当に self（自分の分だけ）にすべきか、それとも現状維持（tenant-wide）のままでよいか。代表判断待ち。
 9. 公開区分: 公開可（実装の技術的な経緯であり、金額・テナント名・接続情報は含まない）
+
+## 2026-08-20 IMP-041 ブース占有予測・NEXT ACTION シグナルの型基盤方式
+
+1. 日付: 2026-08-20
+2. 起きたこと: IMP-041（§21 設備/リフト稼働）の実装。既存のブース管理（CRUD・日次占有表示）とガントチャート（スタッフ軸）はあるが、占有予測と NEXT ACTION 連動がない。IMP-044（NEXT ACTION エンジン拡張）と IMP-046（経営分析 KPI）がこれに依存。
+3. 以前の考え: `BoothsClient.tsx` の `maxConcurrent()` がクライアント側で同時占有ピークを計算していた。サーバー側で再利用できる形ではなかった。
+4. 違和感・問題: (a) 占有計算ロジックがクライアントコンポーネントに閉じている、(b) ブース状態が NEXT ACTION パイプラインに一切流れない、(c) 定員超過検出・稼働率計算・空き予測がない。
+5. 決めたこと: 型基盤先行パターンで純関数モジュール 2 つを追加。(1) `occupancy.ts` — スイープラインアルゴリズムによる占有予測 5 関数。(2) `boothSignals.ts` — NEXT ACTION 用ブースシグナル導出。DB・API・UI 変更なし。Gantt モジュールの `parseTimeToHours` と `SHIFT_*` 定数を再利用。
+6. 捨てた選択肢: (a) BoothsClient の maxConcurrent() をそのまま共有モジュールに移動 → クライアントコンポーネントの依存が変わるため影響範囲が広い。(b) capacity>1 ブースの詳細な時間帯分解 → 現時点で使うコンシューマがいないので YAGNI（IMP-046 で必要になったら拡張）。(c) 占有計算を Gantt モジュール内に追加 → Gantt はスタッフ軸、ブース占有はブース軸で関心が異なる。
+7. 判断理由: IMP-044 と IMP-046 が具体的なコンシューマ。型と純関数を先に確定させることで、下流タスクが安全に拡張できる。BoothsClient の maxConcurrent() はそのまま残す（リファクタリングは影響範囲に見合わない）。
+8. まだ答えが出ていないこと: capacity>1 ブースの詳細な時間帯別空き計算（IMP-046 で判断）。ブースシグナルの `pickJobNextActionCandidate()` への統合方式（IMP-044 で判断）。
+9. 公開区分: 公開可
 
 ## 2026-08-20 IMP-040 部品装着状態を正準語彙 7 軸目に追加
 
