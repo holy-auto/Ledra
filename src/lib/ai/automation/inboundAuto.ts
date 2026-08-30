@@ -434,6 +434,8 @@ export async function maybeAutoProcessInboundMessage(params: MaybeAutoProcessPar
         channel: params.channel ?? "line",
         settings,
         tenant,
+        // 概算の直後に「正式なお見積り / スタッフ相談」誘導ボタンを添えるか (ナレッジ返信と同条件)。
+        attachButtons: attachFollowupButtons,
       });
     }
 
