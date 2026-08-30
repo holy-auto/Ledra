@@ -27,12 +27,12 @@ export function isPlatformTenantId(tenantId: string): boolean {
  * CallerInfo がプラットフォーム管理者かどうか判定。
  *
  * 対象:
- *  - role が `super_admin` (= ラベル「プラットフォーム管理者」) のメンバー
- *    → どのテナントに紐付いていても platform admin 扱い
- *  - PLATFORM_TENANT_ID に紐付く owner / admin
+ *  - PLATFORM_TENANT_ID に紐付く super_admin / owner / admin
  *    → 運営テナントの中の通常 admin にも運営権限を付与
  */
 export function isPlatformAdmin(caller: CallerInfo): boolean {
-  if (caller.role === "super_admin") return true;
-  return isPlatformTenantId(caller.tenantId) && (caller.role === "owner" || caller.role === "admin");
+  return (
+    isPlatformTenantId(caller.tenantId) &&
+    (caller.role === "super_admin" || caller.role === "owner" || caller.role === "admin")
+  );
 }

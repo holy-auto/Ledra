@@ -19,8 +19,7 @@ import { ImageResponse } from "next/og";
 export const OG_SIZE = { width: 1200, height: 630 } as const;
 export const OG_CONTENT_TYPE = "image/png";
 
-const NOTO_SANS_JP_BOLD_TTF =
-  "https://cdn.jsdelivr.net/fontsource/fonts/noto-sans-jp@latest/japanese-700-normal.ttf";
+const NOTO_SANS_JP_BOLD_TTF = "https://cdn.jsdelivr.net/fontsource/fonts/noto-sans-jp@latest/japanese-700-normal.ttf";
 
 let cachedFontPromise: Promise<ArrayBuffer | null> | null = null;
 
@@ -57,173 +56,166 @@ export async function makeOgImage({ title, subtitle, badge, imageUrl }: OgInput)
   const fontFamily = fontData ? "NotoSansJP" : "sans-serif";
 
   return new ImageResponse(
-    (
-      <div
-        style={{
-          width: "100%",
-          height: "100%",
-          display: "flex",
-          flexDirection: "column",
-          justifyContent: "space-between",
-          padding: "72px 80px",
-          background:
-            "linear-gradient(135deg, #060a12 0%, #0b111c 45%, #0d0b1e 100%)",
-          color: "white",
-          fontFamily,
-          position: "relative",
-        }}
-      >
-        {/* Hero image overlay (right side) */}
-        {imageUrl && (
+    <div
+      style={{
+        width: "100%",
+        height: "100%",
+        display: "flex",
+        flexDirection: "column",
+        justifyContent: "space-between",
+        padding: "72px 80px",
+        background: "linear-gradient(135deg, #060a12 0%, #0b111c 45%, #0d0b1e 100%)",
+        color: "white",
+        fontFamily,
+        position: "relative",
+      }}
+    >
+      {/* Hero image overlay (right side) */}
+      {imageUrl && (
+        <div
+          style={{
+            position: "absolute",
+            top: 0,
+            right: 0,
+            width: "45%",
+            height: "100%",
+            display: "flex",
+          }}
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={imageUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
           <div
             style={{
               position: "absolute",
-              top: 0,
-              right: 0,
-              width: "45%",
-              height: "100%",
+              inset: 0,
+              background: "linear-gradient(to right, #060a12 0%, transparent 40%)",
               display: "flex",
             }}
-          >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={imageUrl}
-              alt=""
-              style={{ width: "100%", height: "100%", objectFit: "cover" }}
-            />
-            <div
-              style={{
-                position: "absolute",
-                inset: 0,
-                background: "linear-gradient(to right, #060a12 0%, transparent 40%)",
-                display: "flex",
-              }}
-            />
-          </div>
-        )}
-        {/* Ambient blobs */}
-        <div
-          style={{
-            position: "absolute",
-            top: -120,
-            right: -80,
-            width: 420,
-            height: 420,
-            borderRadius: 999,
-            background: "rgba(96,165,250,0.22)",
-            filter: "blur(80px)",
-            display: "flex",
-          }}
-        />
-        <div
-          style={{
-            position: "absolute",
-            bottom: -140,
-            left: -120,
-            width: 380,
-            height: 380,
-            borderRadius: 999,
-            background: "rgba(167,139,250,0.18)",
-            filter: "blur(80px)",
-            display: "flex",
-          }}
-        />
+          />
+        </div>
+      )}
+      {/* Ambient blobs */}
+      <div
+        style={{
+          position: "absolute",
+          top: -120,
+          right: -80,
+          width: 420,
+          height: 420,
+          borderRadius: 999,
+          background: "rgba(96,165,250,0.22)",
+          filter: "blur(80px)",
+          display: "flex",
+        }}
+      />
+      <div
+        style={{
+          position: "absolute",
+          bottom: -140,
+          left: -120,
+          width: 380,
+          height: 380,
+          borderRadius: 999,
+          background: "rgba(167,139,250,0.18)",
+          filter: "blur(80px)",
+          display: "flex",
+        }}
+      />
 
-        {/* Top row: brand + badge */}
-        <div style={{ display: "flex", alignItems: "center", gap: 18, zIndex: 1 }}>
+      {/* Top row: brand + badge */}
+      <div style={{ display: "flex", alignItems: "center", gap: 18, zIndex: 1 }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            fontSize: 32,
+            fontWeight: 700,
+            letterSpacing: -0.5,
+          }}
+        >
+          {brand}
+        </div>
+        {badge && (
           <div
             style={{
               display: "flex",
               alignItems: "center",
-              fontSize: 32,
-              fontWeight: 700,
-              letterSpacing: -0.5,
+              padding: "6px 14px",
+              borderRadius: 999,
+              border: "1px solid rgba(96,165,250,0.3)",
+              background: "rgba(96,165,250,0.12)",
+              color: "#93c5fd",
+              fontSize: 16,
+              fontWeight: 600,
+              letterSpacing: 2,
             }}
           >
-            {brand}
+            {badge}
           </div>
-          {badge && (
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                padding: "6px 14px",
-                borderRadius: 999,
-                border: "1px solid rgba(96,165,250,0.3)",
-                background: "rgba(96,165,250,0.12)",
-                color: "#93c5fd",
-                fontSize: 16,
-                fontWeight: 600,
-                letterSpacing: 2,
-              }}
-            >
-              {badge}
-            </div>
-          )}
-        </div>
+        )}
+      </div>
 
-        {/* Title block */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 28, zIndex: 1, maxWidth: 920 }}>
-          <div
-            style={{
-              fontSize: title.length > 24 ? 64 : 80,
-              fontWeight: 700,
-              lineHeight: 1.15,
-              letterSpacing: -1,
-              color: "#ffffff",
-              display: "flex",
-            }}
-          >
-            {title}
-          </div>
-          {subtitle && (
-            <div
-              style={{
-                fontSize: 26,
-                lineHeight: 1.55,
-                color: "rgba(255,255,255,0.6)",
-                display: "flex",
-                maxWidth: 860,
-              }}
-            >
-              {subtitle}
-            </div>
-          )}
-        </div>
-
-        {/* Bottom tagline */}
+      {/* Title block */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 28, zIndex: 1, maxWidth: 920 }}>
         <div
           style={{
+            fontSize: title.length > 24 ? 64 : 80,
+            fontWeight: 700,
+            lineHeight: 1.15,
+            letterSpacing: -1,
+            color: "#ffffff",
             display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            zIndex: 1,
           }}
         >
+          {title}
+        </div>
+        {subtitle && (
           <div
             style={{
-              fontSize: 22,
-              fontWeight: 700,
-              color: "#a78bfa",
-              letterSpacing: 1,
+              fontSize: 26,
+              lineHeight: 1.55,
+              color: "rgba(255,255,255,0.6)",
               display: "flex",
+              maxWidth: 860,
             }}
           >
-            {tagline}
+            {subtitle}
           </div>
-          <div
-            style={{
-              fontSize: 18,
-              color: "rgba(255,255,255,0.5)",
-              letterSpacing: 2,
-              display: "flex",
-            }}
-          >
-            自動車整備・コーティング店の施工履歴プラットフォーム
-          </div>
+        )}
+      </div>
+
+      {/* Bottom tagline */}
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          zIndex: 1,
+        }}
+      >
+        <div
+          style={{
+            fontSize: 22,
+            fontWeight: 700,
+            color: "#a78bfa",
+            letterSpacing: 1,
+            display: "flex",
+          }}
+        >
+          {tagline}
+        </div>
+        <div
+          style={{
+            fontSize: 18,
+            color: "rgba(255,255,255,0.5)",
+            letterSpacing: 2,
+            display: "flex",
+          }}
+        >
+          自動車整備・コーティング店の施工履歴プラットフォーム
         </div>
       </div>
-    ),
+    </div>,
     {
       ...OG_SIZE,
       fonts: fontData

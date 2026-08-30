@@ -33,11 +33,7 @@ const STATUS_LABELS: Record<string, { label: string; color: string }> = {
 
 function StatusBadge({ status }: { status: string }) {
   const s = STATUS_LABELS[status] ?? { label: status, color: "bg-surface-hover text-secondary" };
-  return (
-    <span className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-semibold ${s.color}`}>
-      {s.label}
-    </span>
-  );
+  return <span className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-semibold ${s.color}`}>{s.label}</span>;
 }
 
 export default function InsurerReviewClient() {
@@ -93,24 +89,20 @@ export default function InsurerReviewClient() {
     <div className="space-y-4">
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-3">
-        <select
-          value={filter}
-          onChange={(e) => setFilter(e.target.value)}
-          className="select-field max-w-xs"
-        >
+        <select value={filter} onChange={(e) => setFilter(e.target.value)} className="select-field max-w-xs">
           <option value="">全てのステータス</option>
           <option value="active_pending_review">審査待ち</option>
           <option value="active">正式</option>
           <option value="suspended">停止</option>
         </select>
 
-        <div className="text-sm text-muted">
-          {loading ? "読み込み中..." : `${insurers.length} 件`}
-        </div>
+        <div className="text-sm text-muted">{loading ? "読み込み中..." : `${insurers.length} 件`}</div>
       </div>
 
       {msg && (
-        <div className={`rounded-xl border p-3 text-sm ${msg.startsWith("エラー") ? "border-danger/30 bg-danger-dim text-danger-text" : "border-success/30 bg-success-dim text-success-text"}`}>
+        <div
+          className={`rounded-xl border p-3 text-sm ${msg.startsWith("エラー") ? "border-danger/30 bg-danger-dim text-danger-text" : "border-success/30 bg-success-dim text-success-text"}`}
+        >
           {msg}
         </div>
       )}
@@ -164,9 +156,7 @@ export default function InsurerReviewClient() {
                       <option value="enterprise">enterprise</option>
                     </select>
                   </td>
-                  <td className="p-3 text-xs text-muted">
-                    {ins.signup_source === "self" ? "セルフ" : "手動"}
-                  </td>
+                  <td className="p-3 text-xs text-muted">{ins.signup_source === "self" ? "セルフ" : "手動"}</td>
                   <td className="p-3 whitespace-nowrap text-xs text-secondary">
                     {ins.created_at ? new Date(ins.created_at).toLocaleDateString("ja-JP") : "-"}
                   </td>
@@ -236,25 +226,19 @@ export default function InsurerReviewClient() {
                         <div>
                           <div className="text-xs text-muted mb-0.5">利用規約同意</div>
                           <div className="text-primary">
-                            {ins.terms_accepted_at
-                              ? new Date(ins.terms_accepted_at).toLocaleString("ja-JP")
-                              : "未同意"}
+                            {ins.terms_accepted_at ? new Date(ins.terms_accepted_at).toLocaleString("ja-JP") : "未同意"}
                           </div>
                         </div>
                         <div>
                           <div className="text-xs text-muted mb-0.5">審査日</div>
                           <div className="text-primary">
-                            {ins.reviewed_at
-                              ? new Date(ins.reviewed_at).toLocaleString("ja-JP")
-                              : "-"}
+                            {ins.reviewed_at ? new Date(ins.reviewed_at).toLocaleString("ja-JP") : "-"}
                           </div>
                         </div>
                         <div>
                           <div className="text-xs text-muted mb-0.5">アクティベート日</div>
                           <div className="text-primary">
-                            {ins.activated_at
-                              ? new Date(ins.activated_at).toLocaleString("ja-JP")
-                              : "-"}
+                            {ins.activated_at ? new Date(ins.activated_at).toLocaleString("ja-JP") : "-"}
                           </div>
                         </div>
                       </div>
@@ -271,10 +255,12 @@ export default function InsurerReviewClient() {
                             rows={2}
                           />
                           <button
-                            onClick={() => updateInsurer(ins.id, {
-                              status: "suspended",
-                              rejection_reason: rejectionReason || undefined,
-                            })}
+                            onClick={() =>
+                              updateInsurer(ins.id, {
+                                status: "suspended",
+                                rejection_reason: rejectionReason || undefined,
+                              })
+                            }
                             disabled={actionBusy === ins.id}
                             className="rounded-lg bg-red-600 px-4 py-1.5 text-xs font-medium text-white hover:bg-red-700 disabled:opacity-50"
                           >

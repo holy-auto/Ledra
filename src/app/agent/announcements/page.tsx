@@ -52,10 +52,7 @@ export default function AgentAnnouncementsPage() {
           setAnnouncements(json.announcements ?? []);
         }
       } catch (e: unknown) {
-        if (!cancelled)
-          setError(
-            e instanceof Error ? e.message : "エラーが発生しました",
-          );
+        if (!cancelled) setError(e instanceof Error ? e.message : "エラーが発生しました");
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -74,9 +71,7 @@ export default function AgentAnnouncementsPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ announcement_id: id }),
       });
-      setAnnouncements((prev) =>
-        prev.map((a) => (a.id === id ? { ...a, is_read: true } : a)),
-      );
+      setAnnouncements((prev) => prev.map((a) => (a.id === id ? { ...a, is_read: true } : a)));
     } catch {
       // silently ignore read-mark failures
     }
@@ -124,12 +119,8 @@ export default function AgentAnnouncementsPage() {
       <div className="flex flex-wrap items-end justify-between gap-4 pb-2">
         <div className="space-y-1">
           <span className="section-tag">ANNOUNCEMENTS</span>
-          <h1 className="text-[28px] font-semibold tracking-tight text-primary leading-tight">
-            お知らせ
-          </h1>
-          <p className="text-[14px] text-secondary leading-relaxed">
-            本部からのお知らせ・キャンペーン情報
-          </p>
+          <h1 className="text-[28px] font-semibold tracking-tight text-primary leading-tight">お知らせ</h1>
+          <p className="text-[14px] text-secondary leading-relaxed">本部からのお知らせ・キャンペーン情報</p>
         </div>
       </div>
 
@@ -169,36 +160,22 @@ export default function AgentAnnouncementsPage() {
 
                   <div className="flex-1 min-w-0">
                     <div className="flex flex-wrap items-center gap-2 mb-1">
-                      {a.pinned && (
-                        <span className="text-xs font-semibold text-warning-text">
-                          ピン留め
-                        </span>
-                      )}
+                      {a.pinned && <span className="text-xs font-semibold text-warning-text">ピン留め</span>}
                       <Badge variant={cat.variant}>{cat.label}</Badge>
-                      <span className="text-xs text-muted">
-                        {formatDateTime(a.created_at)}
-                      </span>
+                      <span className="text-xs text-muted">{formatDateTime(a.created_at)}</span>
                     </div>
 
-                    <h3 className="text-sm font-semibold text-primary">
-                      {a.title}
-                    </h3>
+                    <h3 className="text-sm font-semibold text-primary">{a.title}</h3>
 
                     {isExpanded ? (
-                      <div className="mt-3 text-sm text-secondary whitespace-pre-wrap leading-relaxed">
-                        {a.body}
-                      </div>
+                      <div className="mt-3 text-sm text-secondary whitespace-pre-wrap leading-relaxed">{a.body}</div>
                     ) : (
-                      <p className="mt-1 text-sm text-muted line-clamp-2">
-                        {a.body}
-                      </p>
+                      <p className="mt-1 text-sm text-muted line-clamp-2">{a.body}</p>
                     )}
                   </div>
 
                   {/* Expand indicator */}
-                  <span className="mt-1 flex-shrink-0 text-muted text-xs">
-                    {isExpanded ? "閉じる" : "詳細"}
-                  </span>
+                  <span className="mt-1 flex-shrink-0 text-muted text-xs">{isExpanded ? "閉じる" : "詳細"}</span>
                 </div>
               </button>
             );

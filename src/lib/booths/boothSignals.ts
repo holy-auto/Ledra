@@ -8,7 +8,7 @@
  * DB・API・UI の変更なし（型基盤先行パターン）。
  */
 import type { BoothInfo, BoothReservation } from "./occupancy";
-import { peakConcurrent, detectCapacityConflicts, computeBoothUtilization } from "./occupancy";
+import { detectCapacityConflicts, computeBoothUtilization } from "./occupancy";
 
 // ── 型 ──
 
