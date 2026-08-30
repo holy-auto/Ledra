@@ -37,9 +37,9 @@ export interface DataExportEvent {
   /** テナント/スコープ ID */
   scopeId: string;
   /** エクスポートに含まれたテーブル */
-  tablesIncluded: string[];
+  tablesIncluded: readonly string[];
   /** 各テーブルのおおよその行数 */
-  rowCounts?: Record<string, number>;
+  rowCounts?: Readonly<Record<string, number>>;
   /** エクスポート形式 */
   format: "json";
   /** ISO 8601 タイムスタンプ */
@@ -55,13 +55,18 @@ export interface DataExportEvent {
  *
  * 呼び出し側（各 export route）が必要なフィールドを渡し、
  * 正規化されたイベントオブジェクトを受け取る。
+ *
+ * tablesIncluded/rowCounts は呼び出し側のミュータブルな配列/オブジェクトを
+ * 参照ではなくコピーして保持する。参照のまま保持すると、呼び出し側が
+ * 生成後（永続化前）に同じ配列/オブジェクトを再利用・変更した場合、
+ * 「そのはずの」監査記録の中身が後から変わってしまう（Codex レビュー指摘）。
  */
 export function createExportAuditEntry(input: {
   scope: ExportScope;
   actorId: string;
   scopeId: string;
-  tablesIncluded: string[];
-  rowCounts?: Record<string, number>;
+  tablesIncluded: readonly string[];
+  rowCounts?: Readonly<Record<string, number>>;
   exportedAt: string;
   schemaVersion?: string;
   requestIp?: string;
@@ -71,8 +76,8 @@ export function createExportAuditEntry(input: {
     scope: input.scope,
     actorId: input.actorId,
     scopeId: input.scopeId,
-    tablesIncluded: input.tablesIncluded,
-    rowCounts: input.rowCounts,
+    tablesIncluded: [...input.tablesIncluded],
+    rowCounts: input.rowCounts ? { ...input.rowCounts } : undefined,
     format: "json",
     exportedAt: input.exportedAt,
     schemaVersion: input.schemaVersion ?? "1.0",

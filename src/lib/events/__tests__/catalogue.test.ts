@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { eventRisk } from "../domainEvent";
 import {
   DOMAIN_EVENT_TYPES,
   isDomainEventType,
@@ -126,5 +127,36 @@ describe("fromLegacyEventType()", () => {
 
   it("returns null for unknown", () => {
     expect(fromLegacyEventType("unknown_type")).toBeNull();
+  });
+});
+
+// リスクは `?? "low"` に落ちるので、登録し忘れが静かに起きる。
+describe("eventRisk() — sync イベント", () => {
+  it("競合と失敗は low のままにしない", () => {
+    // 未登録だと証明書の競合が進捗メモ（medium）より下に格付けされる。
+    expect(eventRisk("sync.conflict_detected")).not.toBe("low");
+    expect(eventRisk("sync.conflict_resolved")).not.toBe("low");
+    expect(eventRisk("sync.failed")).not.toBe("low");
+  });
+});
+
+describe("fromLegacyEventType() — 表に無い値", () => {
+  it("Object.prototype 由来のキーで関数を返さない", () => {
+    for (const k of ["constructor", "toString", "__proto__", "valueOf"]) {
+      expect(fromLegacyEventType(k)).toBeNull();
+    }
+  });
+});
+
+describe("稼働中の webhook 名がカタログにあること", () => {
+  it("vehicle.created が表せる", () => {
+    // webhook-topics.ts と api/vehicles/create/route.ts:60 が実際に投げている名前。
+    expect(isDomainEventType("vehicle.created")).toBe(true);
+  });
+
+  it("vehicle.created と vehicle.registered が同じ格付けになる", () => {
+    // 同義なのに片方だけ登録すると、同じ操作が別のリスクで扱われる。
+    expect(eventRisk("vehicle.created")).toBe(eventRisk("vehicle.registered"));
+    expect(eventRisk("vehicle.created")).not.toBe("low");
   });
 });

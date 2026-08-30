@@ -14,6 +14,12 @@ interface AgentSettings {
   contact_phone: string;
   postal_code: string;
   address: string;
+  website_url: string;
+  bank_name: string;
+  bank_branch: string;
+  bank_account_type: string;
+  bank_account_number: string;
+  bank_account_holder: string;
   role: string;
   stripe_connected: boolean;
   stripe_account_id: string | null;
@@ -28,6 +34,12 @@ const DEFAULT_SETTINGS: AgentSettings = {
   contact_phone: "",
   postal_code: "",
   address: "",
+  website_url: "",
+  bank_name: "",
+  bank_branch: "",
+  bank_account_type: "",
+  bank_account_number: "",
+  bank_account_holder: "",
   role: "member",
   stripe_connected: false,
   stripe_account_id: null,
@@ -68,9 +80,17 @@ export default function AgentSettingsPage() {
         const json = await res.json();
         if (!cancelled) {
           const agent = json.agent ?? {};
+          // 振込先は bank_info（jsonb）でまとまって返る。admin 以外には含まれない
+          const bank = (agent.bank_info ?? {}) as Record<string, string | undefined>;
           setSettings({
             ...DEFAULT_SETTINGS,
             ...agent,
+            website_url: agent.website_url ?? "",
+            bank_name: bank.bank_name ?? "",
+            bank_branch: bank.branch ?? "",
+            bank_account_type: bank.account_type ?? "",
+            bank_account_number: bank.account_number ?? "",
+            bank_account_holder: bank.account_holder ?? "",
             stripe_connected: agent.stripe_onboarding_done ?? false,
             stripe_account_id: agent.stripe_account_id ?? null,
             role: json.current_user?.role ?? "viewer",
@@ -123,6 +143,12 @@ export default function AgentSettingsPage() {
           contact_phone: settings.contact_phone,
           postal_code: settings.postal_code,
           address: settings.address,
+          website_url: settings.website_url,
+          bank_name: settings.bank_name,
+          bank_branch: settings.bank_branch,
+          bank_account_type: settings.bank_account_type,
+          bank_account_number: settings.bank_account_number,
+          bank_account_holder: settings.bank_account_holder,
           email_notifications: settings.email_notifications,
         }),
       });
@@ -337,6 +363,22 @@ export default function AgentSettingsPage() {
                   </div>
                 )}
               </label>
+              <label className="space-y-1 sm:col-span-2">
+                <span className="text-xs text-muted">ウェブサイト</span>
+                {isAdmin ? (
+                  <input
+                    type="url"
+                    value={settings.website_url}
+                    onChange={(e) => updateField("website_url", e.target.value)}
+                    placeholder="https://example.com"
+                    className="input-field"
+                  />
+                ) : (
+                  <div className="input-field bg-surface-hover/50 text-secondary cursor-not-allowed">
+                    {settings.website_url || "-"}
+                  </div>
+                )}
+              </label>
             </div>
             {isAdmin && (
               <div className="flex justify-end">
@@ -413,6 +455,66 @@ export default function AgentSettingsPage() {
               </div>
             )}
           </section>
+
+          {/* 振込先。口座情報は管理者だけに表示・編集させる（API 側も admin にしか返さない） */}
+          {isAdmin && (
+            <section className="glass-card p-6 space-y-4">
+              <div className="text-xs font-semibold tracking-[0.18em] text-muted">振込先</div>
+              <p className="text-xs text-muted">コミッションの振込先です。管理者のみ表示・編集できます。</p>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <label className="space-y-1">
+                  <span className="text-xs text-muted">銀行名</span>
+                  <input
+                    type="text"
+                    value={settings.bank_name}
+                    onChange={(e) => updateField("bank_name", e.target.value)}
+                    className="input-field"
+                  />
+                </label>
+                <label className="space-y-1">
+                  <span className="text-xs text-muted">支店名</span>
+                  <input
+                    type="text"
+                    value={settings.bank_branch}
+                    onChange={(e) => updateField("bank_branch", e.target.value)}
+                    className="input-field"
+                  />
+                </label>
+                <label className="space-y-1">
+                  <span className="text-xs text-muted">口座種別</span>
+                  <select
+                    value={settings.bank_account_type}
+                    onChange={(e) => updateField("bank_account_type", e.target.value)}
+                    className="input-field"
+                  >
+                    <option value="">未設定</option>
+                    <option value="ordinary">普通</option>
+                    <option value="checking">当座</option>
+                  </select>
+                </label>
+                <label className="space-y-1">
+                  <span className="text-xs text-muted">口座番号</span>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={settings.bank_account_number}
+                    onChange={(e) => updateField("bank_account_number", e.target.value)}
+                    className="input-field"
+                  />
+                </label>
+                <label className="space-y-1 sm:col-span-2">
+                  <span className="text-xs text-muted">口座名義</span>
+                  <input
+                    type="text"
+                    value={settings.bank_account_holder}
+                    onChange={(e) => updateField("bank_account_holder", e.target.value)}
+                    placeholder="カ)ホーリー"
+                    className="input-field"
+                  />
+                </label>
+              </div>
+            </section>
+          )}
 
           {/* Notification settings section */}
           <section className="glass-card p-6 space-y-4">

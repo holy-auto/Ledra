@@ -60,7 +60,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     const { admin, tenantId } = createTenantScopedAdmin(caller.tenantId);
     const { data: menuItem, error: mErr } = await admin
       .from("menu_items")
-      .select("id, name, category")
+      .select("id, name, category_large")
       .eq("id", id)
       .eq("tenant_id", tenantId)
       .maybeSingle();

@@ -11,21 +11,34 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-const { resolveCallerMock, requireMinRoleMock, checkRateLimitMock, rpcMock, deductInventoryMock } = vi.hoisted(() => ({
-  resolveCallerMock: vi.fn(),
-  requireMinRoleMock: vi.fn().mockReturnValue(true),
-  checkRateLimitMock: vi.fn().mockResolvedValue({ allowed: true, retryAfterSec: 0, remaining: 9 }),
-  rpcMock: vi.fn(),
-  deductInventoryMock: vi.fn(),
-}));
+const { resolveCallerMock, requireMinRoleMock, checkRateLimitMock, rpcMock, deductInventoryMock, fromMock } =
+  vi.hoisted(() => ({
+    resolveCallerMock: vi.fn(),
+    requireMinRoleMock: vi.fn().mockReturnValue(true),
+    checkRateLimitMock: vi.fn().mockResolvedValue({ allowed: true, retryAfterSec: 0, remaining: 9 }),
+    rpcMock: vi.fn(),
+    deductInventoryMock: vi.fn(),
+    fromMock: vi.fn(() => {
+      const node: Record<string, unknown> = {
+        eq: () => node,
+        limit: async () => ({ data: [{ id: "store-1" }], error: null }),
+        maybeSingle: async () => ({ data: { id: "store-1" }, error: null }),
+      };
+      return { select: () => node };
+    }),
+  }));
 
 vi.mock("@/lib/supabase/server", () => ({
   createClient: () => Promise.resolve({ rpc: rpcMock }),
 }));
 
 vi.mock("@/lib/supabase/admin", () => ({
+  // pos_checkout は SECURITY DEFINER で service_role 専用にしたため、
+  // ルートはサービスロールのクライアントで RPC を呼ぶ。
+  // その admin にも rpc を生やしておく。
+  // `from` は店舗の解決（resolveStoreId）で使う。有効な店舗が1つある状態
   createTenantScopedAdmin: (tenantId: string) => ({
-    admin: { __scopedTenantId: tenantId },
+    admin: { __scopedTenantId: tenantId, rpc: rpcMock, from: fromMock },
     tenantId,
   }),
 }));
@@ -118,7 +131,8 @@ describe("POST /api/admin/pos/checkout", () => {
     expect(res.status).toBe(500);
     expect(rpcMock).toHaveBeenCalledWith(
       "pos_checkout",
-      expect.objectContaining({ p_tenant_id: "tenant-A", p_amount: 1000 }),
+      // p_store_id: 指定が無くても、有効な店舗が1つならサーバが入れる
+      expect.objectContaining({ p_tenant_id: "tenant-A", p_amount: 1000, p_store_id: "store-1" }),
     );
     expect(deductInventoryMock).not.toHaveBeenCalled();
   });

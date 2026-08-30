@@ -20,12 +20,7 @@ describe("StatCard", () => {
   });
 
   it("renders ReactNode value", () => {
-    render(
-      <StatCard
-        label="Revenue"
-        value={<span data-testid="formatted">$1,234</span>}
-      />,
-    );
+    render(<StatCard label="Revenue" value={<span data-testid="formatted">$1,234</span>} />);
     expect(screen.getByTestId("formatted")).toBeDefined();
     expect(screen.getByText("$1,234")).toBeDefined();
   });
@@ -42,9 +37,7 @@ describe("StatCard", () => {
   });
 
   it("applies custom className", () => {
-    const { container } = render(
-      <StatCard label="Test" value={0} className="col-span-2" />,
-    );
+    const { container } = render(<StatCard label="Test" value={0} className="col-span-2" />);
     const card = container.firstElementChild;
     expect(card?.className).toContain("col-span-2");
     expect(card?.className).toContain("glass-card");

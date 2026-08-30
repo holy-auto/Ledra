@@ -21,6 +21,8 @@ type PendingItem = {
   createdAt: number;
   attempts: number;
   lastError: string | null;
+  /** 恒久的に送れないと判定済み。再送しても同じ結果なので、作り直しが必要。 */
+  blocked: boolean;
 };
 
 function deriveCustomerName(item: OutboxItem): string | null {
@@ -52,7 +54,10 @@ export default function PendingOfflineCerts() {
   const refresh = useCallback(async () => {
     const all = await listOutbox();
     const certItems = all
-      .filter((it) => it.kind === "certificate_create")
+      // 証明書の作成に加え、恒久失敗になったものは種別を問わず出す。
+      // 発行 (certificate_activate) や写真アップロードが止まっているのに
+      // どこにも出ないと、利用者が気づけないまま証明書が draft のまま残る。
+      .filter((it) => it.kind === "certificate_create" || Boolean(it.blockedAt))
       .map<PendingItem>((it) => ({
         id: it.id,
         label: it.label,
@@ -60,6 +65,7 @@ export default function PendingOfflineCerts() {
         createdAt: it.createdAt,
         attempts: it.attempts,
         lastError: it.lastError,
+        blocked: Boolean(it.blockedAt),
       }));
     setItems(certItems);
   }, []);
@@ -76,13 +82,13 @@ export default function PendingOfflineCerts() {
     setMessage(null);
     try {
       const r = await drainOutbox();
-      if (r.succeeded > 0) {
-        setMessage(`${r.succeeded} 件を発行しました。証明書一覧を更新してください。`);
-      } else if (r.failed > 0) {
-        setMessage(`${r.failed} 件の同期に失敗しました。`);
-      } else {
-        setMessage("同期する保留中アイテムはありませんでした。");
+      const parts: string[] = [];
+      if (r.succeeded > 0) parts.push(`${r.succeeded} 件を発行しました`);
+      if (r.failed > 0) parts.push(`${r.failed} 件の同期に失敗しました（再試行します）`);
+      if (r.blocked > 0) {
+        parts.push(`${r.blocked} 件は内容に不足があり送信できません（下記の「作り直しが必要」）`);
       }
+      setMessage(parts.length > 0 ? `${parts.join("。")}。` : "同期する保留中アイテムはありませんでした。");
     } finally {
       setBusy(false);
       refresh();
@@ -128,16 +134,27 @@ export default function PendingOfflineCerts() {
         {items.map((it) => (
           <li key={it.id} className="flex items-center justify-between gap-3 py-2">
             <div className="min-w-0 flex-1">
-              <div className="font-medium text-primary truncate">{it.customerName ?? "(顧客名 未取得)"}</div>
+              <div className="font-medium text-primary truncate">
+                {it.customerName ?? it.label ?? "(顧客名 未取得)"}
+              </div>
               <div className="mt-0.5 flex items-center gap-2 text-xs text-muted">
                 <span>{formatRelative(it.createdAt)}</span>
-                {it.attempts > 0 && <span className="text-warning">試行 {it.attempts} 回</span>}
+                {it.blocked ? (
+                  <span className="font-medium text-danger">作り直しが必要</span>
+                ) : (
+                  it.attempts > 0 && <span className="text-warning">試行 {it.attempts} 回</span>
+                )}
                 {it.lastError && (
                   <span className="text-danger truncate" title={it.lastError}>
                     エラー: {it.lastError.slice(0, 80)}
                   </span>
                 )}
               </div>
+              {it.blocked && (
+                <p className="mt-1 text-xs text-danger">
+                  この内容では発行できないため、再送を止めています。取消してから、この画面で作り直してください。
+                </p>
+              )}
             </div>
             <button
               type="button"

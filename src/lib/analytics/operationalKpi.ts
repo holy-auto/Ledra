@@ -36,8 +36,8 @@ export interface EvidenceSufficiencyInput {
  * 呼び出し側が reservations + certificate timestamps から組み立て。
  */
 export interface JobTimeline {
-  /** ジョブの状態（現在） */
-  currentState: JobState | string;
+  /** ジョブの状態（現在）。 */
+  currentState: JobState;
   /** 予約確定日時 (ISO) */
   scheduledAt: string;
   /** 作業開始日時 (ISO)。未着手なら null。 */
@@ -83,7 +83,8 @@ export interface OperationalKPIs {
 /**
  * VERIFIED 到達率を算出。
  *
- * 分母 = 発行プロセスに入った証明書（NOT_READY 以外のすべて、REVOKED を含む）
+ * 分母 = 発行プロセスに入った証明書のうち現行版のみ（NOT_READY と SUPERSEDED を除く。
+ *         REVOKED は含む — 発行後に無効化された事実も分母に残す）
  * 分子 = VERIFIED に到達した証明書
  *
  * ponytail: NOT_READY は「まだ発行条件が揃っていない下書き」なので分母から除外。

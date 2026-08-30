@@ -42,8 +42,10 @@ export function evaluateCancel(currentState: JobState): JobTransitionResult {
 /**
  * 来店なし遷移を評価する。
  *
- * v2.0 §19.1: SCHEDULED / CHECKED_IN のみ → NO_SHOW。
- * 作業開始後の no-show は概念として成立しない。
+ * v2.0 §19.1: SCHEDULED のみ → NO_SHOW（JOB_TRANSITIONS 参照）。
+ * CHECKED_IN は不可 —— 入庫済みの案件は「来店なし」になりえない
+ * （誤操作で CHECKED_IN にした場合は CANCELED で抜ける）。
+ * 作業開始後の no-show も概念として成立しない。
  */
 export function evaluateNoShow(currentState: JobState): JobTransitionResult {
   if (isValidTransition(JOB_TRANSITIONS, currentState, "NO_SHOW")) {
@@ -169,8 +171,8 @@ export type JobExceptionEvent = {
   id: string;
   reservationId: string;
   tenantId: string;
-  /** 遷移前の状態。 */
-  fromState: string;
+  /** 遷移前の状態。全評価器の入力が JobState 型であることに合わせる。 */
+  fromState: JobState;
   /** 遷移後の状態。 */
   toState: JobState;
   /** 例外の種別。 */

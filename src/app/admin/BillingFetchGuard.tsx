@@ -26,6 +26,18 @@ function fetchInputToUrl(input: RequestInfo | URL): string {
   return (input as Request).url;
 }
 
+/**
+ * 403 は apiForbidden() 等、課金と無関係な RBAC 拒否にも広く使われている
+ * (例: /api/admin/follow-up-settings の settings:view 権限チェック)。
+ * billing_url を確認できない 403 まで /admin/billing へ飛ばすと、権限の無い
+ * スタッフ端末が「その他」タブを開くたびに勝手にプラン画面へ連れて行かれる
+ * （無関係な 403 を課金拒否と誤認する）。402 はこのアプリでは billing guard
+ * 以外が使わないため、billing_url が無くても課金起因とみなせる。
+ */
+export function isBillingDenial(status: number, billingUrl: string | null): boolean {
+  return status === 402 || !!billingUrl;
+}
+
 export default function BillingFetchGuard(): null {
   useEffect(() => {
     if (window.__billingFetchGuardInstalled) return;
@@ -61,11 +73,13 @@ export default function BillingFetchGuard(): null {
             const j = (await res.clone().json()) as { billing_url?: string } | null;
             billingUrl = j?.billing_url ?? null;
           } catch {
-            /* body is not JSON — fall through to default /admin/billing */
+            /* body is not JSON */
           }
         }
 
-        redirectToBilling(billingUrl);
+        if (isBillingDenial(res.status, billingUrl)) {
+          redirectToBilling(billingUrl);
+        }
       } catch {
         /* any failure in the guard must not surface to callers */
       }
@@ -106,7 +120,26 @@ export default function BillingFetchGuard(): null {
           if (u.origin !== window.location.origin) return;
           if (!u.pathname.startsWith("/api/")) return;
 
-          redirectToBilling("/admin/billing");
+          // fetch hook と同じ判定: 403 は billing_url を確認できた時だけ課金拒否
+          // として扱う（apiForbidden() 等の無関係な RBAC 403 まで拾わない）。
+          let billingUrl: string | null = null;
+          try {
+            billingUrl = this.getResponseHeader("x-billing-url");
+          } catch {
+            /* ignore */
+          }
+          if (!billingUrl) {
+            try {
+              const j = JSON.parse(this.responseText) as { billing_url?: string } | null;
+              billingUrl = j?.billing_url ?? null;
+            } catch {
+              /* body is not JSON */
+            }
+          }
+
+          if (isBillingDenial(this.status, billingUrl)) {
+            redirectToBilling(billingUrl);
+          }
         } catch {
           /* ignore */
         }
