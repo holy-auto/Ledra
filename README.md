@@ -28,12 +28,13 @@ src/
 │   ├── parts/                 部品装着インテグリティ (納車時の顧客確認 UI)
 │   ├── customer/, c/, my/     顧客ポータル
 │   ├── sign/, agent-sign/     電子署名フロー
-│   └── api/                   560+ Route Handlers (37 トップレベルグループ)
+│   └── api/                   635+ Route Handlers (38 トップレベルグループ)
 │       ├── cron/              Vercel Cron (billing, follow-up, monitor, news, etc.)
 │       ├── qstash/            非同期ジョブ (batch-pdf, polygon-backfill, 等)
 │       ├── parts/             装着インジェスト / 監査 findings / 確定 / LINE 連携コード
 │       ├── stripe/            webhook + portal
 │       ├── v1/                外部公開 API (tenant API key 認証)
+│       ├── line/              LINE bot webhook (予約リマインダー/顧客セルフ日程変更・キャンセル 等)
 │       └── webhooks/          受信 webhook (Square / LINE / etc.)
 ├── lib/
 │   ├── supabase/              service-role / ssr / mobile 用クライアント
@@ -43,6 +44,9 @@ src/
 │   ├── ai/                    Anthropic structured outputs + withRetry ラップ
 │   │   └── automation/        AI 自動化 orchestrator (写真改ざん検知 / 不正スコア 等)
 │   ├── parts/                 部品装着インテグリティ (TSA / アンカー / 確定署名 / 照合)
+│   ├── domain/                正準ドメイン状態語彙 (Job/Step/Severity/Certificate/Payment/Sync)
+│   │                          — `states.ts` が単一定義源、`labels.ts` がロケール別 UI ラベル (ADR-0002)
+│   ├── line/                  LINE bot 会話フロー (flow/ 状態機械 + 解釈)
 │   ├── billing/               プラン / Stripe subscription ガード
 │   ├── signature/             電子署名 + PDF 署名
 │   ├── anchoring/             Polygon アンカリング
@@ -63,6 +67,10 @@ src/
                                ・CSP nonce 発行 + header 付与
                                ・Supabase session リフレッシュ + 認証リダイレクト
                                ・rate limit プリセット適用
+
+apps/
+└── mobile/                    Expo (React Native) モバイルアプリ (ledra-mobile)
+                               店舗スタッフ向け。証明書 / 車両 / 案件を現場で確認・操作。
 ```
 
 ## 主要機能の柱
@@ -101,6 +109,21 @@ src/
   `(tenant_id, source_system, external_ref)` で重複なく upsert。逆方向は outbound webhook
   (`customer.created/updated` 等、取込 + 管理 UI 編集の両方で発火) で双方向同期します。
   連携管理 UI は `/admin/integrations`、設計は `docs/enterprise-multistore-foundation.md`。
+- **LINE 顧客セルフサービス**: 予約前日リマインダー (キャンセル/変更ボタン付き) から、
+  AI が受信メッセージの意図 (`intent=change_reservation` 等) を抽出して起動する
+  会話フローで、顧客本人が LINE 上だけで日程変更・キャンセルを完結できます。
+  対象は本人の予約 (`line_user_id` 紐付け) かつ前日までに限定し、当日・直前や
+  空き候補なしはスタッフへ引き継ぎ。opt-in 設定 + Standard プラン以上 + AI 有効が前提。
+  ロジックは `src/lib/line/flow/`・`src/lib/ai/automation/rescheduleFlowAuto.ts`、
+  webhook は `src/app/api/line/webhook/`。
+- **正準ドメイン状態語彙 (v2.0, ADR-0002)**: Job / Step / Severity / Certificate /
+  Payment / Sync の 6 軸を独立した関心事として定義した単一の状態モデル。
+  単一定義源は `src/lib/domain/states.ts`、ロケール別 UI ラベルは
+  `src/lib/domain/labels.ts`。新しいステータス文字列・状態軸・遷移を追加する PR は、
+  この正準モジュールと `src/lib/domain/__tests__/` を同一 PR で更新しない限り
+  マージしません (詳細は本リポジトリの `CLAUDE.md`)。稼働中の既存語彙
+  (`reservations.status` 等) との対応は IMP-015 で判断、対応表は
+  `docs/implementation/requirement-trace.md` §1。
 
 ## セキュリティ上のお約束
 
@@ -199,7 +222,7 @@ npm run dev                       # http://localhost:3000
 
 ## テスト戦略
 
-- **Unit (`vitest`)**: `src/**/__tests__/*.test.ts`・2300+ cases (220+ ファイル)。
+- **Unit (`vitest`)**: `src/**/__tests__/*.test.ts`・3800+ cases (400+ ファイル)。
   billing / stripe webhook / signature / anchoring / rate limit / withRetry /
   sendEmail / cron failureTracker / customer portal / logger / safeJson /
   parts integrity (TSA / 照合 / 確定署名) / AI automation policy / permissions など。
@@ -211,7 +234,7 @@ npm run dev                       # http://localhost:3000
 ## マイグレーション
 
 Supabase 用の SQL は `supabase/migrations/` にタイムスタンプ順で入っています
-(300+ 本)。追加時は以下を意識:
+(430+ 本)。追加時は以下を意識:
 
 - **zero-downtime**: `ADD COLUMN NOT NULL DEFAULT` は避け、`ADD (nullable)`
   → `UPDATE` → `SET NOT NULL` の 3 段にする
@@ -227,13 +250,16 @@ Supabase 用の SQL は `supabase/migrations/` にタイムスタンプ順で入
 - `docs/architecture-roadmap.md` — 中長期アーキ
 - `docs/microservices-architecture.md` — 境界づけられたコンテキスト分解 / 進化的サービス抽出戦略
 - `docs/operations-guide.md` — 運用手順 (監視 / インシデント対応)
+- `docs/adr/` — アーキテクチャ決定記録 (正準ドメイン語彙・不変append-only証跡・証明書ゲート 等)
 - `docs/parts-installation-integrity-design.md` — 部品装着インテグリティ設計
 - `docs/parts-integrity-golive-checklist.md` — 部品装着インテグリティ Go-Live
 - `docs/ai-automation-guide.md` — AI 自動化の概説 / ポリシー
 - `docs/enterprise-multistore-foundation.md` — エンタープライズ多店舗基盤 (本社横断 RLS / 取込 API / 双方向 webhook / 本社専用ユーザ)
+- `docs/implementation/requirement-trace.md` — 要件トレース (既存語彙 ⇔ 正準ドメイン語彙の対応表 等)
 - `docs/stripe-production-checklist.md` — 本番 Stripe 切替
 - `docs/polygon-anchoring-deployment.md` — Polygon 本番投入
 - `docs/staging-environment.md` — staging 構成
+- `docs/context/` — 事業ログ (現状 / 意思決定 / 未解決事項 / リリース履歴。運用ルールは `CLAUDE.md`)
 
 ## コントリビュート前のチェックリスト
 

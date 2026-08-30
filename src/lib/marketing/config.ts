@@ -81,6 +81,9 @@ export const siteConfig = {
 
   /** 問い合わせ先メール */
   contactEmail: process.env.NEXT_PUBLIC_CONTACT_EMAIL ?? "info@ledra.co.jp",
+
+  /** X (旧Twitter) ハンドル。OGP twitter:site / twitter:creator に使用。 */
+  twitterHandle: "@detailing_holy",
 } as const;
 
 /** ヘッダー・フッターで使うナビゲーションリンク */

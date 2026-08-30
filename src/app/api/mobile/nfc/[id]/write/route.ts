@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { resolveMobileCaller } from "@/lib/auth/mobileAuth";
 import { hasPermission } from "@/lib/auth/permissions";
 import { apiOk, apiUnauthorized, apiForbidden, apiValidationError, apiInternalError } from "@/lib/api/response";
+import { logTenantAuditEvent } from "@/lib/audit/tenantLog";
 
 export const dynamic = "force-dynamic";
 
@@ -103,13 +104,13 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     if (error) return apiInternalError(error, "nfc.write");
 
     // Audit log (uuid PK で記録)
-    await caller.supabase.from("audit_logs").insert({
-      tenant_id: caller.tenantId,
-      table_name: "nfc_tags",
-      record_id: tagRowId,
+    await logTenantAuditEvent(caller.supabase, {
+      tenantId: caller.tenantId,
+      userId: caller.userId,
       action: "nfc_tag_written",
-      performed_by: caller.userId,
-      ip_address: request.headers.get("x-forwarded-for") ?? request.headers.get("x-real-ip"),
+      table: "nfc_tags",
+      recordId: tagRowId,
+      req: request,
     });
 
     return apiOk({ nfc_tag: data });

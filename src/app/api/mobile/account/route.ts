@@ -31,9 +31,7 @@ export async function DELETE(request: NextRequest) {
     const caller = await resolveMobileCaller(request);
     if (!caller) return apiUnauthorized();
 
-    const admin = createServiceRoleAdmin(
-      "mobile:account-delete — user-initiated account deletion (Apple 5.1.1(v))"
-    );
+    const admin = createServiceRoleAdmin("mobile:account-delete — user-initiated account deletion (Apple 5.1.1(v))");
 
     // ── テナント内の owner 状況を確認 ──
     // 本人以外に owner が残るかどうかで、テナントを無効化するか判断する。

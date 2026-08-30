@@ -169,9 +169,7 @@ export default function AcademyFeedbackPage() {
                     <div className={`text-lg ${achieved ? "opacity-100" : "opacity-30"}`}>
                       {lvl === "basic" ? "🥉" : lvl === "standard" ? "🥈" : "🥇"}
                     </div>
-                    <div
-                      className={`text-xs font-medium mt-1 capitalize ${achieved ? "text-success" : "text-muted"}`}
-                    >
+                    <div className={`text-xs font-medium mt-1 capitalize ${achieved ? "text-success" : "text-muted"}`}>
                       {lvl}
                     </div>
                     {achieved && <div className="text-xs text-success">✓ 達成</div>}

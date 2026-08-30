@@ -9,6 +9,7 @@ import { notifyNewBooking } from "@/lib/notifications/bookingNotify";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { logger } from "@/lib/logger";
 import { createIntakeInvitation } from "@/lib/identity/intakeServer";
+import { storeIdOrNull } from "@/lib/stores/resolveStoreId";
 
 const customerBookingSchema = z
   .object({
@@ -316,12 +317,15 @@ export async function POST(req: NextRequest) {
     }
 
     // ── 予約作成 ──
+    // 店舗はお客様に選ばせていない。有効な店舗が1つだけならサーバが入れる
+    const storeId = await storeIdOrNull(admin, tenant.id, "customer booking");
     const reservationId = crypto.randomUUID();
     const { data: reservation, error } = await admin
       .from("reservations")
       .insert({
         id: reservationId,
         tenant_id: tenant.id,
+        store_id: storeId,
         customer_id: customerId,
         title,
         scheduled_date: scheduledDate,
@@ -332,7 +336,9 @@ export async function POST(req: NextRequest) {
         source: "web",
         status: "confirmed",
       })
-      .select("id, tenant_id, customer_id, title, scheduled_date, all_day, start_time, end_time, note, status")
+      .select(
+        "id, tenant_id, store_id, customer_id, title, scheduled_date, all_day, start_time, end_time, note, status",
+      )
       .single();
 
     if (error) return apiInternalError(error, "customer booking insert");

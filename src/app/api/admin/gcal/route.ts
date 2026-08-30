@@ -1,8 +1,11 @@
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { z } from "zod";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
+import { createOAuthState } from "@/lib/integrations/oauthState";
+import { requireAal2OrResponse } from "@/lib/auth/stepUpGuard";
+import { writeGcalRefreshToken } from "@/lib/security/tenantPrivateSecrets";
 import {
   apiOk,
   apiUnauthorized,
@@ -13,7 +16,6 @@ import {
 } from "@/lib/api/response";
 import {
   getAuthUrl,
-  exchangeCodeAndSave,
   pullEventsFromCalendar,
   pushReservationsToCalendar,
   listCalendars,
@@ -26,7 +28,6 @@ const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "from / to (YYYY-MM-DD) 
 
 const gcalActionSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("connect") }),
-  z.object({ action: z.literal("callback"), code: z.string().min(1, "認可コードが必要です") }),
   z.object({ action: z.literal("disconnect") }),
   z.object({ action: z.literal("list-calendars") }),
   z.object({ action: z.literal("set-calendar"), calendar_id: z.string().min(1, "calendar_id が必要です") }),
@@ -43,41 +44,15 @@ const gcalActionSchema = z.discriminatedUnion("action", [
 
 /**
  * GET /api/admin/gcal
- * - ?code=xxx → OAuth コールバック（Google からのリダイレクト）
- * - それ以外 → 連携状態を取得
+ * 連携状態を取得。OAuth callback は /api/admin/gcal/callback に一本化する。
  */
-export async function GET(req: NextRequest) {
+export async function GET() {
   try {
-    const { searchParams } = new URL(req.url);
-    const code = searchParams.get("code");
-    const state = searchParams.get("state"); // tenantId を state として送っている
-
-    // OAuth コールバック: Google からリダイレクトされた場合
-    if (code) {
-      const supabase = await createSupabaseServerClient();
-      const caller = await resolveCallerWithRole(supabase);
-
-      // state（tenantId）またはログイン中のテナントを使用
-      const tenantId = state || caller?.tenantId;
-      if (!tenantId) {
-        return NextResponse.redirect(new URL("/admin/reservations?gcal=auth_error", req.url));
-      }
-
-      try {
-        await exchangeCodeAndSave(code, tenantId);
-        // 連携成功 → 予約管理ページにリダイレクト
-        return NextResponse.redirect(new URL("/admin/reservations?gcal=connected", req.url));
-      } catch (e) {
-        console.error("[gcal] OAuth callback failed:", e);
-        return NextResponse.redirect(new URL("/admin/reservations?gcal=error", req.url));
-      }
-    }
-
     // 通常のステータス取得
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
-    if (!requireMinRole(caller, "admin")) return apiForbidden();
+    if (!requireMinRole(caller, "owner")) return apiForbidden("テナントオーナーのみ操作できます。");
 
     const { admin } = createTenantScopedAdmin(caller.tenantId);
     const { data: tenant } = await admin
@@ -115,7 +90,9 @@ export async function POST(req: NextRequest) {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
-    if (!requireMinRole(caller, "admin")) return apiForbidden();
+    if (!requireMinRole(caller, "owner")) return apiForbidden("テナントオーナーのみ操作できます。");
+    const stepUpDenied = await requireAal2OrResponse(supabase);
+    if (stepUpDenied) return stepUpDenied;
 
     const parsed = gcalActionSchema.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) {
@@ -133,24 +110,15 @@ export async function POST(req: NextRequest) {
         });
       }
       // OAuth 認可URL を返す
-      const url = getAuthUrl(caller.tenantId);
+      const state = createOAuthState({ tenantId: caller.tenantId, provider: "gcal", userId: caller.userId });
+      const url = getAuthUrl(state);
       return apiOk({ auth_url: url });
-    }
-
-    if (data.action === "callback") {
-      await exchangeCodeAndSave(data.code, caller.tenantId);
-      return apiOk({ connected: true });
     }
 
     if (data.action === "disconnect") {
       const { admin } = createTenantScopedAdmin(caller.tenantId);
-      await admin
-        .from("tenants")
-        .update({
-          gcal_refresh_token: null,
-          gcal_sync_enabled: false,
-        })
-        .eq("id", caller.tenantId);
+      await writeGcalRefreshToken(admin, caller.tenantId, null);
+      await admin.from("tenants").update({ gcal_sync_enabled: false }).eq("id", caller.tenantId);
       return apiOk({ connected: false });
     }
 

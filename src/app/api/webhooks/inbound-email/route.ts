@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import crypto from "node:crypto";
 import { apiOk, apiUnauthorized, apiError, apiValidationError, apiInternalError } from "@/lib/api/response";
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
+import { findTenantIdByInboundEmailToken } from "@/lib/security/tenantPrivateSecrets";
 import { claimWebhookEvent } from "@/lib/webhooks/idempotency";
 import { recordInboundEmailMessage } from "@/lib/line/messageStore";
 import { maybeAutoProcessInboundMessage } from "@/lib/ai/automation/inboundAuto";
@@ -128,10 +129,12 @@ export async function POST(req: NextRequest) {
 
     // token → tenant。有効化済み & アクティブのみ受理。
     const admin = createServiceRoleAdmin("Inbound email webhook — no auth session");
+    const resolvedTenantId = await findTenantIdByInboundEmailToken(admin, token);
+    if (!resolvedTenantId) return apiOk({ ignored: "tenant_not_enabled" });
     const { data: tenant, error: tenantErr } = await admin
       .from("tenants")
       .select("id, is_active, email_inbound_enabled")
-      .eq("email_inbound_token", token)
+      .eq("id", resolvedTenantId)
       .maybeSingle();
     if (tenantErr) {
       // DB 一時障害等。200 で「無効テナント」と誤判定するとメールが恒久的に失われるため、

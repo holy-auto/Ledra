@@ -21,7 +21,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
   const { data: cert, error } = await sb
     .from("certificates")
     .select(
-      "id, public_id, tenant_id, vehicle_id, status, grade, inspection_date, expiry_date, inspector_name, notes, pdf_url, created_at, updated_at",
+      "id, public_id, tenant_id, vehicle_id, status, service_type, expiry_date, craftsman_name, remarks, created_at, updated_at",
     )
     .eq("id", id)
     .maybeSingle();

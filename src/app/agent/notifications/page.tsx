@@ -34,7 +34,10 @@ export default function AgentNotificationsPage() {
   useEffect(() => {
     (async () => {
       const { data: u } = await supabase.auth.getUser();
-      if (!u?.user) { window.location.href = "/agent/login"; return; }
+      if (!u?.user) {
+        window.location.href = "/agent/login";
+        return;
+      }
       setReady(true);
       fetchData();
     })();
@@ -65,16 +68,17 @@ export default function AgentNotificationsPage() {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ ids: [id] }),
     });
-    setNotifications((prev) => prev.map((n) => n.id === id ? { ...n, is_read: true } : n));
+    setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, is_read: true } : n)));
   };
 
   if (!ready) return null;
 
-  const filtered = filter === "all"
-    ? notifications
-    : filter === "unread"
-      ? notifications.filter((n) => !n.is_read)
-      : notifications.filter((n) => n.type === filter);
+  const filtered =
+    filter === "all"
+      ? notifications
+      : filter === "unread"
+        ? notifications.filter((n) => !n.is_read)
+        : notifications.filter((n) => n.type === filter);
 
   const unreadCount = notifications.filter((n) => !n.is_read).length;
 
@@ -124,7 +128,9 @@ export default function AgentNotificationsPage() {
 
       {loading ? (
         <div className="animate-pulse space-y-3">
-          {[1, 2, 3, 4, 5].map((i) => <div key={i} className="h-16 rounded-2xl bg-surface-hover" />)}
+          {[1, 2, 3, 4, 5].map((i) => (
+            <div key={i} className="h-16 rounded-2xl bg-surface-hover" />
+          ))}
         </div>
       ) : filtered.length === 0 ? (
         <div className="rounded-2xl border border-border-default bg-surface p-8 text-center text-sm text-muted">
@@ -147,9 +153,7 @@ export default function AgentNotificationsPage() {
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex items-start gap-3">
-                    {!n.is_read && (
-                      <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-blue-500" />
-                    )}
+                    {!n.is_read && <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-blue-500" />}
                     <div>
                       <div className="flex items-center gap-2">
                         <Badge variant={tm.variant}>{tm.label}</Badge>

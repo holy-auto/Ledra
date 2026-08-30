@@ -128,12 +128,7 @@ export async function POST(req: NextRequest) {
       base64,
       mediaType: mime as "image/jpeg" | "image/png" | "image/webp",
       expected: expected as
-        | "driver_license"
-        | "mynumber_card_front"
-        | "residence_card"
-        | "passport"
-        | "health_insurance_card"
-        | undefined,
+        "driver_license" | "mynumber_card_front" | "residence_card" | "passport" | "health_insurance_card" | undefined,
     });
 
     // OCR が実行された (= Anthropic 呼び出し済み)。捕捉トークンで月次キャップに課金。
