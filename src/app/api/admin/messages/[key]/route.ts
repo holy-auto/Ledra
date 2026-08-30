@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { after } from "next/server";
 import { z } from "zod";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
@@ -12,6 +13,7 @@ import {
   apiInternalError,
 } from "@/lib/api/response";
 import { sendCustomerLineText } from "@/lib/line/client";
+import { maybeCaptureKnowledgeFromReply } from "@/lib/ai/automation/knowledgeCaptureAuto";
 import { parseThreadKey } from "@/lib/messages/threadKey";
 import { withAttachmentUrls } from "@/lib/messages/attachments";
 import { sendLineImageFromForm } from "@/lib/messages/sendImage";
@@ -115,6 +117,21 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ key: strin
       body: parsed.data.body,
       sentByUserId: caller.userId,
     });
+
+    // 配信できた返信からナレッジ候補を学習する (opt-in / レビュー承認制 / 内部で fail-soft)。
+    // 応答をブロックしないよう after() で実行 (未対応テナントは即 return される)。
+    if (delivered) {
+      after(() =>
+        maybeCaptureKnowledgeFromReply({
+          tenantId: caller.tenantId,
+          customerId: resolved.customerId,
+          lineUserId: resolved.lineUserId,
+          staffReplyBody: parsed.data.body,
+          sentByUserId: caller.userId,
+          planTier: caller.planTier,
+        }),
+      );
+    }
 
     return apiJson({ ok: true, delivered });
   } catch (e) {

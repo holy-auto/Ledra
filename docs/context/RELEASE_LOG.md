@@ -4,6 +4,30 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-08-30 LINE属人性の低減①: スタッフ返信からのナレッジ自動蓄積（学習・レビュー承認制）（branch claude/line-chatbot-ledra-dy2fiq）
+
+- 背景: LINE 自動返信の回答ソース（`tenant_line_knowledge`）は手動登録に依存し、良い回答が特定
+  スタッフの頭の中に留まりがち（属人性）。実際のスタッフ返信からナレッジを育てて Bot の
+  カバー範囲を広げ、人依存を下げる。
+- 内容: スタッフが受信箱（`/admin/messages`）から LINE で顧客に返信した直後、その会話が
+  「他のお客様にも当てはまる FAQ・店舗ポリシー」を含むなら、AI が個人情報・固有値（氏名/ナンバー/
+  具体的な予約日時・金額等）を除いた汎用 Q&A に一般化し、`tenant_line_knowledge` に
+  **`enabled=false`（レビュー待ち）** で自動登録する。管理者が既存の LINE ナレッジ設定画面で
+  承認（有効化）してはじめて自動返信の回答ソースになる（＝顧客に届く回答に未チェックの内容が
+  混ざらない安全弁）。
+  - 再利用不可（雑談・個別対応・「確認して折り返します」等）は AI が `reusable=false` を返しスキップ。
+  - 上限（既定50件）到達時・重複時（正規化タイトル/本文一致）はスキップ。低 confidence もスキップ。
+- 実装: `src/lib/ai/knowledgeCapture.ts`（汎用化ジェネレータ、replyDraft と同流儀）＋
+  `src/lib/ai/automation/knowledgeCaptureAuto.ts`（IO 層。opt-in・上限・重複・enabled=false 保存）。
+  返信送信 API（`/api/admin/messages/[key]` POST）から `after()` で fire-and-forget 起動。
+  opt-in キー `inbound_message.auto_capture_knowledge`（actionCatalog）、ゲート
+  `shouldCaptureKnowledge`（orchestrator）。既存のナレッジ設定 UI は停止中エントリの表示・有効化・
+  編集・削除に対応済みのため、レビュー導線は**追加 UI なし**。**マイグレーション不要**。
+- 検証: `knowledgeCaptureAuto`（再利用 FAQ を enabled=false 保存＋監査／opt-in OFF／再利用不可／
+  低 confidence／上限到達／重複／プラン対象外）テスト7件追加。全体 4767 件パス、tsc/eslint エラー0
+  （既存 actionCatalog の `_key` 警告のみ）。
+- 「LINE属人性の低減」の1件目。opt-in・既定 OFF なので既存テナントの挙動は不変。
+
 ## 2026-08-30 IMP-034（#949）を main へ取り込み。タブレット 2-pane・共用端末 型基盤
 
 - 内容: IMP-034（タブレット 2-pane・共用端末型基盤、branch impl/IMP-034-tablet-shared-device）
