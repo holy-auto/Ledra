@@ -23,7 +23,10 @@ export async function POST(request: NextRequest) {
     if (!caller) return apiUnauthorized();
 
     // OTP / メール送信を伴うフローのブルートフォース・スパム対策 (5 req / 300s)。
-    const limited = await checkRateLimit(request, "sensitive", caller.userId);
+    // verify 側とは別バケット (identifier に用途を含める) にする — 同じ userId・同じ
+    // preset を共有すると、初回自動送信+間違い3回+再送信1回の通常の signup フローだけで
+    // 5回に達し、正規ユーザーが打ち間違えただけで両エンドポイントとも 429 になってしまう。
+    const limited = await checkRateLimit(request, "sensitive", `otp-request:${caller.userId}`);
     if (limited) return limited;
 
     const admin = createServiceRoleAdmin("mobile:auth-otp-request — signup email verification");

@@ -80,6 +80,10 @@ export async function confirmEmailOtp(
   if (!result.valid) {
     // mismatch だけ attempts を進める。expired / max_attempts は既に確定済みの
     // 状態なので、これ以上進めても再送を促す以外に変わらない。
+    // ponytail: read-then-write の単純な +1（真のアトミック増分ではない）。
+    // 同時リクエストで1回分under-countされ得るが、呼び出し元(mobile route)が
+    // userId 単位で 5 req/300s のレート制限を別途掛けているため総当たり耐性は
+    // 実質的に保たれる。真のアトミック性が要るなら Postgres 関数化する。
     if (result.reason === "mismatch") {
       await admin
         .from("email_otp_codes")

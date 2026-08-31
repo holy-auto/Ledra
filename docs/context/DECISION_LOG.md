@@ -4,6 +4,49 @@
 > （新しい順）。実装の詳細は RELEASE_LOG.md、迷っている段階のものは
 > OPEN_QUESTIONS.md に書く。
 
+## 2026-08-31 PR #1012 へ /code-review 指摘: OTP発行/照合が同一レート制限バケットを共有していた
+1. 日付: 2026-08-31
+2. 起きたこと: モバイルOTP実配線PR #1012 に `/code-review` を実行したところ3件の指摘があった。
+   (a) `otp/request`・`otp/verify` の両ルートが `checkRateLimit(request, "sensitive", caller.userId)`
+   と同一の preset・同一の identifier を使っており、実質1つのバケット（5 req/300s）を共有していた。
+   初回自動送信(1)+コード打ち間違い3回(3)+再送信1回(1)=5回で、正規ユーザーの通常のサインアップ
+   フローだけでレート制限に達し得る。(b) `confirmEmailOtp()` の attempts 加算が read-then-write の
+   非アトミック実装で、同時リクエストで1回分under-countされ得る。(c) 別PR(#1011、マージ済み)の
+   `activationGate.ts` に関する指摘: `hasUnresolvedConcerns()` へ `jobId` を渡す修正
+   （本ファイル前掲「PR #1011 へ /code-review 指摘」エントリ）は、実際には4つの懸念発生源のうち
+   `parts_confirmation` にしか有効でない。`body_repair_tracking` の `resolveSourceContext()`
+   （`src/app/api/customer/concerns/route.ts`、IMP-026・今回のPRの対象外）は `job_id: data.id`
+   （`body_repair_jobs` 自身の主キー）を返しており、`reservations.id` ではない
+   （`body_repair_jobs.reservation_id` という別カラムが本来使うべき値）。
+3. 以前の考え: (a)(b) は当PR内で完結する実装詳細だと思っていた。(c) は前回の指摘対応で
+   「4系統中2系統（parts_confirmation・body_repair_tracking）の懸念を見逃していた」を
+   修正済みと記録していたが、実際には1系統（parts_confirmation）しか直っていなかった。
+4. 違和感・問題: (c) はより深刻——`customer_concerns.job_id` は `reservations(id)` への外部キー
+   制約付きであり、`body_repair_jobs.id`（無関係なUUID）を書き込もうとすると外部キー違反で
+   INSERT 自体が失敗する可能性が高い。つまり板金進捗ページ (`/track/[token]`) からの
+   「気になる点を伝える」機能自体が、Certificate Gate 云々以前に**そもそも保存できていない**
+   可能性がある根深いバグで、IMP-026 実装時からの見落とし。
+5. 決めたこと: (a) rate limit の identifier に用途を含め (`otp-request:${userId}` /
+   `otp-verify:${userId}`)、発行と照合を別バケットに分離。(b) `emailOtp.ts` の該当行に
+   `ponytail:` コメントを追加——呼び出し元のレート制限で総当たり耐性は実質保たれるため、
+   Postgres関数化までは今回行わない（上限と代替手段を明記）。(c) 当PRの対象外（別ファイル・
+   別機能・PR #1011のスコープ外）のため、別ブランチ・別PRで修正する
+   （`resolveSourceContext()` の `body_repair_tracking` ケースを `jobId: data.reservation_id`
+   に修正）。
+6. 捨てた選択肢: (a) attempts加算をPostgres関数によるアトミック増分に置き換える
+   — レート制限で既に総当たりが実質的に防がれており、真の並行アクセスが起きる可能性も低いため、
+   このPRのスコープでは過剰と判断。(b) (c)の指摘を当PR内で一緒に直す — モバイルOTPと無関係な
+   ファイル・機能であり、PRの焦点をぼかすため別PRに分離。
+7. 判断理由: (a)(b)は当PRの直接の成果物なので即修正。(c)は「バグ修正は症状でなく根因」
+   ではあるが、根因が別の場所（別PRのスコープ）にあるため、無関係なPRに混ぜるのではなく
+   独立した修正として追跡する方が変更の追跡性を保てると判断。
+8. まだ答えが出ていないこと: (c)の修正はまだ別PRとして未着手（このセッションで直後に着手予定）。
+   板金進捗ページからの懸念送信がこれまで実際にどの程度失敗してきたか（本番エラーログでの実被害
+   確認）は未調査。
+9. 公開区分: 公開可（「一見完了と記録した修正が、実は4系統中1系統にしか効いていなかった」という
+   自己レビューの限界と、それを外部レビューで発見できた経緯は発信可。テーブル名・関数名の詳細や
+   テナント固有情報は書かない）
+
 ## 2026-08-31 モバイルOTP: 前提が崩れていたため「有効化」ではなく実送信の仕組みを新設
 1. 日付: 2026-08-31
 2. 起きたこと: 「モバイルOTP進めて」という依頼を受け、`apps/mobile/src/app/(auth)/verify-otp.tsx`

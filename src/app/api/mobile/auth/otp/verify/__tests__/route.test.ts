@@ -55,6 +55,8 @@ describe("POST /api/mobile/auth/otp/verify", () => {
       expect.anything(),
       expect.objectContaining({ tenantId: "t1", userId: "u1", purpose: "mobile_signup", code: "123456" }),
     );
+    // レート制限バケットは request 側と別（同じ userId を共有しても衝突しない識別子）。
+    expect(mocks.checkRateLimit).toHaveBeenCalledWith(expect.anything(), "sensitive", "otp-verify:u1");
   });
 
   it.each([

@@ -55,6 +55,8 @@ describe("POST /api/mobile/auth/otp/request", () => {
   it("正常系: コードを発行しメール送信する", async () => {
     const res = (await POST(req())) as Response;
     expect(res.status).toBe(200);
+    // レート制限バケットは verify 側と別（同じ userId を共有しても衝突しない識別子）。
+    expect(mocks.checkRateLimit).toHaveBeenCalledWith(expect.anything(), "sensitive", "otp-request:u1");
     expect(mocks.issueEmailOtp).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({ tenantId: "t1", userId: "u1", email: "owner@example.com", purpose: "mobile_signup" }),

@@ -33,7 +33,8 @@ export async function POST(request: NextRequest) {
     const caller = await resolveMobileCaller(request);
     if (!caller) return apiUnauthorized();
 
-    const limited = await checkRateLimit(request, "sensitive", caller.userId);
+    // request 側とは別バケット（理由は otp/request/route.ts のコメント参照）。
+    const limited = await checkRateLimit(request, "sensitive", `otp-verify:${caller.userId}`);
     if (limited) return limited;
 
     const parsed = schema.safeParse(await request.json().catch(() => ({})));
