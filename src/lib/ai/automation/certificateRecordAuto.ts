@@ -7,8 +7,10 @@
  * `certificate.auto_draft` (= AI 下書き JSON を reservations.ai_certificate_draft に
  * 保存) の一歩先で、実際の `certificates` 行を起票する。
  *
- * certificate.auto_issue が有効な場合は status=active (発行済み) として作成する。
- * 無効な場合は従来通り status=draft で作成し、発行画面で人が確認して発行する。
+ * 常に status=draft で作成する。certificate.auto_issue が有効かつ Certificate Gate
+ * (IMP-028, `evaluateCertificateActivationGate()`) が ready なら、作成直後に active へ
+ * update する（他の発行経路と同じ「作成→Gate→active化」の形。実際には写真等の証跡が
+ * まだ無いためほぼ常に draft のまま残り、発行画面で人が確認して発行する経路に合流する）。
  *
  * 顧客名が取れる案件のみ作成する。
  * 既に証明書を自動作成済みの案件 (reservations.ai_certificate_id) は再作成しない。

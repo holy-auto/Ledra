@@ -61,7 +61,14 @@ export async function evaluateCertificateActivationGate(
   const [hasPhotos, hasBeforeAfter, hasUnresolved, findings] = await Promise.all([
     certificateHasRequiredPhotos(admin, ctx.certificateId),
     certificateHasRequiredBeforeAfterMedia(admin, ctx.certificateId, ctx.serviceType),
-    hasUnresolvedConcerns(admin, ctx.tenantId, { certificateId: ctx.certificateId }),
+    // customer_concerns.job_id は reservations(id) 参照。部品確認(parts_confirmation)・
+    // 板金進捗(body_repair_tracking)経由の懸念は certificate_id が null で job_id のみ
+    // 持つため、reservationId も渡さないと hasUnresolvedConcerns() の OR 条件に一致せず
+    // 見逃す(src/app/api/customer/concerns/route.ts の resolveSourceContext 参照)。
+    hasUnresolvedConcerns(admin, ctx.tenantId, {
+      certificateId: ctx.certificateId,
+      jobId: ctx.reservationId ?? undefined,
+    }),
     getPartsIntegrityFindings(admin, ctx.tenantId, ctx.reservationId),
   ]);
 
