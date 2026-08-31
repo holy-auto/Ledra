@@ -1388,6 +1388,18 @@
 "tenant_id",
 "vehicle_id"
 ],
+"email_otp_codes": [
+"attempts",
+"code_hash",
+"created_at",
+"email",
+"expires_at",
+"id",
+"purpose",
+"tenant_id",
+"used_at",
+"user_id"
+],
 "equipment_master": [
 "category",
 "created_at",

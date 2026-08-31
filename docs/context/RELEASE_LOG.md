@@ -4,6 +4,32 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-08-31 モバイルアプリのサインアップ確認 OTP を実配線（IMP-012）
+
+- 背景: モバイルアプリのサインアップ後メール確認画面 (`/(auth)/verify-otp.tsx`) は
+  タイムアウトのみで「検証済み」にするプレースホルダで、6桁ならどんな値でも通っていた。
+  調査の結果、サインアップ自体がパスワード方式（サーバーで `email_confirm: true` を設定して
+  そのままサインイン）で Supabase から OTP メールが一切送信されない設計だったため、
+  コメントアウトされていた `supabase.auth.verifyOtp()` をそのまま有効化しても「常に失敗する」
+  に変わるだけだった。
+- 内容: `email_otp_codes` テーブルを新設（`customer_login_codes` と同じ service-role 限定 RLS）。
+  IMP-012 で追加済みだが呼び出し側ゼロだった汎用 OTP エンジン (`src/lib/auth/otp.ts` — 生成・
+  HMAC-SHA256 ハッシュ・タイミングセーフ検証) を初めて実配線し、IO 層 `src/lib/auth/emailOtp.ts`
+  を新設。`POST /api/mobile/auth/otp/request`（発行 + `sendEmail()` 経由で6桁コードをメール送信）・
+  `POST /api/mobile/auth/otp/verify`（照合）を新設し、`verify-otp.tsx` はマウント時に自動で初回
+  送信、既存の「再送信」ボタンも実際に呼び出すよう配線した。認証は既存の `resolveMobileCaller`
+  （Bearer）を使い、email はクライアントの自己申告ではなく `admin.auth.admin.getUserById()` で
+  解決した本人の `auth.users.email` を使う。ハッシュの pepper は新しい環境変数を増やさず既存の
+  `CUSTOMER_AUTH_PEPPER` を再利用。
+- 検証: `src/lib/auth/__tests__/emailOtp.test.ts`（発行・照合の正常系/mismatch/expired/max_attempts）、
+  `src/app/api/mobile/auth/otp/{request,verify}/__tests__/route.test.ts`。新規テスト計18件、
+  既存含め全件通過。
+- 意図的にやらなかったこと: v2.0 が求める正準フロー（Invite→OTP→生体→Home がパスワードログイン
+  自体を置き換える設計）への移行や、passwordless サインアップへの作り替えは行っていない
+  （今回はサインアップ直後のメール所有確認のみ）。「メール確認済み」を他機能から参照できる
+  永続状態として追跡する仕組みも作っていない。
+- 詳細は DECISION_LOG 2026-08-31 を参照。
+
 ## 2026-08-31 Certificate Gate (IMP-028) を証明書発行の本番4経路すべてに配線
 
 - 背景: v2.0 §19.4 / ADR-0005 が求める「正式証明の発行可否はバックエンド単一評価器
