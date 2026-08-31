@@ -37,9 +37,10 @@ export function resolvePaymentPolicy(
  * - CANCELED は条件不成立（支払いが取り消されている）。
  *
  * 例外: b2b の合算払い（billingCycle === "consolidated"）は上記2つを含む
- * paymentState を一切見ずに常時成立とする（締め日に合算請求書を発行し、決済自体は
- * さらにその支払期限まで先になるため。`cycleInvoice.ts` の `dueDateFromClosing()`
- * 参照 — 締め日はあくまで請求書の発行日であり決済日ではない）。
+ * paymentState を一切見ずに常時成立とする（締め日に合算請求書を**下書き**生成し
+ * （確認後に発行元が送付。`cycleInvoice.ts` の `runCycleInvoices()` 参照）、
+ * 決済自体はさらにその支払期限まで先になるため。`dueDateFromClosing()` 参照 —
+ * 締め日はあくまで請求書の下書き生成日であり、発行日でも決済日でもない）。
  * この判定は closingDay を見ない点で src/lib/signoff/state.ts の④会計ステップと
  * 一致している（ただし2つのモジュール間で predicate 自体を同期させる取り決めが
  * あるわけではなく、下記コメントで同期を明記しているのは支払いサイクル未設定時の
