@@ -152,13 +152,17 @@ async function resolveSourceContext(
       };
     }
     case "body_repair_tracking": {
+      // customer_concerns.job_id は reservations(id) への外部キー。body_repair_jobs.id
+      // は独立採番の別テーブルの主キーで reservations.id とは無関係のため、そのまま
+      // job_id に渡すと外部キー違反で INSERT が失敗する（reservation_id が無い板金
+      // ジョブでは懸念を job に紐づけられない = jobId なしで保存される）。
       const { data } = await supabase
         .from("body_repair_jobs")
-        .select("tenant_id, id")
+        .select("tenant_id, reservation_id")
         .eq("track_token", token)
         .maybeSingle();
       if (!data) return null;
-      return { tenantId: data.tenant_id, jobId: data.id };
+      return { tenantId: data.tenant_id, jobId: data.reservation_id ?? undefined };
     }
     default:
       return null;

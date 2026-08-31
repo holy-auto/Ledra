@@ -4,6 +4,48 @@
 > （新しい順）。実装の詳細は RELEASE_LOG.md、迷っている段階のものは
 > OPEN_QUESTIONS.md に書く。
 
+## 2026-08-31 板金進捗ページからの「気になる点を伝える」が外部キー違反で保存できていなかった
+1. 日付: 2026-08-31
+2. 起きたこと: PR #1012（モバイルOTP）の `/code-review` 指摘の中に、別PR #1011（マージ済み、
+   Certificate Gate）に関するものが含まれていた: `customer_concerns.job_id` へ渡す値が
+   `resolveSourceContext()`（`src/app/api/customer/concerns/route.ts`、IMP-026実装時から
+   存在）の `body_repair_tracking` ケースで `body_repair_jobs.id`（当該テーブル自身の主キー）
+   になっており、`reservations.id` への外部キー制約と矛盾することが判明した。
+   `body_repair_jobs.id` は `gen_random_uuid()` で独立採番される別テーブルの主キーで、
+   `reservations.id` とは無関係。板金進捗ページ (`/track/[token]`) から懸念を送信すると、
+   ほぼ確実に外部キー違反で `INSERT` 自体が失敗していたと考えられる。
+3. 以前の考え: PR #1011で「懸念ブロックをCertificate Gateへ本番配線した」際、4つの懸念発生源の
+   うち `parts_confirmation`・`body_repair_tracking` の2つは `certificate_id` が null で
+   `job_id` のみを持つため `jobId` も渡すよう修正し、「4系統中2系統の見逃しを解消した」と
+   記録していた。
+4. 違和感・問題: 実際には `parts_confirmation` は正しく `part_installations.reservation_id`
+   を経由して `reservations.id` を解決していたが、`body_repair_tracking` は
+   `body_repair_jobs.id` を返しており、そもそも `reservations.id` になっていなかった。
+   Certificate Gate側の `jobId` 引き渡しが直っても、渡す値自体が間違っていれば意味がない。
+   さらに深刻なのは、この不整合が原因で懸念の**保存自体**が失敗していた可能性が高いこと——
+   Certificate Gateが懸念を見るかどうか以前の問題だった。
+5. 決めたこと: `resolveSourceContext()` の `body_repair_tracking` ケースを、
+   `body_repair_jobs.id` ではなく `body_repair_jobs.reservation_id`
+   （`reservations(id)` への実際の外部キー列）を返すよう修正。`reservation_id` が
+   null の板金ジョブ（予約に紐づかない場合）は `jobId` なしで保存する
+   （`certificate_id` も無いため、その懸念はジョブ・証明書どちらにも紐づかず一覧表示のみに
+   なるが、外部キー違反にはならない）。回帰テストを新規追加
+   （`src/app/api/customer/concerns/__tests__/route.test.ts`、この関数の初のテスト）。
+6. 捨てた選択肢: (a) `body_repair_jobs.id` を使い続け、`customer_concerns.job_id` の
+   外部キー制約を緩和する（`reservations` 以外も許容）— 「関連エンティティで懸念をブロック
+   判定する」という設計意図に反し、`hasUnresolvedConcerns()` 側の判定ロジックとも整合しなくなる
+   ため不採用。(b) 修正を見送りOPEN_QUESTIONS送りにする — 実データ保存が失敗している疑いのある
+   深刻なバグであり、原因と修正方法が既に判明しているため見送る理由がない。
+7. 判断理由: 「バグ修正は症状でなく根因」。前回の修正（jobIdの引き渡し）は症状（Certificate
+   Gateが懸念を見ていない）への対応としては正しかったが、根因（渡している値自体が誤り）は
+   別の場所にあった。外部レビューで指摘されるまで、渡す値の妥当性まで検証していなかった。
+8. まだ答えが出ていないこと: 本番でこれまで実際にどの程度の送信失敗が起きていたか
+   （エラーログでの実被害確認）は未調査。過去に失敗した送信を遡って復旧する手段はない
+   （顧客側には「送信に失敗しました」的なエラーが返っていたはずだが、原因までは追えない）。
+9. 公開区分: 公開可（「懸念ブロックの引き渡し方を直したつもりが、そもそも渡している値自体が
+   別テーブルの無関係な主キーで、保存そのものが失敗していた」という多層的な見落としの発見経緯
+   は発信可。テーブル名・関数名の詳細やテナント固有情報は書かない）
+
 ## 2026-08-31 PR #1011 へ /code-review 指摘: 懸念ブロックが parts_confirmation/body_repair_tracking 経由の懸念を見逃していた
 1. 日付: 2026-08-31
 2. 起きたこと: 「Certificate Gate を本番4経路に配線した」PR #1011 に `/code-review` を実行したところ、
