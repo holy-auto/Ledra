@@ -148,4 +148,18 @@ describe("UNKNOWN からの盲目リトライ禁止", () => {
     });
     expect(result.met).toBe(true);
   });
+
+  it("合算払い(consolidated) は CANCELED でも成立する（現状の実装。要確認 — OPEN_QUESTIONS.md 参照）", () => {
+    // このモジュールの JSDoc は「CANCELED は条件不成立」と謳っているが、billingCycle が
+    // consolidated の場合は paymentState を一切見ないため、この特定ジョブの帳票が
+    // 取消/却下(CANCELED)されていても現状は成立してしまう。これが意図した挙動かは
+    // 未検証（このジョブの合算請求からの除外は別経路で行う想定なのか、そもそも
+    // このケースは起こり得ないのか、要確認）。回帰テストとして現状の挙動を明示する。
+    const result = evaluatePaymentPolicy({
+      customerType: "corporate",
+      billingCycle: "consolidated",
+      paymentState: "CANCELED",
+    });
+    expect(result.met).toBe(true);
+  });
 });

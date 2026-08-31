@@ -35,6 +35,11 @@ export function resolvePaymentPolicy(
  * v2.0 §11.3 + ADR-0002:
  * - UNKNOWN 状態では条件不成立（盲目リトライ禁止原則）。
  * - CANCELED は条件不成立（支払いが取り消されている）。
+ *
+ * 例外: b2b の合算払い（billingCycle === "consolidated"）は上記2つを含む
+ * paymentState を一切見ずに常時成立とする（決済は締め日に別途まとめて行うため）。
+ * CANCELED の場合にこの例外を適用してよいか（＝この特定ジョブの帳票が取消/却下
+ * されていても合算請求に含めてよいか）は未検証・要確認 — OPEN_QUESTIONS.md 参照。
  */
 export function evaluatePaymentPolicy(ctx: PaymentPolicyContext): PaymentPolicyResult {
   const policy = resolvePaymentPolicy(ctx);
