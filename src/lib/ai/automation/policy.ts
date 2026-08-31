@@ -382,7 +382,7 @@ export async function notifyStaffOfAiAction(
   tenantId: string,
   title: string,
   body: string,
-): Promise<void> {
+): Promise<boolean> {
   const { error } = await admin.from("notifications").insert({
     tenant_id: tenantId,
     user_id: null,
@@ -392,5 +392,9 @@ export async function notifyStaffOfAiAction(
     body,
     link_path: "/admin/messages",
   });
-  if (error) logger.warn("[policy] notifyStaffOfAiAction failed", { tenantId, err: error.message });
+  if (error) {
+    logger.warn("[policy] notifyStaffOfAiAction failed", { tenantId, err: error.message });
+    return false;
+  }
+  return true;
 }

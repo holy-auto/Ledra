@@ -71,7 +71,8 @@ export type AutomationActionKey =
   | "reservation.auto_day_before_reminder"
   | "inbound_message.auto_status_reply"
   | "inbound_message.auto_flow_nudge"
-  | "inbound_message.auto_capture_knowledge";
+  | "inbound_message.auto_capture_knowledge"
+  | "inbound_message.auto_unanswered_alert";
 
 export interface AutomationActionDef {
   key: AutomationActionKey;
@@ -487,6 +488,16 @@ export const AUTOMATION_ACTIONS: readonly AutomationActionDef[] = [
     defaultEnabled: false,
     guard:
       "AI 有効 + Standard プラン以上 + 翌日(JST)の未キャンセル予約 + 顧客が line_user_id 紐付け済み + フォローアップ拒否でない。ボタンは self_cancel / self_reschedule の opt-in に応じて出す。",
+  },
+  {
+    key: "inbound_message.auto_unanswered_alert",
+    workflow: "inbound_message",
+    label: "LINEの未返信を担当者に通知（対応漏れ防止）",
+    description:
+      "お客様からの LINE メッセージが一定時間（既定8時間）返信されないまま放置されていると、管理画面の通知でスタッフに知らせる。特定の担当者が受信箱を見ていないと止まる状況（属人性）を防ぎ、対応漏れ・返信遅れを減らす。スレッド1件の未返信につき1回だけ通知（自動返信済み＝直後に店舗発の返信があるスレッドは対象外）。opt-in / 既定 OFF。",
+    defaultEnabled: false,
+    guard:
+      "AI 有効 + Standard プラン以上。LINE スレッドの最新メッセージがお客様発（inbound）で、既定8時間以上返信が無いもの。自動返信・スタッフ返信済み（最新が店舗発）は対象外。1メッセージにつき1回だけ（notification_logs で重複防止）。",
   },
   {
     key: "inbound_message.auto_capture_knowledge",
