@@ -4,6 +4,30 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-08-31 LINE属人性の低減④: 受信箱に「会話を要約（引き継ぎ用）」を追加（branch claude/line-chatbot-ledra-dy2fiq）
+
+- 背景: LINE の会話が特定担当の頭の中にあり、担当外のスタッフが途中から対応しづらい（属人性）。
+  会話の用件・経緯・未対応・次の一手を AI が要約し、誰でも即座に引き継げるようにする。
+- 内容: 受信箱（`/admin/messages`）のスレッドに **「🧾 会話を要約」ボタン**を追加。押すと直近の
+  やり取りを AI が「①お客様の用件 ②これまでの経緯・決まったこと ③未対応・確認待ち」に要約し、
+  「次の一手」1行と合わせて**読み取り専用パネル**に表示する（社内メモ。**送信はしない**）。
+  スレッドを切り替えると（key 不一致で）前の要約は表示されない。
+- 実装: `src/lib/ai/threadSummary.ts`（`generateThreadSummary`。replyDraft と同流儀・推測補完しない・
+  会話は `wrapUntrusted` で包囲）＋ `src/app/api/admin/messages/[key]/ai-summary/route.ts`（ai-reply と
+  同じ認証/プラン/レート制限。Standard+）＋ `MessagesInboxClient.tsx`（ボタン＋パネル）。要約は社内
+  向けなので氏名・車両・金額を含めてよい。**マイグレーション不要**。
+- 検証: `threadSummary`（会話が空なら空結果）テスト追加。
+- コードレビュー由来の追加修正（同 PR、`/code-review`）:
+  - 会話が長すぎる場合の切り詰めを**末尾のみ→冒頭＋末尾（中間省略）**に（要約は冒頭の「用件・経緯」も
+    必要なため。replyDraft の末尾優先を安易に流用しない）。
+  - スレッド解決＋直近やり取り＋登録車両の取得を共通ローダ `messages/aiThreadContext.ts` に切り出し、
+    `ai-reply`／`ai-summary` の重複を解消（今後の修正が2箇所に分散しないように）。
+  - 要約 null 時の文言を「会話が必要です」→「時間をおいて再度お試しください」に（会話無しはボタン
+    無効で起きず、実際は AI 一時不調が主因）。usage の outcome を error→ok（空要約は失敗ではない）。
+- 全体 5211 件パス、tsc エラー0、eslint エラー0（既存の effect 警告のみ）。
+- 「LINE属人性の低減」の4件目（最後）。これで属人性低減の4項目（ナレッジ自動蓄積／返信ドラフトの
+  ナレッジ根拠づけ／未返信アラート／会話要約）が揃った。
+
 ## 2026-08-31 PR #1009 へ Codex レビュー指摘（capacity>1 で boothDetails が過大評価のまま）を追加修正
 
 - 内容: `computeFleetUtilization()` の `boothDetails` を、`avgUtilizationPct`/`peakUtilizationPct` と同じ `decomposeTimeBands()` ベースの定員正規化計算から構築するよう変更。従来は capacity>1 のブースで `boothDetails[i].utilizationPct` だけが union ベース（過大評価）のまま残っており、例えば capacity=3・終日1件予約で `avgUtilizationPct: 33` と `boothDetails[0].utilizationPct: 100` が同一レスポンス内で矛盾していた（Codexが指摘、再現テストで確認）。
