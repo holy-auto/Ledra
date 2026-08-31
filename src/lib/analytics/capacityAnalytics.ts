@@ -19,7 +19,12 @@
  */
 
 import type { BoothInfo, BoothReservation, BoothUtilization } from "@/lib/booths/occupancy";
-import { computeBoothUtilization, detectCapacityConflicts, NON_OCCUPYING } from "@/lib/booths/occupancy";
+import {
+  computeBoothUtilization,
+  detectCapacityConflicts,
+  NON_OCCUPYING,
+  UTILIZATION_EXCLUDED,
+} from "@/lib/booths/occupancy";
 import { parseTimeToHours, SHIFT_START, SHIFT_END } from "@/lib/gantt/board";
 
 // ── 時間帯別占有分解（capacity > 1 対応） ──
@@ -45,15 +50,20 @@ export interface CapacityTimeBand {
  * スイープラインで同時数が変化する境界ごとに帯を切り出す。
  *
  * IMP-041 occupancy.ts L330/L347 から委ねられた実装。
+ *
+ * @param excludeStatuses 占有とみなさないステータス集合。デフォルトは NON_OCCUPYING
+ *   （completed も除外＝空き検索など「今後の可用性」向けの判定）。稼働率計算
+ *   （completed は稼働実績に含める）に使う場合は UTILIZATION_EXCLUDED を渡す。
  */
 export function decomposeTimeBands(
   booth: BoothInfo,
   reservations: readonly BoothReservation[],
   shiftStart = SHIFT_START,
   shiftEnd = SHIFT_END,
+  excludeStatuses: ReadonlySet<string> = NON_OCCUPYING,
 ): CapacityTimeBand[] {
-  // occupancy.ts の NON_OCCUPYING を再利用（終端ステータスの定義を重複させない）
-  const boothRes = reservations.filter((r) => r.boothId === booth.id && !NON_OCCUPYING.has(r.status));
+  // occupancy.ts の除外ステータス定数を再利用（終端ステータスの定義を重複させない）
+  const boothRes = reservations.filter((r) => r.boothId === booth.id && !excludeStatuses.has(r.status));
 
   // イベント生成
   const events: Array<{ time: number; delta: 1 | -1 }> = [];
@@ -151,14 +161,16 @@ export function computeFleetUtilization(
   // ブースでは定員の一部しか埋まっていなくても 100% と過大評価してしまう
   // （例: capacity=3 で1件だけ終日予約 → union稼働率100%だが実際は1/3枠のみ使用）。
   // decomposeTimeBands() の時間帯別 concurrent/capacity で正規化した値を使う。
+  // UTILIZATION_EXCLUDED を渡し、boothDetails（computeBoothUtilization）と同じ
+  // 「completed は稼働実績に含める」判定に揃える（decomposeTimeBands のデフォルトの
+  // NON_OCCUPYING だと completed も除外され、同じ boothDetails と矛盾する値になる）。
   const capacityAwarePct = activeBooths.map((b) => {
-    const bands = decomposeTimeBands(b, reservations, shiftStart, shiftEnd);
+    const bands = decomposeTimeBands(b, reservations, shiftStart, shiftEnd, UTILIZATION_EXCLUDED);
+    const totalCapacityMinutes = b.capacity * (shiftEnd - shiftStart) * 60;
     let weightedOccupiedMinutes = 0;
-    let totalCapacityMinutes = 0;
     for (const band of bands) {
       const durationMinutes = (band.end - band.start) * 60;
       weightedOccupiedMinutes += Math.min(band.concurrent, band.capacity) * durationMinutes;
-      totalCapacityMinutes += band.capacity * durationMinutes;
     }
     return totalCapacityMinutes > 0 ? Math.round((weightedOccupiedMinutes / totalCapacityMinutes) * 100) : 0;
   });
@@ -197,7 +209,9 @@ export interface StaffLoadSummary {
   /** 実績合計（分） */
   totalActualMinutes: number;
   /**
-   * 負荷率 (0–100)。実績合計 / 営業時間。
+   * 負荷率 (0–100)。実効時間合計 / 営業時間。
+   * 実効時間 = actualMinutes（実績があれば）、なければ estimatedMinutes（未着手の代理値）。
+   * totalActualMinutes（実績のみの合計）とは一致しない場合がある点に注意。
    * ponytail: 営業時間は shiftEnd - shiftStart から算出。
    * 100% 超えは残業を意味する。
    */

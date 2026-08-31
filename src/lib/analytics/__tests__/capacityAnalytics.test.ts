@@ -144,6 +144,18 @@ describe("computeFleetUtilization", () => {
     const summary = computeFleetUtilization([booth], reservations, 9, 17);
     expect(summary.avgUtilizationPct).toBe(33);
   });
+
+  it("completed 予約は稼働実績に含める（boothDetails と矛盾しない）", () => {
+    // decomposeTimeBands のデフォルト（NON_OCCUPYING）は completed も除外するが、
+    // computeBoothUtilization は completed を稼働実績に含める。両者が食い違うと
+    // 同じレスポンス内で avgUtilizationPct=0 なのに boothDetails[0].utilizationPct=100
+    // という矛盾が起きる（IMP-046 delayed review で発見）。
+    const booth = mkBooth({ id: "b1", capacity: 1 });
+    const reservations = [mkRes({ id: "r1", boothId: "b1", startTime: null, endTime: null, status: "completed" })];
+    const summary = computeFleetUtilization([booth], reservations, 9, 17);
+    expect(summary.avgUtilizationPct).toBe(100);
+    expect(summary.boothDetails[0].utilizationPct).toBe(100);
+  });
 });
 
 // ── computeStaffCapacity ──

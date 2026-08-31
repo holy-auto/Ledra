@@ -4,6 +4,17 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-08-31 PR #1009（IMP-046修正PR）の `/code-review` 指摘を修正
+
+- 内容: `src/lib/analytics/capacityAnalytics.ts` の `computeFleetUtilization()` が新設した定員正規化計算で、`boothDetails`（`computeBoothUtilization()`）と矛盾する値（completed 予約のあるブースで一方は稼働率0%、もう一方は100%）を返すバグを修正。
+  - `decomposeTimeBands()` に第5引数 `excludeStatuses`（デフォルト既存の `NON_OCCUPYING` のまま、既存動作は不変）を追加。
+  - `src/lib/booths/occupancy.ts` に `UTILIZATION_EXCLUDED`（cancelled/no_show のみ除外、completed は稼働実績に含める）を新規 export。
+  - `computeFleetUtilization()` はこちらを渡して `boothDetails` と一致する値になるよう修正。
+  - あわせて `totalCapacityMinutes` の冗長な band 毎積算を1回計算に簡略化、`StaffLoadSummary.loadPct` の古い JSDoc（`totalEffective` フォールバックを反映していなかった）を修正。
+- 対象: `src/lib/analytics/capacityAnalytics.ts`、`src/lib/booths/occupancy.ts`（いずれも本番のどのAPIルートからも未呼び出し、型基盤のみ）。
+- 検証: tsc --noEmit clean / vitest run 5211件全通過（504ファイル、回帰テスト1件追加） / lint・check:schema・lint:migrations 実施。
+- 見送り: `computeBoothUtilization`/`detectCapacityConflicts`/`decomposeTimeBands` の3パス独立実行の効率化提案は、前者2つが `boothSignals.ts` からも共有される関数であるため本PRのスコープ外として見送り。
+
 ## 2026-08-30 PR #956（IMP-046）マージ後の遅延Codexレビュー6件を修正（残り2件はOPEN_QUESTIONSへ）
 
 - 内容: `src/lib/analytics/{capacityAnalytics,operationalKpi}.ts` の6件のバグを修正。

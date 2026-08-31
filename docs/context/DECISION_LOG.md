@@ -4,6 +4,18 @@
 > （新しい順）。実装の詳細は RELEASE_LOG.md、迷っている段階のものは
 > OPEN_QUESTIONS.md に書く。
 
+## 2026-08-31 PR #1009（IMP-046修正PR）の `/code-review` で発見した「boothDetails と矛盾する稼働率0%」バグを修正
+
+1. 日付: 2026-08-31
+2. 起きたこと: PR #956 の遅延レビュー6件を修正した PR #1009 に `/code-review` を実行したところ、その修正自体に新規バグが1件見つかった。`computeFleetUtilization()` の新しい定員正規化計算（`decomposeTimeBands()` 利用）はデフォルトの除外ステータス集合 `NON_OCCUPYING`（cancelled/completed/no_show を除外）で時間帯分解するが、同じレスポンス内の `boothDetails`（`computeBoothUtilization()` 由来）は completed を稼働実績に含める。再現テストを実行し、capacity=1・completed の終日予約1件で `avgUtilizationPct=0` と `boothDetails[0].utilizationPct=100` が同一レスポンス内で矛盾することを確認した。
+3. 以前の考え: `decomposeTimeBands()` は IMP-041 の `NON_OCCUPYING`（既存の定員超過検出等と同じ除外基準）をそのまま再利用すれば十分だと考えていた。
+4. 違和感・問題: `decomposeTimeBands()` はもともと「空き検索」（今後の可用性、completed は空きに戻るので除外が正しい）のために委譲された実装で、`computeBoothUtilization()`（過去の稼働実績、completed は実績としてカウント）とは判定基準が異なる。用途によって「completed を占有とみなすか」が違うのに、単一の除外集合を共有していたのが根本原因。
+5. 決めたこと: `decomposeTimeBands()` に第5引数 `excludeStatuses`（デフォルト `NON_OCCUPYING`、既存動作・既存テストは不変）を追加し、`occupancy.ts` に新しく `UTILIZATION_EXCLUDED`（cancelled + no_show のみ除外、completed は含める）を export。`computeFleetUtilization()` はこちらを渡すよう修正し、`boothDetails` と一致する値になることを回帰テストで確認。あわせて `/code-review` の他の指摘のうち、`totalCapacityMinutes` をband毎に積算していた冗長計算（`capacity` はブースごとに一定なので `booth.capacity × 営業時間` で1回計算すれば足りる）と、`loadPct` のJSDocが古い定義（実績合計/営業時間）のままだった点（実際は未着手ジョブの見積代理値を含む `totalEffective` ベース）も修正。3passのsweep（`computeBoothUtilization`/`detectCapacityConflicts`/`decomposeTimeBands`を毎ブースで独立実行）の効率化提案は見送り——`computeBoothUtilization`/`detectCapacityConflicts` は `boothSignals.ts` からも呼ばれる共有関数であり、この修正PRのスコープで統合すると影響範囲が本来のバグ修正を超えて広がるため。
+6. 捨てた選択肢: `decomposeTimeBands()` 自体のデフォルト除外基準を `UTILIZATION_EXCLUDED` に変更する案 — 既存テスト（「cancelled/completed/no_show は除外」）が明示的に検証している「空き検索」用途の意味論を壊すため不採用。呼び出し側で除外集合を選べるようにする現在の設計の方が、将来 capacity>1 の空き検索に `decomposeTimeBands()` を使う際にも両用途に対応できる。
+7. 判断理由: 同じ関数を異なる意味論（過去の実績 vs 今後の可用性）で共有していたのが矛盾の根本原因であり、パラメータ化して呼び出し側に意味論を明示させるのが、既存動作を壊さず両用途に対応する最小の修正。
+8. まだ答えが出ていないこと: なし（このモジュールは本番呼び出し元ゼロのまま。統合時に UTILIZATION_EXCLUDED の使用箇所が増える可能性はある）。
+9. 公開区分: 公開可
+
 ## 2026-08-30 PR #956（IMP-046）マージ後の遅延Codexレビュー8件のうち6件を修正。残り2件は指標定義の決め直しが必要としてOPEN_QUESTIONSへ
 
 1. 日付: 2026-08-30
