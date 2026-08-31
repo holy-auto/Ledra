@@ -16,7 +16,7 @@
  */
 import { NextRequest } from "next/server";
 import { z } from "zod";
-import { verifySignatureAppRouter } from "@upstash/qstash/nextjs";
+import { withQstashSignature } from "@/lib/qstash/verifySignature";
 import { apiJson } from "@/lib/api/response";
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { canUseFeature, normalizePlanTier } from "@/lib/billing/planFeatures";
@@ -144,4 +144,4 @@ async function handler(req: NextRequest) {
   return apiJson({ processed, candidates, stopped_by_cap: stoppedByCap, truncated });
 }
 
-export const POST = verifySignatureAppRouter(handler);
+export const POST = withQstashSignature(handler);

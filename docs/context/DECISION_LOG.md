@@ -4,6 +4,54 @@
 > （新しい順）。実装の詳細は RELEASE_LOG.md、迷っている段階のものは
 > OPEN_QUESTIONS.md に書く。
 
+## 2026-08-31 PR #1009 へ Codex レビューで発見した「capacity>1 で boothDetails が過大評価のまま」を追加修正
+
+1. 日付: 2026-08-31
+2. 起きたこと: PR #1009 の `/code-review` 対応コミット（`7daa88ee`）を Codex がレビューし、まだ残っていた矛盾を1件指摘した: `computeFleetUtilization()` はcapacity>1 のブースで `avgUtilizationPct`/`peakUtilizationPct` を `decomposeTimeBands()` ベースの定員正規化計算に直したが、`boothDetails`（`computeBoothUtilization()` 由来）は手つかずのままだったため、capacity=3 のブースに終日1件予約のケースで `avgUtilizationPct: 33` と `boothDetails[0].utilizationPct: 100` が同一レスポンス内で矛盾する。再現テストを実行し確認した（既存の `computeBoothUtilization()` は allDay 予約があると capacity に関係なく `utilizationPct: 100` を返す実装であることをソースで確認済み）。
+3. 以前の考え: 直前の修正（本ファイル同日の別エントリ）で「completed の扱い」の矛盾は解消したため、boothDetails の矛盾はすべて解消したと判断していた。
+4. 違和感・問題: 直前の修正は「completed を稼働実績に含めるか」という軸のズレだけを直しており、「capacity>1 のブースで union ベースか定員正規化ベースか」という別軸のズレは手つかずのまま残っていた。同じ関数の戻り値内で2つの独立した数値が異なる定義に基づいていたのが根本原因で、1回の修正では両方を直せていなかった。
+5. 決めたこと: `boothDetails` の構築そのものを `decomposeTimeBands()` ベースの定員正規化計算に置き換え、`avgUtilizationPct`/`peakUtilizationPct` もこの `boothDetails` から導出する構造に変更した（矛盾しようがない構造にする）。`occupiedMinutes` は「定員1枠換算の実効占有分」（`weightedOccupiedMinutes / capacity`）に正規化し、`occupiedMinutes / totalMinutes` の比率が `utilizationPct` と一致するようにした（`peakConcurrent` は `computeBoothUtilization()` の値のまま — 別の情報のため正規化不要）。回帰テストで capacity=3・終日1件予約のケースの `avgUtilizationPct`・`peakUtilizationPct`・`boothDetails[0].utilizationPct`・`occupiedMinutes`・`totalMinutes` すべてを検証。
+6. 捨てた選択肢: `boothDetails` は `computeBoothUtilization()` の値のままにして別フィールド（例: `normalizedUtilizationPct`）を追加する案 — Codex の指摘は「同じ数値が矛盾する」ことそのものが問題であり、フィールドを増やしても呼び出し側が誤って古い方（union ベース）を使うリスクが残るため不採用。boothDetails を構築し直す方が、矛盾が構造的に起きなくなる。
+7. 判断理由: 前回の修正で「一部の軸だけ直して終わり」と判断したのが甘かった——同じ関数の戻り値の整合性は、個々の指摘に場当たり的に対応するのではなく、avg/peak/boothDetails すべてを単一の計算経路から導出する構造にすることで担保すべきだった。
+8. まだ答えが出ていないこと: なし（このモジュールは本番呼び出し元ゼロのまま）。
+9. 公開区分: 公開可
+
+## 2026-08-31 PR #1009（IMP-046修正PR）の `/code-review` で発見した「boothDetails と矛盾する稼働率0%」バグを修正
+
+1. 日付: 2026-08-31
+2. 起きたこと: PR #956 の遅延レビュー6件を修正した PR #1009 に `/code-review` を実行したところ、その修正自体に新規バグが1件見つかった。`computeFleetUtilization()` の新しい定員正規化計算（`decomposeTimeBands()` 利用）はデフォルトの除外ステータス集合 `NON_OCCUPYING`（cancelled/completed/no_show を除外）で時間帯分解するが、同じレスポンス内の `boothDetails`（`computeBoothUtilization()` 由来）は completed を稼働実績に含める。再現テストを実行し、capacity=1・completed の終日予約1件で `avgUtilizationPct=0` と `boothDetails[0].utilizationPct=100` が同一レスポンス内で矛盾することを確認した。
+3. 以前の考え: `decomposeTimeBands()` は IMP-041 の `NON_OCCUPYING`（既存の定員超過検出等と同じ除外基準）をそのまま再利用すれば十分だと考えていた。
+4. 違和感・問題: `decomposeTimeBands()` はもともと「空き検索」（今後の可用性、completed は空きに戻るので除外が正しい）のために委譲された実装で、`computeBoothUtilization()`（過去の稼働実績、completed は実績としてカウント）とは判定基準が異なる。用途によって「completed を占有とみなすか」が違うのに、単一の除外集合を共有していたのが根本原因。
+5. 決めたこと: `decomposeTimeBands()` に第5引数 `excludeStatuses`（デフォルト `NON_OCCUPYING`、既存動作・既存テストは不変）を追加し、`occupancy.ts` に新しく `UTILIZATION_EXCLUDED`（cancelled + no_show のみ除外、completed は含める）を export。`computeFleetUtilization()` はこちらを渡すよう修正し、`boothDetails` と一致する値になることを回帰テストで確認。あわせて `/code-review` の他の指摘のうち、`totalCapacityMinutes` をband毎に積算していた冗長計算（`capacity` はブースごとに一定なので `booth.capacity × 営業時間` で1回計算すれば足りる）と、`loadPct` のJSDocが古い定義（実績合計/営業時間）のままだった点（実際は未着手ジョブの見積代理値を含む `totalEffective` ベース）も修正。3passのsweep（`computeBoothUtilization`/`detectCapacityConflicts`/`decomposeTimeBands`を毎ブースで独立実行）の効率化提案は見送り——`computeBoothUtilization`/`detectCapacityConflicts` は `boothSignals.ts` からも呼ばれる共有関数であり、この修正PRのスコープで統合すると影響範囲が本来のバグ修正を超えて広がるため。
+6. 捨てた選択肢: `decomposeTimeBands()` 自体のデフォルト除外基準を `UTILIZATION_EXCLUDED` に変更する案 — 既存テスト（「cancelled/completed/no_show は除外」）が明示的に検証している「空き検索」用途の意味論を壊すため不採用。呼び出し側で除外集合を選べるようにする現在の設計の方が、将来 capacity>1 の空き検索に `decomposeTimeBands()` を使う際にも両用途に対応できる。
+7. 判断理由: 同じ関数を異なる意味論（過去の実績 vs 今後の可用性）で共有していたのが矛盾の根本原因であり、パラメータ化して呼び出し側に意味論を明示させるのが、既存動作を壊さず両用途に対応する最小の修正。
+8. まだ答えが出ていないこと: なし（このモジュールは本番呼び出し元ゼロのまま。統合時に UTILIZATION_EXCLUDED の使用箇所が増える可能性はある）。
+9. 公開区分: 公開可
+
+## 2026-08-30 PR #956（IMP-046）マージ後の遅延Codexレビュー8件のうち6件を修正。残り2件は指標定義の決め直しが必要としてOPEN_QUESTIONSへ
+
+1. 日付: 2026-08-30
+2. 起きたこと: PR #956（IMP-046、`dc6deaf0` としてマージ済み）に対しマージ後に遅延到着したCodexレビュー8件（全件P2）が `OPEN_QUESTIONS.md` に未修正のまま記録されていた（`spawn_task` が2回連続タイムアウトしたため）。今回改めて全件を直接検証し、うち6件を機械的なバグとして修正: (1) `computeFleetUtilization()` — `computeBoothUtilization()` の union ベース計算が capacity>1 のブースで稼働率を過大評価する問題を、既存の `decomposeTimeBands()`（capacity対応の時間帯分解、IMP-041から委譲されていたが未使用のまま放置されていた）を使った定員正規化計算に修正。(2) `computeStaffCapacity()` にジョブ0件のスタッフを含める `allStaffIds` 省略可能パラメータを追加。(3) 過負荷/遊休判定を丸め後の `loadPct` ではなく丸め前の比率で行うよう修正（境界値誤分類の解消）。(4) `actualMinutes: null`（未着手）のジョブは見積時間を負荷の代理値に使うよう修正（`totalActualMinutes` 自体は実績のみを表すため変更なし）。(5) `computeAvgReviewWaitHours()`/`computeAvgCycleTimeHours()` の不正タイムスタンプによる `NaN` 汚染を `Number.isFinite()` チェックで防止。(6) `computeDailyThroughput()` の丸め精度を小数第1位→第2位に引き上げ、長期間・低件数で非ゼロの実績が0に潰れる問題を解消。
+3. 以前の考え: `spawn_task` が使えなかったため `OPEN_QUESTIONS.md` に記録するだけで終わっており、実際の修正は先送りになっていた。
+4. 違和感・問題: 残り2件（`computeVerifiedRate()` の REVOKED 扱い、`computeSlaComplianceRate()` の `at_risk` 扱い）は、指摘自体が「単純な救済不可、定義自体の決め直しが必要（設計判断が要る）」と明記しており、コードを直すだけでは解決しない——`src/lib/domain/transitions.ts` を確認したところ REVOKED は VERIFIED を経由せず ISSUING/VERIFYING からも遷移可能であることを確認し、単純に「REVOKEDを分子に含める」という直感的な修正が誤りであることを検証した。
+5. 決めたこと: 機械的に検証・修正可能な6件はこのまま修正して1本のPRにまとめる。残り2件（指標定義の決め直しが必要な2件）は `OPEN_QUESTIONS.md` に新規エントリとして記録し、製品としての意図確認を待つ。実害は現状ゼロ（`src/lib/analytics/` は本番のどのAPIルートからも呼び出されていない、呼び出し元ゼロを確認済み）。
+6. 捨てた選択肢: (a) 8件全部をこの場で「もっともらしい」解釈で決め切る — REVOKED/at_risk の2件は本当に製品判断が必要な内容であり、コードの中に答えがない以上、推測で決めるべきではないと判断し不採用。(b) 6件の修正を見送り8件まとめて先送りする — 6件は明確なバグで実装済みの他機能（`decomposeTimeBands()` 等）を活用すれば直せるため、先送りする理由がない。
+7. 判断理由: CLAUDE.md の「推測で事実を補わない」「質問ルール」に従い、コードから答えが出せない製品判断（指標の定義）は推測せず OPEN_QUESTIONS に切り出す一方、コードを読めば根本原因も正しい修正も一意に定まる6件はその場で直すべきと判断した。
+8. まだ答えが出ていないこと: `computeVerifiedRate()`のREVOKED扱いの正式な定義（現在VERIFIED件数ベースか、過去に一度でもVERIFIEDに達した件数ベースか）、`computeSlaComplianceRate()`のat_risk扱いが意図的な厳格判定か命名変更が必要か。
+9. 公開区分: 公開可
+
+## 2026-08-30 未対応アラートは「アラートのみ・既存 notifications 流用」を先に。担当割り当ては後続に分離
+
+1. 日付: 2026-08-30
+2. 起きたこと: 「LINE属人性の低減③ 未対応アラート／担当割り当て」の実装にあたり、スコープを検討した。属人性の主因は「特定の担当者が受信箱を見ていないと止まる」こと。
+3. 以前の考え: 選択肢のラベルは「未対応アラート／担当割り当て」で両方を含んでいた。
+4. 違和感・問題: 「担当割り当て」は assignee カラム/テーブル・割り当て UI・担当別フィルタなど複数サーフェスにまたがる大きめの機能で、マイグレーションも伴う。一方「未対応アラート」だけでも属人性の主因（誰も見ないと止まる）はほぼ解消でき、既存の通知基盤（`notifications` テーブル + `notifyStaffOfAiAction`）とcron骨格の再利用でマイグレーション無しに実装できる。
+5. 決めたこと: (a) まず**未対応アラート（SLA通知）**を1本のPRで実装。最新メッセージが inbound で既定60分以上未返信のLINEスレッドを検出し、既存の管理画面通知でスタッフに知らせる。dedupは notification_logs（未返信メッセージID単位）。返信すると最新が outbound になり自然に外れる。(b) 担当割り当て（誰が対応するかの明示・担当別ビュー）は別PRに分離（schema/UI 判断が必要）。
+6. 捨てた選択肢: アラートと担当割り当てを1PRで同時に入れる案（スコープ過大・マイグレーション/ UI 変更が絡み、レビュー・リスクが増える）。Slack 直通知にする案（テナントごとの webhook 解決の配線が要る。まずは既存の in-app 通知で十分。Slack は後続オプション）。read_at で「既読だが未返信」を判定する案（返信有無＝outbound の有無で判定する方が直接的で、既読フラグの信頼性に依存しない）。
+7. 判断理由: 属人性低減の主因を最小・低リスクで潰せるのがアラート部分。既存資産（notifications/cron/notification_logs dedup）をそのまま使え、マイグレーションを避けられる。担当割り当ては価値はあるが独立して足せるため急がない。
+8. まだ答えが出ていないこと: 担当割り当て（assignee 付与・担当別フィルタ・再割り当て）の設計。通知先を Slack/メール/プッシュへ広げるか。アラート閾値（既定8時間・代表要望で60分→8時間に変更）やcron頻度（30分毎）をテナント設定にするか。要返信でないメッセージ（お礼のみ等）の除外精度。
+9. 公開区分: 公開可（機能スコープの設計判断。顧客・機密情報なし）。
+
 ## 2026-08-30 IMP-054（#961）へ Codex レビュー4件を反映。P0充足サマリを「7/10実装済み」から「3/10実装済み」へ再是正
 
 1. 日付: 2026-08-30

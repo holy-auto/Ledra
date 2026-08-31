@@ -2,7 +2,9 @@
 
 import type { ReactNode } from "react";
 import { useViewMode } from "@/lib/view-mode/ViewModeContext";
+import { useUiPreferences } from "@/lib/ui-preferences/UiPreferencesContext";
 import StorefrontDashboard from "./StorefrontDashboard";
+import DisplayModeOnboarding from "./DisplayModeOnboarding";
 
 /**
  * DashboardModeSwitch
@@ -16,10 +18,16 @@ import StorefrontDashboard from "./StorefrontDashboard";
  */
 export default function DashboardModeSwitch({ adminContent }: { adminContent: ReactNode }) {
   const { mode, hydrated } = useViewMode();
+  const { displayMode, loading } = useUiPreferences();
 
-  // hydration 前は SSR と同じ admin 表示を出して画面フラッシュを避ける
-  if (!hydrated || mode === "admin") {
-    return <>{adminContent}</>;
-  }
-  return <StorefrontDashboard />;
+  // hydration 前は SSR と同じ admin 表示を出して画面フラッシュを避ける。
+  // 読み込み後は 3 種類の表示設定を /admin の第一階層で常に選べるようにする。
+  const showAdminContent = !hydrated || loading || (displayMode === "standard" && mode === "admin");
+
+  return (
+    <div className="space-y-6">
+      <DisplayModeOnboarding />
+      {showAdminContent ? adminContent : <StorefrontDashboard />}
+    </div>
+  );
 }

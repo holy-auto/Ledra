@@ -17,7 +17,7 @@
 import assert from "node:assert";
 import { readFileSync, readdirSync, statSync, existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { dirname, resolve, join, relative } from "node:path";
+import { dirname, resolve, join, relative, isAbsolute } from "node:path";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -630,7 +630,7 @@ function nearestObject(objects, name, usedAt) {
   return best?.body;
 }
 
-const ALL_FILES = TARGETS.flatMap(({ dir }) => walk(dir.startsWith("/") ? dir : join(repoRoot, dir)));
+const ALL_FILES = TARGETS.flatMap(({ dir }) => walk(isAbsolute(dir) ? dir : join(repoRoot, dir)));
 const STRING_CONSTS = collectStringConsts(ALL_FILES);
 
 /**
@@ -647,7 +647,7 @@ function expandConsts(sel, localConsts) {
 
 const summary = [];
 for (const { dir, minSelects, minMutations } of TARGETS) {
-  const root = dir.startsWith("/") ? dir : join(repoRoot, dir);
+  const root = isAbsolute(dir) ? dir : join(repoRoot, dir);
   if (!existsSync(root)) throw new Error(`走査対象が無い: ${dir}`);
   let selects = 0;
   let mutations = 0;

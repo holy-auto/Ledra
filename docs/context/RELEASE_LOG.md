@@ -4,6 +4,65 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-08-31 PR #1009 へ Codex レビュー指摘（capacity>1 で boothDetails が過大評価のまま）を追加修正
+
+- 内容: `computeFleetUtilization()` の `boothDetails` を、`avgUtilizationPct`/`peakUtilizationPct` と同じ `decomposeTimeBands()` ベースの定員正規化計算から構築するよう変更。従来は capacity>1 のブースで `boothDetails[i].utilizationPct` だけが union ベース（過大評価）のまま残っており、例えば capacity=3・終日1件予約で `avgUtilizationPct: 33` と `boothDetails[0].utilizationPct: 100` が同一レスポンス内で矛盾していた（Codexが指摘、再現テストで確認）。
+  - `occupiedMinutes` を「定員1枠換算の実効占有分」に正規化し、`occupiedMinutes/totalMinutes` の比率が `utilizationPct` と一致するようにした。
+  - `avgUtilizationPct`/`peakUtilizationPct` もこの `boothDetails` から導出するよう変更（別々に計算していたことによる再発防止）。`peakConcurrent` は元の値のまま。
+- 対象: `src/lib/analytics/capacityAnalytics.ts`（本番未呼び出し）。
+- 検証: tsc --noEmit clean / vitest run 508ファイル・5225件全通過 / lint・check:schema・lint:migrations 実施。
+
+## 2026-08-31 PR #1009（IMP-046修正PR）の `/code-review` 指摘を修正
+
+- 内容: `src/lib/analytics/capacityAnalytics.ts` の `computeFleetUtilization()` が新設した定員正規化計算で、`boothDetails`（`computeBoothUtilization()`）と矛盾する値（completed 予約のあるブースで一方は稼働率0%、もう一方は100%）を返すバグを修正。
+  - `decomposeTimeBands()` に第5引数 `excludeStatuses`（デフォルト既存の `NON_OCCUPYING` のまま、既存動作は不変）を追加。
+  - `src/lib/booths/occupancy.ts` に `UTILIZATION_EXCLUDED`（cancelled/no_show のみ除外、completed は稼働実績に含める）を新規 export。
+  - `computeFleetUtilization()` はこちらを渡して `boothDetails` と一致する値になるよう修正。
+  - あわせて `totalCapacityMinutes` の冗長な band 毎積算を1回計算に簡略化、`StaffLoadSummary.loadPct` の古い JSDoc（`totalEffective` フォールバックを反映していなかった）を修正。
+- 対象: `src/lib/analytics/capacityAnalytics.ts`、`src/lib/booths/occupancy.ts`（いずれも本番のどのAPIルートからも未呼び出し、型基盤のみ）。
+- 検証: tsc --noEmit clean / vitest run 5211件全通過（504ファイル、回帰テスト1件追加） / lint・check:schema・lint:migrations 実施。
+- 見送り: `computeBoothUtilization`/`detectCapacityConflicts`/`decomposeTimeBands` の3パス独立実行の効率化提案は、前者2つが `boothSignals.ts` からも共有される関数であるため本PRのスコープ外として見送り。
+
+## 2026-08-30 PR #956（IMP-046）マージ後の遅延Codexレビュー6件を修正（残り2件はOPEN_QUESTIONSへ）
+
+- 内容: `src/lib/analytics/{capacityAnalytics,operationalKpi}.ts` の6件のバグを修正。
+  - `computeFleetUtilization()`: capacity>1 ブースの稼働率過大評価を `decomposeTimeBands()` ベースの定員正規化計算で解消
+  - `computeStaffCapacity()`: `allStaffIds` 省略可能パラメータ追加（ジョブ0件のスタッフも遊休として集計可能に）、過負荷/遊休判定を丸め前の比率で実施（境界値誤分類を解消）、`actualMinutes: null` のジョブは見積時間を負荷の代理値に使用
+  - `computeAvgReviewWaitHours()`/`computeAvgCycleTimeHours()`: 不正タイムスタンプによる `NaN` 汚染を防止
+  - `computeDailyThroughput()`: 丸め精度を小数第1位→第2位に引き上げ
+- 対象: `src/lib/analytics/`（本番のどのAPIルートからも未呼び出し、型基盤のみ）
+- 検証: tsc --noEmit clean / vitest run 5210件全通過（504ファイル、回帰テスト7件追加） / lint 0エラー・1256警告=基準線 / check:schema OK / lint:migrations OK。
+- 残課題: `computeVerifiedRate()` のREVOKED扱い、`computeSlaComplianceRate()` のat_risk扱いは指標定義自体の製品判断が必要なため `OPEN_QUESTIONS.md` に記録し見送り。
+
+## 2026-08-30 LINE属人性の低減③: LINE未返信の対応漏れ通知（SLAアラート）cron（branch claude/line-chatbot-ledra-dy2fiq）
+
+- 背景: お客様の LINE メッセージが放置されても、特定の担当者が受信箱を見ていないと止まる（属人性）。
+  一定時間返信が無いスレッドをスタッフに通知して対応漏れ・返信遅れを防ぐ。
+- 内容: LINE スレッドの**最新メッセージがお客様発（inbound）で既定8時間以上返信が無い**ものを検出し、
+  管理画面の通知（既存 `notifyStaffOfAiAction` → `/admin/messages`）でスタッフに知らせる cron を追加
+  （opt-in・既定 OFF）。
+  - 自動返信・スタッフ返信済み（最新が店舗発=outbound）のスレッドは自然に対象外（返信すると最新が
+    outbound になるため）。
+  - 1メッセージにつき1回だけ（`notification_logs` type=unanswered_alert で重複防止。お客様が新しく
+    送れば新メッセージIDで改めて通知）。1実行の通知数は上限20件（フラッド防止）。走査は直近72hまで。
+- 実装: `src/lib/cron/unansweredAlerts.ts`（`processUnansweredThreadAlerts`。スレッドごとの最新を見て
+  未返信判定→dedup→通知）＋ `src/app/api/cron/unanswered-alerts/route.ts`（reservation-reminders と
+  同骨格）＋ `vercel.json` に `*/30 * * * *`。opt-in キー `inbound_message.auto_unanswered_alert`、ゲート
+  `shouldAlertUnansweredThreads`。**マイグレーション不要**（notification_logs の type は自由文字列）。
+- 検証: `unansweredAlerts`（最新inboundで通知＋ログ／最新outboundは対象外／猶予内は対象外／dedup／
+  未登録は「未登録のお客様」表記）テスト追加。
+- コードレビュー由来の追加修正（同 PR、`/code-review`）:
+  - メッセージ走査を `.limit(1000)` から **created_at キーセットのページング**に変更（メッセージ量の
+    多いテナントでスレッド最新が 1000 件外にこぼれ未返信を取りこぼす問題を解消。上限は
+    `MAX_SCAN_PAGES` で頭打ち＋ponytail コメント明記）。
+  - スレッドキーを **line_user_id 優先**に（顧客リンク前後で不変。customer_id バックフィルの遅延/失敗で
+    同一会話が2スレッドに割れ誤アラートするのを防ぐ）。
+  - `notifyStaffOfAiAction` を `Promise<boolean>` に変更し、**通知に失敗したら dedup ログを残さず次回
+    再試行**（アラート取りこぼし防止）。dedup ログ insert 失敗も warn で可視化。
+- 全体 5060 件パス、tsc/eslint エラー0（既存の `_key`/`policy` 警告のみ）。
+- 「LINE属人性の低減」の3件目（アラート部分）。担当割り当て（assignee 付与・担当別フィルタ）は
+  スキーマ/UI を伴うため後続。次は④会話の要約・引き継ぎ。
+
 ## 2026-08-30 IMP-054（#961）へ Codex レビュー4件を反映。requirement-trace.md の P0充足サマリを「7/10実装済み」から「3/10実装済み」へ再是正
 
 - 内容: PR #961 の P0 充足サマリが、本書に既存する §13/§15/§16/§17 の詳細監査行（いずれも既に「部分」と明記済み）と矛盾していた4項目（Invite/OTP/Biometric・Payment state+Certificate+VERIFIED・Role/Permission・Basic Notifications）を Codex 指摘に基づき ⚠️ 部分へ修正。特にモバイルの OTP 検証（`verify-otp.tsx`）が実際のAPIを呼ばないプレースホルダのままであること、Certificate Gate（`gateEvaluator.ts`）が本番ルートから一度も呼ばれずフェイルオープンのままであることを新たに確認。P0 充足サマリは 10 項目中 3 項目のみ実装済み（Workflow+Photo Evidence+Voice・Vehicle・Customer Confirmation）と是正。

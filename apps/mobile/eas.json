@@ -29,6 +29,13 @@
         "EXPO_PUBLIC_CERTIFICATE_BASE_URL": "https://app.ledra.co.jp/c"
       }
     },
+    "development-ios": {
+      "extends": "preview",
+      "developmentClient": true,
+      "ios": {
+        "simulator": false
+      }
+    },
     "preview": {
       "distribution": "internal",
       "ios": {

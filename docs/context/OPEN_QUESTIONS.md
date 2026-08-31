@@ -3,6 +3,14 @@
 > まだ決まっていないこと、判断に迷っていることを書く場所。決まったら
 > DECISION_LOG.md に移し、このファイルからは消す（削除履歴は git で追える）。
 
+## 追加（2026-08-30・IMP-046 遅延 Codex レビュー8件中2件、指標の定義自体の決め直しが必要）
+
+PR #956（IMP-046）マージ後の遅延 Codex レビュー8件のうち6件は機械的なバグとして修正済み（DECISION_LOG参照）。残り2件は指標の**定義自体**を決める必要があり、コードを直すだけでは解決しない。
+
+- **`computeVerifiedRate()`（`src/lib/analytics/operationalKpi.ts`）の REVOKED 証明書の扱い。** 現状は分母（NOT_READY/SUPERSEDEDを除く全件）に含め、分子（VERIFIED件数）からは除外する——つまり VERIFIED を経由してから REVOKED された証明書は「未到達」扱いになる。しかし `src/lib/domain/transitions.ts` の遷移表では REVOKED は ISSUING・VERIFYING からも遷移可能（VERIFIED を経由せずに無効化されるケースがある）。現在の `CertificateStateCounts`（状態別の件数の断面スナップショット）には「その証明書が過去に VERIFIED を通過したか」という履歴情報が無いため、単純に「REVOKED を分子に含める」という修正では、VERIFIED未経由のREVOKEDまで誤って到達扱いにしてしまう。正しく直すには入力データの形自体を変える必要がある（例: 各証明書に `everReachedVerified: boolean` を持たせる）。「到達率」の定義（現在VERIFIED件数ベースか、過去に一度でもVERIFIEDに達した件数ベースか）を先に決める必要がある。
+- **`computeSlaComplianceRate()` の `at_risk` の扱い。** 現状は `at_risk`（まだ期限内だが警告域）を非遵守として扱う厳格な定義。これが意図的な設計（早期警告を促すため厳しく判定する）なのか、それとも「遵守率」という名前上は `overdue` のみを非遵守とすべきなのか、製品としての意図確認が必要（コードからは判定できない）。
+- 実害は現状ゼロ（`src/lib/analytics/` は本番のどの API ルートからも呼び出されていない、呼び出し元ゼロを確認済み）。実際に KPI ダッシュボードへ統合するタスクに着手する前に、上記2点を決める必要がある。
+
 ## 追加（2026-08-30・IMP-050（#957）visibility.ts の owner_only 設計、Codex レビューで往復）
 
 - **`canAccess()`/`DEFAULT_REQUIRED_VISIBILITY` の owner_only の扱いに、まだ解決していないトレードオフが残っている。** 3回のレビュー往復で判明: (a) owner_only を tenant_internal 以上に自動昇格させると、データ主体本人が restricted（auth.users.encrypted_password 等）まで見られてしまう（1回目の Codex 指摘、P1、修正済み）。(b) 昇格させないと、pii/confidential 要求のフィールド（DEFAULT_REQUIRED_VISIBILITY 経由）を本人自身も見られなくなる（3回目の Codex 指摘、P2、未解決）。(a)(b) は同じ「owner_only の意味」を取り合っており、単純な線形階層モデルでは同時に満たせない。現状は (a) を優先し、(b) は既知の限界として visibility.ts の JSDoc に明記（呼び出し側が isDataSubject と「レコードの所有者か」を個別判定してこの汎用機構をバイパスする想定）。

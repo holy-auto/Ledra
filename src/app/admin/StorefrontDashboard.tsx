@@ -2,6 +2,7 @@
 import { parseJsonSafe } from "@/lib/api/safeJson";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import useSWR from "swr";
 import { fetcher } from "@/lib/swr";
@@ -11,6 +12,7 @@ import { KanbanBoard, KanbanColumn } from "@/components/pos/KanbanBoard";
 import KanbanCard from "@/components/pos/KanbanCard";
 import { formatJpy } from "@/lib/format";
 import { businessDateString } from "@/lib/datetime";
+import { useUiPreferences } from "@/lib/ui-preferences/UiPreferencesContext";
 
 /**
  * StorefrontDashboard
@@ -52,8 +54,183 @@ const STATUS_LABEL: Record<string, string> = {
   cancelled: "キャンセル",
 };
 
+function SimpleDashboard({
+  confirmed,
+  arrived,
+  inProgress,
+  awaitingPayment,
+  busyId,
+  onAdvance,
+  onOpen,
+}: {
+  confirmed: ReservationRow[];
+  arrived: ReservationRow[];
+  inProgress: ReservationRow[];
+  awaitingPayment: ReservationRow[];
+  busyId: string | null;
+  onAdvance: (id: string) => void;
+  onOpen: (id: string) => void;
+}) {
+  const next = confirmed[0] ?? arrived[0] ?? inProgress[0] ?? awaitingPayment[0] ?? null;
+  const actionLabel = next
+    ? next.status === "confirmed"
+      ? "受付する"
+      : next.status === "arrived"
+        ? "作業を始める"
+        : next.status === "in_progress"
+          ? "次へ進む"
+          : "会計を確認する"
+    : null;
+
+  return (
+    <div className="space-y-4">
+      <section className="overflow-hidden rounded-3xl border border-border-default bg-surface shadow-sm">
+        <div className="border-b border-border-subtle bg-accent-dim px-5 py-4">
+          <p className="text-xs font-semibold text-accent">次にすること</p>
+          <h2 className="mt-1 text-xl font-bold text-primary">{next ? actionLabel : "現在、対応待ちはありません"}</h2>
+        </div>
+        {next ? (
+          <div className="p-5 sm:p-7">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold text-warning">{STATUS_LABEL[next.status] ?? next.status}</p>
+                <p className="mt-2 text-2xl font-bold text-primary">{next.customer_name || next.title}</p>
+                <p className="mt-1 text-base text-secondary">
+                  {[next.start_time?.slice(0, 5), next.vehicle_label].filter(Boolean).join(" / ") ||
+                    "車両情報を確認してください"}
+                </p>
+              </div>
+              <span className="rounded-full bg-inset px-3 py-1 text-xs font-semibold text-secondary">
+                待ち {confirmed.length + arrived.length + inProgress.length + awaitingPayment.length}件
+              </span>
+            </div>
+            <p className="mt-6 rounded-xl bg-base px-4 py-3 text-sm leading-6 text-secondary">
+              内容を確認して、下のボタンから次の工程へ進めてください。
+            </p>
+            <button
+              type="button"
+              disabled={busyId === next.id}
+              onClick={() => (next.status === "completed" ? onOpen(next.id) : onAdvance(next.id))}
+              className="mt-5 min-h-14 w-full rounded-2xl bg-accent px-5 text-base font-bold text-inverse transition-opacity hover:opacity-90 disabled:opacity-50"
+            >
+              {busyId === next.id ? "処理中..." : actionLabel}
+            </button>
+          </div>
+        ) : (
+          <div className="grid gap-3 p-5 sm:grid-cols-2">
+            <button
+              type="button"
+              onClick={() => onOpen("")}
+              className="min-h-14 rounded-2xl bg-accent px-5 font-bold text-inverse"
+            >
+              飛び込み受付を始める
+            </button>
+            <Link
+              href="/admin/reservations"
+              className="flex min-h-14 items-center justify-center rounded-2xl border border-border-default px-5 font-bold text-primary"
+            >
+              本日の予約を見る
+            </Link>
+          </div>
+        )}
+      </section>
+      <section className="grid grid-cols-3 gap-2" aria-label="本日の進行状況">
+        {[
+          ["受付待ち", confirmed.length],
+          ["作業中", arrived.length + inProgress.length],
+          ["会計待ち", awaitingPayment.length],
+        ].map(([label, count]) => (
+          <div key={label} className="rounded-2xl border border-border-subtle bg-surface p-3 text-center">
+            <div className="text-[11px] text-muted">{label}</div>
+            <div className="mt-1 text-xl font-bold text-primary">{count}件</div>
+          </div>
+        ))}
+      </section>
+    </div>
+  );
+}
+
+function DenseDashboard({
+  rows,
+  busyId,
+  onAdvance,
+  onOpen,
+}: {
+  rows: ReservationRow[];
+  busyId: string | null;
+  onAdvance: (id: string) => void;
+  onOpen: (id: string) => void;
+}) {
+  return (
+    <section className="overflow-hidden rounded-2xl border border-border-default bg-surface">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border-subtle p-4">
+        <div>
+          <h2 className="font-bold text-primary">本日の案件一覧</h2>
+          <p className="text-xs text-muted">{rows.length}件を時刻順に表示</p>
+        </div>
+        <div className="flex gap-2">
+          <Link
+            href="/admin/reservations"
+            className="rounded-lg border border-border-default px-3 py-2 text-xs font-semibold text-secondary"
+          >
+            絞り込み
+          </Link>
+          <Link href="/admin/jobs/new" className="rounded-lg bg-accent px-3 py-2 text-xs font-semibold text-inverse">
+            新規受付
+          </Link>
+        </div>
+      </div>
+      <div className="hidden grid-cols-[72px_1.2fr_1fr_100px_92px] gap-3 border-b border-border-subtle bg-base px-4 py-2 text-[11px] font-semibold text-muted sm:grid">
+        <span>時刻</span>
+        <span>お客様</span>
+        <span>車両</span>
+        <span>状態</span>
+        <span className="text-right">操作</span>
+      </div>
+      <ul className="divide-y divide-border-subtle">
+        {rows.map((row) => {
+          const canAdvance = row.status === "confirmed" || row.status === "arrived" || row.status === "in_progress";
+          const label =
+            row.status === "confirmed"
+              ? "受付する"
+              : row.status === "arrived"
+                ? "作業開始"
+                : row.status === "in_progress"
+                  ? "次へ"
+                  : "詳細";
+          return (
+            <li
+              key={row.id}
+              className="grid gap-2 px-4 py-3 sm:grid-cols-[72px_1.2fr_1fr_100px_92px] sm:items-center sm:gap-3"
+            >
+              <span className="text-xs font-semibold text-secondary">{row.start_time?.slice(0, 5) || "時刻未定"}</span>
+              <span className="min-w-0 truncate text-sm font-semibold text-primary">
+                {row.customer_name || row.title}
+              </span>
+              <span className="min-w-0 truncate text-xs text-secondary">{row.vehicle_label || "車両未設定"}</span>
+              <span className="w-fit rounded-full bg-inset px-2 py-1 text-[11px] font-semibold text-secondary">
+                {STATUS_LABEL[row.status] ?? row.status}
+              </span>
+              <button
+                type="button"
+                disabled={busyId === row.id}
+                onClick={() => (canAdvance ? onAdvance(row.id) : onOpen(row.id))}
+                className="min-h-9 rounded-lg bg-accent px-3 text-xs font-semibold text-inverse disabled:opacity-50 sm:justify-self-end"
+              >
+                {busyId === row.id ? "処理中" : label}
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+      {rows.length === 0 && <p className="p-10 text-center text-sm text-muted">本日の案件はありません</p>}
+    </section>
+  );
+}
+
 export default function StorefrontDashboard() {
   const router = useRouter();
+  const { displayMode } = useUiPreferences();
   const [advancingId, setAdvancingId] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
@@ -117,6 +294,35 @@ export default function StorefrontDashboard() {
     day: "numeric",
     weekday: "short",
   });
+
+  if (displayMode === "simple") {
+    return (
+      <div className="space-y-6">
+        <SimpleDashboard
+          confirmed={confirmedToday}
+          arrived={arrived}
+          inProgress={inProgress}
+          awaitingPayment={awaitingPayment}
+          busyId={advancingId}
+          onAdvance={(id) => void advance(id)}
+          onOpen={(id) => router.push(id ? `/admin/jobs/${id}` : "/admin/jobs/new")}
+        />
+      </div>
+    );
+  }
+
+  if (displayMode === "dense") {
+    return (
+      <div className="space-y-6">
+        <DenseDashboard
+          rows={todays}
+          busyId={advancingId}
+          onAdvance={(id) => void advance(id)}
+          onOpen={(id) => router.push(`/admin/jobs/${id}`)}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
