@@ -4,7 +4,21 @@
 > 追わず、常に最新状態だけを保つ（履歴は DECISION_LOG.md / RELEASE_LOG.md 側）。
 > 大きな変化があったら都度上書きすること。
 
-最終更新: 2026-08-30
+最終更新: 2026-08-31
+
+> 2026-08-31 追記: **Certificate Gate (IMP-028) を証明書発行の本番4経路すべてに配線した。**
+> v2.0 §19.4 / ADR-0005 が求める「バックエンド単一評価器が判定する」設計のうち、評価器
+> (`gateEvaluator.ts`) 自体は実装済みだったが、証明書を `active` にする実際の経路
+> （管理画面 `PUT /api/admin/certificates/status`・モバイル `POST /api/mobile/certificates/[id]/activate`・
+> オフライン `POST /api/certificates/activate-by-key`・AI自動発行 `certificateRecordAuto.ts`）は
+> どれもこの評価器を呼んでおらず、写真必須チェックのみを個別に手書きしていた。新設した
+> `evaluateCertificateActivationGate()` に写真・懸念（IMP-026）・部品整合性（IMP-040）の3条件を
+> 実データから組み立てる処理を集約し、4経路すべてをこれ経由に統一。全経路がこの関数を呼ぶことを
+> ソース走査で機械的に検証する構造テストも追加した。**残り7条件のうち3つ（顧客確認・ワークフロー
+> 完了・支払いポリシー）は配線しない理由が判明——顧客確認はsignoffフロー（証明書active化後にのみ
+> 署名依頼可能）との循環依存、ワークフロー完了は現場の運用実態が未確認、支払いポリシーは合算払いの
+> paymentState導出が未決——のため意図的にスタブのまま**。詳細は DECISION_LOG / RELEASE_LOG /
+> OPEN_QUESTIONS 2026-08-31 を参照。
 
 > 2026-08-29 追記: **IMP-023 の db-migrate.yml が最終的に green になり、`certificate_images_guard`
 > トリガーが本番へ実適用されていることを直接確認した**（PR #938→#994→#996→#998 の4段階、

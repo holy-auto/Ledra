@@ -48,11 +48,16 @@ function isIssuancePath(file: string, src: string): boolean {
 describe("証明書を active にする経路", () => {
   const offenders: string[] = [];
   const gated: string[] = [];
+  const ungatedByCertGate: string[] = [];
 
   for (const file of walk(ROOT)) {
     const src = readFileSync(file, "utf8");
     if (!isIssuancePath(file, src)) continue;
-    (src.includes("certificateMileageKm") ? gated : offenders).push(file.slice(ROOT.length + 1));
+    const rel = file.slice(ROOT.length + 1);
+    (src.includes("certificateMileageKm") ? gated : offenders).push(rel);
+    // IMP-028 (ADR-0005): draft→active の発行経路は evaluateCertificateActivationGate()
+    // を必ず通す（写真必須・懸念未解決なし・部品整合性 等の単一評価器）。
+    if (!src.includes("evaluateCertificateActivationGate(")) ungatedByCertGate.push(rel);
   }
 
   it("すべて走行距離ゲート (certificateMileageKm) を通る", () => {
@@ -62,5 +67,9 @@ describe("証明書を active にする経路", () => {
   it("経路を1本以上検出できている（走査が空振りしていない）", () => {
     // 検出ロジックが壊れて 0 件になると、上のテストが常に緑になってしまう。
     expect(gated.length).toBeGreaterThanOrEqual(4);
+  });
+
+  it("すべて Certificate Gate (evaluateCertificateActivationGate) を通る", () => {
+    expect(ungatedByCertGate).toEqual([]);
   });
 });

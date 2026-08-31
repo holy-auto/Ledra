@@ -14,17 +14,22 @@
 /**
  * v2.0 §19.4 の 10 条件。
  *
- * 条件の実装状態:
- * - workflow_completed: signoff 状態機械で部分実装（src/lib/signoff/state.ts）
- * - required_evidence_present: photoRequirement で部分実装
- * - evidence_synced: 未実装（IMP-016 オフライン同期前提）
- * - parts_integrity: 部品 3-way match で実装済み（src/lib/parts/）
- * - in_store_review: 未実装
- * - customer_confirmation_current: 部品確認・受領サインで部分実装
- * - payment_policy_met: 未実装（IMP-027 支払いモデル前提）
- * - no_pending_corrections: 未実装（IMP-030 訂正版管理前提）
- * - no_unresolved_alerts: 未実装
- * - approvals_complete: 未実装
+ * 条件の実装状態（IMP-028: 3つの発行経路すべてに `evaluateCertificateActivationGate()`
+ * 経由で配線済み。詳細な配線理由は src/lib/certificates/activationGate.ts 参照）:
+ * - workflow_completed: gateEvaluator にスタブあり（既定 true）。現場が完了報告を
+ *   確実に行ってから証明書を発行しているか運用実態が未確認のため実データ配線は見送り。
+ * - required_evidence_present: photoRequirement で実装済み・本番配線済み。
+ * - evidence_synced: 未実装（IMP-016 オフライン同期前提）。
+ * - parts_integrity: derivePartsIntegrityOk（IMP-040）で実装済み・本番配線済み。
+ * - in_store_review: 未実装。
+ * - customer_confirmation_current: gateEvaluator にスタブあり（既定 true）。
+ *   signoff state machine（証明書 active 化後にのみ署名依頼可能）と循環依存するため
+ *   実データ配線は意図的に見送り。
+ * - payment_policy_met: 評価ロジック自体は実装済み（IMP-027）だが、合算払いの
+ *   paymentState 導出が未決（docs/context/OPEN_QUESTIONS.md）のため実データ配線は見送り。
+ * - no_pending_corrections: 未実装（対応する DB テーブルが存在しない。IMP-030 前提）。
+ * - no_unresolved_alerts: hasUnresolvedConcerns（IMP-026）で実装済み・本番配線済み。
+ * - approvals_complete: 未実装。
  */
 export const CERTIFICATE_GATE_CONDITIONS = [
   "workflow_completed",
