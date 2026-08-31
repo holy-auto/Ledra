@@ -8,77 +8,49 @@
  * 実際に抜けていた例（2026-08-31）: 証明書の無効化（不可逆・法的意味を持つ、
  * operationRisk = critical）に**5本**の経路があり、うち3本しか
  * `certificates:void`（admin+）を要求していなかった。
- *  - `/api/certificates/void`         … テナント所属だけで通っていた（viewer でも無効化可能）
- *  - `/api/admin/certificates/status` … 遷移表が `active→void` を `minRole: "staff"` としていた
- *  - `/admin/vehicles/[id]` の Server Action … RLS 任せ。`certificates` の UPDATE は
- *    PERMISSIVE ポリシー2本（`cert_update_member` = テナントメンバー全員 /
- *    `certificates_update_v2` = owner・admin・staff）の OR で評価されるため viewer でも通った
  *
- * この3本目・4本目・5本目は、最初に書いた検出器（`status: "void"` の文字列一致 +
- * `src/app/api` のみ走査）では見えなかった。**数え方が甘いと「塞いだ」と誤認する**ので、
- * 検出は「監査イベント `certificate_voided` を出す」という意味的な合図を主に使い、
- * 走査範囲は Server Action を含む `src/app` 全体にする。
+ * この検出器自体も2度直している。教訓を2つ埋め込んである。
+ *  1. 操作は**書き方**（`status: "void"`）ではなく**事実**（監査イベント
+ *     `certificate_voided` を出している）で探す。変数で書く経路を見落とすため。
+ *  2. ガードの有無は**ファイル全体**ではなく**書き込みを含む関数**の中で見る。
+ *     同じファイル内の別目的の呼び出し（ボタン出し分け用の権限評価など）が
+ *     ファイル全体の一致を成立させてしまい、肝心のガードを消しても緑になるため。
  */
 import { describe, it, expect } from "vitest";
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { API_ROUTE_PERMISSIONS } from "../permissions";
-import type { Permission } from "../permissions";
+import type { Permission, MutatingMethod } from "../permissions";
+import { walkSource, enclosingFunctions } from "../../__tests__/sourceScan";
 
 const APP_ROOT = join(process.cwd(), "src", "app");
 const API_ROOT = join(APP_ROOT, "api");
 
-function walk(dir: string, match: (name: string) => boolean, out: string[] = []): string[] {
-  for (const name of readdirSync(dir)) {
-    const p = join(dir, name);
-    if (statSync(p).isDirectory()) {
-      if (name === "__tests__" || name === "node_modules") continue;
-      walk(p, match, out);
-    } else if (match(name)) {
-      out.push(p);
-    }
+const MUTATING_METHODS: MutatingMethod[] = ["POST", "PUT", "PATCH", "DELETE"];
+
+/** `requirePermission(caller, "x:y")` / `hasPermission(role, "x:y")` の呼び出しがあるか。 */
+function enforces(src: string, perm: Permission): boolean {
+  return new RegExp(`(requirePermission|hasPermission)\\([^)]*"${perm}"\\)`).test(src);
+}
+
+/** route.ts をハンドラ単位に切る。`export const POST = ...` 形式も認識する。 */
+function handlerChunks(src: string): Map<string, string> {
+  const split =
+    /(?=export\s+(?:async\s+)?(?:function\s+(?:GET|POST|PUT|PATCH|DELETE)\b|const\s+(?:GET|POST|PUT|PATCH|DELETE)\s*=))/;
+  const named = /export\s+(?:async\s+)?(?:function\s+|const\s+)(GET|POST|PUT|PATCH|DELETE)\b/;
+  const out = new Map<string, string>();
+  for (const part of src.split(split)) {
+    const m = part.match(named);
+    if (m) out.set(m[1], part);
   }
   return out;
 }
 
-/** `requirePermission(caller, "x:y")` / `hasPermission(role, "x:y")` の呼び出しがあるか。 */
-function enforces(src: string, perms: readonly Permission[]): boolean {
-  return perms.some((p) => new RegExp(`(requirePermission|hasPermission)\\([^)]*"${p}"\\)`).test(src));
-}
-
-/** 変更系ハンドラごとに切り出す（GET だけ守っている状態を通さないため）。 */
-const HANDLER_SPLIT = /(?=export\s+(?:async\s+)?function\s+(?:GET|POST|PUT|PATCH|DELETE)\b)/;
-const MUTATING = /export\s+(?:async\s+)?function\s+(POST|PUT|PATCH|DELETE)\b/;
-
-function unenforcedMutatingHandlers(src: string, perms: readonly Permission[]): string[] {
-  const bad: string[] = [];
-  for (const part of src.split(HANDLER_SPLIT)) {
-    const m = part.match(MUTATING);
-    if (m && !enforces(part, perms)) bad.push(m[1]);
-  }
-  return bad;
-}
-
-/**
- * 証明書を無効化する経路を拾う。
- *
- * `certificates` への UPDATE を持つことを前提に、次のどちらかで無効化と判定する:
- *  - 監査イベント `certificate_voided` を記録している（書き方に依存しない意味的な合図。
- *    `admin/certificates/status` は `status: newStatus` と変数で書くため、
- *    リテラル一致だけでは見えない）
- *  - `status: "void"` を書き込んでいる（監査を残さない経路への保険）
- *
- * `certificateLog.ts`（型定義）・`catalogue.ts`（イベント名）・`admin/audit/page.tsx`
- * （表示ラベル）は `certificates` を UPDATE しないので自然に外れる。
- */
-function isCertificateVoidPath(src: string): boolean {
-  const writesCertificates = /from\("certificates"\)/.test(src) && /\.update\(/.test(src);
-  if (!writesCertificates) return false;
-  return /certificate_voided/.test(src) || /status:\s*"void"/.test(src);
-}
-
-function asList(v: Permission | readonly Permission[]): readonly Permission[] {
-  return Array.isArray(v) ? v : [v as Permission];
+function requiredFor(
+  value: Permission | Partial<Record<MutatingMethod, Permission>>,
+  method: MutatingMethod,
+): Permission | null {
+  return typeof value === "string" ? value : (value[method] ?? null);
 }
 
 describe("API ルートのサーバ側権限強制", () => {
@@ -89,28 +61,61 @@ describe("API ルートのサーバ側権限強制", () => {
     expect(missing).toEqual([]);
   });
 
-  it("登録ルートは変更系ハンドラ1つ1つが登録 Permission を要求する", () => {
+  it("登録ルートの変更系ハンドラを認識できている（空振り合格を防ぐ）", () => {
+    const unrecognized: string[] = [];
+    for (const route of Object.keys(API_ROUTE_PERMISSIONS)) {
+      const file = join(API_ROOT, ...route.split("/"), "route.ts");
+      if (!existsSync(file)) continue;
+      const chunks = handlerChunks(readFileSync(file, "utf8"));
+      if (!MUTATING_METHODS.some((m) => chunks.has(m))) unrecognized.push(route);
+    }
+    expect(unrecognized).toEqual([]);
+  });
+
+  it("登録ルートは変更系ハンドラ1つ1つが必要な Permission を要求する", () => {
     const unenforced: string[] = [];
     for (const [route, value] of Object.entries(API_ROUTE_PERMISSIONS)) {
       const file = join(API_ROOT, ...route.split("/"), "route.ts");
-      if (!existsSync(file)) continue; // 上のテストが報告する
-      const bad = unenforcedMutatingHandlers(readFileSync(file, "utf8"), asList(value));
-      if (bad.length) unenforced.push(`${route} [${bad.join(",")}] -> ${asList(value).join("|")}`);
+      if (!existsSync(file)) continue;
+      const chunks = handlerChunks(readFileSync(file, "utf8"));
+      for (const method of MUTATING_METHODS) {
+        const chunk = chunks.get(method);
+        if (!chunk) continue;
+        const perm = requiredFor(value, method);
+        if (perm === null) {
+          unenforced.push(`${route} [${method}] -> 要求 Permission が表に無い`);
+        } else if (!enforces(chunk, perm)) {
+          unenforced.push(`${route} [${method}] -> ${perm}`);
+        }
+      }
     }
     expect(unenforced).toEqual([]);
   });
 });
 
 describe("証明書の無効化 (operationRisk = critical)", () => {
+  /**
+   * 無効化経路を拾う。`certificates` への UPDATE があることを前提に、
+   * 監査イベント `certificate_voided` を出しているか（書き方に依存しない合図）、
+   * または `status: "void"` を書いているかで判定する。
+   */
+  function isVoidPath(src: string): boolean {
+    if (!/from\("certificates"\)/.test(src) || !/\.update\(/.test(src)) return false;
+    return /certificate_voided/.test(src) || /status:\s*"void"/.test(src);
+  }
+
   const voidPaths: string[] = [];
   const ungated: string[] = [];
 
-  for (const file of walk(APP_ROOT, (n) => n.endsWith(".ts") || n.endsWith(".tsx"))) {
+  for (const file of walkSource(APP_ROOT)) {
     const src = readFileSync(file, "utf8");
-    if (!isCertificateVoidPath(src)) continue;
+    if (!isVoidPath(src)) continue;
     const rel = file.slice(APP_ROOT.length + 1);
     voidPaths.push(rel);
-    if (!enforces(src, ["certificates:void"])) ungated.push(rel);
+
+    // 書き込みを含む関数の中でガードされているかを見る（ファイル全体では見ない）。
+    const writers = enclosingFunctions(src, /\.update\(/g).filter((body) => /from\("certificates"\)/.test(body));
+    if (!writers.length || !writers.every((body) => enforces(body, "certificates:void"))) ungated.push(rel);
   }
 
   it("検出できている（検出器が壊れて空で合格するのを防ぐ）", () => {
@@ -119,7 +124,7 @@ describe("証明書の無効化 (operationRisk = critical)", () => {
     expect(voidPaths.length).toBeGreaterThanOrEqual(5);
   });
 
-  it("API ルートも Server Action も、すべて certificates:void を要求する", () => {
+  it("API ルートも Server Action も、書き込む関数の中で certificates:void を要求する", () => {
     expect(ungated).toEqual([]);
   });
 });

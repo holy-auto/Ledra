@@ -21,15 +21,10 @@ import {
  */
 export async function POST(req: Request) {
   try {
-    const json = await parseJsonSafe(req);
-    const parsed = certificateVoidSchema.safeParse(json);
-    if (!parsed.success) {
-      return apiValidationError(parsed.error.issues[0]?.message ?? "入力内容に誤りがあります。");
-    }
-
+    // 認証・認可を入力検証より前に置く。逆順だと、未認証の呼び出しに対して
+    // 401 ではなく 400 とスキーマのエラーメッセージを返し、critical 操作の
+    // リクエスト仕様を無認証で読み取れてしまう。
     const supabase = await createSupabaseServerClient();
-
-    // Auth check
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) {
       return apiUnauthorized();
@@ -40,6 +35,12 @@ export async function POST(req: Request) {
     // src/lib/auth/__tests__/apiRoutePermissions.test.ts が強制する。
     if (!requirePermission(caller, "certificates:void")) {
       return apiForbidden("証明書無効化の権限がありません。");
+    }
+
+    const json = await parseJsonSafe(req);
+    const parsed = certificateVoidSchema.safeParse(json);
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "入力内容に誤りがあります。");
     }
 
     const tenantId = caller.tenantId;

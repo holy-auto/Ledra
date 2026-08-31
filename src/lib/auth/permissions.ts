@@ -419,8 +419,9 @@ export function requiredPermissionForPath(pathname: string): Permission | null {
  *
  * ROUTE_PERMISSIONS が画面を守るのに対し、こちらは実際の権限境界である API を守る。
  * キーは `src/app/api` からの相対ディレクトリ（`route.ts` を除いたもの）。
- * 値が配列の場合は「いずれか1つを要求していればよい」（メソッドごとに強さが違うルート用。
- * 例: payments は POST=create / PUT・DELETE=manage）。
+ * メソッドごとに要求が違うルートは、メソッド名をキーにしたオブジェクトで書く
+ * （例: payments は POST=create / PUT・DELETE=manage）。配列にして「いずれか1つ」に
+ * すると、DELETE を弱い方へ下げても検査が通ってしまう。
  *
  * 構造テスト（`__tests__/apiRoutePermissions.test.ts`）が、登録した各ルートの
  * **変更系ハンドラ1つ1つ**について `requirePermission(...)` / `hasPermission(...)` の
@@ -435,7 +436,10 @@ export function requiredPermissionForPath(pathname: string): Permission | null {
  * Next.js の middleware で一括強制する案は、テナントロールの解決に DB アクセスが要り
  * 全リクエストに載るため採らなかった。
  */
-export const API_ROUTE_PERMISSIONS: Record<string, Permission | readonly Permission[]> = {
+/** 変更系メソッド名。ルートごとにメソッド別の要求を書けるようにする。 */
+export type MutatingMethod = "POST" | "PUT" | "PATCH" | "DELETE";
+
+export const API_ROUTE_PERMISSIONS: Record<string, Permission | Partial<Record<MutatingMethod, Permission>>> = {
   // 証明書の無効化（operationRisk = critical / 不可逆・法的意味を持つ）。
   // 経路ごとに認可が食い違っていた。無効化経路の網羅は別途 void-path テストが縛る。
   "certificates/void": "certificates:void",
@@ -458,6 +462,6 @@ export const API_ROUTE_PERMISSIONS: Record<string, Permission | readonly Permiss
   "admin/staff": "members:manage",
   "admin/staff/shifts": "members:manage",
   "admin/stores": "stores:manage",
-  "admin/payments": ["payments:create", "payments:manage"],
+  "admin/payments": { POST: "payments:create", PUT: "payments:manage", DELETE: "payments:manage" },
   "admin/registers": "registers:manage",
 };

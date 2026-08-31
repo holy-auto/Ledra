@@ -7,7 +7,7 @@
  * ファイルシステムと突き合わせる。
  */
 import { describe, it, expect } from "vitest";
-import { existsSync, readdirSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { DEEP_LINK_ENTITIES, buildDeepLink, buildCertificatePublicLink } from "../deepLink";
 
@@ -60,6 +60,23 @@ describe("deepLink のパスは実在するルートを指す", () => {
     const { path } = buildDeepLink(BASE, { entity: "job", id: ID, role: "customer", tenantSlug: "acme" });
     expect(path).not.toBeNull();
     expect(routeExists(path as string)).toBe(true);
+  });
+
+  /**
+   * routeExists は「動的セグメントが1つでもあれば解決」とみなすので、
+   * **パスの形は合っているが必ず404になる**ケースは見抜けない。証明書がまさにそれで、
+   * ルートは `[public_id]` かつ `public_id` 列で引いて見つからなければ notFound() する。
+   * 行の id (uuid) を渡すと常に404になる。deepLink.ts の型に注記した契約を、
+   * ルート側が変わったときに気づけるようここで固定する。
+   */
+  it("証明書のルートは public_id 引きのまま（deepLink の契約が前提にしている）", () => {
+    const certDir = join(APP, "admin", "certificates");
+    const dyn = readdirSync(certDir, { withFileTypes: true })
+      .filter((e) => e.isDirectory() && /^\[.+\]$/.test(e.name))
+      .map((e) => e.name);
+    expect(dyn).toEqual(["[public_id]"]);
+    const page = readFileSync(join(certDir, "[public_id]", "page.tsx"), "utf8");
+    expect(page).toMatch(/\.eq\("public_id"/);
   });
 
   it("証明書の公開検証ページが実在する", () => {

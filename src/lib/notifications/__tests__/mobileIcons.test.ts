@@ -13,9 +13,10 @@
  * そのぶんズレは静かに起きるので、ここで機械的に照合する。
  */
 import { describe, it, expect } from "vitest";
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { NOTIFICATION_TYPE_CATALOG, isNotificationType } from "../types";
+import { walkSource } from "../../__tests__/sourceScan";
 
 const MOBILE_SCREEN = join(process.cwd(), "apps", "mobile", "src", "app", "notifications.tsx");
 
@@ -33,7 +34,9 @@ describe("通知タイプカタログとモバイルのアイコン表", () => {
   const iconKeys = mobileIconKeys();
 
   it("読み取り自体が成立している（空で合格するのを防ぐ）", () => {
-    expect(catalogTypes.length).toBe(18);
+    // 件数そのものは固定しない。タイプが増えるのは正常な変化で、
+    // 増減の検出は下の2つの集合一致テストが行う。
+    expect(catalogTypes.length).toBeGreaterThanOrEqual(18);
     expect(iconKeys.length).toBeGreaterThanOrEqual(18);
   });
 
@@ -50,23 +53,10 @@ describe("通知タイプカタログとモバイルのアイコン表", () => {
 
 const SRC_ROOT = join(process.cwd(), "src");
 
-function walk(dir: string, out: string[] = []): string[] {
-  for (const name of readdirSync(dir)) {
-    const p = join(dir, name);
-    if (statSync(p).isDirectory()) {
-      if (name === "__tests__" || name === "node_modules") continue;
-      walk(p, out);
-    } else if (name.endsWith(".ts") || name.endsWith(".tsx")) {
-      out.push(p);
-    }
-  }
-  return out;
-}
-
 describe("notifications へ書き込む notification_type", () => {
   /** `notification_type: "x"` のリテラル書き込みを集める（比較 `=== "x"` は拾わない）。 */
   const written = new Map<string, string>();
-  for (const file of walk(SRC_ROOT)) {
+  for (const file of walkSource(SRC_ROOT)) {
     const src = readFileSync(file, "utf8");
     if (!/from\("notifications"\)/.test(src)) continue;
     for (const m of src.matchAll(/notification_type:\s*"([a-z_]+)"/g)) {

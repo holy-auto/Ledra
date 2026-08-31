@@ -22,6 +22,7 @@ export default function BillingTimingSection() {
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     fetch("/api/admin/billing-settings")
@@ -35,6 +36,7 @@ export default function BillingTimingSection() {
   const handleSave = async (value: BillingTiming) => {
     setSaving(true);
     setSaved(false);
+    setError(null);
     try {
       const res = await fetch("/api/admin/billing-settings", {
         method: "PUT",
@@ -45,7 +47,15 @@ export default function BillingTimingSection() {
         setCurrent(value);
         setSaved(true);
         setTimeout(() => setSaved(false), 2000);
+      } else {
+        // 失敗を黙って捨てない。請求タイミングは金銭に直結する設定で、
+        // 「選んだのに変わっていない」ことに気づけないと実害が出る。
+        setError(
+          res.status === 403 ? "変更する権限がありません。" : "保存できませんでした。時間をおいて再度お試しください。",
+        );
       }
+    } catch {
+      setError("保存できませんでした。通信状態をご確認ください。");
     } finally {
       setSaving(false);
     }
@@ -88,6 +98,11 @@ export default function BillingTimingSection() {
       </div>
 
       {saved && <p className="text-xs text-success">保存しました</p>}
+      {error && (
+        <p className="text-xs text-danger" role="alert">
+          {error}
+        </p>
+      )}
       {saving && <p className="text-xs text-muted">保存中...</p>}
     </div>
   );

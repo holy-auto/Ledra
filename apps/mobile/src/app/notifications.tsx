@@ -38,7 +38,7 @@ interface NotificationItem {
 
 /**
  * notification_type → アイコン。キーは Web の通知タイプカタログ
- * (`src/lib/notifications/types.ts` の NOTIFICATION_TYPE_CONFIG) と一致させる。
+ * (`src/lib/notifications/types.ts` の NOTIFICATION_TYPE_CATALOG) と一致させる。
  *
  * 以前のキーは certificate / work / sync / error / system で、**実際に DB へ書かれる
  * notification_type と1つも一致していなかった**（本番の通知60件が全部 DEFAULT_ICON の
@@ -46,8 +46,13 @@ interface NotificationItem {
  * `apps/mobile/src` のみ）ため表はこちらに持ち、カタログとのズレは Web 側の
  * 構造テスト `src/lib/notifications/__tests__/mobileIcons.test.ts` が検出する。
  *
- * アイコンはカタログの category 単位、色は severity 単位で揃えている
- * （urgent=danger / action_required=warning / informational=控えめ）。
+ * アイコンはカタログの category 単位。色は原則 severity 単位
+ * （urgent=danger / action_required=warning / informational=控えめ）だが、
+ * 次の3つは意図的に外している:
+ *  - chat_message (action_required) は primary。本番通知60件のうち56件がこれで、
+ *    warning にすると一覧がほぼ全部「警告色」になり、色で区別する意味が消える
+ *  - payment_confirmed / certificate_issued (informational) は success。
+ *    「完了した」ことが読み取れる方が有用な種類のため
  */
 const TYPE_ICON: Record<string, { icon: string; color: string; bg: string }> = {
   // booking

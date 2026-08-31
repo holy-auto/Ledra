@@ -15,14 +15,8 @@ export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
   try {
-    const parsed = certificateVoidSchema.safeParse(await req.json().catch(() => ({})));
-    if (!parsed.success) {
-      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
-    }
-    const { public_id: publicId } = parsed.data;
-
+    // 認証・認可を入力検証より前に置く（未認証に 400 でスキーマを教えない）。
     const supabase = await createSupabaseServerClient();
-
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) {
       return apiUnauthorized();
@@ -32,6 +26,12 @@ export async function POST(req: Request) {
     if (!requirePermission(caller, "certificates:void")) {
       return apiForbidden("証明書無効化の権限がありません。");
     }
+
+    const parsed = certificateVoidSchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
+    }
+    const { public_id: publicId } = parsed.data;
 
     const userRes = { user: { id: caller.userId } };
     const tenantId = caller.tenantId;
