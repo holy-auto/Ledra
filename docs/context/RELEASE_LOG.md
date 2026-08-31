@@ -4,6 +4,20 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-08-31 板金進捗ページからの懸念送信が外部キー違反で保存できていなかったバグを修正（IMP-026）
+
+- 背景: `src/app/api/customer/concerns/route.ts` の `resolveSourceContext()` は板金進捗
+  ページ (`/track/[token]`, source_type=`body_repair_tracking`) からの懸念送信で
+  `customer_concerns.job_id`（`reservations(id)` への外部キー）に `body_repair_jobs.id`
+  （無関係な別テーブルの主キー）を渡しており、`reservation_id` が偶然一致しない限り
+  外部キー違反で `INSERT` 自体が失敗していたと考えられる。
+- 内容: `resolveSourceContext()` の該当ケースを `body_repair_jobs.reservation_id`
+  （実際の外部キー列）を返すよう修正。`reservation_id` が無いジョブは `jobId` なしで保存
+  （外部キー違反にはならない）。
+- 検証: `src/app/api/customer/concerns/__tests__/route.test.ts`（新規、この関数の初のテスト）。
+  `body_repair_tracking`（正常系・reservation_id無し・トークン不明の3件）+
+  `parts_confirmation`（既存の正しい経路の回帰確認1件）。
+
 ## 2026-08-31 モバイルアプリのサインアップ確認 OTP を実配線（IMP-012）
 
 - 背景: モバイルアプリのサインアップ後メール確認画面 (`/(auth)/verify-otp.tsx`) は
