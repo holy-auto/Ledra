@@ -1,6 +1,6 @@
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { logCertificateAction, getRequestMeta } from "@/lib/audit/certificateLog";
-import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
+import { resolveCallerWithRole, requirePermission } from "@/lib/auth/checkRole";
 import {
   apiOk,
   apiInternalError,
@@ -27,7 +27,9 @@ export async function POST(req: Request) {
     if (!caller) {
       return apiUnauthorized();
     }
-    if (!requireMinRole(caller, "admin")) {
+    // 3経路で同じ Permission を見る (requireMinRole("admin") と現状は等価だが、
+    // ロール束と権限の対応が変わったときに経路ごとにズレない)。
+    if (!requirePermission(caller, "certificates:void")) {
       return apiForbidden("証明書無効化の権限がありません。");
     }
 

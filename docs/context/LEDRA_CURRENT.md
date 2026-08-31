@@ -6,6 +6,20 @@
 
 最終更新: 2026-08-31
 
+> 2026-08-31 追記: **証明書無効化に認可チェックが無い経路があり、閲覧専用(viewer)でも
+> 証明書を恒久的に無効化できる状態だった（修正済み、IMP-013）。** 同じ操作に3つのAPI経路が
+> あり、mobile は `certificates:void` を、admin は `requireMinRole("admin")` を検査していたが、
+> `/api/certificates/void` はテナント所属以外に何も検査していなかった（`apiForbidden` を
+> import しながら未使用という形跡付き）。合わせて `/api/admin/billing-settings` PUT と
+> `/api/admin/settings/defaults` PUT にも `settings:edit` を追加（設定系の既存API 9本に揃えた）。
+> **背景として判明した構造的問題**: `ROUTE_PERMISSIONS` + `AdminRouteGuard` はブラウザで動く
+> 表示制御でありセキュリティ境界ではない。実際の境界は各 route.ts に手書きされており、
+> テナント認証を通す変更系ルート316本のうち、本変更後も125本が認可チェックを一切持たない（修正前は128本）。
+> ただし多くは自己完結型で権限要求が正しいとは限らないため、切り分けは判断待ちとして
+> OPEN_QUESTIONS.md へ起票）。再発防止に `API_ROUTE_PERMISSIONS`（APIルート→必須Permission）と
+> 構造テストを追加した。なお IMP-013 の `storeScope.ts` / `canonicalVerb()` は依然として本番の
+> 認可経路から呼ばれていない — 本番DBに2店舗以上のテナントが0件のため配線は見送り（YAGNI）。
+
 > 2026-08-31 追記: **板金進捗ページ（`/track/[token]`）からの「気になる点を伝える」送信が、
 > 外部キー違反で保存できていなかったバグを修正した。** `customer_concerns.job_id`
 > （`reservations(id)` への外部キー）に、無関係な別テーブル（`body_repair_jobs`）自身の

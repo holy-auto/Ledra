@@ -4,6 +4,35 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-08-31 証明書無効化の認可漏れを修正し、API の権限強制を構造テストで固定（IMP-013）
+
+- 背景: 証明書の無効化（不可逆・法的意味を持つ操作）に3つのAPI経路があり、認可の強さが
+  3通りに割れていた。`/api/certificates/void` は**テナント所属だけで通り**、viewer でも
+  証明書を恒久的に無効化できた。`ROUTE_PERMISSIONS` + `AdminRouteGuard` はブラウザで動く
+  表示制御でありセキュリティ境界ではないため、API を直接叩けば素通りする。
+- 内容:
+  - `/api/certificates/void`: 認可チェックを追加（`certificates:void`）。それまで
+    `apiForbidden` を import しながら未使用だった。
+  - `/api/admin/certificates/void`: `requireMinRole("admin")` を `certificates:void` に統一
+    （現状は等価だが、ロール束と権限の対応が変わったときに経路間でズレない）。
+  - `/api/admin/billing-settings` PUT・`/api/admin/settings/defaults` PUT: `settings:edit`
+    を追加（設定系の兄弟API 9本と同じ扱いに揃える）。
+  - `src/lib/auth/permissions.ts` に `API_ROUTE_PERMISSIONS`（APIルート → 必須Permission、
+    17件）を追加。`ROUTE_PERMISSIONS` の説明にクライアント専用である旨を明記。
+  - 触れたファイルの死んだ import（`NextResponse` 2件）を削除。
+- 検証:
+  - `src/lib/auth/__tests__/apiRoutePermissions.test.ts`（新規3件）: 表の全ルートが実際に
+    その Permission を検査していること、証明書無効化の経路が漏れなく登録されていること。
+  - `src/app/api/certificates/void/__tests__/route.test.ts`（新規6件、このルート初のテスト）:
+    viewer/staff は 403 かつ書き込みが起きない、admin/owner/super_admin は成功、未認証は 401。
+    `requirePermission`/`hasPermission`/`ROLE_PERMISSIONS` は実物を使う（「呼んでいるが結果を
+    捨てている」形の壊れ方も落とすため）。
+  - 両テストとも、修正を一時的に戻すと実際に落ちることを確認済み（空振りテストでない）。
+  - `npx tsc --noEmit` エラーなし / `npm run lint` エラー0 / `npx vitest run` 518ファイル
+    5277件すべて通過 / `npm run check:schema` OK。
+- 残作業: 認可チェックを持たない変更系ルートが他に125本ある（本変更で128本→125本。自己完結型を含むため、すべてが
+  バグではない）。切り分けは product 判断が要るため OPEN_QUESTIONS.md に起票した。
+
 ## 2026-08-31 板金進捗ページからの懸念送信が外部キー違反で保存できていなかったバグを修正（IMP-026）
 
 - 背景: `src/app/api/customer/concerns/route.ts` の `resolveSourceContext()` は板金進捗

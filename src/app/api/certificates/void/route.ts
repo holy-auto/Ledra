@@ -1,10 +1,9 @@
 import { parseJsonSafe } from "@/lib/api/safeJson";
-import { NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { logCertificateAction, getRequestMeta } from "@/lib/audit/certificateLog";
 import { certificateVoidSchema } from "@/lib/validations/certificate";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
+import { resolveCallerWithRole, requirePermission } from "@/lib/auth/checkRole";
 import {
   apiOk,
   apiInternalError,
@@ -34,6 +33,12 @@ export async function POST(req: Request) {
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) {
       return apiUnauthorized();
+    }
+    // 証明書の無効化は不可逆で法的意味を持つ (operationRisk = critical)。
+    // 同じ操作の他2経路 (admin/certificates/void, mobile/certificates/[id]/void) は
+    // admin 以上を要求しているのに、ここだけテナント所属だけで通っていた。
+    if (!requirePermission(caller, "certificates:void")) {
+      return apiForbidden("証明書無効化の権限がありません。");
     }
 
     const tenantId = caller.tenantId;

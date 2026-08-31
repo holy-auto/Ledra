@@ -1,8 +1,8 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { z } from "zod";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
-import { apiJson, apiUnauthorized, apiInternalError, apiValidationError } from "@/lib/api/response";
+import { resolveCallerWithRole, requirePermission } from "@/lib/auth/checkRole";
+import { apiJson, apiUnauthorized, apiForbidden, apiInternalError, apiValidationError } from "@/lib/api/response";
 
 const settingsDefaultsSchema = z.object({
   default_warranty_exclusions: z.string().max(5000).default(""),
@@ -41,6 +41,8 @@ export async function PUT(req: NextRequest) {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
+    // /admin/settings 配下の設定変更。兄弟ルートと同じ settings:edit を要求する。
+    if (!requirePermission(caller, "settings:edit")) return apiForbidden();
 
     const parsed = settingsDefaultsSchema.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) {

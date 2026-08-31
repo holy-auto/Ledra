@@ -4,6 +4,73 @@
 > （新しい順）。実装の詳細は RELEASE_LOG.md、迷っている段階のものは
 > OPEN_QUESTIONS.md に書く。
 
+## 2026-08-31 証明書無効化に認可チェックが無い経路があった / 権限強制を「表 + 構造テスト」で固定する
+1. 日付: 2026-08-31
+2. 起きたこと: IMP-013（権限エンジン）の本番配線を進めるため既存の認可経路を調べたところ、
+   証明書の無効化（`certificates:void`、`operationRisk()` で `critical` = 不可逆・法的意味を持つ）
+   に3つのAPI経路があり、認可の強さが3通りに割れていた。
+   `/api/mobile/certificates/[id]/void` は `hasPermission(role, "certificates:void")`、
+   `/api/admin/certificates/void` は `requireMinRole("admin")`、そして
+   `/api/certificates/void` は**テナントに所属していること以外何も検査していなかった**。
+   `certificates:void` は admin 以上のみが持つ権限だが、この経路だけは viewer（閲覧専用、
+   18権限すべて view 系）でも証明書を恒久的に無効化できた。当該ファイルは `apiForbidden` を
+   import しながら一度も使っておらず、チェックが失われた形跡が残っていた。
+   また `/api/certificates/void` は service-role（`createTenantScopedAdmin`）で書き込むため
+   RLS も効かない。同ルートはフロントエンドから呼ばれていない（UIは admin 側を使う）が、
+   ルート自体は生きており直接叩ける。
+3. 以前の考え: 権限は `ROLE_PERMISSIONS`（5ロール×55権限）と `ROUTE_PERMISSIONS` +
+   `AdminRouteGuard` で守られている、と暗黙に考えていた。requirement-trace.md にも
+   「Role5段+Permission55種+RLS240は稼働中」と書いていた。
+4. 違和感・問題: `AdminRouteGuard` はブラウザで動くクライアントコンポーネントであり、
+   セキュリティ境界ではない。API を直接叩けば素通りする。実際の境界は各 route.ts の中に
+   手書きされており、単一の強制点が無い。テナント認証を通す変更系ルート316本のうち
+   **128本が認可チェックを一切持たなかった**（`resolveCallerWithRole`/`resolveMobileCaller` は
+   通すが `requirePermission` 等を呼ばない）。ただしこの数はファイル単位の判定で、
+   GET だけ守って POST は素通り、という部分的な穴は含まれていない（下限値）。
+   その多くは「自分のデータを自分で操作する」自己完結型（通知既読、UI設定、MFA登録、
+   WebAuthn登録等）で、権限チェックを足すのが正しいとは限らない。つまり「認可なし」を
+   そのままバグ件数として扱うことはできない。
+5. 決めたこと:
+   - **判定に使える客観的な基準を「同じ操作の他経路が強制しているか」に置く。** 経路間の
+     不一致はコードベース内部の矛盾であり、こちらの product 判断を必要としない。
+   - 今回はその基準を満たす4ルートを修正した: `/api/certificates/void`（認可なし →
+     `certificates:void`）、`/api/admin/certificates/void`（`requireMinRole("admin")` →
+     同じ Permission に統一）、`/api/admin/billing-settings` PUT と
+     `/api/admin/settings/defaults` PUT（認可なし → `settings:edit`。設定系の既存API 9本が
+     すでに `settings:edit` を要求しており、それに揃えた）。
+     この4本のうち3本が「認可なし」からの移動で、認可なしの変更系ルートは128本→125本になった。
+   - `src/lib/auth/permissions.ts` に `API_ROUTE_PERMISSIONS`（APIルート → 必須Permission、
+     17件）を追加し、構造テスト `src/lib/auth/__tests__/apiRoutePermissions.test.ts` が
+     (a) 表の全ルートが実際にその Permission を検査していること、(b) 証明書を無効化する
+     経路が漏れなく表に登録されていること、を強制する。
+   - `ROUTE_PERMISSIONS` の説明に「これはクライアント側の表示制御であってセキュリティ境界
+     ではない」と明記した。この誤解が今回の穴の背景にある。
+6. 捨てた選択肢:
+   - **認可なしの変更系ルート全部に権限チェックを足す**: 自己完結型ルートに誤って権限を要求すると正規
+     ユーザーを締め出す。どのルートにどの権限が要るかは product 判断であり、推測で決めない。
+   - **Next.js middleware で一括強制する**: 単一強制点は魅力的だが、テナントロールの解決に
+     DB アクセスが必要で全リクエストに載る。本リポジトリには現在 middleware.ts が無く、
+     認可のために新設するのは影響範囲が大きすぎる。
+   - **`billing:manage` を billing-settings に要求する**: 請求タイミングは金銭に直結するが、
+     `billing:manage` は owner/super_admin のみで admin が持たない。当該設定は
+     `/admin/settings` 画面（`settings:view`）にあり、`billing:manage` を課すと admin が
+     操作できなくなる。画面配置という既存の証拠に従い `settings:edit` を選んだ。
+   - **店舗スコープ（`storeScope.ts`）を一覧APIに配線する**: 本番DBを確認したところ
+     stores 3件・store_memberships 1件で、**2店舗以上を持つテナントは0**。owner/admin は
+     `bypassesStoreScope()` で素通りするため、実際に影響を受けるのは staff 1名のみ。
+     割当が無ければ突然何も見えなくなる回帰リスクだけがあり、得るものが無い（YAGNI）。
+7. 判断理由: 「認可が無い」は必ずしもバグではないが、「同じ操作なのに経路ごとに認可が違う」は
+   どちらかが必ず間違っている。前者は product 判断を要し、後者は要さない。後者だけを直せば、
+   推測なしで実際の穴を塞げる。さらに、人が経路を数える限り必ず漏れる（PR #1011 で証明書発行
+   経路を「2本」と数えて4本目を構造テストに発見された）ので、今回も最初から構造テストで縛る。
+   両テストがバグを実際に検出することは、修正を一時的に戻して落ちることを確認した。
+8. まだ答えが出ていないこと: 残り125本の認可なし変更系ルートのうち、
+   どれが本当に権限を要求すべきか。自己完結型と管理操作の切り分けは product 判断であり、
+   代表の判断が要る。OPEN_QUESTIONS.md に起票した。
+   また `storeScope.ts` / `canonicalVerb()` は依然として本番の認可経路から呼ばれていない。
+   多店舗テナントが実在するようになるまで配線しない。
+9. 公開区分: 公開可（技術的教訓。テナント名・ユーザー名・実データは含めない）
+
 ## 2026-08-31 板金進捗ページからの「気になる点を伝える」が外部キー違反で保存できていなかった
 1. 日付: 2026-08-31
 2. 起きたこと: PR #1012（モバイルOTP）の `/code-review` 指摘の中に、別PR #1011（マージ済み、

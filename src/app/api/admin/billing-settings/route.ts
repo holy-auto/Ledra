@@ -1,9 +1,9 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
+import { resolveCallerWithRole, requirePermission } from "@/lib/auth/checkRole";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
-import { apiJson, apiUnauthorized, apiValidationError, apiInternalError } from "@/lib/api/response";
+import { apiJson, apiUnauthorized, apiForbidden, apiValidationError, apiInternalError } from "@/lib/api/response";
 
 const updateSchema = z.object({
   billing_timing: z.enum(["on_inspection", "monthly"]),
@@ -35,6 +35,10 @@ export async function PUT(req: NextRequest) {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
+    // 請求タイミングは金銭に直結する設定。画面は /admin/settings 配下にあり、
+    // 同じ画面の他の設定 API (follow-up-settings, integrations/*, faq 等) は
+    // すべて settings:edit を要求している。ここだけ素通りしていた。
+    if (!requirePermission(caller, "settings:edit")) return apiForbidden();
 
     const parsed = updateSchema.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) {
