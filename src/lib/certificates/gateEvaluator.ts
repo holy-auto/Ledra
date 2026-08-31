@@ -18,6 +18,7 @@
 import type { GateConditionResult, CertificateGateResult } from "@/lib/domain/certificateGate";
 import {
   MIN_CERTIFICATE_PHOTOS,
+  CERTIFICATE_PHOTO_REQUIRED_MESSAGE,
   CERTIFICATE_BEFORE_AFTER_REQUIRED_MESSAGE,
   requiresBeforeAfterMedia,
 } from "./photoRequirement";
@@ -107,7 +108,7 @@ function evaluateRequiredEvidence(input: CertificateGateInput): GateConditionRes
     return {
       condition: "required_evidence_present",
       met: false,
-      detail: `施工証明書の発行には施工写真が${MIN_CERTIFICATE_PHOTOS}枚以上必要です。`,
+      detail: CERTIFICATE_PHOTO_REQUIRED_MESSAGE,
     };
   }
 

@@ -3,12 +3,7 @@ import { createClient as createSupabaseServerClient } from "@/lib/supabase/serve
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { logCertificateAction, getRequestMeta } from "@/lib/audit/certificateLog";
 import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
-import {
-  certificateHasRequiredPhotos,
-  CERTIFICATE_PHOTO_REQUIRED_MESSAGE,
-  certificateHasRequiredBeforeAfterMedia,
-  CERTIFICATE_BEFORE_AFTER_REQUIRED_MESSAGE,
-} from "@/lib/certificates/photoRequirement";
+import { evaluateCertificateActivationGate, firstGateFailureMessage } from "@/lib/certificates/activationGate";
 import { certificateMileageKm, CERTIFICATE_MILEAGE_REQUIRED_MESSAGE } from "@/lib/maintenance/mileage";
 import { triggerCertificateIssued } from "@/lib/certificates/issueHooks";
 import { enqueueCertificateAnchor } from "@/lib/anchoring/certificateAnchorService";
@@ -109,20 +104,17 @@ export async function PUT(req: Request) {
       return apiForbidden(`${currentStatus} → ${newStatus} の遷移には ${transition.minRole} 以上の権限が必要です。`);
     }
 
-    // 写真添付必須ルール: active 化 (draft→active / void→active) は施工写真が
-    // 1 枚以上ある場合のみ許可する (全テナント一律・サーバ強制)。
+    // Certificate Gate (IMP-028, ADR-0005): active 化 (draft→active / void→active) は
+    // 単一評価器を通す (写真必須・懸念未解決なし・部品整合性 等)。
     if (newStatus === "active") {
-      const hasPhotos = await certificateHasRequiredPhotos(admin, cert.id as string);
-      if (!hasPhotos) {
-        return apiValidationError(CERTIFICATE_PHOTO_REQUIRED_MESSAGE);
-      }
-      const hasBeforeAfter = await certificateHasRequiredBeforeAfterMedia(
-        admin,
-        cert.id as string,
-        cert.service_type as string | null,
-      );
-      if (!hasBeforeAfter) {
-        return apiValidationError(CERTIFICATE_BEFORE_AFTER_REQUIRED_MESSAGE);
+      const certGate = await evaluateCertificateActivationGate(admin, {
+        certificateId: cert.id as string,
+        tenantId: caller.tenantId,
+        serviceType: cert.service_type as string | null,
+        reservationId: (cert.reservation_id as string | null) ?? null,
+      });
+      if (!certGate.ready) {
+        return apiValidationError(firstGateFailureMessage(certGate));
       }
       // 走行距離必須ルール: 発行の瞬間に一度だけ強制する。作成経路 (Web / モバイル /
       // 外部 API / AI 自動起票) は増減するが、active になる道は 3 本しかないため、

@@ -4,6 +4,35 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-08-31 Certificate Gate (IMP-028) を証明書発行の本番4経路すべてに配線
+
+- 背景: v2.0 §19.4 / ADR-0005 が求める「正式証明の発行可否はバックエンド単一評価器
+  (`gateEvaluator.ts`) が判定する」設計は、評価器自体はテスト付きで実装済みだったが、
+  証明書を `active` にする実際の経路はどれもこの評価器を呼んでおらず、写真必須チェックのみを
+  経路ごとに手書きしていた（懸念・部品整合性は実装済みだが未接続）。
+- 内容: `src/lib/certificates/activationGate.ts` を新設し、`evaluateCertificateActivationGate()`
+  で写真(required_evidence_present)・懸念(no_unresolved_alerts、IMP-026)・部品整合性
+  (parts_integrity、IMP-040)の3条件を実データから組み立てて `evaluateCertificateGate()` に渡す
+  処理を1箇所に集約。証明書を active化する本番4経路すべて
+  — `PUT /api/admin/certificates/status`・`POST /api/mobile/certificates/[id]/activate`・
+  `POST /api/certificates/activate-by-key`・AI自動発行(`certificateRecordAuto.ts`) —
+  をこのヘルパー経由に統一した。AI自動発行経路は「insertと同時にactive行を作る」設計から
+  「作成はdraft→gateを通してからactiveへupdate」に分離（他3経路と同じ形。現状は自動発行の
+  適格条件自体が常にfalseのため本番挙動は変わらない）。
+- 検証: `src/lib/certificates/__tests__/activationGates.test.ts`（証明書を active にする経路を
+  ソースから機械的に数え、全経路が `evaluateCertificateActivationGate(` を呼ぶことを検証する
+  構造テストを追加）、`src/lib/parts/__tests__/partsIntegrity.test.ts`（新設した
+  `getPartsIntegrityFindings()` のテスト5件追加）、
+  `src/app/api/admin/certificates/__tests__/status-photo-gate.test.ts`（懸念・部品整合性の
+  ブロックを検証するテスト2件追加）、`src/lib/ai/automation/__tests__/certificateRecordAuto.test.ts`
+  （新規、AI自動発行のgate配線を検証するテスト3件）。新規テスト計11件、既存含め全件通過。
+- 意図的に配線しなかった条件: customer_confirmation_current（署名依頼は証明書active化後にのみ
+  可能というsignoffフロー設計と循環依存するため）、workflow_completed（現場の完了報告運用実態が
+  未確認のため）、payment_policy_met（合算払いのpaymentState導出が未決のため）、
+  no_pending_corrections（対応するDBテーブルが存在しないため）。理由は
+  `docs/context/OPEN_QUESTIONS.md`「Certificate Gate (IMP-028) 本番配線後も残る3条件の未接続」を参照。
+- 詳細は DECISION_LOG / OPEN_QUESTIONS 2026-08-31 を参照。
+
 ## 2026-08-31 LINE属人性の低減④: 受信箱に「会話を要約（引き継ぎ用）」を追加（branch claude/line-chatbot-ledra-dy2fiq）
 
 - 背景: LINE の会話が特定担当の頭の中にあり、担当外のスタッフが途中から対応しづらい（属人性）。

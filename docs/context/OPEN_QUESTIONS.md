@@ -1059,3 +1059,29 @@ DECISION_LOG「遷移表の未解決4件を代表判断で解決」参照。）
 - 次のアクション: 案A が本筋。ただしサブセット生成手順が不明なため、まず現行 TTF の出所を
   確認する必要がある（【要確認】: `public/fonts/*.ttf` をどう生成したか）。
 - 起票日: 2026-08-27
+
+## Certificate Gate (IMP-028) 本番配線後も残る3条件の未接続（2026-08-31）
+- 状況: `evaluateCertificateActivationGate()` を証明書 active化の本番4経路（admin/certificates/status・
+  mobile/certificates/[id]/activate・certificates/activate-by-key・AI自動発行`certificateRecordAuto.ts`）
+  すべてに統合した（IMP-028）。10条件のうち実データで判定するのは required_evidence_present（写真）・
+  no_unresolved_alerts（懸念）・parts_integrity（部品整合性）の3条件。残り7条件のうち3つは、配線しない
+  理由が調査で判明した:
+  - **workflow_completed**: `reservations.status`/`work_completed_at` から機械的には出せるが、現場が
+    実際にこの完了報告を確実に行ってから証明書を発行しているか（逆に「証明書発行」自体を完了の代わりに
+    している運用がないか）を確認できていない。誤って配線すると本番の発行を広く止めかねない。
+  - **customer_confirmation_current**: `src/lib/signoff/state.ts` の `canRequestSignature` は証明書が
+    `active` であることを条件に署名依頼可能になる設計。ここに「署名済み」を要求すると、発行→署名→発行
+    が要求される循環になり証明書を永久に発行できなくなる。署名フロー自体の設計変更（例: 署名依頼を
+    active化前に前倒しする）が前提になるため、単独では解けない。
+  - **payment_policy_met**: 評価ロジック自体（`evaluatePaymentPolicy()`）は実装済みだが、合算払いの
+    CANCELED 扱いや paymentState の導出元が未決（本ファイル「evaluateB2B の合算払い×CANCELED不整合」
+    エントリ参照）のため、証明書発行経路への実データ配線を見送っている。
+  - 残る in_store_review / evidence_synced / approvals_complete / no_pending_corrections は機能自体が
+    未設計（no_pending_corrections は対応する DB テーブルすら存在しない）。
+- 影響: v2.0 §19.4 が定める「10条件すべてを満たしたときのみ READY」は現状 3/10 条件のみ実効。
+  ADR-0005 は「バックエンド共通 Gate が唯一の判定源」であることを求めており、単一評価器への集約
+  自体は満たしているが、条件の網羅性はまだ途上。
+- 次のアクション: workflow_completed は現場の完了報告運用の実態確認が先（【要確認】）。
+  customer_confirmation_current は signoff フローの設計変更を伴うため、対応方針を代表判断が必要
+  （署名依頼のタイミングを見直すか、この条件をGateから外すか）。
+- 起票日: 2026-08-31
