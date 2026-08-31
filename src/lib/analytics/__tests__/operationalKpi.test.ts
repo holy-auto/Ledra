@@ -107,6 +107,14 @@ describe("computeAvgReviewWaitHours", () => {
   it("空配列 → null", () => {
     expect(computeAvgReviewWaitHours([])).toBeNull();
   });
+
+  it("不正なタイムスタンプ（NaN）は他の正常値を汚染しない", () => {
+    const timelines = [
+      mkTimeline({ completedAt: "not-a-date", verifiedAt: "2026-01-01T16:00:00Z" }), // NaN → skip
+      mkTimeline({ completedAt: "2026-01-01T14:00:00Z", verifiedAt: "2026-01-01T16:00:00Z" }), // 2h
+    ];
+    expect(computeAvgReviewWaitHours(timelines)).toBe(2);
+  });
 });
 
 // ── computeAvgCycleTimeHours ──
@@ -144,6 +152,26 @@ describe("computeAvgCycleTimeHours", () => {
     ];
     expect(computeAvgCycleTimeHours(timelines)).toBeNull();
   });
+
+  it("不正なタイムスタンプ（NaN）は他の正常値を汚染しない", () => {
+    const timelines: JobTimeline[] = [
+      {
+        currentState: "VERIFIED",
+        scheduledAt: "not-a-date",
+        startedAt: null,
+        completedAt: null,
+        verifiedAt: "2026-01-01T21:00:00Z", // NaN → skip
+      },
+      {
+        currentState: "VERIFIED",
+        scheduledAt: "2026-01-01T09:00:00Z",
+        startedAt: null,
+        completedAt: null,
+        verifiedAt: "2026-01-01T21:00:00Z", // 12h
+      },
+    ];
+    expect(computeAvgCycleTimeHours(timelines)).toBe(12);
+  });
 });
 
 // ── computeSlaComplianceRate ──
@@ -176,12 +204,17 @@ describe("computeDailyThroughput", () => {
     expect(computeDailyThroughput({ completedCount: 30, periodDays: 10 })).toBe(3);
   });
 
-  it("7 件 / 30 日 = 0.2", () => {
-    expect(computeDailyThroughput({ completedCount: 7, periodDays: 30 })).toBe(0.2);
+  it("7 件 / 30 日 ≈ 0.23（小数第2位まで）", () => {
+    expect(computeDailyThroughput({ completedCount: 7, periodDays: 30 })).toBe(0.23);
   });
 
   it("periodDays=0 → null", () => {
     expect(computeDailyThroughput({ completedCount: 5, periodDays: 0 })).toBeNull();
+  });
+
+  it("期間が長く件数が少ない場合でも非ゼロの実績が0に潰れない", () => {
+    // 1件/30日 ≈ 0.0333 → 第1位までの丸めだと 0.0 になってしまう
+    expect(computeDailyThroughput({ completedCount: 1, periodDays: 30 })).toBe(0.03);
   });
 });
 

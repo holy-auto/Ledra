@@ -147,9 +147,25 @@ export function computeFleetUtilization(
     totalConflicts += detectCapacityConflicts(b, reservations, shiftStart, shiftEnd).length;
   }
 
+  // computeBoothUtilization() は「区間の union」で稼働率を出すため、capacity > 1 の
+  // ブースでは定員の一部しか埋まっていなくても 100% と過大評価してしまう
+  // （例: capacity=3 で1件だけ終日予約 → union稼働率100%だが実際は1/3枠のみ使用）。
+  // decomposeTimeBands() の時間帯別 concurrent/capacity で正規化した値を使う。
+  const capacityAwarePct = activeBooths.map((b) => {
+    const bands = decomposeTimeBands(b, reservations, shiftStart, shiftEnd);
+    let weightedOccupiedMinutes = 0;
+    let totalCapacityMinutes = 0;
+    for (const band of bands) {
+      const durationMinutes = (band.end - band.start) * 60;
+      weightedOccupiedMinutes += Math.min(band.concurrent, band.capacity) * durationMinutes;
+      totalCapacityMinutes += band.capacity * durationMinutes;
+    }
+    return totalCapacityMinutes > 0 ? Math.round((weightedOccupiedMinutes / totalCapacityMinutes) * 100) : 0;
+  });
+
   const avgPct =
-    details.length > 0 ? Math.round(details.reduce((s, d) => s + d.utilizationPct, 0) / details.length) : 0;
-  const peakPct = details.length > 0 ? Math.max(...details.map((d) => d.utilizationPct)) : 0;
+    capacityAwarePct.length > 0 ? Math.round(capacityAwarePct.reduce((s, p) => s + p, 0) / capacityAwarePct.length) : 0;
+  const peakPct = capacityAwarePct.length > 0 ? Math.max(...capacityAwarePct) : 0;
 
   return {
     totalBooths: booths.length,
@@ -210,25 +226,56 @@ export interface StaffCapacitySummary {
  *
  * ジョブの見積・実績時間からスタッフごとの負荷率を計算し、
  * 過負荷/遊休のスタッフを識別する。
+ *
+ * @param allStaffIds ジョブ0件のスタッフも集計に含めたい場合に渡す全スタッフID。
+ *   省略時は jobs に出現したスタッフのみが対象になる（ジョブ0件＝遊休の実態が
+ *   totalStaff/avgLoadPct/underutilizedCount から漏れる点に注意）。
  */
 export function computeStaffCapacity(
   jobs: readonly StaffJob[],
   shiftStart = SHIFT_START,
   shiftEnd = SHIFT_END,
+  allStaffIds?: readonly string[],
 ): StaffCapacitySummary {
   const shiftMinutes = (shiftEnd - shiftStart) * 60;
-  const byStaff = new Map<string, { jobCount: number; totalEstimated: number; totalActual: number }>();
+  const byStaff = new Map<
+    string,
+    { jobCount: number; totalEstimated: number; totalActual: number; totalEffective: number }
+  >();
+
+  const emptyEntry = () => ({ jobCount: 0, totalEstimated: 0, totalActual: 0, totalEffective: 0 });
 
   for (const j of jobs) {
-    const entry = byStaff.get(j.staffId) ?? { jobCount: 0, totalEstimated: 0, totalActual: 0 };
+    const entry = byStaff.get(j.staffId) ?? emptyEntry();
     entry.jobCount++;
     entry.totalEstimated += j.estimatedMinutes ?? 0;
     entry.totalActual += j.actualMinutes ?? 0;
+    // actualMinutes が null（未着手・予定のみ）の場合は見積時間を負荷の代理値に使う。
+    // これがないと、見積のみで埋まった予定のスタッフが 0% 負荷と誤って報告される。
+    // actualMinutes: 0（実際に0分だった、と判明済み）はそのまま 0 として扱う。
+    entry.totalEffective += j.actualMinutes ?? j.estimatedMinutes ?? 0;
     byStaff.set(j.staffId, entry);
   }
 
+  for (const staffId of allStaffIds ?? []) {
+    if (!byStaff.has(staffId)) byStaff.set(staffId, emptyEntry());
+  }
+
+  let overloadedCount = 0;
+  let underutilizedCount = 0;
+  let peakLoadPct = 0;
+  let sumLoadPct = 0;
+
   const details: StaffLoadSummary[] = [...byStaff.entries()].map(([staffId, entry]) => {
-    const loadPct = shiftMinutes > 0 ? Math.round((entry.totalActual / shiftMinutes) * 100) : 0;
+    // 過負荷/遊休の判定は丸め前の比率で行う（丸め後の loadPct で判定すると
+    // 例: 80.3% が 80 に丸まって「過負荷」から漏れる境界値バグになる）。
+    const loadRatioPct = shiftMinutes > 0 ? (entry.totalEffective / shiftMinutes) * 100 : 0;
+    const loadPct = Math.round(loadRatioPct);
+    if (loadRatioPct > 80) overloadedCount++;
+    if (loadRatioPct < 30) underutilizedCount++;
+    sumLoadPct += loadPct;
+    peakLoadPct = Math.max(peakLoadPct, loadPct);
+
     const efficiencyRatio =
       entry.totalActual > 0 ? Math.round((entry.totalEstimated / entry.totalActual) * 100) / 100 : null;
 
@@ -242,14 +289,14 @@ export function computeStaffCapacity(
     };
   });
 
-  const avgLoadPct = details.length > 0 ? Math.round(details.reduce((s, d) => s + d.loadPct, 0) / details.length) : 0;
+  const avgLoadPct = details.length > 0 ? Math.round(sumLoadPct / details.length) : 0;
 
   return {
     totalStaff: details.length,
     avgLoadPct,
-    peakLoadPct: details.length > 0 ? Math.max(...details.map((d) => d.loadPct)) : 0,
-    overloadedCount: details.filter((d) => d.loadPct > 80).length,
-    underutilizedCount: details.filter((d) => d.loadPct < 30).length,
+    peakLoadPct,
+    overloadedCount,
+    underutilizedCount,
     staffDetails: details,
   };
 }

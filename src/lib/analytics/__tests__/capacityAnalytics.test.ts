@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { decomposeTimeBands, computeFleetUtilization, computeStaffCapacity, type StaffJob } from "../capacityAnalytics";
 import type { BoothInfo, BoothReservation } from "@/lib/booths/occupancy";
+import { SHIFT_START, SHIFT_END } from "@/lib/gantt/board";
 
 // ── ヘルパ ──
 
@@ -134,6 +135,15 @@ describe("computeFleetUtilization", () => {
     const summary = computeFleetUtilization([booth], reservations);
     expect(summary.totalConflicts).toBe(1);
   });
+
+  it("capacity>1 のブースは定員に対する割合で稼働率を出す（union だと過大評価になる）", () => {
+    // capacity=3 のブースに終日1件だけ予約 → union ベースだと稼働率100%になってしまうが、
+    // 実際には定員3枠中1枠しか使っていないので約33%が正しい。
+    const booth = mkBooth({ id: "b1", capacity: 3 });
+    const reservations = [mkRes({ id: "r1", boothId: "b1", startTime: null, endTime: null })];
+    const summary = computeFleetUtilization([booth], reservations, 9, 17);
+    expect(summary.avgUtilizationPct).toBe(33);
+  });
 });
 
 // ── computeStaffCapacity ──
@@ -199,5 +209,33 @@ describe("computeStaffCapacity", () => {
     const jobs: StaffJob[] = [{ staffId: "s1", estimatedMinutes: 120, actualMinutes: 0 }];
     const result = computeStaffCapacity(jobs);
     expect(result.staffDetails[0].efficiencyRatio).toBeNull();
+  });
+
+  it("actualMinutes=null（未着手）は見積時間を負荷の代理値に使う", () => {
+    // 見積のみで埋まった予定のスタッフが 0% 負荷と誤って報告されないことを確認。
+    const jobs: StaffJob[] = [{ staffId: "s1", estimatedMinutes: 300, actualMinutes: null }];
+    const result = computeStaffCapacity(jobs);
+    // 300min / 660min ≈ 45%（0% ではない）
+    expect(result.staffDetails[0].loadPct).toBe(45);
+    // totalActualMinutes 自体は実際の実績のみを表すので 0 のまま
+    expect(result.staffDetails[0].totalActualMinutes).toBe(0);
+  });
+
+  it("allStaffIds を渡すとジョブ0件のスタッフも遊休として集計される", () => {
+    const jobs: StaffJob[] = [{ staffId: "s1", estimatedMinutes: 300, actualMinutes: 300 }];
+    const result = computeStaffCapacity(jobs, SHIFT_START, SHIFT_END, ["s1", "s2"]);
+    expect(result.totalStaff).toBe(2);
+    const s2 = result.staffDetails.find((s) => s.staffId === "s2")!;
+    expect(s2.jobCount).toBe(0);
+    expect(s2.loadPct).toBe(0);
+    expect(result.underutilizedCount).toBe(1); // s2 のみ（s1 は 300/660≈45%）
+  });
+
+  it("過負荷判定は丸め前の比率で行う（境界値の誤分類を防ぐ）", () => {
+    // 530min / 660min ≈ 80.30...% → 丸めると80だが、生の比率では80より大きいので過負荷
+    const jobs: StaffJob[] = [{ staffId: "s1", estimatedMinutes: 530, actualMinutes: 530 }];
+    const result = computeStaffCapacity(jobs);
+    expect(result.staffDetails[0].loadPct).toBe(80);
+    expect(result.overloadedCount).toBe(1);
   });
 });

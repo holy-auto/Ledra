@@ -119,7 +119,9 @@ export function computeAvgReviewWaitHours(timelines: readonly JobTimeline[]): nu
   for (const t of timelines) {
     if (t.completedAt == null || t.verifiedAt == null) continue;
     const hours = (new Date(t.verifiedAt).getTime() - new Date(t.completedAt).getTime()) / (1000 * 60 * 60);
-    if (hours < 0) continue; // データ不備
+    // 不正なタイムスタンプは Date.getTime() が NaN を返す。NaN < 0 は false なので
+    // hours < 0 だけでは弾けず、sum が NaN に汚染されて平均全体が壊れる。
+    if (!Number.isFinite(hours) || hours < 0) continue; // データ不備
     sum += hours;
     count++;
   }
@@ -137,7 +139,7 @@ export function computeAvgCycleTimeHours(timelines: readonly JobTimeline[]): num
   for (const t of timelines) {
     if (t.verifiedAt == null) continue;
     const hours = (new Date(t.verifiedAt).getTime() - new Date(t.scheduledAt).getTime()) / (1000 * 60 * 60);
-    if (hours < 0) continue;
+    if (!Number.isFinite(hours) || hours < 0) continue; // データ不備（NaN 汚染防止、上記と同じ理由）
     sum += hours;
     count++;
   }
@@ -155,10 +157,15 @@ export function computeSlaComplianceRate(records: readonly SlaEvaluatedRecord[])
   return Math.round((compliant / records.length) * 10000) / 100;
 }
 
-/** 日次スループットを算出。 */
+/**
+ * 日次スループットを算出。
+ *
+ * 小数第2位まで保持する（第1位までだと、期間が長く件数が少ない場合
+ * 例: 30日で1件≈0.03/日 のような非ゼロの実績が 0 に潰れてしまう）。
+ */
 export function computeDailyThroughput(input: ThroughputInput): number | null {
   if (input.periodDays <= 0) return null;
-  return Math.round((input.completedCount / input.periodDays) * 10) / 10;
+  return Math.round((input.completedCount / input.periodDays) * 100) / 100;
 }
 
 /**
