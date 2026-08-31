@@ -3855,6 +3855,13 @@
 "user_id",
 "visible_features"
 ],
+"user_interface_preferences": [
+"display_mode",
+"onboarding_completed_at",
+"tenant_id",
+"updated_at",
+"user_id"
+],
 "v_insurer_users_list": [
 "created_at",
 "display_name",

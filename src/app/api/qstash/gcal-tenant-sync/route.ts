@@ -1,4 +1,4 @@
-import { verifySignatureAppRouter } from "@upstash/qstash/nextjs";
+import { withQstashSignature } from "@/lib/qstash/verifySignature";
 import { z } from "zod";
 import { parseJsonSafe } from "@/lib/api/safeJson";
 import { apiInternalError, apiValidationError } from "@/lib/api/response";
@@ -29,4 +29,4 @@ async function handler(req: Request) {
   }
 }
 
-export const POST = verifySignatureAppRouter(handler);
+export const POST = withQstashSignature(handler);

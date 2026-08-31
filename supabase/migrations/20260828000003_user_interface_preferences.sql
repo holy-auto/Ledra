@@ -22,7 +22,6 @@
 -- 【要確認】このテーブルの利用予定・書き込み経路（INSERT/UPDATE の RLS
 -- ポリシーが無く、SELECT のみ）は未確認。DECISION_LOG に起票する。
 -- ============================================================
-
 create table if not exists public.user_interface_preferences (
   tenant_id uuid not null references public.tenants(id) on delete cascade,
   user_id uuid not null references auth.users(id) on delete cascade,

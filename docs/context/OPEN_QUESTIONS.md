@@ -3,6 +3,32 @@
 > まだ決まっていないこと、判断に迷っていることを書く場所。決まったら
 > DECISION_LOG.md に移し、このファイルからは消す（削除履歴は git で追える）。
 
+## 追加（2026-08-31・IMP-027 evaluateB2B の合算払い(consolidated) が CANCELED でも成立してしまう。Codex指摘で前提を訂正）
+
+`src/lib/payment/policy.ts` の `evaluatePaymentPolicy()` は「UNKNOWN 状態では条件不成立」「CANCELED は条件不成立」という2つの原則の**例外**として、`evaluateB2B()` の合算払い（`billingCycle === "consolidated"`）分岐が `paymentState` を一切見ずに常時 `met: true` を返す、と JSDoc に明記済み（JSDoc と実装は矛盾していない）。`evaluateB2B()` 自身のコメント（「合算払いは『証明書を今出す、請求は後』なので決済状態は無関係」）は UNKNOWN に限定した言い回しではなく一般的な理由付けであり、文面上は CANCELED も含めた全 `paymentState` に等しく適用される——つまり CANCELED が含まれているのが偶発的（検討漏れ）だと断定できる根拠はない。**未解決なのは、この一般的な理由付け（決済状態は無関係）が CANCELED にも本当に妥当するかという製品判断であり、ドキュメントの不整合や検討漏れの有無ではない。**
+
+- **訂正1（Codex指摘、2026-08-31）**: 当初「この特定ジョブの帳票が取消/却下された場合」（`documentStatus === "cancelled"/"rejected"` → `CANCELED`）とだけ書いたが、CANCELED の発生源を一つに絞りすぎていた。`derivePoSPaymentState()` は POS 取引が `voided`（取消）のときも `CANCELED` を返す（`derivePaymentState.ts:78-79`）。さらに `PaymentPolicyContext.paymentState` は正準 `PaymentState` を直接受け取る型であり、`evaluatePaymentPolicy()`/`evaluateB2B()` 自体は呼び出し元がその値をどう導出したかを一切関知しない——将来、本番配線されるときに別の第三の経路が追加される可能性も排除できない。以下の「帳票」「POS取引」は**現時点で確認できている例**であり、網羅的な列挙ではない。
+- **訂正2（Codex指摘、2026-08-31）**: 「合算払いの取引先には per-order の請求書自体を作らない」という記述も不正確だった。`isConsolidatedBilling()`（`orderInvoice.ts:39-42`）が per-order 請求書をスキップする条件は `billing_cycle === "consolidated"` **かつ** `closing_day != null` の両方であり、`closing_day` は `customerCreateSchema`/`customerUpdateSchema` 上は任意項目（`optionalInt`）で null もあり得る。`closing_day` が null の consolidated 顧客には実際には per-order 請求書が作られる。**加えて `evaluateB2B()` はそもそも `closingDay` を入力に取っておらず**、`billingCycle === "consolidated"` だけで判定している——これは `src/lib/signoff/state.ts`（本番稼働中。`policy.ts` のコメントは支払いサイクル未設定時の案内文言を両者で揃えるよう明記しているが、判定predicate自体を同期させる取り決めがあるわけではない）と同じ判定基準であり、`orderInvoice.ts` 側がこの2モジュールより厳格な独自の基準（`closing_day` 必須）を持っている、という構図。3箇所（`signoff/state.ts`・`policy.ts`・`orderInvoice.ts`）の「合算払いかどうか」の定義が食い違っている。
+- **さらに未検証（今回の是正で判明）**: 「合算払いのジョブに per-order 帳票が存在しないケース」を直接確認できたのは `src/lib/orders/orderInvoice.ts` が扱う `job_orders`（テナント間の受発注コラボレーション）の請求書生成パスのみである。通常の顧客（`customers` テーブル、`linked_tenant_id` を介さない一般の法人顧客）の通常のジョブについて、`billing_cycle === "consolidated"` のときに `documents`（見積/請求書）行が実際に作られるかどうかは未確認——`signoff/state.ts` は「会計ステップの UI 表示」を deferred にするだけで、帳票自体の作成有無とは別の話である可能性がある。
+- **訂正3（Codex指摘、2026-08-31）**: 上記訂正2を「3箇所の判定基準を統一する必要がある」と結論づけたが、これは誤り。`isConsolidatedBilling()`（`closing_day` 必須）は `runCycleInvoices()`（`cycleInvoice.ts:66-71` で `closing_day` が null の顧客を明示的に除外）に渡す**ルーティング用ガード**であり、締め日が無ければそもそも合算請求 cron が動けないという技術的必然からの条件——「合算払いの定義」というより「このルーティング判断固有の前提条件」である。一方 `signoff/state.ts`/`policy.ts` は UI 表示・支払いゲートという別の関心事であり、`closingDay` を見ずに `billingCycle` だけで分類することが不当とは限らない。3箇所を同じ述語に統一すべきという前提そのものが誤りだった可能性が高い。
+- **訂正4（Codex指摘、2026-08-31）**: 上記で `closing_day` 未設定の consolidated 顧客を「設定不備データ」と表現したが、これも不正確だった。マイグレーション `20260720000000_customers_payment_cycle.sql`（列コメント）は「`closing_day` の NULL は締め日未設定＝都度扱い」と明記しており、これは不備ではなく**仕様として定義された正当な状態**（合算払いを選んでいても締め日が決まっていない間は都度扱いにフォールバックする、というドキュメント化された設計）。
+- **未解決の前提そのもの**: `evaluatePaymentPolicy()`/`evaluateCertificateGate()` は本番のどこからも呼ばれておらず（呼び出し元ゼロを確認済み）、「合算払いのジョブの `paymentState` は何から導出するのか」という、この判断の前提となる設計自体がまだ存在しない。加えて、`closing_day` が未設定（＝マイグレーションのコメント通り、仕様上は都度扱い）の consolidated 顧客を Payment Policy がどう扱うべきか（`orderInvoice.ts`/このマイグレーションのドキュメント化された仕様と同様に per-order 扱いへフォールバックすべきか、それとも現状通り billingCycle だけで合算扱いのままでよいか）という点も別途検討が必要。
+- **判断が必要な点（前提が決まった後）**: 合算請求のサイクルに含まれる特定ジョブの決済起点が CANCELED の場合、そのジョブの証明書発行（Certificate Gate の `payment_policy_met` 条件）は成立させてよいか。(a) 合算請求は複数ジョブをまとめて締め日に請求するものなので、個別の決済状態（CANCELED含む）とは無関係に証明書を出してよい、という設計もあり得る。(b) 一方、CANCELED は「この取引自体が実質なかったことになった」ことを意味するなら、合算請求からも除外されるべきで、証明書も出すべきではない、という設計もあり得る。コードからは意図を判定できない。
+- 現状の挙動は回帰テスト（`src/lib/payment/__tests__/policy.test.ts`「合算払い(consolidated) は CANCELED でも成立する」）で明示化済み。実害は現状ゼロ（`evaluateCertificateGate()` を呼ぶ本番ルートが1つも存在しないことを確認済み — IMP-028 未統合）。実際に Certificate Gate を本番配線するタスクに着手する前に、上記すべてを決める必要がある。
+
+## 追加（2026-08-30・IMP-046 遅延 Codex レビュー8件中2件、指標の定義自体の決め直しが必要）
+
+PR #956（IMP-046）マージ後の遅延 Codex レビュー8件のうち6件は機械的なバグとして修正済み（DECISION_LOG参照）。残り2件は指標の**定義自体**を決める必要があり、コードを直すだけでは解決しない。
+
+- **`computeVerifiedRate()`（`src/lib/analytics/operationalKpi.ts`）の REVOKED 証明書の扱い。** 現状は分母（NOT_READY/SUPERSEDEDを除く全件）に含め、分子（VERIFIED件数）からは除外する——つまり VERIFIED を経由してから REVOKED された証明書は「未到達」扱いになる。しかし `src/lib/domain/transitions.ts` の遷移表では REVOKED は ISSUING・VERIFYING からも遷移可能（VERIFIED を経由せずに無効化されるケースがある）。現在の `CertificateStateCounts`（状態別の件数の断面スナップショット）には「その証明書が過去に VERIFIED を通過したか」という履歴情報が無いため、単純に「REVOKED を分子に含める」という修正では、VERIFIED未経由のREVOKEDまで誤って到達扱いにしてしまう。正しく直すには入力データの形自体を変える必要がある（例: 各証明書に `everReachedVerified: boolean` を持たせる）。「到達率」の定義（現在VERIFIED件数ベースか、過去に一度でもVERIFIEDに達した件数ベースか）を先に決める必要がある。
+- **`computeSlaComplianceRate()` の `at_risk` の扱い。** 現状は `at_risk`（まだ期限内だが警告域）を非遵守として扱う厳格な定義。これが意図的な設計（早期警告を促すため厳しく判定する）なのか、それとも「遵守率」という名前上は `overdue` のみを非遵守とすべきなのか、製品としての意図確認が必要（コードからは判定できない）。
+- 実害は現状ゼロ（`src/lib/analytics/` は本番のどの API ルートからも呼び出されていない、呼び出し元ゼロを確認済み）。実際に KPI ダッシュボードへ統合するタスクに着手する前に、上記2点を決める必要がある。
+
+## 追加（2026-08-30・IMP-050（#957）visibility.ts の owner_only 設計、Codex レビューで往復）
+
+- **`canAccess()`/`DEFAULT_REQUIRED_VISIBILITY` の owner_only の扱いに、まだ解決していないトレードオフが残っている。** 3回のレビュー往復で判明: (a) owner_only を tenant_internal 以上に自動昇格させると、データ主体本人が restricted（auth.users.encrypted_password 等）まで見られてしまう（1回目の Codex 指摘、P1、修正済み）。(b) 昇格させないと、pii/confidential 要求のフィールド（DEFAULT_REQUIRED_VISIBILITY 経由）を本人自身も見られなくなる（3回目の Codex 指摘、P2、未解決）。(a)(b) は同じ「owner_only の意味」を取り合っており、単純な線形階層モデルでは同時に満たせない。現状は (a) を優先し、(b) は既知の限界として visibility.ts の JSDoc に明記（呼び出し側が isDataSubject と「レコードの所有者か」を個別判定してこの汎用機構をバイパスする想定）。
+- **本来の解決策候補**: restricted 専用の「ViewerContext では絶対に満たせない」概念を VisibilityLevel とは別に導入する、または findClassificationViolations() を restricted の唯一の防御ラインとし、visibility.ts 側は pii/confidential/public の3段階＋「本人フラグによる個別バイパス」という設計に単純化する。現時点で `src/lib/privacy/` は本番コードから一切呼ばれていない（呼び出し元ゼロを確認済み）ため実害はないが、実際に API/UI へ統合するタスク（下流タスク、IMP-050 の「スコープ外」に明記済み）に着手する前に、この設計判断を確定させる必要がある。
+
 ## 追加（2026-08-30・事業ログのエントリが本文だけ消えていた）
 
 - **`DECISION_LOG.md` の「2026-08-29 削除済みファイルの復活を機械的に検出する方法を
@@ -1040,3 +1066,29 @@ DECISION_LOG「遷移表の未解決4件を代表判断で解決」参照。）
 - 次のアクション: 案A が本筋。ただしサブセット生成手順が不明なため、まず現行 TTF の出所を
   確認する必要がある（【要確認】: `public/fonts/*.ttf` をどう生成したか）。
 - 起票日: 2026-08-27
+
+## Certificate Gate (IMP-028) 本番配線後も残る3条件の未接続（2026-08-31）
+- 状況: `evaluateCertificateActivationGate()` を証明書 active化の本番4経路（admin/certificates/status・
+  mobile/certificates/[id]/activate・certificates/activate-by-key・AI自動発行`certificateRecordAuto.ts`）
+  すべてに統合した（IMP-028）。10条件のうち実データで判定するのは required_evidence_present（写真）・
+  no_unresolved_alerts（懸念）・parts_integrity（部品整合性）の3条件。残り7条件のうち3つは、配線しない
+  理由が調査で判明した:
+  - **workflow_completed**: `reservations.status`/`work_completed_at` から機械的には出せるが、現場が
+    実際にこの完了報告を確実に行ってから証明書を発行しているか（逆に「証明書発行」自体を完了の代わりに
+    している運用がないか）を確認できていない。誤って配線すると本番の発行を広く止めかねない。
+  - **customer_confirmation_current**: `src/lib/signoff/state.ts` の `canRequestSignature` は証明書が
+    `active` であることを条件に署名依頼可能になる設計。ここに「署名済み」を要求すると、発行→署名→発行
+    が要求される循環になり証明書を永久に発行できなくなる。署名フロー自体の設計変更（例: 署名依頼を
+    active化前に前倒しする）が前提になるため、単独では解けない。
+  - **payment_policy_met**: 評価ロジック自体（`evaluatePaymentPolicy()`）は実装済みだが、合算払いの
+    CANCELED 扱いや paymentState の導出元が未決（本ファイル「evaluateB2B の合算払い×CANCELED不整合」
+    エントリ参照）のため、証明書発行経路への実データ配線を見送っている。
+  - 残る in_store_review / evidence_synced / approvals_complete / no_pending_corrections は機能自体が
+    未設計（no_pending_corrections は対応する DB テーブルすら存在しない）。
+- 影響: v2.0 §19.4 が定める「10条件すべてを満たしたときのみ READY」は現状 3/10 条件のみ実効。
+  ADR-0005 は「バックエンド共通 Gate が唯一の判定源」であることを求めており、単一評価器への集約
+  自体は満たしているが、条件の網羅性はまだ途上。
+- 次のアクション: workflow_completed は現場の完了報告運用の実態確認が先（【要確認】）。
+  customer_confirmation_current は signoff フローの設計変更を伴うため、対応方針を代表判断が必要
+  （署名依頼のタイミングを見直すか、この条件をGateから外すか）。
+- 起票日: 2026-08-31

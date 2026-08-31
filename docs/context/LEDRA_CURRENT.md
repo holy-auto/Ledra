@@ -4,7 +4,21 @@
 > 追わず、常に最新状態だけを保つ（履歴は DECISION_LOG.md / RELEASE_LOG.md 側）。
 > 大きな変化があったら都度上書きすること。
 
-最終更新: 2026-08-30
+最終更新: 2026-08-31
+
+> 2026-08-31 追記: **Certificate Gate (IMP-028) を証明書発行の本番4経路すべてに配線した。**
+> v2.0 §19.4 / ADR-0005 が求める「バックエンド単一評価器が判定する」設計のうち、評価器
+> (`gateEvaluator.ts`) 自体は実装済みだったが、証明書を `active` にする実際の経路
+> （管理画面 `PUT /api/admin/certificates/status`・モバイル `POST /api/mobile/certificates/[id]/activate`・
+> オフライン `POST /api/certificates/activate-by-key`・AI自動発行 `certificateRecordAuto.ts`）は
+> どれもこの評価器を呼んでおらず、写真必須チェックのみを個別に手書きしていた。新設した
+> `evaluateCertificateActivationGate()` に写真・懸念（IMP-026）・部品整合性（IMP-040）の3条件を
+> 実データから組み立てる処理を集約し、4経路すべてをこれ経由に統一。全経路がこの関数を呼ぶことを
+> ソース走査で機械的に検証する構造テストも追加した。**残り7条件のうち3つ（顧客確認・ワークフロー
+> 完了・支払いポリシー）は配線しない理由が判明——顧客確認はsignoffフロー（証明書active化後にのみ
+> 署名依頼可能）との循環依存、ワークフロー完了は現場の運用実態が未確認、支払いポリシーは合算払いの
+> paymentState導出が未決——のため意図的にスタブのまま**。詳細は DECISION_LOG / RELEASE_LOG /
+> OPEN_QUESTIONS 2026-08-31 を参照。
 
 > 2026-08-29 追記: **IMP-023 の db-migrate.yml が最終的に green になり、`certificate_images_guard`
 > トリガーが本番へ実適用されていることを直接確認した**（PR #938→#994→#996→#998 の4段階、
@@ -397,10 +411,51 @@ Sentry · Resend (+ SendGrid fallback) · Anthropic (Opus 4.8 / Sonnet 4.6 / Hai
   （SegmentedControl/StatusBadge/StatusCard/NextActionCard/ProgressCard/Alert/IconButton/
   BottomSheet）+ Badge dot + Button xl。v2.0 の色トークン値は不採用・既存デザインシステム維持
   （DECISION_LOG 2026-08-19）。
+- **IMP-054（§24 P0_RELEASE_GATE — P0 リリースゲート）完了（2026-08-30 是正版）**:
+  全 36 タスク（IMP-000〜IMP-054）の実装状態を最終検証。**31 タスク実装済み、5 タスク
+  （IMP-016・020・027・032・050）が部分または未着手**。IMP-032（SYNC_CENTER 同期レイヤ）は
+  PR #947 がユーザー判断でスキップ中、扱い未定（`OPEN_QUESTIONS.md` 参照）。IMP-020（モバイル
+  FAB Quick Create統合・Role別スコープ切替）・IMP-027（Payment Policy評価器）も未着手部分あり。
+  IMP-011/012/013/014 の requirement-trace.md 行を実装済みに是正（IMPタスク単位）。
+  **v2.0 §24.1 の P0充足サマリ（10のLedra Core要件、IMPタスク単位とは別軸）は、既存の
+  §1〜§24詳細監査行と直接照合した結果 3/10 のみ実装済み**（Workflow+Photo Evidence+Voice・
+  Vehicle・Customer Confirmation）で残り7項目は部分（モバイルOTP検証がプレースホルダ・
+  Certificate Gateが本番未接続・権限強制ヘルパーが未接続・通知dispatch未統合等）。
+  原案の「全36完了」、および一次是正の「P0サマリ7/10✅」はいずれも誤りと判明したため
+  Codexレビュー指摘を受けて再是正。
+- **IMP-053（§14.4 OBSERVABILITY_ERROR_CONTRACT — 構造化エラー契約）完了**:
+  v2.0 §14.4 の構造化エラー契約型基盤。StructuredError 型（データ安全性4段階・エラー分類
+  11種・再試行ポリシー・復旧アクション7種）、createStructuredError ファクトリ、6プリセット
+  （validation/externalService/stateTransition/dataIntegrity/timeout/concurrency）、
+  Sentry 変換・クライアントペイロード抽出ユーティリティ。既存 response.ts 変更なし。テスト24件。
+- **IMP-052（§23 E2E_SUITE — 必須 E2E テストスイート）完了**:
+  v2.0 §23 必須 E2E を Playwright で実装。正常ワークフロー8テスト（ダッシュボード→予約→
+  作業詳細→証明書→車両→顧客→請求書）、例外フロー8テスト（API 4: 予約更新バリデーション/
+  証明書無効化/ステータス遷移/証明書ステータスAPI + UI 4: settings/404/POS/search）、
+  顧客確認4テスト、WCAG AA 9テスト（公開4+管理4+全違反レポート1）。
+  CI E2E ジョブ復元（secrets ゲート付き）。全テスト環境変数ゲートで secrets 未設定時は自動 skip。
+- **IMP-051（§3.5 ACCESSIBILITY_I18N_AUDIT — アクセシビリティ監査＆翻訳QA基盤）完了**:
+  WCAG 2.1 AA コントラスト比チェッカー（5関数）、WCAG AA 監査フレームワーク型定義
+  （19基準＋10コンポーネントARIA要件マップ）、翻訳品質保証ユーティリティ（キー過不足検出・
+  プレースホルダ整合性・カバレッジ算出・用語集ギャップ検出の4関数）。デザイントークン検証と
+  翻訳抜け自動検出のCI基盤。IO なし。テスト46件。
+- **IMP-050（§18 SECURITY_PRIVACY — プライバシー・データ分類・可視性・マスキング基盤）部分（型基盤のみ、統合未着手）**:
+  v2.0 §18 のプライバシー・データ保護基盤を4モジュールの純関数で実装。4段階データ分類
+  （restricted/pii/confidential/public、ISO 27001 A.5.12 準拠、実在するテーブル・カラム名を
+  登録）、4段階可視性モデル（owner_only→public、ViewerContext→有効レベル解決。owner_only は
+  tenant_internal 以上のネスト階層から独立した軸だが、本人が自分の pii を見るケースは未解決
+  ——OPEN_QUESTIONS.md 参照）、レンディションマスキング（ADR-0003 一般化、4戦略、定義済みルール
+  3セット）、エクスポート監査イベント（4スコープ統一フォーマット、頻度異常検出）。テスト79件。
+  IO なし。API/UI/エクスポートルートへの統合は未着手（呼び出し元ゼロ、下流タスク）。
+- **IMP-046（§21 ANALYTICS_STORE — 運用KPI・キャパシティ分析）完了**:
+  v2.0 §21 の運用指標セットとキャパシティ可視化を純関数計算器で実装。
+  運用KPI 6本（VERIFIED到達率・証跡充足率・レビュー待ち時間・サイクルタイム・SLA遵守率・
+  日次スループット）+ capacity>1 ブースの時間帯別占有分解（IMP-041委譲実装）+
+  フリート稼働率サマリー + スタッフ負荷分析（過負荷/遊休識別）。テスト41件。
 - **IMP-045（§16 STAFF_MANAGEMENT — メンバーシップ管理ガード）完了**:
   既存スタッフ管理基盤の欠損3領域を純関数ガードで補完。ロール変更ガード（owner保護・
-  ASSIGNABLE_ROLES制限）、メンバー削除ガード（最終管理者保護）、停止/無効化ガード
-  （MembershipState型: active/suspended/deactivated）、店舗間移籍ガード（ロール引継ぎ）。
+  ASSIGNABLE_ROLES制限・最終admin降格保護）、メンバー削除ガード（最終管理者保護）、停止/無効化ガード
+  （MembershipState型: active/suspended/deactivated）、店舗間移籍ガード（ロール引継ぎ・移籍先重複チェック）。
   Permission文字列改名は見送り（VERB_MAP翻訳レイヤーで十分と判断）。テスト36件。
 - **IMP-044（§20.2 Priority/NEXT ACTION エンジン）完了**:
   統一優先度スコアリングサービス。4 ソース（ダッシュボードタイル / ジョブ次アクション /

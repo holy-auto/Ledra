@@ -7,8 +7,10 @@
  * `certificate.auto_draft` (= AI 下書き JSON を reservations.ai_certificate_draft に
  * 保存) の一歩先で、実際の `certificates` 行を起票する。
  *
- * certificate.auto_issue が有効な場合は status=active (発行済み) として作成する。
- * 無効な場合は従来通り status=draft で作成し、発行画面で人が確認して発行する。
+ * 常に status=draft で作成する。certificate.auto_issue が有効かつ Certificate Gate
+ * (IMP-028, `evaluateCertificateActivationGate()`) が ready なら、作成直後に active へ
+ * update する（他の発行経路と同じ「作成→Gate→active化」の形。実際には写真等の証跡が
+ * まだ無いためほぼ常に draft のまま残り、発行画面で人が確認して発行する経路に合流する）。
  *
  * 顧客名が取れる案件のみ作成する。
  * 既に証明書を自動作成済みの案件 (reservations.ai_certificate_id) は再作成しない。
@@ -21,6 +23,7 @@ import { startAiRouteUsage } from "@/lib/ai/recordRouteUsage";
 import { logger } from "@/lib/logger";
 import { logAutoActionExecuted } from "@/lib/audit/aiAuditLog";
 import { triggerCertificateIssued } from "@/lib/certificates/issueHooks";
+import { evaluateCertificateActivationGate } from "@/lib/certificates/activationGate";
 import { computeWarrantyEndDate } from "@/lib/ai/followUpContent";
 import { certificateMileageKm } from "@/lib/maintenance/mileage";
 import { loadAiAutomationSettings } from "./policy";
@@ -229,16 +232,10 @@ export async function maybeAutoCreateDraftCertificateForReservation(
         status: "draft",
       };
 
-      // 走行距離が確定していない証明書は自動発行しない。
-      // 発行チョークポイント 3 本 (admin status / activate-by-key / mobile activate) は
-      // 走行距離を必須にしているが、この経路は
-      // insert で直接 active を作れてしまうため、同じ条件をここでも課す。AI 下書きに
-      // メーター情報は無いので実際には常に draft となり、承認インボックスで人が
-      // メーター写真 (OCR) を確認して走行距離を入れてから発行する
-      // = 「読み取りは自動・最終確認は人間」。
-      const autoIssue = autoIssueEligible && certificateMileageKm(certRow.maintenance_json) !== null;
-      certRow.status = autoIssue ? "active" : "draft";
-
+      // 常に draft で作成する。他の発行経路 (admin status / activate-by-key /
+      // mobile activate) と同じく「作成」と「active 化」を分け、Certificate Gate
+      // (IMP-028, ADR-0005) を経てから active にする。証明書行が無いと写真等の
+      // 証跡は作れないため、insert と同じトランザクションで直接 active にはできない。
       const { data: cert, error: certErr } = await admin
         .from("certificates")
         .insert(certRow)
@@ -256,7 +253,37 @@ export async function maybeAutoCreateDraftCertificateForReservation(
 
       createdIds.push(cert.id as string);
 
-      if (autoIssue) {
+      // 自動発行 (draft→active): 走行距離必須ルール + Certificate Gate の両方を満たす
+      // ときだけ active化する。AI 自動作成直後は写真等の証跡がまだ無いため、実際には
+      // ほぼ常に draft のまま残り、承認インボックスで人が確認して手動発行する経路に合流する
+      // = 「読み取りは自動・最終確認は人間」。
+      let autoIssued = false;
+      if (autoIssueEligible && certificateMileageKm(certRow.maintenance_json) !== null) {
+        const certGate = await evaluateCertificateActivationGate(admin, {
+          certificateId: cert.id as string,
+          tenantId,
+          serviceType: certRow.service_type as string | null,
+          reservationId,
+        });
+        if (certGate.ready) {
+          const { error: activateErr } = await admin
+            .from("certificates")
+            .update({ status: "active" })
+            .eq("id", cert.id)
+            .eq("tenant_id", tenantId);
+          if (activateErr) {
+            logger.warn("[certificateRecordAuto] auto-issue activation failed", {
+              tenantId,
+              certificateId: cert.id,
+              err: activateErr.message,
+            });
+          } else {
+            autoIssued = true;
+          }
+        }
+      }
+
+      if (autoIssued) {
         issuedCount++;
         triggerCertificateIssued({
           tenantId,

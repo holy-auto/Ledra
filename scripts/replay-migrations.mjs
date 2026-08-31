@@ -81,7 +81,7 @@ function pg(cmd) {
 
 /** 一時 PostgreSQL を立てる。DSN を渡された場合は何もしない */
 function startTempPostgres() {
-  const base = mkdtempSync(join("/var/tmp", "pgreplay-"));
+  const base = mkdtempSync(join(tmpdir(), "pgreplay-"));
   const data = join(base, "data");
   const port = 5000 + Math.floor(process.pid % 50000);
   const asPostgres = (cmd) => {

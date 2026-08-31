@@ -4,6 +4,395 @@
 > （新しい順）。実装の詳細は RELEASE_LOG.md、迷っている段階のものは
 > OPEN_QUESTIONS.md に書く。
 
+## 2026-08-31 PR #1011 へ /code-review 指摘: 懸念ブロックが parts_confirmation/body_repair_tracking 経由の懸念を見逃していた
+1. 日付: 2026-08-31
+2. 起きたこと: 「Certificate Gate を本番4経路に配線した」PR #1011 に `/code-review` を実行したところ、
+   `evaluateCertificateActivationGate()` が `hasUnresolvedConcerns()` に `certificateId` しか渡しておらず
+   `jobId`（予約ID）を渡していないことが指摘された。`customer_concerns` テーブルは4系統の確認ページから
+   懸念を受け付けるが、うち parts_confirmation（部品確認）と body_repair_tracking（板金進捗）の2系統は
+   `certificate_id` が null で `job_id` のみを持つ行を作る（`src/app/api/customer/concerns/route.ts` の
+   `resolveSourceContext` で確認）。`hasUnresolvedConcerns()` の OR 条件は certificateId 単独では
+   これらの行に一致しない。
+3. 以前の考え: `evaluateCertificateActivationGate()` は証明書ID起点の関数なので、`certificateId` だけを
+   渡せば懸念判定として十分だと考えていた。
+4. 違和感・問題: 「本番4経路すべてに懸念ブロックを統合した」という PR の主張自体は正しいが、
+   統合した判定が4系統中2系統の懸念を実際には拾えていなかった——書いたテスト（懸念ありで400になる
+   ケース）も certificate_id 経由の懸念しか検証しておらず、job_id のみの懸念では見逃しに気づけなかった。
+5. 決めたこと: `evaluateCertificateActivationGate()` の呼び出しに `jobId: ctx.reservationId` を追加し、
+   `certificateId` と両方渡すようにした（`CertificateActivationContext.reservationId` は既に部品整合性
+   判定のために取得済みで、追加のクエリは不要）。理由をコード内コメントに明記した。
+6. 捨てた選択肢: (a) この gap をそのまま OPEN_QUESTIONS.md に記録して後続タスクに送る…懸念ブロックは
+   このPRの主目的そのものであり、既に取得済みの値を渡すだけで直る単純な修正のため、範囲外送りは不採用。
+7. 判断理由: 自分で書いたテストは「自分が想定したケース」しか検証しないため、想定外の分岐（4系統中2系統が
+   別のIDしか持たない）を見逃す。第三者視点のレビューがこの種の見落としに強いことを確認した実例。
+8. まだ答えが出ていないこと: なし（このPRのスコープ内で修正完了）。
+9. 公開区分: 公開可（「自分で書いたロジックを自分でレビューしても見えない穴がある」という一般論として
+   発信可。テーブル名・関数名の詳細やテナント固有情報は書かない）
+
+## 2026-08-31 Certificate Gate (IMP-028) を証明書発行の本番4経路すべてに配線
+1. 日付: 2026-08-31
+2. 起きたこと: v2.0 §19.4 / ADR-0005 が求める「正式証明の発行可否はバックエンド単一評価器が判定する」
+   という設計は、評価器本体（`gateEvaluator.ts`）自体は既に実装・テスト済みだったが、証明書を
+   `active` にする実際の経路（本番APIルート3本+AI自動発行1本）はどれもこの評価器を一度も呼んでおらず、
+   旧来の個別チェック（写真必須のみ）を経路ごとに手書きしていた。「型基盤はあるが本番配線ゼロ」という、
+   このセッションで繰り返し見つかっているパターンの一例だった。
+3. 以前の考え: 写真必須チェック（`certificateHasRequiredPhotos`/`certificateHasRequiredBeforeAfterMedia`）
+   と走行距離必須チェックが各経路に個別実装されていれば、実務上のブロックとしては足りていると
+   見なされていた。懸念（`hasUnresolvedConcerns`, IMP-026）・部品整合性（`derivePartsIntegrityOk`,
+   IMP-040）は実装済みだったが、証明書発行の判定には一度も接続されていなかった。
+4. 違和感・問題: (a) 経路ごとに手書きされたチェックは今後経路が増えるたびに漏れる構造だった
+   （実際、既存の `activationGates.test.ts` は過去に走行距離ゲートの数え漏れを2回検出した実績が
+   あり、同じ構造的リスクが Certificate Gate 自体にも当てはまった）。(b) `evaluateCertificateGate()`
+   を単純に「未署名の証明書は署名済みでないとダメ」（customer_confirmation_current）として配線しようと
+   すると、`src/lib/signoff/state.ts` の `canRequestSignature` が「証明書は active であること」を
+   署名依頼の前提にしている設計と衝突し、発行→署名→発行の循環デッドロックになることが判明した。
+   (c) `workflow_completed` は `reservations.status`/`work_completed_at` から機械的には出せるが、
+   現場が実際に完了報告を確実に行ってから証明書を発行しているかの運用実態が確認できなかった。
+5. 決めたこと: (a) `evaluateCertificateActivationGate()`（`src/lib/certificates/activationGate.ts`）を
+   新設し、写真・懸念・部品整合性の3条件を実データから組み立てて `evaluateCertificateGate()` に渡す
+   処理を1箇所に集約。(b) 証明書を active化する本番4経路すべて（`admin/certificates/status`・
+   `mobile/certificates/[id]/activate`・`certificates/activate-by-key`・AI自動発行
+   `certificateRecordAuto.ts`）をこのヘルパー経由に統一。AI自動発行経路は従来「insertと同時に
+   active行を作る」設計だったため、他3経路と同じ「作成はdraft→gateを通してからactiveへupdate」の
+   形に分離した（現状は自動発行の適格条件自体が常にfalseのため挙動は変わらないが、将来その条件が
+   満たされるようになったときに Gate を必ず経由する構造にした）。(c) `activationGates.test.ts` の
+   既存の構造走査（発行経路をソースから機械的に数える）に、全経路が
+   `evaluateCertificateActivationGate(` を呼ぶことを検証する項目を追加した。(d)
+   customer_confirmation_current・workflow_completed・payment_policy_met・no_pending_corrections
+   は配線せず、理由を `activationGate.ts` のコメントと OPEN_QUESTIONS.md に明記して意図的にスタブの
+   ままとした。
+6. 捨てた選択肢: (a) customer_confirmation_current を「署名済みかどうか」として即座に配線する
+   …signoffフローとの循環デッドロックにより証明書が永久に発行不能になるため不採用。(b)
+   workflow_completed を機械的に配線する…現場の運用実態が未確認のまま配線すると、正当な発行を
+   広く止めるリスクがあるため見送り。(c) AI自動発行経路をinsert時にactive判定するロジックを
+   そのまま残し、Certificate Gateの構造テストの対象から除外する…ADR-0005が求める「単一判定源」
+   の趣旨に反し、将来その経路が実際に有効化されたときにGateを迂回する抜け道になるため不採用。
+7. 判断理由: 「バグ修正は症状でなく根因」。写真チェックの重複実装という症状ではなく、
+   「Certificate Gateという単一判定源が実在するのに誰も呼んでいない」という根因に対応した。
+   configuredでない条件（customer_confirmation_current等）は、実データが無いのに配線すると
+   フェイルクローズで本番発行を止めるか、間違った代替ロジックでフェイルオープンにするかの
+   どちらかの誤りを生むため、「わからないことは推測で埋めない」の原則に従い意図的なスタブとして
+   残し、理由を記録した。
+8. まだ答えが出ていないこと: workflow_completedの配線に必要な現場の完了報告運用実態の確認。
+   customer_confirmation_currentの配線に必要なsignoffフローの設計変更方針（代表判断が必要）。
+   payment_policy_metの配線に必要な合算払い×paymentState導出の設計（IMP-027、既存OPEN_QUESTIONS）。
+   詳細はOPEN_QUESTIONS.md「Certificate Gate (IMP-028) 本番配線後も残る3条件の未接続」参照。
+9. 公開区分: 公開可（「型基盤はあるが本番配線ゼロ」というパターンと、それを検出する構造テスト
+   （ソースを走査して発行経路を機械的に数える）の設計、署名フローとの循環依存を配線前に気づいた
+   経緯は発信可。テナント名・店舗名・顧客情報・具体的な実装コード全文の転記は不可）
+
+## 2026-08-31 PR #1010 へ Codex 指摘8件目（3件同時）: JSDocの具体的すぎる記述を撤回し簡潔化
+
+1. 日付: 2026-08-31
+2. 起きたこと: Codex からさらに3件同時: (1) `runCycleInvoices()` は `billing_method='invoice'` かつ `closing_day`・`linked_tenant_id` が揃った `job_orders` のみを扱うが、`PaymentPolicyContext`/`evaluateB2B()` の対象はそれより広い（`job_orders` に限らない一般の corporate 顧客）ため、この関数を「合算払い全般の根拠」として引用するのは範囲を超えていた。(2) JSDoc に書いた `/admin/documents/share` というページは実在せず（実際は `/admin/documents/[id]` の共有ダイアログ、`/admin/documents/share` は API エンドポイント名）。(3) `payment_terms_days = 0`（`customerCreateSchema` で許容、ユニットテストでも明示的にカバー）のとき `dueDateFromClosing()` は締め日そのものを返すため、「決済は締め日よりさらに先になる」という一般化は成り立たない。
+3. 以前の考え: 直前まで6回、JSDoc中の具体的な記述（決済/請求のタイミング、参照先の関数・URL）を1つずつ事実に合わせて訂正し続ければ正確な説明にたどり着けると考えていた。
+4. 違和感・問題: 具体的な事実を書けば書くほど、検証可能な（＝間違いうる）主張が増える。今回の3件は、直前までの訂正で導入した具体的な記述（`runCycleInvoices()` を一般的根拠として引用、`/admin/documents/share` という具体的パス、「決済はさらに先」という時間関係の一般化）がいずれも新たな不正確箇所を生んだもので、修正のたびに新しい具体性がまた新しい間違いの種になるという収穫逓減の状態に入っていた。
+5. 決めたこと: JSDoc の当該段落を簡潔化する方向に転換した。具体的な URL・関数名・タイミングの主張を挙げるのをやめ、「この例外の根拠は job_orders の請求書生成パスでのみ確認済みで、一般の corporate 顧客への一般化は未検証（支払サイト次第で決済期日が締め日そのものになるケースもある）」という、検証済みの範囲を超えて主張しない書き方に改め、詳細は当時点で既に十分に正確な `OPEN_QUESTIONS.md` へ委ねた。
+6. 捨てた選択肢: さらに `payment_terms_days=0` のケースなどを個別に書き足して精緻化する案 — 今回の学びの通り、具体的な記述を積み増すほど新たな間違いの入り込む余地が増えるため、JSDoc 自体は簡潔な要約にとどめ、詳細な事実関係は変更頻度の低い OPEN_QUESTIONS.md 側に集約する方針に切り替えた。
+7. 判断理由: コードコメント（JSDoc）は「なぜこの分岐があるか」を読み手に伝える最小限の情報に留め、時間とともに変わりうる・検証に手間がかかる具体的事実（他モジュールの内部実装、UIのURL、数値の境界条件）は事業ログ側に集約する方が、将来のドリフト（コードは変わったがコメントは古いまま）に強い。
+8. まだ答えが出ていないこと: CANCELED を合算払い例外に含めてよいか（製品判断）。closing_day 未設定（＝仕様上の都度扱い）の consolidated 顧客の扱い。合算払いジョブの paymentState の導出元。一般の corporate 顧客（job_orders 以外）に同じ「決済は後」という前提が当てはまるか。
+9. 公開区分: 公開可
+
+## 2026-08-31 PR #1010 へ Codex 指摘7件目: JSDocの「請求書を発行し」が「下書き生成」の誤りだったのを訂正
+
+1. 日付: 2026-08-31
+2. 起きたこと: Codex から、直前の訂正で書いた「締め日に合算請求書を発行し」という表現も不正確だと指摘された。`runCycleInvoices()`（`cycleInvoice.ts:47-49`）自身のコメントに「**下書き**で生成する。確認後、発行元が `/admin/documents/share` から送付する」と明記されている——締め日に起きるのは下書き生成のみで、実際に顧客に届く「発行（送付）」はスタッフの確認・送信操作を経てさらに後になる。
+3. 以前の考え: 直前の訂正で「決済」と「請求」を区別したところまでは正しかったが、「請求書を発行する」という表現自体が、実際には「下書きを生成する」という、まだ顧客に届いていない段階を指していることまでは確認していなかった。
+4. 違和感・問題: 皮肉なことに、自分自身が数分前に書いた DECISION_LOG エントリ（本ファイルの直前のエントリ）で `runCycleInvoices()` の「下書き」という性質を正確に引用していたにもかかわらず、`policy.ts` の JSDoc 側では「発行」という、それより強い（顧客への到達を含意する）言葉を使ってしまっていた。同じ事実を別の場所に書き写す際に精度が落ちる、という典型的な失敗。
+5. 決めたこと: JSDoc を「締め日に合算請求書を下書き生成し（確認後に発行元が送付）」に訂正し、「締め日はあくまで請求書の下書き生成日であり、発行日でも決済日でもない」と明記した。
+6. 捨てた選択肢: なし（記述の訂正のみ）。
+7. 判断理由: 「下書き生成」「発行（送付）」「決済（入金）」は請求フローにおける3つの異なる段階であり、Payment Policy の判断根拠としてこの区別を曖昧にすると、CANCELED を含む例外の妥当性判断そのものが不正確な前提の上に立ってしまう。既に自分が確認済みの事実（DECISION_LOG の直前エントリ）を別の場所へ書き写すときも、同じ精度を保つ必要がある。
+8. まだ答えが出ていないこと: CANCELED を合算払い例外に含めてよいか（製品判断）。closing_day 未設定（＝仕様上の都度扱い）の consolidated 顧客を Payment Policy が `orderInvoice.ts` と同様に per-order 扱いへ揃えるべきか。合算払いジョブの paymentState の導出元。
+9. 公開区分: 公開可
+
+## 2026-08-31 PR #1010 へ Codex 指摘6件目: 「支払サイト最大30日」「closing_day未設定=設定不備」という2つの誤りを訂正
+
+1. 日付: 2026-08-31
+2. 起きたこと: Codex からさらに2件: (1) 直前の訂正で「決済は最大30日後」と書いたが、`payment_terms_days` は `customerCreateSchema`（`customer.ts:91`）で `optionalInt(0, 180)` — 0〜180日まで設定可能で、30日はあくまで未設定時の既定値（`cycleInvoice.ts` の `DEFAULT_TERMS_DAYS`）に過ぎない。(2) OPEN_QUESTIONS.md で `closing_day` 未設定の consolidated 顧客を「設定不備データ」と表現したが、マイグレーション `20260720000000_customers_payment_cycle.sql` の列コメントは「NULL は締め日未設定＝都度扱い」と明記しており、これは不備ではなく仕様として定義された正当な状態だった。
+3. 以前の考え: 30日という数字を `DEFAULT_TERMS_DAYS` の値のまま「最大」と混同し、また `closing_day` が null の状態を（`isConsolidatedBilling()` が false を返すことから）単純に「本来 consolidated のはずなのに設定が足りていない」という否定的な状態と決めつけていた。
+4. 違和感・問題: (1) はスキーマの実際の許容範囲（`optionalInt(0, 180)`）を確認せずデフォルト値を上限と取り違えた。(2) はマイグレーション自体のコメントという一次情報源を確認せず、コードの分岐（`isConsolidatedBilling()` が false になる）だけから「この状態は望ましくない」という価値判断を導いてしまっていた。
+5. 決めたこと: DECISION_LOG・OPEN_QUESTIONS.md の該当箇所を訂正: 支払サイトは「設定された日数分（0〜180日、既定30日）」に、`closing_day` 未設定は「マイグレーションのコメントが明記する、仕様として定義された都度扱いへのフォールバック」に書き改めた。
+6. 捨てた選択肢: なし（記述の訂正のみ）。
+7. 判断理由: スキーマの制約やマイグレーションのコメントのような一次情報源を確認せずに、コードの一部の値（デフォルト値、ある関数がfalseを返す分岐）だけから範囲や妥当性を推測すると、今回のように事実と異なる、かつ判断を誤った方向に導きかねない記述になる。
+8. まだ答えが出ていないこと: CANCELED を合算払い例外に含めてよいか（製品判断）。closing_day 未設定（＝仕様上の都度扱い）の consolidated 顧客を Payment Policy が `orderInvoice.ts` と同様に per-order 扱いへ揃えるべきか。合算払いジョブの paymentState の導出元。
+9. 公開区分: 公開可
+
+## 2026-08-31 PR #1010 へ Codex 指摘5件目: JSDocの「決済は締め日に行う」という自作の誤記を訂正
+
+1. 日付: 2026-08-31
+2. 起きたこと: Codex から、`policy.ts` の JSDoc に自分で書き足した「決済は締め日に別途まとめて行うため」という一文が事実誤認だと指摘された。`cycleInvoice.ts` を確認したところ、`dueDateFromClosing()` は支払期限を「締め日 + payment_terms_days（設定が無ければ既定30日、設定可能な範囲は `customerCreateSchema` で0〜180日）」で計算しており、締め日当日に行われるのは合算請求書の**下書き生成**のみで、決済（入金）はさらにその後（設定された支払サイト分、最大180日後まであり得る）である。
+3. 以前の考え: `evaluateB2B()` 既存コメントの「請求は後」という正確な表現を自分で言い換える際に、「請求」と「決済」を同じ意味として扱ってしまっていた。
+4. 違和感・問題: 既存の `evaluateB2B()` インラインコメントは「請求は後」と正確に書かれていたのに、自分が新たに書いた JSDoc では「決済は締め日に...行う」と誤って言い換えてしまっていた。この誤記は、CANCELED を例外に含めてよいかという判断の材料（＝「決済状態と無関係」の理由づけ）に事実誤認を混入させる点で軽視できない。
+5. 決めたこと: JSDoc の当該箇所を「締め日に合算請求書を発行し、決済自体はさらにその支払期限まで先になるため」に訂正し、`cycleInvoice.ts` の `dueDateFromClosing()` を参照先として明記した。OPEN_QUESTIONS.md・テストコメント中の同種の表現（`evaluateB2B()` の既存コメントを引用した箇所）はいずれも「請求」を正しく使っており訂正不要だったことも確認した。
+6. 捨てた選択肢: なし（記述の訂正のみ）。
+7. 判断理由: 「請求（invoice発行）」と「決済（payment受領）」は異なるイベントであり、Payment Policy というモジュールの性質上この区別を誤ると、まさに今回の CANCELED 判断の前提を歪める。既存の正確な表現をわざわざ不正確な言い換えに変えてしまわないよう、今後は既存コメントの言葉遣いをそのまま踏襲する。
+8. まだ答えが出ていないこと: CANCELED を合算払い例外に含めてよいか（製品判断）。closing_day 未設定の consolidated 顧客の扱い。合算払いジョブの paymentState の導出元。
+9. 公開区分: 公開可
+
+## 2026-08-31 PR #1010 へ Codex 指摘4件目: 「CANCELED含みは偶発的」「predicate同期の取り決め」という2つの過剰主張を訂正
+
+1. 日付: 2026-08-31
+2. 起きたこと: Codex からさらに2件: (1) OPEN_QUESTIONS.md で「CANCELED が例外に含まれるのは偶発的（検討漏れ）の可能性が高い」と書いたが、`evaluateB2B()` 自身のコメント（「合算払いは『証明書を今出す、請求は後』なので決済状態は無関係」）は UNKNOWN 限定の理由付けではなく一般的な理由付けであり、文面上は CANCELED にも等しく適用される——「検討漏れ」と断定する根拠がなかった。(2) `policy.ts` の JSDoc で「signoff/state.ts とは意図的に同期させる対」と書いたが、実際に同期を明記したコメントは支払いサイクル未設定時の**案内文言**（エラーメッセージ）のみで、判定ロジック（predicate）自体を同期させる取り決めがあるとは書かれていない。
+3. 以前の考え: UNKNOWN について明示的なコメントがあり CANCELED について同様のコメントがないことから「CANCELED は検討されていない」と推論し、また「文言を揃えること」という指示を「判定ロジック全体を同期させる意図」まで拡大解釈していた。
+4. 違和感・問題: どちらも、コード中の一つの記述から必要以上に強い（範囲の広い）結論を導いてしまっていた。(1) はコメントの実際の文面（一般的な理由付け）を確認せずに「限定的」と決めつけ、(2) は「文言」という限定された対象への指示を「predicate」という別の対象にまで広げて解釈していた。
+5. 決めたこと: OPEN_QUESTIONS.md を再訂正: 「CANCELED を含めることが正しいか」という製品判断は残しつつ、「検討漏れ」「偶発的」という断定を削除し、「一般的な理由付けが文面上はCANCELEDにも及ぶが、それが本当に妥当かは製品判断」という中立的な書き方に変更。`policy.ts` の JSDoc・OPEN_QUESTIONS.md 訂正2 の該当箇所も「predicate自体を同期させる取り決めがあるわけではなく、同期が明記されているのは案内文言のみ」と訂正。
+6. 捨てた選択肢: なし（記述の訂正のみ）。
+7. 判断理由: コード中のコメントを引用する際は、その適用範囲（何を対象にしているか）を正確に読み取る必要がある。「UNKNOWNの例だけ書かれている」ことは「CANCELEDが検討されていない」ことの証拠にはならず（一般論の後に代表例が1つ書かれているだけかもしれない）、「文言を揃えよ」という指示は「文言」という名詞が指す範囲を超えて解釈すべきではない。
+8. まだ答えが出ていないこと: CANCELED を合算払い例外に含めてよいか（製品判断）。closing_day 未設定の consolidated 顧客の扱い。合算払いジョブの paymentState の導出元。
+9. 公開区分: 公開可
+
+## 2026-08-31 PR #1010 へ Codex 指摘3件目: 「JSDocと実装は矛盾していない」「3基準の統一は誤った結論」を訂正
+
+1. 日付: 2026-08-31
+2. 起きたこと: 直前2回の訂正に対し Codex がさらに2件指摘: (1) 自分が既に `policy.ts` の JSDoc に「合算払いは例外」と明記済みにもかかわらず、OPEN_QUESTIONS.md やテストコメントは依然「JSDocは条件不成立と謳っているが実装は矛盾して成立してしまう」という、既に解消したはずの矛盾を蒸し返す書き方のままだった。(2) 直前の訂正で「3箇所の判定基準を統一する必要がある」と書いたが、`isConsolidatedBilling()` の `closing_day` 必須という条件は `runCycleInvoices()`（`cycleInvoice.ts:66-71`）が `closing_day` null の顧客を明示的に除外するための**ルーティング用の技術的前提**であり、「合算払いの定義」そのものではない。`signoff/state.ts`/`policy.ts` は別の関心事（UI表示・支払いゲート）であり、`closingDay` を見ないことが不当だとは限らない。
+3. 以前の考え: JSDoc を訂正済みであることと、OPEN_QUESTIONS.md 側の記述をそれに合わせて更新することは別作業だと認識できておらず、後者を更新し忘れていた。また「3箇所で判定基準が食い違っている」という事実を発見した勢いで、深く検証せずに「統一が必要」と結論づけていた。
+4. 違和感・問題: (1) は単純な同期漏れ。(2) はより本質的で、「複数箇所で同じに見える条件式が違う」という事実の発見と、「だからそれらは統一されるべきだ」という規範的結論は別物であり、後者を導くには各呼び出し元の目的（ルーティング vs ゲート判定）まで検証する必要があった。それをせずに「統一」を結論として書いてしまった。
+5. 決めたこと: OPEN_QUESTIONS.md の冒頭説明を「JSDocと実装は矛盾していない、未解決なのはCANCELEDをこの例外に含めてよいかという製品判断」に書き直し、テストコメントも同様に訂正。「3箇所の統一が必要」という記述を撤回し、`isConsolidatedBilling()` の `closing_day` 必須がルーティング固有の技術的前提であることを明記した上で、「`closing_day` 未設定の consolidated 顧客を Payment Policy がどう扱うべきか」という、より正確に絞り込んだ論点に置き換えた。
+6. 捨てた選択肢: なし（今回は記述の訂正のみで、コードの変更は行っていない）。
+7. 判断理由: 「事実の発見」と「規範的結論」を区別せず、検証が浅いまま結論を書いてしまったのが今回の誤りの共通点。CLAUDE.md の「自己攻撃」原則に立ち返り、自分の直前の結論（3箇所統一が必要）を疑い、各呼び出し元の実際の使われ方（cycleInvoice.ts の除外条件）を確認したところ、結論が崩れた。
+8. まだ答えが出ていないこと: `closing_day` 未設定の consolidated 顧客を Payment Policy がどう扱うべきか。合算払いのジョブの `paymentState` を何から導出するか。CANCELED をこの例外に含めてよいか。
+9. 公開区分: 公開可
+
+## 2026-08-31 PR #1010 へ Codex 指摘2件目: 「合算払いかどうか」の判定基準が3箇所で食い違っていることが判明
+
+1. 日付: 2026-08-31
+2. 起きたこと: 直前の訂正（本ファイル同日の別エントリ）に対し Codex がさらに2件指摘: (1) CANCELED の発生源を「帳票」「POS取引」の2つに限定した記述も、`paymentState` が正準値を直接受け取る型である以上、将来別の経路が追加される可能性を排除できず、網羅列挙と読めてしまう。(2) より重要な指摘: `orderInvoice.ts` の `isConsolidatedBilling()` は `billing_cycle === "consolidated"` **かつ** `closing_day != null` を要求するが、`closing_day` は顧客登録スキーマ上任意項目であり null もあり得る。しかも `evaluateB2B()` は `closingDay` を入力に一切取らず `billingCycle` だけで判定している。調査の結果、`evaluateB2B()` のこの判定基準は実は本番稼働中の `src/lib/signoff/state.ts`（④会計ステップ、`policy.ts` のコメントで明示的に同期対象とされている）と同じであり、`orderInvoice.ts` 側がより厳格な独自基準を持つ、という3箇所の定義不一致が判明した。
+3. 以前の考え: 「合算払いの取引先には per-order の帳票自体を作らない」という記述を、`billing_cycle === "consolidated"` の顧客全般に一般化できると考えていた。
+4. 違和感・問題: 実際に確認できたのは `orderInvoice.ts` が扱う `job_orders`（テナント間コラボレーション受発注）の請求書生成パスのみで、通常の法人顧客の通常のジョブについて帳票が実際に作られるかどうかは未確認のまま一般化していた。また `signoff/state.ts` が本番稼働中で、`policy.ts` の判定がそれと意図的に同期されている既存資産だと確認せずに「evaluateB2B の判定基準が甘い」という前提で記述を進めていた。
+5. 決めたこと: OPEN_QUESTIONS.md を再訂正: (a) CANCELED の発生源列挙は「現時点で確認できている例」であり網羅的でないと明記。(b) 「合算払いかどうか」の判定基準が `signoff/state.ts`/`policy.ts`（billingCycle のみ）と `orderInvoice.ts`（billingCycle + closingDay 必須）の2種類あり、3箇所で食い違っていることを明記。(c) 「per-order 帳票が作られない」という主張は `job_orders` の請求書生成パスでのみ直接確認済みで、通常の顧客の通常ジョブに一般化できるかは未検証と明記。`policy.ts` の JSDoc とテストコメントも同様に訂正。
+6. 捨てた選択肢: `evaluateB2B()` に `closingDay` チェックを追加し `orderInvoice.ts` の基準に揃える案 — `evaluateB2B()` の現在の判定基準は本番稼働中の `signoff/state.ts` と意図的に同期された既存資産であり、片方だけを `orderInvoice.ts` 基準に変更すると `policy.ts` のコメントが明記する同期関係を壊す。どちらの基準が Certificate Gate にとって正しいかはコードから一意に決まらず、製品判断が必要なため、推測で書き換えることは避けた。
+7. 判断理由: 3箇所の定義不一致という事実そのものはコードを読めば確実に確認できるが、「どちらを正とすべきか」（あるいは目的ごとに別の基準で正しいのか）は業務上の意図次第であり、コードのみからは判定できない。Codex の指摘を受けてもなお、確証のない一般化を安易に行わないという同じ原則を貫いた。
+8. まだ答えが出ていないこと: 「合算払いかどうか」の統一判定基準（billingCycle のみか、closingDay も必須か）。通常の法人顧客の通常ジョブで billing_cycle=consolidated のとき、帳票（documents行）が実際に作られるかどうか。
+9. 公開区分: 公開可
+
+## 2026-08-31 PR #1010 へ Codex 指摘: CANCELED の発生源を帳票取消に限定していた前提を訂正
+
+1. 日付: 2026-08-31
+2. 起きたこと: PR #1010（evaluateB2B の合算払い×CANCELED不整合を OPEN_QUESTIONS へ記録）に Codex から指摘: (1) CANCELED の発生源を「この特定ジョブの帳票が取消/却下」（`documentStatus === "cancelled"/"rejected"`）だけに限定していたが、`derivePoSPaymentState()` は POS 取引が `voided` のときも CANCELED を返す（`derivePaymentState.ts:78-79`）ため、帳票を介さない発生源もある。(2) より根本的に、`src/lib/orders/orderInvoice.ts` の `isConsolidatedBilling()` 分岐は合算払いの取引先には per-order の請求書（documents 行）自体を作らない設計であり、合算払いのジョブにはそもそも `deriveDocumentPaymentState()` が読む帳票が存在しないケースがある。
+3. 以前の考え: CANCELED は「この特定ジョブの帳票が取消/却下された」ことだけを意味すると仮定して OPEN_QUESTIONS.md に記録していた。
+4. 違和感・問題: `orderInvoice.ts` を確認しておらず、合算払いのジョブに実際に帳票が存在するのかどうかを検証しないまま「帳票が CANCELED の場合」という前提で問いを立てていた。この前提が誤っている場合、そもそも設問自体が具体化できない（合算払いジョブの paymentState を何から導出するかという、より手前の設計が未着手であるため）。
+5. 決めたこと: OPEN_QUESTIONS.md のエントリを訂正し、(a) CANCELED の発生源が帳票取消/却下と POS voided の2経路あること、(b) 合算払いの取引先には per-order 帳票自体が作られない設計のため「帳票が CANCELED」という前提自体が成立しない可能性があること、(c) この判断のさらに手前に「合算払いジョブの paymentState を何から導出するか」という未設計の前提があることを明記した。`policy.ts` の JSDoc とテストコメントも同様に訂正。
+6. 捨てた選択肢: Codex の指摘を「本筋と無関係な枝葉」として無視する — 実際には自分の元の記述が技術的に不正確（発生源を一つに限定し、合算払いジョブに帳票が存在するかどうかを未検証のまま前提としていた）だったため、指摘を無視すると誤った前提のまま製品判断を仰ぐことになり不採用。
+7. 判断理由: OPEN_QUESTIONS.md に書く「判断が必要な点」は、判断者が正しく意思決定できるよう技術的前提が正確でなければならない。Codex の指摘は実際にコード（`orderInvoice.ts`, `derivePaymentState.ts`）を読んで検証済み（確実）であり、自分の記述の方が不正確だった。
+8. まだ答えが出ていないこと: 合算払いジョブの paymentState をどこから導出するか（設計未着手）。それが決まった上で CANCELED（発生源2経路とも）の扱いをどうするか。
+9. 公開区分: 公開可
+
+## 2026-08-31 未着手項目の棚卸し: templateVersion.ts の4件は既に修正済み・evaluateB2B の合算払い×CANCELEDは要確認へ
+
+1. 日付: 2026-08-31
+2. 起きたこと: 「やり切れていない所を着実に進めよう」との指示を受け、以前 `spawn_task` で登録した2件の未確認項目を調査した。(1) `task_ffa27f67`（templateVersion.ts の4件のバグ）: `git log` で確認したところ、既に PR #952 の `/code-review` 対応コミット `d381715f`（本ファイル2026-08-30付「IMP-042（#952）の code-review 指摘を修正」参照）で4件とも修正・マージ済みだった。(2) `task_d73a7356`（`evaluateB2B` の合算払い(consolidated) の CANCELED 扱いの検証）: `src/lib/payment/policy.ts` を読み、モジュールの JSDoc が「CANCELED は条件不成立」という不変条件を謳っているにもかかわらず、`evaluateB2B()` の合算払い分岐が `paymentState` を一切見ないため CANCELED でも成立してしまう不整合を確認した。
+3. 以前の考え: 両方とも「未検証・未対応」として引き継いでいた。
+4. 違和感・問題: (1) は既に対応済みの作業を古いタスク一覧が指し続けており、放置すると重複対応の無駄が発生する。(2) は UNKNOWN については「合算払いは決済状態と無関係」という明示的な理由付けコメントがコード中にあるのに対し、CANCELED についてはそのような検討の跡が一切なく、`billingCycle` チェックが `paymentState` チェックより先に来ることの結果として偶発的にバイパスされている可能性が高い——しかし「この特定ジョブの帳票が取消/却下されても合算請求には影響しない」という設計も一応あり得るため、コードだけからは正誤を判定できない。
+5. 決めたこと: (1) は完了済みと確認できたため `spawn_task` の該当提案を取り下げ。(2) は JSDoc を実態に合わせて修正（「CANCELED は条件不成立」という主張がb2b合算払いには適用されないことを明記）し、現状の挙動（CANCELED でも成立）を回帰テストで明示化した上で、それが正しい設計かどうかを `OPEN_QUESTIONS.md` に記録した（コードの修正ではなく、製品としての意図確認が必要な事項として切り出した）。
+6. 捨てた選択肢: `evaluateB2B()` を「CANCELED なら合算払いでも不成立」に書き換える案 — モジュール自身の JSDoc という「答え」に見える情報はあるが、これは他の2ポリシー（consumer/insurance）について書かれたものが後から追記された可能性があり、b2b合算払いについて実際に検討された結論という証拠がない。誤って書き換えると「合算請求に含めるジョブの証明書は個別の帳票状態と無関係に発行してよい」という別の正当な設計を壊しうるため、確証のない推測で決めることは避けた。
+7. 判断理由: CLAUDE.md の「推測で事実を補わない」「質問ルール」に従い、コードのコメントに明示的な理由付けがある分岐（UNKNOWN）とそれがない分岐（CANCELED）を区別し、後者のみを製品判断待ちとして切り出した。実害は現状ゼロ（`evaluateCertificateGate()` の本番呼び出し元が1つもないことを確認済み）。
+8. まだ答えが出ていないこと: 合算請求サイクルに含まれる特定ジョブの帳票が CANCELED の場合、そのジョブの証明書発行を成立させてよいか（OPEN_QUESTIONS.md参照）。
+9. 公開区分: 公開可
+
+## 2026-08-31 PR #1009 へ Codex レビューで発見した「capacity>1 で boothDetails が過大評価のまま」を追加修正
+
+1. 日付: 2026-08-31
+2. 起きたこと: PR #1009 の `/code-review` 対応コミット（`7daa88ee`）を Codex がレビューし、まだ残っていた矛盾を1件指摘した: `computeFleetUtilization()` はcapacity>1 のブースで `avgUtilizationPct`/`peakUtilizationPct` を `decomposeTimeBands()` ベースの定員正規化計算に直したが、`boothDetails`（`computeBoothUtilization()` 由来）は手つかずのままだったため、capacity=3 のブースに終日1件予約のケースで `avgUtilizationPct: 33` と `boothDetails[0].utilizationPct: 100` が同一レスポンス内で矛盾する。再現テストを実行し確認した（既存の `computeBoothUtilization()` は allDay 予約があると capacity に関係なく `utilizationPct: 100` を返す実装であることをソースで確認済み）。
+3. 以前の考え: 直前の修正（本ファイル同日の別エントリ）で「completed の扱い」の矛盾は解消したため、boothDetails の矛盾はすべて解消したと判断していた。
+4. 違和感・問題: 直前の修正は「completed を稼働実績に含めるか」という軸のズレだけを直しており、「capacity>1 のブースで union ベースか定員正規化ベースか」という別軸のズレは手つかずのまま残っていた。同じ関数の戻り値内で2つの独立した数値が異なる定義に基づいていたのが根本原因で、1回の修正では両方を直せていなかった。
+5. 決めたこと: `boothDetails` の構築そのものを `decomposeTimeBands()` ベースの定員正規化計算に置き換え、`avgUtilizationPct`/`peakUtilizationPct` もこの `boothDetails` から導出する構造に変更した（矛盾しようがない構造にする）。`occupiedMinutes` は「定員1枠換算の実効占有分」（`weightedOccupiedMinutes / capacity`）に正規化し、`occupiedMinutes / totalMinutes` の比率が `utilizationPct` と一致するようにした（`peakConcurrent` は `computeBoothUtilization()` の値のまま — 別の情報のため正規化不要）。回帰テストで capacity=3・終日1件予約のケースの `avgUtilizationPct`・`peakUtilizationPct`・`boothDetails[0].utilizationPct`・`occupiedMinutes`・`totalMinutes` すべてを検証。
+6. 捨てた選択肢: `boothDetails` は `computeBoothUtilization()` の値のままにして別フィールド（例: `normalizedUtilizationPct`）を追加する案 — Codex の指摘は「同じ数値が矛盾する」ことそのものが問題であり、フィールドを増やしても呼び出し側が誤って古い方（union ベース）を使うリスクが残るため不採用。boothDetails を構築し直す方が、矛盾が構造的に起きなくなる。
+7. 判断理由: 前回の修正で「一部の軸だけ直して終わり」と判断したのが甘かった——同じ関数の戻り値の整合性は、個々の指摘に場当たり的に対応するのではなく、avg/peak/boothDetails すべてを単一の計算経路から導出する構造にすることで担保すべきだった。
+8. まだ答えが出ていないこと: なし（このモジュールは本番呼び出し元ゼロのまま）。
+9. 公開区分: 公開可
+
+## 2026-08-31 PR #1009（IMP-046修正PR）の `/code-review` で発見した「boothDetails と矛盾する稼働率0%」バグを修正
+
+1. 日付: 2026-08-31
+2. 起きたこと: PR #956 の遅延レビュー6件を修正した PR #1009 に `/code-review` を実行したところ、その修正自体に新規バグが1件見つかった。`computeFleetUtilization()` の新しい定員正規化計算（`decomposeTimeBands()` 利用）はデフォルトの除外ステータス集合 `NON_OCCUPYING`（cancelled/completed/no_show を除外）で時間帯分解するが、同じレスポンス内の `boothDetails`（`computeBoothUtilization()` 由来）は completed を稼働実績に含める。再現テストを実行し、capacity=1・completed の終日予約1件で `avgUtilizationPct=0` と `boothDetails[0].utilizationPct=100` が同一レスポンス内で矛盾することを確認した。
+3. 以前の考え: `decomposeTimeBands()` は IMP-041 の `NON_OCCUPYING`（既存の定員超過検出等と同じ除外基準）をそのまま再利用すれば十分だと考えていた。
+4. 違和感・問題: `decomposeTimeBands()` はもともと「空き検索」（今後の可用性、completed は空きに戻るので除外が正しい）のために委譲された実装で、`computeBoothUtilization()`（過去の稼働実績、completed は実績としてカウント）とは判定基準が異なる。用途によって「completed を占有とみなすか」が違うのに、単一の除外集合を共有していたのが根本原因。
+5. 決めたこと: `decomposeTimeBands()` に第5引数 `excludeStatuses`（デフォルト `NON_OCCUPYING`、既存動作・既存テストは不変）を追加し、`occupancy.ts` に新しく `UTILIZATION_EXCLUDED`（cancelled + no_show のみ除外、completed は含める）を export。`computeFleetUtilization()` はこちらを渡すよう修正し、`boothDetails` と一致する値になることを回帰テストで確認。あわせて `/code-review` の他の指摘のうち、`totalCapacityMinutes` をband毎に積算していた冗長計算（`capacity` はブースごとに一定なので `booth.capacity × 営業時間` で1回計算すれば足りる）と、`loadPct` のJSDocが古い定義（実績合計/営業時間）のままだった点（実際は未着手ジョブの見積代理値を含む `totalEffective` ベース）も修正。3passのsweep（`computeBoothUtilization`/`detectCapacityConflicts`/`decomposeTimeBands`を毎ブースで独立実行）の効率化提案は見送り——`computeBoothUtilization`/`detectCapacityConflicts` は `boothSignals.ts` からも呼ばれる共有関数であり、この修正PRのスコープで統合すると影響範囲が本来のバグ修正を超えて広がるため。
+6. 捨てた選択肢: `decomposeTimeBands()` 自体のデフォルト除外基準を `UTILIZATION_EXCLUDED` に変更する案 — 既存テスト（「cancelled/completed/no_show は除外」）が明示的に検証している「空き検索」用途の意味論を壊すため不採用。呼び出し側で除外集合を選べるようにする現在の設計の方が、将来 capacity>1 の空き検索に `decomposeTimeBands()` を使う際にも両用途に対応できる。
+7. 判断理由: 同じ関数を異なる意味論（過去の実績 vs 今後の可用性）で共有していたのが矛盾の根本原因であり、パラメータ化して呼び出し側に意味論を明示させるのが、既存動作を壊さず両用途に対応する最小の修正。
+8. まだ答えが出ていないこと: なし（このモジュールは本番呼び出し元ゼロのまま。統合時に UTILIZATION_EXCLUDED の使用箇所が増える可能性はある）。
+9. 公開区分: 公開可
+
+## 2026-08-30 PR #956（IMP-046）マージ後の遅延Codexレビュー8件のうち6件を修正。残り2件は指標定義の決め直しが必要としてOPEN_QUESTIONSへ
+
+1. 日付: 2026-08-30
+2. 起きたこと: PR #956（IMP-046、`dc6deaf0` としてマージ済み）に対しマージ後に遅延到着したCodexレビュー8件（全件P2）が `OPEN_QUESTIONS.md` に未修正のまま記録されていた（`spawn_task` が2回連続タイムアウトしたため）。今回改めて全件を直接検証し、うち6件を機械的なバグとして修正: (1) `computeFleetUtilization()` — `computeBoothUtilization()` の union ベース計算が capacity>1 のブースで稼働率を過大評価する問題を、既存の `decomposeTimeBands()`（capacity対応の時間帯分解、IMP-041から委譲されていたが未使用のまま放置されていた）を使った定員正規化計算に修正。(2) `computeStaffCapacity()` にジョブ0件のスタッフを含める `allStaffIds` 省略可能パラメータを追加。(3) 過負荷/遊休判定を丸め後の `loadPct` ではなく丸め前の比率で行うよう修正（境界値誤分類の解消）。(4) `actualMinutes: null`（未着手）のジョブは見積時間を負荷の代理値に使うよう修正（`totalActualMinutes` 自体は実績のみを表すため変更なし）。(5) `computeAvgReviewWaitHours()`/`computeAvgCycleTimeHours()` の不正タイムスタンプによる `NaN` 汚染を `Number.isFinite()` チェックで防止。(6) `computeDailyThroughput()` の丸め精度を小数第1位→第2位に引き上げ、長期間・低件数で非ゼロの実績が0に潰れる問題を解消。
+3. 以前の考え: `spawn_task` が使えなかったため `OPEN_QUESTIONS.md` に記録するだけで終わっており、実際の修正は先送りになっていた。
+4. 違和感・問題: 残り2件（`computeVerifiedRate()` の REVOKED 扱い、`computeSlaComplianceRate()` の `at_risk` 扱い）は、指摘自体が「単純な救済不可、定義自体の決め直しが必要（設計判断が要る）」と明記しており、コードを直すだけでは解決しない——`src/lib/domain/transitions.ts` を確認したところ REVOKED は VERIFIED を経由せず ISSUING/VERIFYING からも遷移可能であることを確認し、単純に「REVOKEDを分子に含める」という直感的な修正が誤りであることを検証した。
+5. 決めたこと: 機械的に検証・修正可能な6件はこのまま修正して1本のPRにまとめる。残り2件（指標定義の決め直しが必要な2件）は `OPEN_QUESTIONS.md` に新規エントリとして記録し、製品としての意図確認を待つ。実害は現状ゼロ（`src/lib/analytics/` は本番のどのAPIルートからも呼び出されていない、呼び出し元ゼロを確認済み）。
+6. 捨てた選択肢: (a) 8件全部をこの場で「もっともらしい」解釈で決め切る — REVOKED/at_risk の2件は本当に製品判断が必要な内容であり、コードの中に答えがない以上、推測で決めるべきではないと判断し不採用。(b) 6件の修正を見送り8件まとめて先送りする — 6件は明確なバグで実装済みの他機能（`decomposeTimeBands()` 等）を活用すれば直せるため、先送りする理由がない。
+7. 判断理由: CLAUDE.md の「推測で事実を補わない」「質問ルール」に従い、コードから答えが出せない製品判断（指標の定義）は推測せず OPEN_QUESTIONS に切り出す一方、コードを読めば根本原因も正しい修正も一意に定まる6件はその場で直すべきと判断した。
+8. まだ答えが出ていないこと: `computeVerifiedRate()`のREVOKED扱いの正式な定義（現在VERIFIED件数ベースか、過去に一度でもVERIFIEDに達した件数ベースか）、`computeSlaComplianceRate()`のat_risk扱いが意図的な厳格判定か命名変更が必要か。
+9. 公開区分: 公開可
+
+## 2026-08-30 未対応アラートは「アラートのみ・既存 notifications 流用」を先に。担当割り当ては後続に分離
+
+1. 日付: 2026-08-30
+2. 起きたこと: 「LINE属人性の低減③ 未対応アラート／担当割り当て」の実装にあたり、スコープを検討した。属人性の主因は「特定の担当者が受信箱を見ていないと止まる」こと。
+3. 以前の考え: 選択肢のラベルは「未対応アラート／担当割り当て」で両方を含んでいた。
+4. 違和感・問題: 「担当割り当て」は assignee カラム/テーブル・割り当て UI・担当別フィルタなど複数サーフェスにまたがる大きめの機能で、マイグレーションも伴う。一方「未対応アラート」だけでも属人性の主因（誰も見ないと止まる）はほぼ解消でき、既存の通知基盤（`notifications` テーブル + `notifyStaffOfAiAction`）とcron骨格の再利用でマイグレーション無しに実装できる。
+5. 決めたこと: (a) まず**未対応アラート（SLA通知）**を1本のPRで実装。最新メッセージが inbound で既定60分以上未返信のLINEスレッドを検出し、既存の管理画面通知でスタッフに知らせる。dedupは notification_logs（未返信メッセージID単位）。返信すると最新が outbound になり自然に外れる。(b) 担当割り当て（誰が対応するかの明示・担当別ビュー）は別PRに分離（schema/UI 判断が必要）。
+6. 捨てた選択肢: アラートと担当割り当てを1PRで同時に入れる案（スコープ過大・マイグレーション/ UI 変更が絡み、レビュー・リスクが増える）。Slack 直通知にする案（テナントごとの webhook 解決の配線が要る。まずは既存の in-app 通知で十分。Slack は後続オプション）。read_at で「既読だが未返信」を判定する案（返信有無＝outbound の有無で判定する方が直接的で、既読フラグの信頼性に依存しない）。
+7. 判断理由: 属人性低減の主因を最小・低リスクで潰せるのがアラート部分。既存資産（notifications/cron/notification_logs dedup）をそのまま使え、マイグレーションを避けられる。担当割り当ては価値はあるが独立して足せるため急がない。
+8. まだ答えが出ていないこと: 担当割り当て（assignee 付与・担当別フィルタ・再割り当て）の設計。通知先を Slack/メール/プッシュへ広げるか。アラート閾値（既定8時間・代表要望で60分→8時間に変更）やcron頻度（30分毎）をテナント設定にするか。要返信でないメッセージ（お礼のみ等）の除外精度。
+9. 公開区分: 公開可（機能スコープの設計判断。顧客・機密情報なし）。
+
+## 2026-08-30 IMP-054（#961）へ Codex レビュー4件を反映。P0充足サマリを「7/10実装済み」から「3/10実装済み」へ再是正
+
+1. 日付: 2026-08-30
+2. 起きたこと: PR #961 マージ時の自己是正（本ファイル同日の別エントリ参照）で requirement-trace.md の P0 充足サマリを「10項目中9項目実装済み」から「7項目実装済み」へ修正し PR を公開したところ、Codex から4件の指摘を受けた: (1) Invite/OTP/Biometricを✅としたが、モバイルの `apps/mobile/src/app/(auth)/verify-otp.tsx` は実際のOTP検証APIを呼ばずタイムアウトのみで「検証済み」にするプレースホルダのままで6桁ならどんな値でも通り、`biometric-setup.tsx` も生体認証登録をスキップ可能。(2) Payment+Certificate+VERIFIEDを部分としたが、IMP-027だけでなくIMP-028（Certificate Gate）も独立して未完了 — `gateEvaluator.ts` の各条件は `?? true`（フェイルオープン）で判定され、`evaluateCertificateGate()` を呼ぶ本番ルートが1つも存在しない。(3) Role/Permissionを✅としたが、§16監査行は既に「部分」と明記しており、新設した `operationRisk()`/`storeScope.ts` は本番の認可強制経路から呼ばれていない（membership/eventsでの型利用のみ）。(4) Basic Notificationsを✅としたが、§13監査行は既に「部分」と明記しており、統合dispatch未実装・既存個別通知モジュールは中央エンジンへ未移行。
+3. 以前の考え: requirement-trace.md の全36 IMPタスク行を実際に読み直して「5タスクが部分」と是正すれば十分だと考えていた。P0充足サマリの10項目についても、対応するIMPタスクが「実装済み」であれば連動して✅にしてよいと判断していた。
+4. 違和感・問題: この判断は誤りだった。本書には既に §1〜§24 のセクション単位でより粒度の細かい監査行が存在しており（例: §13 Notification、§15 認証、§16 Permission、§17 Localization はいずれも既に「部分」と明記済み）、P0サマリはそれらと直接照合せず、IMPタスク行だけを見て独自に判定していたため、既存の詳細監査結果と矛盾する結論（「実装済み」）を出してしまっていた。加えて、Invite/OTP/Biometricの実際のモバイル画面までは確認しておらず、型基盤（オンボーディング状態機械等）が存在することと、それが実際の画面コードから呼ばれていることを混同していた。
+5. 決めたこと: P0充足サマリの全10項目を、対応する既存の§行の状態（実装済み/部分/なし）と直接照合する方式に改め、矛盾を解消した。結果、10項目中「実装済み」と言えるのは3項目（Workflow+Photo Evidence+Voice・Vehicle・Customer Confirmation）のみで、残り7項目（Invite/OTP/Biometric・Home/Work List/Job Hub・Payment state+Certificate+VERIFIED・Role/Permission・Basic Offline/Sync・Basic Notifications・Localization foundation）は部分。IMP-054行のサマリ文言も「7/10→3/10」に更新。
+6. 捨てた選択肢: Codexの指摘の一部（例: Role/Permissionの§16との矛盾）だけを直し、残り（Invite/OTP/Biometricのモバイル画面問題等）は「別タスクの責務」として今回は見送る — 4件とも独立して検証可能かつ実際に反証されたため、まとめて是正する方が一貫性を保てると判断し不採用。
+7. 判断理由: IMPタスク単位の完了（各タスク自身が定義したスコープを満たしたか）と、v2.0 §24.1 のP0要件単位の完了（そのケーパビリティが実際に本番で動くか）は別の軸であり、混同すると「型基盤は追加されたが本番未接続」の状態を「完了」と誤認する。この誤認パターンが7項目中6項目で共通して見られたことは、IMP-050〜054のような「型基盤先行」設計方針そのものが持つ構造的リスク（統合作業が後回しにされたまま追跡されなくなる）を示しており、単発のドキュメント誤記ではなく本サマリ表の設計自体を修正する必要があった。
+8. まだ答えが出ていないこと: 上記7項目の統合作業（モバイルOTP実装・Certificate Gate統合・権限強制接続・通知dispatch統合・SYNC_CENTER再設計・Payment Policy実装・i18n画面適用）の担当・優先順位は未定。
+9. 公開区分: 公開可
+
+## 2026-08-30 IMP-051（#958）の code-review 指摘を修正。コントラスト判定の丸め誤差・プレースホルダ検出の空文字スキップ・qa.ts の型/関数重複を解消
+
+1. 日付: 2026-08-30
+2. 起きたこと: PR #958（IMP-051）に `/code-review` を実行し5件の指摘を検討。うち3件を修正: (1) `checkColorPair()` が丸め後の比率（小数点2桁）で AA 判定していたため、真の比率が4.4986:1（AA未達）のペアが4.5に丸まって誤って合格判定されうる境界値バグ。(2) `findPlaceholderMismatches()` が `!baseVal || !localeVal` という falsy チェックでキー欠落と空文字（翻訳したが内容が空）を区別できず、空文字への翻訳（プレースホルダが全部消えている）を不一致として検出できなかった。(3) `qa.ts` が `src/lib/i18n/messages.ts` に既存する `MessageTree` 型・`lookup()` 関数をそのまま複製していた——両者は現状バイト単位で同一だが、`messages.ts` 側の実装が将来変わった場合に QA ツールが実際の `t()` の解決結果と無言で乖離するリスクがあった。2件は不採用と判断: `findGlossaryGaps()` の空文字チェックは指摘としては同種の falsy trap だが、用語集の未入力を「欠落」として報告する現在の挙動自体は意図通りで修正不要。`computeTranslationCoverage()` の `flattenKeys()` 二重計算は実害のない性能上の些細な無駄のみだったが、ついでに一箇所にまとめて解消した。
+3. 以前の考え: マージ直後の `tsc --noEmit` クリーンをもって型基盤としては完成と判断していた。
+4. 違和感・問題: コントラスト判定を「表示用に丸めた値」で行うと、CI のリグレッション検出という本来の目的（デザイントークンが実際に WCAG AA を満たすか）に対して境界値で false positive を生む。プレースホルダ比較の falsy チェックも同種のクラスのバグ（0/空文字/false を「値なし」と誤判定する）で、このセッション中に何度も見てきたパターンの再発。
+5. 決めたこと: (1) `checkColorPair()` は丸め前の生の比率で `meetsWcagAA()` を判定し、丸めは表示用の `ratio` フィールドにのみ適用。(2) `findPlaceholderMismatches()` の判定を `baseVal === undefined || localeVal === undefined` に変更。(3) `messages.ts` の `MessageTree`/`lookup()` を `export` し、`qa.ts` は複製を削除してそこから import。回帰テスト2件追加（境界値の色ペア、空文字翻訳のプレースホルダ検出）。
+6. 捨てた選択肢: `findGlossaryGaps()` の falsy チェックを一律 `=== undefined` に変えることも検討したが、用語集で空文字は「訳語を用意していない」と同義であり現在の挙動が正しいため見送った。
+7. 判断理由: (1)(2) はこのチェッカー/QAツールが検出すべき対象そのものを見逃す実害のあるバグ。(3) は CLAUDE.md の「既存のヘルパーを再利用せよ」という lazy dev 方針に沿った重複排除。
+8. まだ答えが出ていないこと: なし（このPRの型基盤はまだ呼び出し元ゼロで、実運用での挙動確認は今後の統合PRに委ねる）。
+9. 公開区分: 公開可
+
+## 2026-08-30 IMP-050（#957）Codex 利用上限到達後、`/code-review`（Claude 自身）で2件を追加修正
+
+1. 日付: 2026-08-30
+2. 起きたこと: Codex が利用上限に達したため、`/code-review` を実行して最終確認。2件を発見・修正: (1) 直前の hash 戦略修正（`/^[0-9a-f]+$/i` で16進数文字列かを検証）が、0-9 の数字のみで構成される生の値（電話番号「09012345678」・クレジットカード番号「4111111111111111」等）も「16進数字」の部分集合として誤って「ハッシュ済み」と判定してしまい、その先頭8桁を "sha256:" ラベル付きで露出する——直前に修正したメールアドレスの露出と全く同じバグ class の再発だった。(2) `docs/context/LEDRA_CURRENT.md`（「76件」）と `docs/implementation/requirement-trace.md`（「67件」）のテスト件数が、実際のテスト数（79件、直前の修正で3件追加）とどちらも食い違っていた——5回目の Codex 修正コミット自身がテストを追加したにもかかわらず、件数表記の更新が追いついていなかった。
+3. 以前の考え: 5回目の Codex レビュー対応で判明していた指摘はすべて解消し、これで完了と判断していた。
+4. 違和感・問題: (1) は「短い machine 生成の16進文字列」と「短い純粋数字の生値」を区別する検証が甘かった——桁数の下限（8文字）だけでは実際の電話番号等の長さと重なってしまう。(2) はこのモジュールで6回目の「テスト件数のドキュメント記載が実数と食い違う」パターンの再発——テストを追加するコミットのたびに、影響する全ドキュメント（今回は2ファイル）を機械的に洗い出す必要があった。
+5. 決めたこと: (1) 16進数チェックの桁数下限を8文字から32文字（MD5相当のハッシュ長）に引き上げ、短い数字列が誤判定されないようにした。(2) 両ファイルの件数を実数（79件）に統一。回帰テスト1件追加（電話番号・クレジットカード番号ライクな短い数字列のフォールバック確認）。
+6. 捨てた選択肢: なし。
+7. 判断理由: CLAUDE.md の「推測で事実を補わない」「バグ修正は根本原因」の方針に沿った、確認済みの単純な修正。
+8. まだ答えが出ていないこと: owner_only の設計トレードオフ（前々々回のエントリ参照）は依然未解決。この PR の code-review サイクルはこれで完了と判断し、CI 確認後にマージへ進む。
+9. 公開区分: 公開可（コードレビューで見つかった型基盤コードの論理バグ修正・ドキュメント正確性の是正。個人情報は含まない）。
+
+## 2026-08-30 IMP-050（#957）へ5回目（最終）に届いた Codex レビュー3件を修正。以降 Codex は利用上限に到達
+
+1. 日付: 2026-08-30
+2. 起きたこと: 3件とも実在バグとして確認・修正: (1) `docs/context/LEDRA_CURRENT.md` の IMP-050 エントリが requirement-trace.md/OPEN_QUESTIONS.md の訂正後も「完了」のままで、事業の現状スナップショットとして不整合だった（テスト件数「67件」も古いまま）。(2) `isMoreRestrictive()` が owner_only を含む比較でも `VISIBILITY_ORDER` の生数値比較をしており、`canAccess()` で owner_only を独立軸に分離したにもかかわらず、この関数だけ古い「線形階層」の意味論のまま残っていた（4回連続で繰り返している「1関数だけ直して姉妹関数を見落とす」パターンの5度目）。(3) `applyMask()` の hash 戦略が、呼び出し側が誤って生の値（メールアドレス等）を渡した場合に、その値の先頭8文字を "sha256:" ラベル付きで返しており、本当にハッシュ化されたかのように見えて実は生データの一部を露出していた。この直後、Codex がコードレビューの利用上限に到達した旨のコメントが届き、以降このセッション中に追加のレビューは来ない見込み。
+3. 以前の考え: 4回目の修正（暗号化カラム登録漏れ・truncate短小値露出・maxClassificationのフェイルオープン）で、判明していた指摘はすべて解消したと判断していた。
+4. 違和感・問題: (2) は特に、`canAccess()` を4回にわたって慎重に再設計してきたにもかかわらず、同じファイル内の兄弟関数 `isMoreRestrictive()` の意味論が古いまま取り残されていたことに気づけなかった——1つのモジュール内でも、関連する複数の関数が同じ前提（ここでは「owner_only は階層に含まれるか」）を共有している場合、1箇所を変えたら他の箇所も全部洗い出す必要がある。
+5. 決めたこと: (1) LEDRA_CURRENT.md のステータス文言を「部分（型基盤のみ、統合未着手）」に統一し、テスト件数を76件に更新。(2) `isMoreRestrictive()` を、owner_only が絡む比較は常に false を返すよう修正（tenant_internal/partner_shared/public 同士の比較のみ従来どおりの線形比較）。(3) `applyMask()` の hash 戦略に、値が16進数文字列（ハッシュ値の見た目）であることを検証するチェックを追加し、そうでなければ完全 redact（"***"）にフォールバック。回帰テスト3件追加。
+6. 捨てた選択肢: なし（3件とも明確な単一の正しい修正がある）。
+7. 判断理由: (1)(2)(3) いずれも CLAUDE.md の「推測で事実を補わない」「バグ修正は根本原因」の方針に沿った、確認済みの単純な修正。
+8. まだ答えが出ていないこと: owner_only の設計トレードオフ（前々回のエントリ参照）は依然未解決。Codex が利用上限に達したため、これ以降の指摘は `/code-review`（Claude 自身によるレビュー）でのみ検出される見込み——追加で1回実行し、残存指摘がないか最終確認する。
+9. 公開区分: 公開可（コードレビューで見つかった型基盤コードの論理バグ修正。個人情報は含まない）。
+
+## 2026-08-30 IMP-050（#957）へ4回目に届いた Codex レビュー3件を修正。暗号化カラム登録漏れ・truncate短小値露出・maxClassificationのフェイルオープン
+
+1. 日付: 2026-08-30
+2. 起きたこと: 3件とも実在バグとして確認・修正: (1) `FIELD_CLASSIFICATIONS` の restricted 登録が前回追加した4カラム（LINE×2・Square×2）に留まっており、`grep -rn "_ciphertext" supabase/migrations/` で確認したところ、実際には `supply_partner_credentials`（3カラム）・`accounting_integrations`（2カラム）・`tenant_integrations`（2カラム）・`tenant_private_secrets`（ciphertext 2・hash 2・legacy平文 3）・`tenants.booking_notify_slack_webhook_ciphertext` の計15カラムが未登録で confidential にフォールバックしていた。(2) `applyMask()` の truncate 戦略が `keepChars >= 文字列長` の場合に無条件で値をそのまま返しており、短い機密値（PIN 等）が keepChars の設定次第で全文字露出しうる状態だった。(3) `maxClassification()` が個々の未登録フィールドの穴埋めに `defaultClassification`（既定 "public"）をそのまま使っており、呼び出し側が未指定の場合、新規の未登録センシティブカラムが誤って "public" 扱いになるフェイルオープンだった。
+3. 以前の考え: 前回（2回目）の修正で customers・vehicles・certificates・invoices・insurer_cases の実在しないカラム名を全て解消したと判断していたが、restricted カラムの列挙は LINE/Square の4例のみで、他の暗号化テーブルまで横展開できていなかった。
+4. 違和感・問題: (1) は「一部の実例だけ直して、同じパターンの他の発生源を横展開しなかった」という、このモジュールで4回連続発生しているパターンの再発——今回は `supabase/migrations/` 全体を `_ciphertext` で横断検索することで、初めて網羅的に確認した。(2)(3) はいずれも「境界値・デフォルト値の扱いが安全側に倒れていない」という同じ性質のバグ。
+5. 決めたこと: (1) 確認できた15カラムを追加登録し、レジストリのコメントに「2026-08-30時点で確認した全カラム、自動検出機構は未実装につき新規追加時は手動更新が必要」と明記。(2) truncate を `keep = min(keepChars, floor(文字列長/2))` に変更し、どんな短い値でも常に半分以下しか残らないよう保証。(3) `maxClassification()` の個々のフィールド取得を `getFieldClassification(f.table, f.column)`（引数省略、自身の安全な既定値 confidential を使う）に変更し、defaultClassification は空配列時の戻り値としてのみ使うよう限定。回帰テスト4件追加・2件更新。
+6. 捨てた選択肢: なし（3件とも明確な単一の正しい修正がある）。
+7. 判断理由: (1) は CLAUDE.md の「バグ修正は根本原因、対症療法ではない」方針に沿い、今回は"横展開の徹底"として全体を横断検索した。(2)(3) は「境界値・デフォルト値は安全側に倒す」というセキュリティ機構の基本原則に沿った修正。
+8. まだ答えが出ていないこと: `FIELD_CLASSIFICATIONS` の restricted 登録は依然として手動更新に依存しており、将来新しい暗号化カラムが追加された際に追随を忘れるリスクは残る（自動検出機構は明示的にスコープ外）。owner_only の設計トレードオフ（前回のエントリ参照）も未解決。
+9. 公開区分: 公開可（コードレビューで見つかった型基盤コードの論理バグ修正。テーブル名・カラム名はマイグレーションファイルとして既に公開相当。暗号化されたシークレットの値そのものは含まない）。
+
+## 2026-08-30 IMP-050（#957）へ3回目に届いた Codex レビュー4件のうち2件を修正、owner_only の設計トレードオフは OPEN_QUESTIONS へ
+
+1. 日付: 2026-08-30
+2. 起きたこと: 前回の修正（owner_only を tenant_internal 以上のネスト階層から独立させる P1 修正）を push した直後、その修正自体に対する3回目の Codex レビューが届いた。4件のうち2件は実在バグとして確認・修正: (1) `createRendition()` が `canAccess()` を呼ばず、`VISIBILITY_ORDER` の生比較を独自に実装したままだった——`visibility.ts` 側で `canAccess()` の意味論を変更したにもかかわらず、同じ判定を持つ `rendition.ts` 側の実装が追随しておらず、owner_only 閲覧者に対して一切マスクがかからなくなっていた（自分自身が前回修正で作った不整合）。(2) `CERTIFICATE_PUBLIC_RULES` が customer_name/content_free_text の2フィールドしかマスクしておらず、`create.ts`/`certificateVersion.ts` が明示的に PII と識別している `vehicle_info_json`（maker/model/plate を含む）が対象外だった。残り2件（同一論点の表裏）は、単純な修正では解決しない設計トレードオフと判明: (3)「restricted を owner_only にマッピングしても、canAccess('owner_only','owner_only') が true になったため、データ主体本人が restricted まで見られてしまう」。(4)「pii/confidential を tenant_internal にマッピングしたため、canAccess('tenant_internal','owner_only') が false になり、データ主体本人が自分自身の pii すら見られなくなった」。(3)(4) は同じ owner_only という値に「本人限定データ」と「誰にも見せない床」という矛盾する2つの意味を持たせていることが根本原因で、線形階層モデルのままでは両立しない。
+3. 以前の考え: 前回の P1 修正（owner_only の階層分離）で「本人であることが他人のテナント内部データへ昇格しない」問題は解決したと判断していた。
+4. 違和感・問題: (1)(2) は、これまで4回連続で繰り返している「1つのモジュール・1つの関数を直しても、同じ判定ロジックを独自に再実装している姉妹関数を見落とす」パターンの再発。(3)(4) は、自動レビューの指摘を鵜呑みに追いかけて反応的にパッチし続けると、Finding が収束せず「直すたびに別の反対方向の指摘に化ける」状態に陥ることの実例——CLAUDE.md にも近い方針があるとおり、収束しないレビュー往復はどこかで打ち切り、設計判断として一段上に切り出す必要がある。
+5. 決めたこと: (1) `createRendition()` を `canAccess()` 呼び出しに統一（独自の VISIBILITY_ORDER 比較を削除）。既存テスト「owner_only → 全フィールド可視」は前回の P1 修正と矛盾する旧仕様のアサーションだったため、「owner_only → tenant_internal/partner_shared 要求のフィールドはマスクされる」に更新。(2) `vehicle_info_json` を `FIELD_CLASSIFICATIONS`/`CERTIFICATE_PUBLIC_RULES` 両方に追加。(3)(4) はこの PR では解決せず、`DEFAULT_REQUIRED_VISIBILITY` の JSDoc に既知の限界として明記（本人が自分のレコードを見る際はこの汎用機構をバイパスする必要がある、という制約付き）、OPEN_QUESTIONS.md に設計判断待ちとして記録。回帰テスト2件更新。
+6. 捨てた選択肢: (a) owner_only を再びネスト階層に戻す…(3) の restricted 漏洩リスクが復活するため不採用。(b) この場で5段階目の VisibilityLevel（例: system_only）を新設して根本解決する…現時点で本モジュールは呼び出し元ゼロであり、実際の統合要件（誰がどう isDataSubject を渡すか）が固まっていない段階で型を確定させるのは時期尚早と判断し、統合タスク着手前の設計判断として OPEN_QUESTIONS に切り出す方を選んだ。
+7. 判断理由: (1)(2) は明確な単一の正しい修正がある「バグ報告」として扱い、確認の上で修正した。(3)(4) は「収束しないレビュー往復はどこかで打ち切り、設計判断として一段上に切り出す」という判断——盲目的に反応し続けるより、トレードオフを言語化してから改めて判断する方が、結果的に手戻りが少ない。
+8. まだ答えが出ていないこと: owner_only の設計トレードオフの最終解（OPEN_QUESTIONS.md 参照）。実際に API/UI へ統合するタスクに着手する前に確定させる必要がある。
+9. 公開区分: 公開可（コードレビューで見つかった型基盤コードの論理バグ修正、および設計トレードオフの言語化。個人情報は含まない）。
+
+## 2026-08-30 IMP-050（#957）へ2回目に届いた Codex レビュー7件を修正、うち2件は既存の意図的設計と確認し不採用
+
+1. 日付: 2026-08-30
+2. 起きたこと: 前回の Codex レビュー修正を push した直後、さらに旧コミット（`6b4f1b0665`、直前の修正 push 前の状態）に対する2回目の Codex レビューが届いた。7件のうち5件は現行コード（`d6724d92` 以降）にもまだ残る実在バグとして確認・修正: (1) `FIELD_CLASSIFICATIONS` の customers エントリが name/email/phone のみで、実在する name_kana/postal_code/address/birth_date/note/line_user_id が未登録（`customers` テーブルの実マイグレーションで確認）。(2) `maxClassification()` が非空配列でも `result` の初期値を `defaultClassification` にしており、呼び出し側が全フィールドより厳しいデフォルトを渡すと常にそのデフォルトが最大値として勝ってしまう。(3) `readonly MaskingRule[]` は配列要素の入れ替えは防ぐが、`RULES[0].appliesBelow = "public"` のようなプロパティ代入は型チェッカーを迂回されると防げず、実行時の凍結が無かった。(4) `applyMask()` の truncate 戦略で `keepChars` に負値を渡すと `String.slice(0, -1)` が末尾からのオフセットとして解釈され、ほぼ全文字が露出する。残り2件は実スキーマ・既存コードと照合した結果、既存の意図的な設計と確認し不採用: (5)「`PASSPORT_TABLE_PII_COLUMNS` に `to_owner_email`/`to_owner_name`/`message` が抜けている」という指摘は、`piiFields.ts` の `PublicTransferView` 検証コメントに明記済みの意図的設計（受領者本人には自分宛ての to_owner_*/message を見せる。前所有者の from_owner_* のみ隠す）と一致しない誤検知だった。
+3. 以前の考え: 直前の修正で `/code-review` の5件 + Codex 1回目の7件（うち2件重複）をすべて解消し尽くしたと判断していた。
+4. 違和感・問題: (1)(2)(3)(4) は「rendition.ts の VEHICLE_PUBLIC_RULES だけ直して classification.ts の同型の重複を見落とした」という前回と同じパターンの繰り返し——1つのモジュールの1関数を直しても、姉妹関数・姉妹レジストリに同種のバグが残っていないか横展開する習慣が必要だった。(5) は自動レビューツールが「既存コードのコメントに明記された設計意図」を読み取れず、表面的なパターン（`from_owner_*` を隠すなら `to_owner_*` も対称的に隠すべき、という直感）で誤検知した例——確認せず反射的に直すと、既に意図的にレビュー済みの正しい挙動を壊すところだった。
+5. 決めたこと: (1) customers の PII エントリを6件追加。(2) `maxClassification()` を `result` の初期値を `undefined` にしてから最初のフィールドで確定するよう修正（defaultClassification は未登録フィールドの穴埋め専用に限定）。(3) `frozenRules()` ヘルパーを追加し、`CERTIFICATE_PUBLIC_RULES`/`VEHICLE_PUBLIC_RULES`/`PASSPORT_PUBLIC_RULES` の各要素と配列自体を `Object.freeze()`。(4) `truncate` の `keepChars` を `Math.max(0, ...)` でクランプ。(5) は修正せず、レビューコメントで「意図的設計と確認済み、`piiFields.ts` 参照」と返信するに留めた。回帰テスト4件追加。
+6. 捨てた選択肢: (a) Codex の指摘5をそのまま実装し `to_owner_*`/`message` を PASSPORT_TABLE_PII_COLUMNS に追加…`PublicTransferView` の compile-time PII 検証が意図的に許可している露出を壊し、受領者が自分宛ての通知内容を見られなくなる回帰を生むため不採用。
+7. 判断理由: 自動レビューの指摘は「バグ報告」として扱い実スキーマ・既存コードで裏取りする（CLAUDE.md の推測禁止の方針）。裏取りの結果、指摘が正しければ直し（4件）、既存の明示的な設計意図と矛盾すれば不採用と判断する（1件、理由付きで却下）——盲目的に全指摘を実装しないことも品質の一部。
+8. まだ答えが出ていないこと: なし（今回の指摘はすべて確認済み）。
+9. 公開区分: 公開可（コードレビューで見つかった型基盤コードの論理バグ修正、および自動レビューの誤検知を確認・却下した判断。テーブル名・カラム名は公開相当。個人情報は含まない）。
+
+## 2026-08-30 IMP-050（#957）へ PR オープン中に届いた Codex レビュー7件を修正。分類レジストリの架空カラム名・owner_only の特権昇格バグ・監査エントリの参照保持・要件トレースの過大表記を解消
+
+1. 日付: 2026-08-30
+2. 起きたこと: PR #957 がまだ open（未マージ）の状態で Codex（`chatgpt-codex-connector[bot]`）のレビューが届き、7件の指摘（P1×1種2件重複、P2×5件）。すべて実スキーマ（`supabase/migrations/`）と照合して確認・修正: (1) `FIELD_CLASSIFICATIONS`（classification.ts）の vehicles PII エントリが rendition.ts の `VEHICLE_PUBLIC_RULES` と同じ手書き複製で、削除済みカラムを列挙し実在する plate_display が抜けていた（前回の code-review 修正が rendition.ts のみに留まり、classification.ts の同型の重複に気づいていなかった）。(2) `tenant_secrets.encrypted_value` という実在しないテーブル/カラムを登録しており、実際の暗号化シークレット（`tenants.line_channel_secret_ciphertext` 等、`square_connections.*_ciphertext`）が一切登録されず `confidential`（自分自身の前回修正で `tenant_internal` から閲覧可能に変更済み）にフォールバックしていた。(3) `hearings.content` という実在しないカラムを登録しており、実際の PII カラム（customer_name/customer_phone/customer_email/vehicle_plate/vehicle_vin）が無登録だった。(4) `invoices.total_amount`（実際は `total`）、`insurer_cases.claim_amount`（実際は `meta` jsonb 内）も同様に実在しないカラム名だった。(5) `createRendition()` の戻り値型が入力 `T` のままで、マスク適用後に null/string になりうるフィールドを型上は元の型のまま返しており、呼び出し側が実行時にクラッシュしうる（型安全性の欠如）。(6) `resolveVisibility()`/`canAccess()` の設計が「データ主体本人（owner_only）」を「最上位特権」としてネストした階層に組み込んでおり、`isDataSubject: true` の閲覧者が自分の PII だけでなく tenant_internal・restricted（`auth.users.encrypted_password` 等）のフィールドまで通過してしまう構造的バグ（P1、Codex が2箇所で重複指摘）。(7) `createExportAuditEntry()` が呼び出し側の `tablesIncluded`/`rowCounts` を参照のまま保持しており、生成後に呼び出し側が同じ配列/オブジェクトを再利用・変更すると監査記録の中身が後から変わりうる。(8) requirement-trace.md の §18/IMP-050 が「実装済み」と記載されていたが、4エクスポートルートいずれも `createExportAuditEntry()`/`createRendition()` を呼んでおらず（呼び出し元ゼロを確認済み）、統合・enforcement が一切無い状態を「完了」と表記すると残りの統合作業が見落とされるリスクがあった。
+3. 以前の考え: 直前の `/code-review` で5件を修正し尽くしたと判断していたが、rendition.ts の手書き複製パターンが classification.ts にも同型で存在すること、および visibility.ts の階層設計そのものの構造的欠陥までは検証していなかった。
+4. 違和感・問題: (1)-(4) は前回修正した「単一定義源から生成する」パターンを rendition.ts にしか適用しておらず、同じ根本原因（v2.0 仕様書時点の想定カラム名を、実装時に実スキーマと突き合わせずそのまま書いた）が classification.ts のレジストリ全体に残っていた——1箇所直しても「同じ根本原因の別の発生源」を見落とせば再発することの実例。(6) は「所有者だから何でも見られる」という直感的だが誤った設計で、実際には「本人限定の情報を見られる権利」と「テナント内部データを見られる権限」は別の軸であるべきだった。
+5. 決めたこと: (1)-(4) `FIELD_CLASSIFICATIONS` の vehicles エントリを `VEHICLE_TABLE_PII_COLUMNS` から生成、`tenant_secrets`→実在する4つの ciphertext カラム、`hearings.content`→実カラム5件、`invoices.total_amount`→`total`、`insurer_cases.claim_amount`→`meta`（jsonb 全体を confidential として登録）に修正。(5) `createRendition()` の戻り値型を `Redacted<T> = { [K in keyof T]: T[K] | string | null }` に変更。(6) `canAccess()` を再設計: owner_only は tenant_internal/partner_shared/public のネスト階層に含まれない独立軸とし、`requiredLevel === "owner_only"` は `actualLevel === "owner_only"` のときのみ true、`actualLevel === "owner_only"` は `requiredLevel === "public"` 以外では階層を自動的に満たさない。(7) `createExportAuditEntry()` で `tablesIncluded`/`rowCounts` をコピーして保持するよう変更。(8) requirement-trace.md の §18/IMP-050 ステータスを「実装済み」→「部分（型基盤のみ、統合未着手）」に訂正。回帰テスト7件追加（classification 1件、visibility 3件、exportAudit 1件、既存2件の書き換えも含む）。
+6. 捨てた選択肢: (a) insurer_cases.claim_amount を単純に削除しレジストリから外す…claim_amount を含む案件情報全体（meta jsonb）は依然として confidential なので、meta 列自体を登録する方が実態に近い。(b) canAccess() の owner_only 特権を残したまま、DEFAULT_REQUIRED_VISIBILITY 側だけで restricted への到達を防ぐ…FieldVisibilityRule を直接使う将来の呼び出し側まで安全にならないため、根本の canAccess() 自体を直す方を選んだ。
+7. 判断理由: (1)-(4)(7) は CLAUDE.md の「バグ修正は根本原因、対症療法ではない」方針そのもの——1箇所のパターン修正で終わらせず、同じ根本原因が他にも残っていないか横展開して確認した。(6) は「本人であることは所有者権限であって、他人のデータへの特権ではない」という原則に沿った設計修正。(8) は「推測で事実を補わない」——統合されていない機能を「完了」と書くと、後続タスクがそこで止まる。
+8. まだ答えが出ていないこと: `createRendition`/`createExportAuditEntry`/`FIELD_CLASSIFICATIONS` を実際の API レスポンス生成・エクスポートルートへ統合するタイミング（下流タスク）。owner_only を要求する具体的なフィールド（現状 DEFAULT_REQUIRED_VISIBILITY 経由では restricted のみが該当し、実質的に「誰も満たさない」フロアとして機能する）を将来どのエンティティに使うか。
+9. 公開区分: 公開可（コードレビューで見つかった型基盤コードの論理バグ修正。テーブル名・カラム名は docs/information-asset-inventory.md や既存マイグレーションで公開相当。金額・テナント名・個人情報は含まない）。
+
+## 2026-08-30 IMP-050（#957）の code-review 指摘を修正。VEHICLE/PASSPORT_PUBLIC_RULES の PII 列挙漏れ・hash 戦略のドキュメント矛盾・pii の可視性要件誤り・ドキュメント件数誤記を解消
+
+1. 日付: 2026-08-30
+2. 起きたこと: PR #957 マージ後の `/code-review` で5件の指摘。すべて確認・修正: (1) `VEHICLE_PUBLIC_RULES`（rendition.ts）が `customerRelation.ts` の `VEHICLE_TABLE_PII_COLUMNS`（単一定義源、["customer_id","notes","plate_display"]）と手書きで独立に重複定義されており、既にテーブルから削除済みの customer_name/customer_email/customer_phone_masked を列挙する一方、実在する PII 列 plate_display（ナンバープレート）が抜けていた。(2) `PASSPORT_PUBLIC_RULES` も同様に `PASSPORT_TABLE_PII_COLUMNS` と独立定義で、前所有者の PII（from_owner_name/from_owner_email）が抜けており、passport_ownership_transfers の「前所有者の PII を新所有者に見せない」という設計意図に反していた。(3) `applyMask()` の "hash" 戦略が、自身の JSDoc（「呼び出し側が事前にハッシュ済みの値を渡し、'sha256:&lt;hex8桁&gt;' 形式に整形する」）を無視し、`value` を一切使わず固定文字列 `"[MASKED]"` を返していた。(4) `DEFAULT_REQUIRED_VISIBILITY` が pii を owner_only（データ主体本人のみ）に要求しており、`canAccess()` の順序規則上、テナントスタッフ（tenant_internal）が通常業務で必要とする顧客氏名・電話番号等の pii フィールドに一切アクセスできない設定になっていた（未使用・未テストのため潜在バグ）。(5) RELEASE_LOG.md/LEDRA_CURRENT.md/requirement-trace.md/DECISION_LOG.md の「FIELD_CLASSIFICATIONS 19エントリ」「テスト64件（内訳 classification 10 + visibility 11 + rendition 22 + exportAudit 21）」がいずれも実数（20エントリ、67件、内訳 classification 16 + visibility 21 + rendition 20 + exportAudit 10）と不一致だった。
+3. 以前の考え: マージ時点では `src/lib/privacy/` の4モジュールは既存パターン（certificates_public・VEHICLE_TABLE_PII_COLUMNS・is_pii_disclosed）の型安全な一般化として問題なしと判断していた。
+4. 違和感・問題: (1)(2) は IMP-040/043 等で繰り返し発生している「既存の単一定義源を参照せず手書きで複製し、後から乖離する」という同一パターンの再発。しかも本モジュール自身が「既存パターンを型安全に再現する」ことを目的として書かれていたにもかかわらず、その既存パターンの現在値（VEHICLE_TABLE_PII_COLUMNS のコメントに明記された削除済みカラムの情報）を参照していなかった。(3) は JSDoc に書かれた契約と実装が一致していない典型例。(4) は「pii の閲覧に owner_only を要求する」設定が、正準語彙で言う「pii」の実運用（スタッフが日常的に扱う顧客情報）と整合しておらず、この関数が実際に配線されればスタッフ業務を止めていた。まだどこからも呼ばれていないため実害はまだ発生していない。
+5. 決めたこと: (1)(2) `VEHICLE_PUBLIC_RULES`/`PASSPORT_PUBLIC_RULES` を手書きリストから `VEHICLE_TABLE_PII_COLUMNS`/`PASSPORT_TABLE_PII_COLUMNS` の `.map()` 生成に変更し、乖離が構造的に起こらないようにした。(3) `applyMask()` の hash 戦略を JSDoc 通り `` `sha256:${String(value).slice(0, 8)}` `` に修正。(4) `DEFAULT_REQUIRED_VISIBILITY.pii`/`.confidential` を `tenant_internal` に変更（restricted のみ owner_only を維持——認証情報・暗号化シークレットはスタッフにも見せない）。(5) ドキュメント4ファイルの件数を実数に訂正。回帰テスト4件追加（VEHICLE/PASSPORT_PUBLIC_RULES を単一定義源と突き合わせるテスト2件、hash のフォーマット修正1件、DEFAULT_REQUIRED_VISIBILITY の3件）。
+6. 捨てた選択肢: (a) VEHICLE_PUBLIC_RULES/PASSPORT_PUBLIC_RULES の抜けている列だけを個別に手書き追加…同じ乖離が将来また起こるため、単一定義源からの生成に変更する方を選んだ。(b) DEFAULT_REQUIRED_VISIBILITY.restricted も tenant_internal に緩和…restricted は認証情報等でありテナントスタッフにも見せるべきでないため、owner_only（実質「通常の閲覧経路では誰も満たせない」フロア）のまま維持。
+7. 判断理由: CLAUDE.md の「バグ修正は根本原因、対症療法ではない」方針に沿い、手書き複製という共通の根本原因を単一定義源からの生成に置き換えて解消した。可視性のデフォルト値は、正準語彙上の pii（顧客氏名・電話番号等）が実運用でテナントスタッフに日常的に必要とされる情報である以上、tenant_internal を要求するのが正しいデフォルトだと判断した。
+8. まだ答えが出ていないこと: `createRendition`/`DEFAULT_REQUIRED_VISIBILITY` を実際の API レスポンス生成へ統合するタイミング（現時点では型基盤のみで、呼び出し元ゼロを確認済み）。hash 戦略を実際に使う定義済みルールは現時点でまだ無い。
+9. 公開区分: 公開可（コードレビューで見つかった型基盤コードの論理バグ修正。テーブル名・カラム名は docs/information-asset-inventory.md で公開相当。金額・テナント名・個人情報は含まない）。
+
+## 2026-08-30 IMP-050（#957）を main へ取り込み。resurrection パターン21度目
+
+1. 日付: 2026-08-30
+2. 起きたこと: PR #957（IMP-050、プライバシー・データ分類・可視性・マスキング基盤）のベースを main へ retarget し、origin/main をマージ。競合85件のうち81件は PR 自身の差分に無いファイル（`git diff` で PR 独自コミットの差分に含まれないことを確認、origin/main 側を採用）、4件（DECISION_LOG.md/LEDRA_CURRENT.md/RELEASE_LOG.md/requirement-trace.md）は PR 自身の事業ログ追記との真の競合で、origin/main を土台にして PR の追記内容を正しい位置に手動で復元。マージ後、`src/lib/navigation/WorkScopeProvider.tsx` と `src/lib/sync/` 一式が21回目の resurrection として復活（PR #947 スキップに起因、`src/lib/privacy/` からの依存ゼロを確認済み）。
+3. 以前の考え: なし（機械的なマージ手順）。
+4. 違和感・問題: resurrection パターンが21回連続で発生しており、スタック内の全 PR が同じ根本原因（PR #947 IMP-032 のスキップに伴う古いベース）を共有していることを改めて確認。
+5. 決めたこと: 85件の競合を phantom（81件、`git checkout --theirs`）と genuine（4件、手動再現）に分類して解決。resurrection ファイル一式をスクラッチパッドへ退避し `git add -A` で削除を確定。
+6. 捨てた選択肢: なし。
+7. 判断理由: 既存の確立済みパイプライン手順（PR #948 以降で一貫して適用）をそのまま踏襲。
+8. まだ答えが出ていないこと: PR #947（IMP-032）自体の扱いは未解決のまま（DECISION_LOG 2026-08-30「PR #947（IMP-032）をスキップ」参照）。resurrection は残りのスタック（#958〜#961）でも継続発生する見込み。
+9. 公開区分: 公開可（マージ作業のメカニクス。機密・個人情報なし）。
+
+## 2026-08-30 ナレッジ自動蓄積は「enabled=false レビュー承認制」＋既存テーブル再利用（新テーブル/常時ON即反映を採らない）
+
+1. 日付: 2026-08-30
+2. 起きたこと: 「LINEの属人性を減らしたい」という方針に対し、着手軸として「ナレッジ自動蓄積（学習）」を選択。実装方式を検討した。
+3. 以前の考え: 素朴には「人の返信を自動でナレッジ化してすぐ Bot が使えるようにする」だが、外向き（顧客に自動送信される）回答ソースを人のチェック無しに書き換えるのは危険。
+4. 違和感・問題: (a) スタッフの一回限りの返信・誤り・個別対応をそのまま学習すると、Bot が誤答を自動送信しうる。(b) 「AI提案/未承認」を明示する専用テーブルや `source` 列を足すとマイグレーションが要り、本リポジトリはマイグレーション由来の障害（resurrection・Replay 失敗）が頻発している。
+5. 決めたこと: (a) 自動生成した候補は必ず `tenant_line_knowledge` に **enabled=false（レビュー待ち）** で保存し、管理者が承認（有効化）するまで Bot は使わない。既存の自動返信は `enabled=true` のみ参照する実装なので、これがそのまま安全弁になる。(b) 新テーブル・新カラムを足さず既存テーブルを再利用。既存の LINE ナレッジ設定 UI が停止中エントリの表示・有効化・編集・削除に対応済みのため、レビュー導線は追加実装なしで成立。マイグレーション不要。(c) 再利用可能な FAQ か・個人情報除去は AI 側で判定/一般化し、再利用不可は保存しない。上限・重複・低 confidence もスキップ。
+6. 捨てた選択肢: 常時 ON・即 enabled=true で反映する案（外向き回答に未チェック内容が混ざる。危険）。専用の `line_knowledge_suggestions` テーブルや `source` 列を新設して「AI提案」を明示する案（マイグレーションのリスク/コストが、enabled=false での代替に見合わない）。受信箱で毎回「ナレッジ化しますか？」とワンクリック確認させる半自動案（クリックの手間＝スタッフの diligence 依存が残り、属人性低減の主旨に対して弱い）。
+7. 判断理由: 「自動で溜まる（人の手間ゼロ）× 顧客に出る前に必ず人が承認（誤答混入ゼロ）」の両立が、属人性低減と外向き安全性のバランスとして妥当。既存の enabled フラグと設定 UI をそのまま安全弁・レビュー面に流用でき、マイグレーションを避けられる（本リポジトリの弱点を踏まない）。
+8. まだ答えが出ていないこと: 停止中エントリに「AI提案（未承認）」バッジを付ける UX 改善（`source` 列 or 別テーブルが要るためマイグレーション判断待ち）。トリガを「Bot が答えられなかった（can_answer=false）直後の人手返信」に限定して精度を上げる案（現状は全スタッフ返信を AI 判定でフィルタ）。承認済みナレッジの陳腐化（価格改定等）検知は未対応。
+9. 公開区分: 公開可（設計判断。顧客・機密情報なし）。
+
+## 2026-08-30 IMP-046（#956）の code-review 指摘を修正。NON_OCCUPYING重複定義・型の意図しない拡大・ドキュメント不整合を解消
+
+1. 日付: 2026-08-30
+2. 起きたこと: PR #956 マージ後の `/code-review` で5件の指摘。すべて確認・修正: (1) `decomposeTimeBands()`（capacityAnalytics.ts）が終端ステータスの除外条件（cancelled/completed/no_show）を生の文字列比較で再実装しており、`occupancy.ts` が「重複定義を避けるため」に export した `NON_OCCUPYING` を使っていなかった。(2) `JobTimeline.currentState` の型が `JobState | string` になっており、TypeScript の型合併規則により `string` に collapse していて、正準語彙を参照する意図（JSDoc「型参照のみ」）が実際には型安全性を提供していなかった。(3) `computeVerifiedRate()` の JSDoc 冒頭の分母説明が「NOT_READY 以外のすべて」と書かれており、直後の ponytail コメント・実装コードが実際に行っている SUPERSEDED の除外と矛盾していた（この関数は本 PR 自身の code-review 修正でコミット `a54a9112` により SUPERSEDED 除外が追加されたが、冒頭の説明文だけ更新されずに残っていた）。(4) `capacityAnalytics.test.ts` のテストタイトルが「2ブース、各50%稼働 → 平均50%」だが、実際のアサーションは45%（コメントで明記済み）で、テスト名と検証内容が食い違っていた。(5) RELEASE_LOG.md/LEDRA_CURRENT.md/requirement-trace.md の「テスト40件（operationalKpi 22 + capacityAnalytics 18）」が実数（41件、operationalKpi 26 + capacityAnalytics 15）と不一致だった。
+3. 以前の考え: マージ時点では `operationalKpi.ts`/`capacityAnalytics.ts` は型基盤先行パターンとして問題なしと判断していた。
+4. 違和感・問題: (1) は IMP-041 時点で「重複定義を避けるため export した」という明示的な設計意図があったにもかかわらず、後続の消費モジュールがそれを使わず再実装してしまった典型例。(3) は「同一PR内の別コミットで実装を修正したが、説明文の一部だけ直し忘れた」という、複数コミットにまたがる修正でよく起きるパターン。
+5. 決めたこと: (1) `occupancy.ts` の `NON_OCCUPYING` を import して再利用するよう修正。(2) `JobTimeline.currentState` の型を `JobState` のみに変更（テストの既存値は全て正準値のため型エラーなし）。(3) `computeVerifiedRate()` の JSDoc 冒頭を SUPERSEDED 除外を含む正確な説明に修正。(4) テストタイトルを実際の値（45%）に修正。(5) ドキュメントのテスト件数を実数に訂正。回帰テスト0件追加（既存テストの修正のみ、`no_show` ケースを既存テストに追加）。
+6. 捨てた選択肢: なし（5件とも明確な単一の正しい修正がある）。
+7. 判断理由: (1) は CLAUDE.md の「バグ修正は根本原因、対症療法ではない」方針に沿い、単一定義源を実際に単一にした。(2) は型安全性の実効化。(3)(4)(5) は CLAUDE.md の「推測で事実を補わない」方針に沿った記録の正確性回復。
+8. まだ答えが出ていないこと: なし。
+9. 公開区分: 公開可（コードレビューで見つかった型基盤コードの論理バグ修正。金額・テナント名・接続情報は含まない）
+
+## 2026-08-30 IMP-046（#956）を main へ取り込み。resurrection パターン20度目
+
+1. 日付: 2026-08-30
+2. 起きたこと: IMP-046（運用KPI計算・設備キャパシティ分析、branch impl/IMP-046-analytics-kpi）を main へ取り込む際、main と分岐した82ファイルが衝突した。78ファイルは phantom conflict で一括解決。残り4ファイル（DECISION_LOG.md/LEDRA_CURRENT.md/RELEASE_LOG.md/requirement-trace.md）はこのPR自身が変更していたため手動再適用した。LEDRA_CURRENT.md/RELEASE_LOG.md の IMP-045 の説明文に「最終admin降格保護」「移籍先重複チェック」という PR #955 の code-review 修正内容への言及が含まれていたため、既存の main 側の記載（テスト件数のみ36件に修正済み）に追加で反映した。resurrection チェックで `WorkScopeProvider.tsx`（20度目の再発）とスキップ済み PR #947 の `src/lib/sync/` 一式8ファイルが今回も復活していたため削除。`analytics/` 配下4ファイル（PR 自身の新規ファイル）は `sync/` への依存なし（grep で確認済み）。
+3. 以前の考え: なし（#948〜955 で確立した手順の踏襲）。
+4. 違和感・問題: 特になし。
+5. 決めたこと: 確立済みの手順をそのまま適用。
+6. 捨てた選択肢: なし。
+7. 判断理由: 確立済みの手順が引き続き有効に機能した。
+8. まだ答えが出ていないこと: なし。
+9. 公開区分: 公開可（マージ手順の技術的な経緯。金額・テナント名・接続情報は含まない）
+
 ## 2026-08-31 「撮れば出る」は成立していなかった —— 配布 PDF のキャプチャは .gitignore で本番に届かない
 
 1. 日付: 2026-08-31
@@ -602,6 +991,77 @@
 7. 判断理由: 「現場を知らずに書き足さない」の裏返しで、ここでは「現場を知らずに稼働中の挙動を狭めない」。staff/viewer のデフォルトを self にすべきかどうかは製品判断であり、この環境からは判断できない。
 8. まだ答えが出ていないこと: staff/viewer のダッシュボード初期表示は本当に self（自分の分だけ）にすべきか、それとも現状維持（tenant-wide）のままでよいか。代表判断待ち。
 9. 公開区分: 公開可（実装の技術的な経緯であり、金額・テナント名・接続情報は含まない）
+
+## 2026-08-20 IMP-054 P0_RELEASE_GATE — P0 全タスク完了検証の判断（2026-08-30 マージ時に「全36完了」の誤りを是正）
+
+1. 日付: 2026-08-20（本文は 2026-08-30 のマージ時点の実態調査で是正済み）
+2. 起きたこと: IMP-053 完了により、IMP-054（P0 リリースゲート）の全依存（IMP-050/051/052/053）が解消。全 36 タスクの実装状態を検証したところ、IMP-011/012/013/014 の requirement-trace.md 行が監査時の記述のまま「実装済み」に更新されていないことを発見。LEDRA_CURRENT.md では「完了」と記載されており、実装ファイル・テスト・コミットも全て存在していたため、この4件は実装済みへ修正した。**一方、本PRの原案は続けて「全36タスク実装済み」と結論していたが、これは誤りだった。** マージ時に requirement-trace.md の全36行を実際に読み直したところ、IMP-016（部分、2026-08-27付でsync型を削除しIMP-032へ委譲）・IMP-020（部分、2026-08-27付でモバイルFAB統合未着手と記載）・IMP-027（部分、UNKNOWN/OVERPAID/Payment Policy評価器なし）・IMP-032（なし、PR #947がユーザー判断でスキップ中）・IMP-050（部分、型基盤のみで統合未着手）の**5タスクが実装未完了のまま**であることが判明した。
+3. 以前の考え: requirement-trace.md は IMP-000 監査で作成した時点の状態をそのまま保持していた。各 IMP タスク実装時に行を更新する運用だったが、IMP-011〜014 の実装時に更新が漏れていた。本PRの原案作成時点（2026-08-20）では、この4件を修正すれば残り全タスクは実装済みだと判断していたが、他タスク（IMP-016/020/027/032/050）の行を実際には読み直していなかった。
+4. 違和感・問題: (a) requirement-trace.md が P0 タスクの正確な完了状態を反映していなかった。リリースゲートとして不十分。(b) より根本的に、「未更新の4行を直せば完了」という当初の診断自体が、他の32行を検証せずに下した誤った結論だった——P0 リリースゲートという「最終検証」の役割において、検証対象を一部しか見ずに「全て完了」と宣言するのは本末転倒。
+5. 決めたこと: (a) IMP-011/012/013/014 の行を実装済みに更新し、実装内容を記載（この4件は事実として完了していた）。(b) P0 充足サマリに「実装状態」列を追加し、**10項目中7項目に✅、3項目（Home/Work List/Job Hub・Payment state+Certificate+VERIFIED・Basic Offline/Sync）に⚠️部分を記録**（当初案の「10項目全て✅」は誤りだったため修正）。(c) IMP-054 自身の行を「36タスク中31タスク実装済み・5タスク部分/未着手」という実態に即した記述に修正。
+6. 捨てた選択肢: (a) 行の更新漏れ4件だけを無視して IMP-054 を完了とする — リリースゲートとしての検証意義がなくなる。(b) 「全36タスク実装済み」という当初案の結論をそのまま採用する — 実態確認で明確に反証されたため採用不可。(c) 各 IMP の PR に遡って未完了部分を今回まとめて実装する — IMP-054 はメタタスク（検証）であり、実装タスクではない。未完了部分の実装は各担当タスク側の責務として残す。
+7. 判断理由: IMP-054 はメタタスク（実装検証）であり、その本来の責務は「本当に完了しているか」を偽りなく確認すること。当初案が「4行の更新漏れを直せば完了」と結論したのは、残り32行を実際には読み返さなかったための誤りであり、そのまま採用すればリリースゲート自体が虚偽の完了宣言になる。マージ時に全36行を直接読み、5件の未完了を発見・是正した。
+8. まだ答えが出ていないこと: (a) IMP-032（SYNC_CENTER）の再設計をいつ・誰が行うか（`OPEN_QUESTIONS.md`「PR #947 IMP-032 のスキップ」参照、未解決）。(b) IMP-020（モバイルFAB Quick Create統合・Role別スコープ切替）とIMP-027（Payment Policy評価器）の担当タイミング。(c) P1 タスク（IMP-040〜046）は全て実装済みだが、P1 リリースゲートは定義されていない。
+9. 公開区分: 公開可
+
+## 2026-08-20 IMP-053 OBSERVABILITY_ERROR_CONTRACT — 構造化エラー契約の設計判断
+
+1. 日付: 2026-08-20
+2. 起きたこと: v2.0 §14.4 が「全エラーが is_data_safe を答える」構造化エラー契約を要求。既存は ErrorCode（13値）+ apiInternalError（Sentry自動送信）+ sendCronFailureAlert（メール+Sentry二重通知）。エラーの「データ安全性」「復旧手段」「再試行可否」を構造的に表現する型がなかった。
+3. 以前の考え: ErrorCode と HTTP ステータスコードでエラー分類は十分と考えていた。Sentry にはエラーが送られるが、「データが安全か」「何をすべきか」はケースバイケースで判断していた。
+4. 違和感・問題: (a) 外部サービス障害（Stripe/Supabase/Polygon RPC）時に「データは安全か」を即答できない。(b) cron 失敗時の復旧手順がコード内に記述されておらず、属人的。(c) 楽観ロック衝突・状態遷移違反のリトライ可否がルート毎に異なる。(d) Sentry アラートの優先度付けにデータ安全性の構造化情報がない。
+5. 決めたこと: (a) `StructuredError` 型を定義 — 4問（データ安全性・分類・再試行・復旧）に全エラーが答える構造。(b) 6プリセットファクトリ（validation/externalService/stateTransition/dataIntegrity/timeout/concurrency）。(c) Sentry 変換（`toSentryContext()`）とクライアントペイロード変換（`toClientPayload()`）のユーティリティ。(d) 既存の response.ts / cronAlert.ts は変更しない — 消費側の段階的統合。
+6. 捨てた選択肢: (a) response.ts の apiError() を直接拡張 — 560+ ルートハンドラの一括変更が必要。型基盤を先に整備し段階移行が安全。(b) エラークラス階層（class AppError extends Error）— 既存コードは関数ベース（apiInternalError 等）でクラスを使っていない。パターンを壊さない。(c) loading discipline（0.3s/2s 閾値）の型化 — エラー契約とは別軸。UI コンポーネントの責務であり、ここには含めない。
+7. 判断理由: 型基盤先行原則の継続。IO なしの純関数で、既存コードに影響を与えずに構造を提供。DataSafetyLevel の4段階は「安全→部分的→不明→不整合確認」の運用判断にそのまま使える。プリセットは既存の API パターン（バリデーション→safe、外部サービス→unknown、状態遷移→safe）を反映。
+8. まだ答えが出ていないこと: (a) 既存560+ルートの段階的移行計画（優先度の高い決済・証明書ルートから）。(b) クライアント側エラー表示コンポーネントへの統合。(c) Sentry ダッシュボードでの dataSafety タグによるアラート分類設定。
+9. 公開区分: 公開可
+
+## 2026-08-20 IMP-052 E2E_SUITE — E2E テスト設計と CI ゲーティング判断
+
+1. 日付: 2026-08-20
+2. 起きたこと: v2.0 §23 が必須 E2E（正常ワークフロー＋例外10種）を要求。既存 14 spec は認可ゲートと公開ページのスモークチェックのみで、業務フロー・例外系・アクセシビリティの E2E が未自動化だった。CI からは E2E ジョブ自体が削除済み（実バックエンド依存）。
+3. 以前の考え: E2E は実バックエンドなしでは動かないため CI から完全削除し、ローカル実行のみで対応していた。
+4. 違和感・問題: (a) v2.0 §23 の必須 E2E 要件を満たしていない。(b) 管理画面の WCAG AA 検証手段がない（Lighthouse CI は認証壁で管理画面に到達不可）。(c) 例外フローの API レベル検証が E2E にない（入力バリデーション・ステータス遷移）。
+5. 決めたこと: (a) 4 spec ファイル新設（workflow-flow / exception-flows / customer-confirmation / accessibility）。(b) CI に E2E ジョブを復元するが、secrets ゲート付き — `E2E_USER_EMAIL` 未設定時はジョブ全体をスキップ。テストファイル側でも `adminCreds()` / `isAxeAvailable()` / `customerPortalConfig()` で個別 skip。(c) axe-core は動的 import で未インストール時 graceful skip。(d) a11y テストは `critical` impact のみ fail（serious/moderate は console.log でレポート）。
+6. 捨てた選択肢: (a) MSW でバックエンドをモック — 実 API の挙動検証が目的であり、モックは本質を検証しない。(b) CI で常時 E2E 実行 — secrets 管理の運用負荷とセキュリティリスク。(c) @axe-core/playwright を devDependencies に強制追加 — CI 環境での追加インストール時間とサイズ。動的 import で任意化。(d) a11y で serious/moderate も fail にする — 既存ページに未修正の moderate 違反がある可能性があり、段階的改善が現実的。
+7. 判断理由: 環境変数ゲートにより、secrets 未設定の fork/外部 CI では完全無害。設定済み環境では v2.0 §23 の要件を自動検証。既存 14 spec のパターン（`test.skip(!creds, "...")` ）を踏襲し一貫性を維持。axe-core 動的 import パターンは IMP-051 で設計済みの `checkA11y()` ヘルパーを活用。
+8. まだ答えが出ていないこと: (a) E2E secrets の Staging 環境設定タイミング（本番デプロイ前に設定が必要）。(b) axe-core の管理画面での実際の違反件数（テスト実行後に判明）。
+9. 公開区分: 公開可
+
+## 2026-08-20 IMP-051 ACCESSIBILITY_I18N_AUDIT — アクセシビリティ・翻訳QA基盤の構成判断
+
+1. 日付: 2026-08-20
+2. 起きたこと: IMP-051 実装にあたり、v2.0 §3.5 が要求する「WCAG AA 体系的監査」と「6言語翻訳QA」の2軸を実装する必要があった。既存は Lighthouse CI（a11y ≥0.9、マーケページのみ7URL）と手動翻訳のみ。
+3. 以前の考え: Lighthouse CI がアクセシビリティカバーを担い、翻訳は手作業で確認していた。
+4. 違和感・問題: (a) Lighthouse CI はマーケページ7URLのみスキャン — 管理画面・顧客ポータルの WCAG AA 準拠は未検証。(b) 6言語に拡張後（IMP-011）、翻訳キー過不足・プレースホルダ不一致・用語集ギャップの自動検出手段がない。(c) コンポーネント単位の ARIA 要件（useDialogA11y で一部カバー済み）が体系化されていない。
+5. 決めたこと: (a) `src/lib/a11y/` モジュール群を新設 — コントラスト比チェッカー（WCAG SC 1.4.3）+ 監査型定義（19基準＋10コンポーネントARIA要件）。(b) `src/lib/i18n/qa.ts` — 翻訳QA 4関数（キー過不足・プレースホルダ整合性・カバレッジ・用語集ギャップ）。(c) Lighthouse CI 設定変更は見送り — 管理画面は認証後ページのため、Lighthouse CI の URL ベーススキャンでは到達できない。Playwright + axe-core（IMP-052 の E2E スイート）で管理画面の a11y をカバーする方針。
+6. 捨てた選択肢: (a) axe-core を直接統合 — IMP-052（E2E）の責務。IMP-051 は型基盤・計算ロジックに限定。(b) eslint-plugin-jsx-a11y のカスタムルール追加 — 既に導入済みで十分。COMPONENT_ARIA_MAP は将来のカスタムルールの基礎データとして用意。(c) 翻訳QA を既存テストに直接埋め込む — 純関数として分離し、CI テスト・手動実行の両方から呼べるようにした。
+7. 判断理由: 型基盤先行原則。コントラスト計算と翻訳QA は IO なしの純関数で実装可能。デザイントークン変更時のリグレッション検出、翻訳ファイル追加時の自動チェックに使える。Lighthouse CI 拡張は認証壁の問題があり、E2E（IMP-052）に委ねる方が合理的。
+8. まだ答えが出ていないこと: (a) 管理画面の WCAG AA 準拠率の実測値（Playwright + axe-core 統合は IMP-052）。(b) vi/id/fil/hi 翻訳の正式検証（推定のまま）— 翻訳QA 関数は検出基盤であり、翻訳修正は別タスク。
+9. 公開区分: 公開可
+
+## 2026-08-20 IMP-050 プライバシー・データ保護基盤を既存パターンの型安全一般化として実装
+1. 日付: 2026-08-20
+2. 起きたこと: v2.0 §18 のプライバシー・データ保護基盤を実装する段階。既存コードベースを精査した結果、PII 遮断（customerRelation.ts のコンパイル時型アサーション）、公開ビュー（certificates_public の customer_name/content_free_text NULL 化）、エクスポート4ルート（admin/customer/agent/insurer）、保持 cron、削除リクエストなど、個別のプライバシー機構は既に散在していた。
+3. 以前の考え: 「可視性4レベル・マスク公開なし（部分）」と requirement-trace に記録していた。各機構が個別に動いており体系的な分類・可視性モデルが無かった。
+4. 違和感・問題: 既存の certificates_public ビュー（SQL）と customerRelation.ts の PII カラムリストが同じ「フィールドレベルのアクセス制御」を別の方式で実装しており、新テーブル追加時にどちらのパターンに従うか不明確。エクスポート監査も vehicle_histories へのベストエフォート記録のみで統一フォーマットなし。
+5. 決めたこと: 4モジュール構成の純関数基盤として一般化。(a) データ分類（ISO 27001 A.5.12 の4分類を型化、20フィールド登録）。(b) 可視性モデル（既存 is_pii_disclosed を partner_shared レベルとして一般化、ViewerContext→有効レベル解決）。(c) レンディションマスキング（ADR-0003「マスキングは公開レンディション側で行い、原本バイトは後処理しない」を一般化、certificates_public/VEHICLE_TABLE_PII_COLUMNS/パスポートの3パターンを定義済みルールとして型安全に再現）。(d) エクスポート監査（4スコープの統一イベントフォーマット、頻度異常検出）。IO なし、DB マイグレーションなし。
+6. 捨てた選択肢: (a) DB マイグレーション込みで data_classification カラムを全テーブルに追加…型基盤先行の方針に反し、稼働中の本番に不要な変更。(b) 既存 certificates_public ビューを TS 側 createRendition に置き換え…SQL ビューは RLS と一体で動いており撤去は危険、共存が安全。(c) crypto 依存の実ハッシュマスキング…hash 戦略は形式のみで呼び出し側が事前ハッシュする設計（依存最小化）。
+7. 判断理由: 既存コードの実績あるパターン（certificates_public の NULL 化、PII カラムリスト、is_pii_disclosed 開示フラグ）を壊さず型で一般化する最小差分。新コードが既存パターンを消費する形（CERTIFICATE_PUBLIC_RULES が certificates_public と同じ効果を TS 側で再現）なので、移行も段階的に可能。
+8. まだ答えが出ていないこと: createRendition を API レスポンス生成に統合するタイミング（現時点では型基盤のみ）。FIELD_CLASSIFICATIONS レジストリの拡張方針（新テーブル追加時に自動検出するか手動登録か）。エクスポート監査イベントの永続化先（専用テーブル vs ドメインイベントカタログ統合）。
+9. 公開区分: 公開可（「既存の個別プライバシー機構を型安全な一般フレームワークに昇華する」設計判断は発信可。ISO 27001 A.5.12 参照も公知。テーブル名・カラム名は docs/information-asset-inventory.md で既に公開相当）。
+
+## 2026-08-20 IMP-046 ANALYTICS_STORE — 運用KPI計算器とキャパシティ分析の設計判断
+
+1. 日付: 2026-08-20
+2. 起きたこと: IMP-046 実装にあたり、v2.0 §21 の要求する運用指標セット（VERIFIED率・証跡充足率・レビュー待ち時間等）と capacity visibility（設備/スタッフのキャパシティ可視化）が既存の ManagementClient に欠落していることを確認。また、IMP-041 occupancy.ts が capacity>1 ブースの時間帯分解を明示的に IMP-046 に委ねていた（L330, L347）。
+3. 以前の考え: 既存の ManagementClient は財務KPI（CF・粗利・回収率・LTV・DSO）に特化しており、運用品質指標は計画されていなかった。
+4. 違和感・問題: (a) 証明書の VERIFIED 到達率を追跡する手段がなく、品質保証の可視化ができない。(b) SLA 遵守率の集計がなく、エスカレーション傾向の把握ができない。(c) ブース稼働率は ManagementClient に表示がなく、設備投資判断の根拠がない。(d) capacity>1 ブースの空き時間帯が正確に計算できない（IMP-041 の制限）。
+5. 決めたこと: (a) 運用KPI計算器6本（VERIFIED率・証跡充足率・レビュー待ち時間・サイクルタイム・SLA遵守率・日次スループット）を純関数で実装。(b) capacity>1 ブースの時間帯別占有分解（decomposeTimeBands）をスイープラインで実装。(c) フリート稼働率サマリーとスタッフ負荷分析を追加。(d) 全て IO なしの純関数（型基盤先行）。API ルートや ManagementClient の変更は消費タスクで。
+6. 捨てた選択肢: (a) ManagementClient に直接 KPI セクションを追加する案。UI と計算ロジックを分離して再利用性を高めるため、純関数モジュールを先行。(b) DB に集計テーブル（materialized view）を追加する案。まず純関数で算出パターンを確立し、パフォーマンス問題が出たら集計テーブルを検討。
+7. 判断理由: 既存パターン（pricing.ts, staff.ts が PG RPC ラッパー）と異なり、本モジュールは呼び出し側が集計済みデータを渡す純関数設計。理由は (a) IMP-029/041 の既存純関数と合成できる、(b) テストが DB なしで高速に書ける、(c) API ルートが DB クエリの責任を持つので、同じ KPI を異なるクエリ（期間・店舗フィルタ）で再利用可能。
+8. まだ答えが出ていないこと: (a) ManagementClient への統合タイミングと表示セクションの設計。(b) KPI の期間比較（前月比・前年比）の算出方式。(c) スタッフ負荷率のしきい値（80%/30%）の適切さ（テナント設定にすべきか）。
+9. 公開区分: 公開可
 
 ## 2026-08-20 IMP-045 STAFF_MANAGEMENT — Permission文字列改名見送り＆最終管理者保護の実装判断
 
