@@ -3,12 +3,14 @@
 > まだ決まっていないこと、判断に迷っていることを書く場所。決まったら
 > DECISION_LOG.md に移し、このファイルからは消す（削除履歴は git で追える）。
 
-## 追加（2026-08-31・IMP-027 evaluateB2B の合算払い(consolidated) が CANCELED でも成立してしまう）
+## 追加（2026-08-31・IMP-027 evaluateB2B の合算払い(consolidated) が CANCELED でも成立してしまう。Codex指摘で前提を訂正）
 
-`src/lib/payment/policy.ts` の `evaluatePaymentPolicy()` は、モジュールの JSDoc で「UNKNOWN 状態では条件不成立」「CANCELED は条件不成立」という2つの不変条件を謳っているが、`evaluateB2B()` の合算払い（`billingCycle === "consolidated"`）分岐は `paymentState` を一切見ずに常時 `met: true` を返すため、この特定ジョブの帳票が CANCELED（`documentStatus === "cancelled" / "rejected"`）でも成立してしまう。UNKNOWN についてはコード中のコメントで「合算払いは決済状態と無関係」と明示的に理由付けされているが、CANCELED についてはそのような検討の跡がなく、単に `billingCycle` チェックが `paymentState` チェックより先に来ることの結果として偶発的にバイパスされている可能性が高い。
+`src/lib/payment/policy.ts` の `evaluatePaymentPolicy()` は、モジュールの JSDoc で「UNKNOWN 状態では条件不成立」「CANCELED は条件不成立」という2つの不変条件を謳っているが、`evaluateB2B()` の合算払い（`billingCycle === "consolidated"`）分岐は `paymentState` を一切見ずに常時 `met: true` を返すため、`paymentState === "CANCELED"` でも成立してしまう。UNKNOWN についてはコード中のコメントで「合算払いは決済状態と無関係」と明示的に理由付けされているが、CANCELED についてはそのような検討の跡がなく、単に `billingCycle` チェックが `paymentState` チェックより先に来ることの結果として偶発的にバイパスされている可能性が高い。
 
-- **判断が必要な点**: 合算請求のサイクルに含まれる特定ジョブの帳票が取消/却下された場合、そのジョブの証明書発行（Certificate Gate の `payment_policy_met` 条件）は成立させてよいか。(a) 合算請求は複数ジョブをまとめて締め日に請求するものなので、個別ジョブの帳票の状態（CANCELED含む）とは無関係に証明書を出してよい、という設計もあり得る。(b) 一方、CANCELED は「この取引自体が実質なかったことになった」ことを意味するなら、合算請求からも除外されるべきで、証明書も出すべきではない、という設計もあり得る。コードからは意図を判定できない。
-- 現状の挙動は回帰テスト（`src/lib/payment/__tests__/policy.test.ts`「合算払い(consolidated) は CANCELED でも成立する」）で明示化済み。実害は現状ゼロ（`evaluateCertificateGate()` を呼ぶ本番ルートが1つも存在しないことを確認済み — IMP-028 未統合）。実際に Certificate Gate を本番配線するタスクに着手する前に決める必要がある。
+- **訂正（Codex指摘、2026-08-31）**: 当初「この特定ジョブの帳票が取消/却下された場合」（`documentStatus === "cancelled"/"rejected"` → `CANCELED`）とだけ書いたが、これは CANCELED の発生源を一つに絞りすぎていた。実際には (a) `derivePoSPaymentState()` は POS 取引が `voided`（取消）のときも `CANCELED` を返す（`derivePaymentState.ts:78-79`）ため、帳票を介さない POS 起点の CANCELED もあり得る。(b) より根本的に、`src/lib/orders/orderInvoice.ts` の `isConsolidatedBilling()` 分岐（L195-202）は、合算払いの取引先には **per-order の請求書（documents 行）自体を作らず**、締め日の合算請求 cron に委ねる設計になっている。つまり「合算払いのジョブ」には、そもそも `deriveDocumentPaymentState()` が読む対象の帳票が存在しないケースがある。
+- **未解決の前提そのもの**: `evaluatePaymentPolicy()`/`evaluateCertificateGate()` は本番のどこからも呼ばれておらず（呼び出し元ゼロを確認済み）、「合算払いのジョブの `paymentState` は何から導出するのか」という、この判断の前提となる設計自体がまだ存在しない。帳票がないなら PaymentState は常に何になるのか（UNPAID固定か、POS取引があればそちらから導出するか等）を先に決めないと、「CANCELEDのときどうするか」という設問自体が具体化できない。
+- **判断が必要な点（前提が決まった後）**: 合算請求のサイクルに含まれる特定ジョブの決済起点（帳票 or POS取引）が CANCELED の場合、そのジョブの証明書発行（Certificate Gate の `payment_policy_met` 条件）は成立させてよいか。(a) 合算請求は複数ジョブをまとめて締め日に請求するものなので、個別の決済状態（CANCELED含む）とは無関係に証明書を出してよい、という設計もあり得る。(b) 一方、CANCELED は「この取引自体が実質なかったことになった」ことを意味するなら、合算請求からも除外されるべきで、証明書も出すべきではない、という設計もあり得る。コードからは意図を判定できない。
+- 現状の挙動は回帰テスト（`src/lib/payment/__tests__/policy.test.ts`「合算払い(consolidated) は CANCELED でも成立する」）で明示化済み。実害は現状ゼロ（`evaluateCertificateGate()` を呼ぶ本番ルートが1つも存在しないことを確認済み — IMP-028 未統合）。実際に Certificate Gate を本番配線するタスク（＝合算払いジョブの paymentState 導出元を設計するタスク）に着手する前に決める必要がある。
 
 ## 追加（2026-08-30・IMP-046 遅延 Codex レビュー8件中2件、指標の定義自体の決め直しが必要）
 

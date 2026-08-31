@@ -4,6 +4,18 @@
 > （新しい順）。実装の詳細は RELEASE_LOG.md、迷っている段階のものは
 > OPEN_QUESTIONS.md に書く。
 
+## 2026-08-31 PR #1010 へ Codex 指摘: CANCELED の発生源を帳票取消に限定していた前提を訂正
+
+1. 日付: 2026-08-31
+2. 起きたこと: PR #1010（evaluateB2B の合算払い×CANCELED不整合を OPEN_QUESTIONS へ記録）に Codex から指摘: (1) CANCELED の発生源を「この特定ジョブの帳票が取消/却下」（`documentStatus === "cancelled"/"rejected"`）だけに限定していたが、`derivePoSPaymentState()` は POS 取引が `voided` のときも CANCELED を返す（`derivePaymentState.ts:78-79`）ため、帳票を介さない発生源もある。(2) より根本的に、`src/lib/orders/orderInvoice.ts` の `isConsolidatedBilling()` 分岐は合算払いの取引先には per-order の請求書（documents 行）自体を作らない設計であり、合算払いのジョブにはそもそも `deriveDocumentPaymentState()` が読む帳票が存在しないケースがある。
+3. 以前の考え: CANCELED は「この特定ジョブの帳票が取消/却下された」ことだけを意味すると仮定して OPEN_QUESTIONS.md に記録していた。
+4. 違和感・問題: `orderInvoice.ts` を確認しておらず、合算払いのジョブに実際に帳票が存在するのかどうかを検証しないまま「帳票が CANCELED の場合」という前提で問いを立てていた。この前提が誤っている場合、そもそも設問自体が具体化できない（合算払いジョブの paymentState を何から導出するかという、より手前の設計が未着手であるため）。
+5. 決めたこと: OPEN_QUESTIONS.md のエントリを訂正し、(a) CANCELED の発生源が帳票取消/却下と POS voided の2経路あること、(b) 合算払いの取引先には per-order 帳票自体が作られない設計のため「帳票が CANCELED」という前提自体が成立しない可能性があること、(c) この判断のさらに手前に「合算払いジョブの paymentState を何から導出するか」という未設計の前提があることを明記した。`policy.ts` の JSDoc とテストコメントも同様に訂正。
+6. 捨てた選択肢: Codex の指摘を「本筋と無関係な枝葉」として無視する — 実際には自分の元の記述が技術的に不正確（発生源を一つに限定し、合算払いジョブに帳票が存在するかどうかを未検証のまま前提としていた）だったため、指摘を無視すると誤った前提のまま製品判断を仰ぐことになり不採用。
+7. 判断理由: OPEN_QUESTIONS.md に書く「判断が必要な点」は、判断者が正しく意思決定できるよう技術的前提が正確でなければならない。Codex の指摘は実際にコード（`orderInvoice.ts`, `derivePaymentState.ts`）を読んで検証済み（確実）であり、自分の記述の方が不正確だった。
+8. まだ答えが出ていないこと: 合算払いジョブの paymentState をどこから導出するか（設計未着手）。それが決まった上で CANCELED（発生源2経路とも）の扱いをどうするか。
+9. 公開区分: 公開可
+
 ## 2026-08-31 未着手項目の棚卸し: templateVersion.ts の4件は既に修正済み・evaluateB2B の合算払い×CANCELEDは要確認へ
 
 1. 日付: 2026-08-31
