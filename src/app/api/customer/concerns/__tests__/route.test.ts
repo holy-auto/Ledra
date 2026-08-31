@@ -6,6 +6,12 @@
  * `customer_concerns.job_id`（reservations(id) への外部キー）に
  * `body_repair_jobs` 自身の主キー（無関係な別テーブルのUUID）を渡しており、
  * reservation_id が存在しない限り外部キー違反でINSERT自体が失敗していた。
+ *
+ * 追加の回帰対象 (Codex指摘, 2026-08-31): 上記修正後も certificate_id を
+ * 読んでいなかったため、reservation_id が無く certificate_id だけ持つ板金
+ * ジョブ（bodyRepairJobCreateSchema はどちらも独立して任意）では job_id・
+ * certificate_id が両方 null で保存され、Certificate Gate の懸念チェックに
+ * 一切引っかからなくなっていた。
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
@@ -72,7 +78,7 @@ beforeEach(() => {
 
 describe("POST /api/customer/concerns — body_repair_tracking", () => {
   it("reservation_id を job_id として保存する（body_repair_jobs.id ではない）", async () => {
-    tables.body_repair_jobs = { tenant_id: TENANT, reservation_id: RESERVATION };
+    tables.body_repair_jobs = { tenant_id: TENANT, reservation_id: RESERVATION, certificate_id: null };
 
     const res = (await POST(
       req({
@@ -91,7 +97,7 @@ describe("POST /api/customer/concerns — body_repair_tracking", () => {
   });
 
   it("reservation_id が無い板金ジョブは job_id なしで保存する（外部キー違反にしない）", async () => {
-    tables.body_repair_jobs = { tenant_id: TENANT, reservation_id: null };
+    tables.body_repair_jobs = { tenant_id: TENANT, reservation_id: null, certificate_id: null };
 
     const res = (await POST(
       req({
@@ -104,6 +110,24 @@ describe("POST /api/customer/concerns — body_repair_tracking", () => {
     expect(res.status).toBe(201);
     const payload = mocks.insert.mock.calls[0][0];
     expect(payload.job_id).toBeNull();
+  });
+
+  it("reservation_id が無くても certificate_id があれば certificate_id を保存する", async () => {
+    const CERT = "certificate-1";
+    tables.body_repair_jobs = { tenant_id: TENANT, reservation_id: null, certificate_id: CERT };
+
+    const res = (await POST(
+      req({
+        source_type: "body_repair_tracking",
+        source_token: "track-token-3",
+        concern_text: "仕上がりが気になります",
+      }),
+    )) as Response;
+
+    expect(res.status).toBe(201);
+    const payload = mocks.insert.mock.calls[0][0];
+    expect(payload.job_id).toBeNull();
+    expect(payload.certificate_id).toBe(CERT);
   });
 
   it("トークンに一致する板金ジョブが無ければ 404", async () => {

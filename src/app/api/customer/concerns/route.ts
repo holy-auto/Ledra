@@ -156,13 +156,20 @@ async function resolveSourceContext(
       // は独立採番の別テーブルの主キーで reservations.id とは無関係のため、そのまま
       // job_id に渡すと外部キー違反で INSERT が失敗する（reservation_id が無い板金
       // ジョブでは懸念を job に紐づけられない = jobId なしで保存される）。
+      // certificate_id は reservation_id と独立に設定され得る（bodyRepairJobCreateSchema
+      // は両方任意）。証明書が直接紐づく板金ジョブでは、reservation_id が無くても
+      // certificate_id 経由で Certificate Gate の懸念チェックに引っかかるようにする。
       const { data } = await supabase
         .from("body_repair_jobs")
-        .select("tenant_id, reservation_id")
+        .select("tenant_id, reservation_id, certificate_id")
         .eq("track_token", token)
         .maybeSingle();
       if (!data) return null;
-      return { tenantId: data.tenant_id, jobId: data.reservation_id ?? undefined };
+      return {
+        tenantId: data.tenant_id,
+        jobId: data.reservation_id ?? undefined,
+        certificateId: data.certificate_id ?? undefined,
+      };
     }
     default:
       return null;
