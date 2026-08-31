@@ -48,12 +48,15 @@ export async function PUT(req: NextRequest) {
     const { admin } = createTenantScopedAdmin(caller.tenantId);
     const now = new Date().toISOString();
 
-    await admin
+    // 戻り値を捨てると、書き込みが失敗しても {ok:true} を返し、画面は「保存しました」と
+    // 表示したまま請求タイミングが変わらない（金銭に直結する設定なので握り潰さない）。
+    const { error } = await admin
       .from("tenant_billing_settings")
       .upsert(
         { tenant_id: caller.tenantId, billing_timing: parsed.data.billing_timing, updated_at: now },
         { onConflict: "tenant_id" },
       );
+    if (error) return apiInternalError(error, "billing-settings PUT");
 
     return apiJson({ ok: true, billing_timing: parsed.data.billing_timing });
   } catch (e) {

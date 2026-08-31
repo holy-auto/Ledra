@@ -6,19 +6,25 @@
 
 最終更新: 2026-08-31
 
-> 2026-08-31 追記: **証明書無効化に認可チェックが無い経路があり、閲覧専用(viewer)でも
-> 証明書を恒久的に無効化できる状態だった（修正済み、IMP-013）。** 同じ操作に3つのAPI経路が
-> あり、mobile は `certificates:void` を、admin は `requireMinRole("admin")` を検査していたが、
-> `/api/certificates/void` はテナント所属以外に何も検査していなかった（`apiForbidden` を
-> import しながら未使用という形跡付き）。合わせて `/api/admin/billing-settings` PUT と
-> `/api/admin/settings/defaults` PUT にも `settings:edit` を追加（設定系の既存API 9本に揃えた）。
-> **背景として判明した構造的問題**: `ROUTE_PERMISSIONS` + `AdminRouteGuard` はブラウザで動く
-> 表示制御でありセキュリティ境界ではない。実際の境界は各 route.ts に手書きされており、
-> テナント認証を通す変更系ルート316本のうち、本変更後も125本が認可チェックを一切持たない（修正前は128本）。
-> ただし多くは自己完結型で権限要求が正しいとは限らないため、切り分けは判断待ちとして
-> OPEN_QUESTIONS.md へ起票）。再発防止に `API_ROUTE_PERMISSIONS`（APIルート→必須Permission）と
-> 構造テストを追加した。なお IMP-013 の `storeScope.ts` / `canonicalVerb()` は依然として本番の
-> 認可経路から呼ばれていない — 本番DBに2店舗以上のテナントが0件のため配線は見送り（YAGNI）。
+> 2026-08-31 追記: **証明書の無効化に認可漏れがあり、閲覧専用(viewer)でも証明書を恒久的に
+> 無効化できる状態だった（修正済み、IMP-013）。** 無効化の経路は**5本**あり、
+> `/api/certificates/void` はテナント所属以外に何も検査せず、`/api/admin/certificates/status` は
+> 遷移表が `active→void` を `minRole: "staff"` としており、`/admin/vehicles/[id]` の Server Action
+> は認可判定を持たなかった。**背景として判明した構造的問題が2つある**: (1) `ROUTE_PERMISSIONS` +
+> `AdminRouteGuard` はブラウザで動く表示制御でありセキュリティ境界ではない。(2) RLS も境界に
+> ならない — `certificates` の UPDATE は PERMISSIVE ポリシー2本（`cert_update_member` =
+> テナントメンバー全員 / `certificates_update_v2` = owner・admin・staff）の OR で評価され、
+> 緩い方が勝つ（本番DBで実測）。あわせて `/api/admin/billing-settings` PUT と
+> `/api/admin/settings/defaults` PUT にも `settings:edit` を追加した（前者は upsert の戻り値を
+> 捨てており、書き込み失敗時も `{ok:true}` を返していた）。
+> **経緯として記録に値する点**: 初版では経路を「3本」と数えて修正し構造テストも添えたが、
+> `/code-review` が残り2本を検出した。旧検出器が `status: "void"` のリテラル一致だったため、
+> `status: newStatus` と変数で書く経路と Server Action が見えていなかった。検出器は
+> 「操作の書き方」ではなく「操作をした証拠」（監査イベント）を見るべきだった。
+> 認可チェックを持たない変更系ルートは他にも残っている（判定条件により125〜164本。多くは
+> 自己完結型で権限要求が正しいとは限らないため、切り分けは判断待ちとして OPEN_QUESTIONS.md へ起票）。
+> なお IMP-013 の `storeScope.ts` / `canonicalVerb()` は依然として本番の認可経路から呼ばれていない —
+> 本番DBに2店舗以上のテナントが0件のため配線は見送り（YAGNI）。
 
 > 2026-08-31 追記: **板金進捗ページ（`/track/[token]`）からの「気になる点を伝える」送信が、
 > 外部キー違反で保存できていなかったバグを修正した。** `customer_concerns.job_id`

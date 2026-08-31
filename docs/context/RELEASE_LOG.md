@@ -4,34 +4,40 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
-## 2026-08-31 証明書無効化の認可漏れを修正し、API の権限強制を構造テストで固定（IMP-013）
+## 2026-08-31 証明書無効化5経路の認可漏れを修正し、権限強制を構造テストで固定（IMP-013）
 
-- 背景: 証明書の無効化（不可逆・法的意味を持つ操作）に3つのAPI経路があり、認可の強さが
-  3通りに割れていた。`/api/certificates/void` は**テナント所属だけで通り**、viewer でも
-  証明書を恒久的に無効化できた。`ROUTE_PERMISSIONS` + `AdminRouteGuard` はブラウザで動く
-  表示制御でありセキュリティ境界ではないため、API を直接叩けば素通りする。
+- 背景: 証明書の無効化（不可逆・法的意味を持つ操作）に**5つの経路**があり、認可の強さが割れていた。
+  `/api/certificates/void` は**テナント所属だけで通り**、`/api/admin/certificates/status` は
+  遷移表が `active→void` を `minRole: "staff"` としており、`/admin/vehicles/[id]` の Server Action
+  は認可判定を持たず RLS 任せだった。`ROUTE_PERMISSIONS` + `AdminRouteGuard` はブラウザで動く
+  表示制御でセキュリティ境界ではなく、RLS も `certificates` の UPDATE が PERMISSIVE ポリシー2本の
+  OR で評価される（`cert_update_member` = メンバー全員）ため境界にならない。**viewer でも
+  証明書を恒久的に無効化できた。**
 - 内容:
-  - `/api/certificates/void`: 認可チェックを追加（`certificates:void`）。それまで
-    `apiForbidden` を import しながら未使用だった。
-  - `/api/admin/certificates/void`: `requireMinRole("admin")` を `certificates:void` に統一
-    （現状は等価だが、ロール束と権限の対応が変わったときに経路間でズレない）。
-  - `/api/admin/billing-settings` PUT・`/api/admin/settings/defaults` PUT: `settings:edit`
-    を追加（設定系の兄弟API 9本と同じ扱いに揃える）。
-  - `src/lib/auth/permissions.ts` に `API_ROUTE_PERMISSIONS`（APIルート → 必須Permission、
-    17件）を追加。`ROUTE_PERMISSIONS` の説明にクライアント専用である旨を明記。
-  - 触れたファイルの死んだ import（`NextResponse` 2件）を削除。
+  - 無効化5経路すべてに `certificates:void`（admin+）を要求。`admin/certificates/status` は
+    遷移表の `active→void` を `minRole: "admin"` に上げた上で Permission 判定も併置。
+    Server Action は権限判定を追加し、権限が無いユーザーには削除ボタンを出さないようにした。
+  - `/api/admin/billing-settings` PUT・`/api/admin/settings/defaults` PUT に `settings:edit` を追加。
+    前者は upsert の戻り値を捨てており、書き込み失敗時も `{ok:true}` を返していたので合わせて修正。
+  - `src/lib/auth/permissions.ts` に `API_ROUTE_PERMISSIONS`（APIルート → **変更系メソッドすべて**が
+    要求する Permission、16件）を追加。`ROUTE_PERMISSIONS` の説明にクライアント専用である旨を明記。
+  - 触れたファイルの死んだ import（`NextResponse` 2件）と、前提が変わった古いコメントを整理。
 - 検証:
-  - `src/lib/auth/__tests__/apiRoutePermissions.test.ts`（新規3件）: 表の全ルートが実際に
-    その Permission を検査していること、証明書無効化の経路が漏れなく登録されていること。
+  - `src/lib/auth/__tests__/apiRoutePermissions.test.ts`（新規4件）: 登録ルートは**変更系ハンドラ
+    1つ1つ**が Permission を要求すること、無効化経路（API + Server Action）がすべて
+    `certificates:void` を要求すること。検出は監査イベント `certificate_voided` という意味的な
+    合図を使い、走査は `src/app` 全体（Server Action を含む）。
   - `src/app/api/certificates/void/__tests__/route.test.ts`（新規6件、このルート初のテスト）:
     viewer/staff は 403 かつ書き込みが起きない、admin/owner/super_admin は成功、未認証は 401。
-    `requirePermission`/`hasPermission`/`ROLE_PERMISSIONS` は実物を使う（「呼んでいるが結果を
-    捨てている」形の壊れ方も落とすため）。
-  - 両テストとも、修正を一時的に戻すと実際に落ちることを確認済み（空振りテストでない）。
-  - `npx tsc --noEmit` エラーなし / `npm run lint` エラー0 / `npx vitest run` 518ファイル
-    5277件すべて通過 / `npm run check:schema` OK。
-- 残作業: 認可チェックを持たない変更系ルートが他に125本ある（本変更で128本→125本。自己完結型を含むため、すべてが
-  バグではない）。切り分けは product 判断が要るため OPEN_QUESTIONS.md に起票した。
+  - **各テストとも、修正を一時的に戻すと実際に落ちることを確認済み**（空振りテストでない）。
+    特に新検出器は、旧検出器が見逃した `admin/certificates/status` と Server Action の2本を
+    実際に検出することを確認した。
+- 経緯: 初版（3経路のみ修正）を PR #1014 として出した後、`/code-review` が残り2経路を検出した。
+  旧検出器が `status: "void"` のリテラル一致だったため、`status: newStatus` と変数で書く経路と
+  Server Action が見えていなかった。詳細と教訓は DECISION_LOG 2026-08-31 を参照。
+- 残作業: 認可チェックを持たない変更系ルートが他に多数ある（判定条件により125〜164本）。
+  無効化処理5経路の共有ヘルパーへの統合、`certificates` の RLS ポリシー重複の棚卸しも未着手。
+  いずれも OPEN_QUESTIONS.md に起票した。
 
 ## 2026-08-31 板金進捗ページからの懸念送信が外部キー違反で保存できていなかったバグを修正（IMP-026）
 

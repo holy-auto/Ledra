@@ -1,66 +1,87 @@
 /**
- * API ルートのサーバ側権限強制を固定する（IMP-013）。
+ * サーバ側の権限強制を固定する（IMP-013）。
  *
- * ROUTE_PERMISSIONS / AdminRouteGuard はブラウザで動く表示制御であって、
- * セキュリティ境界ではない。実際の境界は各 route.ts の中にあり、そこは
- * ルートごとに手書きされているため、経路が増えたときに黙って抜ける。
+ * `ROUTE_PERMISSIONS` / `AdminRouteGuard` はブラウザで動く表示制御であって、
+ * セキュリティ境界ではない。実際の境界は各ハンドラの中に手書きされているため、
+ * 経路が増えたときに黙って抜ける。
  *
- * 実際に抜けていた例（2026-08-31 に発見）: 証明書の無効化（不可逆・法的意味を持つ、
- * operationRisk = critical）は3経路あり、mobile は certificates:void を、
- * admin は requireMinRole("admin") を検査していたが、/api/certificates/void は
- * **テナントに所属しているだけで通っていた**。viewer でも証明書を無効化できた。
+ * 実際に抜けていた例（2026-08-31）: 証明書の無効化（不可逆・法的意味を持つ、
+ * operationRisk = critical）に**5本**の経路があり、うち3本しか
+ * `certificates:void`（admin+）を要求していなかった。
+ *  - `/api/certificates/void`         … テナント所属だけで通っていた（viewer でも無効化可能）
+ *  - `/api/admin/certificates/status` … 遷移表が `active→void` を `minRole: "staff"` としていた
+ *  - `/admin/vehicles/[id]` の Server Action … RLS 任せ。`certificates` の UPDATE は
+ *    PERMISSIVE ポリシー2本（`cert_update_member` = テナントメンバー全員 /
+ *    `certificates_update_v2` = owner・admin・staff）の OR で評価されるため viewer でも通った
  *
- * このテストは2方向から縛る:
- *  1. API_ROUTE_PERMISSIONS に登録したルートは、実際にその Permission を検査している
- *  2. 証明書を無効化する経路は、漏れなく API_ROUTE_PERMISSIONS に登録されている
- *
- * 新しい無効化経路を足したときは 2 が落ちる。登録して権限検査を入れるのが正しい対応で、
- * 除外リストに足すのは原則として誤り。
+ * この3本目・4本目・5本目は、最初に書いた検出器（`status: "void"` の文字列一致 +
+ * `src/app/api` のみ走査）では見えなかった。**数え方が甘いと「塞いだ」と誤認する**ので、
+ * 検出は「監査イベント `certificate_voided` を出す」という意味的な合図を主に使い、
+ * 走査範囲は Server Action を含む `src/app` 全体にする。
  */
 import { describe, it, expect } from "vitest";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { API_ROUTE_PERMISSIONS } from "../permissions";
+import type { Permission } from "../permissions";
 
-const API_ROOT = join(process.cwd(), "src", "app", "api");
+const APP_ROOT = join(process.cwd(), "src", "app");
+const API_ROOT = join(APP_ROOT, "api");
 
-function walkRoutes(dir: string, out: string[] = []): string[] {
+function walk(dir: string, match: (name: string) => boolean, out: string[] = []): string[] {
   for (const name of readdirSync(dir)) {
     const p = join(dir, name);
     if (statSync(p).isDirectory()) {
       if (name === "__tests__" || name === "node_modules") continue;
-      walkRoutes(p, out);
-    } else if (name === "route.ts") {
+      walk(p, match, out);
+    } else if (match(name)) {
       out.push(p);
     }
   }
   return out;
 }
 
-/** src/app/api からの相対ディレクトリ（POSIX 区切り）。 */
-function routeKey(file: string): string {
-  return file
-    .slice(API_ROOT.length + 1)
-    .replace(/[\\/]route\.ts$/, "")
-    .split(/[\\/]/)
-    .join("/");
+/** `requirePermission(caller, "x:y")` / `hasPermission(role, "x:y")` の呼び出しがあるか。 */
+function enforces(src: string, perms: readonly Permission[]): boolean {
+  return perms.some((p) => new RegExp(`(requirePermission|hasPermission)\\([^)]*"${p}"\\)`).test(src));
+}
+
+/** 変更系ハンドラごとに切り出す（GET だけ守っている状態を通さないため）。 */
+const HANDLER_SPLIT = /(?=export\s+(?:async\s+)?function\s+(?:GET|POST|PUT|PATCH|DELETE)\b)/;
+const MUTATING = /export\s+(?:async\s+)?function\s+(POST|PUT|PATCH|DELETE)\b/;
+
+function unenforcedMutatingHandlers(src: string, perms: readonly Permission[]): string[] {
+  const bad: string[] = [];
+  for (const part of src.split(HANDLER_SPLIT)) {
+    const m = part.match(MUTATING);
+    if (m && !enforces(part, perms)) bad.push(m[1]);
+  }
+  return bad;
 }
 
 /**
  * 証明書を無効化する経路を拾う。
- * パス名（.../void/route.ts）と実際の書き込み（certificates に status: "void"）の
- * **和**で数える。片方だけだと、パスに void を含まない経路や、
- * void を出すだけで書き込まないヘルパーを取り違える。
+ *
+ * `certificates` への UPDATE を持つことを前提に、次のどちらかで無効化と判定する:
+ *  - 監査イベント `certificate_voided` を記録している（書き方に依存しない意味的な合図。
+ *    `admin/certificates/status` は `status: newStatus` と変数で書くため、
+ *    リテラル一致だけでは見えない）
+ *  - `status: "void"` を書き込んでいる（監査を残さない経路への保険）
+ *
+ * `certificateLog.ts`（型定義）・`catalogue.ts`（イベント名）・`admin/audit/page.tsx`
+ * （表示ラベル）は `certificates` を UPDATE しないので自然に外れる。
  */
-function isCertificateVoidRoute(key: string, src: string): boolean {
-  if (!/from\("certificates"\)/.test(src)) return false;
-  if (/\.(update|upsert)\(/.test(src) && /status:\s*"void"/.test(src)) return true;
-  return /(^|\/)void$/.test(key) || /\/void\//.test(key);
+function isCertificateVoidPath(src: string): boolean {
+  const writesCertificates = /from\("certificates"\)/.test(src) && /\.update\(/.test(src);
+  if (!writesCertificates) return false;
+  return /certificate_voided/.test(src) || /status:\s*"void"/.test(src);
+}
+
+function asList(v: Permission | readonly Permission[]): readonly Permission[] {
+  return Array.isArray(v) ? v : [v as Permission];
 }
 
 describe("API ルートのサーバ側権限強制", () => {
-  const files = walkRoutes(API_ROOT);
-
   it("API_ROUTE_PERMISSIONS の全ルートが実在する", () => {
     const missing = Object.keys(API_ROUTE_PERMISSIONS).filter(
       (route) => !existsSync(join(API_ROOT, ...route.split("/"), "route.ts")),
@@ -68,30 +89,37 @@ describe("API ルートのサーバ側権限強制", () => {
     expect(missing).toEqual([]);
   });
 
-  it("API_ROUTE_PERMISSIONS の全ルートが実際にその Permission を検査している", () => {
+  it("登録ルートは変更系ハンドラ1つ1つが登録 Permission を要求する", () => {
     const unenforced: string[] = [];
-    for (const [route, perm] of Object.entries(API_ROUTE_PERMISSIONS)) {
+    for (const [route, value] of Object.entries(API_ROUTE_PERMISSIONS)) {
       const file = join(API_ROOT, ...route.split("/"), "route.ts");
       if (!existsSync(file)) continue; // 上のテストが報告する
-      if (!readFileSync(file, "utf8").includes(`"${perm}"`)) unenforced.push(`${route} -> ${perm}`);
+      const bad = unenforcedMutatingHandlers(readFileSync(file, "utf8"), asList(value));
+      if (bad.length) unenforced.push(`${route} [${bad.join(",")}] -> ${asList(value).join("|")}`);
     }
     expect(unenforced).toEqual([]);
   });
+});
 
-  it("証明書を無効化する経路はすべて certificates:void を要求する", () => {
-    const voidRoutes: string[] = [];
-    const ungated: string[] = [];
+describe("証明書の無効化 (operationRisk = critical)", () => {
+  const voidPaths: string[] = [];
+  const ungated: string[] = [];
 
-    for (const file of files) {
-      const key = routeKey(file);
-      const src = readFileSync(file, "utf8");
-      if (!isCertificateVoidRoute(key, src)) continue;
-      voidRoutes.push(key);
-      if (API_ROUTE_PERMISSIONS[key] !== "certificates:void") ungated.push(key);
-    }
+  for (const file of walk(APP_ROOT, (n) => n.endsWith(".ts") || n.endsWith(".tsx"))) {
+    const src = readFileSync(file, "utf8");
+    if (!isCertificateVoidPath(src)) continue;
+    const rel = file.slice(APP_ROOT.length + 1);
+    voidPaths.push(rel);
+    if (!enforces(src, ["certificates:void"])) ungated.push(rel);
+  }
 
-    // 経路を1本も拾えていないなら検出ロジックが壊れている（空の合格を防ぐ）
-    expect(voidRoutes.length).toBeGreaterThanOrEqual(3);
+  it("検出できている（検出器が壊れて空で合格するのを防ぐ）", () => {
+    // 2026-08-31 時点で5本。減ったら経路が消えたか検出器が壊れたかのどちらかで、
+    // どちらも確認が要る。
+    expect(voidPaths.length).toBeGreaterThanOrEqual(5);
+  });
+
+  it("API ルートも Server Action も、すべて certificates:void を要求する", () => {
     expect(ungated).toEqual([]);
   });
 });

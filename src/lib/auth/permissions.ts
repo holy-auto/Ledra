@@ -415,27 +415,34 @@ export function requiredPermissionForPath(pathname: string): Permission | null {
 }
 
 /**
- * API ルート → サーバ側で必須の Permission（IMP-013）。
+ * API ルート → その **変更系メソッド（POST/PUT/PATCH/DELETE）すべて**が要求する Permission。
  *
  * ROUTE_PERMISSIONS が画面を守るのに対し、こちらは実際の権限境界である API を守る。
  * キーは `src/app/api` からの相対ディレクトリ（`route.ts` を除いたもの）。
+ * 値が配列の場合は「いずれか1つを要求していればよい」（メソッドごとに強さが違うルート用。
+ * 例: payments は POST=create / PUT・DELETE=manage）。
  *
- * ここに登録したルートは、対応する route.ts が実際にその Permission を検査している
- * ことを構造テスト（`__tests__/apiRoutePermissions.test.ts`）が強制する。
+ * 構造テスト（`__tests__/apiRoutePermissions.test.ts`）が、登録した各ルートの
+ * **変更系ハンドラ1つ1つ**について `requirePermission(...)` / `hasPermission(...)` の
+ * 呼び出しが存在することを検査する。ファイル全体の文字列一致では、コメントに書いただけ・
+ * GET だけ守っている、といった状態を通してしまうため。
  *
- * ponytail: 全 API ルートの網羅表ではなく、**強制済みのものを固定するための表**。
- * 認可未強制の変更系ルートは他にも残っており（docs/context/OPEN_QUESTIONS.md）、
- * 強制を入れるたびにここへ足していく。Next.js の middleware で一括強制する案は、
- * テナントロールの解決に DB アクセスが要り全リクエストに載るため採らなかった。
+ * ponytail: 全 API ルートの網羅表ではなく、**強制を検証済みのものを固定するための表**。
+ * ここに載せないルートは「安全」を意味しない。認可未強制の変更系ルートは他にも残っており
+ * （docs/context/OPEN_QUESTIONS.md）、強制を入れて検証したものからここへ足していく。
+ * 「メソッドごとに要求が違い、1つの値で表せない」ルート（`admin/certificates/status` の
+ * draft→active と active→void 等）は、この表ではなく操作単位の不変条件テストで縛る。
+ * Next.js の middleware で一括強制する案は、テナントロールの解決に DB アクセスが要り
+ * 全リクエストに載るため採らなかった。
  */
-export const API_ROUTE_PERMISSIONS: Record<string, Permission> = {
+export const API_ROUTE_PERMISSIONS: Record<string, Permission | readonly Permission[]> = {
   // 証明書の無効化（operationRisk = critical / 不可逆・法的意味を持つ）。
-  // 3経路あり、経路ごとに認可が食い違っていた。
+  // 経路ごとに認可が食い違っていた。無効化経路の網羅は別途 void-path テストが縛る。
   "certificates/void": "certificates:void",
   "admin/certificates/void": "certificates:void",
   "mobile/certificates/[id]/void": "certificates:void",
 
-  // /admin/settings 配下の設定変更。
+  // 設定変更。
   "admin/billing-settings": "settings:edit",
   "admin/settings/defaults": "settings:edit",
   "admin/follow-up-settings": "settings:edit",
@@ -446,10 +453,11 @@ export const API_ROUTE_PERMISSIONS: Record<string, Permission> = {
   "admin/integrations/email-templates": "settings:edit",
 
   // メンバー・店舗・決済・レジ（既に強制済み。回帰を止めるために登録する）。
+  // `admin/members` は PUT/DELETE が `caller.role !== "owner" && !== "admin"` の
+  // インライン判定で、Permission 経由ではないため登録しない（登録すると偽の主張になる）。
   "admin/staff": "members:manage",
   "admin/staff/shifts": "members:manage",
-  "admin/members": "members:manage",
   "admin/stores": "stores:manage",
-  "admin/payments": "payments:manage",
+  "admin/payments": ["payments:create", "payments:manage"],
   "admin/registers": "registers:manage",
 };

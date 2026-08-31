@@ -4,71 +4,96 @@
 > （新しい順）。実装の詳細は RELEASE_LOG.md、迷っている段階のものは
 > OPEN_QUESTIONS.md に書く。
 
-## 2026-08-31 証明書無効化に認可チェックが無い経路があった / 権限強制を「表 + 構造テスト」で固定する
+## 2026-08-31 証明書無効化の経路を「3本」と数えて2本見落とした / 権限強制を意味的な検出器で固定する
 1. 日付: 2026-08-31
 2. 起きたこと: IMP-013（権限エンジン）の本番配線を進めるため既存の認可経路を調べたところ、
    証明書の無効化（`certificates:void`、`operationRisk()` で `critical` = 不可逆・法的意味を持つ）
-   に3つのAPI経路があり、認可の強さが3通りに割れていた。
-   `/api/mobile/certificates/[id]/void` は `hasPermission(role, "certificates:void")`、
-   `/api/admin/certificates/void` は `requireMinRole("admin")`、そして
-   `/api/certificates/void` は**テナントに所属していること以外何も検査していなかった**。
-   `certificates:void` は admin 以上のみが持つ権限だが、この経路だけは viewer（閲覧専用、
-   18権限すべて view 系）でも証明書を恒久的に無効化できた。当該ファイルは `apiForbidden` を
-   import しながら一度も使っておらず、チェックが失われた形跡が残っていた。
-   また `/api/certificates/void` は service-role（`createTenantScopedAdmin`）で書き込むため
-   RLS も効かない。同ルートはフロントエンドから呼ばれていない（UIは admin 側を使う）が、
-   ルート自体は生きており直接叩ける。
+   の経路で認可の強さが割れていた。最初は**3経路**と数えて修正し、構造テストを添えて PR #1014 を
+   出したが、その PR に対する `/code-review` が**さらに2経路**を検出した。最終的に5経路:
+   - `/api/certificates/void` — **何も検査していなかった**（テナント所属のみ。viewer でも無効化可能）
+   - `/api/admin/certificates/void` — `requireMinRole("admin")`
+   - `/api/mobile/certificates/[id]/void` — `hasPermission(role, "certificates:void")`
+   - `/api/admin/certificates/status` — 遷移表が `active → void` を **`minRole: "staff"`** としていた。
+     service-role で書き込むため RLS も効かず、監査には `certificate_voided` を記録していた。
+     WebAuthn 操作署名ゲートは `WEBAUTHN_OPERATION_SIGNING=off`（既定）で素通りする
+   - `/admin/vehicles/[id]` の Server Action `voidCertificate` — 認可判定なし。RLS 任せだったが、
+     `certificates` の UPDATE は **PERMISSIVE ポリシー2本の OR** で評価される
+     （`cert_update_member` = `is_member_of_tenant` = テナントメンバー全員 /
+     `certificates_update_v2` = owner・admin・staff）。本番DBで実測して確認した結果、
+     **viewer でも UPDATE が通る**状態だった
+   `/api/certificates/void` は `apiForbidden` を import しながら一度も使っておらず、
+   チェックが失われた形跡が残っていた。
 3. 以前の考え: 権限は `ROLE_PERMISSIONS`（5ロール×55権限）と `ROUTE_PERMISSIONS` +
    `AdminRouteGuard` で守られている、と暗黙に考えていた。requirement-trace.md にも
    「Role5段+Permission55種+RLS240は稼働中」と書いていた。
-4. 違和感・問題: `AdminRouteGuard` はブラウザで動くクライアントコンポーネントであり、
-   セキュリティ境界ではない。API を直接叩けば素通りする。実際の境界は各 route.ts の中に
-   手書きされており、単一の強制点が無い。テナント認証を通す変更系ルート316本のうち
-   **128本が認可チェックを一切持たなかった**（`resolveCallerWithRole`/`resolveMobileCaller` は
-   通すが `requirePermission` 等を呼ばない）。ただしこの数はファイル単位の判定で、
-   GET だけ守って POST は素通り、という部分的な穴は含まれていない（下限値）。
-   その多くは「自分のデータを自分で操作する」自己完結型（通知既読、UI設定、MFA登録、
-   WebAuthn登録等）で、権限チェックを足すのが正しいとは限らない。つまり「認可なし」を
-   そのままバグ件数として扱うことはできない。
+4. 違和感・問題:
+   - `AdminRouteGuard` はブラウザで動くクライアントコンポーネントであり、セキュリティ境界ではない。
+     API を直接叩けば素通りする。実際の境界は各ハンドラの中に手書きされており、単一の強制点が無い。
+   - **RLS も境界として当てにならない**。同じテーブルに PERMISSIVE ポリシーが複数あると OR で
+     評価されるため、後から入れた厳しいポリシー（owner/admin/staff）が、前からある緩いポリシー
+     （メンバー全員）に上書きされずに緩い方が勝つ。
+   - **そして自分自身が、前回 PR #1011 で書いた教訓（「人が経路を数える限り必ず漏れる」）を
+     そのまま踏んだ。** 最初に書いた検出器は `status: "void"` のリテラル一致 + `src/app/api` の
+     走査だったため、`status: newStatus` と変数で書く `admin/certificates/status` も、
+     Server Action である `admin/vehicles/[id]/page.tsx` も見えなかった。しかも
+     `activationGates.test.ts` には「ステータスの書き方は経路ごとに違う: `status: newStatus`」と
+     自分で書いてあり、それを読んだ上で同じ失敗をしている。
 5. 決めたこと:
-   - **判定に使える客観的な基準を「同じ操作の他経路が強制しているか」に置く。** 経路間の
-     不一致はコードベース内部の矛盾であり、こちらの product 判断を必要としない。
-   - 今回はその基準を満たす4ルートを修正した: `/api/certificates/void`（認可なし →
-     `certificates:void`）、`/api/admin/certificates/void`（`requireMinRole("admin")` →
-     同じ Permission に統一）、`/api/admin/billing-settings` PUT と
-     `/api/admin/settings/defaults` PUT（認可なし → `settings:edit`。設定系の既存API 9本が
-     すでに `settings:edit` を要求しており、それに揃えた）。
-     この4本のうち3本が「認可なし」からの移動で、認可なしの変更系ルートは128本→125本になった。
-   - `src/lib/auth/permissions.ts` に `API_ROUTE_PERMISSIONS`（APIルート → 必須Permission、
-     17件）を追加し、構造テスト `src/lib/auth/__tests__/apiRoutePermissions.test.ts` が
-     (a) 表の全ルートが実際にその Permission を検査していること、(b) 証明書を無効化する
-     経路が漏れなく表に登録されていること、を強制する。
-   - `ROUTE_PERMISSIONS` の説明に「これはクライアント側の表示制御であってセキュリティ境界
-     ではない」と明記した。この誤解が今回の穴の背景にある。
+   - **判定に使える客観的な基準を「同じ操作の他経路が強制しているか」に置く。** 経路間の不一致は
+     コードベース内部の矛盾であり、こちらの product 判断を必要としない。
+   - 無効化5経路すべてに `certificates:void` を要求させた。`admin/certificates/status` は
+     遷移表の `active→void` を `minRole: "admin"` に上げた上で Permission 判定も併置。
+     Server Action は権限判定を追加し、権限が無いユーザーには削除ボタン自体を出さないようにした。
+   - あわせて `/api/admin/billing-settings` PUT と `/api/admin/settings/defaults` PUT に
+     `settings:edit` を追加（設定系の既存API 9本と同じ扱い）。前者は upsert の戻り値を捨てて
+     いて、書き込み失敗時も `{ok:true}` を返していたので合わせて修正した。
+   - **検出器を意味的な合図に作り替えた。** 監査イベント `certificate_voided` を記録しているか
+     （書き方に依存しない）を主な合図とし、走査範囲を `src/app` 全体（Server Action を含む）に
+     広げた。強制側の検査も、ファイル全体の文字列一致ではなく
+     `requirePermission(...)` / `hasPermission(...)` の**呼び出し形**を、**変更系ハンドラ1つ1つ**に
+     対して要求する形にした（コメントに書いただけ・GET だけ守っている、を通さない）。
+   - `API_ROUTE_PERMISSIONS`（APIルート → 必須Permission）の意味を「**変更系メソッドすべて**が
+     要求する Permission」に厳密化した。`admin/payments` は POST=create / PUT・DELETE=manage と
+     メソッドで違うため配列にし、`admin/members` は PUT/DELETE が Permission ではなくインラインの
+     role 判定なので表から外した（登録すると偽の主張になる）。
+   - `ROUTE_PERMISSIONS` の説明に「これはクライアント側の表示制御であってセキュリティ境界では
+     ない」と明記した。この誤解が今回の穴の背景にある。
 6. 捨てた選択肢:
-   - **認可なしの変更系ルート全部に権限チェックを足す**: 自己完結型ルートに誤って権限を要求すると正規
-     ユーザーを締め出す。どのルートにどの権限が要るかは product 判断であり、推測で決めない。
+   - **認可なしの変更系ルート全部に権限チェックを足す**: 自己完結型ルートに誤って権限を要求すると
+     正規ユーザーを締め出す。どのルートにどの権限が要るかは product 判断であり、推測で決めない。
    - **Next.js middleware で一括強制する**: 単一強制点は魅力的だが、テナントロールの解決に
      DB アクセスが必要で全リクエストに載る。本リポジトリには現在 middleware.ts が無く、
      認可のために新設するのは影響範囲が大きすぎる。
+   - **無効化処理を共有ヘルパー（`voidCertificate()`）に一本化する**: レビューの指摘どおり、
+     5経路が「取得 → void 済み短絡 → status 更新 → 監査」をコピペで再実装しており、根本解は
+     ここにある。ただし5経路はクライアント（service-role / ユーザースコープ）も、理由の記録有無も、
+     `updated_at` の扱いも異なり、統合は独立した設計作業になる。今回は穴を塞ぐことを優先し、
+     統合は OPEN_QUESTIONS に起票した。
    - **`billing:manage` を billing-settings に要求する**: 請求タイミングは金銭に直結するが、
-     `billing:manage` は owner/super_admin のみで admin が持たない。当該設定は
-     `/admin/settings` 画面（`settings:view`）にあり、`billing:manage` を課すと admin が
-     操作できなくなる。画面配置という既存の証拠に従い `settings:edit` を選んだ。
+     `billing:manage` は owner/super_admin のみで admin が持たない。当該設定は設定系の画面から
+     呼ばれており、`billing:manage` を課すと admin が操作できなくなる。既存の設定系API 9本に
+     揃えて `settings:edit` を選んだ。
    - **店舗スコープ（`storeScope.ts`）を一覧APIに配線する**: 本番DBを確認したところ
      stores 3件・store_memberships 1件で、**2店舗以上を持つテナントは0**。owner/admin は
      `bypassesStoreScope()` で素通りするため、実際に影響を受けるのは staff 1名のみ。
      割当が無ければ突然何も見えなくなる回帰リスクだけがあり、得るものが無い（YAGNI）。
 7. 判断理由: 「認可が無い」は必ずしもバグではないが、「同じ操作なのに経路ごとに認可が違う」は
-   どちらかが必ず間違っている。前者は product 判断を要し、後者は要さない。後者だけを直せば、
-   推測なしで実際の穴を塞げる。さらに、人が経路を数える限り必ず漏れる（PR #1011 で証明書発行
-   経路を「2本」と数えて4本目を構造テストに発見された）ので、今回も最初から構造テストで縛る。
-   両テストがバグを実際に検出することは、修正を一時的に戻して落ちることを確認した。
-8. まだ答えが出ていないこと: 残り125本の認可なし変更系ルートのうち、
-   どれが本当に権限を要求すべきか。自己完結型と管理操作の切り分けは product 判断であり、
-   代表の判断が要る。OPEN_QUESTIONS.md に起票した。
-   また `storeScope.ts` / `canonicalVerb()` は依然として本番の認可経路から呼ばれていない。
-   多店舗テナントが実在するようになるまで配線しない。
+   どちらかが必ず間違っている。前者は product 判断を要し、後者は要さない。後者だけを直せば
+   推測なしで実際の穴を塞げる。
+   そして今回いちばん重要な教訓は、**「構造テストを書いた」ことが「網羅した」ことを意味しない**という
+   点である。検出器がリテラル一致だと、対象の書き方が1つ違うだけで静かに0件になり、テストは緑のまま
+   通る。前回の PR #1011 で `triggerCertificateIssued(` という意味的な合図を使ったのは正しかったのに、
+   今回は同じ判断を再現できなかった。検出器は「その操作をしたことの証拠」（今回は監査イベント）を
+   見るべきで、「その操作の書き方」を見てはいけない。
+8. まだ答えが出ていないこと:
+   - 認可チェックを持たない変更系ルートのうち、どれが本当に権限を要求すべきか。自己完結型と
+     管理操作の切り分けは product 判断であり、代表の判断が要る（OPEN_QUESTIONS.md に起票）。
+   - 無効化処理5経路の共有ヘルパーへの統合（同上）。
+   - `certificates` の PERMISSIVE ポリシー2本重複（`cert_update_member` が
+     `certificates_update_v2` の意図を無効化している）。同種の重複が他テーブルにもある可能性が
+     高く、RLS 全体の棚卸しが要る（同上）。
+   - `storeScope.ts` / `canonicalVerb()` は依然として本番の認可経路から呼ばれていない。
+     多店舗テナントが実在するようになるまで配線しない。
 9. 公開区分: 公開可（技術的教訓。テナント名・ユーザー名・実データは含めない）
 
 ## 2026-08-31 板金進捗ページからの「気になる点を伝える」が外部キー違反で保存できていなかった

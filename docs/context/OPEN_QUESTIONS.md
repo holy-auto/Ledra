@@ -3,19 +3,55 @@
 > まだ決まっていないこと、判断に迷っていることを書く場所。決まったら
 > DECISION_LOG.md に移し、このファイルからは消す（削除履歴は git で追える）。
 
-## 認可チェックを持たない変更系APIルートが125本ある（2026-08-31）
+## certificates の RLS に、意図を打ち消す PERMISSIVE ポリシー重複がある（2026-08-31）
 
-テナント認証（`resolveCallerWithRole` / `resolveMobileCaller`）を通す変更系（POST/PUT/PATCH/
-DELETE）のAPIルート316本のうち、125本が `requirePermission` 等の認可チェックを一切持たない。
-2026-08-31 に4ルート（証明書無効化・設定変更）へ認可を追加・統一し、128本から125本になった。
+`certificates` の UPDATE には PERMISSIVE ポリシーが2本ある（本番DBで実測）。
 
-- 補足: この数はファイル単位の判定。GET は守るが POST は素通り、という部分的な穴は含まれて
+- `cert_update_member` … `is_member_of_tenant(tenant_id)` = **テナントメンバー全員**
+- `certificates_update_v2` … `my_tenant_role(tenant_id) IN ('owner','admin','staff')`
+
+PostgreSQL は同一コマンドの PERMISSIVE ポリシーを **OR** で評価するため、後から入れた
+`certificates_update_v2` の絞り込みは効かず、緩い方が勝つ。結果として viewer でも
+`certificates` を UPDATE できる。今回はアプリ層（Server Action の権限判定）で塞いだが、
+RLS 側は緩いままである。
+
+- 次のアクション: (a) 同種の重複が他テーブルにもあるか棚卸しする、(b) `cert_update_member` を
+  落とすか RESTRICTIVE に変えるかを決める。(b) は既存の書き込み経路を壊し得るので、
+  影響調査が要る。
+- 起票日: 2026-08-31
+
+## 証明書の無効化処理が5経路にコピペで散っている（2026-08-31）
+
+`certificates/void` / `admin/certificates/void` / `mobile/certificates/[id]/void` /
+`admin/certificates/status` / `admin/vehicles/[id]` の Server Action が、
+「取得 → void 済み短絡 → status 更新 → 監査記録」をそれぞれ再実装している。
+実装はすでに食い違っている（service-role かユーザースコープか、理由を記録するか、
+`updated_at` を書くか）。認可の食い違いは 2026-08-31 に塞いだが、コピペ自体は残っている。
+
+- 次のアクション: 権限判定を内包した `voidCertificate(caller, publicId)` に一本化するのが
+  根本解。ただしクライアントの違い・監査の粒度の違いを吸収する設計が要るので、独立した
+  作業として扱う。
+- 起票日: 2026-08-31
+
+## 認可チェックを持たない変更系APIルートが多数ある（2026-08-31）
+
+- 分母: 316本（テナント認証 `resolveCallerWithRole` / `resolveMobileCaller` を通し、かつ
+  POST/PUT/PATCH/DELETE を export している `src/app/api/**/route.ts`）
+- 認可なし: **判定条件によって125本または164本**
+  - 125本 … 認可ヘルパー12種（`requirePermission` / `hasPermission` / `requireMinRole` /
+    `hasMinRole` / `resolveOrgAccess` / `hasMinOrgRole` / `isPlatformAdmin` /
+    `isPlatformTenantId` / `assertPlatformTenantId` / `authorizeOrgStoreRead` /
+    `resolveInsurerCaller` / `resolveManufacturerCaller`）のいずれも呼ばないもの
+  - 164本 … `requirePermission` / `hasPermission` / `requireMinRole` の3種だけで数えた場合
+- どちらも同じソースから実測した値で、**数える対象が違うだけ**。以前この数字を「125」とだけ
+  書いていたが、判定条件を書いていなかったため再現できなかった。数字を出すときは条件も併記する。
+- 補足: いずれもファイル単位の判定。GET は守るが POST は素通り、という部分的な穴は含まれて
   いないため**下限値**である。
 - なぜ機械的に直せないか: その多くは「自分のデータを自分で操作する」自己完結型
   （通知既読、UI設定、MFA登録、WebAuthn登録、プッシュ通知登録等）で、権限を要求するのが
   正しいとは限らない。誤って要求すると正規ユーザーを締め出す。
-- 影響（本番実データ、2026-08-31時点、Supabase MCP で実測）: tenant_memberships 25件の内訳は owner 23 /
-  staff 1 / super_admin 1。owner と super_admin は全権限を持つため、現時点で実際に
+- 影響（本番実データ、2026-08-31時点、Supabase MCP で実測）: tenant_memberships 25件の内訳は
+  owner 23 / staff 1 / super_admin 1。owner と super_admin は全権限を持つため、現時点で実際に
   影響を受け得るのは staff 1名のみ。ただしこれは今の登録状況にすぎず、staff/viewer が
   増えれば即座に実害になる。
 - 次のアクション: 代表の判断が要る。「この操作は誰ができるべきか」をルート群ごとに決める。

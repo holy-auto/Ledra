@@ -15,9 +15,9 @@ import {
 
 /**
  * POST /api/certificates/void
- * Authenticated void endpoint — requires logged-in user with tenant membership.
- * Kept at this path for backward compatibility; the canonical endpoint is
- * /api/admin/certificates/void.
+ * 認証済み + `certificates:void`（admin 以上）が必要。
+ * 互換のためこのパスを残しているが、正準のエンドポイントは
+ * /api/admin/certificates/void。
  */
 export async function POST(req: Request) {
   try {
@@ -35,8 +35,9 @@ export async function POST(req: Request) {
       return apiUnauthorized();
     }
     // 証明書の無効化は不可逆で法的意味を持つ (operationRisk = critical)。
-    // 同じ操作の他2経路 (admin/certificates/void, mobile/certificates/[id]/void) は
-    // admin 以上を要求しているのに、ここだけテナント所属だけで通っていた。
+    // 無効化の経路は全部で5本あり、ここだけテナント所属だけで通っていた
+    // (viewer でも無効化できた)。5本すべてが同じ Permission を見ることは
+    // src/lib/auth/__tests__/apiRoutePermissions.test.ts が強制する。
     if (!requirePermission(caller, "certificates:void")) {
       return apiForbidden("証明書無効化の権限がありません。");
     }
