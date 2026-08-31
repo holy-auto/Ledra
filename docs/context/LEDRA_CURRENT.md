@@ -44,8 +44,9 @@
 > （`reservations(id)` への外部キー）に、無関係な別テーブル（`body_repair_jobs`）自身の
 > 主キーを渡していたことが原因。IMP-026実装時（4系統の懸念受付を作った際）からの見落としで、
 > PR #1012の`/code-review`で発覚。`resolveSourceContext()`を`body_repair_jobs.reservation_id`
-> を返すよう修正。詳細は DECISION_LOG / RELEASE_LOG 2026-08-31 を参照。
-
+> を返すよう修正。**実影響はゼロ**（本番DBで実測: `body_repair_jobs` 0行・`track_token` 保有 0行・
+> `customer_concerns` 0行。板金進捗ページが一度も存在していないため、失敗した送信も存在しない）。
+> 詳細は DECISION_LOG / RELEASE_LOG 2026-08-31 を参照。
 > 2026-08-31 追記: **モバイルアプリのサインアップ確認 OTP を実配線した（IMP-012）。**
 > `/(auth)/verify-otp.tsx` は従来タイムアウトのみで「検証済み」にするプレースホルダだった
 > （6桁ならどんな値でも通る）。調査したところ、モバイルのサインアップ自体がパスワード方式

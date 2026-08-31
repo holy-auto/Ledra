@@ -75,7 +75,9 @@
   ページ (`/track/[token]`, source_type=`body_repair_tracking`) からの懸念送信で
   `customer_concerns.job_id`（`reservations(id)` への外部キー）に `body_repair_jobs.id`
   （無関係な別テーブルの主キー）を渡しており、`reservation_id` が偶然一致しない限り
-  外部キー違反で `INSERT` 自体が失敗していたと考えられる。
+  外部キー違反で `INSERT` 自体が失敗する状態だった。
+  **実影響はゼロ**（2026-08-31 に本番DBで実測。`body_repair_jobs` 0行・`track_token` 保有 0行・
+  `customer_concerns` 0行。進捗ページ自体が一度も存在していないため、失敗した送信も存在しない）。
 - 内容: `resolveSourceContext()` の該当ケースを `body_repair_jobs.reservation_id`
   （実際の外部キー列）を返すよう修正。`reservation_id` が無いジョブは `jobId` なしで保存
   （外部キー違反にはならない）。
