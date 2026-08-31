@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Modal, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { Icon, Text } from "react-native-paper";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -24,18 +24,31 @@ export function DisplayModeOnboarding() {
   const insets = useSafeAreaInsets();
   const loading = useUiPreferencesStore((state) => state.loading);
   const completed = useUiPreferencesStore((state) => state.onboardingCompleted);
+  const displayMode = useUiPreferencesStore((state) => state.deviceOverride ?? state.accountMode);
   const complete = useUiPreferencesStore((state) => state.completeOnboarding);
   const [step, setStep] = useState(0);
   const [role, setRole] = useState<WorkRole | null>(null);
   const [mode, setMode] = useState<DisplayMode>("standard");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const wasOpen = useRef(false);
 
   const recommendation = useMemo<DisplayMode>(() => {
     if (role === "owner") return "dense";
     if (role === "reception" || role === "manager") return "standard";
     return "simple";
   }, [role]);
+
+  useEffect(() => {
+    const open = !loading && !completed;
+    if (open && !wasOpen.current) {
+      setStep(0);
+      setRole(null);
+      setMode(displayMode);
+      setError("");
+    }
+    wasOpen.current = open;
+  }, [completed, displayMode, loading]);
 
   async function finish(selected = mode) {
     setSaving(true);

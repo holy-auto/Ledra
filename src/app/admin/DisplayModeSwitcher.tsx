@@ -11,10 +11,11 @@ const MODES: { id: DisplayMode; label: string; shortLabel: string }[] = [
 
 export default function DisplayModeSwitcher() {
   const { displayMode, deviceOverride, setDisplayMode, clearDeviceOverride, restartOnboarding } = useUiPreferences();
-  const [scope, setScope] = useState<PreferenceScope>("account");
+  const [scopeChoice, setScopeChoice] = useState<PreferenceScope | null>(null);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [messageIsError, setMessageIsError] = useState(false);
+  const scope = scopeChoice ?? (deviceOverride ? "device" : "account");
 
   useEffect(() => {
     if (!message || messageIsError) return;
@@ -28,7 +29,6 @@ export default function DisplayModeSwitcher() {
     setMessage(null);
     setMessageIsError(false);
     try {
-      if (scope === "account" && deviceOverride) clearDeviceOverride();
       await setDisplayMode(mode, scope);
       setMessage(scope === "device" ? "この端末の表示を変更しました" : "表示を変更しました");
     } catch (error: unknown) {
@@ -71,7 +71,7 @@ export default function DisplayModeSwitcher() {
             <input
               type="checkbox"
               checked={scope === "device"}
-              onChange={(event) => setScope(event.target.checked ? "device" : "account")}
+              onChange={(event) => setScopeChoice(event.target.checked ? "device" : "account")}
               className="h-4 w-4 accent-[var(--accent)]"
             />
             この端末だけ表示を変更
@@ -82,7 +82,10 @@ export default function DisplayModeSwitcher() {
           {deviceOverride && (
             <button
               type="button"
-              onClick={clearDeviceOverride}
+              onClick={() => {
+                clearDeviceOverride();
+                setScopeChoice("account");
+              }}
               className="mt-3 min-h-9 w-full rounded-lg bg-inset px-3 font-semibold text-accent hover:bg-border-subtle focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
             >
               共通設定に戻す

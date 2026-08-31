@@ -22,9 +22,10 @@ export function DisplayModeControl({ compact = false }: { compact?: boolean }) {
   const deviceOverride = useUiPreferencesStore((state) => state.deviceOverride);
   const setDisplayMode = useUiPreferencesStore((state) => state.setDisplayMode);
   const clearDeviceOverride = useUiPreferencesStore((state) => state.clearDeviceOverride);
-  const [deviceOnly, setDeviceOnly] = useState(Boolean(deviceOverride));
+  const [deviceOnlyChoice, setDeviceOnlyChoice] = useState<boolean | null>(null);
   const [message, setMessage] = useState("");
   const [messageIsError, setMessageIsError] = useState(false);
+  const deviceOnly = deviceOnlyChoice ?? Boolean(deviceOverride);
 
   useEffect(() => {
     if (!message || messageIsError) return;
@@ -66,7 +67,7 @@ export function DisplayModeControl({ compact = false }: { compact?: boolean }) {
             <Switch
               value={deviceOnly}
               onValueChange={(value) => {
-                setDeviceOnly(value);
+                setDeviceOnlyChoice(value);
                 if (!value && deviceOverride) void clearDeviceOverride();
               }}
               trackColor={{ false: colors.border, true: colors.primaryLight }}

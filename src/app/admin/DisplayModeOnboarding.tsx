@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { type DisplayMode, useUiPreferences } from "@/lib/ui-preferences/UiPreferencesContext";
 
 type WorkRole = "reception" | "technician" | "manager" | "owner";
@@ -19,18 +19,30 @@ const MODE_OPTIONS: { id: DisplayMode; label: string; description: string }[] = 
 ];
 
 export default function DisplayModeOnboarding() {
-  const { loading, onboardingCompleted, completeOnboarding } = useUiPreferences();
+  const { displayMode, loading, onboardingCompleted, completeOnboarding } = useUiPreferences();
   const [step, setStep] = useState(0);
   const [role, setRole] = useState<WorkRole | null>(null);
   const [mode, setMode] = useState<DisplayMode>("standard");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const wasOpen = useRef(false);
 
   const recommendation = useMemo<DisplayMode>(() => {
     if (role === "owner") return "dense";
     if (role === "reception" || role === "manager") return "standard";
     return "simple";
   }, [role]);
+
+  useEffect(() => {
+    const open = !loading && !onboardingCompleted;
+    if (open && !wasOpen.current) {
+      setStep(0);
+      setRole(null);
+      setMode(displayMode);
+      setError(null);
+    }
+    wasOpen.current = open;
+  }, [displayMode, loading, onboardingCompleted]);
 
   if (loading || onboardingCompleted) return null;
 
