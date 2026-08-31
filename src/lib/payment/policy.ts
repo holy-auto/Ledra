@@ -35,6 +35,21 @@ export function resolvePaymentPolicy(
  * v2.0 §11.3 + ADR-0002:
  * - UNKNOWN 状態では条件不成立（盲目リトライ禁止原則）。
  * - CANCELED は条件不成立（支払いが取り消されている）。
+ *
+ * 例外: b2b の合算払い（billingCycle === "consolidated"）は上記2つを含む
+ * paymentState を一切見ずに常時成立とする。この例外の根拠（決済は別途後で
+ * まとめて行う）は `orderInvoice.ts`/`cycleInvoice.ts` の job_orders 請求書
+ * 生成パスでのみ具体的に確認済みで、一般の corporate 顧客の通常ジョブにも
+ * 同じ仕組みが当てはまるかは未検証（支払サイトの設定次第で決済期日が
+ * 締め日そのものになるケースもある）。詳細・経緯は OPEN_QUESTIONS.md 参照。
+ * この判定は closingDay を見ない点で src/lib/signoff/state.ts の④会計ステップと
+ * 一致している（ただし2つのモジュール間で predicate 自体を同期させる取り決めが
+ * あるわけではなく、下記コメントで同期を明記しているのは支払いサイクル未設定時の
+ * 案内文言のみ）。src/lib/orders/orderInvoice.ts の isConsolidatedBilling() は
+ * より厳格（billing_cycle === "consolidated" かつ closing_day != null）で、
+ * 「合算払いかどうか」の判定基準が箇所によって食い違っている。
+ * CANCELED にこの例外を適用してよいか、そもそも合算払いジョブの paymentState を
+ * 何から導出するのかも含め未設計 — OPEN_QUESTIONS.md 参照。
  */
 export function evaluatePaymentPolicy(ctx: PaymentPolicyContext): PaymentPolicyResult {
   const policy = resolvePaymentPolicy(ctx);
