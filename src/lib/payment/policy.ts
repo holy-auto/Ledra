@@ -38,10 +38,13 @@ export function resolvePaymentPolicy(
  *
  * 例外: b2b の合算払い（billingCycle === "consolidated"）は上記2つを含む
  * paymentState を一切見ずに常時成立とする（決済は締め日に別途まとめて行うため）。
- * CANCELED の場合にこの例外を適用してよいかは未検証・要確認。加えて、合算払いの
- * 取引先には per-order の帳票自体を作らない設計（orderInvoice.ts の
- * isConsolidatedBilling 分岐）のため、そもそも合算払いジョブの paymentState を
- * 何から導出するのか自体が未設計 — OPEN_QUESTIONS.md 参照。
+ * この判定は closingDay を見ない点で src/lib/signoff/state.ts の④会計ステップと
+ * 揃えている（この2つは意図的に同期させる対、上記コメント参照）が、
+ * src/lib/orders/orderInvoice.ts の isConsolidatedBilling() はより厳格
+ * （billing_cycle === "consolidated" かつ closing_day != null）で、
+ * 「合算払いかどうか」の判定基準が箇所によって食い違っている。
+ * CANCELED にこの例外を適用してよいか、そもそも合算払いジョブの paymentState を
+ * 何から導出するのかも含め未設計 — OPEN_QUESTIONS.md 参照。
  */
 export function evaluatePaymentPolicy(ctx: PaymentPolicyContext): PaymentPolicyResult {
   const policy = resolvePaymentPolicy(ctx);

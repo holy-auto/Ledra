@@ -4,6 +4,18 @@
 > （新しい順）。実装の詳細は RELEASE_LOG.md、迷っている段階のものは
 > OPEN_QUESTIONS.md に書く。
 
+## 2026-08-31 PR #1010 へ Codex 指摘2件目: 「合算払いかどうか」の判定基準が3箇所で食い違っていることが判明
+
+1. 日付: 2026-08-31
+2. 起きたこと: 直前の訂正（本ファイル同日の別エントリ）に対し Codex がさらに2件指摘: (1) CANCELED の発生源を「帳票」「POS取引」の2つに限定した記述も、`paymentState` が正準値を直接受け取る型である以上、将来別の経路が追加される可能性を排除できず、網羅列挙と読めてしまう。(2) より重要な指摘: `orderInvoice.ts` の `isConsolidatedBilling()` は `billing_cycle === "consolidated"` **かつ** `closing_day != null` を要求するが、`closing_day` は顧客登録スキーマ上任意項目であり null もあり得る。しかも `evaluateB2B()` は `closingDay` を入力に一切取らず `billingCycle` だけで判定している。調査の結果、`evaluateB2B()` のこの判定基準は実は本番稼働中の `src/lib/signoff/state.ts`（④会計ステップ、`policy.ts` のコメントで明示的に同期対象とされている）と同じであり、`orderInvoice.ts` 側がより厳格な独自基準を持つ、という3箇所の定義不一致が判明した。
+3. 以前の考え: 「合算払いの取引先には per-order の帳票自体を作らない」という記述を、`billing_cycle === "consolidated"` の顧客全般に一般化できると考えていた。
+4. 違和感・問題: 実際に確認できたのは `orderInvoice.ts` が扱う `job_orders`（テナント間コラボレーション受発注）の請求書生成パスのみで、通常の法人顧客の通常のジョブについて帳票が実際に作られるかどうかは未確認のまま一般化していた。また `signoff/state.ts` が本番稼働中で、`policy.ts` の判定がそれと意図的に同期されている既存資産だと確認せずに「evaluateB2B の判定基準が甘い」という前提で記述を進めていた。
+5. 決めたこと: OPEN_QUESTIONS.md を再訂正: (a) CANCELED の発生源列挙は「現時点で確認できている例」であり網羅的でないと明記。(b) 「合算払いかどうか」の判定基準が `signoff/state.ts`/`policy.ts`（billingCycle のみ）と `orderInvoice.ts`（billingCycle + closingDay 必須）の2種類あり、3箇所で食い違っていることを明記。(c) 「per-order 帳票が作られない」という主張は `job_orders` の請求書生成パスでのみ直接確認済みで、通常の顧客の通常ジョブに一般化できるかは未検証と明記。`policy.ts` の JSDoc とテストコメントも同様に訂正。
+6. 捨てた選択肢: `evaluateB2B()` に `closingDay` チェックを追加し `orderInvoice.ts` の基準に揃える案 — `evaluateB2B()` の現在の判定基準は本番稼働中の `signoff/state.ts` と意図的に同期された既存資産であり、片方だけを `orderInvoice.ts` 基準に変更すると `policy.ts` のコメントが明記する同期関係を壊す。どちらの基準が Certificate Gate にとって正しいかはコードから一意に決まらず、製品判断が必要なため、推測で書き換えることは避けた。
+7. 判断理由: 3箇所の定義不一致という事実そのものはコードを読めば確実に確認できるが、「どちらを正とすべきか」（あるいは目的ごとに別の基準で正しいのか）は業務上の意図次第であり、コードのみからは判定できない。Codex の指摘を受けてもなお、確証のない一般化を安易に行わないという同じ原則を貫いた。
+8. まだ答えが出ていないこと: 「合算払いかどうか」の統一判定基準（billingCycle のみか、closingDay も必須か）。通常の法人顧客の通常ジョブで billing_cycle=consolidated のとき、帳票（documents行）が実際に作られるかどうか。
+9. 公開区分: 公開可
+
 ## 2026-08-31 PR #1010 へ Codex 指摘: CANCELED の発生源を帳票取消に限定していた前提を訂正
 
 1. 日付: 2026-08-31

@@ -151,11 +151,10 @@ describe("UNKNOWN からの盲目リトライ禁止", () => {
 
   it("合算払い(consolidated) は CANCELED でも成立する（現状の実装。要確認 — OPEN_QUESTIONS.md 参照）", () => {
     // このモジュールの JSDoc は「CANCELED は条件不成立」と謳っているが、billingCycle が
-    // consolidated の場合は paymentState を一切見ないため、CANCELED（帳票の取消/却下、
-    // または POS 取引の voided 経由 — derivePaymentState.ts 参照）でも現状は成立して
-    // しまう。これが意図した挙動かは未検証。加えて、合算払いの取引先には per-order の
-    // 帳票自体を作らない設計（orderInvoice.ts の isConsolidatedBilling 分岐）のため、
-    // そもそも合算払いジョブの paymentState を何から導出するのか自体が未設計
+    // consolidated の場合は paymentState を一切見ないため CANCELED でも成立してしまう。
+    // これが意図した挙動かは未検証。「合算払いかどうか」の判定基準自体が箇所によって
+    // 食い違っている（signoff/state.ts・policy.ts は billingCycle のみ、orderInvoice.ts
+    // は closingDay も必須）ため、そもそも paymentState をどう導出するかも含め未設計
     // （OPEN_QUESTIONS.md 参照）。回帰テストとして現状の挙動を明示する。
     const result = evaluatePaymentPolicy({
       customerType: "corporate",
