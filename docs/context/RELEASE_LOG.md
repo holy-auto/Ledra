@@ -4,6 +4,24 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-08-31 配布 PDF 用の画面キャプチャを撮影（3枚中2枚。サービス概要 11→13ページ）
+
+- 背景: `.gitignore` の除外解除（PR #982）で3枚だけコミット可能にしたが、実物のキャプチャが
+  リポジトリに無いため、サービス概要 PDF は該当スライドがページごと消えた 11 ページのままだった。
+- 内容: デモテナント `Ledra Motors（デモ）` に対して撮影し、`public/screenshots/admin/certs-new.png`
+  と `public/screenshots/admin/customers-detail.png` の2枚をコミット。サービス概要 PDF を実際に
+  レンダリングして 11 → **13 ページ**になることを確認した（残り1ページ分は下記の未撮影1枚）。
+- 撮影は本番ビルド（`next build` + `next start`）に対して実施した。`next dev` では画面右下に
+  Next.js の開発オーバーレイ（「1 Issue」バッジ）が写り込み、配布物として不適切だったため。
+- 撮影スクリプトの不具合を1件修正: `admin/certs-new.png` と `admin/vehicles-new.png` は
+  「`新規` を含むリンクの先頭」をクリックして撮っていたため、シェルにある **`新規登録`
+  （施工店アカウント登録）リンク**に一致し、両方とも新規登録ページを撮っていた。
+  つまり PDF は「証明書の新規発行」というキャプション付きで**サインアップ画面**を載せる状態だった。
+  `/admin/certificates/new` `/admin/vehicles/new` へ直接遷移する形に変更（`scripts/capture-screenshots.ts`）。
+- **未撮影1枚**: `public/screenshots/insurer/search.png` は撮影できていない。保険会社ポータルの
+  証明書検索が本番 DB のバグで HTTP 500 になるため（`OPEN_QUESTIONS.md` 参照）。
+- 検証: `npx tsc --noEmit` 通過、`npx vitest run` 全 511 ファイル / 5251 件通過。
+
 ## 2026-08-31 Certificate Gate (IMP-028) を証明書発行の本番4経路すべてに配線
 
 - 背景: v2.0 §19.4 / ADR-0005 が求める「正式証明の発行可否はバックエンド単一評価器

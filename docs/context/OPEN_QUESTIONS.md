@@ -3,6 +3,30 @@
 > まだ決まっていないこと、判断に迷っていることを書く場所。決まったら
 > DECISION_LOG.md に移し、このファイルからは消す（削除履歴は git で追える）。
 
+## 追加（2026-08-31・保険会社ポータルの証明書検索が本番で HTTP 500。DB 関数の search_path 設定漏れ）
+
+配布 PDF 用に `public/screenshots/insurer/search.png` を撮影しようとして発覚した。**この1枚だけ撮影できていない**（サービス概要 PDF が 13 ページ止まりで 14 ページにならない理由）。
+
+- **症状**: 保険会社ポータルの証明書検索（`/api/insurer/search` → RPC `insurer_search_certificates`）が
+  HTTP 500 を返す。開発モードでのエラー本文は
+  `内部エラー: relation "insurer_tenant_access" does not exist`。
+- **原因（確認済み）**: `insurer_accessible_tenant_ids(uuid)` は SECURITY DEFINER 関数で、
+  マイグレーション `20260404000000_fix_security_definer_search_path.sql` が
+  `ALTER FUNCTION ... SET search_path = ''` を適用している。しかし**関数本体は
+  `FROM insurer_tenant_access` とスキーマ修飾なしのまま**で、`search_path` が空のため解決できない。
+  本番 DB 上の関数定義（`pg_proc.prosrc`）と `proconfig`（`search_path=""`）を直接確認済み。
+  テーブル `public.insurer_tenant_access` 自体は存在する（有効な行は1件）。
+- **同じ形の関数がもう1つある**: `insurer_get_vehicle_certificates` も `search_path=""` かつ
+  本体が `insurer_tenant_access` を非修飾参照している。こちらの実挙動は未確認。
+- 後続の `20260802154302` / `20260802154541`（`fix_search_path_bare_refs_certificates_insurers`）は
+  適用済みだが、この2関数は対象に入っていない。
+- **影響範囲**: 【要確認】保険会社ポータルの検索は 2026-04-04 のマイグレーション以降ずっと壊れていた
+  可能性が高いが、実際に本番で保険会社ユーザーがこの機能を使っていたか、いつから壊れていたかは未確認。
+- **判断が必要な点**: 修正は「関数本体を `public.insurer_tenant_access` とスキーマ修飾して
+  `CREATE OR REPLACE` する」だけで済むが、対象が**テナント横断の可視範囲を決める
+  SECURITY DEFINER 関数**（RLS の隣接領域）であるため、キャプチャ撮影のついでに本番 DB へ
+  自動適用するのは不適切と判断し、実施していない。マイグレーション追加＋本番適用は代表の判断を待つ。
+
 ## 追加（2026-08-31・IMP-027 evaluateB2B の合算払い(consolidated) が CANCELED でも成立してしまう。Codex指摘で前提を訂正）
 
 `src/lib/payment/policy.ts` の `evaluatePaymentPolicy()` は「UNKNOWN 状態では条件不成立」「CANCELED は条件不成立」という2つの原則の**例外**として、`evaluateB2B()` の合算払い（`billingCycle === "consolidated"`）分岐が `paymentState` を一切見ずに常時 `met: true` を返す、と JSDoc に明記済み（JSDoc と実装は矛盾していない）。`evaluateB2B()` 自身のコメント（「合算払いは『証明書を今出す、請求は後』なので決済状態は無関係」）は UNKNOWN に限定した言い回しではなく一般的な理由付けであり、文面上は CANCELED も含めた全 `paymentState` に等しく適用される——つまり CANCELED が含まれているのが偶発的（検討漏れ）だと断定できる根拠はない。**未解決なのは、この一般的な理由付け（決済状態は無関係）が CANCELED にも本当に妥当するかという製品判断であり、ドキュメントの不整合や検討漏れの有無ではない。**
