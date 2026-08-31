@@ -13,6 +13,8 @@ const mocks = vi.hoisted(() => ({
   resolveCaller: vi.fn(),
   hasPhotos: vi.fn(),
   hasBeforeAfter: vi.fn(),
+  hasUnresolvedConcerns: vi.fn(),
+  getPartsIntegrityFindings: vi.fn(),
   issued: vi.fn(),
   enqueue: vi.fn(),
   update: vi.fn(),
@@ -54,6 +56,14 @@ vi.mock("@/lib/certificates/photoRequirement", async (orig) => {
     certificateHasRequiredBeforeAfterMedia: mocks.hasBeforeAfter,
   };
 });
+// IMP-028: evaluateCertificateActivationGate() が呼ぶ他の実データ依存 (customer_concerns /
+// part_integrity_findings) は、この generic な admin.from() モックが対応していない
+// .in()/.or() を要求するため、直接モックする（derivePartsIntegrityOk 等の純関数は real のまま）。
+vi.mock("@/lib/concerns/blockCheck", () => ({ hasUnresolvedConcerns: mocks.hasUnresolvedConcerns }));
+vi.mock("@/lib/parts/partsIntegrity", async (orig) => {
+  const real = (await orig()) as Record<string, unknown>;
+  return { ...real, getPartsIntegrityFindings: mocks.getPartsIntegrityFindings };
+});
 vi.mock("@/lib/certificates/issueHooks", () => ({ triggerCertificateIssued: mocks.issued }));
 vi.mock("@/lib/anchoring/certificateAnchorService", () => ({ enqueueCertificateAnchor: mocks.enqueue }));
 vi.mock("@/lib/audit/certificateLog", () => ({
@@ -91,6 +101,8 @@ beforeEach(() => {
   mocks.resolveCaller.mockReset();
   mocks.hasPhotos.mockReset();
   mocks.hasBeforeAfter.mockReset().mockResolvedValue(true);
+  mocks.hasUnresolvedConcerns.mockReset().mockResolvedValue(false);
+  mocks.getPartsIntegrityFindings.mockReset().mockResolvedValue([]);
   mocks.issued.mockReset().mockResolvedValue(undefined);
   mocks.enqueue.mockReset().mockResolvedValue({ queued: false, reason: "disabled" });
   mocks.update.mockReset();
@@ -172,6 +184,29 @@ describe("PUT /api/admin/certificates/status — photo gate", () => {
     mocks.fetchResult = { data: { ...CERT, status: "draft" }, error: null };
     mocks.hasPhotos.mockResolvedValue(true);
     mocks.hasBeforeAfter.mockResolvedValue(false);
+
+    const res = (await PUT(req({ public_id: "P-1", status: "active" }))) as Response;
+    expect(res.status).toBe(400);
+    expect(mocks.update).not.toHaveBeenCalled();
+    expect(mocks.issued).not.toHaveBeenCalled();
+  });
+
+  // IMP-028 (ADR-0005): Certificate Gate の実データ配線 — 写真以外の条件も同じ経路でブロックする。
+  it("未解決の顧客懸念があると 400 でブロックする", async () => {
+    mocks.fetchResult = { data: { ...CERT, status: "draft" }, error: null };
+    mocks.hasPhotos.mockResolvedValue(true);
+    mocks.hasUnresolvedConcerns.mockResolvedValue(true);
+
+    const res = (await PUT(req({ public_id: "P-1", status: "active" }))) as Response;
+    expect(res.status).toBe(400);
+    expect(mocks.update).not.toHaveBeenCalled();
+    expect(mocks.issued).not.toHaveBeenCalled();
+  });
+
+  it("未解決の critical な部品整合性 finding があると 400 でブロックする", async () => {
+    mocks.fetchResult = { data: { ...CERT, status: "draft" }, error: null };
+    mocks.hasPhotos.mockResolvedValue(true);
+    mocks.getPartsIntegrityFindings.mockResolvedValue([{ severity: "critical", status: "open" }]);
 
     const res = (await PUT(req({ public_id: "P-1", status: "active" }))) as Response;
     expect(res.status).toBe(400);

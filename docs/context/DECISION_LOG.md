@@ -4,6 +4,83 @@
 > （新しい順）。実装の詳細は RELEASE_LOG.md、迷っている段階のものは
 > OPEN_QUESTIONS.md に書く。
 
+## 2026-08-31 PR #1011 へ /code-review 指摘: 懸念ブロックが parts_confirmation/body_repair_tracking 経由の懸念を見逃していた
+1. 日付: 2026-08-31
+2. 起きたこと: 「Certificate Gate を本番4経路に配線した」PR #1011 に `/code-review` を実行したところ、
+   `evaluateCertificateActivationGate()` が `hasUnresolvedConcerns()` に `certificateId` しか渡しておらず
+   `jobId`（予約ID）を渡していないことが指摘された。`customer_concerns` テーブルは4系統の確認ページから
+   懸念を受け付けるが、うち parts_confirmation（部品確認）と body_repair_tracking（板金進捗）の2系統は
+   `certificate_id` が null で `job_id` のみを持つ行を作る（`src/app/api/customer/concerns/route.ts` の
+   `resolveSourceContext` で確認）。`hasUnresolvedConcerns()` の OR 条件は certificateId 単独では
+   これらの行に一致しない。
+3. 以前の考え: `evaluateCertificateActivationGate()` は証明書ID起点の関数なので、`certificateId` だけを
+   渡せば懸念判定として十分だと考えていた。
+4. 違和感・問題: 「本番4経路すべてに懸念ブロックを統合した」という PR の主張自体は正しいが、
+   統合した判定が4系統中2系統の懸念を実際には拾えていなかった——書いたテスト（懸念ありで400になる
+   ケース）も certificate_id 経由の懸念しか検証しておらず、job_id のみの懸念では見逃しに気づけなかった。
+5. 決めたこと: `evaluateCertificateActivationGate()` の呼び出しに `jobId: ctx.reservationId` を追加し、
+   `certificateId` と両方渡すようにした（`CertificateActivationContext.reservationId` は既に部品整合性
+   判定のために取得済みで、追加のクエリは不要）。理由をコード内コメントに明記した。
+6. 捨てた選択肢: (a) この gap をそのまま OPEN_QUESTIONS.md に記録して後続タスクに送る…懸念ブロックは
+   このPRの主目的そのものであり、既に取得済みの値を渡すだけで直る単純な修正のため、範囲外送りは不採用。
+7. 判断理由: 自分で書いたテストは「自分が想定したケース」しか検証しないため、想定外の分岐（4系統中2系統が
+   別のIDしか持たない）を見逃す。第三者視点のレビューがこの種の見落としに強いことを確認した実例。
+8. まだ答えが出ていないこと: なし（このPRのスコープ内で修正完了）。
+9. 公開区分: 公開可（「自分で書いたロジックを自分でレビューしても見えない穴がある」という一般論として
+   発信可。テーブル名・関数名の詳細やテナント固有情報は書かない）
+
+## 2026-08-31 Certificate Gate (IMP-028) を証明書発行の本番4経路すべてに配線
+1. 日付: 2026-08-31
+2. 起きたこと: v2.0 §19.4 / ADR-0005 が求める「正式証明の発行可否はバックエンド単一評価器が判定する」
+   という設計は、評価器本体（`gateEvaluator.ts`）自体は既に実装・テスト済みだったが、証明書を
+   `active` にする実際の経路（本番APIルート3本+AI自動発行1本）はどれもこの評価器を一度も呼んでおらず、
+   旧来の個別チェック（写真必須のみ）を経路ごとに手書きしていた。「型基盤はあるが本番配線ゼロ」という、
+   このセッションで繰り返し見つかっているパターンの一例だった。
+3. 以前の考え: 写真必須チェック（`certificateHasRequiredPhotos`/`certificateHasRequiredBeforeAfterMedia`）
+   と走行距離必須チェックが各経路に個別実装されていれば、実務上のブロックとしては足りていると
+   見なされていた。懸念（`hasUnresolvedConcerns`, IMP-026）・部品整合性（`derivePartsIntegrityOk`,
+   IMP-040）は実装済みだったが、証明書発行の判定には一度も接続されていなかった。
+4. 違和感・問題: (a) 経路ごとに手書きされたチェックは今後経路が増えるたびに漏れる構造だった
+   （実際、既存の `activationGates.test.ts` は過去に走行距離ゲートの数え漏れを2回検出した実績が
+   あり、同じ構造的リスクが Certificate Gate 自体にも当てはまった）。(b) `evaluateCertificateGate()`
+   を単純に「未署名の証明書は署名済みでないとダメ」（customer_confirmation_current）として配線しようと
+   すると、`src/lib/signoff/state.ts` の `canRequestSignature` が「証明書は active であること」を
+   署名依頼の前提にしている設計と衝突し、発行→署名→発行の循環デッドロックになることが判明した。
+   (c) `workflow_completed` は `reservations.status`/`work_completed_at` から機械的には出せるが、
+   現場が実際に完了報告を確実に行ってから証明書を発行しているかの運用実態が確認できなかった。
+5. 決めたこと: (a) `evaluateCertificateActivationGate()`（`src/lib/certificates/activationGate.ts`）を
+   新設し、写真・懸念・部品整合性の3条件を実データから組み立てて `evaluateCertificateGate()` に渡す
+   処理を1箇所に集約。(b) 証明書を active化する本番4経路すべて（`admin/certificates/status`・
+   `mobile/certificates/[id]/activate`・`certificates/activate-by-key`・AI自動発行
+   `certificateRecordAuto.ts`）をこのヘルパー経由に統一。AI自動発行経路は従来「insertと同時に
+   active行を作る」設計だったため、他3経路と同じ「作成はdraft→gateを通してからactiveへupdate」の
+   形に分離した（現状は自動発行の適格条件自体が常にfalseのため挙動は変わらないが、将来その条件が
+   満たされるようになったときに Gate を必ず経由する構造にした）。(c) `activationGates.test.ts` の
+   既存の構造走査（発行経路をソースから機械的に数える）に、全経路が
+   `evaluateCertificateActivationGate(` を呼ぶことを検証する項目を追加した。(d)
+   customer_confirmation_current・workflow_completed・payment_policy_met・no_pending_corrections
+   は配線せず、理由を `activationGate.ts` のコメントと OPEN_QUESTIONS.md に明記して意図的にスタブの
+   ままとした。
+6. 捨てた選択肢: (a) customer_confirmation_current を「署名済みかどうか」として即座に配線する
+   …signoffフローとの循環デッドロックにより証明書が永久に発行不能になるため不採用。(b)
+   workflow_completed を機械的に配線する…現場の運用実態が未確認のまま配線すると、正当な発行を
+   広く止めるリスクがあるため見送り。(c) AI自動発行経路をinsert時にactive判定するロジックを
+   そのまま残し、Certificate Gateの構造テストの対象から除外する…ADR-0005が求める「単一判定源」
+   の趣旨に反し、将来その経路が実際に有効化されたときにGateを迂回する抜け道になるため不採用。
+7. 判断理由: 「バグ修正は症状でなく根因」。写真チェックの重複実装という症状ではなく、
+   「Certificate Gateという単一判定源が実在するのに誰も呼んでいない」という根因に対応した。
+   configuredでない条件（customer_confirmation_current等）は、実データが無いのに配線すると
+   フェイルクローズで本番発行を止めるか、間違った代替ロジックでフェイルオープンにするかの
+   どちらかの誤りを生むため、「わからないことは推測で埋めない」の原則に従い意図的なスタブとして
+   残し、理由を記録した。
+8. まだ答えが出ていないこと: workflow_completedの配線に必要な現場の完了報告運用実態の確認。
+   customer_confirmation_currentの配線に必要なsignoffフローの設計変更方針（代表判断が必要）。
+   payment_policy_metの配線に必要な合算払い×paymentState導出の設計（IMP-027、既存OPEN_QUESTIONS）。
+   詳細はOPEN_QUESTIONS.md「Certificate Gate (IMP-028) 本番配線後も残る3条件の未接続」参照。
+9. 公開区分: 公開可（「型基盤はあるが本番配線ゼロ」というパターンと、それを検出する構造テスト
+   （ソースを走査して発行経路を機械的に数える）の設計、署名フローとの循環依存を配線前に気づいた
+   経緯は発信可。テナント名・店舗名・顧客情報・具体的な実装コード全文の転記は不可）
+
 ## 2026-08-31 PR #1010 へ Codex 指摘8件目（3件同時）: JSDocの具体的すぎる記述を撤回し簡潔化
 
 1. 日付: 2026-08-31
