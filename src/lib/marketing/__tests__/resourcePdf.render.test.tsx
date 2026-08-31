@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { renderToBuffer } from "@react-pdf/renderer";
 import { readFileSync } from "fs";
+import { spawnSync } from "child_process";
 import { createRequire } from "module";
 import { RESOURCE_PDFS, pdfSafe } from "../resourcePdf";
 import { RESOURCE_CATALOG } from "../resourceCatalog";
@@ -157,5 +158,34 @@ describe("画面キャプチャのファイル名", () => {
 
     const missing = referenced.filter((f) => !captureSrc.includes(`"${f}"`));
     expect(missing, "撮影スクリプトが出力しないファイルを PDF が参照している").toEqual([]);
+  });
+
+  /**
+   * `.gitignore` は `public/screenshots/**` を丸ごと除外している（動画用の撮影が
+   * 大量の PNG を吐くため）。撮影するのは Remotion の動画ワークフローだけで、
+   * 成果物は artifact に上がるだけ ―― Vercel のビルドは撮影しない。
+   * つまり**リポジトリに無いキャプチャは本番の PDF に永久に出ない**。
+   * ScreenshotSlide はファイルが無ければ黙ってページごと消すので、
+   * 除外されたままでも配布物は「成立してしまう」＝失敗が表に出ない。
+   */
+  it("PDF が参照するキャプチャが .gitignore で除外されていない", () => {
+    const pdfSrc = readFileSync("src/lib/marketing/resourcePdf.tsx", "utf8");
+    const referenced = [...pdfSrc.matchAll(/file:\s*"([^"]+\.png)"/g)].map((m) => `public/screenshots/${m[1]}`);
+    expect(referenced.length).toBeGreaterThan(0);
+
+    // git check-ignore は「除外されたパス」を出力し、1件も無ければ終了コード1。
+    const ignored = spawnSync("git", ["check-ignore", ...referenced], { encoding: "utf8" });
+    expect(ignored.error, "git を実行できない").toBeUndefined();
+
+    // 検査が空振りしていないことの確認（この規則自体が消えたら気づける）
+    const control = spawnSync("git", ["check-ignore", "public/screenshots/admin/login.png"], {
+      encoding: "utf8",
+    });
+    expect(control.stdout.trim(), "screenshots の一括除外が無くなっている").not.toBe("");
+
+    expect(
+      ignored.stdout.split("\n").filter(Boolean),
+      "PDF が参照するキャプチャが .gitignore で除外されている（コミットできず本番に出ない）",
+    ).toEqual([]);
   });
 });
