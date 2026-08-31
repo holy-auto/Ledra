@@ -33,6 +33,57 @@
 - 「LINE属人性の低減」の3件目（アラート部分）。担当割り当て（assignee 付与・担当別フィルタ）は
   スキーマ/UI を伴うため後続。次は④会話の要約・引き継ぎ。
 
+## 2026-08-30 IMP-054（#961）へ Codex レビュー4件を反映。requirement-trace.md の P0充足サマリを「7/10実装済み」から「3/10実装済み」へ再是正
+
+- 内容: PR #961 の P0 充足サマリが、本書に既存する §13/§15/§16/§17 の詳細監査行（いずれも既に「部分」と明記済み）と矛盾していた4項目（Invite/OTP/Biometric・Payment state+Certificate+VERIFIED・Role/Permission・Basic Notifications）を Codex 指摘に基づき ⚠️ 部分へ修正。特にモバイルの OTP 検証（`verify-otp.tsx`）が実際のAPIを呼ばないプレースホルダのままであること、Certificate Gate（`gateEvaluator.ts`）が本番ルートから一度も呼ばれずフェイルオープンのままであることを新たに確認。P0 充足サマリは 10 項目中 3 項目のみ実装済み（Workflow+Photo Evidence+Voice・Vehicle・Customer Confirmation）と是正。
+- 対象: ドキュメントのみ（コード変更なし）。
+- 検証: tsc --noEmit clean / vitest run 5203件全通過（504ファイル、コード変更なし） / lint 0エラー・1256警告=基準線 / check:schema OK / lint:migrations OK。
+
+## 2026-08-30 IMP-051（#958）の code-review 指摘を修正。コントラスト判定の丸め誤差・プレースホルダ検出の空文字スキップ・qa.ts の型/関数重複を解消
+
+- 内容: `checkColorPair()` の AA 判定を丸め前の生の比率で行うよう修正（境界値での誤合格を防止）。`findPlaceholderMismatches()` の欠落判定を falsy チェックから `undefined` チェックに変更（空文字翻訳のプレースホルダ欠落を検出可能に）。`qa.ts` の `MessageTree`/`lookup()` 重複を `messages.ts` からの import に統一。`computeTranslationCoverage()` の `flattenKeys()` 二重計算を解消。回帰テスト2件追加（44→46件）。`findGlossaryGaps()` の空文字チェックは意図的挙動と判断し不採用。
+- 検証: tsc --noEmit clean / vitest run 5179件全通過（503ファイル、a11y/i18n 46件含む） / lint 0エラー・1256警告=基準線 / check:schema OK / lint:migrations OK。
+
+## 2026-08-30 IMP-050（#957）Codex 利用上限到達後、`/code-review`（Claude 自身）で2件を追加修正
+
+- 内容: `applyMask()` の hash 戦略の16進数チェックが、電話番号・クレジットカード番号等の短い純粋数字の生値も「ハッシュ済み」と誤判定していたのを、桁数下限を32文字（MD5相当）に引き上げて修正。`LEDRA_CURRENT.md`（76件）/`requirement-trace.md`（67件）のテスト件数を実数（79件）に統一。回帰テスト1件追加。
+- 検証: tsc --noEmit clean / vitest run 5133件全通過（500ファイル、privacy 79件含む） / lint 0エラー・1256警告=基準線 / check:schema OK / lint:migrations OK。
+
+## 2026-08-30 IMP-050（#957）へ5回目（最終）に届いた Codex レビュー3件を修正。以降 Codex は利用上限に到達
+
+- 内容: `docs/context/LEDRA_CURRENT.md` の IMP-050 ステータスを「部分（統合未着手）」に統一（テスト件数76件へ更新）。`isMoreRestrictive()` が owner_only を含む比較でも古い線形階層の意味論のままだったのを、owner_only が絡む比較は常に false を返すよう修正（`canAccess()` の再設計に追随）。`applyMask()` の hash 戦略が生の値（メール等）を "sha256:" ラベル付きで一部露出しうる不具合を、16進数文字列であることを検証しそうでなければ完全 redact にフォールバックするよう修正。回帰テスト3件追加。この直後、Codex がコードレビューの利用上限に到達した旨のコメントが届いた。
+- 検証: tsc --noEmit clean / vitest run 5132件全通過（500ファイル、privacy 78件含む） / lint 0エラー・1256警告=基準線 / check:schema OK / lint:migrations OK。
+
+## 2026-08-30 IMP-050（#957）へ4回目に届いた Codex レビュー3件を修正。暗号化カラム登録漏れ・truncate短小値露出・maxClassificationのフェイルオープン
+
+- 内容: `FIELD_CLASSIFICATIONS` の restricted 登録を全体横断検索（`grep -rn "_ciphertext" supabase/migrations/`）で洗い出し、supply_partner_credentials/accounting_integrations/tenant_integrations/tenant_private_secrets/tenants の計15カラムを追加登録（前回は LINE/Square の4例のみ）。`applyMask()` の truncate 戦略で `keepChars` が値の長さ以上でも常に半分以下しか残らないよう修正（PIN 等の短い値が全文字露出する不具合）。`maxClassification()` の個々のフィールド取得を `getFieldClassification()` の安全な既定値（confidential）に統一し、`defaultClassification`（既定 "public"）が未登録の新規センシティブカラムに誤って適用されるフェイルオープンを解消。回帰テスト4件追加・2件更新。
+- 検証: tsc --noEmit clean / vitest run 5130件全通過（500ファイル、privacy 76件含む） / lint 0エラー・1256警告=基準線 / check:schema OK / lint:migrations OK。
+
+## 2026-08-30 IMP-050（#957）へ3回目に届いた Codex レビュー4件のうち2件を修正、owner_only の設計トレードオフは OPEN_QUESTIONS へ
+
+- 内容: `createRendition()` が独自の `VISIBILITY_ORDER` 比較を持っており、`visibility.ts` 側の `canAccess()` 修正に追随できず owner_only 閲覧者へのマスキングが機能しなくなっていたバグを修正（`canAccess()` 呼び出しに統一）。`CERTIFICATE_PUBLIC_RULES`/`FIELD_CLASSIFICATIONS` に `certificates.vehicle_info_json`（maker/model/plate を含む、既存コードが PII と明示）を追加。owner_only の設計トレードオフ（restricted 漏洩防止 vs 本人が自分の pii を見られない問題）は単純な階層モデルでは両立しないと判明したため、この PR では解決せず `DEFAULT_REQUIRED_VISIBILITY` の JSDoc に既知の限界として明記し、OPEN_QUESTIONS.md に設計判断待ちとして記録。回帰テスト2件更新。
+- 検証: tsc --noEmit clean / vitest run 5128件全通過（500ファイル、privacy 74件含む） / lint 0エラー・1256警告=基準線 / check:schema OK / lint:migrations OK。
+
+## 2026-08-30 IMP-050（#957）へ2回目に届いた Codex レビュー7件を修正、うち2件は既存の意図的設計と確認し不採用
+
+- 内容: `FIELD_CLASSIFICATIONS`（classification.ts）に customers の実在 PII カラム6件（name_kana/postal_code/address/birth_date/note/line_user_id）を追加。`maxClassification()` の非空配列集計に `defaultClassification` が混入するバグを修正。`CERTIFICATE_PUBLIC_RULES`/`VEHICLE_PUBLIC_RULES`/`PASSPORT_PUBLIC_RULES` を `Object.freeze()` で実行時に凍結（`readonly` は型上の防御のみで、プロパティ代入は防げなかった）。`applyMask()` の truncate 戦略で `keepChars` に負値を渡すと末尾からのオフセットとして解釈され露出する不具合を `Math.max(0, ...)` でクランプして修正。「`PASSPORT_TABLE_PII_COLUMNS` に to_owner_email/to_owner_name/message が抜けている」という指摘は、`piiFields.ts` の `PublicTransferView` 検証コメントに明記済みの意図的設計（受領者本人には自分宛てのデータを見せる）と一致しないため不採用と確認・返信。回帰テスト4件追加。
+- 検証: tsc --noEmit clean / vitest run 5128件全通過（500ファイル、privacy 74件含む） / lint 0エラー・1256警告=基準線 / check:schema OK / lint:migrations OK。
+
+## 2026-08-30 IMP-050（#957）へ PR オープン中に届いた Codex レビュー7件を修正
+
+- 内容: `FIELD_CLASSIFICATIONS`（classification.ts）の vehicles PII エントリを `VEHICLE_TABLE_PII_COLUMNS` から生成するよう修正（rendition.ts と同じ乖離バグが残っていた）。実在しない `tenant_secrets.encrypted_value`/`hearings.content`/`invoices.total_amount`/`insurer_cases.claim_amount` を実スキーマの列名（`tenants.line_channel_secret_ciphertext` 等の ciphertext 4列、hearings の実PII5列、`invoices.total`、`insurer_cases.meta`）に修正。`createRendition()` の戻り値型を `Redacted<T>`（マスク後の null/string を反映）に変更。`canAccess()`（visibility.ts）を再設計し、owner_only（データ主体本人）を tenant_internal/partner_shared/public のネスト階層から独立させた——本人であることが tenant_internal 以上や restricted なフィールドへの特権に自動昇格してしまう構造的バグ（P1、未配線のため実害は未発生）を解消。`createExportAuditEntry()` が呼び出し側の配列/オブジェクトを参照のまま保持していたのをコピー保持に変更。requirement-trace.md の §18/IMP-050 ステータスを「実装済み」から「部分（型基盤のみ、統合未着手）」に訂正——4エクスポートルートいずれも新モジュールを未呼び出しであることを確認。回帰テスト7件追加。
+- 検証: tsc --noEmit clean / vitest run 5124件全通過（500ファイル、privacy 70件含む） / lint 0エラー・1256警告=基準線 / check:schema OK / lint:migrations OK。
+
+## 2026-08-30 IMP-050（#957）の code-review 指摘を修正。VEHICLE/PASSPORT_PUBLIC_RULES の PII 列挙漏れ・hash 戦略のドキュメント矛盾・pii の可視性要件誤り・ドキュメント件数誤記を解消
+
+- 内容: `VEHICLE_PUBLIC_RULES`/`PASSPORT_PUBLIC_RULES`（rendition.ts）を、手書きの固定リストから `VEHICLE_TABLE_PII_COLUMNS`/`PASSPORT_TABLE_PII_COLUMNS`（customerRelation.ts の単一定義源）の `.map()` 生成に変更。既に削除済みの customer_name/customer_email/customer_phone_masked を列挙しつつ実在する plate_display が抜けていたバグ、前所有者 PII（from_owner_name/from_owner_email）が抜けていたバグを解消。`applyMask()` の hash 戦略を JSDoc 通り `sha256:<値の先頭8文字>` を返すよう修正（従来は `value` を無視して固定文字列 `[MASKED]` を返していた）。`DEFAULT_REQUIRED_VISIBILITY.pii`/`.confidential` を `owner_only`→`tenant_internal` に修正（テナントスタッフが通常業務で pii にアクセスできない設定になっていた、未配線のため実害は未発生）。RELEASE_LOG.md/LEDRA_CURRENT.md/requirement-trace.md/DECISION_LOG.md の「FIELD_CLASSIFICATIONS 19エントリ」「テスト64件」を実数（20エントリ、67件）に訂正。回帰テスト4件追加。
+- 検証: tsc --noEmit clean / vitest run 5107件全通過（498ファイル、privacy 67件含む） / lint 0エラー・1256警告=基準線 / check:schema OK / lint:migrations OK。
+
+## 2026-08-30 IMP-050（#957）を main へ取り込み。プライバシー・データ分類・可視性・マスキング基盤
+
+- 内容: PR #957 のベースを main へ retarget し、origin/main をマージ。競合85件（phantom 81件 + genuine 4件〔事業ログ4ファイル〕）を解決。resurrection パターン21度目（`WorkScopeProvider.tsx`・`src/lib/sync/`、`src/lib/privacy/` からの依存ゼロを確認して削除）。
+- 検証: tsc --noEmit clean / vitest run 5104件全通過（498ファイル、privacy 64件含む） / lint 0エラー・1256警告=基準線 / check:schema OK / lint:migrations OK。
+
 ## 2026-08-30 LINE属人性の低減②: 受信箱のAI返信ドラフトを店舗ナレッジ根拠付きに強化（branch claude/line-chatbot-ledra-dy2fiq）
 
 - 背景: 受信箱（`/admin/messages`）の「AI返信ドラフト」は会話文脈だけから下書きしており、
@@ -860,6 +911,94 @@
 - 対象: 型定義・ロジック層（src/lib/priority/）。UI 変更・DB マイグレーションなし。
 - 依存: IMP-014, IMP-021, IMP-041
 - 下流: IMP-046（経営分析 KPI — 優先度スコアの集計）
+
+## 2026-08-20 IMP-054 §24 P0_RELEASE_GATE — P0 リリースゲート最終検証（branch impl/IMP-054-p0-release-gate、2026-08-30マージ時に是正）
+
+- 内容: v2.0 §24 P0 リリースゲートの最終検証メタタスク。
+  - 全36タスク（IMP-000〜IMP-054）の実装状態を検証 → **31タスク実装済み、5タスク（IMP-016/020/027/032/050）が部分または未着手**（原案は「全て実装済み」としていたが、マージ時の全行再検証で誤りと判明し是正）
+  - IMP-011/012/013/014 の requirement-trace.md 行を監査時記述から実装済みに更新（この4件は実装は完了済みだったが行が未更新だった）
+  - P0 充足サマリ 10 項目に実装証跡列を追加 → 7項目✅実装済み・3項目⚠️部分
+  - IMP-054 行を実態に即した記述に更新
+- 対象: 実装計画全体（ドキュメント更新のみ、コード変更なし）
+- 設計判断: P0 リリースゲートはメタタスク。全 P0 タスクの完了を証跡付きで確認する監査役割であり、未完了のタスクを「完了」と誤って宣言しないことがその責務そのもの。IMP-032（SYNC_CENTER）は PR #947 がユーザー判断でスキップ中のため、扱いが決まるまで未着手のまま。
+
+## 2026-08-20 IMP-053 §14.4 OBSERVABILITY_ERROR_CONTRACT — 構造化エラー契約（branch impl/IMP-053-observability-error-contract）
+
+- 内容: v2.0 §14.4 が要求する構造化エラー契約の型基盤を実装。
+  - `src/lib/observability/errorContract.ts`: 構造化エラー契約
+    - `DataSafetyLevel` — 4段階データ安全性(safe/partial/unknown/compromised)
+    - `RecoveryAction` — 復旧アクション型(retry/retry_after/contact_support/manual_check/refresh/rollback/none)
+    - `ErrorCategory` — 11分類(validation/auth/data_integrity/external_service/timeout/rate_limit/state_transition/resource_not_found/concurrency/configuration/unknown)
+    - `RetryPolicy` — 再試行ポリシー(retryable/maxAttempts/backoff/baseDelaySeconds)
+    - `StructuredError` — 全エラーが答えるべき4問（データ安全性・分類・再試行可否・復旧手段）
+    - `createStructuredError()` — 純粋ファクトリ
+    - `structuredErrors.*` — 6プリセット(validation/externalService/stateTransition/dataIntegrity/timeout/concurrency)
+    - `requiresImmediateAttention()` — 即時対応要否判定
+    - `toSentryContext()` — Sentry breadcrumb 変換
+    - `toClientPayload()` — クライアント向けペイロード抽出（本番detail除外）
+  - `src/lib/observability/index.ts`: barrel export
+- 対象: 全API/cron/webhook（型基盤。既存 response.ts の ErrorCode/apiError は変更なし）
+- 設計判断: 型基盤先行。既存エラーヘルパーとの統合は消費側が段階的に行う。
+
+## 2026-08-20 IMP-052 §23 E2E_SUITE — 必須 E2E テストスイート（branch impl/IMP-052-e2e-suite）
+
+- 内容: v2.0 §23 が要求する必須 E2E テスト（正常ワークフロー・例外10種・顧客確認・WCAG AA）を Playwright で実装。
+  - `e2e/helpers/env.ts`: E2E 環境変数ヘルパー（adminCreds / customerPortalConfig。adminCreds は既存 `helpers/auth.ts` の `hasAdminCreds()` を再エクスポート）
+  - `e2e/helpers/a11y.ts`: axe-core WCAG AA ランタイム検証ラッパー（動的 import で未インストール時 skip）
+  - `e2e/workflow-flow.spec.ts`: 正常ワークフロー 8 テスト（ダッシュボード → 予約一覧 → 作業詳細 → 証明書 → 車両 → 顧客 → 請求書）
+  - `e2e/exception-flows.spec.ts`: 例外フロー 8 テスト（API 4: 予約更新バリデーション/証明書無効化/ステータス遷移/証明書ステータスAPI + UI 4: settings/404/POS/search）
+  - `e2e/customer-confirmation.spec.ts`: 顧客確認フロー 4 テスト（ログイン/無効テナント/公開証明書/パスポート）
+  - `e2e/accessibility.spec.ts`: WCAG AA 9 テスト（公開4 + 管理4 + 全違反レポート1）
+  - `.github/workflows/ci.yml`: E2E ジョブ復元（secrets ゲート — E2E_USER_EMAIL 未設定時は自動スキップ）
+- 対象: 全テナント（管理画面・顧客ポータル・公開ページ）
+- 設計判断: テストは全て環境変数ゲート付き。secrets 未設定の fork/外部 CI では全 skip。critical impact のみ fail（a11y）。既存 14 spec の auth gate / smoke check パターンを踏襲。
+
+## 2026-08-20 IMP-051 §3.5 ACCESSIBILITY_I18N_AUDIT — アクセシビリティ監査フレームワーク＆翻訳QA基盤（branch impl/IMP-051-accessibility-i18n-audit）
+
+- 内容: v2.0 §3.5 が要求するアクセシビリティ・多言語品質保証の型基盤を2モジュール群で実装。
+  - `src/lib/a11y/contrastCheck.ts`: WCAG 2.1 SC 1.4.3 準拠コントラスト比チェッカー
+    - `parseHexColor()` — #RGB / #RRGGBB パース
+    - `relativeLuminance()` — WCAG 相対輝度計算
+    - `contrastRatio()` — 2色のコントラスト比(1:1〜21:1)
+    - `meetsWcagAA()` — 3コンテキスト(normal/large/ui)での AA 判定
+    - `checkColorPair()` — hex ペアのワンショット検証
+  - `src/lib/a11y/auditTypes.ts`: WCAG AA 監査フレームワーク型定義
+    - `WCAG_AA_KEY_CRITERIA` — Ledra に関連する WCAG 2.1 Level AA 基準 19 件
+    - `COMPONENT_ARIA_MAP` — 10 コンポーネントの ARIA 要件マップ(Modal/Drawer/BottomSheet/Alert/StatusBadge/IconButton/SegmentedControl/Tabs/ProgressCard/Toast)
+    - `A11yFinding` / `A11yAuditResult` — 監査結果構造化型
+  - `src/lib/i18n/qa.ts`: 翻訳品質保証ユーティリティ
+    - `findMissingTranslations()` — 全ロケール間のキー過不足検出
+    - `findPlaceholderMismatches()` — {var} プレースホルダ整合性チェック
+    - `computeTranslationCoverage()` — ロケール別カバレッジ算出
+    - `findGlossaryGaps()` — 用語集エントリの翻訳欠落検出
+- 対象: 全画面・全コンポーネント。CI でのデザイントークンリグレッション検出、翻訳抜け自動チェックの基礎。
+- DB/API/UI 変更なし（型基盤先行）。テスト 46 件。
+
+## 2026-08-20 IMP-050 §18 SECURITY_PRIVACY — プライバシー・データ分類・可視性・マスキング基盤（branch impl/IMP-050-privacy-classification）
+
+- 内容: v2.0 §18 が要求するプライバシー・データ保護基盤を4モジュールの純関数で実装。
+  - `src/lib/privacy/classification.ts`: 4段階データ分類（ISO 27001 A.5.12 準拠）
+    - `DataClassification` 型（restricted/pii/confidential/public）
+    - `FIELD_CLASSIFICATIONS` レジストリ（20エントリ: customers/vehicles/invoices/tenant_secrets）
+    - `getFieldClassification()` — テーブル.カラム→分類ルックアップ
+    - `maxClassification()` — フィールド群の最厳分類
+    - `findClassificationViolations()` — 閾値超過フィールド検出
+  - `src/lib/privacy/visibility.ts`: 4段階可視性モデル
+    - `VisibilityLevel` 型（owner_only/tenant_internal/partner_shared/public）
+    - `ViewerContext` — ロール/データ主体/パートナー開示同意から有効レベル解決
+    - `findHiddenFields()` — 閲覧者レベルに基づく非表示フィールド識別
+    - `DEFAULT_REQUIRED_VISIBILITY` — 分類→可視性の最低要件マッピング
+  - `src/lib/privacy/rendition.ts`: レンディション・マスキング（ADR-0003 一般化）
+    - 4戦略（nullify/redact/truncate/hash）
+    - `createRendition()` — 非破壊レコードマスキング
+    - 定義済みルール3セット（CERTIFICATE/VEHICLE/PASSPORT_PUBLIC_RULES）
+  - `src/lib/privacy/exportAudit.ts`: エクスポート監査イベント
+    - 4スコープ（admin/customer/agent/insurer）の統一監査フォーマット
+    - `createExportAuditEntry()` — 監査エントリ生成
+    - `detectAbnormalExportFrequency()` — 頻度異常検出
+- 対象: 既存 PII 遮断（customerRelation.ts）・公開ビュー（certificates_public）・エクスポートルートの型安全な一般化
+- テスト: 67件（classification 16 + visibility 21 + rendition 20 + exportAudit 10）
+- 依存: なし（純関数モジュール、IO なし）
 
 ## 2026-08-20 IMP-046 §21 ANALYTICS_STORE — 運用KPI・キャパシティ分析（branch impl/IMP-046-analytics-kpi）
 

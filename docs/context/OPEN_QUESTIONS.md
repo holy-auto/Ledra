@@ -3,6 +3,11 @@
 > まだ決まっていないこと、判断に迷っていることを書く場所。決まったら
 > DECISION_LOG.md に移し、このファイルからは消す（削除履歴は git で追える）。
 
+## 追加（2026-08-30・IMP-050（#957）visibility.ts の owner_only 設計、Codex レビューで往復）
+
+- **`canAccess()`/`DEFAULT_REQUIRED_VISIBILITY` の owner_only の扱いに、まだ解決していないトレードオフが残っている。** 3回のレビュー往復で判明: (a) owner_only を tenant_internal 以上に自動昇格させると、データ主体本人が restricted（auth.users.encrypted_password 等）まで見られてしまう（1回目の Codex 指摘、P1、修正済み）。(b) 昇格させないと、pii/confidential 要求のフィールド（DEFAULT_REQUIRED_VISIBILITY 経由）を本人自身も見られなくなる（3回目の Codex 指摘、P2、未解決）。(a)(b) は同じ「owner_only の意味」を取り合っており、単純な線形階層モデルでは同時に満たせない。現状は (a) を優先し、(b) は既知の限界として visibility.ts の JSDoc に明記（呼び出し側が isDataSubject と「レコードの所有者か」を個別判定してこの汎用機構をバイパスする想定）。
+- **本来の解決策候補**: restricted 専用の「ViewerContext では絶対に満たせない」概念を VisibilityLevel とは別に導入する、または findClassificationViolations() を restricted の唯一の防御ラインとし、visibility.ts 側は pii/confidential/public の3段階＋「本人フラグによる個別バイパス」という設計に単純化する。現時点で `src/lib/privacy/` は本番コードから一切呼ばれていない（呼び出し元ゼロを確認済み）ため実害はないが、実際に API/UI へ統合するタスク（下流タスク、IMP-050 の「スコープ外」に明記済み）に着手する前に、この設計判断を確定させる必要がある。
+
 ## 追加（2026-08-30・「その他」タブが勝手にプラン画面へ飛ぶ不具合の調査）
 
 - **クレームを送った利用者のテナントの実際の役割(role)・plan_tierが未確認。**
