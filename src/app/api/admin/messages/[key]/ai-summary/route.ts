@@ -25,9 +25,9 @@ import { canUseFeature } from "@/lib/billing/planFeatures";
 import { loadAiAutomationSettings } from "@/lib/ai/automation/policy";
 import { startAiRouteUsage } from "@/lib/ai/recordRouteUsage";
 import { generateThreadSummary } from "@/lib/ai/threadSummary";
-import { type ReplyDraftTurn } from "@/lib/ai/replyDraft";
 import { fastModelForPlanTier } from "@/lib/ai/client";
 import { parseThreadKey } from "@/lib/messages/threadKey";
+import { loadAiThreadContext } from "@/lib/messages/aiThreadContext";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -63,79 +63,25 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ key: strin
 
     const { admin, tenantId } = createTenantScopedAdmin(caller.tenantId);
 
-    // スレッドの表示名と顧客/LINEユーザーを解決。
-    let customerName: string | null = null;
-    let lineUserId: string | null = null;
-    let customerId: string | null = null;
-    if (ref.kind === "customer") {
-      const { data: c } = await admin
-        .from("customers")
-        .select("id, name, line_user_id")
-        .eq("id", ref.customerId)
-        .eq("tenant_id", tenantId)
-        .maybeSingle();
-      if (!c) return apiNotFound("thread not found");
-      customerId = c.id as string;
-      customerName = (c.name as string | null) ?? null;
-      lineUserId = (c.line_user_id as string | null) ?? null;
-    } else {
-      lineUserId = ref.lineUserId;
-      const { data: matched } = await admin
-        .from("customers")
-        .select("id, name")
-        .eq("tenant_id", tenantId)
-        .eq("line_user_id", ref.lineUserId)
-        .limit(1)
-        .maybeSingle();
-      if (matched) {
-        customerId = matched.id as string;
-        customerName = (matched.name as string | null) ?? null;
-      }
-    }
-
-    // 直近メッセージ (customer_id / line_user_id いずれか、古い順)。
-    const turns: ReplyDraftTurn[] = [];
-    const col = customerId ? "customer_id" : "line_user_id";
-    const val = customerId ?? lineUserId;
-    if (val) {
-      const { data } = await admin
-        .from("customer_messages")
-        .select("direction, body, created_at")
-        .eq("tenant_id", tenantId)
-        .eq(col, val)
-        .order("created_at", { ascending: false })
-        .limit(40);
-      for (const m of (data ?? []).reverse()) {
-        turns.push({ direction: m.direction as "inbound" | "outbound", body: (m.body as string) ?? "" });
-      }
-    }
+    // スレッド文脈 (表示名/店舗名/直近やり取り/登録車両) を ai-reply と共通のローダで解決。
+    const loaded = await loadAiThreadContext(admin, tenantId, ref, { turnLimit: 30 });
+    if (!loaded.ok) return apiNotFound("thread not found");
+    const { customerName, shopName, vehicle, turns } = loaded.ctx;
     if (turns.length === 0) {
       return apiOk({ ai_disabled: false, summary: null, reason: "no_messages" });
     }
 
-    // 店舗名 / 登録車両 (1台に確定できるときだけ)。
-    const [tenantRes, vehicleRes] = await Promise.all([
-      admin.from("tenants").select("name").eq("id", tenantId).maybeSingle(),
-      customerId
-        ? admin.from("vehicles").select("maker, model").eq("tenant_id", tenantId).eq("customer_id", customerId).limit(2)
-        : Promise.resolve({ data: [] }),
-    ]);
-    const vehicles = (vehicleRes.data as Array<{ maker: string | null; model: string | null }> | null) ?? [];
-    const vehicle =
-      vehicles.length === 1
-        ? [vehicles[0].maker, vehicles[0].model].filter((s): s is string => !!s && s.trim().length > 0).join(" ")
-        : "";
-
     const result = await generateThreadSummary(
-      { turns, customerName, shopName: (tenantRes.data?.name as string | null) ?? null, vehicle: vehicle || null },
+      { turns, customerName, shopName, vehicle },
       { model: fastModelForPlanTier(caller.planTier) },
     );
 
     usage.record({
       tenantId,
       userId: caller.userId,
-      outcome: result.ai ? "ok" : "error",
-      meta: { has_summary: result.summary.length > 0, turns: turns.length },
+      // AI が空を返すのは失敗ではなく正常な結果 (材料不足等) なので error にしない。
+      outcome: "ok",
+      meta: { has_summary: result.summary.length > 0, turns: turns.length, ai: result.ai },
     });
 
     return apiOk({

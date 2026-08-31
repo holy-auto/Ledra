@@ -68,7 +68,12 @@ export async function generateThreadSummary(
   const recent = input.turns.slice(-30);
   const convoFull = recent.map((t) => `${t.direction === "inbound" ? "顧客" : "店舗"}: ${t.body.trim()}`).join("\n");
   const MAX_CONVO = 8000;
-  const convo = convoFull.length > MAX_CONVO ? convoFull.slice(-MAX_CONVO) : convoFull;
+  // 超過時は末尾だけ残すと「用件・経緯」(会話冒頭) が落ちるので、冒頭と末尾の両方を残して
+  // 中間を省く (要約は冒頭の用件と直近の状況の両方が要るため)。
+  const convo =
+    convoFull.length <= MAX_CONVO
+      ? convoFull
+      : `${convoFull.slice(0, Math.floor(MAX_CONVO * 0.6))}\n…（中略）…\n${convoFull.slice(-Math.floor(MAX_CONVO * 0.4))}`;
   facts.push(`会話 (古い順):\n${wrapUntrusted(convo, { tag: "会話履歴", maxLen: MAX_CONVO })}`);
 
   try {

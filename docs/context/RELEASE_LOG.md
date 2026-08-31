@@ -16,8 +16,15 @@
   会話は `wrapUntrusted` で包囲）＋ `src/app/api/admin/messages/[key]/ai-summary/route.ts`（ai-reply と
   同じ認証/プラン/レート制限。Standard+）＋ `MessagesInboxClient.tsx`（ボタン＋パネル）。要約は社内
   向けなので氏名・車両・金額を含めてよい。**マイグレーション不要**。
-- 検証: `threadSummary`（会話が空なら空結果）テスト追加。全体 5211 件パス、tsc エラー0、eslint エラー0
-  （既存の effect 警告のみ）。
+- 検証: `threadSummary`（会話が空なら空結果）テスト追加。
+- コードレビュー由来の追加修正（同 PR、`/code-review`）:
+  - 会話が長すぎる場合の切り詰めを**末尾のみ→冒頭＋末尾（中間省略）**に（要約は冒頭の「用件・経緯」も
+    必要なため。replyDraft の末尾優先を安易に流用しない）。
+  - スレッド解決＋直近やり取り＋登録車両の取得を共通ローダ `messages/aiThreadContext.ts` に切り出し、
+    `ai-reply`／`ai-summary` の重複を解消（今後の修正が2箇所に分散しないように）。
+  - 要約 null 時の文言を「会話が必要です」→「時間をおいて再度お試しください」に（会話無しはボタン
+    無効で起きず、実際は AI 一時不調が主因）。usage の outcome を error→ok（空要約は失敗ではない）。
+- 全体 5211 件パス、tsc エラー0、eslint エラー0（既存の effect 警告のみ）。
 - 「LINE属人性の低減」の4件目（最後）。これで属人性低減の4項目（ナレッジ自動蓄積／返信ドラフトの
   ナレッジ根拠づけ／未返信アラート／会話要約）が揃った。
 

@@ -273,7 +273,8 @@ export default function MessagesInboxClient() {
       } else if (j?.summary) {
         setSummary({ key: activeKey, text: j.summary, nextAction: j.next_action ?? null });
       } else {
-        setSendMsg("要約を生成できませんでした (会話が必要です)。");
+        // 要約 null は AI 側の一時不調が主因 (会話が無いときはボタン自体が無効)。
+        setSendMsg("要約を生成できませんでした。時間をおいて再度お試しください。");
       }
     } catch (e) {
       setSendMsg("AI 要約に失敗しました: " + (e instanceof Error ? e.message : String(e)));
