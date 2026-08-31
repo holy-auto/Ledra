@@ -2,7 +2,7 @@
  * LINE 未返信スレッドの対応漏れ通知 (inbound_message.auto_unanswered_alert)。
  *
  * お客様からの LINE メッセージが一定時間返信されないまま放置されている
- * (スレッドの最新メッセージが inbound で、既定60分以上経過) スレッドを見つけ、
+ * (スレッドの最新メッセージが inbound で、既定8時間以上経過) スレッドを見つけ、
  * 管理画面の通知でスタッフに知らせる。特定担当が受信箱を見ないと止まる状況を防ぐ。
  *
  * 自動返信・スタッフ返信済み (最新が店舗発=outbound) のスレッドは対象外
@@ -18,8 +18,8 @@ import { logger } from "@/lib/logger";
 
 type Admin = ReturnType<typeof createServiceRoleAdmin>;
 
-/** この分数以上返信が無ければ対象 (既定60分)。ごく直近は自動返信/対応中の猶予として除く。 */
-export const UNANSWERED_MIN_MINUTES = 60;
+/** この分数以上返信が無ければ対象 (既定8時間)。当日中の対応猶予を見込んで長めに取る。 */
+export const UNANSWERED_MIN_MINUTES = 8 * 60;
 /** これより古いスレッドは走査しない (再スキャンの上限。日数)。 */
 export const UNANSWERED_MAX_HOURS = 72;
 /** 1 実行・1 テナントで出す通知の上限 (フラッド防止。溢れは次回に回る)。 */

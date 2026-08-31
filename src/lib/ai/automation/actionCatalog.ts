@@ -494,10 +494,10 @@ export const AUTOMATION_ACTIONS: readonly AutomationActionDef[] = [
     workflow: "inbound_message",
     label: "LINEの未返信を担当者に通知（対応漏れ防止）",
     description:
-      "お客様からの LINE メッセージが一定時間（既定60分）返信されないまま放置されていると、管理画面の通知でスタッフに知らせる。特定の担当者が受信箱を見ていないと止まる状況（属人性）を防ぎ、対応漏れ・返信遅れを減らす。スレッド1件の未返信につき1回だけ通知（自動返信済み＝直後に店舗発の返信があるスレッドは対象外）。opt-in / 既定 OFF。",
+      "お客様からの LINE メッセージが一定時間（既定8時間）返信されないまま放置されていると、管理画面の通知でスタッフに知らせる。特定の担当者が受信箱を見ていないと止まる状況（属人性）を防ぎ、対応漏れ・返信遅れを減らす。スレッド1件の未返信につき1回だけ通知（自動返信済み＝直後に店舗発の返信があるスレッドは対象外）。opt-in / 既定 OFF。",
     defaultEnabled: false,
     guard:
-      "AI 有効 + Standard プラン以上。LINE スレッドの最新メッセージがお客様発（inbound）で、既定60分以上返信が無いもの。自動返信・スタッフ返信済み（最新が店舗発）は対象外。1メッセージにつき1回だけ（notification_logs で重複防止）。",
+      "AI 有効 + Standard プラン以上。LINE スレッドの最新メッセージがお客様発（inbound）で、既定8時間以上返信が無いもの。自動返信・スタッフ返信済み（最新が店舗発）は対象外。1メッセージにつき1回だけ（notification_logs で重複防止）。",
   },
   {
     key: "inbound_message.auto_capture_knowledge",

@@ -16,9 +16,9 @@ import { processUnansweredThreadAlerts } from "../unansweredAlerts";
 const TENANT = "11111111-1111-1111-1111-111111111111";
 const CUSTOMER = "22222222-2222-4222-a222-222222222222";
 const NOW = new Date("2026-08-30T12:00:00Z");
-// minAge cutoff = NOW - 60min = 11:00Z
-const STALE = "2026-08-30T10:00:00Z"; // 2h前 → 未返信対象
-const RECENT = "2026-08-30T11:45:00Z"; // 15分前 → 猶予内
+// minAge cutoff = NOW - 8h = 04:00Z
+const STALE = "2026-08-30T02:00:00Z"; // 10h前 → 未返信対象
+const RECENT = "2026-08-30T10:00:00Z"; // 2h前 → 猶予内（8h未満）
 
 const admin = () => makeFakeAdmin(mocks.store);
 const run = () => processUnansweredThreadAlerts(admin(), { tenantId: TENANT, now: NOW });
