@@ -4,6 +4,36 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-08-31 通知アイコンが実データの型名と一致しておらず全件が既定アイコンだった件を修正（IMP-029）
+
+- 背景: モバイル通知一覧のアイコン表 `TYPE_ICON` のキーは `certificate` / `work` / `sync` /
+  `error` / `system` だったが、DB に書かれる `notification_type` は `ai_action` /
+  `chat_message` / `platform_notification` で**1つも一致していなかった**。本番の通知60件
+  （`chat_message` 56 / `ai_action` 4、2026-07-05〜08-27。Supabase MCP で実測）が全件、
+  既定のベルアイコンで表示されていた。
+- 内容:
+  - `apps/mobile/src/app/notifications.tsx` のアイコン表を、Web のカタログ
+    （`src/lib/notifications/types.ts`、18タイプ）に揃えた。アイコンは category 単位、
+    色は severity 単位（urgent=danger / action_required=warning / informational=控えめ）。
+  - `src/lib/notifications/deepLink.ts`: 証明書のディープリンクは管理画面ルートが
+    `/admin/certificates/[public_id]` で `public_id` 引きのため、行の `id`（uuid）を渡すと
+    必ず404になる。型と実装に注記を追加（他9エンティティは `id` のままで正しい）。
+- 検証:
+  - `src/lib/notifications/__tests__/mobileIcons.test.ts`（新規5件）: カタログの全タイプに
+    アイコンがある / アイコン表に未知のタイプが無い / 本番コードが書き込む
+    `notification_type` がすべてカタログに載っている。モバイルは Web の `src/lib` を
+    import できないため、モバイルのソースをテキストとして読んで照合する
+    （Web/モバイル横断の検査は `scripts/check-schema.mjs` に前例がある）。
+  - `src/lib/notifications/__tests__/deepLinkRoutes.test.ts`（新規5件）: `deepLink.ts` が
+    生成する全パスが実在する Next.js ルートに解決すること。docstring の
+    「実際のルート構造に合わせてある」という主張は呼び出し元ゼロのため一度も確かめられて
+    いなかった。全10エンティティは実在を確認（存在しないパスが false になる自己チェック付き）。
+  - **旧アイコン表に戻すとテストが実際に落ちることを確認済み**（空振りテストでない）。
+  - Web/モバイル両方の `tsc` エラーなし / `lint` エラー0 / `vitest` 520ファイル 5288件通過 /
+    `check:schema` OK。
+- 残作業: IMP-029 の本丸（残り15タイプの発火条件・宛先・チャネル、統合dispatch）は
+  **経営判断が要るため実装しない**。OPEN_QUESTIONS.md に起票した。
+
 ## 2026-08-31 証明書無効化5経路の認可漏れを修正し、権限強制を構造テストで固定（IMP-013）
 
 - 背景: 証明書の無効化（不可逆・法的意味を持つ操作）に**5つの経路**があり、認可の強さが割れていた。

@@ -3,6 +3,46 @@
 > まだ決まっていないこと、判断に迷っていることを書く場所。決まったら
 > DECISION_LOG.md に移し、このファイルからは消す（削除履歴は git で追える）。
 
+## 通知18タイプのうち15タイプが本番で一度も発火していない（2026-08-31）
+
+通知タイプカタログ（`src/lib/notifications/types.ts`）には18タイプあるが、本番で実際に
+書き込まれているのは3タイプだけ（`chat_message` 56件 / `ai_action` 4件 / `platform_notification`
+は定義のみで0件。2026-08-31 に Supabase MCP で実測）。
+
+未使用の15タイプ: `booking_created` / `order_created` / `order_accepted` / `order_completed` /
+`order_cancelled` / `payment_confirmed` / `certificate_gate_ready` / `certificate_issued` /
+`customer_concern_raised` / `rating_request` / `rating_received` / `sla_at_risk` / `sla_overdue` /
+`low_stock_alert` / `follow_up_reminder`
+
+- なぜこちらで決めないか: 「証明書を発行したら誰に通知するか」「顧客の懸念が上がったら
+  誰にどのチャネルで飛ばすか」は事業側の判断であり、推測で決めれば必ず外れる。
+  しかも一度送った通知は取り消せない。
+- 次のアクション: 代表の判断が要る。タイプごとに (a) 発火させるか、(b) 宛先（テナント全員 /
+  担当者 / 顧客）、(c) チャネル（アプリ内 / LINE / メール / Slack）を決める。
+  決まった分から実装する。カタログには各タイプの `defaultChannels` が既に書いてあるので、
+  それを叩き台にできる。
+- 関連: 統合dispatch（既存の LINE/Slack/メール/SMS モジュールを中央エンジンへ移行）も
+  この判断が決まってからでないと設計できない。
+- 起票日: 2026-08-31
+
+## notifications.priority が全行 "normal" で、読み手が1つも無い（2026-08-31）
+
+`notifications.priority`（NOT NULL、既定 `'normal'`）は本番60件すべてが `"normal"`。
+書き込み側は手で `"normal"` と入れており、**読んでいるコードは1つも無い**
+（一覧APIの select にも、モバイルの一覧にも入っていない）。
+
+一方、カタログは各タイプに severity（`urgent` / `action_required` / `informational`）を
+定義しており、`"normal"` はこの語彙に存在しない。
+
+- 影響: 現状は無害（誰も読んでいない）。ただし将来「要対応バッジ」を出すときに、
+  `priority` を見て混乱する余地がある。`routing.ts` の `countActionRequired()` も
+  この状態では実データに対して動かない。
+- 選択肢: (a) 書き込み時にカタログの severity を入れる、(b) 列を落とす、
+  (c) そのまま放置して severity は型から導出する。
+- 次のアクション: 「未読バッジに何を数えるか」（全未読か、要対応のみか）が決まってから選ぶ。
+  読み手がいない今整えるのは YAGNI。
+- 起票日: 2026-08-31
+
 ## certificates の RLS に、意図を打ち消す PERMISSIVE ポリシー重複がある（2026-08-31）
 
 `certificates` の UPDATE には PERMISSIVE ポリシーが2本ある（本番DBで実測）。
