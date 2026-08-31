@@ -75,6 +75,7 @@ const SECTIONS: MenuSection[] = [
   {
     title: "設定",
     items: [
+      { icon: "view-dashboard-outline", label: "表示設定", route: "/settings/display" },
       { icon: "account-outline", label: "アカウント設定", route: "/settings" },
       { icon: "contactless-payment", label: "Tap to Pay", route: "/settings/tap-to-pay" },
     ],

@@ -101,6 +101,11 @@ export function shouldCaptureKnowledge(settings: AiAutomationSettings): boolean 
   return resolveAutoAction(settings, "inbound_message.auto_capture_knowledge");
 }
 
+/** 一定時間返信が無い LINE スレッドをスタッフに通知するか (inbound_message.auto_unanswered_alert)。 */
+export function shouldAlertUnansweredThreads(settings: AiAutomationSettings): boolean {
+  return resolveAutoAction(settings, "inbound_message.auto_unanswered_alert");
+}
+
 /** 予約・作業の状況問い合わせに LINE で自動返信するか (inbound_message.auto_status_reply)。 */
 export function shouldAutoReplyStatus(settings: AiAutomationSettings): boolean {
   return resolveAutoAction(settings, "inbound_message.auto_status_reply");
