@@ -27,6 +27,15 @@ export const NON_OCCUPYING = new Set(["cancelled", "completed", "no_show"]);
  */
 const NOT_ACTUAL_WORK = new Set(["no_show"]);
 
+/**
+ * 稼働率計算（completed は稼働実績に含める）における除外ステータス。
+ * computeBoothUtilization は NOT_ACTUAL_WORK でフィルタした後 toEvents 内部で
+ * cancelled を別途除外するが、toEvents を経由しない呼び出し元
+ * （capacityAnalytics.ts の decomposeTimeBands 等）が同じ判定をしたい場合は
+ * cancelled も合わせて除外する必要があるため、この定数を使う。
+ */
+export const UTILIZATION_EXCLUDED = new Set([...NOT_ACTUAL_WORK, "cancelled"]);
+
 // ── 入力型 ──
 
 export interface BoothReservation {

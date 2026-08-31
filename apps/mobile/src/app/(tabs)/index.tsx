@@ -1,11 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import {
-  View,
-  StyleSheet,
-  ScrollView,
-  RefreshControl,
-  Pressable,
-} from "react-native";
+import { View, StyleSheet, ScrollView, RefreshControl, Pressable } from "react-native";
 import { Text, Icon } from "react-native-paper";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -18,12 +12,10 @@ import { scopeToStore } from "@/lib/storeScope";
 import { useTabContentInset } from "@/hooks/useTabContentInset";
 import { NotifBell } from "@/components/NotifBell";
 import { colors, radius, spacing, sizing, shadows } from "@/constants/tokens";
-import {
-  ProgressRing,
-  SegmentedControl,
-  StatusBadge,
-  Skeleton,
-} from "@/components/ui";
+import { ProgressRing, SegmentedControl, StatusBadge, Skeleton } from "@/components/ui";
+import { DisplayModeControl } from "@/components/DisplayModeControl";
+import { DisplayModeOnboarding } from "@/components/DisplayModeOnboarding";
+import { useDisplayMode } from "@/stores/uiPreferencesStore";
 
 dayjs.locale("ja");
 
@@ -114,6 +106,7 @@ export default function HomeScreen() {
   const [stats, setStats] = useState<HomeStats>(EMPTY_STATS);
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
+  const displayMode = useDisplayMode();
 
   // ponytail: recalculated on every render so it stays current across midnight
   const today = dayjs();
@@ -123,12 +116,9 @@ export default function HomeScreen() {
 
     // UTC 日付だと JST 09:00 前は前日を集計してしまう
     const todayStr = dayjs().format("YYYY-MM-DD");
-    const storeId = selectedStore?.id || null;
+    const storeId = scope === "all" ? null : selectedStore?.id || null;
 
-    let q1 = supabase
-      .from("reservations")
-      .select("id, status", { count: "exact" })
-      .eq("tenant_id", user.tenantId);
+    let q1 = supabase.from("reservations").select("id, status", { count: "exact" }).eq("tenant_id", user.tenantId);
     q1 = scopeToStore(q1, storeId);
 
     let q2 = supabase
@@ -137,52 +127,46 @@ export default function HomeScreen() {
       .eq("tenant_id", user.tenantId);
     q2 = scopeToStore(q2, storeId);
 
-    let q3 = supabase
-      .from("reservations")
-      .select("id", { count: "exact", head: true })
-      .eq("tenant_id", user.tenantId);
+    let q3 = supabase.from("reservations").select("id", { count: "exact", head: true }).eq("tenant_id", user.tenantId);
     q3 = scopeToStore(q3, storeId);
 
     let q5 = supabase
       .from("reservations")
-      .select("id, scheduled_date, start_time, status, customer:customers ( name ), vehicle:vehicles ( plate_display, maker, model )")
+      .select(
+        "id, scheduled_date, start_time, status, customer:customers ( name ), vehicle:vehicles ( plate_display, maker, model )",
+      )
       .eq("tenant_id", user.tenantId);
     q5 = scopeToStore(q5, storeId);
 
-    const [todayRes, activeWork, awaitingPay, preparedTags, todayTimeline] =
-      await Promise.all([
-        q1
-          .eq("scheduled_date", todayStr)
-          .not("status", "eq", "cancelled"),
-        q2
-          .in("status", ["arrived", "in_progress"]),
-        q3
-          .eq("status", "completed")
-          .eq("payment_status", "unpaid"),
-        supabase
-          .from("nfc_tags")
-          .select("id", { count: "exact", head: true })
-          .eq("tenant_id", user.tenantId)
-          .eq("status", "prepared")
-          .is("uid", null),
-        q5
-          .eq("scheduled_date", todayStr)
-          .not("status", "eq", "cancelled")
-          .order("start_time", { ascending: true })
-          .limit(8),
-      ]);
+    if (scope === "self") {
+      q1 = q1.eq("assigned_user_id", user.id);
+      q2 = q2.eq("assigned_user_id", user.id);
+      q3 = q3.eq("assigned_user_id", user.id);
+      q5 = q5.eq("assigned_user_id", user.id);
+    }
+
+    const [todayRes, activeWork, awaitingPay, preparedTags, todayTimeline] = await Promise.all([
+      q1.eq("scheduled_date", todayStr).not("status", "eq", "cancelled"),
+      q2.in("status", ["arrived", "in_progress"]),
+      q3.eq("status", "completed").eq("payment_status", "unpaid"),
+      supabase
+        .from("nfc_tags")
+        .select("id", { count: "exact", head: true })
+        .eq("tenant_id", user.tenantId)
+        .eq("status", "prepared")
+        .is("uid", null),
+      q5
+        .eq("scheduled_date", todayStr)
+        .not("status", "eq", "cancelled")
+        .order("start_time", { ascending: true })
+        .limit(8),
+    ]);
 
     const todayTotal = todayRes.count ?? 0;
     const todayData = (todayRes.data ?? []) as Array<{ id: string; status: string }>;
-    const todayCompleted = todayData.filter(
-      (r) => r.status === "completed" || r.status === "delivered"
-    ).length;
-    const inProgressCount = todayData.filter(
-      (r) => r.status === "in_progress" || r.status === "arrived"
-    ).length;
-    const awaitingConfirmation = todayData.filter(
-      (r) => r.status === "awaiting_confirmation"
-    ).length;
+    const todayCompleted = todayData.filter((r) => r.status === "completed" || r.status === "delivered").length;
+    const inProgressCount = todayData.filter((r) => r.status === "in_progress" || r.status === "arrived").length;
+    const awaitingConfirmation = todayData.filter((r) => r.status === "awaiting_confirmation").length;
     const notStarted = todayTotal - todayCompleted - inProgressCount - awaitingConfirmation;
 
     // Build issues
@@ -222,9 +206,7 @@ export default function HomeScreen() {
     ).map((r) => ({
       id: r.id,
       progress: r.status === "in_progress" ? 0.5 : 0.2,
-      vehicleName: r.vehicle
-        ? `${r.vehicle.maker} ${r.vehicle.model}`.trim() || r.vehicle.plate_display
-        : "車両",
+      vehicleName: r.vehicle ? `${r.vehicle.maker} ${r.vehicle.model}`.trim() || r.vehicle.plate_display : "車両",
       plateNumber: r.vehicle?.plate_display ?? "",
       workType: "",
       worker: r.customer?.name ?? "",
@@ -244,15 +226,13 @@ export default function HomeScreen() {
       }>
     ).map((r) => ({
       id: r.id,
-      time: r.start_time ? r.start_time.slice(0, 5) : "--:--",
+      time: r.start_time ? r.start_time.slice(0, 5) : "時刻未定",
       title: r.vehicle?.plate_display || r.customer?.name || "予約",
-      status: (
-        r.status === "completed" || r.status === "delivered"
-          ? "completed"
-          : r.status === "in_progress" || r.status === "arrived"
-            ? "in_progress"
-            : "scheduled"
-      ) as TimelineEntry["status"],
+      status: (r.status === "completed" || r.status === "delivered"
+        ? "completed"
+        : r.status === "in_progress" || r.status === "arrived"
+          ? "in_progress"
+          : "scheduled") as TimelineEntry["status"],
     }));
 
     // Mark current timeline entry
@@ -312,10 +292,11 @@ export default function HomeScreen() {
       nextAction,
       activeWork: activeWorkData,
     });
-  }, [user, selectedStore]);
+  }, [user, selectedStore, scope]);
 
   useEffect(() => {
-    setLoading(true);
+    // 認証・店舗・集計範囲が変わった時に、画面の集計値を同期する。
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadStats()
       .catch(() => {
         // ponytail: swallow — initial load error shows empty state, not stuck skeleton
@@ -332,276 +313,299 @@ export default function HomeScreen() {
     }
   }
 
-  const progress = stats.todayTotal > 0
-    ? stats.todayCompleted / stats.todayTotal
-    : 0;
+  const progress = stats.todayTotal > 0 ? stats.todayCompleted / stats.todayTotal : 0;
 
   return (
-    <ScrollView
-      style={styles.screen}
-      contentContainerStyle={[styles.screenContent, { paddingBottom: tabInset }]}
-      refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-      }
-    >
-      {/* ── 1. Header: date, greeting, store, bell ── */}
-      <View style={[styles.header, { paddingTop: insets.top + spacing.sm }]}>
-        <View style={styles.headerLeft}>
-          <Text style={styles.dateText}>
-            {today.format("M月D日（dd）").toUpperCase()}
-          </Text>
-          <Text style={styles.greeting}>
-            {getGreeting()}、{user?.email?.split("@")[0] ?? ""}さん
-          </Text>
-          <Text style={styles.storeName}>
-            {selectedStore?.name}
-          </Text>
-        </View>
-        <View style={styles.headerRight}>
-          <NotifBell />
-        </View>
-      </View>
+    <>
+      <DisplayModeOnboarding />
+      <ScrollView
+        style={styles.screen}
+        contentContainerStyle={[styles.screenContent, { paddingBottom: tabInset }]}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+      >
+        {/* ── 1. Header: date, greeting, store, bell ── */}
+        <View style={[styles.header, { paddingTop: insets.top + spacing.sm }]}>
+          <View style={styles.headerTop}>
+            <View style={styles.headerLeft}>
+              <Text style={styles.dateText}>{today.format("M月D日（dd）").toUpperCase()}</Text>
+              <Text style={styles.greeting}>
+                {getGreeting()}、{user?.email?.split("@")[0] ?? ""}さん
+              </Text>
+              <Text style={styles.storeName}>{selectedStore?.name}</Text>
+            </View>
+            <View style={styles.headerRight}>
+              <NotifBell />
+            </View>
+          </View>
 
-      {/* ── 2. Scope segmented control (3 segments) ── */}
-      <View style={styles.section}>
-        <SegmentedControl
-          segments={[
-            { value: "self" as Scope, label: "自分" },
-            { value: "store" as Scope, label: "店舗" },
-            { value: "all" as Scope, label: "全店舗" },
-          ]}
-          value={scope}
-          onChange={setScope}
-        />
-      </View>
-
-      {/* ── 3. Today work summary card ── */}
-      <View style={styles.section}>
-        <View style={styles.todayCard}>
-          <View style={styles.todayHeader}>
-            <View>
-              <Text style={styles.todayLabel}>本日の作業</Text>
-              <View style={styles.todayCountRow}>
-                <Text style={styles.todayCount}>
-                  {loading ? "-" : stats.todayTotal}
-                </Text>
-                <Text style={styles.todayUnit}>件</Text>
+          <View style={styles.displayModeBlock}>
+            <Text style={[styles.controlLabel, styles.headerControlLabel]}>ホームの表示</Text>
+            <View style={styles.displayModeRow}>
+              <View style={styles.displayModeControl}>
+                <DisplayModeControl compact />
               </View>
+              <Pressable
+                style={styles.displaySettingsButton}
+                onPress={() => router.push("/settings/display")}
+                accessibilityRole="button"
+                accessibilityLabel="表示設定を開く"
+              >
+                <Icon source="tune-variant" size={20} color={colors.textSecondary} />
+              </Pressable>
             </View>
-            <ProgressRing
-              progress={progress}
-              size={72}
-              strokeWidth={6}
-              label={`${Math.round(progress * 100)}%`}
-            />
-          </View>
-          {/* Status badges row */}
-          <View style={styles.statusRow}>
-            <StatusPill label="作業中" count={stats.inProgress} severity="warning" />
-            <StatusPill label="確認待ち" count={stats.awaitingConfirmation} severity="danger" />
-            <StatusPill label="未完了" count={stats.notStarted} severity="neutral" />
-            <StatusPill label="完了" count={stats.todayCompleted} severity="success" />
           </View>
         </View>
-      </View>
 
-      {/* ── 4. NEXT ACTION (dominant) ── */}
-      {loading ? (
+        {/* ── 2. Scope segmented control (3 segments) ── */}
         <View style={styles.section}>
-          <Skeleton height={120} borderRadius={radius.card} />
+          <Text style={styles.controlLabel}>表示する範囲</Text>
+          <SegmentedControl
+            segments={[
+              { value: "self" as Scope, label: "自分" },
+              { value: "store" as Scope, label: "店舗" },
+              { value: "all" as Scope, label: "全店舗" },
+            ]}
+            value={scope}
+            onChange={(nextScope) => {
+              setLoading(true);
+              setScope(nextScope);
+            }}
+          />
         </View>
-      ) : stats.nextAction ? (
-        <View style={styles.section}>
-          <Pressable
-            style={styles.nextActionCard}
-            onPress={() => router.push(stats.nextAction!.route as never)}
-            accessibilityRole="button"
-            accessibilityLabel={`次のアクション: ${stats.nextAction.title}`}
-          >
-            {/* Top row: label + priority badge */}
-            <View style={styles.naTopRow}>
-              <Text style={styles.naLabel}>NEXT ACTION</Text>
-              {stats.issues.length > 0 && (
-                <StatusBadge label="優先度 高" severity="danger" compact />
-              )}
-            </View>
 
-            {/* Vehicle info */}
-            {stats.nextAction.vehicleName ? (
-              <View style={styles.naVehicleRow}>
-                <Icon source="car-outline" size={20} color={colors.textSecondary} />
-                <View style={styles.naVehicleText}>
-                  <Text style={styles.naVehicleName}>
-                    {stats.nextAction.vehicleName}
-                  </Text>
-                  {stats.nextAction.plateNumber ? (
-                    <Text style={styles.naPlate}>{stats.nextAction.plateNumber}</Text>
-                  ) : null}
-                  {stats.nextAction.workType ? (
-                    <Text style={styles.naWorkType}>{stats.nextAction.workType}</Text>
+        {/* ── 3. Today work summary card ── */}
+        <View style={styles.section}>
+          <View style={styles.todayCard}>
+            <View style={styles.todayHeader}>
+              <View>
+                <Text style={styles.todayLabel}>本日の作業</Text>
+                <View style={styles.todayCountRow}>
+                  <Text style={styles.todayCount}>{loading ? "-" : stats.todayTotal}</Text>
+                  <Text style={styles.todayUnit}>件</Text>
+                </View>
+              </View>
+              <ProgressRing progress={progress} size={72} strokeWidth={6} label={`${Math.round(progress * 100)}%`} />
+            </View>
+            {/* Status badges row */}
+            <View style={styles.statusRow}>
+              <StatusPill label="作業中" count={stats.inProgress} severity="warning" />
+              <StatusPill label="確認待ち" count={stats.awaitingConfirmation} severity="danger" />
+              <StatusPill label="未完了" count={stats.notStarted} severity="neutral" />
+              <StatusPill label="完了" count={stats.todayCompleted} severity="success" />
+            </View>
+          </View>
+        </View>
+
+        {/* ── 4. NEXT ACTION (dominant) ── */}
+        {loading ? (
+          <View style={styles.section}>
+            <Skeleton height={120} borderRadius={radius.card} />
+          </View>
+        ) : stats.nextAction ? (
+          <View style={styles.section}>
+            <Pressable
+              style={styles.nextActionCard}
+              onPress={() => router.push(stats.nextAction!.route as never)}
+              accessibilityRole="button"
+              accessibilityLabel={`次のアクション: ${stats.nextAction.title}`}
+            >
+              {/* Top row: label + priority badge */}
+              <View style={styles.naTopRow}>
+                <Text style={styles.naLabel}>NEXT ACTION</Text>
+                {stats.issues.length > 0 && <StatusBadge label="優先度 高" severity="danger" compact />}
+              </View>
+
+              {/* Vehicle info */}
+              {stats.nextAction.vehicleName ? (
+                <View style={styles.naVehicleRow}>
+                  <Icon source="car-outline" size={20} color={colors.textSecondary} />
+                  <View style={styles.naVehicleText}>
+                    <Text style={styles.naVehicleName}>{stats.nextAction.vehicleName}</Text>
+                    {stats.nextAction.plateNumber ? (
+                      <Text style={styles.naPlate}>{stats.nextAction.plateNumber}</Text>
+                    ) : null}
+                    {stats.nextAction.workType ? (
+                      <Text style={styles.naWorkType}>{stats.nextAction.workType}</Text>
+                    ) : null}
+                  </View>
+                  {stats.nextAction.deadline ? (
+                    <Text style={styles.naDeadline}>{stats.nextAction.deadline}</Text>
                   ) : null}
                 </View>
-                {stats.nextAction.deadline ? (
-                  <Text style={styles.naDeadline}>{stats.nextAction.deadline}</Text>
-                ) : null}
+              ) : null}
+
+              {/* Reason */}
+              <View style={styles.naReasonRow}>
+                <Icon source="information-outline" size={16} color={colors.primary} />
+                <Text style={styles.naReason}>{stats.nextAction.reason}</Text>
               </View>
-            ) : null}
 
-            {/* Reason */}
-            <View style={styles.naReasonRow}>
-              <Icon source="information-outline" size={16} color={colors.primary} />
-              <Text style={styles.naReason}>{stats.nextAction.reason}</Text>
-            </View>
-
-            {/* CTA */}
-            <View style={styles.naCta}>
-              <Text style={styles.naCtaText}>{stats.nextAction.title}</Text>
-              <Icon source="arrow-right" size={20} color={colors.textOnPrimary} />
-            </View>
-          </Pressable>
-        </View>
-      ) : (
-        <View style={styles.section}>
-          <View style={styles.allDoneCard}>
-            <Icon source="check-circle" size={24} color={colors.success} />
-            <Text style={styles.allDoneText}>本日のタスクはすべて完了しました</Text>
-          </View>
-        </View>
-      )}
-
-      {/* ── 5. In-progress work (compact) ── */}
-      {stats.activeWork.length > 0 && (
-        <View style={styles.section}>
-          <View style={styles.sectionHeaderRow}>
-            <Text style={styles.sectionTitle}>進行中の作業</Text>
-            <Pressable onPress={() => router.push("/(tabs)/work")}>
-              <Text style={styles.seeAll}>すべて見る →</Text>
+              {/* CTA */}
+              <View style={styles.naCta}>
+                <Text style={styles.naCtaText}>{stats.nextAction.title}</Text>
+                <Icon source="arrow-right" size={20} color={colors.textOnPrimary} />
+              </View>
             </Pressable>
           </View>
-          <View style={styles.activeWorkList}>
-            {stats.activeWork.slice(0, 3).map((work) => (
-              <Pressable
-                key={work.id}
-                style={styles.activeWorkRow}
-                onPress={() => router.push(`/work/${work.id}` as never)}
-                accessibilityRole="button"
-              >
-                <View style={styles.activeWorkProgress}>
-                  <ProgressRing
-                    progress={work.progress}
-                    size={40}
-                    strokeWidth={3}
-                    label={`${Math.round(work.progress * 100)}%`}
-                  />
-                </View>
-                <View style={styles.activeWorkInfo}>
-                  <View style={styles.activeWorkTopRow}>
-                    <StatusBadge label="作業中" severity="warning" compact />
-                    <Text style={styles.activeWorkVehicle} numberOfLines={1}>
-                      {work.vehicleName}
-                    </Text>
-                  </View>
-                  {work.worker ? (
-                    <Text style={styles.activeWorkMeta} numberOfLines={1}>
-                      {work.worker}
-                    </Text>
-                  ) : null}
-                </View>
-              </Pressable>
-            ))}
+        ) : (
+          <View style={styles.section}>
+            <View style={styles.allDoneCard}>
+              <Icon source="check-circle" size={24} color={colors.success} />
+              <Text style={styles.allDoneText}>本日のタスクはすべて完了しました</Text>
+            </View>
           </View>
-        </View>
-      )}
+        )}
 
-      {/* ── 6. Action-needed issues (severity cards) ── */}
-      {stats.issues.length > 0 && (
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>要対応</Text>
-          <View style={styles.issueList}>
-            {stats.issues.map((issue) => (
-              <Pressable
-                key={issue.id}
-                style={[
-                  styles.issueRow,
-                  issue.severity === "CRITICAL" && styles.issueCritical,
-                  issue.severity === "HIGH" && styles.issueHigh,
-                  issue.severity === "ACTION" && styles.issueAction,
-                ]}
-                onPress={() => router.push(issue.route as never)}
-                accessibilityRole="button"
-              >
-                <View style={styles.issueLeft}>
-                  <Icon
-                    source={issue.severity === "CRITICAL" ? "alert" : issue.severity === "HIGH" ? "alert-circle-outline" : "information-outline"}
-                    size={18}
-                    color={
-                      issue.severity === "CRITICAL" ? colors.danger
-                        : issue.severity === "HIGH" ? colors.warningDark
-                          : colors.primary
-                    }
-                  />
-                  <View style={[
-                    styles.issueLabelBadge,
-                    issue.severity === "CRITICAL" && { backgroundColor: colors.dangerLight },
-                    issue.severity === "HIGH" && { backgroundColor: colors.warningLight },
-                    issue.severity === "ACTION" && { backgroundColor: colors.primaryLight },
-                  ]}>
-                    <Text style={[
-                      styles.issueLabelText,
-                      issue.severity === "CRITICAL" && { color: colors.danger },
-                      issue.severity === "HIGH" && { color: colors.warningDark },
-                      issue.severity === "ACTION" && { color: colors.primary },
-                    ]}>
-                      {issue.label}
-                    </Text>
-                  </View>
-                </View>
-                <View style={styles.issueContent}>
-                  <Text style={styles.issueTitle} numberOfLines={1}>{issue.title}</Text>
-                  <Text style={styles.issueDetail} numberOfLines={1}>{issue.detail}</Text>
-                </View>
-                <Icon source="chevron-right" size={18} color={colors.textTertiary} />
+        {/* ── 5. In-progress work (compact) ── */}
+        {displayMode !== "simple" && stats.activeWork.length > 0 && (
+          <View style={styles.section}>
+            <View style={styles.sectionHeaderRow}>
+              <Text style={styles.sectionTitle}>進行中の作業</Text>
+              <Pressable onPress={() => router.push("/(tabs)/work")}>
+                <Text style={styles.seeAll}>すべて見る →</Text>
               </Pressable>
-            ))}
-          </View>
-        </View>
-      )}
-
-      {/* ── 7. Today timeline ── */}
-      {stats.timeline.length > 0 && (
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>今日の予定</Text>
-          <View style={styles.timelineCard}>
-            {stats.timeline.map((entry, i) => (
-              <View key={entry.id}>
-                {i > 0 && <View style={styles.timelineDivider} />}
-                <View style={styles.timelineRow}>
-                  {/* NOW marker or time */}
-                  {entry.isNow ? (
-                    <View style={styles.nowMarkerWrap}>
-                      <View style={styles.nowDot} />
-                      <Text style={styles.nowText}>NOW</Text>
+            </View>
+            <View style={styles.activeWorkList}>
+              {stats.activeWork.slice(0, displayMode === "dense" ? 6 : 3).map((work) => (
+                <Pressable
+                  key={work.id}
+                  style={styles.activeWorkRow}
+                  onPress={() => router.push(`/work/${work.id}` as never)}
+                  accessibilityRole="button"
+                >
+                  <View style={styles.activeWorkProgress}>
+                    <ProgressRing
+                      progress={work.progress}
+                      size={40}
+                      strokeWidth={3}
+                      label={`${Math.round(work.progress * 100)}%`}
+                    />
+                  </View>
+                  <View style={styles.activeWorkInfo}>
+                    <View style={styles.activeWorkTopRow}>
+                      <StatusBadge label="作業中" severity="warning" compact />
+                      <Text style={styles.activeWorkVehicle} numberOfLines={1}>
+                        {work.vehicleName}
+                      </Text>
                     </View>
-                  ) : (
-                    <Text style={styles.timelineTime}>{entry.time}</Text>
-                  )}
-                  <Text style={styles.timelineTitle} numberOfLines={1}>
-                    {entry.title}
-                  </Text>
-                  {entry.detail && (
-                    <Text style={styles.timelineDetail} numberOfLines={1}>
-                      {entry.detail}
-                    </Text>
-                  )}
-                </View>
-              </View>
-            ))}
+                    {work.worker ? (
+                      <Text style={styles.activeWorkMeta} numberOfLines={1}>
+                        {work.worker}
+                      </Text>
+                    ) : null}
+                  </View>
+                </Pressable>
+              ))}
+            </View>
           </View>
-        </View>
-      )}
+        )}
 
-      <View style={{ height: spacing["4xl"] }} />
-    </ScrollView>
+        {/* ── 6. Action-needed issues (severity cards) ── */}
+        {stats.issues.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>要対応</Text>
+            <View style={styles.issueList}>
+              {stats.issues.map((issue) => (
+                <Pressable
+                  key={issue.id}
+                  style={[
+                    styles.issueRow,
+                    issue.severity === "CRITICAL" && styles.issueCritical,
+                    issue.severity === "HIGH" && styles.issueHigh,
+                    issue.severity === "ACTION" && styles.issueAction,
+                  ]}
+                  onPress={() => router.push(issue.route as never)}
+                  accessibilityRole="button"
+                >
+                  <View style={styles.issueLeft}>
+                    <Icon
+                      source={
+                        issue.severity === "CRITICAL"
+                          ? "alert"
+                          : issue.severity === "HIGH"
+                            ? "alert-circle-outline"
+                            : "information-outline"
+                      }
+                      size={18}
+                      color={
+                        issue.severity === "CRITICAL"
+                          ? colors.danger
+                          : issue.severity === "HIGH"
+                            ? colors.warningDark
+                            : colors.primary
+                      }
+                    />
+                    <View
+                      style={[
+                        styles.issueLabelBadge,
+                        issue.severity === "CRITICAL" && { backgroundColor: colors.dangerLight },
+                        issue.severity === "HIGH" && { backgroundColor: colors.warningLight },
+                        issue.severity === "ACTION" && { backgroundColor: colors.primaryLight },
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.issueLabelText,
+                          issue.severity === "CRITICAL" && { color: colors.danger },
+                          issue.severity === "HIGH" && { color: colors.warningDark },
+                          issue.severity === "ACTION" && { color: colors.primary },
+                        ]}
+                      >
+                        {issue.label}
+                      </Text>
+                    </View>
+                  </View>
+                  <View style={styles.issueContent}>
+                    <Text style={styles.issueTitle} numberOfLines={1}>
+                      {issue.title}
+                    </Text>
+                    <Text style={styles.issueDetail} numberOfLines={1}>
+                      {issue.detail}
+                    </Text>
+                  </View>
+                  <Icon source="chevron-right" size={18} color={colors.textTertiary} />
+                </Pressable>
+              ))}
+            </View>
+          </View>
+        )}
+
+        {/* ── 7. Today timeline ── */}
+        {displayMode === "dense" && stats.timeline.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>今日の予定</Text>
+            <View style={styles.timelineCard}>
+              {stats.timeline.map((entry, i) => (
+                <View key={entry.id}>
+                  {i > 0 && <View style={styles.timelineDivider} />}
+                  <View style={styles.timelineRow}>
+                    {/* NOW marker or time */}
+                    {entry.isNow ? (
+                      <View style={styles.nowMarkerWrap}>
+                        <View style={styles.nowDot} />
+                        <Text style={styles.nowText}>NOW</Text>
+                      </View>
+                    ) : (
+                      <Text style={styles.timelineTime}>{entry.time}</Text>
+                    )}
+                    <Text style={styles.timelineTitle} numberOfLines={1}>
+                      {entry.title}
+                    </Text>
+                    {entry.detail && (
+                      <Text style={styles.timelineDetail} numberOfLines={1}>
+                        {entry.detail}
+                      </Text>
+                    )}
+                  </View>
+                </View>
+              ))}
+            </View>
+          </View>
+        )}
+
+        <View style={{ height: spacing["4xl"] }} />
+      </ScrollView>
+    </>
   );
 }
 
@@ -639,12 +643,8 @@ function StatusPill({
 
   return (
     <View style={[styles.statusPill, { backgroundColor: bgMap[severity] }]}>
-      <Text style={[styles.statusPillLabel, { color: fgMap[severity] }]}>
-        {label}
-      </Text>
-      <Text style={[styles.statusPillCount, { color: fgMap[severity] }]}>
-        {count}
-      </Text>
+      <Text style={[styles.statusPillLabel, { color: fgMap[severity] }]}>{label}</Text>
+      <Text style={[styles.statusPillCount, { color: fgMap[severity] }]}>{count}</Text>
     </View>
   );
 }
@@ -656,24 +656,41 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
-  screenContent: {
-  },
+  screenContent: {},
 
   // Header
   header: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
     paddingHorizontal: spacing.xl,
     paddingTop: spacing.sm,
-    paddingBottom: spacing.xs,
+    paddingBottom: spacing.sm,
+    gap: spacing.lg,
   },
+  headerTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" },
   headerLeft: { flex: 1 },
   headerRight: {
     flexDirection: "row",
     alignItems: "center",
     marginTop: spacing.xs,
   },
+  displayModeBlock: { gap: spacing.sm },
+  displayModeRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  displayModeControl: { flex: 1 },
+  displaySettingsButton: {
+    width: sizing.touchTarget,
+    height: sizing.touchTarget,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  controlLabel: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: colors.textSecondary,
+    marginBottom: spacing.sm,
+  },
+  headerControlLabel: { marginBottom: 0 },
   dateText: {
     fontSize: 13,
     fontWeight: "500",

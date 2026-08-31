@@ -13,6 +13,7 @@ import CmdKHintToast from "./CmdKHintToast";
 import DashboardModeSwitch from "./DashboardModeSwitch";
 import NextActionSection, { NextActionSectionSkeleton } from "./NextActionSection";
 import TodayProgressCard, { TodayProgressCardSkeleton } from "./TodayProgressCard";
+import DisplayModeSwitcher from "./DisplayModeSwitcher";
 import TodayTasksWidget, { TodayTasksWidgetSkeleton } from "./TodayTasksWidget";
 import SetupChecklist, { SetupChecklistSkeleton } from "./SetupChecklist";
 import ApprovalInboxWidget, { ApprovalInboxWidgetSkeleton } from "./ApprovalInboxWidget";
@@ -714,7 +715,12 @@ export default async function AdminHome({
         tag="管理画面"
         title="ダッシュボード"
         description="施工証明書の管理状況を一目で確認"
-        actions={<HomeScopeToggle scope={workScope} scopes={allowed} defaultScopeValue="store" />}
+        actions={
+          <div className="flex flex-wrap items-center justify-end gap-3">
+            <HomeScopeToggle scope={workScope} scopes={allowed} defaultScopeValue="store" />
+            <DisplayModeSwitcher />
+          </div>
+        }
       />
       <DashboardModeSwitch adminContent={adminContent} />
     </div>

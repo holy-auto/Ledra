@@ -15,6 +15,7 @@ import { OfflineBanner } from "@/components/OfflineBanner";
 import { AppLockGate } from "@/components/AppLockGate";
 import { initSentry, setSentryUser } from "@/lib/sentry";
 import { useAuthStore } from "@/stores/authStore";
+import { useUiPreferencesStore } from "@/stores/uiPreferencesStore";
 import { ToastProvider } from "@/components/ToastProvider";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { useTapToPayWarmup } from "@/hooks/useTapToPayWarmup";
@@ -49,6 +50,19 @@ function PushRegisterGate() {
       done.current = false;
     }
   }, [isAuthenticated]);
+  return null;
+}
+
+function UiPreferencesGate() {
+  const userId = useAuthStore((state) => state.user?.id ?? null);
+  const load = useUiPreferencesStore((state) => state.load);
+  const reset = useUiPreferencesStore((state) => state.reset);
+
+  useEffect(() => {
+    if (userId) void load(userId);
+    else reset();
+  }, [load, reset, userId]);
+
   return null;
 }
 
@@ -96,6 +110,7 @@ export default function RootLayout() {
         <StripeTerminalProvider tokenProvider={fetchTokenProvider}>
           <TapToPayWarmupGate />
           <PushRegisterGate />
+          <UiPreferencesGate />
           <PaperProvider theme={theme}>
             <ToastProvider>
               <StatusBar style="dark" />
