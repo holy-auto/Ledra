@@ -19,7 +19,12 @@
  */
 
 import type { BoothInfo, BoothReservation, BoothUtilization } from "@/lib/booths/occupancy";
-import { computeBoothUtilization, detectCapacityConflicts, NON_OCCUPYING } from "@/lib/booths/occupancy";
+import {
+  computeBoothUtilization,
+  detectCapacityConflicts,
+  NON_OCCUPYING,
+  UTILIZATION_EXCLUDED,
+} from "@/lib/booths/occupancy";
 import { parseTimeToHours, SHIFT_START, SHIFT_END } from "@/lib/gantt/board";
 
 // ── 時間帯別占有分解（capacity > 1 対応） ──
@@ -45,15 +50,20 @@ export interface CapacityTimeBand {
  * スイープラインで同時数が変化する境界ごとに帯を切り出す。
  *
  * IMP-041 occupancy.ts L330/L347 から委ねられた実装。
+ *
+ * @param excludeStatuses 占有とみなさないステータス集合。デフォルトは NON_OCCUPYING
+ *   （completed も除外＝空き検索など「今後の可用性」向けの判定）。稼働率計算
+ *   （completed は稼働実績に含める）に使う場合は UTILIZATION_EXCLUDED を渡す。
  */
 export function decomposeTimeBands(
   booth: BoothInfo,
   reservations: readonly BoothReservation[],
   shiftStart = SHIFT_START,
   shiftEnd = SHIFT_END,
+  excludeStatuses: ReadonlySet<string> = NON_OCCUPYING,
 ): CapacityTimeBand[] {
-  // occupancy.ts の NON_OCCUPYING を再利用（終端ステータスの定義を重複させない）
-  const boothRes = reservations.filter((r) => r.boothId === booth.id && !NON_OCCUPYING.has(r.status));
+  // occupancy.ts の除外ステータス定数を再利用（終端ステータスの定義を重複させない）
+  const boothRes = reservations.filter((r) => r.boothId === booth.id && !excludeStatuses.has(r.status));
 
   // イベント生成
   const events: Array<{ time: number; delta: 1 | -1 }> = [];
@@ -140,16 +150,48 @@ export function computeFleetUtilization(
   shiftEnd = SHIFT_END,
 ): FleetUtilizationSummary {
   const activeBooths = booths.filter((b) => b.isActive);
-  const details = activeBooths.map((b) => computeBoothUtilization(b, reservations, shiftStart, shiftEnd));
+  const rawDetails = activeBooths.map((b) => computeBoothUtilization(b, reservations, shiftStart, shiftEnd));
 
   let totalConflicts = 0;
   for (const b of activeBooths) {
     totalConflicts += detectCapacityConflicts(b, reservations, shiftStart, shiftEnd).length;
   }
 
+  // computeBoothUtilization() は「区間の union」で稼働率を出すため、capacity > 1 の
+  // ブースでは定員の一部しか埋まっていなくても 100% と過大評価してしまう
+  // （例: capacity=3 で1件だけ終日予約 → union稼働率100%だが実際は1/3枠のみ使用）。
+  // decomposeTimeBands() の時間帯別 concurrent/capacity で正規化した値に置き換える。
+  // boothDetails を computeBoothUtilization() の union ベース値のままにすると、
+  // capacity>1 のブースで avg/peak（下記）と矛盾する値になる（Codex #1009 指摘）ため、
+  // occupiedMinutes/utilizationPct を capacity 正規化した値へ上書きし、avg/peak も
+  // この boothDetails から導出することで矛盾しようがない構造にする。
+  // peakConcurrent はそのまま computeBoothUtilization() の値を使う（capacity に対する
+  // 同時数という別の情報であり、正規化の対象ではない）。
+  // UTILIZATION_EXCLUDED を渡し、computeBoothUtilization() と同じ「completed は
+  // 稼働実績に含める」判定に揃える（decomposeTimeBands のデフォルトの NON_OCCUPYING
+  // だと completed も除外され、矛盾が再発する）。
+  const boothDetails: BoothUtilization[] = activeBooths.map((b, i) => {
+    const bands = decomposeTimeBands(b, reservations, shiftStart, shiftEnd, UTILIZATION_EXCLUDED);
+    const totalCapacityMinutes = b.capacity * (shiftEnd - shiftStart) * 60;
+    let weightedOccupiedMinutes = 0;
+    for (const band of bands) {
+      const durationMinutes = (band.end - band.start) * 60;
+      weightedOccupiedMinutes += Math.min(band.concurrent, band.capacity) * durationMinutes;
+    }
+    const utilizationPct =
+      totalCapacityMinutes > 0 ? Math.round((weightedOccupiedMinutes / totalCapacityMinutes) * 100) : 0;
+    // 定員1枠換算の実効占有分。occupiedMinutes/totalMinutes の比率が utilizationPct と
+    // 一致するようにする（capacity>1 のブースで「合計は480分なのに稼働率33%」という
+    // 一見矛盾した表示にならないようにするため）。
+    const occupiedMinutes = b.capacity > 0 ? Math.round(weightedOccupiedMinutes / b.capacity) : 0;
+    return { ...rawDetails[i], occupiedMinutes, utilizationPct };
+  });
+
   const avgPct =
-    details.length > 0 ? Math.round(details.reduce((s, d) => s + d.utilizationPct, 0) / details.length) : 0;
-  const peakPct = details.length > 0 ? Math.max(...details.map((d) => d.utilizationPct)) : 0;
+    boothDetails.length > 0
+      ? Math.round(boothDetails.reduce((s, d) => s + d.utilizationPct, 0) / boothDetails.length)
+      : 0;
+  const peakPct = boothDetails.length > 0 ? Math.max(...boothDetails.map((d) => d.utilizationPct)) : 0;
 
   return {
     totalBooths: booths.length,
@@ -157,7 +199,7 @@ export function computeFleetUtilization(
     avgUtilizationPct: avgPct,
     peakUtilizationPct: peakPct,
     totalConflicts,
-    boothDetails: details,
+    boothDetails,
   };
 }
 
@@ -181,7 +223,9 @@ export interface StaffLoadSummary {
   /** 実績合計（分） */
   totalActualMinutes: number;
   /**
-   * 負荷率 (0–100)。実績合計 / 営業時間。
+   * 負荷率 (0–100)。実効時間合計 / 営業時間。
+   * 実効時間 = actualMinutes（実績があれば）、なければ estimatedMinutes（未着手の代理値）。
+   * totalActualMinutes（実績のみの合計）とは一致しない場合がある点に注意。
    * ponytail: 営業時間は shiftEnd - shiftStart から算出。
    * 100% 超えは残業を意味する。
    */
@@ -210,25 +254,56 @@ export interface StaffCapacitySummary {
  *
  * ジョブの見積・実績時間からスタッフごとの負荷率を計算し、
  * 過負荷/遊休のスタッフを識別する。
+ *
+ * @param allStaffIds ジョブ0件のスタッフも集計に含めたい場合に渡す全スタッフID。
+ *   省略時は jobs に出現したスタッフのみが対象になる（ジョブ0件＝遊休の実態が
+ *   totalStaff/avgLoadPct/underutilizedCount から漏れる点に注意）。
  */
 export function computeStaffCapacity(
   jobs: readonly StaffJob[],
   shiftStart = SHIFT_START,
   shiftEnd = SHIFT_END,
+  allStaffIds?: readonly string[],
 ): StaffCapacitySummary {
   const shiftMinutes = (shiftEnd - shiftStart) * 60;
-  const byStaff = new Map<string, { jobCount: number; totalEstimated: number; totalActual: number }>();
+  const byStaff = new Map<
+    string,
+    { jobCount: number; totalEstimated: number; totalActual: number; totalEffective: number }
+  >();
+
+  const emptyEntry = () => ({ jobCount: 0, totalEstimated: 0, totalActual: 0, totalEffective: 0 });
 
   for (const j of jobs) {
-    const entry = byStaff.get(j.staffId) ?? { jobCount: 0, totalEstimated: 0, totalActual: 0 };
+    const entry = byStaff.get(j.staffId) ?? emptyEntry();
     entry.jobCount++;
     entry.totalEstimated += j.estimatedMinutes ?? 0;
     entry.totalActual += j.actualMinutes ?? 0;
+    // actualMinutes が null（未着手・予定のみ）の場合は見積時間を負荷の代理値に使う。
+    // これがないと、見積のみで埋まった予定のスタッフが 0% 負荷と誤って報告される。
+    // actualMinutes: 0（実際に0分だった、と判明済み）はそのまま 0 として扱う。
+    entry.totalEffective += j.actualMinutes ?? j.estimatedMinutes ?? 0;
     byStaff.set(j.staffId, entry);
   }
 
+  for (const staffId of allStaffIds ?? []) {
+    if (!byStaff.has(staffId)) byStaff.set(staffId, emptyEntry());
+  }
+
+  let overloadedCount = 0;
+  let underutilizedCount = 0;
+  let peakLoadPct = 0;
+  let sumLoadPct = 0;
+
   const details: StaffLoadSummary[] = [...byStaff.entries()].map(([staffId, entry]) => {
-    const loadPct = shiftMinutes > 0 ? Math.round((entry.totalActual / shiftMinutes) * 100) : 0;
+    // 過負荷/遊休の判定は丸め前の比率で行う（丸め後の loadPct で判定すると
+    // 例: 80.3% が 80 に丸まって「過負荷」から漏れる境界値バグになる）。
+    const loadRatioPct = shiftMinutes > 0 ? (entry.totalEffective / shiftMinutes) * 100 : 0;
+    const loadPct = Math.round(loadRatioPct);
+    if (loadRatioPct > 80) overloadedCount++;
+    if (loadRatioPct < 30) underutilizedCount++;
+    sumLoadPct += loadPct;
+    peakLoadPct = Math.max(peakLoadPct, loadPct);
+
     const efficiencyRatio =
       entry.totalActual > 0 ? Math.round((entry.totalEstimated / entry.totalActual) * 100) / 100 : null;
 
@@ -242,14 +317,14 @@ export function computeStaffCapacity(
     };
   });
 
-  const avgLoadPct = details.length > 0 ? Math.round(details.reduce((s, d) => s + d.loadPct, 0) / details.length) : 0;
+  const avgLoadPct = details.length > 0 ? Math.round(sumLoadPct / details.length) : 0;
 
   return {
     totalStaff: details.length,
     avgLoadPct,
-    peakLoadPct: details.length > 0 ? Math.max(...details.map((d) => d.loadPct)) : 0,
-    overloadedCount: details.filter((d) => d.loadPct > 80).length,
-    underutilizedCount: details.filter((d) => d.loadPct < 30).length,
+    peakLoadPct,
+    overloadedCount,
+    underutilizedCount,
     staffDetails: details,
   };
 }
