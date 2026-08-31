@@ -21,6 +21,45 @@
 - **未撮影1枚**: `public/screenshots/insurer/search.png` は撮影できていない。保険会社ポータルの
   証明書検索が本番 DB のバグで HTTP 500 になるため（`OPEN_QUESTIONS.md` 参照）。
 - 検証: `npx tsc --noEmit` 通過、`npx vitest run` 全 511 ファイル / 5251 件通過。
+## 2026-08-31 板金進捗ページからの懸念送信が外部キー違反で保存できていなかったバグを修正（IMP-026）
+
+- 背景: `src/app/api/customer/concerns/route.ts` の `resolveSourceContext()` は板金進捗
+  ページ (`/track/[token]`, source_type=`body_repair_tracking`) からの懸念送信で
+  `customer_concerns.job_id`（`reservations(id)` への外部キー）に `body_repair_jobs.id`
+  （無関係な別テーブルの主キー）を渡しており、`reservation_id` が偶然一致しない限り
+  外部キー違反で `INSERT` 自体が失敗していたと考えられる。
+- 内容: `resolveSourceContext()` の該当ケースを `body_repair_jobs.reservation_id`
+  （実際の外部キー列）を返すよう修正。`reservation_id` が無いジョブは `jobId` なしで保存
+  （外部キー違反にはならない）。
+- 検証: `src/app/api/customer/concerns/__tests__/route.test.ts`（新規、この関数の初のテスト）。
+  `body_repair_tracking`（正常系・reservation_id無し・トークン不明の3件）+
+  `parts_confirmation`（既存の正しい経路の回帰確認1件）。
+
+## 2026-08-31 モバイルアプリのサインアップ確認 OTP を実配線（IMP-012）
+
+- 背景: モバイルアプリのサインアップ後メール確認画面 (`/(auth)/verify-otp.tsx`) は
+  タイムアウトのみで「検証済み」にするプレースホルダで、6桁ならどんな値でも通っていた。
+  調査の結果、サインアップ自体がパスワード方式（サーバーで `email_confirm: true` を設定して
+  そのままサインイン）で Supabase から OTP メールが一切送信されない設計だったため、
+  コメントアウトされていた `supabase.auth.verifyOtp()` をそのまま有効化しても「常に失敗する」
+  に変わるだけだった。
+- 内容: `email_otp_codes` テーブルを新設（`customer_login_codes` と同じ service-role 限定 RLS）。
+  IMP-012 で追加済みだが呼び出し側ゼロだった汎用 OTP エンジン (`src/lib/auth/otp.ts` — 生成・
+  HMAC-SHA256 ハッシュ・タイミングセーフ検証) を初めて実配線し、IO 層 `src/lib/auth/emailOtp.ts`
+  を新設。`POST /api/mobile/auth/otp/request`（発行 + `sendEmail()` 経由で6桁コードをメール送信）・
+  `POST /api/mobile/auth/otp/verify`（照合）を新設し、`verify-otp.tsx` はマウント時に自動で初回
+  送信、既存の「再送信」ボタンも実際に呼び出すよう配線した。認証は既存の `resolveMobileCaller`
+  （Bearer）を使い、email はクライアントの自己申告ではなく `admin.auth.admin.getUserById()` で
+  解決した本人の `auth.users.email` を使う。ハッシュの pepper は新しい環境変数を増やさず既存の
+  `CUSTOMER_AUTH_PEPPER` を再利用。
+- 検証: `src/lib/auth/__tests__/emailOtp.test.ts`（発行・照合の正常系/mismatch/expired/max_attempts）、
+  `src/app/api/mobile/auth/otp/{request,verify}/__tests__/route.test.ts`。新規テスト計18件、
+  既存含め全件通過。
+- 意図的にやらなかったこと: v2.0 が求める正準フロー（Invite→OTP→生体→Home がパスワードログイン
+  自体を置き換える設計）への移行や、passwordless サインアップへの作り替えは行っていない
+  （今回はサインアップ直後のメール所有確認のみ）。「メール確認済み」を他機能から参照できる
+  永続状態として追跡する仕組みも作っていない。
+- 詳細は DECISION_LOG 2026-08-31 を参照。
 
 ## 2026-08-31 Certificate Gate (IMP-028) を証明書発行の本番4経路すべてに配線
 

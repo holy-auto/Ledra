@@ -32,6 +32,134 @@
    本番で影響を受けたユーザーがいたかは【要確認】。
 9. 公開区分: 要確認（「自動生成された成果物は中身を開いて確認しないと嘘を配る」という一般論は公開可。
    ただし本番機能が壊れていた話・保険会社ポータルの不具合の詳細は、影響範囲の確認前に発信しない）
+## 2026-08-31 板金進捗ページからの「気になる点を伝える」が外部キー違反で保存できていなかった
+1. 日付: 2026-08-31
+2. 起きたこと: PR #1012（モバイルOTP）の `/code-review` 指摘の中に、別PR #1011（マージ済み、
+   Certificate Gate）に関するものが含まれていた: `customer_concerns.job_id` へ渡す値が
+   `resolveSourceContext()`（`src/app/api/customer/concerns/route.ts`、IMP-026実装時から
+   存在）の `body_repair_tracking` ケースで `body_repair_jobs.id`（当該テーブル自身の主キー）
+   になっており、`reservations.id` への外部キー制約と矛盾することが判明した。
+   `body_repair_jobs.id` は `gen_random_uuid()` で独立採番される別テーブルの主キーで、
+   `reservations.id` とは無関係。板金進捗ページ (`/track/[token]`) から懸念を送信すると、
+   ほぼ確実に外部キー違反で `INSERT` 自体が失敗していたと考えられる。
+3. 以前の考え: PR #1011で「懸念ブロックをCertificate Gateへ本番配線した」際、4つの懸念発生源の
+   うち `parts_confirmation`・`body_repair_tracking` の2つは `certificate_id` が null で
+   `job_id` のみを持つため `jobId` も渡すよう修正し、「4系統中2系統の見逃しを解消した」と
+   記録していた。
+4. 違和感・問題: 実際には `parts_confirmation` は正しく `part_installations.reservation_id`
+   を経由して `reservations.id` を解決していたが、`body_repair_tracking` は
+   `body_repair_jobs.id` を返しており、そもそも `reservations.id` になっていなかった。
+   Certificate Gate側の `jobId` 引き渡しが直っても、渡す値自体が間違っていれば意味がない。
+   さらに深刻なのは、この不整合が原因で懸念の**保存自体**が失敗していた可能性が高いこと——
+   Certificate Gateが懸念を見るかどうか以前の問題だった。
+5. 決めたこと: `resolveSourceContext()` の `body_repair_tracking` ケースを、
+   `body_repair_jobs.id` ではなく `body_repair_jobs.reservation_id`
+   （`reservations(id)` への実際の外部キー列）を返すよう修正。`reservation_id` が
+   null の板金ジョブ（予約に紐づかない場合）は `jobId` なしで保存する
+   （`certificate_id` も無いため、その懸念はジョブ・証明書どちらにも紐づかず一覧表示のみに
+   なるが、外部キー違反にはならない）。回帰テストを新規追加
+   （`src/app/api/customer/concerns/__tests__/route.test.ts`、この関数の初のテスト）。
+6. 捨てた選択肢: (a) `body_repair_jobs.id` を使い続け、`customer_concerns.job_id` の
+   外部キー制約を緩和する（`reservations` 以外も許容）— 「関連エンティティで懸念をブロック
+   判定する」という設計意図に反し、`hasUnresolvedConcerns()` 側の判定ロジックとも整合しなくなる
+   ため不採用。(b) 修正を見送りOPEN_QUESTIONS送りにする — 実データ保存が失敗している疑いのある
+   深刻なバグであり、原因と修正方法が既に判明しているため見送る理由がない。
+7. 判断理由: 「バグ修正は症状でなく根因」。前回の修正（jobIdの引き渡し）は症状（Certificate
+   Gateが懸念を見ていない）への対応としては正しかったが、根因（渡している値自体が誤り）は
+   別の場所にあった。外部レビューで指摘されるまで、渡す値の妥当性まで検証していなかった。
+8. まだ答えが出ていないこと: 本番でこれまで実際にどの程度の送信失敗が起きていたか
+   （エラーログでの実被害確認）は未調査。過去に失敗した送信を遡って復旧する手段はない
+   （顧客側には「送信に失敗しました」的なエラーが返っていたはずだが、原因までは追えない）。
+9. 公開区分: 公開可（「懸念ブロックの引き渡し方を直したつもりが、そもそも渡している値自体が
+   別テーブルの無関係な主キーで、保存そのものが失敗していた」という多層的な見落としの発見経緯
+   は発信可。テーブル名・関数名の詳細やテナント固有情報は書かない）
+
+## 2026-08-31 PR #1012 へ /code-review 指摘: OTP発行/照合が同一レート制限バケットを共有していた
+1. 日付: 2026-08-31
+2. 起きたこと: モバイルOTP実配線PR #1012 に `/code-review` を実行したところ3件の指摘があった。
+   (a) `otp/request`・`otp/verify` の両ルートが `checkRateLimit(request, "sensitive", caller.userId)`
+   と同一の preset・同一の identifier を使っており、実質1つのバケット（5 req/300s）を共有していた。
+   初回自動送信(1)+コード打ち間違い3回(3)+再送信1回(1)=5回で、正規ユーザーの通常のサインアップ
+   フローだけでレート制限に達し得る。(b) `confirmEmailOtp()` の attempts 加算が read-then-write の
+   非アトミック実装で、同時リクエストで1回分under-countされ得る。(c) 別PR(#1011、マージ済み)の
+   `activationGate.ts` に関する指摘: `hasUnresolvedConcerns()` へ `jobId` を渡す修正
+   （本ファイル前掲「PR #1011 へ /code-review 指摘」エントリ）は、実際には4つの懸念発生源のうち
+   `parts_confirmation` にしか有効でない。`body_repair_tracking` の `resolveSourceContext()`
+   （`src/app/api/customer/concerns/route.ts`、IMP-026・今回のPRの対象外）は `job_id: data.id`
+   （`body_repair_jobs` 自身の主キー）を返しており、`reservations.id` ではない
+   （`body_repair_jobs.reservation_id` という別カラムが本来使うべき値）。
+3. 以前の考え: (a)(b) は当PR内で完結する実装詳細だと思っていた。(c) は前回の指摘対応で
+   「4系統中2系統（parts_confirmation・body_repair_tracking）の懸念を見逃していた」を
+   修正済みと記録していたが、実際には1系統（parts_confirmation）しか直っていなかった。
+4. 違和感・問題: (c) はより深刻——`customer_concerns.job_id` は `reservations(id)` への外部キー
+   制約付きであり、`body_repair_jobs.id`（無関係なUUID）を書き込もうとすると外部キー違反で
+   INSERT 自体が失敗する可能性が高い。つまり板金進捗ページ (`/track/[token]`) からの
+   「気になる点を伝える」機能自体が、Certificate Gate 云々以前に**そもそも保存できていない**
+   可能性がある根深いバグで、IMP-026 実装時からの見落とし。
+5. 決めたこと: (a) rate limit の identifier に用途を含め (`otp-request:${userId}` /
+   `otp-verify:${userId}`)、発行と照合を別バケットに分離。(b) `emailOtp.ts` の該当行に
+   `ponytail:` コメントを追加——呼び出し元のレート制限で総当たり耐性は実質保たれるため、
+   Postgres関数化までは今回行わない（上限と代替手段を明記）。(c) 当PRの対象外（別ファイル・
+   別機能・PR #1011のスコープ外）のため、別ブランチ・別PRで修正する
+   （`resolveSourceContext()` の `body_repair_tracking` ケースを `jobId: data.reservation_id`
+   に修正）。
+6. 捨てた選択肢: (a) attempts加算をPostgres関数によるアトミック増分に置き換える
+   — レート制限で既に総当たりが実質的に防がれており、真の並行アクセスが起きる可能性も低いため、
+   このPRのスコープでは過剰と判断。(b) (c)の指摘を当PR内で一緒に直す — モバイルOTPと無関係な
+   ファイル・機能であり、PRの焦点をぼかすため別PRに分離。
+7. 判断理由: (a)(b)は当PRの直接の成果物なので即修正。(c)は「バグ修正は症状でなく根因」
+   ではあるが、根因が別の場所（別PRのスコープ）にあるため、無関係なPRに混ぜるのではなく
+   独立した修正として追跡する方が変更の追跡性を保てると判断。
+8. まだ答えが出ていないこと: (c)の修正はまだ別PRとして未着手（このセッションで直後に着手予定）。
+   板金進捗ページからの懸念送信がこれまで実際にどの程度失敗してきたか（本番エラーログでの実被害
+   確認）は未調査。
+9. 公開区分: 公開可（「一見完了と記録した修正が、実は4系統中1系統にしか効いていなかった」という
+   自己レビューの限界と、それを外部レビューで発見できた経緯は発信可。テーブル名・関数名の詳細や
+   テナント固有情報は書かない）
+
+## 2026-08-31 モバイルOTP: 前提が崩れていたため「有効化」ではなく実送信の仕組みを新設
+1. 日付: 2026-08-31
+2. 起きたこと: 「モバイルOTP進めて」という依頼を受け、`apps/mobile/src/app/(auth)/verify-otp.tsx`
+   （タイムアウトのみで「検証済み」にするプレースホルダ、6桁ならどんな値でも通る既知の問題）を
+   調査した。当初想定していた対応（コメントアウトされている `supabase.auth.verifyOtp()` を
+   有効化するだけ）では直らないことが判明した: モバイルのサインアップ (`signup.tsx`) は
+   (1) `POST /api/signup` がパスワード付きで Supabase Auth ユーザーを `email_confirm: true` で
+   作成 → (2) そのままパスワードでサインイン、という流れで、この経路では Supabase から OTP
+   メールが一切送信されない。つまり検証すべき本物の OTP がそもそも存在しない状態だった。
+3. 以前の考え: モバイルOTP画面の「プレースホルダを本物のAPI呼び出しに差し替える」だけの
+   Certificate Gate と同種の配線タスクだと想定していた。
+4. 違和感・問題: コメントアウトされた `supabase.auth.verifyOtp({ email, token: code, type: "email" })`
+   をそのまま有効化すると、対応する OTP が発行されていないため「常に失敗する」に変わるだけで、
+   ユーザー影響としてはむしろ悪化する（現状は誰でも通るが、直すと誰も通らなくなる）。
+5. 決めたこと: ユーザーに前提の崩れを提示し、3方向（実OTP新規送信・passwordless方式への作り替え・
+   偽のOTP画面を撤去）を提示したところ「実OTPを新規に送信する仕組みを追加」を選択。
+   (a) `email_otp_codes` テーブルを新設（`customer_login_codes` と同じ「service role 経由のみ」の
+   RLS方針）。(b) `src/lib/auth/otp.ts`（IMP-012で追加済みだが呼び出し側ゼロだった汎用OTPエンジン:
+   生成・HMAC-SHA256ハッシュ・タイミングセーフ検証）の初の実配線として `src/lib/auth/emailOtp.ts`
+   （IO層）を新設。(c) `POST /api/mobile/auth/otp/request`（発行+`sendEmail()`経由でメール送信）・
+   `POST /api/mobile/auth/otp/verify`（照合）を新設。認証は既存の `resolveMobileCaller`（Bearer）を
+   使い、email はクライアントの自己申告ではなく `admin.auth.admin.getUserById()` で解決した本人の
+   `auth.users.email` を使う。(d) `verify-otp.tsx` のマウント時に自動で初回送信、既存の「再送信」
+   ボタンも実際に呼び出すよう配線。ハッシュの pepper は新しい環境変数を増やさず既存の
+   `CUSTOMER_AUTH_PEPPER`（tenant-api-keys 等でも汎用 HMAC pepper として既に使われている）を再利用。
+6. 捨てた選択肢: (a) passwordless (`signInWithOtp`) へのサインアップ方式変更 — v2.0の正準フローに
+   最も近づくが、サインアップ画面自体（パスワード欄の廃止等）を作り替える大きな変更になり、
+   今回の依頼（OTP画面の配線）の範囲を超えると判断。(b) 偽のOTP画面を撤去しサインアップ完了後
+   即座に次画面へ進める — email_confirm:true はサーバー側の管理者操作であり、ユーザー本人が
+   メールを実際に受け取れることの証明にはならない。撤去すると本人性確認の機会が完全に無くなる。
+   (c) `supabase.auth.verifyOtp()` をそのまま有効化 — 4.で述べた通り常に失敗するだけで直らない。
+7. 判断理由: 「依頼が解決策を名指ししているとき、行動する前に根底にある問題を一文で言い直す」
+   （常設指示書 §1）。「モバイルOTPを進める」の根底にある問題は「サインアップ後の本人確認が機能
+   していない」ことであり、名指しされた解決策（プレースホルダの有効化）はその問題を解決しない
+   ことが判明したため、問題の方（実際にメールを検証する仕組みが無い）を解決した。
+8. まだ答えが出ていないこと: (a) v2.0 の正準フロー（Invite→OTP→生体→Home がパスワードログイン
+   自体を置き換える設計）への移行タイミングは未定（IMP-012の2026-08-19エントリで既に「まだ答えが
+   出ていないこと」として記録済み、今回もこの点自体は変わらず）。(b) このOTPは「サインアップ直後の
+   メール所有確認」であり、以降の一般的なアカウント状態として「メール確認済み」を追跡・強制する
+   仕組み（他機能からの参照）は今回作っていない——単発のUXステップとして閉じている。
+9. 公開区分: 公開可（「名指しされた解決策（プレースホルダの有効化）を検証したら、前提が崩れていて
+   むしろ悪化することが分かった」という経緯、既存の未使用汎用モジュールを実際に配線した経緯は
+   発信可。具体的なテーブル名・APIパス・秘密情報は転記しない）
 
 ## 2026-08-31 PR #1011 へ /code-review 指摘: 懸念ブロックが parts_confirmation/body_repair_tracking 経由の懸念を見逃していた
 1. 日付: 2026-08-31

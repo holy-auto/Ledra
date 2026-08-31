@@ -88,6 +88,12 @@ export function UiPreferencesProvider({ children }: { children: React.ReactNode 
       setAccountMode(mode);
       try {
         await saveAccountPreference(mode);
+        setDeviceOverride(null);
+        try {
+          window.localStorage.removeItem(DEVICE_MODE_KEY);
+        } catch {
+          // The account preference is still saved even when storage is unavailable.
+        }
       } catch (error) {
         setAccountMode(previous);
         throw error;
@@ -109,6 +115,12 @@ export function UiPreferencesProvider({ children }: { children: React.ReactNode 
     async (mode: DisplayMode) => {
       await saveAccountPreference(mode, true);
       setAccountMode(mode);
+      setDeviceOverride(null);
+      try {
+        window.localStorage.removeItem(DEVICE_MODE_KEY);
+      } catch {
+        // The account preference is still saved even when storage is unavailable.
+      }
       setOnboardingCompleted(true);
     },
     [saveAccountPreference],

@@ -14,6 +14,7 @@ import { router, useLocalSearchParams } from "expo-router";
 
 import { useAuthStore } from "@/stores/authStore";
 import { LedraButton } from "@/components/ui";
+import { mobileApi, ApiError } from "@/lib/api";
 import { colors, spacing, radius, typography, shadows, sizing } from "@/constants/tokens";
 
 const OTP_LENGTH = 6;
@@ -39,6 +40,16 @@ export default function VerifyOtpScreen() {
     const timer = setTimeout(() => setCooldown((c) => c - 1), 1000);
     return () => clearTimeout(timer);
   }, [cooldown]);
+
+  // 画面表示時に初回コードを送信する（サインアップ画面はここへ遷移するだけで、
+  // 送信自体はこの画面の責務）。失敗しても画面はブロックせず、失敗時は
+  // クールダウンを解除してすぐ「再送信」を押せるようにする。
+  useEffect(() => {
+    mobileApi("/auth/otp/request", { method: "POST" }).catch(() => {
+      setCooldown(0);
+      setError("コードの送信に失敗しました。再送信してください");
+    });
+  }, []);
 
   // Fade in success state
   useEffect(() => {
@@ -91,22 +102,26 @@ export default function VerifyOtpScreen() {
     setError("");
 
     try {
-      // ponytail: placeholder for actual OTP verification API call
-      // await supabase.auth.verifyOtp({ email: displayEmail, token: code, type: "email" });
-      await new Promise((r) => setTimeout(r, 800));
+      await mobileApi("/auth/otp/verify", { method: "POST", body: { code } });
       setVerified(true);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "認証に失敗しました");
+      setError(err instanceof ApiError ? err.message : "認証に失敗しました");
     } finally {
       setLoading(false);
     }
   }
 
-  function handleResend() {
+  async function handleResend() {
     if (cooldown > 0) return;
     setCooldown(RESEND_COOLDOWN);
-    // ponytail: placeholder for resend OTP API call
-    // supabase.auth.resend({ email: displayEmail, type: "signup" });
+    setError("");
+    try {
+      await mobileApi("/auth/otp/request", { method: "POST" });
+    } catch {
+      // 再送信の失敗は静かに扱う。もう一度押し直せるようクールダウンを解除する。
+      setCooldown(0);
+      setError("再送信に失敗しました。もう一度お試しください");
+    }
   }
 
   function handleNext() {
