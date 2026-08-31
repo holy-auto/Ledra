@@ -4,6 +4,14 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-08-31 PR #1009 へ Codex レビュー指摘（capacity>1 で boothDetails が過大評価のまま）を追加修正
+
+- 内容: `computeFleetUtilization()` の `boothDetails` を、`avgUtilizationPct`/`peakUtilizationPct` と同じ `decomposeTimeBands()` ベースの定員正規化計算から構築するよう変更。従来は capacity>1 のブースで `boothDetails[i].utilizationPct` だけが union ベース（過大評価）のまま残っており、例えば capacity=3・終日1件予約で `avgUtilizationPct: 33` と `boothDetails[0].utilizationPct: 100` が同一レスポンス内で矛盾していた（Codexが指摘、再現テストで確認）。
+  - `occupiedMinutes` を「定員1枠換算の実効占有分」に正規化し、`occupiedMinutes/totalMinutes` の比率が `utilizationPct` と一致するようにした。
+  - `avgUtilizationPct`/`peakUtilizationPct` もこの `boothDetails` から導出するよう変更（別々に計算していたことによる再発防止）。`peakConcurrent` は元の値のまま。
+- 対象: `src/lib/analytics/capacityAnalytics.ts`（本番未呼び出し）。
+- 検証: tsc --noEmit clean / vitest run 508ファイル・5225件全通過 / lint・check:schema・lint:migrations 実施。
+
 ## 2026-08-31 PR #1009（IMP-046修正PR）の `/code-review` 指摘を修正
 
 - 内容: `src/lib/analytics/capacityAnalytics.ts` の `computeFleetUtilization()` が新設した定員正規化計算で、`boothDetails`（`computeBoothUtilization()`）と矛盾する値（completed 予約のあるブースで一方は稼働率0%、もう一方は100%）を返すバグを修正。

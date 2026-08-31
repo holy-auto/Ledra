@@ -150,7 +150,7 @@ export function computeFleetUtilization(
   shiftEnd = SHIFT_END,
 ): FleetUtilizationSummary {
   const activeBooths = booths.filter((b) => b.isActive);
-  const details = activeBooths.map((b) => computeBoothUtilization(b, reservations, shiftStart, shiftEnd));
+  const rawDetails = activeBooths.map((b) => computeBoothUtilization(b, reservations, shiftStart, shiftEnd));
 
   let totalConflicts = 0;
   for (const b of activeBooths) {
@@ -160,11 +160,17 @@ export function computeFleetUtilization(
   // computeBoothUtilization() は「区間の union」で稼働率を出すため、capacity > 1 の
   // ブースでは定員の一部しか埋まっていなくても 100% と過大評価してしまう
   // （例: capacity=3 で1件だけ終日予約 → union稼働率100%だが実際は1/3枠のみ使用）。
-  // decomposeTimeBands() の時間帯別 concurrent/capacity で正規化した値を使う。
-  // UTILIZATION_EXCLUDED を渡し、boothDetails（computeBoothUtilization）と同じ
-  // 「completed は稼働実績に含める」判定に揃える（decomposeTimeBands のデフォルトの
-  // NON_OCCUPYING だと completed も除外され、同じ boothDetails と矛盾する値になる）。
-  const capacityAwarePct = activeBooths.map((b) => {
+  // decomposeTimeBands() の時間帯別 concurrent/capacity で正規化した値に置き換える。
+  // boothDetails を computeBoothUtilization() の union ベース値のままにすると、
+  // capacity>1 のブースで avg/peak（下記）と矛盾する値になる（Codex #1009 指摘）ため、
+  // occupiedMinutes/utilizationPct を capacity 正規化した値へ上書きし、avg/peak も
+  // この boothDetails から導出することで矛盾しようがない構造にする。
+  // peakConcurrent はそのまま computeBoothUtilization() の値を使う（capacity に対する
+  // 同時数という別の情報であり、正規化の対象ではない）。
+  // UTILIZATION_EXCLUDED を渡し、computeBoothUtilization() と同じ「completed は
+  // 稼働実績に含める」判定に揃える（decomposeTimeBands のデフォルトの NON_OCCUPYING
+  // だと completed も除外され、矛盾が再発する）。
+  const boothDetails: BoothUtilization[] = activeBooths.map((b, i) => {
     const bands = decomposeTimeBands(b, reservations, shiftStart, shiftEnd, UTILIZATION_EXCLUDED);
     const totalCapacityMinutes = b.capacity * (shiftEnd - shiftStart) * 60;
     let weightedOccupiedMinutes = 0;
@@ -172,12 +178,20 @@ export function computeFleetUtilization(
       const durationMinutes = (band.end - band.start) * 60;
       weightedOccupiedMinutes += Math.min(band.concurrent, band.capacity) * durationMinutes;
     }
-    return totalCapacityMinutes > 0 ? Math.round((weightedOccupiedMinutes / totalCapacityMinutes) * 100) : 0;
+    const utilizationPct =
+      totalCapacityMinutes > 0 ? Math.round((weightedOccupiedMinutes / totalCapacityMinutes) * 100) : 0;
+    // 定員1枠換算の実効占有分。occupiedMinutes/totalMinutes の比率が utilizationPct と
+    // 一致するようにする（capacity>1 のブースで「合計は480分なのに稼働率33%」という
+    // 一見矛盾した表示にならないようにするため）。
+    const occupiedMinutes = b.capacity > 0 ? Math.round(weightedOccupiedMinutes / b.capacity) : 0;
+    return { ...rawDetails[i], occupiedMinutes, utilizationPct };
   });
 
   const avgPct =
-    capacityAwarePct.length > 0 ? Math.round(capacityAwarePct.reduce((s, p) => s + p, 0) / capacityAwarePct.length) : 0;
-  const peakPct = capacityAwarePct.length > 0 ? Math.max(...capacityAwarePct) : 0;
+    boothDetails.length > 0
+      ? Math.round(boothDetails.reduce((s, d) => s + d.utilizationPct, 0) / boothDetails.length)
+      : 0;
+  const peakPct = boothDetails.length > 0 ? Math.max(...boothDetails.map((d) => d.utilizationPct)) : 0;
 
   return {
     totalBooths: booths.length,
@@ -185,7 +199,7 @@ export function computeFleetUtilization(
     avgUtilizationPct: avgPct,
     peakUtilizationPct: peakPct,
     totalConflicts,
-    boothDetails: details,
+    boothDetails,
   };
 }
 

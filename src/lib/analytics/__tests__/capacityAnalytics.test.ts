@@ -139,10 +139,18 @@ describe("computeFleetUtilization", () => {
   it("capacity>1 のブースは定員に対する割合で稼働率を出す（union だと過大評価になる）", () => {
     // capacity=3 のブースに終日1件だけ予約 → union ベースだと稼働率100%になってしまうが、
     // 実際には定員3枠中1枠しか使っていないので約33%が正しい。
+    // boothDetails も同じ正規化済みの値を返す（avg/peak とだけ一致して boothDetails は
+    // union ベースのまま、という矛盾を防ぐ。Codex #1009 指摘）。
     const booth = mkBooth({ id: "b1", capacity: 3 });
     const reservations = [mkRes({ id: "r1", boothId: "b1", startTime: null, endTime: null })];
     const summary = computeFleetUtilization([booth], reservations, 9, 17);
     expect(summary.avgUtilizationPct).toBe(33);
+    expect(summary.peakUtilizationPct).toBe(33);
+    expect(summary.boothDetails[0].utilizationPct).toBe(33);
+    // occupiedMinutes/totalMinutes の比率も utilizationPct と一致する（480分の定員3枠中
+    // 実効1枠分=160分だけ埋まっている、という自己無矛盾な表現）。
+    expect(summary.boothDetails[0].occupiedMinutes).toBe(160);
+    expect(summary.boothDetails[0].totalMinutes).toBe(480);
   });
 
   it("completed 予約は稼働実績に含める（boothDetails と矛盾しない）", () => {

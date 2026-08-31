@@ -4,6 +4,18 @@
 > （新しい順）。実装の詳細は RELEASE_LOG.md、迷っている段階のものは
 > OPEN_QUESTIONS.md に書く。
 
+## 2026-08-31 PR #1009 へ Codex レビューで発見した「capacity>1 で boothDetails が過大評価のまま」を追加修正
+
+1. 日付: 2026-08-31
+2. 起きたこと: PR #1009 の `/code-review` 対応コミット（`7daa88ee`）を Codex がレビューし、まだ残っていた矛盾を1件指摘した: `computeFleetUtilization()` はcapacity>1 のブースで `avgUtilizationPct`/`peakUtilizationPct` を `decomposeTimeBands()` ベースの定員正規化計算に直したが、`boothDetails`（`computeBoothUtilization()` 由来）は手つかずのままだったため、capacity=3 のブースに終日1件予約のケースで `avgUtilizationPct: 33` と `boothDetails[0].utilizationPct: 100` が同一レスポンス内で矛盾する。再現テストを実行し確認した（既存の `computeBoothUtilization()` は allDay 予約があると capacity に関係なく `utilizationPct: 100` を返す実装であることをソースで確認済み）。
+3. 以前の考え: 直前の修正（本ファイル同日の別エントリ）で「completed の扱い」の矛盾は解消したため、boothDetails の矛盾はすべて解消したと判断していた。
+4. 違和感・問題: 直前の修正は「completed を稼働実績に含めるか」という軸のズレだけを直しており、「capacity>1 のブースで union ベースか定員正規化ベースか」という別軸のズレは手つかずのまま残っていた。同じ関数の戻り値内で2つの独立した数値が異なる定義に基づいていたのが根本原因で、1回の修正では両方を直せていなかった。
+5. 決めたこと: `boothDetails` の構築そのものを `decomposeTimeBands()` ベースの定員正規化計算に置き換え、`avgUtilizationPct`/`peakUtilizationPct` もこの `boothDetails` から導出する構造に変更した（矛盾しようがない構造にする）。`occupiedMinutes` は「定員1枠換算の実効占有分」（`weightedOccupiedMinutes / capacity`）に正規化し、`occupiedMinutes / totalMinutes` の比率が `utilizationPct` と一致するようにした（`peakConcurrent` は `computeBoothUtilization()` の値のまま — 別の情報のため正規化不要）。回帰テストで capacity=3・終日1件予約のケースの `avgUtilizationPct`・`peakUtilizationPct`・`boothDetails[0].utilizationPct`・`occupiedMinutes`・`totalMinutes` すべてを検証。
+6. 捨てた選択肢: `boothDetails` は `computeBoothUtilization()` の値のままにして別フィールド（例: `normalizedUtilizationPct`）を追加する案 — Codex の指摘は「同じ数値が矛盾する」ことそのものが問題であり、フィールドを増やしても呼び出し側が誤って古い方（union ベース）を使うリスクが残るため不採用。boothDetails を構築し直す方が、矛盾が構造的に起きなくなる。
+7. 判断理由: 前回の修正で「一部の軸だけ直して終わり」と判断したのが甘かった——同じ関数の戻り値の整合性は、個々の指摘に場当たり的に対応するのではなく、avg/peak/boothDetails すべてを単一の計算経路から導出する構造にすることで担保すべきだった。
+8. まだ答えが出ていないこと: なし（このモジュールは本番呼び出し元ゼロのまま）。
+9. 公開区分: 公開可
+
 ## 2026-08-31 PR #1009（IMP-046修正PR）の `/code-review` で発見した「boothDetails と矛盾する稼働率0%」バグを修正
 
 1. 日付: 2026-08-31
