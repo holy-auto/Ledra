@@ -3,6 +3,49 @@
 > まだ決まっていないこと、判断に迷っていることを書く場所。決まったら
 > DECISION_LOG.md に移し、このファイルからは消す（削除履歴は git で追える）。
 
+## 権限マトリクスに動詞が無い資源をどうするか（2026-09-01）
+
+業務データCRUD 47ルートに認可を入れたとき、以下の資源には対応する Permission が
+語彙（55権限）に存在しなかった。**新設は「誰がその操作をできるべきか」という事業判断**
+なので実装側では決めず、暫定でロール下限 `{ minRole: "staff" }`（閲覧専用ロールだけを弾く）
+にしてある。
+
+| 資源 | 現在の守り | 決めたいこと |
+|---|---|---|
+| 在庫（items / movements） | staff 以上 | `inventory:manage` を作るか。棚卸は誰がやるか |
+| 発注（purchase_orders / backorder） | staff 以上 | 発注を出せるのは誰か。金額の上限は要るか |
+| 部品（installations / confirmations / findings） | staff 以上 | 現場が全部できてよいか |
+| 工程テンプレート（workflow_templates） | staff 以上 | 作業手順を誰が定義するか。マスタなら admin 以上 |
+| ショップ受注（shop_orders） | staff 以上 | 受注登録は誰がやるか |
+| 受注の更新（`admin/orders` PUT/PATCH・検収署名・レビュー） | staff 以上 | `orders:edit` を作るか |
+
+あわせて、**削除に動詞が無い資源**が2つある。現在は `:edit`（staff で可）で通している。
+
+- 顧客の削除（`admin/customers` DELETE）: `customers:delete` を作って admin 以上にするか
+- マーケット車両の削除（`admin/market-vehicles` DELETE）: 同上
+
+もう1件、動詞はあるが強さが決めきれていないもの:
+
+- 受注の入金確認（`admin/orders/[id]/confirm-payment`）: 現在 `payments:create`（staff）。
+  入金の確定なので `payments:manage`（admin 以上）に上げるべきかもしれない。
+  現場運用（誰が入金を確認するか）で決まる。
+
+判断が出るまでの状態: **viewer は全て不可、staff 以上は全て可**。今より緩くなることは
+ないので、決定を待つ間の穴は無い。
+
+## 認可未強制のまま残っている22本の方針（2026-09-01）
+
+分類ごとの代表判断で E（業務データ）・B（AI）・F（設定）は決着したが、以下は未決。
+
+- **C アカデミー 14本**: 教材（レッスン・クイズ・事例・Q&A・報酬）を誰が作れるか。
+  受講（`complete` / `rate` / `quiz/attempt`）は自己完結型なので現状維持でよさそうだが、
+  作成・編集（`lessons` POST/PUT、`rewards`）は権限が要る。
+- **G 決済・外部連携 3本**（`admin/shop/checkout` / `stripe/connect` /
+  `stripe/connect/payment-link`）: 決済リンクを出せるのは誰か。Stripe 接続を張れるのは誰か。
+- **F 残り2本**: `admin/documents/share`（帳票の送付＝業務データ寄り）、
+  `admin/tenants` PUT（アクティブテナントの切替＝自己完結型）。分類から外したが未登録。
+- **I その他 3本**: `admin/service-packages/[id]/expand`、`mobile/auth/otp/{request,verify}`。
+
 ## tenants の UPDATE は owner のみか admin 以上か（2026-09-01）
 
 `tenants` の UPDATE に PERMISSIVE ポリシーが2本あり、実効は緩い方（owner/admin/super_admin）。

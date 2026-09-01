@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
+import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
 import {
   apiJson,
   apiUnauthorized,
@@ -19,6 +19,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
+    if (!requireMinRole(caller, "staff")) return apiForbidden();
 
     const { id } = await params;
     const parsed = workflowTemplateUpdateSchema.safeParse(await req.json().catch(() => ({})));
@@ -80,6 +81,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
+    if (!requireMinRole(caller, "staff")) return apiForbidden();
 
     const { id } = await params;
 

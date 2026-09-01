@@ -15,12 +15,23 @@
  *  2. ガードの有無は**ファイル全体**ではなく**書き込みを含む関数**の中で見る。
  *     同じファイル内の別目的の呼び出し（ボタン出し分け用の権限評価など）が
  *     ファイル全体の一致を成立させてしまい、肝心のガードを消しても緑になるため。
+ *
+ * ガードを足すときの注意: ルートのテストが `vi.mock("@/lib/auth/checkRole", () => ...)`
+ * とモジュールごと差し替えていると `requirePermission` が undefined になり、
+ * 403 のはずが TypeError で 500 になる。`importOriginal` で実物を残すこと。
+ * 2026-09-01 時点で、まだこの書き方の残っているテストが29本ある。
  */
 import { describe, it, expect } from "vitest";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { API_ROUTE_PERMISSIONS } from "../permissions";
-import type { Permission, MutatingMethod, ApiRouteRequirement, MinRoleRequirement } from "../permissions";
+import type {
+  Permission,
+  MutatingMethod,
+  ApiRouteRequirement,
+  MethodRequirement,
+  MinRoleRequirement,
+} from "../permissions";
 import { walkSource, enclosingFunctions } from "../../__tests__/sourceScan";
 
 const APP_ROOT = join(process.cwd(), "src", "app");
@@ -51,13 +62,13 @@ function handlerChunks(src: string): Map<string, string> {
   return out;
 }
 
-function isMinRole(v: ApiRouteRequirement): v is MinRoleRequirement {
+function isMinRole(v: ApiRouteRequirement | MethodRequirement): v is MinRoleRequirement {
   return typeof v === "object" && v !== null && "minRole" in v;
 }
 
-function requiredFor(value: ApiRouteRequirement, method: MutatingMethod): Permission | null {
-  if (typeof value === "string") return value;
-  if (isMinRole(value)) return null; // ロール下限は別扱い
+/** そのメソッドに課される要求。ルート全体の指定と、メソッド別の指定の両方を解く。 */
+function requiredFor(value: ApiRouteRequirement, method: MutatingMethod): MethodRequirement | null {
+  if (typeof value === "string" || isMinRole(value)) return value;
   return value[method] ?? null;
 }
 
@@ -89,17 +100,15 @@ describe("API ルートのサーバ側権限強制", () => {
       for (const method of MUTATING_METHODS) {
         const chunk = chunks.get(method);
         if (!chunk) continue;
-        if (isMinRole(value)) {
-          if (!enforcesMinRole(chunk, value.minRole)) {
-            unenforced.push(`${route} [${method}] -> minRole ${value.minRole}`);
+        const req = requiredFor(value, method);
+        if (req === null) {
+          unenforced.push(`${route} [${method}] -> 要求が表に無い`);
+        } else if (isMinRole(req)) {
+          if (!enforcesMinRole(chunk, req.minRole)) {
+            unenforced.push(`${route} [${method}] -> minRole ${req.minRole}`);
           }
-          continue;
-        }
-        const perm = requiredFor(value, method);
-        if (perm === null) {
-          unenforced.push(`${route} [${method}] -> 要求 Permission が表に無い`);
-        } else if (!enforces(chunk, perm)) {
-          unenforced.push(`${route} [${method}] -> ${perm}`);
+        } else if (!enforces(chunk, req)) {
+          unenforced.push(`${route} [${method}] -> ${req}`);
         }
       }
     }

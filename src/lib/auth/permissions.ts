@@ -446,7 +446,13 @@ export type MutatingMethod = "POST" | "PUT" | "PATCH" | "DELETE";
 /** ロール下限で守るルートの指定。 */
 export type MinRoleRequirement = { minRole: Role };
 
-export type ApiRouteRequirement = Permission | Partial<Record<MutatingMethod, Permission>> | MinRoleRequirement;
+/**
+ * ハンドラ1つに課す要求。原則は Permission。マトリクスに対応する動詞が無い資源
+ * （在庫・発注・部品・工程テンプレート等）だけロール下限で守る。
+ */
+export type MethodRequirement = Permission | MinRoleRequirement;
+
+export type ApiRouteRequirement = MethodRequirement | Partial<Record<MutatingMethod, MethodRequirement>>;
 
 export const API_ROUTE_PERMISSIONS: Record<string, ApiRouteRequirement> = {
   // 証明書の無効化（operationRisk = critical / 不可逆・法的意味を持つ）。
@@ -519,4 +525,78 @@ export const API_ROUTE_PERMISSIONS: Record<string, ApiRouteRequirement> = {
   "admin/stores": "stores:manage",
   "admin/payments": { POST: "payments:create", PUT: "payments:manage", DELETE: "payments:manage" },
   "admin/registers": "registers:manage",
+
+  // ── 業務データ CRUD（2026-09-01 代表判断: 権限マトリクスどおりに強制）──
+  // マトリクスに動詞がある資源はその動詞で守る。動詞が無い資源（在庫・発注・部品・
+  // 受注の更新・工程テンプレート・ショップ受注）は語彙を勝手に増やさず、
+  // 閲覧専用ロールを弾くロール下限 { minRole: "staff" } で守る。
+  // 足りない動詞（orders:edit / customers:delete / inventory:* / parts:* /
+  // purchase_orders:*）は docs/context/OPEN_QUESTIONS.md に上げてある。
+
+  // 証明書
+  "certificates/create": "certificates:create",
+  "certificates/edit": "certificates:edit",
+  "certificates/[id]/media": "certificates:edit",
+  "certificates/media/[id]": "certificates:edit",
+  "certificates/images/upload": "certificates:edit",
+  "certificates/images/[id]": "certificates:edit",
+  "certificates/pdf-one": "certificates:view", // PDF 出力のみ。書き込み無しなので閲覧権限で足りる
+  "signature/request": "certificates:edit",
+  "admin/certificates/[id]/delivery-receipt-request": "certificates:edit",
+  // `admin/certificates` の POST は認可を createCertAction に集約しているため
+  // ここには登録しない（登録するとルート内にガードが無く偽陽性になる）。
+
+  // 車両
+  "vehicles/create": "vehicles:create",
+  "vehicles/[id]": "vehicles:edit",
+  "vehicles/import-csv": "vehicles:create",
+  "vehicles/parse-shakken": "vehicles:create", // 車検証 OCR。作成前段なので作成権限に合わせる
+  "vehicles/parse-shakken-qr": "vehicles:create",
+
+  // 顧客
+  "admin/customers": { POST: "customers:create", PUT: "customers:edit", DELETE: "customers:edit" },
+  "admin/customer-inquiries": "customers:edit",
+  "admin/hearings": { POST: "customers:create", PUT: "customers:edit" },
+
+  // 予約
+  "admin/reservations/[id]/advance": "reservations:edit",
+  "admin/reservations/[id]/handoff": "reservations:edit",
+  "admin/reservations/[id]/start-workflow": "reservations:edit",
+
+  // マーケット（BtoB）
+  "admin/market-vehicles": { POST: "market:create", PUT: "market:edit", DELETE: "market:edit" },
+  "admin/market-vehicles/images": "market:edit",
+  "market/deals": "market:create",
+  "market/deals/[id]": "market:edit",
+  "market/deals/[id]/estimate": "market:edit",
+  "market/deals/[id]/trade-in": "market:edit",
+  "market/inquiries/[id]/reply": "market:edit",
+  // `market/inquiries` の POST は買い手向けの公開フォーム（未認証・IP レート制限）
+  // なので登録しない。GET だけが認証を使う。
+
+  // 受注（マトリクスに orders:create しか無い。更新系はロール下限で守る）
+  "admin/orders": { POST: "orders:create", PUT: { minRole: "staff" }, PATCH: { minRole: "staff" } },
+  "admin/orders/bulk": "orders:create",
+  "admin/orders/[id]/confirm-payment": "payments:create",
+  "admin/orders/[id]/inspection-sign": { minRole: "staff" },
+  "admin/orders/[id]/messages": { minRole: "staff" },
+  "admin/orders/[id]/review": { minRole: "staff" },
+
+  // 在庫・発注・部品・工程テンプレート・ショップ受注（対応する Permission が語彙に無い）。
+  // `templates:manage` は証明書テンプレート（/admin/templates）と帳票テンプレート用で、
+  // 作業工程テンプレートは別資源。勝手に当てはめて admin 以上に上げることはしない。
+  "admin/inventory/items": { minRole: "staff" },
+  "admin/inventory/items/[id]": { minRole: "staff" },
+  "admin/inventory/movements": { minRole: "staff" },
+  "admin/purchase-orders": { minRole: "staff" },
+  "admin/purchase-orders/[id]/backorder": { minRole: "staff" },
+  "admin/shop/orders": { minRole: "staff" },
+  "admin/workflow-templates": { minRole: "staff" },
+  "admin/workflow-templates/[id]": { minRole: "staff" },
+  "parts/confirmations": { minRole: "staff" },
+  "parts/findings/[id]": { minRole: "staff" },
+  "parts/installations": { minRole: "staff" },
+  "parts/installations/[id]/delivery-note": { minRole: "staff" },
+  "parts/installations/[id]/reconcile": { minRole: "staff" },
+  "parts/installations/evidence-upload": { minRole: "staff" },
 };

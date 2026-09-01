@@ -80,6 +80,12 @@ describe("POST /api/admin/certificates (JSON adapter)", () => {
     expect(res.status).toBe(401);
   });
 
+  it("maps forbidden result to 403 (not 500 — 権限不足で再送させない)", async () => {
+    mocks.createCertAction.mockResolvedValueOnce({ ok: false, error: "forbidden" });
+    const res = (await POST(makeReq({ customer_name: "x", mileage_km: 35000 }))) as Response;
+    expect(res.status).toBe(403);
+  });
+
   it("maps input-validation errors to 422 (permanent — the outbox must stop retrying)", async () => {
     mocks.createCertAction.mockResolvedValueOnce({ ok: false, error: "vehicle_required" });
     const res = (await POST(makeReq({ customer_name: "x", mileage_km: 35000 }))) as Response;

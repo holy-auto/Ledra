@@ -9,9 +9,9 @@
  */
 
 import { z } from "zod";
-import { apiJson, apiInternalError, apiValidationError, apiUnauthorized } from "@/lib/api/response";
+import { apiJson, apiInternalError, apiValidationError, apiUnauthorized, apiForbidden } from "@/lib/api/response";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
+import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
 import { extractDeliveryNote, toLineItems, type ImageMediaType } from "@/lib/ai/deliveryNoteOcr";
 import { reconcileInstallation } from "@/lib/parts/reconcileService";
 import type { LineItem } from "@/lib/parts/reconciliation";
@@ -37,6 +37,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const supabase = await createSupabaseServerClient();
   const caller = await resolveCallerWithRole(supabase);
   if (!caller) return apiUnauthorized();
+  if (!requireMinRole(caller, "staff")) return apiForbidden();
 
   const { id } = await params;
 

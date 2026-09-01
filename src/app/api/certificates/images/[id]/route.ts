@@ -2,8 +2,8 @@ import { NextRequest } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { CERTIFICATE_IMAGE_BUCKET } from "@/lib/certificateImages";
-import { apiOk, apiInternalError, apiUnauthorized, apiNotFound } from "@/lib/api/response";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
+import { apiOk, apiInternalError, apiUnauthorized, apiNotFound, apiForbidden } from "@/lib/api/response";
+import { resolveCallerWithRole, requirePermission } from "@/lib/auth/checkRole";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { enqueueCertificateAnchor } from "@/lib/anchoring/certificateAnchorService";
 
@@ -17,6 +17,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
+    if (!requirePermission(caller, "certificates:edit")) return apiForbidden();
 
     const { id } = await params;
     if (!id) return apiNotFound("画像が見つかりません。");

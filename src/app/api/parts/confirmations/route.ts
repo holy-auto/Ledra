@@ -8,9 +8,9 @@
  */
 
 import { z } from "zod";
-import { apiJson, apiInternalError, apiValidationError, apiUnauthorized } from "@/lib/api/response";
+import { apiJson, apiInternalError, apiValidationError, apiUnauthorized, apiForbidden } from "@/lib/api/response";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
+import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
 import { requestConfirmation } from "@/lib/parts/confirmationService";
 
 export const dynamic = "force-dynamic";
@@ -24,6 +24,7 @@ export async function POST(req: Request) {
   const supabase = await createSupabaseServerClient();
   const caller = await resolveCallerWithRole(supabase);
   if (!caller) return apiUnauthorized();
+  if (!requireMinRole(caller, "staff")) return apiForbidden();
 
   let body: unknown;
   try {

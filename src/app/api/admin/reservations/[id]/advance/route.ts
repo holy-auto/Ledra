@@ -1,11 +1,18 @@
 import { NextRequest, NextResponse, after } from "next/server";
 import { z } from "zod";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
+import { resolveCallerWithRole, requirePermission } from "@/lib/auth/checkRole";
 import { sendProgressUpdate } from "@/lib/line/client";
 import { sendProgressCompletionReliable } from "@/lib/line/clientWithRetry";
 import { syncCreateEvent, syncUpdateEvent } from "@/lib/gcal/client";
-import { apiJson, apiUnauthorized, apiNotFound, apiValidationError, apiInternalError } from "@/lib/api/response";
+import {
+  apiJson,
+  apiUnauthorized,
+  apiNotFound,
+  apiValidationError,
+  apiInternalError,
+  apiForbidden,
+} from "@/lib/api/response";
 import { logger } from "@/lib/logger";
 import { runStepAutomationOnReach } from "@/lib/workflow/stepAutomations";
 import { maybeAutoDraftCertificateForReservation } from "@/lib/ai/automation/certificateAuto";
@@ -92,6 +99,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
+    if (!requirePermission(caller, "reservations:edit")) return apiForbidden();
 
     const { id } = await params;
     const parsed = advanceSchema.safeParse(await req.json().catch(() => ({})));
