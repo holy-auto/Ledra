@@ -1,6 +1,6 @@
 // posPayment の自己チェック。フレームワーク不要。
 // 実行: node apps/mobile/src/lib/posPayment.check.ts
-import assert from "node:assert";
+import assert from "node:assert/strict";
 
 import {
   paymentSegments,
