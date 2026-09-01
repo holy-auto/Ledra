@@ -11,7 +11,12 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@/lib/api/rateLimit", () => ({ checkRateLimit: mocks.checkRateLimit }));
 vi.mock("@/lib/supabase/server", () => ({ createClient: mocks.createSupabaseServerClient }));
-vi.mock("@/lib/auth/checkRole", () => ({ resolveCallerWithRole: mocks.resolveCallerWithRole }));
+// モジュールごと差し替えると requirePermission が undefined になり、
+// ルートのガードが TypeError → 500 になる。実物は残して解決だけ差し替える。
+vi.mock("@/lib/auth/checkRole", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/auth/checkRole")>()),
+  resolveCallerWithRole: mocks.resolveCallerWithRole,
+}));
 vi.mock("@/lib/supabase/admin", () => ({ createTenantScopedAdmin: mocks.createTenantScopedAdmin }));
 vi.mock("@/lib/anchoring/certificateAnchorService", () => ({
   enqueueCertificateAnchor: mocks.enqueueCertificateAnchor,
@@ -72,7 +77,7 @@ const params = Promise.resolve({ id: IMAGE_ID });
 beforeEach(() => {
   mocks.checkRateLimit.mockReset().mockResolvedValue(null);
   mocks.createSupabaseServerClient.mockReset().mockResolvedValue({});
-  mocks.resolveCallerWithRole.mockReset().mockResolvedValue({ tenantId: TENANT, userId: "u1" });
+  mocks.resolveCallerWithRole.mockReset().mockResolvedValue({ tenantId: TENANT, userId: "u1", role: "staff" });
   mocks.enqueueCertificateAnchor.mockReset().mockReturnValue({ catch: () => {} });
 });
 

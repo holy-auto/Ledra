@@ -21,8 +21,8 @@
  */
 import { NextRequest } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
-import { apiOk, apiUnauthorized, apiValidationError, apiInternalError } from "@/lib/api/response";
+import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
+import { apiOk, apiUnauthorized, apiValidationError, apiInternalError, apiForbidden } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { logger } from "@/lib/logger";
 import { runIdentityOcr } from "@/lib/ai/identityOcr";
@@ -52,6 +52,8 @@ export async function POST(req: NextRequest) {
   const supabase = await createSupabaseServerClient();
   const caller = await resolveCallerWithRole(supabase);
   if (!caller) return apiUnauthorized();
+  // AI 呼び出しは staff 以上 (代表判断 2026-09-01。閲覧専用ロールに費用の出る操作をさせない)
+  if (!requireMinRole(caller, "staff")) return apiForbidden();
 
   // 3) テナント単位の rate limit (10 req / 600s per tenant)
   const tenantLimit = await checkRateLimit(req, "identity_ocr", `tenant:${caller.tenantId}`);

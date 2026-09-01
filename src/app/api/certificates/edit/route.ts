@@ -10,7 +10,7 @@ import {
   apiNotFound,
   apiForbidden,
 } from "@/lib/api/response";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
+import { resolveCallerWithRole, requirePermission } from "@/lib/auth/checkRole";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { resolveCertifiedTemplateForTenant } from "@/lib/manufacturers/certifiedTemplates";
 import { enqueueCertificateAnchor } from "@/lib/anchoring/certificateAnchorService";
@@ -60,6 +60,7 @@ export async function PUT(req: NextRequest) {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
+    if (!requirePermission(caller, "certificates:edit")) return apiForbidden();
 
     const parsed = certificateEditSchema.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) {

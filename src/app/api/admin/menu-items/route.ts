@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
-import { apiJson, apiUnauthorized, apiValidationError, apiInternalError } from "@/lib/api/response";
+import { resolveCallerWithRole, requirePermission } from "@/lib/auth/checkRole";
+import { apiJson, apiUnauthorized, apiValidationError, apiInternalError, apiForbidden } from "@/lib/api/response";
 import {
   menuItemCreateSchema,
   menuItemCsvImportSchema,
@@ -68,6 +68,8 @@ export async function POST(req: NextRequest) {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
+    // メニュー(商品)マスタの変更は admin 以上 (代表判断 2026-09-01)
+    if (!requirePermission(caller, "menu_items:manage")) return apiForbidden();
 
     const body = await req.json().catch(() => ({}) as Record<string, unknown>);
 
@@ -165,6 +167,8 @@ export async function PUT(req: NextRequest) {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
+    // メニュー(商品)マスタの変更は admin 以上 (代表判断 2026-09-01)
+    if (!requirePermission(caller, "menu_items:manage")) return apiForbidden();
 
     const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
     const parsed = menuItemUpdateSchema.safeParse(body);
@@ -213,6 +217,8 @@ export async function DELETE(req: NextRequest) {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
+    // メニュー(商品)マスタの変更は admin 以上 (代表判断 2026-09-01)
+    if (!requirePermission(caller, "menu_items:manage")) return apiForbidden();
 
     const parsed = menuItemDeleteSchema.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) {

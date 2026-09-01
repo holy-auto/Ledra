@@ -14,7 +14,7 @@ import { getCachedTenantBilling } from "@/lib/billing/tenantBillingCache";
 import { CERT_LIMITS, normalizePlanTier } from "@/lib/billing/planFeatures";
 import { logCertificateAction } from "@/lib/audit/certificateLog";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
+import { resolveCallerWithRole, requirePermission } from "@/lib/auth/checkRole";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { resolveCertifiedTemplateForTenant } from "@/lib/manufacturers/certifiedTemplates";
 import { issueCaptureNonce } from "@/lib/certificates/captureNonce";
@@ -41,6 +41,7 @@ export async function POST(req: Request) {
   if (!caller) {
     return apiUnauthorized();
   }
+  if (!requirePermission(caller, "certificates:create")) return apiForbidden();
 
   const deny = await enforceBilling(req, { minPlan: "free", action: "create", tenantId: caller.tenantId });
   if (deny) return deny;

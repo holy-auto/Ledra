@@ -1,7 +1,7 @@
 import { NextRequest, after } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
-import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
+import { resolveCallerWithRole, requireMinRole, requirePermission } from "@/lib/auth/checkRole";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { parsePagination } from "@/lib/api/pagination";
 import {
@@ -163,6 +163,7 @@ export async function POST(req: NextRequest) {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
+    if (!requirePermission(caller, "invoices:create")) return apiForbidden();
 
     const parsed = invoiceCreateSchema.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) {
@@ -299,6 +300,7 @@ export async function PUT(req: NextRequest) {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
+    if (!requirePermission(caller, "invoices:edit")) return apiForbidden();
 
     const parsed = invoiceUpdateSchema.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) {
