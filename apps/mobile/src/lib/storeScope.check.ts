@@ -1,6 +1,6 @@
 // storeScope の自己チェック。フレームワーク不要。
 // 実行: node apps/mobile/src/lib/storeScope.check.ts
-import assert from "node:assert";
+import assert from "node:assert/strict";
 
 import { scopeToStore } from "./storeScope.ts";
 

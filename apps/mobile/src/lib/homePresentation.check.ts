@@ -6,7 +6,7 @@
 // package.json に workspaces が無く、web の CI は root の npm ci しか実行しないため、
 // apps/mobile/tsconfig.json が継承する expo/tsconfig.base が解決できず落ちていた。
 // モバイルの関数はモバイル側で検査する。
-import assert from "node:assert";
+import assert from "node:assert/strict";
 
 import { getHomePresentation } from "./homePresentation.ts";
 

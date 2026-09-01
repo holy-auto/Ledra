@@ -1,6 +1,6 @@
 // 予約明細の取り出しの自己チェック。フレームワーク不要。
 // 実行: node apps/mobile/src/lib/reservationItems.check.ts
-import assert from "node:assert";
+import assert from "node:assert/strict";
 
 import { parseMenuItems, menuItemsTotal, hasUnknownPrice } from "./reservationItems.ts";
 

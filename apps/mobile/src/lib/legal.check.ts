@@ -4,7 +4,7 @@
 // モバイルは文面を同梱している（API 依存だとアプリと Web の配信時期が
 // ずれた瞬間に表示できなくなるため）。同梱する以上、正である
 // src/lib/legal/documents.json とのズレを機械的に検出する。
-import assert from "node:assert";
+import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
