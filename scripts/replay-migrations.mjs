@@ -126,6 +126,101 @@ function runSql(dsn, file) {
   return line.replace(/^psql:[^:]+:\d+:\s*/, "").trim();
 }
 
+/**
+ * `SET search_path = ''` の SECURITY DEFINER 関数が、本体でスキーマ非修飾の
+ * テーブルを参照していないか。
+ *
+ * search_path が空だと非修飾の識別子は解決できないので、この形の関数は
+ * **呼ぶと必ず 42P01 で落ちる**。しかも落ちるのは実行時なので、マイグレーションは
+ * 通るし型検査も素通りする —— 実際 `insurer_accessible_tenant_ids` と
+ * `is_pii_disclosed` が本番で壊れたまま5か月気づかれなかった
+ * （20260404000000 が search_path を締めたとき、本体の修飾を忘れた）。
+ *
+ * ponytail: FROM/JOIN/INTO/UPDATE の直後の識別子だけを見る単純な走査。CTE や
+ * 関数呼び出しも拾うが、public に同名の実体があるものだけに絞るので誤検知は
+ * 実用上出ない。上限は「動的 SQL の中の参照は見えない」こと。
+ */
+const QUALREF_SCAN = `
+  WITH f AS (
+    SELECT p.oid, p.proname, pg_get_functiondef(p.oid) AS def
+    FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE n.nspname = 'public' AND p.prosecdef
+      AND 'search_path=""' = ANY(coalesce(p.proconfig, '{}'))
+  ), refs AS (
+    SELECT f.proname, lower(m[1]) AS rel
+    FROM f, regexp_matches(f.def, '(?i)(?:\\mfrom|\\mjoin|\\minto|\\mupdate)[[:space:]]+([a-zA-Z_][a-zA-Z0-9_]*)', 'g') AS m
+  )
+  SELECT r.proname || ' -> ' || string_agg(DISTINCT r.rel, ', ' ORDER BY r.rel)
+  FROM refs r
+  JOIN pg_class c ON c.relname = r.rel
+  JOIN pg_namespace cn ON cn.oid = c.relnamespace AND cn.nspname = 'public'
+  GROUP BY r.proname ORDER BY 1;
+`.replace(/\s+/g, " ");
+
+/** psql に SQL を1つ渡して stdout を返す。失敗なら null。 */
+function psqlCapture(dsn, sql, quiet = true) {
+  const [bin, args] = pg(`psql "${dsn}" -Atq ${quiet ? "" : ""}-c "${sql.replace(/"/g, '\\"')}"`);
+  const r = spawnSync(bin, args, { encoding: "utf8" });
+  if (r.status !== 0) return null;
+  return `${r.stdout ?? ""}`;
+}
+
+/**
+ * `SET search_path = ''` の SECURITY DEFINER 関数が、本体でスキーマ非修飾の
+ * テーブルを参照していないか。
+ *
+ * search_path が空だと非修飾の識別子は解決できないので、この形の関数は
+ * **呼ぶと必ず 42P01 で落ちる**。しかも落ちるのは実行時なので、マイグレーションは
+ * 通るし型検査も素通りする —— 実際 `insurer_accessible_tenant_ids` と
+ * `is_pii_disclosed` が本番で壊れたまま気づかれず、保険会社ポータルの検索3本が
+ * 動かなくなっていた（20260404000000 が search_path を締めたとき、本体の修飾を
+ * 忘れた）。
+ *
+ * この形は CREATE では作れない（`check_function_bodies` が本体を検証して弾く）。
+ * 入り込む経路は「正常に作ったあとで ALTER FUNCTION ... SET search_path=''」だけ。
+ * 自己検査もその経路で作る。
+ *
+ * ponytail: FROM/JOIN/INTO/UPDATE の直後の識別子だけを見る単純な走査。CTE や
+ * 関数呼び出しも拾うが、public に同名の実体があるものだけに絞るので誤検知は
+ * 実用上出ない。上限は「動的 SQL の中の参照は見えない」こと。
+ */
+function checkQualifiedRefs(dsn) {
+  // 検査が空振りしていないことの確認。わざと壊した関数を1本作って、拾えるか見る。
+  const probe = [
+    "CREATE TABLE public.__qualref_probe(id int);",
+    "CREATE FUNCTION public.__qualref_probe_fn() RETURNS SETOF int LANGUAGE sql STABLE SECURITY DEFINER AS 'SELECT id FROM __qualref_probe';",
+    "ALTER FUNCTION public.__qualref_probe_fn() SET search_path = '';",
+  ].join(" ");
+  const cleanup = "DROP FUNCTION IF EXISTS public.__qualref_probe_fn(); DROP TABLE IF EXISTS public.__qualref_probe;";
+
+  try {
+    if (psqlCapture(dsn, probe) === null) {
+      console.log("\n非修飾参照の検査を準備できませんでした（probe の作成に失敗）");
+      return false;
+    }
+    const probed = psqlCapture(dsn, QUALREF_SCAN);
+    if (probed === null || !probed.includes("__qualref_probe_fn")) {
+      console.log("\n非修飾参照の検査が機能していません（わざと壊した関数を検出できませんでした）");
+      return false;
+    }
+  } finally {
+    psqlCapture(dsn, cleanup);
+  }
+
+  const out = psqlCapture(dsn, QUALREF_SCAN);
+  if (out === null) {
+    console.log("\n非修飾参照の検査を実行できませんでした");
+    return false;
+  }
+  const hits = out.trim().split("\n").filter(Boolean);
+  if (hits.length === 0) return true;
+
+  console.log("\n❌ search_path='' の SECURITY DEFINER 関数が非修飾のテーブルを参照しています（呼ぶと 42P01 で落ちます）:");
+  for (const h of hits) console.log(`  - ${h}`);
+  console.log("本体の参照を public. で修飾してください。");
+  return false;
+}
+
 function main() {
   const files = readdirSync(MIGRATIONS)
     .filter((f) => f.endsWith(".sql"))
@@ -202,6 +297,12 @@ function main() {
     }
     if (remaining.length > 0) {
       console.log(`\n再生 OK（既知の ${remaining.length} 件を除く。増減なし）`);
+      if (!checkQualifiedRefs(dsn)) process.exitCode = 1;
+      return;
+    }
+
+    if (!checkQualifiedRefs(dsn)) {
+      process.exitCode = 1;
       return;
     }
 
