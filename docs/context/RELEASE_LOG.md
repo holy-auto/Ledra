@@ -4,6 +4,33 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-09-01 PR #1017 をマージ（`841d953f`）— 本番へのポリシー削除も適用済み
+
+- 内容: 下記2件（RLS のポリシー15本削除 / 変更系61箇所への認可強制）を1本の PR にまとめ、
+  main へ squash マージした。
+- **本番適用を確認済み**: `DB migrate (apply to production)` ワークフローが成功し、
+  対象15ポリシーが本番から**すべて消えている**ことを `pg_policies` で確認
+  （`cert_insert_member` ほか11本 / `insurer_users_{insert,update,delete}_admin` /
+  `insurer_access_logs_insert_v2`）。
+- **読み書きが失われていないことも確認済み**: 対象8テーブル
+  （certificates / templates / vehicles / vehicle_histories / nfc_tags / job_orders /
+  insurer_users / insurer_access_logs）は SELECT・INSERT・UPDATE・DELETE のすべてに
+  ポリシーが残っている（`insurer_access_logs` はもとより INSERT と SELECT のみ）。
+- マージ時の CI: 9チェック中7件成功。赤かった2件は**どちらもこの PR の変更が原因ではない**
+  ことを検証済み。
+  - `Lint, Type Check & Unit Tests`: main の `70ff6761`/`42f67936` が追加した
+    `src/lib/ui-preferences/__tests__/mobileHomePresentation.test.ts` が `apps/mobile` の
+    ソースを直接 import しており、CI は root の `npm ci` しかしないため
+    `expo/tsconfig.base` が解決できない。**マージコミットを作って CI と同条件
+    （`apps/mobile/node_modules` を外した状態）でフルスイートを流し、落ちるのは
+    この1ファイルのみ・本 PR の 5298件は全通過（521/522ファイル通過）**を確認した。
+    直し方（モバイルのソースをテキストとして読む）は PR にパッチ案を出してある。
+  - `Supabase Preview`: `20260312000000_tenants_contact_fields.sql`（2026-03-12、
+    本 PR の変更ではない）で落ちる。Supabase のプレビューはマイグレーションを
+    ファイル名順に1回だけ適用するのに対し、`check:migrations` は多重パスで再試行するため。
+- マージ後の main で検証: 権限まわりのテスト17ファイル179件通過、
+  未強制ハンドラは 46（マージ前と一致）。
+
 ## 2026-09-01 業務データCRUD 48ルートにサーバ側の認可を強制（未強制 157→46 ハンドラ）
 
 - 計測単位の訂正: これまで「未強制125本/86本」と数えていたのは**ファイル単位**で、
