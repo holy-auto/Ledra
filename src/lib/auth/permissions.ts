@@ -335,6 +335,11 @@ export function getPermissions(role: Role): ReadonlySet<Permission> {
 /**
  * Map sidebar routes to required permissions.
  * Used by Sidebar and AdminRouteGuard.
+ *
+ * **これはクライアント側の表示制御であって、セキュリティ境界ではない。**
+ * AdminRouteGuard はブラウザで動くため、API を直接叩けば素通りする。
+ * サーバ側の強制は各 route.ts の requirePermission() が担い、
+ * どのルートがどの Permission を要求すべきかは API_ROUTE_PERMISSIONS に登録する。
  */
 export const ROUTE_PERMISSIONS: Record<string, Permission> = {
   "/admin": "dashboard:view",
@@ -408,3 +413,55 @@ export function requiredPermissionForPath(pathname: string): Permission | null {
 
   return null;
 }
+
+/**
+ * API ルート → その **変更系メソッド（POST/PUT/PATCH/DELETE）すべて**が要求する Permission。
+ *
+ * ROUTE_PERMISSIONS が画面を守るのに対し、こちらは実際の権限境界である API を守る。
+ * キーは `src/app/api` からの相対ディレクトリ（`route.ts` を除いたもの）。
+ * メソッドごとに要求が違うルートは、メソッド名をキーにしたオブジェクトで書く
+ * （例: payments は POST=create / PUT・DELETE=manage）。配列にして「いずれか1つ」に
+ * すると、DELETE を弱い方へ下げても検査が通ってしまう。
+ *
+ * 構造テスト（`__tests__/apiRoutePermissions.test.ts`）が、登録した各ルートの
+ * **変更系ハンドラ1つ1つ**について `requirePermission(...)` / `hasPermission(...)` の
+ * 呼び出しが存在することを検査する。ファイル全体の文字列一致では、コメントに書いただけ・
+ * GET だけ守っている、といった状態を通してしまうため。
+ *
+ * ponytail: 全 API ルートの網羅表ではなく、**強制を検証済みのものを固定するための表**。
+ * ここに載せないルートは「安全」を意味しない。認可未強制の変更系ルートは他にも残っており
+ * （docs/context/OPEN_QUESTIONS.md）、強制を入れて検証したものからここへ足していく。
+ * 「メソッドごとに要求が違い、1つの値で表せない」ルート（`admin/certificates/status` の
+ * draft→active と active→void 等）は、この表ではなく操作単位の不変条件テストで縛る。
+ * Next.js の middleware で一括強制する案は、テナントロールの解決に DB アクセスが要り
+ * 全リクエストに載るため採らなかった。
+ */
+/** 変更系メソッド名。ルートごとにメソッド別の要求を書けるようにする。 */
+export type MutatingMethod = "POST" | "PUT" | "PATCH" | "DELETE";
+
+export const API_ROUTE_PERMISSIONS: Record<string, Permission | Partial<Record<MutatingMethod, Permission>>> = {
+  // 証明書の無効化（operationRisk = critical / 不可逆・法的意味を持つ）。
+  // 経路ごとに認可が食い違っていた。無効化経路の網羅は別途 void-path テストが縛る。
+  "certificates/void": "certificates:void",
+  "admin/certificates/void": "certificates:void",
+  "mobile/certificates/[id]/void": "certificates:void",
+
+  // 設定変更。
+  "admin/billing-settings": "settings:edit",
+  "admin/settings/defaults": "settings:edit",
+  "admin/follow-up-settings": "settings:edit",
+  "admin/faq": "settings:edit",
+  "admin/tenant/external-api-key": "settings:edit",
+  "admin/integrations/api-keys": "settings:edit",
+  "admin/integrations/webhooks": "settings:edit",
+  "admin/integrations/email-templates": "settings:edit",
+
+  // メンバー・店舗・決済・レジ（既に強制済み。回帰を止めるために登録する）。
+  // `admin/members` は PUT/DELETE が `caller.role !== "owner" && !== "admin"` の
+  // インライン判定で、Permission 経由ではないため登録しない（登録すると偽の主張になる）。
+  "admin/staff": "members:manage",
+  "admin/staff/shifts": "members:manage",
+  "admin/stores": "stores:manage",
+  "admin/payments": { POST: "payments:create", PUT: "payments:manage", DELETE: "payments:manage" },
+  "admin/registers": "registers:manage",
+};
