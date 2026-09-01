@@ -94,6 +94,8 @@ type Props = {
   defaultVehicleId?: string;
   defaultCustomerId?: string;
   defaultReservationId?: string;
+  /** 外注施工: テナント間の発注 (job_orders) から発行する場合の紐付け先。 */
+  defaultJobOrderId?: string;
   /** 案件の「部品交換あり」トグルが ON のとき、整備内容セクションへの既定メモ。 */
   defaultPartsReplacedNote?: string;
   /** "in_progress" のとき、この発行フローでアップロードする写真を作業中の記録として stage タグ付けする。 */
@@ -131,6 +133,7 @@ export default function CertNewFormWrapper({
   defaultVehicleId,
   defaultCustomerId,
   defaultReservationId,
+  defaultJobOrderId,
   defaultPartsReplacedNote,
   defaultPhotoStage,
   templates,
@@ -651,6 +654,7 @@ export default function CertNewFormWrapper({
           {defaultVehicleId && <input type="hidden" name="vehicle_id" value={defaultVehicleId} />}
           {defaultCustomerId && <input type="hidden" name="customer_id" value={defaultCustomerId} />}
           {defaultReservationId && <input type="hidden" name="reservation_id" value={defaultReservationId} />}
+          {defaultJobOrderId && <input type="hidden" name="job_order_id" value={defaultJobOrderId} />}
           {/* 作業中の撮影導線 (?stage=in_progress) から来た場合、テンプレ切替後も stage を維持する。
               無いと再読み込みで in_progress タグが失われ、写真が unspecified で保存されてしまう。 */}
           {defaultPhotoStage && <input type="hidden" name="stage" value={defaultPhotoStage} />}
@@ -691,6 +695,7 @@ export default function CertNewFormWrapper({
             先頭の初期値を返し、プルダウン/検索で別の顧客に変更しても反映されない。
             defaultCustomerId は VehiclePickerSection に渡して初期選択させる。 */}
         {defaultReservationId && <input type="hidden" name="reservation_id" value={defaultReservationId} />}
+        {defaultJobOrderId && <input type="hidden" name="job_order_id" value={defaultJobOrderId} />}
         {serviceType && <input type="hidden" name="service_type" value={serviceType} />}
 
         <CertFormProgressRail sections={formSections} />

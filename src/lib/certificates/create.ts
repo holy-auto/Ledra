@@ -404,6 +404,23 @@ export async function createCertificate(
     const distinct = [...new Set((recentRows ?? []).map((r) => r.assigned_staff_id as string).filter(Boolean))];
     craftsman_staff_id = distinct.length === 1 ? distinct[0] : null;
   }
+  // 外注施工の紐付け: テナント間の発注 (job_orders) から発行された証明書は、その発注に
+  // 紐付ける。これで受発注の双方が /admin/orders/[id] の同じ画面から成果物を辿れる。
+  // 当事者（発注元 or 受注先）でない発注 ID は無視する。DB 側にも同じ制約のトリガーが
+  // あるが、ここで落としておかないと insert ごと失敗して発行が止まる。
+  const job_order_id_form = String(formData.get("job_order_id") || "").trim() || null;
+  let linked_job_order_id: string | null = null;
+  if (job_order_id_form) {
+    const { admin } = createTenantScopedAdmin(tenantId);
+    const { data: orderRow } = await admin
+      .from("job_orders")
+      .select("id")
+      .eq("id", job_order_id_form)
+      .or(`from_tenant_id.eq.${tenantId},to_tenant_id.eq.${tenantId}`)
+      .maybeSingle();
+    linked_job_order_id = orderRow?.id ? job_order_id_form : null;
+  }
+
   let craftsman_name: string | null = null;
   if (craftsman_staff_id) {
     // staff_members の SELECT は RLS で管理ロール限定のため、発行者が staff ロール
@@ -465,6 +482,8 @@ export async function createCertificate(
       // 案件から発行された証明書は元の予約に紐付ける（タイムライン/フォローで「作成済」に）。
       // 車両/顧客が一致した検証済みの予約のみ（取り違え防止）。
       reservation_id: linked_reservation_id ?? undefined,
+      // 外注施工: 当事者であることを確認できた発注のみ紐付ける。
+      job_order_id: linked_job_order_id ?? undefined,
     })
     .select("id")
     .single();

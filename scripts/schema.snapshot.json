@@ -855,6 +855,7 @@
 "quality_fields_json",
 "remarks",
 "reservation_id",
+"job_order_id",
 "service_price",
 "service_type",
 "signed_at",

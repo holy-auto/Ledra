@@ -4,6 +4,41 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-09-01 外注施工の記録を発注に紐付け、受発注の双方から辿れるようにした
+
+- 背景: テナント間の外注（`job_orders`: 元請けA → 受注B）で施工した記録が、
+  受発注のどちらの画面にも出てこなかった。`/admin/orders/[id]` は状態遷移・検収サイン・
+  請求・チャット・評価だけを扱い、成果物（施工証明）への参照が1件も無かった。結果として
+  元請けは発注した作業の証明書を受注画面から辿れず、外注先は自分が施工した記録を
+  Ledra 上のどこでも確認できなかった。
+- 内容:
+  - `certificates.job_order_id` を追加（`20260901000001`、索引は CONCURRENTLY のため
+    `20260901000002` に分離）。`documents` / `chat_messages` / `order_reviews` /
+    `reservation_holds` と同じ `job_order_id` 規約に揃えた。
+  - テナント整合トリガー `certificates_check_job_order_tenant` を追加。指定された発注の
+    当事者（発注元 or 受注先）でないテナントの証明書には紐付けられない
+    （`craftsman_staff_id` の既存トリガーと同作法）。
+  - 証明書の作成 (`src/lib/certificates/create.ts`) が `job_order_id` を受け取り、
+    呼び出し元テナントが当事者である発注のみ紐付ける。オフライン同期の
+    FormData ↔ JSON round-trip (`createCertificateApi.ts`) にも含めた。
+  - `/admin/orders/[id]` に「施工証明」セクションを追加。受発注の双方に同じ一覧が出て、
+    元請け側には `?job_order_id=` 付きの発行導線を置いた。
+- PII の扱い（この変更の急所）: 一覧は**相手方テナントにも返る**ため、
+  `certificates` の RLS は意図的に変更していない。API が返すのは
+  `public_id, status, service_type, craftsman_name, created_at` の5列だけで、詳細は
+  既に PII を落としてある公開ページ `/c/[public_id]` へ送る
+  （`getPublicCertificateData` が `customer_name` と `content_free_text` を undefined 化）。
+  列の定義と禁止列は `src/lib/orders/orderCertificates.ts` に集約し、
+  `src/lib/orders/__tests__/orderCertificates.test.ts` が番人になっている
+  （禁止列の混入と、ルート側 literal との不一致の両方で落ちる）。
+- 副次: `getServiceTypeLabel` を `src/lib/certificates/serviceTypeLabel.ts` へ切り出した。
+  元は `getPassportData.ts`（read replica を掴むサーバ専用）に同居していてクライアント
+  コンポーネントから import できなかったため。既存の import 経路は再 export で維持。
+- 検証: `vitest run` 522ファイル5302件すべて通過、`tsc --noEmit` エラー0、
+  `lint:migrations` OK、`check:schema` OK（`scripts/schema.snapshot.json` に
+  `certificates.job_order_id` を追記）。マイグレーションは未適用のため
+  `src/types/db.generated.ts` は次回 `npm run db:typegen` で更新が必要。
+
 ## 2026-09-01 main の CI 赤を解消（PR #1019 / `a38ca937`）
 
 - 背景: `70ff6761` / `42f67936` が追加した

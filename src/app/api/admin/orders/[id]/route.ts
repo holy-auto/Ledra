@@ -5,6 +5,16 @@ import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { apiJson, apiUnauthorized, apiNotFound, apiInternalError } from "@/lib/api/response";
 
 /**
+ * 発注に紐づく施工証明の取得列。**相手方テナントにも返る**ので顧客 PII は載せない
+ * （理由と禁止列は src/lib/orders/orderCertificates.ts、番人はその __tests__）。
+ *
+ * ここに literal で置いてあるのは、scripts/check-schema.mjs が select の列を
+ * 同一ファイル内の const からしか解決できないため。共有モジュール側の
+ * ORDER_CERTIFICATE_SELECT とはテストで一致を強制している。
+ */
+const ORDER_CERTIFICATE_SELECT = "public_id, status, service_type, craftsman_name, created_at";
+
+/**
  * GET /api/admin/orders/[id]
  * 受発注の詳細取得（帳票・チャット最新・評価を含む）
  */
@@ -48,6 +58,15 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       .from("documents")
       .select("id, doc_type, doc_number, status, total, issued_at")
       .eq("job_order_id", id)
+      .order("created_at", { ascending: false });
+
+    // 紐づく施工証明。**相手方テナントにも返る**ので列を絞る（PII の理由は
+    // orderCertificates.ts）。詳細は PII を落としてある公開ページ /c/[public_id] へ。
+    const { data: certificates } = await admin
+      .from("certificates")
+      .select(ORDER_CERTIFICATE_SELECT)
+      .eq("job_order_id", id)
+      .neq("status", "void")
       .order("created_at", { ascending: false });
 
     // チャット最新5件
@@ -108,6 +127,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       from_tenant: mapTenant(fromTenant.data),
       to_tenant: mapTenant(toTenant.data),
       documents: documents ?? [],
+      certificates: certificates ?? [],
       recent_messages: (recentMessages ?? []).reverse(),
       reviews: reviews ?? [],
       audit_log: auditLog ?? [],
