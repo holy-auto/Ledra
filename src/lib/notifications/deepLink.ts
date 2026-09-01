@@ -62,6 +62,9 @@ function adminPath(entity: DeepLinkEntity, id: string): string | null {
     case "order":
       return `/admin/orders/${id}`;
     case "certificate":
+      // 管理画面の証明書詳細は /admin/certificates/[public_id] で、`public_id` 列で
+      // 引いて見つからなければ notFound() する。他のエンティティと違い、行の `id`
+      // (uuid) を渡すと必ず404になるので、呼び出し側は public_id を渡すこと。
       return `/admin/certificates/${id}`;
     case "customer":
       return `/admin/customers/${id}`;
@@ -95,6 +98,11 @@ function insurerPath(entity: DeepLinkEntity, id: string): string | null {
 
 export type DeepLinkParams = {
   entity: DeepLinkEntity;
+  /**
+   * 対象の識別子。基本は行の `id`（uuid）。
+   * ただし `entity: "certificate"` だけは **`public_id`** を渡す
+   * （管理画面のルートが /admin/certificates/[public_id] で public_id 引きのため）。
+   */
   id: string;
   role: DeepLinkRole;
   /** customer ロールの場合のテナントスラッグ。 */

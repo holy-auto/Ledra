@@ -10,23 +10,11 @@
  * ゲートを入れるのが正しい対応で、除外リストに足すのは原則として誤り。
  */
 import { describe, it, expect } from "vitest";
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { walkSource } from "../../__tests__/sourceScan";
 
 const ROOT = join(process.cwd(), "src");
-
-function walk(dir: string, out: string[] = []): string[] {
-  for (const name of readdirSync(dir)) {
-    const p = join(dir, name);
-    if (statSync(p).isDirectory()) {
-      if (name === "__tests__" || name === "node_modules") continue;
-      walk(p, out);
-    } else if (name.endsWith(".ts") || name.endsWith(".tsx")) {
-      out.push(p);
-    }
-  }
-  return out;
-}
 
 /**
  * 証明書を発行 (active 化) しているソースを拾う。
@@ -50,7 +38,7 @@ describe("証明書を active にする経路", () => {
   const gated: string[] = [];
   const ungatedByCertGate: string[] = [];
 
-  for (const file of walk(ROOT)) {
+  for (const file of walkSource(ROOT)) {
     const src = readFileSync(file, "utf8");
     if (!isIssuancePath(file, src)) continue;
     const rel = file.slice(ROOT.length + 1);

@@ -2,7 +2,7 @@ import { z } from "zod";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { logCertificateAction, getRequestMeta } from "@/lib/audit/certificateLog";
-import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
+import { resolveCallerWithRole, requireMinRole, requirePermission } from "@/lib/auth/checkRole";
 import { evaluateCertificateActivationGate, firstGateFailureMessage } from "@/lib/certificates/activationGate";
 import { certificateMileageKm, CERTIFICATE_MILEAGE_REQUIRED_MESSAGE } from "@/lib/maintenance/mileage";
 import { triggerCertificateIssued } from "@/lib/certificates/issueHooks";
@@ -38,12 +38,18 @@ const certStatusSchema = z.object({
 /**
  * Allowed status transitions:
  *  draft  -> active  (staff+)
- *  active -> void    (staff+)
+ *  active -> void    (certificates:void = admin+)
  *  void   -> active  (admin+ only)
+ *
+ * 無効化 (→void) はロール下限ではなく Permission で判定する。証明書の無効化は
+ * 不可逆で法的意味を持つ操作 (operationRisk = critical) であり、無効化の経路は
+ * これを含めて5本ある。ロール下限と Permission の二本立てにすると経路ごとに
+ * ズレる (実際、ここだけ staff で通り、他4経路は admin 以上を要求していた)。
+ * 登録は API_ROUTE_PERMISSIONS、強制は apiRoutePermissions.test.ts。
  */
 const TRANSITIONS: Record<string, { to: CertStatus; minRole: "staff" | "admin" }[]> = {
   draft: [{ to: "active", minRole: "staff" }],
-  active: [{ to: "void", minRole: "staff" }],
+  active: [{ to: "void", minRole: "admin" }],
   void: [{ to: "active", minRole: "admin" }],
 };
 
@@ -102,6 +108,11 @@ export async function PUT(req: Request) {
     // Check the role required for this specific transition
     if (!requireMinRole(caller, transition.minRole)) {
       return apiForbidden(`${currentStatus} → ${newStatus} の遷移には ${transition.minRole} 以上の権限が必要です。`);
+    }
+
+    // 無効化は他4経路と同じ Permission で判定する（ロール下限とは別軸で二重に縛る）。
+    if (newStatus === "void" && !requirePermission(caller, "certificates:void")) {
+      return apiForbidden("証明書無効化の権限がありません。");
     }
 
     // Certificate Gate (IMP-028, ADR-0005): active 化 (draft→active / void→active) は

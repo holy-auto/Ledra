@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
+import { resolveCallerWithRole, requirePermission } from "@/lib/auth/checkRole";
 import { formatDate, formatDateTime } from "@/lib/format";
 import ServiceTimeline, { type TimelineEvent } from "./ServiceTimeline";
 import VehicleCustomerLink from "./VehicleCustomerLink";
@@ -44,6 +44,9 @@ export default async function AdminVehicleDetailPage({
     return <div className="p-6 text-primary">ログインしてください。</div>;
   }
   const tenantId = caller.tenantId;
+  // 権限が無いユーザーに、押しても必ず失敗する削除ボタンを見せない
+  // (表示制御であって強制ではない。強制は voidCertificate 内で行う)。
+  const canVoid = requirePermission(caller, "certificates:void");
 
   async function voidCertificate(formData: FormData) {
     "use server";
@@ -60,6 +63,14 @@ export default async function AdminVehicleDetailPage({
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) {
       redirect("/login");
+    }
+    // 証明書の無効化は不可逆で法的意味を持つ (operationRisk = critical)。API 側の
+    // 4経路はすべて certificates:void (admin+) を要求するが、この Server Action は
+    // RLS 任せだった。certificates の UPDATE は PERMISSIVE ポリシー2本
+    // (cert_update_member = テナントメンバー全員 / certificates_update_v2 =
+    // owner・admin・staff) の OR で評価されるため、**viewer でも無効化が通っていた**。
+    if (!requirePermission(caller, "certificates:void")) {
+      redirect(`/admin/vehicles/${id}?e=1`);
     }
     const membershipTenantId = caller.tenantId;
 
@@ -449,6 +460,8 @@ export default async function AdminVehicleDetailPage({
                       <td className="px-4 py-3">
                         {isVoid ? (
                           <span className="text-xs text-muted">削除済み</span>
+                        ) : !canVoid ? (
+                          <span className="text-xs text-muted">-</span>
                         ) : (
                           <form action={voidCertificate}>
                             <input type="hidden" name="certificate_id" value={row.id} />
