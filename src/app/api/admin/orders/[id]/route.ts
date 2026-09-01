@@ -67,6 +67,9 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       .select(ORDER_CERTIFICATE_SELECT)
       .eq("job_order_id", id)
       .neq("status", "void")
+      // is_hidden は「ミスがあった証明書を一覧から外す」フラグ（20260619000000）。
+      // 発行元が引っ込めたものを相手方に出したままにしない（自社の一覧と同じ扱い）。
+      .eq("is_hidden", false)
       .order("created_at", { ascending: false });
 
     // チャット最新5件

@@ -408,17 +408,30 @@ export async function createCertificate(
   // 紐付ける。これで受発注の双方が /admin/orders/[id] の同じ画面から成果物を辿れる。
   // 当事者（発注元 or 受注先）でない発注 ID は無視する。DB 側にも同じ制約のトリガーが
   // あるが、ここで落としておかないと insert ごと失敗して発行が止まる。
+  //
+  // 車両の突き合わせは予約紐付けより重い意味を持つ: **紐付けた証明書は相手方テナントの
+  // 画面に出る**ので、取り違えるとそのまま他社への誤開示になる。発注導線
+  // (?job_order_id=&vehicle_id=) から入ったあとフォームで別の車両・顧客に変更しても
+  // 発注 ID は hidden で残るため、ここで食い違いを弾く。
   const job_order_id_form = String(formData.get("job_order_id") || "").trim() || null;
   let linked_job_order_id: string | null = null;
   if (job_order_id_form) {
     const { admin } = createTenantScopedAdmin(tenantId);
     const { data: orderRow } = await admin
       .from("job_orders")
-      .select("id")
+      .select("id, vehicle_id")
       .eq("id", job_order_id_form)
       .or(`from_tenant_id.eq.${tenantId},to_tenant_id.eq.${tenantId}`)
       .maybeSingle();
-    linked_job_order_id = orderRow?.id ? job_order_id_form : null;
+    // 判定は予約紐付けと同じ linksToReservation（両方に値があって食い違うときだけ弾く）。
+    // job_orders は顧客を持たないので customer_id は null 固定＝車両だけの突き合わせになる。
+    const vehicleMatches =
+      !!orderRow?.id &&
+      linksToReservation(
+        { vehicle_id: (orderRow.vehicle_id as string | null) ?? null, customer_id: null },
+        { vehicleId: resolvedVehicleId ?? null, customerId: resolvedCustomerId ?? null },
+      );
+    linked_job_order_id = vehicleMatches ? job_order_id_form : null;
   }
 
   let craftsman_name: string | null = null;

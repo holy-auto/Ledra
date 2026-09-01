@@ -12,6 +12,14 @@
  *   /c/[public_id] へ送る（getPublicCertificateData が customer_name と
  *   content_free_text を undefined 化する）。
  *
+ *   ただし public_id は「5列」で言い切れる開示ではない。これを渡すと相手方は
+ *   公開ページを開けるようになり、そこにはナンバー、同じ車両の他の証明書
+ *   （それぞれの public_id つき）、その車両の予約タイトルも出る。顧客名・連絡先・
+ *   作業メモは落ちているが、**その車両について元請けが持つ施工履歴は見える**。
+ *   施工した相手に車両の履歴を見せることは受け入れる（相手は現車を触っている）が、
+ *   ここを狭めたくなったら公開ページ側を viewer 別に絞る必要がある
+ *   （OPEN_QUESTIONS に記載、今回の範囲外）。
+ *
  *   craftsman_name は職人の職業上の名前で顧客 PII ではない（公開証明書にも出る。
  *   20260617000004_certificate_craftsman.sql）。
  *
@@ -24,8 +32,28 @@ export const ORDER_CERTIFICATE_SELECT = "public_id, status, service_type, crafts
 export const ORDER_CERTIFICATE_COLUMNS = ORDER_CERTIFICATE_SELECT.split(", ");
 
 /**
- * 相手方テナントへ渡してはいけない列。certificates の PII 列と、顧客・車両の
+ * 相手方テナントへ出してよいと**明示的に判断した**列。ここと
+ * ORDER_CERTIFICATE_COLUMNS の完全一致をテストが強制する。列を1つ足すと
+ * テストが落ちるので、「相手方に見せてよいか」を必ず一度考えることになる。
+ */
+export const ORDER_CERTIFICATE_ALLOWED_COLUMNS = [
+  "public_id",
+  "status",
+  "service_type",
+  "craftsman_name",
+  "created_at",
+] as const;
+
+/**
+ * 相手方テナントへ渡してはいけない列の**例**。certificates の PII 列と、顧客・車両の
  * 識別子（他社のマスタを引く足がかりになる）。
+ *
+ * これは補助的な明示であって番人ではない。`certificates` には
+ * `content_preset_json`（スタッフが打ち込んだテンプレート項目がそのまま入る）
+ * `maintenance_json` `body_repair_json` `damage_map_json` `quality_fields_json`
+ * `meta` `service_price` のように、列挙し切れない量の顧客由来データがある。
+ * **番人は許可リスト側（ORDER_CERTIFICATE_ALLOWED_COLUMNS との完全一致）**で、
+ * そちらは列を足せば必ず落ちる＝fail closed になっている。
  */
 export const ORDER_CERTIFICATE_FORBIDDEN_COLUMNS = [
   "customer_name",
