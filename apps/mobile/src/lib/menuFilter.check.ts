@@ -1,6 +1,6 @@
 // menuFilter の自己チェック。フレームワーク不要。
 // 実行: node apps/mobile/src/lib/menuFilter.check.ts
-import assert from "node:assert";
+import assert from "node:assert/strict";
 
 import {
   POPULAR_LIMIT,

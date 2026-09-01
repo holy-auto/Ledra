@@ -5,7 +5,7 @@
 // サーバに弾かれる（逆に、サーバが許す遷移をモバイルが出さない）。
 // Metro はアプリディレクトリの外を解決しないため import 共有ができないので、
 // 法務文書 (legal.check.ts) と同じくコピー + ズレ検出で担保する。
-import assert from "node:assert";
+import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";

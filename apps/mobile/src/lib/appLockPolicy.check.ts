@@ -1,6 +1,6 @@
 // appLock の状態遷移の自己チェック。フレームワーク不要。
 // 実行: node apps/mobile/src/lib/appLockPolicy.check.ts
-import assert from "node:assert";
+import assert from "node:assert/strict";
 
 import { RELOCK_AFTER_MS, lockStateOnForeground } from "./appLockPolicy.ts";
 

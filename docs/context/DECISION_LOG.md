@@ -4,6 +4,69 @@
 > （新しい順）。実装の詳細は RELEASE_LOG.md、迷っている段階のものは
 > OPEN_QUESTIONS.md に書く。
 
+## 2026-09-01 モバイルの関数は web からではなくモバイル側で検査する
+
+1. 日付: 2026-09-01
+2. 起きたこと: main の CI が半日赤いままだった。`70ff6761` / `42f67936` が追加した
+   `src/lib/ui-preferences/__tests__/mobileHomePresentation.test.ts` が
+   `apps/mobile/src/lib/homePresentation` を**直接 import**していた。ルートの
+   `package.json` に `workspaces` が無く、web の CI は root の `npm ci` しか実行しない。
+   一方 `apps/mobile/tsconfig.json` は `expo/tsconfig.base` を継承しており、これは
+   `apps/mobile/node_modules` にしか無い。**手元では通るのに CI だけが落ちる**形だった。
+3. 以前の考え: 「同じリポジトリにあるのだから import できる」。実際 IDE でも tsc でも
+   手元では通る。web とモバイルが別々に依存を持っていることを、書くときには意識しない。
+4. 違和感・問題: この形は**書いた人には見えない**。手元は緑、CI だけ赤。しかも
+   エラーが `[TSCONFIG_ERROR] Tsconfig not found` で、原因（依存が別々）に結びつかない。
+   加えて CI は5つのチェックを並列実行して `wait` するため、ログの末尾が失敗元とは限らず、
+   切り分けに時間がかかる。放置すると**以降のすべての PR が赤くなる**。
+5. 決めたこと:
+   - **モバイルの関数はモバイル側で検査する。** `apps/mobile` の既存規約
+     （`*.check.ts` を `node` で直接実行し `package.json` の `test` に並べる、13本が稼働中）
+     に合わせ、`apps/mobile/src/lib/homePresentation.check.ts` へ移した。
+   - **同じ間違いを二度させない。** `eslint.config.mjs` に `src/**` と `scripts/**` から
+     `**/apps/mobile/**` を import することを禁じる `no-restricted-imports` を追加した。
+   - 移設にあたって**検査を弱めない・信号を減らさない**ようにした（後述）。
+6. 捨てた選択肢:
+   - **リポジトリを npm workspaces にする** → root の `npm ci` で expo も入るようになり
+     import は通るが、web の CI にモバイルの依存一式が乗り、インストール時間と
+     依存衝突のリスクが増える。今回の目的（CI を戻す）に対して大きすぎる。
+   - **vitest の設定でモバイル配下の tsconfig 解決を差し替える** → バージョン依存の
+     設定に頼ることになり、次に vitest を上げたときに黙って壊れる。
+   - **`for f in src/lib/*.check.ts` で全 check を拾う `test` にする** → 登録漏れは
+     防げるが、npm script は Windows では cmd で走るため壊れる。リポジトリに `.ps1` が
+     あり Windows 開発者がいるので採らない。代わりに登録漏れを検出する
+     `checkRegistry.check.ts` を置いた。
+7. 判断理由: 「手元では見えない失敗」は、直すだけでは終わらない。**同じ書き方が
+   できてしまう限り必ず再発する。**今回は import そのものを lint で禁じることで、
+   次に書いた人がその場で気づく形にした。移設先を新設せず既存規約に合わせたのは、
+   仕組みを増やさないため。
+8. まだ答えが出ていないこと:
+   - CI の `Lint, Type Check & Unit Tests` が5つのチェックを並列実行して
+     `wait $PID || exit 1` で待つため、**どれが落ちたかログから読み取れない**。
+     今回2回誤読しかけた。失敗元を明示する形にすべきか。
+   - web からモバイルの実装を照合したい場面は今後もある。現状は
+     `mobileIcons.test.ts` のように**ソースをテキストとして読む**しかない。
+     この形を共通の仕組みにするか、その都度書くか。
+9. 公開区分: 公開可
+
+### 移設で検査を弱めないためにやったこと（`/code-review` の指摘に対応）
+
+移設は「同じ検査を別の場所に置く」だけのはずが、実際には**2つ弱くなっていた**。
+
+- **比較が緩くなった。** vitest の `toEqual` は型まで見るが、`node:assert` の
+  `deepEqual` は `==` 比較で、`3` と `"3"`、`false` と `0` を通す。
+  `node:assert/strict` に変えた。既存12本も同じ弱さだったので**14本すべて**を
+  strict にし、全部通ることを確認した（緩い比較に依存していたものは無かった）。
+- **型検査から外れた。** 消した web のテストは root の `tsc --noEmit` に含まれていたが、
+  `apps/mobile/tsconfig.json` は `**/*.check.ts` を `exclude` していた。
+  exclude を外し `allowImportingTsExtensions` を付けて、**既存13本を含めて**
+  型検査の対象にした。表示モード名を1つ変えると型エラーで落ちることを確認済み。
+
+あわせて、`eslint.config.mjs` の `src/lib/**/__tests__/**` が
+`no-restricted-imports` を**丸ごと** `off` にしていた（本来は admin クライアントの
+例外が目的）。**main を壊した import はまさにこの免除の内側にあった。**
+免除を admin の `paths` だけに絞り、パターンは残す形に直した。
+
 ## 2026-09-01 業務データCRUD 49本の権限当てはめ（実装時の判断）
 
 1. 日付: 2026-09-01
