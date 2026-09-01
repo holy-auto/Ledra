@@ -21,13 +21,80 @@
 - **未撮影1枚**: `public/screenshots/insurer/search.png` は撮影できていない。保険会社ポータルの
   証明書検索が本番 DB のバグで HTTP 500 になるため（`OPEN_QUESTIONS.md` 参照）。
 - 検証: `npx tsc --noEmit` 通過、`npx vitest run` 全 511 ファイル / 5251 件通過。
+## 2026-08-31 通知アイコンが実データの型名と一致しておらず全件が既定アイコンだった件を修正（IMP-029）
+
+- 背景: モバイル通知一覧のアイコン表 `TYPE_ICON` のキーは `certificate` / `work` / `sync` /
+  `error` / `system` だったが、DB に書かれる `notification_type` は `ai_action` /
+  `chat_message` / `platform_notification` で**1つも一致していなかった**。本番の通知60件
+  （`chat_message` 56 / `ai_action` 4、2026-07-05〜08-27。Supabase MCP で実測）が全件、
+  既定のベルアイコンで表示されていた。
+- 内容:
+  - `apps/mobile/src/app/notifications.tsx` のアイコン表を、Web のカタログ
+    （`src/lib/notifications/types.ts`、18タイプ）に揃えた。アイコンは category 単位、
+    色は severity 単位（urgent=danger / action_required=warning / informational=控えめ）。
+  - `src/lib/notifications/deepLink.ts`: 証明書のディープリンクは管理画面ルートが
+    `/admin/certificates/[public_id]` で `public_id` 引きのため、行の `id`（uuid）を渡すと
+    必ず404になる。型と実装に注記を追加（他9エンティティは `id` のままで正しい）。
+- 検証:
+  - `src/lib/notifications/__tests__/mobileIcons.test.ts`（新規5件）: カタログの全タイプに
+    アイコンがある / アイコン表に未知のタイプが無い / 本番コードが書き込む
+    `notification_type` がすべてカタログに載っている。モバイルは Web の `src/lib` を
+    import できないため、モバイルのソースをテキストとして読んで照合する
+    （Web/モバイル横断の検査は `scripts/check-schema.mjs` に前例がある）。
+  - `src/lib/notifications/__tests__/deepLinkRoutes.test.ts`（新規5件）: `deepLink.ts` が
+    生成する全パスが実在する Next.js ルートに解決すること。docstring の
+    「実際のルート構造に合わせてある」という主張は呼び出し元ゼロのため一度も確かめられて
+    いなかった。全10エンティティは実在を確認（存在しないパスが false になる自己チェック付き）。
+  - **旧アイコン表に戻すとテストが実際に落ちることを確認済み**（空振りテストでない）。
+  - Web/モバイル両方の `tsc` エラーなし / `lint` エラー0 / `vitest` 520ファイル 5288件通過 /
+    `check:schema` OK。
+- 残作業: IMP-029 の本丸（残り15タイプの発火条件・宛先・チャネル、統合dispatch）は
+  **経営判断が要るため実装しない**。OPEN_QUESTIONS.md に起票した。
+
+## 2026-08-31 証明書無効化5経路の認可漏れを修正し、権限強制を構造テストで固定（IMP-013）
+
+- 背景: 証明書の無効化（不可逆・法的意味を持つ操作）に**5つの経路**があり、認可の強さが割れていた。
+  `/api/certificates/void` は**テナント所属だけで通り**、`/api/admin/certificates/status` は
+  遷移表が `active→void` を `minRole: "staff"` としており、`/admin/vehicles/[id]` の Server Action
+  は認可判定を持たず RLS 任せだった。`ROUTE_PERMISSIONS` + `AdminRouteGuard` はブラウザで動く
+  表示制御でセキュリティ境界ではなく、RLS も `certificates` の UPDATE が PERMISSIVE ポリシー2本の
+  OR で評価される（`cert_update_member` = メンバー全員）ため境界にならない。**viewer でも
+  証明書を恒久的に無効化できた。**
+- 内容:
+  - 無効化5経路すべてに `certificates:void`（admin+）を要求。`admin/certificates/status` は
+    遷移表の `active→void` を `minRole: "admin"` に上げた上で Permission 判定も併置。
+    Server Action は権限判定を追加し、権限が無いユーザーには削除ボタンを出さないようにした。
+  - `/api/admin/billing-settings` PUT・`/api/admin/settings/defaults` PUT に `settings:edit` を追加。
+    前者は upsert の戻り値を捨てており、書き込み失敗時も `{ok:true}` を返していたので合わせて修正。
+  - `src/lib/auth/permissions.ts` に `API_ROUTE_PERMISSIONS`（APIルート → **変更系メソッドすべて**が
+    要求する Permission、16件）を追加。`ROUTE_PERMISSIONS` の説明にクライアント専用である旨を明記。
+  - 触れたファイルの死んだ import（`NextResponse` 2件）と、前提が変わった古いコメントを整理。
+- 検証:
+  - `src/lib/auth/__tests__/apiRoutePermissions.test.ts`（新規4件）: 登録ルートは**変更系ハンドラ
+    1つ1つ**が Permission を要求すること、無効化経路（API + Server Action）がすべて
+    `certificates:void` を要求すること。検出は監査イベント `certificate_voided` という意味的な
+    合図を使い、走査は `src/app` 全体（Server Action を含む）。
+  - `src/app/api/certificates/void/__tests__/route.test.ts`（新規6件、このルート初のテスト）:
+    viewer/staff は 403 かつ書き込みが起きない、admin/owner/super_admin は成功、未認証は 401。
+  - **各テストとも、修正を一時的に戻すと実際に落ちることを確認済み**（空振りテストでない）。
+    特に新検出器は、旧検出器が見逃した `admin/certificates/status` と Server Action の2本を
+    実際に検出することを確認した。
+- 経緯: 初版（3経路のみ修正）を PR #1014 として出した後、`/code-review` が残り2経路を検出した。
+  旧検出器が `status: "void"` のリテラル一致だったため、`status: newStatus` と変数で書く経路と
+  Server Action が見えていなかった。詳細と教訓は DECISION_LOG 2026-08-31 を参照。
+- 残作業: 認可チェックを持たない変更系ルートが他に多数ある（判定条件により125〜164本）。
+  無効化処理5経路の共有ヘルパーへの統合、`certificates` の RLS ポリシー重複の棚卸しも未着手。
+  いずれも OPEN_QUESTIONS.md に起票した。
+
 ## 2026-08-31 板金進捗ページからの懸念送信が外部キー違反で保存できていなかったバグを修正（IMP-026）
 
 - 背景: `src/app/api/customer/concerns/route.ts` の `resolveSourceContext()` は板金進捗
   ページ (`/track/[token]`, source_type=`body_repair_tracking`) からの懸念送信で
   `customer_concerns.job_id`（`reservations(id)` への外部キー）に `body_repair_jobs.id`
   （無関係な別テーブルの主キー）を渡しており、`reservation_id` が偶然一致しない限り
-  外部キー違反で `INSERT` 自体が失敗していたと考えられる。
+  外部キー違反で `INSERT` 自体が失敗する状態だった。
+  **実影響はゼロ**（2026-08-31 に本番DBで実測。`body_repair_jobs` 0行・`track_token` 保有 0行・
+  `customer_concerns` 0行。進捗ページ自体が一度も存在していないため、失敗した送信も存在しない）。
 - 内容: `resolveSourceContext()` の該当ケースを `body_repair_jobs.reservation_id`
   （実際の外部キー列）を返すよう修正。`reservation_id` が無いジョブは `jobId` なしで保存
   （外部キー違反にはならない）。
@@ -178,6 +245,21 @@
 - 内容: PR #961 の P0 充足サマリが、本書に既存する §13/§15/§16/§17 の詳細監査行（いずれも既に「部分」と明記済み）と矛盾していた4項目（Invite/OTP/Biometric・Payment state+Certificate+VERIFIED・Role/Permission・Basic Notifications）を Codex 指摘に基づき ⚠️ 部分へ修正。特にモバイルの OTP 検証（`verify-otp.tsx`）が実際のAPIを呼ばないプレースホルダのままであること、Certificate Gate（`gateEvaluator.ts`）が本番ルートから一度も呼ばれずフェイルオープンのままであることを新たに確認。P0 充足サマリは 10 項目中 3 項目のみ実装済み（Workflow+Photo Evidence+Voice・Vehicle・Customer Confirmation）と是正。
 - 対象: ドキュメントのみ（コード変更なし）。
 - 検証: tsc --noEmit clean / vitest run 5203件全通過（504ファイル、コード変更なし） / lint 0エラー・1256警告=基準線 / check:schema OK / lint:migrations OK。
+
+## 2026-08-30 IMP-053（#960）を main へ取り込み。構造化エラー契約
+
+- 内容: v2.0 §14.4 の構造化エラー契約型基盤（`src/lib/observability/errorContract.ts`）を main へマージ。squash merge、コミット `45b138b0`。
+- 検証: tsc --noEmit clean / vitest run 5203件全通過（504ファイル、observability 24件含む） / lint 0エラー・1256警告=基準線 / check:schema OK / lint:migrations OK。CI（Lint/TypeCheck/Tests・CodeQL・Migrations Replay・Client Bundle Size・E2E Tests(skip経路)）全通過。
+
+## 2026-08-30 IMP-052（#959）を main へ取り込み。v2.0 §23 必須 E2E テストスイート
+
+- 内容: v2.0 §23 の必須 E2E テスト（`e2e/{workflow-flow,exception-flows,customer-confirmation,accessibility}.spec.ts` 計29件）と CI E2E ジョブ復元（secrets ゲート付き）を main へマージ。squash merge、コミット `13323cb9`。
+- 検証: tsc --noEmit clean / eslint e2e/ clean / vitest run 5179件全通過（503ファイル、vitestテスト追加なし） / lint 0エラー・1256警告=基準線 / check:schema OK / lint:migrations OK。CI（Lint/TypeCheck/Tests・CodeQL・Migrations Replay・Client Bundle Size・E2E Tests(skip経路)）全通過。
+
+## 2026-08-30 IMP-051（#958）を main へ取り込み。アクセシビリティ監査フレームワーク＆翻訳QA基盤
+
+- 内容: v2.0 §3.5 のアクセシビリティ・多言語品質保証型基盤（`src/lib/a11y/{contrastCheck,auditTypes}.ts`、`src/lib/i18n/qa.ts`）を main へマージ。squash merge、コミット `6b59a72b`。
+- 検証: tsc --noEmit clean / vitest run 5179件全通過（503ファイル） / lint 0エラー・1256警告=基準線 / check:schema OK / lint:migrations OK。CI（Lint/TypeCheck/Tests・CodeQL・Migrations Replay・Client Bundle Size）全通過。
 
 ## 2026-08-30 IMP-051（#958）の code-review 指摘を修正。コントラスト判定の丸め誤差・プレースホルダ検出の空文字スキップ・qa.ts の型/関数重複を解消
 

@@ -28,6 +28,7 @@ import Button from "@/components/ui/Button";
 import HelpTooltip from "@/components/ui/HelpTooltip";
 import type { PlanTier } from "@/lib/billing/planFeatures";
 import { PHOTO_LIMITS, canUseFeature } from "@/lib/billing/planFeatures";
+import { useCurrentRole } from "@/lib/auth/useCurrentRole";
 
 // AI panels are heavy, opt-in features that are collapsed by default.
 // Defer their JS to keep initial INP on /admin/certificates/new low.
@@ -605,6 +606,13 @@ export default function CertNewFormWrapper({
     });
   };
 
+  // テナント全体の既定値を書き換える操作なので settings:edit (admin+) が要る。
+  // API 側でも強制しているが、押せば必ず 403 になるボタンを見せない
+  // (以前は RLS が 0 行更新にして {ok:true} を返していたため「保存しました」と
+  //  嘘の成功が出ていた。API を直した結果、出しっぱなしだと毎回失敗表示になる)。
+  const { can } = useCurrentRole();
+  const canSaveDefault = can("settings:edit");
+
   const handleSaveWarrantyDefault = async () => {
     const text = warrantyRef.current?.value ?? "";
     setSavingDefault(true);
@@ -998,6 +1006,7 @@ export default function CertNewFormWrapper({
               <button
                 type="button"
                 onClick={handleSaveWarrantyDefault}
+                hidden={!canSaveDefault}
                 disabled={savingDefault}
                 className="rounded-xl border border-border-default bg-surface px-4 py-2 text-xs font-medium text-primary hover:bg-surface-hover disabled:opacity-50"
               >

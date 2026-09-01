@@ -9,6 +9,7 @@ import "dayjs/locale/ja";
 import { useAuthStore } from "@/stores/authStore";
 import { supabase } from "@/lib/supabase";
 import { scopeToStore } from "@/lib/storeScope";
+import { getHomePresentation } from "@/lib/homePresentation";
 import { useTabContentInset } from "@/hooks/useTabContentInset";
 import { NotifBell } from "@/components/NotifBell";
 import { colors, radius, spacing, sizing, shadows } from "@/constants/tokens";
@@ -106,7 +107,9 @@ export default function HomeScreen() {
   const [stats, setStats] = useState<HomeStats>(EMPTY_STATS);
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [scopeExpanded, setScopeExpanded] = useState(false);
   const displayMode = useDisplayMode();
+  const presentation = getHomePresentation(displayMode);
 
   // ponytail: recalculated on every render so it stays current across midnight
   const today = dayjs();
@@ -144,6 +147,12 @@ export default function HomeScreen() {
       q3 = q3.eq("assigned_user_id", user.id);
       q5 = q5.eq("assigned_user_id", user.id);
     }
+
+    // ホームで描画する件数だけ取得する。進行中案件が増えても全件を端末へ送らない。
+    q2 = q2
+      .order("scheduled_date", { ascending: true })
+      .order("start_time", { ascending: true })
+      .limit(presentation.activeWorkLimit);
 
     const [todayRes, activeWork, awaitingPay, preparedTags, todayTimeline] = await Promise.all([
       q1.eq("scheduled_date", todayStr).not("status", "eq", "cancelled"),
@@ -292,7 +301,7 @@ export default function HomeScreen() {
       nextAction,
       activeWork: activeWorkData,
     });
-  }, [user, selectedStore, scope]);
+  }, [presentation.activeWorkLimit, scope, selectedStore, user]);
 
   useEffect(() => {
     // 認証・店舗・集計範囲が変わった時に、画面の集計値を同期する。
@@ -314,6 +323,128 @@ export default function HomeScreen() {
   }
 
   const progress = stats.todayTotal > 0 ? stats.todayCompleted / stats.todayTotal : 0;
+
+  const scopeLabel = scope === "self" ? "自分" : scope === "store" ? "店舗" : "全店舗";
+  const scopeControl = (
+    <SegmentedControl
+      segments={[
+        { value: "self" as Scope, label: "自分" },
+        { value: "store" as Scope, label: "店舗" },
+        { value: "all" as Scope, label: "全店舗" },
+      ]}
+      value={scope}
+      onChange={(nextScope) => {
+        setLoading(true);
+        setScope(nextScope);
+        setScopeExpanded(false);
+      }}
+    />
+  );
+  const scopeSection = presentation.collapseScope ? (
+    <View style={styles.section}>
+      <Pressable
+        style={styles.collapsedScopeButton}
+        onPress={() => setScopeExpanded((expanded) => !expanded)}
+        accessibilityRole="button"
+        accessibilityLabel={`表示する範囲は${scopeLabel}`}
+        accessibilityState={{ expanded: scopeExpanded }}
+      >
+        <View>
+          <Text style={styles.collapsedScopeLabel}>表示する範囲</Text>
+          <Text style={styles.collapsedScopeValue}>{scopeLabel}</Text>
+        </View>
+        <Icon
+          source={scopeExpanded ? "chevron-up" : "chevron-down"}
+          size={22}
+          color={colors.textSecondary}
+        />
+      </Pressable>
+      {scopeExpanded ? <View style={styles.expandedScopeControl}>{scopeControl}</View> : null}
+    </View>
+  ) : (
+    <View style={styles.section}>
+      <Text style={styles.controlLabel}>表示する範囲</Text>
+      {scopeControl}
+    </View>
+  );
+
+  const todaySummarySection = (
+    <View style={styles.section}>
+      <View style={styles.todayCard}>
+        <View style={[styles.todayHeader, displayMode === "simple" && styles.todayHeaderSimple]}>
+          <View>
+            <Text style={styles.todayLabel}>本日の作業</Text>
+            <View style={styles.todayCountRow}>
+              <Text style={styles.todayCount}>{loading ? "-" : stats.todayTotal}</Text>
+              <Text style={styles.todayUnit}>件</Text>
+            </View>
+          </View>
+          <ProgressRing progress={progress} size={72} strokeWidth={6} label={`${Math.round(progress * 100)}%`} />
+        </View>
+        {!presentation.showDetailedStatus ? (
+          <Text style={styles.simpleProgressText}>
+            {loading ? "作業状況を確認しています" : `${stats.todayCompleted}件完了・残り${Math.max(0, stats.todayTotal - stats.todayCompleted)}件`}
+          </Text>
+        ) : (
+          <View style={styles.statusRow}>
+            <StatusPill label="作業中" count={stats.inProgress} severity="warning" />
+            <StatusPill label="確認待ち" count={stats.awaitingConfirmation} severity="danger" />
+            <StatusPill label="未完了" count={stats.notStarted} severity="neutral" />
+            <StatusPill label="完了" count={stats.todayCompleted} severity="success" />
+          </View>
+        )}
+      </View>
+    </View>
+  );
+
+  const nextActionSection = loading ? (
+    <View style={styles.section}>
+      <Skeleton height={120} borderRadius={radius.card} />
+    </View>
+  ) : stats.nextAction ? (
+    <View style={styles.section}>
+      <Pressable
+        style={styles.nextActionCard}
+        onPress={() => router.push(stats.nextAction!.route as never)}
+        accessibilityRole="button"
+        accessibilityLabel={`次のアクション: ${stats.nextAction.title}`}
+      >
+        <View style={styles.naTopRow}>
+          <Text style={styles.naLabel}>{displayMode === "simple" ? "次にすること" : "NEXT ACTION"}</Text>
+          {stats.issues.length > 0 && <StatusBadge label="優先度 高" severity="danger" compact />}
+        </View>
+
+        {stats.nextAction.vehicleName ? (
+          <View style={styles.naVehicleRow}>
+            <Icon source="car-outline" size={20} color={colors.textSecondary} />
+            <View style={styles.naVehicleText}>
+              <Text style={styles.naVehicleName}>{stats.nextAction.vehicleName}</Text>
+              {stats.nextAction.plateNumber ? <Text style={styles.naPlate}>{stats.nextAction.plateNumber}</Text> : null}
+              {stats.nextAction.workType ? <Text style={styles.naWorkType}>{stats.nextAction.workType}</Text> : null}
+            </View>
+            {stats.nextAction.deadline ? <Text style={styles.naDeadline}>{stats.nextAction.deadline}</Text> : null}
+          </View>
+        ) : null}
+
+        <View style={styles.naReasonRow}>
+          <Icon source="information-outline" size={16} color={colors.primary} />
+          <Text style={styles.naReason}>{stats.nextAction.reason}</Text>
+        </View>
+
+        <View style={styles.naCta}>
+          <Text style={styles.naCtaText}>{stats.nextAction.title}</Text>
+          <Icon source="arrow-right" size={20} color={colors.textOnPrimary} />
+        </View>
+      </Pressable>
+    </View>
+  ) : (
+    <View style={styles.section}>
+      <View style={styles.allDoneCard}>
+        <Icon source="check-circle" size={24} color={colors.success} />
+        <Text style={styles.allDoneText}>本日のタスクはすべて完了しました</Text>
+      </View>
+    </View>
+  );
 
   return (
     <>
@@ -356,105 +487,11 @@ export default function HomeScreen() {
           </View>
         </View>
 
-        {/* ── 2. Scope segmented control (3 segments) ── */}
-        <View style={styles.section}>
-          <Text style={styles.controlLabel}>表示する範囲</Text>
-          <SegmentedControl
-            segments={[
-              { value: "self" as Scope, label: "自分" },
-              { value: "store" as Scope, label: "店舗" },
-              { value: "all" as Scope, label: "全店舗" },
-            ]}
-            value={scope}
-            onChange={(nextScope) => {
-              setLoading(true);
-              setScope(nextScope);
-            }}
-          />
-        </View>
-
-        {/* ── 3. Today work summary card ── */}
-        <View style={styles.section}>
-          <View style={styles.todayCard}>
-            <View style={styles.todayHeader}>
-              <View>
-                <Text style={styles.todayLabel}>本日の作業</Text>
-                <View style={styles.todayCountRow}>
-                  <Text style={styles.todayCount}>{loading ? "-" : stats.todayTotal}</Text>
-                  <Text style={styles.todayUnit}>件</Text>
-                </View>
-              </View>
-              <ProgressRing progress={progress} size={72} strokeWidth={6} label={`${Math.round(progress * 100)}%`} />
-            </View>
-            {/* Status badges row */}
-            <View style={styles.statusRow}>
-              <StatusPill label="作業中" count={stats.inProgress} severity="warning" />
-              <StatusPill label="確認待ち" count={stats.awaitingConfirmation} severity="danger" />
-              <StatusPill label="未完了" count={stats.notStarted} severity="neutral" />
-              <StatusPill label="完了" count={stats.todayCompleted} severity="success" />
-            </View>
-          </View>
-        </View>
-
-        {/* ── 4. NEXT ACTION (dominant) ── */}
-        {loading ? (
-          <View style={styles.section}>
-            <Skeleton height={120} borderRadius={radius.card} />
-          </View>
-        ) : stats.nextAction ? (
-          <View style={styles.section}>
-            <Pressable
-              style={styles.nextActionCard}
-              onPress={() => router.push(stats.nextAction!.route as never)}
-              accessibilityRole="button"
-              accessibilityLabel={`次のアクション: ${stats.nextAction.title}`}
-            >
-              {/* Top row: label + priority badge */}
-              <View style={styles.naTopRow}>
-                <Text style={styles.naLabel}>NEXT ACTION</Text>
-                {stats.issues.length > 0 && <StatusBadge label="優先度 高" severity="danger" compact />}
-              </View>
-
-              {/* Vehicle info */}
-              {stats.nextAction.vehicleName ? (
-                <View style={styles.naVehicleRow}>
-                  <Icon source="car-outline" size={20} color={colors.textSecondary} />
-                  <View style={styles.naVehicleText}>
-                    <Text style={styles.naVehicleName}>{stats.nextAction.vehicleName}</Text>
-                    {stats.nextAction.plateNumber ? (
-                      <Text style={styles.naPlate}>{stats.nextAction.plateNumber}</Text>
-                    ) : null}
-                    {stats.nextAction.workType ? (
-                      <Text style={styles.naWorkType}>{stats.nextAction.workType}</Text>
-                    ) : null}
-                  </View>
-                  {stats.nextAction.deadline ? (
-                    <Text style={styles.naDeadline}>{stats.nextAction.deadline}</Text>
-                  ) : null}
-                </View>
-              ) : null}
-
-              {/* Reason */}
-              <View style={styles.naReasonRow}>
-                <Icon source="information-outline" size={16} color={colors.primary} />
-                <Text style={styles.naReason}>{stats.nextAction.reason}</Text>
-              </View>
-
-              {/* CTA */}
-              <View style={styles.naCta}>
-                <Text style={styles.naCtaText}>{stats.nextAction.title}</Text>
-                <Icon source="arrow-right" size={20} color={colors.textOnPrimary} />
-              </View>
-            </Pressable>
-          </View>
-        ) : (
-          <View style={styles.section}>
-            <View style={styles.allDoneCard}>
-              <Icon source="check-circle" size={24} color={colors.success} />
-              <Text style={styles.allDoneText}>本日のタスクはすべて完了しました</Text>
-            </View>
-          </View>
-        )}
+        {/* かんたん表示は「次にすること」を集計や範囲選択より先に見せる。 */}
+        {presentation.nextActionFirst && nextActionSection}
+        {scopeSection}
+        {todaySummarySection}
+        {!presentation.nextActionFirst && nextActionSection}
 
         {/* ── 5. In-progress work (compact) ── */}
         {displayMode !== "simple" && stats.activeWork.length > 0 && (
@@ -466,7 +503,7 @@ export default function HomeScreen() {
               </Pressable>
             </View>
             <View style={styles.activeWorkList}>
-              {stats.activeWork.slice(0, displayMode === "dense" ? 6 : 3).map((work) => (
+              {stats.activeWork.slice(0, presentation.activeWorkLimit).map((work) => (
                 <Pressable
                   key={work.id}
                   style={styles.activeWorkRow}
@@ -690,6 +727,32 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     marginBottom: spacing.sm,
   },
+  collapsedScopeButton: {
+    minHeight: sizing.touchTarget,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    backgroundColor: colors.surface,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  collapsedScopeLabel: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: colors.textSecondary,
+  },
+  collapsedScopeValue: {
+    marginTop: 2,
+    fontSize: 15,
+    fontWeight: "700",
+    color: colors.textPrimary,
+  },
+  expandedScopeControl: {
+    marginTop: spacing.sm,
+  },
   headerControlLabel: { marginBottom: 0 },
   dateText: {
     fontSize: 13,
@@ -747,6 +810,18 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
     marginBottom: spacing.lg,
+  },
+  todayHeaderSimple: {
+    marginBottom: spacing.md,
+  },
+  simpleProgressText: {
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    paddingTop: spacing.md,
+    fontSize: 14,
+    fontWeight: "600",
+    color: colors.textSecondary,
+    lineHeight: 20,
   },
   todayLabel: {
     fontSize: 14,

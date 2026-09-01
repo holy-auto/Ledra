@@ -6,13 +6,47 @@
 
 最終更新: 2026-08-31
 
+> 2026-08-31 追記: **モバイルの通知アイコンが実データの型名と一致しておらず、本番の通知60件が
+> 全部「ベル」の既定アイコンで表示されていた（修正済み、IMP-029）。** アイコン表のキーは
+> `certificate`/`work`/`sync`/`error`/`system` だったが、DB に書かれる `notification_type` は
+> `ai_action`/`chat_message`/`platform_notification` で1つも一致していなかった。種別による
+> 見分けは最初から一度も機能していない。モバイルは Web の `src/lib` を import できない
+> （`@/*` は `apps/mobile/src` のみ）ため構造的にズレる場所で、Web 側に照合の構造テストを
+> 追加した。あわせて `deepLink.ts` の全パスが実在ルートを指すことを検査するテストも追加
+> （呼び出し元ゼロのため docstring の主張が一度も確かめられていなかった。全10エンティティは
+> 実在。ただし証明書だけ `public_id` 引きのルートなので `id` を渡すと404になる点を注記）。
+> **IMP-029 の本丸（残り15タイプの発火条件・宛先・チャネル、統合dispatch）は経営判断が要るため
+> 実装していない** — 「証明書を発行したら誰に通知するか」は推測で決める話ではないため、
+> OPEN_QUESTIONS.md に起票した。
+
+> 2026-08-31 追記: **証明書の無効化に認可漏れがあり、閲覧専用(viewer)でも証明書を恒久的に
+> 無効化できる状態だった（修正済み、IMP-013）。** 無効化の経路は**5本**あり、
+> `/api/certificates/void` はテナント所属以外に何も検査せず、`/api/admin/certificates/status` は
+> 遷移表が `active→void` を `minRole: "staff"` としており、`/admin/vehicles/[id]` の Server Action
+> は認可判定を持たなかった。**背景として判明した構造的問題が2つある**: (1) `ROUTE_PERMISSIONS` +
+> `AdminRouteGuard` はブラウザで動く表示制御でありセキュリティ境界ではない。(2) RLS も境界に
+> ならない — `certificates` の UPDATE は PERMISSIVE ポリシー2本（`cert_update_member` =
+> テナントメンバー全員 / `certificates_update_v2` = owner・admin・staff）の OR で評価され、
+> 緩い方が勝つ（本番DBで実測）。あわせて `/api/admin/billing-settings` PUT と
+> `/api/admin/settings/defaults` PUT にも `settings:edit` を追加した（前者は upsert の戻り値を
+> 捨てており、書き込み失敗時も `{ok:true}` を返していた）。
+> **経緯として記録に値する点**: 初版では経路を「3本」と数えて修正し構造テストも添えたが、
+> `/code-review` が残り2本を検出した。旧検出器が `status: "void"` のリテラル一致だったため、
+> `status: newStatus` と変数で書く経路と Server Action が見えていなかった。検出器は
+> 「操作の書き方」ではなく「操作をした証拠」（監査イベント）を見るべきだった。
+> 認可チェックを持たない変更系ルートは他にも残っている（判定条件により125〜164本。多くは
+> 自己完結型で権限要求が正しいとは限らないため、切り分けは判断待ちとして OPEN_QUESTIONS.md へ起票）。
+> なお IMP-013 の `storeScope.ts` / `canonicalVerb()` は依然として本番の認可経路から呼ばれていない —
+> 本番DBに2店舗以上のテナントが0件のため配線は見送り（YAGNI）。
+
 > 2026-08-31 追記: **板金進捗ページ（`/track/[token]`）からの「気になる点を伝える」送信が、
 > 外部キー違反で保存できていなかったバグを修正した。** `customer_concerns.job_id`
 > （`reservations(id)` への外部キー）に、無関係な別テーブル（`body_repair_jobs`）自身の
 > 主キーを渡していたことが原因。IMP-026実装時（4系統の懸念受付を作った際）からの見落としで、
 > PR #1012の`/code-review`で発覚。`resolveSourceContext()`を`body_repair_jobs.reservation_id`
-> を返すよう修正。詳細は DECISION_LOG / RELEASE_LOG 2026-08-31 を参照。
-
+> を返すよう修正。**実影響はゼロ**（本番DBで実測: `body_repair_jobs` 0行・`track_token` 保有 0行・
+> `customer_concerns` 0行。板金進捗ページが一度も存在していないため、失敗した送信も存在しない）。
+> 詳細は DECISION_LOG / RELEASE_LOG 2026-08-31 を参照。
 > 2026-08-31 追記: **モバイルアプリのサインアップ確認 OTP を実配線した（IMP-012）。**
 > `/(auth)/verify-otp.tsx` は従来タイムアウトのみで「検証済み」にするプレースホルダだった
 > （6桁ならどんな値でも通る）。調査したところ、モバイルのサインアップ自体がパスワード方式

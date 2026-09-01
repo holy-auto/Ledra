@@ -26,6 +26,103 @@
   `CREATE OR REPLACE` する」だけで済むが、対象が**テナント横断の可視範囲を決める
   SECURITY DEFINER 関数**（RLS の隣接領域）であるため、キャプチャ撮影のついでに本番 DB へ
   自動適用するのは不適切と判断し、実施していない。マイグレーション追加＋本番適用は代表の判断を待つ。
+## 通知18タイプのうち15タイプが本番で一度も発火していない（2026-08-31）
+
+通知タイプカタログ（`src/lib/notifications/types.ts`）には18タイプあるが、本番で実際に
+書き込まれているのは3タイプだけ（`chat_message` 56件 / `ai_action` 4件 / `platform_notification`
+は定義のみで0件。2026-08-31 に Supabase MCP で実測）。
+
+未使用の15タイプ: `booking_created` / `order_created` / `order_accepted` / `order_completed` /
+`order_cancelled` / `payment_confirmed` / `certificate_gate_ready` / `certificate_issued` /
+`customer_concern_raised` / `rating_request` / `rating_received` / `sla_at_risk` / `sla_overdue` /
+`low_stock_alert` / `follow_up_reminder`
+
+- なぜこちらで決めないか: 「証明書を発行したら誰に通知するか」「顧客の懸念が上がったら
+  誰にどのチャネルで飛ばすか」は事業側の判断であり、推測で決めれば必ず外れる。
+  しかも一度送った通知は取り消せない。
+- 次のアクション: 代表の判断が要る。タイプごとに (a) 発火させるか、(b) 宛先（テナント全員 /
+  担当者 / 顧客）、(c) チャネル（アプリ内 / LINE / メール / Slack）を決める。
+  決まった分から実装する。カタログには各タイプの `defaultChannels` が既に書いてあるので、
+  それを叩き台にできる。
+- 関連: 統合dispatch（既存の LINE/Slack/メール/SMS モジュールを中央エンジンへ移行）も
+  この判断が決まってからでないと設計できない。
+- 起票日: 2026-08-31
+
+## notifications.priority が全行 "normal" で、読み手が1つも無い（2026-08-31）
+
+`notifications.priority`（NOT NULL、既定 `'normal'`）は本番60件すべてが `"normal"`。
+書き込み側は手で `"normal"` と入れており、**読んでいるコードは1つも無い**
+（一覧APIの select にも、モバイルの一覧にも入っていない）。
+
+一方、カタログは各タイプに severity（`urgent` / `action_required` / `informational`）を
+定義しており、`"normal"` はこの語彙に存在しない。
+
+- 影響: 現状は無害（誰も読んでいない）。ただし将来「要対応バッジ」を出すときに、
+  `priority` を見て混乱する余地がある。`routing.ts` の `countActionRequired()` も
+  この状態では実データに対して動かない。
+- 選択肢: (a) 書き込み時にカタログの severity を入れる、(b) 列を落とす、
+  (c) そのまま放置して severity は型から導出する。
+- 次のアクション: 「未読バッジに何を数えるか」（全未読か、要対応のみか）が決まってから選ぶ。
+  読み手がいない今整えるのは YAGNI。
+- 起票日: 2026-08-31
+
+## certificates の RLS に、意図を打ち消す PERMISSIVE ポリシー重複がある（2026-08-31）
+
+`certificates` の UPDATE には PERMISSIVE ポリシーが2本ある（本番DBで実測）。
+
+- `cert_update_member` … `is_member_of_tenant(tenant_id)` = **テナントメンバー全員**
+- `certificates_update_v2` … `my_tenant_role(tenant_id) IN ('owner','admin','staff')`
+
+PostgreSQL は同一コマンドの PERMISSIVE ポリシーを **OR** で評価するため、後から入れた
+`certificates_update_v2` の絞り込みは効かず、緩い方が勝つ。結果として viewer でも
+`certificates` を UPDATE できる。今回はアプリ層（Server Action の権限判定）で塞いだが、
+RLS 側は緩いままである。
+
+- 次のアクション: (a) 同種の重複が他テーブルにもあるか棚卸しする、(b) `cert_update_member` を
+  落とすか RESTRICTIVE に変えるかを決める。(b) は既存の書き込み経路を壊し得るので、
+  影響調査が要る。
+- 起票日: 2026-08-31
+
+## 証明書の無効化処理が5経路にコピペで散っている（2026-08-31）
+
+`certificates/void` / `admin/certificates/void` / `mobile/certificates/[id]/void` /
+`admin/certificates/status` / `admin/vehicles/[id]` の Server Action が、
+「取得 → void 済み短絡 → status 更新 → 監査記録」をそれぞれ再実装している。
+実装はすでに食い違っている（service-role かユーザースコープか、理由を記録するか、
+`updated_at` を書くか）。認可の食い違いは 2026-08-31 に塞いだが、コピペ自体は残っている。
+
+- 次のアクション: 権限判定を内包した `voidCertificate(caller, publicId)` に一本化するのが
+  根本解。ただしクライアントの違い・監査の粒度の違いを吸収する設計が要るので、独立した
+  作業として扱う。
+- 起票日: 2026-08-31
+
+## 認可チェックを持たない変更系APIルートが多数ある（2026-08-31）
+
+- 分母: 316本（テナント認証 `resolveCallerWithRole` / `resolveMobileCaller` を通し、かつ
+  POST/PUT/PATCH/DELETE を export している `src/app/api/**/route.ts`）
+- 認可なし: **判定条件によって125本または164本**
+  - 125本 … 認可ヘルパー12種（`requirePermission` / `hasPermission` / `requireMinRole` /
+    `hasMinRole` / `resolveOrgAccess` / `hasMinOrgRole` / `isPlatformAdmin` /
+    `isPlatformTenantId` / `assertPlatformTenantId` / `authorizeOrgStoreRead` /
+    `resolveInsurerCaller` / `resolveManufacturerCaller`）のいずれも呼ばないもの
+  - 164本 … `requirePermission` / `hasPermission` / `requireMinRole` の3種だけで数えた場合
+- どちらも同じソースから実測した値で、**数える対象が違うだけ**。以前この数字を「125」とだけ
+  書いていたが、判定条件を書いていなかったため再現できなかった。数字を出すときは条件も併記する。
+- 補足: いずれもファイル単位の判定。GET は守るが POST は素通り、という部分的な穴は含まれて
+  いないため**下限値**である。
+- なぜ機械的に直せないか: その多くは「自分のデータを自分で操作する」自己完結型
+  （通知既読、UI設定、MFA登録、WebAuthn登録、プッシュ通知登録等）で、権限を要求するのが
+  正しいとは限らない。誤って要求すると正規ユーザーを締め出す。
+- 影響（本番実データ、2026-08-31時点、Supabase MCP で実測）: tenant_memberships 25件の内訳は
+  owner 23 / staff 1 / super_admin 1。owner と super_admin は全権限を持つため、現時点で実際に
+  影響を受け得るのは staff 1名のみ。ただしこれは今の登録状況にすぎず、staff/viewer が
+  増えれば即座に実害になる。
+- 次のアクション: 代表の判断が要る。「この操作は誰ができるべきか」をルート群ごとに決める。
+  優先順位は `operationRisk()` の分類（critical → high → medium）に従うのが妥当。
+  決まった分から `API_ROUTE_PERMISSIONS`（`src/lib/auth/permissions.ts`）へ登録すれば、
+  構造テストが強制を保証する。
+- 起票日: 2026-08-31
+
 ## モバイルのサインアップ確認 OTP は「メール確認済み」を永続状態として追跡していない（2026-08-31）
 
 モバイルアプリのサインアップ直後メール確認（`/(auth)/verify-otp.tsx`、`email_otp_codes`、
@@ -81,6 +178,38 @@ PR #956（IMP-046）マージ後の遅延 Codex レビュー8件のうち6件は
   洗い出せば分かる（DECISION_LOG は9項目が必ず続く形式なので検査しやすい）。
   マージのたびに本文が落ちる経路があるなら、`check-resurrected-files.sh` と同じく
   検査をスクリプト化する価値がある。【要確認】 → 調査要
+## 追加（2026-08-30・PR #956 IMP-046 マージ後の遅延 Codex レビュー、8件の指摘未修正）
+
+- **`src/lib/analytics/capacityAnalytics.ts` / `operationalKpi.ts`（IMP-046、main へ
+  commit `dc6deaf0` としてマージ済み）に対し、マージ後に遅延到着した Codex レビューが
+  8件の指摘（すべて P2）を投稿した。PR #956 は既にクローズ済みのため
+  再オープンせず、別PRでの修正が必要（未着手）。**
+  1. `computeFleetUtilization()`（capacityAnalytics.ts ~L143）: `computeBoothUtilization()`
+     （IMP-041 occupancy.ts）が capacity>1 を考慮せず、稼働率を過大評価する。
+  2. `computeStaffCapacity()`（~L214-228）: ジョブ0件のスタッフが `byStaff` に
+     一切現れず、`totalStaff`/`underutilizedCount`/`avgLoadPct` から漏れる。
+  3. `computeStaffCapacity()`（~L251-252）: 過負荷/遊休判定が丸め後の `loadPct`
+     に対して行われ、境界値（例: 80.3%→80）が誤分類される。
+  4. `computeStaffCapacity()`（~L226）: `actualMinutes: null` のジョブが 0 扱いになり、
+     見積のみの予定ジョブで埋まったスタッフが 0% 負荷と報告される。
+  5. `computeAvgReviewWaitHours()` / `computeAvgCycleTimeHours()`（operationalKpi.ts
+     ~L116-145）: 不正なタイムスタンプが `NaN` を生み、`hours < 0` では弾けず
+     平均全体が `NaN` に汚染される。
+  6. `computeVerifiedRate()`（~L94-102）: VERIFIED→REVOKED 遷移後の証明書が分母
+     （REVOKED込み）には残るが分子（VERIFIED）から消え、「到達率」の定義と
+     矛盾する。REVOKED は VERIFIED 到達前にも起こり得るため単純な救済不可、
+     定義自体の決め直しが必要（設計判断が要る）。
+  7. `computeSlaComplianceRate()`（~L152-155）: `EscalationStage = "at_risk" |
+     "overdue"` のうち `at_risk`（まだ期限内）を非遵守扱いにしており、
+     「SLA遵守率」という名称と整合しない可能性がある（意図的な厳格判定か、
+     命名変更が要るかは要判断）。
+  8. `computeDailyThroughput()`（~L159-161）: 小数第1位への丸めにより、
+     期間が長く件数が少ない場合（例: 30日で1件≈0.03/日）に非ゼロの実績が
+     0 に潰れる。
+  - 全件、mainの現行コードを直接読んで独立検証済み（確実）。`spawn_task` ツールが
+    2回連続でタイムアウトしたため、正式なフォローアップタスクとして登録できず、
+    ここに記録することで見失いを防ぐ。次にこのファイルを確認したセッションが
+    `spawn_task` で切り出すか、直接ブランチを切って修正すること。
 
 ## 追加（2026-08-30・「その他」タブが勝手にプラン画面へ飛ぶ不具合の調査）
 
