@@ -540,7 +540,6 @@ export const API_ROUTE_PERMISSIONS: Record<string, ApiRouteRequirement> = {
   "certificates/media/[id]": "certificates:edit",
   "certificates/images/upload": "certificates:edit",
   "certificates/images/[id]": "certificates:edit",
-  "certificates/pdf-one": "certificates:view", // PDF 出力のみ。書き込み無しなので閲覧権限で足りる
   "signature/request": "certificates:edit",
   "admin/certificates/[id]/delivery-receipt-request": "certificates:edit",
   // `admin/certificates` の POST は認可を createCertAction に集約しているため
@@ -552,6 +551,14 @@ export const API_ROUTE_PERMISSIONS: Record<string, ApiRouteRequirement> = {
   "vehicles/import-csv": "vehicles:create",
   "vehicles/parse-shakken": "vehicles:create", // 車検証 OCR。作成前段なので作成権限に合わせる
   "vehicles/parse-shakken-qr": "vehicles:create",
+
+  // 請求書。同じファイルの DELETE だけが admin 以上を要求しており、POST/PUT は
+  // 素通りだった（調査スクリプトがファイル単位で見ていたため見落とした）。
+  // DELETE は既に minRole "admin" で守られている。表に載せて回帰を止める。
+  "admin/invoices": { POST: "invoices:create", PUT: "invoices:edit", DELETE: { minRole: "admin" } },
+
+  // NFC タグの廃止。車両に紐づく物理タグなので車両の編集権限で守る。
+  "admin/nfc": { PATCH: "vehicles:edit", DELETE: { minRole: "admin" } },
 
   // 顧客
   "admin/customers": { POST: "customers:create", PUT: "customers:edit", DELETE: "customers:edit" },
@@ -577,7 +584,9 @@ export const API_ROUTE_PERMISSIONS: Record<string, ApiRouteRequirement> = {
   // 受注（マトリクスに orders:create しか無い。更新系はロール下限で守る）
   "admin/orders": { POST: "orders:create", PUT: { minRole: "staff" }, PATCH: { minRole: "staff" } },
   "admin/orders/bulk": "orders:create",
-  "admin/orders/[id]/confirm-payment": "payments:create",
+  // 入金の確定は executeOrderPayout / markOrderInvoicePaid を起動する不可逆操作。
+  // 既存の `admin/payments` が PUT/DELETE に payments:manage を課しているのに揃える。
+  "admin/orders/[id]/confirm-payment": "payments:manage",
   "admin/orders/[id]/inspection-sign": { minRole: "staff" },
   "admin/orders/[id]/messages": { minRole: "staff" },
   "admin/orders/[id]/review": { minRole: "staff" },
@@ -585,9 +594,11 @@ export const API_ROUTE_PERMISSIONS: Record<string, ApiRouteRequirement> = {
   // 在庫・発注・部品・工程テンプレート・ショップ受注（対応する Permission が語彙に無い）。
   // `templates:manage` は証明書テンプレート（/admin/templates）と帳票テンプレート用で、
   // 作業工程テンプレートは別資源。勝手に当てはめて admin 以上に上げることはしない。
-  "admin/inventory/items": { minRole: "staff" },
-  "admin/inventory/items/[id]": { minRole: "staff" },
-  "admin/inventory/movements": { minRole: "staff" },
+  // 在庫は画面（ROUTE_PERMISSIONS の /admin/inventory・/admin/stocktake）が
+  // menu_items:manage を要求している。API がそれより緩いと画面ゲートの意味が無い。
+  "admin/inventory/items": "menu_items:manage",
+  "admin/inventory/items/[id]": "menu_items:manage",
+  "admin/inventory/movements": "menu_items:manage",
   "admin/purchase-orders": { minRole: "staff" },
   "admin/purchase-orders/[id]/backorder": { minRole: "staff" },
   "admin/shop/orders": { minRole: "staff" },

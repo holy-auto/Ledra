@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
+import { resolveCallerWithRole, requirePermission } from "@/lib/auth/checkRole";
 import {
   apiJson,
   apiUnauthorized,
@@ -90,7 +90,7 @@ export async function POST(req: NextRequest) {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
-    if (!requireMinRole(caller, "staff")) return apiForbidden();
+    if (!requirePermission(caller, "menu_items:manage")) return apiForbidden();
 
     const parsed = inventoryItemCreateSchema.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) {

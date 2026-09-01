@@ -39,14 +39,21 @@ const API_ROOT = join(APP_ROOT, "api");
 
 const MUTATING_METHODS: MutatingMethod[] = ["POST", "PUT", "PATCH", "DELETE"];
 
-/** `requirePermission(caller, "x:y")` / `hasPermission(role, "x:y")` の呼び出しがあるか。 */
+/**
+ * `!requirePermission(caller, "x:y")` の形で**弾いている**か。
+ *
+ * 呼び出しの存在だけを見ると、結果を捨てる書き方（`const ok = requirePermission(...)`）
+ * でも一致してしまい、素通りするルートが緑になる。否定まで要求する。
+ * `if (cond && !requirePermission(...))` のような複合条件も正当なので、
+ * `if (` の直後であることまでは求めない。
+ */
 function enforces(src: string, perm: Permission): boolean {
-  return new RegExp(`(requirePermission|hasPermission)\\([^)]*"${perm}"\\)`).test(src);
+  return new RegExp(`!\\s*(requirePermission|hasPermission)\\([^)]*"${perm}"\\)`).test(src);
 }
 
-/** `requireMinRole(caller, "staff")` / `hasMinRole(role, "staff")` の呼び出しがあるか。 */
+/** `!requireMinRole(caller, "staff")` の形で弾いているか。 */
 function enforcesMinRole(src: string, role: string): boolean {
-  return new RegExp(`(requireMinRole|hasMinRole)\\([^)]*"${role}"\\)`).test(src);
+  return new RegExp(`!\\s*(requireMinRole|hasMinRole)\\([^)]*"${role}"\\)`).test(src);
 }
 
 /** route.ts をハンドラ単位に切る。`export const POST = ...` 形式も認識する。 */
@@ -66,10 +73,17 @@ function isMinRole(v: ApiRouteRequirement | MethodRequirement): v is MinRoleRequ
   return typeof v === "object" && v !== null && "minRole" in v;
 }
 
-/** そのメソッドに課される要求。ルート全体の指定と、メソッド別の指定の両方を解く。 */
+/**
+ * そのメソッドに課される要求。ルート全体の指定と、メソッド別の指定の両方を解く。
+ *
+ * メソッド別の指定を先に見る。`{ minRole: "staff", DELETE: "certificates:void" }` は
+ * 型としては書けてしまうため、minRole を先に返すと DELETE の要求が黙って消える。
+ */
 function requiredFor(value: ApiRouteRequirement, method: MutatingMethod): MethodRequirement | null {
-  if (typeof value === "string" || isMinRole(value)) return value;
-  return value[method] ?? null;
+  if (typeof value === "string") return value;
+  const perMethod = (value as Partial<Record<MutatingMethod, MethodRequirement>>)[method];
+  if (perMethod !== undefined) return perMethod;
+  return isMinRole(value) ? value : null;
 }
 
 describe("API ルートのサーバ側権限強制", () => {
@@ -116,6 +130,24 @@ describe("API ルートのサーバ側権限強制", () => {
   });
 });
 
+describe("検出器そのものの性質", () => {
+  it("結果を捨てる書き方は「強制している」と見なさない", () => {
+    expect(enforces('const ok = requirePermission(caller, "certificates:edit");', "certificates:edit")).toBe(false);
+    expect(
+      enforces('if (!requirePermission(caller, "certificates:edit")) return apiForbidden();', "certificates:edit"),
+    ).toBe(true);
+    expect(enforcesMinRole('const ok = requireMinRole(caller, "staff");', "staff")).toBe(false);
+    expect(enforcesMinRole('if (!requireMinRole(caller, "staff")) return apiForbidden();', "staff")).toBe(true);
+  });
+
+  it("メソッド別の指定が minRole より優先される（黙って弱くならない）", () => {
+    const mixed = { minRole: "staff", DELETE: "certificates:void" } as unknown as ApiRouteRequirement;
+    expect(requiredFor(mixed, "DELETE")).toBe("certificates:void");
+    const post = requiredFor(mixed, "POST");
+    expect(post !== null && isMinRole(post) && post.minRole).toBe("staff");
+  });
+});
+
 describe("証明書の無効化 (operationRisk = critical)", () => {
   /**
    * 無効化経路を拾う。`certificates` への UPDATE があることを前提に、
@@ -149,5 +181,95 @@ describe("証明書の無効化 (operationRisk = critical)", () => {
 
   it("API ルートも Server Action も、書き込む関数の中で certificates:void を要求する", () => {
     expect(ungated).toEqual([]);
+  });
+});
+
+/**
+ * 未登録の変更系ハンドラを見張る。
+ *
+ * `API_ROUTE_PERMISSIONS` の検査は**登録済み**のルートしか見ないので、表に載せ忘れた
+ * ルートは検出されない。実際 `admin/invoices` は DELETE だけが admin 以上で
+ * POST/PUT が素通りだったのに、調査を**ファイル単位**でやっていたため
+ * 「強制済み」に数えられていた（2026-09-01 のレビューで発覚）。
+ *
+ * ここはハンドラ単位で走査し、既知の未強制ハンドラだけを許す。新しく増えたら落ちる。
+ * リストを減らすときは、そのハンドラに認可を入れて表にも登録すること。
+ * 残っている理由の分類は docs/context/OPEN_QUESTIONS.md にある。
+ */
+describe("未登録の変更系ハンドラ", () => {
+  const GUARD =
+    /requirePermission\(|hasPermission\(|requireMinRole\(|hasMinRole\(|resolveOrgAccess\(|hasMinOrgRole\(|isPlatformAdmin\(|isPlatformTenantId\(|assertPlatformTenantId\(|authorizeOrgStoreRead\(|resolveInsurerCaller\(|resolveManufacturerCaller\(|requireAal2OrResponse\(/;
+
+  /** 認可を入れる判断がまだ済んでいない、既知のハンドラ。増やさないこと。 */
+  const KNOWN_UNGUARDED = new Set([
+    "admin/academy/cases [POST]",
+    "admin/academy/feedback [POST]",
+    "admin/academy/lessons/[id]/complete [POST]",
+    "admin/academy/lessons/[id]/complete [DELETE]",
+    "admin/academy/lessons/[id]/quiz/attempt [POST]",
+    "admin/academy/lessons/[id]/quiz [PUT]",
+    "admin/academy/lessons/[id]/rate [POST]",
+    "admin/academy/lessons/[id]/rate [DELETE]",
+    "admin/academy/lessons/[id] [PATCH]",
+    "admin/academy/lessons/[id] [DELETE]",
+    "admin/academy/lessons/[id]/video/upload-url [POST]",
+    "admin/academy/lessons [POST]",
+    "admin/academy/qa [POST]",
+    "admin/academy/rewards/[id]/apply [POST]",
+    "admin/academy/rewards [POST]",
+    "admin/certificates [POST]",
+    "admin/documents/share [POST]",
+    "admin/feature-prefs [PUT]",
+    "admin/members [PUT]",
+    "admin/members [DELETE]",
+    "admin/mfa/enroll [POST]",
+    "admin/mfa/factors/[id] [DELETE]",
+    "admin/mfa/verify-enroll [POST]",
+    "admin/notifications/[id]/read [PUT]",
+    "admin/notifications/read-all [PUT]",
+    "admin/shop/checkout [POST]",
+    "admin/tenants [PUT]",
+    "admin/ui-preferences [PUT]",
+    "certificates/pdf-one [POST]",
+    "mobile/academy/lessons/[id] [PATCH]",
+    "mobile/academy/lessons/[id] [DELETE]",
+    "mobile/academy/lessons [POST]",
+    "mobile/account [DELETE]",
+    "mobile/auth/otp/request [POST]",
+    "mobile/auth/otp/verify [POST]",
+    "mobile/push/register [POST]",
+    "mobile/push/register [DELETE]",
+    "mobile/ui-preferences [PUT]",
+    "stripe/connect/payment-link [POST]",
+    "stripe/connect [POST]",
+    "stripe/connect [DELETE]",
+    "webauthn/credentials/[id] [DELETE]",
+    "webauthn/operation/options [POST]",
+    "webauthn/operation/verify [POST]",
+    "webauthn/register/options [POST]",
+    "webauthn/register/verify [POST]",
+  ]);
+
+  const found: string[] = [];
+  for (const file of walkSource(API_ROOT, (f) => f.endsWith("route.ts"))) {
+    const src = readFileSync(file, "utf8");
+    const route = file
+      .slice(API_ROOT.length + 1)
+      .replace(/[\\/]route\.ts$/, "")
+      .split(/[\\/]/)
+      .join("/");
+    for (const [method, chunk] of handlerChunks(src)) {
+      if (method === "GET") continue;
+      if (!/resolveCallerWithRole\(|resolveMobileCaller\(/.test(chunk)) continue;
+      if (!GUARD.test(chunk)) found.push(`${route} [${method}]`);
+    }
+  }
+
+  it("認可の無い変更系ハンドラが新しく増えていない", () => {
+    expect(found.filter((h) => !KNOWN_UNGUARDED.has(h)).sort()).toEqual([]);
+  });
+
+  it("既知リストに、もう強制済みのものが残っていない（棚卸しの取りこぼしを防ぐ）", () => {
+    expect([...KNOWN_UNGUARDED].filter((h) => !found.includes(h)).sort()).toEqual([]);
   });
 });

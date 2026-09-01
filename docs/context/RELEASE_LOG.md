@@ -4,34 +4,50 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
-## 2026-09-01 業務データCRUD 47ルートにサーバ側の認可を強制（認可未強制 86→39本）
+## 2026-09-01 業務データCRUD 48ルートにサーバ側の認可を強制（未強制 157→46 ハンドラ）
 
-- 背景: テナント認証を通す変更系ルート317本のうち86本が認可チェックを一切持たず、
-  閲覧専用ロール（viewer）でも証明書・車両・顧客・予約・受注・マーケット・在庫・部品を
-  作成/更新/削除できた。2026-09-01 の代表判断で分類ごとの方針が決まっている。
-- 内容: E 業務データCRUD 49本のうち **47ルート・59箇所**にガードを入れた。
-  - マトリクスに動詞がある資源はその動詞（37箇所）:
-    `certificates:create/edit/view`(9) / `vehicles:create/edit`(5) /
-    `customers:create/edit`(6) / `reservations:edit`(4) / `market:create/edit`(10) /
-    `orders:create`(2) / `payments:create`(1)
-  - 動詞が無い資源はロール下限 `{ minRole: "staff" }`（22箇所）:
-    在庫(4) / 発注(3) / 部品(6) / 工程テンプレート(3) / ショップ受注(1) / 受注の更新系(5)
+- 計測単位の訂正: これまで「未強制125本/86本」と数えていたのは**ファイル単位**で、
+  同じファイルの別ハンドラにガードがあると未強制ハンドラが隠れていた。実際
+  `admin/invoices` は DELETE だけが admin 以上で、POST/PUT は素通りだったのに
+  「強制済み」に数えられていた。**ハンドラ単位で数え直すと、着手前は 412 ハンドラ中
+  157 が未強制**（従来の数え方の 125 ではない）。検出器の粒度の問題で、
+  同じ誤りを構造テスト側では先に直していた。
+- 背景: 閲覧専用ロール（viewer）でも証明書・車両・顧客・予約・受注・マーケット・
+  在庫・部品・請求書を作成/更新/削除できた。分類ごとの方針は 2026-09-01 の代表判断。
+- 内容: **48ルート・61箇所**にガードを入れた（+ Server Action 1箇所）。
+  - マトリクスに動詞がある資源はその動詞:
+    `certificates:create/edit`(8) / `vehicles:edit/create`(6) / `customers:create/edit`(6) /
+    `reservations:edit`(4) / `market:create/edit`(10) / `orders:create`(2) /
+    `invoices:create/edit`(2) / `payments:manage`(1) / `menu_items:manage`(4)
+  - 動詞が無い資源はロール下限 `{ minRole: "staff" }`:
+    発注(3) / 部品(6) / 工程テンプレート(3) / ショップ受注(1) / 受注の更新系(5)
   - `admin/certificates` の POST は Server Action `createCertAction` の中に
     `certificates:create` を置いた。Web の発行画面と API の共通の入口がそこで、
     ルート側に置くと発行画面が素通りするため。ルートは `forbidden` を 403 に翻訳する。
   - `market/inquiries` の POST は買い手向けの公開フォーム（未認証・IPレート制限）
-    だったので対象から外した。分類スクリプトの誤検出。
+    だったので対象外。
+- 残り46ハンドラの内訳: 自己完結16（現状維持が正しい）/ アカデミー18・決済4・設定2
+  （方針未決 = 24）/ `admin/members` 2（インラインのロール判定で既に守られている）/
+  OTP 2（認証前）/ `certificates/pdf-one` 1（読み取りのみ）/
+  `admin/certificates` 1（Server Action 側で強制）。
 - 影響: **本番で書き込みを失うユーザーはいない。** 本番のロール構成は
-  owner 23 / staff 1 / super_admin 1 で viewer・admin は 0 名。入れたガードは
-  すべて staff 以上が通る（`{ minRole: "staff" }` と、staff が持つ Permission のみ）。
-- 検証: tsc エラーなし / lint エラー0 / vitest 521ファイル 5294件通過 / check:schema OK。
+  owner 23 / staff 1 / super_admin 1 で viewer・admin は 0 名。staff が通らなくなるのは
+  請求書の作成・編集（`invoices:create/edit` は owner/admin のみ）、在庫（画面が
+  既に `menu_items:manage` を要求している）、受注の入金確定（`payments:manage`）だが、
+  本番の該当データは請求書の staff 起票実績なし・在庫0件・受注1件。
+- 副次の修正:
+  - 認可の結果を冪等キャッシュに載せない（`src/lib/api/idempotency.ts`）。キーは IP
+    スコープなので、権限を付与された後の再送や同じ NAT の別ユーザーにまで 24 時間
+    その 403 が返り続けていた。
+  - `certificates/pdf-one` に入れた `certificates:view` のガードを取り消した。
+    全ロールがこの権限を持つため誰も弾かない死んだコードで、強制済みの本数を
+    水増ししていた。
+  - 構造テストの検出器を2点強化: 呼び出しの存在ではなく**否定して弾いているか**を見る
+    （`const ok = requirePermission(...)` を強制と見なさない）。メソッド別指定を
+    `minRole` より優先して解く（両方書くと片方が黙って消えていた）。
+- 検証: tsc エラーなし / lint エラー0 / vitest 全通過 / check:schema OK。
   ガードを1本消すと構造テストが実際に落ちることを、Permission 版・ロール下限版・
   Server Action 版の3種類で確認した。
-- 副次: ルートのテストが `@/lib/auth/checkRole` をモジュールごとモックしていると
-  `requirePermission` が undefined になり 403 が 500 になる。該当した2ファイルを
-  `importOriginal` で直した（同じ書き方のテストが他に29本残っている）。
-- 残り39本: A 自己完結15（現状維持で正しい）/ C アカデミー14・G 決済3・I その他3・
-  F 設定2（未決）/ E 2（上記のとおり対象外）。
 
 ## 2026-09-01 RLS の役割別制約が一度も効いていなかったのを修正（DB側の固め）
 

@@ -1,16 +1,9 @@
 import { parseJsonSafe } from "@/lib/api/safeJson";
 import { NextRequest, NextResponse } from "next/server";
 import { enforceBilling } from "@/lib/billing/guard";
-import {
-  apiJson,
-  apiValidationError,
-  apiUnauthorized,
-  apiNotFound,
-  apiInternalError,
-  apiForbidden,
-} from "@/lib/api/response";
+import { apiJson, apiValidationError, apiUnauthorized, apiNotFound, apiInternalError } from "@/lib/api/response";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { resolveCallerWithRole, requirePermission } from "@/lib/auth/checkRole";
+import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -81,7 +74,6 @@ export async function POST(req: NextRequest) {
     if (!caller) {
       return apiUnauthorized();
     }
-    if (!requirePermission(caller, "certificates:view")) return apiForbidden();
 
     // free以上 + is_active 必須（certificate_id が来れば guard 側で tenant 逆引き可能）
     const deny = await enforceBilling(req, { minPlan: "free", action: "pdf_one", tenantId: caller.tenantId });

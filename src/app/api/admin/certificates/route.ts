@@ -119,7 +119,9 @@ export async function POST(req: NextRequest): Promise<Response> {
       if (!result.ok) {
         if (result.error === "unauthorized") return apiUnauthorized();
         // 認可は createCertAction 側に置いてある（Web の発行画面も同じ入口を通るため）。
-        // ここは翻訳するだけ。500 にすると権限不足がオフラインキューで恒久失敗扱いになる。
+        // ここは翻訳するだけ。権限不足は「サーバの故障」ではないので 500 にはしない。
+        // オフラインキューは 403 を再送対象として残す（権限が付与されれば通るため。
+        // src/lib/outbox/queue.ts の isPermanentClientError の docstring 参照）。
         if (result.error === "forbidden") return apiForbidden();
         // 入力が原因のもの (再送しても結果が変わらない) と、DB 障害など一時的なものを
         // 分けて返す。両方 400 にすると、オフラインキューが一時障害を恒久失敗と誤判定して

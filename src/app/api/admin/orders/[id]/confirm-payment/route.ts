@@ -30,7 +30,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
-    if (!requirePermission(caller, "payments:create")) return apiForbidden();
+    if (!requirePermission(caller, "payments:manage")) return apiForbidden();
     const tenantId = caller.tenantId;
 
     const { admin } = createTenantScopedAdmin(caller.tenantId);
