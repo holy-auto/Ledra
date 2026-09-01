@@ -3,6 +3,97 @@
 > まだ決まっていないこと、判断に迷っていることを書く場所。決まったら
 > DECISION_LOG.md に移し、このファイルからは消す（削除履歴は git で追える）。
 
+## 権限マトリクスに動詞が無い資源をどうするか（2026-09-01）
+
+業務データCRUD 48ルートに認可を入れたとき、以下の資源には対応する Permission が
+語彙（55権限）に存在しなかった。**新設は「誰がその操作をできるべきか」という事業判断**
+なので実装側では決めず、暫定でロール下限 `{ minRole: "staff" }`（閲覧専用ロールだけを弾く）
+にしてある。
+
+| 資源 | 現在の守り | 決めたいこと |
+|---|---|---|
+| 発注（purchase_orders / backorder） | staff 以上 | 発注を出せるのは誰か。金額の上限は要るか |
+| 部品（installations / confirmations / findings） | staff 以上 | 現場が全部できてよいか |
+| 工程テンプレート（workflow_templates） | staff 以上 | 作業手順を誰が定義するか。マスタなら admin 以上 |
+| ショップ受注（shop_orders） | staff 以上 | 受注登録は誰がやるか |
+| 受注の更新（`admin/orders` PUT/PATCH・検収署名・レビュー） | staff 以上 | `orders:edit` を作るか |
+
+あわせて、**削除に動詞が無い資源**が2つある。現在は `:edit`（staff で可）で通している。
+
+- 顧客の削除（`admin/customers` DELETE）: `customers:delete` を作って admin 以上にするか
+- マーケット車両の削除（`admin/market-vehicles` DELETE）: 同上
+
+在庫は決着した: 画面（`ROUTE_PERMISSIONS` の `/admin/inventory`・`/admin/stocktake`）が
+すでに `menu_items:manage`（admin 以上）を要求していたので、API もそれに揃えた。
+受注の入金確認（`admin/orders/[id]/confirm-payment`）も、既存の `admin/payments` が
+PUT/DELETE に `payments:manage` を課しているのに揃えて `payments:manage` にした
+（`executeOrderPayout` を起動する不可逆操作のため）。
+
+判断が出るまでの状態: **viewer は全て不可、staff 以上は全て可**。今より緩くなることは
+ないので、決定を待つ間の穴は無い。
+
+## 認可未強制のまま残っている24ハンドラの方針（2026-09-01）
+
+分類ごとの代表判断で E（業務データ）・B（AI）・F（設定）は決着したが、以下は未決。
+
+（ハンドラ単位。ルート単位では C 14 / G 3 / F 2 だが、1ルートに複数の変更系ハンドラが
+あるため実数はハンドラで数える。）
+
+- **C アカデミー 18ハンドラ**: 教材（レッスン・クイズ・事例・Q&A・報酬）を誰が作れるか。
+  受講（`complete` / `rate` / `quiz/attempt`）は自己完結型なので現状維持でよさそうだが、
+  作成・編集（`lessons` POST/PUT、`rewards`）は権限が要る。
+- **G 決済・外部連携 4ハンドラ**（`admin/shop/checkout` POST / `stripe/connect` POST・DELETE /
+  `stripe/connect/payment-link` POST）: 決済リンクを出せるのは誰か。Stripe 接続を張れるのは誰か。
+- **F 残り2本**: `admin/documents/share`（帳票の送付＝業務データ寄り）、
+  `admin/tenants` PUT（アクティブテナントの切替＝自己完結型）。分類から外したが未登録。
+
+判断が要らないと整理できたもの（上の24には含めない）:
+`admin/members` PUT/DELETE はインラインの `caller.role !== "owner" && !== "admin"` で
+既に守られている。`mobile/auth/otp/{request,verify}` は認証前の経路。
+`certificates/pdf-one` POST は読み取りのみ。`admin/certificates` POST は Server Action
+`createCertAction` の中で `certificates:create` を要求している。
+
+## tenants の UPDATE は owner のみか admin 以上か（2026-09-01）
+
+`tenants` の UPDATE に PERMISSIVE ポリシーが2本あり、実効は緩い方（owner/admin/super_admin）。
+
+| policy | 条件 |
+|---|---|
+| `tenants_update_v2` | owner のみ |
+| `tenants_update_owner_admin` | owner / admin / super_admin |
+
+**2つの正が矛盾している**:
+- `supabase/migrations/20260323020000_rls_role_constraints.sql` のヘッダは
+  「tenants UPDATE : owner only」と明記
+- アプリ側は `/api/admin/settings/defaults` PUT 等で `settings:edit`（admin 以上）を要求し、
+  権限マトリクス上も admin は `settings:edit` を持つ
+
+- 影響: 本番に admin は0名（owner 23 / staff 1 / super_admin 1）なので現時点では表面化しない。
+  admin を作った瞬間に、どちらを正とするかで挙動が変わる。
+- どちらかに寄せないと起きること: DB を owner のみにすると、admin の設定変更が
+  **0行更新で成功扱い**になる（PR #1014 で直した「嘘の成功」と同じ型の不具合が再発する）。
+- 次のアクション: 代表の判断。「テナント設定（社名・ロゴ・既定の保証除外文言・請求タイミング等）
+  を admin に触らせるか」を決める。決まったら緩い方か厳しい方のどちらかを削除する。
+- 起票日: 2026-09-01
+
+## テンプレートの scope='shared' を誰が作れるべきか（2026-09-01）
+
+`templates` の INSERT に2本のポリシーがあり、片方が明示的に禁じている条件をもう片方が通す。
+
+| policy | 条件 |
+|---|---|
+| `templates_write_owner_admin` | `scope='shared'` は **`AND false`** で禁止 / `scope='tenant'` は owner・admin |
+| `templates_insert_v2` | owner・admin・staff（**scope を見ない**） |
+
+OR 評価なので、実効は「owner/admin/staff が scope を問わず作成できる」。
+`templates_write_owner_admin` が共有テンプレートを禁じている意図は効いていない。
+
+- 影響: 本番の `templates` は5件で `scope='shared'` は0件。実害は出ていない。
+- 次のアクション: 代表の判断。「共有テンプレート（全テナント横断）を各テナントの
+  owner/admin/staff が作れるべきか、プラットフォーム運営だけが作るべきか」を決める。
+  後者なら `templates_insert_v2` に scope 条件を足す。
+- 起票日: 2026-09-01
+
 ## 追加（2026-08-31・保険会社ポータルの証明書検索が本番で HTTP 500。DB 関数の search_path 設定漏れ）
 
 配布 PDF 用に `public/screenshots/insurer/search.png` を撮影しようとして発覚した。**この1枚だけ撮影できていない**（サービス概要 PDF が 13 ページ止まりで 14 ページにならない理由）。
@@ -26,6 +117,7 @@
   `CREATE OR REPLACE` する」だけで済むが、対象が**テナント横断の可視範囲を決める
   SECURITY DEFINER 関数**（RLS の隣接領域）であるため、キャプチャ撮影のついでに本番 DB へ
   自動適用するのは不適切と判断し、実施していない。マイグレーション追加＋本番適用は代表の判断を待つ。
+
 ## 通知18タイプのうち15タイプが本番で一度も発火していない（2026-08-31）
 
 通知タイプカタログ（`src/lib/notifications/types.ts`）には18タイプあるが、本番で実際に
@@ -64,23 +156,6 @@
   (c) そのまま放置して severity は型から導出する。
 - 次のアクション: 「未読バッジに何を数えるか」（全未読か、要対応のみか）が決まってから選ぶ。
   読み手がいない今整えるのは YAGNI。
-- 起票日: 2026-08-31
-
-## certificates の RLS に、意図を打ち消す PERMISSIVE ポリシー重複がある（2026-08-31）
-
-`certificates` の UPDATE には PERMISSIVE ポリシーが2本ある（本番DBで実測）。
-
-- `cert_update_member` … `is_member_of_tenant(tenant_id)` = **テナントメンバー全員**
-- `certificates_update_v2` … `my_tenant_role(tenant_id) IN ('owner','admin','staff')`
-
-PostgreSQL は同一コマンドの PERMISSIVE ポリシーを **OR** で評価するため、後から入れた
-`certificates_update_v2` の絞り込みは効かず、緩い方が勝つ。結果として viewer でも
-`certificates` を UPDATE できる。今回はアプリ層（Server Action の権限判定）で塞いだが、
-RLS 側は緩いままである。
-
-- 次のアクション: (a) 同種の重複が他テーブルにもあるか棚卸しする、(b) `cert_update_member` を
-  落とすか RESTRICTIVE に変えるかを決める。(b) は既存の書き込み経路を壊し得るので、
-  影響調査が要る。
 - 起票日: 2026-08-31
 
 ## 証明書の無効化処理が5経路にコピペで散っている（2026-08-31）

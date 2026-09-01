@@ -1,8 +1,15 @@
 import { NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { vehicleCreateSchema } from "@/lib/validations/vehicle";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
-import { apiJson, apiOk, apiInternalError, apiUnauthorized, apiValidationError } from "@/lib/api/response";
+import { resolveCallerWithRole, requirePermission } from "@/lib/auth/checkRole";
+import {
+  apiJson,
+  apiOk,
+  apiInternalError,
+  apiUnauthorized,
+  apiValidationError,
+  apiForbidden,
+} from "@/lib/api/response";
 import { resolveVehicleSizeClass } from "@/lib/vehicles/resolveSizeClass";
 import { emitEntityWebhook } from "@/lib/outbound-webhooks";
 import type { VehicleSizeClass } from "@/lib/validations/vehicle";
@@ -17,6 +24,7 @@ export async function POST(req: Request) {
     if (!caller) {
       return apiUnauthorized();
     }
+    if (!requirePermission(caller, "vehicles:create")) return apiForbidden();
 
     const body = await req.json();
     const parsed = vehicleCreateSchema.safeParse(body);

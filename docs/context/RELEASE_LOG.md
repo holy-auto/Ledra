@@ -4,6 +4,88 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-09-01 業務データCRUD 48ルートにサーバ側の認可を強制（未強制 157→46 ハンドラ）
+
+- 計測単位の訂正: これまで「未強制125本/86本」と数えていたのは**ファイル単位**で、
+  同じファイルの別ハンドラにガードがあると未強制ハンドラが隠れていた。実際
+  `admin/invoices` は DELETE だけが admin 以上で、POST/PUT は素通りだったのに
+  「強制済み」に数えられていた。**ハンドラ単位で数え直すと、着手前は 412 ハンドラ中
+  157 が未強制**（従来の数え方の 125 ではない）。検出器の粒度の問題で、
+  同じ誤りを構造テスト側では先に直していた。
+- 背景: 閲覧専用ロール（viewer）でも証明書・車両・顧客・予約・受注・マーケット・
+  在庫・部品・請求書を作成/更新/削除できた。分類ごとの方針は 2026-09-01 の代表判断。
+- 内容: **48ルート・61箇所**にガードを入れた（+ Server Action 1箇所）。
+  - マトリクスに動詞がある資源はその動詞:
+    `certificates:create/edit`(8) / `vehicles:edit/create`(6) / `customers:create/edit`(6) /
+    `reservations:edit`(4) / `market:create/edit`(10) / `orders:create`(2) /
+    `invoices:create/edit`(2) / `payments:manage`(1) / `menu_items:manage`(4)
+  - 動詞が無い資源はロール下限 `{ minRole: "staff" }`:
+    発注(3) / 部品(6) / 工程テンプレート(3) / ショップ受注(1) / 受注の更新系(5)
+  - `admin/certificates` の POST は Server Action `createCertAction` の中に
+    `certificates:create` を置いた。Web の発行画面と API の共通の入口がそこで、
+    ルート側に置くと発行画面が素通りするため。ルートは `forbidden` を 403 に翻訳する。
+  - `market/inquiries` の POST は買い手向けの公開フォーム（未認証・IPレート制限）
+    だったので対象外。
+- 残り46ハンドラの内訳: 自己完結16（現状維持が正しい）/ アカデミー18・決済4・設定2
+  （方針未決 = 24）/ `admin/members` 2（インラインのロール判定で既に守られている）/
+  OTP 2（認証前）/ `certificates/pdf-one` 1（読み取りのみ）/
+  `admin/certificates` 1（Server Action 側で強制）。
+- 影響: **本番で書き込みを失うユーザーはいない。** 本番のロール構成は
+  owner 23 / staff 1 / super_admin 1 で viewer・admin は 0 名。staff が通らなくなるのは
+  請求書の作成・編集（`invoices:create/edit` は owner/admin のみ）、在庫（画面が
+  既に `menu_items:manage` を要求している）、受注の入金確定（`payments:manage`）だが、
+  本番の該当データは請求書の staff 起票実績なし・在庫0件・受注1件。
+- 副次の修正:
+  - 認可の結果を冪等キャッシュに載せない（`src/lib/api/idempotency.ts`）。キーは IP
+    スコープなので、権限を付与された後の再送や同じ NAT の別ユーザーにまで 24 時間
+    その 403 が返り続けていた。
+  - `certificates/pdf-one` に入れた `certificates:view` のガードを取り消した。
+    全ロールがこの権限を持つため誰も弾かない死んだコードで、強制済みの本数を
+    水増ししていた。
+  - 構造テストの検出器を2点強化: 呼び出しの存在ではなく**否定して弾いているか**を見る
+    （`const ok = requirePermission(...)` を強制と見なさない）。メソッド別指定を
+    `minRole` より優先して解く（両方書くと片方が黙って消えていた）。
+- 検証: tsc エラーなし / lint エラー0 / vitest 全通過 / check:schema OK。
+  ガードを1本消すと構造テストが実際に落ちることを、Permission 版・ロール下限版・
+  Server Action 版の3種類で確認した。
+
+## 2026-09-01 RLS の役割別制約が一度も効いていなかったのを修正（DB側の固め）
+
+- 背景: 2026-03-23 に「SELECT=全ロール / INSERT・UPDATE=owner,admin,staff / DELETE=owner,admin」
+  という役割別 RLS を `_v2` ポリシーとして追加したが、**それ以前からある役割を見ない
+  ポリシーを削除していなかった**。PostgreSQL は同一コマンドの PERMISSIVE ポリシーを
+  **OR** で評価するため緩い方が常に勝ち、役割別制約は一度も効いていなかった。
+  本番で 6テーブル・14組がこの状態にあり、viewer が証明書・車両・整備履歴・NFCタグ・
+  テンプレートを作成/更新/削除できた。
+- 内容: `supabase/migrations/20260901000000_rls_drop_role_blind_policies.sql` で計15本を削除。
+  - 役割を見ないポリシー11本: `cert_insert_member` / `cert_update_member` /
+    `tpl_insert` / `tpl_update` / `tpl_delete` / `vehicles_tenant_access`(FOR ALL) /
+    `vehicle_histories_tenant_access`(FOR ALL) / `vh_update` /
+    `nfc_tags_tenant_access`(FOR ALL) / `insert_jobs` / `update_jobs`
+  - 越境判定3本: `insurer_users_{insert,update,delete}_admin`。`is_insurer_admin()` は
+    対象行の `insurer_id` で絞っておらず、**保険会社Aの管理者が保険会社Bのユーザーを
+    操作できた**。自社スコープの `iu_*` を残す。
+  - 監査ログ偽装1本: `insurer_access_logs_insert_v2`。書き込む行の所有者を検証せず、
+    他人・他社名義のアクセスログを作成できた。`logs_insert_self_only` を残す。
+- 安全性: 対象テーブルは全コマンドに `_v2` ポリシーが既にあり `FOR ALL` を落としても
+  読みは失われない。service_role は RLS を迂回するので service-role 経由の書き込みは無影響。
+  本番のロール構成は owner 23 / staff 1 / super_admin 1（viewer・admin は 0）で、
+  `my_tenant_role()` は super_admin を owner に写像するため、**書き込みを失う既存ユーザーは
+  いない**。
+- 検証:
+  - 本番に対して `BEGIN … ROLLBACK` で実際に削除を適用し「打ち消しの組が残らない」ことを
+    確認して戻した（本番は無変更）。
+  - `npm run check:migrations`（空DBへの再生）: 既知の9件のみ、増減なし。
+  - `scripts/replay-migrations.mjs` に検査を追加（CI の Migrations Replay で実行済み）。
+    **マイグレーションを外すと4組を検出して落ち、戻すと通ることを確認**（空振りでない）。
+  - `npm run lint:migrations` OK / `npm run check:schema` OK / `npx vitest run` 5290件通過。
+- 検査の限界（意図的）: 再生 DB は再生できない9件の分だけポリシーが欠けるため、本番の
+  14組に対して4組しか見えない。**過小報告はするが誤検出はしない**設計。静的解析は
+  不可能（`_v2` は plpgsql の `EXECUTE format()` で動的生成されるため本文から抽出できない）。
+- 判断待ち: `tenants` の UPDATE（DB は owner のみ / アプリは admin 以上を要求）と、
+  `templates` の scope='shared' 作成可否。いずれも矛盾する2つの正があるため
+  OPEN_QUESTIONS.md に起票した。
+
 ## 2026-08-31 配布 PDF 用の画面キャプチャを撮影（3枚中2枚。サービス概要 11→13ページ）
 
 - 背景: `.gitignore` の除外解除（PR #982）で3枚だけコミット可能にしたが、実物のキャプチャが
@@ -21,6 +103,7 @@
 - **未撮影1枚**: `public/screenshots/insurer/search.png` は撮影できていない。保険会社ポータルの
   証明書検索が本番 DB のバグで HTTP 500 になるため（`OPEN_QUESTIONS.md` 参照）。
 - 検証: `npx tsc --noEmit` 通過、`npx vitest run` 全 511 ファイル / 5251 件通過。
+
 ## 2026-08-31 通知アイコンが実データの型名と一致しておらず全件が既定アイコンだった件を修正（IMP-029）
 
 - 背景: モバイル通知一覧のアイコン表 `TYPE_ICON` のキーは `certificate` / `work` / `sync` /
