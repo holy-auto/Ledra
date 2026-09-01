@@ -3,30 +3,20 @@
 > まだ決まっていないこと、判断に迷っていることを書く場所。決まったら
 > DECISION_LOG.md に移し、このファイルからは消す（削除履歴は git で追える）。
 
-## main の CI が赤いまま（`mobileHomePresentation.test.ts`）（2026-09-01）
+## CI の失敗元がログから読み取れない（2026-09-01）
 
-main の `70ff6761` / `42f67936` が追加した `src/lib/ui-preferences/__tests__/mobileHomePresentation.test.ts`
-が `apps/mobile/src/lib/homePresentation` を**直接 import**している。ルートの `package.json` に
-`workspaces` が無く、CI は root の `npm ci` しか実行しないため、`apps/mobile/tsconfig.json` が
-継承する `expo/tsconfig.base` が解決できず落ちる。
+`Lint, Type Check & Unit Tests` は5つのチェック（lint / lint:migrations / tsc /
+test:coverage / check:schema）を `&` で並列実行し `wait $PID || exit 1` で待つ。
+そのため**ログの末尾は失敗したチェックの出力とは限らない**。
 
-```
-[TSCONFIG_ERROR] Failed to load tsconfig for 'apps/mobile/src/lib/homePresentation.ts': Tsconfig not found
-```
+2026-09-01 に実際に2回誤読しかけた。「lint の出力の直後に exit 1」と出るのに
+`npm run lint` 自体は 0 errors で、失敗元は別のチェックだった。生ログの配信元
+（Azure Blob）はこの環境のプロキシで遮断されており、GitHub の API も末尾しか
+返さないため、切り分けにローカル再現が必要になった。
 
-**放置すると main の CI が赤いままで、以降のすべての PR が同じ状況になる。**
-
-直し方は分かっている。同じ「Web からモバイルの実装を照合する」目的の
-`src/lib/notifications/__tests__/mobileIcons.test.ts` は、**モバイルのソースを
-テキストとして読んで**照合しており、import しないので CI で動く。同じ形にすればよい。
-
-決めたいこと: 誰が直すか（元の作業者か、こちらで出すか）。PR #1017 にパッチ案を
-コメントしてある。
-
-あわせて: CI の `Lint, Type Check & Unit Tests` は5つのチェックを `&` で並列実行して
-`wait $PID || exit 1` で待つため、**ログからどれが落ちたか読み取れない**。
-今回は「lint の出力の直後に exit 1」と出るのに lint 自体は 0 errors、という形で
-2回誤読しかけた。失敗元を明示する形にすべきか。
+決めたいこと: 失敗元を明示する形にするか（各チェックの終了コードを個別に出す、
+順次実行に変える、`--output-file` で分ける等）。並列実行は速いので、速度を
+落とさずに失敗元が分かる形が望ましい。
 
 ## 権限マトリクスに動詞が無い資源をどうするか（2026-09-01）
 

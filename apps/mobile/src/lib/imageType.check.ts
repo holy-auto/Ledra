@@ -1,6 +1,6 @@
 // 画像の種別判定と、サーバ側の受け入れ条件とのズレの自己チェック。
 // 実行: node apps/mobile/src/lib/imageType.check.ts
-import assert from "node:assert";
+import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";

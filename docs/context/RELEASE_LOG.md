@@ -4,6 +4,38 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-09-01 main の CI 赤を解消（PR #1019 / `a38ca937`）
+
+- 背景: `70ff6761` / `42f67936` が追加した
+  `src/lib/ui-preferences/__tests__/mobileHomePresentation.test.ts` が
+  `apps/mobile/src/lib/homePresentation` を**直接 import**していた。ルートの
+  `package.json` に `workspaces` が無く web の CI は root の `npm ci` しか実行しない
+  ため、`apps/mobile/tsconfig.json` が継承する `expo/tsconfig.base` が解決できない。
+  **手元では通るのに CI だけが落ちる**形で、main が約9時間赤いままだった。
+- 内容: 検査対象はモバイルの純粋関数なので、モバイル側の既存規約
+  （`*.check.ts` を `node` で直接実行し `package.json` の `test` に並べる）に合わせて
+  `apps/mobile/src/lib/homePresentation.check.ts` へ移した。検査内容は変えていない。
+- 移設で**検査が2つ弱くなっていた**ので補強した:
+  - `node:assert` の `deepEqual` は `==` 比較で `3` と `"3"`、`false` と `0` を通す。
+    vitest の `toEqual` より弱いので `node:assert/strict` に変更。既存12本も同じ
+    弱さだったため**14本すべて**を strict にし、全部通ることを確認した。
+  - 消した web のテストは root の `tsc --noEmit` に含まれていたが、
+    `apps/mobile/tsconfig.json` は `**/*.check.ts` を `exclude` していた。exclude を
+    外し `allowImportingTsExtensions` を付けて、**既存13本を含めて**型検査の対象にした。
+- 再発防止: `eslint.config.mjs` に `src/**` と `scripts/**` から `**/apps/mobile/**` の
+  import を禁じる `no-restricted-imports` を追加。その過程で
+  **`src/lib/**/__tests__/**` がこのルールを丸ごと `off` にしていた**ことが判明した
+  （本来は admin クライアントの例外が目的）。**main を壊した import はまさにこの免除の
+  内側にあった。**免除を admin の `paths` だけに絞り、パターンは残す形に直した。
+- 登録漏れ防止: `package.json` の `test` は手書きの `&&` の連なりで、新しい check を
+  足したときに登録を忘れると**そのチェックは一度も走らないまま緑になる**。
+  `checkRegistry.check.ts` で未登録・実体無しの両方を検出する。
+  シェルの `for` ループで拾う案は、npm script が Windows では cmd で走るため不採用。
+- 検証: 移設前は CI と同条件（`apps/mobile/node_modules` を外した状態）で
+  1 failed | 521 passed、移設後は 521 passed / 5298件通過。
+  すべての追加検査について「実際に落ちること」を確認済み。
+  **マージ後の CI は10チェック中9成功・1スキップで完全に緑。**
+
 ## 2026-09-01 PR #1017 をマージ（`841d953f`）— 本番へのポリシー削除も適用済み
 
 - 内容: 下記2件（RLS のポリシー15本削除 / 変更系61箇所への認可強制）を1本の PR にまとめ、
