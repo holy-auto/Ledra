@@ -7,8 +7,15 @@
 
 import { NextRequest } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
-import { apiOk, apiError, apiUnauthorized, apiValidationError, apiInternalError } from "@/lib/api/response";
+import { resolveCallerWithRole, requirePermission } from "@/lib/auth/checkRole";
+import {
+  apiOk,
+  apiError,
+  apiUnauthorized,
+  apiValidationError,
+  apiInternalError,
+  apiForbidden,
+} from "@/lib/api/response";
 import { parseJsonSafe } from "@/lib/api/safeJson";
 import { registerDevice, listDevices } from "@/lib/edge/deviceRegistry";
 import type { RegisterDeviceInput, EdgeDeviceKind } from "@/lib/edge/types";
@@ -40,6 +47,8 @@ export async function POST(req: NextRequest) {
   const supabase = await createSupabaseServerClient();
   const caller = await resolveCallerWithRole(supabase);
   if (!caller) return apiUnauthorized();
+  // 端末登録は admin 以上 (代表判断 2026-09-01)
+  if (!requirePermission(caller, "settings:edit")) return apiForbidden();
 
   const body = await parseJsonSafe<RegisterDeviceInput>(req);
   if (!body) return apiError({ code: "validation_error", message: "リクエストボディが不正です", status: 400 });

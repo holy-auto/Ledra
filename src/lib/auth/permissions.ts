@@ -423,6 +423,10 @@ export function requiredPermissionForPath(pathname: string): Permission | null {
  * （例: payments は POST=create / PUT・DELETE=manage）。配列にして「いずれか1つ」に
  * すると、DELETE を弱い方へ下げても検査が通ってしまう。
  *
+ * `{ minRole: "staff" }` は「特定の権限ではなくロール下限で守る」ルート用。
+ * AI 呼び出しのように、対応する Permission が語彙に無く「閲覧専用を弾ければよい」
+ * ものに使う（代表判断 2026-09-01）。
+ *
  * 構造テスト（`__tests__/apiRoutePermissions.test.ts`）が、登録した各ルートの
  * **変更系ハンドラ1つ1つ**について `requirePermission(...)` / `hasPermission(...)` の
  * 呼び出しが存在することを検査する。ファイル全体の文字列一致では、コメントに書いただけ・
@@ -439,7 +443,12 @@ export function requiredPermissionForPath(pathname: string): Permission | null {
 /** 変更系メソッド名。ルートごとにメソッド別の要求を書けるようにする。 */
 export type MutatingMethod = "POST" | "PUT" | "PATCH" | "DELETE";
 
-export const API_ROUTE_PERMISSIONS: Record<string, Permission | Partial<Record<MutatingMethod, Permission>>> = {
+/** ロール下限で守るルートの指定。 */
+export type MinRoleRequirement = { minRole: Role };
+
+export type ApiRouteRequirement = Permission | Partial<Record<MutatingMethod, Permission>> | MinRoleRequirement;
+
+export const API_ROUTE_PERMISSIONS: Record<string, ApiRouteRequirement> = {
   // 証明書の無効化（operationRisk = critical / 不可逆・法的意味を持つ）。
   // 経路ごとに認可が食い違っていた。無効化経路の網羅は別途 void-path テストが縛る。
   "certificates/void": "certificates:void",
@@ -455,6 +464,52 @@ export const API_ROUTE_PERMISSIONS: Record<string, Permission | Partial<Record<M
   "admin/integrations/api-keys": "settings:edit",
   "admin/integrations/webhooks": "settings:edit",
   "admin/integrations/email-templates": "settings:edit",
+
+  // AI 呼び出し（2026-09-01 代表判断: staff 以上）。呼ぶたびに費用が出るため
+  // 閲覧専用ロールを弾く。対応する Permission が語彙に無いのでロール下限で守る。
+  "admin/accounting/ai-categorize": { minRole: "staff" },
+  "admin/ask": { minRole: "staff" },
+  "admin/certificates/ai-draft": { minRole: "staff" },
+  "admin/certificates/ai-explain": { minRole: "staff" },
+  "admin/certificates/ai-quality": { minRole: "staff" },
+  "admin/certificates/photo-tampering": { minRole: "staff" },
+  "admin/certificates/voice-memo": { minRole: "staff" },
+  "admin/customer-inquiries/[id]/ai-classify": { minRole: "staff" },
+  "admin/customer-messages/[id]/ai-extract": { minRole: "staff" },
+  "admin/field-knowledge/ask": { minRole: "staff" },
+  "admin/inspection-records/ocr": { minRole: "staff" },
+  "admin/inventory/ai-pos-deduct": { minRole: "staff" },
+  "admin/invoices/ai-from-job": { minRole: "staff" },
+  "admin/jobs/[id]/ai-suggest": { minRole: "staff" },
+  "admin/market-vehicles/[id]/ai-description": { minRole: "staff" },
+  "admin/master-data/normalize": { minRole: "staff" },
+  "admin/menu-items/[id]/ai-price": { minRole: "staff" },
+  "admin/messages/[key]/ai-reply": { minRole: "staff" },
+  "admin/messages/[key]/ai-summary": { minRole: "staff" },
+  "admin/purchase-orders/ai-message": { minRole: "staff" },
+  "admin/quotes/ai-from-vehicle": { minRole: "staff" },
+  "admin/reservations/ai-from-message": { minRole: "staff" },
+  "admin/reviews/ai-sentiment": { minRole: "staff" },
+  "admin/square/orders/[id]/ai-link": { minRole: "staff" },
+  "admin/thickness-reports/[reportId]/ai-anomaly": { minRole: "staff" },
+  "admin/translate": { minRole: "staff" },
+  "admin/voice-note": { minRole: "staff" },
+  "identity/ocr": { minRole: "staff" },
+  "mobile/identity/ocr": { minRole: "staff" },
+
+  // 設定・マスタ（2026-09-01 代表判断: admin 以上に統一）。
+  // 権限名は UI の ROUTE_PERMISSIONS と揃える（同じ画面と同じ語彙で判断できるように）。
+  "admin/booking-settings": "settings:edit",
+  "admin/edge/devices": "settings:edit",
+  "admin/equipment-master": "settings:edit",
+  "admin/sales-targets": "settings:edit",
+  "admin/setup/sample-data": "settings:edit",
+  "admin/suppliers": "settings:edit",
+  "admin/brands": "menu_items:manage",
+  "admin/brands/[id]/products": "menu_items:manage",
+  "admin/menu-items": "menu_items:manage",
+  "admin/document-templates": "templates:manage",
+  "admin/document-templates/tenant-default": "templates:manage",
 
   // メンバー・店舗・決済・レジ（既に強制済み。回帰を止めるために登録する）。
   // `admin/members` は PUT/DELETE が `caller.role !== "owner" && !== "admin"` の

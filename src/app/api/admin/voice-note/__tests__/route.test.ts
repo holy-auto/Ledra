@@ -13,7 +13,12 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@/lib/supabase/server", () => ({ createClient: async () => ({}) }));
-vi.mock("@/lib/auth/checkRole", () => ({ resolveCallerWithRole: mocks.resolveCaller }));
+// requireMinRole は実物を使う。差し替えると undefined になって呼び出しが投げ、
+// 403 を期待するテストが 500 で落ちる（2026-09-01 に実際に落ちた）。
+vi.mock("@/lib/auth/checkRole", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/auth/checkRole")>()),
+  resolveCallerWithRole: mocks.resolveCaller,
+}));
 vi.mock("@/lib/billing/planFeatures", () => ({
   canUseFeature: mocks.canUse,
   normalizePlanTier: (t: string) => t,

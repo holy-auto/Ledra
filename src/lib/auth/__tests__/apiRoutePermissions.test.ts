@@ -20,7 +20,7 @@ import { describe, it, expect } from "vitest";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { API_ROUTE_PERMISSIONS } from "../permissions";
-import type { Permission, MutatingMethod } from "../permissions";
+import type { Permission, MutatingMethod, ApiRouteRequirement, MinRoleRequirement } from "../permissions";
 import { walkSource, enclosingFunctions } from "../../__tests__/sourceScan";
 
 const APP_ROOT = join(process.cwd(), "src", "app");
@@ -31,6 +31,11 @@ const MUTATING_METHODS: MutatingMethod[] = ["POST", "PUT", "PATCH", "DELETE"];
 /** `requirePermission(caller, "x:y")` / `hasPermission(role, "x:y")` の呼び出しがあるか。 */
 function enforces(src: string, perm: Permission): boolean {
   return new RegExp(`(requirePermission|hasPermission)\\([^)]*"${perm}"\\)`).test(src);
+}
+
+/** `requireMinRole(caller, "staff")` / `hasMinRole(role, "staff")` の呼び出しがあるか。 */
+function enforcesMinRole(src: string, role: string): boolean {
+  return new RegExp(`(requireMinRole|hasMinRole)\\([^)]*"${role}"\\)`).test(src);
 }
 
 /** route.ts をハンドラ単位に切る。`export const POST = ...` 形式も認識する。 */
@@ -46,11 +51,14 @@ function handlerChunks(src: string): Map<string, string> {
   return out;
 }
 
-function requiredFor(
-  value: Permission | Partial<Record<MutatingMethod, Permission>>,
-  method: MutatingMethod,
-): Permission | null {
-  return typeof value === "string" ? value : (value[method] ?? null);
+function isMinRole(v: ApiRouteRequirement): v is MinRoleRequirement {
+  return typeof v === "object" && v !== null && "minRole" in v;
+}
+
+function requiredFor(value: ApiRouteRequirement, method: MutatingMethod): Permission | null {
+  if (typeof value === "string") return value;
+  if (isMinRole(value)) return null; // ロール下限は別扱い
+  return value[method] ?? null;
 }
 
 describe("API ルートのサーバ側権限強制", () => {
@@ -81,6 +89,12 @@ describe("API ルートのサーバ側権限強制", () => {
       for (const method of MUTATING_METHODS) {
         const chunk = chunks.get(method);
         if (!chunk) continue;
+        if (isMinRole(value)) {
+          if (!enforcesMinRole(chunk, value.minRole)) {
+            unenforced.push(`${route} [${method}] -> minRole ${value.minRole}`);
+          }
+          continue;
+        }
         const perm = requiredFor(value, method);
         if (perm === null) {
           unenforced.push(`${route} [${method}] -> 要求 Permission が表に無い`);

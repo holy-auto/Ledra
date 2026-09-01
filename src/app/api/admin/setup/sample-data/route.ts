@@ -1,7 +1,7 @@
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
+import { resolveCallerWithRole, requirePermission } from "@/lib/auth/checkRole";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
-import { apiJson, apiUnauthorized, apiInternalError } from "@/lib/api/response";
+import { apiJson, apiUnauthorized, apiInternalError, apiForbidden } from "@/lib/api/response";
 import { logger } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
@@ -54,6 +54,8 @@ export async function POST() {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
+    // サンプルデータの生成・一括削除は admin 以上 (代表判断 2026-09-01)
+    if (!requirePermission(caller, "settings:edit")) return apiForbidden();
 
     const { admin } = createTenantScopedAdmin(caller.tenantId);
 
@@ -122,6 +124,8 @@ export async function DELETE() {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
+    // サンプルデータの生成・一括削除は admin 以上 (代表判断 2026-09-01)
+    if (!requirePermission(caller, "settings:edit")) return apiForbidden();
 
     const { admin } = createTenantScopedAdmin(caller.tenantId);
 
