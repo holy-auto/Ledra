@@ -107,6 +107,7 @@ export default function HomeScreen() {
   const [stats, setStats] = useState<HomeStats>(EMPTY_STATS);
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [scopeExpanded, setScopeExpanded] = useState(false);
   const displayMode = useDisplayMode();
   const presentation = getHomePresentation(displayMode);
 
@@ -323,21 +324,47 @@ export default function HomeScreen() {
 
   const progress = stats.todayTotal > 0 ? stats.todayCompleted / stats.todayTotal : 0;
 
-  const scopeSection = (
+  const scopeLabel = scope === "self" ? "自分" : scope === "store" ? "店舗" : "全店舗";
+  const scopeControl = (
+    <SegmentedControl
+      segments={[
+        { value: "self" as Scope, label: "自分" },
+        { value: "store" as Scope, label: "店舗" },
+        { value: "all" as Scope, label: "全店舗" },
+      ]}
+      value={scope}
+      onChange={(nextScope) => {
+        setLoading(true);
+        setScope(nextScope);
+        setScopeExpanded(false);
+      }}
+    />
+  );
+  const scopeSection = presentation.collapseScope ? (
+    <View style={styles.section}>
+      <Pressable
+        style={styles.collapsedScopeButton}
+        onPress={() => setScopeExpanded((expanded) => !expanded)}
+        accessibilityRole="button"
+        accessibilityLabel={`表示する範囲は${scopeLabel}`}
+        accessibilityState={{ expanded: scopeExpanded }}
+      >
+        <View>
+          <Text style={styles.collapsedScopeLabel}>表示する範囲</Text>
+          <Text style={styles.collapsedScopeValue}>{scopeLabel}</Text>
+        </View>
+        <Icon
+          source={scopeExpanded ? "chevron-up" : "chevron-down"}
+          size={22}
+          color={colors.textSecondary}
+        />
+      </Pressable>
+      {scopeExpanded ? <View style={styles.expandedScopeControl}>{scopeControl}</View> : null}
+    </View>
+  ) : (
     <View style={styles.section}>
       <Text style={styles.controlLabel}>表示する範囲</Text>
-      <SegmentedControl
-        segments={[
-          { value: "self" as Scope, label: "自分" },
-          { value: "store" as Scope, label: "店舗" },
-          { value: "all" as Scope, label: "全店舗" },
-        ]}
-        value={scope}
-        onChange={(nextScope) => {
-          setLoading(true);
-          setScope(nextScope);
-        }}
-      />
+      {scopeControl}
     </View>
   );
 
@@ -699,6 +726,32 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: colors.textSecondary,
     marginBottom: spacing.sm,
+  },
+  collapsedScopeButton: {
+    minHeight: sizing.touchTarget,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    backgroundColor: colors.surface,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  collapsedScopeLabel: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: colors.textSecondary,
+  },
+  collapsedScopeValue: {
+    marginTop: 2,
+    fontSize: 15,
+    fontWeight: "700",
+    color: colors.textPrimary,
+  },
+  expandedScopeControl: {
+    marginTop: spacing.sm,
   },
   headerControlLabel: { marginBottom: 0 },
   dateText: {
