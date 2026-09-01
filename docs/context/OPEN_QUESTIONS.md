@@ -3,6 +3,47 @@
 > まだ決まっていないこと、判断に迷っていることを書く場所。決まったら
 > DECISION_LOG.md に移し、このファイルからは消す（削除履歴は git で追える）。
 
+## tenants の UPDATE は owner のみか admin 以上か（2026-09-01）
+
+`tenants` の UPDATE に PERMISSIVE ポリシーが2本あり、実効は緩い方（owner/admin/super_admin）。
+
+| policy | 条件 |
+|---|---|
+| `tenants_update_v2` | owner のみ |
+| `tenants_update_owner_admin` | owner / admin / super_admin |
+
+**2つの正が矛盾している**:
+- `supabase/migrations/20260323020000_rls_role_constraints.sql` のヘッダは
+  「tenants UPDATE : owner only」と明記
+- アプリ側は `/api/admin/settings/defaults` PUT 等で `settings:edit`（admin 以上）を要求し、
+  権限マトリクス上も admin は `settings:edit` を持つ
+
+- 影響: 本番に admin は0名（owner 23 / staff 1 / super_admin 1）なので現時点では表面化しない。
+  admin を作った瞬間に、どちらを正とするかで挙動が変わる。
+- どちらかに寄せないと起きること: DB を owner のみにすると、admin の設定変更が
+  **0行更新で成功扱い**になる（PR #1014 で直した「嘘の成功」と同じ型の不具合が再発する）。
+- 次のアクション: 代表の判断。「テナント設定（社名・ロゴ・既定の保証除外文言・請求タイミング等）
+  を admin に触らせるか」を決める。決まったら緩い方か厳しい方のどちらかを削除する。
+- 起票日: 2026-09-01
+
+## テンプレートの scope='shared' を誰が作れるべきか（2026-09-01）
+
+`templates` の INSERT に2本のポリシーがあり、片方が明示的に禁じている条件をもう片方が通す。
+
+| policy | 条件 |
+|---|---|
+| `templates_write_owner_admin` | `scope='shared'` は **`AND false`** で禁止 / `scope='tenant'` は owner・admin |
+| `templates_insert_v2` | owner・admin・staff（**scope を見ない**） |
+
+OR 評価なので、実効は「owner/admin/staff が scope を問わず作成できる」。
+`templates_write_owner_admin` が共有テンプレートを禁じている意図は効いていない。
+
+- 影響: 本番の `templates` は5件で `scope='shared'` は0件。実害は出ていない。
+- 次のアクション: 代表の判断。「共有テンプレート（全テナント横断）を各テナントの
+  owner/admin/staff が作れるべきか、プラットフォーム運営だけが作るべきか」を決める。
+  後者なら `templates_insert_v2` に scope 条件を足す。
+- 起票日: 2026-09-01
+
 ## 通知18タイプのうち15タイプが本番で一度も発火していない（2026-08-31）
 
 通知タイプカタログ（`src/lib/notifications/types.ts`）には18タイプあるが、本番で実際に
@@ -41,23 +82,6 @@
   (c) そのまま放置して severity は型から導出する。
 - 次のアクション: 「未読バッジに何を数えるか」（全未読か、要対応のみか）が決まってから選ぶ。
   読み手がいない今整えるのは YAGNI。
-- 起票日: 2026-08-31
-
-## certificates の RLS に、意図を打ち消す PERMISSIVE ポリシー重複がある（2026-08-31）
-
-`certificates` の UPDATE には PERMISSIVE ポリシーが2本ある（本番DBで実測）。
-
-- `cert_update_member` … `is_member_of_tenant(tenant_id)` = **テナントメンバー全員**
-- `certificates_update_v2` … `my_tenant_role(tenant_id) IN ('owner','admin','staff')`
-
-PostgreSQL は同一コマンドの PERMISSIVE ポリシーを **OR** で評価するため、後から入れた
-`certificates_update_v2` の絞り込みは効かず、緩い方が勝つ。結果として viewer でも
-`certificates` を UPDATE できる。今回はアプリ層（Server Action の権限判定）で塞いだが、
-RLS 側は緩いままである。
-
-- 次のアクション: (a) 同種の重複が他テーブルにもあるか棚卸しする、(b) `cert_update_member` を
-  落とすか RESTRICTIVE に変えるかを決める。(b) は既存の書き込み経路を壊し得るので、
-  影響調査が要る。
 - 起票日: 2026-08-31
 
 ## 証明書の無効化処理が5経路にコピペで散っている（2026-08-31）

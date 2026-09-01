@@ -4,6 +4,43 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-09-01 RLS の役割別制約が一度も効いていなかったのを修正（DB側の固め）
+
+- 背景: 2026-03-23 に「SELECT=全ロール / INSERT・UPDATE=owner,admin,staff / DELETE=owner,admin」
+  という役割別 RLS を `_v2` ポリシーとして追加したが、**それ以前からある役割を見ない
+  ポリシーを削除していなかった**。PostgreSQL は同一コマンドの PERMISSIVE ポリシーを
+  **OR** で評価するため緩い方が常に勝ち、役割別制約は一度も効いていなかった。
+  本番で 6テーブル・14組がこの状態にあり、viewer が証明書・車両・整備履歴・NFCタグ・
+  テンプレートを作成/更新/削除できた。
+- 内容: `supabase/migrations/20260901000000_rls_drop_role_blind_policies.sql` で計15本を削除。
+  - 役割を見ないポリシー11本: `cert_insert_member` / `cert_update_member` /
+    `tpl_insert` / `tpl_update` / `tpl_delete` / `vehicles_tenant_access`(FOR ALL) /
+    `vehicle_histories_tenant_access`(FOR ALL) / `vh_update` /
+    `nfc_tags_tenant_access`(FOR ALL) / `insert_jobs` / `update_jobs`
+  - 越境判定3本: `insurer_users_{insert,update,delete}_admin`。`is_insurer_admin()` は
+    対象行の `insurer_id` で絞っておらず、**保険会社Aの管理者が保険会社Bのユーザーを
+    操作できた**。自社スコープの `iu_*` を残す。
+  - 監査ログ偽装1本: `insurer_access_logs_insert_v2`。書き込む行の所有者を検証せず、
+    他人・他社名義のアクセスログを作成できた。`logs_insert_self_only` を残す。
+- 安全性: 対象テーブルは全コマンドに `_v2` ポリシーが既にあり `FOR ALL` を落としても
+  読みは失われない。service_role は RLS を迂回するので service-role 経由の書き込みは無影響。
+  本番のロール構成は owner 23 / staff 1 / super_admin 1（viewer・admin は 0）で、
+  `my_tenant_role()` は super_admin を owner に写像するため、**書き込みを失う既存ユーザーは
+  いない**。
+- 検証:
+  - 本番に対して `BEGIN … ROLLBACK` で実際に削除を適用し「打ち消しの組が残らない」ことを
+    確認して戻した（本番は無変更）。
+  - `npm run check:migrations`（空DBへの再生）: 既知の9件のみ、増減なし。
+  - `scripts/replay-migrations.mjs` に検査を追加（CI の Migrations Replay で実行済み）。
+    **マイグレーションを外すと4組を検出して落ち、戻すと通ることを確認**（空振りでない）。
+  - `npm run lint:migrations` OK / `npm run check:schema` OK / `npx vitest run` 5290件通過。
+- 検査の限界（意図的）: 再生 DB は再生できない9件の分だけポリシーが欠けるため、本番の
+  14組に対して4組しか見えない。**過小報告はするが誤検出はしない**設計。静的解析は
+  不可能（`_v2` は plpgsql の `EXECUTE format()` で動的生成されるため本文から抽出できない）。
+- 判断待ち: `tenants` の UPDATE（DB は owner のみ / アプリは admin 以上を要求）と、
+  `templates` の scope='shared' 作成可否。いずれも矛盾する2つの正があるため
+  OPEN_QUESTIONS.md に起票した。
+
 ## 2026-08-31 通知アイコンが実データの型名と一致しておらず全件が既定アイコンだった件を修正（IMP-029）
 
 - 背景: モバイル通知一覧のアイコン表 `TYPE_ICON` のキーは `certificate` / `work` / `sync` /
