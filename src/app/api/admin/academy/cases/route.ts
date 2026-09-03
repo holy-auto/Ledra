@@ -6,6 +6,7 @@ import { NextRequest } from "next/server";
 import { z } from "zod";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
+import { checkRateLimit } from "@/lib/api/rateLimit";
 import {
   apiOk,
   apiUnauthorized,
@@ -116,6 +117,11 @@ export async function POST(req: NextRequest) {
     }
 
     if (action === "publish") {
+      // 公開だけが AI 要約を呼び、knowledge_chunks に全加盟店共有の行を書く。
+      // unpublish は行の更新だけなので、AI の枠を消費させない。
+      const limited = await checkRateLimit(req, "ai", `academy-case:${caller.tenantId}`);
+      if (limited) return limited;
+
       // 証明書情報を取得してAI要約を生成
       let aiSummary: string | undefined;
       let goodPoints: string[] = [];
