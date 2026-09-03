@@ -153,9 +153,12 @@
 
 ## C2PA Conformance Program 申請（AL1・Backend）の未確定事項（2026-08-11）
 - 状況: 申請方針は「GP / Backend / Max Assurance Level 1 先行」に決定（DECISION_LOG 2026-08-11、詳細は `docs/c2pa-conformance-application.md`）。申請前に埋める必要のある事実が残る。
-- 確定済み（2026-08-25、代表）: 役割=GP / Max AL=1 / 申告 Spec=**2.4** / 法人名=株式会社HOLY（英字 **HOLY Inc.**）/ 登記住所=東京都港区北青山1-3-1 アールキューブ青山3F / 連絡先=info@holy-inc.jp。→ **EOI 全項目が確定、送信可能**。
+- 進捗（2026-08-25）: **EOI 送信 → GP Legal Agreement 署名済み**。次は Administrator からの Intake Form 案内待ち。
+- 確定済み: 役割=GP / 実装クラス=Backend / Max AL=1 / 申告 Spec=**2.4** / 法人名=株式会社HOLY（英字 **HOLY Inc.**）/ 登記住所=東京都港区北青山1-3-1 アールキューブ青山3F / 連絡先=info@holy-inc.jp / 生成・検証メディアタイプ=image/jpeg・png・webp・heic（実コード確認）。
 - 残る論点と選択肢:
   - **Spec 2.4 の実出力確認**: 申告 2.4 に対し、製品が実際に v2.4 準拠マニフェストを出力しているかを Intake 用サンプルで要検証（契約上、申告版に拘束される）。
+  - **Date of Earliest Public Disclosure**: CPL 公開を遅らせたい日付があるか（無ければ即時）。
+  - **電話番号**: Legal Agreement/連絡用の電話番号（署名時に記入済みか要確認）。
   - CA の選定と自動エンロール認証方式: O.1/O.2 の設計を左右する最重要。方式は CA 依存。
   - 署名鍵の鍵管理: AL1 は独立鍵管理サービスで可 / AL2 を見据えるなら最初から KMS（AWS/GCP/Azure）。＋鍵ローテーション手順。
   - 対応メディアタイプの確定とサンプルアセット準備（最低 image/jpeg）。

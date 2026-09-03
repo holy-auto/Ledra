@@ -26,7 +26,7 @@
 出典: `C2PA Conformance Program.md` §Process Requirements for Applicants。
 
 1. **Expression of Interest Form 提出**（Google フォーム）。会社の法的登記情報＋役割（GP）を選択。
-2. **法的合意（Legal Agreement）締結**。Linux Foundation の署名サービスで GP 用契約に署名。
+2. **法的合意（Legal Agreement）締結** ✅ **署名済み（2026-08-25）**。Linux Foundation の署名サービスで GP 用契約に署名。
 3. **Program Intake Form 提出**。CPL 掲載用の製品情報（対応メディアタイプ、実装クラス=Backend、
    希望 Max Assurance Level=1）を登録。
 4. **証拠提出**: (a) **GPSA 文書**（本書 §4 の下書きを完成させる）、(b) 宣言した全メディアタイプの
@@ -108,9 +108,12 @@ VP は別契約・別 Intake・検証結果サンプル提出が必要でスコ�
   **アーキ図を別途添付**（推奨）。
 - **1.7 実装クラス**: **Backend**
 - **1.8 Target Max Assurance Level**: **1**
-- **1.9 対応メディアタイプ**: 生成=【要確認: 実装が署名する型。少なくとも `image/jpeg`
-  （施工写真）】。検証=【要確認: `c2paVerify` が受ける型】。※テンプレートの許可リストの
-  部分集合で、サンプル提出が必要。
+- **1.9 対応メディアタイプ**（実コードで確認: `uploadHandler.ts:33` の accept-list）:
+  - 生成（署名）: **`image/jpeg` / `image/png` / `image/webp` / `image/heic`**。アップロードで
+    magic-byte 判定し、この4種のみ受理→真正性パイプライン→C2PA 署名（`signC2pa`, `c2pa.ts:196`）。
+  - 検証（取り込み）: 同4種を ingredient として外部 C2PA 検証（`verifyExternalC2pa`,
+    `processUploadedPhoto.ts:105`。strip/再エンコード前の原バイトに実施）。
+  - いずれもテンプレート §1.9 の許可リストの部分集合。**各型のサンプルアセット＋.c2pa/.json を Intake で提出**。
 
 ### 2. Security Architecture Details by Objective
 
@@ -274,3 +277,31 @@ Conformance Program 本文 §Expression of Interest Form に記載。
 - **解約**: Applicant は10日前の書面通知でいつでも解約可（C2PA 側にも解約条項あり）。
 - **費用**: プログラム費用は無料（§7）。
 - 注意: 上記は本セッションの抽出に基づく要約であり、法的助言ではない。**契約は全文（PDF）を精読の上で署名**すること。
+
+## 10. 次ステップ: Program Intake Form（GP・CPL レコード用）
+
+Legal Agreement 署名（✅ 2026-08-25）後、**Administrator から Intake Form のリンクがメールで届く**
+（連絡先 info@holy-inc.jp に着信するか要確認）。Intake Form は CPL レコードを組み立てるための情報収集で、
+GPSA（§4）とサンプルアセットは Intake 後の証拠提出フェーズで使う。詳細フィールドは公式「Companion Guide
+for the C2PA Conforming Products List」参照。
+
+### Intake で入力する主な値（確定分）
+
+| Intake 項目 | 値 |
+|---|---|
+| 役割 | Generator Product |
+| 法人・公開レコード情報 | HOLY Inc.（株式会社HOLY）／東京都港区北青山1-3-1 アールキューブ青山3F |
+| 実装クラス | Backend |
+| Max Assurance Level | 1 |
+| 申告 Spec バージョン | 2.4 |
+| 生成メディアタイプ | image/jpeg, image/png, image/webp, image/heic（§1.9・実コード確認） |
+| 検証メディアタイプ | 同上（ingredient 検証） |
+| Date of Earliest Public Disclosure | 【要確認: CPL 公開を遅らせたい日付があれば指定。無ければ即時】 |
+
+### Intake 後に用意する証拠（先に準備しておくと期間短縮）
+
+1. **サンプルアセット**: 上記4メディアタイプそれぞれの **C2PA 署名済み出力**＋対応する `.c2pa`/`.json`。
+   本番署名は env 有効化（`C2PA_MODE=production` ＋ 鍵）で生成できる（§0・LEDRA_CURRENT の B1）。
+2. **GPSA 文書**（§4）を Markdown で仕上げ、アーキ図（PNG/JPEG）を添付。
+3. **v2.4 実出力の確認**（OPEN_QUESTIONS）: 申告 2.4 とサンプルの実バージョン一致を検証。
+4. AL1 の残タスク: 署名鍵の KMS 化（§6.3）、90日修正ポリシー & OWASP カバレッジの運用文書化。
