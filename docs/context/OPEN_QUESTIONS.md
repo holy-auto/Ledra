@@ -154,7 +154,7 @@
 ## C2PA Conformance Program 申請（AL1・Backend）の未確定事項（2026-08-11）
 - 状況: 申請方針は「GP / Backend / Max Assurance Level 1 先行」に決定（DECISION_LOG 2026-08-11、詳細は `docs/c2pa-conformance-application.md`）。申請前に埋める必要のある事実が残る。
 - 進捗（2026-09-03）: **EOI → Legal Agreement 署名 → Program Intake Form 提出済み**（提出値は `docs/c2pa-conformance-application.md` §11）。次は Administrator のレビュー→証拠提出（サンプル＋GPSA）。
-- **⚠ ブロッカー（2026-09-03・実行検証、詳細は §12）**: 証拠用サンプルを pinned c2pa-node 0.6.0 で生成したところ、製品のマニフェストが検証で **Invalid**。(1) **actions が C2PA 2.x 非準拠**（`c2pa.opened` に ingredient なし→`ingredientMismatch`。`c2pa.created`+`digitalSourceType` なら準拠）＝確実の製品バグ、要修正。(2) `claimSignature.mismatch` は dev 自己署名証明書では常時発生し **本番証明書で要再検証**。(3) HEIC はこの環境でサンプル生成不可（sharp が HEIF 非対応）。製品テストは純関数のみで実署名検証を欠く。→ **証拠フェーズ前に必須修正**。
+- **一部修正済み（2026-09-03、詳細は §12）**: 証拠用サンプルで判明したマニフェスト非準拠のうち **(1) actions の C2PA 2.x 非準拠を修正済み**（`c2pa.opened`→`c2pa.created`+`digitalSourceType`、`orientation`/`converted`/`edited` 維持）。実署名検証テスト `c2paSignValidate.test.ts` を新設。残: **(2) 本番証明書で `claimSignature.mismatch` が出ないか要検証**（dev 自己署名では常時発生・内容非依存で dev-cert 由来の可能性大）、**(3) HEIC 署名可否**（この環境では sharp が HEIF 非対応で未検証）。
 - 確定済み: 役割=GP / 実装クラス=Backend / Max AL=1 / 申告 Spec=**2.4** / 法人名=株式会社HOLY（英字 **HOLY Inc.**）/ 登記住所=東京都港区北青山1-3-1 アールキューブ青山3F / 連絡先=info@holy-inc.jp / 生成・検証メディアタイプ=image/jpeg・png・webp・heic（実コード確認）。
 - 残る論点と選択肢:
   - **Spec 2.4 の実出力確認**: 申告 2.4 に対し、製品が実際に v2.4 準拠マニフェストを出力しているかを Intake 用サンプルで要検証（契約上、申告版に拘束される）。

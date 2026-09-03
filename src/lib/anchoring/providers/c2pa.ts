@@ -34,13 +34,25 @@ const DISABLED_RESULT: C2paResult = {
 const CLAIM_GENERATOR = "Ledra/1.0";
 const MANIFEST_TITLE = "Certificate Photo";
 
+// IPTC DigitalSourceType: the depicted content is a real-life scene captured
+// digitally. `c2pa.created` requires a digitalSourceType or it is rejected as
+// `assertion.action.malformed` under a C2PA 2.x (claim v2) manifest.
+const DIGITAL_SOURCE_TYPE_CAPTURE = "http://cv.iptc.org/newscodes/digitalsourcetype/digitalCapture";
+
 /**
  * c2pa.actions に封入する行為台帳（要約と実アサーションで共有する唯一の定義）。
- * Ledra は撮影機ではなく、署名時点で upload パイプラインが端末撮影写真を開き→
- * 向き確定→再エンコード→EXIF/GPS 除去、を済ませている。その実来歴を正直に宣言する。
+ * 署名時点で upload パイプラインは端末撮影写真を再エンコードし EXIF/GPS を除去済み。
+ * その実来歴を正直に宣言する。
+ *
+ * 先頭は `c2pa.created`（+digitalSourceType）。C2PA 2.x では `c2pa.opened`/`placed`/
+ * `removed` は ingredient 参照が必須だが、Ledra は元写真を ingredient にできない
+ * （プライバシーのため署名前に GPS を除去しており、除去前の原本を埋め込むと位置情報が
+ * 再露出する）。よって `opened` は使わず、Ledra が生成した rendition を `created` とし、
+ * 向き確定・再エンコード・EXIF/GPS 除去を後続の edit 系アクションで記録する。ingredient を
+ * 要求しない `orientation`/`converted`/`edited` は検証を通る（実測で確認）。
  */
 const MANIFEST_ACTIONS = [
-  { action: "c2pa.opened", softwareAgent: "Ledra/1.0" },
+  { action: "c2pa.created", digitalSourceType: DIGITAL_SOURCE_TYPE_CAPTURE },
   { action: "c2pa.orientation", softwareAgent: "sharp" },
   { action: "c2pa.converted", softwareAgent: "sharp" },
   // EXIF/GPS metadata removed for privacy before signing.
@@ -161,14 +173,11 @@ export async function signC2pa(buffer: Buffer, mime: string, binding?: CaptureBi
       title: MANIFEST_TITLE,
     });
 
-    // Record the real provenance, not a bare `c2pa.created`. Ledra is not the
-    // capture device: by the time we sign, the upload pipeline
-    // (imageExif.stripGpsAndReadExif) has opened the device-captured photo,
-    // baked in its orientation, re-encoded it, and removed ALL EXIF/GPS
-    // metadata. Declaring only `c2pa.created` would misrepresent that history
-    // to any C2PA validator — and silently drop the fact that location data
-    // was stripped. Assert the actual sequence instead, including the metadata
-    // removal, so the manifest is an honest ledger of what happened.
+    // Record the real provenance: the pipeline created this signed rendition
+    // (c2pa.created), then set orientation, re-encoded, and removed EXIF/GPS
+    // metadata. Declaring the edit sequence keeps the manifest an honest ledger
+    // of what happened while staying C2PA 2.x conformant (see MANIFEST_ACTIONS
+    // for why `c2pa.opened` cannot be used here).
     //
     // ponytail: unconditional — signC2pa doesn't know whether the strip/re-encode
     // actually ran (it receives the post-strip buffer). In the rare fallback where

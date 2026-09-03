@@ -365,3 +365,9 @@ for the C2PA Conforming Products List」参照。
 2. **本番証明書で署名→検証** し `claimSignature.mismatch` が出ないことを確認。
 3. **実署名画像の検証を1本テスト化**（署名→`Reader`→`validation_state===Valid`）。lazy 化の runnable check。
 4. HEIC 署名の可否を実ファイルで確認（不可なら申告メディアタイプから heic を外す）。
+
+### 修正済み（本ブランチ・2026-09-03）
+
+`src/lib/anchoring/providers/c2pa.ts` の `MANIFEST_ACTIONS` を修正: 先頭を `c2pa.opened`（ingredient 必須で非準拠）から **`c2pa.created` + `digitalSourceType=digitalCapture`** に変更し、`orientation`/`converted`/`edited` は維持（ingredient 不要で準拠）。正直な処理履歴（向き・再エンコード・EXIF/GPS 除去）は保持。scratch 実測で `ingredientMismatch`/`malformed` が消え、残コードは dev-cert の `signingCredential.untrusted`/`claimSignature.mismatch` のみ。`c2paManifest.test.ts` の期待値を更新し、実署名→検証で action/assertion エラーが無いことを確かめる **`c2paSignValidate.test.ts`** を新設（欠けていた runnable check）。
+
+**残（本ブランチ外）**: (a) 本番証明書で `claimSignature.mismatch` が出ないか要検証、(b) HEIC 署名可否（この環境では sharp が HEIF 非対応で未検証）。

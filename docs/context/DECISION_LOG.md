@@ -291,7 +291,7 @@
 2. 起きたこと: 証拠フェーズ用サンプルを scratch 環境（pinned `@contentauth/c2pa-node@0.6.0`）で生成し、`Reader` で検証したところ全画像が `validation_state: Invalid`。切り分けの結果、actions アサーションが C2PA 2.x 非準拠（`c2pa.opened` に ingredient 参照なし→`ingredientMismatch`）と判明。詳細は `docs/c2pa-conformance-application.md` §12。
 3. 以前の考え: 「B1 本番署名を env 有効化すればサンプルは出せる」と考えていた。
 4. 違和感・問題: 出力マニフェストが C2PA 検証を通らず、そのままでは assessor に提出できない。製品テストは純関数だけで実署名の検証を欠いており、これまで気づけなかった。
-5. 決めたこと: 証拠フェーズ着手前に (a) actions レジャーを 2.x 準拠へ修正（`c2pa.created`+`digitalSourceType` 等）、(b) 本番証明書で署名し `claimSignature.mismatch` の有無を再検証、(c) 実署名画像の検証を1本テスト化、(d) HEIC 署名可否を実ファイルで確認。修正方針は provenance の意味づけを伴うため代表判断を仰ぐ（即パッチはしない）。
+5. 決めたこと: 証拠フェーズ着手前に (a) actions レジャーを 2.x 準拠へ修正、(b) 本番証明書で署名し `claimSignature.mismatch` の有無を再検証、(c) 実署名画像の検証を1本テスト化、(d) HEIC 署名可否を実ファイルで確認。→ **(a)(c) は本セッションで実施済み**: `c2pa.opened` を `c2pa.created`+`digitalSourceType` に置換し `orientation`/`converted`/`edited` を維持（元写真は GPS を含むため ingredient にできず、`opened` は使えないと判明）。`c2paSignValidate.test.ts` を新設。(b)(d) は残（本番証明書/HEIF対応環境が要る）。
 6. 捨てた選択肢: 現行マニフェストのままサンプル提出（非準拠で assessment に落ちる）。dev 自己署名の `claimSignature.mismatch` を製品バグと即断（内容非依存で dev-cert 由来の可能性が高く、本番未検証のため保留）。
 7. 判断理由: `c2pa.created`+`digitalSourceType` で action コードが消えることを実行で確認済み＝根本原因が特定できている。一方で署名不一致は本番証明書で切り分ける必要がある。
 8. まだ答えが出ていないこと: 本番証明書での署名有効性、HEIC 署名可否、actions を created 系に寄せると strip/再エンコード履歴の表現が失われる点の provenance 設計、正確な v2.4 準拠。

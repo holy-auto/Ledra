@@ -7,9 +7,10 @@ describe("buildC2paManifestSummary", () => {
     expect(s.signerMode).toBe("production");
     expect(s.claimGenerator).toBe("Ledra/1.0");
     expect(s.title).toBe("Certificate Photo");
-    // 実アサーションと同じ台帳。EXIF/GPS 除去は parameters.name 付きで要約される。
+    // 実アサーションと同じ台帳。先頭は C2PA 2.x 準拠のため c2pa.created。
+    // EXIF/GPS 除去は parameters.name 付きで要約される。
     expect(s.actions).toEqual([
-      "c2pa.opened",
+      "c2pa.created",
       "c2pa.orientation",
       "c2pa.converted",
       "c2pa.edited:exif_gps_metadata_removed",
