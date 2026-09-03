@@ -44,7 +44,9 @@ export async function POST(req: NextRequest) {
   const supabase = await createSupabaseServerClient();
   const caller = await resolveCallerWithRole(supabase);
   if (!caller) return apiUnauthorized();
-  if (!requireMinRole(caller, "staff")) return apiForbidden();
+  // 備品購入は admin 以上（2026-09-03 代表判断）。Stripe 経路（admin/shop/checkout）と
+  // 同じ買い物を請求書払いで作るので、画面のラジオを切り替えるだけで下限が変わっては困る。
+  if (!requireMinRole(caller, "admin")) return apiForbidden();
 
   const parsed = shopOrderInvoiceSchema.safeParse(await req.json().catch(() => ({})));
   if (!parsed.success) {
