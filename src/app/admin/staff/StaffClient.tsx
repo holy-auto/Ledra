@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { parseJsonSafe } from "@/lib/api/safeJson";
 import { SUGGESTED_SKILLS } from "@/lib/staff/skills";
+import { formatDate } from "@/lib/format";
 
 type StaffStats = {
   assignments_total: number;
@@ -186,25 +187,25 @@ export default function StaffClient() {
   };
 
   /**
-   * 職人の施工実績リンク。外注職人はログインを持たないので、このURLだけが本人の
-   * 確認手段になる。**raw token は発行レスポンスにしか出ない**（DB はハッシュのみ）ので、
-   * 発行直後にここで一度だけ表示する。紛失したら再発行してもらう。
+   * 外注職人へ渡す連携コード。外注は自分の Ledra でこれを入力すると、
+   * **自分が施工した記録だけ**を自分の管理画面から見られるようになる。
+   * raw code は発行レスポンスにしか出ない（DB はハッシュのみ）ので、ここで一度だけ表示する。
    */
-  const [portfolioLink, setPortfolioLink] = useState<{ staffId: string; url: string } | null>(null);
+  const [linkCode, setLinkCode] = useState<{ staffId: string; code: string; expiresAt: string } | null>(null);
   const [linkBusy, setLinkBusy] = useState<string | null>(null);
 
-  const issuePortfolioLink = async (st: Staff) => {
+  const issueLinkCode = async (st: Staff) => {
     setMsg(null);
     setLinkBusy(st.id);
     try {
-      const res = await fetch("/api/admin/staff/portfolio-link", {
+      const res = await fetch("/api/admin/staff/link-invite", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ staff_member_id: st.id }),
       });
       const j = await parseJsonSafe(res);
       if (!res.ok) throw new Error(j?.error ?? j?.message ?? `HTTP ${res.status}`);
-      setPortfolioLink({ staffId: st.id, url: `${window.location.origin}/w/${j.token}` });
+      setLinkCode({ staffId: st.id, code: j.code, expiresAt: j.expires_at });
     } catch (e: unknown) {
       setMsg({ text: e instanceof Error ? e.message : String(e), ok: false });
     } finally {
@@ -212,20 +213,21 @@ export default function StaffClient() {
     }
   };
 
-  const revokePortfolioLink = async (st: Staff) => {
-    if (!confirm(`「${st.name}」の実績リンクを無効にしますか？（本人は開けなくなります）`)) return;
+  const unlinkTenant = async (st: Staff) => {
+    if (!confirm(`「${st.name}」との連携を解除しますか？（相手は自分の施工実績を見られなくなります）`)) return;
     setMsg(null);
     setLinkBusy(st.id);
     try {
-      const res = await fetch("/api/admin/staff/portfolio-link", {
+      const res = await fetch("/api/admin/staff/link-invite", {
         method: "DELETE",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ staff_member_id: st.id }),
       });
       const j = await parseJsonSafe(res);
       if (!res.ok) throw new Error(j?.error ?? j?.message ?? `HTTP ${res.status}`);
-      if (portfolioLink?.staffId === st.id) setPortfolioLink(null);
-      setMsg({ text: "実績リンクを無効にしました。", ok: true });
+      if (linkCode?.staffId === st.id) setLinkCode(null);
+      setMsg({ text: "連携を解除しました。", ok: true });
+      await fetchStaff();
     } catch (e: unknown) {
       setMsg({ text: e instanceof Error ? e.message : String(e), ok: false });
     } finally {
@@ -539,22 +541,24 @@ export default function StaffClient() {
                 )}
                 <button
                   type="button"
-                  onClick={() => issuePortfolioLink(s)}
+                  onClick={() => issueLinkCode(s)}
                   disabled={!s.is_active || linkBusy === s.id}
                   title={
-                    s.is_active ? "本人が自分の施工実績を見るリンクを発行します" : "休止中の職人には発行できません"
+                    s.is_active
+                      ? "外注が自分の Ledra で入力する連携コードを発行します"
+                      : "休止中の職人には発行できません"
                   }
                   className="btn-secondary text-xs px-3 py-1.5 disabled:opacity-50"
                 >
-                  {linkBusy === s.id ? "処理中…" : "実績リンクを発行"}
+                  {linkBusy === s.id ? "処理中…" : "連携コードを発行"}
                 </button>
                 <button
                   type="button"
-                  onClick={() => revokePortfolioLink(s)}
+                  onClick={() => unlinkTenant(s)}
                   disabled={linkBusy === s.id}
                   className="text-xs px-3 py-1.5 text-secondary hover:underline disabled:opacity-50"
                 >
-                  実績リンクを無効化
+                  連携を解除
                 </button>
                 <button
                   type="button"
@@ -565,35 +569,36 @@ export default function StaffClient() {
                 </button>
               </div>
 
-              {/* 発行直後の一度きりの表示。raw token は DB に無いので、閉じたら再発行が要る。 */}
-              {portfolioLink?.staffId === s.id && (
+              {/* 発行直後の一度きりの表示。raw code は DB に無いので、閉じたら再発行が要る。 */}
+              {linkCode?.staffId === s.id && (
                 <div className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs dark:border-amber-800/50 dark:bg-amber-950">
                   <div className="font-semibold text-amber-800 dark:text-amber-400">
-                    このURLを本人に渡してください（今だけ表示されます）
+                    このコードを本人に伝えてください（今だけ表示されます）
                   </div>
                   <div className="mt-2 flex flex-wrap items-center gap-2">
-                    <code className="break-all rounded bg-surface px-2 py-1 text-[11px] text-primary">
-                      {portfolioLink.url}
+                    <code className="rounded bg-surface px-3 py-1.5 font-mono text-sm tracking-widest text-primary">
+                      {linkCode.code}
                     </code>
                     <button
                       type="button"
-                      onClick={() => navigator.clipboard?.writeText(portfolioLink.url)}
+                      onClick={() => navigator.clipboard?.writeText(linkCode.code)}
                       className="btn-secondary text-xs px-3 py-1"
                     >
                       コピー
                     </button>
                     <button
                       type="button"
-                      onClick={() => setPortfolioLink(null)}
+                      onClick={() => setLinkCode(null)}
                       className="text-xs px-2 py-1 text-secondary hover:underline"
                     >
                       閉じる
                     </button>
                   </div>
                   <div className="mt-2 leading-5 text-amber-800 dark:text-amber-400">
-                    再表示はできません（保存しているのはハッシュのみ）。紛失したら再発行してください。
-                    このリンクは「無効化」するか、ロスターで<span className="font-semibold">休止中</span>
-                    にすると開けなくなります。 お客様の氏名・連絡先は表示されません。
+                    本人が自分の Ledra の「受注先での施工実績」で入力すると連携されます。 有効期限{" "}
+                    {formatDate(linkCode.expiresAt)}。再表示はできません（保存しているのはハッシュのみ）。
+                    連携後に相手が見られるのは<span className="font-semibold">その人が施工した記録だけ</span>で、
+                    お客様の氏名・連絡先は含まれません。
                   </div>
                 </div>
               )}

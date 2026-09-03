@@ -3254,6 +3254,17 @@
 "trigger_type",
 "triggered_by"
 ],
+"staff_link_invites": [
+"code_hash",
+"created_at",
+"created_by",
+"expires_at",
+"id",
+"redeemed_at",
+"redeemed_by_tenant_id",
+"staff_member_id",
+"tenant_id"
+],
 "staff_members": [
 "color",
 "commission_rate",
@@ -3262,6 +3273,7 @@
 "id",
 "is_active",
 "kind",
+"linked_tenant_id",
 "name",
 "note",
 "phone",
@@ -3269,25 +3281,6 @@
 "tenant_id",
 "updated_at",
 "user_id"
-],
-"staff_portfolio_identities": [
-"created_at",
-"id"
-],
-"staff_portfolio_identity_members": [
-"created_at",
-"identity_id",
-"portfolio_link_id"
-],
-"staff_portfolio_links": [
-"created_at",
-"created_by",
-"id",
-"is_active",
-"last_viewed_at",
-"staff_member_id",
-"tenant_id",
-"token_hash"
 ],
 "staff_shifts": [
 "created_at",
