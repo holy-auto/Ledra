@@ -4,32 +4,33 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
-## 2026-09-03 AI を呼ぶ API ルート6本のレート制限漏れを塞いだ
+## 2026-09-03 AI を呼ぶ8ハンドラのレート制限漏れを塞いだ
 
-- 内容: モデル選択を import している API ルート29本のうち、レート制限が無かった6本に
-  既存の `checkRateLimit(req, "ai", ...)` を入れた。新しい preset・ヘルパーは追加していない。
+- 内容: AI を呼ぶハンドラ46単位のうち、レート制限が無かった8つに既存の
+  `checkRateLimit(req, "ai", ...)` を入れた。新しい preset・ヘルパーは追加していない。
 
-  | ルート | 呼んでいる AI 関数 |
-  |---|---|
-  | `admin/academy/cases` | `generateAcademyCaseSummary` |
-  | `admin/academy/feedback` | `generateCertificateFeedback` |
-  | `admin/academy/qa` | `generateQAAnswer` |
-  | `admin/certificates/ai-draft` | `generateCertificateDraft` |
-  | `admin/certificates/ai-explain` | `generateExplanation` |
-  | `admin/purchase-orders/ai-message` | `generatePurchaseOrderMessage` |
+  | ハンドラ | 呼んでいる AI | 置いた場所 |
+  |---|---|---|
+  | `admin/academy/cases [POST]` | `generateAcademyCaseSummary` | `action === "publish"` の中（unpublish は課金しない） |
+  | `admin/academy/feedback [POST]` | `generateCertificateFeedback` | プラン判定の後 |
+  | `admin/academy/qa [POST]` | `generateQAAnswer` | プラン判定の後 |
+  | `admin/certificates/ai-draft [POST]` | `generateCertificateDraft` | プラン判定の後 |
+  | `admin/certificates/ai-explain [POST]` | `generateExplanation` | プラン判定の後 |
+  | `admin/purchase-orders/ai-message [POST]` | `generatePurchaseOrderMessage` | プラン判定の後 |
+  | `parts/installations/[id]/reconcile [POST]` | `extractDeliveryNote`（Vision） | 画像が渡されたときだけ |
+  | `vehicles/parse-shakken [POST]` | `parseShakenshoAuto`（Vision） | 画像を buffer 化する前 |
 
 - 背景: #1021 でアカデミーの AI 3経路に staff 以上の認可を入れたが、**認可は
-  「誰が呼べるか」であって「何回呼べるか」ではない。** 認証済みの1人がボタンを
-  押し続ければ課金は無制限に伸びる。他23本は既に同じ書き方をしていたので、
-  6本が慣行から漏れていただけだった。
-- 検出: `src/lib/api/__tests__/aiRouteRateLimit.test.ts` を追加。
-  **ガードを1本消すと落ちることを実際に確認済み**（`admin/academy/qa` で検証）。
-  免除は `qstash/line-history-import` の1本のみで、理由をコード内に書いてある
-  （QStash 署名付きの非同期ジョブ。ユーザーが直接叩けず、実行件数の上限を自前で持つ）。
-- **数えられなかったものについて。** import の推移到達で洗うと47本挙がるが、
-  `isMissingTableError`（エラー判定）や `calcSizeClass`（純粋関数）まで拾うため
-  **この数字は採用しなかった**。下位モジュール経由で AI を呼ぶ経路は
-  1本ずつ読む必要があり、OPEN_QUESTIONS に起票した。
+  「誰が呼べるか」であって「何回呼べるか」ではない。**
+- **検出器を3回作り直した。** 推移到達（47本）は純粋関数まで拾って使えず、
+  ルート自身の `@/lib/ai/client` import（29本）は狭すぎて **OCR 2本を見落とした**
+  （`/code-review` の指摘で発覚）。採用したのは「モデルを叩くモジュールから import した
+  binding を**ハンドラ単位**で追う」形。詳細は MISTAKE_LEDGER M-012〜M-014。
+- 検出: `src/lib/api/__tests__/aiRouteRateLimit.test.ts`。**ガードを消すと落ちることを
+  3つの形で確認済み**（下位モジュール経由の穴を消す / ガードを間違ったハンドラに付ける /
+  元に戻す）。免除は cron 日次ジョブと QStash ワーカーの2つで、理由をコードに書いてある。
+- 副次: `handlerChunks()` / `moduleChunk()` を `sourceScan.ts` へ移し、
+  `apiRoutePermissions.test.ts` と共有した（M-001 の再発防止をコピーせずに使えるように）。
 - 検証: tsc エラーなし / lint / vitest 全通過 / check:schema OK。
 
 ## 2026-09-03 npm audit の high 2件・moderate 1件を解消（PR #1022 / `daeab8ed`）

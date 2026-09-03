@@ -42,18 +42,16 @@ export async function POST(req: NextRequest) {
     if (!caller) return apiUnauthorized();
     // AI 呼び出しは staff 以上 (代表判断 2026-09-01。閲覧専用ロールに費用の出る操作をさせない)
     if (!requireMinRole(caller, "staff")) return apiForbidden();
-
-    // 証明書の説明文生成は呼ぶたびに AI 費用が出る。
-    // 認可だけでは費用の上限にならないので、他の AI ルートと同じ "ai" プリセットで
-    // テナント単位に絞る。
-    const limited = await checkRateLimit(req, "ai", `cert-ai-explain:${caller.tenantId}`);
-    if (limited) return limited;
-
     if (!canUseFeature(caller.planTier, "ai_explain")) {
       return apiValidationError("この機能はStandardプラン以上でご利用いただけます", {
         code: "plan_limit",
       });
     }
+
+    // 証明書の説明文生成は呼ぶたびに AI 費用が出る。
+    // プラン判定より後に置く。Free のテナントには 429 ではなく案内を返したい。
+    const limited = await checkRateLimit(req, "ai", `cert-ai-explain:${caller.tenantId}`);
+    if (limited) return limited;
 
     const parsed = aiExplainSchema.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) {

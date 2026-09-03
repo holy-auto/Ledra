@@ -32,7 +32,7 @@ import type {
   MethodRequirement,
   MinRoleRequirement,
 } from "../permissions";
-import { walkSource, enclosingFunctions } from "../../__tests__/sourceScan";
+import { walkSource, enclosingFunctions, handlerChunks } from "../../__tests__/sourceScan";
 
 const APP_ROOT = join(process.cwd(), "src", "app");
 const API_ROOT = join(APP_ROOT, "api");
@@ -57,18 +57,6 @@ function enforcesMinRole(src: string, role: string): boolean {
 }
 
 /** route.ts をハンドラ単位に切る。`export const POST = ...` 形式も認識する。 */
-function handlerChunks(src: string): Map<string, string> {
-  const split =
-    /(?=export\s+(?:async\s+)?(?:function\s+(?:GET|POST|PUT|PATCH|DELETE)\b|const\s+(?:GET|POST|PUT|PATCH|DELETE)\s*=))/;
-  const named = /export\s+(?:async\s+)?(?:function\s+|const\s+)(GET|POST|PUT|PATCH|DELETE)\b/;
-  const out = new Map<string, string>();
-  for (const part of src.split(split)) {
-    const m = part.match(named);
-    if (m) out.set(m[1], part);
-  }
-  return out;
-}
-
 function isMinRole(v: ApiRouteRequirement | MethodRequirement): v is MinRoleRequirement {
   return typeof v === "object" && v !== null && "minRole" in v;
 }
