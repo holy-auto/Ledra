@@ -219,6 +219,13 @@ export default function CertNewFormWrapper({
 
   // AI下書き適用時にフォームフィールドを自動入力する
   const [selectedVehicleId, setSelectedVehicleId] = useState<string | undefined>(defaultVehicleId);
+  // 外注施工の紐付け。既定は ON（発注導線から来た場合のみ表示される）。
+  // hidden のまま黙って付けない: 紐付けた証明書は**相手方テナントの画面に出る**ので、
+  // 発注導線から入ったあと別の顧客の証明書を発行すると他社への誤開示になる。
+  // 発注に車両が入っていれば create.ts が食い違いを弾くが、UI から作られた発注は
+  // vehicle_id を持たない（OrdersClient が送らない）ため機械的には検証できない。
+  // 検証できない側の歯止めは「発行者に見えていること」なので、ここで明示する。
+  const [linkToJobOrder, setLinkToJobOrder] = useState(true);
   const [draftApplied, setDraftApplied] = useState(false);
 
   // 前回証明書データ（車両選択時に取得）
@@ -695,8 +702,27 @@ export default function CertNewFormWrapper({
             先頭の初期値を返し、プルダウン/検索で別の顧客に変更しても反映されない。
             defaultCustomerId は VehiclePickerSection に渡して初期選択させる。 */}
         {defaultReservationId && <input type="hidden" name="reservation_id" value={defaultReservationId} />}
-        {defaultJobOrderId && <input type="hidden" name="job_order_id" value={defaultJobOrderId} />}
+        {defaultJobOrderId && linkToJobOrder && <input type="hidden" name="job_order_id" value={defaultJobOrderId} />}
         {serviceType && <input type="hidden" name="service_type" value={serviceType} />}
+
+        {defaultJobOrderId && (
+          <div className="mb-6 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 dark:border-amber-800/50 dark:bg-amber-950">
+            <label className="flex items-start gap-3 text-sm text-amber-800 dark:text-amber-400">
+              <input
+                type="checkbox"
+                checked={linkToJobOrder}
+                onChange={(e) => setLinkToJobOrder(e.target.checked)}
+                className="mt-0.5 h-4 w-4 shrink-0"
+              />
+              <span>
+                <span className="font-semibold">この証明書を発注に紐付けて発行します。</span>
+                <br />
+                紐付けると、<span className="font-semibold">取引先（発注元／受注先）の受発注画面にも表示されます</span>
+                。別のお客様の証明書を発行する場合はチェックを外してください。
+              </span>
+            </label>
+          </div>
+        )}
 
         <CertFormProgressRail sections={formSections} />
 

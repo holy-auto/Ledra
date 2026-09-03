@@ -5,12 +5,12 @@ import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { apiJson, apiUnauthorized, apiNotFound, apiInternalError } from "@/lib/api/response";
 
 /**
- * 発注に紐づく施工証明の取得列。**相手方テナントにも返る**ので顧客 PII は載せない
- * （理由と禁止列は src/lib/orders/orderCertificates.ts、番人はその __tests__）。
+ * 発注に紐づく施工証明の取得列。**相手方テナントにも返る**ので顧客 PII は載せない。
  *
+ * この literal が唯一の実体で、開示してよいと判断した根拠と禁止列は
+ * src/lib/orders/orderCertificates.ts、両者の一致を強制する番人はその __tests__。
  * ここに literal で置いてあるのは、scripts/check-schema.mjs が select の列を
- * 同一ファイル内の const からしか解決できないため。共有モジュール側の
- * ORDER_CERTIFICATE_SELECT とはテストで一致を強制している。
+ * 同一ファイル内の const からしか解決できないため。
  */
 const ORDER_CERTIFICATE_SELECT = "public_id, status, service_type, craftsman_name, created_at";
 

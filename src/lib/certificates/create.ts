@@ -13,6 +13,7 @@ import "server-only";
 
 import { resolveStoreId, STORE_ERROR_MESSAGES } from "@/lib/stores/resolveStoreId";
 import { linksToReservation } from "@/lib/certificates/linkToReservation";
+import { linksToJobOrder } from "@/lib/certificates/linkToJobOrder";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 
@@ -409,10 +410,17 @@ export async function createCertificate(
   // 当事者（発注元 or 受注先）でない発注 ID は無視する。DB 側にも同じ制約のトリガーが
   // あるが、ここで落としておかないと insert ごと失敗して発行が止まる。
   //
-  // 車両の突き合わせは予約紐付けより重い意味を持つ: **紐付けた証明書は相手方テナントの
-  // 画面に出る**ので、取り違えるとそのまま他社への誤開示になる。発注導線
-  // (?job_order_id=&vehicle_id=) から入ったあとフォームで別の車両・顧客に変更しても
-  // 発注 ID は hidden で残るため、ここで食い違いを弾く。
+  // 取り違えの重さ: **紐付けた証明書は相手方テナントの画面に出る**ので、別の顧客の
+  // 証明書が紛れ込むとそのまま他社への誤開示になる。発注導線から入ったあとフォームで
+  // 別の車両・顧客に変更しても、発注 ID は hidden で残ってしまう。
+  //
+  // ただし**ここで機械的に検証できるのは、発注が車両を持っている場合だけ**。
+  // job_orders に顧客は無く、vehicle_id も任意（受発注画面 OrdersClient は車両を
+  // 送らないので、UI から作られた発注は vehicle_id = NULL）。null 同士を「一致」と
+  // みなす linksToReservation をここに流用すると、その最も多いケースで判定が
+  // 常に true になり、**チェックしているつもりの素通り**になる。だから流用はやめ、
+  // 車両がある発注だけ厳密一致を要求し、無い発注は検証できないものとして扱う。
+  // 検証できない側の歯止めは発行フォームの明示（CertNewFormWrapper の紐付け表示）。
   const job_order_id_form = String(formData.get("job_order_id") || "").trim() || null;
   let linked_job_order_id: string | null = null;
   if (job_order_id_form) {
@@ -423,15 +431,13 @@ export async function createCertificate(
       .eq("id", job_order_id_form)
       .or(`from_tenant_id.eq.${tenantId},to_tenant_id.eq.${tenantId}`)
       .maybeSingle();
-    // 判定は予約紐付けと同じ linksToReservation（両方に値があって食い違うときだけ弾く）。
-    // job_orders は顧客を持たないので customer_id は null 固定＝車両だけの突き合わせになる。
-    const vehicleMatches =
-      !!orderRow?.id &&
-      linksToReservation(
-        { vehicle_id: (orderRow.vehicle_id as string | null) ?? null, customer_id: null },
-        { vehicleId: resolvedVehicleId ?? null, customerId: resolvedCustomerId ?? null },
-      );
-    linked_job_order_id = vehicleMatches ? job_order_id_form : null;
+    // 判定は linksToJobOrder に切り出してテストしてある（linksToReservation とは
+    // わざと非対称。流用すると vehicle_id = NULL の発注で素通りになる）。
+    const vehicleOk = linksToJobOrder(
+      { vehicle_id: (orderRow?.vehicle_id as string | null) ?? null },
+      { vehicleId: resolvedVehicleId ?? null },
+    );
+    linked_job_order_id = orderRow?.id && vehicleOk ? job_order_id_form : null;
   }
 
   let craftsman_name: string | null = null;
