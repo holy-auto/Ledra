@@ -9,7 +9,7 @@
     "web": "expo start --web",
     "postinstall": "node scripts/fix-stripe-terminal-package.mjs",
     "typecheck": "tsc --noEmit",
-    "test": "node src/lib/reservationSteps.check.ts && node src/lib/menuFilter.check.ts && node src/lib/legal.check.ts && node src/lib/notificationTarget.check.ts && node src/lib/appLockPolicy.check.ts && node src/lib/document.check.ts && node src/lib/imageType.check.ts && node src/lib/reservationItems.check.ts && node src/lib/pos.check.ts && node src/lib/posPayment.check.ts && node src/lib/storeScope.check.ts && node src/lib/certificateLinks.check.ts && node src/lib/confirmationState.check.ts && node src/lib/homePresentation.check.ts && node src/lib/checkRegistry.check.ts && node ../../scripts/check-schema.mjs",
+    "test": "node src/lib/reservationSteps.check.ts && node src/lib/menuFilter.check.ts && node src/lib/legal.check.ts && node src/lib/notificationTarget.check.ts && node src/lib/appLockPolicy.check.ts && node src/lib/document.check.ts && node src/lib/imageType.check.ts && node src/lib/reservationItems.check.ts && node src/lib/pos.check.ts && node src/lib/posPayment.check.ts && node src/lib/storeScope.check.ts && node src/lib/certificateLinks.check.ts && node src/lib/confirmationState.check.ts && node src/lib/homePresentation.check.ts && node src/lib/workPresentation.check.ts && node src/lib/reservationPresentation.check.ts && node src/lib/checkRegistry.check.ts && node ../../scripts/check-schema.mjs",
     "lint": "expo lint"
   },
   "dependencies": {

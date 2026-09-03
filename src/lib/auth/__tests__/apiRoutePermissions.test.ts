@@ -19,7 +19,7 @@
  * ガードを足すときの注意: ルートのテストが `vi.mock("@/lib/auth/checkRole", () => ...)`
  * とモジュールごと差し替えていると `requirePermission` が undefined になり、
  * 403 のはずが TypeError で 500 になる。`importOriginal` で実物を残すこと。
- * 2026-09-01 時点で、まだこの書き方の残っているテストが29本ある。
+ * 2026-09-03 時点で、まだこの書き方の残っているテストが28本ある。
  */
 import { describe, it, expect } from "vitest";
 import { existsSync, readFileSync } from "node:fs";
@@ -32,7 +32,7 @@ import type {
   MethodRequirement,
   MinRoleRequirement,
 } from "../permissions";
-import { walkSource, enclosingFunctions } from "../../__tests__/sourceScan";
+import { walkSource, enclosingFunctions, handlerChunks } from "../../__tests__/sourceScan";
 
 const APP_ROOT = join(process.cwd(), "src", "app");
 const API_ROOT = join(APP_ROOT, "api");
@@ -57,18 +57,6 @@ function enforcesMinRole(src: string, role: string): boolean {
 }
 
 /** route.ts をハンドラ単位に切る。`export const POST = ...` 形式も認識する。 */
-function handlerChunks(src: string): Map<string, string> {
-  const split =
-    /(?=export\s+(?:async\s+)?(?:function\s+(?:GET|POST|PUT|PATCH|DELETE)\b|const\s+(?:GET|POST|PUT|PATCH|DELETE)\s*=))/;
-  const named = /export\s+(?:async\s+)?(?:function\s+|const\s+)(GET|POST|PUT|PATCH|DELETE)\b/;
-  const out = new Map<string, string>();
-  for (const part of src.split(split)) {
-    const m = part.match(named);
-    if (m) out.set(m[1], part);
-  }
-  return out;
-}
-
 function isMinRole(v: ApiRouteRequirement | MethodRequirement): v is MinRoleRequirement {
   return typeof v === "object" && v !== null && "minRole" in v;
 }
@@ -197,57 +185,84 @@ describe("証明書の無効化 (operationRisk = critical)", () => {
  * 残っている理由の分類は docs/context/OPEN_QUESTIONS.md にある。
  */
 describe("未登録の変更系ハンドラ", () => {
-  const GUARD =
-    /requirePermission\(|hasPermission\(|requireMinRole\(|hasMinRole\(|resolveOrgAccess\(|hasMinOrgRole\(|isPlatformAdmin\(|isPlatformTenantId\(|assertPlatformTenantId\(|authorizeOrgStoreRead\(|resolveInsurerCaller\(|resolveManufacturerCaller\(|requireAal2OrResponse\(/;
+  /**
+   * 認可として認識できる書き方。**この一覧は必ず不完全になる。**
+   * 認可は任意のヘルパーで書けるので、正規表現で網羅はできない。
+   *
+   * 実際 2026-09-03 に、この一覧が短かったせいで「未強制24本」と報告してしまった。
+   * 中身を読んだら 18本は別の形で守られていた（`canModifyLesson()` による著者判定、
+   * `caller.role !== "super_admin"` のインライン判定、`createLesson.ts` の permission）。
+   * だから下の KNOWN_UNGUARDED は「認可が無い」ではなく
+   * **「この検出器が認可を認識できない」**の一覧であり、分類コメントが実態を持つ。
+   */
+  const GUARD = new RegExp(
+    [
+      // 弾く形（否定）でのみ認可と見なす。呼び出しの存在だけを見ると、結果を捨てる
+      // 書き方（`const ok = requirePermission(...)`）でも一致して素通りする。
+      // これは enforces() が `!` を要求しているのと同じ理由。
+      String.raw`!\s*(?:requirePermission|hasPermission|requireMinRole|hasMinRole|hasMinOrgRole|isPlatformAdmin|isPlatformTenantId|canModifyLesson)\(`,
+      // 早期 return する形の呼び出し
+      String.raw`(?:resolveOrgAccess|assertPlatformTenantId|authorizeOrgStoreRead|resolveInsurerCaller|resolveManufacturerCaller|requireAal2OrResponse)\(`,
+      // インラインのロール判定。**弾いている**ことまで求める。
+      // `const isSoleOwner = caller.role === "owner" && ...` のような業務ロジックを
+      // 認可と誤認しないため（2026-09-03 のレビューで mobile/account が
+      // これで一覧から消えた）。
+      String.raw`caller\.role\s*!==\s*"[a-z_]+"[\s\S]{0,80}?apiForbidden`,
+    ].join("|"),
+  );
 
-  /** 認可を入れる判断がまだ済んでいない、既知のハンドラ。増やさないこと。 */
+  /**
+   * 検出器が認可を認識できないハンドラ。**すべて中身を読んで分類してある。**
+   * 増やさないこと。減らすときは、そのハンドラの認可を表に登録すること。
+   */
   const KNOWN_UNGUARDED = new Set([
-    "admin/academy/cases [POST]",
-    "admin/academy/feedback [POST]",
-    "admin/academy/lessons/[id]/complete [POST]",
-    "admin/academy/lessons/[id]/complete [DELETE]",
-    "admin/academy/lessons/[id]/quiz/attempt [POST]",
-    "admin/academy/lessons/[id]/quiz [PUT]",
-    "admin/academy/lessons/[id]/rate [POST]",
-    "admin/academy/lessons/[id]/rate [DELETE]",
-    "admin/academy/lessons/[id] [PATCH]",
-    "admin/academy/lessons/[id] [DELETE]",
-    "admin/academy/lessons/[id]/video/upload-url [POST]",
-    "admin/academy/lessons [POST]",
-    "admin/academy/qa [POST]",
-    "admin/academy/rewards/[id]/apply [POST]",
-    "admin/academy/rewards [POST]",
-    "admin/certificates [POST]",
-    "admin/documents/share [POST]",
+    // ── 自己完結（自分のデータだけを操作する。ロール権限を課す方が誤り）──
     "admin/feature-prefs [PUT]",
-    "admin/members [PUT]",
-    "admin/members [DELETE]",
     "admin/mfa/enroll [POST]",
     "admin/mfa/factors/[id] [DELETE]",
     "admin/mfa/verify-enroll [POST]",
-    "admin/notifications/[id]/read [PUT]",
-    "admin/notifications/read-all [PUT]",
-    "admin/shop/checkout [POST]",
-    "admin/tenants [PUT]",
+    "admin/tenants [PUT]", // アクティブテナントの切替
     "admin/ui-preferences [PUT]",
-    "certificates/pdf-one [POST]",
-    "mobile/academy/lessons/[id] [PATCH]",
-    "mobile/academy/lessons/[id] [DELETE]",
-    "mobile/academy/lessons [POST]",
-    "mobile/account [DELETE]",
-    "mobile/auth/otp/request [POST]",
-    "mobile/auth/otp/verify [POST]",
+    "mobile/account [DELETE]", // 自分の退会。caller.role は「最後の owner か」の業務判定で、認可ではない
     "mobile/push/register [POST]",
     "mobile/push/register [DELETE]",
     "mobile/ui-preferences [PUT]",
-    "stripe/connect/payment-link [POST]",
-    "stripe/connect [POST]",
-    "stripe/connect [DELETE]",
     "webauthn/credentials/[id] [DELETE]",
     "webauthn/operation/options [POST]",
     "webauthn/operation/verify [POST]",
     "webauthn/register/options [POST]",
     "webauthn/register/verify [POST]",
+
+    // ── 通知の既読。**自己完結ではない。** 行は tenant_id だけで絞られており
+    //    （本番61件すべて user_id が null）、誰かが既読にすると全員に反映される。
+    //    これが意図どおりかは判断待ち（docs/context/OPEN_QUESTIONS.md）。
+    "admin/notifications/[id]/read [PUT]",
+    "admin/notifications/read-all [PUT]",
+
+    // ── 認証前の経路（まだ caller が確立していない）──
+    "mobile/auth/otp/request [POST]",
+    "mobile/auth/otp/verify [POST]",
+
+    // ── 読み取りのみ（POST だが書き込まない）──
+    "certificates/pdf-one [POST]", // PDF 出力。テナント所有チェックはある
+
+    // ── 認可を共有関数に集約している（ルートの中には無い）──
+    "admin/certificates [POST]", // createCertAction が certificates:create を要求する
+
+    // ── 受講（自分の行にしか書けず、自分のレッスンは操作できない）──
+    "admin/academy/lessons/[id]/complete [POST]",
+    "admin/academy/lessons/[id]/complete [DELETE]",
+    "admin/academy/lessons/[id]/quiz/attempt [POST]",
+    "admin/academy/lessons/[id]/rate [POST]",
+    "admin/academy/lessons/[id]/rate [DELETE]",
+
+    // ── 著者判定で守られている（ルート内のローカルヘルパー。名前で照合すると
+    //    無関係な同名関数を認可と誤認するので、検出器には入れない）──
+    "admin/academy/lessons/[id]/quiz [PUT]", // ローカルの isAuthor()
+
+    // ── createLesson.ts の permission チェックで守られている ──
+    "admin/academy/lessons [POST]",
+    "mobile/academy/lessons [POST]",
   ]);
 
   const found: string[] = [];

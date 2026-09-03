@@ -1,5 +1,6 @@
 import { apiError, apiInternalError, apiUnauthorized, apiValidationError, apiForbidden } from "@/lib/api/response";
 import { resolveCallerWithRole, requirePermission } from "@/lib/auth/checkRole";
+import { checkRateLimit } from "@/lib/api/rateLimit";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { parseShakenshoAuto, extractFirstRegistrationYear, calcSizeClass } from "@/lib/ocr/shakensho";
 import {
@@ -41,6 +42,11 @@ export async function POST(req: Request) {
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
     if (!requirePermission(caller, "vehicles:create")) return apiForbidden();
+
+    // 車検証 OCR は Vision モデルを叩くので呼ぶたびに費用が出る。
+    // 画像を buffer 化する前に弾く。
+    const limited = await checkRateLimit(req, "ai", `parse-shakken:${caller.tenantId}`);
+    if (limited) return limited;
 
     const formData = await req.formData();
     const file = formData.get("file") as File | null;

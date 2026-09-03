@@ -67,3 +67,36 @@ export function enclosingFunctions(src: string, needle: RegExp): string[] {
   }
   return out;
 }
+
+/**
+ * route.ts を HTTP メソッド別のハンドラ本文に切る。
+ *
+ * ファイル全体を対象にガードの有無を見ると、同じファイルの別ハンドラのガードを
+ * 拾って素通りする。実際 `admin/invoices` は DELETE だけが admin 以上で POST/PUT が
+ * 素通りだったのに「強制済み」に数えられていた（2026-09-01）。
+ *
+ * `export const POST = withX(handler)` のように**名前付き関数を包んで export** する形は、
+ * 実体がこの split の**前**に来るため、どのメソッドにも属さない断片として残る。
+ * 呼び出し側はその断片（`split()` の先頭要素）も見ること。
+ * 実際 `qstash/line-history-import` がこの形で、メソッド単位だけを見ると消える。
+ */
+export function handlerChunks(src: string): Map<string, string> {
+  const split =
+    /(?=export\s+(?:async\s+)?(?:function\s+(?:GET|POST|PUT|PATCH|DELETE)\b|const\s+(?:GET|POST|PUT|PATCH|DELETE)\s*=))/;
+  const named = /export\s+(?:async\s+)?(?:function\s+|const\s+)(GET|POST|PUT|PATCH|DELETE)\b/;
+  const out = new Map<string, string>();
+  for (const part of src.split(split)) {
+    const m = part.match(named);
+    if (m) out.set(m[1], part);
+  }
+  return out;
+}
+
+/** どの export ハンドラにも属さない先頭断片（名前付き関数を包んで export する形の実体）。 */
+export function moduleChunk(src: string): string {
+  const split =
+    /(?=export\s+(?:async\s+)?(?:function\s+(?:GET|POST|PUT|PATCH|DELETE)\b|const\s+(?:GET|POST|PUT|PATCH|DELETE)\s*=))/;
+  const named = /export\s+(?:async\s+)?(?:function\s+|const\s+)(GET|POST|PUT|PATCH|DELETE)\b/;
+  const first = src.split(split)[0] ?? "";
+  return named.test(first) ? "" : first;
+}
