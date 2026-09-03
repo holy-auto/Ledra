@@ -6,15 +6,15 @@ import { describe, it, expect, beforeAll } from "vitest";
  * the pure-function tests never signed anything, so a manifest that fails
  * validation (assertion.action.ingredientMismatch / malformed) shipped unnoticed.
  *
- * It asserts that NO action/assertion validation codes are present. It does NOT
- * assert validation_state === Valid, because the dev-signed self-signed cert is
- * intentionally untrusted (signingCredential.untrusted) and, in this ephemeral
- * setup, may also report claimSignature-related codes that only a production
- * certificate can clear. Those are signature/trust concerns, orthogonal to the
- * manifest-content conformance this test guards.
+ * Approach: sign, read the manifest back, and require that EVERY validation code
+ * is in an allowlist of dev-signing artifacts (untrusted self-signed cert, and
+ * the claimSignature codes that only a production certificate can clear). Any
+ * other code — an action/assertion/ingredient/hash problem — fails the test.
+ * Using an allowlist (rather than a denylist of known-bad substrings) means a
+ * new, differently-named conformance failure still trips the guard.
  */
 describe("C2PA sign → validate (manifest content conformance)", () => {
-  let signedByType: Record<string, Buffer> = {};
+  const signedByType: Record<string, Buffer> = {};
   let readerAvailable = true;
   let Reader: typeof import("@contentauth/c2pa-node").Reader;
 
@@ -23,6 +23,35 @@ describe("C2PA sign → validate (manifest content conformance)", () => {
     { fmt: "png", mime: "image/png" },
     { fmt: "webp", mime: "image/webp" },
   ];
+
+  // Codes acceptable for a dev-signed (ephemeral self-signed) cert. These are
+  // signature/trust concerns, orthogonal to manifest-content conformance, and
+  // are cleared by a production certificate. Everything else must be absent.
+  const ALLOWED = [/^signingCredential\.untrusted$/, /^claimSignature\./];
+
+  // Collect only FAILURE codes. c2pa 0.6 exposes the legacy `validation_status`
+  // array (failures/warnings) and the structured `validation_results` object.
+  // The latter also carries SUCCESS codes (e.g. assertion.dataHash.match) under
+  // `success`/`informational`, so we must not scan it wholesale — only its
+  // `failure` buckets, or a passing manifest would look failed.
+  function collectFailureCodes(json: Record<string, unknown> | null): Set<string> {
+    const acc = new Set<string>();
+    const status = (json?.validation_status ?? []) as Array<{ code?: string }>;
+    for (const e of status) if (e?.code) acc.add(e.code);
+    const walk = (node: unknown): void => {
+      if (Array.isArray(node)) {
+        node.forEach(walk);
+      } else if (node && typeof node === "object") {
+        const obj = node as Record<string, unknown>;
+        if (Array.isArray(obj.failure)) {
+          for (const e of obj.failure as Array<{ code?: string }>) if (e?.code) acc.add(e.code);
+        }
+        for (const v of Object.values(obj)) walk(v);
+      }
+    };
+    walk(json?.validation_results);
+    return acc;
+  }
 
   beforeAll(async () => {
     process.env.C2PA_MODE = "dev-signed";
@@ -41,24 +70,27 @@ describe("C2PA sign → validate (manifest content conformance)", () => {
         if (res.signedBuffer) signedByType[mime] = res.signedBuffer;
       }
     } catch {
-      // Native module unavailable on this platform — skip rather than fail.
+      // Native module unavailable on this platform — mark for a visible skip.
       readerAvailable = false;
     }
   }, 30_000);
 
   for (const { mime } of TYPES) {
-    it(`${mime}: manifest has no action/assertion validation errors`, async () => {
-      if (!readerAvailable) return; // skipped: native c2pa-node not loadable here
+    it(`${mime}: manifest has only dev-signing validation codes (no content errors)`, async (ctx) => {
+      if (!readerAvailable) {
+        ctx.skip(); // native c2pa-node/sharp not loadable here — surfaced as skipped, not passed
+        return;
+      }
       const signed = signedByType[mime];
       expect(signed, `signing produced a buffer for ${mime}`).toBeTruthy();
 
       const reader = await Reader.fromAsset({ buffer: signed, mimeType: mime });
       const raw = reader?.json();
       const json = typeof raw === "string" ? JSON.parse(raw) : raw;
-      const codes: string[] = (json?.validation_status ?? []).map((v: { code: string }) => v.code);
 
-      const badContentCodes = codes.filter((c) => /ingredient|action|assertion/i.test(c) && /mismatch|malformed/i.test(c));
-      expect(badContentCodes, `unexpected manifest-content validation codes: ${codes.join(", ")}`).toEqual([]);
+      const codes = collectFailureCodes(json);
+      const unexpected = [...codes].filter((c) => !ALLOWED.some((re) => re.test(c)));
+      expect(unexpected, `unexpected (content) validation codes for ${mime}: ${[...codes].join(", ")}`).toEqual([]);
     });
   }
 });
