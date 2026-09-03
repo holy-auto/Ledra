@@ -220,7 +220,7 @@ export default function StorefrontJobWorkflow({ reservation, customer, vehicle, 
         </div>
 
         {/* 進行バー */}
-        <ol className="mt-4 grid grid-cols-4 gap-1.5">
+        <ol className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-1.5">
           {STATUS_FLOW.map((s, i) => {
             const active = !isCancelled && i === currentIndex;
             const done = !isCancelled && i < currentIndex;

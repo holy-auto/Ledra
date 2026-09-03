@@ -136,7 +136,7 @@ export default function AdminPageBar() {
           </nav>
         )}
 
-        {actions && <div className="ml-auto flex shrink-0 items-center gap-2 py-2">{actions}</div>}
+        {actions && <div className="ml-auto flex flex-wrap items-center gap-2 py-2">{actions}</div>}
       </div>
     </div>
   );

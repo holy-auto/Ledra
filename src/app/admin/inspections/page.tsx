@@ -154,6 +154,7 @@ export default async function InspectionsPage() {
                 <span className="text-xs text-zinc-500">{bucket.vehicles.length} 台</span>
               </div>
               <div className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm">
+                <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead className="bg-zinc-50 text-xs uppercase tracking-wider text-zinc-500">
                     <tr>
@@ -206,6 +207,7 @@ export default async function InspectionsPage() {
                     ))}
                   </tbody>
                 </table>
+                </div>
               </div>
             </section>
           ),

@@ -597,6 +597,7 @@ export default function CustomerIntakesClient() {
       </section>
 
       <section className="glass-card overflow-hidden">
+        <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="bg-surface-hover text-xs uppercase text-muted">
             <tr>
@@ -648,6 +649,7 @@ export default function CustomerIntakesClient() {
             )}
           </tbody>
         </table>
+        </div>
       </section>
 
       {/* 既存リンクの QR/URL 再表示モーダル */}

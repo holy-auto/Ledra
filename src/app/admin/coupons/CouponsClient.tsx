@@ -400,7 +400,7 @@ function CreateDialog({
           />
         </Field>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Field label="割引種別">
             <select
               value={discountType}
@@ -427,7 +427,7 @@ function CreateDialog({
           </Field>
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Field label="最低購入金額 (円)">
             <input
               type="number"
@@ -450,7 +450,7 @@ function CreateDialog({
           </Field>
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Field label="有効期間（開始）">
             <input
               type="date"
@@ -604,7 +604,7 @@ function IssueDialog({
           )}
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Field label="有効期限（日数）">
             <input
               type="number"

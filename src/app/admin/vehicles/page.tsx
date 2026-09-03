@@ -72,7 +72,7 @@ export default async function AdminVehicleListPage() {
         title="車両一覧"
         description="登録済み車両の確認・詳細閲覧・証明書発行への導線。"
         actions={
-          <div className="flex gap-3 items-center">
+          <div className="flex flex-wrap gap-3 items-center">
             <Link href="/admin" className="btn-secondary">
               ダッシュボード
             </Link>

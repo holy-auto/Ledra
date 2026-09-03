@@ -646,7 +646,7 @@ export default function ReservationsClient() {
         title="予約管理"
         description="予約の登録・管理を行います。"
         actions={
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Link
               href="/admin/jobs/new"
               className="inline-flex items-center gap-2 rounded-xl border border-accent/30 bg-accent-dim px-4 py-2 text-sm font-semibold text-accent-text hover:bg-accent/10 transition-colors"
@@ -709,7 +709,7 @@ export default function ReservationsClient() {
       )}
 
       {/* ── Stats cards ── */}
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
         {[
           { label: "本日の予約", value: stats?.today_count ?? 0, icon: "📅", color: "from-blue-500 to-blue-600" },
           { label: "進行中", value: stats?.active_count ?? 0, icon: "⚙️", color: "from-violet-500 to-violet-600" },
@@ -1370,7 +1370,7 @@ export default function ReservationsClient() {
                     </label>
 
                     {/* Date & Time */}
-                    <div className="grid grid-cols-3 gap-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                       <label className={`${labelCls} col-span-1`}>
                         <span className={labelTextCls}>
                           予約日 <span className="text-danger">*</span>

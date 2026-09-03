@@ -203,7 +203,7 @@ export default function StorefrontInventory() {
     <div className="space-y-6">
       {/* ─── ① サマリ ─── */}
       <section className="rounded-2xl border border-border-subtle bg-surface p-4">
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
           <div>
             <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">登録数</div>
             <div className="mt-1 text-2xl font-bold text-primary">{stats?.total ?? "—"}</div>

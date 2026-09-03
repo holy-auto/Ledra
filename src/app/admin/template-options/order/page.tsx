@@ -98,6 +98,7 @@ export default function OrderPage() {
           <div className="p-4">
             <div className="text-xs font-semibold tracking-[0.18em] text-muted">過去のオーダー</div>
           </div>
+          <div className="overflow-x-auto">
           <table className="min-w-full text-sm">
             <thead className="bg-surface-hover">
               <tr>
@@ -140,6 +141,7 @@ export default function OrderPage() {
               ))}
             </tbody>
           </table>
+          </div>
         </div>
       )}
 

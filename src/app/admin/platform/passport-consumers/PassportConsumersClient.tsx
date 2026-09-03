@@ -187,6 +187,7 @@ export default function PassportConsumersClient() {
         </div>
       ) : (
         <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white">
+          <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-zinc-50 text-xs uppercase tracking-wider text-zinc-500">
               <tr>
@@ -230,6 +231,7 @@ export default function PassportConsumersClient() {
               ))}
             </tbody>
           </table>
+          </div>
         </div>
       )}
     </div>

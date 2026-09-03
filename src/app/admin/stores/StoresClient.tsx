@@ -300,7 +300,7 @@ export default function StoresClient() {
                   placeholder="東京都渋谷区..."
                 />
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="mb-1 block text-xs font-medium text-secondary">緯度 (任意)</label>
                   <input

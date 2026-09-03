@@ -427,7 +427,7 @@ export default function InsurerLayout({ children }: { children: ReactNode }) {
     <InsurerRouteGuard>
       <div className="min-h-screen bg-[var(--bg-inset)]">
         <InsurerSidebar />
-        <main className="pt-16 lg:pt-0 lg:ml-60">{children}</main>
+        <main className="px-4 pt-16 sm:px-6 lg:pt-0 lg:ml-60">{children}</main>
       </div>
     </InsurerRouteGuard>
   );

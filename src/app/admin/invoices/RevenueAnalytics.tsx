@@ -461,6 +461,7 @@ export default function RevenueAnalytics() {
 
               {/* Yearly summary table */}
               <div className="border-t border-border-subtle pt-3">
+                <div className="overflow-x-auto">
                 <table className="min-w-full text-[12px]">
                   <thead>
                     <tr>
@@ -503,6 +504,7 @@ export default function RevenueAnalytics() {
                     })}
                   </tbody>
                 </table>
+                </div>
               </div>
             </>
           )}
