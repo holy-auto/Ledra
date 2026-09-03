@@ -170,10 +170,16 @@ OR 評価なので、実効は「owner/admin/staff が scope を問わず作成�
   `FROM insurer_tenant_access` とスキーマ修飾なしのまま**で、`search_path` が空のため解決できない。
   本番 DB 上の関数定義（`pg_proc.prosrc`）と `proconfig`（`search_path=""`）を直接確認済み。
   テーブル `public.insurer_tenant_access` 自体は存在する（有効な行は1件）。
-- **同じ形の関数がもう1つある**: `insurer_get_vehicle_certificates` も `search_path=""` かつ
-  本体が `insurer_tenant_access` を非修飾参照している。こちらの実挙動は未確認。
+- **訂正（2026-09-03、本番 DB の関数本体を再取得して確認）**: 当初ここに
+  「`insurer_get_vehicle_certificates` も同じ形（`search_path=""` かつ非修飾参照）」と書いたが、
+  **これは誤りだった。** 同関数は `search_path=""` ではあるものの、本体の参照は
+  `public.insurer_users` / `public.vehicles` / `public.insurer_tenant_access` /
+  `public.insurer_access_logs` / `public.certificates` と**すべてスキーマ修飾されており、壊れていない**。
+  誤認の原因は、`prosrc ILIKE '%insurer_tenant_access%'` での絞り込みが
+  `public.insurer_tenant_access` にも一致することを見落としたまま「非修飾参照」と読んだこと。
+  **壊れている関数は `insurer_accessible_tenant_ids` の1本だけ**であり、修正対象もこれ1本。
 - 後続の `20260802154302` / `20260802154541`（`fix_search_path_bare_refs_certificates_insurers`）は
-  適用済みだが、この2関数は対象に入っていない。
+  適用済みだが、`insurer_accessible_tenant_ids` は対象に入っていない。
 - **影響範囲**: 【要確認】保険会社ポータルの検索は 2026-04-04 のマイグレーション以降ずっと壊れていた
   可能性が高いが、実際に本番で保険会社ユーザーがこの機能を使っていたか、いつから壊れていたかは未確認。
 - **判断が必要な点**: 修正は「関数本体を `public.insurer_tenant_access` とスキーマ修飾して
