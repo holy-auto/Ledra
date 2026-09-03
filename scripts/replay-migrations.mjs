@@ -193,6 +193,18 @@ function main() {
 
     console.log(`適用できたファイル: ${files.length - failed.length} / ${files.length}`);
 
+    if (failed.length > 0) {
+      console.log(`\n❌ ファイル名順に1パスで流すと ${failed.length} 件落ちます:`);
+      for (const { file, error } of failed) console.log(`  - ${file}\n      ${error}`);
+      console.log("\nSupabase のブランチ機能はこの順で1回だけ流すので、ここが赤いと");
+      console.log("プレビュー DB は作られません。前提は同じファイルの中で作るか、");
+      console.log("前提が無いときに飛ばして別ファイルで補ってください");
+      console.log("（例: supabase/migrations/20260313030000_replay_early_schema.sql）。");
+      console.log("\n（スキーマが未完成なので RLS ポリシー検査は行いません）");
+      process.exitCode = 1;
+      return;
+    }
+
     // RLS: 役割別ポリシーが役割を見ないポリシーに打ち消されていないか
     const rls = checkRlsPolicyNullification(dsn);
     if (rls.error) {
@@ -206,17 +218,6 @@ function main() {
       return;
     } else {
       console.log("RLS ポリシー検査: 打ち消しなし");
-    }
-
-    if (failed.length > 0) {
-      console.log(`\n❌ ファイル名順に1パスで流すと ${failed.length} 件落ちます:`);
-      for (const { file, error } of failed) console.log(`  - ${file}\n      ${error}`);
-      console.log("\nSupabase のブランチ機能はこの順で1回だけ流すので、ここが赤いと");
-      console.log("プレビュー DB は作られません。前提は同じファイルの中で作るか、");
-      console.log("前提が無いときに飛ばして別ファイルで補ってください");
-      console.log("（例: supabase/migrations/20260313030000_replay_early_schema.sql）。");
-      process.exitCode = 1;
-      return;
     }
 
     if (DUMP_TO) {

@@ -10,8 +10,10 @@
 -- 空 DB 側の実体は `20260314000006_replay_market_inquiries.sql` が作る。
 DO $mig$
 BEGIN
-  IF to_regclass('public.market_vehicles') IS NULL THEN
-    RAISE NOTICE '20260314000002: market_vehicles 未作成のため skip（20260314000006 が作る）';
+  -- 下の CREATE TABLE は IF NOT EXISTS を付けていない（当時のまま）ので、
+  -- 参照先が無いときだけでなく、**既に作られているとき**も飛ばす。
+  IF to_regclass('public.market_vehicles') IS NULL OR to_regclass('public.market_inquiries') IS NOT NULL THEN
+    RAISE NOTICE '20260314000002: 前提が無い / 既に作成済みのため skip（20260314000006 が作る）';
     RETURN;
   END IF;
 

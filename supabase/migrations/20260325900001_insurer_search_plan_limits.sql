@@ -12,7 +12,8 @@ BEGIN
     WHERE p.pronamespace = 'public'::regnamespace
       AND p.proname = ANY (ARRAY['insurer_search_certificates'])
   LOOP
-    EXECUTE 'DROP FUNCTION ' || r.sig || ' CASCADE';
+    -- CASCADE は付けない。依存物があるなら黙って消さずに落ちてほしい
+    EXECUTE 'DROP FUNCTION ' || r.sig || ';';
   END LOOP;
 END
 $mig$;
