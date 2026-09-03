@@ -10,6 +10,7 @@ import { NextRequest } from "next/server";
 import { z } from "zod";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
+import { checkRateLimit } from "@/lib/api/rateLimit";
 import {
   apiOk,
   apiUnauthorized,
@@ -41,6 +42,12 @@ export async function POST(req: NextRequest) {
     if (!caller) return apiUnauthorized();
     // AI 呼び出しは staff 以上 (代表判断 2026-09-01。閲覧専用ロールに費用の出る操作をさせない)
     if (!requireMinRole(caller, "staff")) return apiForbidden();
+
+    // 発注メッセージ生成は呼ぶたびに AI 費用が出る。
+    // 認可だけでは費用の上限にならないので、他の AI ルートと同じ "ai" プリセットで
+    // テナント単位に絞る。
+    const limited = await checkRateLimit(req, "ai", `po-ai-message:${caller.tenantId}`);
+    if (limited) return limited;
 
     if (!canUseFeature(caller.planTier, "ai_draft")) {
       return apiValidationError("この機能はStandardプラン以上でご利用いただけます", { code: "plan_limit" });

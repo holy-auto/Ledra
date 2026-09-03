@@ -7,6 +7,7 @@ import { NextRequest } from "next/server";
 import { z } from "zod";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
+import { checkRateLimit } from "@/lib/api/rateLimit";
 import { apiOk, apiUnauthorized, apiInternalError, apiValidationError, apiForbidden } from "@/lib/api/response";
 import { canUseFeature } from "@/lib/billing/planFeatures";
 import { generateCertificateDraft } from "@/lib/ai/draftCertificate";
@@ -37,6 +38,12 @@ export async function POST(req: NextRequest) {
     if (!caller) return apiUnauthorized();
     // AI 呼び出しは staff 以上 (代表判断 2026-09-01。閲覧専用ロールに費用の出る操作をさせない)
     if (!requireMinRole(caller, "staff")) return apiForbidden();
+
+    // 証明書ドラフト生成は呼ぶたびに AI 費用が出る。
+    // 認可だけでは費用の上限にならないので、他の AI ルートと同じ "ai" プリセットで
+    // テナント単位に絞る。
+    const limited = await checkRateLimit(req, "ai", `cert-ai-draft:${caller.tenantId}`);
+    if (limited) return limited;
 
     // Standard以上のみ
     if (!canUseFeature(caller.planTier, "ai_draft")) {

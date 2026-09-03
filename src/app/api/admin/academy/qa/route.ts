@@ -7,6 +7,7 @@ import { NextRequest } from "next/server";
 import { z } from "zod";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
+import { checkRateLimit } from "@/lib/api/rateLimit";
 import { apiOk, apiUnauthorized, apiInternalError, apiValidationError, apiForbidden } from "@/lib/api/response";
 import { canUseFeature } from "@/lib/billing/planFeatures";
 import { generateQAAnswer } from "@/lib/ai/qaAssistant";
@@ -29,6 +30,12 @@ export async function POST(req: NextRequest) {
     // AI 呼び出しは staff 以上（2026-09-01 代表判断）。呼ぶたびに費用が出るため
     // 閲覧専用ロールを弾く。アカデミー機能だが中身は AI なのでこちらの判断に従う。
     if (!requireMinRole(caller, "staff")) return apiForbidden();
+
+    // Q&A の回答生成は呼ぶたびに AI 費用が出る。
+    // 認可だけでは費用の上限にならないので、他の AI ルートと同じ "ai" プリセットで
+    // テナント単位に絞る。
+    const limited = await checkRateLimit(req, "ai", `academy-qa:${caller.tenantId}`);
+    if (limited) return limited;
 
     if (!canUseFeature(caller.planTier, "ai_academy_qa")) {
       return apiValidationError("この機能はStandardプラン以上でご利用いただけます", {

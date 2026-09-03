@@ -6,6 +6,7 @@ import { NextRequest } from "next/server";
 import { z } from "zod";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
+import { checkRateLimit } from "@/lib/api/rateLimit";
 import {
   apiOk,
   apiUnauthorized,
@@ -93,6 +94,12 @@ export async function POST(req: NextRequest) {
     // knowledge_chunks に tenant_id: null で全加盟店共有の行を書くため、
     // 2026-09-01 代表判断「AI は staff 以上」を適用する。
     if (!requireMinRole(caller, "staff")) return apiForbidden();
+
+    // 事例の公開は AI 要約を呼び、knowledge_chunks に全加盟店共有の行を書く。
+    // 認可だけでは費用の上限にならないので、他の AI ルートと同じ "ai" プリセットで
+    // テナント単位に絞る。
+    const limited = await checkRateLimit(req, "ai", `academy-case:${caller.tenantId}`);
+    if (limited) return limited;
 
     const parsed = academyCaseActionSchema.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) {
