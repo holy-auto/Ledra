@@ -750,7 +750,7 @@
 - 対象: どの画面・API・業種向けか
 ```
 
-## 2026-08-26 iPhone 先行ローンチ向けに審査要件の抜けを埋めた（PR #966 / branch claude/mobile-app-opening-animation-s2a6m3）
+## 2026-09-03 iPhone 先行ローンチ向けに審査要件の抜けを埋めた（PR #966 / branch claude/mobile-app-opening-animation-s2a6m3）
 
 - 内容: App Store 審査提出に向けた棚卸しで見つかった、要件を満たさない箇所を修正した。
 - **ホームの Tap to Pay 導線を復活**（要件 3.1 / 3.4）: `apps/mobile/src/app/(tabs)/index.tsx`。
