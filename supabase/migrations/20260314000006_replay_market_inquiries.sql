@@ -1,17 +1,13 @@
--- ============================================================
--- 問い合わせ・商談機能 マイグレーション
--- ============================================================
+-- 空 DB 用の補い: `20260314000002_inquiries.sql` の中身を、参照先の
+-- `market_vehicles` が出来たこの位置で作る。
 --
--- 【後から内容だけ修正】このファイルは本番へ適用済み（版番号は変えていない）。
--- ここで作る3テーブルは `market_vehicles` を参照しているが、それを作るのは
--- **1つ後ろの** `20260314000003_market_vehicles.sql`。空 DB へファイル名順に
--- 1パスで流すとここで落ち、market_* 系が丸ごと作られなかった。
--- ファイル名は動かさない（版番号が変わると本番で再適用になる）。
--- 空 DB 側の実体は `20260314000006_replay_market_inquiries.sql` が作る。
+-- あちらはファイル名の日付が market_vehicles より前なのに market_vehicles を
+-- 参照しており、空 DB へ1パスで流すと落ちる。版番号を変えると本番で再適用に
+-- なるためファイル名は動かせないので、あちらは「前提が無ければ skip」にして
+-- 実体をここへ置いた。**既に market_inquiries がある DB（本番）では何もしない。**
 DO $mig$
 BEGIN
-  IF to_regclass('public.market_vehicles') IS NULL THEN
-    RAISE NOTICE '20260314000002: market_vehicles 未作成のため skip（20260314000006 が作る）';
+  IF to_regclass('public.market_inquiries') IS NOT NULL THEN
     RETURN;
   END IF;
 

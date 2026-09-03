@@ -27,20 +27,32 @@ alter view public.invoices set (security_invoker = on);
 --    ever called server-side via the service-role client. Revoke client
 --    execution (incl. the PUBLIC grant where present) and keep service_role.
 -- ---------------------------------------------------------------------------
-revoke execute on function public.auth_uid_by_email(text) from public, anon, authenticated;
-grant  execute on function public.auth_uid_by_email(text) to service_role;
+-- 【後から内容だけ修正】ここで権限を締める関数のうち auth_uid_by_email / get_auth_email /
+-- get_auth_email_scoped は**本番にしかなく**、マイグレーションでは 20260826000005
+-- （ずっと後ろ）でしか作られない。無い関数への revoke/grant は落ちるので、
+-- あるものだけ処理する。版番号は変えていないので本番への影響は無い。
+do $mig$
+declare
+  sig text;
+begin
+  foreach sig in array array[
+    'public.auth_uid_by_email(text)',
+    'public.get_auth_email(uuid)',
+    'public.get_auth_email_scoped(uuid)',
+    'public.get_auth_emails_by_ids(uuid[])',
+    'public.check_auth_email_exists(text)'
+  ] loop
+    if to_regprocedure(sig) is not null then
+      execute format('revoke execute on function %s from public, anon, authenticated', sig);
+      execute format('grant  execute on function %s to service_role', sig);
+    end if;
+  end loop;
+end
+$mig$;
 
-revoke execute on function public.get_auth_email(uuid) from public, anon, authenticated;
-grant  execute on function public.get_auth_email(uuid) to service_role;
 
-revoke execute on function public.get_auth_email_scoped(uuid) from public, anon, authenticated;
-grant  execute on function public.get_auth_email_scoped(uuid) to service_role;
 
-revoke execute on function public.get_auth_emails_by_ids(uuid[]) from public, anon, authenticated;
-grant  execute on function public.get_auth_emails_by_ids(uuid[]) to service_role;
 
-revoke execute on function public.check_auth_email_exists(text) from public, anon, authenticated;
-grant  execute on function public.check_auth_email_exists(text) to service_role;
 
 -- ---------------------------------------------------------------------------
 -- 3) WARN 0024 — RLS policies with always-true USING/WITH CHECK on a write
