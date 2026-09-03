@@ -340,3 +340,28 @@ for the C2PA Conforming Products List」参照。
    - 圧縮マニフェストになっていないか（Intake で No と申告）。
 2. **GPSA 文書**（§4）を Markdown で仕上げ＋アーキ図。
 3. **AL1 クリティカルパス**: 署名鍵の KMS 化（§6.3, env PEM 廃止）、90日修正ポリシー & OWASP カバレッジの運用文書化。
+
+## 12. サンプル生成で判明したブロッカー（2026-09-03・実行検証）
+
+証拠フェーズ用サンプルを scratch 環境（pinned `@contentauth/c2pa-node@0.6.0` = c2pa-rs 0.90.0、dev 自己署名証明書）で生成して判明。**現状のサンプルは提出不可**。
+
+### 確実（実行で確認）
+
+- **actions アサーションが C2PA 2.x 非準拠**。製品の `MANIFEST_ACTIONS`（`c2pa.opened`/`converted`/`edited`、`c2pa.ts:42`）は ingredient 参照を持たず、検証で **`assertion.action.ingredientMismatch`** を出す。切り分け結果:
+  - `c2pa.opened`（ingredient なし）→ `ingredientMismatch`
+  - `c2pa.created`（bare）→ `assertion.action.malformed`
+  - **`c2pa.created` + `digitalSourceType` → 検証コードなし（準拠）** ← 修正の方向
+  - claim は **v2 / `c2pa.actions.v2`**（2.x 系。申告 2.4 と整合的だが、厳密な 2.4 準拠は assessor/interop で要確認）。
+- **HEIC サンプルはこの環境で生成不可**（sharp が HEIF エンコード非対応: "heifsave: Unsupported compression"）。c2pa-node が HEIC 署名を通すかは、HEIF 対応 sharp か実 HEIC ファイルで別途要検証。
+
+### 未確定（本番証明書で要再検証）
+
+- **`claimSignature.mismatch`**（署名が検証を通らない）が dev 自己署名証明書では claim v1/v2・assertion 有無に関係なく**常時発生**。これは **dev-cert ハーネス固有の可能性が高い**（内容非依存のため）が、**本番証明書（`C2PA_SIGNER_CERT/KEY`）での署名が有効か未検証**。証拠フェーズ前に本番署名で1枚検証すること。
+- 製品テスト（`c2paManifest.test.ts`/`c2paVerify.test.ts`）は**純関数のみ**で、**実署名画像の検証を一切カバーしていない**（本件が今まで検知されなかった理由）。
+
+### 次アクション（証拠フェーズのクリティカルパス）
+
+1. **actions レジャーを 2.x 準拠に修正**（`c2pa.created`+`digitalSourceType`、または `opened` に実 ingredient を付与）。provenance の意味づけ（撮影→strip→再エンコードの履歴をどう表現するか）は要判断。
+2. **本番証明書で署名→検証** し `claimSignature.mismatch` が出ないことを確認。
+3. **実署名画像の検証を1本テスト化**（署名→`Reader`→`validation_state===Valid`）。lazy 化の runnable check。
+4. HEIC 署名の可否を実ファイルで確認（不可なら申告メディアタイプから heic を外す）。
