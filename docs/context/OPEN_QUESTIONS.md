@@ -3,6 +3,27 @@
 > まだ決まっていないこと、判断に迷っていることを書く場所。決まったら
 > DECISION_LOG.md に移し、このファイルからは消す（削除履歴は git で追える）。
 
+## デモ保険会社アカウントが見られるのは実テナント `HOLY AUTO` で、デモテナントではない（2026-09-03）
+
+配布 PDF 用に保険会社ポータルの検索画面を撮影した際に判明した。**撮影の前提が間違っていた。**
+
+- 撮影タスクは「デモテナント `Ledra Motors（デモ）`（証明書18・顧客10・車両11）で撮るので
+  実顧客のデータは写らない」という前提で進めていた。施工店ポータル（admin）はその通りだった。
+- しかし**保険会社ポータルは別**だった。`insurer_tenant_access` の有効な行は1件だけで、
+  その行が指すのは**実テナント `HOLY AUTO`（slug: holy-auto、証明書1件）**。
+  デモ保険会社アカウントからデモテナントは1件も見えない。
+- つまり検索を実行させた状態で撮ると、**実業務の証明書1件が配布 PDF に載る**。
+  RPC は顧客名を `左1文字 + ***` にマスクするが、車種・ナンバー・車台番号・画像の列は
+  マスクされない。そのため今回は**検索を実行せず、空の初期状態のまま撮影した**
+  （実データは写っていない）。
+- **判断が必要な点**: 保険会社ポータルのスライドを「実データが並んだ検索結果」にしたい場合、
+  デモ保険会社にデモテナントへのアクセスを与える（`insurer_tenant_access` に行を足す）のが
+  素直だが、これは本番のアクセス制御データを増やす操作なので代表判断が要る。
+  現状の空状態のままでよければ何もしなくてよい。
+- **別途確認したいこと**: そもそも本番の `insurer_tenant_access` に
+  「デモ保険会社 → 実テナント HOLY AUTO」の行が存在してよいのか。
+  デモ用アカウントが実テナントの証明書を照会できる状態になっている。【要確認】
+
 ## AI の検出器が `getAnthropicClient()` に依存している（2026-09-03）
 
 AI を呼ぶハンドラの洗い出しは終わり、46単位すべてが制限ありか理由付き免除になった
@@ -156,36 +177,6 @@ OR 評価なので、実効は「owner/admin/staff が scope を問わず作成�
   owner/admin/staff が作れるべきか、プラットフォーム運営だけが作るべきか」を決める。
   後者なら `templates_insert_v2` に scope 条件を足す。
 - 起票日: 2026-09-01
-
-## 追加（2026-08-31・保険会社ポータルの証明書検索が本番で HTTP 500。DB 関数の search_path 設定漏れ）
-
-配布 PDF 用に `public/screenshots/insurer/search.png` を撮影しようとして発覚した。**この1枚だけ撮影できていない**（サービス概要 PDF が 13 ページ止まりで 14 ページにならない理由）。
-
-- **症状**: 保険会社ポータルの証明書検索（`/api/insurer/search` → RPC `insurer_search_certificates`）が
-  HTTP 500 を返す。開発モードでのエラー本文は
-  `内部エラー: relation "insurer_tenant_access" does not exist`。
-- **原因（確認済み）**: `insurer_accessible_tenant_ids(uuid)` は SECURITY DEFINER 関数で、
-  マイグレーション `20260404000000_fix_security_definer_search_path.sql` が
-  `ALTER FUNCTION ... SET search_path = ''` を適用している。しかし**関数本体は
-  `FROM insurer_tenant_access` とスキーマ修飾なしのまま**で、`search_path` が空のため解決できない。
-  本番 DB 上の関数定義（`pg_proc.prosrc`）と `proconfig`（`search_path=""`）を直接確認済み。
-  テーブル `public.insurer_tenant_access` 自体は存在する（有効な行は1件）。
-- **訂正（2026-09-03、本番 DB の関数本体を再取得して確認）**: 当初ここに
-  「`insurer_get_vehicle_certificates` も同じ形（`search_path=""` かつ非修飾参照）」と書いたが、
-  **これは誤りだった。** 同関数は `search_path=""` ではあるものの、本体の参照は
-  `public.insurer_users` / `public.vehicles` / `public.insurer_tenant_access` /
-  `public.insurer_access_logs` / `public.certificates` と**すべてスキーマ修飾されており、壊れていない**。
-  誤認の原因は、`prosrc ILIKE '%insurer_tenant_access%'` での絞り込みが
-  `public.insurer_tenant_access` にも一致することを見落としたまま「非修飾参照」と読んだこと。
-  **壊れている関数は `insurer_accessible_tenant_ids` の1本だけ**であり、修正対象もこれ1本。
-- 後続の `20260802154302` / `20260802154541`（`fix_search_path_bare_refs_certificates_insurers`）は
-  適用済みだが、`insurer_accessible_tenant_ids` は対象に入っていない。
-- **影響範囲**: 【要確認】保険会社ポータルの検索は 2026-04-04 のマイグレーション以降ずっと壊れていた
-  可能性が高いが、実際に本番で保険会社ユーザーがこの機能を使っていたか、いつから壊れていたかは未確認。
-- **判断が必要な点**: 修正は「関数本体を `public.insurer_tenant_access` とスキーマ修飾して
-  `CREATE OR REPLACE` する」だけで済むが、対象が**テナント横断の可視範囲を決める
-  SECURITY DEFINER 関数**（RLS の隣接領域）であるため、キャプチャ撮影のついでに本番 DB へ
-  自動適用するのは不適切と判断し、実施していない。マイグレーション追加＋本番適用は代表の判断を待つ。
 
 ## 通知18タイプのうち15タイプが本番で一度も発火していない（2026-08-31）
 

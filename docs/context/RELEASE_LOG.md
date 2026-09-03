@@ -4,6 +4,28 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-09-03 保険会社ポータルの検索を本番で復旧し、配布 PDF のキャプチャ3枚が揃った（14ページ）
+
+- 背景: `insurer_accessible_tenant_ids(uuid)` は SECURITY DEFINER で `search_path=''` が
+  設定されている（`20260404000000_fix_security_definer_search_path.sql`）のに、関数本体は
+  `FROM insurer_tenant_access` とスキーマ修飾なしのままだった。`search_path` が空だと
+  非修飾の識別子は解決できないため、**この関数は呼ばれるたびに必ず落ちていた**。
+- 影響: この関数を呼ぶ保険会社ポータルの検索3経路（`insurer_search_certificates` /
+  `insurer_search_stores` / `insurer_search_vehicles`）が **2026-04-04 以降 HTTP 500** を
+  返していた。実際にユーザーが影響を受けたかは【要確認】。
+- 内容: `20260903123728_fix_insurer_accessible_tenant_ids_search_path.sql` を追加し、
+  本体の参照を `public.insurer_tenant_access` に修飾して本番へ適用。シグネチャ・返り値・
+  volatility・SECURITY DEFINER・`search_path=''` はすべて現状維持で、**挙動は変えず
+  壊れた参照だけを直した**。EXECUTE 権限は `postgres` / `service_role` のみで
+  `anon` / `authenticated` には無く、呼び出し元3本はいずれも `auth.uid()` から自分の
+  insurer_id を導出するため、**この修正で可視範囲は広がらない**（適用前に確認済み）。
+- これにより `public/screenshots/insurer/search.png` が撮影でき、**PDF が参照する3枚が揃った**。
+  サービス概要 PDF を実レンダリングして **13 → 14 ページ**になることを確認した。
+- **保険会社スライドは検索を実行せず空の初期状態で撮っている。** デモ保険会社が見られる
+  テナントはデモテナントではなく実テナント `HOLY AUTO` だったため、検索を実行すると実業務の
+  証明書が配布物に載る（DECISION_LOG / OPEN_QUESTIONS 参照）。
+- 検証: `npx tsc --noEmit` 通過、`npx vitest run` 全 **522 ファイル / 5,310 件**通過。
+
 ## 2026-09-03 AI を呼ぶ8ハンドラのレート制限漏れを塞いだ
 
 - 内容: AI を呼ぶハンドラ46単位のうち、レート制限が無かった8つに既存の
