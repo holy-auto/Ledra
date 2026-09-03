@@ -28,7 +28,14 @@
   同じ条件になり、順序逆転が CI で落ちるようになった。`KNOWN_UNREPLAYABLE`（既知の
   9本を許す仕組み）は不要になったので削除。
 
-検証: 1パス再生 **443/443**、RLS ポリシー打ち消し検査 なし、`lint:migrations` OK、
+あわせて `/code-review` の指摘5件を修正（`5beff94`）。うち1件は**この変更が作った穴**で、
+まだ作られていない関数への `revoke execute` をガードで飛ばした結果、
+`auth_uid_by_email` / `get_auth_email` / `get_auth_email_scoped` が空 DB では
+`anon` / `authenticated` に開いたまま残っていた（`auth.users` の email を引く
+SECURITY DEFINER）。関数が実在する位置に `20260826000007` を足して締め直し、
+再生 DB の `pg_proc.proacl` で5関数すべて service_role のみになることを確認した。
+
+検証: 1パス再生 **444/444**、RLS ポリシー打ち消し検査 なし、`lint:migrations` OK、
 `check:schema` OK、`vitest run` 522ファイル 5301件 通過。
 番人はわざと壊して確認済み（存在しないテーブルを ALTER するファイルを先頭日付で
 置くと exit 1 でファイル名まで出る）。
