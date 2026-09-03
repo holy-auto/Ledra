@@ -285,6 +285,18 @@
 8. まだ答えが出ていないこと: 今回の報告が実際にどの原因だったか（AI自動入力OFF／コスト上限／基盤障害／画像品質）は未特定＝【要確認】。iPhone の HEIC 画像アップロード時の実挙動（現状 JPG/PNG/GIF/WEBP のみ許可）も未検証。電子車検証の二次元コードが複数シンボルに分割印字された場合の結合可否も未検証。
 9. 公開区分: 公開可（設計判断のみ。テナント情報・個人情報なし）。note化するなら「fail-soft のつもりが fail-silent だった——"何も起きない"は最悪のエラー表示」として。
 
+## 2026-09-03 C2PA Administrator が Intake 受理（Record ID 発行）・証拠パッケージ要求。v0.2 追加要件(specVersion/allActionsIncluded)に即対応
+
+1. 日付: 2026-09-03
+2. 起きたこと: Administrator から Intake 受理メール。**CPL Record ID = 01a06690-d01e-7608-ad8a-cd4f1a49d76e** を発行。証拠パッケージ（サンプル出力・ingredient・GPSA）を要求。同梱の v0.2 追加適合要件（Conformulator が検査）を精査。
+3. 以前の考え: マニフェストは actions 準拠化で提出可能と考えていた。
+4. 違和感・問題: 追加要件で Spec2.4 は `claim_generator_info.specVersion` と `actions-map-v2.allActionsIncluded` が**必須**。現行実装は未設定で Conformulator に弾かれる。
+5. 決めたこと: `specVersion="2.4"` と `allActionsIncluded=true`（strip は rotate().toBuffer()=向き補正+再エンコード+メタ除去のみで4アクションが実行の全てのため true が正確）を製品に追加。既知良好証明書で validation_state=Valid・全必須フィールド出力を実測確認。テストにも検査追加。
+6. 捨てた選択肢: allActionsIncluded=false（不要に来歴分類を弱める。実際は全アクション把握済み）。
+7. 判断理由: 提出サンプルは Conformulator を通す必要があり、必須フィールドの欠落は即差し戻し。実装事実（strip の内容）に基づき true が正確。
+8. まだ答えが出ていないこと: (要件3) validate 機能の **crJSON 出力**対応（プログラムが後日テスト入力を提供）。GPSA は「**将来・計画の表現は不可、設計レベルで現状のみ**」の制約 → 現行 GPSA の「移行予定/AL2-forward/要整備」表現を全面見直しが必要。サンプルの ingredient はプログラム提供ライブラリ（Google Drive）を使用。
+9. 公開区分: 要確認（Record ID・申請進捗は公開可、鍵/インフラ詳細・CA は非公開）。
+
 ## 2026-09-03 C2PA 証拠サンプル生成で「マニフェスト非準拠」ブロッカーを発見。証拠フェーズ前に署名ロジック修正が必要と判断
 
 1. 日付: 2026-09-03

@@ -154,7 +154,16 @@
 ## C2PA Conformance Program 申請（AL1・Backend）の未確定事項（2026-08-11）
 - 状況: 申請方針は「GP / Backend / Max Assurance Level 1 先行」に決定（DECISION_LOG 2026-08-11、詳細は `docs/c2pa-conformance-application.md`）。申請前に埋める必要のある事実が残る。
 - 進捗（2026-09-03）: **EOI → Legal Agreement 署名 → Program Intake Form 提出済み**（提出値は `docs/c2pa-conformance-application.md` §11）。次は Administrator のレビュー→証拠提出（サンプル＋GPSA）。
-- **一部修正済み（2026-09-03、詳細は §12）**: 証拠用サンプルで判明したマニフェスト非準拠のうち **(1) actions の C2PA 2.x 非準拠を修正済み**（`c2pa.opened`→`c2pa.created`+`digitalSourceType`、`orientation`/`converted`/`edited` 維持）。実署名検証テスト `c2paSignValidate.test.ts` を新設。**全て解決（2026-09-03）**: (2) `claimSignature.mismatch` は dev 自己署名証明書だけの癖と確定 — c2patool 公式 ES256 証明書で署名すると `validation_state: Valid`／署名エラーなし（残は untrusted のみ＝適合後に解消）。**製品の署名ロジックは健全、本番鍵は不要で証明済み**。(3) HEIC も署名可能・準拠。本番鍵は適合認定後に CA から発行されるため申請時点では未保有だが、証拠サンプルは適合前でも正しい署名で提示できる。→ **署名・マニフェスト面のブロッカーは解消**。**GPSA 提出用ドラフト `docs/c2pa-gpsa.md` 作成済み（2026-09-03）**。残る作業＝GPSA の 要確認/要整備（アーキ図・CA 選定・鍵管理方式確定・90日ポリシー/OWASP/SLA 明文化・TLS 実測記録）と AL1 運用整備（KMS 化）。別論点: 本番 sharp が HEIF デコード不可だと HEIC の GPS 除去が効かない点は要確認。
+- **一部修正済み（2026-09-03、詳細は §12）**: 証拠用サンプルで判明したマニフェスト非準拠のうち **(1) actions の C2PA 2.x 非準拠を修正済み**（`c2pa.opened`→`c2pa.created`+`digitalSourceType`、`orientation`/`converted`/`edited` 維持）。実署名検証テスト `c2paSignValidate.test.ts` を新設。**全て解決（2026-09-03）**: (2) `claimSignature.mismatch` は dev 自己署名証明書だけの癖と確定 — c2patool 公式 ES256 証明書で署名すると `validation_state: Valid`／署名エラーなし（残は untrusted のみ＝適合後に解消）。**製品の署名ロジックは健全、本番鍵は不要で証明済み**。(3) HEIC も署名可能・準拠。本番鍵は適合認定後に CA から発行されるため申請時点では未保有だが、証拠サンプルは適合前でも正しい署名で提示できる。→ **署名・マニフェスト面のブロッカーは解消**。**GPSA 提出用ドラフト `docs/c2pa-gpsa.md`＋アーキ図作成済み**。v0.2 追加要件（specVersion/allActionsIncluded）も対応済み（0f860fc）。
+
+- **2026-09-03 Administrator が Intake 受理・証拠パッケージ要求（Record ID 01a06690-d01e-7608-ad8a-cd4f1a49d76e）**。残タスク:
+  1. **サンプル出力**: 生成4型（jpeg/png/webp/heic）を `X-sample.EXT` で。untrusted 証明書は許容（適合前）。→ 本番同等の署名で生成（テスト証明書可）。
+  2. **ingredient サンプル**: validate4型を、**プログラム提供ライブラリ（Google Drive）**の入力を取り込んで再署名し `X-ingredientN.EXT`。自己署名は不可（c2patool かプログラム CA のテスト証明書）。
+  3. **GPSA を「将来・計画表現なし／設計レベルで現状のみ」に全面見直し**（現行の「移行予定・AL2-forward・要整備」を、現状の記述 or 実在する運用文書に置換）。ファイル名に "GPSA" を含める。
+  4. **crJSON 出力**（要件3, validate 機能）: プログラムのテスト入力に対し crJSON を返す test harness。c2pa-node が crJSON を出せるか要調査。
+  5. **Conformulator（https://c2pa-conformulator.netlify.app/）で自己テスト**後に提出。
+  6. 提出はメール添付/zip/DLリンク（機密）。
+- 別論点: 本番 sharp が HEIF デコード不可だと HEIC の GPS 除去が効かない点は要確認。
 - 確定済み: 役割=GP / 実装クラス=Backend / Max AL=1 / 申告 Spec=**2.4** / 法人名=株式会社HOLY（英字 **HOLY Inc.**）/ 登記住所=東京都港区北青山1-3-1 アールキューブ青山3F / 連絡先=info@holy-inc.jp / 生成・検証メディアタイプ=image/jpeg・png・webp・heic（実コード確認）。
 - 残る論点と選択肢:
   - **Spec 2.4 の実出力確認**: 申告 2.4 に対し、製品が実際に v2.4 準拠マニフェストを出力しているかを Intake 用サンプルで要検証（契約上、申告版に拘束される）。
