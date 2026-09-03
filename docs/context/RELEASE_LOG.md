@@ -4,14 +4,31 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
-## 2026-09-03 決済・帳票送付・アカデミーAI の7箇所に認可を追加、検出器の誤報を訂正
+## 2026-09-03 npm audit の high 2件・moderate 1件を解消（PR #1022 / `daeab8ed`）
+
+- 背景: 新しく公開されたアドバイザリが推移的依存に当たり、**main の CI が
+  `Security audit (production dependencies)` で止まっていた**。このステップは
+  `.github/workflows/ci.yml` で**テストより前**にあるため、止まるとテストが1件も走らず、
+  リポジトリ全体が赤くなる。
+- 内訳: `browserslist`（high・OOM / prototype 書き込み）、`fast-uri`（high・IDN 正規化
+  スキップによる host 混同、IPv6 正規化とパーセントデコード経由の SSRF）、
+  `qs`（moderate・array-limit バイパス / `isBuffer` 経由の DoS）。
+- 対応: `npm audit fix`（`--force` 不要＝メジャーバンプなし）。`package.json` は変更なしで
+  `package-lock.json` のみ。すべてパッチ／マイナー。
+- **認可の変更（#1021）とは別 PR にした。** 同じ PR にすると、CI が落ちたときに依存バンプが
+  原因か認可の変更が原因かを切り分けられなくなる。`fast-uri` は URL 解析の挙動が変わりうる
+  ので単独で確認したかった。
+- 検証: `npm audit --audit-level=high --omit=dev` が **found 0 vulnerabilities**（exit 0）。
+  tsc エラーなし / lint エラー0・警告1251（更新前と同数）/ vitest 521ファイル 5298件通過。
+
+## 2026-09-03 決済・帳票送付・アカデミーAI の8箇所に認可を追加、検出器の誤報を訂正（PR #1021 / `afeba20b`）
 
 - 内容: 代表判断に基づき7箇所にガードを入れた。
   - `stripe/connect` POST・DELETE → **owner のみ**（会社の入金口座。解除されると入金が止まる）
   - `stripe/connect/payment-link` POST → `payments:create`（staff。現場が請求を出す通常業務）
   - `admin/shop/checkout` POST・`admin/shop/orders` POST → **admin 以上**（会社のお金を使う）
   - `admin/documents/share` POST → staff 以上（帳票の顧客送付）
-  - `admin/academy/feedback` / `qa` POST → staff 以上（中身が AI 呼び出しのため
+  - `admin/academy/feedback` / `qa` / `cases` POST → staff 以上（中身が AI 呼び出しのため
     2026-09-01 の「AI は staff 以上」が適用される）
 - **「未強制24本」は数え間違いだった。** 正しくは **既に守られていた10本**（著者判定・
   permission チェック・`super_admin` のインライン判定）、**自己完結で現状維持が正しい6本**
@@ -22,10 +39,21 @@
 - 逆向きの誤りもあった。`admin/academy/cases` を「所有者判定で守られている」と分類したが、
   実際は**テナント判定しかしておらず閲覧専用ロールでも事例を公開できた**（AI 要約を呼び、
   `knowledge_chunks` に全加盟店共有の行を書く）。staff 以上に変更した。
-- 検出器の直し: インラインのロール判定と2つのヘルパーを認識するようにし、既知リストの
-  意味を「認可が無い」から**「この検出器が認可を認識できない」**に改めて、28件すべてに
-  分類コメントを付けた（自己完結16・認証前2・読み取りのみ1・Server Action 委譲1・
-  受講5・著者判定3）。46→29。**説明のつかないハンドラはゼロになった。**
+- 検出器の直し: インラインのロール判定と `canModifyLesson` を認識するようにし、既知リストの
+  意味を「認可が無い」から**「この検出器が認可を認識できない」**に改めて、**29件すべてに
+  分類コメント**を付けた。46→29。**説明のつかないハンドラはゼロになった。**
+
+  | 分類 | 件数 |
+  |---|---|
+  | 自己完結（自分のデータだけを操作する） | 15 |
+  | 通知の既読（**自己完結ではない**。判断待ち） | 2 |
+  | 認証前の経路 | 2 |
+  | 読み取りのみ（POST だが書き込まない） | 1 |
+  | 認可を共有関数に集約 | 1 |
+  | 受講（自分の行にしか書けない） | 5 |
+  | 著者判定（ルート内ローカルヘルパー） | 1 |
+  | `createLesson.ts` の permission チェック | 2 |
+  | **合計** | **29** |
 - 副次: `admin/documents/share` のテストが `@/lib/auth/checkRole` をモジュールごと
   モックしており、ガード追加で 403 が 500 になっていたので `importOriginal` で直した
   （この形は4回目）。
