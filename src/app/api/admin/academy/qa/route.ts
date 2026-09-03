@@ -6,8 +6,8 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
-import { apiOk, apiUnauthorized, apiInternalError, apiValidationError } from "@/lib/api/response";
+import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
+import { apiOk, apiUnauthorized, apiInternalError, apiValidationError, apiForbidden } from "@/lib/api/response";
 import { canUseFeature } from "@/lib/billing/planFeatures";
 import { generateQAAnswer } from "@/lib/ai/qaAssistant";
 import { fastModelForPlanTier } from "@/lib/ai/client";
@@ -26,6 +26,9 @@ export async function POST(req: NextRequest) {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
+    // AI 呼び出しは staff 以上（2026-09-01 代表判断）。呼ぶたびに費用が出るため
+    // 閲覧専用ロールを弾く。アカデミー機能だが中身は AI なのでこちらの判断に従う。
+    if (!requireMinRole(caller, "staff")) return apiForbidden();
 
     if (!canUseFeature(caller.planTier, "ai_academy_qa")) {
       return apiValidationError("この機能はStandardプラン以上でご利用いただけます", {

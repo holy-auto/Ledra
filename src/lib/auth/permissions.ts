@@ -601,7 +601,7 @@ export const API_ROUTE_PERMISSIONS: Record<string, ApiRouteRequirement> = {
   "admin/inventory/movements": "menu_items:manage",
   "admin/purchase-orders": { minRole: "staff" },
   "admin/purchase-orders/[id]/backorder": { minRole: "staff" },
-  "admin/shop/orders": { minRole: "staff" },
+  "admin/shop/orders": { minRole: "admin" }, // 請求書払い。checkout と同じ買い物なので同じ下限
   "admin/workflow-templates": { minRole: "staff" },
   "admin/workflow-templates/[id]": { minRole: "staff" },
   "parts/confirmations": { minRole: "staff" },
@@ -610,4 +610,23 @@ export const API_ROUTE_PERMISSIONS: Record<string, ApiRouteRequirement> = {
   "parts/installations/[id]/delivery-note": { minRole: "staff" },
   "parts/installations/[id]/reconcile": { minRole: "staff" },
   "parts/installations/evidence-upload": { minRole: "staff" },
+
+  // ── 決済・外部連携・帳票送付（2026-09-03 代表判断）──
+  // Stripe 連携は会社の入金口座そのもので、解除されると入金が止まる。
+  // billing:manage は admin も持つため、ロール下限 owner でさらに絞る。
+  "stripe/connect": { minRole: "owner" },
+  // 顧客への請求を出すのは現場の通常業務なので staff に開く。
+  "stripe/connect/payment-link": "payments:create",
+  // 備品購入は会社のお金を使うので、顧客への請求とは分けて admin 以上。
+  // billing:manage は owner 以上でしか持たないため、ロール下限で「admin 以上」を表す。
+  "admin/shop/checkout": { minRole: "admin" },
+  // 帳票の顧客送付。マトリクスに送付の動詞が無いのでロール下限で守る。
+  "admin/documents/share": { minRole: "staff" },
+
+  // アカデミーの AI 機能。分類上はアカデミーだが中身は AI 呼び出しなので、
+  // 「AI は staff 以上」（2026-09-01 代表判断）に従う。
+  "admin/academy/feedback": { minRole: "staff" },
+  "admin/academy/qa": { minRole: "staff" },
+  // 事例公開も AI 要約を呼ぶ。テナント判定しか無く閲覧専用でも公開できていた。
+  "admin/academy/cases": { minRole: "staff" },
 };
