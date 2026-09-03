@@ -1,13 +1,16 @@
+import { useState } from "react";
 import { View, StyleSheet, ScrollView } from "react-native";
 import {
   Text,
   ActivityIndicator,
+  Snackbar,
 } from "react-native-paper";
 import { useLocalSearchParams, router, Stack } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 
 import { supabase } from "@/lib/supabase";
 import { useAuthStore } from "@/stores/authStore";
+import { ReceiptShareDialog } from "@/components/ReceiptShareDialog";
 import { LedraButton } from "@/components/ui";
 import { colors, spacing, radius, typography, shadows } from "@/constants/tokens";
 
@@ -47,6 +50,11 @@ interface TenantInvoiceInfo {
 }
 
 export default function StandaloneReceiptScreen() {
+  // 要件 5.10: 決済後にレシートを SMS / Email で送れること。
+  // 予約経路（pos/receipt/[id].tsx）には最初から入っていたが、
+  // ウォークイン経路はここに来るため送信手段が無かった。
+  const [shareOpen, setShareOpen] = useState(false);
+  const [snack, setSnack] = useState("");
   const { id } = useLocalSearchParams<{ id: string }>();
   const { user } = useAuthStore();
 
@@ -233,7 +241,15 @@ export default function StandaloneReceiptScreen() {
 
         {/* アクション */}
         <View style={styles.actions}>
+          {/* 要件 5.10: レシートの送信。予約経路と同じ導線を最初に置く。 */}
           <LedraButton
+            icon="send"
+            onPress={() => setShareOpen(true)}
+          >
+            レシートを送る
+          </LedraButton>
+          <LedraButton
+            variant="outline"
             icon="home"
             onPress={() => router.replace("/(tabs)")}
           >
@@ -250,6 +266,21 @@ export default function StandaloneReceiptScreen() {
 
         <View style={{ height: spacing["4xl"] }} />
       </ScrollView>
+
+      <ReceiptShareDialog
+        visible={shareOpen}
+        receiptUrl={`https://app.ledra.co.jp/c/${id}`}
+        onDismiss={() => setShareOpen(false)}
+        onSent={() => setSnack("レシートを送信しました")}
+      />
+      <Snackbar
+        visible={!!snack}
+        onDismiss={() => setSnack("")}
+        duration={2500}
+        style={{ backgroundColor: colors.textPrimary }}
+      >
+        {snack}
+      </Snackbar>
     </>
   );
 }

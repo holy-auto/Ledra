@@ -15,9 +15,10 @@ import "dayjs/locale/ja";
 import { useAuthStore } from "@/stores/authStore";
 import { supabase } from "@/lib/supabase";
 import { scopeToStore } from "@/lib/storeScope";
+import { useDeviceType } from "@/hooks/useDeviceType";
 import { useTabContentInset } from "@/hooks/useTabContentInset";
 import { NotifBell } from "@/components/NotifBell";
-import { colors, radius, spacing, sizing, shadows } from "@/constants/tokens";
+import { colors, radius, spacing, sizing, shadows, typography } from "@/constants/tokens";
 import {
   ProgressRing,
   SegmentedControl,
@@ -107,6 +108,9 @@ const EMPTY_STATS: HomeStats = {
 
 export default function HomeScreen() {
   const tabInset = useTabContentInset();
+  // Tap to Pay は iPhone 専用。判定は useDeviceType（Platform.isPad ベース）を使う。
+  // 旧実装はウィンドウ幅で判定していたが、iPad の Split View で反転する既知のバグがある。
+  const { isIPhone } = useDeviceType();
   // ヘッダー非表示（画面名の帯を出さない）なので上端は自前で空ける
   const insets = useSafeAreaInsets();
   const { user, selectedStore } = useAuthStore();
@@ -374,6 +378,30 @@ export default function HomeScreen() {
           onChange={setScope}
         />
       </View>
+
+      {/* ── Tap to Pay 導線 (Apple 要件 3.1 / 3.4: 発見しやすい入口) ──
+          常設にしている。閉じられるようにすると「発見しやすい導線」を
+          満たさなくなる時間帯ができるため。文言は勧誘ではなく案内にして、
+          有効化済みの店舗が毎日見ても邪魔にならない書き方にしている。 */}
+      {isIPhone && (
+        <View style={styles.section}>
+          <Pressable
+            style={styles.ttpCard}
+            onPress={() => router.push("/settings/tap-to-pay")}
+            accessibilityRole="button"
+            accessibilityLabel="iPhone でのカード決済（Tap to Pay）の設定を開く"
+          >
+            <Icon source="contactless-payment" size={24} color={colors.primary} />
+            <View style={styles.ttpTexts}>
+              <Text style={styles.ttpTitle}>iPhone でカード決済（Tap to Pay）</Text>
+              <Text style={styles.ttpSub}>
+                追加の端末なしで、その場でカードをタッチして支払いを受け取れます
+              </Text>
+            </View>
+            <Icon source="chevron-right" size={20} color={colors.textTertiary} />
+          </Pressable>
+        </View>
+      )}
 
       {/* ── 3. Today work summary card ── */}
       <View style={styles.section}>
@@ -855,6 +883,26 @@ const styles = StyleSheet.create({
   },
 
   // All done
+  ttpCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    backgroundColor: colors.primaryLight,
+    borderRadius: radius.card,
+    padding: spacing.lg,
+  },
+  ttpTexts: {
+    flex: 1,
+    gap: 2,
+  },
+  ttpTitle: {
+    ...typography.titleSmall,
+    color: colors.primaryDark,
+  },
+  ttpSub: {
+    ...typography.bodySmall,
+    color: colors.textSecondary,
+  },
   allDoneCard: {
     flexDirection: "row",
     alignItems: "center",

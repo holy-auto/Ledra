@@ -90,7 +90,9 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "Ledraは施工写真の撮影と、顧客へ送る画像の撮影に使用します"
+          "cameraPermission": "Ledraは施工写真の撮影と、顧客へ送る画像の撮影に使用します",
+          "microphonePermission": false,
+          "recordAudioAndroid": false
         }
       ],
       [

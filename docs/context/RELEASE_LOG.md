@@ -750,6 +750,41 @@
 - 対象: どの画面・API・業種向けか
 ```
 
+## 2026-08-26 iPhone 先行ローンチ向けに審査要件の抜けを埋めた（PR #966 / branch claude/mobile-app-opening-animation-s2a6m3）
+
+- 内容: App Store 審査提出に向けた棚卸しで見つかった、要件を満たさない箇所を修正した。
+- **ホームの Tap to Pay 導線を復活**（要件 3.1 / 3.4）: `apps/mobile/src/app/(tabs)/index.tsx`。
+  PR #891 で入ったバナーが #926（`528ffd5`）のホーム全面書き換えで消えていた（該当文字列 0件）。
+  現行のデザイントークンで書き直し、iPhone 判定は既存の `useDeviceType`（`Platform.isPad` ベース）を
+  再利用。旧実装のウィンドウ幅判定は iPad の Split View で反転する既知のバグ持ちだった。
+  **閉じられない常設**にした（閉じられると要件を満たさない時間帯ができる）。
+- **サインアップ経路からスタブ画面を外した**（要件 2.x）: `signup.tsx` の遷移先を
+  `/(auth)/verify-otp` から `/(auth)/select-store?fromSignup=1` へ。
+  `verify-otp` は 800ms 待って無条件に成功するだけで、何も検証していなかった。
+  Apple のレビュアーが必ず通る経路。ファイル自体は残している（経路からの参照はゼロ）。
+- **飛び込み（walk-in）会計に専用 Tap to Pay ボタンを追加**（要件 5.1/5.2/5.5）:
+  `pos/walk-in.tsx`。支払方法リストより上に配置（配置そのものが要件 5.2）。
+  `disabled` を渡していないのは要件 5.3（T&C 未同意でも常時押下可）。
+  あわせて `handleCheckout` に `methodOverride` 引数を足した。`setPaymentMethod("card")` は
+  次のレンダーまで反映されないので、同じ tick で `handleCheckout()` を呼ぶと直前の
+  支払方法を読んでしまうため。**この変更で決済ボタンが `onPress={handleCheckout}` と
+  直接渡していた箇所が型エラーになり、タップイベントが第1引数に入る事故を型が検出した。**
+- **飛び込みレシートに送信導線を追加**（要件 5.10）: `pos/receipt-standalone/[id].tsx` に
+  `ReceiptShareDialog` を追加。予約レシート（`pos/receipt/[id].tsx`）にはあったが、
+  飛び込み経路はこちらに来るため送信手段が無かった。
+- **未使用の `NSMicrophoneUsageDescription` を削除**: `app.json` の `expo-camera` に
+  `microphonePermission: false`。マイクを使うコードは無く（`recordAsync` / `mode="video"` /
+  `expo-av` の使用箇所ゼロ）、Expo の英語ボイラープレートが入ったままだった。
+  prebuild し直してキーが消え、他9件の用途文言が残ることを確認。
+- **提出ガイドを実態に合わせた**: `docs/tap-to-pay-submission-guide.md`。
+  動画1の台本（サインアップ後の遷移チェーン）、動画3の台本（飛び込み経路も使えるように
+  なった）、要件 3.1/3.4/5.2/5.10 の記述を更新。要件 5.9 の根拠として挙がっていた
+  `PaymentOutcome` コンポーネントは**どこからも import されていないデッドコード**だったので、
+  実際の根拠（会計画面のインライン UI）に書き換えた。
+- 検証: `npm run typecheck` / `npm test`（自己チェック15件＋check-schema）/ `npm run check:native`。
+- 限界: **iOS の実ビルドは未実施**。クリティカルパスは Apple の publishing entitlement 付与で、
+  こちらでは短縮できない。
+
 ## 2026-08-25 スプラッシュのリソース参照切れを修正し、CI の検査を拡張（PR #966 / branch claude/mobile-app-opening-animation-s2a6m3）
 
 - 内容: Android ビルドが `:app:processReleaseResources` で落ちていたのを直し、

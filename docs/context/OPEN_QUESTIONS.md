@@ -447,6 +447,11 @@
 ## Tap to Pay 本番リリースの残論点（App Store一般公開・2026-08-06）
 - 状況: モバイルをApp Store一般公開する方針に決定し必須要件を実装したが、Apple提出前に確定が要る点が残る。
 - 論点と選択肢:
+  0. **【2026-08-26 追記】審査要件の抜け2件を修正した**: ホームの TTP 導線が #926 の
+     巻き添えで消えていた（要件 3.1/3.4）のと、サインアップ経路に「どんな6桁でも通る」
+     スタブ画面が挟まっていた（要件 2.x）。あわせて飛び込み会計にも専用 TTP ボタンと
+     レシート送信を入れた（要件 5.1/5.2/5.5/5.10）。詳細は DECISION_LOG 2026-08-26。
+     **動画1・2の台本が存在しないバナーの撮影を指示していたため、撮影の前提条件だった。**
   1. **Apple 本番(Distribution) entitlement の付与状況【確定: 未付与】**: 2026-08-06 の実機向け `preview`(AdHoc) ビルドで、fastlane が `Entitlement com.apple.developer.proximity-reader.payment.acceptance not found and could not be included in profile` で失敗 → **Distribution/publishing entitlement は未付与**と確定。暫定対応として `withRemoveTapToPayEntitlement` を app.json plugins に登録し、development のみ entitlement を保持・preview/production は除去するよう修正済み（実機動作確認ビルドは TTP 無しで通る）。**残作業**: 審査動画3本を提出して publishing entitlement を取得 → 付与後に plugin 条件へ preview/production を戻して TTP 入りビルドを出す（submission-guide の Go/No-Go）。
   2. **要件1.6 T&C取得**: Stripe Terminal SDK が Apple 保存の T&C 同意状態を返すAPIを持つか【要確認】。現状 `termsAccepted` は接続成功から派生した表示専用フラグ（checkoutはゲートしないので要件の趣旨=ローカル変数依存の禁止には抵触しない想定）。SDKにAPIがあれば置換。
   3. **要件3.2 初回スプラッシュ告知**: 全画面モーダルの初回告知が審査ブロッカーか。基盤(push/banner)はあるが全画面スプラッシュは未実装。→ 審査で問われたら追加。
