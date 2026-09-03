@@ -285,6 +285,18 @@
 8. まだ答えが出ていないこと: 今回の報告が実際にどの原因だったか（AI自動入力OFF／コスト上限／基盤障害／画像品質）は未特定＝【要確認】。iPhone の HEIC 画像アップロード時の実挙動（現状 JPG/PNG/GIF/WEBP のみ許可）も未検証。電子車検証の二次元コードが複数シンボルに分割印字された場合の結合可否も未検証。
 9. 公開区分: 公開可（設計判断のみ。テナント情報・個人情報なし）。note化するなら「fail-soft のつもりが fail-silent だった——"何も起きない"は最悪のエラー表示」として。
 
+## 2026-09-03 C2PA Program Intake Form を提出（GP/Backend/AL1/Spec2.4、静止画4型の生成・検証を申告）
+
+1. 日付: 2026-09-03
+2. 起きたこと: EOI→Legal Agreement 署名に続き Program Intake Form を提出。実コードで対応メディアタイプ（image/jpeg・png・webp・heic）と検証機能（`verifyExternalC2pa`）を確認し、申告値を確定。提出値は `docs/c2pa-conformance-application.md` §11 に記録。
+3. 以前の考え: メディアタイプや検証可否・compressed manifest 対応は未整理だった。
+4. 違和感・問題: Intake の各設問は契約上の申告になるため、推測でなく実装事実に基づく必要がある。
+5. 決めたこと: 生成=静止画4型で Yes・他モダリティ(動画/テキスト/音声/文書/フォント/ML/ライブ)は No、検証=同4型で Yes（ingredient 検証）、compressed manifest=No、Attestation=None（AL1）、DN=CN:Ledra/O:HOLY Inc./C:JP、公開日=即時(2026-09-03)。
+6. 捨てた選択肢: 動画・テキスト等を Yes にする（未実装のため虚偽になる）／Attestation 方式を申告する（未実装）。
+7. 判断理由: いずれも `uploadHandler.ts:33`・`c2paVerify.ts`・`c2paSigner.ts` の実装事実に一致させ、過大申告を避けた。
+8. まだ答えが出ていないこと: 「best describes your product」の最終選択（選択肢2 or None）と公開日は代表の実提出値、郵便番号107-0061、compressed=No とHEIC署名可否のサンプル検証、v2.4 実出力の一致。
+9. 公開区分: 要確認（申請の事実・方針は公開可、登記情報・鍵/インフラ詳細は非公開/要確認）。
+
 ## 2026-08-12 C2PA 申請の費用・期間・実施主体が確定し、Expression of Interest フォームから着手する
 
 1. 日付: 2026-08-12

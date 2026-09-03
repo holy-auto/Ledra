@@ -27,8 +27,8 @@
 
 1. **Expression of Interest Form 提出**（Google フォーム）。会社の法的登記情報＋役割（GP）を選択。
 2. **法的合意（Legal Agreement）締結** ✅ **署名済み（2026-08-25）**。Linux Foundation の署名サービスで GP 用契約に署名。
-3. **Program Intake Form 提出**。CPL 掲載用の製品情報（対応メディアタイプ、実装クラス=Backend、
-   希望 Max Assurance Level=1）を登録。
+3. **Program Intake Form 提出** ✅ **提出済み（2026-09-03）**。CPL 掲載用の製品情報（対応メディアタイプ、
+   実装クラス=Backend、希望 Max Assurance Level=1）を登録。提出値は §11。
 4. **証拠提出**: (a) **GPSA 文書**（本書 §4 の下書きを完成させる）、(b) 宣言した全メディアタイプの
    **サンプル出力**（署名済みアセット + `.c2pa`/`.json`）。
 5. **評価（Assessment）**: Administrator が証拠を審査し **Max Assurance Level を割当**。
@@ -144,12 +144,12 @@ VP は別契約・別 Intake・検証結果サンプル提出が必要でスコ�
 
 ## 5. 要確認事項（OPEN_QUESTIONS 連携）
 
-1. **申告 Spec バージョン**（2.2 / 2.4）— Ledra が実際に生成するマニフェストのバージョン。
+1. ~~申告 Spec バージョン~~ → **2.4 で確定・申告済み**（実出力の v2.4 一致はサンプルで要検証）。
 2. **CA の選定**と、その自動エンロール認証方式（O.1 / O.2 の設計を左右する最重要事項）。
 3. **署名鍵の鍵管理方式**（AL1: 独立鍵管理サービス / AL2: KMS + ハードウェア RoT）。
-4. **対応メディアタイプの確定**とサンプルアセット準備。
-5. 会社の登記住所・英字社名・DN 各値。
-6. AL1 で先行するか、AL2 まで作り込んでから申請するか（AL1 先行を推奨）。
+4. ~~対応メディアタイプの確定~~ → **image/jpeg・png・webp・heic で確定・申告済み**。サンプルアセット準備は残（証拠フェーズ）。
+5. ~~会社の登記住所・英字社名・DN 各値~~ → **確定・申告済み**（§11）。残: 郵便番号107-0061 の確認。
+6. AL1 で先行するか、AL2 まで作り込んでから申請するか → **AL1 先行で確定・申請中**。
 
 > 次アクション候補: (a) CA 候補の調査、(b) 署名鍵の KMS 移行 PoC、
 > (c) 90日修正ポリシー & OWASP カバレッジの運用文書化。いずれも AL1 のクリティカルパス。
@@ -305,3 +305,38 @@ for the C2PA Conforming Products List」参照。
 2. **GPSA 文書**（§4）を Markdown で仕上げ、アーキ図（PNG/JPEG）を添付。
 3. **v2.4 実出力の確認**（OPEN_QUESTIONS）: 申告 2.4 とサンプルの実バージョン一致を検証。
 4. AL1 の残タスク: 署名鍵の KMS 化（§6.3）、90日修正ポリシー & OWASP カバレッジの運用文書化。
+
+## 11. Intake Form 提出内容の記録（2026-09-03 提出）
+
+将来の証拠提出フェーズで申告と整合させるための控え。要確認箇所は代表が実提出値で上書きすること。
+
+| 設問 | 提出値 |
+|---|---|
+| Legal Organization Name | HOLY Inc.（Legal Agreement と一致） |
+| Legal Business Street / City / State / Zip / Country | 1-3-1 Kita-Aoyama, R-Cube Aoyama 3F / Minato-ku / Tokyo / 107-0061【要確認】 / Japan |
+| Conformance Program Version | 0.2 |
+| Product or Service | Generator Product |
+| Asserted Spec Version | 2.4 |
+| Compressed manifests 対応 | No（圧縮設定なし・要サンプル検証） |
+| Product Type | Generator Product |
+| Implementation type | Backend |
+| Best describes your product | 【代表最終選択・要確認】選択肢2（media capture app）または None of the above |
+| DN CN / O / C / OU | Ledra / HOLY Inc. / JP / （空） |
+| Minimum Software Version | （空・任意） |
+| Max Assurance Level | 1 |
+| Attestation methods | None of the above |
+| Still image generation | Yes（image/jpeg, png, webp, heic） |
+| Video / Text / Audio / Document / Font / ML / Live streaming generation | No |
+| Still image validation | Yes（image/jpeg, png, webp, heic・ingredient 検証） |
+| Date of Earliest Public Disclosure | 2026-09-03（即時公開）【代表最終値・要確認】 |
+| Web address | https://www.ledra.co.jp |
+
+### 次フェーズ: 証拠提出（Administrator レビュー後に依頼される）
+
+1. **サンプルアセット**（4型 × 署名済み画像＋`.c2pa`/`.json`、および検証結果サンプル）。
+   本番署名 `C2PA_MODE=production`＋鍵で生成。**この生成時に同時検証すべき3点**:
+   - v2.4 準拠マニフェストが出ているか（申告2.4との一致）。
+   - HEIC の署名が c2pa-node で実際に通るか（通らなければ heic をメディアタイプから外す）。
+   - 圧縮マニフェストになっていないか（Intake で No と申告）。
+2. **GPSA 文書**（§4）を Markdown で仕上げ＋アーキ図。
+3. **AL1 クリティカルパス**: 署名鍵の KMS 化（§6.3, env PEM 廃止）、90日修正ポリシー & OWASP カバレッジの運用文書化。
