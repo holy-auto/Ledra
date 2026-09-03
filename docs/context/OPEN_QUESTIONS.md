@@ -159,6 +159,8 @@
 - **2026-09-03 Administrator が Intake 受理・証拠パッケージ要求（Record ID 01a06690-d01e-7608-ad8a-cd4f1a49d76e）**。残タスク:
   1. **サンプル出力**: 生成4型（jpeg/png/webp/heic）を `X-sample.EXT` で。untrusted 証明書は許容（適合前）。→ 本番同等の署名で生成（テスト証明書可）。
   2. **ingredient サンプル**: validate4型を、**プログラム提供ライブラリ（Google Drive）**の入力を取り込んで再署名し `X-ingredientN.EXT`。自己署名は不可（c2patool かプログラム CA のテスト証明書）。
+     - **⚠ 重要論点（要・代表判断）**: プログラムの証拠モデルは「ingredient を取り込んだ結果を出力マニフェストで示す」前提。だが Ledra の出力マニフェストは **`c2pa.created`（ingredient 参照なし）**——プライバシーのため元写真を strip/再エンコードし ingredient として埋め込まない設計。つまり「validate=ingredient として検証」という Intake の申告と、実装（独立検証 `verifyExternalC2pa` の verdict は別管理・出力に非埋め込み）が食い違う。→ (A) 検証証拠を crJSON/検証結果として別提出する（要件3と連動）、(B) validate 申告を見直す、(C) プログラムに解釈を確認、のいずれか。**サンプル生成前にこの方針決定が必要**。
+  - 生成サンプル出力（a-d sample: jpeg/png/webp/heic）は生成済み・送付済み（全 Valid/specVersion2.4/allActionsIncluded=true、テスト証明書=untrusted 想定内）。
   3. **GPSA を「将来・計画表現なし／設計レベルで現状のみ」に全面見直し**（現行の「移行予定・AL2-forward・要整備」を、現状の記述 or 実在する運用文書に置換）。ファイル名に "GPSA" を含める。
   4. **crJSON 出力**（要件3, validate 機能）: プログラムのテスト入力に対し crJSON を返す test harness。c2pa-node が crJSON を出せるか要調査。
   5. **Conformulator（https://c2pa-conformulator.netlify.app/）で自己テスト**後に提出。
