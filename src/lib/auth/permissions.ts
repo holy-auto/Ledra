@@ -611,7 +611,7 @@ export const API_ROUTE_PERMISSIONS: Record<string, ApiRouteRequirement> = {
   "parts/installations/[id]/reconcile": { minRole: "staff" },
   "parts/installations/evidence-upload": { minRole: "staff" },
 
-  // ── 決済・外部連携・帳票送付（2026-09-05 代表判断）──
+  // ── 決済・外部連携・帳票送付（2026-09-03 代表判断）──
   // Stripe 連携は会社の入金口座そのもので、解除されると入金が止まる。
   // billing:manage は admin も持つため、ロール下限 owner でさらに絞る。
   "stripe/connect": { minRole: "owner" },

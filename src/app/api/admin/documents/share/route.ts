@@ -87,7 +87,7 @@ export async function POST(req: NextRequest) {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
-    // 帳票の顧客送付は staff 以上（2026-09-05 代表判断）。見積書・請求書を送るのは
+    // 帳票の顧客送付は staff 以上（2026-09-03 代表判断）。見積書・請求書を送るのは
     // 現場の通常業務。マトリクスに送付の動詞が無いのでロール下限で守る。
     if (!requireMinRole(caller, "staff")) return apiForbidden();
 

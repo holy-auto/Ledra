@@ -19,7 +19,7 @@
  * ガードを足すときの注意: ルートのテストが `vi.mock("@/lib/auth/checkRole", () => ...)`
  * とモジュールごと差し替えていると `requirePermission` が undefined になり、
  * 403 のはずが TypeError で 500 になる。`importOriginal` で実物を残すこと。
- * 2026-09-05 時点で、まだこの書き方の残っているテストが28本ある。
+ * 2026-09-03 時点で、まだこの書き方の残っているテストが28本ある。
  */
 import { describe, it, expect } from "vitest";
 import { existsSync, readFileSync } from "node:fs";
@@ -201,7 +201,7 @@ describe("未登録の変更系ハンドラ", () => {
    * 認可として認識できる書き方。**この一覧は必ず不完全になる。**
    * 認可は任意のヘルパーで書けるので、正規表現で網羅はできない。
    *
-   * 実際 2026-09-05 に、この一覧が短かったせいで「未強制24本」と報告してしまった。
+   * 実際 2026-09-03 に、この一覧が短かったせいで「未強制24本」と報告してしまった。
    * 中身を読んだら 18本は別の形で守られていた（`canModifyLesson()` による著者判定、
    * `caller.role !== "super_admin"` のインライン判定、`createLesson.ts` の permission）。
    * だから下の KNOWN_UNGUARDED は「認可が無い」ではなく
@@ -217,7 +217,7 @@ describe("未登録の変更系ハンドラ", () => {
       String.raw`(?:resolveOrgAccess|assertPlatformTenantId|authorizeOrgStoreRead|resolveInsurerCaller|resolveManufacturerCaller|requireAal2OrResponse)\(`,
       // インラインのロール判定。**弾いている**ことまで求める。
       // `const isSoleOwner = caller.role === "owner" && ...` のような業務ロジックを
-      // 認可と誤認しないため（2026-09-05 のレビューで mobile/account が
+      // 認可と誤認しないため（2026-09-03 のレビューで mobile/account が
       // これで一覧から消えた）。
       String.raw`caller\.role\s*!==\s*"[a-z_]+"[\s\S]{0,80}?apiForbidden`,
     ].join("|"),

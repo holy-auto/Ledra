@@ -52,7 +52,7 @@ export async function POST(req: NextRequest) {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
-    // Stripe 連携の接続は owner のみ（2026-09-05 代表判断）。会社の入金口座そのもので、
+    // Stripe 連携の接続は owner のみ（2026-09-03 代表判断）。会社の入金口座そのもので、
     // 解除されると入金が止まる。billing:manage は admin も持つのでロール下限で守る。
     if (!requireMinRole(caller, "owner")) return apiForbidden();
 
@@ -133,7 +133,7 @@ export async function DELETE() {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
-    // Stripe 連携の解除は owner のみ（2026-09-05 代表判断）。会社の入金口座そのもので、
+    // Stripe 連携の解除は owner のみ（2026-09-03 代表判断）。会社の入金口座そのもので、
     // 解除されると入金が止まる。billing:manage は admin も持つのでロール下限で守る。
     if (!requireMinRole(caller, "owner")) return apiForbidden();
 

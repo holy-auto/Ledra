@@ -39,7 +39,7 @@ export async function POST(req: NextRequest) {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
-    // 備品購入は admin 以上（2026-09-05 代表判断）。会社のお金を使う操作なので、
+    // 備品購入は admin 以上（2026-09-03 代表判断）。会社のお金を使う操作なので、
     // 顧客への請求（payments:create / staff）とは分ける。
     // billing:manage は owner 以上でしか持たないため、ロール下限で「admin 以上」を表す。
     // 同じ買い物は請求書払い経路（admin/shop/orders）からも作れるので、そちらも同じ下限。
