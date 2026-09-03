@@ -84,6 +84,9 @@ VP は別契約・別 Intake・検証結果サンプル提出が必要でスコ�
 
 ## 4. GPSA 文書 下書き（テンプレート準拠）
 
+> **提出用の完成版は別ファイル `docs/c2pa-gpsa.md`**（2026-09-03 作成、実装事実ベースで §1–§2 を記述、
+> 提出前チェックリスト付き）。以下は初期の骨子で、内容は `c2pa-gpsa.md` に移行済み。
+>
 > テンプレート: `C2PA Generator Product Security Architecture Document Template.md`。
 > 提出は Markdown + 図（PNG/JPEG）。以下は Ledra 実装から埋められる範囲を記入し、
 > 不明箇所は `【要確認】` とした。**提出前に代表が事実確認すること。**
