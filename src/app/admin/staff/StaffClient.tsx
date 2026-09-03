@@ -185,6 +185,54 @@ export default function StaffClient() {
     }
   };
 
+  /**
+   * 職人の施工実績リンク。外注職人はログインを持たないので、このURLだけが本人の
+   * 確認手段になる。**raw token は発行レスポンスにしか出ない**（DB はハッシュのみ）ので、
+   * 発行直後にここで一度だけ表示する。紛失したら再発行してもらう。
+   */
+  const [portfolioLink, setPortfolioLink] = useState<{ staffId: string; url: string } | null>(null);
+  const [linkBusy, setLinkBusy] = useState<string | null>(null);
+
+  const issuePortfolioLink = async (st: Staff) => {
+    setMsg(null);
+    setLinkBusy(st.id);
+    try {
+      const res = await fetch("/api/admin/staff/portfolio-link", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ staff_member_id: st.id }),
+      });
+      const j = await parseJsonSafe(res);
+      if (!res.ok) throw new Error(j?.error ?? j?.message ?? `HTTP ${res.status}`);
+      setPortfolioLink({ staffId: st.id, url: `${window.location.origin}/w/${j.token}` });
+    } catch (e: unknown) {
+      setMsg({ text: e instanceof Error ? e.message : String(e), ok: false });
+    } finally {
+      setLinkBusy(null);
+    }
+  };
+
+  const revokePortfolioLink = async (st: Staff) => {
+    if (!confirm(`「${st.name}」の実績リンクを無効にしますか？（本人は開けなくなります）`)) return;
+    setMsg(null);
+    setLinkBusy(st.id);
+    try {
+      const res = await fetch("/api/admin/staff/portfolio-link", {
+        method: "DELETE",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ staff_member_id: st.id }),
+      });
+      const j = await parseJsonSafe(res);
+      if (!res.ok) throw new Error(j?.error ?? j?.message ?? `HTTP ${res.status}`);
+      if (portfolioLink?.staffId === st.id) setPortfolioLink(null);
+      setMsg({ text: "実績リンクを無効にしました。", ok: true });
+    } catch (e: unknown) {
+      setMsg({ text: e instanceof Error ? e.message : String(e), ok: false });
+    } finally {
+      setLinkBusy(null);
+    }
+  };
+
   const removeStaff = async (s: Staff) => {
     if (!confirm(`「${s.name}」を削除しますか？（割り当て済みの案件からは外れます）`)) return;
     setMsg(null);
@@ -491,12 +539,64 @@ export default function StaffClient() {
                 )}
                 <button
                   type="button"
+                  onClick={() => issuePortfolioLink(s)}
+                  disabled={!s.is_active || linkBusy === s.id}
+                  title={
+                    s.is_active ? "本人が自分の施工実績を見るリンクを発行します" : "休止中の職人には発行できません"
+                  }
+                  className="btn-secondary text-xs px-3 py-1.5 disabled:opacity-50"
+                >
+                  {linkBusy === s.id ? "処理中…" : "実績リンクを発行"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => revokePortfolioLink(s)}
+                  disabled={linkBusy === s.id}
+                  className="text-xs px-3 py-1.5 text-secondary hover:underline disabled:opacity-50"
+                >
+                  実績リンクを無効化
+                </button>
+                <button
+                  type="button"
                   onClick={() => removeStaff(s)}
                   className="text-xs px-3 py-1.5 text-red-500 hover:underline"
                 >
                   削除
                 </button>
               </div>
+
+              {/* 発行直後の一度きりの表示。raw token は DB に無いので、閉じたら再発行が要る。 */}
+              {portfolioLink?.staffId === s.id && (
+                <div className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs dark:border-amber-800/50 dark:bg-amber-950">
+                  <div className="font-semibold text-amber-800 dark:text-amber-400">
+                    このURLを本人に渡してください（今だけ表示されます）
+                  </div>
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <code className="break-all rounded bg-surface px-2 py-1 text-[11px] text-primary">
+                      {portfolioLink.url}
+                    </code>
+                    <button
+                      type="button"
+                      onClick={() => navigator.clipboard?.writeText(portfolioLink.url)}
+                      className="btn-secondary text-xs px-3 py-1"
+                    >
+                      コピー
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPortfolioLink(null)}
+                      className="text-xs px-2 py-1 text-secondary hover:underline"
+                    >
+                      閉じる
+                    </button>
+                  </div>
+                  <div className="mt-2 leading-5 text-amber-800 dark:text-amber-400">
+                    再表示はできません（保存しているのはハッシュのみ）。紛失したら再発行してください。
+                    このリンクは「無効化」するか、ロスターで<span className="font-semibold">休止中</span>
+                    にすると開けなくなります。 お客様の氏名・連絡先は表示されません。
+                  </div>
+                </div>
+              )}
 
               {/* シフト編集 */}
               {shiftStaffId === s.id && (

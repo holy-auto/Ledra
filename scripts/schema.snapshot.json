@@ -3270,6 +3270,16 @@
 "updated_at",
 "user_id"
 ],
+"staff_portfolio_links": [
+"created_at",
+"created_by",
+"id",
+"is_active",
+"last_viewed_at",
+"staff_member_id",
+"tenant_id",
+"token_hash"
+],
 "staff_shifts": [
 "created_at",
 "end_time",
