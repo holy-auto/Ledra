@@ -39,7 +39,7 @@ export default function SignupPage() {
   const validateField = (key: FieldKey) => (raw: string) => {
     const v = raw.trim();
     let msg: string | undefined;
-    if (key === "shop_name" && !v) msg = "店舗名を入力してください";
+    if (key === "shop_name" && !v) msg = "店舗名（個人事業主は屋号）を入力してください";
     else if (key === "email") {
       if (!v) msg = "メールアドレスを入力してください";
       else if (!isEmail(v)) msg = "メールアドレスの形式が正しくありません";
@@ -53,7 +53,7 @@ export default function SignupPage() {
 
   function validateAll(): boolean {
     const next: Partial<Record<FieldKey, string>> = {};
-    if (!values.shop_name.trim()) next.shop_name = "店舗名を入力してください";
+    if (!values.shop_name.trim()) next.shop_name = "店舗名（個人事業主は屋号）を入力してください";
     if (!values.email.trim()) next.email = "メールアドレスを入力してください";
     else if (!isEmail(values.email.trim())) next.email = "メールアドレスの形式が正しくありません";
     if (!values.password || values.password.trim().length < 8) next.password = "8文字以上で入力してください";
@@ -193,11 +193,11 @@ export default function SignupPage() {
         <form onSubmit={handleSubmit} className="space-y-2">
           {/* 店舗情報（最小限） */}
           <FloatingField
-            label="店舗名"
+            label="店舗名・屋号"
             name="shop_name"
             required
             maxLength={100}
-            placeholder="例: カーコーティング専門店 SAMPLE"
+            placeholder="例: カーコーティング専門店 SAMPLE / 個人事業主は屋号"
             value={values.shop_name}
             onChange={setValue("shop_name")}
             onBlur={validateField("shop_name")}
