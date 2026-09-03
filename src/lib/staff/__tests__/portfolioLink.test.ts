@@ -59,6 +59,28 @@ describe("職人の実績リンクの開示範囲", () => {
   });
 
   it("リンク自体が無効化されていれば開けない", () => {
-    expect(libSource).toContain("if (!link?.is_active) return null;");
+    expect(libSource).toContain("if (!link.is_active) return null;");
+  });
+
+  it("開いたリンクが失効していれば、束ねていても見せない", () => {
+    // 各店舗が自分のリンクを止められることの担保。ここが消えると、失効させた店舗の
+    // リンクからでも他店ぶんの実績が見えてしまう。
+    expect(libSource).toContain("if (!primaryShop) return null;");
+  });
+
+  it("束ねの情報をテナントが読めるテーブルに置かない", () => {
+    // 他社に稼働先を見せないための核。staff_portfolio_links に identity を持たせると、
+    // 「非 NULL である」こと自体が「他所でも働いている」の漏洩になる。
+    const linksWrites = libSource.match(/from\("staff_portfolio_links"\)[\s\S]*?;/g) ?? [];
+    expect(linksWrites.length).toBeGreaterThan(0);
+    for (const q of linksWrites) {
+      expect(q).not.toContain("identity");
+    }
+  });
+
+  it("閲覧記録は開いたリンクだけに付ける", () => {
+    // 束ねた他店の last_viewed_at を動かすと、その店に「本人が別経路で見た」ことが伝わる。
+    const m = libSource.match(/last_viewed_at: new Date\(\)\.toISOString\(\)[\s\S]*?;/);
+    expect(m?.[0]).toContain('.eq("id", primary.id)');
   });
 });

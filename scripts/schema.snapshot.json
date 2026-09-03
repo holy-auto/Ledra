@@ -3270,6 +3270,15 @@
 "updated_at",
 "user_id"
 ],
+"staff_portfolio_identities": [
+"created_at",
+"id"
+],
+"staff_portfolio_identity_members": [
+"created_at",
+"identity_id",
+"portfolio_link_id"
+],
 "staff_portfolio_links": [
 "created_at",
 "created_by",
