@@ -2,9 +2,16 @@ import { NextRequest } from "next/server";
 import Stripe from "stripe";
 import { getStripeClient } from "@/lib/stripe/client";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
+import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
-import { apiJson, apiUnauthorized, apiNotFound, apiInternalError, apiValidationError } from "@/lib/api/response";
+import {
+  apiJson,
+  apiUnauthorized,
+  apiNotFound,
+  apiInternalError,
+  apiValidationError,
+  apiForbidden,
+} from "@/lib/api/response";
 import { stripeConnectCreateSchema } from "@/lib/validations/stripe";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 
@@ -45,6 +52,9 @@ export async function POST(req: NextRequest) {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
+    // Stripe 連携の接続は owner のみ（2026-09-05 代表判断）。会社の入金口座そのもので、
+    // 解除されると入金が止まる。billing:manage は admin も持つのでロール下限で守る。
+    if (!requireMinRole(caller, "owner")) return apiForbidden();
 
     const { admin } = createTenantScopedAdmin(caller.tenantId);
     const { data: tenant } = await admin
@@ -123,6 +133,9 @@ export async function DELETE() {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
+    // Stripe 連携の解除は owner のみ（2026-09-05 代表判断）。会社の入金口座そのもので、
+    // 解除されると入金が止まる。billing:manage は admin も持つのでロール下限で守る。
+    if (!requireMinRole(caller, "owner")) return apiForbidden();
 
     const { admin } = createTenantScopedAdmin(caller.tenantId);
     const { error } = await admin

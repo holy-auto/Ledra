@@ -47,27 +47,6 @@ PUT/DELETE に `payments:manage` を課しているのに揃えて `payments:man
 判断が出るまでの状態: **viewer は全て不可、staff 以上は全て可**。今より緩くなることは
 ないので、決定を待つ間の穴は無い。
 
-## 認可未強制のまま残っている24ハンドラの方針（2026-09-01）
-
-分類ごとの代表判断で E（業務データ）・B（AI）・F（設定）は決着したが、以下は未決。
-
-（ハンドラ単位。ルート単位では C 14 / G 3 / F 2 だが、1ルートに複数の変更系ハンドラが
-あるため実数はハンドラで数える。）
-
-- **C アカデミー 18ハンドラ**: 教材（レッスン・クイズ・事例・Q&A・報酬）を誰が作れるか。
-  受講（`complete` / `rate` / `quiz/attempt`）は自己完結型なので現状維持でよさそうだが、
-  作成・編集（`lessons` POST/PUT、`rewards`）は権限が要る。
-- **G 決済・外部連携 4ハンドラ**（`admin/shop/checkout` POST / `stripe/connect` POST・DELETE /
-  `stripe/connect/payment-link` POST）: 決済リンクを出せるのは誰か。Stripe 接続を張れるのは誰か。
-- **F 残り2本**: `admin/documents/share`（帳票の送付＝業務データ寄り）、
-  `admin/tenants` PUT（アクティブテナントの切替＝自己完結型）。分類から外したが未登録。
-
-判断が要らないと整理できたもの（上の24には含めない）:
-`admin/members` PUT/DELETE はインラインの `caller.role !== "owner" && !== "admin"` で
-既に守られている。`mobile/auth/otp/{request,verify}` は認証前の経路。
-`certificates/pdf-one` POST は読み取りのみ。`admin/certificates` POST は Server Action
-`createCertAction` の中で `certificates:create` を要求している。
-
 ## tenants の UPDATE は owner のみか admin 以上か（2026-09-01）
 
 `tenants` の UPDATE に PERMISSIVE ポリシーが2本あり、実効は緩い方（owner/admin/super_admin）。

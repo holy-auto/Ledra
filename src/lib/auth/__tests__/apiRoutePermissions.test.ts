@@ -197,57 +197,63 @@ describe("証明書の無効化 (operationRisk = critical)", () => {
  * 残っている理由の分類は docs/context/OPEN_QUESTIONS.md にある。
  */
 describe("未登録の変更系ハンドラ", () => {
+  /**
+   * 認可として認識できる書き方。**この一覧は必ず不完全になる。**
+   * 認可は任意のヘルパーで書けるので、正規表現で網羅はできない。
+   *
+   * 実際 2026-09-05 に、この一覧が短かったせいで「未強制24本」と報告してしまった。
+   * 中身を読んだら 18本は別の形で守られていた（`canModifyLesson()` による著者判定、
+   * `caller.role !== "super_admin"` のインライン判定、`createLesson.ts` の permission）。
+   * だから下の KNOWN_UNGUARDED は「認可が無い」ではなく
+   * **「この検出器が認可を認識できない」**の一覧であり、分類コメントが実態を持つ。
+   */
   const GUARD =
-    /requirePermission\(|hasPermission\(|requireMinRole\(|hasMinRole\(|resolveOrgAccess\(|hasMinOrgRole\(|isPlatformAdmin\(|isPlatformTenantId\(|assertPlatformTenantId\(|authorizeOrgStoreRead\(|resolveInsurerCaller\(|resolveManufacturerCaller\(|requireAal2OrResponse\(/;
+    /requirePermission\(|hasPermission\(|requireMinRole\(|hasMinRole\(|resolveOrgAccess\(|hasMinOrgRole\(|isPlatformAdmin\(|isPlatformTenantId\(|assertPlatformTenantId\(|authorizeOrgStoreRead\(|resolveInsurerCaller\(|resolveManufacturerCaller\(|requireAal2OrResponse\(|caller\.role\s*(===|!==)|canModifyLesson\(|isAuthor\(/;
 
-  /** 認可を入れる判断がまだ済んでいない、既知のハンドラ。増やさないこと。 */
+  /**
+   * 検出器が認可を認識できないハンドラ。**すべて中身を読んで説明がついている。**
+   * 増やさないこと。減らすときは、そのハンドラの認可を表に登録すること。
+   */
   const KNOWN_UNGUARDED = new Set([
-    "admin/academy/cases [POST]",
-    "admin/academy/feedback [POST]",
-    "admin/academy/lessons/[id]/complete [POST]",
-    "admin/academy/lessons/[id]/complete [DELETE]",
-    "admin/academy/lessons/[id]/quiz/attempt [POST]",
-    "admin/academy/lessons/[id]/quiz [PUT]",
-    "admin/academy/lessons/[id]/rate [POST]",
-    "admin/academy/lessons/[id]/rate [DELETE]",
-    "admin/academy/lessons/[id] [PATCH]",
-    "admin/academy/lessons/[id] [DELETE]",
-    "admin/academy/lessons/[id]/video/upload-url [POST]",
-    "admin/academy/lessons [POST]",
-    "admin/academy/qa [POST]",
-    "admin/academy/rewards/[id]/apply [POST]",
-    "admin/academy/rewards [POST]",
-    "admin/certificates [POST]",
-    "admin/documents/share [POST]",
+    // ── 自己完結（自分のデータだけを操作する。ロール権限を課す方が誤り）──
     "admin/feature-prefs [PUT]",
-    "admin/members [PUT]",
-    "admin/members [DELETE]",
     "admin/mfa/enroll [POST]",
     "admin/mfa/factors/[id] [DELETE]",
     "admin/mfa/verify-enroll [POST]",
     "admin/notifications/[id]/read [PUT]",
     "admin/notifications/read-all [PUT]",
-    "admin/shop/checkout [POST]",
-    "admin/tenants [PUT]",
+    "admin/tenants [PUT]", // アクティブテナントの切替
     "admin/ui-preferences [PUT]",
-    "certificates/pdf-one [POST]",
-    "mobile/academy/lessons/[id] [PATCH]",
-    "mobile/academy/lessons/[id] [DELETE]",
-    "mobile/academy/lessons [POST]",
-    "mobile/account [DELETE]",
-    "mobile/auth/otp/request [POST]",
-    "mobile/auth/otp/verify [POST]",
     "mobile/push/register [POST]",
     "mobile/push/register [DELETE]",
     "mobile/ui-preferences [PUT]",
-    "stripe/connect/payment-link [POST]",
-    "stripe/connect [POST]",
-    "stripe/connect [DELETE]",
     "webauthn/credentials/[id] [DELETE]",
     "webauthn/operation/options [POST]",
     "webauthn/operation/verify [POST]",
     "webauthn/register/options [POST]",
     "webauthn/register/verify [POST]",
+
+    // ── 認証前の経路（まだ caller が確立していない）──
+    "mobile/auth/otp/request [POST]",
+    "mobile/auth/otp/verify [POST]",
+
+    // ── 読み取りのみ（POST だが書き込まない）──
+    "certificates/pdf-one [POST]", // PDF 出力。テナント所有チェックはある
+
+    // ── 認可を共有関数に集約している（ルートの中には無い）──
+    "admin/certificates [POST]", // createCertAction が certificates:create を要求する
+
+    // ── 受講（自分の行にしか書けず、自分のレッスンは操作できない）──
+    "admin/academy/lessons/[id]/complete [POST]",
+    "admin/academy/lessons/[id]/complete [DELETE]",
+    "admin/academy/lessons/[id]/quiz/attempt [POST]",
+    "admin/academy/lessons/[id]/rate [POST]",
+    "admin/academy/lessons/[id]/rate [DELETE]",
+
+    // ── 所有者・著者判定で守られている（検出器が読めないだけ）──
+    "admin/academy/cases [POST]", // 事例の所有者チェック
+    "admin/academy/lessons [POST]", // createLesson.ts の permission チェック
+    "mobile/academy/lessons [POST]", // 同上
   ]);
 
   const found: string[] = [];

@@ -3,9 +3,9 @@ import { z } from "zod";
 import Stripe from "stripe";
 import { getStripeClient } from "@/lib/stripe/client";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
+import { resolveCallerWithRole, requirePermission } from "@/lib/auth/checkRole";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
-import { apiOk, apiUnauthorized, apiValidationError, apiInternalError } from "@/lib/api/response";
+import { apiOk, apiUnauthorized, apiValidationError, apiInternalError, apiForbidden } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 
 const shopCheckoutSchema = z.object({
@@ -39,6 +39,9 @@ export async function POST(req: NextRequest) {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
+    // 備品購入は admin 以上（2026-09-05 代表判断）。会社のお金を使う操作なので、
+    // 顧客への請求（payments:create / staff）とは分ける。
+    if (!requirePermission(caller, "billing:manage")) return apiForbidden();
 
     const parsed = shopCheckoutSchema.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) {
