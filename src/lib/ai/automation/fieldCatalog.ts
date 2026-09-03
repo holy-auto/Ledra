@@ -129,12 +129,7 @@ export const AUTOMATION_WORKFLOWS: readonly AutomationWorkflowDef[] = [
 
 /** AI が参照可能な情報ソース。 */
 export type AutomationSourceKey =
-  | "similar_certificates"
-  | "hearings"
-  | "photos"
-  | "customer_history"
-  | "voice_memo"
-  | "identity_documents";
+  "similar_certificates" | "hearings" | "photos" | "customer_history" | "voice_memo" | "identity_documents";
 
 export interface AutomationSourceDef {
   key: AutomationSourceKey;

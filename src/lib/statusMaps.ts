@@ -3,9 +3,11 @@
  * Use with the unified Badge component for consistent status rendering.
  */
 
+import type { Severity } from "@/lib/domain/states";
+
 export type BadgeVariant = "default" | "success" | "warning" | "danger" | "info" | "violet";
 
-type StatusEntry = { variant: BadgeVariant; label: string };
+export type StatusEntry = { variant: BadgeVariant; label: string };
 
 /* ── Certificate ── */
 export const CERTIFICATE_STATUS_MAP: Record<string, StatusEntry> = {
@@ -111,6 +113,18 @@ export const SIGNING_STATUS_MAP: Record<string, StatusEntry> = {
   signed: { variant: "success", label: "署名完了" },
   rejected: { variant: "danger", label: "拒否" },
   expired: { variant: "default", label: "期限切れ" },
+};
+
+/* ── 正準 Severity(v2.0 §19.3)→ 表示 variant ──
+ * v2.0 §3.1 が固定する対応: HIGH=Warning / CRITICAL=Danger / RESOLVED=Success。
+ * ACTION は仕様で色が固定されていないため、Primary(アクション色=青)系の info を
+ * 実装として割り当てる。ラベルは src/lib/domain/labels.ts の severityLabel を使う。 */
+export const SEVERITY_VARIANT_MAP: Record<Severity, BadgeVariant> = {
+  NORMAL: "default",
+  ACTION: "info",
+  HIGH: "warning",
+  CRITICAL: "danger",
+  RESOLVED: "success",
 };
 
 /* ── Utility: get status entry safely ── */

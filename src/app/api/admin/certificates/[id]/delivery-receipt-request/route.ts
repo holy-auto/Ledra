@@ -23,8 +23,15 @@ import { randomUUID } from "crypto";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
-import { apiOk, apiError, apiUnauthorized, apiValidationError, apiInternalError } from "@/lib/api/response";
+import { resolveCallerWithRole, requirePermission } from "@/lib/auth/checkRole";
+import {
+  apiOk,
+  apiError,
+  apiUnauthorized,
+  apiValidationError,
+  apiInternalError,
+  apiForbidden,
+} from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { computeDocumentHash } from "@/lib/signature/hash";
 import { generateCertificatePdfBytes } from "@/lib/signature/pdfUtils";
@@ -136,6 +143,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const supabase = await createClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
+    if (!requirePermission(caller, "certificates:edit")) return apiForbidden();
 
     const { id: certificateId } = await params;
     if (!/^[0-9a-f-]{36}$/i.test(certificateId)) {
@@ -155,8 +163,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         `
         id, tenant_id, public_id, customer_name,
         customer_phone_last4, customer_phone_last4_hash,
-        cert_type, service_type, created_at,
-        vehicles ( car_number, car_name ),
+        service_type, created_at,
+        vehicles ( plate_display, maker, model ),
         stores   ( name )
       `,
       )
@@ -310,8 +318,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
     // 受領内容スナップショット (Supabase relation は配列で返る場合があるので両対応)
     const vehRaw = cert.vehicles as unknown as
-      | { car_number: string | null; car_name: string | null }
-      | Array<{ car_number: string | null; car_name: string | null }>
+      | { plate_display: string | null; maker: string | null; model: string | null }
+      | Array<{ plate_display: string | null; maker: string | null; model: string | null }>
       | null;
     const veh = Array.isArray(vehRaw) ? (vehRaw[0] ?? null) : vehRaw;
     const stoRaw = cert.stores as unknown as { name: string | null } | Array<{ name: string | null }> | null;
@@ -320,11 +328,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       certificate: {
         id: cert.id,
         public_id: cert.public_id ?? null,
-        cert_type: cert.cert_type ?? null,
+        // cert_type 列は certificates に無い。種別は service_type が持つ
+        cert_type: null,
         service_type: cert.service_type ?? null,
         created_at: cert.created_at ?? null,
       },
-      vehicle: veh ? { car_number: veh.car_number, car_name: veh.car_name } : null,
+      vehicle: veh
+        ? { car_number: veh.plate_display, car_name: [veh.maker, veh.model].filter(Boolean).join(" ") || null }
+        : null,
       store: sto ? { name: sto.name } : null,
       customer: {
         name: cert.customer_name ?? null,

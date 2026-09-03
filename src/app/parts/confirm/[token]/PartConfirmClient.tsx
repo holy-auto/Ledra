@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
+import RaiseConcernButton from "@/components/customer/RaiseConcernButton";
 
 /**
  * 納車時の顧客確認画面（公開・未認証）。
@@ -212,6 +213,11 @@ export default function PartConfirmClient({ token }: { token: string }) {
           <p className="font-medium">確定が完了しました。</p>
           <p className="mt-1 text-sm">ご確認ありがとうございました。内容は改ざん不能な記録として保存されました。</p>
         </Card>
+      )}
+
+      {/* IMP-026: 気になる点を伝える */}
+      {(phase === "otp" || phase === "review" || phase === "complete" || phase === "already") && (
+        <RaiseConcernButton sourceType="parts_confirmation" sourceToken={token} variant="light" />
       )}
     </main>
   );

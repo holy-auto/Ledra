@@ -185,7 +185,13 @@ async function runAndCache(
 
   // Only cache 2xx + 4xx (deterministic outcomes). 5xx errors should be
   // retryable, so don't poison the cache.
-  if (response.status >= 200 && response.status < 500) {
+  //
+  // 401/403 は除く。結果が「誰が呼んだか」で変わるうえ、キーは IP スコープ
+  // (getClientIp) なので、権限を付与された後の再送や、同じ NAT の別ユーザーにまで
+  // 24 時間その拒否が返り続ける。認可の結果はキャッシュしない。
+  const cacheable =
+    response.status >= 200 && response.status < 500 && response.status !== 401 && response.status !== 403;
+  if (cacheable) {
     try {
       const cloned = response.clone();
       const body = await cloned.text();

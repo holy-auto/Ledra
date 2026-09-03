@@ -18,9 +18,7 @@ type AgentContext = {
  *   const deny = await enforceAgentStatus();
  *   if (deny) return deny;
  */
-export async function enforceAgentStatus(opts?: {
-  allowPending?: boolean;
-}): Promise<NextResponse | null> {
+export async function enforceAgentStatus(opts?: { allowPending?: boolean }): Promise<NextResponse | null> {
   const supabase = await createClient();
   const { data: auth } = await supabase.auth.getUser();
   if (!auth?.user) {
@@ -30,10 +28,7 @@ export async function enforceAgentStatus(opts?: {
   const { data, error } = await supabase.rpc("get_my_agent_status");
 
   if (error || !data || (Array.isArray(data) && data.length === 0)) {
-    return NextResponse.json(
-      { error: "agent not found" },
-      { status: 403 }
-    );
+    return NextResponse.json({ error: "agent not found" }, { status: 403 });
   }
 
   const row = Array.isArray(data) ? data[0] : data;
@@ -45,7 +40,7 @@ export async function enforceAgentStatus(opts?: {
         error: "account_suspended",
         message: "このアカウントは停止されています。管理者にお問い合わせください。",
       },
-      { status: 403 }
+      { status: 403 },
     );
   }
 
@@ -53,10 +48,9 @@ export async function enforceAgentStatus(opts?: {
     return NextResponse.json(
       {
         error: "feature_restricted",
-        message:
-          "現在アカウントは確認中です。この機能は正式開通後にご利用いただけます。",
+        message: "現在アカウントは確認中です。この機能は正式開通後にご利用いただけます。",
       },
-      { status: 403 }
+      { status: 403 },
     );
   }
 

@@ -1,5 +1,6 @@
 import { storeOutboundImage } from "@/lib/line/media";
 import { sendCustomerLineImage } from "@/lib/line/client";
+import { detectMagicByteMime } from "@/lib/media/magicBytes";
 
 /** LINE image message の上限 (originalContentUrl 10MB / JPEG・PNG のみ) */
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
@@ -20,17 +21,24 @@ export async function sendLineImageFromForm(params: {
   if (!(file instanceof File) || file.size === 0) {
     return { ok: false, message: "画像ファイルが指定されていません。" };
   }
-  if (!ALLOWED_TYPES.has(file.type)) {
-    return { ok: false, message: "画像は JPEG / PNG のみ送信できます (LINE の仕様)。" };
-  }
   if (file.size > MAX_IMAGE_BYTES) {
     return { ok: false, message: "画像は 10MB 以下にしてください。" };
   }
 
+  // 宣言された Content-Type は送信側が自由に付けられる。中身の先頭バイトで判定し、
+  // Storage には検出した型で保存する (証明書写真のアップロードと同じ扱い)。
+  // これをやらないと、image/jpeg と名乗る HTML や実行可能ファイルを
+  // 自ドメインの署名付き URL で配信できてしまう。
+  const buf = Buffer.from(await file.arrayBuffer());
+  const detected = detectMagicByteMime(buf);
+  if (!detected || !ALLOWED_TYPES.has(detected)) {
+    return { ok: false, message: "画像は JPEG / PNG のみ送信できます (LINE の仕様)。" };
+  }
+
   const stored = await storeOutboundImage({
     tenantId: params.tenantId,
-    buf: new Uint8Array(await file.arrayBuffer()),
-    contentType: file.type,
+    buf: new Uint8Array(buf),
+    contentType: detected,
   });
   if (!stored) return { ok: false, message: "画像の保存に失敗しました。時間をおいて再試行してください。" };
 
@@ -40,7 +48,7 @@ export async function sendLineImageFromForm(params: {
     lineUserId: params.lineUserId,
     imageUrl: stored.url,
     attachmentPath: stored.path,
-    attachmentContentType: file.type,
+    attachmentContentType: detected,
     sentByUserId: params.sentByUserId,
   });
   return { ok: true, delivered };

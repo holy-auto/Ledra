@@ -16,9 +16,9 @@
 import { NextRequest } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
+import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
 import { checkRateLimit } from "@/lib/api/rateLimit";
-import { apiJson, apiInternalError, apiUnauthorized, apiValidationError } from "@/lib/api/response";
+import { apiJson, apiInternalError, apiUnauthorized, apiValidationError, apiForbidden } from "@/lib/api/response";
 import { stageInstallationPhoto, INSTALL_PHOTO_KINDS, type InstallPhotoKind } from "@/lib/parts/evidenceService";
 
 export const runtime = "nodejs";
@@ -56,6 +56,7 @@ export async function POST(req: NextRequest) {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
+    if (!requireMinRole(caller, "staff")) return apiForbidden();
 
     const { admin, tenantId } = createTenantScopedAdmin(caller.tenantId);
 

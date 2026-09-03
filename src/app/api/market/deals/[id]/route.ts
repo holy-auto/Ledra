@@ -1,9 +1,16 @@
 import { NextRequest } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
+import { resolveCallerWithRole, requirePermission } from "@/lib/auth/checkRole";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { notifyDealStatusChanged } from "@/lib/market/email";
-import { apiJson, apiUnauthorized, apiNotFound, apiValidationError, apiInternalError } from "@/lib/api/response";
+import {
+  apiJson,
+  apiUnauthorized,
+  apiNotFound,
+  apiValidationError,
+  apiInternalError,
+  apiForbidden,
+} from "@/lib/api/response";
 import { dealStatusUpdateSchema } from "@/lib/validations/market";
 
 export const dynamic = "force-dynamic";
@@ -20,6 +27,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
+    if (!requirePermission(caller, "market:edit")) return apiForbidden();
 
     const { id: dealId } = await params;
     const { admin } = createTenantScopedAdmin(caller.tenantId);

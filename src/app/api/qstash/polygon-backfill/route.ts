@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { apiJson } from "@/lib/api/response";
-import { verifySignatureAppRouter } from "@upstash/qstash/nextjs";
+import { withQstashSignature } from "@/lib/qstash/verifySignature";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { anchorToPolygon, verifyAnchor, findAnchorTx } from "@/lib/anchoring/providers";
 import {
@@ -111,17 +111,55 @@ async function handler(req: NextRequest) {
         }
 
         if (status !== "failed" && txHash) {
-          const updatePayload: Record<string, unknown> = {
-            polygon_tx_hash: txHash,
-            polygon_network: network,
-          };
-          if (nextGrade !== gradeBefore) {
-            updatePayload.authenticity_grade = nextGrade;
+          // polygon_tx_hash/polygon_network は certificate_images_guard の
+          // 対象外(凍結証跡列ではない)。authenticity_grade は対象列なので、
+          // 親証明書が draft 以外だと更新が拒否されうる。同じ UPDATE に
+          // まとめると tx hash の記録までブロックされ、この画像が永遠に
+          // 未アンカーとして再キューされ続けるため、別 UPDATE に分離する。
+          const { error: txError } = await admin
+            .from("certificate_images")
+            .update({ polygon_tx_hash: txHash, polygon_network: network })
+            .eq("id", img.id);
+
+          if (txError) {
+            console.error("[polygon-backfill] tx hash update failed", {
+              imageId: img.id,
+              error: txError.message,
+            });
+          } else {
+            succeededCount++;
+            const certId = (img as { certificate_id?: string | null }).certificate_id;
+            if (certId) anchoredCertIds.add(certId);
+
+            if (nextGrade !== gradeBefore) {
+              const { error: gradeError } = await admin
+                .from("certificate_images")
+                .update({ authenticity_grade: nextGrade })
+                .eq("id", img.id);
+              if (gradeError) {
+                // certificate_images_guard が拒否するのは P0001 のみ。それ以外
+                // (ネットワーク断等の一時的失敗)は tx hash が既に書き込み済みで
+                // polygon_tx_hash IS NULL の対象から外れてしまい、このまま握り
+                // つぶすと等級の底上げ機会を永久に失う。想定内のガード拒否と
+                // 見分けられるよう error でログし、原因調査できるようにする。
+                const isGuardRejection =
+                  gradeError.code === "P0001" && gradeError.message?.includes("certificate_images");
+                if (isGuardRejection) {
+                  // 発行済み/取消済み/期限切れの親を持つ画像は仕様どおりのブロック。
+                  // tx hash は既に記録済みで前進はしている(等級の上書きだけが凍結される)。
+                  console.warn("[polygon-backfill] grade upgrade blocked (frozen evidence)", {
+                    imageId: img.id,
+                    error: gradeError.message,
+                  });
+                } else {
+                  console.error("[polygon-backfill] grade update failed unexpectedly (not a freeze guard rejection)", {
+                    imageId: img.id,
+                    error: gradeError.message,
+                  });
+                }
+              }
+            }
           }
-          await admin.from("certificate_images").update(updatePayload).eq("id", img.id);
-          succeededCount++;
-          const certId = (img as { certificate_id?: string | null }).certificate_id;
-          if (certId) anchoredCertIds.add(certId);
         }
       } catch (err) {
         // 生の err は RPC レスポンス・スタック等を含み得るので message のみ。
@@ -223,4 +261,4 @@ async function handler(req: NextRequest) {
   }
 }
 
-export const POST = verifySignatureAppRouter(handler);
+export const POST = withQstashSignature(handler);

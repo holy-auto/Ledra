@@ -1,15 +1,18 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
+import { resolveCallerWithRole, requirePermission } from "@/lib/auth/checkRole";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { enforceBilling } from "@/lib/billing/guard";
 import { makePublicId } from "@/lib/publicId";
-import { apiJson, apiUnauthorized, apiValidationError, apiInternalError } from "@/lib/api/response";
+import { apiJson, apiUnauthorized, apiValidationError, apiInternalError, apiForbidden } from "@/lib/api/response";
 import { orderCreateSchema } from "@/lib/validations/order";
 
 const bulkSchema = z.object({
-  orders: z.array(orderCreateSchema).min(1, "orders must be a non-empty array").max(200, "最大200件まで一括インポートできます"),
+  orders: z
+    .array(orderCreateSchema)
+    .min(1, "orders must be a non-empty array")
+    .max(200, "最大200件まで一括インポートできます"),
 });
 
 /**
@@ -22,6 +25,7 @@ export async function POST(req: NextRequest) {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
+    if (!requirePermission(caller, "orders:create")) return apiForbidden();
 
     const deny = await enforceBilling(req, {
       minPlan: "free",
@@ -51,7 +55,17 @@ export async function POST(req: NextRequest) {
 
     for (let i = 0; i < parsed.data.orders.length; i++) {
       const order = parsed.data.orders[i];
-      const { to_tenant_id, title, description, category, budget, deadline, vehicle_id, requester_email, requester_company } = order;
+      const {
+        to_tenant_id,
+        title,
+        description,
+        category,
+        budget,
+        deadline,
+        vehicle_id,
+        requester_email,
+        requester_company,
+      } = order;
 
       const insertPayload: Record<string, unknown> = {
         public_id: makePublicId(),

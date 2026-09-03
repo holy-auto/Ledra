@@ -1,7 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
-import { apiJson, apiUnauthorized, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
+import { resolveCallerWithRole, requirePermission } from "@/lib/auth/checkRole";
+import {
+  apiJson,
+  apiUnauthorized,
+  apiValidationError,
+  apiNotFound,
+  apiInternalError,
+  apiForbidden,
+} from "@/lib/api/response";
 import { hearingCreateSchema, hearingUpdateSchema } from "@/lib/validations/hearing";
 
 export const dynamic = "force-dynamic";
@@ -42,6 +49,7 @@ export async function POST(req: NextRequest) {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
+    if (!requirePermission(caller, "customers:create")) return apiForbidden();
 
     const parsed = hearingCreateSchema.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) {
@@ -93,6 +101,7 @@ export async function PUT(req: NextRequest) {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
+    if (!requirePermission(caller, "customers:edit")) return apiForbidden();
 
     const parsed = hearingUpdateSchema.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) {
