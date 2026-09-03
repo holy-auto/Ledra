@@ -184,7 +184,18 @@ export async function GET() {
       account = await stripe.accounts.retrieve(accountId);
     } catch (retrieveErr) {
       const msg = retrieveErr instanceof Error ? retrieveErr.message : String(retrieveErr);
-      console.warn(`[stripe connect] retrieve failed for ${accountId}: ${msg}`);
+      // 「Stripe 側に無い」と確定したときだけ切り離す。以前は**どんなエラーでも**
+      // account_id を null にしていたため、Stripe の一時障害やタイムアウトで
+      // 設定画面を開いただけで連携が切れ、次の「接続」で別アカウントが作られて
+      // 元の口座が孤立した。解除を owner 限定にしても、この経路が残っていると
+      // 誰でも（GET なので閲覧専用ロールでも）実質的に解除できてしまう。
+      const code = (retrieveErr as { code?: string } | null)?.code;
+      const missing = code === "resource_missing" || code === "account_invalid";
+      if (!missing) {
+        console.error(`[stripe connect] retrieve failed (transient) for ${accountId}: ${msg}`);
+        return apiInternalError(retrieveErr, "stripe/connect GET");
+      }
+      console.warn(`[stripe connect] account gone, detaching ${accountId}: ${msg}`);
       await admin
         .from("tenants")
         .update({ stripe_connect_account_id: null, stripe_connect_onboarded: false })

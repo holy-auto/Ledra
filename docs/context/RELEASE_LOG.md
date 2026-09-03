@@ -9,20 +9,23 @@
 - 内容: 代表判断に基づき7箇所にガードを入れた。
   - `stripe/connect` POST・DELETE → **owner のみ**（会社の入金口座。解除されると入金が止まる）
   - `stripe/connect/payment-link` POST → `payments:create`（staff。現場が請求を出す通常業務）
-  - `admin/shop/checkout` POST → `billing:manage`（admin。会社のお金を使う）
+  - `admin/shop/checkout` POST・`admin/shop/orders` POST → **admin 以上**（会社のお金を使う）
   - `admin/documents/share` POST → staff 以上（帳票の顧客送付）
   - `admin/academy/feedback` / `qa` POST → staff 以上（中身が AI 呼び出しのため
     2026-09-01 の「AI は staff 以上」が適用される）
-- **「未強制24本」は数え間違いだった。** 1本ずつ読んだところ18本は別の形で守られていた
-  （`canModifyLesson()` の著者判定、`caller.role !== "super_admin"` のインライン判定、
-  `createLesson.ts` の permission チェック、受講系の自己スコープ）。構造テストの検出器が
-  決め打ちの関数名しか認可と認識しないため、**「認識できない」を「認可が無い」と
-  読み替えていた**のが原因。**Stripe の credit を動かす報酬適用も、無防備だと思っていたが
-  実際は `super_admin` のみで守られていた。**
+- **「未強制24本」は数え間違いだった。** 正しくは **既に守られていた10本**（著者判定・
+  permission チェック・`super_admin` のインライン判定）、**自己完結で現状維持が正しい6本**
+  （受講5・テナント切替1）、**本当に無防備だった8本**。構造テストの検出器が決め打ちの
+  関数名しか認可と認識しないため、**「認識できない」を「認可が無い」と読み替えていた**のが
+  原因。**Stripe の credit を動かす報酬適用も、無防備だと思っていたが実際は `super_admin`
+  のみで守られていた。**
+- 逆向きの誤りもあった。`admin/academy/cases` を「所有者判定で守られている」と分類したが、
+  実際は**テナント判定しかしておらず閲覧専用ロールでも事例を公開できた**（AI 要約を呼び、
+  `knowledge_chunks` に全加盟店共有の行を書く）。staff 以上に変更した。
 - 検出器の直し: インラインのロール判定と2つのヘルパーを認識するようにし、既知リストの
   意味を「認可が無い」から**「この検出器が認可を認識できない」**に改めて、28件すべてに
   分類コメントを付けた（自己完結16・認証前2・読み取りのみ1・Server Action 委譲1・
-  受講5・所有者判定3）。46→28。**説明のつかないハンドラはゼロになった。**
+  受講5・著者判定3）。46→29。**説明のつかないハンドラはゼロになった。**
 - 副次: `admin/documents/share` のテストが `@/lib/auth/checkRole` をモジュールごと
   モックしており、ガード追加で 403 が 500 になっていたので `importOriginal` で直した
   （この形は4回目）。

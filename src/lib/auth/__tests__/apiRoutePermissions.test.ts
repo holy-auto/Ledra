@@ -19,7 +19,7 @@
  * ガードを足すときの注意: ルートのテストが `vi.mock("@/lib/auth/checkRole", () => ...)`
  * とモジュールごと差し替えていると `requirePermission` が undefined になり、
  * 403 のはずが TypeError で 500 になる。`importOriginal` で実物を残すこと。
- * 2026-09-01 時点で、まだこの書き方の残っているテストが29本ある。
+ * 2026-09-05 時点で、まだこの書き方の残っているテストが28本ある。
  */
 import { describe, it, expect } from "vitest";
 import { existsSync, readFileSync } from "node:fs";
@@ -207,11 +207,24 @@ describe("未登録の変更系ハンドラ", () => {
    * だから下の KNOWN_UNGUARDED は「認可が無い」ではなく
    * **「この検出器が認可を認識できない」**の一覧であり、分類コメントが実態を持つ。
    */
-  const GUARD =
-    /requirePermission\(|hasPermission\(|requireMinRole\(|hasMinRole\(|resolveOrgAccess\(|hasMinOrgRole\(|isPlatformAdmin\(|isPlatformTenantId\(|assertPlatformTenantId\(|authorizeOrgStoreRead\(|resolveInsurerCaller\(|resolveManufacturerCaller\(|requireAal2OrResponse\(|caller\.role\s*(===|!==)|canModifyLesson\(|isAuthor\(/;
+  const GUARD = new RegExp(
+    [
+      // 弾く形（否定）でのみ認可と見なす。呼び出しの存在だけを見ると、結果を捨てる
+      // 書き方（`const ok = requirePermission(...)`）でも一致して素通りする。
+      // これは enforces() が `!` を要求しているのと同じ理由。
+      String.raw`!\s*(?:requirePermission|hasPermission|requireMinRole|hasMinRole|hasMinOrgRole|isPlatformAdmin|isPlatformTenantId|canModifyLesson)\(`,
+      // 早期 return する形の呼び出し
+      String.raw`(?:resolveOrgAccess|assertPlatformTenantId|authorizeOrgStoreRead|resolveInsurerCaller|resolveManufacturerCaller|requireAal2OrResponse)\(`,
+      // インラインのロール判定。**弾いている**ことまで求める。
+      // `const isSoleOwner = caller.role === "owner" && ...` のような業務ロジックを
+      // 認可と誤認しないため（2026-09-05 のレビューで mobile/account が
+      // これで一覧から消えた）。
+      String.raw`caller\.role\s*!==\s*"[a-z_]+"[\s\S]{0,80}?apiForbidden`,
+    ].join("|"),
+  );
 
   /**
-   * 検出器が認可を認識できないハンドラ。**すべて中身を読んで説明がついている。**
+   * 検出器が認可を認識できないハンドラ。**すべて中身を読んで分類してある。**
    * 増やさないこと。減らすときは、そのハンドラの認可を表に登録すること。
    */
   const KNOWN_UNGUARDED = new Set([
@@ -220,10 +233,9 @@ describe("未登録の変更系ハンドラ", () => {
     "admin/mfa/enroll [POST]",
     "admin/mfa/factors/[id] [DELETE]",
     "admin/mfa/verify-enroll [POST]",
-    "admin/notifications/[id]/read [PUT]",
-    "admin/notifications/read-all [PUT]",
     "admin/tenants [PUT]", // アクティブテナントの切替
     "admin/ui-preferences [PUT]",
+    "mobile/account [DELETE]", // 自分の退会。caller.role は「最後の owner か」の業務判定で、認可ではない
     "mobile/push/register [POST]",
     "mobile/push/register [DELETE]",
     "mobile/ui-preferences [PUT]",
@@ -232,6 +244,12 @@ describe("未登録の変更系ハンドラ", () => {
     "webauthn/operation/verify [POST]",
     "webauthn/register/options [POST]",
     "webauthn/register/verify [POST]",
+
+    // ── 通知の既読。**自己完結ではない。** 行は tenant_id だけで絞られており
+    //    （本番61件すべて user_id が null）、誰かが既読にすると全員に反映される。
+    //    これが意図どおりかは判断待ち（docs/context/OPEN_QUESTIONS.md）。
+    "admin/notifications/[id]/read [PUT]",
+    "admin/notifications/read-all [PUT]",
 
     // ── 認証前の経路（まだ caller が確立していない）──
     "mobile/auth/otp/request [POST]",
@@ -250,10 +268,13 @@ describe("未登録の変更系ハンドラ", () => {
     "admin/academy/lessons/[id]/rate [POST]",
     "admin/academy/lessons/[id]/rate [DELETE]",
 
-    // ── 所有者・著者判定で守られている（検出器が読めないだけ）──
-    "admin/academy/cases [POST]", // 事例の所有者チェック
-    "admin/academy/lessons [POST]", // createLesson.ts の permission チェック
-    "mobile/academy/lessons [POST]", // 同上
+    // ── 著者判定で守られている（ルート内のローカルヘルパー。名前で照合すると
+    //    無関係な同名関数を認可と誤認するので、検出器には入れない）──
+    "admin/academy/lessons/[id]/quiz [PUT]", // ローカルの isAuthor()
+
+    // ── createLesson.ts の permission チェックで守られている ──
+    "admin/academy/lessons [POST]",
+    "mobile/academy/lessons [POST]",
   ]);
 
   const found: string[] = [];
