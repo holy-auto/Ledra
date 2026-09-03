@@ -32,7 +32,15 @@ const DISABLED_RESULT: C2paResult = {
 
 /** マニフェストの固定メタ（要約とアサーションで単一ソースにし drift を防ぐ）。 */
 const CLAIM_GENERATOR = "Ledra/1.0";
+const CLAIM_GENERATOR_NAME = "Ledra";
+const CLAIM_GENERATOR_VERSION = "1.0";
 const MANIFEST_TITLE = "Certificate Photo";
+
+// Asserted C2PA Content Credentials Specification version. C2PA Conformance
+// Program (Additional Conformance Requirements v0.2) requires this to appear as
+// claim_generator_info.specVersion and to match the version on the CPL record /
+// Intake Form.
+const SPEC_VERSION = "2.4";
 
 // IPTC DigitalSourceType: the depicted content is a real-life scene captured
 // digitally. `c2pa.created` requires a digitalSourceType or it is rejected as
@@ -168,8 +176,13 @@ export async function signC2pa(buffer: Buffer, mime: string, binding?: CaptureBi
     // マニフェスト定義から作るには静的ファクトリ `Builder.withJson(...)` を使う。
     // `new Builder({...})` は旧APIで、0.6.x では addAssertion 時に neon downcast エラーで
     // throw → signC2pa の catch で握られ「署名されない(DISABLED)」に fail-open してしまう。
+    // claim_generator_info (v2 form) carries specVersion — required by the C2PA
+    // Conformance Program for Spec 2.4+ so validators can confirm the asserted
+    // version matches the CPL record.
     const builder = Builder.withJson({
-      claim_generator: CLAIM_GENERATOR,
+      claim_generator_info: [
+        { name: CLAIM_GENERATOR_NAME, version: CLAIM_GENERATOR_VERSION, specVersion: SPEC_VERSION },
+      ],
       title: MANIFEST_TITLE,
     });
 
@@ -184,8 +197,14 @@ export async function signC2pa(buffer: Buffer, mime: string, binding?: CaptureBi
     // sharp failed and the original buffer was signed as-is, `c2pa.converted`/
     // the removal action slightly over-claim. Upgrade path: thread the transform
     // outcome from the upload route through invokeAllUploadProviders → signC2pa.
+    // allActionsIncluded=true: the strip step (imageExif: sharp.rotate().toBuffer())
+    // performs exactly orientation + re-encode + EXIF/GPS removal — no resize or
+    // format change — so the four actions above are the complete set of actions
+    // performed. The C2PA Conformance Program (Additional Conformance Requirements
+    // v0.2) requires actions-map-v2 to carry allActionsIncluded (true|false).
     builder.addAssertion("c2pa.actions", {
       actions: MANIFEST_ACTIONS as unknown as Record<string, unknown>[],
+      allActionsIncluded: true,
     });
 
     // Seal the capture context into the manifest: which certificate/vehicle this

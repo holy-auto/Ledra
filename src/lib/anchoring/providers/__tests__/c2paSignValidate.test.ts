@@ -91,6 +91,16 @@ describe("C2PA sign → validate (manifest content conformance)", () => {
       const codes = collectFailureCodes(json);
       const unexpected = [...codes].filter((c) => !ALLOWED.some((re) => re.test(c)));
       expect(unexpected, `unexpected (content) validation codes for ${mime}: ${[...codes].join(", ")}`).toEqual([]);
+
+      // C2PA Conformance Program (Additional Conformance Requirements v0.2) fields.
+      const m = json?.manifests?.[json.active_manifest] ?? {};
+      const cgi = (m.claim_generator_info ?? []) as Array<{ specVersion?: string }>;
+      expect(cgi.some((e) => e.specVersion === "2.4"), `claim_generator_info.specVersion=2.4 for ${mime}`).toBe(true);
+
+      const actions = (m.assertions ?? []).find((a: { label?: string }) => a.label?.startsWith("c2pa.actions"));
+      expect(typeof actions?.data?.allActionsIncluded, `allActionsIncluded present for ${mime}`).toBe("boolean");
+      const created = (actions?.data?.actions ?? []).find((a: { action?: string }) => a.action === "c2pa.created");
+      expect(created?.digitalSourceType, `c2pa.created has digitalSourceType for ${mime}`).toBeTruthy();
     });
   }
 });
