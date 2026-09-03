@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { STAFF_PORTFOLIO_CERT_COLUMNS, STAFF_PORTFOLIO_CERT_FORBIDDEN_COLUMNS } from "@/lib/staff/portfolioDisclosure";
-import { CODE_ALPHABET, normalizeCode } from "@/lib/staff/linkCode";
+import { CODE_ALPHABET, CODE_LENGTH, REJECTION_THRESHOLD, generateCode, normalizeCode } from "@/lib/staff/linkCode";
 
 /**
  * 外注テナントが自分の管理画面から見る「自分が作業した記録」の番人。
@@ -87,5 +87,21 @@ describe("連携コードの書式", () => {
   it("紛らわしい文字を含まない（0/O, 1/I/L）", () => {
     // 読み違えは「コードが違う」で終わり、原因が分からないまま運用が詰まる。
     for (const ch of "01OIL") expect(CODE_ALPHABET).not.toContain(ch);
+  });
+
+  it("拒否閾値がアルファベット長の倍数（= 剰余が偏らない）", () => {
+    // 256 は 31 で割り切れないので、そのまま % を取ると先頭8文字だけ出現機会が
+    // 1回多くなる。閾値未満だけ採用することで等確率になる（CodeQL 指摘の修正）。
+    expect(REJECTION_THRESHOLD % CODE_ALPHABET.length).toBe(0);
+    expect(REJECTION_THRESHOLD).toBeLessThanOrEqual(256);
+    expect(256 - REJECTION_THRESHOLD).toBeLessThan(CODE_ALPHABET.length);
+  });
+
+  it("生成したコードは長さと文字種を満たす", () => {
+    for (let i = 0; i < 50; i++) {
+      const code = generateCode();
+      expect(code).toHaveLength(CODE_LENGTH);
+      for (const ch of code) expect(CODE_ALPHABET).toContain(ch);
+    }
   });
 });

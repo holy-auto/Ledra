@@ -3,7 +3,7 @@ import "server-only";
 import crypto from "crypto";
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import type { StaffPortfolioCertificate } from "@/lib/staff/portfolioDisclosure";
-import { CODE_ALPHABET, CODE_LENGTH, normalizeCode } from "@/lib/staff/linkCode";
+import { generateCode, normalizeCode } from "@/lib/staff/linkCode";
 
 /**
  * 外注職人のテナント連携。
@@ -31,13 +31,6 @@ export function staffLinkCodeHash(code: string): string {
     .createHash("sha256")
     .update(`stafflink|v1|${normalizeCode(code)}|${PEPPER}`)
     .digest("hex");
-}
-
-function generateCode(): string {
-  const bytes = crypto.randomBytes(CODE_LENGTH);
-  let out = "";
-  for (let i = 0; i < CODE_LENGTH; i++) out += CODE_ALPHABET[bytes[i] % CODE_ALPHABET.length];
-  return out;
 }
 
 function admin() {
