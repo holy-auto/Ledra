@@ -26,6 +26,7 @@ import { useAuthStore } from "@/stores/authStore";
 import { mobileApi } from "@/lib/api";
 import { useCardEntry } from "@/hooks/useCardEntry";
 import { CardEntryPanel } from "@/components/CardEntryPanel";
+import { PosNoticeCard } from "@/components/PosNoticeCard";
 import { TapToPayButton } from "@/components/TapToPayButton";
 import { useDeviceType } from "@/hooks/useDeviceType";
 import { paymentSegments, isQrFlow, isTapToPayFlow, isTerminalBusy, tapFailureAction } from "@/lib/posPayment";
@@ -40,6 +41,7 @@ import {
   MenuTileSpacer,
 } from "@/components/MenuPicker";
 import { colors, spacing, radius, sizing, typography, shadows } from "@/constants/tokens";
+import { useMenuItems } from "@/hooks/useMenuItems";
 
 interface MenuItem {
   id: string;
@@ -151,20 +153,7 @@ export default function WalkInCheckoutScreen() {
   }, [step]);
 
   // メニュー取得
-  const { data: menuItems = [] } = useQuery<MenuItem[]>({
-    queryKey: ["menu-items", user?.tenantId],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("menu_items")
-        .select("id, name, unit_price, description, category_large, category_medium, category_small")
-        .eq("tenant_id", user!.tenantId)
-        .eq("is_active", true)
-        .order("sort_order");
-      if (error) throw error;
-      return data as MenuItem[];
-    },
-    enabled: !!user?.tenantId,
-  });
+  const { data: menuItems = [] } = useMenuItems();
 
   // 検索・カテゴリの絞り込みは飛び込み受付と共通（components/MenuPicker）
   const {
@@ -591,6 +580,14 @@ export default function WalkInCheckoutScreen() {
                 記録をやり直す
               </LedraButton>
             </View>
+          )}
+
+          {/* 支払リンクを作れなかった */}
+          {cardEntry.startError && (
+            <PosNoticeCard
+              title="支払リンクを作れませんでした"
+              description={`${cardEntry.startError}（現金での会計は続けられます）`}
+            />
           )}
 
           {/* カード番号入力（Stripe Checkout）*/}

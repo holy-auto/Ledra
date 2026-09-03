@@ -27,6 +27,7 @@ import { maybeAutoProposeWorkflowForReservation } from "@/lib/ai/automation/work
 import { maybeAutoSuggestAssigneeForReservation } from "@/lib/ai/automation/assigneeAuto";
 import { createDraftPartInstallationForReservation } from "@/lib/parts/installationService";
 import { resolveStoreId, STORE_ERROR_MESSAGES } from "@/lib/stores/resolveStoreId";
+import { businessDateString } from "@/lib/datetime";
 
 export const dynamic = "force-dynamic";
 
@@ -94,6 +95,7 @@ export async function GET(req: NextRequest) {
     const dateFrom = url.searchParams.get("from") ?? "";
     const dateTo = url.searchParams.get("to") ?? "";
     const customerId = url.searchParams.get("customer_id") ?? "";
+    const view = url.searchParams.get("view") ?? "";
     const pagination = parsePagination(req);
 
     let query = supabase
@@ -119,8 +121,20 @@ export async function GET(req: NextRequest) {
       query = query.eq("customer_id", customerId);
     }
 
+    // 店頭画面は全履歴を定期取得しない。本日分と、日を跨いだ未完了作業だけに絞る。
+    // 最大200件は事故的な大量描画を防ぐ安全弁。通常一覧の互換性は維持する。
+    if (view === "storefront") {
+      const requestedDate = url.searchParams.get("date");
+      const businessDate =
+        requestedDate && /^\d{4}-\d{2}-\d{2}$/.test(requestedDate) ? requestedDate : businessDateString();
+      query = query
+        .or(`scheduled_date.eq.${businessDate},status.in.(arrived,in_progress)`)
+        .neq("status", "cancelled")
+        .range(0, 199);
+    }
+
     // Apply pagination if page param was provided
-    if (pagination.page > 0) {
+    if (pagination.page > 0 && view !== "storefront") {
       query = query.range(pagination.from, pagination.to);
     }
 
@@ -162,7 +176,7 @@ export async function GET(req: NextRequest) {
     // 統計: 一覧の既定フィルタ (from=today 等) に引きずられず、常にテナント全体
     // (status/customer_id 絞り込みのみ反映) の集計にする。ダッシュボードKPIとして
     // 「一覧で今何を表示しているか」ではなく「テナント全体の状況」を表すため。
-    const today = new Date().toISOString().slice(0, 10);
+    const today = businessDateString();
     const statsBase = () => {
       let q = supabase
         .from("reservations")
@@ -269,37 +283,39 @@ export async function POST(req: NextRequest) {
     }
 
     // ── Google Calendar 同期（非ブロッキング） ──
-    syncCreateEvent(caller.tenantId, {
-      id: reservation.id,
-      title: reservation.title,
-      scheduled_date: reservation.scheduled_date,
-      start_time: reservation.start_time,
-      end_time: reservation.end_time,
-      note: reservation.note,
-      customer_name: null,
-      vehicle_label: null,
-    }).catch((error) =>
-      logger.warn("reservations gcal sync create failed (non-blocking)", {
-        error,
-        tenantId: caller.tenantId,
-        reservationId: reservation.id,
-      }),
-    );
-
-    // 案件登録時: 勘定科目を自動推定して提案保存 (accounting.auto_categorize_on_intake が opt-in のテナントのみ).
-    // 帳簿への計上 (確定) はしない — 科目の確定は必ず人 (壁3). レスポンスを遅らせないよう fire-and-forget.
-    void maybeAutoCategorizeReservationOnIntake({ tenantId: caller.tenantId, reservationId: reservation.id as string });
-
-    // 案件登録時: 最適ワークフローを AI 提案して reservations.ai_workflow_proposal に保存
-    // (workflow.auto_propose_on_intake が opt-in のテナントのみ). 提案の保存のみで、適用 (進行開始) は
-    // workflow.auto_apply_on_intake が別途 opt-in の場合だけ最有力テンプレートを割り当てる。いずれも
-    // 各工程の進行・確定は人 (壁3). 業種を問わず案件起票の起点で効くよう fire-and-forget で呼ぶ。
-    void maybeAutoProposeWorkflowForReservation({ tenantId: caller.tenantId, reservationId: reservation.id as string });
-
-    // 案件登録時: 担当メカニック候補を AI 提案して reservations.ai_assignee_suggestion に保存
-    // (mechanic.auto_assign_suggest が opt-in のテナントのみ). 提案の保存のみで、担当の割当 (確定) は
-    // スタッフが 1 タップで行う (人が判断・自動割当しない). レスポンスを遅らせないよう fire-and-forget.
-    void maybeAutoSuggestAssigneeForReservation({ tenantId: caller.tenantId, reservationId: reservation.id as string });
+    // レスポンス後も serverless runtime に処理を打ち切られないよう after() に登録する。
+    // 各副作用は独立させ、1件の失敗で他の提案・同期まで止めない。
+    after(async () => {
+      const tasks = [
+        syncCreateEvent(caller.tenantId, {
+          id: reservation.id,
+          title: reservation.title,
+          scheduled_date: reservation.scheduled_date,
+          start_time: reservation.start_time,
+          end_time: reservation.end_time,
+          note: reservation.note,
+          customer_name: null,
+          vehicle_label: null,
+        }),
+        maybeAutoCategorizeReservationOnIntake({
+          tenantId: caller.tenantId,
+          reservationId: reservation.id as string,
+        }),
+        maybeAutoProposeWorkflowForReservation({ tenantId: caller.tenantId, reservationId: reservation.id as string }),
+        maybeAutoSuggestAssigneeForReservation({ tenantId: caller.tenantId, reservationId: reservation.id as string }),
+      ];
+      const results = await Promise.allSettled(tasks);
+      results.forEach((result, index) => {
+        if (result.status === "rejected") {
+          logger.warn("reservation post-create task failed", {
+            tenantId: caller.tenantId,
+            reservationId: reservation.id,
+            taskIndex: index,
+            error: result.reason,
+          });
+        }
+      });
+    });
 
     return apiJson({ ok: true, reservation });
   } catch (e: unknown) {

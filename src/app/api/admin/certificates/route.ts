@@ -4,12 +4,33 @@ import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { parsePagination } from "@/lib/api/pagination";
 import { escapeIlike, escapePostgrestValue } from "@/lib/sanitize";
-import { apiJson, apiOk, apiUnauthorized, apiValidationError, apiInternalError } from "@/lib/api/response";
+import {
+  apiJson,
+  apiOk,
+  apiUnauthorized,
+  apiForbidden,
+  apiValidationError,
+  apiInternalError,
+  apiError,
+} from "@/lib/api/response";
 import { withIdempotency } from "@/lib/api/idempotency";
 import { createCertAction } from "@/app/admin/certificates/new/actions";
 import { certCreateJsonSchema, jsonToCertFormData } from "@/lib/certificates/createCertificateApi";
 import { recordCertIdempotency } from "@/lib/certificates/idempotencyMap";
 import { logger } from "@/lib/logger";
+
+/**
+ * `createCertAction` が返す「入力が原因」のエラーコード。
+ * ここに無いものは DB 障害などの想定外エラーとして 5xx で返し、オフラインキューに
+ * 再送させる。ここに足し忘れると一時障害扱いになり無限に再送されるので、
+ * createCertAction に検証を足したらここにも足すこと。
+ */
+const ACTION_VALIDATION_ERRORS = new Set([
+  "customer_name_required",
+  "vehicle_required",
+  "mileage_required",
+  "not_certified_for_manufacturer_template",
+]);
 
 export const dynamic = "force-dynamic";
 
@@ -97,7 +118,18 @@ export async function POST(req: NextRequest): Promise<Response> {
       const result = await createCertAction(formData);
       if (!result.ok) {
         if (result.error === "unauthorized") return apiUnauthorized();
-        return apiValidationError(result.error);
+        // 認可は createCertAction 側に置いてある（Web の発行画面も同じ入口を通るため）。
+        // ここは翻訳するだけ。権限不足は「サーバの故障」ではないので 500 にはしない。
+        // オフラインキューは 403 を再送対象として残す（権限が付与されれば通るため。
+        // src/lib/outbox/queue.ts の isPermanentClientError の docstring 参照）。
+        if (result.error === "forbidden") return apiForbidden();
+        // 入力が原因のもの (再送しても結果が変わらない) と、DB 障害など一時的なものを
+        // 分けて返す。両方 400 にすると、オフラインキューが一時障害を恒久失敗と誤判定して
+        // 未送信の証明書を止めてしまう (src/lib/outbox/queue.ts の isPermanentClientError)。
+        if (ACTION_VALIDATION_ERRORS.has(result.error)) {
+          return apiError({ code: "validation_error", message: result.error, status: 422 });
+        }
+        return apiError({ code: "internal_error", message: result.error, status: 500 });
       }
 
       // 作成成功時、idempotency-key が指定されていれば永続マッピングを記録する。

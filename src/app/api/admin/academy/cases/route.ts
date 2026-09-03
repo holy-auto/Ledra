@@ -5,8 +5,16 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
-import { apiOk, apiUnauthorized, apiInternalError, apiValidationError, apiNotFound } from "@/lib/api/response";
+import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
+import { checkRateLimit } from "@/lib/api/rateLimit";
+import {
+  apiOk,
+  apiUnauthorized,
+  apiInternalError,
+  apiValidationError,
+  apiNotFound,
+  apiForbidden,
+} from "@/lib/api/response";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { generateAcademyCaseSummary } from "@/lib/ai/academyFeedback";
 import { fastModelForPlanTier } from "@/lib/ai/client";
@@ -81,6 +89,11 @@ export async function POST(req: NextRequest) {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
+    // 事例の公開は staff 以上。ここは所有者判定ではなくテナント判定しかしておらず、
+    // 閲覧専用ロールでも公開できた。公開は AI 要約を呼び（費用が出る）、
+    // knowledge_chunks に tenant_id: null で全加盟店共有の行を書くため、
+    // 2026-09-01 代表判断「AI は staff 以上」を適用する。
+    if (!requireMinRole(caller, "staff")) return apiForbidden();
 
     const parsed = academyCaseActionSchema.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) {
@@ -104,6 +117,11 @@ export async function POST(req: NextRequest) {
     }
 
     if (action === "publish") {
+      // 公開だけが AI 要約を呼び、knowledge_chunks に全加盟店共有の行を書く。
+      // unpublish は行の更新だけなので、AI の枠を消費させない。
+      const limited = await checkRateLimit(req, "ai", `academy-case:${caller.tenantId}`);
+      if (limited) return limited;
+
       // 証明書情報を取得してAI要約を生成
       let aiSummary: string | undefined;
       let goodPoints: string[] = [];

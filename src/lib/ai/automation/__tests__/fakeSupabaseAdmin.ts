@@ -34,13 +34,23 @@ export function emptyStore(tables: FakeStore["tables"] = {}, files: FakeStore["f
 export function makeFakeAdmin(store: FakeStore): any {
   function builderFor(table: string) {
     const filters: Record<string, any> = {};
+    // .or("col.eq.val,col.eq.val") の各式。行はすべての式で「いずれかの句が一致」を要する (AND of ORs)。
+    const orExprs: string[] = [];
     let op: "select" | "update" | "insert" = "select";
     let updatePayload: Record<string, any> = {};
     let insertedPayload: Record<string, any> = {};
     let wantsSelect = false;
 
     const rows = () => store.tables[table] ?? [];
-    const matched = () => rows().filter((r) => Object.entries(filters).every(([k, v]) => r[k] === v));
+    const matchesOr = (r: Record<string, any>, expr: string) =>
+      expr.split(",").some((clause) => {
+        const [col, oprt, ...rest] = clause.split(".");
+        return oprt === "eq" && String(r[col]) === rest.join(".");
+      });
+    const matched = () =>
+      rows().filter(
+        (r) => Object.entries(filters).every(([k, v]) => r[k] === v) && orExprs.every((e) => matchesOr(r, e)),
+      );
     // 挿入行の返却値: id が無ければ簡易採番して返す (呼び出し側が id を使うため)。
     const insertReturn = () => ({ id: insertedPayload.id ?? `fake-${store.inserts.length}`, ...insertedPayload });
 
@@ -66,11 +76,16 @@ export function makeFakeAdmin(store: FakeStore): any {
         filters[c] = v;
         return builder;
       },
+      or: (expr: string) => {
+        orExprs.push(expr);
+        return builder;
+      },
       neq: () => builder,
       not: () => builder,
       in: () => builder,
       gt: () => builder,
       gte: () => builder,
+      lt: () => builder,
       contains: () => builder,
       lte: () => builder,
       order: () => builder,

@@ -9,8 +9,16 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
-import { apiOk, apiUnauthorized, apiNotFound, apiValidationError, apiInternalError } from "@/lib/api/response";
+import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
+import { checkRateLimit } from "@/lib/api/rateLimit";
+import {
+  apiOk,
+  apiUnauthorized,
+  apiNotFound,
+  apiValidationError,
+  apiInternalError,
+  apiForbidden,
+} from "@/lib/api/response";
 import { canUseFeature } from "@/lib/billing/planFeatures";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { loadAiAutomationSettings } from "@/lib/ai/automation/policy";
@@ -32,10 +40,16 @@ export async function POST(req: NextRequest) {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
-
+    // AI 呼び出しは staff 以上 (代表判断 2026-09-01。閲覧専用ロールに費用の出る操作をさせない)
+    if (!requireMinRole(caller, "staff")) return apiForbidden();
     if (!canUseFeature(caller.planTier, "ai_draft")) {
       return apiValidationError("この機能はStandardプラン以上でご利用いただけます", { code: "plan_limit" });
     }
+
+    // 発注メッセージ生成は呼ぶたびに AI 費用が出る。
+    // プラン判定より後に置く。Free のテナントには 429 ではなく案内を返したい。
+    const limited = await checkRateLimit(req, "ai", `po-ai-message:${caller.tenantId}`);
+    if (limited) return limited;
 
     const parsed = schema.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");

@@ -17,8 +17,9 @@ describe("combineScheduledAt", () => {
   it("uses 00:00 when start_time is missing", () => {
     const iso = combineScheduledAt("2026-04-15", null, null);
     expect(iso).toBeTruthy();
-    expect(new Date(iso!).getUTCHours()).toBe(0);
-    expect(new Date(iso!).getUTCMinutes()).toBe(0);
+    // 予約日は店舗のローカル日付。ISO化すると日本時間 00:00 は前日 15:00Z になる。
+    expect(new Date(iso!).getHours()).toBe(0);
+    expect(new Date(iso!).getMinutes()).toBe(0);
   });
 
   it("falls back to fallback when date is missing", () => {

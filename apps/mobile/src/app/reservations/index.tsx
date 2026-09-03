@@ -6,8 +6,9 @@ import {
   FlatList,
   RefreshControl,
   Pressable,
+  ScrollView,
 } from "react-native";
-import { Text, IconButton } from "react-native-paper";
+import { Text, Icon, IconButton } from "react-native-paper";
 import { router } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 import DateTimePicker from "@react-native-community/datetimepicker";
@@ -17,10 +18,13 @@ import { scopeToStore } from "@/lib/storeScope";
 import { useAuthStore } from "@/stores/authStore";
 import { StatusBadge } from "@/components/ui";
 import { EmptyState } from "@/components/EmptyState";
+import { getReservationPresentation } from "@/lib/reservationPresentation";
+import { useDisplayMode } from "@/stores/uiPreferencesStore";
 import {
   colors,
   spacing,
   radius,
+  sizing,
   typography,
   shadows,
 } from "@/constants/tokens";
@@ -46,6 +50,13 @@ interface Reservation {
     model: string;
   } | null;
 }
+
+type ReservationQueryResult = {
+  items: Reservation[];
+  total: number;
+};
+
+const EMPTY_RESERVATIONS: Reservation[] = [];
 
 const STATUS_LABELS: Record<ReservationStatus, string> = {
   confirmed: "確認済",
@@ -79,12 +90,14 @@ export default function ReservationsScreen() {
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [statusFilter, setStatusFilter] = useState("all");
+  const displayMode = useDisplayMode();
+  const presentation = getReservationPresentation(displayMode);
 
   // 見出しの formatDate はローカル日付なので、クエリも揃える（UTC だと前日を引く）
   const dateStr = dayjs(selectedDate).format("YYYY-MM-DD");
 
   const {
-    data: reservations = [],
+    data: reservationResult,
     isLoading,
     refetch,
   } = useQuery({
@@ -94,25 +107,30 @@ export default function ReservationsScreen() {
       selectedStore?.id,
       dateStr,
       statusFilter,
+      presentation.queryLimit,
     ],
     queryFn: async () => {
-      if (!user?.tenantId) return [];
+      if (!user?.tenantId) {
+        return { items: [], total: 0 } satisfies ReservationQueryResult;
+      }
 
       let query = supabase
         .from("reservations")
         .select(
-          `
+        `
           id,
           scheduled_date,
           start_time,
           status,
           customer:customers ( id, name ),
           vehicle:vehicles ( id, plate_display, maker, model )
-        `
+        `,
+          { count: "exact" },
         )
         .eq("tenant_id", user.tenantId)
         .eq("scheduled_date", dateStr)
-        .order("start_time", { ascending: true });
+        .order("start_time", { ascending: true })
+        .limit(presentation.queryLimit);
 
       query = scopeToStore(query, selectedStore?.id);
 
@@ -120,12 +138,18 @@ export default function ReservationsScreen() {
         query = query.eq("status", statusFilter);
       }
 
-      const { data, error } = await query;
+      const { data, error, count } = await query;
       if (error) throw error;
-      return (data ?? []) as unknown as Reservation[];
+      return {
+        items: (data ?? []) as unknown as Reservation[],
+        total: count ?? data?.length ?? 0,
+      } satisfies ReservationQueryResult;
     },
     enabled: !!user?.tenantId,
   });
+
+  const reservations = reservationResult?.items ?? EMPTY_RESERVATIONS;
+  const total = reservationResult?.total ?? 0;
 
   const onRefresh = useCallback(async () => {
     await refetch();
@@ -150,33 +174,61 @@ export default function ReservationsScreen() {
     return t.slice(0, 5);
   };
 
-  const renderItem = ({ item }: { item: Reservation }) => (
-    <Pressable
-      style={styles.card}
-      onPress={() => router.push(`/reservations/${item.id}`)}
-      accessibilityRole="button"
-      accessibilityLabel={`${item.customer?.name ?? "未登録"} ${formatTime(item.start_time)}`}
-    >
-      <View style={styles.cardLeft}>
-        <Text style={styles.time}>{formatTime(item.start_time)}</Text>
-      </View>
-      <View style={styles.cardCenter}>
-        <Text style={styles.customerName} numberOfLines={1}>
-          {item.customer?.name ?? "未登録"}
-        </Text>
-        <Text style={styles.vehicleInfo} numberOfLines={1}>
-          {item.vehicle
-            ? `${item.vehicle.plate_display}  ${item.vehicle.maker} ${item.vehicle.model}`
-            : "車両未登録"}
-        </Text>
-      </View>
-      <StatusBadge
-        label={STATUS_LABELS[item.status]}
-        severity={STATUS_SEVERITY[item.status]}
-        compact
-      />
-    </Pressable>
-  );
+  const renderItem = ({ item }: { item: Reservation }) => {
+    const isSimple = presentation.cardVariant === "simple";
+    const isDense = presentation.cardVariant === "dense";
+
+    return (
+      <Pressable
+        style={[styles.card, isSimple && styles.cardSimple, isDense && styles.cardDense]}
+        onPress={() => router.push(`/reservations/${item.id}`)}
+        accessibilityRole="button"
+        accessibilityLabel={`${item.customer?.name ?? "未登録"} ${formatTime(item.start_time)}`}
+      >
+        <View style={[styles.cardMain, isDense && styles.cardMainDense]}>
+          <View style={[styles.cardLeft, isSimple && styles.cardLeftSimple, isDense && styles.cardLeftDense]}>
+            <Text style={[styles.time, isSimple && styles.timeSimple, isDense && styles.timeDense]}>
+              {formatTime(item.start_time)}
+            </Text>
+          </View>
+          <View style={styles.cardCenter}>
+            <Text
+              style={[
+                styles.customerName,
+                isSimple && styles.customerNameSimple,
+                isDense && styles.customerNameDense,
+              ]}
+              numberOfLines={1}
+            >
+              {item.customer?.name ?? "未登録"}
+            </Text>
+            {!isDense && (
+              <Text style={styles.vehicleInfo} numberOfLines={1}>
+                {item.vehicle
+                  ? `${item.vehicle.plate_display}  ${item.vehicle.maker} ${item.vehicle.model}`
+                  : "車両未登録"}
+              </Text>
+            )}
+          </View>
+          <StatusBadge
+            label={STATUS_LABELS[item.status]}
+            severity={STATUS_SEVERITY[item.status]}
+            compact
+          />
+          {isDense && (
+            <Icon source="chevron-right" size={18} color={colors.textTertiary} />
+          )}
+        </View>
+
+        {isSimple && (
+          <View style={styles.simpleCta}>
+            <Text style={styles.simpleCtaText}>予約を開く</Text>
+            <Icon source="arrow-right" size={20} color={colors.textOnPrimary} />
+          </View>
+        )}
+      </Pressable>
+    );
+  };
 
   return (
     <View style={styles.container}>
@@ -221,7 +273,15 @@ export default function ReservationsScreen() {
       )}
 
       {/* Status filter */}
-      <View style={styles.filterRow}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={[
+          styles.filterRow,
+          presentation.cardVariant === "dense" && styles.filterRowDense,
+        ]}
+        style={styles.filterScroll}
+      >
         {FILTER_OPTIONS.map((opt) => (
           <Pressable
             key={opt.key}
@@ -241,17 +301,34 @@ export default function ReservationsScreen() {
             </Text>
           </Pressable>
         ))}
-      </View>
+      </ScrollView>
 
       {/* Reservation list */}
       <FlatList
         data={reservations}
         keyExtractor={(item) => item.id}
         renderItem={renderItem}
+        initialNumToRender={presentation.initialNumToRender}
+        maxToRenderPerBatch={presentation.maxToRenderPerBatch}
+        windowSize={presentation.windowSize}
+        removeClippedSubviews
         refreshControl={
           <RefreshControl refreshing={isLoading} onRefresh={onRefresh} />
         }
-        contentContainerStyle={styles.listContent}
+        contentContainerStyle={[
+          styles.listContent,
+          presentation.cardVariant === "dense" && styles.listContentDense,
+        ]}
+        ListHeaderComponent={
+          total > reservations.length ? (
+            <View style={styles.limitNotice}>
+              <Icon source="information-outline" size={18} color={colors.textSecondary} />
+              <Text style={styles.limitNoticeText}>
+                先頭{reservations.length}件を表示しています。日付や状態で絞り込んでください。
+              </Text>
+            </View>
+          ) : null
+        }
         ListEmptyComponent={
           <EmptyState
             icon="calendar-blank-outline"
@@ -292,17 +369,25 @@ const styles = StyleSheet.create({
     ...typography.labelSmall,
     color: colors.textOnPrimary,
   },
+  filterScroll: {
+    flexGrow: 0,
+    backgroundColor: colors.surface,
+    borderTopWidth: spacing.xs,
+    borderTopColor: colors.background,
+  },
   filterRow: {
     flexDirection: "row",
     // 日付バーと絞り込みバーは別の操作なので、白どうしがつながって
     // 1つの帯に見えないよう地色（背景）を1本挟む。線で切るのとは違い、
     // 画面を横断する罫線にはならない
-    borderTopWidth: spacing.xs,
-    borderTopColor: colors.background,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
     gap: spacing.sm,
     backgroundColor: colors.surface,
+  },
+  filterRowDense: {
+    paddingVertical: spacing.xs,
+    gap: spacing.xs,
   },
   filterChip: {
     paddingHorizontal: spacing.md,
@@ -325,31 +410,105 @@ const styles = StyleSheet.create({
     paddingBottom: spacing["4xl"],
     gap: spacing.sm,
   },
+  listContentDense: {
+    padding: spacing.sm,
+    paddingBottom: spacing["4xl"],
+    gap: spacing.xs,
+  },
   card: {
-    flexDirection: "row",
-    alignItems: "center",
     backgroundColor: colors.surface,
     borderRadius: radius.card,
     padding: spacing.lg,
     gap: spacing.md,
     ...shadows.card,
   },
+  cardSimple: {
+    padding: spacing.xl,
+  },
+  cardDense: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    shadowOpacity: 0,
+    shadowRadius: 0,
+    elevation: 0,
+  },
+  cardMain: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+  },
+  cardMainDense: {
+    gap: spacing.sm,
+  },
   cardLeft: {
     width: 56,
     alignItems: "center",
   },
+  cardLeftSimple: {
+    width: 64,
+  },
+  cardLeftDense: {
+    width: 48,
+  },
   time: {
     ...typography.titleSmall,
     color: colors.textPrimary,
+  },
+  timeSimple: {
+    fontSize: 20,
+    lineHeight: 26,
+  },
+  timeDense: {
+    fontSize: 14,
+    lineHeight: 18,
   },
   cardCenter: { flex: 1 },
   customerName: {
     ...typography.titleSmall,
     color: colors.textPrimary,
   },
+  customerNameSimple: {
+    fontSize: 20,
+    lineHeight: 26,
+  },
+  customerNameDense: {
+    fontSize: 14,
+    lineHeight: 18,
+  },
   vehicleInfo: {
     ...typography.meta,
     color: colors.textSecondary,
     marginTop: 2,
+  },
+  simpleCta: {
+    minHeight: sizing.touchTarget,
+    marginTop: spacing.lg,
+    borderRadius: radius.md,
+    backgroundColor: colors.primary,
+    paddingHorizontal: spacing.lg,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacing.sm,
+  },
+  simpleCtaText: {
+    ...typography.label,
+    color: colors.textOnPrimary,
+  },
+  limitNotice: {
+    borderRadius: radius.md,
+    backgroundColor: colors.surfaceVariant,
+    padding: spacing.md,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+  },
+  limitNoticeText: {
+    ...typography.bodySmall,
+    flex: 1,
+    color: colors.textSecondary,
   },
 });

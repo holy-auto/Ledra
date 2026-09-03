@@ -10,12 +10,13 @@ import {
   apiNotFound,
   apiForbidden,
 } from "@/lib/api/response";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
+import { resolveCallerWithRole, requirePermission } from "@/lib/auth/checkRole";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { resolveCertifiedTemplateForTenant } from "@/lib/manufacturers/certifiedTemplates";
 import { enqueueCertificateAnchor } from "@/lib/anchoring/certificateAnchorService";
 import { buildCertificateVersionRow, type CertificateVersionRow } from "@/lib/certificates/certificateVersion";
 import { logTenantAuditEvent } from "@/lib/audit/tenantLog";
+import { mergeMileageOnEdit } from "@/lib/maintenance/mileage";
 
 const certificateEditSchema = z
   .object({
@@ -59,6 +60,7 @@ export async function PUT(req: NextRequest) {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
+    if (!requirePermission(caller, "certificates:edit")) return apiForbidden();
 
     const parsed = certificateEditSchema.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) {
@@ -80,6 +82,19 @@ export async function PUT(req: NextRequest) {
       .single();
 
     if (fetchError || !cert) return apiNotFound("証明書が見つかりません。");
+
+    // 走行距離は「入れられるが、消せない」(判定は mergeMileageOnEdit に集約)。
+    // 差分を取る**前**に正規化する。後ろでやると、履歴 (certificate_edit_histories /
+    // certificate_versions) に補完前の値が残り、実際に保存された値とずれる。
+    // また「走行距離しか違わない payload」で版だけ上がって再アンカリングが走るのも防ぐ。
+    if ("maintenance_json" in body) {
+      const merged = mergeMileageOnEdit(
+        (cert as Record<string, unknown>).maintenance_json,
+        body.maintenance_json ?? {},
+      );
+      if (!merged.ok) return apiValidationError(merged.error);
+      body.maintenance_json = merged.maintenanceJson;
+    }
 
     // Build update payload & track changes
     const changes: Array<{ field: string; label: string; old: unknown; new: unknown }> = [];

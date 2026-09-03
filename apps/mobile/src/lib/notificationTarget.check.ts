@@ -1,6 +1,6 @@
 // notificationTarget の自己チェック。フレームワーク不要。
 // 実行: node apps/mobile/src/lib/notificationTarget.check.ts
-import assert from "node:assert";
+import assert from "node:assert/strict";
 
 import { notificationTarget } from "./notificationTarget.ts";
 

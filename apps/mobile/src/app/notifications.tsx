@@ -36,12 +36,54 @@ interface NotificationItem {
   created_at: string;
 }
 
+/**
+ * notification_type → アイコン。キーは Web の通知タイプカタログ
+ * (`src/lib/notifications/types.ts` の NOTIFICATION_TYPE_CATALOG) と一致させる。
+ *
+ * 以前のキーは certificate / work / sync / error / system で、**実際に DB へ書かれる
+ * notification_type と1つも一致していなかった**（本番の通知60件が全部 DEFAULT_ICON の
+ * ベルになっていた）。モバイルは Web の `src/lib` を import できない（`@/*` は
+ * `apps/mobile/src` のみ）ため表はこちらに持ち、カタログとのズレは Web 側の
+ * 構造テスト `src/lib/notifications/__tests__/mobileIcons.test.ts` が検出する。
+ *
+ * アイコンはカタログの category 単位。色は原則 severity 単位
+ * （urgent=danger / action_required=warning / informational=控えめ）だが、
+ * 次の3つは意図的に外している:
+ *  - chat_message (action_required) は primary。本番通知60件のうち56件がこれで、
+ *    warning にすると一覧がほぼ全部「警告色」になり、色で区別する意味が消える
+ *  - payment_confirmed / certificate_issued (informational) は success。
+ *    「完了した」ことが読み取れる方が有用な種類のため
+ */
 const TYPE_ICON: Record<string, { icon: string; color: string; bg: string }> = {
-  certificate: { icon: "shield-check", color: colors.success, bg: colors.successLight },
-  work: { icon: "wrench", color: colors.primary, bg: colors.primaryLight },
-  sync: { icon: "cloud-sync", color: colors.info, bg: colors.infoLight },
-  error: { icon: "alert-circle", color: colors.danger, bg: colors.dangerLight },
-  system: { icon: "information", color: colors.textSecondary, bg: colors.surfaceVariant },
+  // booking
+  booking_created: { icon: "calendar-check", color: colors.warning, bg: colors.warningLight },
+  // job
+  order_created: { icon: "wrench", color: colors.warning, bg: colors.warningLight },
+  order_accepted: { icon: "wrench", color: colors.textSecondary, bg: colors.surfaceVariant },
+  order_completed: { icon: "wrench", color: colors.textSecondary, bg: colors.surfaceVariant },
+  order_cancelled: { icon: "wrench", color: colors.textSecondary, bg: colors.surfaceVariant },
+  // payment
+  payment_confirmed: { icon: "credit-card-outline", color: colors.success, bg: colors.successLight },
+  // certificate
+  certificate_gate_ready: { icon: "shield-check", color: colors.warning, bg: colors.warningLight },
+  certificate_issued: { icon: "shield-check", color: colors.success, bg: colors.successLight },
+  // customer
+  customer_concern_raised: { icon: "account-alert", color: colors.danger, bg: colors.dangerLight },
+  rating_request: { icon: "star-outline", color: colors.textSecondary, bg: colors.surfaceVariant },
+  rating_received: { icon: "star-outline", color: colors.textSecondary, bg: colors.surfaceVariant },
+  // sla
+  sla_at_risk: { icon: "clock-alert-outline", color: colors.warning, bg: colors.warningLight },
+  sla_overdue: { icon: "clock-alert-outline", color: colors.danger, bg: colors.dangerLight },
+  // system
+  platform_notification: { icon: "information", color: colors.textSecondary, bg: colors.surfaceVariant },
+  // ai
+  ai_action: { icon: "robot-outline", color: colors.warning, bg: colors.warningLight },
+  // message
+  chat_message: { icon: "message-text-outline", color: colors.primary, bg: colors.primaryLight },
+  // inventory
+  low_stock_alert: { icon: "package-variant", color: colors.warning, bg: colors.warningLight },
+  // maintenance
+  follow_up_reminder: { icon: "calendar-clock", color: colors.textSecondary, bg: colors.surfaceVariant },
 };
 
 const DEFAULT_ICON = { icon: "bell", color: colors.textSecondary, bg: colors.surfaceVariant };

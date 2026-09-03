@@ -1,12 +1,8 @@
 import { NextRequest } from "next/server";
 import { resolveMobileCaller } from "@/lib/auth/mobileAuth";
 import { hasPermission } from "@/lib/auth/permissions";
-import {
-  certificateHasRequiredPhotos,
-  CERTIFICATE_PHOTO_REQUIRED_MESSAGE,
-  certificateHasRequiredBeforeAfterMedia,
-  CERTIFICATE_BEFORE_AFTER_REQUIRED_MESSAGE,
-} from "@/lib/certificates/photoRequirement";
+import { evaluateCertificateActivationGate, firstGateFailureMessage } from "@/lib/certificates/activationGate";
+import { certificateMileageKm, CERTIFICATE_MILEAGE_REQUIRED_MESSAGE } from "@/lib/maintenance/mileage";
 import { triggerCertificateIssued } from "@/lib/certificates/issueHooks";
 import { logTenantAuditEvent } from "@/lib/audit/tenantLog";
 import {
@@ -32,7 +28,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const { data: cert } = await caller.supabase
       .from("certificates")
       .select(
-        "id, status, public_id, customer_id, customer_name, vehicle_info_json, service_type, created_by, reservation_id",
+        "id, status, public_id, customer_id, customer_name, vehicle_info_json, service_type, created_by, reservation_id, maintenance_json",
       )
       .eq("id", id)
       .eq("tenant_id", caller.tenantId)
@@ -43,18 +39,20 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return apiValidationError(`Cannot activate: current status is "${cert.status}", expected "draft"`);
     }
 
-    // 写真添付必須ルール: 発行には施工写真が 1 枚以上必要 (全テナント一律・サーバ強制)。
-    const hasPhotos = await certificateHasRequiredPhotos(caller.supabase, id);
-    if (!hasPhotos) {
-      return apiValidationError(CERTIFICATE_PHOTO_REQUIRED_MESSAGE);
+    // Certificate Gate (IMP-028, ADR-0005): 単一評価器を通す (写真必須・懸念未解決なし・部品整合性 等)。
+    const certGate = await evaluateCertificateActivationGate(caller.supabase, {
+      certificateId: id,
+      tenantId: caller.tenantId,
+      serviceType: cert.service_type as string | null,
+      reservationId: (cert.reservation_id as string | null) ?? null,
+    });
+    if (!certGate.ready) {
+      return apiValidationError(firstGateFailureMessage(certGate));
     }
-    const hasBeforeAfter = await certificateHasRequiredBeforeAfterMedia(
-      caller.supabase,
-      id,
-      cert.service_type as string | null,
-    );
-    if (!hasBeforeAfter) {
-      return apiValidationError(CERTIFICATE_BEFORE_AFTER_REQUIRED_MESSAGE);
+
+    // 走行距離必須ルール (発行の 3 経路すべてで同じ判定)。
+    if (certificateMileageKm(cert.maintenance_json) === null) {
+      return apiValidationError(CERTIFICATE_MILEAGE_REQUIRED_MESSAGE);
     }
 
     const { data, error } = await caller.supabase

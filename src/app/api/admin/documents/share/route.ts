@@ -2,8 +2,15 @@ import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
-import { apiOk, apiUnauthorized, apiValidationError, apiInternalError, apiNotFound } from "@/lib/api/response";
+import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
+import {
+  apiOk,
+  apiUnauthorized,
+  apiValidationError,
+  apiInternalError,
+  apiNotFound,
+  apiForbidden,
+} from "@/lib/api/response";
 import { DOC_TYPES, type DocType } from "@/types/document";
 import { sendDocumentEmail } from "@/lib/documents/share-email";
 import { sendDocumentLink } from "@/lib/line/client";
@@ -80,6 +87,9 @@ export async function POST(req: NextRequest) {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
+    // 帳票の顧客送付は staff 以上（2026-09-03 代表判断）。見積書・請求書を送るのは
+    // 現場の通常業務。マトリクスに送付の動詞が無いのでロール下限で守る。
+    if (!requireMinRole(caller, "staff")) return apiForbidden();
 
     const parsed = documentShareSchema.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) {

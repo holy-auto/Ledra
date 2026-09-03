@@ -1,6 +1,7 @@
 import { NextRequest, after } from "next/server";
 import { z } from "zod";
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
+import { findTenantIdByExternalApiKey } from "@/lib/security/tenantPrivateSecrets";
 import { apiOk, apiInternalError, apiValidationError, apiError } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { maybeAutoDetectThicknessForReports } from "@/lib/ai/automation/thicknessAuto";
@@ -26,7 +27,7 @@ export const dynamic = "force-dynamic";
  *   URL:      https://<ledra-host>/api/external/nexptg/sync
  *   Auth:     NexPTGアプリは Basic Authentication のみサポート。
  *             username 欄は任意（空 or 任意文字列）、
- *             password 欄に tenants.external_api_key を入力する。
+ *             password 欄に Ledra で一度だけ表示された外部APIキーを入力する。
  *             後方互換として x-api-key ヘッダも受け付ける。
  *   Body:     application/json（NexPTG 仕様そのまま）
  *
@@ -229,15 +230,9 @@ export async function POST(req: NextRequest) {
       "nexptg webhook — tenant resolved from external_api_key then queries continue with same admin",
     );
 
-    // テナント解決（API キーの一致のみで特定する）
-    const { data: tenant, error: tenantErr } = await admin
-      .from("tenants")
-      .select("id, name, is_active")
-      .eq("external_api_key", apiKey)
-      .maybeSingle();
-
-    if (tenantErr) return apiInternalError(tenantErr, "nexptg tenant lookup");
-    if (!tenant) {
+    // テナント解決（隔離テーブルに保存した API キーハッシュで特定する）
+    const resolvedTenantId = await findTenantIdByExternalApiKey(admin, apiKey);
+    if (!resolvedTenantId) {
       console.warn(
         `[nexptg.sync] API key did not match any tenant. source=${extracted.source} masked=${maskKey(apiKey)}`,
       );
@@ -247,6 +242,14 @@ export async function POST(req: NextRequest) {
         status: 403,
       });
     }
+    const { data: tenant, error: tenantErr } = await admin
+      .from("tenants")
+      .select("id, name, is_active")
+      .eq("id", resolvedTenantId)
+      .maybeSingle();
+
+    if (tenantErr) return apiInternalError(tenantErr, "nexptg tenant lookup");
+    if (!tenant) return apiError({ code: "unauthorized", message: "Tenant not found.", status: 403 });
     if (!tenant.is_active) {
       console.warn(`[nexptg.sync] tenant is inactive. tenant_id=${tenant.id}`);
       return apiError({

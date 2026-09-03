@@ -1,6 +1,6 @@
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { logCertificateAction, getRequestMeta } from "@/lib/audit/certificateLog";
-import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
+import { resolveCallerWithRole, requirePermission } from "@/lib/auth/checkRole";
 import {
   apiOk,
   apiInternalError,
@@ -15,21 +15,23 @@ export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
   try {
+    // 認証・認可を入力検証より前に置く（未認証に 400 でスキーマを教えない）。
+    const supabase = await createSupabaseServerClient();
+    const caller = await resolveCallerWithRole(supabase);
+    if (!caller) {
+      return apiUnauthorized();
+    }
+    // 3経路で同じ Permission を見る (requireMinRole("admin") と現状は等価だが、
+    // ロール束と権限の対応が変わったときに経路ごとにズレない)。
+    if (!requirePermission(caller, "certificates:void")) {
+      return apiForbidden("証明書無効化の権限がありません。");
+    }
+
     const parsed = certificateVoidSchema.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) {
       return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
     }
     const { public_id: publicId } = parsed.data;
-
-    const supabase = await createSupabaseServerClient();
-
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) {
-      return apiUnauthorized();
-    }
-    if (!requireMinRole(caller, "admin")) {
-      return apiForbidden("証明書無効化の権限がありません。");
-    }
 
     const userRes = { user: { id: caller.userId } };
     const tenantId = caller.tenantId;

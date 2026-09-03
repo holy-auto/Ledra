@@ -1,5 +1,5 @@
 import { parseJsonSafe } from "@/lib/api/safeJson";
-import { verifySignatureAppRouter } from "@upstash/qstash/nextjs";
+import { withQstashSignature } from "@/lib/qstash/verifySignature";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { apiValidationError, apiInternalError } from "@/lib/api/response";
 import { notifyPartnersOnIssue } from "@/lib/certificates/issueNotifications";
@@ -85,4 +85,4 @@ async function handler(request: Request) {
   }
 }
 
-export const POST = verifySignatureAppRouter(handler);
+export const POST = withQstashSignature(handler);

@@ -3,6 +3,7 @@ import { parseJsonSafe } from "@/lib/api/safeJson";
 
 import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import useSWR from "swr";
 import PageHeader from "@/components/ui/PageHeader";
 import Button from "@/components/ui/Button";
@@ -10,6 +11,12 @@ import EmptyStateGuide from "@/components/ui/EmptyStateGuide";
 import { estimateReservationMinutes, formatMinutes } from "@/lib/booths/duration";
 import { decomposeTasks } from "@/lib/booking/tasks";
 import { menuCategoriesOf, filterMenuItems } from "@/lib/reservations/menuFilter";
+import {
+  RESERVATION_STATUS_FLOW,
+  RESERVATION_STATUS_DISPLAY,
+  LIVE_RESERVATION_STATUSES,
+  reservationStatusDisplay,
+} from "@/lib/domain/jobStatusDisplay";
 import dynamic from "next/dynamic";
 
 const CalendarView = dynamic(() => import("./CalendarView"), {
@@ -18,6 +25,7 @@ const CalendarView = dynamic(() => import("./CalendarView"), {
 });
 const VoiceMemoPanel = dynamic(() => import("@/app/admin/certificates/new/VoiceMemoPanel"), { ssr: false });
 import { canUseFeature, normalizePlanTier } from "@/lib/billing/planFeatures";
+import { businessDateString } from "@/lib/datetime";
 import { formatDate, formatJpy } from "@/lib/format";
 import { fetcher } from "@/lib/swr";
 import type { WorkflowStep } from "@/components/workflow/WorkflowTemplateEditor";
@@ -87,49 +95,18 @@ type WorkflowTemplate = {
 
 // ─── Constants ───────────────────────────────────────────
 
+// LIVE_RESERVATION_STATUSES に絞る: RESERVATION_STATUS_DISPLAY を素で列挙すると、
+// DB マイグレーション未実施の IMP-031 例外状態(paused/no_show/partially_completed)が
+// 選択肢に混ざり、選んでも常に0件になる罠になる。
 const STATUS_OPTIONS = [
   { value: "all", label: "すべて" },
-  { value: "confirmed", label: "予約確定" },
-  { value: "arrived", label: "来店" },
-  { value: "in_progress", label: "作業中" },
-  { value: "completed", label: "完了" },
-  { value: "cancelled", label: "キャンセル" },
+  ...LIVE_RESERVATION_STATUSES.map((value) => ({ value, label: RESERVATION_STATUS_DISPLAY[value].label })),
 ];
 
-const STATUS_FLOW = ["confirmed", "arrived", "in_progress", "completed"] as const;
-
-// ステータスカラー定義（スマレジ風）
-const STATUS_CONFIG: Record<
-  string,
-  {
-    label: string;
-    bg: string;
-    text: string;
-    dot: string;
-    variant: "info" | "warning" | "success" | "danger" | "default";
-  }
-> = {
-  confirmed: { label: "予約確定", bg: "bg-accent-dim", text: "text-accent-text", dot: "bg-accent", variant: "info" },
-  arrived: { label: "来店", bg: "bg-warning-dim", text: "text-warning-text", dot: "bg-warning", variant: "warning" },
-  in_progress: { label: "作業中", bg: "bg-violet-dim", text: "text-violet-text", dot: "bg-violet", variant: "info" },
-  completed: {
-    label: "完了",
-    bg: "bg-success-dim",
-    text: "text-success-text",
-    dot: "bg-success",
-    variant: "success",
-  },
-  cancelled: { label: "キャンセル", bg: "bg-inset", text: "text-secondary", dot: "bg-muted", variant: "danger" },
-};
-
-const cfg = (s: string) =>
-  STATUS_CONFIG[s] ?? {
-    label: s,
-    bg: "bg-inset",
-    text: "text-secondary",
-    dot: "bg-muted",
-    variant: "default" as const,
-  };
+// ponytail: IMP-022 — STATUS_CONFIG / STATUS_FLOW は jobStatusDisplay.ts に統合。
+// cfg() は reservationStatusDisplay() に置き換え。
+const cfg = reservationStatusDisplay;
+const STATUS_FLOW = RESERVATION_STATUS_FLOW;
 
 // ─── Styles ──────────────────────────────────────────────
 
@@ -141,10 +118,14 @@ const labelTextCls = "text-xs font-semibold text-secondary tracking-wide upperca
 // ─── Component ───────────────────────────────────────────
 
 export default function ReservationsClient() {
+  // Quick Create などから ?create=1 で遷移してきたら新規予約フォームを自動で開く
+  // （CustomersClient と同じ規約）。
+  const searchParams = useSearchParams();
+  const autoOpenCreate = searchParams.get("create") === "1";
+
   // ローカル(端末)日付の YYYY-MM-DD。toISOString() は UTC 変換されるため、JST 深夜帯
   // (00:00〜08:59) だと日付が1日前にずれる — ブラウザのローカル時計から直接組み立てる。
-  const now = new Date();
-  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  const today = businessDateString();
 
   // Filters
   const [statusFilter, setStatusFilter] = useState("all");
@@ -199,7 +180,7 @@ export default function ReservationsClient() {
   const [canAiNote, setCanAiNote] = useState(false);
 
   // Form
-  const [showForm, setShowForm] = useState(false);
+  const [showForm, setShowForm] = useState(autoOpenCreate);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [formTitle, setFormTitle] = useState("");
   const [formCustomerId, setFormCustomerId] = useState("");
@@ -341,6 +322,13 @@ export default function ReservationsClient() {
     } catch {
       setVehicles([]);
     }
+  }, []);
+
+  // ?create=1 で自動オープンした場合、通常は「+ 新規予約」ボタンが行う
+  // 車両一覧の取得（openCreateForm 内の fetchVehicles）が走らないので、ここで補う。
+  useEffect(() => {
+    if (autoOpenCreate) fetchVehicles();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {

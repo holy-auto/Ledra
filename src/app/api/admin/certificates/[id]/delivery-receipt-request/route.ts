@@ -23,8 +23,15 @@ import { randomUUID } from "crypto";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
-import { apiOk, apiError, apiUnauthorized, apiValidationError, apiInternalError } from "@/lib/api/response";
+import { resolveCallerWithRole, requirePermission } from "@/lib/auth/checkRole";
+import {
+  apiOk,
+  apiError,
+  apiUnauthorized,
+  apiValidationError,
+  apiInternalError,
+  apiForbidden,
+} from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { computeDocumentHash } from "@/lib/signature/hash";
 import { generateCertificatePdfBytes } from "@/lib/signature/pdfUtils";
@@ -136,6 +143,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const supabase = await createClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
+    if (!requirePermission(caller, "certificates:edit")) return apiForbidden();
 
     const { id: certificateId } = await params;
     if (!/^[0-9a-f-]{36}$/i.test(certificateId)) {

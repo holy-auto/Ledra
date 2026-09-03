@@ -6,6 +6,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { supabase } from "@/lib/supabase";
 import { mobileApi } from "@/lib/api";
+import { parseMileageKm } from "@/lib/mileage";
 import { useAuthStore } from "@/stores/authStore";
 import { LedraButton } from "@/components/ui";
 import { colors, spacing, radius } from "@/constants/tokens";
@@ -39,6 +40,7 @@ export default function CertificateNewScreen() {
     vehicle_model: "",
     vehicle_plate: "",
     service_type: "",
+    mileage_km: "",
     content_summary: "",
     notes: "",
   });
@@ -120,6 +122,11 @@ export default function CertificateNewScreen() {
         // 鍵が無いとサーバの冪等ラッパーが素通りし、再送で証明書が2枚できる
         headers: { "Idempotency-Key": idemKeyRef.current },
         body: {
+          // **案件から来たら必ず送る。** これが無いと証明書が予約に紐づかず、
+          // 作業詳細の「施工写真を撮影」が予約IDで証明書を探しても永久に0件になる
+          // （本番の証明書45件すべて reservation_id が null だった）。
+          // 画面は reservationId を車両の事前入力にだけ使っていて、送っていなかった
+          reservation_id: reservationId ?? null,
           customer_name: form.customer_name.trim(),
           // 顧客 ID を渡すと、サーバ側の「名前で似た顧客を探す」経路を通らずに済む。
           // 同名の別人に紐付く事故と、顧客表の全件読み込みを両方避けられる
@@ -130,6 +137,9 @@ export default function CertificateNewScreen() {
           model: form.vehicle_model.trim(),
           plate: form.vehicle_plate.trim(),
           service_type: form.service_type || null,
+          // サーバ (certCreateJsonSchema → createCertificate) が必須にしている。
+          // 走行距離は vehicle_mileage_logs のタイムラインになる。
+          mileage_km: parseMileageKm(form.mileage_km),
           content_free_text:
             [form.content_summary.trim(), form.notes.trim()].filter(Boolean).join("\n\n"),
         },
@@ -153,6 +163,9 @@ export default function CertificateNewScreen() {
     // 画面から入力する手段が無くなる
     if (!form.customer_name.trim()) e.customer_name = "顧客名を入力してください";
     if (!form.service_type) e.service_type = "サービス種別を選択してください";
+    if (parseMileageKm(form.mileage_km) === null) {
+      e.mileage_km = "走行距離（km）を入力してください（1以上の整数）";
+    }
     setErrors(e);
     return Object.keys(e).length === 0;
   }
@@ -308,6 +321,21 @@ export default function CertificateNewScreen() {
         {errors.service_type && (
           <HelperText type="error">{errors.service_type}</HelperText>
         )}
+
+        <TextInput
+          label="走行距離（km）*"
+          value={form.mileage_km}
+          onChangeText={(v) => {
+            setForm((prev) => ({ ...prev, mileage_km: v }));
+            if (errors.mileage_km) setErrors((prev) => ({ ...prev, mileage_km: "" }));
+          }}
+          mode="outlined"
+          keyboardType="number-pad"
+          placeholder="例: 35000"
+          error={!!errors.mileage_km}
+          style={styles.input}
+        />
+        {errors.mileage_km && <HelperText type="error">{errors.mileage_km}</HelperText>}
 
         <TextInput
           label="作業内容"

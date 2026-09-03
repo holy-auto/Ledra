@@ -1,7 +1,7 @@
 "use server";
 
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
+import { resolveCallerWithRole, requirePermission } from "@/lib/auth/checkRole";
 import { createCertificate } from "@/lib/certificates/create";
 
 export type { CreateCertResult } from "@/lib/certificates/create";
@@ -20,6 +20,11 @@ export async function createCertAction(
   // first-membership 側に作られる/失敗するのを防ぐ)。
   const caller = await resolveCallerWithRole(supabase);
   if (!caller) return { ok: false, error: "unauthorized" };
+
+  // 発行は certificates:create（staff 以上）。ここが Web の発行画面と
+  // /api/admin/certificates の共通の入口なので、ガードは両方の呼び出し元から
+  // 見て1箇所であるここに置く。ルート側に置くと発行画面が素通りする。
+  if (!requirePermission(caller, "certificates:create")) return { ok: false, error: "forbidden" };
 
   return createCertificate(supabase, caller, formData);
 }

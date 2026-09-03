@@ -15,7 +15,8 @@
  */
 import { NextRequest } from "next/server";
 import { resolveMobileCaller } from "@/lib/auth/mobileAuth";
-import { apiOk, apiUnauthorized, apiValidationError, apiInternalError } from "@/lib/api/response";
+import { requireMinRole } from "@/lib/auth/checkRole";
+import { apiOk, apiUnauthorized, apiForbidden, apiValidationError, apiInternalError } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { logger } from "@/lib/logger";
 import { runIdentityOcr } from "@/lib/ai/identityOcr";
@@ -45,6 +46,8 @@ export async function POST(req: NextRequest) {
   // 2) Bearer 認証
   const caller = await resolveMobileCaller(req);
   if (!caller) return apiUnauthorized();
+  // AI 呼び出しは staff 以上 (代表判断 2026-09-01。閲覧専用ロールに費用の出る操作をさせない)
+  if (!requireMinRole(caller, "staff")) return apiForbidden();
 
   // 3) テナント単位 rate limit
   const tenantLimit = await checkRateLimit(req, "identity_ocr", `tenant:${caller.tenantId}`);

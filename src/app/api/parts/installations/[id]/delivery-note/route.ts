@@ -12,7 +12,7 @@
 import { NextRequest, after } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
+import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import {
   apiJson,
@@ -21,6 +21,7 @@ import {
   apiUnauthorized,
   apiValidationError,
   apiNotFound,
+  apiForbidden,
 } from "@/lib/api/response";
 import { CERTIFICATE_IMAGE_BUCKET } from "@/lib/certificateImages"; // 共有 "assets" バケット
 import { hashSha256 } from "@/lib/anchoring/imageHashing";
@@ -61,6 +62,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
+    if (!requireMinRole(caller, "staff")) return apiForbidden();
 
     const { id: installationId } = await ctx.params;
     if (!installationId) return apiNotFound("installation id is required");
