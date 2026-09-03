@@ -373,4 +373,6 @@ for the C2PA Conforming Products List」参照。
 **HEIC 検証済み（2026-09-03）**: pillow-heif で生成した HEIC を c2pa-node で署名でき、内容エラーなし（残コードは dev-cert のみ）＝**HEIC 署名は対応・準拠**。先の失敗は sharp が HEIF を*エンコード*できないだけで、c2pa-node 自体は HEIC 署名可能。→ 申告メディアタイプに heic を残してよい。
 - ただし別論点（プライバシー）: Ledra の strip は sharp。**本番の sharp が HEIF を*デコード*できないと HEIC の EXIF/GPS 除去が効かず**（fail-open で原本署名）位置情報が残りうる。HEIC アップロードの GPS 除去可否は本番環境で要確認。
 
-**残（本ブランチ外）**: 本番証明書で `claimSignature.mismatch` が出ないか要検証（dev 自己署名では常時発生・内容非依存で dev-cert 由来の可能性が高い）。
+**署名も検証済み・解決（2026-09-03）**: `claimSignature.mismatch` は **dev 自己署名証明書（`generateDevCert`）だけの癖**と確定。c2patool 公式サンプルの ES256 証明書で同じ署名ロジックを実行すると **`validation_state: Valid`**／`claimSignature` エラーなし（残は `signingCredential.untrusted` のみ＝適合後に CA がトラストリストに載れば解消）。→ **製品の署名ロジックは健全。本番鍵は不要で証明済み**。
+- 補足: 本番の Claim Signing Certificate は適合認定後に認定 CA から発行される（プロセス最終段）ため、申請時点で Ledra は保有しない。証拠フェーズのサンプルは適合前でも上記のように正しい署名／準拠マニフェストを提示できる。
+- 軽微な残: `dev-signed` モードは自己署名の都合で署名が Valid にならない（ローカル検証専用の限界）。本番挙動には影響しない。将来 `generateDevCert` を c2pa-rs が受容する形に寄せれば dev でも Valid にできる。
