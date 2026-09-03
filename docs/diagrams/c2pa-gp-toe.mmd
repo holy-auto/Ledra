@@ -12,7 +12,7 @@ flowchart TB
         PIPE["Authenticity pipeline<br/>SHA-256 hash · EXIF/GPS strip &amp; re-encode (sharp)<br/>RFC3161 TSA seal · capture-nonce consume · stage tag"]
         ASSERT["Assertion generation<br/>c2pa.actions.v2 (created+orientation+converted+edited)<br/>com.ledra.capture (cert id, VIN, nonce sealed, TSA time)"]
         SIGN["Claim signing<br/>@contentauth/c2pa-node LocalSigner<br/>ES256 / P-256"]
-        KEY["Signing credential<br/>C2PA_SIGNER_CERT / _KEY (env, encrypted at rest)<br/>[AL2-forward: migrate to cloud KMS]"]
+        KEY["Signing credential<br/>C2PA_SIGNER_CERT / _KEY<br/>(env, encrypted at rest)"]
         STORE["Signed asset + manifest summary<br/>persisted to Supabase Storage / Postgres (RLS)"]
     end
 

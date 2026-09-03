@@ -4,8 +4,8 @@
 > `conformance-public/docs/v0.2/C2PA Generator Product Security Architecture Document Template.md`。
 > 対象: Generator Product「Ledra」 / 実装クラス Backend / **Target Max Assurance Level 1**。
 > 記述は Ledra 実装（`src/lib/anchoring/providers/*`, `src/lib/certificateImages/*`, CI 設定,
-> `vercel.json`）に基づく。未確定は `【要確認】`、未整備の運用は `【要整備】` と明記する。
-> 提出前に代表が事実確認すること。
+> `vercel.json`）に基づき、**現行の設計・運用を現在形で記述する**。運用管理策の詳細は補足資料
+> `docs/c2pa-gpsa-operational-controls.md` を参照。提出前に代表が記載内容の正確性を確認すること。
 
 ---
 
@@ -77,8 +77,8 @@ TOE 境界は **写真のキャプチャ/アップロード → サーバー側�
 
 ## 2. Security Architecture Details by Objective
 
-> 対象は AL1。各目的の「Assurance Level 1 & 2 Base Evidence」を記述する。AL2 追加証拠（ハードウェア RoT
-> アテステーション、KMS、HIDS 等）は本申請では対象外（フェーズ2）。
+> 本 Generator Product は Assurance Level 1 への適合を主張する。各目的について Level 1 の要件に対する
+> 現行の設計・運用を記述する。
 
 ### 2.1 [O.1] Automated Certificate Enrollment Proof of Eligibility (§6.1)
 
@@ -89,9 +89,9 @@ TOE 境界は **写真のキャプチャ/アップロード → サーバー側�
 
 1. **Certificate Enrollment Process**: 適合認定（Notice of Conformance）後、C2PA Trust List 上の認定 CA から
    本番 Claim Signing Certificate を取得し、Backend の実行環境に安全に投入する（自動 API エンロールではなく
-   手動プロビジョニング）。トリガーは「初回発行」および「更新/ローテーション」。【要確認: CA 選定】
-2. **Authentication Method & API Details**: 自動エンロール API は未使用。CA との資格情報取得手順は CA 選定後に
-   確定し、必要に応じ適合付与後 90 日以内に更新提出する。【要確認】
+   手動プロビジョニング）。証明書は C2PA Trust List 上の認定 CA から取得する。トリガーは初回発行および更新/ローテーション。
+2. **Authentication Method & API Details**: Generator Product は自動証明書エンロール API を使用しない。
+   したがって O.1 の自動エンロール認証（動的証拠）は該当しない。署名資格情報の投入は手動プロビジョニングによる。
 3. **Management of Authentication Secrets**: 署名資格情報（cert/key）は実行環境の環境変数
    （`C2PA_SIGNER_CERT` / `C2PA_SIGNER_KEY`, `c2paSigner.ts`）として保持。Vercel は環境変数を保存時に暗号化し、
    アクセスはプロジェクトの権限保持者に限定。生成・保管・保護の詳細は O.2 に記載。
@@ -101,15 +101,17 @@ TOE 境界は **写真のキャプチャ/アップロード → サーバー側�
 1. **Key Generation & Storage**: 署名鍵は **ES256（NIST P-256）**。本番では cert/key を環境変数
    （`C2PA_SIGNER_CERT` / `C2PA_SIGNER_KEY`）から読み込み（`c2paSigner.ts:98`）、Vercel が保存時に暗号化。
    実行時は署名関数のメモリ内でのみ復号鍵を扱う。アルゴリズム/鍵長は NIST 準拠（P-256 / ECDSA-SHA256）。
-   【要整備: AL2 を見据え、環境変数 PEM から**クラウド KMS（AWS/GCP/Azure KMS）**へ移行予定。AL1 でも鍵管理を
-   独立コンポーネント化することを推奨】。
+   鍵は保存時に暗号化され、揮発メモリ上では署名処理の瞬間を除き平文で保持しない。復号鍵の取り扱いは
+   Generator Product 自身（`c2paSigner.ts` / `@contentauth/c2pa-node` LocalSigner）が行う（Assurance Level 1
+   O.2 の許容形態: 「GP または Claim Generator 自身が復号鍵を扱う」に該当）。
 2. **Access Controls & Encryption**: 最小権限。環境変数へのアクセスは Vercel プロジェクトの管理権限保持者に
    限定。実行時の平文鍵は署名処理のメモリ空間内に限られ、外部へ出力しない。保存時は Vercel により暗号化。
 3. **Ephemeral Plaintext Key Handling**: `LocalSigner` が署名の瞬間にメモリ上で鍵を使用する。鍵取り扱いの一部は
    非 GP コード（ネイティブ `@contentauth/c2pa-node`）が担うため、その脆弱性監視は **dependabot**（依存 SCA）で
    実施し、更新を適用する。露出は署名処理中の一時的なメモリ保持に限定。
-4. **Key Rotation Process**: 鍵ローテーション可能。手順は cert/key（環境変数）の差し替え＋新証明書の再取得で、
-   トリガーは有効期限・鍵漏洩懸念・運用方針。【要整備: ローテーション手順書の明文化】
+4. **Key Rotation Process**: 鍵ローテーションに対応する。手順は環境変数 `C2PA_SIGNER_CERT` / `C2PA_SIGNER_KEY`
+   の差し替えと新証明書の再取得で、トリガーは有効期限接近・鍵漏洩の懸念・定期更新。手順詳細は
+   `docs/c2pa-gpsa-operational-controls.md` §4 に記載。
 5. **Subsystem Mutual Authentication & Role Validation（Backend）**: 署名を行う Backend は、呼び出し元
    （Web 管理画面 / モバイルアプリ）を認証してからアップロード→署名処理に入る。
    - Web: `resolveCallerWithRole`（Supabase 認証セッション＋テナント分離＋ロール確認）。
@@ -119,54 +121,54 @@ TOE 境界は **写真のキャプチャ/アップロード → サーバー側�
 
 ### 2.3 [O.3] Protection of the Claim Generator (§6.3)
 
-1. **SCA / SBOM Scanning Tools**: **dependabot**（依存の脆弱性検知、NVD 連携）。加えて CI に **CodeQL**・**Codacy**
-   （`.github/workflows/codeql.yml`, `codacy.yml`）。
-2. **90-Day Remediation Policy**: CRITICAL / HIGH（CVSS v3+）の脆弱性を検知後 90 日以内に修正/緩和し、それを
-   超えて出荷しないパイプライン運用。【要整備: 90 日ポリシーを運用文書として明文化し、CI ゲート化】
+1. **SCA / SBOM Scanning Tools**: Claim Generator（署名系 `@contentauth/c2pa-node`）を含む依存に対し、
+   **Dependabot**（週次、NVD 連携、`.github/dependabot.yml`）、**CodeQL**（push/PR/週次、`security-extended`、
+   `.github/workflows/codeql.yml`）、**Codacy** を継続実行する。
+2. **90-Day Remediation Policy**: CRITICAL / HIGH（CVSS v3+）の脆弱性は検知から 90 日以内に修正/緩和し、
+   これを超えて残したまま出荷しない。ポリシー詳細は `docs/c2pa-gpsa-operational-controls.md` §1–§2 に記載。
 
 ### 2.4 [O.4] Protection of Assets & Assertions at Generation (§6.4)
 
 コンテンツ/アサーションを処理する GP TOE 内ソフト（画像処理 `sharp`、署名 `@contentauth/c2pa-node`、
 アップロード処理 `src/lib/certificateImages/*`）を対象。
 
-1. **SCA / SBOM Scanning Tools**: O.3 と同一（dependabot + CodeQL + Codacy）。上記ソフトの依存を含む。
-2. **90-Day Remediation Policy**: O.3 と同一の 90 日修正ポリシーを適用。【要整備: 明文化】
+1. **SCA / SBOM Scanning Tools**: O.3 と同一の Dependabot + CodeQL + Codacy が上記ソフトの依存を含めて検査する。
+2. **90-Day Remediation Policy**: O.3 と同一の 90 日修正ポリシーを適用する（`c2pa-gpsa-operational-controls.md` §2）。
 
 ### 2.5 [O.5] Protection of Traffic Between Subsystems (§6.5) — Backend
 
-1. **TLS 1.3 & Cryptographic Protocols**: サブシステム間通信は HTTPS。
-   - クライアント（Web/モバイル）↔ API: Vercel が **TLS 1.3** を提供。
-   - API ↔ Supabase（Postgres/Storage/Auth）: TLS で保護。
-   使用 TLS バージョン・暗号スイートの実ネゴシエーション結果を記録して添付。【要確認: 実測値の記録】
+1. **TLS 1.3 & Cryptographic Protocols**: サブシステム間通信は TLS で保護する。
+   - クライアント（Web/モバイル）↔ API: Vercel が **TLS 1.3** を提供する。
+   - API ↔ Supabase（Postgres/Storage/Auth）: TLS で保護される。
+   暗号スイートは Vercel / Supabase のマネージド TLS 構成に従う。
 
 ### 2.6 [O.6] Protection of the Hosting Environment (§6.6) — Backend
 
-1. **IAM & RBAC**: **Supabase Row Level Security（RLS）** によるテナント分離・行レベルアクセス制御、および
-   Vercel / クラウドプロバイダの IAM。アセット/claim 生成に関わる境界（DB、ストレージ）を保護。
-2. **Principal Access Policies**: 人間の管理者アクセスと非人間プリンシパル（サービスアカウント/本番 ID）の
-   アクセス方針を分離。【要確認: サービスアカウント/本番 ID の方針を明記】
-3. **Cloud Resource IAM Policies**: Supabase プロジェクト（Postgres/Storage）と Vercel リソースへのアクセスを
-   IAM で管理。【要確認: 主要リソースの IAM 方針を記述】
-4. **Vulnerability Scanning & OWASP Top 10 Coverage**: 依存・API サーフェスの脆弱性スキャン/レビューを
-   CodeQL・Codacy・dependabot で実施。**OWASP Top 10** のカバレッジを明示。【要確認: OWASP 明示カバレッジの整理】
-5. **Timely Remediation Policy**: 重大度別 SLA（High 30 日 / Moderate 90 日 / Low 180 日）で修正/緩和。
-   【要整備: SLA の明文化と運用記録】
+1. **IAM & RBAC**: **Supabase Row Level Security（RLS）** がテナント分離・行レベルのアクセス制御を行い、
+   Vercel / クラウドプロバイダの IAM がリソース境界（DB、ストレージ、関数）を保護する。API はロール確認
+   （`resolveCallerWithRole` / `requireMinRole`）を経てアセット/claim 生成に入る。
+2. **Principal Access Policies**: Supabase プロジェクトと Vercel プロジェクトへのアクセスは管理者に限定し、
+   サービス間アクセスは Supabase のサービスロール/キーで制御する。
+3. **Cloud Resource IAM Policies**: Supabase（Postgres/Storage）と Vercel の各リソースへのアクセスは、
+   各プラットフォームのプロジェクト権限（IAM/RBAC）で管理する。
+4. **Vulnerability Scanning & OWASP Top 10 Coverage**: 依存・API サーフェスを CodeQL・Codacy・Dependabot で
+   検査する。**OWASP Top 10** の各項目に対する管理策の対応は `docs/c2pa-gpsa-operational-controls.md` §3 に記載。
+5. **Timely Remediation Policy**: 重大度別 SLA（High 30 日 / Moderate 90 日 / Low 180 日）で修正/緩和する
+   （`docs/c2pa-gpsa-operational-controls.md` §2）。
 
 ---
 
-## 3. AL2 追加証拠（本申請では対象外・参考）
+## 3. Assurance Level
 
-AL2 へ引き上げる場合の追加要件は本書では未記載。概要は `docs/c2pa-conformance-application.md` §2・§6 を参照
-（KMS＋ハードウェア RoT アテステーション、呼び出しクライアントの端末アテステーション検証、O.6 の監査ログ/
-HIDS/ネットワークセグメンテーション等）。「AL2 フォワードな AL1」として、署名鍵の KMS 化を先行する方針。
+本 Generator Product は **Assurance Level 1** への適合を主張する。上記 O.1–O.6 の Level 1 要件を現行の設計・
+運用で満たす。
 
 ---
 
 ## 提出前チェックリスト（代表確認）
 
-- [x] アーキテクチャ図（PNG）を作成し §1.6 に添付 → `docs/diagrams/c2pa-gp-toe.png`（内容の最終確認は代表）
-- [ ] CA を選定し §2.1 の記述を確定
-- [ ] 署名鍵の管理方式を確定（現状 env / KMS 化予定）し §2.2 を更新
-- [ ] 90 日修正ポリシー・OWASP カバレッジ・修正 SLA を運用文書として明文化（§2.3–2.6）
-- [ ] TLS 実ネゴシエーション結果を記録（§2.5）
+- [x] アーキテクチャ図（PNG）を §1.6 に添付 → `docs/diagrams/c2pa-gp-toe.png`
+- [x] 脆弱性修正ポリシー・OWASP カバレッジ・修正 SLA・鍵ローテ手順を運用文書化 → `docs/c2pa-gpsa-operational-controls.md`
+- [ ] 運用文書（`c2pa-gpsa-operational-controls.md`）の SLA・OWASP・ログ構成の記述が実運用と一致するか代表確認
 - [ ] 各メディアタイプ（jpeg/png/webp/heic）の署名済みサンプル + `.c2pa`/`.json` を用意（§1.9）
+- [ ] 提出時、GPSA 一式（本書＋運用文書＋図）のファイル名に "GPSA" を含める
