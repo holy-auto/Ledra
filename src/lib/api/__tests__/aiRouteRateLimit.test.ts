@@ -92,11 +92,15 @@ const PURE_BINDINGS = new Set([
  * 増やすときは、なぜ**ユーザーが繰り返し叩けないのか**を書くこと。
  */
 const EXEMPT = new Set([
-  // cron 認証 + withCronLock(600s) の日次ジョブ。ユーザーが叩ける経路ではない。
+  // cron 認証 + withCronLock(600s) の日次ジョブ（vercel.json: `0 22 * * *`）。
+  // ユーザーが叩ける経路ではない。1テナント1日1回で、各テナントは自分の
+  // 月次コストキャップ配下（超過で settings.enabled が false に倒れる）。
+  // 件数上限は持たないが要らない（伸びる軸はテナント数だけ）。2026-09-04 検証。
   "cron/daily-digest [GET]",
   // QStash 署名必須の非同期ジョブ。auth セッションが無くユーザーが直接叩けない。
-  // 1回の実行件数に上限（LINE_HISTORY_IMPORT_MAX、既定80）を自前で持ち、
-  // 月次コストキャップも尊重する。リクエスト単位の制限はキューワーカーには意味を持たない。
+  // 費用を止めるのはループ内の月次コストキャップ判定。
+  // 件数上限（LINE_HISTORY_IMPORT_MAX、既定80）は実行時間 maxDuration=300 秒の枠。
+  // リクエスト単位の制限はキューワーカーには意味を持たない。2026-09-04 検証。
   "qstash/line-history-import [module]",
 ]);
 

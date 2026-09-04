@@ -39,6 +39,22 @@ const payloadSchema = z.object({
   line_user_id: z.string().min(1),
 });
 
+/**
+ * 1 回の実行で処理する件数の上限。
+ *
+ * **これは費用の上限ではない。** 費用はループ内の月次コストキャップ判定
+ * (`baseSpentJpy + inJobJpy >= capJpy` で break) が止める。
+ * この 80 が守っているのは **実行時間** — 下の for ループは 1 件 1 AI 呼び出しの
+ * 直列処理で、関数の予算は `maxDuration = 300` 秒。Haiku の短文抽出 1 件が
+ * 2〜3 秒なら 80 件で 160〜240 秒に収まる。上限を上げるなら
+ * **maxDuration も一緒に見ること**（`Math.min(n, 500)` のハードクランプは
+ * env の設定ミスで 300 秒を大きく超えないための最後の歯止め）。
+ *
+ * 切り捨てが起きても取りこぼしは小さい: 取得は `created_at` の降順（新しい順）なので、
+ * 溢れるのは**最も古いメッセージ**＝いま生きている予約意図を含む可能性が最も低い分。
+ * ただし溢れた分は再 enqueue されず、次に同じ顧客で紐づけイベントが起きるまで
+ * `ai_extracted` は null のまま残る（`truncated` を log に出すだけ）。
+ */
 function maxMessages(): number {
   const n = Number(process.env.LINE_HISTORY_IMPORT_MAX);
   return Number.isFinite(n) && n > 0 ? Math.min(n, 500) : 80;
