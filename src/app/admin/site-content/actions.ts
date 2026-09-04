@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { jstLocalInputToUtcIso } from "@/lib/datetime";
-import { normalizeRole, hasMinRole } from "@/lib/auth/roles";
+import { resolveCallerWithRole, requirePermission } from "@/lib/auth/checkRole";
 import {
   parseSiteContentFormData,
   siteContentPostSchema,
@@ -23,26 +23,28 @@ type AuthContext = {
 
 async function authorize(): Promise<AuthContext | Err> {
   const supabase = await createSupabaseServerClient();
-  const { data: userRes } = await supabase.auth.getUser();
-  const userId = userRes.user?.id;
-  if (!userId) return { ok: false, error: "unauthorized" };
+  const caller = await resolveCallerWithRole(supabase);
+  if (!caller) return { ok: false, error: "unauthorized" };
 
-  const { data: mem } = await supabase
-    .from("tenant_memberships")
-    .select("tenant_id, role")
-    .eq("user_id", userId)
-    .limit(1)
-    .maybeSingle();
-
-  const role = normalizeRole(mem?.role);
-  if (!hasMinRole(role, "staff")) {
+  // サイトコンテンツは Ledra の公開サイト（ブログ/ニュース/イベント）で、
+  // プラットフォーム運営のもの。**super_admin のみ**。
+  //
+  // ここは長く `hasMinRole(role, "staff")` を要求していたが、DB の RLS は
+  // `is_super_admin_user()` しか通さない（20260424010000 のヘッダに
+  // 「加盟店（owner/admin/staff/viewer）はDB直接操作でも変更不可」と明記）。
+  // その結果、staff/admin/owner はアプリのガードを通過してから RLS に弾かれ、
+  // **UPDATE と DELETE は 0 行・エラー無しで「成功」が返っていた。**
+  // 権限側も super_admin 限定に直したので、ここは表と同じ動詞で見る。
+  if (!requirePermission(caller, "site_content:manage")) {
     return { ok: false, error: "forbidden" };
   }
 
+  // ローカルの membership 引きは並び順もアクティブテナントの cookie も見ておらず、
+  // 複数テナント所属で別テナントを返しうる。caller から取る。
   return {
     supabase,
-    userId,
-    tenantId: (mem?.tenant_id as string | null) ?? null,
+    userId: caller.userId,
+    tenantId: caller.tenantId,
   };
 }
 
@@ -212,12 +214,17 @@ export async function deleteSiteContentAction(id: string): Promise<ActionResult<
   if (isErr(auth)) return auth;
 
   const { data: row } = await auth.supabase.from("site_content_posts").select("type").eq("id", id).maybeSingle();
+  // 他の3アクションと同じく、存在しない id は not_found として返す。
+  // これが無いと、二度押しや古いリンクが「権限がありません」に化ける。
+  if (!row) return { ok: false, error: "not_found" };
 
-  const { error } = await auth.supabase.from("site_content_posts").delete().eq("id", id);
+  // .select() を付けて削除行数を見る。RLS で弾かれた場合 error は null のまま
+  // 0行になるので、これが無いと「削除しました」と嘘をつく。
+  const { data: deleted, error } = await auth.supabase.from("site_content_posts").delete().eq("id", id).select("id");
   if (error) return { ok: false, error: error.message };
+  if (!deleted?.length) return { ok: false, error: "forbidden" };
 
-  if (row?.type) revalidatePublicPaths(row.type as SiteContentType);
-  else revalidatePath("/admin/site-content");
+  revalidatePublicPaths(row.type as SiteContentType);
   return { ok: true, data: null };
 }
 
@@ -238,9 +245,15 @@ export async function setSiteContentStatusAction(id: string, status: SiteContent
       ? ((existing.published_at as string | null) ?? new Date().toISOString())
       : existing.published_at;
 
-  const { error } = await auth.supabase.from("site_content_posts").update({ status, published_at }).eq("id", id);
+  // delete と同じ理由で更新行数を見る。
+  const { data: updated, error } = await auth.supabase
+    .from("site_content_posts")
+    .update({ status, published_at })
+    .eq("id", id)
+    .select("id");
 
   if (error) return { ok: false, error: error.message };
+  if (!updated?.length) return { ok: false, error: "forbidden" };
 
   revalidatePublicPaths(existing.type as SiteContentType);
   return { ok: true, data: null };
