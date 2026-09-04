@@ -4,6 +4,41 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-09-04 POS レシートを顧客に送れるようにした（公開ページ＋PDF、要件5.10）
+
+- 内容: レシートの共有リンクが**必ず 404 だった**のを直し、公開ページと PDF を作った。
+
+  | 追加したもの | 場所 |
+  |---|---|
+  | `documents.public_id`（列＋バックフィル） | `supabase/migrations/20260904000000_documents_public_id.sql` |
+  | 部分ユニーク索引（`CONCURRENTLY`・別ファイル） | `supabase/migrations/20260904000001_documents_public_id_index.sql` |
+  | 公開レシートページ | `src/app/receipt/[public_id]/page.tsx` |
+  | 公開 PDF ルート（レート制限 10回/分） | `src/app/api/receipt/pdf/route.ts` |
+  | `doc_type='receipt'` ガード（**1箇所だけ**） | `src/lib/receipts/publicReceipt.ts` |
+  | 共有 URL の組み立て `receiptUrl()` | `apps/mobile/src/lib/certificateLinks.ts` |
+
+- 直したバグ: モバイルの2画面が `payments.id` / `reservations.id` を**証明書用**の
+  `/c/[public_id]` に渡していた。証明書のトークンではないので受け取った顧客側は必ず 404。
+  予約経路にも最初から入っていた（＝要件 5.10 は実質未達だった）。
+- トークンの生成: `pos_checkout`（決済の中枢）は触らず、`recordPosSale` が RPC の直後に
+  `makePublicId()`（22文字 base64url / CSPRNG）で書く。**書けなくても売上は失敗にしない**
+  （共有ボタンが出なくなるだけ）。既存の領収書はマイグレーションでバックフィル済み。
+- 公開範囲: `documents` には請求書・見積書・発注書が同居するので、
+  `doc_type='receipt'` 以外は**ページも PDF も 404**。ガードは共有関数に1箇所だけ置き、
+  変異テスト（その1行を消す）で両経路が落ちることを確認した。
+- URL: `/receipt/[public_id]`。`/r/` は本人確認の入庫リンク（`/r/[short_id]`）が使っており、
+  同じ階層に別のスラッグ名を置くと `next build` が落ちる。
+- 再利用したもの: PDF 描画は既存の `renderDocumentPdf()`（`DOC_TYPE_LABELS.receipt = "領収書"`）。
+  リンク組み立ては既存の `certificateLinks.ts` に関数を1つ足しただけ（新規ファイルは作らない）。
+- 検証: 実 PostgreSQL に全マイグレーションを再生した上で、バックフィルが `receipt` にだけ付くこと・
+  請求書に手でトークンを付けても公開経路の述語では0件になること・重複トークンが一意制約で
+  弾かれること・`public_id` が NULL の行は何行でも入ることを確認（6項目）。
+  `next build` 成功（`/r/[short_id]` と `/receipt/[public_id]` が両方登録される）。
+  ルート 5310 テスト・モバイル 20 self-check・`lint:migrations` / `check:migrations` / `check:schema` 緑。
+- **デプロイ順序に注意**: モバイルの新ビルドは **Web デプロイ後**でないと共有リンクが 404 のまま。
+
+---
+
 ## 2026-09-03 AI を呼ぶ8ハンドラのレート制限漏れを塞いだ
 
 - 内容: AI を呼ぶハンドラ46単位のうち、レート制限が無かった8つに既存の

@@ -10,6 +10,7 @@ import { useQuery } from "@tanstack/react-query";
 
 import { supabase } from "@/lib/supabase";
 import { useAuthStore } from "@/stores/authStore";
+import { receiptUrl } from "@/lib/certificateLinks";
 import { ReceiptShareDialog } from "@/components/ReceiptShareDialog";
 import { LedraButton } from "@/components/ui";
 import { colors, spacing, radius, typography, shadows } from "@/constants/tokens";
@@ -25,6 +26,8 @@ interface StandalonePayment {
   document: {
     id: string;
     doc_number: string;
+    /** レシート公開URL /receipt/[public_id] のトークン。古い決済では null になりうる */
+    public_id: string | null;
     // 品名は description（帳票の正準キー）。name は旧モバイルビルドが書いた行
     items_json:
       | { description?: string; name?: string; quantity: number; unit_price: number; amount: number }[]
@@ -81,7 +84,7 @@ export default function StandaloneReceiptScreen() {
         .select(
           `
           id, amount, payment_method, paid_at, received_amount, change_amount, note,
-          document:documents(id, doc_number, items_json, subtotal, tax, total)
+          document:documents(id, doc_number, public_id, items_json, subtotal, tax, total)
         `,
         )
         .eq("id", id)
@@ -115,6 +118,10 @@ export default function StandaloneReceiptScreen() {
     payment.document?.tax ?? Math.round(taxIncluded - taxIncluded / (1 + TAX_RATE));
   const subtotal = payment.document?.subtotal ?? taxIncluded - taxAmount;
   const items = payment.document?.items_json ?? [];
+  // 公開URLが組み立てられないときは共有導線ごと出さない。
+  // 以前はここで `https://app.ledra.co.jp/c/${id}` を渡しており、/c は証明書の
+  // 公開ページなので**お客様に送ったリンクは必ず404だった**。
+  const shareUrl = receiptUrl(payment.document?.public_id);
 
   return (
     <>
@@ -241,13 +248,16 @@ export default function StandaloneReceiptScreen() {
 
         {/* アクション */}
         <View style={styles.actions}>
-          {/* 要件 5.10: レシートの送信。予約経路と同じ導線を最初に置く。 */}
-          <LedraButton
-            icon="send"
-            onPress={() => setShareOpen(true)}
-          >
-            レシートを送る
-          </LedraButton>
+          {/* 要件 5.10: レシートの送信。予約経路と同じ導線を最初に置く。
+              壊れたリンクを送らせないため、URLが無いときはボタンを出さない。 */}
+          {shareUrl && (
+            <LedraButton
+              icon="send"
+              onPress={() => setShareOpen(true)}
+            >
+              レシートを送る
+            </LedraButton>
+          )}
           <LedraButton
             variant="outline"
             icon="home"
@@ -267,12 +277,14 @@ export default function StandaloneReceiptScreen() {
         <View style={{ height: spacing["4xl"] }} />
       </ScrollView>
 
-      <ReceiptShareDialog
-        visible={shareOpen}
-        receiptUrl={`https://app.ledra.co.jp/c/${id}`}
-        onDismiss={() => setShareOpen(false)}
-        onSent={() => setSnack("レシートを送信しました")}
-      />
+      {shareUrl && (
+        <ReceiptShareDialog
+          visible={shareOpen}
+          receiptUrl={shareUrl}
+          onDismiss={() => setShareOpen(false)}
+          onSent={() => setSnack("レシートを送信しました")}
+        />
+      )}
       <Snackbar
         visible={!!snack}
         onDismiss={() => setSnack("")}
