@@ -3,6 +3,18 @@
 > まだ決まっていないこと、判断に迷っていることを書く場所。決まったら
 > DECISION_LOG.md に移し、このファイルからは消す（削除履歴は git で追える）。
 
+## C2PA `digitalCapture` 主張の厳密化（撮影由来の暗号学的保証）（2026-09-04）
+- 状況: 施工写真の入力をカメラ撮影に限定し（Web はアルバム/DnD 廃止、モバイルは元よりカメラのみ）、
+  マニフェストの `digitalCapture` を正当化した（DECISION_LOG 2026-09-04）。ただし限界が残る。
+- 論点: (1) `capture="environment"` はデスクトップブラウザでファイル選択にフォールバックしうる。
+  (2) サーバーは magic bytes 検証のみで、撮影由来を暗号学的には保証していない。
+- 選択肢: 案A 撮影シグナル（capture nonce＋端末アテステーション）を署名経路に封入し、確認できたものだけ
+  `digitalCapture`。案B 実機（モバイル）に限定。案C 現状（UI 限定＋文書で限界を明記）で AL1 は許容し、
+  AL2 移行時に厳密化。
+- 影響範囲: 誤ると非撮影画像を「カメラ由来」と証明しうる。現状は UI 制限で経路は塞いだが保証は弱い。
+- 次のアクション: AL2 検討時に案A/B を設計。それまでは案C（GPSA に限界を明記済み）。
+- 起票日: 2026-09-04
+
 ## C2PA Conformance Program 申請（AL1・Backend）の未確定事項（2026-08-11）
 - 状況: 申請方針は「GP / Backend / Max Assurance Level 1 先行」に決定（DECISION_LOG 2026-08-11、詳細は `docs/c2pa-conformance-application.md`）。申請前に埋める必要のある事実が残る。
 - 進捗（2026-09-03）: **EOI → Legal Agreement 署名 → Program Intake Form 提出済み**（提出値は `docs/c2pa-conformance-application.md` §11）。次は Administrator のレビュー→証拠提出（サンプル＋GPSA）。

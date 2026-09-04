@@ -49,7 +49,14 @@ TOE 境界は **写真のキャプチャ/アップロード → サーバー側�
 - 署名: `@contentauth/c2pa-node` の `LocalSigner`（ES256 / P-256）。実装 `src/lib/anchoring/providers/c2pa.ts`,
   `c2paSigner.ts`。
 - タイムスタンプ: 独立した RFC3161 TSA トークン（`certificate_images.tsa_token`）。C2PA 署名とは分離。
-- クライアント: Web 管理画面 / モバイルアプリ（撮影はカメラ強制起動・端末非保存で API へ直送）。
+- クライアント: Web 管理画面 / モバイルアプリ（**施工写真の入力はカメラ撮影に限定**。モバイルは
+  `pickImageFromCamera` のみ＝ライブラリ選択不可、Web はカメラ入力（`capture="environment"`）のみで
+  アルバム/ファイル選択・ドラッグ&ドロップの経路を廃止済み）。端末非保存で API へ直送。
+  - **`digitalSourceType=digitalCapture` の根拠**: 上記のとおり署名対象は撮影経路に限定しているため、
+    生成マニフェストの `c2pa.created` に `digitalCapture`（実写のデジタル撮影）を付与する。
+    **既知の限界**: `capture` 属性はデスクトップブラウザでは無視されファイル選択にフォールバックしうる
+    （モバイル/タブレット実機では撮影を起動）。サーバーは magic bytes 検証のみで撮影由来を暗号学的に
+    保証はしない。厳密化（撮影シグナルの封入・実機限定）は将来の課題（AL2 相当で端末アテステーション連携）。
 
 **アーキテクチャ図: `docs/diagrams/c2pa-gp-toe.png`**（ソース `docs/diagrams/c2pa-gp-toe.mmd`）。TOE 境界
 （キャプチャ/アップロード → 認証 → 真正性パイプライン → アサーション生成 → claim 署名 → 署名済みアセット
