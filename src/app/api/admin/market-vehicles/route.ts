@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { resolveCallerWithRole, requirePermission } from "@/lib/auth/checkRole";
+import { resolveCallerWithRole, requirePermission, requireMinRole } from "@/lib/auth/checkRole";
 import { escapeIlike } from "@/lib/sanitize";
 import { enforceBilling } from "@/lib/billing/guard";
 import {
@@ -251,7 +251,9 @@ export async function DELETE(req: NextRequest) {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
-    if (!requirePermission(caller, "market:edit")) return apiForbidden();
+    // 削除は admin 以上（代表判断 2026-09-04）。顧客削除と同じ理由なので、
+    // 作成・編集（staff）とは分ける。
+    if (!requireMinRole(caller, "admin")) return apiForbidden();
 
     const deny = await enforceBilling(req, {
       minPlan: "standard",

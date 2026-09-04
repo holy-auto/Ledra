@@ -4,6 +4,29 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-09-04 判断待ちだった4件を確定し、調査中に見つけた穴2つも塞いだ
+
+- 内容: 代表判断4件を実装した。
+  - **通知は店舗宛（現状維持）** — コードは変えず、分類コメントを実態に合わせた。
+  - **テナント設定は owner のみ** — DB の `tenants_update_owner_admin` を落とし、
+    アプリ側（`updateTenantSettingsAction` / `admin/settings/defaults` PUT）も owner 要求に。
+  - **共有テンプレートはプラットフォーム運営のみ** — `CHECK (scope <> 'shared' OR tenant_id IS NULL)`。
+  - **顧客・マーケット車両の削除は admin 以上** — 作成・編集は staff のまま。
+- **調査中に見つけた穴（記録に無かったもの）:**
+  - `updateTenantSettingsAction`（設定画面の保存）に**ロール判定が1つも無かった**。
+    RLS 任せで、弾かれても `.update()` は 0 行・エラー無しを返すため、staff の保存が
+    **何も変わらないのに成功扱い**だった。owner 判定を足し、あわせて2経路とも
+    `.select("id")` で**0行更新をエラーとして返す**ようにした。
+  - 共有テンプレートの穴は INSERT だけでなく **UPDATE にもあった**。
+    `templates_update_v2` は WITH CHECK が無く USING も `scope` を見ないので、
+    既存行を `scope='shared'` に書き換えられた。制約1本で両方塞いだ。
+- 検証: 一時テーブルで制約の挙動を5ケース確認（テナントの shared 作成＝弾く／
+  既存行の shared 書き換え＝弾く／運営の shared 作成＝通す／既存5件と同じ形＝通す）。
+  `npm run check:migrations` 再生OK（既知9件のみ、増減なし）。
+- 実測で分かったこと: 本番の `templates` 5件は `scope='tenant'` だが `tenant_id` は NULL で、
+  **共有雛形は既に `tenant_id IS NULL` で実現されていた**（`scope` 列が実態を表していない）。
+  `purchase_orders` は0件で、発注機能は本番未使用。
+
 ## 2026-09-03 AI を呼ぶ8ハンドラのレート制限漏れを塞いだ
 
 - 内容: AI を呼ぶハンドラ46単位のうち、レート制限が無かった8つに既存の

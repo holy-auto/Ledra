@@ -233,9 +233,11 @@ describe("未登録の変更系ハンドラ", () => {
     "webauthn/register/options [POST]",
     "webauthn/register/verify [POST]",
 
-    // ── 通知の既読。**自己完結ではない。** 行は tenant_id だけで絞られており
-    //    （本番61件すべて user_id が null）、誰かが既読にすると全員に反映される。
-    //    これが意図どおりかは判断待ち（docs/context/OPEN_QUESTIONS.md）。
+    // ── 通知の既読。**自己完結ではない。店舗宛である。** 行は tenant_id だけで絞られ、
+    //    誰かが既読にすると同じ店舗の全員の画面から消える。
+    //    代表判断 2026-09-04: **これが正しい。** 入庫・発注のような店の仕事の通知なので、
+    //    「誰かが見たらもう出さなくていい」。個人宛にはしない。
+    //    したがって user_id は使わず、tenant_id だけで絞るのが仕様。
     "admin/notifications/[id]/read [PUT]",
     "admin/notifications/read-all [PUT]",
 

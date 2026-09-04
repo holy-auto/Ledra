@@ -463,7 +463,9 @@ export const API_ROUTE_PERMISSIONS: Record<string, ApiRouteRequirement> = {
 
   // 設定変更。
   "admin/billing-settings": "settings:edit",
-  "admin/settings/defaults": "settings:edit",
+  // テナント設定は owner のみ（代表判断 2026-09-04）。DB 側も tenants_update_owner_admin を
+  // 落として owner のみにしてある。片方だけだと 0 行更新の「嘘の成功」になる。
+  "admin/settings/defaults": { minRole: "owner" },
   "admin/follow-up-settings": "settings:edit",
   "admin/faq": "settings:edit",
   "admin/tenant/external-api-key": "settings:edit",
@@ -561,7 +563,9 @@ export const API_ROUTE_PERMISSIONS: Record<string, ApiRouteRequirement> = {
   "admin/nfc": { PATCH: "vehicles:edit", DELETE: { minRole: "admin" } },
 
   // 顧客
-  "admin/customers": { POST: "customers:create", PUT: "customers:edit", DELETE: "customers:edit" },
+  // 削除だけ admin 以上（代表判断 2026-09-04）。顧客には施工履歴・証明書がぶら下がる
+  // 不可逆操作なので、作成・編集（staff）とは分ける。
+  "admin/customers": { POST: "customers:create", PUT: "customers:edit", DELETE: { minRole: "admin" } },
   "admin/customer-inquiries": "customers:edit",
   "admin/hearings": { POST: "customers:create", PUT: "customers:edit" },
 
@@ -571,7 +575,8 @@ export const API_ROUTE_PERMISSIONS: Record<string, ApiRouteRequirement> = {
   "admin/reservations/[id]/start-workflow": "reservations:edit",
 
   // マーケット（BtoB）
-  "admin/market-vehicles": { POST: "market:create", PUT: "market:edit", DELETE: "market:edit" },
+  // 削除だけ admin 以上（代表判断 2026-09-04）。顧客削除と同じ理由。
+  "admin/market-vehicles": { POST: "market:create", PUT: "market:edit", DELETE: { minRole: "admin" } },
   "admin/market-vehicles/images": "market:edit",
   "market/deals": "market:create",
   "market/deals/[id]": "market:edit",
