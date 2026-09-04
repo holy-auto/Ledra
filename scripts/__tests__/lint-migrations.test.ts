@@ -6,7 +6,10 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 
 const LINT_SCRIPT = path.resolve(__dirname, "..", "lint-migrations.js");
 
-function runLint(workdir: string): { code: number; stdout: string; stderr: string } {
+function runLint(
+  workdir: string,
+  env: NodeJS.ProcessEnv = {},
+): { code: number; stdout: string; stderr: string } {
   // The script resolves migrations relative to __dirname, so invoke the
   // sandbox copy (not the source one) so it sees the sandbox migrations.
   const scriptInSandbox = path.join(workdir, "scripts", "lint-migrations.js");
@@ -14,6 +17,7 @@ function runLint(workdir: string): { code: number; stdout: string; stderr: strin
     const stdout = execFileSync("node", [scriptInSandbox], {
       cwd: workdir,
       stdio: ["ignore", "pipe", "pipe"],
+      env: { ...process.env, CI: "", ...env },
     }).toString();
     return { code: 0, stdout, stderr: "" };
   } catch (e) {
@@ -191,5 +195,46 @@ describe("lint-migrations", () => {
       "-- CREATE INDEX foo_idx ON foo (bar);\nCREATE INDEX CONCURRENTLY foo_idx ON foo (bar);",
     );
     expect(runLint(dir).code).toBe(0);
+  });
+
+  // ── migration-version-before-base-head ───────────────────────────────────
+  //
+  // 本番の `supabase db push` は、本番の schema_migrations の最新より古い未適用が
+  // あると out-of-order で停止し、以降のマイグレーションが本番へ届かなくなる。
+  // base に在るどれよりも後のバージョンなら、その事故は起きない（十分条件）。
+
+  function initRepoWithBase(workdir: string, baseFiles: string[]) {
+    const git = (...args: string[]) =>
+      execFileSync("git", args, { cwd: workdir, stdio: ["ignore", "pipe", "pipe"] });
+    git("init", "--initial-branch=main", "--quiet");
+    git("config", "user.email", "test@example.com");
+    git("config", "user.name", "test");
+    for (const f of baseFiles) {
+      writeFileSync(path.join(workdir, "supabase", "migrations", f), "select 1;");
+    }
+    git("add", "-A");
+    git("commit", "--quiet", "-m", "base");
+  }
+
+  it("flags a migration added by the branch that sorts before the base head", () => {
+    initRepoWithBase(dir, ["20990101000000_base.sql"]);
+    // base より前の日付を後から足す＝本番の db push が out-of-order で止まる形
+    writeFileSync(path.join(dir, "supabase", "migrations", "20180101000000_backdated.sql"), "select 1;");
+    const r = runLint(dir, { CI: "1" });
+    expect(r.code).toBe(1);
+    expect(r.stderr).toContain("migration-version-before-base-head");
+  });
+
+  it("passes when the migration added by the branch sorts after the base head", () => {
+    initRepoWithBase(dir, ["20990101000000_base.sql"]);
+    writeFileSync(path.join(dir, "supabase", "migrations", "20990101000001_later.sql"), "select 1;");
+    expect(runLint(dir, { CI: "1" }).code).toBe(0);
+  });
+
+  it("does not fail in CI when the sandbox is not a git repository at all", () => {
+    // 「repo なのに base ref が無い」（CI の設定ミス）だけを落とす。git 管理外の
+    // ディレクトリまで落とすと、このテスト自身を含め無関係な呼び出しが全部赤くなる。
+    writeFileSync(path.join(dir, "supabase", "migrations", "20990101000000_ok.sql"), "select 1;");
+    expect(runLint(dir, { CI: "1" }).code).toBe(0);
   });
 });

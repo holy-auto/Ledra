@@ -14,13 +14,13 @@
  *
  * 何をするか:
  *   1. bootstrap.sql で Supabase が既定で持っているもの（auth/storage/ロール/拡張）を作る
- *   2. supabase/migrations/*.sql をファイル名順に流す
- *   3. 失敗したファイルは覚えておき、**進捗がある限り繰り返す**（順序の前後は多重パスで吸収）
- *   4. 何周しても通らないファイルを理由付きで報告する
+ *   2. supabase/migrations/*.sql を**ファイル名順に1パスで**流す
+ *   3. 1本でも落ちたら、そのファイルと理由を全部出して失敗させる
  *
- * ponytail: 多重パスは順序の誤りを「回避」するだけで直してはいない。上限は
- * 「同じファイルの中で前後関係が壊れている場合は何周しても通らない」こと。
- * 恒久対応は baseline 方式（docs/operations/migrations.md）。
+ * **1パスなのが要点。** Supabase のブランチ機能（PR ごとのプレビュー DB）は
+ * ファイル名順に1回だけ流すので、多重パスで通ることには意味が無い。
+ * 以前はここが多重パスで、順序の逆転を「吸収」していたため、Supabase Preview だけが
+ * 赤いのに CI は緑、という状態が続いていた（2026-09-03 に 203 本の順序逆転を解消）。
  */
 import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
@@ -41,31 +41,6 @@ const value = (name) => {
 
 const PG_BIN = process.env.PG_BIN ?? "/usr/lib/postgresql/16/bin";
 
-/**
- * 何周しても通らないことが分かっているファイル。**履歴を書き換えない限り直せない**もの。
- * 件数ではなくファイル名で持つ（件数だと「1本直って1本壊れた」を見逃す）。
- *
- * ここに載っている理由:
- *   - tenant_members: **一度も存在しなかったテーブル**を RLS ポリシーが参照している。
- *     正しくは tenant_memberships。本番でもこの2ファイルは失敗している
- *   - is_active: tenant_memberships に**本番にも無い列**を参照している
- *   - cannot change return type: 同じ関数を戻り値の型違いで2回定義しており、
- *     ファイル名の順序と依存関係が逆転している（1周目は前提テーブルがまだ無い）
- *   - cannot drop columns from view: 統合前の invoices を前提にしたビュー定義
- *
- * **新しく増えたら CI を落とす。** 減らす分には歓迎（この配列から消す）。
- */
-const KNOWN_UNREPLAYABLE = [
-  "20260313000001_dashboard_enhancements.sql",
-  "20260325900000_insurer_tenant_contracts.sql",
-  "20260325900001_insurer_search_plan_limits.sql",
-  "20260403000000_add_electronic_signature.sql",
-  "20260531000006_security_invoker_views.sql",
-  "20260603020000_zkp_commitments.sql",
-  "20260603020001_edge_devices_events.sql",
-  "20260604000001_vehicle_prediction_data_infra.sql",
-  "20260719000000_fix_rls_membership_references.sql",
-];
 const DUMP_TO = value("--dump");
 const KEEP = flag("--keep");
 
@@ -183,29 +158,9 @@ function checkRlsPolicyNullification(dsn) {
     rmSync(qfile, { force: true });
   }
 
-  // 再生は「通らなかったファイルを次の周で流し直す」多重パスなので、あとで DROP する
-  // マイグレーションより後に CREATE 側が流れることがある。本番は1回・順番どおりに
-  // 流れるのでこれは再生だけの現象。ファイル名順で「CREATE より後に DROP がある」
-  // ポリシーは再生の副産物として除外する。
-  // ponytail: 「作って消してまた作る」ポリシーは誤って除外される。今そういう例は無い。
-  const droppedLater = (name) => {
-    let lastCreate = "";
-    let lastDrop = "";
-    for (const f of readdirSync(MIGRATIONS).filter((x) => x.endsWith(".sql")).sort()) {
-      const sql = readFileSync(join(MIGRATIONS, f), "utf8");
-      const re = (verb) => new RegExp(`${verb}\\s+policy\\s+(?:if\\s+exists\\s+)?"?${name}"?\\s+on`, "i");
-      if (re("create").test(sql)) lastCreate = f;
-      if (re("drop").test(sql)) lastDrop = f;
-    }
-    return lastCreate !== "" && lastDrop > lastCreate;
-  };
-
-  const real = [];
-  for (const row of rows) {
-    const names = row.names.filter((n) => !droppedLater(n));
-    if (names.length > 0) real.push(`${row.table}.${row.cmd} : ${names.join(", ")}`);
-  }
-  return { rows: real };
+  // 1パスなので、後で DROP されたポリシーは最終状態の pg_policies に残らない。
+  // （多重パスだった頃は CREATE と DROP の順序が入れ替わり、除外処理が要った）
+  return { rows: rows.map((row) => `${row.table}.${row.cmd} : ${row.names.join(", ")}`) };
 }
 
 function main() {
@@ -228,29 +183,27 @@ function main() {
       process.exit(1);
     }
 
-    let remaining = files.map((f) => ({ file: f, error: null }));
-    let pass = 0;
-    const applied = [];
-
-    // 進捗がある限り回す。順序の前後は多重パスで吸収する
-    while (remaining.length > 0) {
-      pass += 1;
-      const next = [];
-      for (const item of remaining) {
-        const err = runSql(dsn, join(MIGRATIONS, item.file));
-        if (err === null) applied.push(item.file);
-        // 最初のエラーを覚えておく。多重パスだと後から流れたファイルの副作用で
-        // エラーが変わり（「戻り値の型は変えられない」など）、本当の原因が隠れる
-        else next.push({ file: item.file, error: err, firstError: item.firstError ?? err });
-      }
-      const progress = remaining.length - next.length;
-      console.log(`pass ${pass}: 適用 ${progress} 件 / 残り ${next.length} 件`);
-      remaining = next;
-      if (progress === 0) break;
+    // ファイル名順に1回だけ流す。Supabase のブランチ機能と同じ条件。
+    // 落ちても止めずに最後まで進み、落ちたものを全部出す（1本ずつ直すのは遅い）。
+    const failed = [];
+    for (const file of files) {
+      const err = runSql(dsn, join(MIGRATIONS, file));
+      if (err !== null) failed.push({ file, error: err });
     }
 
-    console.log("");
-    console.log(`適用できたファイル: ${applied.length} / ${files.length}`);
+    console.log(`適用できたファイル: ${files.length - failed.length} / ${files.length}`);
+
+    if (failed.length > 0) {
+      console.log(`\n❌ ファイル名順に1パスで流すと ${failed.length} 件落ちます:`);
+      for (const { file, error } of failed) console.log(`  - ${file}\n      ${error}`);
+      console.log("\nSupabase のブランチ機能はこの順で1回だけ流すので、ここが赤いと");
+      console.log("プレビュー DB は作られません。前提は同じファイルの中で作るか、");
+      console.log("前提が無いときに飛ばして別ファイルで補ってください");
+      console.log("（新しいファイルは作らない。適用済みファイルの末尾に足す）。");
+      console.log("\n（スキーマが未完成なので RLS ポリシー検査は行いません）");
+      process.exitCode = 1;
+      return;
+    }
 
     // RLS: 役割別ポリシーが役割を見ないポリシーに打ち消されていないか
     const rls = checkRlsPolicyNullification(dsn);
@@ -265,41 +218,6 @@ function main() {
       return;
     } else {
       console.log("RLS ポリシー検査: 打ち消しなし");
-    }
-
-    if (remaining.length > 0) {
-      console.log(`\n何周しても通らないファイル ${remaining.length} 件:`);
-      for (const { file, error, firstError } of remaining) {
-        const known = KNOWN_UNREPLAYABLE.includes(file) ? "（既知）" : "★新規★";
-        console.log(`  - ${known} ${file}\n      ${error}`);
-        if (firstError && firstError !== error) console.log(`      （1周目: ${firstError}）`);
-      }
-    }
-
-    // 既知の一覧との差分だけを合否にする。既知が減っていたら一覧を更新させる
-    const failed = remaining.map((r) => r.file);
-    const unexpected = failed.filter((f) => !KNOWN_UNREPLAYABLE.includes(f));
-    const fixed = KNOWN_UNREPLAYABLE.filter((f) => !failed.includes(f));
-
-    if (unexpected.length > 0) {
-      console.log(`\n❌ 新しく再生できなくなったファイルが ${unexpected.length} 件あります:`);
-      for (const f of unexpected) console.log(`  - ${f}`);
-      console.log("\n新しいマイグレーションは空 DB から再生できる必要があります。");
-      console.log("既存ファイルへの依存で落ちている場合は、依存先を同じファイル内で作るか、");
-      console.log("本番にしか無いオブジェクトなら repair マイグレーションに足してください。");
-      process.exitCode = 1;
-      return;
-    }
-    if (fixed.length > 0) {
-      console.log(`\n✅ 再生できるようになったファイルが ${fixed.length} 件あります。`);
-      console.log("scripts/replay-migrations.mjs の KNOWN_UNREPLAYABLE から消してください:");
-      for (const f of fixed) console.log(`  - ${f}`);
-      process.exitCode = 1;
-      return;
-    }
-    if (remaining.length > 0) {
-      console.log(`\n再生 OK（既知の ${remaining.length} 件を除く。増減なし）`);
-      return;
     }
 
     if (DUMP_TO) {
