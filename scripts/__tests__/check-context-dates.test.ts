@@ -81,6 +81,26 @@ describe("extractStructuredDates（構造化された日付の抽出）", () => 
     expect(extractStructuredDates(body)).toEqual([]);
   });
 
+  // フェンスの中にはシェルコメント `# 2026-12-31 …` が入りうる。見出しとして扱うと
+  // **正しい文書がこの検査に落とされる**（pre-commit フックなのでコミットが止まる）。
+  // PR #1027 の /code-review 指摘。
+  it("コードフェンスの中は見ない", () => {
+    const text = [
+      "## 2026-09-04 本物の見出し",
+      "",
+      "```bash",
+      "# 2026-12-31 未来日のシェルコメント",
+      "#foo 2026-12-30 見出しでない # 行",
+      "```",
+    ].join("\n");
+    expect(extractStructuredDates(text)).toEqual([{ line: 1, date: "2026-09-04" }]);
+  });
+
+  it("フェンスが閉じたあとは通常どおり拾う", () => {
+    const text = ["```", "# 2026-12-31 フェンス内", "```", "## 2026-09-04 フェンス後の見出し"].join("\n");
+    expect(extractStructuredDates(text)).toEqual([{ line: 4, date: "2026-09-04" }]);
+  });
+
   it("行番号を正しく返す", () => {
     const text = ["# タイトル", "", "## 2026-09-04 一件目", "本文", "## 2026-09-01 二件目"].join("\n");
     expect(extractStructuredDates(text)).toEqual([

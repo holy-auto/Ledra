@@ -78,20 +78,44 @@ export function isStructuredLine(line) {
   return line.startsWith("#") || line.startsWith("1. 日付:") || line.startsWith("- 起票日:");
 }
 
+/**
+ * コードフェンス（``` で囲まれた範囲）の外側の行だけを `{ n, line }` で返す。
+ *
+ * フェンスの中には `# 2026-12-31 …` のようなシェルコメントが入りうる。
+ * これを見出しとして扱うと、**正しい文書がこの検査に落とされる**
+ * （`isStructuredLine` の `startsWith("#")` は `HEADING` の `/^#{1,6} /` より広いので、
+ * `#foo 2026-12-31` のような行は「取りこぼし」として誤検出もする）。
+ * pre-commit フックに入っているのでコミットが止まる。PR #1027 の `/code-review` 指摘。
+ *
+ * 抽出と突き合わせの両方がこの1つを使う。ここが壊れて全行を飛ばした場合は
+ * 抽出が0件になり本体が失敗するので、黙って素通りはしない。
+ */
+function contentLines(text) {
+  const out = [];
+  let inFence = false;
+  const lines = text.split("\n");
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].trimStart().startsWith("```")) {
+      inFence = !inFence;
+      continue;
+    }
+    if (!inFence) out.push({ n: i + 1, line: lines[i] });
+  }
+  return out;
+}
+
 /** 1ファイル分の本文から、構造化された日付を行番号つきで抜き出す。 */
 export function extractStructuredDates(text) {
   const out = [];
-  const lines = text.split("\n");
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
+  for (const { n, line } of contentLines(text)) {
     if (HEADING.test(line)) {
-      for (const m of line.matchAll(DATE)) out.push({ line: i + 1, date: m[0] });
+      for (const m of line.matchAll(DATE)) out.push({ line: n, date: m[0] });
       continue;
     }
     for (const re of FIELD_PATTERNS) {
       const m = line.match(re);
       if (m) {
-        out.push({ line: i + 1, date: m[1] });
+        out.push({ line: n, date: m[1] });
         break;
       }
     }
@@ -128,10 +152,10 @@ function main() {
     // 1件も抽出できていない行」は、抽出器の穴。0件チェックだけでは
     // 「923件中3件だけ取りこぼした」が見えない（実際に取りこぼしていた）。
     const gotLines = new Set(found.map((d) => d.line));
-    text.split("\n").forEach((line, i) => {
-      if (!isStructuredLine(line) || !/\d{4}-\d{2}-\d{2}/.test(line)) return;
-      if (!gotLines.has(i + 1)) missed.push(`docs/context/${f}:${i + 1}  ${line.slice(0, 100)}`);
-    });
+    for (const { n, line } of contentLines(text)) {
+      if (!isStructuredLine(line) || !/\d{4}-\d{2}-\d{2}/.test(line)) continue;
+      if (!gotLines.has(n)) missed.push(`docs/context/${f}:${n}  ${line.slice(0, 100)}`);
+    }
   }
 
   // 検査が空振りしていないことを確かめる。パターンが実際の書き方に追いつけなく

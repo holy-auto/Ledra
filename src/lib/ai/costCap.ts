@@ -98,33 +98,40 @@ export async function getMonthlyCostJpy(tenantId: string): Promise<number> {
 /**
  * 上限が設定されていないときの既定 (円)。**テナント1件あたりの月額。**
  *
- * 代表判断 2026-09-04: 1万円。1 コールの概算単価が 2.0 円なので月 5,000 コール相当で、
- * 通常利用 (Haiku で月数百円 = 150〜400 コール) の 25〜60 倍。
+ * 代表判断 2026-09-04: 1万円。1 コールの概算単価が 2.0 円なので月 5,000 コール相当。
+ * 通常利用は「Starter ¥9,800 に対し Haiku コストは月数百円程度」(`client.ts`) なので
+ * 月 300〜800 円 = 150〜400 コール。**通常利用の 12〜33 倍**が上限になる。
  * 「普通に使う分には当たらないが、暴走は止まる」水準。
  *
  * **既定を 0 (無効) にしない理由。** 以前は env 未設定なら 0 に倒しており、
  * 本番でも env・テナント個別上限のどちらも設定されていなかったため、
  * **安全ブレーキが1つも効いていなかった** (2026-09-04 に実測して発覚)。
  * ダッシュボードの設定漏れでブレーキが外れる設計そのものが誤りだったので、
- * **既定を効く側に倒す**。止めたい場合は env に明示的に `0` を入れる。
+ * **既定を効く側に倒す**。
  */
 export const DEFAULT_MONTHLY_COST_CAP_JPY = 10_000;
 
 /**
  * 適用するキャップ (円) を解決する。テナント個別 > env > 既定 の順。
  *
+ * **`0` は「上限なし」ではなく「未設定」として扱う。**
+ * 一度この escape hatch を入れかけたが、`.env.example` が長らく
+ * `AI_MONTHLY_COST_CAP_JPY=0` を配っていた（PR #1027 の `/code-review` 指摘）。
+ * そこから作られた環境は「0 = 無効」を**意思表示ではなく既定値として**持っており、
+ * 0 を尊重すると**まさに守りたい本番でブレーキが無効のまま**になる。
+ * 0 に意味を持たせられないので、正の値だけを設定とみなす。
+ *
  * env の扱い:
- * - 明示的な `0` は「上限なし」の意思表示として尊重する
- * - 負値・非数は設定ミスなので既定へ倒す (ブレーキが外れる方に倒さない)
- * - 未設定・空文字も既定へ倒す
+ * - 1 以上の数値 → その値
+ * - `0`・負値・非数・空文字・未設定 → 既定 (ブレーキが外れる方に倒さない)
+ *
+ * 上限を実質無効にしたいときは、`0` ではなく十分大きい値
+ * (例: `99999999`) を入れる。安全ブレーキに「切る」設定は用意しない。
  */
 export function resolveCapJpy(perTenantCapJpy?: number | null): number {
   if (typeof perTenantCapJpy === "number" && perTenantCapJpy > 0) return perTenantCapJpy;
-  const raw = process.env.AI_MONTHLY_COST_CAP_JPY;
-  if (raw != null && raw.trim() !== "") {
-    const envCap = Number(raw);
-    if (Number.isFinite(envCap) && envCap >= 0) return envCap;
-  }
+  const envCap = Number(process.env.AI_MONTHLY_COST_CAP_JPY);
+  if (Number.isFinite(envCap) && envCap > 0) return envCap;
   return DEFAULT_MONTHLY_COST_CAP_JPY;
 }
 

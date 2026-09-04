@@ -58,13 +58,17 @@ describe("resolveCapJpy", () => {
     expect(DEFAULT_MONTHLY_COST_CAP_JPY).toBe(10_000);
   });
 
-  it("env の明示的な 0 は「上限なし」として尊重する", () => {
+  // `.env.example` が長らく `AI_MONTHLY_COST_CAP_JPY=0` を配っていたので、
+  // 0 は「上限なしにしたい」という意思表示ではなく、ただの配布既定値。
+  // 0 を尊重すると、まさに守りたい本番でブレーキが無効のままになる
+  // （PR #1027 の /code-review 指摘）。0 に意味を持たせない。
+  it("env の 0 は「未設定」として扱い、既定へ倒す", () => {
     process.env.AI_MONTHLY_COST_CAP_JPY = "0";
-    expect(resolveCapJpy(undefined)).toBe(0);
-    expect(resolveCapJpy(null)).toBe(0);
+    expect(resolveCapJpy(undefined)).toBe(DEFAULT_MONTHLY_COST_CAP_JPY);
+    expect(resolveCapJpy(null)).toBe(DEFAULT_MONTHLY_COST_CAP_JPY);
   });
 
-  it("負値・非数・空文字は設定ミスなので既定へ倒す（ブレーキが外れる方に倒さない）", () => {
+  it("負値・非数・空文字も設定ミスなので既定へ倒す（ブレーキが外れる方に倒さない）", () => {
     process.env.AI_MONTHLY_COST_CAP_JPY = "-1";
     expect(resolveCapJpy(undefined)).toBe(DEFAULT_MONTHLY_COST_CAP_JPY);
     process.env.AI_MONTHLY_COST_CAP_JPY = "abc";
@@ -73,7 +77,12 @@ describe("resolveCapJpy", () => {
     expect(resolveCapJpy(undefined)).toBe(DEFAULT_MONTHLY_COST_CAP_JPY);
   });
 
-  it("テナント個別上限は env の 0 より優先する", () => {
+  it("上限を実質無効にしたいときは大きい値を入れる（0 では無効にならない）", () => {
+    process.env.AI_MONTHLY_COST_CAP_JPY = "99999999";
+    expect(resolveCapJpy(undefined)).toBe(99999999);
+  });
+
+  it("テナント個別上限は env より優先する", () => {
     process.env.AI_MONTHLY_COST_CAP_JPY = "0";
     expect(resolveCapJpy(3000)).toBe(3000);
   });

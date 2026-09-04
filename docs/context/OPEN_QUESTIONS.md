@@ -63,6 +63,35 @@
 - 起票日: 2026-09-04
 - 判断者: 代表（金額は決定済み。env 設定は未実施）
 
+## datetime-local を naive に UTC 変換している画面が4つ残っている（2026-09-04）
+
+`agent-announcements` は JST 固定ヘルパー（`@/lib/datetime`）に寄せた（DECISION_LOG 2026-09-04）が、
+**同じ形が他に4箇所ある**。`datetime-local` の naive 文字列を `new Date(...)` で
+**ブラウザ TZ** として解釈しており、JST 以外の端末と SSR（Vercel は UTC）で9時間ずれる。
+
+| 画面 | 箇所 | 何の日時か |
+|---|---|---|
+| LINE 一斉配信 | `src/app/admin/line-broadcasts/LineBroadcastsClient.tsx:353` | `scheduled_at`（配信予約） |
+| 連絡スケジュール | `src/app/admin/contact-schedules/ContactSchedulesClient.tsx:492` | `scheduled_at`（送信予定） |
+| 代車 | `src/app/admin/loaner-cars/LoanerCarsClient.tsx:560` | `return_due_at`（返却期限） |
+| パスポート消費者 | `src/app/admin/platform/passport-consumers/[id]/ConsumerDetailClient.tsx:224` | `expires_at`（鍵の失効） |
+
+`ContactSchedulesClient.tsx:90` にも `local.toISOString().slice(0, 16)` という
+読み出し側の同型がある。
+
+- **なぜまだ直していないか**: 一律に置換すると危ない。画面ごとに
+  「その日時をサーバがどう再解釈するか」が違う可能性があり、
+  往復整合が取れている（ブラウザが JST なら戻る）ので**単体テストでは差が出ない**。
+  1画面ずつ、保存経路と読み出し経路の両方を読んでから寄せる必要がある。
+- **実害の見込み**: LINE 一斉配信と連絡スケジュールは**送信時刻がずれる**ので影響が大きい。
+  代車の返却期限とパスポートの失効も表示・判定がずれる。
+  ただし現状は運用者の端末が JST である限り顕在化しない。
+- 次のアクション: 上から順に1画面ずつ `jstLocalInputToUtcIso` /
+  `utcIsoToJstLocalInput` へ寄せる。`agent-announcements` が手本。
+
+- 起票日: 2026-09-04
+- 判断者: 実装側で進められる（判断不要）
+
 ## 権限マトリクスに動詞が無い資源をどうするか（2026-09-01、2026-09-04 に一部決着）
 
 業務データCRUD 48ルートに認可を入れたとき、以下の資源には対応する Permission が
