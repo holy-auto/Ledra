@@ -49,8 +49,8 @@ const RATE_LIMITED = /checkRateLimit\s*\(/;
  */
 const VENDOR_CLIENT_CONSTRUCTION = /new\s+Anthropic\s*\(/;
 
-/** 課金の出る外部推論への別経路（ベンダー SDK の import と、HTTP 直叩きのホスト名）。 */
-const OTHER_INFERENCE_PATHS = [
+/** 課金の出る外部推論への別経路その1: ベンダー SDK の import。 */
+const OTHER_INFERENCE_IMPORTS = [
   /from\s*"openai(?:\/[^"]*)?"/,
   /from\s*"@google\/gen(?:erative-)?ai"/,
   /from\s*"@mistralai\//,
@@ -58,12 +58,30 @@ const OTHER_INFERENCE_PATHS = [
   /from\s*"groq-sdk"/,
   /from\s*"replicate"/,
   /from\s*"@aws-sdk\/client-bedrock/,
-  /api\.openai\.com/,
-  /api\.anthropic\.com/, // SDK を通さない生 fetch
-  /generativelanguage\.googleapis\.com/,
-  /api\.mistral\.ai/,
-  /api\.cohere\.(?:ai|com)/,
 ];
+
+/**
+ * 別経路その2: SDK を通さず HTTP で直接叩く推論 API のホスト名。
+ *
+ * **正規表現ではなく平文の部分文字列で持つ。** ここで欲しいのは
+ * 「ソースのどこかにこの文字列が出るか」であって URL の検証ではない。
+ * アンカーの無いホスト名パターンを正規表現で書くと CodeQL の
+ * `js/missing-regexp-anchor` が high として上げる（PR #1027 で実際に3件上がった）。
+ * 検査の意図どおり `includes()` で書けば、警告は消えて挙動も変わらない。
+ */
+const INFERENCE_HOSTS = [
+  "api.openai.com",
+  "api.anthropic.com", // SDK を通さない生 fetch
+  "generativelanguage.googleapis.com",
+  "api.mistral.ai",
+  "api.cohere.ai",
+  "api.cohere.com",
+];
+
+/** そのファイルが、共通入口を通さない推論経路を持っているか。 */
+function usesOtherInference(src: string): boolean {
+  return OTHER_INFERENCE_IMPORTS.some((re) => re.test(src)) || INFERENCE_HOSTS.some((host) => src.includes(host));
+}
 
 /**
  * モデルを叩くモジュールから import されるが、**それ自体はモデルを呼ばない**もの。
@@ -185,7 +203,7 @@ describe("AI を呼ぶ API ハンドラのレート制限", () => {
 
     // 別ベンダー SDK / HTTP 直叩きは 1 件も無い。
     const others = [...SOURCES]
-      .filter(([, src]) => OTHER_INFERENCE_PATHS.some((re) => re.test(src)))
+      .filter(([, src]) => usesOtherInference(src))
       .map(([f]) =>
         f
           .slice(SRC.length + 1)
