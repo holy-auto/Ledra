@@ -6843,51 +6843,6 @@ export type Database = {
           },
         ];
       };
-      insurer_tenant_accesses: {
-        Row: {
-          created_at: string;
-          id: string;
-          insurer_id: string;
-          is_active: boolean;
-          is_enabled: boolean;
-          tenant_id: string;
-          updated_at: string;
-        };
-        Insert: {
-          created_at?: string;
-          id?: string;
-          insurer_id: string;
-          is_active?: boolean;
-          is_enabled?: boolean;
-          tenant_id: string;
-          updated_at?: string;
-        };
-        Update: {
-          created_at?: string;
-          id?: string;
-          insurer_id?: string;
-          is_active?: boolean;
-          is_enabled?: boolean;
-          tenant_id?: string;
-          updated_at?: string;
-        };
-        Relationships: [
-          {
-            foreignKeyName: "insurer_tenant_accesses_insurer_id_fkey";
-            columns: ["insurer_id"];
-            isOneToOne: false;
-            referencedRelation: "insurers";
-            referencedColumns: ["id"];
-          },
-          {
-            foreignKeyName: "insurer_tenant_accesses_tenant_id_fkey";
-            columns: ["tenant_id"];
-            isOneToOne: false;
-            referencedRelation: "tenants";
-            referencedColumns: ["id"];
-          },
-        ];
-      };
       insurer_tenant_contracts: {
         Row: {
           contracted_at: string;

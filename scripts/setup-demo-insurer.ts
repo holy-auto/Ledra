@@ -24,6 +24,9 @@ const SUPABASE_URL = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABAS
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
 
 const DEMO_INSURER_ID = "00000000-0000-0000-0000-de0000000100";
+// setup-demo-tenant.ts が作るデモ施工店。これを見せないと、デモ保険会社は
+// ログインできても検索結果が常に0件になる（アクセスできるテナントが1つも無いため）。
+const DEMO_TENANT_ID = "00000000-0000-0000-0000-de0000000010";
 const DEMO_PASSWORD = "Demo1234!";
 
 type DemoUser = {
@@ -131,6 +134,29 @@ async function main() {
     }
     console.log(`   → insurer_users リンク完了 (role: ${u.role})`);
   }
+
+  // ── デモ施工店への閲覧許可 ────────────────────────────────────────
+  // これが無いと insurer_accessible_tenant_ids() が空を返し、証明書検索・
+  // 車両検索・店舗検索がすべて「該当なし」になる（画面は出るが常に0件）。
+  const { error: accessErr } = await admin
+    .from("insurer_tenant_access")
+    .upsert(
+      {
+        insurer_id: DEMO_INSURER_ID,
+        tenant_id: DEMO_TENANT_ID,
+        is_active: true,
+        is_enabled: true,
+        revoked_at: null,
+        notes: "デモ保険会社にデモ施工店を閲覧させる（デモ環境の初期データ）",
+      },
+      { onConflict: "insurer_id,tenant_id" },
+    );
+
+  if (accessErr) {
+    console.error("❌ insurer_tenant_access 付与失敗:", accessErr.message);
+    process.exit(1);
+  }
+  console.log("✅ デモ施工店への閲覧許可を付与");
 
   // ── Summary ───────────────────────────────────────────────────────
   console.log(`
