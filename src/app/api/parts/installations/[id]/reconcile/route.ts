@@ -9,9 +9,10 @@
  */
 
 import { z } from "zod";
-import { apiJson, apiInternalError, apiValidationError, apiUnauthorized } from "@/lib/api/response";
+import { apiJson, apiInternalError, apiValidationError, apiUnauthorized, apiForbidden } from "@/lib/api/response";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
+import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
+import { checkRateLimit } from "@/lib/api/rateLimit";
 import { extractDeliveryNote, toLineItems, type ImageMediaType } from "@/lib/ai/deliveryNoteOcr";
 import { reconcileInstallation } from "@/lib/parts/reconcileService";
 import type { LineItem } from "@/lib/parts/reconciliation";
@@ -37,6 +38,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const supabase = await createSupabaseServerClient();
   const caller = await resolveCallerWithRole(supabase);
   if (!caller) return apiUnauthorized();
+  if (!requireMinRole(caller, "staff")) return apiForbidden();
 
   const { id } = await params;
 
@@ -63,6 +65,11 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
     // 画像が渡されたら OCR で明細化して合流
     if (parsed.data.delivery_note_base64 && parsed.data.media_type) {
+      // 納品書 OCR は Vision モデルを叩くので呼ぶたびに費用が出る。
+      // 画像が渡されたときだけ課金するので、ここで制限する（明細を直接渡す経路は対象外）。
+      const limited = await checkRateLimit(req, "ai", `parts-reconcile:${caller.tenantId}`);
+      if (limited) return limited;
+
       const extract = await extractDeliveryNote(
         parsed.data.delivery_note_base64,
         parsed.data.media_type as ImageMediaType,

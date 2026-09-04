@@ -8,8 +8,8 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
-import { apiJson, apiUnauthorized, apiValidationError, apiInternalError } from "@/lib/api/response";
+import { resolveCallerWithRole, requirePermission } from "@/lib/auth/checkRole";
+import { apiJson, apiUnauthorized, apiValidationError, apiInternalError, apiForbidden } from "@/lib/api/response";
 import { enforceBilling } from "@/lib/billing/guard";
 
 export const dynamic = "force-dynamic";
@@ -50,6 +50,8 @@ export async function POST(req: NextRequest) {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
+    // 仕入先マスタの変更は admin 以上 (代表判断 2026-09-01)
+    if (!requirePermission(caller, "settings:edit")) return apiForbidden();
 
     const deny = await enforceBilling(req, {
       minPlan: "starter",
@@ -78,6 +80,8 @@ export async function PUT(req: NextRequest) {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
+    // 仕入先マスタの変更は admin 以上 (代表判断 2026-09-01)
+    if (!requirePermission(caller, "settings:edit")) return apiForbidden();
 
     const parsed = updateSchema.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");

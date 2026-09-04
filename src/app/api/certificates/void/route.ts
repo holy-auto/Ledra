@@ -1,10 +1,9 @@
 import { parseJsonSafe } from "@/lib/api/safeJson";
-import { NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { logCertificateAction, getRequestMeta } from "@/lib/audit/certificateLog";
 import { certificateVoidSchema } from "@/lib/validations/certificate";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
+import { resolveCallerWithRole, requirePermission } from "@/lib/auth/checkRole";
 import {
   apiOk,
   apiInternalError,
@@ -16,24 +15,32 @@ import {
 
 /**
  * POST /api/certificates/void
- * Authenticated void endpoint — requires logged-in user with tenant membership.
- * Kept at this path for backward compatibility; the canonical endpoint is
- * /api/admin/certificates/void.
+ * 認証済み + `certificates:void`（admin 以上）が必要。
+ * 互換のためこのパスを残しているが、正準のエンドポイントは
+ * /api/admin/certificates/void。
  */
 export async function POST(req: Request) {
   try {
+    // 認証・認可を入力検証より前に置く。逆順だと、未認証の呼び出しに対して
+    // 401 ではなく 400 とスキーマのエラーメッセージを返し、critical 操作の
+    // リクエスト仕様を無認証で読み取れてしまう。
+    const supabase = await createSupabaseServerClient();
+    const caller = await resolveCallerWithRole(supabase);
+    if (!caller) {
+      return apiUnauthorized();
+    }
+    // 証明書の無効化は不可逆で法的意味を持つ (operationRisk = critical)。
+    // 無効化の経路は全部で5本あり、ここだけテナント所属だけで通っていた
+    // (viewer でも無効化できた)。5本すべてが同じ Permission を見ることは
+    // src/lib/auth/__tests__/apiRoutePermissions.test.ts が強制する。
+    if (!requirePermission(caller, "certificates:void")) {
+      return apiForbidden("証明書無効化の権限がありません。");
+    }
+
     const json = await parseJsonSafe(req);
     const parsed = certificateVoidSchema.safeParse(json);
     if (!parsed.success) {
       return apiValidationError(parsed.error.issues[0]?.message ?? "入力内容に誤りがあります。");
-    }
-
-    const supabase = await createSupabaseServerClient();
-
-    // Auth check
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) {
-      return apiUnauthorized();
     }
 
     const tenantId = caller.tenantId;

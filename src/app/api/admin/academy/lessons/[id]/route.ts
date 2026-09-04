@@ -18,6 +18,7 @@ import {
 import { canUseFeature } from "@/lib/billing/planFeatures";
 import { createPlatformScopedAdmin } from "@/lib/supabase/admin";
 import { resolveLessonPlayback, type LessonVideoFields } from "@/lib/video/resolveLessonPlayback";
+import { canModifyLesson } from "@/lib/academy/createLesson";
 
 export const dynamic = "force-dynamic";
 
@@ -144,7 +145,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
       .maybeSingle();
     if (!existing) return apiNotFound("レッスンが見つかりません");
 
-    if (existing.author_user_id !== caller.userId && caller.role !== "super_admin") {
+    if (!canModifyLesson(caller, existing)) {
       return apiForbidden("このレッスンを編集する権限がありません");
     }
 
@@ -183,7 +184,7 @@ export async function DELETE(_req: NextRequest, ctx: { params: Promise<{ id: str
       .maybeSingle();
     if (!existing) return apiNotFound("レッスンが見つかりません");
 
-    if (existing.author_user_id !== caller.userId && caller.role !== "super_admin") {
+    if (!canModifyLesson(caller, existing)) {
       return apiForbidden("このレッスンを削除する権限がありません");
     }
 

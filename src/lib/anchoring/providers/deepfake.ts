@@ -59,8 +59,7 @@ async function callHive(buffer: Buffer): Promise<DeepfakeResult> {
     const json = await res.json();
 
     // Navigate Hive response: status[0].response.output[0].classes[]
-    const classes: Array<{ class: string; score: number }> =
-      json?.status?.[0]?.response?.output?.[0]?.classes ?? [];
+    const classes: Array<{ class: string; score: number }> = json?.status?.[0]?.response?.output?.[0]?.classes ?? [];
 
     const deepfakeClass = classes.find((c: { class: string }) => c.class === "deepfake");
     if (!deepfakeClass) {

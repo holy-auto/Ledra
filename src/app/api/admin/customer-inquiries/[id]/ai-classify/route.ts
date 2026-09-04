@@ -10,8 +10,8 @@
 import { NextRequest } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
-import { apiOk, apiUnauthorized, apiNotFound, apiInternalError, apiPlanLimit } from "@/lib/api/response";
+import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
+import { apiOk, apiUnauthorized, apiNotFound, apiInternalError, apiPlanLimit, apiForbidden } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { canUseFeature } from "@/lib/billing/planFeatures";
 import { classifyInquiry } from "@/lib/ai/inquiryClassify";
@@ -38,6 +38,8 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
+    // AI 呼び出しは staff 以上 (代表判断 2026-09-01。閲覧専用ロールに費用の出る操作をさせない)
+    if (!requireMinRole(caller, "staff")) return apiForbidden();
     if (!canUseFeature(caller.planTier, "ai_inquiry_classify")) {
       usage.record({ tenantId: caller.tenantId, userId: caller.userId, outcome: "plan_limit" });
       return apiPlanLimit("AI 問い合わせ分類は Standard プラン以上でご利用いただけます。");
@@ -52,7 +54,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     const { admin, tenantId } = createTenantScopedAdmin(caller.tenantId);
     const { data: inquiry, error } = await admin
       .from("customer_inquiries")
-      .select("id, subject, message, customer_name, customer_email")
+      .select("id, subject, message, customer_name, customer_id")
       .eq("id", id)
       .eq("tenant_id", tenantId)
       .maybeSingle();
@@ -61,17 +63,18 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
 
     // 過去施工履歴ソースを許可されている場合のみ取得
     let history: { name?: string; last_certificate_label?: string; days_since_last_visit?: number | null } | undefined;
-    if (isSourceAllowed(settings, "customer_history") && inquiry.customer_email) {
+    // customer_inquiries に customer_email 列は無い。顧客は customer_id で直接引く
+    if (isSourceAllowed(settings, "customer_history") && inquiry.customer_id) {
       const { data: customer } = await admin
         .from("customers")
         .select("id, name")
-        .eq("email", inquiry.customer_email)
+        .eq("id", inquiry.customer_id)
         .eq("tenant_id", tenantId)
         .maybeSingle();
       if (customer) {
         const { data: cert } = await admin
           .from("certificates")
-          .select("service_name, created_at")
+          .select("service_type, created_at")
           .eq("customer_id", customer.id)
           .eq("tenant_id", tenantId)
           .order("created_at", { ascending: false })
@@ -79,7 +82,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
           .maybeSingle();
         history = {
           name: customer.name as string,
-          last_certificate_label: (cert?.service_name as string | undefined) ?? undefined,
+          last_certificate_label: (cert?.service_type as string | undefined) ?? undefined,
           days_since_last_visit: cert?.created_at
             ? Math.floor((Date.now() - Date.parse(cert.created_at as string)) / 86400000)
             : null,

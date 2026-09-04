@@ -1,8 +1,8 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { z } from "zod";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
-import { apiJson, apiUnauthorized, apiInternalError, apiValidationError } from "@/lib/api/response";
+import { resolveCallerWithRole, requirePermission } from "@/lib/auth/checkRole";
+import { apiJson, apiUnauthorized, apiForbidden, apiInternalError, apiValidationError } from "@/lib/api/response";
 
 const settingsDefaultsSchema = z.object({
   default_warranty_exclusions: z.string().max(5000).default(""),
@@ -41,6 +41,13 @@ export async function PUT(req: NextRequest) {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
+    // tenants.default_warranty_exclusions（テナント全体の既定値）の変更。設定系の
+    // 既存API 9本と同じ settings:edit を要求する。呼び出し元は /admin/settings ではなく
+    // /admin/certificates/new の「デフォルトとして保存」(CertNewFormWrapper.tsx)。
+    // なお staff は元々 tenants の RLS（tenants_update_owner_admin = owner/admin/super_admin）
+    // で 0 行更新になり、それでも {ok:true} が返っていた。403 は挙動の後退ではなく、
+    // 黙って失敗していたものを正直にしたもの。ボタン自体の出し分けは未対応。
+    if (!requirePermission(caller, "settings:edit")) return apiForbidden();
 
     const parsed = settingsDefaultsSchema.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) {

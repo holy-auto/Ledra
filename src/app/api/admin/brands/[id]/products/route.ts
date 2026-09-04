@@ -1,8 +1,15 @@
 import { NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { coatingProductCreateSchema, coatingProductUpdateSchema } from "@/lib/validations/brand";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
-import { apiOk, apiInternalError, apiUnauthorized, apiNotFound, apiValidationError } from "@/lib/api/response";
+import { resolveCallerWithRole, requirePermission } from "@/lib/auth/checkRole";
+import {
+  apiOk,
+  apiInternalError,
+  apiUnauthorized,
+  apiNotFound,
+  apiValidationError,
+  apiForbidden,
+} from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
 
@@ -33,6 +40,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
+    // 商品マスタの変更は admin 以上 (代表判断 2026-09-01)
+    if (!requirePermission(caller, "menu_items:manage")) return apiForbidden();
 
     const body = await req.json();
     const parsed = coatingProductCreateSchema.safeParse({ ...body, brand_id });
@@ -67,6 +76,8 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
+    // 商品マスタの変更は admin 以上 (代表判断 2026-09-01)
+    if (!requirePermission(caller, "menu_items:manage")) return apiForbidden();
 
     const body = await req.json();
     const parsed = coatingProductUpdateSchema.safeParse({ ...body, brand_id });
@@ -101,6 +112,8 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
+    // 商品マスタの変更は admin 以上 (代表判断 2026-09-01)
+    if (!requirePermission(caller, "menu_items:manage")) return apiForbidden();
 
     const { id } = await req.json();
     if (!id) return apiValidationError("IDが必要です。");

@@ -68,4 +68,21 @@ describe("Badge", () => {
     expect(span?.className).toContain("rounded-full");
     expect(span?.className).toContain("border");
   });
+
+  it("dot 指定で aria-hidden の状態ドットが付く", () => {
+    const { container } = render(
+      <Badge variant="success" dot>
+        OK
+      </Badge>,
+    );
+    const dot = container.querySelector('[aria-hidden="true"]');
+    expect(dot).toBeDefined();
+    expect(dot?.className).toContain("bg-success");
+    expect(dot?.className).toContain("rounded-full");
+  });
+
+  it("dot なし(既定)ではドットを描画しない", () => {
+    const { container } = render(<Badge variant="success">OK</Badge>);
+    expect(container.querySelector('[aria-hidden="true"]')).toBeNull();
+  });
 });

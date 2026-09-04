@@ -6,12 +6,21 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
-import { apiOk, apiUnauthorized, apiInternalError, apiValidationError, apiNotFound } from "@/lib/api/response";
+import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
+import { checkRateLimit } from "@/lib/api/rateLimit";
+import {
+  apiOk,
+  apiUnauthorized,
+  apiInternalError,
+  apiValidationError,
+  apiNotFound,
+  apiForbidden,
+} from "@/lib/api/response";
 import { canUseFeature } from "@/lib/billing/planFeatures";
 import { generateCertificateFeedback } from "@/lib/ai/academyFeedback";
 import { fastModelForPlanTier } from "@/lib/ai/client";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
+import { CERT_AI_COLUMNS, certAiFields, certPhotoCount } from "@/lib/certificates/aiFields";
 
 const academyFeedbackSchema = z.object({
   certificate_id: z.string().uuid("certificate_id が必要です"),
@@ -26,12 +35,19 @@ export async function POST(req: NextRequest) {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
-
+    // AI 呼び出しは staff 以上（2026-09-01 代表判断）。呼ぶたびに費用が出るため
+    // 閲覧専用ロールを弾く。アカデミー機能だが中身は AI なのでこちらの判断に従う。
+    if (!requireMinRole(caller, "staff")) return apiForbidden();
     if (!canUseFeature(caller.planTier, "ai_academy_feedback")) {
       return apiValidationError("この機能はStandardプラン以上でご利用いただけます", {
         code: "plan_limit",
       });
     }
+
+    // 施工へのフィードバック生成は呼ぶたびに AI 費用が出る。
+    // プラン判定より後に置く。Free のテナントには 429 ではなく案内を返したい。
+    const limited = await checkRateLimit(req, "ai", `academy-feedback:${caller.tenantId}`);
+    if (limited) return limited;
 
     const parsed = academyFeedbackSchema.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) {
@@ -44,7 +60,7 @@ export async function POST(req: NextRequest) {
     // 証明書情報取得
     const { data: cert } = await admin
       .from("certificates")
-      .select("service_name, description, material_info, warranty_period, work_areas, category, photo_count")
+      .select(CERT_AI_COLUMNS)
       .eq("id", certificate_id)
       .eq("tenant_id", caller.tenantId)
       .single();
@@ -63,19 +79,17 @@ export async function POST(req: NextRequest) {
       .from("academy_cases")
       .select("id, ai_summary")
       .eq("is_published", true)
-      .eq("category", cert.category ?? "")
+      // certificates に category 列は無いので、施工種別で近い事例を引く
+      .eq("category", (certAiFields(cert).service_name || null) ?? "")
       .limit(3);
 
     const feedback = await generateCertificateFeedback(
       {
         certificate: {
-          service_name: cert.service_name ?? "",
-          description: cert.description ?? undefined,
-          material_info: cert.material_info ?? undefined,
-          warranty_period: cert.warranty_period ?? undefined,
-          work_areas: cert.work_areas ?? undefined,
-          photo_count: cert.photo_count ?? 0,
-          category: cert.category ?? undefined,
+          ...certAiFields(cert),
+          // 施工箇所は certAiFields が content_preset_json から拾う。
+          // category は保存先が無く、いちばん近い service_type は service_name として渡している
+          photo_count: await certPhotoCount(admin, certificate_id),
         },
         qualityScore: qualityScore?.score ?? undefined,
         missingFields: qualityScore?.missing_fields ?? undefined,

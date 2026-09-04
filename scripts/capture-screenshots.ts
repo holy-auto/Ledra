@@ -112,37 +112,21 @@ async function captureAdmin(browser: ReturnType<typeof chromium.launch> extends 
   await go(page, `${BASE_URL}/admin/certificates`);
   await shot(page, "admin/certs-list.png");
 
-  // Try to open new-certificate form
-  const newCertBtn = page.locator(
-    'button:has-text("発行"), button:has-text("新規"), a:has-text("発行"), a:has-text("新規"), button:has-text("New"), a:has-text("New")'
-  ).first();
-  if ((await newCertBtn.count()) > 0) {
-    await newCertBtn.click();
-    await page.waitForTimeout(800);
-    await shot(page, "admin/certs-new.png");
-    await page.goBack();
-    await page.waitForTimeout(500);
-  } else {
-    fs.copyFileSync(path.join(OUT, "admin/certs-list.png"), path.join(OUT, "admin/certs-new.png"));
-  }
+  // New-certificate form. Navigate straight to the route: matching a button by
+  // text picked up the "新規登録" (tenant signup) link in the shell instead —
+  // "新規登録" contains "新規" — so both certs-new and vehicles-new silently
+  // captured the signup page, and the PDF shipped it under the caption
+  // "証明書の新規発行".
+  await go(page, `${BASE_URL}/admin/certificates/new`);
+  await shot(page, "admin/certs-new.png");
 
   // Vehicles list
   await go(page, `${BASE_URL}/admin/vehicles`);
   await shot(page, "admin/vehicles-list.png");
 
-  // Try new vehicle form
-  const newVehicleBtn = page.locator(
-    'button:has-text("登録"), button:has-text("新規"), a:has-text("登録"), a:has-text("新規")'
-  ).first();
-  if ((await newVehicleBtn.count()) > 0) {
-    await newVehicleBtn.click();
-    await page.waitForTimeout(800);
-    await shot(page, "admin/vehicles-new.png");
-    await page.goBack();
-    await page.waitForTimeout(500);
-  } else {
-    fs.copyFileSync(path.join(OUT, "admin/vehicles-list.png"), path.join(OUT, "admin/vehicles-new.png"));
-  }
+  // New-vehicle form — same text-matching trap as certs-new above.
+  await go(page, `${BASE_URL}/admin/vehicles/new`);
+  await shot(page, "admin/vehicles-new.png");
 
   // Customers
   await go(page, `${BASE_URL}/admin/customers`);
@@ -299,7 +283,11 @@ async function captureAgent(browser: ReturnType<typeof chromium.launch> extends 
 
 async function main() {
   console.log("📸 Capturing screenshots from", BASE_URL);
-  const browser = await chromium.launch({ headless: true });
+  // この環境（および CI）のプリインストール Chromium を使う。Playwright の
+  // バージョンが上がると同梱ブラウザのリビジョンが変わり、ダウンロードを
+  // 禁止している実行環境では起動できなくなるため、パスが指定されていれば従う。
+  const executablePath = process.env.PLAYWRIGHT_CHROMIUM_PATH || undefined;
+  const browser = await chromium.launch({ headless: true, executablePath });
   const failures: string[] = [];
 
   await captureAdmin(browser).catch((e) => {

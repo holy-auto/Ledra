@@ -14,10 +14,11 @@ import { getCachedTenantBilling } from "@/lib/billing/tenantBillingCache";
 import { CERT_LIMITS, normalizePlanTier } from "@/lib/billing/planFeatures";
 import { logCertificateAction } from "@/lib/audit/certificateLog";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
+import { resolveCallerWithRole, requirePermission } from "@/lib/auth/checkRole";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { resolveCertifiedTemplateForTenant } from "@/lib/manufacturers/certifiedTemplates";
 import { issueCaptureNonce } from "@/lib/certificates/captureNonce";
+import { storeIdOrNull } from "@/lib/stores/resolveStoreId";
 
 export const dynamic = "force-dynamic";
 
@@ -40,6 +41,7 @@ export async function POST(req: Request) {
   if (!caller) {
     return apiUnauthorized();
   }
+  if (!requirePermission(caller, "certificates:create")) return apiForbidden();
 
   const deny = await enforceBilling(req, { minPlan: "free", action: "create", tenantId: caller.tenantId });
   if (deny) return deny;
@@ -109,6 +111,12 @@ export async function POST(req: Request) {
     // PUT /api/admin/certificates/status で発行 (active 化) させる。
     const insertRow = {
       tenant_id: caller.tenantId,
+      // この経路は createCertificate を通らないので、店舗もここで決める
+      store_id: await storeIdOrNull(
+        createTenantScopedAdmin(caller.tenantId).admin,
+        caller.tenantId,
+        "certificates/create",
+      ),
       status: "draft" as const,
       customer_name: b.customer_name,
 

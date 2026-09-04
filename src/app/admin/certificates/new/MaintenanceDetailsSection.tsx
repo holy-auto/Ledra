@@ -13,7 +13,6 @@ import {
 
 type MaintenanceData = {
   work_types: string[];
-  mileage: string;
   parts_replaced: string;
   next_service_date: string;
   findings: string;
@@ -52,7 +51,6 @@ interface Props {
 export default function MaintenanceDetailsSection({ defaultPartsReplacedNote }: Props) {
   const [data, setData] = useState<MaintenanceData>({
     work_types: [],
-    mileage: "",
     parts_replaced: defaultPartsReplacedNote ?? "",
     next_service_date: "",
     findings: "",
@@ -91,7 +89,6 @@ export default function MaintenanceDetailsSection({ defaultPartsReplacedNote }: 
 
   const jsonValue = JSON.stringify({
     work_types: data.work_types,
-    mileage: data.mileage.trim() || null,
     parts_replaced: data.parts_replaced.trim() || null,
     next_service_date: data.next_service_date || null,
     findings: data.findings.trim() || null,
@@ -132,7 +129,8 @@ export default function MaintenanceDetailsSection({ defaultPartsReplacedNote }: 
           整備内容
           <HelpTooltip>
             実施した整備項目 (オイル交換 / ブレーキパッド / 車検等)
-            を選択。走行距離や交換部品も記録すると、次回整備時期の判定や保険査定で活用できます。
+            を選択。交換部品も記録すると、次回整備時期の判定や保険査定で活用できます。
+            （走行距離は車種選択のすぐ下にある必須項目に入力します。）
           </HelpTooltip>
         </div>
         <p className="mt-1 text-xs text-muted">実施した整備の内容を記録します。</p>
@@ -161,18 +159,6 @@ export default function MaintenanceDetailsSection({ defaultPartsReplacedNote }: 
           <div className="mt-2 text-xs text-muted">{data.work_types.length} 項目を選択中</div>
         )}
       </div>
-
-      {/* 走行距離 */}
-      <label className="block space-y-1.5">
-        <span className="text-sm font-medium text-secondary">走行距離（km）</span>
-        <input
-          type="number"
-          value={data.mileage}
-          onChange={(e) => update("mileage", e.target.value)}
-          placeholder="例: 35000"
-          className={inputCls}
-        />
-      </label>
 
       {/* 交換部品（自由テキスト） */}
       <label className="block space-y-1.5">

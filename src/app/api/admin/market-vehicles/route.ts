@@ -1,9 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
+import { resolveCallerWithRole, requirePermission } from "@/lib/auth/checkRole";
 import { escapeIlike } from "@/lib/sanitize";
 import { enforceBilling } from "@/lib/billing/guard";
-import { apiJson, apiUnauthorized, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
+import {
+  apiJson,
+  apiUnauthorized,
+  apiValidationError,
+  apiNotFound,
+  apiInternalError,
+  apiForbidden,
+} from "@/lib/api/response";
 import {
   marketVehicleCreateSchema,
   marketVehicleDeleteSchema,
@@ -143,6 +150,7 @@ export async function POST(req: NextRequest) {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
+    if (!requirePermission(caller, "market:create")) return apiForbidden();
 
     const deny = await enforceBilling(req, {
       minPlan: "standard",
@@ -184,6 +192,7 @@ export async function PUT(req: NextRequest) {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
+    if (!requirePermission(caller, "market:edit")) return apiForbidden();
 
     const deny = await enforceBilling(req, {
       minPlan: "standard",
@@ -242,6 +251,7 @@ export async function DELETE(req: NextRequest) {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
+    if (!requirePermission(caller, "market:edit")) return apiForbidden();
 
     const deny = await enforceBilling(req, {
       minPlan: "standard",
