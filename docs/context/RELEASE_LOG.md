@@ -78,6 +78,30 @@
   検索結果が並んだ状態**で撮影している。実テナントのデータは写らない。
 - 検証: `npx tsc --noEmit` 通過、`npx vitest run` 全 **522 ファイル / 5,310 件**通過。
 
+## 2026-09-04 CONCURRENTLY を「1ファイル1文」に矯正（Supabase のパイプライン制約）
+
+順序逆転（前項）を直したことで、実物のプレビュー DB が初めて先まで進み、次が出た。
+
+```
+ERROR: CREATE INDEX CONCURRENTLY cannot be executed within a pipeline (SQLSTATE 25001)
+At statement: 1
+```
+
+**Supabase のブランチ機能は1ファイルの複数文をパイプラインで送る。**
+`CREATE INDEX CONCURRENTLY` はその中では実行できず、2文目以降が落ちる。
+
+- 適用済みの**13ファイル**から CONCURRENTLY を外した（本番では再適用されず、
+  空 DB では対象テーブルが空なのでロックの問題は起きない）。
+  最大は `20260603010000_fk_covering_indexes.sql` の135文。
+- そのぶん `create-index-without-concurrently` の対象外にするため
+  `supabase/migrations.allowlist` に13件を追記（理由コメント付き）。
+- **lint に新ルール `concurrently-in-multi-statement-file` を追加。**
+  CONCURRENTLY を含むファイルが2文以上なら落ちる。
+  **手元の `check:migrations` では再現しない**（`psql -f` はパイプラインを使わない）
+  ので、静的検査で止めるしかない。わざと壊して落ちることを確認済み。
+
+検証: 1パス再生 447/447、lint:migrations OK、check:schema OK、tsc エラー0。
+
 ## 2026-09-03 マイグレーションの順序逆転 203 本を解消（1パス再生 443/443）
 
 `Supabase Preview` が1本目のマイグレーションで落ち続けていた問題。
