@@ -1,3 +1,23 @@
+-- 【後から先頭に追加】下の CREATE OR REPLACE は、20260317000003 が作った同名関数と
+-- **戻り値の型が違う**ため `cannot change return type of existing function` で落ちる。
+-- CREATE OR REPLACE では型を変えられないので、既存のオーバーロードを先に落とす。
+-- 版番号は変えていないので本番では再適用されない＝本番への影響は無い。
+DO $mig$
+DECLARE
+  r record;
+BEGIN
+  FOR r IN
+    SELECT p.oid::regprocedure AS sig
+    FROM pg_proc p
+    WHERE p.pronamespace = 'public'::regnamespace
+      AND p.proname = ANY (ARRAY['insurer_search_certificates'])
+  LOOP
+    -- CASCADE は付けない。依存物があるなら黙って消さずに落ちてほしい
+    EXECUTE 'DROP FUNCTION ' || r.sig || ';';
+  END LOOP;
+END
+$mig$;
+
 -- Add plan-based result limits to insurer search
 CREATE OR REPLACE FUNCTION insurer_search_certificates(
   p_query text DEFAULT '',

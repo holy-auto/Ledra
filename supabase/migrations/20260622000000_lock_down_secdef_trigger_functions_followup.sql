@@ -23,8 +23,16 @@
 --     insurer_* portal functions, pos_checkout, register_insurer_v2, …).
 
 -- Row-level SECURITY DEFINER trigger functions (return type `trigger`).
-revoke execute on function public.certificates_check_craftsman_tenant() from public, anon, authenticated;
-grant  execute on function public.certificates_check_craftsman_tenant() to service_role;
+-- 【後から内容だけ修正】この関数を作る 20260617000004 が空 DB では落ちることがあり、
+-- その場合ここが連鎖して落ちる。あるときだけ実行する。
+do $mig$
+begin
+  if to_regprocedure('public.certificates_check_craftsman_tenant()') is not null then
+    revoke execute on function public.certificates_check_craftsman_tenant() from public, anon, authenticated;
+    grant  execute on function public.certificates_check_craftsman_tenant() to service_role;
+  end if;
+end
+$mig$;
 
 revoke execute on function public.reservations_check_tenant_refs() from public, anon, authenticated;
 grant  execute on function public.reservations_check_tenant_refs() to service_role;

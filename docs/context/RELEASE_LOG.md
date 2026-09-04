@@ -78,6 +78,42 @@
   検索結果が並んだ状態**で撮影している。実テナントのデータは写らない。
 - 検証: `npx tsc --noEmit` 通過、`npx vitest run` 全 **522 ファイル / 5,310 件**通過。
 
+## 2026-09-03 マイグレーションの順序逆転 203 本を解消（1パス再生 443/443）
+
+`Supabase Preview` が1本目のマイグレーションで落ち続けていた問題。
+ファイル名順に1パスで流すと **438 本中 203 本**が落ちる状態だった。
+
+- **ファイル名は1つも変えていない。** 版番号を変えると本番で再適用され、当時の
+  役割を見ない RLS ポリシーや search_path 未固定の関数定義が復活するため。
+- 既適用ファイルの**中身だけ**を「前提が無ければ飛ばす」に変更（`to_regclass` /
+  `to_regprocedure` 判定）。版番号を変えていないので本番では再適用されない。
+- 飛ばした分を依存が揃った位置で補う新規ファイル5本。いずれも「既にあれば何もしない」
+  形で本番では no-op:
+  `20260313030000_replay_early_schema.sql` /
+  `20260313030001_replay_early_schema_index.sql` /
+  `20260314000006_replay_market_inquiries.sql` /
+  `20260321000003_replay_customer_login_codes_index.sql` /
+  `20260601000009_replay_supply_columns.sql`
+- 一度も存在しなかった名前を本番の実体に合わせて修正:
+  `tenant_members` → `tenant_memberships`（2本）、`tenant_memberships.is_active`
+  述語の除去（2本）、戻り値の型違いの同名関数を先に DROP（2本）、
+  本番にしか無い関数・ビューへの revoke/grant/ALTER VIEW を存在チェック付きに（3本）。
+- **`npm run check:migrations` を多重パス → 1パスに変更。** Supabase のブランチ機能と
+  同じ条件になり、順序逆転が CI で落ちるようになった。`KNOWN_UNREPLAYABLE`（既知の
+  9本を許す仕組み）は不要になったので削除。
+
+あわせて `/code-review` の指摘5件を修正（`5beff94`）。うち1件は**この変更が作った穴**で、
+まだ作られていない関数への `revoke execute` をガードで飛ばした結果、
+`auth_uid_by_email` / `get_auth_email` / `get_auth_email_scoped` が空 DB では
+`anon` / `authenticated` に開いたまま残っていた（`auth.users` の email を引く
+SECURITY DEFINER）。関数が実在する位置に `20260826000007` を足して締め直し、
+再生 DB の `pg_proc.proacl` で5関数すべて service_role のみになることを確認した。
+
+検証: 1パス再生 **444/444**、RLS ポリシー打ち消し検査 なし、`lint:migrations` OK、
+`check:schema` OK、`vitest run` 522ファイル 5301件 通過。
+番人はわざと壊して確認済み（存在しないテーブルを ALTER するファイルを先頭日付で
+置くと exit 1 でファイル名まで出る）。
+
 ## 2026-09-03 外注職人のテナント連携（元請けがコード発行 → 外注が入力）
 
 - 背景: 外注職人が施工した記録は元請けのテナントに元請け名義で残るが、**本人がそれを
