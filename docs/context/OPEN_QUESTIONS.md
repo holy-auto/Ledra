@@ -60,6 +60,27 @@
 - 影響範囲: (1) は車両詳細→証明書プリフィル経路が 500。(2) は代理店(agent)の Stripe Connect オンボーディング webhook が 500。いずれも低頻度だが該当機能は壊れている。
 - 次のアクション: 各参照の意図を確認し A/B を判断。template_name はテンプレート名の表示用か（=JOIN で足りる可能性大）、agents の Stripe Connect は代理店にも Connect を持たせる設計だったか（=列追加）を確定する。
 - 起票日: 2026-08-02
+## `ROUTE_PERMISSIONS`（画面と権限の対応表）を強制している場所が無い（2026-09-04）
+
+`src/lib/auth/permissions.ts` の `ROUTE_PERMISSIONS` は 48 画面分あり、
+`/admin/xxx` ごとに必要な `Permission` を宣言している。読み出す
+`getRequiredPermission()` も同じファイルにある。
+
+**その `getRequiredPermission()` の呼び出し元は 0 件で、`src/middleware.ts` は存在しない。**
+この表は実質「ナビの出し分けの参考値」にしかなっていない（ナビは
+`adminNav.tsx` / `catalog.ts` が各項目に持つ `requiredPermission` を独立に見ている）。
+
+- 結果、**画面の権限判定は各 `page.tsx` の書き方次第**になっている。
+  `requirePermission` を呼ぶ admin 配下の page は 2 枚だけだった
+  （`report-revenue`、`vehicles/[id]`）。PR #1030 でサイトコンテンツの 3 枚を追加。
+- 権限の穴かというと違う。書き込みは API ルート（`API_ROUTE_PERMISSIONS` + テストで強制）と
+  RLS が止める。**問題は「開けるが何もできない画面」が作れてしまうこと**
+  （MISTAKE_LEDGER M-019 / M-023）。
+- 選択肢は3つ。(a) middleware を置いて表を強制する、(b) 表を捨ててナビの宣言に一本化する、
+  (c) 現状維持で page ごとに書く。**(a) は Next.js の middleware で Supabase セッションを
+  読む必要があり、全 admin 画面の表示に1往復増える**ので、コストと効果の見積もりが要る。
+- どれを取るかは未決。【要確認】: 表に載っている画面のうち、実際にサーバ側で
+  権限を見ていないものが何枚あるかは数えていない。
 
 ## マイグレーション外で本番スキーマが変更された経路が不明（2026-09-04）
 
@@ -93,6 +114,24 @@
   代表に確認したところ「意図してない」との回答だったため無効化した
   （`is_active=false` / `revoked_at=now()`、行は監査のため残す）。`insurer_access_logs` は
   当該保険会社について **0件**で、実際に閲覧された記録は無い。詳細は DECISION_LOG 2026-09-03。
+
+## Server Action の完全な一覧が静的に作れない（2026-09-04）
+
+`serverActionGuards.test.ts` は**ファイル先頭に `"use server"` を持つファイル**だけを見る。
+Next.js は関数内にも `"use server"` を書けるので（`vehicles/[id]/page.tsx` の
+`voidCertificate`、`LogoSealSection.tsx` の `uploadLogo` / `uploadSeal`、
+`login/page.tsx` の `signIn`）、この検査は**完全ではない**。
+
+2026-09-04 時点では関数内宣言4箇所も1つずつ読んで確認済み（すべてガードあり、
+または認証前で不要）。だが新しく足されたものは検査に載らない。
+
+案: 関数内の `"use server"` を含む関数本体を切り出して、同じ検査に掛ける。
+`sourceScan.ts` の `enclosingFunctions()` が使えるかもしれない。
+未解決なのは、その関数が「認可を要する書き込みをしているか」をどう判定するか。
+ガードの有無だけ見ると、読み取り専用の Server Action まで引っかかる。
+
+- 起票日: 2026-09-04
+- 判断者: 未定
 
 ## AI の検出器が `getAnthropicClient()` に依存している（2026-09-03）
 

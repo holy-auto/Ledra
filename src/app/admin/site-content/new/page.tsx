@@ -1,7 +1,6 @@
 import Link from "next/link";
-import { redirect } from "next/navigation";
 import PageHeader from "@/components/ui/PageHeader";
-import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
+import { requireSiteContentAdmin } from "../guard";
 import SiteContentForm, { type SiteContentFormInitial } from "../SiteContentForm";
 import type { SiteContentType } from "@/lib/validations/site-content-post";
 
@@ -36,9 +35,7 @@ const DEFAULT_INITIAL: SiteContentFormInitial = {
 
 export default async function SiteContentNewPage(props: { searchParams?: Promise<{ type?: string }> }) {
   const searchParams = (await props.searchParams) ?? {};
-  const supabase = await createSupabaseServerClient();
-  const { data: userRes } = await supabase.auth.getUser();
-  if (!userRes?.user) redirect("/login?next=/admin/site-content/new");
+  const supabase = await requireSiteContentAdmin("/admin/site-content/new");
 
   const initialType =
     searchParams.type === "event" ||
