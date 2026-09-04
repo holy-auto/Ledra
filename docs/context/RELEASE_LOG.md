@@ -4,6 +4,36 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-09-04 判断待ち4件を main へマージし、本番へマイグレーションを適用した（PR #1026 / `87b71201`）
+
+- **本番適用済み**（Supabase migration `tenant_settings_owner_only_and_shared_templates`）。
+  適用前後を実測で確認した。
+
+  | 確認項目 | 適用前 | 適用後 |
+  |---|---|---|
+  | `tenants` UPDATE ポリシー | `tenants_update_owner_admin`, `tenants_update_v2` | **`tenants_update_v2` のみ**（owner 限定） |
+  | `templates` INSERT ポリシー | `templates_insert_v2`, `templates_write_owner_admin` | **`templates_insert_v2` のみ** |
+  | `templates` の CHECK 制約 | なし | **`templates_shared_is_platform_owned` / validated=true** |
+  | `templates` 行数 / shared / tenant_id NULL | 5 / 0 / 5 | **5 / 0 / 5（無傷）** |
+
+- **「適用できた」で終わらせず、本番の実テーブルで弾くことを確認した。**
+  例外を捕まえる DO ブロックで試し、行は残していない（`probe` の残骸0件、名前一覧も元のまま）。
+
+  | ケース | 結果 |
+  |---|---|
+  | テナント所有の `shared` を INSERT | **弾かれた** |
+  | 既存行を `shared` に書き換え | **弾かれた**（UPDATE 経路） |
+  | 運営が `tenant_id NULL` で `shared` を作る | 通った（期待どおり） |
+
+- 注意: この制約は **service_role にも効く**（RLS は迂回できるが CHECK 制約は迂回できない）。
+  運営が共有雛形を作るときは `tenant_id` を NULL にする必要がある。既存5件はその形。
+- **適用後にファイル名を記録バージョンへ合わせた**（`20260904000000` → `20260904123252`）。
+  `docs/operations/migrations.md` の規約。放置すると、既に適用済みの `20260904060245` より
+  前のファイルが未適用として残り、**out-of-order で `db-migrate` が止まる**
+  （このリポジトリは同じ形で過去3回止まっている）。
+- 同じ手順書には「`VALIDATE` を別ファイルにする」ともあり、**こちらは満たしていない**。
+  適用済みなので分割せず、逸脱の理由をファイルのヘッダに書いた（MISTAKE_LEDGER M-021）。
+
 ## 2026-09-04 判断待ちだった4件を確定し、調査中に見つけた穴2つも塞いだ
 
 - 内容: 代表判断4件を実装した。
