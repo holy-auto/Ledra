@@ -13,7 +13,7 @@
  */
 import { describe, it, expect } from "vitest";
 // @ts-expect-error -- .mjs に型定義は無い。検査対象は実行時の挙動。
-import { extractStructuredDates, isTooFarInFuture, TOLERANCE_DAYS } from "../check-context-dates.mjs";
+import { extractStructuredDates, isStructuredLine, isTooFarInFuture, TOLERANCE_DAYS } from "../check-context-dates.mjs";
 
 describe("extractStructuredDates（構造化された日付の抽出）", () => {
   it("DECISION_LOG 形式の見出し `## 2026-09-04 タイトル` を拾う", () => {
@@ -34,6 +34,36 @@ describe("extractStructuredDates（構造化された日付の抽出）", () => 
     ]);
   });
 
+  // 以下3つは、実際にリポジトリにあるのに取りこぼしていた形（PR #1027 の /code-review 指摘）。
+  it("日付が `（` の直後に来ない見出しを拾う", () => {
+    expect(
+      extractStructuredDates("## 実装計画（UI/UX & Development Specification v2.0、2026-08-19〜）"),
+    ).toEqual([{ line: 1, date: "2026-08-19" }]);
+  });
+
+  it("`・` を挟んだ見出しを拾う", () => {
+    expect(extractStructuredDates("## Tap to Pay 本番リリースの残論点（App Store一般公開・2026-08-06）")).toEqual([
+      { line: 1, date: "2026-08-06" },
+    ]);
+  });
+
+  it("半角括弧の見出しを拾う", () => {
+    expect(extractStructuredDates("## 決定的フォールバック(2026-07-18)のカバレッジ実測")).toEqual([
+      { line: 1, date: "2026-07-18" },
+    ]);
+  });
+
+  it("見出しに日付が2つあれば両方拾う（どちらも主張された日付）", () => {
+    expect(extractStructuredDates("## 会社名と category に保存先が無い（2026-08-23 / 2026-08-24 縮小）")).toEqual([
+      { line: 1, date: "2026-08-23" },
+      { line: 1, date: "2026-08-24" },
+    ]);
+  });
+
+  it("`###` などの深い見出しも拾う", () => {
+    expect(extractStructuredDates("###### 2026-09-04 深い見出し")).toEqual([{ line: 1, date: "2026-09-04" }]);
+  });
+
   it("9項目の `1. 日付: 2026-09-04` を拾う", () => {
     expect(extractStructuredDates("1. 日付: 2026-09-04")).toEqual([{ line: 1, date: "2026-09-04" }]);
   });
@@ -51,17 +81,30 @@ describe("extractStructuredDates（構造化された日付の抽出）", () => 
     expect(extractStructuredDates(body)).toEqual([]);
   });
 
-  it("同じ行を2回報告しない", () => {
-    // 見出し形式と括弧形式の両方に当たりうる行。1件だけ返す。
-    expect(extractStructuredDates("## 2026-09-04 決めたこと（2026-09-01 起票分）")).toHaveLength(1);
-  });
-
   it("行番号を正しく返す", () => {
     const text = ["# タイトル", "", "## 2026-09-04 一件目", "本文", "## 2026-09-01 二件目"].join("\n");
     expect(extractStructuredDates(text)).toEqual([
       { line: 3, date: "2026-09-04" },
       { line: 5, date: "2026-09-01" },
     ]);
+  });
+});
+
+describe("isStructuredLine（本体の突き合わせ用・抽出とは別実装）", () => {
+  // 本体はこの判定と抽出結果を突き合わせ、「日付が書かれているのに抽出されていない行」を
+  // 失敗にする。抽出器が狭まったときに 0 件チェックでは見えない取りこぼしを捕まえるため、
+  // **抽出と同じ正規表現を使ってはいけない**。ここでそのことを固定する。
+  it("見出しと日付フィールドを true にする", () => {
+    expect(isStructuredLine("## 2026-09-04 タイトル")).toBe(true);
+    expect(isStructuredLine("###### 深い見出し")).toBe(true);
+    expect(isStructuredLine("1. 日付: 2026-09-04")).toBe(true);
+    expect(isStructuredLine("- 起票日: 2026-09-04")).toBe(true);
+  });
+
+  it("本文行を false にする", () => {
+    expect(isStructuredLine("実際 2026-09-03 に、2日先の 2026-09-05 を書いた")).toBe(false);
+    expect(isStructuredLine("- 起票日は決まっていない")).toBe(false);
+    expect(isStructuredLine("2. 起きたこと: 2026-09-04 に着手した")).toBe(false);
   });
 });
 

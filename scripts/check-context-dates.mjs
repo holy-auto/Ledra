@@ -42,35 +42,54 @@ const CONTEXT_DIR = join(repoRoot, "docs", "context");
 /** 時差ぶんの許容（日）。理由は冒頭の ponytail を参照。 */
 export const TOLERANCE_DAYS = 1;
 
+const DATE = /\d{4}-\d{2}-\d{2}/g;
+
 /**
- * 「そのエントリ自身が主張する日付」として扱う書き方。
- * 本文中の言及（「2日先の 2026-09-05 を書いた」等）を拾わないよう、
- * 行頭にアンカーする。
+ * 見出し行。**見出しの中の日付は、位置を問わず全部拾う。**
+ *
+ * 最初は書き方ごとに正規表現を並べていたが、実際の見出しを3つ取りこぼしていた
+ * （PR #1027 の `/code-review` 指摘）。
+ *
+ *   - `## 実装計画（UI/UX & Development Specification v2.0、2026-08-19〜）`
+ *     … 日付が `（` の直後に来ない
+ *   - `## Tap to Pay 本番リリースの残論点（App Store一般公開・2026-08-06）` … 同上
+ *   - `## 決定的フォールバック(2026-07-18)のカバレッジ実測` … 半角の `(`
+ *
+ * 括弧の種類や日付の位置を数え上げる方向は、**書き方が1つ増えるたびに穴が空く**。
+ * 見出しに書かれた日付はどこにあってもそのエントリの日付なので、位置を見ない。
+ * 1つの見出しに2つ日付がある形（`## …（2026-08-23 / 2026-08-24 縮小）`）も
+ * 両方が主張された日付なので、両方を検査する。
  */
-const PATTERNS = [
-  // DECISION_LOG / MISTAKE_LEDGER / RELEASE_LOG: `## 2026-09-04 タイトル`
-  /^#{2,3} (\d{4}-\d{2}-\d{2})\b/,
-  // OPEN_QUESTIONS / MISTAKE_LEDGER: `## タイトル（2026-09-04）` `## タイトル（2026-09-04・型 B）`
-  /^#{2,3} .*（(\d{4}-\d{2}-\d{2})[^）]*）/,
+const HEADING = /^#{1,6} /;
+
+/**
+ * 見出し以外で「そのエントリ自身が主張する日付」を書く場所。
+ * 本文中の言及（「2日先の 2026-09-05 を書いた」等）を拾わないよう行頭にアンカーする。
+ */
+const FIELD_PATTERNS = [
   // DECISION_LOG の9項目: `1. 日付: 2026-09-04`
   /^1\. 日付: (\d{4}-\d{2}-\d{2})\b/,
   // OPEN_QUESTIONS: `- 起票日: 2026-09-04`
   /^- 起票日: (\d{4}-\d{2}-\d{2})\b/,
 ];
 
-/**
- * 1ファイル分の本文から、構造化された日付を行番号つきで抜き出す。
- *
- * 1行が複数のパターンに当たることがある（`## タイトル（2026-09-04・型 B）` は
- * 2番目にだけ当たるが、書き方が増えたときに重複しうる）ので、行ごとに
- * **最初に当たった1つ**だけを採る。同じ行から同じ日付を2回報告しても意味がない。
- */
+/** その行が「日付を書く場所」か（下の突き合わせ用の、抽出とは別実装の判定）。 */
+export function isStructuredLine(line) {
+  return line.startsWith("#") || line.startsWith("1. 日付:") || line.startsWith("- 起票日:");
+}
+
+/** 1ファイル分の本文から、構造化された日付を行番号つきで抜き出す。 */
 export function extractStructuredDates(text) {
   const out = [];
   const lines = text.split("\n");
   for (let i = 0; i < lines.length; i++) {
-    for (const re of PATTERNS) {
-      const m = lines[i].match(re);
+    const line = lines[i];
+    if (HEADING.test(line)) {
+      for (const m of line.matchAll(DATE)) out.push({ line: i + 1, date: m[0] });
+      continue;
+    }
+    for (const re of FIELD_PATTERNS) {
+      const m = line.match(re);
       if (m) {
         out.push({ line: i + 1, date: m[1] });
         break;
@@ -94,20 +113,39 @@ function main() {
     .sort();
 
   const bad = [];
+  const missed = [];
   let checked = 0;
   for (const f of files) {
     const text = readFileSync(join(CONTEXT_DIR, f), "utf8");
-    for (const { line, date } of extractStructuredDates(text)) {
+    const found = extractStructuredDates(text);
+    for (const { line, date } of found) {
       checked++;
       if (isTooFarInFuture(date, today)) bad.push(`docs/context/${f}:${line}  ${date}`);
     }
+
+    // **抽出器を、別実装の当たり判定と突き合わせる。**
+    // 「日付を書く場所（見出し・日付フィールド）で、日付が実際に書かれているのに
+    // 1件も抽出できていない行」は、抽出器の穴。0件チェックだけでは
+    // 「923件中3件だけ取りこぼした」が見えない（実際に取りこぼしていた）。
+    const gotLines = new Set(found.map((d) => d.line));
+    text.split("\n").forEach((line, i) => {
+      if (!isStructuredLine(line) || !/\d{4}-\d{2}-\d{2}/.test(line)) return;
+      if (!gotLines.has(i + 1)) missed.push(`docs/context/${f}:${i + 1}  ${line.slice(0, 100)}`);
+    });
   }
 
   // 検査が空振りしていないことを確かめる。パターンが実際の書き方に追いつけなく
   // なると0件になり、この検査は永久に緑のままになる（型 A）。
   if (checked === 0) {
     console.error("[check:context-dates] 構造化された日付を1件も見つけられませんでした。");
-    console.error("  見出しの書き方が変わった可能性があります。PATTERNS を確認してください。");
+    console.error("  見出しの書き方が変わった可能性があります。抽出器を確認してください。");
+    process.exit(1);
+  }
+
+  if (missed.length) {
+    console.error(`[check:context-dates] 抽出器が取りこぼしている行が ${missed.length} 件あります:\n`);
+    for (const m of missed) console.error(`  ${m}`);
+    console.error("\n  日付が書かれているのに検査対象になっていません。抽出器を直してください。");
     process.exit(1);
   }
 

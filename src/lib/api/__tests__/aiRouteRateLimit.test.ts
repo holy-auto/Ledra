@@ -49,16 +49,29 @@ const RATE_LIMITED = /checkRateLimit\s*\(/;
  */
 const VENDOR_CLIENT_CONSTRUCTION = /new\s+Anthropic\s*\(/;
 
-/** 課金の出る外部推論への別経路その1: ベンダー SDK の import。 */
-const OTHER_INFERENCE_IMPORTS = [
-  /from\s*"openai(?:\/[^"]*)?"/,
-  /from\s*"@google\/gen(?:erative-)?ai"/,
-  /from\s*"@mistralai\//,
-  /from\s*"cohere-ai"/,
-  /from\s*"groq-sdk"/,
-  /from\s*"replicate"/,
-  /from\s*"@aws-sdk\/client-bedrock/,
+/**
+ * 課金の出る外部推論への別経路その1: ベンダー SDK のパッケージ名。
+ *
+ * 静的 import (`from "openai"`) だけでなく、動的 import (`await import("openai")`) と
+ * `require("openai")` も拾う。**静的 import だけを見ると、遅延読み込みで書かれた
+ * 2つ目のベンダーが素通りする**（PR #1027 の `/code-review` 指摘）。
+ * 3つとも「区切り文字 + パッケージ名」の形なので、パッケージ名の側だけを列挙して
+ * 引用符（`"` `'` バッククォート）を共通の前置きで受ける。
+ */
+const VENDOR_PACKAGES = [
+  String.raw`openai(?:\/[^"'\x60]*)?`,
+  String.raw`@google\/gen(?:erative-)?ai`,
+  String.raw`@mistralai\/[^"'\x60]*`,
+  String.raw`cohere-ai`,
+  String.raw`groq-sdk`,
+  String.raw`replicate`,
+  String.raw`@aws-sdk\/client-bedrock[^"'\x60]*`,
 ];
+
+/** `from "pkg"` / `import("pkg")` / `require("pkg")` を、引用符3種すべてで受ける。 */
+const OTHER_INFERENCE_IMPORTS = VENDOR_PACKAGES.map(
+  (pkg) => new RegExp(String.raw`(?:from|import|require)\s*\(?\s*["'\x60](?:${pkg})["'\x60]`),
+);
 
 /**
  * 別経路その2: SDK を通さず HTTP で直接叩く推論 API のホスト名。
@@ -111,14 +124,16 @@ const PURE_BINDINGS = new Set([
  */
 const EXEMPT = new Set([
   // cron 認証 + withCronLock(600s) の日次ジョブ（vercel.json: `0 22 * * *`）。
-  // ユーザーが叩ける経路ではない。1テナント1日1回で、各テナントは自分の
-  // 月次コストキャップ配下（超過で settings.enabled が false に倒れる）。
-  // 件数上限は持たないが要らない（伸びる軸はテナント数だけ）。2026-09-04 検証。
+  // ユーザーが叩ける経路ではない。呼び出し数は「opt-in 済みテナント数 × 1/日」で
+  // 頭打ちになるので件数上限は要らない。2026-09-04 検証。
   "cron/daily-digest [GET]",
   // QStash 署名必須の非同期ジョブ。auth セッションが無くユーザーが直接叩けない。
-  // 費用を止めるのはループ内の月次コストキャップ判定。
-  // 件数上限（LINE_HISTORY_IMPORT_MAX、既定80）は実行時間 maxDuration=300 秒の枠。
-  // リクエスト単位の制限はキューワーカーには意味を持たない。2026-09-04 検証。
+  // 1回の実行の費用と実行時間の両方を件数上限（LINE_HISTORY_IMPORT_MAX、既定80）が
+  // 抑える。リクエスト単位の制限はキューワーカーには意味を持たない。2026-09-04 検証。
+  //
+  // **どちらも月次コストキャップは当てにしていない。** キャップは設定した
+  // テナントにしか効かず（resolveCapJpy の既定は 0 = 無効、本番の設定は 0 件）、
+  // Redis 不在・失敗時も fail-open する。免除の根拠は上の構造の側。
   "qstash/line-history-import [module]",
 ]);
 
