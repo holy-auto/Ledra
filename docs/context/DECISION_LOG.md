@@ -41,6 +41,13 @@
    - **delete と status 変更に `.select("id")` を付け、0行を `forbidden` として返す。**
      ガードだけだと、将来また RLS とずれたときに同じ嘘が復活する。
    - 検査を `src/lib/auth/__tests__/serverActionGuards.test.ts` に追加した。
+   - **【追記 同日・セルフレビュー】画面3枚（一覧・新規・編集）が「ログイン済みか」しか
+     見ていなかったので、`requireSiteContentAdmin()` を通すようにした。** ナビから消しても
+     URL 直打ちでは開け、押せば必ず `forbidden` になるボタンだけが並んでいた。
+     `ROUTE_PERMISSIONS` は誰も強制していない（`getRequiredPermission()` の呼び出し元 0 件、
+     middleware 無し）ため、画面側は各 `page.tsx` が自分で見るしかない。MISTAKE_LEDGER M-023。
+   - **【追記】`deleteSiteContentAction` の 0 行を一律 `forbidden` にしていたのを、
+     存在しない id は `not_found` に分けた。** 他の3アクションと揃えた。
 6. 捨てた選択肢:
    - **RLS を staff まで緩める** → 2026-04-24 の判断（加盟店は変更不可）を覆すことになる。
      公開サイトのブログ/ニュースは HOLY のものであって加盟店の資産ではない。
@@ -53,6 +60,11 @@
    - この検査は**ファイル先頭に `"use server"` を持つファイルだけ**を見る。
      関数内宣言（`voidCertificate` など）は対象外。完全な一覧は静的に作れない。
    - `site_content_posts` には `tenant_id` 列があるが、RLS は使っていない。列の要否は未検討。
+   - `ROUTE_PERMISSIONS`（48画面分）を強制する場所を作るかどうか。middleware を置くと
+     全 admin 画面の表示にセッション読み取りが1往復増える。OPEN_QUESTIONS に起票。
+   - `is_super_admin_user()` は**所属のどれかが super_admin なら真**（EXISTS）だが、
+     アプリの `resolveCallerWithRole` は**アクティブ1件の role** を返す。本番の super_admin は
+     所属1件なので今は一致するが、2件目を持つと**アプリだけが拒否する**ずれになる。
 9. 公開区分: 公開可（「DB とアプリで2つの正が矛盾し、緩い方を通ると黙って失敗する」は
    一般論として書ける。ロール名・人数は書かない）
 

@@ -214,6 +214,9 @@ export async function deleteSiteContentAction(id: string): Promise<ActionResult<
   if (isErr(auth)) return auth;
 
   const { data: row } = await auth.supabase.from("site_content_posts").select("type").eq("id", id).maybeSingle();
+  // 他の3アクションと同じく、存在しない id は not_found として返す。
+  // これが無いと、二度押しや古いリンクが「権限がありません」に化ける。
+  if (!row) return { ok: false, error: "not_found" };
 
   // .select() を付けて削除行数を見る。RLS で弾かれた場合 error は null のまま
   // 0行になるので、これが無いと「削除しました」と嘘をつく。
@@ -221,8 +224,7 @@ export async function deleteSiteContentAction(id: string): Promise<ActionResult<
   if (error) return { ok: false, error: error.message };
   if (!deleted?.length) return { ok: false, error: "forbidden" };
 
-  if (row?.type) revalidatePublicPaths(row.type as SiteContentType);
-  else revalidatePath("/admin/site-content");
+  revalidatePublicPaths(row.type as SiteContentType);
   return { ok: true, data: null };
 }
 

@@ -24,6 +24,16 @@
   2つの形で確認した**（Server Action のガード削除 / 権限表を緩める）。
   1回目は落ちず、**自分が書いた説明コメント内の `hasMinRole(...)` に反応していた**ため
   コメントを落としてから照合するようにした（MISTAKE_LEDGER M-022）。
+- **セルフレビューで見つけた追加分（同日）**: 画面3枚（一覧・新規・編集）が
+  「ログイン済みか」しか見ておらず、**ナビから消えても URL 直打ちで開けた**。
+  開くと押せば必ず `forbidden` になるボタンとフォームが並ぶ（M-019 と同じ形を、
+  M-019 を引用した PR でやった → MISTAKE_LEDGER M-023）。
+  `requireSiteContentAdmin()` を 3 枚に通し、**1 枚から外すと落ちる検査**を追加した。
+  併せて `deleteSiteContentAction` の 0 行を、存在しない id は `not_found`、
+  RLS 拒否は `forbidden` に分けた。
+- 判明した前提: **`ROUTE_PERMISSIONS`（48画面分）を強制している場所は無い**
+  （`getRequiredPermission()` の呼び出し元 0 件、`src/middleware.ts` 無し）。
+  画面の権限判定は各 `page.tsx` 任せ。OPEN_QUESTIONS に起票。
 
 ## 2026-09-04 判断待ち4件を main へマージし、本番へマイグレーションを適用した（PR #1026 / `87b71201`）
 

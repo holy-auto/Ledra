@@ -3,6 +3,28 @@
 > まだ決まっていないこと、判断に迷っていることを書く場所。決まったら
 > DECISION_LOG.md に移し、このファイルからは消す（削除履歴は git で追える）。
 
+## `ROUTE_PERMISSIONS`（画面と権限の対応表）を強制している場所が無い（2026-09-04）
+
+`src/lib/auth/permissions.ts` の `ROUTE_PERMISSIONS` は 48 画面分あり、
+`/admin/xxx` ごとに必要な `Permission` を宣言している。読み出す
+`getRequiredPermission()` も同じファイルにある。
+
+**その `getRequiredPermission()` の呼び出し元は 0 件で、`src/middleware.ts` は存在しない。**
+この表は実質「ナビの出し分けの参考値」にしかなっていない（ナビは
+`adminNav.tsx` / `catalog.ts` が各項目に持つ `requiredPermission` を独立に見ている）。
+
+- 結果、**画面の権限判定は各 `page.tsx` の書き方次第**になっている。
+  `requirePermission` を呼ぶ admin 配下の page は 2 枚だけだった
+  （`report-revenue`、`vehicles/[id]`）。PR #1030 でサイトコンテンツの 3 枚を追加。
+- 権限の穴かというと違う。書き込みは API ルート（`API_ROUTE_PERMISSIONS` + テストで強制）と
+  RLS が止める。**問題は「開けるが何もできない画面」が作れてしまうこと**
+  （MISTAKE_LEDGER M-019 / M-023）。
+- 選択肢は3つ。(a) middleware を置いて表を強制する、(b) 表を捨ててナビの宣言に一本化する、
+  (c) 現状維持で page ごとに書く。**(a) は Next.js の middleware で Supabase セッションを
+  読む必要があり、全 admin 画面の表示に1往復増える**ので、コストと効果の見積もりが要る。
+- どれを取るかは未決。【要確認】: 表に載っている画面のうち、実際にサーバ側で
+  権限を見ていないものが何枚あるかは数えていない。
+
 ## マイグレーション外で本番スキーマが変更された経路が不明（2026-09-04）
 
 `insurer_tenant_accesses`（複数形）と全組み合わせ自動付与トリガ2本は削除して決着した

@@ -108,4 +108,24 @@ describe("サイトコンテンツはプラットフォーム運営のみ", () =
       expect(hasPermission(role, "site_content:view"), `${role} が持っている`).toBe(false);
     }
   });
+
+  /**
+   * ナビから消しても画面は残る。3画面は「ログイン済みか」しか見ておらず、
+   * URL 直打ちで来た加盟店ユーザーには**押せば必ず forbidden になる
+   * ボタンとフォームだけ**が並んでいた（MISTAKE_LEDGER M-019 と同じ形）。
+   * サーバ側で権限を見ていることを固定する。
+   */
+  it("サイトコンテンツの3画面がサーバ側で権限を見ている", () => {
+    const pages = [
+      "app/admin/site-content/page.tsx",
+      "app/admin/site-content/new/page.tsx",
+      "app/admin/site-content/[id]/page.tsx",
+    ];
+    const missing = pages.filter(
+      // M-022 と同じ罠を避ける: 説明コメントに書いた呼び出しを拾わないよう落としてから見る。
+      (rel) =>
+        !/requireSiteContentAdmin\s*\(/.test(stripComments(readFileSync(join(process.cwd(), "src", rel), "utf8"))),
+    );
+    expect(missing).toEqual([]);
+  });
 });
