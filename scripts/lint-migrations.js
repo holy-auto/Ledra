@@ -37,6 +37,26 @@ const allowlist = new Set(
     : [],
 );
 
+
+/**
+ * マイグレーションが作るテーブル / ビューの一覧。
+ *
+ * 本番にしか無いオブジェクト（repo に CREATE が無い「ドリフト」）を
+ * `DROP ... IF EXISTS ... ON <table>` で触ると、**PostgreSQL 16 では NOTICE で
+ * skip されるが 15 では relation does not exist で落ちる。**
+ * 手元の再生は 16、Supabase は 15 なので、再生では一度も再現しない。
+ */
+const CREATED_RELATIONS = (() => {
+  const set = new Set();
+  for (const f of fs.readdirSync(MIGRATIONS_DIR).filter((x) => x.endsWith(".sql"))) {
+    const sql = fs.readFileSync(path.join(MIGRATIONS_DIR, f), "utf8");
+    const re = /CREATE\s+(?:OR\s+REPLACE\s+)?(?:TABLE|VIEW|MATERIALIZED\s+VIEW)\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:public\.)?"?([a-z_][a-z0-9_]*)"?/gi;
+    let m;
+    while ((m = re.exec(sql)) !== null) set.add(m[1].toLowerCase());
+  }
+  return set;
+})();
+
 /**
  * Each rule receives the SQL text (with `--`-style comments stripped) and
  * returns an array of human-readable violation messages.
@@ -220,6 +240,30 @@ const RULES = [
       return [
         `CONCURRENTLY を含むのに ${statements.length} 文あります — CONCURRENTLY の文だけを別ファイルに分けてください（Supabase はパイプラインで送るため 2 文目以降が SQLSTATE 25001 で落ちます）。`,
       ];
+    },
+  },
+  {
+    id: "drop-if-exists-on-uncreated-relation",
+    description:
+      "DROP POLICY/TRIGGER IF EXISTS on a relation that no migration creates fails on PostgreSQL 15 (Supabase) even though PostgreSQL 16 skips it silently. Guard it with to_regclass.",
+    check(sql) {
+      const violations = [];
+      // ON の後ろは schema.table か table。public 以外のスキーマ（storage.objects 等）は対象外。
+      const re =
+        /DROP\s+(POLICY|TRIGGER)\s+IF\s+EXISTS\s+[^;]*?\sON\s+(?:"?([a-z_][a-z0-9_]*)"?\s*\.\s*)?"?([a-z_][a-z0-9_]*)"?/gi;
+      let m;
+      while ((m = re.exec(sql)) !== null) {
+        const schema = (m[2] || "public").toLowerCase();
+        const rel = m[3].toLowerCase();
+        if (schema !== "public") continue;
+        if (CREATED_RELATIONS.has(rel)) continue;
+        // 同じファイル内で to_regclass ガードしていれば OK
+        if (new RegExp(`to_regclass\\(\\s*'(?:public\\.)?${rel}'`, "i").test(sql)) continue;
+        violations.push(
+          `${m[0].trim()} — ${rel} を作るマイグレーションが無い（本番にしか無いオブジェクト）。PostgreSQL 15 では relation does not exist で落ちるので、to_regclass で存在を見てから実行してください。`,
+        );
+      }
+      return violations;
     },
   }
 ];
