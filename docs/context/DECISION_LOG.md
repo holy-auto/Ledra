@@ -4,6 +4,64 @@
 > （新しい順）。実装の詳細は RELEASE_LOG.md、迷っている段階のものは
 > OPEN_QUESTIONS.md に書く。
 
+## 2026-09-04 CMS 予約投稿の TZ 残課題を解決。(a) は本番データで消え、(b) は実在したので直した
+
+1. 日付: 2026-09-04
+2. 起きたこと: OPEN_QUESTIONS「CMS予約投稿のTZ修正に伴う残課題」の2点を実測した。
+   **(a) は対象データが無く、(b) は実在した。**
+
+   **(a) 修正前に保存された予約投稿の 9 時間ずれ** — 本番を数えた（2026-09-04、Supabase MCP）。
+
+   | | 件数 |
+   |---|---|
+   | `site_content_posts` 全体 | 6 |
+   | `status='scheduled'` | **0** |
+   | `published_at` が未来 | **0** |
+   | `agent_announcements` 全体 | **0** |
+
+   予約状態の行も未来日時の行も無いので、**補正すべきデータが存在しない**。
+   既存6件はすべて公開済み（`published_at` は過去）で、表示時刻が最大 9 時間ずれうるだけ。
+
+   **(b) `agent-announcements` の naive 変換** — 実在した。
+   `AdminAnnouncementsClient.tsx` は保存時に
+   `new Date(form.published_at).toISOString()` を使っており、
+   `datetime-local` の naive 文字列を**ブラウザ TZ**で解釈していた。
+   読み出し側もローカル関数 `toLocalDatetime()`（`getFullYear()` 等＝ブラウザ TZ）だった。
+3. 以前の考え: 「(a) の件数を確認し、(b) の実害を確認してから判断する」。
+4. 違和感・問題: (b) は単体では往復整合が取れている（ブラウザが JST なら
+   local → 文字列 → local → UTC で戻る）ので、一見無害に見える。
+   しかし**同じ管理画面の中で日時の解釈が2通りある**のが問題だった。
+   `site-content` は `@/lib/datetime` の JST 固定ヘルパーを使っており、
+   `agent-announcements` だけがブラウザ TZ 依存。JST 以外の端末、
+   および SSR（Vercel は UTC）で 9 時間ずれる。
+5. 決めたこと:
+   - **(a) 何もしない。** 補正対象が 0 件。
+   - **(b) 既存ヘルパーに寄せる。** 新しい関数は作らず、`site-content` と同じ
+     `jstLocalInputToUtcIso` / `utcIsoToJstLocalInput` を使う。
+     ローカル重複だった `toLocalDatetime()` は削除。
+     表示も `formatDateTime`（`toLocaleString` ＝実行環境 TZ）から
+     `formatJstDateTime` に揃えた（入力と表示で TZ が違うと読み手が混乱する）。
+6. 捨てた選択肢:
+   - **(a) 一括補正マイグレーションを書く。** 却下。補正対象が 0 件。
+   - **(b) `agent-announcements` 用に別の変換を書く。** 却下。
+     正しいヘルパーが `@/lib/datetime` にあり、11件のテストで固定済み。
+     重複を作る理由が無い。
+   - **(b) 現状維持（別 UI で許容）。** 却下。`agent_announcements` は今 0 件なので
+     被害はまだ無いが、**最初の1件を入れた瞬間にずれる**。データが無いうちに直すのが安い。
+7. 判断理由: (a) は「決めること」ではなく「数えること」だった。数えたら消えた。
+   (b) は往復整合が取れているぶん見つけにくいが、**画面ごとに TZ の解釈が違う**状態は
+   必ずどこかで破綻する。既に正解が別ファイルにあるので、寄せるのが最小。
+8. まだ答えが出ていないこと:
+   - 他の管理画面に同じ naive 変換が残っていないかは**未棚卸し**。
+     `new Date(<datetime-local 値>).toISOString()` の形を横断で探せば洗えるが、
+     今回はスコープ外にした。
+9. 公開区分: **公開可**（「往復整合が取れているバグは見つけにくい」は note の題材になる）
+
+**検証**: `npx tsc --noEmit` エラー0、`eslint` エラー0（既存の
+`set-state-in-effect` 警告1件はこの変更とは無関係）。
+ヘルパー側は `src/lib/__tests__/datetime.test.ts` の11件で固定済みなので、
+呼び出し側の差し替えに新規テストは足していない。
+
 ## 2026-09-04 本番とリポジトリのマイグレーション記録を実測で突合。差分ゼロを確認し、解決済みエントリを削除
 
 1. 日付: 2026-09-04

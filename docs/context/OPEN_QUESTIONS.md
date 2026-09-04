@@ -1095,13 +1095,6 @@ DECISION_LOG「遷移表の未解決4件を代表判断で解決」参照。）
 - 次のアクション: truncated 警告が実際に出るようになったら (b) を実装。
 - 起票日: 2026-07-16
 
-## CMS予約投稿のTZ修正に伴う残課題（2026-07-25）
-- 状況: naive datetime-local を JST 解釈にする修正（本日 DECISION_LOG 参照）で今後の保存は正しくなるが、(a) 修正前に保存済みの予約/イベント日時は `published_at` 等が9時間ずれている可能性、(b) `agent-announcements`（`AdminAnnouncementsClient.tsx`＋`/api/admin/agent-announcements`）にも同種の naive `new Date(form.published_at).toISOString()` が残っている。
-- 選択肢: (a) 既存データ: 対象が少なければ手修正 / 多ければ一括補正マイグレーション / 影響軽微なら放置。(b) agent-announcements: 同じ `@/lib/datetime` ヘルパーへ寄せて修正 / 別UIで許容 / 挙動確認のうえ判断。
-- 影響範囲: (a) 既存予約投稿が意図と違う時刻に公開/表示される。(b) エージェント向けお知らせの公開日時が9時間ずれる可能性。
-- 次のアクション: (a) 本番 `site_content_posts` に status='scheduled' or 未来 published_at の行が何件あるか確認（【要確認】件数）。(b) agent-announcements の datetime 入力有無と実害を確認し、必要なら同ヘルパーで追随。
-- 起票日: 2026-07-25
-
 ## freee連携で複数税率を単一税区分（既定10%）で計上している（2026-07-24 バグ監査）
 - 状況: `accounting/freee/client.ts` が breakdown 全行に `tax_code=既定(10%課税売上)` を付与しており、8%軽減税率の行も10%の税区分で計上される（vat額自体は明示で渡すが税区分の分類が誤る）。コメント上は固定マッピングのMVP割り切りとして明記されている。
 - 選択肢: 案A 行の税率(8/10)に応じて freee の税区分コードを出し分ける（軽減税率マスタの対応表が必要）。案B 現状維持（軽減税率取引が無い加盟店には無害）。
