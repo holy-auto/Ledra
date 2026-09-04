@@ -98,6 +98,22 @@ At statement: 1
 そのぶん `create-index-without-concurrently` の対象からは外してある
 （`supabase/migrations.allowlist` の 2026-09-04 の節）。
 
+## bootstrap.sql に「あると便利」を足さない
+
+`scripts/replay/bootstrap.sql` は **Supabase が新規プロジェクトに既定で持っているもの
+だけ**を書く場所。ここに足りないものを足して再生を通すと、
+**マイグレーションが自分で作っていない依存に気づけなくなる。**
+
+2026-09-04 の実例: `pg_trgm` を bootstrap で作っていたため、
+`20260616000005_move_pg_trgm_to_extensions_schema.sql` の
+`alter extension pg_trgm set schema extensions` が手元では通っていた。
+**`pg_trgm` を作るマイグレーションは1本も無い**（本番には手で入っている）。
+Supabase の既定にも入らないので、実物のプレビュー DB では
+`extension "pg_trgm" does not exist (SQLSTATE 42704)` で落ちた。
+
+直し方は、そのマイグレーション自身に「無ければ作る」を持たせること。
+bootstrap からは既定でない拡張（pg_trgm / btree_gin / btree_gist / unaccent）を外した。
+
 ## 新しいマイグレーションを書くとき
 
 - **前提は自分より前のファイルにあること。** 検査はファイル名順に1パスで流すので、

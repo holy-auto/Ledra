@@ -102,6 +102,26 @@ At statement: 1
 
 検証: 1パス再生 447/447、lint:migrations OK、check:schema OK、tsc エラー0。
 
+### 続き: `pg_trgm` はどのマイグレーションでも作られていなかった
+
+CONCURRENTLY を直したら、実物のプレビュー DB は次で落ちた。
+
+```
+ERROR: extension "pg_trgm" does not exist (SQLSTATE 42704)
+At statement: 2 / alter extension pg_trgm set schema extensions
+```
+
+**`pg_trgm` を作るマイグレーションは1本も無い。** 本番には手で入っているだけで、
+Supabase の既定にも入らない。手元で再現しなかったのは
+`scripts/replay/bootstrap.sql` が先に作っていたから ——
+「本番にあるのにマイグレーションに書かれていない」ドリフトそのものを、
+再生検査自身が隠していた。
+
+- `20260616000005` を「無ければ作る / 別スキーマにあれば移す / 既に extensions なら何もしない」に変更。
+- **bootstrap から既定でない拡張4件（pg_trgm / btree_gin / btree_gist / unaccent）を削除。**
+  bootstrap は Supabase の既定だけを書く場所にする。
+- 検証: bootstrap から pg_trgm を抜いた状態でも 1パス再生 447/447（＝プレビュー DB と同じ条件）。
+
 ## 2026-09-03 マイグレーションの順序逆転 203 本を解消（1パス再生 443/443）
 
 `Supabase Preview` が1本目のマイグレーションで落ち続けていた問題。
