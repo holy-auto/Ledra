@@ -3,6 +3,7 @@ import { parseJsonSafe } from "@/lib/api/safeJson";
 
 import { useTransition, useState, useCallback } from "react";
 import HelpTooltip from "@/components/ui/HelpTooltip";
+import MutationGuard from "@/components/ui/MutationGuard";
 import { updateTenantSettingsAction } from "./actions";
 import { CheckoutErrorPanel } from "@/components/billing/CheckoutErrorPanel";
 
@@ -289,9 +290,17 @@ export default function SettingsForm({
         </div>
       )}
 
-      <button type="submit" disabled={isPending} className="btn-primary disabled:opacity-50">
-        {isPending ? "保存中…" : "設定を保存"}
-      </button>
+      {/* テナント設定は owner のみ（代表判断 2026-09-04）。この画面は settings:view
+          （admin も持つ）で開けるので、admin にはフォームを見せたうえで保存だけ塞ぐ。
+          押せば必ず失敗するボタンを見せない。 */}
+      <MutationGuard
+        minRole="owner"
+        fallback={<p className="text-xs text-muted">設定を変更できるのは店舗オーナーのみです。</p>}
+      >
+        <button type="submit" disabled={isPending} className="btn-primary disabled:opacity-50">
+          {isPending ? "保存中…" : "設定を保存"}
+        </button>
+      </MutationGuard>
 
       {/* Stripe Connect Section */}
       {columnsExist && (

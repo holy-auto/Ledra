@@ -270,7 +270,9 @@ export async function DELETE(req: NextRequest) {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
-    if (!requirePermission(caller, "customers:edit")) return apiForbidden();
+    // 削除は admin 以上（代表判断 2026-09-04）。顧客には施工履歴・証明書がぶら下がる不可逆操作なので、
+    // 作成・編集（staff）とは分ける。
+    if (!requirePermission(caller, "customers:delete")) return apiForbidden();
 
     const deny = await enforceBilling(req, {
       minPlan: "free",

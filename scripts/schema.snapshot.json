@@ -1707,15 +1707,6 @@
 "revoked_at",
 "tenant_id"
 ],
-"insurer_tenant_accesses": [
-"created_at",
-"id",
-"insurer_id",
-"is_active",
-"is_enabled",
-"tenant_id",
-"updated_at"
-],
 "insurer_tenant_contracts": [
 "contracted_at",
 "created_at",
