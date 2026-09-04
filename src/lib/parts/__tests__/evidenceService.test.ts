@@ -71,6 +71,9 @@ describe("stageInstallationPhoto", () => {
       capturedAt: null,
       deviceModel: null,
       gpsStripped: true,
+      reencoded: true,
+      orientationApplied: false,
+      metadataRemoved: false,
       gps: null,
     });
     hashMock.mockClear();
