@@ -1178,13 +1178,6 @@ DECISION_LOG「遷移表の未解決4件を代表判断で解決」参照。）
 - 次のアクション: EXCLUDE制約（案A）を第一候補に、既存予約データで制約違反が起きないかを検証してから小さく導入するか代表判断。
 - 起票日: 2026-07-24
 
-## 帳票明細バリデーションの二重定義（未使用 `documentItemSchema`）が実データ形状と非互換な潜在地雷（2026-08-03）
-- 状況: `src/lib/validations/document.ts` の `documentItemSchema`（`name` min1 必須／`type` enum／`tax_category` enum文字列）が、実際に保存・読込される明細形状（`description`／`item_type`／数値`tax_category` 10・8／`amount`）と完全に非互換。かつ `@/types/document` と同名の `DocumentItem` 型を別定義しており名前衝突している。現状フォームは `items`(`z.array(z.any())`) キーで送り、API も `input.items` のみ読むため無害だが、`documentCreateSchema.items_json`（厳格スキーマ結線）を使う経路に切り替わった瞬間に全明細がバリデーションで弾かれる／空になる。
-- 選択肢: 案A `documentItemSchema` を実データ形状（`description`/`item_type`/数値`tax_category`）に合わせて統一し `@/types/document` の型へ寄せる（正攻法だが波及調査が要る）／案B 未使用の `items_json` フィールドとスキーマを削除して `items`(実経路)一本化（最小・地雷除去）／案C コメントで「未使用・非互換」を明記し現状維持（最も安全だが地雷は残る）。
-- 影響範囲: 現時点で発火なし。将来 `items_json` キー送信・参照に変えると帳票明細が丸ごと保存・表示不能になり得る（今回の症状より重い）。
-- 次のアクション: `items_json` キーを送る/読む予定があるかを確認し、無ければ案B（削除）で地雷除去が妥当。
-- 起票日: 2026-08-03
-
 ## PageBar の `actions` 初回スナップショット固定は他ページでも潜在バグになりうる
 - 状況: PageHeader→`usePublishPageBar` は `actions`（ページ上部バーの操作ボタン群）を初回 publish 時の
   スナップショットとして保持し、`sig`（title/description/activeTab/tabs/有無）が変わらない限り再 publish しない
