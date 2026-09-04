@@ -15,7 +15,8 @@ Generator Product とそのコンテンツ処理ソフトのビルド/統合に�
 - **CodeQL**（`.github/workflows/codeql.yml`）: すべての push・pull request、および毎週月曜のスケジュール
   （`cron: "0 3 * * 1"`）で `security-extended` クエリスイートを実行し、静的解析でコードの脆弱性を検知する。
 - **Codacy**（`.github/workflows/codacy.yml`）: 静的解析・コード品質検査を CI で実行する。
-- **CI**（`.github/workflows/ci.yml`）: 型チェック・Lint・テストを push/PR で実行する。
+- **CI**（`.github/workflows/ci.yml`）: push/PR で **`npm audit --audit-level=high`**（高 severity 以上の
+  依存脆弱性を検出すると CI が失敗＝マージ阻止）、Lint、`tsc --noEmit` 型チェック、`test:coverage` を実行する。
 
 これらは Claim Generator（署名系 `@contentauth/c2pa-node`）と、コンテンツ/アサーションを処理するソフト
 （画像処理 `sharp`、アップロード処理 `src/lib/certificateImages/*`）を含む GP TOE 全体の依存を対象とする。
@@ -23,7 +24,8 @@ Generator Product とそのコンテンツ処理ソフトのビルド/統合に�
 ## 2. 脆弱性修正ポリシー（O.3 / O.4 / O.6）
 
 検知した脆弱性は重大度に応じて以下の期限内に修正・緩和する。修正は PR ベースで行い、Dependabot/CodeQL/
-Codacy のアラートをトリアージして対応する。
+Codacy のアラートをトリアージして対応する。加えて CI の `npm audit --audit-level=high` が高 severity 以上の
+依存脆弱性でビルドを失敗させ、未修正のままのマージを機械的に阻止する。
 
 | 重大度（CVSS v3+） | 修正/緩和の期限 |
 |---|---|
