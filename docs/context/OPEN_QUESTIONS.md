@@ -615,6 +615,26 @@ DECISION_LOG「遷移表の未解決4件を代表判断で解決」参照。）
 - 起票日: YYYY-MM-DD
 ```
 
+## POS レシートの共有リンクが必ず 404 になる（要件 5.10 が実質未達）（2026-09-03）
+- 状況: `apps/mobile/src/app/pos/receipt/[id].tsx:303`（予約レシート・既存）と
+  `apps/mobile/src/app/pos/receipt-standalone/[id].tsx:272`（飛び込みレシート・2026-09-03 に追加）が
+  `ReceiptShareDialog` に `https://app.ledra.co.jp/c/${id}` を渡している。この `id` は
+  **`payments.id`**。だが `/c/[public_id]` は**証明書**の公開ページで、
+  `certificates.public_id` を引いて `if (!data?.certificate?.public_id) notFound();`
+  （`src/app/c/[public_id]/page.tsx:163`）。**支払 UUID を渡せば必ず 404**。
+  顧客に SMS / Email で送ったリンクが開けない。
+  Web 側に POS の支払レシートを出す公開ページは見当たらない
+  （`sign/receipt/[token]` は証明書の受領サイン用フローで別物）。
+- 選択肢: 案A `payments` を引ける公開ページを Web に新設する。案B 支払を証明書に紐付けて
+  既存の `public_id` を使う。案C レシートを PDF / 画像として生成し、リンクではなく
+  ファイルを共有する（`ReceiptShareDialog` は Share Sheet も持っている）。
+- 影響範囲: **Apple 審査で要件 5.10「決済後にレシートを SMS / Email で送れること」を
+  問われると差し戻しになりうる。** 実害としては、顧客に送ったリンクが開けない。
+  予約経路にも同じ問題があるので、飛び込み側だけの問題ではない。
+- 次のアクション: 正しい公開先を決める（代表判断）。決まるまでコードは触らない
+  （推測で URL を変えても 404 が別の 404 になるだけのため）。
+- 起票日: 2026-09-03
+
 ## iOS 側にも同種のネイティブ設定検査が要るか（2026-08-25）
 - 状況: Android の minSdk 衝突が「17分ビルドして初めて分かる」形だったので、CI に
   `expo prebuild --platform android` + `check:native`（minSdk の整合検査）を入れた

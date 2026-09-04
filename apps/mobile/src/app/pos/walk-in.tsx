@@ -619,6 +619,11 @@ export default function WalkInCheckoutScreen() {
                         ? "initializing"
                         : "idle"
                 }
+                // 実行中の二度押しを止める。押すたびに handleCheckout に再入すると、
+                // 最初の discovery を中断するか PaymentIntent を2つ作りうる。
+                // 兄弟画面 pos/checkout/[id].tsx:336 と同じ意図。
+                // 要件 5.3 が禁じているのは「T&C 未同意でのグレーアウト」なので抵触しない。
+                disabled={processing}
                 onPress={() => {
                   setPaymentMethod("card");
                   setTapFailed(false);

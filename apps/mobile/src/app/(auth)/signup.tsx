@@ -94,19 +94,12 @@ export default function SignupScreen() {
       }
 
       setUser(profile);
-      // 店舗選択へ直行する。/api/signup は auth.users / tenants /
-      // tenant_memberships の3つしか作らないので新規テナントは必ず0店舗になり、
-      // select-store の「店舗が登録されていません」分岐（＝オンボーディングの入口）に落ちる。
-      // fromSignup=1 を渡すのは、選択後に生体認証の設定へ送るため（select-store の nextRoute）。
-      //
-      // 以前はここから /(auth)/verify-otp へ送っていたが、あの画面は
-      // 「800ms 待って無条件に成功する」スタブで、実際には何も検証していなかった。
-      // アプリ内サインアップは Apple の審査要件 2.x で審査員が必ず通る経路なので、
-      // 動作しない検証画面を挟んだままにはできない。/api/signup が既にテナント作成と
-      // 自動サインインまで済ませており、間に検証を挟む必然性もない。
+      // メール確認（OTP）を通す。verify-otp は成功後に
+      // /(auth)/select-store?fromSignup=1 へ送る（verify-otp.tsx:128）ので、
+      // そこから先の導線（店舗選択 → 生体認証 → オンボーディング）は変わらない。
       router.replace({
-        pathname: "/(auth)/select-store",
-        params: { fromSignup: "1" },
+        pathname: "/(auth)/verify-otp",
+        params: { email: email.trim(), fromSignup: "1" },
       });
     } catch (err: unknown) {
       setError(

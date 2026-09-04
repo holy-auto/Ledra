@@ -2860,13 +2860,15 @@ supabase migration repair --status reverted 20260825000000
   現行のデザイントークンで書き直し、iPhone 判定は既存の `useDeviceType`（`Platform.isPad` ベース）を
   再利用。旧実装のウィンドウ幅判定は iPad の Split View で反転する既知のバグ持ちだった。
   **閉じられない常設**にした（閉じられると要件を満たさない時間帯ができる）。
-- **サインアップ経路からスタブ画面を外した**（要件 2.x）: `signup.tsx` の遷移先を
-  `/(auth)/verify-otp` から `/(auth)/select-store?fromSignup=1` へ。
-  `verify-otp` は 800ms 待って無条件に成功するだけで、何も検証していなかった。
-  Apple のレビュアーが必ず通る経路。ファイル自体は残している（経路からの参照はゼロ）。
+- ~~**サインアップ経路からスタブ画面を外した**~~ → **撤回した（回帰バグだった）**:
+  当時 `verify-otp` は 800ms 待って無条件に成功するスタブで、それ自体は事実だった。
+  だがその後 `main` を取り込んだ結果 `5f6931b`（#1012「サインアップ確認 OTP を実配線」）が入り、
+  本物の実装になっていた。私の変更は**新規サインアップのメール確認を素通りさせる**ものだったので、
+  `signup.tsx` の遷移先を `/(auth)/verify-otp` に戻した。詳細は MISTAKE_LEDGER M-016。
 - **飛び込み（walk-in）会計に専用 Tap to Pay ボタンを追加**（要件 5.1/5.2/5.5）:
   `pos/walk-in.tsx`。支払方法リストより上に配置（配置そのものが要件 5.2）。
-  `disabled` を渡していないのは要件 5.3（T&C 未同意でも常時押下可）。
+  `disabled={processing}` で実行中の二度押しだけ止める（要件 5.3 が禁じるのは
+  「T&C 未同意でのグレーアウト」なので抵触しない）。
   あわせて `handleCheckout` に `methodOverride` 引数を足した。`setPaymentMethod("card")` は
   次のレンダーまで反映されないので、同じ tick で `handleCheckout()` を呼ぶと直前の
   支払方法を読んでしまうため。**この変更で決済ボタンが `onPress={handleCheckout}` と
@@ -2874,8 +2876,12 @@ supabase migration repair --status reverted 20260825000000
 - **飛び込みレシートに送信導線を追加**（要件 5.10）: `pos/receipt-standalone/[id].tsx` に
   `ReceiptShareDialog` を追加。予約レシート（`pos/receipt/[id].tsx`）にはあったが、
   飛び込み経路はこちらに来るため送信手段が無かった。
-- **未使用の `NSMicrophoneUsageDescription` を削除**: `app.json` の `expo-camera` に
-  `microphonePermission: false`。マイクを使うコードは無く（`recordAsync` / `mode="video"` /
+- **未使用のマイク権限を iOS/Android 両方から削除**: `expo-camera` と `expo-image-picker` の
+  両方に `microphonePermission: false`。iOS は `NSMicrophoneUsageDescription` が消え、
+  Android は `expo-image-picker` の `withBlockedPermissions` 経由で
+  `RECORD_AUDIO` に `tools:node="remove"` が付く。
+  **`android.permissions` から消すだけでは効かない**（`expo-camera` 自身の
+  `AndroidManifest.xml` が宣言しており、merger が戻す）。マイクを使うコードは無く（`recordAsync` / `mode="video"` /
   `expo-av` の使用箇所ゼロ）、Expo の英語ボイラープレートが入ったままだった。
   prebuild し直してキーが消え、他9件の用途文言が残ることを確認。
 - **提出ガイドを実態に合わせた**: `docs/tap-to-pay-submission-guide.md`。
