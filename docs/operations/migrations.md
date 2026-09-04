@@ -75,14 +75,39 @@ node scripts/replay-migrations.mjs --keep   # 終了後も DB を残す（調査
 - 本番にしか無い関数・ビューへの `revoke` / `grant` / `ALTER VIEW` を存在チェック付きに
   （`20260531000006` / `20260616000007` / `20260622000000`）
 
+## CONCURRENTLY は「1ファイル1文」
+
+2026-09-04 に、順序逆転を直して初めて実物のプレビュー DB が先まで進み、次が出た。
+
+```
+ERROR: CREATE INDEX CONCURRENTLY cannot be executed within a pipeline (SQLSTATE 25001)
+At statement: 1
+```
+
+**Supabase のブランチ機能は、1ファイルに複数文があるとパイプラインで送る。**
+`CREATE INDEX CONCURRENTLY` はパイプラインの中では実行できないので、
+**2文目以降**の CONCURRENTLY が落ちる（1文目は通る）。
+
+**手元では再現しない。** `npm run check:migrations` は `psql -f` で流していて
+パイプラインを使わないため、CONCURRENTLY が何文あっても通ってしまう。
+そこで**静的な lint** で止めている
+（`scripts/lint-migrations.js` の `concurrently-in-multi-statement-file`）。
+
+適用済みだった13ファイルは **CONCURRENTLY を外した**（本番では再適用されず、
+空 DB では対象テーブルが空なのでロックの問題は起きない）。
+そのぶん `create-index-without-concurrently` の対象からは外してある
+（`supabase/migrations.allowlist` の 2026-09-04 の節）。
+
 ## 新しいマイグレーションを書くとき
 
 - **前提は自分より前のファイルにあること。** 検査はファイル名順に1パスで流すので、
   「後ろのファイルが作るもの」に依存すると必ず落ちる。同じファイルの中で作るのが
   いちばん安全。どうしても前後が逆転する場合は、前側を「前提が無ければ飛ばす」形に
   して、依存が揃った位置に補いのファイルを置く（2026-09-03 の節を参照）。
-- `CREATE INDEX` は `CONCURRENTLY` を付け、**専用のファイル**に分ける
-  （トランザクション内で実行できないため）。`npm run lint:migrations` が見ている。
+- `CREATE INDEX` は `CONCURRENTLY` を付け、**専用のファイル**に分ける。
+  理由は2つで、(1) トランザクション内で実行できない、(2) Supabase は複数文を
+  パイプラインで送るため2文目以降が落ちる。**CONCURRENTLY を含むファイルは1文だけ。**
+  `npm run lint:migrations` が両方を見ている。
 - `ADD CONSTRAINT ... CHECK` は `NOT VALID` を付け、`VALIDATE` を別ファイルにする。
 - `SECURITY DEFINER` の関数は `SET search_path = ''` を付け、参照を全てスキーマ
   修飾する。

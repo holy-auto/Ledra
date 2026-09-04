@@ -205,6 +205,23 @@ const RULES = [
       return violations;
     },
   },
+  {
+    id: "concurrently-in-multi-statement-file",
+    description:
+      "A file using CONCURRENTLY must contain exactly ONE statement (Supabase sends multi-statement migrations as a pipeline, and CONCURRENTLY cannot run in one).",
+    check(sql) {
+      // 2026-09-04 に実物のプレビュー DB で判明した制約。ファイル名順・1パスで流す
+      // Supabase のブランチ機能は、1ファイルに複数文があるとパイプラインで送るため
+      //   ERROR: CREATE INDEX CONCURRENTLY cannot be executed within a pipeline (SQLSTATE 25001)
+      // で 2 文目以降が落ちる。手元の psql -f では再現しないので、静的に止める。
+      if (!/\bCONCURRENTLY\b/i.test(sql)) return [];
+      const statements = sql.split(";").filter((s) => s.trim());
+      if (statements.length <= 1) return [];
+      return [
+        `CONCURRENTLY を含むのに ${statements.length} 文あります — CONCURRENTLY の文だけを別ファイルに分けてください（Supabase はパイプラインで送るため 2 文目以降が SQLSTATE 25001 で落ちます）。`,
+      ];
+    },
+  }
 ];
 
 function stripComments(sql) {

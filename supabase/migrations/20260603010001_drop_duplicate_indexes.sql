@@ -1,3 +1,12 @@
+-- 【後から内容だけ修正】このファイルは本番へ適用済み（版番号は変えていない）。
+-- **CONCURRENTLY を外した。** Supabase のブランチ機能はマイグレーションの複数文を
+-- パイプラインで送るため、2文目以降の CONCURRENTLY が
+-- `CREATE INDEX CONCURRENTLY cannot be executed within a pipeline (SQLSTATE 25001)`
+-- で落ちる。CONCURRENTLY が要るのは「書き込みが走っている本番のテーブルをロックしない」
+-- ためで、このファイルは本番では再適用されず、空 DB では対象テーブルが空なので
+-- ロックの問題は起きない。
+-- 新しいファイルで CONCURRENTLY を使うときは **1ファイル1文** にすること
+-- （`npm run lint:migrations` の concurrently-in-multi-statement-file が見ている）。
 -- =============================================================
 -- 重複インデックスの整理 (Drop duplicate indexes)
 -- Resolves Supabase performance advisor lint 0009_duplicate_index (8 of 9 findings).
@@ -30,11 +39,11 @@
 --      本番側の重複（制約 vs index）は別途専用 migration で安全に解消する。
 -- =============================================================
 
-drop index concurrently if exists public.idx_ita_insurer;
-drop index concurrently if exists public.insurer_users_user_idx;
-drop index concurrently if exists public.insurer_users_insurer_user_unique;
-drop index concurrently if exists public.insurers_slug_idx;
-drop index concurrently if exists public.idx_passport_referral_leads_token;
-drop index concurrently if exists public.idx_reservations_tenant_scheduled;
-drop index concurrently if exists public.vehicles_plate_hash_idx;
-drop index concurrently if exists public.vehicles_public_id_ux;
+drop index if exists public.idx_ita_insurer;
+drop index if exists public.insurer_users_user_idx;
+drop index if exists public.insurer_users_insurer_user_unique;
+drop index if exists public.insurers_slug_idx;
+drop index if exists public.idx_passport_referral_leads_token;
+drop index if exists public.idx_reservations_tenant_scheduled;
+drop index if exists public.vehicles_plate_hash_idx;
+drop index if exists public.vehicles_public_id_ux;

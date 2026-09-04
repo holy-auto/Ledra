@@ -15,6 +15,14 @@
 > 実測で、本番の標準雛形5件は `scope='shared'` ではなく **`tenant_id IS NULL`** で
 > 共有が実現されていることが分かった（`scope` 列が実態を表していない）。
 
+> 2026-09-04 追記(8): **CONCURRENTLY を「1ファイル1文」に矯正した（未マージ、PR #1025）。**
+> 順序逆転を直したことで実物のプレビュー DB が初めて先まで進み、
+> `CREATE INDEX CONCURRENTLY cannot be executed within a pipeline` が出た。
+> Supabase は1ファイルの複数文をパイプラインで送るため、2文目以降の CONCURRENTLY が落ちる。
+> 適用済み13ファイルから CONCURRENTLY を外し、新規ファイルは lint
+> （`concurrently-in-multi-statement-file`）で1文に縛った。
+> **手元の `check:migrations` ではこの差は再現しない**（`psql -f` はパイプラインを使わない）。
+
 > 2026-09-03 追記(7): **マイグレーションの順序逆転 203 本を解消した（未マージ）。**
 > ファイル名順に1パスで流すと 438 本中 203 本が落ちる状態で、`Supabase Preview` が
 > 1本目から止まっていた。**ファイル名（版番号）は1つも変えず**、既適用ファイルの
