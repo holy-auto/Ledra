@@ -1,0 +1,40 @@
+%% Ledra Generator Product — Target of Evaluation (TOE), Backend class, Assurance Level 1
+%% TOE boundary: from asset capture/upload through claim signing to persistence of the signed asset.
+flowchart TB
+    subgraph CLIENT["Client tier (capture / upload)"]
+        WEB["Web admin app<br/>(browser, camera-only capture)"]
+        MOB["Mobile app<br/>(camera-only capture,<br/>device not stored)"]
+    end
+
+    subgraph TOE["GP TOE boundary — Backend (Vercel serverless + Supabase)"]
+        direction TB
+        AUTH["Caller authentication<br/>Web: resolveCallerWithRole (Supabase auth + role)<br/>Mobile: resolveMobileCaller + role + capture-nonce<br/>(device attestation implemented, default OFF until Phase 3)"]
+        PIPE["Authenticity pipeline<br/>SHA-256 hash (pre-sign) · EXIF/GPS strip &amp; re-encode (sharp)<br/>RFC3161 TSA seal · capture-nonce consume · stage tag"]
+        ASSERT["Assertion generation<br/>c2pa.actions.v2 (created+orientation+converted+edited)<br/>com.ledra.capture (cert id, VIN, nonce sealed, TSA time)"]
+        SIGN["Claim signing<br/>@contentauth/c2pa-node LocalSigner<br/>ES256 / P-256"]
+        KEY["Signing credential<br/>C2PA_SIGNER_CERT / _KEY<br/>(env, encrypted at rest; process-resident while signing)"]
+        STORE["Signed asset + manifest summary<br/>persisted to Supabase Storage / Postgres<br/>(service-role client; tenant isolation at app layer, RLS bypassed)"]
+    end
+
+    subgraph EXT["External services"]
+        CA["Conformant CA<br/>(Claim Signing Certificate,<br/>manual provisioning — post-conformance)"]
+        TSA["RFC3161 TSA"]
+        CHAIN["Polygon anchoring<br/>(optional, hash only)"]
+    end
+
+    WEB --> AUTH
+    MOB --> AUTH
+    AUTH --> PIPE --> ASSERT --> SIGN --> STORE
+    KEY --> SIGN
+    CA -. issues cert .-> KEY
+    PIPE -. hash .-> TSA
+    %% Polygon anchors the PRE-SIGN pipeline hash (SHA-256 of the stripped buffer),
+    %% not the stored signed bytes — embedding the manifest changes the bytes.
+    PIPE -. pre-sign hash .-> CHAIN
+
+    classDef toe fill:#e8f0fe,stroke:#1a73e8,stroke-width:1px;
+    classDef ext fill:#f1f3f4,stroke:#5f6368,stroke-width:1px;
+    classDef cli fill:#fef7e0,stroke:#f9ab00,stroke-width:1px;
+    class AUTH,PIPE,ASSERT,SIGN,KEY,STORE toe;
+    class CA,TSA,CHAIN ext;
+    class WEB,MOB cli;
