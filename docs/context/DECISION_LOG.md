@@ -4,6 +4,58 @@
 > （新しい順）。実装の詳細は RELEASE_LOG.md、迷っている段階のものは
 > OPEN_QUESTIONS.md に書く。
 
+## 2026-09-04 Server Action を全部読み、サイトコンテンツのアプリ側ガードが DB とずれていたのを直した
+
+1. 日付: 2026-09-04
+2. 起きたこと: 前の作業（PR #1026）で `updateTenantSettingsAction` に**ロール判定が1つも無い**のを
+   見つけ、「同じ形の Server Action が他にもあるか」を未解決として残していた。それを洗った。
+3. 以前の考え: 「Server Action は数が多いだろうから検出器を書く必要がある」と思っていた。
+4. 違和感・問題: **数えたら7箇所しか無かった。** 検出器を作らず全部読んだ。
+
+   | Server Action | ガード | 判定 |
+   |---|---|---|
+   | `createCertAction` | `certificates:create` | OK |
+   | `updateTenantSettingsAction` | owner（PR #1026 で修正） | OK |
+   | `uploadLogo` / `uploadSeal` | owner（PR #1026 で修正） | OK |
+   | `voidCertificate` | `certificates:void` | OK |
+   | `signIn` | 認証前なので不要 | OK |
+   | **`site-content` の4アクション** | `hasMinRole(role, "staff")` | **ずれ** |
+
+   `site_content_posts` の RLS は **`is_super_admin_user()` しか通さない**。
+   マイグレーション `20260424010000_site_content_posts_super_admin_only.sql` のヘッダに
+   **「加盟店（owner/admin/staff/viewer）はDB直接操作でも変更不可」**と明記してある。
+   つまり**判断は既に済んでいて、アプリ側だけが追随していなかった**。
+
+   結果として staff/admin/owner は、アプリのガードを通過してから RLS に弾かれる。
+   **UPDATE と DELETE は 0 行・エラー無しなので `{ok:true}` が返る。**
+   本番の24人（owner 23 / staff 1）が「削除しました」「公開しました」と表示されながら
+   何も変わらない状態だった。`site_content:view` は viewer を含む全ロールが持つので、
+   **メニューも全員に出ていた**。
+5. 決めたこと:
+   - **`site_content:view` / `site_content:manage` を super_admin 限定にする。**
+     既存の `platform:*`（super_admin のみ）と同じ形に揃えた。新しい事業判断ではなく、
+     2026-04-24 の判断にアプリを合わせただけ。
+   - `authorize()` を `resolveCallerWithRole` + `requirePermission(caller, "site_content:manage")` に。
+     あわせて、ローカルの membership 引き（並び順もアクティブテナントの cookie も見ない）を
+     `caller.tenantId` に置き換えた。`updateTenantSettingsAction` と同じ欠陥だった。
+   - **delete と status 変更に `.select("id")` を付け、0行を `forbidden` として返す。**
+     ガードだけだと、将来また RLS とずれたときに同じ嘘が復活する。
+   - 検査を `src/lib/auth/__tests__/serverActionGuards.test.ts` に追加した。
+6. 捨てた選択肢:
+   - **RLS を staff まで緩める** → 2026-04-24 の判断（加盟店は変更不可）を覆すことになる。
+     公開サイトのブログ/ニュースは HOLY のものであって加盟店の資産ではない。
+   - **`site_content:view` は全ロールに残す** → 何も変更できない画面のメニューを
+     24人に出し続けることになる。M-019（押せないボタン）と同じ。
+   - **検出器を書いてから読む** → 7箇所しかないので読む方が速く、確実だった。
+7. 判断理由: DB とアプリで**2つの正が矛盾していたら、明示的に書かれている方が正**。
+   今回はマイグレーションのヘッダに理由まで書いてあった。
+8. まだ答えが出ていないこと:
+   - この検査は**ファイル先頭に `"use server"` を持つファイルだけ**を見る。
+     関数内宣言（`voidCertificate` など）は対象外。完全な一覧は静的に作れない。
+   - `site_content_posts` には `tenant_id` 列があるが、RLS は使っていない。列の要否は未検討。
+9. 公開区分: 公開可（「DB とアプリで2つの正が矛盾し、緩い方を通ると黙って失敗する」は
+   一般論として書ける。ロール名・人数は書かない）
+
 ## 2026-09-04 判断待ちだった4件を確定（通知の宛先・テナント設定・共有テンプレート・削除権限）
 
 1. 日付: 2026-09-04

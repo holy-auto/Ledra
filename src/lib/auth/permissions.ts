@@ -71,6 +71,10 @@ export type Permission =
   // Other
   | "announcements:view"
   | "news:view"
+  // サイトコンテンツ（Ledra 公開サイトのブログ/ニュース/イベント）は
+  // プラットフォーム運営のもの。加盟店の資産ではない。
+  // 20260424010000_site_content_posts_super_admin_only.sql:
+  //   「加盟店（owner/admin/staff/viewer）はDB直接操作でも変更不可」
   | "site_content:view"
   | "site_content:manage"
   | "price_stats:view"
@@ -192,8 +196,6 @@ const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     "register_sessions:manage",
     "announcements:view",
     "news:view",
-    "site_content:view",
-    "site_content:manage",
     "price_stats:view",
     "management:view",
     "audit:view",
@@ -249,8 +251,6 @@ const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     "register_sessions:manage",
     "announcements:view",
     "news:view",
-    "site_content:view",
-    "site_content:manage",
     "price_stats:view",
     "management:view",
     "audit:view",
@@ -292,8 +292,6 @@ const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     "payments:create",
     "announcements:view",
     "news:view",
-    "site_content:view",
-    "site_content:manage",
     "price_stats:view",
     "template_options:view",
     "shop:view",
@@ -313,7 +311,6 @@ const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     "payments:view",
     "announcements:view",
     "news:view",
-    "site_content:view",
     "price_stats:view",
     "template_options:view",
     "shop:view",

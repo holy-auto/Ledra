@@ -36,6 +36,24 @@
   （`is_active=false` / `revoked_at=now()`、行は監査のため残す）。`insurer_access_logs` は
   当該保険会社について **0件**で、実際に閲覧された記録は無い。詳細は DECISION_LOG 2026-09-03。
 
+## Server Action の完全な一覧が静的に作れない（2026-09-04）
+
+`serverActionGuards.test.ts` は**ファイル先頭に `"use server"` を持つファイル**だけを見る。
+Next.js は関数内にも `"use server"` を書けるので（`vehicles/[id]/page.tsx` の
+`voidCertificate`、`LogoSealSection.tsx` の `uploadLogo` / `uploadSeal`、
+`login/page.tsx` の `signIn`）、この検査は**完全ではない**。
+
+2026-09-04 時点では関数内宣言4箇所も1つずつ読んで確認済み（すべてガードあり、
+または認証前で不要）。だが新しく足されたものは検査に載らない。
+
+案: 関数内の `"use server"` を含む関数本体を切り出して、同じ検査に掛ける。
+`sourceScan.ts` の `enclosingFunctions()` が使えるかもしれない。
+未解決なのは、その関数が「認可を要する書き込みをしているか」をどう判定するか。
+ガードの有無だけ見ると、読み取り専用の Server Action まで引っかかる。
+
+- 起票日: 2026-09-04
+- 判断者: 未定
+
 ## AI の検出器が `getAnthropicClient()` に依存している（2026-09-03）
 
 AI を呼ぶハンドラの洗い出しは終わり、46単位すべてが制限ありか理由付き免除になった

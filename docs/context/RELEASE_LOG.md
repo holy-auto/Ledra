@@ -4,6 +4,27 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-09-04 サイトコンテンツのアプリ側ガードが DB とずれていたのを直した
+
+- 内容: Server Action 7箇所を全部読み、**`site-content` の4アクションだけ**が
+  アプリ側 `staff` 以上・DB 側 `is_super_admin_user()` でずれていた。
+  `site_content:view` / `site_content:manage` を **super_admin 限定**にし、
+  `authorize()` を権限表と同じ動詞で見るようにした。
+- 実害: staff/admin/owner はアプリのガードを通過してから RLS に弾かれる。
+  **UPDATE と DELETE は 0 行・エラー無しなので `{ok:true}` が返っていた。**
+  本番24人が「削除しました」と表示されながら何も変わらない状態。
+  `site_content:view` は viewer を含む全ロールが持っていたので**メニューも全員に出ていた**。
+- 判断は新しくない。`20260424010000_site_content_posts_super_admin_only.sql` のヘッダに
+  「加盟店（owner/admin/staff/viewer）はDB直接操作でも変更不可」と書いてあり、
+  **アプリだけが追随していなかった**。
+- 副次: `authorize()` のローカル membership 引き（並び順もアクティブテナントの cookie も
+  見ない）を `caller.tenantId` に置き換えた。`updateTenantSettingsAction` と同じ欠陥。
+  delete と status 変更に `.select("id")` を付け、0行を `forbidden` として返すようにした。
+- 検出: `src/lib/auth/__tests__/serverActionGuards.test.ts`。**ガードを消して落ちることを
+  2つの形で確認した**（Server Action のガード削除 / 権限表を緩める）。
+  1回目は落ちず、**自分が書いた説明コメント内の `hasMinRole(...)` に反応していた**ため
+  コメントを落としてから照合するようにした（MISTAKE_LEDGER M-022）。
+
 ## 2026-09-04 判断待ち4件を main へマージし、本番へマイグレーションを適用した（PR #1026 / `87b71201`）
 
 - **本番適用済み**（Supabase migration `tenant_settings_owner_only_and_shared_templates`）。
