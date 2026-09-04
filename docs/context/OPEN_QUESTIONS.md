@@ -23,7 +23,7 @@
 - **2026-09-03 Administrator が Intake 受理・証拠パッケージ要求（Record ID 01a06690-d01e-7608-ad8a-cd4f1a49d76e）**。
 - **2026-09-04 方針: validate 申告を取り下げ、Generator（生成）のみで申請**（DECISION_LOG 2026-09-04）。これに伴い ingredient サンプル・crJSON harness は**不要化**（validate 依存の残タスクを削除）。
 - 残タスク（生成のみ・B 方針）:
-  1. ✅ **生成サンプル出力** a-d（jpeg/png/webp/heic）生成・送付済み（全 Valid/specVersion2.4/allActionsIncluded=true、テスト証明書=untrusted 想定内）。
+  1. **生成サンプル出力** a-d（jpeg/png/webp/heic）: **生成・内部検証済み**（全 Valid/specVersion2.4/allActionsIncluded=true、テスト証明書=untrusted 想定内）で代表へ受け渡し済み。**C2PA への提出は未**（下記 4 の Conformulator 自己テスト後に代表が実施）。
   2. ✅ **GPSA を設計レベル現状のみに改訂**＋運用文書＋図（作成済み。validate を除外し生成のみに更新）。
   3. **Administrator へ訂正メール送付**（validate 取り下げ。文面 `scratchpad/ledra-intake-correction-email.md`）— 代表が送信。
   4. **Conformulator（https://c2pa-conformulator.netlify.app/）で生成サンプルを自己テスト**後に提出。
