@@ -23,7 +23,7 @@
 --   （IF NOT EXISTS）にまとめて再適用する。正しく適用済みの環境では no-op。
 --   ※ 元のファイルは変更しない（履歴の再現性を保つため）。
 --
---   索引は CREATE INDEX CONCURRENTLY がトランザクション内で実行できないため、
+--   索引は元は CREATE INDEX CONCURRENTLY だったため（2026-09-04 に外した）、
 --   別ファイル（20260815000001_repair_drift_missing_indexes.sql）に分ける。
 --
 --   欠落の洗い出しは、リポジトリのマイグレーションを機械パースして得た期待値を

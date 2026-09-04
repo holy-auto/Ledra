@@ -57,13 +57,18 @@ node scripts/replay-migrations.mjs --keep   # 終了後も DB を残す（調査
 1. **前提が無いときは飛ばす。** 既適用ファイルの**中身だけ**を書き換え、
    `to_regclass` / `to_regprocedure` で前提の有無を見てから実行する。
    版番号を変えていないので本番では再適用されない＝本番への影響は無い。
-2. **飛ばした分を後ろで補う。** 依存が揃った位置に新しいファイルを置く。
+2. **飛ばした分を、依存が揃った位置の既適用ファイルの末尾で補う。**
    いずれも「既にあれば何もしない」形なので、本番では no-op。
-   - `20260313030000_replay_early_schema.sql`（customers / invoices / 列追加）
-   - `20260313030001_replay_early_schema_index.sql`
-   - `20260314000006_replay_market_inquiries.sql`
-   - `20260321000003_replay_customer_login_codes_index.sql`
-   - `20260601000009_replay_supply_columns.sql`
+
+   | 補う中身 | 足した先（既適用ファイルの末尾） |
+   |---|---|
+   | customers / invoices / certificates・tenants の列・索引 | `20260313020000_core_tables.sql` |
+   | market_inquiries / _messages / market_deals | `20260314000003_market_vehicles.sql` |
+   | `idx_customer_login_codes_tenant_email` | `20260321000001_customer_portal_tables.sql` |
+   | supply_partners.is_trusted 等 | `20260601000006_supply_partners.sql` |
+   | email 系関数の `revoke execute` | `20260826000005_repair_unreplayable_objects.sql` |
+
+   **新しいファイルを作ってはいけない。** 下の節を参照。
 
 あわせて、**一度も存在しなかった名前**を参照していた既適用ファイルも中身を直した。
 いずれも本番の実体に合わせたもので、根拠は
@@ -74,6 +79,27 @@ node scripts/replay-migrations.mjs --keep   # 終了後も DB を残す（調査
 - 戻り値の型が違う同名関数を先に DROP（`20260325900000` / `20260325900001`）
 - 本番にしか無い関数・ビューへの `revoke` / `grant` / `ALTER VIEW` を存在チェック付きに
   （`20260531000006` / `20260616000007` / `20260622000000`）
+
+## 再生を通すための補いは、新しいファイルにしない
+
+**空 DB の再生を通すためだけの補いは、依存が揃った位置の「既に本番へ適用済みの
+ファイル」の末尾に足す。新しいファイルを作らない。**
+
+理由は再生ではなく本番側にある。本番の `supabase db push` は、本番の
+`schema_migrations` の最新より**古い**バージョンのファイルが未適用で残っていると
+out-of-order で停止し、**それ以降のマイグレーションが本番へ一切届かなくなる**
+（`.github/workflows/db-migrate.yml` の不変条件2）。2026-08-02〜08-15 に13日間
+これで止まり、証明書発行が全件停止している。
+
+補いは定義上「依存が揃う位置」＝過去の位置に置きたいので、新しいファイルにすると
+必ず古いバージョンになる。適用済みファイルの**中身**を変えるぶんには、版番号が
+変わらないので本番では再適用されない＝影響が無い。だから中身に足す。
+
+- `npm run lint:migrations` の `migration-version-before-base-head` が静的に見ている
+  （base ブランチに在るどのファイルよりも後のバージョンか）。
+- **本番へ当てたい変更**は逆で、必ず本番の最新より後のバージョンの新しいファイルに
+  する。マージ直前に本番の台帳を引いて確かめること:
+  `select max(version) from supabase_migrations.schema_migrations;`
 
 ## CONCURRENTLY は「1ファイル1文」
 
@@ -133,10 +159,14 @@ drop policy if exists foo on public.missing_table;
 
 ## 新しいマイグレーションを書くとき
 
+- **バージョンは本番の最新より後にすること。** 古いと本番の `db push` が
+  out-of-order で止まり、以降のマイグレーションが本番へ届かなくなる。
+  マージ直前に本番の台帳を引いて確かめる（上の節）。
 - **前提は自分より前のファイルにあること。** 検査はファイル名順に1パスで流すので、
   「後ろのファイルが作るもの」に依存すると必ず落ちる。同じファイルの中で作るのが
   いちばん安全。どうしても前後が逆転する場合は、前側を「前提が無ければ飛ばす」形に
-  して、依存が揃った位置に補いのファイルを置く（2026-09-03 の節を参照）。
+  して、**依存が揃った位置の既適用ファイルの末尾**に補いを足す（新しいファイルは
+  作らない。2026-09-03 と「再生を通すための補いは〜」の節を参照）。
 - `CREATE INDEX` は `CONCURRENTLY` を付け、**専用のファイル**に分ける。
   理由は2つで、(1) トランザクション内で実行できない、(2) Supabase は複数文を
   パイプラインで送るため2文目以降が落ちる。**CONCURRENTLY を含むファイルは1文だけ。**

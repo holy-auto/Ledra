@@ -1,3 +1,10 @@
+-- 【2026-09-04 改名】元のファイル名は 20260901000001 だった。本番の適用済み最新は
+-- 20260904123252 で、それより古いバージョンの未適用ファイルがあると
+-- `supabase db push` が out-of-order で停止し、以降のマイグレーションが本番へ
+-- 一切届かなくなる（.github/workflows/db-migrate.yml の不変条件2）。
+-- 本番の schema_migrations に 20260901000001 が無いことを名指しで確認したうえで改名した
+-- （適用済みを改名すると不変条件1に抵触する）。
+-- `npm run lint:migrations` の migration-version-before-base-head が静的に見ている。
 -- 外注施工の記録を「発注」に紐付ける: certificates.job_order_id
 --
 -- 背景:
@@ -35,7 +42,7 @@ alter table certificates
 comment on column certificates.job_order_id is
   'テナント間の外注（job_orders）で施工した場合の発注 ID。受発注の双方が同じ発注画面から成果物を辿るための紐付け。施工者テナントは job_orders.to_tenant_id 側。';
 
--- 索引は CONCURRENTLY のため別ファイル (20260901000002)。
+-- 索引は CONCURRENTLY のため別ファイル (20260904210001)。
 
 -- ─── テナント整合トリガー ────────────────────────────────────────────────────
 -- job_order_id は id のみで参照するため、Supabase 直叩きで無関係な発注の UUID を

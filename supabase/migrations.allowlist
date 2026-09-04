@@ -227,7 +227,10 @@
 # が出たため、下記の**適用済み**ファイルから CONCURRENTLY を外した（1ファイルに複数文が
 # あると Supabase はパイプラインで送るので 2 文目以降が落ちる）。本番では再適用されず、
 # 空 DB では対象テーブルが空なのでロックの問題は起きない。
-# そのぶん create-index-without-concurrently の対象からは外す。
+# **allowlist は全ルールを飛ばす**（ファイル単位の除外で、ルール単位ではない）。
+# 実際に必要なのは create-index-without-concurrently の免除だけで、下記13本が他の
+# ルールに触れていないことは確認済み（2026-09-04。allowlist から外して lint を回し、
+# create-index-without-concurrently しか出ないことを見た）。
 # **新しいファイルはここに足さないこと。** CONCURRENTLY が要るなら 1ファイル1文にする
 # （concurrently-in-multi-statement-file ルールが見ている）。
 20260429000004_perf_indexes_round3.sql

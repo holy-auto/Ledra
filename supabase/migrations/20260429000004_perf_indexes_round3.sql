@@ -13,10 +13,10 @@
 --   最近のコード追加で notification_logs / inventory_movements に
 --   既存インデックスでカバーできていない高頻度クエリパターンが
 --   発生している。EXPLAIN を取った想定では下記が seq scan / heap
---   filter にフォールバックするため、CONCURRENTLY で追加する。
+--   filter にフォールバックするため、索引を追加する。
 --
---   CONCURRENTLY なので transaction で囲わない (Supabase migration
---   ランナーは個別ステートメントを auto-commit するので問題なし)。
+--   CONCURRENTLY を外したので transaction 内で走る（このファイルは 2026-09-04 に CONCURRENTLY を外した。冒頭の注を参照）。
+--   本番では再適用されず、空 DB では対象テーブルが空なのでロックの問題は無い。
 --   IF NOT EXISTS を付けて再実行安全にしている。
 
 -- ─── 1. notification_logs (target_id, type) ──────────────────────────

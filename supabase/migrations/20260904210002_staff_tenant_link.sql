@@ -1,7 +1,14 @@
+-- 【2026-09-04 改名】元のファイル名は 20260903000000 だった。本番の適用済み最新は
+-- 20260904123252 で、それより古いバージョンの未適用ファイルがあると
+-- `supabase db push` が out-of-order で停止し、以降のマイグレーションが本番へ
+-- 一切届かなくなる（.github/workflows/db-migrate.yml の不変条件2）。
+-- 本番の schema_migrations に 20260903000000 が無いことを名指しで確認したうえで改名した
+-- （適用済みを改名すると不変条件1に抵触する）。
+-- `npm run lint:migrations` の migration-version-before-base-head が静的に見ている。
 -- 外注職人のテナント連携（元請けがコードを発行 → 外注が入力して連携）
 --
 -- 背景:
---   外注職人が施工した記録は元請けのテナントに元請け名義で残る（20260901000001 の判断）。
+--   外注職人が施工した記録は元請けのテナントに元請け名義で残る（20260904210000 の判断）。
 --   証明書には craftsman_staff_id が刻まれている（20260617000004）ので「誰がやったか」は
 --   分かるが、**本人がそれを見る手段が無かった**。
 --
@@ -34,7 +41,7 @@ ALTER TABLE staff_members
 COMMENT ON COLUMN staff_members.linked_tenant_id IS
   '外注職人本人の Ledra テナント。連携コードの入力で成立する。ここが埋まっていると本人が自分の施工記録を自分の管理画面から見られる。';
 
--- 索引は CONCURRENTLY のため別ファイル (20260903000002)。
+-- 索引は CONCURRENTLY のため別ファイル (20260904210003)。
 
 CREATE TABLE IF NOT EXISTS staff_link_invites (
   id                    uuid PRIMARY KEY DEFAULT gen_random_uuid(),

@@ -45,8 +45,8 @@ comment on column public.follow_up_settings.maintenance_schedule_by_service is
   '施工種別ごとのメンテナンス月数 override。例: {"ppf":[6,12,24],"coating":[3,6]}。キー未指定の種別は maintenance_reminder_months (テナント既定) を使う。';
 
 -- followup_opt_out の検索高速化 (cron が WHERE followup_opt_out = false を頻繁に引く)。
--- CONCURRENTLY なので transaction で囲わない (Supabase migration ランナーは
--- 個別ステートメントを auto-commit するので問題なし)。IF NOT EXISTS で再実行安全。
+-- CONCURRENTLY を外したので transaction 内で走る（このファイルは 2026-09-04 に CONCURRENTLY を外した。冒頭の注を参照）。
+-- IF NOT EXISTS で再実行安全。
 create index if not exists idx_customers_followup_opt_out
   on public.customers (tenant_id)
   where followup_opt_out = false;

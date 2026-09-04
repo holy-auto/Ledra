@@ -4,6 +4,37 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-09-04 サイトコンテンツのアプリ側ガードが DB とずれていたのを直した
+
+- 内容: Server Action 7箇所を全部読み、**`site-content` の4アクションだけ**が
+  アプリ側 `staff` 以上・DB 側 `is_super_admin_user()` でずれていた。
+  `site_content:view` / `site_content:manage` を **super_admin 限定**にし、
+  `authorize()` を権限表と同じ動詞で見るようにした。
+- 実害: staff/admin/owner はアプリのガードを通過してから RLS に弾かれる。
+  **UPDATE と DELETE は 0 行・エラー無しなので `{ok:true}` が返っていた。**
+  本番24人が「削除しました」と表示されながら何も変わらない状態。
+  `site_content:view` は viewer を含む全ロールが持っていたので**メニューも全員に出ていた**。
+- 判断は新しくない。`20260424010000_site_content_posts_super_admin_only.sql` のヘッダに
+  「加盟店（owner/admin/staff/viewer）はDB直接操作でも変更不可」と書いてあり、
+  **アプリだけが追随していなかった**。
+- 副次: `authorize()` のローカル membership 引き（並び順もアクティブテナントの cookie も
+  見ない）を `caller.tenantId` に置き換えた。`updateTenantSettingsAction` と同じ欠陥。
+  delete と status 変更に `.select("id")` を付け、0行を `forbidden` として返すようにした。
+- 検出: `src/lib/auth/__tests__/serverActionGuards.test.ts`。**ガードを消して落ちることを
+  2つの形で確認した**（Server Action のガード削除 / 権限表を緩める）。
+  1回目は落ちず、**自分が書いた説明コメント内の `hasMinRole(...)` に反応していた**ため
+  コメントを落としてから照合するようにした（MISTAKE_LEDGER M-022）。
+- **セルフレビューで見つけた追加分（同日）**: 画面3枚（一覧・新規・編集）が
+  「ログイン済みか」しか見ておらず、**ナビから消えても URL 直打ちで開けた**。
+  開くと押せば必ず `forbidden` になるボタンとフォームが並ぶ（M-019 と同じ形を、
+  M-019 を引用した PR でやった → MISTAKE_LEDGER M-023）。
+  `requireSiteContentAdmin()` を 3 枚に通し、**1 枚から外すと落ちる検査**を追加した。
+  併せて `deleteSiteContentAction` の 0 行を、存在しない id は `not_found`、
+  RLS 拒否は `forbidden` に分けた。
+- 判明した前提: **`ROUTE_PERMISSIONS`（48画面分）を強制している場所は無い**
+  （`getRequiredPermission()` の呼び出し元 0 件、`src/middleware.ts` 無し）。
+  画面の権限判定は各 `page.tsx` 任せ。OPEN_QUESTIONS に起票。
+
 ## 2026-09-04 判断待ち4件を main へマージし、本番へマイグレーションを適用した（PR #1026 / `87b71201`）
 
 - **本番適用済み**（Supabase migration `tenant_settings_owner_only_and_shared_templates`）。
@@ -189,6 +220,14 @@ PG15 では落ちる。** 手元の再生は 16、Supabase は 15。実際に PG
   `20260314000006_replay_market_inquiries.sql` /
   `20260321000003_replay_customer_login_codes_index.sql` /
   `20260601000009_replay_supply_columns.sql`
+- 飛ばした分を、依存が揃った位置の**既適用ファイルの末尾**で補う。いずれも
+  「既にあれば何もしない」形で本番では no-op。**新規ファイルは1本も作っていない**
+  （作ると本番の `db push` が out-of-order で止まるため。下記参照）:
+  `20260313020000_core_tables.sql`（customers / invoices / 列・索引）/
+  `20260314000003_market_vehicles.sql`（market_inquiries 系）/
+  `20260321000001_customer_portal_tables.sql`（索引）/
+  `20260601000006_supply_partners.sql`（列）/
+  `20260826000005_repair_unreplayable_objects.sql`（email 系関数の revoke）
 - 一度も存在しなかった名前を本番の実体に合わせて修正:
   `tenant_members` → `tenant_memberships`（2本）、`tenant_memberships.is_active`
   述語の除去（2本）、戻り値の型違いの同名関数を先に DROP（2本）、
@@ -224,8 +263,8 @@ SECURITY DEFINER）。関数が実在する位置に `20260826000007` を足し�
     `customers.linked_tenant_id` は元請けの一方的な指定で同意が無いが、こちらは同意前提。
   - **顧客名は Ledra では表示しない。**
 - 内容:
-  - `staff_members.linked_tenant_id` を追加（`20260903000000`、索引は CONCURRENTLY のため
-    `20260903000002`）。`customers.linked_tenant_id` と同じ形。証明書に刻まれるのは
+  - `staff_members.linked_tenant_id` を追加（`20260904210002`、索引は CONCURRENTLY のため
+    `20260904210003`。同じ理由で `20260903000000` / `20260903000002` から改名）。`customers.linked_tenant_id` と同じ形。証明書に刻まれるのは
     `craftsman_staff_id` なので、作業の帰属をテナントへ繋ぐにはこの列が要る。
   - `staff_link_invites`: 発行したコード。raw は保存せず sha256（pepper 付き）のみ。
     有効期限14日、職人1人につき1本、再発行は差し替え。コードの英数字は 0/O・1/I/L を
@@ -243,6 +282,44 @@ SECURITY DEFINER）。関数が実在する位置に `20260826000007` を足し�
   許可リストとの完全一致 / 顧客名を含まない / craftsman とテナントの絞り込み /
   is_hidden・void の除外 / 休止中の除外 / 引き換えの期限・使用済み・自テナント判定 /
   **逆引きの1箇所固定** / raw code を保存しない。
+
+SECURITY DEFINER）。関数が実在する位置（`20260826000005` の末尾）で締め直し、
+再生 DB の `pg_proc.proacl` で5関数すべて service_role のみになること、
+本番の `proacl` と一致することを確認した。
+
+**Codex レビューの P1 指摘で作り直した。** 当初は補いを新規ファイル6本として置いて
+いたが、6本とも本番の適用済み最新 `20260904123252` より**古い**バージョンだった。
+本番の `supabase db push` は最新より古い未適用があると out-of-order で停止するため、
+マージすれば**以降のマイグレーションが本番へ一切届かなくなる**ところだった
+（2026-08-02〜08-15 に同じ形で13日間停止し、証明書発行が全件止まった実績がある）。
+6本を消して中身を既適用ファイルの末尾へ移し、新規バージョンを0本にした。
+`MISTAKE_LEDGER` M-027。
+
+再発防止として `lint:migrations` に `migration-version-before-base-head` を追加。
+**このブランチが追加したファイルは、base に在るどのファイルよりも後のバージョンで
+なければ落ちる。** わざと古い日付で置いて落ちることを確認済み。
+
+**その検査自体が CI で動いていなかった**のを `/code-review` が見つけた（M-028）。
+`actions/checkout` は既定 depth 1 で base ref を持たないため、検査は毎回
+「引けないので見送る」経路に入り注記を1行出して緑を返していた。ci.yml で base ref を
+depth 1 で取り（`MIGRATIONS_BASE_REF` で名指し）、**引けなければ CI では落とす**ように
+した。同レビューで、`CREATED_RELATIONS` がコメントを読んでいた（説明文中の
+`CREATE TABLE xxx` が「作られている」と誤認され PG15 検査が素通りする）、
+CONCURRENTLY の文数カウントが文字列リテラル中の `;` を数えていた、
+CONCURRENTLY を外した13ファイルの説明文が実装と矛盾していた、
+allowlist のコメントが「ルール単位の免除」と読める、の4件も直した。
+検出器の2件はどちらも probe で誤検出/見逃しの再現→修正後の解消を確認している。
+
+さらにその「CI では落とす」が既存の `scripts/__tests__/lint-migrations.test.ts` を
+CI で8件落とした（テストは一時ディレクトリでスクリプトを走らせるので base ref が無い）。
+落とす対象を「git リポジトリなのに base ref が無い＝CI の設定ミス」だけに絞り、
+同テストに3件追加した（backdated で落ちる / 後ろの日付なら通る / git 管理外では
+CI でも落ちない）。ルールを無効化すると落ちることも確認済み。
+
+検証: 1パス再生 **441/441**、RLS ポリシー打ち消し検査 なし、`lint:migrations` OK、
+`check:schema` OK、`vitest run` 525ファイル 5324件 通過。
+番人はわざと壊して確認済み（存在しないテーブルを ALTER するファイルを先頭日付で
+置くと exit 1 でファイル名まで出る）。
 
 ## 2026-09-03 AI を呼ぶ8ハンドラのレート制限漏れを塞いだ
 
@@ -338,8 +415,10 @@ SECURITY DEFINER）。関数が実在する位置に `20260826000007` を足し�
   元請けは発注した作業の証明書を受注画面から辿れず、外注先は自分が施工した記録を
   Ledra 上のどこでも確認できなかった。
 - 内容:
-  - `certificates.job_order_id` を追加（`20260901000001`、索引は CONCURRENTLY のため
-    `20260901000002` に分離）。`documents` / `chat_messages` / `order_reviews` /
+  - `certificates.job_order_id` を追加（`20260904210000`、索引は CONCURRENTLY のため
+    `20260904210001` に分離。**マージ直前に `20260901000001` / `20260901000002` から改名**
+    —— 本番の適用済み最新 `20260904123252` より古いままだと `supabase db push` が
+    out-of-order で停止するため。本番の台帳に元バージョンが無いことを名指しで確認済み）。`documents` / `chat_messages` / `order_reviews` /
     `reservation_holds` と同じ `job_order_id` 規約に揃えた。
   - テナント整合トリガー `certificates_check_job_order_tenant` を追加。指定された発注の
     当事者（発注元 or 受注先）でないテナントの証明書には紐付けられない

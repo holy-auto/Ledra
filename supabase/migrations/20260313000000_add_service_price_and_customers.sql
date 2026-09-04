@@ -8,12 +8,12 @@
 -- **役割を見ない RLS ポリシー**が、後から入れた役割別ポリシーを打ち消す）。
 --
 -- 前提が無いときは何もしない。空 DB 側の実体は
--- `20260313030000_replay_early_schema.sql` が作る。
+-- `20260313020000_core_tables.sql` の末尾が作る。
 -- 恒久対応は baseline 方式（docs/operations/migrations.md）。
 DO $mig$
 BEGIN
   IF to_regclass('public.tenants') IS NULL THEN
-    RAISE NOTICE '20260313000000: core_tables 未適用のため skip（20260313030000 が同じものを作る）';
+    RAISE NOTICE '20260313000000: core_tables 未適用のため skip（core_tables の末尾が同じものを作る）';
     RETURN;
   END IF;
 

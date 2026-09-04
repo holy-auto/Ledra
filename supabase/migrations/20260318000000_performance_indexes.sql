@@ -32,7 +32,7 @@ CREATE INDEX IF NOT EXISTS idx_tenant_memberships_user_id
 -- Customer portal: login codes lookup
 -- 【後から内容だけ修正】customer_login_codes を作るのは 20260321000001（このファイルより後ろ）。
 -- 空 DB へ1パスで流すとここで落ちるので、無いときは飛ばす。
--- 空 DB 側の索引は 20260321000003_replay_customer_login_codes_index.sql が作る。
+-- 空 DB 側の索引は 20260321000001_customer_portal_tables.sql の末尾で張る。
 DO $mig$
 BEGIN
   IF to_regclass('public.customer_login_codes') IS NOT NULL THEN

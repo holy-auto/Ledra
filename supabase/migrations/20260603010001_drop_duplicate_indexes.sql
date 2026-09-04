@@ -19,8 +19,8 @@
 -- keep が *_key 制約の場合は inline UNIQUE / PK 宣言で fresh でも自動生成される。
 -- drop 側が本番のみ（repo に無い）の場合は fresh では IF EXISTS で no-op になり安全。
 --
--- CONCURRENTLY を使うため本ファイルはトランザクションで囲まない（Supabase ランナーは
--- 各ステートメントを auto-commit する）。IF EXISTS で再実行安全。
+-- 元は CONCURRENTLY のためトランザクションで囲んでいなかった（2026-09-04 に CONCURRENTLY を外した。冒頭の注を参照）。
+-- IF EXISTS で再実行安全。
 -- docs/operations/zero-downtime-migrations.md 準拠。
 --
 --   keep / drop（drop 側を本ファイルで削除）:

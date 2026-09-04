@@ -29,11 +29,12 @@
 --   line_link_candidates / line_link_sessions / line_link_tokens / support_tickets /
 --   support_ticket_messages）への FK インデックス（10 件）は本ファイルから除外した。含めると
 --   fresh（repo から構築した DB / supabase db reset / preview branch）への適用が
---   "relation does not exist" で失敗するため。CONCURRENTLY は to_regclass ガード（DO ブロック=
---   トランザクション）と併用できないので、テーブル定義を repo に取り込む別 PR の後に被覆する。
--- 注: CONCURRENTLY を使うため本ファイルはトランザクションで囲まない。Supabase の
---   migration ランナーは各ステートメントを auto-commit するので、1ファイルに複数の
---   CONCURRENTLY を並べても問題ない（cf. 20260429000004_perf_indexes_round3.sql）。
+--   "relation does not exist" で失敗するため。当時は CONCURRENTLY を使っており
+--   to_regclass ガード（DO ブロック=トランザクション）と併用できなかった。
+--   テーブル定義を repo に取り込む別 PR の後に被覆する。
+-- 注: 元は CONCURRENTLY のためトランザクションで囲んでいなかった（2026-09-04 に CONCURRENTLY を外した。冒頭の注を参照）。
+--   1ファイルに複数の CONCURRENTLY を並べていたのがそもそもの誤りで、Supabase の
+--   ブランチ機能はこれをパイプラインで送るため 2 文目以降が SQLSTATE 25001 で落ちた。
 --   IF NOT EXISTS で再実行安全。docs/operations/zero-downtime-migrations.md 準拠。
 -- 出典: pg_constraint/pg_index を直接照合して被覆漏れ FK を抽出（読み取り専用）。
 -- =============================================================

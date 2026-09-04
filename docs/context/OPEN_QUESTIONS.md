@@ -3,6 +3,99 @@
 > まだ決まっていないこと、判断に迷っていることを書く場所。決まったら
 > DECISION_LOG.md に移し、このファイルからは消す（削除履歴は git で追える）。
 
+## MISTAKE_LEDGER の連番 ID が、並行 PR のたびに衝突する（2026-09-04）
+
+`M-001`, `M-002`, ... の連番は、main と未マージの PR が**同時に次の空き番号を取る**ため、
+マージのたびに衝突する。#1025 と #1020 の作業だけで**4回**付け替えた
+（M-016/M-017 → M-018 → M-021 → M-026）。番号は本文中から相互参照されるので、
+付け替えるたびに表・本文・PR 本文を追う必要がある。
+
+- 対策候補 (a): **日付ベースの ID**（`M-20260904a` / `M-20260904b`）。衝突しなくなる。
+  既存 26 件を改番するか、新規分だけ新形式にして混在させるかは別途判断。
+- 対策候補 (b): 番号を振らず**見出しの日付＋一文**で引く。相互参照が壊れやすくなる。
+- 対策候補 (c): 現状維持（衝突のたびに手で付け替える）。
+
+**代表判断待ち。** それまでは連番のまま運用する。
+
+## C2PA `digitalCapture` 主張の厳密化（撮影由来の暗号学的保証）（2026-09-04）
+- 状況: 施工写真の入力をカメラ撮影に限定し（Web はアルバム/DnD 廃止、モバイルは元よりカメラのみ）、
+  マニフェストの `digitalCapture` を正当化した（DECISION_LOG 2026-09-04）。ただし限界が残る。
+- 論点: (1) `capture="environment"` はデスクトップブラウザでファイル選択にフォールバックしうる。
+  (2) サーバーは magic bytes 検証のみで、撮影由来を暗号学的には保証していない。
+- 選択肢: 案A 撮影シグナル（capture nonce＋端末アテステーション）を署名経路に封入し、確認できたものだけ
+  `digitalCapture`。案B 実機（モバイル）に限定。案C 現状（UI 限定＋文書で限界を明記）で AL1 は許容し、
+  AL2 移行時に厳密化。
+- 影響範囲: 誤ると非撮影画像を「カメラ由来」と証明しうる。現状は UI 制限で経路は塞いだが保証は弱い。
+- 次のアクション: AL2 検討時に案A/B を設計。それまでは案C（GPSA に限界を明記済み）。
+- 起票日: 2026-09-04
+
+## C2PA Conformance Program 申請（AL1・Backend）の未確定事項（2026-08-11）
+- 状況: 申請方針は「GP / Backend / Max Assurance Level 1 先行」に決定（DECISION_LOG 2026-08-11、詳細は `docs/c2pa-conformance-application.md`）。申請前に埋める必要のある事実が残る。
+- 進捗（2026-09-03）: **EOI → Legal Agreement 署名 → Program Intake Form 提出済み**（提出値は `docs/c2pa-conformance-application.md` §11）。次は Administrator のレビュー→証拠提出（サンプル＋GPSA）。
+- **一部修正済み（2026-09-03、詳細は §12）**: 証拠用サンプルで判明したマニフェスト非準拠のうち **(1) actions の C2PA 2.x 非準拠を修正済み**（`c2pa.opened`→`c2pa.created`+`digitalSourceType`、`orientation`/`converted`/`edited` 維持）。実署名検証テスト `c2paSignValidate.test.ts` を新設。**全て解決（2026-09-03）**: (2) `claimSignature.mismatch` は dev 自己署名証明書だけの癖と確定 — c2patool 公式 ES256 証明書で署名すると `validation_state: Valid`／署名エラーなし（残は untrusted のみ＝適合後に解消）。**製品の署名ロジックは健全、本番鍵は不要で証明済み**。(3) HEIC も署名可能・準拠。本番鍵は適合認定後に CA から発行されるため申請時点では未保有だが、証拠サンプルは適合前でも正しい署名で提示できる。→ **署名・マニフェスト面のブロッカーは解消**。**GPSA 提出用ドラフト `docs/c2pa-gpsa.md`＋アーキ図作成済み**。v0.2 追加要件（specVersion/allActionsIncluded）も対応済み（0f860fc）。
+
+- **2026-09-03 Administrator が Intake 受理・証拠パッケージ要求（Record ID 01a06690-d01e-7608-ad8a-cd4f1a49d76e）**。
+- **2026-09-04 方針: validate 申告を取り下げ、Generator（生成）のみで申請**（DECISION_LOG 2026-09-04）。これに伴い ingredient サンプル・crJSON harness は**不要化**（validate 依存の残タスクを削除）。
+- 残タスク（生成のみ・B 方針）:
+  1. **生成サンプル出力** a-d（jpeg/png/webp/heic）: **生成・内部検証済み**（全 Valid/specVersion2.4/allActionsIncluded=true、テスト証明書=untrusted 想定内）で代表へ受け渡し済み。**C2PA への提出は未**（下記 4 の Conformulator 自己テスト後に代表が実施）。
+  2. ✅ **GPSA を設計レベル現状のみに改訂**＋運用文書＋図（作成済み。validate を除外し生成のみに更新）。
+  3. **Administrator へ訂正メール送付**（validate 取り下げ。文面 `scratchpad/ledra-intake-correction-email.md`）— 代表が送信。
+  4. **Conformulator（https://c2pa-conformulator.netlify.app/）で生成サンプルを自己テスト**後に提出。
+  5. 提出はメール添付/zip/DLリンク（機密）。GPSA 一式のファイル名に "GPSA" を含める。
+- 別論点: 本番 sharp が HEIF デコード不可だと HEIC の GPS 除去が効かない点は要確認。
+- 確定済み: 役割=GP / 実装クラス=Backend / Max AL=1 / 申告 Spec=**2.4** / 法人名=株式会社HOLY（英字 **HOLY Inc.**）/ 登記住所=東京都港区北青山1-3-1 アールキューブ青山3F / 連絡先=info@holy-inc.jp / **生成メディアタイプ=image/jpeg・png・webp・heic（validate は今回申告せず）**。
+- 残る論点と選択肢:
+  - **Spec 2.4 の実出力確認**: 申告 2.4 に対し、製品が実際に v2.4 準拠マニフェストを出力しているかを Intake 用サンプルで要検証（契約上、申告版に拘束される）。
+  - **Date of Earliest Public Disclosure**: CPL 公開を遅らせたい日付があるか（無ければ即時）。
+  - **電話番号**: Legal Agreement/連絡用の電話番号（署名時に記入済みか要確認）。
+  - CA の選定と自動エンロール認証方式: O.1/O.2 の設計を左右する最重要。方式は CA 依存。
+  - 署名鍵の鍵管理: AL1 は独立鍵管理サービスで可 / AL2 を見据えるなら最初から KMS（AWS/GCP/Azure）。＋鍵ローテーション手順。
+  - 対応メディアタイプの確定とサンプルアセット準備（最低 image/jpeg）。
+- 影響範囲: 決定が遅れると GPSA 提出・Intake Form 記入が進まない。CA選定を誤ると O.1/O.2 の実装をやり直す。
+- 次のアクション: (a) EOI 送信（全項目確定済み）、(b) CA候補調査、(c) 署名鍵のKMS移行PoC、(d) 90日修正ポリシー&OWASPカバレッジの運用文書化、(e) サンプルで v2.4 出力を検証。
+- 起票日: 2026-08-11（2026-08-25 更新）
+
+## マイグレーションの version 衝突チェックが CI で強制されていない（ローカル lint 頼み）
+- 状況: `scripts/lint-migrations.js` に「同一 version prefix の2ファイルを禁止する」duplicate-version チェックが
+  あるにもかかわらず、#808(cta_og) と #810(gcal) が同一 version `20260721110000` で衝突し、本番 db-migrate が
+  連続失敗した（2026-07-22、forward 改名で解消）。原因は lint がどの GitHub Actions workflow でも実行されておらず
+  （`npm run lint:migrations` のみ、pre-push は vitest だけ）、並行 PR の衝突をマージ前に止められないこと。
+- 選択肢: 案A `lint:migrations` を PR CI（必須チェック）に追加してマージをブロック。案B db-migrate workflow の
+  db push 前に `lint:migrations` を実行。案C 現状維持（衝突は事後に forward 改名で対処）。A/B はすり抜けを構造的に
+  防げるが必須チェック運用の追加、C は再発リスクを許容。
+- 影響範囲: 誤ると（＝再発すると）本番 db-migrate が止まり、以降の全マイグレーションがブロックされる（今回まさに
+  予約投稿マイグレーションが巻き込まれた）。
+- 次のアクション: CI に `lint:migrations` を組み込むか判断する（堀越）。実装は軽微（既存 npm script を workflow から呼ぶだけ）。
+- 起票日: 2026-07-22
+
+## 存在しない列を参照している2箇所（template_name / agents.stripe_connect_onboarded）をどう直すか（2026-08-02）
+- 状況: 本番ログで検出。どちらもマイグレーションに定義が無く、コードだけが参照している（ドリフトではなくコード/スキーマ不整合）。(1) `certificates.template_name` を `src/app/api/admin/vehicles/[id]/last-cert/route.ts:25` が select しているが、`certificates` に `template_name` 列を追加するマイグレーションは存在しない。(2) `agents.stripe_connect_onboarded` を `src/app/api/stripe/connect-webhook/route.ts:537-543` が参照するが、`stripe_connect_onboarded` は `tenants` にのみ追加され（`20260314000005`）`agents` には無い。
+- 選択肢: 各々 案A 列を追加する（その値の意味・更新経路を設計）／案B コード側を修正する（(1) はテンプレJOINのエイリアス参照に、(2) は `tenants` 参照へ、あるいは該当分岐を削除）。どちらが正しいかは「その列に意味があるか」次第。
+- 影響範囲: (1) は車両詳細→証明書プリフィル経路が 500。(2) は代理店(agent)の Stripe Connect オンボーディング webhook が 500。いずれも低頻度だが該当機能は壊れている。
+- 次のアクション: 各参照の意図を確認し A/B を判断。template_name はテンプレート名の表示用か（=JOIN で足りる可能性大）、agents の Stripe Connect は代理店にも Connect を持たせる設計だったか（=列追加）を確定する。
+- 起票日: 2026-08-02
+## `ROUTE_PERMISSIONS`（画面と権限の対応表）を強制している場所が無い（2026-09-04）
+
+`src/lib/auth/permissions.ts` の `ROUTE_PERMISSIONS` は 48 画面分あり、
+`/admin/xxx` ごとに必要な `Permission` を宣言している。読み出す
+`getRequiredPermission()` も同じファイルにある。
+
+**その `getRequiredPermission()` の呼び出し元は 0 件で、`src/middleware.ts` は存在しない。**
+この表は実質「ナビの出し分けの参考値」にしかなっていない（ナビは
+`adminNav.tsx` / `catalog.ts` が各項目に持つ `requiredPermission` を独立に見ている）。
+
+- 結果、**画面の権限判定は各 `page.tsx` の書き方次第**になっている。
+  `requirePermission` を呼ぶ admin 配下の page は 2 枚だけだった
+  （`report-revenue`、`vehicles/[id]`）。PR #1030 でサイトコンテンツの 3 枚を追加。
+- 権限の穴かというと違う。書き込みは API ルート（`API_ROUTE_PERMISSIONS` + テストで強制）と
+  RLS が止める。**問題は「開けるが何もできない画面」が作れてしまうこと**
+  （MISTAKE_LEDGER M-019 / M-023）。
+- 選択肢は3つ。(a) middleware を置いて表を強制する、(b) 表を捨ててナビの宣言に一本化する、
+  (c) 現状維持で page ごとに書く。**(a) は Next.js の middleware で Supabase セッションを
+  読む必要があり、全 admin 画面の表示に1往復増える**ので、コストと効果の見積もりが要る。
+- どれを取るかは未決。【要確認】: 表に載っている画面のうち、実際にサーバ側で
+  権限を見ていないものが何枚あるかは数えていない。
+
 ## マイグレーション外で本番スキーマが変更された経路が不明（2026-09-04）
 
 `insurer_tenant_accesses`（複数形）と全組み合わせ自動付与トリガ2本は削除して決着した
@@ -66,6 +159,23 @@
   (1) のままだと今回の実装が実質使われない可能性がある。
 - 次のアクション: 本番の `job_orders` の利用実績を確認してから判断する。**【要確認】**
   現時点で発注レコード件数を確認していない。
+## Server Action の完全な一覧が静的に作れない（2026-09-04）
+
+`serverActionGuards.test.ts` は**ファイル先頭に `"use server"` を持つファイル**だけを見る。
+Next.js は関数内にも `"use server"` を書けるので（`vehicles/[id]/page.tsx` の
+`voidCertificate`、`LogoSealSection.tsx` の `uploadLogo` / `uploadSeal`、
+`login/page.tsx` の `signIn`）、この検査は**完全ではない**。
+
+2026-09-04 時点では関数内宣言4箇所も1つずつ読んで確認済み（すべてガードあり、
+または認証前で不要）。だが新しく足されたものは検査に載らない。
+
+案: 関数内の `"use server"` を含む関数本体を切り出して、同じ検査に掛ける。
+`sourceScan.ts` の `enclosingFunctions()` が使えるかもしれない。
+未解決なのは、その関数が「認可を要する書き込みをしているか」をどう判定するか。
+ガードの有無だけ見ると、読み取り専用の Server Action まで引っかかる。
+
+- 起票日: 2026-09-04
+- 判断者: 未定
 
 ## AI の検出器が `getAnthropicClient()` に依存している（2026-09-03）
 

@@ -4,6 +4,165 @@
 > （新しい順）。実装の詳細は RELEASE_LOG.md、迷っている段階のものは
 > OPEN_QUESTIONS.md に書く。
 
+## 2026-09-04 再生用の補いは「新しいファイル」ではなく「適用済みファイルの末尾」に置くと決めた
+
+1. 日付: 2026-09-04（`date -u` で確認）
+2. 起きたこと: PR #1025 で、空 DB の再生を通すための補いを新規マイグレーション6本として
+   置いていた。Codex レビューが P1 で指摘した ——「6本すべてが本番の適用済み最新
+   `20260904123252` より古い。本番の `supabase db push` は out-of-order で停止する」。
+   本番の `schema_migrations` を実際に引いて確認したところ、指摘は正しかった。
+   マージしていれば、この PR 以降のマイグレーションが本番へ一切届かなくなっていた。
+3. 以前の考え: 「補いは依存が揃った位置に置く必要がある。位置＝ファイル名の日付なので、
+   その日付で新しいファイルを作るのが自然」。再生検査もプレビュー DB も緑だったので、
+   それで正しいと思っていた。
+4. 違和感・問題: **検査はどれも空 DB しか見ていない。** 本番は空ではなく台帳を持っている。
+   「空 DB の都合で過去の位置にファイルを増やす」のは、台帳を持つ側から見れば最悪の操作
+   だった。しかもこの不変条件は `.github/workflows/db-migrate.yml` に20行書かれており、
+   `DECISION_LOG` 2026-08-26 には自分が書いた「マージ直前に本番の schema_migrations と
+   突き合わせる。CI の緑をこの確認の代わりにしない」がそのまま残っていた。
+5. 決めたこと:
+   (a) **再生を通すためだけの補いは、依存が揃った位置の「既に本番へ適用済みのファイル」の
+   末尾に足す。新しいファイルは作らない。** 適用済みファイルは版番号が変わらない限り
+   再適用されないので、中身を変えても本番に影響が無い。
+   (b) **本番へ当てたい変更は逆で、必ず本番の最新より後のバージョンの新しいファイルにする。**
+   どちらなのかは、本番の実体（`pg_proc.proacl` 等）を引いて決める。今回 email 系関数の
+   `revoke` は本番が既に締まっていたので (a) 側と確定した。
+   (c) 判定を仕組みにする。`lint:migrations` に `migration-version-before-base-head` を追加し、
+   **base に在るどのファイルよりも後のバージョンでない追加ファイル**で落とす。
+6. 捨てた選択肢:
+   (a) 6本を本番の最新より後の日付へ改名する = 本番の db push は通るが、**再生では依存が
+   揃う前の位置に穴が空いたままになり、順序逆転が復活する**（この PR が直したもの）。
+   (b) `--include-all` で強制適用する = 2026-07-21 に不採用と決めてある。
+   (c) 現状維持のうえ「マージ前に人が本番の台帳を引く」運用だけにする = 同じ形は今回で5回目
+   （OPEN_QUESTIONS）。運用で止まらないことが5回証明されている。
+7. 判断理由: 「補いは過去の位置に要る」と「新しいバージョンは未来でなければならない」は
+   両立しない。**両立させようとせず、補いをファイルにしない**のが唯一の解だった。
+   適用済みファイルの中身が本番で再実行されないことは、この PR が既に依存している性質
+   （ガードの追加が本番に影響しない根拠）なので、新しい前提を増やしていない。
+8. まだ答えが出ていないこと: (a) base ref を引けない checkout（shallow clone）では新しい
+   lint ルールが見送りになる。そこは `db-migrate` の実物突き合わせに委ねているが、
+   実際に shallow で走る CI があるかは未確認【要確認】。(b) 「適用済みファイルの末尾に
+   足す」は、そのファイルの見た目の責務と中身がずれていく。ファイルが何を作るかを
+   目次にする仕組みが要るかは未判断。
+9. 公開区分: 公開可（本番のバージョン番号は日付連番で、機密でも個人情報でもない）
+
+## 2026-09-04 施工写真の入力をカメラ撮影に限定（C2PA `digitalCapture` 主張を正当化）
+
+1. 日付: 2026-09-04
+2. 起きたこと: PR #914 の Codex レビュー（P1, `c2pa.ts:61`）が「全署名画像に `digitalCapture` を付けるが、
+   Web の PhotoUploadSection はアルバム/ファイル選択・ドラッグ&ドロップで任意ファイルを受け付ける。
+   スクリーンショット・編集/生成画像も『カメラ由来』と証明してしまう」と指摘。実コードで確認し妥当と判断。
+3. 以前の考え: 「施工写真＝実写だから digitalCapture で問題ない」。
+4. 違和感・問題: 実際の入力経路が撮影を保証していなかった（Web に任意アップロード経路が存在）。
+   `c2pa.created` は `digitalSourceType` 必須（省くと Invalid・実測確認済み）なので単純削除も不可。
+5. 決めたこと（代表判断）: **施工写真の入力をカメラ撮影に限定**する。Web の
+   `PhotoUploadSection` からアルバム/ファイル選択入力・ドラッグ&ドロップ・関連ボタンを削除し、カメラ入力
+   （`capture="environment"`）のみに。モバイルの施工写真は既に `pickImageFromCamera` のみ（ライブラリ不可）で
+   整合。これで全入力が撮影となり `digitalCapture` が正当化される。`c2pa.ts` のマニフェストは変更不要。
+6. 捨てた選択肢: (a) 撮影経路のみ digitalCapture・任意アップロードは別 sourceType（"不明"を表す適切な IPTC 値が
+   無く不正確）。(b) digitalCapture を一旦外す（created が要求する型の代替が不適切）。(c) 現状維持（審査者への虚偽主張）。
+7. 判断理由: Ledra の製品像は「現場で撮影した施工写真の真正性証明」。撮影限定は製品像に合致し、来歴主張を
+   最も強く正当化できる。任意アップロードは Ledra の価値提案（現場撮影の証跡）と相反する。
+8. まだ答えが出ていないこと: `capture` 属性はデスクトップブラウザでファイル選択にフォールバックしうる／サーバーは
+   magic bytes 検証のみで撮影由来を暗号学的には保証しない。厳密化（撮影シグナル封入・実機限定・端末アテステーション
+   連携）は AL2 相当の将来課題。OPEN_QUESTIONS に起票。
+9. 公開区分: 要確認（申請中の C2PA 準拠と製品仕様に触れるため公開前に代表確認）。
+
+## 2026-09-04 PR #914 のレビュー指摘を反映（C2PA マニフェストの過大主張修正・GPSA 記述を実態に訂正）
+
+1. 日付: 2026-09-04
+2. 起きたこと: PR #914（C2PA 準拠）で CI の型チェックが失敗し、Codex レビューが7件指摘。
+   自作 code-review と合わせ、正当な指摘を実コードで検証して反映した。
+   - **CI 赤の原因**: テストが `typeof import("@contentauth/c2pa-node").Reader` を型注釈に使用。
+     bundler 解決下でこの型が引けず tsc が2件エラー（本番コード `c2pa.ts` は値参照のみで無事）。
+     → 使用面だけの構造型に置換して解消。
+   - **本番挙動の修正（過大主張）**: `c2pa.actions` の `allActionsIncluded:true` が無条件だった。
+     sharp の strip/再エンコードが失敗して原本をそのまま署名する fallback では orientation/converted/edited は
+     起きていないのに「完全」と主張し、**誤った来歴クレデンシャル**になっていた。→ 変換実施フラグ
+     （`exif.gpsStripped`）を `processUploadedPhoto → invokeAllUploadProviders → signC2pa` に通し、fallback では
+     `c2pa.created` のみ・`allActionsIncluded:false` にした。fallback 検証テストを追加。
+   - **証拠文書の事実訂正**: GPSA/運用文書が実態と食い違っていた3点を訂正 — (a) Codacy は
+     `CODACY_PROJECT_TOKEN` 未設定で自動トリガー無効・手動起動のみ（継続実行ではない）、(b) 端末アテステーションは
+     既定 OFF（Phase 3 まで未稼働）、(c) GP アップロード経路は service-role で RLS をバイパスしテナント分離は
+     アプリ層 tenant_id スコープで担保（RLS が TOE の enforcement 境界という記述は誤り）、(d) 署名鍵は
+     `LocalSigner` をモジュールキャッシュするためプロセス生存期間中メモリ常駐（署名の瞬間だけ、は誤り）。
+3. 以前の考え: 「マニフェストは Valid を確認済みなので actions は正しい」「CI 構成の記述は既存 workflow の名前を
+   並べれば足りる」。
+4. 違和感・問題: Valid は通常経路のサンプルでしか確認しておらず fallback 経路は未検証だった。文書はツールの
+   存在は事実でも「稼働状態」を確認していなかった（型F: 確認できる事実を確認しない、に隣接）。
+5. 決めたこと: 正当な指摘（過大主張・skip 隠蔽・文書の事実誤り・データ消失）は全て修正。`c2pa.created`＋
+   `digitalCapture` と通常経路の `allActionsIncluded:true` は spec 準拠・実写真として正しいので設計判断として保持。
+6. 捨てた選択肢: (a) allActionsIncluded を常に false（通常経路で情報量を失う・不正確）。(b) 文書をそのまま提出
+   （虚偽の適合証拠になる＝最悪）。(c) 型エラーを `any` で握りつぶす（lint 警告・型安全喪失）。
+7. 判断理由: 来歴クレデンシャルも適合証拠も**外部（検証者・審査者）が信じて行動する対象**。過大主張・虚偽記述は
+   不完全な記述より有害。実態に合わせるのが唯一の正しい方向。
+8. まだ答えが出ていないこと: 本番 sharp が HEIF デコード不可の場合の HEIC GPS 除去（OPEN_QUESTIONS 継続）。
+   Codacy トークン設定による自動トリガー復活の要否。
+9. 公開区分: 要確認（申請中の C2PA 準拠・自社セキュリティ構成に触れるため、公開前に代表確認）。
+## 2026-09-04 Server Action を全部読み、サイトコンテンツのアプリ側ガードが DB とずれていたのを直した
+
+1. 日付: 2026-09-04
+2. 起きたこと: 前の作業（PR #1026）で `updateTenantSettingsAction` に**ロール判定が1つも無い**のを
+   見つけ、「同じ形の Server Action が他にもあるか」を未解決として残していた。それを洗った。
+3. 以前の考え: 「Server Action は数が多いだろうから検出器を書く必要がある」と思っていた。
+4. 違和感・問題: **数えたら7箇所しか無かった。** 検出器を作らず全部読んだ。
+
+   | Server Action | ガード | 判定 |
+   |---|---|---|
+   | `createCertAction` | `certificates:create` | OK |
+   | `updateTenantSettingsAction` | owner（PR #1026 で修正） | OK |
+   | `uploadLogo` / `uploadSeal` | owner（PR #1026 で修正） | OK |
+   | `voidCertificate` | `certificates:void` | OK |
+   | `signIn` | 認証前なので不要 | OK |
+   | **`site-content` の4アクション** | `hasMinRole(role, "staff")` | **ずれ** |
+
+   `site_content_posts` の RLS は **`is_super_admin_user()` しか通さない**。
+   マイグレーション `20260424010000_site_content_posts_super_admin_only.sql` のヘッダに
+   **「加盟店（owner/admin/staff/viewer）はDB直接操作でも変更不可」**と明記してある。
+   つまり**判断は既に済んでいて、アプリ側だけが追随していなかった**。
+
+   結果として staff/admin/owner は、アプリのガードを通過してから RLS に弾かれる。
+   **UPDATE と DELETE は 0 行・エラー無しなので `{ok:true}` が返る。**
+   本番の24人（owner 23 / staff 1）が「削除しました」「公開しました」と表示されながら
+   何も変わらない状態だった。`site_content:view` は viewer を含む全ロールが持つので、
+   **メニューも全員に出ていた**。
+5. 決めたこと:
+   - **`site_content:view` / `site_content:manage` を super_admin 限定にする。**
+     既存の `platform:*`（super_admin のみ）と同じ形に揃えた。新しい事業判断ではなく、
+     2026-04-24 の判断にアプリを合わせただけ。
+   - `authorize()` を `resolveCallerWithRole` + `requirePermission(caller, "site_content:manage")` に。
+     あわせて、ローカルの membership 引き（並び順もアクティブテナントの cookie も見ない）を
+     `caller.tenantId` に置き換えた。`updateTenantSettingsAction` と同じ欠陥だった。
+   - **delete と status 変更に `.select("id")` を付け、0行を `forbidden` として返す。**
+     ガードだけだと、将来また RLS とずれたときに同じ嘘が復活する。
+   - 検査を `src/lib/auth/__tests__/serverActionGuards.test.ts` に追加した。
+   - **【追記 同日・セルフレビュー】画面3枚（一覧・新規・編集）が「ログイン済みか」しか
+     見ていなかったので、`requireSiteContentAdmin()` を通すようにした。** ナビから消しても
+     URL 直打ちでは開け、押せば必ず `forbidden` になるボタンだけが並んでいた。
+     `ROUTE_PERMISSIONS` は誰も強制していない（`getRequiredPermission()` の呼び出し元 0 件、
+     middleware 無し）ため、画面側は各 `page.tsx` が自分で見るしかない。MISTAKE_LEDGER M-023。
+   - **【追記】`deleteSiteContentAction` の 0 行を一律 `forbidden` にしていたのを、
+     存在しない id は `not_found` に分けた。** 他の3アクションと揃えた。
+6. 捨てた選択肢:
+   - **RLS を staff まで緩める** → 2026-04-24 の判断（加盟店は変更不可）を覆すことになる。
+     公開サイトのブログ/ニュースは HOLY のものであって加盟店の資産ではない。
+   - **`site_content:view` は全ロールに残す** → 何も変更できない画面のメニューを
+     24人に出し続けることになる。M-019（押せないボタン）と同じ。
+   - **検出器を書いてから読む** → 7箇所しかないので読む方が速く、確実だった。
+7. 判断理由: DB とアプリで**2つの正が矛盾していたら、明示的に書かれている方が正**。
+   今回はマイグレーションのヘッダに理由まで書いてあった。
+8. まだ答えが出ていないこと:
+   - この検査は**ファイル先頭に `"use server"` を持つファイルだけ**を見る。
+     関数内宣言（`voidCertificate` など）は対象外。完全な一覧は静的に作れない。
+   - `site_content_posts` には `tenant_id` 列があるが、RLS は使っていない。列の要否は未検討。
+   - `ROUTE_PERMISSIONS`（48画面分）を強制する場所を作るかどうか。middleware を置くと
+     全 admin 画面の表示にセッション読み取りが1往復増える。OPEN_QUESTIONS に起票。
+   - `is_super_admin_user()` は**所属のどれかが super_admin なら真**（EXISTS）だが、
+     アプリの `resolveCallerWithRole` は**アクティブ1件の role** を返す。本番の super_admin は
+     所属1件なので今は一致するが、2件目を持つと**アプリだけが拒否する**ずれになる。
+9. 公開区分: 公開可（「DB とアプリで2つの正が矛盾し、緩い方を通ると黙って失敗する」は
+   一般論として書ける。ロール名・人数は書かない）
+
 ## 2026-09-04 判断待ちだった4件を確定（通知の宛先・テナント設定・共有テンプレート・削除権限）
 
 1. 日付: 2026-09-04
@@ -618,7 +777,7 @@
 5. 決めたこと:
    - **記録の名義は元請け。** エンドユーザーは元請けの顧客なので、元請けのテナントで
      発行すればマイページ導線（①）は既存のまま通る。新しい仕組みを足さない。
-   - **`certificates.job_order_id` を1列足して発注に紐付ける**（`20260901000001`）。
+   - **`certificates.job_order_id` を1列足して発注に紐付ける**（`20260904210000`）。
      受発注の双方が `/admin/orders/[id]` の同じ画面から成果物を辿れる（②）。
      外注先にとっては「自分が施工した記録」を確認できる唯一の導線になる。
    - **相手方への開示は列を絞る。RLS は変えない。** 相手方テナントに `certificates`
@@ -4165,6 +4324,89 @@
 7. 判断理由: 最小・最安全・即効性が高い（DB変更なし・既存挙動不変・既存資産の接続のみ）。「回答→次の行動」の導線は会話継続率に直結し、既に組んである見積りフロー資産を活かせる。回答内容の拡充（データ登録）とUX（コード）を分離することで、それぞれ適切な担当（店舗のナレッジ登録／開発）に割り当てられる。
 8. まだ答えが出ていないこと: 残り3領域（予約変更/キャンセルのセルフ対応・作業状況問い合わせの自動回答・見積りフロー改善）の実装順と各スコープ。概算見積り返信の文面とボタン誘導の整合をどう取るか。「FAQで答えられる内容」を増やすためのナレッジ登録運用（誰が・どの粒度で登録するか、業種汎用FAQのシード是非）。
 9. 公開区分: 公開可（LINEチャットボットのUX設計・「回答したら次の行動をボタンで示す」という考え方、フェーズ分割の判断は公開可。テナントID・本番データ・プラン内部設定は非公開）。
+## 2026-09-04 C2PA 申請の validate 申告を取り下げ、Generator（生成）のみで申請する方針に決定
+
+1. 日付: 2026-09-04
+2. 起きたこと: 証拠パッケージ要件を精査した結果、validate（ingredient 検証）の証拠モデルが Ledra の実装（`c2pa.created`・ingredient 非埋め込み＝プライバシー設計）と構造的に不一致、かつ crJSON test harness が新規実装必要（c2pa-node 非対応・c2patool 未導入）と判明。
+3. 以前の考え: Intake では「validate=Yes（4型）」を申告していた（製品に検証機能があるため）。
+4. 違和感・問題: validate 維持は (a) ingredient/sample 証拠モデルに合わない、(b) crJSON harness の新規実装コスト、(c) VP 系要件リスク、と負担が過大。一方 Ledra の本質は Generator（撮影写真への署名）。
+5. 決めたこと: **validate 申告を取り下げ、Generator Product の生成（jpeg/png/webp/heic）のみで申請**。製品の取り込み検証機能（`verifyExternalC2pa`）はコードとして残すが、今回は適合主張しない。認定取得後に validate を別途追加申請しうる。Administrator へ訂正メールを送付。
+6. 捨てた選択肢: C+A（validate 維持＋プログラム確認＋crJSON 実装）。対外的に検証機能を今掲げる経営判断がある場合のみ妥当だが、コスト大。
+7. 判断理由: 生成サンプル4型は作成済み・全 Valid。validate を外すと ingredient/crJSON の重い作業が不要になり、最短で assessment に入れる。
+8. まだ答えが出ていないこと: 訂正メールの送付（代表）。GPSA/運用文書の内容の代表最終確認。本番 sharp の HEIF デコード可否（HEIC の GPS 除去）。
+9. 公開区分: 要確認（申請スコープは公開可、詳細は非公開）。
+
+## 2026-09-03 C2PA Administrator が Intake 受理（Record ID 発行）・証拠パッケージ要求。v0.2 追加要件(specVersion/allActionsIncluded)に即対応
+
+1. 日付: 2026-09-03
+2. 起きたこと: Administrator から Intake 受理メール。**CPL Record ID = 01a06690-d01e-7608-ad8a-cd4f1a49d76e** を発行。証拠パッケージ（サンプル出力・ingredient・GPSA）を要求。同梱の v0.2 追加適合要件（Conformulator が検査）を精査。
+3. 以前の考え: マニフェストは actions 準拠化で提出可能と考えていた。
+4. 違和感・問題: 追加要件で Spec2.4 は `claim_generator_info.specVersion` と `actions-map-v2.allActionsIncluded` が**必須**。現行実装は未設定で Conformulator に弾かれる。
+5. 決めたこと: `specVersion="2.4"` と `allActionsIncluded=true`（strip は rotate().toBuffer()=向き補正+再エンコード+メタ除去のみで4アクションが実行の全てのため true が正確）を製品に追加。既知良好証明書で validation_state=Valid・全必須フィールド出力を実測確認。テストにも検査追加。
+6. 捨てた選択肢: allActionsIncluded=false（不要に来歴分類を弱める。実際は全アクション把握済み）。
+7. 判断理由: 提出サンプルは Conformulator を通す必要があり、必須フィールドの欠落は即差し戻し。実装事実（strip の内容）に基づき true が正確。
+8. まだ答えが出ていないこと: (要件3) validate 機能の **crJSON 出力**対応（プログラムが後日テスト入力を提供）。GPSA は「**将来・計画の表現は不可、設計レベルで現状のみ**」の制約 → 現行 GPSA の「移行予定/AL2-forward/要整備」表現を全面見直しが必要。サンプルの ingredient はプログラム提供ライブラリ（Google Drive）を使用。
+9. 公開区分: 要確認（Record ID・申請進捗は公開可、鍵/インフラ詳細・CA は非公開）。
+
+## 2026-09-03 C2PA 証拠サンプル生成で「マニフェスト非準拠」ブロッカーを発見。証拠フェーズ前に署名ロジック修正が必要と判断
+
+1. 日付: 2026-09-03
+2. 起きたこと: 証拠フェーズ用サンプルを scratch 環境（pinned `@contentauth/c2pa-node@0.6.0`）で生成し、`Reader` で検証したところ全画像が `validation_state: Invalid`。切り分けの結果、actions アサーションが C2PA 2.x 非準拠（`c2pa.opened` に ingredient 参照なし→`ingredientMismatch`）と判明。詳細は `docs/c2pa-conformance-application.md` §12。
+3. 以前の考え: 「B1 本番署名を env 有効化すればサンプルは出せる」と考えていた。
+4. 違和感・問題: 出力マニフェストが C2PA 検証を通らず、そのままでは assessor に提出できない。製品テストは純関数だけで実署名の検証を欠いており、これまで気づけなかった。
+5. 決めたこと: 証拠フェーズ着手前に (a) actions レジャーを 2.x 準拠へ修正、(b) 本番証明書で署名し `claimSignature.mismatch` の有無を再検証、(c) 実署名画像の検証を1本テスト化、(d) HEIC 署名可否を実ファイルで確認。→ **(a)(c) は本セッションで実施済み**: `c2pa.opened` を `c2pa.created`+`digitalSourceType` に置換し `orientation`/`converted`/`edited` を維持（元写真は GPS を含むため ingredient にできず、`opened` は使えないと判明）。`c2paSignValidate.test.ts` を新設。(b)(d) は残（本番証明書/HEIF対応環境が要る）。
+6. 捨てた選択肢: 現行マニフェストのままサンプル提出（非準拠で assessment に落ちる）。dev 自己署名の `claimSignature.mismatch` を製品バグと即断（内容非依存で dev-cert 由来の可能性が高く、本番未検証のため保留）。
+7. 判断理由: `c2pa.created`+`digitalSourceType` で action コードが消えることを実行で確認済み＝根本原因が特定できている。一方で署名不一致は本番証明書で切り分ける必要がある。
+8. まだ答えが出ていないこと: 本番証明書での署名有効性、HEIC 署名可否、actions を created 系に寄せると strip/再エンコード履歴の表現が失われる点の provenance 設計、正確な v2.4 準拠。
+9. 公開区分: 非公開/要確認（未修正のプロダクト不具合。対外公開は修正後）。
+
+## 2026-09-03 C2PA Program Intake Form を提出（GP/Backend/AL1/Spec2.4、静止画4型の生成・検証を申告）
+
+1. 日付: 2026-09-03
+2. 起きたこと: EOI→Legal Agreement 署名に続き Program Intake Form を提出。実コードで対応メディアタイプ（image/jpeg・png・webp・heic）と検証機能（`verifyExternalC2pa`）を確認し、申告値を確定。提出値は `docs/c2pa-conformance-application.md` §11 に記録。
+3. 以前の考え: メディアタイプや検証可否・compressed manifest 対応は未整理だった。
+4. 違和感・問題: Intake の各設問は契約上の申告になるため、推測でなく実装事実に基づく必要がある。
+5. 決めたこと: 生成=静止画4型で Yes・他モダリティ(動画/テキスト/音声/文書/フォント/ML/ライブ)は No、検証=同4型で Yes（ingredient 検証）、compressed manifest=No、Attestation=None（AL1）、DN=CN:Ledra/O:HOLY Inc./C:JP、公開日=即時(2026-09-03)。
+6. 捨てた選択肢: 動画・テキスト等を Yes にする（未実装のため虚偽になる）／Attestation 方式を申告する（未実装）。
+7. 判断理由: いずれも `uploadHandler.ts:33`・`c2paVerify.ts`・`c2paSigner.ts` の実装事実に一致させ、過大申告を避けた。
+8. まだ答えが出ていないこと: 「best describes your product」の最終選択（選択肢2 or None）と公開日は代表の実提出値、郵便番号107-0061、compressed=No とHEIC署名可否のサンプル検証、v2.4 実出力の一致。
+9. 公開区分: 要確認（申請の事実・方針は公開可、登記情報・鍵/インフラ詳細は非公開/要確認）。
+
+## 2026-08-12 C2PA 申請の費用・期間・実施主体が確定し、Expression of Interest フォームから着手する
+
+1. 日付: 2026-08-12
+2. 起きたこと: C2PA 申請の外形（登録要否・費用・期間・日本企業の可否）が代表経由で確認でき、`docs/c2pa-conformance-application.md` に §7（費用と予定期間・確定事項）§8（EOI 記入項目）を追記。
+3. 以前の考え: 費用は無料と把握していたが、予定期間の目安と「日本企業が主体になれるか」は未確認だった。
+4. 違和感・問題: 期間の見通しが無いと社内の着手判断ができない。EOI に何を書くかも未整理だった。
+5. 決めたこと: Conformance Program 登録は必須（本番証明書は適合認定→認定CA の2段構え）。**費用は無料、予定期間は準備状況次第で2週間〜6ヶ月、日本企業(株式会社HOLY)が申請主体で可**。**Expression of Interest フォーム（役割=GP、AL=1）から着手**する。
+6. 捨てた選択肢: EOI をこのセッションから自動送信すること（外部Googleフォーム・登記情報を要し不可逆のため、代表が送信する運用に）。
+7. 判断理由: 期間が準備依存＝GPSA/サンプル/KMS 化を前倒すほど短縮できるため、先に EOI を出して手続きを並走させるのが最短。
+8. まだ答えが出ていないこと: 申告 Spec バージョン(2.2/2.4)、英字社名・登記住所、CA 選定と証明書費用。期間2週間〜6ヶ月は代表提供情報で C2PA PDF 未記載（未検証）。
+9. 公開区分: 要確認（費用無料・期間の目安は公開可、登記情報・CA 交渉は非公開/要確認）。
+
+## 2026-08-11 C2PA AL2 移行は「新レコード再申請」であり、AL1 を "AL2 フォワード"（鍵は最初から KMS）で作る方針に決定
+
+1. 日付: 2026-08-11
+2. 起きたこと: AL1/AL2 の差分と Ledra での AL2 可否・後日移行可否を精査（Security Requirements §O.1-O.6、Conformance Program §Material Change）。結論を `docs/c2pa-conformance-application.md` §6 に追記。
+3. 以前の考え: AL1 で通してから AL2 は「レコードを格上げすればよい」と漠然と想定。
+4. 違和感・問題: 実際は Max Assurance Level 変更＝material change で、CPL 上は新 record id の再申請になる。かつ AL2 の実コストは手続きでなく再設計（KMS＋Confidential Computing＋端末アテステーション）。env 平文 PEM のまま AL1 を通すと AL2 移行時に鍵基盤ごと作り直しになる。
+5. 決めたこと: 「AL2 フォワードな AL1」。AL1 申請・掲載を進めつつ、署名鍵だけは最初からクラウド KMS に置き（env PEM を廃止）、署名処理を移設しやすい独立モジュールに隔離する。
+6. 捨てた選択肢: ①env PEM のまま AL1 最短通過（AL2 移行で手戻り大）。②いきなり AL2（Vercel→Confidential Computing 移設・端末アテステーションでリードタイム過大）。
+7. 判断理由: KMS 化は AL1 の O.2「独立鍵管理」を満たしつつ AL2 の土台にもなる二重効果。掲載を止めずに将来コストを最小化できる。
+8. まだ答えが出ていないこと: 「calling client / Edge subsystem」の解釈（解釈A=端末アテスト必須で Web パス AL2 不可 / 解釈B=内部エンクレーブアテストで端末非依存）。Vercel サーバーレスが HW RoT アテスト・HIDS・セグメンテーションを満たせるか（推定=不可、未検証）。AL2 着手前に Conformance Program へ要確認。
+9. 公開区分: 要確認（方針は公開可、鍵管理・インフラ詳細・CA 交渉は非公開/要確認）。
+
+## 2026-08-11 C2PA Conformance Program は Generator Product / Backend クラスで Max Assurance Level 1 を先行申請する方針に決定
+
+1. 日付: 2026-08-11
+2. 起きたこと: conformance-public docs/v0.2（Conformance Program / GP Security Requirements / GPSA Template）を精読し、Ledra の C2PA 署名実装（`c2paSigner.ts` の LocalSigner、鍵は env PEM）と CI/ホスティングを突合。申請計画とギャップ分析を `docs/c2pa-conformance-application.md` に作成。
+3. 以前の考え: C2PA は「B1 本番署名を env 有効化すれば動く」段階までは認識していたが、公式 Conformance Program への申請要件（GPSA・実装クラス・Assurance Level）は未整理だった。
+4. 違和感・問題: 本番証明書は C2PA から直接ではなく「適合認定→認定CAから取得」の2段構え。どの Assurance Level を狙うかで必要な実装（KMS・端末アテステーション）が大きく変わるのに、その分岐が未確定だった。
+5. 決めたこと: 役割=Generator Product、実装クラス=Backend、初回目標=Max Assurance Level 1。AL1 のクリティカルパスは (a) 署名鍵の鍵管理サービス移行＋ローテーション手順、(b) CA選定と自動エンロール認証、(c) 90日修正ポリシー/OWASPカバレッジの運用文書化の3点。
+6. 捨てた選択肢: ①AL2 まで作り込んでから申請（KMS＋ハードウェアRoTアテスト＋Play Integrity/App Attest が必要でリードタイム過大）。②Validator Product も同時申請（別契約・別Intake・検証サンプルでスコープ拡大、GP適合を優先）。
+7. 判断理由: AL1 の Level1 要件は既存資産（Vercel/Supabase の TLS1.3・IAM/RLS、CodeQL/Codacy/dependabot）で大部分カバー済みで、残ギャップが O.1/O.2 に集約されるため最短で CPL 掲載に到達できる。AL2 は掲載後にインスタンス単位で引き上げ可能。
+8. まだ答えが出ていないこと: 申告 Spec バージョン（2.2/2.4）、CA の選定と自動エンロール認証方式、鍵管理方式の具体、対応メディアタイプ確定、登記情報の DN 各値（OPEN_QUESTIONS 2026-08-11）。
+9. 公開区分: 要確認（申請方針は公開可だが、登記情報・鍵管理の詳細・CA交渉は非公開/要確認）。
 
 ## 2026-08-10 品目選択を「絞るまで隠す段階表示」から「純POSレジ型（常時グリッド表示）」へ差し戻し（前日の#903を代表要望で撤回）
 1. 日付: 2026-08-10

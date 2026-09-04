@@ -19,12 +19,12 @@
 -- アプリ側は 23505 リトライ（insertInvoiceWithRetry）で採番し直すが、最終防壁は
 -- DB のユニーク索引で張る。tenant 跨ぎで番号は再利用されるため (tenant_id, doc_number)。
 --
--- ponytail: 本番に既存の重複 doc_number が残っていると CONCURRENTLY ビルドは失敗し、
+-- ponytail: 本番に既存の重複 doc_number が残っていると索引ビルドは失敗し、
 --   INVALID な索引を残す。これは意図した forcing function で、先に重複を突合・解消
 --   （番号振り直し）してから再実行すること。下の DO ブロックが事前検出して明示的に
 --   失敗させ、再実行時は無効索引を DROP してから貼り直す。
 --
--- CREATE UNIQUE INDEX はトランザクション内で実行できないため、
+-- 元は CREATE UNIQUE INDEX CONCURRENTLY のため（このファイルは 2026-09-04 に CONCURRENTLY を外した。冒頭の注を参照）、
 -- 既存 uq_loaner_active_loan と同方針でこのファイルにまとめる。
 
 -- (1) 既存の重複 doc_number を検出したら、無効索引を作る前に明示的に失敗させる。

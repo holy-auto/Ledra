@@ -1,3 +1,10 @@
+-- 【2026-09-04 改名】元のファイル名は 20260903000002 だった。本番の適用済み最新は
+-- 20260904123252 で、それより古いバージョンの未適用ファイルがあると
+-- `supabase db push` が out-of-order で停止し、以降のマイグレーションが本番へ
+-- 一切届かなくなる（.github/workflows/db-migrate.yml の不変条件2）。
+-- 本番の schema_migrations に 20260903000002 が無いことを名指しで確認したうえで改名した
+-- （適用済みを改名すると不変条件1に抵触する）。
+-- `npm run lint:migrations` の migration-version-before-base-head が静的に見ている。
 -- =============================================================
 -- staff_members.linked_tenant_id 索引 (CONCURRENTLY)
 --

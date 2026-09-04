@@ -7,7 +7,7 @@
 -- 冪等・additive: 列追加のみ。
 -- 【後から内容だけ修正】supply_partner_credentials を作るのは 20260601000006（このファイルより後ろ）。
 -- 空 DB へ1パスで流すとここで落ちる。無いときは飛ばし、
--- 空 DB 側の列は 20260601000009_replay_supply_columns.sql が足す。
+-- 空 DB 側の列は 20260601000006_supply_partners.sql の末尾で足す。
 DO $mig$
 BEGIN
   IF to_regclass('public.supply_partner_credentials') IS NOT NULL THEN
