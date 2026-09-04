@@ -69,9 +69,11 @@ TOE 境界は **写真のキャプチャ/アップロード → サーバー側�
 実コード（`src/lib/certificateImages/uploadHandler.ts` の accept-list、`c2pa.ts` / `c2paVerify.ts`）で確認。
 
 - **Claim generation（署名）**: `image/jpeg`, `image/png`, `image/webp`, `image/heic`
-- **Claim validation（取り込み ingredient 検証）**: 同上（`image/jpeg`, `image/png`, `image/webp`, `image/heic`）
+- **Claim validation**: 本申請では申告しない（Ledra は Generator Product として生成のみで申請する）。
+  製品には取り込み時の C2PA 検証機能（`verifyExternalC2pa`）が存在するが、出力マニフェストへ ingredient を
+  埋め込まない設計（プライバシーのため元写真を strip/再エンコード）のため、validation は本申請の対象外とする。
 
-いずれもテンプレート §1.9 の許可リストの部分集合。各型の署名済みサンプル + `.c2pa`/`.json` を証拠として提出。
+生成メディアタイプはテンプレート §1.9 許可リストの部分集合。各型の署名済みサンプル + `.c2pa`/`.json` を証拠として提出。
 
 ---
 

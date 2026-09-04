@@ -285,6 +285,18 @@
 8. まだ答えが出ていないこと: 今回の報告が実際にどの原因だったか（AI自動入力OFF／コスト上限／基盤障害／画像品質）は未特定＝【要確認】。iPhone の HEIC 画像アップロード時の実挙動（現状 JPG/PNG/GIF/WEBP のみ許可）も未検証。電子車検証の二次元コードが複数シンボルに分割印字された場合の結合可否も未検証。
 9. 公開区分: 公開可（設計判断のみ。テナント情報・個人情報なし）。note化するなら「fail-soft のつもりが fail-silent だった——"何も起きない"は最悪のエラー表示」として。
 
+## 2026-09-04 C2PA 申請の validate 申告を取り下げ、Generator（生成）のみで申請する方針に決定
+
+1. 日付: 2026-09-04
+2. 起きたこと: 証拠パッケージ要件を精査した結果、validate（ingredient 検証）の証拠モデルが Ledra の実装（`c2pa.created`・ingredient 非埋め込み＝プライバシー設計）と構造的に不一致、かつ crJSON test harness が新規実装必要（c2pa-node 非対応・c2patool 未導入）と判明。
+3. 以前の考え: Intake では「validate=Yes（4型）」を申告していた（製品に検証機能があるため）。
+4. 違和感・問題: validate 維持は (a) ingredient/sample 証拠モデルに合わない、(b) crJSON harness の新規実装コスト、(c) VP 系要件リスク、と負担が過大。一方 Ledra の本質は Generator（撮影写真への署名）。
+5. 決めたこと: **validate 申告を取り下げ、Generator Product の生成（jpeg/png/webp/heic）のみで申請**。製品の取り込み検証機能（`verifyExternalC2pa`）はコードとして残すが、今回は適合主張しない。認定取得後に validate を別途追加申請しうる。Administrator へ訂正メールを送付。
+6. 捨てた選択肢: C+A（validate 維持＋プログラム確認＋crJSON 実装）。対外的に検証機能を今掲げる経営判断がある場合のみ妥当だが、コスト大。
+7. 判断理由: 生成サンプル4型は作成済み・全 Valid。validate を外すと ingredient/crJSON の重い作業が不要になり、最短で assessment に入れる。
+8. まだ答えが出ていないこと: 訂正メールの送付（代表）。GPSA/運用文書の内容の代表最終確認。本番 sharp の HEIF デコード可否（HEIC の GPS 除去）。
+9. 公開区分: 要確認（申請スコープは公開可、詳細は非公開）。
+
 ## 2026-09-03 C2PA Administrator が Intake 受理（Record ID 発行）・証拠パッケージ要求。v0.2 追加要件(specVersion/allActionsIncluded)に即対応
 
 1. 日付: 2026-09-03

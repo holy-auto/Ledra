@@ -156,17 +156,16 @@
 - 進捗（2026-09-03）: **EOI → Legal Agreement 署名 → Program Intake Form 提出済み**（提出値は `docs/c2pa-conformance-application.md` §11）。次は Administrator のレビュー→証拠提出（サンプル＋GPSA）。
 - **一部修正済み（2026-09-03、詳細は §12）**: 証拠用サンプルで判明したマニフェスト非準拠のうち **(1) actions の C2PA 2.x 非準拠を修正済み**（`c2pa.opened`→`c2pa.created`+`digitalSourceType`、`orientation`/`converted`/`edited` 維持）。実署名検証テスト `c2paSignValidate.test.ts` を新設。**全て解決（2026-09-03）**: (2) `claimSignature.mismatch` は dev 自己署名証明書だけの癖と確定 — c2patool 公式 ES256 証明書で署名すると `validation_state: Valid`／署名エラーなし（残は untrusted のみ＝適合後に解消）。**製品の署名ロジックは健全、本番鍵は不要で証明済み**。(3) HEIC も署名可能・準拠。本番鍵は適合認定後に CA から発行されるため申請時点では未保有だが、証拠サンプルは適合前でも正しい署名で提示できる。→ **署名・マニフェスト面のブロッカーは解消**。**GPSA 提出用ドラフト `docs/c2pa-gpsa.md`＋アーキ図作成済み**。v0.2 追加要件（specVersion/allActionsIncluded）も対応済み（0f860fc）。
 
-- **2026-09-03 Administrator が Intake 受理・証拠パッケージ要求（Record ID 01a06690-d01e-7608-ad8a-cd4f1a49d76e）**。残タスク:
-  1. **サンプル出力**: 生成4型（jpeg/png/webp/heic）を `X-sample.EXT` で。untrusted 証明書は許容（適合前）。→ 本番同等の署名で生成（テスト証明書可）。
-  2. **ingredient サンプル**: validate4型を、**プログラム提供ライブラリ（Google Drive）**の入力を取り込んで再署名し `X-ingredientN.EXT`。自己署名は不可（c2patool かプログラム CA のテスト証明書）。
-     - **⚠ 重要論点（要・代表判断）**: プログラムの証拠モデルは「ingredient を取り込んだ結果を出力マニフェストで示す」前提。だが Ledra の出力マニフェストは **`c2pa.created`（ingredient 参照なし）**——プライバシーのため元写真を strip/再エンコードし ingredient として埋め込まない設計。つまり「validate=ingredient として検証」という Intake の申告と、実装（独立検証 `verifyExternalC2pa` の verdict は別管理・出力に非埋め込み）が食い違う。→ (A) 検証証拠を crJSON/検証結果として別提出する（要件3と連動）、(B) validate 申告を見直す、(C) プログラムに解釈を確認、のいずれか。**サンプル生成前にこの方針決定が必要**。
-  - 生成サンプル出力（a-d sample: jpeg/png/webp/heic）は生成済み・送付済み（全 Valid/specVersion2.4/allActionsIncluded=true、テスト証明書=untrusted 想定内）。
-  3. **GPSA を「将来・計画表現なし／設計レベルで現状のみ」に全面見直し**（現行の「移行予定・AL2-forward・要整備」を、現状の記述 or 実在する運用文書に置換）。ファイル名に "GPSA" を含める。
-  4. **crJSON 出力**（要件3, validate 機能）: プログラムのテスト入力に対し crJSON を返す test harness。**調査結果（2026-09-03・実測）: c2pa-node の Reader は `json()` のみで crJSON 非対応、c2patool も npm に無し。→ crJSON は c2patool 導入か独自マッピングの新規実装が必要**（validate を維持する場合のコスト）。
-  5. **Conformulator（https://c2pa-conformulator.netlify.app/）で自己テスト**後に提出。
-  6. 提出はメール添付/zip/DLリンク（機密）。
+- **2026-09-03 Administrator が Intake 受理・証拠パッケージ要求（Record ID 01a06690-d01e-7608-ad8a-cd4f1a49d76e）**。
+- **2026-09-04 方針: validate 申告を取り下げ、Generator（生成）のみで申請**（DECISION_LOG 2026-09-04）。これに伴い ingredient サンプル・crJSON harness は**不要化**（validate 依存の残タスクを削除）。
+- 残タスク（生成のみ・B 方針）:
+  1. ✅ **生成サンプル出力** a-d（jpeg/png/webp/heic）生成・送付済み（全 Valid/specVersion2.4/allActionsIncluded=true、テスト証明書=untrusted 想定内）。
+  2. ✅ **GPSA を設計レベル現状のみに改訂**＋運用文書＋図（作成済み。validate を除外し生成のみに更新）。
+  3. **Administrator へ訂正メール送付**（validate 取り下げ。文面 `scratchpad/ledra-intake-correction-email.md`）— 代表が送信。
+  4. **Conformulator（https://c2pa-conformulator.netlify.app/）で生成サンプルを自己テスト**後に提出。
+  5. 提出はメール添付/zip/DLリンク（機密）。GPSA 一式のファイル名に "GPSA" を含める。
 - 別論点: 本番 sharp が HEIF デコード不可だと HEIC の GPS 除去が効かない点は要確認。
-- 確定済み: 役割=GP / 実装クラス=Backend / Max AL=1 / 申告 Spec=**2.4** / 法人名=株式会社HOLY（英字 **HOLY Inc.**）/ 登記住所=東京都港区北青山1-3-1 アールキューブ青山3F / 連絡先=info@holy-inc.jp / 生成・検証メディアタイプ=image/jpeg・png・webp・heic（実コード確認）。
+- 確定済み: 役割=GP / 実装クラス=Backend / Max AL=1 / 申告 Spec=**2.4** / 法人名=株式会社HOLY（英字 **HOLY Inc.**）/ 登記住所=東京都港区北青山1-3-1 アールキューブ青山3F / 連絡先=info@holy-inc.jp / **生成メディアタイプ=image/jpeg・png・webp・heic（validate は今回申告せず）**。
 - 残る論点と選択肢:
   - **Spec 2.4 の実出力確認**: 申告 2.4 に対し、製品が実際に v2.4 準拠マニフェストを出力しているかを Intake 用サンプルで要検証（契約上、申告版に拘束される）。
   - **Date of Earliest Public Disclosure**: CPL 公開を遅らせたい日付があるか（無ければ即時）。
