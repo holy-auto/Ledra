@@ -2,6 +2,8 @@
 
 import { useSearchParams } from "next/navigation";
 import { useViewMode } from "@/lib/view-mode/ViewModeContext";
+import { useUiPreferences } from "@/lib/ui-preferences/UiPreferencesContext";
+import { reservationSurface } from "@/lib/ui-preferences/reservationsPresentation";
 import ReservationsClient from "./ReservationsClient";
 import StorefrontReservations from "./StorefrontReservations";
 
@@ -19,10 +21,12 @@ import StorefrontReservations from "./StorefrontReservations";
  */
 export default function ReservationsModeSwitch() {
   const { mode, hydrated } = useViewMode();
+  const { displayMode, loading } = useUiPreferences();
   const sp = useSearchParams();
   const forceAdmin = sp.get("create") === "1";
+  const surface = reservationSurface(displayMode, mode, forceAdmin);
 
-  if (!hydrated || mode === "admin" || forceAdmin) {
+  if (!hydrated || loading || surface === "admin") {
     return <ReservationsClient />;
   }
   return <StorefrontReservations />;
