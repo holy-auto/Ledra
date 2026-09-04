@@ -3,6 +3,36 @@
 > まだ決まっていないこと、判断に迷っていることを書く場所。決まったら
 > DECISION_LOG.md に移し、このファイルからは消す（削除履歴は git で追える）。
 
+## AI の月次コストキャップが本番で効いていない可能性が高い（2026-09-04）
+
+「AI の暴走課金の安全ブレーキ」として作った月次コストキャップ（`src/lib/ai/costCap.ts`）は、
+**上限が設定されていなければ何もしない**。そして設定されている形跡が無い。
+
+- `getCostCapStatus()` は `capJpy <= 0` のとき `null` を返す（`costCap.ts`）
+- `resolveCapJpy()` の解決順は「テナント個別 `monthly_cost_cap_jpy` →
+  env `AI_MONTHLY_COST_CAP_JPY` → **0（無効）**」
+- `.env.example` の `AI_MONTHLY_COST_CAP_JPY` は **0**
+- 本番の `tenant_ai_automation_settings` は1行のみで、`monthly_cost_cap_jpy` を
+  設定しているテナントは **0件**（2026-09-04、Supabase MCP で実測）
+- `withCostCap` は Redis 不在・失敗時に **fail-open**（止めない）
+
+**【要確認】本番 Vercel の env `AI_MONTHLY_COST_CAP_JPY` に 0 以外が入っているか。**
+この環境からは Vercel の環境変数を読めないので確認できない。ここが 0 なら、
+現在 AI の課金に上限は無い（各ルートのレート制限は「1人が短時間に叩けない」を
+保証するだけで、月次の総額は抑えない）。
+
+なお `costCap.ts` は「1コールあたりの代表単価」（既定 2.0 円）の概算で積む設計なので、
+仮に有効でも正確な請求額ではなく安全ブレーキとしての粗い見積もり。
+
+決めたいこと:
+- 全社の既定上限（env）を入れるか。入れるなら月いくらか。
+- テナント個別上限をプランに応じて自動で入れるか（Starter は月○円、等）。
+- fail-open のままでよいか。Redis が落ちている間は上限が消えるが、
+  ブレーキ側の障害でサービスを止めるのも困る、というトレードオフ。
+
+- 起票日: 2026-09-04
+- 判断者: 未定（代表判断＋env の確認が要る）
+
 ## CI の失敗元がログから読み取れない（2026-09-01）
 
 `Lint, Type Check & Unit Tests` は5つのチェック（lint / lint:migrations / tsc /
