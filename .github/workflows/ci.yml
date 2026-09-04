@@ -26,31 +26,15 @@ jobs:
         # block merges.
         run: npm audit --audit-level=high --omit=dev
 
+      # 走らせる検査の一覧はスクリプト側の配列にある。**ここには書かない。**
+      # 手元で同じものを `bash scripts/ci-parallel-checks.sh` で再現できる状態を
+      # 保つため（CI と手元がずれると、隣のスクリプトで代用が起きる。M-018）。
+      #
+      # 並列のまま、出力はチェックごとに分けて ::group:: で出し、失敗したものは
+      # いちばん最後にもう一度出す。GitHub の API はログの末尾しか返さないので、
+      # 末尾に失敗元が写る形にしてある（2026-09-01 に2回誤読しかけた）。
       - name: Lint, Type Check & Unit Tests (parallel)
-        run: |
-          npm run lint &
-          PID_LINT=$!
-          npm run lint:migrations &
-          PID_MIG=$!
-          npx tsc --noEmit &
-          PID_TSC=$!
-          npm run test:coverage &
-          PID_TEST=$!
-          # Supabase のクエリ文字列は tsc も lint も中身を見ない。実スキーマの
-          # スナップショットと突き合わせて、存在しない列・テーブルで落とす
-          npm run check:schema &
-          PID_SCHEMA=$!
-          # 事業ログ (docs/context/) の見出し日付が未来を指していないか。
-          # 2026-09-03 に2日先の日付を4ファイルに書いた (MISTAKE_LEDGER M-011)。
-          # DECISION_LOG の日付はその記録自体が唯一の出典で、誤ると検証手段が無い
-          npm run check:context-dates &
-          PID_DATES=$!
-          wait $PID_LINT || exit 1
-          wait $PID_MIG || exit 1
-          wait $PID_TSC || exit 1
-          wait $PID_TEST || exit 1
-          wait $PID_SCHEMA || exit 1
-          wait $PID_DATES || exit 1
+        run: bash scripts/ci-parallel-checks.sh
 
   migrations-replay:
     name: Migrations Replay
