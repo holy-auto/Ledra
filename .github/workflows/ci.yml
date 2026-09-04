@@ -40,11 +40,17 @@ jobs:
           # スナップショットと突き合わせて、存在しない列・テーブルで落とす
           npm run check:schema &
           PID_SCHEMA=$!
+          # 事業ログ (docs/context/) の見出し日付が未来を指していないか。
+          # 2026-09-03 に2日先の日付を4ファイルに書いた (MISTAKE_LEDGER M-011)。
+          # DECISION_LOG の日付はその記録自体が唯一の出典で、誤ると検証手段が無い
+          npm run check:context-dates &
+          PID_DATES=$!
           wait $PID_LINT || exit 1
           wait $PID_MIG || exit 1
           wait $PID_TSC || exit 1
           wait $PID_TEST || exit 1
           wait $PID_SCHEMA || exit 1
+          wait $PID_DATES || exit 1
 
   migrations-replay:
     name: Migrations Replay
