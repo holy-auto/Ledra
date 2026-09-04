@@ -295,7 +295,9 @@ export default function AiAutomationSettingsClient({ role, initialSettings, cost
           </div>
         ) : (
           <div className="rounded-lg border border-border-subtle bg-surface px-3 py-2 text-[11px] text-muted">
-            現在コスト上限は未設定です (上限なし)。下の欄で月次上限を設定すると安全ブレーキが有効になります。
+            {/* 2026-09-04 以降、上限はコード側の既定 (テナント1件あたり月1万円) が常に効くので、
+                ここは「上限なし」ではなく「現況を取得できなかった」を意味する。 */}
+            コスト上限の現況を取得できませんでした。全社の既定（テナント1件あたり月1万円）は有効です。
           </div>
         )}
 
@@ -309,7 +311,7 @@ export default function AiAutomationSettingsClient({ role, initialSettings, cost
               step={1000}
               inputMode="numeric"
               value={costCapJpy || ""}
-              placeholder="0 (上限なし)"
+              placeholder="0 (全社既定に従う)"
               disabled={!canEdit || saving}
               onChange={(e) => setCostCapJpy(Math.max(0, Math.floor(Number(e.target.value) || 0)))}
               className="w-40 rounded-lg border border-border-default bg-surface px-3 py-1.5 text-sm text-primary"

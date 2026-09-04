@@ -34,6 +34,10 @@ jobs:
       # いちばん最後にもう一度出す。GitHub の API はログの末尾しか返さないので、
       # 末尾に失敗元が写る形にしてある（2026-09-01 に2回誤読しかけた）。
       - name: Lint, Type Check & Unit Tests (parallel)
+        # 並列にしたぶん、出力は全部の子プロセスが終わるまで出ない。ハングすると
+        # ログが空のまま GitHub の既定（6時間）まで回りつづけるので、上限を切る。
+        # 直近の実測は約 4 分（2026-09-04）。PR #1027 の `/code-review` 指摘。
+        timeout-minutes: 20
         run: bash scripts/ci-parallel-checks.sh
 
   migrations-replay:

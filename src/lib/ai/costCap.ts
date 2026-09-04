@@ -142,8 +142,17 @@ export interface CostCapStatus {
 }
 
 /**
- * キャップ状態を返す。キャップ未設定 (capJpy<=0) のときは null。
- * Redis 不在 / 失敗時は spent=0 として扱う (fail-open: exceeded=false)。
+ * キャップ状態を返す。Redis 不在 / 失敗時は spent=0 として扱う
+ * (fail-open: exceeded=false)。
+ *
+ * `capJpy <= 0` の枝は、`DEFAULT_MONTHLY_COST_CAP_JPY` が正である現状では**通らない**
+ * （`resolveCapJpy` が必ず正の値を返す）。既定を 0 に戻したときに
+ * 「上限なし」として素通りするための保険として残してある。
+ *
+ * その結果、この関数を通る経路では**毎回 Redis の GET が1本増える**
+ * （以前は本番で常に `capJpy=0` だったため一度も呼ばれていなかった。
+ * つまりこれは新しい負荷ではなく、**ブレーキが効いていなかったぶんの実費**）。
+ * 表示専用の `applyCostCap:false` 経路でも現況表示に使うので算出は必要。
  */
 export async function getCostCapStatus(
   tenantId: string,

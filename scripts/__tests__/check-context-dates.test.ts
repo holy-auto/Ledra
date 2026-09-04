@@ -13,7 +13,13 @@
  */
 import { describe, it, expect } from "vitest";
 // @ts-expect-error -- .mjs に型定義は無い。検査対象は実行時の挙動。
-import { extractStructuredDates, isStructuredLine, isTooFarInFuture, TOLERANCE_DAYS } from "../check-context-dates.mjs";
+import {
+  extractStructuredDates,
+  isStructuredLine,
+  isTooFarInFuture,
+  unclosedFenceLine,
+  TOLERANCE_DAYS,
+} from "../check-context-dates.mjs";
 
 describe("extractStructuredDates（構造化された日付の抽出）", () => {
   it("DECISION_LOG 形式の見出し `## 2026-09-04 タイトル` を拾う", () => {
@@ -101,6 +107,43 @@ describe("extractStructuredDates（構造化された日付の抽出）", () => 
     expect(extractStructuredDates(text)).toEqual([{ line: 4, date: "2026-09-04" }]);
   });
 
+  // 単純なトグルだと、内側の ``` で状態が反転し「フェンスの外」と誤認する。
+  // その結果、内側の未来日つき見出しが検査され、**正しい文書が落ちる**。
+  // PR #1027 の `/code-review` 指摘。
+  it("入れ子のフェンス（```` の中の ```）で状態が反転しない", () => {
+    const text = [
+      "````markdown",
+      "```bash",
+      "# 2026-12-31 内側のシェルコメント",
+      "```",
+      "## 2026-12-30 フェンス内の見出し例",
+      "````",
+      "## 2026-09-04 フェンス後の本物の見出し",
+    ].join("\n");
+    expect(extractStructuredDates(text)).toEqual([{ line: 7, date: "2026-09-04" }]);
+  });
+
+  it("チルダのフェンスも閉じる", () => {
+    const text = ["~~~", "# 2026-12-31 フェンス内", "~~~", "## 2026-09-04 フェンス後"].join("\n");
+    expect(extractStructuredDates(text)).toEqual([{ line: 4, date: "2026-09-04" }]);
+  });
+});
+
+describe("unclosedFenceLine（閉じ忘れたフェンス）", () => {
+  // 閉じ忘れると以降の全行が黙って検査対象から外れる。0件チェックは他ファイルの
+  // 日付で通るので、これを別に失敗させないと**検査が空振りしたことに気づけない**。
+  it("閉じられていないフェンスの開始行を返す", () => {
+    expect(unclosedFenceLine(["## 2026-09-04 見出し", "```bash", "# 何か"].join("\n"))).toBe(2);
+  });
+
+  it("閉じていれば 0", () => {
+    expect(unclosedFenceLine(["```", "x", "```"].join("\n"))).toBe(0);
+  });
+
+  it("フェンスが無ければ 0", () => {
+    expect(unclosedFenceLine("## 2026-09-04 見出し")).toBe(0);
+  });
+
   it("行番号を正しく返す", () => {
     const text = ["# タイトル", "", "## 2026-09-04 一件目", "本文", "## 2026-09-01 二件目"].join("\n");
     expect(extractStructuredDates(text)).toEqual([
@@ -125,6 +168,14 @@ describe("isStructuredLine（本体の突き合わせ用・抽出とは別実装
     expect(isStructuredLine("実際 2026-09-03 に、2日先の 2026-09-05 を書いた")).toBe(false);
     expect(isStructuredLine("- 起票日は決まっていない")).toBe(false);
     expect(isStructuredLine("2. 起きたこと: 2026-09-04 に着手した")).toBe(false);
+  });
+
+  // `#` の直後に空白が無い行は見出しではない。以前は `startsWith("#")` だったため
+  // PR 番号を書いた本文が「抽出器の取りこぼし」として誤検出され、**正しい文書で
+  // pre-commit フックが止まった**（PR #1027 の `/code-review` 指摘）。
+  it("`#` の直後に空白が無い行は見出しではない", () => {
+    expect(isStructuredLine("#1031 は 2026-09-04 にマージした")).toBe(false);
+    expect(isStructuredLine("####### 2026-09-04 は7個なので見出しではない")).toBe(false);
   });
 });
 

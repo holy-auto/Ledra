@@ -73,41 +73,78 @@ const FIELD_PATTERNS = [
   /^- 起票日: (\d{4}-\d{2}-\d{2})\b/,
 ];
 
-/** その行が「日付を書く場所」か（下の突き合わせ用の、抽出とは別実装の判定）。 */
+/**
+ * その行が「日付を書く場所」か（下の突き合わせ用の、抽出とは別実装の判定）。
+ *
+ * 独立していることに意味があるので `HEADING` を使い回さない。ただし
+ * **独立とは「広い」ことではない。** 最初は `startsWith("#")` にしていたが、
+ * それは見出しの定義ではなく、本文の `#1031 は 2026-09-04 にマージした` のような行を
+ * 「抽出器の取りこぼし」として誤検出する。**正しい文書がこの検査に落ち、
+ * pre-commit フックでコミットが止まる**（PR #1027 の `/code-review` 指摘）。
+ * CommonMark の見出しは `#` 1〜6個の**直後に空白**なので、そこまで見る。
+ */
 export function isStructuredLine(line) {
-  return line.startsWith("#") || line.startsWith("1. 日付:") || line.startsWith("- 起票日:");
+  const hashes = line.match(/^#+/);
+  if (hashes) return hashes[0].length <= 6 && /^\s/.test(line.slice(hashes[0].length));
+  return line.startsWith("1. 日付:") || line.startsWith("- 起票日:");
 }
 
+/** 行頭（インデント可）のフェンス記号。CommonMark はバッククォートかチルダ3個以上。 */
+const FENCE = /^\s*(`{3,}|~{3,})/;
+
 /**
- * コードフェンス（``` で囲まれた範囲）の外側の行だけを `{ n, line }` で返す。
+ * コードフェンスの外側の行だけを `{ n, line }` で返す。閉じられていないフェンスが
+ * 残った場合は `{ lines, unclosed }` の `unclosed` に開始行番号を入れて返す。
  *
  * フェンスの中には `# 2026-12-31 …` のようなシェルコメントが入りうる。
- * これを見出しとして扱うと、**正しい文書がこの検査に落とされる**
- * （`isStructuredLine` の `startsWith("#")` は `HEADING` の `/^#{1,6} /` より広いので、
- * `#foo 2026-12-31` のような行は「取りこぼし」として誤検出もする）。
+ * これを見出しとして扱うと、**正しい文書がこの検査に落とされる**。
  * pre-commit フックに入っているのでコミットが止まる。PR #1027 の `/code-review` 指摘。
  *
- * 抽出と突き合わせの両方がこの1つを使う。ここが壊れて全行を飛ばした場合は
- * 抽出が0件になり本体が失敗するので、黙って素通りはしない。
+ * 開閉の対応は CommonMark に合わせる。単純なトグルだと2つの取り違えが起きる
+ * （同じレビューの指摘）。
+ *
+ *   - **入れ子。** ```` で開いたブロックの中の ``` は閉じ記号ではないのに、
+ *     トグルだと状態が反転し、**以降の見出しと本文が入れ替わって解釈される**。
+ *   - **閉じ忘れ。** トグルだと以降の全行が黙って検査対象から外れる。
+ *     0件チェックは他ファイルの日付で通ってしまうので、**検査が空振りしたことに
+ *     気づけない**（型 A そのもの）。開いたままなら下で失敗させる。
+ *
+ * 抽出と突き合わせの両方がこの1つを使う。
  */
 function contentLines(text) {
   const out = [];
-  let inFence = false;
+  let open = null; // 開いているフェンスの記号（`` ```　`` 等）
+  let openedAt = 0;
   const lines = text.split("\n");
   for (let i = 0; i < lines.length; i++) {
-    if (lines[i].trimStart().startsWith("```")) {
-      inFence = !inFence;
-      continue;
+    const m = lines[i].match(FENCE);
+    if (m) {
+      if (open === null) {
+        open = m[1];
+        openedAt = i + 1;
+        continue;
+      }
+      // 閉じ記号は「開いたのと同じ文字」で「同じ長さ以上」でなければならない。
+      if (m[1][0] === open[0] && m[1].length >= open.length) {
+        open = null;
+        continue;
+      }
+      // 入れ子の短いフェンスは、ブロックの中身。素通りさせる（下で捨てられる）。
     }
-    if (!inFence) out.push({ n: i + 1, line: lines[i] });
+    if (open === null) out.push({ n: i + 1, line: lines[i] });
   }
-  return out;
+  return { lines: out, unclosed: open === null ? 0 : openedAt };
+}
+
+/** 閉じられていないコードフェンスの開始行番号。無ければ 0。 */
+export function unclosedFenceLine(text) {
+  return contentLines(text).unclosed;
 }
 
 /** 1ファイル分の本文から、構造化された日付を行番号つきで抜き出す。 */
 export function extractStructuredDates(text) {
   const out = [];
-  for (const { n, line } of contentLines(text)) {
+  for (const { n, line } of contentLines(text).lines) {
     if (HEADING.test(line)) {
       for (const m of line.matchAll(DATE)) out.push({ line: n, date: m[0] });
       continue;
@@ -138,9 +175,12 @@ function main() {
 
   const bad = [];
   const missed = [];
+  const unclosed = [];
   let checked = 0;
   for (const f of files) {
     const text = readFileSync(join(CONTEXT_DIR, f), "utf8");
+    const openedAt = unclosedFenceLine(text);
+    if (openedAt) unclosed.push(`docs/context/${f}:${openedAt}`);
     const found = extractStructuredDates(text);
     for (const { line, date } of found) {
       checked++;
@@ -152,10 +192,19 @@ function main() {
     // 1件も抽出できていない行」は、抽出器の穴。0件チェックだけでは
     // 「923件中3件だけ取りこぼした」が見えない（実際に取りこぼしていた）。
     const gotLines = new Set(found.map((d) => d.line));
-    for (const { n, line } of contentLines(text)) {
+    for (const { n, line } of contentLines(text).lines) {
       if (!isStructuredLine(line) || !/\d{4}-\d{2}-\d{2}/.test(line)) continue;
       if (!gotLines.has(n)) missed.push(`docs/context/${f}:${n}  ${line.slice(0, 100)}`);
     }
+  }
+
+  // 閉じ忘れたフェンスは、そこから下を丸ごと検査対象から外す。0件チェックは
+  // 他ファイルの日付で通ってしまうので、これは別に失敗させる（型 A）。
+  if (unclosed.length) {
+    console.error(`[check:context-dates] 閉じられていないコードフェンスが ${unclosed.length} 件あります:\n`);
+    for (const u of unclosed) console.error(`  ${u}`);
+    console.error("\n  ここから下の行が検査されません。フェンスを閉じてください。");
+    process.exit(1);
   }
 
   // 検査が空振りしていないことを確かめる。パターンが実際の書き方に追いつけなく

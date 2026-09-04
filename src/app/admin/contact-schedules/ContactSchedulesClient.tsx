@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from "react";
 import PageHeader from "@/components/ui/PageHeader";
+import { jstLocalInputToUtcIso, utcIsoToJstLocalInput } from "@/lib/datetime";
 
 // ─── 型定義 ──────────────────────────────────────────────────────
 type ContactType = "call" | "visit" | "email" | "sms" | "line";
@@ -74,7 +75,9 @@ function ymd(d: Date): string {
 function formatDateTime(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
+  // 連絡予定はサーバ側の通知が実行するので、表示も入力も JST 固定にする。
   return d.toLocaleString("ja-JP", {
+    timeZone: "Asia/Tokyo",
     month: "numeric",
     day: "numeric",
     weekday: "short",
@@ -82,12 +85,9 @@ function formatDateTime(iso: string): string {
     minute: "2-digit",
   });
 }
-/** datetime-local input 用の現在時刻文字列 (秒なし) */
+/** datetime-local input 用の現在時刻文字列 (JST 壁時計・秒なし) */
 function nowLocalInput(): string {
-  const d = new Date();
-  const off = d.getTimezoneOffset();
-  const local = new Date(d.getTime() - off * 60000);
-  return local.toISOString().slice(0, 16);
+  return utcIsoToJstLocalInput(new Date().toISOString());
 }
 
 // ─── メインコンポーネント ─────────────────────────────────────────
@@ -486,10 +486,12 @@ function AddDialog({
   }, []);
 
   function submit() {
-    if (!scheduledAt) return;
+    // datetime-local の naive 文字列は JST 壁時計として解釈する。
+    // ブラウザ TZ で解釈すると、UTC 環境の端末から登録したとき予定が 9 時間ずれる。
+    // 変換は setSubmitting より前に行う（ここで抜けると送信ボタンが戻らない）。
+    const iso = jstLocalInputToUtcIso(scheduledAt);
+    if (!iso) return;
     setSubmitting(true);
-    // datetime-local はローカル時刻なので Date 経由で ISO(UTC) に変換
-    const iso = new Date(scheduledAt).toISOString();
     onCreate({
       customer_id: customerId || null,
       vehicle_id: null,

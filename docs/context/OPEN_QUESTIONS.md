@@ -103,34 +103,28 @@ Next.js は関数内にも `"use server"` を書けるので（`vehicles/[id]/pa
 - 起票日: 2026-09-04
 - 判断者: 代表（金額は決定済み。env 設定は未実施）
 
-## datetime-local を naive に UTC 変換している画面が4つ残っている（2026-09-04）
+## 代車の返却期限が「日付だけ」で、JST の日の境界を持っていない（2026-09-04）
 
-`agent-announcements` は JST 固定ヘルパー（`@/lib/datetime`）に寄せた（DECISION_LOG 2026-09-04）が、
-**同じ形が他に4箇所ある**。`datetime-local` の naive 文字列を `new Date(...)` で
-**ブラウザ TZ** として解釈しており、JST 以外の端末と SSR（Vercel は UTC）で9時間ずれる。
+`LoanerCarsClient.tsx:560` は `return_due_at`（timestamptz）に
+`new Date(returnDue).toISOString()` を入れている。`returnDue` は `type="date"` の
+`YYYY-MM-DD` なので、**ブラウザ TZ の問題ではない**（日付のみの文字列は仕様上 UTC として
+解釈されるため、どの端末でも同じ値になる）。入るのは UTC 0 時 = **JST 9 時**。
 
-| 画面 | 箇所 | 何の日時か |
-|---|---|---|
-| LINE 一斉配信 | `src/app/admin/line-broadcasts/LineBroadcastsClient.tsx:353` | `scheduled_at`（配信予約） |
-| 連絡スケジュール | `src/app/admin/contact-schedules/ContactSchedulesClient.tsx:492` | `scheduled_at`（送信予定） |
-| 代車 | `src/app/admin/loaner-cars/LoanerCarsClient.tsx:560` | `return_due_at`（返却期限） |
-| パスポート消費者 | `src/app/admin/platform/passport-consumers/[id]/ConsumerDetailClient.tsx:224` | `expires_at`（鍵の失効） |
-
-`ContactSchedulesClient.tsx:90` にも `local.toISOString().slice(0, 16)` という
-読み出し側の同型がある。
-
-- **なぜまだ直していないか**: 一律に置換すると危ない。画面ごとに
-  「その日時をサーバがどう再解釈するか」が違う可能性があり、
-  往復整合が取れている（ブラウザが JST なら戻る）ので**単体テストでは差が出ない**。
-  1画面ずつ、保存経路と読み出し経路の両方を読んでから寄せる必要がある。
-- **実害の見込み**: LINE 一斉配信と連絡スケジュールは**送信時刻がずれる**ので影響が大きい。
-  代車の返却期限とパスポートの失効も表示・判定がずれる。
-  ただし現状は運用者の端末が JST である限り顕在化しない。
-- 次のアクション: 上から順に1画面ずつ `jstLocalInputToUtcIso` /
-  `utcIsoToJstLocalInput` へ寄せる。`agent-announcements` が手本。
+- 論点: 「9/10 返却予定」は JST の**何時**を指すべきか。現状は 9/10 09:00 JST なので、
+  JST 表示すれば日付は合うが、`return_due_at` を**時刻として**比較する経路
+  （延滞判定・並べ替え）は 9/10 の日中に延滞扱いになりうる。
+  終業時刻（例 18:00 JST）か、翌 0 時（JST 日の終わり）か。
+- 実害は未確認。**`return_due_at` を時刻比較している経路を数えるのが先**。
+  日付としてしか使っていないなら現状で問題ない。
 
 - 起票日: 2026-09-04
-- 判断者: 実装側で進められる（判断不要）
+- 判断者: 実装側で調べたうえで代表判断（返却期限の運用上の意味）
+
+**この項目の前身の訂正。** 起票時は「`datetime-local` を naive に UTC 変換している画面が
+4つ」と書き、この代車画面を4つ目に数えていた。実際には `type="date"` で、
+他の3つ（LINE 一斉配信・連絡スケジュール・パスポート消費者）とは別の問題である。
+**入力欄の `type` を見ずに、変換コードの形だけで同型と判断した**（MISTAKE_LEDGER M-031）。
+残り3画面は 2026-09-04 に JST 固定へ寄せて解消した。
 
 ## 権限マトリクスに動詞が無い資源をどうするか（2026-09-01、2026-09-04 に一部決着）
 
