@@ -45,11 +45,10 @@ const payloadSchema = z.object({
  * ## 費用
  *
  * ループ内の月次コストキャップ判定 (`baseSpentJpy + inJobJpy >= capJpy`) は
- * **既定では働かない。** `getCostCapStatus()` は `capJpy <= 0` のとき null を返し
- * (`costCap.ts`)、`resolveCapJpy()` の既定は「テナント個別 `monthly_cost_cap_jpy`
- * → env `AI_MONTHLY_COST_CAP_JPY` → 0 (無効)」。`.env.example` の既定値は 0 で、
- * 本番のテナント個別上限は 0 件 (2026-09-04 実測)。つまりキャップを明示的に
- * 設定したテナント以外では、**1 回の実行のコスト上限はこの件数だけ**。
+ * 2026-09-04 に既定が入って**設定が無くても働くようになった**
+ * (`DEFAULT_MONTHLY_COST_CAP_JPY` = テナント1件あたり月1万円)。
+ * ただし Redis 不在・失敗時は fail-open するので、**キャップだけに頼らない**。
+ * この件数上限は、キャップが効かない場合の 1 回あたりのコストの天井でもある。
  *
  * ## 実行時間
  *

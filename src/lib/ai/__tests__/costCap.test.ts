@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from "vitest";
-import { estimateCallCostJpy, resolveCapJpy, VISION_CALL_COST_JPY } from "../costCap";
+import { DEFAULT_MONTHLY_COST_CAP_JPY, estimateCallCostJpy, resolveCapJpy, VISION_CALL_COST_JPY } from "../costCap";
 
 const ORIGINAL_ENV = { ...process.env };
 afterEach(() => {
@@ -44,16 +44,37 @@ describe("resolveCapJpy", () => {
     expect(resolveCapJpy(0)).toBe(5000);
   });
 
-  it("returns 0 (disabled) when neither is set", () => {
+  // 以前はここが 0 (=ブレーキ無し) だった。本番でも env・テナント個別のどちらも
+  // 設定されておらず、安全ブレーキが1つも効いていなかった (2026-09-04 に実測して発覚)。
+  // 設定漏れでブレーキが外れる設計が誤りだったので、既定を効く側に倒した。
+  it("設定が無ければ既定 (テナント1件あたり月1万円) を使う", () => {
     delete process.env.AI_MONTHLY_COST_CAP_JPY;
-    expect(resolveCapJpy(null)).toBe(0);
-    expect(resolveCapJpy(0)).toBe(0);
+    expect(resolveCapJpy(null)).toBe(DEFAULT_MONTHLY_COST_CAP_JPY);
+    expect(resolveCapJpy(0)).toBe(DEFAULT_MONTHLY_COST_CAP_JPY);
+    expect(resolveCapJpy(undefined)).toBe(DEFAULT_MONTHLY_COST_CAP_JPY);
   });
 
-  it("ignores non-positive / invalid caps", () => {
+  it("既定は 1 万円（変えたらこのテストで気づく）", () => {
+    expect(DEFAULT_MONTHLY_COST_CAP_JPY).toBe(10_000);
+  });
+
+  it("env の明示的な 0 は「上限なし」として尊重する", () => {
+    process.env.AI_MONTHLY_COST_CAP_JPY = "0";
+    expect(resolveCapJpy(undefined)).toBe(0);
+    expect(resolveCapJpy(null)).toBe(0);
+  });
+
+  it("負値・非数・空文字は設定ミスなので既定へ倒す（ブレーキが外れる方に倒さない）", () => {
     process.env.AI_MONTHLY_COST_CAP_JPY = "-1";
-    expect(resolveCapJpy(undefined)).toBe(0);
+    expect(resolveCapJpy(undefined)).toBe(DEFAULT_MONTHLY_COST_CAP_JPY);
     process.env.AI_MONTHLY_COST_CAP_JPY = "abc";
-    expect(resolveCapJpy(undefined)).toBe(0);
+    expect(resolveCapJpy(undefined)).toBe(DEFAULT_MONTHLY_COST_CAP_JPY);
+    process.env.AI_MONTHLY_COST_CAP_JPY = "   ";
+    expect(resolveCapJpy(undefined)).toBe(DEFAULT_MONTHLY_COST_CAP_JPY);
+  });
+
+  it("テナント個別上限は env の 0 より優先する", () => {
+    process.env.AI_MONTHLY_COST_CAP_JPY = "0";
+    expect(resolveCapJpy(3000)).toBe(3000);
   });
 });
