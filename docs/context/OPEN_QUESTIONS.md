@@ -363,20 +363,6 @@ SELECT で読んで判定する設計のため、以下3つの回避経路が理
 `certificate_images_guard` 単体の修正では閉じられない。IMP-030（訂正・
 supersede・Integrity Incident・revoke）が該当タスクの候補。
 
-## 追加（2026-08-29・#936 IMP-021 マージ）
-
-- **`todayTasks.ts` の `startOfDayStr()` が正のUTCオフセット（JST 等）で日付を
-  1日早く判定する。** `new Date(d.getFullYear(), d.getMonth(), d.getDate())`
-  でローカル日付から真夜中の Date を作り、その後 `.toISOString()` で UTC に
-  変換して日付部分だけ使っているため、UTC+9（JST）のようにローカルがUTCより
-  進んでいるタイムゾーンでは、ローカル真夜中が前日の UTC 夕方になり日付がずれる。
-  `TZ=Asia/Tokyo npx vitest run src/lib/admin/__tests__/todayTasks.test.ts` で
-  既存テスト2件が実際に落ちることを確認済み（#936 の新規テストではなく、
-  既存の `todayTasks.ts` 本体の潜在バグ）。本番サーバは通常 UTC で動くため今は
-  顕在化していないが、サーバの実行タイムゾーンが変わった場合やテスト実行環境の
-  TZ 設定次第で再現しうる。修正は `todayTasks.ts` 本体の日付計算ロジックに
-  触れる必要があり、今回のスコープ外として保留。 → 未着手
-
 ## 追加（2026-08-28・#935 IMP-020 マージ）
 
 - **モバイルの Quick Create FAB（`QuickCreateSheet.tsx`）と `src/lib/navigation/quickCreate.ts` が未統合。**
