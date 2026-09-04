@@ -54,6 +54,15 @@ yarn-error.log*
 # Screenshots captured by CI (directories tracked via .gitkeep)
 public/screenshots/**/*.png
 
+# ただし配布 PDF が差し込む3枚だけはコミットする。撮影しているのは Remotion の
+# 動画ワークフローだけで、成果物は artifact に上がるだけ ―― Vercel のビルドは
+# 撮影しない。リポジトリに無い＝本番の PDF ではスライドが永久に出ない
+# （ScreenshotSlide はファイルが無ければ黙ってページごと消えるので気づけない）。
+# 参照先とこの一覧のズレは resourcePdf.render.test.tsx が検出する。
+!public/screenshots/admin/certs-new.png
+!public/screenshots/admin/customers-detail.png
+!public/screenshots/insurer/search.png
+
 # Remotion rendered output
 /out/
 

@@ -28,6 +28,8 @@ import { canUseFeature, normalizePlanTier } from "@/lib/billing/planFeatures";
 import { businessDateString } from "@/lib/datetime";
 import { formatDate, formatJpy } from "@/lib/format";
 import { fetcher } from "@/lib/swr";
+import { useUiPreferences } from "@/lib/ui-preferences/UiPreferencesContext";
+import { getWebReservationPresentation } from "@/lib/ui-preferences/reservationsPresentation";
 import type { WorkflowStep } from "@/components/workflow/WorkflowTemplateEditor";
 
 // ─── Types ───────────────────────────────────────────────
@@ -84,7 +86,12 @@ type BookingCandidate = {
 
 const WEEKDAY_JA = ["日", "月", "火", "水", "木", "金", "土"] as const;
 type Stats = { total: number; today_count: number; active_count: number };
-type ReservationsData = { reservations: Reservation[]; stats: Stats };
+type ReservationsData = {
+  reservations: Reservation[];
+  stats: Stats;
+  total?: number;
+};
+const EMPTY_RESERVATIONS: Reservation[] = [];
 
 type WorkflowTemplate = {
   id: string;
@@ -122,6 +129,9 @@ export default function ReservationsClient() {
   // （CustomersClient と同じ規約）。
   const searchParams = useSearchParams();
   const autoOpenCreate = searchParams.get("create") === "1";
+  const { displayMode } = useUiPreferences();
+  const presentation = getWebReservationPresentation(displayMode);
+  const isDense = presentation.listVariant === "dense";
 
   // ローカル(端末)日付の YYYY-MM-DD。toISOString() は UTC 変換されるため、JST 深夜帯
   // (00:00〜08:59) だと日付が1日前にずれる — ブラウザのローカル時計から直接組み立てる。
@@ -149,6 +159,10 @@ export default function ReservationsClient() {
     } else if (!showPast && viewMode === "list") {
       params.set("from", today);
     }
+    if (viewMode === "list") {
+      params.set("page", "1");
+      params.set("per_page", String(presentation.pageSize));
+    }
     return `/api/admin/reservations?${params.toString()}`;
   })();
 
@@ -159,8 +173,9 @@ export default function ReservationsClient() {
     mutate,
   } = useSWR<ReservationsData>(swrKey, fetcher, { revalidateOnFocus: true, keepPreviousData: true });
 
-  const reservations = swrData?.reservations ?? [];
+  const reservations = swrData?.reservations ?? EMPTY_RESERVATIONS;
   const stats = swrData?.stats ?? null;
+  const resultTotal = swrData?.total ?? reservations.length;
   const [mutationErr, setMutationErr] = useState<string | null>(null);
   const err = swrError ? (swrError.message ?? "読み込みに失敗しました") : mutationErr;
 
@@ -709,21 +724,35 @@ export default function ReservationsClient() {
       )}
 
       {/* ── Stats cards ── */}
-      <div className="grid grid-cols-3 gap-3">
-        {[
-          { label: "本日の予約", value: stats?.today_count ?? 0, icon: "📅", color: "from-blue-500 to-blue-600" },
-          { label: "進行中", value: stats?.active_count ?? 0, icon: "⚙️", color: "from-violet-500 to-violet-600" },
-          { label: "総予約数", value: stats?.total ?? 0, icon: "📋", color: "from-blue-500 to-blue-600" },
-        ].map((s) => (
-          <div key={s.label} className="glass-card p-4 relative overflow-hidden">
-            <div className={`absolute inset-0 bg-gradient-to-br ${s.color} opacity-5`} />
-            <div className="relative">
-              <div className="text-xs font-semibold text-muted tracking-wide">{s.label}</div>
-              <div className="mt-1.5 text-2xl font-bold text-primary">{s.value}</div>
+      {presentation.showStatsCards ? (
+        <div className="grid grid-cols-3 gap-3">
+          {[
+            { label: "本日の予約", value: stats?.today_count ?? 0, icon: "📅", color: "from-blue-500 to-blue-600" },
+            { label: "進行中", value: stats?.active_count ?? 0, icon: "⚙️", color: "from-violet-500 to-violet-600" },
+            { label: "総予約数", value: stats?.total ?? 0, icon: "📋", color: "from-blue-500 to-blue-600" },
+          ].map((s) => (
+            <div key={s.label} className="glass-card p-4 relative overflow-hidden">
+              <div className={`absolute inset-0 bg-gradient-to-br ${s.color} opacity-5`} />
+              <div className="relative">
+                <div className="text-xs font-semibold text-muted tracking-wide">{s.label}</div>
+                <div className="mt-1.5 text-2xl font-bold text-primary">{s.value}</div>
+              </div>
             </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      ) : (
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-1 rounded-xl border border-border-subtle bg-surface px-4 py-2 text-xs text-secondary">
+          <span>
+            本日 <strong className="text-primary">{stats?.today_count ?? 0}件</strong>
+          </span>
+          <span>
+            進行中 <strong className="text-primary">{stats?.active_count ?? 0}件</strong>
+          </span>
+          <span>
+            総予約 <strong className="text-primary">{stats?.total ?? 0}件</strong>
+          </span>
+        </div>
+      )}
 
       {/* ── Toolbar ── */}
       <div className="flex flex-wrap items-center gap-2.5">
@@ -1054,6 +1083,11 @@ export default function ReservationsClient() {
       {/* ── List View ── */}
       {viewMode === "list" && (
         <>
+          {resultTotal > reservations.length && (
+            <div className="rounded-xl border border-border-subtle bg-inset px-4 py-3 text-xs text-secondary">
+              先頭{reservations.length}件を表示しています。日付や状態で絞り込んでください。
+            </div>
+          )}
           {reservations.length === 0 ? (
             <div className="glass-card p-12 text-center">
               <div className="text-4xl mb-3">📅</div>
@@ -1063,16 +1097,16 @@ export default function ReservationsClient() {
               </button>
             </div>
           ) : (
-            <div className="space-y-4">
+            <div className={isDense ? "space-y-2" : "space-y-4"}>
               {sortedDates.map((date) => {
                 const isToday = date === today;
                 const dayReservations = grouped[date];
                 return (
                   <div key={date}>
                     {/* Date header */}
-                    <div className={`flex items-center gap-2 mb-2 px-1`}>
+                    <div className={`flex items-center gap-2 px-1 ${isDense ? "mb-1" : "mb-2"}`}>
                       <span
-                        className={`inline-flex items-center gap-1.5 text-xs font-bold tracking-wide rounded-full px-3 py-1 ${
+                        className={`inline-flex items-center gap-1.5 font-bold tracking-wide rounded-full ${isDense ? "px-2 py-0.5 text-[11px]" : "px-3 py-1 text-xs"} ${
                           isToday ? "bg-accent text-white" : "bg-surface text-muted border border-border-subtle"
                         }`}
                       >
@@ -1084,25 +1118,27 @@ export default function ReservationsClient() {
                     </div>
 
                     {/* Cards */}
-                    <div className="space-y-2">
+                    <div className={isDense ? "space-y-1" : "space-y-2"}>
                       {dayReservations.map((r) => {
                         const c = cfg(r.status);
                         const next = nextStatus(r.status);
                         return (
                           <div
                             key={r.id}
-                            className={`glass-card overflow-hidden transition-shadow hover:shadow-md ${
+                            className={`${isDense ? "overflow-hidden rounded-lg border border-border-subtle bg-surface" : "glass-card overflow-hidden transition-shadow hover:shadow-md"} ${
                               r.status === "cancelled" ? "opacity-60" : ""
                             }`}
                           >
                             {/* Status color bar */}
-                            <div className={`h-1 w-full ${c.dot}`} />
+                            <div className={`${isDense ? "h-0.5" : "h-1"} w-full ${c.dot}`} />
 
-                            <div className="p-4">
+                            <div className={isDense ? "px-3 py-2" : "p-4"}>
                               <div className="flex items-start gap-3">
                                 {/* Left: info */}
                                 <div className="min-w-0 flex-1">
-                                  <div className="flex flex-wrap items-center gap-2 mb-1.5">
+                                  <div
+                                    className={`flex flex-wrap items-center ${isDense ? "gap-1.5 mb-0.5" : "gap-2 mb-1.5"}`}
+                                  >
                                     {/* Status badge */}
                                     <span
                                       className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${c.bg} ${c.text}`}
@@ -1124,7 +1160,7 @@ export default function ReservationsClient() {
                                       )
                                     )}
                                     {/* Mini progress bar for workflow-enabled reservations */}
-                                    {r.workflow_template_id && (
+                                    {r.workflow_template_id && !isDense && (
                                       <span className="inline-flex items-center gap-1.5 text-[11px] text-muted">
                                         <span className="w-16 h-1.5 rounded-full bg-surface-hover overflow-hidden">
                                           <span
@@ -1140,7 +1176,7 @@ export default function ReservationsClient() {
                                   {/* Title — clickable link to the dedicated job/workflow page */}
                                   <Link
                                     href={`/admin/jobs/${r.id}`}
-                                    className="block text-sm font-bold text-primary mb-1 hover:text-accent hover:underline transition-colors"
+                                    className={`block font-bold text-primary hover:text-accent hover:underline transition-colors ${isDense ? "text-xs mb-0.5" : "text-sm mb-1"}`}
                                     title="案件ワークフローを開く"
                                   >
                                     {r.title}
@@ -1184,14 +1220,14 @@ export default function ReservationsClient() {
                                         {r.vehicle_label}
                                       </span>
                                     )}
-                                    {r.estimated_amount > 0 && (
+                                    {r.estimated_amount > 0 && !isDense && (
                                       <span className="font-semibold text-primary">
                                         {formatJpy(r.estimated_amount)}
                                       </span>
                                     )}
                                   </div>
 
-                                  {r.note && (
+                                  {r.note && !isDense && (
                                     <p className="mt-1.5 text-xs text-muted bg-surface-hover rounded-lg px-2.5 py-1.5 truncate max-w-sm">
                                       💬 {r.note}
                                     </p>
@@ -1202,19 +1238,21 @@ export default function ReservationsClient() {
                                 </div>
 
                                 {/* Right: actions */}
-                                <div className="flex flex-col items-end gap-1.5 shrink-0">
+                                <div
+                                  className={`flex items-end shrink-0 ${isDense ? "flex-row gap-1" : "flex-col gap-1.5"}`}
+                                >
                                   {/* Open dedicated job workflow page */}
                                   <Link
                                     href={`/admin/jobs/${r.id}`}
-                                    className="text-[11px] font-semibold px-2.5 py-1 rounded-lg border border-accent/30 bg-accent-dim text-accent-text hover:bg-accent/10 transition-colors whitespace-nowrap"
+                                    className={`font-semibold rounded-lg border border-accent/30 bg-accent-dim text-accent-text hover:bg-accent/10 transition-colors whitespace-nowrap ${isDense ? "px-2 py-1 text-[10px]" : "px-2.5 py-1 text-[11px]"}`}
                                     title="案件ワークフローを別画面で開く"
                                   >
-                                    🧭 案件を開く
+                                    {isDense ? "開く" : "🧭 案件を開く"}
                                   </Link>
                                   {/* Quick actions toggle (edit / cancel / delete) — inline expando, not a workflow view */}
                                   <button
                                     onClick={() => setDetailId(detailId === r.id ? null : r.id)}
-                                    className="text-[11px] text-muted hover:text-primary px-2 py-1 rounded-lg hover:bg-surface-hover transition-colors"
+                                    className={`${isDense ? "text-[10px]" : "text-[11px]"} text-muted hover:text-primary px-2 py-1 rounded-lg hover:bg-surface-hover transition-colors`}
                                   >
                                     操作 {detailId === r.id ? "▲" : "▼"}
                                   </button>
@@ -1223,7 +1261,7 @@ export default function ReservationsClient() {
                                   {next && r.status !== "cancelled" && (
                                     <button
                                       onClick={() => handleStatusChange(r.id, next)}
-                                      className={`text-[11px] font-semibold px-3 py-1.5 rounded-lg transition-colors ${cfg(next).bg} ${cfg(next).text} hover:opacity-80`}
+                                      className={`${isDense ? "text-[10px] px-2 py-1" : "text-[11px] px-3 py-1.5"} font-semibold rounded-lg transition-colors ${cfg(next).bg} ${cfg(next).text} hover:opacity-80`}
                                     >
                                       {cfg(next).label}へ →
                                     </button>

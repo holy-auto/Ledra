@@ -3,11 +3,13 @@ import { isValidElement } from "react";
 import { RESOURCE_PDFS, SUPPORTED_PDF_LOCALES, isSupportedPdfLocale } from "../resourcePdf";
 
 describe("RESOURCE_PDFS", () => {
-  it("exposes the 6 homepage resources", () => {
+  it("exposes the 8 homepage resources", () => {
     expect(Object.keys(RESOURCE_PDFS).sort()).toEqual(
       [
         "case-studies",
         "features-deep-dive",
+        "glossary",
+        "operation-guide",
         "pricing-overview",
         "roi-template",
         "security-whitepaper",

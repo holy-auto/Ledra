@@ -111,10 +111,10 @@ export async function GET(req: NextRequest) {
     if (status && status !== "all") {
       query = query.eq("status", status);
     }
-    if (dateFrom) {
+    if (dateFrom && view !== "storefront") {
       query = query.gte("scheduled_date", dateFrom);
     }
-    if (dateTo) {
+    if (dateTo && view !== "storefront") {
       query = query.lte("scheduled_date", dateTo);
     }
     if (customerId) {
@@ -127,8 +127,12 @@ export async function GET(req: NextRequest) {
       const requestedDate = url.searchParams.get("date");
       const businessDate =
         requestedDate && /^\d{4}-\d{2}-\d{2}$/.test(requestedDate) ? requestedDate : businessDateString();
+      const requestedFrom = /^\d{4}-\d{2}-\d{2}$/.test(dateFrom) ? dateFrom : businessDate;
+      const requestedTo = /^\d{4}-\d{2}-\d{2}$/.test(dateTo) ? dateTo : requestedFrom;
+      const rangeStart = requestedFrom <= requestedTo ? requestedFrom : requestedTo;
+      const rangeEnd = requestedFrom <= requestedTo ? requestedTo : requestedFrom;
       query = query
-        .or(`scheduled_date.eq.${businessDate},status.in.(arrived,in_progress)`)
+        .or(`and(scheduled_date.gte.${rangeStart},scheduled_date.lte.${rangeEnd}),status.in.(arrived,in_progress)`)
         .neq("status", "cancelled")
         .range(0, 199);
     }
