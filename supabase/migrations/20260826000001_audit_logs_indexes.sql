@@ -8,8 +8,8 @@
 -- 新しいファイルで CONCURRENTLY を使うときは **1ファイル1文** にすること
 -- （`npm run lint:migrations` の concurrently-in-multi-statement-file が見ている）。
 -- ============================================================
--- audit_logs の索引。CONCURRENTLY はトランザクション内で流せないため、
--- 20260823000000（列と制約の調整）とは別ファイルに分ける。
+-- audit_logs の索引。元は CONCURRENTLY のため 20260823000000（列と制約の調整）とは
+-- 別ファイルに分けていた（2026-09-04 に CONCURRENTLY を外した。冒頭の注を参照）。
 -- ============================================================
 
 create index if not exists idx_audit_logs_tenant_performed

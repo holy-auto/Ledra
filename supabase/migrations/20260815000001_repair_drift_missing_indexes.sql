@@ -18,7 +18,7 @@
 --   20260714000002  idx_part_installations_one_draft_per_reservation (UNIQUE)
 --
 -- 索引を列と別ファイルに分けているのは、CREATE INDEX が
--- トランザクション内で実行できないため（元の3ファイルと同じ作法）。
+-- CONCURRENTLY だったため（元の3ファイルと同じ作法。2026-09-04 に外した）。
 -- CONCURRENTLY 自体は本番で正常に動いている: リポジトリ全体の CONCURRENTLY 索引
 -- 180本のうち欠落はこの3本だけで、いずれも上記の「記録済み・未実行」の
 -- マイグレーションに属する。つまり CONCURRENTLY が原因ではない。

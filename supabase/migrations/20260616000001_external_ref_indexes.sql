@@ -8,12 +8,12 @@
 -- 新しいファイルで CONCURRENTLY を使うときは **1ファイル1文** にすること
 -- （`npm run lint:migrations` の concurrently-in-multi-statement-file が見ている）。
 -- =============================================================================
--- 基幹ソフト連携 — external_ref の複合ユニーク索引 (CONCURRENTLY)
+-- 基幹ソフト連携 — external_ref の複合ユニーク索引
 --
 -- Companion to 20260616000000 (source_system / external_ref カラム追加)。
--- CREATE INDEX はトランザクション内で実行できないため別ファイルに
--- 分離する。customers / vehicles / vehicle_histories は通常運用で頻繁に書き込ま
--- れるテーブルなので、索引作成中の書き込みロックを避ける狙いもある。
+-- 元は CONCURRENTLY のため別ファイルに分離していた（このファイルは 2026-09-04 に CONCURRENTLY を外した。冒頭の注を参照）。
+-- customers / vehicles / vehicle_histories は通常運用で頻繁に書き込まれる
+-- テーブルだが、このファイルは本番では再適用されない。
 --
 -- 冪等 upsert のキー: (tenant_id, source_system, external_ref)。
 -- Postgres は UNIQUE 内の NULL を distinct 扱いするため、手動作成レコード
