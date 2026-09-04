@@ -7,32 +7,29 @@ import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { calcLaborPrice } from "@/lib/pricing/labor";
 import { buildSecretWrite } from "@/lib/crypto/tenantSecrets";
 import { settingsSchema } from "./settingsSchema";
-import type { SupabaseClient } from "@supabase/supabase-js";
 
 export type SettingsResult = { ok: true } | { ok: false; error: string };
 
-async function getTenantId(supabase: SupabaseClient): Promise<string | null> {
-  const { data: userRes } = await supabase.auth.getUser();
-  if (!userRes.user) return null;
-  const { data } = await supabase.from("tenant_memberships").select("tenant_id").limit(1).single();
-  return (data?.tenant_id as string | null) ?? null;
-}
-
 export async function updateTenantSettingsAction(formData: FormData): Promise<SettingsResult> {
   const supabase = await createSupabaseServerClient();
-  const tenantId = await getTenantId(supabase);
-  if (!tenantId) return { ok: false, error: "unauthorized" };
 
   // テナント設定は owner のみ（代表判断 2026-09-04）。社名・住所・銀行口座・
   // Slack Webhook を扱うため、店舗の代表者だけが変更できる。
   //
   // ここまでロール判定が1つも無く、RLS 任せだった。RLS が弾いた場合 supabase-js の
-  // .update() は「0行更新」で**エラーを返さない**ので、staff が保存すると
+  // .update() は「0行更新」で**エラーを返さない**ので、権限の無い人が保存すると
   // 何も変わらないのに { ok: true } が返っていた。
+  //
+  // tenantId は resolveCallerWithRole から取る。以前はローカルの getTenantId() が
+  // `tenant_memberships` を `.limit(1).single()` で引いていたが、**並び順も
+  // アクティブテナントの cookie も見ていなかった**。複数テナントに所属する人が
+  // 店舗Aの画面で保存すると、店舗Bの行が書き換わりうる形だった。
   const caller = await resolveCallerWithRole(supabase);
-  if (!caller || !requireMinRole(caller, "owner")) {
+  if (!caller) return { ok: false, error: "unauthorized" };
+  if (!requireMinRole(caller, "owner")) {
     return { ok: false, error: "テナント設定を変更できるのは店舗オーナーのみです" };
   }
+  const tenantId = caller.tenantId;
 
   // フォームで送られてきた項目のみ検証対象に含める (undefined は optional で素通し)。
   const get = (k: string) => (formData.has(k) ? String(formData.get(k) ?? "").trim() : undefined);

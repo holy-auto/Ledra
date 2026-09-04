@@ -21,6 +21,7 @@ export type Permission =
   | "customers:view"
   | "customers:create"
   | "customers:edit"
+  | "customers:delete"
   // Reservations
   | "reservations:view"
   | "reservations:create"
@@ -33,6 +34,7 @@ export type Permission =
   | "market:view"
   | "market:create"
   | "market:edit"
+  | "market:delete"
   // Orders
   | "orders:view"
   | "orders:create"
@@ -100,6 +102,7 @@ const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     "customers:view",
     "customers:create",
     "customers:edit",
+    "customers:delete",
     "reservations:view",
     "reservations:create",
     "reservations:edit",
@@ -109,6 +112,7 @@ const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     "market:view",
     "market:create",
     "market:edit",
+    "market:delete",
     "orders:view",
     "orders:create",
     "templates:manage",
@@ -158,6 +162,7 @@ const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     "customers:view",
     "customers:create",
     "customers:edit",
+    "customers:delete",
     "reservations:view",
     "reservations:create",
     "reservations:edit",
@@ -167,6 +172,7 @@ const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     "market:view",
     "market:create",
     "market:edit",
+    "market:delete",
     "orders:view",
     "orders:create",
     "templates:manage",
@@ -214,6 +220,7 @@ const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     "customers:view",
     "customers:create",
     "customers:edit",
+    "customers:delete",
     "reservations:view",
     "reservations:create",
     "reservations:edit",
@@ -223,6 +230,7 @@ const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     "market:view",
     "market:create",
     "market:edit",
+    "market:delete",
     "orders:view",
     "orders:create",
     "templates:manage",
@@ -462,7 +470,9 @@ export const API_ROUTE_PERMISSIONS: Record<string, ApiRouteRequirement> = {
   "mobile/certificates/[id]/void": "certificates:void",
 
   // 設定変更。
-  "admin/billing-settings": "settings:edit",
+  // 請求タイミングは金銭に直結する設定。テナント設定は owner のみ（代表判断 2026-09-04）。
+  // 社名・銀行口座・ロゴと同じ扱いに揃える。
+  "admin/billing-settings": { minRole: "owner" },
   // テナント設定は owner のみ（代表判断 2026-09-04）。DB 側も tenants_update_owner_admin を
   // 落として owner のみにしてある。片方だけだと 0 行更新の「嘘の成功」になる。
   "admin/settings/defaults": { minRole: "owner" },
@@ -565,7 +575,10 @@ export const API_ROUTE_PERMISSIONS: Record<string, ApiRouteRequirement> = {
   // 顧客
   // 削除だけ admin 以上（代表判断 2026-09-04）。顧客には施工履歴・証明書がぶら下がる
   // 不可逆操作なので、作成・編集（staff）とは分ける。
-  "admin/customers": { POST: "customers:create", PUT: "customers:edit", DELETE: { minRole: "admin" } },
+  // ロール下限ではなく専用の動詞にする。この表の原則は「対応する動詞が無い資源だけ
+  // ロール下限」であり、顧客には customers:view/create/edit が既にある。
+  // vehicles:delete が同じ形の先例。
+  "admin/customers": { POST: "customers:create", PUT: "customers:edit", DELETE: "customers:delete" },
   "admin/customer-inquiries": "customers:edit",
   "admin/hearings": { POST: "customers:create", PUT: "customers:edit" },
 
@@ -576,7 +589,7 @@ export const API_ROUTE_PERMISSIONS: Record<string, ApiRouteRequirement> = {
 
   // マーケット（BtoB）
   // 削除だけ admin 以上（代表判断 2026-09-04）。顧客削除と同じ理由。
-  "admin/market-vehicles": { POST: "market:create", PUT: "market:edit", DELETE: { minRole: "admin" } },
+  "admin/market-vehicles": { POST: "market:create", PUT: "market:edit", DELETE: "market:delete" },
   "admin/market-vehicles/images": "market:edit",
   "market/deals": "market:create",
   "market/deals/[id]": "market:edit",

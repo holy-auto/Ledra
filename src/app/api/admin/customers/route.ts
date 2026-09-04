@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
-import { resolveCallerWithRole, requirePermission, requireMinRole } from "@/lib/auth/checkRole";
+import { resolveCallerWithRole, requirePermission } from "@/lib/auth/checkRole";
 import { escapeIlike } from "@/lib/sanitize";
 import { enforceBilling } from "@/lib/billing/guard";
 import { parsePagination } from "@/lib/api/pagination";
@@ -272,7 +272,7 @@ export async function DELETE(req: NextRequest) {
     if (!caller) return apiUnauthorized();
     // 削除は admin 以上（代表判断 2026-09-04）。顧客には施工履歴・証明書がぶら下がる不可逆操作なので、
     // 作成・編集（staff）とは分ける。
-    if (!requireMinRole(caller, "admin")) return apiForbidden();
+    if (!requirePermission(caller, "customers:delete")) return apiForbidden();
 
     const deny = await enforceBilling(req, {
       minPlan: "free",

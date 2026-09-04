@@ -11,7 +11,10 @@
   - **テナント設定は owner のみ** — DB の `tenants_update_owner_admin` を落とし、
     アプリ側（`updateTenantSettingsAction` / `admin/settings/defaults` PUT）も owner 要求に。
   - **共有テンプレートはプラットフォーム運営のみ** — `CHECK (scope <> 'shared' OR tenant_id IS NULL)`。
-  - **顧客・マーケット車両の削除は admin 以上** — 作成・編集は staff のまま。
+  - **顧客・マーケット車両の削除は admin 以上** — `customers:delete` / `market:delete` を
+    語彙に追加（ロール下限ではなく動詞にする。`vehicles:delete` が先例）。作成・編集は staff のまま。
+  - **ロゴ・社印・請求タイミングも owner に揃えた** — どちらも service-role 書き込みで
+    RLS が効かないため、アプリのガードが唯一の境界。
 - **調査中に見つけた穴（記録に無かったもの）:**
   - `updateTenantSettingsAction`（設定画面の保存）に**ロール判定が1つも無かった**。
     RLS 任せで、弾かれても `.update()` は 0 行・エラー無しを返すため、staff の保存が
@@ -20,9 +23,13 @@
   - 共有テンプレートの穴は INSERT だけでなく **UPDATE にもあった**。
     `templates_update_v2` は WITH CHECK が無く USING も `scope` を見ないので、
     既存行を `scope='shared'` に書き換えられた。制約1本で両方塞いだ。
+- **`/code-review` で自分の誤りが6件出て、すべて直した**（MISTAKE_LEDGER M-016〜M-018）。
+  CI の lint で落ちるマイグレーションの書き方 / 画面の出し分け4箇所の直し忘れ /
+  `getTenantId()` が別テナントを返しうる件 / 通知の分類コメントが実態と違う件 /
+  画像を車両行より先に消していた件 / 一覧ページの削除が 404 を叩いていた件。
 - 検証: 一時テーブルで制約の挙動を5ケース確認（テナントの shared 作成＝弾く／
   既存行の shared 書き換え＝弾く／運営の shared 作成＝通す／既存5件と同じ形＝通す）。
-  `npm run check:migrations` 再生OK（既知9件のみ、増減なし）。
+  `npm run lint:migrations` OK / `npm run check:migrations` 再生OK（既知9件のみ、増減なし）。
 - 実測で分かったこと: 本番の `templates` 5件は `scope='tenant'` だが `tenant_id` は NULL で、
   **共有雛形は既に `tenant_id IS NULL` で実現されていた**（`scope` 列が実態を表していない）。
   `purchase_orders` は0件で、発注機能は本番未使用。

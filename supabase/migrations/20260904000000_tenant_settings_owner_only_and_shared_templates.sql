@@ -20,6 +20,9 @@
 -- 注意: これだけでは admin の保存が「0行更新で成功扱い」になる。
 -- アプリ側（updateTenantSettingsAction / admin/settings/defaults PUT）も
 -- 同じコミットで owner 要求に直し、0行更新をエラーとして返すようにしてある。
+-- 注意: このポリシーはリポジトリのどのマイグレーションでも作られていない（本番にだけ在る）。
+-- したがって空DBからの再生では DROP は何にもマッチせず、この修正は再生では検証されない。
+-- 本番とリポジトリの乖離そのものは別途 OPEN_QUESTIONS で追う。
 DROP POLICY IF EXISTS tenants_update_owner_admin ON tenants;
 
 -- -------------------------------------------------------
@@ -45,13 +48,23 @@ DROP POLICY IF EXISTS tenants_update_owner_admin ON tenants;
 -- テナント向けポリシーはすべて `tenant_id IN (my_tenant_ids())` を要求するので、
 -- NULL はそこを通れない。INSERT も UPDATE も、この1本で塞がる。
 -- service_role は RLS を迂回するので、運営側は従来どおり作成できる。
+-- NOT VALID で足してから VALIDATE する。ADD CONSTRAINT ... CHECK を一発で書くと
+-- ACCESS EXCLUSIVE ロックのまま全行スキャンする（scripts/lint-migrations.js の
+-- add-check-without-not-valid）。本番5件でも規約は規約なので従う。
+-- DROP IF EXISTS を先に置いて再実行可能にする（20260325800000_standard_templates.sql と同じ形）。
+ALTER TABLE templates DROP CONSTRAINT IF EXISTS templates_shared_is_platform_owned;
 ALTER TABLE templates
   ADD CONSTRAINT templates_shared_is_platform_owned
-  CHECK (scope <> 'shared' OR tenant_id IS NULL);
+  CHECK (scope <> 'shared' OR tenant_id IS NULL) NOT VALID;
+ALTER TABLE templates VALIDATE CONSTRAINT templates_shared_is_platform_owned;
 
 -- templates_write_owner_admin は `(scope='shared' AND false)` で共有作成を禁じる意図だったが、
 -- PERMISSIVE の OR 評価で templates_insert_v2（scope を見ない）に打ち消されていて、
 -- 今日まで一度も効いていない。意図は上の CHECK 制約が担うので、
 -- 読む人を誤らせるだけのこのポリシーは落とす。
 -- （落としても実効権限は変わらない。v2 の方が緩く、常にそちらが通っていた。）
+-- 同上。templates_write_owner_admin / templates_insert_v2 / templates_update_v2 は
+-- いずれも本番にだけ在り、リポジトリには無い。上の CHECK 制約が
+-- 「tenant_id IN (my_tenant_ids()) を要求するポリシー」に依存しているのは本番の話であって、
+-- 空DBでは templates に書き込みポリシーが1本も無い（=誰も書けない）状態になっている。
 DROP POLICY IF EXISTS templates_write_owner_admin ON templates;
