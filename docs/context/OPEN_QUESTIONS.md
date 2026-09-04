@@ -132,94 +132,32 @@ test:coverage / check:schema）を `&` で並列実行し `wait $PID || exit 1` 
 順次実行に変える、`--output-file` で分ける等）。並列実行は速いので、速度を
 落とさずに失敗元が分かる形が望ましい。
 
-## 通知の既読はテナント共有でよいか（2026-09-03）
-
-`admin/notifications/[id]/read` と `read-all` は、行を **`tenant_id` だけで絞って**
-`read_at` を打つ。`notifications` には `user_id` 列があるが、**本番61件すべて null**。
-
-つまり誰か1人が既読にすると、**同じテナントの全員の画面から消える**。
-
-認可の棚卸しでこれを「自己完結（自分のデータだけを操作する）」と分類しかけたが、
-実態は違った（`/code-review` の指摘で訂正）。
-
-決めたいこと:
-- 通知は**個人宛**か**店舗宛**か。個人宛なら `user_id` を埋めて `.eq("user_id", ...)` で
-  絞る必要がある（既存61件の移行も要る）。店舗宛なら現状で正しく、分類を直すだけでよい。
-- 現場の実感としてどちらか。「誰かが見たらもう出さなくていい」のか、
-  「各自が自分で既読にする」のか。
-
-挙動は変えていない（本番の61件すべてが `user_id` null なので、`user_id` で絞ると
-既読にできなくなる）。判断が出るまで現状のまま。
-
-## 権限マトリクスに動詞が無い資源をどうするか（2026-09-01）
+## 権限マトリクスに動詞が無い資源をどうするか（2026-09-01、2026-09-04 に一部決着）
 
 業務データCRUD 48ルートに認可を入れたとき、以下の資源には対応する Permission が
-語彙（55権限）に存在しなかった。**新設は「誰がその操作をできるべきか」という事業判断**
-なので実装側では決めず、暫定でロール下限 `{ minRole: "staff" }`（閲覧専用ロールだけを弾く）
+語彙（55権限）に存在しなかった。暫定でロール下限 `{ minRole: "staff" }`（閲覧専用ロールだけを弾く）
 にしてある。
 
-| 資源 | 現在の守り | 決めたいこと |
-|---|---|---|
-| 発注（purchase_orders / backorder） | staff 以上 | 発注を出せるのは誰か。金額の上限は要るか |
-| 部品（installations / confirmations / findings） | staff 以上 | 現場が全部できてよいか |
-| 工程テンプレート（workflow_templates） | staff 以上 | 作業手順を誰が定義するか。マスタなら admin 以上 |
-| ショップ受注（shop_orders） | staff 以上 | 受注登録は誰がやるか |
-| 受注の更新（`admin/orders` PUT/PATCH・検収署名・レビュー） | staff 以上 | `orders:edit` を作るか |
+**2026-09-04 に決着した分:**
+- 顧客の削除（`admin/customers` DELETE）→ **admin 以上**。不可逆で、顧客には施工履歴・
+  証明書がぶら下がるため。作成・編集は staff のまま。
+- マーケット車両の削除（`admin/market-vehicles` DELETE）→ **admin 以上**。同上。
 
-あわせて、**削除に動詞が無い資源**が2つある。現在は `:edit`（staff で可）で通している。
+**まだ決めていない分:**
 
-- 顧客の削除（`admin/customers` DELETE）: `customers:delete` を作って admin 以上にするか
-- マーケット車両の削除（`admin/market-vehicles` DELETE）: 同上
+| 資源 | 現在の守り | 決めたいこと | 本番の件数 |
+|---|---|---|---|
+| 発注（purchase_orders / backorder） | staff 以上 | 発注を出せるのは誰か。金額の上限は要るか | **0件（未使用）** |
+| 部品（installations / confirmations / findings） | staff 以上 | 現場が全部できてよいか | 【要確認】 |
+| 工程テンプレート（workflow_templates） | staff 以上 | 作業手順を誰が定義するか。マスタなら admin 以上 | 5件 |
+| ショップ受注（shop_orders） | staff 以上 | 受注登録は誰がやるか | 3件 |
+| 受注の更新（`admin/orders` PUT/PATCH・検収署名・レビュー） | staff 以上 | `orders:edit` を作るか | 【要確認】 |
 
-在庫は決着した: 画面（`ROUTE_PERMISSIONS` の `/admin/inventory`・`/admin/stocktake`）が
-すでに `menu_items:manage`（admin 以上）を要求していたので、API もそれに揃えた。
-受注の入金確認（`admin/orders/[id]/confirm-payment`）も、既存の `admin/payments` が
-PUT/DELETE に `payments:manage` を課しているのに揃えて `payments:manage` にした
-（`executeOrderPayout` を起動する不可逆操作のため）。
+発注は本番0件（機能が実運用されていない）ので、**実際に使い始めるときに決めれば足りる**。
+急ぐ必要は無い。
 
 判断が出るまでの状態: **viewer は全て不可、staff 以上は全て可**。今より緩くなることは
 ないので、決定を待つ間の穴は無い。
-
-## tenants の UPDATE は owner のみか admin 以上か（2026-09-01）
-
-`tenants` の UPDATE に PERMISSIVE ポリシーが2本あり、実効は緩い方（owner/admin/super_admin）。
-
-| policy | 条件 |
-|---|---|
-| `tenants_update_v2` | owner のみ |
-| `tenants_update_owner_admin` | owner / admin / super_admin |
-
-**2つの正が矛盾している**:
-- `supabase/migrations/20260323020000_rls_role_constraints.sql` のヘッダは
-  「tenants UPDATE : owner only」と明記
-- アプリ側は `/api/admin/settings/defaults` PUT 等で `settings:edit`（admin 以上）を要求し、
-  権限マトリクス上も admin は `settings:edit` を持つ
-
-- 影響: 本番に admin は0名（owner 23 / staff 1 / super_admin 1）なので現時点では表面化しない。
-  admin を作った瞬間に、どちらを正とするかで挙動が変わる。
-- どちらかに寄せないと起きること: DB を owner のみにすると、admin の設定変更が
-  **0行更新で成功扱い**になる（PR #1014 で直した「嘘の成功」と同じ型の不具合が再発する）。
-- 次のアクション: 代表の判断。「テナント設定（社名・ロゴ・既定の保証除外文言・請求タイミング等）
-  を admin に触らせるか」を決める。決まったら緩い方か厳しい方のどちらかを削除する。
-- 起票日: 2026-09-01
-
-## テンプレートの scope='shared' を誰が作れるべきか（2026-09-01）
-
-`templates` の INSERT に2本のポリシーがあり、片方が明示的に禁じている条件をもう片方が通す。
-
-| policy | 条件 |
-|---|---|
-| `templates_write_owner_admin` | `scope='shared'` は **`AND false`** で禁止 / `scope='tenant'` は owner・admin |
-| `templates_insert_v2` | owner・admin・staff（**scope を見ない**） |
-
-OR 評価なので、実効は「owner/admin/staff が scope を問わず作成できる」。
-`templates_write_owner_admin` が共有テンプレートを禁じている意図は効いていない。
-
-- 影響: 本番の `templates` は5件で `scope='shared'` は0件。実害は出ていない。
-- 次のアクション: 代表の判断。「共有テンプレート（全テナント横断）を各テナントの
-  owner/admin/staff が作れるべきか、プラットフォーム運営だけが作るべきか」を決める。
-  後者なら `templates_insert_v2` に scope 条件を足す。
-- 起票日: 2026-09-01
 
 ## 通知18タイプのうち15タイプが本番で一度も発火していない（2026-08-31）
 

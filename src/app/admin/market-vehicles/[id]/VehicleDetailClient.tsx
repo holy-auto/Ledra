@@ -5,6 +5,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { useCallback, useEffect, useRef, useState } from "react";
 import PageHeader from "@/components/ui/PageHeader";
+import MutationGuard from "@/components/ui/MutationGuard";
 import Badge from "@/components/ui/Badge";
 import EquipmentPicker from "@/components/EquipmentPicker";
 import { formatJpy, formatDate } from "@/lib/format";
@@ -460,10 +461,13 @@ export default function VehicleDetailClient({ vehicleId }: { vehicleId: string }
                 {STATUS_LABELS[ns] ?? ns}に変更
               </button>
             ))}
+            {/* 削除は admin 以上（代表判断 2026-09-04）。 */}
             {vehicle.status === "draft" && (
-              <button type="button" className="btn-danger text-xs" onClick={handleDelete}>
-                削除
-              </button>
+              <MutationGuard minRole="admin">
+                <button type="button" className="btn-danger text-xs" onClick={handleDelete}>
+                  削除
+                </button>
+              </MutationGuard>
             )}
           </div>
         </div>

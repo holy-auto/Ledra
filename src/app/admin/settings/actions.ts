@@ -2,25 +2,34 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
+import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { calcLaborPrice } from "@/lib/pricing/labor";
 import { buildSecretWrite } from "@/lib/crypto/tenantSecrets";
 import { settingsSchema } from "./settingsSchema";
-import type { SupabaseClient } from "@supabase/supabase-js";
 
 export type SettingsResult = { ok: true } | { ok: false; error: string };
 
-async function getTenantId(supabase: SupabaseClient): Promise<string | null> {
-  const { data: userRes } = await supabase.auth.getUser();
-  if (!userRes.user) return null;
-  const { data } = await supabase.from("tenant_memberships").select("tenant_id").limit(1).single();
-  return (data?.tenant_id as string | null) ?? null;
-}
-
 export async function updateTenantSettingsAction(formData: FormData): Promise<SettingsResult> {
   const supabase = await createSupabaseServerClient();
-  const tenantId = await getTenantId(supabase);
-  if (!tenantId) return { ok: false, error: "unauthorized" };
+
+  // テナント設定は owner のみ（代表判断 2026-09-04）。社名・住所・銀行口座・
+  // Slack Webhook を扱うため、店舗の代表者だけが変更できる。
+  //
+  // ここまでロール判定が1つも無く、RLS 任せだった。RLS が弾いた場合 supabase-js の
+  // .update() は「0行更新」で**エラーを返さない**ので、権限の無い人が保存すると
+  // 何も変わらないのに { ok: true } が返っていた。
+  //
+  // tenantId は resolveCallerWithRole から取る。以前はローカルの getTenantId() が
+  // `tenant_memberships` を `.limit(1).single()` で引いていたが、**並び順も
+  // アクティブテナントの cookie も見ていなかった**。複数テナントに所属する人が
+  // 店舗Aの画面で保存すると、店舗Bの行が書き換わりうる形だった。
+  const caller = await resolveCallerWithRole(supabase);
+  if (!caller) return { ok: false, error: "unauthorized" };
+  if (!requireMinRole(caller, "owner")) {
+    return { ok: false, error: "テナント設定を変更できるのは店舗オーナーのみです" };
+  }
+  const tenantId = caller.tenantId;
 
   // フォームで送られてきた項目のみ検証対象に含める (undefined は optional で素通し)。
   const get = (k: string) => (formData.has(k) ? String(formData.get(k) ?? "").trim() : undefined);
@@ -87,9 +96,12 @@ export async function updateTenantSettingsAction(formData: FormData): Promise<Se
     };
   }
 
-  const { error } = await supabase.from("tenants").update(payload).eq("id", tenantId);
+  // .select() を付けて更新行数を見る。RLS で弾かれた場合 error は null のまま
+  // 0行になるため、これが無いと「嘘の成功」を返す（PR #1014 で直したのと同じ型）。
+  const { data: updated, error } = await supabase.from("tenants").update(payload).eq("id", tenantId).select("id");
 
   if (error) return { ok: false, error: error.message };
+  if (!updated?.length) return { ok: false, error: "設定を更新できませんでした（権限がありません）" };
 
   // レバーレート設定時は、標準工数を持つ品目の提供価格を一括再計算する。
   // unit_price を単一の真実として維持することで、見積・クイック見積・AI 見積など
