@@ -129,8 +129,8 @@ TOE 境界は **写真のキャプチャ/アップロード → サーバー側�
 ### 2.3 [O.3] Protection of the Claim Generator (§6.3)
 
 1. **SCA / SBOM Scanning Tools**: Claim Generator（署名系 `@contentauth/c2pa-node`）を含む依存に対し、
-   **Dependabot**（週次、NVD 連携、`.github/dependabot.yml`）と **CodeQL**（push/PR/週次、`security-extended`、
-   `.github/workflows/codeql.yml`）を継続実行し、加えて CI の `npm audit --audit-level=high` が高 severity 以上の
+   **Dependabot**（週次、NVD 連携、`.github/dependabot.yml`）と **CodeQL**（`main` 宛ての push/PR＋週次、`security-extended`、
+   `.github/workflows/codeql.yml`。トリガーは `main` 限定）を継続実行し、加えて CI の `npm audit --audit-level=high` が高 severity 以上の
    依存脆弱性でビルドを失敗させる（`.github/workflows/ci.yml`）。**Codacy**（`.github/workflows/codacy.yml`）は
    ワークフローは存在するが `CODACY_PROJECT_TOKEN` 未設定のため自動トリガーは無効化されており（`workflow_dispatch`
    のみ）、現状は継続実行ではなく手動起動のみ。継続的な検査は Dependabot + CodeQL + npm audit ゲートが担う。

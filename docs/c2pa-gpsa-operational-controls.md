@@ -12,8 +12,9 @@ Generator Product とそのコンテンツ処理ソフトのビルド/統合に�
 
 - **Dependabot**（`.github/dependabot.yml`）: npm 依存（リポジトリルートおよび `/apps/mobile`）と
   GitHub Actions を対象に、毎週月曜に脆弱性・更新を検査し PR を自動起票する。NVD 由来の既知脆弱性を検知する。
-- **CodeQL**（`.github/workflows/codeql.yml`）: すべての push・pull request、および毎週月曜のスケジュール
-  （`cron: "0 3 * * 1"`）で `security-extended` クエリスイートを実行し、静的解析でコードの脆弱性を検知する。
+- **CodeQL**（`.github/workflows/codeql.yml`）: **`main` ブランチ宛ての** push・pull request、および毎週月曜の
+  スケジュール（`cron: "0 3 * * 1"`）で `security-extended` クエリスイートを実行し、静的解析でコードの脆弱性を
+  検知する（トリガーは `main` 限定＝他ブランチ宛ての push/PR では走らない）。
 - **Codacy**（`.github/workflows/codacy.yml`）: 静的解析・コード品質検査のワークフローは存在するが、
   `CODACY_PROJECT_TOKEN` 未設定のため**自動トリガー（push / pull_request / schedule）は無効化**されており、
   現状 `workflow_dispatch`（手動起動）のみ。したがって継続実行ではない。トークン設定後に自動トリガーを復活させる予定。
