@@ -122,6 +122,27 @@ Supabase の既定にも入らない。手元で再現しなかったのは
   bootstrap は Supabase の既定だけを書く場所にする。
 - 検証: bootstrap から pg_trgm を抜いた状態でも 1パス再生 447/447（＝プレビュー DB と同じ条件）。
 
+### 続き2: 手元は PostgreSQL 16、Supabase は 15
+
+`pg_trgm` を直したら次はこれ。
+
+```
+ERROR: relation "public.line_link_tokens" does not exist (SQLSTATE 42P01)
+drop policy if exists service_role_all_line_link_tokens on public.line_link_tokens
+```
+
+`line_link_tokens` / `line_pending_links` も**本番にしか無い**テーブル
+（`fk_covering_indexes` のコメントに「ドリフト」として列挙済み）。
+
+**`DROP POLICY IF EXISTS ... ON <欠けたテーブル>` は PG16 では NOTICE で skip されるが、
+PG15 では落ちる。** 手元の再生は 16、Supabase は 15。実際に PG16 で試して確認した。
+
+- 該当2文を `to_regclass` ガードに変更。
+- lint に新ルール `drop-if-exists-on-uncreated-relation` を追加。
+  **全マイグレーションを走査して「作られるリレーション」の集合を作り**、
+  そこに無いものへの `DROP POLICY / TRIGGER IF EXISTS` を落とす。
+  わざと壊して落ちることを確認済み。
+
 ## 2026-09-03 マイグレーションの順序逆転 203 本を解消（1パス再生 443/443）
 
 `Supabase Preview` が1本目のマイグレーションで落ち続けていた問題。

@@ -114,6 +114,23 @@ Supabase の既定にも入らないので、実物のプレビュー DB では
 直し方は、そのマイグレーション自身に「無ければ作る」を持たせること。
 bootstrap からは既定でない拡張（pg_trgm / btree_gin / btree_gist / unaccent）を外した。
 
+## 手元は PostgreSQL 16、Supabase は 15
+
+再生検査が立てる一時 DB は **PostgreSQL 16**、Supabase のプレビュー DB は **15**。
+この差で一番効くのがこれ。
+
+```sql
+drop policy if exists foo on public.missing_table;
+```
+
+**PG16 は NOTICE を出して skip する。PG15 は `relation does not exist (SQLSTATE 42P01)`
+で落ちる。** つまり「本番にしか無いテーブル」に対する `DROP ... IF EXISTS ... ON` は、
+手元では一度も再現しない。
+
+`scripts/lint-migrations.js` の `drop-if-exists-on-uncreated-relation` が静的に見ている。
+**マイグレーションが作っていないリレーション**への `DROP POLICY / TRIGGER IF EXISTS` は
+`to_regclass` で存在を見てから実行すること。
+
 ## 新しいマイグレーションを書くとき
 
 - **前提は自分より前のファイルにあること。** 検査はファイル名順に1パスで流すので、

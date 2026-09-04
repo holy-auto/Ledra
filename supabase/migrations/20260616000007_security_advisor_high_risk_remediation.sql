@@ -65,8 +65,25 @@ $mig$;
 --     RLS, and no client (user-token) code touches these tables, so the broad
 --     policy is pure over-exposure. Drop it; the table keeps RLS enabled with no
 --     policy, denying anon/authenticated while service-role access is unchanged.
-drop policy if exists service_role_all_line_link_tokens on public.line_link_tokens;
-drop policy if exists service_role_all_line_pending_links on public.line_pending_links;
+-- 【後から内容だけ修正】`line_link_tokens` / `line_pending_links` は**本番にしか無い**
+-- （どのマイグレーションも作っていない。`20260603010000_fk_covering_indexes.sql` の
+-- コメントにも「ドリフト」テーブルとして列挙されている）。
+--
+-- `DROP POLICY IF EXISTS ... ON <欠けたテーブル>` は **PostgreSQL 16 では NOTICE で
+-- skip されるが、15 では `relation does not exist (SQLSTATE 42P01)` で落ちる。**
+-- 手元の再生は 16、Supabase は 15 なので、手元では一度も再現しなかった。
+-- to_regclass で見てから実行する（版に依存しない）。
+do $mig$
+declare
+  t text;
+begin
+  foreach t in array array['public.line_link_tokens', 'public.line_pending_links'] loop
+    if to_regclass(t) is not null then
+      execute format('drop policy if exists service_role_all_%s on %s', split_part(t, '.', 2), t);
+    end if;
+  end loop;
+end
+$mig$;
 
 -- 3b) market_inquiries / market_inquiry_messages: INSERT policies used
 --     WITH CHECK(true). Inquiries/replies are written by the service-role client
