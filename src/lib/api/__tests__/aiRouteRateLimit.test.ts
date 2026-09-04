@@ -37,6 +37,35 @@ const CALLS_MODEL = /getAnthropicClient\s*\(/;
 const RATE_LIMITED = /checkRateLimit\s*\(/;
 
 /**
+ * 上の `CALLS_MODEL` は「`getAnthropicClient()` が課金の出る外部推論の唯一の入口である」
+ * という前提の上に成り立っている。別ベンダーの SDK を直接使う経路や、HTTP で外部の
+ * 推論 API を叩く経路が入ると、**この検出器は黙って見落とす**（レート制限も剥がれる）。
+ *
+ * そこで前提を「守られているはず」から検査対象へ格上げする。下の2本のどちらかを
+ * 破る PR は、レート制限の一覧に載らないまま緑になることができない。
+ *
+ * 別ベンダーを入れるときは、この定数を緩めるのではなく
+ * `src/lib/ai/client.ts` に共通の入口を足して `CALLS_MODEL` をそこに向け直すこと。
+ */
+const VENDOR_CLIENT_CONSTRUCTION = /new\s+Anthropic\s*\(/;
+
+/** 課金の出る外部推論への別経路（ベンダー SDK の import と、HTTP 直叩きのホスト名）。 */
+const OTHER_INFERENCE_PATHS = [
+  /from\s*"openai(?:\/[^"]*)?"/,
+  /from\s*"@google\/gen(?:erative-)?ai"/,
+  /from\s*"@mistralai\//,
+  /from\s*"cohere-ai"/,
+  /from\s*"groq-sdk"/,
+  /from\s*"replicate"/,
+  /from\s*"@aws-sdk\/client-bedrock/,
+  /api\.openai\.com/,
+  /api\.anthropic\.com/, // SDK を通さない生 fetch
+  /generativelanguage\.googleapis\.com/,
+  /api\.mistral\.ai/,
+  /api\.cohere\.(?:ai|com)/,
+];
+
+/**
  * モデルを叩くモジュールから import されるが、**それ自体はモデルを呼ばない**もの。
  * すべて実装を読んで確認した。ここに足すときは必ず中身を読むこと
  * （形から推測して分類したのが MISTAKE_LEDGER 型 B）。
@@ -137,6 +166,32 @@ for (const file of walkSource(API_ROOT, (f) => f.endsWith("route.ts"))) {
 }
 
 describe("AI を呼ぶ API ハンドラのレート制限", () => {
+  it("課金の出る外部推論の入口が `getAnthropicClient()` 1箇所に閉じている（検出器の前提）", () => {
+    // ベンダークライアントの構築は共通入口だけ。ここが増えると CALLS_MODEL が届かない。
+    const constructing = [...SOURCES]
+      .filter(([, src]) => VENDOR_CLIENT_CONSTRUCTION.test(src))
+      .map(([f]) =>
+        f
+          .slice(SRC.length + 1)
+          .split(/[\\/]/)
+          .join("/"),
+      )
+      .sort();
+    expect(constructing).toEqual(["lib/ai/client.ts"]);
+
+    // 別ベンダー SDK / HTTP 直叩きは 1 件も無い。
+    const others = [...SOURCES]
+      .filter(([, src]) => OTHER_INFERENCE_PATHS.some((re) => re.test(src)))
+      .map(([f]) =>
+        f
+          .slice(SRC.length + 1)
+          .split(/[\\/]/)
+          .join("/"),
+      )
+      .sort();
+    expect(others).toEqual([]);
+  });
+
   it("検出器が空振りしていない", () => {
     // 検出器が壊れて空になると、下の検査が素通りで緑になる。
     // 件数の下限だけだと数本消えても気づけないので、性質の違う既知の経路を名指しする。
