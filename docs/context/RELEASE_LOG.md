@@ -4,6 +4,25 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-09-04 認可テーブルの二重化を解消（複数形 insurer_tenant_accesses と全組み合わせ自動付与トリガを削除）
+
+- 背景: 保険会社のテナント閲覧許可に、名前がほぼ同じ2つの表が並存していた。
+  正は `insurer_tenant_access`（単数形）で、認可の実体 `insurer_accessible_tenant_ids()`・
+  検索3 RPC・API 4本がすべてこれを読む。一方 `insurer_tenant_accesses`（複数形）は
+  **アプリコードからの参照ゼロ**、`supabase/migrations/` にも定義が無い本番のみのドリフトだった。
+- 危険だった点: トリガ `trg_seed_all_tenant_accesses_for_new_insurer` /
+  `trg_seed_all_insurer_accesses_for_new_tenant` が、保険会社かテナントが1件増えるたびに
+  **全保険会社 × 全テナント**の行を `is_active=true` で複数形へ投入していた。削除時点で
+  **2保険会社 × 24テナント = 48行、全件有効**。読むコードが無いため実害は出ていなかったが、
+  **複数形を1行でも参照した瞬間に、両保険会社が実店舗24社の証明書を見られる**状態だった。
+- 内容: `20260904060245_drop_insurer_tenant_accesses_and_autograt_triggers.sql` を追加し、
+  トリガ2本 → 関数2本 → 複数形テーブルの順に削除して本番へ適用。あわせて生成物
+  （`src/types/db.generated.ts`・`scripts/schema.snapshot.json`）から該当定義を除去した。
+- 検証: 削除後に複数形の不在・トリガ0件・関数0件を確認し、**単数形は2行のまま無傷**、
+  `insurer_accessible_tenant_ids()` がデモ保険会社に対して `Ledra Motors（デモ）` を返し、
+  東京海上日動に対しては0件（前日の無効化が維持されている）ことを実際に呼んで確認した。
+  `npx tsc --noEmit` 出力なし、`npm run check:schema` OK、`npx vitest run` 522 files / 5,310 件通過。
+
 ## 2026-09-03 保険会社ポータルの検索を本番で復旧し、配布 PDF のキャプチャ3枚が揃った（14ページ）
 
 - 背景: `insurer_accessible_tenant_ids(uuid)` は SECURITY DEFINER で `search_path=''` が
