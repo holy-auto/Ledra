@@ -5,7 +5,7 @@
  * 表の値そのものを検査する。変えるときは DECISION_LOG に新しい判断を書くこと。
  *
  * DB 側（tenants の UPDATE を owner のみに、共有テンプレートをプラットフォーム限定に）は
- * supabase/migrations/20260904000000_*.sql が担う。ここでは API 側だけを見る。
+ * supabase/migrations/20260904123252_*.sql が担う（本番適用済み）。ここでは API 側だけを見る。
  */
 import { describe, it, expect } from "vitest";
 import { API_ROUTE_PERMISSIONS, hasPermission, type Permission } from "@/lib/auth/permissions";
