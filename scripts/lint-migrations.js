@@ -351,30 +351,47 @@ for (const [version, group] of byVersion) {
 // 何も見ていない」状態になり、この検査が防ぐはずの事故がそのまま緑で通る。
 // 実際 actions/checkout は既定 depth 1 で base ref を持たないため、最初の実装は
 // CI で一度も動いていなかった（MISTAKE_LEDGER M-028）。
+//
+// ただし**そもそも git リポジトリでない場所**（このスクリプトの単体テストは
+// 一時ディレクトリへコピーして走らせる）では比較対象が存在しないので、
+// CI であっても黙って見送る。「repo なのに base ref が無い」＝設定ミスだけを落とす。
 {
   const { execFileSync } = require("child_process");
+  const repoRoot = path.join(__dirname, "..");
   const git = (args) =>
     execFileSync("git", args, {
-      cwd: path.join(__dirname, ".."),
+      cwd: repoRoot,
       encoding: "utf8",
       stdio: ["ignore", "pipe", "ignore"],
     });
+  let insideGitRepo = false;
+  try {
+    insideGitRepo = git(["rev-parse", "--is-inside-work-tree"]).trim() === "true";
+  } catch {
+    /* not a git work tree (unit-test sandbox 等) */
+  }
   const candidates = [process.env.MIGRATIONS_BASE_REF, "origin/main", "main"].filter(Boolean);
   let baseFiles = null;
   let baseRef = null;
-  for (const ref of candidates) {
-    try {
-      baseFiles = git(["ls-tree", "--name-only", `${ref}:supabase/migrations`])
-        .split("\n")
-        .map((l) => l.trim())
-        .filter((l) => l.endsWith(".sql"));
-      baseRef = ref;
-      break;
-    } catch {
-      /* ref not available in this checkout */
+  if (insideGitRepo) {
+    for (const ref of candidates) {
+      try {
+        baseFiles = git(["ls-tree", "--name-only", `${ref}:supabase/migrations`])
+          .split("\n")
+          .map((l) => l.trim())
+          .filter((l) => l.endsWith(".sql"));
+        baseRef = ref;
+        break;
+      } catch {
+        /* ref not available in this checkout */
+      }
     }
   }
-  if (baseFiles === null && process.env.CI) {
+  if (baseFiles === null && !insideGitRepo) {
+    console.log(
+      "[lint-migrations] git リポジトリではないので out-of-order 検査は見送る",
+    );
+  } else if (baseFiles === null && process.env.CI) {
     hasErrors = true;
     console.error(
       `\n❌ [migration-version-before-base-head] base ブランチ（${candidates.join(" / ")}）を引けませんでした。`,
