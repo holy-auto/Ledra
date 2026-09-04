@@ -17,6 +17,27 @@ describe("buildC2paManifestSummary", () => {
     ]);
   });
 
+  it("asserts only the actions that actually had an effect (no no-ops)", () => {
+    // Re-encode ran, but the source had no orientation and no metadata to remove:
+    // only created + converted, and allActionsIncluded stays true.
+    const reencodeOnly = buildC2paManifestSummary("production", undefined, {
+      reencoded: true,
+      orientationApplied: false,
+      metadataRemoved: false,
+    });
+    expect(reencodeOnly.actions).toEqual(["c2pa.created", "c2pa.converted"]);
+    expect(reencodeOnly.allActionsIncluded).toBe(true);
+
+    // Fallback: sharp failed, original signed as-is → only created, not complete.
+    const fallback = buildC2paManifestSummary("production", undefined, {
+      reencoded: false,
+      orientationApplied: false,
+      metadataRemoved: false,
+    });
+    expect(fallback.actions).toEqual(["c2pa.created"]);
+    expect(fallback.allActionsIncluded).toBe(false);
+  });
+
   it("summarizes the sealed binding and keeps the nonce as a boolean only (never the raw value)", () => {
     const s = buildC2paManifestSummary("dev-signed", {
       publicId: "cert_abc",

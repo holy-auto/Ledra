@@ -144,9 +144,13 @@ export async function processUploadedPhoto(params: ProcessPhotoParams): Promise<
       captureNonce,
       tsaTimestamp: tsa?.timestampAt ?? null,
     },
-    // exif.gpsStripped=false は sharp の strip/再エンコードが失敗し原本を
-    // そのまま署名する fallback。C2PA の行為台帳が変換を過大主張しないよう伝える。
-    exif.gpsStripped,
+    // C2PA の行為台帳が「実際に効果のあった変換」だけを主張するよう、per-action の
+    // 結果を伝える。reencoded=false は sharp 失敗の fallback（原本をそのまま署名）。
+    {
+      reencoded: exif.reencoded,
+      orientationApplied: exif.orientationApplied,
+      metadataRemoved: exif.metadataRemoved,
+    },
   );
 
   const finalBuffer = providers.c2pa.signedBuffer ?? uploadBuffer;

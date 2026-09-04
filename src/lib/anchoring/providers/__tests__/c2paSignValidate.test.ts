@@ -153,7 +153,11 @@ describe("C2PA sign → validate (manifest content conformance)", () => {
     })
       .jpeg()
       .toBuffer();
-    const res = await signC2pa(buf, "image/jpeg", undefined, /* transformApplied */ false);
+    const res = await signC2pa(buf, "image/jpeg", undefined, {
+      reencoded: false,
+      orientationApplied: false,
+      metadataRemoved: false,
+    });
     expect(res.signedBuffer, "fallback signing produced a buffer").toBeTruthy();
 
     const reader = await Reader.fromAsset({ buffer: res.signedBuffer!, mimeType: "image/jpeg" });

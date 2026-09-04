@@ -18,6 +18,24 @@ export interface ExifExtraction {
   /** True when we successfully stripped GPS tags (also true when no GPS was present). */
   gpsStripped: boolean;
   /**
+   * True when the re-encode pipeline (sharp) actually ran (i.e. NOT the
+   * fallback-to-original path). Equivalent to "the signed bytes are Ledra's
+   * re-encoded rendition". Used to gate the `c2pa.converted` action.
+   */
+  reencoded: boolean;
+  /**
+   * True when the source carried an EXIF Orientation tag ≠ 1 that `.rotate()`
+   * actually baked in. Gates the `c2pa.orientation` action so it is not asserted
+   * for an image that had no orientation to normalize.
+   */
+  orientationApplied: boolean;
+  /**
+   * True when the source actually carried EXIF/GPS metadata that the re-encode
+   * removed. Gates the `c2pa.edited:exif_gps_metadata_removed` action so it is
+   * not asserted when there was nothing to remove (e.g. a metadata-free PNG).
+   */
+  metadataRemoved: boolean;
+  /**
    * 撮影GPS座標（**メモリ内のみ**）。店舗/作業場所との整合性チェックに使うだけで、
    * 呼び出し側は照合後に必ず破棄する（storage にも DB にも生座標は保存しない）。
    * // ponytail: GPS は活用するが永続化しない。照合結果（verdict）のみ保存する方針。
@@ -40,22 +58,31 @@ export async function stripGpsAndReadExif(buffer: Buffer): Promise<ExifExtractio
     // though we're about to drop it from the stored file.
     let capturedAt: Date | null = null;
     let deviceModel: string | null = null;
+    // Track whether the source actually carried tags, so the C2PA action ledger
+    // records only operations that had an effect (see orientationApplied /
+    // metadataRemoved). Orientation values 2–8 mean a real rotate/flip; 1 (or
+    // absent) means nothing to normalize.
+    let orientationApplied = false;
+    let hadExifTags = false;
     try {
       const meta = (await exifr.parse(buffer, {
-        pick: ["DateTimeOriginal", "CreateDate", "Model", "Make"],
+        pick: ["DateTimeOriginal", "CreateDate", "Model", "Make", "Orientation"],
       })) as
         | {
             DateTimeOriginal?: Date;
             CreateDate?: Date;
             Model?: string;
             Make?: string;
+            Orientation?: number;
           }
         | undefined;
       if (meta) {
+        hadExifTags = Object.values(meta).some((v) => v !== undefined && v !== null);
         capturedAt = meta.DateTimeOriginal ?? meta.CreateDate ?? null;
         const make = meta.Make ? String(meta.Make).trim() : "";
         const model = meta.Model ? String(meta.Model).trim() : "";
         deviceModel = [make, model].filter(Boolean).join(" ") || null;
+        orientationApplied = typeof meta.Orientation === "number" && meta.Orientation > 1;
       }
     } catch {
       // Non-fatal: EXIF may be missing/corrupt.
@@ -85,6 +112,10 @@ export async function stripGpsAndReadExif(buffer: Buffer): Promise<ExifExtractio
       capturedAt,
       deviceModel,
       gpsStripped: true,
+      reencoded: true,
+      orientationApplied,
+      // Metadata was actually removed only if the source carried EXIF tags or GPS.
+      metadataRemoved: hadExifTags || gps !== null,
       gps,
     };
   } catch (err) {
@@ -94,6 +125,9 @@ export async function stripGpsAndReadExif(buffer: Buffer): Promise<ExifExtractio
       capturedAt: null,
       deviceModel: null,
       gpsStripped: false,
+      reencoded: false,
+      orientationApplied: false,
+      metadataRemoved: false,
       gps: null,
     };
   }
