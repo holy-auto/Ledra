@@ -213,13 +213,14 @@ PG15 では落ちる。** 手元の再生は 16、Supabase は 15。実際に PG
   役割を見ない RLS ポリシーや search_path 未固定の関数定義が復活するため。
 - 既適用ファイルの**中身だけ**を「前提が無ければ飛ばす」に変更（`to_regclass` /
   `to_regprocedure` 判定）。版番号を変えていないので本番では再適用されない。
-- 飛ばした分を依存が揃った位置で補う新規ファイル5本。いずれも「既にあれば何もしない」
-  形で本番では no-op:
-  `20260313030000_replay_early_schema.sql` /
-  `20260313030001_replay_early_schema_index.sql` /
-  `20260314000006_replay_market_inquiries.sql` /
-  `20260321000003_replay_customer_login_codes_index.sql` /
-  `20260601000009_replay_supply_columns.sql`
+- 飛ばした分を、依存が揃った位置の**既適用ファイルの末尾**で補う。いずれも
+  「既にあれば何もしない」形で本番では no-op。**新規ファイルは1本も作っていない**
+  （作ると本番の `db push` が out-of-order で止まるため。下記参照）:
+  `20260313020000_core_tables.sql`（customers / invoices / 列・索引）/
+  `20260314000003_market_vehicles.sql`（market_inquiries 系）/
+  `20260321000001_customer_portal_tables.sql`（索引）/
+  `20260601000006_supply_partners.sql`（列）/
+  `20260826000005_repair_unreplayable_objects.sql`（email 系関数の revoke）
 - 一度も存在しなかった名前を本番の実体に合わせて修正:
   `tenant_members` → `tenant_memberships`（2本）、`tenant_memberships.is_active`
   述語の除去（2本）、戻り値の型違いの同名関数を先に DROP（2本）、
@@ -232,11 +233,24 @@ PG15 では落ちる。** 手元の再生は 16、Supabase は 15。実際に PG
 まだ作られていない関数への `revoke execute` をガードで飛ばした結果、
 `auth_uid_by_email` / `get_auth_email` / `get_auth_email_scoped` が空 DB では
 `anon` / `authenticated` に開いたまま残っていた（`auth.users` の email を引く
-SECURITY DEFINER）。関数が実在する位置に `20260826000007` を足して締め直し、
-再生 DB の `pg_proc.proacl` で5関数すべて service_role のみになることを確認した。
+SECURITY DEFINER）。関数が実在する位置（`20260826000005` の末尾）で締め直し、
+再生 DB の `pg_proc.proacl` で5関数すべて service_role のみになること、
+本番の `proacl` と一致することを確認した。
 
-検証: 1パス再生 **444/444**、RLS ポリシー打ち消し検査 なし、`lint:migrations` OK、
-`check:schema` OK、`vitest run` 522ファイル 5301件 通過。
+**Codex レビューの P1 指摘で作り直した。** 当初は補いを新規ファイル6本として置いて
+いたが、6本とも本番の適用済み最新 `20260904123252` より**古い**バージョンだった。
+本番の `supabase db push` は最新より古い未適用があると out-of-order で停止するため、
+マージすれば**以降のマイグレーションが本番へ一切届かなくなる**ところだった
+（2026-08-02〜08-15 に同じ形で13日間停止し、証明書発行が全件止まった実績がある）。
+6本を消して中身を既適用ファイルの末尾へ移し、新規バージョンを0本にした。
+`MISTAKE_LEDGER` M-027。
+
+再発防止として `lint:migrations` に `migration-version-before-base-head` を追加。
+**このブランチが追加したファイルは、base に在るどのファイルよりも後のバージョンで
+なければ落ちる。** わざと古い日付で置いて落ちることを確認済み。
+
+検証: 1パス再生 **441/441**、RLS ポリシー打ち消し検査 なし、`lint:migrations` OK、
+`check:schema` OK、`vitest run` 525ファイル 5324件 通過。
 番人はわざと壊して確認済み（存在しないテーブルを ALTER するファイルを先頭日付で
 置くと exit 1 でファイル名まで出る）。
 

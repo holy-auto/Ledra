@@ -199,7 +199,7 @@ function main() {
       console.log("\nSupabase のブランチ機能はこの順で1回だけ流すので、ここが赤いと");
       console.log("プレビュー DB は作られません。前提は同じファイルの中で作るか、");
       console.log("前提が無いときに飛ばして別ファイルで補ってください");
-      console.log("（例: supabase/migrations/20260313030000_replay_early_schema.sql）。");
+      console.log("（新しいファイルは作らない。適用済みファイルの末尾に足す）。");
       console.log("\n（スキーマが未完成なので RLS ポリシー検査は行いません）");
       process.exitCode = 1;
       return;

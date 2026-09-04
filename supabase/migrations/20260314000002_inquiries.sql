@@ -7,13 +7,13 @@
 -- **1つ後ろの** `20260314000003_market_vehicles.sql`。空 DB へファイル名順に
 -- 1パスで流すとここで落ち、market_* 系が丸ごと作られなかった。
 -- ファイル名は動かさない（版番号が変わると本番で再適用になる）。
--- 空 DB 側の実体は `20260314000006_replay_market_inquiries.sql` が作る。
+-- 空 DB 側の実体は `20260314000003_market_vehicles.sql` の末尾で作る。
 DO $mig$
 BEGIN
   -- 下の CREATE TABLE は IF NOT EXISTS を付けていない（当時のまま）ので、
   -- 参照先が無いときだけでなく、**既に作られているとき**も飛ばす。
   IF to_regclass('public.market_vehicles') IS NULL OR to_regclass('public.market_inquiries') IS NOT NULL THEN
-    RAISE NOTICE '20260314000002: 前提が無い / 既に作成済みのため skip（20260314000006 が作る）';
+    RAISE NOTICE '20260314000002: 前提が無い / 既に作成済みのため skip（market_vehicles の末尾が作る）';
     RETURN;
   END IF;
 

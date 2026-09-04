@@ -322,6 +322,70 @@ for (const [version, group] of byVersion) {
   );
 }
 
+// Structural check (runs on ALL files): a migration ADDED by this branch must sort
+// AFTER every migration that already exists on the base branch.
+//
+// なぜ: 本番の `supabase db push` は、本番の schema_migrations の最新より**古い**
+// バージョンのファイルが未適用で残っていると out-of-order で停止し、それ以降の
+// マイグレーションが本番へ一切届かなくなる（.github/workflows/db-migrate.yml の
+// 不変条件2）。2026-08-02〜08-15 に13日間これで止まり、証明書発行が全件停止した。
+// OPEN_QUESTIONS によればこの形は5回目である。
+//
+// base ブランチの最新バージョン >= 本番の最新バージョン なので、
+// 「base に在るどのファイルよりも後」であれば out-of-order にならない（十分条件）。
+// 本番へ問い合わせずに手元と CI だけで判定できるのが要点。
+//
+// ponytail: git が引けない環境（shallow clone で base ref が無い等）では黙って
+// 見送る。天井は「base ref を持たない CI では効かない」こと。厳密にやるなら
+// db-migrate 側で本番の schema_migrations と突き合わせる。
+{
+  const { execFileSync } = require("child_process");
+  const git = (args) =>
+    execFileSync("git", args, {
+      cwd: path.join(__dirname, ".."),
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+  let baseFiles = null;
+  for (const ref of ["origin/main", "main"]) {
+    try {
+      baseFiles = git(["ls-tree", "--name-only", `${ref}:supabase/migrations`])
+        .split("\n")
+        .map((l) => l.trim())
+        .filter((l) => l.endsWith(".sql"));
+      break;
+    } catch {
+      /* ref not available in this checkout */
+    }
+  }
+  if (baseFiles === null) {
+    console.log(
+      "[lint-migrations] base ブランチを引けないので out-of-order 検査は見送る（shallow clone?）",
+    );
+  } else if (baseFiles.length > 0) {
+    const baseSet = new Set(baseFiles);
+    const baseMax = baseFiles.map(versionOf).sort().at(-1);
+    const added = files.filter((f) => !baseSet.has(f));
+    for (const file of added) {
+      if (versionOf(file) > baseMax) continue;
+      hasErrors = true;
+      console.error(`\n❌ ${file}`);
+      console.error(
+        `   [migration-version-before-base-head] このブランチが追加したファイルのバージョン ${versionOf(file)} が、base に既にある最新 ${baseMax} より前です。`,
+      );
+      console.error(
+        `     → 本番の \`supabase db push\` が out-of-order で停止し、以降のマイグレーションが本番へ届かなくなります。`,
+      );
+      console.error(
+        `     → 本番へ当てたい変更なら ${baseMax} より後のバージョンへ改名してください。`,
+      );
+      console.error(
+        `     → 再生（空 DB）を通すためだけの補いなら、新しいファイルを作らず**適用済みファイルの末尾**へ足してください（本番では再適用されないので影響がありません）。`,
+      );
+    }
+  }
+}
+
 for (const file of files) {
   if (allowlist.has(file)) {
     skipped++;

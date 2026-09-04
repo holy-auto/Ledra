@@ -5,11 +5,11 @@
 -- tenants に依存しているため、空 DB へ1パスで流すとここで止まる。
 -- ファイル名は動かさない（版番号が変わると本番で再適用になり、下の関数群が
 -- **search_path 未固定の古い定義に巻き戻る**）。
--- 空 DB 側の2列は `20260313030000_replay_early_schema.sql` が足す。
+-- 空 DB 側の2列は `20260313020000_core_tables.sql` の末尾で足す。
 DO $mig$
 BEGIN
   IF to_regclass('public.tenants') IS NULL THEN
-    RAISE NOTICE '20260313000001: core_tables 未適用のため列追加のみ skip（20260313030000 が足す）';
+    RAISE NOTICE '20260313000001: core_tables 未適用のため列追加のみ skip（core_tables の末尾が足す）';
     RETURN;
   END IF;
 

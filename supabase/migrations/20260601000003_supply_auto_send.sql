@@ -11,7 +11,7 @@
 
 -- 1) 信頼パートナーフラグ (運営のみ設定。RLS 既存ポリシーで店舗は変更不可)。
 -- 【後から内容だけ修正】supply_partners を作るのは 20260601000006（このファイルより後ろ）。
--- 無いときは飛ばす。空 DB 側の列は 20260601000009_replay_supply_columns.sql が足す。
+-- 無いときは飛ばす。空 DB 側の列は 20260601000006_supply_partners.sql の末尾で足す。
 DO $mig$
 BEGIN
   IF to_regclass('public.supply_partners') IS NOT NULL THEN
