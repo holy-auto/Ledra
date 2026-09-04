@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { resolveCallerWithRole, requirePermission } from "@/lib/auth/checkRole";
+import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { apiJson, apiUnauthorized, apiForbidden, apiValidationError, apiInternalError } from "@/lib/api/response";
 
@@ -35,10 +35,11 @@ export async function PUT(req: NextRequest) {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
-    // 請求タイミングは金銭に直結する設定。画面は /admin/settings 配下にあり、
-    // 同じ画面の他の設定 API (follow-up-settings, integrations/*, faq 等) は
-    // すべて settings:edit を要求している。ここだけ素通りしていた。
-    if (!requirePermission(caller, "settings:edit")) return apiForbidden();
+    // 請求タイミングは金銭に直結する設定。**テナント設定は owner のみ**（代表判断 2026-09-04）。
+    // 以前は settings:edit（admin 以上）だったが、同じ判断で決めた社名・銀行口座と
+    // 同じ扱いに揃える。この経路は service-role で書くので RLS は効かず、
+    // ここのガードが唯一の境界になる。
+    if (!requireMinRole(caller, "owner")) return apiForbidden();
 
     const parsed = updateSchema.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) {

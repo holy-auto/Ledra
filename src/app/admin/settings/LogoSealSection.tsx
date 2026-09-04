@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { resolveCallerFull } from "@/lib/api/auth";
+import { hasMinRole } from "@/lib/auth/roles";
 import { hasPermission } from "@/lib/auth/permissions";
 import { canUseFeature } from "@/lib/billing/planFeatures";
 import AdminFeatureGuard from "@/app/admin/AdminFeatureGuard";
@@ -40,6 +41,11 @@ async function resolveAuthorizedTenantId(): Promise<string> {
   const supabase = await createSupabaseServerClient();
   const caller = await resolveCallerFull(supabase);
   if (!caller) redirect("/login?next=/admin/settings");
+  // テナント設定は owner のみ（代表判断 2026-09-04）。ロゴ・社印は帳票と証明書に載る
+  // 対外的な表示物で、社名・銀行口座と同じ扱いにする。
+  // logo:manage は admin も持つので、権限だけでは admin が通ってしまう。
+  // この経路は service-role で書くので RLS は効かず、ここが唯一の境界になる。
+  if (!hasMinRole(caller.role, "owner")) redirect("/admin/settings?e=forbidden");
   if (!hasPermission(caller.role, "logo:manage")) redirect("/admin/settings?e=forbidden");
   if (!canUseFeature(caller.planTier, FEATURES.upload_logo)) redirect("/admin/settings?e=forbidden");
   return caller.tenantId;
