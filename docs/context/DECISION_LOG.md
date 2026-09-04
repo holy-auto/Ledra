@@ -4,6 +4,38 @@
 > （新しい順）。実装の詳細は RELEASE_LOG.md、迷っている段階のものは
 > OPEN_QUESTIONS.md に書く。
 
+## 2026-09-04 PR #914 のレビュー指摘を反映（C2PA マニフェストの過大主張修正・GPSA 記述を実態に訂正）
+
+1. 日付: 2026-09-04
+2. 起きたこと: PR #914（C2PA 準拠）で CI の型チェックが失敗し、Codex レビューが7件指摘。
+   自作 code-review と合わせ、正当な指摘を実コードで検証して反映した。
+   - **CI 赤の原因**: テストが `typeof import("@contentauth/c2pa-node").Reader` を型注釈に使用。
+     bundler 解決下でこの型が引けず tsc が2件エラー（本番コード `c2pa.ts` は値参照のみで無事）。
+     → 使用面だけの構造型に置換して解消。
+   - **本番挙動の修正（過大主張）**: `c2pa.actions` の `allActionsIncluded:true` が無条件だった。
+     sharp の strip/再エンコードが失敗して原本をそのまま署名する fallback では orientation/converted/edited は
+     起きていないのに「完全」と主張し、**誤った来歴クレデンシャル**になっていた。→ 変換実施フラグ
+     （`exif.gpsStripped`）を `processUploadedPhoto → invokeAllUploadProviders → signC2pa` に通し、fallback では
+     `c2pa.created` のみ・`allActionsIncluded:false` にした。fallback 検証テストを追加。
+   - **証拠文書の事実訂正**: GPSA/運用文書が実態と食い違っていた3点を訂正 — (a) Codacy は
+     `CODACY_PROJECT_TOKEN` 未設定で自動トリガー無効・手動起動のみ（継続実行ではない）、(b) 端末アテステーションは
+     既定 OFF（Phase 3 まで未稼働）、(c) GP アップロード経路は service-role で RLS をバイパスしテナント分離は
+     アプリ層 tenant_id スコープで担保（RLS が TOE の enforcement 境界という記述は誤り）、(d) 署名鍵は
+     `LocalSigner` をモジュールキャッシュするためプロセス生存期間中メモリ常駐（署名の瞬間だけ、は誤り）。
+3. 以前の考え: 「マニフェストは Valid を確認済みなので actions は正しい」「CI 構成の記述は既存 workflow の名前を
+   並べれば足りる」。
+4. 違和感・問題: Valid は通常経路のサンプルでしか確認しておらず fallback 経路は未検証だった。文書はツールの
+   存在は事実でも「稼働状態」を確認していなかった（型F: 確認できる事実を確認しない、に隣接）。
+5. 決めたこと: 正当な指摘（過大主張・skip 隠蔽・文書の事実誤り・データ消失）は全て修正。`c2pa.created`＋
+   `digitalCapture` と通常経路の `allActionsIncluded:true` は spec 準拠・実写真として正しいので設計判断として保持。
+6. 捨てた選択肢: (a) allActionsIncluded を常に false（通常経路で情報量を失う・不正確）。(b) 文書をそのまま提出
+   （虚偽の適合証拠になる＝最悪）。(c) 型エラーを `any` で握りつぶす（lint 警告・型安全喪失）。
+7. 判断理由: 来歴クレデンシャルも適合証拠も**外部（検証者・審査者）が信じて行動する対象**。過大主張・虚偽記述は
+   不完全な記述より有害。実態に合わせるのが唯一の正しい方向。
+8. まだ答えが出ていないこと: 本番 sharp が HEIF デコード不可の場合の HEIC GPS 除去（OPEN_QUESTIONS 継続）。
+   Codacy トークン設定による自動トリガー復活の要否。
+9. 公開区分: 要確認（申請中の C2PA 準拠・自社セキュリティ構成に触れるため、公開前に代表確認）。
+
 ## 2026-09-04 判断待ちだった4件を確定（通知の宛先・テナント設定・共有テンプレート・削除権限）
 
 1. 日付: 2026-09-04

@@ -101,31 +101,39 @@ TOE 境界は **写真のキャプチャ/アップロード → サーバー側�
 ### 2.2 [O.2] Confidentiality of the Claim Signing Key (§6.2)
 
 1. **Key Generation & Storage**: 署名鍵は **ES256（NIST P-256）**。本番では cert/key を環境変数
-   （`C2PA_SIGNER_CERT` / `C2PA_SIGNER_KEY`）から読み込み（`c2paSigner.ts:98`）、Vercel が保存時に暗号化。
-   実行時は署名関数のメモリ内でのみ復号鍵を扱う。アルゴリズム/鍵長は NIST 準拠（P-256 / ECDSA-SHA256）。
-   鍵は保存時に暗号化され、揮発メモリ上では署名処理の瞬間を除き平文で保持しない。復号鍵の取り扱いは
-   Generator Product 自身（`c2paSigner.ts` / `@contentauth/c2pa-node` LocalSigner）が行う（Assurance Level 1
-   O.2 の許容形態: 「GP または Claim Generator 自身が復号鍵を扱う」に該当）。
+   （`C2PA_SIGNER_CERT` / `C2PA_SIGNER_KEY`）から読み込み（`c2paSigner.ts`）、Vercel が保存時に暗号化。
+   アルゴリズム/鍵長は NIST 準拠（P-256 / ECDSA-SHA256）。復号鍵の取り扱いは Generator Product 自身
+   （`c2paSigner.ts` / `@contentauth/c2pa-node` LocalSigner）が行う（Assurance Level 1 O.2 の許容形態:
+   「GP または Claim Generator 自身が復号鍵を扱う」に該当）。鍵は保存時に暗号化され、ディスクへの書き出し・
+   ログ出力は行わない。
 2. **Access Controls & Encryption**: 最小権限。環境変数へのアクセスは Vercel プロジェクトの管理権限保持者に
-   限定。実行時の平文鍵は署名処理のメモリ空間内に限られ、外部へ出力しない。保存時は Vercel により暗号化。
-3. **Ephemeral Plaintext Key Handling**: `LocalSigner` が署名の瞬間にメモリ上で鍵を使用する。鍵取り扱いの一部は
-   非 GP コード（ネイティブ `@contentauth/c2pa-node`）が担うため、その脆弱性監視は **dependabot**（依存 SCA）で
-   実施し、更新を適用する。露出は署名処理中の一時的なメモリ保持に限定。
+   限定。復号された鍵はサーバーレス実行プロセスのメモリ内に限られ、外部へ出力しない。保存時は Vercel により暗号化。
+3. **Plaintext Key Lifetime（現状の正確な記述）**: `c2paSigner.ts` は初回署名時に構築した `LocalSigner` を
+   **モジュールスコープでキャッシュ（`cached`）して以後のリクエストで再利用**するため、復号鍵は「単一の署名処理中
+   だけ」ではなく **当該サーバーレスインスタンスのプロセス生存期間中はメモリ上に常駐**する（プロセスがリサイクル
+   されるまで）。露出面はデプロイされた実行プロセスのメモリに限定され、ディスク/ログには出さない。鍵取り扱いの一部は
+   非 GP コード（ネイティブ `@contentauth/c2pa-node`）が担うため、その脆弱性監視は **dependabot**（依存 SCA）で実施する。
+   AL2 に向けた改善路: 秘密鍵を GP メモリに載せない KMS/HSM 方式へ移行し常駐を解消する（本申請 AL1 の範囲外）。
 4. **Key Rotation Process**: 鍵ローテーションに対応する。手順は環境変数 `C2PA_SIGNER_CERT` / `C2PA_SIGNER_KEY`
    の差し替えと新証明書の再取得で、トリガーは有効期限接近・鍵漏洩の懸念・定期更新。手順詳細は
    `docs/c2pa-gpsa-operational-controls.md` §4 に記載。
 5. **Subsystem Mutual Authentication & Role Validation（Backend）**: 署名を行う Backend は、呼び出し元
    （Web 管理画面 / モバイルアプリ）を認証してからアップロード→署名処理に入る。
    - Web: `resolveCallerWithRole`（Supabase 認証セッション＋テナント分離＋ロール確認）。
-   - モバイル: `resolveMobileCaller` + `requireMinRole`、加えて撮影セッション単位の **capture nonce** と
-     **device attestation**（`device_token` / `device_provider`）を検証。
+   - モバイル: `resolveMobileCaller` + `requireMinRole`、加えて撮影セッション単位の **capture nonce** を検証。
+     **device attestation**（`device_token` / `device_provider`）は実装済みだが **既定で無効**
+     （`DEVICE_ATTESTATION_ENABLED` 既定 false、実機トークン検証の Phase 3 まで OFF、`deviceAttestation.ts`）。
+     現時点の有効な認証は Supabase Auth ＋ロール確認＋単回使用 nonce。attestation は将来有効化予定の管理策として扱う。
    API キー等の資格情報は Backend へのアクセス制限のみに用いる。
 
 ### 2.3 [O.3] Protection of the Claim Generator (§6.3)
 
 1. **SCA / SBOM Scanning Tools**: Claim Generator（署名系 `@contentauth/c2pa-node`）を含む依存に対し、
-   **Dependabot**（週次、NVD 連携、`.github/dependabot.yml`）、**CodeQL**（push/PR/週次、`security-extended`、
-   `.github/workflows/codeql.yml`）、**Codacy** を継続実行する。
+   **Dependabot**（週次、NVD 連携、`.github/dependabot.yml`）と **CodeQL**（push/PR/週次、`security-extended`、
+   `.github/workflows/codeql.yml`）を継続実行し、加えて CI の `npm audit --audit-level=high` が高 severity 以上の
+   依存脆弱性でビルドを失敗させる（`.github/workflows/ci.yml`）。**Codacy**（`.github/workflows/codacy.yml`）は
+   ワークフローは存在するが `CODACY_PROJECT_TOKEN` 未設定のため自動トリガーは無効化されており（`workflow_dispatch`
+   のみ）、現状は継続実行ではなく手動起動のみ。継続的な検査は Dependabot + CodeQL + npm audit ゲートが担う。
 2. **90-Day Remediation Policy**: CRITICAL / HIGH（CVSS v3+）の脆弱性は検知から 90 日以内に修正/緩和し、
    これを超えて残したまま出荷しない。ポリシー詳細は `docs/c2pa-gpsa-operational-controls.md` §1–§2 に記載。
 
@@ -134,7 +142,8 @@ TOE 境界は **写真のキャプチャ/アップロード → サーバー側�
 コンテンツ/アサーションを処理する GP TOE 内ソフト（画像処理 `sharp`、署名 `@contentauth/c2pa-node`、
 アップロード処理 `src/lib/certificateImages/*`）を対象。
 
-1. **SCA / SBOM Scanning Tools**: O.3 と同一の Dependabot + CodeQL + Codacy が上記ソフトの依存を含めて検査する。
+1. **SCA / SBOM Scanning Tools**: O.3 と同一の Dependabot + CodeQL + npm audit ゲートが上記ソフトの依存を含めて
+   検査する（Codacy は自動トリガー無効・手動起動のみ。O.3 参照）。
 2. **90-Day Remediation Policy**: O.3 と同一の 90 日修正ポリシーを適用する（`c2pa-gpsa-operational-controls.md` §2）。
 
 ### 2.5 [O.5] Protection of Traffic Between Subsystems (§6.5) — Backend
@@ -146,15 +155,21 @@ TOE 境界は **写真のキャプチャ/アップロード → サーバー側�
 
 ### 2.6 [O.6] Protection of the Hosting Environment (§6.6) — Backend
 
-1. **IAM & RBAC**: **Supabase Row Level Security（RLS）** がテナント分離・行レベルのアクセス制御を行い、
-   Vercel / クラウドプロバイダの IAM がリソース境界（DB、ストレージ、関数）を保護する。API はロール確認
-   （`resolveCallerWithRole` / `requireMinRole`）を経てアセット/claim 生成に入る。
+1. **IAM & RBAC（GP TOE の実際の enforcement 境界）**: GP のアップロード/永続化経路は
+   `createTenantScopedAdmin(tenantId).admin`（`src/lib/supabase/admin.ts`）＝ **service-role クライアントで、
+   RLS をバイパスする**。この経路のテナント分離は **アプリケーション層**で担保する — クライアントは呼び出し元の
+   `tenant_id` にスコープして構築し、各クエリ/ストレージ操作をその tenant_id で絞り込む。**Supabase Row Level
+   Security（RLS）** は、テナント認証済みクライアントでアクセスする製品内の他経路のアクセス制御を担うが、
+   GP のこの特権サーバー経路の enforcement 境界ではない。Vercel / クラウドプロバイダの IAM がリソース境界
+   （DB、ストレージ、関数）を保護し、API はロール確認（`resolveCallerWithRole` / `requireMinRole`）を経て
+   アセット/claim 生成に入る。
 2. **Principal Access Policies**: Supabase プロジェクトと Vercel プロジェクトへのアクセスは管理者に限定し、
    サービス間アクセスは Supabase のサービスロール/キーで制御する。
 3. **Cloud Resource IAM Policies**: Supabase（Postgres/Storage）と Vercel の各リソースへのアクセスは、
    各プラットフォームのプロジェクト権限（IAM/RBAC）で管理する。
-4. **Vulnerability Scanning & OWASP Top 10 Coverage**: 依存・API サーフェスを CodeQL・Codacy・Dependabot で
-   検査する。**OWASP Top 10** の各項目に対する管理策の対応は `docs/c2pa-gpsa-operational-controls.md` §3 に記載。
+4. **Vulnerability Scanning & OWASP Top 10 Coverage**: 依存・API サーフェスを CodeQL・Dependabot・CI の npm audit
+   ゲートで検査する（Codacy は自動トリガー無効・手動起動のみ）。**OWASP Top 10** の各項目に対する管理策の対応は
+   `docs/c2pa-gpsa-operational-controls.md` §3 に記載。
 5. **Timely Remediation Policy**: 重大度別 SLA（High 30 日 / Moderate 90 日 / Low 180 日）で修正/緩和する
    （`docs/c2pa-gpsa-operational-controls.md` §2）。
 

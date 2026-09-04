@@ -45,30 +45,41 @@ function collectFailureCodes(json: Record<string, unknown> | null): Set<string> 
 
 describe.runIf(hasProdCert)("C2PA production-cert signature is valid", () => {
   let signed: Buffer | null = null;
-  let Reader: typeof import("@contentauth/c2pa-node").Reader;
-  let loaded = true;
+  // Structural type — the package's `Reader` is not reachable via
+  // `typeof import(...).Reader` under bundler resolution; describe what we call.
+  type C2paReader = {
+    fromAsset(input: { buffer: Buffer; mimeType: string }): Promise<{ json(): unknown } | null>;
+  };
+  let Reader: C2paReader;
+  let nativeAvailable = true;
 
   beforeAll(async () => {
     process.env.C2PA_MODE = "production";
+    // Only a native-module load failure is a legitimate skip. Signing runs after
+    // the guard: with production credentials supplied, a signing failure means the
+    // app would fail open to unsigned images, so it must FAIL this suite, not skip.
+    let sharp: typeof import("sharp").default;
     try {
-      const sharp = (await import("sharp")).default;
-      Reader = (await import("@contentauth/c2pa-node")).Reader;
-      const { signC2pa } = await import("../c2pa");
-      const buf = await sharp({
-        create: { width: 240, height: 160, channels: 3, background: { r: 20, g: 90, b: 160 } },
-      })
-        .jpeg()
-        .toBuffer();
-      const res = await signC2pa(buf, "image/jpeg");
-      signed = res.signedBuffer ?? null;
+      sharp = (await import("sharp")).default;
+      Reader = (await import("@contentauth/c2pa-node")).Reader as unknown as C2paReader;
+      if (!Reader) throw new Error("c2pa-node Reader export missing");
     } catch {
-      loaded = false;
+      nativeAvailable = false;
+      return;
     }
+    const { signC2pa } = await import("../c2pa");
+    const buf = await sharp({
+      create: { width: 240, height: 160, channels: 3, background: { r: 20, g: 90, b: 160 } },
+    })
+      .jpeg()
+      .toBuffer();
+    const res = await signC2pa(buf, "image/jpeg");
+    signed = res.signedBuffer ?? null;
   }, 30_000);
 
   it("has no claimSignature or content failures (untrusted CA is allowed)", async (ctx) => {
-    if (!loaded) {
-      ctx.skip();
+    if (!nativeAvailable) {
+      ctx.skip(); // native c2pa-node/sharp not loadable here — surfaced as skipped, not passed
       return;
     }
     expect(signed, "production signing produced a buffer").toBeTruthy();
@@ -77,6 +88,9 @@ describe.runIf(hasProdCert)("C2PA production-cert signature is valid", () => {
     const json = typeof raw === "string" ? JSON.parse(raw) : raw;
     const codes = collectFailureCodes(json);
     const unexpected = [...codes].filter((c) => !ALLOWED.some((re) => re.test(c)));
-    expect(unexpected, `unexpected validation codes (want none but signingCredential.untrusted): ${[...codes].join(", ")}`).toEqual([]);
+    expect(
+      unexpected,
+      `unexpected validation codes (want none but signingCredential.untrusted): ${[...codes].join(", ")}`,
+    ).toEqual([]);
   });
 });

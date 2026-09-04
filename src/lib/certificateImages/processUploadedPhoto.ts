@@ -134,12 +134,20 @@ export async function processUploadedPhoto(params: ProcessPhotoParams): Promise<
   }
 
   // 検証プロバイダ（署名は保存前）。cert/nonce/TSA時刻を C2PA manifest に封入。
-  const providers = await invokeAllUploadProviders(uploadBuffer, mime, sha256, {
-    publicId,
-    vin: vin ?? null,
-    captureNonce,
-    tsaTimestamp: tsa?.timestampAt ?? null,
-  });
+  const providers = await invokeAllUploadProviders(
+    uploadBuffer,
+    mime,
+    sha256,
+    {
+      publicId,
+      vin: vin ?? null,
+      captureNonce,
+      tsaTimestamp: tsa?.timestampAt ?? null,
+    },
+    // exif.gpsStripped=false は sharp の strip/再エンコードが失敗し原本を
+    // そのまま署名する fallback。C2PA の行為台帳が変換を過大主張しないよう伝える。
+    exif.gpsStripped,
+  );
 
   const finalBuffer = providers.c2pa.signedBuffer ?? uploadBuffer;
 

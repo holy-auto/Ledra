@@ -49,7 +49,6 @@ const DIGITAL_SOURCE_TYPE_CAPTURE = "http://cv.iptc.org/newscodes/digitalsourcet
 
 /**
  * c2pa.actions に封入する行為台帳（要約と実アサーションで共有する唯一の定義）。
- * 署名時点で upload パイプラインは端末撮影写真を再エンコードし EXIF/GPS を除去済み。
  * その実来歴を正直に宣言する。
  *
  * 先頭は `c2pa.created`（+digitalSourceType）。C2PA 2.x では `c2pa.opened`/`placed`/
@@ -59,18 +58,36 @@ const DIGITAL_SOURCE_TYPE_CAPTURE = "http://cv.iptc.org/newscodes/digitalsourcet
  * 向き確定・再エンコード・EXIF/GPS 除去を後続の edit 系アクションで記録する。ingredient を
  * 要求しない `orientation`/`converted`/`edited` は検証を通る（実測で確認）。
  */
-const MANIFEST_ACTIONS = [
-  { action: "c2pa.created", digitalSourceType: DIGITAL_SOURCE_TYPE_CAPTURE },
+const CREATED_ACTION = { action: "c2pa.created", digitalSourceType: DIGITAL_SOURCE_TYPE_CAPTURE };
+// sharp の rotate+再エンコードで実際に行われる変換。strip が走ったときだけ台帳に載せる。
+const TRANSFORM_ACTIONS = [
   { action: "c2pa.orientation", softwareAgent: "sharp" },
   { action: "c2pa.converted", softwareAgent: "sharp" },
   // EXIF/GPS metadata removed for privacy before signing.
   { action: "c2pa.edited", parameters: { name: "exif_gps_metadata_removed" } },
 ] as const;
 
+type ManifestAction = {
+  action: string;
+  digitalSourceType?: string;
+  softwareAgent?: string;
+  parameters?: { name?: string };
+};
+
+/**
+ * 署名対象に実際に行われた行為だけを台帳にする。`transformApplied=false`
+ * （sharp の strip/再エンコードが失敗し原本をそのまま署名した fallback）では
+ * orientation/converted/edited は起きていないので `c2pa.created` のみを載せる。
+ * これに合わせ allActionsIncluded も呼び出し側で false にする（過大主張を避ける）。
+ */
+function buildActions(transformApplied: boolean): ManifestAction[] {
+  return transformApplied ? [CREATED_ACTION, ...TRANSFORM_ACTIONS] : [CREATED_ACTION];
+}
+
 /** actions 台帳を要約文字列に落とす（parameters.name があれば `action:name`）。 */
-function summarizeActions(): string[] {
-  return MANIFEST_ACTIONS.map((a) =>
-    "parameters" in a && a.parameters?.name ? `${a.action}:${a.parameters.name}` : a.action,
+function summarizeActions(transformApplied: boolean): string[] {
+  return buildActions(transformApplied).map((a) =>
+    a.parameters?.name ? `${a.action}:${a.parameters.name}` : a.action,
   );
 }
 
@@ -81,12 +98,15 @@ function summarizeActions(): string[] {
 export function buildC2paManifestSummary(
   mode: "dev-signed" | "production",
   binding?: CaptureBinding,
+  transformApplied: boolean = true,
 ): C2paManifestSummary {
   return {
     claimGenerator: CLAIM_GENERATOR,
     title: MANIFEST_TITLE,
     signerMode: mode,
-    actions: summarizeActions(),
+    specVersion: SPEC_VERSION,
+    allActionsIncluded: transformApplied,
+    actions: summarizeActions(transformApplied),
     binding: {
       certPublicId: binding?.publicId?.trim() || null,
       vin: binding?.vin?.trim() || null,
@@ -160,8 +180,17 @@ export interface CaptureBinding {
  * instead of the original.
  *
  * `binding` seals certificate/vehicle/nonce/time into a custom assertion.
+ * `transformApplied` = did the upload pipeline actually re-encode/strip this
+ * buffer (sharp succeeded)? When false (fallback signed the original as-is),
+ * only `c2pa.created` is asserted and allActionsIncluded=false, so the manifest
+ * never certifies transforms that did not happen.
  */
-export async function signC2pa(buffer: Buffer, mime: string, binding?: CaptureBinding): Promise<C2paResult> {
+export async function signC2pa(
+  buffer: Buffer,
+  mime: string,
+  binding?: CaptureBinding,
+  transformApplied: boolean = true,
+): Promise<C2paResult> {
   const mode = getMode();
   if (mode === "disabled") return DISABLED_RESULT;
 
@@ -186,25 +215,21 @@ export async function signC2pa(buffer: Buffer, mime: string, binding?: CaptureBi
       title: MANIFEST_TITLE,
     });
 
-    // Record the real provenance: the pipeline created this signed rendition
-    // (c2pa.created), then set orientation, re-encoded, and removed EXIF/GPS
-    // metadata. Declaring the edit sequence keeps the manifest an honest ledger
-    // of what happened while staying C2PA 2.x conformant (see MANIFEST_ACTIONS
-    // for why `c2pa.opened` cannot be used here).
-    //
-    // ponytail: unconditional — signC2pa doesn't know whether the strip/re-encode
-    // actually ran (it receives the post-strip buffer). In the rare fallback where
-    // sharp failed and the original buffer was signed as-is, `c2pa.converted`/
-    // the removal action slightly over-claim. Upgrade path: thread the transform
-    // outcome from the upload route through invokeAllUploadProviders → signC2pa.
-    // allActionsIncluded=true: the strip step (imageExif: sharp.rotate().toBuffer())
-    // performs exactly orientation + re-encode + EXIF/GPS removal — no resize or
-    // format change — so the four actions above are the complete set of actions
-    // performed. The C2PA Conformance Program (Additional Conformance Requirements
-    // v0.2) requires actions-map-v2 to carry allActionsIncluded (true|false).
+    // Record the real provenance. When the pipeline re-encoded/stripped this
+    // buffer (transformApplied), the strip step (imageExif: sharp.rotate()
+    // .toBuffer()) performs exactly orientation + re-encode + EXIF/GPS removal
+    // — no resize or format change — so [created, orientation, converted, edited]
+    // is the complete set of actions and allActionsIncluded=true. In the fallback
+    // where sharp failed and the original was signed as-is, only c2pa.created is
+    // asserted and allActionsIncluded=false, so the manifest never certifies
+    // transforms that did not happen. Declaring the edit sequence keeps the
+    // manifest an honest ledger while staying C2PA 2.x conformant (see
+    // CREATED_ACTION/TRANSFORM_ACTIONS for why `c2pa.opened` cannot be used here).
+    // The C2PA Conformance Program (Additional Conformance Requirements v0.2)
+    // requires actions-map-v2 to carry allActionsIncluded (true|false).
     builder.addAssertion("c2pa.actions", {
-      actions: MANIFEST_ACTIONS as unknown as Record<string, unknown>[],
-      allActionsIncluded: true,
+      actions: buildActions(transformApplied) as unknown as Record<string, unknown>[],
+      allActionsIncluded: transformApplied,
     });
 
     // Seal the capture context into the manifest: which certificate/vehicle this
@@ -239,7 +264,7 @@ export async function signC2pa(buffer: Buffer, mime: string, binding?: CaptureBi
       verified: true,
       signedBuffer: output.buffer,
       // 封入した内容から決定的に作る要約（読み戻し不要）。DBに保存し UI で表示する。
-      manifestSummary: buildC2paManifestSummary(mode, binding),
+      manifestSummary: buildC2paManifestSummary(mode, binding, transformApplied),
     };
   } catch (err) {
     console.error("[c2pa] signing failed, falling back to unsigned", err);

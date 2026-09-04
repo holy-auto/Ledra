@@ -63,7 +63,8 @@
    Azure Key Vault** を推奨）＋ **鍵ローテーション手順**を文書化。
 2. **O.1**: CA を選定し、その自動エンロール方式に合わせた認証を実装
    （方式は CA 依存のため §5 の要確認）。※認証方式の詳細は「適合付与後90日以内の更新提出」でも可。
-3. **O.3/O.4/O.6**: 既存 CI（dependabot/CodeQL/Codacy）で技術的には充足。
+3. **O.3/O.4/O.6**: 既存 CI（dependabot/CodeQL＋CI の npm audit ゲート）で技術的には充足。
+   （Codacy はワークフローはあるが `CODACY_PROJECT_TOKEN` 未設定で自動トリガー無効・手動起動のみ＝継続実行ではない。）
    **90日修正ポリシー・OWASP Top10 カバレッジ**を運用文書として明文化するだけ。
 
 **AL2 追加要件（フェーズ2の見積り）**:
@@ -139,10 +140,12 @@ VP は別契約・別 Intake・検証結果サンプル提出が必要でスコ�
 - **2.5 [O.5] 通信保護**（Backend, AL1 必須）: **TLS 1.3**（Vercel/Supabase）。
   暗号スイート詳細は【要確認: 実際のネゴシエーション結果を記録】。
 - **2.6 [O.6] ホスティング環境保護**（Backend, AL1 必須）:
-  1. IAM/RBAC: **Supabase RLS** + Vercel/クラウド IAM。
+  1. IAM/RBAC: Vercel/クラウド IAM。GP アップロード経路は service-role で RLS をバイパスし、テナント分離は
+     アプリ層で tenant_id にスコープ。**Supabase RLS** はテナント認証済みクライアントの他経路を保護。
   2. プリンシパルアクセス方針: サービスアカウント/本番 ID の方針【要確認】。
   3. クラウドリソース IAM: 【要確認: Supabase プロジェクト/ストレージのアクセス方針】。
-  4. 脆弱性スキャン + **OWASP Top10**: CodeQL / Codacy でカバー【要確認: OWASP 明示カバレッジ】。
+  4. 脆弱性スキャン + **OWASP Top10**: CodeQL＋Dependabot＋CI の npm audit ゲートでカバー（Codacy は自動トリガー
+     無効・手動起動のみ）【要確認: OWASP 明示カバレッジ】。
   5. 適時修正: 30/90/180日 SLA を【要整備・明文化】。
 
 ## 5. 要確認事項（OPEN_QUESTIONS 連携）
