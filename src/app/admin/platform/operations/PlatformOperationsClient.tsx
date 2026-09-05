@@ -183,7 +183,7 @@ export default function PlatformOperationsClient() {
       const res = await fetch("/api/admin/platform/operations");
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = await res.json();
-      if (!json.ok) throw new Error(json.error ?? "unknown error");
+      if (!json.ok) throw new Error(json.message ?? json.error ?? "unknown error");
       setData(json);
       setLastRefresh(new Date());
     } catch (e: any) {

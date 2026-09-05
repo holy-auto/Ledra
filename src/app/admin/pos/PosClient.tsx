@@ -230,7 +230,7 @@ export default function PosClient() {
     try {
       const res = await fetch(`/api/admin/invoices?doc_number=${encodeURIComponent(q)}`);
       const j = await res.json();
-      if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
+      if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       if (!j.found) {
         setInvoiceSearchError(`「${q}」が見つかりません`);
         return;
@@ -387,7 +387,8 @@ export default function PosClient() {
           }),
         });
         const checkoutData = await checkoutRes.json();
-        if (!checkoutRes.ok) throw new Error(checkoutData?.error ?? "決済の記録に失敗しました");
+        if (!checkoutRes.ok)
+          throw new Error(checkoutData?.message ?? checkoutData?.error ?? "決済の記録に失敗しました");
 
         // 応答は { ok, result, inventory }。封筒のまま入れると
         // 会計完了パネルが「お会計 -」・領収書番号なしになる
@@ -458,7 +459,7 @@ export default function PosClient() {
         }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data?.error ?? "Checkout Session の作成に失敗しました");
+      if (!res.ok) throw new Error(data?.message ?? data?.error ?? "Checkout Session の作成に失敗しました");
 
       const sessionId = data.session_id as string;
       const checkoutUrl = data.url as string;
@@ -576,7 +577,7 @@ export default function PosClient() {
         }),
       });
       const j = await res.json();
-      if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
+      if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       setResult(j.result ?? j);
       if (mode === "invoice" && loadedInvoice) {
         const payRes = await fetch("/api/admin/invoices", {

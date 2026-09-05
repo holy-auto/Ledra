@@ -128,7 +128,7 @@ export default function AdminAnnouncementsClient() {
 
       if (!res.ok) {
         const j = await parseJsonSafe(res);
-        throw new Error(j?.error ?? `HTTP ${res.status}`);
+        throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       }
 
       flash(editingId ? "更新しました" : "作成しました", true);
@@ -149,7 +149,7 @@ export default function AdminAnnouncementsClient() {
       const res = await fetch(`/api/admin/agent-announcements/${id}`, { method: "DELETE" });
       if (!res.ok) {
         const j = await parseJsonSafe(res);
-        throw new Error(j?.error ?? `HTTP ${res.status}`);
+        throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       }
       flash("削除しました", true);
       setDeleteTarget(null);
