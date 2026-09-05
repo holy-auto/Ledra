@@ -98,6 +98,19 @@ describe("voidCertificate", () => {
     expect(patch).not.toHaveProperty("meta");
   });
 
+  // 短絡を先に置くと、モバイルが void 済みを無効化したとき 200 が返り、
+  // 呼び出し側が UPDATE の裏付けが無いまま `void_reason` 付きの監査イベントを書く。
+  it("requireActive のとき void 済みは短絡せず拒否する（監査に偽の記録を残さない）", async () => {
+    const db = fakeDb({ ...ACTIVE, status: "void" });
+    const r = await voidCertificate(db, {
+      tenantId: "t1",
+      selector: { certificateId: "c1" },
+      requireActive: true,
+    });
+    expect(r).toEqual({ ok: false, kind: "not_active", currentStatus: "void" });
+    expect(db.calls.some((c) => c.op === "update")).toBe(false);
+  });
+
   it("requireActive のとき draft は拒否する（モバイルの挙動）", async () => {
     const db = fakeDb({ ...ACTIVE, status: "draft" });
     const r = await voidCertificate(db, {

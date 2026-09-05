@@ -87,9 +87,25 @@ jobs:
 
             echo "::group::PR #$num ($branch) — $title"
             git fetch --quiet origin "refs/pull/$num/head:pr-$num" || { echo "head を取れず"; echo "::endgroup::"; continue; }
-            git checkout --quiet "pr-$num"
 
-            # CI と同じ検査をそのまま回す。判定はここに書かない。
+            # **PR のコードは checkout しない。** この job は
+            # `pull-requests: write` の GH_TOKEN を env に持っているので、
+            # PR の head を checkout してそこの `scripts/` を実行すると、
+            # **PR を開ける人なら誰でもそのトークンでコードを実行できる**
+            # （fork からの PR も含む。いわゆる pwn request。
+            #   PR #1027 の `/code-review` 指摘）。
+            #
+            # さらに、PR 側のスクリプトを走らせると **検査そのものが PR の言い分になる**。
+            # `migration-version-before-base-head` が入る前に開かれた PR や、
+            # スクリプトを書き換えた PR は「OK」を返す。それはまさにこの workflow が
+            # 捕まえたい集合そのもの。
+            #
+            # そこで **main のコードのまま**、PR から `supabase/migrations` の
+            # SQL ファイルだけを作業ツリーへ取り出して検査する。SQL は読むだけで
+            # 実行しない。検査後に作業ツリーを戻す。
+            git checkout --quiet "pr-$num" -- supabase/migrations
+
+            # main 側の検査をそのまま回す。判定はここに書かない。
             if MIGRATIONS_BASE_REF=origin/main node scripts/lint-migrations.js; then
               echo "OK"
             else
@@ -107,7 +123,10 @@ jobs:
                 gh pr comment "$num" --repo "$REPO" --body-file "$body"
               fi
             fi
-            git checkout --quiet -
+            # 取り出した SQL を捨てて main の状態へ戻す（次の PR を素の状態から見る）。
+            git checkout --quiet HEAD -- supabase/migrations
+            git clean --quiet -fd supabase/migrations
+            git branch --quiet -D "pr-$num" || true
             echo "::endgroup::"
           done < candidates.tsv
 

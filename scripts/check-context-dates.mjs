@@ -68,10 +68,13 @@ const HEADING = /^#{1,6} /;
  */
 const FIELD_PATTERNS = [
   // DECISION_LOG の9項目: `1. 日付: 2026-09-04`
-  /^1\. 日付: (\d{4}-\d{2}-\d{2})\b/,
+  /^1\. 日付[:：]\s*(\d{4}-\d{2}-\d{2})\b/,
   // OPEN_QUESTIONS: `- 起票日: 2026-09-04`
-  /^- 起票日: (\d{4}-\d{2}-\d{2})\b/,
+  /^- 起票日[:：]\s*(\d{4}-\d{2}-\d{2})\b/,
 ];
+
+/** 日付フィールドの行頭。値が日付かどうかは見ない（下の突き合わせ用）。 */
+const FIELD_LABELS = [/^1\. 日付[:：]/, /^- 起票日[:：]/];
 
 /**
  * その行が「日付を書く場所」か（下の突き合わせ用の、抽出とは別実装の判定）。
@@ -86,7 +89,11 @@ const FIELD_PATTERNS = [
 export function isStructuredLine(line) {
   const hashes = line.match(/^#+/);
   if (hashes) return hashes[0].length <= 6 && /^\s/.test(line.slice(hashes[0].length));
-  return line.startsWith("1. 日付:") || line.startsWith("- 起票日:");
+  // 日付フィールドは「ラベルの直後が日付」のときだけ対象。
+  // ラベルだけで true にすると `- 起票日: 未定（2026-09-30 に再検討）` のような
+  // **日付ではない値**の行を「抽出器の取りこぼし」と誤検出し、pre-commit フックが
+  // 正しい文書を止める（PR #1027 の `/code-review` 指摘）。
+  return FIELD_LABELS.some((re) => re.test(line)) && /^[^:：]*[:：]\s*\d{4}-\d{2}-\d{2}\b/.test(line);
 }
 
 /** 行頭（インデント可）のフェンス記号。CommonMark はバッククォートかチルダ3個以上。 */

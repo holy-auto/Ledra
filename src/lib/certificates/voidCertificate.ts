@@ -111,10 +111,15 @@ export async function voidCertificate(db: Db, input: VoidCertificateInput): Prom
   };
 
   const status = String(cert.status ?? "").toLowerCase();
-  if (status === "void") return { ok: true, alreadyVoid: true, certificate: current };
+  // **`requireActive` を短絡より先に見る。** 逆にすると、モバイルが
+  // void 済みの証明書を無効化しようとしたとき 400 ではなく 200 が返り、
+  // 呼び出し側が「成功した」として `void_reason` 付きの監査イベントを書いてしまう。
+  // UPDATE は起きていないので、**裏付けの無い監査記録が1件残る**
+  // （PR #1027 の `/code-review` 指摘）。元のモバイル実装は 400 を返していた。
   if (input.requireActive && status !== "active") {
     return { ok: false, kind: "not_active", currentStatus: status };
   }
+  if (status === "void") return { ok: true, alreadyVoid: true, certificate: current };
 
   // 取消理由の専用列は certificates に無い（`void_reason` は part_installations 側）。
   // 既存の meta を潰さないよう読み込んでから重ねる。

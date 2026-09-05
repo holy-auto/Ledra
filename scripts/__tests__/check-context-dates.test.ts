@@ -78,6 +78,20 @@ describe("extractStructuredDates（構造化された日付の抽出）", () => 
     expect(extractStructuredDates("- 起票日: 2026-09-04")).toEqual([{ line: 1, date: "2026-09-04" }]);
   });
 
+  // 全角コロンは**どちらの分岐にも掛からず素通り**していた。未来日が検査されない
+  // 逆向きの穴（PR #1027 の `/code-review` 指摘）。
+  it("全角コロンの日付フィールドを拾う", () => {
+    expect(extractStructuredDates("1. 日付：2026-09-05")).toEqual([{ line: 1, date: "2026-09-05" }]);
+    expect(extractStructuredDates("- 起票日： 2026-09-05")).toEqual([{ line: 1, date: "2026-09-05" }]);
+  });
+
+  // 値が日付でない行。ラベルだけで「構造化行」とみなすと、抽出0件との突き合わせで
+  // 「取りこぼし」と誤検出し、**pre-commit フックが正しい文書を止める**。
+  it("日付フィールドの値が日付でない行は対象外", () => {
+    expect(extractStructuredDates("- 起票日: 未定（2026-09-30 に再検討）")).toEqual([]);
+    expect(isStructuredLine("- 起票日: 未定（2026-09-30 に再検討）")).toBe(false);
+  });
+
   it("本文中の日付は拾わない（M-011 の記述が落とされないこと）", () => {
     const body = [
       "実際 2026-09-03 に、2日先の `2026-09-05` を6つのソースコメントと",
