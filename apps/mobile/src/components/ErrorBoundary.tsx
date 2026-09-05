@@ -7,6 +7,9 @@ interface Props {
   /** デフォルトのリセット動作: state を初期化して再描画。
    *  追加でアプリ全体の state クリーンアップが必要な場合は渡す。 */
   onReset?: () => void;
+  /** 補足した瞬間に呼ばれる。**フォールバック画面から先に進めない場所**で要る
+   *  （例: 起動演出は「終わった」ことにしないとアプリ本体に入れない）。 */
+  onError?: (error: Error) => void;
 }
 
 interface State {
@@ -32,6 +35,7 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, info: { componentStack?: string | null }) {
+    this.props.onError?.(error);
     // 開発時にスタックを確認できるようにコンソール出力
     if (__DEV__) {
       // eslint-disable-next-line no-console

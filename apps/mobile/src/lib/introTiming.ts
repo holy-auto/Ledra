@@ -17,6 +17,19 @@ export const INTRO_MIN_MS = 1500;
 /** 退場フェードの長さ。動画の背景(クリーム)とアプリ本体の #fafafa の明度差を繋ぐ。 */
 export const INTRO_FADE_MS = 350;
 
+/**
+ * どの経路も動かなかったときに、**強制的に演出を終わらせる**までの時間。
+ *
+ * 2つのことを同時にやる: ネイティブスプラッシュを剥がすことと、AppIntro を降ろすこと。
+ * 剥がすだけでは足りない ―― AppIntro の退場は `ready`（認証初期化の完了）を条件に
+ * しているので、初期化が返ってこないと**演出の最終フレームのまま固まる**。
+ * 降ろせば少なくとも LoadingScreen（スピナー）が出る。
+ *
+ * **正常系より必ず長いこと。** 短いと普通の起動で演出を途中で切ってしまう。
+ * 下限は INTRO_MIN_MS + INTRO_FADE_MS（＝正常系の最短）。自己チェックで固定している。
+ */
+export const SPLASH_FAILSAFE_MS = 5000;
+
 export type IntroPhase = "playing" | "exiting";
 
 /**

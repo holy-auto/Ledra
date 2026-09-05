@@ -49,8 +49,6 @@ export type RecordPosSaleResult =
       alreadyRecorded: boolean;
       /** 記録済み行の金額。呼び出し側が Stripe の実額と突き合わせる */
       recordedAmount: number | null;
-      /** レシート公開URL /receipt/[public_id] のトークン。書けなかったときは null */
-      receiptPublicId: string | null;
     }
   | { ok: false; error: unknown };
 
@@ -91,22 +89,12 @@ export async function recordPosSale(
     }
 
     if (existing) {
-      // 再送でも領収書は送れるようにする。トークンは初回に書かれているので読むだけ。
-      let existingPublicId: string | null = null;
-      if (existing.document_id) {
-        const { data: existingDoc } = await admin
-          .from("documents")
-          .select("public_id")
-          .eq("id", existing.document_id)
-          .maybeSingle();
-        existingPublicId = (existingDoc?.public_id as string | null) ?? null;
-      }
-
+      // 再送でも領収書は送れる。トークンは初回に書かれていて documents に残っており、
+      // レシート画面が documents.public_id を直接引くので、ここで返す必要はない。
       return {
         ok: true,
         result: { payment_id: existing.id, document_id: existing.document_id },
         paymentId: (existing.id as string) ?? null,
-        receiptPublicId: existingPublicId,
         alreadyRecorded: true,
         recordedAmount: typeof existing.amount === "number" ? existing.amount : null,
       };
@@ -161,7 +149,9 @@ export async function recordPosSale(
   // public_id が無ければボタンを隠す）。
   //
   // 生成器は証明書と同じ makePublicId()（22文字 base64url / CSPRNG）を使う。
-  let receiptPublicId: string | null = null;
+  //
+  // **返り値には載せない。** レシート画面は documents.public_id を直接引くので、
+  // API のレスポンスに持たせても誰も読まない。書くことが本体。
   if (documentId) {
     const token = makePublicId();
     const { error: pubErr } = await admin
@@ -177,8 +167,6 @@ export async function recordPosSale(
         documentId,
         err: pubErr.message,
       });
-    } else {
-      receiptPublicId = token;
     }
   }
 
@@ -234,7 +222,6 @@ export async function recordPosSale(
     ok: true,
     result: data,
     paymentId,
-    receiptPublicId,
     alreadyRecorded: false,
     recordedAmount: null,
   };

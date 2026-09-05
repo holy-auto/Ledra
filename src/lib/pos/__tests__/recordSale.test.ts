@@ -137,29 +137,26 @@ describe("recordPosSale", () => {
     expect(res.recordedAmount).toBe(5000);
     // ここが本題。2回目で pos_checkout を呼ぶと売上が二重に立つ
     expect(a.rpc).not.toHaveBeenCalled();
-    // **再送でもレシートは送れる。**トークンは初回に書かれているので読むだけ
-    expect(res.receiptPublicId).toBe("tok-1");
+    // 再送では documents を触らない。トークンは初回に書かれたものが残る
     expect(a.docUpdates).toEqual([]);
   });
 
-  it("領収書ができたら公開トークンを書き、URL 用に返す（要件5.10）", async () => {
+  it("領収書ができたら公開トークンを書く（要件5.10 の共有URLの鍵）", async () => {
     const a = fakeAdmin({ rpcDocumentId: "doc-1" });
     const res = await recordPosSale(a.admin, CALLER, ARGS, "pi_123");
     expect(res.ok).toBe(true);
     if (!res.ok) return;
     expect(a.docUpdates).toHaveLength(1);
-    // 22文字 base64url（makePublicId）。書いた値をそのまま返す
-    expect(res.receiptPublicId).toMatch(/^[A-Za-z0-9_-]{22}$/);
-    expect(a.docUpdates[0]).toEqual({ public_id: res.receiptPublicId });
+    // 22文字 base64url（makePublicId / CSPRNG）。ここが空だと共有ボタンが出ない
+    expect(a.docUpdates[0].public_id).toMatch(/^[A-Za-z0-9_-]{22}$/);
   });
 
   it("**公開トークンが書けなくても売上は失敗にしない**（カードは既に切られている）", async () => {
     const a = fakeAdmin({ rpcDocumentId: "doc-1", docUpdateError: { message: "boom" } });
     const res = await recordPosSale(a.admin, CALLER, ARGS, "pi_123");
+    // 共有ボタンが出なくなるだけ。売上は残す
     expect(res.ok).toBe(true);
     if (!res.ok) return;
-    // 共有ボタンが出なくなるだけ。売上は残す
-    expect(res.receiptPublicId).toBeNull();
     expect(res.paymentId).toBe("pay-new");
   });
 

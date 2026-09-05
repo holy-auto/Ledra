@@ -3,11 +3,13 @@
 import assert from "node:assert";
 
 import {
+  INTRO_FADE_MS,
   INTRO_MIN_MS,
   canPaint,
   introPhase,
   msUntilExit,
   shouldShowVideo,
+  SPLASH_FAILSAFE_MS,
   type IntroVideoState,
 } from "./introTiming.ts";
 
@@ -82,5 +84,16 @@ for (const reduceMotion of [true, false]) {
     }
   }
 }
+
+// 最後の砦は**正常系より必ず長い**こと。短くすると、普通の起動で演出を途中で切る。
+// 認証初期化が遅い端末を考えて、最短経路の倍以上を確保する。
+assert.ok(
+  SPLASH_FAILSAFE_MS > INTRO_MIN_MS + INTRO_FADE_MS,
+  `最後の砦(${SPLASH_FAILSAFE_MS}ms)が正常系の最短(${INTRO_MIN_MS + INTRO_FADE_MS}ms)以下`,
+);
+assert.ok(
+  SPLASH_FAILSAFE_MS >= 2 * (INTRO_MIN_MS + INTRO_FADE_MS),
+  "最後の砦の余裕が足りない（認証初期化が遅いと正常系を切る）",
+);
 
 console.log("introTiming self-check: OK");

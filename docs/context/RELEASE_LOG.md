@@ -114,6 +114,24 @@
   東京海上日動に対しては0件（前日の無効化が維持されている）ことを実際に呼んで確認した。
   `npx tsc --noEmit` 出力なし、`npm run check:schema` OK、`npx vitest run` 522 files / 5,310 件通過。
 
+## 2026-09-04 起動演出から抜けられなくなる2つの穴を塞いだ（PR #966）
+
+- 内容: `/code-review` の指摘2件。どちらも**アプリが起動画面から先に進めなくなる**種類。
+  - `AppIntro` が描画で throw すると `ErrorBoundary` のフォールバックが出るだけで
+    `introDone` が false のまま固定され、本体に入れない。再試行は同じ物を再マウントするだけ。
+    → `ErrorBoundary` に `onError` を足し、補足したらスプラッシュを剥がして演出を終わらせる
+  - 5秒の最後の砦がスプラッシュを剥がすだけで `introDone` を立てず、`useAuthInit` が
+    返らないと演出の最終フレームのまま固まる（スピナーも再試行も無い）。
+    → 砦で `introDone` も立てる。本体に入れば `index.tsx` が LoadingScreen を出す
+- `SPLASH_FAILSAFE_MS` を `_layout.tsx` から `introTiming.ts` へ移し、
+  「砦は正常系の最短（`INTRO_MIN_MS + INTRO_FADE_MS` = 1850ms）の2倍以上」を自己チェックで固定。
+  変異テストで 1000ms / 3000ms のどちらでも落ちることを確認した。
+- あわせて `RecordPosSaleResult.receiptPublicId` を削除。どの呼び出し元も読んでいなかった
+  （レシート画面は `documents.public_id` を直接引く）。再送経路の `documents` 読み直し1本も消えた。
+  トークンの**書き込み**は本体なのでそのまま。変異テストで、書き込みを外すと検査が落ちることを確認。
+
+---
+
 ## 2026-09-04 POS レシートを顧客に送れるようにした（公開ページ＋PDF、要件5.10）
 
 - 内容: レシートの共有リンクが**必ず 404 だった**のを直し、公開ページと PDF を作った。
