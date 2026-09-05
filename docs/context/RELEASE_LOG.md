@@ -49,9 +49,13 @@
   `requireSiteContentAdmin()` を 3 枚に通し、**1 枚から外すと落ちる検査**を追加した。
   併せて `deleteSiteContentAction` の 0 行を、存在しない id は `not_found`、
   RLS 拒否は `forbidden` に分けた。
-- 判明した前提: **`ROUTE_PERMISSIONS`（48画面分）を強制している場所は無い**
-  （`getRequiredPermission()` の呼び出し元 0 件、`src/middleware.ts` 無し）。
-  画面の権限判定は各 `page.tsx` 任せ。OPEN_QUESTIONS に起票。
+- ~~判明した前提: `ROUTE_PERMISSIONS`（48画面分）を強制している場所は無い~~
+  **【2026-09-05 訂正】これは誤り。** 関数名は `getRequiredPermission` ではなく
+  `requiredPermissionForPath` で、`AdminRouteGuard`（全 admin 画面を包む
+  クライアントコンポーネント）が呼んでいる。存在しない名前で grep して 0 件を
+  「誰も読んでいない」と読んだ（MISTAKE_LEDGER M-031）。
+  正しくは「**クライアント側では全画面に効いている。サーバ側の強制が無い**」。
+  数えた結果は OPEN_QUESTIONS を参照。
 
 ## 2026-09-04 判断待ち4件を main へマージし、本番へマイグレーションを適用した（PR #1026 / `87b71201`）
 
