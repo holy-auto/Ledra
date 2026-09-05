@@ -14,6 +14,8 @@ interface AcademyCase {
   caution_points: string[];
   is_candidate: boolean;
   is_published: boolean;
+  /** 自店の事例か。公開事例は匿名化済みなので、サーバがこの真偽値だけを返す。 */
+  is_own: boolean;
   view_count: number;
   helpful_count: number;
   created_at: string;
@@ -68,13 +70,16 @@ export default function AcademyCasesPage() {
     fetchCases();
   }, [tab, category]);
 
-  const handlePublish = async (caseId: string) => {
+  const handleAction = async (caseId: string, action: "publish" | "unpublish") => {
+    // 非公開に戻すと全加盟店の一覧から消える。取り消しの効く操作ではあるが、
+    // 他店が参照中の可能性があるので確認を挟む。
+    if (action === "unpublish" && !confirm("この事例を非公開にします。全加盟店の一覧から見えなくなります。")) return;
     setPublishing(caseId);
     try {
       const res = await fetch("/api/admin/academy/cases", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ case_id: caseId, action: "publish" }),
+        body: JSON.stringify({ case_id: caseId, action }),
       });
       if (res.ok) await fetchCases();
     } finally {
@@ -120,6 +125,7 @@ export default function AcademyCasesPage() {
         <div className="mb-4 p-3 bg-accent/10 border border-accent/30 rounded-xl text-xs text-accent">
           品質スコア80以上・写真4枚以上の証明書が自動的に候補として登録されます。
           「公開する」ボタンでAIが要約を生成し、全加盟店が閲覧できる公開事例になります。
+          公開後も「公開事例」タブから非公開に戻せます。
         </div>
       )}
 
@@ -190,12 +196,26 @@ export default function AcademyCasesPage() {
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        handlePublish(c.id);
+                        handleAction(c.id, "publish");
                       }}
                       disabled={publishing === c.id}
                       className="text-xs px-3 py-1.5 bg-success text-white rounded-lg hover:bg-success/90 disabled:opacity-50 transition-colors"
                     >
                       {publishing === c.id ? "処理中..." : "公開する"}
+                    </button>
+                  )}
+                  {/* 公開事例は全加盟店の一覧。非公開に戻せるのは自店の事例だけ
+                      （API も所有テナントを見て弾くので、ここは押せないボタンを出さないため）。 */}
+                  {tab === "published" && c.is_own && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleAction(c.id, "unpublish");
+                      }}
+                      disabled={publishing === c.id}
+                      className="text-xs px-3 py-1.5 bg-inset text-secondary border border-border-subtle rounded-lg hover:border-danger/40 hover:text-danger-text disabled:opacity-50 transition-colors"
+                    >
+                      {publishing === c.id ? "処理中..." : "非公開にする"}
                     </button>
                   )}
                   <span className="text-muted text-xs">{expanded === c.id ? "▲" : "▼"}</span>
