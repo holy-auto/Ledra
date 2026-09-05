@@ -28,6 +28,43 @@
 - 未解決として残したもの: 本番 Vercel の `AI_MONTHLY_COST_CAP_JPY` 明示設定、
   代車の返却期限（`type="date"` で JST の日の境界が未定義）、
   連絡スケジュールの「今日 / 今週」グルーピングの基準。
+## 2026-09-05 Academy 公開事例を「加盟店間の共有」に絞り、非公開に戻すボタンを足した
+
+- 内容: 公開事例の読み取り RLS を `TO authenticated` に絞り、一覧に「非公開にする」を追加。
+  応答から `tenant_id` を落とし、代わりにサーバ計算の `is_own` を返す。
+- **実害の可能性**: `academy_cases_read_published` にロール指定が無く PUBLIC 扱いだったため、
+  **anon ロールから公開事例を読めた**（本番で実測。一時行を入れて確認し削除）。
+  anon キーはブラウザのバンドルに載る。`photos`（施工写真）と `vehicle_info` を持つ表なので、
+  加盟店間の共有のつもりが世間への公開になっていた。
+  本番の `academy_cases` は **0件**なので、実際に露出したデータは無い。
+- 「任意で非公開」は**新規開発ではなかった**。API の `action: "unpublish"` も
+  所有テナントの検査も既にあり、**画面にボタンが無かっただけ**。
+- 副次: `/admin/academy` の `tenant_id` の取り方が `.limit(1).single()`（並び順も
+  アクティブテナントの cookie も見ない）だったので `resolveCallerWithRole` に置き換えた。
+  `updateTenantSettingsAction`・`site-content` と同じ欠陥で、これが3例目。
+- 公開事例数のカウントだけは**意図的に `tenant_id` で絞らない**。全加盟店共有だから。
+  `createTenantScopedAdmin` の規約への例外なので、消されないようコメントを置いた。
+- 検出: `src/lib/academy/__tests__/casePresentation.test.ts`。匿名化の境界（`tenant_id` を
+  落とす）と所有判定を純関数に切り出して固定した。**壊すと落ちることを2形で確認**
+  （`tenant_id` を落とすのをやめる / マスクを1項目外す）。
+
+## 2026-09-04 C2PA 署名マニフェストを 2.x 準拠にし、施工写真をカメラ撮影に限定（Conformance 申請一式）
+
+- 内容: C2PA Conformance Program（Generator Product / 実装クラス Backend / Max Assurance Level 1）の申請一式を
+  追加し、本番の署名マニフェストを C2PA 2.x 準拠に修正した（PR #914、squash マージ）。
+- マニフェスト: 行為アクションを `c2pa.opened`（claim v2 で ingredient 必須＝`ingredientMismatch` で非準拠）から
+  `c2pa.created` ＋ `digitalSourceType` に変更。`claim_generator_info.specVersion=2.4`・`allActionsIncluded` を付与。
+  行為台帳は **実際に効果のあった変換だけ** を載せる（再エンコード / 向き補正 / EXIF・GPS 除去の有無を per-action で
+  判定し no-op を主張しない）。既知の正常証明書で `validation_state: Valid` を確認済み。
+- 入力制限: 施工写真の入力を **カメラ撮影に限定**（作成 `PhotoUploadSection`・作成後 `CertImageUpload`、モバイルは
+  元よりカメラのみ）。任意ファイルアップロードを廃し、`digitalCapture`（実写のデジタル撮影）の主張を正当化。
+- 提出物: GPSA 本体（`docs/c2pa-gpsa.md`、generation のみ）＋運用管理策文書＋TOE アーキ図＋本番切替前プリフライト
+  `scripts/verify-c2pa-cert.mjs`。いずれも実装の実態に整合（Codacy は手動のみ・端末アテステーション既定 OFF・
+  service-role＋アプリ層分離・署名鍵はプロセス常駐・CodeQL は main 限定・Polygon は pre-sign ハッシュ）。
+- テスト: `c2paSignValidate` / `imageExif` / `c2paManifest`（新規/更新）。
+- 本番 Claim Signing Certificate は適合認定後に CA から発行されるため申請時点では未保有（署名ロジック自体は
+  健全と検証済み）。残る代表アクション: Administrator への validate 取り下げ訂正メール、Conformulator 自己テスト後の
+  提出、電話番号・公開日の確定。
 
 ## 2026-09-04 サイトコンテンツのアプリ側ガードが DB とずれていたのを直した
 
@@ -56,9 +93,13 @@
   `requireSiteContentAdmin()` を 3 枚に通し、**1 枚から外すと落ちる検査**を追加した。
   併せて `deleteSiteContentAction` の 0 行を、存在しない id は `not_found`、
   RLS 拒否は `forbidden` に分けた。
-- 判明した前提: **`ROUTE_PERMISSIONS`（48画面分）を強制している場所は無い**
-  （`getRequiredPermission()` の呼び出し元 0 件、`src/middleware.ts` 無し）。
-  画面の権限判定は各 `page.tsx` 任せ。OPEN_QUESTIONS に起票。
+- ~~判明した前提: `ROUTE_PERMISSIONS`（48画面分）を強制している場所は無い~~
+  **【2026-09-05 訂正】これは誤り。** 関数名は `getRequiredPermission` ではなく
+  `requiredPermissionForPath` で、`AdminRouteGuard`（全 admin 画面を包む
+  クライアントコンポーネント）が呼んでいる。存在しない名前で grep して 0 件を
+  「誰も読んでいない」と読んだ（MISTAKE_LEDGER M-031）。
+  正しくは「**クライアント側では全画面に効いている。サーバ側の強制が無い**」。
+  数えた結果は OPEN_QUESTIONS を参照。
 
 ## 2026-09-04 判断待ち4件を main へマージし、本番へマイグレーションを適用した（PR #1026 / `87b71201`）
 

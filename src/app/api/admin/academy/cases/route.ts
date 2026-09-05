@@ -16,6 +16,7 @@ import {
   apiForbidden,
 } from "@/lib/api/response";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
+import { presentAcademyCases, type AcademyCaseRow } from "@/lib/academy/casePresentation";
 import { generateAcademyCaseSummary } from "@/lib/ai/academyFeedback";
 import { fastModelForPlanTier } from "@/lib/ai/client";
 import { canUseFeature } from "@/lib/billing/planFeatures";
@@ -45,8 +46,11 @@ export async function GET(req: NextRequest) {
 
     let query = admin
       .from("academy_cases")
+      // tenant_id は「自店の事例か」を出すために取るだけで、応答には載せない
+      // （presentAcademyCases が落とす）。公開事例は匿名化済みなので、
+      // どの店のものかをクライアントに渡してはいけない。
       .select(
-        "id, category, difficulty, quality_score, tags, ai_summary, good_points, caution_points, vehicle_info, is_candidate, is_published, view_count, helpful_count, created_at",
+        "id, tenant_id, category, difficulty, quality_score, tags, ai_summary, good_points, caution_points, vehicle_info, is_candidate, is_published, view_count, helpful_count, created_at",
       );
 
     if (type === "candidates") {
@@ -67,17 +71,12 @@ export async function GET(req: NextRequest) {
     // 候補事例は自テナント所有データのため対象外。
     const knowHowAllowed = canUseFeature(caller.planTier, "academy_know_how");
     const shouldMask = type !== "candidates" && !knowHowAllowed;
-    const sanitized = shouldMask
-      ? (cases ?? []).map((c) => ({
-          ...c,
-          ai_summary: null,
-          good_points: [],
-          caution_points: [],
-          vehicle_info: {},
-        }))
-      : (cases ?? []);
+    const presented = presentAcademyCases((cases ?? []) as AcademyCaseRow[], {
+      tenantId: caller.tenantId,
+      maskKnowHow: shouldMask,
+    });
 
-    return apiOk({ cases: sanitized, know_how_locked: shouldMask });
+    return apiOk({ cases: presented, know_how_locked: shouldMask });
   } catch (e: unknown) {
     return apiInternalError(e);
   }
