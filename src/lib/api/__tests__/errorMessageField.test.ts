@@ -44,7 +44,7 @@ const JSON_ASSIGN =
  * `json?.message ??\n  json?.error ??\n  "…"` のように改行をまたぐ。
  * 行で切ると、正しい形を違反と誤検出し（`MaterialsManager.tsx`）、
  * 逆に直前行の `message` が見えず二重に挿入する事故も起きる
- * （この一括修正の初回で実際に1件やった。MISTAKE_LEDGER M-038）。
+ * （この一括修正の初回で実際に1件やった。MISTAKE_LEDGER M-039）。
  * 直前の文区切り（`;` `{` `}`）まで遡った範囲で判定する。
  */
 export function findErrorBeforeMessage(text: string): { index: number; snippet: string }[] {

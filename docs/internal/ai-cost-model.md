@@ -229,7 +229,7 @@
     未設定・不正値・`0`・負値なら、いずれもコード側の既定 10000 円が効く
     （`DEFAULT_MONTHLY_COST_CAP_JPY`）。**`0` は「上限なし」ではなく「未設定」**である
     （`.env.example` が長らく `=0` を配っていたため、0 を「上限なし」と解釈すると
-    設定漏れの環境でブレーキが外れる。DECISION_LOG 2026-09-04 / MISTAKE_LEDGER M-036）。
+    設定漏れの環境でブレーキが外れる。DECISION_LOG 2026-09-04 / MISTAKE_LEDGER M-037）。
     上限を実質無効にしたいときは `0` ではなく十分大きい値（例: `99999999`）を入れる。
     安全ブレーキに「切る」設定は用意していない。
   - テナント個別: `tenant_ai_automation_settings.monthly_cost_cap_jpy`
