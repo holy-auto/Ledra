@@ -1,4 +1,6 @@
 import { describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { hasPermission, getPermissions, requiredPermissionForPath, type Permission } from "@/lib/auth/permissions";
 import type { Role } from "@/lib/auth/roles";
 
@@ -245,5 +247,38 @@ describe("requiredPermissionForPath", () => {
 
   it("returns null for unknown paths", () => {
     expect(requiredPermissionForPath("/unknown/route")).toBeNull();
+  });
+});
+
+/**
+ * `ROUTE_PERMISSIONS` を実際に消費しているのが誰かを固定する。
+ *
+ * 2026-09-05、この表を読む関数の名前を**宣言行を読まずに思い出しで打って** grep し、
+ * 0件を「この表は誰も参照していない」と読んだ。実際の名前は
+ * `requiredPermissionForPath` で、`AdminRouteGuard` が呼んでいた
+ * （MISTAKE_LEDGER M-031）。誤った結論は社内記録5ファイルと PR 本文まで出た。
+ *
+ * ここで消費側を名指ししておけば、次に同じ疑問を持った人は grep を打つ前に
+ * 答えを読める。消費側が消えたらこの検査が落ちるので、**「表が飾りになった」
+ * 状態が静かに成立することもない。**
+ */
+describe("ROUTE_PERMISSIONS の消費側", () => {
+  const GUARD = join(process.cwd(), "src", "app", "admin", "AdminRouteGuard.tsx");
+  const LAYOUT = join(process.cwd(), "src", "app", "admin", "layout.tsx");
+
+  it("AdminRouteGuard が requiredPermissionForPath を呼んでいる", () => {
+    const src = readFileSync(GUARD, "utf8");
+    expect(src).toMatch(/requiredPermissionForPath\s*\(/);
+  });
+
+  it("その AdminRouteGuard が admin レイアウトで全画面を包んでいる", () => {
+    // 呼び出し側があっても、レイアウトから外れれば効かなくなる。両方見る。
+    expect(readFileSync(LAYOUT, "utf8")).toMatch(/<AdminRouteGuard>/);
+  });
+
+  it("判定はクライアント側である（サーバ側の強制ではない）", () => {
+    // これは制約ではなく現状の記録。サーバ側へ寄せるなら OPEN_QUESTIONS の
+    // 判断を経てからで、その時はこの検査を書き換えること。
+    expect(readFileSync(GUARD, "utf8").split("\n")[0]).toContain("use client");
   });
 });
