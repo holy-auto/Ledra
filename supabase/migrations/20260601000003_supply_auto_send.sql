@@ -10,11 +10,19 @@
 -- 冪等・additive。
 
 -- 1) 信頼パートナーフラグ (運営のみ設定。RLS 既存ポリシーで店舗は変更不可)。
-ALTER TABLE supply_partners
-  ADD COLUMN IF NOT EXISTS is_trusted boolean NOT NULL DEFAULT false;
+-- 【後から内容だけ修正】supply_partners を作るのは 20260601000006（このファイルより後ろ）。
+-- 無いときは飛ばす。空 DB 側の列は 20260601000006_supply_partners.sql の末尾で足す。
+DO $mig$
+BEGIN
+  IF to_regclass('public.supply_partners') IS NOT NULL THEN
+    ALTER TABLE public.supply_partners
+      ADD COLUMN IF NOT EXISTS is_trusted boolean NOT NULL DEFAULT false;
 
-COMMENT ON COLUMN supply_partners.is_trusted IS
-  '運営が承認した信頼パートナー。全自動送信(auto-send)の対象になり得る。既定 false。';
+    COMMENT ON COLUMN public.supply_partners.is_trusted IS
+      '運営が承認した信頼パートナー。全自動送信(auto-send)の対象になり得る。既定 false。';
+  END IF;
+END
+$mig$;
 
 -- 2) テナント別の自動送信設定。
 CREATE TABLE IF NOT EXISTS tenant_supply_auto_send_settings (

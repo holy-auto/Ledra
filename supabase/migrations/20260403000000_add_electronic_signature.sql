@@ -1,3 +1,9 @@
+-- 【後から内容だけ修正】このファイルは本番へ適用済み（版番号は変えていない）。
+-- RLS ポリシーが **一度も存在しなかったテーブル `tenant_members`** を参照していて、
+-- 空 DB へ流すとここで落ち、以降 signature_sessions 系が丸ごと作られなかった。
+-- 正しい名前は `tenant_memberships`（本番の実体もそちら。根拠は
+-- `20260719000000_fix_rls_membership_references.sql` の実査記録）。
+-- 版番号を変えていないので本番では再適用されない＝本番への影響は無い。
 -- ============================================================
 -- Ledra 電子署名機能 マイグレーション
 -- 電子署名法（平成12年法律第102号）第2条・第3条 準拠
@@ -86,7 +92,7 @@ CREATE POLICY "signature_sessions_tenant_select"
   ON signature_sessions FOR SELECT
   USING (
     tenant_id IN (
-      SELECT tenant_id FROM tenant_members
+      SELECT tenant_id FROM tenant_memberships
       WHERE user_id = auth.uid()
     )
   );
@@ -96,7 +102,7 @@ CREATE POLICY "signature_sessions_tenant_insert"
   ON signature_sessions FOR INSERT
   WITH CHECK (
     tenant_id IN (
-      SELECT tenant_id FROM tenant_members
+      SELECT tenant_id FROM tenant_memberships
       WHERE user_id = auth.uid()
     )
   );
@@ -153,7 +159,7 @@ CREATE POLICY "audit_logs_tenant_select"
     session_id IN (
       SELECT id FROM signature_sessions
       WHERE tenant_id IN (
-        SELECT tenant_id FROM tenant_members
+        SELECT tenant_id FROM tenant_memberships
         WHERE user_id = auth.uid()
       )
     )

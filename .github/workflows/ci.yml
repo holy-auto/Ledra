@@ -13,6 +13,17 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # lint:migrations の migration-version-before-base-head は「このブランチが
+      # 追加したマイグレーションが、base に在るどれよりも後のバージョンか」を見る。
+      # actions/checkout は既定で depth 1 なので、これを取らないと base ref が
+      # 無く、検査が黙って見送られる（＝本番の db push を止める変更が緑で通る）。
+      # tree だけ要るので depth 1 で十分。
+      - name: base ブランチを取る（lint:migrations の out-of-order 検査に要る）
+        env:
+          BASE: ${{ github.base_ref || github.ref_name }}
+        run: |
+          git fetch --depth=1 origin "+refs/heads/$BASE:refs/remotes/origin/$BASE"
+
       - uses: actions/setup-node@v7
         with:
           node-version: 22
@@ -38,6 +49,12 @@ jobs:
         # ログが空のまま GitHub の既定（6時間）まで回りつづけるので、上限を切る。
         # 直近の実測は約 4 分（2026-09-04）。PR #1027 の `/code-review` 指摘。
         timeout-minutes: 20
+        env:
+          # 上で取った base ref を lint:migrations に名指しで渡す（#1025）。
+          # PR の base が staging のときも正しく比較できる。
+          # スクリプトは子プロセスに env をそのまま継承させるので、ここで渡せば届く
+          # （`MIGRATIONS_BASE_REF=origin/main npm run lint:migrations` で実際に確認済み）。
+          MIGRATIONS_BASE_REF: origin/${{ github.base_ref || github.ref_name }}
         run: bash scripts/ci-parallel-checks.sh
 
   migrations-replay:

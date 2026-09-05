@@ -30,12 +30,16 @@ create schema if not exists realtime;
 create schema if not exists cron;
 
 -- ── 拡張 ──────────────────────────────────────────────────
+-- **Supabase が新規プロジェクトに既定で入れるものだけを書く。**
+-- ここに「あると便利だから」で足すと、マイグレーションが自分で作っていない拡張に
+-- 依存していても再生が通ってしまい、実物のプレビュー DB でだけ落ちる。
+-- 実際 2026-09-04 に、pg_trgm をここで作っていたせいで
+-- `20260616000005_move_pg_trgm_to_extensions_schema.sql` の
+-- `alter extension pg_trgm set schema extensions` が
+-- `extension "pg_trgm" does not exist` で落ちることに気づけなかった
+-- （pg_trgm は Supabase の既定では入らない）。
 create extension if not exists "uuid-ossp"  with schema extensions;
 create extension if not exists pgcrypto     with schema extensions;
-create extension if not exists pg_trgm      with schema extensions;
-create extension if not exists btree_gin    with schema extensions;
-create extension if not exists btree_gist   with schema extensions;
-create extension if not exists unaccent     with schema extensions;
 
 -- 本番は extensions スキーマに置いているが、非修飾で呼ぶマイグレーションがあるため
 -- 探索パスに入れておく（本番の postgres ロールも同じ設定）
