@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole, requirePermission } from "@/lib/auth/checkRole";
+import { voidCertificate as voidCertificateRecord } from "@/lib/certificates/voidCertificate";
 import { formatDate, formatDateTime } from "@/lib/format";
 import ServiceTimeline, { type TimelineEvent } from "./ServiceTimeline";
 import VehicleCustomerLink from "./VehicleCustomerLink";
@@ -74,37 +75,23 @@ export default async function AdminVehicleDetailPage({
     }
     const membershipTenantId = caller.tenantId;
 
-    const existing = await supabase
-      .from("certificates")
-      .select("id, tenant_id, vehicle_id, public_id, status")
-      .eq("tenant_id", membershipTenantId)
-      .eq("vehicle_id", id)
-      .eq("id", certId)
-      .limit(1)
-      .maybeSingle();
-
-    if (existing.error || !existing.data?.id) {
-      redirect(`/admin/vehicles/${id}?e=1`);
-    }
-
-    if (String(existing.data.status ?? "").toLowerCase() === "void") {
-      redirect(`/admin/vehicles/${id}?voided=1`);
-    }
-
+    // 無効化の本体は `@/lib/certificates/voidCertificate` に一本化（5経路で実装が
+    // 食い違っていた）。この Server Action と同名なので別名で読み込んでいる。
+    // この経路だけ証明書監査ログに残っていなかったが、一本化で揃う
+    // （`vehicle_histories` への追記は画面の履歴表示に要るので従来どおり残す）。
     const nowIso = new Date().toISOString();
+    const result = await voidCertificateRecord(supabase, {
+      tenantId: membershipTenantId,
+      userId: caller.userId,
+      selector: { certificateId: certId, vehicleId: id },
+      description: "施工証明書を削除 (車両詳細から)",
+    });
 
-    const updated = await supabase
-      .from("certificates")
-      .update({
-        status: "void",
-        updated_at: nowIso,
-      })
-      .eq("tenant_id", membershipTenantId)
-      .eq("vehicle_id", id)
-      .eq("id", certId);
-
-    if (updated.error) {
+    if (!result.ok) {
       redirect(`/admin/vehicles/${id}?e=1`);
+    }
+    if (result.alreadyVoid) {
+      redirect(`/admin/vehicles/${id}?voided=1`);
     }
 
     await supabase.from("vehicle_histories").insert({
@@ -112,7 +99,7 @@ export default async function AdminVehicleDetailPage({
       vehicle_id: id,
       type: "certificate_voided",
       title: "施工証明書を削除",
-      description: existing.data.public_id ? `Public ID: ${existing.data.public_id}` : null,
+      description: result.certificate.publicId ? `Public ID: ${result.certificate.publicId}` : null,
       performed_at: nowIso,
       certificate_id: certId,
     });
