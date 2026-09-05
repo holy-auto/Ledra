@@ -4,6 +4,26 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-09-05 Academy 公開事例を「加盟店間の共有」に絞り、非公開に戻すボタンを足した
+
+- 内容: 公開事例の読み取り RLS を `TO authenticated` に絞り、一覧に「非公開にする」を追加。
+  応答から `tenant_id` を落とし、代わりにサーバ計算の `is_own` を返す。
+- **実害の可能性**: `academy_cases_read_published` にロール指定が無く PUBLIC 扱いだったため、
+  **anon ロールから公開事例を読めた**（本番で実測。一時行を入れて確認し削除）。
+  anon キーはブラウザのバンドルに載る。`photos`（施工写真）と `vehicle_info` を持つ表なので、
+  加盟店間の共有のつもりが世間への公開になっていた。
+  本番の `academy_cases` は **0件**なので、実際に露出したデータは無い。
+- 「任意で非公開」は**新規開発ではなかった**。API の `action: "unpublish"` も
+  所有テナントの検査も既にあり、**画面にボタンが無かっただけ**。
+- 副次: `/admin/academy` の `tenant_id` の取り方が `.limit(1).single()`（並び順も
+  アクティブテナントの cookie も見ない）だったので `resolveCallerWithRole` に置き換えた。
+  `updateTenantSettingsAction`・`site-content` と同じ欠陥で、これが3例目。
+- 公開事例数のカウントだけは**意図的に `tenant_id` で絞らない**。全加盟店共有だから。
+  `createTenantScopedAdmin` の規約への例外なので、消されないようコメントを置いた。
+- 検出: `src/lib/academy/__tests__/casePresentation.test.ts`。匿名化の境界（`tenant_id` を
+  落とす）と所有判定を純関数に切り出して固定した。**壊すと落ちることを2形で確認**
+  （`tenant_id` を落とすのをやめる / マスクを1項目外す）。
+
 ## 2026-09-04 サイトコンテンツのアプリ側ガードが DB とずれていたのを直した
 
 - 内容: Server Action 7箇所を全部読み、**`site-content` の4アクションだけ**が
