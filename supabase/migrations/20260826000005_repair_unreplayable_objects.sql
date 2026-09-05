@@ -374,3 +374,34 @@ begin
     create policy vpr_service_all on public.vehicle_part_replacements for all using (auth.role() = 'service_role');
   end if;
 end $$;
+
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 【後から追記】20260616000007 が締めるはずだった EXECUTE を、関数を作った
+-- この位置で締める。
+--
+-- 経緯: auth_uid_by_email / get_auth_email / get_auth_email_scoped は本番にしか
+-- 無く、マイグレーションではこのファイルで初めて作られる。20260616000007 の revoke は
+-- 「関数が無ければ飛ばす」ようにしたので、**空 DB では誰も締めない**まま残っていた。
+-- これらは auth.users の email を引く SECURITY DEFINER なので、anon 鍵のクライアント
+-- から任意ユーザーの email が引けてしまう。プレビュー DB でも同じことが起きる。
+--
+-- 本番は 20260616000007 が実行済みで既に service_role のみ（pg_proc.proacl で確認済み、
+-- 2026-09-04）。このファイルは適用済みで再適用されないので本番への影響は無い。
+-- 新しいファイルは作らない（out-of-order で db push が止まるため）。
+DO $mig$
+DECLARE
+  sig text;
+BEGIN
+  FOREACH sig IN ARRAY ARRAY[
+    'public.auth_uid_by_email(text)',
+    'public.get_auth_email(uuid)',
+    'public.get_auth_email_scoped(uuid)'
+  ] LOOP
+    IF to_regprocedure(sig) IS NOT NULL THEN
+      EXECUTE format('revoke execute on function %s from public, anon, authenticated', sig);
+      EXECUTE format('grant execute on function %s to service_role', sig);
+    END IF;
+  END LOOP;
+END
+$mig$;

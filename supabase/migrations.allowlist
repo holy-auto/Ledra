@@ -221,3 +221,28 @@
 # create-index-without-concurrently は再現しない frozen 状態。Rationale:
 # docs/operations/zero-downtime-migrations.md.
 20260722025744_gcal_multi_calendar.sql
+
+# 2026-09-04: 実物の Supabase プレビュー DB で
+#   ERROR: CREATE INDEX CONCURRENTLY cannot be executed within a pipeline (SQLSTATE 25001)
+# が出たため、下記の**適用済み**ファイルから CONCURRENTLY を外した（1ファイルに複数文が
+# あると Supabase はパイプラインで送るので 2 文目以降が落ちる）。本番では再適用されず、
+# 空 DB では対象テーブルが空なのでロックの問題は起きない。
+# **allowlist は全ルールを飛ばす**（ファイル単位の除外で、ルール単位ではない）。
+# 実際に必要なのは create-index-without-concurrently の免除だけで、下記13本が他の
+# ルールに触れていないことは確認済み（2026-09-04。allowlist から外して lint を回し、
+# create-index-without-concurrently しか出ないことを見た）。
+# **新しいファイルはここに足さないこと。** CONCURRENTLY が要るなら 1ファイル1文にする
+# （concurrently-in-multi-statement-file ルールが見ている）。
+20260429000004_perf_indexes_round3.sql
+20260430000000_maintenance_reminder_enhancements.sql
+20260603010000_fk_covering_indexes.sql
+20260603010001_drop_duplicate_indexes.sql
+20260616000001_external_ref_indexes.sql
+20260620000001_body_repair_transparency_indexes.sql
+20260630000000_loaner_active_loan_unique.sql
+20260701000000_dashboard_reminder_indexes.sql
+20260702160000_invoice_doc_number_unique_and_pos_daily_totals.sql
+20260703000004_job_signoff_workflow_indexes.sql
+20260815000001_repair_drift_missing_indexes.sql
+20260826000001_audit_logs_indexes.sql
+20260828000002_scale_operational_indexes.sql

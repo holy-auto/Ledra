@@ -4,115 +4,70 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
-## 2026-09-04 サイトコンテンツのアプリ側ガードが DB とずれていたのを直した
+## 2026-09-04 CONCURRENTLY を「1ファイル1文」に矯正（Supabase のパイプライン制約）
 
-- 内容: Server Action 7箇所を全部読み、**`site-content` の4アクションだけ**が
-  アプリ側 `staff` 以上・DB 側 `is_super_admin_user()` でずれていた。
-  `site_content:view` / `site_content:manage` を **super_admin 限定**にし、
-  `authorize()` を権限表と同じ動詞で見るようにした。
-- 実害: staff/admin/owner はアプリのガードを通過してから RLS に弾かれる。
-  **UPDATE と DELETE は 0 行・エラー無しなので `{ok:true}` が返っていた。**
-  本番24人が「削除しました」と表示されながら何も変わらない状態。
-  `site_content:view` は viewer を含む全ロールが持っていたので**メニューも全員に出ていた**。
-- 判断は新しくない。`20260424010000_site_content_posts_super_admin_only.sql` のヘッダに
-  「加盟店（owner/admin/staff/viewer）はDB直接操作でも変更不可」と書いてあり、
-  **アプリだけが追随していなかった**。
-- 副次: `authorize()` のローカル membership 引き（並び順もアクティブテナントの cookie も
-  見ない）を `caller.tenantId` に置き換えた。`updateTenantSettingsAction` と同じ欠陥。
-  delete と status 変更に `.select("id")` を付け、0行を `forbidden` として返すようにした。
-- 検出: `src/lib/auth/__tests__/serverActionGuards.test.ts`。**ガードを消して落ちることを
-  2つの形で確認した**（Server Action のガード削除 / 権限表を緩める）。
-  1回目は落ちず、**自分が書いた説明コメント内の `hasMinRole(...)` に反応していた**ため
-  コメントを落としてから照合するようにした（MISTAKE_LEDGER M-022）。
-- **セルフレビューで見つけた追加分（同日）**: 画面3枚（一覧・新規・編集）が
-  「ログイン済みか」しか見ておらず、**ナビから消えても URL 直打ちで開けた**。
-  開くと押せば必ず `forbidden` になるボタンとフォームが並ぶ（M-019 と同じ形を、
-  M-019 を引用した PR でやった → MISTAKE_LEDGER M-023）。
-  `requireSiteContentAdmin()` を 3 枚に通し、**1 枚から外すと落ちる検査**を追加した。
-  併せて `deleteSiteContentAction` の 0 行を、存在しない id は `not_found`、
-  RLS 拒否は `forbidden` に分けた。
-- 判明した前提: **`ROUTE_PERMISSIONS`（48画面分）を強制している場所は無い**
-  （`getRequiredPermission()` の呼び出し元 0 件、`src/middleware.ts` 無し）。
-  画面の権限判定は各 `page.tsx` 任せ。OPEN_QUESTIONS に起票。
+順序逆転（前項）を直したことで、実物のプレビュー DB が初めて先まで進み、次が出た。
 
-## 2026-09-04 判断待ち4件を main へマージし、本番へマイグレーションを適用した（PR #1026 / `87b71201`）
+```
+ERROR: CREATE INDEX CONCURRENTLY cannot be executed within a pipeline (SQLSTATE 25001)
+At statement: 1
+```
 
-- **本番適用済み**（Supabase migration `tenant_settings_owner_only_and_shared_templates`）。
-  適用前後を実測で確認した。
+**Supabase のブランチ機能は1ファイルの複数文をパイプラインで送る。**
+`CREATE INDEX CONCURRENTLY` はその中では実行できず、2文目以降が落ちる。
 
-  | 確認項目 | 適用前 | 適用後 |
-  |---|---|---|
-  | `tenants` UPDATE ポリシー | `tenants_update_owner_admin`, `tenants_update_v2` | **`tenants_update_v2` のみ**（owner 限定） |
-  | `templates` INSERT ポリシー | `templates_insert_v2`, `templates_write_owner_admin` | **`templates_insert_v2` のみ** |
-  | `templates` の CHECK 制約 | なし | **`templates_shared_is_platform_owned` / validated=true** |
-  | `templates` 行数 / shared / tenant_id NULL | 5 / 0 / 5 | **5 / 0 / 5（無傷）** |
+- 適用済みの**13ファイル**から CONCURRENTLY を外した（本番では再適用されず、
+  空 DB では対象テーブルが空なのでロックの問題は起きない）。
+  最大は `20260603010000_fk_covering_indexes.sql` の135文。
+- そのぶん `create-index-without-concurrently` の対象外にするため
+  `supabase/migrations.allowlist` に13件を追記（理由コメント付き）。
+- **lint に新ルール `concurrently-in-multi-statement-file` を追加。**
+  CONCURRENTLY を含むファイルが2文以上なら落ちる。
+  **手元の `check:migrations` では再現しない**（`psql -f` はパイプラインを使わない）
+  ので、静的検査で止めるしかない。わざと壊して落ちることを確認済み。
 
-- **「適用できた」で終わらせず、本番の実テーブルで弾くことを確認した。**
-  例外を捕まえる DO ブロックで試し、行は残していない（`probe` の残骸0件、名前一覧も元のまま）。
+検証: 1パス再生 447/447、lint:migrations OK、check:schema OK、tsc エラー0。
 
-  | ケース | 結果 |
-  |---|---|
-  | テナント所有の `shared` を INSERT | **弾かれた** |
-  | 既存行を `shared` に書き換え | **弾かれた**（UPDATE 経路） |
-  | 運営が `tenant_id NULL` で `shared` を作る | 通った（期待どおり） |
+### 続き: `pg_trgm` はどのマイグレーションでも作られていなかった
 
-- 注意: この制約は **service_role にも効く**（RLS は迂回できるが CHECK 制約は迂回できない）。
-  運営が共有雛形を作るときは `tenant_id` を NULL にする必要がある。既存5件はその形。
-- **適用後にファイル名を記録バージョンへ合わせた**（`20260904000000` → `20260904123252`）。
-  `docs/operations/migrations.md` の規約。放置すると、既に適用済みの `20260904060245` より
-  前のファイルが未適用として残り、**out-of-order で `db-migrate` が止まる**
-  （このリポジトリは同じ形で過去3回止まっている）。
-- 同じ手順書には「`VALIDATE` を別ファイルにする」ともあり、**こちらは満たしていない**。
-  適用済みなので分割せず、逸脱の理由をファイルのヘッダに書いた（MISTAKE_LEDGER M-021）。
+CONCURRENTLY を直したら、実物のプレビュー DB は次で落ちた。
 
-## 2026-09-04 判断待ちだった4件を確定し、調査中に見つけた穴2つも塞いだ
+```
+ERROR: extension "pg_trgm" does not exist (SQLSTATE 42704)
+At statement: 2 / alter extension pg_trgm set schema extensions
+```
 
-- 内容: 代表判断4件を実装した。
-  - **通知は店舗宛（現状維持）** — コードは変えず、分類コメントを実態に合わせた。
-  - **テナント設定は owner のみ** — DB の `tenants_update_owner_admin` を落とし、
-    アプリ側（`updateTenantSettingsAction` / `admin/settings/defaults` PUT）も owner 要求に。
-  - **共有テンプレートはプラットフォーム運営のみ** — `CHECK (scope <> 'shared' OR tenant_id IS NULL)`。
-  - **顧客・マーケット車両の削除は admin 以上** — `customers:delete` / `market:delete` を
-    語彙に追加（ロール下限ではなく動詞にする。`vehicles:delete` が先例）。作成・編集は staff のまま。
-  - **ロゴ・社印・請求タイミングも owner に揃えた** — どちらも service-role 書き込みで
-    RLS が効かないため、アプリのガードが唯一の境界。
-- **調査中に見つけた穴（記録に無かったもの）:**
-  - `updateTenantSettingsAction`（設定画面の保存）に**ロール判定が1つも無かった**。
-    RLS 任せで、弾かれても `.update()` は 0 行・エラー無しを返すため、staff の保存が
-    **何も変わらないのに成功扱い**だった。owner 判定を足し、あわせて2経路とも
-    `.select("id")` で**0行更新をエラーとして返す**ようにした。
-  - 共有テンプレートの穴は INSERT だけでなく **UPDATE にもあった**。
-    `templates_update_v2` は WITH CHECK が無く USING も `scope` を見ないので、
-    既存行を `scope='shared'` に書き換えられた。制約1本で両方塞いだ。
-- **`/code-review` で自分の誤りが6件出て、すべて直した**（MISTAKE_LEDGER M-016〜M-018）。
-  CI の lint で落ちるマイグレーションの書き方 / 画面の出し分け4箇所の直し忘れ /
-  `getTenantId()` が別テナントを返しうる件 / 通知の分類コメントが実態と違う件 /
-  画像を車両行より先に消していた件 / 一覧ページの削除が 404 を叩いていた件。
-- 検証: 一時テーブルで制約の挙動を5ケース確認（テナントの shared 作成＝弾く／
-  既存行の shared 書き換え＝弾く／運営の shared 作成＝通す／既存5件と同じ形＝通す）。
-  `npm run lint:migrations` OK / `npm run check:migrations` 再生OK（既知9件のみ、増減なし）。
-- 実測で分かったこと: 本番の `templates` 5件は `scope='tenant'` だが `tenant_id` は NULL で、
-  **共有雛形は既に `tenant_id IS NULL` で実現されていた**（`scope` 列が実態を表していない）。
-  `purchase_orders` は0件で、発注機能は本番未使用。
+**`pg_trgm` を作るマイグレーションは1本も無い。** 本番には手で入っているだけで、
+Supabase の既定にも入らない。手元で再現しなかったのは
+`scripts/replay/bootstrap.sql` が先に作っていたから ——
+「本番にあるのにマイグレーションに書かれていない」ドリフトそのものを、
+再生検査自身が隠していた。
 
-## 2026-09-04 認可テーブルの二重化を解消（複数形 insurer_tenant_accesses と全組み合わせ自動付与トリガを削除）
+- `20260616000005` を「無ければ作る / 別スキーマにあれば移す / 既に extensions なら何もしない」に変更。
+- **bootstrap から既定でない拡張4件（pg_trgm / btree_gin / btree_gist / unaccent）を削除。**
+  bootstrap は Supabase の既定だけを書く場所にする。
+- 検証: bootstrap から pg_trgm を抜いた状態でも 1パス再生 447/447（＝プレビュー DB と同じ条件）。
 
-- 背景: 保険会社のテナント閲覧許可に、名前がほぼ同じ2つの表が並存していた。
-  正は `insurer_tenant_access`（単数形）で、認可の実体 `insurer_accessible_tenant_ids()`・
-  検索3 RPC・API 4本がすべてこれを読む。一方 `insurer_tenant_accesses`（複数形）は
-  **アプリコードからの参照ゼロ**、`supabase/migrations/` にも定義が無い本番のみのドリフトだった。
-- 危険だった点: トリガ `trg_seed_all_tenant_accesses_for_new_insurer` /
-  `trg_seed_all_insurer_accesses_for_new_tenant` が、保険会社かテナントが1件増えるたびに
-  **全保険会社 × 全テナント**の行を `is_active=true` で複数形へ投入していた。削除時点で
-  **2保険会社 × 24テナント = 48行、全件有効**。読むコードが無いため実害は出ていなかったが、
-  **複数形を1行でも参照した瞬間に、両保険会社が実店舗24社の証明書を見られる**状態だった。
-- 内容: `20260904060245_drop_insurer_tenant_accesses_and_autograt_triggers.sql` を追加し、
-  トリガ2本 → 関数2本 → 複数形テーブルの順に削除して本番へ適用。あわせて生成物
-  （`src/types/db.generated.ts`・`scripts/schema.snapshot.json`）から該当定義を除去した。
-- 検証: 削除後に複数形の不在・トリガ0件・関数0件を確認し、**単数形は2行のまま無傷**、
-  `insurer_accessible_tenant_ids()` がデモ保険会社に対して `Ledra Motors（デモ）` を返し、
-  東京海上日動に対しては0件（前日の無効化が維持されている）ことを実際に呼んで確認した。
-  `npx tsc --noEmit` 出力なし、`npm run check:schema` OK、`npx vitest run` 522 files / 5,310 件通過。
+### 続き2: 手元は PostgreSQL 16、Supabase は 15
+
+`pg_trgm` を直したら次はこれ。
+
+```
+ERROR: relation "public.line_link_tokens" does not exist (SQLSTATE 42P01)
+drop policy if exists service_role_all_line_link_tokens on public.line_link_tokens
+```
+
+`line_link_tokens` / `line_pending_links` も**本番にしか無い**テーブル
+（`fk_covering_indexes` のコメントに「ドリフト」として列挙済み）。
+
+**`DROP POLICY IF EXISTS ... ON <欠けたテーブル>` は PG16 では NOTICE で skip されるが、
+PG15 では落ちる。** 手元の再生は 16、Supabase は 15。実際に PG16 で試して確認した。
+
+- 該当2文を `to_regclass` ガードに変更。
+- lint に新ルール `drop-if-exists-on-uncreated-relation` を追加。
+  **全マイグレーションを走査して「作られるリレーション」の集合を作り**、
+  そこに無いものへの `DROP POLICY / TRIGGER IF EXISTS` を落とす。
+  わざと壊して落ちることを確認済み。
 
 ## 2026-09-04 起動演出から抜けられなくなる2つの穴を塞いだ（PR #966）
 
@@ -138,8 +93,8 @@
 
   | 追加したもの | 場所 |
   |---|---|
-  | `documents.public_id`（列＋バックフィル） | `supabase/migrations/20260904000000_documents_public_id.sql` |
-  | 部分ユニーク索引（`CONCURRENTLY`・別ファイル） | `supabase/migrations/20260904000001_documents_public_id_index.sql` |
+  | `documents.public_id`（列＋バックフィル） | `supabase/migrations/20260905030000_documents_public_id.sql` |
+  | 部分ユニーク索引（`CONCURRENTLY`・別ファイル） | `supabase/migrations/20260905030001_documents_public_id_index.sql` |
   | 公開レシートページ | `src/app/receipt/[public_id]/page.tsx` |
   | 公開 PDF ルート（レート制限 10回/分） | `src/app/api/receipt/pdf/route.ts` |
   | `doc_type='receipt'` ガード（**1箇所だけ**） | `src/lib/receipts/publicReceipt.ts` |
@@ -164,33 +119,76 @@
   `next build` 成功（`/r/[short_id]` と `/receipt/[public_id]` が両方登録される）。
   ルート 5310 テスト・モバイル 20 self-check・`lint:migrations` / `check:migrations` / `check:schema` 緑。
 - **デプロイ順序に注意**: モバイルの新ビルドは **Web デプロイ後**でないと共有リンクが 404 のまま。
+- 追記（2026-09-05）: マイグレーションを `20260904000000/000001` から `20260905030000/030001` に改名した。main が同日に `20260904123252` を入れており、元の採番のままだと `supabase db push` が out-of-order で停止して**本番に届かなかった**（MISTAKE_LEDGER M-035）。1パス再生 443/443 で確認済み。
 
 ---
 
-## 2026-09-03 保険会社ポータルの検索を本番で復旧し、配布 PDF のキャプチャ3枚が揃った（14ページ）
+## 2026-09-03 マイグレーションの順序逆転 203 本を解消（1パス再生 443/443）
 
-- 背景: `insurer_accessible_tenant_ids(uuid)` は SECURITY DEFINER で `search_path=''` が
-  設定されている（`20260404000000_fix_security_definer_search_path.sql`）のに、関数本体は
-  `FROM insurer_tenant_access` とスキーマ修飾なしのままだった。`search_path` が空だと
-  非修飾の識別子は解決できないため、**この関数は呼ばれるたびに必ず落ちていた**。
-- 影響: この関数を呼ぶ保険会社ポータルの検索3経路（`insurer_search_certificates` /
-  `insurer_search_stores` / `insurer_search_vehicles`）が **2026-04-04 以降 HTTP 500** を
-  返していた。実際にユーザーが影響を受けたかは【要確認】。
-- 内容: `20260903123728_fix_insurer_accessible_tenant_ids_search_path.sql` を追加し、
-  本体の参照を `public.insurer_tenant_access` に修飾して本番へ適用。シグネチャ・返り値・
-  volatility・SECURITY DEFINER・`search_path=''` はすべて現状維持で、**挙動は変えず
-  壊れた参照だけを直した**。EXECUTE 権限は `postgres` / `service_role` のみで
-  `anon` / `authenticated` には無く、呼び出し元3本はいずれも `auth.uid()` から自分の
-  insurer_id を導出するため、**この修正で可視範囲は広がらない**（適用前に確認済み）。
-- これにより `public/screenshots/insurer/search.png` が撮影でき、**PDF が参照する3枚が揃った**。
-  サービス概要 PDF を実レンダリングして **13 → 14 ページ**になることを確認した。
-- **デモ保険会社にデモ施工店の閲覧許可を付与した。** それまでデモ保険会社は
-  `insurer_tenant_access` に行を1件も持たず、ログインできても検索は常に0件だった
-  （`scripts/setup-demo-insurer.ts` が閲覧許可を付与していなかった）。行を1件追加し、
-  同じ upsert をシードスクリプトにも入れて再現可能にした。これでデモ保険会社に見えるのは
-  デモ施工店だけ（証明書18件、すべて架空データ）。保険会社スライドは **RESULTS 18 の
-  検索結果が並んだ状態**で撮影している。実テナントのデータは写らない。
-- 検証: `npx tsc --noEmit` 通過、`npx vitest run` 全 **522 ファイル / 5,310 件**通過。
+`Supabase Preview` が1本目のマイグレーションで落ち続けていた問題。
+ファイル名順に1パスで流すと **438 本中 203 本**が落ちる状態だった。
+
+- **ファイル名は1つも変えていない。** 版番号を変えると本番で再適用され、当時の
+  役割を見ない RLS ポリシーや search_path 未固定の関数定義が復活するため。
+- 既適用ファイルの**中身だけ**を「前提が無ければ飛ばす」に変更（`to_regclass` /
+  `to_regprocedure` 判定）。版番号を変えていないので本番では再適用されない。
+- 飛ばした分を、依存が揃った位置の**既適用ファイルの末尾**で補う。いずれも
+  「既にあれば何もしない」形で本番では no-op。**新規ファイルは1本も作っていない**
+  （作ると本番の `db push` が out-of-order で止まるため。下記参照）:
+  `20260313020000_core_tables.sql`（customers / invoices / 列・索引）/
+  `20260314000003_market_vehicles.sql`（market_inquiries 系）/
+  `20260321000001_customer_portal_tables.sql`（索引）/
+  `20260601000006_supply_partners.sql`（列）/
+  `20260826000005_repair_unreplayable_objects.sql`（email 系関数の revoke）
+- 一度も存在しなかった名前を本番の実体に合わせて修正:
+  `tenant_members` → `tenant_memberships`（2本）、`tenant_memberships.is_active`
+  述語の除去（2本）、戻り値の型違いの同名関数を先に DROP（2本）、
+  本番にしか無い関数・ビューへの revoke/grant/ALTER VIEW を存在チェック付きに（3本）。
+- **`npm run check:migrations` を多重パス → 1パスに変更。** Supabase のブランチ機能と
+  同じ条件になり、順序逆転が CI で落ちるようになった。`KNOWN_UNREPLAYABLE`（既知の
+  9本を許す仕組み）は不要になったので削除。
+
+あわせて `/code-review` の指摘5件を修正（`5beff94`）。うち1件は**この変更が作った穴**で、
+まだ作られていない関数への `revoke execute` をガードで飛ばした結果、
+`auth_uid_by_email` / `get_auth_email` / `get_auth_email_scoped` が空 DB では
+`anon` / `authenticated` に開いたまま残っていた（`auth.users` の email を引く
+SECURITY DEFINER）。関数が実在する位置（`20260826000005` の末尾）で締め直し、
+再生 DB の `pg_proc.proacl` で5関数すべて service_role のみになること、
+本番の `proacl` と一致することを確認した。
+
+**Codex レビューの P1 指摘で作り直した。** 当初は補いを新規ファイル6本として置いて
+いたが、6本とも本番の適用済み最新 `20260904123252` より**古い**バージョンだった。
+本番の `supabase db push` は最新より古い未適用があると out-of-order で停止するため、
+マージすれば**以降のマイグレーションが本番へ一切届かなくなる**ところだった
+（2026-08-02〜08-15 に同じ形で13日間停止し、証明書発行が全件止まった実績がある）。
+6本を消して中身を既適用ファイルの末尾へ移し、新規バージョンを0本にした。
+`MISTAKE_LEDGER` M-027。
+
+再発防止として `lint:migrations` に `migration-version-before-base-head` を追加。
+**このブランチが追加したファイルは、base に在るどのファイルよりも後のバージョンで
+なければ落ちる。** わざと古い日付で置いて落ちることを確認済み。
+
+**その検査自体が CI で動いていなかった**のを `/code-review` が見つけた（M-028）。
+`actions/checkout` は既定 depth 1 で base ref を持たないため、検査は毎回
+「引けないので見送る」経路に入り注記を1行出して緑を返していた。ci.yml で base ref を
+depth 1 で取り（`MIGRATIONS_BASE_REF` で名指し）、**引けなければ CI では落とす**ように
+した。同レビューで、`CREATED_RELATIONS` がコメントを読んでいた（説明文中の
+`CREATE TABLE xxx` が「作られている」と誤認され PG15 検査が素通りする）、
+CONCURRENTLY の文数カウントが文字列リテラル中の `;` を数えていた、
+CONCURRENTLY を外した13ファイルの説明文が実装と矛盾していた、
+allowlist のコメントが「ルール単位の免除」と読める、の4件も直した。
+検出器の2件はどちらも probe で誤検出/見逃しの再現→修正後の解消を確認している。
+
+さらにその「CI では落とす」が既存の `scripts/__tests__/lint-migrations.test.ts` を
+CI で8件落とした（テストは一時ディレクトリでスクリプトを走らせるので base ref が無い）。
+落とす対象を「git リポジトリなのに base ref が無い＝CI の設定ミス」だけに絞り、
+同テストに3件追加した（backdated で落ちる / 後ろの日付なら通る / git 管理外では
+CI でも落ちない）。ルールを無効化すると落ちることも確認済み。
+
+検証: 1パス再生 **441/441**、RLS ポリシー打ち消し検査 なし、`lint:migrations` OK、
+`check:schema` OK、`vitest run` 525ファイル 5324件 通過。
+番人はわざと壊して確認済み（存在しないテーブルを ALTER するファイルを先頭日付で
+置くと exit 1 でファイル名まで出る）。
 
 ## 2026-09-03 iPhone 先行ローンチ向けに審査要件の抜けを埋めた（PR #966 / branch claude/mobile-app-opening-animation-s2a6m3）
 
@@ -232,113 +230,6 @@
 - 検証: `npm run typecheck` / `npm test`（自己チェック15件＋check-schema）/ `npm run check:native`。
 - 限界: **iOS の実ビルドは未実施**。クリティカルパスは Apple の publishing entitlement 付与で、
   こちらでは短縮できない。
-
-## 2026-08-31 配布 PDF 用の画面キャプチャを撮影（3枚中2枚。サービス概要 11→13ページ）
-
-- 背景: `.gitignore` の除外解除（PR #982）で3枚だけコミット可能にしたが、実物のキャプチャが
-  リポジトリに無いため、サービス概要 PDF は該当スライドがページごと消えた 11 ページのままだった。
-- 内容: デモテナント `Ledra Motors（デモ）` に対して撮影し、`public/screenshots/admin/certs-new.png`
-  と `public/screenshots/admin/customers-detail.png` の2枚をコミット。サービス概要 PDF を実際に
-  レンダリングして 11 → **13 ページ**になることを確認した（残り1ページ分は下記の未撮影1枚）。
-- 撮影は本番ビルド（`next build` + `next start`）に対して実施した。`next dev` では画面右下に
-  Next.js の開発オーバーレイ（「1 Issue」バッジ）が写り込み、配布物として不適切だったため。
-- 撮影スクリプトの不具合を1件修正: `admin/certs-new.png` と `admin/vehicles-new.png` は
-  「`新規` を含むリンクの先頭」をクリックして撮っていたため、シェルにある **`新規登録`
-  （施工店アカウント登録）リンク**に一致し、両方とも新規登録ページを撮っていた。
-  つまり PDF は「証明書の新規発行」というキャプション付きで**サインアップ画面**を載せる状態だった。
-  `/admin/certificates/new` `/admin/vehicles/new` へ直接遷移する形に変更（`scripts/capture-screenshots.ts`）。
-- **未撮影1枚**: `public/screenshots/insurer/search.png` は撮影できていない。保険会社ポータルの
-  証明書検索が本番 DB のバグで HTTP 500 になるため（`OPEN_QUESTIONS.md` 参照）。
-- 検証: `npx tsc --noEmit` 通過、`npx vitest run` 全 511 ファイル / 5251 件通過。
-
-## 2026-08-27 配布資料のフォント崩れ・ハイフン混入・段組の破綻を直す
-
-代表から「ただ単に横にするだけならだれでもできる。バランス、見やすさを重視して
-ないと意味がない」「フォントが崩れてる。これは初期のころから散々言ってるやつ」。
-スクリーンショットで指摘された3件はいずれも実在の不具合だった。
-
-**1. フォント崩れ（サブセットにグリフが無い）。**
-`public/fonts/NotoSansJP-*.ttf` は日本語サブセット（7,466 グリフ）で記号の収録が薄い。
-全8資料の描画文字列 1,633 本を機械的に走査したところ、**8文字が非収録**だった。
-
-    ① ② ③  U+2460-2462   service-overview（「摩擦」3枚のカード見出し）
-    ✓       U+2713        pricing-overview（機能別比較表の対応印が全部豆腐）
-    →       U+2192        features / security / operation-guide / glossary
-    ※       U+203B        case-studies / roi-template
-    ₂       U+2082        glossary（SiO₂）
-    μ       U+03BC        glossary（膜厚 μm）
-
-**「初期から言われていた」のに直らなかったのは、PDF を開かない限り見えない
-不具合だったから。**対策は2層にした。(a) `pdfSafe()`（旧 `stripEmoji`）に置換表
-`GLYPH_FALLBACKS` を追加。`FEATURE_COMPARISON` や `GLOSSARY` は web と共有していて
-ブラウザでは正常に出るので、元データは触らず PDF に入る手前でだけ置き換える
-（`μ`→`µ` MICRO SIGN は収録済みで見た目が同じ）。(b) **グリフ網羅テスト**を追加し、
-react-pdf の要素ツリーを歩いて実際に描く文字を全部集め、非収録が1文字でも残れば落とす。
-
-**2. 本文にハイフンが生えていた。** react-pdf の既定のハイフネーションが日本語にも
-効き、「QRコードで-顧客に即共有」のように本文中へハイフンを挿していた。
-`Font.registerHyphenationCallback((w) => [w])` で単語を割らない実装に差し替え。
-
-**3. 段組の破綻。** 左列・右列に全カードを積む作りだったため列ごとに独立して
-改ページされ、**右列の最後の1枚だけが次ページに落ちて左半分が丸ごと空いて**いた。
-A4 横で天地が 34% 狭くなり顕在化した。`CardGrid` を追加してカードを2枚1組の行に並べ、
-行単位で `wrap={false}`。改ページは必ず行の境で起き、左右の高さも揃う。
-`i % 2` のパリティ分割は削除。
-
-検証: marketing 73 件パス、全体 452 files / 4,293 tests パス、tsc 0 / eslint 0。
-ページ数は8本とも変化なし。
-
-## 2026-08-27 HP のダウンロード資料を刷新（6本 → 8本 / 自前ページ採番を廃止）
-
-`/resources` と代理店ポータルで配っている提供資料を、内容・本数・デザインの3点で更新した。
-
-**1. 自前でページ番号を刷るのをやめた（実バグの修正）。**
-各ページが `pageLabel="3 / 5"` を自分で持っていたが、中身が A4 に収まらないと
-react-pdf が自動で改ページするため、**実物6ページの資料が「5」と刷っていた**。
-
-    料金プラン詳細  宣言 5 ページ / 実測 6 ページ
-    ROI テンプレート 宣言 7 ページ / 実測 8 ページ
-    機能紹介資料    宣言 10 ページ / 実測 12 ページ
-
-採番を react-pdf の `render={({ pageNumber, totalPages }) => ...}` に委ね、
-`SECURITY_PAGE_TOTAL` / `ROI_PAGE_TOTAL` / `casesPageTotal()` と、
-12 コンポーネントに引き回していた `pageTotal` 引数を削除した。
-オプションや機能が増えて溢れても番号が嘘にならない。
-なおカードの余白調整により、機能紹介資料は溢れ自体が解消して 11 ページになった。
-
-**2. 内容の鮮度。** 出荷済みなのに「ロードマップ上で順次対応予定」と書かれていた
-Square 連携・電子署名を現状に直し、会計連携（freee / マネーフォワード）・現場モバイル・
-案件ワークフロー・経営分析/ナレッジをサービス概要に追加した。
-ベタ書きだった件数（「8カテゴリ、約38機能」「機能別比較表 10 項目」＝実際は 12 項目）は
-`FEATURE_GROUPS` / `FEATURE_COMPARISON` / `PLANS` から算出するようにした。
-フッターの「更新: 」がモジュールスコープの `new Date()` で、
-**サーバープロセスが生きている限り起動日で固定**されていたのも直した。
-
-**3. 新規2本（どちらも既存のライブデータから生成、本部の差し替え不要）。**
-
-    運用スタートガイド  ← OPERATION_GUIDE_GROUPS（HelpDrawer / /guide と同じ 20 項目）
-    自動車施工・記録の用語集 ← GLOSSARY（4カテゴリ 19 語）
-
-全資料 ZIP・代理店ポータルの「常に最新の商品資料」欄・リード自動返信は
-すべてレジストリ駆動なので、追加のみで自動的に反映される（ZIP は 8 本で 4.7 秒 / 1.0MB）。
-
-**4. デザイン。** 代表判断で**ライトテーマに切り替えた**（従来は全面ダーク `#060a12`）。
-稟議・社内共有で刷られる前提の資料なので、紙の都合を優先している。
-色は globals.css のライトトークンをそのまま引く（`--text-primary #1d1d1f` /
-`--text-secondary #424247` / `--text-ink2 #555560` / `--text-muted #6e6e73` /
-`--accent-blue #0071e3` / `--accent-violet-text #8944ab` / `--accent-gold #b08d3f`）。
-**地と面の役割だけ web と逆**にした ―― web は `--bg-base #f5f5f7` の上に白いカードを置くが、
-紙では地が A4 全面を覆うため、地を白・カードを `#f5f5f7` にして、
-インクを使うのが情報の区切りだけになるようにしている。
-章扉の罫は全幅の淡いトラックの左 64pt だけをアクセント色にした2色帯。
-描画オペレータを実際に読んで、地 `#ffffff` / 罫 `#d9d9d9` / アクセント `#0071e3` /
-カード `#f5f5f7` が出ていることを確認済み。文字サイズ・余白は触っていないので
-**ページ数は8本とも変わらない**。
-
-**検証。** `resourcePdf.render.test.tsx` を追加し、8本すべてを実際にレンダリングして
-(a) 有効な PDF になること (b) カタログの `pageCount` が実物と一致すること
-(c) ガイド文言の絵文字が落ちていること（埋め込みフォントに絵文字グリフが無く豆腐になる）
-を確認する。今回のページ数のズレは、このテストが検出した。
 
 ## 2026-08-25 スプラッシュのリソース参照切れを修正し、CI の検査を拡張（PR #966 / branch claude/mobile-app-opening-animation-s2a6m3）
 
@@ -544,6 +435,141 @@ Square 連携・電子署名を現状に直し、会計連携（freee / マネ�
   マウント基準だとモーション低減の判定（最大400ms）とデコード待ちが挟まり、
   ロックアップが完成する前に退場していた。
 - 未実施: 実機の dev-client ビルドでの確認（`app.json` と依存を触るのでネイティブ再ビルドが必要）。
+
+## 2026-09-04 サイトコンテンツのアプリ側ガードが DB とずれていたのを直した
+
+- 内容: Server Action 7箇所を全部読み、**`site-content` の4アクションだけ**が
+  アプリ側 `staff` 以上・DB 側 `is_super_admin_user()` でずれていた。
+  `site_content:view` / `site_content:manage` を **super_admin 限定**にし、
+  `authorize()` を権限表と同じ動詞で見るようにした。
+- 実害: staff/admin/owner はアプリのガードを通過してから RLS に弾かれる。
+  **UPDATE と DELETE は 0 行・エラー無しなので `{ok:true}` が返っていた。**
+  本番24人が「削除しました」と表示されながら何も変わらない状態。
+  `site_content:view` は viewer を含む全ロールが持っていたので**メニューも全員に出ていた**。
+- 判断は新しくない。`20260424010000_site_content_posts_super_admin_only.sql` のヘッダに
+  「加盟店（owner/admin/staff/viewer）はDB直接操作でも変更不可」と書いてあり、
+  **アプリだけが追随していなかった**。
+- 副次: `authorize()` のローカル membership 引き（並び順もアクティブテナントの cookie も
+  見ない）を `caller.tenantId` に置き換えた。`updateTenantSettingsAction` と同じ欠陥。
+  delete と status 変更に `.select("id")` を付け、0行を `forbidden` として返すようにした。
+- 検出: `src/lib/auth/__tests__/serverActionGuards.test.ts`。**ガードを消して落ちることを
+  2つの形で確認した**（Server Action のガード削除 / 権限表を緩める）。
+  1回目は落ちず、**自分が書いた説明コメント内の `hasMinRole(...)` に反応していた**ため
+  コメントを落としてから照合するようにした（MISTAKE_LEDGER M-022）。
+- **セルフレビューで見つけた追加分（同日）**: 画面3枚（一覧・新規・編集）が
+  「ログイン済みか」しか見ておらず、**ナビから消えても URL 直打ちで開けた**。
+  開くと押せば必ず `forbidden` になるボタンとフォームが並ぶ（M-019 と同じ形を、
+  M-019 を引用した PR でやった → MISTAKE_LEDGER M-023）。
+  `requireSiteContentAdmin()` を 3 枚に通し、**1 枚から外すと落ちる検査**を追加した。
+  併せて `deleteSiteContentAction` の 0 行を、存在しない id は `not_found`、
+  RLS 拒否は `forbidden` に分けた。
+- 判明した前提: **`ROUTE_PERMISSIONS`（48画面分）を強制している場所は無い**
+  （`getRequiredPermission()` の呼び出し元 0 件、`src/middleware.ts` 無し）。
+  画面の権限判定は各 `page.tsx` 任せ。OPEN_QUESTIONS に起票。
+
+## 2026-09-04 判断待ち4件を main へマージし、本番へマイグレーションを適用した（PR #1026 / `87b71201`）
+
+- **本番適用済み**（Supabase migration `tenant_settings_owner_only_and_shared_templates`）。
+  適用前後を実測で確認した。
+
+  | 確認項目 | 適用前 | 適用後 |
+  |---|---|---|
+  | `tenants` UPDATE ポリシー | `tenants_update_owner_admin`, `tenants_update_v2` | **`tenants_update_v2` のみ**（owner 限定） |
+  | `templates` INSERT ポリシー | `templates_insert_v2`, `templates_write_owner_admin` | **`templates_insert_v2` のみ** |
+  | `templates` の CHECK 制約 | なし | **`templates_shared_is_platform_owned` / validated=true** |
+  | `templates` 行数 / shared / tenant_id NULL | 5 / 0 / 5 | **5 / 0 / 5（無傷）** |
+
+- **「適用できた」で終わらせず、本番の実テーブルで弾くことを確認した。**
+  例外を捕まえる DO ブロックで試し、行は残していない（`probe` の残骸0件、名前一覧も元のまま）。
+
+  | ケース | 結果 |
+  |---|---|
+  | テナント所有の `shared` を INSERT | **弾かれた** |
+  | 既存行を `shared` に書き換え | **弾かれた**（UPDATE 経路） |
+  | 運営が `tenant_id NULL` で `shared` を作る | 通った（期待どおり） |
+
+- 注意: この制約は **service_role にも効く**（RLS は迂回できるが CHECK 制約は迂回できない）。
+  運営が共有雛形を作るときは `tenant_id` を NULL にする必要がある。既存5件はその形。
+- **適用後にファイル名を記録バージョンへ合わせた**（`20260904000000` → `20260904123252`）。
+  `docs/operations/migrations.md` の規約。放置すると、既に適用済みの `20260904060245` より
+  前のファイルが未適用として残り、**out-of-order で `db-migrate` が止まる**
+  （このリポジトリは同じ形で過去3回止まっている）。
+- 同じ手順書には「`VALIDATE` を別ファイルにする」ともあり、**こちらは満たしていない**。
+  適用済みなので分割せず、逸脱の理由をファイルのヘッダに書いた（MISTAKE_LEDGER M-021）。
+
+## 2026-09-04 判断待ちだった4件を確定し、調査中に見つけた穴2つも塞いだ
+
+- 内容: 代表判断4件を実装した。
+  - **通知は店舗宛（現状維持）** — コードは変えず、分類コメントを実態に合わせた。
+  - **テナント設定は owner のみ** — DB の `tenants_update_owner_admin` を落とし、
+    アプリ側（`updateTenantSettingsAction` / `admin/settings/defaults` PUT）も owner 要求に。
+  - **共有テンプレートはプラットフォーム運営のみ** — `CHECK (scope <> 'shared' OR tenant_id IS NULL)`。
+  - **顧客・マーケット車両の削除は admin 以上** — `customers:delete` / `market:delete` を
+    語彙に追加（ロール下限ではなく動詞にする。`vehicles:delete` が先例）。作成・編集は staff のまま。
+  - **ロゴ・社印・請求タイミングも owner に揃えた** — どちらも service-role 書き込みで
+    RLS が効かないため、アプリのガードが唯一の境界。
+- **調査中に見つけた穴（記録に無かったもの）:**
+  - `updateTenantSettingsAction`（設定画面の保存）に**ロール判定が1つも無かった**。
+    RLS 任せで、弾かれても `.update()` は 0 行・エラー無しを返すため、staff の保存が
+    **何も変わらないのに成功扱い**だった。owner 判定を足し、あわせて2経路とも
+    `.select("id")` で**0行更新をエラーとして返す**ようにした。
+  - 共有テンプレートの穴は INSERT だけでなく **UPDATE にもあった**。
+    `templates_update_v2` は WITH CHECK が無く USING も `scope` を見ないので、
+    既存行を `scope='shared'` に書き換えられた。制約1本で両方塞いだ。
+- **`/code-review` で自分の誤りが6件出て、すべて直した**（MISTAKE_LEDGER M-016〜M-018）。
+  CI の lint で落ちるマイグレーションの書き方 / 画面の出し分け4箇所の直し忘れ /
+  `getTenantId()` が別テナントを返しうる件 / 通知の分類コメントが実態と違う件 /
+  画像を車両行より先に消していた件 / 一覧ページの削除が 404 を叩いていた件。
+- 検証: 一時テーブルで制約の挙動を5ケース確認（テナントの shared 作成＝弾く／
+  既存行の shared 書き換え＝弾く／運営の shared 作成＝通す／既存5件と同じ形＝通す）。
+  `npm run lint:migrations` OK / `npm run check:migrations` 再生OK（既知9件のみ、増減なし）。
+- 実測で分かったこと: 本番の `templates` 5件は `scope='tenant'` だが `tenant_id` は NULL で、
+  **共有雛形は既に `tenant_id IS NULL` で実現されていた**（`scope` 列が実態を表していない）。
+  `purchase_orders` は0件で、発注機能は本番未使用。
+
+## 2026-09-04 認可テーブルの二重化を解消（複数形 insurer_tenant_accesses と全組み合わせ自動付与トリガを削除）
+
+- 背景: 保険会社のテナント閲覧許可に、名前がほぼ同じ2つの表が並存していた。
+  正は `insurer_tenant_access`（単数形）で、認可の実体 `insurer_accessible_tenant_ids()`・
+  検索3 RPC・API 4本がすべてこれを読む。一方 `insurer_tenant_accesses`（複数形）は
+  **アプリコードからの参照ゼロ**、`supabase/migrations/` にも定義が無い本番のみのドリフトだった。
+- 危険だった点: トリガ `trg_seed_all_tenant_accesses_for_new_insurer` /
+  `trg_seed_all_insurer_accesses_for_new_tenant` が、保険会社かテナントが1件増えるたびに
+  **全保険会社 × 全テナント**の行を `is_active=true` で複数形へ投入していた。削除時点で
+  **2保険会社 × 24テナント = 48行、全件有効**。読むコードが無いため実害は出ていなかったが、
+  **複数形を1行でも参照した瞬間に、両保険会社が実店舗24社の証明書を見られる**状態だった。
+- 内容: `20260904060245_drop_insurer_tenant_accesses_and_autograt_triggers.sql` を追加し、
+  トリガ2本 → 関数2本 → 複数形テーブルの順に削除して本番へ適用。あわせて生成物
+  （`src/types/db.generated.ts`・`scripts/schema.snapshot.json`）から該当定義を除去した。
+- 検証: 削除後に複数形の不在・トリガ0件・関数0件を確認し、**単数形は2行のまま無傷**、
+  `insurer_accessible_tenant_ids()` がデモ保険会社に対して `Ledra Motors（デモ）` を返し、
+  東京海上日動に対しては0件（前日の無効化が維持されている）ことを実際に呼んで確認した。
+  `npx tsc --noEmit` 出力なし、`npm run check:schema` OK、`npx vitest run` 522 files / 5,310 件通過。
+
+## 2026-09-03 保険会社ポータルの検索を本番で復旧し、配布 PDF のキャプチャ3枚が揃った（14ページ）
+
+- 背景: `insurer_accessible_tenant_ids(uuid)` は SECURITY DEFINER で `search_path=''` が
+  設定されている（`20260404000000_fix_security_definer_search_path.sql`）のに、関数本体は
+  `FROM insurer_tenant_access` とスキーマ修飾なしのままだった。`search_path` が空だと
+  非修飾の識別子は解決できないため、**この関数は呼ばれるたびに必ず落ちていた**。
+- 影響: この関数を呼ぶ保険会社ポータルの検索3経路（`insurer_search_certificates` /
+  `insurer_search_stores` / `insurer_search_vehicles`）が **2026-04-04 以降 HTTP 500** を
+  返していた。実際にユーザーが影響を受けたかは【要確認】。
+- 内容: `20260903123728_fix_insurer_accessible_tenant_ids_search_path.sql` を追加し、
+  本体の参照を `public.insurer_tenant_access` に修飾して本番へ適用。シグネチャ・返り値・
+  volatility・SECURITY DEFINER・`search_path=''` はすべて現状維持で、**挙動は変えず
+  壊れた参照だけを直した**。EXECUTE 権限は `postgres` / `service_role` のみで
+  `anon` / `authenticated` には無く、呼び出し元3本はいずれも `auth.uid()` から自分の
+  insurer_id を導出するため、**この修正で可視範囲は広がらない**（適用前に確認済み）。
+- これにより `public/screenshots/insurer/search.png` が撮影でき、**PDF が参照する3枚が揃った**。
+  サービス概要 PDF を実レンダリングして **13 → 14 ページ**になることを確認した。
+- **デモ保険会社にデモ施工店の閲覧許可を付与した。** それまでデモ保険会社は
+  `insurer_tenant_access` に行を1件も持たず、ログインできても検索は常に0件だった
+  （`scripts/setup-demo-insurer.ts` が閲覧許可を付与していなかった）。行を1件追加し、
+  同じ upsert をシードスクリプトにも入れて再現可能にした。これでデモ保険会社に見えるのは
+  デモ施工店だけ（証明書18件、すべて架空データ）。保険会社スライドは **RESULTS 18 の
+  検索結果が並んだ状態**で撮影している。実テナントのデータは写らない。
+- 検証: `npx tsc --noEmit` 通過、`npx vitest run` 全 **522 ファイル / 5,310 件**通過。
 
 ## 2026-09-03 AI を呼ぶ8ハンドラのレート制限漏れを塞いだ
 
@@ -771,6 +797,24 @@ Square 連携・電子署名を現状に直し、会計連携（freee / マネ�
 - 判断待ち: `tenants` の UPDATE（DB は owner のみ / アプリは admin 以上を要求）と、
   `templates` の scope='shared' 作成可否。いずれも矛盾する2つの正があるため
   OPEN_QUESTIONS.md に起票した。
+
+## 2026-08-31 配布 PDF 用の画面キャプチャを撮影（3枚中2枚。サービス概要 11→13ページ）
+
+- 背景: `.gitignore` の除外解除（PR #982）で3枚だけコミット可能にしたが、実物のキャプチャが
+  リポジトリに無いため、サービス概要 PDF は該当スライドがページごと消えた 11 ページのままだった。
+- 内容: デモテナント `Ledra Motors（デモ）` に対して撮影し、`public/screenshots/admin/certs-new.png`
+  と `public/screenshots/admin/customers-detail.png` の2枚をコミット。サービス概要 PDF を実際に
+  レンダリングして 11 → **13 ページ**になることを確認した（残り1ページ分は下記の未撮影1枚）。
+- 撮影は本番ビルド（`next build` + `next start`）に対して実施した。`next dev` では画面右下に
+  Next.js の開発オーバーレイ（「1 Issue」バッジ）が写り込み、配布物として不適切だったため。
+- 撮影スクリプトの不具合を1件修正: `admin/certs-new.png` と `admin/vehicles-new.png` は
+  「`新規` を含むリンクの先頭」をクリックして撮っていたため、シェルにある **`新規登録`
+  （施工店アカウント登録）リンク**に一致し、両方とも新規登録ページを撮っていた。
+  つまり PDF は「証明書の新規発行」というキャプション付きで**サインアップ画面**を載せる状態だった。
+  `/admin/certificates/new` `/admin/vehicles/new` へ直接遷移する形に変更（`scripts/capture-screenshots.ts`）。
+- **未撮影1枚**: `public/screenshots/insurer/search.png` は撮影できていない。保険会社ポータルの
+  証明書検索が本番 DB のバグで HTTP 500 になるため（`OPEN_QUESTIONS.md` 参照）。
+- 検証: `npx tsc --noEmit` 通過、`npx vitest run` 全 511 ファイル / 5251 件通過。
 
 ## 2026-08-31 通知アイコンが実データの型名と一致しておらず全件が既定アイコンだった件を修正（IMP-029）
 
@@ -1309,6 +1353,95 @@ Square 連携・電子署名を現状に直し、会計連携（freee / マネ�
 - 検証: `vitest run src/app/admin/__tests__/BillingFetchGuard.test.tsx`（4件）green。
   `tsc --noEmit` / `eslint` は変更ファイルにエラーなし。
 - 経緯: DECISION_LOG 2026-08-30 参照。
+
+## 2026-08-27 配布資料のフォント崩れ・ハイフン混入・段組の破綻を直す
+
+代表から「ただ単に横にするだけならだれでもできる。バランス、見やすさを重視して
+ないと意味がない」「フォントが崩れてる。これは初期のころから散々言ってるやつ」。
+スクリーンショットで指摘された3件はいずれも実在の不具合だった。
+
+**1. フォント崩れ（サブセットにグリフが無い）。**
+`public/fonts/NotoSansJP-*.ttf` は日本語サブセット（7,466 グリフ）で記号の収録が薄い。
+全8資料の描画文字列 1,633 本を機械的に走査したところ、**8文字が非収録**だった。
+
+    ① ② ③  U+2460-2462   service-overview（「摩擦」3枚のカード見出し）
+    ✓       U+2713        pricing-overview（機能別比較表の対応印が全部豆腐）
+    →       U+2192        features / security / operation-guide / glossary
+    ※       U+203B        case-studies / roi-template
+    ₂       U+2082        glossary（SiO₂）
+    μ       U+03BC        glossary（膜厚 μm）
+
+**「初期から言われていた」のに直らなかったのは、PDF を開かない限り見えない
+不具合だったから。**対策は2層にした。(a) `pdfSafe()`（旧 `stripEmoji`）に置換表
+`GLYPH_FALLBACKS` を追加。`FEATURE_COMPARISON` や `GLOSSARY` は web と共有していて
+ブラウザでは正常に出るので、元データは触らず PDF に入る手前でだけ置き換える
+（`μ`→`µ` MICRO SIGN は収録済みで見た目が同じ）。(b) **グリフ網羅テスト**を追加し、
+react-pdf の要素ツリーを歩いて実際に描く文字を全部集め、非収録が1文字でも残れば落とす。
+
+**2. 本文にハイフンが生えていた。** react-pdf の既定のハイフネーションが日本語にも
+効き、「QRコードで-顧客に即共有」のように本文中へハイフンを挿していた。
+`Font.registerHyphenationCallback((w) => [w])` で単語を割らない実装に差し替え。
+
+**3. 段組の破綻。** 左列・右列に全カードを積む作りだったため列ごとに独立して
+改ページされ、**右列の最後の1枚だけが次ページに落ちて左半分が丸ごと空いて**いた。
+A4 横で天地が 34% 狭くなり顕在化した。`CardGrid` を追加してカードを2枚1組の行に並べ、
+行単位で `wrap={false}`。改ページは必ず行の境で起き、左右の高さも揃う。
+`i % 2` のパリティ分割は削除。
+
+検証: marketing 73 件パス、全体 452 files / 4,293 tests パス、tsc 0 / eslint 0。
+ページ数は8本とも変化なし。
+
+## 2026-08-27 HP のダウンロード資料を刷新（6本 → 8本 / 自前ページ採番を廃止）
+
+`/resources` と代理店ポータルで配っている提供資料を、内容・本数・デザインの3点で更新した。
+
+**1. 自前でページ番号を刷るのをやめた（実バグの修正）。**
+各ページが `pageLabel="3 / 5"` を自分で持っていたが、中身が A4 に収まらないと
+react-pdf が自動で改ページするため、**実物6ページの資料が「5」と刷っていた**。
+
+    料金プラン詳細  宣言 5 ページ / 実測 6 ページ
+    ROI テンプレート 宣言 7 ページ / 実測 8 ページ
+    機能紹介資料    宣言 10 ページ / 実測 12 ページ
+
+採番を react-pdf の `render={({ pageNumber, totalPages }) => ...}` に委ね、
+`SECURITY_PAGE_TOTAL` / `ROI_PAGE_TOTAL` / `casesPageTotal()` と、
+12 コンポーネントに引き回していた `pageTotal` 引数を削除した。
+オプションや機能が増えて溢れても番号が嘘にならない。
+なおカードの余白調整により、機能紹介資料は溢れ自体が解消して 11 ページになった。
+
+**2. 内容の鮮度。** 出荷済みなのに「ロードマップ上で順次対応予定」と書かれていた
+Square 連携・電子署名を現状に直し、会計連携（freee / マネーフォワード）・現場モバイル・
+案件ワークフロー・経営分析/ナレッジをサービス概要に追加した。
+ベタ書きだった件数（「8カテゴリ、約38機能」「機能別比較表 10 項目」＝実際は 12 項目）は
+`FEATURE_GROUPS` / `FEATURE_COMPARISON` / `PLANS` から算出するようにした。
+フッターの「更新: 」がモジュールスコープの `new Date()` で、
+**サーバープロセスが生きている限り起動日で固定**されていたのも直した。
+
+**3. 新規2本（どちらも既存のライブデータから生成、本部の差し替え不要）。**
+
+    運用スタートガイド  ← OPERATION_GUIDE_GROUPS（HelpDrawer / /guide と同じ 20 項目）
+    自動車施工・記録の用語集 ← GLOSSARY（4カテゴリ 19 語）
+
+全資料 ZIP・代理店ポータルの「常に最新の商品資料」欄・リード自動返信は
+すべてレジストリ駆動なので、追加のみで自動的に反映される（ZIP は 8 本で 4.7 秒 / 1.0MB）。
+
+**4. デザイン。** 代表判断で**ライトテーマに切り替えた**（従来は全面ダーク `#060a12`）。
+稟議・社内共有で刷られる前提の資料なので、紙の都合を優先している。
+色は globals.css のライトトークンをそのまま引く（`--text-primary #1d1d1f` /
+`--text-secondary #424247` / `--text-ink2 #555560` / `--text-muted #6e6e73` /
+`--accent-blue #0071e3` / `--accent-violet-text #8944ab` / `--accent-gold #b08d3f`）。
+**地と面の役割だけ web と逆**にした ―― web は `--bg-base #f5f5f7` の上に白いカードを置くが、
+紙では地が A4 全面を覆うため、地を白・カードを `#f5f5f7` にして、
+インクを使うのが情報の区切りだけになるようにしている。
+章扉の罫は全幅の淡いトラックの左 64pt だけをアクセント色にした2色帯。
+描画オペレータを実際に読んで、地 `#ffffff` / 罫 `#d9d9d9` / アクセント `#0071e3` /
+カード `#f5f5f7` が出ていることを確認済み。文字サイズ・余白は触っていないので
+**ページ数は8本とも変わらない**。
+
+**検証。** `resourcePdf.render.test.tsx` を追加し、8本すべてを実際にレンダリングして
+(a) 有効な PDF になること (b) カタログの `pageCount` が実物と一致すること
+(c) ガイド文言の絵文字が落ちていること（埋め込みフォントに絵文字グリフが無く豆腐になる）
+を確認する。今回のページ数のズレは、このテストが検出した。
 
 ## 2026-08-30 IMP-031（#946）の code-review 指摘を修正。予約絞り込みの常時0件になる選択肢混入・型の非対称を解消
 

@@ -37,6 +37,29 @@ const allowlist = new Set(
     : [],
 );
 
+
+/**
+ * マイグレーションが作るテーブル / ビューの一覧。
+ *
+ * 本番にしか無いオブジェクト（repo に CREATE が無い「ドリフト」）を
+ * `DROP ... IF EXISTS ... ON <table>` で触ると、**PostgreSQL 16 では NOTICE で
+ * skip されるが 15 では relation does not exist で落ちる。**
+ * 手元の再生は 16、Supabase は 15 なので、再生では一度も再現しない。
+ */
+const CREATED_RELATIONS = (() => {
+  const set = new Set();
+  for (const f of fs.readdirSync(MIGRATIONS_DIR).filter((x) => x.endsWith(".sql"))) {
+    // コメントは必ず落とす。このリポジトリのマイグレーションは経緯を日本語で
+    // 長く書くので、説明文中の `CREATE TABLE line_link_tokens` のような字面が
+    // 「作られている」と誤認されると、下の drop-if-exists 検査が素通りする。
+    const sql = stripComments(fs.readFileSync(path.join(MIGRATIONS_DIR, f), "utf8"));
+    const re = /CREATE\s+(?:OR\s+REPLACE\s+)?(?:TABLE|VIEW|MATERIALIZED\s+VIEW)\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:public\.)?"?([a-z_][a-z0-9_]*)"?/gi;
+    let m;
+    while ((m = re.exec(sql)) !== null) set.add(m[1].toLowerCase());
+  }
+  return set;
+})();
+
 /**
  * Each rule receives the SQL text (with `--`-style comments stripped) and
  * returns an array of human-readable violation messages.
@@ -205,6 +228,53 @@ const RULES = [
       return violations;
     },
   },
+  {
+    id: "concurrently-in-multi-statement-file",
+    description:
+      "A file using CONCURRENTLY must contain exactly ONE statement (Supabase sends multi-statement migrations as a pipeline, and CONCURRENTLY cannot run in one).",
+    check(sql) {
+      // 2026-09-04 に実物のプレビュー DB で判明した制約。ファイル名順・1パスで流す
+      // Supabase のブランチ機能は、1ファイルに複数文があるとパイプラインで送るため
+      //   ERROR: CREATE INDEX CONCURRENTLY cannot be executed within a pipeline (SQLSTATE 25001)
+      // で 2 文目以降が落ちる。手元の psql -f では再現しないので、静的に止める。
+      if (!/\bCONCURRENTLY\b/i.test(sql)) return [];
+      // `;` は文字列リテラルや $$ ブロックの中にも出る。素で split すると
+      // 1文のファイルが「2文ある」と誤検出され、しかも直し方が存在しない
+      // 指示（分けろ）が出る。数える前に中身を落とす。
+      const countable = sql
+        .replace(/\$([a-zA-Z_]\w*)?\$[\s\S]*?\$\1?\$/g, " ")
+        .replace(/'(?:[^']|'')*'/g, " ");
+      const statements = countable.split(";").filter((s) => s.trim());
+      if (statements.length <= 1) return [];
+      return [
+        `CONCURRENTLY を含むのに ${statements.length} 文あります — CONCURRENTLY の文だけを別ファイルに分けてください（Supabase はパイプラインで送るため 2 文目以降が SQLSTATE 25001 で落ちます）。`,
+      ];
+    },
+  },
+  {
+    id: "drop-if-exists-on-uncreated-relation",
+    description:
+      "DROP POLICY/TRIGGER IF EXISTS on a relation that no migration creates fails on PostgreSQL 15 (Supabase) even though PostgreSQL 16 skips it silently. Guard it with to_regclass.",
+    check(sql) {
+      const violations = [];
+      // ON の後ろは schema.table か table。public 以外のスキーマ（storage.objects 等）は対象外。
+      const re =
+        /DROP\s+(POLICY|TRIGGER)\s+IF\s+EXISTS\s+[^;]*?\sON\s+(?:"?([a-z_][a-z0-9_]*)"?\s*\.\s*)?"?([a-z_][a-z0-9_]*)"?/gi;
+      let m;
+      while ((m = re.exec(sql)) !== null) {
+        const schema = (m[2] || "public").toLowerCase();
+        const rel = m[3].toLowerCase();
+        if (schema !== "public") continue;
+        if (CREATED_RELATIONS.has(rel)) continue;
+        // 同じファイル内で to_regclass ガードしていれば OK
+        if (new RegExp(`to_regclass\\(\\s*'(?:public\\.)?${rel}'`, "i").test(sql)) continue;
+        violations.push(
+          `${m[0].trim()} — ${rel} を作るマイグレーションが無い（本番にしか無いオブジェクト）。PostgreSQL 15 では relation does not exist で落ちるので、to_regclass で存在を見てから実行してください。`,
+        );
+      }
+      return violations;
+    },
+  }
 ];
 
 function stripComments(sql) {
@@ -259,6 +329,105 @@ for (const [version, group] of byVersion) {
   console.error(
     `   [duplicate-version] rename the newer file to a unique, later timestamp — supabase db push keys on the version prefix and will skip/refuse the collision.`,
   );
+}
+
+// Structural check (runs on ALL files): a migration ADDED by this branch must sort
+// AFTER every migration that already exists on the base branch.
+//
+// なぜ: 本番の `supabase db push` は、本番の schema_migrations の最新より**古い**
+// バージョンのファイルが未適用で残っていると out-of-order で停止し、それ以降の
+// マイグレーションが本番へ一切届かなくなる（.github/workflows/db-migrate.yml の
+// 不変条件2）。2026-08-02〜08-15 に13日間これで止まり、証明書発行が全件停止した。
+// OPEN_QUESTIONS によればこの形は5回目である。
+//
+// base ブランチの最新バージョン >= 本番の最新バージョン なので、
+// 「base に在るどのファイルよりも後」であれば out-of-order にならない（十分条件）。
+// 本番へ問い合わせずに手元と CI だけで判定できるのが要点。
+//
+// base ref は `MIGRATIONS_BASE_REF` で名指しできる（CI が渡す。PR の base が
+// staging のときも正しく比較するため）。無ければ origin/main → main の順に試す。
+//
+// **CI で base ref を引けなかったら落とす。** 黙って見送ると「検査したつもりで
+// 何も見ていない」状態になり、この検査が防ぐはずの事故がそのまま緑で通る。
+// 実際 actions/checkout は既定 depth 1 で base ref を持たないため、最初の実装は
+// CI で一度も動いていなかった（MISTAKE_LEDGER M-028）。
+//
+// ただし**そもそも git リポジトリでない場所**（このスクリプトの単体テストは
+// 一時ディレクトリへコピーして走らせる）では比較対象が存在しないので、
+// CI であっても黙って見送る。「repo なのに base ref が無い」＝設定ミスだけを落とす。
+{
+  const { execFileSync } = require("child_process");
+  const repoRoot = path.join(__dirname, "..");
+  const git = (args) =>
+    execFileSync("git", args, {
+      cwd: repoRoot,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+  let insideGitRepo = false;
+  try {
+    insideGitRepo = git(["rev-parse", "--is-inside-work-tree"]).trim() === "true";
+  } catch {
+    /* not a git work tree (unit-test sandbox 等) */
+  }
+  const candidates = [process.env.MIGRATIONS_BASE_REF, "origin/main", "main"].filter(Boolean);
+  let baseFiles = null;
+  let baseRef = null;
+  if (insideGitRepo) {
+    for (const ref of candidates) {
+      try {
+        baseFiles = git(["ls-tree", "--name-only", `${ref}:supabase/migrations`])
+          .split("\n")
+          .map((l) => l.trim())
+          .filter((l) => l.endsWith(".sql"));
+        baseRef = ref;
+        break;
+      } catch {
+        /* ref not available in this checkout */
+      }
+    }
+  }
+  if (baseFiles === null && !insideGitRepo) {
+    console.log(
+      "[lint-migrations] git リポジトリではないので out-of-order 検査は見送る",
+    );
+  } else if (baseFiles === null && process.env.CI) {
+    hasErrors = true;
+    console.error(
+      `\n❌ [migration-version-before-base-head] base ブランチ（${candidates.join(" / ")}）を引けませんでした。`,
+    );
+    console.error(
+      "     → この検査が動かないと、本番の db push を止めるマイグレーションが緑で通ります。",
+    );
+    console.error(
+      "     → CI では base ref を取得してください（ci.yml の『base ブランチを取る』ステップ / MIGRATIONS_BASE_REF）。",
+    );
+  } else if (baseFiles === null) {
+    console.log(
+      "[lint-migrations] base ブランチを引けないので out-of-order 検査は見送る（手元のみ。CI では落とす）",
+    );
+  } else if (baseFiles.length > 0) {
+    const baseSet = new Set(baseFiles);
+    const baseMax = baseFiles.map(versionOf).sort().at(-1);
+    const added = files.filter((f) => !baseSet.has(f));
+    for (const file of added) {
+      if (versionOf(file) > baseMax) continue;
+      hasErrors = true;
+      console.error(`\n❌ ${file}`);
+      console.error(
+        `   [migration-version-before-base-head] このブランチが追加したファイルのバージョン ${versionOf(file)} が、base（${baseRef}）に既にある最新 ${baseMax} より前です。`,
+      );
+      console.error(
+        `     → 本番の \`supabase db push\` が out-of-order で停止し、以降のマイグレーションが本番へ届かなくなります。`,
+      );
+      console.error(
+        `     → 本番へ当てたい変更なら ${baseMax} より後のバージョンへ改名してください。`,
+      );
+      console.error(
+        `     → 再生（空 DB）を通すためだけの補いなら、新しいファイルを作らず**適用済みファイルの末尾**へ足してください（本番では再適用されないので影響がありません）。`,
+      );
+    }
+  }
 }
 
 for (const file of files) {
