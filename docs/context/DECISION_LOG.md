@@ -139,8 +139,12 @@
    - **【追記 同日・セルフレビュー】画面3枚（一覧・新規・編集）が「ログイン済みか」しか
      見ていなかったので、`requireSiteContentAdmin()` を通すようにした。** ナビから消しても
      URL 直打ちでは開け、押せば必ず `forbidden` になるボタンだけが並んでいた。
-     `ROUTE_PERMISSIONS` は誰も強制していない（`getRequiredPermission()` の呼び出し元 0 件、
-     middleware 無し）ため、画面側は各 `page.tsx` が自分で見るしかない。MISTAKE_LEDGER M-023。
+     **【2026-09-05 訂正】**ここで「`ROUTE_PERMISSIONS` は誰も強制していない」と書いたのは
+     誤り。`AdminRouteGuard` が `requiredPermissionForPath()` 経由で読んでおり、
+     権限が無ければ画面をエラーカードに差し替える（MISTAKE_LEDGER M-031）。
+     サーバ側ガードを足した判断自体は変えない —— クライアント判定は
+     `/api/admin/me` の応答待ちで走るため、**Server Component の取得はその前に完了しており**、
+     権限の無い相手にもクエリが実行されて結果が RSC ペイロードに載るため。MISTAKE_LEDGER M-023。
    - **【追記】`deleteSiteContentAction` の 0 行を一律 `forbidden` にしていたのを、
      存在しない id は `not_found` に分けた。** 他の3アクションと揃えた。
 6. 捨てた選択肢:

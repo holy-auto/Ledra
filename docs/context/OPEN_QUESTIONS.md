@@ -74,27 +74,49 @@
 - 影響範囲: (1) は車両詳細→証明書プリフィル経路が 500。(2) は代理店(agent)の Stripe Connect オンボーディング webhook が 500。いずれも低頻度だが該当機能は壊れている。
 - 次のアクション: 各参照の意図を確認し A/B を判断。template_name はテンプレート名の表示用か（=JOIN で足りる可能性大）、agents の Stripe Connect は代理店にも Connect を持たせる設計だったか（=列追加）を確定する。
 - 起票日: 2026-08-02
-## `ROUTE_PERMISSIONS`（画面と権限の対応表）を強制している場所が無い（2026-09-04）
+## 画面の権限判定がクライアント側にしか無い（2026-09-04 起票 → 2026-09-05 訂正）
 
-`src/lib/auth/permissions.ts` の `ROUTE_PERMISSIONS` は 48 画面分あり、
-`/admin/xxx` ごとに必要な `Permission` を宣言している。読み出す
-`getRequiredPermission()` も同じファイルにある。
+**2026-09-04 に書いた「`ROUTE_PERMISSIONS` を強制している場所が無い」は誤りだった。**
+実際の関数名は `getRequiredPermission` ではなく **`requiredPermissionForPath`** で、
+`src/app/admin/AdminRouteGuard.tsx` が呼んでいる。存在しない名前で grep して
+0 件を「誰も読んでいない」と読んだ（MISTAKE_LEDGER M-031）。
 
-**その `getRequiredPermission()` の呼び出し元は 0 件で、`src/middleware.ts` は存在しない。**
-この表は実質「ナビの出し分けの参考値」にしかなっていない（ナビは
-`adminNav.tsx` / `catalog.ts` が各項目に持つ `requiredPermission` を独立に見ている）。
+正しい状態は次のとおり。
 
-- 結果、**画面の権限判定は各 `page.tsx` の書き方次第**になっている。
-  `requirePermission` を呼ぶ admin 配下の page は 2 枚だけだった
-  （`report-revenue`、`vehicles/[id]`）。PR #1030 でサイトコンテンツの 3 枚を追加。
-- 権限の穴かというと違う。書き込みは API ルート（`API_ROUTE_PERMISSIONS` + テストで強制）と
-  RLS が止める。**問題は「開けるが何もできない画面」が作れてしまうこと**
-  （MISTAKE_LEDGER M-019 / M-023）。
-- 選択肢は3つ。(a) middleware を置いて表を強制する、(b) 表を捨ててナビの宣言に一本化する、
-  (c) 現状維持で page ごとに書く。**(a) は Next.js の middleware で Supabase セッションを
-  読む必要があり、全 admin 画面の表示に1往復増える**ので、コストと効果の見積もりが要る。
-- どれを取るかは未決。【要確認】: 表に載っている画面のうち、実際にサーバ側で
-  権限を見ていないものが何枚あるかは数えていない。
+- `AdminRouteGuard` は `admin/layout.tsx` で**全 admin 画面を包んでいる**。
+  `requiredPermissionForPath(pathname)` で必要権限を引き、`useCurrentRole().can()`
+  （`/api/admin/me` のロール + `hasPermission`）が false ならエラーカードに差し替える。
+  **表は効いている。** ただし `"use client"` なので**判定はブラウザ側**。
+- サーバ側には強制が無い（`src/middleware.ts` は実在しない）。各 `page.tsx` 任せ。
+
+2026-09-05 に全 admin 画面（150枚）を数えた結果:
+
+| | サーバ側でも判定 | クライアントのみ / 判定なし |
+|---|---:|---:|
+| 表に載っている | 9 | 69 |
+| 表の外 | 17 | 55 |
+
+- **どの画面レベルの権限判定も無いのが 55 枚**（表外かつサーバ側も無し）。
+  ただし**無防備という意味ではない**。データの守りは RLS で、画面の判定はその手前の
+  一枚に過ぎない。「表に無い＝無防備」は誤りで、実際に表の外でもサーバ側で
+  判定している画面が 17 枚ある（`/admin/report-revenue` など）。
+- 表の 48 エントリのうち **4件は行き先の画面が存在しない**
+  （`/admin/templates` `/admin/registers` `/admin/payments` と、index が無い
+  `/admin/parts-install`）。特に `/admin/templates` は実体が
+  `document-templates` / `workflow-templates` / `inspection-templates` の3枚に
+  分かれており、**どれも表に載っていないので前方一致もしない＝権限判定が無い**。
+
+**未決**: どこまでサーバ側に寄せるか。選択肢は3つ。
+
+- (a) middleware を置いて表を強制する — 全 admin 画面の表示に
+  セッション読み取りが1往復増える。効果は「クライアント判定の前に止まる」こと。
+- (b) 画面ごとにサーバ側ガードを書く（`/admin/site-content` で採った形）。
+  55枚ぶんの手数がかかるが、必要な画面だけ選べる。
+- (c) 現状維持 —— クライアント判定 + RLS で足りているとみなす。
+
+**判断材料として要るもの**【要確認】: 55枚のうち、Server Component の時点で
+**RLS だけでは絞られない機微なデータ**を取得しているものが何枚あるか。
+そこが (c) で許容できるかの分かれ目になる。数えていない。
 
 ## マイグレーション外で本番スキーマが変更された経路が不明（2026-09-04）
 
