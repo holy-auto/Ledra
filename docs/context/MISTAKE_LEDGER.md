@@ -165,6 +165,32 @@ update に `.select("ai_summary, good_points, caution_points, tags, updated_at")
 - 一般化その2: **その突き合わせは、両側を1回のテストで走らせて確かめる。**
   片側だけを見る検査は、表記の違いを永久に見逃す
 
+**棚卸し（2026-09-06、同日中に実施）**: 「既存の構造テストにも同じ穴が無いか」を
+残していたので、ソースを読む検査 **14本すべて**を見た。同じ形が **3本**あった。
+いずれも**実害のある呼び出しは 0 件**（latent）だったが、検出器は素通りさせる状態だった。
+
+| 検査 | 何を見ていたか | 素通りする形 |
+|---|---|---|
+| `aiRouteRateLimit` | `/checkRateLimit\s*\(/` | 呼んで**結果を捨てる**。`checkRateLimit()` は Response か null を返すだけで、return しなければ何も止まらない |
+| `activationGates` | 生ソースへの `src.includes(...)` | **コメントの言及**と **import 行**だけで合格。Gate の判定を読まなくても合格 |
+| `serverActionGuards` | 呼び出しの存在 | `const ok = requirePermission(...)` と**結果を捨てる**形 |
+
+3本とも、**main の検出器では変異が緑のまま通ることを実測してから**締めた
+（AI ルートのレート制限を丸ごと外す／発行ゲートの判定を無視する／認可の結果を捨てる —— 
+いずれも旧検出器では合格）。締めた後は3本とも赤になる。
+述語を値で動かす「検出器そのものの性質」テストも各検査に足した。
+
+残り11本は同じ形ではなかった。理由も残す ——
+`orderCertificates` / `tenantLink` / `piiShield` は**列名の配列を許可リストと `toEqual`**
+で突き合わせており、読み取れなければ throw する（コメントでは満たせない）。
+`deepLinkRoutes` / `mobileIcons` / `errorMessageField` / `voidCertificate` /
+`resourcePdf` は値または実行結果で検査している。`apiRoutePermissions` は
+**否定形まで要求する `enforces()` を既に持っていた** —— 今回の3本はここに揃えた。
+`permissions` の消費側ピンは私が同日に書いたもので、生ソース照合だったので同じく直した。
+
+**この棚卸しで型 G の再発防止は「仕組みあり」になった**: `stripComments()` を
+`sourceScan.ts` に集約し（2ファイルに複製されていた）、構造テストは全部これを通す。
+
 ---
 
 ## M-032 列が「ある」ことを「中身が入る」と読み、深刻度を過大に報告した（2026-09-06）

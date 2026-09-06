@@ -34,7 +34,29 @@ const API_ROOT = join(SRC, "app", "api");
 
 /** Anthropic クライアントを実際に構築している = このモジュールはモデルを叩く。 */
 const CALLS_MODEL = /getAnthropicClient\s*\(/;
-const RATE_LIMITED = /checkRateLimit\s*\(/;
+/**
+ * `checkRateLimit()` の結果で**弾いている**か。
+ *
+ * 呼び出しの存在だけを見ていた（`/checkRateLimit\s*\(/`）が、それでは
+ * **呼んで結果を捨てる書き方でも緑になる**。`checkRateLimit()` は 429/503 の Response か
+ * `null` を返すだけで、**呼び出し側が return しなければ何も止まらない**。
+ * 同じ穴を `apiRoutePermissions.test.ts` は既に塞いでいたので、そこに揃えた
+ * （MISTAKE_LEDGER M-033・型 G の棚卸しで発見。実害のある呼び出しは 0 件だった）。
+ *
+ * 呼び出しが複数あるハンドラ（identity/ocr は IP とテナントで2回）もあるので、
+ * **すべての呼び出し**が弾いていることを要求する。
+ *
+ * 同名の関数が2つある。どちらの形も受ける。
+ *   `@/lib/api/rateLimit` → `Response | null`      : `if (limited) return limited;`
+ *   `@/lib/rateLimit`     → `{ allowed, ... }`      : `if (!rl.allowed) { return ... }`
+ */
+function rateLimited(chunk: string): boolean {
+  const calls = [...chunk.matchAll(/(?:const|let|var)\s+(\w+)\s*=\s*await\s+checkRateLimit\s*\(/g)];
+  if (!calls.length) return false;
+  return calls.every(([, v]) =>
+    new RegExp(String.raw`\breturn\s+${v}\b|\bif\s*\(\s*!?\s*${v}\b[\s\S]{0,200}?\breturn\b`).test(chunk),
+  );
+}
 
 /**
  * 上の `CALLS_MODEL` は「`getAnthropicClient()` が課金の出る外部推論の唯一の入口である」
@@ -193,12 +215,12 @@ for (const file of walkSource(API_ROOT, (f) => f.endsWith("route.ts"))) {
 
   const name = routeName(file);
   for (const [method, chunk] of handlerChunks(src)) {
-    if (callsAi(chunk)) units.push({ id: `${name} [${method}]`, limited: RATE_LIMITED.test(chunk) });
+    if (callsAi(chunk)) units.push({ id: `${name} [${method}]`, limited: rateLimited(chunk) });
   }
   // `export const POST = withX(handler)` の実体はここに落ちる。見落とすと消える。
   const top = moduleChunk(src);
   if (top && callsAi(top)) {
-    units.push({ id: `${name} [module]`, limited: RATE_LIMITED.test(top) });
+    units.push({ id: `${name} [module]`, limited: rateLimited(top) });
   }
 }
 
@@ -265,5 +287,32 @@ describe("AI を呼ぶ API ハンドラのレート制限", () => {
       })
       .sort();
     expect(stale).toEqual([]);
+  });
+});
+
+describe("検出器そのものの性質", () => {
+  // 構造テストは「その語がソースにある」しか語れない。**述語を値で動かして**
+  // 素通りする形が本当に false になることを確かめる（M-033 で欠けていたのがこれ）。
+  it("結果を捨てる書き方は「制限している」と見なさない", () => {
+    expect(rateLimited('const limited = await checkRateLimit(req, "ai");')).toBe(false);
+    expect(rateLimited('const limited = await checkRateLimit(req, "ai");\nif (limited) return limited;')).toBe(true);
+  });
+
+  it("`{ allowed }` を返すもう1つの checkRateLimit の形も受ける", () => {
+    // `@/lib/rateLimit` は Response ではなく { allowed } を返す。同名の別関数。
+    expect(
+      rateLimited("const rl = await checkRateLimit(key, opts);\nif (!rl.allowed) {\n  return apiJson({}, 429);\n}"),
+    ).toBe(true);
+  });
+
+  it("呼び出しが複数あるとき、1つでも弾いていなければ false", () => {
+    // identity/ocr は IP とテナントで2回呼ぶ。片方だけ見て合格にしない。
+    const half =
+      'const a = await checkRateLimit(req, "ai");\nif (a) return a;\nconst b = await checkRateLimit(req, "ai", key);';
+    expect(rateLimited(half)).toBe(false);
+  });
+
+  it("呼んでいないものを「制限している」と言わない", () => {
+    expect(rateLimited("const x = await somethingElse(req);")).toBe(false);
   });
 });

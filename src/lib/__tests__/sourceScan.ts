@@ -7,6 +7,20 @@
 import { readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 
+/**
+ * コメントを落とす。**構造テストは必ずこれを通してから照合すること。**
+ *
+ * 検出器が説明コメントに書いた関数名へ反応し、実際のガードを消しても緑のまま —— を
+ * この repo は2回やっている（MISTAKE_LEDGER M-022、および serverActionGuards の
+ * `hasMinRole(role, "staff")` の引用）。同じ実装が2ファイルに複製されていたので集約した。
+ *
+ * ponytail: 文字列リテラル中の `//` も落とす素朴な実装。対象は本リポジトリの
+ * ソースなので実用上は足りる。誤判定が出たら TypeScript の AST に置き換える。
+ */
+export function stripComments(src: string): string {
+  return src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^[ \t]*\/\/.*$/gm, "");
+}
+
 /** ディレクトリ配下の .ts/.tsx を再帰的に集める。 */
 export function walkSource(dir: string, filter: (name: string) => boolean = isTsFile, out: string[] = []): string[] {
   for (const name of readdirSync(dir)) {

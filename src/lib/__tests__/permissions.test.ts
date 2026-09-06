@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
+import { stripComments } from "./sourceScan";
 import { join } from "node:path";
 import { hasPermission, getPermissions, requiredPermissionForPath, type Permission } from "@/lib/auth/permissions";
 import type { Role } from "@/lib/auth/roles";
@@ -267,13 +268,14 @@ describe("ROUTE_PERMISSIONS の消費側", () => {
   const LAYOUT = join(process.cwd(), "src", "app", "admin", "layout.tsx");
 
   it("AdminRouteGuard が requiredPermissionForPath を呼んでいる", () => {
-    const src = readFileSync(GUARD, "utf8");
-    expect(src).toMatch(/requiredPermissionForPath\s*\(/);
+    // コメントを落としてから見る。説明コメントに書いた関数名に反応すると、
+    // 実際の呼び出しが消えても緑のままになる（M-022 / M-033・型 G）。
+    expect(stripComments(readFileSync(GUARD, "utf8"))).toMatch(/requiredPermissionForPath\s*\(/);
   });
 
   it("その AdminRouteGuard が admin レイアウトで全画面を包んでいる", () => {
     // 呼び出し側があっても、レイアウトから外れれば効かなくなる。両方見る。
-    expect(readFileSync(LAYOUT, "utf8")).toMatch(/<AdminRouteGuard>/);
+    expect(stripComments(readFileSync(LAYOUT, "utf8"))).toMatch(/<AdminRouteGuard>/);
   });
 
   it("判定はクライアント側である（サーバ側の強制ではない）", () => {

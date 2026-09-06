@@ -23,16 +23,9 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { stripComments } from "@/lib/__tests__/sourceScan";
 
 const ROUTE = join(process.cwd(), "src", "app", "api", "admin", "academy", "cases", "route.ts");
-
-/**
- * コメントを落としてから照合する。この検査自身が説明コメントに書いた
- * 関数名に反応する事故を何度かやっている（MISTAKE_LEDGER M-022）。
- */
-function stripComments(src: string): string {
-  return src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^[ \t]*\/\/.*$/gm, "");
-}
 
 /** `if (action === "<name>") { ... }` の本体を取り出す。 */
 function actionBlock(src: string, name: string): string {

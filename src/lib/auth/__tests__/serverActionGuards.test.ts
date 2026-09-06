@@ -27,28 +27,28 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { walkSource } from "@/lib/__tests__/sourceScan";
+import { walkSource, stripComments } from "@/lib/__tests__/sourceScan";
 import { hasPermission } from "@/lib/auth/permissions";
 
 const APP_ROOT = join(process.cwd(), "src", "app");
 
-/** 認可として認識できる書き方。存在するだけでなく**弾いている**ことまでは見ない。 */
-const GUARD =
-  /requirePermission\(|requireMinRole\(|hasPermission\(|hasMinRole\(|isPlatformAdmin\(|resolveAuthorizedTenantId\(/;
-
 /**
- * コメントを落としてから照合する。
+ * 認可で**弾いている**か。
  *
- * これを入れる前、`site-content/actions.ts` の**説明コメントに書いた
- * `hasMinRole(role, "staff")` に検出器が反応し、実際のガードを消しても緑のまま**だった
- * （ガードを消して落ちるかを試して発覚。MISTAKE_LEDGER 型 A）。
- * 「なぜ以前はこう書いていたか」を残すと、その引用が検出器に拾われる。
+ * 以前は呼び出しの存在だけを見ていたので、`const ok = requirePermission(...)` のように
+ * **結果を捨てる書き方でも合格**した。真偽値を返すヘルパーは否定形（`!helper(...)`）まで
+ * 要求する —— `apiRoutePermissions.test.ts` の `enforces()` と同じ形に揃えた
+ * （MISTAKE_LEDGER M-033・型 G の棚卸し。現行3ファイルはいずれも既に否定形だった）。
  *
- * ponytail: 文字列リテラル中の `//` も落とす素朴な実装。対象は本リポジトリの
- * Server Action なので実用上は足りる。誤判定が出たら TypeScript の AST に置き換える。
+ * `resolveAuthorizedTenantId(` だけは別扱い。**返り値ではなく throw で止める**ので、
+ * 否定を要求すると正しい書き方を落とす。
  */
-function stripComments(src: string): string {
-  return src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^[ \t]*\/\/.*$/gm, "");
+const BOOLEAN_GUARD = /!\s*(?:requirePermission|requireMinRole|hasPermission|hasMinRole|isPlatformAdmin)\s*\(/;
+const THROWING_GUARD = /resolveAuthorizedTenantId\s*\(/;
+
+function guards(src: string): boolean {
+  const stripped = stripComments(src);
+  return BOOLEAN_GUARD.test(stripped) || THROWING_GUARD.test(stripped);
 }
 
 /**
@@ -78,9 +78,9 @@ describe("Server Action の認可", () => {
     expect(names).toContain("app/admin/certificates/new/actions.ts");
   });
 
-  it('ファイル先頭が "use server" のファイルは認可ヘルパーを呼んでいる', () => {
+  it('ファイル先頭が "use server" のファイルは認可で弾いている', () => {
     const unguarded = files
-      .filter((f) => !EXEMPT.has(f.rel) && !GUARD.test(stripComments(f.src)))
+      .filter((f) => !EXEMPT.has(f.rel) && !guards(f.src))
       .map((f) => f.rel)
       .sort();
     expect(unguarded).toEqual([]);
@@ -127,5 +127,25 @@ describe("サイトコンテンツはプラットフォーム運営のみ", () =
         !/requireSiteContentAdmin\s*\(/.test(stripComments(readFileSync(join(process.cwd(), "src", rel), "utf8"))),
     );
     expect(missing).toEqual([]);
+  });
+});
+
+describe("検出器そのものの性質", () => {
+  // 「呼んでいる」と「弾いている」は別。述語を値で動かして確かめる（M-033・型 G）。
+  it("結果を捨てる書き方は「守っている」と見なさない", () => {
+    expect(guards('const ok = requirePermission(caller, "site_content:manage");')).toBe(false);
+    expect(guards('if (!requirePermission(caller, "site_content:manage")) return { error: "forbidden" };')).toBe(true);
+    expect(guards('const ok = requireMinRole(caller, "admin");')).toBe(false);
+    expect(guards('if (!requireMinRole(caller, "admin")) throw new Error("forbidden");')).toBe(true);
+  });
+
+  it("throw で止めるヘルパーは否定形を求めない", () => {
+    // resolveAuthorizedTenantId は返り値ではなく throw で止める。否定を要求すると正解を落とす。
+    expect(guards("const tenantId = await resolveAuthorizedTenantId(caller);")).toBe(true);
+  });
+
+  it("コメントの引用では通さない", () => {
+    // 以前ここで実際にやらかしている（説明コメントの `hasMinRole(role, "staff")` に反応した）。
+    expect(guards('// 以前は if (!hasMinRole(role, "staff")) で弾いていた\nawait doSomething();')).toBe(false);
   });
 });

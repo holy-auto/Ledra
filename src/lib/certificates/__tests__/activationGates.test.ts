@@ -12,7 +12,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { walkSource } from "../../__tests__/sourceScan";
+import { walkSource, stripComments } from "../../__tests__/sourceScan";
 
 const ROOT = join(process.cwd(), "src");
 
@@ -33,19 +33,37 @@ function isIssuancePath(file: string, src: string): boolean {
   return /\.(update|insert)\(/.test(src) && /status:\s*"active"/.test(src);
 }
 
+/**
+ * Gate の**判定を読んでいる**か。呼ぶだけ・結果を捨てる形は「通している」と見なさない。
+ *
+ * 呼び出し側の形は2通りある。どちらも `.ready` を読む。
+ *   `if (!certGate.ready) return ...`   — 弾く（API 3経路）
+ *   `if (certGate.ready) { ...active化 }` — ready のときだけ発行（自動発行）
+ */
+function consultsCertGate(src: string): boolean {
+  const m = /(?:const|let|var)\s+(\w+)\s*=\s*await\s+evaluateCertificateActivationGate\s*\(/.exec(src);
+  if (!m) return false;
+  return new RegExp(String.raw`\b${m[1]}\.ready\b`).test(src);
+}
+
 describe("証明書を active にする経路", () => {
   const offenders: string[] = [];
   const gated: string[] = [];
   const ungatedByCertGate: string[] = [];
 
   for (const file of walkSource(ROOT)) {
-    const src = readFileSync(file, "utf8");
+    // **コメントを落としてから照合する。** `src.includes(...)` を生ソースに当てていた頃は、
+    // 「この経路は Gate を通る」と書いた説明コメントや import 行だけでも合格していた
+    // （実際 certificateRecordAuto.ts は冒頭コメントで両方の名前に触れている）。
+    const src = stripComments(readFileSync(file, "utf8"));
     if (!isIssuancePath(file, src)) continue;
     const rel = file.slice(ROOT.length + 1);
-    (src.includes("certificateMileageKm") ? gated : offenders).push(rel);
+    // 名前の出現ではなく**呼び出しの形**を要求する。import しただけでは通さない。
+    (/certificateMileageKm\s*\(/.test(src) ? gated : offenders).push(rel);
     // IMP-028 (ADR-0005): draft→active の発行経路は evaluateCertificateActivationGate()
     // を必ず通す（写真必須・懸念未解決なし・部品整合性 等の単一評価器）。
-    if (!src.includes("evaluateCertificateActivationGate(")) ungatedByCertGate.push(rel);
+    // 呼ぶだけでは足りない。**判定を読んでいる**ことまで見る（MISTAKE_LEDGER M-033・型 G）。
+    if (!consultsCertGate(src)) ungatedByCertGate.push(rel);
   }
 
   it("すべて走行距離ゲート (certificateMileageKm) を通る", () => {
@@ -59,5 +77,33 @@ describe("証明書を active にする経路", () => {
 
   it("すべて Certificate Gate (evaluateCertificateActivationGate) を通る", () => {
     expect(ungatedByCertGate).toEqual([]);
+  });
+});
+
+describe("検出器そのものの性質", () => {
+  // 「呼んでいる」と「効いている」は別。述語を値で動かして確かめる（M-033・型 G）。
+  it("判定を読まない書き方は「通している」と見なさない", () => {
+    expect(consultsCertGate("const certGate = await evaluateCertificateActivationGate(admin, ctx);")).toBe(false);
+    expect(
+      consultsCertGate(
+        "const certGate = await evaluateCertificateActivationGate(admin, ctx);\nif (!certGate.ready) return err;",
+      ),
+    ).toBe(true);
+    // ready のときだけ発行する形（自動発行）も通す。
+    expect(
+      consultsCertGate("const g = await evaluateCertificateActivationGate(admin, ctx);\nif (g.ready) { activate(); }"),
+    ).toBe(true);
+  });
+
+  it("コメントの言及と import だけでは通さない", () => {
+    // 生ソースに `includes` を当てていた頃は、この2行だけで両方のゲートが合格していた。
+    const mentionOnly = stripComments(
+      "// evaluateCertificateActivationGate() が ready なら作成直後に active へ\n" +
+        'import { certificateMileageKm } from "@/lib/maintenance/mileage";\n',
+    );
+    expect(consultsCertGate(mentionOnly)).toBe(false);
+    expect(/certificateMileageKm\s*\(/.test(mentionOnly)).toBe(false);
+    // 呼んでいれば通る。
+    expect(/certificateMileageKm\s*\(/.test("if (certificateMileageKm(json) === null) return err;")).toBe(true);
   });
 });
