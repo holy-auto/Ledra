@@ -262,7 +262,7 @@ export default function StorefrontDashboard() {
       const res = await fetch(`/api/admin/reservations/${reservationId}/advance`, { method: "POST" });
       if (!res.ok) {
         const j = await parseJsonSafe(res);
-        throw new Error(j?.error ?? j?.message ?? `HTTP ${res.status}`);
+        throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       }
       await mutate();
     } catch (e: unknown) {
@@ -279,7 +279,7 @@ export default function StorefrontDashboard() {
       const res = await fetch(`/api/admin/reservations/${reservationId}/advance`, { method: "POST" });
       if (!res.ok) {
         const j = await parseJsonSafe(res);
-        throw new Error(j?.error ?? j?.message ?? `HTTP ${res.status}`);
+        throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       }
       await mutate();
     } catch (e: unknown) {

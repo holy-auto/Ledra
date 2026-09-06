@@ -138,7 +138,7 @@ export default function AdminSupportClient() {
       });
       if (!res.ok) {
         const j = await parseJsonSafe(res);
-        throw new Error(j?.error ?? `HTTP ${res.status}`);
+        throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       }
       setReplyText("");
       // Refresh detail
@@ -164,7 +164,7 @@ export default function AdminSupportClient() {
       });
       if (!res.ok) {
         const j = await parseJsonSafe(res);
-        throw new Error(j?.error ?? `HTTP ${res.status}`);
+        throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       }
       setMsg(`ステータスを「${STATUS_MAP[newStatus]?.label ?? newStatus}」に更新しました`);
       await openTicket({ ...selected, status: newStatus });

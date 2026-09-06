@@ -95,7 +95,7 @@ export default function AdminNotificationsClient() {
       });
       if (!res.ok) {
         const j = await parseJsonSafe(res);
-        throw new Error(j?.error ?? `HTTP ${res.status}`);
+        throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       }
       setMsg("通知を送信しました");
       setShowForm(false);

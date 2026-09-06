@@ -164,7 +164,7 @@ export default function BrandingHearingClient() {
         }),
       });
       const j = await parseJsonSafe(res);
-      if (!res.ok) throw new Error(j?.error ?? "保存に失敗しました");
+      if (!res.ok) throw new Error(j?.message ?? j?.error ?? "保存に失敗しました");
       setShowForm(false);
       resetForm();
       await fetchHearings();

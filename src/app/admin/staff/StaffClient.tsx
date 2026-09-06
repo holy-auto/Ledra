@@ -175,7 +175,7 @@ export default function StaffClient() {
         body: JSON.stringify(payload),
       });
       const j = await parseJsonSafe(res);
-      if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
+      if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       setDraft(null);
       setMsg({ text: "保存しました", ok: true });
       await fetchStaff();
@@ -245,7 +245,7 @@ export default function StaffClient() {
         body: JSON.stringify({ id: s.id }),
       });
       const j = await parseJsonSafe(res);
-      if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
+      if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       await fetchStaff();
     } catch (e: unknown) {
       setMsg({ text: e instanceof Error ? e.message : String(e), ok: false });
@@ -306,7 +306,7 @@ export default function StaffClient() {
         }),
       });
       const j = await parseJsonSafe(res);
-      if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
+      if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       setMsg({ text: "シフトを保存しました", ok: true });
     } catch (e: unknown) {
       setMsg({ text: e instanceof Error ? e.message : String(e), ok: false });

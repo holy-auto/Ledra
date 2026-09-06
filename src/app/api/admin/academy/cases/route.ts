@@ -16,7 +16,7 @@ import {
   apiForbidden,
 } from "@/lib/api/response";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
-import { presentAcademyCases, type AcademyCaseRow } from "@/lib/academy/casePresentation";
+import { presentAcademyCases, academyCaseToken, type AcademyCaseRow } from "@/lib/academy/casePresentation";
 import { generateAcademyCaseSummary } from "@/lib/ai/academyFeedback";
 import { fastModelForPlanTier } from "@/lib/ai/client";
 import { canUseFeature } from "@/lib/billing/planFeatures";
@@ -24,7 +24,16 @@ import { CERT_AI_COLUMNS, certAiFields, certPhotoCount } from "@/lib/certificate
 
 const academyCaseActionSchema = z.object({
   case_id: z.string().uuid("case_id が必要です"),
-  action: z.enum(["publish", "unpublish"], { message: "action は publish または unpublish です" }),
+  action: z.enum(["preview", "publish", "unpublish"], {
+    message: "action は preview / publish / unpublish のいずれかです",
+  }),
+  /**
+   * publish のときだけ必須。preview が返した**中身のハッシュ**。
+   * 「要約が入っている」だけでは、**その人が今の中身を見た**ことにならない
+   * （別の人が後から再生成した／一度公開して戻した行にも要約は残る）。
+   * 見た版そのものを指させる。
+   */
+  preview_token: z.string().min(1).optional(),
 });
 
 export const runtime = "nodejs";
@@ -98,7 +107,7 @@ export async function POST(req: NextRequest) {
     if (!parsed.success) {
       return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
     }
-    const { case_id, action } = parsed.data;
+    const { case_id, action, preview_token } = parsed.data;
 
     const { admin } = createTenantScopedAdmin(caller.tenantId);
 
@@ -115,13 +124,19 @@ export async function POST(req: NextRequest) {
       return apiValidationError("この事例への操作権限がありません");
     }
 
-    if (action === "publish") {
-      // 公開だけが AI 要約を呼び、knowledge_chunks に全加盟店共有の行を書く。
-      // unpublish は行の更新だけなので、AI の枠を消費させない。
+    if (action === "preview") {
+      // 公開前に**中身を作って見せる**ための段階。ここでは is_published を触らない。
+      //
+      // なぜ2段階か: 要約の入力には証明書の `content_free_text`（店が手で書く自由記述）が
+      // 入る。顧客名や車両番号が書かれていれば、それが全加盟店に共有される文面に混ざりうる。
+      // 以前は**公開の瞬間に生成**していたので、押す人は何が共有されるか見られなかった。
+      // 見られないものは確認できない（2026-09-05 代表判断「目視確認を入れる」）。
       const limited = await checkRateLimit(req, "ai", `academy-case:${caller.tenantId}`);
       if (limited) return limited;
 
-      // 証明書情報を取得してAI要約を生成
+      // AI 呼び出しは**レート制限のすぐ隣**に置く。ヘルパーへ出すと、ハンドラ単位で
+      // 追う検出器（aiRouteRateLimit.test.ts）から見えなくなり、「制限の無い AI 呼び出し」
+      // として扱われる。読みやすさより、呼び出しと制限が並んでいることを優先する。
       let aiSummary: string | undefined;
       let goodPoints: string[] = [];
       let cautionPoints: string[] = [];
@@ -158,34 +173,118 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      const { error } = await admin
+      // 生成できなかったときは**成功を返さない**。証明書が消えている
+      // （FK が ON DELETE SET NULL なので candidate だけ残る）か、取得・生成に失敗した場合。
+      // ここで「生成できませんでした」を確認対象として見せると、確認する中身が無いのに
+      // チェックが入り、続く publish は必ず弾かれる。既存の文面も消さない。
+      if (!aiSummary) {
+        return apiValidationError("公開する内容を生成できませんでした。元の証明書が削除されていないか確認してください");
+      }
+
+      // 生成した文面を**行に保存する**。公開時に作り直すと、確認した文面と
+      // 公開される文面が別物になりうる。保存しておけば publish は反転するだけで済み、
+      // AI の費用も二重に出ない。
+      const previewedAt = new Date().toISOString();
+
+      // **既に公開済みの行は更新しない。** 2人が同じ候補を触ったとき、
+      // 片方が公開した後にもう片方の遅れて返ってきた生成結果が上書きすると、
+      // 公開済みの文面が誰も見ていないものに差し替わる（knowledge_chunks は古いまま）。
+      const { data: saved, error } = await admin
         .from("academy_cases")
         .update({
-          is_published: true,
-          anonymized: true,
           ai_summary: aiSummary,
           good_points: goodPoints,
           caution_points: cautionPoints,
           tags,
+          updated_at: previewedAt,
+        })
+        .eq("id", case_id)
+        .eq("is_published", false)
+        // **書いた値ではなく、DB が返した行**を使う（印にも、画面に見せる文面にも）。
+        // publish 側は行を読み直してハッシュするので、preview がここで手元の値を
+        // ハッシュすると、表記が1つでも違えば印が永久に一致しない。実際 updated_at で
+        // 起きた: JS の toISOString() は "...Z"、PostgREST は timestamptz を "+00:00"
+        // で返すため、**公開が1件も通らなかった**（Codex の指摘、M-033）。
+        // 両側を同じ出所から作れば、この形の食い違いはもう起きない。
+        .select("ai_summary, good_points, caution_points, tags, updated_at")
+        .maybeSingle();
+
+      if (error) return apiInternalError(error);
+      if (!saved) {
+        return apiValidationError("この事例は既に公開されています。非公開に戻してからやり直してください");
+      }
+
+      return apiOk({
+        message: "公開される内容を生成しました。内容を確認してください。",
+        preview_token: academyCaseToken(saved),
+        // 見せるのも保存された値。「見たもの ＝ 公開されるもの」を出所で揃える。
+        preview: {
+          ai_summary: saved.ai_summary,
+          good_points: (saved.good_points as string[] | null) ?? [],
+          caution_points: (saved.caution_points as string[] | null) ?? [],
+          tags: (saved.tags as string[] | null) ?? [],
+        },
+      });
+    }
+
+    if (action === "publish") {
+      // ここでは AI を呼ばない。preview で保存済みの文面をそのまま公開する。
+      //
+      // **「要約が入っている」は「この人が今の中身を見た」の証明にならない。**
+      // 別の人が後から再生成すれば中身は入れ替わるし、一度公開して非公開に戻した行にも
+      // 要約は残る。そこで preview が返した版の印を持ってきた場合だけ通し、更新も
+      // その版に対してだけ行う。間に誰かが触っていれば 0 行になって弾かれる。
+      if (!preview_token) {
+        return apiValidationError("先に「内容を確認」で公開される内容を表示し、確認してください");
+      }
+
+      const { data: reviewed } = await admin
+        .from("academy_cases")
+        .select("ai_summary, good_points, caution_points, tags, updated_at")
+        .eq("id", case_id)
+        .eq("is_published", false)
+        .maybeSingle();
+
+      // 保存されている中身が、押した人が見たものと同一か。
+      if (!reviewed?.ai_summary || academyCaseToken(reviewed) !== preview_token) {
+        return apiValidationError("確認した内容が最新ではありません。「内容を再生成」でもう一度確認してください");
+      }
+
+      const goodPoints = (reviewed.good_points as string[] | null) ?? [];
+      const cautionPoints = (reviewed.caution_points as string[] | null) ?? [];
+      const tags = (reviewed.tags as string[] | null) ?? [];
+
+      const { data: publishedRows, error } = await admin
+        .from("academy_cases")
+        .update({
+          is_published: true,
+          anonymized: true,
           published_by: caller.userId,
           published_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         })
-        .eq("id", case_id);
+        .eq("id", case_id)
+        // 読んでから書くまでの間に触られていないこと（compare-and-swap）。
+        .eq("updated_at", reviewed.updated_at as string)
+        .eq("is_published", false)
+        .select("id");
 
       if (error) return apiInternalError(error);
+      // 読んでから更新するまでの間に誰かが触った場合。knowledge_chunks を
+      // 二重に入れないよう、ここで止める。
+      if (!publishedRows?.length) {
+        return apiValidationError("確認した内容が最新ではありません。「内容を再生成」でもう一度確認してください");
+      }
 
       // ナレッジチャンクに追加（QA検索用）
-      if (aiSummary) {
-        await admin.from("knowledge_chunks").insert({
-          source_type: "case",
-          source_id: case_id,
-          content: [aiSummary, ...goodPoints, ...cautionPoints].join("\n"),
-          category: existingCase.category,
-          tags,
-          tenant_id: null, // 全加盟店共有
-        });
-      }
+      await admin.from("knowledge_chunks").insert({
+        source_type: "case",
+        source_id: case_id,
+        content: [reviewed.ai_summary, ...goodPoints, ...cautionPoints].join("\n"),
+        category: existingCase.category,
+        tags,
+        tenant_id: null, // 全加盟店共有
+      });
 
       return apiOk({ message: "事例を公開しました" });
     }
