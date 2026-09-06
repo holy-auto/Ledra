@@ -535,9 +535,10 @@ CI でも落ちない）。ルールを無効化すると落ちることも確�
   Ledra 上のどこでも確認できなかった。
 - 内容:
   - `certificates.job_order_id` を追加（`20260906100000`、索引は CONCURRENTLY のため
-    `20260906100001` に分離。**マージ直前に `20260901000001` / `20260901000002` から改名**
-    —— 本番の適用済み最新 `20260904123252` より古いままだと `supabase db push` が
-    out-of-order で停止するため。本番の台帳に元バージョンが無いことを名指しで確認済み）。`documents` / `chat_messages` / `order_reviews` /
+    `20260906100001` に分離。**`20260901000001` / `20260901000002` から計4回改名**
+    —— 本番の適用済み最新より古いままだと `supabase db push` が out-of-order で停止する
+    ため。最終的な本番の最新は `20260906094735`（#966 が apply_migration で直接当てた版）で、
+    改名のたびに本番の台帳に元バージョンが無いことを名指しで確認している）。`documents` / `chat_messages` / `order_reviews` /
     `reservation_holds` と同じ `job_order_id` 規約に揃えた。
   - テナント整合トリガー `certificates_check_job_order_tenant` を追加。指定された発注の
     当事者（発注元 or 受注先）でないテナントの証明書には紐付けられない
