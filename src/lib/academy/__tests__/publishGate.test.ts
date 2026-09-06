@@ -79,7 +79,7 @@ describe("Academy 事例公開の2段階ゲート", () => {
     const block = actionBlock(src, "preview");
     expect(block).toMatch(/\.eq\(\s*"is_published"\s*,\s*false\s*\)/);
     // 0 行なら弾く。付けないと「更新できなかった」が成功として返る。
-    expect(block).toMatch(/updated\?\.length/);
+    expect(block).toMatch(/if\s*\(!saved\)/);
   });
 
   it("preview は要約を作れなかったら成功を返さない", () => {
@@ -95,22 +95,27 @@ describe("Academy 事例公開の2段階ゲート", () => {
     expect(block).toMatch(/if\s*\(!preview_token\)/);
     // 版の印は**中身のハッシュ**。時刻だと同じミリ秒に終わった2つの preview で
     // 衝突し、上書きされた文面を前の人のトークンで公開できてしまう（Codex の指摘）。
-    expect(block).toMatch(/contentHash\(reviewed\)\s*!==\s*preview_token/);
+    expect(block).toMatch(/academyCaseToken\(reviewed\)\s*!==\s*preview_token/);
     // 読んでから書くまでの間に触られていないこと（compare-and-swap）。
     expect(block).toMatch(/\.eq\(\s*"updated_at"\s*,\s*reviewed\.updated_at/);
     // 更新が 0 行なら止める。knowledge_chunks を二重に入れないため。
     expect(block).toMatch(/publishedRows\?\.length/);
   });
 
-  it("版の印は中身と updated_at の両方から作る（衝突せず、1回で切れる）", () => {
-    expect(src).toMatch(/createHash\(\s*"sha256"\s*\)/);
-    // preview が返すのはハッシュであって時刻そのものではない。
-    expect(actionBlock(src, "preview")).toMatch(/preview_token:\s*contentHash\(/);
-    // **中身だけだと足りない。** 公開 → 非公開に戻すと本文は変わらないので
-    // 同じ印が復活し、再確認なしに再公開できて knowledge_chunks が二重に入る
-    // （Codex の指摘）。publish も unpublish も updated_at を更新するので、
-    // 混ぜておけば1回使うと切れる。
-    const hashFn = src.slice(src.indexOf("function contentHash"), src.indexOf("export const runtime"));
-    expect(hashFn).toMatch(/c\.updated_at/);
+  it("preview は DB が返した行から印と表示文面を作る（手元の値だと公開が常に弾かれる）", () => {
+    // publish は行を読み直してハッシュする。preview が手元の値をハッシュすると、
+    // 表記が1つでも違えば印は永久に一致しない。実際 updated_at で起きた:
+    // JS の toISOString() は `...Z`、PostgREST は timestamptz を `+00:00` で返すため、
+    // **公開が1件も通らなかった**（Codex の指摘。M-033）。
+    // 直し方は「時刻だけ揃える」ではなく**両側を同じ出所にする**こと。
+    const block = actionBlock(src, "preview");
+    expect(block).toMatch(/\.select\(\s*"ai_summary, good_points, caution_points, tags, updated_at"\s*\)/);
+    const body = block.slice(block.indexOf("preview_token:"));
+    // 印は返ってきた行そのもの。生成した変数（aiSummary 等）を混ぜない。
+    expect(body).toMatch(/preview_token:\s*academyCaseToken\(saved\)/);
+    // 画面に見せるのも同じ出所。「見たもの ＝ 公開されるもの」を出所で揃える。
+    expect(body).toMatch(/ai_summary:\s*saved\.ai_summary/);
+    expect(body).not.toMatch(/\baiSummary\b/);
+    // ハッシュの中身（衝突しない・1回で切れる）は casePresentation.test.ts が値で検査する。
   });
 });

@@ -2,7 +2,6 @@
  * GET/POST /api/admin/academy/cases
  * Academy事例一覧取得 & 事例公開（C-1）
  */
-import { createHash } from "node:crypto";
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
@@ -17,7 +16,7 @@ import {
   apiForbidden,
 } from "@/lib/api/response";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
-import { presentAcademyCases, type AcademyCaseRow } from "@/lib/academy/casePresentation";
+import { presentAcademyCases, academyCaseToken, type AcademyCaseRow } from "@/lib/academy/casePresentation";
 import { generateAcademyCaseSummary } from "@/lib/ai/academyFeedback";
 import { fastModelForPlanTier } from "@/lib/ai/client";
 import { canUseFeature } from "@/lib/billing/planFeatures";
@@ -36,31 +35,6 @@ const academyCaseActionSchema = z.object({
    */
   preview_token: z.string().min(1).optional(),
 });
-
-/**
- * 「この確認は今も有効か」を表す印。preview が返し、publish が突き合わせる。
- *
- * 中身の4項目に加えて `updated_at` も混ぜる。理由が2つある。
- *
- * 1. **中身**を混ぜるので、別の人が再生成して文面が入れ替わったら合わなくなる。
- *    時刻だけを印にしていたときは、同じミリ秒に終わった2つの preview で衝突し、
- *    上書きされた文面を前の人のトークンで公開できた（Codex の指摘）。
- * 2. **`updated_at`** を混ぜるので、**publish と unpublish の後で必ず無効になる**。
- *    中身だけだと、公開 → 非公開に戻したとき本文は変わらないので同じ印が復活し、
- *    再確認なしに再公開できて knowledge_chunks が二重に入った（同じく Codex の指摘）。
- *    publish も unpublish も updated_at を更新するので、1回使えば自動的に切れる。
- */
-function contentHash(c: {
-  ai_summary: string | null;
-  good_points: unknown;
-  caution_points: unknown;
-  tags: unknown;
-  updated_at: unknown;
-}): string {
-  return createHash("sha256")
-    .update(JSON.stringify([c.ai_summary, c.good_points, c.caution_points, c.tags, c.updated_at]))
-    .digest("hex");
-}
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -210,14 +184,12 @@ export async function POST(req: NextRequest) {
       // 生成した文面を**行に保存する**。公開時に作り直すと、確認した文面と
       // 公開される文面が別物になりうる。保存しておけば publish は反転するだけで済み、
       // AI の費用も二重に出ない。
-      //
-
       const previewedAt = new Date().toISOString();
 
       // **既に公開済みの行は更新しない。** 2人が同じ候補を触ったとき、
       // 片方が公開した後にもう片方の遅れて返ってきた生成結果が上書きすると、
       // 公開済みの文面が誰も見ていないものに差し替わる（knowledge_chunks は古いまま）。
-      const { data: updated, error } = await admin
+      const { data: saved, error } = await admin
         .from("academy_cases")
         .update({
           ai_summary: aiSummary,
@@ -228,27 +200,29 @@ export async function POST(req: NextRequest) {
         })
         .eq("id", case_id)
         .eq("is_published", false)
-        .select("id");
+        // **書いた値ではなく、DB が返した行**を使う（印にも、画面に見せる文面にも）。
+        // publish 側は行を読み直してハッシュするので、preview がここで手元の値を
+        // ハッシュすると、表記が1つでも違えば印が永久に一致しない。実際 updated_at で
+        // 起きた: JS の toISOString() は "...Z"、PostgREST は timestamptz を "+00:00"
+        // で返すため、**公開が1件も通らなかった**（Codex の指摘、M-033）。
+        // 両側を同じ出所から作れば、この形の食い違いはもう起きない。
+        .select("ai_summary, good_points, caution_points, tags, updated_at")
+        .maybeSingle();
 
       if (error) return apiInternalError(error);
-      if (!updated?.length) {
+      if (!saved) {
         return apiValidationError("この事例は既に公開されています。非公開に戻してからやり直してください");
       }
 
       return apiOk({
         message: "公開される内容を生成しました。内容を確認してください。",
-        preview_token: contentHash({
-          ai_summary: aiSummary,
-          good_points: goodPoints,
-          caution_points: cautionPoints,
-          tags,
-          updated_at: previewedAt,
-        }),
+        preview_token: academyCaseToken(saved),
+        // 見せるのも保存された値。「見たもの ＝ 公開されるもの」を出所で揃える。
         preview: {
-          ai_summary: aiSummary,
-          good_points: goodPoints,
-          caution_points: cautionPoints,
-          tags,
+          ai_summary: saved.ai_summary,
+          good_points: (saved.good_points as string[] | null) ?? [],
+          caution_points: (saved.caution_points as string[] | null) ?? [],
+          tags: (saved.tags as string[] | null) ?? [],
         },
       });
     }
@@ -258,8 +232,8 @@ export async function POST(req: NextRequest) {
       //
       // **「要約が入っている」は「この人が今の中身を見た」の証明にならない。**
       // 別の人が後から再生成すれば中身は入れ替わるし、一度公開して非公開に戻した行にも
-      // 要約は残る。そこで preview が返した版の印（updated_at）を持ってきた場合だけ通し、
-      // 更新もその版に対してだけ行う。間に誰かが触っていれば 0 行になって弾かれる。
+      // 要約は残る。そこで preview が返した版の印を持ってきた場合だけ通し、更新も
+      // その版に対してだけ行う。間に誰かが触っていれば 0 行になって弾かれる。
       if (!preview_token) {
         return apiValidationError("先に「内容を確認」で公開される内容を表示し、確認してください");
       }
@@ -272,7 +246,7 @@ export async function POST(req: NextRequest) {
         .maybeSingle();
 
       // 保存されている中身が、押した人が見たものと同一か。
-      if (!reviewed?.ai_summary || contentHash(reviewed) !== preview_token) {
+      if (!reviewed?.ai_summary || academyCaseToken(reviewed) !== preview_token) {
         return apiValidationError("確認した内容が最新ではありません。「内容を再生成」でもう一度確認してください");
       }
 
