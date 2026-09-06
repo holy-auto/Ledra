@@ -264,8 +264,8 @@ export default function ManagementClient() {
           fetch("/api/admin/staff-performance", { cache: "no-store" }),
         ]);
 
-        const kpiJson = await parseJsonSafe<KPIData & { error?: string }>(kpiRes);
-        if (!kpiRes.ok) throw new Error(kpiJson?.error ?? `HTTP ${kpiRes.status}`);
+        const kpiJson = await parseJsonSafe<KPIData & { error?: string; message?: string }>(kpiRes);
+        if (!kpiRes.ok) throw new Error(kpiJson?.message ?? kpiJson?.error ?? `HTTP ${kpiRes.status}`);
         setData(kpiJson);
 
         // 目標・担当者実績は副次データ。失敗してもダッシュボード本体は描画する。
@@ -312,8 +312,8 @@ export default function ManagementClient() {
           target_new_customers: targetDraft.target_new_customers,
         }),
       });
-      const j = await parseJsonSafe<{ target?: SalesTarget; error?: string }>(res);
-      if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
+      const j = await parseJsonSafe<{ target?: SalesTarget; error?: string; message?: string }>(res);
+      if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       setTarget(j?.target ?? { ...targetDraft });
       setEditingTarget(false);
     } catch (e: unknown) {

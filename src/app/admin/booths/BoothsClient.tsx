@@ -125,7 +125,7 @@ export default function BoothsClient() {
         body: JSON.stringify(payload),
       });
       const j = await parseJsonSafe(res);
-      if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
+      if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       setDraft(null);
       setMsg({ text: "保存しました", ok: true });
       await fetchData(date);
@@ -146,7 +146,7 @@ export default function BoothsClient() {
         body: JSON.stringify({ id: b.id }),
       });
       const j = await parseJsonSafe(res);
-      if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
+      if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       await fetchData(date);
     } catch (e: unknown) {
       setMsg({ text: e instanceof Error ? e.message : String(e), ok: false });

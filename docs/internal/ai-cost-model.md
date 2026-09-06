@@ -225,7 +225,13 @@
   (エンドポイント別の代表単価ベース)、上限超過で `loadAiAutomationSettings` が
   `enabled=false` 相当に倒し、以降の AI 呼び出しを**一時停止**する（翌月リセット）。
 - **設定**:
-  - 全社既定: env `AI_MONTHLY_COST_CAP_JPY`（0/未設定=無効）。
+  - 全テナント既定: env `AI_MONTHLY_COST_CAP_JPY`（**テナント1件あたりの月額**）。
+    未設定・不正値・`0`・負値なら、いずれもコード側の既定 10000 円が効く
+    （`DEFAULT_MONTHLY_COST_CAP_JPY`）。**`0` は「上限なし」ではなく「未設定」**である
+    （`.env.example` が長らく `=0` を配っていたため、0 を「上限なし」と解釈すると
+    設定漏れの環境でブレーキが外れる。DECISION_LOG 2026-09-04 / MISTAKE_LEDGER M-039）。
+    上限を実質無効にしたいときは `0` ではなく十分大きい値（例: `99999999`）を入れる。
+    安全ブレーキに「切る」設定は用意していない。
   - テナント個別: `tenant_ai_automation_settings.monthly_cost_cap_jpy`
     （AI 自動入力設定 API で設定可、個別値が env より優先）。
 - **挙動**: 超過テナントは AI ルートが既存の `ai_disabled` 経路で 200 を返し（人手運用に

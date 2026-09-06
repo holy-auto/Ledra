@@ -50,7 +50,7 @@ export default function AdminCommissionsClient() {
       const qs = filter ? `?status=${filter}` : "";
       const res = await fetch(`/api/admin/agent-commissions${qs}`, { cache: "no-store" });
       const json = await parseJsonSafe(res);
-      if (!res.ok) throw new Error(json?.error ?? `HTTP ${res.status}`);
+      if (!res.ok) throw new Error(json?.message ?? json?.error ?? `HTTP ${res.status}`);
       setRows((json?.commissions ?? []) as Commission[]);
     } catch (e) {
       setMsg(e instanceof Error ? e.message : "読み込みに失敗しました");
@@ -73,7 +73,7 @@ export default function AdminCommissionsClient() {
         body: JSON.stringify({ action }),
       });
       const json = await parseJsonSafe(res);
-      if (!res.ok) throw new Error(json?.error ?? `HTTP ${res.status}`);
+      if (!res.ok) throw new Error(json?.message ?? json?.error ?? `HTTP ${res.status}`);
       setMsg(json?.message ?? "更新しました");
       await load();
     } catch (e) {

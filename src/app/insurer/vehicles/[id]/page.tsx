@@ -68,7 +68,7 @@ export default function InsurerVehicleDetailPage() {
           cache: "no-store",
         });
         const j = await res.json();
-        if (!res.ok) throw new Error(j?.error ?? "load_failed");
+        if (!res.ok) throw new Error(j?.message ?? j?.error ?? "load_failed");
         setVehicle(j.vehicle);
         setCerts(j.certificates ?? []);
         // Fetch related cases

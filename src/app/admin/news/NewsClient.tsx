@@ -66,7 +66,7 @@ export default function NewsClient() {
     try {
       const res = await fetch("/api/admin/news");
       const j = await parseJsonSafe(res);
-      if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
+      if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       setNews(j.news ?? []);
       setFeedCount(j.feedCount ?? 0);
       setSavedCount(j.savedCount ?? 0);

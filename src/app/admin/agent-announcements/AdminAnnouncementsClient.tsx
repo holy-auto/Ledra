@@ -3,7 +3,7 @@ import { parseJsonSafe } from "@/lib/api/safeJson";
 
 import { useEffect, useState, useCallback } from "react";
 import Badge from "@/components/ui/Badge";
-import { formatDateTime } from "@/lib/format";
+import { formatJstDateTime, jstLocalInputToUtcIso, utcIsoToJstLocalInput } from "@/lib/datetime";
 import type { BadgeVariant } from "@/lib/statusMaps";
 
 /* ── Types ── */
@@ -44,21 +44,13 @@ const CATEGORY_OPTIONS = [
   { value: "important", label: "重要" },
 ];
 
-function toLocalDatetime(iso: string | null): string {
-  if (!iso) return "";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "";
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-
 function emptyForm(): FormData {
   return {
     title: "",
     body: "",
     category: "general",
     is_pinned: false,
-    published_at: toLocalDatetime(new Date().toISOString()),
+    published_at: utcIsoToJstLocalInput(new Date().toISOString()),
   };
 }
 
@@ -119,7 +111,10 @@ export default function AdminAnnouncementsClient() {
         body: form.body,
         category: form.category,
         is_pinned: form.is_pinned,
-        published_at: form.published_at ? new Date(form.published_at).toISOString() : new Date().toISOString(),
+        // datetime-local の naive 文字列は JST 壁時計として解釈する。
+        // `new Date(naive)` はブラウザ TZ で解釈するため、JST 以外の端末や
+        // SSR（Vercel は UTC）で 9 時間ずれる。site-content 側と同じヘルパーに揃える。
+        published_at: jstLocalInputToUtcIso(form.published_at) ?? new Date().toISOString(),
       };
 
       const url = editingId ? `/api/admin/agent-announcements/${editingId}` : "/api/admin/agent-announcements";
@@ -133,7 +128,7 @@ export default function AdminAnnouncementsClient() {
 
       if (!res.ok) {
         const j = await parseJsonSafe(res);
-        throw new Error(j?.error ?? `HTTP ${res.status}`);
+        throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       }
 
       flash(editingId ? "更新しました" : "作成しました", true);
@@ -154,7 +149,7 @@ export default function AdminAnnouncementsClient() {
       const res = await fetch(`/api/admin/agent-announcements/${id}`, { method: "DELETE" });
       if (!res.ok) {
         const j = await parseJsonSafe(res);
-        throw new Error(j?.error ?? `HTTP ${res.status}`);
+        throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       }
       flash("削除しました", true);
       setDeleteTarget(null);
@@ -175,7 +170,7 @@ export default function AdminAnnouncementsClient() {
       body: a.body,
       category: a.category,
       is_pinned: a.is_pinned,
-      published_at: toLocalDatetime(a.published_at),
+      published_at: utcIsoToJstLocalInput(a.published_at),
     });
     setShowForm(true);
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -340,8 +335,8 @@ export default function AdminAnnouncementsClient() {
                     </div>
                     {a.body && <p className="text-xs text-secondary line-clamp-2 whitespace-pre-wrap">{a.body}</p>}
                     <div className="flex items-center gap-4 text-[11px] text-tertiary">
-                      <span>公開: {formatDateTime(a.published_at)}</span>
-                      <span>作成: {formatDateTime(a.created_at)}</span>
+                      <span>公開: {formatJstDateTime(a.published_at)}</span>
+                      <span>作成: {formatJstDateTime(a.created_at)}</span>
                     </div>
                   </div>
 

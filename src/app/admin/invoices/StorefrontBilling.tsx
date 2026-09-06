@@ -64,7 +64,7 @@ export default function StorefrontBilling() {
       });
       if (!res.ok) {
         const j = await parseJsonSafe(res);
-        throw new Error(j?.error ?? `HTTP ${res.status}`);
+        throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       }
       await mutate();
     } catch (e: unknown) {

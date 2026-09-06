@@ -25,7 +25,7 @@ export default function InquiryForm({ vehicleId, vehicleLabel }: { vehicleId: st
         body: JSON.stringify({ vehicle_id: vehicleId, ...form }),
       });
       const j = await parseJsonSafe(res);
-      if (!res.ok) throw new Error(j?.error ?? `送信に失敗しました (${res.status})`);
+      if (!res.ok) throw new Error(j?.message ?? j?.error ?? `送信に失敗しました (${res.status})`);
       setResult({ ok: true, text: "お問い合わせを送信しました。担当者より連絡いたします。" });
       setForm({ buyer_name: "", buyer_company: "", buyer_email: "", buyer_phone: "", message: "" });
     } catch (e: any) {

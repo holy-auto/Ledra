@@ -1,0 +1,145 @@
+name: Stale migration dates
+
+# レビュー待ちが長い PR のマイグレーション日付が陳腐化していないかを毎日見る。
+#
+# ## なぜ要るか
+#
+# `lint:migrations` の `migration-version-before-base-head` は
+# 「このブランチが追加したファイルが base の最新より後か」を見る。**PR の CI が
+# 走った時点では正しかった**日付が、その後 main に別のマイグレーションが入ると
+# 追い越されて out-of-order になる。
+#
+# ところが **push が無い間 CI は再実行されない**ので、追い越されたことに気づくのは
+# 次の push かマージ直前になる。このリポジトリで4回起きている（OPEN_QUESTIONS）。
+# 2026-08-02〜08-15 は13日間 db push が止まり、証明書発行が全件停止した。
+#
+# 代表判断 2026-09-05: 案(b)（一定日数を超えた PR で日付を再チェックする CI）を採る。
+# 案(a)（採番をマージ直前にする運用）は、採番のたびに人手が要り運用が崩れると
+# 判定が効かなくなるため取らなかった。DECISION_LOG 2026-09-05。
+#
+# ## 何をしているか
+#
+# 判定ロジックは**書かない**。PR の head を checkout して、CI と同じ
+# `npm run lint:migrations` を `MIGRATIONS_BASE_REF=origin/main` で回すだけ。
+# 検査を2箇所に書くと必ず片方だけ直る（MISTAKE_LEDGER 型 C）。
+
+on:
+  schedule:
+    # 毎日 00:20 UTC（JST 09:20）。朝いちばんで気づける。
+    - cron: "20 0 * * *"
+  workflow_dispatch:
+    inputs:
+      min_age_days:
+        description: "この日数より長く開いている PR を対象にする"
+        required: false
+        default: "3"
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  check:
+    name: 陳腐化した日付を探す
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: 対象 PR を洗い出して1本ずつ検査する
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MIN_AGE_DAYS: ${{ github.event.inputs.min_age_days || '3' }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          # マージ先が main の open PR のうち、supabase/migrations を触っていて、
+          # 開いてから MIN_AGE_DAYS 日を超えたもの。
+          cutoff="$(date -u -d "-${MIN_AGE_DAYS} days" +%Y-%m-%dT%H:%M:%SZ)"
+          echo "対象: $cutoff より前に開かれた open PR"
+
+          gh pr list --repo "$REPO" --base main --state open --limit 100 \
+            --json number,headRefName,createdAt,isDraft,title > prs.json
+
+          jq -r --arg cutoff "$cutoff" \
+            '.[] | select(.createdAt < $cutoff) | "\(.number)\t\(.headRefName)\t\(.isDraft)\t\(.title)"' \
+            prs.json > candidates.tsv || true
+
+          if [ ! -s candidates.tsv ]; then
+            echo "::notice::対象の PR はありません"
+            exit 0
+          fi
+
+          stale=0
+          while IFS=$'\t' read -r num branch draft title; do
+            [ -n "$num" ] || continue
+
+            # マイグレーションを触っていない PR は見ない。
+            if ! gh pr diff "$num" --repo "$REPO" --name-only | grep -q '^supabase/migrations/'; then
+              continue
+            fi
+
+            echo "::group::PR #$num ($branch) — $title"
+            git fetch --quiet origin "refs/pull/$num/head:pr-$num" || { echo "head を取れず"; echo "::endgroup::"; continue; }
+
+            # **PR のコードは checkout しない。** この job は
+            # `pull-requests: write` の GH_TOKEN を env に持っているので、
+            # PR の head を checkout してそこの `scripts/` を実行すると、
+            # **PR を開ける人なら誰でもそのトークンでコードを実行できる**
+            # （fork からの PR も含む。いわゆる pwn request。
+            #   PR #1027 の `/code-review` 指摘）。
+            #
+            # さらに、PR 側のスクリプトを走らせると **検査そのものが PR の言い分になる**。
+            # `migration-version-before-base-head` が入る前に開かれた PR や、
+            # スクリプトを書き換えた PR は「OK」を返す。それはまさにこの workflow が
+            # 捕まえたい集合そのもの。
+            #
+            # そこで **main のコードのまま**、PR から `supabase/migrations` の
+            # SQL ファイルだけを作業ツリーへ取り出して検査する。SQL は読むだけで
+            # 実行しない。検査後に作業ツリーを戻す。
+            git checkout --quiet "pr-$num" -- supabase/migrations
+
+            # main 側の検査をそのまま回す。判定はここに書かない。
+            #
+            # ただし **どの失敗かは見分ける**。`lint-migrations.js` は
+            # `duplicate-version` や `create-index-without-concurrently` など
+            # 他のルールでも落ちる。終了コードだけで「日付が追い越された」と決めると、
+            # 別の理由で落ちた PR に**間違った直し方**を書いたコメントを貼ってしまう
+            # （PR #1027 の Codex レビュー指摘）。出力に当該ルール名が出たときだけ貼る。
+            out="$(MIGRATIONS_BASE_REF=origin/main node scripts/lint-migrations.js 2>&1)" && rc=0 || rc=$?
+            echo "$out"
+            if [ "$rc" -eq 0 ]; then
+              echo "OK"
+            elif ! grep -q 'migration-version-before-base-head' <<<"$out"; then
+              # 日付以外の理由。この workflow の担当外なので、PR には何も貼らない
+              # （その PR 自身の CI が同じ検査で落としている）。
+              echo "::notice::PR #$num は別のルールで落ちている（この workflow の担当外）"
+            else
+              stale=$((stale + 1))
+              echo "::warning::PR #$num のマイグレーション日付が main に追い越されています"
+
+              # 同じ内容を毎日貼らない。既に貼ってあれば黙る。
+              # 本文は .github/stale-migration-comment.md に置く。
+              # run: | の中にヒアドキュメントで書くと、本文の行が列0に出て
+              # YAML のブロックスカラーを抜けてしまう（実際に一度そうなった）。
+              body=".github/stale-migration-comment.md"
+              marker="$(head -1 "$body")"
+              if ! gh pr view "$num" --repo "$REPO" --json comments \
+                   --jq '.comments[].body' | grep -qF "$marker"; then
+                gh pr comment "$num" --repo "$REPO" --body-file "$body"
+              fi
+            fi
+            # 取り出した SQL を捨てて main の状態へ戻す（次の PR を素の状態から見る）。
+            git checkout --quiet HEAD -- supabase/migrations
+            git clean --quiet -fd supabase/migrations
+            git branch --quiet -D "pr-$num" || true
+            echo "::endgroup::"
+          done < candidates.tsv
+
+          echo "追い越されていた PR: $stale 本"

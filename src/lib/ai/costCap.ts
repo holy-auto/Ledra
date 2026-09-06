@@ -12,7 +12,9 @@
  *   - Redis 不在 (dev/CI) / 失敗時は必ず fail-open（停止しない・課金を止めない）。
  *
  * キャップ値の解決順: テナント個別 (settings.monthly_cost_cap_jpy) →
- * env `AI_MONTHLY_COST_CAP_JPY` → どちらも無ければ 0 (=キャップ無効)。
+ * env `AI_MONTHLY_COST_CAP_JPY` → どちらも無ければ既定
+ * (`DEFAULT_MONTHLY_COST_CAP_JPY` = テナント1件あたり月1万円)。
+ * **設定漏れでブレーキが外れないよう、既定は効く側に倒してある。**
  */
 import { getRedis } from "@/lib/upstash";
 import { logger } from "@/lib/logger";
@@ -94,13 +96,43 @@ export async function getMonthlyCostJpy(tenantId: string): Promise<number> {
 }
 
 /**
- * 適用するキャップ (円) を解決する。
- * テナント個別 > env `AI_MONTHLY_COST_CAP_JPY` > 0 (=無効) の順。
+ * 上限が設定されていないときの既定 (円)。**テナント1件あたりの月額。**
+ *
+ * 代表判断 2026-09-04: 1万円。1 コールの概算単価が 2.0 円なので月 5,000 コール相当。
+ * 通常利用は「Starter ¥9,800 に対し Haiku コストは月数百円程度」(`client.ts`) なので
+ * 月 300〜800 円 = 150〜400 コール。**通常利用の 12〜33 倍**が上限になる。
+ * 「普通に使う分には当たらないが、暴走は止まる」水準。
+ *
+ * **既定を 0 (無効) にしない理由。** 以前は env 未設定なら 0 に倒しており、
+ * 本番でも env・テナント個別上限のどちらも設定されていなかったため、
+ * **安全ブレーキが1つも効いていなかった** (2026-09-04 に実測して発覚)。
+ * ダッシュボードの設定漏れでブレーキが外れる設計そのものが誤りだったので、
+ * **既定を効く側に倒す**。
+ */
+export const DEFAULT_MONTHLY_COST_CAP_JPY = 10_000;
+
+/**
+ * 適用するキャップ (円) を解決する。テナント個別 > env > 既定 の順。
+ *
+ * **`0` は「上限なし」ではなく「未設定」として扱う。**
+ * 一度この escape hatch を入れかけたが、`.env.example` が長らく
+ * `AI_MONTHLY_COST_CAP_JPY=0` を配っていた（PR #1027 の `/code-review` 指摘）。
+ * そこから作られた環境は「0 = 無効」を**意思表示ではなく既定値として**持っており、
+ * 0 を尊重すると**まさに守りたい本番でブレーキが無効のまま**になる。
+ * 0 に意味を持たせられないので、正の値だけを設定とみなす。
+ *
+ * env の扱い:
+ * - 1 以上の数値 → その値
+ * - `0`・負値・非数・空文字・未設定 → 既定 (ブレーキが外れる方に倒さない)
+ *
+ * 上限を実質無効にしたいときは、`0` ではなく十分大きい値
+ * (例: `99999999`) を入れる。安全ブレーキに「切る」設定は用意しない。
  */
 export function resolveCapJpy(perTenantCapJpy?: number | null): number {
   if (typeof perTenantCapJpy === "number" && perTenantCapJpy > 0) return perTenantCapJpy;
   const envCap = Number(process.env.AI_MONTHLY_COST_CAP_JPY);
-  return Number.isFinite(envCap) && envCap > 0 ? envCap : 0;
+  if (Number.isFinite(envCap) && envCap > 0) return envCap;
+  return DEFAULT_MONTHLY_COST_CAP_JPY;
 }
 
 export interface CostCapStatus {
@@ -110,8 +142,17 @@ export interface CostCapStatus {
 }
 
 /**
- * キャップ状態を返す。キャップ未設定 (capJpy<=0) のときは null。
- * Redis 不在 / 失敗時は spent=0 として扱う (fail-open: exceeded=false)。
+ * キャップ状態を返す。Redis 不在 / 失敗時は spent=0 として扱う
+ * (fail-open: exceeded=false)。
+ *
+ * `capJpy <= 0` の枝は、`DEFAULT_MONTHLY_COST_CAP_JPY` が正である現状では**通らない**
+ * （`resolveCapJpy` が必ず正の値を返す）。既定を 0 に戻したときに
+ * 「上限なし」として素通りするための保険として残してある。
+ *
+ * その結果、この関数を通る経路では**毎回 Redis の GET が1本増える**
+ * （以前は本番で常に `capJpy=0` だったため一度も呼ばれていなかった。
+ * つまりこれは新しい負荷ではなく、**ブレーキが効いていなかったぶんの実費**）。
+ * 表示専用の `applyCostCap:false` 経路でも現況表示に使うので算出は必要。
  */
 export async function getCostCapStatus(
   tenantId: string,

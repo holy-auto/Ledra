@@ -219,7 +219,7 @@ export default function NewVehicleForm() {
         body: JSON.stringify(body),
       });
       const j = await parseJsonSafe(res);
-      if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
+      if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
 
       const vehicleId = j.vehicle?.id ?? j.id;
 
@@ -233,7 +233,7 @@ export default function NewVehicleForm() {
         });
         if (!imgRes.ok) {
           const imgJ = await parseJsonSafe(imgRes);
-          console.error("Image upload failed:", imgJ?.error ?? imgRes.status);
+          console.error("Image upload failed:", imgJ?.message ?? imgJ?.error ?? imgRes.status);
         }
       }
 

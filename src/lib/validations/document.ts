@@ -15,28 +15,25 @@ const docStatuses = ["draft", "sent", "accepted", "paid", "overdue", "rejected",
 const honorifics = ["御中", "様", ""] as const;
 
 /**
- * 伝票明細 1 行のスキーマ。
- * documents.items_json は本スキーマの配列として保存される。
- * - cost_price: 原価。伝票レベルの粗利 (= Σ(unit_price-cost_price)×quantity) 算出に使う。
- * - type が "line" 以外 (subtotal / heading / note) の行は金額計算の対象外として扱う。
+ * 明細は `items`（下記）で受け取り、`calcItems()` が保存形へ変換する。
+ * **このファイルに明細行のスキーマは持たない。**
+ *
+ * かつて `documentItemSchema` と `items_json` フィールドがここにあったが、
+ * 実際に保存・読込される形と**完全に非互換**だった（2026-09-04 に削除）。
+ *
+ * | | 旧 `documentItemSchema` | 実データ（`calcItems()` / `@/types/document`） |
+ * |---|---|---|
+ * | 行種別 | `type`: line / subtotal / heading / note | `item_type`: item / heading / subtotal |
+ * | 名称 | `name`（必須・min 1） | `description` |
+ * | 税区分 | `tax_category`: "standard" / "reduced" / "exempt" | `tax_category`: 数値 10 / 8 |
+ * | 金額 | 持たない | `amount` |
+ *
+ * ルートは `input.items` しか読まず `items_json` を無視していたので無害だったが、
+ * `items_json` を使う経路に切り替えた瞬間に全明細が弾かれる地雷だった。
+ * あわせて `@/types/document` と同名の `DocumentItem` を別定義していた名前衝突も解消した。
+ *
+ * 明細行の型が要るときは `@/types/document` の `DocumentItem` を使うこと。
  */
-export const documentItemSchema = z.object({
-  id: z.string().optional(),
-  type: z.enum(["line", "subtotal", "heading", "note"]).default("line"),
-  name: z.string().min(1).max(200),
-  /** 品番。品目マスタ(menu_items)の item_code と紐付け、帳票作成時の検索に使う。 */
-  item_code: z.string().max(60).nullable().optional(),
-  quantity: z.number().min(0).default(1),
-  unit: z.string().max(20).optional(),
-  unit_price: z.number().min(0).default(0),
-  cost_price: z.number().min(0).default(0),
-  tax_category: z.enum(["standard", "reduced", "exempt"]).default("standard"),
-  menu_item_id: z.string().uuid().optional().nullable(),
-  note: z.string().max(500).optional(),
-});
-
-export type DocumentItem = z.infer<typeof documentItemSchema>;
-
 export const documentCreateSchema = z.object({
   doc_type: z.enum(docTypes, { message: "無効な帳票タイプです。" }),
   customer_id: z.string().uuid().nullable().optional(),
@@ -101,7 +98,6 @@ export const documentCreateSchema = z.object({
     .optional()
     .transform((v) => v || null),
   template_id: z.string().uuid().nullable().optional(),
-  items_json: z.array(documentItemSchema).nullable().optional(),
   subtotal: z.number().min(0).default(0),
   tax: z.number().min(0).default(0),
   total: z.number().min(0).default(0),

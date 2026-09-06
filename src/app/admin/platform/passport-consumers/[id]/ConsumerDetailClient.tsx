@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { jstLocalInputToUtcIso } from "@/lib/datetime";
 
 type Consumer = {
   id: string;
@@ -79,7 +80,8 @@ function fmtDateTime(v: string | null): string {
   if (!v) return "—";
   const d = new Date(v);
   if (Number.isNaN(d.getTime())) return v;
-  return d.toLocaleString("ja-JP");
+  // 失効判定はサーバ側なので、表示も入力も JST 固定にする（ブラウザ TZ 依存を外す）。
+  return d.toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" });
 }
 
 export default function ConsumerDetailClient({ consumerId }: { consumerId: string }) {
@@ -219,10 +221,10 @@ export default function ConsumerDetailClient({ consumerId }: { consumerId: strin
         name: keyName.trim(),
         scopes: keyScopes,
       };
-      if (keyExpiresAt) {
-        // datetime-local → ISO
-        payload.expires_at = new Date(keyExpiresAt).toISOString();
-      }
+      // datetime-local の naive 文字列は JST 壁時計として解釈する。
+      // ブラウザ TZ で解釈すると、UTC 環境の端末から発行した API キーの失効が 9 時間ずれる。
+      const expiresIso = jstLocalInputToUtcIso(keyExpiresAt);
+      if (expiresIso) payload.expires_at = expiresIso;
       const res = await fetch(`/api/admin/platform/passport-consumers/${consumerId}/keys`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },

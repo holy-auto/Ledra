@@ -191,7 +191,7 @@ export default function VehicleDetailClient({ vehicleId }: { vehicleId: string }
         body: JSON.stringify({ id: vehicleId, status: newStatus }),
       });
       const j = await parseJsonSafe(res);
-      if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
+      if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       setVehicle(j.vehicle);
       setMsg({ text: `ステータスを「${STATUS_LABELS[newStatus] ?? newStatus}」に変更しました`, ok: true });
     } catch (e: any) {
@@ -223,7 +223,7 @@ export default function VehicleDetailClient({ vehicleId }: { vehicleId: string }
         body: JSON.stringify(payload),
       });
       const j = await parseJsonSafe(res);
-      if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
+      if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       setVehicle(j.vehicle);
       setEditMode(false);
       setMsg({ text: "保存しました", ok: true });
@@ -284,7 +284,7 @@ export default function VehicleDetailClient({ vehicleId }: { vehicleId: string }
         fd.append("vehicle_id", vehicleId);
         const res = await fetch("/api/admin/market-vehicles/images", { method: "POST", body: fd });
         const j = await parseJsonSafe(res);
-        if (!res.ok) throw new Error(j?.error ?? "Upload failed");
+        if (!res.ok) throw new Error(j?.message ?? j?.error ?? "Upload failed");
       }
       await fetchVehicle();
       setMsg({ text: "画像をアップロードしました", ok: true });
@@ -320,7 +320,7 @@ export default function VehicleDetailClient({ vehicleId }: { vehicleId: string }
         body: JSON.stringify({ id: vehicleId }),
       });
       const j = await parseJsonSafe(res);
-      if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
+      if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       window.location.href = "/admin/market-vehicles";
     } catch (e: any) {
       setMsg({ text: e?.message ?? String(e), ok: false });

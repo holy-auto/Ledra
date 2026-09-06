@@ -101,7 +101,7 @@ export default function AdminTrainingClient() {
     try {
       const res = await fetch("/api/admin/agent-training", { cache: "no-store" });
       const j = await parseJsonSafe(res);
-      if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
+      if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       setCourses(j.courses ?? []);
     } catch (e: unknown) {
       setErr(e instanceof Error ? e.message : String(e));
@@ -176,7 +176,7 @@ export default function AdminTrainingClient() {
         }),
       });
       const j = await parseJsonSafe(res);
-      if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
+      if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       closeForm();
       setSaveMsg({ text: `コース「${j.course?.title ?? form.title}」を登録しました`, ok: true });
       await fetchCourses();
@@ -211,7 +211,7 @@ export default function AdminTrainingClient() {
         }),
       });
       const j = await parseJsonSafe(res);
-      if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
+      if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       closeForm();
       setSaveMsg({ text: "コースを更新しました", ok: true });
       await fetchCourses();
@@ -232,7 +232,7 @@ export default function AdminTrainingClient() {
         method: "DELETE",
       });
       const j = await parseJsonSafe(res);
-      if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
+      if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       setSaveMsg({ text: "コースを削除しました", ok: true });
       await fetchCourses();
     } catch (e: unknown) {
