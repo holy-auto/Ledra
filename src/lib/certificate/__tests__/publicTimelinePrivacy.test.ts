@@ -15,9 +15,17 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { stripComments } from "@/lib/__tests__/sourceScan";
 
 const REPO = resolve(__dirname, "../../../..");
-const SRC = readFileSync(join(REPO, "src/lib/certificate/publicData.ts"), "utf8");
+const FILE = "src/lib/certificate/publicData.ts";
+/**
+ * **コメントを落としてから照合する**（`sourceScan.ts` の規約）。
+ * このファイルが検査する `publicData.ts` は、除外する型名を説明コメントにも書いている。
+ * 生ソースのまま見ると、**配列からコメントアウトで型を外しても検査が緑のまま**になる
+ * （この repo が2回やっている形。M-022 / M-033）。
+ */
+const SRC = stripComments(readFileSync(join(REPO, FILE), "utf8"), FILE);
 
 /** `logCertificateAction` の既定 description に uid / IP が入る監査種別。 */
 const MUST_BE_PRIVATE = [

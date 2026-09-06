@@ -27,14 +27,101 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join, dirname, normalize } from "node:path";
-import { walkSource, handlerChunks, moduleChunk } from "@/lib/__tests__/sourceScan";
+import ts from "typescript";
+import { walkSource, handlerChunks, moduleChunk, stripComments } from "@/lib/__tests__/sourceScan";
+import {
+  parse,
+  collect,
+  calleeName,
+  unwrapAwait,
+  negated,
+  alwaysExits,
+  statementLists,
+  declarationOf,
+  hasExitingGuard,
+  isIdent,
+  isPropertyOf,
+} from "@/lib/__tests__/astScan";
 
 const SRC = join(process.cwd(), "src");
 const API_ROOT = join(SRC, "app", "api");
 
 /** Anthropic クライアントを実際に構築している = このモジュールはモデルを叩く。 */
 const CALLS_MODEL = /getAnthropicClient\s*\(/;
-const RATE_LIMITED = /checkRateLimit\s*\(/;
+/**
+ * `checkRateLimit()` が**効いている**か。**構文木で見る。**
+ *
+ * 正規表現で3巡追いかけて、そのたびに形を変えた穴が出た（MISTAKE_LEDGER M-033）。
+ *
+ * ```
+ * await checkRateLimit(...);                       // 結果を捨てる
+ * if (!limited) return limited;                    // 弾く向きが逆
+ * if (limited) logger.warn(); return callModel();  // return が if の外
+ * if (a) { const limited = f(); if (limited) return limited; }
+ * if (b) { const limited = f(); }                  // 同名・別スコープのガードを流用
+ * void 0; // if (limited) return limited;          // コメントに書いてある
+ * ```
+ *
+ * どれも木の上なら一行で落とせる。**同名の関数が2つある**ので、正しい向きは形で振り分ける。
+ *   `@/lib/api/rateLimit` → `Response | null` : 返り値が**あるとき**に弾く
+ *   `@/lib/rateLimit`     → `{ allowed, ... }` : `allowed` で**ないとき**に弾く
+ */
+/** AI を呼んでいる箇所の開始位置。レート制限がこれより前にあるかを見るために要る。 */
+function aiCallStarts(node: ts.Node, bindings: readonly string[]): number[] {
+  return collect(node, ts.isCallExpression)
+    .filter((c) => bindings.includes(calleeName(c) ?? ""))
+    .map((c) => c.getStart());
+}
+
+function rateLimitCalls(node: ts.Node): ts.CallExpression[] {
+  return collect(node, ts.isCallExpression).filter((c) => calleeName(c) === "checkRateLimit");
+}
+
+function rateLimited(node: ts.Node, aiCallStarts: number[] = []): boolean {
+  const total = rateLimitCalls(node).length;
+  if (total === 0) return false;
+
+  let guarded = 0;
+  /** 弾き終わる位置。AI 呼び出しは**すべてこの後**でなければ意味が無い。 */
+  const guardEnds: number[] = [];
+
+  // (a) 変数に受けずその場で弾く形。`customer/line-login` が実際にこの書き方。
+  for (const s of collect(node, ts.isIfStatement)) {
+    if (rateLimitCalls(s.expression).length > 0 && alwaysExits(s.thenStatement)) {
+      guarded += rateLimitCalls(s.expression).length;
+      guardEnds.push(s.getEnd());
+    }
+  }
+
+  // (b) 変数に受けて、**同じスコープの後ろの文**で弾く形。
+  for (const stmts of statementLists(node)) {
+    stmts.forEach((stmt, i) => {
+      const decl = declarationOf(stmt);
+      if (!decl || calleeName(unwrapAwait(decl.init)) !== "checkRateLimit") return;
+      const v = decl.name;
+      const rest = stmts.slice(i + 1);
+      // `{ allowed }` を返す方か、`Response | null` を返す方か。使われ方で判る。
+      const objectStyle = collect(node, ts.isPropertyAccessExpression).some((p) => isPropertyOf(p, v, "allowed"));
+      const matches = (cond: ts.Expression) => {
+        if (!objectStyle) return isIdent(cond, v);
+        const inner = negated(cond);
+        return inner !== null && isPropertyOf(inner, v, "allowed");
+      };
+      const guard = rest.find((st) => ts.isIfStatement(st) && matches(st.expression) && alwaysExits(st.thenStatement));
+      if (guard) {
+        guarded += 1;
+        guardEnds.push(guard.getEnd());
+      }
+    });
+  }
+
+  // **数え漏らしを「制限あり」と読まない。** 知らない書き方は false に倒す。
+  if (guarded < total) return false;
+
+  // **弾いてから呼ぶ**ことまで見る。先にモデルを呼んでから制限しても、
+  // 弾かれた要求は既に課金されている（Codex の指摘）。
+  return aiCallStarts.every((at) => guardEnds.some((end) => end <= at));
+}
 
 /**
  * 上の `CALLS_MODEL` は「`getAnthropicClient()` が課金の出る外部推論の唯一の入口である」
@@ -148,7 +235,11 @@ function resolveImport(spec: string, from: string): string | null {
   return null;
 }
 
-const SOURCES = new Map<string, string>(walkSource(SRC).map((f) => [f, readFileSync(f, "utf8")] as const));
+// **コメントを落としてから走査する。** これが無いと、レート制限の呼び出しと
+// ガードを丸ごとコメントアウトしただけのルートを「制限あり」と読む（Codex の指摘）。
+const SOURCES = new Map<string, string>(
+  walkSource(SRC).map((f) => [f, stripComments(readFileSync(f, "utf8"))] as const),
+);
 
 /** モデルを叩くモジュール。 */
 const MODEL_MODULES = new Set([...SOURCES].filter(([, src]) => CALLS_MODEL.test(src)).map(([f]) => f));
@@ -186,19 +277,23 @@ function routeName(file: string): string {
 /** AI を呼ぶ「単位」= route + ハンドラ名（またはどのハンドラにも属さない module 断片）。 */
 const units: { id: string; limited: boolean }[] = [];
 for (const file of walkSource(API_ROOT, (f) => f.endsWith("route.ts"))) {
-  const src = SOURCES.get(file) ?? readFileSync(file, "utf8");
+  const src = SOURCES.get(file) ?? stripComments(readFileSync(file, "utf8"));
   const bindings = aiBindings(file, src);
   if (!bindings.length) continue;
   const callsAi = (chunk: string) => bindings.some((b) => new RegExp(String.raw`(?<![\w.])${b}\s*\(`).test(chunk));
 
   const name = routeName(file);
   for (const [method, chunk] of handlerChunks(src)) {
-    if (callsAi(chunk)) units.push({ id: `${name} [${method}]`, limited: RATE_LIMITED.test(chunk) });
+    if (callsAi(chunk)) {
+      const tree = parse(chunk, file);
+      units.push({ id: `${name} [${method}]`, limited: rateLimited(tree, aiCallStarts(tree, bindings)) });
+    }
   }
   // `export const POST = withX(handler)` の実体はここに落ちる。見落とすと消える。
   const top = moduleChunk(src);
   if (top && callsAi(top)) {
-    units.push({ id: `${name} [module]`, limited: RATE_LIMITED.test(top) });
+    const tree = parse(top, file);
+    units.push({ id: `${name} [module]`, limited: rateLimited(tree, aiCallStarts(tree, bindings)) });
   }
 }
 
@@ -265,5 +360,79 @@ describe("AI を呼ぶ API ハンドラのレート制限", () => {
       })
       .sort();
     expect(stale).toEqual([]);
+  });
+});
+
+describe("検出器そのものの性質", () => {
+  // 構造テストは「その語がソースにある」しか語れない。**述語を値で動かして**
+  // 素通りする形が本当に false になることを確かめる（M-033・型 G）。
+  const limited = (src: string) => rateLimited(parse(src));
+
+  it("結果を捨てる書き方は「制限している」と見なさない", () => {
+    expect(limited('const l = await checkRateLimit(req, "ai");')).toBe(false);
+    expect(limited('const l = await checkRateLimit(req, "ai");\nif (l) return l;')).toBe(true);
+  });
+
+  it("弾く向きが逆なら「制限している」と見なさない", () => {
+    // どちらも「通すべきを弾き、弾くべきを通す」壊れたガード（Codex の指摘）。
+    expect(limited('const l = await checkRateLimit(req, "ai");\nif (!l) return l;')).toBe(false);
+    expect(limited("const rl = await checkRateLimit(key, opts);\nif (rl.allowed) { return apiJson({}, 429); }")).toBe(
+      false,
+    );
+  });
+
+  it("`{ allowed }` を返すもう1つの checkRateLimit の形も受ける", () => {
+    expect(limited("const rl = await checkRateLimit(key, opts);\nif (!rl.allowed) { return apiJson({}, 429); }")).toBe(
+      true,
+    );
+  });
+
+  it("弾く return が if の中にあることまで要求する", () => {
+    // `if` の**外**の return を拾って素通りしていた（Codex の指摘）。
+    expect(limited('const l = await checkRateLimit(req, "ai");\nif (l) logger.warn();\nreturn callModel();')).toBe(
+      false,
+    );
+    expect(limited('const l = await checkRateLimit(req, "ai");\nif (l) { logger.warn(); return l; }')).toBe(true);
+  });
+
+  it("同名変数でも、別スコープのガードを流用しない", () => {
+    // 片方のブロックだけがガードしている。もう片方は守られていない（Codex の指摘）。
+    const src = `
+      if (a) { const l = await checkRateLimit(req, "ai"); if (l) return l; }
+      if (b) { const l = await checkRateLimit(req, "ai"); }
+    `;
+    expect(limited(src)).toBe(false);
+  });
+
+  it("その場で弾く形も受ける（変数に受けない書き方）", () => {
+    // customer/line-login が実際にこの形。
+    expect(limited('if (await checkRateLimit(req, "auth")) return backToLogin("rate_limited");')).toBe(true);
+    expect(limited('if (await checkRateLimit(req, "auth")) logger.warn();\nreturn callModel();')).toBe(false);
+  });
+
+  it("弾いてから呼ぶことまで要求する", () => {
+    // 先にモデルを呼んでから制限しても、弾かれた要求は既に課金されている（Codex の指摘）。
+    const tree = (src: string) => parse(src);
+    const before = 'const l = await checkRateLimit(req, "ai");\nif (l) return l;\nconst r = await gen(x);';
+    const after = 'const r = await gen(x);\nconst l = await checkRateLimit(req, "ai");\nif (l) return l;';
+    const starts = (src: string) =>
+      collect(tree(src), ts.isCallExpression)
+        .filter((c) => calleeName(c) === "gen")
+        .map((c) => c.getStart());
+    expect(rateLimited(tree(before), starts(before))).toBe(true);
+    expect(rateLimited(tree(after), starts(after))).toBe(false);
+  });
+
+  it("知らない書き方は「制限している」と読まない", () => {
+    // 数え漏らしを合格に倒すと、新しい書き方が入った瞬間に静かに穴が開く。
+    expect(limited('const r = someWrapper(await checkRateLimit(req, "ai"));')).toBe(false);
+  });
+
+  it("コメントの中身は最初から見ない（構文木にコメントは無い）", () => {
+    expect(limited('void 0; // const l = await checkRateLimit(req, "ai"); if (l) return l;')).toBe(false);
+  });
+
+  it("呼んでいないものを「制限している」と言わない", () => {
+    expect(limited("const x = await somethingElse(req);")).toBe(false);
   });
 });

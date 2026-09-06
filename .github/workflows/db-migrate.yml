@@ -125,9 +125,15 @@ jobs:
           # printf | head だと巨大なメッセージで printf が SIGPIPE を受け、pipefail と併せて
           # ここで落ちうるので、パイプを使わないパラメータ展開で切る。
           title=${COMMIT_MSG%%$'\n'*}
+          # ヒント文は **必ず --arg で渡す**。jq プログラムはシングルクォートで囲むので、
+          # プログラム本文に `'` を書くとそこで文字列が終わり、続きがシェルとして解釈される。
+          # 実際 `where version = '<対象>'` の `'` でこのステップは毎回落ちており、
+          # 「本番の適用が止まった」通知が一度も届いていなかった（MISTAKE_LEDGER M-047）。
+          hint="よくある原因: (1) 本番 schema_migrations にあるバージョンのファイルが repo に無い → 該当ファイルを追加する。(2) 新しいマイグレーションの日付が適用済み最新より古い (out-of-order) → 後ろの日付へ改名する。*ただし改名してよいのは本番に無いバージョンだけ。* 改名前に schema_migrations をバージョン名で名指しして引くこと（降順 LIMIT で代用しない）。適用済みを改名すると条件1を壊し、次の run が別のエラーで止まる — 2026-08 に2回起きている。"
           payload=$(jq -n \
             --arg run "$RUN_URL" \
             --arg title "$title" \
+            --arg hint "$hint" \
             '{
               blocks: [
                 { type: "header",
@@ -136,8 +142,7 @@ jobs:
                   text: { type: "mrkdwn",
                     text: ("*このまま放置すると、以降のスキーマ変更が本番に届きません。*\n直近のコミット: " + $title) } },
                 { type: "context", elements: [
-                  { type: "mrkdwn",
-                    text: "よくある原因: (1) 本番 schema_migrations にあるバージョンのファイルが repo に無い → 該当ファイルを追加する。(2) 新しいマイグレーションの日付が適用済み最新より古い (out-of-order) → 後ろの日付へ改名する。*ただし改名してよいのは本番に無いバージョンだけ。* 改名前に `select version from supabase_migrations.schema_migrations where version = '<対象>'` で名指しして引くこと（降順 LIMIT で代用しない）。適用済みを改名すると条件1を壊し、次の run が別のエラーで止まる — 2026-08 に2回起きている。" }
+                  { type: "mrkdwn", text: $hint }
                 ] },
                 { type: "actions", elements: [
                   { type: "button", style: "danger",

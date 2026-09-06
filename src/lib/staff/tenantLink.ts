@@ -12,7 +12,7 @@ import { generateCode, normalizeCode } from "@/lib/staff/linkCode";
  * staff_members.linked_tenant_id が埋まる。以後、外注は自分の管理画面から
  * **自分が作業した記録だけ**を見られる。
  *
- * 設計と制約はマイグレーション 20260906000002 のコメント。要点:
+ * 設計と制約はマイグレーション 20260906100002 のコメント。要点:
  *   - 外注も Ledra を使う前提（アカウント無しの経路は持たない）。
  *   - 顧客名は表示しない（開示列は portfolioDisclosure.ts）。
  *   - **他社に稼働先を見せない**。元請けは自テナントの staff_members しか読めないので
