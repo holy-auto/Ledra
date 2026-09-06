@@ -40,7 +40,7 @@ import {
   calls,
   statementLists,
   declarationOf,
-  hasExitingGuard,
+  firstSideEffectPos,
 } from "@/lib/__tests__/astScan";
 import { hasPermission } from "@/lib/auth/permissions";
 
@@ -71,9 +71,14 @@ function isNegatedHelperCall(cond: ts.Expression, helpers: readonly string[]): b
  */
 function guardsDirectly(body: ts.Node | undefined): boolean {
   if (!body) return false;
-  if (THROWING_HELPERS.some((h) => calls(body, h))) return true;
+  // **書き込みより前**であることまで見る。本文のどこかにガードがあれば良いのなら、
+  // `await write(); if (!requirePermission(...)) return forbidden;` も合格してしまう
+  // （書き込んだ後に弾いても認可の意味を成さない。Codex の指摘）。
+  const writeAt = firstSideEffectPos(body);
+  const throwing = collect(body, ts.isCallExpression).find((c) => THROWING_HELPERS.includes(calleeName(c) ?? ""));
+  if (throwing && throwing.getStart() < writeAt) return true;
   return collect(body, ts.isIfStatement).some(
-    (n) => isNegatedHelperCall(n.expression, BOOLEAN_HELPERS) && alwaysExits(n.thenStatement),
+    (n) => isNegatedHelperCall(n.expression, BOOLEAN_HELPERS) && alwaysExits(n.thenStatement) && n.getEnd() <= writeAt,
   );
 }
 
@@ -95,7 +100,14 @@ function delegatesGuard(body: ts.Node | undefined, helpers: readonly string[]): 
       if (name === null || !helpers.includes(name)) return false;
       // 同じスコープの**後ろの文**だけを見る。別ブロックのガードを流用させない。
       const rest = stmts.slice(i + 1);
-      return hasExitingGuard(rest, (cond) => collect(cond, ts.isIdentifier).some((id) => id.text === decl.name));
+      const writeAt = firstSideEffectPos(body);
+      return rest.some(
+        (st) =>
+          ts.isIfStatement(st) &&
+          collect(st.expression, ts.isIdentifier).some((id) => id.text === decl.name) &&
+          alwaysExits(st.thenStatement) &&
+          st.getEnd() <= writeAt, // 書き込みより前で弾いていること
+      );
     }),
   );
 }

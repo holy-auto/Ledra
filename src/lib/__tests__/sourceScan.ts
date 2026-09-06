@@ -5,6 +5,15 @@
  * 除外リスト（__tests__ / node_modules）を変えるときに1箇所で済む。
  */
 import ts from "typescript";
+
+/**
+ * 拡張子で文法を選ぶ。**`.ts` を TSX として解いてはいけない。**
+ * `const f = <T,>(x: T) => x` のような総称のアロー関数が JSX と曖昧になり、
+ * 構文木が壊れてその先のコメントを取りこぼす（Codex の指摘）。
+ */
+export function scriptKind(fileName: string): ts.ScriptKind {
+  return fileName.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS;
+}
 import { readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 
@@ -23,26 +32,31 @@ import { join } from "node:path";
  *
  * 行番号がずれないよう、コメントは改行だけ残して空白化する。
  */
-export function stripComments(src: string): string {
-  // スキャナ単体では足りない。テンプレートリテラルの `${...}` を跨ぐと文脈を失い、
-  // `` `x${y}//z` `` の `//` 以降をコメントとして食う（実際に落ちた）。
-  // パーサに構文を解かせ、各トークンの前置トリビアからコメント範囲を集める。
-  const sf = ts.createSourceFile("scan.tsx", src, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+export function stripComments(src: string, fileName = "scan.tsx"): string {
+  const sf = ts.createSourceFile(fileName, src, ts.ScriptTarget.Latest, true, scriptKind(fileName));
   const ranges: { pos: number; end: number }[] = [];
   const visit = (node: ts.Node): void => {
     // 前置と後置の両方を取る。**同じ行にあるコメントは前置に出てこない**ので、
-    // 前置だけ見ていると `void 0; // ...` の行末コメントが丸ごと残る（Codex の指摘）。
+    // 前置だけ見ていると `void 0; // ...` の行末コメントが丸ごと残る。
     for (const r of ts.getLeadingCommentRanges(src, node.getFullStart()) ?? []) ranges.push(r);
     for (const r of ts.getTrailingCommentRanges(src, node.getEnd()) ?? []) ranges.push(r);
     for (const child of node.getChildren(sf)) visit(child);
   };
   visit(sf);
 
-  const chars = [...src];
-  for (const { pos, end } of ranges) {
-    for (let i = pos; i < end; i++) if (chars[i] !== "\n") chars[i] = " "; // 行番号を保つ
+  // **文字列で切り貼りする。** `[...src]` はコードポイント単位の配列になるが、
+  // TypeScript が返す pos/end は **UTF-16 単位**。絵文字が1つでも手前にあると
+  // 位置がずれ、コメントが残ったり本物のコードを潰したりする（Codex の指摘）。
+  const sorted = [...ranges].sort((a, b) => a.pos - b.pos);
+  let out = "";
+  let at = 0;
+  for (const { pos, end } of sorted) {
+    if (end <= at) continue; // 入れ子・重複
+    const from = Math.max(pos, at);
+    out += src.slice(at, from) + src.slice(from, end).replace(/[^\n]/g, " "); // 行番号を保つ
+    at = end;
   }
-  return chars.join("");
+  return out + src.slice(at);
 }
 
 /** ディレクトリ配下の .ts/.tsx を再帰的に集める。 */

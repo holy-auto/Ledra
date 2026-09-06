@@ -26,6 +26,21 @@ describe("stripComments", () => {
     expect(out.split("\n").length).toBe(4);
   });
 
+  it("絵文字の後ろでも位置がずれない（UTF-16 と コードポイント）", () => {
+    // pos/end は UTF-16 単位。コードポイント配列で切ると絵文字1つで1桁ずれる（Codex の指摘）。
+    const out = stripComments('const s = "🚗";\nconst t = 1; // drop');
+    expect(out).toContain('const s = "🚗";');
+    expect(out).toContain("const t = 1;");
+    expect(out).not.toContain("drop");
+  });
+
+  it(".ts は TS 文法で解く（総称のアロー関数を壊さない）", () => {
+    // TSX として解くと `<T,>` が JSX と曖昧になり、木が壊れて後続のコメントを取りこぼす。
+    const src = "const f = <T,>(x: T) => x;\nconst y = 2; // drop";
+    expect(stripComments(src, "a.ts")).not.toContain("drop");
+    expect(stripComments(src, "a.ts")).toContain("const f = <T,>(x: T) => x;");
+  });
+
   it("JSX とテンプレートリテラルを壊さない", () => {
     // スキャナ単体だと `${...}` を跨いだ時点で文脈を失い、ここで落ちた。
     const out = stripComments("const el = <A b={`x${y}//z`} />; // drop");

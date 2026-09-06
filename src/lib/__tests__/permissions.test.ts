@@ -1,6 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
+import ts from "typescript";
 import { stripComments } from "./sourceScan";
+import { parse, collect, calleeName, alwaysExits, negated } from "./astScan";
 import { join } from "node:path";
 import { hasPermission, getPermissions, requiredPermissionForPath, type Permission } from "@/lib/auth/permissions";
 import type { Role } from "@/lib/auth/roles";
@@ -267,15 +269,29 @@ describe("ROUTE_PERMISSIONS の消費側", () => {
   const GUARD = join(process.cwd(), "src", "app", "admin", "AdminRouteGuard.tsx");
   const LAYOUT = join(process.cwd(), "src", "app", "admin", "layout.tsx");
 
-  it("AdminRouteGuard が requiredPermissionForPath の結果でアクセスを判定している", () => {
-    // 「呼んでいる」だけでは足りない。結果を捨てて `requiredPermissionForPath(pathname);`
-    // と書いても、表が誰も制限しない状態のまま緑になる（Codex の指摘）。
-    // 受けた値が実際に権限判定へ流れていることまで見る。
-    // コメントを落としてから照合する（M-022）。
-    const src = stripComments(readFileSync(GUARD, "utf8"));
-    const m = /(?:const|let)\s+(\w+)\s*=\s*requiredPermissionForPath\s*\(/.exec(src);
-    expect(m, "requiredPermissionForPath の結果を受けていない").not.toBeNull();
-    expect(src).toMatch(new RegExp(String.raw`!\s*can\(\s*${m![1]}\s*\)`));
+  it("AdminRouteGuard が requiredPermissionForPath の結果で描画を止めている", () => {
+    // 段階的に2回甘かった（いずれも Codex の指摘）。
+    //   呼び出しの存在だけ → `requiredPermissionForPath(pathname);` と結果を捨てても緑
+    //   `!can(perm)` の存在だけ → `const denied = !can(perm);` と書いて素通りしても緑
+    // **その判定が必ず抜ける分岐に入っている**ことまで、構文木で見る。
+    const tree = parse(readFileSync(GUARD, "utf8"), GUARD);
+    const decl = collect(tree, ts.isVariableDeclaration).find(
+      (d) => d.initializer && calleeName(d.initializer) === "requiredPermissionForPath",
+    );
+    expect(decl, "requiredPermissionForPath の結果を受けていない").toBeDefined();
+    const perm = (decl!.name as ts.Identifier).text;
+
+    const blocks = collect(tree, ts.isIfStatement).some(
+      (n) =>
+        alwaysExits(n.thenStatement) &&
+        collect(n.expression, ts.isCallExpression).some(
+          (c) =>
+            calleeName(c) === "can" &&
+            c.arguments.some((a) => ts.isIdentifier(a) && a.text === perm) &&
+            negated(c.parent as ts.Expression) !== null,
+        ),
+    );
+    expect(blocks, "権限が無いときに描画を止める分岐が見つからない").toBe(true);
   });
 
   it("その AdminRouteGuard が admin レイアウトで children を包んでいる", () => {

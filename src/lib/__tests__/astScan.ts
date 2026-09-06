@@ -25,10 +25,15 @@
  * 「説明コメントに書いた関数名に検出器が反応する」事故（M-022）はここでは起きない。
  */
 import ts from "typescript";
+import { scriptKind } from "./sourceScan";
 
-/** ソースを構文木にする。JSX を含みうるので TSX として解く。 */
+/**
+ * ソースを構文木にする。**文法は拡張子で選ぶ。**
+ * `.ts` を TSX として解くと総称のアロー関数が JSX と曖昧になり木が壊れる。
+ * 既定を `.tsx` にしているのは、断片を直接渡す単体テストで JSX も書けるようにするため。
+ */
 export function parse(src: string, fileName = "scan.tsx"): ts.SourceFile {
-  return ts.createSourceFile(fileName, src, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  return ts.createSourceFile(fileName, src, ts.ScriptTarget.Latest, true, scriptKind(fileName));
 }
 
 /** 木を深さ優先で辿る。 */
@@ -177,4 +182,28 @@ export function negated(e: ts.Expression): ts.Expression | null {
 /** `v.prop` を指しているか。 */
 export function isPropertyOf(e: ts.Expression, name: string, prop: string): boolean {
   return ts.isPropertyAccessExpression(e) && isIdent(e.expression, name) && e.name.text === prop;
+}
+
+/**
+ * 副作用（書き込み）の呼び出し位置のうち、**いちばん早いもの**。無ければ Infinity。
+ *
+ * 「守っている」は**守ってから書く**の意味であって、本文のどこかにガードがあることではない。
+ * `await write(); if (!requirePermission(...)) return forbidden;` は書き込んだ後に弾いており、
+ * 認可の意味を成していない（Codex の指摘）。
+ *
+ * ponytail: 書き込みの見分けは名前と Supabase のクエリビルダに限った素朴な判定。
+ * 取りこぼす形が出たら、副作用の入口を1箇所に集約してそこを見る方が確実。
+ */
+const WRITE_NAMES = /^(insert|update|upsert|delete|remove|create|write|revalidatePath|revalidateTag)$/;
+
+export function firstSideEffectPos(node: ts.Node): number {
+  const positions = collect(node, ts.isCallExpression)
+    .filter((c) => {
+      const name = calleeName(c);
+      if (name !== null && WRITE_NAMES.test(name)) return true;
+      // `admin.from("t").update(...)` の起点。読み書きの区別が付かないので from も見る。
+      return name === "from";
+    })
+    .map((c) => c.getStart());
+  return positions.length ? Math.min(...positions) : Number.POSITIVE_INFINITY;
 }

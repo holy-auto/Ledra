@@ -66,20 +66,30 @@ const CALLS_MODEL = /getAnthropicClient\s*\(/;
  *   `@/lib/api/rateLimit` → `Response | null` : 返り値が**あるとき**に弾く
  *   `@/lib/rateLimit`     → `{ allowed, ... }` : `allowed` で**ないとき**に弾く
  */
+/** AI を呼んでいる箇所の開始位置。レート制限がこれより前にあるかを見るために要る。 */
+function aiCallStarts(node: ts.Node, bindings: readonly string[]): number[] {
+  return collect(node, ts.isCallExpression)
+    .filter((c) => bindings.includes(calleeName(c) ?? ""))
+    .map((c) => c.getStart());
+}
+
 function rateLimitCalls(node: ts.Node): ts.CallExpression[] {
   return collect(node, ts.isCallExpression).filter((c) => calleeName(c) === "checkRateLimit");
 }
 
-function rateLimited(node: ts.Node): boolean {
+function rateLimited(node: ts.Node, aiCallStarts: number[] = []): boolean {
   const total = rateLimitCalls(node).length;
   if (total === 0) return false;
 
   let guarded = 0;
+  /** 弾き終わる位置。AI 呼び出しは**すべてこの後**でなければ意味が無い。 */
+  const guardEnds: number[] = [];
 
   // (a) 変数に受けずその場で弾く形。`customer/line-login` が実際にこの書き方。
   for (const s of collect(node, ts.isIfStatement)) {
     if (rateLimitCalls(s.expression).length > 0 && alwaysExits(s.thenStatement)) {
       guarded += rateLimitCalls(s.expression).length;
+      guardEnds.push(s.getEnd());
     }
   }
 
@@ -92,18 +102,25 @@ function rateLimited(node: ts.Node): boolean {
       const rest = stmts.slice(i + 1);
       // `{ allowed }` を返す方か、`Response | null` を返す方か。使われ方で判る。
       const objectStyle = collect(node, ts.isPropertyAccessExpression).some((p) => isPropertyOf(p, v, "allowed"));
-      const ok = objectStyle
-        ? hasExitingGuard(rest, (cond) => {
-            const inner = negated(cond);
-            return inner !== null && isPropertyOf(inner, v, "allowed");
-          })
-        : hasExitingGuard(rest, (cond) => isIdent(cond, v));
-      if (ok) guarded += 1;
+      const matches = (cond: ts.Expression) => {
+        if (!objectStyle) return isIdent(cond, v);
+        const inner = negated(cond);
+        return inner !== null && isPropertyOf(inner, v, "allowed");
+      };
+      const guard = rest.find((st) => ts.isIfStatement(st) && matches(st.expression) && alwaysExits(st.thenStatement));
+      if (guard) {
+        guarded += 1;
+        guardEnds.push(guard.getEnd());
+      }
     });
   }
 
   // **数え漏らしを「制限あり」と読まない。** 知らない書き方は false に倒す。
-  return guarded >= total;
+  if (guarded < total) return false;
+
+  // **弾いてから呼ぶ**ことまで見る。先にモデルを呼んでから制限しても、
+  // 弾かれた要求は既に課金されている（Codex の指摘）。
+  return aiCallStarts.every((at) => guardEnds.some((end) => end <= at));
 }
 
 /**
@@ -267,12 +284,16 @@ for (const file of walkSource(API_ROOT, (f) => f.endsWith("route.ts"))) {
 
   const name = routeName(file);
   for (const [method, chunk] of handlerChunks(src)) {
-    if (callsAi(chunk)) units.push({ id: `${name} [${method}]`, limited: rateLimited(parse(chunk)) });
+    if (callsAi(chunk)) {
+      const tree = parse(chunk, file);
+      units.push({ id: `${name} [${method}]`, limited: rateLimited(tree, aiCallStarts(tree, bindings)) });
+    }
   }
   // `export const POST = withX(handler)` の実体はここに落ちる。見落とすと消える。
   const top = moduleChunk(src);
   if (top && callsAi(top)) {
-    units.push({ id: `${name} [module]`, limited: rateLimited(parse(top)) });
+    const tree = parse(top, file);
+    units.push({ id: `${name} [module]`, limited: rateLimited(tree, aiCallStarts(tree, bindings)) });
   }
 }
 
@@ -387,6 +408,19 @@ describe("検出器そのものの性質", () => {
     // customer/line-login が実際にこの形。
     expect(limited('if (await checkRateLimit(req, "auth")) return backToLogin("rate_limited");')).toBe(true);
     expect(limited('if (await checkRateLimit(req, "auth")) logger.warn();\nreturn callModel();')).toBe(false);
+  });
+
+  it("弾いてから呼ぶことまで要求する", () => {
+    // 先にモデルを呼んでから制限しても、弾かれた要求は既に課金されている（Codex の指摘）。
+    const tree = (src: string) => parse(src);
+    const before = 'const l = await checkRateLimit(req, "ai");\nif (l) return l;\nconst r = await gen(x);';
+    const after = 'const r = await gen(x);\nconst l = await checkRateLimit(req, "ai");\nif (l) return l;';
+    const starts = (src: string) =>
+      collect(tree(src), ts.isCallExpression)
+        .filter((c) => calleeName(c) === "gen")
+        .map((c) => c.getStart());
+    expect(rateLimited(tree(before), starts(before))).toBe(true);
+    expect(rateLimited(tree(after), starts(after))).toBe(false);
   });
 
   it("知らない書き方は「制限している」と読まない", () => {
