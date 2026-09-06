@@ -204,7 +204,7 @@ export default function StaffClient() {
         body: JSON.stringify({ staff_member_id: st.id }),
       });
       const j = await parseJsonSafe(res);
-      if (!res.ok) throw new Error(j?.error ?? j?.message ?? `HTTP ${res.status}`);
+      if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       setLinkCode({ staffId: st.id, code: j.code, expiresAt: j.expires_at });
     } catch (e: unknown) {
       setMsg({ text: e instanceof Error ? e.message : String(e), ok: false });
@@ -224,7 +224,7 @@ export default function StaffClient() {
         body: JSON.stringify({ staff_member_id: st.id }),
       });
       const j = await parseJsonSafe(res);
-      if (!res.ok) throw new Error(j?.error ?? j?.message ?? `HTTP ${res.status}`);
+      if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       if (linkCode?.staffId === st.id) setLinkCode(null);
       setMsg({ text: "連携を解除しました。", ok: true });
       await fetchStaff();

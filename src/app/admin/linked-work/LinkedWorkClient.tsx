@@ -29,7 +29,7 @@ export default function LinkedWorkClient({ initial }: { initial: LinkedWork }) {
         body: JSON.stringify({ code }),
       });
       const j = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(j?.error ?? j?.message ?? "連携できませんでした。");
+      if (!res.ok) throw new Error(j?.message ?? j?.error ?? "連携できませんでした。");
       setCode("");
       setMsg({ text: `${j.client_name} と連携しました。`, ok: true });
       router.refresh();
