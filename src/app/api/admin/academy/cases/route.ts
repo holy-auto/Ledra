@@ -38,21 +38,27 @@ const academyCaseActionSchema = z.object({
 });
 
 /**
- * 公開される文面のハッシュ。preview が返し、publish が突き合わせる。
+ * 「この確認は今も有効か」を表す印。preview が返し、publish が突き合わせる。
  *
- * 時刻（updated_at）を版の印にしていたが、同じミリ秒に2つの preview が終わると
- * 同じ値になり、**後から上書きされた文面を、前の人のトークンで公開できて**しまう
- * （Codex の指摘）。中身そのものから作れば衝突しないし、
- * 「見た文面 ＝ 保存されている文面」を直接言い表せる。
+ * 中身の4項目に加えて `updated_at` も混ぜる。理由が2つある。
+ *
+ * 1. **中身**を混ぜるので、別の人が再生成して文面が入れ替わったら合わなくなる。
+ *    時刻だけを印にしていたときは、同じミリ秒に終わった2つの preview で衝突し、
+ *    上書きされた文面を前の人のトークンで公開できた（Codex の指摘）。
+ * 2. **`updated_at`** を混ぜるので、**publish と unpublish の後で必ず無効になる**。
+ *    中身だけだと、公開 → 非公開に戻したとき本文は変わらないので同じ印が復活し、
+ *    再確認なしに再公開できて knowledge_chunks が二重に入った（同じく Codex の指摘）。
+ *    publish も unpublish も updated_at を更新するので、1回使えば自動的に切れる。
  */
 function contentHash(c: {
   ai_summary: string | null;
   good_points: unknown;
   caution_points: unknown;
   tags: unknown;
+  updated_at: unknown;
 }): string {
   return createHash("sha256")
-    .update(JSON.stringify([c.ai_summary, c.good_points, c.caution_points, c.tags]))
+    .update(JSON.stringify([c.ai_summary, c.good_points, c.caution_points, c.tags, c.updated_at]))
     .digest("hex");
 }
 
@@ -206,6 +212,8 @@ export async function POST(req: NextRequest) {
       // AI の費用も二重に出ない。
       //
 
+      const previewedAt = new Date().toISOString();
+
       // **既に公開済みの行は更新しない。** 2人が同じ候補を触ったとき、
       // 片方が公開した後にもう片方の遅れて返ってきた生成結果が上書きすると、
       // 公開済みの文面が誰も見ていないものに差し替わる（knowledge_chunks は古いまま）。
@@ -216,7 +224,7 @@ export async function POST(req: NextRequest) {
           good_points: goodPoints,
           caution_points: cautionPoints,
           tags,
-          updated_at: new Date().toISOString(),
+          updated_at: previewedAt,
         })
         .eq("id", case_id)
         .eq("is_published", false)
@@ -234,6 +242,7 @@ export async function POST(req: NextRequest) {
           good_points: goodPoints,
           caution_points: cautionPoints,
           tags,
+          updated_at: previewedAt,
         }),
         preview: {
           ai_summary: aiSummary,

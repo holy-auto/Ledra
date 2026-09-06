@@ -117,6 +117,17 @@ export default function AcademyCasesPage() {
         setExpanded(caseId);
         return;
       }
+      // 公開／非公開の後は確認をやり直させる。サーバ側でも印は無効になるが
+      // （updated_at を混ぜてある）、押せてしまうボタンを画面に残さない。
+      setPreview((p) => {
+        const { [caseId]: _drop, ...rest } = p;
+        return rest;
+      });
+      setPreviewToken((t) => {
+        const { [caseId]: _drop, ...rest } = t;
+        return rest;
+      });
+      setConfirmed((c) => ({ ...c, [caseId]: false }));
       await fetchCases();
     } finally {
       setPublishing(null);

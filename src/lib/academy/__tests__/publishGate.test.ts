@@ -102,9 +102,15 @@ describe("Academy 事例公開の2段階ゲート", () => {
     expect(block).toMatch(/publishedRows\?\.length/);
   });
 
-  it("版の印は時刻ではなく中身から作る（衝突しない）", () => {
+  it("版の印は中身と updated_at の両方から作る（衝突せず、1回で切れる）", () => {
     expect(src).toMatch(/createHash\(\s*"sha256"\s*\)/);
-    // preview が返すのはハッシュであって時刻ではない。
+    // preview が返すのはハッシュであって時刻そのものではない。
     expect(actionBlock(src, "preview")).toMatch(/preview_token:\s*contentHash\(/);
+    // **中身だけだと足りない。** 公開 → 非公開に戻すと本文は変わらないので
+    // 同じ印が復活し、再確認なしに再公開できて knowledge_chunks が二重に入る
+    // （Codex の指摘）。publish も unpublish も updated_at を更新するので、
+    // 混ぜておけば1回使うと切れる。
+    const hashFn = src.slice(src.indexOf("function contentHash"), src.indexOf("export const runtime"));
+    expect(hashFn).toMatch(/c\.updated_at/);
   });
 });
