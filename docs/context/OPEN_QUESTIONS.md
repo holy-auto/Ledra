@@ -364,19 +364,81 @@ JST は夏時間が無いので日の加算は 24 時間の加算でよい。
 【要確認】として残す: 同じ「PUBLIC のままの読み取りポリシー」が `academy_cases` 以外にも
 無いか。今回は1件見ただけで、棚卸ししていない。
 
-## マイグレーション外で本番スキーマが変更された経路が不明（2026-09-04）
+## マイグレーション外で本番スキーマへ入ったオブジェクトが 68 個ある（2026-09-04、2026-09-06 に棚卸し）
 
 `insurer_tenant_accesses`（複数形）と全組み合わせ自動付与トリガ2本は削除して決着した
-（DECISION_LOG 2026-09-04）。残る疑問は**どうやって本番に入ったか**。
+（DECISION_LOG 2026-09-04）。「同じ経路で入った他のオブジェクトが無いか」を
+2026-09-06 に棚卸しした。**あった。68 個**。
 
-- 削除した表・トリガ・関数は `supabase/migrations/` に定義が1件も無かった。
-  つまりマイグレーションを通さずに本番スキーマへ入っている（ダッシュボード直接操作など）。
-- **同じ経路で入った他のオブジェクトが無いかは未調査**【要確認】。本番の
-  `information_schema` と migrations の突き合わせをすれば機械的に洗える。
-  `Migrations Replay` はまっさらな DB に migrations を当てるだけなので、
-  **本番にだけ存在するオブジェクトは検出できない**（この件も検出されていなかった）。
-- いつ・誰が・なぜ作ったかも不明。複数形の最古の行は 2026-03-10 で、
-  単数形を作った `20260326100000_insurer_access_policy.sql` より前だった。
+### 数えたもの（2026-09-06 時点、migrations 446 本 / main `6bc745f`）
+
+本番 `public` スキーマのオブジェクト名を、`supabase/migrations/` 全 446 本の
+`CREATE` 文（`ALTER TABLE ... RENAME TO` の改名先を含む）と突き合わせた。
+
+| 種別 | 本番 | migrations に CREATE が無い |
+|---|---|---|
+| テーブル | 278 | **23** |
+| ビュー | 4 | **1** |
+| 関数 | 141（拡張機能所有の4本を除く） | **24** |
+| トリガ | 129 | **15** |
+| enum 型 | 5 | **5**（migrations に `CREATE TYPE` が1本も無い） |
+
+- テーブル23: `certificate_maintenance_logs` `dealer_users` `dealers` `deals`
+  `error_events` `industry_news` `inquiry_messages` `insurer_subscriptions`
+  `inventory_listings` `job_bids` `line_follow_events` `line_link_audit_logs`
+  `line_link_candidates` `line_link_sessions` `line_link_tokens` `line_pending_links`
+  `listing_images` `listing_inquiries` `operator_users` `shop_price_submissions`
+  `support_ticket_messages` `support_tickets` `system_health_snapshots`
+- ビュー1: `v_insurer_users_list`（`20260826000005_repair_unreplayable_objects.sql`
+  のコメントに「どのマイグレーションでも作られない」と既に書かれていた）
+- 関数24: `current_tenant_id` `current_insurer_id` `current_uid` `is_member_of_tenant`
+  `member_role_in_tenant` `is_approved_dealer` `my_dealer_id` `market_my_dealer_id`
+  `market_is_approved_dealer` `insurer_is_active_subscription` `handle_updated_at`
+  `update_updated_at_column` `generate_public_id` `generate_vehicle_public_id`
+  `generate_case_number` `certificate_vehicle_group_key` `vehicle_group_key_from_fields`
+  `norm_vehicle_plate` `norm_vehicle_text` `norm_vehicle_year` `normalize_plate_search`
+  `resolve_vehicle_representative_certificate_public_id` `rls_auto_enable`
+  `search_vehicles_for_cartrust`
+- トリガ15・enum5 は本文末の DECISION_LOG 2026-09-06 参照。
+
+### 危険度の切り分け（ここが本題）
+
+**テーブル23は実質使われていない。** 23 個中 21 個が 0 行、残り 2 個も 1 行
+（`insurer_subscriptions` / `operator_users`）。`src` と `apps` から
+`.from("<表名>")` 相当の参照は**ゼロ**（`db.generated.ts` の型定義と、無関係な
+アドオンキー文字列 `"deals"` を除く）。全 23 個が RLS 有効で、うち 7 個は
+ポリシー0本＝サービスロール以外は全拒否。**露出は無い。**
+
+**危ないのは関数のほう。** マイグレーションに定義が無い 5 本
+（`market_my_dealer_id` 17 / `market_is_approved_dealer` 6 / `my_dealer_id` 5 /
+`is_approved_dealer` 4 / `is_member_of_tenant` 3）を、**35 本の RLS ポリシー**が
+参照している。さらに 8 本のトリガが未管理のトリガ関数
+（`handle_updated_at` `update_updated_at_column` 等）を呼んでいる。
+つまり **migrations だけから作った DB は、本番と同じ権限判定をしない**。
+
+### なぜ既存の検査で見つからないか
+
+- `Migrations Replay`（`scripts/replay-migrations.mjs`）は「全ファイルが
+  エラー無しで流れるか」と RLS 打ち消し検査だけで、**できあがったスキーマを
+  本番と比べていない**。だから本番にだけ在るオブジェクトは原理的に出ない。
+- `npm run check:schema` の `scripts/schema.snapshot.json` は
+  **実 DB から取ったコピー**なので、ドリフトごと写して合格する。
+
+### まだ答えが出ていないこと
+
+- **いつ・誰が・なぜ作ったか**は依然不明【要確認】。Postgres はオブジェクトの
+  作成時刻を持たない。`pg_class.oid` の並びを見ると、ドリフト表は migrations 由来の
+  表と入り混じっており「最初期のダッシュボード構築ぶんだけ」では説明できないが、
+  同じ oid 順が migrations のファイル日付順と一致しない箇所があるため
+  （`market_deals` は 2026-03-14 のファイル由来なのに oid が 2026-03-26 由来の
+  `insurer_tenant_access` より大きい）、**oid 順から時期を断定はできない**【推定】。
+- **恒久的な検出をどこに置くか未決**。本番の資格情報が要るので CI の
+  `Migrations Replay`（空 DB）ではなく、既に本番を叩いている
+  `supabase-advisors.yml`（定期実行）が置き場所の候補。今回は棚卸しのみで
+  検出器は入れていない。
+- **23 個の未使用テーブルを消すかどうか未決**。消せば `db.generated.ts` と
+  `schema.snapshot.json` も縮む。ただし 2 個には 1 行ずつ入っており、
+  中身の確認が先。
 
 ## デモ保険会社にデモ施工店の閲覧許可を入れた。実アカウントの越境アクセスは別途確認したい（2026-09-03）
 
