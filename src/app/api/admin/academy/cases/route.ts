@@ -24,7 +24,9 @@ import { CERT_AI_COLUMNS, certAiFields, certPhotoCount } from "@/lib/certificate
 
 const academyCaseActionSchema = z.object({
   case_id: z.string().uuid("case_id が必要です"),
-  action: z.enum(["publish", "unpublish"], { message: "action は publish または unpublish です" }),
+  action: z.enum(["preview", "publish", "unpublish"], {
+    message: "action は preview / publish / unpublish のいずれかです",
+  }),
 });
 
 export const runtime = "nodejs";
@@ -115,13 +117,19 @@ export async function POST(req: NextRequest) {
       return apiValidationError("この事例への操作権限がありません");
     }
 
-    if (action === "publish") {
-      // 公開だけが AI 要約を呼び、knowledge_chunks に全加盟店共有の行を書く。
-      // unpublish は行の更新だけなので、AI の枠を消費させない。
+    if (action === "preview") {
+      // 公開前に**中身を作って見せる**ための段階。ここでは is_published を触らない。
+      //
+      // なぜ2段階か: 要約の入力には証明書の `content_free_text`（店が手で書く自由記述）が
+      // 入る。顧客名や車両番号が書かれていれば、それが全加盟店に共有される文面に混ざりうる。
+      // 以前は**公開の瞬間に生成**していたので、押す人は何が共有されるか見られなかった。
+      // 見られないものは確認できない（2026-09-05 代表判断「目視確認を入れる」）。
       const limited = await checkRateLimit(req, "ai", `academy-case:${caller.tenantId}`);
       if (limited) return limited;
 
-      // 証明書情報を取得してAI要約を生成
+      // AI 呼び出しは**レート制限のすぐ隣**に置く。ヘルパーへ出すと、ハンドラ単位で
+      // 追う検出器（aiRouteRateLimit.test.ts）から見えなくなり、「制限の無い AI 呼び出し」
+      // として扱われる。読みやすさより、呼び出しと制限が並んでいることを優先する。
       let aiSummary: string | undefined;
       let goodPoints: string[] = [];
       let cautionPoints: string[] = [];
@@ -158,15 +166,55 @@ export async function POST(req: NextRequest) {
         }
       }
 
+      // 生成した文面を**行に保存する**。公開時に作り直すと、確認した文面と
+      // 公開される文面が別物になりうる。保存しておけば publish は反転するだけで済み、
+      // AI の費用も二重に出ない。
+      const { error } = await admin
+        .from("academy_cases")
+        .update({
+          ai_summary: aiSummary ?? null,
+          good_points: goodPoints,
+          caution_points: cautionPoints,
+          tags,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", case_id);
+
+      if (error) return apiInternalError(error);
+
+      return apiOk({
+        message: "公開される内容を生成しました。内容を確認してください。",
+        preview: {
+          ai_summary: aiSummary ?? null,
+          good_points: goodPoints,
+          caution_points: cautionPoints,
+          tags,
+        },
+      });
+    }
+
+    if (action === "publish") {
+      // ここでは AI を呼ばない。preview で保存済みの文面をそのまま公開する。
+      const { data: reviewed } = await admin
+        .from("academy_cases")
+        .select("ai_summary, good_points, caution_points, tags")
+        .eq("id", case_id)
+        .single();
+
+      // 確認していない事例は公開させない。preview を通っていれば ai_summary が入る。
+      if (!reviewed?.ai_summary) {
+        return apiValidationError("先に「内容を確認」で公開される内容を表示し、確認してください");
+      }
+
+      const goodPoints = (reviewed.good_points as string[] | null) ?? [];
+      const cautionPoints = (reviewed.caution_points as string[] | null) ?? [];
+      const tags = (reviewed.tags as string[] | null) ?? [];
+
       const { error } = await admin
         .from("academy_cases")
         .update({
           is_published: true,
           anonymized: true,
-          ai_summary: aiSummary,
-          good_points: goodPoints,
-          caution_points: cautionPoints,
-          tags,
           published_by: caller.userId,
           published_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
@@ -176,16 +224,14 @@ export async function POST(req: NextRequest) {
       if (error) return apiInternalError(error);
 
       // ナレッジチャンクに追加（QA検索用）
-      if (aiSummary) {
-        await admin.from("knowledge_chunks").insert({
-          source_type: "case",
-          source_id: case_id,
-          content: [aiSummary, ...goodPoints, ...cautionPoints].join("\n"),
-          category: existingCase.category,
-          tags,
-          tenant_id: null, // 全加盟店共有
-        });
-      }
+      await admin.from("knowledge_chunks").insert({
+        source_type: "case",
+        source_id: case_id,
+        content: [reviewed.ai_summary, ...goodPoints, ...cautionPoints].join("\n"),
+        category: existingCase.category,
+        tags,
+        tenant_id: null, // 全加盟店共有
+      });
 
       return apiOk({ message: "事例を公開しました" });
     }
