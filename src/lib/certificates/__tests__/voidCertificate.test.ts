@@ -13,8 +13,11 @@ import { describe, it, expect, vi } from "vitest";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { voidCertificate } from "../voidCertificate";
+import { logCertificateAction } from "@/lib/audit/certificateLog";
 
 vi.mock("@/lib/audit/certificateLog", () => ({ logCertificateAction: vi.fn(async () => {}) }));
+
+const logMock = vi.mocked(logCertificateAction);
 
 const REPO = resolve(__dirname, "../../../..");
 
@@ -134,6 +137,41 @@ describe("voidCertificate", () => {
       selector: { certificateId: "c1", vehicleId: "v1" },
     });
     expect(db.calls[0].filters).toContainEqual(["vehicle_id", "v1"]);
+  });
+
+  // ヘルパーが既定文字列を作ると `logCertificateAction` 側の既定
+  // （`Public ID: … / User: … / IP: …`）が永久に動かず、全経路のタイムラインが
+  // 「証明書を無効化 (void)」だけになる。車両詳細は Public ID を失っていた。
+  // Codex レビュー指摘（PR #1027、マージ後に #1040 で修正）。
+  it("description を渡さなければ監査ログ側の既定に委ねる", async () => {
+    logMock.mockClear();
+    await voidCertificate(fakeDb(ACTIVE), { tenantId: "t1", selector: { publicId: "PUB1" } });
+    expect(logMock).toHaveBeenCalledTimes(1);
+    expect(logMock.mock.calls[0][0].description).toBeUndefined();
+  });
+
+  it("description を渡せばそれを使う", async () => {
+    logMock.mockClear();
+    await voidCertificate(fakeDb(ACTIVE), {
+      tenantId: "t1",
+      selector: { publicId: "PUB1" },
+      description: "誤発行のため取消",
+    });
+    expect(logMock.mock.calls[0][0].description).toBe("誤発行のため取消");
+  });
+
+  // await しないと、Server Action が直後に redirect したときサーバレス実行が
+  // insert の前に終わりうる。`logCertificateAction` は自分で例外を握るので
+  // await しても監査の失敗が無効化の失敗にはならない。同レビュー指摘。
+  it("監査ログの完了を待ってから返す", async () => {
+    let done = false;
+    logMock.mockClear();
+    logMock.mockImplementationOnce(async () => {
+      await new Promise((r) => setTimeout(r, 10));
+      done = true;
+    });
+    await voidCertificate(fakeDb(ACTIVE), { tenantId: "t1", selector: { publicId: "PUB1" } });
+    expect(done, "監査ログを待たずに返っている（fire-and-forget に戻っている）").toBe(true);
   });
 
   it("更新に失敗したら update_failed を返す", async () => {

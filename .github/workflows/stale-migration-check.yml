@@ -81,7 +81,17 @@ jobs:
             [ -n "$num" ] || continue
 
             # マイグレーションを触っていない PR は見ない。
-            if ! gh pr diff "$num" --repo "$REPO" --name-only | grep -q '^supabase/migrations/'; then
+            #
+            # **`gh` の失敗と「変更が無い」を区別する。** `if ! cmd | grep -q` の形だと
+            # `set -e` は if の条件では効かず、API エラー・認証切れ・取得失敗も
+            # 「マイグレーションを触っていない」と同じ扱いになり、**検査したい PR を
+            # 黙って飛ばしたまま緑で終わる**（Codex レビュー指摘）。終了コードを分けて見る。
+            files="$(gh pr diff "$num" --repo "$REPO" --name-only)" && gh_rc=0 || gh_rc=$?
+            if [ "$gh_rc" -ne 0 ]; then
+              echo "::warning::PR #$num の差分を取得できませんでした（gh 終了コード $gh_rc）。未検査です"
+              continue
+            fi
+            if ! grep -q '^supabase/migrations/' <<<"$files"; then
               continue
             fi
 
@@ -112,11 +122,21 @@ jobs:
             # 他のルールでも落ちる。終了コードだけで「日付が追い越された」と決めると、
             # 別の理由で落ちた PR に**間違った直し方**を書いたコメントを貼ってしまう
             # （PR #1027 の Codex レビュー指摘）。出力に当該ルール名が出たときだけ貼る。
+            # **担当するルールは2つ。**
+            #
+            # `migration-version-before-base-head` — main に**後の版**が入って追い越された。
+            # `duplicate-version` — main に**同じ版**が入った。作業ツリーには PR 側と
+            #   main 側の両方が居るので、リンタは「追い越し」ではなく「重複」として報告する。
+            #   これを担当外に落とすと、**この workflow が拾うべき衝突が素通りする**
+            #   （Codex レビュー指摘）。直し方はどちらも「main を取り込んで採番し直す」で同じ。
+            #
+            # それ以外（`create-index-without-concurrently` 等）は担当外。終了コードだけで
+            # 判定すると、別の理由で落ちた PR に**間違った直し方**のコメントを貼ってしまう。
             out="$(MIGRATIONS_BASE_REF=origin/main node scripts/lint-migrations.js 2>&1)" && rc=0 || rc=$?
             echo "$out"
             if [ "$rc" -eq 0 ]; then
               echo "OK"
-            elif ! grep -q 'migration-version-before-base-head' <<<"$out"; then
+            elif ! grep -qE 'migration-version-before-base-head|duplicate-version' <<<"$out"; then
               # 日付以外の理由。この workflow の担当外なので、PR には何も貼らない
               # （その PR 自身の CI が同じ検査で落としている）。
               echo "::notice::PR #$num は別のルールで落ちている（この workflow の担当外）"

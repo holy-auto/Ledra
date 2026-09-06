@@ -137,6 +137,22 @@ describe("extractStructuredDates（構造化された日付の抽出）", () => 
     expect(extractStructuredDates(text)).toEqual([{ line: 7, date: "2026-09-04" }]);
   });
 
+  // CommonMark の閉じ記号は**情報文字列を持てない**。長さと文字だけで閉じ判定すると、
+  // 外側 ``` の中に例として書いた ````js の行が外側を閉じ、続く見出しが検査に晒され、
+  // 本物の閉じ記号が「閉じ忘れ」に見える。つまり**正しい文書を落とす**。
+  // Codex レビュー指摘（PR #1027、マージ後に #1040 で修正）。
+  it("情報文字列つきの行は閉じ記号にならない", () => {
+    const text = [
+      "````",
+      "````js", // 同じ長さ・同じ文字だが情報文字列つき → 閉じ記号ではない
+      "## 2026-12-30 フェンス内の見出し例",
+      "````", // これが本物の閉じ記号
+      "## 2026-09-04 フェンス後の本物の見出し",
+    ].join("\n");
+    expect(extractStructuredDates(text)).toEqual([{ line: 5, date: "2026-09-04" }]);
+    expect(unclosedFenceLine(text)).toBe(0);
+  });
+
   it("チルダのフェンスも閉じる", () => {
     const text = ["~~~", "# 2026-12-31 フェンス内", "~~~", "## 2026-09-04 フェンス後"].join("\n");
     expect(extractStructuredDates(text)).toEqual([{ line: 4, date: "2026-09-04" }]);

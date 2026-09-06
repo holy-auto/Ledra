@@ -56,7 +56,10 @@ export interface VoidCertificateInput {
   requestMeta?: { ip?: string | null; userAgent?: string | null };
   /** 監査ログの種別。既定は `certificate_voided`。 */
   auditType?: CertificateAuditType;
-  /** 監査ログの説明。既定は「証明書を無効化 (void)」。 */
+  /**
+   * 監査ログの説明。**省略すると `logCertificateAction` 側の既定**
+   * （`Public ID: … / User: … / IP: …`）が入る。ここで既定文字列を作らないこと。
+   */
   description?: string | null;
 }
 
@@ -132,16 +135,27 @@ export async function voidCertificate(db: Db, input: VoidCertificateInput): Prom
   );
   if (updateErr) return { ok: false, kind: "update_failed", error: updateErr };
 
-  // 監査ログ (fire-and-forget)。ログの失敗で無効化そのものを失敗させない。
+  // **await する。** `logCertificateAction` は自分で例外を握るので
+  // （`Promise<void>` を返し、失敗しても throw しない）、await しても
+  // 監査の失敗が無効化の失敗になることはない。
+  // 一方 await しないと、Server Action から呼ばれたとき呼び出し側が直後に
+  // `redirect()` するため、**サーバレス実行が insert の前に終了しうる**。
+  // 一本化前の車両詳細は自前の insert を await していたので、これは
+  // 一本化で持ち込んだ退行（Codex レビュー指摘）。
+  //
+  // `description` は**渡さないときは渡さないまま通す**。ここで既定文字列を
+  // 入れると `logCertificateAction` 側の既定（`Public ID: … / User: … / IP: …`）が
+  // 永久に動かず、全経路のタイムラインが「証明書を無効化 (void)」だけになって
+  // どの証明書を誰が消したのか分からなくなる（同レビュー指摘）。
   if (current.publicId) {
-    void logCertificateAction({
+    await logCertificateAction({
       type: input.auditType ?? "certificate_voided",
       tenantId,
       publicId: current.publicId,
       certificateId: current.id,
       vehicleId: current.vehicleId,
       userId: input.userId ?? null,
-      description: input.description ?? "証明書を無効化 (void)",
+      description: input.description ?? undefined,
       ip: input.requestMeta?.ip ?? null,
       userAgent: input.requestMeta?.userAgent ?? null,
     });
