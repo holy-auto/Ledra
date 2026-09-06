@@ -2,6 +2,7 @@
  * GET/POST /api/admin/academy/cases
  * Academy事例一覧取得 & 事例公開（C-1）
  */
+import { createHash } from "node:crypto";
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
@@ -28,13 +29,32 @@ const academyCaseActionSchema = z.object({
     message: "action は preview / publish / unpublish のいずれかです",
   }),
   /**
-   * publish のときだけ必須。preview が返した版の印。
+   * publish のときだけ必須。preview が返した**中身のハッシュ**。
    * 「要約が入っている」だけでは、**その人が今の中身を見た**ことにならない
    * （別の人が後から再生成した／一度公開して戻した行にも要約は残る）。
    * 見た版そのものを指させる。
    */
   preview_token: z.string().min(1).optional(),
 });
+
+/**
+ * 公開される文面のハッシュ。preview が返し、publish が突き合わせる。
+ *
+ * 時刻（updated_at）を版の印にしていたが、同じミリ秒に2つの preview が終わると
+ * 同じ値になり、**後から上書きされた文面を、前の人のトークンで公開できて**しまう
+ * （Codex の指摘）。中身そのものから作れば衝突しないし、
+ * 「見た文面 ＝ 保存されている文面」を直接言い表せる。
+ */
+function contentHash(c: {
+  ai_summary: string | null;
+  good_points: unknown;
+  caution_points: unknown;
+  tags: unknown;
+}): string {
+  return createHash("sha256")
+    .update(JSON.stringify([c.ai_summary, c.good_points, c.caution_points, c.tags]))
+    .digest("hex");
+}
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -185,8 +205,6 @@ export async function POST(req: NextRequest) {
       // 公開される文面が別物になりうる。保存しておけば publish は反転するだけで済み、
       // AI の費用も二重に出ない。
       //
-      // `updated_at` を版の印として使う。publish はこの値を持ってきた場合だけ通る。
-      const previewToken = new Date().toISOString();
 
       // **既に公開済みの行は更新しない。** 2人が同じ候補を触ったとき、
       // 片方が公開した後にもう片方の遅れて返ってきた生成結果が上書きすると、
@@ -198,7 +216,7 @@ export async function POST(req: NextRequest) {
           good_points: goodPoints,
           caution_points: cautionPoints,
           tags,
-          updated_at: previewToken,
+          updated_at: new Date().toISOString(),
         })
         .eq("id", case_id)
         .eq("is_published", false)
@@ -211,7 +229,12 @@ export async function POST(req: NextRequest) {
 
       return apiOk({
         message: "公開される内容を生成しました。内容を確認してください。",
-        preview_token: previewToken,
+        preview_token: contentHash({
+          ai_summary: aiSummary,
+          good_points: goodPoints,
+          caution_points: cautionPoints,
+          tags,
+        }),
         preview: {
           ai_summary: aiSummary,
           good_points: goodPoints,
@@ -234,13 +257,13 @@ export async function POST(req: NextRequest) {
 
       const { data: reviewed } = await admin
         .from("academy_cases")
-        .select("ai_summary, good_points, caution_points, tags")
+        .select("ai_summary, good_points, caution_points, tags, updated_at")
         .eq("id", case_id)
-        .eq("updated_at", preview_token)
         .eq("is_published", false)
         .maybeSingle();
 
-      if (!reviewed?.ai_summary) {
+      // 保存されている中身が、押した人が見たものと同一か。
+      if (!reviewed?.ai_summary || contentHash(reviewed) !== preview_token) {
         return apiValidationError("確認した内容が最新ではありません。「内容を再生成」でもう一度確認してください");
       }
 
@@ -258,7 +281,8 @@ export async function POST(req: NextRequest) {
           updated_at: new Date().toISOString(),
         })
         .eq("id", case_id)
-        .eq("updated_at", preview_token)
+        // 読んでから書くまでの間に触られていないこと（compare-and-swap）。
+        .eq("updated_at", reviewed.updated_at as string)
         .eq("is_published", false)
         .select("id");
 

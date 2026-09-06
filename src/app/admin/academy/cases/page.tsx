@@ -104,7 +104,9 @@ export default function AcademyCasesPage() {
       });
       const json = await res.json().catch(() => null);
       if (!res.ok) {
-        alert(json?.error ?? "処理に失敗しました");
+        // 応答は { error: "validation_error", message: "…" }。error はコードなので、
+        // 出すべきは message。コードを出すと「再生成してください」等の指示が消える。
+        alert(json?.message ?? json?.error ?? "処理に失敗しました");
         return;
       }
       if (action === "preview") {

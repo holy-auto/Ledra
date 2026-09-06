@@ -88,15 +88,23 @@ describe("Academy 事例公開の2段階ゲート", () => {
     expect(actionBlock(src, "preview")).toMatch(/if\s*\(!aiSummary\)/);
   });
 
-  it("publish は preview が返した版の印を要求し、その版だけを更新する", () => {
+  it("publish は見た文面そのものを要求し、読み書きの間に触られたら止める", () => {
     // 「要約が入っている」は「この人が今の中身を見た」の証明にならない。
     // 別の人が再生成すれば入れ替わるし、公開→非公開に戻した行にも要約は残る。
     const block = actionBlock(src, "publish");
     expect(block).toMatch(/if\s*\(!preview_token\)/);
-    // 読むときも更新するときも、その版に対してだけ効かせる。
-    const tokenFilters = block.match(/\.eq\(\s*"updated_at"\s*,\s*preview_token\s*\)/g) ?? [];
-    expect(tokenFilters.length).toBeGreaterThanOrEqual(2);
+    // 版の印は**中身のハッシュ**。時刻だと同じミリ秒に終わった2つの preview で
+    // 衝突し、上書きされた文面を前の人のトークンで公開できてしまう（Codex の指摘）。
+    expect(block).toMatch(/contentHash\(reviewed\)\s*!==\s*preview_token/);
+    // 読んでから書くまでの間に触られていないこと（compare-and-swap）。
+    expect(block).toMatch(/\.eq\(\s*"updated_at"\s*,\s*reviewed\.updated_at/);
     // 更新が 0 行なら止める。knowledge_chunks を二重に入れないため。
     expect(block).toMatch(/publishedRows\?\.length/);
+  });
+
+  it("版の印は時刻ではなく中身から作る（衝突しない）", () => {
+    expect(src).toMatch(/createHash\(\s*"sha256"\s*\)/);
+    // preview が返すのはハッシュであって時刻ではない。
+    expect(actionBlock(src, "preview")).toMatch(/preview_token:\s*contentHash\(/);
   });
 });
