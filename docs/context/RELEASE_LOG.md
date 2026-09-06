@@ -321,8 +321,8 @@ SECURITY DEFINER）。関数が実在する位置に `20260826000007` を足し�
     `customers.linked_tenant_id` は元請けの一方的な指定で同意が無いが、こちらは同意前提。
   - **顧客名は Ledra では表示しない。**
 - 内容:
-  - `staff_members.linked_tenant_id` を追加（`20260905050002`、索引は CONCURRENTLY のため
-    `20260905050003`。同じ理由で `20260903000000` / `20260903000002` から改名）。`customers.linked_tenant_id` と同じ形。証明書に刻まれるのは
+  - `staff_members.linked_tenant_id` を追加（`20260906000002`、索引は CONCURRENTLY のため
+    `20260906000003`。同じ理由で `20260903000000` / `20260903000002` から改名）。`customers.linked_tenant_id` と同じ形。証明書に刻まれるのは
     `craftsman_staff_id` なので、作業の帰属をテナントへ繋ぐにはこの列が要る。
   - `staff_link_invites`: 発行したコード。raw は保存せず sha256（pepper 付き）のみ。
     有効期限14日、職人1人につき1本、再発行は差し替え。コードの英数字は 0/O・1/I/L を
@@ -473,8 +473,8 @@ CI でも落ちない）。ルールを無効化すると落ちることも確�
   元請けは発注した作業の証明書を受注画面から辿れず、外注先は自分が施工した記録を
   Ledra 上のどこでも確認できなかった。
 - 内容:
-  - `certificates.job_order_id` を追加（`20260905050000`、索引は CONCURRENTLY のため
-    `20260905050001` に分離。**マージ直前に `20260901000001` / `20260901000002` から改名**
+  - `certificates.job_order_id` を追加（`20260906000000`、索引は CONCURRENTLY のため
+    `20260906000001` に分離。**マージ直前に `20260901000001` / `20260901000002` から改名**
     —— 本番の適用済み最新 `20260904123252` より古いままだと `supabase db push` が
     out-of-order で停止するため。本番の台帳に元バージョンが無いことを名指しで確認済み）。`documents` / `chat_messages` / `order_reviews` /
     `reservation_holds` と同じ `job_order_id` 規約に揃えた。
