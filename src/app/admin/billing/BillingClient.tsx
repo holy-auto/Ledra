@@ -91,7 +91,7 @@ function PlanSelector({ currentPlan, isActive }: { currentPlan: string | null; i
       });
       const j = await parseJsonSafe(res);
       if (!res.ok) {
-        const err = new Error(j?.error ?? `HTTP ${res.status}`) as Error & { status: number };
+        const err = new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`) as Error & { status: number };
         err.status = res.status;
         throw err;
       }

@@ -55,7 +55,7 @@ export default function CustomerInquiriesClient() {
       const q = status !== "all" ? `?status=${encodeURIComponent(status)}` : "";
       const res = await fetch(`/api/admin/customer-inquiries${q}`, { credentials: "include", cache: "no-store" });
       const j = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(j?.error ?? "取得に失敗しました");
+      if (!res.ok) throw new Error(j?.message ?? j?.error ?? "取得に失敗しました");
       setInquiries(j.inquiries ?? []);
     } catch (e: any) {
       setErr(e?.message ?? "エラーが発生しました");
@@ -90,7 +90,7 @@ export default function CustomerInquiriesClient() {
         body: JSON.stringify({ id, admin_reply: replyText.trim() }),
       });
       const j = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(j?.error ?? "送信に失敗しました");
+      if (!res.ok) throw new Error(j?.message ?? j?.error ?? "送信に失敗しました");
       setInquiries((prev: InquiryRow[]) =>
         prev.map((i: InquiryRow) =>
           i.id === id

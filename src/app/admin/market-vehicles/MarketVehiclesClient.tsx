@@ -122,7 +122,7 @@ export default function MarketVehiclesClient() {
       if (bodyType) params.set("body_type", bodyType);
       const res = await fetch(`/api/admin/market-vehicles?${params.toString()}`, { cache: "no-store" });
       const j = await parseJsonSafe(res);
-      if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
+      if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       setVehicles(j?.vehicles ?? []);
       setStats(j?.stats ?? { total: 0, listed: 0, draft: 0 });
     } catch (e: unknown) {
@@ -158,7 +158,7 @@ export default function MarketVehiclesClient() {
         body: JSON.stringify({ id }),
       });
       const j = await parseJsonSafe(res);
-      if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
+      if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       await fetchVehicles(statusFilter, makerFilter, bodyTypeFilter);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);

@@ -80,7 +80,7 @@ export default function CertificatesTableClient({
           body: JSON.stringify({ public_id: publicId, hidden }),
         });
         const j = await parseJsonSafe(res);
-        if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
+        if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
         router.refresh();
       } catch (e: any) {
         alert((hidden ? "非表示" : "再表示") + "に失敗しました: " + (e?.message ?? String(e)));
@@ -102,7 +102,7 @@ export default function CertificatesTableClient({
           body: JSON.stringify({ public_id: publicId }),
         });
         const j = await parseJsonSafe(res);
-        if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
+        if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
         router.refresh();
       } catch (e: any) {
         alert("削除に失敗しました: " + (e?.message ?? String(e)));

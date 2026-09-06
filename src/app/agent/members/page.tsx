@@ -104,7 +104,7 @@ export default function AgentMembersPage() {
       });
       if (!res.ok) {
         const json = await res.json().catch(() => ({}));
-        throw new Error(json.error ?? "招待に失敗しました");
+        throw new Error(json.message ?? json.error ?? "招待に失敗しました");
       }
       setInviteName("");
       setInviteEmail("");

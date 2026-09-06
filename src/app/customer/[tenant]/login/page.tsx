@@ -38,7 +38,7 @@ export default function CustomerLoginPage() {
         body: JSON.stringify({ tenant_slug: tenant, email, phone_last4: last4 }),
       });
       const j = await res.json();
-      if (!res.ok) throw new Error(j?.error ?? "request failed");
+      if (!res.ok) throw new Error(j?.message ?? j?.error ?? "request failed");
       setPhase("verify");
       setMsg("メールに6桁コードを送信しました。");
     } catch (e: any) {
@@ -58,7 +58,7 @@ export default function CustomerLoginPage() {
         body: JSON.stringify({ tenant_slug: tenant, email, phone_last4: last4, code }),
       });
       const j = await res.json();
-      if (!res.ok) throw new Error(j?.error ?? "verify failed");
+      if (!res.ok) throw new Error(j?.message ?? j?.error ?? "verify failed");
       router.push(`/customer/${tenant}`);
     } catch (e: any) {
       setMsg(e?.message ?? "error");

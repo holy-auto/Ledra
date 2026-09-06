@@ -37,6 +37,66 @@ const CALLS_MODEL = /getAnthropicClient\s*\(/;
 const RATE_LIMITED = /checkRateLimit\s*\(/;
 
 /**
+ * 上の `CALLS_MODEL` は「`getAnthropicClient()` が課金の出る外部推論の唯一の入口である」
+ * という前提の上に成り立っている。別ベンダーの SDK を直接使う経路や、HTTP で外部の
+ * 推論 API を叩く経路が入ると、**この検出器は黙って見落とす**（レート制限も剥がれる）。
+ *
+ * そこで前提を「守られているはず」から検査対象へ格上げする。下の2本のどちらかを
+ * 破る PR は、レート制限の一覧に載らないまま緑になることができない。
+ *
+ * 別ベンダーを入れるときは、この定数を緩めるのではなく
+ * `src/lib/ai/client.ts` に共通の入口を足して `CALLS_MODEL` をそこに向け直すこと。
+ */
+const VENDOR_CLIENT_CONSTRUCTION = /new\s+Anthropic\s*\(/;
+
+/**
+ * 課金の出る外部推論への別経路その1: ベンダー SDK のパッケージ名。
+ *
+ * 静的 import (`from "openai"`) だけでなく、動的 import (`await import("openai")`) と
+ * `require("openai")` も拾う。**静的 import だけを見ると、遅延読み込みで書かれた
+ * 2つ目のベンダーが素通りする**（PR #1027 の `/code-review` 指摘）。
+ * 3つとも「区切り文字 + パッケージ名」の形なので、パッケージ名の側だけを列挙して
+ * 引用符（`"` `'` バッククォート）を共通の前置きで受ける。
+ */
+const VENDOR_PACKAGES = [
+  String.raw`openai(?:\/[^"'\x60]*)?`,
+  String.raw`@google\/gen(?:erative-)?ai`,
+  String.raw`@mistralai\/[^"'\x60]*`,
+  String.raw`cohere-ai`,
+  String.raw`groq-sdk`,
+  String.raw`replicate`,
+  String.raw`@aws-sdk\/client-bedrock[^"'\x60]*`,
+];
+
+/** `from "pkg"` / `import("pkg")` / `require("pkg")` を、引用符3種すべてで受ける。 */
+const OTHER_INFERENCE_IMPORTS = VENDOR_PACKAGES.map(
+  (pkg) => new RegExp(String.raw`(?:from|import|require)\s*\(?\s*["'\x60](?:${pkg})["'\x60]`),
+);
+
+/**
+ * 別経路その2: SDK を通さず HTTP で直接叩く推論 API のホスト名。
+ *
+ * **正規表現ではなく平文の部分文字列で持つ。** ここで欲しいのは
+ * 「ソースのどこかにこの文字列が出るか」であって URL の検証ではない。
+ * アンカーの無いホスト名パターンを正規表現で書くと CodeQL の
+ * `js/missing-regexp-anchor` が high として上げる（PR #1027 で実際に3件上がった）。
+ * 検査の意図どおり `includes()` で書けば、警告は消えて挙動も変わらない。
+ */
+const INFERENCE_HOSTS = [
+  "api.openai.com",
+  "api.anthropic.com", // SDK を通さない生 fetch
+  "generativelanguage.googleapis.com",
+  "api.mistral.ai",
+  "api.cohere.ai",
+  "api.cohere.com",
+];
+
+/** そのファイルが、共通入口を通さない推論経路を持っているか。 */
+function usesOtherInference(src: string): boolean {
+  return OTHER_INFERENCE_IMPORTS.some((re) => re.test(src)) || INFERENCE_HOSTS.some((host) => src.includes(host));
+}
+
+/**
  * モデルを叩くモジュールから import されるが、**それ自体はモデルを呼ばない**もの。
  * すべて実装を読んで確認した。ここに足すときは必ず中身を読むこと
  * （形から推測して分類したのが MISTAKE_LEDGER 型 B）。
@@ -63,11 +123,17 @@ const PURE_BINDINGS = new Set([
  * 増やすときは、なぜ**ユーザーが繰り返し叩けないのか**を書くこと。
  */
 const EXEMPT = new Set([
-  // cron 認証 + withCronLock(600s) の日次ジョブ。ユーザーが叩ける経路ではない。
+  // cron 認証 + withCronLock(600s) の日次ジョブ（vercel.json: `0 22 * * *`）。
+  // ユーザーが叩ける経路ではない。呼び出し数は「opt-in 済みテナント数 × 1/日」で
+  // 頭打ちになるので件数上限は要らない。2026-09-04 検証。
   "cron/daily-digest [GET]",
   // QStash 署名必須の非同期ジョブ。auth セッションが無くユーザーが直接叩けない。
-  // 1回の実行件数に上限（LINE_HISTORY_IMPORT_MAX、既定80）を自前で持ち、
-  // 月次コストキャップも尊重する。リクエスト単位の制限はキューワーカーには意味を持たない。
+  // 1回の実行の費用と実行時間の両方を件数上限（LINE_HISTORY_IMPORT_MAX、既定80）が
+  // 抑える。リクエスト単位の制限はキューワーカーには意味を持たない。2026-09-04 検証。
+  //
+  // **どちらも月次コストキャップだけには頼っていない。** 2026-09-04 に既定が入り
+  // （テナント1件あたり月1万円）設定が無くても効くようになったが、Redis 不在・
+  // 失敗時は fail-open する。免除の根拠は上の構造の側。
   "qstash/line-history-import [module]",
 ]);
 
@@ -137,6 +203,32 @@ for (const file of walkSource(API_ROOT, (f) => f.endsWith("route.ts"))) {
 }
 
 describe("AI を呼ぶ API ハンドラのレート制限", () => {
+  it("課金の出る外部推論の入口が `getAnthropicClient()` 1箇所に閉じている（検出器の前提）", () => {
+    // ベンダークライアントの構築は共通入口だけ。ここが増えると CALLS_MODEL が届かない。
+    const constructing = [...SOURCES]
+      .filter(([, src]) => VENDOR_CLIENT_CONSTRUCTION.test(src))
+      .map(([f]) =>
+        f
+          .slice(SRC.length + 1)
+          .split(/[\\/]/)
+          .join("/"),
+      )
+      .sort();
+    expect(constructing).toEqual(["lib/ai/client.ts"]);
+
+    // 別ベンダー SDK / HTTP 直叩きは 1 件も無い。
+    const others = [...SOURCES]
+      .filter(([, src]) => usesOtherInference(src))
+      .map(([f]) =>
+        f
+          .slice(SRC.length + 1)
+          .split(/[\\/]/)
+          .join("/"),
+      )
+      .sort();
+    expect(others).toEqual([]);
+  });
+
   it("検出器が空振りしていない", () => {
     // 検出器が壊れて空になると、下の検査が素通りで緑になる。
     // 件数の下限だけだと数本消えても気づけないので、性質の違う既知の経路を名指しする。

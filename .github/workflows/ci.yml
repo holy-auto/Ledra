@@ -37,29 +37,25 @@ jobs:
         # block merges.
         run: npm audit --audit-level=high --omit=dev
 
+      # 走らせる検査の一覧はスクリプト側の配列にある。**ここには書かない。**
+      # 手元で同じものを `bash scripts/ci-parallel-checks.sh` で再現できる状態を
+      # 保つため（CI と手元がずれると、隣のスクリプトで代用が起きる。M-018）。
+      #
+      # 並列のまま、出力はチェックごとに分けて ::group:: で出し、失敗したものは
+      # いちばん最後にもう一度出す。GitHub の API はログの末尾しか返さないので、
+      # 末尾に失敗元が写る形にしてある（2026-09-01 に2回誤読しかけた）。
       - name: Lint, Type Check & Unit Tests (parallel)
+        # 並列にしたぶん、出力は全部の子プロセスが終わるまで出ない。ハングすると
+        # ログが空のまま GitHub の既定（6時間）まで回りつづけるので、上限を切る。
+        # 直近の実測は約 4 分（2026-09-04）。PR #1027 の `/code-review` 指摘。
+        timeout-minutes: 20
         env:
-          # 上で取った base ref を lint:migrations に名指しで渡す。
+          # 上で取った base ref を lint:migrations に名指しで渡す（#1025）。
           # PR の base が staging のときも正しく比較できる。
+          # スクリプトは子プロセスに env をそのまま継承させるので、ここで渡せば届く
+          # （`MIGRATIONS_BASE_REF=origin/main npm run lint:migrations` で実際に確認済み）。
           MIGRATIONS_BASE_REF: origin/${{ github.base_ref || github.ref_name }}
-        run: |
-          npm run lint &
-          PID_LINT=$!
-          npm run lint:migrations &
-          PID_MIG=$!
-          npx tsc --noEmit &
-          PID_TSC=$!
-          npm run test:coverage &
-          PID_TEST=$!
-          # Supabase のクエリ文字列は tsc も lint も中身を見ない。実スキーマの
-          # スナップショットと突き合わせて、存在しない列・テーブルで落とす
-          npm run check:schema &
-          PID_SCHEMA=$!
-          wait $PID_LINT || exit 1
-          wait $PID_MIG || exit 1
-          wait $PID_TSC || exit 1
-          wait $PID_TEST || exit 1
-          wait $PID_SCHEMA || exit 1
+        run: bash scripts/ci-parallel-checks.sh
 
   migrations-replay:
     name: Migrations Replay

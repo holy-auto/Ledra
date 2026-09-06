@@ -1,1 +1,6 @@
 npx lint-staged
+
+# 事業ログ (docs/context/) の見出し日付が未来を指していないか。
+# CI でも見るが、ここで落とせば「コミットしてから気づく」を避けられる。
+# 未来日だけを禁じているので、過去日での遡及追記は通る（理由はスクリプト冒頭）。
+node scripts/check-context-dates.mjs

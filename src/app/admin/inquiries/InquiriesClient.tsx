@@ -111,7 +111,7 @@ export default function InquiriesClient() {
       if (status && status !== "all") params.set("status", status);
       const res = await fetch(`/api/market/inquiries?${params.toString()}`, { cache: "no-store" });
       const j = await parseJsonSafe(res);
-      if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
+      if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       setInquiries(toInquiryRows(j.inquiries ?? j));
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -144,7 +144,7 @@ export default function InquiriesClient() {
     try {
       const res = await fetch(`/api/market/inquiries/${id}/reply`, { cache: "no-store" });
       const j = await parseJsonSafe(res);
-      if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
+      if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       setReplies(toReplyRows(j.messages ?? j));
     } catch {
       setReplies([]);
@@ -164,7 +164,7 @@ export default function InquiriesClient() {
         body: JSON.stringify({ message: replyText, sender_type: "seller" }),
       });
       const j = await parseJsonSafe(res);
-      if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
+      if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       setReplyText("");
       // Refresh replies
       const rRes = await fetch(`/api/market/inquiries/${inquiryId}/reply`, { cache: "no-store" });
@@ -190,7 +190,7 @@ export default function InquiriesClient() {
         body: JSON.stringify({ inquiry_id: inquiryId }),
       });
       const j = await parseJsonSafe(res);
-      if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
+      if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       alert("商談を作成しました");
       await fetchInquiries(statusFilter);
     } catch (e: unknown) {

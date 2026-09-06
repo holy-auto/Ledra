@@ -300,7 +300,7 @@ export default function OrderDetailClient({ orderId }: { orderId: string }) {
     try {
       const res = await fetch(`/api/admin/orders/${orderId}`, { cache: "no-store" });
       const j = await res.json();
-      if (!res.ok) throw new Error(j.error ?? `HTTP ${res.status}`);
+      if (!res.ok) throw new Error(j.message ?? j.error ?? `HTTP ${res.status}`);
       setOrder(j.order);
       setFromTenant(j.from_tenant);
       setToTenant(j.to_tenant);
@@ -337,7 +337,7 @@ export default function OrderDetailClient({ orderId }: { orderId: string }) {
         body: JSON.stringify({ id: orderId, status: nextStatus, cancel_reason: cancelReason }),
       });
       const j = await res.json();
-      if (!res.ok) throw new Error(j.error ?? `HTTP ${res.status}`);
+      if (!res.ok) throw new Error(j.message ?? j.error ?? `HTTP ${res.status}`);
       await fetchDetail();
     } catch (e: unknown) {
       setErr(e instanceof Error ? e.message : String(e));
@@ -357,7 +357,7 @@ export default function OrderDetailClient({ orderId }: { orderId: string }) {
         body: JSON.stringify({ body: chatBody }),
       });
       const j = await res.json();
-      if (!res.ok) throw new Error(j.error ?? `HTTP ${res.status}`);
+      if (!res.ok) throw new Error(j.message ?? j.error ?? `HTTP ${res.status}`);
       setChatBody("");
       await fetchDetail();
     } catch (e: unknown) {
@@ -377,7 +377,7 @@ export default function OrderDetailClient({ orderId }: { orderId: string }) {
         body: JSON.stringify({ rating: reviewRating, comment: reviewComment || null }),
       });
       const j = await res.json();
-      if (!res.ok) throw new Error(j.error ?? `HTTP ${res.status}`);
+      if (!res.ok) throw new Error(j.message ?? j.error ?? `HTTP ${res.status}`);
       await fetchDetail();
     } catch (e: unknown) {
       alert(e instanceof Error ? e.message : String(e));
@@ -394,7 +394,7 @@ export default function OrderDetailClient({ orderId }: { orderId: string }) {
       body: JSON.stringify({ signature_data_url: dataUrl, signer_name: signerName || undefined }),
     });
     const j = await res.json();
-    if (!res.ok) throw new Error(j.error ?? `HTTP ${res.status}`);
+    if (!res.ok) throw new Error(j.message ?? j.error ?? `HTTP ${res.status}`);
     setShowSignaturePad(false);
     await fetchDetail();
   };
@@ -409,7 +409,7 @@ export default function OrderDetailClient({ orderId }: { orderId: string }) {
         body: JSON.stringify({ payment_method: paymentMethod }),
       });
       const j = await res.json();
-      if (!res.ok) throw new Error(j.error ?? `HTTP ${res.status}`);
+      if (!res.ok) throw new Error(j.message ?? j.error ?? `HTTP ${res.status}`);
       await fetchDetail();
     } catch (e: unknown) {
       setErr(e instanceof Error ? e.message : String(e));

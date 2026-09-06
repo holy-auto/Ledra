@@ -26,8 +26,24 @@ export const maxDuration = 300;
  *   スキップ (AI 生成しない = 決定論版のまま)。AI 使用量は startAiRouteUsage 経由で
  *   ai_usage_logs 記録 + コストキャップ加算される。
  *
- * ponytail: 全 is_active テナントを直列処理する。現状 (〜数百店) は maxDuration=300
- *   内で十分。それを超える規模になったら QStash でテナント分割 fan-out に切り替える。
+ * 1 回の実行あたりの AI 呼び出し件数に、このルート自身の上限は無い。**要らない。**
+ * 呼び出し数は「opt-in 済みアクティブテナント数 × 最大 1」で頭打ちになり、
+ * 伸びる軸はテナント数（＝事業の成長）だけ。1 テナントが繰り返し叩ける経路ではない。
+ * 件数の枠を足しても、切り捨てられたテナントがその日ブリーフィングを失うだけで、
+ * 呼び出しの総数は変わらない。
+ *
+ * **月次コストキャップは補助と考えること。** 2026-09-04 に既定が入り
+ * （`DEFAULT_MONTHLY_COST_CAP_JPY` = テナント1件あたり月1万円）、設定が無くても
+ * `settings.enabled` はキャップ超過で false に倒れるようになった。
+ * ただしキャップは Redis 不在・失敗時に fail-open する。
+ * ここで費用を抑えている主役は、キャップではなく上の「1 テナント 1 日 1 回」の構造。
+ *
+ * ponytail: 全 is_active テナントを直列処理する。**天井は費用ではなく実行時間**で、
+ *   1 テナントあたり fetchTodaySignals（複数 SQL）+ AI 1 回 + upsert。
+ *   maxDuration=300 秒を 1 テナント 3 秒で割ると 100 テナント程度が限界の目安になる
+ *   (未実測。返り値の `elapsed_ms` と `tenants` で実測できるようにしてある)。
+ *   超えると後ろのテナントが黙って処理されないまま関数が落ちるので、
+ *   `elapsed_ms` が 200 秒に近づいたら QStash でテナント分割 fan-out に切り替える。
  */
 export async function GET(req: NextRequest) {
   const auth = verifyCronRequest(req);
@@ -37,6 +53,7 @@ export async function GET(req: NextRequest) {
     const admin = createServiceRoleAdmin("cron daily-digest — per-tenant morning briefing generation");
 
     const locked = await withCronLock(admin, "daily-digest", 600, async () => {
+      const startedAt = Date.now();
       const now = new Date();
       const digestDate = businessDateString(now);
 
@@ -110,6 +127,9 @@ export async function GET(req: NextRequest) {
         skipped_no_ai: skippedNoAi,
         skipped_no_tasks: skippedNoTasks,
         failed,
+        // 直列処理の天井（maxDuration=300 秒）までの余裕を実測するための値。
+        // fan-out へ切り替える判断をここの数字で行う（推測しない）。
+        elapsed_ms: Date.now() - startedAt,
       };
     });
 
