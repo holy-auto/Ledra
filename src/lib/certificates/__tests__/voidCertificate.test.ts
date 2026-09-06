@@ -139,15 +139,30 @@ describe("voidCertificate", () => {
     expect(db.calls[0].filters).toContainEqual(["vehicle_id", "v1"]);
   });
 
-  // ヘルパーが既定文字列を作ると `logCertificateAction` 側の既定
-  // （`Public ID: … / User: … / IP: …`）が永久に動かず、全経路のタイムラインが
-  // 「証明書を無効化 (void)」だけになる。車両詳細は Public ID を失っていた。
-  // Codex レビュー指摘（PR #1027、マージ後に #1040 で修正）。
-  it("description を渡さなければ監査ログ側の既定に委ねる", async () => {
+  // 既定は「2つの既定の間」にしか無い。
+  //   「証明書を無効化 (void)」だと、車両詳細が持っていた Public ID が消えて
+  //   どの証明書を消したのか分からない（Codex 指摘、PR #1027）。
+  //   `logCertificateAction` 側の既定に委ねると `User: <uid> / IP: <IP>` が付くが、
+  //   **この行は公開証明書ページに描画される**ので担当者の uid と IP が公開される
+  //   （`/code-review` 指摘、PR #1040）。
+  it("description を渡さなければ Public ID だけを既定にする", async () => {
     logMock.mockClear();
     await voidCertificate(fakeDb(ACTIVE), { tenantId: "t1", selector: { publicId: "PUB1" } });
     expect(logMock).toHaveBeenCalledTimes(1);
-    expect(logMock.mock.calls[0][0].description).toBeUndefined();
+    expect(logMock.mock.calls[0][0].description).toBe("Public ID: PUB1");
+  });
+
+  // 公開ページに出る行なので、担当者の識別子が既定で混ざらないことを固定する。
+  it("既定の description に uid や IP を混ぜない", async () => {
+    logMock.mockClear();
+    await voidCertificate(fakeDb(ACTIVE), {
+      tenantId: "t1",
+      selector: { publicId: "PUB1" },
+      userId: "user-abc",
+      requestMeta: { ip: "203.0.113.9", userAgent: "UA" },
+    });
+    const desc = String(logMock.mock.calls[0][0].description ?? "");
+    expect(desc, "公開ページに出る description に担当者情報が入っている").not.toMatch(/user-abc|203\.0\.113\.9/);
   });
 
   it("description を渡せばそれを使う", async () => {

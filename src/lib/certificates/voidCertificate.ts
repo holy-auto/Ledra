@@ -57,8 +57,10 @@ export interface VoidCertificateInput {
   /** 監査ログの種別。既定は `certificate_voided`。 */
   auditType?: CertificateAuditType;
   /**
-   * 監査ログの説明。**省略すると `logCertificateAction` 側の既定**
-   * （`Public ID: … / User: … / IP: …`）が入る。ここで既定文字列を作らないこと。
+   * 監査ログの説明。省略すると `Public ID: <公開ID>`。
+   *
+   * **この行は公開証明書ページに出る。** 個人が特定できる値（担当者の uid・IP・氏名）を
+   * 渡さないこと。`logCertificateAction` 側の既定はそれらを含むので、ここでは使わない。
    */
   description?: string | null;
 }
@@ -143,10 +145,20 @@ export async function voidCertificate(db: Db, input: VoidCertificateInput): Prom
   // 一本化前の車両詳細は自前の insert を await していたので、これは
   // 一本化で持ち込んだ退行（Codex レビュー指摘）。
   //
-  // `description` は**渡さないときは渡さないまま通す**。ここで既定文字列を
-  // 入れると `logCertificateAction` 側の既定（`Public ID: … / User: … / IP: …`）が
-  // 永久に動かず、全経路のタイムラインが「証明書を無効化 (void)」だけになって
-  // どの証明書を誰が消したのか分からなくなる（同レビュー指摘）。
+  // `description` の既定は **`Public ID: …` だけ**にする。
+  //
+  // 一本化のとき既定を「証明書を無効化 (void)」にしたら、車両詳細が持っていた
+  // `Public ID: …` が消えて、どの証明書を消したのか分からなくなった。
+  // かといって `logCertificateAction` 側の既定に委ねてもいけない —— あちらは
+  // `Public ID / User: <認証 uid> / IP: <スタッフの IP>` を組み立てるが、
+  // **この行は公開証明書ページに出る**。`getPublicCertificateData` が
+  // 車両の `vehicle_histories` を type で絞らず全部引き（`publicData.ts`）、
+  // `UnifiedTimeline` が `description` をそのまま描画する。`/c/[public_id]` は
+  // 未認証で開ける（middleware は無い）。スタッフの uid と IP が公開される。
+  //
+  // つまりここは**2つの既定の間**にしか正解が無い。`Public ID` は URL に既に
+  // 出ている公開情報で、一本化前の車両詳細が書いていたのと同じ内容
+  // （PR #1040 の `/code-review` 指摘）。
   if (current.publicId) {
     await logCertificateAction({
       type: input.auditType ?? "certificate_voided",
@@ -155,7 +167,7 @@ export async function voidCertificate(db: Db, input: VoidCertificateInput): Prom
       certificateId: current.id,
       vehicleId: current.vehicleId,
       userId: input.userId ?? null,
-      description: input.description ?? undefined,
+      description: input.description ?? `Public ID: ${current.publicId}`,
       ip: input.requestMeta?.ip ?? null,
       userAgent: input.requestMeta?.userAgent ?? null,
     });

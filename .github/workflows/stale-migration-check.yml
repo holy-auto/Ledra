@@ -122,13 +122,15 @@ jobs:
             # 他のルールでも落ちる。終了コードだけで「日付が追い越された」と決めると、
             # 別の理由で落ちた PR に**間違った直し方**を書いたコメントを貼ってしまう
             # （PR #1027 の Codex レビュー指摘）。出力に当該ルール名が出たときだけ貼る。
-            # **担当するルールは2つ。**
+            # 担当するのは `migration-version-before-base-head` だけ。
             #
-            # `migration-version-before-base-head` — main に**後の版**が入って追い越された。
-            # `duplicate-version` — main に**同じ版**が入った。作業ツリーには PR 側と
-            #   main 側の両方が居るので、リンタは「追い越し」ではなく「重複」として報告する。
-            #   これを担当外に落とすと、**この workflow が拾うべき衝突が素通りする**
-            #   （Codex レビュー指摘）。直し方はどちらも「main を取り込んで採番し直す」で同じ。
+            # main が**同じ版**を足した場合も、このルールで出る。`versionOf` は
+            # 先頭の数字だけを見て `versionOf(file) > baseMax` で判定するので、
+            # 版が等しいと `>` が偽になり追い越しとして報告される
+            # （`duplicate-version` も同時に出るが、grep はこちらに当たる）。
+            # `duplicate-version` を担当に足すと、**PR 自身が同じ版を2つ持っている**
+            # ケース（その PR の CI が既に赤）にまで「main と衝突」と書いたコメントを
+            # 貼ってしまう。PR #1040 の `/code-review` 指摘。
             #
             # それ以外（`create-index-without-concurrently` 等）は担当外。終了コードだけで
             # 判定すると、別の理由で落ちた PR に**間違った直し方**のコメントを貼ってしまう。
@@ -136,7 +138,7 @@ jobs:
             echo "$out"
             if [ "$rc" -eq 0 ]; then
               echo "OK"
-            elif ! grep -qE 'migration-version-before-base-head|duplicate-version' <<<"$out"; then
+            elif ! grep -q 'migration-version-before-base-head' <<<"$out"; then
               # 日付以外の理由。この workflow の担当外なので、PR には何も貼らない
               # （その PR 自身の CI が同じ検査で落としている）。
               echo "::notice::PR #$num は別のルールで落ちている（この workflow の担当外）"
@@ -156,6 +158,15 @@ jobs:
               fi
             fi
             # 取り出した SQL を捨てて main の状態へ戻す（次の PR を素の状態から見る）。
+            #
+            # **`reset` が要る。** `git checkout pr-N -- path` は取り出したファイルを
+            # **index に載せる**ので、`checkout HEAD -- path` では消えず（HEAD に無い）、
+            # `clean -fd` も追跡済みとして飛ばす。つまり前の PR のマイグレーションが
+            # 作業ツリーに残り、`lint-migrations.js` は `readdirSync` で作業ツリーを
+            # 数えるので、**次の PR が「main ∪ 前の PR」に対して検査される**。
+            # 無関係な PR が追い越し扱いになり、間違ったコメントが貼られる
+            # （PR #1040 の `/code-review` 指摘。手元の git で再現を確認した）。
+            git reset --quiet HEAD -- supabase/migrations
             git checkout --quiet HEAD -- supabase/migrations
             git clean --quiet -fd supabase/migrations
             git branch --quiet -D "pr-$num" || true
