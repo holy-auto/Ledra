@@ -46,6 +46,15 @@ function fakeAdmin(opts: { existingPayment: { id: string; tenant_id: string; doc
       };
       return { select: () => node };
     }
+    if (table === "documents") {
+      // 再送時に既存の領収書から公開トークンを読み直す（要件5.10: 再送でも送れる）
+      const node: Record<string, unknown> = {
+        eq: () => node,
+        is: async () => ({ error: null }),
+        maybeSingle: async () => ({ data: { public_id: "tok-1" }, error: null }),
+      };
+      return { select: () => node, update: () => node };
+    }
     if (table === "payments") {
       // `.eq()` の回数は呼び方で変わるので、何回でも繋げられるようにする
       const chain = (result: () => Promise<unknown>) => {

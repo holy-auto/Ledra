@@ -27,6 +27,7 @@ import { mobileApi } from "@/lib/api";
 import { useCardEntry } from "@/hooks/useCardEntry";
 import { CardEntryPanel } from "@/components/CardEntryPanel";
 import { PosNoticeCard } from "@/components/PosNoticeCard";
+import { TapToPayButton } from "@/components/TapToPayButton";
 import { useDeviceType } from "@/hooks/useDeviceType";
 import { paymentSegments, isQrFlow, isTapToPayFlow, isTerminalBusy, tapFailureAction } from "@/lib/posPayment";
 import { useTerminal } from "@/hooks/useTerminal";
@@ -214,7 +215,16 @@ export default function WalkInCheckoutScreen() {
     );
   }
 
-  async function handleCheckout() {
+  /**
+   * 会計を実行する。
+   *
+   * methodOverride を受けるのは、Tap to Pay 専用ボタン（要件 5.1/5.2/5.5）から
+   * 呼ぶため。setPaymentMethod は次のレンダーまで反映されないので、
+   * 「支払方法をカードにしてから handleCheckout()」を同じ tick で書くと
+   * 直前の paymentMethod を読んでしまう。渡された方を優先する。
+   */
+  async function handleCheckout(methodOverride?: PaymentMethod) {
+    const method = methodOverride ?? paymentMethod;
     if (cart.length === 0 || total <= 0) {
       setSnackbar("明細を追加してください");
       return;
@@ -226,7 +236,7 @@ export default function WalkInCheckoutScreen() {
       const itemsJson = toPosItems(cart);
 
       // iPhone Tap to Pay
-      if (isTapToPayFlow(device, paymentMethod)) {
+      if (isTapToPayFlow(device, method)) {
         if (readerStatus !== "connected") {
           const ok = await connectTapToPay();
           if (!ok) {
@@ -263,7 +273,7 @@ export default function WalkInCheckoutScreen() {
       }
 
       // QR決済（iPad/Android「カード」 or iPhone「QR」）
-      const qrFlow = isQrFlow(device, paymentMethod);
+      const qrFlow = isQrFlow(device, method);
       if (qrFlow) {
         await startCardEntry(false);
         setProcessing(false);
@@ -277,9 +287,9 @@ export default function WalkInCheckoutScreen() {
           method: "POST",
           body: {
             store_id: selectedStore?.id || null,
-            payment_method: paymentMethod,
+            payment_method: method,
             amount: total,
-            received_amount: paymentMethod === "cash" ? received : total,
+            received_amount: method === "cash" ? received : total,
             items_json: itemsJson,
           },
         }),
@@ -297,7 +307,7 @@ export default function WalkInCheckoutScreen() {
             "決済に失敗しました";
       setSnackbar(msg);
       // タッチ決済が読めなかったときだけ、カード番号入力への導線を出す
-      if (isTapToPayFlow(device, paymentMethod)) setTapFailed(true);
+      if (isTapToPayFlow(device, method)) setTapFailed(true);
     } finally {
       setProcessing(false);
     }
@@ -592,6 +602,38 @@ export default function WalkInCheckoutScreen() {
             />
           )}
 
+          {/* ── iPhone: Tap to Pay 専用ボタン（要件 5.1/5.2/5.3/5.5）──
+               支払方法リストより上に置くこと自体が要件 5.2。
+               disabled を渡していないのは要件 5.3（T&C 未同意でも常時押下可能。
+               押下で connect が再走する）。 */}
+          {isIPhone && !cardEntry.polling && cart.length > 0 && (
+            <View style={styles.tapToPayArea}>
+              <TapToPayButton
+                amountLabel={`¥${total.toLocaleString()}`}
+                state={
+                  paymentStatus === "collecting"
+                    ? "collecting"
+                    : isProcessing
+                      ? "processing"
+                      : readerStatus === "connecting"
+                        ? "initializing"
+                        : "idle"
+                }
+                // 実行中の二度押しを止める。押すたびに handleCheckout に再入すると、
+                // 最初の discovery を中断するか PaymentIntent を2つ作りうる。
+                // 兄弟画面 pos/checkout/[id].tsx:336 と同じ意図。
+                // 要件 5.3 が禁じているのは「T&C 未同意でのグレーアウト」なので抵触しない。
+                disabled={processing}
+                onPress={() => {
+                  setPaymentMethod("card");
+                  setTapFailed(false);
+                  cardEntry.cancel();
+                  void handleCheckout("card");
+                }}
+              />
+            </View>
+          )}
+
           {/* 支払方法 */}
           {!cardEntry.polling && cart.length > 0 && (
             <View style={styles.card}>
@@ -645,7 +687,9 @@ export default function WalkInCheckoutScreen() {
             <View style={styles.submitArea}>
               <LedraButton
                 icon="check-circle"
-                onPress={handleCheckout}
+                // 直接渡さないこと。handleCheckout は methodOverride を取るので、
+                // そのまま渡すとタップイベントが第1引数に入る（型で検出済み）。
+                onPress={() => void handleCheckout()}
                 loading={processing || isProcessing}
                 disabled={isDisabled}
               >
@@ -775,6 +819,10 @@ const styles = StyleSheet.create({
   totalAmount: {
     ...typography.titleLarge,
     color: colors.textPrimary,
+  },
+  tapToPayArea: {
+    paddingHorizontal: spacing.lg,
+    marginTop: spacing.lg,
   },
   tapFailedCard: {
     marginHorizontal: spacing.lg,

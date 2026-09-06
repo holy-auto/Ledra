@@ -246,3 +246,12 @@
 20260815000001_repair_drift_missing_indexes.sql
 20260826000001_audit_logs_indexes.sql
 20260828000002_scale_operational_indexes.sql
+
+# Allowlisted for create-index-without-concurrently.
+# idx_documents_public_id は POS レシートの公開URL /receipt/[public_id] の引き当てに使う
+# 部分ユニーク索引。CONCURRENTLY は Supabase のトランザクション/パイプライン送信により
+# 25001 で落ちる（実際に試して確認済み。DECISION_LOG 2026-09-04 と同じ制約）。
+# 2026-09-06 に本番へ適用済み（version 20260906094735）で再適用されないため、
+# 原文を書き換えても本番には反映されず desync するだけ。
+# documents は全48行で ACCESS EXCLUSIVE ロックは一瞬。
+20260906094735_documents_public_id_index.sql

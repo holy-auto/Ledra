@@ -119,6 +119,315 @@
   健全と検証済み）。残る代表アクション: Administrator への validate 取り下げ訂正メール、Conformulator 自己テスト後の
   提出、電話番号・公開日の確定。
 
+## 2026-09-04 起動演出から抜けられなくなる2つの穴を塞いだ（PR #966）
+
+- 内容: `/code-review` の指摘2件。どちらも**アプリが起動画面から先に進めなくなる**種類。
+  - `AppIntro` が描画で throw すると `ErrorBoundary` のフォールバックが出るだけで
+    `introDone` が false のまま固定され、本体に入れない。再試行は同じ物を再マウントするだけ。
+    → `ErrorBoundary` に `onError` を足し、補足したらスプラッシュを剥がして演出を終わらせる
+  - 5秒の最後の砦がスプラッシュを剥がすだけで `introDone` を立てず、`useAuthInit` が
+    返らないと演出の最終フレームのまま固まる（スピナーも再試行も無い）。
+    → 砦で `introDone` も立てる。本体に入れば `index.tsx` が LoadingScreen を出す
+- `SPLASH_FAILSAFE_MS` を `_layout.tsx` から `introTiming.ts` へ移し、
+  「砦は正常系の最短（`INTRO_MIN_MS + INTRO_FADE_MS` = 1850ms）の2倍以上」を自己チェックで固定。
+  変異テストで 1000ms / 3000ms のどちらでも落ちることを確認した。
+- あわせて `RecordPosSaleResult.receiptPublicId` を削除。どの呼び出し元も読んでいなかった
+  （レシート画面は `documents.public_id` を直接引く）。再送経路の `documents` 読み直し1本も消えた。
+  トークンの**書き込み**は本体なのでそのまま。変異テストで、書き込みを外すと検査が落ちることを確認。
+
+---
+
+## 2026-09-04 POS レシートを顧客に送れるようにした（公開ページ＋PDF、要件5.10）
+
+- 内容: レシートの共有リンクが**必ず 404 だった**のを直し、公開ページと PDF を作った。
+
+  | 追加したもの | 場所 |
+  |---|---|
+  | `documents.public_id`（列＋バックフィル） | `supabase/migrations/20260906094512_documents_public_id.sql` |
+  | 部分ユニーク索引（別ファイル） | `supabase/migrations/20260906094735_documents_public_id_index.sql` |
+  | 公開レシートページ | `src/app/receipt/[public_id]/page.tsx` |
+  | 公開 PDF ルート（レート制限 10回/分） | `src/app/api/receipt/pdf/route.ts` |
+  | `doc_type='receipt'` ガード（**1箇所だけ**） | `src/lib/receipts/publicReceipt.ts` |
+  | 共有 URL の組み立て `receiptUrl()` | `apps/mobile/src/lib/certificateLinks.ts` |
+
+- 直したバグ: モバイルの2画面が `payments.id` / `reservations.id` を**証明書用**の
+  `/c/[public_id]` に渡していた。証明書のトークンではないので受け取った顧客側は必ず 404。
+  予約経路にも最初から入っていた（＝要件 5.10 は実質未達だった）。
+- トークンの生成: `pos_checkout`（決済の中枢）は触らず、`recordPosSale` が RPC の直後に
+  `makePublicId()`（22文字 base64url / CSPRNG）で書く。**書けなくても売上は失敗にしない**
+  （共有ボタンが出なくなるだけ）。既存の領収書はマイグレーションでバックフィル済み。
+- 公開範囲: `documents` には請求書・見積書・発注書が同居するので、
+  `doc_type='receipt'` 以外は**ページも PDF も 404**。ガードは共有関数に1箇所だけ置き、
+  変異テスト（その1行を消す）で両経路が落ちることを確認した。
+- URL: `/receipt/[public_id]`。`/r/` は本人確認の入庫リンク（`/r/[short_id]`）が使っており、
+  同じ階層に別のスラッグ名を置くと `next build` が落ちる。
+- 再利用したもの: PDF 描画は既存の `renderDocumentPdf()`（`DOC_TYPE_LABELS.receipt = "領収書"`）。
+  リンク組み立ては既存の `certificateLinks.ts` に関数を1つ足しただけ（新規ファイルは作らない）。
+- 検証: 実 PostgreSQL に全マイグレーションを再生した上で、バックフィルが `receipt` にだけ付くこと・
+  請求書に手でトークンを付けても公開経路の述語では0件になること・重複トークンが一意制約で
+  弾かれること・`public_id` が NULL の行は何行でも入ることを確認（6項目）。
+  `next build` 成功（`/r/[short_id]` と `/receipt/[public_id]` が両方登録される）。
+  ルート 5310 テスト・モバイル 20 self-check・`lint:migrations` / `check:migrations` / `check:schema` 緑。
+- **デプロイ順序に注意**: モバイルの新ビルドは **Web デプロイ後**でないと共有リンクが 404 のまま。
+- **2026-09-06 に本番へ適用済み**（`20260906094512` 列＋バックフィル / `20260906094735` 索引）。
+  実機確認のため、Web デプロイ（PR マージ）より先に DB だけ当てた。順序としては
+  ロールアウト手順の1段目そのもの。適用結果: 領収書 14 件すべてに 32 桁のトークンが付き、
+  請求書 15・見積書 14・納品書 4・合算請求書 1 には**1件も付いていない**（バックフィルの条件どおり）。
+  索引は `UNIQUE ... WHERE (public_id IS NOT NULL)` で作成されたことを `pg_indexes` で確認。
+- 採番は main が動くたびに古くなり、`20260904000000` → `20260905030000` → 最終的に
+  本番の記録バージョン `20260906094512/094735` に合わせた（MISTAKE_LEDGER M-036）。
+- 索引ファイルは **CONCURRENTLY を外した**。Supabase はマイグレーションをトランザクション/
+  パイプラインで送るため 25001 で落ちる（実際に試して確認）。`documents` は全 48 行なので
+  ロックは一瞬。適用済みなので `migrations.allowlist` で lint を免除している。
+
+---
+
+## 2026-09-03 iPhone 先行ローンチ向けに審査要件の抜けを埋めた（PR #966 / branch claude/mobile-app-opening-animation-s2a6m3）
+
+- 内容: App Store 審査提出に向けた棚卸しで見つかった、要件を満たさない箇所を修正した。
+- **ホームの Tap to Pay 導線を復活**（要件 3.1 / 3.4）: `apps/mobile/src/app/(tabs)/index.tsx`。
+  PR #891 で入ったバナーが #926（`528ffd5`）のホーム全面書き換えで消えていた（該当文字列 0件）。
+  現行のデザイントークンで書き直し、iPhone 判定は既存の `useDeviceType`（`Platform.isPad` ベース）を
+  再利用。旧実装のウィンドウ幅判定は iPad の Split View で反転する既知のバグ持ちだった。
+  **閉じられない常設**にした（閉じられると要件を満たさない時間帯ができる）。
+- ~~**サインアップ経路からスタブ画面を外した**~~ → **撤回した（回帰バグだった）**:
+  当時 `verify-otp` は 800ms 待って無条件に成功するスタブで、それ自体は事実だった。
+  だがその後 `main` を取り込んだ結果 `5f6931b`（#1012「サインアップ確認 OTP を実配線」）が入り、
+  本物の実装になっていた。私の変更は**新規サインアップのメール確認を素通りさせる**ものだったので、
+  `signup.tsx` の遷移先を `/(auth)/verify-otp` に戻した。詳細は MISTAKE_LEDGER M-016。
+- **飛び込み（walk-in）会計に専用 Tap to Pay ボタンを追加**（要件 5.1/5.2/5.5）:
+  `pos/walk-in.tsx`。支払方法リストより上に配置（配置そのものが要件 5.2）。
+  `disabled={processing}` で実行中の二度押しだけ止める（要件 5.3 が禁じるのは
+  「T&C 未同意でのグレーアウト」なので抵触しない）。
+  あわせて `handleCheckout` に `methodOverride` 引数を足した。`setPaymentMethod("card")` は
+  次のレンダーまで反映されないので、同じ tick で `handleCheckout()` を呼ぶと直前の
+  支払方法を読んでしまうため。**この変更で決済ボタンが `onPress={handleCheckout}` と
+  直接渡していた箇所が型エラーになり、タップイベントが第1引数に入る事故を型が検出した。**
+- **飛び込みレシートに送信導線を追加**（要件 5.10）: `pos/receipt-standalone/[id].tsx` に
+  `ReceiptShareDialog` を追加。予約レシート（`pos/receipt/[id].tsx`）にはあったが、
+  飛び込み経路はこちらに来るため送信手段が無かった。
+- **未使用のマイク権限を iOS/Android 両方から削除**: `expo-camera` と `expo-image-picker` の
+  両方に `microphonePermission: false`。iOS は `NSMicrophoneUsageDescription` が消え、
+  Android は `expo-image-picker` の `withBlockedPermissions` 経由で
+  `RECORD_AUDIO` に `tools:node="remove"` が付く。
+  **`android.permissions` から消すだけでは効かない**（`expo-camera` 自身の
+  `AndroidManifest.xml` が宣言しており、merger が戻す）。マイクを使うコードは無く（`recordAsync` / `mode="video"` /
+  `expo-av` の使用箇所ゼロ）、Expo の英語ボイラープレートが入ったままだった。
+  prebuild し直してキーが消え、他9件の用途文言が残ることを確認。
+- **提出ガイドを実態に合わせた**: `docs/tap-to-pay-submission-guide.md`。
+  動画1の台本（サインアップ後の遷移チェーン）、動画3の台本（飛び込み経路も使えるように
+  なった）、要件 3.1/3.4/5.2/5.10 の記述を更新。要件 5.9 の根拠として挙がっていた
+  `PaymentOutcome` コンポーネントは**どこからも import されていないデッドコード**だったので、
+  実際の根拠（会計画面のインライン UI）に書き換えた。
+- 検証: `npm run typecheck` / `npm test`（自己チェック15件＋check-schema）/ `npm run check:native`。
+- 限界: **iOS の実ビルドは未実施**。クリティカルパスは Apple の publishing entitlement 付与で、
+  こちらでは短縮できない。
+
+## 2026-08-25 スプラッシュのリソース参照切れを修正し、CI の検査を拡張（PR #966 / branch claude/mobile-app-opening-animation-s2a6m3）
+
+- 内容: Android ビルドが `:app:processReleaseResources` で落ちていたのを直し、
+  同じクラスの事故を CI で拾えるようにした。
+
+  ```
+  error: resource drawable/splashscreen_logo (aka com.ledra.app:drawable/splashscreen_logo) not found.
+  ```
+
+- 原因: スプラッシュを単色にするため `app.json` から `splash.image` を消したが、
+  **Expo の prebuild は logo の参照だけ残す**。
+  - `withAndroidSplashStyles.js:56-60` の `addSplashScreenStyle` は `splashConfig` を一切見ず、
+    `windowSplashScreenAnimatedIcon → @drawable/splashscreen_logo` を無条件に書く
+  - drawable を書く `withAndroidSplashImages.js:163` は `if (image)` で守られており、
+    image が無ければ黙って何も書かない（さらに既存の logo を削除する）
+  - `getAndroidSplashConfig.js:41` は `if (config.splash)` とオブジェクトの真偽で判定するため、
+    `{ backgroundColor }` だけでも `image: undefined` を持つ非 null オブジェクトを返す
+  - `isLegacyConfig` は `props === undefined` で判定されるが、呼び出し元の
+    `expo-splash-screen/plugin/build/withSplashScreen.js:37` は `null` を渡す。`null !== undefined`
+    なので legacy 経路は到達不能
+
+  → **「logo を出さない」設定は app.json からは選べない。** `splash` キーごと消しても同じ所で落ちる。
+
+- 対処: `scripts/build-mobile-intro.sh` で**背景と同色 `#d6d0cb` の 512x512 単色 PNG** を生成し、
+  `app.json` の `splash.image` に戻した。描画はされるが背景と同色なので見えない。
+  透明 PNG にしなかったのは、アイコンが空のときアプリアイコンにフォールバックする
+  OEM 実装がありうるため（同色なら挙動に依存しない）。
+  生成は `format=rgb24` をフィルタグラフの中に置く。外の `-pix_fmt` だけだと色が
+  `d5cfca` になり背景と1ずつずれる（実測）。
+- CI の拡張: `scripts/check-native-config.mjs` に**リソース参照切れの検査**を追加した。
+  prebuild 済みの `res/values*` が参照する `@drawable` / `@mipmap` の実体が
+  存在するかを照合し、無ければ名前を出して exit 1 する。
+- 検証: `app.json` から `image` を消して prebuild し直し、**今回の事故そのものを再現**して
+  検査が `@drawable/splashscreen_logo` を名指しで落とすことを確認。
+  生成済みの drawable を削除した場合も同様に落ちる。
+  合成後の logo が 5 dpi すべてで一様な `#d6d0cb` であることも実測で確認した。
+- 限界: AAPT2 をこの環境で回せないため、最終的な証明は EAS ビルド。
+  参照を拾うのは `values` 系ディレクトリのみ（`drawable` 系まで広げると AppCompat の
+  `abc_textfield_*` が誤検知になる。実際に出した）。
+
+## 2026-08-25 CI にネイティブ設定の検査を追加（PR #966 / branch claude/mobile-app-opening-animation-s2a6m3）
+
+- 内容: `Mobile CI` の `typecheck-test` ジョブに 2 ステップを追加した。
+  - `npx expo prebuild --platform android --no-install` — `app.json`・config plugin の健全性検証
+  - `npm run check:native` — ネイティブ依存が要求する minSdk とプロジェクトの minSdk の整合検査
+- 追加ファイル:
+  - `apps/mobile/scripts/check-native-config.mjs` — 検査本体。
+    プロジェクトの minSdk を `app.json` → `android/gradle.properties`（prebuild 生成）→
+    `expo-modules-core` の既定値 の順に解決し、`node_modules/*/android/build.gradle(.kts)` が
+    宣言する minSdk と突き合わせて、足りなければ**モジュール名と必要な値を出して exit 1** する。
+  - `apps/mobile/scripts/check-native-config.check.mjs` — assert ベースの自己チェック（`npm test` に追加）。
+    変異テスト付き（保護を外した素朴な実装が契約を破ることを確認）。
+- 対象: モバイルアプリの CI。実行時の挙動は変えない。
+- 動機: minSdk 衝突（2026-08-24）が「17 分ビルドして初めて分かる」形だったため。
+  静的に分かる矛盾を PR の段階で数秒で拾う。
+- 検証: `app.json` の `minSdkVersion` を一時的に 24 に戻して実行し、
+  `@stripe/stripe-terminal-react-native: minSdk 26` を名指しして exit 1 することを確認。
+  `app.json` から設定ごと外した場合も、`expo-modules-core` の既定値 24 を読んで同様に落ちた。
+- 限界: フルビルドの代わりにはならない。Kotlin のコンパイルエラーや minSdk 以外の
+  manifest merger 衝突は依然として実ビルドまで分からない。iOS 側の同種検査は未実装。
+
+## 2026-08-24 Android の minSdk を 26 に引き上げ（Android ビルドが一度も通っていなかったのを修正）（branch claude/mobile-app-opening-animation-s2a6m3）
+
+- 内容: `app.json` の `expo-build-properties` に `android.minSdkVersion: 26` を追加した。
+- 対象: モバイルアプリの Android ビルド全般。
+- 経緯: 起動オープニングの実機確認のため `eas build --platform android --profile preview` を
+  回したところ、manifest merger で失敗した。
+
+  ```
+  uses-sdk:minSdkVersion 24 cannot be smaller than version 26
+  declared in library [:stripe_stripe-terminal-react-native]
+  ```
+
+- 原因（今回の変更とは無関係の既存問題）:
+  - `@stripe/stripe-terminal-react-native/android/build.gradle:43` が `minSdkVersion 26` を宣言している
+  - `app.json` の `expo-build-properties` には `ios.deploymentTarget` しか無く、
+    Android の minSdk 指定が存在しなかった（`origin/main` の app.json も同じ）
+  - よって Android の minSdk は Expo SDK 55 のデフォルト **24** のままで、24 < 26 で merger が落ちる
+  - **`main` で Android ビルドしても同じ所で落ちる**。これまでの実機確認は
+    `development-device`（iOS・Tap to Pay entitlement 保持）だったため、
+    Android 経路が一度も通っていなかっただけ
+- 全ネイティブモジュールの `android/build.gradle` を走査したところ、**24 を超える要求は
+  Stripe Terminal の 26 ただ1件**。26 に上げれば芋づる式の再失敗は起きない。
+  同 PR で追加した `expo-video` は minSdk を明示しておらず無関係。
+- `tools:overrideLibrary` で握り潰す案は採らなかった。Gradle 自身が
+  「may lead to runtime failures」と警告する通り、API 26 前提のコードが 24 の端末で
+  実行時に落ちるため。
+- **注意**: `expo doctor` が「16 packages out of date」と出すが、`npx expo install --check` を
+  鵜呑みにしないこと。その中の `react-native 0.83.10 expected / 0.83.6 found` は
+  **意図的な pin**（下記 2026-08-06 の項、0.86.0→0.83.6 に下げて `VirtualView` codegen エラーによる
+  実機起動不能を直した経緯）。一括更新すると再発する。
+  `expo-font` の重複（55.0.8 / 57.0.1、`expo-symbols` の `expo-font: *` 由来）も既存で、
+  `origin/main` のロックファイルに同じ状態で存在する。
+
+## 2026-08-23 モバイルの起動直後に毎回入っていた2度目のちらつきを解消（branch claude/mobile-app-opening-animation-s2a6m3）
+
+- 内容: ログイン済みユーザーのコールドスタートで毎回発生していた画面の往復
+  （`/(tabs)` → `/(auth)/select-store` → 店舗フェッチ → `/(tabs)`）を消した。
+- 対象: モバイルアプリのコールドスタート、店舗が1つのテナント（大多数）。
+- 原因: `selectedStore` は認証の三点セット（セッション／ユーザー／店舗）のうち
+  **唯一どこにも保存されず、起動時に誰も復元しない**値だった。そのため
+  `(tabs)/_layout.tsx:10` が毎回 `selectedStore === null` を見て select-store へ飛ばし、
+  そこで `stores` をネットワーク取得（react-query 不使用・キャッシュ無し）していた。
+  **ちらつきの実体はこのフェッチ時間**で、先に入れたオープニング演出は `isReady` までしか
+  覆わないため、演出が消えた直後に露出していた。
+- 対応: 店舗の解決を `useAuthInit` の中（＝演出が覆っている区間）に前倒しした。
+  - `src/lib/storeSelection.ts`（新規・純粋関数）に `pickDefaultStore` を置き、
+    **店舗が1つのときに限り**自動選択する。2つ以上のとき `is_default` を自動選択しないのは意図的で、
+    勝手に選ぶと別店舗で作業しているスタッフが気づかないまま誤った店舗に記録を作る。
+  - `src/lib/auth.ts` に `fetchActiveStores(tenantId)` を追加し、select-store のインラインクエリを
+    そこへ集約。絞り込み条件（`is_active`・テナント境界・並び順）が2箇所に散って
+    片方だけ直る事故を防ぐ。
+  - 店舗クエリが失敗しても起動は止めない。`null` のままなら select-store に流れるだけで、
+    挙動は変更前と同じ。原因が追えるよう `console.warn` は残す。
+  - `setSelectedStore` を `setUser` より**先**に呼ぶ。`setUser` が `isAuthenticated` を立てるので、
+    逆順だと「認証済みだが店舗なし」の状態が一瞬でも観測され得る。
+- ネットワーク往復の総数は、**店舗が1つのテナントでは変わらない**（select-store が
+  同じクエリを1回していたので、見える位置が「演出の後」から「演出の中」に移るだけ）。
+  **店舗が0個／2つ以上のテナントでは1回増える**。起動処理で取った一覧は
+  `pickDefaultStore` が捨て、select-store が同じクエリを引き直すため。
+  増えた1回は演出の尺（下限1.85秒）に隠れるので通常は体感に出ないが、
+  低速回線では起動が延びる。重複を消すには取得結果を画面間で持ち回す必要があり、
+  消せる往復1回に対して状態管理が増えすぎるので今回は採らなかった。
+- 検証: `npm run typecheck` / `npm test`（`storeSelection.check.ts` を追加）。
+  **変異テストで3種のバグ（2件以上でも `is_default` を自動選択／`is_default` を戻り値に混入／
+  0件のとき空の店舗をでっち上げ）を検出できることを確認済み**。
+- あわせて修正: select-store が**取得失敗と「店舗が0個」を区別**するようにした。
+  従来はどちらも「店舗が登録されていません」を表示し、ユーザーが「続行する」を押すと
+  `selectedStore` に空文字IDが入る。空文字IDは `certificates/new` / `reservations/new` /
+  `customers/new` の INSERT で uuid エラーになる（POS 系と違い正規化されていない）。
+  出張作業で電波が切れる前提の業務アプリなので、この経路は現実に踏まれる。
+  失敗時は「店舗情報を取得できませんでした」＋再試行ボタンを出し、「続行する」は出さない。
+- **ログイン直後のちらつきも同じ仕組みで解消**した。`login.tsx` はサインイン成功後に
+  無条件で select-store へ遷移していたため、店舗1つのユーザーはログインのたびに
+  同じ往復を見ていた。遷移先を決める前に `resolveDefaultStore` を呼び、
+  店舗が確定していれば `/(tabs)` へ直行する。
+  - 判定ヘルパーは `useAuthInit` の private 定義から `lib/auth.ts` へ移して共有した。
+  - 行き先は明示的に分岐している。常に `/(tabs)` へ送って `(tabs)/_layout` のゲートに
+    任せると、0店舗・複数店舗のユーザーに1フレーム分の余計な画面が挟まるため。
+  - ボタンのスピナーが1往復ぶん長く出る。**店舗が1つのユーザーでは総待ち時間は変わらない**
+    （その往復は今も select-store で発生していて、「画面が変わった後」に出ていただけ）。
+    一方 **0店舗・複数店舗のユーザーでは実際に1往復ぶん増える**。login で取った一覧を
+    `resolveDefaultStore` が捨て、select-store が同じクエリを引き直すため。
+    コールドスタート側と同じ構図で、大多数が1店舗という前提に乗った判断。
+  - **`signup.tsx` は変更していない**。`/api/signup` は `auth.users` / `tenants` /
+    `tenant_memberships` の3つしか作らず（`stores` の insert は無く、DBトリガーでの
+    自動作成も無い）、新規テナントは必ず0店舗になる。加えて select-store の0店舗分岐は
+    `selectedStore` に `{ id: "", name: tenantName }` センチネルが入る唯一の場所で、
+    ここを飛ばすとオンボーディングが成立しない。
+  - サインインの入口は login / signup の2つだけで、パスワードリセットもディープリンク
+    認証も存在しない（`detectSessionInUrl: false`）ことを確認済み。漏れは無い。
+- 未実施: 実機での確認。
+
+## 2026-08-23 モバイルアプリのコールドスタートにロゴスティングを再生、起動アセットをExpoデフォルトから差し替え（branch claude/mobile-app-opening-animation-s2a6m3）
+
+- 内容: `apps/mobile` の起動時オープニング演出を実装した。あわせて、これまで **Expo のデフォルト素材のまま**
+  だった起動アセット（アプリアイコン・スプラッシュ・Androidアダプティブアイコン）を Ledra のロゴに差し替えた。
+- 対象: モバイルアプリ（iOS / Android）のコールドスタート、全業種。
+- 演出: 2.0秒のロゴスティング動画（Lマーク → LEDRA のロックアップ）を `expo-video` で1回だけ再生する。
+  再生後は `#fafafa` へ350msフェードしてアプリ本体へ渡す。
+  - **コールドスタート限定は追加コード不要**。`src/app/_layout.tsx` はプロセスごとに1回しかマウントされず、
+    バックグラウンド復帰では再マウントされないため、既存構造がそのまま要件を満たす。
+  - `src/app/_layout.tsx:88` にあった `if (!isReady) return null;`（起動処理中に何も描かない空白）を
+    `<AppIntro>` に差し替えた。`SplashScreen.hideAsync()` は AppIntro 側が「動画を描画可能になってから」呼ぶ。
+    先に呼ぶとデコード待ちの黒画面が挟まる。
+  - ネイティブスプラッシュは見た目としては単色 `#d6d0cb`（動画の背景クリーム）。
+    当初はフレーム0を全画面スプラッシュにする設計だったが、`@expo/prebuild-config` の
+    legacy splash 経路は Android で `imageWidth` が 200dp にハードコードされており
+    （`getAndroidSplashConfig.js:52`）、そもそも Android 12+ のスプラッシュAPIは
+    「単色の上に中央のアイコン」しか描けない。フルブリードのスプラッシュ画像は
+    Android では原理的に実現できないため、両プラットフォームで単色に揃えた。
+    フレーム0はビネット以外ほぼ一様なクリームなので、継ぎ目はほぼ見えない。
+  - **【2026-08-25 訂正】** 当初は「画像を持たせず単色」と書いていたが、**画像を持たせない設定は
+    Expo からは選べない**ことが実ビルドで判明した（下の 2026-08-25 エントリ参照）。
+    現在は背景と同色 `#d6d0cb` の単色 PNG を渡して「描画はされるが見えない」形にしている。
+- アセット生成 (`scripts/build-mobile-intro.sh` 新規、ffmpeg のみで完結):
+  - マスター素材は 1920x1080 のキャンバスに 9:16 の縦パネルが白でピラーボックスされた形。
+    `crop=608:970:656:0` でパネルを抜き、**同時に下端110pxを落として生成AIのウォーターマーク
+    （中心 約 x1165, y997）を画角外に出す**。LEDRA の下端は y≈732 なのでロゴは切れない。
+  - `-t 2.00` で切る。1回目のハイライトスイープが始まる 2.20秒の手前なので、
+    **末尾フレームの高輝度画素が0＝完全に静止した状態で終わる**。動きが途中で断ち切られない。
+    末尾2秒の真っ白な余り尺もこれで落ちる。
+  - `-an` で音声トラックを削除（起動のたびに音が鳴る／他アプリの再生を止めるのを防ぐ）。
+    コード側でも `player.muted = true` を立てて二重に防いでいる。
+  - 成果物: `ledra-intro.mp4`（1080x1920 / 2.00秒 / 60フレーム / 音声なし / 267KB）、
+    `icon.png`（iOSはアルファ不可なので白でフラット化）、
+    Androidアダプティブアイコンのフォアグラウンド／モノクロ。
+    Expo デフォルトのままだった `android-icon-background.png` は削除。
+    `splash-icon.png` は Expo デフォルト素材を捨て、単色 `#d6d0cb` の 512x512 に置き換えた。
+- 検証: `npm run typecheck` / `npm test`（`introTiming.check.ts` を追加）。
+  退場判定とスプラッシュ剥がし判定を `src/lib/introTiming.ts` の純関数に切り出し、
+  assert ベースの自己チェックを置いた。**変異テストで3種のバグ（黒画面が挟まる／デコード失敗で
+  永久に固まる／LEDRAが出る前に消える）を検出できることを確認済み**。
+- 堅牢性: 起動処理の手前に立つコンポーネントなので、待ちには全てタイムアウトを置いた。
+  レビューと自己点検で見つけて潰した固まり方は4つ:
+  (a) 動画のデコード失敗（`status: "error"`）でスプラッシュが剥がれない、
+  (b) 動画が永久に `readyToPlay` にならず、スプラッシュを剥がした後も演出から抜けられない、
+  (c) 退場フェードの完了コールバックが返らず、不透明な `#fafafa` の一枚絵が残る、
+  (d) `AppIntro` の描画が throw してスプラッシュの裏でアプリが見えなくなる
+  （ErrorBoundary の内側に置き、`_layout.tsx` に5秒の最後の砦を追加）。
+  あわせて、退場の経過時間の基準を**マウント時ではなく「動画が実際に見え始めた時刻」**に修正した。
+  マウント基準だとモーション低減の判定（最大400ms）とデコード待ちが挟まり、
+  ロックアップが完成する前に退場していた。
+- 未実施: 実機の dev-client ビルドでの確認（`app.json` と依存を触るのでネイティブ再ビルドが必要）。
+
 ## 2026-09-04 サイトコンテンツのアプリ側ガードが DB とずれていたのを直した
 
 - 内容: Server Action 7箇所を全部読み、**`site-content` の4アクションだけ**が

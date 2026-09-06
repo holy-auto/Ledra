@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Stack, router } from "expo-router";
 import { PaperProvider } from "react-native-paper";
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -18,11 +18,15 @@ import { useAuthStore } from "@/stores/authStore";
 import { useUiPreferencesStore } from "@/stores/uiPreferencesStore";
 import { ToastProvider } from "@/components/ToastProvider";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { AppIntro } from "@/components/AppIntro";
 import { useTapToPayWarmup } from "@/hooks/useTapToPayWarmup";
 import { registerForPushNotifications } from "@/lib/push";
 import { stackScreenOptions } from "@/components/screenOptions";
+import { SPLASH_FAILSAFE_MS } from "@/lib/introTiming";
 
 SplashScreen.preventAutoHideAsync();
+
+
 
 /**
  * useTapToPayWarmup は useStripeTerminal を内部で呼ぶため
@@ -84,12 +88,26 @@ useAuthStore.subscribe((state) => {
 
 export default function RootLayout() {
   const { isReady } = useAuthInit();
+  const [introDone, setIntroDone] = useState(false);
 
+  // 最後の砦: 何があってもスプラッシュを剥がし、**演出も降ろす**。
+  //
+  // 通常は AppIntro が「動画を描ける状態になってから」剥がし、退場して onFinish を呼ぶ。
+  // そこが一切動かなかった場合(例: dev-client のビルドが古く expo-video の
+  // ネイティブ側が入っていない)、スプラッシュの裏でアプリが永久に見えなくなる。
+  //
+  // **剥がすだけでは足りない。** AppIntro の退場は `ready`(useAuthInit の完了)を
+  // 条件にしており、初期化が返ってこないと演出の最終フレームのまま固まる
+  // ―― スピナーも、エラーも、再試行も無い一枚絵になる。
+  // introDone も立てて本体に入れる。初期化が終わっていなければ
+  // index.tsx が LoadingScreen(スピナー)を出すので、少なくとも状態が伝わる。
   useEffect(() => {
-    if (isReady) {
-      SplashScreen.hideAsync();
-    }
-  }, [isReady]);
+    const id = setTimeout(() => {
+      void SplashScreen.hideAsync().catch(() => {});
+      setIntroDone(true);
+    }, SPLASH_FAILSAFE_MS);
+    return () => clearTimeout(id);
+  }, []);
 
   // Stripe Terminal の connection token 取得
   // SDK 0.0.1-beta.29 では initialize() 経由ではなく Provider 経由で渡す
@@ -102,7 +120,26 @@ export default function RootLayout() {
     return res.secret;
   }, []);
 
-  if (!isReady) return null;
+  // 起動処理が終わるまでの空白をオープニング演出で埋める。
+  // SplashScreen.hideAsync() は AppIntro 側が「動画を描ける状態になってから」呼ぶ。
+  //
+  // 演出は飾りなので、描画で落ちてもアプリ本体には入れるようにする。
+  // **ErrorBoundary で囲むだけでは入れない** ―― 補足するとフォールバック画面が
+  // この分岐の中に出るだけで、introDone は false のまま、再試行は同じ物を
+  // もう一度マウントするだけになる。補足したら演出は「終わった」ことにして、
+  // スプラッシュを剥がして本体へ抜ける。
+  if (!introDone) {
+    return (
+      <ErrorBoundary
+        onError={() => {
+          void SplashScreen.hideAsync().catch(() => {});
+          setIntroDone(true);
+        }}
+      >
+        <AppIntro ready={isReady} onFinish={() => setIntroDone(true)} />
+      </ErrorBoundary>
+    );
+  }
 
   return (
     <ErrorBoundary>

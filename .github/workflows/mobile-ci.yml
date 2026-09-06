@@ -37,3 +37,18 @@ jobs:
       - name: Unit tests
         # vitest 導入後にテストが存在する。スクリプト未定義の旧コミットは exit 0 で通す。
         run: npm test --if-present
+
+      # ここから下はネイティブ設定の検査。フルビルドの代わりではないが、
+      # 「17分ビルドして manifest merger で初めて分かる」クラスの事故を数秒で拾う。
+      - name: Prebuild (Android)
+        # app.json の設定ミス、参照アセットの欠落、自作 config plugin
+        # (withNfcLocal / withRemoveTapToPayEntitlement) の例外はここで落ちる。
+        # android/ は .gitignore 済み。prebuild は package.json も書き換えるが、
+        # このチェックアウトは使い捨てなので放置してよい。
+        run: npx expo prebuild --platform android --no-install
+
+      - name: ネイティブ依存の minSdk 整合を検査
+        # app.json の minSdk と node_modules/*/android/build.gradle(.kts) の宣言を突き合わせる。
+        # prebuild の後に置くのは、app.json に設定が無い場合に android/gradle.properties から
+        # 解決後の値を読めるようにするため。
+        run: npm run check:native

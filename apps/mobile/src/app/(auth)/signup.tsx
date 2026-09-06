@@ -94,6 +94,9 @@ export default function SignupScreen() {
       }
 
       setUser(profile);
+      // メール確認（OTP）を通す。verify-otp は成功後に
+      // /(auth)/select-store?fromSignup=1 へ送る（verify-otp.tsx:128）ので、
+      // そこから先の導線（店舗選択 → 生体認証 → オンボーディング）は変わらない。
       router.replace({
         pathname: "/(auth)/verify-otp",
         params: { email: email.trim(), fromSignup: "1" },

@@ -12,6 +12,7 @@ import { supabase } from "@/lib/supabase";
 import { parseMenuItems } from "@/lib/reservationItems";
 import { useAuthStore } from "@/stores/authStore";
 import { mobileApi } from "@/lib/api";
+import { receiptUrl } from "@/lib/certificateLinks";
 import { ReceiptShareDialog } from "@/components/ReceiptShareDialog";
 import { LedraButton } from "@/components/ui";
 import { colors, spacing, radius, typography, shadows } from "@/constants/tokens";
@@ -23,6 +24,8 @@ interface Payment {
   paid_at: string;
   received_amount: number | null;
   change_amount: number | null;
+  /** pos_checkout が作る領収書。public_id はレシート公開URL /receipt/[public_id] のトークン */
+  document: { public_id: string | null } | null;
   reservation: {
     id: string;
     customer: { name: string; phone: string | null } | null;
@@ -74,6 +77,7 @@ export default function PosReceiptScreen() {
         .select(
           `
           id, amount, payment_method, paid_at, received_amount, change_amount,
+          document:documents(public_id),
           reservation:reservations(
             id,
             customer:customers(name, phone),
@@ -115,6 +119,11 @@ export default function PosReceiptScreen() {
   const taxIncluded = payment.amount;
   const taxAmount = Math.round(taxIncluded - taxIncluded / (1 + TAX_RATE));
   const subtotal = taxIncluded - taxAmount;
+
+  // 公開URLが組み立てられないときは共有導線ごと出さない。
+  // 以前はここで `https://app.ledra.co.jp/c/${id}` を渡しており、`id` は予約ID、
+  // /c は証明書の公開ページなので**お客様に送ったリンクは必ず404だった**。
+  const shareUrl = receiptUrl(payment.document?.public_id);
 
   return (
     <>
@@ -270,13 +279,16 @@ export default function PosReceiptScreen() {
 
         {/* Actions */}
         <View style={styles.actions}>
-          {/* Apple TTP 要件 5.10: デジタルレシート送信 */}
-          <LedraButton
-            icon="email-outline"
-            onPress={() => setShareOpen(true)}
-          >
-            レシートを送る
-          </LedraButton>
+          {/* Apple TTP 要件 5.10: デジタルレシート送信。
+              壊れたリンクを送らせないため、URLが無いときはボタンを出さない。 */}
+          {shareUrl && (
+            <LedraButton
+              icon="email-outline"
+              onPress={() => setShareOpen(true)}
+            >
+              レシートを送る
+            </LedraButton>
+          )}
           <LedraButton
             variant="outline"
             icon="certificate"
@@ -298,12 +310,14 @@ export default function PosReceiptScreen() {
         <View style={{ height: spacing["4xl"] }} />
       </ScrollView>
 
-      <ReceiptShareDialog
-        visible={shareOpen}
-        receiptUrl={`https://app.ledra.co.jp/c/${id}`}
-        onDismiss={() => setShareOpen(false)}
-        onSent={() => setSnack("レシートを送信しました")}
-      />
+      {shareUrl && (
+        <ReceiptShareDialog
+          visible={shareOpen}
+          receiptUrl={shareUrl}
+          onDismiss={() => setShareOpen(false)}
+          onSent={() => setSnack("レシートを送信しました")}
+        />
+      )}
       <Snackbar
         visible={!!snack}
         onDismiss={() => setSnack("")}

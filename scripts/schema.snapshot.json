@@ -1338,6 +1338,7 @@
 "payment_terms",
 "period_end",
 "period_start",
+"public_id",
 "recipient_address",
 "recipient_honorific",
 "recipient_name",

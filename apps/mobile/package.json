@@ -4,12 +4,13 @@
   "main": "expo-router/entry",
   "scripts": {
     "start": "expo start",
-    "android": "expo start --android",
-    "ios": "expo start --ios",
+    "android": "expo run:android",
+    "ios": "expo run:ios",
     "web": "expo start --web",
     "postinstall": "node scripts/fix-stripe-terminal-package.mjs",
     "typecheck": "tsc --noEmit",
-    "test": "node src/lib/reservationSteps.check.ts && node src/lib/menuFilter.check.ts && node src/lib/legal.check.ts && node src/lib/notificationTarget.check.ts && node src/lib/appLockPolicy.check.ts && node src/lib/document.check.ts && node src/lib/imageType.check.ts && node src/lib/reservationItems.check.ts && node src/lib/pos.check.ts && node src/lib/posPayment.check.ts && node src/lib/storeScope.check.ts && node src/lib/certificateLinks.check.ts && node src/lib/confirmationState.check.ts && node src/lib/homePresentation.check.ts && node src/lib/workPresentation.check.ts && node src/lib/reservationPresentation.check.ts && node src/lib/checkRegistry.check.ts && node ../../scripts/check-schema.mjs",
+    "check:native": "node scripts/check-native-config.mjs",
+    "test": "node src/lib/reservationSteps.check.ts && node src/lib/menuFilter.check.ts && node src/lib/legal.check.ts && node src/lib/notificationTarget.check.ts && node src/lib/appLockPolicy.check.ts && node src/lib/document.check.ts && node src/lib/imageType.check.ts && node src/lib/reservationItems.check.ts && node src/lib/pos.check.ts && node src/lib/posPayment.check.ts && node src/lib/storeScope.check.ts && node src/lib/certificateLinks.check.ts && node src/lib/confirmationState.check.ts && node src/lib/homePresentation.check.ts && node src/lib/workPresentation.check.ts && node src/lib/reservationPresentation.check.ts && node src/lib/checkRegistry.check.ts && node src/lib/introTiming.check.ts && node src/lib/storeSelection.check.ts && node scripts/check-native-config.check.mjs && node ../../scripts/check-schema.mjs",
     "lint": "expo lint"
   },
   "dependencies": {
@@ -36,6 +37,7 @@
     "expo-secure-store": "~55.0.14",
     "expo-splash-screen": "~55.0.21",
     "expo-status-bar": "~55.0.6",
+    "expo-video": "~55.0.20",
     "react": "19.2.0",
     "react-dom": "19.2.0",
     "react-native": "0.83.6",
