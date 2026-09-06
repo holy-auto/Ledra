@@ -77,14 +77,19 @@ export default async function AdminVehicleDetailPage({
 
     // 無効化の本体は `@/lib/certificates/voidCertificate` に一本化（5経路で実装が
     // 食い違っていた）。この Server Action と同名なので別名で読み込んでいる。
-    // この経路だけ証明書監査ログに残っていなかったが、一本化で揃う
-    // （`vehicle_histories` への追記は画面の履歴表示に要るので従来どおり残す）。
-    const nowIso = new Date().toISOString();
+    // この経路だけ証明書監査ログに残っていなかったが、一本化で揃う。
+    //
+    // **自前で `vehicle_histories` に insert してはいけない。**
+    // `voidCertificateRecord` → `logCertificateAction` が
+    // 同じ表・同じ type（`certificate_voided`）へ1行入れるので、
+    // 両方やるとタイムラインと監査が二重になる（PR #1027 の Codex レビュー指摘）。
+    // 一本化のときに、以前この経路が持っていた insert を消し忘れていた。
     const result = await voidCertificateRecord(supabase, {
       tenantId: membershipTenantId,
       userId: caller.userId,
       selector: { certificateId: certId, vehicleId: id },
-      description: "施工証明書を削除 (車両詳細から)",
+      // description は渡さない。既定が `Public ID: … / User: …` を組み立てるので、
+      // 以前この経路が自前で書いていた `Public ID: …` を含んだ上で情報が増える。
     });
 
     if (!result.ok) {
@@ -93,16 +98,6 @@ export default async function AdminVehicleDetailPage({
     if (result.alreadyVoid) {
       redirect(`/admin/vehicles/${id}?voided=1`);
     }
-
-    await supabase.from("vehicle_histories").insert({
-      tenant_id: membershipTenantId,
-      vehicle_id: id,
-      type: "certificate_voided",
-      title: "施工証明書を削除",
-      description: result.certificate.publicId ? `Public ID: ${result.certificate.publicId}` : null,
-      performed_at: nowIso,
-      certificate_id: certId,
-    });
 
     redirect(`/admin/vehicles/${id}?voided=1`);
   }

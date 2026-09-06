@@ -106,8 +106,20 @@ jobs:
             git checkout --quiet "pr-$num" -- supabase/migrations
 
             # main 側の検査をそのまま回す。判定はここに書かない。
-            if MIGRATIONS_BASE_REF=origin/main node scripts/lint-migrations.js; then
+            #
+            # ただし **どの失敗かは見分ける**。`lint-migrations.js` は
+            # `duplicate-version` や `create-index-without-concurrently` など
+            # 他のルールでも落ちる。終了コードだけで「日付が追い越された」と決めると、
+            # 別の理由で落ちた PR に**間違った直し方**を書いたコメントを貼ってしまう
+            # （PR #1027 の Codex レビュー指摘）。出力に当該ルール名が出たときだけ貼る。
+            out="$(MIGRATIONS_BASE_REF=origin/main node scripts/lint-migrations.js 2>&1)" && rc=0 || rc=$?
+            echo "$out"
+            if [ "$rc" -eq 0 ]; then
               echo "OK"
+            elif ! grep -q 'migration-version-before-base-head' <<<"$out"; then
+              # 日付以外の理由。この workflow の担当外なので、PR には何も貼らない
+              # （その PR 自身の CI が同じ検査で落としている）。
+              echo "::notice::PR #$num は別のルールで落ちている（この workflow の担当外）"
             else
               stale=$((stale + 1))
               echo "::warning::PR #$num のマイグレーション日付が main に追い越されています"

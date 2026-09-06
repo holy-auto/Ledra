@@ -173,6 +173,21 @@ describe("無効化の書き込み経路が増えていないこと", () => {
     expect(src, `${f} が一本化から外れている`).toMatch(/certificates\/voidCertificate/);
   });
 
+  /**
+   * `voidCertificate` → `logCertificateAction` が `vehicle_histories` に1行入れる。
+   * 呼び出し側が自分でも入れると、タイムラインと監査が二重になる。
+   * 一本化のとき車両詳細の Server Action で実際にやった（Codex レビュー指摘）。
+   */
+  it("呼び出し側が自前で vehicle_histories に insert しない", () => {
+    for (const f of UNIFIED) {
+      const src = readFileSync(join(REPO, f), "utf8");
+      expect(
+        /from\(\s*["'`]vehicle_histories["'`]\s*\)[\s\S]{0,200}?\.insert\(/.test(src),
+        `${f} が自前で vehicle_histories に insert している（logCertificateAction と二重になる）`,
+      ).toBe(false);
+    }
+  });
+
   it("一本化した API 3経路は自前で certificates を update しない", () => {
     for (const f of UNIFIED.filter((f) => f.startsWith("src/app/api/"))) {
       const src = readFileSync(join(REPO, f), "utf8");

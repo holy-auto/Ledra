@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from "react";
 import PageHeader from "@/components/ui/PageHeader";
-import { jstLocalInputToUtcIso, utcIsoToJstLocalInput } from "@/lib/datetime";
+import { businessDateString, jstLocalInputToUtcIso, utcIsoToJstLocalInput } from "@/lib/datetime";
 
 // ─── 型定義 ──────────────────────────────────────────────────────
 type ContactType = "call" | "visit" | "email" | "sms" | "line";
@@ -65,12 +65,23 @@ const inputCls =
 const selectCls = inputCls;
 
 // ─── ユーティリティ ───────────────────────────────────────────────
-function startOfToday(): Date {
-  const d = new Date();
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+/**
+ * JST の「今日」の 0 時（実時刻）。
+ *
+ * ブラウザローカルの `new Date(y, m, d)` を使っていたため、UTC 端末では
+ * **取得クエリの `from` がずれて行が丸ごと落ちていた**（8:00 JST の予定は
+ * 前日 23:00Z なので、UTC の「今日」以降を要求すると入らない）。
+ * タブ振り分けも同じ境界を使うので、表示だけの問題ではなかった
+ * （PR #1027 の Codex レビュー指摘。当初「表示専用」と書いたのは誤り）。
+ *
+ * JST は夏時間が無いので、日の加算は 24 時間の加算でよい。
+ */
+function startOfTodayJst(): Date {
+  return new Date(`${businessDateString()}T00:00:00+09:00`);
 }
-function ymd(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+/** その実時刻を JST の暦日 `YYYY-MM-DD` にする（API のクエリ用）。 */
+function ymdJst(d: Date): string {
+  return businessDateString(d);
 }
 function formatDateTime(iso: string): string {
   const d = new Date(iso);
@@ -110,10 +121,9 @@ export default function ContactSchedulesClient() {
   const fetchSchedules = useCallback(async () => {
     setLoading(true);
     try {
-      const from = ymd(startOfToday());
-      const to = new Date(startOfToday());
-      to.setDate(to.getDate() + 30);
-      const params = new URLSearchParams({ status: "all", from, to: ymd(to) });
+      const from = ymdJst(startOfTodayJst());
+      const to = new Date(startOfTodayJst().getTime() + 30 * 86400000);
+      const params = new URLSearchParams({ status: "all", from, to: ymdJst(to) });
       const res = await fetch(`/api/admin/contact-schedules?${params.toString()}`);
       if (!res.ok) throw new Error("fetch failed");
       const data = await res.json();
@@ -132,11 +142,10 @@ export default function ContactSchedulesClient() {
 
   // ─── タブごとの絞り込み ───
   const grouped = useMemo(() => {
-    const today = startOfToday();
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    const weekEnd = new Date(today);
-    weekEnd.setDate(weekEnd.getDate() + 7);
+    // 境界も JST の 0 時に揃える（取得と振り分けで基準を変えない）。
+    const today = startOfTodayJst();
+    const tomorrow = new Date(today.getTime() + 86400000);
+    const weekEnd = new Date(today.getTime() + 7 * 86400000);
 
     const inRange = (iso: string, lo: Date, hi: Date) => {
       const t = new Date(iso).getTime();
