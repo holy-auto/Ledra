@@ -4,70 +4,43 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
-## 2026-09-04 CONCURRENTLY を「1ファイル1文」に矯正（Supabase のパイプライン制約）
+## 2026-09-05 Academy 公開事例を「加盟店間の共有」に絞り、非公開に戻すボタンを足した
 
-順序逆転（前項）を直したことで、実物のプレビュー DB が初めて先まで進み、次が出た。
+- 内容: 公開事例の読み取り RLS を `TO authenticated` に絞り、一覧に「非公開にする」を追加。
+  応答から `tenant_id` を落とし、代わりにサーバ計算の `is_own` を返す。
+- **実害の可能性**: `academy_cases_read_published` にロール指定が無く PUBLIC 扱いだったため、
+  **anon ロールから公開事例を読めた**（本番で実測。一時行を入れて確認し削除）。
+  anon キーはブラウザのバンドルに載る。`photos`（施工写真）と `vehicle_info` を持つ表なので、
+  加盟店間の共有のつもりが世間への公開になっていた。
+  本番の `academy_cases` は **0件**なので、実際に露出したデータは無い。
+- 「任意で非公開」は**新規開発ではなかった**。API の `action: "unpublish"` も
+  所有テナントの検査も既にあり、**画面にボタンが無かっただけ**。
+- 副次: `/admin/academy` の `tenant_id` の取り方が `.limit(1).single()`（並び順も
+  アクティブテナントの cookie も見ない）だったので `resolveCallerWithRole` に置き換えた。
+  `updateTenantSettingsAction`・`site-content` と同じ欠陥で、これが3例目。
+- 公開事例数のカウントだけは**意図的に `tenant_id` で絞らない**。全加盟店共有だから。
+  `createTenantScopedAdmin` の規約への例外なので、消されないようコメントを置いた。
+- 検出: `src/lib/academy/__tests__/casePresentation.test.ts`。匿名化の境界（`tenant_id` を
+  落とす）と所有判定を純関数に切り出して固定した。**壊すと落ちることを2形で確認**
+  （`tenant_id` を落とすのをやめる / マスクを1項目外す）。
 
-```
-ERROR: CREATE INDEX CONCURRENTLY cannot be executed within a pipeline (SQLSTATE 25001)
-At statement: 1
-```
+## 2026-09-04 C2PA 署名マニフェストを 2.x 準拠にし、施工写真をカメラ撮影に限定（Conformance 申請一式）
 
-**Supabase のブランチ機能は1ファイルの複数文をパイプラインで送る。**
-`CREATE INDEX CONCURRENTLY` はその中では実行できず、2文目以降が落ちる。
-
-- 適用済みの**13ファイル**から CONCURRENTLY を外した（本番では再適用されず、
-  空 DB では対象テーブルが空なのでロックの問題は起きない）。
-  最大は `20260603010000_fk_covering_indexes.sql` の135文。
-- そのぶん `create-index-without-concurrently` の対象外にするため
-  `supabase/migrations.allowlist` に13件を追記（理由コメント付き）。
-- **lint に新ルール `concurrently-in-multi-statement-file` を追加。**
-  CONCURRENTLY を含むファイルが2文以上なら落ちる。
-  **手元の `check:migrations` では再現しない**（`psql -f` はパイプラインを使わない）
-  ので、静的検査で止めるしかない。わざと壊して落ちることを確認済み。
-
-検証: 1パス再生 447/447、lint:migrations OK、check:schema OK、tsc エラー0。
-
-### 続き: `pg_trgm` はどのマイグレーションでも作られていなかった
-
-CONCURRENTLY を直したら、実物のプレビュー DB は次で落ちた。
-
-```
-ERROR: extension "pg_trgm" does not exist (SQLSTATE 42704)
-At statement: 2 / alter extension pg_trgm set schema extensions
-```
-
-**`pg_trgm` を作るマイグレーションは1本も無い。** 本番には手で入っているだけで、
-Supabase の既定にも入らない。手元で再現しなかったのは
-`scripts/replay/bootstrap.sql` が先に作っていたから ——
-「本番にあるのにマイグレーションに書かれていない」ドリフトそのものを、
-再生検査自身が隠していた。
-
-- `20260616000005` を「無ければ作る / 別スキーマにあれば移す / 既に extensions なら何もしない」に変更。
-- **bootstrap から既定でない拡張4件（pg_trgm / btree_gin / btree_gist / unaccent）を削除。**
-  bootstrap は Supabase の既定だけを書く場所にする。
-- 検証: bootstrap から pg_trgm を抜いた状態でも 1パス再生 447/447（＝プレビュー DB と同じ条件）。
-
-### 続き2: 手元は PostgreSQL 16、Supabase は 15
-
-`pg_trgm` を直したら次はこれ。
-
-```
-ERROR: relation "public.line_link_tokens" does not exist (SQLSTATE 42P01)
-drop policy if exists service_role_all_line_link_tokens on public.line_link_tokens
-```
-
-`line_link_tokens` / `line_pending_links` も**本番にしか無い**テーブル
-（`fk_covering_indexes` のコメントに「ドリフト」として列挙済み）。
-
-**`DROP POLICY IF EXISTS ... ON <欠けたテーブル>` は PG16 では NOTICE で skip されるが、
-PG15 では落ちる。** 手元の再生は 16、Supabase は 15。実際に PG16 で試して確認した。
-
-- 該当2文を `to_regclass` ガードに変更。
-- lint に新ルール `drop-if-exists-on-uncreated-relation` を追加。
-  **全マイグレーションを走査して「作られるリレーション」の集合を作り**、
-  そこに無いものへの `DROP POLICY / TRIGGER IF EXISTS` を落とす。
-  わざと壊して落ちることを確認済み。
+- 内容: C2PA Conformance Program（Generator Product / 実装クラス Backend / Max Assurance Level 1）の申請一式を
+  追加し、本番の署名マニフェストを C2PA 2.x 準拠に修正した（PR #914、squash マージ）。
+- マニフェスト: 行為アクションを `c2pa.opened`（claim v2 で ingredient 必須＝`ingredientMismatch` で非準拠）から
+  `c2pa.created` ＋ `digitalSourceType` に変更。`claim_generator_info.specVersion=2.4`・`allActionsIncluded` を付与。
+  行為台帳は **実際に効果のあった変換だけ** を載せる（再エンコード / 向き補正 / EXIF・GPS 除去の有無を per-action で
+  判定し no-op を主張しない）。既知の正常証明書で `validation_state: Valid` を確認済み。
+- 入力制限: 施工写真の入力を **カメラ撮影に限定**（作成 `PhotoUploadSection`・作成後 `CertImageUpload`、モバイルは
+  元よりカメラのみ）。任意ファイルアップロードを廃し、`digitalCapture`（実写のデジタル撮影）の主張を正当化。
+- 提出物: GPSA 本体（`docs/c2pa-gpsa.md`、generation のみ）＋運用管理策文書＋TOE アーキ図＋本番切替前プリフライト
+  `scripts/verify-c2pa-cert.mjs`。いずれも実装の実態に整合（Codacy は手動のみ・端末アテステーション既定 OFF・
+  service-role＋アプリ層分離・署名鍵はプロセス常駐・CodeQL は main 限定・Polygon は pre-sign ハッシュ）。
+- テスト: `c2paSignValidate` / `imageExif` / `c2paManifest`（新規/更新）。
+- 本番 Claim Signing Certificate は適合認定後に CA から発行されるため申請時点では未保有（署名ロジック自体は
+  健全と検証済み）。残る代表アクション: Administrator への validate 取り下げ訂正メール、Conformulator 自己テスト後の
+  提出、電話番号・公開日の確定。
 
 ## 2026-09-04 起動演出から抜けられなくなる2つの穴を塞いだ（PR #966）
 
@@ -93,8 +66,8 @@ PG15 では落ちる。** 手元の再生は 16、Supabase は 15。実際に PG
 
   | 追加したもの | 場所 |
   |---|---|
-  | `documents.public_id`（列＋バックフィル） | `supabase/migrations/20260905030000_documents_public_id.sql` |
-  | 部分ユニーク索引（`CONCURRENTLY`・別ファイル） | `supabase/migrations/20260905030001_documents_public_id_index.sql` |
+  | `documents.public_id`（列＋バックフィル） | `supabase/migrations/20260906094512_documents_public_id.sql` |
+  | 部分ユニーク索引（別ファイル） | `supabase/migrations/20260906094735_documents_public_id_index.sql` |
   | 公開レシートページ | `src/app/receipt/[public_id]/page.tsx` |
   | 公開 PDF ルート（レート制限 10回/分） | `src/app/api/receipt/pdf/route.ts` |
   | `doc_type='receipt'` ガード（**1箇所だけ**） | `src/lib/receipts/publicReceipt.ts` |
@@ -119,76 +92,18 @@ PG15 では落ちる。** 手元の再生は 16、Supabase は 15。実際に PG
   `next build` 成功（`/r/[short_id]` と `/receipt/[public_id]` が両方登録される）。
   ルート 5310 テスト・モバイル 20 self-check・`lint:migrations` / `check:migrations` / `check:schema` 緑。
 - **デプロイ順序に注意**: モバイルの新ビルドは **Web デプロイ後**でないと共有リンクが 404 のまま。
-- 追記（2026-09-05）: マイグレーションを `20260904000000/000001` から `20260905030000/030001` に改名した。main が同日に `20260904123252` を入れており、元の採番のままだと `supabase db push` が out-of-order で停止して**本番に届かなかった**（MISTAKE_LEDGER M-035）。1パス再生 443/443 で確認済み。
+- **2026-09-06 に本番へ適用済み**（`20260906094512` 列＋バックフィル / `20260906094735` 索引）。
+  実機確認のため、Web デプロイ（PR マージ）より先に DB だけ当てた。順序としては
+  ロールアウト手順の1段目そのもの。適用結果: 領収書 14 件すべてに 32 桁のトークンが付き、
+  請求書 15・見積書 14・納品書 4・合算請求書 1 には**1件も付いていない**（バックフィルの条件どおり）。
+  索引は `UNIQUE ... WHERE (public_id IS NOT NULL)` で作成されたことを `pg_indexes` で確認。
+- 採番は main が動くたびに古くなり、`20260904000000` → `20260905030000` → 最終的に
+  本番の記録バージョン `20260906094512/094735` に合わせた（MISTAKE_LEDGER M-036）。
+- 索引ファイルは **CONCURRENTLY を外した**。Supabase はマイグレーションをトランザクション/
+  パイプラインで送るため 25001 で落ちる（実際に試して確認）。`documents` は全 48 行なので
+  ロックは一瞬。適用済みなので `migrations.allowlist` で lint を免除している。
 
 ---
-
-## 2026-09-03 マイグレーションの順序逆転 203 本を解消（1パス再生 443/443）
-
-`Supabase Preview` が1本目のマイグレーションで落ち続けていた問題。
-ファイル名順に1パスで流すと **438 本中 203 本**が落ちる状態だった。
-
-- **ファイル名は1つも変えていない。** 版番号を変えると本番で再適用され、当時の
-  役割を見ない RLS ポリシーや search_path 未固定の関数定義が復活するため。
-- 既適用ファイルの**中身だけ**を「前提が無ければ飛ばす」に変更（`to_regclass` /
-  `to_regprocedure` 判定）。版番号を変えていないので本番では再適用されない。
-- 飛ばした分を、依存が揃った位置の**既適用ファイルの末尾**で補う。いずれも
-  「既にあれば何もしない」形で本番では no-op。**新規ファイルは1本も作っていない**
-  （作ると本番の `db push` が out-of-order で止まるため。下記参照）:
-  `20260313020000_core_tables.sql`（customers / invoices / 列・索引）/
-  `20260314000003_market_vehicles.sql`（market_inquiries 系）/
-  `20260321000001_customer_portal_tables.sql`（索引）/
-  `20260601000006_supply_partners.sql`（列）/
-  `20260826000005_repair_unreplayable_objects.sql`（email 系関数の revoke）
-- 一度も存在しなかった名前を本番の実体に合わせて修正:
-  `tenant_members` → `tenant_memberships`（2本）、`tenant_memberships.is_active`
-  述語の除去（2本）、戻り値の型違いの同名関数を先に DROP（2本）、
-  本番にしか無い関数・ビューへの revoke/grant/ALTER VIEW を存在チェック付きに（3本）。
-- **`npm run check:migrations` を多重パス → 1パスに変更。** Supabase のブランチ機能と
-  同じ条件になり、順序逆転が CI で落ちるようになった。`KNOWN_UNREPLAYABLE`（既知の
-  9本を許す仕組み）は不要になったので削除。
-
-あわせて `/code-review` の指摘5件を修正（`5beff94`）。うち1件は**この変更が作った穴**で、
-まだ作られていない関数への `revoke execute` をガードで飛ばした結果、
-`auth_uid_by_email` / `get_auth_email` / `get_auth_email_scoped` が空 DB では
-`anon` / `authenticated` に開いたまま残っていた（`auth.users` の email を引く
-SECURITY DEFINER）。関数が実在する位置（`20260826000005` の末尾）で締め直し、
-再生 DB の `pg_proc.proacl` で5関数すべて service_role のみになること、
-本番の `proacl` と一致することを確認した。
-
-**Codex レビューの P1 指摘で作り直した。** 当初は補いを新規ファイル6本として置いて
-いたが、6本とも本番の適用済み最新 `20260904123252` より**古い**バージョンだった。
-本番の `supabase db push` は最新より古い未適用があると out-of-order で停止するため、
-マージすれば**以降のマイグレーションが本番へ一切届かなくなる**ところだった
-（2026-08-02〜08-15 に同じ形で13日間停止し、証明書発行が全件止まった実績がある）。
-6本を消して中身を既適用ファイルの末尾へ移し、新規バージョンを0本にした。
-`MISTAKE_LEDGER` M-027。
-
-再発防止として `lint:migrations` に `migration-version-before-base-head` を追加。
-**このブランチが追加したファイルは、base に在るどのファイルよりも後のバージョンで
-なければ落ちる。** わざと古い日付で置いて落ちることを確認済み。
-
-**その検査自体が CI で動いていなかった**のを `/code-review` が見つけた（M-028）。
-`actions/checkout` は既定 depth 1 で base ref を持たないため、検査は毎回
-「引けないので見送る」経路に入り注記を1行出して緑を返していた。ci.yml で base ref を
-depth 1 で取り（`MIGRATIONS_BASE_REF` で名指し）、**引けなければ CI では落とす**ように
-した。同レビューで、`CREATED_RELATIONS` がコメントを読んでいた（説明文中の
-`CREATE TABLE xxx` が「作られている」と誤認され PG15 検査が素通りする）、
-CONCURRENTLY の文数カウントが文字列リテラル中の `;` を数えていた、
-CONCURRENTLY を外した13ファイルの説明文が実装と矛盾していた、
-allowlist のコメントが「ルール単位の免除」と読める、の4件も直した。
-検出器の2件はどちらも probe で誤検出/見逃しの再現→修正後の解消を確認している。
-
-さらにその「CI では落とす」が既存の `scripts/__tests__/lint-migrations.test.ts` を
-CI で8件落とした（テストは一時ディレクトリでスクリプトを走らせるので base ref が無い）。
-落とす対象を「git リポジトリなのに base ref が無い＝CI の設定ミス」だけに絞り、
-同テストに3件追加した（backdated で落ちる / 後ろの日付なら通る / git 管理外では
-CI でも落ちない）。ルールを無効化すると落ちることも確認済み。
-
-検証: 1パス再生 **441/441**、RLS ポリシー打ち消し検査 なし、`lint:migrations` OK、
-`check:schema` OK、`vitest run` 525ファイル 5324件 通過。
-番人はわざと壊して確認済み（存在しないテーブルを ALTER するファイルを先頭日付で
-置くと exit 1 でファイル名まで出る）。
 
 ## 2026-09-03 iPhone 先行ローンチ向けに審査要件の抜けを埋めた（PR #966 / branch claude/mobile-app-opening-animation-s2a6m3）
 
@@ -463,9 +378,13 @@ CI でも落ちない）。ルールを無効化すると落ちることも確�
   `requireSiteContentAdmin()` を 3 枚に通し、**1 枚から外すと落ちる検査**を追加した。
   併せて `deleteSiteContentAction` の 0 行を、存在しない id は `not_found`、
   RLS 拒否は `forbidden` に分けた。
-- 判明した前提: **`ROUTE_PERMISSIONS`（48画面分）を強制している場所は無い**
-  （`getRequiredPermission()` の呼び出し元 0 件、`src/middleware.ts` 無し）。
-  画面の権限判定は各 `page.tsx` 任せ。OPEN_QUESTIONS に起票。
+- ~~判明した前提: `ROUTE_PERMISSIONS`（48画面分）を強制している場所は無い~~
+  **【2026-09-05 訂正】これは誤り。** 関数名は `getRequiredPermission` ではなく
+  `requiredPermissionForPath` で、`AdminRouteGuard`（全 admin 画面を包む
+  クライアントコンポーネント）が呼んでいる。存在しない名前で grep して 0 件を
+  「誰も読んでいない」と読んだ（MISTAKE_LEDGER M-031）。
+  正しくは「**クライアント側では全画面に効いている。サーバ側の強制が無い**」。
+  数えた結果は OPEN_QUESTIONS を参照。
 
 ## 2026-09-04 判断待ち4件を main へマージし、本番へマイグレーションを適用した（PR #1026 / `87b71201`）
 
@@ -570,6 +489,138 @@ CI でも落ちない）。ルールを無効化すると落ちることも確�
   デモ施工店だけ（証明書18件、すべて架空データ）。保険会社スライドは **RESULTS 18 の
   検索結果が並んだ状態**で撮影している。実テナントのデータは写らない。
 - 検証: `npx tsc --noEmit` 通過、`npx vitest run` 全 **522 ファイル / 5,310 件**通過。
+
+## 2026-09-04 CONCURRENTLY を「1ファイル1文」に矯正（Supabase のパイプライン制約）
+
+順序逆転（前項）を直したことで、実物のプレビュー DB が初めて先まで進み、次が出た。
+
+```
+ERROR: CREATE INDEX CONCURRENTLY cannot be executed within a pipeline (SQLSTATE 25001)
+At statement: 1
+```
+
+**Supabase のブランチ機能は1ファイルの複数文をパイプラインで送る。**
+`CREATE INDEX CONCURRENTLY` はその中では実行できず、2文目以降が落ちる。
+
+- 適用済みの**13ファイル**から CONCURRENTLY を外した（本番では再適用されず、
+  空 DB では対象テーブルが空なのでロックの問題は起きない）。
+  最大は `20260603010000_fk_covering_indexes.sql` の135文。
+- そのぶん `create-index-without-concurrently` の対象外にするため
+  `supabase/migrations.allowlist` に13件を追記（理由コメント付き）。
+- **lint に新ルール `concurrently-in-multi-statement-file` を追加。**
+  CONCURRENTLY を含むファイルが2文以上なら落ちる。
+  **手元の `check:migrations` では再現しない**（`psql -f` はパイプラインを使わない）
+  ので、静的検査で止めるしかない。わざと壊して落ちることを確認済み。
+
+検証: 1パス再生 447/447、lint:migrations OK、check:schema OK、tsc エラー0。
+
+### 続き: `pg_trgm` はどのマイグレーションでも作られていなかった
+
+CONCURRENTLY を直したら、実物のプレビュー DB は次で落ちた。
+
+```
+ERROR: extension "pg_trgm" does not exist (SQLSTATE 42704)
+At statement: 2 / alter extension pg_trgm set schema extensions
+```
+
+**`pg_trgm` を作るマイグレーションは1本も無い。** 本番には手で入っているだけで、
+Supabase の既定にも入らない。手元で再現しなかったのは
+`scripts/replay/bootstrap.sql` が先に作っていたから ——
+「本番にあるのにマイグレーションに書かれていない」ドリフトそのものを、
+再生検査自身が隠していた。
+
+- `20260616000005` を「無ければ作る / 別スキーマにあれば移す / 既に extensions なら何もしない」に変更。
+- **bootstrap から既定でない拡張4件（pg_trgm / btree_gin / btree_gist / unaccent）を削除。**
+  bootstrap は Supabase の既定だけを書く場所にする。
+- 検証: bootstrap から pg_trgm を抜いた状態でも 1パス再生 447/447（＝プレビュー DB と同じ条件）。
+
+### 続き2: 手元は PostgreSQL 16、Supabase は 15
+
+`pg_trgm` を直したら次はこれ。
+
+```
+ERROR: relation "public.line_link_tokens" does not exist (SQLSTATE 42P01)
+drop policy if exists service_role_all_line_link_tokens on public.line_link_tokens
+```
+
+`line_link_tokens` / `line_pending_links` も**本番にしか無い**テーブル
+（`fk_covering_indexes` のコメントに「ドリフト」として列挙済み）。
+
+**`DROP POLICY IF EXISTS ... ON <欠けたテーブル>` は PG16 では NOTICE で skip されるが、
+PG15 では落ちる。** 手元の再生は 16、Supabase は 15。実際に PG16 で試して確認した。
+
+- 該当2文を `to_regclass` ガードに変更。
+- lint に新ルール `drop-if-exists-on-uncreated-relation` を追加。
+  **全マイグレーションを走査して「作られるリレーション」の集合を作り**、
+  そこに無いものへの `DROP POLICY / TRIGGER IF EXISTS` を落とす。
+  わざと壊して落ちることを確認済み。
+
+## 2026-09-03 マイグレーションの順序逆転 203 本を解消（1パス再生 443/443）
+
+`Supabase Preview` が1本目のマイグレーションで落ち続けていた問題。
+ファイル名順に1パスで流すと **438 本中 203 本**が落ちる状態だった。
+
+- **ファイル名は1つも変えていない。** 版番号を変えると本番で再適用され、当時の
+  役割を見ない RLS ポリシーや search_path 未固定の関数定義が復活するため。
+- 既適用ファイルの**中身だけ**を「前提が無ければ飛ばす」に変更（`to_regclass` /
+  `to_regprocedure` 判定）。版番号を変えていないので本番では再適用されない。
+- 飛ばした分を、依存が揃った位置の**既適用ファイルの末尾**で補う。いずれも
+  「既にあれば何もしない」形で本番では no-op。**新規ファイルは1本も作っていない**
+  （作ると本番の `db push` が out-of-order で止まるため。下記参照）:
+  `20260313020000_core_tables.sql`（customers / invoices / 列・索引）/
+  `20260314000003_market_vehicles.sql`（market_inquiries 系）/
+  `20260321000001_customer_portal_tables.sql`（索引）/
+  `20260601000006_supply_partners.sql`（列）/
+  `20260826000005_repair_unreplayable_objects.sql`（email 系関数の revoke）
+- 一度も存在しなかった名前を本番の実体に合わせて修正:
+  `tenant_members` → `tenant_memberships`（2本）、`tenant_memberships.is_active`
+  述語の除去（2本）、戻り値の型違いの同名関数を先に DROP（2本）、
+  本番にしか無い関数・ビューへの revoke/grant/ALTER VIEW を存在チェック付きに（3本）。
+- **`npm run check:migrations` を多重パス → 1パスに変更。** Supabase のブランチ機能と
+  同じ条件になり、順序逆転が CI で落ちるようになった。`KNOWN_UNREPLAYABLE`（既知の
+  9本を許す仕組み）は不要になったので削除。
+
+あわせて `/code-review` の指摘5件を修正（`5beff94`）。うち1件は**この変更が作った穴**で、
+まだ作られていない関数への `revoke execute` をガードで飛ばした結果、
+`auth_uid_by_email` / `get_auth_email` / `get_auth_email_scoped` が空 DB では
+`anon` / `authenticated` に開いたまま残っていた（`auth.users` の email を引く
+SECURITY DEFINER）。関数が実在する位置（`20260826000005` の末尾）で締め直し、
+再生 DB の `pg_proc.proacl` で5関数すべて service_role のみになること、
+本番の `proacl` と一致することを確認した。
+
+**Codex レビューの P1 指摘で作り直した。** 当初は補いを新規ファイル6本として置いて
+いたが、6本とも本番の適用済み最新 `20260904123252` より**古い**バージョンだった。
+本番の `supabase db push` は最新より古い未適用があると out-of-order で停止するため、
+マージすれば**以降のマイグレーションが本番へ一切届かなくなる**ところだった
+（2026-08-02〜08-15 に同じ形で13日間停止し、証明書発行が全件止まった実績がある）。
+6本を消して中身を既適用ファイルの末尾へ移し、新規バージョンを0本にした。
+`MISTAKE_LEDGER` M-027。
+
+再発防止として `lint:migrations` に `migration-version-before-base-head` を追加。
+**このブランチが追加したファイルは、base に在るどのファイルよりも後のバージョンで
+なければ落ちる。** わざと古い日付で置いて落ちることを確認済み。
+
+**その検査自体が CI で動いていなかった**のを `/code-review` が見つけた（M-028）。
+`actions/checkout` は既定 depth 1 で base ref を持たないため、検査は毎回
+「引けないので見送る」経路に入り注記を1行出して緑を返していた。ci.yml で base ref を
+depth 1 で取り（`MIGRATIONS_BASE_REF` で名指し）、**引けなければ CI では落とす**ように
+した。同レビューで、`CREATED_RELATIONS` がコメントを読んでいた（説明文中の
+`CREATE TABLE xxx` が「作られている」と誤認され PG15 検査が素通りする）、
+CONCURRENTLY の文数カウントが文字列リテラル中の `;` を数えていた、
+CONCURRENTLY を外した13ファイルの説明文が実装と矛盾していた、
+allowlist のコメントが「ルール単位の免除」と読める、の4件も直した。
+検出器の2件はどちらも probe で誤検出/見逃しの再現→修正後の解消を確認している。
+
+さらにその「CI では落とす」が既存の `scripts/__tests__/lint-migrations.test.ts` を
+CI で8件落とした（テストは一時ディレクトリでスクリプトを走らせるので base ref が無い）。
+落とす対象を「git リポジトリなのに base ref が無い＝CI の設定ミス」だけに絞り、
+同テストに3件追加した（backdated で落ちる / 後ろの日付なら通る / git 管理外では
+CI でも落ちない）。ルールを無効化すると落ちることも確認済み。
+
+検証: 1パス再生 **441/441**、RLS ポリシー打ち消し検査 なし、`lint:migrations` OK、
+`check:schema` OK、`vitest run` 525ファイル 5324件 通過。
+番人はわざと壊して確認済み（存在しないテーブルを ALTER するファイルを先頭日付で
+置くと exit 1 でファイル名まで出る）。
 
 ## 2026-09-03 AI を呼ぶ8ハンドラのレート制限漏れを塞いだ
 

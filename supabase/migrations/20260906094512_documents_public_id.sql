@@ -32,7 +32,7 @@ COMMENT ON COLUMN documents.public_id IS
 -- 一意は付いている行だけ保証する（部分ユニーク索引）。
 --
 -- NOTE: その索引は兄弟マイグレーション
--- 20260905030001_documents_public_id_index.sql で CREATE UNIQUE INDEX
+-- 20260906094735_documents_public_id_index.sql で CREATE UNIQUE INDEX
 -- CONCURRENTLY として作る（lint rule: トランザクション内では実行できない）。
 -- **バックフィルより後**に作る必要があるので、順序を入れ替えないこと。
 
