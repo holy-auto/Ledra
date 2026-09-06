@@ -267,15 +267,24 @@ describe("ROUTE_PERMISSIONS の消費側", () => {
   const GUARD = join(process.cwd(), "src", "app", "admin", "AdminRouteGuard.tsx");
   const LAYOUT = join(process.cwd(), "src", "app", "admin", "layout.tsx");
 
-  it("AdminRouteGuard が requiredPermissionForPath を呼んでいる", () => {
-    // コメントを落としてから見る。説明コメントに書いた関数名に反応すると、
-    // 実際の呼び出しが消えても緑のままになる（M-022 / M-033・型 G）。
-    expect(stripComments(readFileSync(GUARD, "utf8"))).toMatch(/requiredPermissionForPath\s*\(/);
+  it("AdminRouteGuard が requiredPermissionForPath の結果でアクセスを判定している", () => {
+    // 「呼んでいる」だけでは足りない。結果を捨てて `requiredPermissionForPath(pathname);`
+    // と書いても、表が誰も制限しない状態のまま緑になる（Codex の指摘）。
+    // 受けた値が実際に権限判定へ流れていることまで見る。
+    // コメントを落としてから照合する（M-022）。
+    const src = stripComments(readFileSync(GUARD, "utf8"));
+    const m = /(?:const|let)\s+(\w+)\s*=\s*requiredPermissionForPath\s*\(/.exec(src);
+    expect(m, "requiredPermissionForPath の結果を受けていない").not.toBeNull();
+    expect(src).toMatch(new RegExp(String.raw`!\s*can\(\s*${m![1]}\s*\)`));
   });
 
-  it("その AdminRouteGuard が admin レイアウトで全画面を包んでいる", () => {
-    // 呼び出し側があっても、レイアウトから外れれば効かなくなる。両方見る。
-    expect(stripComments(readFileSync(LAYOUT, "utf8"))).toMatch(/<AdminRouteGuard>/);
+  it("その AdminRouteGuard が admin レイアウトで children を包んでいる", () => {
+    // 呼び出し側があっても、レイアウトから外れれば効かなくなる。
+    // 開きタグだけを見ると `<AdminRouteGuard>{null}</AdminRouteGuard>` の外に
+    // children を出す改変で素通りする（Codex の指摘）。中身まで見る。
+    expect(stripComments(readFileSync(LAYOUT, "utf8"))).toMatch(
+      /<AdminRouteGuard>\s*\{children\}\s*<\/AdminRouteGuard>/,
+    );
   });
 
   it("判定はクライアント側である（サーバ側の強制ではない）", () => {

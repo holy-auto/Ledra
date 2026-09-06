@@ -33,22 +33,105 @@ import { hasPermission } from "@/lib/auth/permissions";
 const APP_ROOT = join(process.cwd(), "src", "app");
 
 /**
- * 認可で**弾いている**か。
+ * 認可が**制御フローを変えている**か。
  *
- * 以前は呼び出しの存在だけを見ていたので、`const ok = requirePermission(...)` のように
- * **結果を捨てる書き方でも合格**した。真偽値を返すヘルパーは否定形（`!helper(...)`）まで
- * 要求する —— `apiRoutePermissions.test.ts` の `enforces()` と同じ形に揃えた
- * （MISTAKE_LEDGER M-033・型 G の棚卸し。現行3ファイルはいずれも既に否定形だった）。
+ * 段階的に2回甘かった。呼び出しの存在だけを見ていた頃は
+ * `const ok = requirePermission(...)` で素通りし、否定形まで求めた後も
+ * `const denied = !requirePermission(...)` で素通りした（どちらも Codex の指摘）。
+ * **否定が return / throw に繋がっている**ことまで見る。
  *
  * `resolveAuthorizedTenantId(` だけは別扱い。**返り値ではなく throw で止める**ので、
  * 否定を要求すると正しい書き方を落とす。
  */
-const BOOLEAN_GUARD = /!\s*(?:requirePermission|requireMinRole|hasPermission|hasMinRole|isPlatformAdmin)\s*\(/;
+const BOOLEAN_GUARD =
+  /if\s*\(\s*!\s*(?:requirePermission|requireMinRole|hasPermission|hasMinRole|isPlatformAdmin)\s*\([\s\S]{0,300}?\b(?:return|throw)\b/;
 const THROWING_GUARD = /resolveAuthorizedTenantId\s*\(/;
 
-function guards(src: string): boolean {
-  const stripped = stripComments(src);
-  return BOOLEAN_GUARD.test(stripped) || THROWING_GUARD.test(stripped);
+function guardsDirectly(body: string): boolean {
+  return BOOLEAN_GUARD.test(body) || THROWING_GUARD.test(body);
+}
+
+/**
+ * 本文の `{` の位置。**引数リストと返り値型の注釈を跨いで**探す。見つからなければ -1。
+ *
+ * 2回間違えた。素朴に「名前の後の最初の `{`」を取ると
+ * `): Promise<ActionResult<{ id: string }>> {` の**型の中の `{`**を本文と読む。
+ * 次に山括弧だけ数えたら、今度は型の中の `;` で打ち切って **-1 を返し、
+ * 呼び出し側がその export を黙って検査対象から外した**（変異テストで発覚）。
+ * 山括弧と波括弧の**両方**の深さが 0 のところだけを本文の始まりとする。
+ */
+function bodyStart(src: string, from: number): number {
+  let i = src.indexOf("(", from);
+  if (i < 0) return -1;
+  let paren = 0;
+  for (; i < src.length; i++) {
+    if (src[i] === "(") paren++;
+    else if (src[i] === ")" && --paren === 0) {
+      i++;
+      break;
+    }
+  }
+  let angle = 0;
+  let brace = 0;
+  for (; i < src.length; i++) {
+    const c = src[i];
+    if (c === "<") angle++;
+    else if (c === ">") angle = Math.max(0, angle - 1);
+    else if (c === "{") {
+      if (angle === 0 && brace === 0) return i;
+      brace++;
+    } else if (c === "}") brace = Math.max(0, brace - 1);
+    else if (c === ";" && angle === 0 && brace === 0) return -1; // 宣言だけ（本文が無い）
+  }
+  return -1;
+}
+
+/** `function name(...) { ... }` を名前・export の有無・本文に切る。切れなければ body は null。 */
+function namedFunctions(src: string): { name: string; exported: boolean; body: string | null }[] {
+  const out: { name: string; exported: boolean; body: string | null }[] = [];
+  for (const m of src.matchAll(/(export\s+)?(?:async\s+)?function\s+(\w+)\s*\(/g)) {
+    const open = bodyStart(src, (m.index ?? 0) + m[0].length - 1);
+    if (open < 0) {
+      out.push({ name: m[2], exported: Boolean(m[1]), body: null });
+      continue;
+    }
+    let depth = 0;
+    let end = src.length;
+    for (let i = open; i < src.length; i++) {
+      if (src[i] === "{") depth++;
+      else if (src[i] === "}" && --depth === 0) {
+        end = i + 1;
+        break;
+      }
+    }
+    out.push({ name: m[2], exported: Boolean(m[1]), body: src.slice(open, end) });
+  }
+  return out;
+}
+
+/**
+ * **export された Server Action を1本ずつ**見る。
+ *
+ * ファイル全体で1回でもガードが見つかれば合格にしていたので、4本ある export の
+ * 1本からガードを外しても、他の3本のガードで緑のままだった（Codex の指摘）。
+ * これは `sourceScan.handlerChunks` が route.ts で先に踏んだのと同じ形である。
+ *
+ * `site-content/actions.ts` のように**ファイル内のヘルパー（`authorize()`）へ
+ * 委ねる**形が正しいので、直接のガードだけでなく「ガードを持つヘルパーの呼び出し」も認める。
+ */
+function unguardedExports(src: string): string[] {
+  const fns = namedFunctions(src);
+  const helpers = fns.filter((f) => !f.exported && f.body !== null && guardsDirectly(f.body)).map((f) => f.name);
+  return fns
+    .filter((f) => f.exported)
+    .flatMap((f) => {
+      // **本文を切り出せないものを黙って飛ばさない。** 飛ばすと検査対象から消え、
+      // その export の認可を外しても緑になる（実際そうなっていた）。
+      if (f.body === null) return [`${f.name}（本文を切り出せない）`];
+      if (guardsDirectly(f.body)) return [];
+      if (helpers.some((h) => new RegExp(String.raw`\b${h}\s*\(`).test(f.body as string))) return [];
+      return [f.name];
+    });
 }
 
 /**
@@ -80,8 +163,8 @@ describe("Server Action の認可", () => {
 
   it('ファイル先頭が "use server" のファイルは認可で弾いている', () => {
     const unguarded = files
-      .filter((f) => !EXEMPT.has(f.rel) && !guards(f.src))
-      .map((f) => f.rel)
+      .filter((f) => !EXEMPT.has(f.rel))
+      .flatMap((f) => unguardedExports(stripComments(f.src)).map((name) => `${f.rel} :: ${name}`))
       .sort();
     expect(unguarded).toEqual([]);
   });
@@ -133,19 +216,59 @@ describe("サイトコンテンツはプラットフォーム運営のみ", () =
 describe("検出器そのものの性質", () => {
   // 「呼んでいる」と「弾いている」は別。述語を値で動かして確かめる（M-033・型 G）。
   it("結果を捨てる書き方は「守っている」と見なさない", () => {
-    expect(guards('const ok = requirePermission(caller, "site_content:manage");')).toBe(false);
-    expect(guards('if (!requirePermission(caller, "site_content:manage")) return { error: "forbidden" };')).toBe(true);
-    expect(guards('const ok = requireMinRole(caller, "admin");')).toBe(false);
-    expect(guards('if (!requireMinRole(caller, "admin")) throw new Error("forbidden");')).toBe(true);
+    expect(guardsDirectly('const ok = requirePermission(caller, "site_content:manage");')).toBe(false);
+    // 否定しただけで制御フローを変えない形。以前はこれが緑だった（Codex の指摘）。
+    expect(guardsDirectly('const denied = !requirePermission(caller, "site_content:manage");\nwrite();')).toBe(false);
+    expect(
+      guardsDirectly('if (!requirePermission(caller, "site_content:manage")) return { error: "forbidden" };'),
+    ).toBe(true);
+    expect(guardsDirectly('if (!requireMinRole(caller, "admin")) throw new Error("forbidden");')).toBe(true);
   });
 
   it("throw で止めるヘルパーは否定形を求めない", () => {
     // resolveAuthorizedTenantId は返り値ではなく throw で止める。否定を要求すると正解を落とす。
-    expect(guards("const tenantId = await resolveAuthorizedTenantId(caller);")).toBe(true);
+    expect(guardsDirectly("const tenantId = await resolveAuthorizedTenantId(caller);")).toBe(true);
+  });
+
+  it("本文を切り出せない export は黙って飛ばさず、落とす", () => {
+    // 飛ばすと検査対象から消える。分からないものは合格に倒さない。
+    expect(unguardedExports("export async function act(fd: FormData): Promise<void>;")).toEqual([
+      "act（本文を切り出せない）",
+    ]);
+  });
+
+  it("返り値型の中の波括弧を本文と読み違えない", () => {
+    // `): Promise<ActionResult<{ id: string }>> {` で実際に誤判定した。
+    const src = `
+      export async function act(
+        fd: FormData,
+      ): Promise<ActionResult<{ id: string; type: string }>> {
+        if (!requirePermission(caller, "x:y")) return { error: "forbidden" };
+        return write(fd);
+      }
+    `;
+    expect(unguardedExports(src)).toEqual([]);
+  });
+
+  it("export された Server Action を1本ずつ見る", () => {
+    // ファイル単位だと、4本のうち1本からガードを外しても他の3本で緑になる（Codex の指摘）。
+    const src = `
+      async function authorize() {
+        if (!requirePermission(caller, "site_content:manage")) return { error: "forbidden" };
+        return { caller };
+      }
+      export async function createAction() { const auth = await authorize(); return write(auth); }
+      export async function deleteAction() { return write(); }
+    `;
+    expect(unguardedExports(src)).toEqual(["deleteAction"]);
+    // ヘルパー経由でも守られていれば通す（site-content/actions.ts の実際の形）。
+    expect(unguardedExports(src.replace("export async function deleteAction() { return write(); }", ""))).toEqual([]);
   });
 
   it("コメントの引用では通さない", () => {
     // 以前ここで実際にやらかしている（説明コメントの `hasMinRole(role, "staff")` に反応した）。
-    expect(guards('// 以前は if (!hasMinRole(role, "staff")) で弾いていた\nawait doSomething();')).toBe(false);
+    expect(guardsDirectly(stripComments('// if (!hasMinRole(role, "staff")) で弾いていた\nawait doSomething();'))).toBe(
+      false,
+    );
   });
 });

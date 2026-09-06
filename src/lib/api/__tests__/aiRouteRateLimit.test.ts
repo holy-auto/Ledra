@@ -27,7 +27,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join, dirname, normalize } from "node:path";
-import { walkSource, handlerChunks, moduleChunk } from "@/lib/__tests__/sourceScan";
+import { walkSource, handlerChunks, moduleChunk, stripComments } from "@/lib/__tests__/sourceScan";
 
 const SRC = join(process.cwd(), "src");
 const API_ROOT = join(SRC, "app", "api");
@@ -63,9 +63,17 @@ function rateLimited(chunk: string): boolean {
   if ((rest.match(/checkRateLimit\s*\(/g) ?? []).length !== calls.length) return false;
   if (!calls.length) return inlineCount > 0;
 
-  return calls.every(([, v]) =>
-    new RegExp(String.raw`\breturn\s+${v}\b|\bif\s*\(\s*!?\s*${v}\b[\s\S]{0,200}?\breturn\b`).test(rest),
-  );
+  return calls.every(([, v]) => {
+    // **弾く向きまで見る。** `!?` で両極を受けていた頃は、`if (!limited) return limited`
+    // のように**通すべきものを弾き、弾くべきものを通す**壊れたガードでも緑だった
+    // （Codex の指摘）。同名の2つの関数で正しい向きが逆になるので、形で振り分ける。
+    if (new RegExp(String.raw`\b${v}\.allowed\b`).test(rest)) {
+      // `@/lib/rateLimit` → `{ allowed }`。**allowed でない**ときに弾くのが正しい。
+      return new RegExp(String.raw`if\s*\(\s*!\s*${v}\.allowed\s*\)[\s\S]{0,200}?\breturn\b`).test(rest);
+    }
+    // `@/lib/api/rateLimit` → `Response | null`。**返り値があるとき**に弾くのが正しい。
+    return new RegExp(String.raw`if\s*\(\s*${v}\s*\)[\s\S]{0,120}?\breturn\b`).test(rest);
+  });
 }
 
 /**
@@ -180,7 +188,11 @@ function resolveImport(spec: string, from: string): string | null {
   return null;
 }
 
-const SOURCES = new Map<string, string>(walkSource(SRC).map((f) => [f, readFileSync(f, "utf8")] as const));
+// **コメントを落としてから走査する。** これが無いと、レート制限の呼び出しと
+// ガードを丸ごとコメントアウトしただけのルートを「制限あり」と読む（Codex の指摘）。
+const SOURCES = new Map<string, string>(
+  walkSource(SRC).map((f) => [f, stripComments(readFileSync(f, "utf8"))] as const),
+);
 
 /** モデルを叩くモジュール。 */
 const MODEL_MODULES = new Set([...SOURCES].filter(([, src]) => CALLS_MODEL.test(src)).map(([f]) => f));
@@ -218,7 +230,7 @@ function routeName(file: string): string {
 /** AI を呼ぶ「単位」= route + ハンドラ名（またはどのハンドラにも属さない module 断片）。 */
 const units: { id: string; limited: boolean }[] = [];
 for (const file of walkSource(API_ROOT, (f) => f.endsWith("route.ts"))) {
-  const src = SOURCES.get(file) ?? readFileSync(file, "utf8");
+  const src = SOURCES.get(file) ?? stripComments(readFileSync(file, "utf8"));
   const bindings = aiBindings(file, src);
   if (!bindings.length) continue;
   const callsAi = (chunk: string) => bindings.some((b) => new RegExp(String.raw`(?<![\w.])${b}\s*\(`).test(chunk));
@@ -303,6 +315,15 @@ describe("AI を呼ぶ API ハンドラのレート制限", () => {
 describe("検出器そのものの性質", () => {
   // 構造テストは「その語がソースにある」しか語れない。**述語を値で動かして**
   // 素通りする形が本当に false になることを確かめる（M-033 で欠けていたのがこれ）。
+  it("弾く向きが逆なら「制限している」と見なさない", () => {
+    // `!?` で両極を受けていた頃は、この2つが緑だった（Codex の指摘）。
+    // どちらも「通すべきものを弾き、弾くべきものを通す」壊れたガード。
+    expect(rateLimited('const limited = await checkRateLimit(req, "ai");\nif (!limited) return limited;')).toBe(false);
+    expect(
+      rateLimited("const rl = await checkRateLimit(key, opts);\nif (rl.allowed) {\n  return apiJson({}, 429);\n}"),
+    ).toBe(false);
+  });
+
   it("結果を捨てる書き方は「制限している」と見なさない", () => {
     expect(rateLimited('const limited = await checkRateLimit(req, "ai");')).toBe(false);
     expect(rateLimited('const limited = await checkRateLimit(req, "ai");\nif (limited) return limited;')).toBe(true);

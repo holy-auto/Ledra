@@ -34,16 +34,43 @@ function isIssuancePath(file: string, src: string): boolean {
 }
 
 /**
- * Gate の**判定を読んでいる**か。呼ぶだけ・結果を捨てる形は「通している」と見なさない。
+ * Gate の判定が**発行を左右している**か。
  *
- * 呼び出し側の形は2通りある。どちらも `.ready` を読む。
- *   `if (!certGate.ready) return ...`   — 弾く（API 3経路）
+ * 以前は `<var>.ready` がどこかに出てくれば true にしていたが、それでは
+ * `logger.info(certGate.ready)` と書いて無条件に発行しても緑だった（Codex の指摘）。
+ * 制御フローの形まで見る。正しい書き方は2通りしかない。
+ *   `if (!certGate.ready) return ...` — 弾く（API 3経路）
  *   `if (certGate.ready) { ...active化 }` — ready のときだけ発行（自動発行）
+ * 向きを逆にした `if (certGate.ready) return err;` はどちらにも当たらない。
  */
 function consultsCertGate(src: string): boolean {
   const m = /(?:const|let|var)\s+(\w+)\s*=\s*await\s+evaluateCertificateActivationGate\s*\(/.exec(src);
   if (!m) return false;
-  return new RegExp(String.raw`\b${m[1]}\.ready\b`).test(src);
+  const v = m[1];
+  const rejects = new RegExp(String.raw`if\s*\(\s*!\s*${v}\.ready\s*\)[\s\S]{0,200}?\b(?:return|throw)\b`);
+  const encloses = new RegExp(String.raw`if\s*\(\s*${v}\.ready\s*\)\s*\{`);
+  return rejects.test(src) || encloses.test(src);
+}
+
+/**
+ * 走行距離が**発行の条件になっている**か。
+ *
+ * 呼び出しの存在だけを見ていたので、`certificateMileageKm(cert.maintenance_json);` と
+ * 結果を捨てても緑だった（Codex の指摘）。返り値が null 比較に使われていることまで見る。
+ * 実際の2つの形はどちらも同じ文の中で null と比べている。
+ *   `if (certificateMileageKm(cert.maintenance_json) === null) return err;`
+ *   `if (autoIssueEligible && certificateMileageKm(certRow.maintenance_json) !== null) {`
+ */
+function gatesOnMileage(src: string): boolean {
+  for (const m of src.matchAll(/certificateMileageKm\s*\(/g)) {
+    const at = m.index ?? 0;
+    const from = src.lastIndexOf("\n", at) + 1;
+    // その呼び出しを含む「行頭 〜 次の { か ;」を1つの文として見る。
+    const stops = [src.indexOf("{", at), src.indexOf(";", at)].filter((i) => i > -1);
+    const stmt = src.slice(from, stops.length ? Math.min(...stops) : src.length);
+    if (/\bif\s*\(/.test(stmt) && /(?:===|!==)\s*null/.test(stmt)) return true;
+  }
+  return false;
 }
 
 describe("証明書を active にする経路", () => {
@@ -58,8 +85,8 @@ describe("証明書を active にする経路", () => {
     const src = stripComments(readFileSync(file, "utf8"));
     if (!isIssuancePath(file, src)) continue;
     const rel = file.slice(ROOT.length + 1);
-    // 名前の出現ではなく**呼び出しの形**を要求する。import しただけでは通さない。
-    (/certificateMileageKm\s*\(/.test(src) ? gated : offenders).push(rel);
+    // 名前の出現でも、呼び出しの存在でもなく、**返り値が発行の条件になっている**ことを見る。
+    (gatesOnMileage(src) ? gated : offenders).push(rel);
     // IMP-028 (ADR-0005): draft→active の発行経路は evaluateCertificateActivationGate()
     // を必ず通す（写真必須・懸念未解決なし・部品整合性 等の単一評価器）。
     // 呼ぶだけでは足りない。**判定を読んでいる**ことまで見る（MISTAKE_LEDGER M-033・型 G）。
@@ -84,6 +111,16 @@ describe("検出器そのものの性質", () => {
   // 「呼んでいる」と「効いている」は別。述語を値で動かして確かめる（M-033・型 G）。
   it("判定を読まない書き方は「通している」と見なさない", () => {
     expect(consultsCertGate("const certGate = await evaluateCertificateActivationGate(admin, ctx);")).toBe(false);
+    // 読んでいるだけで発行を止めない形。以前はこれが緑だった（Codex の指摘）。
+    expect(
+      consultsCertGate(
+        "const certGate = await evaluateCertificateActivationGate(admin, ctx);\nlogger.info(certGate.ready);\nactivate();",
+      ),
+    ).toBe(false);
+    // 向きが逆（ready のときに弾く）も通さない。
+    expect(
+      consultsCertGate("const g = await evaluateCertificateActivationGate(admin, ctx);\nif (g.ready) return err;"),
+    ).toBe(false);
     expect(
       consultsCertGate(
         "const certGate = await evaluateCertificateActivationGate(admin, ctx);\nif (!certGate.ready) return err;",
@@ -102,8 +139,14 @@ describe("検出器そのものの性質", () => {
         'import { certificateMileageKm } from "@/lib/maintenance/mileage";\n',
     );
     expect(consultsCertGate(mentionOnly)).toBe(false);
-    expect(/certificateMileageKm\s*\(/.test(mentionOnly)).toBe(false);
-    // 呼んでいれば通る。
-    expect(/certificateMileageKm\s*\(/.test("if (certificateMileageKm(json) === null) return err;")).toBe(true);
+    expect(gatesOnMileage(mentionOnly)).toBe(false);
+  });
+
+  it("走行距離は「呼んだ」ではなく「条件になっている」ことを求める", () => {
+    // 結果を捨てる呼び出し。以前はこれが緑だった（Codex の指摘）。
+    expect(gatesOnMileage("certificateMileageKm(cert.maintenance_json);\nactivate();")).toBe(false);
+    // 実際の2つの形はどちらも通る。
+    expect(gatesOnMileage("if (certificateMileageKm(cert.maintenance_json) === null) return err;")).toBe(true);
+    expect(gatesOnMileage("if (eligible && certificateMileageKm(row.maintenance_json) !== null) {")).toBe(true);
   });
 });
