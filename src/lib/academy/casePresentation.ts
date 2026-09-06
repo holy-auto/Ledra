@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 /**
  * Academy 事例を API 応答の形にする。
  *
@@ -41,4 +43,32 @@ export function presentAcademyCases(
     }
     return presented;
   });
+}
+
+/**
+ * 「この確認は今も有効か」を表す印。preview が返し、publish が突き合わせる。
+ *
+ * 混ぜるものは2種類あり、それぞれ別の性質を担う。
+ *
+ * | 混ぜるもの | 効くこと |
+ * |---|---|
+ * | 中身4項目 | 別の人が再生成して文面が入れ替わったら合わなくなる |
+ * | `updated_at` | publish / unpublish の後は必ず切れる（どちらも更新するため） |
+ *
+ * **両側とも DB から返ってきた行を渡すこと。** publish は行を読み直してハッシュするので、
+ * preview が手元の値をハッシュすると、表記が1つでも違うだけで印が永久に一致しない。
+ * 実際 `updated_at` で起きた: JS の `toISOString()` は `...Z`、PostgREST は timestamptz を
+ * `+00:00` で返すため、**公開が1件も通らなかった**（Codex の指摘、M-033）。
+ * 時刻だけを揃えるのではなく、**両側の出所を DB に揃える**のが直し方。
+ */
+export function academyCaseToken(c: {
+  ai_summary: string | null;
+  good_points: unknown;
+  caution_points: unknown;
+  tags: unknown;
+  updated_at: unknown;
+}): string {
+  return createHash("sha256")
+    .update(JSON.stringify([c.ai_summary, c.good_points, c.caution_points, c.tags, c.updated_at]))
+    .digest("hex");
 }
