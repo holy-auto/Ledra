@@ -96,6 +96,22 @@ type HistoryRow = {
   created_at: string | null;
 };
 
+/**
+ * 公開タイムラインに出さない `vehicle_histories.type`。
+ *
+ * 「誰かが見た / PDF を出した」は車両の履歴ではなく**閲覧監査**で、
+ * `logCertificateAction` の既定 description に**訪問者の IP や担当者の uid** が入る。
+ * 中身ではなく型で落とす —— description の書式に依存しないので、
+ * 監査種別が増えても漏れない。発行・編集・無効化は車両の出来事なので残す。
+ */
+const PRIVATE_HISTORY_TYPES = [
+  "certificate_viewed",
+  "certificate_pdf_generated",
+  "certificate_pdf_batch",
+  "certificate_public_viewed",
+  "certificate_public_pdf",
+] as const;
+
 type ReservationRow = {
   id: string;
   title: string | null;
@@ -237,6 +253,24 @@ export async function getPublicCertificateData(pid: string): Promise<PublicCerti
           .from("vehicle_histories")
           .select("id, type, title, description, performed_at, created_at")
           .eq("vehicle_id", cert.vehicle_id)
+          // **閲覧監査の行は公開しない。** `logCertificateAction` は description を
+          // 省略されると `Public ID: … / User: <uid> / IP: <IP>` を組み立てる。
+          // 公開ページの閲覧記録（`certificate_public_viewed` / `_public_pdf`）は
+          // description を渡さず ip を渡すので、**訪問者の IP がそのまま入る**。
+          // 管理画面の閲覧記録（`certificate_viewed`）には**担当者の uid** が入る。
+          // この行は下の UnifiedTimeline が description をそのまま描画するので、
+          // /c/[public_id]（未認証で開ける）に他人の IP と社内 uid が出ていた。
+          //
+          // そもそも「誰かが見た」は車両の履歴ではないので、公開タイムラインに
+          // 出す意味がない。**型で落とすのが最小で確実**（description の中身に
+          // 依存しないので、将来の監査種別が増えても漏れない）。
+          // PR #1040 で発見。
+          //
+          // `.not("type","in",…)` 単体だと `type IS NULL` の行まで落ちる
+          // （SQL の `NULL NOT IN (…)` は NULL＝偽扱い）。旧スキーマの行は type が
+          // 空でありうる（描画側の `typeBadge(type: string | null)` がその想定）ので、
+          // NULL は明示的に残す。
+          .or(`type.is.null,type.not.in.(${PRIVATE_HISTORY_TYPES.join(",")})`)
           .order("performed_at", { ascending: false })
           .limit(50)
           .returns<HistoryRow[]>()
