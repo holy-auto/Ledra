@@ -102,9 +102,7 @@ describe("findErrorBeforeMessage（検出器そのものの検査）", () => {
 
 describe("apiError の応答は message を先に読む", () => {
   it("`error` をユーザー向け表示に先に使っている箇所が無い", () => {
-    const files = [...walk(join(REPO, "src")), ...walk(join(REPO, "apps"))].filter(
-      (f) => !f.includes("__tests__"),
-    );
+    const files = [...walk(join(REPO, "src")), ...walk(join(REPO, "apps"))].filter((f) => !f.includes("__tests__"));
     // 検査が空振りしていないことを確かめる（型 A）。
     expect(files.length).toBeGreaterThan(500);
 
@@ -114,6 +112,9 @@ describe("apiError の応答は message を先に読む", () => {
         bad.push(`${f.slice(REPO.length + 1)}  …${h.snippet}…`);
       }
     }
-    expect(bad, `\n${bad.join("\n")}\n\n  apiError() は { error: コード, message: 人間向け } を返す。\n  ユーザーに出すのは message。\`j?.message ?? j?.error ?? フォールバック\` の順にすること。`).toEqual([]);
+    expect(
+      bad,
+      `\n${bad.join("\n")}\n\n  apiError() は { error: コード, message: 人間向け } を返す。\n  ユーザーに出すのは message。\`j?.message ?? j?.error ?? フォールバック\` の順にすること。`,
+    ).toEqual([]);
   });
 });
