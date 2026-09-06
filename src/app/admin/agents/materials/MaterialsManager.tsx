@@ -108,7 +108,7 @@ export default function MaterialsManager() {
       });
       if (!urlRes.ok) {
         const j = await parseJsonSafe(urlRes);
-        throw new Error(j?.error ?? `HTTP ${urlRes.status}`);
+        throw new Error(j?.message ?? j?.error ?? `HTTP ${urlRes.status}`);
       }
       const { path, token, storage_path } = await urlRes.json();
 
@@ -139,7 +139,7 @@ export default function MaterialsManager() {
       });
       if (!res.ok) {
         const j = await parseJsonSafe(res);
-        throw new Error(j?.error ?? `HTTP ${res.status}`);
+        throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       }
 
       setMsg("アップロードしました");
@@ -197,7 +197,8 @@ export default function MaterialsManager() {
       const json = await res.json().catch(() => ({}));
       if (!res.ok) {
         setMsg(
-          json?.error ??
+          json?.message ??
+            json?.error ??
             "プレビューURLの取得に失敗しました。ファイルがストレージにアップロードされているか確認してください。",
         );
         return;
@@ -217,7 +218,8 @@ export default function MaterialsManager() {
       const json = await res.json().catch(() => ({}));
       if (!res.ok) {
         setMsg(
-          json?.error ??
+          json?.message ??
+            json?.error ??
             "ダウンロードURLの取得に失敗しました。ファイルがストレージにアップロードされているか確認してください。",
         );
         return;

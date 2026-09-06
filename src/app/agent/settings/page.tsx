@@ -154,7 +154,7 @@ export default function AgentSettingsPage() {
       });
       if (!res.ok) {
         const json = await res.json().catch(() => ({}));
-        throw new Error(json.error ?? "設定の保存に失敗しました");
+        throw new Error(json.message ?? json.error ?? "設定の保存に失敗しました");
       }
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);

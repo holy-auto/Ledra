@@ -7,6 +7,8 @@ import Badge from "@/components/ui/Badge";
 import Button from "@/components/ui/Button";
 import { formatJpy, formatDate } from "@/lib/format";
 import InspectionSignaturePad from "@/components/ui/InspectionSignaturePad";
+import { getServiceTypeLabel } from "@/lib/certificates/serviceTypeLabel";
+import type { OrderCertificate } from "@/lib/orders/orderCertificates";
 
 // ─── Types ───
 
@@ -40,6 +42,7 @@ interface OrderDetail {
   vendor_completed_at: string | null;
   client_approved_at: string | null;
   cancel_reason: string | null;
+  vehicle_id: string | null;
   created_at: string;
 }
 
@@ -253,6 +256,7 @@ export default function OrderDetailClient({ orderId }: { orderId: string }) {
   const [fromTenant, setFromTenant] = useState<TenantInfo | null>(null);
   const [toTenant, setToTenant] = useState<TenantInfo | null>(null);
   const [documents, setDocuments] = useState<DocumentInfo[]>([]);
+  const [certificates, setCertificates] = useState<OrderCertificate[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [reviews, setReviews] = useState<ReviewInfo[]>([]);
   const [auditLog, setAuditLog] = useState<AuditEntry[]>([]);
@@ -300,11 +304,12 @@ export default function OrderDetailClient({ orderId }: { orderId: string }) {
     try {
       const res = await fetch(`/api/admin/orders/${orderId}`, { cache: "no-store" });
       const j = await res.json();
-      if (!res.ok) throw new Error(j.error ?? `HTTP ${res.status}`);
+      if (!res.ok) throw new Error(j.message ?? j.error ?? `HTTP ${res.status}`);
       setOrder(j.order);
       setFromTenant(j.from_tenant);
       setToTenant(j.to_tenant);
       setDocuments(j.documents ?? []);
+      setCertificates(j.certificates ?? []);
       setMessages(j.recent_messages ?? []);
       setReviews(j.reviews ?? []);
       setAuditLog(j.audit_log ?? []);
@@ -337,7 +342,7 @@ export default function OrderDetailClient({ orderId }: { orderId: string }) {
         body: JSON.stringify({ id: orderId, status: nextStatus, cancel_reason: cancelReason }),
       });
       const j = await res.json();
-      if (!res.ok) throw new Error(j.error ?? `HTTP ${res.status}`);
+      if (!res.ok) throw new Error(j.message ?? j.error ?? `HTTP ${res.status}`);
       await fetchDetail();
     } catch (e: unknown) {
       setErr(e instanceof Error ? e.message : String(e));
@@ -357,7 +362,7 @@ export default function OrderDetailClient({ orderId }: { orderId: string }) {
         body: JSON.stringify({ body: chatBody }),
       });
       const j = await res.json();
-      if (!res.ok) throw new Error(j.error ?? `HTTP ${res.status}`);
+      if (!res.ok) throw new Error(j.message ?? j.error ?? `HTTP ${res.status}`);
       setChatBody("");
       await fetchDetail();
     } catch (e: unknown) {
@@ -377,7 +382,7 @@ export default function OrderDetailClient({ orderId }: { orderId: string }) {
         body: JSON.stringify({ rating: reviewRating, comment: reviewComment || null }),
       });
       const j = await res.json();
-      if (!res.ok) throw new Error(j.error ?? `HTTP ${res.status}`);
+      if (!res.ok) throw new Error(j.message ?? j.error ?? `HTTP ${res.status}`);
       await fetchDetail();
     } catch (e: unknown) {
       alert(e instanceof Error ? e.message : String(e));
@@ -394,7 +399,7 @@ export default function OrderDetailClient({ orderId }: { orderId: string }) {
       body: JSON.stringify({ signature_data_url: dataUrl, signer_name: signerName || undefined }),
     });
     const j = await res.json();
-    if (!res.ok) throw new Error(j.error ?? `HTTP ${res.status}`);
+    if (!res.ok) throw new Error(j.message ?? j.error ?? `HTTP ${res.status}`);
     setShowSignaturePad(false);
     await fetchDetail();
   };
@@ -409,7 +414,7 @@ export default function OrderDetailClient({ orderId }: { orderId: string }) {
         body: JSON.stringify({ payment_method: paymentMethod }),
       });
       const j = await res.json();
-      if (!res.ok) throw new Error(j.error ?? `HTTP ${res.status}`);
+      if (!res.ok) throw new Error(j.message ?? j.error ?? `HTTP ${res.status}`);
       await fetchDetail();
     } catch (e: unknown) {
       setErr(e instanceof Error ? e.message : String(e));
@@ -705,6 +710,51 @@ export default function OrderDetailClient({ orderId }: { orderId: string }) {
           )}
         </section>
       )}
+
+      {/* ─── 施工証明 ───
+          外注施工の成果物。発注元・受注先の双方に同じものが出る（受注先にとっては
+          「自分が施工した記録」の唯一の確認導線）。ここは相手方にも見える画面なので
+          顧客名・作業メモは載せず、詳細は PII を落とした公開ページ /c/[public_id] へ送る。 */}
+      <section className="glass-card p-5 space-y-3">
+        <h3 className="text-sm font-semibold text-primary">施工証明</h3>
+        {certificates.length === 0 ? (
+          <div className="text-xs text-muted">この発注に紐づく施工証明はまだありません。</div>
+        ) : (
+          <div className="space-y-2">
+            {certificates.map((cert) => (
+              <div key={cert.public_id} className="flex items-center justify-between gap-3 text-sm">
+                <div className="min-w-0">
+                  <span className="font-medium">{getServiceTypeLabel(cert.service_type)}</span>
+                  {cert.craftsman_name && <span className="ml-2 text-muted">施工担当: {cert.craftsman_name}</span>}
+                  {cert.status === "draft" && <span className="ml-2 text-[11px] text-warning-text">下書き</span>}
+                </div>
+                <div className="flex items-center gap-3 shrink-0">
+                  <span className="text-muted">{formatDate(cert.created_at)}</span>
+                  <a
+                    href={`/c/${cert.public_id}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-accent underline"
+                  >
+                    証明書を開く
+                  </a>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+        {isFrom && (
+          <div className="flex items-center gap-3">
+            <Link
+              href={`/admin/certificates/new?job_order_id=${orderId}${order.vehicle_id ? `&vehicle_id=${order.vehicle_id}` : ""}`}
+              className="text-sm text-accent underline"
+            >
+              この発注の証明書を発行する
+            </Link>
+            <span className="text-[11px] text-muted">発行すると受注先の画面にも表示されます。</span>
+          </div>
+        )}
+      </section>
 
       {/* ─── Chat ─── */}
       <section className="glass-card p-5 space-y-3">

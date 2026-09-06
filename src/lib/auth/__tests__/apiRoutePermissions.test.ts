@@ -138,11 +138,18 @@ describe("検出器そのものの性質", () => {
 
 describe("証明書の無効化 (operationRisk = critical)", () => {
   /**
-   * 無効化経路を拾う。`certificates` への UPDATE があることを前提に、
-   * 監査イベント `certificate_voided` を出しているか（書き方に依存しない合図）、
-   * または `status: "void"` を書いているかで判定する。
+   * 無効化経路を拾う。合図は2つ。
+   *
+   *   1. 自前で `certificates` を UPDATE し、`certificate_voided` を出すか
+   *      `status: "void"` を書いている（一本化前の形）
+   *   2. 一本化した `@/lib/certificates/voidCertificate` を呼んでいる（2026-09-05〜）
+   *
+   * **2 を足さないと、一本化した瞬間にこの検査が空になって緑で通る**
+   * （実際 2026-09-05 に5本→1本まで落ちた）。数を下げて通すのは
+   * 「移設で弱める」（MISTAKE_LEDGER 型 D）なので、判定対象を移した。
    */
   function isVoidPath(src: string): boolean {
+    if (/certificates\/voidCertificate/.test(src)) return true;
     if (!/from\("certificates"\)/.test(src) || !/\.update\(/.test(src)) return false;
     return /certificate_voided/.test(src) || /status:\s*"void"/.test(src);
   }
@@ -156,14 +163,19 @@ describe("証明書の無効化 (operationRisk = critical)", () => {
     const rel = file.slice(APP_ROOT.length + 1);
     voidPaths.push(rel);
 
-    // 書き込みを含む関数の中でガードされているかを見る（ファイル全体では見ない）。
-    const writers = enclosingFunctions(src, /\.update\(/g).filter((body) => /from\("certificates"\)/.test(body));
+    // 書き込み（または一本化ヘルパーの呼び出し）を含む関数の中でガードされているかを見る。
+    // ファイル全体では見ない（別の関数のガードで通ってしまう）。
+    const calls = /certificates\/voidCertificate/.test(src) ? /voidCertificate\w*\(/g : /\.update\(/g;
+    const writers = enclosingFunctions(src, calls).filter(
+      (body) => /from\("certificates"\)/.test(body) || /voidCertificate\w*\(/.test(body),
+    );
     if (!writers.length || !writers.every((body) => enforces(body, "certificates:void"))) ungated.push(rel);
   }
 
   it("検出できている（検出器が壊れて空で合格するのを防ぐ）", () => {
-    // 2026-08-31 時点で5本。減ったら経路が消えたか検出器が壊れたかのどちらかで、
-    // どちらも確認が要る。
+    // 2026-08-31 時点で5本。2026-09-05 に4本を `voidCertificate()` へ一本化したが、
+    // **入口の数は変わっていない**（呼び出し側も検出対象に入れてある）。
+    // 減ったら経路が消えたか検出器が壊れたかのどちらかで、どちらも確認が要る。
     expect(voidPaths.length).toBeGreaterThanOrEqual(5);
   });
 

@@ -49,7 +49,7 @@ export default function PriceStatsClient() {
     try {
       const res = await fetch("/api/admin/price-stats", { cache: "no-store" });
       const j = await parseJsonSafe(res);
-      if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
+      if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       setData(j);
     } catch (e: unknown) {
       setErr(e instanceof Error ? e.message : String(e));
