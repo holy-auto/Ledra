@@ -82,6 +82,29 @@ jobs:
           #      適用済みを改名すると条件1を壊し、次の run が別のエラーで止まる。
           #      2026-08-25 の audit_logs_reconcile と 2026-08-26 の VIN トリガーで
           #      2回起きている。
+          #
+          # **なぜ台帳が勝手に進むのか — 本番の台帳に書く経路は2つある。**
+          #
+          #   (a) このジョブ (supabase db push --db-url)
+          #       順序に厳密。out-of-order は exit 1 で止め、Slack へ通知する。
+          #   (b) **Supabase の GitHub 連携 (Branching)**
+          #       Supabase 側に既定ブランチ `main` が本番プロジェクトへ紐づいており
+          #       (`list_branches` で is_default=true / project_ref=本番)、main への
+          #       push で `supabase/migrations/**` を本番へ適用する。
+          #       **順序を見ない。ログも Actions に出ない。**
+          #
+          # (b) が (a) の失敗した直後に同じ差分を当てるため、
+          #   「(a) が『未適用』と言って落ちた → 数十秒後に (b) が適用済みにする」
+          # が起きる。2026-08-26 に実測 (postgres_logs):
+          #   08:23:34 (a) が out-of-order で exit 1（20260825000000 は未適用と表示）
+          #   08:23:56 (b) が schema_migrations をブートストラップして同ファイルを適用
+          # この22秒の差を知らずに「未適用だから改名してよい」と判断すると、
+          # 条件1を壊して次の run を別のエラーで止める。実際にそうなった。
+          #
+          # したがって: **(a) の失敗ログを根拠に改名しないこと。**
+          # 失敗した後は必ず本番の台帳を引き直してから動く。
+          # 恒久対策は「書き手を1つに絞る」= Supabase ダッシュボードの
+          # Integrations で本番への自動適用を切る (未実施 → OPEN_QUESTIONS)。
           supabase db push --db-url "$SUPABASE_DB_URL"
 
       # 失敗したら Slack へ通知する。
