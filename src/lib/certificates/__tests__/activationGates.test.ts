@@ -12,7 +12,22 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { walkSource, stripComments } from "../../__tests__/sourceScan";
+import ts from "typescript";
+import { walkSource } from "../../__tests__/sourceScan";
+import {
+  parse,
+  collect,
+  calls,
+  calleeName,
+  unwrapAwait,
+  negated,
+  alwaysExits,
+  statementLists,
+  declarationOf,
+  hasExitingGuard,
+  hasEnclosingGuard,
+  isPropertyOf,
+} from "../../__tests__/astScan";
 
 const ROOT = join(process.cwd(), "src");
 
@@ -33,44 +48,72 @@ function isIssuancePath(file: string, src: string): boolean {
   return /\.(update|insert)\(/.test(src) && /status:\s*"active"/.test(src);
 }
 
-/**
- * Gate の判定が**発行を左右している**か。
- *
- * 以前は `<var>.ready` がどこかに出てくれば true にしていたが、それでは
- * `logger.info(certGate.ready)` と書いて無条件に発行しても緑だった（Codex の指摘）。
- * 制御フローの形まで見る。正しい書き方は2通りしかない。
- *   `if (!certGate.ready) return ...` — 弾く（API 3経路）
- *   `if (certGate.ready) { ...active化 }` — ready のときだけ発行（自動発行）
- * 向きを逆にした `if (certGate.ready) return err;` はどちらにも当たらない。
- */
-function consultsCertGate(src: string): boolean {
-  const m = /(?:const|let|var)\s+(\w+)\s*=\s*await\s+evaluateCertificateActivationGate\s*\(/.exec(src);
-  if (!m) return false;
-  const v = m[1];
-  const rejects = new RegExp(String.raw`if\s*\(\s*!\s*${v}\.ready\s*\)[\s\S]{0,200}?\b(?:return|throw)\b`);
-  const encloses = new RegExp(String.raw`if\s*\(\s*${v}\.ready\s*\)\s*\{`);
-  return rejects.test(src) || encloses.test(src);
+/** その節点の中で「発行」が起きているか。`status: "active"` の書き込みか、発行フックの発火。 */
+function issuesCertificate(node: ts.Node): boolean {
+  if (calls(node, "triggerCertificateIssued")) return true;
+  return collect(node, ts.isPropertyAssignment).some(
+    (prop) =>
+      ts.isIdentifier(prop.name) &&
+      prop.name.text === "status" &&
+      ts.isStringLiteral(prop.initializer) &&
+      prop.initializer.text === "active",
+  );
 }
 
 /**
- * 走行距離が**発行の条件になっている**か。
+ * Gate の判定が**発行を左右している**か。**構文木で見る。**
  *
- * 呼び出しの存在だけを見ていたので、`certificateMileageKm(cert.maintenance_json);` と
- * 結果を捨てても緑だった（Codex の指摘）。返り値が null 比較に使われていることまで見る。
- * 実際の2つの形はどちらも同じ文の中で null と比べている。
- *   `if (certificateMileageKm(cert.maintenance_json) === null) return err;`
- *   `if (autoIssueEligible && certificateMileageKm(certRow.maintenance_json) !== null) {`
+ * 段階的に3回甘かった（いずれも Codex の指摘）。
+ *   `<var>.ready` がどこかにある      → `logger.info(certGate.ready)` の後に無条件発行
+ *   `if (!v.ready)` の存在だけ         → `if (!v.ready) audit(); activate();`（return が外）
+ *   `if (v.ready) {` の存在だけ        → `if (v.ready) { log(); } activate();`（分岐が発行を包まない）
+ *
+ * 正しい形は2つ。**弾く側は必ず抜けること、通す側は発行を包んでいること**まで見る。
  */
-function gatesOnMileage(src: string): boolean {
-  for (const m of src.matchAll(/certificateMileageKm\s*\(/g)) {
-    const at = m.index ?? 0;
-    const from = src.lastIndexOf("\n", at) + 1;
-    // その呼び出しを含む「行頭 〜 次の { か ;」を1つの文として見る。
-    const stops = [src.indexOf("{", at), src.indexOf(";", at)].filter((i) => i > -1);
-    const stmt = src.slice(from, stops.length ? Math.min(...stops) : src.length);
-    if (/\bif\s*\(/.test(stmt) && /(?:===|!==)\s*null/.test(stmt)) return true;
-  }
-  return false;
+function consultsCertGate(node: ts.Node): boolean {
+  return statementLists(node).some((stmts) =>
+    stmts.some((stmt, i) => {
+      const decl = declarationOf(stmt);
+      if (!decl || calleeName(unwrapAwait(decl.init)) !== "evaluateCertificateActivationGate") return false;
+      const v = decl.name;
+      const rest = stmts.slice(i + 1);
+      const rejects = hasExitingGuard(rest, (cond) => {
+        const inner = negated(cond);
+        return inner !== null && isPropertyOf(inner, v, "ready");
+      });
+      const encloses = hasEnclosingGuard(
+        rest,
+        (cond) => isPropertyOf(cond, v, "ready"),
+        (body) => issuesCertificate(body),
+      );
+      return rejects || encloses;
+    }),
+  );
+}
+
+/**
+ * 走行距離が**発行の条件になっている**か。**構文木で見る。**
+ *
+ * 呼び出しの存在だけ → 結果を捨てても合格。`if` の中にあるだけ →
+ * `if (mileage(x) !== null) log(); activate();` で合格（Codex の指摘）。
+ * 実際の2つの形はどちらも「null と比べて、弾くか、発行を包むか」である。
+ *   `if (certificateMileageKm(x) === null) return err;`
+ *   `if (eligible && certificateMileageKm(x) !== null) { ...発行... }`
+ */
+function comparesMileageToNull(cond: ts.Expression): boolean {
+  return collect(cond, ts.isBinaryExpression).some((b) => {
+    const op = b.operatorToken.kind;
+    const isNullCmp =
+      (op === ts.SyntaxKind.EqualsEqualsEqualsToken || op === ts.SyntaxKind.ExclamationEqualsEqualsToken) &&
+      (b.right.kind === ts.SyntaxKind.NullKeyword || b.left.kind === ts.SyntaxKind.NullKeyword);
+    return isNullCmp && calls(b, "certificateMileageKm");
+  });
+}
+
+function gatesOnMileage(node: ts.Node): boolean {
+  return collect(node, ts.isIfStatement).some(
+    (s) => comparesMileageToNull(s.expression) && (alwaysExits(s.thenStatement) || issuesCertificate(s.thenStatement)),
+  );
 }
 
 describe("証明書を active にする経路", () => {
@@ -79,18 +122,17 @@ describe("証明書を active にする経路", () => {
   const ungatedByCertGate: string[] = [];
 
   for (const file of walkSource(ROOT)) {
-    // **コメントを落としてから照合する。** `src.includes(...)` を生ソースに当てていた頃は、
-    // 「この経路は Gate を通る」と書いた説明コメントや import 行だけでも合格していた
-    // （実際 certificateRecordAuto.ts は冒頭コメントで両方の名前に触れている）。
-    const src = stripComments(readFileSync(file, "utf8"));
+    const src = readFileSync(file, "utf8");
     if (!isIssuancePath(file, src)) continue;
     const rel = file.slice(ROOT.length + 1);
-    // 名前の出現でも、呼び出しの存在でもなく、**返り値が発行の条件になっている**ことを見る。
-    (gatesOnMileage(src) ? gated : offenders).push(rel);
+    // 構文木で見る。コメントも import 行も最初から視界に入らない
+    // （certificateRecordAuto.ts は冒頭コメントで両方の名前に触れている）。
+    const tree = parse(src, file);
+    (gatesOnMileage(tree) ? gated : offenders).push(rel);
     // IMP-028 (ADR-0005): draft→active の発行経路は evaluateCertificateActivationGate()
     // を必ず通す（写真必須・懸念未解決なし・部品整合性 等の単一評価器）。
     // 呼ぶだけでは足りない。**判定を読んでいる**ことまで見る（MISTAKE_LEDGER M-033・型 G）。
-    if (!consultsCertGate(src)) ungatedByCertGate.push(rel);
+    if (!consultsCertGate(tree)) ungatedByCertGate.push(rel);
   }
 
   it("すべて走行距離ゲート (certificateMileageKm) を通る", () => {
@@ -109,44 +151,46 @@ describe("証明書を active にする経路", () => {
 
 describe("検出器そのものの性質", () => {
   // 「呼んでいる」と「効いている」は別。述語を値で動かして確かめる（M-033・型 G）。
-  it("判定を読まない書き方は「通している」と見なさない", () => {
-    expect(consultsCertGate("const certGate = await evaluateCertificateActivationGate(admin, ctx);")).toBe(false);
-    // 読んでいるだけで発行を止めない形。以前はこれが緑だった（Codex の指摘）。
-    expect(
-      consultsCertGate(
-        "const certGate = await evaluateCertificateActivationGate(admin, ctx);\nlogger.info(certGate.ready);\nactivate();",
-      ),
-    ).toBe(false);
-    // 向きが逆（ready のときに弾く）も通さない。
-    expect(
-      consultsCertGate("const g = await evaluateCertificateActivationGate(admin, ctx);\nif (g.ready) return err;"),
-    ).toBe(false);
-    expect(
-      consultsCertGate(
-        "const certGate = await evaluateCertificateActivationGate(admin, ctx);\nif (!certGate.ready) return err;",
-      ),
-    ).toBe(true);
-    // ready のときだけ発行する形（自動発行）も通す。
-    expect(
-      consultsCertGate("const g = await evaluateCertificateActivationGate(admin, ctx);\nif (g.ready) { activate(); }"),
-    ).toBe(true);
+  const gate = (src: string) => consultsCertGate(parse(src));
+  const mileage = (src: string) => gatesOnMileage(parse(src));
+  const CALL = "const g = await evaluateCertificateActivationGate(admin, ctx);";
+
+  it("判定を読むだけでは「通している」と見なさない", () => {
+    expect(gate(CALL)).toBe(false);
+    expect(gate(`${CALL}\nlogger.info(g.ready);\nactivate();`)).toBe(false);
   });
 
-  it("コメントの言及と import だけでは通さない", () => {
-    // 生ソースに `includes` を当てていた頃は、この2行だけで両方のゲートが合格していた。
-    const mentionOnly = stripComments(
-      "// evaluateCertificateActivationGate() が ready なら作成直後に active へ\n" +
-        'import { certificateMileageKm } from "@/lib/maintenance/mileage";\n',
-    );
-    expect(consultsCertGate(mentionOnly)).toBe(false);
-    expect(gatesOnMileage(mentionOnly)).toBe(false);
+  it("弾く側は必ず抜けることまで要求する", () => {
+    expect(gate(`${CALL}\nif (!g.ready) return err;`)).toBe(true);
+    // return が if の外（Codex の指摘）。
+    expect(gate(`${CALL}\nif (!g.ready) audit();\nreturn ok;`)).toBe(false);
   });
 
-  it("走行距離は「呼んだ」ではなく「条件になっている」ことを求める", () => {
-    // 結果を捨てる呼び出し。以前はこれが緑だった（Codex の指摘）。
-    expect(gatesOnMileage("certificateMileageKm(cert.maintenance_json);\nactivate();")).toBe(false);
-    // 実際の2つの形はどちらも通る。
-    expect(gatesOnMileage("if (certificateMileageKm(cert.maintenance_json) === null) return err;")).toBe(true);
-    expect(gatesOnMileage("if (eligible && certificateMileageKm(row.maintenance_json) !== null) {")).toBe(true);
+  it("通す側は発行を包んでいることまで要求する", () => {
+    expect(gate(`${CALL}\nif (g.ready) { await admin.from("certificates").update({ status: "active" }); }`)).toBe(true);
+    expect(gate(`${CALL}\nif (g.ready) { triggerCertificateIssued(x); }`)).toBe(true);
+    // 分岐はあるが発行を包んでいない（Codex の指摘）。
+    expect(gate(`${CALL}\nif (g.ready) { logger.info("ready"); }\nactivate({ status: "active" });`)).toBe(false);
+  });
+
+  it("向きが逆の分岐は通さない", () => {
+    expect(gate(`${CALL}\nif (g.ready) return err;`)).toBe(false);
+  });
+
+  it("走行距離は null 比較で、弾くか発行を包むことまで要求する", () => {
+    expect(mileage("certificateMileageKm(cert.maintenance_json);\nactivate();")).toBe(false);
+    expect(mileage("if (certificateMileageKm(cert.maintenance_json) === null) return err;")).toBe(true);
+    expect(
+      mileage('if (eligible && certificateMileageKm(row.maintenance_json) !== null) { update({ status: "active" }); }'),
+    ).toBe(true);
+    // 条件にはあるが発行を左右しない（Codex の指摘）。
+    expect(
+      mileage('if (certificateMileageKm(row.maintenance_json) !== null) log();\nupdate({ status: "active" });'),
+    ).toBe(false);
+  });
+
+  it("コメントの中身は最初から見ない（構文木にコメントは無い）", () => {
+    expect(gate("// evaluateCertificateActivationGate() が ready なら active へ\nactivate();")).toBe(false);
+    expect(mileage('import { certificateMileageKm } from "@/lib/maintenance/mileage";')).toBe(false);
   });
 });

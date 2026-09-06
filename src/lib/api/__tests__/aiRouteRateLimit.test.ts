@@ -27,7 +27,21 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join, dirname, normalize } from "node:path";
+import ts from "typescript";
 import { walkSource, handlerChunks, moduleChunk, stripComments } from "@/lib/__tests__/sourceScan";
+import {
+  parse,
+  collect,
+  calleeName,
+  unwrapAwait,
+  negated,
+  alwaysExits,
+  statementLists,
+  declarationOf,
+  hasExitingGuard,
+  isIdent,
+  isPropertyOf,
+} from "@/lib/__tests__/astScan";
 
 const SRC = join(process.cwd(), "src");
 const API_ROOT = join(SRC, "app", "api");
@@ -35,45 +49,61 @@ const API_ROOT = join(SRC, "app", "api");
 /** Anthropic クライアントを実際に構築している = このモジュールはモデルを叩く。 */
 const CALLS_MODEL = /getAnthropicClient\s*\(/;
 /**
- * `checkRateLimit()` の結果で**弾いている**か。
+ * `checkRateLimit()` が**効いている**か。**構文木で見る。**
  *
- * 呼び出しの存在だけを見ていた（`/checkRateLimit\s*\(/`）が、それでは
- * **呼んで結果を捨てる書き方でも緑になる**。`checkRateLimit()` は 429/503 の Response か
- * `null` を返すだけで、**呼び出し側が return しなければ何も止まらない**。
- * 同じ穴を `apiRoutePermissions.test.ts` は既に塞いでいたので、そこに揃えた
- * （MISTAKE_LEDGER M-033・型 G の棚卸しで発見。実害のある呼び出しは 0 件だった）。
+ * 正規表現で3巡追いかけて、そのたびに形を変えた穴が出た（MISTAKE_LEDGER M-033）。
  *
- * 呼び出しが複数あるハンドラ（identity/ocr は IP とテナントで2回）もあるので、
- * **すべての呼び出し**が弾いていることを要求する。
+ * ```
+ * await checkRateLimit(...);                       // 結果を捨てる
+ * if (!limited) return limited;                    // 弾く向きが逆
+ * if (limited) logger.warn(); return callModel();  // return が if の外
+ * if (a) { const limited = f(); if (limited) return limited; }
+ * if (b) { const limited = f(); }                  // 同名・別スコープのガードを流用
+ * void 0; // if (limited) return limited;          // コメントに書いてある
+ * ```
  *
- * 同名の関数が2つある。どちらの形も受ける。
- *   `@/lib/api/rateLimit` → `Response | null`      : `if (limited) return limited;`
- *   `@/lib/rateLimit`     → `{ allowed, ... }`      : `if (!rl.allowed) { return ... }`
+ * どれも木の上なら一行で落とせる。**同名の関数が2つある**ので、正しい向きは形で振り分ける。
+ *   `@/lib/api/rateLimit` → `Response | null` : 返り値が**あるとき**に弾く
+ *   `@/lib/rateLimit`     → `{ allowed, ... }` : `allowed` で**ないとき**に弾く
  */
-function rateLimited(chunk: string): boolean {
-  // 変数に受けずその場で弾く形（`if (await checkRateLimit(...)) return ...`）。
-  // customer/line-login が実際にこの書き方。先に取り除いてから残りを見る。
-  const INLINE = /if\s*\(\s*await\s+checkRateLimit\s*\([^)]*\)\s*\)\s*return\b/g;
-  const inlineCount = (chunk.match(INLINE) ?? []).length;
-  const rest = chunk.replace(INLINE, "");
+function rateLimitCalls(node: ts.Node): ts.CallExpression[] {
+  return collect(node, ts.isCallExpression).filter((c) => calleeName(c) === "checkRateLimit");
+}
 
-  const calls = [...rest.matchAll(/(?:const|let|var)\s+(\w+)\s*=\s*await\s+checkRateLimit\s*\(/g)];
-  // 残りの `checkRateLimit(` が代入形の数と合わなければ、見たことのない書き方がある。
-  // **数え漏らしを「制限あり」と読まない** —— 分からないものは false に倒す。
-  if ((rest.match(/checkRateLimit\s*\(/g) ?? []).length !== calls.length) return false;
-  if (!calls.length) return inlineCount > 0;
+function rateLimited(node: ts.Node): boolean {
+  const total = rateLimitCalls(node).length;
+  if (total === 0) return false;
 
-  return calls.every(([, v]) => {
-    // **弾く向きまで見る。** `!?` で両極を受けていた頃は、`if (!limited) return limited`
-    // のように**通すべきものを弾き、弾くべきものを通す**壊れたガードでも緑だった
-    // （Codex の指摘）。同名の2つの関数で正しい向きが逆になるので、形で振り分ける。
-    if (new RegExp(String.raw`\b${v}\.allowed\b`).test(rest)) {
-      // `@/lib/rateLimit` → `{ allowed }`。**allowed でない**ときに弾くのが正しい。
-      return new RegExp(String.raw`if\s*\(\s*!\s*${v}\.allowed\s*\)[\s\S]{0,200}?\breturn\b`).test(rest);
+  let guarded = 0;
+
+  // (a) 変数に受けずその場で弾く形。`customer/line-login` が実際にこの書き方。
+  for (const s of collect(node, ts.isIfStatement)) {
+    if (rateLimitCalls(s.expression).length > 0 && alwaysExits(s.thenStatement)) {
+      guarded += rateLimitCalls(s.expression).length;
     }
-    // `@/lib/api/rateLimit` → `Response | null`。**返り値があるとき**に弾くのが正しい。
-    return new RegExp(String.raw`if\s*\(\s*${v}\s*\)[\s\S]{0,120}?\breturn\b`).test(rest);
-  });
+  }
+
+  // (b) 変数に受けて、**同じスコープの後ろの文**で弾く形。
+  for (const stmts of statementLists(node)) {
+    stmts.forEach((stmt, i) => {
+      const decl = declarationOf(stmt);
+      if (!decl || calleeName(unwrapAwait(decl.init)) !== "checkRateLimit") return;
+      const v = decl.name;
+      const rest = stmts.slice(i + 1);
+      // `{ allowed }` を返す方か、`Response | null` を返す方か。使われ方で判る。
+      const objectStyle = collect(node, ts.isPropertyAccessExpression).some((p) => isPropertyOf(p, v, "allowed"));
+      const ok = objectStyle
+        ? hasExitingGuard(rest, (cond) => {
+            const inner = negated(cond);
+            return inner !== null && isPropertyOf(inner, v, "allowed");
+          })
+        : hasExitingGuard(rest, (cond) => isIdent(cond, v));
+      if (ok) guarded += 1;
+    });
+  }
+
+  // **数え漏らしを「制限あり」と読まない。** 知らない書き方は false に倒す。
+  return guarded >= total;
 }
 
 /**
@@ -237,12 +267,12 @@ for (const file of walkSource(API_ROOT, (f) => f.endsWith("route.ts"))) {
 
   const name = routeName(file);
   for (const [method, chunk] of handlerChunks(src)) {
-    if (callsAi(chunk)) units.push({ id: `${name} [${method}]`, limited: rateLimited(chunk) });
+    if (callsAi(chunk)) units.push({ id: `${name} [${method}]`, limited: rateLimited(parse(chunk)) });
   }
   // `export const POST = withX(handler)` の実体はここに落ちる。見落とすと消える。
   const top = moduleChunk(src);
   if (top && callsAi(top)) {
-    units.push({ id: `${name} [module]`, limited: rateLimited(top) });
+    units.push({ id: `${name} [module]`, limited: rateLimited(parse(top)) });
   }
 }
 
@@ -314,52 +344,61 @@ describe("AI を呼ぶ API ハンドラのレート制限", () => {
 
 describe("検出器そのものの性質", () => {
   // 構造テストは「その語がソースにある」しか語れない。**述語を値で動かして**
-  // 素通りする形が本当に false になることを確かめる（M-033 で欠けていたのがこれ）。
-  it("弾く向きが逆なら「制限している」と見なさない", () => {
-    // `!?` で両極を受けていた頃は、この2つが緑だった（Codex の指摘）。
-    // どちらも「通すべきものを弾き、弾くべきものを通す」壊れたガード。
-    expect(rateLimited('const limited = await checkRateLimit(req, "ai");\nif (!limited) return limited;')).toBe(false);
-    expect(
-      rateLimited("const rl = await checkRateLimit(key, opts);\nif (rl.allowed) {\n  return apiJson({}, 429);\n}"),
-    ).toBe(false);
-  });
+  // 素通りする形が本当に false になることを確かめる（M-033・型 G）。
+  const limited = (src: string) => rateLimited(parse(src));
 
   it("結果を捨てる書き方は「制限している」と見なさない", () => {
-    expect(rateLimited('const limited = await checkRateLimit(req, "ai");')).toBe(false);
-    expect(rateLimited('const limited = await checkRateLimit(req, "ai");\nif (limited) return limited;')).toBe(true);
+    expect(limited('const l = await checkRateLimit(req, "ai");')).toBe(false);
+    expect(limited('const l = await checkRateLimit(req, "ai");\nif (l) return l;')).toBe(true);
+  });
+
+  it("弾く向きが逆なら「制限している」と見なさない", () => {
+    // どちらも「通すべきを弾き、弾くべきを通す」壊れたガード（Codex の指摘）。
+    expect(limited('const l = await checkRateLimit(req, "ai");\nif (!l) return l;')).toBe(false);
+    expect(limited("const rl = await checkRateLimit(key, opts);\nif (rl.allowed) { return apiJson({}, 429); }")).toBe(
+      false,
+    );
   });
 
   it("`{ allowed }` を返すもう1つの checkRateLimit の形も受ける", () => {
-    // `@/lib/rateLimit` は Response ではなく { allowed } を返す。同名の別関数。
-    expect(
-      rateLimited("const rl = await checkRateLimit(key, opts);\nif (!rl.allowed) {\n  return apiJson({}, 429);\n}"),
-    ).toBe(true);
+    expect(limited("const rl = await checkRateLimit(key, opts);\nif (!rl.allowed) { return apiJson({}, 429); }")).toBe(
+      true,
+    );
   });
 
-  it("呼び出しが複数あるとき、1つでも弾いていなければ false", () => {
-    // identity/ocr は IP とテナントで2回呼ぶ。片方だけ見て合格にしない。
-    const half =
-      'const a = await checkRateLimit(req, "ai");\nif (a) return a;\nconst b = await checkRateLimit(req, "ai", key);';
-    expect(rateLimited(half)).toBe(false);
+  it("弾く return が if の中にあることまで要求する", () => {
+    // `if` の**外**の return を拾って素通りしていた（Codex の指摘）。
+    expect(limited('const l = await checkRateLimit(req, "ai");\nif (l) logger.warn();\nreturn callModel();')).toBe(
+      false,
+    );
+    expect(limited('const l = await checkRateLimit(req, "ai");\nif (l) { logger.warn(); return l; }')).toBe(true);
+  });
+
+  it("同名変数でも、別スコープのガードを流用しない", () => {
+    // 片方のブロックだけがガードしている。もう片方は守られていない（Codex の指摘）。
+    const src = `
+      if (a) { const l = await checkRateLimit(req, "ai"); if (l) return l; }
+      if (b) { const l = await checkRateLimit(req, "ai"); }
+    `;
+    expect(limited(src)).toBe(false);
   });
 
   it("その場で弾く形も受ける（変数に受けない書き方）", () => {
-    // customer/line-login が実際にこの形。代入形しか見ないと誤検知する。
-    expect(rateLimited('if (await checkRateLimit(req, "auth")) return backToLogin("rate_limited");')).toBe(true);
-    // インラインと代入形が混ざっていても、代入形の側が弾いていなければ false。
-    expect(
-      rateLimited(
-        'if (await checkRateLimit(req, "auth")) return err;\nconst b = await checkRateLimit(req, "ai", key);',
-      ),
-    ).toBe(false);
+    // customer/line-login が実際にこの形。
+    expect(limited('if (await checkRateLimit(req, "auth")) return backToLogin("rate_limited");')).toBe(true);
+    expect(limited('if (await checkRateLimit(req, "auth")) logger.warn();\nreturn callModel();')).toBe(false);
   });
 
   it("知らない書き方は「制限している」と読まない", () => {
     // 数え漏らしを合格に倒すと、新しい書き方が入った瞬間に静かに穴が開く。
-    expect(rateLimited('const r = someWrapper(await checkRateLimit(req, "ai"));')).toBe(false);
+    expect(limited('const r = someWrapper(await checkRateLimit(req, "ai"));')).toBe(false);
+  });
+
+  it("コメントの中身は最初から見ない（構文木にコメントは無い）", () => {
+    expect(limited('void 0; // const l = await checkRateLimit(req, "ai"); if (l) return l;')).toBe(false);
   });
 
   it("呼んでいないものを「制限している」と言わない", () => {
-    expect(rateLimited("const x = await somethingElse(req);")).toBe(false);
+    expect(limited("const x = await somethingElse(req);")).toBe(false);
   });
 });
