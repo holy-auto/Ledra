@@ -81,7 +81,17 @@ jobs:
             [ -n "$num" ] || continue
 
             # マイグレーションを触っていない PR は見ない。
-            if ! gh pr diff "$num" --repo "$REPO" --name-only | grep -q '^supabase/migrations/'; then
+            #
+            # **`gh` の失敗と「変更が無い」を区別する。** `if ! cmd | grep -q` の形だと
+            # `set -e` は if の条件では効かず、API エラー・認証切れ・取得失敗も
+            # 「マイグレーションを触っていない」と同じ扱いになり、**検査したい PR を
+            # 黙って飛ばしたまま緑で終わる**（Codex レビュー指摘）。終了コードを分けて見る。
+            files="$(gh pr diff "$num" --repo "$REPO" --name-only)" && gh_rc=0 || gh_rc=$?
+            if [ "$gh_rc" -ne 0 ]; then
+              echo "::warning::PR #$num の差分を取得できませんでした（gh 終了コード $gh_rc）。未検査です"
+              continue
+            fi
+            if ! grep -q '^supabase/migrations/' <<<"$files"; then
               continue
             fi
 
@@ -112,6 +122,18 @@ jobs:
             # 他のルールでも落ちる。終了コードだけで「日付が追い越された」と決めると、
             # 別の理由で落ちた PR に**間違った直し方**を書いたコメントを貼ってしまう
             # （PR #1027 の Codex レビュー指摘）。出力に当該ルール名が出たときだけ貼る。
+            # 担当するのは `migration-version-before-base-head` だけ。
+            #
+            # main が**同じ版**を足した場合も、このルールで出る。`versionOf` は
+            # 先頭の数字だけを見て `versionOf(file) > baseMax` で判定するので、
+            # 版が等しいと `>` が偽になり追い越しとして報告される
+            # （`duplicate-version` も同時に出るが、grep はこちらに当たる）。
+            # `duplicate-version` を担当に足すと、**PR 自身が同じ版を2つ持っている**
+            # ケース（その PR の CI が既に赤）にまで「main と衝突」と書いたコメントを
+            # 貼ってしまう。PR #1040 の `/code-review` 指摘。
+            #
+            # それ以外（`create-index-without-concurrently` 等）は担当外。終了コードだけで
+            # 判定すると、別の理由で落ちた PR に**間違った直し方**のコメントを貼ってしまう。
             out="$(MIGRATIONS_BASE_REF=origin/main node scripts/lint-migrations.js 2>&1)" && rc=0 || rc=$?
             echo "$out"
             if [ "$rc" -eq 0 ]; then
@@ -136,6 +158,15 @@ jobs:
               fi
             fi
             # 取り出した SQL を捨てて main の状態へ戻す（次の PR を素の状態から見る）。
+            #
+            # **`reset` が要る。** `git checkout pr-N -- path` は取り出したファイルを
+            # **index に載せる**ので、`checkout HEAD -- path` では消えず（HEAD に無い）、
+            # `clean -fd` も追跡済みとして飛ばす。つまり前の PR のマイグレーションが
+            # 作業ツリーに残り、`lint-migrations.js` は `readdirSync` で作業ツリーを
+            # 数えるので、**次の PR が「main ∪ 前の PR」に対して検査される**。
+            # 無関係な PR が追い越し扱いになり、間違ったコメントが貼られる
+            # （PR #1040 の `/code-review` 指摘。手元の git で再現を確認した）。
+            git reset --quiet HEAD -- supabase/migrations
             git checkout --quiet HEAD -- supabase/migrations
             git clean --quiet -fd supabase/migrations
             git branch --quiet -D "pr-$num" || true
