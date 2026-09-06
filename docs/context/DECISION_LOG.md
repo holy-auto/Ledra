@@ -4,6 +4,59 @@
 > （新しい順）。実装の詳細は RELEASE_LOG.md、迷っている段階のものは
 > OPEN_QUESTIONS.md に書く。
 
+## 2026-09-06 マイグレーション外で本番へ入ったオブジェクトを棚卸しした。削除より先に「検出の置き場所」を決める
+
+1. **日付**: 2026-09-06
+2. **起きたこと**: `insurer_tenant_accesses`（複数形）の削除で残っていた宿題
+   「同じ経路で入った他のオブジェクトが無いか」を機械的に洗った。本番 `public` の
+   オブジェクト名と `supabase/migrations/` 446 本の `CREATE` 文を突き合わせた結果、
+   **テーブル23・ビュー1・関数24・トリガ15・enum型5 の計 68 個**が
+   マイグレーションに定義を持たないと分かった。
+   - トリガ15: `dealers_updated_at` `deals_updated_at` `inventory_listings_updated_at`
+     `listing_inquiries_updated_at` `trg_agent_campaigns_updated_at`
+     `trg_agent_faqs_updated_at` `trg_agent_invoices_updated_at`
+     `trg_agent_support_tickets_updated_at` `trg_agent_training_courses_updated_at`
+     `trg_agent_training_progress_updated_at` `trg_news_updated_at`
+     `trg_nfc_tags_set_updated_at` `trg_price_sub_updated_at`
+     `trg_vehicle_histories_set_updated_at` `trg_vehicles_set_updated_at`
+   - enum型5: `certificate_status_enum` `expiry_type_enum` `membership_role_enum`
+     `plan_tier_enum` `template_scope_enum`（migrations に `CREATE TYPE` は1本も無い）
+3. **以前の考え**: 複数形テーブルの一件は「たまたま1つ紛れ込んだ事故」だと思っていた。
+   `Migrations Replay` が緑なので、スキーマは migrations で説明できていると考えていた。
+4. **違和感・問題**: **`Migrations Replay` は「全ファイルが流れるか」しか見ておらず、
+   できあがったスキーマを本番と比べていない。** 本番にだけ在るオブジェクトは
+   原理的に出ない。`check:schema` の `schema.snapshot.json` は実 DB のコピーなので、
+   ドリフトごと写して合格する。**2つある検査のどちらも、この形の差を見る作りになっていなかった。**
+
+   切り分けると危険度が分かれた。
+   - **テーブル23は実質使われていない** — 21 個が 0 行、残り 2 個も 1 行。
+     アプリからの参照ゼロ、全件 RLS 有効、うち 7 個はポリシー0本＝全拒否。露出は無い。
+   - **関数のほうが危ない** — 未管理の関数5本を **35 本の RLS ポリシー**が、
+     未管理のトリガ関数を **8 本のトリガ**が参照している。つまり
+     **migrations だけから作った DB は本番と同じ権限判定をしない。**
+5. **決めたこと**: 今回は**棚卸しと記録だけ**を行い、削除も検出器の追加もしない。
+   OPEN_QUESTIONS に 68 個の内訳・危険度・未決事項を残した。
+6. **捨てた選択肢**:
+   - **未使用テーブル23個をこの場で削除** → 2 個に行が入っており中身未確認。
+     露出が無い以上、急いで消す理由が無い。消すなら `db.generated.ts` と
+     `schema.snapshot.json` の更新まで込みで別 PR。
+   - **`Migrations Replay` に本番との突き合わせを足す** → あのジョブは空 DB しか持たない。
+     本番の資格情報を CI の PR ジョブに渡すのは、得られる検出より代償が大きい。
+   - **本番の定義を書き起こした repair マイグレーションを 68 個ぶん足す** →
+     `20260826000005_repair_unreplayable_objects.sql` と同じ手だが、
+     **使われていない 23 テーブルまで正式化してしまう**。何を残すか決める前に書けない。
+7. **判断理由**: 「マイグレーション外で入った」は1つの問題に見えて2つだった。
+   **消し忘れの残骸**（テーブル）と、**本番でしか再現できない権限判定**（関数・トリガ）。
+   前者は放置しても害が無く、後者は復旧時に効く。急ぐべきは後者で、
+   後者を直すには「どこで検出するか」を先に決める必要がある。
+   検出の置き場所は、既に本番を叩いている `supabase-advisors.yml`（定期実行）が候補。
+8. **まだ答えが出ていないこと**: **いつ・誰が・なぜ作ったかは不明**【要確認】。
+   Postgres はオブジェクトの作成時刻を持たない。`pg_class.oid` の並びでは
+   ドリフト表が migrations 由来の表と入り混じるが、oid 順とファイル日付順が
+   一致しない箇所があるため時期の断定はできない【推定】。
+   検出器を入れるか、23 テーブルを消すかも未決。
+9. **公開区分**: 公開可（テーブル名・関数名は自社スキーマだが、値・件数に個人情報を含まない）
+
 ## 2026-09-06 「確認した」を表す印は、中身と版の両方から作り、DB が返した値だけを混ぜる
 
 1. **日付**: 2026-09-06
