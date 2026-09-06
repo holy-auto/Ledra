@@ -51,10 +51,20 @@ const CALLS_MODEL = /getAnthropicClient\s*\(/;
  *   `@/lib/rateLimit`     → `{ allowed, ... }`      : `if (!rl.allowed) { return ... }`
  */
 function rateLimited(chunk: string): boolean {
-  const calls = [...chunk.matchAll(/(?:const|let|var)\s+(\w+)\s*=\s*await\s+checkRateLimit\s*\(/g)];
-  if (!calls.length) return false;
+  // 変数に受けずその場で弾く形（`if (await checkRateLimit(...)) return ...`）。
+  // customer/line-login が実際にこの書き方。先に取り除いてから残りを見る。
+  const INLINE = /if\s*\(\s*await\s+checkRateLimit\s*\([^)]*\)\s*\)\s*return\b/g;
+  const inlineCount = (chunk.match(INLINE) ?? []).length;
+  const rest = chunk.replace(INLINE, "");
+
+  const calls = [...rest.matchAll(/(?:const|let|var)\s+(\w+)\s*=\s*await\s+checkRateLimit\s*\(/g)];
+  // 残りの `checkRateLimit(` が代入形の数と合わなければ、見たことのない書き方がある。
+  // **数え漏らしを「制限あり」と読まない** —— 分からないものは false に倒す。
+  if ((rest.match(/checkRateLimit\s*\(/g) ?? []).length !== calls.length) return false;
+  if (!calls.length) return inlineCount > 0;
+
   return calls.every(([, v]) =>
-    new RegExp(String.raw`\breturn\s+${v}\b|\bif\s*\(\s*!?\s*${v}\b[\s\S]{0,200}?\breturn\b`).test(chunk),
+    new RegExp(String.raw`\breturn\s+${v}\b|\bif\s*\(\s*!?\s*${v}\b[\s\S]{0,200}?\breturn\b`).test(rest),
   );
 }
 
@@ -310,6 +320,22 @@ describe("検出器そのものの性質", () => {
     const half =
       'const a = await checkRateLimit(req, "ai");\nif (a) return a;\nconst b = await checkRateLimit(req, "ai", key);';
     expect(rateLimited(half)).toBe(false);
+  });
+
+  it("その場で弾く形も受ける（変数に受けない書き方）", () => {
+    // customer/line-login が実際にこの形。代入形しか見ないと誤検知する。
+    expect(rateLimited('if (await checkRateLimit(req, "auth")) return backToLogin("rate_limited");')).toBe(true);
+    // インラインと代入形が混ざっていても、代入形の側が弾いていなければ false。
+    expect(
+      rateLimited(
+        'if (await checkRateLimit(req, "auth")) return err;\nconst b = await checkRateLimit(req, "ai", key);',
+      ),
+    ).toBe(false);
+  });
+
+  it("知らない書き方は「制限している」と読まない", () => {
+    // 数え漏らしを合格に倒すと、新しい書き方が入った瞬間に静かに穴が開く。
+    expect(rateLimited('const r = someWrapper(await checkRateLimit(req, "ai"));')).toBe(false);
   });
 
   it("呼んでいないものを「制限している」と言わない", () => {
