@@ -60,6 +60,11 @@ export default function AcademyCasesPage() {
   const [preview, setPreview] = useState<Record<string, PreviewContent>>({});
   /** 目視確認のチェック。preview を見てから入れてもらう。 */
   const [confirmed, setConfirmed] = useState<Record<string, boolean>>({});
+  /**
+   * preview が返した版の印。publish に持っていく。
+   * これが無い／古いと公開は弾かれる（別の人が後から再生成した場合など）。
+   */
+  const [previewToken, setPreviewToken] = useState<Record<string, string>>({});
 
   const fetchCases = async () => {
     setLoading(true);
@@ -91,7 +96,11 @@ export default function AcademyCasesPage() {
       const res = await fetch("/api/admin/academy/cases", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ case_id: caseId, action }),
+        body: JSON.stringify(
+          action === "publish"
+            ? { case_id: caseId, action, preview_token: previewToken[caseId] }
+            : { case_id: caseId, action },
+        ),
       });
       const json = await res.json().catch(() => null);
       if (!res.ok) {
@@ -101,6 +110,7 @@ export default function AcademyCasesPage() {
       if (action === "preview") {
         // 生成した文面を出し、確認前の状態にする。押した人が中身を見るまで公開させない。
         setPreview((p) => ({ ...p, [caseId]: json?.data?.preview ?? json?.preview }));
+        setPreviewToken((t) => ({ ...t, [caseId]: json?.data?.preview_token ?? json?.preview_token }));
         setConfirmed((c) => ({ ...c, [caseId]: false }));
         setExpanded(caseId);
         return;
@@ -311,7 +321,7 @@ export default function AcademyCasesPage() {
                       <dl className="space-y-2 text-xs">
                         <div>
                           <dt className="text-muted">要約</dt>
-                          <dd className="text-primary">{preview[c.id].ai_summary ?? "（生成できませんでした）"}</dd>
+                          <dd className="text-primary">{preview[c.id].ai_summary}</dd>
                         </div>
                         {preview[c.id].good_points.length > 0 && (
                           <div>
@@ -348,7 +358,7 @@ export default function AcademyCasesPage() {
 
                       <button
                         onClick={() => handleAction(c.id, "publish")}
-                        disabled={!confirmed[c.id] || publishing === c.id}
+                        disabled={!confirmed[c.id] || !previewToken[c.id] || publishing === c.id}
                         className="mt-3 text-xs px-4 py-2 bg-success text-white rounded-lg hover:bg-success/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                       >
                         {publishing === c.id ? "処理中..." : "確認したので公開する"}

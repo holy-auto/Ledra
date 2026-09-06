@@ -72,7 +72,31 @@ describe("Academy 事例公開の2段階ゲート", () => {
     expect(block).toMatch(/apiValidationError/);
   });
 
-  it("preview は is_published を触らない（確認前に公開されない）", () => {
-    expect(actionBlock(src, "preview")).not.toMatch(/is_published/);
+  it("preview は公開済みの行を書き換えない", () => {
+    // 2人が同じ候補を触ったとき、片方が公開した後にもう片方の遅れて返ってきた
+    // 生成結果が上書きすると、公開済みの文面が誰も見ていないものに差し替わる
+    // （knowledge_chunks は古いまま）。Codex の指摘で気づいた。
+    const block = actionBlock(src, "preview");
+    expect(block).toMatch(/\.eq\(\s*"is_published"\s*,\s*false\s*\)/);
+    // 0 行なら弾く。付けないと「更新できなかった」が成功として返る。
+    expect(block).toMatch(/updated\?\.length/);
+  });
+
+  it("preview は要約を作れなかったら成功を返さない", () => {
+    // 証明書が消えていると（FK は ON DELETE SET NULL）生成できない。
+    // そこで成功を返すと、中身が無いのに確認のチェックが入り、publish が必ず弾かれる。
+    expect(actionBlock(src, "preview")).toMatch(/if\s*\(!aiSummary\)/);
+  });
+
+  it("publish は preview が返した版の印を要求し、その版だけを更新する", () => {
+    // 「要約が入っている」は「この人が今の中身を見た」の証明にならない。
+    // 別の人が再生成すれば入れ替わるし、公開→非公開に戻した行にも要約は残る。
+    const block = actionBlock(src, "publish");
+    expect(block).toMatch(/if\s*\(!preview_token\)/);
+    // 読むときも更新するときも、その版に対してだけ効かせる。
+    const tokenFilters = block.match(/\.eq\(\s*"updated_at"\s*,\s*preview_token\s*\)/g) ?? [];
+    expect(tokenFilters.length).toBeGreaterThanOrEqual(2);
+    // 更新が 0 行なら止める。knowledge_chunks を二重に入れないため。
+    expect(block).toMatch(/publishedRows\?\.length/);
   });
 });

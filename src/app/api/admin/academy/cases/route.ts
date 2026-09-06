@@ -27,6 +27,13 @@ const academyCaseActionSchema = z.object({
   action: z.enum(["preview", "publish", "unpublish"], {
     message: "action は preview / publish / unpublish のいずれかです",
   }),
+  /**
+   * publish のときだけ必須。preview が返した版の印。
+   * 「要約が入っている」だけでは、**その人が今の中身を見た**ことにならない
+   * （別の人が後から再生成した／一度公開して戻した行にも要約は残る）。
+   * 見た版そのものを指させる。
+   */
+  preview_token: z.string().min(1).optional(),
 });
 
 export const runtime = "nodejs";
@@ -100,7 +107,7 @@ export async function POST(req: NextRequest) {
     if (!parsed.success) {
       return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
     }
-    const { case_id, action } = parsed.data;
+    const { case_id, action, preview_token } = parsed.data;
 
     const { admin } = createTenantScopedAdmin(caller.tenantId);
 
@@ -166,26 +173,47 @@ export async function POST(req: NextRequest) {
         }
       }
 
+      // 生成できなかったときは**成功を返さない**。証明書が消えている
+      // （FK が ON DELETE SET NULL なので candidate だけ残る）か、取得・生成に失敗した場合。
+      // ここで「生成できませんでした」を確認対象として見せると、確認する中身が無いのに
+      // チェックが入り、続く publish は必ず弾かれる。既存の文面も消さない。
+      if (!aiSummary) {
+        return apiValidationError("公開する内容を生成できませんでした。元の証明書が削除されていないか確認してください");
+      }
+
       // 生成した文面を**行に保存する**。公開時に作り直すと、確認した文面と
       // 公開される文面が別物になりうる。保存しておけば publish は反転するだけで済み、
       // AI の費用も二重に出ない。
-      const { error } = await admin
+      //
+      // `updated_at` を版の印として使う。publish はこの値を持ってきた場合だけ通る。
+      const previewToken = new Date().toISOString();
+
+      // **既に公開済みの行は更新しない。** 2人が同じ候補を触ったとき、
+      // 片方が公開した後にもう片方の遅れて返ってきた生成結果が上書きすると、
+      // 公開済みの文面が誰も見ていないものに差し替わる（knowledge_chunks は古いまま）。
+      const { data: updated, error } = await admin
         .from("academy_cases")
         .update({
-          ai_summary: aiSummary ?? null,
+          ai_summary: aiSummary,
           good_points: goodPoints,
           caution_points: cautionPoints,
           tags,
-          updated_at: new Date().toISOString(),
+          updated_at: previewToken,
         })
-        .eq("id", case_id);
+        .eq("id", case_id)
+        .eq("is_published", false)
+        .select("id");
 
       if (error) return apiInternalError(error);
+      if (!updated?.length) {
+        return apiValidationError("この事例は既に公開されています。非公開に戻してからやり直してください");
+      }
 
       return apiOk({
         message: "公開される内容を生成しました。内容を確認してください。",
+        preview_token: previewToken,
         preview: {
-          ai_summary: aiSummary ?? null,
+          ai_summary: aiSummary,
           good_points: goodPoints,
           caution_points: cautionPoints,
           tags,
@@ -195,22 +223,32 @@ export async function POST(req: NextRequest) {
 
     if (action === "publish") {
       // ここでは AI を呼ばない。preview で保存済みの文面をそのまま公開する。
+      //
+      // **「要約が入っている」は「この人が今の中身を見た」の証明にならない。**
+      // 別の人が後から再生成すれば中身は入れ替わるし、一度公開して非公開に戻した行にも
+      // 要約は残る。そこで preview が返した版の印（updated_at）を持ってきた場合だけ通し、
+      // 更新もその版に対してだけ行う。間に誰かが触っていれば 0 行になって弾かれる。
+      if (!preview_token) {
+        return apiValidationError("先に「内容を確認」で公開される内容を表示し、確認してください");
+      }
+
       const { data: reviewed } = await admin
         .from("academy_cases")
         .select("ai_summary, good_points, caution_points, tags")
         .eq("id", case_id)
-        .single();
+        .eq("updated_at", preview_token)
+        .eq("is_published", false)
+        .maybeSingle();
 
-      // 確認していない事例は公開させない。preview を通っていれば ai_summary が入る。
       if (!reviewed?.ai_summary) {
-        return apiValidationError("先に「内容を確認」で公開される内容を表示し、確認してください");
+        return apiValidationError("確認した内容が最新ではありません。「内容を再生成」でもう一度確認してください");
       }
 
       const goodPoints = (reviewed.good_points as string[] | null) ?? [];
       const cautionPoints = (reviewed.caution_points as string[] | null) ?? [];
       const tags = (reviewed.tags as string[] | null) ?? [];
 
-      const { error } = await admin
+      const { data: publishedRows, error } = await admin
         .from("academy_cases")
         .update({
           is_published: true,
@@ -219,9 +257,17 @@ export async function POST(req: NextRequest) {
           published_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         })
-        .eq("id", case_id);
+        .eq("id", case_id)
+        .eq("updated_at", preview_token)
+        .eq("is_published", false)
+        .select("id");
 
       if (error) return apiInternalError(error);
+      // 読んでから更新するまでの間に誰かが触った場合。knowledge_chunks を
+      // 二重に入れないよう、ここで止める。
+      if (!publishedRows?.length) {
+        return apiValidationError("確認した内容が最新ではありません。「内容を再生成」でもう一度確認してください");
+      }
 
       // ナレッジチャンクに追加（QA検索用）
       await admin.from("knowledge_chunks").insert({
