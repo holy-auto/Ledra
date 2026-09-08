@@ -74,6 +74,17 @@ export async function GET(req: NextRequest) {
     return apiNotFound("session not found");
   }
 
+  // code-review 指摘 (2026-09-08): Connect 未オンボーディングのテナントは
+  // stripeOptions が undefined になり、プラットフォーム共有アカウントへ
+  // 直接問い合わせる。session_id はクライアント入力で所有権チェックが
+  // 無いため、他テナントの session_id を知っていれば状態・金額・
+  // PaymentIntent ID を読めてしまう。qr-session 作成時に metadata.tenant_id
+  // を必ず刻んでいる（terminalCapture.ts の PaymentIntent 版と同じ形）ので
+  // 突合する。
+  if (session.metadata?.tenant_id !== caller.tenantId) {
+    return apiNotFound("session not found");
+  }
+
   // Stripe セッションのステータスを Ledra 用にマッピング
   // payment_status: "paid" | "unpaid" | "no_payment_required"
   // status: "open" | "complete" | "expired"
