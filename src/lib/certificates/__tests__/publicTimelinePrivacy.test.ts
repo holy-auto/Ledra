@@ -18,7 +18,7 @@ import { join, resolve } from "node:path";
 import { stripComments } from "@/lib/__tests__/sourceScan";
 
 const REPO = resolve(__dirname, "../../../..");
-const FILE = "src/lib/certificate/publicData.ts";
+const FILE = "src/lib/certificates/publicData.ts";
 /**
  * **コメントを落としてから照合する**（`sourceScan.ts` の規約）。
  * このファイルが検査する `publicData.ts` は、除外する型名を説明コメントにも書いている。

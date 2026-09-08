@@ -3,6 +3,41 @@
 > まだ決まっていないこと、判断に迷っていることを書く場所。決まったら
 > DECISION_LOG.md に移し、このファイルからは消す（削除履歴は git で追える）。
 
+## レート制限「2系統」の完全統合をどこまでやるか（2026-09-08）
+
+監査プラン F-3 は「レート制限2系統（lib/rateLimit.ts の
+checkRateLimit(key, opts) / lib/api/rateLimit.ts の
+checkRateLimit(req, preset)）を api/rateLimit.ts の custom() に吸収」を
+挙げていた。このうち **Redis クライアントの重複4本を共有シングルトンに
+一本化する部分は実施済み**（コミット参照: F-3 一部、docs/context/RELEASE_LOG.md）。
+
+未実施なのは「2つの呼び出し規約そのものを1つに統合し、lib/rateLimit.ts を
+消す」部分。保留にした理由:
+
+- `checkRateLimit(key, opts)` を直接呼ぶ経路が **33 ルート**残っている。
+  windowSec の値が 60 / 300 / 600 / 900 / 3600 と不揃いで、新系統
+  （`lib/api/rateLimit.ts`）の custom モードは `Ratelimit.slidingWindow(n, "60 s")`
+  で **60秒固定**（`limitPerMinute` 前提）。60秒以外の窓を持つ 20 ルート分は
+  新系統に windowSec 引数を足す拡張が要る。
+- 対象に OTP 発行（customer/verify-code, join/send-code 等）・
+  data-export（admin/agent/insurer の3本、3600秒窓）・contact/marketing-leads
+  （900秒窓）など、**B-H2/B-M1 で扱ったのと同じ種類の、悪用時の実害が大きい
+  経路**が多く含まれる。33ファイル一括の機械的な import 付け替えは、
+  キー生成（IP単体 / IP+tenant / IP+email の複合）まで含めて1件ずつ
+  「windowSec と識別子が変わっていないか」を検証しないと、
+  スロットルを静かに弱める側に倒すリスクがある。
+
+決めることは2つ:
+
+- **windowSec 引数を新系統に足して1系統にするか、それとも
+  「1系統に統合する」という目標自体を諦めて2系統のまま Redis 共有だけで
+  よしとするか。** 後者ならこの OPEN_QUESTIONS は「対応しない」で閉じられる。
+- 前者を選ぶ場合、**33ルートを1PRでまとめて動かすか、数本ずつ分割するか**。
+  分割するなら「OTP/認証系」「data-export系」「marketing/contact系」
+  くらいの単位が実害の大きさで自然に分かれる。
+
+公開区分: 公開可（実装判断メモであり機密情報なし）。
+
 ## MISTAKE_LEDGER に M-047 が2件ある（2026-09-07）
 
 main 上に同じ番号のエントリが2つある。**この PR のマージが作ったものではなく、

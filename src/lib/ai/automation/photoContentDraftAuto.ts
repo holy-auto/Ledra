@@ -16,7 +16,7 @@
  */
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { canUseFeature, normalizePlanTier } from "@/lib/billing/planFeatures";
-import { CERTIFICATE_IMAGE_BUCKET } from "@/lib/certificateImages";
+import { CERTIFICATE_IMAGE_BUCKET } from "@/lib/certificateImages/constants";
 import {
   draftPhotoContent,
   pickImagesForContentDraft,

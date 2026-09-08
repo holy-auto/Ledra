@@ -4,7 +4,7 @@ import {
   type CertificateMediaRow,
   type ResolvedCertificateMedia,
 } from "@/lib/certificateMedia";
-import { CERTIFICATE_IMAGE_BUCKET } from "@/lib/certificateImages";
+import { CERTIFICATE_IMAGE_BUCKET } from "@/lib/certificateImages/constants";
 
 /**
  * scheduled_date (YYYY-MM-DD) と start_time (HH:MM[:SS]) を ISO 8601 文字列に

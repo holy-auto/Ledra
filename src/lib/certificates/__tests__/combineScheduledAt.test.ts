@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { combineScheduledAt } from "@/lib/certificate/publicData";
+import { combineScheduledAt } from "@/lib/certificates/publicData";
 
 describe("combineScheduledAt", () => {
   it("combines date and time into ISO 8601", () => {

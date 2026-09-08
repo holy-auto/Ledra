@@ -30,7 +30,7 @@ import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
 import { apiOk, apiUnauthorized, apiForbidden, apiValidationError, apiInternalError } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
-import { CERTIFICATE_IMAGE_BUCKET } from "@/lib/certificateImages"; // 共有 "assets" バケット
+import { CERTIFICATE_IMAGE_BUCKET } from "@/lib/certificateImages/constants"; // 共有 "assets" バケット
 import { detectMagicByteMime } from "@/lib/media/magicBytes";
 import { stripGpsAndReadExif } from "@/lib/anchoring/imageExif";
 
