@@ -23,7 +23,7 @@ import * as ImagePicker from "expo-image-picker";
 
 import { supabase } from "@/lib/supabase";
 import { useAuthStore } from "@/stores/authStore";
-import { mobileApi } from "@/lib/api";
+import { mobileMultipart } from "@/lib/api";
 import { LedraButton } from "@/components/ui";
 import { colors, spacing, radius, typography, shadows } from "@/constants/tokens";
 
@@ -154,20 +154,14 @@ export default function VehicleNewScreen() {
         name: "shakken.jpg",
       } as unknown as Blob);
 
-      const { data: sessionData } = await supabase.auth.getSession();
-      const token = sessionData?.session?.access_token;
-      const apiBase = process.env.EXPO_PUBLIC_API_URL!;
-      const response = await fetch(
-        `${apiBase.replace("/api/mobile", "")}/api/vehicles/parse-shakken`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-          body: formData,
-        },
+      // D-A2 是正 (2026-09-08): cookie 認証専用の Web 版ルートを Bearer トークン付きで
+      // 叩いており（server.ts に Bearer 処理が無いため）常に 401 だった。
+      // Bearer トークン認証に対応した /api/mobile/vehicles/parse-shakken を
+      // mobileMultipart 経由で呼ぶ。
+      const res = await mobileMultipart<{ ok: boolean; extracted: OcrResult }>(
+        "/vehicles/parse-shakken",
+        formData,
       );
-      const res = (await response.json()) as { ok: boolean; extracted: OcrResult };
 
       if (res.ok && res.extracted) {
         const e = res.extracted;
