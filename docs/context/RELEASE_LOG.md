@@ -4,6 +4,34 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-09-08 `is_pii_disclosed()` が本番で常に落ちていたのを直し、同じ形を機械が検査するようにした
+
+PR #1016 をマージ（`a6da088`、2026-09-08 00:39 UTC）。`DB migrate (apply to production)`
+run #65 が **success**（[run 34174047498](https://github.com/holy-auto/Ledra/actions/runs/34174047498)）で
+`20260907000000_qualify_refs_in_empty_search_path_functions.sql` が本番へ入った。
+
+- **直したもの。** `is_pii_disclosed(certificate_id, insurer_id)` は `SET search_path = ''`
+  を持ちながら本体が `FROM pii_disclosure_consents` と非修飾のままで、**呼べば必ず 42P01**
+  で落ちていた。本体を `public.` 修飾して再作成。属性（SECURITY DEFINER / STABLE /
+  `search_path=''`）は変えていない。
+- **本番で実測して確定。** 適用前は `ERROR: 42P01: relation "pii_disclosure_consents"
+  does not exist`、適用後は `false` が返る。あわせて同じ経路で壊れていた
+  `insurer_accessible_tenant_ids`（9/3 に `20260903123728` で解消済み）と2本まとめて確認し、
+  どちらも `search_path=""` が残っていること・本体が修飾済みであること・
+  `anon` / `authenticated` に EXECUTE が無いことを確かめた。
+- **同じ穴を塞ぐ検査を常設した。** `scripts/replay-migrations.mjs` が、空 DB への再生後に
+  `search_path=""` を持つ SECURITY DEFINER 関数の `pg_get_functiondef()` を1本ずつ流し直す。
+  通れば健全、落ちれば呼んでも落ちる。**判定は自前の正規表現ではなく Postgres の
+  `check_function_bodies` にさせる**ので、非修飾のテーブル・関数呼び出し・`USING` 句を
+  同じ1回で拾う。検査が空振りしていないことは毎回、わざと壊した1本（拾えること）と
+  健全な1本（拾わないこと）の**対で**確かめてから本走査に入る。
+- **この壊れ方は `CREATE` では作れない。** `check_function_bodies` が SET 句を適用した状態で
+  本体を検証して弾くため、入り込む経路は「正常に作ったあとで `ALTER FUNCTION ... SET
+  search_path`」だけ。**ALTER は本体を再検証しない。** 落ちるのは実行時だけなので、
+  マイグレーションも型検査も CI も素通りしていた。
+- 発見の経路は「配布資料（#982）に載せる保険会社ポータルの検索画面を撮ろうとしたら 500」。
+  8/31 に見つけてから本番反映まで8日かかった。誰もこの画面を実行していなかった。
+
 ## 2026-09-07 陳腐化チェックが本番で初めて走り、初回から3件の事故を止めた
 
 `stale-migration-check.yml`（#1027 で導入）の**初回本番実行**（2026-09-07 04:44 UTC。
