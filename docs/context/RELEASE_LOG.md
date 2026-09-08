@@ -4,6 +4,48 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-09-08 plpgsql を静的検査の対象に入れたら、本番の不具合が2件出た（本番未適用）
+
+#1016 の未解決事項を潰しに行った結果。**`scripts/replay-migrations.mjs` に
+`plpgsql_check` を足した初回の走査で2件出た。**
+
+| 関数 | 症状 | 見え方 |
+|---|---|---|
+| `insurer_get_certificate` | 42702 `column reference "tenant_id" is ambiguous` | 保険会社ポータルの証明書詳細がエラー |
+| `agent_rankings` | 42883 `operator does not exist: date >= text` | **200 で空のランキング**（画面は「該当なし」） |
+
+- **`insurer_get_certificate` は `is_pii_disclosed` を呼ぶ手前で落ちていた。**
+  `RETURNS TABLE` の出力列 `tenant_id` と `insurer_tenant_access.tenant_id` が同名で、
+  plpgsql の `variable_conflict` は既定で `error`。つまり #1016 で直した関数には
+  **到達していなかった**。本番の `insurer_access_logs` は `action='view'` が**0件**で、
+  この機能は一度も成功していない。**部品を直して機能を直したと書いていた**
+  （MISTAKE_LEDGER M-061）。
+- **`agent_rankings` は失敗が見えない形で壊れていた。** 呼び出し元
+  `/api/agent/rankings` が `const { data } = await supabase.rpc(...)` と書いて `error` を
+  捨てているため、落ちても 200 と空配列が返る。本番で
+  `select public.agent_rankings('month')` を実行して 42883 を再現済み。
+- **修正**（`20260908005952`）。あわせて2本とも `search_path` を `''` に締め、本体を
+  `public.` で修飾した（`20260404000000` の一括適用から漏れて `'public, extensions'` の
+  まま残っており、リポジトリの lint にも違反していた）。**本番未適用** —— 2026-09-07 に
+  決めたとおり PR をマージして `db-migrate` に任せる。
+- **再生 DB で機能ごと通して確認済み**: 同意なし → `山***` / `pii_disclosed=f`、
+  同意あり → 実名 / `pii_disclosed=t`、`insurer_access_logs` に2行。
+  `agent_rankings` は JSON を返す。
+- **検査の作り**: `plpgsql_check_function()` を全 plpgsql 関数に当てる。トリガ関数は
+  `relid` を渡さないと検査できないので、その関数を使っているトリガから1つ取って渡す
+  （どのトリガからも使われていないものは対象外。現在0本）。陽性・陰性の対照を対で置き、
+  対照が通ったときだけ本走査に進む。CI は `REQUIRE_PLPGSQL_CHECK=1` で、**拡張が
+  入らなかったときに黙って飛ばさせない**。
+- **偽陽性は allowlist ではなく再生 DB の側を直した。** `register_insurer_v2` の4件は
+  `auth.users.instance_id` / `auth.identities.provider_id` が `bootstrap.sql` の簡略
+  スキーマに無いことが原因で、本番には在る（実測確認）。auth スキーマを本番の
+  列定義どおりに書き直した。
+- **ビューは構造的に免疫**であることも実測した。ビューの定義は作成時に解決されて
+  保存されるので（`search_path='__vs'` で作ったビューの定義が `__vs.t` に書き換わる）、
+  `search_path=''` で呼んでも動く。トリガ関数は関数なので上の検査に含まれる。
+- **残る上限**: 動的 SQL（`EXECUTE format(...)`）の中身。文字列が組み上がるのは
+  実行時なので、道具を変えても静的には見えない。
+
 ## 2026-09-08 `is_pii_disclosed()` が本番で常に落ちていたのを直し、同じ形を機械が検査するようにした
 
 PR #1016 をマージ（`a6da088`、2026-09-08 00:39 UTC）。`DB migrate (apply to production)`

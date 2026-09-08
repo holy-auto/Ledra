@@ -6,6 +6,23 @@
 
 最終更新: 2026-09-08
 
+> 2026-09-08 追記(2): **上の「PII 開示判定が本番で動く」は誤りだった。訂正する。**
+> 直したのは関数1本で、それを使う**証明書詳細 `insurer_get_certificate` は別の理由で
+> 壊れたまま**だった —— `RETURNS TABLE` の出力列 `tenant_id` と
+> `insurer_tenant_access.tenant_id` が同名で 42702、`is_pii_disclosed` を**呼ぶ手前で
+> 落ちる**。本番の `insurer_access_logs` は `action='view'` が**0件**で、
+> 保険会社ポータルの証明書詳細は**一度も成功していない**（MISTAKE_LEDGER M-061）。
+> あわせて **代理店ランキング `agent_rankings` も壊れていた**（`date >= text` で 42883）。
+> こちらは呼び出し元が `rpc()` の `error` を捨てているため **200 で空のランキング**が
+> 返り、画面には「該当なし」と出ていた。**失敗が見えない形の故障。**
+> 2本とも `20260908005952` で修正し、`search_path` も `''` に締めた。**本番未適用**
+> （`db-migrate` 待ち）。再生 DB では同意なし＝`山***` / 同意あり＝実名、監査ログも
+> 記録されることを実測済み。
+> 見つけたのは **`plpgsql_check` を `scripts/replay-migrations.mjs` の常設検査に
+> 足したから**。plpgsql の本体は `CREATE` 時に構文しか検証されないので、この層は
+> それまで静的検査から丸ごと漏れていた。CI では `REQUIRE_PLPGSQL_CHECK=1` を渡し、
+> 拡張が入らなかったときに黙って飛ばさせない。
+
 > 2026-09-08 追記: **保険会社ポータルの PII 開示判定 `is_pii_disclosed()` が本番で常に
 > 落ちていたのを直した**（#1016、`a6da088`。`db-migrate` run #65 success）。
 > `SET search_path = ''` を後付けしたとき本体のスキーマ修飾を忘れた2本のうち、残っていた
