@@ -188,7 +188,12 @@ export default function HomeScreen() {
     const todayCompleted = todayData.filter((r) => r.status === "completed").length;
     const inProgressCount = todayData.filter((r) => r.status === "in_progress" || r.status === "arrived").length;
     const awaitingConfirmation = todayData.filter((r) => r.signoff_status === "awaiting").length;
-    const notStarted = todayTotal - todayCompleted - inProgressCount - awaitingConfirmation;
+    // code-review 指摘 (2026-09-08): signoff_status は status とは独立した別軸で、
+    // status='completed' かつ signoff_status='awaiting'（施工完了・お客様サイン待ち）
+    // は普通に起こる組み合わせ（src/lib/signoff/state.ts 参照）。awaitingConfirmation を
+    // ここでも引くと該当予約が二重に差し引かれ、「未完了」が過小に出る。
+    // 未完了は status 単独の3分割（完了 / 進行中 / それ以外）だけで決める。
+    const notStarted = todayTotal - todayCompleted - inProgressCount;
 
     // Build issues
     const issues: Issue[] = [];

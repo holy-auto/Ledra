@@ -40,4 +40,15 @@ assert.match(
   "(tabs)/index.tsx の todayRes クエリが signoff_status を select していない",
 );
 
+// code-review 指摘の回帰確認 (2026-09-08): status と signoff_status は独立した別軸で、
+// status='completed' かつ signoff_status='awaiting'（施工完了・お客様サイン待ち）は
+// 普通に起こる組み合わせ (src/lib/signoff/state.ts 参照)。notStarted の計算式が
+// awaitingConfirmation をもう一度引くと、この組み合わせの予約が二重に差し引かれ、
+// 「未完了」ピルが過小に出る。notStarted は status 単独の3分割だけで決めること。
+assert.match(
+  src,
+  /const notStarted = todayTotal - todayCompleted - inProgressCount;/,
+  "notStarted の計算に awaitingConfirmation が混ざっている（status と signoff_status の二重差引になる）",
+);
+
 console.log("homeStatusVocab.check.ts OK");

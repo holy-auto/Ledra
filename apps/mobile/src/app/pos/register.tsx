@@ -40,7 +40,7 @@ export default function PosRegisterScreen() {
   // path param として要求するが、以前は stores.id を送っていたため register_id の
   // FK 制約に落ちて常に失敗していた（レジ機能が動かない）。この画面にレジ選択 UI は
   // 無い（1店舗＝1レジのモバイルPOS運用を前提）ので、店舗の有効なレジを1件引く。
-  const { data: register } = useQuery<{ id: string } | null>({
+  const { data: register, isLoading: registerLoading } = useQuery<{ id: string } | null>({
     queryKey: ["register", selectedStore?.id],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -143,7 +143,12 @@ export default function PosRegisterScreen() {
     },
   });
 
-  if (isLoading) {
+  // code-review 指摘 (2026-09-08): register クエリと session クエリは並行して
+  // 走るが、以前は session 側の isLoading だけで画面をガードしていた。
+  // session が先に解決すると、register がまだ取得中でも操作可能になり、
+  // その間にレジ開け/締めを押すと register===undefined で
+  // 「この店舗のレジが見つかりません」という誤ったエラーが出ていた。
+  if (isLoading || registerLoading) {
     return (
       <View style={styles.center}>
         <ActivityIndicator size="large" />
