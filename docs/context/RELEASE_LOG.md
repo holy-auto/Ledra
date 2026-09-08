@@ -4,7 +4,26 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
-## 2026-09-07 out-of-order 検査を本番台帳と比べるようにし、止まっていた本番の適用を再開させた（PR #1044）
+## 2026-09-08 型の再生成を main へ入れた。自動化は「PR が立たない・CI が走らない」二重の穴で止まっていた（PR #1049 / `37dbe4f6`）
+
+- **`db-typegen.yml` は型の再生成と `chore/db-typegen` への push には成功していたが、
+  最後の PR 作成ステップだけが落ちていた** ——
+  `GitHub Actions is not permitted to create or approve pull requests`。
+  PR が立たないので、**再生成された型がブランチに置き去りになっていた**。
+- 入った変更: `documents.public_id`（#966）、`certificates.job_order_id` /
+  `staff_members.linked_tenant_id`（#1020）、および #1045 で削除された管理外テーブルの
+  型の除去。差分は 14804 追加 / 15725 削除の**純減**。大半は改行位置の違い
+  （生成器か Prettier の折り返し幅の変化）で、生成物のため手書きコードは含まない。
+- **CI はこのブランチでは構造上走らない。** `db-typegen.yml` が `GITHUB_TOKEN` で
+  force-push しており、**`GITHUB_TOKEN` による push は `synchronize` を発火させない**
+  （GitHub の再帰防止仕様）。PR を人が立てた時だけ `opened` で走り、以後の自動更新では
+  走らない。代わりにマージ直前の main 上で検証した（tsc エラー0 /
+  `vitest --coverage` 542ファイル・5503件通過 / `check-schema` OK / `lint:migrations` OK）。
+- **残課題**: 自動化を完全に回すには「Actions による PR 作成の許可」**と**
+  「push トークンを PAT / GitHub App へ変更」の**両方**が要る。片方だけでは
+  「PR は自動で立つが誰も検証していない」状態になる。OPEN_QUESTIONS に起票。
+
+## 2026-09-07 out-of-order 検査を本番台帳と比べるようにし、止まっていた本番の適用を再開させた（PR #1044 / `2868e397`、2026-09-08 マージ）
 
 - **本番の適用が19時間止まっていた**（#1020 のマージ 2026-09-06 12:57 UTC 〜
   2026-09-07 14:56 UTC）。**解消したのは #966 のマージ**で、残っていた不変条件1
