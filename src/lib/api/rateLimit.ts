@@ -1,6 +1,6 @@
 import { Ratelimit } from "@upstash/ratelimit";
-import { Redis } from "@upstash/redis";
 import { apiError } from "./response";
+import { getRedis } from "@/lib/upstash";
 
 /**
  * Upstash Redis ベースのレート制限
@@ -10,18 +10,11 @@ import { apiError } from "./response";
  *   UPSTASH_REDIS_REST_TOKEN
  *
  * 未設定時はレート制限をスキップ（開発環境向け）
+ *
+ * F-3 是正: Redis クライアントは src/lib/upstash.ts の共有シングルトンを使う
+ * （以前はこのファイル・src/lib/rateLimit.ts・src/lib/api/idempotency.ts が
+ * それぞれ独自に new Redis() していた）。
  */
-
-let redis: Redis | null = null;
-
-function getRedis(): Redis | null {
-  if (redis) return redis;
-  const url = process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
-  if (!url || !token) return null;
-  redis = new Redis({ url, token });
-  return redis;
-}
 
 /** プリセット: 一般 API (60 req / 60s) */
 const generalLimiter = () => {

@@ -12,7 +12,7 @@
  */
 
 import { Ratelimit } from "@upstash/ratelimit";
-import { Redis } from "@upstash/redis";
+import { getRedis } from "@/lib/upstash";
 
 // ---------------------------------------------------------------------------
 // Types (unchanged)
@@ -34,22 +34,10 @@ type RateLimitResult = {
 };
 
 // ---------------------------------------------------------------------------
-// Upstash Redis singleton
+// Upstash Redis (shared singleton, src/lib/upstash.ts — F-3 是正: 以前はこの
+// ファイル・src/lib/api/rateLimit.ts・src/lib/api/idempotency.ts がそれぞれ
+// 独自に new Redis() していた。env は同一なので接続を1本に統一)
 // ---------------------------------------------------------------------------
-
-let redis: Redis | null | undefined; // undefined = not initialised yet
-
-function getRedis(): Redis | null {
-  if (redis !== undefined) return redis;
-  const url = process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
-  if (url && token) {
-    redis = new Redis({ url, token });
-  } else {
-    redis = null;
-  }
-  return redis;
-}
 
 // Cache Ratelimit instances per (limit, windowSec) pair to avoid re-creation.
 const limiterCache = new Map<string, Ratelimit>();
