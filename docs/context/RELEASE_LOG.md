@@ -4,6 +4,24 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-09-08 本番データを流し込めない状態を解消した（tenants.plan_tier）
+
+マイグレーションから作り直した DB へ本番データを入れると、**24 テナント中 20 件が
+弾かれる**状態だった。`tenants.plan_tier` の check が (mini, standard, pro) の 3 値で、
+本番の enum が持つ `free` / `starter` を受け付けなかったため。
+
+- `20260908010000` で check を enum と同じ 5 値へ広げた（`NOT VALID` → `VALIDATE`）
+- 本番では `tenants_plan_tier_check` 自体が存在しない（既に enum）ので **no-op**
+- 再生 DB で `free` / `starter` / `mini` が投入でき、enum に無い値は弾かれることを実測
+
+列の**型名**の食い違い（text か enum か）は残した。揃えるには
+`alter column ... type` が要り、`lint:migrations` の zero-downtime 検査に掛かる。
+本番では何も動かない変更のために本番の中核表を書き換える手順を組むのは釣り合わないと判断
+（DECISION_LOG 2026-09-08）。
+
+調査中に**ポリシー層の別ドリフト**を発見し、OPEN_QUESTIONS に起票した。
+`certificates` の anon 向け SELECT ポリシー 2 本が本番にしか無い。
+
 ## 2026-09-07 陳腐化チェックが本番で初めて走り、初回から3件の事故を止めた
 
 `stale-migration-check.yml`（#1027 で導入）の**初回本番実行**（2026-09-07 04:44 UTC。
