@@ -13,6 +13,7 @@ const h = vi.hoisted(() => {
   const h: any = {
     createUserCalls: [] as any[],
     signInWithOtpCalls: [] as any[],
+    sendEmailCalls: [] as any[],
     createUserError: null as any,
     otpError: null as any,
   };
@@ -62,6 +63,12 @@ vi.mock("@/lib/supabase/admin", () => ({ createServiceRoleAdmin: () => h.makeSer
 vi.mock("@/lib/supabase/server", () => ({ createClient: async () => h.makeServerClient() }));
 vi.mock("next/headers", () => ({ cookies: async () => ({ get: () => undefined, delete: () => {} }) }));
 vi.mock("@/lib/slack", () => ({ notifySlack: async () => {} }));
+vi.mock("@/lib/email/sendEmail", () => ({
+  sendEmail: async (msg: any) => {
+    h.sendEmailCalls.push(msg);
+    return { ok: true };
+  },
+}));
 
 import { POST } from "../route";
 
@@ -76,6 +83,7 @@ function req(body: any) {
 beforeEach(() => {
   h.createUserCalls = [];
   h.signInWithOtpCalls = [];
+  h.sendEmailCalls = [];
   h.createUserError = null;
   h.otpError = null;
 });
@@ -109,5 +117,26 @@ describe("POST /api/signup", () => {
     expect(h.createUserCalls[0].email_confirm).toBe(false);
     expect(h.createUserCalls[0].password).toBeUndefined();
     expect(h.signInWithOtpCalls.length).toBe(1);
+  });
+
+  // B-M3 回帰確認 (2026-09-08): 既に登録済みのメールでも 409 ではなく、
+  // 未登録時と見分けの付かない成功レスポンスを返す（列挙オラクル対策）。
+  it("既に登録済みのメールでも 409 ではなく成功と同じ形のレスポンスを返す", async () => {
+    h.createUserError = { message: "A user with this email address has already been registered" };
+    const res: any = await POST(
+      req({
+        email: "existing@example.co.jp",
+        password: "P@ssw0rd123",
+        shop_name: "テスト工房3",
+      }),
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.ok).toBe(true);
+    // テナントも作らない。
+    expect(h.signInWithOtpCalls.length).toBe(0);
+    // 本人にだけ案内メールを送る。
+    expect(h.sendEmailCalls.length).toBe(1);
+    expect(h.sendEmailCalls[0].to).toBe("existing@example.co.jp");
   });
 });

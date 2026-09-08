@@ -24,6 +24,38 @@ function generateSlug(name: string): string {
   return `${base}-${suffix}`;
 }
 
+/**
+ * B-M3 是正 (2026-09-08): 既に登録済みのメールへ再度サインアップが試みられたときの
+ * 案内メール。本人以外は結果を判別できないよう、送信失敗を呼び出し元に伝播させない
+ * (best-effort)。
+ */
+async function notifyAlreadyRegistered(email: string, req: NextRequest): Promise<void> {
+  const { sendEmail } = await import("@/lib/email/sendEmail");
+  const baseUrl = resolveBaseUrl({ req, preferRequestOrigin: true });
+  const html = `
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 480px; margin: 0 auto; padding: 24px;">
+      <p style="color: #1d1d1f; line-height: 1.6;">
+        このメールアドレスで Ledra の新規登録が試みられましたが、既にアカウントが存在するため
+        新しい店舗は作成されませんでした。
+      </p>
+      <p style="color: #1d1d1f; line-height: 1.6;">
+        心当たりがある場合は、以下からログインしてください。パスワードをお忘れの場合は
+        ログイン画面の「パスワードを忘れた方」からリセットできます。
+      </p>
+      <p style="margin: 24px 0;">
+        <a href="${baseUrl}/login" style="color: #0071e3;">${baseUrl}/login</a>
+      </p>
+      <p style="color: #86868b; font-size: 13px;">
+        心当たりのない場合は、このメールを無視してください。
+      </p>
+    </div>
+  `;
+  const result = await sendEmail({ to: email, subject: "【Ledra】このメールアドレスは登録済みです", html });
+  if (!result.ok) {
+    throw new Error(`email_failed:${result.status ?? "unknown"}`);
+  }
+}
+
 export async function POST(req: NextRequest) {
   const limited = await checkRateLimit(req, "auth");
   if (limited) return limited;
@@ -58,12 +90,17 @@ export async function POST(req: NextRequest) {
 
     if (authError) {
       if (authError.message?.includes("already been registered") || authError.message?.includes("already exists")) {
-        return apiError({
-          code: "conflict",
-          message: "このメールアドレスは既に登録されています。ログインしてください。",
-          status: 409,
-          data: { messages: ["このメールアドレスは既に登録されています。ログインしてください。"] },
-        });
+        // B-M3 是正 (2026-09-08): 409 で「登録済み」を返すと、任意のメールアドレスを
+        // 送るだけで Ledra 利用テナントの存在有無を列挙できる（列挙オラクル）。
+        // 未登録時と区別できない 200 を返し、既存の持ち主にだけメールで案内する。
+        // フロントは成功レスポンス後に signInWithPassword を試み、攻撃者はパスワードを
+        // 知らないため失敗して「確認メールを送信しました」画面に落ちる（B-H3 と同じ経路）。
+        // 未登録時 (signInWithOtp 送信) と時間差が出てタイミングで区別できないよう
+        // 待ち合わせる (失敗しても成功レスポンスは変えない)。
+        await notifyAlreadyRegistered(email, req).catch((e) =>
+          console.error("[signup] already-registered notice failed:", e),
+        );
+        return apiOk({ ok: true });
       }
       return apiInternalError(authError, "signup: auth user creation");
     }

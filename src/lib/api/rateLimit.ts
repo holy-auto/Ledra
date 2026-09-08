@@ -220,7 +220,11 @@ export async function checkRateLimit(
   // for high-security deployments where DDoS exposure during a Redis outage
   // is worse than a brief availability hit. Defaults to fail-open to match
   // historical behavior — opt in explicitly.
-  const failClosed = process.env.RATE_LIMIT_FAIL_CLOSED === "1";
+  //
+  // B-M1 是正 (2026-09-08): "auth" / "sensitive" だけは env に関わらず常にフェイルクローズ。
+  // これらは OTP 発行・パスワード操作等、Redis 障害時に無制限化すると被害が大きい経路。
+  // 「設定を入れ忘れたら守られていない」を無くすため、env に依存させず固定する。
+  const failClosed = process.env.RATE_LIMIT_FAIL_CLOSED === "1" || preset === "auth" || preset === "sensitive";
 
   const limiter = getLimiter(preset, limitPerMinute);
   if (!limiter) {

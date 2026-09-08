@@ -12,6 +12,8 @@ const h = vi.hoisted(() => {
     rows: [] as any[],
     nextId: 1,
     lastEmailHtml: "" as string,
+    emailExists: false,
+    sentEmails: [] as any[],
   };
 
   function makeQueryable() {
@@ -68,7 +70,7 @@ const h = vi.hoisted(() => {
       return makeQueryable();
     },
     rpc: async (fn: string) => {
-      if (fn === "check_auth_email_exists") return { data: false, error: null };
+      if (fn === "check_auth_email_exists") return { data: h.emailExists, error: null };
       throw new Error(`unexpected rpc: ${fn}`);
     },
   });
@@ -83,8 +85,9 @@ vi.mock("@/lib/rateLimit", () => ({
 }));
 vi.mock("@/lib/api/rateLimit", () => ({ checkRateLimit: async () => null }));
 vi.mock("@/lib/email/sendEmail", () => ({
-  sendEmail: async (msg: { html?: string }) => {
+  sendEmail: async (msg: { to?: string; subject?: string; html?: string }) => {
     h.lastEmailHtml = msg.html ?? "";
+    h.sentEmails.push(msg);
     return { ok: true };
   },
 }));
@@ -123,6 +126,8 @@ beforeEach(() => {
   h.rows = [];
   h.nextId = 1;
   h.lastEmailHtml = "";
+  h.emailExists = false;
+  h.sentEmails = [];
 });
 
 describe("送信のみ（コード未入力）では登録を完了できない (G-H2 回帰確認)", () => {
@@ -165,5 +170,20 @@ describe("正規のフロー", () => {
     const res: any = await verifyCode(jsonReq({ email: EMAIL, code: "000000" }));
     expect(res.status).toBe(400);
     expect(h.rows.some((r: any) => r.verified === true)).toBe(false);
+  });
+});
+
+describe("既に登録済みのメール (B-M3 回帰確認)", () => {
+  it("send-code は 409 ではなく未登録時と同じ形の成功レスポンスを返し、OTPは発行しない", async () => {
+    h.emailExists = true;
+    const res: any = await sendCode(jsonReq({ email: EMAIL }));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.ok).toBe(true);
+    // コードは発行・保存されない。
+    expect(h.rows.length).toBe(0);
+    // 本人にだけ案内メールが飛ぶ。
+    expect(h.sentEmails.length).toBe(1);
+    expect(h.sentEmails[0].to).toBe(EMAIL);
   });
 });

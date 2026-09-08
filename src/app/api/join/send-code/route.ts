@@ -4,7 +4,7 @@ import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
 import { emailSchema } from "@/lib/validation/schemas";
 import { sha256Hex } from "@/lib/customerPortalServer";
-import { apiJson, apiValidationError, apiInternalError, apiError } from "@/lib/api/response";
+import { apiJson, apiValidationError, apiInternalError } from "@/lib/api/response";
 
 export const runtime = "nodejs";
 
@@ -45,6 +45,32 @@ async function sendEmailResend(to: string, code: string) {
   if (!result.ok) {
     console.error("[join/send-code] Email send failed", result.status, result.error);
     throw new Error("email_send_failed");
+  }
+}
+
+/**
+ * B-M3 是正 (2026-09-08): 既に登録済みのメールへ send-code が呼ばれたときの案内。
+ * OTP は発行せず、本人にだけログイン案内を送る。
+ */
+async function sendAlreadyRegisteredNotice(to: string): Promise<void> {
+  const html = `
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 480px; margin: 0 auto; padding: 24px;">
+      <p style="color: #1d1d1f; line-height: 1.6;">
+        このメールアドレスで Ledra 加盟店登録の確認コード発行が試みられましたが、
+        既にアカウントが存在するため確認コードは発行されませんでした。
+      </p>
+      <p style="color: #1d1d1f; line-height: 1.6;">
+        心当たりがある場合は、ログイン画面からログインしてください。
+      </p>
+      <p style="color: #86868b; font-size: 13px;">
+        心当たりのない場合は、このメールを無視してください。
+      </p>
+    </div>
+  `;
+  const { sendEmail } = await import("@/lib/email/sendEmail");
+  const result = await sendEmail({ to, subject: "【Ledra】このメールアドレスは登録済みです", html });
+  if (!result.ok) {
+    console.error("[join/send-code] already-registered notice failed", result.status, result.error);
   }
 }
 
@@ -95,7 +121,12 @@ export async function POST(req: Request) {
     p_email: email,
   });
   if (emailExists === true) {
-    return apiError({ code: "conflict", message: "このメールアドレスは既に登録されています", status: 409 });
+    // B-M3 是正 (2026-09-08): 409 で「登録済み」を返すと、任意のメールを送るだけで
+    // 保険会社アカウントの存在有無を列挙できる（列挙オラクル）。OTP を発行せず、
+    // 未登録時と見分けの付かない成功レスポンスを返し、本人にだけメールで案内する。
+    // タイミングで区別できないよう送信を待ち合わせる。
+    await sendAlreadyRegisteredNotice(email);
+    return apiJson({ ok: true, message: "確認コードを送信しました" });
   }
 
   // Invalidate old codes for this email by expiring them immediately.
