@@ -165,11 +165,18 @@ export async function checkRateLimit(key: string, opts: RateLimitOptions): Promi
  * 迂回できた。
  *
  * 優先順位:
- *   1. `x-forwarded-for` の**先頭**（Vercel のエッジが上書きするため、
- *      ここより後段でクライアントが偽装できない）
- *   2. `x-real-ip`（無ければフォールバック）
- *   3. `TRUST_CF_HEADERS=1` を明示設定した環境（Cloudflare を前段に置く
- *      構成）でのみ `cf-connecting-ip` / `true-client-ip` を追加で信頼する。
+ *   - 既定（Vercel 直配信、`TRUST_CF_HEADERS` 未設定）:
+ *     1. `x-forwarded-for` の**先頭**（Vercel のエッジが上書きするため、
+ *        ここより後段でクライアントが偽装できない）
+ *     2. `x-real-ip`（無ければフォールバック）
+ *   - `TRUST_CF_HEADERS=1`（Cloudflare を前段に置く構成）:
+ *     1. `cf-connecting-ip` / `true-client-ip`（CF エッジが検証・設定する値で
+ *        クライアントは偽装できない。**必ず最優先** — Cloudflare は
+ *        クライアントが送った `x-forwarded-for` を上書きせず末尾に追記するだけ
+ *        なので、こちらを先に見ると `x-forwarded-for` の**先頭**（クライアントが
+ *        自由に書ける）を拾ってしまい、TRUST_CF_HEADERS を有効にした意味が
+ *        丸ごと消える。code-review 指摘で発覚 (2026-09-08)）
+ *     2. `x-forwarded-for` の先頭 / `x-real-ip`（CF ヘッダが無いときのみ）
  *
  * いずれも取得できないときは `unknown:<UA-hash>` を返し、全員が同じバケットを
  * 共有しないようにする (DOS 緩和)。
@@ -177,11 +184,8 @@ export async function checkRateLimit(key: string, opts: RateLimitOptions): Promi
 export function getClientIp(req: Request): string {
   const h = req.headers;
   const trustCfHeaders = process.env.TRUST_CF_HEADERS === "1";
-  const ip =
-    h.get("x-forwarded-for")?.split(",")[0]?.trim() ||
-    h.get("x-real-ip")?.trim() ||
-    (trustCfHeaders && (h.get("cf-connecting-ip")?.trim() || h.get("true-client-ip")?.trim())) ||
-    undefined;
+  const cfIp = trustCfHeaders ? h.get("cf-connecting-ip")?.trim() || h.get("true-client-ip")?.trim() : undefined;
+  const ip = cfIp || h.get("x-forwarded-for")?.split(",")[0]?.trim() || h.get("x-real-ip")?.trim() || undefined;
   if (ip) return ip;
 
   // unknown を 1 バケット共有にすると、匿名 UA からのスパイクで全員が 429 に

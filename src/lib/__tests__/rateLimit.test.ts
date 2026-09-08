@@ -117,6 +117,25 @@ describe("getClientIp", () => {
     expect(getClientIp(req)).toBe("3.3.3.3");
   });
 
+  // code-review 指摘の回帰確認 (2026-09-08): TRUST_CF_HEADERS=1 のとき、
+  // Cloudflare はクライアントが送った x-forwarded-for を上書きせず末尾に
+  // 追記するだけなので、その**先頭**は依然クライアントが偽装できる。
+  // cf-connecting-ip（CF エッジが検証する値）を先に見ないと、TRUST_CF_HEADERS
+  // を有効にした意味が丸ごと消えて B-H2 の穴が CF 前段構成で再発する。
+  it("prefers cf-connecting-ip over a spoofed x-forwarded-for when TRUST_CF_HEADERS=1", () => {
+    process.env.TRUST_CF_HEADERS = "1";
+    const req = new Request("http://localhost", {
+      headers: {
+        // 攻撃者が自由に書ける先頭 IP（CF は既存の x-forwarded-for を
+        // 上書きせず末尾に実 IP を追記するだけなので、そのまま残る）。
+        "x-forwarded-for": "1.2.3.4, 9.9.9.9",
+        // CF エッジが検証・設定する、偽装不可能な値。
+        "cf-connecting-ip": "9.9.9.9",
+      },
+    });
+    expect(getClientIp(req)).toBe("9.9.9.9");
+  });
+
   it("extracts first IP from x-forwarded-for header", () => {
     const req = new Request("http://localhost", {
       headers: { "x-forwarded-for": "1.2.3.4, 5.6.7.8" },
