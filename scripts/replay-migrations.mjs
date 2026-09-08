@@ -163,6 +163,123 @@ function checkRlsPolicyNullification(dsn) {
   return { rows: rows.map((row) => `${row.table}.${row.cmd} : ${row.names.join(", ")}`) };
 }
 
+/**
+ * psql に SQL を1本流す。`{ out }` か `{ error }` を返す。
+ * クエリはファイル経由（pg() は sh -c を通すので -c に複数行を渡すと改行が壊れる）。
+ * ON_ERROR_STOP=1 を付けないと、途中のエラーを飛ばして終了コード 0 で返ってくる。
+ */
+function psqlRun(dsn, sql) {
+  const f = join(tmpdir(), `qualref-${process.pid}.sql`);
+  writeFileSync(f, sql);
+  try {
+    const [bin, args] = pg(`psql "${dsn}" -v ON_ERROR_STOP=1 -A -t -q -f ${f}`);
+    const r = spawnSync(bin, args, { encoding: "utf8" });
+    if (r.status !== 0) {
+      const err = `${r.stderr ?? ""}`.trim().split("\n").filter(Boolean);
+      return { error: err.find((l) => l.includes("ERROR:")) ?? err[0] ?? "unknown error" };
+    }
+    return { out: `${r.stdout ?? ""}` };
+  } finally {
+    rmSync(f, { force: true });
+  }
+}
+
+/**
+ * `SET search_path = ''` の SECURITY DEFINER 関数が、本体で解決できない名前を
+ * 参照していないか検査する。
+ *
+ * search_path が空だと非修飾の識別子は解決できないので、この形の関数は**呼ぶと
+ * 必ず落ちる**（テーブルなら 42P01）。落ちるのは実行時なので、マイグレーションは
+ * 通り型検査も素通りする —— 実際 `insurer_accessible_tenant_ids` と
+ * `is_pii_disclosed` の2本が本番で壊れたまま残り、前者は保険会社ポータルの検索3本
+ * （insurer_search_certificates / _stores / _vehicles）を巻き込んで止めていた。
+ * 後者の呼び出し元は insurer_get_certificate。どちらも 20260404000000 が
+ * search_path を締めたときに本体の修飾を忘れたもの。
+ *
+ * この形は CREATE では作れない。`check_function_bodies` が、その関数自身の
+ * SET 句を適用した状態で本体を検証して弾くからだ。入り込む経路は「正常に作った
+ * あとで ALTER FUNCTION ... SET search_path=''」だけで、**ALTER は本体を
+ * 再検証しない**。
+ *
+ * 検査はその性質をそのまま使う: 各関数の `pg_get_functiondef()` を**流し直す**。
+ * 通れば健全、落ちればその関数は呼んでも落ちる。自前で本文を読むより確実で、
+ * 非修飾のテーブルだけでなく非修飾の関数呼び出しや USING 句も同じ1回で拾える
+ * （正規表現で本文を読んでいた版は、この2つを取りこぼし、逆にコメントや文字列
+ * リテラル中の単語を参照と誤検知していた）。
+ *
+ * ponytail: LANGUAGE sql の本体に対しては完全。plpgsql の本体は
+ * check_function_bodies が構文しか見ないので、その中の名前解決までは検証できない。
+ * 上限はそこと、動的 SQL（EXECUTE format(...)）の中身。
+ */
+const QUALREF_SCAN = `
+  begin;
+  create temporary table __qualref_bad(proname text, detail text);
+  do $qualref$
+  declare r record;
+  begin
+    for r in
+      select p.oid, p.proname
+      from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+      where n.nspname = 'public' and p.prosecdef
+        and 'search_path=""' = any(coalesce(p.proconfig, '{}'))
+      order by p.proname
+    loop
+      begin
+        execute pg_get_functiondef(r.oid);
+      exception when others then
+        insert into __qualref_bad values (r.proname, sqlerrm);
+      end;
+    end loop;
+  end
+  $qualref$;
+  select proname || ' -> ' || detail from __qualref_bad order by 1;
+  -- 流し直しは同一定義の置き換えなので実害は無いが、検査が DB を書き換えないよう
+  -- 巻き戻す。出力は既に得ているので rollback で失われない。
+  rollback;`;
+
+function checkQualifiedRefs(dsn) {
+  // 検査が空振りしていないことの確認。**陽性と陰性を対で置く**（MISTAKE_LEDGER M-048)。
+  // 陽性だけ置いた版は、健全な関数のコメントに書かれた `from ...` を参照と誤認して
+  // CI を落とす誤検知に気づけなかった。
+  //
+  // 陽性: 本番と同じ経路（正常に作ってから ALTER）で壊した関数 → 検出されねばならない
+  // 陰性: 本体は完全修飾で、コメントにだけ紛らわしい `from` がある → 検出されてはならない
+  const probe = [
+    "create table public.__qualref_probe(id int);",
+    "create function public.__qualref_bad_fn() returns setof int language sql stable security definer as 'select id from __qualref_probe';",
+    "alter function public.__qualref_bad_fn() set search_path = '';",
+    "create function public.__qualref_ok_fn() returns setof int language sql stable security definer as $p$ -- read from __qualref_probe then join it\n select id from public.__qualref_probe; $p$;",
+    "alter function public.__qualref_ok_fn() set search_path = '';",
+  ].join("\n");
+  const cleanup = [
+    "drop function if exists public.__qualref_bad_fn();",
+    "drop function if exists public.__qualref_ok_fn();",
+    "drop table if exists public.__qualref_probe;",
+  ].join("\n");
+
+  try {
+    const made = psqlRun(dsn, probe);
+    if (made.error) return { error: `probe を作れませんでした: ${made.error}` };
+    const probed = psqlRun(dsn, QUALREF_SCAN);
+    if (probed.error) return { error: `probe 走査に失敗しました: ${probed.error}` };
+    if (!probed.out.includes("__qualref_bad_fn")) {
+      return { error: "わざと壊した関数を検出できませんでした（検査が機能していません）" };
+    }
+    if (probed.out.includes("__qualref_ok_fn")) {
+      return { error: "健全な関数を誤検出しました（検査が厳しすぎます）" };
+    }
+  } finally {
+    // 消し損ねると、本走査が __qualref_bad_fn を「壊れた関数」として報告し、
+    // リポジトリのどこにも無い名前で CI が落ちる。失敗は握りつぶさない。
+    const cleaned = psqlRun(dsn, cleanup);
+    if (cleaned.error) console.log(`\n⚠️ probe の後始末に失敗しました: ${cleaned.error}`);
+  }
+
+  const scanned = psqlRun(dsn, QUALREF_SCAN);
+  if (scanned.error) return { error: scanned.error };
+  return { rows: scanned.out.trim().split("\n").map((l) => l.trim()).filter(Boolean) };
+}
+
 function main() {
   const files = readdirSync(MIGRATIONS)
     .filter((f) => f.endsWith(".sql"))
@@ -218,6 +335,22 @@ function main() {
       return;
     } else {
       console.log("RLS ポリシー検査: 打ち消しなし");
+    }
+
+    // search_path='' の SECURITY DEFINER 関数が、本体で非修飾のテーブルを参照していないか
+    const qualref = checkQualifiedRefs(dsn);
+    if (qualref.error) {
+      console.log(`\n⚠️ 非修飾参照の検査を実行できませんでした: ${qualref.error}`);
+      process.exitCode = 1;
+      return;
+    } else if (qualref.rows.length > 0) {
+      console.log(`\n❌ search_path='' の SECURITY DEFINER 関数が非修飾のテーブルを参照しています（${qualref.rows.length} 本）:`);
+      for (const row of qualref.rows) console.log(`  - ${row}`);
+      console.log("\n呼ぶと 42P01 で落ちます。本体の参照を public. で修飾してください。");
+      process.exitCode = 1;
+      return;
+    } else {
+      console.log("非修飾参照の検査: 該当なし");
     }
 
     if (DUMP_TO) {

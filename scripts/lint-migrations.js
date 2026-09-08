@@ -37,6 +37,55 @@ const allowlist = new Set(
     : [],
 );
 
+const PRODUCTION_LEDGER_FILE = path.join(__dirname, "..", "supabase", "migrations.production-ledger");
+
+/**
+ * 本番 schema_migrations の要約を読む。
+ *
+ * 形式は2つだけ: `max: <version>` の行が1本と、`<version>  <sha256>` の免除行。
+ * ファイルが無ければ `{ max: null, applied: 空 }` を返し、呼び出し側は base との比較に落ちる。
+ *
+ * **壊れた行は黙って捨てず落とす。** ここを読み違えると検査のしきい値がずれるが、
+ * 検査自体は緑のままになる ——「判断の道具そのものを検証する」（CLAUDE.md）。
+ *
+ * sha256 を要求する理由: 免除を版番号だけの鍵にすると、免除された版のファイルの
+ * 中身を後から書き換えられる。本番は適用済みなので db push は再実行せず、
+ * 空 DB への再生だけが書き換えた方を流すため、本番と repo が静かに食い違う。
+ */
+function readProductionLedger() {
+  if (!fs.existsSync(PRODUCTION_LEDGER_FILE)) return { max: null, applied: new Map() };
+  const applied = new Map();
+  let max = null;
+  const lines = fs.readFileSync(PRODUCTION_LEDGER_FILE, "utf8").split("\n");
+  lines.forEach((raw, i) => {
+    const line = raw.trim();
+    if (!line || line.startsWith("#")) return;
+    const m = /^max:\s*(\d{14})$/.exec(line);
+    if (m) {
+      if (max !== null) {
+        throw new Error(`migrations.production-ledger: max: の行が2本あります（${i + 1} 行目）`);
+      }
+      max = m[1];
+      return;
+    }
+    const e = /^(\d{14})\s+([0-9a-f]{64})$/.exec(line);
+    if (!e) {
+      throw new Error(
+        `migrations.production-ledger: ${i + 1} 行目「${line}」を解釈できません（\`max: <version>\` か \`<14桁の版> <sha256>\` のみ）`,
+      );
+    }
+    applied.set(e[1], e[2]);
+  });
+  return { max, applied };
+}
+
+/** 免除された版のファイルが、台帳に固定した中身のままかを見る。 */
+function ledgerHashMatches(file, expectedSha) {
+  const p = path.join(MIGRATIONS_DIR, file);
+  if (!fs.existsSync(p)) return false;
+  return require("crypto").createHash("sha256").update(fs.readFileSync(p)).digest("hex") === expectedSha;
+}
+
 
 /**
  * マイグレーションが作るテーブル / ビューの一覧。
@@ -340,9 +389,19 @@ for (const [version, group] of byVersion) {
 // 不変条件2）。2026-08-02〜08-15 に13日間これで止まり、証明書発行が全件停止した。
 // OPEN_QUESTIONS によればこの形は5回目である。
 //
-// base ブランチの最新バージョン >= 本番の最新バージョン なので、
-// 「base に在るどのファイルよりも後」であれば out-of-order にならない（十分条件）。
-// 本番へ問い合わせずに手元と CI だけで判定できるのが要点。
+// **当初この検査は「base の最新 >= 本番の最新」を前提に、base とだけ比べていた。
+// その前提は誤りである。** apply_migration で本番へ直接当てた版は main を通らないので、
+// base の最新が本番の最新より**前**になりうる。実際 #966 が 20260906094512 / 094735 を
+// 本番へ直接当てており、base だけを見た #1020 の4本が本番の最新より古いまま緑で通って
+// 本番の適用を止めた（MISTAKE_LEDGER M-045、これが M-027 に天井として書いた穴）。
+//
+// そこで比較対象を `supabase/migrations.production-ledger` の本番最新と base の最新の
+// **大きい方**にした。あわせて、その台帳に載っている版（＝本番が既に適用済みで
+// db push が再実行しない版）は免除する。免除しないと、本番にある版のファイルを main へ
+// 補って不変条件1を直すこと自体ができない（それが必要になったのが #1044）。
+//
+// 台帳ファイルが無い／古いときは base との比較に落ちるだけで、緩まない
+// （詳細はそのファイルの冒頭コメント）。本番へ問い合わせずに手元と CI で判定できる点は変えていない。
 //
 // base ref は `MIGRATIONS_BASE_REF` で名指しできる（CI が渡す。PR の base が
 // staging のときも正しく比較するため）。無ければ origin/main → main の順に試す。
@@ -409,32 +468,54 @@ for (const [version, group] of byVersion) {
   } else if (baseFiles.length > 0) {
     const baseSet = new Set(baseFiles);
     const baseMax = baseFiles.map(versionOf).sort().at(-1);
+    // 本番の台帳の要約。無ければ base との比較に落ちる（＝従来どおり）。
+    const { max: prodMax, applied: prodApplied } = readProductionLedger();
+    // しきい値は base と本番の**大きい方**。本番の方が先に進んでいる場合
+    // （apply_migration で直接当てた版がある場合）は本番側が効く。
+    const headMax = prodMax && prodMax > baseMax ? prodMax : baseMax;
+    const headSource = headMax === prodMax && prodMax > baseMax ? "本番の台帳" : `base（${baseRef}）`;
     const added = files.filter((f) => !baseSet.has(f));
     for (const file of added) {
-      if (versionOf(file) > baseMax) continue;
-      // 既に本番へ直接適用された版は、このルールの前提が成り立たない。
-      // ルールは「base の最新ファイル」としか比べておらず、**本番の台帳を見ていない**
-      // （DECISION_LOG 2026-09-06 の 5-4 で天井として記録されている盲点）。
-      // 本番に適用済みなら db push はその版を飛ばすので out-of-order は起きず、
-      // むしろファイルを消す・改名するほうが「適用済みなのにファイルが無い」
-      // （不変条件1）を作って本番を止める。allowlist に理由付きで載っている分は外す。
-      if (allowlist.has(file)) {
-        skipped++;
+      if (versionOf(file) > headMax) continue;
+      // 本番が既に適用済みの版は out-of-order を起こしようがない（db push が再実行しない）。
+      // 不変条件1（本番に在る版のファイルが repo に在ること）を直すには、この免除が要る。
+      // **ただし中身が台帳に固定したものと一致するときだけ。** 版番号だけを鍵にすると、
+      // 免除された版のファイルを後から書き換えて本番と静かに食い違わせられる。
+      if (prodApplied.has(versionOf(file))) {
+        const expected = prodApplied.get(versionOf(file));
+        if (ledgerHashMatches(file, expected)) continue;
+        hasErrors = true;
+        console.error(`\n❌ ${file}`);
+        console.error(
+          `   [migration-version-before-base-head] 版 ${versionOf(file)} は migrations.production-ledger で免除されていますが、**ファイルの中身が台帳に固定した sha256 と一致しません**。`,
+        );
+        console.error(
+          `     → 本番は適用済みなので db push は再実行しません。中身だけ変えると、空 DB への再生だけが新しい方を流し、本番と repo が静かに食い違います。`,
+        );
+        console.error(
+          `     → 期待 ${expected} / 実際 ${fs.existsSync(path.join(MIGRATIONS_DIR, file)) ? require("crypto").createHash("sha256").update(fs.readFileSync(path.join(MIGRATIONS_DIR, file))).digest("hex") : "（ファイルなし）"}`,
+        );
+        console.error(
+          `     → 中身を変えてよい理由があるなら、sha256 を取り直したうえで**その理由を台帳へ書いて**ください。`,
+        );
         continue;
       }
       hasErrors = true;
       console.error(`\n❌ ${file}`);
       console.error(
-        `   [migration-version-before-base-head] このブランチが追加したファイルのバージョン ${versionOf(file)} が、base（${baseRef}）に既にある最新 ${baseMax} より前です。`,
+        `   [migration-version-before-base-head] このブランチが追加したファイルのバージョン ${versionOf(file)} が、${headSource}に既にある最新 ${headMax} より前です。`,
       );
       console.error(
         `     → 本番の \`supabase db push\` が out-of-order で停止し、以降のマイグレーションが本番へ届かなくなります。`,
       );
       console.error(
-        `     → 本番へ当てたい変更なら ${baseMax} より後のバージョンへ改名してください。`,
+        `     → 本番へ当てたい変更なら ${headMax} より後のバージョンへ改名してください。`,
       );
       console.error(
         `     → 再生（空 DB）を通すためだけの補いなら、新しいファイルを作らず**適用済みファイルの末尾**へ足してください（本番では再適用されないので影響がありません）。`,
+      );
+      console.error(
+        `     → **本番の台帳に既にある版**のファイルを補っているなら、supabase/migrations.production-ledger の免除欄へ実在を確認したうえで追記してください（改名も折り込みも不変条件1を壊します）。`,
       );
     }
   }
