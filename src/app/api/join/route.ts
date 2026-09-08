@@ -55,12 +55,18 @@ export async function POST(req: NextRequest) {
 
   const supabase = createServiceRoleAdmin("join flow — pre-auth invitation / verification");
 
-  // Verify that email was confirmed via OTP
+  // Verify that email was confirmed via OTP.
+  //
+  // G-H2 是正 (2026-09-08): `expires_at > now()` を追加。verify-code は
+  // 期限内のコードにのみ verified=true を立てるが、確認から登録完了までの
+  // 間隔に制限が無いと「確認済み」フラグが無期限に使い回せてしまう。
+  // 元のコード有効期間 (10分) と同じ枠に登録完了を要求する。
   const { data: verification } = await supabase
     .from("insurer_email_verifications")
     .select("id, verified")
     .eq("email", data.email.toLowerCase())
     .eq("verified", true)
+    .gt("expires_at", new Date().toISOString())
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();

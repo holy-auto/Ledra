@@ -65,6 +65,15 @@ export async function captureTerminalPayment(
     const stripe = getStripeClient();
     const pi: Stripe.PaymentIntent = await stripe.paymentIntents.retrieve(input.payment_intent_id, stripeOptions);
 
+    // D-A5 是正 (2026-09-08): テナントの Connect アカウントを共有する構成
+    // （プラットフォーム口座、Connect 未オンボード同士）では、他テナントの
+    // 未記録・succeeded な PaymentIntent を知っていれば自テナントの売上として
+    // 記録できてしまう。create-payment-intent の GET と同じ metadata.tenant_id
+    // 検証をここでも行う。
+    if (pi.metadata?.tenant_id !== caller.tenantId) {
+      return { ok: false, kind: "validation", error: "payment_intent_tenant_mismatch" };
+    }
+
     if (pi.status !== "succeeded") {
       return { ok: false, kind: "validation", error: `payment_not_succeeded: status is "${pi.status}"` };
     }

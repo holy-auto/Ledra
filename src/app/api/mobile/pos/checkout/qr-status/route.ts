@@ -16,12 +16,15 @@ import {
 export const dynamic = "force-dynamic";
 
 /**
- * GET /api/mobile/pos/checkout/qr-status?session_id=xxx&tenant_id=xxx
+ * GET /api/mobile/pos/checkout/qr-status?session_id=xxx
  *
  * Stripe Checkout Session の支払い状態をポーリングする。
  * アプリ側は 3 秒ごとに叩き、status === "paid" になったら会計完了処理へ進む。
  *
- * ※ Connect アカウント配下のセッションを取得するため tenant_id が必要。
+ * ※ Connect アカウント配下のセッションを取得するため tenant_id が必要だが、
+ * D-A6 是正 (2026-09-08): 以前はクエリパラメータの tenant_id をそのまま
+ * Connect アカウント解決に使っており、任意の他テナントの Stripe Connect
+ * セッション（状態・金額・PaymentIntent ID）を読めた。caller のテナントに固定する。
  *
  * レスポンス:
  *   { status: "pending" | "paid" | "expired" | "cancelled" }
@@ -41,8 +44,7 @@ export async function GET(req: NextRequest) {
     return apiValidationError("session_id required");
   }
 
-  // tenant_id はクエリパラメータから取得（なければ caller のテナントを使用）
-  const tenantId = req.nextUrl.searchParams.get("tenant_id") ?? caller.tenantId;
+  const tenantId = caller.tenantId;
 
   const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
   if (!stripeSecretKey) {

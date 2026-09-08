@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { checkRateLimit, getClientIp } from "../rateLimit";
 
 describe("checkRateLimit", () => {
@@ -70,7 +70,18 @@ describe("checkRateLimit", () => {
 });
 
 describe("getClientIp", () => {
-  it("prefers cf-connecting-ip over other headers", () => {
+  const ORIGINAL_TRUST_CF = process.env.TRUST_CF_HEADERS;
+  afterEach(() => {
+    if (ORIGINAL_TRUST_CF === undefined) delete process.env.TRUST_CF_HEADERS;
+    else process.env.TRUST_CF_HEADERS = ORIGINAL_TRUST_CF;
+  });
+
+  // B-H2 是正 (2026-09-08): cf-connecting-ip / true-client-ip はクライアントが
+  // 任意の値を送れるヘッダで、本番 (Vercel 直配信) はこれを剥がさない。
+  // 毎リクエスト別の値を付けるだけで IP レート制限を迂回できたため、
+  // 既定では無視し x-forwarded-for の先頭 (Vercel が上書き) を最優先にする。
+  it("ignores cf-connecting-ip by default (spoofable, not trusted unless opted in)", () => {
+    delete process.env.TRUST_CF_HEADERS;
     const req = new Request("http://localhost", {
       headers: {
         "cf-connecting-ip": "3.3.3.3",
@@ -78,17 +89,32 @@ describe("getClientIp", () => {
         "x-real-ip": "2.2.2.2",
       },
     });
-    expect(getClientIp(req)).toBe("3.3.3.3");
+    expect(getClientIp(req)).toBe("1.2.3.4");
   });
 
-  it("prefers x-real-ip over x-forwarded-for when cf header absent", () => {
+  it("prefers x-forwarded-for over x-real-ip", () => {
     const req = new Request("http://localhost", {
       headers: {
         "x-forwarded-for": "1.2.3.4",
         "x-real-ip": "2.2.2.2",
       },
     });
+    expect(getClientIp(req)).toBe("1.2.3.4");
+  });
+
+  it("falls back to x-real-ip when x-forwarded-for is absent", () => {
+    const req = new Request("http://localhost", {
+      headers: { "x-real-ip": "2.2.2.2" },
+    });
     expect(getClientIp(req)).toBe("2.2.2.2");
+  });
+
+  it("uses cf-connecting-ip only when TRUST_CF_HEADERS=1 is explicitly set", () => {
+    process.env.TRUST_CF_HEADERS = "1";
+    const req = new Request("http://localhost", {
+      headers: { "cf-connecting-ip": "3.3.3.3" },
+    });
+    expect(getClientIp(req)).toBe("3.3.3.3");
   });
 
   it("extracts first IP from x-forwarded-for header", () => {

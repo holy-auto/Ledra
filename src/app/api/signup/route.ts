@@ -42,13 +42,17 @@ export async function POST(req: NextRequest) {
     const admin = createServiceRoleAdmin("signup — creates new tenant + owner user (pre-auth, no scope yet)");
 
     // ── 1) Supabase Auth ユーザー作成 ──
-    // パスワードレス登録ではパスワードを設定せず作成し、後段でメールリンク
-    // (signInWithOtp) からログインしてもらう。email_confirm: true なので
-    // OTP / マジックリンクでそのままサインインできる。
+    // B-H3 是正 (2026-09-08): 以前はパスワード登録時のみ email_confirm: true
+    // で作成し、直後にクライアントが signInWithPassword で即ログインしていた。
+    // これはメールの所有確認を一切経由しない ── 被害者のメールアドレスで
+    // テナント (owner) を作成できてしまう。パスワードレス登録は元々
+    // signInWithOtp のクリックを経るため確認済みだったが、パスワード登録
+    // だけ迂回できていた。両経路とも email_confirm: false で作成し、
+    // 後段で必ず確認メール (マジックリンク) を送ってから本人確認を要求する。
     const { data: authData, error: authError } = await admin.auth.admin.createUser({
       email,
       ...(passwordless ? {} : { password }),
-      email_confirm: true,
+      email_confirm: false,
       user_metadata: { display_name: display_name || shop_name },
     });
 
@@ -120,51 +124,50 @@ export async function POST(req: NextRequest) {
       return apiInternalError(membershipError, "signup: membership creation");
     }
 
-    // ── パスワードレス登録: マジックリンク送信（作成と一体で原子的に） ──
-    // パスワードを持たないアカウントなので、リンク送信に失敗すると本人が
-    // 二度とログインできない「孤児テナント」になる。ここで送信まで行い、
-    // 失敗時は user/tenant/membership をまとめてロールバックして、再登録
-    // 時の「メール重複」エラーで詰まる事態を防ぐ。
-    if (passwordless) {
-      try {
-        // PKCE: verifier Cookie を張ったオリジン（＝今このリクエスト）へ確認リンクを
-        // 戻す。別ドメイン（APP_URL）だと Cookie が届かず本人がログインできず、
-        // パスワード無しアカウントが孤児化する。
-        const baseUrl = resolveBaseUrl({ req, preferRequestOrigin: true });
-        const supabase = await createClient();
-        const { error: otpError } = await supabase.auth.signInWithOtp({
-          email,
-          options: {
-            shouldCreateUser: false,
-            emailRedirectTo: `${baseUrl}/auth/callback?next=/admin`,
-          },
-        });
-        if (otpError) throw otpError;
-      } catch (otpErr) {
-        const { error: membershipDeleteError } = await admin
-          .from("tenant_memberships")
-          .delete()
-          .eq("tenant_id", tenant.id);
-        const { error: tenantDeleteError } = await admin.from("tenants").delete().eq("id", tenant.id);
-        const { error: deleteError } = await admin.auth.admin.deleteUser(userId);
-        if (membershipDeleteError || tenantDeleteError || deleteError) {
-          console.error(
-            `signup: magic-link send failed AND rollback failed — orphaned tenant ${tenant.id} / auth user ${userId} (${email}) requires manual cleanup`,
-            otpErr,
-            membershipDeleteError,
-            tenantDeleteError,
-            deleteError,
-          );
-        } else {
-          console.error("signup: magic-link send failed, rolled back", otpErr);
-        }
-        return apiError({
-          code: "internal_error",
-          message: "確認メールの送信に失敗しました。時間をおいて再度お試しください。",
-          status: 502,
-          data: { messages: ["確認メールの送信に失敗しました。時間をおいて再度お試しください。"] },
-        });
+    // ── メール確認リンク送信（作成と一体で原子的に） ──
+    // email_confirm: false で作成しているため、パスワード登録・
+    // パスワードレス登録のどちらも本人がこのリンクを踏むまでログインできない。
+    // 送信に失敗すると本人が永久にログインできない「孤児テナント」になるため、
+    // ここで送信まで行い、失敗時は user/tenant/membership をまとめて
+    // ロールバックして、再登録時の「メール重複」エラーで詰まる事態を防ぐ。
+    try {
+      // PKCE: verifier Cookie を張ったオリジン（＝今このリクエスト）へ確認リンクを
+      // 戻す。別ドメイン（APP_URL）だと Cookie が届かず本人がログインできず、
+      // パスワード無しアカウントが孤児化する。
+      const baseUrl = resolveBaseUrl({ req, preferRequestOrigin: true });
+      const supabase = await createClient();
+      const { error: otpError } = await supabase.auth.signInWithOtp({
+        email,
+        options: {
+          shouldCreateUser: false,
+          emailRedirectTo: `${baseUrl}/auth/callback?next=/admin`,
+        },
+      });
+      if (otpError) throw otpError;
+    } catch (otpErr) {
+      const { error: membershipDeleteError } = await admin
+        .from("tenant_memberships")
+        .delete()
+        .eq("tenant_id", tenant.id);
+      const { error: tenantDeleteError } = await admin.from("tenants").delete().eq("id", tenant.id);
+      const { error: deleteError } = await admin.auth.admin.deleteUser(userId);
+      if (membershipDeleteError || tenantDeleteError || deleteError) {
+        console.error(
+          `signup: magic-link send failed AND rollback failed — orphaned tenant ${tenant.id} / auth user ${userId} (${email}) requires manual cleanup`,
+          otpErr,
+          membershipDeleteError,
+          tenantDeleteError,
+          deleteError,
+        );
+      } else {
+        console.error("signup: magic-link send failed, rolled back", otpErr);
       }
+      return apiError({
+        code: "internal_error",
+        message: "確認メールの送信に失敗しました。時間をおいて再度お試しください。",
+        status: 502,
+        data: { messages: ["確認メールの送信に失敗しました。時間をおいて再度お試しください。"] },
+      });
     }
 
     // ── 紹介リンク (/ref/<code>) 経由のアトリビューション（best-effort） ──

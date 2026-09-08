@@ -26,8 +26,19 @@ const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL!;
  *
  * バックエンドは既存の Web と共通の POST /api/signup を再利用する
  * （テナント + owner ユーザーを原子的に作成）。認証前エンドポイントなので
- * mobileApi（Bearer 必須）ではなく素の fetch で叩く。成功後はそのまま
- * signInWithPassword でサインインし、店舗選択へ進む。
+ * mobileApi（Bearer 必須）ではなく素の fetch で叩く。
+ *
+ * B-H3 是正 (2026-09-08): /api/signup は email_confirm: false でユーザーを
+ * 作成し、確認メール（マジックリンク）を送るようになった（以前はここで
+ * signInWithPassword が常に成功し、被害者のメールアドレスでもテナントに
+ * 即ログインできてしまっていた）。そのため本画面の「登録直後に即サインイン」
+ * は通常失敗し、以下の「確認メールを送信しました」画面に落ちる。
+ *
+ * これは上記 Apple 要件（完全アプリ内・平均15分以内）と衝突する
+ * （メールアプリへ離脱するステップが増える）。恒久対応は
+ * docs/context/OPEN_QUESTIONS.md を参照 — アプリ内 OTP（/auth/otp/*）を
+ * 本人確認そのものに昇格させ、確認前はテナント権限を持たないセッションで
+ * 止める設計が候補（現状の /auth/otp/* は認証後の飾りで強制力が無い）。
  */
 export default function SignupScreen() {
   const [shopName, setShopName] = useState("");
@@ -38,6 +49,7 @@ export default function SignupScreen() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [emailSent, setEmailSent] = useState(false);
   const { setUser } = useAuthStore();
 
   async function handleSignup() {
@@ -81,8 +93,15 @@ export default function SignupScreen() {
         return;
       }
 
-      // 登録成功 → そのままサインイン（アプリ内で完結）
-      await signIn(email.trim(), password);
+      // 登録成功 → サインインを試みる。メール確認前は失敗するのが通常経路
+      // （B-H3 是正）。ここだけ個別に catch し、確認メール送信済み画面へ。
+      try {
+        await signIn(email.trim(), password);
+      } catch {
+        setEmailSent(true);
+        setLoading(false);
+        return;
+      }
       const profile = await fetchUserProfile();
       if (!profile) {
         // 稀: 直後のメンバーシップ読み取り失敗。ログインからやり直してもらう。
@@ -108,6 +127,21 @@ export default function SignupScreen() {
     } finally {
       setLoading(false);
     }
+  }
+
+  if (emailSent) {
+    return (
+      <View style={[styles.flex, styles.emailSentContainer]}>
+        <Text style={styles.brandTitle}>確認メールを送信しました</Text>
+        <Text style={styles.emailSentBody}>
+          {email.trim()} 宛に確認リンクを送信しました。メール内のリンクを
+          開いてご確認のうえ、ログインしてください。
+        </Text>
+        <LedraButton onPress={() => router.replace("/(auth)/login")}>
+          ログイン画面へ
+        </LedraButton>
+      </View>
+    );
   }
 
   return (
@@ -225,6 +259,17 @@ export default function SignupScreen() {
 
 const styles = StyleSheet.create({
   flex: { flex: 1, backgroundColor: colors.background },
+  emailSentContainer: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: spacing["2xl"],
+    gap: spacing.lg,
+  },
+  emailSentBody: {
+    ...typography.body,
+    color: colors.textSecondary,
+    textAlign: "center",
+  },
   scrollContent: {
     flexGrow: 1,
   },

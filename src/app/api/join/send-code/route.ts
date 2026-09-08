@@ -98,10 +98,18 @@ export async function POST(req: Request) {
     return apiError({ code: "conflict", message: "このメールアドレスは既に登録されています", status: 409 });
   }
 
-  // Invalidate old codes for this email
+  // Invalidate old codes for this email by expiring them immediately.
+  //
+  // G-H2 是正 (2026-09-08): 以前はここで `verified: true` を立てていたが、
+  // `verified` は「本人がコードを正しく入力して確認済み」を表す列でもあり、
+  // 「古いコードを無効化した」という別の意味に流用していた。
+  // send-code を2回叩くだけで1回目の行が verified=true になり、
+  // 一度もコードを入力せずに /api/join の確認済み判定を通過できた
+  // (join は `verified=true` の行があるかしか見ていない)。
+  // 無効化は「もう使えない」ことだけを表す expires_at の更新に閉じる。
   await supabase
     .from("insurer_email_verifications")
-    .update({ verified: true })
+    .update({ expires_at: new Date().toISOString() })
     .eq("email", email.toLowerCase())
     .eq("verified", false);
 
