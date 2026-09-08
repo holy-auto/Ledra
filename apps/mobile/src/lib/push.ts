@@ -57,3 +57,36 @@ export async function registerForPushNotifications(): Promise<void> {
     // （次回起動時に再試行される）。
   }
 }
+
+/**
+ * D-A10 是正 (2026-09-08): サインアウト時に push トークンをサーバから
+ * 削除する。呼ばないと、同じ端末で次にログインした別ユーザーにも前の
+ * ユーザー宛の push が届き続ける（`push_tokens` は `user_id` に紐づくが、
+ * 端末側は明示的に消さない限り Expo に登録されたままサーバの行が残る）。
+ * signOut より**前**に呼ぶこと（mobileApi は Bearer トークンが必要）。
+ */
+export async function unregisterPushNotifications(): Promise<void> {
+  if (Platform.OS !== "ios" && Platform.OS !== "android") return;
+  if (!Device.isDevice) return;
+
+  try {
+    const { status } = await Notifications.getPermissionsAsync();
+    if (status !== "granted") return;
+
+    const projectId =
+      Constants.expoConfig?.extra?.eas?.projectId ??
+      Constants.easConfig?.projectId;
+
+    const tokenData = await Notifications.getExpoPushTokenAsync(
+      projectId ? { projectId } : undefined
+    );
+
+    await mobileApi("/push/register", {
+      method: "DELETE",
+      body: { token: tokenData.data },
+    });
+  } catch {
+    // サインアウト自体は必ず進める。削除できなくても次回ログイン時に
+    // upsert (onConflict: user_id,token) で上書きされるので実害は小さい。
+  }
+}

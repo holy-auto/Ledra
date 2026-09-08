@@ -8,6 +8,7 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import { useAuthStore } from "@/stores/authStore";
 import { EmptyState } from "@/components/EmptyState";
+import { escapeIlike, escapePostgrestValue } from "@/lib/sanitize";
 import { colors, spacing, radius, typography, shadows } from "@/constants/tokens";
 
 interface Customer {
@@ -33,8 +34,12 @@ export default function CustomersIndexScreen() {
         .limit(50);
 
       if (search.trim()) {
+        // D-A7 是正 (2026-09-08): 検索語に `,` `(` `)` が含まれると PostgREST の
+        // .or() フィルタ構文が壊れ 400 エラーになっていた（例: 顧客名に「,」を含む場合）。
+        // 越境（他テナントの顧客が見える等）は RLS で防がれていたため機能面のみの不具合。
+        const safeSearch = escapePostgrestValue(escapeIlike(search));
         query = query.or(
-          `name.ilike.%${search}%,phone.ilike.%${search}%,name_kana.ilike.%${search}%`
+          `name.ilike.%${safeSearch}%,phone.ilike.%${safeSearch}%,name_kana.ilike.%${safeSearch}%`
         );
       }
 
