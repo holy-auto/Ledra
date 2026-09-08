@@ -10,7 +10,7 @@ import { confirmCampaignSlot } from "@/lib/billing/campaign";
 import { apiJson, apiValidationError, apiInternalError, apiError } from "@/lib/api/response";
 import { captureSecurityEvent } from "@/lib/observability/sentry";
 import { logAuditEvent } from "@/lib/audit/certificateLog";
-import { isResendFailure, sendResendEmail } from "@/lib/email/resendSend";
+import { sendEmail } from "@/lib/email/sendEmail";
 import { sendShopOrderEmail, sendShopOrderOpsNotification } from "@/lib/email/shopOrderEmail";
 import { sendTemplateSubscriptionStartedEmail } from "@/lib/email/templateOrderEmail";
 import { maskEmail } from "@/lib/logger";
@@ -268,7 +268,7 @@ async function sendPaymentFailureEmail(
 Ledra — 株式会社HOLY
 `;
 
-  const sent = await sendResendEmail({
+  const sent = await sendEmail({
     to: email,
     reply_to: "support@ledra.co.jp",
     subject: "【Ledra】お支払いについてのご連絡",
@@ -278,7 +278,7 @@ Ledra — 株式会社HOLY
     // key so Resend returns the same email instead of double-sending.
     idempotencyKey,
   });
-  if (isResendFailure(sent)) {
+  if (!sent.ok) {
     // PII: 顧客メールはマスク。sent.error は Resend SDK の error 構造体 (code/message) のみ。
     const errCode =
       sent.error && typeof sent.error === "object" && "code" in sent.error
@@ -359,7 +359,7 @@ async function sendSubscriptionCancelledEmail(
 Ledra — 株式会社HOLY
 `;
 
-  const sent = await sendResendEmail({
+  const sent = await sendEmail({
     to: email,
     reply_to: "support@ledra.co.jp",
     subject: "【Ledra】サブスクリプションを解約しました",
@@ -367,7 +367,7 @@ Ledra — 株式会社HOLY
     text,
     idempotencyKey,
   });
-  if (isResendFailure(sent)) {
+  if (!sent.ok) {
     console.error("webhook: subscription cancelled email send failed", {
       tenantId,
       emailMasked: maskEmail(email),
@@ -451,7 +451,7 @@ async function sendTrialWillEndEmail(
 Ledra — 株式会社HOLY
 `;
 
-  const sent = await sendResendEmail({
+  const sent = await sendEmail({
     to: email,
     reply_to: "support@ledra.co.jp",
     subject: "【Ledra】無料トライアル終了のご案内",
@@ -459,7 +459,7 @@ Ledra — 株式会社HOLY
     text,
     idempotencyKey,
   });
-  if (isResendFailure(sent)) {
+  if (!sent.ok) {
     console.error("webhook: trial-will-end email send failed", {
       tenantId,
       emailMasked: maskEmail(email),

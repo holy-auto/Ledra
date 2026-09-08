@@ -1,5 +1,5 @@
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
-import { isResendFailure, sendResendEmail } from "@/lib/email/resendSend";
+import { sendEmail } from "@/lib/email/sendEmail";
 import { maskEmail } from "@/lib/logger";
 import type { TemplateOrderType } from "@/types/templateOption";
 
@@ -107,7 +107,7 @@ ${lead}
 Ledra — 株式会社HOLY
 `;
 
-  const sent = await sendResendEmail({
+  const sent = await sendEmail({
     to: email,
     reply_to: "support@ledra.co.jp",
     subject,
@@ -115,7 +115,7 @@ Ledra — 株式会社HOLY
     text,
     idempotencyKey: `template-order:${kind}:${orderId}`,
   });
-  if (isResendFailure(sent)) {
+  if (!sent.ok) {
     console.error("templateOrderEmail: send failed", {
       tenantId,
       orderId,
@@ -186,7 +186,7 @@ ${optionLabel}のサブスクリプションが開始されました。
 Ledra — 株式会社HOLY
 `;
 
-  const sent = await sendResendEmail({
+  const sent = await sendEmail({
     to: email,
     reply_to: "support@ledra.co.jp",
     subject: "【Ledra】テンプレートオプションを開始しました",
@@ -194,7 +194,7 @@ Ledra — 株式会社HOLY
     text,
     idempotencyKey,
   });
-  if (isResendFailure(sent)) {
+  if (!sent.ok) {
     console.error("templateSubscriptionStartedEmail: send failed", {
       tenantId,
       emailMasked: maskEmail(email),

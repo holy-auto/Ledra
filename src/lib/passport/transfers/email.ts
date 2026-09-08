@@ -1,4 +1,4 @@
-import { sendResendEmail } from "@/lib/email/resendSend";
+import { sendEmail } from "@/lib/email/sendEmail";
 import { logger } from "@/lib/logger";
 
 function appBaseUrl(): string {
@@ -60,14 +60,11 @@ export async function sendTransferInvitation(args: {
 
   const subject = `[Ledra] 車両パスポート所有権移転のご案内 — ${args.vehicleLabel}`;
 
-  const res = await sendResendEmail(
-    {
-      to: args.toEmail,
-      subject,
-      text,
-    },
-    { retries: 2 },
-  );
+  const res = await sendEmail({
+    to: args.toEmail,
+    subject,
+    text,
+  });
 
   if (!res.ok) {
     logger.warn("passport transfer invitation email failed", {
@@ -101,14 +98,11 @@ export async function sendTransferAcceptedNotification(args: {
     "— Ledra Vehicle Passport",
   ].join("\n");
 
-  const res = await sendResendEmail(
-    {
-      to: args.toEmail,
-      subject: `[Ledra] 車両パスポート所有権移転が完了しました — ${args.vehicleLabel}`,
-      text,
-    },
-    { retries: 2 },
-  );
+  const res = await sendEmail({
+    to: args.toEmail,
+    subject: `[Ledra] 車両パスポート所有権移転が完了しました — ${args.vehicleLabel}`,
+    text,
+  });
 
   if (!res.ok) {
     logger.warn("passport transfer accepted notification email failed", {
