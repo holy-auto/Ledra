@@ -4,6 +4,41 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-09-08 セキュリティ監査是正 PR-2（課金・予約・cron の整合性）
+
+PR #1054 に9コミット追加。全 vitest（561ファイル・5558テスト）/ `npx tsc --noEmit` /
+`npm run lint:migrations` / `npm run check:migrations`（454マイグレーション再生）green。
+
+- **課金**: `getCurrentPeriodEnd` を `src/lib/stripe/subscription.ts` に切り出し、
+  `billing/guard.ts` でも使用（支払停止テナントの公開PDF猶予期間が計算されない
+  不具合を修正）。
+- **Stripe webhook**: ショップ注文の DB 更新失敗を無視して `processed` 扱いにしていた
+  のを `throw` に変更（顧客は支払済・注文は pending のまま取り残される不具合）、
+  `payment_status` チェック追加、`tenant_option_subscriptions` の書込エラーを throw。
+- **予約**: `admin/reservations` の POST/PUT にダブルブッキング検知を配線
+  （`force:true` で上書き可）。`customer/booking` の過去日チェックを JST 基準に修正
+  （UTC 00:00〜09:00 の間、JST の前日を予約可能にしていた）。
+- **cron**: `cron/anchor-batch`・`cron/parts-anchor` に `withCronLock` を配線
+  （Polygon アンカー tx の二重発行防止）。
+- **AI課金**: 直接呼び出し7ルート（voice-memo, ai-explain, voice-note,
+  assistant/navigate, academy/{cases,feedback,qa}）に月次コストキャップガードを配線。
+- **入力堅牢性**: `parseInt` の NaN 混入をページネーション系19箇所で是正
+  （実害の無い6箇所は個別確認のうえ除外）。
+- **列挙オラクル対策**: signup/join/join・send-code が「メール登録済み」を409で
+  返していたのを一律200に変更し、本人にだけ案内メールを送るよう修正。
+- **レート制限**: `auth`/`sensitive` プリセットを env 設定に関わらず常時
+  フェイルクローズに固定。
+- **監査ログ**: Supabase MCP で本番 `audit_logs` の RLS/policy を実測確認
+  （policy 0本）したうえで、モバイル6箇所の監査ログ insert に admin クライアントを
+  渡すよう修正（従来は RLS で黙って弾かれ、証明書有効化/取消・NFC・レジ締め・
+  予約作成の監査ログがモバイル経由では1件も残っていなかった）。
+- **RLS**: 同じくMCPで本番ポリシーを実測し、5表（`tenant_webhooks`,
+  `tenant_api_keys`, `square_connections`, `tenant_integrations`,
+  `accounting_integrations`）の書込ポリシーに owner/admin 条件を追加。
+- **`/code-review` 指摘（1件、その場で修正）**: PR-1 由来の `TRUST_CF_HEADERS=1`
+  分岐で `cf-connecting-ip` より先に偽装可能な `x-forwarded-for` を見ており、
+  Cloudflare 前段構成でオプトインの意味が無かった不具合。
+
 ## 2026-09-07 陳腐化チェックが本番で初めて走り、初回から3件の事故を止めた
 
 `stale-migration-check.yml`（#1027 で導入）の**初回本番実行**（2026-09-07 04:44 UTC。
