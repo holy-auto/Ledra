@@ -759,16 +759,6 @@
 "tsa_timestamp_at",
 "tsa_token"
 ],
-"certificate_maintenance_logs": [
-"certificate_id",
-"content",
-"created_at",
-"id",
-"performed_at",
-"performed_by",
-"tenant_id",
-"updated_at"
-],
 "certificate_media": [
 "before_path",
 "caption",
@@ -1244,38 +1234,6 @@
 "updated_at",
 "visit_count"
 ],
-"dealer_users": [
-"created_at",
-"dealer_id",
-"id",
-"role",
-"user_id"
-],
-"dealers": [
-"address",
-"approved_at",
-"company_name",
-"contact_name",
-"created_at",
-"id",
-"invite_code",
-"phone",
-"prefecture",
-"status",
-"updated_at"
-],
-"deals": [
-"agreed_price",
-"buyer_dealer_id",
-"created_at",
-"id",
-"inquiry_id",
-"listing_id",
-"notes",
-"seller_dealer_id",
-"status",
-"updated_at"
-],
 "delivery_receipts": [
 "anchor_tx_hash",
 "anchored_at",
@@ -1411,19 +1369,6 @@
 "sort_order",
 "tenant_id"
 ],
-"error_events": [
-"context",
-"created_at",
-"fingerprint",
-"id",
-"level",
-"message",
-"occurred_at",
-"request_id",
-"route",
-"source",
-"tenant_id"
-],
 "external_booking_slots": [
 "accepted_categories",
 "created_at",
@@ -1514,25 +1459,6 @@
 "vehicle_size",
 "vehicle_vin",
 "vehicle_year"
-],
-"industry_news": [
-"body",
-"category",
-"created_at",
-"id",
-"is_published",
-"public_id",
-"published_at",
-"source_url",
-"title",
-"updated_at"
-],
-"inquiry_messages": [
-"created_at",
-"id",
-"inquiry_id",
-"message",
-"sender_dealer_id"
 ],
 "inspection_records": [
 "answers",
@@ -1685,17 +1611,6 @@
 "updated_by",
 "urgent_hours"
 ],
-"insurer_subscriptions": [
-"cancel_at_period_end",
-"created_at",
-"current_period_end",
-"id",
-"insurer_id",
-"status",
-"stripe_customer_id",
-"stripe_subscription_id",
-"updated_at"
-],
 "insurer_tenant_access": [
 "created_at",
 "granted_at",
@@ -1812,30 +1727,6 @@
 "unit_cost",
 "updated_at"
 ],
-"inventory_listings": [
-"body_type",
-"color",
-"created_at",
-"dealer_id",
-"description",
-"fuel_type",
-"grade",
-"has_repair_history",
-"has_vehicle_inspection",
-"id",
-"inspection_expiry",
-"make",
-"mileage",
-"model",
-"notes",
-"price",
-"public_id",
-"repair_history_notes",
-"status",
-"transmission",
-"updated_at",
-"year"
-],
 "inventory_movements": [
 "created_at",
 "created_by",
@@ -1874,15 +1765,6 @@
 "updated_at",
 "vehicle_id",
 "vehicle_info_json"
-],
-"job_bids": [
-"bid_price",
-"bidder_dealer_id",
-"created_at",
-"id",
-"job_order_id",
-"message",
-"status"
 ],
 "job_orders": [
 "accepted_amount",
@@ -1972,88 +1854,6 @@
 "reservation_id",
 "state",
 "tenant_id",
-"updated_at"
-],
-"line_follow_events": [
-"created_at",
-"event_type",
-"id",
-"line_user_id",
-"payload",
-"tenant_id"
-],
-"line_link_audit_logs": [
-"action",
-"actor_id",
-"actor_type",
-"created_at",
-"customer_id",
-"error_message",
-"id",
-"line_user_id",
-"meta",
-"result",
-"session_id",
-"source",
-"tenant_id"
-],
-"line_link_candidates": [
-"created_at",
-"id",
-"last_followed_at",
-"line_user_id",
-"matched_customer_id",
-"payload",
-"status",
-"tenant_id",
-"updated_at"
-],
-"line_link_sessions": [
-"created_at",
-"created_by",
-"customer_id",
-"expires_at",
-"id",
-"line_user_id",
-"source",
-"status",
-"tenant_id",
-"token_hash",
-"used_at"
-],
-"line_link_tokens": [
-"created_at",
-"customer_email",
-"customer_id",
-"expires_at",
-"id",
-"tenant_id",
-"token",
-"used_at"
-],
-"line_pending_links": [
-"created_at",
-"display_name",
-"id",
-"line_user_id",
-"status",
-"tenant_id",
-"updated_at"
-],
-"listing_images": [
-"created_at",
-"id",
-"listing_id",
-"sort_order",
-"storage_path"
-],
-"listing_inquiries": [
-"created_at",
-"from_dealer_id",
-"id",
-"listing_id",
-"status",
-"to_dealer_id",
 "updated_at"
 ],
 "loaner_car_loans": [
@@ -2358,13 +2158,6 @@
 "public_key",
 "tenant_id",
 "transports",
-"user_id"
-],
-"operator_users": [
-"created_at",
-"display_name",
-"id",
-"role",
 "user_id"
 ],
 "order_audit_log": [
@@ -3039,20 +2832,6 @@
 "total",
 "updated_at"
 ],
-"shop_price_submissions": [
-"created_at",
-"dealer_id",
-"id",
-"notes",
-"prefecture",
-"price_max",
-"price_min",
-"price_typical",
-"service_category",
-"service_name",
-"unit",
-"updated_at"
-],
 "shop_products": [
 "category",
 "created_at",
@@ -3451,34 +3230,6 @@
 "id",
 "question",
 "sort_order"
-],
-"support_ticket_messages": [
-"created_at",
-"id",
-"message",
-"sender_id",
-"sender_type",
-"ticket_id"
-],
-"support_tickets": [
-"created_at",
-"id",
-"message",
-"priority",
-"status",
-"subject",
-"tenant_id",
-"updated_at",
-"user_id"
-],
-"system_health_snapshots": [
-"captured_at",
-"checks",
-"created_at",
-"id",
-"latency_ms",
-"source",
-"status"
 ],
 "template_assets": [
 "asset_type",
