@@ -128,18 +128,35 @@ export async function handleShopOrderSessionPaid(
 
   const paymentIntentId = asStringId(session.payment_intent);
 
-  // 注文ステータスを paid に更新
-  const { error: updateErr } = await supabase
+  // code-review 指摘 (2026-09-08): コンビニ/銀行振込等の非同期決済は
+  // checkout.session.completed 時点で unpaid のまま残り、運営がその間に
+  // 注文を cancelled にできる（admin/platform/shop-orders PUT は現在の
+  // ステータスを見ずに任意の MANAGEABLE_STATUSES へ遷移させる）。その後
+  // 遅れて async_payment_succeeded が届くと、ステータス条件無しの update は
+  // 意図的に取り消した注文を paid へ戻し、NFC プロビジョニング・
+  // 決済完了通知まで発火させてしまう。支払い待ち状態からの遷移だけを許可し、
+  // 更新が0件（cancelled 等に先を越された）なら処理を止める。
+  const PRE_PAID_STATUSES = ["pending", "pending_checkout", "pending_payment"];
+  const { data: updatedRows, error: updateErr } = await supabase
     .from("shop_orders")
     .update({
       status: "paid",
       stripe_payment_intent_id: paymentIntentId,
       updated_at: new Date().toISOString(),
     })
-    .eq("id", shopOrderId);
+    .eq("id", shopOrderId)
+    .in("status", PRE_PAID_STATUSES)
+    .select("id");
 
   if (updateErr) {
     throw new Error(`shop order update failed for ${shopOrderId}: ${updateErr.message}`);
+  }
+
+  if (!updatedRows || updatedRows.length === 0) {
+    console.info("webhook: shop order not in a pre-paid status, skipping paid transition", {
+      shopOrderId,
+    });
+    return;
   }
 
   // NFCタグの自動プロビジョニング

@@ -8,6 +8,12 @@
  *   - E2-2: shop_orders の更新が失敗したら例外を投げる（呼び出し元の
  *     stripe webhook ハンドラが catch し、processed_at を立てずに
  *     Stripe の再送を許す設計）。
+ *
+ * code-review 回帰確認 (2026-09-08):
+ *   - コンビニ/銀行振込等で支払いが遅れている間に運営が注文を cancelled に
+ *     した後、遅れて async_payment_succeeded が届いても paid へ戻さない
+ *     （更新を pending 系ステータスからの遷移だけに限定し、対象行が0件なら
+ *     NFC プロビジョニング・通知も発火させない）。
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
@@ -19,17 +25,34 @@ vi.mock("@/lib/email/shopOrderEmail", () => ({
 import { sendShopOrderEmail, sendShopOrderOpsNotification } from "@/lib/email/shopOrderEmail";
 import { handleShopOrderSessionPaid } from "../route";
 
-function makeSupabase(opts: { updateError?: { message: string } | null } = {}) {
-  const updateCalls: Array<{ table: string; patch: Record<string, unknown> }> = [];
+function makeSupabase(opts: { updateError?: { message: string } | null; matchesPrePaidStatus?: boolean } = {}) {
+  const updateCalls: Array<{ table: string; patch: Record<string, unknown>; statusFilter?: unknown }> = [];
   const insertCalls: Array<{ table: string; rows: unknown[] }> = [];
+  const matches = opts.matchesPrePaidStatus ?? true;
 
   const supabase: any = {
     from: (table: string) => {
       if (table === "shop_orders") {
         return {
           update: (patch: Record<string, unknown>) => {
-            updateCalls.push({ table, patch });
-            return { eq: async () => ({ error: opts.updateError ?? null }) };
+            const call: { table: string; patch: Record<string, unknown>; statusFilter?: unknown } = {
+              table,
+              patch,
+            };
+            updateCalls.push(call);
+            return {
+              eq: () => ({
+                in: (_col: string, statuses: unknown) => {
+                  call.statusFilter = statuses;
+                  return {
+                    select: async () => ({
+                      data: opts.updateError ? null : matches ? [{ id: "order-1" }] : [],
+                      error: opts.updateError ?? null,
+                    }),
+                  };
+                },
+              }),
+            };
           },
         };
       }
@@ -97,8 +120,23 @@ describe("handleShopOrderSessionPaid", () => {
     await handleShopOrderSessionPaid(supabase, makeSession(), "evt_1");
     expect(updateCalls.length).toBe(1);
     expect(updateCalls[0].patch.status).toBe("paid");
+    // pending 系ステータスからの遷移だけを許可している（cancelled 等には効かない）。
+    expect(updateCalls[0].statusFilter).toEqual(["pending", "pending_checkout", "pending_payment"]);
     expect(sendShopOrderEmail).toHaveBeenCalledWith(
       expect.objectContaining({ tenantId: "tenant-1", shopOrderId: "order-1", kind: "paid" }),
     );
+  });
+
+  // code-review 回帰確認 (2026-09-08): 遅延決済(コンビニ/銀行振込)の間に運営が
+  // 注文を cancelled にした後、遅れて async_payment_succeeded が届いても
+  // paid へ戻さない。更新の対象行が0件（既に cancelled 等）なら、
+  // NFC プロビジョニング・通知も発火させずに処理を止める。
+  it("既に pending 系以外（cancelled等）に遷移済みなら paid へ戻さず、通知も送らない", async () => {
+    const { supabase, updateCalls, insertCalls } = makeSupabase({ matchesPrePaidStatus: false });
+    await handleShopOrderSessionPaid(supabase, makeSession(), "evt_1");
+    expect(updateCalls.length).toBe(1); // update 自体は投げるが対象行は0件
+    expect(insertCalls.length).toBe(0); // NFC タグは作らない
+    expect(sendShopOrderEmail).not.toHaveBeenCalled();
+    expect(sendShopOrderOpsNotification).not.toHaveBeenCalled();
   });
 });
