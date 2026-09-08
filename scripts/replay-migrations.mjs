@@ -360,20 +360,23 @@ function checkPlpgsqlBodies(dsn) {
   const scanned = psqlRun(dsn, PLPGSQL_SCAN("true"));
   if (scanned.error) return { error: scanned.error };
 
-  // 検査できなかったトリガ関数の本数（0 でないなら、その分だけ検査に穴がある）
+  // 検査できなかったトリガ関数（0 本でないなら、その分だけ検査に穴がある）。
+  // ここが失敗したまま 0 を返すと「全部見た」と偽ることになるので、エラーは握らない。
   const unchecked = psqlRun(
     dsn,
-    `select count(*) from pg_proc p
+    `select string_agg(p.proname, ', ' order by p.proname)
+       from pg_proc p
        join pg_namespace n on n.oid = p.pronamespace
        join pg_language l on l.oid = p.prolang
       where n.nspname = 'public' and l.lanname = 'plpgsql'
         and p.prorettype = 'trigger'::regtype
         and not exists (select 1 from pg_trigger t where t.tgfoid = p.oid);`,
   );
+  if (unchecked.error) return { error: `検査対象外の本数を数えられませんでした: ${unchecked.error}` };
 
   return {
     rows: scanned.out.trim().split("\n").map((l) => l.trim()).filter(Boolean),
-    unchecked: Number((unchecked.out ?? "0").trim()) || 0,
+    unchecked: unchecked.out.trim(),
   };
 }
 
@@ -458,16 +461,20 @@ function main() {
       return;
     } else if (plpg.skipped) {
       console.log(`plpgsql の検査: 飛ばしました —— ${plpg.skipped}`);
-    } else if (plpg.rows.length > 0) {
-      console.log(`\n❌ plpgsql の本体が実行時に落ちます（${plpg.rows.length} 件）:`);
-      for (const row of plpg.rows) console.log(`  - ${row}`);
-      console.log("\n構文は通っていても、名前・型・演算子の解決は実行時まで行われません。");
-      console.log("呼ばれた瞬間に落ちるので、CI も型検査も素通りします。");
-      process.exitCode = 1;
-      return;
     } else {
-      const note = plpg.unchecked > 0 ? `（どのトリガからも使われていない ${plpg.unchecked} 本は検査対象外）` : "";
-      console.log(`plpgsql の検査: 該当なし${note}`);
+      // 検査に穴があることは、指摘の有無に関わらず毎回出す（緑のときこそ見落とす）
+      if (plpg.unchecked) {
+        console.log(`plpgsql の検査: どのトリガからも使われていない ${plpg.unchecked} は検査対象外`);
+      }
+      if (plpg.rows.length > 0) {
+        console.log(`\n❌ plpgsql の本体が実行時に落ちます（${plpg.rows.length} 件）:`);
+        for (const row of plpg.rows) console.log(`  - ${row}`);
+        console.log("\n構文は通っていても、名前・型・演算子の解決は実行時まで行われません。");
+        console.log("呼ばれた瞬間に落ちるので、CI も型検査も素通りします。");
+        process.exitCode = 1;
+        return;
+      }
+      console.log("plpgsql の検査: 該当なし");
     }
 
     if (DUMP_TO) {

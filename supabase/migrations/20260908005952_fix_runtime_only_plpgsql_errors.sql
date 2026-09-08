@@ -23,7 +23,9 @@
 -- 20260404000000 の一括適用から漏れて 'public, extensions' のまま残っていた）。
 -- 締めた結果、上の非修飾参照の検査（pg_get_functiondef の流し直し）の対象にも入る。
 
--- 1) date と text を比べていたのをやめる。period_start は date。
+-- 1) date と text を比べていたのをやめる（period_start は date）。あわせて、
+--    一対多を2つ LEFT JOIN して行が掛け算になっていたのを畳んでから数える形に直す
+--    （集計値が返るようになる以上、その値が正しくないと直したことにならない）。
 CREATE OR REPLACE FUNCTION public.agent_rankings(p_period text DEFAULT 'month'::text)
  RETURNS jsonb
  LANGUAGE plpgsql
@@ -44,23 +46,37 @@ begin
     v_start := date_trunc('month', now())::date;
   end if;
 
+  -- 紹介と手数料は別々に数える。1つの GROUP BY で両方を LEFT JOIN すると
+  -- 一対多×一対多で行が掛け算になり、紹介3件×手数料2件なら referral_count が 6、
+  -- total_commission が3倍になる。**元の定義がこの形だった**が、42883 で必ず
+  -- 落ちていたので誰も数字を見ていない。返るようにする以上ここも直す。
   select jsonb_agg(row_to_json(t)::jsonb order by t.referral_count desc)
   into v_result
   from (
     select
       a.id as agent_id,
       a.name as agent_name,
-      count(r.id) as referral_count,
-      count(r.id) filter (where r.status = 'contracted') as contracted_count,
-      case when count(r.id) > 0
-        then round(count(r.id) filter (where r.status = 'contracted')::numeric / count(r.id) * 100, 1)
+      r.referral_count,
+      r.contracted_count,
+      case when r.referral_count > 0
+        then round(r.contracted_count::numeric / r.referral_count * 100, 1)
         else 0 end as conversion_rate,
-      coalesce(sum(c.amount) filter (where c.status in ('approved','paid')), 0) as total_commission
+      c.total_commission
     from public.agents a
-    left join public.agent_referrals r on r.agent_id = a.id and r.created_at >= v_start
-    left join public.agent_commissions c on c.agent_id = a.id and c.period_start >= v_start
+    left join lateral (
+      select count(*) as referral_count,
+             count(*) filter (where ar.status = 'contracted') as contracted_count
+      from public.agent_referrals ar
+      where ar.agent_id = a.id and ar.created_at >= v_start
+    ) r on true
+    left join lateral (
+      -- sum は distinct で重複を潰せない（同額の2件が1件になる）ので、
+      -- 掛け算が起きない形で先に畳む
+      select coalesce(sum(ac.amount) filter (where ac.status in ('approved','paid')), 0) as total_commission
+      from public.agent_commissions ac
+      where ac.agent_id = a.id and ac.period_start >= v_start
+    ) c on true
     where a.status = 'active'
-    group by a.id, a.name
   ) t;
 
   return coalesce(v_result, '[]'::jsonb);

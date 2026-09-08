@@ -28,12 +28,20 @@
   `public.` で修飾した（`20260404000000` の一括適用から漏れて `'public, extensions'` の
   まま残っており、リポジトリの lint にも違反していた）。**本番未適用** —— 2026-09-07 に
   決めたとおり PR をマージして `db-migrate` に任せる。
+- **`agent_rankings` は数字も間違っていた**（`/code-review` の指摘で判明）。一対多の
+  `agent_referrals` と `agent_commissions` を1つの `GROUP BY` に LEFT JOIN していて
+  **行が掛け算**になる。紹介3件（うち成約1件）＋手数料2件（100/200）で実測すると
+  **6 / 2 / 900**（正しくは 3 / 1 / 300）。42883 で必ず落ちていたので誰も数字を見て
+  いなかったが、**返るようにする以上そのまま出すわけにいかない** —— 側ごとに先に
+  畳む形（`left join lateral`）へ直し、同じデータで 3 / 1 / 300 になることを確認した。
 - **再生 DB で機能ごと通して確認済み**: 同意なし → `山***` / `pii_disclosed=f`、
   同意あり → 実名 / `pii_disclosed=t`、`insurer_access_logs` に2行。
-  `agent_rankings` は JSON を返す。
 - **検査の作り**: `plpgsql_check_function()` を全 plpgsql 関数に当てる。トリガ関数は
   `relid` を渡さないと検査できないので、その関数を使っているトリガから1つ取って渡す
-  （どのトリガからも使われていないものは対象外。現在0本）。陽性・陰性の対照を対で置き、
+  （どのトリガからも使われていないものは対象外。**現在2本**: `generate_case_number` /
+  `handle_updated_at`。どちらも本番ではトリガが付いている（`trg_set_case_number` /
+  `trg_job_orders_updated_at`）ので、**死んでいるのではなく再生 DB にトリガが無い**
+  ＝ドリフト。検査の穴として毎回名前を出す）。陽性・陰性の対照を対で置き、
   対照が通ったときだけ本走査に進む。CI は `REQUIRE_PLPGSQL_CHECK=1` で、**拡張が
   入らなかったときに黙って飛ばさせない**。
 - **偽陽性は allowlist ではなく再生 DB の側を直した。** `register_insurer_v2` の4件は
