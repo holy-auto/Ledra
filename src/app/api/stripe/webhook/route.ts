@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import { getStripeClient } from "@/lib/stripe/client";
+import { getCurrentPeriodEnd } from "@/lib/stripe/subscription";
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { priceIdToPlanTier } from "@/lib/stripe/plan";
 import { insurerPriceIdToPlanTier } from "@/lib/stripe/insurerPlan";
@@ -33,12 +34,6 @@ function asStringId(v: unknown): string | null {
   if (typeof v === "string") return v;
   if (typeof v === "object" && v !== null && "id" in v) return String(v.id);
   return String(v);
-}
-
-/** Stripe SDK v20+: current_period_end moved from Subscription to SubscriptionItem */
-function getCurrentPeriodEnd(sub: Stripe.Subscription): number | null {
-  const subRecord = sub as unknown as Record<string, unknown>;
-  return (subRecord.current_period_end as number | undefined) ?? sub.items?.data?.[0]?.current_period_end ?? null;
 }
 
 /**
@@ -99,6 +94,112 @@ async function handleVehicleReportSessionPaid(
   // the event stays `processed_at IS NULL` for the monitor cron + manual replay,
   // and the booking is idempotent (UNIQUE(order_id,tenant_id)), so replay is safe.
   await recordVehicleReportRevenueShares(orderId);
+}
+
+// ── ショップ注文 checkout (mode=payment) の paid 確定 ──
+//
+// E2-2/E2-3 是正 (2026-09-08): handleVehicleReportSessionPaid と同じ理由で
+// 関数として切り出した。
+//   - E2-3: 以前は payment_status を確認せず paid 化しており、コンビニ/銀行振込
+//     等の非同期決済を有効化すると入金確定前に NFC タグがプロビジョニングされた。
+//     vehicle_report 経路に倣い payment_status !== "paid" は早期 return（呼び出し元
+//     の switch では break 相当）とし、`checkout.session.async_payment_succeeded`
+//     からも同じ関数を呼んで入金確定時に paid 化できるようにする。
+//   - E2-2: DB 更新失敗を呼び出し元が `break` するだけで、直後に
+//     stripe_processed_events.processed_at が立ち、再送でも補正されず
+//     「顧客は支払済み・注文は pending のまま」が永久固定されていた。throw して
+//     外側 catch に委ね、processed_at を立てずに再送を許す。
+export async function handleShopOrderSessionPaid(
+  supabase: ReturnType<typeof createServiceRoleAdmin>,
+  session: Stripe.Checkout.Session,
+  eventId: string,
+): Promise<void> {
+  const shopOrderId = session.metadata?.shop_order_id;
+  if (!shopOrderId) return;
+  const tenantId = session.metadata?.tenant_id;
+
+  if (session.payment_status !== "paid") {
+    console.info("webhook: shop order checkout not yet paid, skipping", {
+      shopOrderId,
+      payment_status: session.payment_status,
+    });
+    return;
+  }
+
+  const paymentIntentId = asStringId(session.payment_intent);
+
+  // 注文ステータスを paid に更新
+  const { error: updateErr } = await supabase
+    .from("shop_orders")
+    .update({
+      status: "paid",
+      stripe_payment_intent_id: paymentIntentId,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", shopOrderId);
+
+  if (updateErr) {
+    throw new Error(`shop order update failed for ${shopOrderId}: ${updateErr.message}`);
+  }
+
+  // NFCタグの自動プロビジョニング
+  if (tenantId) {
+    const { data: items } = await supabase
+      .from("shop_order_items")
+      .select("meta, quantity")
+      .eq("order_id", shopOrderId);
+
+    for (const item of items ?? []) {
+      const meta = (item.meta as Record<string, unknown>) ?? {};
+      const qtyPerPack = (meta.quantity_per_pack as number) ?? 0;
+      if (qtyPerPack > 0) {
+        // NFCタグ: パックの枚数 × 注文数量分のタグ枠を作成
+        const totalTags = qtyPerPack * item.quantity;
+        const tagRows = Array.from({ length: totalTags }, (_, i) => ({
+          tenant_id: tenantId,
+          tag_code: `AUTO-${shopOrderId.slice(0, 8)}-${String(i + 1).padStart(4, "0")}`,
+          status: "prepared",
+        }));
+
+        if (tagRows.length > 0) {
+          const { error: tagErr } = await supabase.from("nfc_tags").insert(tagRows);
+          if (tagErr) {
+            console.error("webhook: nfc_tags provisioning failed", { shopOrderId, tenantId, error: tagErr });
+          } else {
+            console.info("webhook: nfc_tags provisioned", { shopOrderId, tenantId, count: tagRows.length });
+          }
+        }
+      }
+    }
+  }
+
+  // 購入完了メール送信。Stripe が webhook をリトライしても
+  // event.id ベースの idempotency key で Resend 側が重複送信しない。
+  if (tenantId) {
+    await sendShopOrderEmail({
+      supabase,
+      tenantId,
+      shopOrderId,
+      kind: "paid",
+      idempotencyKey: `shop-order-paid:${eventId}`,
+    });
+
+    // 運営（Ledra 運営チーム）への新規注文アラート。メール送信失敗で
+    // webhook 本体を失敗（＝ Stripe 再送）させないよう try/catch で隔離する。
+    try {
+      await sendShopOrderOpsNotification({
+        supabase,
+        tenantId,
+        shopOrderId,
+        kind: "paid",
+        idempotencyKey: `shop-order-ops-paid:${eventId}`,
+      });
+    } catch (opsErr) {
+      console.error("webhook: shop order ops notification failed", { shopOrderId, tenantId, error: opsErr });
+    }
+  }
+
+  console.info("webhook: shop order paid", { shopOrderId, tenantId });
 }
 
 // ── Payment failure notification email ──
@@ -602,83 +703,7 @@ export async function POST(req: NextRequest) {
 
         // ─── ショップ注文 checkout (mode=payment) ───
         if (session.metadata?.shop_order_id) {
-          const shopOrderId = session.metadata.shop_order_id;
-          const tenantId = session.metadata.tenant_id;
-          const paymentIntentId = asStringId(session.payment_intent);
-
-          // 注文ステータスを paid に更新
-          const { error: updateErr } = await supabase
-            .from("shop_orders")
-            .update({
-              status: "paid",
-              stripe_payment_intent_id: paymentIntentId,
-              updated_at: new Date().toISOString(),
-            })
-            .eq("id", shopOrderId);
-
-          if (updateErr) {
-            console.error("webhook: shop order update failed", { shopOrderId, error: updateErr });
-            break;
-          }
-
-          // NFCタグの自動プロビジョニング
-          if (tenantId) {
-            const { data: items } = await supabase
-              .from("shop_order_items")
-              .select("meta, quantity")
-              .eq("order_id", shopOrderId);
-
-            for (const item of items ?? []) {
-              const meta = (item.meta as Record<string, unknown>) ?? {};
-              const qtyPerPack = (meta.quantity_per_pack as number) ?? 0;
-              if (qtyPerPack > 0) {
-                // NFCタグ: パックの枚数 × 注文数量分のタグ枠を作成
-                const totalTags = qtyPerPack * item.quantity;
-                const tagRows = Array.from({ length: totalTags }, (_, i) => ({
-                  tenant_id: tenantId,
-                  tag_code: `AUTO-${shopOrderId.slice(0, 8)}-${String(i + 1).padStart(4, "0")}`,
-                  status: "prepared",
-                }));
-
-                if (tagRows.length > 0) {
-                  const { error: tagErr } = await supabase.from("nfc_tags").insert(tagRows);
-                  if (tagErr) {
-                    console.error("webhook: nfc_tags provisioning failed", { shopOrderId, tenantId, error: tagErr });
-                  } else {
-                    console.info("webhook: nfc_tags provisioned", { shopOrderId, tenantId, count: tagRows.length });
-                  }
-                }
-              }
-            }
-          }
-
-          // 購入完了メール送信。Stripe が webhook をリトライしても
-          // event.id ベースの idempotency key で Resend 側が重複送信しない。
-          if (tenantId) {
-            await sendShopOrderEmail({
-              supabase,
-              tenantId,
-              shopOrderId,
-              kind: "paid",
-              idempotencyKey: `shop-order-paid:${event.id}`,
-            });
-
-            // 運営（Ledra 運営チーム）への新規注文アラート。メール送信失敗で
-            // webhook 本体を失敗（＝ Stripe 再送）させないよう try/catch で隔離する。
-            try {
-              await sendShopOrderOpsNotification({
-                supabase,
-                tenantId,
-                shopOrderId,
-                kind: "paid",
-                idempotencyKey: `shop-order-ops-paid:${event.id}`,
-              });
-            } catch (opsErr) {
-              console.error("webhook: shop order ops notification failed", { shopOrderId, tenantId, error: opsErr });
-            }
-          }
-
-          console.info("webhook: shop order paid", { shopOrderId, tenantId });
+          await handleShopOrderSessionPaid(supabase, session, event.id);
           break;
         }
 
@@ -774,7 +799,9 @@ export async function POST(req: NextRequest) {
             const sub = subRes as unknown as Stripe.Subscription & Record<string, unknown>;
             const recurringItem = sub.items?.data?.find((i) => i.price?.recurring);
 
-            await supabase.from("tenant_option_subscriptions").upsert(
+            // E2-4 是正 (2026-09-08): upsert の戻り値を捨てておらず、DB 障害時に
+            // 無音で未反映のまま processed 扱いになっていた。throw して再送を許す。
+            const { error: optionUpsertErr } = await supabase.from("tenant_option_subscriptions").upsert(
               {
                 tenant_id: tenantId,
                 option_type: optionType,
@@ -789,6 +816,11 @@ export async function POST(req: NextRequest) {
               },
               { onConflict: "tenant_id,option_type" },
             );
+            if (optionUpsertErr) {
+              throw new Error(
+                `tenant_option_subscriptions upsert failed for ${tenantId}/${optionType}: ${optionUpsertErr.message}`,
+              );
+            }
 
             await sendTemplateSubscriptionStartedEmail({
               supabase,
@@ -831,6 +863,13 @@ export async function POST(req: NextRequest) {
         if (session.metadata?.vehicle_report_order_id) {
           await handleVehicleReportSessionPaid(supabase, session);
         }
+        // E2-3 是正 (2026-09-08): ショップ注文でコンビニ/銀行振込等の非同期決済を
+        // 使った場合、checkout.session.completed の時点では payment_status が
+        // 'unpaid' で paid 化されない。入金確定時に発火するこのイベントで
+        // 同じ関数を呼び、paid 化 + NFC プロビジョニングを行う。
+        if (session.metadata?.shop_order_id) {
+          await handleShopOrderSessionPaid(supabase, session, event.id);
+        }
         break;
       }
 
@@ -854,7 +893,9 @@ export async function POST(req: NextRequest) {
                     ? "active"
                     : "suspended";
 
-            await supabase
+            // E2-4 是正 (2026-09-08): 戻り値の error を確認せず、DB 障害時に
+            // 無音で未反映のまま processed 扱いになっていた。throw して再送を許す。
+            const { error: optionSyncErr } = await supabase
               .from("tenant_option_subscriptions")
               .update({
                 status,
@@ -866,6 +907,11 @@ export async function POST(req: NextRequest) {
               })
               .eq("tenant_id", tenantId)
               .eq("option_type", optionType);
+            if (optionSyncErr) {
+              throw new Error(
+                `tenant_option_subscriptions sync failed for ${tenantId}/${optionType}: ${optionSyncErr.message}`,
+              );
+            }
 
             console.info("webhook: template option subscription synced", { tenantId, optionType, status });
           }
@@ -1025,7 +1071,9 @@ export async function POST(req: NextRequest) {
           const optionType = sub.metadata?.option_type;
           if (tenantId && optionType) {
             const isPaid = event.type === "invoice.paid";
-            await supabase
+            // E2-4 是正 (2026-09-08): 戻り値の error を確認せず、DB 障害時に
+            // 無音で未反映のまま processed 扱いになっていた。throw して再送を許す。
+            const { error: optionInvoiceErr } = await supabase
               .from("tenant_option_subscriptions")
               .update({
                 status: isPaid ? "active" : "past_due",
@@ -1036,6 +1084,11 @@ export async function POST(req: NextRequest) {
               })
               .eq("tenant_id", tenantId)
               .eq("option_type", optionType);
+            if (optionInvoiceErr) {
+              throw new Error(
+                `tenant_option_subscriptions invoice sync failed for ${tenantId}/${optionType}: ${optionInvoiceErr.message}`,
+              );
+            }
             console.info("webhook: template option invoice", { tenantId, optionType, event: event.type });
           }
           break;
