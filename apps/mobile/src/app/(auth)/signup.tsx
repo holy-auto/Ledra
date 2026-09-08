@@ -95,10 +95,22 @@ export default function SignupScreen() {
 
       // 登録成功 → サインインを試みる。メール確認前は失敗するのが通常経路
       // （B-H3 是正）。ここだけ個別に catch し、確認メール送信済み画面へ。
+      // コードレビュー指摘 (2026-09-08): 理由を問わず全ての失敗を「確認メール
+      // 送信済み」として握りつぶすと、ネットワーク断やレート制限など無関係の
+      // 失敗まで誤案内してしまう。Supabase の email_not_confirmed コードの
+      // ときだけ確認メール画面へ、それ以外はエラー表示する。
       try {
         await signIn(email.trim(), password);
-      } catch {
-        setEmailSent(true);
+      } catch (err: unknown) {
+        const code = (err as { code?: string } | null)?.code;
+        if (code === "email_not_confirmed") {
+          setEmailSent(true);
+          setLoading(false);
+          return;
+        }
+        setError(
+          err instanceof Error ? err.message : "ログインに失敗しました"
+        );
         setLoading(false);
         return;
       }
