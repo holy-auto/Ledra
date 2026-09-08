@@ -4,6 +4,21 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-09-08 帳票メール送付の失敗理由が「送信に失敗しました」に潰れていたのを、実際のプロバイダ理由が残るように修正
+
+- 内容: 帳票共有（`POST /api/admin/documents/share`）とAI自動送付（`documentAuto.ts`）のメール送信経路
+  `sendDocumentEmail`（`src/lib/documents/share-email.ts`）が、Resend/SendGrid の実失敗理由を
+  `boolean` に丸めて捨てていたため、失敗時は常に汎用文言 `"送信に失敗しました"` のみが
+  `document_share_log.error_message`（帳票詳細「送付履歴」に表示）に残り、原因調査ができなかった。
+  戻り値を `{ ok: boolean; error?: string }` に変更し、プロバイダの実エラー（`provider:message` 形式）
+  または未設定理由（`RESEND_API_KEY/RESEND_FROM が未設定です`）が呼び出し元まで伝わるようにした。
+  ユーザー向け API 応答（本番ではエラー詳細を隠す既存の `apiInternalError` 設計）は変更していない。
+- 対象: 帳票詳細（`/admin/documents/[id]`）の共有（メールタブ）、AI帳票自動送付。全帳票種別・全業種。
+- 補足: 本件の報告（請求書メール送付不可）の直接の原因（Resend/SendGrid 側で実際に何が起きているか）は
+  本セッションからは確認不可能だったため未解決。本修正のデプロイ後、次に送付を試みた際に
+  `document_share_log.error_message` に出る具体的な理由から追加対処を判断する
+  （詳細: DECISION_LOG 2026-09-08）。
+
 ## 2026-09-07 out-of-order 検査を本番台帳と比べるようにし、止まっていた本番の適用を再開させた（PR #1044）
 
 - **本番の適用が19時間止まっていた**（#1020 のマージ 2026-09-06 12:57 UTC 〜

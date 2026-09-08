@@ -19,15 +19,22 @@ function wrap(title: string, body: string) {
   `;
 }
 
-async function send(to: string, subject: string, html: string): Promise<boolean> {
+export type SendDocumentEmailResult = { ok: boolean; error?: string };
+
+async function send(to: string, subject: string, html: string): Promise<SendDocumentEmailResult> {
   const apiKey = process.env.RESEND_API_KEY;
   const from = process.env.RESEND_FROM;
-  if (!apiKey || !from) return false;
+  if (!apiKey || !from) return { ok: false, error: "RESEND_API_KEY/RESEND_FROM が未設定です。" };
   try {
     const res = await sendEmail({ from, to, subject, html });
-    return res.ok;
-  } catch {
-    return false;
+    if (res.ok) return { ok: true };
+    // res.error はプロバイダ (resend/sendgrid) が返した実際の失敗理由。
+    // これを握りつぶして true/false だけ返すと、失敗時に document_share_log /
+    // 呼び出し元のどこにも「なぜ」が残らず、原因調査ができなくなる
+    // （本番で起きていた実際の不具合: エラーが全部 "送信に失敗しました" になっていた）。
+    return { ok: false, error: `${res.provider}:${res.error}` };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
   }
 }
 
@@ -43,7 +50,7 @@ export async function sendDocumentEmail(params: {
   pdfUrl?: string;
   /** 同封する他の帳票（帳票管理画面から追加選択された分） */
   additionalDocuments?: { docType: string; docNumber: string; totalAmount: number }[];
-}): Promise<boolean> {
+}): Promise<SendDocumentEmailResult> {
   const docType = escapeHtml(params.docType);
   const docNumber = escapeHtml(params.docNumber);
   const recipient = escapeHtml(params.recipientName);

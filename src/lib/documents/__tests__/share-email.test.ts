@@ -22,7 +22,7 @@ describe("sendDocumentEmail", () => {
       return new Response(JSON.stringify({ id: "msg_1" }), { status: 200 });
     }) as never;
 
-    const ok = await sendDocumentEmail({
+    const result = await sendDocumentEmail({
       to: "customer@example.com",
       docType: "請求書",
       docNumber: "INV-001",
@@ -31,7 +31,7 @@ describe("sendDocumentEmail", () => {
       senderName: "株式会社テスト",
     });
 
-    expect(ok).toBe(true);
+    expect(result.ok).toBe(true);
     expect(body!.subject).toBe("[株式会社テスト] 請求書 INV-001 のご送付");
     expect(body!.html).toContain("書類番号: <strong>INV-001</strong>");
     expect(body!.html).not.toContain("<table");
@@ -44,7 +44,7 @@ describe("sendDocumentEmail", () => {
       return new Response(JSON.stringify({ id: "msg_2" }), { status: 200 });
     }) as never;
 
-    const ok = await sendDocumentEmail({
+    const result = await sendDocumentEmail({
       to: "customer@example.com",
       docType: "請求書",
       docNumber: "INV-001",
@@ -57,11 +57,48 @@ describe("sendDocumentEmail", () => {
       ],
     });
 
-    expect(ok).toBe(true);
+    expect(result.ok).toBe(true);
     expect(body!.subject).toBe("[株式会社テスト] 請求書 INV-001 他2件のご送付");
     expect(body!.html).toContain("<table");
     expect(body!.html).toContain("INV-001");
     expect(body!.html).toContain("EST-002");
     expect(body!.html).toContain("DLV-003");
+  });
+
+  // 回帰テスト: プロバイダ側の失敗理由が result.error に残ること
+  // (以前は真偽値だけ返し、失敗理由が document_share_log にも API 応答にも
+  // 一切残らず "送信に失敗しました" だけになっていた。本番でこの状態が起きて
+  // 実際の原因を追えなかった不具合の再発防止)。
+  it("Resend が失敗した場合、result.ok=false かつ result.error に実際の理由が残る", async () => {
+    globalThis.fetch = vi.fn(async () => new Response("Invalid API key", { status: 401 })) as never;
+
+    const result = await sendDocumentEmail({
+      to: "customer@example.com",
+      docType: "請求書",
+      docNumber: "INV-001",
+      totalAmount: 10000,
+      recipientName: "山田太郎",
+      senderName: "株式会社テスト",
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain("resend");
+    expect(result.error).toContain("Invalid API key");
+  });
+
+  it("RESEND_API_KEY/RESEND_FROM が未設定の場合も理由付きで失敗を返す", async () => {
+    vi.unstubAllEnvs();
+
+    const result = await sendDocumentEmail({
+      to: "customer@example.com",
+      docType: "請求書",
+      docNumber: "INV-001",
+      totalAmount: 10000,
+      recipientName: "山田太郎",
+      senderName: "株式会社テスト",
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch(/RESEND_API_KEY|RESEND_FROM/);
   });
 });
