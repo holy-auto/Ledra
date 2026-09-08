@@ -40,6 +40,17 @@ export type CallerRouteContext<P = undefined> = P extends undefined
 
 type CallerRouteHandler<P> = (req: NextRequest, ctx: CallerRouteContext<P>) => Promise<Response>;
 
+/**
+ * P が undefined（静的ルート）なら第2引数を取らない、P が指定されていれば
+ * `{ params: Promise<P> }` を**必須**にするタプル。
+ *
+ * `routeCtx?: ...` のような単純な optional にすると、P を指定していても
+ * 第2引数を省略した呼び出しが型エラーにならず、実行時に `ctx.params` が
+ * undefined のままハンドラに渡って落ちる（/code-review 指摘 2026-09-08）。
+ * rest タプルで表現すると、P 指定時は本当に必須になる。
+ */
+type RouteCtxArgs<P> = P extends undefined ? [] : [routeCtx: { params: Promise<P> }];
+
 export type WithCallerOptions = {
   /** 最低ロール（`hasMinRole` で判定）。permission と併用可、両方満たす必要がある。 */
   minRole?: Role;
@@ -57,10 +68,7 @@ export type WithCallerOptions = {
  * `ctx.params` として渡す。静的ルート（params 無し）では `P` を省略する。
  */
 export function withCaller<P = undefined>(handler: CallerRouteHandler<P>, options: WithCallerOptions = {}) {
-  return async (
-    req: NextRequest,
-    routeCtx?: P extends undefined ? undefined : { params: Promise<P> },
-  ): Promise<Response> => {
+  return async (req: NextRequest, ...args: RouteCtxArgs<P>): Promise<Response> => {
     try {
       if (options.rateLimit) {
         const limited = await checkRateLimit(req, options.rateLimit);
@@ -74,6 +82,7 @@ export function withCaller<P = undefined>(handler: CallerRouteHandler<P>, option
       if (options.minRole && !requireMinRole(caller, options.minRole)) return apiForbidden();
       if (options.permission && !requirePermission(caller, options.permission)) return apiForbidden();
 
+      const routeCtx = args[0] as { params: Promise<P> } | undefined;
       const params = routeCtx ? await routeCtx.params : undefined;
       const ctx = (params !== undefined ? { caller, supabase, params } : { caller, supabase }) as CallerRouteContext<P>;
 

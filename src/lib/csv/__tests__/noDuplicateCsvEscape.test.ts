@@ -12,7 +12,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { walkSource } from "../../__tests__/sourceScan";
+import { walkSource, stripComments } from "../../__tests__/sourceScan";
 
 const SRC_ROOT = join(process.cwd(), "src");
 
@@ -21,11 +21,19 @@ describe("csvEscape の再定義を防ぐ", () => {
     const offenders: string[] = [];
     for (const file of walkSource(SRC_ROOT, (f) => f.endsWith(".ts") || f.endsWith(".tsx"))) {
       if (file.endsWith(join("lib", "csv", "serialize.ts"))) continue;
-      const src = readFileSync(file, "utf8");
+      const raw = readFileSync(file, "utf8");
+      // 安価な事前フィルタ: "csvEscape" という文字列すら含まないファイルは
+      // AST 解析（stripComments）するまでもない。src/ 全体（数千ファイル）を
+      // 毎回パースするとテストが重すぎるため、候補だけに絞る。
+      if (!raw.includes("csvEscape")) continue;
+      // コメントを除いてから判定する（このテストファイル自身の説明文のように
+      // 「function csvEscape(」という文字列がコメント中に出るだけで
+      // 誤検出しないように — /code-review 指摘 2026-09-08）。
+      const src = stripComments(raw, file);
       if (/function\s+csvEscape\s*\(|const\s+csvEscape\s*=/.test(src)) {
         offenders.push(file.slice(SRC_ROOT.length + 1));
       }
     }
     expect(offenders).toEqual([]);
-  });
+  }, 15_000);
 });

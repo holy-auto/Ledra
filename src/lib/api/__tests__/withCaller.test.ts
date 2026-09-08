@@ -118,6 +118,17 @@ describe("withCaller", () => {
     expect(ctx.params).toEqual({ id: "cert-1" });
   });
 
+  // 型テストのみ（実行はしない）。P を指定したルートで routeCtx（第2引数）を
+  // 省略すると**コンパイルエラー**になることを固定する（/code-review 指摘
+  // 2026-09-08）。`@ts-expect-error` が不要になった = 退行して省略が
+  // 通ってしまった、を `tsc --noEmit` が検出する。
+  function _typeOnly_omittingRouteCtxIsAnError() {
+    const route = withCaller<{ id: string }>(async (_req, ctx) => apiOk(ctx.params));
+    // @ts-expect-error routeCtx（第2引数）が必須のはず
+    void route(req());
+  }
+  void _typeOnly_omittingRouteCtxIsAnError;
+
   it("ハンドラが例外を投げたら apiInternalError（500）に変換する", async () => {
     resolveCallerWithRoleMock.mockResolvedValue(CALLER);
     const handler = vi.fn().mockRejectedValue(new Error("boom"));
