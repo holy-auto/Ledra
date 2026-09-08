@@ -302,7 +302,7 @@ describe("lint-migrations", () => {
   it("KNOWN CEILING: a stale ledger max degrades to the base-only comparison, which MISSES", () => {
     // **これは「緩まない」ではない。** max が古いとしきい値が base へ落ち、それは
     // #1020 を通した当時の検査そのもの。当初「古くても緩まない」と4つの文書に書いたが
-    // 誤りで、実際は見逃す（M-061）。このテストは天井を明示的に固定する。
+    // 誤りで、実際は見逃す（M-064）。このテストは天井を明示的に固定する。
     //
     // 検出は lint ではなく .github/workflows/db-migrate.yml 側（本番の資格情報を持つ）。
     // ここが 0 のままなのは仕様であって、直したくなったら db-migrate の方を見ること。

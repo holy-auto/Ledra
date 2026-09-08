@@ -30,3 +30,25 @@ jobs:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
         run: node scripts/check-supabase-advisors.mjs
+
+  schema-drift:
+    name: Schema drift
+    runs-on: ubuntu-latest
+    # 本番にあるのにマイグレーションからは作られないオブジェクトを検出する。
+    # 2026-09-06 に 69 個見つかった（うち関数5本を 26 本の RLS ポリシーが使っていた）。
+    #
+    # なぜ PR の CI ではなくここに置くか:
+    #   本番の資格情報が要る。PR の `Migrations Replay` は空 DB しか持たないので
+    #   本番と比べようがなく、そちらへ本番トークンを渡す代償は検出の価値に見合わない。
+    #   この定期ジョブは既に本番を叩いており、置き場所として素直。
+    # 3〜5 分ほどかかる（マイグレーションを空 DB へ流し直すため）。
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: Check schema drift
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
+        run: node scripts/check-schema-drift.mjs
