@@ -4,6 +4,27 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-09-08 セキュリティ監査是正 PR-4（AI/クローラ露出と衛生）
+
+PR #1054 に4コミット追加。`npx tsc --noEmit` / 全 vitest（565ファイル）/
+gitleaksローカル検証（108コミット全履歴、"no leaks found"）すべて green。
+
+- **索引可否**: ルートレイアウトの既定を非索引に反転し、マーケティング
+  ページ側だけ索引可に明示的に上書き。公開証明書ページ `/c/[public_id]`
+  はレイアウトで明示的に非索引を二重固定。proxyの `x-robots-tag` も
+  非マーケティングページ全体に拡張。
+- **CSP**: `img-src`/`connect-src` のSupabaseワイルドカードを自プロジェクト
+  ホストに限定。
+- **Sentry**: server/edge両方の `beforeSend` に authorization/cookie
+  ヘッダのスクラブを追加（edgeは`beforeSend`自体が無かった）。
+- **pepper fail-open**: `emailOtp.ts` を他14箇所と同じfail-closedに統一。
+- **Square webhook**: 署名検証の `timingSafeEqual` に長さチェックを追加。
+- **プロトタイプ削除**: `src/app/probe` と `public/deploy_probe.txt` を削除
+  （ユーザー決定事項、他のプロトタイプ画面は対象外）。
+- **秘密情報スキャン**: gitleaksをCIに追加。ローカルで実際にダウンロード
+  して全履歴を走査・検証し、既定ルールの38件の検出がすべて偽陽性
+  であることを1件ずつ確認したうえでallowlist設定。
+
 ## 2026-09-08 セキュリティ監査是正 PR-3（モバイル修正）
 
 PR #1054 に4コミット追加（実装3 + code-review是正1）。`npx tsc --noEmit`
