@@ -4,6 +4,39 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-09-08 セキュリティ監査是正 PR-5（重複圧縮）— 5PR構成が完結
+
+PR #1054 に11コミット追加（実装8 + 起票2 + code-review是正1）。
+`npx tsc --noEmit` / 全 vitest（5586件 pass）/ eslint すべて green。
+これで監査プランの PR-1〜PR-5 が完結。
+
+- **F-6 未使用依存削除**: `ethers`・`next-intl` を削除、
+  `remotion`/`@remotion/cli` を devDependencies へ移動。
+- **F-2 resolveCallerFull 廃止**: 8箇所を `resolveCallerWithRole` に統一し
+  `src/lib/api/auth.ts` を削除。統合の副産物として template-options 系
+  6ルートの認可漏れ（staff/viewerでも書き込み可能だった）を発見し
+  `template_options:manage` 権限で修正。
+- **F-3 Redis重複統合（部分）**: `lib/rateLimit.ts`・`lib/api/rateLimit.ts`・
+  `lib/api/idempotency.ts` の独自Redisクライアント3本を `lib/upstash.ts`
+  の共有シングルトンに統合。2つの呼び出し規約自体の完全統合は
+  OPEN_QUESTIONSへ。
+- **F-13 紛らわしい重複名の整理**: `certificate/`→`certificates/` 統合、
+  `certificateImages.ts`→`certificateImages/constants.ts` 移動、
+  deprecated な `lib/supabase.ts` 削除。
+- **F-10 csvEscape 統合**: CSV export 4ルートのローカル `csvEscape` を
+  共有実装に統合。formula injection 対策の非対称差分（ローカル版に
+  無害化処理が無かった）を発見・修正。回帰防止テストを追加。
+- **F-7 JSTオフセット統合（部分）**: マジックナンバー `9*60*60*1000` を
+  6箇所で `datetime.ts` の `JST_OFFSET_MS` 定数に統合。
+- **F-9 sendEmail 一本化**: `sendResendEmail` 直呼び10箇所を
+  Resend→SendGridフォールバック付きの `sendEmail()` に統一
+  （attachments使用の3本は対象外）。
+- **F-1 withCaller 新設**: route.ts の定型ボイラープレートを1本化する
+  `src/lib/api/withCaller.ts` を新規作成（既存648本は対象外、新規ルート
+  から使用）。
+- **code-review是正**: csvEscape重複検出テストのコメント誤検出、
+  withCaller の型安全性（P指定時のparams省略を型エラーに）の2件を修正。
+
 ## 2026-09-08 セキュリティ監査是正 PR-4（AI/クローラ露出と衛生）
 
 PR #1054 に4コミット追加。`npx tsc --noEmit` / 全 vitest（565ファイル）/
