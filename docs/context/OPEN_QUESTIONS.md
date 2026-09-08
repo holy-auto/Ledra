@@ -3,6 +3,37 @@
 > まだ決まっていないこと、判断に迷っていることを書く場所。決まったら
 > DECISION_LOG.md に移し、このファイルからは消す（削除履歴は git で追える）。
 
+## F-4: importer 0 の src/lib モジュール群をどう扱うか（2026-09-08）
+
+監査プラン F-4 は「importer 0 の src/lib モジュール 25本（domain/jobExceptions,
+payment/derivePaymentState, certificates/versionTransition,
+documents/estimateApproval, auth/stepUp, auth/sharedDevice, auth/invite,
+api/securityAudit, zkp/commitment, agent/statusGuard 等）。src/lib export
+1,949件中505件（26%）未参照」を挙げ、「IMP-* 先行実装分は OPEN_QUESTIONS で
+『接続予定か』を確認、それ以外は削除」と指示していた。
+
+**確実**: 例示された10本（domain/jobExceptions, payment/derivePaymentState,
+certificates/versionTransition, documents/estimateApproval, auth/stepUp,
+auth/sharedDevice, auth/invite, api/securityAudit, zkp/commitment,
+agent/statusGuard）は、`grep -rl` でテスト以外からの import を今回
+個別に再確認し、全10本とも importer 0 のままだった（2026-09-08 実測）。
+
+**推定**: 25本全量の再スキャンは実行したが、本ファイル執筆時点で
+結果を未反映（バックグラウンド実行が長時間かかったため）。件数「25本」
+「26%」はプラン記載の監査時点の数字であり、このセッションで全量を
+再検証してはいない。
+
+判断が必要なこと（削除は本 PR の範囲外 — 実装意図の確認が先):
+- 上記10本を含む未接続モジュールが、IMP-01〜IMP-17 等の**先行実装**
+  （後続 PR で接続予定）なのか、それとも本当に死んでいるコードなのかは
+  ファイル単体では判断できない。`docs/implementation/requirement-trace.md`
+  等の実装トレースと突き合わせて1本ずつ「接続予定 / 削除可」を仕分ける
+  作業が必要。
+- 削除するにしても、テストファイルが実装より先に書かれているものは
+  「未接続」であってテストの意味が違う可能性がある（要個別確認）。
+
+公開区分: 公開可（内部の技術的負債整理メモ）。
+
 ## レート制限「2系統」の完全統合をどこまでやるか（2026-09-08）
 
 監査プラン F-3 は「レート制限2系統（lib/rateLimit.ts の
