@@ -15,13 +15,37 @@ api/securityAudit, zkp/commitment, agent/statusGuard 等）。src/lib export
 **確実**: 例示された10本（domain/jobExceptions, payment/derivePaymentState,
 certificates/versionTransition, documents/estimateApproval, auth/stepUp,
 auth/sharedDevice, auth/invite, api/securityAudit, zkp/commitment,
-agent/statusGuard）は、`grep -rl` でテスト以外からの import を今回
-個別に再確認し、全10本とも importer 0 のままだった（2026-09-08 実測）。
+agent/statusGuard）は、`from "..."` の完全一致（クォート境界込み）で
+テスト以外からの import を今回個別に再確認し、全10本とも importer 0 の
+ままだった（2026-09-08 実測、`src/` 配下）。
 
-**推定**: 25本全量の再スキャンは実行したが、本ファイル執筆時点で
-結果を未反映（バックグラウンド実行が長時間かかったため）。件数「25本」
-「26%」はプラン記載の監査時点の数字であり、このセッションで全量を
-再検証してはいない。
+**この10本を数える過程で、監査の走査ツール自体の2種類の誤りを実際に踏んだ**
+（MISTAKE_LEDGER M-064 と同根、道具を検証しないまま数字を書く型）:
+
+1. **走査範囲の欠落**: 最初の確認は `src/` 配下だけを見ていたが、
+   `src/lib/envValidation.ts`（F-4 の対象外だが同じ「importer 0」に
+   見えていた別ファイル）はプロジェクトルートの `instrumentation.ts`
+   （Next.js の起動フック、`src/` の外）から動的 `import()` されていた。
+   `src/` だけを見る走査は、ルート直下のファイル
+   （`instrumentation.ts`・`instrumentation-client.ts`・`sentry.*.config.ts`・
+   `next.config.ts` 等）からの参照を系統的に見落とす。
+2. **部分文字列の誤検出**: 上記1を修正してリポジトリ全体（node_modules除く）
+   に走査範囲を広げたところ、`auth/stepUp` が新たに「importer 6」に化けた。
+   中身を見ると実体は `src/proxy.ts` 等が **`@/lib/auth/stepUpGuard`**
+   （別モジュール）を import しており、`@/lib/auth/stepUp` という
+   非アンカーの文字列一致が `stepUpGuard` にもマッチしていた
+   （CLAUDE.md の「role名の部分文字列」と同型の罠）。`auth/stepUp` 単体は
+   実際には importer 0 のまま。
+
+この2つを踏まえ、114本という広域スキャンの生数字（`src/lib` 配下のファイル
+単位）は**そのまま信用しない**。境界をアンカーし、かつプロジェクトルートの
+起動フックまで走査範囲に含めた、より正確な検出器（既存の
+`ts-prune` 等のAST的ツールが望ましい。grep ベースの正規表現は今回のように
+再発しうる）で作り直してから件数を確定すべき。
+
+**推定**: 25本／26%はプラン記載の監査時点の数字で、このセッションでは
+全量を確定できていない。上記の理由により、broad rescan の 114 という数字も
+そのままは採用しない。
 
 判断が必要なこと（削除は本 PR の範囲外 — 実装意図の確認が先):
 - 上記10本を含む未接続モジュールが、IMP-01〜IMP-17 等の**先行実装**
@@ -31,6 +55,9 @@ agent/statusGuard）は、`grep -rl` でテスト以外からの import を今�
   作業が必要。
 - 削除するにしても、テストファイルが実装より先に書かれているものは
   「未接続」であってテストの意味が違う可能性がある（要個別確認）。
+- 次にこの調査をするときは、まず `envValidation.ts`（instrumentation.ts
+  から使われている、既知の「非 src 参照」の実例）を検出器に通し、
+  正しく「使用中」と判定できるか確認してから件数を報告すること。
 
 公開区分: 公開可（内部の技術的負債整理メモ）。
 
