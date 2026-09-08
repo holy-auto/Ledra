@@ -25,7 +25,28 @@ function generateSlug(name: string): string {
 }
 
 /**
- * B-M3 是正 (2026-09-08): 既に登録済みのメールへ再度サインアップが試みられたときの
+ * code-review 指摘 (2026-09-08): 未確認のまま再登録が試みられたときの確認メール再送。
+ * email_confirm: false で作成されたアカウントは確認リンクを踏むまでログインできない。
+ * 1回目の確認メールが届かない/期限切れで詰まった利用者が signup をもう一度叩いた場合、
+ * 「登録済みです」の案内だけを送ると本人はどこにも進めなくなる（ログインできないアカウントに
+ * 「ログインしてください」と案内するだけになる）。確認済みかどうかで分岐し、未確認なら
+ * 新規登録時と同じ signInWithOtp を再実行して確認リンクを再送する。
+ */
+async function resendConfirmationForUnconfirmed(email: string, req: NextRequest): Promise<void> {
+  const baseUrl = resolveBaseUrl({ req, preferRequestOrigin: true });
+  const supabase = await createClient();
+  const { error } = await supabase.auth.signInWithOtp({
+    email,
+    options: {
+      shouldCreateUser: false,
+      emailRedirectTo: `${baseUrl}/auth/callback?next=/admin`,
+    },
+  });
+  if (error) throw error;
+}
+
+/**
+ * B-M3 是正 (2026-09-08): 既に確認済みのメールへ再度サインアップが試みられたときの
  * 案内メール。本人以外は結果を判別できないよう、送信失敗を呼び出し元に伝播させない
  * (best-effort)。
  */
@@ -97,9 +118,21 @@ export async function POST(req: NextRequest) {
         // 知らないため失敗して「確認メールを送信しました」画面に落ちる（B-H3 と同じ経路）。
         // 未登録時 (signInWithOtp 送信) と時間差が出てタイミングで区別できないよう
         // 待ち合わせる (失敗しても成功レスポンスは変えない)。
-        await notifyAlreadyRegistered(email, req).catch((e) =>
-          console.error("[signup] already-registered notice failed:", e),
-        );
+        //
+        // code-review 指摘 (2026-09-08): 既存アカウントがまだメール未確認なら
+        // 「登録済みです、ログインしてください」の案内はログインできないアカウントへの
+        // 案内になり、本人が永久に詰まる。確認済みかどうかで分岐し、未確認なら
+        // 確認メールを再送する（列挙オラクル対策のレスポンスは変えない）。
+        const { data: isUnconfirmed } = await admin.rpc("check_auth_email_unconfirmed", { p_email: email });
+        if (isUnconfirmed === true) {
+          await resendConfirmationForUnconfirmed(email, req).catch((e) =>
+            console.error("[signup] resend confirmation for unconfirmed retry failed:", e),
+          );
+        } else {
+          await notifyAlreadyRegistered(email, req).catch((e) =>
+            console.error("[signup] already-registered notice failed:", e),
+          );
+        }
         return apiOk({ ok: true });
       }
       return apiInternalError(authError, "signup: auth user creation");
