@@ -84,6 +84,10 @@ export async function unregisterPushNotifications(): Promise<void> {
     await mobileApi("/push/register", {
       method: "DELETE",
       body: { token: tokenData.data },
+      // code-review 指摘 (2026-09-08): handleUnauthorized() 経由（signOutEverywhere）
+      // で呼ばれたときはセッションが既に破棄済みで、このリクエストは必ず 401 になる。
+      // グローバル 401 ハンドラを再度起動すると自分自身を無限に呼び直す。
+      skipUnauthorizedHandler: true,
     });
   } catch {
     // サインアウト自体は必ず進める。削除できなくても次回ログイン時に
