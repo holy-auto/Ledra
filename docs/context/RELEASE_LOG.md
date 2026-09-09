@@ -4,6 +4,17 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-09-09 CI「Security audit」ゲートが検出したCVE3件をnpm audit fixで解消
+
+PR #1054 のCI失敗（`npm audit --audit-level=high --omit=dev`）を調査し、
+`next`（critical、Windowsホスト/AVIF最適化での未認証RCE）・`sharp`（high、
+libheif脆弱性）・`fflate`（moderate、posthog-js経由、ZIP64パース時の無限
+ループ）の3件のCVEを検出。`origin/main`と依存解決バージョンが完全一致する
+ことを確認し、このPRの差分が原因ではないと判断した上で、`npm audit fix`
+（package.jsonの既存semver範囲内、非破壊的）で解消。next→16.3.4・
+sharp→0.35.4・fflate(nested)→0.4.9。`bash scripts/ci-parallel-checks.sh`で
+CI相当の検査をローカル再現し全項目okを確認。
+
 ## 2026-09-08 PR #1054 ready for review化後、Codex自動レビュー6件（P1×3/P2×3）を検証し5件を修正
 
 `chatgpt-codex-connector[bot]` の自動レビューが6件の指摘を投稿。全件を実際に
