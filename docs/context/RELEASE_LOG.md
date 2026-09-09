@@ -4,6 +4,32 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-09-09 next / sharp の脆弱性で CI 全体が止まっていたのを解消
+
+- **main が赤かった。** CI の `Security audit (production dependencies)`
+  （`npm audit --audit-level=high --omit=dev`）が失敗し、**その次のステップである
+  lint / tsc / テスト一式が丸ごと `skipped` になっていた**（run 34357806973、
+  head `0ddd8e44`、13:33 UTC）。直前の main の run 34194844847（`37dbe4f6`、
+  2026-09-08 06:28 UTC）は success だったので、**依存の変更ではなく勧告の新規公開**が原因。
+- 検出された3件のうち、しきい値 `high` に触れるのは2件:
+  - `next` critical — GHSA-p293-qw3h-jr36（Windows ホストでの未認証 RCE）、
+    GHSA-2xp9-vwfh-vxw4（画像最適化 API の AVIF 経由の未認証 RCE）
+  - `sharp` high — GHSA-rgj7-g3m4-5g8c（libheif の脆弱性）
+- **package.json は変更していない。** 修正版は既存のレンジの内側にあった
+  （`next: ^16.2.10` → 16.2.11 から 16.3.4、`sharp: ^0.35.3` → 0.35.3 から 0.35.4）。
+  差分は `package-lock.json` のみ。
+- `fflate`（moderate、`posthog-js` の下）は**直していない**。しきい値 `high` に
+  届かず CI を止めていないため。
+- 検証: `npm audit --audit-level=high --omit=dev` が exit 0、
+  `scripts/ci-parallel-checks.sh` の6検査すべて通過（lint / lint:migrations / tsc /
+  test:coverage 542ファイル 5503件 / check:schema / check:context-dates）、
+  `next build` は `.next/build-manifest.json` を出力（クライアント側のコンパイルは成功。
+  build 自体の非ゼロ終了はシークレット不在によるページデータ収集の失敗で、CI が
+  意図的に許容している側）。
+- **未検証: E2E。** この workflow では `E2E Tests (Playwright)` が `skipped` のため、
+  next 16.2.11 → 16.3.4 の実行時挙動は単体テスト・型・クライアントコンパイルまでしか
+  見ていない。
+
 ## 2026-09-09 typegen が専用トークンを使えるようにした（設定とシークレットは未登録）
 
 - `db-typegen.yml` の `peter-evans/create-pull-request` に `token:` を渡していなかった
