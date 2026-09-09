@@ -4,6 +4,48 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-09-08 PR #1054 ready for review化後、Codex自動レビュー6件（P1×3/P2×3）を検証し5件を修正
+
+`chatgpt-codex-connector[bot]` の自動レビューが6件の指摘を投稿。全件を実際に
+コードを読んで検証し（誤検知0件）、5件を修正・push、1件は既存
+OPEN_QUESTIONS起票への参照で回答。`npx tsc --noEmit` / 全 vitest（5599件
+pass）/ eslint（新規error 0）/ `check:migrations`（459/459・RLS打ち消しなし）
+すべて green。
+
+- **qr-status の他テナントセッション露出**（D-A6是正の見落とし、P2）:
+  Connect未オンボーディングのテナントはプラットフォーム共有Stripeアカウント
+  経由になり、session_idの所有権チェックが無いと他テナントのCheckout
+  Session状態・金額・PaymentIntent IDを読めた。`metadata.tenant_id` との
+  突合ガードを追加。
+- **signup の未確認retryで確認メール再送漏れ**（B-M3是正の見落とし、P1）:
+  未確認のまま再登録された既存アカウントに「登録済みです」案内のみを送り、
+  本人が永久にログインできなくなっていた。新規RPC
+  `check_auth_email_unconfirmed` で確認状態を判定し、未確認なら確認メールを
+  再送するよう修正（レスポンスは列挙オラクル対策のため変更なし）。
+- **platform_*統計5関数のDB層ガード不一致**（G-L1是正の見落とし、P2）:
+  `is_super_admin_user()`（tenant_id を見ない）とアプリ層
+  `isPlatformAdmin()`（PLATFORM_TENANT_ID所属+owner/admin/super_admin）が
+  不一致で、過小（運営テナントowner/adminが弾かれる）・過大（他テナントの
+  super_adminが運営統計を取得できる）の両方向の問題があった。新設
+  `is_platform_admin()` に揃えた。ローカルPostgresでロールシミュレーション
+  し3パターンを実測確認。
+- **モバイル401ハンドラの無限再帰**（D-A10是正の見落とし、P1）: push解除
+  呼び出しがセッション破棄後の401ハンドラ自身から呼ばれると無限に自分を
+  呼び直しアプリがハングする。`mobileApi` に `skipUnauthorizedHandler`
+  オプションを追加して再帰を切った。
+- **Stripe webhook の遅延決済でcancelled注文が復活**（E2-2/E2-3是正の
+  見落とし、P1）: コンビニ/銀行振込の支払い確定待ちの間に運営が注文を
+  cancelledにできる設計で、遅れて届くasync_payment_succeededがステータス
+  条件無しの更新でpaidへ復活させ、NFCプロビジョニング・通知まで発火
+  させていた。姉妹関数 `handleVehicleReportSessionPaid` と同じ形の
+  `.in()` ステータスガードを追加。
+- **モバイルsignupのPKCE Cookie問題**（P2、修正せず）: 既存
+  OPEN_QUESTIONS起票（B-H3是正時に判明済み、代表判断待ち）への参照で
+  スレッドに回答。スレッドは未解決のまま維持。
+
+MISTAKE_LEDGER に M-066（兄弟実装との不一致、3件）・M-067（新しい呼び出し
+経路をそれが実際に発火する文脈で検証していない、1件）を追加。
+
 ## 2026-09-08 セキュリティ監査是正 PR-5（重複圧縮）— 5PR構成が完結
 
 PR #1054 に11コミット追加（実装8 + 起票2 + code-review是正1）。

@@ -4,7 +4,17 @@
 > 追わず、常に最新状態だけを保つ（履歴は DECISION_LOG.md / RELEASE_LOG.md 側）。
 > 大きな変化があったら都度上書きすること。
 
-最終更新: 2026-09-08
+最終更新: 2026-09-09
+
+> 2026-09-09 追記(5): **PR #1054 を ready for review 化し、Codex自動レビュー
+> 6件（P1×3/P2×3）を検証・5件を修正。** qr-status の他テナントセッション
+> 露出、signup未確認retryの確認メール再送漏れ、platform_*統計5関数のDB層
+> ガード不一致（isPlatformAdmin と噛み合っていなかった）、モバイル401
+> ハンドラの無限再帰、Stripe webhookの遅延決済でcancelled注文が復活する
+> 不具合を修正・push済み。モバイルsignupのPKCE Cookie問題（P2）は既存
+> OPEN_QUESTIONS起票（代表判断待ち）への参照で回答し、スレッドは未解決
+> のまま維持。**PRは現在レビュー中（ready for review、CI green、
+> mergeable_state: clean）。**
 
 > 2026-09-08 追記(4): **重複圧縮（PR-5）も完了。全体セキュリティ監査の
 > 是正シリーズ（PR-1〜PR-5）が完結。** 未使用依存削除、二重実装の
