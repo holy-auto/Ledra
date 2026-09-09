@@ -1,6 +1,11 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /**
  * E4-7 回帰確認: 月次コストキャップ超過時に AI 呼び出しをスキップすることを検証する。
+ *
+ * code-review 指摘 (2026-09-09): enabled=false は「コストキャップ超過」と
+ * 「管理者によるAI自動化トグルOFF」の両方で起こる。costCap.exceeded を見て
+ * 原因を区別し、後者では「上限超過」と誤解させるメッセージを出さないことを
+ * 併せて確認する。
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
@@ -52,10 +57,27 @@ describe("POST /api/admin/academy/qa", () => {
     expect(body).toEqual({ ok: true, answer: "回答です" });
   });
 
-  it("returns 400 without calling generateQAAnswer when the monthly cost cap is exceeded", async () => {
-    mocks.loadAiAutomationSettings.mockResolvedValue({ enabled: false });
+  it("returns ai_cost_cap_exceeded without calling generateQAAnswer when the monthly cost cap is exceeded", async () => {
+    mocks.loadAiAutomationSettings.mockResolvedValue({
+      enabled: false,
+      costCap: { capJpy: 1000, spentJpy: 1200, exceeded: true },
+    });
     const res = await POST(post({ question: "オイル交換の頻度は？" }));
     expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.code).toBe("ai_cost_cap_exceeded");
+    expect(mocks.generateQAAnswer).not.toHaveBeenCalled();
+  });
+
+  it("returns ai_automation_disabled (not the cost-cap message) when enabled=false but the cost cap is not exceeded", async () => {
+    mocks.loadAiAutomationSettings.mockResolvedValue({
+      enabled: false,
+      costCap: { capJpy: 1000, spentJpy: 100, exceeded: false },
+    });
+    const res = await POST(post({ question: "オイル交換の頻度は？" }));
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.code).toBe("ai_automation_disabled");
     expect(mocks.generateQAAnswer).not.toHaveBeenCalled();
   });
 });

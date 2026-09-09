@@ -49,13 +49,23 @@ export async function POST(req: NextRequest) {
       return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
     }
 
-    // E4-7 是正 (2026-09-08): 月次コストキャップ超過時は enabled=false に倒るので、
-    // それを見て呼び出し自体をスキップする。
+    // E4-7 是正 (2026-09-08): 月次コストキャップ超過時は enabled=false に倒る。
+    // code-review 指摘 (2026-09-09): ただし enabled=false は管理者による
+    // AI自動化トグルOFFでも同じ値になる（loadAiAutomationSettings 参照）ため、
+    // enabled のみを見て「コスト上限超過」と決めつけると、上限未達のテナントの
+    // トグルOFF時にも誤ったメッセージでQ&A機能をブロックしてしまう。
+    // costCap.exceeded を優先して見て、原因を区別する。
     const aiSettings = await loadAiAutomationSettings(caller.tenantId);
-    if (!aiSettings.enabled) {
+    if (aiSettings.costCap?.exceeded) {
       usage.record({ tenantId: caller.tenantId, userId: caller.userId, outcome: "ai_disabled" });
       return apiValidationError("月次のAI利用上限に達しました。来月まで今しばらくお待ちください。", {
         code: "ai_cost_cap_exceeded",
+      });
+    }
+    if (!aiSettings.enabled) {
+      usage.record({ tenantId: caller.tenantId, userId: caller.userId, outcome: "ai_disabled" });
+      return apiValidationError("この機能は現在管理者により無効化されています。", {
+        code: "ai_automation_disabled",
       });
     }
 
