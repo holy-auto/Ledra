@@ -4,6 +4,23 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-09-09 typegen が専用トークンを使えるようにした（設定とシークレットは未登録）
+
+- `db-typegen.yml` の `peter-evans/create-pull-request` に `token:` を渡していなかった
+  ため、既定の `GITHUB_TOKEN` が使われ、**2箇所で自動化が切れていた**
+  （PR が作れない／PR を人が作っても CI が走らない。RELEASE_LOG 2026-09-08）。
+- `token: ${{ secrets.TYPEGEN_TOKEN || github.token }}` にした。**シークレットが
+  登録されれば両方とも解ける**（PAT / GitHub App トークンの push と PR は他の
+  workflow を起動する —— create-pull-request の `docs/concepts-guidelines.md` で確認）。
+- **未登録でも壊れない。** `GITHUB_TOKEN` へ落ちて 2026-09-07 以前と同じ挙動になる。
+  ただし黙って落ちないよう、直前に warning ステップを置いて**2つの症状を名指しで出す**
+  （PR 作成の失敗メッセージは設定の話しかせず、CI が走らない方には気づけないため）。
+  トークンあり／なし／変数そのものが無い、の3分岐を手元で実行して確認済み。
+- **残っているのはリポジトリ側の2操作で、Claude からは実行できない**:
+  Actions の PR 作成許可（設定）と、`TYPEGEN_TOKEN` の登録（シークレット）。
+  OPEN_QUESTIONS と DECISION_LOG 2026-09-09 に依頼として残した。
+- **この変更は通しで検証していない。** 実際に走るのはシークレット登録後の初回実行が最初。
+
 ## 2026-09-08 型の再生成を main へ入れた。自動化は「PR が立たない・CI が走らない」二重の穴で止まっていた（PR #1049 / `37dbe4f6`）
 
 - **`db-typegen.yml` は型の再生成と `chore/db-typegen` への push には成功していたが、
