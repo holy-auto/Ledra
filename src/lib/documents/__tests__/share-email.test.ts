@@ -114,6 +114,8 @@ describe("sendDocumentEmail", () => {
     expect(result.error).not.toMatch(/^sendgrid:resend:/);
     expect(result.error).toContain("resend:");
     expect(result.error).toContain("sendgrid:");
+    // Codex 指摘: 両プロバイダ失敗時も、分かっている最終ステータス (sendgrid の503) が失われないこと
+    expect(result.error).toContain("503");
   });
 
   it("RESEND_API_KEY/RESEND_FROM が未設定の場合も理由付きで失敗を返す", async () => {

@@ -40,7 +40,16 @@ async function send(to: string, subject: string, html: string): Promise<SendDocu
     // Codex 指摘: res.status (HTTPステータス) を含めないと、本文が空/無情報な失敗
     // （認証エラー・レート制限・5xx等）を区別できず、このPRの目的である診断可能性が
     // 損なわれる。単一プロバイダ失敗時 (未タグ) にはステータスも含める。
-    return { ok: false, error: tagged ? res.error : `${res.provider}(${res.status ?? "?"}):${res.error}` };
+    // 両プロバイダ失敗時 (タグ済み) は sendEmail.ts の合成メッセージが最終試行
+    // (=res.provider) のステータスしか持たない (前段 resend のステータスは
+    // 合成文字列に既に埋め込まれていない) ため、せめて分かっている最終ステータスを
+    // 末尾に残す。
+    return {
+      ok: false,
+      error: tagged
+        ? `${res.error} (最終status:${res.status ?? "?"})`
+        : `${res.provider}(${res.status ?? "?"}):${res.error}`,
+    };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) };
   }
