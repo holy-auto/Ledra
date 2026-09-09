@@ -18,6 +18,8 @@ import { resolveNavIntent } from "@/lib/ai/navIntent";
 import { fastModelForPlanTier } from "@/lib/ai/client";
 import { searchEntities, entityResultsToChips, type EntityChip } from "@/lib/search/entities";
 import { ADMIN_NAV_LABELS } from "@/components/ui/adminNav";
+import { loadAiAutomationSettings } from "@/lib/ai/automation/policy";
+import { startAiRouteUsage } from "@/lib/ai/recordRouteUsage";
 
 const bodySchema = z.object({
   query: z.string().trim().min(1, "検索する内容を入力してください").max(500),
@@ -28,6 +30,7 @@ export const maxDuration = 30;
 export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
+  const usage = startAiRouteUsage("/api/admin/assistant/navigate");
   try {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
@@ -43,6 +46,21 @@ export async function POST(req: NextRequest) {
     const limited = await checkRateLimit(req, "ai", `assistant-navigate:${userId}`);
     if (limited) return limited;
 
+    // E4-7 是正 (2026-09-08): 月次コストキャップ超過時は enabled=false に倒るので、
+    // それを見て呼び出し自体をスキップする。本社専用ユーザ（caller 無し）は tenant を
+    // 持たずキャップの対象外なのでスキップしない。
+    if (caller) {
+      const aiSettings = await loadAiAutomationSettings(caller.tenantId);
+      if (!aiSettings.enabled) {
+        usage.record({ tenantId: caller.tenantId, userId, outcome: "ai_disabled" });
+        return apiOk({
+          href: null,
+          reply: "AIアシスタントの月間利用上限に達しました。しばらくしてからお試しください。",
+          alternatives: [] as EntityChip[],
+        });
+      }
+    }
+
     const parsed = bodySchema.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) {
       return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
@@ -52,6 +70,7 @@ export async function POST(req: NextRequest) {
       // 本社専用ユーザは plan tier が無いため既定（高速/低コストモデル）にフォールバック。
       model: fastModelForPlanTier(caller?.planTier),
     });
+    usage.record({ tenantId: caller?.tenantId ?? null, userId, outcome: "ok" });
 
     // 画面遷移が確定していればそれを返す（label はサーバで確定）。
     if (intent.href) {
@@ -103,6 +122,7 @@ export async function POST(req: NextRequest) {
     }));
     return apiOk({ href: null, reply: intent.reply, alternatives });
   } catch (e: unknown) {
+    usage.record({ outcome: "error" });
     return apiInternalError(e);
   }
 }

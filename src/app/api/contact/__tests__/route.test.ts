@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-const { sendMock } = vi.hoisted(() => ({ sendMock: vi.fn().mockResolvedValue({ id: "test-id" }) }));
+const { sendMock } = vi.hoisted(() => ({
+  sendMock: vi.fn().mockResolvedValue({ ok: true, id: "test-id", provider: "resend" }),
+}));
 
 vi.mock("@/lib/rateLimit", () => ({
   checkRateLimit: vi.fn().mockResolvedValue({ allowed: true, retryAfterSec: 0, remaining: 4 }),
@@ -11,10 +13,10 @@ vi.mock("@/lib/slack", () => ({
   notifySlack: vi.fn().mockResolvedValue(undefined),
 }));
 
-vi.mock("resend", () => ({
-  Resend: class {
-    emails = { send: sendMock };
-  },
+// F-9 是正 (2026-09-08): route.ts は sendEmail()（Resend→SendGrid フォールバック
+// 付きの統一 adapter）経由に変わったため、resend SDK ではなくこちらをモックする。
+vi.mock("@/lib/email/sendEmail", () => ({
+  sendEmail: sendMock,
 }));
 
 vi.mock("@/lib/logger", () => ({
@@ -96,8 +98,21 @@ describe("POST /api/contact", () => {
     expect(sendMock).toHaveBeenCalledOnce();
     const arg = sendMock.mock.calls[0][0];
     // CONTACT_TO_EMAIL/RESEND_FROM are read at module load, so we assert on the
-    // shape Resend receives, not the runtime env we set in beforeEach.
+    // shape sendEmail() receives, not the runtime env we set in beforeEach.
     expect(typeof arg.to).toBe("string");
-    expect(arg.replyTo).toBe("yamada@example.com");
+    expect(arg.reply_to).toBe("yamada@example.com");
+  });
+
+  it("returns 500 when sendEmail fails", async () => {
+    sendMock.mockResolvedValueOnce({ ok: false, status: 500, error: "boom", provider: "sendgrid" });
+    const res = await POST(
+      jsonReq({
+        name: "山田",
+        email: "yamada@example.com",
+        category: "general",
+        message: "お問い合わせ",
+      }),
+    );
+    expect(res.status).toBe(500);
   });
 });

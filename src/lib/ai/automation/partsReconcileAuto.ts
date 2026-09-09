@@ -19,7 +19,7 @@
  * source_policies.identity_documents に従う。
  */
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
-import { CERTIFICATE_IMAGE_BUCKET } from "@/lib/certificateImages"; // 共有 "assets" バケット
+import { CERTIFICATE_IMAGE_BUCKET } from "@/lib/certificateImages/constants"; // 共有 "assets" バケット
 import {
   extractDeliveryNote,
   toLineItems,

@@ -1,0 +1,36 @@
+# C-L6 是正 (2026-09-08): gitleaks の既定ルールで自リポジトリを実測すると
+# 38件検出されたが、全件を1つずつ目視確認した結果すべて偽陽性だった:
+#   - テストのダミー値（APIキー・pepper・暗号鍵等の固定文字列。実際に
+#     復号/検証できない・実サービスに繋がらない値のみ）
+#   - apps/mobile/eas.json の Supabase anon key（公開鍵として設計されており
+#     秘匿情報ではない。RLS が境界。監査で既に許容判断済み）と
+#     App Store Connect の API Key Issuer ID（鍵そのものではなく識別子。
+#     実鍵の .p8 ファイルは .gitignore 済みで追跡されていない）
+#   - .github/workflows/lighthouse.yml の CI 専用スタブ値（実サービスに
+#     繋がらないダミードメイン・ダミートークンで envValidation の形式検査
+#     だけを通すためのもの）
+#   - docs/passport-staging-checklist.md の意図的に無効な検証用トークン
+#     （"lpk_live_garbage"）
+#   - scripts/verify-c2pa-cert.mjs の環境変数名の文字列リテラル（値ではない）
+#
+# パスで丸ごと許容すると、そのパス配下の**将来の**本物の秘密情報も
+# 見逃す。テストパスは「本物の秘密情報を書かない」運用（実際に PR-1 監査で
+# 106コミット全件を `-S` 検索し実値のハードコードが無いことを確認済み）を
+# 前提にした割り切り。新しい種類の値をこれらのパスに追加するときは、
+# 実際に秘密でないことを都度確認すること。
+
+title = "Ledra gitleaks config"
+
+[extend]
+useDefault = true
+
+[allowlist]
+paths = [
+  '''.*/__tests__/.*''',
+  '''.*\.test\.ts$''',
+  '''.*\.test\.tsx$''',
+  '''apps/mobile/eas\.json''',
+  '''\.github/workflows/lighthouse\.yml''',
+  '''docs/passport-staging-checklist\.md''',
+  '''scripts/verify-c2pa-cert\.mjs''',
+]

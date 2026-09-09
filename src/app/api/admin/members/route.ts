@@ -289,6 +289,23 @@ export async function DELETE(req: NextRequest) {
 
     const { admin } = createTenantScopedAdmin(caller.tenantId);
 
+    // A-H2 是正 (2026-09-08): PUT（ロール変更）は owner の降格を拒否しているのに
+    // DELETE だけ対象ロールを見ずに削除しており、admin が owner を排除できた。
+    // 削除前に対象ロールを取得し、owner は拒否する。
+    const { data: targetMem } = await admin
+      .from("tenant_memberships")
+      .select("role")
+      .eq("tenant_id", caller.tenantId)
+      .eq("user_id", targetUserId)
+      .maybeSingle();
+
+    if (!targetMem) {
+      return apiNotFound("メンバーが見つかりません。");
+    }
+    if (targetMem.role === "owner") {
+      return apiValidationError("オーナーは削除できません。");
+    }
+
     const { error } = await admin
       .from("tenant_memberships")
       .delete()

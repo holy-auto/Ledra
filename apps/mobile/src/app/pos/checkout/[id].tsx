@@ -47,7 +47,7 @@ type PaymentMethod = "cash" | "card" | "qr" | "bank_transfer";
 // ─────────────────────────────────────────────────────────────
 export default function PosCheckoutScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { user, selectedStore } = useAuthStore();
+  const { user, selectedStore, getSelectedStoreId } = useAuthStore();
   const device = useDeviceType();
   const { isIPhone, isIPad, isAndroid } = device;
 
@@ -123,11 +123,14 @@ export default function PosCheckoutScreen() {
           items: toPosItems(items),
           method: paymentMethod,
           reservationId: id,
-          storeId: selectedStore?.id ?? null,
+          // code-review 指摘 (2026-09-08): `?? null` は空文字（店舗なしで続行時の
+          // selectedStore.id）を拾わない。qr-session の schema は "" を許容するため
+          // 現状はエラーにならないが、D-B2 と同じ形の値を getSelectedStoreId() に揃える。
+          storeId: getSelectedStoreId(),
         },
         fromTapFailure,
       ),
-    [cardEntry, total, items, paymentMethod, id, selectedStore],
+    [cardEntry, total, items, paymentMethod, id, selectedStore, getSelectedStoreId],
   );
 
   const tapAction = tapFailureAction(

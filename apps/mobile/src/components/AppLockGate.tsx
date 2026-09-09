@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef } from "react";
-import { View, StyleSheet, AppState, Pressable } from "react-native";
+import { View, StyleSheet, AppState } from "react-native";
 import { Text, Icon, Portal } from "react-native-paper";
 import { router } from "expo-router";
 
@@ -13,7 +13,7 @@ import {
   unlockApp,
 } from "@/lib/appLock";
 import { LedraButton } from "@/components/ui";
-import { colors, spacing, radius, typography, sizing } from "@/constants/tokens";
+import { colors, spacing, radius, typography } from "@/constants/tokens";
 
 /** この回数続けて失敗したら、生体認証以外の逃げ道を前に出す */
 const FAILURES_BEFORE_ESCAPE = 2;
@@ -96,21 +96,20 @@ export function AppLockGate() {
   }, []);
 
   /**
-   * 生体認証を諦めてロックを外す。ここに来るのは通れなかった人なので、
-   * 何をしても開かない袋小路を作らないことを最優先にする。
-   * disableAppLock はキャッシュを先に落とすので、書き込みが失敗しても開く。
-   */
-  async function handleGiveUpLock() {
-    await disableAppLock();
-    setState("open");
-  }
-
-  /**
-   * ロックを通れないときの本来の逃げ道。パスワードで入り直せる
+   * ロックを通れないときの唯一の逃げ道。パスワードで入り直せる
    * （expo-secure-store は端末パスコードへのフォールバックを出せないため、
    * 指が濡れている・手袋という現場条件ではこちらが唯一の道になる）。
    * ログアウトを先に済ませてからロックを外す。順番を逆にすると、
    * サインアウトに失敗したときロックだけ外れてセッションが残る。
+   *
+   * D-A4 是正 (2026-09-08): 以前はこれとは別に「生体認証を諦めてロックを
+   * 無認証のまま外す」ボタン（handleGiveUpLock）があった。2回失敗するだけで
+   * 誰でも到達でき、端末を持つ第三者が本人確認を一切経ずに全データを閲覧でき、
+   * かつロックが端末上で永久に無効化された（biometric-setup.tsx の宣伝文
+   * 「端末を貸しても顧客情報を見られない」と正面から矛盾していた）。
+   * 「何をしても開かない袋小路を作らない」という当時の狙いは、無認証の
+   * バイパスではなく、この「ログアウトして入り直す」（実パスワードを要求する）
+   * 経路だけで満たす。
    */
   async function handleLogout() {
     await signOutEverywhere().catch(() => null);
@@ -132,7 +131,7 @@ export function AppLockGate() {
         <Text style={styles.title}>Ledra はロック中です</Text>
         <Text style={styles.body}>
           {state === "needs_setup"
-            ? "端末の生体認証が変更されたため、このロックは使えなくなりました。解除して続けたあと、設定から登録し直してください。"
+            ? "端末の生体認証が変更されたため、このロックは使えなくなりました。ログアウトしてパスワードで入り直したあと、設定から登録し直してください。"
             : "生体認証で本人確認してください。"}
         </Text>
 
@@ -144,20 +143,13 @@ export function AppLockGate() {
           )}
 
           {showEscape && (
-            <>
-              <LedraButton
-                variant={state === "needs_setup" ? "primary" : "outline"}
-                onPress={handleGiveUpLock}
-                fullWidth
-              >
-                ロックを解除して続ける
-              </LedraButton>
-              <Pressable onPress={handleLogout} style={styles.subAction}>
-                <Text style={styles.subActionText}>
-                  ログアウトしてパスワードで入り直す
-                </Text>
-              </Pressable>
-            </>
+            <LedraButton
+              variant={state === "needs_setup" ? "primary" : "outline"}
+              onPress={handleLogout}
+              fullWidth
+            >
+              ログアウトしてパスワードで入り直す
+            </LedraButton>
           )}
         </View>
       </View>
@@ -196,14 +188,5 @@ const styles = StyleSheet.create({
     alignSelf: "stretch",
     gap: spacing.md,
     marginTop: spacing["3xl"],
-  },
-  subAction: {
-    alignItems: "center",
-    justifyContent: "center",
-    minHeight: sizing.touchTarget,
-  },
-  subActionText: {
-    ...typography.bodySmall,
-    color: colors.textSecondary,
   },
 });

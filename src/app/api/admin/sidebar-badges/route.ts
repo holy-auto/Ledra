@@ -3,6 +3,7 @@ import { createClient as createSupabaseServerClient } from "@/lib/supabase/serve
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { apiJson, apiUnauthorized, apiInternalError } from "@/lib/api/response";
 import { withCache } from "@/lib/cache";
+import { JST_OFFSET_MS } from "@/lib/datetime";
 
 /**
  * GET /api/admin/sidebar-badges
@@ -29,8 +30,7 @@ export async function GET() {
     const badges = await withCache(`sidebar-badges:${caller.tenantId}`, 20, async () => {
       // Today's date in JST (UTC+9)
       const now = new Date();
-      const jstOffset = 9 * 60 * 60 * 1000;
-      const jstDate = new Date(now.getTime() + jstOffset);
+      const jstDate = new Date(now.getTime() + JST_OFFSET_MS);
       const today = jstDate.toISOString().slice(0, 10);
 
       // 7 days from now in JST

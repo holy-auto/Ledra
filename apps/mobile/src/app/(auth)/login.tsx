@@ -141,23 +141,9 @@ export default function LoginScreen() {
             ログイン
           </LedraButton>
 
-          {/* Divider */}
-          <View style={styles.dividerRow}>
-            <View style={styles.dividerLine} />
-            <Text style={styles.dividerText}>または</Text>
-            <View style={styles.dividerLine} />
-          </View>
-
-          {/* Google sign-in (visual only) */}
-          <LedraButton
-            variant="outline"
-            icon="google"
-            onPress={() => {
-              // ponytail: Google sign-in not implemented yet
-            }}
-          >
-            Googleでログイン
-          </LedraButton>
+          {/* D-B4 是正 (2026-09-08): 「Googleでログイン」ボタンは未実装の見た目だけ
+              (onPress が空)。押しても何も起きないボタンは App Store 審査ガイドライン
+              2.1（アプリの完全性）に抵触しうる。実装するまでは divider ごと削除する。 */}
 
           {/* Sign-up link */}
           <Pressable
@@ -219,21 +205,6 @@ const styles = StyleSheet.create({
   forgotText: {
     ...typography.bodySmall,
     color: colors.primary,
-  },
-  dividerRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginVertical: spacing.sm,
-    gap: spacing.md,
-  },
-  dividerLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: colors.divider,
-  },
-  dividerText: {
-    ...typography.meta,
-    color: colors.textTertiary,
   },
   bottomLink: {
     alignItems: "center",

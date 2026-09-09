@@ -21,7 +21,7 @@ export async function GET(req: NextRequest) {
     const storeId = url.searchParams.get("store_id") ?? "";
     const isActive = url.searchParams.get("is_active") ?? "";
     const page = Math.max(1, parseInt(url.searchParams.get("page") ?? "0", 10) || 0);
-    const perPage = Math.min(500, Math.max(1, parseInt(url.searchParams.get("limit") ?? "100", 10)));
+    const perPage = Math.min(500, Math.max(1, parseInt(url.searchParams.get("limit") ?? "100", 10) || 100));
 
     let query = supabase
       .from("registers")

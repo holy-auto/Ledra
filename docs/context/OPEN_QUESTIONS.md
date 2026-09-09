@@ -3,6 +3,120 @@
 > まだ決まっていないこと、判断に迷っていることを書く場所。決まったら
 > DECISION_LOG.md に移し、このファイルからは消す（削除履歴は git で追える）。
 
+## モバイル _layout.tsx の Stack.Protected 設計をディープリンク保存方式から恒久対応に切り替えるか（2026-09-09）
+
+Codexレビュー（PR #1054 round 2）で、認証初期化が5秒フェイルセーフを超えると
+`Stack.Protected` の保護対象画面がナビゲータから一時的に除外され、その間に
+届いたディープリンクが復元不能に失われる不具合を指摘された。最小修正として
+「起動直後のパスをrefに保存し、認証完了後にrouter.replaceで再適用する」
+（`apps/mobile/src/lib/pendingDeepLink.ts`）を実装・push済み。
+
+Codexの提案にはもう一段根本的な選択肢もあった: `isReady`（認証初期化完了）が
+falseの間は保護対象画面を**常にナビゲータへ登録したまま**にし、各画面（または
+共通ラッパー）側で`!isAuthenticated`なら`Redirect`する方式に統一する
+（`Stack.Protected`による丸ごとの登録除外自体をやめる）。この方式なら
+ディープリンクは常に画面へマッチするため、今回のような「保存・再適用」の
+仕組み自体が不要になる。
+
+今回は影響範囲（対象画面全て・(tabs)/_layout.tsx の既存二重ガードとの整合）が
+広いため見送った。**まだ決まっていないこと**: この設計変更を別PRで実施するか、
+現状の保存・再適用方式を恒久解とするか。判断基準は「ディープリンク以外の
+経路（通知タップ・QRコード等）でも同様の消失が起きていないか」の洗い出しと、
+設計変更のコスト対効果。
+
+## F-4: importer 0 の src/lib モジュール群をどう扱うか（2026-09-08）
+
+監査プラン F-4 は「importer 0 の src/lib モジュール 25本（domain/jobExceptions,
+payment/derivePaymentState, certificates/versionTransition,
+documents/estimateApproval, auth/stepUp, auth/sharedDevice, auth/invite,
+api/securityAudit, zkp/commitment, agent/statusGuard 等）。src/lib export
+1,949件中505件（26%）未参照」を挙げ、「IMP-* 先行実装分は OPEN_QUESTIONS で
+『接続予定か』を確認、それ以外は削除」と指示していた。
+
+**確実**: 例示された10本（domain/jobExceptions, payment/derivePaymentState,
+certificates/versionTransition, documents/estimateApproval, auth/stepUp,
+auth/sharedDevice, auth/invite, api/securityAudit, zkp/commitment,
+agent/statusGuard）は、`from "..."` の完全一致（クォート境界込み）で
+テスト以外からの import を今回個別に再確認し、全10本とも importer 0 の
+ままだった（2026-09-08 実測、`src/` 配下）。
+
+**この10本を数える過程で、監査の走査ツール自体の2種類の誤りを実際に踏んだ**
+（MISTAKE_LEDGER M-064 と同根、道具を検証しないまま数字を書く型）:
+
+1. **走査範囲の欠落**: 最初の確認は `src/` 配下だけを見ていたが、
+   `src/lib/envValidation.ts`（F-4 の対象外だが同じ「importer 0」に
+   見えていた別ファイル）はプロジェクトルートの `instrumentation.ts`
+   （Next.js の起動フック、`src/` の外）から動的 `import()` されていた。
+   `src/` だけを見る走査は、ルート直下のファイル
+   （`instrumentation.ts`・`instrumentation-client.ts`・`sentry.*.config.ts`・
+   `next.config.ts` 等）からの参照を系統的に見落とす。
+2. **部分文字列の誤検出**: 上記1を修正してリポジトリ全体（node_modules除く）
+   に走査範囲を広げたところ、`auth/stepUp` が新たに「importer 6」に化けた。
+   中身を見ると実体は `src/proxy.ts` 等が **`@/lib/auth/stepUpGuard`**
+   （別モジュール）を import しており、`@/lib/auth/stepUp` という
+   非アンカーの文字列一致が `stepUpGuard` にもマッチしていた
+   （CLAUDE.md の「role名の部分文字列」と同型の罠）。`auth/stepUp` 単体は
+   実際には importer 0 のまま。
+
+この2つを踏まえ、114本という広域スキャンの生数字（`src/lib` 配下のファイル
+単位）は**そのまま信用しない**。境界をアンカーし、かつプロジェクトルートの
+起動フックまで走査範囲に含めた、より正確な検出器（既存の
+`ts-prune` 等のAST的ツールが望ましい。grep ベースの正規表現は今回のように
+再発しうる）で作り直してから件数を確定すべき。
+
+**推定**: 25本／26%はプラン記載の監査時点の数字で、このセッションでは
+全量を確定できていない。上記の理由により、broad rescan の 114 という数字も
+そのままは採用しない。
+
+判断が必要なこと（削除は本 PR の範囲外 — 実装意図の確認が先):
+- 上記10本を含む未接続モジュールが、IMP-01〜IMP-17 等の**先行実装**
+  （後続 PR で接続予定）なのか、それとも本当に死んでいるコードなのかは
+  ファイル単体では判断できない。`docs/implementation/requirement-trace.md`
+  等の実装トレースと突き合わせて1本ずつ「接続予定 / 削除可」を仕分ける
+  作業が必要。
+- 削除するにしても、テストファイルが実装より先に書かれているものは
+  「未接続」であってテストの意味が違う可能性がある（要個別確認）。
+- 次にこの調査をするときは、まず `envValidation.ts`（instrumentation.ts
+  から使われている、既知の「非 src 参照」の実例）を検出器に通し、
+  正しく「使用中」と判定できるか確認してから件数を報告すること。
+
+公開区分: 公開可（内部の技術的負債整理メモ）。
+
+## レート制限「2系統」の完全統合をどこまでやるか（2026-09-08）
+
+監査プラン F-3 は「レート制限2系統（lib/rateLimit.ts の
+checkRateLimit(key, opts) / lib/api/rateLimit.ts の
+checkRateLimit(req, preset)）を api/rateLimit.ts の custom() に吸収」を
+挙げていた。このうち **Redis クライアントの重複4本を共有シングルトンに
+一本化する部分は実施済み**（コミット参照: F-3 一部、docs/context/RELEASE_LOG.md）。
+
+未実施なのは「2つの呼び出し規約そのものを1つに統合し、lib/rateLimit.ts を
+消す」部分。保留にした理由:
+
+- `checkRateLimit(key, opts)` を直接呼ぶ経路が **33 ルート**残っている。
+  windowSec の値が 60 / 300 / 600 / 900 / 3600 と不揃いで、新系統
+  （`lib/api/rateLimit.ts`）の custom モードは `Ratelimit.slidingWindow(n, "60 s")`
+  で **60秒固定**（`limitPerMinute` 前提）。60秒以外の窓を持つ 20 ルート分は
+  新系統に windowSec 引数を足す拡張が要る。
+- 対象に OTP 発行（customer/verify-code, join/send-code 等）・
+  data-export（admin/agent/insurer の3本、3600秒窓）・contact/marketing-leads
+  （900秒窓）など、**B-H2/B-M1 で扱ったのと同じ種類の、悪用時の実害が大きい
+  経路**が多く含まれる。33ファイル一括の機械的な import 付け替えは、
+  キー生成（IP単体 / IP+tenant / IP+email の複合）まで含めて1件ずつ
+  「windowSec と識別子が変わっていないか」を検証しないと、
+  スロットルを静かに弱める側に倒すリスクがある。
+
+決めることは2つ:
+
+- **windowSec 引数を新系統に足して1系統にするか、それとも
+  「1系統に統合する」という目標自体を諦めて2系統のまま Redis 共有だけで
+  よしとするか。** 後者ならこの OPEN_QUESTIONS は「対応しない」で閉じられる。
+- 前者を選ぶ場合、**33ルートを1PRでまとめて動かすか、数本ずつ分割するか**。
+  分割するなら「OTP/認証系」「data-export系」「marketing/contact系」
+  くらいの単位が実害の大きさで自然に分かれる。
+
+公開区分: 公開可（実装判断メモであり機密情報なし）。
+
 ## `db-typegen.yml` の自動化が2箇所で切れている（2026-09-08）
 
 型の再生成は**動いている**が、生成結果が main へ入る経路が2箇所で切れていて、
@@ -1795,3 +1909,30 @@ DECISION_LOG「遷移表の未解決4件を代表判断で解決」参照。）
   customer_confirmation_current は signoff フローの設計変更を伴うため、対応方針を代表判断が必要
   （署名依頼のタイミングを見直すか、この条件をGateから外すか）。
 - 起票日: 2026-08-31
+
+## モバイル signup のアプリ内即ログインと B-H3 是正の衝突（2026-09-08）
+- 状況: セキュリティ監査で `/api/signup`（パスワード登録経路）が `email_confirm: true` で
+  ユーザーを作成し、直後にクライアントが `signInWithPassword` で即ログインしていたことが判明した
+  （B-H3, High）。メールの所有確認を一切経由しないため、被害者のメールアドレスでも確認済みの
+  テナント owner アカウントを作成できた。是正として `/api/signup` を `email_confirm: false` +
+  確認メール送信（`signInWithOtp`）に統一した（Web/モバイル共通のバックエンド）。
+- 違和感・問題: `apps/mobile/src/app/(auth)/signup.tsx` の冒頭コメントは Apple Tap to Pay 要件 2.x
+  として「完全アプリ内デジタルオンボーディング（アカウント作成→利用開始がアプリ内で完結、
+  平均15分以内）」を明記している。今回の是正でパスワード登録直後の自動ログインは通常失敗するように
+  なり（メール未確認のため）、本人確認にメールアプリへの離脱が挟まる。「アプリ内で完結」という
+  要件と正面から衝突する。
+- 暫定対応: モバイル側はサインイン失敗時に「確認メールを送信しました」画面を表示するよう変更し、
+  クラッシュ・混乱するエラー表示は避けた（アプリは壊れていない）。ただしオンボーディング体験は
+  後退した。
+- まだ答えが出ていないこと:
+  1. Apple Tap to Pay 要件 2.x の実際の審査基準（「平均15分以内」に外部メールアプリへの
+     一時的な離脱がどこまで許容されるか）を確認できていない。
+  2. 恒久対応の候補: (a) モバイル既存の `/auth/otp/*`（アプリ内 6 桁コード）を本人確認そのものに
+     昇格させ、確認前は「テナント権限を持たない」セッションに留める設計に変更する（現状はこの
+     OTP が認証後の飾りで強制力を持たない = D-A14 の指摘そのもの）。(b) ディープリンク
+     (`scheme: "ledra"`) でメールのマジックリンクをアプリへ直接戻す（PKCE の code_verifier を
+     モバイル側でも扱える必要があり実装コストが大きい）。(c) 現状維持（メールアプリへの離脱を許容）。
+  3. どの選択肢を採るかは製品判断が必要（Apple 審査リスク vs 追加実装コスト vs セキュリティ）。
+- 次のアクション: 代表判断待ち。判断が付くまでは暫定対応（確認メール送信の明示表示）のまま。
+- 公開区分: 非公開（Apple 審査対応の内部検討事項）
+- 起票日: 2026-09-08

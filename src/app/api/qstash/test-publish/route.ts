@@ -1,12 +1,15 @@
 import { NextRequest } from "next/server";
 import { enqueueInsuranceCaseCreated } from "@/lib/qstash/publish";
 import { apiUnauthorized, apiInternalError } from "@/lib/api/response";
+import { verifyCronRequest } from "@/lib/cronAuth";
 
 export async function POST(req: NextRequest) {
-  const authHeader = req.headers.get("authorization");
-  const cronSecret = process.env.CRON_SECRET;
-  if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
-    return apiUnauthorized();
+  // B-L3 是正 (2026-09-08): 以前は CRON_SECRET の比較に `!==` を使っており
+  // 非定数時間だった。他の cron 系エンドポイントと同じ verifyCronRequest
+  // （timingSafeEqual 比較）に統一する。
+  const { authorized, error: authError } = verifyCronRequest(req);
+  if (!authorized) {
+    return apiUnauthorized(authError);
   }
 
   try {
