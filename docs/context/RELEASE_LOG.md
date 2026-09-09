@@ -10,14 +10,20 @@
 着手する」としていたが誤り。PR #1054 は**5段階の是正計画（PR-1〜PR-5）の
 全てを含んでおり**、このマージで**計画全体が完結**している（`getCurrentPeriodEnd`
 切り出し=PR-2、`register.tsx`のD-A1是正=PR-3、`c/layout.tsx`のnoindex=PR-4、
-`withCaller.ts`・gitleaks CI=PR-5を実コードで確認済み）。
+`withCaller.ts`=PR-5を実コードで確認済み。gitleaks CIは当初PR-5と誤記したが
+下記2026-09-08「PR-4」エントリの通り正しくはPR-4）。
 
 Critical 1件・High 11件のセキュリティ修正に加え、Codex自動レビュー2ラウンド
-（round 1: 6件、round 2: 7件、計13件、誤検知0件）で発見された不具合を全件
-修正し、代表がGitHub UI上でマージした。マージ直前に別PR(#1053)との衝突
-（docs/context 5ファイルの追記位置競合）を`git merge origin/main`で解消済み。
-残るのは founder 判断待ちの OPEN_QUESTIONS 4件のみ（詳細は LEDRA_CURRENT
-2026-09-09 追記(8)参照）。
+（round 1: 6件、round 2: 7件、計13件）で発見された不具合を検証し（誤検知0件）、
+うち12件を修正、1件（モバイルsignupのPKCE Cookie衝突。既存の
+OPEN_QUESTIONS起票済み・Tap to Payのアプリ内オンボーディング要件との
+緊張関係で製品判断が必要）はfounder判断待ちとして意図的に未修正のまま
+スレッドを未解決で維持した。代表がGitHub UI上でマージした。マージ直前に
+別PR(#1053)との衝突（docs/context 5ファイルの追記位置競合）を
+`git merge origin/main`で解消済み。残るのはこの監査から派生した
+founder判断待ちのOPEN_QUESTIONS少なくとも4件（詳細は LEDRA_CURRENT
+2026-09-09 追記(8)参照。OPEN_QUESTIONS.md全体にはこの監査と無関係な
+既存の未解決事項も別途多数ある）。
 
 ## 2026-09-09 PR #1054 のCodex自動レビュー2回目（round 2、7件）を全件検証し全件修正
 
