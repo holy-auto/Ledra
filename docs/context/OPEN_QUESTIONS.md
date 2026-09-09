@@ -3,6 +3,25 @@
 > まだ決まっていないこと、判断に迷っていることを書く場所。決まったら
 > DECISION_LOG.md に移し、このファイルからは消す（削除履歴は git で追える）。
 
+## LINE/SMS の帳票送付も同じ「失敗理由が握り潰される」問題が残っている（2026-09-09）
+
+PR #1055 で `sendDocumentEmail`（メール送信）の戻り値を `boolean` → `{ok, error}` に
+直し、`document_share_log.error_message` に実際の失敗理由が残るようにした
+（DECISION_LOG 2026-09-08）。/code-review の指摘で判明したが、同じ設計の欠陥が
+`src/lib/line/client.ts` の `sendDocumentLink` と `src/lib/sms/client.ts` の
+`sendSMS` にも残っている——どちらも実際の API エラー（LINE Messaging API の
+エラー・Twilio のエラー）を `boolean` に丸めて捨てており、LINE/SMS 経由の送付が
+失敗すると `document_share_log.error_message` は依然として汎用文言
+`"送信に失敗しました"` になる。
+
+今回の報告（請求書の**メール**送付が出来ない）はメール経路の話だったため、PR #1055
+はメール経路のみを直す最小差分にとどめ、LINE/SMS への横展開はスコープ外にした。
+LINE または SMS 経由の送付失敗が同様に調査不能という報告が来たら、`sendDocumentEmail`
+と同じパターン（`{ok, error}` を返し、呼び出し元 `route.ts` の該当分岐へ伝播）で
+`sendDocumentLink`/`sendSMS` を直す。両関数はそれぞれ他の呼び出し元も持つため
+（`sendSMS` は OTP 送信とは別関数 `sendOtpSms` が既に `SmsSendResult` を返している
+のでそちらの形に揃えられる可能性がある）、着手前に呼び出し元を洗い出すこと。
+
 ## 帳票メールが本番で送れない実際の外部原因（Resend/SendGrid 側）が未特定（2026-09-08）
 
 「請求書のメール送付が出来ない」報告を調査（DECISION_LOG 2026-09-08）。本番

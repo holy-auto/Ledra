@@ -32,7 +32,12 @@ async function send(to: string, subject: string, html: string): Promise<SendDocu
     // これを握りつぶして true/false だけ返すと、失敗時に document_share_log /
     // 呼び出し元のどこにも「なぜ」が残らず、原因調査ができなくなる
     // （本番で起きていた実際の不具合: エラーが全部 "送信に失敗しました" になっていた）。
-    return { ok: false, error: `${res.provider}:${res.error}` };
+    // 両プロバイダ失敗時 (sendEmail.ts) は res.error に既に "resend:... | sendgrid:..."
+    // と両方のプロバイダ名が入っているので、ここでさらに res.provider を前置すると
+    // "sendgrid:resend:... | sendgrid:..." のように二重表示になる。既にタグ済みなら
+    // そのまま使う。
+    const tagged = res.error.startsWith("resend:") || res.error.startsWith("sendgrid:");
+    return { ok: false, error: tagged ? res.error : `${res.provider}:${res.error}` };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) };
   }

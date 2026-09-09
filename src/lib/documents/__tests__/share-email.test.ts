@@ -86,6 +86,34 @@ describe("sendDocumentEmail", () => {
     expect(result.error).toContain("Invalid API key");
   });
 
+  // 回帰テスト: Resend/SendGrid 両方失敗した場合、sendEmail() が既に
+  // "resend:... | sendgrid:..." の形でプロバイダ名をタグ済みの理由を返す。
+  // ここでさらに provider を前置すると "sendgrid:resend:... | sendgrid:..." と
+  // 二重表示になっていた不具合の再発防止。
+  it("Resend/SendGrid 両方失敗した場合、理由が二重にタグ付けされない", async () => {
+    vi.stubEnv("SENDGRID_API_KEY", "sg_test_key");
+    globalThis.fetch = vi.fn(async (url: unknown) => {
+      if (String(url).includes("sendgrid.com")) {
+        return new Response("SendGrid down", { status: 503 });
+      }
+      return new Response("Resend down", { status: 503 });
+    }) as never;
+
+    const result = await sendDocumentEmail({
+      to: "customer@example.com",
+      docType: "請求書",
+      docNumber: "INV-001",
+      totalAmount: 10000,
+      recipientName: "山田太郎",
+      senderName: "株式会社テスト",
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.error).not.toMatch(/^sendgrid:resend:/);
+    expect(result.error).toContain("resend:");
+    expect(result.error).toContain("sendgrid:");
+  });
+
   it("RESEND_API_KEY/RESEND_FROM が未設定の場合も理由付きで失敗を返す", async () => {
     vi.unstubAllEnvs();
 
