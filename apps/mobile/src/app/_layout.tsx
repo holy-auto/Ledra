@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Stack, router } from "expo-router";
+import * as Linking from "expo-linking";
 import { PaperProvider } from "react-native-paper";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { StatusBar } from "expo-status-bar";
@@ -23,6 +24,7 @@ import { useTapToPayWarmup } from "@/hooks/useTapToPayWarmup";
 import { registerForPushNotifications } from "@/lib/push";
 import { stackScreenOptions } from "@/components/screenOptions";
 import { SPLASH_FAILSAFE_MS } from "@/lib/introTiming";
+import { protectedDeepLinkPath } from "@/lib/pendingDeepLink";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -90,6 +92,36 @@ export default function RootLayout() {
   const { isReady } = useAuthInit();
   const [introDone, setIntroDone] = useState(false);
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+
+  // code-review 指摘 (2026-09-09): 認証初期化が SPLASH_FAILSAFE_MS を超えて
+  // isAuthenticated=false のまま Stack が初めてマウントされると、Stack.Protected
+  // の guard=false により保護対象画面がナビゲータから丸ごと除外され、OSレベルの
+  // ディープリンク（ledra://... /ユニバーサルリンク）の初期状態を解決できず
+  // 既定ルートへ落ちたまま復元されない。起動直後（Stackマウント前）に受けた
+  // パスを覚えておき、認証が完了して保護対象画面が実際にナビゲータへ登録された
+  // 後に再適用する。
+  const pendingDeepLinkPath = useRef<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    void Linking.parseInitialURLAsync().then(({ path }) => {
+      if (!cancelled) pendingDeepLinkPath.current = protectedDeepLinkPath(path);
+    });
+    // アプリ起動中（JS実行中）に届いたリンクも同様に拾う。
+    const sub = Linking.addEventListener("url", ({ url }) => {
+      pendingDeepLinkPath.current = protectedDeepLinkPath(Linking.parse(url).path);
+    });
+    return () => {
+      cancelled = true;
+      sub.remove();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (introDone && isAuthenticated && pendingDeepLinkPath.current) {
+      router.replace(pendingDeepLinkPath.current);
+      pendingDeepLinkPath.current = null;
+    }
+  }, [introDone, isAuthenticated]);
 
   // 最後の砦: 何があってもスプラッシュを剥がし、**演出も降ろす**。
   //
