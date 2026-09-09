@@ -2,13 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { checkAdminFeature, billingDenyResponse } from "@/lib/billing/adminFeatureGate";
 import { escapeIlike, escapePostgrestValue } from "@/lib/sanitize";
-
-function csvEscape(v: any) {
-  const s = (v ?? "").toString();
-  const needs = /[",\r\n]/.test(s);
-  const escaped = s.replace(/"/g, '""');
-  return needs ? `"${escaped}"` : escaped;
-}
+import { buildCsv, csvDownloadHeaders } from "@/lib/csv/serialize";
 
 export async function GET(req: Request) {
   // @holy-guard:export_search_csv
@@ -63,42 +57,27 @@ export async function GET(req: Request) {
     "updated_at",
   ];
 
-  const lines: string[] = [];
-  lines.push(header.join(","));
-
-  for (const r of rows ?? []) {
+  const csvRows = (rows ?? []).map((r) => {
     const v: any = r.vehicle_info_json ?? {};
-    const model = (v.model ?? "").toString();
-    const plate = (v.plate ?? "").toString();
+    return [
+      r.public_id,
+      r.status,
+      r.customer_name,
+      (v.model ?? "").toString(),
+      (v.plate ?? "").toString(),
+      r.content_free_text,
+      r.expiry_type,
+      r.expiry_value,
+      r.created_at,
+      r.updated_at,
+    ];
+  });
 
-    const line = [
-      csvEscape(r.public_id),
-      csvEscape(r.status),
-      csvEscape(r.customer_name),
-      csvEscape(model),
-      csvEscape(plate),
-      csvEscape(r.content_free_text),
-      csvEscape(r.expiry_type),
-      csvEscape(r.expiry_value),
-      csvEscape(r.created_at),
-      csvEscape(r.updated_at),
-    ].join(",");
-
-    lines.push(line);
-  }
-
-  // Excel対策：UTF-8 BOM
-  const bom = "\uFEFF";
-  const body = bom + lines.join("\r\n");
-
+  const body = buildCsv(header, csvRows);
   const filename = `certificates_${new Date().toISOString().slice(0, 10)}.csv`;
 
   return new NextResponse(body, {
     status: 200,
-    headers: {
-      "content-type": "text/csv; charset=utf-8",
-      "content-disposition": `attachment; filename="${filename}"`,
-      "cache-control": "no-store",
-    },
+    headers: csvDownloadHeaders(filename),
   });
 }

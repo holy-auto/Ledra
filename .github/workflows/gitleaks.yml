@@ -1,0 +1,33 @@
+name: Gitleaks (secret scanning)
+
+# C-L6 是正 (2026-09-08): 秘密情報スキャナが CI・pre-commit のどちらにも
+# 無かった（`.gitignore` と目視レビューだけが頼り）。gitleaks を CI に追加する。
+# push/pull_request では新規コミットのみ、main への push は当該コミットの
+# diff をスキャンする（gitleaks-action の既定動作）。過去コミット全体の
+# 一括スキャンはこのワークフローの対象外（本セッションの監査で
+# 履歴106コミットを `-S` 検索し実値のハードコードが無いことを別途確認済み。
+# docs/context 参照）。
+
+on:
+  push:
+    branches: [main, staging]
+  pull_request:
+    branches: [main, staging]
+
+jobs:
+  gitleaks:
+    name: Scan for secrets
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          # gitleaks-action がコミット範囲を diff するため全履歴を取得する。
+          fetch-depth: 0
+
+      - name: Run gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

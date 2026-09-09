@@ -125,7 +125,10 @@ export default function HomeScreen() {
     const todayStr = dayjs().format("YYYY-MM-DD");
     const storeId = scope === "all" ? null : selectedStore?.id || null;
 
-    let q1 = supabase.from("reservations").select("id, status", { count: "exact" }).eq("tenant_id", user.tenantId);
+    let q1 = supabase
+      .from("reservations")
+      .select("id, status, signoff_status", { count: "exact" })
+      .eq("tenant_id", user.tenantId);
     q1 = scopeToStore(q1, storeId);
 
     let q2 = supabase
@@ -175,12 +178,22 @@ export default function HomeScreen() {
         .limit(8),
     ]);
 
+    // D-B1 是正 (2026-09-08): "delivered" / "awaiting_confirmation" は
+    // reservations.status の CHECK 制約に無い値（confirmed/arrived/in_progress/
+    // completed/cancelled のみ、CLAUDE.md ドメイン状態語彙ルール参照）で、
+    // 一致することが無いため「確認待ち」ピルは常に0だった。確認待ちは
+    // status ではなく signoff_status='awaiting' から算出する。
     const todayTotal = todayRes.count ?? 0;
-    const todayData = (todayRes.data ?? []) as Array<{ id: string; status: string }>;
-    const todayCompleted = todayData.filter((r) => r.status === "completed" || r.status === "delivered").length;
+    const todayData = (todayRes.data ?? []) as Array<{ id: string; status: string; signoff_status: string | null }>;
+    const todayCompleted = todayData.filter((r) => r.status === "completed").length;
     const inProgressCount = todayData.filter((r) => r.status === "in_progress" || r.status === "arrived").length;
-    const awaitingConfirmation = todayData.filter((r) => r.status === "awaiting_confirmation").length;
-    const notStarted = todayTotal - todayCompleted - inProgressCount - awaitingConfirmation;
+    const awaitingConfirmation = todayData.filter((r) => r.signoff_status === "awaiting").length;
+    // code-review 指摘 (2026-09-08): signoff_status は status とは独立した別軸で、
+    // status='completed' かつ signoff_status='awaiting'（施工完了・お客様サイン待ち）
+    // は普通に起こる組み合わせ（src/lib/signoff/state.ts 参照）。awaitingConfirmation を
+    // ここでも引くと該当予約が二重に差し引かれ、「未完了」が過小に出る。
+    // 未完了は status 単独の3分割（完了 / 進行中 / それ以外）だけで決める。
+    const notStarted = todayTotal - todayCompleted - inProgressCount;
 
     // Build issues
     const issues: Issue[] = [];
@@ -241,7 +254,8 @@ export default function HomeScreen() {
       id: r.id,
       time: r.start_time ? r.start_time.slice(0, 5) : "時刻未定",
       title: r.vehicle?.plate_display || r.customer?.name || "予約",
-      status: (r.status === "completed" || r.status === "delivered"
+      // D-B1 是正 (2026-09-08): "delivered" は reservations.status に存在しない値。
+      status: (r.status === "completed"
         ? "completed"
         : r.status === "in_progress" || r.status === "arrived"
           ? "in_progress"

@@ -62,7 +62,7 @@ interface MenuItem {
 type ReservationType = "scheduled" | "walk_in";
 
 export default function ReservationNewScreen() {
-  const { user, selectedStore } = useAuthStore();
+  const { user, getSelectedStoreId } = useAuthStore();
   const { width: windowWidth } = useWindowDimensions();
   // クイック作成の「作業開始（ウォークイン入庫）」から飛び込みを初期選択して開く
   const { type } = useLocalSearchParams<{ type?: string }>();
@@ -156,7 +156,9 @@ export default function ReservationNewScreen() {
         .from("reservations")
         .insert({
           tenant_id: user!.tenantId,
-          store_id: selectedStore!.id,
+          // D-B2 是正 (2026-09-08): 「店舗なしで続行」時は selectedStore.id が
+          // 空文字になる。uuid 列への直 insert は不正な形式でエラーになるため null に正規化する。
+          store_id: getSelectedStoreId(),
           customer_id: selectedCustomer?.id ?? null,
           vehicle_id: selectedVehicle?.id ?? null,
           title: items[0]?.name ?? "予約",

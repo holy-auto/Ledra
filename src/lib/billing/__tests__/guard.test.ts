@@ -11,14 +11,19 @@ vi.mock("@/lib/auth/platformAdmin", () => ({
   isPlatformTenantId: vi.fn((id: string) => id === "platform-tenant-id"),
 }));
 
+// E2-1 回帰テストが getStripeClient() 経由で実際に `subscriptions.retrieve`
+// を呼ぶ。client.ts の withRetry ラッパは呼び出しごとに新しい関数を返す
+// Proxy なので、ラップ後の関数には `.mockResolvedValue` が無い。
+// 素の vi.fn() をここで作り、MockStripe のインスタンスに直接持たせることで、
+// テスト側はこの hoisted な参照に対して振る舞いを設定する。
+const mockSubscriptionsRetrieve = vi.hoisted(() => vi.fn());
+
 vi.mock("stripe", () => {
-  return {
-    default: vi.fn().mockImplementation(() => ({
-      subscriptions: {
-        retrieve: vi.fn(),
-      },
-    })),
-  };
+  // アロー関数は `new` できないため `function` でコンストラクタ呼び出しに対応させる。
+  function MockStripe(this: any) {
+    this.subscriptions = { retrieve: mockSubscriptionsRetrieve };
+  }
+  return { default: MockStripe };
 });
 
 // Build a chainable Supabase mock
@@ -323,5 +328,31 @@ describe("enforceBilling — null plan_tier", () => {
     const req = makeRequest("https://app.test/api/cert?tenant_id=t1");
     const res = await enforceBilling(req, { minPlan: "free" });
     expect(res).toBeNull();
+  });
+});
+
+// ─── E2-1 是正: SubscriptionItem 側にしか current_period_end が無い場合の猶予判定 ───
+describe("enforceBilling — public_pdf grace period (E2-1 回帰確認)", () => {
+  it("items[0].current_period_end しか無い Subscription でも猶予中は許可する", async () => {
+    const futureUnix = Math.floor(Date.now() / 1000) + 3600; // 1時間後 (period_end + 14日猶予 > now)
+    mockSubscriptionsRetrieve.mockResolvedValue({
+      // トップレベルの current_period_end を持たない Stripe SDK v20+ 形状
+      items: { data: [{ current_period_end: futureUnix }] },
+    });
+
+    mockTenantResult.data = { plan_tier: "starter", is_active: false, stripe_subscription_id: "sub_1" };
+    const req = makeRequest("https://app.test/api/certificate/pdf?tenant_id=t1");
+    const res = await enforceBilling(req, { minPlan: "free", action: "public_pdf" });
+    expect(res).toBeNull();
+  });
+
+  it("current_period_end が全く取れない場合は安全側でブロックする", async () => {
+    mockSubscriptionsRetrieve.mockResolvedValue({ items: { data: [] } });
+
+    mockTenantResult.data = { plan_tier: "starter", is_active: false, stripe_subscription_id: "sub_1" };
+    const req = makeRequest("https://app.test/api/certificate/pdf?tenant_id=t1");
+    const res = await enforceBilling(req, { minPlan: "free", action: "public_pdf" });
+    expect(res).not.toBeNull();
+    expect(res!.status).toBe(402);
   });
 });

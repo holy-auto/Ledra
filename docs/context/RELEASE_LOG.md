@@ -4,31 +4,23 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
-## 2026-09-09 next / sharp の脆弱性で CI 全体が止まっていたのを解消
+## 2026-09-09 next / sharp の脆弱性による CI 停止 —— #1054 と同じ修正を並行して作り、こちらは破棄した
 
-- **main が赤かった。** CI の `Security audit (production dependencies)`
-  （`npm audit --audit-level=high --omit=dev`）が失敗し、**その次のステップである
-  lint / tsc / テスト一式が丸ごと `skipped` になっていた**（run 34357806973、
-  head `0ddd8e44`、13:33 UTC）。直前の main の run 34194844847（`37dbe4f6`、
-  2026-09-08 06:28 UTC）は success だったので、**依存の変更ではなく勧告の新規公開**が原因。
-- 検出された3件のうち、しきい値 `high` に触れるのは2件:
-  - `next` critical — GHSA-p293-qw3h-jr36（Windows ホストでの未認証 RCE）、
-    GHSA-2xp9-vwfh-vxw4（画像最適化 API の AVIF 経由の未認証 RCE）
-  - `sharp` high — GHSA-rgj7-g3m4-5g8c（libheif の脆弱性）
-- **package.json は変更していない。** 修正版は既存のレンジの内側にあった
-  （`next: ^16.2.10` → 16.2.11 から 16.3.4、`sharp: ^0.35.3` → 0.35.3 から 0.35.4）。
-  差分は `package-lock.json` のみ。
-- `fflate`（moderate、`posthog-js` の下）は**直していない**。しきい値 `high` に
-  届かず CI を止めていないため。
-- 検証: `npm audit --audit-level=high --omit=dev` が exit 0、
-  `scripts/ci-parallel-checks.sh` の6検査すべて通過（lint / lint:migrations / tsc /
-  test:coverage 542ファイル 5503件 / check:schema / check:context-dates）、
-  `next build` は `.next/build-manifest.json` を出力（クライアント側のコンパイルは成功。
-  build 自体の非ゼロ終了はシークレット不在によるページデータ収集の失敗で、CI が
-  意図的に許容している側）。
-- **未検証: E2E。** この workflow では `E2E Tests (Playwright)` が `skipped` のため、
-  next 16.2.11 → 16.3.4 の実行時挙動は単体テスト・型・クライアントコンパイルまでしか
-  見ていない。
+- **成果物は残っていない。** 同じ CVE 3件を #1054 が先に main へ入れており
+  （`b9dba57e`「CI「Security audit」ゲートが検出したCVE3件をnpm audit fixで解消」）、
+  main 取り込み時にこちらの `package-lock.json` は捨てて main 側を採用した。
+- 経緯: #1056 の CI が `Security audit`（`npm audit --audit-level=high --omit=dev`）で
+  赤くなり、main でも同じステップで赤いことを確認した（run 34357806973、`0ddd8e44`）。
+  **同じ問題を直している PR が開いていないかを確認しないまま**、`next` 16.2.11 → 16.3.4 /
+  `sharp` 0.35.3 → 0.35.4 のロックファイル更新を作って push した（`f46faeec`）。
+  その約1時間後に #1054 がマージされ、衝突して初めて重複に気づいた（M-070）。
+- **結果として main の方が広い**: #1054 は `npm audit fix` を通しているので
+  `fflate`（moderate、`posthog-js` 配下）も 0.4.9 に上がっている。こちらは
+  「しきい値 high に届かないので触らない」と判断して残していた。
+- 取り込み後に確認: `npm install --package-lock-only` でロックファイルに差分が出ない
+  （main のロックが merge 後の `package.json` と整合）、`found 0 vulnerabilities`。
+- **この件で残った実体は事業ログだけ**（この項、DECISION_LOG、OPEN_QUESTIONS の
+  「誰も何も変えていないのに CI 全体が赤くなる」、MISTAKE_LEDGER M-070）。
 
 ## 2026-09-09 typegen が専用トークンを使えるようにした（設定とシークレットは未登録）
 
@@ -53,6 +45,216 @@
   赤くなり続ける**（この PR で変わっていない）。赤が常態になる前に登録するか、
   赤の意味を変える判断が要る（M-047 の系列）。
 - **この変更は通しで検証していない。** 実際に走るのはシークレット登録後の初回実行が最初。
+## 2026-09-09 PR #1054 のCodex自動レビュー2回目（round 2、7件）を全件検証し全件修正
+
+round 1の修正push後にCodexが再レビューし、7件（P1×2/P2×5）を指摘。全件を
+実際にコードを読んで検証し（誤検知0件）、全件修正してpush。DB層2件は
+ローカルPostgresでロールシミュレーション/実データ投入による実測検証、
+残り5件は回帰テスト（vitest 3ファイル・mobile `.check.ts` 2ファイル）を
+追加しネガティブテスト（修正を一時的に戻してredになることを確認）を実施。
+`npx tsc --noEmit`（web/mobile両方）/ 全vitest（571ファイル5604件pass）/
+`npm test`（mobile、25本のcheck含め全pass）/ eslint（新規error 0）/
+`check:migrations`（461/461・RLS打ち消しなし）すべてgreen。PRの7スレッド
+全てに返信・resolve。
+
+- **agent_rankingsのJOINファンアウト**（P2）: round 1のG-M2是正で date/text
+  型不一致を修正し実行可能になったところ、元から潜んでいたJOINファンアウトが
+  発火するようになった。紹介・手数料をagent_idで別々に集計してからJOINする
+  形に修正（新規マイグレーション）。
+- **vehicle_size_masterの書込みポリシー**（P1）: round 1のG-M5是正が
+  `is_super_admin_user()`（tenant_id非依存）を使っており、同日別
+  マイグレーションで導入した `is_platform_admin()` に揃えていなかった
+  （sibling実装の見落とし）。揃えるマイグレーションを追加。
+- **管理画面予約フォームのforce再送未配線**（P2）: round 1のE3-1是正で
+  サーバー側に409+force機構を追加したが、`ReservationsClient.handleSubmit`
+  に配線し忘れていた。409+conflict時に確認ダイアログを出しforce再送する
+  ロジックを追加。
+- **push token reclaim未実装**（P1）: round 1で401無限再帰を止めたが、
+  「次回ログイン時にupsertで上書きされる」というフォールバックコメントが
+  実際には機能しない（`onConflict: user_id,token`は新規ユーザー用の行を
+  追加するだけ）。登録時にservice-roleで同一トークンの他ユーザー行を
+  reclaim（削除）するよう修正。
+- **academy/qaのコストキャップ混同**（P2）: `enabled: false` が「トグルOFF」
+  「コスト超過」両方の意味を持つのに区別していなかった。`costCap.exceeded`
+  を優先して見るよう修正。
+- **モバイルレジ画面の複数レジ不整合**（P2）: registerクエリとregister-session
+  クエリが別々にレジを選び、複数アクティブレジのある店舗でズレたレジの
+  セッションを操作していた。register-sessionクエリをregister.idに直接
+  紐付けて一本化。
+- **モバイル_layout.tsxのディープリンク消失**（P2）: 認証初期化が5秒フェイル
+  セーフを超えるとStack.Protectedの保護対象画面が一時的にナビゲータから
+  除外され、ディープリンクが復元不能に失われていた。起動時のパスをref に
+  保存し認証完了後に再適用する仕組みを追加（`pendingDeepLink.ts`）。
+
+## 2026-09-09 CI「Security audit」ゲートが検出したCVE3件をnpm audit fixで解消
+
+PR #1054 のCI失敗（`npm audit --audit-level=high --omit=dev`）を調査し、
+`next`（critical、Windowsホスト/AVIF最適化での未認証RCE）・`sharp`（high、
+libheif脆弱性）・`fflate`（moderate、posthog-js経由、ZIP64パース時の無限
+ループ）の3件のCVEを検出。`origin/main`と依存解決バージョンが完全一致する
+ことを確認し、このPRの差分が原因ではないと判断した上で、`npm audit fix`
+（package.jsonの既存semver範囲内、非破壊的）で解消。next→16.3.4・
+sharp→0.35.4・fflate(nested)→0.4.9。`bash scripts/ci-parallel-checks.sh`で
+CI相当の検査をローカル再現し全項目okを確認。
+
+## 2026-09-08 PR #1054 ready for review化後、Codex自動レビュー6件（P1×3/P2×3）を検証し5件を修正
+
+`chatgpt-codex-connector[bot]` の自動レビューが6件の指摘を投稿。全件を実際に
+コードを読んで検証し（誤検知0件）、5件を修正・push、1件は既存
+OPEN_QUESTIONS起票への参照で回答。`npx tsc --noEmit` / 全 vitest（5599件
+pass）/ eslint（新規error 0）/ `check:migrations`（459/459・RLS打ち消しなし）
+すべて green。
+
+- **qr-status の他テナントセッション露出**（D-A6是正の見落とし、P2）:
+  Connect未オンボーディングのテナントはプラットフォーム共有Stripeアカウント
+  経由になり、session_idの所有権チェックが無いと他テナントのCheckout
+  Session状態・金額・PaymentIntent IDを読めた。`metadata.tenant_id` との
+  突合ガードを追加。
+- **signup の未確認retryで確認メール再送漏れ**（B-M3是正の見落とし、P1）:
+  未確認のまま再登録された既存アカウントに「登録済みです」案内のみを送り、
+  本人が永久にログインできなくなっていた。新規RPC
+  `check_auth_email_unconfirmed` で確認状態を判定し、未確認なら確認メールを
+  再送するよう修正（レスポンスは列挙オラクル対策のため変更なし）。
+- **platform_*統計5関数のDB層ガード不一致**（G-L1是正の見落とし、P2）:
+  `is_super_admin_user()`（tenant_id を見ない）とアプリ層
+  `isPlatformAdmin()`（PLATFORM_TENANT_ID所属+owner/admin/super_admin）が
+  不一致で、過小（運営テナントowner/adminが弾かれる）・過大（他テナントの
+  super_adminが運営統計を取得できる）の両方向の問題があった。新設
+  `is_platform_admin()` に揃えた。ローカルPostgresでロールシミュレーション
+  し3パターンを実測確認。
+- **モバイル401ハンドラの無限再帰**（D-A10是正の見落とし、P1）: push解除
+  呼び出しがセッション破棄後の401ハンドラ自身から呼ばれると無限に自分を
+  呼び直しアプリがハングする。`mobileApi` に `skipUnauthorizedHandler`
+  オプションを追加して再帰を切った。
+- **Stripe webhook の遅延決済でcancelled注文が復活**（E2-2/E2-3是正の
+  見落とし、P1）: コンビニ/銀行振込の支払い確定待ちの間に運営が注文を
+  cancelledにできる設計で、遅れて届くasync_payment_succeededがステータス
+  条件無しの更新でpaidへ復活させ、NFCプロビジョニング・通知まで発火
+  させていた。姉妹関数 `handleVehicleReportSessionPaid` と同じ形の
+  `.in()` ステータスガードを追加。
+- **モバイルsignupのPKCE Cookie問題**（P2、修正せず）: 既存
+  OPEN_QUESTIONS起票（B-H3是正時に判明済み、代表判断待ち）への参照で
+  スレッドに回答。スレッドは未解決のまま維持。
+
+MISTAKE_LEDGER に M-066（兄弟実装との不一致、3件）・M-067（新しい呼び出し
+経路をそれが実際に発火する文脈で検証していない、1件）を追加。
+
+## 2026-09-08 セキュリティ監査是正 PR-5（重複圧縮）— 5PR構成が完結
+
+PR #1054 に11コミット追加（実装8 + 起票2 + code-review是正1）。
+`npx tsc --noEmit` / 全 vitest（5586件 pass）/ eslint すべて green。
+これで監査プランの PR-1〜PR-5 が完結。
+
+- **F-6 未使用依存削除**: `ethers`・`next-intl` を削除、
+  `remotion`/`@remotion/cli` を devDependencies へ移動。
+- **F-2 resolveCallerFull 廃止**: 8箇所を `resolveCallerWithRole` に統一し
+  `src/lib/api/auth.ts` を削除。統合の副産物として template-options 系
+  6ルートの認可漏れ（staff/viewerでも書き込み可能だった）を発見し
+  `template_options:manage` 権限で修正。
+- **F-3 Redis重複統合（部分）**: `lib/rateLimit.ts`・`lib/api/rateLimit.ts`・
+  `lib/api/idempotency.ts` の独自Redisクライアント3本を `lib/upstash.ts`
+  の共有シングルトンに統合。2つの呼び出し規約自体の完全統合は
+  OPEN_QUESTIONSへ。
+- **F-13 紛らわしい重複名の整理**: `certificate/`→`certificates/` 統合、
+  `certificateImages.ts`→`certificateImages/constants.ts` 移動、
+  deprecated な `lib/supabase.ts` 削除。
+- **F-10 csvEscape 統合**: CSV export 4ルートのローカル `csvEscape` を
+  共有実装に統合。formula injection 対策の非対称差分（ローカル版に
+  無害化処理が無かった）を発見・修正。回帰防止テストを追加。
+- **F-7 JSTオフセット統合（部分）**: マジックナンバー `9*60*60*1000` を
+  6箇所で `datetime.ts` の `JST_OFFSET_MS` 定数に統合。
+- **F-9 sendEmail 一本化**: `sendResendEmail` 直呼び10箇所を
+  Resend→SendGridフォールバック付きの `sendEmail()` に統一
+  （attachments使用の3本は対象外）。
+- **F-1 withCaller 新設**: route.ts の定型ボイラープレートを1本化する
+  `src/lib/api/withCaller.ts` を新規作成（既存648本は対象外、新規ルート
+  から使用）。
+- **code-review是正**: csvEscape重複検出テストのコメント誤検出、
+  withCaller の型安全性（P指定時のparams省略を型エラーに）の2件を修正。
+
+## 2026-09-08 セキュリティ監査是正 PR-4（AI/クローラ露出と衛生）
+
+PR #1054 に4コミット追加。`npx tsc --noEmit` / 全 vitest（565ファイル）/
+gitleaksローカル検証（108コミット全履歴、"no leaks found"）すべて green。
+
+- **索引可否**: ルートレイアウトの既定を非索引に反転し、マーケティング
+  ページ側だけ索引可に明示的に上書き。公開証明書ページ `/c/[public_id]`
+  はレイアウトで明示的に非索引を二重固定。proxyの `x-robots-tag` も
+  非マーケティングページ全体に拡張。
+- **CSP**: `img-src`/`connect-src` のSupabaseワイルドカードを自プロジェクト
+  ホストに限定。
+- **Sentry**: server/edge両方の `beforeSend` に authorization/cookie
+  ヘッダのスクラブを追加（edgeは`beforeSend`自体が無かった）。
+- **pepper fail-open**: `emailOtp.ts` を他14箇所と同じfail-closedに統一。
+- **Square webhook**: 署名検証の `timingSafeEqual` に長さチェックを追加。
+- **プロトタイプ削除**: `src/app/probe` と `public/deploy_probe.txt` を削除
+  （ユーザー決定事項、他のプロトタイプ画面は対象外）。
+- **秘密情報スキャン**: gitleaksをCIに追加。ローカルで実際にダウンロード
+  して全履歴を走査・検証し、既定ルールの38件の検出がすべて偽陽性
+  であることを1件ずつ確認したうえでallowlist設定。
+
+## 2026-09-08 セキュリティ監査是正 PR-3（モバイル修正）
+
+PR #1054 に4コミット追加（実装3 + code-review是正1）。`npx tsc --noEmit`
+（Web/モバイル両方）/ 全 vitest（562ファイル）/ モバイル `npm test`
+（21本の自己チェック、schema self-check含む）green。
+
+- **レジ機能**: `pos/register.tsx` が `registers.id` ではなく `stores.id` を
+  送っており外部キー制約で常に失敗していた（レジ機能がそもそも動かない）を修正。
+- **車検証OCR**: モバイルの OCR が cookie 認証専用の Web 版ルートを叩いて
+  常に401だった不具合を修正。Bearer 認証対応の
+  `/api/mobile/vehicles/parse-shakken` を新設。
+- **ホーム画面**: 存在しない status 値との比較で「確認待ち」ピルが常に0
+  だった不具合を、`signoff_status` を見るよう修正。
+- **店舗なし続行時のuuidエラー**: `selectedStore.id` の空文字が uuid 列に
+  そのまま送られ insert/query が失敗していた3箇所（reservations 作成・
+  pos/register クエリ・証明書作成）を `getSelectedStoreId()` に統一。
+- **未認証ディープリンク**: root layout に `Stack.Protected` で認証ガードを追加。
+- **アプリロックの無認証バイパス**: 生体認証2回失敗で出ていた無認証の
+  「ロックを解除して続ける」を削除し、実パスワードを要求する
+  「ログアウトして入り直す」のみに。
+- **オフライン文言・Googleログインボタン・検索語エスケープ・決済二重起動
+  ガード・サインアウト時の残留状態**: それぞれ是正（詳細はコミットログ参照）。
+- **`/code-review` 指摘（3件、すべて修正済み）**: (1) 証明書作成にも同じ
+  空文字store_idバグが別途あった、(2) ホーム画面の修正が status と
+  signoff_status を混同し「未完了」を過小カウントする新しいバグを作って
+  いた、(3) レジ画面でレジ情報取得中の操作が誤ったエラーになるレース
+  コンディション。
+
+## 2026-09-08 セキュリティ監査是正 PR-2（課金・予約・cron の整合性）
+
+PR #1054 に9コミット追加。全 vitest（561ファイル・5558テスト）/ `npx tsc --noEmit` /
+`npm run lint:migrations` / `npm run check:migrations`（454マイグレーション再生）green。
+
+- **課金**: `getCurrentPeriodEnd` を `src/lib/stripe/subscription.ts` に切り出し、
+  `billing/guard.ts` でも使用（支払停止テナントの公開PDF猶予期間が計算されない
+  不具合を修正）。
+- **Stripe webhook**: ショップ注文の DB 更新失敗を無視して `processed` 扱いにしていた
+  のを `throw` に変更（顧客は支払済・注文は pending のまま取り残される不具合）、
+  `payment_status` チェック追加、`tenant_option_subscriptions` の書込エラーを throw。
+- **予約**: `admin/reservations` の POST/PUT にダブルブッキング検知を配線
+  （`force:true` で上書き可）。`customer/booking` の過去日チェックを JST 基準に修正
+  （UTC 00:00〜09:00 の間、JST の前日を予約可能にしていた）。
+- **cron**: `cron/anchor-batch`・`cron/parts-anchor` に `withCronLock` を配線
+  （Polygon アンカー tx の二重発行防止）。
+- **AI課金**: 直接呼び出し7ルート（voice-memo, ai-explain, voice-note,
+  assistant/navigate, academy/{cases,feedback,qa}）に月次コストキャップガードを配線。
+- **入力堅牢性**: `parseInt` の NaN 混入をページネーション系19箇所で是正
+  （実害の無い6箇所は個別確認のうえ除外）。
+- **列挙オラクル対策**: signup/join/join・send-code が「メール登録済み」を409で
+  返していたのを一律200に変更し、本人にだけ案内メールを送るよう修正。
+- **レート制限**: `auth`/`sensitive` プリセットを env 設定に関わらず常時
+  フェイルクローズに固定。
+- **監査ログ**: Supabase MCP で本番 `audit_logs` の RLS/policy を実測確認
+  （policy 0本）したうえで、モバイル6箇所の監査ログ insert に admin クライアントを
+  渡すよう修正（従来は RLS で黙って弾かれ、証明書有効化/取消・NFC・レジ締め・
+  予約作成の監査ログがモバイル経由では1件も残っていなかった）。
+- **RLS**: 同じくMCPで本番ポリシーを実測し、5表（`tenant_webhooks`,
+  `tenant_api_keys`, `square_connections`, `tenant_integrations`,
+  `accounting_integrations`）の書込ポリシーに owner/admin 条件を追加。
+- **`/code-review` 指摘（1件、その場で修正）**: PR-1 由来の `TRUST_CF_HEADERS=1`
+  分岐で `cf-connecting-ip` より先に偽装可能な `x-forwarded-for` を見ており、
+  Cloudflare 前段構成でオプトインの意味が無かった不具合。
 
 ## 2026-09-08 型の再生成を main へ入れた。自動化は「PR が立たない・CI が走らない」二重の穴で止まっていた（PR #1049 / `37dbe4f6`）
 

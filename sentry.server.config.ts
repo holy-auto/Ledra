@@ -1,4 +1,5 @@
 import * as Sentry from "@sentry/nextjs";
+import { scrubSentryRequestHeaders } from "@/lib/observability/scrubSentryRequest";
 
 Sentry.init({
   dsn: process.env.NEXT_PUBLIC_SENTRY_DSN,
@@ -7,6 +8,10 @@ Sentry.init({
   tracesSampleRate: 0.1,
 
   beforeSend(event, hint) {
+    // C-L5 是正 (2026-09-08): authorization/cookie ヘッダは認証情報そのもの。
+    // Sentry へ送らない。
+    scrubSentryRequestHeaders(event);
+
     // Strip PII
     if (event.user) {
       delete event.user.email;

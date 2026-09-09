@@ -93,7 +93,12 @@ describe("captureTerminalPayment", () => {
 
   it("PaymentIntent が succeeded でなければ記録しない", async () => {
     current = fakeAdmin({ existingPayment: null });
-    retrieve.mockResolvedValue({ id: "pi_123", status: "requires_payment_method", amount: 1000 });
+    retrieve.mockResolvedValue({
+      id: "pi_123",
+      status: "requires_payment_method",
+      amount: 1000,
+      metadata: { tenant_id: "t-1" },
+    });
 
     const res = await captureTerminalPayment(CALLER, INPUT);
     expect(res.ok).toBe(false);
@@ -102,7 +107,7 @@ describe("captureTerminalPayment", () => {
 
   it("初回は pos_checkout を呼び、PaymentIntent の ID を残す", async () => {
     current = fakeAdmin({ existingPayment: null });
-    retrieve.mockResolvedValue({ id: "pi_123", status: "succeeded", amount: 5000 });
+    retrieve.mockResolvedValue({ id: "pi_123", status: "succeeded", amount: 5000, metadata: { tenant_id: "t-1" } });
 
     const res = await captureTerminalPayment(CALLER, INPUT);
     expect(res.ok).toBe(true);
@@ -117,7 +122,7 @@ describe("captureTerminalPayment", () => {
 
   it("**同じ PaymentIntent で再送されたら2件目を作らない**（カードは既に切られている）", async () => {
     current = fakeAdmin({ existingPayment: { id: "pay-existing", tenant_id: "t-1", document_id: "doc-1" } });
-    retrieve.mockResolvedValue({ id: "pi_123", status: "succeeded", amount: 5000 });
+    retrieve.mockResolvedValue({ id: "pi_123", status: "succeeded", amount: 5000, metadata: { tenant_id: "t-1" } });
 
     const res = await captureTerminalPayment(CALLER, INPUT);
     expect(res.ok).toBe(true);
@@ -125,6 +130,20 @@ describe("captureTerminalPayment", () => {
     expect(res.already_recorded).toBe(true);
     expect(res.result).toEqual({ payment_id: "pay-existing", document_id: "doc-1" });
     // ここが本題。2回目で pos_checkout を呼ぶと売上が二重に立つ
+    expect(current.rpc).not.toHaveBeenCalled();
+  });
+
+  it("PaymentIntent の metadata.tenant_id が caller と一致しなければ記録しない (D-A5 回帰確認)", async () => {
+    current = fakeAdmin({ existingPayment: null });
+    retrieve.mockResolvedValue({
+      id: "pi_123",
+      status: "succeeded",
+      amount: 5000,
+      metadata: { tenant_id: "other-tenant" },
+    });
+
+    const res = await captureTerminalPayment(CALLER, INPUT);
+    expect(res.ok).toBe(false);
     expect(current.rpc).not.toHaveBeenCalled();
   });
 });

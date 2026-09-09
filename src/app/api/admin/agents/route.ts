@@ -1,7 +1,8 @@
-import { createTenantScopedAdmin } from "@/lib/supabase/admin";
+import { createPlatformScopedAdmin } from "@/lib/supabase/admin";
 import { NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
+import { resolveCallerWithRole } from "@/lib/auth/checkRole";
+import { isPlatformAdmin } from "@/lib/auth/platformAdmin";
 import { apiJson, apiUnauthorized, apiForbidden, apiInternalError } from "@/lib/api/response";
 import { parsePagination } from "@/lib/api/pagination";
 import { parseJsonBody } from "@/lib/api/parseBody";
@@ -12,9 +13,9 @@ export async function GET(request: NextRequest) {
     const supabase = await createClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
-    if (!requireMinRole(caller, "admin")) return apiForbidden();
+    if (!isPlatformAdmin(caller)) return apiForbidden();
 
-    const { admin } = createTenantScopedAdmin(caller.tenantId);
+    const admin = createPlatformScopedAdmin("agents — platform-wide agent operations (no tenant scope)");
     const status = request.nextUrl.searchParams.get("status");
     const p = parsePagination(request, { defaultPerPage: 50, maxPerPage: 200 });
 
@@ -99,13 +100,13 @@ export async function POST(request: NextRequest) {
     const supabase = await createClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
-    if (!requireMinRole(caller, "admin")) return apiForbidden();
+    if (!isPlatformAdmin(caller)) return apiForbidden();
 
     const parsed = await parseJsonBody(request, adminAgentCreateSchema);
     if (!parsed.ok) return parsed.response;
     const { name, contact_name, contact_email, contact_phone, address } = parsed.data;
 
-    const { admin } = createTenantScopedAdmin(caller.tenantId);
+    const admin = createPlatformScopedAdmin("agents — platform-wide agent operations (no tenant scope)");
     const { data, error } = await admin
       .from("agents")
       .insert({

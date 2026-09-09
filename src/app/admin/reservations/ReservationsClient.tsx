@@ -564,12 +564,29 @@ export default function ReservationsClient() {
     };
     if (editingId) payload.id = editingId;
     try {
-      const res = await fetch("/api/admin/reservations", {
+      // code-review 指摘 (2026-09-09): サーバー側（E3-1是正）は重複時に
+      // 409 + code:"conflict" を返し force:true での再送を案内しているが、
+      // このUIには配線されておらず、正当な重複予約が確認・上書きの手段なしに
+      // 常に拒否されていた。409+conflict のときだけ確認ダイアログを出し、
+      // 同意されたら force:true を付けて同一エンドポイントに再送する。
+      let res = await fetch("/api/admin/reservations", {
         method: editingId ? "PUT" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-      const j = await parseJsonSafe(res);
+      let j = await parseJsonSafe(res);
+      if (res.status === 409 && j?.code === "conflict") {
+        if (!confirm(`${j?.message ?? "この日時は既に予約が入っています。"}\nこのまま登録しますか？`)) {
+          setSaving(false);
+          return;
+        }
+        res = await fetch("/api/admin/reservations", {
+          method: editingId ? "PUT" : "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ...payload, force: true }),
+        });
+        j = await parseJsonSafe(res);
+      }
       if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       setSaveMsg({ text: editingId ? "予約を更新しました" : "予約を作成しました", ok: true });
       setShowForm(false);

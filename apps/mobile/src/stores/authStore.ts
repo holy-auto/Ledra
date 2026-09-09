@@ -19,6 +19,14 @@ interface AuthState {
 
   // ヘルパー
   hasMinRole: (minRole: AppRole) => boolean;
+  /**
+   * D-B2 是正 (2026-09-08): 「店舗なしで続行」時、selectedStore.id には空文字が
+   * 入る（(auth)/select-store.tsx 参照）。この空文字を uuid 列へ直接 insert/query
+   * すると "invalid input syntax for type uuid" で必ず失敗する。呼び出し側ごとに
+   * `selectedStore?.id || null` を書くと1箇所書き忘れるたびに再発するので、
+   * ここに1本化する。
+   */
+  getSelectedStoreId: () => string | null;
 }
 
 const ROLE_RANK: Record<AppRole, number> = {
@@ -59,4 +67,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     if (!user) return false;
     return ROLE_RANK[user.role] >= ROLE_RANK[minRole];
   },
+
+  getSelectedStoreId: () => get().selectedStore?.id || null,
 }));

@@ -32,7 +32,7 @@ import type {
   MethodRequirement,
   MinRoleRequirement,
 } from "../permissions";
-import { walkSource, enclosingFunctions, handlerChunks } from "../../__tests__/sourceScan";
+import { walkSource, enclosingFunctions, handlerChunks, stripComments } from "../../__tests__/sourceScan";
 
 const APP_ROOT = join(process.cwd(), "src", "app");
 const API_ROOT = join(APP_ROOT, "api");
@@ -302,5 +302,57 @@ describe("未登録の変更系ハンドラ", () => {
 
   it("既知リストに、もう強制済みのものが残っていない（棚卸しの取りこぼしを防ぐ）", () => {
     expect([...KNOWN_UNGUARDED].filter((h) => !found.includes(h)).sort()).toEqual([]);
+  });
+});
+
+/**
+ * `/api/admin/agent*`（代理店運営 API）は `agents` がテナントを持たない
+ * プラットフォーム共通資源であり、`isPlatformAdmin` 必須（A-H1、2026-09-08）。
+ *
+ * 監査で判明した実例: 一覧・作成系 14 本が `requireMinRole(caller, "admin")`
+ * （自テナント admin なら誰でも通る）のみで守られ、`createTenantScopedAdmin`
+ * （RLS バイパスの service-role クライアント）を任意テナント admin から
+ * 実行できていた。同機能の `[id]` ルートは既に `isPlatformAdmin` 必須。
+ *
+ * `enforces()`/GUARD 系の一般検出は「何らかの認可があるか」しか見ず
+ * `requireMinRole` も認可として認識するため、この退行は拾えない。
+ * ここでは `/api/admin/agent*` に限定して `isPlatformAdmin` の使用を直接要求する。
+ */
+describe("代理店運営 API (/api/admin/agent*) は isPlatformAdmin 必須", () => {
+  const files = walkSource(API_ROOT, (f) => f.endsWith("route.ts")).filter((f) => {
+    const rel = f
+      .slice(API_ROOT.length + 1)
+      .split(/[\\/]/)
+      .join("/");
+    return rel.startsWith("admin/agent-") || rel.startsWith("admin/agents/");
+  });
+
+  it("対象ファイルを取りこぼしていない（検出器が壊れて空で合格するのを防ぐ）", () => {
+    expect(files.length).toBeGreaterThanOrEqual(14);
+  });
+
+  it("全ファイルが isPlatformAdmin をガードとして使い、requireMinRole/createTenantScopedAdmin に依存しない", () => {
+    const bad: string[] = [];
+    for (const file of files) {
+      const src = stripComments(readFileSync(file, "utf8"), file);
+      const rel = file
+        .slice(API_ROOT.length + 1)
+        .split(/[\\/]/)
+        .join("/");
+      const chunks = handlerChunks(src);
+      for (const [method, chunk] of chunks) {
+        if (!/resolveCallerWithRole\(/.test(chunk)) continue;
+        if (!/!\s*isPlatformAdmin\(caller\)/.test(chunk)) {
+          bad.push(`${rel} [${method}] -> isPlatformAdmin ガード無し`);
+        }
+      }
+      if (/requireMinRole\(caller,\s*"admin"\)/.test(src)) {
+        bad.push(`${rel} -> requireMinRole(caller, "admin") が残存`);
+      }
+      if (/createTenantScopedAdmin\(/.test(src)) {
+        bad.push(`${rel} -> createTenantScopedAdmin を使用（RLS バイパスがテナントスコープに閉じない）`);
+      }
+    }
+    expect(bad.sort()).toEqual([]);
   });
 });
