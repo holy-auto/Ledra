@@ -6,11 +6,25 @@
 
 最終更新: 2026-09-09
 
-> 2026-09-09 追記(7): **PR #1054（全体セキュリティ監査是正シリーズ PR-1）を
-> main にマージ済み**（マージコミット `042d3b0`、代表がGitHub UI上でマージ）。
-> main との衝突（別PR #1053 が docs/context の同じ追記位置を編集）を
-> `git merge origin/main` で解消しpush後、マージされた。
-> **次: PR-2（課金・予約・cronの整合性、未着手）〜PR-5（重複圧縮、未着手）。**
+> 2026-09-09 追記(8)【訂正】: 追記(7)の「次: PR-2〜PR-5、未着手」は誤り。
+> 同じファイルの下方（追記(2)〜(4)、2026-09-08付）に既に記載の通り、
+> **PR-2（課金・予約・cronの整合性）〜PR-5（重複圧縮）は全てPR #1054に
+> 含まれた状態で実装済み**であり、追記(7)時点で main にマージ済みだった。
+> コードで実在確認済み（`src/lib/stripe/subscription.ts`の`getCurrentPeriodEnd`
+> 切り出し=PR-2、`apps/mobile/src/app/pos/register.tsx`のD-A1是正コメント=PR-3、
+> `src/app/c/layout.tsx`のnoindex=PR-4、`src/lib/api/withCaller.ts`・
+> `.github/workflows/gitleaks.yml`=PR-5、他複数項目を実測）。**全体セキュリティ
+> 監査の是正計画（PR-1〜PR-5）は完結し、mainに反映済み。**
+> 残るのは founder 判断待ちの OPEN_QUESTIONS 4件（下記）のみ：
+> (1) モバイル signup のPKCE Cookie衝突（B-H3是正とTap to Payアプリ内
+> オンボーディング要件の緊張関係、2026-09-08起票）、(2) モバイル_layout.tsx の
+> Stack.Protected設計変更（2026-09-09起票）、(3) F-4 importer 0 モジュール25本の
+> 削除可否（2026-09-08起票）、(4) レート制限2系統の完全統合要否（2026-09-08起票）。
+>
+> 2026-09-09 追記(7)【誤り、訂正済み・追記(8)参照】: PR #1054 を main に
+> マージ済み（マージコミット `042d3b0`）。main との衝突（別PR #1053 が
+> docs/context の同じ追記位置を編集）を `git merge origin/main` で解消し
+> push後、マージされた。
 >
 > 2026-09-09 追記(6): **PR #1054 のCodex自動レビュー2回目（round 2、
 > P1×2/P2×5の7件）を全件検証・全件修正・push済み。** agent_rankingsの
