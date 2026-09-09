@@ -6,6 +6,12 @@
 
 最終更新: 2026-09-09
 
+> 2026-09-09 追記(7): **PR #1054（全体セキュリティ監査是正シリーズ PR-1）を
+> main にマージ済み**（マージコミット `042d3b0`、代表がGitHub UI上でマージ）。
+> main との衝突（別PR #1053 が docs/context の同じ追記位置を編集）を
+> `git merge origin/main` で解消しpush後、マージされた。
+> **次: PR-2（課金・予約・cronの整合性、未着手）〜PR-5（重複圧縮、未着手）。**
+>
 > 2026-09-09 追記(6): **PR #1054 のCodex自動レビュー2回目（round 2、
 > P1×2/P2×5の7件）を全件検証・全件修正・push済み。** agent_rankingsの
 > JOINファンアウト、vehicle_size_masterのRLSポリシー不一致（round 1の
