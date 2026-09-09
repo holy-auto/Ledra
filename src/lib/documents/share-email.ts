@@ -37,7 +37,10 @@ async function send(to: string, subject: string, html: string): Promise<SendDocu
     // "sendgrid:resend:... | sendgrid:..." のように二重表示になる。既にタグ済みなら
     // そのまま使う。
     const tagged = res.error.startsWith("resend:") || res.error.startsWith("sendgrid:");
-    return { ok: false, error: tagged ? res.error : `${res.provider}:${res.error}` };
+    // Codex 指摘: res.status (HTTPステータス) を含めないと、本文が空/無情報な失敗
+    // （認証エラー・レート制限・5xx等）を区別できず、このPRの目的である診断可能性が
+    // 損なわれる。単一プロバイダ失敗時 (未タグ) にはステータスも含める。
+    return { ok: false, error: tagged ? res.error : `${res.provider}(${res.status ?? "?"}):${res.error}` };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) };
   }

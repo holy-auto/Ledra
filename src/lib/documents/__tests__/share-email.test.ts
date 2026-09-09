@@ -83,6 +83,7 @@ describe("sendDocumentEmail", () => {
 
     expect(result.ok).toBe(false);
     expect(result.error).toContain("resend");
+    expect(result.error).toContain("401"); // Codex 指摘: HTTPステータスも失われず残ること
     expect(result.error).toContain("Invalid API key");
   });
 
@@ -116,7 +117,11 @@ describe("sendDocumentEmail", () => {
   });
 
   it("RESEND_API_KEY/RESEND_FROM が未設定の場合も理由付きで失敗を返す", async () => {
-    vi.unstubAllEnvs();
+    // Codex 指摘: unstubAllEnvs() はスタブ前の値（実行環境に本物の資格情報が
+    // 入っていればその値）に戻すだけで「未設定」にはならない。空文字を明示的に
+    // stub して確実に未設定を再現する（実際の Resend への通信を避ける）。
+    vi.stubEnv("RESEND_API_KEY", "");
+    vi.stubEnv("RESEND_FROM", "");
 
     const result = await sendDocumentEmail({
       to: "customer@example.com",
