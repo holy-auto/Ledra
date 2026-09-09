@@ -10,19 +10,28 @@
 
 1. **Settings → Actions → General → Workflow permissions →
    「Allow GitHub Actions to create and approve pull requests」を有効にする。**
-2. **PAT か GitHub App のインストールトークンを作り、リポジトリシークレット
-   `TYPEGEN_TOKEN` として登録する。** `db-typegen.yml` 側は登録されればそのまま
-   使うようにしてある（未登録なら `GITHUB_TOKEN` へ落ち、理由を warning で出す）。
+2. **PAT を作り、リポジトリシークレット `TYPEGEN_TOKEN` として登録する。**
+   必要な権限は `contents: write`（`chore/db-typegen` への push）と
+   `pull-requests: write`（PR の作成・更新）。classic / fine-grained どちらでも可。
+   `db-typegen.yml` 側は登録されればそのまま使うようにしてある（未登録なら
+   `GITHUB_TOKEN` へ落ち、理由を warning で出す）。
 
-必要な権限（最小）: `contents: write`（`chore/db-typegen` への push）と
-`pull-requests: write`（PR の作成・更新）。GitHub App の方が失効管理と権限範囲の
-点で望ましいが、PAT でも動く。
+**GitHub App はこの形では使えない。** インストールアクセストークンは**1時間で失効する**
+ので、シークレットに保存するとほぼ毎回 401 になる（`actions/create-github-app-token`
+の README で確認）。App を採るなら APP_ID と秘密鍵を登録し、実行のたびにトークンを
+発行する構成が別途要る。**「App の方が失効管理の点で望ましい」は、保存する形に対しては
+逆である**（2026-09-09 の `/code-review` で訂正）。
 
 **未確定**: 1 が本当に要るかは確かめきれていない。**PAT を使えば 1 は不要**
 （あの設定は `GITHUB_TOKEN` を縛るもの）という理解だが、`docs.github.com` が
 作業環境からブロックされていて裏が取れなかった。両方やる指示なので実務上は
 問題にならないが、「1 だけ有効にして 2 をやらない」は**採ってはいけない**
 （PR は自動で立つが、誰も検証していない差分が並ぶ）。
+
+**2 が終わるまで `db-typegen.yml` は毎回最終ステップで赤くなり続ける。** これは
+この PR で変わっていない（トークンが未登録である限り同じ）。**赤が常態になると
+「赤いのが普通」になり、13日間の見落とし（M-047 の系列）を再生産する危険がある。**
+登録が先延ばしになるなら、赤を止めるか赤の意味を変えるかを別途決める必要がある。
 
 ## `migrations.production-ledger` を誰がいつ更新するか（2026-09-07）
 
