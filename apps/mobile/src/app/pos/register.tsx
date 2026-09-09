@@ -61,19 +61,24 @@ export default function PosRegisterScreen() {
     enabled: !!getSelectedStoreId(),
   });
 
+  // code-review 指摘 (2026-09-09): 以前は register_sessions を店舗経由
+  // （registers!inner(store_id)）で絞っており、store_id に有効なレジが
+  // 複数ある場合、上の register クエリ（sort_order 昇順で1件）とは別の
+  // レジの最新セッション（opened_at 降順で1件）を返しうる。結果、画面が
+  // 表示するセッションと open/close ミューテーションが叩く register.id が
+  // ズレ、無関係なレジのセッションを締めてしまう等の誤操作になる。
+  // register クエリが確定した register.id に直接紐付けることで一本化する。
   const {
     data: session,
     isLoading,
     refetch,
   } = useQuery<RegisterSession | null>({
-    queryKey: ["register-session", selectedStore?.id],
+    queryKey: ["register-session", register?.id],
     queryFn: async () => {
-      // register_sessions に店舗は無い。レジ（registers）が店舗を持つので
-      // 埋め込みで内部結合して絞る
       const { data, error } = await supabase
         .from("register_sessions")
-        .select("*, registers!inner(store_id)")
-        .eq("registers.store_id", getSelectedStoreId()!)
+        .select("*")
+        .eq("register_id", register!.id)
         .eq("tenant_id", user!.tenantId)
         .order("opened_at", { ascending: false })
         .limit(1)
@@ -82,7 +87,7 @@ export default function PosRegisterScreen() {
       if (!data) return null;
       return data as unknown as RegisterSession;
     },
-    enabled: !!getSelectedStoreId(),
+    enabled: !!register?.id,
   });
 
   const isOpen = session?.status === "open";
@@ -104,7 +109,7 @@ export default function PosRegisterScreen() {
     onSuccess: () => {
       setOpeningCash("");
       queryClient.invalidateQueries({
-        queryKey: ["register-session", selectedStore?.id],
+        queryKey: ["register-session", register?.id],
       });
       setSnackbar("レジを開けました");
     },
@@ -132,7 +137,7 @@ export default function PosRegisterScreen() {
     onSuccess: () => {
       setClosingCash("");
       queryClient.invalidateQueries({
-        queryKey: ["register-session", selectedStore?.id],
+        queryKey: ["register-session", register?.id],
       });
       setSnackbar("レジを締めました");
     },
