@@ -4,6 +4,47 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-09-09 PR #1054 のCodex自動レビュー2回目（round 2、7件）を全件検証し全件修正
+
+round 1の修正push後にCodexが再レビューし、7件（P1×2/P2×5）を指摘。全件を
+実際にコードを読んで検証し（誤検知0件）、全件修正してpush。DB層2件は
+ローカルPostgresでロールシミュレーション/実データ投入による実測検証、
+残り5件は回帰テスト（vitest 3ファイル・mobile `.check.ts` 2ファイル）を
+追加しネガティブテスト（修正を一時的に戻してredになることを確認）を実施。
+`npx tsc --noEmit`（web/mobile両方）/ 全vitest（571ファイル5604件pass）/
+`npm test`（mobile、25本のcheck含め全pass）/ eslint（新規error 0）/
+`check:migrations`（461/461・RLS打ち消しなし）すべてgreen。PRの7スレッド
+全てに返信・resolve。
+
+- **agent_rankingsのJOINファンアウト**（P2）: round 1のG-M2是正で date/text
+  型不一致を修正し実行可能になったところ、元から潜んでいたJOINファンアウトが
+  発火するようになった。紹介・手数料をagent_idで別々に集計してからJOINする
+  形に修正（新規マイグレーション）。
+- **vehicle_size_masterの書込みポリシー**（P1）: round 1のG-M5是正が
+  `is_super_admin_user()`（tenant_id非依存）を使っており、同日別
+  マイグレーションで導入した `is_platform_admin()` に揃えていなかった
+  （sibling実装の見落とし）。揃えるマイグレーションを追加。
+- **管理画面予約フォームのforce再送未配線**（P2）: round 1のE3-1是正で
+  サーバー側に409+force機構を追加したが、`ReservationsClient.handleSubmit`
+  に配線し忘れていた。409+conflict時に確認ダイアログを出しforce再送する
+  ロジックを追加。
+- **push token reclaim未実装**（P1）: round 1で401無限再帰を止めたが、
+  「次回ログイン時にupsertで上書きされる」というフォールバックコメントが
+  実際には機能しない（`onConflict: user_id,token`は新規ユーザー用の行を
+  追加するだけ）。登録時にservice-roleで同一トークンの他ユーザー行を
+  reclaim（削除）するよう修正。
+- **academy/qaのコストキャップ混同**（P2）: `enabled: false` が「トグルOFF」
+  「コスト超過」両方の意味を持つのに区別していなかった。`costCap.exceeded`
+  を優先して見るよう修正。
+- **モバイルレジ画面の複数レジ不整合**（P2）: registerクエリとregister-session
+  クエリが別々にレジを選び、複数アクティブレジのある店舗でズレたレジの
+  セッションを操作していた。register-sessionクエリをregister.idに直接
+  紐付けて一本化。
+- **モバイル_layout.tsxのディープリンク消失**（P2）: 認証初期化が5秒フェイル
+  セーフを超えるとStack.Protectedの保護対象画面が一時的にナビゲータから
+  除外され、ディープリンクが復元不能に失われていた。起動時のパスをref に
+  保存し認証完了後に再適用する仕組みを追加（`pendingDeepLink.ts`）。
+
 ## 2026-09-09 CI「Security audit」ゲートが検出したCVE3件をnpm audit fixで解消
 
 PR #1054 のCI失敗（`npm audit --audit-level=high --omit=dev`）を調査し、

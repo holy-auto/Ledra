@@ -6,6 +6,17 @@
 
 最終更新: 2026-09-09
 
+> 2026-09-09 追記(6): **PR #1054 のCodex自動レビュー2回目（round 2、
+> P1×2/P2×5の7件）を全件検証・全件修正・push済み。** agent_rankingsの
+> JOINファンアウト、vehicle_size_masterのRLSポリシー不一致（round 1の
+> is_platform_admin()置き換えの取り漏れ）、管理画面予約フォームへの
+> force再送未配線、push token reclaim未実装（round 1のフォールバック
+> コメントが実際には機能しなかった）、academy/qaのコストキャップ混同、
+> モバイルレジ画面の複数レジ不整合、モバイル_layout.tsxのディープリンク
+> 消失を修正。DB層2件はローカルPostgresで実測検証、他5件は回帰テスト＋
+> ネガティブテストを実施。PRの7スレッド全てに返信・resolve済み。
+> **PRは引き続きレビュー中。**
+>
 > 2026-09-09 追記(5): **PR #1054 を ready for review 化し、Codex自動レビュー
 > 6件（P1×3/P2×3）を検証・5件を修正。** qr-status の他テナントセッション
 > 露出、signup未確認retryの確認メール再送漏れ、platform_*統計5関数のDB層
