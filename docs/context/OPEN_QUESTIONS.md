@@ -3,6 +3,31 @@
 > まだ決まっていないこと、判断に迷っていることを書く場所。決まったら
 > DECISION_LOG.md に移し、このファイルからは消す（削除履歴は git で追える）。
 
+## `db-typegen.yml` の自動化が2箇所で切れている（2026-09-08）
+
+型の再生成は**動いている**が、生成結果が main へ入る経路が2箇所で切れていて、
+結局は毎回人が拾う運用になっている（PR #1049 で1回分は入れた）。
+
+1. **PR が立たない** —— `GitHub Actions is not permitted to create or approve pull requests`。
+   Settings → Actions → General → Workflow permissions の
+   「Allow GitHub Actions to create and approve pull requests」が無効。
+2. **CI が走らない** —— `chore/db-typegen` はワークフローが `GITHUB_TOKEN` で force-push
+   しており、**`GITHUB_TOKEN` による push は `synchronize` を発火させない**（再帰防止の仕様）。
+   人が PR を立てた時だけ `opened` で走り、以後の自動更新では走らない。
+
+**片方だけ直しても意味が薄い。** 1 だけ有効にすると「PR は自動で立つが、誰も検証していない
+巨大な差分が並ぶ」状態になる。2 を直すには push を PAT か GitHub App トークンへ変える必要がある。
+
+案:
+1. 両方直す（設定を有効化 ＋ push トークンを変更）。自動化が完結する。
+   トークンの管理コストと権限範囲の検討が要る。
+2. 1 だけ直す。PR は自動で立つが、検証は人が手元で回す前提を明文化する。
+3. 現状維持。型の更新は誰かが気づいたときに人が PR を立てる。**気づかれない期間、
+   `db.generated.ts` は本番スキーマと乖離し続ける**（今回は数日分たまっていた）。
+
+なお `db-typegen.yml` は毎回この最終ステップで**赤くなり続ける**。赤が常態になると
+「赤いのが普通」になり、13日間の見落とし（M-047 の系列）を再生産する危険がある。
+
 ## `migrations.production-ledger` を誰がいつ更新するか（2026-09-07）
 
 out-of-order 検査の比較対象を、main の代用から本番台帳の要約へ移した
