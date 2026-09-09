@@ -93,7 +93,8 @@ describe("sendDocumentEmail", () => {
   it("Resend/SendGrid 両方失敗した場合、理由が二重にタグ付けされない", async () => {
     vi.stubEnv("SENDGRID_API_KEY", "sg_test_key");
     globalThis.fetch = vi.fn(async (url: unknown) => {
-      if (String(url).includes("sendgrid.com")) {
+      // CodeQL: ホスト名の完全一致で判定する（部分文字列一致は他ホストで誤爆しうる）。
+      if (new URL(String(url)).hostname === "api.sendgrid.com") {
         return new Response("SendGrid down", { status: 503 });
       }
       return new Response("Resend down", { status: 503 });
