@@ -5,7 +5,7 @@ import { resolveBaseUrl } from "@/lib/url";
 import { GLOBAL_OTP_TTL_MIN, createGlobalLoginCode, listPortalMemberships } from "@/lib/customerPortalGlobal";
 import { normalizeEmail, normalizeLast4 } from "@/lib/customerPortalServer";
 import { apiJson, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
-import { isResendFailure, sendResendEmail } from "@/lib/email/resendSend";
+import { sendEmail } from "@/lib/email/sendEmail";
 import { portalRequestCodeSchema } from "@/lib/validations/portal";
 
 function genCode6() {
@@ -65,15 +65,15 @@ export async function POST(req: Request) {
       `</div>` +
       `<p><a href=\"${safeUrl}\">確認コード入力画面を開く</a></p>`;
 
-    const sent = await sendResendEmail({
+    const sent = await sendEmail({
       to: email,
       subject,
       html,
       // OTP は毎回新鮮な code のため idempotency は効かせない
     });
-    if (isResendFailure(sent)) {
+    if (!sent.ok) {
       return apiInternalError(
-        new Error(`resend_failed:${sent.status ?? "network"}:${sent.error}`),
+        new Error(`email_failed:${sent.status ?? "network"}:${sent.error}`),
         "portal/request-code",
       );
     }

@@ -63,7 +63,7 @@ interface CartItem {
 type PaymentMethod = "cash" | "card" | "qr" | "bank_transfer";
 
 export default function WalkInCheckoutScreen() {
-  const { user, selectedStore } = useAuthStore();
+  const { user, selectedStore, getSelectedStoreId } = useAuthStore();
   const device = useDeviceType();
   const { isIPhone, isIPad, isAndroid } = device;
   const { width: windowWidth } = useWindowDimensions();
@@ -134,11 +134,14 @@ export default function WalkInCheckoutScreen() {
           amount: total,
           items: toPosItems(cart),
           method: paymentMethod,
-          storeId: selectedStore?.id ?? null,
+          // code-review 指摘 (2026-09-08): `?? null` は空文字（店舗なしで続行時の
+          // selectedStore.id）を拾わない。qr-session の schema は "" を許容するため
+          // 現状はエラーにならないが、D-B2 と同じ形の値を getSelectedStoreId() に揃える。
+          storeId: getSelectedStoreId(),
         },
         fromTapFailure,
       ),
-    [cardEntry, total, cart, paymentMethod, selectedStore],
+    [cardEntry, total, cart, paymentMethod, selectedStore, getSelectedStoreId],
   );
 
   // 会計ステップでの端末バックは画面を閉じずに品目選択へ戻す。

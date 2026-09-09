@@ -17,6 +17,8 @@ import { checkRateLimit } from "@/lib/api/rateLimit";
 import { canUseFeature, normalizePlanTier } from "@/lib/billing/planFeatures";
 import { reformatVoiceNote } from "@/lib/ai/voiceMemoReformat";
 import { fastModelForPlanTier } from "@/lib/ai/client";
+import { loadAiAutomationSettings } from "@/lib/ai/automation/policy";
+import { startAiRouteUsage } from "@/lib/ai/recordRouteUsage";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -30,6 +32,7 @@ const schema = z.object({
 });
 
 export async function POST(req: NextRequest) {
+  const usage = startAiRouteUsage("/api/admin/voice-note");
   try {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
@@ -50,6 +53,14 @@ export async function POST(req: NextRequest) {
       return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
     }
 
+    // E4-7 是正 (2026-09-08): マスタースイッチ OFF / 月次コストキャップ超過時は
+    // enabled=false に倒るので、それを見て呼び出し自体をスキップする。
+    const aiSettings = await loadAiAutomationSettings(caller.tenantId);
+    if (!aiSettings.enabled) {
+      usage.record({ tenantId: caller.tenantId, userId: caller.userId, outcome: "ai_disabled" });
+      return apiOk({ ok: false, reason: "ai_unavailable" });
+    }
+
     const result = await reformatVoiceNote(
       {
         transcript: parsed.data.transcript,
@@ -61,11 +72,14 @@ export async function POST(req: NextRequest) {
     );
 
     if (!result) {
+      usage.record({ tenantId: caller.tenantId, userId: caller.userId, outcome: "error" });
       return apiOk({ ok: false, reason: "ai_unavailable" });
     }
 
+    usage.record({ tenantId: caller.tenantId, userId: caller.userId, outcome: "ok" });
     return apiOk({ ok: true, note: result.note });
   } catch (e: unknown) {
+    usage.record({ outcome: "error" });
     return apiInternalError(e, "voice-note");
   }
 }

@@ -79,10 +79,28 @@ describe("buildCsp", () => {
     expect(csp["connect-src"]).toContain("https://api.stripe.com");
   });
 
-  it("allows Supabase in img-src and connect-src", () => {
+  it("allows Supabase in img-src and connect-src (C-L4: scoped to the configured project host, not a wildcard)", () => {
     const csp = buildCsp({ nonce: NONCE, isDev: false });
-    expect(csp["img-src"]).toContain("https://*.supabase.co");
-    expect(csp["connect-src"]).toContain("https://*.supabase.co");
+    // src/lib/__tests__/setup.ts sets NEXT_PUBLIC_SUPABASE_URL=https://test.supabase.co
+    expect(csp["img-src"]).toContain("https://test.supabase.co");
+    expect(csp["connect-src"]).toContain("https://test.supabase.co");
+    expect(csp["img-src"]).not.toContain("https://*.supabase.co");
+    expect(csp["connect-src"]).not.toContain("https://*.supabase.co");
+  });
+
+  it("falls back to the wildcard when NEXT_PUBLIC_SUPABASE_URL is unset or malformed (C-L4 fail-open)", () => {
+    const original = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    try {
+      process.env.NEXT_PUBLIC_SUPABASE_URL = "";
+      let csp = buildCsp({ nonce: NONCE, isDev: false });
+      expect(csp["connect-src"]).toContain("https://*.supabase.co");
+
+      process.env.NEXT_PUBLIC_SUPABASE_URL = "not a url";
+      csp = buildCsp({ nonce: NONCE, isDev: false });
+      expect(csp["connect-src"]).toContain("https://*.supabase.co");
+    } finally {
+      process.env.NEXT_PUBLIC_SUPABASE_URL = original;
+    }
   });
 
   it("allows Sentry telemetry in connect-src", () => {

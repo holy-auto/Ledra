@@ -3,7 +3,7 @@ import { createClient as createSupabaseServerClient } from "@/lib/supabase/serve
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { apiJson, apiUnauthorized, apiNotFound, apiInternalError } from "@/lib/api/response";
-import { CERTIFICATE_IMAGE_BUCKET } from "@/lib/certificateImages";
+import { CERTIFICATE_IMAGE_BUCKET } from "@/lib/certificateImages/constants";
 import { isAnnotationDocument, type AnnotationDocument } from "@/components/imageMarkup/types";
 
 export const dynamic = "force-dynamic";

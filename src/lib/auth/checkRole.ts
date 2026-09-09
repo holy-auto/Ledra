@@ -4,6 +4,7 @@ import { normalizeRole, hasMinRole, type Role } from "./roles";
 import { hasPermission, type Permission } from "./permissions";
 import { normalizePlanTier, type PlanTier } from "@/lib/billing/planFeatures";
 import { getCachedTenantBilling } from "@/lib/billing/tenantBillingCache";
+import { setSentryUserAndTenant } from "@/lib/sentryContext";
 
 export type CallerInfo = {
   userId: string;
@@ -61,12 +62,14 @@ export async function resolveCallerWithRole(
     if (mem?.tenant_id) {
       const tid = normalizeTenantId(mem.tenant_id);
       const planTier = await resolvePlanTier(tid);
-      return {
+      const ctx: CallerInfo = {
         userId: userRes.user.id,
         tenantId: tid,
         role: normalizeRole(mem.role),
         planTier,
       };
+      setSentryUserAndTenant(ctx);
+      return ctx;
     }
   }
 
@@ -84,12 +87,14 @@ export async function resolveCallerWithRole(
   const tid = normalizeTenantId(mem.tenant_id);
   const planTier = await resolvePlanTier(tid);
 
-  return {
+  const ctx: CallerInfo = {
     userId: userRes.user.id,
     tenantId: tid,
     role: normalizeRole(mem.role),
     planTier,
   };
+  setSentryUserAndTenant(ctx);
+  return ctx;
 }
 
 /**
