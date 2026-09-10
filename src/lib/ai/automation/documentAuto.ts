@@ -193,10 +193,11 @@ export async function maybeAutoSendDocumentOnConfirm(params: MaybeAutoSendDocume
     }
     // LINE 未連携、または LINE 送信失敗時はメールにフォールバック (メールアドレスがあれば)。
     // メール本文にも決済リンクを同梱するため、1 通で書類 + 決済が届く。
+    let emailFailureReason: string | undefined;
     if (!delivered && email) {
       usedChannel = "email";
       usedRecipient = email;
-      delivered = await sendDocumentEmail({
+      const emailResult = await sendDocumentEmail({
         to: email,
         docType: docLabel,
         docNumber,
@@ -205,9 +206,11 @@ export async function maybeAutoSendDocumentOnConfirm(params: MaybeAutoSendDocume
         senderName,
         message: paymentEmailMessage,
       });
+      delivered = emailResult.ok;
+      emailFailureReason = emailResult.error;
     }
 
-    const errorMessage = delivered ? null : "自動送付に失敗しました";
+    const errorMessage = delivered ? null : (emailFailureReason ?? "自動送付に失敗しました");
 
     // 予約行を確定 (sent) / 失敗時は claim を解放して再確定でのリトライを許す。
     try {
