@@ -3,6 +3,41 @@
 > まだ決まっていないこと、判断に迷っていることを書く場所。決まったら
 > DECISION_LOG.md に移し、このファイルからは消す（削除履歴は git で追える）。
 
+## LINE/SMS の帳票送付も同じ「失敗理由が握り潰される」問題が残っている（2026-09-09）
+
+PR #1055 で `sendDocumentEmail`（メール送信）の戻り値を `boolean` → `{ok, error}` に
+直し、`document_share_log.error_message` に実際の失敗理由が残るようにした
+（DECISION_LOG 2026-09-08）。/code-review の指摘で判明したが、同じ設計の欠陥が
+`src/lib/line/client.ts` の `sendDocumentLink` と `src/lib/sms/client.ts` の
+`sendSMS` にも残っている——どちらも実際の API エラー（LINE Messaging API の
+エラー・Twilio のエラー）を `boolean` に丸めて捨てており、LINE/SMS 経由の送付が
+失敗すると `document_share_log.error_message` は依然として汎用文言
+`"送信に失敗しました"` になる。
+
+今回の報告（請求書の**メール**送付が出来ない）はメール経路の話だったため、PR #1055
+はメール経路のみを直す最小差分にとどめ、LINE/SMS への横展開はスコープ外にした。
+LINE または SMS 経由の送付失敗が同様に調査不能という報告が来たら、`sendDocumentEmail`
+と同じパターン（`{ok, error}` を返し、呼び出し元 `route.ts` の該当分岐へ伝播）で
+`sendDocumentLink`/`sendSMS` を直す。両関数はそれぞれ他の呼び出し元も持つため
+（`sendSMS` は OTP 送信とは別関数 `sendOtpSms` が既に `SmsSendResult` を返している
+のでそちらの形に揃えられる可能性がある）、着手前に呼び出し元を洗い出すこと。
+
+## 帳票メールが本番で送れない実際の外部原因（Resend/SendGrid 側）が未特定（2026-09-08）
+
+「請求書のメール送付が出来ない」報告を調査（DECISION_LOG 2026-09-08）。本番
+`document_share_log` を見ると、同じ宛先 `sh***@honda-auto.ne.jp` 宛が
+2026-07-09・08-09 は成功、08-28 は別の2ドメイン（outlook.jp / gmail.com）宛で失敗、
+09-08 に同じ宛先が再び失敗——宛先ドメイン依存ではなく、07-09〜08-28 の間に
+プロバイダ側（Resend の API キー失効・送信ドメイン検証失効・アカウント停止等）
+で何かが起きたと推定されるが、該当期間にコードの変更は無く、本セッションからは
+Vercel の環境変数・Resend ダッシュボードを確認できないため未特定。
+
+**次にやること**: 代表に Resend ダッシュボード（API キーの有効性、送信ドメインの
+DKIM/SPF 検証状態）と Vercel の `RESEND_API_KEY` / `RESEND_FROM` / `SENDGRID_API_KEY`
+を確認してもらう。今回の修正（失敗理由を握り潰さないようにした）のデプロイ後に
+もう一度送付を試み、`document_share_log.error_message` に出る具体的な理由から
+判断する。
+
 ## モバイル _layout.tsx の Stack.Protected 設計をディープリンク保存方式から恒久対応に切り替えるか（2026-09-09）
 
 Codexレビュー（PR #1054 round 2）で、認証初期化が5秒フェイルセーフを超えると
@@ -116,7 +151,6 @@ checkRateLimit(req, preset)）を api/rateLimit.ts の custom() に吸収」を
   くらいの単位が実害の大きさで自然に分かれる。
 
 公開区分: 公開可（実装判断メモであり機密情報なし）。
-
 ## `db-typegen.yml` の自動化が2箇所で切れている（2026-09-08）
 
 型の再生成は**動いている**が、生成結果が main へ入る経路が2箇所で切れていて、
