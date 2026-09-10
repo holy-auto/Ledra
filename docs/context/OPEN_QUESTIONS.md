@@ -735,17 +735,74 @@ starter 1）が、マイグレーション側の check に**弾かれる**。つ
 「マイグレーションから DB を作り直して本番データを流し込む」復旧手順は、
 今そのままでは 83% のテナントで失敗する。
 
-- 現に困っているものではない【確実】。本番はずっと enum で動いており、
-  この差が出るのは再構築のときだけ。
-- 2026-09-06 の修復マイグレーションは**オブジェクトの有無と実行権限までしか
-  揃えていない**。列の型は範囲外（ファイル冒頭の ponytail に明記）。
-- 直し方の候補: (a) 新しいマイグレーションで `alter table ... alter column ... type`
-  を当てて本番に合わせる（本番では実質 no-op だが、`certificates` は行数が多く
-  書き換えコストの確認が要る）、(b) 既存ファイルの check を広げる（**適用済み
-  ファイルの書き換えになるので、この repo の規約では採らない**）。
-- **未決**: どちらを採るか。まず (a) を `tenants.plan_tier` だけで試すのが小さい。
-- 上の表以外にも型の食い違いが無いかは**未調査**【要確認】。
+### 【解決済み 2026-09-08】弾かれる問題は消した。型名の違いは残す
+
+`20260910000000_align_enum_columns_with_production.sql` で
+**`tenants_plan_tier_check` を enum と同じ 5 値に広げた**（`NOT VALID` で足してから
+`VALIDATE`）。再生 DB で `free` / `starter` / `mini` が投入でき、enum に無い値は
+弾かれることを実測済み。**復旧手順が 83% のテナントで失敗する状態は解消した。**
+
+**弾かれるのは `plan_tier` だけだった**（2026-09-08 に 5 列すべて実測）。
+
+| 列 | 再生側の制約 | 本番の値を弾くか |
+|---|---|---|
+| `tenants.plan_tier` | check (mini,standard,pro) | **弾く（20/24 件）** → 修正済み |
+| `certificates.status` | check (active,void,draft,expired) | 弾かない（enum 3 値の上位集合） |
+| `certificates.expiry_type` | NULL 許容 | 弾かない（本番の NOT NULL より緩い） |
+| `tenant_memberships.role` | check の 5 値 | 弾かない（enum と**集合が一致**） |
+| `templates.scope` | 列跨ぎ規則の check のみ（値の一覧なし） | 弾かない |
+
+**型名の食い違い（text か enum か）は残したままにした。** 理由:
+
+- 最初は 4 列を `alter column ... type <enum>` で揃える版を書き、再生 DB が本番と
+  完全一致すること（`certificates_public` のビュー定義 md5 まで一致）を確認した。
+- しかし `lint:migrations` が `alter-column-type`（表の書き換えと ACCESS EXCLUSIVE）
+  で止めた。`supabase/migrations.allowlist` は「**新規追加禁止**」と明記されており
+  逃げ道が無い。zero-downtime 方針に従うなら add-column → backfill → 切替 → drop を
+  複数デプロイに分ける話になるが、**本番ではこの変更は 1 バイトも動かない**（既に enum）。
+  動くのは空 DB の再生だけで、そのために本番の中核表を書き換える手順を組むのは釣り合わない。
+- アプリから見ると PostgREST はどちらも文字列で返すので影響しない。
+
+- **未決**: 型名を揃えるか（揃えるなら zero-downtime 手順に乗せる必要がある）。
+  実害が無いので急がない。
+- **`tenant_memberships.role` を enum にするなら 7 テーブル・10 本の RLS ポリシーを
+  畳んで作り直すことになる**（`pg_depend` で実測）。認可の面を 10 本書き直す代償が
+  型名を揃えるだけの利得に見合わない。
+- 上の表以外にも型・既定値・NOT NULL の食い違いが無いかは**未調査**【要確認】。
   今の検出器はオブジェクトの有無しか見ない。pg_dump 同士の差分を取れば洗える。
+
+## 本番にあってマイグレーションに無い RLS ポリシーがある（2026-09-08）
+
+列型の調査中に見つかった、**ポリシー層のドリフト**。オブジェクトの有無を見る
+検出器では出ない（ポリシーは対象外）。
+
+確認できたもの（2026-09-08、再生 DB と本番の突き合わせ）:
+
+- `certificates` に **anon 向けの SELECT ポリシーが本番だけに 2 本**ある。
+  `cert_public_read_active`（`status = 'active'`）と
+  `public read active certificates by public_id`（`status = 'active' and public_id is not null`）。
+  再生 DB の `certificates` に anon 向けポリシーは **0 本**。
+- **どの画面が困るかを確かめた（2026-09-10、当初の推測は誤りだった）。**
+  公開証明書ページ `/c/[public_id]` は **anon ポリシーに依存しない** ——
+  `src/lib/certificates/publicData.ts` は `createServiceRoleAdmin()` で読んでおり
+  RLS を迂回する。当初「この経路で読んでいると思われる」と書いたが誤り。
+  実際に依存するのは **PDF ルート** `src/app/api/certificate/pdf/route.ts` で、
+  anon キーで `certificates_public` を叩く。このビューは `security_invoker=on` なので
+  呼び出し元（anon）の権限で `certificates` を読む。再生 DB の `certificates` の
+  SELECT ポリシーは `my_tenant_ids()` / `my_org_tenant_ids()` の 2 本だけなので
+  **anon は 0 行 → PDF が 404 になる**【確実・2026-09-10 にコード実測】。
+- `templates` の `templates_select`（`scope = 'shared'` を誰にでも読ませる）も本番だけ。
+  再生側は `templates_select_v2` / `tpl_select` という別名の別定義。
+
+**危険度は「不明」。** 本番に余分な公開ポリシーがあるということは、
+**再生した DB のほうが厳しい**＝復旧しても公開ページが動かない可能性がある一方、
+本番側の anon 公開が意図どおりかは別途確認が要る【要確認】。
+
+- **未決**: (a) 本番のポリシーをマイグレーションへ書き起こす、(b) 本番から消す、
+  のどちらか。**復旧時に PDF ルートを動かすなら (a)。** ただし本番の anon 公開が
+  意図どおりかは別途確認が要る【要確認】——
+  `cert_public_read_active` は `status='active'` の**全証明書**を anon に開ける。
+- ポリシーもドリフト検出の対象に入れるか（`pg_policies` の名前だけなら安い）も未決。
 
 ## デモ保険会社にデモ施工店の閲覧許可を入れた。実アカウントの越境アクセスは別途確認したい（2026-09-03）
 

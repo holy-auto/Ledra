@@ -25,6 +25,24 @@ founder判断待ちのOPEN_QUESTIONS少なくとも4件（詳細は LEDRA_CURREN
 2026-09-09 追記(8)参照。OPEN_QUESTIONS.md全体にはこの監査と無関係な
 既存の未解決事項も別途多数ある）。
 
+## 2026-09-08 本番データを流し込めない状態を解消した（tenants.plan_tier）
+
+マイグレーションから作り直した DB へ本番データを入れると、**24 テナント中 20 件が
+弾かれる**状態だった。`tenants.plan_tier` の check が (mini, standard, pro) の 3 値で、
+本番の enum が持つ `free` / `starter` を受け付けなかったため。
+
+- `20260910000000` で check を enum と同じ 5 値へ広げた（`NOT VALID` → `VALIDATE`）
+- 本番では `tenants_plan_tier_check` 自体が存在しない（既に enum）ので **no-op**
+- 再生 DB で `free` / `starter` / `mini` が投入でき、enum に無い値は弾かれることを実測
+
+列の**型名**の食い違い（text か enum か）は残した。揃えるには
+`alter column ... type` が要り、`lint:migrations` の zero-downtime 検査に掛かる。
+本番では何も動かない変更のために本番の中核表を書き換える手順を組むのは釣り合わないと判断
+（DECISION_LOG 2026-09-08）。
+
+調査中に**ポリシー層の別ドリフト**を発見し、OPEN_QUESTIONS に起票した。
+`certificates` の anon 向け SELECT ポリシー 2 本が本番にしか無い。
+
 ## 2026-09-08 帳票メール送付の失敗理由が「送信に失敗しました」に潰れていたのを、実際のプロバイダ理由が残るように修正
 
 - 内容: 帳票共有（`POST /api/admin/documents/share`）とAI自動送付（`documentAuto.ts`）のメール送信経路
