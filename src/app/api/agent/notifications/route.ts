@@ -17,7 +17,7 @@ export async function GET(request: NextRequest) {
     if (!agent?.agent_id) return apiForbidden("agent_not_found");
 
     const url = new URL(request.url);
-    const limit = Math.min(100, parseInt(url.searchParams.get("limit") ?? "50", 10));
+    const limit = Math.min(100, parseInt(url.searchParams.get("limit") ?? "50", 10) || 50);
 
     const { data: notifications } = await supabase
       .from("agent_notifications")

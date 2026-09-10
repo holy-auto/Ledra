@@ -6,7 +6,7 @@
 ## 静的検査が届かない最後の1つ（動的 SQL）と、失敗を捨てている API 呼び出し（2026-09-08）
 
 2026-09-08 に「`is_pii_disclosed` 修正の残り3点」を調べ、**3点とも決着した**（下の
-「決着した3点」参照）。ここに残すのは、その調査で新しく出た3点。
+「決着した3点」参照）。ここに残すのは、その調査で新しく出た4点。
 
 **未解決1: 動的 SQL の中身は静的には見えない【要確認】。**
 `plpgsql_check` は plpgsql の本体を検証するが、`EXECUTE format(...)` で組み立てる
@@ -14,11 +14,13 @@ SQL は**文字列が出来上がるのが実行時**なので対象外。道具
 塞ぐなら「実際に呼ぶテスト」しかない。どの関数が動的 SQL を使っているかの棚卸しも未実施。
 
 **未解決2: `rpc()` の `error` を捨てている呼び出しが他にどれだけあるか【要確認】。**
-`agent_rankings` の故障が半年近く見えなかったのは、`/api/agent/rankings` が
+`agent_rankings` の故障が長く見えなかったのは、`/api/agent/rankings` が
 `const { data } = await supabase.rpc(...)` と書いて `error` を受け取っていないため。
 **DB が落ちても API は 200 と空配列を返し、画面は「該当なし」と表示する。**
-同じ形が他に何箇所あるかは数えていない。lint で止められる形（`error` を無視する
-`rpc()`/`from()` の呼び出しを禁止する）かどうかも未検討。
+**2026-09-10 に再確認したが、この書き方は今も残っている**（`src/app/api/agent/rankings/route.ts`。
+関数側は `20260909003200` までで直ったので現在は値が返るが、**次に DB 側が壊れたときも
+同じように黙る**）。同じ形が他に何箇所あるかは数えていない。lint で止められる形
+（`error` を無視する `rpc()`/`from()` の呼び出しを禁止する）かどうかも未検討。
 
 **未解決3: `agent_rankings` がいつから壊れ、誰が影響を受けたか【要確認】。**
 代理店ランキング画面を見た人には「該当なし」に見えていた。期間と閲覧数は未計測。
@@ -44,10 +46,212 @@ plpgsql 検査の対象外になる**ので、検査の穴を塞ぐ意味でも�
   トリガ関数は関数なので plpgsql 検査に含まれる。ただし**再生 DB でトリガが付いて
   いない2本（`generate_case_number` / `handle_updated_at`）は検査できない** ——
   本番にはどちらもトリガが付いている（`trg_set_case_number` /
-  `trg_job_orders_updated_at`）ので、これは再生 DB 側のドリフト（下の未解決4）。
+  `trg_job_orders_updated_at`）ので、これは再生 DB 側のドリフト（上の未解決4）。
 
 - 起票日: 2026-09-08
 
+## LINE/SMS の帳票送付も同じ「失敗理由が握り潰される」問題が残っている（2026-09-09）
+
+PR #1055 で `sendDocumentEmail`（メール送信）の戻り値を `boolean` → `{ok, error}` に
+直し、`document_share_log.error_message` に実際の失敗理由が残るようにした
+（DECISION_LOG 2026-09-08）。/code-review の指摘で判明したが、同じ設計の欠陥が
+`src/lib/line/client.ts` の `sendDocumentLink` と `src/lib/sms/client.ts` の
+`sendSMS` にも残っている——どちらも実際の API エラー（LINE Messaging API の
+エラー・Twilio のエラー）を `boolean` に丸めて捨てており、LINE/SMS 経由の送付が
+失敗すると `document_share_log.error_message` は依然として汎用文言
+`"送信に失敗しました"` になる。
+
+今回の報告（請求書の**メール**送付が出来ない）はメール経路の話だったため、PR #1055
+はメール経路のみを直す最小差分にとどめ、LINE/SMS への横展開はスコープ外にした。
+LINE または SMS 経由の送付失敗が同様に調査不能という報告が来たら、`sendDocumentEmail`
+と同じパターン（`{ok, error}` を返し、呼び出し元 `route.ts` の該当分岐へ伝播）で
+`sendDocumentLink`/`sendSMS` を直す。両関数はそれぞれ他の呼び出し元も持つため
+（`sendSMS` は OTP 送信とは別関数 `sendOtpSms` が既に `SmsSendResult` を返している
+のでそちらの形に揃えられる可能性がある）、着手前に呼び出し元を洗い出すこと。
+
+## 帳票メールが本番で送れない実際の外部原因（Resend/SendGrid 側）が未特定（2026-09-08）
+
+「請求書のメール送付が出来ない」報告を調査（DECISION_LOG 2026-09-08）。本番
+`document_share_log` を見ると、同じ宛先 `sh***@honda-auto.ne.jp` 宛が
+2026-07-09・08-09 は成功、08-28 は別の2ドメイン（outlook.jp / gmail.com）宛で失敗、
+09-08 に同じ宛先が再び失敗——宛先ドメイン依存ではなく、07-09〜08-28 の間に
+プロバイダ側（Resend の API キー失効・送信ドメイン検証失効・アカウント停止等）
+で何かが起きたと推定されるが、該当期間にコードの変更は無く、本セッションからは
+Vercel の環境変数・Resend ダッシュボードを確認できないため未特定。
+
+**次にやること**: 代表に Resend ダッシュボード（API キーの有効性、送信ドメインの
+DKIM/SPF 検証状態）と Vercel の `RESEND_API_KEY` / `RESEND_FROM` / `SENDGRID_API_KEY`
+を確認してもらう。今回の修正（失敗理由を握り潰さないようにした）のデプロイ後に
+もう一度送付を試み、`document_share_log.error_message` に出る具体的な理由から
+判断する。
+
+## モバイル _layout.tsx の Stack.Protected 設計をディープリンク保存方式から恒久対応に切り替えるか（2026-09-09）
+
+Codexレビュー（PR #1054 round 2）で、認証初期化が5秒フェイルセーフを超えると
+`Stack.Protected` の保護対象画面がナビゲータから一時的に除外され、その間に
+届いたディープリンクが復元不能に失われる不具合を指摘された。最小修正として
+「起動直後のパスをrefに保存し、認証完了後にrouter.replaceで再適用する」
+（`apps/mobile/src/lib/pendingDeepLink.ts`）を実装・push済み。
+
+Codexの提案にはもう一段根本的な選択肢もあった: `isReady`（認証初期化完了）が
+falseの間は保護対象画面を**常にナビゲータへ登録したまま**にし、各画面（または
+共通ラッパー）側で`!isAuthenticated`なら`Redirect`する方式に統一する
+（`Stack.Protected`による丸ごとの登録除外自体をやめる）。この方式なら
+ディープリンクは常に画面へマッチするため、今回のような「保存・再適用」の
+仕組み自体が不要になる。
+
+今回は影響範囲（対象画面全て・(tabs)/_layout.tsx の既存二重ガードとの整合）が
+広いため見送った。**まだ決まっていないこと**: この設計変更を別PRで実施するか、
+現状の保存・再適用方式を恒久解とするか。判断基準は「ディープリンク以外の
+経路（通知タップ・QRコード等）でも同様の消失が起きていないか」の洗い出しと、
+設計変更のコスト対効果。
+
+## F-4: importer 0 の src/lib モジュール群をどう扱うか（2026-09-08）
+
+監査プラン F-4 は「importer 0 の src/lib モジュール 25本（domain/jobExceptions,
+payment/derivePaymentState, certificates/versionTransition,
+documents/estimateApproval, auth/stepUp, auth/sharedDevice, auth/invite,
+api/securityAudit, zkp/commitment, agent/statusGuard 等）。src/lib export
+1,949件中505件（26%）未参照」を挙げ、「IMP-* 先行実装分は OPEN_QUESTIONS で
+『接続予定か』を確認、それ以外は削除」と指示していた。
+
+**確実**: 例示された10本（domain/jobExceptions, payment/derivePaymentState,
+certificates/versionTransition, documents/estimateApproval, auth/stepUp,
+auth/sharedDevice, auth/invite, api/securityAudit, zkp/commitment,
+agent/statusGuard）は、`from "..."` の完全一致（クォート境界込み）で
+テスト以外からの import を今回個別に再確認し、全10本とも importer 0 の
+ままだった（2026-09-08 実測、`src/` 配下）。
+
+**この10本を数える過程で、監査の走査ツール自体の2種類の誤りを実際に踏んだ**
+（MISTAKE_LEDGER M-064 と同根、道具を検証しないまま数字を書く型）:
+
+1. **走査範囲の欠落**: 最初の確認は `src/` 配下だけを見ていたが、
+   `src/lib/envValidation.ts`（F-4 の対象外だが同じ「importer 0」に
+   見えていた別ファイル）はプロジェクトルートの `instrumentation.ts`
+   （Next.js の起動フック、`src/` の外）から動的 `import()` されていた。
+   `src/` だけを見る走査は、ルート直下のファイル
+   （`instrumentation.ts`・`instrumentation-client.ts`・`sentry.*.config.ts`・
+   `next.config.ts` 等）からの参照を系統的に見落とす。
+2. **部分文字列の誤検出**: 上記1を修正してリポジトリ全体（node_modules除く）
+   に走査範囲を広げたところ、`auth/stepUp` が新たに「importer 6」に化けた。
+   中身を見ると実体は `src/proxy.ts` 等が **`@/lib/auth/stepUpGuard`**
+   （別モジュール）を import しており、`@/lib/auth/stepUp` という
+   非アンカーの文字列一致が `stepUpGuard` にもマッチしていた
+   （CLAUDE.md の「role名の部分文字列」と同型の罠）。`auth/stepUp` 単体は
+   実際には importer 0 のまま。
+
+この2つを踏まえ、114本という広域スキャンの生数字（`src/lib` 配下のファイル
+単位）は**そのまま信用しない**。境界をアンカーし、かつプロジェクトルートの
+起動フックまで走査範囲に含めた、より正確な検出器（既存の
+`ts-prune` 等のAST的ツールが望ましい。grep ベースの正規表現は今回のように
+再発しうる）で作り直してから件数を確定すべき。
+
+**推定**: 25本／26%はプラン記載の監査時点の数字で、このセッションでは
+全量を確定できていない。上記の理由により、broad rescan の 114 という数字も
+そのままは採用しない。
+
+判断が必要なこと（削除は本 PR の範囲外 — 実装意図の確認が先):
+- 上記10本を含む未接続モジュールが、IMP-01〜IMP-17 等の**先行実装**
+  （後続 PR で接続予定）なのか、それとも本当に死んでいるコードなのかは
+  ファイル単体では判断できない。`docs/implementation/requirement-trace.md`
+  等の実装トレースと突き合わせて1本ずつ「接続予定 / 削除可」を仕分ける
+  作業が必要。
+- 削除するにしても、テストファイルが実装より先に書かれているものは
+  「未接続」であってテストの意味が違う可能性がある（要個別確認）。
+- 次にこの調査をするときは、まず `envValidation.ts`（instrumentation.ts
+  から使われている、既知の「非 src 参照」の実例）を検出器に通し、
+  正しく「使用中」と判定できるか確認してから件数を報告すること。
+
+公開区分: 公開可（内部の技術的負債整理メモ）。
+
+## レート制限「2系統」の完全統合をどこまでやるか（2026-09-08）
+
+監査プラン F-3 は「レート制限2系統（lib/rateLimit.ts の
+checkRateLimit(key, opts) / lib/api/rateLimit.ts の
+checkRateLimit(req, preset)）を api/rateLimit.ts の custom() に吸収」を
+挙げていた。このうち **Redis クライアントの重複4本を共有シングルトンに
+一本化する部分は実施済み**（コミット参照: F-3 一部、docs/context/RELEASE_LOG.md）。
+
+未実施なのは「2つの呼び出し規約そのものを1つに統合し、lib/rateLimit.ts を
+消す」部分。保留にした理由:
+
+- `checkRateLimit(key, opts)` を直接呼ぶ経路が **33 ルート**残っている。
+  windowSec の値が 60 / 300 / 600 / 900 / 3600 と不揃いで、新系統
+  （`lib/api/rateLimit.ts`）の custom モードは `Ratelimit.slidingWindow(n, "60 s")`
+  で **60秒固定**（`limitPerMinute` 前提）。60秒以外の窓を持つ 20 ルート分は
+  新系統に windowSec 引数を足す拡張が要る。
+- 対象に OTP 発行（customer/verify-code, join/send-code 等）・
+  data-export（admin/agent/insurer の3本、3600秒窓）・contact/marketing-leads
+  （900秒窓）など、**B-H2/B-M1 で扱ったのと同じ種類の、悪用時の実害が大きい
+  経路**が多く含まれる。33ファイル一括の機械的な import 付け替えは、
+  キー生成（IP単体 / IP+tenant / IP+email の複合）まで含めて1件ずつ
+  「windowSec と識別子が変わっていないか」を検証しないと、
+  スロットルを静かに弱める側に倒すリスクがある。
+
+決めることは2つ:
+
+- **windowSec 引数を新系統に足して1系統にするか、それとも
+  「1系統に統合する」という目標自体を諦めて2系統のまま Redis 共有だけで
+  よしとするか。** 後者ならこの OPEN_QUESTIONS は「対応しない」で閉じられる。
+- 前者を選ぶ場合、**33ルートを1PRでまとめて動かすか、数本ずつ分割するか**。
+  分割するなら「OTP/認証系」「data-export系」「marketing/contact系」
+  くらいの単位が実害の大きさで自然に分かれる。
+
+公開区分: 公開可（実装判断メモであり機密情報なし）。
+## `db-typegen.yml` の自動化が2箇所で切れている（2026-09-08）
+
+型の再生成は**動いている**が、生成結果が main へ入る経路が2箇所で切れていて、
+結局は毎回人が拾う運用になっている（PR #1049 で1回分は入れた）。
+
+1. **PR が立たない** —— `GitHub Actions is not permitted to create or approve pull requests`。
+   Settings → Actions → General → Workflow permissions の
+   「Allow GitHub Actions to create and approve pull requests」が無効。
+2. **CI が走らない** —— `chore/db-typegen` はワークフローが `GITHUB_TOKEN` で force-push
+   しており、**`GITHUB_TOKEN` による push は `synchronize` を発火させない**（再帰防止の仕様）。
+   人が PR を立てた時だけ `opened` で走り、以後の自動更新では走らない。
+
+**片方だけ直しても意味が薄い。** 1 だけ有効にすると「PR は自動で立つが、誰も検証していない
+巨大な差分が並ぶ」状態になる。2 を直すには push を PAT か GitHub App トークンへ変える必要がある。
+
+案:
+1. 両方直す（設定を有効化 ＋ push トークンを変更）。自動化が完結する。
+   トークンの管理コストと権限範囲の検討が要る。
+2. 1 だけ直す。PR は自動で立つが、検証は人が手元で回す前提を明文化する。
+3. 現状維持。型の更新は誰かが気づいたときに人が PR を立てる。**気づかれない期間、
+   `db.generated.ts` は本番スキーマと乖離し続ける**（今回は数日分たまっていた）。
+
+なお `db-typegen.yml` は毎回この最終ステップで**赤くなり続ける**。赤が常態になると
+「赤いのが普通」になり、13日間の見落とし（M-047 の系列）を再生産する危険がある。
+
+## `migrations.production-ledger` を誰がいつ更新するか（2026-09-07）
+
+out-of-order 検査の比較対象を、main の代用から本番台帳の要約へ移した
+（DECISION_LOG 2026-09-07）。`supabase/migrations.production-ledger` は
+**いま手動更新**で、更新方法はファイル冒頭に書いてある。
+
+**古い `max:` は見逃しを生む。** 当初「古くても緩まない（base 比較に戻るだけ）」と
+書いたが誤りで、base 比較に戻ることは **#1020 を通した当時の検査に戻る**ことである
+（M-064、再現確認済み）。免除欄の方は古くても落ちるだけで安全。
+
+**検出は入れた**: `db-migrate.yml` の「本番台帳の要約が古くないか確認」ステップが、
+**本番が repo より先に進んでいるのに台帳に記録が無い**場合にジョブを赤くする。
+本番への適用そのものは止めない（push の後に置いた）。通常の push 成功後は
+本番 == repo なので静かに通る。
+
+**残る天井**: `apply_migration` で直接当てた直後から、次に `db-migrate` が走るまでの
+窓は誰も見ていない。また、この検査は「古い」と言うだけで**更新はしない**（手動）。
+
+案:
+1. `db-migrate` の成功後にワークフローが `max:` を書き戻して main へ push する。
+   自動で直るが、**CI が main へ push する構成**になる（権限と無限ループの検討が要る）。
+2. 免除欄と `max:` が要るのは `apply_migration` を使ったときだけなので、
+   **そちらの運用を止める**。穴は根本から消えるが、緊急時の手段を失う。
+3. 定期実行（日次など）で台帳の古さだけを見る。窓は縮むが消えない。
+4. 現状維持（手動）。赤いエラーメッセージが更新方法を案内する。
+
+**関連する未決**: そもそも CI（`ci.yml`）から本番 DB へ問い合わせるのが最も正確だが、
+CI に本番の資格情報を持たせる是非が未決。今回は「リポジトリに事実の要約を置き、
+本番の資格情報を既に持つ `db-migrate.yml` にだけ突き合わせさせる」で迂回した。
 ## レシートを「アプリから送る」側の実機確認と、閲覧ログの要否（2026-09-07）
 
 2026-09-07 に**送られたリンクの側**は本番の実機で確認済み（開く・PDF が落ちる・
@@ -466,7 +670,7 @@ JST は夏時間が無いので日の加算は 24 時間の加算でよい。
 2026-09-06 に棚卸しし、同日中に全件へ処遇を付けた。**あった。63 個**。
 （棚卸し時は 68〜69 と報告した。**過大だった** —— 下の「数えたもの」は
 試作の検出器がマイグレーションの字面を正規表現で読んだ結果で、
-動的 SQL で作られるトリガ 6 本を「未管理」と誤検出していた。MISTAKE_LEDGER M-062）
+動的 SQL で作られるトリガ 6 本を「未管理」と誤検出していた。MISTAKE_LEDGER M-065）
 経緯を残すため、棚卸し時点の記録をそのまま置き、末尾に処遇を足してある。
 
 ### 数えたもの（2026-09-06 時点、migrations 446 本 / main `6bc745f`）
@@ -542,7 +746,7 @@ JST は夏時間が無いので日の加算は 24 時間の加算でよい。
 **テーブル・ビュー・関数・トリガ・enum・イベントトリガのすべてで「本番にあって
 再生側に無いもの」が 0 件**になることを確認した。
 
-**当初の分類は一部間違っていた**（MISTAKE_LEDGER M-061）。「23 本はアプリからの参照
+**当初の分類は一部間違っていた**（MISTAKE_LEDGER M-064）。「23 本はアプリからの参照
 ゼロだから無害」と書いたが、参照を見ていたのは**アプリのコードだけ**で、
 DB の内側（関数・ポリシー）を見ていなかった。実際には `dealers` / `dealer_users` /
 `insurer_subscriptions` を関数 5 本が読み、その関数を 26 本の RLS ポリシーが使い、
@@ -578,17 +782,74 @@ starter 1）が、マイグレーション側の check に**弾かれる**。つ
 「マイグレーションから DB を作り直して本番データを流し込む」復旧手順は、
 今そのままでは 83% のテナントで失敗する。
 
-- 現に困っているものではない【確実】。本番はずっと enum で動いており、
-  この差が出るのは再構築のときだけ。
-- 2026-09-06 の修復マイグレーションは**オブジェクトの有無と実行権限までしか
-  揃えていない**。列の型は範囲外（ファイル冒頭の ponytail に明記）。
-- 直し方の候補: (a) 新しいマイグレーションで `alter table ... alter column ... type`
-  を当てて本番に合わせる（本番では実質 no-op だが、`certificates` は行数が多く
-  書き換えコストの確認が要る）、(b) 既存ファイルの check を広げる（**適用済み
-  ファイルの書き換えになるので、この repo の規約では採らない**）。
-- **未決**: どちらを採るか。まず (a) を `tenants.plan_tier` だけで試すのが小さい。
-- 上の表以外にも型の食い違いが無いかは**未調査**【要確認】。
+### 【解決済み 2026-09-08】弾かれる問題は消した。型名の違いは残す
+
+`20260910000000_align_enum_columns_with_production.sql` で
+**`tenants_plan_tier_check` を enum と同じ 5 値に広げた**（`NOT VALID` で足してから
+`VALIDATE`）。再生 DB で `free` / `starter` / `mini` が投入でき、enum に無い値は
+弾かれることを実測済み。**復旧手順が 83% のテナントで失敗する状態は解消した。**
+
+**弾かれるのは `plan_tier` だけだった**（2026-09-08 に 5 列すべて実測）。
+
+| 列 | 再生側の制約 | 本番の値を弾くか |
+|---|---|---|
+| `tenants.plan_tier` | check (mini,standard,pro) | **弾く（20/24 件）** → 修正済み |
+| `certificates.status` | check (active,void,draft,expired) | 弾かない（enum 3 値の上位集合） |
+| `certificates.expiry_type` | NULL 許容 | 弾かない（本番の NOT NULL より緩い） |
+| `tenant_memberships.role` | check の 5 値 | 弾かない（enum と**集合が一致**） |
+| `templates.scope` | 列跨ぎ規則の check のみ（値の一覧なし） | 弾かない |
+
+**型名の食い違い（text か enum か）は残したままにした。** 理由:
+
+- 最初は 4 列を `alter column ... type <enum>` で揃える版を書き、再生 DB が本番と
+  完全一致すること（`certificates_public` のビュー定義 md5 まで一致）を確認した。
+- しかし `lint:migrations` が `alter-column-type`（表の書き換えと ACCESS EXCLUSIVE）
+  で止めた。`supabase/migrations.allowlist` は「**新規追加禁止**」と明記されており
+  逃げ道が無い。zero-downtime 方針に従うなら add-column → backfill → 切替 → drop を
+  複数デプロイに分ける話になるが、**本番ではこの変更は 1 バイトも動かない**（既に enum）。
+  動くのは空 DB の再生だけで、そのために本番の中核表を書き換える手順を組むのは釣り合わない。
+- アプリから見ると PostgREST はどちらも文字列で返すので影響しない。
+
+- **未決**: 型名を揃えるか（揃えるなら zero-downtime 手順に乗せる必要がある）。
+  実害が無いので急がない。
+- **`tenant_memberships.role` を enum にするなら 7 テーブル・10 本の RLS ポリシーを
+  畳んで作り直すことになる**（`pg_depend` で実測）。認可の面を 10 本書き直す代償が
+  型名を揃えるだけの利得に見合わない。
+- 上の表以外にも型・既定値・NOT NULL の食い違いが無いかは**未調査**【要確認】。
   今の検出器はオブジェクトの有無しか見ない。pg_dump 同士の差分を取れば洗える。
+
+## 本番にあってマイグレーションに無い RLS ポリシーがある（2026-09-08）
+
+列型の調査中に見つかった、**ポリシー層のドリフト**。オブジェクトの有無を見る
+検出器では出ない（ポリシーは対象外）。
+
+確認できたもの（2026-09-08、再生 DB と本番の突き合わせ）:
+
+- `certificates` に **anon 向けの SELECT ポリシーが本番だけに 2 本**ある。
+  `cert_public_read_active`（`status = 'active'`）と
+  `public read active certificates by public_id`（`status = 'active' and public_id is not null`）。
+  再生 DB の `certificates` に anon 向けポリシーは **0 本**。
+- **どの画面が困るかを確かめた（2026-09-10、当初の推測は誤りだった）。**
+  公開証明書ページ `/c/[public_id]` は **anon ポリシーに依存しない** ——
+  `src/lib/certificates/publicData.ts` は `createServiceRoleAdmin()` で読んでおり
+  RLS を迂回する。当初「この経路で読んでいると思われる」と書いたが誤り。
+  実際に依存するのは **PDF ルート** `src/app/api/certificate/pdf/route.ts` で、
+  anon キーで `certificates_public` を叩く。このビューは `security_invoker=on` なので
+  呼び出し元（anon）の権限で `certificates` を読む。再生 DB の `certificates` の
+  SELECT ポリシーは `my_tenant_ids()` / `my_org_tenant_ids()` の 2 本だけなので
+  **anon は 0 行 → PDF が 404 になる**【確実・2026-09-10 にコード実測】。
+- `templates` の `templates_select`（`scope = 'shared'` を誰にでも読ませる）も本番だけ。
+  再生側は `templates_select_v2` / `tpl_select` という別名の別定義。
+
+**危険度は「不明」。** 本番に余分な公開ポリシーがあるということは、
+**再生した DB のほうが厳しい**＝復旧しても公開ページが動かない可能性がある一方、
+本番側の anon 公開が意図どおりかは別途確認が要る【要確認】。
+
+- **未決**: (a) 本番のポリシーをマイグレーションへ書き起こす、(b) 本番から消す、
+  のどちらか。**復旧時に PDF ルートを動かすなら (a)。** ただし本番の anon 公開が
+  意図どおりかは別途確認が要る【要確認】——
+  `cert_public_read_active` は `status='active'` の**全証明書**を anon に開ける。
+- ポリシーもドリフト検出の対象に入れるか（`pg_policies` の名前だけなら安い）も未決。
 
 ## デモ保険会社にデモ施工店の閲覧許可を入れた。実アカウントの越境アクセスは別途確認したい（2026-09-03）
 
@@ -1786,3 +2047,30 @@ DECISION_LOG「遷移表の未解決4件を代表判断で解決」参照。）
   customer_confirmation_current は signoff フローの設計変更を伴うため、対応方針を代表判断が必要
   （署名依頼のタイミングを見直すか、この条件をGateから外すか）。
 - 起票日: 2026-08-31
+
+## モバイル signup のアプリ内即ログインと B-H3 是正の衝突（2026-09-08）
+- 状況: セキュリティ監査で `/api/signup`（パスワード登録経路）が `email_confirm: true` で
+  ユーザーを作成し、直後にクライアントが `signInWithPassword` で即ログインしていたことが判明した
+  （B-H3, High）。メールの所有確認を一切経由しないため、被害者のメールアドレスでも確認済みの
+  テナント owner アカウントを作成できた。是正として `/api/signup` を `email_confirm: false` +
+  確認メール送信（`signInWithOtp`）に統一した（Web/モバイル共通のバックエンド）。
+- 違和感・問題: `apps/mobile/src/app/(auth)/signup.tsx` の冒頭コメントは Apple Tap to Pay 要件 2.x
+  として「完全アプリ内デジタルオンボーディング（アカウント作成→利用開始がアプリ内で完結、
+  平均15分以内）」を明記している。今回の是正でパスワード登録直後の自動ログインは通常失敗するように
+  なり（メール未確認のため）、本人確認にメールアプリへの離脱が挟まる。「アプリ内で完結」という
+  要件と正面から衝突する。
+- 暫定対応: モバイル側はサインイン失敗時に「確認メールを送信しました」画面を表示するよう変更し、
+  クラッシュ・混乱するエラー表示は避けた（アプリは壊れていない）。ただしオンボーディング体験は
+  後退した。
+- まだ答えが出ていないこと:
+  1. Apple Tap to Pay 要件 2.x の実際の審査基準（「平均15分以内」に外部メールアプリへの
+     一時的な離脱がどこまで許容されるか）を確認できていない。
+  2. 恒久対応の候補: (a) モバイル既存の `/auth/otp/*`（アプリ内 6 桁コード）を本人確認そのものに
+     昇格させ、確認前は「テナント権限を持たない」セッションに留める設計に変更する（現状はこの
+     OTP が認証後の飾りで強制力を持たない = D-A14 の指摘そのもの）。(b) ディープリンク
+     (`scheme: "ledra"`) でメールのマジックリンクをアプリへ直接戻す（PKCE の code_verifier を
+     モバイル側でも扱える必要があり実装コストが大きい）。(c) 現状維持（メールアプリへの離脱を許容）。
+  3. どの選択肢を採るかは製品判断が必要（Apple 審査リスク vs 追加実装コスト vs セキュリティ）。
+- 次のアクション: 代表判断待ち。判断が付くまでは暫定対応（確認メール送信の明示表示）のまま。
+- 公開区分: 非公開（Apple 審査対応の内部検討事項）
+- 起票日: 2026-09-08

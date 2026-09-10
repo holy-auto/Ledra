@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
-vi.mock("@/lib/certificateImages", () => ({ CERTIFICATE_IMAGE_BUCKET: "assets" }));
+vi.mock("@/lib/certificateImages/constants", () => ({ CERTIFICATE_IMAGE_BUCKET: "assets" }));
 vi.mock("@/lib/anchoring/imageHashing", () => ({
   hashSha256: vi.fn(() => "a".repeat(64)),
   computePerceptualHash: vi.fn(async () => "deadbeefdeadbeef"),

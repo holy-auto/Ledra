@@ -1,4 +1,4 @@
-import { createTenantScopedAdmin } from "@/lib/supabase/admin";
+import { createPlatformScopedAdmin } from "@/lib/supabase/admin";
 import { NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
@@ -20,7 +20,7 @@ export async function PUT(request: NextRequest, ctx: RouteContext) {
     const parsed = await parseJsonBody(request, agentInvoiceUpdateSchema);
     if (!parsed.ok) return parsed.response;
     const body = parsed.data;
-    const { admin } = createTenantScopedAdmin(caller.tenantId);
+    const admin = createPlatformScopedAdmin("agent-invoices/[id] — platform-wide agent operations (no tenant scope)");
     const updates: Record<string, unknown> = { ...body };
 
     if (body.status === "issued" && !updates.issued_at) {

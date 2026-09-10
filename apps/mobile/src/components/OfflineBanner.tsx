@@ -26,7 +26,11 @@ export function OfflineBanner() {
     >
       <Icon source="cloud-off-outline" size={16} color={colors.textOnPrimary} />
       <Text variant="labelMedium" style={styles.text}>
-        オフラインです。書込み操作は接続復帰後に同期されます。
+        {/* D-A9 是正 (2026-09-08): オフラインキューは未実装（docs/mobile-features.md §5.3 は
+            計画のみで apps/mobile/src/offline/ は存在しない）。「復帰後に同期される」は
+            事実と異なり、書込みは失敗するのに大丈夫だと誤解させ現場でのデータ消失に
+            つながる。接続復帰まで操作を控えるよう案内する文言に変更。 */}
+        オフラインです。書込み操作は失敗します。接続が復帰してからお試しください。
       </Text>
     </View>
   );

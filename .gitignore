@@ -48,6 +48,20 @@ yarn-error.log*
 # vercel
 .vercel
 
+# supabase CLI 作業ファイル（project-ref・pooler-url等の CLI 実行時メタデータ。
+# 秘密ではないが CLI が上書きする作業ファイルで、将来資格情報が混入する経路になる。
+# C-M2 是正 2026-09-08）
+supabase/.temp/
+
+# モバイル配布用の署名鍵・サービスアカウント（*.p12/*.jks は apps/mobile/.gitignore
+# に既にあるが、ルート直下や別ディレクトリに置かれた場合の保険。C-L1 是正 2026-09-08）
+*.p8
+*.p12
+*.jks
+*.keystore
+credentials.json
+google-play-service-account.json
+
 # claude code worktrees (prevents Tailwind/Turbopack from scanning symlinks)
 .claude/
 

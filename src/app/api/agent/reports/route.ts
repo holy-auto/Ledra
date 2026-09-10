@@ -16,7 +16,7 @@ export async function GET(request: NextRequest) {
 
     const agentId = agent.agent_id as string;
     const url = new URL(request.url);
-    const months = Math.min(24, Math.max(3, parseInt(url.searchParams.get("months") ?? "12", 10)));
+    const months = Math.min(24, Math.max(3, parseInt(url.searchParams.get("months") ?? "12", 10) || 12));
 
     // Get referrals with dates
     const { data: referrals } = await supabase

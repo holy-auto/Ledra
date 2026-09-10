@@ -19,15 +19,39 @@ function wrap(title: string, body: string) {
   `;
 }
 
-async function send(to: string, subject: string, html: string): Promise<boolean> {
+export type SendDocumentEmailResult = { ok: boolean; error?: string };
+
+async function send(to: string, subject: string, html: string): Promise<SendDocumentEmailResult> {
   const apiKey = process.env.RESEND_API_KEY;
   const from = process.env.RESEND_FROM;
-  if (!apiKey || !from) return false;
+  if (!apiKey || !from) return { ok: false, error: "RESEND_API_KEY/RESEND_FROM が未設定です。" };
   try {
     const res = await sendEmail({ from, to, subject, html });
-    return res.ok;
-  } catch {
-    return false;
+    if (res.ok) return { ok: true };
+    // res.error はプロバイダ (resend/sendgrid) が返した実際の失敗理由。
+    // これを握りつぶして true/false だけ返すと、失敗時に document_share_log /
+    // 呼び出し元のどこにも「なぜ」が残らず、原因調査ができなくなる
+    // （本番で起きていた実際の不具合: エラーが全部 "送信に失敗しました" になっていた）。
+    // 両プロバイダ失敗時 (sendEmail.ts) は res.error に既に "resend:... | sendgrid:..."
+    // と両方のプロバイダ名が入っているので、ここでさらに res.provider を前置すると
+    // "sendgrid:resend:... | sendgrid:..." のように二重表示になる。既にタグ済みなら
+    // そのまま使う。
+    const tagged = res.error.startsWith("resend:") || res.error.startsWith("sendgrid:");
+    // Codex 指摘: res.status (HTTPステータス) を含めないと、本文が空/無情報な失敗
+    // （認証エラー・レート制限・5xx等）を区別できず、このPRの目的である診断可能性が
+    // 損なわれる。単一プロバイダ失敗時 (未タグ) にはステータスも含める。
+    // 両プロバイダ失敗時 (タグ済み) は sendEmail.ts の合成メッセージが最終試行
+    // (=res.provider) のステータスしか持たない (前段 resend のステータスは
+    // 合成文字列に既に埋め込まれていない) ため、せめて分かっている最終ステータスを
+    // 末尾に残す。
+    return {
+      ok: false,
+      error: tagged
+        ? `${res.error} (最終status:${res.status ?? "?"})`
+        : `${res.provider}(${res.status ?? "?"}):${res.error}`,
+    };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
   }
 }
 
@@ -43,7 +67,7 @@ export async function sendDocumentEmail(params: {
   pdfUrl?: string;
   /** 同封する他の帳票（帳票管理画面から追加選択された分） */
   additionalDocuments?: { docType: string; docNumber: string; totalAmount: number }[];
-}): Promise<boolean> {
+}): Promise<SendDocumentEmailResult> {
   const docType = escapeHtml(params.docType);
   const docNumber = escapeHtml(params.docNumber);
   const recipient = escapeHtml(params.recipientName);
