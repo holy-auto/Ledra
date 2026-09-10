@@ -21,6 +21,8 @@ import { generateCertificateFeedback } from "@/lib/ai/academyFeedback";
 import { fastModelForPlanTier } from "@/lib/ai/client";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { CERT_AI_COLUMNS, certAiFields, certPhotoCount } from "@/lib/certificates/aiFields";
+import { loadAiAutomationSettings } from "@/lib/ai/automation/policy";
+import { startAiRouteUsage } from "@/lib/ai/recordRouteUsage";
 
 const academyFeedbackSchema = z.object({
   certificate_id: z.string().uuid("certificate_id が必要です"),
@@ -31,6 +33,7 @@ export const maxDuration = 60;
 export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
+  const usage = startAiRouteUsage("/api/admin/academy/feedback");
   try {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
@@ -48,6 +51,16 @@ export async function POST(req: NextRequest) {
     // プラン判定より後に置く。Free のテナントには 429 ではなく案内を返したい。
     const limited = await checkRateLimit(req, "ai", `academy-feedback:${caller.tenantId}`);
     if (limited) return limited;
+
+    // E4-7 是正 (2026-09-08): 月次コストキャップ超過時は enabled=false に倒るので、
+    // それを見て呼び出し自体をスキップする。
+    const aiSettings = await loadAiAutomationSettings(caller.tenantId);
+    if (!aiSettings.enabled) {
+      usage.record({ tenantId: caller.tenantId, userId: caller.userId, outcome: "ai_disabled" });
+      return apiValidationError("月次のAI利用上限に達しました。来月まで今しばらくお待ちください。", {
+        code: "ai_cost_cap_exceeded",
+      });
+    }
 
     const parsed = academyFeedbackSchema.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) {
@@ -121,8 +134,10 @@ export async function POST(req: NextRequest) {
       { onConflict: "tenant_id,user_id" },
     );
 
+    usage.record({ tenantId: caller.tenantId, userId: caller.userId, outcome: "ok" });
     return apiOk({ feedback });
   } catch (e: unknown) {
+    usage.record({ outcome: "error" });
     return apiInternalError(e, "academy/feedback");
   }
 }

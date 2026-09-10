@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import { type DisplayMode, useUiPreferences } from "@/lib/ui-preferences/UiPreferencesContext";
 
 type WorkRole = "reception" | "technician" | "manager" | "owner";
@@ -25,7 +25,7 @@ export default function DisplayModeOnboarding() {
   const [mode, setMode] = useState<DisplayMode>("standard");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const wasOpen = useRef(false);
+  const [wasOpen, setWasOpen] = useState(false);
 
   const recommendation = useMemo<DisplayMode>(() => {
     if (role === "owner") return "dense";
@@ -33,18 +33,29 @@ export default function DisplayModeOnboarding() {
     return "simple";
   }, [role]);
 
-  useEffect(() => {
-    const open = !loading && !onboardingCompleted;
-    if (open && !wasOpen.current) {
+  const open = !loading && !onboardingCompleted;
+
+  // 開いた瞬間に入力を初期化する。**レンダー中に判定する**（React の
+  // 「props が変わったときに state を調整する」パターン）。
+  //
+  // useEffect でやると、ダイアログが DOM に出てから passive effect が走るまでの
+  // 間にユーザーが最初の選択をでき、その選択を effect の setRole(null) が
+  // 打ち消してしまう。この窓は実在し、CI（coverage 有効・負荷の高いランナー）で
+  // 「職種を選んだのに aria-pressed が全て false、次へが disabled のまま」
+  // という形で実際に発生した。手元は effect が先に走るため再現しない。
+  //
+  // レンダー中に済ませれば、初期化されていない状態が画面に出ること自体が無くなる。
+  if (open !== wasOpen) {
+    setWasOpen(open);
+    if (open) {
       setStep(0);
       setRole(null);
       setMode(displayMode);
       setError(null);
     }
-    wasOpen.current = open;
-  }, [displayMode, loading, onboardingCompleted]);
+  }
 
-  if (loading || onboardingCompleted) return null;
+  if (!open) return null;
 
   function nextFromRole() {
     if (!role) return;

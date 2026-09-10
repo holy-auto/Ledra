@@ -4,11 +4,11 @@
  */
 
 import { escapeHtml } from "@/lib/sanitize";
-import { isResendFailure, sendResendEmail } from "@/lib/email/resendSend";
+import { sendEmail as sendUnifiedEmail } from "@/lib/email/sendEmail";
 
 async function sendEmail(to: string, subject: string, html: string, idempotencyKey?: string) {
-  const r = await sendResendEmail({ to, subject, html, idempotencyKey });
-  if (isResendFailure(r)) {
+  const r = await sendUnifiedEmail({ to, subject, html, idempotencyKey });
+  if (!r.ok) {
     console.error("[agent/email] send failed:", { subject, status: r.status, error: r.error });
   }
 }

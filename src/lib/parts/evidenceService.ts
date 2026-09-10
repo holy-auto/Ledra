@@ -32,7 +32,7 @@
  */
 
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
-import { CERTIFICATE_IMAGE_BUCKET } from "@/lib/certificateImages"; // 共有 "assets" バケット
+import { CERTIFICATE_IMAGE_BUCKET } from "@/lib/certificateImages/constants"; // 共有 "assets" バケット
 import { hashSha256, computePerceptualHash } from "@/lib/anchoring/imageHashing";
 import { stripGpsAndReadExif } from "@/lib/anchoring/imageExif";
 import { extractExifMeta, detectExifFlags, type TamperingFlag } from "@/lib/ai/photoTamperingCheck";

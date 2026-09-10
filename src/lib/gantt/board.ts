@@ -6,6 +6,8 @@
  * UI 側で WORKSTREAM A のドメイントークン（blue/gold/amber/violet）に対応づける。
  */
 
+import { JST_OFFSET_MS } from "@/lib/datetime";
+
 export type GanttKind = "work" | "cert" | "parts" | "insure";
 
 export interface GanttStaff {
@@ -85,13 +87,13 @@ export function hourToX(h: number): number {
 
 /** JST の現在時刻を時（少数）で返す（NOW ライン用）。 */
 export function nowHoursJst(now: Date = new Date()): number {
-  const jst = new Date(now.getTime() + 9 * 60 * 60 * 1000);
+  const jst = new Date(now.getTime() + JST_OFFSET_MS);
   return jst.getUTCHours() + jst.getUTCMinutes() / 60;
 }
 
 /** JST の YYYY-MM-DD。 */
 export function todayJst(now: Date = new Date()): string {
-  return new Date(now.getTime() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  return new Date(now.getTime() + JST_OFFSET_MS).toISOString().slice(0, 10);
 }
 
 const WEEKDAY_JA = ["日", "月", "火", "水", "木", "金", "土"];
@@ -100,7 +102,7 @@ const WEEKDAY_JA = ["日", "月", "火", "水", "木", "金", "土"];
 export function ganttDateLabel(dateStr: string): string {
   const d = new Date(`${dateStr}T00:00:00+09:00`);
   if (Number.isNaN(d.getTime())) return dateStr;
-  const wd = WEEKDAY_JA[new Date(d.getTime() + 9 * 60 * 60 * 1000).getUTCDay()];
+  const wd = WEEKDAY_JA[new Date(d.getTime() + JST_OFFSET_MS).getUTCDay()];
   return `${dateStr.replace(/-/g, ".")} (${wd})`;
 }
 

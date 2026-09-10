@@ -53,6 +53,10 @@ export const reservationCreateSchema = z.object({
     .nullable()
     .optional()
     .transform((v) => v || null),
+  // E3-1 是正 (2026-09-08): 管理側の予約作成には重複チェックが無く、
+  // 同一時間帯への二重登録を検知できなかった（顧客/外部予約経路には既にある）。
+  // 重複検知時は 409 で警告を返し、承知の上での登録は force:true で再送する。
+  force: z.boolean().optional(),
 });
 
 /** update は全ステータス遷移を許容 (完了/キャンセル含む)。 */
@@ -102,6 +106,8 @@ export const reservationUpdateSchema = z.object({
     .nullable()
     .optional()
     .transform((v) => v || null),
+  // E3-1 是正 (2026-09-08): 日時変更にも重複チェックを追加。force:true で警告を無視して更新。
+  force: z.boolean().optional(),
 });
 
 export const reservationDeleteSchema = z.object({

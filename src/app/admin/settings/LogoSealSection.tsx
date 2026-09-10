@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
-import { resolveCallerFull } from "@/lib/api/auth";
+import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { hasMinRole } from "@/lib/auth/roles";
 import { hasPermission } from "@/lib/auth/permissions";
 import { canUseFeature } from "@/lib/billing/planFeatures";
@@ -30,7 +30,7 @@ function isPngSignature(bytes: Uint8Array): boolean {
 // service-role は RLS を丸ごとバイパスするため、これまで `tenants` の
 // owner-only RLS が担保していた権限チェックが失われる。UI ガードは
 // クライアント側のみなので、admin クライアントを作る前に必ず
-// サーバー側で権限とプランを検証する。テナントは resolveCallerFull 経由で
+// サーバー側で権限とプランを検証する。テナントは resolveCallerWithRole 経由で
 // active_tenant_id クッキーを尊重して解決し、複数テナント所属ユーザーが
 // 別テナントへ書き込むのを防ぐ。
 //
@@ -39,7 +39,7 @@ function isPngSignature(bytes: Uint8Array): boolean {
 //   Server Action へ直接 POST された場合の課金バイパスをサーバー側で塞ぐ。
 async function resolveAuthorizedTenantId(): Promise<string> {
   const supabase = await createSupabaseServerClient();
-  const caller = await resolveCallerFull(supabase);
+  const caller = await resolveCallerWithRole(supabase);
   if (!caller) redirect("/login?next=/admin/settings");
   // テナント設定は owner のみ（代表判断 2026-09-04）。ロゴ・社印は帳票と証明書に載る
   // 対外的な表示物で、社名・銀行口座と同じ扱いにする。

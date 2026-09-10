@@ -84,6 +84,56 @@ jobs:
           #      2回起きている。
           supabase db push --db-url "$SUPABASE_DB_URL"
 
+      # 本番台帳の要約 (supabase/migrations.production-ledger) が古くなっていないか見る。
+      #
+      # なぜ要るか: lint の migration-version-before-base-head は、しきい値に
+      # 「base(main) の最新」と「この台帳の max:」の大きい方を使う。**台帳が古いと
+      # しきい値が base だけに落ち、それは #1020 を通してしまった当時の検査そのもの**
+      # ——つまり古い台帳は「誤検出が出るだけ」ではなく **見逃しを生む**
+      # (MISTAKE_LEDGER M-064、この誤りを最初 4 つの文書に書いていた)。
+      #
+      # ここでしか見られない理由: 正確な判定には本番への接続が要る。CI(ci.yml)は
+      # 本番の資格情報を持たないが、このワークフローは持っている。
+      #
+      # **push の後に置く。** 台帳の古さでマイグレーションの適用を止めては本末転倒。
+      # 適用は済ませたうえで、ジョブを赤くして更新を促す。
+      #
+      # 天井: apply_migration で本番へ直接当てた直後から、次にこのワークフローが
+      # 走るまでの間は誰も見ていない。その窓を閉じるには定期実行か、直接適用の運用を
+      # やめるかが要る (OPEN_QUESTIONS)。
+      - name: 本番台帳の要約が古くないか確認
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          set -euo pipefail
+          ledger="supabase/migrations.production-ledger"
+          # `max: <14桁>` の行から値を取る (コメント行は無視)。無ければ 0 扱い。
+          recorded=0
+          if [ -f "$ledger" ]; then
+            recorded=$(grep -E '^max:[[:space:]]*[0-9]{14}$' "$ledger" | head -1 | tr -cd '0-9')
+            recorded=${recorded:-0}
+          fi
+          # repo が持っている最新のマイグレーション版 (= lint の base 側しきい値)。
+          repo_max=$(ls supabase/migrations/*.sql 2>/dev/null | xargs -r -n1 basename \
+            | grep -oE '^[0-9]{14}' | sort | tail -1)
+          # 本番の適用済み最新。migration list の Remote 列から 14 桁だけを拾う。
+          actual=$(supabase migration list --db-url "$SUPABASE_DB_URL" \
+            | awk -F'|' 'NF>=2 { gsub(/[^0-9]/, "", $2); if (length($2)==14) print $2 }' \
+            | sort | tail -1)
+          echo "本番の最新: ${actual:-（取得できず）} / repo の最新: ${repo_max:-（無し）} / 台帳の max: $recorded"
+          if [ -z "$actual" ]; then
+            echo "::error::本番の適用済み最新を取得できませんでした。migration list の出力形式が変わった可能性があります。"
+            exit 1
+          fi
+          # 台帳が要るのは **本番が repo より先に進んでいるとき** だけ。
+          # 通常の push 成功後は 本番 == repo なので、ここは静かに通る
+          # (毎回赤くすると「赤いのが普通」になり、13日間の見落としを再生産する)。
+          if [ "$actual" \> "$repo_max" ] && [ "$actual" \> "$recorded" ]; then
+            echo "::error::本番に repo より新しい版 $actual があり、$ledger にも記録されていません（台帳 $recorded）。この状態だと out-of-order 検査のしきい値が repo 側に落ち、古い版の追加を **見逃します**（#1020 と同じ形）。$ledger の max: を $actual に更新し、その版のファイルを main へ補ってください。"
+            exit 1
+          fi
+          echo "ok"
+
       # 失敗したら Slack へ通知する。
       #
       # なぜ要るか: このジョブは 2026-08-02 から 08-15 までの13日間ずっと赤で、
@@ -128,7 +178,7 @@ jobs:
           # ヒント文は **必ず --arg で渡す**。jq プログラムはシングルクォートで囲むので、
           # プログラム本文に `'` を書くとそこで文字列が終わり、続きがシェルとして解釈される。
           # 実際 `where version = '<対象>'` の `'` でこのステップは毎回落ちており、
-          # 「本番の適用が止まった」通知が一度も届いていなかった（MISTAKE_LEDGER M-047）。
+          # 「本番の適用が止まった」通知が一度も届いていなかった（MISTAKE_LEDGER M-065）。
           hint="よくある原因: (1) 本番 schema_migrations にあるバージョンのファイルが repo に無い → 該当ファイルを追加する。(2) 新しいマイグレーションの日付が適用済み最新より古い (out-of-order) → 後ろの日付へ改名する。*ただし改名してよいのは本番に無いバージョンだけ。* 改名前に schema_migrations をバージョン名で名指しして引くこと（降順 LIMIT で代用しない）。適用済みを改名すると条件1を壊し、次の run が別のエラーで止まる — 2026-08 に2回起きている。"
           payload=$(jq -n \
             --arg run "$RUN_URL" \

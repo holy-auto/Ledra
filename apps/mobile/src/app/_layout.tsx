@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Stack, router } from "expo-router";
+import * as Linking from "expo-linking";
 import { PaperProvider } from "react-native-paper";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { StatusBar } from "expo-status-bar";
@@ -23,6 +24,7 @@ import { useTapToPayWarmup } from "@/hooks/useTapToPayWarmup";
 import { registerForPushNotifications } from "@/lib/push";
 import { stackScreenOptions } from "@/components/screenOptions";
 import { SPLASH_FAILSAFE_MS } from "@/lib/introTiming";
+import { protectedDeepLinkPath } from "@/lib/pendingDeepLink";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -89,6 +91,37 @@ useAuthStore.subscribe((state) => {
 export default function RootLayout() {
   const { isReady } = useAuthInit();
   const [introDone, setIntroDone] = useState(false);
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+
+  // code-review 指摘 (2026-09-09): 認証初期化が SPLASH_FAILSAFE_MS を超えて
+  // isAuthenticated=false のまま Stack が初めてマウントされると、Stack.Protected
+  // の guard=false により保護対象画面がナビゲータから丸ごと除外され、OSレベルの
+  // ディープリンク（ledra://... /ユニバーサルリンク）の初期状態を解決できず
+  // 既定ルートへ落ちたまま復元されない。起動直後（Stackマウント前）に受けた
+  // パスを覚えておき、認証が完了して保護対象画面が実際にナビゲータへ登録された
+  // 後に再適用する。
+  const pendingDeepLinkPath = useRef<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    void Linking.parseInitialURLAsync().then(({ path }) => {
+      if (!cancelled) pendingDeepLinkPath.current = protectedDeepLinkPath(path);
+    });
+    // アプリ起動中（JS実行中）に届いたリンクも同様に拾う。
+    const sub = Linking.addEventListener("url", ({ url }) => {
+      pendingDeepLinkPath.current = protectedDeepLinkPath(Linking.parse(url).path);
+    });
+    return () => {
+      cancelled = true;
+      sub.remove();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (introDone && isAuthenticated && pendingDeepLinkPath.current) {
+      router.replace(pendingDeepLinkPath.current);
+      pendingDeepLinkPath.current = null;
+    }
+  }, [introDone, isAuthenticated]);
 
   // 最後の砦: 何があってもスプラッシュを剥がし、**演出も降ろす**。
   //
@@ -154,46 +187,59 @@ export default function RootLayout() {
               <OfflineBanner />
               <Stack screenOptions={{ headerShown: false }}>
                 <Stack.Screen name="(auth)" />
-                <Stack.Screen name="(tabs)" />
-                <Stack.Screen
-                  name="customers"
-                  options={{ headerShown: false }}
-                />
-                <Stack.Screen
-                  name="vehicles"
-                  options={{ headerShown: false }}
-                />
-                <Stack.Screen
-                  name="certificates"
-                  options={{ headerShown: false }}
-                />
-                <Stack.Screen name="nfc" options={{ headerShown: false }} />
-                <Stack.Screen
-                  name="settings"
-                  options={{ headerShown: false }}
-                />
-                <Stack.Screen
-                  name="reservations"
-                  options={{ headerShown: false }}
-                />
-                <Stack.Screen name="work" options={{ headerShown: false }} />
-                <Stack.Screen name="pos" options={{ headerShown: false }} />
-                <Stack.Screen name="knowledge" options={{ headerShown: false }} />
+                {/* legal は利用規約・お問い合わせ等の公開ページなので未認証でも開ける */}
                 <Stack.Screen name="legal" options={{ headerShown: false }} />
-                {/* Stack を持たない単体画面。ヘッダーを出さないと戻る導線が無くなる */}
-                <Stack.Screen
-                  name="notifications"
-                  options={{
-                    ...stackScreenOptions,
-                    headerShown: true,
-                    title: "通知",
-                  }}
-                />
-                {/* dashboard は画面側で title を設定するのでここでは指定しない */}
-                <Stack.Screen
-                  name="dashboard"
-                  options={{ ...stackScreenOptions, headerShown: true }}
-                />
+                {/*
+                  D-A3 是正 (2026-09-08): (tabs) 以外のディープリンク（customers/vehicles/
+                  certificates/nfc/settings/reservations/work/pos/knowledge/notifications/
+                  dashboard）に認証ガードが無く、未認証で開けた。画面側は `user!.tenantId`
+                  等を無条件に前提にしているため、開けても TypeError で ErrorBoundary に
+                  落ちるだけで「動く」わけではないが、未認証のまま画面のシェルや
+                  API 呼び出し（401 前）が走ってしまう。ここで一括りにガードする。
+                  (tabs) 自体は (tabs)/_layout.tsx に個別の Redirect ガードも残す
+                  (defense-in-depth)。
+                */}
+                <Stack.Protected guard={isAuthenticated}>
+                  <Stack.Screen name="(tabs)" />
+                  <Stack.Screen
+                    name="customers"
+                    options={{ headerShown: false }}
+                  />
+                  <Stack.Screen
+                    name="vehicles"
+                    options={{ headerShown: false }}
+                  />
+                  <Stack.Screen
+                    name="certificates"
+                    options={{ headerShown: false }}
+                  />
+                  <Stack.Screen name="nfc" options={{ headerShown: false }} />
+                  <Stack.Screen
+                    name="settings"
+                    options={{ headerShown: false }}
+                  />
+                  <Stack.Screen
+                    name="reservations"
+                    options={{ headerShown: false }}
+                  />
+                  <Stack.Screen name="work" options={{ headerShown: false }} />
+                  <Stack.Screen name="pos" options={{ headerShown: false }} />
+                  <Stack.Screen name="knowledge" options={{ headerShown: false }} />
+                  {/* Stack を持たない単体画面。ヘッダーを出さないと戻る導線が無くなる */}
+                  <Stack.Screen
+                    name="notifications"
+                    options={{
+                      ...stackScreenOptions,
+                      headerShown: true,
+                      title: "通知",
+                    }}
+                  />
+                  {/* dashboard は画面側で title を設定するのでここでは指定しない */}
+                  <Stack.Screen
+                    name="dashboard"
+                    options={{ ...stackScreenOptions, headerShown: true }}
+                  />
+                </Stack.Protected>
               </Stack>
 
               {/* 画面ツリーの最後＝最前面。ロック中は全画面を覆う */}

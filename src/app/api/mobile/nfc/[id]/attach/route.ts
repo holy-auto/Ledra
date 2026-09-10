@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { resolveMobileCaller } from "@/lib/auth/mobileAuth";
 import { hasPermission } from "@/lib/auth/permissions";
 import { logTenantAuditEvent } from "@/lib/audit/tenantLog";
+import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import {
   apiOk,
   apiUnauthorized,
@@ -57,7 +58,11 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     if (error) return apiInternalError(error, "nfc.attach");
 
     // Audit log
-    await logTenantAuditEvent(caller.supabase, {
+    // G-M8 是正 (2026-09-08): 本番の audit_logs は RLS 有効かつ policy 0本のため、
+    // 利用者スコープの caller.supabase での insert は黙って弾かれ、監査ログが
+    // 1件も残らない（Supabase advisor 実測で確認）。RLS を bypass する admin クライアントを渡す。
+    const { admin: auditAdmin } = createTenantScopedAdmin(caller.tenantId);
+    await logTenantAuditEvent(auditAdmin, {
       tenantId: caller.tenantId,
       userId: caller.userId,
       action: "nfc_tag_attached",

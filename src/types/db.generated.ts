@@ -2955,54 +2955,6 @@ export type Database = {
           },
         ];
       };
-      certificate_maintenance_logs: {
-        Row: {
-          certificate_id: string;
-          content: string;
-          created_at: string;
-          id: string;
-          performed_at: string;
-          performed_by: string | null;
-          tenant_id: string;
-          updated_at: string;
-        };
-        Insert: {
-          certificate_id: string;
-          content: string;
-          created_at?: string;
-          id?: string;
-          performed_at: string;
-          performed_by?: string | null;
-          tenant_id: string;
-          updated_at?: string;
-        };
-        Update: {
-          certificate_id?: string;
-          content?: string;
-          created_at?: string;
-          id?: string;
-          performed_at?: string;
-          performed_by?: string | null;
-          tenant_id?: string;
-          updated_at?: string;
-        };
-        Relationships: [
-          {
-            foreignKeyName: "certificate_maintenance_logs_certificate_id_fkey";
-            columns: ["certificate_id"];
-            isOneToOne: false;
-            referencedRelation: "certificates";
-            referencedColumns: ["id"];
-          },
-          {
-            foreignKeyName: "certificate_maintenance_logs_tenant_id_fkey";
-            columns: ["tenant_id"];
-            isOneToOne: false;
-            referencedRelation: "tenants";
-            referencedColumns: ["id"];
-          },
-        ];
-      };
       certificate_media: {
         Row: {
           before_path: string | null;
@@ -3219,6 +3171,7 @@ export type Database = {
           footer_variant: string;
           id: string;
           is_hidden: boolean;
+          job_order_id: string | null;
           latest_anchor_id: string | null;
           logo_asset_path: string | null;
           maintenance_date: string | null;
@@ -3270,6 +3223,7 @@ export type Database = {
           footer_variant?: string;
           id?: string;
           is_hidden?: boolean;
+          job_order_id?: string | null;
           latest_anchor_id?: string | null;
           logo_asset_path?: string | null;
           maintenance_date?: string | null;
@@ -3321,6 +3275,7 @@ export type Database = {
           footer_variant?: string;
           id?: string;
           is_hidden?: boolean;
+          job_order_id?: string | null;
           latest_anchor_id?: string | null;
           logo_asset_path?: string | null;
           maintenance_date?: string | null;
@@ -3368,6 +3323,13 @@ export type Database = {
             columns: ["customer_id"];
             isOneToOne: false;
             referencedRelation: "customers";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "certificates_job_order_id_fkey";
+            columns: ["job_order_id"];
+            isOneToOne: false;
+            referencedRelation: "job_orders";
             referencedColumns: ["id"];
           },
           {
@@ -4899,148 +4861,6 @@ export type Database = {
           },
         ];
       };
-      dealer_users: {
-        Row: {
-          created_at: string;
-          dealer_id: string;
-          id: string;
-          role: string;
-          user_id: string;
-        };
-        Insert: {
-          created_at?: string;
-          dealer_id: string;
-          id?: string;
-          role?: string;
-          user_id: string;
-        };
-        Update: {
-          created_at?: string;
-          dealer_id?: string;
-          id?: string;
-          role?: string;
-          user_id?: string;
-        };
-        Relationships: [
-          {
-            foreignKeyName: "dealer_users_dealer_id_fkey";
-            columns: ["dealer_id"];
-            isOneToOne: false;
-            referencedRelation: "dealers";
-            referencedColumns: ["id"];
-          },
-        ];
-      };
-      dealers: {
-        Row: {
-          address: string | null;
-          approved_at: string | null;
-          company_name: string;
-          contact_name: string | null;
-          created_at: string;
-          id: string;
-          invite_code: string | null;
-          phone: string | null;
-          prefecture: string | null;
-          status: string;
-          updated_at: string;
-        };
-        Insert: {
-          address?: string | null;
-          approved_at?: string | null;
-          company_name: string;
-          contact_name?: string | null;
-          created_at?: string;
-          id?: string;
-          invite_code?: string | null;
-          phone?: string | null;
-          prefecture?: string | null;
-          status?: string;
-          updated_at?: string;
-        };
-        Update: {
-          address?: string | null;
-          approved_at?: string | null;
-          company_name?: string;
-          contact_name?: string | null;
-          created_at?: string;
-          id?: string;
-          invite_code?: string | null;
-          phone?: string | null;
-          prefecture?: string | null;
-          status?: string;
-          updated_at?: string;
-        };
-        Relationships: [];
-      };
-      deals: {
-        Row: {
-          agreed_price: number | null;
-          buyer_dealer_id: string;
-          created_at: string;
-          id: string;
-          inquiry_id: string | null;
-          listing_id: string;
-          notes: string | null;
-          seller_dealer_id: string;
-          status: string;
-          updated_at: string;
-        };
-        Insert: {
-          agreed_price?: number | null;
-          buyer_dealer_id: string;
-          created_at?: string;
-          id?: string;
-          inquiry_id?: string | null;
-          listing_id: string;
-          notes?: string | null;
-          seller_dealer_id: string;
-          status?: string;
-          updated_at?: string;
-        };
-        Update: {
-          agreed_price?: number | null;
-          buyer_dealer_id?: string;
-          created_at?: string;
-          id?: string;
-          inquiry_id?: string | null;
-          listing_id?: string;
-          notes?: string | null;
-          seller_dealer_id?: string;
-          status?: string;
-          updated_at?: string;
-        };
-        Relationships: [
-          {
-            foreignKeyName: "deals_buyer_dealer_id_fkey";
-            columns: ["buyer_dealer_id"];
-            isOneToOne: false;
-            referencedRelation: "dealers";
-            referencedColumns: ["id"];
-          },
-          {
-            foreignKeyName: "deals_inquiry_id_fkey";
-            columns: ["inquiry_id"];
-            isOneToOne: false;
-            referencedRelation: "listing_inquiries";
-            referencedColumns: ["id"];
-          },
-          {
-            foreignKeyName: "deals_listing_id_fkey";
-            columns: ["listing_id"];
-            isOneToOne: false;
-            referencedRelation: "inventory_listings";
-            referencedColumns: ["id"];
-          },
-          {
-            foreignKeyName: "deals_seller_dealer_id_fkey";
-            columns: ["seller_dealer_id"];
-            isOneToOne: false;
-            referencedRelation: "dealers";
-            referencedColumns: ["id"];
-          },
-        ];
-      };
       delivery_receipts: {
         Row: {
           anchor_tx_hash: string | null;
@@ -5232,6 +5052,7 @@ export type Database = {
           payment_terms: string | null;
           period_end: string | null;
           period_start: string | null;
+          public_id: string | null;
           recipient_address: string | null;
           recipient_honorific: string;
           recipient_name: string | null;
@@ -5276,6 +5097,7 @@ export type Database = {
           payment_terms?: string | null;
           period_end?: string | null;
           period_start?: string | null;
+          public_id?: string | null;
           recipient_address?: string | null;
           recipient_honorific?: string;
           recipient_name?: string | null;
@@ -5320,6 +5142,7 @@ export type Database = {
           payment_terms?: string | null;
           period_end?: string | null;
           period_start?: string | null;
+          public_id?: string | null;
           recipient_address?: string | null;
           recipient_honorific?: string;
           recipient_name?: string | null;
@@ -5536,6 +5359,53 @@ export type Database = {
           },
         ];
       };
+      email_otp_codes: {
+        Row: {
+          attempts: number;
+          code_hash: string;
+          created_at: string;
+          email: string;
+          expires_at: string;
+          id: string;
+          purpose: string;
+          tenant_id: string;
+          used_at: string | null;
+          user_id: string;
+        };
+        Insert: {
+          attempts?: number;
+          code_hash: string;
+          created_at?: string;
+          email: string;
+          expires_at: string;
+          id?: string;
+          purpose?: string;
+          tenant_id: string;
+          used_at?: string | null;
+          user_id: string;
+        };
+        Update: {
+          attempts?: number;
+          code_hash?: string;
+          created_at?: string;
+          email?: string;
+          expires_at?: string;
+          id?: string;
+          purpose?: string;
+          tenant_id?: string;
+          used_at?: string | null;
+          user_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "email_otp_codes_tenant_id_fkey";
+            columns: ["tenant_id"];
+            isOneToOne: false;
+            referencedRelation: "tenants";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       equipment_master: {
         Row: {
           category: string;
@@ -5562,48 +5432,6 @@ export type Database = {
           is_active?: boolean | null;
           name?: string;
           sort_order?: number | null;
-          tenant_id?: string | null;
-        };
-        Relationships: [];
-      };
-      error_events: {
-        Row: {
-          context: Json;
-          created_at: string;
-          fingerprint: string | null;
-          id: string;
-          level: string;
-          message: string;
-          occurred_at: string;
-          request_id: string | null;
-          route: string | null;
-          source: string;
-          tenant_id: string | null;
-        };
-        Insert: {
-          context?: Json;
-          created_at?: string;
-          fingerprint?: string | null;
-          id?: string;
-          level?: string;
-          message: string;
-          occurred_at?: string;
-          request_id?: string | null;
-          route?: string | null;
-          source?: string;
-          tenant_id?: string | null;
-        };
-        Update: {
-          context?: Json;
-          created_at?: string;
-          fingerprint?: string | null;
-          id?: string;
-          level?: string;
-          message?: string;
-          occurred_at?: string;
-          request_id?: string | null;
-          route?: string | null;
-          source?: string;
           tenant_id?: string | null;
         };
         Relationships: [];
@@ -5956,84 +5784,6 @@ export type Database = {
             columns: ["vehicle_id"];
             isOneToOne: false;
             referencedRelation: "vehicles";
-            referencedColumns: ["id"];
-          },
-        ];
-      };
-      industry_news: {
-        Row: {
-          body: string;
-          category: string;
-          created_at: string;
-          id: string;
-          is_published: boolean;
-          public_id: string;
-          published_at: string | null;
-          source_url: string | null;
-          title: string;
-          updated_at: string;
-        };
-        Insert: {
-          body: string;
-          category?: string;
-          created_at?: string;
-          id?: string;
-          is_published?: boolean;
-          public_id: string;
-          published_at?: string | null;
-          source_url?: string | null;
-          title: string;
-          updated_at?: string;
-        };
-        Update: {
-          body?: string;
-          category?: string;
-          created_at?: string;
-          id?: string;
-          is_published?: boolean;
-          public_id?: string;
-          published_at?: string | null;
-          source_url?: string | null;
-          title?: string;
-          updated_at?: string;
-        };
-        Relationships: [];
-      };
-      inquiry_messages: {
-        Row: {
-          created_at: string;
-          id: string;
-          inquiry_id: string;
-          message: string;
-          sender_dealer_id: string;
-        };
-        Insert: {
-          created_at?: string;
-          id?: string;
-          inquiry_id: string;
-          message: string;
-          sender_dealer_id: string;
-        };
-        Update: {
-          created_at?: string;
-          id?: string;
-          inquiry_id?: string;
-          message?: string;
-          sender_dealer_id?: string;
-        };
-        Relationships: [
-          {
-            foreignKeyName: "inquiry_messages_inquiry_id_fkey";
-            columns: ["inquiry_id"];
-            isOneToOne: false;
-            referencedRelation: "listing_inquiries";
-            referencedColumns: ["id"];
-          },
-          {
-            foreignKeyName: "inquiry_messages_sender_dealer_id_fkey";
-            columns: ["sender_dealer_id"];
-            isOneToOne: false;
-            referencedRelation: "dealers";
             referencedColumns: ["id"];
           },
         ];
@@ -6745,50 +6495,6 @@ export type Database = {
           },
         ];
       };
-      insurer_subscriptions: {
-        Row: {
-          cancel_at_period_end: boolean;
-          created_at: string;
-          current_period_end: string | null;
-          id: string;
-          insurer_id: string;
-          status: string;
-          stripe_customer_id: string | null;
-          stripe_subscription_id: string | null;
-          updated_at: string;
-        };
-        Insert: {
-          cancel_at_period_end?: boolean;
-          created_at?: string;
-          current_period_end?: string | null;
-          id?: string;
-          insurer_id: string;
-          status?: string;
-          stripe_customer_id?: string | null;
-          stripe_subscription_id?: string | null;
-          updated_at?: string;
-        };
-        Update: {
-          cancel_at_period_end?: boolean;
-          created_at?: string;
-          current_period_end?: string | null;
-          id?: string;
-          insurer_id?: string;
-          status?: string;
-          stripe_customer_id?: string | null;
-          stripe_subscription_id?: string | null;
-          updated_at?: string;
-        };
-        Relationships: [
-          {
-            foreignKeyName: "insurer_subscriptions_insurer_id_fkey";
-            columns: ["insurer_id"];
-            isOneToOne: true;
-            referencedRelation: "insurers";
-            referencedColumns: ["id"];
-          },
-        ];
-      };
       insurer_tenant_access: {
         Row: {
           created_at: string;
@@ -7252,89 +6958,6 @@ export type Database = {
           },
         ];
       };
-      inventory_listings: {
-        Row: {
-          body_type: string | null;
-          color: string | null;
-          created_at: string;
-          dealer_id: string;
-          description: string | null;
-          fuel_type: string | null;
-          grade: string | null;
-          has_repair_history: boolean;
-          has_vehicle_inspection: boolean;
-          id: string;
-          inspection_expiry: string | null;
-          make: string;
-          mileage: number | null;
-          model: string;
-          notes: string | null;
-          price: number | null;
-          public_id: string;
-          repair_history_notes: string | null;
-          status: string;
-          transmission: string | null;
-          updated_at: string;
-          year: number | null;
-        };
-        Insert: {
-          body_type?: string | null;
-          color?: string | null;
-          created_at?: string;
-          dealer_id: string;
-          description?: string | null;
-          fuel_type?: string | null;
-          grade?: string | null;
-          has_repair_history?: boolean;
-          has_vehicle_inspection?: boolean;
-          id?: string;
-          inspection_expiry?: string | null;
-          make: string;
-          mileage?: number | null;
-          model: string;
-          notes?: string | null;
-          price?: number | null;
-          public_id: string;
-          repair_history_notes?: string | null;
-          status?: string;
-          transmission?: string | null;
-          updated_at?: string;
-          year?: number | null;
-        };
-        Update: {
-          body_type?: string | null;
-          color?: string | null;
-          created_at?: string;
-          dealer_id?: string;
-          description?: string | null;
-          fuel_type?: string | null;
-          grade?: string | null;
-          has_repair_history?: boolean;
-          has_vehicle_inspection?: boolean;
-          id?: string;
-          inspection_expiry?: string | null;
-          make?: string;
-          mileage?: number | null;
-          model?: string;
-          notes?: string | null;
-          price?: number | null;
-          public_id?: string;
-          repair_history_notes?: string | null;
-          status?: string;
-          transmission?: string | null;
-          updated_at?: string;
-          year?: number | null;
-        };
-        Relationships: [
-          {
-            foreignKeyName: "inventory_listings_dealer_id_fkey";
-            columns: ["dealer_id"];
-            isOneToOne: false;
-            referencedRelation: "dealers";
-            referencedColumns: ["id"];
-          },
-        ];
-      };
       inventory_movements: {
         Row: {
           created_at: string;
@@ -7399,51 +7022,6 @@ export type Database = {
             columns: ["tenant_id"];
             isOneToOne: false;
             referencedRelation: "tenants";
-            referencedColumns: ["id"];
-          },
-        ];
-      };
-      job_bids: {
-        Row: {
-          bid_price: number | null;
-          bidder_dealer_id: string;
-          created_at: string;
-          id: string;
-          job_order_id: string;
-          message: string;
-          status: string;
-        };
-        Insert: {
-          bid_price?: number | null;
-          bidder_dealer_id: string;
-          created_at?: string;
-          id?: string;
-          job_order_id: string;
-          message: string;
-          status?: string;
-        };
-        Update: {
-          bid_price?: number | null;
-          bidder_dealer_id?: string;
-          created_at?: string;
-          id?: string;
-          job_order_id?: string;
-          message?: string;
-          status?: string;
-        };
-        Relationships: [
-          {
-            foreignKeyName: "job_bids_bidder_dealer_id_fkey";
-            columns: ["bidder_dealer_id"];
-            isOneToOne: false;
-            referencedRelation: "dealers";
-            referencedColumns: ["id"];
-          },
-          {
-            foreignKeyName: "job_bids_job_order_id_fkey";
-            columns: ["job_order_id"];
-            isOneToOne: false;
-            referencedRelation: "job_orders";
             referencedColumns: ["id"];
           },
         ];
@@ -7806,389 +7384,6 @@ export type Database = {
             columns: ["tenant_id"];
             isOneToOne: false;
             referencedRelation: "tenants";
-            referencedColumns: ["id"];
-          },
-        ];
-      };
-      line_follow_events: {
-        Row: {
-          created_at: string;
-          event_type: string;
-          id: string;
-          line_user_id: string;
-          payload: Json | null;
-          tenant_id: string;
-        };
-        Insert: {
-          created_at?: string;
-          event_type: string;
-          id?: string;
-          line_user_id: string;
-          payload?: Json | null;
-          tenant_id: string;
-        };
-        Update: {
-          created_at?: string;
-          event_type?: string;
-          id?: string;
-          line_user_id?: string;
-          payload?: Json | null;
-          tenant_id?: string;
-        };
-        Relationships: [
-          {
-            foreignKeyName: "line_follow_events_tenant_id_fkey";
-            columns: ["tenant_id"];
-            isOneToOne: false;
-            referencedRelation: "tenants";
-            referencedColumns: ["id"];
-          },
-        ];
-      };
-      line_link_audit_logs: {
-        Row: {
-          action: string;
-          actor_id: string | null;
-          actor_type: string;
-          created_at: string;
-          customer_id: string | null;
-          error_message: string | null;
-          id: string;
-          line_user_id: string | null;
-          meta: Json | null;
-          result: string;
-          session_id: string | null;
-          source: string | null;
-          tenant_id: string;
-        };
-        Insert: {
-          action: string;
-          actor_id?: string | null;
-          actor_type: string;
-          created_at?: string;
-          customer_id?: string | null;
-          error_message?: string | null;
-          id?: string;
-          line_user_id?: string | null;
-          meta?: Json | null;
-          result: string;
-          session_id?: string | null;
-          source?: string | null;
-          tenant_id: string;
-        };
-        Update: {
-          action?: string;
-          actor_id?: string | null;
-          actor_type?: string;
-          created_at?: string;
-          customer_id?: string | null;
-          error_message?: string | null;
-          id?: string;
-          line_user_id?: string | null;
-          meta?: Json | null;
-          result?: string;
-          session_id?: string | null;
-          source?: string | null;
-          tenant_id?: string;
-        };
-        Relationships: [
-          {
-            foreignKeyName: "line_link_audit_logs_customer_id_fkey";
-            columns: ["customer_id"];
-            isOneToOne: false;
-            referencedRelation: "customers";
-            referencedColumns: ["id"];
-          },
-          {
-            foreignKeyName: "line_link_audit_logs_session_id_fkey";
-            columns: ["session_id"];
-            isOneToOne: false;
-            referencedRelation: "line_link_sessions";
-            referencedColumns: ["id"];
-          },
-          {
-            foreignKeyName: "line_link_audit_logs_tenant_id_fkey";
-            columns: ["tenant_id"];
-            isOneToOne: false;
-            referencedRelation: "tenants";
-            referencedColumns: ["id"];
-          },
-        ];
-      };
-      line_link_candidates: {
-        Row: {
-          created_at: string;
-          id: string;
-          last_followed_at: string | null;
-          line_user_id: string;
-          matched_customer_id: string | null;
-          payload: Json | null;
-          status: string;
-          tenant_id: string;
-          updated_at: string;
-        };
-        Insert: {
-          created_at?: string;
-          id?: string;
-          last_followed_at?: string | null;
-          line_user_id: string;
-          matched_customer_id?: string | null;
-          payload?: Json | null;
-          status?: string;
-          tenant_id: string;
-          updated_at?: string;
-        };
-        Update: {
-          created_at?: string;
-          id?: string;
-          last_followed_at?: string | null;
-          line_user_id?: string;
-          matched_customer_id?: string | null;
-          payload?: Json | null;
-          status?: string;
-          tenant_id?: string;
-          updated_at?: string;
-        };
-        Relationships: [
-          {
-            foreignKeyName: "line_link_candidates_matched_customer_id_fkey";
-            columns: ["matched_customer_id"];
-            isOneToOne: false;
-            referencedRelation: "customers";
-            referencedColumns: ["id"];
-          },
-          {
-            foreignKeyName: "line_link_candidates_tenant_id_fkey";
-            columns: ["tenant_id"];
-            isOneToOne: false;
-            referencedRelation: "tenants";
-            referencedColumns: ["id"];
-          },
-        ];
-      };
-      line_link_sessions: {
-        Row: {
-          created_at: string;
-          created_by: string | null;
-          customer_id: string;
-          expires_at: string;
-          id: string;
-          line_user_id: string | null;
-          source: string | null;
-          status: string;
-          tenant_id: string;
-          token_hash: string;
-          used_at: string | null;
-        };
-        Insert: {
-          created_at?: string;
-          created_by?: string | null;
-          customer_id: string;
-          expires_at: string;
-          id?: string;
-          line_user_id?: string | null;
-          source?: string | null;
-          status?: string;
-          tenant_id: string;
-          token_hash: string;
-          used_at?: string | null;
-        };
-        Update: {
-          created_at?: string;
-          created_by?: string | null;
-          customer_id?: string;
-          expires_at?: string;
-          id?: string;
-          line_user_id?: string | null;
-          source?: string | null;
-          status?: string;
-          tenant_id?: string;
-          token_hash?: string;
-          used_at?: string | null;
-        };
-        Relationships: [
-          {
-            foreignKeyName: "line_link_sessions_customer_id_fkey";
-            columns: ["customer_id"];
-            isOneToOne: false;
-            referencedRelation: "customers";
-            referencedColumns: ["id"];
-          },
-          {
-            foreignKeyName: "line_link_sessions_tenant_id_fkey";
-            columns: ["tenant_id"];
-            isOneToOne: false;
-            referencedRelation: "tenants";
-            referencedColumns: ["id"];
-          },
-        ];
-      };
-      line_link_tokens: {
-        Row: {
-          created_at: string;
-          customer_email: string;
-          customer_id: string;
-          expires_at: string;
-          id: string;
-          tenant_id: string;
-          token: string;
-          used_at: string | null;
-        };
-        Insert: {
-          created_at?: string;
-          customer_email: string;
-          customer_id: string;
-          expires_at: string;
-          id?: string;
-          tenant_id: string;
-          token: string;
-          used_at?: string | null;
-        };
-        Update: {
-          created_at?: string;
-          customer_email?: string;
-          customer_id?: string;
-          expires_at?: string;
-          id?: string;
-          tenant_id?: string;
-          token?: string;
-          used_at?: string | null;
-        };
-        Relationships: [
-          {
-            foreignKeyName: "line_link_tokens_customer_id_fkey";
-            columns: ["customer_id"];
-            isOneToOne: false;
-            referencedRelation: "customers";
-            referencedColumns: ["id"];
-          },
-          {
-            foreignKeyName: "line_link_tokens_tenant_id_fkey";
-            columns: ["tenant_id"];
-            isOneToOne: false;
-            referencedRelation: "tenants";
-            referencedColumns: ["id"];
-          },
-        ];
-      };
-      line_pending_links: {
-        Row: {
-          created_at: string;
-          display_name: string | null;
-          id: string;
-          line_user_id: string;
-          status: string;
-          tenant_id: string;
-          updated_at: string;
-        };
-        Insert: {
-          created_at?: string;
-          display_name?: string | null;
-          id?: string;
-          line_user_id: string;
-          status?: string;
-          tenant_id: string;
-          updated_at?: string;
-        };
-        Update: {
-          created_at?: string;
-          display_name?: string | null;
-          id?: string;
-          line_user_id?: string;
-          status?: string;
-          tenant_id?: string;
-          updated_at?: string;
-        };
-        Relationships: [
-          {
-            foreignKeyName: "line_pending_links_tenant_id_fkey";
-            columns: ["tenant_id"];
-            isOneToOne: false;
-            referencedRelation: "tenants";
-            referencedColumns: ["id"];
-          },
-        ];
-      };
-      listing_images: {
-        Row: {
-          created_at: string;
-          id: string;
-          listing_id: string;
-          sort_order: number;
-          storage_path: string;
-        };
-        Insert: {
-          created_at?: string;
-          id?: string;
-          listing_id: string;
-          sort_order?: number;
-          storage_path: string;
-        };
-        Update: {
-          created_at?: string;
-          id?: string;
-          listing_id?: string;
-          sort_order?: number;
-          storage_path?: string;
-        };
-        Relationships: [
-          {
-            foreignKeyName: "listing_images_listing_id_fkey";
-            columns: ["listing_id"];
-            isOneToOne: false;
-            referencedRelation: "inventory_listings";
-            referencedColumns: ["id"];
-          },
-        ];
-      };
-      listing_inquiries: {
-        Row: {
-          created_at: string;
-          from_dealer_id: string;
-          id: string;
-          listing_id: string;
-          status: string;
-          to_dealer_id: string;
-          updated_at: string;
-        };
-        Insert: {
-          created_at?: string;
-          from_dealer_id: string;
-          id?: string;
-          listing_id: string;
-          status?: string;
-          to_dealer_id: string;
-          updated_at?: string;
-        };
-        Update: {
-          created_at?: string;
-          from_dealer_id?: string;
-          id?: string;
-          listing_id?: string;
-          status?: string;
-          to_dealer_id?: string;
-          updated_at?: string;
-        };
-        Relationships: [
-          {
-            foreignKeyName: "listing_inquiries_from_dealer_id_fkey";
-            columns: ["from_dealer_id"];
-            isOneToOne: false;
-            referencedRelation: "dealers";
-            referencedColumns: ["id"];
-          },
-          {
-            foreignKeyName: "listing_inquiries_listing_id_fkey";
-            columns: ["listing_id"];
-            isOneToOne: false;
-            referencedRelation: "inventory_listings";
-            referencedColumns: ["id"];
-          },
-          {
-            foreignKeyName: "listing_inquiries_to_dealer_id_fkey";
-            columns: ["to_dealer_id"];
-            isOneToOne: false;
-            referencedRelation: "dealers";
             referencedColumns: ["id"];
           },
         ];
@@ -9472,30 +8667,6 @@ export type Database = {
             referencedColumns: ["id"];
           },
         ];
-      };
-      operator_users: {
-        Row: {
-          created_at: string;
-          display_name: string;
-          id: string;
-          role: string;
-          user_id: string;
-        };
-        Insert: {
-          created_at?: string;
-          display_name?: string;
-          id?: string;
-          role?: string;
-          user_id: string;
-        };
-        Update: {
-          created_at?: string;
-          display_name?: string;
-          id?: string;
-          role?: string;
-          user_id?: string;
-        };
-        Relationships: [];
       };
       order_audit_log: {
         Row: {
@@ -12324,59 +11495,6 @@ export type Database = {
           },
         ];
       };
-      shop_price_submissions: {
-        Row: {
-          created_at: string;
-          dealer_id: string;
-          id: string;
-          notes: string | null;
-          prefecture: string;
-          price_max: number | null;
-          price_min: number | null;
-          price_typical: number | null;
-          service_category: string;
-          service_name: string;
-          unit: string;
-          updated_at: string;
-        };
-        Insert: {
-          created_at?: string;
-          dealer_id: string;
-          id?: string;
-          notes?: string | null;
-          prefecture: string;
-          price_max?: number | null;
-          price_min?: number | null;
-          price_typical?: number | null;
-          service_category: string;
-          service_name: string;
-          unit?: string;
-          updated_at?: string;
-        };
-        Update: {
-          created_at?: string;
-          dealer_id?: string;
-          id?: string;
-          notes?: string | null;
-          prefecture?: string;
-          price_max?: number | null;
-          price_min?: number | null;
-          price_typical?: number | null;
-          service_category?: string;
-          service_name?: string;
-          unit?: string;
-          updated_at?: string;
-        };
-        Relationships: [
-          {
-            foreignKeyName: "shop_price_submissions_dealer_id_fkey";
-            columns: ["dealer_id"];
-            isOneToOne: false;
-            referencedRelation: "dealers";
-            referencedColumns: ["id"];
-          },
-        ];
-      };
       shop_products: {
         Row: {
           category: string;
@@ -13109,6 +12227,64 @@ export type Database = {
           },
         ];
       };
+      staff_link_invites: {
+        Row: {
+          code_hash: string;
+          created_at: string;
+          created_by: string | null;
+          expires_at: string;
+          id: string;
+          redeemed_at: string | null;
+          redeemed_by_tenant_id: string | null;
+          staff_member_id: string;
+          tenant_id: string;
+        };
+        Insert: {
+          code_hash: string;
+          created_at?: string;
+          created_by?: string | null;
+          expires_at: string;
+          id?: string;
+          redeemed_at?: string | null;
+          redeemed_by_tenant_id?: string | null;
+          staff_member_id: string;
+          tenant_id: string;
+        };
+        Update: {
+          code_hash?: string;
+          created_at?: string;
+          created_by?: string | null;
+          expires_at?: string;
+          id?: string;
+          redeemed_at?: string | null;
+          redeemed_by_tenant_id?: string | null;
+          staff_member_id?: string;
+          tenant_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "staff_link_invites_redeemed_by_tenant_id_fkey";
+            columns: ["redeemed_by_tenant_id"];
+            isOneToOne: false;
+            referencedRelation: "tenants";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "staff_link_invites_staff_member_id_fkey";
+            columns: ["staff_member_id"];
+            isOneToOne: false;
+            referencedRelation: "staff_members";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "staff_link_invites_tenant_id_fkey";
+            columns: ["tenant_id"];
+            isOneToOne: false;
+            referencedRelation: "tenants";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       staff_members: {
         Row: {
           color: string | null;
@@ -13118,6 +12294,7 @@ export type Database = {
           id: string;
           is_active: boolean;
           kind: string;
+          linked_tenant_id: string | null;
           name: string;
           note: string | null;
           phone: string | null;
@@ -13134,6 +12311,7 @@ export type Database = {
           id?: string;
           is_active?: boolean;
           kind?: string;
+          linked_tenant_id?: string | null;
           name: string;
           note?: string | null;
           phone?: string | null;
@@ -13150,6 +12328,7 @@ export type Database = {
           id?: string;
           is_active?: boolean;
           kind?: string;
+          linked_tenant_id?: string | null;
           name?: string;
           note?: string | null;
           phone?: string | null;
@@ -13159,6 +12338,13 @@ export type Database = {
           user_id?: string | null;
         };
         Relationships: [
+          {
+            foreignKeyName: "staff_members_linked_tenant_id_fkey";
+            columns: ["linked_tenant_id"];
+            isOneToOne: false;
+            referencedRelation: "tenants";
+            referencedColumns: ["id"];
+          },
           {
             foreignKeyName: "staff_members_tenant_id_fkey";
             columns: ["tenant_id"];
@@ -13864,115 +13050,6 @@ export type Database = {
           id?: string;
           question?: string;
           sort_order?: number;
-        };
-        Relationships: [];
-      };
-      support_ticket_messages: {
-        Row: {
-          created_at: string;
-          id: string;
-          message: string;
-          sender_id: string;
-          sender_type: string;
-          ticket_id: string;
-        };
-        Insert: {
-          created_at?: string;
-          id?: string;
-          message: string;
-          sender_id: string;
-          sender_type: string;
-          ticket_id: string;
-        };
-        Update: {
-          created_at?: string;
-          id?: string;
-          message?: string;
-          sender_id?: string;
-          sender_type?: string;
-          ticket_id?: string;
-        };
-        Relationships: [
-          {
-            foreignKeyName: "support_ticket_messages_ticket_id_fkey";
-            columns: ["ticket_id"];
-            isOneToOne: false;
-            referencedRelation: "support_tickets";
-            referencedColumns: ["id"];
-          },
-        ];
-      };
-      support_tickets: {
-        Row: {
-          created_at: string;
-          id: string;
-          message: string;
-          priority: string;
-          status: string;
-          subject: string;
-          tenant_id: string;
-          updated_at: string;
-          user_id: string;
-        };
-        Insert: {
-          created_at?: string;
-          id?: string;
-          message: string;
-          priority?: string;
-          status?: string;
-          subject: string;
-          tenant_id: string;
-          updated_at?: string;
-          user_id: string;
-        };
-        Update: {
-          created_at?: string;
-          id?: string;
-          message?: string;
-          priority?: string;
-          status?: string;
-          subject?: string;
-          tenant_id?: string;
-          updated_at?: string;
-          user_id?: string;
-        };
-        Relationships: [
-          {
-            foreignKeyName: "support_tickets_tenant_id_fkey";
-            columns: ["tenant_id"];
-            isOneToOne: false;
-            referencedRelation: "tenants";
-            referencedColumns: ["id"];
-          },
-        ];
-      };
-      system_health_snapshots: {
-        Row: {
-          captured_at: string;
-          checks: Json;
-          created_at: string;
-          id: string;
-          latency_ms: number | null;
-          source: string;
-          status: string;
-        };
-        Insert: {
-          captured_at?: string;
-          checks?: Json;
-          created_at?: string;
-          id?: string;
-          latency_ms?: number | null;
-          source?: string;
-          status?: string;
-        };
-        Update: {
-          captured_at?: string;
-          checks?: Json;
-          created_at?: string;
-          id?: string;
-          latency_ms?: number | null;
-          source?: string;
-          status?: string;
         };
         Relationships: [];
       };
@@ -17059,10 +16136,6 @@ export type Database = {
           status: string;
         }[];
       };
-      insurer_is_active_subscription: {
-        Args: { p_insurer_id: string };
-        Returns: boolean;
-      };
       insurer_search_certificates: {
         Args: {
           p_ip?: string;
@@ -17159,7 +16232,6 @@ export type Database = {
             }[];
           };
       is_agent_admin: { Args: never; Returns: boolean };
-      is_approved_dealer: { Args: never; Returns: boolean };
       is_insurer_admin: { Args: never; Returns: boolean };
       is_member_of_tenant: { Args: { p_tenant_id: string }; Returns: boolean };
       is_pii_disclosed: {
@@ -17169,8 +16241,6 @@ export type Database = {
       is_super_admin_user: { Args: never; Returns: boolean };
       is_supply_partner_active: { Args: { p_id: string }; Returns: boolean };
       management_kpi_stats: { Args: { p_tenant_id: string }; Returns: Json };
-      market_is_approved_dealer: { Args: never; Returns: boolean };
-      market_my_dealer_id: { Args: never; Returns: string };
       marketing_churn_stats: { Args: never; Returns: Json };
       match_customer_import_candidates: {
         Args: { p_emails: string[]; p_phones: string[]; p_tenant_id: string };
@@ -17194,7 +16264,6 @@ export type Database = {
         }[];
       };
       my_agent_ids: { Args: never; Returns: string[] };
-      my_dealer_id: { Args: never; Returns: string };
       my_insurer_ids: { Args: never; Returns: string[] };
       my_manufacturer_ids: { Args: never; Returns: string[] };
       my_org_ids: { Args: never; Returns: string[] };
@@ -17325,46 +16394,28 @@ export type Database = {
         };
         Returns: string;
       };
-      search_vehicles_for_cartrust:
-        | {
-            Args: { p_limit?: number; p_offset?: number; p_query: string };
-            Returns: {
-              certificate_count: number;
-              latest_active_certificate_public_id: string;
-              latest_certificate_public_id: string;
-              latest_certificate_status: string;
-              latest_certificate_ts: string;
-              maker: string;
-              model: string;
-              plate_display: string;
-              search_rank: number;
-              vehicle_id: string;
-              vehicle_public_id: string;
-              year_text: string;
-            }[];
-          }
-        | {
-            Args: {
-              p_limit?: number;
-              p_offset?: number;
-              p_query: string;
-              p_status?: string;
-            };
-            Returns: {
-              certificate_count: number;
-              latest_active_certificate_public_id: string;
-              latest_certificate_public_id: string;
-              latest_certificate_status: string;
-              latest_certificate_ts: string;
-              maker: string;
-              model: string;
-              plate_display: string;
-              search_rank: number;
-              vehicle_id: string;
-              vehicle_public_id: string;
-              year_text: string;
-            }[];
-          };
+      search_vehicles_for_cartrust: {
+        Args: {
+          p_limit?: number;
+          p_offset?: number;
+          p_query: string;
+          p_status?: string;
+        };
+        Returns: {
+          certificate_count: number;
+          latest_active_certificate_public_id: string;
+          latest_certificate_public_id: string;
+          latest_certificate_status: string;
+          latest_certificate_ts: string;
+          maker: string;
+          model: string;
+          plate_display: string;
+          search_rank: number;
+          vehicle_id: string;
+          vehicle_public_id: string;
+          year_text: string;
+        }[];
+      };
       staff_performance_stats: {
         Args: { p_since?: string; p_tenant_id: string };
         Returns: {

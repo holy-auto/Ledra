@@ -24,6 +24,59 @@ function generateSlug(name: string): string {
   return `${base}-${suffix}`;
 }
 
+/**
+ * code-review 指摘 (2026-09-08): 未確認のまま再登録が試みられたときの確認メール再送。
+ * email_confirm: false で作成されたアカウントは確認リンクを踏むまでログインできない。
+ * 1回目の確認メールが届かない/期限切れで詰まった利用者が signup をもう一度叩いた場合、
+ * 「登録済みです」の案内だけを送ると本人はどこにも進めなくなる（ログインできないアカウントに
+ * 「ログインしてください」と案内するだけになる）。確認済みかどうかで分岐し、未確認なら
+ * 新規登録時と同じ signInWithOtp を再実行して確認リンクを再送する。
+ */
+async function resendConfirmationForUnconfirmed(email: string, req: NextRequest): Promise<void> {
+  const baseUrl = resolveBaseUrl({ req, preferRequestOrigin: true });
+  const supabase = await createClient();
+  const { error } = await supabase.auth.signInWithOtp({
+    email,
+    options: {
+      shouldCreateUser: false,
+      emailRedirectTo: `${baseUrl}/auth/callback?next=/admin`,
+    },
+  });
+  if (error) throw error;
+}
+
+/**
+ * B-M3 是正 (2026-09-08): 既に確認済みのメールへ再度サインアップが試みられたときの
+ * 案内メール。本人以外は結果を判別できないよう、送信失敗を呼び出し元に伝播させない
+ * (best-effort)。
+ */
+async function notifyAlreadyRegistered(email: string, req: NextRequest): Promise<void> {
+  const { sendEmail } = await import("@/lib/email/sendEmail");
+  const baseUrl = resolveBaseUrl({ req, preferRequestOrigin: true });
+  const html = `
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 480px; margin: 0 auto; padding: 24px;">
+      <p style="color: #1d1d1f; line-height: 1.6;">
+        このメールアドレスで Ledra の新規登録が試みられましたが、既にアカウントが存在するため
+        新しい店舗は作成されませんでした。
+      </p>
+      <p style="color: #1d1d1f; line-height: 1.6;">
+        心当たりがある場合は、以下からログインしてください。パスワードをお忘れの場合は
+        ログイン画面の「パスワードを忘れた方」からリセットできます。
+      </p>
+      <p style="margin: 24px 0;">
+        <a href="${baseUrl}/login" style="color: #0071e3;">${baseUrl}/login</a>
+      </p>
+      <p style="color: #86868b; font-size: 13px;">
+        心当たりのない場合は、このメールを無視してください。
+      </p>
+    </div>
+  `;
+  const result = await sendEmail({ to: email, subject: "【Ledra】このメールアドレスは登録済みです", html });
+  if (!result.ok) {
+    throw new Error(`email_failed:${result.status ?? "unknown"}`);
+  }
+}
+
 export async function POST(req: NextRequest) {
   const limited = await checkRateLimit(req, "auth");
   if (limited) return limited;
@@ -42,24 +95,45 @@ export async function POST(req: NextRequest) {
     const admin = createServiceRoleAdmin("signup — creates new tenant + owner user (pre-auth, no scope yet)");
 
     // ── 1) Supabase Auth ユーザー作成 ──
-    // パスワードレス登録ではパスワードを設定せず作成し、後段でメールリンク
-    // (signInWithOtp) からログインしてもらう。email_confirm: true なので
-    // OTP / マジックリンクでそのままサインインできる。
+    // B-H3 是正 (2026-09-08): 以前はパスワード登録時のみ email_confirm: true
+    // で作成し、直後にクライアントが signInWithPassword で即ログインしていた。
+    // これはメールの所有確認を一切経由しない ── 被害者のメールアドレスで
+    // テナント (owner) を作成できてしまう。パスワードレス登録は元々
+    // signInWithOtp のクリックを経るため確認済みだったが、パスワード登録
+    // だけ迂回できていた。両経路とも email_confirm: false で作成し、
+    // 後段で必ず確認メール (マジックリンク) を送ってから本人確認を要求する。
     const { data: authData, error: authError } = await admin.auth.admin.createUser({
       email,
       ...(passwordless ? {} : { password }),
-      email_confirm: true,
+      email_confirm: false,
       user_metadata: { display_name: display_name || shop_name },
     });
 
     if (authError) {
       if (authError.message?.includes("already been registered") || authError.message?.includes("already exists")) {
-        return apiError({
-          code: "conflict",
-          message: "このメールアドレスは既に登録されています。ログインしてください。",
-          status: 409,
-          data: { messages: ["このメールアドレスは既に登録されています。ログインしてください。"] },
-        });
+        // B-M3 是正 (2026-09-08): 409 で「登録済み」を返すと、任意のメールアドレスを
+        // 送るだけで Ledra 利用テナントの存在有無を列挙できる（列挙オラクル）。
+        // 未登録時と区別できない 200 を返し、既存の持ち主にだけメールで案内する。
+        // フロントは成功レスポンス後に signInWithPassword を試み、攻撃者はパスワードを
+        // 知らないため失敗して「確認メールを送信しました」画面に落ちる（B-H3 と同じ経路）。
+        // 未登録時 (signInWithOtp 送信) と時間差が出てタイミングで区別できないよう
+        // 待ち合わせる (失敗しても成功レスポンスは変えない)。
+        //
+        // code-review 指摘 (2026-09-08): 既存アカウントがまだメール未確認なら
+        // 「登録済みです、ログインしてください」の案内はログインできないアカウントへの
+        // 案内になり、本人が永久に詰まる。確認済みかどうかで分岐し、未確認なら
+        // 確認メールを再送する（列挙オラクル対策のレスポンスは変えない）。
+        const { data: isUnconfirmed } = await admin.rpc("check_auth_email_unconfirmed", { p_email: email });
+        if (isUnconfirmed === true) {
+          await resendConfirmationForUnconfirmed(email, req).catch((e) =>
+            console.error("[signup] resend confirmation for unconfirmed retry failed:", e),
+          );
+        } else {
+          await notifyAlreadyRegistered(email, req).catch((e) =>
+            console.error("[signup] already-registered notice failed:", e),
+          );
+        }
+        return apiOk({ ok: true });
       }
       return apiInternalError(authError, "signup: auth user creation");
     }
@@ -120,51 +194,50 @@ export async function POST(req: NextRequest) {
       return apiInternalError(membershipError, "signup: membership creation");
     }
 
-    // ── パスワードレス登録: マジックリンク送信（作成と一体で原子的に） ──
-    // パスワードを持たないアカウントなので、リンク送信に失敗すると本人が
-    // 二度とログインできない「孤児テナント」になる。ここで送信まで行い、
-    // 失敗時は user/tenant/membership をまとめてロールバックして、再登録
-    // 時の「メール重複」エラーで詰まる事態を防ぐ。
-    if (passwordless) {
-      try {
-        // PKCE: verifier Cookie を張ったオリジン（＝今このリクエスト）へ確認リンクを
-        // 戻す。別ドメイン（APP_URL）だと Cookie が届かず本人がログインできず、
-        // パスワード無しアカウントが孤児化する。
-        const baseUrl = resolveBaseUrl({ req, preferRequestOrigin: true });
-        const supabase = await createClient();
-        const { error: otpError } = await supabase.auth.signInWithOtp({
-          email,
-          options: {
-            shouldCreateUser: false,
-            emailRedirectTo: `${baseUrl}/auth/callback?next=/admin`,
-          },
-        });
-        if (otpError) throw otpError;
-      } catch (otpErr) {
-        const { error: membershipDeleteError } = await admin
-          .from("tenant_memberships")
-          .delete()
-          .eq("tenant_id", tenant.id);
-        const { error: tenantDeleteError } = await admin.from("tenants").delete().eq("id", tenant.id);
-        const { error: deleteError } = await admin.auth.admin.deleteUser(userId);
-        if (membershipDeleteError || tenantDeleteError || deleteError) {
-          console.error(
-            `signup: magic-link send failed AND rollback failed — orphaned tenant ${tenant.id} / auth user ${userId} (${email}) requires manual cleanup`,
-            otpErr,
-            membershipDeleteError,
-            tenantDeleteError,
-            deleteError,
-          );
-        } else {
-          console.error("signup: magic-link send failed, rolled back", otpErr);
-        }
-        return apiError({
-          code: "internal_error",
-          message: "確認メールの送信に失敗しました。時間をおいて再度お試しください。",
-          status: 502,
-          data: { messages: ["確認メールの送信に失敗しました。時間をおいて再度お試しください。"] },
-        });
+    // ── メール確認リンク送信（作成と一体で原子的に） ──
+    // email_confirm: false で作成しているため、パスワード登録・
+    // パスワードレス登録のどちらも本人がこのリンクを踏むまでログインできない。
+    // 送信に失敗すると本人が永久にログインできない「孤児テナント」になるため、
+    // ここで送信まで行い、失敗時は user/tenant/membership をまとめて
+    // ロールバックして、再登録時の「メール重複」エラーで詰まる事態を防ぐ。
+    try {
+      // PKCE: verifier Cookie を張ったオリジン（＝今このリクエスト）へ確認リンクを
+      // 戻す。別ドメイン（APP_URL）だと Cookie が届かず本人がログインできず、
+      // パスワード無しアカウントが孤児化する。
+      const baseUrl = resolveBaseUrl({ req, preferRequestOrigin: true });
+      const supabase = await createClient();
+      const { error: otpError } = await supabase.auth.signInWithOtp({
+        email,
+        options: {
+          shouldCreateUser: false,
+          emailRedirectTo: `${baseUrl}/auth/callback?next=/admin`,
+        },
+      });
+      if (otpError) throw otpError;
+    } catch (otpErr) {
+      const { error: membershipDeleteError } = await admin
+        .from("tenant_memberships")
+        .delete()
+        .eq("tenant_id", tenant.id);
+      const { error: tenantDeleteError } = await admin.from("tenants").delete().eq("id", tenant.id);
+      const { error: deleteError } = await admin.auth.admin.deleteUser(userId);
+      if (membershipDeleteError || tenantDeleteError || deleteError) {
+        console.error(
+          `signup: magic-link send failed AND rollback failed — orphaned tenant ${tenant.id} / auth user ${userId} (${email}) requires manual cleanup`,
+          otpErr,
+          membershipDeleteError,
+          tenantDeleteError,
+          deleteError,
+        );
+      } else {
+        console.error("signup: magic-link send failed, rolled back", otpErr);
       }
+      return apiError({
+        code: "internal_error",
+        message: "確認メールの送信に失敗しました。時間をおいて再度お試しください。",
+        status: 502,
+        data: { messages: ["確認メールの送信に失敗しました。時間をおいて再度お試しください。"] },
+      });
     }
 
     // ── 紹介リンク (/ref/<code>) 経由のアトリビューション（best-effort） ──

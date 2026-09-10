@@ -1,7 +1,7 @@
 import Stripe from "stripe";
 import { getStripeClient } from "@/lib/stripe/client";
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
-import { sendResendEmail } from "@/lib/email/resendSend";
+import { sendEmail } from "@/lib/email/sendEmail";
 import { logger } from "@/lib/logger";
 
 function getStripe() {
@@ -127,7 +127,7 @@ export async function ensureConnectAndNotify(toTenantId: string, orderId: string
     .eq("id", orderId)
     .single();
 
-  const emailResult = await sendResendEmail({
+  const emailResult = await sendEmail({
     to: shop.contact_email as string,
     subject: `【振込口座の登録をお願いします】${order?.invoice_number ? `${order.invoice_number} - ` : ""}${order?.title ?? ""}`,
     html: buildOnboardingEmailHtml({

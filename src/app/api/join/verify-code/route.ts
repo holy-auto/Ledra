@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { timingSafeEqual } from "crypto";
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
 import { sha256Hex } from "@/lib/customerPortalServer";
@@ -67,9 +68,11 @@ export async function POST(req: Request) {
     .update({ attempts: record.attempts + 1 })
     .eq("id", record.id);
 
-  // Verify code (compare hashed)
+  // Verify code (compare hashed, constant-time — B-L4)
   const codeHash = sha256Hex(`insurer-otp|v1|${email}|${code}`);
-  if (record.code !== codeHash) {
+  const a = Buffer.from(record.code, "hex");
+  const b = Buffer.from(codeHash, "hex");
+  if (a.length !== b.length || !timingSafeEqual(a, b)) {
     return apiValidationError("確認コードが正しくありません");
   }
 
