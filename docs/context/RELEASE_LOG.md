@@ -27,6 +27,15 @@ founder判断待ちのOPEN_QUESTIONS少なくとも4件（詳細は LEDRA_CURREN
 
 ## 2026-09-08 本番データを流し込めない状態を解消した（tenants.plan_tier）
 
+**2026-09-10 追記: PR #1052 を main へマージ（`662e46f`）、本番適用も成功した**
+（`DB migrate` run #68。本番の最大版 `20260910000000`、`tenants_plan_tier_check` は
+本番に**存在せず** `plan_tier` は `plan_tier_enum` のまま＝予告どおり no-op）。
+`Supabase Preview` チェックだけ赤のままマージした。プレビュー用ブランチ DB に
+改名前の版 `20260908010000` が残っており、ローカルに同名ファイルが無いための
+`Remote migration versions not found in local migrations directory.` で、
+本番の台帳に「ローカルに無い版」は 1 件も無いことをクエリで確認済み。
+理由は PR #1052 にコメントとして残した。
+
 マイグレーションから作り直した DB へ本番データを入れると、**24 テナント中 20 件が
 弾かれる**状態だった。`tenants.plan_tier` の check が (mini, standard, pro) の 3 値で、
 本番の enum が持つ `free` / `starter` を受け付けなかったため。
