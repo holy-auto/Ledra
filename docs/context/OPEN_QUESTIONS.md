@@ -750,7 +750,7 @@ starter 1）が、マイグレーション側の check に**弾かれる**。つ
 | `certificates.status` | check (active,void,draft,expired) | 弾かない（enum 3 値の上位集合） |
 | `certificates.expiry_type` | NULL 許容 | 弾かない（本番の NOT NULL より緩い） |
 | `tenant_memberships.role` | check の 5 値 | 弾かない（enum と**集合が一致**） |
-| `templates.scope` | 値の check 無し | 弾かない |
+| `templates.scope` | 列跨ぎ規則の check のみ（値の一覧なし） | 弾かない |
 
 **型名の食い違い（text か enum か）は残したままにした。** 理由:
 
@@ -782,7 +782,15 @@ starter 1）が、マイグレーション側の check に**弾かれる**。つ
   `cert_public_read_active`（`status = 'active'`）と
   `public read active certificates by public_id`（`status = 'active' and public_id is not null`）。
   再生 DB の `certificates` に anon 向けポリシーは **0 本**。
-  公開証明書ページはこの経路で読んでいると思われる【推定・未検証】。
+- **どの画面が困るかを確かめた（2026-09-10、当初の推測は誤りだった）。**
+  公開証明書ページ `/c/[public_id]` は **anon ポリシーに依存しない** ——
+  `src/lib/certificates/publicData.ts` は `createServiceRoleAdmin()` で読んでおり
+  RLS を迂回する。当初「この経路で読んでいると思われる」と書いたが誤り。
+  実際に依存するのは **PDF ルート** `src/app/api/certificate/pdf/route.ts` で、
+  anon キーで `certificates_public` を叩く。このビューは `security_invoker=on` なので
+  呼び出し元（anon）の権限で `certificates` を読む。再生 DB の `certificates` の
+  SELECT ポリシーは `my_tenant_ids()` / `my_org_tenant_ids()` の 2 本だけなので
+  **anon は 0 行 → PDF が 404 になる**【確実・2026-09-10 にコード実測】。
 - `templates` の `templates_select`（`scope = 'shared'` を誰にでも読ませる）も本番だけ。
   再生側は `templates_select_v2` / `tpl_select` という別名の別定義。
 
@@ -791,8 +799,9 @@ starter 1）が、マイグレーション側の check に**弾かれる**。つ
 本番側の anon 公開が意図どおりかは別途確認が要る【要確認】。
 
 - **未決**: (a) 本番のポリシーをマイグレーションへ書き起こす、(b) 本番から消す、
-  のどちらか。**まず「公開証明書ページが `certificates` を anon で直接読んでいるか、
-  それとも `certificates_public` ビュー経由か」を確かめるのが先。**
+  のどちらか。**復旧時に PDF ルートを動かすなら (a)。** ただし本番の anon 公開が
+  意図どおりかは別途確認が要る【要確認】——
+  `cert_public_read_active` は `status='active'` の**全証明書**を anon に開ける。
 - ポリシーもドリフト検出の対象に入れるか（`pg_policies` の名前だけなら安い）も未決。
 
 ## デモ保険会社にデモ施工店の閲覧許可を入れた。実アカウントの越境アクセスは別途確認したい（2026-09-03）

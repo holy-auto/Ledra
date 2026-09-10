@@ -26,7 +26,7 @@
 --     certificates.status       再生 check (active,void,draft,expired) ⊇ enum 3 値
 --     certificates.expiry_type  再生は NULL 許容 = 本番(NOT NULL)より緩い
 --     tenant_memberships.role   再生 check の 5 値と enum の 5 値は**集合が一致**
---     templates.scope           再生に値の check が無い
+--     templates.scope           再生の check は列跨ぎ規則のみ（値の一覧を持たない）
 --   よって「復旧手順が通らない」を直すには、この 1 列で必要十分。
 --
 -- ponytail: 上限。**列の型名の食い違いは残る**（text か enum か）。
@@ -48,8 +48,15 @@ begin
 
   alter table public.tenants drop constraint tenants_plan_tier_check;
 
-  -- NOT VALID で足してから VALIDATE する。ADD CONSTRAINT ... CHECK をそのまま書くと
-  -- 全行走査を ACCESS EXCLUSIVE で行うため（lint:migrations の指摘）。
+  -- NOT VALID で足してから VALIDATE する。
+  --
+  -- ponytail: 上限。**この書き方でロックは短くならない。** DO ブロック＝1トランザクション
+  -- なので、DROP/ADD が取った ACCESS EXCLUSIVE が VALIDATE のフルスキャンまで保持される
+  -- （replay は psql --single-transaction、supabase db push も1ファイル1トランザクション）。
+  -- 短くするなら VALIDATE を別ファイルへ分ける必要がある（20260702155034 が前例）。
+  -- ここで分けないのは、**本番ではこのブロック全体が skip され 1 行も走らない**うえ、
+  -- 走る側（空 DB の再生）は tenants が 0 行だから。lint:migrations の
+  -- add-check-without-not-valid を満たすためだけの形になっている、と正直に書いておく。
   alter table public.tenants
     add constraint tenants_plan_tier_check
     check (plan_tier in ('mini', 'standard', 'pro', 'free', 'starter')) not valid;
