@@ -37,13 +37,26 @@
 - **再生 DB で機能ごと通して確認済み**: 同意なし → `山***` / `pii_disclosed=f`、
   同意あり → 実名 / `pii_disclosed=t`、`insurer_access_logs` に2行。
 - **検査の作り**: `plpgsql_check_function()` を全 plpgsql 関数に当てる。トリガ関数は
-  `relid` を渡さないと検査できないので、その関数を使っているトリガから1つ取って渡す
-  （どのトリガからも使われていないものは対象外。**現在2本**: `generate_case_number` /
-  `handle_updated_at`。どちらも本番ではトリガが付いている（`trg_set_case_number` /
-  `trg_job_orders_updated_at`）ので、**死んでいるのではなく再生 DB にトリガが無い**
-  ＝ドリフト。検査の穴として毎回名前を出す）。陽性・陰性の対照を対で置き、
-  対照が通ったときだけ本走査に進む。CI は `REQUIRE_PLPGSQL_CHECK=1` で、**拡張が
-  入らなかったときに黙って飛ばさせない**。
+  `relid` を渡さないと検査できないので、その関数を使っているトリガの**すべての
+  テーブル**に対して1回ずつ回す（再生 DB で (トリガ関数, テーブル) は **129 組**、
+  関数の実数は 36）。どのトリガからも使われていないものは対象外。**現在2本**:
+  `generate_case_number` / `handle_updated_at`。どちらも本番ではトリガが付いている
+  （`trg_set_case_number` / `trg_job_orders_updated_at`）ので、**死んでいるのではなく
+  再生 DB にトリガが無い**＝ドリフト。検査の穴として毎回名前を出す。
+  陽性・陰性の対照を対で置き、対照が通ったときだけ本走査に進む。CI は
+  `REQUIRE_PLPGSQL_CHECK=1` で、**拡張が入らなかったときに黙って飛ばさせない**。
+  **【2026-09-10 訂正】初版は「トリガから1つ取って渡す」（`limit 1`）で、129 組のうち
+  36 組しか見ていなかった** —— `set_updated_at` は 88 テーブルに付いているのに
+  1テーブルだけ。`/code-review` の指摘で全組に広げたところ、**隠れていた 42703 が
+  1件出た**（MISTAKE_LEDGER M-075）。
+- **列レベルのドリフトが1件見つかり、あわせて塞いだ**（`20260910010100`）。
+  `vehicle_histories.updated_at` は本番にだけ在り、再生 DB に無かった。
+  `20260907010100` で本番から書き起こしたトリガ `trg_vehicle_histories_set_updated_at`
+  （`set_updated_at`）が `new.updated_at` へ代入するので、列の無い再生 DB では
+  UPDATE のたびに 42703 で落ちる。**本番は無事**（`timestamptz not null default now()`
+  が在ることを実測確認）ので、追加は `add column if not exists` で本番では no-op。
+  #1045 のドリフト検出器はオブジェクトの有無しか見ないため、**この形は見えていない**
+  （OPEN_QUESTIONS に起票）。
 - **偽陽性は allowlist ではなく再生 DB の側を直した。** `register_insurer_v2` の4件は
   `auth.users.instance_id` / `auth.identities.provider_id` が `bootstrap.sql` の簡略
   スキーマに無いことが原因で、本番には在る（実測確認）。auth スキーマを本番の

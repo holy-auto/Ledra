@@ -293,23 +293,29 @@ function checkQualifiedRefs(dsn) {
  * search_path='' の取りこぼしもここで一緒に見える。
  *
  * トリガ関数は relid を渡さないと "missing trigger relation" で検査できないため、
- * その関数を実際に使っているトリガから1つ取って渡す。どのトリガからも使われていない
- * トリガ関数だけは検査できないので対象から外す（本数は下の警告に出る）。
+ * その関数を使っているトリガの**すべての**テーブルに対して1回ずつ回す。同じ関数でも
+ * 相手のテーブルが違えば NEW/OLD の列が違うので、1つ取って済ませると残りが未検査に
+ * なる（実際 set_updated_at は 88 テーブルに付いていて、1テーブルしか見ないと
+ * vehicle_histories の 42703 を見逃した）。どのトリガからも使われていないトリガ関数
+ * だけは検査できないので対象から外す（名前は下の警告に出る）。
  *
  * ponytail: 動的 SQL（EXECUTE format(...)）の中身は依然として見えない。文字列が
  * 組み上がるのは実行時なので、静的検査で見られる上限がここ。
  */
 const PLPGSQL_SCAN = (pred) => `
   with target as (
-    select p.oid, p.proname,
+    select distinct p.oid, p.proname,
            p.prorettype = 'trigger'::regtype as is_trigger,
-           (select t.tgrelid from pg_trigger t where t.tgfoid = p.oid limit 1) as relid
+           t.tgrelid as relid
     from pg_proc p
     join pg_namespace n on n.oid = p.pronamespace
     join pg_language l on l.oid = p.prolang
+    left join pg_trigger t on t.tgfoid = p.oid
     where n.nspname = 'public' and l.lanname = 'plpgsql' and ${pred}
   )
-  select t.proname || ' -> ' || c.message
+  select t.proname
+         || case when t.relid is null then '' else ' @ ' || t.relid::regclass::text end
+         || ' -> ' || c.message
   from target t,
   lateral plpgsql_check_function(t.oid, relid => coalesce(t.relid, 0::oid), fatal_errors => false) as c(message)
   where not (t.is_trigger and t.relid is null)
