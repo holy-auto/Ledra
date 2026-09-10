@@ -4,7 +4,7 @@ Ledra プラットフォームの **定期セキュリティ監査** を再現�
 実施するための運用フレームワーク。監査スコープ・ドメイン別チェックリスト・
 重大度ルーブリック・所見ライフサイクル・ツール・コンプライアンス対応を定義する。
 
-- 最新の適用結果: `docs/AUDIT_REPORT_20260908.md`（Web + モバイル + DB 実行検証。是正は PR-1〜PR-5 の段階実装中）
+- 最新の適用結果: `docs/AUDIT_REPORT_20260908.md`（Web + モバイル + DB 実行検証。是正 PR-1〜PR-5 は PR #1054 で全段階完了・main マージ済み、2026-09-09）
 - 過去レポート: `docs/AUDIT_REPORT_20260604.md`, `docs/AUDIT_REPORT_20260503.md`, `docs/AUDIT_REPORT_20260329.md`
 - コンプライアンス前提: `docs/iso27001-soc2-prep.md`, `docs/data-retention.md`, `docs/dpa-template.md`
 
