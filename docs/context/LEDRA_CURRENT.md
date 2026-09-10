@@ -12,10 +12,12 @@
 > 含まれた状態で実装済み**であり、追記(7)時点で main にマージ済みだった。
 > コードで実在確認済み（`src/lib/stripe/subscription.ts`の`getCurrentPeriodEnd`
 > 切り出し=PR-2、`apps/mobile/src/app/pos/register.tsx`のD-A1是正コメント=PR-3、
-> `src/app/c/layout.tsx`のnoindex=PR-4、`src/lib/api/withCaller.ts`・
-> `.github/workflows/gitleaks.yml`=PR-4（PR-5ではない。RELEASE_LOG
-> 2026-09-08「PR-4」エントリに記載済みで、`git log`のコミット`89e9fb1`でも
-> 確認済み。当初この追記でPR-5と誤記していたのを訂正）、他複数項目を実測）。
+> `src/app/c/layout.tsx`のnoindex=PR-4、`src/lib/api/withCaller.ts`新設=PR-5
+> （RELEASE_LOG 2026-09-08「PR-5」エントリのF-1参照）、`.github/workflows/gitleaks.yml`
+> =PR-4（PR-5ではない。RELEASE_LOG 2026-09-08「PR-4」エントリに記載済みで、
+> `git log`のコミット`89e9fb1`でも確認済み。当初この追記でgitleaksをPR-5と
+> 誤記して訂正した際、withCallerも誤って同じPR-4にまとめてしまっていたのを
+> 再度分離）、他複数項目を実測）。
 > **全体セキュリティ監査の是正計画（PR-1〜PR-5）は完結し、mainに反映済み。**
 > 【訂正 2026-09-09】残るのは、この監査から派生したfounder判断待ちの
 > OPEN_QUESTIONS**少なくとも4件**（下記。OPEN_QUESTIONS.md全体にはこの監査と
