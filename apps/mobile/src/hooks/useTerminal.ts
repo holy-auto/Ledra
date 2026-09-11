@@ -489,11 +489,33 @@ export function useTerminal() {
 
         // Apple Tap to Pay 要件 5.12: 非承認の結果を見る前にアプリを
         // 閉じていたら通知する。通知失敗は決済結果そのものを妨げない。
+        //
+        // pendingCapturePaymentIntentId が残っているなら、カードは既に切られていて
+        // capture（記録）だけが失敗したケース＝非承認ではない。同じ「完了しません
+        // でした」の文言で送ると、店舗が記録待ちの再試行導線（この pending を
+        // 使う）を知らずに決済し直し、二重請求になる。文言を分ける。
+        const alreadyCharged =
+          useTerminalStore.getState().pendingCapturePaymentIntentId != null;
+        const notification = alreadyCharged
+          ? {
+              title: "決済の記録に失敗しました",
+              body: "カードへの請求は完了している可能性があります。二重に決済せず、アプリを開いて記録をやり直してください。",
+            }
+          : { title: "決済が完了しませんでした", body: msg };
+
+        // ponytail: Tap to Pay の NFC 読み取りシートが閉じる際、フォアグラウンド
+        // のままでも AppState が一瞬 "inactive" を挟むことがある（未検証）。
+        // 300ms 待って再確認し、その一瞬だけの遷移を通知の誤送信として拾わない
+        // ようにする。300ms は経験則の暫定値。実機で NFC シート dismiss の
+        // 遷移時間を計測して調整すること
         if (shouldNotifyDeclinedInBackground(AppState.currentState)) {
-          void Notifications.scheduleNotificationAsync({
-            content: { title: "決済が完了しませんでした", body: msg },
-            trigger: null,
-          }).catch(() => {});
+          setTimeout(() => {
+            if (!shouldNotifyDeclinedInBackground(AppState.currentState)) return;
+            void Notifications.scheduleNotificationAsync({
+              content: notification,
+              trigger: null,
+            }).catch(() => {});
+          }, 300);
         }
 
         return { success: false, error: msg };

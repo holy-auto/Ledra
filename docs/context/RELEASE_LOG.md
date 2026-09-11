@@ -17,6 +17,13 @@
 - クライアント側のみの対応。NFCタップ中にアプリごと強制終了された場合は
   未カバー（サーバー側 Stripe webhook + push 送信の新規構築が必要になるが、
   現状そのインフラ自体が存在しないため今回は見送り。理由は DECISION_LOG 参照）。
+- `/code-review` で2件の指摘。(1) カードは既に切られたが記録
+  （`/pos/terminal/capture`）だけ失敗したケースを「決済が完了しませんでした」
+  と同じ文言で通知すると、店舗が二重決済してしまう危険があった →
+  `pendingCapturePaymentIntentId` の有無で文言を分岐。(2) Tap to Pay の
+  NFC読み取りシートの閉じ際に `AppState` が一瞬 "inactive" を挟む可能性
+  （未検証）を指摘され、300ms 後に再確認してから送る形にした
+  （ponytail、実機での遷移時間計測は未実施）。
 - 対象: `apps/mobile/src/hooks/useTerminal.ts`,
   `apps/mobile/src/lib/paymentOutcomeNotify.ts`（新規）。
 
