@@ -25,6 +25,9 @@ import { registerForPushNotifications } from "@/lib/push";
 import { stackScreenOptions } from "@/components/screenOptions";
 import { SPLASH_FAILSAFE_MS } from "@/lib/introTiming";
 import { protectedDeepLinkPath } from "@/lib/pendingDeepLink";
+import { supabase } from "@/lib/supabase";
+import { addOpenPhotoListener, syncWatchSession } from "@/lib/watchSync";
+import * as Notifications from "expo-notifications";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -72,6 +75,56 @@ function UiPreferencesGate() {
   return null;
 }
 
+/** iOSの認証更新と店舗切替を、ペアリング済みApple Watchへ同期する。 */
+function WatchSyncGate() {
+  const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
+  const storeID = useAuthStore((state) => state.selectedStore?.id);
+
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    void syncWatchSession(storeID);
+
+    const { data } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session?.access_token) void syncWatchSession(storeID);
+    });
+    return () => data.subscription.unsubscribe();
+  }, [isAuthenticated, storeID]);
+
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    const openRoute = (value: unknown) => {
+      if (
+        typeof value === "string" &&
+        /^\/work\/[0-9a-z-]+(?:\?openPhotos=1(?:&photoStage=(?:intake_before|in_progress|after))?)?$/i.test(value)
+      ) {
+        router.push(value as never);
+        return true;
+      }
+      return false;
+    };
+    const watchSubscription = addOpenPhotoListener(({ reservationId, stage }) => {
+      const suffix = stage ? `&photoStage=${stage}` : "";
+      openRoute(`/work/${reservationId}?openPhotos=1${suffix}`);
+    });
+    const notificationSubscription = Notifications.addNotificationResponseReceivedListener((response) => {
+      if (openRoute(response.notification.request.content.data?.route)) {
+        void Notifications.clearLastNotificationResponseAsync();
+      }
+    });
+    void Notifications.getLastNotificationResponseAsync().then((response) => {
+      if (response && openRoute(response.notification.request.content.data?.route)) {
+        void Notifications.clearLastNotificationResponseAsync();
+      }
+    });
+    return () => {
+      watchSubscription.remove();
+      notificationSubscription.remove();
+    };
+  }, [isAuthenticated]);
+
+  return null;
+}
+
 // 401 受信時のグローバルハンドラ: store を初期化して /login へリダイレクト
 bindUnauthorizedHandler(async () => {
   await signOutEverywhere();
@@ -83,9 +136,7 @@ initSentry();
 
 // authStore と Sentry の user タグを連動 (ログイン/ログアウトを反映)
 useAuthStore.subscribe((state) => {
-  setSentryUser(
-    state.user ? { id: state.user.id, tenantId: state.user.tenantId } : null
-  );
+  setSentryUser(state.user ? { id: state.user.id, tenantId: state.user.tenantId } : null);
 });
 
 export default function RootLayout() {
@@ -146,10 +197,7 @@ export default function RootLayout() {
   // SDK 0.0.1-beta.29 では initialize() 経由ではなく Provider 経由で渡す
   // API側は POST のみ受付なので必ず POST で叩く
   const fetchTokenProvider = useCallback(async () => {
-    const res = await mobileApi<{ secret: string }>(
-      "/pos/terminal/connection-token",
-      { method: "POST" }
-    );
+    const res = await mobileApi<{ secret: string }>("/pos/terminal/connection-token", { method: "POST" });
     return res.secret;
   }, []);
 
@@ -181,6 +229,7 @@ export default function RootLayout() {
           <TapToPayWarmupGate />
           <PushRegisterGate />
           <UiPreferencesGate />
+          <WatchSyncGate />
           <PaperProvider theme={theme}>
             <ToastProvider>
               <StatusBar style="dark" />

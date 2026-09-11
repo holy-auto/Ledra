@@ -1,24 +1,7 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import dayjs from "dayjs";
-import {
-  View,
-  StyleSheet,
-  ScrollView,
-  RefreshControl,
-  Image,
-  Alert,
-  Pressable,
-} from "react-native";
-import {
-  Text,
-  Icon,
-  TextInput,
-  Snackbar,
-  ActivityIndicator,
-  Dialog,
-  Portal,
-  Checkbox,
-} from "react-native-paper";
+import { View, StyleSheet, ScrollView, RefreshControl, Image, Alert, Pressable } from "react-native";
+import { Text, Icon, TextInput, Snackbar, ActivityIndicator, Dialog, Portal, Checkbox } from "react-native-paper";
 import { useLocalSearchParams, router, Stack } from "expo-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
@@ -28,23 +11,14 @@ import { confirmationState } from "@/lib/confirmationState";
 import { useMenuItems } from "@/hooks/useMenuItems";
 import { useMenuFilter } from "@/components/MenuPicker";
 import { useAuthStore } from "@/stores/authStore";
-import {
-  ProgressRing,
-  NextActionCard,
-  StatusBadge,
-  LedraButton,
-} from "@/components/ui";
+import { ProgressRing, NextActionCard, StatusBadge, LedraButton } from "@/components/ui";
 import { Steps } from "@/components/Steps";
-import {
-  colors,
-  spacing,
-  radius,
-  typography,
-  shadows,
-} from "@/constants/tokens";
+import { colors, spacing, radius, typography, shadows } from "@/constants/tokens";
+import { stopWorkLiveActivity, updateWorkLiveActivity } from "@/lib/watchSync";
 
 interface WorkOrder {
   id: string;
+  title: string | null;
   status: string;
   sub_status: string | null;
   progress_note: string | null;
@@ -67,7 +41,19 @@ interface WorkOrder {
   signoff_requested_at: string | null;
   signoff_deadline: string | null;
   signed_off_at: string | null;
+  current_step_key: string | null;
+  current_step_order: number | null;
+  progress_pct: number | null;
+  workflow_template: { steps: unknown } | null;
+  step_logs: Array<{
+    step_order: number;
+    step_label: string | null;
+    started_at: string | null;
+    completed_at: string | null;
+  }>;
 }
+
+type WorkflowStep = { order: number; label?: string; estimated_min?: number };
 
 interface WorkPhoto {
   id: string;
@@ -108,7 +94,11 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 ];
 
 export default function WorkDetailScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, openPhotos, photoStage } = useLocalSearchParams<{
+    id: string;
+    openPhotos?: string;
+    photoStage?: string;
+  }>();
   const { user } = useAuthStore();
   const queryClient = useQueryClient();
   const [refreshing, setRefreshing] = useState(false);
@@ -129,16 +119,19 @@ export default function WorkDetailScreen() {
         .from("reservations")
         .select(
           `
-          id, status, sub_status, progress_note, scheduled_date, start_time,
+          id, title, status, sub_status, progress_note, scheduled_date, start_time,
           customer:customers(name, phone),
           vehicle:vehicles(id, plate_display, maker, model),
+          current_step_key, current_step_order, progress_pct,
+          workflow_template:workflow_templates(steps),
+          step_logs:reservation_step_logs(step_order, step_label, started_at, completed_at),
           menu_items_json,
           estimated_amount,
           signoff_status,
           signoff_requested_at,
           signoff_deadline,
           signed_off_at
-        `
+        `,
         )
         .eq("id", id)
         .single();
@@ -151,7 +144,37 @@ export default function WorkDetailScreen() {
     enabled: !!id,
   });
 
-  const { data: certId } = useQuery({
+  useEffect(() => {
+    if (!work) return;
+    if (work.status === "completed" || work.status === "cancelled") {
+      void stopWorkLiveActivity(work.id);
+      return;
+    }
+    if (work.status !== "in_progress") return;
+
+    const steps = Array.isArray(work.workflow_template?.steps) ? (work.workflow_template.steps as WorkflowStep[]) : [];
+    const currentOrder = work.current_step_order ?? 0;
+    const activeLog = work.step_logs?.find((log) => log.step_order === currentOrder && !log.completed_at);
+    const definition = steps.find((step) => step.order === currentOrder);
+    const estimatedMinutes = Math.max(0, definition?.estimated_min ?? 0);
+    const startedAt = activeLog?.started_at ? new Date(activeLog.started_at) : null;
+    const expectedEndAt =
+      startedAt && !Number.isNaN(startedAt.getTime()) && estimatedMinutes > 0
+        ? new Date(startedAt.getTime() + estimatedMinutes * 60_000).toISOString()
+        : undefined;
+
+    void updateWorkLiveActivity({
+      reservationId: work.id,
+      plate: work.vehicle?.plate_display || "ナンバー未登録",
+      title: work.title || "作業",
+      currentStep: activeLog?.step_label || definition?.label || work.current_step_key || "作業中",
+      statusLabel: STATUS_LABELS[work.status] ?? "作業中",
+      progress: Math.max(0, Math.min(100, work.progress_pct ?? 0)),
+      ...(expectedEndAt ? { expectedEndAt } : {}),
+    });
+  }, [work]);
+
+  const { data: certId, isFetched: certificateResolved } = useQuery({
     queryKey: ["work-certificate", id],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -188,24 +211,29 @@ export default function WorkDetailScreen() {
     enabled: !!certId,
   });
 
-  function goToPhotos() {
+  const goToPhotos = useCallback(() => {
     if (certId) {
-      router.push(`/certificates/${certId}/photos`);
+      const stageParam = ["intake_before", "in_progress", "after"].includes(photoStage ?? "")
+        ? `?stage=${photoStage}`
+        : "";
+      router.push(`/certificates/${certId}/photos${stageParam}`);
     } else {
-      Alert.alert(
-        "証明書が必要です",
-        "施工写真は証明書に紐づけて保存します。先に証明書を作成してください。",
-        [
-          { text: "キャンセル", style: "cancel" },
-          {
-            text: "証明書を作成",
-            onPress: () =>
-              router.push(`/certificates/new?reservationId=${id}`),
-          },
-        ]
-      );
+      Alert.alert("証明書が必要です", "施工写真は証明書に紐づけて保存します。先に証明書を作成してください。", [
+        { text: "キャンセル", style: "cancel" },
+        {
+          text: "証明書を作成",
+          onPress: () => router.push(`/certificates/new?reservationId=${id}`),
+        },
+      ]);
     }
-  }
+  }, [certId, id, photoStage]);
+
+  const watchPhotoHandled = useRef(false);
+  useEffect(() => {
+    if (openPhotos !== "1" || !certificateResolved || watchPhotoHandled.current) return;
+    watchPhotoHandled.current = true;
+    goToPhotos();
+  }, [certificateResolved, goToPhotos, openPhotos]);
 
   const updateMutation = useMutation({
     mutationFn: async () => {
@@ -312,12 +340,7 @@ export default function WorkDetailScreen() {
   }, [queryClient, id, certId]);
 
   // ponytail: derive step index from status — real impl would use work_steps table
-  const currentStep =
-    work?.status === "completed"
-      ? WORK_STEPS.length
-      : work?.status === "in_progress"
-        ? 3
-        : 1;
+  const currentStep = work?.status === "completed" ? WORK_STEPS.length : work?.status === "in_progress" ? 3 : 1;
 
   // ponytail: progress percentage — mock based on step
   const progressPercent = Math.round((currentStep / WORK_STEPS.length) * 100);
@@ -346,9 +369,7 @@ export default function WorkDetailScreen() {
       <Stack.Screen options={{ title: "作業詳細" }} />
       <ScrollView
         style={styles.container}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-        }
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
         {/* ── Vehicle Hero Card ── */}
         <View style={styles.heroCard}>
@@ -360,14 +381,10 @@ export default function WorkDetailScreen() {
               <Text style={styles.heroMake}>
                 {work.vehicle?.maker ?? ""} {work.vehicle?.model ?? ""}
               </Text>
-              <Text style={styles.heroPlate}>
-                {work.vehicle?.plate_display ?? "車両不明"}
-              </Text>
+              <Text style={styles.heroPlate}>{work.vehicle?.plate_display ?? "車両不明"}</Text>
               <View style={styles.heroMeta}>
                 <Icon source="calendar-outline" size={14} color={colors.textTertiary} />
-                <Text style={styles.heroMetaText}>
-                  納車 {work.start_time?.slice(0, 5) ?? "--:--"}
-                </Text>
+                <Text style={styles.heroMetaText}>納車 {work.start_time?.slice(0, 5) ?? "--:--"}</Text>
               </View>
             </View>
             <ProgressRing
@@ -390,11 +407,7 @@ export default function WorkDetailScreen() {
                   ? "施工を完了する"
                   : "作業を開始する"
             }
-            reason={
-              photos.length === 0
-                ? `残り ${5 - photos.length} 枚`
-                : undefined
-            }
+            reason={photos.length === 0 ? `残り ${5 - photos.length} 枚` : undefined}
             icon={photos.length === 0 ? "camera" : "check-circle-outline"}
             onPress={photos.length === 0 ? goToPhotos : () => {}}
           />
@@ -411,22 +424,12 @@ export default function WorkDetailScreen() {
           {TABS.map((tab) => (
             <Pressable
               key={tab.key}
-              style={[
-                styles.tab,
-                activeTab === tab.key && styles.tabActive,
-              ]}
+              style={[styles.tab, activeTab === tab.key && styles.tabActive]}
               onPress={() => setActiveTab(tab.key)}
               accessibilityRole="tab"
               accessibilityState={{ selected: activeTab === tab.key }}
             >
-              <Text
-                style={[
-                  styles.tabLabel,
-                  activeTab === tab.key && styles.tabLabelActive,
-                ]}
-              >
-                {tab.label}
-              </Text>
+              <Text style={[styles.tabLabel, activeTab === tab.key && styles.tabLabelActive]}>{tab.label}</Text>
             </Pressable>
           ))}
         </View>
@@ -439,18 +442,14 @@ export default function WorkDetailScreen() {
               <Pressable style={styles.quickInfoCard} onPress={() => setPartsVisible(true)}>
                 <Icon source="wrench" size={20} color={colors.primary} />
                 <Text style={styles.quickInfoLabel}>使用部品・資材</Text>
-                <Text style={styles.quickInfoValue}>
-                  {parseMenuItems(work.menu_items_json).length}点
-                </Text>
+                <Text style={styles.quickInfoValue}>{parseMenuItems(work.menu_items_json).length}点</Text>
                 <Icon source="chevron-right" size={16} color={colors.textTertiary} />
               </Pressable>
 
               <Pressable style={styles.quickInfoCard} onPress={() => setConfirmVisible(true)}>
                 <Icon source="account-check-outline" size={20} color={colors.primary} />
                 <Text style={styles.quickInfoLabel}>お客様確認</Text>
-                <Text style={[styles.quickInfoValue, { color: confirmState.color }]}>
-                  {confirmState.label}
-                </Text>
+                <Text style={[styles.quickInfoValue, { color: confirmState.color }]}>{confirmState.label}</Text>
                 <Icon source="chevron-right" size={16} color={colors.textTertiary} />
               </Pressable>
 
@@ -458,9 +457,7 @@ export default function WorkDetailScreen() {
               <Pressable style={styles.quickInfoCard} onPress={() => setActiveTab("work")}>
                 <Icon source="note-text-outline" size={20} color={colors.primary} />
                 <Text style={styles.quickInfoLabel}>備考</Text>
-                <Text style={styles.quickInfoValue}>
-                  {progressNote ? "1件" : "なし"}
-                </Text>
+                <Text style={styles.quickInfoValue}>{progressNote ? "1件" : "なし"}</Text>
                 <Icon source="chevron-right" size={16} color={colors.textTertiary} />
               </Pressable>
             </View>
@@ -484,9 +481,7 @@ export default function WorkDetailScreen() {
               <Text style={styles.sectionTitle}>顧客情報</Text>
               <View style={styles.infoRow}>
                 <Text style={styles.infoLabel}>お名前</Text>
-                <Text style={styles.infoValue}>
-                  {work.customer?.name ?? "未登録"}
-                </Text>
+                <Text style={styles.infoValue}>{work.customer?.name ?? "未登録"}</Text>
               </View>
               {work.customer?.phone && (
                 <View style={styles.infoRow}>
@@ -541,10 +536,7 @@ export default function WorkDetailScreen() {
           <View style={styles.sectionCard}>
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>施工写真</Text>
-              <StatusBadge
-                label={`${photos.length}枚`}
-                severity={photos.length > 0 ? "success" : "neutral"}
-              />
+              <StatusBadge label={`${photos.length}枚`} severity={photos.length > 0 ? "success" : "neutral"} />
             </View>
             {photos.length > 0 ? (
               <View style={styles.photoGrid}>
@@ -552,11 +544,8 @@ export default function WorkDetailScreen() {
                   <Image
                     key={photo.id}
                     source={{
-                      uri: supabase.storage
-                        .from("assets")
-                        .getPublicUrl(
-                          photo.thumbnail_path ?? photo.storage_path
-                        ).data.publicUrl,
+                      uri: supabase.storage.from("assets").getPublicUrl(photo.thumbnail_path ?? photo.storage_path).data
+                        .publicUrl,
                     }}
                     style={styles.photoThumb}
                   />
@@ -565,12 +554,7 @@ export default function WorkDetailScreen() {
             ) : (
               <Text style={styles.emptyText}>まだ写真がありません</Text>
             )}
-            <LedraButton
-              variant="primary"
-              icon="camera"
-              onPress={goToPhotos}
-              style={{ marginTop: spacing.lg }}
-            >
+            <LedraButton variant="primary" icon="camera" onPress={goToPhotos} style={{ marginTop: spacing.lg }}>
               撮影する
             </LedraButton>
           </View>
@@ -580,18 +564,13 @@ export default function WorkDetailScreen() {
           <View style={styles.sectionCard}>
             <Text style={styles.sectionTitle}>関連書類</Text>
             {certId ? (
-              <Pressable
-                style={styles.docRow}
-                onPress={() => router.push(`/certificates/${certId}`)}
-              >
+              <Pressable style={styles.docRow} onPress={() => router.push(`/certificates/${certId}`)}>
                 <Icon source="certificate" size={20} color={colors.primary} />
                 <Text style={styles.docText}>施工証明書</Text>
                 <Icon source="chevron-right" size={16} color={colors.textTertiary} />
               </Pressable>
             ) : (
-              <Text style={styles.emptyText}>
-                関連する書類はまだありません
-              </Text>
+              <Text style={styles.emptyText}>関連する書類はまだありません</Text>
             )}
           </View>
         )}
@@ -602,9 +581,7 @@ export default function WorkDetailScreen() {
             <View style={styles.historyItem}>
               <View style={styles.historyDot} />
               <View>
-                <Text style={styles.historyText}>
-                  ステータス: {STATUS_LABELS[work.status] ?? work.status}
-                </Text>
+                <Text style={styles.historyText}>ステータス: {STATUS_LABELS[work.status] ?? work.status}</Text>
                 <Text style={styles.historyTime}>{work.scheduled_date}</Text>
               </View>
             </View>
@@ -613,11 +590,7 @@ export default function WorkDetailScreen() {
 
         {/* Bottom action */}
         <View style={styles.bottomActions}>
-          <LedraButton
-            variant="outline"
-            icon="bullhorn"
-            onPress={() => router.push(`/work/${id}/progress`)}
-          >
+          <LedraButton variant="outline" icon="bullhorn" onPress={() => router.push(`/work/${id}/progress`)}>
             進捗を更新
           </LedraButton>
         </View>
@@ -661,10 +634,7 @@ export default function WorkDetailScreen() {
                     style={[styles.dialogCat, partsFilter.activeCategory === c && styles.dialogCatActive]}
                   >
                     <Text
-                      style={[
-                        styles.dialogCatText,
-                        partsFilter.activeCategory === c && styles.dialogCatTextActive,
-                      ]}
+                      style={[styles.dialogCatText, partsFilter.activeCategory === c && styles.dialogCatTextActive]}
                     >
                       {c}
                     </Text>
@@ -682,9 +652,7 @@ export default function WorkDetailScreen() {
                     label={`${m.name}　¥${(m.unit_price ?? 0).toLocaleString()}`}
                     status={addingIds.includes(m.id) ? "checked" : "unchecked"}
                     onPress={() =>
-                      setAddingIds((prev) =>
-                        prev.includes(m.id) ? prev.filter((x) => x !== m.id) : [...prev, m.id],
-                      )
+                      setAddingIds((prev) => (prev.includes(m.id) ? prev.filter((x) => x !== m.id) : [...prev, m.id]))
                     }
                   />
                 ))
@@ -701,10 +669,7 @@ export default function WorkDetailScreen() {
               style={styles.dialogBtn}
             >
               <Text
-                style={[
-                  styles.dialogBtnText,
-                  { color: addingIds.length === 0 ? colors.textTertiary : colors.primary },
-                ]}
+                style={[styles.dialogBtnText, { color: addingIds.length === 0 ? colors.textTertiary : colors.primary }]}
               >
                 {addingIds.length > 0 ? `${addingIds.length}件を追加` : "追加"}
               </Text>
@@ -719,24 +684,16 @@ export default function WorkDetailScreen() {
             <Text style={[styles.dialogStatus, { color: confirmState.color }]}>{confirm.label}</Text>
             <Text style={styles.dialogRow}>{confirm.detail}</Text>
             {work.signoff_requested_at && (
-              <Text style={styles.dialogRow}>
-                依頼: {dayjs(work.signoff_requested_at).format("M/D HH:mm")}
-              </Text>
+              <Text style={styles.dialogRow}>依頼: {dayjs(work.signoff_requested_at).format("M/D HH:mm")}</Text>
             )}
             {work.signoff_deadline && !work.signed_off_at && (
-              <Text style={styles.dialogRow}>
-                期限: {dayjs(work.signoff_deadline).format("M/D HH:mm")}
-              </Text>
+              <Text style={styles.dialogRow}>期限: {dayjs(work.signoff_deadline).format("M/D HH:mm")}</Text>
             )}
             {work.signed_off_at && (
-              <Text style={styles.dialogRow}>
-                確認: {dayjs(work.signed_off_at).format("M/D HH:mm")}
-              </Text>
+              <Text style={styles.dialogRow}>確認: {dayjs(work.signed_off_at).format("M/D HH:mm")}</Text>
             )}
             {/* ponytail: 上限。開封は記録していないので「読んだか」までは出せない */}
-            <Text style={styles.dialogNote}>
-              お客様が開いたかどうかは記録していないため分かりません。
-            </Text>
+            <Text style={styles.dialogNote}>お客様が開いたかどうかは記録していないため分かりません。</Text>
           </Dialog.Content>
           <Dialog.Actions>
             <Pressable onPress={() => setConfirmVisible(false)} style={styles.dialogBtn}>
@@ -746,11 +703,7 @@ export default function WorkDetailScreen() {
         </Dialog>
       </Portal>
 
-      <Snackbar
-        visible={!!snackbar}
-        onDismiss={() => setSnackbar("")}
-        duration={2000}
-      >
+      <Snackbar visible={!!snackbar} onDismiss={() => setSnackbar("")} duration={2000}>
         {snackbar}
       </Snackbar>
     </>
@@ -979,7 +932,12 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.lg,
   },
   dialogScroll: { maxHeight: 420 },
-  dialogSectionLabel: { ...typography.label, color: colors.textSecondary, marginTop: spacing.md, marginBottom: spacing.xs },
+  dialogSectionLabel: {
+    ...typography.label,
+    color: colors.textSecondary,
+    marginTop: spacing.md,
+    marginBottom: spacing.xs,
+  },
   dialogEmpty: { ...typography.bodySmall, color: colors.textTertiary },
   dialogRow: { ...typography.bodySmall, color: colors.textPrimary, marginBottom: spacing.xs },
   dialogStatus: { ...typography.titleMedium, marginBottom: spacing.sm },
@@ -988,7 +946,13 @@ const styles = StyleSheet.create({
   dialogBtnText: { ...typography.label, color: colors.primary },
   dialogSearch: { marginBottom: spacing.sm, backgroundColor: colors.surface },
   dialogCats: { marginBottom: spacing.sm },
-  dialogCat: { paddingHorizontal: spacing.md, paddingVertical: spacing.xs, borderRadius: radius.full, backgroundColor: colors.surfaceVariant, marginRight: spacing.xs },
+  dialogCat: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    borderRadius: radius.full,
+    backgroundColor: colors.surfaceVariant,
+    marginRight: spacing.xs,
+  },
   dialogCatActive: { backgroundColor: colors.primary },
   dialogCatText: { ...typography.labelSmall, color: colors.textSecondary },
   dialogCatTextActive: { color: colors.surface },
