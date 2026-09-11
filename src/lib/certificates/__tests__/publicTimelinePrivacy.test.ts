@@ -16,6 +16,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { stripComments } from "@/lib/__tests__/sourceScan";
+import { PRIVATE_AUDIT_TYPES } from "@/lib/audit/certificateLog";
 
 const REPO = resolve(__dirname, "../../../..");
 const FILE = "src/lib/certificates/publicData.ts";
@@ -40,32 +41,24 @@ const MUST_BE_PRIVATE = [
 const MUST_STAY_PUBLIC = ["certificate_issued", "certificate_edited", "certificate_voided"];
 
 describe("公開タイムラインの閲覧監査除外", () => {
-  const block = SRC.match(/const PRIVATE_HISTORY_TYPES\s*=\s*\[([\s\S]*?)\]/);
-
-  it("除外リストが存在する", () => {
-    expect(block, "PRIVATE_HISTORY_TYPES が消えている（公開ページに監査行が戻る）").not.toBeNull();
-  });
+  // 除外リストは 2026-09-11 に**書く側**（`audit/certificateLog.ts`）へ移した。
+  // 読む側が公開ページだけではなかったため（顧客ポータルにも同じ漏れが残っていた。
+  // MISTAKE_LEDGER M-076）。ここは grep ではなく**値**で見る。
+  const excluded: readonly string[] = PRIVATE_AUDIT_TYPES;
 
   it.each(MUST_BE_PRIVATE)("%s を公開タイムラインから除外している", (t) => {
-    expect(block![1], `${t} が除外リストから外れている。既定 description に uid / IP が入る`).toContain(t);
+    expect(excluded, `${t} が除外リストから外れている。既定 description に uid / IP が入る`).toContain(t);
   });
 
   it.each(MUST_STAY_PUBLIC)("%s は公開したままにする", (t) => {
-    expect(block![1], `${t} は車両の出来事なので公開タイムラインに残す`).not.toContain(t);
-  });
-
-  // `.not("type","in",…)` だけだと `NULL NOT IN (…)` が偽になり、
-  // type が空の旧スキーマ行まで公開タイムラインから消える。
-  it("type が NULL の行は落とさない", () => {
-    expect(SRC, "NULL 行が巻き添えで消える書き方に戻っている").toMatch(/\.or\(\s*[`'"]type\.is\.null,type\.not\.in\./);
+    expect(excluded, `${t} は車両の出来事なので公開タイムラインに残す`).not.toContain(t);
   });
 
   // 検査が空振りしていないことを確かめる（型 A）。
-  it("実際にクエリへ適用されている", () => {
+  // 定数が在るだけで**クエリに掛かっていない**状態を拾う。
+  it("公開ページのクエリに実際に適用されている", () => {
     const query = SRC.slice(SRC.indexOf('.from("vehicle_histories")'));
     expect(query, "vehicle_histories のクエリが見つからない").not.toBe("");
-    expect(query.slice(0, 1500), "除外がクエリに掛かっていない（定数だけ置いて使っていない）").toContain(
-      "PRIVATE_HISTORY_TYPES",
-    );
+    expect(query.slice(0, 1500), "除外がクエリに掛かっていない").toContain("EXCLUDE_PRIVATE_AUDIT_FILTER");
   });
 });

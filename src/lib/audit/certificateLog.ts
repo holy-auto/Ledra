@@ -10,6 +10,32 @@ export type CertificateAuditType =
   | "certificate_public_viewed"
   | "certificate_public_pdf";
 
+/**
+ * **閲覧・出力の監査**。この5種別の行は、`description` を省略して書かれると
+ * 下の `logCertificateAction` が `Public ID: … / User: <uid> / IP: <IP>` を組み立てる。
+ * つまり**訪問者の IP と社内の uid が本文に入る**。
+ *
+ * `vehicle_histories` は車両の履歴と監査ログが同居しているので、**車両履歴を
+ * 顧客・第三者に見せる経路は、必ずこの5種別を落とすこと。** 落とし忘れると漏れる。
+ *
+ * - 公開証明書ページ `/c/[public_id]`（PR #1040 で対応）
+ * - 顧客ポータル `/api/customer/list` と `/api/customer/data-export`（本 PR）
+ *
+ * 「誰かが見た」は車両の出来事ではないので、そもそも履歴として見せる意味がない。
+ * **description の書式ではなく型で落とす。** 既定の組み立てが変わっても、
+ * 監査種別が増えても漏れない（増えたらこの配列に足す）。
+ */
+export const PRIVATE_AUDIT_TYPES = [
+  "certificate_viewed",
+  "certificate_pdf_generated",
+  "certificate_pdf_batch",
+  "certificate_public_viewed",
+  "certificate_public_pdf",
+] as const satisfies readonly CertificateAuditType[];
+
+/** PostgREST の `.or()` に渡す除外条件。`type IS NULL` の旧行は残す。 */
+export const EXCLUDE_PRIVATE_AUDIT_FILTER = `type.is.null,type.not.in.(${PRIVATE_AUDIT_TYPES.join(",")})`;
+
 export type AuditEventType =
   | CertificateAuditType
   | "vehicle_registered"

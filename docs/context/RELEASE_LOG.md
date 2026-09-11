@@ -4,6 +4,23 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-09-11 閲覧監査の IP / uid が顧客ポータルにも出ていたのを塞いだ
+
+- PR #1040 が公開証明書ページで塞いだのと**同じ漏れが、顧客ポータルに残っていた**。
+  `listHistoryForCustomer` が `vehicle_histories` を型で絞らず service-role で引き、
+  `/api/customer/list` が画面に描画、`/api/customer/data-export` が書き出しに入れていた。
+- **本番の実測**: 14行（IP 6 / uid 8）、9証明書・4テナント。ログイン済み顧客から、
+  自分の証明書の履歴として**他の訪問者の IP** と**店舗スタッフの uid** が見えていた。
+  （公開ページ側は #1040 の修正が効いており、同じ条件で数えて 0 件だった。）
+- 除外する型の定義を**書く側**（`audit/certificateLog.ts` の `PRIVATE_AUDIT_TYPES`）へ移し、
+  読む側2経路が `EXCLUDE_PRIVATE_AUDIT_FILTER` を共有する形にした。
+  `publicData.ts` にあった同じ配列は削除（定義を1つに）。
+- 回帰テスト `src/lib/audit/__tests__/privateAuditTypes.test.ts`。
+  **テナント外へ出す読み手を名指しで列挙**し、各クエリの鎖に除外が掛かっているかを
+  構文木で見る。検出器の空振りも同じファイルで確認。3通りの変異で赤を確認済み。
+- **既存行の IP / uid は DB に残る。** 表示されなくなっただけで、扱いは未判断
+  （#1040 の起票を引き継ぎ、OPEN_QUESTIONS 継続）。
+
 ## 2026-09-08 plpgsql を静的検査の対象に入れたら、本番の不具合が2件出た（本番未適用）
 
 #1016 の未解決事項を潰しに行った結果。**`scripts/replay-migrations.mjs` に

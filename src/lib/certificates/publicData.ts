@@ -1,4 +1,5 @@
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
+import { EXCLUDE_PRIVATE_AUDIT_FILTER } from "@/lib/audit/certificateLog";
 import {
   resolveCertificateMedia,
   type CertificateMediaRow,
@@ -104,13 +105,6 @@ type HistoryRow = {
  * 中身ではなく型で落とす —— description の書式に依存しないので、
  * 監査種別が増えても漏れない。発行・編集・無効化は車両の出来事なので残す。
  */
-const PRIVATE_HISTORY_TYPES = [
-  "certificate_viewed",
-  "certificate_pdf_generated",
-  "certificate_pdf_batch",
-  "certificate_public_viewed",
-  "certificate_public_pdf",
-] as const;
 
 type ReservationRow = {
   id: string;
@@ -270,7 +264,7 @@ export async function getPublicCertificateData(pid: string): Promise<PublicCerti
           // （SQL の `NULL NOT IN (…)` は NULL＝偽扱い）。旧スキーマの行は type が
           // 空でありうる（描画側の `typeBadge(type: string | null)` がその想定）ので、
           // NULL は明示的に残す。
-          .or(`type.is.null,type.not.in.(${PRIVATE_HISTORY_TYPES.join(",")})`)
+          .or(EXCLUDE_PRIVATE_AUDIT_FILTER)
           .order("performed_at", { ascending: false })
           .limit(50)
           .returns<HistoryRow[]>()
