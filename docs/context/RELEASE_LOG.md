@@ -4,6 +4,97 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-09-08 plpgsql を静的検査の対象に入れたら、本番の不具合が2件出た（本番未適用）
+
+#1016 の未解決事項を潰しに行った結果。**`scripts/replay-migrations.mjs` に
+`plpgsql_check` を足した初回の走査で2件出た。**
+
+| 関数 | 症状 | 見え方 |
+|---|---|---|
+| `insurer_get_certificate` | 42702 `column reference "tenant_id" is ambiguous` | 保険会社ポータルの証明書詳細がエラー |
+| `agent_rankings` | 42883 `operator does not exist: date >= text` | **200 で空のランキング**（画面は「該当なし」） |
+
+- **`insurer_get_certificate` は `is_pii_disclosed` を呼ぶ手前で落ちていた。**
+  `RETURNS TABLE` の出力列 `tenant_id` と `insurer_tenant_access.tenant_id` が同名で、
+  plpgsql の `variable_conflict` は既定で `error`。つまり #1016 で直した関数には
+  **到達していなかった**。本番の `insurer_access_logs` は `action='view'` が**0件**で、
+  この機能は一度も成功していない。**部品を直して機能を直したと書いていた**
+  （MISTAKE_LEDGER M-074）。
+- **`agent_rankings` は失敗が見えない形で壊れていた。** 呼び出し元
+  `/api/agent/rankings` が `const { data } = await supabase.rpc(...)` と書いて `error` を
+  捨てているため、落ちても 200 と空配列が返る。本番で
+  `select public.agent_rankings('month')` を実行して 42883 を再現済み。
+  **【2026-09-10 追記】この2件目はこの PR では出さない。** 別経路の
+  `20260908131725`（型不一致）と `20260909003200`（JOIN のファンアウト）が先にマージ・
+  適用され、あわせて**認可チェック**（有効な代理店ユーザーであること）が付いた。
+  版番号を付け替えるとこの PR の定義が最後に適用され、その認可チェックを消して
+  しまうため、**`agent_rankings` の再作成は取り下げた**。
+- **修正**（**`20260910010000`**。起票時は `20260908005952`。本番の最大版が
+  `20260910000000` まで進んだため改名）。あわせて `search_path` を `''` に締め、本体を
+  `public.` で修飾した（`20260404000000` の一括適用から漏れて `'public, extensions'` の
+  まま残っており、リポジトリの lint にも違反していた）。**本番未適用** —— 2026-09-07 に
+  決めたとおり PR をマージして `db-migrate` に任せる。
+- **再生 DB で機能ごと通して確認済み**: 同意なし → `山***` / `pii_disclosed=f`、
+  同意あり → 実名 / `pii_disclosed=t`、`insurer_access_logs` に2行。
+- **検査の作り**: `plpgsql_check_function()` を全 plpgsql 関数に当てる。トリガ関数は
+  `relid` を渡さないと検査できないので、その関数を使っているトリガの**すべての
+  テーブル**に対して1回ずつ回す（再生 DB で (トリガ関数, テーブル) は **129 組**、
+  関数の実数は 36）。どのトリガからも使われていないものは対象外。**現在2本**:
+  `generate_case_number` / `handle_updated_at`。どちらも本番ではトリガが付いている
+  （`trg_set_case_number` / `trg_job_orders_updated_at`）ので、**死んでいるのではなく
+  再生 DB にトリガが無い**＝ドリフト。検査の穴として毎回名前を出す。
+  陽性・陰性の対照を対で置き、対照が通ったときだけ本走査に進む。CI は
+  `REQUIRE_PLPGSQL_CHECK=1` で、**拡張が入らなかったときに黙って飛ばさせない**。
+  **【2026-09-10 訂正】初版は「トリガから1つ取って渡す」（`limit 1`）で、129 組のうち
+  36 組しか見ていなかった** —— `set_updated_at` は 88 テーブルに付いているのに
+  1テーブルだけ。`/code-review` の指摘で全組に広げたところ、**隠れていた 42703 が
+  1件出た**（MISTAKE_LEDGER M-075）。
+- **列レベルのドリフトが1件見つかり、あわせて塞いだ**（`20260910010100`）。
+  `vehicle_histories.updated_at` は本番にだけ在り、再生 DB に無かった。
+  `20260907010100` で本番から書き起こしたトリガ `trg_vehicle_histories_set_updated_at`
+  （`set_updated_at`）が `new.updated_at` へ代入するので、列の無い再生 DB では
+  UPDATE のたびに 42703 で落ちる。**本番は無事**（`timestamptz not null default now()`
+  が在ることを実測確認）ので、追加は `add column if not exists` で本番では no-op。
+  #1045 のドリフト検出器はオブジェクトの有無しか見ないため、**この形は見えていない**
+  （OPEN_QUESTIONS に起票）。
+- **偽陽性は allowlist ではなく再生 DB の側を直した。** `register_insurer_v2` の4件は
+  `auth.users.instance_id` / `auth.identities.provider_id` が `bootstrap.sql` の簡略
+  スキーマに無いことが原因で、本番には在る（実測確認）。auth スキーマを本番の
+  列定義どおりに書き直した。
+- **ビューは構造的に免疫**であることも実測した。ビューの定義は作成時に解決されて
+  保存されるので（`search_path='__vs'` で作ったビューの定義が `__vs.t` に書き換わる）、
+  `search_path=''` で呼んでも動く。トリガ関数は関数なので上の検査に含まれる。
+- **残る上限**: 動的 SQL（`EXECUTE format(...)`）の中身。文字列が組み上がるのは
+  実行時なので、道具を変えても静的には見えない。
+
+## 2026-09-08 `is_pii_disclosed()` が本番で常に落ちていたのを直し、同じ形を機械が検査するようにした
+
+PR #1016 をマージ（`a6da088`、2026-09-08 00:39 UTC）。`DB migrate (apply to production)`
+run #65 が **success**（[run 34174047498](https://github.com/holy-auto/Ledra/actions/runs/34174047498)）で
+`20260907000000_qualify_refs_in_empty_search_path_functions.sql` が本番へ入った。
+
+- **直したもの。** `is_pii_disclosed(certificate_id, insurer_id)` は `SET search_path = ''`
+  を持ちながら本体が `FROM pii_disclosure_consents` と非修飾のままで、**呼べば必ず 42P01**
+  で落ちていた。本体を `public.` 修飾して再作成。属性（SECURITY DEFINER / STABLE /
+  `search_path=''`）は変えていない。
+- **本番で実測して確定。** 適用前は `ERROR: 42P01: relation "pii_disclosure_consents"
+  does not exist`、適用後は `false` が返る。あわせて同じ経路で壊れていた
+  `insurer_accessible_tenant_ids`（9/3 に `20260903123728` で解消済み）と2本まとめて確認し、
+  どちらも `search_path=""` が残っていること・本体が修飾済みであること・
+  `anon` / `authenticated` に EXECUTE が無いことを確かめた。
+- **同じ穴を塞ぐ検査を常設した。** `scripts/replay-migrations.mjs` が、空 DB への再生後に
+  `search_path=""` を持つ SECURITY DEFINER 関数の `pg_get_functiondef()` を1本ずつ流し直す。
+  通れば健全、落ちれば呼んでも落ちる。**判定は自前の正規表現ではなく Postgres の
+  `check_function_bodies` にさせる**ので、非修飾のテーブル・関数呼び出し・`USING` 句を
+  同じ1回で拾う。検査が空振りしていないことは毎回、わざと壊した1本（拾えること）と
+  健全な1本（拾わないこと）の**対で**確かめてから本走査に入る。
+- **この壊れ方は `CREATE` では作れない。** `check_function_bodies` が SET 句を適用した状態で
+  本体を検証して弾くため、入り込む経路は「正常に作ったあとで `ALTER FUNCTION ... SET
+  search_path`」だけ。**ALTER は本体を再検証しない。** 落ちるのは実行時だけなので、
+  マイグレーションも型検査も CI も素通りしていた。
+- 発見の経路は「配布資料（#982）に載せる保険会社ポータルの検索画面を撮ろうとしたら 500」。
+  8/31 に見つけてから本番反映まで8日かかった。誰もこの画面を実行していなかった。
+
 ## 2026-09-09 PR #1054（全体セキュリティ監査是正 PR-1〜PR-5 全て）が main にマージされた（マージコミット `042d3b0`）
 
 【訂正】マージ直後に書いた本エントリの初版は「次はPR-2以降、別セッションで
