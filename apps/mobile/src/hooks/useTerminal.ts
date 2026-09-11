@@ -493,7 +493,16 @@ export function useTerminal() {
               store.setPendingCapture(collected.id);
             }
           } catch {
-            // 確認できなければ何もしない（従来通り非承認として扱う）
+            // /code-review (Codex) 指摘: ここで「確認できない」を「非承認」と
+            // 同じ扱いにすると、確認自体が失敗しただけ（同じ障害で通信が
+            // 落ちている、トークン切れ等）のケースで「非承認」の誤通知と
+            // 新規カード入力への誘導を許し、実際には課金済みなら二重決済になる。
+            // 「不明」を「非承認」とみなすのは危険なので、安全側
+            // （既に課金済みかもしれない扱い）に倒す。記録リトライ経路に乗せれば
+            // captureOnServer 側で Stripe の実際の状態を再確認してから記録するので
+            // 誤って「支払い済み」にはならない（本当に非承認なら retry が失敗する）
+            chargedPaymentIntentId = collected.id;
+            store.setPendingCapture(collected.id);
           }
           throw new Error(confirmError?.message ?? "決済確定失敗");
         }

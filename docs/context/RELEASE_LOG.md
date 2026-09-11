@@ -41,6 +41,11 @@
   catchブロックに来る前に`pendingCapturePaymentIntentId`が消えていた。
   store ではなくこの呼び出しに閉じたローカル変数で「課金済みか」を
   判定するよう直した。
+  (6) 上記(4)のサーバー確認自体が失敗した場合、「確認できない」を
+  「非承認」として扱っていた（自分が直前に直したのと同じ型のバグを
+  フォールバック側に作っていた）。「不明」を安全側（課金済みかもしれない
+  扱い）に倒し、記録リトライ経路（`captureOnServer`側でStripeの実際の
+  状態を再確認する）に委ねるよう直した。
 - 対象: `apps/mobile/src/hooks/useTerminal.ts`,
   `apps/mobile/src/lib/paymentOutcomeNotify.ts`（新規）。
 
