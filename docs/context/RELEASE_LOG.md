@@ -24,6 +24,15 @@
   NFC読み取りシートの閉じ際に `AppState` が一瞬 "inactive" を挟む可能性
   （未検証）を指摘され、300ms 後に再確認してから送る形にした
   （ponytail、実機での遷移時間計測は未実施）。
+- PRを ready化した際の Codex レビューで2件追加指摘、両方修正:
+  (3) `Notifications.setNotificationHandler` が未設定だと、Expo は
+  フォアグラウンド/inactive中に届いた通知を既定でバナー表示しない
+  （通知自体は送られるが実際には見えない）。`push.ts` に設定を追加。
+  (4) `confirmPaymentIntent` が通信エラー等でエラーを返しても、
+  `error.paymentIntent.status === "succeeded"` であれば Stripe 側では
+  実際に charge が成功していることがある。見逃すと非承認通知を送って
+  しまい店舗が二重決済する危険があったため、その場合は既存の記録
+  リトライ経路（`pendingCapture`）に乗せるよう修正。
 - 対象: `apps/mobile/src/hooks/useTerminal.ts`,
   `apps/mobile/src/lib/paymentOutcomeNotify.ts`（新規）。
 

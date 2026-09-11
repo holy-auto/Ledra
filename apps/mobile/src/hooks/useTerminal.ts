@@ -465,6 +465,14 @@ export function useTerminal() {
         const { paymentIntent: confirmed, error: confirmError } =
           await confirmPaymentIntent({ paymentIntent: collected });
         if (confirmError || !confirmed) {
+          // /code-review (Codex) 指摘: 通信エラー等で confirmPaymentIntent が
+          // エラーを返しても、Stripe 側では実際に charge が成功していることが
+          // ある（confirmError.paymentIntent.status === "succeeded"）。見逃すと
+          // 「非承認」通知を送ってしまい、店舗が二重決済する。カードは既に
+          // 切られている扱いにして、既存の記録リトライ経路（pendingCapture）に乗せる
+          if (confirmError?.paymentIntent?.status === "succeeded") {
+            store.setPendingCapture(confirmError.paymentIntent.id);
+          }
           throw new Error(confirmError?.message ?? "決済確定失敗");
         }
 
