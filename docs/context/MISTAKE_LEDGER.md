@@ -62,6 +62,14 @@ Tap to Pay の capability 識別子不一致）が症状に一致すると考え
 こと。外部バグ説を先に立てたせいで、目の前のログを仮説の検証にではなく
 「仮説に合う部分を探す」ために読んでいた。
 
+**追記（同日）**: 原因は `apps/mobile/.gitignore` の39-41行目にも書いてあった
+（「TTP の development entitlement は Apple Development profile にしか入らず、
+EAS のリモート (Distribution cert 強制) では扱えないため local モードに切り替え」）。
+**同じ事実がリポジトリ内の2箇所に日本語で書かれていたのに、どちらも読んでいなかった。**
+さらに、実績のある保管場所は `ttp-creds/` で、`eas credentials` のダウンロードを
+実行させたことで `credentials.json` が EAS の Ad Hoc 資格情報に上書きされ、
+動いていた設定を自分で壊していた。
+
 **再発防止**: 仕組み無し（判断に依存）。習慣として次の2つを置く。
 1. **エラー文字列を外部検索する前に、必ず自リポジトリを grep する。**
    ビルド・署名系は加えて `docs/mobile-release-tap-to-pay.md` と
