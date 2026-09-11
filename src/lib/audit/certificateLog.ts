@@ -36,7 +36,7 @@ export type AuditEventType =
  * 最初は「見せない5種別」を並べる除外リストだった。これは**既定が公開**なので、
  * 種別が増えるたびに漏れる。実際に3つの形で破れている。
  *
- * 1. `AuditEventType` は24種別あり、除外していたのは5種別だけだった。
+ * 1. `AuditEventType` は23種別あり、除外していたのは5種別だけだった。
  *    `member_added` の本文には**メールアドレス**が、`ai_settings_changed` には
  *    **uid を含む JSON** がそのまま入る（本番で実在）。
  * 2. `logAuditEvent({ type: "note", vehicleId })` はパスポート移転で
