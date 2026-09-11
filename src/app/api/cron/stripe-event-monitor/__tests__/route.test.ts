@@ -11,16 +11,27 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
-const { verifyCronRequestMock, sendCronFailureAlertMock, withCronLockMock, selectChainResultRef, fetchMock } =
-  vi.hoisted(() => ({
-    verifyCronRequestMock: vi.fn(),
-    sendCronFailureAlertMock: vi.fn().mockResolvedValue(undefined),
-    withCronLockMock: vi.fn(),
-    selectChainResultRef: {
-      current: { data: [] as Array<Record<string, unknown>>, error: null as { message: string } | null },
-    },
-    fetchMock: vi.fn(),
-  }));
+const {
+  verifyCronRequestMock,
+  sendCronFailureAlertMock,
+  withCronLockMock,
+  selectChainResultRef,
+  fetchMock,
+  captureMessageMock,
+  withScopeMock,
+} = vi.hoisted(() => ({
+  verifyCronRequestMock: vi.fn(),
+  sendCronFailureAlertMock: vi.fn().mockResolvedValue(undefined),
+  withCronLockMock: vi.fn(),
+  selectChainResultRef: {
+    current: { data: [] as Array<Record<string, unknown>>, error: null as { message: string } | null },
+  },
+  fetchMock: vi.fn(),
+  captureMessageMock: vi.fn(),
+  withScopeMock: vi.fn((cb: (scope: { setTag: () => void; setLevel: () => void; setExtra: () => void }) => void) =>
+    cb({ setTag: vi.fn(), setLevel: vi.fn(), setExtra: vi.fn() }),
+  ),
+}));
 
 vi.mock("@/lib/cronAuth", () => ({
   verifyCronRequest: (...args: unknown[]) => verifyCronRequestMock(...args),
@@ -63,7 +74,11 @@ vi.mock("@/lib/logger", () => ({
   },
 }));
 
-vi.mock("@sentry/nextjs", () => ({ captureException: vi.fn() }));
+vi.mock("@sentry/nextjs", () => ({
+  captureException: vi.fn(),
+  captureMessage: captureMessageMock,
+  withScope: withScopeMock,
+}));
 
 import { GET } from "@/app/api/cron/stripe-event-monitor/route";
 import { NextRequest } from "next/server";
@@ -87,6 +102,8 @@ describe("GET /api/cron/stripe-event-monitor", () => {
     selectChainResultRef.current = { data: [], error: null };
     fetchMock.mockReset().mockResolvedValue(new Response("{}", { status: 200 }));
     globalThis.fetch = fetchMock as typeof fetch;
+    captureMessageMock.mockReset();
+    withScopeMock.mockClear();
 
     process.env.RESEND_API_KEY = "test-resend";
     process.env.RESEND_FROM = "noreply@example.com";
@@ -156,9 +173,12 @@ describe("GET /api/cron/stripe-event-monitor", () => {
     expect(payload.text).toContain("evt_stuck_1");
     expect(payload.text).toContain("evt_stuck_2");
     expect(payload.text).toContain("syncBySubscription failed");
+
+    await vi.waitFor(() => expect(captureMessageMock).toHaveBeenCalledOnce());
+    expect(captureMessageMock).toHaveBeenCalledWith(expect.stringContaining("2 stuck webhook event"), "error");
   });
 
-  it("does NOT send fetch when RESEND_API_KEY is unset (graceful degrade)", async () => {
+  it("falls through to SendGrid (no fetch, since unconfigured in test) when RESEND_API_KEY is unset — does not skip alerting outright", async () => {
     delete process.env.RESEND_API_KEY;
     selectChainResultRef.current = {
       data: [
@@ -175,7 +195,39 @@ describe("GET /api/cron/stripe-event-monitor", () => {
 
     const res = await GET(req());
     expect(res.status).toBe(200);
+    // Neither Resend (no key) nor SendGrid (not configured in test env) can
+    // actually reach the network, so fetch is never called — but this is
+    // sendEmail()'s internal fallback deciding that, not an early bail-out
+    // in this route (see the Sentry assertion below for the part that must
+    // never depend on email config).
     expect(fetchMock).not.toHaveBeenCalled();
+    await vi.waitFor(() => expect(captureMessageMock).toHaveBeenCalledOnce());
+  });
+
+  it("still reports to Sentry when CONTACT_TO_EMAIL is unset, and skips the email attempt entirely", async () => {
+    delete process.env.CONTACT_TO_EMAIL;
+    selectChainResultRef.current = {
+      data: [
+        {
+          event_id: "evt_stuck_1",
+          event_type: "x",
+          created_at: new Date(Date.now() - 10 * 60_000).toISOString(),
+          error_message: null,
+          attempts: 0,
+        },
+      ],
+      error: null,
+    };
+
+    const res = await GET(req());
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { stuck: number; alerted: boolean };
+    expect(body.stuck).toBe(1);
+    expect(body.alerted).toBe(true);
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    await vi.waitFor(() => expect(captureMessageMock).toHaveBeenCalledOnce());
+    expect(captureMessageMock).toHaveBeenCalledWith(expect.stringContaining("1 stuck webhook event"), "error");
   });
 
   it("emits cron failure alert + 500 when the underlying query throws", async () => {
