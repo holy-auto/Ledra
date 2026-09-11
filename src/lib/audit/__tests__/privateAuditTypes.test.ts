@@ -24,9 +24,8 @@
  * 同じ種別名を2つのテストに書き写すのは、この PR が直している重複そのものだった。
  */
 import { describe, it, expect } from "vitest";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { execFileSync } from "node:child_process";
 import { OUTWARD_VISIBLE_TYPES } from "../certificateLog";
 import { parse, collect, calleeName } from "@/lib/__tests__/astScan";
 import ts from "typescript";
@@ -61,16 +60,18 @@ const INTERNAL = [
   "src/lib/certificates/create.ts",
 ];
 
-/** `vehicle_histories` に触っている実ファイルを**列挙する**（テスト自身は除く）。 */
+/**
+ * `vehicle_histories` に触っている実ファイルを**列挙する**（テスト自身は除く）。
+ *
+ * `git grep` ではなくファイルを歩く。git の管理下にあるかどうかは、
+ * 「その経路が外に出るか」と何の関係もないため —— 実際、最初は `git grep` で
+ * 書いていて、**未追跡の新規ファイルを取りこぼした**（変異(d)が緑になった）。
+ */
 function filesTouchingVehicleHistories(): string[] {
-  const out = execFileSync("git", ["grep", "-l", "--", 'from("vehicle_histories")', "--", "src/"], {
-    cwd: REPO,
-    encoding: "utf8",
-  });
-  return out
-    .split("\n")
-    .filter(Boolean)
-    .filter((f) => !f.includes("__tests__"))
+  return readdirSync(join(REPO, "src"), { recursive: true, encoding: "utf8" })
+    .map((f) => `src/${String(f).split("\\").join("/")}`)
+    .filter((f) => /\.tsx?$/.test(f) && !f.includes("__tests__"))
+    .filter((f) => readFileSync(join(REPO, f), "utf8").includes('from("vehicle_histories")'))
     .sort();
 }
 
