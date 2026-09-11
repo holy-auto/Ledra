@@ -46,6 +46,14 @@
   フォールバック側に作っていた）。「不明」を安全側（課金済みかもしれない
   扱い）に倒し、記録リトライ経路（`captureOnServer`側でStripeの実際の
   状態を再確認する）に委ねるよう直した。
+  (7) 同じ修正について再度2件。(a) `"succeeded"`だけを非承認以外として
+  扱っていたため、`"processing"`等の未確定状態を非承認扱いにしていた
+  →`"requires_payment_method"`/`"canceled"`という明確な終端状態のときだけ
+  非承認として扱うよう変更。(b) 確認自体が401（トークン切れ）で失敗すると
+  `mobileApi`内部で既に`signOutEverywhere→resetPayment()`が走っているのに、
+  その直後に`store.setPendingCapture`を呼んで書き戻していた。共有端末で
+  次にログインした別ユーザーが前のユーザーの決済を引き継ぐ危険があった
+  →401由来のときはstoreに書かず、通知文言の判定にのみ反映するよう変更。
 - 対象: `apps/mobile/src/hooks/useTerminal.ts`,
   `apps/mobile/src/lib/paymentOutcomeNotify.ts`（新規）。
 

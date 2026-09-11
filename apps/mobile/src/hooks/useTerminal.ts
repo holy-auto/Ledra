@@ -6,7 +6,7 @@ import {
   ErrorCode,
   type Reader,
 } from "@stripe/stripe-terminal-react-native";
-import { mobileApi } from "@/lib/api";
+import { mobileApi, ApiError } from "@/lib/api";
 import type { PosCheckoutItem } from "@/lib/pos";
 import { shouldNotifyDeclinedInBackground } from "@/lib/paymentOutcomeNotify";
 
@@ -488,21 +488,33 @@ export function useTerminal() {
             const latest = await mobileApi<{ status: string }>(
               `/pos/terminal/create-payment-intent?id=${encodeURIComponent(collected.id)}`
             );
-            if (latest.status === "succeeded") {
+            // /code-review (Codex) 指摘: "succeeded" だけを見ると、まだ
+            // 確定していない "processing" 等の非終端状態を「非承認」扱いに
+            // してしまう。後で succeeded に変わった場合、二重決済になる。
+            // 「非承認で安全に再試行できる」と分かる終端状態のときだけ
+            // 非承認として扱い、それ以外（processing 等の未確定含む）は
+            // 課金済みかもしれない扱いにする
+            if (latest.status !== "requires_payment_method" && latest.status !== "canceled") {
               chargedPaymentIntentId = collected.id;
               store.setPendingCapture(collected.id);
             }
-          } catch {
-            // /code-review (Codex) 指摘: ここで「確認できない」を「非承認」と
-            // 同じ扱いにすると、確認自体が失敗しただけ（同じ障害で通信が
-            // 落ちている、トークン切れ等）のケースで「非承認」の誤通知と
-            // 新規カード入力への誘導を許し、実際には課金済みなら二重決済になる。
-            // 「不明」を「非承認」とみなすのは危険なので、安全側
-            // （既に課金済みかもしれない扱い）に倒す。記録リトライ経路に乗せれば
-            // captureOnServer 側で Stripe の実際の状態を再確認してから記録するので
-            // 誤って「支払い済み」にはならない（本当に非承認なら retry が失敗する）
+          } catch (statusError) {
+            // 「確認できない」を「非承認」と同じ扱いにすると、確認自体が
+            // 失敗しただけ（同じ障害で通信が落ちている等）のケースで
+            // 「非承認」の誤通知と新規カード入力への誘導を許し、実際には
+            // 課金済みなら二重決済になる。「不明」は安全側（既に課金済み
+            // かもしれない扱い）に倒す
             chargedPaymentIntentId = collected.id;
-            store.setPendingCapture(collected.id);
+            // /code-review (Codex) 指摘: この確認自体が401（トークン切れ）で
+            // 失敗した場合、mobileApi 内部で signOutEverywhere→resetPayment()
+            // が既に走っている。ここで store.setPendingCapture を呼ぶと、
+            // サインアウトで消したはずの store に書き戻してしまい、共有端末で
+            // 次にログインした別ユーザーが前のユーザーの決済（違う予約・店舗・
+            // 明細）を引き継いで記録しようとしてしまう。401由来のときは store
+            // には書かず、この呼び出し内の通知文言判定にだけ反映する
+            if (!(statusError instanceof ApiError && statusError.status === 401)) {
+              store.setPendingCapture(collected.id);
+            }
           }
           throw new Error(confirmError?.message ?? "決済確定失敗");
         }
