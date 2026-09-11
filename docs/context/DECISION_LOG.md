@@ -82,6 +82,78 @@ main へマージされ、その中に同じ CVE 3件の修正が入っていた
    - **この修正は通しで検証できない。** 本番の接続URIとトークンがこの環境に無く、
      実際に走らせられるのは代表がシークレットを登録した後の初回実行が最初になる。
 9. **公開区分**: 公開可（CI/自動化の設計判断。トークンの値・本番の識別子は含まない）
+## 2026-09-11 stripe-event-monitor の詰まりアラートを、メール単独からSentry+メールの二重通知に直した
+
+1. **日付**: 2026-09-11（`date -u` で確認）
+2. **起きたこと**: 本番ログに次の2行が続けて出た。
+   `stripe-event-monitor: would alert but RESEND_API_KEY / CONTACT_TO_EMAIL not configured`
+   （warn）と `stripe-event-monitor: stuck events detected`
+   （error, `stuck_count:3, oldest_event_id:evt_1TuU3B5Xnr8CA2kqPkNn9A1Y, oldest_age_min:79448`）。
+   79448分は **55日4時間8分**（79448÷1440=55日+248分、248分=4時間8分。÷60÷24 の別経路でも
+   55.17日で一致）。本番 Supabase (`cahybswpduchptvyvdkk`) を実際に読み、
+   `stripe_processed_events` の `processed_at IS NULL` が今も3行（`account.updated`
+   のみ、いずれも `error_message` は NULL）であることを確認済み。
+3. **以前の考え**: `sendStuckEventsAlert()` は `RESEND_API_KEY` と `CONTACT_TO_EMAIL`
+   の両方が揃っていなければメールを送らず `logger.warn` で終える設計だった
+   （コードは確認済みだが、この設計判断自体を書いた時点の記録は見当たらない）。
+4. **違和感・問題**: 同じリポジトリの `cronAlert.ts` は「二重通知 (Sentry + email) で
+   見逃しを防ぐ」と明記し、メール設定の有無に関わらず Sentry には必ず送る作りに
+   なっている。`stripe-event-monitor` の詰まりアラートだけがこのパターンに
+   従っておらず、**メールという1経路だけに通知が依存**していた。さらに
+   `sendEmail()`（統一アダプタ、Resend→SendGrid自動フォールバック）は
+   `RESEND_API_KEY` 未設定を「Resend の一時的失敗」として扱い自動で SendGrid へ
+   切り替える設計（`resendSend.ts` が `status:null` を返し `shouldFallback()` が
+   true になる）なのに、`sendStuckEventsAlert()` は `RESEND_API_KEY` の有無を
+   事前チェックして早期returnしており、**このフォールバックの機会そのものを
+   潰していた**。結果、`CONTACT_TO_EMAIL` が(要因は未確認だが)本番で外れていた
+   期間、詰まりイベントの検知は毎5分実行されていたのに誰にも届かず、最も古い
+   1件は55日間気づかれなかった。
+5. **決めたこと**: `sendStuckEventsAlert()` を次の3点で直した。
+   - Sentry への通知（`captureMessage`、`cron_job:"stripe-event-monitor"` タグ、
+     `stuck_count`/`oldest_event_id` 付き）を**メール設定の有無に関わらず無条件で発火**
+     させる（`cronAlert.ts` と同じ二重通知パターン）。
+   - `RESEND_API_KEY` の事前チェックを削除し、`sendEmail()` の
+     Resend→SendGrid フォールバックにそのまま委ねる。メール送信に必要な
+     チェックは送信先（`CONTACT_TO_EMAIL`）の有無のみに絞った。
+   - `sendEmail()` が `{ ok:false }` を返した場合（両方失敗)にログを残すようにした
+     （元のコードは戻り値を見ておらず、両プロバイダ失敗時も無音だった）。
+   - テスト2件を追加（`CONTACT_TO_EMAIL` 未設定でも Sentry は飛ぶこと／
+     stuck 検知時に Sentry と メールの両方が呼ばれること）。既存5件+新規2件、
+     計7件 pass（`npx vitest run` で実行確認済み）。
+6. **捨てた選択肢**:
+   - **`RESEND_API_KEY` チェックはそのまま残し、`CONTACT_TO_EMAIL` のみ緩和する**。
+     採らない。SendGrid が設定されている環境でもフォールバックの機会を
+     奪ったままになる。
+   - **本番の env 変数（`RESEND_API_KEY`/`CONTACT_TO_EMAIL`）を設定して終わりにする**。
+     採らない。env 設定はインフラ側の作業でコード変更ではなく、かつ
+     「メールという1経路にしか依存しない」設計そのものが再発の芽なので、
+     根本は経路を増やすことで塞ぐ。
+   - **3件の詰まり行を今回のセッションでこの場で `processed_at` 更新して消す**。
+     採らない。本番データの書き換えは不可逆に近く、かつ `payload` が3件とも
+     NULL で中身を検証できないため（下記 未解決）、運用側の判断に委ねる
+     （OPEN_QUESTIONS.md に起票）。
+7. **判断理由**: このcronの存在意義は「メール設定を忘れてもStripe webhookの詰まりを
+   見逃さない」こと自体なので、通知経路そのものが1本（かつ設定依存）というのは
+   設計目的と矛盾する。二重通知はこのリポジトリで既に確立されたパターン
+   （`cronAlert.ts`）であり、新しい仕組みを持ち込まずに揃えるだけで直る。
+8. **まだ答えが出ていないこと**:
+   - 3件の詰まり行はなぜ `payload` まで NULL なのか未確定（OPEN_QUESTIONS.md 参照）。
+   - 本番で `RESEND_API_KEY`/`CONTACT_TO_EMAIL` が実際に未設定だったのか、
+     一時的に外れていただけなのかは env 設定を直接見ていないため未確認
+     【要確認】。今回の修正はどちらであっても効く（Sentryが必ず飛ぶため）。
+9. **公開区分**: 公開可（アラート機構の二重化という一般的な運用プラクティス。
+   本番の件数・event_id 等の固有情報を含めなければ発信できる）。
+
+**追記（同日、PR作成後の `/code-review` で1件指摘）**: 追加したSentry通知
+（`captureStuckEventsSentry`）が `import("@sentry/nextjs").then().catch()` の
+fire-and-forget で、この route には `waitUntil`/`after()` の保護が無い。
+`CONTACT_TO_EMAIL` 未設定の分岐は直後に `return` するだけなので、レスポンス
+返却後にサーバーレス関数が凍結され、Sentryへの実際の送信（ネットワークI/O）が
+完了する前に終わる可能性がある——**まさにこのPRが塞ごうとした「検知したのに
+誰にも届かない」を、メールからSentry側で再現しかねない**指摘。`captureStuckEventsSentry`
+を async化して `await` し、`Sentry.flush(2000)` で送信キューが捌けるまで待つよう修正。
+テストの Sentry モックに `flush` を追加し、7件 pass のまま。
+
 ## 2026-09-11 車両履歴の外部公開を、除外リストから許可リストに反転した
 
 1. **日付**: 2026-09-11

@@ -45,6 +45,18 @@
   赤くなり続ける**（この PR で変わっていない）。赤が常態になる前に登録するか、
   赤の意味を変える判断が要る（M-047 の系列）。
 - **この変更は通しで検証していない。** 実際に走るのはシークレット登録後の初回実行が最初。
+## 2026-09-11 stripe-event-monitor の詰まりアラートをSentry+メールの二重通知にした
+
+- `src/app/api/cron/stripe-event-monitor/route.ts`: `sendStuckEventsAlert()` が
+  `RESEND_API_KEY`/`CONTACT_TO_EMAIL` 両方揃わないとメール送信自体をスキップし、
+  それ以外の通知経路が無かった。本番で55日間気づかれなかった詰まりイベントを
+  ログから発見（DECISION_LOG 参照）。
+- Sentry (`captureMessage`, tag `cron_job:stripe-event-monitor`) をメール設定の
+  有無に関わらず無条件で発火させ、`RESEND_API_KEY` の事前チェックは削除して
+  `sendEmail()` の Resend→SendGrid フォールバックに委ねるようにした。
+  必須チェックは送信先 `CONTACT_TO_EMAIL` の有無のみ。
+- テスト2件追加（`route.test.ts`）、既存5件+新規2件で計7件 pass。
+
 ## 2026-09-11 車両履歴の外部公開を許可リストに反転した（同日の続き）
 
 - 上の修正に `/code-review` を掛けて11件の指摘。最も重いものは

@@ -88,6 +88,40 @@
 この PR で変わっていない（トークンが未登録である限り同じ）。**赤が常態になると
 「赤いのが普通」になり、13日間の見落とし（M-047 の系列）を再生産する危険がある。**
 登録が先延ばしになるなら、赤を止めるか赤の意味を変えるかを別途決める必要がある。
+## stripe-event-monitor が検知した3件の詰まりが `account.updated` に偏り、`payload` も NULL（2026-09-11）
+
+本番 Supabase (`cahybswpduchptvyvdkk`) を実測。`stripe_processed_events` で
+`processed_at IS NULL` は現在3行、**いずれも `event_type='account.updated'`、
+`error_message` は NULL、`payload` も NULL**（作成日: 2026-07-18 / 08-02 / 08-18、
+いちばん古いもので55日以上経過）。
+
+**未解決1: なぜ3件とも `payload` が NULL なのか【要確認】。**
+`account.updated` は本番に他5件あり、そちらは `payload` あり・処理済み。
+つまり「`account.updated` だから起きる」わけではなく、**この3件固有の何か**。
+claim 挿入 (`src/app/api/stripe/webhook/route.ts` の `.insert({event_id, event_type,
+payload})`) 以外で `payload` 列を触るコードは無いので、原因は挿入時点にあるはずだが、
+このリポジトリは shallow clone（137コミットのみ、2026-09-01以前の履歴が無い）で
+当時のコード差分を確認できなかった。Vercel の当時の実行ログ（このセッションからは
+アクセス不可）を見れば分かる可能性がある。
+
+**未解決2: この3件、実害があるか【要確認】。**
+`account.updated` は `stripe_connect_onboarded` フラグの同期のみで金銭は動かない。
+Stripe は同じアカウントの状態が変わるたびに新しいイベントを送るため、**その後に
+届いた別の `account.updated` で正しい状態に追いついている可能性がある**が、
+`payload` が NULL で対象の Stripe アカウントIDが読み取れず、このセッションの
+手持ちツール（Supabase読み取りのみ、Stripe API アクセス無し）では特定できない。
+
+**未解決3: この3件をどう閉じるか。**
+`payload` が無いため、このcronが前提とする「DBに残した payload から手動/将来の
+ワーカーで再送する」経路が使えない。設計通りの代替経路（Stripe Dashboard →
+Developers → Webhooks → Resend）で運営が直接 Stripe 側から探して再送するか、
+影響が無いと判断できれば `processed_at` を手動で更新してアラートを止めるかの
+どちらか。**このセッションでは本番データの書き換えは行っていない**
+（不可逆に近い操作のため、運用側の判断を優先）。
+
+関連: DECISION_LOG 2026-09-11「stripe-event-monitor の詰まりアラートを、メール単独から
+Sentry+メールの二重通知に直した」（このcron自体が誰にも通知していなかった問題の修正）。
+
 ## 静的検査が届かない最後の1つ（動的 SQL）と、失敗を捨てている API 呼び出し（2026-09-08）
 
 2026-09-08 に「`is_pii_disclosed` 修正の残り3点」を調べ、**3点とも決着した**（下の
