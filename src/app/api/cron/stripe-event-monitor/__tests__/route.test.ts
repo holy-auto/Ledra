@@ -19,6 +19,7 @@ const {
   fetchMock,
   captureMessageMock,
   withScopeMock,
+  flushMock,
 } = vi.hoisted(() => ({
   verifyCronRequestMock: vi.fn(),
   sendCronFailureAlertMock: vi.fn().mockResolvedValue(undefined),
@@ -31,6 +32,7 @@ const {
   withScopeMock: vi.fn((cb: (scope: { setTag: () => void; setLevel: () => void; setExtra: () => void }) => void) =>
     cb({ setTag: vi.fn(), setLevel: vi.fn(), setExtra: vi.fn() }),
   ),
+  flushMock: vi.fn().mockResolvedValue(true),
 }));
 
 vi.mock("@/lib/cronAuth", () => ({
@@ -78,6 +80,7 @@ vi.mock("@sentry/nextjs", () => ({
   captureException: vi.fn(),
   captureMessage: captureMessageMock,
   withScope: withScopeMock,
+  flush: flushMock,
 }));
 
 import { GET } from "@/app/api/cron/stripe-event-monitor/route";
@@ -104,6 +107,7 @@ describe("GET /api/cron/stripe-event-monitor", () => {
     globalThis.fetch = fetchMock as typeof fetch;
     captureMessageMock.mockReset();
     withScopeMock.mockClear();
+    flushMock.mockReset().mockResolvedValue(true);
 
     process.env.RESEND_API_KEY = "test-resend";
     process.env.RESEND_FROM = "noreply@example.com";

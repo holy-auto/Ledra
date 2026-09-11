@@ -66,6 +66,16 @@
 9. **公開区分**: 公開可（アラート機構の二重化という一般的な運用プラクティス。
    本番の件数・event_id 等の固有情報を含めなければ発信できる）。
 
+**追記（同日、PR作成後の `/code-review` で1件指摘）**: 追加したSentry通知
+（`captureStuckEventsSentry`）が `import("@sentry/nextjs").then().catch()` の
+fire-and-forget で、この route には `waitUntil`/`after()` の保護が無い。
+`CONTACT_TO_EMAIL` 未設定の分岐は直後に `return` するだけなので、レスポンス
+返却後にサーバーレス関数が凍結され、Sentryへの実際の送信（ネットワークI/O）が
+完了する前に終わる可能性がある——**まさにこのPRが塞ごうとした「検知したのに
+誰にも届かない」を、メールからSentry側で再現しかねない**指摘。`captureStuckEventsSentry`
+を async化して `await` し、`Sentry.flush(2000)` で送信キューが捌けるまで待つよう修正。
+テストの Sentry モックに `flush` を追加し、7件 pass のまま。
+
 ## 2026-09-11 車両履歴の外部公開を、除外リストから許可リストに反転した
 
 1. **日付**: 2026-09-11

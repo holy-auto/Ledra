@@ -53,25 +53,36 @@ interface StuckRow {
  * pattern). This must fire unconditionally — unlike the email below, it
  * does not depend on CONTACT_TO_EMAIL being configured. A stuck event that
  * only goes to a log line nobody watches defeats the point of this cron
- * (see MISTAKE_LEDGER: a stuck event sat unalerted for ~55 days because
- * email was the only channel and its env vars weren't set).
+ * (see DECISION_LOG 2026-09-11: a stuck event sat unalerted for ~55 days
+ * because email was the only channel and its env vars weren't set).
+ *
+ * Awaited (not fire-and-forget) with an explicit `flush()`: this route has
+ * no `waitUntil`/`after()` wrapping it, so a serverless invocation can be
+ * frozen the instant the response is sent. An un-awaited `import().then()`
+ * risks the exact failure this function exists to close — the alert is
+ * "sent" but never actually leaves the process (code-review finding on
+ * this PR). `flush()` blocks until Sentry's transport queue drains or the
+ * timeout hits, whichever first — it does not throw either way.
  */
-function captureStuckEventsSentry(rows: StuckRow[]): void {
-  import("@sentry/nextjs")
-    .then((Sentry) => {
-      Sentry.withScope((scope) => {
-        scope.setTag("cron_job", "stripe-event-monitor");
-        scope.setLevel("error");
-        scope.setExtra("stuck_count", rows.length);
-        scope.setExtra("oldest_event_id", rows[0]?.event_id);
-        Sentry.captureMessage(`stripe-event-monitor: ${rows.length} stuck webhook event(s)`, "error");
-      });
-    })
-    .catch(() => {});
+async function captureStuckEventsSentry(rows: StuckRow[]): Promise<void> {
+  try {
+    const Sentry = await import("@sentry/nextjs");
+    Sentry.withScope((scope) => {
+      scope.setTag("cron_job", "stripe-event-monitor");
+      scope.setLevel("error");
+      scope.setExtra("stuck_count", rows.length);
+      scope.setExtra("oldest_event_id", rows[0]?.event_id);
+      Sentry.captureMessage(`stripe-event-monitor: ${rows.length} stuck webhook event(s)`, "error");
+    });
+    await Sentry.flush(2000);
+  } catch {
+    // Sentry itself is down/misconfigured — the email path below is the
+    // remaining channel; don't let this throw block it.
+  }
 }
 
 async function sendStuckEventsAlert(rows: StuckRow[]): Promise<void> {
-  captureStuckEventsSentry(rows);
+  await captureStuckEventsSentry(rows);
 
   const to = process.env.CONTACT_TO_EMAIL;
   if (!to) {
