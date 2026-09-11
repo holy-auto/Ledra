@@ -1,4 +1,4 @@
-import { NextRequest } from "next/server";
+import { NextRequest, after } from "next/server";
 import { resolveMobileCaller } from "@/lib/auth/mobileAuth";
 import { hasPermission } from "@/lib/auth/permissions";
 import {
@@ -11,6 +11,7 @@ import {
 } from "@/lib/api/response";
 import { sendProgressUpdate } from "@/lib/line/client";
 import { logger } from "@/lib/logger";
+import { notifyCustomerArrived } from "@/lib/watch/arrivalPush";
 
 export const dynamic = "force-dynamic";
 
@@ -79,6 +80,13 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         )
         .single();
       if (error) return apiInternalError(error, "reservations.advance.legacy");
+      if (nextStatus === "arrived") {
+        after(() =>
+          notifyCustomerArrived({ tenantId: caller.tenantId, reservationId: id }).catch((pushError) =>
+            logger.warn("arrival push failed (non-blocking)", { reservationId: id, error: pushError }),
+          ),
+        );
+      }
       return apiOk({ reservation: updated, legacy: true });
     }
 
@@ -171,6 +179,14 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       .single();
 
     if (updateError) return apiInternalError(updateError, "reservations.advance.update");
+
+    if (reservation.status !== "arrived" && updatedReservation.status === "arrived") {
+      after(() =>
+        notifyCustomerArrived({ tenantId: caller.tenantId, reservationId: id }).catch((pushError) =>
+          logger.warn("arrival push failed (non-blocking)", { reservationId: id, error: pushError }),
+        ),
+      );
+    }
 
     // ─── 顧客公開イベント & LINE通知 ───
     const visibleStep = isLastStep ? steps.find((s) => s.order === currentOrder) : nextStep;

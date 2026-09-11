@@ -30,6 +30,7 @@ import { maybeAutoSuggestAssigneeForReservation } from "@/lib/ai/automation/assi
 import { createDraftPartInstallationForReservation } from "@/lib/parts/installationService";
 import { resolveStoreId, STORE_ERROR_MESSAGES } from "@/lib/stores/resolveStoreId";
 import { businessDateString } from "@/lib/datetime";
+import { notifyCustomerArrived } from "@/lib/watch/arrivalPush";
 
 export const dynamic = "force-dynamic";
 
@@ -475,10 +476,9 @@ export async function PUT(req: NextRequest) {
       }
     }
 
-    // 完了オートメーションは「実際の completed への遷移」だけを対象にする
-    // (既に completed の予約を編集する PUT で再発火し、二重に下書きを作るのを防ぐ)。
+    // 来店通知と完了オートメーションは、対象状態への実際の遷移だけで発火させる。
     let priorStatus: string | null = null;
-    if (rest.status === "completed") {
+    if (rest.status === "arrived" || rest.status === "completed") {
       const { data: prev } = await supabase
         .from("reservations")
         .select("status")
@@ -644,6 +644,17 @@ export async function PUT(req: NextRequest) {
           trigger: "completion",
         });
       });
+    }
+
+    if (data.status === "arrived" && priorStatus !== "arrived") {
+      after(() =>
+        notifyCustomerArrived({ tenantId: caller.tenantId, reservationId: data.id }).catch((pushError) =>
+          logger.warn("arrival push failed (non-blocking)", {
+            reservationId: data.id,
+            error: pushError,
+          }),
+        ),
+      );
     }
 
     return apiJson({ ok: true, reservation: data });

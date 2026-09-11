@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse, after } from "next/server";
+import { NextRequest, after } from "next/server";
 import { z } from "zod";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole, requirePermission } from "@/lib/auth/checkRole";
@@ -19,6 +19,7 @@ import { maybeAutoDraftCertificateForReservation } from "@/lib/ai/automation/cer
 import { maybeAutoCreateDraftCertificateForReservation } from "@/lib/ai/automation/certificateRecordAuto";
 import { maybeAutoCreateDraftInvoiceForReservation } from "@/lib/ai/automation/invoiceRecordAuto";
 import { maybeAutoNextActionForReservation } from "@/lib/ai/automation/nextActionAuto";
+import { notifyCustomerArrived } from "@/lib/watch/arrivalPush";
 
 /** advance() 後に GCal イベントを作成/更新する (advance は cancelled への遷移が無いため削除分岐は不要)。 */
 function syncGcalAfterAdvance(
@@ -200,6 +201,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         });
       }
 
+      if (nextStatus === "arrived") {
+        after(() =>
+          notifyCustomerArrived({ tenantId: caller.tenantId, reservationId: id }).catch((pushError) =>
+            logger.warn("arrival push failed (non-blocking)", { reservationId: id, error: pushError }),
+          ),
+        );
+      }
+
       return apiJson({ ok: true, reservation: updated, legacy: true });
     }
 
@@ -311,6 +320,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
     if (updateError) {
       return apiInternalError(updateError, "advance update");
+    }
+
+    if (reservation.status !== "arrived" && updatedReservation.status === "arrived") {
+      after(() =>
+        notifyCustomerArrived({ tenantId: caller.tenantId, reservationId: id }).catch((pushError) =>
+          logger.warn("arrival push failed (non-blocking)", { reservationId: id, error: pushError }),
+        ),
+      );
     }
 
     // ── Google Calendar 同期（非ブロッキング） ──
