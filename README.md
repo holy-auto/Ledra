@@ -199,6 +199,26 @@ npm run test:e2e                  # Playwright
 npm run dev                       # http://localhost:3000
 ```
 
+### 新しいクローンで始めるとき — Git に入っていないファイル
+
+`git clone` しただけでは動かない。以下は全て `.gitignore` 対象なので、
+**既存のクローンからコピーする**（無ければ再発行する）。
+
+| ファイル | 用途 | 無いとどうなる |
+|---|---|---|
+| `.env.local`（ルート） | Web の環境変数 | `npm run dev` が起動しない / 認証が通らない |
+| `apps/mobile/.env` | モバイルの `EXPO_PUBLIC_*` | ログインで `network request failed`（URL 未設定）または `invalid API key`（キー破損） |
+| `apps/mobile/credentials.json` + `apps/mobile/ttp-creds/` | iOS の **Apple Development** 証明書とプロファイル | `development-device` ビルドが Tap to Pay entitlement エラーで失敗 |
+
+補足:
+
+- `apps/mobile/.env` の値は `eas.json` の `build.development-device.env` と同じ
+  （Supabase URL / anon key / API URL）。`EXPO_PUBLIC_*` は**バンドル時に値が
+  埋め込まれる**ので、書き換えたら `npx expo start -c` でキャッシュごと再起動する。
+- `eas credentials` の **「Download credentials from EAS to credentials.json」は
+  実行しない**。`credentials.json` が EAS の Ad Hoc 資格情報で上書きされ、
+  Tap to Pay のビルドが通らなくなる（`docs/mobile-release-tap-to-pay.md` §3.1.2）。
+
 ### 必須 ENV 変数 (抜粋)
 
 | 変数 | 用途 |
