@@ -92,6 +92,93 @@ npx eas-cli@latest submit --platform ios --profile production
 | EAS が古い provisioning profile を再利用している | 2.1 → 2.2 を実施 |
 | Apple 側の承認がまだ反映されていない | 承認メールから 24 時間程度待ってから再試行 |
 | Apple 側で承認が「テスト用」のみ付与され、Distribution profile に含められない | Apple Developer Support に Technical Support Incident (TSI) を起票 |
+| **`development-device` に Ad Hoc / App Store のプロファイルを置いている**（`credentialsSource: "local"` + `credentials.json`） | **Development 型（iOS App Development）のプロファイルに差し替える。** Ad Hoc は Distribution 型なので、承認が Development 限定の間は何度作り直しても entitlement は入らない（MISTAKE_LEDGER M-085） |
+
+### 3.1.1. 手元のプロファイルが Development 型か Distribution 型かを判定する
+
+`credentialsSource: "local"` を使う `development-device` では、
+`credentials/ios/profile.mobileprovision` が **Development 型**である必要がある。
+Windows (PowerShell) での判定:
+
+```powershell
+$f = "apps\mobile\credentials\ios\profile.mobileprovision"
+$t = [Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes($f))
+$s = $t.IndexOf('<?xml'); $e = $t.IndexOf('</plist>') + 8
+$x = $t.Substring($s, $e - $s)
+if ($x -match 'get-task-allow</key>\s*<true/>') { "Development 型 (OK)" } else { "Distribution 型 (Ad Hoc/App Store) — このままでは通らない" }
+if ($x -match 'proximity-reader') { "entitlement あり" } else { "entitlement なし" }
+```
+
+macOS では `security cms -D -i profile.mobileprovision | plutil -p -` でも同じことが分かる。
+
+### 3.1.2. Development 型プロファイルを用意する（Windows / macOS 共通）
+
+**保管場所**: 実績のある置き場は `apps/mobile/ttp-creds/`（`.gitignore` 済み）。
+`eas credentials` の「Download credentials from EAS to credentials.json」を実行すると
+`credentials.json` が **EAS 側の Ad Hoc 資格情報と `credentials/ios/` パスで上書きされる**
+ため、TTP 用の Development 資格情報を使いたいときにこれを実行してはいけない。
+
+**なぜ手作業が要るか**: EAS Build の internal distribution は `developmentClient: true`
+でも **Ad Hoc（Distribution 型）** の provisioning profile を生成する
+（https://docs.expo.dev/build/internal-distribution/ ）。Apple の TTP 承認が
+Development 限定の間は、EAS に作らせたプロファイルでは必ず失敗する。
+`eas.json` で `development-device` にだけ `credentialsSource: "local"` が
+付いているのはこのため。**EAS には作れない Development 型を手元から渡している。**
+
+必要なものは2つ。**Apple Development 証明書**（Distribution ではない）と、
+それに紐づく **iOS App Development** プロファイル。
+
+#### 1) Apple Development 証明書を作る
+
+既に持っている場合はこの手順を飛ばす。Windows は Git Bash 等の `openssl` を使う。
+
+```bash
+openssl genrsa -out ios_dev.key 2048
+openssl req -new -key ios_dev.key -out ios_dev.csr \
+  -subj "/emailAddress=<Apple ID のメール>/CN=HOLY Corp./C=JP"
+```
+
+Apple Developer Portal → Certificates → `+` → **Apple Development** を選び、
+`ios_dev.csr` をアップロードして `development.cer` をダウンロード。`.p12` に変換:
+
+```bash
+openssl x509 -inform DER -in development.cer -out development.pem
+openssl pkcs12 -export -inkey ios_dev.key -in development.pem \
+  -out dist-cert.p12 -passout pass:<任意のパスワード>
+```
+
+`apps/mobile/credentials/ios/dist-cert.p12` に置き、`credentials.json` の
+`distributionCertificate.password` を合わせる
+（キー名は `distributionCertificate` だが Development 証明書でよい）。
+
+#### 2) iOS App Development プロファイルを作る
+
+Apple Developer Portal → Profiles → `+` → **iOS App Development**
+（**Ad Hoc を選ばない**。Ad Hoc は Distribution 型で TTP entitlement が入らない）。
+
+1. App ID: `com.ledra.app`
+2. Certificates: 上で作った **Apple Development** 証明書
+3. Devices: 実機の UDID にチェック
+4. Generate → ダウンロードし
+   `apps/mobile/credentials/ios/profile.mobileprovision` として保存
+
+#### 3) 確認してからビルド
+
+§3.1.1 の判定コマンドで **「Development 型 (OK)」「entitlement あり」** の両方が
+出ることを確認してから実行する。ここで確認せずにビルドを回すと、20分待って
+同じエラーを見ることになる（MISTAKE_LEDGER M-085）。
+
+```bash
+cd apps/mobile
+npx eas-cli build --profile development-device --platform ios
+```
+
+ビルドログで `export_options.method` が `development` になっていれば正しい。
+`ad-hoc` なら渡したプロファイルが Distribution 型のまま。
+
+> **秘密情報の扱い**: `credentials/` と `credentials.json` は秘密鍵とパスワードを
+> 含む。`.gitignore` 済みであることを確認し、コミット・チャット・issue に
+> 貼らないこと。
 
 ### 3.2. `Entitlement com.apple.developer.proximity-reader.payment.acceptance has invalid value`
 
