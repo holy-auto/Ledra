@@ -1,6 +1,6 @@
 ﻿import crypto from "crypto";
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
-import { EXCLUDE_PRIVATE_AUDIT_FILTER } from "@/lib/audit/certificateLog";
+import { OUTWARD_VISIBLE_TYPES } from "@/lib/audit/certificateLog";
 
 const PEPPER = process.env.CUSTOMER_AUTH_PEPPER!;
 
@@ -345,7 +345,7 @@ export async function listHistoryForCustomer(
     //
     // PR #1040 は同じ漏れを公開ページ側だけ直していて、こちらが残っていた
     // （書く側の `logCertificateAction` は1つ、読む側が2つある形）。
-    .or(EXCLUDE_PRIVATE_AUDIT_FILTER)
+    .in("type", OUTWARD_VISIBLE_TYPES)
     .order("performed_at", { ascending: false })
     .limit(50);
   return histories ?? [];
