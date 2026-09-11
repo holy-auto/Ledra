@@ -92,6 +92,24 @@ npx eas-cli@latest submit --platform ios --profile production
 | EAS が古い provisioning profile を再利用している | 2.1 → 2.2 を実施 |
 | Apple 側の承認がまだ反映されていない | 承認メールから 24 時間程度待ってから再試行 |
 | Apple 側で承認が「テスト用」のみ付与され、Distribution profile に含められない | Apple Developer Support に Technical Support Incident (TSI) を起票 |
+| **`development-device` に Ad Hoc / App Store のプロファイルを置いている**（`credentialsSource: "local"` + `credentials.json`） | **Development 型（iOS App Development）のプロファイルに差し替える。** Ad Hoc は Distribution 型なので、承認が Development 限定の間は何度作り直しても entitlement は入らない（MISTAKE_LEDGER M-085） |
+
+### 3.1.1. 手元のプロファイルが Development 型か Distribution 型かを判定する
+
+`credentialsSource: "local"` を使う `development-device` では、
+`credentials/ios/profile.mobileprovision` が **Development 型**である必要がある。
+Windows (PowerShell) での判定:
+
+```powershell
+$f = "apps\mobile\credentials\ios\profile.mobileprovision"
+$t = [Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes($f))
+$s = $t.IndexOf('<?xml'); $e = $t.IndexOf('</plist>') + 8
+$x = $t.Substring($s, $e - $s)
+if ($x -match 'get-task-allow</key>\s*<true/>') { "Development 型 (OK)" } else { "Distribution 型 (Ad Hoc/App Store) — このままでは通らない" }
+if ($x -match 'proximity-reader') { "entitlement あり" } else { "entitlement なし" }
+```
+
+macOS では `security cms -D -i profile.mobileprovision | plutil -p -` でも同じことが分かる。
 
 ### 3.2. `Entitlement com.apple.developer.proximity-reader.payment.acceptance has invalid value`
 
