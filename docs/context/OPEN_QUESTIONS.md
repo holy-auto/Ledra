@@ -3,6 +3,44 @@
 > まだ決まっていないこと、判断に迷っていることを書く場所。決まったら
 > DECISION_LOG.md に移し、このファイルからは消す（削除履歴は git で追える）。
 
+## `processCardPayment` の決済確定失敗時、PaymentIntentの状態を二値分類しているのが構造的に足りない（2026-09-11）
+
+要件5.12のPR #1064で、`confirmPaymentIntent`が失敗した際にStripe側の実際の
+状態を確認して「非承認」か「カードは既に切られている（記録リトライ）」かを
+判定する処理を追加した。`/code-review`（Codex）との往復5回で、この二値分類
+そのものが実際のPaymentIntentステータス空間を正しく表現できないことが
+判明した:
+
+- `requires_payment_method` / `canceled` → 安全に非承認として扱える（終端状態）
+- `succeeded` → カードは切れている。記録リトライ（`captureOnServer`の再呼び出し）で解決する
+- `requires_confirmation`（確定リクエストがStripeに届く前に失敗）→
+  **カードは切れていないが、記録リトライでも解決しない**（`captureTerminalPayment`は
+  `succeeded`以外を全て拒否するため、無限に失敗し続ける「記録をやり直す」ボタンだけが残る）
+- `processing` / `requires_action` → 後で`succeeded`になる可能性がある未確定状態
+
+現状は「非承認と確実に言える終端状態以外は全部『課金済みかもしれない』扱いにする」
+という安全側（二重決済を避ける）に倒す設計にしているが、これは
+`requires_confirmation`のケースで「一生解決しない記録リトライ」という
+別の詰み方を生む。**正しくはステータスごとに正しいリカバリ手段
+（再確認／記録リトライ／新規決済のブロック）を割り当てる3値以上の分類**が必要で、
+POS画面側（`checkout/[id].tsx`・`walk-in.tsx`）の分岐も含めた設計変更になる
+ため、PR #1064のスコープでは着手しなかった。
+
+【要確認】実運用でどの程度の頻度で`requires_confirmation`/`processing`が
+起きるか（NFCタップ後の確定リクエストがネットワーク到達前に失敗する頻度）は
+未計測。頻度が低ければ優先度は下げられる。
+
+## Tap to Pay 要件5.12: アプリ強制終了中の非承認はまだ通知できない（2026-09-11）
+
+要件5.12対応（DECISION_LOG.md 2026-09-11参照）はクライアント側の `AppState` +
+ローカル通知のみ。NFCタップの最中にアプリごと強制終了（プロセスkill）された
+場合、`processCardPayment` の catch ブロック自体が実行されないため未カバー。
+【要確認】Appleの実際の審査・動画チェックでここまで問われるか。カバーするには
+Stripe webhook（`payment_intent.payment_failed`）+ Expo Push API 送信の
+新規実装が要る（`push_tokens.user_id` を PaymentIntent の
+`metadata.user_id` で引く経路は調査済み）。動画撮影・提出後の反応を見てから
+着手要否を判断する。
+
 ## `webhookEvents.test.ts` が全体実行のときだけ間欠的に落ちる（2026-09-10）
 
 **特定できた。** `src/lib/line/__tests__/webhookEvents.test.ts` の

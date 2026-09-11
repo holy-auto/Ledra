@@ -4,6 +4,59 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-09-11 Tap to Pay 決済が非承認でアプリを閉じていた場合に通知（要件5.12）
+
+- Apple Tap to Pay Publishing Entitlement 要件チェックリスト v1.7（v1.6からの
+  差分はこの1項目のみ）に対応。決済が非承認で、かつ結果を見る前にアプリを
+  バックグラウンドへ回した/閉じた場合、ローカル通知で結果を知らせる。
+- `apps/mobile/src/hooks/useTerminal.ts` の `processCardPayment` の失敗
+  catch ブロック（成功以外の全結果が集約する唯一の箇所）に、
+  `AppState.currentState !== "active"` を条件にローカル通知
+  （`expo-notifications`）を追加。判定は `src/lib/paymentOutcomeNotify.ts`
+  に切り出し、自己チェック付き。
+- クライアント側のみの対応。NFCタップ中にアプリごと強制終了された場合は
+  未カバー（サーバー側 Stripe webhook + push 送信の新規構築が必要になるが、
+  現状そのインフラ自体が存在しないため今回は見送り。理由は DECISION_LOG 参照）。
+- `/code-review` で2件の指摘。(1) カードは既に切られたが記録
+  （`/pos/terminal/capture`）だけ失敗したケースを「決済が完了しませんでした」
+  と同じ文言で通知すると、店舗が二重決済してしまう危険があった →
+  `pendingCapturePaymentIntentId` の有無で文言を分岐。(2) Tap to Pay の
+  NFC読み取りシートの閉じ際に `AppState` が一瞬 "inactive" を挟む可能性
+  （未検証）を指摘され、300ms 後に再確認してから送る形にした
+  （ponytail、実機での遷移時間計測は未実施）。
+- PRを ready化した際の Codex レビューで指摘、修正:
+  (3) `Notifications.setNotificationHandler` が未設定だと、Expo は
+  フォアグラウンド/inactive中に届いた通知を既定でバナー表示しない
+  （通知自体は送られるが実際には見えない）。`push.ts` に設定を追加。
+  (4) 【当初の修正は動かないコードだった】`confirmError.paymentIntent`で
+  「実は成功していたか」を見る初回修正を入れたが、Codex に
+  「使用中のSDK(beta.31)のJSラッパーは confirmPaymentIntent のエラー時に
+  paymentIntent を確定的に undefined にする」と再指摘され、node_modules の
+  実装を確認して事実だと確認した。型定義に `paymentIntent?` があっても
+  実際には使えない値だった。サーバー側の既存GET（ポーリング用に元々あった
+  `/pos/terminal/create-payment-intent?id=`）で実際の状態を確認する方式に
+  作り直した。
+  (5) `captureOnServer` が401を返すと、`mobileApi`が投げる前に
+  `handleUnauthorized→signOutEverywhere→resetPayment()`が走り、
+  catchブロックに来る前に`pendingCapturePaymentIntentId`が消えていた。
+  store ではなくこの呼び出しに閉じたローカル変数で「課金済みか」を
+  判定するよう直した。
+  (6) 上記(4)のサーバー確認自体が失敗した場合、「確認できない」を
+  「非承認」として扱っていた（自分が直前に直したのと同じ型のバグを
+  フォールバック側に作っていた）。「不明」を安全側（課金済みかもしれない
+  扱い）に倒し、記録リトライ経路（`captureOnServer`側でStripeの実際の
+  状態を再確認する）に委ねるよう直した。
+  (7) 同じ修正について再度2件。(a) `"succeeded"`だけを非承認以外として
+  扱っていたため、`"processing"`等の未確定状態を非承認扱いにしていた
+  →`"requires_payment_method"`/`"canceled"`という明確な終端状態のときだけ
+  非承認として扱うよう変更。(b) 確認自体が401（トークン切れ）で失敗すると
+  `mobileApi`内部で既に`signOutEverywhere→resetPayment()`が走っているのに、
+  その直後に`store.setPendingCapture`を呼んで書き戻していた。共有端末で
+  次にログインした別ユーザーが前のユーザーの決済を引き継ぐ危険があった
+  →401由来のときはstoreに書かず、通知文言の判定にのみ反映するよう変更。
+- 対象: `apps/mobile/src/hooks/useTerminal.ts`,
+  `apps/mobile/src/lib/paymentOutcomeNotify.ts`（新規）。
+
 ## 2026-09-11 typegen の専用トークン対応をマージした（#1056）。設定とシークレットは未登録のまま
 
 - **マージ済み**（`b38a7445`、squash）。`db-typegen.yml` の
