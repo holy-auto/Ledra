@@ -27,6 +27,59 @@
 - 対象: `apps/mobile/src/hooks/useTerminal.ts`,
   `apps/mobile/src/lib/paymentOutcomeNotify.ts`（新規）。
 
+## 2026-09-09 next / sharp の脆弱性による CI 停止 —— #1054 と同じ修正を並行して作り、こちらは破棄した
+
+- **成果物は残っていない。** 同じ CVE 3件を #1054 が先に main へ入れており
+  （`b9dba57e`「CI「Security audit」ゲートが検出したCVE3件をnpm audit fixで解消」）、
+  main 取り込み時にこちらの `package-lock.json` は捨てて main 側を採用した。
+- 経緯: #1056 の CI が `Security audit`（`npm audit --audit-level=high --omit=dev`）で
+  赤くなり、main でも同じステップで赤いことを確認した（run 34357806973、`0ddd8e44`）。
+  **同じ問題を直している PR が開いていないかを確認しないまま**、`next` 16.2.11 → 16.3.4 /
+  `sharp` 0.35.3 → 0.35.4 のロックファイル更新を作って push した（`f46faeec`）。
+  その約1時間後に #1054 がマージされ、衝突して初めて重複に気づいた（M-081）。
+- **結果として main の方が広い**: #1054 は `npm audit fix` を通しているので
+  `fflate`（moderate、`posthog-js` 配下）も 0.4.9 に上がっている。こちらは
+  「しきい値 high に届かないので触らない」と判断して残していた。
+- 取り込み後に確認: `npm install --package-lock-only` でロックファイルに差分が出ない
+  （main のロックが merge 後の `package.json` と整合）、`found 0 vulnerabilities`。
+- **この件で残った実体は事業ログだけ**（この項、DECISION_LOG、OPEN_QUESTIONS の
+  「誰も何も変えていないのに CI 全体が赤くなる」、MISTAKE_LEDGER M-081）。
+
+## 2026-09-09 typegen が専用トークンを使えるようにした（設定とシークレットは未登録）
+
+- `db-typegen.yml` の `peter-evans/create-pull-request` に `token:` を渡していなかった
+  ため、既定の `GITHUB_TOKEN` が使われ、**2箇所で自動化が切れていた**
+  （PR が作れない／PR を人が作っても CI が走らない。RELEASE_LOG 2026-09-08）。
+- `token: ${{ secrets.TYPEGEN_TOKEN || github.token }}` にした。**シークレットが
+  登録されれば両方とも解ける**（PAT / GitHub App トークンの push と PR は他の
+  workflow を起動する —— create-pull-request の `docs/concepts-guidelines.md` で確認）。
+- **未登録でも壊れない。** `GITHUB_TOKEN` へ落ちて 2026-09-07 以前と同じ挙動になる。
+  ただし黙って落ちないよう、直前に warning ステップを置いて**2つの症状を名指しで出す**
+  （PR 作成の失敗メッセージは設定の話しかせず、CI が走らない方には気づけないため）。
+  トークンあり／なし／変数そのものが無い、の3分岐を手元で実行して確認済み。
+- **残っているのはリポジトリ側の2操作で、Claude からは実行できない**:
+  Actions の PR 作成許可（設定）と、**PAT** の `TYPEGEN_TOKEN` 登録（シークレット）。
+  OPEN_QUESTIONS と DECISION_LOG 2026-09-09 に依頼として残した。
+- **GitHub App はこの形では使えない**（同 PR 内の `/code-review` で訂正）。
+  インストールアクセストークンは**1時間で失効する**ので、シークレットに保存すると
+  ほぼ毎回 401 になる。App を採るなら APP_ID と秘密鍵を登録し、実行のたびに
+  発行する別構成が要る。
+- **`TYPEGEN_TOKEN` が登録されるまで、このワークフローは毎回最終ステップで
+  赤くなり続ける**（この PR で変わっていない）。赤が常態になる前に登録するか、
+  赤の意味を変える判断が要る（M-047 の系列）。
+- **この変更は通しで検証していない。** 実際に走るのはシークレット登録後の初回実行が最初。
+## 2026-09-11 stripe-event-monitor の詰まりアラートをSentry+メールの二重通知にした
+
+- `src/app/api/cron/stripe-event-monitor/route.ts`: `sendStuckEventsAlert()` が
+  `RESEND_API_KEY`/`CONTACT_TO_EMAIL` 両方揃わないとメール送信自体をスキップし、
+  それ以外の通知経路が無かった。本番で55日間気づかれなかった詰まりイベントを
+  ログから発見（DECISION_LOG 参照）。
+- Sentry (`captureMessage`, tag `cron_job:stripe-event-monitor`) をメール設定の
+  有無に関わらず無条件で発火させ、`RESEND_API_KEY` の事前チェックは削除して
+  `sendEmail()` の Resend→SendGrid フォールバックに委ねるようにした。
+  必須チェックは送信先 `CONTACT_TO_EMAIL` の有無のみ。
+- テスト2件追加（`route.test.ts`）、既存5件+新規2件で計7件 pass。
+
 ## 2026-09-11 車両履歴の外部公開を許可リストに反転した（同日の続き）
 
 - 上の修正に `/code-review` を掛けて11件の指摘。最も重いものは

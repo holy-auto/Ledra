@@ -2,13 +2,36 @@ name: DB types regenerate
 
 # 本番スキーマから src/types/db.generated.ts を作り直して PR を出す。
 #
-# 必要な GitHub Secret (1 本だけ):
+# 必要な GitHub Secret:
 #   - SUPABASE_DB_URL … db-migrate.yml と同じものを使う。
+#   - TYPEGEN_TOKEN … **PAT (classic でも fine-grained でも可)**。必要な権限は
+#     contents: write（chore/db-typegen への push）と pull-requests: write。
+#     **未設定でも動くが、自動化は完結しない**（下の「なぜ専用トークンが要るか」）。
+#
+#     **GitHub App を使いたい場合、この形では登録できない。** インストール
+#     アクセストークンは **1時間で失効する**ので、シークレットに保存すると
+#     ほぼ毎回 401 になる。App を使うなら APP_ID と秘密鍵を登録し、
+#     actions/create-github-app-token で**実行のたびに発行する**構成が要る
+#     （このワークフローは未対応。採るなら別途組む）。
 #
 #   link 方式 (--project-id) をやめた理由: SUPABASE_ACCESS_TOKEN と
 #   SUPABASE_PROJECT_ID が未設定のまま4回連続で失敗していた
 #   ("Access token not provided.")。db-migrate.yml が同じ理由で --db-url に
 #   寄せているので、シークレットを2本増やすのではなく既にある1本に合わせる。
+#
+# なぜ専用トークン (TYPEGEN_TOKEN) が要るか:
+#   既定の GITHUB_TOKEN を使うと、この仕組みは **2箇所で切れる**。2026-09-07 に
+#   実際に両方踏んだ (RELEASE_LOG 2026-09-08、OPEN_QUESTIONS)。
+#
+#   1. PR が作れない。"GitHub Actions is not permitted to create or approve pull
+#      requests" で最後のステップだけが落ちる。**型の生成と push は成功している**ので、
+#      成果物が誰も見ないブランチに積み上がる。
+#   2. PR を人が手で作っても CI が走らない。**GITHUB_TOKEN による push は
+#      workflow を起動しない**(再帰防止の仕様)。人が PR を開いた瞬間の `opened` では
+#      走るが、以後この workflow が force-push するたびに未検証の head へ戻る。
+#
+#   PAT / GitHub App トークンなら push も PR も他の workflow を起動する
+#   (create-pull-request の docs/concepts-guidelines.md で確認済み)。
 #
 # push ではなく db-migrate の完了を待つ理由: 両方とも
 # `push: main, paths: supabase/migrations/**` で起動していたため、db-migrate が
@@ -73,9 +96,29 @@ jobs:
           # 本番のファイルにすると失敗時に型定義がエラーJSONに化ける
           mv src/types/db.generated.ts.tmp src/types/db.generated.ts
 
+      # 未設定を「PR 作成の失敗メッセージ」任せにしない。あのメッセージは
+      # 設定の話しかしないので、CI が走らない方 (2) には気づけない
+      - name: TYPEGEN_TOKEN の有無を確かめる
+        env:
+          TYPEGEN_TOKEN: ${{ secrets.TYPEGEN_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -n "${TYPEGEN_TOKEN:-}" ]; then
+            # **「効く」とは言わない。** ここで分かるのは「空でない」ことだけで、
+            # 失効・権限不足は次のステップが失敗して初めて分かる。ここで
+            # 「両方効く」と出すと、その失敗の原因からトークンを外して読ませてしまう
+            echo "TYPEGEN_TOKEN は設定されている（値の有効性・権限はここでは判定できない）。"
+            echo "次のステップが 401/403 で落ちるなら、まず失効と権限 (contents: write / pull-requests: write) を疑う。"
+            exit 0
+          fi
+          echo "::warning::TYPEGEN_TOKEN が未設定です。既定の GITHUB_TOKEN へ落ちるため、(1) PR 作成が『GitHub Actions is not permitted to create or approve pull requests』で失敗し、(2) 仮に人が PR を作っても、この workflow が force-push するたびに CI が走らない head に戻ります。contents: write と pull-requests: write を持つ PAT を TYPEGEN_TOKEN として登録してください（GitHub App のインストールトークンは1時間で失効するのでこの形では使えません）。"
+
       - name: Open PR if types changed
         uses: peter-evans/create-pull-request@v8
         with:
+          # 未設定なら既定の GITHUB_TOKEN へ落ちる（＝2026-09-07 以前と同じ挙動）。
+          # 黙って落ちないよう、直前のステップが理由を warning で出す
+          token: ${{ secrets.TYPEGEN_TOKEN || github.token }}
           # 生成物だけをコミットする。既定は作業ツリー全体なので、CLI が
           # supabase/.temp/ などを落とすとそれごと PR に入ってしまう
           add-paths: src/types/db.generated.ts
