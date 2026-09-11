@@ -74,7 +74,15 @@ jobs:
           # ubuntu-latest には PostgreSQL 16 が入っている。スクリプトが
           # 一時インスタンスを自分で initdb/起動するのでサービスは要らない
           ls /usr/lib/postgresql/
+      - name: Install plpgsql_check
+        # plpgsql の本体は CREATE 時に構文しか検証されない。名前・型・演算子の
+        # 解決を静的に見るために plpgsql_check を使う（noble/universe にある）。
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-16-plpgsql-check
       - run: npm run check:migrations
+        # 拡張が入らなかったときに黙って飛ばさせない。飛ばすと「検査があるのに
+        # 何も見ていない」状態が緑で通り続ける
+        env:
+          REQUIRE_PLPGSQL_CHECK: "1"
 
   bundle-size:
     name: Client Bundle Size

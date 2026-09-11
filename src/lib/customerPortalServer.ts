@@ -1,5 +1,6 @@
 ﻿import crypto from "crypto";
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
+import { OUTWARD_VISIBLE_TYPES } from "@/lib/audit/certificateLog";
 
 const PEPPER = process.env.CUSTOMER_AUTH_PEPPER!;
 
@@ -337,6 +338,14 @@ export async function listHistoryForCustomer(
     .select("id, type, title, description, performed_at, certificate_id")
     .eq("tenant_id", tenantId)
     .in("certificate_id", certIds)
+    // **閲覧監査の行を顧客に見せない。** ここは service-role（RLS を通らない）で引き、
+    // 呼び出し側の `/api/customer/list` は画面で `description` をそのまま描画し、
+    // `/api/customer/data-export` は書き出しに入れる。型で絞らないと、自分の証明書の
+    // 履歴として**他の訪問者の IP** と**店舗スタッフの uid** が顧客に見える。
+    //
+    // PR #1040 は同じ漏れを公開ページ側だけ直していて、こちらが残っていた
+    // （書く側の `logCertificateAction` は1つ、読む側が2つある形）。
+    .in("type", OUTWARD_VISIBLE_TYPES)
     .order("performed_at", { ascending: false })
     .limit(50);
   return histories ?? [];
