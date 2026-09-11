@@ -405,6 +405,15 @@ export function useTerminal() {
       store.setPaymentStatus("creating");
       store.setPaymentError(null);
 
+      // /code-review (Codex) 指摘: store の pendingCapturePaymentIntentId は、
+      // captureOnServer が 401 を返すと mobileApi → handleUnauthorized →
+      // signOutEverywhere → resetPayment() の連鎖で**この catch に来る前に**
+      // null へ戻される（セッション切れは店舗側にはよくある）。store だけを見て
+      // 「非承認」と判定すると、実際は課金済みなのに「完了しませんでした」と
+      // 誤通知してしまう。store の外側（この呼び出しのローカル）にも
+      // 課金済みの事実を残しておき、store が途中でリセットされても正しく判定する
+      let chargedPaymentIntentId: string | null = null;
+
       try {
         // **カードを切った後で記録に失敗した分**があれば、新しく切り直さずに
         // その PaymentIntent の記録だけをやり直す。ここを飛ばすと毎回新しい
@@ -413,6 +422,7 @@ export function useTerminal() {
         // 現在値を読む（画面側も同じ形で getState() を使っている）
         const pending = useTerminalStore.getState().pendingCapturePaymentIntentId;
         if (pending) {
+          chargedPaymentIntentId = pending;
           store.setPaymentStatus("capturing");
           const receipt = await captureOnServer(pending, reservationId, storeId, itemsJson);
           store.setPendingCapture(null);
@@ -465,13 +475,25 @@ export function useTerminal() {
         const { paymentIntent: confirmed, error: confirmError } =
           await confirmPaymentIntent({ paymentIntent: collected });
         if (confirmError || !confirmed) {
-          // /code-review (Codex) 指摘: 通信エラー等で confirmPaymentIntent が
-          // エラーを返しても、Stripe 側では実際に charge が成功していることが
-          // ある（confirmError.paymentIntent.status === "succeeded"）。見逃すと
-          // 「非承認」通知を送ってしまい、店舗が二重決済する。カードは既に
-          // 切られている扱いにして、既存の記録リトライ経路（pendingCapture）に乗せる
-          if (confirmError?.paymentIntent?.status === "succeeded") {
-            store.setPendingCapture(confirmError.paymentIntent.id);
+          // /code-review (Codex) 指摘: このSDK (beta.31) の confirmPaymentIntent は
+          // ネイティブ側がエラーと並べて渡す更新済み PaymentIntent を、JS の
+          // ラッパーが確定的に捨てる（node_modules の functions.js:
+          // `if (error) return { error, paymentIntent: undefined }`）。
+          // StripeError 型に `paymentIntent` フィールドはあるが、この呼び出しの
+          // エラーには実際には載らない＝前回の修正（confirmError.paymentIntent
+          // を見る）は動かないコードだった。通信エラー等で「確定失敗」と
+          // 返っても Stripe 側では charge が成功していることがあるため、
+          // サーバー経由（ポーリング用に既にある GET）で実際の状態を確認する
+          try {
+            const latest = await mobileApi<{ status: string }>(
+              `/pos/terminal/create-payment-intent?id=${encodeURIComponent(collected.id)}`
+            );
+            if (latest.status === "succeeded") {
+              chargedPaymentIntentId = collected.id;
+              store.setPendingCapture(collected.id);
+            }
+          } catch {
+            // 確認できなければ何もしない（従来通り非承認として扱う）
           }
           throw new Error(confirmError?.message ?? "決済確定失敗");
         }
@@ -480,6 +502,7 @@ export function useTerminal() {
 
         // **ここから先で失敗しても、カードは既に切られている。**
         // 記録だけをやり直せるように ID を残してから記録しに行く
+        chargedPaymentIntentId = confirmed.id;
         store.setPendingCapture(confirmed.id);
 
         // 5. バックエンドでキャプチャ
@@ -498,12 +521,15 @@ export function useTerminal() {
         // Apple Tap to Pay 要件 5.12: 非承認の結果を見る前にアプリを
         // 閉じていたら通知する。通知失敗は決済結果そのものを妨げない。
         //
-        // pendingCapturePaymentIntentId が残っているなら、カードは既に切られていて
-        // capture（記録）だけが失敗したケース＝非承認ではない。同じ「完了しません
-        // でした」の文言で送ると、店舗が記録待ちの再試行導線（この pending を
-        // 使う）を知らずに決済し直し、二重請求になる。文言を分ける。
-        const alreadyCharged =
-          useTerminalStore.getState().pendingCapturePaymentIntentId != null;
+        // pendingCapturePaymentIntentId（相当）が残っているなら、カードは既に
+        // 切られていて capture（記録）だけが失敗したケース＝非承認ではない。
+        // 同じ「完了しませんでした」の文言で送ると、店舗が記録待ちの再試行導線
+        // を知らずに決済し直し、二重請求になる。文言を分ける。
+        //
+        // store の値ではなくこのローカル変数を見る: captureOnServer が 401 を
+        // 返すと store は catch に来る前に resetPayment() で null に戻されるため
+        // （上のコメント参照）
+        const alreadyCharged = chargedPaymentIntentId != null;
         const notification = alreadyCharged
           ? {
               title: "決済の記録に失敗しました",
