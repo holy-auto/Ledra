@@ -4,8 +4,16 @@ name: DB types regenerate
 #
 # 必要な GitHub Secret:
 #   - SUPABASE_DB_URL … db-migrate.yml と同じものを使う。
-#   - TYPEGEN_TOKEN … **PAT (classic でも fine-grained でも可)**。必要な権限は
-#     contents: write（chore/db-typegen への push）と pull-requests: write。
+#   - TYPEGEN_TOKEN … **PAT**。**必要な権限は種類によって名前が違う。**
+#     - **fine-grained**: リポジトリ権限の **Contents: Read and write**
+#       （chore/db-typegen への push）と **Pull requests: Read and write**。
+#     - **classic**: 権限は OAuth スコープで指定する。**`repo`**（private リポジトリ。
+#       public なら `public_repo`）。**classic に "Contents" や "Pull requests" という
+#       選択肢は無い。**
+#     以前ここに「classic でも fine-grained でも可。必要な権限は contents: write と
+#     pull-requests: write」と書いていたが、**後半は fine-grained の権限名**で、
+#     classic の画面には出てこない。探しても見つからず、スコープ無しのトークンを
+#     登録して 403 のまま——という踏み方をする（2026-09-11 の Codex レビュー指摘）。
 #     **未設定でも動くが、自動化は完結しない**（下の「なぜ専用トークンが要るか」）。
 #
 #     **GitHub App を使いたい場合、この形では登録できない。** インストール
