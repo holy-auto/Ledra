@@ -44,6 +44,77 @@
 - 対象: `apps/mobile/src/hooks/useTerminal.ts`,
   `apps/mobile/src/lib/paymentOutcomeNotify.ts`（新規）。
 
+## 2026-09-11 typegen の専用トークン対応をマージした（#1056）。設定とシークレットは未登録のまま
+
+- **マージ済み**（`b38a7445`、squash）。`db-typegen.yml` の
+  `peter-evans/create-pull-request` に `token: ${{ secrets.TYPEGEN_TOKEN || github.token }}`
+  が入った。**シークレットが登録されれば、2箇所の穴が両方とも解ける。**
+- **登録されるまで挙動は変わらない。** `GITHUB_TOKEN` へ落ちて 2026-09-07 以前と同じ。
+  ただし黙って落ちないよう、直前の warning ステップが2つの症状を名指しで出す。
+  **`db-typegen.yml` は毎回最終ステップで赤くなり続ける。**
+- **残っているのはリポジトリ側の2操作で、Claude からは実行できない**:
+  Actions の PR 作成許可と、`contents: write` + `pull-requests: write` を持つ
+  **PAT** の `TYPEGEN_TOKEN` 登録。OPEN_QUESTIONS に依頼として残っている。
+- 実体はワークフローの変更1本。差分の大半は **main 取り込み6回**と事業ログ。
+  この PR は 2026-09-09 に開いてから 2026-09-11 まで開いており、その間に main が
+  6回動いた。**開けておくこと自体のコストが実測で出た**（下記）。
+
+### 開けておいた2日間に起きたこと（すべて中身と無関係のコスト）
+
+| 事象 | 回数 |
+|---|---|
+| main 取り込み | 6回 |
+| MISTAKE_LEDGER の ID 繰り上げ | 4回（M-070 → 071 → 072 → 074 → 081） |
+| その繰り上げで参照を壊した | 3回 |
+| 他人（main 側）の参照を自分のエントリへ向けた | 1回（2箇所） |
+
+- **ID の空き番号は毎回飛ぶ。** 3回目は2つ、4回目は7つ。「main の最大 ID + 1」を
+  毎回引き直さないと当たらない。
+- **一括置換で3回同じ壊し方をした。** 経過の表にある旧 ID まで書き換わるのが2回、
+  **main 自身の M-074 への参照2箇所**（DECISION_LOG / RELEASE_LOG。main の M-074 は
+  型 B の別エントリ）まで書き換えたのが1回。
+  `git show origin/main:<file> | grep -c '<旧ID>'` との突き合わせで気づいて戻した。
+- **文章の警告は効かなかった。** OPEN_QUESTIONS にも次回の作業手順にも
+  「一括置換は危険」と書いたうえで、同じことをした。手順を
+  **grep 1回で判定できる形**（置換前後で main 側の出現数と突き合わせる）に書き換えた。
+
+### 途中で破棄したもの
+
+- `next` / `sharp` のロックファイル更新。CI の `Security audit` が赤くなったため入れたが、
+  **同じ CVE 3件を #1054 が先に main へ入れていた**（`b9dba57e`）。main 取り込み時に
+  破棄して main 側を採用したので、**この PR に依存の変更は残っていない**。
+  「自分の PR のせいか」は調べたのに「誰かが既に直しているか」を調べなかった
+  見落とし（M-081）。
+
+### マージ後に判明した誤り（Codex レビュー3件、#1065 で修正）
+
+**レビューはマージの20秒前に届いていたが、読まずにマージした**（M-082）。3件とも実在した。
+
+- **`TYPEGEN_TOKEN` の権限記述が classic PAT に対して誤りだった。**
+  `contents: write` / `pull-requests: write` は **fine-grained の権限名**で、
+  classic は OAuth スコープ（private なら `repo`）を使う。**classic を選んだ人は
+  その項目を画面で探しても見つからない。** ワークフローのコメントを両方併記へ修正。
+- **OPEN_QUESTIONS に同じ件の項が2つあり、古い方が「PAT か GitHub App トークン」を
+  勧めたままだった。** App のインストールトークンは1時間で失効するので使えない。
+  方針は DECISION_LOG 2026-09-09 へ移っているので、古い項を削除。
+- **Actions の PR 作成許可は PAT を使うなら不要で、有効化はリポジトリ全体に効く**
+  （`pull-requests: write` を要求する全ワークフローが PR を作成・承認できるようになる）。
+  しかも有効化してもフォールバック経路は直らない（`GITHUB_TOKEN` の push は
+  CI を起動しないまま）。**2 だけで自動化は完結する。**
+
+### 副産物
+
+- **間欠的なテスト失敗を特定した。** `src/lib/line/__tests__/webhookEvents.test.ts` の
+  「falls back to the normal inbound record when there is no active vehicle-photo flow」付近。
+  **単体では12回連続で通り、全体実行のときだけ落ちる**（実測5回中2回）ので、
+  ファイル単体の不具合ではなく並列実行時の干渉かタイミング。**assertion 本体は未取得。**
+  OPEN_QUESTIONS に次に捕まえる手順とあわせて起票済み。
+
+検証（head `b80e09bb`、マージ直前に数え直し）: `ci-parallel-checks.sh` の6検査すべて通過
+（`check:context-dates` 1285件）、`npm audit --audit-level=high --omit=dev` で
+`found 0 vulnerabilities`、`## M-` の重複は6組のみ（取り込み前から main 側にあり増えていない）、
+CI 全11チェック緑。
+
 ## 2026-09-09 next / sharp の脆弱性による CI 停止 —— #1054 と同じ修正を並行して作り、こちらは破棄した
 
 - **成果物は残っていない。** 同じ CVE 3件を #1054 が先に main へ入れており
