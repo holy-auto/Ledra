@@ -3,6 +3,17 @@
 > まだ決まっていないこと、判断に迷っていることを書く場所。決まったら
 > DECISION_LOG.md に移し、このファイルからは消す（削除履歴は git で追える）。
 
+## Tap to Pay 要件5.12: アプリ強制終了中の非承認はまだ通知できない（2026-09-11）
+
+要件5.12対応（DECISION_LOG.md 2026-09-11参照）はクライアント側の `AppState` +
+ローカル通知のみ。NFCタップの最中にアプリごと強制終了（プロセスkill）された
+場合、`processCardPayment` の catch ブロック自体が実行されないため未カバー。
+【要確認】Appleの実際の審査・動画チェックでここまで問われるか。カバーするには
+Stripe webhook（`payment_intent.payment_failed`）+ Expo Push API 送信の
+新規実装が要る（`push_tokens.user_id` を PaymentIntent の
+`metadata.user_id` で引く経路は調査済み）。動画撮影・提出後の反応を見てから
+着手要否を判断する。
+
 ## 静的検査が届かない最後の1つ（動的 SQL）と、失敗を捨てている API 呼び出し（2026-09-08）
 
 2026-09-08 に「`is_pii_disclosed` 修正の残り3点」を調べ、**3点とも決着した**（下の

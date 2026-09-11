@@ -1,4 +1,6 @@
 import { useCallback, useRef } from "react";
+import { AppState } from "react-native";
+import * as Notifications from "expo-notifications";
 import {
   useStripeTerminal,
   ErrorCode,
@@ -6,6 +8,7 @@ import {
 } from "@stripe/stripe-terminal-react-native";
 import { mobileApi } from "@/lib/api";
 import type { PosCheckoutItem } from "@/lib/pos";
+import { shouldNotifyDeclinedInBackground } from "@/lib/paymentOutcomeNotify";
 
 /**
  * 決済の記録（サーバ側の pos_checkout）。**カードを切った後に呼ぶ。**
@@ -483,6 +486,16 @@ export function useTerminal() {
         const msg = e instanceof Error ? e.message : String(e);
         store.setPaymentStatus("failed");
         store.setPaymentError(msg);
+
+        // Apple Tap to Pay 要件 5.12: 非承認の結果を見る前にアプリを
+        // 閉じていたら通知する。通知失敗は決済結果そのものを妨げない。
+        if (shouldNotifyDeclinedInBackground(AppState.currentState)) {
+          void Notifications.scheduleNotificationAsync({
+            content: { title: "決済が完了しませんでした", body: msg },
+            trigger: null,
+          }).catch(() => {});
+        }
+
         return { success: false, error: msg };
       }
     },

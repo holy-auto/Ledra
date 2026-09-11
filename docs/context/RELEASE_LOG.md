@@ -4,6 +4,22 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-09-11 Tap to Pay 決済が非承認でアプリを閉じていた場合に通知（要件5.12）
+
+- Apple Tap to Pay Publishing Entitlement 要件チェックリスト v1.7（v1.6からの
+  差分はこの1項目のみ）に対応。決済が非承認で、かつ結果を見る前にアプリを
+  バックグラウンドへ回した/閉じた場合、ローカル通知で結果を知らせる。
+- `apps/mobile/src/hooks/useTerminal.ts` の `processCardPayment` の失敗
+  catch ブロック（成功以外の全結果が集約する唯一の箇所）に、
+  `AppState.currentState !== "active"` を条件にローカル通知
+  （`expo-notifications`）を追加。判定は `src/lib/paymentOutcomeNotify.ts`
+  に切り出し、自己チェック付き。
+- クライアント側のみの対応。NFCタップ中にアプリごと強制終了された場合は
+  未カバー（サーバー側 Stripe webhook + push 送信の新規構築が必要になるが、
+  現状そのインフラ自体が存在しないため今回は見送り。理由は DECISION_LOG 参照）。
+- 対象: `apps/mobile/src/hooks/useTerminal.ts`,
+  `apps/mobile/src/lib/paymentOutcomeNotify.ts`（新規）。
+
 ## 2026-09-11 車両履歴の外部公開を許可リストに反転した（同日の続き）
 
 - 上の修正に `/code-review` を掛けて11件の指摘。最も重いものは
