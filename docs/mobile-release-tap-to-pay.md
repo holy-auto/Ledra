@@ -102,7 +102,7 @@ npx eas-cli@latest submit --platform ios --profile production
 Windows (PowerShell) での判定:
 
 ```powershell
-$f = "apps\mobile\credentials\ios\profile.mobileprovision"
+$f = "apps\mobile\credentials\ledra_dev.mobileprovision"
 $t = [Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes($f))
 $s = $t.IndexOf('<?xml'); $e = $t.IndexOf('</plist>') + 8
 $x = $t.Substring($s, $e - $s)
@@ -110,7 +110,9 @@ if ($x -match 'get-task-allow</key>\s*<true/>') { "Development 型 (OK)" } else 
 if ($x -match 'proximity-reader') { "entitlement あり" } else { "entitlement なし" }
 ```
 
-macOS では `security cms -D -i profile.mobileprovision | plutil -p -` でも同じことが分かる。
+macOS では `security cms -D -i apps/mobile/credentials/ledra_dev.mobileprovision | plutil -p -`
+でも同じことが分かる。いずれも **`credentials.json` の `provisioningProfilePath` が指すファイル**
+を見ること（別のファイルを検査しても意味がない）。
 
 ### 3.1.2. Development 型プロファイルを用意する（Windows / macOS 共通）
 
