@@ -52,6 +52,10 @@ const INTENTIONAL = new Set([
 const BARE_COLS = /(?<![\w:-])grid-cols-(\d+)\b/;
 const INPUT_TAG = /^(input|select|textarea)$/;
 
+/** 構文木に通す前の足切り。どちらも該当するための**必要条件**。 */
+const PREFILTER_BARE = /(?<![\w:-])grid-cols-\d/;
+const PREFILTER_INPUT = /<(input|select|textarea)[\s/>]/;
+
 function classNameOf(el: ts.JsxOpeningElement | ts.JsxSelfClosingElement): string | null {
   for (const a of el.attributes.properties) {
     if (!ts.isJsxAttribute(a) || a.name.getText() !== "className" || !a.initializer) continue;
@@ -106,11 +110,17 @@ export function findCrampedFormGrids(src: string, fileName: string): number[] {
 }
 
 describe("入力欄を並べた固定列グリッド", () => {
-  it("モバイルで潰れるフォームが無い", () => {
+  // 足切り後の実測は 1 秒未満だが、CI のランナーは手元より数倍遅いので余裕を取る。
+  it("モバイルで潰れるフォームが無い", { timeout: 30_000 }, () => {
     const offenders: string[] = [];
     for (const p of walkSource("src")) {
       if (p.includes("__tests__") || EXCLUDED.test(p) || INTENTIONAL.has(p)) continue;
-      for (const line of findCrampedFormGrids(readFileSync(p, "utf8"), p)) {
+      const src = readFileSync(p, "utf8");
+      // **構文木に通す前に文字列で振るう。** src 全体（3300ファイル超）を
+      // 解析すると CI のランナーで 5 秒を超えて落ちた。
+      // どちらも「無ければ該当も無い」必要条件なので、絞っても取りこぼさない。
+      if (!PREFILTER_BARE.test(src) || !PREFILTER_INPUT.test(src)) continue;
+      for (const line of findCrampedFormGrids(src, p)) {
         offenders.push(`${p}:${line}`);
       }
     }
