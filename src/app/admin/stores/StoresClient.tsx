@@ -325,7 +325,7 @@ export default function StoresClient() {
                     placeholder="139.7454"
                   />
                 </div>
-                <p className="col-span-2 text-[11px] text-muted">
+                <p className="sm:col-span-2 text-[11px] text-muted">
                   写真GPSと店舗位置の整合性チェックの基準に使います (未入力可)。
                 </p>
               </div>

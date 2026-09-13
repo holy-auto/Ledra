@@ -1,28 +1,30 @@
 /**
- * 固定列グリッドが**モバイルで潰れない**ことを固定する。
+ * **入力欄を並べた固定列グリッドが、モバイルで潰れない**ことを固定する。
  *
- * ## なぜ要るか
+ * ## なぜこの形なのか
  *
  * `grid-cols-2` のようにブレークポイント接頭辞の無い固定列は、画面幅に関係なく
- * その列数を保つ。入力欄を並べたフォームだと、400px 幅で1列あたり 150px 程度まで
+ * その列数を保つ。入力欄を並べたフォームだと 400px 幅で1列あたり 150px 程度まで
  * 潰れ、ラベルが折り返して読めなくなる。
  *
- * ただし**固定が正解のものもある**。カレンダーの曜日列（7列）は7列でなければ
- * 意味を成さないし、25セルの装飾グリッドは `w-16 h-16` の中の飾りでしかない。
- * 一律に接頭辞を付けると、そちらが壊れる。
+ * **ただし「固定列かどうか」だけを見ると役に立たない。** カレンダーの曜日列（7列）、
+ * Before/After の2枚並べ、レジのタッチタイル、`DataTable` のモバイル用カード表示は
+ * どれも固定が正解で、リポジトリ全体では60箇所以上ある。それを一覧にしても
+ * 1件ごとの根拠が薄くなり、誰も更新しなくなる。
  *
- * そこで**残っている固定列を1件残らず数えて、意図的なものとして明記する**。
- * 新しくフォームに素の固定列を足すと、この数が合わなくなって落ちる。
+ * そこで**壊れる条件そのもの**を見る —— 「素の固定列」かつ「中に実際の
+ * `input` / `select` / `textarea` がある」。この2つが揃ったときだけ落とす。
  *
- * 落ちたときは2択:
- * - モバイルで潰れるなら → `grid-cols-1 sm:grid-cols-2` のように接頭辞を付ける
- * - 固定が正解なら → 下の表に理由を書いて数を更新する
+ * 最初は正規表現でソース全体を数える形で書いていて、2つ取りこぼした。
+ * `grid-cols-[2-9]` が `grid-cols-12` に当たらず、`className={\`...\`}` の
+ * テンプレートリテラルも見ていなかった（`/code-review` の指摘）。構文木で見れば
+ * どちらも起きない。
  */
 import { describe, it, expect } from "vitest";
-import { readFileSync, readdirSync } from "node:fs";
-import { join } from "node:path";
-
-const REPO = process.cwd();
+import { readFileSync } from "node:fs";
+import { walkSource } from "./sourceScan";
+import { parse } from "./astScan";
+import ts from "typescript";
 
 /**
  * 対象外のディレクトリ。
@@ -31,84 +33,108 @@ const REPO = process.cwd();
  * 疑似ダッシュボード）と固定レイアウトのスライドでできている。縮小した見た目
  * そのものが成果物なので、レスポンシブにすると設計意図が壊れる。
  */
-const EXCLUDED_DIRS = ["src/components/marketing/", "src/app/(marketing)/", "src/app/pitch/"];
+const EXCLUDED = /^src\/(components\/marketing|app\/\(marketing\)|app\/pitch)\//;
 
 /**
- * **接頭辞なしの固定列を意図して残しているファイルと、その件数。**
+ * **入力欄入りの固定列グリッドのうち、固定のままでよいもの。**
  *
- * | ファイル | なぜ固定でよいか |
+ * | 場所 | なぜ固定でよいか |
  * |---|---|
- * | `CalendarView` / `booking`(7列×2) | カレンダーの曜日列。7列でなければ意味を成さない |
- * | `PhotoCompare` / `MediaUploadSection` | Before/After の対比。2枚並べることが目的 |
- * | `DataTable` | **これ自体がモバイル用のカード表示**。1列にすると縦に伸びすぎる |
- * | `PosClient`(3) | レジのタッチ操作前提のタイル。3列は指で押せる大きさで設計済み |
- * | `StorefrontJobWorkflow` | 4段の進行バー。横一列であることが進行の表現 |
- * | `DisplayModeOnboarding` | `aria-hidden` の装飾プレビュー |
- * | `booking`(2列) / `AiExplainPanel` / `shop` | 短いラベルのボタン2つ。400px でも押せる |
- * | その他 | ラベルと値の対（`dt`/`dd` 相当）。2列のまま読める短さ |
+ * | `PackageEditor` | 12列だが**子が `col-span-12 sm:col-span-4` と応答的**。正しい書き方 |
+ * | `MarketClient` | 2列だが検索欄が `col-span-2` で**実質全幅**。潰れない |
  */
-const INTENTIONAL_FIXED_GRIDS: Record<string, number> = {
-  "src/app/admin/DisplayModeOnboarding.tsx": 1,
-  "src/app/admin/StorefrontDashboard.tsx": 1,
-  "src/app/admin/analytics/staff/StaffPerformanceClient.tsx": 1,
-  "src/app/admin/certificates/[public_id]/MediaUploadSection.tsx": 1,
-  "src/app/admin/certificates/[public_id]/PhotoTamperingPanel.tsx": 1,
-  "src/app/admin/jobs/[id]/StorefrontJobWorkflow.tsx": 1,
-  "src/app/admin/market-vehicles/[id]/VehicleDetailClient.tsx": 1,
-  "src/app/admin/pos/PosClient.tsx": 3,
-  "src/app/admin/reservations/CalendarView.tsx": 2,
-  "src/app/admin/shop/page.tsx": 1,
-  "src/app/agent/apply/status/page.tsx": 1,
-  "src/app/agent/invoices/page.tsx": 1,
-  "src/app/customer/[tenant]/booking/page.tsx": 3,
-  "src/app/manufacturer/templates/TemplatesClient.tsx": 1,
-  "src/app/parts/confirm/[token]/PartConfirmClient.tsx": 1,
-  "src/app/video/page.tsx": 1,
-  "src/components/certificates/AiExplainPanel.tsx": 1,
-  "src/components/ui/DataTable.tsx": 1,
-  "src/components/ui/PhotoCompare.tsx": 1,
-};
+const INTENTIONAL = new Set([
+  "src/app/admin/service-packages/[id]/PackageEditor.tsx",
+  "src/app/market/MarketClient.tsx",
+]);
 
-const CLASS_ATTR = /class[Nn]ame="([^"]*)"/g;
-/** `sm:grid-cols-2` の `:` を境界扱いしないよう、直前が `:` でないことを見る。 */
-const BARE_FIXED = /(?<!:)\bgrid-cols-[2-9]\b/;
-const HAS_BREAKPOINT = /\b(sm|md|lg|xl|2xl):grid-cols-/;
+/** 接頭辞の付かない素の `grid-cols-N`。`sm:grid-cols-2` の `:` に当たらないようにする。 */
+const BARE_COLS = /(?<![\w:-])grid-cols-(\d+)\b/;
+const INPUT_TAG = /^(input|select|textarea)$/;
 
-/** そのソースに、接頭辞なしの固定列が何箇所あるか。 */
-export function countBareFixedGrids(src: string): number {
-  let n = 0;
-  for (const [, cn] of src.matchAll(CLASS_ATTR)) {
-    if (BARE_FIXED.test(cn) && !HAS_BREAKPOINT.test(cn)) n += 1;
+function classNameOf(el: ts.JsxOpeningElement | ts.JsxSelfClosingElement): string | null {
+  for (const a of el.attributes.properties) {
+    if (!ts.isJsxAttribute(a) || a.name.getText() !== "className" || !a.initializer) continue;
+    const init = a.initializer;
+    if (ts.isStringLiteral(init)) return init.text;
+    // `className={`grid grid-cols-2 ${x}`}` も読む（テンプレートリテラルを取りこぼさない）
+    if (ts.isJsxExpression(init) && init.expression) return init.expression.getText();
   }
-  return n;
+  return null;
 }
 
-function scan(): Record<string, number> {
-  const out: Record<string, number> = {};
-  for (const rel of readdirSync(join(REPO, "src"), { recursive: true, encoding: "utf8" })) {
-    const p = `src/${String(rel).split("\\").join("/")}`;
-    if (!/\.tsx?$/.test(p) || p.includes("__tests__")) continue;
-    if (EXCLUDED_DIRS.some((d) => p.startsWith(d))) continue;
-    const n = countBareFixedGrids(readFileSync(join(REPO, p), "utf8"));
-    if (n > 0) out[p] = n;
-  }
+function tagNameOf(n: ts.Node): string {
+  if (ts.isJsxElement(n)) return n.openingElement.tagName.getText();
+  if (ts.isJsxSelfClosingElement(n)) return n.tagName.getText();
+  return "";
+}
+
+function containsInput(n: ts.Node): boolean {
+  let found = false;
+  const visit = (x: ts.Node) => {
+    if (found) return;
+    if (INPUT_TAG.test(tagNameOf(x))) found = true;
+    else ts.forEachChild(x, visit);
+  };
+  ts.forEachChild(n, visit);
+  return found;
+}
+
+/**
+ * そのソースにある「素の固定列 × 入力欄あり」の箇所を返す。
+ *
+ * ponytail: 判定は**タグ名と className の見た目**だけに拠る素朴なもの。
+ * 子が `col-span-*` で全幅に伸びている場合（`MarketClient`）や、子側だけを
+ * 応答的にしている場合（`PackageEditor`）は区別できないので、上の一覧で個別に許す。
+ * 数が増えて一覧が維持できなくなったら、算出した列幅で判定する方へ上げる。
+ */
+export function findCrampedFormGrids(src: string, fileName: string): number[] {
+  const sf = parse(src, fileName);
+  const out: number[] = [];
+  const visit = (n: ts.Node) => {
+    if (ts.isJsxElement(n)) {
+      const cn = classNameOf(n.openingElement);
+      const m = cn ? BARE_COLS.exec(cn) : null;
+      if (m && Number(m[1]) >= 2 && containsInput(n)) {
+        out.push(sf.getLineAndCharacterOfPosition(n.getStart()).line + 1);
+      }
+    }
+    ts.forEachChild(n, visit);
+  };
+  visit(sf);
   return out;
 }
 
-describe("固定列グリッドのモバイル対応", () => {
-  it("接頭辞なしの固定列は、意図的なものだけ", () => {
-    // 落ちたら: 潰れるなら接頭辞を付ける。固定が正解なら上の表に理由を書いて数を直す。
-    expect(scan()).toEqual(INTENTIONAL_FIXED_GRIDS);
+describe("入力欄を並べた固定列グリッド", () => {
+  it("モバイルで潰れるフォームが無い", () => {
+    const offenders: string[] = [];
+    for (const p of walkSource("src")) {
+      if (p.includes("__tests__") || EXCLUDED.test(p) || INTENTIONAL.has(p)) continue;
+      for (const line of findCrampedFormGrids(readFileSync(p, "utf8"), p)) {
+        offenders.push(`${p}:${line}`);
+      }
+    }
+    // 落ちたら: `grid-cols-1 sm:grid-cols-2` のように接頭辞を付ける。
+    // 子が全幅に伸びるなどで潰れないなら、上の INTENTIONAL に理由を書いて足す。
+    expect(offenders).toEqual([]);
   });
 
   it("検出器が空振りしていない", () => {
-    // 素の固定列は拾う
-    expect(countBareFixedGrids('<div className="grid grid-cols-2 gap-3">')).toBe(1);
-    expect(countBareFixedGrids('<div className="grid gap-3 grid-cols-4 text-center">')).toBe(1);
-    // 接頭辞付きは拾わない（`sm:grid-cols-2` の `:` を境界と誤認しないこと）
-    expect(countBareFixedGrids('<div className="grid grid-cols-1 sm:grid-cols-2 gap-3">')).toBe(0);
-    expect(countBareFixedGrids('<div className="grid grid-cols-2 sm:grid-cols-4">')).toBe(0);
-    // 1列は固定でも潰れないので対象外
-    expect(countBareFixedGrids('<div className="grid grid-cols-1 gap-3">')).toBe(0);
+    const cramped = `const A = () => <div className="grid grid-cols-2 gap-3"><input value={x} /></div>;`;
+    expect(findCrampedFormGrids(cramped, "a.tsx")).toHaveLength(1);
+
+    // 接頭辞が付いていれば対象外
+    const ok = `const A = () => <div className="grid grid-cols-1 sm:grid-cols-2"><input value={x} /></div>;`;
+    expect(findCrampedFormGrids(ok, "a.tsx")).toHaveLength(0);
+
+    // 入力欄が無ければ対象外（画像2枚並べ・カレンダーなど）
+    const noInput = `const A = () => <div className="grid grid-cols-7"><span>月</span></div>;`;
+    expect(findCrampedFormGrids(noInput, "a.tsx")).toHaveLength(0);
+
+    // 旧実装が取りこぼした2つ: 10列以上と、テンプレートリテラルの className
+    const twelve = `const A = () => <div className="grid grid-cols-12"><input value={x} /></div>;`;
+    expect(findCrampedFormGrids(twelve, "a.tsx")).toHaveLength(1);
+    const tmpl = "const A = () => <div className={`grid grid-cols-2 ${k}`}><input value={x} /></div>;";
+    expect(findCrampedFormGrids(tmpl, "a.tsx")).toHaveLength(1);
   });
 });
