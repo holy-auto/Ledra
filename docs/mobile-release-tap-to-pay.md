@@ -148,27 +148,33 @@ Development 限定の間は、EAS に作らせたプロファイルでは必ず�
 #### 1) Apple Development 証明書を作る
 
 既に持っている場合はこの手順を飛ばす。Windows は Git Bash 等の `openssl` を使う。
+以下は**リポジトリ直下から**実行する。
 
-**必ず `apps/mobile/credentials/` の中で実行する。** リポジトリ直下で実行すると
-秘密鍵 `ios_dev.key` が ignore されていない場所に落ち、`git add .` で誤って
-コミットできてしまう。
+生成物は必ず `apps/mobile/credentials/` の中に作る。リポジトリ直下に作ると秘密鍵
+`ios_dev.key` が目に付きにくい場所に残るため、**サブシェル `( … )` で囲って**
+カレントディレクトリを動かさずに実行する（この後のビルド手順がルート基準のため）。
+Git Bash では `MSYS_NO_PATHCONV=1` が無いと `-subj` の `/` が Windows パスに
+変換されて DN が壊れるので、必ず付ける（macOS/Linux では無害）。
 
 ```bash
-mkdir -p apps/mobile/credentials && cd apps/mobile/credentials
-openssl genrsa -out ios_dev.key 2048
-openssl req -new -key ios_dev.key -out ios_dev.csr \
-  -subj "/emailAddress=<Apple ID のメール>/CN=HOLY Corp./C=JP"
+mkdir -p apps/mobile/credentials
+( cd apps/mobile/credentials \
+  && openssl genrsa -out ios_dev.key 2048 \
+  && MSYS_NO_PATHCONV=1 openssl req -new -key ios_dev.key -out ios_dev.csr \
+       -subj "/emailAddress=<Apple ID のメール>/CN=HOLY Corp./C=JP" )
 ```
 
 Apple Developer Portal → Certificates → `+` → **Apple Development** を選び、
-`ios_dev.csr` をアップロードして `development.cer` をダウンロード。`.p12` に変換:
+`apps/mobile/credentials/ios_dev.csr` をアップロードして `development.cer` を
+ダウンロードし、同じ `apps/mobile/credentials/` に置く。
 
-`apps/mobile/credentials/` に置いたまま `.p12` に変換する。**`-passout pass:...` は
-使わない** — シェル履歴とプロセス一覧にパスワードが残る。省略すると対話で訊かれる。
+`.p12` に変換する。**`-passout pass:...` は使わない** — シェル履歴とプロセス一覧に
+パスワードが残る。省略すると対話で訊かれる。
 
 ```bash
-openssl x509 -inform DER -in development.cer -out development.pem
-openssl pkcs12 -export -inkey ios_dev.key -in development.pem -out ios_dev.p12
+( cd apps/mobile/credentials \
+  && openssl x509 -inform DER -in development.cer -out development.pem \
+  && openssl pkcs12 -export -inkey ios_dev.key -in development.pem -out ios_dev.p12 )
 ```
 
 `credentials.json` の `distributionCertificate.password` をここで入力した値に合わせる
