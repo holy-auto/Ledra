@@ -92,7 +92,7 @@ npx eas-cli@latest submit --platform ios --profile production
 | EAS が古い provisioning profile を再利用している | 2.1 → 2.2 を実施 |
 | Apple 側の承認がまだ反映されていない | 承認メールから 24 時間程度待ってから再試行 |
 | Apple 側で承認が「テスト用」のみ付与され、Distribution profile に含められない | Apple Developer Support に Technical Support Incident (TSI) を起票 |
-| **`development-device` に Ad Hoc / App Store のプロファイルを置いている**（`credentialsSource: "local"` + `credentials.json`） | **Development 型（iOS App Development）のプロファイルに差し替える。** Ad Hoc は Distribution 型なので、承認が Development 限定の間は何度作り直しても entitlement は入らない（MISTAKE_LEDGER M-085） |
+| **`development-device` に Ad Hoc / App Store のプロファイルを置いている**（`credentialsSource: "local"` + `credentials.json`） | **Development 型（iOS App Development）のプロファイルに差し替える。** Ad Hoc は Distribution 型なので、承認が Development 限定の間は何度作り直しても entitlement は入らない（MISTAKE_LEDGER M-086） |
 
 ### 3.1.1. 手元のプロファイルが Development 型か Distribution 型かを判定する
 
@@ -166,7 +166,7 @@ Apple Developer Portal → Profiles → `+` → **iOS App Development**
 
 §3.1.1 の判定コマンドで **「Development 型 (OK)」「entitlement あり」** の両方が
 出ることを確認してから実行する。ここで確認せずにビルドを回すと、20分待って
-同じエラーを見ることになる（MISTAKE_LEDGER M-085）。
+同じエラーを見ることになる（MISTAKE_LEDGER M-086）。
 
 ```bash
 cd apps/mobile
