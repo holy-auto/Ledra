@@ -81,7 +81,7 @@ CLAUDE.md が「判断の道具そのものを検証する」で挙げている
 5回ビルドを回し、(3) では直近のセキュリティ強化コミットや RLS を疑った。
 
 **After**: 3つとも原因は同じで、**`.gitignore` 対象のファイルが新クローンに無いだけ**だった。
-`apps/mobile/ttp-creds/`（Apple Development 証明書とプロファイル）、
+`apps/mobile/credentials/`（Apple Development 証明書とプロファイル）、
 ルートの `.env.local`、`apps/mobile/.env` の3つ。
 (1) を解いた時点で「このクローンには Git 管理外のファイルが一式欠けている」と
 分かっていたはずで、そこで `git status --ignored` 相当の棚卸しを1回やっていれば
@@ -132,9 +132,15 @@ Tap to Pay の capability 識別子不一致）が症状に一致すると考え
 （「TTP の development entitlement は Apple Development profile にしか入らず、
 EAS のリモート (Distribution cert 強制) では扱えないため local モードに切り替え」）。
 **同じ事実がリポジトリ内の2箇所に日本語で書かれていたのに、どちらも読んでいなかった。**
-さらに、実績のある保管場所は `ttp-creds/` で、`eas credentials` のダウンロードを
-実行させたことで `credentials.json` が EAS の Ad Hoc 資格情報に上書きされ、
-動いていた設定を自分で壊していた。
+さらに、`eas credentials` のダウンロードを実行させたことで `credentials.json` が
+EAS の Ad Hoc 資格情報とパスに上書きされ、動いていた設定を自分で壊していた。
+
+**追記2（Codex レビュー指摘）**: この台帳と手順書に一度
+「実績のある保管場所は `ttp-creds/`」と書いたが、**誤り**。`.gitignore` に
+`ttp-creds/` があるのを見ただけで断定し、実際に代表の環境で確認したときの
+`apps/mobile/credentials/`（`ios_dev.p12` と `ledra_dev.mobileprovision`）を
+反映していなかった。**型 F の同じ穴を、同じ調査の中でもう一度踏んでいる。**
+パスの正は `.gitignore` ではなく `credentials.json` である。
 
 **再発防止**: 仕組み無し（判断に依存）。習慣として次の2つを置く。
 1. **エラー文字列を外部検索する前に、必ず自リポジトリを grep する。**

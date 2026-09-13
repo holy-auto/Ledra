@@ -97,7 +97,8 @@ npx eas-cli@latest submit --platform ios --profile production
 ### 3.1.1. 手元のプロファイルが Development 型か Distribution 型かを判定する
 
 `credentialsSource: "local"` を使う `development-device` では、
-`credentials/ios/profile.mobileprovision` が **Development 型**である必要がある。
+`credentials.json` が指すプロファイルが **Development 型**である必要がある
+（実績のあるパスは `credentials/ledra_dev.mobileprovision`）。
 Windows (PowerShell) での判定:
 
 ```powershell
@@ -113,7 +114,23 @@ macOS では `security cms -D -i profile.mobileprovision | plutil -p -` でも�
 
 ### 3.1.2. Development 型プロファイルを用意する（Windows / macOS 共通）
 
-**保管場所**: 実績のある置き場は `apps/mobile/ttp-creds/`（`.gitignore` 済み）。
+**保管場所**: `apps/mobile/credentials/`（`.gitignore` 済み。`ttp-creds/` も歴史的に
+ignore されているが、実際にビルドが通っていた資格情報は `credentials/` にあった）。
+**パスの正は `credentials.json`** なので、ファイルを置いたら必ずこのファイルの2つの
+パス欄と一致しているか確認する。実績のある形:
+
+```json
+{
+  "ios": {
+    "provisioningProfilePath": "credentials/ledra_dev.mobileprovision",
+    "distributionCertificate": {
+      "path": "credentials/ios_dev.p12",
+      "password": "<.p12 のパスワード>"
+    }
+  }
+}
+```
+
 `eas credentials` の「Download credentials from EAS to credentials.json」を実行すると
 `credentials.json` が **EAS 側の Ad Hoc 資格情報と `credentials/ios/` パスで上書きされる**
 ため、TTP 用の Development 資格情報を使いたいときにこれを実行してはいけない。
@@ -132,7 +149,12 @@ Development 限定の間は、EAS に作らせたプロファイルでは必ず�
 
 既に持っている場合はこの手順を飛ばす。Windows は Git Bash 等の `openssl` を使う。
 
+**必ず `apps/mobile/credentials/` の中で実行する。** リポジトリ直下で実行すると
+秘密鍵 `ios_dev.key` が ignore されていない場所に落ち、`git add .` で誤って
+コミットできてしまう。
+
 ```bash
+mkdir -p apps/mobile/credentials && cd apps/mobile/credentials
 openssl genrsa -out ios_dev.key 2048
 openssl req -new -key ios_dev.key -out ios_dev.csr \
   -subj "/emailAddress=<Apple ID のメール>/CN=HOLY Corp./C=JP"
@@ -141,14 +163,15 @@ openssl req -new -key ios_dev.key -out ios_dev.csr \
 Apple Developer Portal → Certificates → `+` → **Apple Development** を選び、
 `ios_dev.csr` をアップロードして `development.cer` をダウンロード。`.p12` に変換:
 
+`apps/mobile/credentials/` に置いたまま `.p12` に変換する。**`-passout pass:...` は
+使わない** — シェル履歴とプロセス一覧にパスワードが残る。省略すると対話で訊かれる。
+
 ```bash
 openssl x509 -inform DER -in development.cer -out development.pem
-openssl pkcs12 -export -inkey ios_dev.key -in development.pem \
-  -out dist-cert.p12 -passout pass:<任意のパスワード>
+openssl pkcs12 -export -inkey ios_dev.key -in development.pem -out ios_dev.p12
 ```
 
-`apps/mobile/credentials/ios/dist-cert.p12` に置き、`credentials.json` の
-`distributionCertificate.password` を合わせる
+`credentials.json` の `distributionCertificate.password` をここで入力した値に合わせる
 （キー名は `distributionCertificate` だが Development 証明書でよい）。
 
 #### 2) iOS App Development プロファイルを作る
@@ -159,8 +182,8 @@ Apple Developer Portal → Profiles → `+` → **iOS App Development**
 1. App ID: `com.ledra.app`
 2. Certificates: 上で作った **Apple Development** 証明書
 3. Devices: 実機の UDID にチェック
-4. Generate → ダウンロードし
-   `apps/mobile/credentials/ios/profile.mobileprovision` として保存
+4. Generate → ダウンロードし `apps/mobile/credentials/ledra_dev.mobileprovision`
+   として保存（`credentials.json` の `provisioningProfilePath` と揃える）
 
 #### 3) 確認してからビルド
 

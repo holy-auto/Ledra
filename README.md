@@ -208,13 +208,16 @@ npm run dev                       # http://localhost:3000
 |---|---|---|
 | `.env.local`（ルート） | Web の環境変数 | `npm run dev` が起動しない / 認証が通らない |
 | `apps/mobile/.env` | モバイルの `EXPO_PUBLIC_*` | ログインで `network request failed`（URL 未設定）または `invalid API key`（キー破損） |
-| `apps/mobile/credentials.json` + `apps/mobile/ttp-creds/` | iOS の **Apple Development** 証明書とプロファイル | `development-device` ビルドが Tap to Pay entitlement エラーで失敗 |
+| `apps/mobile/credentials.json` + `apps/mobile/credentials/` | iOS の **Apple Development** 証明書とプロファイル | `development-device` ビルドが Tap to Pay entitlement エラーで失敗 |
 
 補足:
 
-- `apps/mobile/.env` の値は `eas.json` の `build.development-device.env` と同じ
-  （Supabase URL / anon key / API URL）。`EXPO_PUBLIC_*` は**バンドル時に値が
-  埋め込まれる**ので、書き換えたら `npx expo start -c` でキャッシュごと再起動する。
+- `apps/mobile/.env` の値は `eas.json` の `build.development-device.env` と同じ。
+  **4つとも必要**（`EXPO_PUBLIC_SUPABASE_URL` / `EXPO_PUBLIC_SUPABASE_ANON_KEY` /
+  `EXPO_PUBLIC_API_URL` / `EXPO_PUBLIC_CERTIFICATE_BASE_URL`）。最後の1つが欠けると
+  `publicCertUrl()` が `null` を返し、証明書の共有が「公開URLが設定されていません」になる。
+  `EXPO_PUBLIC_*` は**バンドル時に値が埋め込まれる**ので、書き換えたら
+  `npx expo start -c` でキャッシュごと再起動する。
 - `eas credentials` の **「Download credentials from EAS to credentials.json」は
   実行しない**。`credentials.json` が EAS の Ad Hoc 資格情報で上書きされ、
   Tap to Pay のビルドが通らなくなる（`docs/mobile-release-tap-to-pay.md` §3.1.2）。
