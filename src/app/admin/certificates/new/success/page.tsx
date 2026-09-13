@@ -2,6 +2,9 @@ import Link from "next/link";
 import Image from "next/image";
 import { headers } from "next/headers";
 import { qrSvgDataUrl } from "@/lib/qr";
+import { getVehicleReportSettings } from "@/lib/vehicleReport/access";
+import { DEFAULT_MERCHANT_SHARE_BPS } from "@/lib/vehicleReport/revenueShare";
+import { formatJpy } from "@/lib/format";
 
 export default async function Page({ searchParams }: { searchParams: Promise<{ pid?: string }> }) {
   const sp = await searchParams;
@@ -15,6 +18,11 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ p
 
   const fullUrl = pid ? `${baseUrl}${rel}` : "";
   const qr = pid ? await qrSvgDataUrl(fullUrl) : "";
+
+  const settings = await getVehicleReportSettings();
+  const merchantShareJpy = Math.floor(
+    (settings.price_jpy * DEFAULT_MERCHANT_SHARE_BPS) / 10_000,
+  );
 
   return (
     <div className="space-y-4">
@@ -45,6 +53,27 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ p
       ) : (
         <p className="text-sm text-danger">pid がありません</p>
       )}
+
+      {/* ponytail: value-preview card — Lv.1 で収益還元の存在を体感させる。
+           実際の按分は VIN あたりの記録数で割るため表示は上限値。 */}
+      <div className="glass-card p-4 space-y-2">
+        <div className="text-sm font-bold text-primary">技術が、資産になる。</div>
+        <p className="text-xs text-secondary leading-relaxed">
+          いま発行した記録はブロックチェーンに刻まれ、この車両の
+          <span className="text-accent font-medium">パスポートレポート</span>
+          が購入されるたびに収益が還元されます。
+        </p>
+        <div className="flex items-baseline gap-1 pt-1">
+          <span className="text-lg font-bold text-accent">{formatJpy(merchantShareJpy)}</span>
+          <span className="text-xs text-muted">/ レポート販売あたり最大</span>
+        </div>
+        <Link
+          className="inline-block text-xs underline text-accent hover:text-accent/80 pt-1"
+          href="/admin/report-revenue"
+        >
+          収益レポートを見る →
+        </Link>
+      </div>
 
       <div className="flex gap-4 text-sm">
         <Link className="underline text-accent hover:text-accent/80" href="/admin/certificates/new">
