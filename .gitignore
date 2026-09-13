@@ -59,6 +59,8 @@ supabase/.temp/
 *.p12
 *.jks
 *.keystore
+# 秘密鍵（Apple 署名用 CSR の鍵など）はどこに作られても追跡しない
+*.key
 credentials.json
 google-play-service-account.json
 
