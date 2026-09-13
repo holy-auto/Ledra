@@ -1459,11 +1459,17 @@ DECISION_LOG「遷移表の未解決4件を代表判断で解決」参照。）
     ただし Branching のプレビュー環境も止まる。
   - 切らない場合: 二重書き込みが残る。`db-migrate.yml` のコメントで注意を促すだけになる。
   - **本番プロジェクトの設定変更なので、こちらの判断では実施していない。**
-- **プレビューブランチ2本が `MIGRATIONS_FAILED` のまま残っている**
-  （PR #938 `impl/IMP-023-evidence` / PR #941 `impl/IMP-026-customer-concern`、
-  いずれも 2026-08-20 作成）。同時プレビューブランチ数の上限に達しており、
-  **全 PR で `Supabase Preview` が cancelled になっている**。どちらも PR が開いたままなので、
-  こちらの判断では消していない。→ 代表判断
+  - **2026-09-13 時点でこの経路はまだ生きている**（`list_branches`: 既定ブランチ `main` の
+    `project_ref` が本番 `cahybswpduchptvyvdkk` と同一）。なお上の項のとおり、
+    プレビューブランチの詰まりは解消したので、**切ったときに失うものは以前より小さい**。
+- ~~**プレビューブランチ2本が `MIGRATIONS_FAILED` のまま残っている**
+  （PR #938 `impl/IMP-023-evidence` / PR #941 `impl/IMP-026-customer-concern`）。
+  同時プレビューブランチ数の上限に達しており、**全 PR で `Supabase Preview` が
+  cancelled になっている**。~~
+  → **解消済み（2026-09-13 確認）。** 両 PR ともマージされ（#941 は 2026-08-30）、
+  プレビューブランチも消えている。`list_branches` が返すのは既定ブランチ `main` のみ。
+  直近の PR #1062 でも `Supabase Preview` は cancelled ではなく skipped
+  （`supabase` ディレクトリに差分が無いため）だった。
 - **【要確認】** 過去の停止（#971 / #972 / #973）が同じ二重書き込みによるものかは状況証拠のみ。
   当時の postgres_logs は保持期間外の可能性がある。
 
