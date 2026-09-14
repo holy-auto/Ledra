@@ -82,6 +82,12 @@ export interface ProposeCandidatesOptions {
    * スロット時間帯を実際にカバーするスタッフのみを在籍としてカウントする。
    */
   staffShiftsByDate?: Record<string, Array<{ staffId: string; start: number | null; end: number | null }>>;
+  /**
+   * 所要時間に収まらない枠 (fits=false) を候補に含めない。既定 false (管理UIは「入らない枠」も
+   * 表示して fits で示すため)。true にすると fits=false の枠を limit 集計より前に除外するので、
+   * 短い枠が先に limit を食い潰して後続の入る枠が取りこぼされるのを防ぐ (顧客向け提示で使う)。
+   */
+  onlyFitting?: boolean;
   /** 返す候補数の上限（既定 20）。 */
   limit?: number;
 }
@@ -99,6 +105,7 @@ export function proposeCandidates(opts: ProposeCandidatesOptions): Candidate[] {
   const considerStaff = opts.considerStaff ?? false;
   const staffShiftsByDate = opts.staffShiftsByDate ?? {};
   const excludeRestricted = opts.excludeRestricted ?? false;
+  const onlyFitting = opts.onlyFitting ?? false;
   const limit = opts.limit ?? 20;
 
   // 指定スロット [start,end) をカバーするシフトの、在籍スタッフ実人数（重複除去）。
@@ -178,6 +185,9 @@ export function proposeCandidates(opts: ProposeCandidatesOptions): Candidate[] {
       if (remaining <= 0) continue;
 
       const fits = estimatedMinutes == null ? true : slotEnd - slotStart >= estimatedMinutes;
+      // 入らない枠を出さない指定のときは、push (=limit 集計) より前に除外する。
+      // これをしないと短い枠が先に limit を食い潰し、後続の入る枠が取りこぼされる。
+      if (onlyFitting && !fits) continue;
       // 候補の実際の終了時刻（所要時間ぶん）。人手判定もこの実作業時間帯で見る。
       const endMin = estimatedMinutes == null ? slotEnd : Math.min(slotStart + estimatedMinutes, slotEnd);
 
@@ -213,6 +223,47 @@ export function proposeCandidates(opts: ProposeCandidatesOptions): Candidate[] {
         staff_free: staffFree,
       });
     }
+  }
+  return out;
+}
+
+/**
+ * 日付ごとの空き代車台数を算出する（純粋関数）。押さえ済み = ①その日の未キャンセル予約に
+ * 割り当てられた稼働代車 ＋ ②現在貸出中（未返却）で返却予定日が対象日以降（または無期限）の代車。
+ * `proposeCandidates({ needsLoaner:true, freeLoanersByDate })` にそのまま渡せる形で返す。
+ * booking-candidates route と LINE 会話フロー（日程変更）で同一の在庫計算を共有するための単一情報源。
+ */
+export function computeFreeLoanersByDate(
+  dates: string[],
+  activeLoanerIds: Set<string> | Iterable<string>,
+  reservations: Array<{ scheduled_date: string; loaner_car_id?: string | null }>,
+  openLoans: Array<{ loaner_car_id: string; return_due_at: string | null }>,
+): Record<string, number> {
+  const active = activeLoanerIds instanceof Set ? activeLoanerIds : new Set(activeLoanerIds);
+  const total = active.size;
+
+  // ① 予約割当（日別）: date → その日に押さえられている稼働代車ID
+  const assignedByDate = new Map<string, Set<string>>();
+  for (const r of reservations) {
+    if (!r.loaner_car_id || !active.has(r.loaner_car_id)) continue;
+    const key = r.scheduled_date.slice(0, 10);
+    let set = assignedByDate.get(key);
+    if (!set) assignedByDate.set(key, (set = new Set()));
+    set.add(r.loaner_car_id);
+  }
+  // ② 現在貸出中（未返却）: {代車ID, 返却予定日}
+  const loans = openLoans.map((l) => ({
+    id: l.loaner_car_id,
+    due: l.return_due_at ? l.return_due_at.slice(0, 10) : null,
+  }));
+
+  const out: Record<string, number> = {};
+  for (const date of dates) {
+    const committed = new Set(assignedByDate.get(date) ?? []);
+    for (const l of loans) {
+      if (active.has(l.id) && (l.due === null || l.due >= date)) committed.add(l.id);
+    }
+    out[date] = Math.max(0, total - committed.size);
   }
   return out;
 }

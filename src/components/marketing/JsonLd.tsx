@@ -111,20 +111,30 @@ type ArticleJsonLdInput = {
   slug: string;
   publishedAt?: string;
   imageUrl?: string;
+  /** URL path prefix, e.g. "/blog". Defaults to "/news". */
+  pathPrefix?: string;
+  /** Schema.org article type. Defaults to "NewsArticle". */
+  articleType?: string;
 };
 
 /**
- * NewsArticle structured data for /news/[slug] press releases.
- * Organization-level JSON-LD is already emitted site-wide by the marketing
- * layout, so this only adds the article entity. `image` is optional and
- * omitted when absent (JSON.stringify drops undefined) — the social card is
- * handled separately by the route's opengraph-image.
+ * Article structured data. Defaults to NewsArticle at /news/[slug] for
+ * backward compatibility. Pass pathPrefix="/blog" + articleType="BlogPosting"
+ * for blog posts, or pathPrefix="/cases" + articleType="Article" for case studies.
  */
-export async function ArticleJsonLd({ title, description, slug, publishedAt, imageUrl }: ArticleJsonLdInput) {
-  const url = `${siteConfig.siteUrl}/news/${slug}`;
+export async function ArticleJsonLd({
+  title,
+  description,
+  slug,
+  publishedAt,
+  imageUrl,
+  pathPrefix = "/news",
+  articleType = "NewsArticle",
+}: ArticleJsonLdInput) {
+  const url = `${siteConfig.siteUrl}${pathPrefix}/${slug}`;
   const data = {
     "@context": "https://schema.org",
-    "@type": "NewsArticle",
+    "@type": articleType,
     headline: title,
     description,
     datePublished: publishedAt,

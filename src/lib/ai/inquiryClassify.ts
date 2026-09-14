@@ -18,14 +18,7 @@ import { withRetry } from "@/lib/http/withRetry";
 import { getAnthropicClient, AI_MODEL_FAST } from "@/lib/ai/client";
 
 export type InquiryCategory =
-  | "technical"
-  | "billing"
-  | "reservation"
-  | "warranty"
-  | "complaint"
-  | "praise"
-  | "quote_request"
-  | "other";
+  "technical" | "billing" | "reservation" | "warranty" | "complaint" | "praise" | "quote_request" | "other";
 
 export type InquiryPriority = "high" | "med" | "low";
 

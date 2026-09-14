@@ -13,8 +13,15 @@ import {
   extensionForMime,
   type MediaType,
 } from "@/lib/certificateMedia";
-import { apiOk, apiInternalError, apiUnauthorized, apiValidationError, apiNotFound } from "@/lib/api/response";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
+import {
+  apiOk,
+  apiInternalError,
+  apiUnauthorized,
+  apiValidationError,
+  apiNotFound,
+  apiForbidden,
+} from "@/lib/api/response";
+import { resolveCallerWithRole, requirePermission } from "@/lib/auth/checkRole";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 
 export const runtime = "nodejs";
@@ -121,6 +128,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
+    if (!requirePermission(caller, "certificates:edit")) return apiForbidden();
     const tenantId = caller.tenantId;
 
     const { id: publicId } = await params;

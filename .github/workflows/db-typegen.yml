@@ -1,11 +1,62 @@
 name: DB types regenerate
 
+# 本番スキーマから src/types/db.generated.ts を作り直して PR を出す。
+#
+# 必要な GitHub Secret:
+#   - SUPABASE_DB_URL … db-migrate.yml と同じものを使う。
+#   - TYPEGEN_TOKEN … **PAT**。**必要な権限は種類によって名前が違う。**
+#     - **fine-grained**: リポジトリ権限の **Contents: Read and write**
+#       （chore/db-typegen への push）と **Pull requests: Read and write**。
+#     - **classic**: 権限は OAuth スコープで指定する。**`repo`**（private リポジトリ。
+#       public なら `public_repo`）。**classic に "Contents" や "Pull requests" という
+#       選択肢は無い。**
+#     以前ここに「classic でも fine-grained でも可。必要な権限は contents: write と
+#     pull-requests: write」と書いていたが、**後半は fine-grained の権限名**で、
+#     classic の画面には出てこない。探しても見つからず、スコープ無しのトークンを
+#     登録して 403 のまま——という踏み方をする（2026-09-11 の Codex レビュー指摘）。
+#     **未設定でも動くが、自動化は完結しない**（下の「なぜ専用トークンが要るか」）。
+#
+#     **GitHub App を使いたい場合、この形では登録できない。** インストール
+#     アクセストークンは **1時間で失効する**ので、シークレットに保存すると
+#     ほぼ毎回 401 になる。App を使うなら APP_ID と秘密鍵を登録し、
+#     actions/create-github-app-token で**実行のたびに発行する**構成が要る
+#     （このワークフローは未対応。採るなら別途組む）。
+#
+#   link 方式 (--project-id) をやめた理由: SUPABASE_ACCESS_TOKEN と
+#   SUPABASE_PROJECT_ID が未設定のまま4回連続で失敗していた
+#   ("Access token not provided.")。db-migrate.yml が同じ理由で --db-url に
+#   寄せているので、シークレットを2本増やすのではなく既にある1本に合わせる。
+#
+# なぜ専用トークン (TYPEGEN_TOKEN) が要るか:
+#   既定の GITHUB_TOKEN を使うと、この仕組みは **2箇所で切れる**。2026-09-07 に
+#   実際に両方踏んだ (RELEASE_LOG 2026-09-08、OPEN_QUESTIONS)。
+#
+#   1. PR が作れない。"GitHub Actions is not permitted to create or approve pull
+#      requests" で最後のステップだけが落ちる。**型の生成と push は成功している**ので、
+#      成果物が誰も見ないブランチに積み上がる。
+#   2. PR を人が手で作っても CI が走らない。**GITHUB_TOKEN による push は
+#      workflow を起動しない**(再帰防止の仕様)。人が PR を開いた瞬間の `opened` では
+#      走るが、以後この workflow が force-push するたびに未検証の head へ戻る。
+#
+#   PAT / GitHub App トークンなら push も PR も他の workflow を起動する
+#   (create-pull-request の docs/concepts-guidelines.md で確認済み)。
+#
+# push ではなく db-migrate の完了を待つ理由: 両方とも
+# `push: main, paths: supabase/migrations/**` で起動していたため、db-migrate が
+# 本番へ適用している最中に typegen が同じDBを覗いていた。**適用途中のスキーマを
+# 「正」として PR に出す**のは、古い型より質が悪い。4回とも失敗していたので
+# 表面化しなかっただけで、--db-url に直すと届いてしまう。
+
 on:
-  push:
-    branches: [main]
-    paths:
-      - "supabase/migrations/**"
+  workflow_run:
+    workflows: ["DB migrate (apply to production)"]
+    types: [completed]
   workflow_dispatch:
+
+# 同じDBへの introspect を並走させない
+concurrency:
+  group: db-typegen
+  cancel-in-progress: false
 
 permissions:
   contents: write
@@ -13,38 +64,79 @@ permissions:
 
 jobs:
   typegen:
+    # 適用が失敗したときのスキーマから型を作らない
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
 
+      # npm ci は入れない。このジョブが使うのはグローバルの supabase CLI と
+      # create-pull-request（自前バンドル）だけで、node_modules を一度も読まない
       - uses: actions/setup-node@v7
         with:
           node-version: 22
-          cache: npm
-
-      - run: npm ci --prefer-offline --no-audit
 
       - name: Install Supabase CLI
         run: npm install -g supabase
 
       - name: Generate DB types
         env:
-          SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
         run: |
+          # 未設定を CLI のメッセージ任せにしない。"Access token not provided." は
+          # 原因が「シークレットが空」だと読み取れず、切り分けに時間を取られた
+          if [ -z "$SUPABASE_DB_URL" ]; then
+            echo "::error::SUPABASE_DB_URL が未設定です（db-migrate.yml と同じ値を登録してください）"
+            exit 1
+          fi
           mkdir -p src/types
+          # --query-timeout の既定は 15s。--project-id のときは Supabase 側で
+          # 生成していたので効かなかったが、--db-url ではランナーから pooler 越しに
+          # カタログを引くのでこの上限に当たりうる（migrations は500本超）。
+          # 当たると接続不良にしか見えないエラーで落ちるので余裕を持たせる
           supabase gen types typescript \
-            --project-id "$SUPABASE_PROJECT_ID" \
+            --db-url "$SUPABASE_DB_URL" \
             --schema public \
-            > src/types/db.generated.ts
+            --query-timeout 60s \
+            > src/types/db.generated.ts.tmp
+          # 出力先を直接潰さない。CLI はエラーも **stdout** に書くので
+          # （実測: `{"_tag":"Error",...}` がファイルに残る）、リダイレクト先を
+          # 本番のファイルにすると失敗時に型定義がエラーJSONに化ける
+          mv src/types/db.generated.ts.tmp src/types/db.generated.ts
+
+      # 未設定を「PR 作成の失敗メッセージ」任せにしない。あのメッセージは
+      # 設定の話しかしないので、CI が走らない方 (2) には気づけない
+      - name: TYPEGEN_TOKEN の有無を確かめる
+        env:
+          TYPEGEN_TOKEN: ${{ secrets.TYPEGEN_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -n "${TYPEGEN_TOKEN:-}" ]; then
+            # **「効く」とは言わない。** ここで分かるのは「空でない」ことだけで、
+            # 失効・権限不足は次のステップが失敗して初めて分かる。ここで
+            # 「両方効く」と出すと、その失敗の原因からトークンを外して読ませてしまう
+            echo "TYPEGEN_TOKEN は設定されている（値の有効性・権限はここでは判定できない）。"
+            echo "次のステップが 401/403 で落ちるなら、まず失効と権限 (contents: write / pull-requests: write) を疑う。"
+            exit 0
+          fi
+          echo "::warning::TYPEGEN_TOKEN が未設定です。既定の GITHUB_TOKEN へ落ちるため、(1) PR 作成が『GitHub Actions is not permitted to create or approve pull requests』で失敗し、(2) 仮に人が PR を作っても、この workflow が force-push するたびに CI が走らない head に戻ります。contents: write と pull-requests: write を持つ PAT を TYPEGEN_TOKEN として登録してください（GitHub App のインストールトークンは1時間で失効するのでこの形では使えません）。"
 
       - name: Open PR if types changed
         uses: peter-evans/create-pull-request@v8
         with:
+          # 未設定なら既定の GITHUB_TOKEN へ落ちる（＝2026-09-07 以前と同じ挙動）。
+          # 黙って落ちないよう、直前のステップが理由を warning で出す
+          token: ${{ secrets.TYPEGEN_TOKEN || github.token }}
+          # 生成物だけをコミットする。既定は作業ツリー全体なので、CLI が
+          # supabase/.temp/ などを落とすとそれごと PR に入ってしまう
+          add-paths: src/types/db.generated.ts
           commit-message: "chore(db): regenerate Supabase types"
           title: "chore(db): regenerate Supabase types"
           body: |
             自動生成された Supabase 型定義の更新です。
             `supabase/migrations/*` の変更を反映しています。
-          branch: chore/db-typegen-${{ github.run_id }}
+          # 固定名にする。run_id を混ぜると実行のたびに**別の PR**が開き、
+          # 同じタイトルの互いに衝突する PR が積み上がる（delete-branch は
+          # クローズ時にしか効かないので防げない）。固定なら既存 PR を更新する
+          branch: chore/db-typegen
           delete-branch: true

@@ -1,8 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
-import { apiJson, apiUnauthorized, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
+import { resolveCallerWithRole, requirePermission } from "@/lib/auth/checkRole";
+import {
+  apiJson,
+  apiUnauthorized,
+  apiValidationError,
+  apiNotFound,
+  apiInternalError,
+  apiForbidden,
+} from "@/lib/api/response";
 
 const imageDeleteSchema = z.object({
   id: z.string().uuid("missing id or vehicle_id"),
@@ -59,6 +66,7 @@ export async function POST(req: NextRequest) {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
+    if (!requirePermission(caller, "market:edit")) return apiForbidden();
 
     const form = await req.formData();
     const vehicleId = String(form.get("vehicle_id") ?? "").trim();
@@ -151,6 +159,7 @@ export async function DELETE(req: NextRequest) {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
+    if (!requirePermission(caller, "market:edit")) return apiForbidden();
 
     const parsed = imageDeleteSchema.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) {

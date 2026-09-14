@@ -1,7 +1,7 @@
 import Link from "next/link";
-import { notFound, redirect } from "next/navigation";
+import { notFound } from "next/navigation";
 import PageHeader from "@/components/ui/PageHeader";
-import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
+import { requireSiteContentAdmin } from "../guard";
 import SiteContentForm, { type SiteContentFormInitial } from "../SiteContentForm";
 import type { SiteContentStatus, SiteContentType } from "@/lib/validations/site-content-post";
 
@@ -10,9 +10,7 @@ export const dynamic = "force-dynamic";
 export default async function SiteContentEditPage(props: { params: Promise<{ id: string }> }) {
   const { id } = await props.params;
 
-  const supabase = await createSupabaseServerClient();
-  const { data: userRes } = await supabase.auth.getUser();
-  if (!userRes?.user) redirect(`/login?next=/admin/site-content/${id}`);
+  const supabase = await requireSiteContentAdmin(`/admin/site-content/${id}`);
 
   const { data: row, error } = await supabase
     .from("site_content_posts")

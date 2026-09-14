@@ -24,9 +24,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     // 以前は全画像行を取得して JS でカウントしていた (N+1 的な過剰取得) のを解消。
     const { data: certificates, error } = await supabase
       .from("certificates")
-      .select(
-        "id, public_id, status, vehicle_maker, vehicle_model, vehicle_plate, created_at, service_type, certificate_images(count)",
-      )
+      .select("id, public_id, status, vehicle_info_json, created_at, service_type, certificate_images(count)")
       .eq("tenant_id", caller.tenantId)
       .eq("customer_id", customerId)
       .order("created_at", { ascending: false });
@@ -45,9 +43,10 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       return {
         public_id: c.public_id,
         status: c.status,
-        vehicle_maker: c.vehicle_maker,
-        vehicle_model: c.vehicle_model,
-        vehicle_plate: c.vehicle_plate,
+        // 車両情報は certificates の列ではなく vehicle_info_json に入る
+        vehicle_maker: (c.vehicle_info_json as { maker?: string } | null)?.maker ?? null,
+        vehicle_model: (c.vehicle_info_json as { model?: string } | null)?.model ?? null,
+        vehicle_plate: (c.vehicle_info_json as { plate?: string } | null)?.plate ?? null,
         image_count,
         created_at: c.created_at,
         service_type: c.service_type,

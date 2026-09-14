@@ -75,6 +75,8 @@ export interface ProcessBatchOptions {
   batchSize?: number;
   /** Max attempts before moving to dead_letter. Default 8. */
   maxAttempts?: number;
+  /** Concurrent dispatches per worker. Default 8. */
+  concurrency?: number;
 }
 
 /**
@@ -90,6 +92,7 @@ export async function processOutboxBatch(
 ): Promise<{ processed: number; delivered: number; errored: number; dead: number }> {
   const batchSize = opts.batchSize ?? 50;
   const maxAttempts = opts.maxAttempts ?? 8;
+  const concurrency = Math.max(1, Math.min(opts.concurrency ?? 8, 20));
 
   // ponytail: worker クラッシュ等で in_flight のまま残った行を pending に戻す簡易リーパー。
   // TTL 15 分は「1 バッチの dispatch 所要時間より十分長い」決め打ち
@@ -101,45 +104,27 @@ export async function processOutboxBatch(
     .eq("status", "in_flight")
     .lte("updated_at", new Date(Date.now() - STALE_IN_FLIGHT_MS).toISOString());
 
-  const { data: rows, error } = await admin
-    .from("outbox_events")
-    .select("id, tenant_id, topic, payload, aggregate_id, attempts, status, next_attempt_at")
-    .eq("status", "pending")
-    .lte("next_attempt_at", new Date().toISOString())
-    .order("next_attempt_at", { ascending: true })
-    .limit(batchSize);
+  // DB 側で SELECT ... FOR UPDATE SKIP LOCKED + UPDATE を1文で行い、複数workerが
+  // 同じ行を読んでから競合する余地を無くす。
+  const { data: rows, error } = await admin.rpc("claim_outbox_events", { p_batch_size: batchSize });
 
   if (error) {
     logger.error("outbox: failed to fetch pending batch", { error });
     return { processed: 0, delivered: 0, errored: 0, dead: 0 };
   }
 
-  let delivered = 0;
-  let errored = 0;
-  let dead = 0;
+  const counters = { delivered: 0, errored: 0, dead: 0 };
 
-  for (const row of (rows ?? []) as OutboxRow[]) {
+  const processRow = async (row: OutboxRow): Promise<void> => {
     const dispatcher = dispatchers[row.topic];
-    if (!dispatcher) {
-      logger.warn("outbox: no dispatcher registered for topic", { topic: row.topic, id: row.id });
-      continue;
-    }
-
-    // Mark in_flight to prevent double-processing if the worker overlaps.
-    // 条件付き update が 0 行なら別 worker が先に claim 済みなのでスキップ。
-    const { data: claimed } = await admin
-      .from("outbox_events")
-      .update({ status: "in_flight" })
-      .eq("id", row.id)
-      .eq("status", "pending")
-      .select("id");
-    if (!claimed || claimed.length === 0) continue;
 
     // dispatcher の throw は {ok:false} と同じ扱いにして backoff / dead_letter に乗せる
     // （放置すると in_flight のまま固まり、バッチの残りも中断されるため）。
     let result: Awaited<ReturnType<Dispatcher>>;
     try {
-      result = await dispatcher(row);
+      result = dispatcher
+        ? await dispatcher(row)
+        : { ok: false, error: `no dispatcher registered for topic: ${row.topic}` };
     } catch (e) {
       result = { ok: false, error: e instanceof Error ? e.message : String(e) };
     }
@@ -155,7 +140,7 @@ export async function processOutboxBatch(
           last_error: null,
         })
         .eq("id", row.id);
-      delivered += 1;
+      counters.delivered += 1;
     } else if (nextAttempts >= maxAttempts) {
       await admin
         .from("outbox_events")
@@ -165,7 +150,7 @@ export async function processOutboxBatch(
           last_error: result.error.slice(0, 1000),
         })
         .eq("id", row.id);
-      dead += 1;
+      counters.dead += 1;
       logger.error("outbox: event moved to dead_letter", { id: row.id, topic: row.topic, attempts: nextAttempts });
     } else {
       const nextDelaySec = backoffSeconds(nextAttempts);
@@ -178,11 +163,16 @@ export async function processOutboxBatch(
           next_attempt_at: new Date(Date.now() + nextDelaySec * 1000).toISOString(),
         })
         .eq("id", row.id);
-      errored += 1;
+      counters.errored += 1;
     }
+  };
+
+  const claimedRows = (rows ?? []) as OutboxRow[];
+  for (let i = 0; i < claimedRows.length; i += concurrency) {
+    await Promise.all(claimedRows.slice(i, i + concurrency).map(processRow));
   }
 
-  return { processed: rows?.length ?? 0, delivered, errored, dead };
+  return { processed: claimedRows.length, ...counters };
 }
 
 const STALE_IN_FLIGHT_MS = 15 * 60 * 1000;

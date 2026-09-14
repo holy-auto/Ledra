@@ -20,7 +20,7 @@ export async function GET() {
     const { data: courses } = await supabase
       .from("agent_training_courses")
       .select(
-        "id, title, description, category, duration_minutes, is_required, is_published, sort_order, content_url, created_at, updated_at",
+        "id, title, description, category, duration_min, is_required, is_published, sort_order, content_url, created_at, updated_at",
       )
       .eq("is_published", true)
       .order("sort_order", { ascending: true });

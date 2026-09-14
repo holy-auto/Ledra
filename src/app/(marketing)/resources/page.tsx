@@ -8,7 +8,8 @@ import { RESOURCE_BUNDLE_FILENAME, RESOURCE_BUNDLE_KEY } from "@/lib/marketing/r
 
 export const metadata = {
   title: "資料ダウンロード",
-  description: "Ledra のサービス概要・機能紹介・技術ホワイトペーパー・導入事例集を、まとめてダウンロードいただけます。",
+  description:
+    "Ledra のサービス概要・機能紹介・技術ホワイトペーパー・導入事例集・運用スタートガイド・業界用語集を、まとめてダウンロードいただけます。",
   alternates: { canonical: "/resources" },
 };
 
@@ -18,7 +19,7 @@ const bundleResource: Resource = {
   key: RESOURCE_BUNDLE_KEY,
   title: "全資料パック（まとめてダウンロード）",
   description:
-    "サービス概要・機能紹介・セキュリティ・導入事例・ROI・料金プランの全資料をひとつの ZIP にまとめてお届けします。社内共有や検討資料の一括取得に。",
+    "サービス概要・機能紹介・セキュリティ・導入事例・ROI・料金プラン・運用ガイド・用語集の全資料をひとつの ZIP にまとめてお届けします。社内共有や検討資料の一括取得に。",
   badge: "一括",
   downloadUrl: "/api/marketing/resources/all/zip",
   downloadFilename: RESOURCE_BUNDLE_FILENAME,

@@ -1,8 +1,8 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
-import { apiOk, apiUnauthorized, apiValidationError, apiInternalError } from "@/lib/api/response";
+import { resolveCallerWithRole, requirePermission } from "@/lib/auth/checkRole";
+import { apiOk, apiUnauthorized, apiValidationError, apiInternalError, apiForbidden } from "@/lib/api/response";
 
 const equipmentMasterCreateSchema = z.object({
   category: z.string().trim().min(1, "category は必須です。").max(100),
@@ -50,6 +50,8 @@ export async function POST(req: NextRequest) {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
+    // 設備マスタの変更は admin 以上 (代表判断 2026-09-01)
+    if (!requirePermission(caller, "settings:edit")) return apiForbidden();
 
     const parsed = equipmentMasterCreateSchema.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) {

@@ -48,16 +48,55 @@ interface StuckRow {
   attempts: number;
 }
 
+/**
+ * Sentry half of the two-channel alert (mirrors cronAlert.ts's 二重通知
+ * pattern). This must fire unconditionally — unlike the email below, it
+ * does not depend on CONTACT_TO_EMAIL being configured. A stuck event that
+ * only goes to a log line nobody watches defeats the point of this cron
+ * (see DECISION_LOG 2026-09-11: a stuck event sat unalerted for ~55 days
+ * because email was the only channel and its env vars weren't set).
+ *
+ * Awaited (not fire-and-forget) with an explicit `flush()`: this route has
+ * no `waitUntil`/`after()` wrapping it, so a serverless invocation can be
+ * frozen the instant the response is sent. An un-awaited `import().then()`
+ * risks the exact failure this function exists to close — the alert is
+ * "sent" but never actually leaves the process (code-review finding on
+ * this PR). `flush()` blocks until Sentry's transport queue drains or the
+ * timeout hits, whichever first — it does not throw either way.
+ */
+async function captureStuckEventsSentry(rows: StuckRow[]): Promise<void> {
+  try {
+    const Sentry = await import("@sentry/nextjs");
+    Sentry.withScope((scope) => {
+      scope.setTag("cron_job", "stripe-event-monitor");
+      scope.setLevel("error");
+      scope.setExtra("stuck_count", rows.length);
+      scope.setExtra("oldest_event_id", rows[0]?.event_id);
+      Sentry.captureMessage(`stripe-event-monitor: ${rows.length} stuck webhook event(s)`, "error");
+    });
+    await Sentry.flush(2000);
+  } catch {
+    // Sentry itself is down/misconfigured — the email path below is the
+    // remaining channel; don't let this throw block it.
+  }
+}
+
 async function sendStuckEventsAlert(rows: StuckRow[]): Promise<void> {
-  const apiKey = process.env.RESEND_API_KEY;
+  await captureStuckEventsSentry(rows);
+
   const to = process.env.CONTACT_TO_EMAIL;
-  if (!apiKey || !to) {
-    logger.warn("stripe-event-monitor: would alert but RESEND_API_KEY / CONTACT_TO_EMAIL not configured", {
+  if (!to) {
+    logger.warn("stripe-event-monitor: would email-alert but CONTACT_TO_EMAIL not configured", {
       stuck_count: rows.length,
     });
     return;
   }
 
+  // No RESEND_API_KEY pre-check here on purpose: sendEmail() already falls
+  // back Resend → SendGrid (src/lib/email/sendEmail.ts), including when
+  // Resend is unconfigured (resendSend.ts returns a transient-shaped
+  // failure for a missing key, which triggers the SendGrid path). Gating
+  // on RESEND_API_KEY here would skip that fallback entirely.
   const from = process.env.RESEND_FROM ?? "noreply@ledra.co.jp";
   const truncated = rows.length > MAX_ROWS_PER_ALERT;
   const visibleRows = rows.slice(0, MAX_ROWS_PER_ALERT);
@@ -84,7 +123,10 @@ async function sendStuckEventsAlert(rows: StuckRow[]): Promise<void> {
   ];
 
   try {
-    await sendEmail({ from, to, subject, text: lines.join("\n") });
+    const result = await sendEmail({ from, to, subject, text: lines.join("\n") });
+    if (!result.ok) {
+      logger.error("stripe-event-monitor: alert email failed on both providers", { error: result.error });
+    }
   } catch (e) {
     logger.error("stripe-event-monitor: failed to send alert email", {
       error: e instanceof Error ? e.message : String(e),

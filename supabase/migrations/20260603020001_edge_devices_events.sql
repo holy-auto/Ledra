@@ -1,3 +1,9 @@
+-- 【後から内容だけ修正】このファイルは本番へ適用済み（版番号は変えていない）。
+-- RLS ポリシーが `tenant_memberships.is_active` を参照していたが、**この列は本番にも無い**。
+-- そのままだと CREATE POLICY 時に落ち、空 DB へ1パスで流せない。
+-- 述語を落として本番の実体に合わせた（根拠: `20260719000000_fix_rls_membership_references.sql`
+-- の [B]。本番の pg_policies 実査で is_active 述語なしと確認されている）。
+-- 版番号を変えていないので本番では再適用されない＝本番への影響は無い。
 -- Edge AI / DePIN テーブル
 -- エッジデバイス（スマートグラス、工場カメラ等）の登録と
 -- リアルタイムワークイベントの収集・ブロックチェーン記録
@@ -33,7 +39,7 @@ create policy "tenant members can manage edge devices"
   using (
     tenant_id in (
       select tenant_id from public.tenant_memberships
-      where user_id = auth.uid() and is_active = true
+      where user_id = auth.uid()
     )
   );
 
@@ -90,7 +96,7 @@ create policy "tenant members can read edge events"
   using (
     tenant_id in (
       select tenant_id from public.tenant_memberships
-      where user_id = auth.uid() and is_active = true
+      where user_id = auth.uid()
     )
   );
 

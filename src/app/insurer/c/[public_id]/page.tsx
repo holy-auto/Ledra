@@ -79,7 +79,7 @@ export default function InsurerCertificatePage() {
       try {
         const res = await fetch(`/api/insurer/certificate?pid=${encodeURIComponent(publicId)}`, { cache: "no-store" });
         const j = await res.json();
-        if (!res.ok) throw new Error(j?.error ?? j?.message ?? "load_failed");
+        if (!res.ok) throw new Error(j?.message ?? j?.error ?? "load_failed");
         const c = j?.certificate ?? null;
         setCert(c);
         if (c) {
@@ -129,7 +129,7 @@ export default function InsurerCertificatePage() {
       });
       if (!res.ok) {
         const j = await parseJsonSafe(res);
-        throw new Error(j?.error ?? "request_failed");
+        throw new Error(j?.message ?? j?.error ?? "request_failed");
       }
       setDisclosureStatus((prev) => (prev ? { ...prev, insurer_requested: true } : prev));
     } catch (e: any) {

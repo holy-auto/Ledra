@@ -35,7 +35,9 @@ export default function AdminFeatureGuard({ feature, children }: { feature: Feat
           <Link className="btn-primary" href={`/admin/billing?next=${encodeURIComponent(nextUrl)}`}>
             {cta}
           </Link>
-          <span className="text-xs text-muted">plan: {planTier} / active: {String(isActive)}</span>
+          <span className="text-xs text-muted">
+            plan: {planTier} / active: {String(isActive)}
+          </span>
         </div>
       </div>
 
@@ -45,4 +47,3 @@ export default function AdminFeatureGuard({ feature, children }: { feature: Feat
     </div>
   );
 }
-

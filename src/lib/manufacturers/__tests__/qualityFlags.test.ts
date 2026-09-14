@@ -50,6 +50,32 @@ describe("evaluateQualityFlags", () => {
     expect(r).toContain("no_service_detail");
   });
 
+  it("still flags missing service detail when maintenance_json holds only the mileage", () => {
+    // 2026-08-25 以降、走行距離は施工種別を問わず maintenance_json に必ず入る。
+    // これを施工内容とみなすと no_service_detail がどの証明書でも立たなくなる。
+    const r = evaluateQualityFlags({
+      ...clean,
+      content_free_text: "  ",
+      coating_products_json: [],
+      ppf_coverage_json: [],
+      maintenance_json: { mileage: 35000 },
+      body_repair_json: {},
+    });
+    expect(r).toContain("no_service_detail");
+  });
+
+  it("does not flag service detail when maintenance_json has real content alongside the mileage", () => {
+    const r = evaluateQualityFlags({
+      ...clean,
+      content_free_text: "",
+      coating_products_json: [],
+      ppf_coverage_json: [],
+      maintenance_json: { mileage: 35000, work_types: ["oil_change"] },
+      body_repair_json: {},
+    });
+    expect(r).not.toContain("no_service_detail");
+  });
+
   it("does not flag service detail when ppf coverage present", () => {
     const r = evaluateQualityFlags({
       ...clean,

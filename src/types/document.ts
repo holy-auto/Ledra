@@ -13,6 +13,21 @@ export const DOC_TYPES = {
 
 export type DocType = keyof typeof DOC_TYPES;
 
+/**
+ * 自社が発行する書類（相手への敬称ではなく自社の行為を表す）は「御」を付けない。
+ * 挨拶文（GREETING_BY_DOC_TYPE）が「発注いたします」「検収いたしました」など
+ * 自社主語のため、テナントの layout.title.prefix 設定に関わらず常に抑止する
+ * （スタイル設定ではなく文章として誤りのため）。
+ * PDF 生成（src/lib/pdfDocument.tsx）・admin のライブプレビュー（LayoutPreview.tsx）・
+ * テンプレート編集画面（TemplatesClient.tsx）の唯一の出所。
+ */
+const NO_HONORIFIC_PREFIX_DOC_TYPES = new Set<DocType>(["purchase_order", "order_confirmation", "inspection"]);
+
+/** doc_type が自社発行の書類（「御」を付けない対象）か判定する。 */
+export function hasNoHonorificPrefix(docType: string): boolean {
+  return NO_HONORIFIC_PREFIX_DOC_TYPES.has(docType as DocType);
+}
+
 export const DOC_TYPE_LIST = Object.entries(DOC_TYPES).map(([value, meta]) => ({
   value: value as DocType,
   ...meta,

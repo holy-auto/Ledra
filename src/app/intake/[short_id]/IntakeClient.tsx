@@ -118,9 +118,7 @@ export default function IntakeClient({ shortId }: { shortId: string }) {
         body: fd,
       });
       const j = (await res.json().catch(() => null)) as
-        | OcrResponse
-        | { ok: false; error?: { message?: string } }
-        | null;
+        OcrResponse | { ok: false; error?: { message?: string } } | null;
       if (!res.ok || !j || !("ok" in j) || j.ok === false) {
         const msg = (j && "error" in j && j.error?.message) || `OCR に失敗しました (HTTP ${res.status})`;
         setOcrErr(msg as string);

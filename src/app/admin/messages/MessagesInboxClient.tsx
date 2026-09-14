@@ -124,6 +124,10 @@ export default function MessagesInboxClient() {
   const imageInputRef = useRef<HTMLInputElement>(null);
   const [sendMsg, setSendMsg] = useState<string | null>(null);
   const [aiBusy, setAiBusy] = useState(false);
+  // 引き継ぎ用の会話要約 (読むだけ / 送信はしない)。key はどのスレッドの要約かを保持し、
+  // スレッドを切り替えたら (key 不一致で) 表示しない — 混同防止のリセット用エフェクトを避ける。
+  const [summary, setSummary] = useState<{ key: string; text: string; nextAction: string | null } | null>(null);
+  const [summaryBusy, setSummaryBusy] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const messages = useMemo(() => detail?.messages ?? [], [detail]);
@@ -249,6 +253,35 @@ export default function MessagesInboxClient() {
       setAiBusy(false);
     }
   }, [activeKey, aiBusy]);
+
+  // 引き継ぎ用の会話要約を生成して表示する (送信はしない)。
+  const handleSummary = useCallback(async () => {
+    if (!activeKey || summaryBusy) return;
+    setSummaryBusy(true);
+    setSendMsg(null);
+    try {
+      const res = await fetch(`/api/admin/messages/${encodeURIComponent(activeKey)}/ai-summary`, { method: "POST" });
+      const j = (await parseJsonSafe(res)) as {
+        ai_disabled?: boolean;
+        summary?: string | null;
+        next_action?: string | null;
+        message?: string;
+      } | null;
+      if (!res.ok) throw new Error(j?.message ?? `HTTP ${res.status}`);
+      if (j?.ai_disabled) {
+        setSendMsg("AI 自動入力が無効です (設定 → AI 自動入力 で有効化できます)。");
+      } else if (j?.summary) {
+        setSummary({ key: activeKey, text: j.summary, nextAction: j.next_action ?? null });
+      } else {
+        // 要約 null は AI 側の一時不調が主因 (会話が無いときはボタン自体が無効)。
+        setSendMsg("要約を生成できませんでした。時間をおいて再度お試しください。");
+      }
+    } catch (e) {
+      setSendMsg("AI 要約に失敗しました: " + (e instanceof Error ? e.message : String(e)));
+    } finally {
+      setSummaryBusy(false);
+    }
+  }, [activeKey, summaryBusy]);
 
   return (
     <div className="space-y-4">
@@ -492,9 +525,38 @@ export default function MessagesInboxClient() {
                     >
                       {aiBusy ? "生成中…" : "✨ AI下書き"}
                     </button>
+                    <button
+                      type="button"
+                      onClick={() => void handleSummary()}
+                      disabled={summaryBusy || messages.length === 0}
+                      className="btn-secondary px-3 py-1.5 text-xs disabled:opacity-50"
+                      title="担当外でも把握できるよう、会話の用件・経緯・次の一手を AI が要約します (送信しません)"
+                    >
+                      {summaryBusy ? "要約中…" : "🧾 会話を要約"}
+                    </button>
                   </div>
                 </div>
                 {sendMsg && <p className="mt-2 text-xs text-warning">{sendMsg}</p>}
+                {summary && summary.key === activeKey && (
+                  <div className="mt-2 rounded-md border border-default bg-subtle p-3 text-xs">
+                    <div className="mb-1 flex items-center justify-between">
+                      <span className="font-semibold text-secondary">🧾 会話の要約（引き継ぎ用・社内メモ）</span>
+                      <button
+                        type="button"
+                        onClick={() => setSummary(null)}
+                        className="text-[10px] text-muted hover:text-secondary"
+                      >
+                        閉じる
+                      </button>
+                    </div>
+                    <p className="whitespace-pre-wrap text-primary">{summary.text}</p>
+                    {summary.nextAction && (
+                      <p className="mt-2 text-secondary">
+                        <span className="font-semibold">次の一手:</span> {summary.nextAction}
+                      </p>
+                    )}
+                  </div>
+                )}
                 {canSend && <p className="mt-1 text-[10px] text-muted">Cmd/Ctrl + Enter で送信</p>}
               </div>
             </>

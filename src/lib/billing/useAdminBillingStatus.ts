@@ -27,7 +27,9 @@ export function useAdminBillingStatus() {
         if (alive) setLoading(false);
       }
     })();
-    return () => { alive = false; };
+    return () => {
+      alive = false;
+    };
   }, []);
 
   return { data, loading };

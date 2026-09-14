@@ -1,6 +1,6 @@
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
-import { getPublicCertificateData } from "@/lib/certificate/publicData";
+import { getPublicCertificateData } from "@/lib/certificates/publicData";
 import { isPassportPublicEnabled } from "@/lib/passport/featureGate";
 import CustomerActions from "./CustomerActions";
 import MediaGallery from "./MediaGallery";

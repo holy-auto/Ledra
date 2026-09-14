@@ -9,16 +9,24 @@ function validateMagicBytes(buffer: Buffer): string | null {
   if (buffer.length < 12) return null;
 
   // JPEG: FF D8 FF
-  if (buffer[0] === 0xFF && buffer[1] === 0xD8 && buffer[2] === 0xFF) {
+  if (buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) {
     return "image/jpeg";
   }
   // PNG: 89 50 4E 47
-  if (buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4E && buffer[3] === 0x47) {
+  if (buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47) {
     return "image/png";
   }
   // WebP: RIFF ... WEBP
-  if (buffer[0] === 0x52 && buffer[1] === 0x49 && buffer[2] === 0x46 && buffer[3] === 0x46 &&
-      buffer[8] === 0x57 && buffer[9] === 0x45 && buffer[10] === 0x42 && buffer[11] === 0x50) {
+  if (
+    buffer[0] === 0x52 &&
+    buffer[1] === 0x49 &&
+    buffer[2] === 0x46 &&
+    buffer[3] === 0x46 &&
+    buffer[8] === 0x57 &&
+    buffer[9] === 0x45 &&
+    buffer[10] === 0x42 &&
+    buffer[11] === 0x50
+  ) {
     return "image/webp";
   }
   // HEIF/HEIC: ftyp box at offset 4
@@ -33,12 +41,12 @@ function validateMagicBytes(buffer: Buffer): string | null {
 
 describe("validateMagicBytes", () => {
   it("detects JPEG files", () => {
-    const buf = Buffer.from([0xFF, 0xD8, 0xFF, 0xE0, 0, 0, 0, 0, 0, 0, 0, 0]);
+    const buf = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0, 0, 0, 0, 0, 0, 0, 0]);
     expect(validateMagicBytes(buf)).toBe("image/jpeg");
   });
 
   it("detects PNG files", () => {
-    const buf = Buffer.from([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0, 0, 0, 0]);
+    const buf = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0]);
     expect(validateMagicBytes(buf)).toBe("image/png");
   });
 
@@ -88,12 +96,12 @@ describe("validateMagicBytes", () => {
   });
 
   it("rejects files with fake MIME but wrong magic bytes (PE/MZ header)", () => {
-    const buf = Buffer.from([0x4D, 0x5A, 0x90, 0x00, 0x03, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00]);
+    const buf = Buffer.from([0x4d, 0x5a, 0x90, 0x00, 0x03, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00]);
     expect(validateMagicBytes(buf)).toBeNull();
   });
 
   it("rejects buffers shorter than 12 bytes", () => {
-    const buf = Buffer.from([0xFF, 0xD8, 0xFF]);
+    const buf = Buffer.from([0xff, 0xd8, 0xff]);
     expect(validateMagicBytes(buf)).toBeNull();
   });
 
@@ -103,7 +111,7 @@ describe("validateMagicBytes", () => {
   });
 
   it("rejects buffer of exactly 11 bytes", () => {
-    const buf = Buffer.alloc(11, 0xFF);
+    const buf = Buffer.alloc(11, 0xff);
     expect(validateMagicBytes(buf)).toBeNull();
   });
 });

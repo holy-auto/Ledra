@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
+import RaiseConcernButton from "@/components/customer/RaiseConcernButton";
 
 type Phase = "loading" | "error" | "expired" | "already_signed" | "cancelled" | "form" | "submitting" | "complete";
 
@@ -267,6 +268,11 @@ export default function ConsentSignClient({ token }: { token: string }) {
           <p style={{ fontSize: 11, color: "#999", marginTop: 10 }}>
             電子署名法（平成12年法律第102号）に基づく電子署名として記録されます。
           </p>
+
+          {/* IMP-026: 気になる点を伝える */}
+          <div style={{ marginTop: 16 }}>
+            <RaiseConcernButton sourceType="body_repair_consent" sourceToken={token} variant="light" />
+          </div>
         </>
       )}
     </div>

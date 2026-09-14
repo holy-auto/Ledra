@@ -16,6 +16,7 @@ import { inferJobSkillTags, skillMatchScore, SERVICE_TYPES } from "@/lib/staff/s
 import { computeStepGuideState } from "@/lib/workflow/stepChecklist";
 import StepGuidePanel from "@/components/workflow/StepGuidePanel";
 import { STATUS_FLOW, STATUS_LABEL, STATUS_HINT, type JobReservation, type WorkflowStep } from "./types";
+import { reservationStatusDisplay } from "@/lib/domain/jobStatusDisplay";
 
 type MemberRow = {
   user_id: string;
@@ -381,7 +382,7 @@ export default function JobStatusPanel({ reservation, customerId, vehicleId, wor
           <div className="space-y-1">
             <div className="text-[11px] font-semibold tracking-[0.18em] text-muted uppercase">Status</div>
             <div className="flex items-center gap-2">
-              <Badge variant={isCancelled ? "danger" : currentStatus === "completed" ? "success" : "info"}>
+              <Badge variant={reservationStatusDisplay(currentStatus).variant}>
                 {STATUS_LABEL[currentStatus] ?? currentStatus}
               </Badge>
               <span className="text-[13px] text-secondary">
@@ -577,7 +578,8 @@ export default function JobStatusPanel({ reservation, customerId, vehicleId, wor
           </div>
         </div>
 
-        <ol className="mt-5 flex items-center gap-2 overflow-x-auto">
+        {/* ponytail: IMP-022 情報階層 — 現ステップを視覚的に最大化し、完了・未着手を圧縮。 */}
+        <ol className="mt-5 flex items-center gap-1.5 overflow-x-auto">
           {(hasTemplate
             ? workflowSteps!.map((s) => ({ key: s.key, label: s.label, order: s.order }))
             : STATUS_FLOW.map((s, i) => ({ key: s, label: STATUS_LABEL[s], order: i }))
@@ -588,22 +590,26 @@ export default function JobStatusPanel({ reservation, customerId, vehicleId, wor
             const done = hasTemplate ? !isCancelled && s.order < currentStepOrder : !isCancelled && i < currentIndex;
             const total = hasTemplate ? workflowSteps!.length : STATUS_FLOW.length;
             return (
-              <li key={s.key} className="flex items-center gap-2 whitespace-nowrap">
+              <li key={s.key} className="flex items-center gap-1.5 whitespace-nowrap">
                 <div
-                  className={`flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-medium ${
+                  className={`flex items-center rounded-full border font-medium ${
                     active
-                      ? "border-accent bg-accent-dim text-accent-text"
+                      ? "gap-2 border-2 border-accent bg-accent-dim text-accent-text px-3.5 py-1.5 text-sm"
                       : done
-                        ? "border-success/20 bg-success-dim text-success-text"
-                        : "border-border-default bg-inset text-secondary"
+                        ? "gap-1.5 border-success/20 bg-success-dim text-success-text px-2.5 py-0.5 text-[11px]"
+                        : "gap-1.5 border-border-default bg-inset text-secondary px-2.5 py-0.5 text-[11px]"
                   }`}
                 >
-                  <span className="flex h-5 w-5 items-center justify-center rounded-full bg-surface/60 text-[11px] font-bold">
+                  <span
+                    className={`flex items-center justify-center rounded-full bg-surface/60 font-bold ${
+                      active ? "h-5 w-5 text-[11px]" : "h-4 w-4 text-[10px]"
+                    }`}
+                  >
                     {done ? "✓" : i + 1}
                   </span>
                   {s.label}
                 </div>
-                {i < total - 1 && <span className="text-muted">→</span>}
+                {i < total - 1 && <span className="text-muted text-[10px]">→</span>}
               </li>
             );
           })}
@@ -616,30 +622,42 @@ export default function JobStatusPanel({ reservation, customerId, vehicleId, wor
         )}
       </Card>
 
-      <Card padding="default">
-        <div className="text-[11px] font-semibold tracking-[0.18em] text-muted uppercase mb-3">Next Actions</div>
-        <div className="flex flex-wrap gap-2">
-          <Link href={certificateNewUrl} className="btn-primary text-sm px-4 py-2">
-            🪪 証明書を発行
-          </Link>
-          <Link href={invoiceNewUrl} className="btn-secondary text-sm px-4 py-2">
-            💰 請求書を作成
-          </Link>
-          {customerId && (
-            <Link href={`/admin/customers/${customerId}`} className="btn-secondary text-sm px-4 py-2">
-              👤 顧客詳細
-            </Link>
-          )}
-          {vehicleId && (
-            <Link href={`/admin/vehicles/${vehicleId}`} className="btn-secondary text-sm px-4 py-2">
-              🚗 車両詳細
-            </Link>
-          )}
-          <Link href={`/admin/reservations?focus=${reservation.id}`} className="btn-secondary text-sm px-4 py-2">
-            📅 予約画面で編集
-          </Link>
-        </div>
-      </Card>
+      {/* ponytail: IMP-022 CTA 規律 — ステータスに応じた文脈的アクションのみ表示。 */}
+      {!isCancelled && (
+        <Card padding="default">
+          <div className="text-[11px] font-semibold tracking-[0.18em] text-muted uppercase mb-3">Next Actions</div>
+          <div className="flex flex-wrap gap-2">
+            {(currentStatus === "in_progress" || currentStatus === "completed") && (
+              <Link
+                href={certificateNewUrl}
+                className={`${currentStatus === "completed" ? "btn-primary" : "btn-secondary"} text-sm px-4 py-2`}
+              >
+                🪪 証明書を発行
+              </Link>
+            )}
+            {currentStatus === "completed" && (
+              <Link href={invoiceNewUrl} className="btn-secondary text-sm px-4 py-2">
+                💰 請求書を作成
+              </Link>
+            )}
+            {customerId && (
+              <Link href={`/admin/customers/${customerId}`} className="btn-secondary text-sm px-4 py-2">
+                👤 顧客詳細
+              </Link>
+            )}
+            {vehicleId && (
+              <Link href={`/admin/vehicles/${vehicleId}`} className="btn-secondary text-sm px-4 py-2">
+                🚗 車両詳細
+              </Link>
+            )}
+            {currentStatus !== "completed" && (
+              <Link href={`/admin/reservations?focus=${reservation.id}`} className="btn-secondary text-sm px-4 py-2">
+                📅 予約画面で編集
+              </Link>
+            )}
+          </div>
+        </Card>
+      )}
     </div>
   );
 }

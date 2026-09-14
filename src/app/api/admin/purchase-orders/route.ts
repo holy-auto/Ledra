@@ -14,8 +14,15 @@ import { NextRequest } from "next/server";
 import { z } from "zod";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { createPlatformScopedAdmin } from "@/lib/supabase/admin";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
-import { apiJson, apiUnauthorized, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
+import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
+import {
+  apiJson,
+  apiUnauthorized,
+  apiValidationError,
+  apiNotFound,
+  apiInternalError,
+  apiForbidden,
+} from "@/lib/api/response";
 import { enforceBilling } from "@/lib/billing/guard";
 import { sendEmail } from "@/lib/email/sendEmail";
 import { readSecret } from "@/lib/crypto/tenantSecrets";
@@ -105,6 +112,7 @@ export async function POST(req: NextRequest) {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
+    if (!requireMinRole(caller, "staff")) return apiForbidden();
 
     const deny = await enforceBilling(req, {
       minPlan: "starter",
@@ -168,6 +176,7 @@ export async function PUT(req: NextRequest) {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
+    if (!requireMinRole(caller, "staff")) return apiForbidden();
 
     const parsed = updateSchema.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");

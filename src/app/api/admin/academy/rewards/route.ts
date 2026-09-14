@@ -13,9 +13,7 @@ import { calculateMonthlyRewards } from "@/lib/academy/rewards";
 export const dynamic = "force-dynamic";
 
 const calculateSchema = z.object({
-  period_month: z
-    .string()
-    .regex(/^\d{4}-\d{2}-01$/, "period_month は YYYY-MM-01 形式で指定してください"),
+  period_month: z.string().regex(/^\d{4}-\d{2}-01$/, "period_month は YYYY-MM-01 形式で指定してください"),
 });
 
 export async function GET(req: NextRequest) {

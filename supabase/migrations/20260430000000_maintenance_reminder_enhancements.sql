@@ -1,3 +1,12 @@
+-- 【後から内容だけ修正】このファイルは本番へ適用済み（版番号は変えていない）。
+-- **CONCURRENTLY を外した。** Supabase のブランチ機能はマイグレーションの複数文を
+-- パイプラインで送るため、2文目以降の CONCURRENTLY が
+-- `CREATE INDEX CONCURRENTLY cannot be executed within a pipeline (SQLSTATE 25001)`
+-- で落ちる。CONCURRENTLY が要るのは「書き込みが走っている本番のテーブルをロックしない」
+-- ためで、このファイルは本番では再適用されず、空 DB では対象テーブルが空なので
+-- ロックの問題は起きない。
+-- 新しいファイルで CONCURRENTLY を使うときは **1ファイル1文** にすること
+-- （`npm run lint:migrations` の concurrently-in-multi-statement-file が見ている）。
 -- Maintenance reminder enhancements
 --
 -- 背景:
@@ -36,8 +45,8 @@ comment on column public.follow_up_settings.maintenance_schedule_by_service is
   '施工種別ごとのメンテナンス月数 override。例: {"ppf":[6,12,24],"coating":[3,6]}。キー未指定の種別は maintenance_reminder_months (テナント既定) を使う。';
 
 -- followup_opt_out の検索高速化 (cron が WHERE followup_opt_out = false を頻繁に引く)。
--- CONCURRENTLY なので transaction で囲わない (Supabase migration ランナーは
--- 個別ステートメントを auto-commit するので問題なし)。IF NOT EXISTS で再実行安全。
-create index concurrently if not exists idx_customers_followup_opt_out
+-- CONCURRENTLY を外したので transaction 内で走る（このファイルは 2026-09-04 に CONCURRENTLY を外した。冒頭の注を参照）。
+-- IF NOT EXISTS で再実行安全。
+create index if not exists idx_customers_followup_opt_out
   on public.customers (tenant_id)
   where followup_opt_out = false;

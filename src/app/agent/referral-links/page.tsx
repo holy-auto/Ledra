@@ -27,7 +27,10 @@ export default function AgentReferralLinksPage() {
   useEffect(() => {
     (async () => {
       const { data: u } = await supabase.auth.getUser();
-      if (!u?.user) { window.location.href = "/agent/login"; return; }
+      if (!u?.user) {
+        window.location.href = "/agent/login";
+        return;
+      }
       setReady(true);
       fetchData();
     })();
@@ -96,7 +99,9 @@ export default function AgentReferralLinksPage() {
 
       {loading ? (
         <div className="animate-pulse space-y-3">
-          {[1, 2, 3].map((i) => <div key={i} className="h-28 rounded-2xl bg-surface-hover" />)}
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="h-28 rounded-2xl bg-surface-hover" />
+          ))}
         </div>
       ) : links.length === 0 ? (
         <div className="rounded-2xl border border-border-default bg-surface p-8 text-center text-sm text-muted">
@@ -110,11 +115,7 @@ export default function AgentReferralLinksPage() {
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
                     <h3 className="font-semibold text-primary">{link.label ?? link.code}</h3>
-                    {link.is_active ? (
-                      <Badge variant="success">有効</Badge>
-                    ) : (
-                      <Badge variant="default">無効</Badge>
-                    )}
+                    {link.is_active ? <Badge variant="success">有効</Badge> : <Badge variant="default">無効</Badge>}
                   </div>
                   <div className="mt-1 flex items-center gap-2">
                     <code className="rounded bg-surface-hover px-2 py-0.5 text-xs text-secondary break-all">

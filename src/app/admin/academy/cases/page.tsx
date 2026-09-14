@@ -14,9 +14,19 @@ interface AcademyCase {
   caution_points: string[];
   is_candidate: boolean;
   is_published: boolean;
+  /** 自店の事例か。公開事例は匿名化済みなので、サーバがこの真偽値だけを返す。 */
+  is_own: boolean;
   view_count: number;
   helpful_count: number;
   created_at: string;
+}
+
+/** preview が返す「実際に公開される文面」。 */
+interface PreviewContent {
+  ai_summary: string | null;
+  good_points: string[];
+  caution_points: string[];
+  tags: string[];
 }
 
 const CATEGORIES = [
@@ -46,6 +56,15 @@ export default function AcademyCasesPage() {
   const [publishing, setPublishing] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [knowHowLocked, setKnowHowLocked] = useState(false);
+  /** preview で生成した「公開される内容」。案件IDごとに保持する。 */
+  const [preview, setPreview] = useState<Record<string, PreviewContent>>({});
+  /** 目視確認のチェック。preview を見てから入れてもらう。 */
+  const [confirmed, setConfirmed] = useState<Record<string, boolean>>({});
+  /**
+   * preview が返した版の印。publish に持っていく。
+   * これが無い／古いと公開は弾かれる（別の人が後から再生成した場合など）。
+   */
+  const [previewToken, setPreviewToken] = useState<Record<string, string>>({});
 
   const fetchCases = async () => {
     setLoading(true);
@@ -68,15 +87,48 @@ export default function AcademyCasesPage() {
     fetchCases();
   }, [tab, category]);
 
-  const handlePublish = async (caseId: string) => {
+  const handleAction = async (caseId: string, action: "preview" | "publish" | "unpublish") => {
+    // 非公開に戻すと全加盟店の一覧から消える。取り消しの効く操作ではあるが、
+    // 他店が参照中の可能性があるので確認を挟む。
+    if (action === "unpublish" && !confirm("この事例を非公開にします。全加盟店の一覧から見えなくなります。")) return;
     setPublishing(caseId);
     try {
       const res = await fetch("/api/admin/academy/cases", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ case_id: caseId, action: "publish" }),
+        body: JSON.stringify(
+          action === "publish"
+            ? { case_id: caseId, action, preview_token: previewToken[caseId] }
+            : { case_id: caseId, action },
+        ),
       });
-      if (res.ok) await fetchCases();
+      const json = await res.json().catch(() => null);
+      if (!res.ok) {
+        // 応答は { error: "validation_error", message: "…" }。error はコードなので、
+        // 出すべきは message。コードを出すと「再生成してください」等の指示が消える。
+        alert(json?.message ?? json?.error ?? "処理に失敗しました");
+        return;
+      }
+      if (action === "preview") {
+        // 生成した文面を出し、確認前の状態にする。押した人が中身を見るまで公開させない。
+        setPreview((p) => ({ ...p, [caseId]: json?.data?.preview ?? json?.preview }));
+        setPreviewToken((t) => ({ ...t, [caseId]: json?.data?.preview_token ?? json?.preview_token }));
+        setConfirmed((c) => ({ ...c, [caseId]: false }));
+        setExpanded(caseId);
+        return;
+      }
+      // 公開／非公開の後は確認をやり直させる。サーバ側でも印は無効になるが
+      // （updated_at を混ぜてある）、押せてしまうボタンを画面に残さない。
+      setPreview((p) => {
+        const { [caseId]: _drop, ...rest } = p;
+        return rest;
+      });
+      setPreviewToken((t) => {
+        const { [caseId]: _drop, ...rest } = t;
+        return rest;
+      });
+      setConfirmed((c) => ({ ...c, [caseId]: false }));
+      await fetchCases();
     } finally {
       setPublishing(null);
     }
@@ -119,7 +171,9 @@ export default function AcademyCasesPage() {
       {tab === "candidates" && (
         <div className="mb-4 p-3 bg-accent/10 border border-accent/30 rounded-xl text-xs text-accent">
           品質スコア80以上・写真4枚以上の証明書が自動的に候補として登録されます。
-          「公開する」ボタンでAIが要約を生成し、全加盟店が閲覧できる公開事例になります。
+          「内容を確認」でAIが要約を生成します。**公開される文面をその場で確認**し、
+          個人が特定できる記述が無いことをチェックしてから公開してください。
+          公開後も「公開事例」タブから非公開に戻せます。
         </div>
       )}
 
@@ -186,16 +240,31 @@ export default function AcademyCasesPage() {
                   <span className={`text-sm font-bold px-2 py-1 rounded-lg ${scoreColor(c.quality_score)}`}>
                     {c.quality_score}
                   </span>
+                  {/* 候補は「内容を確認」→ 目視確認 → 公開の2段階。いきなり公開させない。 */}
                   {tab === "candidates" && (
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        handlePublish(c.id);
+                        handleAction(c.id, "preview");
                       }}
                       disabled={publishing === c.id}
-                      className="text-xs px-3 py-1.5 bg-success text-white rounded-lg hover:bg-success/90 disabled:opacity-50 transition-colors"
+                      className="text-xs px-3 py-1.5 bg-accent text-white rounded-lg hover:bg-accent/90 disabled:opacity-50 transition-colors"
                     >
-                      {publishing === c.id ? "処理中..." : "公開する"}
+                      {publishing === c.id ? "生成中..." : preview[c.id] ? "内容を再生成" : "内容を確認"}
+                    </button>
+                  )}
+                  {/* 公開事例は全加盟店の一覧。非公開に戻せるのは自店の事例だけ
+                      （API も所有テナントを見て弾くので、ここは押せないボタンを出さないため）。 */}
+                  {tab === "published" && c.is_own && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleAction(c.id, "unpublish");
+                      }}
+                      disabled={publishing === c.id}
+                      className="text-xs px-3 py-1.5 bg-inset text-secondary border border-border-subtle rounded-lg hover:border-danger/40 hover:text-danger-text disabled:opacity-50 transition-colors"
+                    >
+                      {publishing === c.id ? "処理中..." : "非公開にする"}
                     </button>
                   )}
                   <span className="text-muted text-xs">{expanded === c.id ? "▲" : "▼"}</span>
@@ -253,6 +322,67 @@ export default function AcademyCasesPage() {
                     <span>👁 {c.view_count}</span>
                     <span>👍 {c.helpful_count}</span>
                   </div>
+
+                  {/* 公開前の目視確認。**実際に公開される文面そのもの**を出す。
+                      要約の入力には証明書の自由記述が入るため、顧客名や車両番号が
+                      混ざりうる。ここを見ずに公開できないようにしてある。 */}
+                  {tab === "candidates" && preview[c.id] && (
+                    <div className="mt-4 rounded-xl border border-warning/40 bg-warning-dim p-4">
+                      <h3 className="text-xs font-semibold text-warning mb-2">
+                        📢 全加盟店に公開される内容（これがそのまま共有されます）
+                      </h3>
+                      <dl className="space-y-2 text-xs">
+                        <div>
+                          <dt className="text-muted">要約</dt>
+                          <dd className="text-primary">{preview[c.id].ai_summary}</dd>
+                        </div>
+                        {preview[c.id].good_points.length > 0 && (
+                          <div>
+                            <dt className="text-muted">良かった点</dt>
+                            <dd className="text-primary">{preview[c.id].good_points.join(" / ")}</dd>
+                          </div>
+                        )}
+                        {preview[c.id].caution_points.length > 0 && (
+                          <div>
+                            <dt className="text-muted">注意点</dt>
+                            <dd className="text-primary">{preview[c.id].caution_points.join(" / ")}</dd>
+                          </div>
+                        )}
+                        {preview[c.id].tags.length > 0 && (
+                          <div>
+                            <dt className="text-muted">タグ</dt>
+                            <dd className="text-primary">{preview[c.id].tags.join("、")}</dd>
+                          </div>
+                        )}
+                      </dl>
+
+                      <label className="mt-3 flex items-start gap-2 text-xs text-primary cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={confirmed[c.id] ?? false}
+                          onChange={(e) => setConfirmed((v) => ({ ...v, [c.id]: e.target.checked }))}
+                          className="mt-0.5 shrink-0"
+                        />
+                        <span>
+                          上の内容に<strong>顧客名・車両番号・個人や取引先が特定できる記述が含まれていない</strong>
+                          ことを確認しました。
+                        </span>
+                      </label>
+
+                      <button
+                        onClick={() => handleAction(c.id, "publish")}
+                        disabled={!confirmed[c.id] || !previewToken[c.id] || publishing === c.id}
+                        className="mt-3 text-xs px-4 py-2 bg-success text-white rounded-lg hover:bg-success/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                      >
+                        {publishing === c.id ? "処理中..." : "確認したので公開する"}
+                      </button>
+                      {!confirmed[c.id] && (
+                        <p className="mt-2 text-[11px] text-muted">
+                          確認にチェックを入れると公開できます。訂正が要るときは証明書側の記載を直してから「内容を再生成」を押してください。
+                        </p>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
             </div>

@@ -1,9 +1,16 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
+import { resolveCallerWithRole, requirePermission } from "@/lib/auth/checkRole";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
-import { apiJson, apiUnauthorized, apiNotFound, apiValidationError, apiInternalError } from "@/lib/api/response";
+import {
+  apiJson,
+  apiUnauthorized,
+  apiNotFound,
+  apiValidationError,
+  apiInternalError,
+  apiForbidden,
+} from "@/lib/api/response";
 import { executeOrderPayout } from "@/lib/orders/orderPayout";
 import { markOrderInvoicePaid } from "@/lib/orders/markOrderInvoicePaid";
 
@@ -23,6 +30,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
+    if (!requirePermission(caller, "payments:manage")) return apiForbidden();
     const tenantId = caller.tenantId;
 
     const { admin } = createTenantScopedAdmin(caller.tenantId);

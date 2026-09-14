@@ -30,19 +30,27 @@ const BODY_TYPES = ["セダン", "SUV", "ミニバン", "軽", "クーペ", "ワ
 
 const statusVariant = (s: string) => {
   switch (s) {
-    case "listed": return "success" as const;
-    case "reserved": return "warning" as const;
-    case "sold": return "info" as const;
-    default: return "default" as const;
+    case "listed":
+      return "success" as const;
+    case "reserved":
+      return "warning" as const;
+    case "sold":
+      return "info" as const;
+    default:
+      return "default" as const;
   }
 };
 
 const statusLabel = (s: string) => {
   switch (s) {
-    case "listed": return "出品中";
-    case "reserved": return "商談中";
-    case "sold": return "成約済";
-    default: return s;
+    case "listed":
+      return "出品中";
+    case "reserved":
+      return "商談中";
+    case "sold":
+      return "成約済";
+    default:
+      return s;
   }
 };
 
@@ -70,12 +78,7 @@ export default function MarketClient({ vehicles }: { vehicles: MarketVehicle[] }
           <div className="col-span-2 space-y-1">
             <label className="text-xs text-muted">メーカー・車種</label>
             <form action="/market" method="get">
-              <input
-                type="text"
-                name="q"
-                className="input-field"
-                placeholder="例: トヨタ プリウス"
-              />
+              <input type="text" name="q" className="input-field" placeholder="例: トヨタ プリウス" />
             </form>
           </div>
           <div className="space-y-1">
@@ -83,24 +86,50 @@ export default function MarketClient({ vehicles }: { vehicles: MarketVehicle[] }
             <select className="select-field" value={bodyType} onChange={(e) => setBodyType(e.target.value)}>
               <option value="">すべて</option>
               {BODY_TYPES.map((bt) => (
-                <option key={bt} value={bt}>{bt}</option>
+                <option key={bt} value={bt}>
+                  {bt}
+                </option>
               ))}
             </select>
           </div>
           <div className="space-y-1">
             <label className="text-xs text-muted">年式</label>
             <div className="flex gap-1 items-center">
-              <input type="number" className="input-field" placeholder="から" value={minYear} onChange={(e) => setMinYear(e.target.value)} />
+              <input
+                type="number"
+                className="input-field"
+                placeholder="から"
+                value={minYear}
+                onChange={(e) => setMinYear(e.target.value)}
+              />
               <span className="text-muted text-xs">〜</span>
-              <input type="number" className="input-field" placeholder="まで" value={maxYear} onChange={(e) => setMaxYear(e.target.value)} />
+              <input
+                type="number"
+                className="input-field"
+                placeholder="まで"
+                value={maxYear}
+                onChange={(e) => setMaxYear(e.target.value)}
+              />
             </div>
           </div>
           <div className="col-span-2 space-y-1">
             <label className="text-xs text-muted">価格帯（税抜）</label>
             <div className="flex gap-1 items-center">
-              <input type="number" className="input-field" placeholder="下限" value={minPrice} onChange={(e) => setMinPrice(e.target.value)} />
+              <input
+                type="number"
+                className="input-field"
+                placeholder="下限"
+                value={minPrice}
+                onChange={(e) => setMinPrice(e.target.value)}
+              />
               <span className="text-muted text-xs">〜</span>
-              <input type="number" className="input-field" placeholder="上限" value={maxPrice} onChange={(e) => setMaxPrice(e.target.value)} />
+              <input
+                type="number"
+                className="input-field"
+                placeholder="上限"
+                value={maxPrice}
+                onChange={(e) => setMaxPrice(e.target.value)}
+              />
             </div>
           </div>
         </div>
@@ -110,11 +139,17 @@ export default function MarketClient({ vehicles }: { vehicles: MarketVehicle[] }
         <div className="glass-card p-12 text-center">
           <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-accent-dim">
             <svg width="28" height="28" fill="none" viewBox="0 0 24 24" stroke="var(--accent-blue)" strokeWidth={1.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 18.75a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m3 0h6m-9 0H3.375a1.125 1.125 0 0 1-1.125-1.125V14.25m17.25 4.5a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m3 0h1.125c.621 0 1.129-.504 1.09-1.124a17.902 17.902 0 0 0-3.213-9.193 2.056 2.056 0 0 0-1.58-.86H14.25M16.5 18.75h-2.25m0-11.177v-.958c0-.568-.422-1.048-.987-1.106a48.554 48.554 0 0 0-10.026 0 1.106 1.106 0 0 0-.987 1.106v7.635m12-6.677v6.677m0 4.5v-4.5m0 0h-12" />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M8.25 18.75a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m3 0h6m-9 0H3.375a1.125 1.125 0 0 1-1.125-1.125V14.25m17.25 4.5a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m3 0h1.125c.621 0 1.129-.504 1.09-1.124a17.902 17.902 0 0 0-3.213-9.193 2.056 2.056 0 0 0-1.58-.86H14.25M16.5 18.75h-2.25m0-11.177v-.958c0-.568-.422-1.048-.987-1.106a48.554 48.554 0 0 0-10.026 0 1.106 1.106 0 0 0-.987 1.106v7.635m12-6.677v6.677m0 4.5v-4.5m0 0h-12"
+              />
             </svg>
           </div>
           <p className="text-lg font-medium text-primary">出品中の車両はありません</p>
-          <p className="mt-2 text-sm text-secondary">条件を変更して再検索するか、BtoB在庫管理から車両を出品してください。</p>
+          <p className="mt-2 text-sm text-secondary">
+            条件を変更して再検索するか、BtoB在庫管理から車両を出品してください。
+          </p>
         </div>
       )}
 
@@ -141,7 +176,11 @@ export default function MarketClient({ vehicles }: { vehicles: MarketVehicle[] }
                     />
                   ) : (
                     <svg width="48" height="48" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909M3.75 21h16.5A2.25 2.25 0 0 0 22.5 18.75V5.25A2.25 2.25 0 0 0 20.25 3H3.75A2.25 2.25 0 0 0 1.5 5.25v13.5A2.25 2.25 0 0 0 3.75 21Z" />
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909M3.75 21h16.5A2.25 2.25 0 0 0 22.5 18.75V5.25A2.25 2.25 0 0 0 20.25 3H3.75A2.25 2.25 0 0 0 1.5 5.25v13.5A2.25 2.25 0 0 0 3.75 21Z"
+                      />
                     </svg>
                   )}
                 </div>
@@ -170,9 +209,7 @@ export default function MarketClient({ vehicles }: { vehicles: MarketVehicle[] }
                     </div>
                   )}
                   {v.wholesale_price != null && (
-                    <div className="text-sm text-secondary">
-                      卸価格: {formatJpy(v.wholesale_price)}
-                    </div>
+                    <div className="text-sm text-secondary">卸価格: {formatJpy(v.wholesale_price)}</div>
                   )}
                 </div>
               </Link>

@@ -88,15 +88,9 @@ export default function AiPriceHint({ menuItemId, onApply }: Props) {
   return (
     <div className="text-[10px] text-muted space-y-0.5">
       <div>
-        <span className="text-accent font-semibold">
-          ¥{rec.recommended_price.toLocaleString("ja-JP")}
-        </span>{" "}
-        ({Math.round(rec.confidence * 100)}%){" "}
-        <button
-          type="button"
-          onClick={() => onApply(rec.recommended_price)}
-          className="underline text-accent ml-1"
-        >
+        <span className="text-accent font-semibold">¥{rec.recommended_price.toLocaleString("ja-JP")}</span> (
+        {Math.round(rec.confidence * 100)}%){" "}
+        <button type="button" onClick={() => onApply(rec.recommended_price)} className="underline text-accent ml-1">
           採用
         </button>
       </div>

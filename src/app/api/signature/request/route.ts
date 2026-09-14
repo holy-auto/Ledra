@@ -16,8 +16,8 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
-import { apiOk, apiError, apiUnauthorized, apiValidationError } from "@/lib/api/response";
+import { resolveCallerWithRole, requirePermission } from "@/lib/auth/checkRole";
+import { apiOk, apiError, apiUnauthorized, apiValidationError, apiForbidden } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { createSignatureSession, getExistingPendingSession } from "@/lib/signature/session";
 import { generateCertificatePdfBytes } from "@/lib/signature/pdfUtils";
@@ -103,6 +103,7 @@ export async function POST(req: NextRequest) {
   const supabase = await createClient();
   const caller = await resolveCallerWithRole(supabase);
   if (!caller) return apiUnauthorized();
+  if (!requirePermission(caller, "certificates:edit")) return apiForbidden();
 
   const parsed = signatureRequestSchema.safeParse(await req.json().catch(() => ({})));
   if (!parsed.success) {

@@ -19,6 +19,30 @@ export const runtime = "nodejs";
  *   terms_accepted: boolean
  * }
  */
+/**
+ * B-M3 是正 (2026-09-08): 既に登録済みのメールで /api/join が呼ばれたときの案内。
+ * ここに到達する時点で本人が OTP でメールを確認済みなので、素直にログイン案内でよい。
+ */
+async function notifyAlreadyRegisteredInsurer(email: string): Promise<void> {
+  const html = `
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 480px; margin: 0 auto; padding: 24px;">
+      <p style="color: #1d1d1f; line-height: 1.6;">
+        このメールアドレスは既に Ledra 保険会社アカウントとして登録されています。
+        新しいアカウントは作成されませんでした。
+      </p>
+      <p style="color: #1d1d1f; line-height: 1.6;">
+        ログイン画面からログインしてください。パスワードをお忘れの場合は
+        「パスワードを忘れた方」からリセットできます。
+      </p>
+    </div>
+  `;
+  const { sendEmail } = await import("@/lib/email/sendEmail");
+  const result = await sendEmail({ to: email, subject: "【Ledra】このメールアドレスは登録済みです", html });
+  if (!result.ok) {
+    console.error("[insurer-register] already-registered notice send failed", result.status, result.error);
+  }
+}
+
 export async function POST(req: NextRequest) {
   // Rate limit: Upstash Redis (production) with in-memory fallback (dev)
   const upstashDeny = await checkUpstashRateLimit(req, "auth");
@@ -55,12 +79,18 @@ export async function POST(req: NextRequest) {
 
   const supabase = createServiceRoleAdmin("join flow — pre-auth invitation / verification");
 
-  // Verify that email was confirmed via OTP
+  // Verify that email was confirmed via OTP.
+  //
+  // G-H2 是正 (2026-09-08): `expires_at > now()` を追加。verify-code は
+  // 期限内のコードにのみ verified=true を立てるが、確認から登録完了までの
+  // 間隔に制限が無いと「確認済み」フラグが無期限に使い回せてしまう。
+  // 元のコード有効期間 (10分) と同じ枠に登録完了を要求する。
   const { data: verification } = await supabase
     .from("insurer_email_verifications")
     .select("id, verified")
     .eq("email", data.email.toLowerCase())
     .eq("verified", true)
+    .gt("expires_at", new Date().toISOString())
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
@@ -106,7 +136,15 @@ export async function POST(req: NextRequest) {
     console.error("[insurer-register] auth.createUser error:", msg);
 
     if (msg.includes("already been registered") || msg.includes("already exists")) {
-      return apiError({ code: "conflict", message: "このメールアドレスは既に登録されています", status: 409 });
+      // B-M3 是正 (2026-09-08): 409 は他の未登録失敗（バリデーション等）と区別できてしまう。
+      // ここに到達する時点で OTP 検証済み（本人がこのメールを所有している証明）なので
+      // 第三者への漏洩リスクは無いが、send-code/signup と挙動を揃え、一律 200 のうえで
+      // 本人にログイン案内を送る（フロントは成功後 signInWithPassword を試み、
+      // 失敗すれば「登録完了」画面に落ちる — signup と同じ経路）。
+      notifyAlreadyRegisteredInsurer(data.email).catch((e) =>
+        console.error("[insurer-register] already-registered notice failed:", e),
+      );
+      return apiJson({ ok: true });
     }
 
     return apiInternalError(authError, "insurer-register auth");

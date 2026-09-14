@@ -1,6 +1,6 @@
 // reservationSteps の自己チェック。フレームワーク不要。
 // 実行: node --experimental-strip-types apps/mobile/src/lib/reservationSteps.check.ts
-import assert from "node:assert";
+import assert from "node:assert/strict";
 
 import { reservationSteps, reservationCurrentStep } from "./reservationSteps.ts";
 

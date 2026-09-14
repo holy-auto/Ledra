@@ -247,7 +247,7 @@ export default function OrdersClient() {
       if (status && status !== "all") params.set("status", status);
       const res = await fetch(`/api/admin/orders?${params.toString()}`, { cache: "no-store" });
       const j = await parseJsonSafe(res);
-      if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
+      if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       setOrders(j.orders ?? []);
     } catch (e: unknown) {
       setErr(e instanceof Error ? e.message : String(e));
@@ -402,7 +402,7 @@ export default function OrdersClient() {
         body: JSON.stringify({ id: orderId }),
       });
       const j = await parseJsonSafe(res);
-      if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
+      if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       alert("受注しました！");
       // ブラウズリストから削除し、自社案件を更新
       setBrowseOrders((prev) => prev.filter((o) => o.id !== orderId));
@@ -508,7 +508,7 @@ export default function OrdersClient() {
                   </div>
                 )}
               </div>
-              <div className="grid gap-3 grid-cols-4 text-center">
+              <div className="grid gap-3 grid-cols-2 sm:grid-cols-4 text-center">
                 <div className="p-2 rounded-lg bg-surface-hover">
                   <div className="text-xl font-bold text-primary">{myScore.completed_orders}</div>
                   <div className="text-[10px] text-muted">完了取引</div>

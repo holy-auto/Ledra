@@ -1,5 +1,9 @@
 import { getReadReplica } from "@/lib/supabase/readReplica";
 import { buildExplorerUrl } from "@/lib/anchoring/providers";
+import { normalizeVin } from "@/lib/passport/normalizeVin";
+
+// ラベルは client からも使うため独立モジュールへ移した。既存の import 経路は維持する。
+export { getServiceTypeLabel } from "@/lib/certificates/serviceTypeLabel";
 
 export type PassportCertCard = {
   public_id: string;
@@ -53,7 +57,15 @@ type PassportRow = {
 };
 
 export async function getPassportData(vinRaw: string): Promise<PassportData | null> {
-  const vin = vinRaw.trim().toUpperCase();
+  // Stored VINs are NFKC-normalized with whitespace and hyphens stripped, so
+  // the lookup has to apply the same rule. A bare trim+uppercase left
+  // `/v/JH4-DC5-3001` and full-width VINs unable to find their own passport —
+  // the v1 API routes and the report checkout already used normalizeVin().
+  const vin = normalizeVin(vinRaw);
+  // 空は照合しない。保存側は空を NULL にするので `.eq("...", "")` は何にも
+  // 当たらず結果は同じだが、**偶然そうなっている**状態を残さない。
+  // 公開ルートなので、不正な入力でDBを1往復させない意味もある
+  if (!vin) return null;
   // Anonymous public read path → safe to route to the replica when configured.
   // Eventual consistency (<1s lag) is acceptable here because newly-issued
   // certificates take much longer to anchor on Polygon anyway, so a fresh
@@ -176,21 +188,4 @@ export async function getPassportData(vinRaw: string): Promise<PassportData | nu
     certificates: cards,
     meta_anchor: metaAnchor,
   };
-}
-
-export function getServiceTypeLabel(serviceType: string | null): string {
-  switch (serviceType) {
-    case "ppf":
-      return "PPF施工";
-    case "coating":
-      return "コーティング";
-    case "body_repair":
-      return "鈑金塗装";
-    case "maintenance":
-      return "車両整備";
-    case "wrapping":
-      return "ラッピング";
-    default:
-      return serviceType ?? "施工";
-  }
 }

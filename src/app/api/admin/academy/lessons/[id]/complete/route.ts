@@ -10,13 +10,7 @@
 import { NextRequest } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
-import {
-  apiOk,
-  apiUnauthorized,
-  apiInternalError,
-  apiNotFound,
-  apiForbidden,
-} from "@/lib/api/response";
+import { apiOk, apiUnauthorized, apiInternalError, apiNotFound, apiForbidden } from "@/lib/api/response";
 import { canUseFeature } from "@/lib/billing/planFeatures";
 import { scoreForLevel } from "@/lib/academy/scoring";
 

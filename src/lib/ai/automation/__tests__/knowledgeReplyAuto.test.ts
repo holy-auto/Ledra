@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   generateKnowledgeReply: vi.fn(),
   fetchRecentConversation: vi.fn(),
   sendCustomerLineText: vi.fn(),
+  sendCustomerLineButtons: vi.fn(),
   logAutoActionExecuted: vi.fn(),
   usageRecord: vi.fn(),
   store: null as unknown as FakeStore,
@@ -25,7 +26,10 @@ vi.mock("@/lib/ai/knowledgeReply", () => ({
 vi.mock("@/lib/line/messageStore", () => ({ fetchRecentConversation: mocks.fetchRecentConversation }));
 vi.mock("@/lib/ai/client", () => ({ fastModelForPlanTier: () => "claude-haiku" }));
 vi.mock("@/lib/ai/recordRouteUsage", () => ({ startAiRouteUsage: () => ({ record: mocks.usageRecord }) }));
-vi.mock("@/lib/line/client", () => ({ sendCustomerLineText: mocks.sendCustomerLineText }));
+vi.mock("@/lib/line/client", () => ({
+  sendCustomerLineText: mocks.sendCustomerLineText,
+  sendCustomerLineButtons: mocks.sendCustomerLineButtons,
+}));
 vi.mock("@/lib/audit/aiAuditLog", () => ({ logAutoActionExecuted: mocks.logAutoActionExecuted }));
 vi.mock("@/lib/logger", () => ({
   logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn(), child: () => ({}) },
@@ -67,6 +71,7 @@ beforeEach(() => {
     ai: true,
   });
   mocks.sendCustomerLineText.mockResolvedValue(true);
+  mocks.sendCustomerLineButtons.mockResolvedValue(true);
 });
 
 describe("maybeAutoReplyKnowledge", () => {
@@ -180,5 +185,23 @@ describe("maybeAutoReplyKnowledge", () => {
     mocks.logAutoActionExecuted.mockRejectedValue(new Error("audit down"));
     const replied = await maybeAutoReplyKnowledge(baseParams());
     expect(replied).toBe(true);
+  });
+
+  it("attaches follow-up buttons when the caller requests them (attachButtons=true)", async () => {
+    const replied = await maybeAutoReplyKnowledge({ ...baseParams(), attachButtons: true });
+
+    expect(replied).toBe(true);
+    // ボタン付き送信を使い、プレーンテキスト送信は使わない。
+    expect(mocks.sendCustomerLineButtons).toHaveBeenCalledTimes(1);
+    expect(mocks.sendCustomerLineText).not.toHaveBeenCalled();
+    const arg = mocks.sendCustomerLineButtons.mock.calls[0][0];
+    expect(arg.text).toContain("営業時間");
+    expect(arg.buttons.map((b: { data: string }) => b.data)).toEqual(["flow:start_quote", "flow:consult"]);
+  });
+
+  it("falls back to plain text when buttons are not requested (default)", async () => {
+    await maybeAutoReplyKnowledge(baseParams());
+    expect(mocks.sendCustomerLineText).toHaveBeenCalledTimes(1);
+    expect(mocks.sendCustomerLineButtons).not.toHaveBeenCalled();
   });
 });

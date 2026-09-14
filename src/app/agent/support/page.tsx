@@ -33,7 +33,11 @@ const STATUS_MAP: Record<string, { variant: BadgeVariant; label: string }> = {
 };
 
 const CATEGORY_MAP: Record<string, string> = {
-  general: "一般", billing: "請求", technical: "技術", contract: "契約", other: "その他",
+  general: "一般",
+  billing: "請求",
+  technical: "技術",
+  contract: "契約",
+  other: "その他",
 };
 
 const PRIORITY_MAP: Record<string, { variant: BadgeVariant; label: string }> = {
@@ -65,7 +69,10 @@ export default function AgentSupportPage() {
   useEffect(() => {
     (async () => {
       const { data: u } = await supabase.auth.getUser();
-      if (!u?.user) { window.location.href = "/agent/login"; return; }
+      if (!u?.user) {
+        window.location.href = "/agent/login";
+        return;
+      }
       setReady(true);
       fetchTickets();
     })();
@@ -88,7 +95,8 @@ export default function AgentSupportPage() {
     });
     if (res.ok) {
       setShowNew(false);
-      setSubject(""); setMessage("");
+      setSubject("");
+      setMessage("");
       fetchTickets();
     }
     setCreating(false);
@@ -141,11 +149,16 @@ export default function AgentSupportPage() {
         <div className="space-y-3">
           {msgLoading ? (
             <div className="animate-pulse space-y-3">
-              {[1, 2].map((i) => <div key={i} className="h-16 rounded-2xl bg-surface-hover" />)}
+              {[1, 2].map((i) => (
+                <div key={i} className="h-16 rounded-2xl bg-surface-hover" />
+              ))}
             </div>
           ) : (
             messages.map((msg) => (
-              <div key={msg.id} className={`rounded-2xl border p-4 shadow-sm ${msg.is_admin ? "border-blue-200 bg-blue-50/30" : "border-border-default bg-surface"}`}>
+              <div
+                key={msg.id}
+                className={`rounded-2xl border p-4 shadow-sm ${msg.is_admin ? "border-blue-200 bg-blue-50/30" : "border-border-default bg-surface"}`}
+              >
                 <div className="flex items-center gap-2 mb-1">
                   <span className={`text-xs font-semibold ${msg.is_admin ? "text-blue-600" : "text-secondary"}`}>
                     {msg.is_admin ? "サポート担当" : "あなた"}
@@ -194,7 +207,10 @@ export default function AgentSupportPage() {
       </div>
 
       <div className="flex justify-end">
-        <button onClick={() => setShowNew(!showNew)} className="rounded-xl bg-primary px-5 py-2.5 text-sm font-medium text-inverse hover:bg-primary/90">
+        <button
+          onClick={() => setShowNew(!showNew)}
+          className="rounded-xl bg-primary px-5 py-2.5 text-sm font-medium text-inverse hover:bg-primary/90"
+        >
           {showNew ? "閉じる" : "新規チケット"}
         </button>
       </div>
@@ -204,35 +220,73 @@ export default function AgentSupportPage() {
           <div className="grid gap-4 sm:grid-cols-3">
             <div>
               <label className="mb-1 block text-xs font-medium text-secondary">件名 *</label>
-              <input value={subject} onChange={(e) => setSubject(e.target.value)} className="w-full rounded-xl border border-border-default bg-inset px-3 py-2 text-sm focus:bg-surface focus:outline-none focus:ring-2 focus:ring-border-strong" />
+              <input
+                value={subject}
+                onChange={(e) => setSubject(e.target.value)}
+                className="w-full rounded-xl border border-border-default bg-inset px-3 py-2 text-sm focus:bg-surface focus:outline-none focus:ring-2 focus:ring-border-strong"
+              />
             </div>
             <div>
               <label className="mb-1 block text-xs font-medium text-secondary">カテゴリ</label>
-              <select value={category} onChange={(e) => setCategory(e.target.value)} className="w-full rounded-xl border border-border-default bg-inset px-3 py-2 text-sm">
-                {Object.entries(CATEGORY_MAP).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+              <select
+                value={category}
+                onChange={(e) => setCategory(e.target.value)}
+                className="w-full rounded-xl border border-border-default bg-inset px-3 py-2 text-sm"
+              >
+                {Object.entries(CATEGORY_MAP).map(([k, v]) => (
+                  <option key={k} value={k}>
+                    {v}
+                  </option>
+                ))}
               </select>
             </div>
             <div>
               <label className="mb-1 block text-xs font-medium text-secondary">優先度</label>
-              <select value={priority} onChange={(e) => setPriority(e.target.value)} className="w-full rounded-xl border border-border-default bg-inset px-3 py-2 text-sm">
-                {Object.entries(PRIORITY_MAP).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+              <select
+                value={priority}
+                onChange={(e) => setPriority(e.target.value)}
+                className="w-full rounded-xl border border-border-default bg-inset px-3 py-2 text-sm"
+              >
+                {Object.entries(PRIORITY_MAP).map(([k, v]) => (
+                  <option key={k} value={k}>
+                    {v.label}
+                  </option>
+                ))}
               </select>
             </div>
           </div>
           <div>
             <label className="mb-1 block text-xs font-medium text-secondary">内容 *</label>
-            <textarea value={message} onChange={(e) => setMessage(e.target.value)} rows={4} className="w-full rounded-xl border border-border-default bg-inset px-3 py-2 text-sm focus:bg-surface focus:outline-none focus:ring-2 focus:ring-border-strong" />
+            <textarea
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+              rows={4}
+              className="w-full rounded-xl border border-border-default bg-inset px-3 py-2 text-sm focus:bg-surface focus:outline-none focus:ring-2 focus:ring-border-strong"
+            />
           </div>
           <div className="flex justify-end gap-3">
-            <button onClick={() => setShowNew(false)} className="rounded-xl border border-border-default px-4 py-2 text-sm font-medium text-secondary hover:bg-inset">キャンセル</button>
-            <button onClick={createTicket} disabled={creating} className="rounded-xl bg-primary px-5 py-2 text-sm font-medium text-inverse hover:bg-primary/90 disabled:opacity-50">{creating ? "作成中..." : "送信"}</button>
+            <button
+              onClick={() => setShowNew(false)}
+              className="rounded-xl border border-border-default px-4 py-2 text-sm font-medium text-secondary hover:bg-inset"
+            >
+              キャンセル
+            </button>
+            <button
+              onClick={createTicket}
+              disabled={creating}
+              className="rounded-xl bg-primary px-5 py-2 text-sm font-medium text-inverse hover:bg-primary/90 disabled:opacity-50"
+            >
+              {creating ? "作成中..." : "送信"}
+            </button>
           </div>
         </div>
       )}
 
       {loading ? (
         <div className="animate-pulse space-y-3">
-          {[1, 2, 3].map((i) => <div key={i} className="h-16 rounded-2xl bg-surface-hover" />)}
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="h-16 rounded-2xl bg-surface-hover" />
+          ))}
         </div>
       ) : tickets.length === 0 ? (
         <div className="rounded-2xl border border-border-default bg-surface p-8 text-center text-sm text-muted">
@@ -257,10 +311,19 @@ export default function AgentSupportPage() {
                       <Badge variant={pr.variant}>{pr.label}</Badge>
                     </div>
                     <div className="mt-1 text-[11px] text-muted">
-                      {CATEGORY_MAP[t.category]} | 作成: {formatDateTime(t.created_at)} | 更新: {formatDateTime(t.updated_at)}
+                      {CATEGORY_MAP[t.category]} | 作成: {formatDateTime(t.created_at)} | 更新:{" "}
+                      {formatDateTime(t.updated_at)}
                     </div>
                   </div>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="text-muted">
+                  <svg
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth={2}
+                    className="text-muted"
+                  >
                     <path strokeLinecap="round" strokeLinejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
                   </svg>
                 </div>

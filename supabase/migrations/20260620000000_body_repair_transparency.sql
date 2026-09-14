@@ -81,7 +81,7 @@ comment on column body_repair_jobs.actual_amount is
 
 -- body_repair_jobs は既存テーブルのため、FK covering index / retention 抽出用
 -- index は companion migration 20260620000001 で CONCURRENTLY 作成する
--- (CREATE INDEX CONCURRENTLY はトランザクション内で実行できないため別ファイル)。
+-- (元は CREATE INDEX CONCURRENTLY のため別ファイル。2026-09-04 に CONCURRENTLY は外した)。
 
 -- =============================================================
 -- (5) 消費者等への説明と書面同意

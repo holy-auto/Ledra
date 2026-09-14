@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from "react";
 import ReceiptOnboardingTour from "./ReceiptOnboardingTour";
+import RaiseConcernButton from "@/components/customer/RaiseConcernButton";
 
 type Phase = "loading" | "error" | "expired" | "already_signed" | "cancelled" | "form" | "submitting" | "complete";
 
@@ -310,6 +311,11 @@ export default function DeliveryReceiptClient({ token }: { token: string }) {
         </button>
 
         {timeLeft && <p className="text-center text-gray-300 text-xs mt-3">{timeLeft}</p>}
+      </div>
+
+      {/* IMP-026: 気になる点を伝える */}
+      <div className="w-full max-w-md mb-4">
+        <RaiseConcernButton sourceType="delivery_receipt" sourceToken={token} variant="dark" />
       </div>
 
       <div className="w-full max-w-md text-center text-gray-600 text-xs leading-relaxed px-2">

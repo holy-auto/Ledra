@@ -42,7 +42,7 @@ export async function POST(req: NextRequest) {
     // 1. 保険会社にアクセス権のあるテナント一覧を取得
     const { data: accessRows } = await admin
       .from("insurer_tenant_access")
-      .select("tenant_id, tenants(id, name, prefecture, service_categories)")
+      .select("tenant_id, tenants(id, name, prefecture, category)")
       .eq("insurer_id", caller.insurerId)
       .eq("is_active", true)
       .limit(200);
@@ -82,7 +82,9 @@ export async function POST(req: NextRequest) {
       candidates.push({
         tenantId: tenant.id,
         name: tenant.name ?? "(不明)",
-        serviceCategories: Array.isArray(tenant.service_categories) ? tenant.service_categories : [],
+        // tenants.category は単数の text。以前は service_categories という
+        // 存在しない列を配列として読んでいた
+        serviceCategories: tenant.category ? [tenant.category] : [],
         prefecture: tenant.prefecture ?? null,
         recentCaseCount: caseCounts.get(tenant.id) ?? 0,
         hasActiveContract: activeContracts.has(tenant.id),

@@ -53,3 +53,11 @@ CREATE INDEX IF NOT EXISTS idx_customer_sessions_tenant_hash
 CREATE INDEX IF NOT EXISTS idx_customer_sessions_expires
   ON customer_sessions (expires_at)
   WHERE revoked_at IS NULL;
+
+
+-- 【後から追記】20260318000000 が張るはずだった索引を、customer_login_codes が
+-- 出来たこの位置で張る。あちらはファイル名の日付がこのファイルより前で、空 DB では
+-- テーブルがまだ無い。新しいファイルは作らない（out-of-order で db push が止まる）。
+-- 本番では既にあるので no-op。CONCURRENTLY は付けない（再適用されず、空 DB では空）。
+CREATE INDEX IF NOT EXISTS idx_customer_login_codes_tenant_email
+  ON public.customer_login_codes (tenant_id, email, expires_at DESC);

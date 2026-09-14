@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
+import { resolveCallerWithRole, requirePermission } from "@/lib/auth/checkRole";
+import { voidCertificate as voidCertificateRecord } from "@/lib/certificates/voidCertificate";
 import { formatDate, formatDateTime } from "@/lib/format";
 import ServiceTimeline, { type TimelineEvent } from "./ServiceTimeline";
 import VehicleCustomerLink from "./VehicleCustomerLink";
@@ -44,6 +45,9 @@ export default async function AdminVehicleDetailPage({
     return <div className="p-6 text-primary">ログインしてください。</div>;
   }
   const tenantId = caller.tenantId;
+  // 権限が無いユーザーに、押しても必ず失敗する削除ボタンを見せない
+  // (表示制御であって強制ではない。強制は voidCertificate 内で行う)。
+  const canVoid = requirePermission(caller, "certificates:void");
 
   async function voidCertificate(formData: FormData) {
     "use server";
@@ -61,50 +65,39 @@ export default async function AdminVehicleDetailPage({
     if (!caller) {
       redirect("/login");
     }
+    // 証明書の無効化は不可逆で法的意味を持つ (operationRisk = critical)。API 側の
+    // 4経路はすべて certificates:void (admin+) を要求するが、この Server Action は
+    // RLS 任せだった。certificates の UPDATE は PERMISSIVE ポリシー2本
+    // (cert_update_member = テナントメンバー全員 / certificates_update_v2 =
+    // owner・admin・staff) の OR で評価されるため、**viewer でも無効化が通っていた**。
+    if (!requirePermission(caller, "certificates:void")) {
+      redirect(`/admin/vehicles/${id}?e=1`);
+    }
     const membershipTenantId = caller.tenantId;
 
-    const existing = await supabase
-      .from("certificates")
-      .select("id, tenant_id, vehicle_id, public_id, status")
-      .eq("tenant_id", membershipTenantId)
-      .eq("vehicle_id", id)
-      .eq("id", certId)
-      .limit(1)
-      .maybeSingle();
+    // 無効化の本体は `@/lib/certificates/voidCertificate` に一本化（5経路で実装が
+    // 食い違っていた）。この Server Action と同名なので別名で読み込んでいる。
+    // この経路だけ証明書監査ログに残っていなかったが、一本化で揃う。
+    //
+    // **自前で `vehicle_histories` に insert してはいけない。**
+    // `voidCertificateRecord` → `logCertificateAction` が
+    // 同じ表・同じ type（`certificate_voided`）へ1行入れるので、
+    // 両方やるとタイムラインと監査が二重になる（PR #1027 の Codex レビュー指摘）。
+    // 一本化のときに、以前この経路が持っていた insert を消し忘れていた。
+    const result = await voidCertificateRecord(supabase, {
+      tenantId: membershipTenantId,
+      userId: caller.userId,
+      selector: { certificateId: certId, vehicleId: id },
+      // description は渡さない。既定が `Public ID: … / User: …` を組み立てるので、
+      // 以前この経路が自前で書いていた `Public ID: …` を含んだ上で情報が増える。
+    });
 
-    if (existing.error || !existing.data?.id) {
+    if (!result.ok) {
       redirect(`/admin/vehicles/${id}?e=1`);
     }
-
-    if (String(existing.data.status ?? "").toLowerCase() === "void") {
+    if (result.alreadyVoid) {
       redirect(`/admin/vehicles/${id}?voided=1`);
     }
-
-    const nowIso = new Date().toISOString();
-
-    const updated = await supabase
-      .from("certificates")
-      .update({
-        status: "void",
-        updated_at: nowIso,
-      })
-      .eq("tenant_id", membershipTenantId)
-      .eq("vehicle_id", id)
-      .eq("id", certId);
-
-    if (updated.error) {
-      redirect(`/admin/vehicles/${id}?e=1`);
-    }
-
-    await supabase.from("vehicle_histories").insert({
-      tenant_id: membershipTenantId,
-      vehicle_id: id,
-      type: "certificate_voided",
-      title: "施工証明書を削除",
-      description: existing.data.public_id ? `Public ID: ${existing.data.public_id}` : null,
-      performed_at: nowIso,
-      certificate_id: certId,
-    });
 
     redirect(`/admin/vehicles/${id}?voided=1`);
   }
@@ -144,7 +137,7 @@ export default async function AdminVehicleDetailPage({
 
   const { data: certs } = await supabase
     .from("certificates")
-    .select("id, public_id, certificate_no, service_type, created_at, status")
+    .select("id, public_id, service_type, created_at, status")
     .eq("tenant_id", tenantId)
     .eq("vehicle_id", id)
     .order("created_at", { ascending: false });
@@ -234,7 +227,7 @@ export default async function AdminVehicleDetailPage({
       kindLabel: "証明書発行",
       kindVariant: "certificate",
       title: `証明書を発行 (${c.service_type ?? "施工"})`,
-      description: c.certificate_no ? `No. ${c.certificate_no}` : null,
+      description: c.public_id ? `No. ${c.public_id}` : null,
       occurredAt: c.created_at,
       href: c.public_id ? `/admin/certificates/${c.public_id}` : undefined,
     });
@@ -428,7 +421,7 @@ export default async function AdminVehicleDetailPage({
                       key={row.id}
                       className="border-t border-border-default hover:bg-surface-hover transition-colors"
                     >
-                      <td className="px-4 py-3 text-primary">{row.certificate_no ?? "-"}</td>
+                      <td className="px-4 py-3 text-primary">{row.public_id ?? "-"}</td>
                       <td className="px-4 py-3 text-primary">{row.service_type ?? "-"}</td>
                       <td className="px-4 py-3 text-primary">{formatDate(row.created_at)}</td>
                       <td className="px-4 py-3 text-primary">{row.status ?? "-"}</td>
@@ -449,6 +442,8 @@ export default async function AdminVehicleDetailPage({
                       <td className="px-4 py-3">
                         {isVoid ? (
                           <span className="text-xs text-muted">削除済み</span>
+                        ) : !canVoid ? (
+                          <span className="text-xs text-muted">-</span>
                         ) : (
                           <form action={voidCertificate}>
                             <input type="hidden" name="certificate_id" value={row.id} />

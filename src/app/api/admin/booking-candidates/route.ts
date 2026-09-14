@@ -5,7 +5,7 @@ import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { resolveCallerWithRole, requirePermission } from "@/lib/auth/checkRole";
 import { apiJson, apiUnauthorized, apiInternalError, apiValidationError } from "@/lib/api/response";
 import { estimateReservationMinutes } from "@/lib/booths/duration";
-import { proposeCandidates } from "@/lib/booking/candidates";
+import { proposeCandidates, computeFreeLoanersByDate } from "@/lib/booking/candidates";
 import { addDays } from "@/lib/booking/slots";
 
 export const dynamic = "force-dynamic";
@@ -173,28 +173,12 @@ export async function GET(req: NextRequest) {
     let freeLoanersByDate: Record<string, number> | undefined;
     if (needsLoaner) {
       const activeLoanerIds = new Set(((loanersRes.data ?? []) as { id: string }[]).map((r) => r.id));
-      const loanerTotal = activeLoanerIds.size;
-
-      // ① 予約割当（日別）: date → その日に押さえられている稼働代車ID
-      const assignedByDate = new Map<string, Set<string>>();
-      for (const r of (resvRes.data ?? []) as { scheduled_date: string; loaner_car_id: string | null }[]) {
-        if (!r.loaner_car_id || !activeLoanerIds.has(r.loaner_car_id)) continue;
-        const key = r.scheduled_date.slice(0, 10);
-        (assignedByDate.get(key) ?? assignedByDate.set(key, new Set()).get(key)!).add(r.loaner_car_id);
-      }
-      // ② 現在貸出中（未返却）: {代車ID, 返却予定日}
-      const openLoans = ((loansRes.data ?? []) as { loaner_car_id: string; return_due_at: string | null }[]).map(
-        (l) => ({ id: l.loaner_car_id, due: l.return_due_at ? l.return_due_at.slice(0, 10) : null }),
+      freeLoanersByDate = computeFreeLoanersByDate(
+        dates,
+        activeLoanerIds,
+        (resvRes.data ?? []) as { scheduled_date: string; loaner_car_id: string | null }[],
+        (loansRes.data ?? []) as { loaner_car_id: string; return_due_at: string | null }[],
       );
-
-      freeLoanersByDate = {};
-      for (const date of dates) {
-        const committed = new Set(assignedByDate.get(date) ?? []);
-        for (const l of openLoans) {
-          if (activeLoanerIds.has(l.id) && (l.due === null || l.due >= date)) committed.add(l.id);
-        }
-        freeLoanersByDate[date] = Math.max(0, loanerTotal - committed.size);
-      }
     }
 
     // 日付ごとの勤務シフト（分単位。start/end 未設定は終日勤務）。スロット時間帯を

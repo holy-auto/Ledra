@@ -1,8 +1,15 @@
 import { NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { vehicleUpdateSchema } from "@/lib/validations/vehicle";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
-import { apiOk, apiInternalError, apiUnauthorized, apiNotFound, apiValidationError } from "@/lib/api/response";
+import { resolveCallerWithRole, requirePermission } from "@/lib/auth/checkRole";
+import {
+  apiOk,
+  apiInternalError,
+  apiUnauthorized,
+  apiNotFound,
+  apiValidationError,
+  apiForbidden,
+} from "@/lib/api/response";
 import { emitEntityWebhook } from "@/lib/outbound-webhooks";
 
 export const dynamic = "force-dynamic";
@@ -37,6 +44,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
 
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
+    if (!requirePermission(caller, "vehicles:edit")) return apiForbidden();
 
     const body = await req.json();
     const parsed = vehicleUpdateSchema.safeParse({ ...body, id });

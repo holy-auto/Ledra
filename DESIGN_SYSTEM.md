@@ -81,33 +81,41 @@ editorial な落ち着き＝高級感のため各段を一段締めている。�
 
 ## Components (`src/components/ui/`)
 
-| Component       | File                | Purpose                                                                                  |
-| --------------- | ------------------- | ---------------------------------------------------------------------------------------- |
-| `Button`        | `Button.tsx`        | Variants: primary/secondary/ghost/danger/outline. Sizes: sm/md/lg                        |
-| `Badge`         | `Badge.tsx`         | Status pills. Variants: default/success/warning/danger/info/violet                       |
-| `Card`          | `Card.tsx`          | Surface container. Variants: default(glass)/elevated/inset                               |
-| `Input`         | `Input.tsx`         | Text input with error state                                                              |
-| `Select`        | `Select.tsx`        | Select dropdown with error state                                                         |
-| `Textarea`      | `Textarea.tsx`      | Multi-line input                                                                         |
-| `FormField`     | `FormField.tsx`     | Label + input + hint + error wrapper                                                     |
-| `SectionTag`    | `SectionTag.tsx`    | Uppercase monospace section label                                                        |
-| `StatCard`      | `StatCard.tsx`      | Dashboard metric card                                                                    |
-| `EmptyState`    | `EmptyState.tsx`    | No-data placeholder                                                                      |
-| `Skeleton`      | `Skeleton.tsx`      | Loading placeholder                                                                      |
-| `Modal`         | `Modal.tsx`         | Dialog overlay                                                                           |
-| `Drawer`        | `Drawer.tsx`        | Slide-in panel                                                                           |
-| `Toast`         | `Toast.tsx`         | Notification system (with `ToastProvider`, `useToast`)                                   |
-| `ConfirmDialog` | `ConfirmDialog.tsx` | Destructive action confirmation                                                          |
-| `DataTable`     | `DataTable.tsx`     | Structured table with selection/sorting                                                  |
-| `Accordion`     | `Accordion.tsx`     | Expandable sections                                                                      |
-| `PageHeader`    | `PageHeader.tsx`    | Page title area. `tag` + `title` + optional `meta` + `description` + `actions`           |
-| `Tabs`          | `Tabs.tsx`          | タブ切替。下線=テキスト幅整合 / 件数バッジ=アクティブ塗り・非アクティブ枠線              |
-| `Pagination`    | `Pagination.tsx`    | Page navigation                                                                          |
-| `Sidebar`       | `Sidebar.tsx`       | App navigation                                                                           |
-| `AnchorBadge`   | `AnchorBadge.tsx`   | ブロックチェーン記録バッジ（TX hash + Polygonscan リンク・Gold 差し色）。未記録時は null |
-| `Stepper`       | `Stepper.tsx`       | ウィザード進捗インジケータ（汎用・表示専用。done/current/upcoming）                      |
-| `Timeline`      | `Timeline.tsx`      | 縦型タイムライン（工程履歴・汎用）                                                       |
-| `PhotoCompare`  | `PhotoCompare.tsx`  | 施工前後の対比（スライダー / 並列トグル）                                                |
+| Component          | File                   | Purpose                                                                                  |
+| ------------------ | ---------------------- | ---------------------------------------------------------------------------------------- |
+| `Button`           | `Button.tsx`           | Variants: primary/secondary/ghost/danger/outline. Sizes: sm/md/lg/xl（xl=48px 現場CTA）  |
+| `Badge`            | `Badge.tsx`            | Status pills. Variants: default/success/warning/danger/info/violet. `dot` で状態ドット   |
+| `Card`             | `Card.tsx`             | Surface container. Variants: default(glass)/elevated/inset                               |
+| `Input`            | `Input.tsx`            | Text input with error state                                                              |
+| `Select`           | `Select.tsx`           | Select dropdown with error state                                                         |
+| `Textarea`         | `Textarea.tsx`         | Multi-line input                                                                         |
+| `FormField`        | `FormField.tsx`        | Label + input + hint + error wrapper                                                     |
+| `SectionTag`       | `SectionTag.tsx`       | Uppercase monospace section label                                                        |
+| `StatCard`         | `StatCard.tsx`         | Dashboard metric card                                                                    |
+| `EmptyState`       | `EmptyState.tsx`       | No-data placeholder                                                                      |
+| `Skeleton`         | `Skeleton.tsx`         | Loading placeholder                                                                      |
+| `Modal`            | `Modal.tsx`            | Dialog overlay                                                                           |
+| `Drawer`           | `Drawer.tsx`           | Slide-in panel                                                                           |
+| `Toast`            | `Toast.tsx`            | Notification system (with `ToastProvider`, `useToast`)                                   |
+| `ConfirmDialog`    | `ConfirmDialog.tsx`    | Destructive action confirmation                                                          |
+| `DataTable`        | `DataTable.tsx`        | Structured table with selection/sorting                                                  |
+| `Accordion`        | `Accordion.tsx`        | Expandable sections                                                                      |
+| `PageHeader`       | `PageHeader.tsx`       | Page title area. `tag` + `title` + optional `meta` + `description` + `actions`           |
+| `Tabs`             | `Tabs.tsx`             | タブ切替。下線=テキスト幅整合 / 件数バッジ=アクティブ塗り・非アクティブ枠線              |
+| `Pagination`       | `Pagination.tsx`       | Page navigation                                                                          |
+| `Sidebar`          | `Sidebar.tsx`          | App navigation                                                                           |
+| `AnchorBadge`      | `AnchorBadge.tsx`      | ブロックチェーン記録バッジ（TX hash + Polygonscan リンク・Gold 差し色）。未記録時は null |
+| `Stepper`          | `Stepper.tsx`          | ウィザード進捗インジケータ（汎用・表示専用。done/current/upcoming）                      |
+| `Timeline`         | `Timeline.tsx`         | 縦型タイムライン（工程履歴・汎用）                                                       |
+| `PhotoCompare`     | `PhotoCompare.tsx`     | 施工前後の対比（スライダー / 並列トグル）                                                |
+| `StatusBadge`      | `StatusBadge.tsx`      | statusMaps → Badge の定型接続（`map` + `status` を渡すだけ。ルール #3 の正規ルート）     |
+| `SegmentedControl` | `SegmentedControl.tsx` | ピル型の排他切替（一覧フィルタ/スコープ切替）。既定 lg=44px タッチターゲット             |
+| `Alert`            | `Alert.tsx`            | インライン警告/通知。variant: info/success/warning/danger。既定アイコン付き              |
+| `IconButton`       | `IconButton.tsx`       | 正方形アイコンボタン。既定 md=44px。`aria-label` 必須                                    |
+| `StatusCard`       | `StatusCard.tsx`       | 状態サマリーカード（淡色ティント面）。正準 Severity 対応・severity はラベルでも表示      |
+| `NextActionCard`   | `NextActionCard.tsx`   | NEXT ACTION 提示（タイトル+説明可能な理由+CTA。スコアは見せない）                        |
+| `ProgressCard`     | `ProgressCard.tsx`     | 件数+円形プログレス。`percent` で件数比と独立した進捗率を表示可                          |
+| `BottomSheet`      | `BottomSheet.tsx`      | 下からのシート（モバイル）。`useDialogA11y` でフォーカストラップ/復元/スクロールロック   |
 
 ### Status Maps (`src/lib/statusMaps.ts`)
 
@@ -117,7 +125,10 @@ Centralized status-to-badge-variant mappings:
 - `NFC_STATUS_MAP`
 - `DOCUMENT_STATUS_MAP`
 - `INVOICE_STATUS_MAP`
+- `SEVERITY_VARIANT_MAP` — 正準 Severity（`src/lib/domain/states.ts`）→ variant
 - `getStatusEntry(map, status)` — safe lookup
+
+描画は `<StatusBadge map={X_STATUS_MAP} status={v} />` を使う（Badge+getStatusEntry の手書き接続は不要）。
 
 ---
 

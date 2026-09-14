@@ -4,9 +4,11 @@ import type { Metadata } from "next";
 import { Section } from "@/components/marketing/Section";
 import { MarkdownBody } from "@/components/marketing/MarkdownBody";
 import { CTABanner } from "@/components/marketing/CTABanner";
+import { ArticleJsonLd } from "@/components/marketing/JsonLd";
 import { ArticleHero } from "@/components/marketing/ArticleHero";
 import { getContentBySlug, listContent } from "@/lib/marketing/content";
 import { getPublishedPostBySlug, listPublishedPosts } from "@/lib/marketing/site-content-posts";
+import { siteConfig } from "@/lib/marketing/config";
 import { formatJstDateJa } from "@/lib/datetime";
 
 type Props = { params: Promise<{ slug: string }> };
@@ -68,6 +70,20 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     title: article.title,
     description: article.excerpt,
     alternates: { canonical: `/blog/${article.slug}` },
+    openGraph: {
+      type: "article",
+      title: article.title,
+      description: article.excerpt,
+      url: `/blog/${article.slug}`,
+      publishedTime: article.publishedAt,
+    },
+    twitter: {
+      card: "summary_large_image",
+      title: article.title,
+      description: article.excerpt,
+      site: siteConfig.twitterHandle,
+      creator: siteConfig.twitterHandle,
+    },
   };
 }
 
@@ -78,6 +94,14 @@ export default async function BlogDetailPage({ params }: Props) {
 
   return (
     <>
+      <ArticleJsonLd
+        title={article.title}
+        description={article.excerpt}
+        slug={article.slug}
+        publishedAt={article.publishedAt}
+        pathPrefix="/blog"
+        articleType="BlogPosting"
+      />
       <Section className="!pt-32 !pb-16">
         <article className="mx-auto max-w-2xl">
           <Link

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { proposeCandidates } from "../candidates";
+import { proposeCandidates, computeFreeLoanersByDate } from "../candidates";
 
 // 2026-07-13 は月曜(1), 07-14 火(2), 07-18 土(6), 07-19 日(0)
 const SLOTS = [
@@ -300,5 +300,40 @@ describe("proposeCandidates", () => {
       estimatedMinutes: null,
     });
     expect(c.map((x) => x.start_time)).toEqual(["09:00", "13:00"]);
+  });
+});
+
+describe("computeFreeLoanersByDate", () => {
+  const ACTIVE = ["car-a", "car-b"]; // 稼働代車2台
+
+  it("subtracts reservation assignments and open loans, and ignores stale/unknown ids", () => {
+    const free = computeFreeLoanersByDate(
+      ["2026-07-13", "2026-07-14", "2026-07-15"],
+      ACTIVE,
+      [
+        { scheduled_date: "2026-07-13", loaner_car_id: "car-a" }, // 13日に car-a 割当
+        { scheduled_date: "2026-07-13", loaner_car_id: null }, // 代車なしは無視
+        { scheduled_date: "2026-07-14", loaner_car_id: "car-x" }, // 稼働外IDは無視
+      ],
+      [
+        // car-b を返却予定 07-14 まで貸出中 → 13,14 は塞がる、15 で空く。
+        { loaner_car_id: "car-b", return_due_at: "2026-07-14" },
+      ],
+    );
+    expect(free).toEqual({
+      "2026-07-13": 0, // car-a(予約) + car-b(貸出) = 2台とも塞がり残0
+      "2026-07-14": 1, // car-b(貸出)のみ → 残1
+      "2026-07-15": 2, // すべて空き
+    });
+  });
+
+  it("treats a null return_due_at as an open-ended loan (occupies every date)", () => {
+    const free = computeFreeLoanersByDate(
+      ["2026-07-13", "2026-08-01"],
+      ACTIVE,
+      [],
+      [{ loaner_car_id: "car-a", return_due_at: null }],
+    );
+    expect(free).toEqual({ "2026-07-13": 1, "2026-08-01": 1 });
   });
 });

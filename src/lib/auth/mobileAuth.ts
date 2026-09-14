@@ -24,10 +24,15 @@ export async function resolveMobileCaller(request: Request): Promise<MobileCalle
   if (authError || !userRes?.user) return null;
 
   // テナントメンバーシップを取得（RLS は global header の JWT で動作）
+  // 並び順は必須。複数テナントに属する利用者では、順序を指定しないと
+  // 呼ぶたびに違うテナントが返り得る。アプリ側（apps/mobile/src/lib/auth.ts）と
+  // checkRole.ts はどちらも「最も古いメンバーシップ」を採るので、ここも揃える。
+  // POS の会計はこの tenant_id で書かれるため、ずれると別テナントに売上が載る
   const { data: mem } = await client
     .from("tenant_memberships")
     .select("tenant_id, role")
     .eq("user_id", userRes.user.id)
+    .order("created_at", { ascending: true })
     .limit(1)
     .single();
 

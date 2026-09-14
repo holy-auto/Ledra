@@ -55,10 +55,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
         .select("condition_type, condition_value, assign_to, is_active")
         .eq("insurer_id", insurerId)
         .eq("is_active", true),
-      admin
-        .from("insurer_users")
-        .select("id, display_name")
-        .eq("insurer_id", insurerId),
+      admin.from("insurer_users").select("id, display_name").eq("insurer_id", insurerId),
       admin
         .from("insurer_cases")
         .select("category, priority, assigned_to")

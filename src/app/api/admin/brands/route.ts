@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { brandCreateSchema, brandDeleteSchema, brandUpdateSchema } from "@/lib/validations/brand";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
+import { resolveCallerWithRole, requirePermission } from "@/lib/auth/checkRole";
 import {
   apiOk,
   apiInternalError,
@@ -9,6 +9,7 @@ import {
   apiNotFound,
   apiValidationError,
   apiError,
+  apiForbidden,
 } from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
@@ -40,6 +41,8 @@ export async function POST(req: Request) {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
+    // 商品マスタの変更は admin 以上 (代表判断 2026-09-01)
+    if (!requirePermission(caller, "menu_items:manage")) return apiForbidden();
 
     const body = await req.json();
     const parsed = brandCreateSchema.safeParse(body);
@@ -72,6 +75,8 @@ export async function PUT(req: Request) {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
+    // 商品マスタの変更は admin 以上 (代表判断 2026-09-01)
+    if (!requirePermission(caller, "menu_items:manage")) return apiForbidden();
 
     const body = await req.json();
     const parsed = brandUpdateSchema.safeParse(body);
@@ -104,6 +109,8 @@ export async function DELETE(req: Request) {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
+    // 商品マスタの変更は admin 以上 (代表判断 2026-09-01)
+    if (!requirePermission(caller, "menu_items:manage")) return apiForbidden();
 
     const parsed = brandDeleteSchema.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) {

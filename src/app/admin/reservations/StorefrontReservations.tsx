@@ -55,7 +55,8 @@ const ADVANCE_LABEL: Record<string, string> = {
   in_progress: "作業を完了",
 };
 
-const isoDate = (d: Date) => d.toISOString().slice(0, 10);
+const isoDate = (d: Date) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
 function dateRange(range: RangeKey): { start: string; end: string } {
   const now = new Date();
@@ -98,7 +99,18 @@ export default function StorefrontReservations() {
   const [advancingId, setAdvancingId] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
-  const { data, mutate, isLoading } = useSWR<ApiResponse>("/api/admin/reservations", fetcher, {
+  const fetchWindow = useMemo(() => {
+    const today = dateRange("today");
+    const tomorrow = dateRange("tomorrow");
+    const week = dateRange("week");
+    return {
+      start: today.start < week.start ? today.start : week.start,
+      end: tomorrow.end > week.end ? tomorrow.end : week.end,
+    };
+  }, []);
+  const storefrontKey = `/api/admin/reservations?view=storefront&from=${fetchWindow.start}&to=${fetchWindow.end}`;
+
+  const { data, mutate, isLoading } = useSWR<ApiResponse>(storefrontKey, fetcher, {
     refreshInterval: 30_000,
     revalidateOnFocus: true,
   });

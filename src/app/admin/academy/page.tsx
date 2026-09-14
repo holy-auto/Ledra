@@ -3,24 +3,25 @@ import { redirect } from "next/navigation";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { normalizePlanTier } from "@/lib/billing/planFeatures";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
+import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 
 export const dynamic = "force-dynamic";
 
 export default async function AcademyPage() {
   const supabase = await createSupabaseServerClient();
-  const { data: userRes } = await supabase.auth.getUser();
-  if (!userRes.user) redirect("/login");
+  // 以前はここで `tenant_memberships` を `.limit(1).single()` していたが、並び順も
+  // アクティブテナントの cookie も見ないため、複数テナント所属だと**別の店の数字**を
+  // 出しうる（updateTenantSettingsAction・site-content と同じ欠陥）。caller から取る。
+  const caller = await resolveCallerWithRole(supabase);
+  if (!caller) redirect("/login?next=/admin/academy");
 
-  const { data: mem } = await supabase.from("tenant_memberships").select("tenant_id").limit(1).single();
-  if (!mem) return <div className="text-sm text-muted">テナント情報が見つかりません</div>;
-
-  const { admin } = createTenantScopedAdmin(mem.tenant_id);
+  const { admin } = createTenantScopedAdmin(caller.tenantId);
 
   // 品質スコア統計
   const { data: scoreStats } = await admin
     .from("certificate_quality_scores")
     .select("score, standard_level")
-    .eq("tenant_id", mem.tenant_id)
+    .eq("tenant_id", caller.tenantId)
     .order("created_at", { ascending: false })
     .limit(30);
 
@@ -40,18 +41,22 @@ export default async function AcademyPage() {
   const { count: candidateCount } = await admin
     .from("academy_cases")
     .select("id", { count: "exact", head: true })
-    .eq("tenant_id", mem.tenant_id)
+    .eq("tenant_id", caller.tenantId)
     .eq("is_candidate", true)
     .eq("is_published", false);
 
-  // 公開事例数
+  // 公開事例数。**ここだけ意図的に tenant_id で絞らない。**
+  // 公開事例は全加盟店で共有するライブラリなので、他店の事例を含めた総数が正しい
+  // （2026-09-05 代表判断。DECISION_LOG 参照）。
+  // createTenantScopedAdmin の「全クエリに tenant_id を付けろ」への例外なので、
+  // 消さないこと。自店だけの数を出したくなったら別の変数を足す。
   const { count: publishedCount } = await admin
     .from("academy_cases")
     .select("id", { count: "exact", head: true })
     .eq("is_published", true);
 
   // プラン確認
-  const { data: tenantRow } = await admin.from("tenants").select("plan_tier, name").eq("id", mem.tenant_id).single();
+  const { data: tenantRow } = await admin.from("tenants").select("plan_tier, name").eq("id", caller.tenantId).single();
   const planTier = normalizePlanTier(tenantRow?.plan_tier);
   const isAiEnabled = planTier === "starter" || planTier === "standard" || planTier === "pro";
 

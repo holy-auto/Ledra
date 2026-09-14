@@ -14,11 +14,7 @@ export default async function PolygonBackfillPage() {
 
   const caller = await resolveCallerWithRole(supabase);
   if (!caller) {
-    return (
-      <div className="text-sm text-muted">
-        tenant_memberships が見つかりません。
-      </div>
-    );
+    return <div className="text-sm text-muted">tenant_memberships が見つかりません。</div>;
   }
 
   if (!requireMinRole(caller, "admin")) {
@@ -65,9 +61,8 @@ export default async function PolygonBackfillPage() {
           <span>{network === "amoy" ? "Polygon Amoy (testnet)" : "Polygon Mainnet"}</span>
         </div>
         <p className="text-xs text-muted">
-          過去に SHA-256 だけ計算済みでまだブロックチェーンに記録されていない施工画像を、
-          1 回あたり最大 20 件ずつバッチ処理します。mainnet ではバッチごとに約 0.001〜0.002 POL
-          のガス代が発生します（Amoy は無料）。
+          過去に SHA-256 だけ計算済みでまだブロックチェーンに記録されていない施工画像を、 1 回あたり最大 20
+          件ずつバッチ処理します。mainnet ではバッチごとに約 0.001〜0.002 POL のガス代が発生します（Amoy は無料）。
         </p>
       </section>
 

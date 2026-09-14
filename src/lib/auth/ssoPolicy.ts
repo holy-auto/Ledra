@@ -23,8 +23,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 export type SsoEnforcementOutcome =
-  | { allowed: true }
-  | { allowed: false; reason: "sso_required"; tenantSsoDomain: string };
+  { allowed: true } | { allowed: false; reason: "sso_required"; tenantSsoDomain: string };
 
 /** Extract the lowercased domain from an email, or null if malformed. */
 export function emailDomain(email: string): string | null {

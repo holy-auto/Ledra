@@ -12,7 +12,9 @@ import {
   apiValidationError,
   apiNotFound,
   apiInternalError,
+  apiError,
 } from "@/lib/api/response";
+import { checkOverlap } from "@/lib/reservations/overlap";
 import { logger } from "@/lib/logger";
 import {
   reservationCreateSchema,
@@ -26,8 +28,15 @@ import { maybeAutoCategorizeReservationOnIntake } from "@/lib/ai/automation/acco
 import { maybeAutoProposeWorkflowForReservation } from "@/lib/ai/automation/workflowAuto";
 import { maybeAutoSuggestAssigneeForReservation } from "@/lib/ai/automation/assigneeAuto";
 import { createDraftPartInstallationForReservation } from "@/lib/parts/installationService";
+import { resolveStoreId, STORE_ERROR_MESSAGES } from "@/lib/stores/resolveStoreId";
+import { businessDateString } from "@/lib/datetime";
 
 export const dynamic = "force-dynamic";
+
+// 終日予約の占有時間帯（ダブルブッキング判定用）。src/app/api/customer/booking/route.ts と同じ規約。
+// ponytail: 24時間制の店舗を想定しない前提。深夜跨ぎ営業が要件化したら要見直し。
+const ADMIN_ALL_DAY_START = "00:00";
+const ADMIN_ALL_DAY_END = "23:59";
 
 /**
  * assigned_staff_id / booth_id が呼び出し元テナントのものか検証する。
@@ -93,6 +102,7 @@ export async function GET(req: NextRequest) {
     const dateFrom = url.searchParams.get("from") ?? "";
     const dateTo = url.searchParams.get("to") ?? "";
     const customerId = url.searchParams.get("customer_id") ?? "";
+    const view = url.searchParams.get("view") ?? "";
     const pagination = parsePagination(req);
 
     let query = supabase
@@ -108,18 +118,34 @@ export async function GET(req: NextRequest) {
     if (status && status !== "all") {
       query = query.eq("status", status);
     }
-    if (dateFrom) {
+    if (dateFrom && view !== "storefront") {
       query = query.gte("scheduled_date", dateFrom);
     }
-    if (dateTo) {
+    if (dateTo && view !== "storefront") {
       query = query.lte("scheduled_date", dateTo);
     }
     if (customerId) {
       query = query.eq("customer_id", customerId);
     }
 
+    // 店頭画面は全履歴を定期取得しない。本日分と、日を跨いだ未完了作業だけに絞る。
+    // 最大200件は事故的な大量描画を防ぐ安全弁。通常一覧の互換性は維持する。
+    if (view === "storefront") {
+      const requestedDate = url.searchParams.get("date");
+      const businessDate =
+        requestedDate && /^\d{4}-\d{2}-\d{2}$/.test(requestedDate) ? requestedDate : businessDateString();
+      const requestedFrom = /^\d{4}-\d{2}-\d{2}$/.test(dateFrom) ? dateFrom : businessDate;
+      const requestedTo = /^\d{4}-\d{2}-\d{2}$/.test(dateTo) ? dateTo : requestedFrom;
+      const rangeStart = requestedFrom <= requestedTo ? requestedFrom : requestedTo;
+      const rangeEnd = requestedFrom <= requestedTo ? requestedTo : requestedFrom;
+      query = query
+        .or(`and(scheduled_date.gte.${rangeStart},scheduled_date.lte.${rangeEnd}),status.in.(arrived,in_progress)`)
+        .neq("status", "cancelled")
+        .range(0, 199);
+    }
+
     // Apply pagination if page param was provided
-    if (pagination.page > 0) {
+    if (pagination.page > 0 && view !== "storefront") {
       query = query.range(pagination.from, pagination.to);
     }
 
@@ -161,7 +187,7 @@ export async function GET(req: NextRequest) {
     // 統計: 一覧の既定フィルタ (from=today 等) に引きずられず、常にテナント全体
     // (status/customer_id 絞り込みのみ反映) の集計にする。ダッシュボードKPIとして
     // 「一覧で今何を表示しているか」ではなく「テナント全体の状況」を表すため。
-    const today = new Date().toISOString().slice(0, 10);
+    const today = businessDateString();
     const statsBase = () => {
       let q = supabase
         .from("reservations")
@@ -227,8 +253,38 @@ export async function POST(req: NextRequest) {
     );
     if (refErr) return apiValidationError(refErr);
 
+    // 作成した店舗。Web の作成画面に店舗の選択は無いので、有効な店舗が
+    // 1つだけならサーバが入れる（店舗で絞る画面から見えなくなるのを防ぐ）
+    const store = await resolveStoreId(supabase, caller.tenantId, input.store_id);
+    if (!store.ok) return apiValidationError(STORE_ERROR_MESSAGES[store.error]);
+
     // 終日予約は時刻を持たない（NULL 保存）。誤って時刻が送られても正規化する。
     const isAllDay = input.all_day === true;
+
+    // E3-1 是正 (2026-09-08): 管理側の予約作成には重複チェックが無く、同一時間帯への
+    // 二重登録を検知できなかった（顧客/外部予約経路には既にある）。承知の上での登録は
+    // force:true で明示的に上書きできる。
+    if (!input.force && (isAllDay || (input.start_time && input.end_time))) {
+      const overlapStart = isAllDay ? ADMIN_ALL_DAY_START : input.start_time!;
+      const overlapEnd = isAllDay ? ADMIN_ALL_DAY_END : input.end_time!;
+      const overlaps = await checkOverlap({
+        tenantId: caller.tenantId,
+        scheduledDate: input.scheduled_date,
+        startTime: overlapStart.length === 5 ? `${overlapStart}:00` : overlapStart,
+        endTime: overlapEnd.length === 5 ? `${overlapEnd}:00` : overlapEnd,
+        assignedUserId: input.assigned_user_id ?? undefined,
+      });
+      if (overlaps.length > 0) {
+        return apiError({
+          code: "conflict",
+          message: isAllDay
+            ? "この日は既に予約が入っているため終日予約は登録できません。よろしければ force で再送してください。"
+            : "ご指定の時間帯は既に予約が入っています。よろしければ force で再送してください。",
+          status: 409,
+        });
+      }
+    }
+
     const row = {
       id: crypto.randomUUID(),
       tenant_id: caller.tenantId,
@@ -248,13 +304,14 @@ export async function POST(req: NextRequest) {
       loaner_car_id: input.loaner_car_id,
       status: input.status,
       estimated_amount: input.estimated_amount ?? 0,
+      store_id: store.storeId,
     };
 
     const { data: reservation, error } = await supabase
       .from("reservations")
       .insert(row)
       .select(
-        "id, tenant_id, customer_id, vehicle_id, title, menu_items_json, note, scheduled_date, all_day, start_time, end_time, assigned_user_id, assigned_staff_id, booth_id, status, estimated_amount, created_at, updated_at",
+        "id, tenant_id, store_id, customer_id, vehicle_id, title, menu_items_json, note, scheduled_date, all_day, start_time, end_time, assigned_user_id, assigned_staff_id, booth_id, status, estimated_amount, created_at, updated_at",
       )
       .single();
     if (error) {
@@ -262,37 +319,39 @@ export async function POST(req: NextRequest) {
     }
 
     // ── Google Calendar 同期（非ブロッキング） ──
-    syncCreateEvent(caller.tenantId, {
-      id: reservation.id,
-      title: reservation.title,
-      scheduled_date: reservation.scheduled_date,
-      start_time: reservation.start_time,
-      end_time: reservation.end_time,
-      note: reservation.note,
-      customer_name: null,
-      vehicle_label: null,
-    }).catch((error) =>
-      logger.warn("reservations gcal sync create failed (non-blocking)", {
-        error,
-        tenantId: caller.tenantId,
-        reservationId: reservation.id,
-      }),
-    );
-
-    // 案件登録時: 勘定科目を自動推定して提案保存 (accounting.auto_categorize_on_intake が opt-in のテナントのみ).
-    // 帳簿への計上 (確定) はしない — 科目の確定は必ず人 (壁3). レスポンスを遅らせないよう fire-and-forget.
-    void maybeAutoCategorizeReservationOnIntake({ tenantId: caller.tenantId, reservationId: reservation.id as string });
-
-    // 案件登録時: 最適ワークフローを AI 提案して reservations.ai_workflow_proposal に保存
-    // (workflow.auto_propose_on_intake が opt-in のテナントのみ). 提案の保存のみで、適用 (進行開始) は
-    // workflow.auto_apply_on_intake が別途 opt-in の場合だけ最有力テンプレートを割り当てる。いずれも
-    // 各工程の進行・確定は人 (壁3). 業種を問わず案件起票の起点で効くよう fire-and-forget で呼ぶ。
-    void maybeAutoProposeWorkflowForReservation({ tenantId: caller.tenantId, reservationId: reservation.id as string });
-
-    // 案件登録時: 担当メカニック候補を AI 提案して reservations.ai_assignee_suggestion に保存
-    // (mechanic.auto_assign_suggest が opt-in のテナントのみ). 提案の保存のみで、担当の割当 (確定) は
-    // スタッフが 1 タップで行う (人が判断・自動割当しない). レスポンスを遅らせないよう fire-and-forget.
-    void maybeAutoSuggestAssigneeForReservation({ tenantId: caller.tenantId, reservationId: reservation.id as string });
+    // レスポンス後も serverless runtime に処理を打ち切られないよう after() に登録する。
+    // 各副作用は独立させ、1件の失敗で他の提案・同期まで止めない。
+    after(async () => {
+      const tasks = [
+        syncCreateEvent(caller.tenantId, {
+          id: reservation.id,
+          title: reservation.title,
+          scheduled_date: reservation.scheduled_date,
+          start_time: reservation.start_time,
+          end_time: reservation.end_time,
+          note: reservation.note,
+          customer_name: null,
+          vehicle_label: null,
+        }),
+        maybeAutoCategorizeReservationOnIntake({
+          tenantId: caller.tenantId,
+          reservationId: reservation.id as string,
+        }),
+        maybeAutoProposeWorkflowForReservation({ tenantId: caller.tenantId, reservationId: reservation.id as string }),
+        maybeAutoSuggestAssigneeForReservation({ tenantId: caller.tenantId, reservationId: reservation.id as string }),
+      ];
+      const results = await Promise.allSettled(tasks);
+      results.forEach((result, index) => {
+        if (result.status === "rejected") {
+          logger.warn("reservation post-create task failed", {
+            tenantId: caller.tenantId,
+            reservationId: reservation.id,
+            taskIndex: index,
+            error: result.reason,
+          });
+        }
+      });
+    });
 
     return apiJson({ ok: true, reservation });
   } catch (e: unknown) {
@@ -321,7 +380,7 @@ export async function PUT(req: NextRequest) {
     if (!parsed.success) {
       return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
     }
-    const { id, cancel_reason, ...rest } = parsed.data;
+    const { id, cancel_reason, force, ...rest } = parsed.data;
 
     // 部分更新で「送っていないフィールド」を誤って null 上書きしないよう、
     // クライアントが実際に送ったキーだけを採用する。nullableUuid 等の transform は
@@ -427,6 +486,63 @@ export async function PUT(req: NextRequest) {
         .eq("tenant_id", caller.tenantId)
         .maybeSingle();
       priorStatus = (prev?.status as string | null) ?? null;
+    }
+
+    // E3-1 是正 (2026-09-08): 日時に関わるフィールドの変更時にも重複チェックを追加。
+    // force:true で警告を無視して更新できる。
+    const scheduleFieldsChanged =
+      sentKeys.has("scheduled_date") ||
+      sentKeys.has("start_time") ||
+      sentKeys.has("end_time") ||
+      sentKeys.has("all_day");
+    if (!force && scheduleFieldsChanged) {
+      const { data: curSchedule } = await supabase
+        .from("reservations")
+        .select("scheduled_date, start_time, end_time, all_day, assigned_user_id")
+        .eq("id", id)
+        .eq("tenant_id", caller.tenantId)
+        .maybeSingle();
+      if (curSchedule) {
+        const effAllDay = sentKeys.has("all_day") ? updates.all_day === true : curSchedule.all_day === true;
+        const effScheduledDate = sentKeys.has("scheduled_date")
+          ? (updates.scheduled_date as string)
+          : curSchedule.scheduled_date;
+        const effStartTime = effAllDay
+          ? null
+          : sentKeys.has("start_time")
+            ? (updates.start_time as string | null)
+            : curSchedule.start_time;
+        const effEndTime = effAllDay
+          ? null
+          : sentKeys.has("end_time")
+            ? (updates.end_time as string | null)
+            : curSchedule.end_time;
+        const effAssignedUserId = sentKeys.has("assigned_user_id")
+          ? (updates.assigned_user_id as string | null)
+          : curSchedule.assigned_user_id;
+
+        if (effAllDay || (effStartTime && effEndTime)) {
+          const overlapStart = effAllDay ? ADMIN_ALL_DAY_START : effStartTime!;
+          const overlapEnd = effAllDay ? ADMIN_ALL_DAY_END : effEndTime!;
+          const overlaps = await checkOverlap({
+            tenantId: caller.tenantId,
+            scheduledDate: effScheduledDate,
+            startTime: overlapStart.length === 5 ? `${overlapStart}:00` : overlapStart,
+            endTime: overlapEnd.length === 5 ? `${overlapEnd}:00` : overlapEnd,
+            excludeId: id,
+            assignedUserId: effAssignedUserId ?? undefined,
+          });
+          if (overlaps.length > 0) {
+            return apiError({
+              code: "conflict",
+              message: effAllDay
+                ? "この日は既に予約が入っているため終日予約には変更できません。よろしければ force で再送してください。"
+                : "ご指定の時間帯は既に予約が入っています。よろしければ force で再送してください。",
+              status: 409,
+            });
+          }
+        }
+      }
     }
 
     const { data, error } = await supabase

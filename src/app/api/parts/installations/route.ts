@@ -7,9 +7,9 @@
  * 設計: docs/parts-installation-integrity-design.md
  */
 
-import { apiJson, apiInternalError, apiValidationError, apiUnauthorized } from "@/lib/api/response";
+import { apiJson, apiInternalError, apiValidationError, apiUnauthorized, apiForbidden } from "@/lib/api/response";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
+import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
 import { partInstallationCreateSchema } from "@/lib/validations/partInstallation";
 import { createInstallation } from "@/lib/parts/installationService";
 
@@ -19,6 +19,7 @@ export async function POST(req: Request) {
   const supabase = await createSupabaseServerClient();
   const caller = await resolveCallerWithRole(supabase);
   if (!caller) return apiUnauthorized();
+  if (!requireMinRole(caller, "staff")) return apiForbidden();
 
   let body: unknown;
   try {

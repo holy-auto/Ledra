@@ -93,11 +93,7 @@ export default function ThicknessAiAnomalyPanel({ reportId }: { reportId: string
   }
 
   if (err) {
-    return (
-      <div className="rounded-xl border border-border-default bg-surface px-3 py-2 text-xs text-muted">
-        {err}
-      </div>
-    );
+    return <div className="rounded-xl border border-border-default bg-surface px-3 py-2 text-xs text-muted">{err}</div>;
   }
   if (loading && !anomaly) {
     return (
@@ -168,12 +164,7 @@ export default function ThicknessAiAnomalyPanel({ reportId }: { reportId: string
           onChange={(e) => setRangeMax(e.target.value)}
           className="rounded-lg border border-border-subtle bg-surface text-primary px-2 py-1 text-xs w-20"
         />
-        <button
-          type="button"
-          onClick={applyRange}
-          disabled={loading}
-          className="btn-ghost text-[11px] py-1 px-2"
-        >
+        <button type="button" onClick={applyRange} disabled={loading} className="btn-ghost text-[11px] py-1 px-2">
           {loading ? "..." : "再評価"}
         </button>
       </div>

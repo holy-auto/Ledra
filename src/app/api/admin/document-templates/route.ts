@@ -1,9 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
+import { resolveCallerWithRole, requirePermission } from "@/lib/auth/checkRole";
 import { checkRateLimit } from "@/lib/api/rateLimit";
-import { apiJson, apiUnauthorized, apiValidationError, apiNotFound, apiInternalError, apiOk } from "@/lib/api/response";
+import {
+  apiJson,
+  apiUnauthorized,
+  apiValidationError,
+  apiNotFound,
+  apiInternalError,
+  apiOk,
+  apiForbidden,
+} from "@/lib/api/response";
 import { layoutConfigSchema, templateCreateSchema, templateUpdateSchema } from "@/types/documentTemplate";
 
 export const dynamic = "force-dynamic";
@@ -62,6 +70,8 @@ export async function POST(req: NextRequest) {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
+    // 帳票テンプレートの変更は admin 以上 (代表判断 2026-09-01)
+    if (!requirePermission(caller, "templates:manage")) return apiForbidden();
 
     const body = await req.json().catch(() => ({}) as Record<string, unknown>);
     const parsed = templateCreateSchema.safeParse(body);
@@ -106,6 +116,8 @@ export async function PUT(req: NextRequest) {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
+    // 帳票テンプレートの変更は admin 以上 (代表判断 2026-09-01)
+    if (!requirePermission(caller, "templates:manage")) return apiForbidden();
 
     const body = await req.json().catch(() => ({}) as Record<string, unknown>);
     const parsed = templateUpdateSchema.safeParse(body);
@@ -157,6 +169,8 @@ export async function DELETE(req: NextRequest) {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
+    // 帳票テンプレートの変更は admin 以上 (代表判断 2026-09-01)
+    if (!requirePermission(caller, "templates:manage")) return apiForbidden();
 
     const body = await req.json().catch(() => ({}) as Record<string, unknown>);
     const id = (body?.id ?? "").trim();

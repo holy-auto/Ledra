@@ -67,9 +67,7 @@ export default function TenantAccessClient() {
     fetch("/api/admin/insurers", { cache: "no-store" })
       .then((r) => r.json())
       .then((json) => {
-        setInsurers(
-          (json.insurers ?? []).map((i: any) => ({ id: i.id, name: i.name }))
-        );
+        setInsurers((json.insurers ?? []).map((i: any) => ({ id: i.id, name: i.name })));
       })
       .catch(() => {});
   }, []);
@@ -77,7 +75,9 @@ export default function TenantAccessClient() {
   /* ── fetch tenants for dropdown ── */
   const searchTenants = useCallback(async (q: string) => {
     try {
-      const res = await fetch(`/api/admin/insurers/tenant-access/tenants?q=${encodeURIComponent(q)}`, { cache: "no-store" });
+      const res = await fetch(`/api/admin/insurers/tenant-access/tenants?q=${encodeURIComponent(q)}`, {
+        cache: "no-store",
+      });
       const json = await res.json();
       if (res.ok) setTenants(json.tenants ?? []);
     } catch {
@@ -156,7 +156,9 @@ export default function TenantAccessClient() {
         >
           <option value="">全ての保険会社</option>
           {insurers.map((ins) => (
-            <option key={ins.id} value={ins.id}>{ins.name}</option>
+            <option key={ins.id} value={ins.id}>
+              {ins.name}
+            </option>
           ))}
         </select>
 
@@ -179,14 +181,14 @@ export default function TenantAccessClient() {
           {showForm ? "キャンセル" : "新規許可"}
         </button>
 
-        <div className="w-full text-sm text-muted">
-          {loading ? "読み込み中..." : `${filtered.length} 件`}
-        </div>
+        <div className="w-full text-sm text-muted">{loading ? "読み込み中..." : `${filtered.length} 件`}</div>
       </div>
 
       {/* Messages */}
       {msg && (
-        <div className={`rounded-xl border p-3 text-sm ${msg.type === "err" ? "border-danger/30 bg-danger-dim text-danger-text" : "border-success/30 bg-success-dim text-success-text"}`}>
+        <div
+          className={`rounded-xl border p-3 text-sm ${msg.type === "err" ? "border-danger/30 bg-danger-dim text-danger-text" : "border-success/30 bg-success-dim text-success-text"}`}
+        >
           {msg.text}
         </div>
       )}
@@ -209,7 +211,9 @@ export default function TenantAccessClient() {
               >
                 <option value="">選択してください</option>
                 {insurers.map((ins) => (
-                  <option key={ins.id} value={ins.id}>{ins.name}</option>
+                  <option key={ins.id} value={ins.id}>
+                    {ins.name}
+                  </option>
                 ))}
               </select>
             </div>
@@ -233,15 +237,15 @@ export default function TenantAccessClient() {
               >
                 <option value="">選択してください</option>
                 {tenants.map((t) => (
-                  <option key={t.id} value={t.id}>{t.name}</option>
+                  <option key={t.id} value={t.id}>
+                    {t.name}
+                  </option>
                 ))}
               </select>
             </div>
 
             <div className="sm:col-span-2">
-              <label className="mb-1 block text-sm font-medium text-secondary">
-                メモ（許可理由など）
-              </label>
+              <label className="mb-1 block text-sm font-medium text-secondary">メモ（許可理由など）</label>
               <input
                 type="text"
                 value={formNotes}
@@ -280,12 +284,8 @@ export default function TenantAccessClient() {
           <tbody>
             {filtered.map((g) => (
               <tr key={g.id} className="border-t hover:bg-surface-hover">
-                <td className="p-3 font-medium text-primary">
-                  {g.insurer_name ?? g.insurer_id.slice(0, 8)}
-                </td>
-                <td className="p-3 text-primary">
-                  {g.tenant_name ?? g.tenant_id.slice(0, 8)}
-                </td>
+                <td className="p-3 font-medium text-primary">{g.insurer_name ?? g.insurer_id.slice(0, 8)}</td>
+                <td className="p-3 text-primary">{g.tenant_name ?? g.tenant_id.slice(0, 8)}</td>
                 <td className="p-3">
                   {g.is_active && !g.revoked_at ? (
                     <span className="inline-block rounded-full bg-success-dim px-2.5 py-0.5 text-xs font-semibold text-success-text">
@@ -297,9 +297,7 @@ export default function TenantAccessClient() {
                     </span>
                   )}
                 </td>
-                <td className="p-3 text-secondary max-w-[200px] truncate">
-                  {g.notes || "-"}
-                </td>
+                <td className="p-3 text-secondary max-w-[200px] truncate">{g.notes || "-"}</td>
                 <td className="p-3 whitespace-nowrap text-xs text-secondary">
                   {g.granted_at ? new Date(g.granted_at).toLocaleDateString("ja-JP") : "-"}
                 </td>

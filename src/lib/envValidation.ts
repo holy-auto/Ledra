@@ -101,6 +101,12 @@ const CRITICAL_ENV_VARS: EnvVarCheck[] = [
   // Phase 4: Provider-specific API keys
   { name: "HIVE_API_KEY", required: false, warnOnly: true },
   { name: "PINATA_JWT", required: false, warnOnly: true },
+  // 汎用 OAuth 連携 (src/lib/integrations)。未設定なら該当連携のボタンを出さないだけ。
+  // 短すぎる値の弾き方は createOAuthState 側に置く。ここで formatErrors にすると
+  // 任意機能の設定ミスで本番起動そのものが落ちてしまい、影響範囲が釣り合わない。
+  { name: "INTEGRATION_OAUTH_STATE_SECRET", required: false, warnOnly: true },
+  { name: "SLACK_CLIENT_ID", required: false, warnOnly: true },
+  { name: "SLACK_CLIENT_SECRET", required: false, warnOnly: true },
 ];
 
 export function validateRequiredEnvVars(): void {

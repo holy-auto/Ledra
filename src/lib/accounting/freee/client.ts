@@ -105,12 +105,11 @@ async function freeeFetch<T>(opts: {
         accept: "application/json",
         ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
       },
-      body:
-        !body
-          ? undefined
-          : contentType === "form"
-            ? new URLSearchParams(body as Record<string, string>).toString()
-            : JSON.stringify(body),
+      body: !body
+        ? undefined
+        : contentType === "form"
+          ? new URLSearchParams(body as Record<string, string>).toString()
+          : JSON.stringify(body),
       signal: controller.signal,
     });
 

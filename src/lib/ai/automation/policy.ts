@@ -167,7 +167,9 @@ export async function loadAiAutomationSettings(
 
 /**
  * settings にコストキャップ状態を付与する。
- * - capJpy<=0 (未設定) なら何もしない。
+ * - キャップは既定 (`DEFAULT_MONTHLY_COST_CAP_JPY`) があるので、env・テナント個別が
+ *   未設定でも常に算出される。`getCostCapStatus` が null を返すのは既定を 0 に
+ *   戻したときだけ（2026-09-04 以前は本番が常にこの状態で、ブレーキが効いていなかった）。
  * - 超過かつ enforce=true のとき enabled=false に倒す (= 一時停止)。
  * - Redis 不在 / 失敗時は spent=0 扱いで fail-open (停止しない)。
  */
@@ -382,7 +384,7 @@ export async function notifyStaffOfAiAction(
   tenantId: string,
   title: string,
   body: string,
-): Promise<void> {
+): Promise<boolean> {
   const { error } = await admin.from("notifications").insert({
     tenant_id: tenantId,
     user_id: null,
@@ -392,5 +394,9 @@ export async function notifyStaffOfAiAction(
     body,
     link_path: "/admin/messages",
   });
-  if (error) logger.warn("[policy] notifyStaffOfAiAction failed", { tenantId, err: error.message });
+  if (error) {
+    logger.warn("[policy] notifyStaffOfAiAction failed", { tenantId, err: error.message });
+    return false;
+  }
+  return true;
 }

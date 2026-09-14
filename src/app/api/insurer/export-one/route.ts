@@ -3,15 +3,9 @@ import { createClient } from "@/lib/supabase/server";
 import { resolveInsurerCaller, enforceInsurerPlan } from "@/lib/api/insurerAuth";
 import { apiInternalError, apiJson, apiUnauthorized, apiValidationError, apiNotFound } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
+import { buildCsv, csvDownloadHeaders } from "@/lib/csv/serialize";
 
 export const runtime = "nodejs";
-
-function csvEscape(v: unknown) {
-  const s = (v ?? "").toString();
-  const escaped = s.replace(/"/g, '""');
-  if (/[",\r\n]/.test(escaped)) return `"${escaped}"`;
-  return escaped;
-}
 
 function getClientMeta(req: Request) {
   const ip = req.headers.get("x-forwarded-for") ?? req.headers.get("x-real-ip") ?? null;
@@ -71,27 +65,22 @@ export async function GET(req: NextRequest) {
       "certificate_no",
       "created_at",
     ];
-    const line = [
-      csvEscape(row.public_id),
-      csvEscape(row.status),
-      csvEscape(row.tenant_id),
-      csvEscape(row.customer_name),
-      csvEscape(vehicleModel),
-      csvEscape(vehiclePlate),
-      csvEscape(row.service_type),
-      csvEscape(row.certificate_no),
-      csvEscape(row.created_at),
-    ].join(",");
-
-    const bom = "\uFEFF";
-    const body = bom + header.join(",") + "\r\n" + line;
+    const body = buildCsv(header, [
+      [
+        row.public_id,
+        row.status,
+        row.tenant_id,
+        row.customer_name,
+        vehicleModel,
+        vehiclePlate,
+        row.service_type,
+        row.certificate_no,
+        row.created_at,
+      ],
+    ]);
 
     return new NextResponse(body, {
-      headers: {
-        "content-type": "text/csv; charset=utf-8",
-        "content-disposition": `attachment; filename="insurer_certificate_${pid}.csv"`,
-        "cache-control": "no-store",
-      },
+      headers: csvDownloadHeaders(`insurer_certificate_${pid}.csv`),
     });
   } catch (e) {
     console.error("[insurer/export-one]", e);

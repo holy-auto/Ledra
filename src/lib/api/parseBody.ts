@@ -21,8 +21,7 @@ import { ZodSchema } from "zod";
 import { apiValidationError } from "./response";
 
 export type ParseJsonBodyResult<T> =
-  | { ok: true; data: T }
-  | { ok: false; response: ReturnType<typeof apiValidationError> };
+  { ok: true; data: T } | { ok: false; response: ReturnType<typeof apiValidationError> };
 
 export async function parseJsonBody<T>(
   request: NextRequest | Request,

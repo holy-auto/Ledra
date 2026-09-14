@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { validateShakenshoData, extractFirstRegistrationYear, type ShakenshoData } from "./shakensho";
 
 const currentYear = new Date().getFullYear();
@@ -104,5 +104,32 @@ describe("validateShakenshoData", () => {
 
   it("returns no warnings for empty data", () => {
     expect(validateShakenshoData({})).toHaveLength(0);
+  });
+});
+
+// ── parseShakenshoAuto: OCR 失敗を握りつぶさないこと ──────────────────
+// 電子車検証の写真は QR が読めるのが普通なので、「QR が読めていれば OCR 失敗を
+// 黙って degrade する」と基盤障害が UI にもログにも出なくなる。requireFields を
+// QR だけでは満たせない呼び出し (実際の呼び出し元はすべてこれ) では投げること。
+describe("parseShakenshoAuto の OCR 失敗", () => {
+  it("QR が読めていても requireFields を満たせなければ例外を投げる", async () => {
+    vi.resetModules();
+    vi.doMock("./shakensho-qr", () => ({
+      decode2DCodes: async () => ["2/尾張小牧５００や１０００/1/HGC14-12345/ABCDEF12345/1"],
+      parseShakenshoCode: () => ({ vin: "HGC14-12345", plate_display: "尾張小牧 ５００ や １０００" }),
+    }));
+    vi.doMock("@/lib/ai/client", () => ({
+      AI_MODEL_VISION: "test-model",
+      getAnthropicClient: () => {
+        throw new Error("vision-down");
+      },
+    }));
+
+    const { parseShakenshoAuto } = await import("./shakensho");
+    await expect(parseShakenshoAuto(Buffer.from("x"), { requireFields: ["maker"] })).rejects.toThrow("vision-down");
+
+    vi.doUnmock("./shakensho-qr");
+    vi.doUnmock("@/lib/ai/client");
+    vi.resetModules();
   });
 });

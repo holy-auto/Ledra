@@ -54,7 +54,12 @@ export interface TaskTile {
 const MS_PER_DAY = 1000 * 60 * 60 * 24;
 
 function startOfDayStr(d: Date): string {
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate()).toISOString().slice(0, 10);
+  // `toISOString()` は UTC に変換するため、日本時間の午前中などで前日になる。
+  // ダッシュボードの「今日」は利用者のローカル日付として組み立てる。
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
 function isUnpaidStatus(status: string | null): boolean {

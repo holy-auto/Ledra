@@ -2,8 +2,8 @@ import { NextRequest } from "next/server";
 import { z } from "zod";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
-import { apiUnauthorized, apiInternalError, apiOk, apiValidationError } from "@/lib/api/response";
+import { resolveCallerWithRole, requirePermission } from "@/lib/auth/checkRole";
+import { apiUnauthorized, apiInternalError, apiOk, apiValidationError, apiForbidden } from "@/lib/api/response";
 
 const tenantDefaultSchema = z.object({
   template_id: z.string().uuid().nullable(),
@@ -17,6 +17,8 @@ export async function PUT(req: NextRequest) {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
+    // 帳票テンプレートの既定変更は admin 以上 (代表判断 2026-09-01)
+    if (!requirePermission(caller, "templates:manage")) return apiForbidden();
 
     const parsed = tenantDefaultSchema.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) {

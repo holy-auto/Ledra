@@ -22,6 +22,56 @@ export const dynamic = "force-dynamic";
  * レスポンス:
  *   { url: string, session_id: string }
  */
+/**
+ * DELETE /api/mobile/pos/checkout/qr-session?session_id=cs_xxx
+ *
+ * 会計をやめた時に Checkout Session を失効させる。
+ *
+ * なぜ要るか: セッションは 30 分生きる。店の端末で決済ページを開いたまま
+ * 会計をやめると、**誰もポーリングしていない支払リンクが残る**。後から
+ * 決済されると、カードは切られたのに売上として記録されない。
+ */
+export async function DELETE(req: NextRequest) {
+  const limited = await checkRateLimit(req, "mobile_pos");
+  if (limited) return limited;
+
+  try {
+    const caller = await resolveMobileCaller(req);
+    if (!caller) return apiUnauthorized();
+    if (!requireMinRole(caller, "staff")) return apiForbidden();
+
+    const sessionId = req.nextUrl.searchParams.get("session_id");
+    if (!sessionId || !sessionId.startsWith("cs_")) {
+      return apiValidationError("invalid session_id");
+    }
+
+    const { admin } = createTenantScopedAdmin(caller.tenantId);
+    const { data: tenantRow } = await admin
+      .from("tenants")
+      .select("stripe_connect_account_id, stripe_connect_onboarded")
+      .eq("id", caller.tenantId)
+      .single();
+    const connectAccountId = tenantRow?.stripe_connect_onboarded
+      ? (tenantRow.stripe_connect_account_id as string | null)
+      : null;
+
+    try {
+      await stripeExpire(sessionId, connectAccountId);
+    } catch {
+      // 既に完了・失効している場合もここに来る。やめた側の操作は止めない
+    }
+    return apiJson({ ok: true });
+  } catch (e: unknown) {
+    return apiInternalError(e, "mobile/pos/qr-session DELETE");
+  }
+}
+
+/** 決済済み・失効済みなら Stripe 側が弾く。呼び出し側で握り潰す */
+async function stripeExpire(sessionId: string, connectAccountId: string | null) {
+  const stripe = getStripeClient();
+  await stripe.checkout.sessions.expire(sessionId, connectAccountId ? { stripeAccount: connectAccountId } : undefined);
+}
+
 export async function POST(req: NextRequest) {
   // Each call creates a Stripe Checkout Session via the tenant's Connect
   // account. mobile_pos preset (10/min/IP) matches the rest of the POS
@@ -43,7 +93,9 @@ export async function POST(req: NextRequest) {
     if (!parsed.success) {
       return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
     }
-    const { amount, tenant_id: tenantId } = parsed.data;
+    const { amount } = parsed.data;
+    // 入金先はトークンのテナント。ペイロードの tenant_id は見ない
+    const tenantId = caller.tenantId;
     const reservationId = parsed.data.reservation_id ?? "";
     const storeId = parsed.data.store_id ?? "";
 

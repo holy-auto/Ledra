@@ -86,7 +86,9 @@ export default function GlobalPortalVerifyPage() {
         </div>
 
         {msg ? (
-          <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-800/50 dark:bg-red-950 dark:text-red-400">{msg}</div>
+          <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-800/50 dark:bg-red-950 dark:text-red-400">
+            {msg}
+          </div>
         ) : null}
 
         <div className="mt-5 text-xs leading-6 text-muted">

@@ -25,7 +25,7 @@ import { apiOk, apiUnauthorized, apiInternalError } from "@/lib/api/response";
 import { verifyCronRequest } from "@/lib/cronAuth";
 import { sendCronFailureAlert } from "@/lib/cronAlert";
 import { withCronLock } from "@/lib/cron/lock";
-import { CERTIFICATE_IMAGE_BUCKET } from "@/lib/certificateImages";
+import { CERTIFICATE_IMAGE_BUCKET } from "@/lib/certificateImages/constants";
 import { generateImageVariants, variantStoragePath } from "@/lib/certificateImages/generateVariants";
 import { logger } from "@/lib/logger";
 

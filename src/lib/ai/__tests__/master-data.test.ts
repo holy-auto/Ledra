@@ -7,10 +7,7 @@ import {
   normalizeCustomerName,
 } from "../textNormalize";
 import { diceSimilarity, fuzzyMatchCustomer } from "../customerFuzzyMatch";
-import {
-  analyzeThicknessStats,
-  classifyThicknessSeverity,
-} from "../thicknessAnomaly";
+import { analyzeThicknessStats, classifyThicknessSeverity } from "../thicknessAnomaly";
 
 describe("normalizeMaker", () => {
   it("collapses TOYOTA / トヨタ / Toyota to トヨタ", () => {

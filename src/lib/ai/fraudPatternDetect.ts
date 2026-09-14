@@ -33,12 +33,7 @@ const FraudLlmSchema = z.object({
 // ─────────────────────────────────────────────
 
 export type FraudFlag =
-  | "duplicate_claim"
-  | "velocity_spike"
-  | "round_amount"
-  | "same_day_multi"
-  | "certificate_void"
-  | "high_claim_amount";
+  "duplicate_claim" | "velocity_spike" | "round_amount" | "same_day_multi" | "certificate_void" | "high_claim_amount";
 
 export type FraudRisk = "high" | "medium" | "low" | "clear";
 

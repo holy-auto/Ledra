@@ -90,7 +90,10 @@ export async function POST(request: NextRequest) {
     const { email, role, display_name } = parsed.data;
 
     // Upsert the agent user via RPC
-    const { data: member, error: upsertErr } = await supabase.rpc("upsert_agent_user", {
+    // upsert_agent_user は SECURITY DEFINER で呼び出し元を検査しない。
+    // service_role 専用にしたので、権限確認済みのここからサービスロールで呼ぶ
+    const adminForRpc = createServiceRoleAdmin("agent flow — upsert_agent_user は service_role 専用");
+    const { data: member, error: upsertErr } = await adminForRpc.rpc("upsert_agent_user", {
       p_agent_id: agentId,
       p_email: email,
       p_role: role,

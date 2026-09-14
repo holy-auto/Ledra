@@ -1,11 +1,13 @@
 import { useState } from "react";
 import { View, ScrollView, StyleSheet, Share } from "react-native";
-import { Text, Card, Button, Divider, ActivityIndicator, Chip, Dialog, Portal, Snackbar } from "react-native-paper";
+import { Text, ActivityIndicator, Dialog, Portal, Snackbar, Icon } from "react-native-paper";
 import { useLocalSearchParams, router } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 
 import { supabase } from "@/lib/supabase";
 import { useAuthStore } from "@/stores/authStore";
+import { LedraButton, StatusBadge } from "@/components/ui";
+import { colors, spacing, radius, typography, shadows } from "@/constants/tokens";
 
 interface Customer {
   id: string;
@@ -67,144 +69,156 @@ export default function CustomerDetailScreen() {
   if (isLoading || !customer) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator />
+        <ActivityIndicator color={colors.primary} />
       </View>
     );
   }
 
   return (
     <ScrollView style={styles.container}>
-      <Card style={styles.card} mode="outlined">
-        <Card.Content>
-          <Text variant="headlineSmall" style={styles.heading}>
-            {customer.name}
-          </Text>
-          {customer.name_kana && (
-            <Text variant="bodyMedium" style={styles.kana}>
-              {customer.name_kana}
-            </Text>
-          )}
+      {/* Customer info card */}
+      <View style={styles.card}>
+        <Text style={styles.heading}>{customer.name}</Text>
+        {customer.name_kana && (
+          <Text style={styles.kana}>{customer.name_kana}</Text>
+        )}
 
-          <Divider style={styles.divider} />
+        <View style={styles.divider} />
 
-          <InfoRow label="メール" value={customer.email} />
-          <InfoRow label="電話" value={customer.phone} />
-          <InfoRow label="郵便番号" value={customer.postal_code} />
-          <InfoRow label="住所" value={customer.address} />
-          {customer.note && (
-            <>
-              <Text variant="labelMedium" style={styles.label}>
-                メモ
-              </Text>
-              <Text variant="bodyMedium" style={styles.note}>
-                {customer.note}
-              </Text>
-            </>
-          )}
-        </Card.Content>
-      </Card>
+        <InfoRow label="メール" value={customer.email} />
+        <InfoRow label="電話" value={customer.phone} />
+        <InfoRow label="郵便番号" value={customer.postal_code} />
+        <InfoRow label="住所" value={customer.address} />
+        {customer.note && (
+          <>
+            <Text style={styles.label}>メモ</Text>
+            <Text style={styles.note}>{customer.note}</Text>
+          </>
+        )}
+      </View>
 
+      {/* Vehicles section */}
       <View style={styles.section}>
-        <Text variant="titleMedium" style={styles.sectionTitle}>
-          登録車両
-        </Text>
+        <Text style={styles.sectionTitle}>登録車両</Text>
         {vehicles && vehicles.length > 0 ? (
           vehicles.map((v) => (
-            <Card
+            <View
               key={v.id}
               style={styles.vehicleCard}
-              mode="outlined"
-              onPress={() => router.push(`/vehicles/${v.id}`)}
+              accessible
+              accessibilityRole="button"
             >
-              <Card.Content style={styles.vehicleRow}>
+              <View style={styles.vehicleRow}>
+                <View style={styles.vehicleIconWrap}>
+                  <Icon source="car" size={20} color={colors.primary} />
+                </View>
                 <View style={{ flex: 1 }}>
-                  <Text variant="titleSmall" style={styles.vehicleTitle}>
+                  <Text style={styles.vehicleTitle}>
                     {v.maker} {v.model}
                   </Text>
-                  <Text variant="bodySmall" style={styles.sub}>
+                  <Text style={styles.sub}>
                     {v.plate_display} {v.year ? `(${v.year})` : ""}
                   </Text>
                 </View>
-                <Chip compact>詳細</Chip>
-              </Card.Content>
-            </Card>
+                <LedraButton
+                  variant="ghost"
+                  size="small"
+                  fullWidth={false}
+                  onPress={() => router.push(`/vehicles/${v.id}`)}
+                >
+                  詳細
+                </LedraButton>
+              </View>
+            </View>
           ))
         ) : (
           <Text style={styles.empty}>登録車両はありません</Text>
         )}
       </View>
 
-      <Button
-        mode="outlined"
-        icon="qrcode"
-        style={styles.intakeButton}
-        loading={intakeBusy}
-        disabled={intakeBusy}
-        onPress={async () => {
-          setIntakeBusy(true);
-          try {
-            const { data: sessionData } = await supabase.auth.getSession();
-            const token = sessionData?.session?.access_token;
-            if (!token) {
-              setSnackbar("認証セッションがありません");
-              return;
+      <View style={styles.buttonArea}>
+        <LedraButton
+          variant="outline"
+          icon="qrcode"
+          loading={intakeBusy}
+          disabled={intakeBusy}
+          onPress={async () => {
+            setIntakeBusy(true);
+            try {
+              const { data: sessionData } = await supabase.auth.getSession();
+              const token = sessionData?.session?.access_token;
+              if (!token) {
+                setSnackbar("認証セッションがありません");
+                return;
+              }
+              const apiBase = process.env.EXPO_PUBLIC_API_URL!;
+              const baseRoot = apiBase.replace(/\/api\/mobile\/?$/, "");
+              const res = await fetch(`${baseRoot}/api/mobile/customer-intakes`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+                body: JSON.stringify({
+                  label: `${customer.name} 様 事前カルテ`,
+                  contact_email: customer.email,
+                  contact_phone: customer.phone,
+                }),
+              });
+              const j = await res.json().catch(() => null);
+              if (!res.ok || !j?.ok) {
+                setSnackbar(j?.error?.message ?? "発行に失敗しました");
+                return;
+              }
+              setIntake({ url: j.url, expires_at: j.expires_at });
+            } catch (e) {
+              setSnackbar(e instanceof Error ? e.message : "通信エラー");
+            } finally {
+              setIntakeBusy(false);
             }
-            const apiBase = process.env.EXPO_PUBLIC_API_URL!;
-            const baseRoot = apiBase.replace(/\/api\/mobile\/?$/, "");
-            const res = await fetch(`${baseRoot}/api/mobile/customer-intakes`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-              body: JSON.stringify({
-                label: `${customer.name} 様 事前カルテ`,
-                contact_email: customer.email,
-                contact_phone: customer.phone,
-              }),
-            });
-            const j = await res.json().catch(() => null);
-            if (!res.ok || !j?.ok) {
-              setSnackbar(j?.error?.message ?? "発行に失敗しました");
-              return;
-            }
-            setIntake({ url: j.url, expires_at: j.expires_at });
-          } catch (e) {
-            setSnackbar(e instanceof Error ? e.message : "通信エラー");
-          } finally {
-            setIntakeBusy(false);
-          }
-        }}
-      >
-        事前カルテURL発行
-      </Button>
+          }}
+        >
+          事前カルテURL発行
+        </LedraButton>
 
-      <Button
-        mode="contained"
-        style={styles.editButton}
-        buttonColor="#1a1a2e"
-        onPress={() => router.push(`/customers/edit/${id}`)}
-      >
-        編集
-      </Button>
+        <LedraButton
+          onPress={() => router.push(`/customers/edit/${id}`)}
+          style={styles.editButton}
+        >
+          編集
+        </LedraButton>
+      </View>
 
       <Portal>
-        <Dialog visible={!!intake} onDismiss={() => setIntake(null)}>
-          <Dialog.Icon icon="link-variant" />
-          <Dialog.Title style={{ textAlign: "center" }}>事前カルテURLを発行しました</Dialog.Title>
+        <Dialog
+          visible={!!intake}
+          onDismiss={() => setIntake(null)}
+          style={styles.dialog}
+        >
+          <Dialog.Icon icon="link-variant" color={colors.primary} />
+          <Dialog.Title style={styles.dialogTitle}>
+            事前カルテURLを発行しました
+          </Dialog.Title>
           <Dialog.Content>
-            <Text variant="bodySmall" style={{ color: "#666", marginBottom: 8 }}>
+            <Text style={styles.dialogHint}>
               このURLを顧客に共有してください。期限: {intake?.expires_at?.slice(0, 10)}
             </Text>
-            <Text selectable variant="bodySmall" style={{ backgroundColor: "#f4f4f5", padding: 8, borderRadius: 6 }}>
+            <Text selectable style={styles.dialogUrl}>
               {intake?.url}
             </Text>
-            <Text variant="bodySmall" style={{ color: "#a02525", marginTop: 8 }}>
+            <Text style={styles.dialogWarning}>
               ※ このURLは今だけ表示されます。閉じると再表示できません。
             </Text>
           </Dialog.Content>
           <Dialog.Actions>
-            <Button onPress={() => setIntake(null)}>閉じる</Button>
-            <Button
-              mode="contained"
-              buttonColor="#1a1a2e"
+            <LedraButton
+              variant="ghost"
+              size="small"
+              fullWidth={false}
+              onPress={() => setIntake(null)}
+            >
+              閉じる
+            </LedraButton>
+            <LedraButton
+              size="small"
+              fullWidth={false}
               onPress={async () => {
                 if (!intake) return;
                 try {
@@ -218,12 +232,17 @@ export default function CustomerDetailScreen() {
               }}
             >
               共有
-            </Button>
+            </LedraButton>
           </Dialog.Actions>
         </Dialog>
       </Portal>
 
-      <Snackbar visible={!!snackbar} onDismiss={() => setSnackbar(null)} duration={3000}>
+      <Snackbar
+        visible={!!snackbar}
+        onDismiss={() => setSnackbar(null)}
+        duration={3000}
+        style={styles.snackbar}
+      >
         {snackbar ?? ""}
       </Snackbar>
     </ScrollView>
@@ -234,31 +253,117 @@ function InfoRow({ label, value }: { label: string; value: string | null }) {
   if (!value) return null;
   return (
     <View style={styles.infoRow}>
-      <Text variant="labelMedium" style={styles.label}>
-        {label}
-      </Text>
-      <Text variant="bodyMedium">{value}</Text>
+      <Text style={styles.label}>{label}</Text>
+      <Text style={styles.infoValue}>{value}</Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#fafafa" },
+  container: { flex: 1, backgroundColor: colors.background },
   center: { flex: 1, justifyContent: "center", alignItems: "center" },
-  card: { margin: 12, backgroundColor: "#ffffff" },
-  heading: { fontWeight: "700", color: "#1a1a2e" },
-  kana: { color: "#71717a", marginTop: 2 },
-  divider: { marginVertical: 12 },
-  infoRow: { marginBottom: 8 },
-  label: { color: "#71717a", marginBottom: 2 },
-  note: { color: "#3f3f46", backgroundColor: "#f4f4f5", padding: 8, borderRadius: 4 },
-  section: { padding: 12 },
-  sectionTitle: { fontWeight: "700", color: "#1a1a2e", marginBottom: 8 },
-  vehicleCard: { marginBottom: 8, backgroundColor: "#ffffff" },
-  vehicleRow: { flexDirection: "row", alignItems: "center" },
-  vehicleTitle: { fontWeight: "600", color: "#1a1a2e" },
-  sub: { color: "#71717a", marginTop: 2 },
-  empty: { color: "#71717a", textAlign: "center", marginTop: 16 },
-  intakeButton: { marginHorizontal: 12, marginTop: 4 },
-  editButton: { margin: 12, marginBottom: 32 },
+  card: {
+    margin: spacing.md,
+    backgroundColor: colors.surface,
+    borderRadius: radius.card,
+    padding: spacing.lg,
+    ...shadows.card,
+  },
+  heading: {
+    ...typography.titleLarge,
+    color: colors.textPrimary,
+  },
+  kana: {
+    ...typography.meta,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
+  divider: {
+    height: 1,
+    backgroundColor: colors.divider,
+    marginVertical: spacing.md,
+  },
+  infoRow: { marginBottom: spacing.sm },
+  label: {
+    ...typography.labelSmall,
+    color: colors.textSecondary,
+    marginBottom: 2,
+  },
+  infoValue: {
+    ...typography.body,
+    color: colors.textPrimary,
+  },
+  note: {
+    ...typography.bodySmall,
+    color: colors.textSecondary,
+    backgroundColor: colors.surfaceVariant,
+    padding: spacing.sm,
+    borderRadius: radius.sm,
+  },
+  section: { padding: spacing.md },
+  sectionTitle: {
+    ...typography.titleMedium,
+    color: colors.textPrimary,
+    marginBottom: spacing.sm,
+  },
+  vehicleCard: {
+    marginBottom: spacing.sm,
+    backgroundColor: colors.surface,
+    borderRadius: radius.card,
+    padding: spacing.lg,
+    ...shadows.card,
+  },
+  vehicleRow: { flexDirection: "row", alignItems: "center", gap: spacing.md },
+  vehicleIconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: radius.md,
+    backgroundColor: colors.primaryLight,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  vehicleTitle: {
+    ...typography.titleSmall,
+    color: colors.textPrimary,
+  },
+  sub: {
+    ...typography.meta,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
+  empty: {
+    ...typography.bodySmall,
+    color: colors.textSecondary,
+    textAlign: "center",
+    marginTop: spacing.lg,
+  },
+  buttonArea: {
+    paddingHorizontal: spacing.md,
+    gap: spacing.sm,
+  },
+  editButton: { marginBottom: spacing["3xl"] },
+  dialog: { backgroundColor: colors.surface, borderRadius: radius.card },
+  dialogTitle: {
+    ...typography.titleMedium,
+    textAlign: "center",
+    color: colors.textPrimary,
+  },
+  dialogHint: {
+    ...typography.bodySmall,
+    color: colors.textTertiary,
+    marginBottom: spacing.sm,
+  },
+  dialogUrl: {
+    ...typography.bodySmall,
+    backgroundColor: colors.surfaceVariant,
+    padding: spacing.sm,
+    borderRadius: radius.sm,
+    color: colors.textPrimary,
+  },
+  dialogWarning: {
+    ...typography.bodySmall,
+    color: colors.dangerDark,
+    marginTop: spacing.sm,
+  },
+  snackbar: { backgroundColor: colors.textPrimary },
 });

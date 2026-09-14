@@ -58,11 +58,11 @@ export async function GET(req: NextRequest) {
         ? admin.from("certificates").select("id, public_id, status, updated_at").in("id", Array.from(certificateIds))
         : Promise.resolve({ data: [] as { id: string; public_id: string; status: string; updated_at: string }[] }),
       vehicleIds.size > 0
-        ? admin.from("vehicles").select("id, plate_number, maker, model, updated_at").in("id", Array.from(vehicleIds))
+        ? admin.from("vehicles").select("id, plate_display, maker, model, updated_at").in("id", Array.from(vehicleIds))
         : Promise.resolve({
             data: [] as {
               id: string;
-              plate_number: string | null;
+              plate_display: string | null;
               maker: string | null;
               model: string | null;
               updated_at: string;
@@ -87,7 +87,7 @@ export async function GET(req: NextRequest) {
           ...item,
           target_detail: vehicle
             ? {
-                identifier: [vehicle.maker, vehicle.model, vehicle.plate_number].filter(Boolean).join(" "),
+                identifier: [vehicle.maker, vehicle.model, vehicle.plate_display].filter(Boolean).join(" "),
                 status: null,
                 updated_at: vehicle.updated_at,
               }

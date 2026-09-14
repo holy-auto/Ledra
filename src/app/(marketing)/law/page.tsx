@@ -82,6 +82,7 @@ export default function LawPage() {
 export const metadata: Metadata = {
   title: `特定商取引法に基づく表記 | ${siteConfig.siteName}`,
   description: "Ledraの特定商取引法に基づく表記です。",
+  alternates: { canonical: "/law" },
   openGraph: {
     title: `特定商取引法に基づく表記 | ${siteConfig.siteName}`,
     description: "Ledraの特定商取引法に基づく表記です。",

@@ -39,7 +39,7 @@ export default function SignupPage() {
   const validateField = (key: FieldKey) => (raw: string) => {
     const v = raw.trim();
     let msg: string | undefined;
-    if (key === "shop_name" && !v) msg = "店舗名を入力してください";
+    if (key === "shop_name" && !v) msg = "店舗名（個人事業主は屋号）を入力してください";
     else if (key === "email") {
       if (!v) msg = "メールアドレスを入力してください";
       else if (!isEmail(v)) msg = "メールアドレスの形式が正しくありません";
@@ -53,7 +53,7 @@ export default function SignupPage() {
 
   function validateAll(): boolean {
     const next: Partial<Record<FieldKey, string>> = {};
-    if (!values.shop_name.trim()) next.shop_name = "店舗名を入力してください";
+    if (!values.shop_name.trim()) next.shop_name = "店舗名（個人事業主は屋号）を入力してください";
     if (!values.email.trim()) next.email = "メールアドレスを入力してください";
     else if (!isEmail(values.email.trim())) next.email = "メールアドレスの形式が正しくありません";
     if (!values.password || values.password.trim().length < 8) next.password = "8文字以上で入力してください";
@@ -93,7 +93,11 @@ export default function SignupPage() {
         return;
       }
 
-      // 2) 作成したアカウントで自動ログイン
+      // 2) 作成したアカウントでログインを試みる。
+      // メール確認前 (email_confirm: false) はサーバが拒否するため、
+      // 通常はここで失敗し「確認メールを送信しました」画面に落ちる
+      // (B-H3 是正: 2026-09-08 以前はここが常に成功し、メール所有確認を経ずに
+      // 即ログインできてしまっていた)。
       const supabase = createClient();
       const { error: loginError } = await supabase.auth.signInWithPassword({ email, password });
       if (loginError) {
@@ -144,8 +148,10 @@ export default function SignupPage() {
               />
             </svg>
           </div>
-          <h1 className="text-xl font-bold text-primary">登録完了</h1>
-          <p className="text-sm text-secondary">アカウントが作成されました。ログインしてご利用ください。</p>
+          <h1 className="text-xl font-bold text-primary">確認メールを送信しました</h1>
+          <p className="text-sm text-secondary">
+            入力いただいたメールアドレスに確認リンクを送信しました。メール内のリンクをクリックすると、ログインが完了します。
+          </p>
           <Link href="/login" className="btn-primary w-full inline-block text-center">
             ログインページへ
           </Link>
@@ -193,11 +199,11 @@ export default function SignupPage() {
         <form onSubmit={handleSubmit} className="space-y-2">
           {/* 店舗情報（最小限） */}
           <FloatingField
-            label="店舗名"
+            label="店舗名・屋号"
             name="shop_name"
             required
             maxLength={100}
-            placeholder="例: カーコーティング専門店 SAMPLE"
+            placeholder="例: カーコーティング専門店 SAMPLE / 個人事業主は屋号"
             value={values.shop_name}
             onChange={setValue("shop_name")}
             onBlur={validateField("shop_name")}
@@ -246,7 +252,7 @@ export default function SignupPage() {
 
           {/* 任意項目はデフォルトで折りたたみ、入力欄を最小化 */}
           {showDetails ? (
-            <div className="grid grid-cols-2 gap-3 pt-1">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
               <FloatingField
                 label="担当者名"
                 name="display_name"

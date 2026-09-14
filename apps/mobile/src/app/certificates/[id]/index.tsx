@@ -1,11 +1,19 @@
 import { useState } from "react";
-import { View, ScrollView, StyleSheet, Image, Alert } from "react-native";
+import dayjs from "dayjs";
+import {
+  View,
+  ScrollView,
+  StyleSheet,
+  Image,
+  Alert,
+  Pressable,
+  Linking,
+  Share,
+} from "react-native";
+import QRCode from "react-native-qrcode-svg";
 import {
   Text,
-  Card,
-  Button,
-  Chip,
-  Divider,
+  Icon,
   ActivityIndicator,
   Dialog,
   Portal,
@@ -15,14 +23,23 @@ import {
 } from "react-native-paper";
 import { useLocalSearchParams, router } from "expo-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import * as MediaLibrary from "expo-media-library";
+// ponytail: lazy-import to avoid crash in Expo Go where native module is missing
+let MediaLibrary: typeof import("expo-media-library") | null = null;
+try {
+  MediaLibrary = require("expo-media-library");
+} catch {
+  // expo-media-library unavailable in Expo Go — saveToDevice disabled
+}
 import { File, Paths } from "expo-file-system";
 
 import { supabase } from "@/lib/supabase";
 import { useAuthStore } from "@/stores/authStore";
 import { mobileApi } from "@/lib/api";
+import { publicCertUrl, certPdfUrl } from "@/lib/certificateLinks";
+import { StatusBadge, LedraButton } from "@/components/ui";
+import { colors, spacing, radius, typography, shadows } from "@/constants/tokens";
 
-/** 正規 certificate_images 行（表示・DL用）。 */
+/** certificate_images row */
 interface CertImage {
   id: string;
   storage_path: string;
@@ -32,25 +49,27 @@ interface CertImage {
   authenticity_grade: string | null;
 }
 
-/** assets バケット（public）内のパスから表示/DL用の公開URLを作る。 */
 function assetUrl(path: string): string {
   return supabase.storage.from("assets").getPublicUrl(path).data.publicUrl;
 }
 
+
 interface CertificateDetail {
   id: string;
-  certificate_no: string;
-  public_id: string | null;
+  /** 証明書番号。certificate_no 列は存在せず、public_id が番号 */
+  public_id: string;
   status: string;
   service_type: string | null;
-  content: Record<string, unknown> | null;
+  /** 自由記述の施工内容（content 列は存在しない） */
+  content_free_text: string | null;
   customer_name: string | null;
   customer_id: string | null;
   vehicle_id: string | null;
-  vehicle_maker: string | null;
-  vehicle_model: string | null;
-  plate_display: string | null;
-  issued_date: string | null;
+  /** 発行時点の車両情報のスナップショット。vehicle_maker 等の列は存在しない */
+  vehicle_info_json: { maker?: string; model?: string; plate?: string } | null;
+  /** 発行日。issued_date 列は無い。署名日、未署名なら作成日を使う */
+  signed_at: string | null;
+  created_at: string;
   expiry_date: string | null;
 }
 
@@ -61,6 +80,30 @@ interface NfcTag {
   status: string;
 }
 
+const CERT_STATUS_MAP: Record<
+  string,
+  { label: string; severity: "success" | "warning" | "danger" | "neutral" | "info" }
+> = {
+  active: { label: "VERIFIED", severity: "success" },
+  draft: { label: "下書き", severity: "neutral" },
+  void: { label: "無効", severity: "danger" },
+  expired: { label: "期限切", severity: "warning" },
+};
+
+const STAGE_MAP: Record<string, { label: string; severity: "info" | "warning" | "success" | "neutral" }> = {
+  intake_before: { label: "施工前", severity: "info" },
+  in_progress: { label: "作業中", severity: "warning" },
+  after: { label: "施工後", severity: "success" },
+  unspecified: { label: "未指定", severity: "neutral" },
+};
+
+const GRADE_MAP: Record<string, { label: string; severity: "success" | "info" | "neutral" | "danger" }> = {
+  verified: { label: "担保", severity: "success" },
+  sealed: { label: "封印", severity: "info" },
+  basic: { label: "基本", severity: "neutral" },
+  unverified: { label: "未検証", severity: "danger" },
+};
+
 export default function CertificateDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { user } = useAuthStore();
@@ -70,6 +113,11 @@ export default function CertificateDetailScreen() {
   const [voidReason, setVoidReason] = useState("");
   const [snackbar, setSnackbar] = useState("");
   const [savingId, setSavingId] = useState<string | null>(null);
+  const [qrVisible, setQrVisible] = useState(false);
+  /** 拡大表示中の写真。タップで開く */
+  const [preview, setPreview] = useState<CertImage | null>(null);
+  /** 読み込めなかった写真。**黙って空白にすると「出ない」としか分からない** */
+  const [brokenIds, setBrokenIds] = useState<string[]>([]);
 
   const { data: cert, isLoading } = useQuery({
     queryKey: ["certificate", id],
@@ -77,7 +125,7 @@ export default function CertificateDetailScreen() {
       const { data, error } = await supabase
         .from("certificates")
         .select(
-          "id, certificate_no, public_id, status, service_type, content, customer_name, customer_id, vehicle_id, vehicle_maker, vehicle_model, plate_display, issued_date, expiry_date"
+          "id, public_id, status, service_type, content_free_text, customer_name, customer_id, vehicle_id, vehicle_info_json, signed_at, created_at, expiry_date"
         )
         .eq("id", id)
         .eq("tenant_id", user!.tenantId)
@@ -88,14 +136,14 @@ export default function CertificateDetailScreen() {
     enabled: !!id && !!user?.tenantId,
   });
 
-  // 施工写真は正規テーブル (certificate_images) を certificate_id で読む。
-  // storage_path から assets(public) の公開URLを導出して表示・DLする。
   const { data: images = [] } = useQuery({
     queryKey: ["certificate-images", id],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("certificate_images")
-        .select("id, storage_path, thumbnail_path, medium_path, stage, authenticity_grade")
+        .select(
+          "id, storage_path, thumbnail_path, medium_path, stage, authenticity_grade"
+        )
         .eq("certificate_id", id)
         .order("sort_order", { ascending: true });
       if (error) throw error;
@@ -104,8 +152,52 @@ export default function CertificateDetailScreen() {
     enabled: !!id && !!user?.tenantId,
   });
 
-  // 「端末に保存」: 撮影時は端末に残さないが、後から明示操作でギャラリーへ保存できる。
+  /**
+   * PDF は公開ルートを端末のブラウザで開く。アプリ内で生成しない。
+   * Web と同じ 1 本の生成経路（/api/certificate/pdf）を使うので、
+   * レイアウトが 2 実装に分かれない。
+   */
+  async function openPdf() {
+    if (!cert) return;
+    // 公開ルートは active 以外を 404 にする。Linking 自体は成功するので
+    // catch に入らず、**端末のブラウザに生の JSON が出る**。手前で止める
+    if (cert.status !== "active") {
+      setSnackbar("PDFは有効化してから発行できます");
+      return;
+    }
+    const url = certPdfUrl(cert.public_id);
+    if (!url) {
+      setSnackbar("PDFのURLが設定されていません（EXPO_PUBLIC_API_URL）");
+      return;
+    }
+    // 開けない端末がある（ブラウザ無し / MDM 制限）。黙って何も起きないと
+    // 「押しても反応しない」に見えるので必ず知らせる
+    try {
+      await Linking.openURL(url);
+    } catch {
+      setSnackbar("PDFを開けませんでした");
+    }
+  }
+
+  async function shareCertificate() {
+    if (!cert) return;
+    const url = publicCertUrl(cert.public_id);
+    if (!url) {
+      setSnackbar("公開URLが設定されていません（EXPO_PUBLIC_CERTIFICATE_BASE_URL）");
+      return;
+    }
+    try {
+      await Share.share({ message: `施工証明書 ${cert.public_id}\n${url}`, url });
+    } catch {
+      setSnackbar("共有できませんでした");
+    }
+  }
+
   async function saveToDevice(img: CertImage) {
+    if (!MediaLibrary) {
+      Alert.alert("未対応", "この環境では端末保存が利用できません（開発ビルドが必要です）");
+      return;
+    }
     setSavingId(img.id);
     try {
       const perm = await MediaLibrary.requestPermissionsAsync(true);
@@ -115,7 +207,6 @@ export default function CertificateDetailScreen() {
       }
       const url = assetUrl(img.storage_path);
       const ext = img.storage_path.split(".").pop()?.split("?")[0] ?? "jpg";
-      // キャッシュに一時DL → ギャラリー保存 → 一時ファイル削除。端末に残すのはギャラリーのみ。
       const dest = new File(Paths.cache, `cert-${img.id}.${ext}`);
       const dl = await File.downloadFileAsync(url, dest, { idempotent: true });
       await MediaLibrary.saveToLibraryAsync(dl.uri);
@@ -128,7 +219,7 @@ export default function CertificateDetailScreen() {
     }
   }
 
-  const { data: nfcTags } = useQuery({
+  const { data: nfcTags = [] } = useQuery({
     queryKey: ["certificate-nfc-tags", id],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -168,148 +259,235 @@ export default function CertificateDetailScreen() {
   if (isLoading || !cert) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator />
+        <ActivityIndicator size="large" color={colors.primary} />
       </View>
     );
   }
 
+  const statusCfg = CERT_STATUS_MAP[cert.status] ?? {
+    label: cert.status,
+    severity: "neutral" as const,
+  };
+  const vehicleText = [
+    cert.vehicle_info_json?.maker,
+    cert.vehicle_info_json?.model,
+    cert.vehicle_info_json?.plate,
+  ]
+    .filter(Boolean)
+    .join(" ");
+  // 未署名の下書きに「発行日」は無い。作成日を発行日として出すと、
+  // 顧客が保証の起算日として読む書類に、発行していない日付が載る
+  const issuedDate = cert.signed_at ? dayjs(cert.signed_at).format("YYYY/M/D") : null;
+
   return (
+    <>
     <ScrollView style={styles.container}>
-      <Card style={styles.card} mode="outlined">
-        <Card.Content>
-          <View style={styles.headerRow}>
-            <Text variant="headlineSmall" style={styles.heading}>
-              {cert.certificate_no}
-            </Text>
-            <StatusBadge status={cert.status} />
-          </View>
-
-          <Divider style={styles.divider} />
-
-          <InfoRow label="サービス" value={cert.service_type} />
-          <InfoRow label="顧客" value={cert.customer_name} />
-          <InfoRow
-            label="車両"
-            value={
-              [cert.vehicle_maker, cert.vehicle_model, cert.plate_display]
-                .filter(Boolean)
-                .join(" ") || null
+      {/* ─── Status Hero (ref 04: VERIFIED shield badge) ─── */}
+      <View style={styles.statusHero}>
+        <View
+          style={[
+            styles.shieldContainer,
+            {
+              backgroundColor:
+                cert.status === "active"
+                  ? colors.successLight
+                  : colors.surfaceVariant,
+            },
+          ]}
+        >
+          <Icon
+            source="shield-check"
+            size={48}
+            color={
+              cert.status === "active" ? colors.success : colors.textTertiary
             }
           />
-          <InfoRow label="発行日" value={cert.issued_date} />
-          <InfoRow label="有効期限" value={cert.expiry_date} />
-        </Card.Content>
-      </Card>
+        </View>
+        <StatusBadge label={statusCfg.label} severity={statusCfg.severity} />
+        <Text style={styles.certNo}>{cert.public_id}</Text>
+        {issuedDate && (
+          <Text style={styles.issuedDate}>発行日: {issuedDate}</Text>
+        )}
+      </View>
 
-      {/* Images */}
+      {/* ─── Vehicle Info Card ─── */}
+      {vehicleText ? (
+        <Pressable
+          style={styles.infoCard}
+          onPress={() =>
+            cert.vehicle_id && router.push(`/vehicles/${cert.vehicle_id}`)
+          }
+        >
+          <View style={styles.infoCardIcon}>
+            <Icon source="car" size={20} color={colors.primary} />
+          </View>
+          <View style={styles.infoCardContent}>
+            <Text style={styles.infoCardTitle}>車両情報</Text>
+            <Text style={styles.infoCardValue}>{vehicleText}</Text>
+          </View>
+          <Icon source="chevron-right" size={20} color={colors.textTertiary} />
+        </Pressable>
+      ) : null}
+
+      {/* ─── 作業概要 Section (ref 04) ─── */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>作業概要</Text>
+        <View style={styles.sectionCard}>
+          <InfoRow icon="wrench" label="サービス" value={cert.service_type} />
+          <InfoRow icon="account" label="顧客" value={cert.customer_name} />
+          <InfoRow icon="calendar" label="発行日" value={issuedDate} />
+          <InfoRow icon="calendar-clock" label="有効期限" value={cert.expiry_date} />
+        </View>
+      </View>
+
+      {/* ─── 完全性の検証 Section (ref 04: integrity checks) ─── */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>完全性の検証</Text>
+        <View style={styles.sectionCard}>
+          <IntegrityRow
+            icon="camera-sync"
+            label="写真同期"
+            verified={images.length > 0}
+          />
+          <IntegrityRow
+            icon="nfc"
+            label="NFCタグ"
+            verified={nfcTags.length > 0}
+          />
+          <IntegrityRow
+            icon="shield-check"
+            label="証明書ステータス"
+            verified={cert.status === "active"}
+          />
+        </View>
+      </View>
+
+      {/* ─── Images Section ─── */}
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
-          <Text variant="titleMedium" style={styles.sectionTitle}>
+          <Text style={styles.sectionTitle}>
             施工写真 ({images.length})
           </Text>
-          <Button
-            mode="text"
-            icon="camera"
-            compact
+          <Pressable
+            style={styles.photoAddBtn}
             onPress={() => router.push(`/certificates/${cert.id}/photos`)}
-            textColor="#1a1a2e"
           >
-            撮影
-          </Button>
+            <Icon source="camera-plus" size={18} color={colors.primary} />
+            <Text style={styles.photoAddText}>撮影</Text>
+          </Pressable>
         </View>
         {images.length > 0 ? (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-            {images.map((img) => (
-              <View key={img.id} style={styles.imageCard}>
-                <Image
-                  source={{ uri: assetUrl(img.thumbnail_path ?? img.storage_path) }}
-                  style={styles.image}
-                  resizeMode="cover"
-                  accessibilityLabel={`証明書画像 (${img.stage ?? "未指定"})`}
-                />
-                <View style={styles.imageMeta}>
-                  {img.stage && <StageBadge stage={img.stage} />}
-                  {img.authenticity_grade && <GradeBadge grade={img.authenticity_grade} />}
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.imageScroll}
+          >
+            {images.map((img) => {
+              const stageCfg = img.stage
+                ? STAGE_MAP[img.stage] ?? STAGE_MAP.unspecified
+                : null;
+              const gradeCfg = img.authenticity_grade
+                ? GRADE_MAP[img.authenticity_grade]
+                : null;
+
+              return (
+                <View key={img.id} style={styles.imageCard}>
+                  {/* タップで拡大。一覧のサムネイルだけでは施工内容を確認できない */}
+                  <Pressable
+                    onPress={() => setPreview(img)}
+                    accessibilityRole="imagebutton"
+                    accessibilityLabel={`証明書画像を拡大 (${img.stage ?? "未指定"})`}
+                  >
+                    {brokenIds.includes(img.id) ? (
+                      <View style={[styles.image, styles.imageBroken]}>
+                        <Icon source="image-off" size={24} color={colors.textSecondary} />
+                        <Text style={styles.imageBrokenText}>読み込めません</Text>
+                      </View>
+                    ) : (
+                      <Image
+                        source={{
+                          uri: assetUrl(img.thumbnail_path ?? img.storage_path),
+                        }}
+                        style={styles.image}
+                        resizeMode="cover"
+                        // 失敗を握りつぶすと「写真が出ない」の原因が切り分けられない
+                        onError={() =>
+                          setBrokenIds((prev) => (prev.includes(img.id) ? prev : [...prev, img.id]))
+                        }
+                        accessibilityLabel={`証明書画像 (${img.stage ?? "未指定"})`}
+                      />
+                    )}
+                  </Pressable>
+                  <View style={styles.imageBadges}>
+                    {stageCfg && (
+                      <StatusBadge
+                        label={stageCfg.label}
+                        severity={stageCfg.severity}
+                        compact
+                      />
+                    )}
+                    {gradeCfg && (
+                      <StatusBadge
+                        label={gradeCfg.label}
+                        severity={gradeCfg.severity}
+                        compact
+                      />
+                    )}
+                  </View>
+                  <IconButton
+                    icon="download"
+                    size={16}
+                    mode="contained-tonal"
+                    loading={savingId === img.id}
+                    disabled={savingId === img.id}
+                    onPress={() => saveToDevice(img)}
+                    style={styles.saveBtn}
+                    accessibilityLabel="端末に保存"
+                  />
                 </View>
-                <IconButton
-                  icon="download"
-                  size={18}
-                  mode="contained-tonal"
-                  loading={savingId === img.id}
-                  disabled={savingId === img.id}
-                  onPress={() => saveToDevice(img)}
-                  style={styles.saveBtn}
-                  accessibilityLabel="端末に保存"
-                />
-              </View>
-            ))}
+              );
+            })}
           </ScrollView>
         ) : (
-          <Text style={styles.empty}>施工写真はありません</Text>
+          <Text style={styles.emptyText}>施工写真はありません</Text>
         )}
       </View>
 
-      {/* NFC Tags */}
-      <View style={styles.section}>
-        <Text variant="titleMedium" style={styles.sectionTitle}>
-          NFCタグ
-        </Text>
-        {nfcTags && nfcTags.length > 0 ? (
-          nfcTags.map((tag) => (
-            <Card key={tag.id} style={styles.tagCard} mode="outlined">
-              <Card.Content style={styles.row}>
-                <View style={{ flex: 1 }}>
-                  <Text variant="bodyMedium">{tag.tag_code}</Text>
-                  {tag.uid && (
-                    <Text variant="bodySmall" style={styles.sub}>
-                      UID: {tag.uid}
-                    </Text>
-                  )}
-                </View>
-                <NfcStatusBadge status={tag.status} />
-              </Card.Content>
-            </Card>
-          ))
-        ) : (
-          <Text style={styles.empty}>NFCタグはありません</Text>
-        )}
+      {/* ─── Action Buttons (ref 04: PDF/QRコード/共有) ─── */}
+      <View style={styles.actionRow}>
+        <ActionCard icon="file-pdf-box" label="PDF" onPress={openPdf} />
+        <ActionCard icon="qrcode" label="QRコード" onPress={() => setQrVisible(true)} />
+        <ActionCard icon="share-variant" label="共有" onPress={shareCertificate} />
       </View>
 
-      {/* Actions */}
-      <View style={styles.actions}>
+      {/* ─── Status Actions ─── */}
+      <View style={styles.statusActions}>
         {cert.status === "draft" && (
-          <Button
-            mode="contained"
-            buttonColor="#166534"
+          <LedraButton
+            variant="primary"
             onPress={() => activateMutation.mutate()}
             loading={activateMutation.isPending}
-            disabled={activateMutation.isPending}
-            style={styles.actionButton}
+            icon="shield-check"
           >
             有効化
-          </Button>
+          </LedraButton>
         )}
-
         {cert.status === "active" && (
-          <Button
-            mode="contained"
-            buttonColor="#991b1b"
+          <LedraButton
+            variant="danger"
             onPress={() => setVoidDialogVisible(true)}
-            style={styles.actionButton}
+            icon="shield-off"
           >
             無効化
-          </Button>
+          </LedraButton>
         )}
-
-        <Button
-          mode="contained"
-          buttonColor="#1a1a2e"
-          icon="nfc"
+        <LedraButton
+          variant="secondary"
           onPress={() => router.push(`/nfc/write/${cert.id}`)}
-          style={styles.actionButton}
+          icon="nfc"
         >
           NFC書込
-        </Button>
+        </LedraButton>
       </View>
 
       {/* Void Dialog */}
@@ -329,138 +507,370 @@ export default function CertificateDetailScreen() {
             />
           </Dialog.Content>
           <Dialog.Actions>
-            <Button onPress={() => setVoidDialogVisible(false)}>
-              キャンセル
-            </Button>
-            <Button
-              onPress={() => voidMutation.mutate(voidReason)}
-              loading={voidMutation.isPending}
-              disabled={!voidReason.trim() || voidMutation.isPending}
-              textColor="#991b1b"
+            <Pressable
+              onPress={() => setVoidDialogVisible(false)}
+              style={styles.dialogBtn}
             >
-              無効化
-            </Button>
+              <Text style={styles.dialogBtnText}>キャンセル</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => voidMutation.mutate(voidReason)}
+              disabled={!voidReason.trim() || voidMutation.isPending}
+              style={styles.dialogBtn}
+            >
+              <Text style={[styles.dialogBtnText, { color: colors.danger }]}>
+                無効化
+              </Text>
+            </Pressable>
+          </Dialog.Actions>
+        </Dialog>
+
+        {/* 施工写真の拡大表示。サムネイルでは施工内容を確認できない */}
+        <Dialog visible={!!preview} onDismiss={() => setPreview(null)}>
+          <Dialog.Content style={styles.previewContent}>
+            {preview && (
+              <>
+                <Image
+                  source={{ uri: assetUrl(preview.medium_path ?? preview.storage_path) }}
+                  style={styles.previewImage}
+                  resizeMode="contain"
+                  accessibilityLabel={`証明書画像 (${preview.stage ?? "未指定"})`}
+                />
+                <Text style={styles.qrCaption}>
+                  {preview.stage ? (STAGE_MAP[preview.stage] ?? STAGE_MAP.unspecified).label : "段階未指定"}
+                </Text>
+              </>
+            )}
+          </Dialog.Content>
+          <Dialog.Actions>
+            <Pressable
+              onPress={() => {
+                if (preview) saveToDevice(preview);
+              }}
+              disabled={!preview || savingId === preview?.id}
+              style={styles.dialogBtn}
+            >
+              <Text style={styles.dialogBtnText}>端末に保存</Text>
+            </Pressable>
+            <Pressable onPress={() => setPreview(null)} style={styles.dialogBtn}>
+              <Text style={styles.dialogBtnText}>閉じる</Text>
+            </Pressable>
+          </Dialog.Actions>
+        </Dialog>
+
+        {/* お客様に読んでもらう公開URLのQR。印刷や画面提示に使う */}
+        <Dialog visible={qrVisible} onDismiss={() => setQrVisible(false)}>
+          <Dialog.Title>証明書のQRコード</Dialog.Title>
+          <Dialog.Content style={styles.qrContent}>
+            {cert && publicCertUrl(cert.public_id) ? (
+              <>
+                <QRCode value={publicCertUrl(cert.public_id)!} size={220} />
+                <Text style={styles.qrCaption}>{cert.public_id}</Text>
+              </>
+            ) : (
+              <Text style={styles.qrCaption}>
+                公開URLが設定されていません（EXPO_PUBLIC_CERTIFICATE_BASE_URL）
+              </Text>
+            )}
+          </Dialog.Content>
+          <Dialog.Actions>
+            <Pressable onPress={() => setQrVisible(false)} style={styles.dialogBtn}>
+              <Text style={styles.dialogBtnText}>閉じる</Text>
+            </Pressable>
           </Dialog.Actions>
         </Dialog>
       </Portal>
 
       {(activateMutation.isError || voidMutation.isError) && (
-        <Text style={styles.error}>
-          {activateMutation.error?.message ?? voidMutation.error?.message}
-        </Text>
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorText}>
+            {activateMutation.error?.message ?? voidMutation.error?.message}
+          </Text>
+        </View>
       )}
 
-      <Snackbar visible={!!snackbar} onDismiss={() => setSnackbar("")} duration={3000}>
-        {snackbar}
-      </Snackbar>
+      <View style={{ height: spacing["3xl"] }} />
     </ScrollView>
+
+    {/* **ScrollView の外に置く。** 中に置くと position:absolute の bottom:0 が
+        スクロール内容の末尾に付き、画面外に出て「何も起きない」ように見える */}
+    <Snackbar
+      visible={!!snackbar}
+      onDismiss={() => setSnackbar("")}
+      duration={3000}
+    >
+      {snackbar}
+    </Snackbar>
+    </>
   );
 }
 
-function StageBadge({ stage }: { stage: string }) {
-  const map: Record<string, { bg: string; text: string; label: string }> = {
-    intake_before: { bg: "#dbeafe", text: "#1e40af", label: "施工前" },
-    in_progress: { bg: "#fef3c7", text: "#92400e", label: "作業中" },
-    after: { bg: "#dcfce7", text: "#166534", label: "施工後" },
-    unspecified: { bg: "#f3f4f6", text: "#71717a", label: "未指定" },
-  };
-  const s = map[stage] ?? map.unspecified;
-  return (
-    <Chip compact style={{ backgroundColor: s.bg }} textStyle={{ color: s.text, fontSize: 10 }}>
-      {s.label}
-    </Chip>
-  );
-}
+/* ─── Sub-components ─── */
 
-function GradeBadge({ grade }: { grade: string }) {
-  const map: Record<string, { bg: string; text: string; label: string }> = {
-    verified: { bg: "#dcfce7", text: "#166534", label: "担保" },
-    sealed: { bg: "#dbeafe", text: "#1e40af", label: "封印" },
-    basic: { bg: "#f3f4f6", text: "#71717a", label: "基本" },
-    unverified: { bg: "#fee2e2", text: "#991b1b", label: "未検証" },
-  };
-  const s = map[grade] ?? { bg: "#f3f4f6", text: "#71717a", label: grade };
-  return (
-    <Chip compact style={{ backgroundColor: s.bg }} textStyle={{ color: s.text, fontSize: 10 }}>
-      {s.label}
-    </Chip>
-  );
-}
-
-function InfoRow({ label, value }: { label: string; value: string | null }) {
+function InfoRow({
+  icon,
+  label,
+  value,
+}: {
+  icon: string;
+  label: string;
+  value: string | null;
+}) {
   if (!value) return null;
   return (
     <View style={styles.infoRow}>
-      <Text variant="labelMedium" style={styles.label}>
-        {label}
-      </Text>
-      <Text variant="bodyMedium">{value}</Text>
+      <Icon source={icon} size={18} color={colors.textTertiary} />
+      <Text style={styles.infoLabel}>{label}</Text>
+      <Text style={styles.infoValue}>{value}</Text>
     </View>
   );
 }
 
-function StatusBadge({ status }: { status: string }) {
-  const map: Record<string, { bg: string; text: string; label: string }> = {
-    active: { bg: "#dcfce7", text: "#166534", label: "有効" },
-    draft: { bg: "#f3f4f6", text: "#374151", label: "下書き" },
-    void: { bg: "#fee2e2", text: "#991b1b", label: "無効" },
-    expired: { bg: "#fef3c7", text: "#92400e", label: "期限切" },
-  };
-  const s = map[status] ?? { bg: "#f3f4f6", text: "#374151", label: status };
+function IntegrityRow({
+  icon,
+  label,
+  verified,
+}: {
+  icon: string;
+  label: string;
+  verified: boolean;
+}) {
   return (
-    <Chip compact style={{ backgroundColor: s.bg }} textStyle={{ color: s.text, fontSize: 12 }}>
-      {s.label}
-    </Chip>
+    <View style={styles.integrityRow}>
+      <Icon source={icon} size={18} color={colors.textTertiary} />
+      <Text style={styles.integrityLabel}>{label}</Text>
+      <Icon
+        source={verified ? "check-circle" : "close-circle"}
+        size={20}
+        color={verified ? colors.success : colors.textTertiary}
+      />
+    </View>
   );
 }
 
-function NfcStatusBadge({ status }: { status: string }) {
-  const map: Record<string, { bg: string; text: string }> = {
-    prepared: { bg: "#f3f4f6", text: "#374151" },
-    written: { bg: "#dbeafe", text: "#1e40af" },
-    attached: { bg: "#dcfce7", text: "#166534" },
-    lost: { bg: "#fee2e2", text: "#991b1b" },
-    retired: { bg: "#f3f4f6", text: "#71717a" },
-    error: { bg: "#fee2e2", text: "#991b1b" },
-  };
-  const s = map[status] ?? { bg: "#f3f4f6", text: "#374151" };
+function ActionCard({
+  icon,
+  label,
+  onPress,
+}: {
+  icon: string;
+  label: string;
+  onPress: () => void;
+}) {
   return (
-    <Chip compact style={{ backgroundColor: s.bg }} textStyle={{ color: s.text, fontSize: 11 }}>
-      {status}
-    </Chip>
+    <Pressable style={styles.actionCard} onPress={onPress}>
+      <Icon source={icon} size={24} color={colors.primary} />
+      <Text style={styles.actionCardLabel}>{label}</Text>
+    </Pressable>
   );
 }
+
+/* ─── Styles ─── */
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#fafafa" },
+  container: { flex: 1, backgroundColor: colors.background },
   center: { flex: 1, justifyContent: "center", alignItems: "center" },
-  card: { margin: 12, backgroundColor: "#ffffff" },
-  headerRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
+
+  // Status hero
+  statusHero: {
+    backgroundColor: colors.surface,
+    padding: spacing["2xl"],
     alignItems: "center",
+    borderBottomLeftRadius: radius.hero,
+    borderBottomRightRadius: radius.hero,
+    ...shadows.card,
+    marginBottom: spacing.lg,
   },
-  heading: { fontWeight: "700", color: "#1a1a2e" },
-  divider: { marginVertical: 12 },
-  infoRow: { marginBottom: 8 },
-  label: { color: "#71717a", marginBottom: 2 },
-  section: { padding: 12 },
+  shieldContainer: {
+    width: 80,
+    height: 80,
+    borderRadius: radius.full,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: spacing.md,
+  },
+  certNo: {
+    ...typography.titleMedium,
+    color: colors.textPrimary,
+    marginTop: spacing.sm,
+  },
+  issuedDate: {
+    ...typography.meta,
+    color: colors.textTertiary,
+    marginTop: spacing.xs,
+  },
+
+  // Info card
+  infoCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: colors.surface,
+    marginHorizontal: spacing.lg,
+    borderRadius: radius.card,
+    padding: spacing.lg,
+    gap: spacing.md,
+    ...shadows.card,
+    marginBottom: spacing.lg,
+  },
+  infoCardIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: radius.md,
+    backgroundColor: colors.primaryLight,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  infoCardContent: { flex: 1 },
+  infoCardTitle: {
+    ...typography.meta,
+    color: colors.textTertiary,
+  },
+  infoCardValue: {
+    ...typography.titleSmall,
+    color: colors.textPrimary,
+    marginTop: 2,
+  },
+
+  // Sections
+  section: {
+    paddingHorizontal: spacing.lg,
+    marginBottom: spacing.lg,
+  },
   sectionHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 8,
+    marginBottom: spacing.md,
   },
-  sectionTitle: { fontWeight: "700", color: "#1a1a2e", marginBottom: 8 },
-  imageCard: { marginRight: 8 },
-  image: { width: 120, height: 120, borderRadius: 8 },
-  imageMeta: { flexDirection: "row", gap: 4, marginTop: 4, flexWrap: "wrap", maxWidth: 120 },
-  saveBtn: { position: "absolute", top: -4, right: -4, margin: 0 },
-  tagCard: { marginBottom: 8, backgroundColor: "#ffffff" },
-  row: { flexDirection: "row", alignItems: "center" },
-  sub: { color: "#71717a", marginTop: 2 },
-  empty: { color: "#71717a", textAlign: "center", marginTop: 8 },
-  actions: { padding: 12, gap: 8, marginBottom: 32 },
-  actionButton: { marginBottom: 0 },
-  error: { color: "#991b1b", textAlign: "center", padding: 12 },
+  sectionTitle: {
+    ...typography.titleSmall,
+    color: colors.textPrimary,
+    marginBottom: spacing.md,
+  },
+  sectionCard: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.card,
+    padding: spacing.lg,
+    gap: spacing.md,
+    ...shadows.card,
+  },
+
+  // Info rows
+  infoRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+  },
+  infoLabel: {
+    ...typography.meta,
+    color: colors.textTertiary,
+    width: 72,
+  },
+  infoValue: {
+    ...typography.bodySmall,
+    color: colors.textPrimary,
+    flex: 1,
+  },
+
+  // Integrity rows
+  integrityRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+  },
+  integrityLabel: {
+    ...typography.bodySmall,
+    color: colors.textPrimary,
+    flex: 1,
+  },
+
+  // Photos
+  photoAddBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+  },
+  photoAddText: {
+    ...typography.label,
+    color: colors.primary,
+  },
+  imageScroll: { gap: spacing.sm },
+  imageCard: {
+    position: "relative",
+    borderRadius: radius.md,
+    overflow: "hidden",
+  },
+  image: { width: 120, height: 120, borderRadius: radius.md },
+  imageBadges: {
+    flexDirection: "row",
+    gap: spacing.xs,
+    marginTop: spacing.xs,
+    flexWrap: "wrap",
+    maxWidth: 120,
+  },
+  saveBtn: {
+    position: "absolute",
+    top: 0,
+    right: 0,
+    margin: 0,
+    backgroundColor: colors.surface,
+  },
+
+  // Action row (ref 04: PDF/QR/共有)
+  actionRow: {
+    flexDirection: "row",
+    paddingHorizontal: spacing.lg,
+    gap: spacing.md,
+    marginBottom: spacing.lg,
+  },
+  actionCard: {
+    flex: 1,
+    backgroundColor: colors.surface,
+    borderRadius: radius.card,
+    padding: spacing.lg,
+    alignItems: "center",
+    gap: spacing.sm,
+    ...shadows.card,
+  },
+  actionCardLabel: {
+    ...typography.labelSmall,
+    color: colors.textPrimary,
+  },
+
+  // Status actions
+  statusActions: {
+    paddingHorizontal: spacing.lg,
+    gap: spacing.sm,
+    marginBottom: spacing.lg,
+  },
+
+  // Dialog
+  dialogBtn: {
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+  },
+  dialogBtnText: {
+    ...typography.label,
+    color: colors.textPrimary,
+  },
+
+  // Misc
+  emptyText: {
+    ...typography.bodySmall,
+    color: colors.textTertiary,
+    textAlign: "center",
+    paddingVertical: spacing.xl,
+  },
+  errorContainer: { paddingHorizontal: spacing.lg },
+  errorText: {
+    ...typography.bodySmall,
+    color: colors.danger,
+    textAlign: "center",
+  },
+  qrContent: { alignItems: "center", gap: spacing.md },
+  qrCaption: { ...typography.meta, color: colors.textSecondary, textAlign: "center" },
+  imageBroken: { alignItems: "center", justifyContent: "center", gap: spacing.xs, backgroundColor: colors.surfaceVariant },
+  imageBrokenText: { ...typography.meta, color: colors.textSecondary },
+  previewContent: { alignItems: "center", gap: spacing.sm },
+  previewImage: { width: "100%", height: 320, borderRadius: radius.md },
 });

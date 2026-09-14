@@ -67,23 +67,21 @@ export default function OnboardingWizard() {
       <div className="flex items-start justify-between">
         <div>
           <h2 className="text-lg font-bold text-blue-900">ようこそ、{insurer.name} 様</h2>
-          <p className="text-sm text-blue-700 mt-1">
-            初期設定を完了して、Ledraのご利用を開始しましょう。
-          </p>
+          <p className="text-sm text-blue-700 mt-1">初期設定を完了して、Ledraのご利用を開始しましょう。</p>
         </div>
-        <button
-          onClick={completeOnboarding}
-          disabled={busy}
-          className="text-xs text-blue-500 hover:underline"
-        >
+        <button onClick={completeOnboarding} disabled={busy} className="text-xs text-blue-500 hover:underline">
           スキップ
         </button>
       </div>
 
       <div className="space-y-3">
         {/* Profile check */}
-        <div className={`flex items-center gap-3 rounded-xl p-3 ${checklist.profile_complete ? "bg-green-50 border border-green-200" : "bg-surface border border-blue-100"}`}>
-          <div className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold ${checklist.profile_complete ? "bg-green-200 text-green-800" : "bg-blue-200 text-blue-800"}`}>
+        <div
+          className={`flex items-center gap-3 rounded-xl p-3 ${checklist.profile_complete ? "bg-green-50 border border-green-200" : "bg-surface border border-blue-100"}`}
+        >
+          <div
+            className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold ${checklist.profile_complete ? "bg-green-200 text-green-800" : "bg-blue-200 text-blue-800"}`}
+          >
             {checklist.profile_complete ? "✓" : "1"}
           </div>
           <div className="flex-1">
@@ -95,21 +93,27 @@ export default function OnboardingWizard() {
         </div>
 
         {/* Contact info */}
-        <div className={`flex items-center gap-3 rounded-xl p-3 ${checklist.contact_info ? "bg-green-50 border border-green-200" : "bg-surface border border-blue-100"}`}>
-          <div className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold ${checklist.contact_info ? "bg-green-200 text-green-800" : "bg-blue-200 text-blue-800"}`}>
+        <div
+          className={`flex items-center gap-3 rounded-xl p-3 ${checklist.contact_info ? "bg-green-50 border border-green-200" : "bg-surface border border-blue-100"}`}
+        >
+          <div
+            className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold ${checklist.contact_info ? "bg-green-200 text-green-800" : "bg-blue-200 text-blue-800"}`}
+          >
             {checklist.contact_info ? "✓" : "2"}
           </div>
           <div className="flex-1">
             <div className="text-sm font-medium text-primary">連絡先情報</div>
-            <div className="text-xs text-muted">
-              {checklist.contact_info ? "完了" : "電話番号を登録してください"}
-            </div>
+            <div className="text-xs text-muted">{checklist.contact_info ? "完了" : "電話番号を登録してください"}</div>
           </div>
         </div>
 
         {/* Plan selection */}
-        <div className={`flex items-center gap-3 rounded-xl p-3 ${checklist.plan_selected ? "bg-green-50 border border-green-200" : "bg-surface border border-blue-100"}`}>
-          <div className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold ${checklist.plan_selected ? "bg-green-200 text-green-800" : "bg-blue-200 text-blue-800"}`}>
+        <div
+          className={`flex items-center gap-3 rounded-xl p-3 ${checklist.plan_selected ? "bg-green-50 border border-green-200" : "bg-surface border border-blue-100"}`}
+        >
+          <div
+            className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold ${checklist.plan_selected ? "bg-green-200 text-green-800" : "bg-blue-200 text-blue-800"}`}
+          >
             {checklist.plan_selected ? "✓" : "3"}
           </div>
           <div className="flex-1">

@@ -22,10 +22,14 @@ import AccessoryDetailsSection from "./AccessoryDetailsSection";
 import PhotoUploadSection, { type PhotoUploadHandle } from "./PhotoUploadSection";
 import ManufacturerTemplatePicker from "./ManufacturerTemplatePicker";
 import CertFormProgressRail from "./CertFormProgressRail";
+import { parseMileageKm, MAX_MILEAGE_KM } from "@/lib/maintenance/mileage";
+import OdometerOcrButton from "@/components/admin/OdometerOcrButton";
 import Button from "@/components/ui/Button";
 import HelpTooltip from "@/components/ui/HelpTooltip";
 import type { PlanTier } from "@/lib/billing/planFeatures";
 import { PHOTO_LIMITS, canUseFeature } from "@/lib/billing/planFeatures";
+import { useCurrentRole } from "@/lib/auth/useCurrentRole";
+import { hasMinRole } from "@/lib/auth/roles";
 
 // AI panels are heavy, opt-in features that are collapsed by default.
 // Defer their JS to keep initial INP on /admin/certificates/new low.
@@ -91,6 +95,8 @@ type Props = {
   defaultVehicleId?: string;
   defaultCustomerId?: string;
   defaultReservationId?: string;
+  /** 外注施工: テナント間の発注 (job_orders) から発行する場合の紐付け先。 */
+  defaultJobOrderId?: string;
   /** 案件の「部品交換あり」トグルが ON のとき、整備内容セクションへの既定メモ。 */
   defaultPartsReplacedNote?: string;
   /** "in_progress" のとき、この発行フローでアップロードする写真を作業中の記録として stage タグ付けする。 */
@@ -128,6 +134,7 @@ export default function CertNewFormWrapper({
   defaultVehicleId,
   defaultCustomerId,
   defaultReservationId,
+  defaultJobOrderId,
   defaultPartsReplacedNote,
   defaultPhotoStage,
   templates,
@@ -147,6 +154,7 @@ export default function CertNewFormWrapper({
   const [isPending, startTransition] = useTransition();
   const [submitStatus, setSubmitStatus] = useState<"active" | "draft">("active");
   const [error, setError] = useState<string | null>(null);
+  const mileageRef = useRef<HTMLInputElement | null>(null);
   const [uploadProgress, setUploadProgress] = useState<string | null>(null);
   const [savingDefault, setSavingDefault] = useState(false);
   const [defaultSaveMsg, setDefaultSaveMsg] = useState<string | null>(null);
@@ -212,6 +220,13 @@ export default function CertNewFormWrapper({
 
   // AI下書き適用時にフォームフィールドを自動入力する
   const [selectedVehicleId, setSelectedVehicleId] = useState<string | undefined>(defaultVehicleId);
+  // 外注施工の紐付け。既定は ON（発注導線から来た場合のみ表示される）。
+  // hidden のまま黙って付けない: 紐付けた証明書は**相手方テナントの画面に出る**ので、
+  // 発注導線から入ったあと別の顧客の証明書を発行すると他社への誤開示になる。
+  // 発注に車両が入っていれば create.ts が食い違いを弾くが、UI から作られた発注は
+  // vehicle_id を持たない（OrdersClient が送らない）ため機械的には検証できない。
+  // 検証できない側の歯止めは「発行者に見えていること」なので、ここで明示する。
+  const [linkToJobOrder, setLinkToJobOrder] = useState(true);
   const [draftApplied, setDraftApplied] = useState(false);
 
   // 前回証明書データ（車両選択時に取得）
@@ -350,6 +365,17 @@ export default function CertNewFormWrapper({
       return;
     }
 
+    // 走行距離もここで弾く。オフライン経路は createCertAction を通らずキューに積むため、
+    // ここを通さないと「保存できたのに復帰後の同期で必ず失敗する」証明書が溜まる。
+    if (parseMileageKm(formData.get("mileage_km")) === null) {
+      setError("走行距離（km）を入力してください。メーターの数字を半角数字で入力します。");
+      form.querySelector<HTMLElement>("[data-mileage-field]")?.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
+      return;
+    }
+
     const attachedFiles = photoRef.current?.getFiles() ?? [];
 
     // 写真添付必須ルール (全テナント一律): 発行には施工写真が 1 枚以上必要。
@@ -459,7 +485,9 @@ export default function CertNewFormWrapper({
             ? "車両情報を入力してください（マスタ選択またはメーカー・車種を手入力）。"
             : errCode === "customer_name_required"
               ? "お客様名を入力してください。"
-              : `エラー: ${errCode}`,
+              : errCode === "mileage_required"
+                ? "走行距離（km）を入力してください。メーターの数字を半角数字で入力します。"
+                : `エラー: ${errCode}`,
         );
         return;
       }
@@ -589,6 +617,14 @@ export default function CertNewFormWrapper({
     });
   };
 
+  // テナント全体の既定値を書き換える操作。**owner のみ**（代表判断 2026-09-04）。
+  // API 側でも強制しているが、押せば必ず 403 になるボタンを見せない
+  // (以前は RLS が 0 行更新にして {ok:true} を返していたため「保存しました」と
+  //  嘘の成功が出ていた。API を直した結果、出しっぱなしだと毎回失敗表示になる)。
+  // settings:edit は admin も持つので、権限ではなくロールで見る必要がある。
+  const { role } = useCurrentRole();
+  const canSaveDefault = role != null && hasMinRole(role, "owner");
+
   const handleSaveWarrantyDefault = async () => {
     const text = warrantyRef.current?.value ?? "";
     setSavingDefault(true);
@@ -627,6 +663,7 @@ export default function CertNewFormWrapper({
           {defaultVehicleId && <input type="hidden" name="vehicle_id" value={defaultVehicleId} />}
           {defaultCustomerId && <input type="hidden" name="customer_id" value={defaultCustomerId} />}
           {defaultReservationId && <input type="hidden" name="reservation_id" value={defaultReservationId} />}
+          {defaultJobOrderId && <input type="hidden" name="job_order_id" value={defaultJobOrderId} />}
           {/* 作業中の撮影導線 (?stage=in_progress) から来た場合、テンプレ切替後も stage を維持する。
               無いと再読み込みで in_progress タグが失われ、写真が unspecified で保存されてしまう。 */}
           {defaultPhotoStage && <input type="hidden" name="stage" value={defaultPhotoStage} />}
@@ -667,7 +704,27 @@ export default function CertNewFormWrapper({
             先頭の初期値を返し、プルダウン/検索で別の顧客に変更しても反映されない。
             defaultCustomerId は VehiclePickerSection に渡して初期選択させる。 */}
         {defaultReservationId && <input type="hidden" name="reservation_id" value={defaultReservationId} />}
+        {defaultJobOrderId && linkToJobOrder && <input type="hidden" name="job_order_id" value={defaultJobOrderId} />}
         {serviceType && <input type="hidden" name="service_type" value={serviceType} />}
+
+        {defaultJobOrderId && (
+          <div className="mb-6 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 dark:border-amber-800/50 dark:bg-amber-950">
+            <label className="flex items-start gap-3 text-sm text-amber-800 dark:text-amber-400">
+              <input
+                type="checkbox"
+                checked={linkToJobOrder}
+                onChange={(e) => setLinkToJobOrder(e.target.checked)}
+                className="mt-0.5 h-4 w-4 shrink-0"
+              />
+              <span>
+                <span className="font-semibold">この証明書を発注に紐付けて発行します。</span>
+                <br />
+                紐付けると、<span className="font-semibold">取引先（発注元／受注先）の受発注画面にも表示されます</span>
+                。別のお客様の証明書を発行する場合はチェックを外してください。
+              </span>
+            </label>
+          </div>
+        )}
 
         <CertFormProgressRail sections={formSections} />
 
@@ -737,6 +794,39 @@ export default function CertNewFormWrapper({
               </div>
             </div>
           )}
+
+          {/* 走行距離（必須）。整備テンプレート限定・折りたたみの中だった頃は本番に1件も
+              溜まらなかったため、施工種別を問わず常時表示の必須項目としてここに置く。
+              入庫のたびに読める唯一の客観値で、車両パスポート・整備リマインダー・
+              劣化予測・残価判定がすべてこの時系列を入力にしている。 */}
+          <label className="mt-4 block space-y-1.5" data-mileage-field>
+            <span className="text-sm font-medium text-secondary">
+              走行距離（km）<span className="ml-1 text-xs font-normal text-red-600">必須</span>
+            </span>
+            <input
+              ref={mileageRef}
+              type="number"
+              name="mileage_km"
+              inputMode="numeric"
+              min={1}
+              max={MAX_MILEAGE_KM}
+              step={1}
+              required
+              placeholder="例: 35000"
+              className="w-full rounded-lg border border-border-default bg-surface px-2.5 py-2 text-sm text-primary placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent"
+            />
+            <span className="block text-xs text-muted">
+              メーターの数字をそのまま入力してください。次回整備時期の判定と、車両パスポートの走行距離履歴になります。
+            </span>
+          </label>
+          {/* 撮って読ませる導線。読み取り値は下書きで、確定（送信）は人が行う。 */}
+          <div className="mt-2">
+            <OdometerOcrButton
+              onRead={(km) => {
+                if (mileageRef.current) mileageRef.current.value = String(km);
+              }}
+            />
+          </div>
         </section>
 
         {/* ━━━ 4. 施工写真（写真ファースト：車種の直後に配置） ━━━ */}
@@ -949,6 +1039,7 @@ export default function CertNewFormWrapper({
               <button
                 type="button"
                 onClick={handleSaveWarrantyDefault}
+                hidden={!canSaveDefault}
                 disabled={savingDefault}
                 className="rounded-xl border border-border-default bg-surface px-4 py-2 text-xs font-medium text-primary hover:bg-surface-hover disabled:opacity-50"
               >
@@ -977,6 +1068,17 @@ export default function CertNewFormWrapper({
                 placeholder="その他の特記事項があれば記入してください"
               />
             </label>
+            {canAiDraft && (
+              <VoiceMemoPanel
+                variant="note"
+                onApply={(note) => {
+                  const el = formRef.current?.querySelector<HTMLTextAreaElement>("textarea[name='remarks']");
+                  if (el) {
+                    el.value = el.value.trim() ? `${el.value.trim()}\n${note}` : note;
+                  }
+                }}
+              />
+            )}
           </section>
         </details>
 

@@ -43,9 +43,7 @@ export default function Pagination({ page, totalPages, onPageChange }: Paginatio
           key={p}
           onClick={() => onPageChange(p)}
           className={`px-3 py-1.5 text-sm rounded-md border transition-colors ${
-            p === page
-              ? "bg-accent text-inverse border-accent"
-              : "border-divider hover:bg-surface-hover"
+            p === page ? "bg-accent text-inverse border-accent" : "border-divider hover:bg-surface-hover"
           }`}
           aria-current={p === page ? "page" : undefined}
         >

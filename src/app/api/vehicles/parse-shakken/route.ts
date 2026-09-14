@@ -1,5 +1,6 @@
-import { apiInternalError, apiUnauthorized, apiValidationError } from "@/lib/api/response";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
+import { apiError, apiInternalError, apiUnauthorized, apiValidationError, apiForbidden } from "@/lib/api/response";
+import { resolveCallerWithRole, requirePermission } from "@/lib/auth/checkRole";
+import { checkRateLimit } from "@/lib/api/rateLimit";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { parseShakenshoAuto, extractFirstRegistrationYear, calcSizeClass } from "@/lib/ocr/shakensho";
 import {
@@ -40,6 +41,12 @@ export async function POST(req: Request) {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
+    if (!requirePermission(caller, "vehicles:create")) return apiForbidden();
+
+    // 車検証 OCR は Vision モデルを叩くので呼ぶたびに費用が出る。
+    // 画像を buffer 化する前に弾く。
+    const limited = await checkRateLimit(req, "ai", `parse-shakken:${caller.tenantId}`);
+    if (limited) return limited;
 
     const formData = await req.formData();
     const file = formData.get("file") as File | null;
@@ -84,9 +91,22 @@ export async function POST(req: Request) {
 
     // maker は QR コードには含まれない（OCR 必須）ので requireFields に指定。
     // QR だけでは不足と判定され OCR を併用してマージされる。
-    const { data: parsed, source } = await parseShakenshoAuto(imageBuffer, {
-      requireFields: ["maker"],
-    });
+    // OCR 基盤側の失敗 (API キー未設定 / レート制限 / サーキットオープン) は
+    // 「画像が読めなかった」と区別できる文言で返す — 200 + 全 null を返すと
+    // 画面が無反応になり、利用者が原因を切り分けられない。
+    let parsed: Awaited<ReturnType<typeof parseShakenshoAuto>>["data"];
+    let source: Awaited<ReturnType<typeof parseShakenshoAuto>>["source"];
+    try {
+      ({ data: parsed, source } = await parseShakenshoAuto(imageBuffer, { requireFields: ["maker"] }));
+    } catch (e) {
+      usage.record({ tenantId: caller.tenantId, userId: caller.userId, outcome: "error" });
+      logger.error("[parse-shakken] OCR failed", { err: e instanceof Error ? e.message : String(e) });
+      return apiError({
+        code: "internal_error",
+        message: "車検証の読み取りに失敗しました（AI OCR に接続できませんでした）。時間をおいて再度お試しください。",
+        status: 502,
+      });
+    }
 
     const length_mm = parsed.length_mm ?? null;
     const width_mm = parsed.width_mm ?? null;

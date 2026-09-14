@@ -9,9 +9,29 @@ if [ "$SKIP_PREPUSH" = "1" ]; then
   exit 0
 fi
 
-# Detect doc-only push and skip
-if git diff --name-only HEAD @{push} 2>/dev/null | grep -qvE '^(docs/|README\.md|CHANGELOG\.md|.*\.md)$'; then
-  npx vitest run --changed @{push} || {
+# 比較対象。`@{push}` は**新規ブランチの初回 push では解決できない**。
+#
+# 以前はその失敗を `2>/dev/null` で握りつぶしており、出力が空 → grep が「非 doc ファイル
+# 無し」と判定 → **doc-only 扱いでテストが丸ごとスキップ**されていた。つまり
+# 新しいブランチの初回 push は、何を変えていても一度も走らないまま通っていた。
+# 「比較できなかった」を「変更なし」と読む形（MISTAKE_LEDGER 型 G）。
+#
+# 解決できないときは既定ブランチと比べ、それも無ければ**全部走らせる**。
+# 迷ったら走らせる側に倒す（スキップは静かに嘘をつくが、余分に走るのは遅いだけ）。
+BASE="@{push}"
+git rev-parse --verify --quiet "$BASE" >/dev/null 2>&1 || BASE="origin/main"
+git rev-parse --verify --quiet "$BASE" >/dev/null 2>&1 || BASE=""
+
+if [ -z "$BASE" ]; then
+  echo "[pre-push] 比較対象を解決できませんでした。全テストを走らせます。"
+  npx vitest run || {
+    echo ""
+    echo "[pre-push] vitest failed. Override with SKIP_PREPUSH=1 only if you understand why."
+    exit 1
+  }
+elif git diff --name-only HEAD "$BASE" | grep -qvE '^(docs/|README\.md|CHANGELOG\.md|.*\.md)$'; then
+  echo "[pre-push] comparing against $BASE"
+  npx vitest run --changed "$BASE" || {
     echo ""
     echo "[pre-push] vitest --changed failed. Override with SKIP_PREPUSH=1 only if you understand why."
     exit 1

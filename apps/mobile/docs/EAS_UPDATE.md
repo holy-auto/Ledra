@@ -1,16 +1,30 @@
 # EAS Update (OTA) 運用ガイド
 
-`apps/mobile` は EAS Update を使ったコード/アセットの OTA (Over-The-Air)
-配信に対応している。ストア審査が不要な軽微な修正 (UI 文言、ロジック変更、
-バグフィックス) は **App Store / Google Play へリビルドせずに数分でユーザー
-端末へ配信できる**。
+> **現状: OTA は動いていない（2026-08-25 実測）。** このファイルは「こう運用したい」
+> という計画であって、現在の設定ではない。下の「現状」を読んでから使うこと。
+> 配布は `eas build` のみ。
 
-ネイティブ依存 (新規パッケージ、`app.json` plugins、Permissions など) を
-変える変更は OTA では届かないため、必ず通常の `eas build` でストア配信する。
+## 現状（2026-08-25 時点で実際に確認したこと）
 
-## チャネル構成
+| 前提 | 実際 |
+| --- | --- |
+| `expo-updates` が入っている | **入っていない**（`apps/mobile/package.json` に依存が無い） |
+| `eas.json` に channel がある | **無い**（`channel` の記述が1つも無い） |
+| `app.json` に `updates` / `runtimeVersion` | **どちらも未設定** |
 
-`apps/mobile/eas.json` の build.profiles で channel を設定済み。
+つまり `eas update` を実行しても、**どの端末にも届かない**。
+配布は現状 `eas build` → ストア（または internal distribution）だけ。
+
+OTA を実際に使いたくなったら、下の「セットアップ」を上から実施し、
+このファイルの「現状」を書き換えること。
+
+## いつ OTA では足りないか（有効化した後も同じ）
+
+ネイティブ依存を変える変更は OTA では届かない。**`app.json` の plugins や
+Permissions の文言変更も含む**（JS だけの変更に見えても届かない）。
+この場合は必ず `eas build` でストア配信する。
+
+## チャネル構成（有効化したときの想定）
 
 | profile | channel | 配信先 |
 | --- | --- | --- |
@@ -20,14 +34,19 @@
 | production | production | 一般ユーザー |
 
 各端末は `expo-updates` 経由で自分の build channel に紐づく最新 update を取得する。
+`eas.json` の各 profile に `"channel": "<名前>"` を足すところから始める
+（`staging` profile 自体もまだ無いので、使うなら作る）。
 
-## セットアップ (初回のみ)
+## セットアップ (初回のみ・**未実施**)
 
 ```bash
 cd apps/mobile
 
-# 1. expo-updates を導入 (まだなら)
+# 1. expo-updates を導入（未導入。ここが済むまで下は全部動かない）
 npx expo install expo-updates
+
+# 1b. eas.json の各 profile に "channel" を足し、app.json に
+#     "updates" と "runtimeVersion" を設定する（どちらも未設定）
 
 # 2. EAS にチャネルを登録
 eas channel:create development

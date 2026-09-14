@@ -629,7 +629,10 @@ function DonutChart() {
         })}
       </svg>
       <div className={styles.donutCenter}>
-        <span className={styles.donutValue}>{on ? 100 : 0}<span className={styles.donutUnit}>%</span></span>
+        <span className={styles.donutValue}>
+          {on ? 100 : 0}
+          <span className={styles.donutUnit}>%</span>
+        </span>
         <span className={styles.donutLabel}>稼働率</span>
       </div>
       <ul className={styles.donutLegend}>
@@ -712,13 +715,8 @@ function CountTo({ to, active }: { to: number; active: boolean }) {
 function Heatmap() {
   const { ref, on } = useIsVisible<HTMLDivElement>();
   const cells = [
-    0, 1, 2, 1, 0, 2, 3,
-    2, 3, 4, 2, 3, 1, 2,
-    1, 2, 3, 4, 3, 2, 3,
-    3, 4, 4, 3, 2, 3, 4,
-    2, 1, 3, 4, 4, 3, 2,
-    1, 2, 2, 3, 4, 4, 3,
-    0, 1, 2, 3, 3, 2, 1,
+    0, 1, 2, 1, 0, 2, 3, 2, 3, 4, 2, 3, 1, 2, 1, 2, 3, 4, 3, 2, 3, 3, 4, 4, 3, 2, 3, 4, 2, 1, 3, 4, 4, 3, 2, 1, 2, 2, 3,
+    4, 4, 3, 0, 1, 2, 3, 3, 2, 1,
   ];
   const days = ["日", "月", "火", "水", "木", "金", "土"];
   return (
@@ -1346,7 +1344,8 @@ function FormSection() {
             </li>
           </ul>
           <p className={styles.cardText}>
-            ログイン / サインアップ画面での使用を想定。ラベルとプレースホルダを兼ねることで視線移動を減らし、余白を節約できる。
+            ログイン /
+            サインアップ画面での使用を想定。ラベルとプレースホルダを兼ねることで視線移動を減らし、余白を節約できる。
           </p>
         </div>
       </div>
@@ -1374,7 +1373,14 @@ function Stepper({ step }: { step: number }) {
               <span className={styles.stepDot}>
                 {state === "done" ? (
                   <svg viewBox="0 0 24 24" className={styles.stepCheck} aria-hidden>
-                    <path d="M5 12l5 5L20 7" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+                    <path
+                      d="M5 12l5 5L20 7"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="3"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
                   </svg>
                 ) : (
                   <span className={styles.stepNum}>{i + 1}</span>

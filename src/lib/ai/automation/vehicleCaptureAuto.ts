@@ -34,7 +34,7 @@ import {
   buildVehiclePhotoRegistered,
   buildVehiclePhotoFailedHandoff,
 } from "@/lib/line/flow/messages";
-import { parseShakenshoAuto } from "@/lib/ocr/shakensho";
+import { parseShakenshoAuto, type ShakenshoData } from "@/lib/ocr/shakensho";
 import { createVehicleFromShakensho } from "@/lib/vehicles/createFromShakensho";
 import {
   loadAiAutomationSettings,
@@ -181,7 +181,18 @@ export async function handleVehiclePhotoMessage(params: {
       return handoffVehiclePhoto(admin, tenantId, flow, lineUserId, "AI 自動入力が無効になっているため");
     }
 
-    const { data: parsed } = await parseShakenshoAuto(imageBuffer, { requireFields: ["maker"] });
+    // OCR (Vision) が落ちた場合も「読めなかった」と同じくスタッフ引き継ぎに倒す。
+    // 外側の catch に落とすと引き継ぎされず顧客が待たされたままになる。
+    let parsed: ShakenshoData;
+    try {
+      ({ data: parsed } = await parseShakenshoAuto(imageBuffer, { requireFields: ["maker"] }));
+    } catch (e) {
+      logger.warn("[vehicleCaptureAuto] shakensho OCR failed", {
+        tenantId,
+        err: e instanceof Error ? e.message : String(e),
+      });
+      return handoffVehiclePhoto(admin, tenantId, flow, lineUserId, "車検証の読み取り処理に失敗したため");
+    }
     if (!parsed.maker || !flow.customer_id) {
       return handoffVehiclePhoto(admin, tenantId, flow, lineUserId, "車検証からメーカーを読み取れなかったため");
     }

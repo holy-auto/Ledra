@@ -20,10 +20,7 @@ export function ilikePattern(query: string): string {
  */
 export function parseListParams(searchParams: URLSearchParams) {
   const page = Math.max(1, parseInt(searchParams.get("page") ?? "1", 10));
-  const limit = Math.min(
-    100,
-    Math.max(1, parseInt(searchParams.get("limit") ?? "50", 10)),
-  );
+  const limit = Math.min(100, Math.max(1, parseInt(searchParams.get("limit") ?? "50", 10)));
   const offset = (page - 1) * limit;
   const status = searchParams.get("status") || null;
   const q = (searchParams.get("q") ?? "").trim();

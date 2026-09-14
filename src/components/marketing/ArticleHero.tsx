@@ -64,34 +64,15 @@ export function ArticleHero({
         <rect width="1200" height="480" fill={`url(#ah-grid-${h})`} opacity="0.5" />
 
         {/* Orbs */}
-        <circle
-          cx={(orb1X / 100) * 1200}
-          cy={(orb1Y / 100) * 480}
-          r="280"
-          fill={`url(#ah-orb1-${h})`}
-        />
-        <circle
-          cx={(orb2X / 100) * 1200}
-          cy={(orb2Y / 100) * 480}
-          r="220"
-          fill={`url(#ah-orb2-${h})`}
-        />
+        <circle cx={(orb1X / 100) * 1200} cy={(orb1Y / 100) * 480} r="280" fill={`url(#ah-orb1-${h})`} />
+        <circle cx={(orb2X / 100) * 1200} cy={(orb2Y / 100) * 480} r="220" fill={`url(#ah-orb2-${h})`} />
 
         {/* Floating dots */}
         {Array.from({ length: 6 }).map((_, i) => {
-          const cx = ((h >> (i * 3)) % 1200);
-          const cy = ((h >> (i * 3 + 1)) % 480);
+          const cx = (h >> (i * 3)) % 1200;
+          const cy = (h >> (i * 3 + 1)) % 480;
           const r = 1 + ((h >> (i * 3 + 2)) % 2);
-          return (
-            <circle
-              key={i}
-              cx={cx}
-              cy={cy}
-              r={r}
-              fill="rgba(139,200,255,0.35)"
-              opacity="0.6"
-            />
-          );
+          return <circle key={i} cx={cx} cy={cy} r={r} fill="rgba(139,200,255,0.35)" opacity="0.6" />;
         })}
 
         {/* Abstract geometric mark (rotated square) */}
@@ -112,14 +93,7 @@ export function ArticleHero({
               fill="rgba(96,165,250,0.12)"
               stroke="rgba(96,165,250,0.28)"
             />
-            <text
-              x={54}
-              y="55"
-              fill="rgba(147,197,253,0.95)"
-              fontSize="12"
-              fontWeight="600"
-              letterSpacing="2"
-            >
+            <text x={54} y="55" fill="rgba(147,197,253,0.95)" fontSize="12" fontWeight="600" letterSpacing="2">
               {tag.toUpperCase()}
             </text>
           </>

@@ -8,7 +8,9 @@ export const dynamic = "force-dynamic";
 
 export default async function BrandsPage() {
   const supabase = await createSupabaseServerClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
   if (!user) redirect("/login?next=/admin/settings/brands");
 
   const { data: membership } = await supabase
@@ -35,7 +37,9 @@ export default async function BrandsPage() {
         title="ブランド・製品マスター"
         description="コーティング剤のブランドと製品を管理します。証明書作成時に選択できるようになります。"
         actions={
-          <Link href="/admin/settings" className="btn-secondary">設定に戻る</Link>
+          <Link href="/admin/settings" className="btn-secondary">
+            設定に戻る
+          </Link>
         }
       />
       <BrandsClient initialBrands={brands ?? []} />

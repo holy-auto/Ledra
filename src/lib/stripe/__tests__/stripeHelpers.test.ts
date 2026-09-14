@@ -66,16 +66,12 @@ describe("planTierToPriceId — edge cases", () => {
   });
 
   it("throws for free plan with annual=true as well", () => {
-    expect(() => planTierToPriceId("free", true)).toThrow(
-      "Free plan does not require a Stripe Price"
-    );
+    expect(() => planTierToPriceId("free", true)).toThrow("Free plan does not require a Stripe Price");
   });
 
   it("throws when annual env var missing but monthly exists", () => {
     vi.stubEnv("STRIPE_PRICE_STARTER_ANNUAL", "");
-    expect(() => planTierToPriceId("starter", true)).toThrow(
-      "Missing STRIPE_PRICE"
-    );
+    expect(() => planTierToPriceId("starter", true)).toThrow("Missing STRIPE_PRICE");
   });
 
   it("throws descriptive error including plan name", () => {
@@ -95,9 +91,7 @@ describe("planTierToPriceId — edge cases", () => {
 
   it("handles unknown plan tier gracefully", () => {
     // TypeScript would prevent this, but at runtime it would hit the map lookup
-    expect(() => planTierToPriceId("enterprise" as any)).toThrow(
-      "Missing STRIPE_PRICE"
-    );
+    expect(() => planTierToPriceId("enterprise" as any)).toThrow("Missing STRIPE_PRICE");
   });
 
   it("all three paid tiers return correct monthly prices", () => {

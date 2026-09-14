@@ -12,8 +12,8 @@ import { NextRequest } from "next/server";
 import { z } from "zod";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
-import { apiOk, apiUnauthorized, apiInternalError, apiPlanLimit } from "@/lib/api/response";
+import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
+import { apiOk, apiUnauthorized, apiInternalError, apiPlanLimit, apiForbidden } from "@/lib/api/response";
 import { parseJsonBody } from "@/lib/api/parseBody";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { canUseFeature } from "@/lib/billing/planFeatures";
@@ -52,6 +52,8 @@ export async function POST(req: NextRequest) {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
+    // AI 呼び出しは staff 以上 (代表判断 2026-09-01。閲覧専用ロールに費用の出る操作をさせない)
+    if (!requireMinRole(caller, "staff")) return apiForbidden();
     if (!canUseFeature(caller.planTier, "ai_pos_deduction")) {
       usage.record({ tenantId: caller.tenantId, userId: caller.userId, outcome: "plan_limit" });
       return apiPlanLimit("AI 在庫引落推定は Standard プラン以上でご利用いただけます。");
@@ -74,8 +76,10 @@ export async function POST(req: NextRequest) {
     // 在庫 / 紐付け / 消費統計テーブルは別 migration で追加予定。
     // 未マイグレーション環境では graceful degrade して空 suggestion を返す。
     const [skusRes, linksRes, historyRes] = await Promise.all([
+      // schema-check-ignore: 未作成のテーブル。下の isMissingTableError で縮退する
       admin.from("inventory_skus").select("id, name, category, unit").eq("tenant_id", tenantId),
       admin
+        // schema-check-ignore: 未作成のテーブル。下の isMissingTableError で縮退する
         .from("menu_item_inventory_links")
         .select("menu_item_id, sku_id, quantity")
         .eq("tenant_id", tenantId)
@@ -84,6 +88,7 @@ export async function POST(req: NextRequest) {
           parsed.data.sales.map((s) => s.menu_item_id),
         ),
       admin
+        // schema-check-ignore: 未作成のテーブル。下の isMissingTableError で縮退する
         .from("inventory_consumption_stats")
         .select("service_category, sku_id, avg_quantity")
         .eq("tenant_id", tenantId),

@@ -25,7 +25,10 @@ export default function AgentFaqPage() {
   useEffect(() => {
     (async () => {
       const { data: u } = await supabase.auth.getUser();
-      if (!u?.user) { window.location.href = "/agent/login"; return; }
+      if (!u?.user) {
+        window.location.href = "/agent/login";
+        return;
+      }
       setReady(true);
       const res = await fetch("/api/agent/faq");
       if (res.ok) {
@@ -76,7 +79,9 @@ export default function AgentFaqPage() {
           <button
             onClick={() => setActiveCategory("all")}
             className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
-              activeCategory === "all" ? "bg-primary text-inverse" : "bg-surface-hover text-secondary hover:bg-surface-active"
+              activeCategory === "all"
+                ? "bg-primary text-inverse"
+                : "bg-surface-hover text-secondary hover:bg-surface-active"
             }`}
           >
             すべて
@@ -86,7 +91,9 @@ export default function AgentFaqPage() {
               key={cat.id}
               onClick={() => setActiveCategory(cat.id)}
               className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
-                activeCategory === cat.id ? "bg-primary text-inverse" : "bg-surface-hover text-secondary hover:bg-surface-active"
+                activeCategory === cat.id
+                  ? "bg-primary text-inverse"
+                  : "bg-surface-hover text-secondary hover:bg-surface-active"
               }`}
             >
               {cat.name}
@@ -97,7 +104,9 @@ export default function AgentFaqPage() {
 
       {loading ? (
         <div className="animate-pulse space-y-3">
-          {[1, 2, 3, 4].map((i) => <div key={i} className="h-14 rounded-2xl bg-surface-hover" />)}
+          {[1, 2, 3, 4].map((i) => (
+            <div key={i} className="h-14 rounded-2xl bg-surface-hover" />
+          ))}
         </div>
       ) : filtered.length === 0 ? (
         <div className="rounded-2xl border border-border-default bg-surface p-8 text-center text-sm text-muted">
@@ -112,11 +121,18 @@ export default function AgentFaqPage() {
                 className="flex w-full items-center justify-between p-4 text-left hover:bg-inset"
               >
                 <div className="flex items-center gap-3">
-                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-surface-hover text-xs font-bold text-muted">Q</span>
+                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-surface-hover text-xs font-bold text-muted">
+                    Q
+                  </span>
                   <span className="text-sm font-medium text-primary">{faq.question}</span>
                 </div>
                 <svg
-                  width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth={2}
                   className={`shrink-0 text-muted transition-transform ${expanded.has(faq.id) ? "rotate-180" : ""}`}
                 >
                   <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
@@ -125,7 +141,9 @@ export default function AgentFaqPage() {
               {expanded.has(faq.id) && (
                 <div className="border-t border-border-subtle bg-inset/50 px-4 py-4">
                   <div className="flex gap-3">
-                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-xs font-bold text-emerald-600">A</span>
+                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-xs font-bold text-emerald-600">
+                      A
+                    </span>
                     <div className="prose prose-sm max-w-none text-secondary whitespace-pre-wrap">{faq.answer}</div>
                   </div>
                   <div className="mt-2 text-right text-[11px] text-muted">{faq.category_name}</div>

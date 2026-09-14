@@ -6,6 +6,7 @@ import { withCronLock } from "@/lib/cron/lock";
 import { runMonthlyInvoices } from "@/lib/orders/monthlyInvoice";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 300;
 
 /**
  * GET /api/cron/monthly-invoices
@@ -32,10 +33,12 @@ export async function GET(req: NextRequest) {
   return withCronLock(supabase, "monthly-invoices", 3600, async () => {
     const result = await runMonthlyInvoices(today);
     return apiJson({ ok: true, ...result, date: today.toISOString().slice(0, 10) });
-  }).then((lockResult) => {
-    if (!lockResult.acquired) {
-      return apiJson({ ok: true, skipped: "lock-held" });
-    }
-    return lockResult.value as ReturnType<typeof apiJson>;
-  }).catch((e) => apiInternalError(e, "monthly-invoices cron"));
+  })
+    .then((lockResult) => {
+      if (!lockResult.acquired) {
+        return apiJson({ ok: true, skipped: "lock-held" });
+      }
+      return lockResult.value as ReturnType<typeof apiJson>;
+    })
+    .catch((e) => apiInternalError(e, "monthly-invoices cron"));
 }

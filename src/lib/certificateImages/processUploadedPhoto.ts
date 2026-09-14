@@ -13,7 +13,7 @@
  */
 
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
-import { CERTIFICATE_IMAGE_BUCKET } from "@/lib/certificateImages";
+import { CERTIFICATE_IMAGE_BUCKET } from "@/lib/certificateImages/constants";
 import { hashSha256, computePerceptualHash } from "@/lib/anchoring/imageHashing";
 import { stripGpsAndReadExif } from "@/lib/anchoring/imageExif";
 import { checkPhotoLocation } from "@/lib/geo/photoLocationCheck";
@@ -134,12 +134,24 @@ export async function processUploadedPhoto(params: ProcessPhotoParams): Promise<
   }
 
   // 検証プロバイダ（署名は保存前）。cert/nonce/TSA時刻を C2PA manifest に封入。
-  const providers = await invokeAllUploadProviders(uploadBuffer, mime, sha256, {
-    publicId,
-    vin: vin ?? null,
-    captureNonce,
-    tsaTimestamp: tsa?.timestampAt ?? null,
-  });
+  const providers = await invokeAllUploadProviders(
+    uploadBuffer,
+    mime,
+    sha256,
+    {
+      publicId,
+      vin: vin ?? null,
+      captureNonce,
+      tsaTimestamp: tsa?.timestampAt ?? null,
+    },
+    // C2PA の行為台帳が「実際に効果のあった変換」だけを主張するよう、per-action の
+    // 結果を伝える。reencoded=false は sharp 失敗の fallback（原本をそのまま署名）。
+    {
+      reencoded: exif.reencoded,
+      orientationApplied: exif.orientationApplied,
+      metadataRemoved: exif.metadataRemoved,
+    },
+  );
 
   const finalBuffer = providers.c2pa.signedBuffer ?? uploadBuffer;
 

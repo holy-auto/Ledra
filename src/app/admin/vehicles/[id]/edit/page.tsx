@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
 import Button from "@/components/ui/Button";
 import ShakenshoScanner from "@/components/vehicles/ShakenshoScanner";
+import { autofillMessage, type ShakenshoAutofillResponse } from "@/lib/ocr/shakenshoAutofill";
 
 type Customer = { id: string; name: string; phone: string | null };
 
@@ -31,29 +32,39 @@ export default function AdminVehicleEditPage() {
   const [err, setErr] = useState<string | null>(null);
   const ocrInputRef = useRef<HTMLInputElement>(null);
 
-  function applyExtracted(x: {
-    maker?: string | null;
-    model?: string | null;
-    year?: number | null;
-    vin_code?: string | null;
-    plate_display?: string | null;
-  }) {
+  /** この画面が反映できる項目（車検満了日の入力欄はここには無い）。 */
+  const OCR_FIELDS = ["maker", "model", "year", "vin_code", "plate_display", "size_class"] as const;
+
+  /** 読み取り結果をフォームへ反映し、1 項目も入らなければ理由を表示する。 */
+  function applyExtracted(res: ShakenshoAutofillResponse) {
+    const msg = autofillMessage(res, OCR_FIELDS);
+    if (msg.type === "error") {
+      setErr(msg.text);
+      return;
+    }
+    const x = res.extracted ?? {};
     if (x.maker) setMaker(x.maker);
     if (x.model) setModel(x.model);
     if (x.year) setYear(String(x.year));
     if (x.vin_code) setVinCode(x.vin_code);
     if (x.plate_display) setPlateDisplay(x.plate_display);
+    if (x.size_class) setSizeClass(x.size_class);
   }
 
   useEffect(() => {
-    if (!customerSearch.trim()) { setCustomerResults([]); return; }
+    if (!customerSearch.trim()) {
+      setCustomerResults([]);
+      return;
+    }
     if (customerDebounceRef.current) clearTimeout(customerDebounceRef.current);
     customerDebounceRef.current = setTimeout(async () => {
       try {
         const res = await fetch(`/api/admin/customers?q=${encodeURIComponent(customerSearch)}&limit=8`);
         const j = await res.json();
         setCustomerResults(j.customers ?? []);
-      } catch { setCustomerResults([]); }
+      } catch {
+        setCustomerResults([]);
+      }
     }, 300);
   }, [customerSearch]);
 
@@ -132,7 +143,7 @@ export default function AdminVehicleEditPage() {
         setErr(j?.message || "車検証の読み取りに失敗しました。");
         return;
       }
-      applyExtracted(j.extracted);
+      applyExtracted(j);
     } catch (e: any) {
       setErr(String(e?.message || e));
     } finally {
@@ -156,7 +167,7 @@ export default function AdminVehicleEditPage() {
         setErr(j?.message || "二次元コードの解析に失敗しました。画像アップロードをお試しください。");
         return;
       }
-      applyExtracted(j.extracted);
+      applyExtracted(j);
     } catch (e: any) {
       setErr(String(e?.message || e));
     } finally {
@@ -197,51 +208,27 @@ export default function AdminVehicleEditPage() {
             onChange={onOcrFileChange}
           />
           <div className="flex flex-wrap gap-2">
-            <Button
-              type="button"
-              variant="primary"
-              disabled={ocrBusy}
-              onClick={() => setScannerOpen(true)}
-            >
+            <Button type="button" variant="primary" disabled={ocrBusy} onClick={() => setScannerOpen(true)}>
               カメラでスキャン
             </Button>
-            <Button
-              type="button"
-              variant="secondary"
-              loading={ocrBusy}
-              onClick={() => ocrInputRef.current?.click()}
-            >
+            <Button type="button" variant="secondary" loading={ocrBusy} onClick={() => ocrInputRef.current?.click()}>
               {ocrBusy ? "読み取り中..." : "画像をアップロード"}
             </Button>
           </div>
         </div>
 
-        <ShakenshoScanner
-          open={scannerOpen}
-          onResult={onScanResult}
-          onClose={() => setScannerOpen(false)}
-        />
+        <ShakenshoScanner open={scannerOpen} onResult={onScanResult} onClose={() => setScannerOpen(false)} />
 
         <form onSubmit={onSubmit} className="space-y-6 glass-card p-6">
           <div className="grid gap-4 md:grid-cols-2">
             <label className="space-y-2">
               <div className="text-sm font-medium text-primary">メーカー *</div>
-              <input
-                value={maker}
-                onChange={(e) => setMaker(e.target.value)}
-                className="input-field w-full"
-                required
-              />
+              <input value={maker} onChange={(e) => setMaker(e.target.value)} className="input-field w-full" required />
             </label>
 
             <label className="space-y-2">
               <div className="text-sm font-medium text-primary">車種 *</div>
-              <input
-                value={model}
-                onChange={(e) => setModel(e.target.value)}
-                className="input-field w-full"
-                required
-              />
+              <input value={model} onChange={(e) => setModel(e.target.value)} className="input-field w-full" required />
             </label>
 
             <label className="space-y-2">
@@ -305,7 +292,9 @@ export default function AdminVehicleEditPage() {
                 </button>
               )}
             </div>
-            <p className="text-[11px] text-muted">SS=~8㎥, S=8~10㎥, M=10~12㎥, L=12~14㎥, LL=14~16㎥, XL=16㎥~（体積基準）</p>
+            <p className="text-[11px] text-muted">
+              SS=~8㎥, S=8~10㎥, M=10~12㎥, L=12~14㎥, LL=14~16㎥, XL=16㎥~（体積基準）
+            </p>
           </div>
 
           {/* 顧客紐付け */}
@@ -315,8 +304,14 @@ export default function AdminVehicleEditPage() {
               <input
                 type="text"
                 value={customerSearch}
-                onChange={(e) => { setCustomerSearch(e.target.value); setCustomerId(null); setCustomerDropdownOpen(true); }}
-                onFocus={() => { if (customerSearch) setCustomerDropdownOpen(true); }}
+                onChange={(e) => {
+                  setCustomerSearch(e.target.value);
+                  setCustomerId(null);
+                  setCustomerDropdownOpen(true);
+                }}
+                onFocus={() => {
+                  if (customerSearch) setCustomerDropdownOpen(true);
+                }}
                 onBlur={() => setTimeout(() => setCustomerDropdownOpen(false), 200)}
                 className="input-field w-full"
                 placeholder="顧客名で検索..."
@@ -333,7 +328,11 @@ export default function AdminVehicleEditPage() {
                     <li key={c.id}>
                       <button
                         type="button"
-                        onMouseDown={() => { setCustomerId(c.id); setCustomerSearch(c.name); setCustomerDropdownOpen(false); }}
+                        onMouseDown={() => {
+                          setCustomerId(c.id);
+                          setCustomerSearch(c.name);
+                          setCustomerDropdownOpen(false);
+                        }}
                         className="w-full px-4 py-2.5 text-left text-sm hover:bg-surface-hover"
                       >
                         <span className="font-medium text-primary">{c.name}</span>
@@ -346,7 +345,10 @@ export default function AdminVehicleEditPage() {
               {customerId && (
                 <button
                   type="button"
-                  onClick={() => { setCustomerId(null); setCustomerSearch(""); }}
+                  onClick={() => {
+                    setCustomerId(null);
+                    setCustomerSearch("");
+                  }}
                   className="mt-1 text-xs text-red-500 hover:underline"
                 >
                   紐付けを解除
@@ -375,11 +377,7 @@ export default function AdminVehicleEditPage() {
             <Button type="submit" loading={busy}>
               保存する
             </Button>
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={() => router.push(`/admin/vehicles/${id}`)}
-            >
+            <Button type="button" variant="secondary" onClick={() => router.push(`/admin/vehicles/${id}`)}>
               キャンセル
             </Button>
           </div>

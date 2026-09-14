@@ -1,9 +1,8 @@
 import Link from "next/link";
-import { redirect } from "next/navigation";
 import PageHeader from "@/components/ui/PageHeader";
 import Badge from "@/components/ui/Badge";
 import EmptyState from "@/components/ui/EmptyState";
-import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
+import { requireSiteContentAdmin } from "./guard";
 import {
   SITE_CONTENT_TYPE_LABELS,
   SITE_CONTENT_STATUS_LABELS,
@@ -37,9 +36,7 @@ export default async function SiteContentListPage(props: { searchParams?: Promis
   const searchParams = (await props.searchParams) ?? {};
   const typeFilter = searchParams.type as SiteContentType | undefined;
 
-  const supabase = await createSupabaseServerClient();
-  const { data: userRes } = await supabase.auth.getUser();
-  if (!userRes?.user) redirect("/login?next=/admin/site-content");
+  const supabase = await requireSiteContentAdmin("/admin/site-content");
 
   let query = supabase
     .from("site_content_posts")

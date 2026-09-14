@@ -48,7 +48,16 @@ export function FourPortalDiagram({ className = "" }: { className?: string }) {
 
       {/* Core node */}
       <g>
-        <rect x="310" y="205" width="140" height="90" rx="20" fill="url(#fp-node)" stroke="rgba(167,139,250,0.5)" strokeWidth="1.5" />
+        <rect
+          x="310"
+          y="205"
+          width="140"
+          height="90"
+          rx="20"
+          fill="url(#fp-node)"
+          stroke="rgba(167,139,250,0.5)"
+          strokeWidth="1.5"
+        />
         <text x="380" y="235" textAnchor="middle" fill="#ffffff" fontSize="14" fontWeight="700">
           Ledra Core
         </text>
@@ -71,16 +80,16 @@ export function FourPortalDiagram({ className = "" }: { className?: string }) {
         { x: 560, y: 335, title: "顧客", subtitle: "証明書の閲覧", tag: "CUSTOMER" },
       ].map((n) => (
         <g key={n.tag}>
-          <rect
-            x={n.x}
-            y={n.y}
-            width="175"
-            height="95"
-            rx="16"
-            fill="url(#fp-node)"
-            stroke="rgba(255,255,255,0.14)"
-          />
-          <text x={n.x + 87} y={n.y + 32} textAnchor="middle" fill="rgba(96,165,250,0.75)" fontSize="10" fontWeight="600" letterSpacing="2">
+          <rect x={n.x} y={n.y} width="175" height="95" rx="16" fill="url(#fp-node)" stroke="rgba(255,255,255,0.14)" />
+          <text
+            x={n.x + 87}
+            y={n.y + 32}
+            textAnchor="middle"
+            fill="rgba(96,165,250,0.75)"
+            fontSize="10"
+            fontWeight="600"
+            letterSpacing="2"
+          >
             {n.tag}
           </text>
           <text x={n.x + 87} y={n.y + 58} textAnchor="middle" fill="#ffffff" fontSize="15" fontWeight="700">
@@ -93,7 +102,15 @@ export function FourPortalDiagram({ className = "" }: { className?: string }) {
       ))}
 
       {/* Top-center caption */}
-      <text x="380" y="35" textAnchor="middle" fill="rgba(255,255,255,0.5)" fontSize="11" fontWeight="600" letterSpacing="3">
+      <text
+        x="380"
+        y="35"
+        textAnchor="middle"
+        fill="rgba(255,255,255,0.5)"
+        fontSize="11"
+        fontWeight="600"
+        letterSpacing="3"
+      >
         ONE RECORD, FOUR PORTALS
       </text>
       {/* Bottom-center caption */}
@@ -102,7 +119,12 @@ export function FourPortalDiagram({ className = "" }: { className?: string }) {
       </text>
 
       {/* Decorative corner dots */}
-      {[[30, 20], [730, 20], [30, 480], [730, 480]].map(([cx, cy], i) => (
+      {[
+        [30, 20],
+        [730, 20],
+        [30, 480],
+        [730, 480],
+      ].map(([cx, cy], i) => (
         <circle key={i} cx={cx} cy={cy} r="2" fill="rgba(167,139,250,0.5)" />
       ))}
     </svg>

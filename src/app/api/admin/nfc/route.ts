@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { z } from "zod";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
-import { requireMinRole } from "@/lib/auth/checkRole";
+import { requireMinRole, requirePermission } from "@/lib/auth/checkRole";
 import { apiJson, apiUnauthorized, apiForbidden, apiValidationError, apiNotFound, apiError } from "@/lib/api/response";
 import { parseJsonBody } from "@/lib/api/parseBody";
 
@@ -17,6 +17,7 @@ export async function PATCH(request: NextRequest) {
   const supabase = await createSupabaseServerClient();
   const caller = await resolveCallerWithRole(supabase);
   if (!caller) return apiUnauthorized();
+  if (!requirePermission(caller, "vehicles:edit")) return apiForbidden();
 
   const parsed = await parseJsonBody(request, nfcRetireSchema);
   if (!parsed.ok) return parsed.response;

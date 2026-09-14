@@ -21,6 +21,7 @@ import { startAiRouteUsage } from "@/lib/ai/recordRouteUsage";
 import { logger } from "@/lib/logger";
 import { loadAiAutomationSettings } from "./policy";
 import { shouldAutoSummarizeCase } from "./orchestrator";
+import { certAiFields } from "@/lib/certificates/aiFields";
 
 const AUTO_SUMMARY_ENDPOINT = "/api/insurer/cases#auto-summary";
 
@@ -70,7 +71,7 @@ export async function maybeAutoSummarizeCase(params: MaybeAutoSummarizeCaseParam
         ? admin.from("vehicles").select("maker, model").eq("id", insCase.vehicle_id).maybeSingle()
         : Promise.resolve({ data: null }),
       insCase.certificate_id
-        ? admin.from("certificates").select("service_name, issued_at").eq("id", insCase.certificate_id).maybeSingle()
+        ? admin.from("certificates").select("service_type, created_at").eq("id", insCase.certificate_id).maybeSingle()
         : Promise.resolve({ data: null }),
     ]);
 
@@ -82,7 +83,12 @@ export async function maybeAutoSummarizeCase(params: MaybeAutoSummarizeCaseParam
         status: (insCase.status as string) ?? "open",
         priority: (insCase.priority as string) ?? "normal",
         vehicle: vehicleRes.data as { maker?: string; model?: string } | null,
-        certificate: certRes.data as { service_name?: string; issued_at?: string } | null,
+        certificate: certRes.data
+          ? {
+              service_name: certAiFields(certRes.data).service_name,
+              issued_at: (certRes.data as { created_at?: string }).created_at,
+            }
+          : null,
       },
       { model: fastModelForPlanTier(tenant.plan_tier) },
     );

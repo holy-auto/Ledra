@@ -1,9 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
+import { resolveCallerWithRole, requirePermission } from "@/lib/auth/checkRole";
 import { escapeIlike } from "@/lib/sanitize";
 import { enforceBilling } from "@/lib/billing/guard";
-import { apiJson, apiUnauthorized, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
+import {
+  apiJson,
+  apiUnauthorized,
+  apiValidationError,
+  apiNotFound,
+  apiInternalError,
+  apiForbidden,
+} from "@/lib/api/response";
 import {
   marketVehicleCreateSchema,
   marketVehicleDeleteSchema,
@@ -143,6 +150,7 @@ export async function POST(req: NextRequest) {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
+    if (!requirePermission(caller, "market:create")) return apiForbidden();
 
     const deny = await enforceBilling(req, {
       minPlan: "standard",
@@ -184,6 +192,7 @@ export async function PUT(req: NextRequest) {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
+    if (!requirePermission(caller, "market:edit")) return apiForbidden();
 
     const deny = await enforceBilling(req, {
       minPlan: "standard",
@@ -242,6 +251,9 @@ export async function DELETE(req: NextRequest) {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
+    // 削除は admin 以上（代表判断 2026-09-04）。顧客削除と同じ理由なので、
+    // 作成・編集（staff）とは分ける。
+    if (!requirePermission(caller, "market:delete")) return apiForbidden();
 
     const deny = await enforceBilling(req, {
       minPlan: "standard",
@@ -270,28 +282,29 @@ export async function DELETE(req: NextRequest) {
       return apiValidationError("下書きステータスの車両のみ削除できます。");
     }
 
-    // Delete associated images from storage
+    // 画像のパスは先に読むが、**消すのは車両行を消せてから**。
+    // 逆順だと、車両の削除が失敗した（FK 違反・RLS 不一致など）ときに
+    // 画像だけが復元不能に消え、車両は一覧に残る。
     const { data: images } = await supabase
       .from("market_vehicle_images")
       .select("storage_path")
       .eq("vehicle_id", id)
       .eq("tenant_id", caller.tenantId);
 
-    if (images && images.length > 0) {
-      const paths = images.map((img) => img.storage_path).filter(Boolean);
-      if (paths.length > 0) {
-        await supabase.storage.from("market-vehicle-images").remove(paths);
-      }
-
-      // Delete image records
-      await supabase.from("market_vehicle_images").delete().eq("vehicle_id", id).eq("tenant_id", caller.tenantId);
-    }
-
     // Delete the vehicle
     const { error } = await supabase.from("market_vehicles").delete().eq("id", id).eq("tenant_id", caller.tenantId);
 
     if (error) {
       return apiInternalError(error, "market-vehicles delete");
+    }
+
+    // ここから先の後片付けは、失敗しても車両の削除自体は成立している。
+    if (images && images.length > 0) {
+      const paths = images.map((img) => img.storage_path).filter(Boolean);
+      if (paths.length > 0) {
+        await supabase.storage.from("market-vehicle-images").remove(paths);
+      }
+      await supabase.from("market_vehicle_images").delete().eq("vehicle_id", id).eq("tenant_id", caller.tenantId);
     }
 
     return apiJson({ ok: true });

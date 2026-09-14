@@ -1,16 +1,20 @@
-import { View, ScrollView, StyleSheet } from "react-native";
+import { useCallback } from "react";
 import {
-  Text,
-  Card,
-  Chip,
-  Divider,
-  ActivityIndicator,
-} from "react-native-paper";
+  View,
+  ScrollView,
+  StyleSheet,
+  RefreshControl,
+  Pressable,
+} from "react-native";
+import { Text, Icon, ActivityIndicator } from "react-native-paper";
 import { useLocalSearchParams, router } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
+import dayjs from "dayjs";
 
 import { supabase } from "@/lib/supabase";
 import { useAuthStore } from "@/stores/authStore";
+import { StatusBadge } from "@/components/ui";
+import { colors, spacing, radius, typography, shadows } from "@/constants/tokens";
 
 interface VehicleDetail {
   id: string;
@@ -19,14 +23,17 @@ interface VehicleDetail {
   year: number | null;
   plate_display: string | null;
   customer_id: string | null;
-  customer_name: string | null;
+  customers: { name: string | null } | null;
 }
 
 interface Certificate {
   id: string;
-  certificate_no: string;
+  /** 証明書番号。certificates に certificate_no 列は無く public_id が番号 */
+  public_id: string;
   status: string;
-  issued_date: string | null;
+  /** 発行日。issued_date 列は無い。署名日、未署名なら作成日 */
+  signed_at: string | null;
+  created_at: string;
   service_type: string | null;
 }
 
@@ -37,33 +44,60 @@ interface NfcTag {
   status: string;
 }
 
+const CERT_STATUS_MAP: Record<
+  string,
+  { label: string; severity: "success" | "warning" | "danger" | "neutral" }
+> = {
+  active: { label: "有効", severity: "success" },
+  draft: { label: "下書き", severity: "neutral" },
+  void: { label: "無効", severity: "danger" },
+  expired: { label: "期限切", severity: "warning" },
+};
+
+const NFC_STATUS_MAP: Record<
+  string,
+  { label: string; severity: "success" | "info" | "danger" | "neutral" }
+> = {
+  prepared: { label: "準備済", severity: "neutral" },
+  written: { label: "書込済", severity: "info" },
+  attached: { label: "装着済", severity: "success" },
+  lost: { label: "紛失", severity: "danger" },
+  retired: { label: "退役", severity: "neutral" },
+  error: { label: "エラー", severity: "danger" },
+};
+
 export default function VehicleDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { user } = useAuthStore();
 
-  const { data: vehicle, isLoading } = useQuery({
+  const {
+    data: vehicle,
+    isLoading,
+    refetch,
+  } = useQuery({
     queryKey: ["vehicle", id],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("vehicles")
         .select(
-          "id, maker, model, year, plate_display, customer_id, customer_name"
+          // customer_name 列は無い。顧客名は customers を埋め込んで取る
+          "id, maker, model, year, plate_display, customer_id, customers ( name )"
         )
         .eq("id", id)
         .eq("tenant_id", user!.tenantId)
         .single();
       if (error) throw error;
-      return data as VehicleDetail;
+      return data as unknown as VehicleDetail;
     },
     enabled: !!id && !!user?.tenantId,
   });
 
-  const { data: certificates } = useQuery({
+  const { data: certificates = [] } = useQuery({
     queryKey: ["vehicle-certificates", id],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("certificates")
-        .select("id, certificate_no, status, issued_date, service_type")
+        .select("id, public_id, status, signed_at, created_at, service_type")
         .eq("vehicle_id", id)
         .eq("tenant_id", user!.tenantId)
         .order("created_at", { ascending: false });
@@ -73,7 +107,7 @@ export default function VehicleDetailScreen() {
     enabled: !!id && !!user?.tenantId,
   });
 
-  const { data: nfcTags } = useQuery({
+  const { data: nfcTags = [] } = useQuery({
     queryKey: ["vehicle-nfc-tags", id],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -87,159 +121,299 @@ export default function VehicleDetailScreen() {
     enabled: !!id && !!user?.tenantId,
   });
 
+  const onRefresh = useCallback(async () => {
+    try {
+      await refetch();
+    } catch {
+      // ponytail: swallow
+    }
+  }, [refetch]);
+
   if (isLoading || !vehicle) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator />
+        <ActivityIndicator size="large" color={colors.primary} />
       </View>
     );
   }
 
+  const activeCerts = certificates.filter((c) => c.status === "active").length;
+  const vehicleTitle = [vehicle.maker, vehicle.model].filter(Boolean).join(" ") || "車両";
+
   return (
-    <ScrollView style={styles.container}>
-      <Card style={styles.card} mode="outlined">
-        <Card.Content>
-          <Text variant="headlineSmall" style={styles.heading}>
-            {vehicle.maker} {vehicle.model}
-          </Text>
-          <Text variant="bodyMedium" style={styles.plate}>
-            {vehicle.plate_display}
-          </Text>
-          {vehicle.year && (
-            <Text variant="bodySmall" style={styles.sub}>
-              年式: {vehicle.year}
-            </Text>
-          )}
+    <ScrollView
+      style={styles.container}
+      refreshControl={
+        <RefreshControl refreshing={isLoading} onRefresh={onRefresh} />
+      }
+    >
+      {/* ─── Vehicle Hero Card ─── */}
+      <View style={styles.heroCard}>
+        <View style={styles.heroIconContainer}>
+          <Icon source="car" size={40} color={colors.primary} />
+        </View>
+        <Text style={styles.heroTitle}>{vehicleTitle}</Text>
+        <Text style={styles.heroPlate}>
+          {vehicle.plate_display ?? "ナンバー未登録"}
+        </Text>
+        {vehicle.year && (
+          <Text style={styles.heroYear}>{vehicle.year}年式</Text>
+        )}
+        {vehicle.customers?.name && (
+          <Pressable
+            style={styles.ownerRow}
+            onPress={() =>
+              vehicle.customer_id &&
+              router.push(`/customers/${vehicle.customer_id}`)
+            }
+          >
+            <Icon source="account-outline" size={16} color={colors.primary} />
+            <Text style={styles.ownerText}>{vehicle.customers.name}</Text>
+          </Pressable>
+        )}
+      </View>
 
-          <Divider style={styles.divider} />
+      {/* ─── Stat Cards Grid (ref 05) ─── */}
+      <View style={styles.statGrid}>
+        <View style={styles.statCard}>
+          <Icon source="history" size={24} color={colors.primary} />
+          <Text style={styles.statValue}>{certificates.length}</Text>
+          <Text style={styles.statLabel}>施工履歴</Text>
+        </View>
+        <View style={styles.statCard}>
+          <Icon source="nfc" size={24} color={colors.info} />
+          <Text style={styles.statValue}>{nfcTags.length}</Text>
+          <Text style={styles.statLabel}>NFCタグ</Text>
+        </View>
+        <View style={styles.statCard}>
+          <Icon source="certificate-outline" size={24} color={colors.success} />
+          <Text style={styles.statValue}>{activeCerts}</Text>
+          <Text style={styles.statLabel}>有効証明書</Text>
+        </View>
+        <View style={styles.statCard}>
+          <Icon source="image-multiple-outline" size={24} color={colors.warning} />
+          <Text style={styles.statValue}>—</Text>
+          <Text style={styles.statLabel}>写真</Text>
+        </View>
+      </View>
 
-          {vehicle.customer_name && (
-            <View style={styles.ownerRow}>
-              <Text variant="labelMedium" style={styles.label}>
-                オーナー
-              </Text>
-              <Text
-                variant="bodyMedium"
-                style={styles.link}
-                onPress={() =>
-                  vehicle.customer_id &&
-                  router.push(`/customers/${vehicle.customer_id}`)
-                }
+      {/* ─── Certificate History (ref 05: recent history timeline) ─── */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>証明書履歴</Text>
+        {certificates.length > 0 ? (
+          certificates.map((cert) => {
+            const cfg = CERT_STATUS_MAP[cert.status] ?? {
+              label: cert.status,
+              severity: "neutral" as const,
+            };
+            return (
+              <Pressable
+                key={cert.id}
+                style={styles.listCard}
+                onPress={() => router.push(`/certificates/${cert.id}`)}
+                accessibilityRole="button"
               >
-                {vehicle.customer_name}
-              </Text>
-            </View>
-          )}
-        </Card.Content>
-      </Card>
-
-      {/* NFC Tags */}
-      <View style={styles.section}>
-        <Text variant="titleMedium" style={styles.sectionTitle}>
-          NFCタグ
-        </Text>
-        {nfcTags && nfcTags.length > 0 ? (
-          nfcTags.map((tag) => (
-            <Card key={tag.id} style={styles.listCard} mode="outlined">
-              <Card.Content style={styles.row}>
-                <View style={{ flex: 1 }}>
-                  <Text variant="bodyMedium">{tag.tag_code}</Text>
-                  {tag.uid && (
-                    <Text variant="bodySmall" style={styles.sub}>
-                      UID: {tag.uid}
+                <View style={styles.listCardInner}>
+                  <View style={styles.timelineDot} />
+                  <View style={styles.listCardContent}>
+                    <Text style={styles.certNo}>{cert.public_id}</Text>
+                    <Text style={styles.certMeta} numberOfLines={1}>
+                      {[
+                        cert.service_type,
+                        // 未署名の下書きに発行日は無い
+                        cert.signed_at ? dayjs(cert.signed_at).format("YYYY/M/D") : null,
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")}
                     </Text>
-                  )}
+                  </View>
+                  <StatusBadge
+                    label={cfg.label}
+                    severity={cfg.severity}
+                    compact
+                  />
                 </View>
-                <NfcStatusBadge status={tag.status} />
-              </Card.Content>
-            </Card>
-          ))
+              </Pressable>
+            );
+          })
         ) : (
-          <Text style={styles.empty}>NFCタグはありません</Text>
+          <Text style={styles.emptyText}>証明書はありません</Text>
         )}
       </View>
 
-      {/* Certificate History */}
+      {/* ─── NFC Tags ─── */}
       <View style={styles.section}>
-        <Text variant="titleMedium" style={styles.sectionTitle}>
-          証明書履歴
-        </Text>
-        {certificates && certificates.length > 0 ? (
-          certificates.map((cert) => (
-            <Card
-              key={cert.id}
-              style={styles.listCard}
-              mode="outlined"
-              onPress={() => router.push(`/certificates/${cert.id}`)}
-            >
-              <Card.Content style={styles.row}>
-                <View style={{ flex: 1 }}>
-                  <Text variant="titleSmall" style={styles.certNo}>
-                    {cert.certificate_no}
-                  </Text>
-                  <Text variant="bodySmall" style={styles.sub}>
-                    {cert.service_type} {cert.issued_date ?? ""}
-                  </Text>
+        <Text style={styles.sectionTitle}>NFCタグ</Text>
+        {nfcTags.length > 0 ? (
+          nfcTags.map((tag) => {
+            const cfg = NFC_STATUS_MAP[tag.status] ?? {
+              label: tag.status,
+              severity: "neutral" as const,
+            };
+            return (
+              <View key={tag.id} style={styles.listCard}>
+                <View style={styles.listCardInner}>
+                  <View style={styles.nfcIcon}>
+                    <Icon source="nfc" size={16} color={colors.info} />
+                  </View>
+                  <View style={styles.listCardContent}>
+                    <Text style={styles.certNo}>{tag.tag_code}</Text>
+                    {tag.uid && (
+                      <Text style={styles.certMeta}>UID: {tag.uid}</Text>
+                    )}
+                  </View>
+                  <StatusBadge
+                    label={cfg.label}
+                    severity={cfg.severity}
+                    compact
+                  />
                 </View>
-                <StatusBadge status={cert.status} />
-              </Card.Content>
-            </Card>
-          ))
+              </View>
+            );
+          })
         ) : (
-          <Text style={styles.empty}>証明書はありません</Text>
+          <Text style={styles.emptyText}>NFCタグはありません</Text>
         )}
       </View>
+
+      {/* Bottom padding */}
+      <View style={{ height: spacing["3xl"] }} />
     </ScrollView>
   );
 }
 
-function StatusBadge({ status }: { status: string }) {
-  const map: Record<string, { bg: string; text: string; label: string }> = {
-    active: { bg: "#dcfce7", text: "#166534", label: "有効" },
-    draft: { bg: "#f3f4f6", text: "#374151", label: "下書き" },
-    void: { bg: "#fee2e2", text: "#991b1b", label: "無効" },
-    expired: { bg: "#fef3c7", text: "#92400e", label: "期限切" },
-  };
-  const s = map[status] ?? { bg: "#f3f4f6", text: "#374151", label: status };
-  return (
-    <Chip compact style={{ backgroundColor: s.bg }} textStyle={{ color: s.text, fontSize: 11 }}>
-      {s.label}
-    </Chip>
-  );
-}
-
-function NfcStatusBadge({ status }: { status: string }) {
-  const map: Record<string, { bg: string; text: string }> = {
-    prepared: { bg: "#f3f4f6", text: "#374151" },
-    written: { bg: "#dbeafe", text: "#1e40af" },
-    attached: { bg: "#dcfce7", text: "#166534" },
-    lost: { bg: "#fee2e2", text: "#991b1b" },
-    retired: { bg: "#f3f4f6", text: "#71717a" },
-    error: { bg: "#fee2e2", text: "#991b1b" },
-  };
-  const s = map[status] ?? { bg: "#f3f4f6", text: "#374151" };
-  return (
-    <Chip compact style={{ backgroundColor: s.bg }} textStyle={{ color: s.text, fontSize: 11 }}>
-      {status}
-    </Chip>
-  );
-}
-
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#fafafa" },
+  container: { flex: 1, backgroundColor: colors.background },
   center: { flex: 1, justifyContent: "center", alignItems: "center" },
-  card: { margin: 12, backgroundColor: "#ffffff" },
-  heading: { fontWeight: "700", color: "#1a1a2e" },
-  plate: { color: "#3f3f46", marginTop: 4, fontSize: 16 },
-  sub: { color: "#71717a", marginTop: 2 },
-  divider: { marginVertical: 12 },
-  label: { color: "#71717a", marginBottom: 2 },
-  link: { color: "#3b82f6" },
-  ownerRow: { marginBottom: 8 },
-  section: { padding: 12 },
-  sectionTitle: { fontWeight: "700", color: "#1a1a2e", marginBottom: 8 },
-  listCard: { marginBottom: 8, backgroundColor: "#ffffff" },
-  row: { flexDirection: "row", alignItems: "center" },
-  certNo: { fontWeight: "600", color: "#1a1a2e" },
-  empty: { color: "#71717a", textAlign: "center", marginTop: 16 },
+
+  // Hero
+  heroCard: {
+    backgroundColor: colors.surface,
+    margin: spacing.lg,
+    borderRadius: radius.hero,
+    padding: spacing["2xl"],
+    alignItems: "center",
+    ...shadows.card,
+  },
+  heroIconContainer: {
+    width: 72,
+    height: 72,
+    borderRadius: radius.lg,
+    backgroundColor: colors.primaryLight,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: spacing.lg,
+  },
+  heroTitle: {
+    ...typography.titleLarge,
+    color: colors.textPrimary,
+  },
+  heroPlate: {
+    ...typography.titleMedium,
+    color: colors.textSecondary,
+    marginTop: spacing.xs,
+  },
+  heroYear: {
+    ...typography.meta,
+    color: colors.textTertiary,
+    marginTop: spacing.xs,
+  },
+  ownerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+    marginTop: spacing.md,
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.md,
+    backgroundColor: colors.primaryLight,
+    borderRadius: radius.full,
+  },
+  ownerText: {
+    ...typography.labelSmall,
+    color: colors.primary,
+  },
+
+  // Stat grid (2x2)
+  statGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    paddingHorizontal: spacing.lg,
+    gap: spacing.md,
+    marginBottom: spacing.lg,
+  },
+  statCard: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.card,
+    padding: spacing.lg,
+    alignItems: "center",
+    width: "47%",
+    flexGrow: 1,
+    ...shadows.card,
+  },
+  statValue: {
+    ...typography.titleLarge,
+    color: colors.textPrimary,
+    marginTop: spacing.sm,
+  },
+  statLabel: {
+    ...typography.meta,
+    color: colors.textTertiary,
+    marginTop: spacing.xs,
+  },
+
+  // Sections
+  section: {
+    paddingHorizontal: spacing.lg,
+    marginBottom: spacing.lg,
+  },
+  sectionTitle: {
+    ...typography.titleSmall,
+    color: colors.textPrimary,
+    marginBottom: spacing.md,
+  },
+
+  // List cards
+  listCard: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.card,
+    padding: spacing.lg,
+    marginBottom: spacing.sm,
+    ...shadows.card,
+  },
+  listCardInner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+  },
+  timelineDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: colors.primary,
+  },
+  nfcIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: radius.sm,
+    backgroundColor: colors.infoLight,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  listCardContent: { flex: 1 },
+  certNo: {
+    ...typography.label,
+    color: colors.textPrimary,
+  },
+  certMeta: {
+    ...typography.meta,
+    color: colors.textTertiary,
+    marginTop: 2,
+  },
+
+  emptyText: {
+    ...typography.bodySmall,
+    color: colors.textTertiary,
+    textAlign: "center",
+    paddingVertical: spacing.xl,
+  },
 });

@@ -2,9 +2,16 @@ import { NextRequest } from "next/server";
 import Stripe from "stripe";
 import { getStripeClient } from "@/lib/stripe/client";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
+import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
-import { apiJson, apiUnauthorized, apiNotFound, apiInternalError, apiValidationError } from "@/lib/api/response";
+import {
+  apiJson,
+  apiUnauthorized,
+  apiNotFound,
+  apiInternalError,
+  apiValidationError,
+  apiForbidden,
+} from "@/lib/api/response";
 import { stripeConnectCreateSchema } from "@/lib/validations/stripe";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 
@@ -45,6 +52,9 @@ export async function POST(req: NextRequest) {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
+    // Stripe 連携の接続は owner のみ（2026-09-03 代表判断）。会社の入金口座そのもので、
+    // 解除されると入金が止まる。billing:manage は admin も持つのでロール下限で守る。
+    if (!requireMinRole(caller, "owner")) return apiForbidden();
 
     const { admin } = createTenantScopedAdmin(caller.tenantId);
     const { data: tenant } = await admin
@@ -123,6 +133,9 @@ export async function DELETE() {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
+    // Stripe 連携の解除は owner のみ（2026-09-03 代表判断）。会社の入金口座そのもので、
+    // 解除されると入金が止まる。billing:manage は admin も持つのでロール下限で守る。
+    if (!requireMinRole(caller, "owner")) return apiForbidden();
 
     const { admin } = createTenantScopedAdmin(caller.tenantId);
     const { error } = await admin
@@ -171,7 +184,18 @@ export async function GET() {
       account = await stripe.accounts.retrieve(accountId);
     } catch (retrieveErr) {
       const msg = retrieveErr instanceof Error ? retrieveErr.message : String(retrieveErr);
-      console.warn(`[stripe connect] retrieve failed for ${accountId}: ${msg}`);
+      // 「Stripe 側に無い」と確定したときだけ切り離す。以前は**どんなエラーでも**
+      // account_id を null にしていたため、Stripe の一時障害やタイムアウトで
+      // 設定画面を開いただけで連携が切れ、次の「接続」で別アカウントが作られて
+      // 元の口座が孤立した。解除を owner 限定にしても、この経路が残っていると
+      // 誰でも（GET なので閲覧専用ロールでも）実質的に解除できてしまう。
+      const code = (retrieveErr as { code?: string } | null)?.code;
+      const missing = code === "resource_missing" || code === "account_invalid";
+      if (!missing) {
+        console.error(`[stripe connect] retrieve failed (transient) for ${accountId}: ${msg}`);
+        return apiInternalError(retrieveErr, "stripe/connect GET");
+      }
+      console.warn(`[stripe connect] account gone, detaching ${accountId}: ${msg}`);
       await admin
         .from("tenants")
         .update({ stripe_connect_account_id: null, stripe_connect_onboarded: false })

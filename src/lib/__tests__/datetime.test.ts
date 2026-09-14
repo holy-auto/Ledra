@@ -5,7 +5,14 @@ import {
   formatJstDateTime,
   formatJstDateTimeJa,
   formatJstDateJa,
+  businessDateString,
 } from "../datetime";
+
+describe("businessDateString", () => {
+  it("JST 深夜帯を前日ではなく当日として返す", () => {
+    expect(businessDateString(new Date("2026-08-27T15:30:00.000Z"))).toBe("2026-08-28");
+  });
+});
 
 describe("jstLocalInputToUtcIso", () => {
   it("naive な datetime-local を JST として解釈し UTC ISO へ変換する（9時間戻す）", () => {

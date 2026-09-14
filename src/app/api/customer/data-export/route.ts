@@ -52,11 +52,15 @@ export async function GET(req: Request) {
     const session = await validateSession(tenantId, token);
     if (!session) return apiUnauthorized();
 
+    // LINE ログインのセッションは phone hash / email を持たず customer_id だけで scope される。
+    const phoneHash = session.phone_last4_hash ?? "";
+    const email = session.email ?? undefined;
+
     const [profile, certificates, history, reservations] = await Promise.all([
-      getCustomerProfile(tenantId, session.phone_last4_hash, session.email, session.customer_id),
-      listCertificatesForCustomer(tenantId, session.phone_last4_hash, session.email, session.customer_id),
-      listHistoryForCustomer(tenantId, session.phone_last4_hash, session.email, session.customer_id),
-      listReservationsForCustomer(tenantId, session.phone_last4_hash, session.email, session.customer_id),
+      getCustomerProfile(tenantId, phoneHash, email, session.customer_id),
+      listCertificatesForCustomer(tenantId, phoneHash, email, session.customer_id),
+      listHistoryForCustomer(tenantId, phoneHash, email, session.customer_id),
+      listReservationsForCustomer(tenantId, phoneHash, email, session.customer_id),
     ]);
 
     const generatedAt = new Date().toISOString();

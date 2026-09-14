@@ -94,7 +94,6 @@ async function compressToJpeg(file: File): Promise<File | null> {
 
 export default function CertImageUpload({ publicId, remaining, maxPhotos }: Props) {
   const router = useRouter();
-  const inputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const [isPending, startTransition] = useTransition();
   const [message, setMessage] = useState<string | null>(null);
@@ -212,21 +211,18 @@ export default function CertImageUpload({ publicId, remaining, maxPhotos }: Prop
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-3">
+        {/* Camera only. The album/file-picker path was removed so photos added
+            after certificate creation are also captures — the C2PA manifest
+            asserts digitalSourceType=digitalCapture (see
+            src/lib/anchoring/providers/c2pa.ts). Both this and PhotoUploadSection
+            (creation flow) post to /api/certificates/images/upload. */}
         <button
           type="button"
           onClick={() => cameraInputRef.current?.click()}
           disabled={isPending || full}
           className="inline-flex items-center gap-2 rounded-lg border border-border-default bg-surface px-4 py-2 text-sm font-medium text-primary shadow-sm hover:bg-surface-hover hover:border-border-strong disabled:opacity-50"
         >
-          カメラで撮影
-        </button>
-        <button
-          type="button"
-          onClick={() => inputRef.current?.click()}
-          disabled={isPending || full}
-          className="inline-flex items-center gap-2 rounded-lg border border-border-default bg-surface px-4 py-2 text-sm font-medium text-primary shadow-sm hover:bg-surface-hover hover:border-border-strong disabled:opacity-50"
-        >
-          {isPending ? "アップロード中…" : "写真を追加"}
+          {isPending ? "アップロード中…" : "カメラで撮影"}
         </button>
         <span className="text-xs text-muted">
           残り {Math.max(remaining, 0)} / {maxPhotos} 枚
@@ -238,17 +234,6 @@ export default function CertImageUpload({ publicId, remaining, maxPhotos }: Prop
         type="file"
         accept="image/jpeg,image/png,image/webp,image/heic,image/heif"
         capture="environment"
-        className="hidden"
-        onChange={(e) => upload(e.target.files)}
-        onClick={(e) => {
-          (e.target as HTMLInputElement).value = "";
-        }}
-      />
-      <input
-        ref={inputRef}
-        type="file"
-        accept="image/jpeg,image/png,image/webp,image/heic,image/heif"
-        multiple
         className="hidden"
         onChange={(e) => upload(e.target.files)}
         onClick={(e) => {

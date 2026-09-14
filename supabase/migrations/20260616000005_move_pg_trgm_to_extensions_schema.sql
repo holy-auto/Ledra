@@ -20,4 +20,26 @@
 alter role anon          set search_path = public, extensions;
 alter role authenticated set search_path = public, extensions;
 
-alter extension pg_trgm set schema extensions;
+-- 【後から内容だけ修正】このファイルは本番へ適用済み（版番号は変えていない）。
+-- **`pg_trgm` はどのマイグレーションでも作られていない。** 本番には手で入っているが、
+-- 空 DB（Supabase のプレビュー DB）には無いので、そのまま alter すると
+-- `extension "pg_trgm" does not exist (SQLSTATE 42704)` で落ちる。
+-- 手元の再生では `scripts/replay/bootstrap.sql` が先に作っているため再現しなかった
+-- ——「本番にあるのに、どのマイグレーションにも書かれていない」ドリフトそのもの。
+--
+-- 無ければ作り、別スキーマにあれば移す。既に extensions にあれば何もしない。
+do $mig$
+declare
+  ns text;
+begin
+  select n.nspname into ns
+  from pg_extension e join pg_namespace n on n.oid = e.extnamespace
+  where e.extname = 'pg_trgm';
+
+  if ns is null then
+    execute 'create extension pg_trgm with schema extensions';
+  elsif ns <> 'extensions' then
+    execute 'alter extension pg_trgm set schema extensions';
+  end if;
+end
+$mig$;

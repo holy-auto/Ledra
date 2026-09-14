@@ -53,9 +53,7 @@ export default function NavigationProgress() {
       if (href.startsWith("mailto:") || href.startsWith("tel:")) return;
 
       // 同じ URL ならスキップ
-      const currentUrl =
-        pathname +
-        (searchParams.toString() ? `?${searchParams.toString()}` : "");
+      const currentUrl = pathname + (searchParams.toString() ? `?${searchParams.toString()}` : "");
       if (href === currentUrl) return;
 
       startProgress();
@@ -118,10 +116,7 @@ export default function NavigationProgress() {
   if (!visible) return null;
 
   return (
-    <div
-      aria-hidden="true"
-      className="fixed left-0 right-0 top-0 z-[9999] pointer-events-none h-[3px] bg-transparent"
-    >
+    <div aria-hidden="true" className="fixed left-0 right-0 top-0 z-[9999] pointer-events-none h-[3px] bg-transparent">
       <div
         className="h-full bg-accent shadow-[0_0_10px_rgba(59,130,246,0.5)]"
         style={{

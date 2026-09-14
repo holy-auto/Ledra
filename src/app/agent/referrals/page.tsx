@@ -97,11 +97,15 @@ export default function AgentReferralsPage() {
     return `/api/agent/referrals?${params.toString()}`;
   })();
 
-  const { data, error: swrError, isLoading: loading } = useSWR<ReferralsData>(
-    swrKey,
-    fetcher,
-    { revalidateOnFocus: true, keepPreviousData: true, dedupingInterval: 2000 },
-  );
+  const {
+    data,
+    error: swrError,
+    isLoading: loading,
+  } = useSWR<ReferralsData>(swrKey, fetcher, {
+    revalidateOnFocus: true,
+    keepPreviousData: true,
+    dedupingInterval: 2000,
+  });
 
   const err = swrError ? (swrError.message ?? "読み込みに失敗しました") : null;
 
@@ -128,8 +132,7 @@ export default function AgentReferralsPage() {
     }
   };
 
-  const sortIndicator = (key: SortKey) =>
-    sortKey === key ? (sortDir === "asc" ? " ↑" : " ↓") : "";
+  const sortIndicator = (key: SortKey) => (sortKey === key ? (sortDir === "asc" ? " ↑" : " ↓") : "");
 
   /* ── Skeleton ── */
 
@@ -184,11 +187,7 @@ export default function AgentReferralsPage() {
           </div>
           <div className="w-48 space-y-1">
             <label className="text-xs text-muted">ステータス</label>
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="input-field"
-            >
+            <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="input-field">
               {STATUS_OPTIONS.map((opt) => (
                 <option key={opt.value} value={opt.value}>
                   {opt.label}
@@ -215,9 +214,7 @@ export default function AgentReferralsPage() {
       {data && (
         <section className="glass-card overflow-hidden">
           <div className="border-b border-border-subtle p-5">
-            <div className="text-xs font-semibold tracking-[0.18em] text-muted">
-              紹介一覧（{rows.length}件）
-            </div>
+            <div className="text-xs font-semibold tracking-[0.18em] text-muted">紹介一覧（{rows.length}件）</div>
           </div>
           <div className="overflow-x-auto">
             <table className="min-w-full text-sm">
@@ -253,9 +250,7 @@ export default function AgentReferralsPage() {
                   >
                     登録日{sortIndicator("created_at")}
                   </th>
-                  <th className="text-left px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">
-                    操作
-                  </th>
+                  <th className="text-left px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">操作</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border-subtle">
@@ -263,9 +258,7 @@ export default function AgentReferralsPage() {
                   const st = getStatusEntry(AGENT_REFERRAL_STATUS_MAP, r.status);
                   return (
                     <tr key={r.id} className="hover:bg-surface-hover/60 transition-colors">
-                      <td className="px-5 py-3.5 font-mono text-xs text-secondary">
-                        {r.referral_code}
-                      </td>
+                      <td className="px-5 py-3.5 font-mono text-xs text-secondary">{r.referral_code}</td>
                       <td className="px-5 py-3.5">
                         <Link
                           href={`/agent/referrals/${r.id}`}
@@ -280,14 +273,9 @@ export default function AgentReferralsPage() {
                       <td className="hidden md:table-cell px-5 py-3.5 text-secondary">
                         {r.contact_email || r.contact_phone || "-"}
                       </td>
-                      <td className="px-5 py-3.5 whitespace-nowrap text-secondary">
-                        {formatDateTime(r.created_at)}
-                      </td>
+                      <td className="px-5 py-3.5 whitespace-nowrap text-secondary">{formatDateTime(r.created_at)}</td>
                       <td className="px-5 py-3.5">
-                        <Link
-                          href={`/agent/referrals/${r.id}`}
-                          className="btn-ghost px-3 py-1 text-xs"
-                        >
+                        <Link href={`/agent/referrals/${r.id}`} className="btn-ghost px-3 py-1 text-xs">
                           詳細
                         </Link>
                       </td>
@@ -299,9 +287,7 @@ export default function AgentReferralsPage() {
                     <td colSpan={6} className="px-5 py-12 text-center text-muted">
                       <div className="space-y-2">
                         <div className="text-lg">紹介データがありません</div>
-                        <div className="text-xs">
-                          「新規紹介」ボタンから紹介先を登録してください。
-                        </div>
+                        <div className="text-xs">「新規紹介」ボタンから紹介先を登録してください。</div>
                       </div>
                     </td>
                   </tr>

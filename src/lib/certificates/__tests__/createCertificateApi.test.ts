@@ -5,6 +5,7 @@ describe("certCreateJsonSchema", () => {
   it("accepts minimal valid payload", () => {
     const r = certCreateJsonSchema.safeParse({
       customer_name: "田中太郎",
+      mileage_km: 35000,
       vehicle_maker: "トヨタ",
     });
     expect(r.success).toBe(true);
@@ -19,14 +20,36 @@ describe("certCreateJsonSchema", () => {
     expect(r.success).toBe(false);
   });
 
+  it("rejects a payload with no mileage_km", () => {
+    // 走行距離は必須。ここが optional に戻ると、フォームだけ必須・API は素通り
+    // という抜け道ができ、以前と同じく走行距離が1件も溜まらない状態に戻る。
+    const r = certCreateJsonSchema.safeParse({ customer_name: "x", vehicle_maker: "トヨタ" });
+    expect(r.success).toBe(false);
+  });
+
+  it("rejects a mileage the DB trigger would drop", () => {
+    // fn_sync_mileage_from_certificate は null / <= 0 を捨てるので、
+    // ここで通すと「保存できたのに履歴に出ない」状態になる。
+    for (const bad of [0, -1, "", "abc", 35.5]) {
+      expect(certCreateJsonSchema.safeParse({ customer_name: "x", mileage_km: bad }).success).toBe(false);
+    }
+  });
+
+  it("normalizes a string mileage to a number", () => {
+    const r = certCreateJsonSchema.safeParse({ customer_name: "x", mileage_km: "35000" });
+    expect(r.success).toBe(true);
+    if (r.success) expect(r.data.mileage_km).toBe(35000);
+  });
+
   it("rejects unknown fields (strict)", () => {
-    const r = certCreateJsonSchema.safeParse({ customer_name: "x", evil_field: "abc" });
+    const r = certCreateJsonSchema.safeParse({ customer_name: "x", mileage_km: 35000, evil_field: "abc" });
     expect(r.success).toBe(false);
   });
 
   it("accepts nested *_json fields", () => {
     const r = certCreateJsonSchema.safeParse({
       customer_name: "x",
+      mileage_km: 35000,
       film_thickness_json: [{ panel: "hood", value: 120 }],
       maintenance_json: { water_intrusion: true },
       template_fields: { product: "lv2", with_wax: true, panels: ["hood", "door"] },
@@ -35,7 +58,7 @@ describe("certCreateJsonSchema", () => {
   });
 
   it("validates status enum", () => {
-    const r = certCreateJsonSchema.safeParse({ customer_name: "x", status: "weird" });
+    const r = certCreateJsonSchema.safeParse({ customer_name: "x", mileage_km: 35000, status: "weird" });
     expect(r.success).toBe(false);
   });
 });
@@ -45,6 +68,7 @@ describe("jsonToCertFormData", () => {
     const fd = jsonToCertFormData(
       certCreateJsonSchema.parse({
         customer_name: "山田太郎",
+        mileage_km: 35000,
         vehicle_maker: "トヨタ",
         model: "プリウス",
         plate: "品川 300 さ 12-34",
@@ -61,6 +85,7 @@ describe("jsonToCertFormData", () => {
     const fd = jsonToCertFormData(
       certCreateJsonSchema.parse({
         customer_name: "x",
+        mileage_km: 35000,
       }),
     );
     expect(fd.has("vin_code")).toBe(false);
@@ -72,6 +97,7 @@ describe("jsonToCertFormData", () => {
     const fd = jsonToCertFormData(
       certCreateJsonSchema.parse({
         customer_name: "x",
+        mileage_km: 35000,
         film_thickness_json: [{ panel: "hood", value: 120 }],
         maintenance_json: { water_intrusion: true },
         package_snapshot_json: { name: "Lv2", items: [{ id: "a", qty: 1 }] },
@@ -89,6 +115,7 @@ describe("jsonToCertFormData", () => {
     const fd = jsonToCertFormData(
       certCreateJsonSchema.parse({
         customer_name: "x",
+        mileage_km: 35000,
         template_fields: {
           product: "lv2",
           with_wax: true,
@@ -110,6 +137,7 @@ describe("jsonToCertFormData", () => {
     const fd = jsonToCertFormData(
       certCreateJsonSchema.parse({
         customer_name: "x",
+        mileage_km: 35000,
         template_fields: { with_wax: false },
       }),
     );
@@ -121,6 +149,7 @@ describe("formDataToCertJson", () => {
   it("round-trips a simple payload through json → form → json", () => {
     const original = {
       customer_name: "佐藤花子",
+      mileage_km: 35000,
       vehicle_maker: "ホンダ",
       model: "フィット",
       plate: "横浜 500 さ 99-99",
@@ -140,9 +169,21 @@ describe("formDataToCertJson", () => {
     });
   });
 
+  it("preserves mileage_km through the offline round-trip", () => {
+    // オフラインはキューで json → FormData → json を往復するので、
+    // どこかで落ちると復帰後の同期が mileage_required で必ず失敗する。
+    const fd = jsonToCertFormData({
+      ...certCreateJsonSchema.parse({ customer_name: "x", mileage_km: 35000 }),
+    });
+    expect(fd.get("mileage_km")).toBe("35000");
+    const back = formDataToCertJson(fd);
+    expect(certCreateJsonSchema.parse(back).mileage_km).toBe(35000);
+  });
+
   it("preserves nested *_json fields through round-trip", () => {
     const original = {
       customer_name: "x",
+      mileage_km: 35000,
       film_thickness_json: [{ panel: "hood", value: 120 }],
       maintenance_json: { water_intrusion: true, notes: "ok" },
     };
@@ -155,6 +196,7 @@ describe("formDataToCertJson", () => {
   it("ignores empty FormData values", () => {
     const fd = new FormData();
     fd.append("customer_name", "x");
+    fd.append("mileage_km", "35000");
     fd.append("vin_code", "");
     fd.append("expiry_date", "");
     const out = formDataToCertJson(fd);
@@ -166,6 +208,7 @@ describe("formDataToCertJson", () => {
   it("interprets 'on' single value as boolean true in template_fields", () => {
     const fd = new FormData();
     fd.append("customer_name", "x");
+    fd.append("mileage_km", "35000");
     fd.append("f__with_wax", "on");
     const out = formDataToCertJson(fd);
     expect((out.template_fields as Record<string, unknown>).with_wax).toBe(true);
@@ -174,6 +217,7 @@ describe("formDataToCertJson", () => {
   it("treats multiple f__ values as array", () => {
     const fd = new FormData();
     fd.append("customer_name", "x");
+    fd.append("mileage_km", "35000");
     fd.append("f__panels", "hood");
     fd.append("f__panels", "roof");
     const out = formDataToCertJson(fd);
@@ -183,6 +227,7 @@ describe("formDataToCertJson", () => {
   it("ignores malformed JSON in *_json fields silently", () => {
     const fd = new FormData();
     fd.append("customer_name", "x");
+    fd.append("mileage_km", "35000");
     fd.append("film_thickness_json", "{not valid json");
     const out = formDataToCertJson(fd);
     expect("film_thickness_json" in out).toBe(false);
@@ -194,6 +239,7 @@ describe("formDataToCertJson", () => {
     const craftsmanId = "22222222-2222-4222-8222-222222222222";
     const fd = new FormData();
     fd.append("customer_name", "x");
+    fd.append("mileage_km", "35000");
     fd.append("reservation_id", reservationId);
     fd.append("craftsman_staff_id", craftsmanId);
 

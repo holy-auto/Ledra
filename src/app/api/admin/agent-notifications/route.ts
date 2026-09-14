@@ -1,7 +1,8 @@
-import { createTenantScopedAdmin } from "@/lib/supabase/admin";
+import { createPlatformScopedAdmin } from "@/lib/supabase/admin";
 import { NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
+import { resolveCallerWithRole } from "@/lib/auth/checkRole";
+import { isPlatformAdmin } from "@/lib/auth/platformAdmin";
 import { apiJson, apiUnauthorized, apiForbidden, apiInternalError } from "@/lib/api/response";
 import { parseJsonBody } from "@/lib/api/parseBody";
 import { parsePagination } from "@/lib/api/pagination";
@@ -14,14 +15,14 @@ export async function GET(request: NextRequest) {
     const supabase = await createClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
-    if (!requireMinRole(caller, "admin")) return apiForbidden();
+    if (!isPlatformAdmin(caller)) return apiForbidden();
 
-    const { admin } = createTenantScopedAdmin(caller.tenantId);
+    const admin = createPlatformScopedAdmin("agent-notifications — platform-wide agent operations (no tenant scope)");
     const p = parsePagination(request, { defaultPerPage: 50, maxPerPage: 200 });
 
     let query = admin
       .from("agent_notifications")
-      .select("id, agent_id, user_id, type, title, body, link, is_read, created_at, updated_at, agents(name)", {
+      .select("id, agent_id, user_id, type, title, body, link, is_read, created_at, agents(name)", {
         count: "exact",
       })
       .order("created_at", { ascending: false });
@@ -55,12 +56,12 @@ export async function POST(request: NextRequest) {
     const supabase = await createClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
-    if (!requireMinRole(caller, "admin")) return apiForbidden();
+    if (!isPlatformAdmin(caller)) return apiForbidden();
 
     const parsed = await parseJsonBody(request, agentNotificationCreateSchema);
     if (!parsed.ok) return parsed.response;
     const body = parsed.data;
-    const { admin } = createTenantScopedAdmin(caller.tenantId);
+    const admin = createPlatformScopedAdmin("agent-notifications — platform-wide agent operations (no tenant scope)");
 
     const { data, error } = await admin
       .from("agent_notifications")
@@ -73,7 +74,7 @@ export async function POST(request: NextRequest) {
         link: body.link ?? null,
         is_read: false,
       })
-      .select("id, agent_id, user_id, type, title, body, link, is_read, created_at, updated_at")
+      .select("id, agent_id, user_id, type, title, body, link, is_read, created_at")
       .single();
 
     if (error) return apiInternalError(error, "agent-notifications");

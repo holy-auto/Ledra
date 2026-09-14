@@ -31,8 +31,8 @@ export async function GET(request: NextRequest) {
     const url = new URL(request.url);
     const q = (url.searchParams.get("q") ?? "").trim();
     const status = (url.searchParams.get("status") ?? "").trim();
-    const limit = Math.min(200, Math.max(1, parseInt(url.searchParams.get("limit") ?? "50", 10)));
-    const offset = Math.max(0, parseInt(url.searchParams.get("offset") ?? "0", 10));
+    const limit = Math.min(200, Math.max(1, parseInt(url.searchParams.get("limit") ?? "50", 10) || 50));
+    const offset = Math.max(0, parseInt(url.searchParams.get("offset") ?? "0", 10) || 0);
 
     let query = supabase
       .from("agent_referrals")

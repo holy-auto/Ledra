@@ -5,6 +5,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { useCallback, useEffect, useRef, useState } from "react";
 import PageHeader from "@/components/ui/PageHeader";
+import MutationGuard from "@/components/ui/MutationGuard";
 import Badge from "@/components/ui/Badge";
 import EquipmentPicker from "@/components/EquipmentPicker";
 import { formatJpy, formatDate } from "@/lib/format";
@@ -190,7 +191,7 @@ export default function VehicleDetailClient({ vehicleId }: { vehicleId: string }
         body: JSON.stringify({ id: vehicleId, status: newStatus }),
       });
       const j = await parseJsonSafe(res);
-      if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
+      if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       setVehicle(j.vehicle);
       setMsg({ text: `ステータスを「${STATUS_LABELS[newStatus] ?? newStatus}」に変更しました`, ok: true });
     } catch (e: any) {
@@ -222,7 +223,7 @@ export default function VehicleDetailClient({ vehicleId }: { vehicleId: string }
         body: JSON.stringify(payload),
       });
       const j = await parseJsonSafe(res);
-      if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
+      if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       setVehicle(j.vehicle);
       setEditMode(false);
       setMsg({ text: "保存しました", ok: true });
@@ -283,7 +284,7 @@ export default function VehicleDetailClient({ vehicleId }: { vehicleId: string }
         fd.append("vehicle_id", vehicleId);
         const res = await fetch("/api/admin/market-vehicles/images", { method: "POST", body: fd });
         const j = await parseJsonSafe(res);
-        if (!res.ok) throw new Error(j?.error ?? "Upload failed");
+        if (!res.ok) throw new Error(j?.message ?? j?.error ?? "Upload failed");
       }
       await fetchVehicle();
       setMsg({ text: "画像をアップロードしました", ok: true });
@@ -319,7 +320,7 @@ export default function VehicleDetailClient({ vehicleId }: { vehicleId: string }
         body: JSON.stringify({ id: vehicleId }),
       });
       const j = await parseJsonSafe(res);
-      if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
+      if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       window.location.href = "/admin/market-vehicles";
     } catch (e: any) {
       setMsg({ text: e?.message ?? String(e), ok: false });
@@ -460,10 +461,13 @@ export default function VehicleDetailClient({ vehicleId }: { vehicleId: string }
                 {STATUS_LABELS[ns] ?? ns}に変更
               </button>
             ))}
+            {/* 削除は admin 以上（代表判断 2026-09-04）。 */}
             {vehicle.status === "draft" && (
-              <button type="button" className="btn-danger text-xs" onClick={handleDelete}>
-                削除
-              </button>
+              <MutationGuard minRole="admin">
+                <button type="button" className="btn-danger text-xs" onClick={handleDelete}>
+                  削除
+                </button>
+              </MutationGuard>
             )}
           </div>
         </div>

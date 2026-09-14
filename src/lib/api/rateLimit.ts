@@ -1,6 +1,6 @@
 import { Ratelimit } from "@upstash/ratelimit";
-import { Redis } from "@upstash/redis";
 import { apiError } from "./response";
+import { getRedis } from "@/lib/upstash";
 
 /**
  * Upstash Redis ベースのレート制限
@@ -10,18 +10,11 @@ import { apiError } from "./response";
  *   UPSTASH_REDIS_REST_TOKEN
  *
  * 未設定時はレート制限をスキップ（開発環境向け）
+ *
+ * F-3 是正: Redis クライアントは src/lib/upstash.ts の共有シングルトンを使う
+ * （以前はこのファイル・src/lib/rateLimit.ts・src/lib/api/idempotency.ts が
+ * それぞれ独自に new Redis() していた）。
  */
-
-let redis: Redis | null = null;
-
-function getRedis(): Redis | null {
-  if (redis) return redis;
-  const url = process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
-  if (!url || !token) return null;
-  redis = new Redis({ url, token });
-  return redis;
-}
 
 /** プリセット: 一般 API (60 req / 60s) */
 const generalLimiter = () => {
@@ -220,7 +213,11 @@ export async function checkRateLimit(
   // for high-security deployments where DDoS exposure during a Redis outage
   // is worse than a brief availability hit. Defaults to fail-open to match
   // historical behavior — opt in explicitly.
-  const failClosed = process.env.RATE_LIMIT_FAIL_CLOSED === "1";
+  //
+  // B-M1 是正 (2026-09-08): "auth" / "sensitive" だけは env に関わらず常にフェイルクローズ。
+  // これらは OTP 発行・パスワード操作等、Redis 障害時に無制限化すると被害が大きい経路。
+  // 「設定を入れ忘れたら守られていない」を無くすため、env に依存させず固定する。
+  const failClosed = process.env.RATE_LIMIT_FAIL_CLOSED === "1" || preset === "auth" || preset === "sensitive";
 
   const limiter = getLimiter(preset, limitPerMinute);
   if (!limiter) {

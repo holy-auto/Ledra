@@ -265,6 +265,18 @@ export async function recordInboundEmailMessage(input: InboundEmailMessage): Pro
  * を渡す。どちらの場合もテーブルには行を残し、UI 上で「未配信」表示できるよう
  * にする (LINE の即時 push が失敗しても履歴は消さない方針)。
  */
+/**
+ * 受信箱に残す本文からマイページのログイントークンを伏せる。
+ *
+ * `/my/line?t=<64桁hex>` はそのままポータルに入れる資格情報なので、生のまま
+ * `customer_messages` に残すと店舗スタッフが受信箱からコピーして顧客本人として
+ * ログインできてしまう (トークンを DB に平文で持たない設計と矛盾する)。
+ * 送信する本文はそのまま・記録する本文だけ伏せる。
+ */
+export function maskPortalLoginToken(body: string): string {
+  return body.replace(/([?&]t=)[0-9a-f]{64}\b/gi, "$1***");
+}
+
 export async function recordOutboundLineMessage(input: OutboundLineMessage): Promise<{ ok: boolean; id?: string }> {
   try {
     const admin = createServiceRoleAdmin("LINE outbound message logging — admin push lacks tenant-scoped RLS context");
@@ -277,7 +289,7 @@ export async function recordOutboundLineMessage(input: OutboundLineMessage): Pro
         line_user_id: input.lineUserId,
         channel: "line",
         direction: "outbound",
-        body: input.body,
+        body: maskPortalLoginToken(input.body),
         sent_by: input.sentByUserId ?? null,
         line_message_id: input.lineMessageId ?? null,
         attachment_path: input.attachmentPath ?? null,

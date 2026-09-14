@@ -1,5 +1,6 @@
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { logger } from "@/lib/logger";
+import { storeIdOrNull } from "@/lib/stores/resolveStoreId";
 
 /**
  * 受注承認（pending→accepted, isTo）で、指名オーダーに紐づく仮押さえを B の本予約へ変換する。
@@ -45,6 +46,7 @@ export async function convertHoldToReservation(orderId: string): Promise<void> {
     .from("reservations")
     .insert({
       tenant_id: order.to_tenant_id, // B 自身の予約（他テナント booth/staff 参照なし→ガード通過）
+      store_id: await storeIdOrNull(admin, order.to_tenant_id, "holdConvert"),
       customer_id: cust?.id ?? null,
       title: order.title,
       scheduled_date: hold.scheduled_date,

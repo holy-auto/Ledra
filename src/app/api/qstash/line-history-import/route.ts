@@ -16,7 +16,7 @@
  */
 import { NextRequest } from "next/server";
 import { z } from "zod";
-import { verifySignatureAppRouter } from "@upstash/qstash/nextjs";
+import { withQstashSignature } from "@/lib/qstash/verifySignature";
 import { apiJson } from "@/lib/api/response";
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { canUseFeature, normalizePlanTier } from "@/lib/billing/planFeatures";
@@ -39,6 +39,36 @@ const payloadSchema = z.object({
   line_user_id: z.string().min(1),
 });
 
+/**
+ * 1 回の実行で処理する件数の上限。**費用と実行時間の両方をこれが守っている。**
+ *
+ * ## 費用
+ *
+ * ループ内の月次コストキャップ判定 (`baseSpentJpy + inJobJpy >= capJpy`) は
+ * 2026-09-04 に既定が入って**設定が無くても働くようになった**
+ * (`DEFAULT_MONTHLY_COST_CAP_JPY` = テナント1件あたり月1万円)。
+ * ただし Redis 不在・失敗時は fail-open するので、**キャップだけに頼らない**。
+ * この件数上限は、キャップが効かない場合の 1 回あたりのコストの天井でもある。
+ *
+ * ## 実行時間
+ *
+ * 下の for ループは 1 件 1 AI 呼び出しの直列処理で、関数の予算は
+ * `maxDuration = 300` 秒。モデルは `fastModelForPlanTier(planTier)` なので
+ * **starter は Haiku、standard/pro は Sonnet** (`client.ts`)。
+ * Sonnet 側が支配的で、1 件 3 秒なら 80 件で約 240 秒。300 秒に対して余裕は薄い。
+ *
+ * **`LINE_HISTORY_IMPORT_MAX` を上げるときは `maxDuration` も一緒に上げること。**
+ * `Math.min(n, 500)` は env に極端な値が入ったときの歯止めだが、
+ * **500 件はこの見積もりでは 300 秒に収まらない** (1500 秒相当)。
+ * 500 まで使うなら fan-out (1 リクエスト 1 件) への作り替えが要る。
+ *
+ * ## 切り捨て
+ *
+ * 取得は `created_at` の降順（新しい順）なので、溢れるのは**最も古いメッセージ**
+ * ＝いま生きている予約意図を含む可能性が最も低い分。
+ * ただし溢れた分は再 enqueue されず、次に同じ顧客で紐づけイベントが起きるまで
+ * `ai_extracted` は null のまま残る（`truncated` を log に出すだけ）。
+ */
 function maxMessages(): number {
   const n = Number(process.env.LINE_HISTORY_IMPORT_MAX);
   return Number.isFinite(n) && n > 0 ? Math.min(n, 500) : 80;
@@ -144,4 +174,4 @@ async function handler(req: NextRequest) {
   return apiJson({ processed, candidates, stopped_by_cap: stoppedByCap, truncated });
 }
 
-export const POST = verifySignatureAppRouter(handler);
+export const POST = withQstashSignature(handler);

@@ -34,11 +34,16 @@ export async function authedRequest(ctx: BrowserContext, baseURL: string): Promi
   });
 }
 
+export interface Credentials {
+  email: string;
+  password: string;
+}
+
 /**
  * E2E_USER_EMAIL / E2E_USER_PASSWORD が両方セットされているか。
  * 未設定なら spec 側で test.skip する。
  */
-export function hasAdminCreds(): { email: string; password: string } | null {
+export function hasAdminCreds(): Credentials | null {
   const email = process.env.E2E_USER_EMAIL;
   const password = process.env.E2E_USER_PASSWORD;
   if (!email || !password) return null;

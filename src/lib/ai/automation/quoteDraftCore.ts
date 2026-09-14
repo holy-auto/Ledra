@@ -157,7 +157,8 @@ export async function createInboundQuoteDraft(
     priority: "normal",
     title: "AI が見積ドラフトを起票しました",
     body: `${customer?.name ?? "顧客"} 様の問い合わせ（${service}）から見積下書きを作成しました。内容を確認して確定してください。`,
-    link_path: `/admin/documents?doc_type=estimate`,
+    // 一覧が読むのは ?type=。?doc_type= だと絞り込みが効かない
+    link_path: `/admin/documents?type=estimate`,
   });
   if (notifyErr) {
     logger.warn("[quoteDraftCore] notification insert failed", { tenantId, err: notifyErr.message });

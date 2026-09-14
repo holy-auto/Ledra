@@ -1,9 +1,25 @@
 -- ⑥ テナントに業種区分と都道府県を追加
-ALTER TABLE tenants ADD COLUMN IF NOT EXISTS category text;
-COMMENT ON COLUMN tenants.category IS '業種区分: detailing, maintenance, custom, bodywork';
+--
+-- このファイルは本番へ適用済み（version 20260313000001）。**内容だけ**を後から
+-- 変えてある。ファイル名の日付が `20260313020000_core_tables.sql` より前なのに
+-- tenants に依存しているため、空 DB へ1パスで流すとここで止まる。
+-- ファイル名は動かさない（版番号が変わると本番で再適用になり、下の関数群が
+-- **search_path 未固定の古い定義に巻き戻る**）。
+-- 空 DB 側の2列は `20260313020000_core_tables.sql` の末尾で足す。
+DO $mig$
+BEGIN
+  IF to_regclass('public.tenants') IS NULL THEN
+    RAISE NOTICE '20260313000001: core_tables 未適用のため列追加のみ skip（core_tables の末尾が足す）';
+    RETURN;
+  END IF;
 
-ALTER TABLE tenants ADD COLUMN IF NOT EXISTS prefecture text;
-COMMENT ON COLUMN tenants.prefecture IS '都道府県（例: 東京都, 大阪府）';
+  ALTER TABLE public.tenants ADD COLUMN IF NOT EXISTS category text;
+  COMMENT ON COLUMN public.tenants.category IS '業種区分: detailing, maintenance, custom, bodywork';
+
+  ALTER TABLE public.tenants ADD COLUMN IF NOT EXISTS prefecture text;
+  COMMENT ON COLUMN public.tenants.prefecture IS '都道府県（例: 東京都, 大阪府）';
+END
+$mig$;
 
 -- ⑦ プラットフォーム全体統計用 RPC（SECURITY DEFINER で RLS を迂回）
 

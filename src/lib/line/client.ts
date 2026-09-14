@@ -1,5 +1,7 @@
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
-import { readSecret } from "@/lib/crypto/tenantSecrets";
+import { readSecret, buildSecretWrite } from "@/lib/crypto/tenantSecrets";
+import { issueChannelAccessToken, isLineTokenExpiringSoon } from "./provisioning";
+import { logger } from "@/lib/logger";
 import { recordInboundLineMessage, recordOutboundLineMessage } from "./messageStore";
 import { maybeAutoProcessInboundMessage } from "@/lib/ai/automation/inboundAuto";
 import { maybeNotifyInboundMessage } from "./inboundNotify";
@@ -18,6 +20,27 @@ type LineConfig = {
   liffId: string | null;
 };
 
+/**
+ * トークン失効時刻を単独で読む。列が無い（マイグレーション未適用）環境では
+ * null = 「期限なし」を返し、送信経路を絶対に止めない。
+ */
+async function readTokenExpiry(tenantId: string): Promise<string | null> {
+  try {
+    const { admin } = createTenantScopedAdmin(tenantId);
+    const { data, error } = await admin
+      .from("tenants")
+      .select("line_channel_token_expires_at")
+      .eq("id", tenantId)
+      .maybeSingle();
+    if (error) return null;
+    return (data?.line_channel_token_expires_at as string | null) ?? null;
+  } catch {
+    // ここは「再発行が要るか」を知るためだけの補助クエリ。何が起きても
+    // 送信経路を巻き込まない (throw させない)。
+    return null;
+  }
+}
+
 /** テナントの LINE 設定を取得 */
 async function getLineConfig(tenantId: string): Promise<LineConfig | null> {
   const { admin } = createTenantScopedAdmin(tenantId);
@@ -31,13 +54,47 @@ async function getLineConfig(tenantId: string): Promise<LineConfig | null> {
 
   if (!tenant?.line_enabled) return null;
 
+  /**
+   * 失効時刻だけ別クエリにする。
+   *
+   * 上の select に混ぜると、この列のマイグレーション未適用時に select 全体が
+   * エラーになり `tenant` が null → getLineConfig が null を返し、**LINE の
+   * 送受信が全部無言で止まる**（このリポジトリではマイグレーション未適用の
+   * ドリフトが実際に2回起きている）。列が無い環境では「期限なし」として扱い、
+   * 従来どおり保存済みトークンをそのまま使う。
+   */
+  const tokenExpiresAt = await readTokenExpiry(tenantId);
+
   const channelSecret = await readSecret(tenant.line_channel_secret_ciphertext, "tenants.line_channel_secret");
-  const channelAccessToken = await readSecret(
+  let channelAccessToken = await readSecret(
     tenant.line_channel_access_token_ciphertext,
     "tenants.line_channel_access_token",
   );
 
   if (!channelAccessToken || !channelSecret) return null;
+
+  // Ledra が自動発行したトークンは 30 日で失効する。放置すると予約通知・
+  // リマインダー・書類送付が静かに全部止まるため、期限が近ければここで差し替える。
+  // 再発行に失敗しても既存トークンはまだ有効なので、送信自体は止めない。
+  if (isLineTokenExpiringSoon(tokenExpiresAt)) {
+    try {
+      const issued = await issueChannelAccessToken(tenant.line_channel_id as string, channelSecret);
+      const { ciphertext } = await buildSecretWrite(issued.accessToken);
+      const { error } = await admin
+        .from("tenants")
+        .update({
+          line_channel_access_token_ciphertext: ciphertext,
+          line_channel_token_expires_at: issued.expiresAt,
+        })
+        .eq("id", tenantId);
+      // 書き込み失敗を握りつぶすと、送信のたびに LINE のトークン発行 API を
+      // 叩き続ける状態に無言で入る。必ず記録する。
+      if (error) logger.error("line: token refresh saved failed", error, { tenantId });
+      channelAccessToken = issued.accessToken;
+    } catch (e) {
+      logger.error("line: channel access token refresh failed", e, { tenantId });
+    }
+  }
 
   return {
     channelId: tenant.line_channel_id,
@@ -340,15 +397,30 @@ export async function handleWebhookEvents(
         attachment = fetched ? { path: fetched.path, contentType: fetched.contentType } : null;
         if (isImage && fetched?.buf) {
           try {
+            // 画像バイト列のコピーは 1 回だけ (数 MB になりうるので二重確保しない)。
+            const imageBuffer = Buffer.from(fetched.buf);
             const { handleVehiclePhotoMessage } = await import("@/lib/ai/automation/vehicleCaptureAuto");
             flowHandled = await handleVehiclePhotoMessage({
               tenantId,
               lineUserId: event.source.userId,
-              imageBuffer: Buffer.from(fetched.buf),
+              imageBuffer,
               attachmentPath: fetched.path,
               attachmentContentType: fetched.contentType,
               lineMessageId: msg.id ?? null,
             });
+            // 車両撮影フローでなければ、見積り詳細待ち (awaiting_quote_detail) 中の
+            // 車検証写真として OCR → 見積りフロー前進を試みる。
+            if (!flowHandled) {
+              const { maybeAdvanceQuoteFlowOnPhoto } = await import("@/lib/ai/automation/conversationFlowAuto");
+              flowHandled = await maybeAdvanceQuoteFlowOnPhoto({
+                tenantId,
+                lineUserId: event.source.userId,
+                imageBuffer,
+                attachmentPath: fetched.path,
+                attachmentContentType: fetched.contentType,
+                lineMessageId: msg.id ?? null,
+              });
+            }
           } catch {
             flowHandled = false; // fail-soft: 通常の受信箱記録にフォールバック
           }
@@ -395,10 +467,17 @@ export async function handleWebhookEvents(
       // 部品確定の連携コードなら customers.line_user_id を紐付けて完了（コードは履歴に残さない）。
       try {
         const { tryConsumeLineLinkCode } = await import("@/lib/line/linkCode");
-        const link = await tryConsumeLineLinkCode(tenantId, event.source.userId, rawText);
+        // グループ/ルームではマイページ案内をリプライに載せない (参加者全員に届くため)。
+        // 載せない場所でトークンだけ発行しても無駄なので、組み立て自体を止める。
+        const isDirectTalk = event.source.type === "user";
+        const link = await tryConsumeLineLinkCode(tenantId, event.source.userId, rawText, isDirectTalk);
         if (link.linked) {
           if (event.replyToken) {
-            const linkedText = "LINE連携が完了しました。今後の確認はこちらにお送りします。";
+            // マイページ案内は同じ応答メッセージに同梱する (応答は無料・プッシュは従量課金)。
+            // portalText はグループ/ルームでは組み立てられない (上の isDirectTalk)。
+            const linkedText = ["LINE連携が完了しました。今後の確認はこちらにお送りします。", link.portalText ?? null]
+              .filter(Boolean)
+              .join("\n\n");
             await replyMessage(config.channelAccessToken, event.replyToken, [{ type: "text", text: linkedText }]);
             await recordOutboundLineMessage({
               tenantId,
@@ -427,9 +506,19 @@ export async function handleWebhookEvents(
       // (別々に reply すると 2 通目以降が落ちるため)
       const replyMessages: Array<{ type: string; text?: string; [key: string]: unknown }> = [];
 
+      // human_takeover (「スタッフに相談したい」後 / スタッフ対応中) の間は、決定的な定型返信
+      // (予約リンク・連携案内) を**組み立てない** ——「担当が対応します」と伝えた直後に自動返信を
+      // 返さないため。判定を組み立ての**前**に置くのは、連携案内 (buildLineLinkPrompt) が招待行を
+      // 作る副作用を持つため。組み立て後に抑止すると、抑止された回ごとに未到達の招待が溜まる。
+      const { isHumanTakeoverActive } = await import("@/lib/line/flow/flowStore");
+      const takeoverActive = await isHumanTakeoverActive(tenantId, {
+        customerId: stored.customerId ?? null,
+        lineUserId: event.source.userId,
+      });
+
       const text = rawText.trim().toLowerCase();
       // リッチメニューの定型テキスト (来店予約 等) も拾う
-      if (text === "予約" || text === "来店予約" || text === "booking") {
+      if (!takeoverActive && (text === "予約" || text === "来店予約" || text === "booking")) {
         // LIFF URL で予約画面へ誘導
         const liffUrl = config.liffId ? `https://liff.line.me/${config.liffId}` : null;
         replyMessages.push({
@@ -438,11 +527,31 @@ export async function handleWebhookEvents(
         });
       }
 
+      // 「マイページ」でログインリンクを再発行する (無料のリプライで返す)。
+      // ログインリンクは単回使用・期限付きなので、切れた顧客が自分で取り直せる導線が要る。
+      // email 無しの顧客にとっては唯一のマイページ入口なので、ここが最後の砦。
+      // お客様専用リンクを含むため、1:1 トークかつ紐づけ済みのときだけ。
+      if (
+        event.source.type === "user" &&
+        event.replyToken &&
+        stored.customerId &&
+        (text === "マイページ" || text === "まいぺーじ" || text === "mypage")
+      ) {
+        try {
+          const { buildPortalWelcomeText } = await import("@/lib/line/linkCustomer");
+          const portalText = await buildPortalWelcomeText(tenantId, stored.customerId, event.source.userId);
+          if (portalText) replyMessages.push({ type: "text", text: portalText });
+        } catch (e) {
+          console.error("[line.portalLink] reissue failed:", e);
+        }
+      }
+
       // 未紐づけユーザーへの「連携を促す案内」(opt-in テナントのみ / fail-soft)。
       // 課金されるプッシュではなく、この受信メッセージへの**リプライ (無料)** で返す。
       // 招待 URL を含むため、参加者全員に届くグループ/ルームでは送らず、1:1 トークのみ
       // (source.type === "user")。replyToken が無い回はスキップし、次の受信で返す。
-      if (event.source.type === "user" && event.replyToken) {
+      // human_takeover 中は buildLineLinkPrompt を呼ばない (招待行の副作用を避ける)。
+      if (!takeoverActive && event.source.type === "user" && event.replyToken) {
         const { buildLineLinkPrompt } = await import("@/lib/line/linkPrompt");
         const prompt = await buildLineLinkPrompt({
           tenantId,

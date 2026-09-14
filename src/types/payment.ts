@@ -1,5 +1,5 @@
-export type PaymentMethod = 'cash' | 'card' | 'qr' | 'bank_transfer' | 'other';
-export type PaymentStatus = 'completed' | 'refunded' | 'partial_refund' | 'voided';
+export type PaymentMethod = "cash" | "card" | "qr" | "bank_transfer" | "other";
+export type PaymentStatus = "completed" | "refunded" | "partial_refund" | "voided";
 
 export interface PaymentRow {
   id: string;

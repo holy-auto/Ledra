@@ -30,8 +30,17 @@ CREATE INDEX IF NOT EXISTS idx_tenant_memberships_user_id
   ON tenant_memberships (user_id);
 
 -- Customer portal: login codes lookup
-CREATE INDEX IF NOT EXISTS idx_customer_login_codes_tenant_email
-  ON customer_login_codes (tenant_id, email, expires_at DESC);
+-- 【後から内容だけ修正】customer_login_codes を作るのは 20260321000001（このファイルより後ろ）。
+-- 空 DB へ1パスで流すとここで落ちるので、無いときは飛ばす。
+-- 空 DB 側の索引は 20260321000001_customer_portal_tables.sql の末尾で張る。
+DO $mig$
+BEGIN
+  IF to_regclass('public.customer_login_codes') IS NOT NULL THEN
+    CREATE INDEX IF NOT EXISTS idx_customer_login_codes_tenant_email
+      ON public.customer_login_codes (tenant_id, email, expires_at DESC);
+  END IF;
+END
+$mig$;
 
 -- Market vehicle images: lookup by vehicle
 CREATE INDEX IF NOT EXISTS idx_market_vehicle_images_vehicle

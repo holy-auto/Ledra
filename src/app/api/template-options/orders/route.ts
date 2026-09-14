@@ -2,8 +2,8 @@ import { NextRequest } from "next/server";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceRoleAdmin, createTenantScopedAdmin } from "@/lib/supabase/admin";
-import { resolveCallerFull } from "@/lib/api/auth";
-import { apiOk, apiUnauthorized, apiValidationError, apiInternalError } from "@/lib/api/response";
+import { resolveCallerWithRole, requirePermission } from "@/lib/auth/checkRole";
+import { apiOk, apiUnauthorized, apiValidationError, apiInternalError, apiForbidden } from "@/lib/api/response";
 import { hearingSchema } from "@/lib/template-options/configSchema";
 import { sendTemplateOrderConfirmationEmail } from "@/lib/email/templateOrderEmail";
 
@@ -17,7 +17,7 @@ const createOrderSchema = z.object({
 export async function GET(_req: NextRequest) {
   try {
     const supabase = await createClient();
-    const caller = await resolveCallerFull(supabase);
+    const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
 
     const { data: orders, error } = await supabase
@@ -49,8 +49,9 @@ export async function POST(req: NextRequest) {
     }
 
     const supabase = await createClient();
-    const caller = await resolveCallerFull(supabase);
+    const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
+    if (!requirePermission(caller, "template_options:manage")) return apiForbidden();
 
     const { admin } = createTenantScopedAdmin(caller.tenantId);
     const { order_type, hearing, notes } = parsed.data;

@@ -20,6 +20,7 @@ import { recordCronSuccess, recordCronFailure } from "@/lib/cron/failureTracker"
 import { syncTenantToProvider } from "@/lib/accounting/sync";
 import type { AccountingProvider } from "@/lib/accounting/types";
 import { logger } from "@/lib/logger";
+import { enqueueAccountingTenantSync } from "@/lib/qstash/publish";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -47,9 +48,11 @@ export async function GET(req: NextRequest) {
 
     const { data: integrations, error } = await admin
       .from("accounting_integrations")
-      .select("tenant_id, provider")
+      .select("tenant_id, provider, last_synced_at")
       .eq("status", "active")
-      .eq("auto_sync_enabled", true);
+      .eq("auto_sync_enabled", true)
+      // タイムアウトで後続を延期しても、次回は最も待っている連携から再開する。
+      .order("last_synced_at", { ascending: true, nullsFirst: true });
 
     if (error) {
       log.error("failed to fetch integrations", error);
@@ -68,40 +71,58 @@ export async function GET(req: NextRequest) {
     let totalSynced = 0;
     let totalFailed = 0;
 
-    for (const t of targets) {
+    const FANOUT_CONCURRENCY = process.env.QSTASH_TOKEN ? 10 : 2;
+    for (let offset = 0; offset < targets.length; offset += FANOUT_CONCURRENCY) {
       if (Date.now() - startedAt > CRON_TIMEOUT_MS) {
         log.warn("timeout guard reached, stopping further syncs");
         break;
       }
-      try {
-        const r = await syncTenantToProvider({
-          tenantId: t.tenant_id,
-          provider: t.provider,
-          triggerType: "scheduled",
-        });
-        results.push({
-          tenantId: t.tenant_id,
-          provider: t.provider,
-          attempted: r.attempted,
-          synced: r.synced,
-          failed: r.failed,
-          reason: r.reason,
-        });
-        totalSynced += r.synced;
-        totalFailed += r.failed;
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
-        log.error(`tenant=${t.tenant_id} provider=${t.provider} failed`, e);
-        results.push({
-          tenantId: t.tenant_id,
-          provider: t.provider,
-          attempted: 0,
-          synced: 0,
-          failed: 1,
-          reason: msg,
-        });
-        totalFailed += 1;
-      }
+      await Promise.all(
+        targets.slice(offset, offset + FANOUT_CONCURRENCY).map(async (t) => {
+          try {
+            const queued = await enqueueAccountingTenantSync({ tenant_id: t.tenant_id, provider: t.provider });
+            if (queued) {
+              results.push({
+                tenantId: t.tenant_id,
+                provider: t.provider,
+                attempted: 0,
+                synced: 0,
+                failed: 0,
+                reason: "queued",
+              });
+              return;
+            }
+            // QStash未設定の開発環境だけはインライン同期へフォールバックする。
+            const r = await syncTenantToProvider({
+              tenantId: t.tenant_id,
+              provider: t.provider,
+              triggerType: "scheduled",
+            });
+            results.push({
+              tenantId: t.tenant_id,
+              provider: t.provider,
+              attempted: r.attempted,
+              synced: r.synced,
+              failed: r.failed,
+              reason: r.reason,
+            });
+            totalSynced += r.synced;
+            totalFailed += r.failed;
+          } catch (e) {
+            const msg = e instanceof Error ? e.message : String(e);
+            log.error(`tenant=${t.tenant_id} provider=${t.provider} failed`, e);
+            results.push({
+              tenantId: t.tenant_id,
+              provider: t.provider,
+              attempted: 0,
+              synced: 0,
+              failed: 1,
+              reason: msg,
+            });
+            totalFailed += 1;
+          }
+        }),
+      );
     }
 
     const elapsed = Date.now() - startedAt;

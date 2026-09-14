@@ -6,6 +6,9 @@
 
 # scratch / temporary files (e.g. generated PDFs for review)
 /tmp/
+
+# UI reference images (visual targets, not committed to repo)
+/references/
 .pnp.*
 .yarn/*
 !.yarn/patches
@@ -45,11 +48,36 @@ yarn-error.log*
 # vercel
 .vercel
 
+# supabase CLI 作業ファイル（project-ref・pooler-url等の CLI 実行時メタデータ。
+# 秘密ではないが CLI が上書きする作業ファイルで、将来資格情報が混入する経路になる。
+# C-M2 是正 2026-09-08）
+supabase/.temp/
+
+# モバイル配布用の署名鍵・サービスアカウント（*.p12/*.jks は apps/mobile/.gitignore
+# に既にあるが、ルート直下や別ディレクトリに置かれた場合の保険。C-L1 是正 2026-09-08）
+*.p8
+*.p12
+*.jks
+*.keystore
+# 秘密鍵（Apple 署名用 CSR の鍵など）はどこに作られても追跡しない
+*.key
+credentials.json
+google-play-service-account.json
+
 # claude code worktrees (prevents Tailwind/Turbopack from scanning symlinks)
 .claude/
 
 # Screenshots captured by CI (directories tracked via .gitkeep)
 public/screenshots/**/*.png
+
+# ただし配布 PDF が差し込む3枚だけはコミットする。撮影しているのは Remotion の
+# 動画ワークフローだけで、成果物は artifact に上がるだけ ―― Vercel のビルドは
+# 撮影しない。リポジトリに無い＝本番の PDF ではスライドが永久に出ない
+# （ScreenshotSlide はファイルが無ければ黙ってページごと消えるので気づけない）。
+# 参照先とこの一覧のズレは resourcePdf.render.test.tsx が検出する。
+!public/screenshots/admin/certs-new.png
+!public/screenshots/admin/customers-detail.png
+!public/screenshots/insurer/search.png
 
 # Remotion rendered output
 /out/

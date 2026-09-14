@@ -107,13 +107,13 @@ export async function POST(req: NextRequest) {
 
     // 監査ログ (失敗してもアクションは止めない)。
     try {
+      // actor_tenant_id 列は admin_audit_logs に存在しないため meta に格納する
       await admin.from("admin_audit_logs").insert({
         actor_id: caller.userId,
-        actor_tenant_id: caller.tenantId,
         action: is_trusted ? "platform.supply_partner.trust" : "platform.supply_partner.untrust",
         target_type: "supply_partner",
         target_id: supply_partner_id,
-        meta: { partner_name: partner.name, is_trusted },
+        meta: { actor_tenant_id: caller.tenantId, partner_name: partner.name, is_trusted },
       });
     } catch (auditErr) {
       console.error("[platform/supply-partners] audit log failed:", auditErr);

@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
-import { resolveCallerFull } from "@/lib/api/auth";
+import { resolveCallerWithRole, requirePermission } from "@/lib/auth/checkRole";
 import {
   apiOk,
   apiUnauthorized,
@@ -25,7 +25,7 @@ const saveConfigSchema = z.object({
 export async function GET(_req: NextRequest) {
   try {
     const supabase = await createClient();
-    const caller = await resolveCallerFull(supabase);
+    const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
 
     const { data: configs } = await supabase
@@ -52,8 +52,9 @@ export async function POST(req: NextRequest) {
     }
 
     const supabase = await createClient();
-    const caller = await resolveCallerFull(supabase);
+    const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
+    if (!requirePermission(caller, "template_options:manage")) return apiForbidden();
 
     // オプション契約チェック
     const optionStatus = await getTemplateOptionStatus(caller.tenantId);
@@ -130,8 +131,9 @@ export async function PUT(req: NextRequest) {
     }
 
     const supabase = await createClient();
-    const caller = await resolveCallerFull(supabase);
+    const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
+    if (!requirePermission(caller, "template_options:manage")) return apiForbidden();
 
     const { admin } = createTenantScopedAdmin(caller.tenantId);
 

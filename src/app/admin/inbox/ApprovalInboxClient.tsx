@@ -11,7 +11,7 @@ type InboxResponse = { sections: InboxSection[]; total: number };
 async function runAction(kind: InboxActionKind, id: string): Promise<Response> {
   if (kind === "issue_certificate") {
     return fetch("/api/admin/certificates/status", {
-      method: "POST",
+      method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ public_id: id, status: "active" }),
     });
@@ -35,7 +35,7 @@ export default function ApprovalInboxClient() {
     try {
       const res = await fetch("/api/admin/inbox", { cache: "no-store" });
       const json = await parseJsonSafe(res);
-      if (!res.ok) throw new Error(json?.error ?? `HTTP ${res.status}`);
+      if (!res.ok) throw new Error(json?.message ?? json?.error ?? `HTTP ${res.status}`);
       setData(json as InboxResponse);
     } catch (e) {
       setMsg(e instanceof Error ? e.message : "読み込みに失敗しました");
@@ -54,7 +54,7 @@ export default function ApprovalInboxClient() {
     try {
       const res = await runAction(kind, id);
       const json = await parseJsonSafe(res);
-      if (!res.ok) throw new Error(json?.error ?? `HTTP ${res.status}`);
+      if (!res.ok) throw new Error(json?.message ?? json?.error ?? `HTTP ${res.status}`);
       setMsg(`${label}しました`);
       await load();
     } catch (e) {

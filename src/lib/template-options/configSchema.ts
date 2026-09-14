@@ -32,9 +32,9 @@ const customSectionSchema = z.object({
 });
 
 const bodySchema = z.object({
-  show_customer_name: z.literal(true).default(true),    // 必須固定
-  show_vehicle_info: z.literal(true).default(true),      // 必須固定
-  show_service_details: z.literal(true).default(true),   // 必須固定
+  show_customer_name: z.literal(true).default(true), // 必須固定
+  show_vehicle_info: z.literal(true).default(true), // 必須固定
+  show_service_details: z.literal(true).default(true), // 必須固定
   show_photos: z.boolean().default(true),
   custom_sections: z.array(customSectionSchema).max(3).default([]),
 });
@@ -43,7 +43,7 @@ const footerSchema = z.object({
   warranty_text: z.string().max(500).optional(),
   notice_text: z.string().max(500).optional(),
   show_qr: z.boolean().default(true),
-  show_ledra_badge: z.literal(true).default(true),   // 必須固定
+  show_ledra_badge: z.literal(true).default(true), // 必須固定
   maintenance_url: z.string().url().max(500).optional().or(z.literal("")),
   maintenance_label: z.string().max(50).default("メンテナンス情報"),
   show_maintenance_qr: z.boolean().default(false),
@@ -108,8 +108,8 @@ export function validateCustomConfig(config: TemplateConfigInput): TemplateConfi
     ...config,
     body: {
       ...config.body,
-      show_customer_name: true,  // 必須固定
-      show_vehicle_info: true,   // 必須固定
+      show_customer_name: true, // 必須固定
+      show_vehicle_info: true, // 必須固定
       show_service_details: true, // 必須固定
     },
     footer: {
@@ -120,10 +120,7 @@ export function validateCustomConfig(config: TemplateConfigInput): TemplateConfi
 }
 
 /** option_type に応じた config 補正 */
-export function sanitizeConfig(
-  optionType: TemplateOptionType,
-  config: TemplateConfigInput,
-): TemplateConfigInput {
+export function sanitizeConfig(optionType: TemplateOptionType, config: TemplateConfigInput): TemplateConfigInput {
   if (optionType === "preset") return validatePresetConfig(config);
   return validateCustomConfig(config);
 }

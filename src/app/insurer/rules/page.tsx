@@ -187,12 +187,8 @@ export default function InsurerRulesPage() {
           <div className="inline-flex rounded-full border border-border-default bg-surface px-3 py-1 text-[11px] font-semibold tracking-[0.18em] text-secondary">
             自動振り分け
           </div>
-          <h1 className="text-3xl font-bold tracking-tight text-primary">
-            案件自動振り分けルール
-          </h1>
-          <p className="text-sm text-muted">
-            条件に基づいて案件を自動的に担当者に振り分けます
-          </p>
+          <h1 className="text-3xl font-bold tracking-tight text-primary">案件自動振り分けルール</h1>
+          <p className="text-sm text-muted">条件に基づいて案件を自動的に担当者に振り分けます</p>
         </div>
         <button
           onClick={() => {
@@ -207,13 +203,8 @@ export default function InsurerRulesPage() {
 
       {/* create/edit form */}
       {showForm && (
-        <form
-          onSubmit={handleSubmit}
-          className="rounded-2xl border border-border-default bg-surface p-6 space-y-4"
-        >
-          <h2 className="text-lg font-bold text-primary">
-            {editingId ? "ルール編集" : "新規ルール作成"}
-          </h2>
+        <form onSubmit={handleSubmit} className="rounded-2xl border border-border-default bg-surface p-6 space-y-4">
+          <h2 className="text-lg font-bold text-primary">{editingId ? "ルール編集" : "新規ルール作成"}</h2>
 
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="sm:col-span-2">
@@ -272,9 +263,7 @@ export default function InsurerRulesPage() {
                 割り当て先 <span className="text-red-500">*</span>
               </label>
               {users.length === 0 ? (
-                <p className="text-sm text-muted">
-                  アクティブなユーザーが見つかりません
-                </p>
+                <p className="text-sm text-muted">アクティブなユーザーが見つかりません</p>
               ) : (
                 <select
                   value={formAssignTo}
@@ -313,11 +302,7 @@ export default function InsurerRulesPage() {
       )}
 
       {/* error */}
-      {err && (
-        <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {err}
-        </div>
-      )}
+      {err && <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{err}</div>}
 
       {/* rules list */}
       {busy ? (
@@ -327,9 +312,7 @@ export default function InsurerRulesPage() {
       ) : rules.length === 0 ? (
         <div className="rounded-2xl border border-border-default bg-surface p-12 text-center">
           <p className="text-muted">自動振り分けルールがありません</p>
-          <p className="mt-1 text-sm text-muted">
-            「新規ルール作成」ボタンからルールを追加できます
-          </p>
+          <p className="mt-1 text-sm text-muted">「新規ルール作成」ボタンからルールを追加できます</p>
         </div>
       ) : (
         <div className="space-y-3">
@@ -337,17 +320,13 @@ export default function InsurerRulesPage() {
             <div
               key={r.id}
               className={`rounded-2xl border bg-surface p-5 transition ${
-                r.is_active
-                  ? "border-border-default hover:border-border-default"
-                  : "border-border-subtle opacity-60"
+                r.is_active ? "border-border-default hover:border-border-default" : "border-border-subtle opacity-60"
               }`}
             >
               <div className="flex items-start justify-between gap-4">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1">
-                    <h3 className="text-base font-semibold text-primary truncate">
-                      {r.name}
-                    </h3>
+                    <h3 className="text-base font-semibold text-primary truncate">{r.name}</h3>
                     {!r.is_active && (
                       <span className="inline-flex rounded-full bg-surface-hover px-2.5 py-0.5 text-xs font-semibold text-muted">
                         無効
@@ -357,14 +336,11 @@ export default function InsurerRulesPage() {
                   <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-secondary">
                     <span>
                       条件:{" "}
-                      <span className="font-medium">
-                        {CONDITION_TYPE_LABELS[r.condition_type] ?? r.condition_type}
-                      </span>{" "}
+                      <span className="font-medium">{CONDITION_TYPE_LABELS[r.condition_type] ?? r.condition_type}</span>{" "}
                       = <span className="font-mono text-primary">{r.condition_value}</span>
                     </span>
                     <span>
-                      割り当て先:{" "}
-                      <span className="font-medium">{getUserName(r.assign_to)}</span>
+                      割り当て先: <span className="font-medium">{getUserName(r.assign_to)}</span>
                     </span>
                   </div>
                 </div>

@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
+import { resolveCallerWithRole, requirePermission } from "@/lib/auth/checkRole";
 import { escapeIlike } from "@/lib/sanitize";
 import { enforceBilling } from "@/lib/billing/guard";
 import { parsePagination } from "@/lib/api/pagination";
-import { apiJson, apiUnauthorized, apiValidationError, apiInternalError } from "@/lib/api/response";
+import { apiJson, apiUnauthorized, apiValidationError, apiInternalError, apiForbidden } from "@/lib/api/response";
 import { customerCreateSchema, customerDeleteSchema, customerUpdateSchema } from "@/lib/validations/customer";
 import { emitEntityWebhook } from "@/lib/outbound-webhooks";
 
@@ -143,6 +143,7 @@ export async function POST(req: NextRequest) {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
+    if (!requirePermission(caller, "customers:create")) return apiForbidden();
 
     const deny = await enforceBilling(req, {
       minPlan: "free",
@@ -194,6 +195,7 @@ export async function PUT(req: NextRequest) {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
+    if (!requirePermission(caller, "customers:edit")) return apiForbidden();
 
     const deny = await enforceBilling(req, {
       minPlan: "free",
@@ -268,6 +270,9 @@ export async function DELETE(req: NextRequest) {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
+    // 削除は admin 以上（代表判断 2026-09-04）。顧客には施工履歴・証明書がぶら下がる不可逆操作なので、
+    // 作成・編集（staff）とは分ける。
+    if (!requirePermission(caller, "customers:delete")) return apiForbidden();
 
     const deny = await enforceBilling(req, {
       minPlan: "free",

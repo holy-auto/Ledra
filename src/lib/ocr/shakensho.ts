@@ -83,9 +83,34 @@ export interface ShakenshoData {
  * Calculate vehicle size class from dimensions (mm).
  * Volume thresholds in cubic meters:
  *   SS: < 8.0, S: 8.0-10.0, M: 10.0-12.0, L: 12.0-14.0, LL: 14.0-16.0, XL: 16.0+
+ *
+ * **DB の `calc_size_class_from_volume()` と同じ答えを返すこと。**同じ規則が
+ * 2箇所にあるので、`supabase/__tests__/sqlTsParity.test.ts` がマイグレーション
+ * 本文から規則を読んで突き合わせている。片方だけ変えると落ちる。
+ *
+ * **小数第2位に丸めてから分類する。** SQL 側の呼び出しは4箇所とも
+ * `ROUND((l*w*h)/1000000000, 2)` を渡し、`vehicle_size_master.volume_m3` 自体も
+ * `numeric(5,2)` の生成列。丸めないと境界の直下で答えが割れる ——
+ * 4400×1765×1545mm は生の体積 11.99847 で TS は "M"、DB は ROUND して 12.00 で
+ * "L" になっていた。**サイズ区分は価格帯に効くので、これは金額が変わる。**
+ *
+ * 寸法が有限値でないときは **null**（SQL の `vol_m3 IS NULL THEN NULL` と同じ）。
+ * 以前は必ず文字列を返していたので、NaN が来ると全比較が false になって
+ * **"XL"（最も高い区分）** を返した。呼び出し元5箇所すべてが手前でガードして
+ * いたので到達しなかったが、**ガードを5箇所に置くより関数側で1回弾く方が
+ * 小さい**（CLAUDE.md「呼び出し元ごとでなく共有関数を1回直す」）。
+ * 0 や負値は弾かない —— SQL は 0 を NULL 扱いせず `0 < 8.0` で "SS" を返すので、
+ * ここで弾くと**新しいズレを作ってしまう。**
  */
-export function calcSizeClass(length_mm: number, width_mm: number, height_mm: number): string {
-  const volume = (length_mm * width_mm * height_mm) / 1e9;
+export function calcSizeClass(
+  length_mm: number | null | undefined,
+  width_mm: number | null | undefined,
+  height_mm: number | null | undefined,
+): string | null {
+  const dims = [length_mm, width_mm, height_mm];
+  if (!dims.every((d) => typeof d === "number" && Number.isFinite(d))) return null;
+  const raw = (length_mm! * width_mm! * height_mm!) / 1e9;
+  const volume = Math.round(raw * 100) / 100; // SQL 側の ROUND(_, 2) と揃える
   if (volume < 8.0) return "SS";
   if (volume < 10.0) return "S";
   if (volume < 12.0) return "M";
@@ -306,7 +331,10 @@ export async function parseShakenshoAuto(
     return { data: qrData, source: "qr" };
   }
 
-  // QR が不足 or 読めず → OCR で補完
+  // QR が不足 or 読めず → OCR で補完。
+  // ここに来た時点で「QR だけでは requireFields を満たせない」ことが確定しているので、
+  // OCR (Vision) が落ちたら握りつぶさず投げる。QR の一部だけを返すと呼び出し側は
+  // 「成功したが項目が足りない」と誤認し、基盤障害が UI にもログにも出ない。
   const ocrData = await parseShakensho(imageBuffer);
   if (!qrData) {
     return { data: ocrData, source: "ocr" };
@@ -329,37 +357,37 @@ export async function parseShakenshoAuto(
 /**
  * 車検証画像を Claude Vision で解析し、構造化データを返す。
  *
+ * Vision 呼び出しが失敗した場合は例外を投げる（空データを返さない）。
+ * 「API キー未設定 / レート制限 / サーキットオープン」と「画像が読めない」を
+ * 呼び出し側が区別できないと、UI が無反応になり原因を追えないため。
+ *
  * @param imageBuffer - Raw image bytes (JPEG, PNG, GIF, WEBP)
  * @returns Parsed vehicle data
+ * @throws Vision API 呼び出しに失敗したとき
  */
 export async function parseShakensho(imageBuffer: Buffer): Promise<ShakenshoData> {
   const client = getAnthropicClient();
   const mediaType = detectMediaType(imageBuffer);
   const base64 = imageBuffer.toString("base64");
 
-  let raw: ShakenshoRaw | null = null;
-  try {
-    const msg = await withRetry("anthropic", () =>
-      client.messages.parse({
-        model: AI_MODEL_VISION,
-        max_tokens: 1024,
-        system: [{ type: "text", text: SYSTEM_PROMPT, cache_control: { type: "ephemeral" } }],
-        messages: [
-          {
-            role: "user",
-            content: [
-              { type: "image", source: { type: "base64", media_type: mediaType, data: base64 } },
-              { type: "text", text: "この車検証画像から指定項目をJSONで抽出してください。" },
-            ],
-          },
-        ],
-        output_config: { format: zodOutputFormat(ShakenshoRawSchema) },
-      }),
-    );
-    raw = msg.parsed_output ?? null;
-  } catch (err) {
-    console.error("[shakensho] parse failed:", err);
-  }
+  const msg = await withRetry("anthropic", () =>
+    client.messages.parse({
+      model: AI_MODEL_VISION,
+      max_tokens: 1024,
+      system: [{ type: "text", text: SYSTEM_PROMPT, cache_control: { type: "ephemeral" } }],
+      messages: [
+        {
+          role: "user",
+          content: [
+            { type: "image", source: { type: "base64", media_type: mediaType, data: base64 } },
+            { type: "text", text: "この車検証画像から指定項目をJSONで抽出してください。" },
+          ],
+        },
+      ],
+      output_config: { format: zodOutputFormat(ShakenshoRawSchema) },
+    }),
+  );
+  const raw: ShakenshoRaw | null = msg.parsed_output ?? null;
 
   const data: ShakenshoData = {};
   if (raw?.maker) data.maker = raw.maker;

@@ -1,8 +1,9 @@
-import { createTenantScopedAdmin } from "@/lib/supabase/admin";
+import { createPlatformScopedAdmin } from "@/lib/supabase/admin";
 import { randomBytes } from "crypto";
 import { NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
+import { resolveCallerWithRole } from "@/lib/auth/checkRole";
+import { isPlatformAdmin } from "@/lib/auth/platformAdmin";
 import { apiJson, apiUnauthorized, apiForbidden, apiInternalError, apiValidationError } from "@/lib/api/response";
 import { parseJsonBody } from "@/lib/api/parseBody";
 import { parsePagination } from "@/lib/api/pagination";
@@ -33,12 +34,12 @@ export async function GET(request: NextRequest) {
     const supabase = await createClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
-    if (!requireMinRole(caller, "admin")) return apiForbidden();
+    if (!isPlatformAdmin(caller)) return apiForbidden();
 
     const agentId = request.nextUrl.searchParams.get("agent_id");
     if (!agentId) return apiValidationError("agent_id is required");
 
-    const { admin } = createTenantScopedAdmin(caller.tenantId);
+    const admin = createPlatformScopedAdmin("agent-contracts — platform-wide agent operations (no tenant scope)");
     const p = parsePagination(request, { defaultPerPage: 50, maxPerPage: 200 });
 
     let query = admin
@@ -78,13 +79,13 @@ export async function POST(request: NextRequest) {
     const supabase = await createClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
-    if (!requireMinRole(caller, "admin")) return apiForbidden();
+    if (!isPlatformAdmin(caller)) return apiForbidden();
 
     const parsed = await parseJsonBody(request, agentContractCreateSchema);
     if (!parsed.ok) return parsed.response;
     const { agent_id, template_type, title, signer_email, signer_name } = parsed.data;
 
-    const { admin } = createTenantScopedAdmin(caller.tenantId);
+    const admin = createPlatformScopedAdmin("agent-contracts — platform-wide agent operations (no tenant scope)");
 
     // 代理店の存在確認
     const { data: agent, error: agentErr } = await admin.from("agents").select("id").eq("id", agent_id).single();

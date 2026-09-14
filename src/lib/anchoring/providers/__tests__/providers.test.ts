@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createRequire } from "node:module";
+import { dirname, join } from "node:path";
 
 // Dynamically import so env vars take effect per-test
 async function loadProviders() {
@@ -115,7 +116,10 @@ describe("signC2pa happy path (dev-signed)", () => {
     const require = createRequire(import.meta.url);
     let moduleAvailable = true;
     try {
-      require.resolve("@contentauth/c2pa-node");
+      const entry = require.resolve("@contentauth/c2pa-node");
+      // パッケージが存在しても、別OS向けnative bindingだとロード時に失敗する。
+      // 実際に読み込める環境でだけhappy-pathの強い検証を行う。
+      require(join(dirname(entry), "index.node"));
     } catch {
       moduleAvailable = false;
     }

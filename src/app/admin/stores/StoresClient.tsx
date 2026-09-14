@@ -121,7 +121,7 @@ export default function StoresClient() {
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || "追加に失敗しました");
+        throw new Error(data.message || data.error || "追加に失敗しました");
       }
       setAddMemberUserId("");
       await fetchStoreMembers(membersStoreId);
@@ -200,7 +200,7 @@ export default function StoresClient() {
 
       if (!res.ok) {
         const data = await res.json();
-        throw new Error(data.error || "保存に失敗しました");
+        throw new Error(data.message || data.error || "保存に失敗しました");
       }
 
       resetForm();
@@ -232,7 +232,7 @@ export default function StoresClient() {
       const res = await fetch(`/api/admin/stores?id=${store.id}`, { method: "DELETE" });
       if (!res.ok) {
         const data = await res.json();
-        throw new Error(data.error || "削除に失敗しました");
+        throw new Error(data.message || data.error || "削除に失敗しました");
       }
       fetchStores();
     } catch (err: unknown) {
@@ -300,7 +300,7 @@ export default function StoresClient() {
                   placeholder="東京都渋谷区..."
                 />
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="mb-1 block text-xs font-medium text-secondary">緯度 (任意)</label>
                   <input
@@ -325,7 +325,7 @@ export default function StoresClient() {
                     placeholder="139.7454"
                   />
                 </div>
-                <p className="col-span-2 text-[11px] text-muted">
+                <p className="sm:col-span-2 text-[11px] text-muted">
                   写真GPSと店舗位置の整合性チェックの基準に使います (未入力可)。
                 </p>
               </div>

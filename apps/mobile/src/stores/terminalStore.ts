@@ -21,6 +21,12 @@ interface TerminalState {
   paymentStatus: PaymentStatus;
   paymentError: string | null;
   lastReceiptData: Record<string, unknown> | null;
+  /**
+   * **カードを切り終えたが、まだサーバへ記録できていない** PaymentIntent の ID。
+   * ここに値があるうちに決済をやり直すと、新しい PaymentIntent が作られて
+   * **二重に請求される**。記録の再送だけを行うために保持する。
+   */
+  pendingCapturePaymentIntentId: string | null;
 
   // Apple TTP T&C 同意状況とiOS互換性
   // null = 未確認, true = 同意済み, false = 未同意
@@ -37,6 +43,7 @@ interface TerminalState {
   setPaymentStatus: (status: PaymentStatus) => void;
   setPaymentError: (error: string | null) => void;
   setLastReceiptData: (data: Record<string, unknown> | null) => void;
+  setPendingCapture: (paymentIntentId: string | null) => void;
   resetPayment: () => void;
 
   setTermsAccepted: (accepted: boolean | null) => void;
@@ -53,6 +60,7 @@ export const useTerminalStore = create<TerminalState>((set) => ({
   paymentStatus: "idle",
   paymentError: null,
   lastReceiptData: null,
+  pendingCapturePaymentIntentId: null,
 
   termsAccepted: null,
   osVersionSupported: true,
@@ -66,12 +74,14 @@ export const useTerminalStore = create<TerminalState>((set) => ({
   setPaymentStatus: (paymentStatus) => set({ paymentStatus }),
   setPaymentError: (paymentError) => set({ paymentError }),
   setLastReceiptData: (lastReceiptData) => set({ lastReceiptData }),
+  setPendingCapture: (pendingCapturePaymentIntentId) => set({ pendingCapturePaymentIntentId }),
 
   resetPayment: () =>
     set({
       paymentStatus: "idle",
       paymentError: null,
       lastReceiptData: null,
+      pendingCapturePaymentIntentId: null,
     }),
 
   setTermsAccepted: (termsAccepted) => set({ termsAccepted }),

@@ -78,7 +78,7 @@ export default function FollowUpSettings() {
     try {
       const res = await fetch("/api/admin/follow-up-settings/maintenance-dry-run?days=30", { cache: "no-store" });
       const j = await parseJsonSafe(res);
-      if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
+      if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       setDryRun(j as DryRunResult);
     } catch (e: any) {
       setDryRunError(e?.message ?? String(e));
@@ -129,7 +129,7 @@ export default function FollowUpSettings() {
         body: JSON.stringify(payload),
       });
       const j = await parseJsonSafe(res);
-      if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
+      if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       setSettings((prev) => ({ ...prev, maintenance_schedule_by_service: parsedOverride }));
       setMsg({ text: "保存しました", ok: true });
     } catch (e: any) {

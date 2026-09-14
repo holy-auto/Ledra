@@ -1,6 +1,6 @@
 import { z } from "zod";
-import { apiInternalError, apiUnauthorized, apiValidationError } from "@/lib/api/response";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
+import { apiInternalError, apiUnauthorized, apiValidationError, apiForbidden } from "@/lib/api/response";
+import { resolveCallerWithRole, requirePermission } from "@/lib/auth/checkRole";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { extractFirstRegistrationYear } from "@/lib/ocr/shakensho";
 import { parseShakenshoCode } from "@/lib/ocr/shakensho-qr";
@@ -35,6 +35,7 @@ export async function POST(req: Request) {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
+    if (!requirePermission(caller, "vehicles:create")) return apiForbidden();
 
     const parsed = parseShakkenQrSchema.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) {

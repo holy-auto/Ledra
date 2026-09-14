@@ -9,15 +9,13 @@
     "userInterfaceStyle": "light",
     "splash": {
       "image": "./assets/splash-icon.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#1a1a2e"
+      "backgroundColor": "#d6d0cb"
     },
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.ledra.app",
       "infoPlist": {
         "NFCReaderUsageDescription": "Ledraは証明書NFCタグの読み取りと書き込みに使用します",
-        "NSCameraUsageDescription": "Ledraは施工写真の撮影に使用します",
         "ITSAppUsesNonExemptEncryption": false,
         "UIRequiredDeviceCapabilities": ["arm64", "iphone-ipad-minimum-performance-a12"]
       },
@@ -48,15 +46,13 @@
     "android": {
       "package": "com.ledra.app",
       "adaptiveIcon": {
-        "backgroundColor": "#1a1a2e",
+        "backgroundColor": "#ffffff",
         "foregroundImage": "./assets/android-icon-foreground.png",
-        "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "permissions": [
         "android.permission.NFC",
-        "android.permission.CAMERA",
-        "android.permission.RECORD_AUDIO"
+        "android.permission.CAMERA"
       ]
     },
     "web": {
@@ -76,21 +72,33 @@
         {
           "ios": {
             "deploymentTarget": "16.0"
+          },
+          "android": {
+            "minSdkVersion": 26
           }
         }
       ],
       "expo-router",
-      "expo-secure-store",
+      [
+        "expo-secure-store",
+        {
+          "faceIDPermission": "Ledraのロック解除に Face ID を使用します"
+        }
+      ],
+      "expo-video",
       [
         "expo-camera",
         {
-          "cameraPermission": "Ledraは施工写真の撮影に使用します"
+          "cameraPermission": "Ledraは施工写真の撮影と、顧客へ送る画像の撮影に使用します",
+          "microphonePermission": false,
+          "recordAudioAndroid": false
         }
       ],
       [
         "expo-image-picker",
         {
-          "photosPermission": "Ledraは施工写真の選択に使用します"
+          "photosPermission": "Ledraは施工写真の選択と、顧客へ送る画像の選択に使用します",
+          "microphonePermission": false
         }
       ],
       [

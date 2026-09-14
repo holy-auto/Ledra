@@ -6,12 +6,7 @@
  */
 export function CasesEmptyIllustration({ className = "" }: { className?: string }) {
   return (
-    <svg
-      viewBox="0 0 360 220"
-      xmlns="http://www.w3.org/2000/svg"
-      className={className}
-      aria-hidden="true"
-    >
+    <svg viewBox="0 0 360 220" xmlns="http://www.w3.org/2000/svg" className={className} aria-hidden="true">
       <defs>
         <radialGradient id="ce-glow" cx="0.5" cy="0.5">
           <stop offset="0%" stopColor="rgba(96,165,250,0.35)" />

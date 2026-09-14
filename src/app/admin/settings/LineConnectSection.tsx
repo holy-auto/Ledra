@@ -9,6 +9,17 @@ type LineStatus = {
   liff_id: string | null;
   webhook_url: string | null;
   link_prompt_enabled: boolean;
+  /** Ledra がトークンを発行・自動更新しているか（false = 手入力の長期トークン運用） */
+  token_auto_managed?: boolean;
+};
+
+/** configure / verify が返す接続診断 */
+type Diagnostics = {
+  bot_display_name?: string | null;
+  bot_basic_id?: string | null;
+  webhook_active?: boolean;
+  webhook_test_ok?: boolean;
+  manual_steps?: string[];
 };
 
 export default function LineConnectSection() {
@@ -18,11 +29,12 @@ export default function LineConnectSection() {
   const [editing, setEditing] = useState(false);
   const [copied, setCopied] = useState(false);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [diag, setDiag] = useState<Diagnostics | null>(null);
 
-  // Form fields
+  // Form fields — 必要なのは Channel ID と Channel Secret の2つだけ。
+  // アクセストークンの発行と Webhook URL の設定は Ledra が自動で行う。
   const [channelId, setChannelId] = useState("");
   const [channelSecret, setChannelSecret] = useState("");
-  const [accessToken, setAccessToken] = useState("");
   const [liffId, setLiffId] = useState("");
 
   const fetchStatus = useCallback(async () => {
@@ -47,8 +59,8 @@ export default function LineConnectSection() {
   }, [fetchStatus]);
 
   const handleConfigure = async () => {
-    if (!channelId || !channelSecret || !accessToken) {
-      setErr("Channel ID, Channel Secret, Channel Access Token は必須です");
+    if (!channelId || !channelSecret) {
+      setErr("Channel ID と Channel Secret は必須です");
       return;
     }
     setBusy(true);
@@ -61,18 +73,20 @@ export default function LineConnectSection() {
           action: "configure",
           channel_id: channelId,
           channel_secret: channelSecret,
-          channel_access_token: accessToken,
           liff_id: liffId || undefined,
         }),
       });
       const j = await parseJsonSafe(res);
       if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
+      setDiag(j as Diagnostics);
+      const remaining = (j?.manual_steps as string[] | undefined) ?? [];
       setSuccessMsg(
-        "LINE連携が完了しました。仕上げに、下に表示された Webhook URL を LINE Developers Console に設定してください。",
+        remaining.length === 0
+          ? "LINE連携が完了しました。アクセストークンの発行も Webhook URL の設定も Ledra が済ませています。"
+          : "LINE連携を保存しました。あと少しだけ LINE 側の設定が残っています（下記）。",
       );
       setEditing(false);
       setChannelSecret("");
-      setAccessToken("");
       // 直後の再取得が万一失敗しても Webhook URL は見せられるよう、POST の応答で即時反映する
       if (j?.webhook_url) {
         setStatus((s) => ({
@@ -81,10 +95,39 @@ export default function LineConnectSection() {
           liff_id: liffId || null,
           webhook_url: j.webhook_url,
           link_prompt_enabled: s?.link_prompt_enabled ?? false,
+          token_auto_managed: true,
         }));
       }
       await fetchStatus();
       setTimeout(() => setSuccessMsg(null), 15000);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  /** 接続を再確認: トークンを発行し直し、Webhook URL を設定し直して配送テストまで行う。 */
+  const handleVerify = async () => {
+    setBusy(true);
+    setErr(null);
+    setSuccessMsg(null);
+    try {
+      const res = await fetch("/api/admin/line", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action: "verify" }),
+      });
+      const j = await parseJsonSafe(res);
+      if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
+      setDiag(j as Diagnostics);
+      const remaining = (j?.manual_steps as string[] | undefined) ?? [];
+      setSuccessMsg(
+        remaining.length === 0
+          ? "LINEと正常に接続できています。"
+          : "接続を確認しました。残りの設定は下記のとおりです。",
+      );
+      await fetchStatus();
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
     } finally {
@@ -107,8 +150,8 @@ export default function LineConnectSection() {
       setStatus({ enabled: false, channel_id: null, liff_id: null, webhook_url: null, link_prompt_enabled: false });
       setChannelId("");
       setChannelSecret("");
-      setAccessToken("");
       setLiffId("");
+      setDiag(null);
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
     } finally {
@@ -239,29 +282,53 @@ export default function LineConnectSection() {
         <div className="text-sm text-secondary space-y-2">
           <div className="text-xs text-muted font-mono">Channel ID: {status?.channel_id}</div>
           {status?.liff_id && <div className="text-xs text-muted font-mono">LIFF ID: {status.liff_id}</div>}
+          {diag?.bot_display_name && (
+            <div className="text-xs text-muted">
+              接続先: <span className="text-primary">{diag.bot_display_name}</span>
+              {diag.bot_basic_id && <span className="ml-1 font-mono">({diag.bot_basic_id})</span>}
+            </div>
+          )}
+          {status?.token_auto_managed && (
+            <div className="text-xs text-muted">
+              アクセストークンはLedraが自動で発行・更新しています（手動での再発行は不要です）。
+            </div>
+          )}
+
+          {/* 残った手作業だけを出す。空なら「全部済んでいる」と言い切る。 */}
+          {diag?.manual_steps && diag.manual_steps.length > 0 && (
+            <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3">
+              <div className="text-xs font-medium text-amber-500">LINE側で残っている設定</div>
+              <ul className="mt-1 ml-4 list-disc space-y-1 text-xs text-secondary">
+                {diag.manual_steps.map((s) => (
+                  <li key={s}>{s}</li>
+                ))}
+              </ul>
+              <a
+                href="https://developers.line.biz/console/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-2 inline-block text-xs text-accent underline hover:no-underline"
+              >
+                LINE Developers Console を開く →
+              </a>
+            </div>
+          )}
+
+          {/* Webhook URL は Ledra が自動設定するので通常は不要。手で確認したい人向けに折りたたむ。 */}
           {status?.webhook_url && (
-            <div>
-              <div className="text-xs text-muted mb-1">
-                Webhook URL（
-                <a
-                  href="https://developers.line.biz/console/"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-accent underline hover:no-underline"
-                >
-                  LINE Developers Console
-                </a>
-                の「Messaging API設定」→「Webhook URL」に貼り付けて「Webhookの利用」をON）:
-              </div>
-              <div className="flex items-center gap-2">
-                <code className="flex-1 text-xs font-mono bg-[var(--bg-inset)] border border-border-subtle rounded-lg px-3 py-2 text-secondary break-all">
+            <details className="text-xs text-muted">
+              <summary className="cursor-pointer transition-colors hover:text-secondary">
+                Webhook URL を確認する（Ledraが設定済み）
+              </summary>
+              <div className="mt-2 flex items-center gap-2">
+                <code className="flex-1 break-all rounded-lg border border-border-subtle bg-[var(--bg-inset)] px-3 py-2 font-mono text-xs text-secondary">
                   {status.webhook_url}
                 </code>
-                <button type="button" onClick={copyWebhookUrl} className="btn-ghost text-xs shrink-0">
+                <button type="button" onClick={copyWebhookUrl} className="btn-ghost shrink-0 text-xs">
                   {copied ? "コピー済み" : "コピー"}
                 </button>
               </div>
-            </div>
+            </details>
           )}
         </div>
       )}
@@ -299,16 +366,12 @@ export default function LineConnectSection() {
               className="input-field w-full text-sm"
             />
           </div>
-          <div>
-            <label className="block text-xs font-medium text-muted mb-1">Channel Access Token *</label>
-            <input
-              type="password"
-              value={accessToken}
-              onChange={(e) => setAccessToken(e.target.value)}
-              placeholder="長期トークンを発行して貼り付け"
-              className="input-field w-full text-sm"
-            />
-          </div>
+          <p className="rounded-lg border border-border-subtle bg-surface-hover/30 px-3 py-2 text-xs text-secondary">
+            入力はこの2つだけです。<span className="font-medium text-primary">アクセストークンの発行</span>と
+            <span className="font-medium text-primary">Webhook URLの設定</span>
+            はLedraが自動で行うため、LINE Developers Console でトークンを発行したり URL
+            を貼り戻したりする必要はありません。
+          </p>
           <div>
             <label className="block text-xs font-medium text-muted mb-1">LIFF ID（任意）</label>
             <input
@@ -349,14 +412,16 @@ export default function LineConnectSection() {
                 API」）
               </li>
               <li>「チャネル基本設定」タブから Channel ID と Channel Secret をコピー</li>
-              <li>「Messaging API設定」タブの一番下で「チャネルアクセストークン（長期）」を発行してコピー</li>
-              <li>コピーした3つの値をこのフォームに貼り付けて「連携する」をクリック</li>
+              <li>その2つをこのフォームに貼り付けて「連携する」をクリック（ここまでで基本は完了）</li>
               <li>
-                連携後に表示される Webhook URL をコピーし、LINE Developers Console の「Messaging API設定」→ 「Webhook
-                URL」に貼り付けて「Webhookの利用」をON
+                「Messaging API設定」で「Webhookの利用」がOFFのままなら、ONにする。
+                <span className="text-secondary">URLはLedraが設定済みなので、貼り付ける必要はありません。</span>
               </li>
-              <li>同じ画面で「応答メッセージ」はOFF推奨（Ledraからの自動返信と二重になるため）</li>
             </ol>
+            <p className="mt-2">
+              以前は「長期アクセストークンの発行」と「Webhook URL の貼り戻し」も必要でしたが、どちらも Ledra
+              が自動で行うようになりました。トークンの更新も自動です。
+            </p>
           </details>
         </div>
       )}
@@ -377,6 +442,9 @@ export default function LineConnectSection() {
         )}
         {isConnected && !editing && (
           <>
+            <button type="button" className="btn-secondary text-sm" disabled={busy} onClick={handleVerify}>
+              {busy ? "確認中…" : "接続を再確認"}
+            </button>
             <button type="button" className="btn-secondary text-sm" onClick={() => setEditing(true)}>
               設定変更
             </button>

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
-import { apiJson, apiUnauthorized, apiInternalError, apiValidationError } from "@/lib/api/response";
+import { resolveCallerWithRole, requirePermission } from "@/lib/auth/checkRole";
+import { apiJson, apiUnauthorized, apiInternalError, apiValidationError, apiForbidden } from "@/lib/api/response";
 import { bookingSettingsPutSchema } from "@/lib/validations/booking-settings";
 
 export const dynamic = "force-dynamic";
@@ -78,6 +78,8 @@ export async function PUT(req: NextRequest) {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
+    // 予約設定の変更は admin 以上 (代表判断 2026-09-01)
+    if (!requirePermission(caller, "settings:edit")) return apiForbidden();
 
     const parsed = bookingSettingsPutSchema.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) {

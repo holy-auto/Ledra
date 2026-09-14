@@ -36,6 +36,42 @@ describe("interpretReply", () => {
     expect(interpretReply("awaiting_quote_ok", { postbackData: "flow:cancel" })).toEqual({ type: "handoff" });
   });
 
+  it("maps the reservation-cancel postbacks (distinct from flow:cancel handoff)", () => {
+    expect(interpretReply("awaiting_cancel_pick", { postbackData: "flow:cancel_pick:1" })).toEqual({
+      type: "cancel_pick_selected",
+      index: 1,
+    });
+    expect(interpretReply("awaiting_cancel_confirm", { postbackData: "flow:cancel_confirm" })).toEqual({
+      type: "cancel_confirmed",
+    });
+    expect(interpretReply("awaiting_cancel_confirm", { postbackData: "flow:cancel_abort" })).toEqual({
+      type: "cancel_aborted",
+    });
+    // flow:cancel (日程相談への引き継ぎ) はキャンセル確定とは別物のまま。
+    expect(interpretReply("awaiting_cancel_confirm", { postbackData: "flow:cancel" })).toEqual({ type: "handoff" });
+  });
+
+  it("rejects a malformed cancel_pick index", () => {
+    expect(interpretReply("awaiting_cancel_pick", { postbackData: "flow:cancel_pick:abc" })).toBeNull();
+    expect(interpretReply("awaiting_cancel_pick", { postbackData: "flow:cancel_pick:-1" })).toBeNull();
+    expect(interpretReply("awaiting_cancel_pick", { postbackData: "flow:cancel_pick:" })).toBeNull();
+  });
+
+  it("maps the reschedule postbacks (pick / slot)", () => {
+    expect(interpretReply("awaiting_reschedule_pick", { postbackData: "flow:reschedule_pick:1" })).toEqual({
+      type: "reschedule_pick_selected",
+      index: 1,
+    });
+    expect(interpretReply("awaiting_reschedule_slot", { postbackData: "flow:reschedule_slot:0" })).toEqual({
+      type: "reschedule_slot_selected",
+      index: 0,
+    });
+    // flow:cancel (その他の日程を相談する) は日程変更中も handoff のまま。
+    expect(interpretReply("awaiting_reschedule_slot", { postbackData: "flow:cancel" })).toEqual({ type: "handoff" });
+    // 不正な index は null。
+    expect(interpretReply("awaiting_reschedule_slot", { postbackData: "flow:reschedule_slot:abc" })).toBeNull();
+  });
+
   it("falls back to yes/no keywords only in approval states", () => {
     expect(interpretReply("awaiting_quote_ok", { text: "はい、お願いします" })).toEqual({ type: "yes" });
     expect(interpretReply("awaiting_final_ok", { text: "OKです" })).toEqual({ type: "yes" });

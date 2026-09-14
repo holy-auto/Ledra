@@ -1,9 +1,12 @@
 import { NextRequest } from "next/server";
 import { resolveMobileCaller } from "@/lib/auth/mobileAuth";
 import { hasPermission } from "@/lib/auth/permissions";
-import { apiOk, apiUnauthorized, apiForbidden, apiInternalError } from "@/lib/api/response";
+import { apiOk, apiUnauthorized, apiForbidden, apiValidationError, apiInternalError } from "@/lib/api/response";
+import { resolveStoreId, STORE_ERROR_MESSAGES } from "@/lib/stores/resolveStoreId";
 import { parseJsonBody } from "@/lib/api/parseBody";
 import { mobileReservationCreateSchema } from "@/lib/validations/mobile";
+import { logTenantAuditEvent } from "@/lib/audit/tenantLog";
+import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 
 export const dynamic = "force-dynamic";
 
@@ -58,7 +61,14 @@ export async function POST(request: NextRequest) {
     const body = parsed.data;
     const { scheduled_date, customer_id } = body;
 
-    const storeId = body.store_id ?? request.nextUrl.searchParams.get("store_id") ?? undefined;
+    // **送られた店舗 ID を検証せずに入れていた。** store_id の外部キーは stores(id) だけで
+    // テナントの条件が無いので、他テナントの店舗の行として記録できてしまう
+    const store = await resolveStoreId(
+      caller.supabase,
+      caller.tenantId,
+      body.store_id ?? request.nextUrl.searchParams.get("store_id"),
+    );
+    if (!store.ok) return apiValidationError(STORE_ERROR_MESSAGES[store.error]);
 
     const { data, error } = await caller.supabase
       .from("reservations")
@@ -73,15 +83,30 @@ export async function POST(request: NextRequest) {
         end_time: body.end_time ?? null,
         note: body.note ?? null,
         assigned_user_id: body.assigned_user_id ?? null,
-        store_id: storeId ?? null,
+        store_id: store.storeId,
         estimated_amount: body.estimated_amount ?? null,
         status: "confirmed",
-        created_by: caller.userId,
       })
       .select(MOBILE_RESERVATION_COLUMNS)
       .single();
 
     if (error) return apiInternalError(error, "reservations.create");
+
+    // reservations に created_by 列は無い（以前は書き込もうとして insert ごと
+    // 失敗していた＝モバイルからの予約作成が動いていなかった）。
+    // 作成者は監査ログに残す
+    // G-M8 是正 (2026-09-08): 本番の audit_logs は RLS 有効かつ policy 0本のため、
+    // 利用者スコープの caller.supabase での insert は黙って弾かれ、監査ログが
+    // 1件も残らない（Supabase advisor 実測で確認）。RLS を bypass する admin クライアントを渡す。
+    const { admin: auditAdmin } = createTenantScopedAdmin(caller.tenantId);
+    await logTenantAuditEvent(auditAdmin, {
+      tenantId: caller.tenantId,
+      userId: caller.userId,
+      action: "reservation_created",
+      table: "reservations",
+      recordId: data.id as string,
+      req: request,
+    });
 
     return apiOk({ reservation: data }, 201);
   } catch (e) {

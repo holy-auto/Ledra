@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { apiJson, apiUnauthorized, apiValidationError, apiInternalError } from "@/lib/api/response";
+import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 
 export const dynamic = "force-dynamic";
 
@@ -18,7 +19,10 @@ export async function GET(req: NextRequest) {
       return apiValidationError("customer_id が不正です。");
     }
 
-    const { data, error } = await supabase.rpc("billing_analytics_stats", {
+    // 関数側にテナントの検査が無く、引数の tenant_id をそのまま使う。
+    // service_role 専用にしたので、権限確認済みのここからサービスロールで呼ぶ
+    const { admin } = createTenantScopedAdmin(caller.tenantId);
+    const { data, error } = await admin.rpc("billing_analytics_stats", {
       p_tenant_id: caller.tenantId,
       p_customer_id: customerId || null,
     });

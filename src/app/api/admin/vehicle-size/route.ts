@@ -33,9 +33,12 @@ export async function GET(req: NextRequest) {
       const height_mm = parseInt(heightStr, 10);
 
       if (
-        !isNaN(length_mm) && length_mm > 0 &&
-        !isNaN(width_mm) && width_mm > 0 &&
-        !isNaN(height_mm) && height_mm > 0
+        !isNaN(length_mm) &&
+        length_mm > 0 &&
+        !isNaN(width_mm) &&
+        width_mm > 0 &&
+        !isNaN(height_mm) &&
+        height_mm > 0
       ) {
         const volume_m3 = (length_mm * width_mm * height_mm) / 1e9;
         return apiOk({

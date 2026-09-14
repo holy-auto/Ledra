@@ -4,7 +4,7 @@ import { getStripeClient } from "@/lib/stripe/client";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { resolveBaseUrl } from "@/lib/url";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
+import { resolveCallerWithRole, requirePermission } from "@/lib/auth/checkRole";
 import {
   apiOk,
   apiInternalError,
@@ -43,6 +43,9 @@ export async function POST(req: NextRequest) {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
+    // 顧客への決済リンク発行は payments:create（staff 以上、2026-09-03 代表判断）。
+    // 現場が作業後に請求を出すのは通常業務なので staff に開く。
+    if (!requirePermission(caller, "payments:create")) return apiForbidden();
 
     const body = await req.json().catch(() => ({}));
     const parsed = paymentLinkSchema.safeParse(body);

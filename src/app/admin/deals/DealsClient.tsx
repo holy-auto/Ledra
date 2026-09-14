@@ -115,7 +115,7 @@ export default function DealsClient() {
       if (status && status !== "all") params.set("status", status);
       const res = await fetch(`/api/market/deals?${params.toString()}`, { cache: "no-store" });
       const j = await parseJsonSafe(res);
-      if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
+      if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       const rows = (j?.deals ?? []) as Array<Record<string, unknown>>;
       setDeals(
         rows.map((d) => {
@@ -182,7 +182,7 @@ export default function DealsClient() {
         body: JSON.stringify({ status: newStatus }),
       });
       const j = await parseJsonSafe(res);
-      if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
+      if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       await fetchDeals(statusFilter);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -206,7 +206,7 @@ export default function DealsClient() {
         body: JSON.stringify({ agreed_price: price }),
       });
       const j = await parseJsonSafe(res);
-      if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
+      if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       setEditingPriceId(null);
       await fetchDeals(statusFilter);
     } catch (e: unknown) {
@@ -253,7 +253,7 @@ export default function DealsClient() {
         }),
       });
       const dj = await parseJsonSafe(docRes);
-      if (!docRes.ok) throw new Error(dj?.error ?? dj?.message ?? `HTTP ${docRes.status}`);
+      if (!docRes.ok) throw new Error(dj?.message ?? dj?.error ?? `HTTP ${docRes.status}`);
       const docId = dj?.document?.id ?? dj?.id;
       if (!docId) throw new Error("見積ドキュメントの作成に失敗しました。");
 
@@ -263,7 +263,7 @@ export default function DealsClient() {
         body: JSON.stringify({ estimate_document_id: docId }),
       });
       const lj = await parseJsonSafe(linkRes);
-      if (!linkRes.ok) throw new Error(lj?.error ?? `HTTP ${linkRes.status}`);
+      if (!linkRes.ok) throw new Error(lj?.message ?? lj?.error ?? `HTTP ${linkRes.status}`);
       await fetchDeals(statusFilter);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -291,7 +291,7 @@ export default function DealsClient() {
         }),
       });
       const j = await parseJsonSafe(res);
-      if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
+      if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       setEditingTradeInId(null);
       await fetchDeals(statusFilter);
     } catch (e: unknown) {
@@ -311,7 +311,7 @@ export default function DealsClient() {
         body: JSON.stringify({ note: editingNoteValue || null }),
       });
       const j = await parseJsonSafe(res);
-      if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
+      if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       setEditingNoteId(null);
       await fetchDeals(statusFilter);
     } catch (e: unknown) {

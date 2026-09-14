@@ -15,7 +15,7 @@ export const signupSchema = z
     shop_name: z
       .string()
       .trim()
-      .min(1, "店舗名を入力してください。")
+      .min(1, "店舗名（個人事業主は屋号）を入力してください。")
       .max(100, "店舗名は100文字以内で入力してください。"),
     display_name: z
       .string()

@@ -53,7 +53,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             setLoading(false);
             // Revalidate in background
             fetch("/api/admin/stores", { cache: "no-store" })
-              .then((r) => r.ok ? r.json() : null)
+              .then((r) => (r.ok ? r.json() : null))
               .then((d) => {
                 if (d?.stores) {
                   setStores(d.stores);
@@ -63,7 +63,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               .catch(() => {});
             return;
           }
-        } catch { /* ignore corrupt cache */ }
+        } catch {
+          /* ignore corrupt cache */
+        }
       }
 
       const res = await fetch("/api/admin/stores", { cache: "no-store" });
@@ -98,9 +100,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const activeStore = activeStoreId
-    ? stores.find((s) => s.id === activeStoreId) ?? null
-    : null;
+  const activeStore = activeStoreId ? (stores.find((s) => s.id === activeStoreId) ?? null) : null;
 
   return (
     <StoreContext.Provider

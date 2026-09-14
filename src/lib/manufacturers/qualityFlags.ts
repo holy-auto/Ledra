@@ -48,6 +48,21 @@ function isEmptyJsonObject(v: unknown): boolean {
   return !v || typeof v !== "object" || Array.isArray(v) || Object.keys(v as object).length === 0;
 }
 
+/**
+ * `maintenance_json` は 2026-08-25 から施工種別を問わず走行距離を必ず持つ
+ * (`createCertAction` が `mileage` を書き込む)。走行距離は「どの車か」の記録であって
+ * 「何をしたか」の記録ではないので、施工内容の有無を判定するときは数に入れない。
+ * これを入れると `no_service_detail` がどの証明書でも立たなくなる。
+ */
+const NON_SERVICE_DETAIL_KEYS = new Set(["mileage"]);
+
+function hasNoServiceDetail(v: unknown): boolean {
+  if (isEmptyJsonObject(v)) return true;
+  return Object.entries(v as Record<string, unknown>).every(
+    ([k, val]) => NON_SERVICE_DETAIL_KEYS.has(k) || val === null || val === undefined || val === "",
+  );
+}
+
 function isBlank(v: string | null | undefined): boolean {
   return !v || v.trim().length === 0;
 }
@@ -69,7 +84,7 @@ export function evaluateQualityFlags(input: QualityEvalInput): QualityFlagCode[]
     isBlank(input.content_free_text) &&
     isEmptyJsonArray(input.coating_products_json) &&
     isEmptyJsonArray(input.ppf_coverage_json) &&
-    isEmptyJsonObject(input.maintenance_json) &&
+    hasNoServiceDetail(input.maintenance_json) &&
     isEmptyJsonObject(input.body_repair_json);
   if (noServiceDetail) flags.push("no_service_detail");
 

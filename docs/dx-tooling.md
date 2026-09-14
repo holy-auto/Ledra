@@ -7,8 +7,8 @@
 ### 1. Supabase 型自動生成
 - `npm run db:typegen` で `src/types/db.generated.ts` を生成
 - CI workflow `.github/workflows/db-typegen.yml` で
-  `supabase/migrations/*` の変更時に自動 PR
-- 必要 secrets: `SUPABASE_PROJECT_ID` / `SUPABASE_ACCESS_TOKEN`
+  `DB migrate (apply to production)` の成功後に自動 PR
+- 必要 secrets: `SUPABASE_DB_URL`（`db-migrate.yml` と同じ接続URI）
 
 ### 2. Lighthouse CI
 - `.github/workflows/lighthouse.yml` がマーケサイト変更時の PR で実行

@@ -156,7 +156,15 @@ function DonutChart({ data }: { data: { status: string; count: number }[] }) {
               />
             ))}
 
-            <text x={cx} y={cy - 4} textAnchor="middle" fill="var(--text-primary)" fontSize="24" fontWeight="600" letterSpacing="-0.02em">
+            <text
+              x={cx}
+              y={cy - 4}
+              textAnchor="middle"
+              fill="var(--text-primary)"
+              fontSize="24"
+              fontWeight="600"
+              letterSpacing="-0.02em"
+            >
               {total}
             </text>
             <text x={cx} y={cy + 14} textAnchor="middle" fill="var(--text-muted)" fontSize="10" fontWeight="500">
@@ -169,13 +177,8 @@ function DonutChart({ data }: { data: { status: string; count: number }[] }) {
           {segments.map((seg) => (
             <div key={seg.status} className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <span
-                  className="inline-block h-2.5 w-2.5 rounded-full"
-                  style={{ backgroundColor: seg.color }}
-                />
-                <span className="text-[13px] text-secondary">
-                  {STATUS_LABELS[seg.status] ?? seg.status}
-                </span>
+                <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ backgroundColor: seg.color }} />
+                <span className="text-[13px] text-secondary">{STATUS_LABELS[seg.status] ?? seg.status}</span>
               </div>
               <div className="flex items-center gap-2">
                 <span className="text-[13px] font-semibold text-primary">{seg.count}</span>

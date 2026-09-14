@@ -5,6 +5,7 @@ import { checkRateLimit } from "@/lib/api/rateLimit";
 import { parsePagination } from "@/lib/api/pagination";
 import { apiJson, apiUnauthorized, apiForbidden, apiValidationError, apiInternalError } from "@/lib/api/response";
 import { paymentCreateSchema, paymentDeleteSchema, paymentUpdateSchema } from "@/lib/validations/payment";
+import { resolveStoreId, STORE_ERROR_MESSAGES } from "@/lib/stores/resolveStoreId";
 
 export const dynamic = "force-dynamic";
 
@@ -137,13 +138,20 @@ export async function POST(req: NextRequest) {
       return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
     }
     const input = parsed.data;
+
+    // **送られた店舗 ID を検証せず入れていた。** store_id の外部キーは stores(id) を
+    // 指すだけでテナントの条件が無いので、他テナントの店舗の入金として記録できた。
+    // 未指定なら有効な店舗が1つのときだけ入る（この画面にも店舗の選択は無い）
+    const store = await resolveStoreId(supabase, caller.tenantId, input.store_id);
+    if (!store.ok) return apiValidationError(STORE_ERROR_MESSAGES[store.error]);
+
     const changeAmount =
       input.received_amount != null && input.received_amount > input.amount ? input.received_amount - input.amount : 0;
 
     const row = {
       id: crypto.randomUUID(),
       tenant_id: caller.tenantId,
-      store_id: input.store_id,
+      store_id: store.storeId,
       document_id: input.document_id,
       reservation_id: input.reservation_id,
       customer_id: input.customer_id,
@@ -195,6 +203,14 @@ export async function PUT(req: NextRequest) {
     const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
     for (const [k, v] of Object.entries(fields)) {
       if (v !== undefined) updates[k] = v;
+    }
+
+    // 汎用ループが store_id をそのまま通していた（作成側と同じ穴が更新側にもあった）。
+    // 明示的な null は「店舗を外す」意思なので、既定で埋め直さない
+    if (fields.store_id) {
+      const store = await resolveStoreId(supabase, caller.tenantId, fields.store_id);
+      if (!store.ok) return apiValidationError(STORE_ERROR_MESSAGES[store.error]);
+      updates.store_id = store.storeId;
     }
 
     const { data, error } = await supabase

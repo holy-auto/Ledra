@@ -27,14 +27,14 @@ export async function GET(req: NextRequest) {
     const admin = createPlatformScopedAdmin("platform/security-audit — cross-tenant access/PII/webhook logs");
     const now = new Date();
     const url = new URL(req.url);
-    const days = Math.min(30, Math.max(1, parseInt(url.searchParams.get("days") ?? "7", 10)));
+    const days = Math.min(30, Math.max(1, parseInt(url.searchParams.get("days") ?? "7", 10) || 7));
     const since = new Date(now.getTime() - days * 24 * 60 * 60 * 1000).toISOString();
 
     type InsurerAccessLog = {
       id: string;
       insurer_id: string | null;
       action: string | null;
-      ip_address: string | null;
+      ip: string | null;
       user_agent: string | null;
       certificate_id: string | null;
       created_at: string | null;
@@ -52,7 +52,7 @@ export async function GET(req: NextRequest) {
       // Insurer access logs
       admin
         .from("insurer_access_logs")
-        .select("id, insurer_id, action, ip_address, user_agent, certificate_id, created_at")
+        .select("id, insurer_id, action, ip, user_agent, certificate_id, created_at")
         .gte("created_at", since)
         .order("created_at", { ascending: false })
         .limit(500)
@@ -84,7 +84,7 @@ export async function GET(req: NextRequest) {
     const ipCounts: Record<string, number> = {};
     const insurerCounts: Record<string, number> = {};
     for (const log of accessLogs) {
-      const ip = log.ip_address ?? "unknown";
+      const ip = log.ip ?? "unknown";
       const iid = log.insurer_id ?? "unknown";
       ipCounts[ip] = (ipCounts[ip] ?? 0) + 1;
       insurerCounts[iid] = (insurerCounts[iid] ?? 0) + 1;

@@ -14,6 +14,7 @@
  */
 import crypto from "crypto";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
+import { resolveStoreId } from "@/lib/stores/resolveStoreId";
 
 const DEFAULT_EXPIRY_DAYS = 7;
 const MAX_EXPIRY_DAYS = 30;
@@ -78,6 +79,14 @@ export async function createIntakeInvitation(input: CreateIntakeInput): Promise<
 
   const { admin } = createTenantScopedAdmin(input.tenantId);
 
+  // 発行元の店舗。Web には店舗の選択 UI が無いので実測 5/5 件が null だった。
+  // 呼び出し側は要求の本文をそのまま渡してくるため、**他テナントの店舗 ID を
+  // 弾くのもここ**（store_id の外部キーにテナントの条件が無い）
+  const store = await resolveStoreId(admin, input.tenantId, input.storeId);
+  // ponytail: 上限。ここで投げると経路は 500 を返す（400 ではない）。
+  // 偽造された ID でしか起きないので、作らせないことを優先する
+  if (!store.ok) throw new Error(store.error);
+
   // short_id の衝突は理論上極めて低いが、最大 3 回までリトライ
   for (let i = 0; i < 3; i++) {
     const shortId = generateShortId();
@@ -86,7 +95,7 @@ export async function createIntakeInvitation(input: CreateIntakeInput): Promise<
       .from("customer_intake_invitations")
       .insert({
         tenant_id: input.tenantId,
-        store_id: input.storeId ?? null,
+        store_id: store.storeId,
         token_hash: tokenHash,
         short_id: shortId,
         label: input.label ?? null,

@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import dynamic from "next/dynamic";
 import HelpTooltip from "@/components/ui/HelpTooltip";
+import { autofillMessage, type ShakenshoAutofillResponse } from "@/lib/ocr/shakenshoAutofill";
 
 const ShakenshoScanner = dynamic(() => import("@/components/vehicles/ShakenshoScanner"), {
   ssr: false,
@@ -238,23 +239,31 @@ export default function VehiclePickerSection({
     setCustomerSearchOpen(false);
   };
 
-  // Apply extracted data from QR scan or image OCR to form fields
-  const applyExtracted = (extracted: Extracted) => {
-    const filled: string[] = [];
+  // Apply extracted data from QR scan or image OCR to form fields.
+  // この画面が反映できる項目（車検満了日の入力欄は無い。年式は車種欄に畳み込まれる
+  // ため、メーカー/車種が無い年式単独では何も書き込まれない → 数えない）。
+  const OCR_FIELDS = ["maker", "model", "plate_display", "vin_code", "size_class"] as const;
+
+  const applyExtracted = (res: ShakenshoAutofillResponse) => {
+    // AI 自動入力 OFF / 全項目 null は理由が分かる文言で返る (無反応にしない)。
+    const msg = autofillMessage(res, OCR_FIELDS);
+    if (msg.type === "error") {
+      setOcrMsg(msg);
+      setTimeout(() => setOcrMsg(null), 5000);
+      return;
+    }
+    const extracted = (res.extracted ?? {}) as Extracted;
     if (extracted.maker) {
       setMaker(extracted.maker);
-      filled.push("メーカー");
     }
     if (extracted.model || extracted.maker) {
       const combined = [extracted.maker, extracted.model, extracted.year ? String(extracted.year) : null]
         .filter(Boolean)
         .join(" ");
       setModel(combined);
-      if (extracted.model) filled.push("車種");
     }
     if (extracted.plate_display) {
       setPlate(extracted.plate_display);
-      filled.push("ナンバー");
     }
     if (extracted.vin_code) {
       setVinCode(extracted.vin_code);
@@ -266,11 +275,7 @@ export default function VehiclePickerSection({
     setSelectedId("");
     onVehicleChange?.(undefined);
 
-    if (filled.length > 0) {
-      setOcrMsg({ type: "success", text: `${filled.join("・")}を自動入力しました` });
-    } else {
-      setOcrMsg({ type: "error", text: "車両情報を読み取れませんでした。手入力してください。" });
-    }
+    setOcrMsg(msg);
     setTimeout(() => setOcrMsg(null), 5000);
   };
 
@@ -289,7 +294,7 @@ export default function VehiclePickerSection({
         setOcrMsg({ type: "error", text: json.message ?? "二次元コードの解析に失敗しました" });
         return;
       }
-      applyExtracted(json.extracted as Extracted);
+      applyExtracted(json as ShakenshoAutofillResponse);
     } catch {
       setOcrMsg({ type: "error", text: "通信エラーが発生しました" });
     } finally {
@@ -309,7 +314,7 @@ export default function VehiclePickerSection({
         setOcrMsg({ type: "error", text: json.message ?? "画像の読み取りに失敗しました" });
         return;
       }
-      applyExtracted(json.extracted as Extracted);
+      applyExtracted(json as ShakenshoAutofillResponse);
       applyCustomerSuggestion(json.customer_suggestion);
     } catch {
       setOcrMsg({ type: "error", text: "通信エラーが発生しました" });

@@ -1,8 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
-import { apiJson, apiUnauthorized, apiNotFound, apiValidationError, apiInternalError } from "@/lib/api/response";
+import { resolveCallerWithRole, requirePermission } from "@/lib/auth/checkRole";
+import {
+  apiJson,
+  apiUnauthorized,
+  apiNotFound,
+  apiValidationError,
+  apiInternalError,
+  apiForbidden,
+} from "@/lib/api/response";
 
 const startWorkflowSchema = z.object({
   workflow_template_id: z.string().uuid("workflow_template_id_required"),
@@ -27,6 +34,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
+    if (!requirePermission(caller, "reservations:edit")) return apiForbidden();
 
     const { id } = await params;
     const parsed = startWorkflowSchema.safeParse(await req.json().catch(() => ({})));

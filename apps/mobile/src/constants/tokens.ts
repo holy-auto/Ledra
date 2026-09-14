@@ -1,0 +1,151 @@
+/**
+ * Ledra Design Tokens — Mobile
+ *
+ * Single source for all visual tokens in the mobile app.
+ * Matches the canonical Ledra visual rules from v2.0 spec + UI Redesign Guide.
+ *
+ * ponytail: All values are literals so RN StyleSheet can inline them at build time.
+ */
+
+// ─── Colors ──────────────────────────────────────────────────────────
+export const colors = {
+  // Core
+  primary: "#155EEF",
+  primaryLight: "#EBF2FF",
+  primaryDark: "#0D47C9",
+
+  // Surfaces
+  // ベースは白で統一。カードは影（shadows.card）で浮かせて区別する
+  background: "#FFFFFF",
+  surface: "#FFFFFF",
+  surfaceVariant: "#F1F3F5",
+
+  // Text
+  textPrimary: "#0F172A",
+  textSecondary: "#475569",
+  textTertiary: "#94A3B8",
+  textOnPrimary: "#FFFFFF",
+  textOnDanger: "#FFFFFF",
+
+  // Semantic state
+  success: "#10B981",
+  successLight: "#ECFDF5",
+  successDark: "#059669",
+  warning: "#F59E0B",
+  warningLight: "#FFFBEB",
+  warningDark: "#D97706",
+  danger: "#EF4444",
+  dangerLight: "#FEF2F2",
+  dangerDark: "#DC2626",
+  info: "#6366F1",
+  infoLight: "#EEF2FF",
+  infoDark: "#4F46E5",
+
+  // Chrome
+  border: "#E2E8F0",
+  borderLight: "#F1F5F9",
+  divider: "#E2E8F0",
+  overlay: "rgba(15, 23, 42, 0.5)",
+  shadow: "rgba(15, 23, 42, 0.08)",
+
+  // Navigation
+  tabActive: "#155EEF",
+  tabInactive: "#94A3B8",
+  tabBarBg: "#FFFFFF",
+} as const;
+
+// ─── Typography (sizes in px) ────────────────────────────────────────
+export const typography = {
+  hero: { fontSize: 28, lineHeight: 36, fontWeight: "700" as const },
+  titleLarge: { fontSize: 22, lineHeight: 28, fontWeight: "700" as const },
+  titleMedium: { fontSize: 18, lineHeight: 24, fontWeight: "600" as const },
+  titleSmall: { fontSize: 16, lineHeight: 22, fontWeight: "600" as const },
+  body: { fontSize: 16, lineHeight: 24, fontWeight: "400" as const },
+  bodySmall: { fontSize: 14, lineHeight: 20, fontWeight: "400" as const },
+  label: { fontSize: 14, lineHeight: 18, fontWeight: "600" as const },
+  labelSmall: { fontSize: 13, lineHeight: 16, fontWeight: "500" as const },
+  meta: { fontSize: 13, lineHeight: 18, fontWeight: "400" as const },
+} as const;
+
+// ─── Spacing ─────────────────────────────────────────────────────────
+export const spacing = {
+  xs: 4,
+  sm: 8,
+  md: 12,
+  lg: 16,
+  xl: 20,
+  "2xl": 24,
+  "3xl": 32,
+  "4xl": 40,
+} as const;
+
+// ─── Radius ──────────────────────────────────────────────────────────
+export const radius = {
+  sm: 8,
+  md: 12,
+  lg: 16,
+  card: 20,
+  hero: 24,
+  full: 9999,
+} as const;
+
+// ─── Sizing ──────────────────────────────────────────────────────────
+export const sizing = {
+  touchTarget: 44,
+  ctaHeight: 52,
+  ctaHeightSmall: 44,
+  iconSm: 20,
+  iconMd: 24,
+  iconLg: 32,
+  // タブバーの中身の高さ。セーフエリアは含まない（_layout.tsx で insets.bottom を足す）。
+  // 内訳: 上下 padding 8x2 + 丸ボタン 48 = 64（ラベル無し・Uber 同様アイコンのみ）。
+  // 丸ボタンの直径を変えたらここも合わせること
+  tabBarHeight: 64,
+  tabIconSize: 24,
+  // タブの丸ボタン直径。tabBarHeight とセットで動かすこと
+  tabIconCircle: 48,
+  // タブ配下のスクロール内容に必要な下余白（セーフエリアを除く）。
+  // タブバーは絶対配置で内容の上に浮いているので、その高さ 86 に
+  // FAB の張り出し（余白8 + 直径60 + 余白8 = 76）を足す。
+  // 実際に使うときは useTabContentInset() で insets.bottom を足すこと
+  tabBarClearance: 64 + 76,
+} as const;
+
+// ─── Shadows ─────────────────────────────────────────────────────────
+export const shadows = {
+  // 背景が白（colors.background）になったので、カードを区切るのはこの影だけ。
+  // 白地に白カードが溶けるため iOS は shadowOpacity 0.06→0.10、
+  // Android は shadowOpacity を見ないので elevation 2→3 で同じ埋め合わせをする
+  card: {
+    shadowColor: "#0F172A",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  // 画面下端に固定するバー用。カードと違って影を落とす先は「上」なので
+  // offset を反転させる。card（下向き +2）を流用すると、白バーの上端＝
+  // 実際に境界が要る側にほとんど影が乗らず、白地に白のまま消える。
+  // Android は offset を見ず elevation だけで描くので値は card と揃える
+  bar: {
+    shadowColor: "#0F172A",
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  cardHover: {
+    shadowColor: "#0F172A",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 16,
+    elevation: 4,
+  },
+  fab: {
+    shadowColor: "#155EEF",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+    elevation: 6,
+  },
+} as const;

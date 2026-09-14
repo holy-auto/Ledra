@@ -1,3 +1,9 @@
+-- 【後から内容だけ修正】このファイルは本番へ適用済み（版番号は変えていない）。
+-- RLS ポリシーが **一度も存在しなかったテーブル `tenant_members`** を参照していて、
+-- 空 DB へ流すとここで落ち、以降 signature_sessions 系が丸ごと作られなかった。
+-- 正しい名前は `tenant_memberships`（本番の実体もそちら。根拠は
+-- `20260719000000_fix_rls_membership_references.sql` の実査記録）。
+-- 版番号を変えていないので本番では再適用されない＝本番への影響は無い。
 -- =============================================================
 -- Vehicle Prediction Data Infrastructure
 -- 将来の車両劣化・故障予測AIモデル構築のためのデータ基盤
@@ -39,14 +45,14 @@ alter table vehicle_mileage_logs enable row level security;
 create policy "vml_select" on vehicle_mileage_logs
   for select using (
     tenant_id in (
-      select tenant_id from tenant_members where user_id = auth.uid()
+      select tenant_id from tenant_memberships where user_id = auth.uid()
     )
   );
 
 create policy "vml_insert" on vehicle_mileage_logs
   for insert with check (
     tenant_id in (
-      select tenant_id from tenant_members where user_id = auth.uid()
+      select tenant_id from tenant_memberships where user_id = auth.uid()
     )
   );
 
@@ -95,14 +101,14 @@ alter table vehicle_inspection_findings enable row level security;
 create policy "vif_select" on vehicle_inspection_findings
   for select using (
     tenant_id in (
-      select tenant_id from tenant_members where user_id = auth.uid()
+      select tenant_id from tenant_memberships where user_id = auth.uid()
     )
   );
 
 create policy "vif_insert" on vehicle_inspection_findings
   for insert with check (
     tenant_id in (
-      select tenant_id from tenant_members where user_id = auth.uid()
+      select tenant_id from tenant_memberships where user_id = auth.uid()
     )
   );
 
@@ -145,14 +151,14 @@ alter table vehicle_part_replacements enable row level security;
 create policy "vpr_select" on vehicle_part_replacements
   for select using (
     tenant_id in (
-      select tenant_id from tenant_members where user_id = auth.uid()
+      select tenant_id from tenant_memberships where user_id = auth.uid()
     )
   );
 
 create policy "vpr_insert" on vehicle_part_replacements
   for insert with check (
     tenant_id in (
-      select tenant_id from tenant_members where user_id = auth.uid()
+      select tenant_id from tenant_memberships where user_id = auth.uid()
     )
   );
 

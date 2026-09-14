@@ -5,6 +5,7 @@ import { resolveRequestId } from "@/lib/logger";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { buildCspHeader } from "@/lib/security/csp";
 import { UTM_COOKIE, utmToPersist } from "@/lib/marketing/utm";
+import { requireAal2OrResponse, requiresAal2ForRequest } from "@/lib/auth/stepUpGuard";
 
 /**
  * Generate a cryptographically random nonce for CSP script-src.
@@ -20,6 +21,9 @@ const PUBLIC_PREFIXES = [
   "/auth/callback",
   "/c/",
   "/customer/",
+  // 顧客マイページ (OTP / LINE ログイン)。Supabase auth ではなく専用 cookie で
+  // 認証するため、Supabase の getUser チェックは不要。
+  "/my",
   "/insurer/login",
   "/insurer/forgot-password",
   "/insurer/reset-password",
@@ -28,7 +32,6 @@ const PUBLIC_PREFIXES = [
   "/market/search",
   "/market/p/",
   "/api/",
-  "/probe",
   "/agent/apply",
   // Admin design-system prototype (fictional data, noindex). Public so it can
   // be reviewed on preview/production without an admin login.
@@ -46,6 +49,56 @@ const MARKETING_PATHS = [
   "/terms",
   "/tokusho",
 ];
+
+// C-M1 是正 (2026-09-08): x-robots-tag ヘッダ (下記) をどのパスに付けるかの判定専用。
+// `src/app/(marketing)` 配下の全トップレベルセグメント（サブページ含む前方一致）。
+// MARKETING_PATHS（認証チェックの要否判定用、上）とは別目的の別リストで、
+// あちらは意図的に一部のマーケティングページしか列挙していないため流用できない
+// （例: /blog, /faq, /features 等が漏れて誤って noindex になる）。
+// **索引可否そのものの正本は各レイアウトの metadata.robots（src/app/layout.tsx の
+// 既定 noindex + (marketing)/layout.tsx の index:true 上書き）。ここは HTML の
+// <meta> を見ない経路向けの二重固定であり、この一覧が漏れても index 可否の結論は
+// 変わらない（metadata 側は Next.js のレイアウト継承で自動的に正しく決まる）。**
+export const MARKETING_ROUTE_SEGMENTS = [
+  "/blog",
+  "/cases",
+  "/contact",
+  "/data-disclosure",
+  "/demo",
+  "/events",
+  "/faq",
+  "/features",
+  "/financial-transparency",
+  "/for-agents",
+  "/for-btob",
+  "/for-insurers",
+  "/for-shops",
+  "/glossary",
+  "/guide",
+  "/honest-comparison",
+  "/law",
+  "/network",
+  "/news",
+  "/poc",
+  "/poc-program",
+  "/pricing",
+  "/privacy",
+  "/resources",
+  "/roi",
+  "/security",
+  "/security-policy",
+  "/story",
+  "/support",
+  "/terms",
+  "/tokusho",
+  "/verify",
+  "/vision",
+];
+
+export function isMarketingPath(pathname: string): boolean {
+  if (pathname === "/") return true;
+  return MARKETING_ROUTE_SEGMENTS.some((seg) => pathname === seg || pathname.startsWith(`${seg}/`));
+}
 
 /** Unreleased feature routes — redirect to /admin until ready for launch */
 const HIDDEN_ADMIN_PREFIXES = ["/admin/price-stats", "/admin/insurers"];
@@ -179,6 +232,27 @@ export async function proxy(request: NextRequest) {
     return csrfResponse;
   }
 
+  // One fail-closed step-up boundary for every platform-wide operation,
+  // secret mutation/OAuth callback, and the tenant-wide PII export.
+  if (requiresAal2ForRequest(pathname, request.method)) {
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    if (!url || !key) {
+      return NextResponse.json({ error: "auth_unavailable" }, { status: 503 });
+    }
+    const stepUpClient = createServerClient(url, key, {
+      cookies: {
+        getAll: () => request.cookies.getAll(),
+        setAll: () => {},
+      },
+    });
+    const denied = await requireAal2OrResponse(stepUpClient);
+    if (denied) {
+      denied.headers.set("x-request-id", requestId);
+      return denied;
+    }
+  }
+
   // Block unreleased features — redirect to admin dashboard
   if (HIDDEN_ADMIN_PREFIXES.some((p) => pathname.startsWith(p))) {
     const redirectUrl = request.nextUrl.clone();
@@ -214,12 +288,18 @@ export async function proxy(request: NextRequest) {
   // because they don't conflict with Cache-Control or Vary which routes
   // may customize.
   if (pathname.startsWith("/api/")) {
-    if (!response.headers.has("x-robots-tag")) {
-      response.headers.set("x-robots-tag", "noindex, nofollow, noarchive");
-    }
     if (!response.headers.has("pragma")) {
       response.headers.set("pragma", "no-cache");
     }
+  }
+
+  // C-M1 是正 (2026-09-08): 索引可否の正本は各レイアウトの metadata.robots
+  // （HTML の <meta> タグ）。ここはそれを見ない経路（画像・PDF・API・HTML を
+  // 描画しないミドルウェアリダイレクト等）向けの二重固定。マーケティングページ
+  // 以外は既定で noindex ヘッダを付ける（ページ側が既に x-robots-tag を
+  // 明示していれば上書きしない）。
+  if (!isMarketingPath(pathname) && !response.headers.has("x-robots-tag")) {
+    response.headers.set("x-robots-tag", "noindex, nofollow, noarchive");
   }
 
   // First-touch UTM 帰属: 着地 URL（例 /tora→/news?utm_source=tora）の utm を初回のみ

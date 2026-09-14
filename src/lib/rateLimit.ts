@@ -12,7 +12,7 @@
  */
 
 import { Ratelimit } from "@upstash/ratelimit";
-import { Redis } from "@upstash/redis";
+import { getRedis } from "@/lib/upstash";
 
 // ---------------------------------------------------------------------------
 // Types (unchanged)
@@ -34,22 +34,10 @@ type RateLimitResult = {
 };
 
 // ---------------------------------------------------------------------------
-// Upstash Redis singleton
+// Upstash Redis (shared singleton, src/lib/upstash.ts — F-3 是正: 以前はこの
+// ファイル・src/lib/api/rateLimit.ts・src/lib/api/idempotency.ts がそれぞれ
+// 独自に new Redis() していた。env は同一なので接続を1本に統一)
 // ---------------------------------------------------------------------------
-
-let redis: Redis | null | undefined; // undefined = not initialised yet
-
-function getRedis(): Redis | null {
-  if (redis !== undefined) return redis;
-  const url = process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
-  if (url && token) {
-    redis = new Redis({ url, token });
-  } else {
-    redis = null;
-  }
-  return redis;
-}
 
 // Cache Ratelimit instances per (limit, windowSec) pair to avoid re-creation.
 const limiterCache = new Map<string, Ratelimit>();
@@ -156,22 +144,36 @@ export async function checkRateLimit(key: string, opts: RateLimitOptions): Promi
 /**
  * Extract client IP from request headers.
  *
+ * B-H2 是正 (2026-09-08): 本番は Vercel 直配信で Cloudflare を経由しない
+ * （動画配信のみ CF、docs/dpa-template.md）。`cf-connecting-ip` /
+ * `true-client-ip` はリクエスト元（＝クライアント）が任意の値を送れる
+ * ヘッダで、Vercel はこれらを上書きも除去もしない。以前はこれらを最優先で
+ * 信頼していたため、毎リクエスト別の値を付けるだけで IP 単位のレート制限
+ * （OTP 発行・PDF 生成・Stripe Checkout セッション作成など）をすべて
+ * 迂回できた。
+ *
  * 優先順位:
- *   1. `cf-connecting-ip`   (Cloudflare)
- *   2. `true-client-ip`     (Akamai / Cloudflare Enterprise)
- *   3. `x-real-ip`          (Nginx / Vercel が直接書き込む)
- *   4. `x-forwarded-for`    (左端 = クライアント)
+ *   - 既定（Vercel 直配信、`TRUST_CF_HEADERS` 未設定）:
+ *     1. `x-forwarded-for` の**先頭**（Vercel のエッジが上書きするため、
+ *        ここより後段でクライアントが偽装できない）
+ *     2. `x-real-ip`（無ければフォールバック）
+ *   - `TRUST_CF_HEADERS=1`（Cloudflare を前段に置く構成）:
+ *     1. `cf-connecting-ip` / `true-client-ip`（CF エッジが検証・設定する値で
+ *        クライアントは偽装できない。**必ず最優先** — Cloudflare は
+ *        クライアントが送った `x-forwarded-for` を上書きせず末尾に追記するだけ
+ *        なので、こちらを先に見ると `x-forwarded-for` の**先頭**（クライアントが
+ *        自由に書ける）を拾ってしまい、TRUST_CF_HEADERS を有効にした意味が
+ *        丸ごと消える。code-review 指摘で発覚 (2026-09-08)）
+ *     2. `x-forwarded-for` の先頭 / `x-real-ip`（CF ヘッダが無いときのみ）
  *
  * いずれも取得できないときは `unknown:<UA-hash>` を返し、全員が同じバケットを
  * 共有しないようにする (DOS 緩和)。
  */
 export function getClientIp(req: Request): string {
   const h = req.headers;
-  const ip =
-    h.get("cf-connecting-ip")?.trim() ||
-    h.get("true-client-ip")?.trim() ||
-    h.get("x-real-ip")?.trim() ||
-    h.get("x-forwarded-for")?.split(",")[0]?.trim();
+  const trustCfHeaders = process.env.TRUST_CF_HEADERS === "1";
+  const cfIp = trustCfHeaders ? h.get("cf-connecting-ip")?.trim() || h.get("true-client-ip")?.trim() : undefined;
+  const ip = cfIp || h.get("x-forwarded-for")?.split(",")[0]?.trim() || h.get("x-real-ip")?.trim() || undefined;
   if (ip) return ip;
 
   // unknown を 1 バケット共有にすると、匿名 UA からのスパイクで全員が 429 に

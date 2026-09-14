@@ -28,8 +28,7 @@ export function verifyCronRequest(req: Request): {
     // Use timingSafeEqual to prevent timing-based secret discovery.
     const sigBuf = Buffer.from(vercelSignature, "utf8");
     const expBuf = Buffer.from(expected, "utf8");
-    const valid =
-      sigBuf.length === expBuf.length && crypto.timingSafeEqual(sigBuf, expBuf);
+    const valid = sigBuf.length === expBuf.length && crypto.timingSafeEqual(sigBuf, expBuf);
     if (valid) {
       return { authorized: true };
     }
@@ -43,8 +42,7 @@ export function verifyCronRequest(req: Request): {
   // Use timingSafeEqual to prevent timing-based secret discovery.
   const headerBuf = Buffer.from(authHeader ?? "", "utf8");
   const expectedBuf = Buffer.from(expectedBearer, "utf8");
-  const bearerValid =
-    headerBuf.length === expectedBuf.length && crypto.timingSafeEqual(headerBuf, expectedBuf);
+  const bearerValid = headerBuf.length === expectedBuf.length && crypto.timingSafeEqual(headerBuf, expectedBuf);
   if (bearerValid) {
     return { authorized: true };
   }

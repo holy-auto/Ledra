@@ -1,0 +1,147 @@
+name: Vercel deploy (production)
+
+# main へのマージを本番へデプロイする。
+#
+# なぜ要るか: Vercel の GitHub 連携が 2026/08/19〜08/22 のどこかで止まり、
+# 本番が d2e4736 (8/17) のまま 9 コミット取り残された。デプロイ記録が
+# 1件も作られていない（Canceled も Error も無い）ので、リポジトリ側から
+# 明示的に叩ける経路を用意する。
+#
+# 必要な GitHub Secret (3 本):
+#   - VERCEL_TOKEN       … Vercel → Account Settings → Tokens
+#   - VERCEL_ORG_ID      … .vercel/project.json の orgId
+#   - VERCEL_PROJECT_ID  … .vercel/project.json の projectId
+#
+# **未設定でもジョブは落とさない。** ここで落とすと main が恒久的に赤くなり、
+# 本当の失敗が埋もれる（db-migrate は 2026-08-02〜08-15 の13日間それで
+# 見逃された）。ただし ::notice:: は印が付かず「緑＝デプロイできている」と
+# 読めてしまい、**このワークフローが直そうとしている無音そのもの**になる。
+# なので ::warning:: とサマリで、緑のまま目に入る形にする。
+#
+# **今は手動実行のみ。** 2026-08-26 02:28 に Vercel の Git 連携が復活し
+# （PR #975 で Preview が Building → Ready）、自動デプロイが戻った。push で
+# 起動すると同じコミットを二重にデプロイする。停止の原因がプラン上限だった
+# 場合、二重ビルドはその原因を自分で作り直すことになる。
+#
+# 連携がまた無音で止まったら、下の push ブロックのコメントを外せば
+# リポジトリ側から自動で回せる（そのときは Vercel の Settings → Git で
+# 自動デプロイを切ること）。それまでは「連携が死んでも手で回せる」ための
+# 非常用レバーとして置いておく。
+#
+# on:
+#   push:
+#     branches: [main]
+#     # 事業ログの更新だけのマージで本番ビルドを回さない。CLAUDE.md が
+#     # 「各作業終了時に事業ログへ反映」を求めているので docs だけの main
+#     # マージは日常的に起きる
+#     paths-ignore:
+#       - "docs/**"
+#       - "**/*.md"
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  # 連続マージで古い方が後着しないように直列化する
+  group: vercel-production
+  cancel-in-progress: false
+
+# このジョブは GITHUB_TOKEN を一切使わない。既定（リポジトリ設定次第で
+# 書き込み可）のまま第三者 CLI に環境ごと渡さない
+permissions:
+  contents: read
+
+env:
+  # 他の action と同じくバージョンを固定する。@latest だと、破壊的変更の
+  # 入った CLI が PR も CI も通らずに本番デプロイへ直行する
+  VERCEL_CLI: vercel@48
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Check secrets
+        id: check
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: |
+          if [ -z "$VERCEL_TOKEN" ] || [ -z "$VERCEL_ORG_ID" ] || [ -z "$VERCEL_PROJECT_ID" ]; then
+            echo "::warning::VERCEL_TOKEN / VERCEL_ORG_ID / VERCEL_PROJECT_ID が未設定のため、**デプロイしていません**。本番は古いままです。"
+            echo "⚠️ シークレット未設定のためデプロイしていません。本番は古いままです。" >> "$GITHUB_STEP_SUMMARY"
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Deploy to production
+        if: steps.check.outputs.ready == 'true'
+        env:
+          # CLI は環境変数から読む。--token を argv に置くと、同じジョブの
+          # 他プロセスから /proc で見える上に3箇所を同期する手間が増える
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: |
+          set -euo pipefail
+          # pull を先に回すのは、Vercel 側に登録された環境変数を取り込むため。
+          # 省くと Supabase の URL などが無いままビルドされる
+          npx --yes "$VERCEL_CLI" pull --yes --environment=production
+          npx --yes "$VERCEL_CLI" build --prod
+          out=$(npx --yes "$VERCEL_CLI" deploy --prebuilt --prod)
+          # CLI が告知行などを stdout に混ぜても壊れないよう最終行だけ取る。
+          # URL に見えなければ落とす —— サマリだけがこのジョブの人間向けの
+          # 記録なので、化けたまま「成功」と読めるのが一番まずい
+          url=$(printf '%s\n' "$out" | tail -n1)
+          case "$url" in
+            https://*) ;;
+            *) echo "::error::デプロイ結果からURLを取り出せませんでした: $out"; exit 1 ;;
+          esac
+          echo "デプロイ先: $url" >> "$GITHUB_STEP_SUMMARY"
+
+      # db-migrate.yml と同じ SLACK_WEBHOOK_URL を流用する。新しいシークレットも
+      # 仕組みも増やさない。成功時は送らない（ノイズになる）。
+      # 配信できなかったら必ず赤くする理由も db-migrate.yml と同じ。
+      - name: 失敗を Slack に通知
+        if: failure()
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          # workflow_dispatch では head_commit が無く null になるため SHA へフォールバック
+          COMMIT_MSG: ${{ github.event.head_commit.message || github.sha }}
+        run: |
+          set -euo pipefail
+          if [ -z "${SLACK_WEBHOOK_URL:-}" ]; then
+            echo "::warning::SLACK_WEBHOOK_URL が未設定のため通知をスキップしました。"
+            exit 0
+          fi
+          title=${COMMIT_MSG%%$'\n'*}
+          payload=$(jq -n \
+            --arg run "$RUN_URL" \
+            --arg title "$title" \
+            '{
+              blocks: [
+                { type: "header",
+                  text: { type: "plain_text", text: "🔴 本番デプロイが失敗しました" } },
+                { type: "section",
+                  text: { type: "mrkdwn",
+                    text: ("*このまま放置すると、直した内容が本番に届きません。*\n直近のコミット: " + $title) } },
+                { type: "context", elements: [
+                  { type: "mrkdwn",
+                    text: "2026/08 には Vercel の GitHub 連携が無音で止まり、本番が9コミット取り残されたまま1週間気づけなかった。赤いうちに直すこと。" }
+                ] },
+                { type: "actions", elements: [
+                  { type: "button", style: "danger",
+                    text: { type: "plain_text", text: "実行ログを見る" }, url: $run }
+                ] }
+              ]
+            }')
+          curl -sS --fail-with-body -X POST -H 'Content-type: application/json' \
+            --data "$payload" "$SLACK_WEBHOOK_URL"

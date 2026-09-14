@@ -3,12 +3,14 @@ import { z } from "zod";
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { apiOk, apiInternalError, apiValidationError, apiError } from "@/lib/api/response";
 import { checkOverlap } from "@/lib/reservations/overlap";
+import { businessDateString } from "@/lib/datetime";
 import { syncCreateEvent } from "@/lib/gcal/client";
 import { sendBookingConfirmation } from "@/lib/line/client";
 import { notifyNewBooking } from "@/lib/notifications/bookingNotify";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { logger } from "@/lib/logger";
 import { createIntakeInvitation } from "@/lib/identity/intakeServer";
+import { storeIdOrNull } from "@/lib/stores/resolveStoreId";
 
 const customerBookingSchema = z
   .object({
@@ -98,10 +100,12 @@ export async function POST(req: NextRequest) {
     const overlapEnd = isAllDay ? ALL_DAY_END : endTime!;
 
     // 過去日チェック
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    // E4-3 是正 (2026-09-08): サーバ実行環境は UTC。`new Date()` の日付で判定すると
+    // JST 00:00〜09:00 の間は「JST の今日」より前の UTC 日付になり、
+    // 本来過去であるべき日（JST の昨日）を予約可能にしてしまっていた。
+    // 全店 JST 前提（datetime.ts 冒頭コメント）に合わせ、JST の暦日で比較する。
     const bookingDate = new Date(scheduledDate + "T00:00:00");
-    if (bookingDate < today) {
+    if (Number.isNaN(bookingDate.getTime()) || scheduledDate < businessDateString()) {
       return apiValidationError("過去の日付には予約できません");
     }
 
@@ -316,12 +320,15 @@ export async function POST(req: NextRequest) {
     }
 
     // ── 予約作成 ──
+    // 店舗はお客様に選ばせていない。有効な店舗が1つだけならサーバが入れる
+    const storeId = await storeIdOrNull(admin, tenant.id, "customer booking");
     const reservationId = crypto.randomUUID();
     const { data: reservation, error } = await admin
       .from("reservations")
       .insert({
         id: reservationId,
         tenant_id: tenant.id,
+        store_id: storeId,
         customer_id: customerId,
         title,
         scheduled_date: scheduledDate,
@@ -332,7 +339,9 @@ export async function POST(req: NextRequest) {
         source: "web",
         status: "confirmed",
       })
-      .select("id, tenant_id, customer_id, title, scheduled_date, all_day, start_time, end_time, note, status")
+      .select(
+        "id, tenant_id, store_id, customer_id, title, scheduled_date, all_day, start_time, end_time, note, status",
+      )
       .single();
 
     if (error) return apiInternalError(error, "customer booking insert");

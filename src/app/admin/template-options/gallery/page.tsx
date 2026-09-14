@@ -23,15 +23,14 @@ export default function GalleryPage() {
         const res = await fetch("/api/template-options/gallery");
         const j = await res.json();
         setTemplates(j.templates ?? []);
-      } catch {} finally {
+      } catch {
+      } finally {
         setLoading(false);
       }
     })();
   }, []);
 
-  const filtered = filter === "all"
-    ? templates
-    : templates.filter((t) => t.category === filter);
+  const filtered = filter === "all" ? templates : templates.filter((t) => t.category === filter);
 
   return (
     <div className="space-y-6">
@@ -52,13 +51,11 @@ export default function GalleryPage() {
             key={cat}
             type="button"
             className={`text-xs px-3 py-1.5 rounded-full transition-colors ${
-              filter === cat
-                ? "bg-accent text-inverse"
-                : "bg-surface-hover text-muted hover:text-primary"
+              filter === cat ? "bg-accent text-inverse" : "bg-surface-hover text-muted hover:text-primary"
             }`}
             onClick={() => setFilter(cat)}
           >
-            {cat === "all" ? "すべて" : CATEGORY_LABELS[cat] ?? cat}
+            {cat === "all" ? "すべて" : (CATEGORY_LABELS[cat] ?? cat)}
           </button>
         ))}
       </div>
@@ -90,29 +87,42 @@ export default function GalleryPage() {
                   <div className="text-[9px] opacity-50">Certificate of Service</div>
                 </div>
                 <div className="w-full space-y-1">
-                  <div className="h-1 rounded-full opacity-10" style={{ backgroundColor: config.branding?.primary_color ?? "#1a1a2e" }} />
+                  <div
+                    className="h-1 rounded-full opacity-10"
+                    style={{ backgroundColor: config.branding?.primary_color ?? "#1a1a2e" }}
+                  />
                   <div className="flex justify-between text-[8px] opacity-30">
                     <span>車両情報</span>
                     <span>施工日: 20XX/XX/XX</span>
                   </div>
-                  <div className="h-0.5 w-3/4 rounded-full opacity-5" style={{ backgroundColor: config.branding?.primary_color ?? "#1a1a2e" }} />
-                  <div className="h-0.5 w-1/2 rounded-full opacity-5" style={{ backgroundColor: config.branding?.primary_color ?? "#1a1a2e" }} />
+                  <div
+                    className="h-0.5 w-3/4 rounded-full opacity-5"
+                    style={{ backgroundColor: config.branding?.primary_color ?? "#1a1a2e" }}
+                  />
+                  <div
+                    className="h-0.5 w-1/2 rounded-full opacity-5"
+                    style={{ backgroundColor: config.branding?.primary_color ?? "#1a1a2e" }}
+                  />
                 </div>
               </div>
 
               <div className="p-4 space-y-2">
                 <div className="text-sm font-semibold text-primary">{tpl.name}</div>
                 <div className="text-xs text-muted">{tpl.description}</div>
-                <div className="text-xs text-muted">
-                  カテゴリ: {CATEGORY_LABELS[tpl.category] ?? tpl.category}
-                </div>
+                <div className="text-xs text-muted">カテゴリ: {CATEGORY_LABELS[tpl.category] ?? tpl.category}</div>
 
                 {/* 配色プレビュー */}
                 <div className="flex gap-2 pt-1">
                   <div className="text-xs text-muted">スタイル:</div>
                   <div className="text-xs text-muted">
                     {config.style?.font_family === "noto-serif-jp" ? "明朝体" : "ゴシック体"} /
-                    {borderStyle === "none" ? "枠なし" : borderStyle === "double" ? "二重線" : borderStyle === "elegant" ? "エレガント" : "シンプル"}
+                    {borderStyle === "none"
+                      ? "枠なし"
+                      : borderStyle === "double"
+                        ? "二重線"
+                        : borderStyle === "elegant"
+                          ? "エレガント"
+                          : "シンプル"}
                   </div>
                 </div>
 

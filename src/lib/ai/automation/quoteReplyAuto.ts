@@ -30,7 +30,8 @@ import { canUseFeature, normalizePlanTier } from "@/lib/billing/planFeatures";
 import { generateQuoteFromVehicle, extractInvoiceLines } from "@/lib/ai/quoteFromVehicle";
 import { fastModelForPlanTier } from "@/lib/ai/client";
 import { startAiRouteUsage } from "@/lib/ai/recordRouteUsage";
-import { sendCustomerLineText } from "@/lib/line/client";
+import { sendCustomerLineText, sendCustomerLineButtons } from "@/lib/line/client";
+import { buildFollowupButtons } from "@/lib/line/flow/messages";
 import { categoryMatchesQuery } from "@/lib/line/flow/addonCandidates";
 import { priceForVehicleSize, type SizePrices } from "@/lib/menu/sizePricing";
 import { logger } from "@/lib/logger";
@@ -93,6 +94,12 @@ export interface MaybeAutoReplyRoughEstimateParams {
   /** 呼び出し元 (inboundAuto) が既にロード済みなら渡して二重読込を避ける。 */
   settings?: AiAutomationSettings;
   tenant?: { plan_tier: string | null; is_active: boolean | null };
+  /**
+   * 概算返信の末尾に「正式なお見積り / スタッフ相談」誘導ボタンを添えるか。
+   * 呼び出し元 (inboundAuto) が会話フロー opt-in と進行中フロー有無を見て決める
+   * (ナレッジ自動返信の attachButtons と同じ判断)。true のとき締めの文面も LINE 継続前提に揃う。
+   */
+  attachButtons?: boolean;
 }
 
 /** 施工内容/車両の一方または両方が読み取れなかったとき、不足情報を尋ねる返信文。 */
@@ -125,8 +132,18 @@ export function buildRoughEstimateMessage(input: {
   service: string;
   vehicleText: string;
   totalInclTax: number;
+  /**
+   * この直後に「正式なお見積りをお願いしたい」等の LINE 誘導ボタンを添えるか。
+   * true のときは締めの文面も LINE で続けられる旨に揃える（概算=来店のみ、という
+   * 従来の締めと、ボタン先の「LINEで正式見積り」フローとの文面矛盾を無くす）。
+   */
+  canContinueOnLine?: boolean;
 }): string {
   const head = ["◯ 内容: " + input.service, "◯ お車: " + input.vehicleText];
+  // 締めの案内。ボタン誘導があるときは「LINEで正式見積りへ続けられる」旨に揃える。
+  const closing = input.canContinueOnLine
+    ? "正式なお見積りは、下のボタンからLINEで承ります（車検証のお写真でより正確にお出しできます）。ご来店でも承ります。"
+    : "正式・詳細なお見積りはご来店時に承ります。ご予約お待ちしております。";
   if (input.totalInclTax > 0) {
     const { low, high } = roughEstimateRange(input.totalInclTax);
     return [
@@ -135,16 +152,15 @@ export function buildRoughEstimateMessage(input: {
       `◯ 概算金額: ¥${low.toLocaleString("ja-JP")}〜¥${high.toLocaleString("ja-JP")}（税込）`,
       "",
       "※上記は過去実績に基づく概算です。お車の状態により変動します。",
-      "※正式・詳細なお見積りはご来店時に承ります。ご予約お待ちしております。",
+      `※${closing}`,
     ].join("\n");
   }
-  return [
-    "【お見積りについて】",
-    ...head,
-    "",
-    "お見積りはお車を拝見してのご案内になります。",
-    "正式なお見積り・詳細はご来店時に承ります。ご予約お待ちしております。",
-  ].join("\n");
+  // 金額を出せないケース。ボタンで LINE 継続するときは「お車を拝見して＝来店前提」の一文が
+  // closing (LINEで承ります) と矛盾するため出さない。ボタン無し時のみ従来の来店前提文を残す。
+  const noAmount = ["【お見積りについて】", ...head, ""];
+  if (!input.canContinueOnLine) noAmount.push("お見積りはお車を拝見してのご案内になります。");
+  noAmount.push(closing);
+  return noAmount.join("\n");
 }
 
 /**
@@ -331,14 +347,29 @@ export async function maybeAutoReplyRoughEstimate(params: MaybeAutoReplyRoughEst
 
     // 概算の材料が皆無 (総額 0) なら金額を出さず来店案内を返す。それ以外は概算レンジを返す。
     const totalInclTax = Math.round(quote.total * (1 + TAX_RATE));
-    const body = buildRoughEstimateMessage({ service, vehicleText, totalInclTax });
+    // ボタン誘導を添えるときは締めの文面も「LINEで正式見積りへ続けられる」に揃える
+    // (概算=来店のみ、という従来の締めとの矛盾を無くす=文面整合)。
+    const canContinueOnLine = params.attachButtons ?? false;
+    const body = buildRoughEstimateMessage({ service, vehicleText, totalInclTax, canContinueOnLine });
 
-    const delivered = await sendCustomerLineText({
-      tenantId,
-      customerId: customerId ?? null,
-      lineUserId,
-      body,
-    });
+    // 誘導ボタン付き (会話フロー opt-in・進行中フロー無し) は、概算の直後に「正式なお見積りを
+    // お願いしたい」(→見積りフロー開始)・「スタッフに相談」を出して LINE 内で先へ進める。
+    // 「概算だけで終わらせない」導線 (従来は maybeStartQuoteFlow が担っていたが概算送信後は
+    // 文面矛盾でスキップされていた) を、文面を揃えたボタンで置き換える。
+    const delivered = canContinueOnLine
+      ? await sendCustomerLineButtons({
+          tenantId,
+          customerId: customerId ?? null,
+          lineUserId,
+          text: body,
+          buttons: buildFollowupButtons(),
+        })
+      : await sendCustomerLineText({
+          tenantId,
+          customerId: customerId ?? null,
+          lineUserId,
+          body,
+        });
     if (!delivered) {
       usage.record({ tenantId, outcome: "error", meta: { auto: true, committed: false } });
       return false;

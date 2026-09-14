@@ -3,28 +3,29 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useMemo } from "react";
-import { useCurrentRole } from "@/lib/auth/useCurrentRole";
 import { NAV_GROUPS, type NavItem } from "@/components/ui/adminNav";
 
 /**
- * モバイル専用の下部タブバー。どの画面でも主要導線（ホーム/予約/顧客/帳票/証明書）へ
+ * モバイル専用の下部タブバー。どの画面でも主要導線（ホーム/作業/車両/証明書/その他）へ
  * 1タップで戻れるよう常時表示する。ラベル・アイコン・権限は Sidebar の NAV 定義
  * (NAV_GROUPS) を単一の出典として再利用し、タブバー用に短いラベルだけ上書きする。
  * lg 以上ではサイドバーがあるため非表示（lg:hidden）。
+ *
+ * v2.0 §2 / 製品不変条件 #2: タブ構成は WEB_TABS（navigation/tabs.ts）を単一定義源とする。
+ *
+ * 権限で消さない: 正準タブ（WEB_TABS 由来）は構造的導線なので、権限ゲートは
+ * 掛けない（中のページは個別にゲートされる。消すと staff が「その他」に辿り着けない）。
+ * TABS 自体が WEB_TABS 限定なので、権限フィルタを掛けても常に true になり
+ * 意味を持たない（以前はそういう死んだ分岐があった）。
  */
-const TABS: { href: string; label: string }[] = [
-  { href: "/admin", label: "ホーム" },
-  { href: "/admin/reservations", label: "予約" },
-  { href: "/admin/customers", label: "顧客" },
-  { href: "/admin/invoices", label: "帳票" },
-  { href: "/admin/certificates", label: "証明書" },
-];
+import { WEB_TABS } from "@/lib/navigation/tabs";
+
+const TABS: { href: string; label: string }[] = WEB_TABS.map((t) => ({ href: t.href, label: t.label }));
 
 export default function MobileTabBar() {
   const pathname = usePathname();
-  const { can, role, loading } = useCurrentRole();
 
-  // href → NavItem（アイコン・権限・exact をタブに流用）。
+  // href → NavItem（アイコン・exact をタブに流用）。
   const navByHref = useMemo(() => {
     const m = new Map<string, NavItem>();
     for (const g of NAV_GROUPS) for (const it of g.items) if (!m.has(it.href)) m.set(it.href, it);
@@ -33,11 +34,8 @@ export default function MobileTabBar() {
 
   const tabs = useMemo(
     () =>
-      TABS.map((t) => ({ ...t, nav: navByHref.get(t.href) }))
-        .filter((t): t is typeof t & { nav: NavItem } => !!t.nav)
-        // 権限ゲート（Sidebar と同じく role 確定前は楽観的に表示）。
-        .filter((t) => !(t.nav.requiredPermission && !loading && role && !can(t.nav.requiredPermission))),
-    [navByHref, can, role, loading],
+      TABS.map((t) => ({ ...t, nav: navByHref.get(t.href) })).filter((t): t is typeof t & { nav: NavItem } => !!t.nav),
+    [navByHref],
   );
 
   // z-20: 本文より前・各種オーバーレイより後ろ。サイドバードロワー(overlay z-30 / aside z-40)や

@@ -10,7 +10,15 @@ const DISALLOW = ["/admin/", "/insurer/", "/customer/", "/api/", "/v/", "/login"
 // 主要な生成AI/検索AIの UA を名指しで allow して意図を明確にする（LLM への露出を狙う）。
 // GPTBot/OAI-SearchBot=OpenAI, ClaudeBot=Anthropic, PerplexityBot=Perplexity,
 // Google-Extended=Gemini/AI Overviews の学習・引用制御用トークン。
-const AI_CRAWLERS = ["GPTBot", "OAI-SearchBot", "ChatGPT-User", "ClaudeBot", "PerplexityBot", "Google-Extended", "Applebot-Extended"];
+const AI_CRAWLERS = [
+  "GPTBot",
+  "OAI-SearchBot",
+  "ChatGPT-User",
+  "ClaudeBot",
+  "PerplexityBot",
+  "Google-Extended",
+  "Applebot-Extended",
+];
 
 export default function robots(): MetadataRoute.Robots {
   return {

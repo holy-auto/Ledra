@@ -1,0 +1,12 @@
+{
+  "errors": {
+    "invalid_payload": "Nội dung yêu cầu không hợp lệ.",
+    "missing_field": "{field} là bắt buộc.",
+    "invalid_id": "ID không hợp lệ.",
+    "unauthorized": "Yêu cầu đăng nhập.",
+    "forbidden": "Bạn không có quyền thực hiện thao tác này.",
+    "not_found": "Không tìm thấy.",
+    "rate_limited": "Quá nhiều yêu cầu. Vui lòng thử lại sau.",
+    "internal_error": "Đã xảy ra lỗi máy chủ."
+  }
+}

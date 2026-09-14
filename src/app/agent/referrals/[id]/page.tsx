@@ -79,11 +79,11 @@ function DetailRow({ label, children }: { label: string; children: React.ReactNo
 export default function ReferralDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
 
-  const { data, error: swrError, isLoading } = useSWR<ReferralDetail>(
-    `/api/agent/referrals/${encodeURIComponent(id)}`,
-    fetcher,
-    { revalidateOnFocus: true },
-  );
+  const {
+    data,
+    error: swrError,
+    isLoading,
+  } = useSWR<ReferralDetail>(`/api/agent/referrals/${encodeURIComponent(id)}`, fetcher, { revalidateOnFocus: true });
 
   const err = swrError ? (swrError.message ?? "データの取得に失敗しました") : null;
 
@@ -123,10 +123,7 @@ export default function ReferralDetailPage({ params }: { params: Promise<{ id: s
         actions={
           <div className="flex items-center gap-2">
             {canEdit && (
-              <Link
-                href={`/agent/referrals/${id}/edit`}
-                className="btn-primary text-xs"
-              >
+              <Link href={`/agent/referrals/${id}/edit`} className="btn-primary text-xs">
                 編集
               </Link>
             )}
@@ -147,9 +144,7 @@ export default function ReferralDetailPage({ params }: { params: Promise<{ id: s
         </div>
         <div className="text-right">
           <div className="text-xs text-muted">紹介コード</div>
-          <div className="mt-1 font-mono text-sm font-semibold text-primary">
-            {data.referral_code}
-          </div>
+          <div className="mt-1 font-mono text-sm font-semibold text-primary">{data.referral_code}</div>
         </div>
       </div>
 
@@ -182,21 +177,13 @@ export default function ReferralDetailPage({ params }: { params: Promise<{ id: s
             )}
           </DetailRow>
           <DetailRow label="コミッション料率">
-            {data.commission_rate != null
-              ? `${(data.commission_rate * 100).toFixed(1)}%`
-              : "未設定"}
+            {data.commission_rate != null ? `${(data.commission_rate * 100).toFixed(1)}%` : "未設定"}
           </DetailRow>
           <DetailRow label="備考">
-            {data.note ? (
-              <span className="whitespace-pre-wrap">{data.note}</span>
-            ) : (
-              "-"
-            )}
+            {data.note ? <span className="whitespace-pre-wrap">{data.note}</span> : "-"}
           </DetailRow>
           <DetailRow label="登録日">{formatDateTime(data.created_at)}</DetailRow>
-          <DetailRow label="最終更新">
-            {data.updated_at ? formatDateTime(data.updated_at) : "-"}
-          </DetailRow>
+          <DetailRow label="最終更新">{data.updated_at ? formatDateTime(data.updated_at) : "-"}</DetailRow>
         </dl>
       </section>
 
@@ -222,22 +209,16 @@ export default function ReferralDetailPage({ params }: { params: Promise<{ id: s
                   <div className="flex-1 min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
                       <Badge variant={entrySt.variant}>{entrySt.label}</Badge>
-                      <span className="text-xs text-muted">
-                        {formatDate(entry.changed_at)}
-                      </span>
+                      <span className="text-xs text-muted">{formatDate(entry.changed_at)}</span>
                     </div>
-                    {entry.note && (
-                      <p className="mt-1 text-xs text-secondary">{entry.note}</p>
-                    )}
+                    {entry.note && <p className="mt-1 text-xs text-secondary">{entry.note}</p>}
                   </div>
                 </div>
               );
             })}
           </div>
         ) : (
-          <div className="py-6 text-center text-sm text-muted">
-            ステータス変更の履歴はまだありません。
-          </div>
+          <div className="py-6 text-center text-sm text-muted">ステータス変更の履歴はまだありません。</div>
         )}
       </section>
     </div>

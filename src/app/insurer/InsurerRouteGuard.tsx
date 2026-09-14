@@ -37,7 +37,7 @@ export default function InsurerRouteGuard({ children }: { children: ReactNode })
         const { data, error } = await supabase
           .from("insurer_users")
           .select("id, insurer_id, role, is_active")
-          .eq("auth_user_id", user.id)
+          .eq("user_id", user.id)
           .maybeSingle();
 
         if (cancelled) return;

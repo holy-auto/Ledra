@@ -20,6 +20,10 @@ export interface C2paManifestSummary {
   title: string;
   /** 署名モード（署名者の種別）。 */
   signerMode: "dev-signed" | "production";
+  /** claim_generator_info.specVersion（表明した C2PA Spec バージョン）。 */
+  specVersion: string;
+  /** c2pa.actions の allActionsIncluded（行為台帳が完全かどうか）。 */
+  allActionsIncluded: boolean;
   /** c2pa.actions 台帳（要約した action 名の配列）。 */
   actions: string[];
   /** com.ledra.capture に封入した束縛の要約。 */

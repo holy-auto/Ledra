@@ -1230,19 +1230,24 @@ export default function CustomersClient() {
                                   >
                                     編集
                                   </button>
-                                  <button
-                                    type="button"
-                                    className="btn-danger px-3 py-1 text-xs"
-                                    disabled={deletingId === c.id || c.certificates_count > 0 || c.invoices_count > 0}
-                                    title={
-                                      c.certificates_count > 0 || c.invoices_count > 0
-                                        ? "証明書・請求書が紐付いているため削除できません"
-                                        : ""
-                                    }
-                                    onClick={() => handleDelete(c.id)}
-                                  >
-                                    {deletingId === c.id ? "削除中…" : "削除"}
-                                  </button>
+                                  {/* 削除は admin 以上（代表判断 2026-09-04）。編集は staff のままなので
+                                      外側の MutationGuard とは別に、削除だけ入れ子で絞る。
+                                      押せば必ず 403 になるボタンを見せない。 */}
+                                  <MutationGuard minRole="admin">
+                                    <button
+                                      type="button"
+                                      className="btn-danger px-3 py-1 text-xs"
+                                      disabled={deletingId === c.id || c.certificates_count > 0 || c.invoices_count > 0}
+                                      title={
+                                        c.certificates_count > 0 || c.invoices_count > 0
+                                          ? "証明書・請求書が紐付いているため削除できません"
+                                          : ""
+                                      }
+                                      onClick={() => handleDelete(c.id)}
+                                    >
+                                      {deletingId === c.id ? "削除中…" : "削除"}
+                                    </button>
+                                  </MutationGuard>
                                 </div>
                               </MutationGuard>
                             </td>

@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
-import { apiJson, apiUnauthorized, apiValidationError, apiInternalError } from "@/lib/api/response";
+import { apiJson, apiUnauthorized, apiValidationError, apiInternalError, apiForbidden } from "@/lib/api/response";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
+import { resolveCallerWithRole, requirePermission } from "@/lib/auth/checkRole";
 import { customerInquiryPatchSchema } from "@/lib/validations/customer-inquiry";
 
 /** GET /api/admin/customer-inquiries — テナントの問い合わせ一覧
@@ -68,6 +68,7 @@ export async function PATCH(req: Request) {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
+    if (!requirePermission(caller, "customers:edit")) return apiForbidden();
 
     const parsed = customerInquiryPatchSchema.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) {

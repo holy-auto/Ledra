@@ -43,7 +43,10 @@ export default function AgentReportsPage() {
   useEffect(() => {
     (async () => {
       const { data: u } = await supabase.auth.getUser();
-      if (!u?.user) { window.location.href = "/agent/login"; return; }
+      if (!u?.user) {
+        window.location.href = "/agent/login";
+        return;
+      }
       setReady(true);
     })();
   }, [supabase]);
@@ -111,16 +114,23 @@ export default function AgentReportsPage() {
                   <div key={m.month} className="grid grid-cols-[80px_1fr_1fr_100px] items-center gap-3 text-xs">
                     <span className="font-mono text-muted">{m.month}</span>
                     <div className="flex items-center gap-2">
-                      <div className="h-4 rounded bg-neutral-800" style={{ width: `${(m.referrals / maxRef) * 100}%`, minWidth: m.referrals > 0 ? 4 : 0 }} />
+                      <div
+                        className="h-4 rounded bg-neutral-800"
+                        style={{ width: `${(m.referrals / maxRef) * 100}%`, minWidth: m.referrals > 0 ? 4 : 0 }}
+                      />
                       <span className="text-secondary">{m.referrals}件</span>
                     </div>
                     <div className="flex items-center gap-2">
-                      <div className="h-4 rounded bg-emerald-500" style={{ width: `${(m.commission_earned / maxComm) * 100}%`, minWidth: m.commission_earned > 0 ? 4 : 0 }} />
+                      <div
+                        className="h-4 rounded bg-emerald-500"
+                        style={{
+                          width: `${(m.commission_earned / maxComm) * 100}%`,
+                          minWidth: m.commission_earned > 0 ? 4 : 0,
+                        }}
+                      />
                       <span className="text-secondary">{formatJpy(m.commission_earned)}</span>
                     </div>
-                    <div className="text-right text-muted">
-                      契約 {m.contracted}件
-                    </div>
+                    <div className="text-right text-muted">契約 {m.contracted}件</div>
                   </div>
                 );
               })}
@@ -153,9 +163,11 @@ export default function AgentReportsPage() {
             <button
               onClick={() => {
                 const header = "月,紹介数,契約数,コミッション(承認済),コミッション(未払い)\n";
-                const rows = data.monthly.map((m) =>
-                  `${m.month},${m.referrals},${m.contracted},${m.commission_earned},${m.commission_pending}`
-                ).join("\n");
+                const rows = data.monthly
+                  .map(
+                    (m) => `${m.month},${m.referrals},${m.contracted},${m.commission_earned},${m.commission_pending}`,
+                  )
+                  .join("\n");
                 const blob = new Blob(["\uFEFF" + header + rows], { type: "text/csv;charset=utf-8" });
                 const a = document.createElement("a");
                 a.href = URL.createObjectURL(blob);

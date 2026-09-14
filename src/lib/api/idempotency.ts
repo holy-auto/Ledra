@@ -20,25 +20,16 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { Redis } from "@upstash/redis";
+import type { Redis } from "@upstash/redis";
 import { createHash } from "node:crypto";
 import { apiError } from "./response";
 import { captureSecurityEvent } from "@/lib/observability/sentry";
 import { getClientIp } from "@/lib/rateLimit";
+import { getRedis } from "@/lib/upstash";
 
 const IDEMPOTENCY_TTL_SECONDS = 24 * 60 * 60;
 const MAX_KEY_LENGTH = 255;
 const KEY_PATTERN = /^[A-Za-z0-9_\-:.]+$/;
-
-let redis: Redis | null = null;
-function getRedis(): Redis | null {
-  if (redis) return redis;
-  const url = process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
-  if (!url || !token) return null;
-  redis = new Redis({ url, token });
-  return redis;
-}
 
 type CachedResponse = {
   status: number;
@@ -185,7 +176,13 @@ async function runAndCache(
 
   // Only cache 2xx + 4xx (deterministic outcomes). 5xx errors should be
   // retryable, so don't poison the cache.
-  if (response.status >= 200 && response.status < 500) {
+  //
+  // 401/403 は除く。結果が「誰が呼んだか」で変わるうえ、キーは IP スコープ
+  // (getClientIp) なので、権限を付与された後の再送や、同じ NAT の別ユーザーにまで
+  // 24 時間その拒否が返り続ける。認可の結果はキャッシュしない。
+  const cacheable =
+    response.status >= 200 && response.status < 500 && response.status !== 401 && response.status !== 403;
+  if (cacheable) {
     try {
       const cloned = response.clone();
       const body = await cloned.text();

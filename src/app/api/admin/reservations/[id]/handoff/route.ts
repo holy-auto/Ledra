@@ -1,9 +1,16 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
+import { resolveCallerWithRole, requirePermission } from "@/lib/auth/checkRole";
 import { checkRateLimit } from "@/lib/api/rateLimit";
-import { apiJson, apiUnauthorized, apiNotFound, apiValidationError, apiInternalError } from "@/lib/api/response";
+import {
+  apiJson,
+  apiUnauthorized,
+  apiNotFound,
+  apiValidationError,
+  apiInternalError,
+  apiForbidden,
+} from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
 
@@ -69,6 +76,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
+    if (!requirePermission(caller, "reservations:edit")) return apiForbidden();
 
     const { id } = await params;
 
@@ -138,6 +146,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
+    if (!requirePermission(caller, "reservations:edit")) return apiForbidden();
 
     const { id } = await params;
     const noteId = new URL(req.url).searchParams.get("note_id")?.trim() ?? "";

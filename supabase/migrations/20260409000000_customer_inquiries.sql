@@ -20,6 +20,11 @@ CREATE TABLE IF NOT EXISTS customer_inquiries (
   updated_at      timestamptz NOT NULL DEFAULT now()
 );
 
+-- 【後から1文だけ追加】customer_inquiries は 20260404100001 が先に作っており、
+-- そちらには customer_id が無い。上の CREATE TABLE IF NOT EXISTS は skip されるため、
+-- 空 DB では下の索引が「列が無い」で落ちていた。列を足してから索引を張る。
+ALTER TABLE customer_inquiries ADD COLUMN IF NOT EXISTS customer_id uuid REFERENCES customers(id) ON DELETE SET NULL;
+
 CREATE INDEX IF NOT EXISTS idx_customer_inquiries_tenant
   ON customer_inquiries (tenant_id, created_at DESC);
 

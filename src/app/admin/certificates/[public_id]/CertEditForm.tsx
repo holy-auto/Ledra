@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import OdometerOcrButton from "@/components/admin/OdometerOcrButton";
 
 type CertData = {
   public_id: string;
@@ -15,6 +16,7 @@ type CertData = {
   warranty_exclusions: string | null;
   remarks: string | null;
   service_type: string | null;
+  maintenance_json: Record<string, unknown> | null;
 };
 
 type Props = {
@@ -49,6 +51,9 @@ export default function CertEditForm({ cert }: Props) {
     maintenance_date: cert.maintenance_date ?? "",
     warranty_exclusions: cert.warranty_exclusions ?? "",
     remarks: cert.remarks ?? "",
+    // 走行距離は発行 (draft→active) の必須項目。ここが唯一の「後から入れる」窓口で、
+    // 発行前の下書きと、必須化より前に作られた証明書の遡及入力を兼ねる。
+    mileage: String((cert.maintenance_json ?? {}).mileage ?? ""),
   });
 
   const handleSave = () => {
@@ -75,6 +80,10 @@ export default function CertEditForm({ cert }: Props) {
             maintenance_date: form.maintenance_date || null,
             warranty_exclusions: form.warranty_exclusions.trim() || null,
             remarks: form.remarks.trim() || null,
+            // maintenance_json は丸ごと差し替えなので、既存の整備内容を残したまま
+            // 走行距離だけ差し替える。空欄で送っても既存値はサーバ側で保持される
+            // (mergeMileageOnEdit: 入れられるが消せない)。
+            maintenance_json: { ...(cert.maintenance_json ?? {}), mileage: form.mileage.trim() || undefined },
           }),
         });
 
@@ -144,6 +153,21 @@ export default function CertEditForm({ cert }: Props) {
           <span className={labelTextCls}>ナンバー</span>
           <input value={form.vehicle_plate} onChange={set("vehicle_plate")} className={inputCls} />
         </label>
+        <div className="space-y-1.5">
+          <label className={labelCls}>
+            <span className={labelTextCls}>走行距離（km）※発行に必須</span>
+            <input
+              type="number"
+              inputMode="numeric"
+              min={1}
+              value={form.mileage}
+              onChange={set("mileage")}
+              className={inputCls}
+              placeholder="35000"
+            />
+          </label>
+          <OdometerOcrButton onRead={(km) => setForm((prev) => ({ ...prev, mileage: String(km) }))} />
+        </div>
       </div>
 
       <label className={`${labelCls} block`}>

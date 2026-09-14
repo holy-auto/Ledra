@@ -3,7 +3,7 @@ import { parseJsonSafe } from "@/lib/api/safeJson";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import PageHeader from "@/components/ui/PageHeader";
-import { DOC_TYPE_LIST, type DocType } from "@/types/document";
+import { DOC_TYPE_LIST, hasNoHonorificPrefix, type DocType } from "@/types/document";
 import { DEFAULT_LAYOUT, mergeLayout, type LayoutConfig, type DocumentTemplate } from "@/types/documentTemplate";
 import LayoutPreview from "./LayoutPreview";
 
@@ -309,7 +309,13 @@ function EditorForm({
               label="「御」プレフィックスを付ける（例：御見積書）"
               checked={editor.layout.title.prefix}
               onChange={(v) => updateLayout({ title: { ...editor.layout.title, prefix: v } })}
+              disabled={editor.doc_type != null && hasNoHonorificPrefix(editor.doc_type)}
             />
+            {editor.doc_type != null && hasNoHonorificPrefix(editor.doc_type) && (
+              <p className="text-xs text-muted">
+                発注書・発注請書・検収書は自社が発行する書類のため、「御」は常に付きません。
+              </p>
+            )}
             <Select
               label="配置"
               value={editor.layout.title.align}
@@ -498,10 +504,26 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-function Toggle({ label, checked, onChange }: { label: string; checked: boolean; onChange: (v: boolean) => void }) {
+function Toggle({
+  label,
+  checked,
+  onChange,
+  disabled,
+}: {
+  label: string;
+  checked: boolean;
+  onChange: (v: boolean) => void;
+  disabled?: boolean;
+}) {
   return (
-    <label className="flex items-center gap-2 text-sm text-secondary cursor-pointer">
-      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} className="rounded" />
+    <label className={`flex items-center gap-2 text-sm text-secondary ${disabled ? "opacity-50" : "cursor-pointer"}`}>
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+        disabled={disabled}
+        className="rounded"
+      />
       {label}
     </label>
   );

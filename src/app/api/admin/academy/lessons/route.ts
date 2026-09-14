@@ -13,25 +13,14 @@ import { createClient as createSupabaseServerClient } from "@/lib/supabase/serve
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { apiOk, apiUnauthorized, apiInternalError, apiValidationError, apiForbidden } from "@/lib/api/response";
 import { canUseFeature } from "@/lib/billing/planFeatures";
-import { hasMinRole } from "@/lib/auth/roles";
+import {
+  LESSON_LEVELS,
+  lessonCreateSchema,
+  checkLessonCreatePermission,
+  insertLesson,
+} from "@/lib/academy/createLesson";
 
 export const dynamic = "force-dynamic";
-
-const VALID_LEVELS = ["intro", "basic", "standard", "pro"] as const;
-
-const createSchema = z.object({
-  title: z.string().trim().min(3, "タイトルを3文字以上で入力してください").max(200),
-  summary: z.string().trim().max(500).optional(),
-  body: z.string().trim().min(10, "本文を10文字以上で入力してください").max(50000),
-  category: z.string().trim().min(1).max(50),
-  level: z.enum(VALID_LEVELS).default("basic"),
-  difficulty: z.number().int().min(1).max(5).default(3),
-  video_url: z.string().trim().url().max(1000).optional().or(z.literal("")),
-  cover_image_url: z.string().trim().url().max(1000).optional().or(z.literal("")),
-  tags: z.array(z.string().trim().min(1).max(40)).max(10).default([]),
-  status: z.enum(["draft", "published"]).default("draft"),
-  publish_as_platform: z.boolean().default(false), // super_admin のみ tenant_id=null で投稿可
-});
 
 /** GET 一覧 */
 export async function GET(req: NextRequest) {
@@ -64,7 +53,7 @@ export async function GET(req: NextRequest) {
     }
 
     if (category) query = query.eq("category", category);
-    if (level && (VALID_LEVELS as readonly string[]).includes(level)) query = query.eq("level", level);
+    if (level && (LESSON_LEVELS as readonly string[]).includes(level)) query = query.eq("level", level);
 
     const { data, error } = await query.order("rating_avg", { ascending: false }).limit(100);
     if (error) return apiInternalError(error);
@@ -84,40 +73,15 @@ export async function POST(req: NextRequest) {
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
 
-    // 投稿は admin 以上 (staff/viewer は不可)
-    if (!hasMinRole(caller.role, "admin")) {
-      return apiForbidden("レッスン投稿は管理者権限が必要です");
-    }
-
-    const parsed = createSchema.safeParse(await req.json().catch(() => ({})));
+    const parsed = lessonCreateSchema.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) {
       return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
     }
-    const v = parsed.data;
 
-    // tenant_id=null (運営コンテンツ) として投稿できるのは super_admin のみ
-    const isPlatformPost = v.publish_as_platform === true;
-    if (isPlatformPost && caller.role !== "super_admin") {
-      return apiForbidden("運営コンテンツとしての投稿はプラットフォーム管理者のみ可能です");
-    }
+    const permission = checkLessonCreatePermission(caller, parsed.data);
+    if (!permission.ok) return apiForbidden(permission.reason);
 
-    const insert = {
-      tenant_id: isPlatformPost ? null : caller.tenantId,
-      author_user_id: caller.userId,
-      title: v.title,
-      summary: v.summary || null,
-      body: v.body,
-      category: v.category,
-      level: v.level,
-      difficulty: v.difficulty,
-      video_url: v.video_url || null,
-      cover_image_url: v.cover_image_url || null,
-      tags: v.tags,
-      status: v.status,
-      published_at: v.status === "published" ? new Date().toISOString() : null,
-    };
-
-    const { data, error } = await supabase.from("academy_lessons").insert(insert).select("id").single();
+    const { data, error } = await insertLesson(supabase, caller, parsed.data);
     if (error) return apiInternalError(error);
 
     return apiOk({ id: data?.id }, 201);

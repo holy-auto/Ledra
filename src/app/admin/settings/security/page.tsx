@@ -47,19 +47,13 @@ export default async function SecuritySettingsPage() {
 
       <section className="glass-card p-5">
         <div className="mb-4">
-          <div className="text-xs font-semibold tracking-[0.18em] text-muted">
-            ACCOUNT
-          </div>
-          <div className="mt-1 text-base font-semibold text-primary">
-            アカウント情報
-          </div>
+          <div className="text-xs font-semibold tracking-[0.18em] text-muted">ACCOUNT</div>
+          <div className="mt-1 text-base font-semibold text-primary">アカウント情報</div>
         </div>
         <div className="text-sm text-secondary">
           <div className="flex items-center gap-2">
             <span className="text-muted">ログイン中:</span>
-            <span className="font-medium text-primary">
-              {user.email ?? user.id}
-            </span>
+            <span className="font-medium text-primary">{user.email ?? user.id}</span>
           </div>
         </div>
       </section>
@@ -67,22 +61,16 @@ export default async function SecuritySettingsPage() {
       <SecurityClient initialTotpFactors={totpFactors} />
 
       <section className="glass-card p-5 text-sm text-secondary space-y-2">
-        <div className="text-xs font-semibold tracking-[0.18em] text-muted">
-          INFO
-        </div>
-        <div className="text-base font-semibold text-primary">
-          2 要素認証とは
-        </div>
+        <div className="text-xs font-semibold tracking-[0.18em] text-muted">INFO</div>
+        <div className="text-base font-semibold text-primary">2 要素認証とは</div>
         <p>
-          パスワードに加えて、認証アプリ (Google Authenticator / 1Password / Authy
-          など) が生成する 6 桁のコードを要求することで、パスワードが漏れた場合でも
-          不正ログインを防ぎます。保険会社や顧客の個人情報を扱う施工店管理者の
-          アカウントには特に推奨されます。
+          パスワードに加えて、認証アプリ (Google Authenticator / 1Password / Authy など) が生成する 6
+          桁のコードを要求することで、パスワードが漏れた場合でも
+          不正ログインを防ぎます。保険会社や顧客の個人情報を扱う施工店管理者の アカウントには特に推奨されます。
         </p>
         <p className="text-xs text-muted">
           * 2FA を有効化すると、次回ログイン以降は毎回コードの入力が必要になります。
-          認証デバイスを紛失した場合に備え、バックアップコードの保管や、
-          予備の認証手段の準備を強く推奨します。
+          認証デバイスを紛失した場合に備え、バックアップコードの保管や、 予備の認証手段の準備を強く推奨します。
         </p>
       </section>
     </div>

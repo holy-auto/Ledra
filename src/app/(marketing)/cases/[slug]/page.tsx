@@ -4,8 +4,10 @@ import type { Metadata } from "next";
 import { Section } from "@/components/marketing/Section";
 import { MarkdownBody } from "@/components/marketing/MarkdownBody";
 import { CTABanner } from "@/components/marketing/CTABanner";
+import { ArticleJsonLd } from "@/components/marketing/JsonLd";
 import { ArticleHero } from "@/components/marketing/ArticleHero";
 import { getContentBySlug, listContent } from "@/lib/marketing/content";
+import { siteConfig } from "@/lib/marketing/config";
 
 type Props = { params: Promise<{ slug: string }> };
 
@@ -22,6 +24,20 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     title: entry.frontmatter.title,
     description: entry.frontmatter.excerpt,
     alternates: { canonical: `/cases/${entry.frontmatter.slug}` },
+    openGraph: {
+      type: "article",
+      title: entry.frontmatter.title,
+      description: entry.frontmatter.excerpt,
+      url: `/cases/${entry.frontmatter.slug}`,
+      publishedTime: entry.frontmatter.publishedAt,
+    },
+    twitter: {
+      card: "summary_large_image",
+      title: entry.frontmatter.title,
+      description: entry.frontmatter.excerpt,
+      site: siteConfig.twitterHandle,
+      creator: siteConfig.twitterHandle,
+    },
   };
 }
 
@@ -32,6 +48,14 @@ export default async function CaseDetailPage({ params }: Props) {
 
   return (
     <>
+      <ArticleJsonLd
+        title={entry.frontmatter.title}
+        description={entry.frontmatter.excerpt}
+        slug={entry.frontmatter.slug}
+        publishedAt={entry.frontmatter.publishedAt}
+        pathPrefix="/cases"
+        articleType="Article"
+      />
       <Section className="!pt-32 !pb-16">
         <article className="mx-auto max-w-2xl">
           <Link

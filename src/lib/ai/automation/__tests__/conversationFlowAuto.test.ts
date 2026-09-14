@@ -4,17 +4,25 @@ import { emptyStore, makeFakeAdmin, type FakeStore } from "./fakeSupabaseAdmin";
 const mocks = vi.hoisted(() => ({
   loadAiAutomationSettings: vi.fn(),
   shouldRunConversationFlow: vi.fn(),
+  isSourceAllowed: vi.fn(),
   sendCustomerLineText: vi.fn(),
   logAutoActionExecuted: vi.fn(),
   createInboundQuoteDraft: vi.fn(),
+  recordInboundLineMessage: vi.fn(),
+  parseShakenshoAuto: vi.fn(),
   usageRecord: vi.fn(),
   store: null as unknown as FakeStore,
 }));
 
 vi.mock("@/lib/supabase/admin", () => ({ createServiceRoleAdmin: () => makeFakeAdmin(mocks.store) }));
-vi.mock("../policy", () => ({ loadAiAutomationSettings: mocks.loadAiAutomationSettings }));
+vi.mock("../policy", () => ({
+  loadAiAutomationSettings: mocks.loadAiAutomationSettings,
+  isSourceAllowed: mocks.isSourceAllowed,
+}));
 vi.mock("../orchestrator", () => ({ shouldRunConversationFlow: mocks.shouldRunConversationFlow }));
 vi.mock("@/lib/line/client", () => ({ sendCustomerLineText: mocks.sendCustomerLineText }));
+vi.mock("@/lib/line/messageStore", () => ({ recordInboundLineMessage: mocks.recordInboundLineMessage }));
+vi.mock("@/lib/ocr/shakensho", () => ({ parseShakenshoAuto: mocks.parseShakenshoAuto }));
 vi.mock("@/lib/audit/aiAuditLog", () => ({ logAutoActionExecuted: mocks.logAutoActionExecuted }));
 vi.mock("../quoteDraftCore", () => ({ createInboundQuoteDraft: mocks.createInboundQuoteDraft }));
 vi.mock("@/lib/ai/recordRouteUsage", () => ({ startAiRouteUsage: () => ({ record: mocks.usageRecord }) }));
@@ -22,7 +30,11 @@ vi.mock("@/lib/logger", () => ({
   logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn(), child: () => ({}) },
 }));
 
-import { maybeStartQuoteFlow, maybeAdvanceQuoteFlowOnDetail } from "../conversationFlowAuto";
+import {
+  maybeStartQuoteFlow,
+  maybeAdvanceQuoteFlowOnDetail,
+  maybeAdvanceQuoteFlowOnPhoto,
+} from "../conversationFlowAuto";
 
 const TENANT = "11111111-1111-1111-1111-111111111111";
 const CUSTOMER = "22222222-2222-4222-a222-222222222222";
@@ -49,8 +61,13 @@ beforeEach(() => {
   });
   mocks.loadAiAutomationSettings.mockResolvedValue({});
   mocks.shouldRunConversationFlow.mockReturnValue(true);
+  mocks.isSourceAllowed.mockReturnValue(true);
   mocks.sendCustomerLineText.mockResolvedValue(true);
+  mocks.recordInboundLineMessage.mockResolvedValue({ ok: true });
   mocks.createInboundQuoteDraft.mockResolvedValue({ docId: "doc-1", total: 132000, ai: true, confidence: 0.8 });
+  mocks.parseShakenshoAuto.mockResolvedValue({
+    data: { maker: "トヨタ", model: "6AA-MXPH15", first_registration: "2022年3月" },
+  });
 });
 
 describe("maybeStartQuoteFlow", () => {
@@ -160,9 +177,10 @@ describe("maybeAdvanceQuoteFlowOnDetail", () => {
       origin: "conversation_flow",
     });
 
-    // フローが quote_drafted に進み quote_doc_id が入る。
-    const upd = mocks.store.updates.find((u) => u.table === "line_conversation_flows");
-    expect(upd?.payload).toMatchObject({ state: "quote_drafted", quote_doc_id: "doc-1" });
+    // まず quote_drafted を排他クレーム、その後 doc_id を紐付ける (2 回更新)。
+    const flowUpds = mocks.store.updates.filter((u) => u.table === "line_conversation_flows");
+    expect(flowUpds[0].payload.state).toBe("quote_drafted");
+    expect(flowUpds.some((u) => u.payload.quote_doc_id === "doc-1")).toBe(true);
 
     expect(mocks.sendCustomerLineText).toHaveBeenCalledTimes(1);
     expect(mocks.sendCustomerLineText.mock.calls[0][0].body).toContain("正式なお見積り");
@@ -211,5 +229,76 @@ describe("maybeAdvanceQuoteFlowOnDetail", () => {
     const handled = await maybeAdvanceQuoteFlowOnDetail(advanceParams());
     expect(handled).toBe(false);
     expect(mocks.createInboundQuoteDraft).not.toHaveBeenCalled();
+  });
+});
+
+describe("maybeAdvanceQuoteFlowOnPhoto", () => {
+  function seedFlow(context: Record<string, unknown>) {
+    mocks.store.tables.line_conversation_flows = [
+      {
+        id: "flow-1",
+        tenant_id: TENANT,
+        customer_id: CUSTOMER,
+        line_user_id: LINE_USER,
+        state: "awaiting_quote_detail",
+        context_json: context,
+      },
+    ];
+  }
+  const photoParams = () => ({
+    tenantId: TENANT,
+    customerId: CUSTOMER,
+    lineUserId: LINE_USER,
+    imageBuffer: Buffer.from("fake-jpeg"),
+    attachmentPath: "line-media/x.jpg",
+    attachmentContentType: "image/jpeg",
+    lineMessageId: "m-1",
+  });
+
+  it("OCRs the shakensho and drafts a quote when the service is already in context", async () => {
+    seedFlow({ service: "コーティング", vehicle_text: null });
+    const handled = await maybeAdvanceQuoteFlowOnPhoto(photoParams());
+    expect(handled).toBe(true);
+    expect(mocks.parseShakenshoAuto).toHaveBeenCalledTimes(1);
+    // OCR の車両 + context の施工内容で下書きを作る。
+    expect(mocks.createInboundQuoteDraft).toHaveBeenCalledTimes(1);
+    const draftArg = mocks.createInboundQuoteDraft.mock.calls[0][1];
+    expect(draftArg.service).toBe("コーティング");
+    expect(draftArg.vehicleText).toContain("トヨタ");
+    // 写真の受信をスレッドに記録する。
+    expect(mocks.recordInboundLineMessage).toHaveBeenCalled();
+  });
+
+  it("keeps the OCR'd vehicle and asks only for the service when service is unknown", async () => {
+    seedFlow({ source: "followup_button" }); // service 無し
+    const handled = await maybeAdvanceQuoteFlowOnPhoto(photoParams());
+    expect(handled).toBe(true);
+    expect(mocks.createInboundQuoteDraft).not.toHaveBeenCalled();
+    // context に車両を保持し、施工内容を聞き返す。
+    const upd = mocks.store.updates.find((u) => u.table === "line_conversation_flows");
+    expect(upd?.payload.context_json.vehicle_text).toContain("トヨタ");
+    expect(mocks.sendCustomerLineText.mock.calls[0][0].body).toContain("施工内容");
+  });
+
+  it("does not handle (returns false) when the image cannot be read as a shakensho", async () => {
+    seedFlow({ service: "コーティング" });
+    mocks.parseShakenshoAuto.mockResolvedValue({ data: { maker: null } });
+    const handled = await maybeAdvanceQuoteFlowOnPhoto(photoParams());
+    expect(handled).toBe(false);
+    // 未処理 → 通常の受信箱記録に委ねる (このハンドラでは記録しない)。
+    expect(mocks.recordInboundLineMessage).not.toHaveBeenCalled();
+  });
+
+  it("does nothing when there is no awaiting_quote_detail flow", async () => {
+    mocks.store.tables.line_conversation_flows = [];
+    expect(await maybeAdvanceQuoteFlowOnPhoto(photoParams())).toBe(false);
+    expect(mocks.parseShakenshoAuto).not.toHaveBeenCalled();
+  });
+
+  it("does not OCR when the identity-documents source is disabled", async () => {
+    mocks.isSourceAllowed.mockReturnValue(false);
+    seedFlow({ service: "コーティング" });
+    expect(await maybeAdvanceQuoteFlowOnPhoto(photoParams())).toBe(false);
+    expect(mocks.parseShakenshoAuto).not.toHaveBeenCalled();
   });
 });

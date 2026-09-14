@@ -54,6 +54,39 @@ const eslintConfig = defineConfig([
     },
   },
   {
+    // web (src/**) から apps/mobile のソースを import させない。
+    //
+    // ルートの package.json に workspaces が無く、web の CI は root の npm ci しか
+    // 実行しない。一方 apps/mobile/tsconfig.json は expo/tsconfig.base を継承しており、
+    // これは apps/mobile/node_modules にしか無い。そのため import した瞬間、手元では
+    // 通るのに CI だけが落ちる。
+    //
+    //   [TSCONFIG_ERROR] Failed to load tsconfig for
+    //   'apps/mobile/src/lib/xxx.ts': Tsconfig not found
+    //
+    // 実際に 2026-09-01 にこれで main の CI が半日赤くなった。
+    // モバイルの実装を検査したいなら、モバイル側に *.check.ts を置くか、
+    // src/lib/notifications/__tests__/mobileIcons.test.ts のように
+    // ソースを**テキストとして読む**（import しない）。
+    files: ["src/**/*.{ts,tsx}", "scripts/**/*.{ts,tsx}"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              group: ["**/apps/mobile/**"],
+              message:
+                "web から apps/mobile のソースを import すると CI だけが落ちる " +
+                "(root の npm ci に expo が入らず tsconfig の継承が解決できない)。" +
+                "モバイル側に *.check.ts を置くか、ソースをテキストとして読むこと。",
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
     // Inside /api/admin/** prefer the explicit createPlatformScopedAdmin
     // wrapper over the generic createServiceRoleAdmin. Both compile to the
     // same client, but the platform-specific name documents the upstream
@@ -80,9 +113,27 @@ const eslintConfig = defineConfig([
   {
     // The admin client module itself and its tests are allowed to import the
     // raw symbols — that's where they live.
+    //
+    // ここで "off" にすると `no-restricted-imports` が**丸ごと**無効になり、
+    // apps/mobile の禁止まで消える。実際 main の CI を半日赤くした import は
+    // src/lib/ui-preferences/__tests__/ にあり、この免除の内側だった。
+    // 免除するのは admin クライアントの paths だけにして、パターンは残す。
     files: ["src/lib/supabase/admin.ts", "src/lib/**/__tests__/**"],
     rules: {
-      "no-restricted-imports": "off",
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              group: ["**/apps/mobile/**"],
+              message:
+                "web から apps/mobile のソースを import すると CI だけが落ちる " +
+                "(root の npm ci に expo が入らず tsconfig の継承が解決できない)。" +
+                "モバイル側に *.check.ts を置くか、ソースをテキストとして読むこと。",
+            },
+          ],
+        },
+      ],
     },
   },
   // Override default ignores of eslint-config-next.

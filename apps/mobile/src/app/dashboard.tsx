@@ -1,17 +1,13 @@
 import { useMemo, useState } from "react";
 import { View, ScrollView, StyleSheet, RefreshControl } from "react-native";
-import {
-  Text,
-  Card,
-  ActivityIndicator,
-  Chip,
-  SegmentedButtons,
-} from "react-native-paper";
+import { Text, ActivityIndicator, Chip } from "react-native-paper";
 import { Stack } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 
 import { supabase } from "@/lib/supabase";
 import { useAuthStore } from "@/stores/authStore";
+import { SegmentedControl } from "@/components/ui";
+import { colors, spacing, radius, typography, shadows } from "@/constants/tokens";
 
 interface StoreRow {
   id: string;
@@ -41,7 +37,7 @@ interface StoreMetrics {
   topMenus: { name: string; count: number; sales: number }[];
 }
 
-const RANGE_OPTIONS = [
+const RANGE_SEGMENTS = [
   { value: "7", label: "7日" },
   { value: "30", label: "30日" },
   { value: "90", label: "90日" },
@@ -109,8 +105,7 @@ export default function StoreDashboardScreen() {
       }
 
       // 4) 店舗ごとに集計
-      return stores.map((s): StoreMetrics => {
-        const sp = payments.filter((p) => p.store_id === s.id);
+      const metricsFor = (storeId: string, storeName: string, sp: PaymentRow[]): StoreMetrics => {
         const totalSales = sp.reduce((sum, p) => sum + p.amount, 0);
         const txCount = sp.length;
         const avgTicket = txCount === 0 ? 0 : Math.round(totalSales / txCount);
@@ -134,15 +129,17 @@ export default function StoreDashboardScreen() {
           .sort((a, b) => b.sales - a.sales)
           .slice(0, 3);
 
-        return {
-          storeId: s.id,
-          storeName: s.name,
-          totalSales,
-          txCount,
-          avgTicket,
-          topMenus,
-        };
-      });
+        return { storeId, storeName, totalSales, txCount, avgTicket, topMenus };
+      };
+
+      const rows = stores.map((s) =>
+        metricsFor(s.id, s.name, payments.filter((p) => p.store_id === s.id)),
+      );
+
+      // store_id の入っていない入金はどの店舗にも足せない。**落とさずに1行で出す。**
+      // 本番の payments は全件が null なので、黙って捨てると全店舗が 0 円に見える
+      const unassigned = payments.filter((p) => !p.store_id);
+      return unassigned.length ? [...rows, metricsFor("", "店舗未設定", unassigned)] : rows;
     },
     enabled: !!user?.tenantId,
   });
@@ -163,11 +160,10 @@ export default function StoreDashboardScreen() {
         }
       >
         <View style={styles.controlBar}>
-          <SegmentedButtons
+          <SegmentedControl
+            segments={RANGE_SEGMENTS}
             value={days}
-            onValueChange={setDays}
-            buttons={RANGE_OPTIONS}
-            density="small"
+            onChange={setDays}
           />
         </View>
 
@@ -177,71 +173,59 @@ export default function StoreDashboardScreen() {
           </View>
         ) : (
           (data ?? []).map((m) => (
-            <Card key={m.storeId} style={styles.card} mode="outlined">
-              <Card.Content>
-                <View style={styles.storeHeader}>
-                  <Text variant="titleMedium" style={styles.storeName}>
-                    {m.storeName}
-                  </Text>
-                  {selectedStore?.id === m.storeId && (
-                    <Chip
-                      compact
-                      style={styles.currentChip}
-                      textStyle={styles.currentChipText}
-                    >
-                      現在
-                    </Chip>
-                  )}
-                </View>
-
-                <View style={styles.metricsRow}>
-                  <Metric
-                    label="売上合計"
-                    value={`¥${m.totalSales.toLocaleString()}`}
-                  />
-                  <Metric label="取引数" value={`${m.txCount}件`} />
-                  <Metric
-                    label="客単価"
-                    value={`¥${m.avgTicket.toLocaleString()}`}
-                  />
-                </View>
-
-                {m.topMenus.length > 0 && (
-                  <View style={styles.topMenus}>
-                    <Text variant="labelSmall" style={styles.topMenusLabel}>
-                      人気メニュー
-                    </Text>
-                    {m.topMenus.map((mm, i) => (
-                      <View key={mm.name} style={styles.menuRow}>
-                        <Text variant="bodySmall" style={styles.menuRank}>
-                          {i + 1}
-                        </Text>
-                        <Text
-                          variant="bodySmall"
-                          style={styles.menuName}
-                          numberOfLines={1}
-                        >
-                          {mm.name}
-                        </Text>
-                        <Text variant="bodySmall" style={styles.menuStats}>
-                          {mm.count}回 / ¥{mm.sales.toLocaleString()}
-                        </Text>
-                      </View>
-                    ))}
-                  </View>
+            <View key={m.storeId} style={styles.card}>
+              <View style={styles.storeHeader}>
+                <Text style={styles.storeName}>{m.storeName}</Text>
+                {selectedStore?.id === m.storeId && (
+                  <Chip
+                    compact
+                    style={styles.currentChip}
+                    textStyle={styles.currentChipText}
+                  >
+                    現在
+                  </Chip>
                 )}
+              </View>
 
-                {m.txCount === 0 && (
-                  <Text variant="bodySmall" style={styles.emptyText}>
-                    期間内の取引はありません
-                  </Text>
-                )}
-              </Card.Content>
-            </Card>
+              <View style={styles.metricsRow}>
+                <Metric
+                  label="売上合計"
+                  value={`¥${m.totalSales.toLocaleString()}`}
+                />
+                <Metric label="取引数" value={`${m.txCount}件`} />
+                <Metric
+                  label="客単価"
+                  value={`¥${m.avgTicket.toLocaleString()}`}
+                />
+              </View>
+
+              {m.topMenus.length > 0 && (
+                <View style={styles.topMenus}>
+                  <Text style={styles.topMenusLabel}>人気メニュー</Text>
+                  {m.topMenus.map((mm, i) => (
+                    <View key={mm.name} style={styles.menuRow}>
+                      <Text style={styles.menuRank}>{i + 1}</Text>
+                      <Text style={styles.menuName} numberOfLines={1}>
+                        {mm.name}
+                      </Text>
+                      <Text style={styles.menuStats}>
+                        {mm.count}回 / ¥{mm.sales.toLocaleString()}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+              )}
+
+              {m.txCount === 0 && (
+                <Text style={styles.emptyText}>
+                  期間内の取引はありません
+                </Text>
+              )}
+            </View>
           ))
         )}
 
-        <View style={{ height: 40 }} />
+        <View style={{ height: spacing["4xl"] }} />
       </ScrollView>
     </>
   );
@@ -250,59 +234,85 @@ export default function StoreDashboardScreen() {
 function Metric({ label, value }: { label: string; value: string }) {
   return (
     <View style={styles.metric}>
-      <Text variant="labelSmall" style={styles.metricLabel}>
-        {label}
-      </Text>
-      <Text variant="titleSmall" style={styles.metricValue}>
-        {value}
-      </Text>
+      <Text style={styles.metricLabel}>{label}</Text>
+      <Text style={styles.metricValue}>{value}</Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#fafafa" },
-  controlBar: { padding: 12, paddingBottom: 0 },
-  center: { padding: 48, alignItems: "center" },
-  card: { margin: 12, marginBottom: 0, backgroundColor: "#ffffff" },
+  container: { flex: 1, backgroundColor: colors.background },
+  controlBar: { padding: spacing.md, paddingBottom: 0 },
+  center: { padding: spacing["4xl"], alignItems: "center" },
+  card: {
+    margin: spacing.md,
+    marginBottom: 0,
+    backgroundColor: colors.surface,
+    borderRadius: radius.card,
+    padding: spacing.lg,
+    ...shadows.card,
+  },
   storeHeader: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
-    marginBottom: 8,
+    gap: spacing.sm,
+    marginBottom: spacing.sm,
   },
-  storeName: { fontWeight: "700", color: "#1a1a2e" },
-  currentChip: { backgroundColor: "#dbeafe" },
-  currentChipText: { color: "#1e40af", fontSize: 11 },
+  storeName: {
+    ...typography.titleMedium,
+    color: colors.textPrimary,
+  },
+  currentChip: { backgroundColor: colors.primaryLight },
+  currentChipText: { color: colors.primaryDark, fontSize: 11 },
   metricsRow: {
     flexDirection: "row",
-    paddingVertical: 8,
+    paddingVertical: spacing.sm,
     borderTopWidth: 1,
-    borderTopColor: "#f4f4f5",
+    borderTopColor: colors.surfaceVariant,
     borderBottomWidth: 1,
-    borderBottomColor: "#f4f4f5",
+    borderBottomColor: colors.surfaceVariant,
   },
   metric: { flex: 1, alignItems: "center" },
-  metricLabel: { color: "#71717a", marginBottom: 4 },
-  metricValue: { fontWeight: "700", color: "#1a1a2e" },
-  topMenus: { marginTop: 12 },
-  topMenusLabel: { color: "#71717a", marginBottom: 6 },
+  metricLabel: {
+    ...typography.labelSmall,
+    color: colors.textSecondary,
+    marginBottom: spacing.xs,
+  },
+  metricValue: {
+    ...typography.titleSmall,
+    color: colors.textPrimary,
+  },
+  topMenus: { marginTop: spacing.md },
+  topMenusLabel: {
+    ...typography.labelSmall,
+    color: colors.textSecondary,
+    marginBottom: spacing.sm,
+  },
   menuRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 4,
+    paddingVertical: spacing.xs,
   },
   menuRank: {
-    color: "#1a1a2e",
+    ...typography.bodySmall,
+    color: colors.textPrimary,
     fontWeight: "700",
     width: 20,
   },
-  menuName: { flex: 1, color: "#1a1a2e" },
-  menuStats: { color: "#71717a" },
+  menuName: {
+    ...typography.bodySmall,
+    flex: 1,
+    color: colors.textPrimary,
+  },
+  menuStats: {
+    ...typography.bodySmall,
+    color: colors.textSecondary,
+  },
   emptyText: {
-    color: "#71717a",
+    ...typography.bodySmall,
+    color: colors.textSecondary,
     textAlign: "center",
-    marginTop: 12,
-    paddingVertical: 12,
+    marginTop: spacing.md,
+    paddingVertical: spacing.md,
   },
 });

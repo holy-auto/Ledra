@@ -5,6 +5,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { useCallback, useEffect, useState } from "react";
 import PageHeader from "@/components/ui/PageHeader";
+import MutationGuard from "@/components/ui/MutationGuard";
 import Badge from "@/components/ui/Badge";
 import { formatJpy } from "@/lib/format";
 
@@ -121,7 +122,7 @@ export default function MarketVehiclesClient() {
       if (bodyType) params.set("body_type", bodyType);
       const res = await fetch(`/api/admin/market-vehicles?${params.toString()}`, { cache: "no-store" });
       const j = await parseJsonSafe(res);
-      if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
+      if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       setVehicles(j?.vehicles ?? []);
       setStats(j?.stats ?? { total: 0, listed: 0, draft: 0 });
     } catch (e: unknown) {
@@ -149,11 +150,15 @@ export default function MarketVehiclesClient() {
     if (!confirm("この車両を削除しますか?")) return;
     setDeletingId(id);
     try {
-      const res = await fetch(`/api/admin/market-vehicles/${id}`, {
+      // `/api/admin/market-vehicles/[id]` に route.ts は無い（ai-description だけ）。
+      // ここは長く 404 を叩いていた。詳細ページと同じコレクション経路に揃える。
+      const res = await fetch("/api/admin/market-vehicles", {
         method: "DELETE",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ id }),
       });
       const j = await parseJsonSafe(res);
-      if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
+      if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       await fetchVehicles(statusFilter, makerFilter, bodyTypeFilter);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -382,15 +387,18 @@ export default function MarketVehiclesClient() {
                       <Link href={`/admin/market-vehicles/${v.id}`} className="btn-ghost px-3 py-1 text-xs">
                         詳細
                       </Link>
+                      {/* 削除は admin 以上（代表判断 2026-09-04）。 */}
                       {v.status === "draft" && (
-                        <button
-                          type="button"
-                          className="btn-danger px-3 py-1 text-xs"
-                          disabled={deletingId === v.id}
-                          onClick={() => handleDelete(v.id)}
-                        >
-                          {deletingId === v.id ? "削除中..." : "削除"}
-                        </button>
+                        <MutationGuard minRole="admin">
+                          <button
+                            type="button"
+                            className="btn-danger px-3 py-1 text-xs"
+                            disabled={deletingId === v.id}
+                            onClick={() => handleDelete(v.id)}
+                          >
+                            {deletingId === v.id ? "削除中..." : "削除"}
+                          </button>
+                        </MutationGuard>
                       )}
                     </div>
                   </div>

@@ -2,7 +2,13 @@ import { z } from "zod";
 
 export const memberAddSchema = z.object({
   email: z.string().trim().toLowerCase().email("有効なメールアドレスを入力してください。"),
-  display_name: z.string().trim().max(50).nullable().optional().transform(v => v || null),
+  display_name: z
+    .string()
+    .trim()
+    .max(50)
+    .nullable()
+    .optional()
+    .transform((v) => v || null),
   role: z.enum(["admin", "staff", "viewer"]).nullable().optional(),
 });
 

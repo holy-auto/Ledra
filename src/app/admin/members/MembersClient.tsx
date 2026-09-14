@@ -63,7 +63,7 @@ export default function MembersClient() {
     try {
       const res = await fetch("/api/admin/members", { cache: "no-store" });
       const j = await parseJsonSafe(res);
-      if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
+      if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       setData(j as MembersData);
     } catch (e: any) {
       setErr(e?.message ?? String(e));

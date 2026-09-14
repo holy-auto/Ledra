@@ -1,5 +1,6 @@
 ﻿import crypto from "crypto";
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
+import { OUTWARD_VISIBLE_TYPES } from "@/lib/audit/certificateLog";
 
 const PEPPER = process.env.CUSTOMER_AUTH_PEPPER!;
 
@@ -144,7 +145,7 @@ async function resolveUniqueCustomerId(tenantId: string, phoneHash: string, emai
   const db = admin();
   const query = db
     .from("certificates")
-    .select("customer_id, customer_email")
+    .select("customer_id")
     .eq("tenant_id", tenantId)
     .neq("status", "void")
     .not("customer_id", "is", null)
@@ -153,16 +154,32 @@ async function resolveUniqueCustomerId(tenantId: string, phoneHash: string, emai
   const { data } = await query;
   if (!data || data.length === 0) return null;
 
-  const normalizedEmail = normalizeEmail(email);
-  const candidates = data.filter((row) => {
-    const certEmail = row.customer_email ? normalizeEmail(row.customer_email) : null;
-    // Match rows where email matches or cert email is null (legacy data).
-    return certEmail === null || certEmail === normalizedEmail;
-  });
-
-  const uniqueIds = new Set(candidates.map((r) => r.customer_id as string).filter(Boolean));
+  const uniqueIds = new Set(data.map((r) => r.customer_id as string).filter(Boolean));
   if (uniqueIds.size !== 1) return null;
-  return [...uniqueIds][0];
+  const candidateId = [...uniqueIds][0];
+
+  // **ここでメールを突き合わせるのが要**。
+  // ログインコードは「入力されたメール宛」に送られ、電話下4桁が一致する顧客が
+  // テナントに1人いれば発行される。ここで確定した customer_id は、その顧客の
+  // 全証明書（別の電話番号のものを含む）へ範囲を広げるため、メールの一致を
+  // 確かめずに bake すると、下4桁を知っているだけの相手が他人の履歴を開ける。
+  //
+  // 以前は certificates.customer_email を見ていたが**その列は存在せず**、
+  // クエリごと失敗して常に null を返していた（＝この経路が死んでいたので
+  // 問題が表面化していなかった）。実在する customers.email で照合する。
+  const { data: customer } = await db
+    .from("customers")
+    .select("email")
+    .eq("id", candidateId)
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+
+  const customerEmail = customer?.email ? normalizeEmail(customer.email as string) : null;
+  // メール未登録の顧客は突き合わせようがないので bake しない
+  // （電話ハッシュだけのフォールバック経路で扱う）
+  if (!customerEmail || customerEmail !== normalizeEmail(email)) return null;
+
+  return candidateId;
 }
 
 export async function createSession(tenantId: string, email: string, phoneHash: string) {
@@ -190,6 +207,33 @@ export async function createSession(tenantId: string, email: string, phoneHash: 
   return { token, expiresAtIso: expires };
 }
 
+/**
+ * customer_id だけに紐づくセッションを作る (LINE ログイン用)。
+ *
+ * email / 電話下4桁を伴わないため、データ取得は必ず customer_id スコープの経路を通る
+ * (`listCertificatesForCustomer` 等の Phase 2 パス)。email 無しの顧客でもマイページに
+ * 入れるようにするための入口で、本人性は呼び出し側 (LINE 連携済み + 単回使用トークン)
+ * が担保する。
+ */
+export async function createSessionForCustomer(tenantId: string, customerId: string) {
+  const token = randomHex(32);
+  const expires = new Date(Date.now() + SESSION_TTL_DAYS * 24 * 60 * 60 * 1000).toISOString();
+
+  const { error } = await admin()
+    .from("customer_sessions")
+    .insert({
+      tenant_id: tenantId,
+      email: null,
+      phone_last4_hash: null,
+      session_hash: sessionHash(token),
+      customer_id: customerId,
+      expires_at: expires,
+    });
+  if (error) throw new Error(`createSessionForCustomer failed: ${error.message}`);
+
+  return { token, expiresAtIso: expires };
+}
+
 export async function revokeSessionByToken(token: string) {
   const sHash = sessionHash(token);
   const { error } = await admin()
@@ -211,9 +255,11 @@ export async function validateSession(tenantId: string, token: string) {
   if (!data) return null;
   if (data.revoked_at) return null;
   if (new Date(data.expires_at).getTime() < Date.now()) return null;
+  // email / phone_last4_hash は LINE ログインのセッションでは null。
+  // その場合 customer_id が必ず入る (DB 側の CHECK 制約で担保)。
   return data as {
-    email: string;
-    phone_last4_hash: string;
+    email: string | null;
+    phone_last4_hash: string | null;
     customer_id: string | null;
   };
 }
@@ -231,7 +277,7 @@ export async function listCertificatesForCustomer(
   /** Phase 2: セッションに bake された customer_id。あれば最優先で scope */
   customerId?: string | null,
 ) {
-  const selectCols = "public_id, customer_name, customer_email, vehicle_info_json, created_at, status";
+  const selectCols = "public_id, customer_name, vehicle_info_json, created_at, status";
   const db = admin();
 
   let query = db
@@ -258,14 +304,10 @@ export async function listCertificatesForCustomer(
   const { data } = await query;
   if (!data) return [];
 
-  // email filter — extra defense in the legacy path only.
-  if (email) {
-    const normalized = normalizeEmail(email);
-    return data.filter((c) => {
-      const certEmail = c.customer_email ? normalizeEmail(c.customer_email) : null;
-      return certEmail === null || certEmail === normalized;
-    });
-  }
+  // certificates に customer_email 列は無いので、この経路でメールによる
+  // 追加の絞り込みはできない（以前のフィルタは列が無く常に素通りしていた上、
+  // その列を SELECT していたためクエリごと 400 になっていた）。
+  // メールの突き合わせはログイン時（resolveUniqueCustomerId）で行う。
   return data;
 }
 
@@ -296,6 +338,14 @@ export async function listHistoryForCustomer(
     .select("id, type, title, description, performed_at, certificate_id")
     .eq("tenant_id", tenantId)
     .in("certificate_id", certIds)
+    // **閲覧監査の行を顧客に見せない。** ここは service-role（RLS を通らない）で引き、
+    // 呼び出し側の `/api/customer/list` は画面で `description` をそのまま描画し、
+    // `/api/customer/data-export` は書き出しに入れる。型で絞らないと、自分の証明書の
+    // 履歴として**他の訪問者の IP** と**店舗スタッフの uid** が顧客に見える。
+    //
+    // PR #1040 は同じ漏れを公開ページ側だけ直していて、こちらが残っていた
+    // （書く側の `logCertificateAction` は1つ、読む側が2つある形）。
+    .in("type", OUTWARD_VISIBLE_TYPES)
     .order("performed_at", { ascending: false })
     .limit(50);
   return histories ?? [];

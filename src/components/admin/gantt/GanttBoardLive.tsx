@@ -47,7 +47,7 @@ export default function GanttBoardLive({ initialData, dateStr }: { initialData: 
     });
     if (!res.ok) {
       const j = await res.json().catch(() => ({}));
-      throw new Error(j?.error ?? j?.message ?? `HTTP ${res.status}`);
+      throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
     }
     await mutate();
   }

@@ -4,8 +4,15 @@ import Stripe from "stripe";
 import { getStripeClient } from "@/lib/stripe/client";
 import { createClient } from "@/lib/supabase/server";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
-import { resolveCallerFull } from "@/lib/api/auth";
-import { apiOk, apiUnauthorized, apiValidationError, apiInternalError, apiError } from "@/lib/api/response";
+import { resolveCallerWithRole, requirePermission } from "@/lib/auth/checkRole";
+import {
+  apiOk,
+  apiUnauthorized,
+  apiValidationError,
+  apiInternalError,
+  apiError,
+  apiForbidden,
+} from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { createTemplateOptionCheckout } from "@/lib/template-options/stripe";
 
@@ -29,8 +36,9 @@ export async function POST(req: NextRequest) {
     }
 
     const supabase = await createClient();
-    const caller = await resolveCallerFull(supabase);
+    const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
+    if (!requirePermission(caller, "template_options:manage")) return apiForbidden();
 
     const { admin } = createTenantScopedAdmin(caller.tenantId);
     const { option_type, platform_template_id } = parsed.data;

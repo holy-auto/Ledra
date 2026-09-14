@@ -22,7 +22,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     const { data: cert } = await supabase
       .from("certificates")
       .select(
-        "public_id, created_at, service_type, template_name, expiry_value, expiry_date, warranty_period_end, warranty_exclusions, coating_products_json, customer_name",
+        "public_id, created_at, service_type, expiry_value, expiry_date, warranty_period_end, warranty_exclusions, coating_products_json, customer_name, templates(name)",
       )
       .eq("tenant_id", caller.tenantId)
       .eq("vehicle_id", vehicleId)
@@ -41,7 +41,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         public_id: cert.public_id,
         created_at: cert.created_at,
         service_type: cert.service_type ?? null,
-        template_name: cert.template_name ?? null,
+        // テンプレート名は certificates ではなく templates 側にある
+        template_name:
+          (Array.isArray(cert.templates)
+            ? cert.templates[0]?.name
+            : (cert.templates as { name?: string } | null)?.name) ?? null,
         expiry_value: cert.expiry_value ?? null,
         expiry_date: cert.expiry_date ?? null,
         warranty_period_end: cert.warranty_period_end ?? null,

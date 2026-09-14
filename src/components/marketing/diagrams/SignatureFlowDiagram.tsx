@@ -132,13 +132,7 @@ export function SignatureFlowDiagram({ className = "" }: { className?: string })
       })}
 
       {/* Bottom note */}
-      <text
-        x="410"
-        y="295"
-        textAnchor="middle"
-        fill="rgba(255,255,255,0.38)"
-        fontSize="11"
-      >
+      <text x="410" y="295" textAnchor="middle" fill="rgba(255,255,255,0.38)" fontSize="11">
         署名時刻・IPアドレス・OTP検証結果を監査ログに記録
       </text>
 

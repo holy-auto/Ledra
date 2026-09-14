@@ -8,10 +8,7 @@ export const contentType = OG_CONTENT_TYPE;
 
 export default async function Image({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
-  const [dbPost, mdxEntry] = await Promise.all([
-    getPublishedPostBySlug("blog", slug),
-    getContentBySlug("blog", slug),
-  ]);
+  const [dbPost, mdxEntry] = await Promise.all([getPublishedPostBySlug("blog", slug), getContentBySlug("blog", slug)]);
 
   const title = dbPost?.title ?? mdxEntry?.frontmatter.title ?? "Ledra ブログ";
   const subtitle = dbPost?.excerpt ?? mdxEntry?.frontmatter.excerpt ?? undefined;

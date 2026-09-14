@@ -109,17 +109,13 @@ export default function MarketVehicleAiDescButton({ vehicleId, photoUrls, onAppl
           {result && (
             <div className="rounded-lg border border-accent/20 bg-surface px-3 py-2 space-y-2">
               <div className="text-[11px] text-muted">
-                信頼度 {Math.round(result.confidence * 100)}%
-                {!result.ai && " · text-only"}
+                信頼度 {Math.round(result.confidence * 100)}%{!result.ai && " · text-only"}
               </div>
               <p className="text-sm text-primary whitespace-pre-wrap">{result.description}</p>
               {result.features.length > 0 && (
                 <div className="flex flex-wrap gap-1">
                   {result.features.map((f, i) => (
-                    <span
-                      key={i}
-                      className="rounded-full bg-accent/10 text-accent text-[10px] px-2 py-0.5"
-                    >
+                    <span key={i} className="rounded-full bg-accent/10 text-accent text-[10px] px-2 py-0.5">
                       {f}
                     </span>
                   ))}

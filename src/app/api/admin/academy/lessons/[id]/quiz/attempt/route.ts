@@ -58,8 +58,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       .maybeSingle();
     if (!lesson) return apiNotFound("レッスンが見つかりません");
     if (lesson.status !== "published") return apiForbidden("公開済みレッスンのみ挑戦できます");
-    if (lesson.author_user_id === caller.userId)
-      return apiForbidden("自身のレッスンは挑戦できません");
+    if (lesson.author_user_id === caller.userId) return apiForbidden("自身のレッスンは挑戦できません");
 
     if (lesson.level !== "intro" && !canUseFeature(caller.planTier, "academy_know_how")) {
       return apiForbidden("このクイズへの挑戦には Starter プラン以上が必要です");

@@ -12,11 +12,11 @@ export const runtime = "nodejs";
  * - id uuid PK default gen_random_uuid()
  * - insurer_id uuid FK references insurers(id)
  * - user_id uuid FK references auth.users(id)
- * - notification_prefs jsonb default '{}'
+ * - preferences jsonb default '{}'（旧コードは notification_prefs という存在しない列を見ていた）
  * - created_at timestamptz default now()
  * - updated_at timestamptz default now()
  *
- * notification_prefs JSON shape:
+ * preferences JSON shape:
  * {
  *   case_update: boolean,     // 案件ステータス変更
  *   pii_decision: boolean,    // PII開示承認/却下
@@ -48,7 +48,7 @@ export async function GET(req: NextRequest) {
   try {
     const { data, error } = await admin
       .from("insurer_user_preferences")
-      .select("notification_prefs")
+      .select("preferences")
       .eq("insurer_id", caller.insurerId)
       .eq("user_id", caller.userId)
       .maybeSingle();
@@ -61,7 +61,7 @@ export async function GET(req: NextRequest) {
       return apiInternalError(error, "insurer.settings");
     }
 
-    const prefs = data?.notification_prefs ?? DEFAULT_PREFS;
+    const prefs = data?.preferences ?? DEFAULT_PREFS;
 
     return apiJson({
       preferences: { ...DEFAULT_PREFS, ...prefs },
@@ -104,7 +104,7 @@ export async function PATCH(req: NextRequest) {
     // Try upsert — if user_id + insurer_id row exists, merge prefs
     const { data: existing, error: fetchErr } = await admin
       .from("insurer_user_preferences")
-      .select("id, notification_prefs")
+      .select("id, preferences")
       .eq("insurer_id", caller.insurerId)
       .eq("user_id", caller.userId)
       .maybeSingle();
@@ -123,7 +123,7 @@ export async function PATCH(req: NextRequest) {
 
     const mergedPrefs = {
       ...DEFAULT_PREFS,
-      ...(existing?.notification_prefs ?? {}),
+      ...(existing?.preferences ?? {}),
       ...sanitized,
     };
 
@@ -131,7 +131,7 @@ export async function PATCH(req: NextRequest) {
       const { error: updateErr } = await admin
         .from("insurer_user_preferences")
         .update({
-          notification_prefs: mergedPrefs,
+          preferences: mergedPrefs,
           updated_at: new Date().toISOString(),
         })
         .eq("id", existing.id);
@@ -141,7 +141,7 @@ export async function PATCH(req: NextRequest) {
       const { error: insertErr } = await admin.from("insurer_user_preferences").insert({
         insurer_id: caller.insurerId,
         user_id: caller.userId,
-        notification_prefs: mergedPrefs,
+        preferences: mergedPrefs,
       });
 
       if (insertErr) return apiValidationError(insertErr.message);

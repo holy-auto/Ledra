@@ -55,8 +55,7 @@ function extract(body: CspReportLegacy | CspReportNew | CspReportNew[]) {
   }
   // report-to (new): array of { type: 'csp-violation', body: {...} }
   const nu = (Array.isArray(body) ? body : [body]).find((x) => (x as CspReportNew)?.type === "csp-violation") as
-    | CspReportNew
-    | undefined;
+    CspReportNew | undefined;
   if (nu?.body) {
     return {
       documentUri: nu.body.documentURL,

@@ -4,16 +4,22 @@ import { redirect } from "next/navigation";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { logger } from "@/lib/logger";
+import { availableScopes, type WorkScope } from "@/lib/navigation/scope";
+import { fetchTodaySignals, tilesFromSignals } from "@/lib/admin/fetchTodaySignals";
 import PageHeader from "@/components/ui/PageHeader";
 import DashboardCharts from "./DashboardCharts";
 import OnboardingTour from "./OnboardingTour";
 import CmdKHintToast from "./CmdKHintToast";
 import DashboardModeSwitch from "./DashboardModeSwitch";
+import NextActionSection, { NextActionSectionSkeleton } from "./NextActionSection";
+import TodayProgressCard, { TodayProgressCardSkeleton } from "./TodayProgressCard";
+import DisplayModeSwitcher from "./DisplayModeSwitcher";
 import TodayTasksWidget, { TodayTasksWidgetSkeleton } from "./TodayTasksWidget";
 import SetupChecklist, { SetupChecklistSkeleton } from "./SetupChecklist";
 import ApprovalInboxWidget, { ApprovalInboxWidgetSkeleton } from "./ApprovalInboxWidget";
 import AskLedraBar from "./AskLedraBar";
 import AnnouncementsBanner from "./AnnouncementsBanner";
+import HomeScopeToggle from "./HomeScopeToggle";
 
 // ── Partner Rank System ──
 interface PartnerRank {
@@ -414,14 +420,62 @@ async function PlatformStats() {
   );
 }
 
-export default async function AdminHome({ searchParams }: { searchParams?: Promise<{ tasks?: string }> }) {
+/**
+ * 3 秒理解ゾーンの統合ラッパ。fetchTodaySignals 1 回で NEXT ACTION と進捗カードの両方を描画。
+ * ponytail: NextActionSection / TodayProgressCard が個別に fetch していた 3 重呼び出しを解消。
+ */
+async function TodayOverviewSection({
+  tenantId,
+  scope,
+  currentUserId,
+}: {
+  tenantId: string;
+  scope: "tenant" | "mine";
+  currentUserId: string | null;
+}) {
+  const signals = await fetchTodaySignals(tenantId, { scope, currentUserId });
+  // NextActionSection は「今日の来店」がすべて completed だと空タイルで null を返す
+  // （今日の予約自体はある＝Progress は表示する）。null のときに [1fr_auto] グリッドへ
+  // Progress 1個だけ流すと auto ではなく 1fr（本来 NextAction 用の広い列）に入ってしまう。
+  const hasNextAction = tilesFromSignals(signals).length > 0;
+  const nextAction = <NextActionSection signals={signals} />;
+  const progress = <TodayProgressCard signals={signals} scope={scope} />;
+
+  return (
+    <div className={`grid gap-4 ${hasNextAction ? "sm:grid-cols-[1fr_auto]" : ""}`}>
+      {nextAction}
+      {progress}
+    </div>
+  );
+}
+
+export default async function AdminHome({
+  searchParams,
+}: {
+  searchParams?: Promise<{ tasks?: string; scope?: string }>;
+}) {
   const supabase = await createSupabaseServerClient();
   const caller = await resolveCallerWithRole(supabase);
   if (!caller) redirect("/login?next=/admin");
 
   const tenantId = caller.tenantId;
   const sp = (await searchParams) ?? {};
-  const tasksScope: "tenant" | "mine" = sp.tasks === "mine" ? "mine" : "tenant";
+
+  // v2.0 IMP-021: 3 段階スコープ（self/store/all_stores）。
+  // 後方互換: 旧 `tasks=mine` も受容する。
+  const allowed = availableScopes(caller.role);
+  const rawScope = sp.scope ?? (sp.tasks === "mine" ? "self" : null);
+  // ponytail: 無指定時のフォールバックは defaultScope(caller.role) を使わず、
+  // 常に "store"（既存の tenant-wide 表示）に固定する。defaultScope() は
+  // admin 未満のロールに "self" を返すため、staff/viewer が今まで見えていた
+  // 店舗全体のタスクが、何も選んでいないだけで「自分の分だけ」に縮む
+  // （viewer は availableScopes が self のみでトグル自体出ないため戻す手段も無い）。
+  // 挙動を変えるなら明示的な代表判断が要る。
+  const workScope: WorkScope = rawScope && allowed.includes(rawScope as WorkScope) ? (rawScope as WorkScope) : "store";
+
+  // ponytail: fetchTodaySignals は "tenant"/"mine" を受けるので変換する。
+  // all_stores は store と同挙動（単一テナント前提）。
+  const tasksScope: "tenant" | "mine" = workScope === "self" ? "mine" : "tenant";
 
   const adminContent = (
     <>
@@ -430,6 +484,21 @@ export default async function AdminHome({ searchParams }: { searchParams?: Promi
 
       {/* 運営からのお知らせ（アップデート予告等）。未読があればバッジ表示、0件なら自動で非表示。 */}
       <AnnouncementsBanner />
+
+      {/* ── 3 秒理解ゾーン (IMP-021 / v2.0 §5) ── */}
+      {/* NEXT ACTION + 今日の進捗。1 回の fetchTodaySignals で両方描画。 */}
+      {tenantId && (
+        <Suspense
+          fallback={
+            <div className="grid gap-4 sm:grid-cols-[1fr_auto]">
+              <NextActionSectionSkeleton />
+              <TodayProgressCardSkeleton />
+            </div>
+          }
+        >
+          <TodayOverviewSection tenantId={tenantId} scope={tasksScope} currentUserId={caller.userId} />
+        </Suspense>
+      )}
 
       {/* AI 自動化の人の承認待ち — 一等地に常設（0 件なら自動で非表示） */}
       {tenantId && (
@@ -642,7 +711,17 @@ export default async function AdminHome({ searchParams }: { searchParams?: Promi
     <div className="space-y-6">
       <OnboardingTour />
       <CmdKHintToast />
-      <PageHeader tag="管理画面" title="ダッシュボード" description="施工証明書の管理状況を一目で確認" />
+      <PageHeader
+        tag="管理画面"
+        title="ダッシュボード"
+        description="施工証明書の管理状況を一目で確認"
+        actions={
+          <div className="flex flex-wrap items-center justify-end gap-3">
+            <HomeScopeToggle scope={workScope} scopes={allowed} defaultScopeValue="store" />
+            <DisplayModeSwitcher />
+          </div>
+        }
+      />
       <DashboardModeSwitch adminContent={adminContent} />
     </div>
   );

@@ -98,16 +98,27 @@ async function main() {
     .toBuffer();
 
   // Mirror Ledra's production manifest construction (keep in sync with
-  // src/lib/anchoring/providers/c2pa.ts).
+  // src/lib/anchoring/providers/c2pa.ts — CREATED_ACTION / TRANSFORM_ACTIONS /
+  // SPEC_VERSION / allActionsIncluded). This is the normal (transform-applied)
+  // path: sharp re-encoded+stripped, so all four actions are asserted.
+  // NOTE: c2pa.opened requires an ingredient in claim v2 and would make the
+  // manifest Invalid (ingredientMismatch) even with a trusted cert — do not
+  // reintroduce it here.
   const builder = Builder.withJson({
-    claim_generator_info: [{ name: "Ledra", version: "1.0" }],
+    claim_generator_info: [{ name: "Ledra", version: "1.0", specVersion: "2.4" }],
     title: "Certificate Photo",
   });
   builder.addAssertion("c2pa.actions", {
     actions: [
-      { action: "c2pa.opened", softwareAgent: "Ledra/1.0" },
+      {
+        action: "c2pa.created",
+        digitalSourceType: "http://cv.iptc.org/newscodes/digitalsourcetype/digitalCapture",
+      },
+      { action: "c2pa.orientation", softwareAgent: "sharp" },
       { action: "c2pa.converted", softwareAgent: "sharp" },
+      { action: "c2pa.edited", parameters: { name: "exif_gps_metadata_removed" } },
     ],
+    allActionsIncluded: true,
   });
   builder.addAssertion("com.ledra.capture", { cert_public_id: "cert_preflight", vin: "PREFLIGHT00000001" });
 

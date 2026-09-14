@@ -1,0 +1,292 @@
+import { useCallback, useState } from "react";
+import {
+  View,
+  StyleSheet,
+  FlatList,
+  RefreshControl,
+  Pressable,
+} from "react-native";
+import { Text, Icon } from "react-native-paper";
+import { router } from "expo-router";
+import { useQuery } from "@tanstack/react-query";
+
+import { supabase } from "@/lib/supabase";
+import { scopeToStore } from "@/lib/storeScope";
+import { useAuthStore } from "@/stores/authStore";
+import { StatusBadge, SegmentedControl } from "@/components/ui";
+import { EmptyState } from "@/components/EmptyState";
+import { useTabContentInset } from "@/hooks/useTabContentInset";
+import { TabTopBar } from "@/components/TabTopBar";
+import { colors, spacing, radius, sizing, typography, shadows } from "@/constants/tokens";
+
+type CertFilter = "all" | "active" | "draft";
+
+interface CertItem {
+  id: string;
+  public_id: string;
+  status: string;
+  service_type: string | null;
+  created_at: string;
+  customer_name: string | null;
+  vehicle: { id: string; plate_display: string; maker: string; model: string } | null;
+}
+
+const STATUS_MAP: Record<
+  string,
+  { label: string; severity: "success" | "warning" | "danger" | "neutral" }
+> = {
+  active: { label: "有効", severity: "success" },
+  draft: { label: "下書き", severity: "neutral" },
+  void: { label: "無効", severity: "danger" },
+  expired: { label: "期限切", severity: "warning" },
+};
+
+const FILTER_SEGMENTS: { value: CertFilter; label: string }[] = [
+  { value: "all", label: "すべて" },
+  { value: "active", label: "有効" },
+  { value: "draft", label: "下書き" },
+];
+
+export default function CertificatesScreen() {
+  const tabInset = useTabContentInset();
+  const [search, setSearch] = useState("");
+  const { user, selectedStore } = useAuthStore();
+  const [filter, setFilter] = useState<CertFilter>("all");
+
+  const {
+    data: certs = [],
+    isLoading,
+    refetch,
+  } = useQuery({
+    queryKey: ["certificates", user?.tenantId, selectedStore?.id],
+    queryFn: async () => {
+      if (!user?.tenantId) return [];
+
+      let query = supabase
+        .from("certificates")
+        .select(
+          // 証明書番号は public_id（certificate_no 列は存在しない）
+          `id, public_id, status, service_type, created_at,
+           customer_name,
+           vehicle:vehicles ( id, plate_display, maker, model )`
+        )
+        .eq("tenant_id", user.tenantId)
+        .order("created_at", { ascending: false })
+        .limit(200);
+
+      query = scopeToStore(query, selectedStore?.id);
+
+      const { data, error } = await query;
+      if (error) throw error;
+      return (data ?? []) as unknown as CertItem[];
+    },
+    enabled: !!user?.tenantId,
+    refetchInterval: 60_000,
+  });
+
+  const q = search.trim().toLowerCase();
+  const filtered = certs
+    .filter((c) => filter === "all" || c.status === filter)
+    // 証明書番号・顧客名・車両（ナンバー/メーカー/車種）で横断検索
+    .filter(
+      (c) =>
+        !q ||
+        [
+          c.public_id,
+          c.customer_name,
+          c.service_type,
+          c.vehicle?.plate_display,
+          c.vehicle?.maker,
+          c.vehicle?.model,
+        ].some((v) => (v ?? "").toLowerCase().includes(q)),
+    );
+
+  const onRefresh = useCallback(async () => {
+    try {
+      await refetch();
+    } catch {
+      // ponytail: swallow
+    }
+  }, [refetch]);
+
+  const renderItem = ({ item }: { item: CertItem }) => {
+    const cfg = STATUS_MAP[item.status] ?? {
+      label: item.status,
+      severity: "neutral" as const,
+    };
+    const vehicleText = item.vehicle
+      ? [item.vehicle.maker, item.vehicle.model].filter(Boolean).join(" ")
+      : "";
+
+    return (
+      <Pressable
+        style={styles.card}
+        onPress={() => router.push(`/certificates/${item.id}`)}
+        accessibilityRole="button"
+        accessibilityLabel={`証明書 ${item.public_id} ${cfg.label}`}
+      >
+        <View style={styles.cardHeader}>
+          <View style={styles.certIcon}>
+            <Icon
+              source="shield-check-outline"
+              size={20}
+              color={
+                item.status === "active" ? colors.success : colors.textTertiary
+              }
+            />
+          </View>
+          <View style={styles.cardHeaderText}>
+            <Text style={styles.certNoText}>{item.public_id}</Text>
+            <Text style={styles.serviceText} numberOfLines={1}>
+              {item.service_type ?? "—"}
+            </Text>
+          </View>
+          <StatusBadge label={cfg.label} severity={cfg.severity} compact />
+        </View>
+
+        {/* Meta row */}
+        <View style={styles.metaRow}>
+          {item.created_at && (
+            <View style={styles.metaItem}>
+              <Icon
+                source="calendar-outline"
+                size={14}
+                color={colors.textTertiary}
+              />
+              <Text style={styles.metaText}>{item.created_at.split("T")[0]}</Text>
+            </View>
+          )}
+          {item.vehicle?.plate_display && (
+            <View style={styles.metaItem}>
+              <Icon source="car" size={14} color={colors.textTertiary} />
+              <Text style={styles.metaText}>{item.vehicle?.plate_display}</Text>
+            </View>
+          )}
+          {item.customer_name && (
+            <View style={styles.metaItem}>
+              <Icon
+                source="account-outline"
+                size={14}
+                color={colors.textTertiary}
+              />
+              <Text style={styles.metaText}>{item.customer_name}</Text>
+            </View>
+          )}
+        </View>
+
+        <View style={styles.chevron}>
+          <Icon source="chevron-right" size={20} color={colors.textTertiary} />
+        </View>
+      </Pressable>
+    );
+  };
+
+  return (
+    <View style={styles.container}>
+      <TabTopBar
+        search={search}
+        onSearchChange={setSearch}
+        placeholder="証明書番号・顧客名・車両で検索"
+      />
+      {/* Filter tabs */}
+      <View style={styles.filterContainer}>
+        <SegmentedControl
+          segments={FILTER_SEGMENTS}
+          value={filter}
+          onChange={setFilter}
+        />
+      </View>
+
+      <FlatList
+        data={filtered}
+        // 検索中の1タップ目がキーボード閉じに吸われないように
+        keyboardShouldPersistTaps="handled"
+        keyExtractor={(item) => item.id}
+        renderItem={renderItem}
+        refreshControl={
+          <RefreshControl refreshing={isLoading} onRefresh={onRefresh} />
+        }
+        contentContainerStyle={[styles.listContent, { paddingBottom: tabInset }]}
+        ListEmptyComponent={
+          search.trim() ? (
+            <EmptyState
+              icon="magnify"
+              title={`「${search.trim()}」に一致する証明書はありません`}
+            />
+          ) : (
+            <EmptyState
+              icon="certificate-outline"
+              title="発行済み証明書はありません"
+              description="施工完了後、品質確認を経て証明書が発行されます"
+            />
+          )
+        }
+      />
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.background },
+  filterContainer: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.sm,
+  },
+  listContent: {
+    padding: spacing.lg,
+    gap: spacing.md,
+  },
+  card: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.card,
+    padding: spacing.lg,
+    ...shadows.card,
+    position: "relative",
+  },
+  cardHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+  },
+  certIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: radius.md,
+    backgroundColor: colors.successLight,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  cardHeaderText: { flex: 1 },
+  certNoText: {
+    ...typography.titleSmall,
+    color: colors.textPrimary,
+  },
+  serviceText: {
+    ...typography.meta,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
+  metaRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.lg,
+    marginTop: spacing.md,
+    marginLeft: 52,
+  },
+  metaItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+  },
+  metaText: {
+    ...typography.meta,
+    color: colors.textTertiary,
+  },
+  chevron: {
+    position: "absolute",
+    right: spacing.lg,
+    top: "50%",
+    marginTop: -10,
+  },
+});

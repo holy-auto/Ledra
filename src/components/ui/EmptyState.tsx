@@ -8,13 +8,7 @@ interface EmptyStateProps {
   className?: string;
 }
 
-export default function EmptyState({
-  icon,
-  title,
-  description,
-  action,
-  className = "",
-}: EmptyStateProps) {
+export default function EmptyState({ icon, title, description, action, className = "" }: EmptyStateProps) {
   return (
     <div className={`px-4 py-12 text-center ${className}`}>
       {icon && (
@@ -23,9 +17,7 @@ export default function EmptyState({
         </div>
       )}
       <p className="text-sm font-medium text-primary">{title}</p>
-      {description && (
-        <p className="mt-1 text-xs text-muted">{description}</p>
-      )}
+      {description && <p className="mt-1 text-xs text-muted">{description}</p>}
       {action && <div className="mt-4">{action}</div>}
     </div>
   );

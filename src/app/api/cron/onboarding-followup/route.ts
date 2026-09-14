@@ -3,7 +3,7 @@ import { apiJson, apiUnauthorized, apiInternalError } from "@/lib/api/response";
 import { verifyCronRequest } from "@/lib/cronAuth";
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { withCronLock } from "@/lib/cron/lock";
-import { sendResendEmail } from "@/lib/email/resendSend";
+import { sendEmail } from "@/lib/email/sendEmail";
 import { buildOnboardingEmail, type OnboardingDay, type OnboardingMilestones } from "@/lib/onboardingEmails";
 import { logger } from "@/lib/logger";
 
@@ -111,7 +111,7 @@ async function processDay(
       const milestones = await loadMilestones(admin, tenant.id);
       const shopName = tenant.name ?? "ご登録者";
       const { subject, html, text } = buildOnboardingEmail(day, shopName, milestones);
-      const result = await sendResendEmail({
+      const result = await sendEmail({
         to: email,
         subject,
         html,

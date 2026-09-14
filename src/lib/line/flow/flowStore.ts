@@ -31,9 +31,16 @@ export async function getActiveFlow(
   tenantId: string,
   key: { customerId?: string | null; lineUserId?: string | null },
 ): Promise<ConversationFlowRow | null> {
-  if (!key.customerId && !key.lineUserId) return null;
+  // 特殊文字を含む line_user_id は or フィルタ (下記) の構文を壊すため使わない。UUID の
+  // customer_id は安全。LINE ユーザー ID は通常英数字のみ。
+  const luid = key.lineUserId && !/[(),.]/.test(key.lineUserId) ? key.lineUserId : null;
+  const cid = key.customerId ?? null;
+  if (!cid && !luid) return null;
   try {
-    // customer_id を優先。未紐付けは line_user_id で束ねる。
+    // customer_id **または** line_user_id のいずれか一致で束ねる。全 LINE フローは
+    // line_user_id を持つため、未紐付けで作った行 (customer_id=null) を後から紐付いた
+    // customer_id で引いても取りこぼさない (逆も同様)。単一キー固定だと、紐付け前後で
+    // キーが変わった瞬間に進行中フローを見失い、抑止や前進が効かなくなる。
     // expires_at 超過の停滞フローは「進行中」に数えない — 失効 cron が state を
     // 落とす前でも、期限切れフローが新規開始を永久に塞ぐのを防ぐ (時刻ベースで実効)。
     let q = admin
@@ -44,7 +51,9 @@ export async function getActiveFlow(
       .gt("expires_at", new Date().toISOString())
       .order("updated_at", { ascending: false })
       .limit(1);
-    q = key.customerId ? q.eq("customer_id", key.customerId) : q.eq("line_user_id", key.lineUserId as string);
+    if (cid && luid) q = q.or(`customer_id.eq.${cid},line_user_id.eq.${luid}`);
+    else if (cid) q = q.eq("customer_id", cid);
+    else q = q.eq("line_user_id", luid as string);
     const { data, error } = await q.maybeSingle();
     if (error) {
       logger.warn("[flowStore] getActiveFlow failed", { tenantId, err: error.message });
@@ -54,6 +63,24 @@ export async function getActiveFlow(
   } catch (e) {
     logger.warn("[flowStore] getActiveFlow threw", { tenantId, err: e instanceof Error ? e.message : String(e) });
     return null;
+  }
+}
+
+/**
+ * 進行中フローが human_takeover (スタッフ対応中 / 「スタッフに相談したい」マーカー) か。
+ * webhook の決定的な定型返信 (予約リンク・連携案内) を takeover 中に抑止するための軽量判定。
+ * 自前で service-role クライアントを張るため webhook から直接呼べる。失敗時は false (投げない)。
+ */
+export async function isHumanTakeoverActive(
+  tenantId: string,
+  key: { customerId?: string | null; lineUserId?: string | null },
+): Promise<boolean> {
+  try {
+    const admin = createServiceRoleAdmin("LINE webhook — human_takeover 抑止判定");
+    const flow = await getActiveFlow(admin, tenantId, key);
+    return flow?.state === "human_takeover";
+  } catch {
+    return false;
   }
 }
 
@@ -133,6 +160,8 @@ export async function advanceFlow(
     quoteDocId?: string | null;
     reservationId?: string | null;
     expectState?: FlowState;
+    /** true のとき expires_at を今から FLOW_EXPIRY_HOURS 後へ更新する (失効窓を延長)。 */
+    refreshExpiry?: boolean;
   },
 ): Promise<boolean> {
   try {
@@ -142,6 +171,7 @@ export async function advanceFlow(
     };
     if (input.quoteDocId !== undefined) patch.quote_doc_id = input.quoteDocId;
     if (input.reservationId !== undefined) patch.reservation_id = input.reservationId;
+    if (input.refreshExpiry) patch.expires_at = new Date(Date.now() + FLOW_EXPIRY_HOURS * 3600_000).toISOString();
 
     let q = admin.from("line_conversation_flows").update(patch).eq("id", flow.id);
     if (input.expectState) q = q.eq("state", input.expectState);
@@ -178,7 +208,28 @@ export async function createFlow(
   },
 ): Promise<ConversationFlowRow | null> {
   try {
-    const expiresAt = new Date(Date.now() + FLOW_EXPIRY_HOURS * 3600_000).toISOString();
+    const now = new Date();
+    // 失効済み (expires_at 超過) の "進行中" 行を先に expired へ落とす。一意インデックスは
+    // `state NOT IN ('closed','expired')` で張られており、他に失効スイープが無いため、放置
+    // された行 (特に相談の human_takeover マーカー) が残ると同一キーの新規作成が一意制約で
+    // 永久に失敗する。作成の直前に同一キーの失効行だけを掃除し、この rot を防ぐ。
+    if (input.customerId || input.lineUserId) {
+      let sweep = admin
+        .from("line_conversation_flows")
+        .update({ state: "expired" })
+        .eq("tenant_id", input.tenantId)
+        .lt("expires_at", now.toISOString())
+        .not("state", "in", "(closed,expired)");
+      sweep = input.customerId
+        ? sweep.eq("customer_id", input.customerId)
+        : sweep.eq("line_user_id", input.lineUserId as string);
+      const { error: sweepErr } = await sweep;
+      if (sweepErr) {
+        logger.warn("[flowStore] createFlow stale sweep failed", { tenantId: input.tenantId, err: sweepErr.message });
+      }
+    }
+
+    const expiresAt = new Date(now.getTime() + FLOW_EXPIRY_HOURS * 3600_000).toISOString();
     const { data, error } = await admin
       .from("line_conversation_flows")
       .insert({

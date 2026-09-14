@@ -6,12 +6,23 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
-import { apiOk, apiUnauthorized, apiInternalError, apiValidationError, apiNotFound } from "@/lib/api/response";
+import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
+import { checkRateLimit } from "@/lib/api/rateLimit";
+import {
+  apiOk,
+  apiUnauthorized,
+  apiInternalError,
+  apiValidationError,
+  apiNotFound,
+  apiForbidden,
+} from "@/lib/api/response";
 import { canUseFeature } from "@/lib/billing/planFeatures";
 import { generateExplanation, type Audience } from "@/lib/ai/explainCertificate";
 import { modelForPlanTier } from "@/lib/ai/client";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
+import { CERT_AI_COLUMNS, certAiFields } from "@/lib/certificates/aiFields";
+import { loadAiAutomationSettings } from "@/lib/ai/automation/policy";
+import { startAiRouteUsage } from "@/lib/ai/recordRouteUsage";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -27,14 +38,31 @@ const aiExplainSchema = z.object({
 });
 
 export async function POST(req: NextRequest) {
+  const usage = startAiRouteUsage("/api/admin/certificates/ai-explain");
   try {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
-
+    // AI 呼び出しは staff 以上 (代表判断 2026-09-01。閲覧専用ロールに費用の出る操作をさせない)
+    if (!requireMinRole(caller, "staff")) return apiForbidden();
     if (!canUseFeature(caller.planTier, "ai_explain")) {
       return apiValidationError("この機能はStandardプラン以上でご利用いただけます", {
         code: "plan_limit",
+      });
+    }
+
+    // 証明書の説明文生成は呼ぶたびに AI 費用が出る。
+    // プラン判定より後に置く。Free のテナントには 429 ではなく案内を返したい。
+    const limited = await checkRateLimit(req, "ai", `cert-ai-explain:${caller.tenantId}`);
+    if (limited) return limited;
+
+    // E4-7 是正 (2026-09-08): 月次コストキャップ超過時は enabled=false に倒るので、
+    // それを見て呼び出し自体をスキップする。
+    const aiSettings = await loadAiAutomationSettings(caller.tenantId);
+    if (!aiSettings.enabled) {
+      usage.record({ tenantId: caller.tenantId, userId: caller.userId, outcome: "ai_disabled" });
+      return apiValidationError("月次のAI利用上限に達しました。来月まで今しばらくお待ちください。", {
+        code: "ai_cost_cap_exceeded",
       });
     }
 
@@ -50,11 +78,7 @@ export async function POST(req: NextRequest) {
     const { data: cert } = await admin
       .from("certificates")
       .select(
-        `
-        public_id, service_name, description, material_info,
-        warranty_period, created_at, expiry_date, work_areas,
-        customer_name, customer_id, vehicle_id, tenant_id
-      `,
+        `public_id, ${CERT_AI_COLUMNS}, created_at, expiry_date, customer_name, customer_id, vehicle_id, tenant_id`,
       )
       .eq("id", certificate_id)
       .eq("tenant_id", caller.tenantId)
@@ -74,7 +98,7 @@ export async function POST(req: NextRequest) {
     if (cert.vehicle_id) {
       const { data: v } = await admin
         .from("vehicles")
-        .select("maker, model, color, plate_display")
+        .select("maker, model, plate_display")
         .eq("id", cert.vehicle_id)
         .single();
       vehicleInfo = v ?? {};
@@ -88,19 +112,14 @@ export async function POST(req: NextRequest) {
         audience: audience satisfies Audience,
         certificate: {
           public_id: cert.public_id ?? "",
-          service_name: cert.service_name ?? "",
-          description: cert.description ?? undefined,
-          material_info: cert.material_info ?? undefined,
-          warranty_period: cert.warranty_period ?? undefined,
+          ...certAiFields(cert),
           issued_at: cert.created_at ?? "",
           expiry_date: cert.expiry_date ?? undefined,
-          work_areas: cert.work_areas ?? undefined,
           public_url: publicUrl,
         },
         vehicle: {
           maker: vehicleInfo.maker,
           model: vehicleInfo.model,
-          color: vehicleInfo.color,
           plate_display: vehicleInfo.plate_display,
         },
         shop: {
@@ -112,8 +131,10 @@ export async function POST(req: NextRequest) {
       { model: modelForPlanTier(caller.planTier) },
     );
 
+    usage.record({ tenantId: caller.tenantId, userId: caller.userId, outcome: "ok" });
     return apiOk({ explanation });
   } catch (e: unknown) {
+    usage.record({ outcome: "error" });
     return apiInternalError(e);
   }
 }

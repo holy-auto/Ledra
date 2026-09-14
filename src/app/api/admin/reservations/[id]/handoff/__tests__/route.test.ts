@@ -29,7 +29,10 @@ vi.mock("@/lib/supabase/server", () => ({
     }),
 }));
 
-vi.mock("@/lib/auth/checkRole", () => ({
+// モジュールごと差し替えると requirePermission が undefined になり、
+// ルートのガードが TypeError → 500 になる。実物は残して解決だけ差し替える。
+vi.mock("@/lib/auth/checkRole", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/auth/checkRole")>()),
   resolveCallerWithRole: (...args: unknown[]) => resolveCallerMock(...args),
 }));
 

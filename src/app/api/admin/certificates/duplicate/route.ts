@@ -42,7 +42,7 @@ export async function POST(req: NextRequest) {
     const { data: source, error: fetchErr } = await admin
       .from("certificates")
       .select(
-        "vehicle_id, vehicle_info_json, customer_name, customer_id, customer_phone_last4, customer_phone_last4_hash, content_free_text, content_preset_json, service_type, service_price, coating_products_json, expiry_type, expiry_value, logo_asset_path, footer_variant, template_id",
+        "store_id, vehicle_id, vehicle_info_json, customer_name, customer_id, customer_phone_last4, customer_phone_last4_hash, content_free_text, content_preset_json, service_type, service_price, coating_products_json, expiry_type, expiry_value, logo_asset_path, footer_variant, template_id",
       )
       .eq("public_id", sourcePublicId)
       .eq("tenant_id", caller.tenantId)
@@ -57,6 +57,8 @@ export async function POST(req: NextRequest) {
     const insertRow: Record<string, unknown> = {
       tenant_id: caller.tenantId,
       status: "draft",
+      // 店舗。引き継がないと、店舗で絞った画面からコピーだけが消える
+      store_id: source.store_id ?? null,
       // 車両情報
       vehicle_id: source.vehicle_id ?? null,
       vehicle_info_json: source.vehicle_info_json ?? {},

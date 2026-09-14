@@ -14,6 +14,7 @@
  */
 
 import { z } from "zod";
+import { parseMileageKm } from "@/lib/maintenance/mileage";
 
 /**
  * 証明書発行リクエストの JSON 形式。
@@ -26,6 +27,9 @@ export const certCreateJsonSchema = z
     customer_id: z.string().uuid().nullable().optional(),
     customer_name: z.string().trim().min(1, "顧客名は必須です。").max(200),
 
+    // 発行した店舗。モバイルは選択中の店舗を送る（Web は未指定＝null のまま）
+    store_id: z.string().uuid().nullable().optional(),
+
     // 車両 (vehicle_id を渡すか、新規入力か、両方可)
     vehicle_id: z.string().uuid().nullable().optional(),
     vehicle_maker: z.string().trim().max(100).optional().default(""),
@@ -33,6 +37,14 @@ export const certCreateJsonSchema = z
     plate: z.string().trim().max(50).optional().default(""),
     vin_code: z.string().trim().max(50).nullable().optional(),
     size_class: z.string().trim().max(20).nullable().optional(),
+
+    // 走行距離（必須）。Server Action 側の parseMileageKm と同じ条件で弾く。
+    // オフライン同期も外部連携もこのスキーマを通るので、ここを optional にすると
+    // フォームだけ必須・API は素通り、という抜け道になる。
+    mileage_km: z
+      .union([z.number(), z.string()])
+      .refine((v) => parseMileageKm(v) !== null, "走行距離（km）は必須です。1以上の整数で入力してください。")
+      .transform((v) => parseMileageKm(v) as number),
 
     // テンプレート
     template_id: z.string().uuid().optional().default(""),
@@ -74,6 +86,8 @@ export const certCreateJsonSchema = z
     // しないよう、FormData ↔ JSON の round-trip に含める。
     reservation_id: z.string().uuid().nullable().optional(),
     craftsman_staff_id: z.string().uuid().nullable().optional(),
+    // 外注施工: テナント間の発注 (job_orders) から発行した場合の紐付け先。
+    job_order_id: z.string().uuid().nullable().optional(),
 
     // ステータス: draft or active
     status: z.enum(["draft", "active"]).optional().default("active"),
@@ -100,12 +114,14 @@ export function jsonToCertFormData(input: CertCreateJsonInput): FormData {
   // Customer / vehicle
   appendIf("customer_id", input.customer_id ?? undefined);
   appendIf("customer_name", input.customer_name);
+  appendIf("store_id", input.store_id ?? undefined);
   appendIf("vehicle_id", input.vehicle_id ?? undefined);
   appendIf("vehicle_maker", input.vehicle_maker);
   appendIf("model", input.model);
   appendIf("plate", input.plate);
   appendIf("vin_code", input.vin_code ?? undefined);
   appendIf("size_class", input.size_class ?? undefined);
+  appendIf("mileage_km", String(input.mileage_km));
 
   // Template
   appendIf("template_id", input.template_id);
@@ -157,6 +173,7 @@ export function jsonToCertFormData(input: CertCreateJsonInput): FormData {
   // 案件連携 (職人解決 / 予約紐付け)
   appendIf("reservation_id", input.reservation_id ?? undefined);
   appendIf("craftsman_staff_id", input.craftsman_staff_id ?? undefined);
+  appendIf("job_order_id", input.job_order_id ?? undefined);
 
   // Template fields (f__ prefix). Server Action expects multi-value as repeated appends
   // and "on" string for booleans.
@@ -231,6 +248,7 @@ export function formDataToCertJson(fd: FormData): Record<string, unknown> {
     "plate",
     "vin_code",
     "size_class",
+    "mileage_km",
     "template_id",
     "template_name",
     "manufacturer_template_id",
@@ -245,6 +263,7 @@ export function formDataToCertJson(fd: FormData): Record<string, unknown> {
     "package_id",
     "reservation_id",
     "craftsman_staff_id",
+    "job_order_id",
     "status",
   ] as const;
 

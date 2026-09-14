@@ -1,3 +1,9 @@
+-- 【後から内容だけ修正】このファイルは本番へ適用済み（版番号は変えていない）。
+-- RLS ポリシーが `tenant_memberships.is_active` を参照していたが、**この列は本番にも無い**。
+-- そのままだと CREATE POLICY 時に落ち、空 DB へ1パスで流せない。
+-- 述語を落として本番の実体に合わせた（根拠: `20260719000000_fix_rls_membership_references.sql`
+-- の [B]。本番の pg_policies 実査で is_active 述語なしと確認されている）。
+-- 版番号を変えていないので本番では再適用されない＝本番への影響は無い。
 -- ZKP コミットメントテーブル
 -- 部品装着の Merkle ツリールートを保存し、保険会社向けの選択的開示を可能にする
 
@@ -41,7 +47,7 @@ create policy "tenant members can read zkp commitments"
   using (
     tenant_id in (
       select tenant_id from public.tenant_memberships
-      where user_id = auth.uid() and is_active = true
+      where user_id = auth.uid()
     )
   );
 

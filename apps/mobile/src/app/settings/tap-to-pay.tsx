@@ -2,8 +2,6 @@ import { useEffect, useState } from "react";
 import { View, ScrollView, StyleSheet } from "react-native";
 import {
   Text,
-  Card,
-  Button,
   Icon,
   ProgressBar,
   ActivityIndicator,
@@ -14,6 +12,8 @@ import { Stack } from "expo-router";
 import { useAuthStore } from "@/stores/authStore";
 import { useTerminal } from "@/hooks/useTerminal";
 import { useTerminalStore } from "@/stores/terminalStore";
+import { LedraButton, LedraAlert } from "@/components/ui";
+import { colors, spacing, radius, typography, shadows } from "@/constants/tokens";
 
 /**
  * Apple Tap to Pay 要件:
@@ -69,136 +69,114 @@ export default function TapToPaySettingsScreen() {
       <ScrollView style={styles.container}>
         {/* iOSバージョン非対応の警告 (要件 1.4) */}
         {!osVersionSupported && (
-          <Card style={[styles.card, styles.warnCard]} mode="outlined">
-            <Card.Content style={styles.warnRow}>
-              <Icon source="alert-circle" size={28} color="#b45309" />
-              <View style={{ flex: 1 }}>
-                <Text variant="titleSmall" style={styles.warnTitle}>
-                  iOS の更新が必要です
-                </Text>
-                <Text variant="bodySmall" style={styles.warnSub}>
-                  Tap to Pay は iPhone XS 以降 / iOS 16.4 以降で利用可能です。
-                  設定アプリから iOS を最新版に更新してください。
-                </Text>
-              </View>
-            </Card.Content>
-          </Card>
+          <View style={styles.alertContainer}>
+            <LedraAlert
+              severity="warning"
+              title="iOS の更新が必要です"
+              description="Tap to Pay は iPhone XS 以降 / iOS 16.4 以降で利用可能です。設定アプリから iOS を最新版に更新してください。"
+            />
+          </View>
         )}
 
         {/* 概要 */}
-        <Card style={styles.card} mode="outlined">
-          <Card.Content>
-            <Text variant="titleMedium" style={styles.heading}>
-              iPhone のタッチ決済について
-            </Text>
-            <Text variant="bodyMedium" style={styles.body}>
-              追加のカードリーダー無しで、iPhone 1台で
-              コンタクトレスカード・Apple Pay・他の電子ウォレットを
-              受け付けられます。
-            </Text>
+        <View style={styles.card}>
+          <Text style={styles.heading}>iPhone のタッチ決済について</Text>
+          <Text style={styles.body}>
+            追加のカードリーダー無しで、iPhone 1台で
+            コンタクトレスカード・Apple Pay・他の電子ウォレットを
+            受け付けられます。
+          </Text>
 
-            <View style={styles.bullets}>
-              <Bullet text="コンタクトレスカード（Visa / Mastercard 等）" />
-              <Bullet text="Apple Pay" />
-              <Bullet text="その他の電子ウォレット（Google Pay 等）" />
-            </View>
-          </Card.Content>
-        </Card>
+          <View style={styles.bullets}>
+            <Bullet text="コンタクトレスカード（Visa / Mastercard 等）" />
+            <Bullet text="Apple Pay" />
+            <Bullet text="その他の電子ウォレット（Google Pay 等）" />
+          </View>
+        </View>
 
         {/* 有効化アクション (admin限定) */}
-        <Card style={styles.card} mode="outlined">
-          <Card.Content>
-            <Text variant="titleMedium" style={styles.heading}>
-              有効化
-            </Text>
+        <View style={styles.card}>
+          <Text style={styles.heading}>有効化</Text>
 
-            {!isAdmin ? (
-              // 要件 3.8.1: 非 admin への案内
-              <View style={styles.notAdminBox}>
-                <Icon source="lock-outline" size={24} color="#71717a" />
-                <Text variant="bodyMedium" style={styles.notAdminText}>
-                  Tap to Pay の有効化は管理者のみが行えます。{"\n"}
-                  管理者にご連絡ください。
-                </Text>
-              </View>
-            ) : termsAccepted === true ? (
-              <Text variant="bodyMedium" style={styles.enabledText}>
-                ✅ 有効化済みです。チェックアウトでお使いいただけます。
+          {!isAdmin ? (
+            // 要件 3.8.1: 非 admin への案内
+            <View style={styles.notAdminBox}>
+              <Icon source="lock-outline" size={24} color={colors.textSecondary} />
+              <Text style={styles.notAdminText}>
+                Tap to Pay の有効化は管理者のみが行えます。{"\n"}
+                管理者にご連絡ください。
               </Text>
-            ) : (
-              <>
-                <Text variant="bodySmall" style={styles.body}>
-                  下記ボタンを押すと、Apple の利用規約への同意 +
-                  iPhone のセットアップが行われます。
-                </Text>
-                <Button
-                  mode="contained"
-                  icon="apple"
-                  onPress={handleEnable}
-                  loading={busy || readerStatus === "connecting"}
-                  disabled={!osVersionSupported || busy}
-                  style={styles.enableButton}
-                  buttonColor="#1a1a2e"
-                >
-                  Tap to Pay を有効化する
-                </Button>
-              </>
-            )}
+            </View>
+          ) : termsAccepted === true ? (
+            <Text style={styles.enabledText}>
+              ✅ 有効化済みです。チェックアウトでお使いいただけます。
+            </Text>
+          ) : (
+            <>
+              <Text style={styles.hintText}>
+                下記ボタンを押すと、Apple の利用規約への同意 +
+                iPhone のセットアップが行われます。
+              </Text>
+              <LedraButton
+                icon="apple"
+                onPress={handleEnable}
+                loading={busy || readerStatus === "connecting"}
+                disabled={!osVersionSupported || busy}
+                style={styles.enableButton}
+              >
+                Tap to Pay を有効化する
+              </LedraButton>
+            </>
+          )}
 
-            {/* 要件 3.9.1: 設定進捗インジケータ */}
-            {configurationProgress != null &&
-              configurationProgress < 1 && (
-                <View style={styles.progressBox}>
-                  <View style={styles.progressHeader}>
-                    <ActivityIndicator size="small" color="#1d4ed8" />
-                    <Text variant="bodySmall" style={styles.progressLabel}>
-                      Tap to Pay を準備中… {Math.round(configurationProgress * 100)}%
-                    </Text>
-                  </View>
-                  <ProgressBar
-                    progress={configurationProgress}
-                    color="#1d4ed8"
-                    style={{ marginTop: 6 }}
-                  />
-                  <Text variant="bodySmall" style={styles.progressNote}>
-                    数分かかる場合があります。アプリを閉じずにお待ちください。
+          {/* 要件 3.9.1: 設定進捗インジケータ */}
+          {configurationProgress != null &&
+            configurationProgress < 1 && (
+              <View style={styles.progressBox}>
+                <View style={styles.progressHeader}>
+                  <ActivityIndicator size="small" color={colors.primary} />
+                  <Text style={styles.progressLabel}>
+                    Tap to Pay を準備中… {Math.round(configurationProgress * 100)}%
                   </Text>
                 </View>
-              )}
+                <ProgressBar
+                  progress={configurationProgress}
+                  color={colors.primary}
+                  style={{ marginTop: spacing.sm }}
+                />
+                <Text style={styles.progressNote}>
+                  数分かかる場合があります。アプリを閉じずにお待ちください。
+                </Text>
+              </View>
+            )}
 
-            {readerError ? (
-              <Text variant="bodySmall" style={styles.errorText}>
-                {readerError}
-              </Text>
-            ) : null}
-          </Card.Content>
-        </Card>
+          {readerError ? (
+            <Text style={styles.errorText}>{readerError}</Text>
+          ) : null}
+        </View>
 
         {/* 要件 4.3: 設定/ヘルプ から教育コンテンツへ */}
-        <Card style={styles.card} mode="outlined">
-          <Card.Content>
-            <Text variant="titleMedium" style={styles.heading}>
-              使い方
-            </Text>
-            <View style={styles.steps}>
-              <Step n={1} text="チェックアウト画面で「iPhone のタッチ決済」をタップ" />
-              <Step n={2} text="iPhone の上部にお客様のカード・スマホをかざしてもらう" />
-              <Step n={3} text="支払い完了画面が表示されたら成功（iPhone はバイブで通知）" />
-              <Step n={4} text="領収書はSMS・メール・共有メニューから送信可能" />
-            </View>
-            <Text variant="bodySmall" style={styles.body}>
-              ※ コンタクトレス決済できないカードの場合は、現金または他の決済方法をご案内ください。
-            </Text>
-          </Card.Content>
-        </Card>
+        <View style={styles.card}>
+          <Text style={styles.heading}>使い方</Text>
+          <View style={styles.steps}>
+            <Step n={1} text="チェックアウト画面で「iPhone のタッチ決済」をタップ" />
+            <Step n={2} text="iPhone の上部にお客様のカード・スマホをかざしてもらう" />
+            <Step n={3} text="支払い完了画面が表示されたら成功（iPhone はバイブで通知）" />
+            <Step n={4} text="領収書はSMS・メール・共有メニューから送信可能" />
+          </View>
+          <Text style={styles.hintText}>
+            ※ コンタクトレス決済できないカードの場合は、現金または他の決済方法をご案内ください。
+          </Text>
+        </View>
 
-        <View style={{ height: 40 }} />
+        <View style={{ height: spacing["4xl"] }} />
       </ScrollView>
 
       <Snackbar
         visible={!!snackbar}
         onDismiss={() => setSnackbar("")}
         duration={3000}
+        style={{ backgroundColor: colors.textPrimary }}
       >
         {snackbar}
       </Snackbar>
@@ -209,10 +187,8 @@ export default function TapToPaySettingsScreen() {
 function Bullet({ text }: { text: string }) {
   return (
     <View style={styles.bulletRow}>
-      <Icon source="check-circle" size={18} color="#15803d" />
-      <Text variant="bodyMedium" style={styles.bulletText}>
-        {text}
-      </Text>
+      <Icon source="check-circle" size={18} color={colors.successDark} />
+      <Text style={styles.bulletText}>{text}</Text>
     </View>
   );
 }
@@ -223,56 +199,103 @@ function Step({ n, text }: { n: number; text: string }) {
       <View style={styles.stepNum}>
         <Text style={styles.stepNumText}>{n}</Text>
       </View>
-      <Text variant="bodyMedium" style={styles.stepText}>
-        {text}
-      </Text>
+      <Text style={styles.stepText}>{text}</Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#fafafa" },
-  card: { margin: 12, marginBottom: 0, backgroundColor: "#ffffff" },
-  heading: { fontWeight: "700", color: "#1a1a2e", marginBottom: 8 },
-  body: { color: "#3f3f46", lineHeight: 22 },
-  bullets: { marginTop: 12, gap: 6 },
-  bulletRow: { flexDirection: "row", alignItems: "center", gap: 8 },
-  bulletText: { color: "#1a1a2e" },
+  container: { flex: 1, backgroundColor: colors.background },
+  alertContainer: {
+    padding: spacing.md,
+    paddingBottom: 0,
+  },
+  card: {
+    margin: spacing.md,
+    marginBottom: 0,
+    backgroundColor: colors.surface,
+    borderRadius: radius.card,
+    padding: spacing.lg,
+    ...shadows.card,
+  },
+  heading: {
+    ...typography.titleMedium,
+    color: colors.textPrimary,
+    marginBottom: spacing.sm,
+  },
+  body: {
+    ...typography.body,
+    color: colors.textSecondary,
+  },
+  hintText: {
+    ...typography.bodySmall,
+    color: colors.textSecondary,
+  },
+  bullets: { marginTop: spacing.md, gap: spacing.sm },
+  bulletRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  bulletText: {
+    ...typography.body,
+    color: colors.textPrimary,
+  },
   notAdminBox: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
-    backgroundColor: "#f4f4f5",
-    padding: 12,
-    borderRadius: 8,
+    gap: spacing.md,
+    backgroundColor: colors.surfaceVariant,
+    padding: spacing.md,
+    borderRadius: radius.sm,
   },
-  notAdminText: { color: "#3f3f46", flex: 1 },
-  enabledText: { color: "#15803d", fontWeight: "600" },
-  enableButton: { marginTop: 12, borderRadius: 8 },
+  notAdminText: {
+    ...typography.body,
+    color: colors.textSecondary,
+    flex: 1,
+  },
+  enabledText: {
+    ...typography.body,
+    color: colors.successDark,
+    fontWeight: "600",
+  },
+  enableButton: { marginTop: spacing.md },
   progressBox: {
-    marginTop: 12,
-    padding: 12,
-    backgroundColor: "#eff6ff",
-    borderRadius: 8,
+    marginTop: spacing.md,
+    padding: spacing.md,
+    backgroundColor: colors.primaryLight,
+    borderRadius: radius.sm,
   },
-  progressHeader: { flexDirection: "row", alignItems: "center", gap: 8 },
-  progressLabel: { color: "#1d4ed8", fontWeight: "600" },
-  progressNote: { color: "#3b82f6", marginTop: 6 },
-  errorText: { color: "#b91c1c", marginTop: 8 },
-  steps: { gap: 10, marginVertical: 12 },
-  stepRow: { flexDirection: "row", alignItems: "flex-start", gap: 12 },
+  progressHeader: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  progressLabel: {
+    ...typography.bodySmall,
+    color: colors.primaryDark,
+    fontWeight: "600",
+  },
+  progressNote: {
+    ...typography.bodySmall,
+    color: colors.primary,
+    marginTop: spacing.sm,
+  },
+  errorText: {
+    ...typography.bodySmall,
+    color: colors.dangerDark,
+    marginTop: spacing.sm,
+  },
+  steps: { gap: 10, marginVertical: spacing.md },
+  stepRow: { flexDirection: "row", alignItems: "flex-start", gap: spacing.md },
   stepNum: {
     width: 24,
     height: 24,
     borderRadius: 12,
-    backgroundColor: "#1a1a2e",
+    backgroundColor: colors.textPrimary,
     alignItems: "center",
     justifyContent: "center",
   },
-  stepNumText: { color: "#ffffff", fontWeight: "700", fontSize: 13 },
-  stepText: { color: "#1a1a2e", flex: 1 },
-  warnCard: { backgroundColor: "#fffbeb", borderColor: "#fcd34d" },
-  warnRow: { flexDirection: "row", alignItems: "center", gap: 12 },
-  warnTitle: { color: "#92400e", fontWeight: "700" },
-  warnSub: { color: "#b45309", marginTop: 2 },
+  stepNumText: {
+    ...typography.labelSmall,
+    color: colors.textOnPrimary,
+    fontWeight: "700",
+  },
+  stepText: {
+    ...typography.body,
+    color: colors.textPrimary,
+    flex: 1,
+  },
 });

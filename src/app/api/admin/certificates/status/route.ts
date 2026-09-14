@@ -2,13 +2,9 @@ import { z } from "zod";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { logCertificateAction, getRequestMeta } from "@/lib/audit/certificateLog";
-import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
-import {
-  certificateHasRequiredPhotos,
-  CERTIFICATE_PHOTO_REQUIRED_MESSAGE,
-  certificateHasRequiredBeforeAfterMedia,
-  CERTIFICATE_BEFORE_AFTER_REQUIRED_MESSAGE,
-} from "@/lib/certificates/photoRequirement";
+import { resolveCallerWithRole, requireMinRole, requirePermission } from "@/lib/auth/checkRole";
+import { evaluateCertificateActivationGate, firstGateFailureMessage } from "@/lib/certificates/activationGate";
+import { certificateMileageKm, CERTIFICATE_MILEAGE_REQUIRED_MESSAGE } from "@/lib/maintenance/mileage";
 import { triggerCertificateIssued } from "@/lib/certificates/issueHooks";
 import { enqueueCertificateAnchor } from "@/lib/anchoring/certificateAnchorService";
 import { getActorAssurance } from "@/lib/auth/mfa";
@@ -42,12 +38,18 @@ const certStatusSchema = z.object({
 /**
  * Allowed status transitions:
  *  draft  -> active  (staff+)
- *  active -> void    (staff+)
+ *  active -> void    (certificates:void = admin+)
  *  void   -> active  (admin+ only)
+ *
+ * 無効化 (→void) はロール下限ではなく Permission で判定する。証明書の無効化は
+ * 不可逆で法的意味を持つ操作 (operationRisk = critical) であり、無効化の経路は
+ * これを含めて5本ある。ロール下限と Permission の二本立てにすると経路ごとに
+ * ズレる (実際、ここだけ staff で通り、他4経路は admin 以上を要求していた)。
+ * 登録は API_ROUTE_PERMISSIONS、強制は apiRoutePermissions.test.ts。
  */
 const TRANSITIONS: Record<string, { to: CertStatus; minRole: "staff" | "admin" }[]> = {
   draft: [{ to: "active", minRole: "staff" }],
-  active: [{ to: "void", minRole: "staff" }],
+  active: [{ to: "void", minRole: "admin" }],
   void: [{ to: "active", minRole: "admin" }],
 };
 
@@ -78,7 +80,7 @@ export async function PUT(req: Request) {
     const { data: cert, error: fetchErr } = await admin
       .from("certificates")
       .select(
-        "id, vehicle_id, status, customer_id, customer_name, vehicle_info_json, service_type, created_by, reservation_id",
+        "id, vehicle_id, status, customer_id, customer_name, vehicle_info_json, service_type, created_by, reservation_id, maintenance_json",
       )
       .eq("tenant_id", caller.tenantId)
       .eq("public_id", publicId)
@@ -108,20 +110,33 @@ export async function PUT(req: Request) {
       return apiForbidden(`${currentStatus} → ${newStatus} の遷移には ${transition.minRole} 以上の権限が必要です。`);
     }
 
-    // 写真添付必須ルール: active 化 (draft→active / void→active) は施工写真が
-    // 1 枚以上ある場合のみ許可する (全テナント一律・サーバ強制)。
+    // 無効化は他4経路と同じ Permission で判定する（ロール下限とは別軸で二重に縛る）。
+    if (newStatus === "void" && !requirePermission(caller, "certificates:void")) {
+      return apiForbidden("証明書無効化の権限がありません。");
+    }
+
+    // Certificate Gate (IMP-028, ADR-0005): active 化 (draft→active / void→active) は
+    // 単一評価器を通す (写真必須・懸念未解決なし・部品整合性 等)。
     if (newStatus === "active") {
-      const hasPhotos = await certificateHasRequiredPhotos(admin, cert.id as string);
-      if (!hasPhotos) {
-        return apiValidationError(CERTIFICATE_PHOTO_REQUIRED_MESSAGE);
+      const certGate = await evaluateCertificateActivationGate(admin, {
+        certificateId: cert.id as string,
+        tenantId: caller.tenantId,
+        serviceType: cert.service_type as string | null,
+        reservationId: (cert.reservation_id as string | null) ?? null,
+      });
+      if (!certGate.ready) {
+        return apiValidationError(firstGateFailureMessage(certGate));
       }
-      const hasBeforeAfter = await certificateHasRequiredBeforeAfterMedia(
-        admin,
-        cert.id as string,
-        cert.service_type as string | null,
-      );
-      if (!hasBeforeAfter) {
-        return apiValidationError(CERTIFICATE_BEFORE_AFTER_REQUIRED_MESSAGE);
+      // 走行距離必須ルール: 発行の瞬間に一度だけ強制する。作成経路 (Web / モバイル /
+      // 外部 API / AI 自動起票) は増減するが、active になる道は 3 本しかないため、
+      // そこを塞げば漏れが出ない (activationGates.test.ts が数え漏れを検出する)。
+      //
+      // ただし **初回発行 (draft→active) のみ**。void→active の再発行にも掛けると、
+      // 必須化より前に作られた走行距離なしの証明書を void した瞬間、二度と戻せなくなる
+      // (編集フォームは void 中は出ないので入力する窓口が無い)。再発行は「以前発行した
+      // 内容を戻す」操作なので、そこで新たに走行距離を要求する意味も無い。
+      if (currentStatus === "draft" && certificateMileageKm(cert.maintenance_json) === null) {
+        return apiValidationError(CERTIFICATE_MILEAGE_REQUIRED_MESSAGE);
       }
     }
 

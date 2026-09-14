@@ -155,3 +155,21 @@ export async function enqueueLineHistoryImport(payload: {
     deduplicationId: `line-history-import-${payload.customer_id}`,
   });
 }
+
+/** Fan out one Google Calendar tenant sync so the cron request is not the worker. */
+export async function enqueueGcalTenantSync(payload: { tenant_id: string; from: string; to: string }) {
+  const bucket = Math.floor(Date.now() / (15 * 60 * 1000));
+  return publish("/api/qstash/gcal-tenant-sync", payload, {
+    retries: 2,
+    deduplicationId: `gcal-sync-${payload.tenant_id}-${bucket}`,
+  });
+}
+
+/** Fan out one accounting integration sync with provider-level retry isolation. */
+export async function enqueueAccountingTenantSync(payload: { tenant_id: string; provider: string }) {
+  const bucket = Math.floor(Date.now() / (15 * 60 * 1000));
+  return publish("/api/qstash/accounting-tenant-sync", payload, {
+    retries: 2,
+    deduplicationId: `accounting-sync-${payload.tenant_id}-${payload.provider}-${bucket}`,
+  });
+}

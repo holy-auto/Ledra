@@ -2,16 +2,11 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
-import type { SquareConnection } from "@/types/square";
 import SettingsForm from "./SettingsForm";
 import LogoSealSection from "./LogoSealSection";
 import SettingsProgressCard from "./SettingsProgressCard";
 import SettingsHub from "./SettingsHub";
 import FollowUpSettings from "./FollowUpSettings";
-import SquareConnectSection from "./SquareConnectSection";
-import LineConnectSection from "./LineConnectSection";
-import EmailInboundSection from "./EmailInboundSection";
-import NexPTGConnectSection from "./NexPTGConnectSection";
 import RestartTourButton from "./RestartTourButton";
 import BillingTimingSection from "./BillingTimingSection";
 import PageHeader from "@/components/ui/PageHeader";
@@ -165,24 +160,6 @@ export default async function AdminSettingsPage({
   const { error: detectErr } = await admin.from("tenants").select("contact_email").eq("id", tenantId).limit(1).single();
   const columnsExist = !detectErr || !detectErr.message.includes("does not exist");
 
-  // Square連携: 接続済みなら初期表示にすぐ反映させる (クライアント再フェッチを待たずに済む)
-  const { data: squareRow } = await admin
-    .from("square_connections")
-    .select("id, tenant_id, square_merchant_id, status, connected_at, last_synced_at, square_location_ids")
-    .eq("tenant_id", tenantId)
-    .maybeSingle();
-  const initialSquareConnection: SquareConnection | null = squareRow
-    ? {
-        id: squareRow.id as string,
-        tenant_id: squareRow.tenant_id as string,
-        square_merchant_id: (squareRow.square_merchant_id as string | null) ?? "",
-        status: (squareRow.status as SquareConnection["status"]) ?? "disconnected",
-        connected_at: (squareRow.connected_at as string | null) ?? null,
-        last_synced_at: (squareRow.last_synced_at as string | null) ?? null,
-        square_location_ids: (squareRow.square_location_ids as string[] | null) ?? [],
-      }
-    : null;
-
   const hasContact = columnsExist && !!(ext.contact_email || ext.contact_phone);
   const hasAddress = columnsExist && !!ext.address;
   const hasInvoiceNumber = columnsExist && !!ext.registration_number;
@@ -319,75 +296,19 @@ export default async function AdminSettingsPage({
         <BillingTimingSection />
       </section>
 
-      {/* Square連携 */}
+      {/* 外部連携（Slack / Square / LINE / メール取り込み / NexPTG）は 1 枚のページに集約した。
+          ここには入口だけを残す。 */}
       <section className="glass-card p-5">
-        <div className="mb-5">
+        <div className="mb-4">
           <div className="text-xs font-semibold tracking-[0.18em] text-muted">外部連携</div>
-          <div className="mt-1 text-base font-semibold text-primary inline-flex items-center gap-1.5">
-            Square連携
-            <HelpTooltip>
-              既に Square で POS 会計を運用している施工店向けの連携です。OAuth で接続すると、Square
-              側の注文データが自動で Ledra に取り込まれ、経営分析・売上突合に使えます。
-            </HelpTooltip>
-          </div>
-          <p className="mt-1 text-xs text-muted">SquareのPOS売上データをLedraに取り込みます。</p>
-        </div>
-        <SquareConnectSection initialConnection={initialSquareConnection} />
-      </section>
-
-      {/* LINE連携 */}
-      <section className="glass-card p-5">
-        <div className="mb-5">
-          <div className="text-xs font-semibold tracking-[0.18em] text-muted">外部連携</div>
-          <div className="mt-1 text-base font-semibold text-primary inline-flex items-center gap-1.5">
-            LINE連携
-            <HelpTooltip>
-              LINE 公式アカウントと連携すると、予約確認・施工完了通知・証明書共有を LINE
-              で自動配信できます。顧客とのコミュニケーション接点を増やしリピート率向上に寄与します。
-            </HelpTooltip>
-          </div>
+          <div className="mt-1 text-base font-semibold text-primary">外部サービス連携</div>
           <p className="mt-1 text-xs text-muted">
-            LINE公式アカウントと連携し、予約通知・リマインダー・書類送付を自動化します。
+            Slack・LINE・Square・Googleカレンダー・会計ソフトなどの連携状況を1画面でまとめて確認・設定できます。
           </p>
         </div>
-        <LineConnectSection />
-      </section>
-
-      {/* メール予約取り込み */}
-      <section className="glass-card p-5">
-        <div className="mb-5">
-          <div className="text-xs font-semibold tracking-[0.18em] text-muted">外部連携</div>
-          <div className="mt-1 text-base font-semibold text-primary inline-flex items-center gap-1.5">
-            メール予約取り込み
-            <HelpTooltip>
-              予約メールを専用アドレスへ自動転送すると、AI が日程・車両・内容を読み取り、確認付きで予約・ Google
-              カレンダーに取り込みます。LINE と同じ抽出・複合認識の仕組みを使います。
-            </HelpTooltip>
-          </div>
-          <p className="mt-1 text-xs text-muted">
-            予約メールを専用アドレスへ自動転送するだけで、AIが予約内容を読み取りカレンダーに取り込みます。
-          </p>
-        </div>
-        <EmailInboundSection />
-      </section>
-
-      {/* NexPTG（膜厚計）連携 */}
-      <section className="glass-card p-5">
-        <div className="mb-5">
-          <div className="text-xs font-semibold tracking-[0.18em] text-muted">外部連携</div>
-          <div className="mt-1 text-base font-semibold text-primary inline-flex items-center gap-1.5">
-            NexPTG（膜厚計）連携
-            <HelpTooltip>
-              NexPTG は塗装の膜厚を測る計測機 + アプリです。Ledra に API
-              キーを設定しておくと、アプリで測定した膜厚データが自動的に Ledra
-              の証明書「膜厚計測」セクションに同期されます。
-            </HelpTooltip>
-          </div>
-          <p className="mt-1 text-xs text-muted">
-            NexPTGアプリで測定した膜厚データをLedraへ自動同期します。APIキーを発行してアプリに設定してください。
-          </p>
-        </div>
-        <NexPTGConnectSection />
+        <Link href="/admin/settings/connections" className="btn-secondary">
+          連携を設定する →
+        </Link>
       </section>
 
       {/* Coating products master */}

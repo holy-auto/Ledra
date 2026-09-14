@@ -15,6 +15,7 @@ import { checkRateLimit } from "@/lib/api/rateLimit";
 import { hasPermission } from "@/lib/auth/permissions";
 import { apiForbidden } from "@/lib/api/response";
 import { createIntakeInvitation } from "@/lib/identity/intakeServer";
+import { storeErrorMessage } from "@/lib/stores/resolveStoreId";
 import { containsMyNumber } from "@/lib/identity/ocrFilter";
 
 export const runtime = "nodejs";
@@ -98,6 +99,10 @@ export async function POST(req: NextRequest) {
       expires_at: result.expiresAt,
     });
   } catch (err) {
+    // 店舗の指定が通らなかったのは入力の問題（消された店舗・他テナントの ID）。
+    // 500 で返すと画面に何も出せず、監視にもサーバ障害として積み上がる
+    const storeMessage = storeErrorMessage(err);
+    if (storeMessage) return apiValidationError(storeMessage);
     return apiInternalError(err, "POST /api/admin/customer-intakes");
   }
 }

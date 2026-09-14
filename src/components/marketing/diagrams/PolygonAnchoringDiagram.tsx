@@ -39,11 +39,51 @@ export function PolygonAnchoringDiagram({ className = "" }: { className?: string
       </defs>
 
       {/* Arrows */}
-      <line x1="165" y1="100" x2="240" y2="100" stroke="rgba(96,165,250,0.4)" strokeWidth="2" markerEnd="url(#pa-arrow)" />
-      <line x1="375" y1="100" x2="460" y2="100" stroke="rgba(96,165,250,0.4)" strokeWidth="2" markerEnd="url(#pa-arrow)" />
-      <line x1="555" y1="145" x2="555" y2="200" stroke="rgba(96,165,250,0.4)" strokeWidth="2" markerEnd="url(#pa-arrow)" />
-      <line x1="465" y1="260" x2="375" y2="260" stroke="rgba(96,165,250,0.4)" strokeWidth="2" markerEnd="url(#pa-arrow)" />
-      <line x1="240" y1="260" x2="165" y2="260" stroke="rgba(96,165,250,0.4)" strokeWidth="2" markerEnd="url(#pa-arrow)" />
+      <line
+        x1="165"
+        y1="100"
+        x2="240"
+        y2="100"
+        stroke="rgba(96,165,250,0.4)"
+        strokeWidth="2"
+        markerEnd="url(#pa-arrow)"
+      />
+      <line
+        x1="375"
+        y1="100"
+        x2="460"
+        y2="100"
+        stroke="rgba(96,165,250,0.4)"
+        strokeWidth="2"
+        markerEnd="url(#pa-arrow)"
+      />
+      <line
+        x1="555"
+        y1="145"
+        x2="555"
+        y2="200"
+        stroke="rgba(96,165,250,0.4)"
+        strokeWidth="2"
+        markerEnd="url(#pa-arrow)"
+      />
+      <line
+        x1="465"
+        y1="260"
+        x2="375"
+        y2="260"
+        stroke="rgba(96,165,250,0.4)"
+        strokeWidth="2"
+        markerEnd="url(#pa-arrow)"
+      />
+      <line
+        x1="240"
+        y1="260"
+        x2="165"
+        y2="260"
+        stroke="rgba(96,165,250,0.4)"
+        strokeWidth="2"
+        markerEnd="url(#pa-arrow)"
+      />
 
       {/* Node 1 — 施工店 */}
       <g>
@@ -130,11 +170,27 @@ export function PolygonAnchoringDiagram({ className = "" }: { className?: string
       </g>
 
       {/* Top label */}
-      <text x="405" y="30" textAnchor="middle" fill="rgba(255,255,255,0.5)" fontSize="11" fontWeight="600" letterSpacing="2">
+      <text
+        x="405"
+        y="30"
+        textAnchor="middle"
+        fill="rgba(255,255,255,0.5)"
+        fontSize="11"
+        fontWeight="600"
+        letterSpacing="2"
+      >
         ISSUANCE
       </text>
       {/* Bottom label */}
-      <text x="405" y="340" textAnchor="middle" fill="rgba(255,255,255,0.5)" fontSize="11" fontWeight="600" letterSpacing="2">
+      <text
+        x="405"
+        y="340"
+        textAnchor="middle"
+        fill="rgba(255,255,255,0.5)"
+        fontSize="11"
+        fontWeight="600"
+        letterSpacing="2"
+      >
         VERIFICATION
       </text>
 

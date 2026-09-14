@@ -123,7 +123,7 @@ function AgentsTab() {
       });
       if (!res.ok) {
         const j = await parseJsonSafe(res);
-        throw new Error(j?.error ?? `HTTP ${res.status}`);
+        throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       }
       setMsg(`ステータスを ${status} に更新しました`);
       fetchAgents();
@@ -154,7 +154,7 @@ function AgentsTab() {
       });
       if (!res.ok) {
         const j = await parseJsonSafe(res);
-        throw new Error(j?.error ?? `HTTP ${res.status}`);
+        throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       }
       setMsg("コミッション設定を更新しました");
       setEditingAgent(null);

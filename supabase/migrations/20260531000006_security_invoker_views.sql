@@ -71,6 +71,18 @@ FROM public.certificates c
 LEFT JOIN LATERAL public.certificate_public_tenant(c.tenant_id) tpc ON true;
 
 -- 3) 残り 3 ビューを security_invoker = on に切り替える (呼び出しロールの RLS を適用)。
-ALTER VIEW public.invoices SET (security_invoker = on);
-ALTER VIEW public.partner_score_view SET (security_invoker = on);
-ALTER VIEW public.v_insurer_users_list SET (security_invoker = on);
+-- 【後から内容だけ修正】v_insurer_users_list は**どのマイグレーションでも作られない**
+-- （本番にだけある。20260826000005 のコメント参照）。空 DB へ1パスで流すとここで落ち、
+-- このファイルが丸ごと巻き戻るため、上で作る certificate_public_tenant まで消えて
+-- 後続が連鎖して落ちていた。無いビューは飛ばす。
+DO $mig$
+DECLARE
+  v text;
+BEGIN
+  FOREACH v IN ARRAY ARRAY['public.invoices', 'public.partner_score_view', 'public.v_insurer_users_list'] LOOP
+    IF to_regclass(v) IS NOT NULL THEN
+      EXECUTE format('ALTER VIEW %s SET (security_invoker = on)', v);
+    END IF;
+  END LOOP;
+END
+$mig$;

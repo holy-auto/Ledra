@@ -43,7 +43,7 @@ export async function GET(req: NextRequest) {
         .maybeSingle(),
       admin
         .from("certificates")
-        .select("id, customer_id, customer_name, service_name, service_type, created_at")
+        .select("id, customer_id, customer_name, service_type, created_at")
         .eq("tenant_id", caller.tenantId)
         .neq("status", "void")
         .order("created_at", { ascending: false })
@@ -80,7 +80,6 @@ export async function GET(req: NextRequest) {
         return {
           certId: cert.id,
           serviceType: cert.service_type ?? null,
-          serviceName: cert.service_name ?? null,
           createdAt: cert.created_at,
           customerName: customer.name ?? cert.customer_name ?? null,
           customerEmail: customer.email ?? null,

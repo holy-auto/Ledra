@@ -5,7 +5,7 @@
  * the upload or causes other providers to be skipped.
  */
 
-import { signC2pa, type CaptureBinding } from "./c2pa";
+import { signC2pa, type CaptureBinding, type TransformOutcome } from "./c2pa";
 import { checkDeepfake } from "./deepfake";
 import { anchorToPolygon, verifyAnchor, buildExplorerUrl, findAnchorTx } from "./polygon";
 import type { UploadProviderBundle } from "./types";
@@ -54,12 +54,13 @@ export async function invokeAllUploadProviders(
   mime: string,
   sha256: string,
   captureBinding?: CaptureBinding,
+  transformOutcome?: TransformOutcome,
 ): Promise<UploadProviderBundle> {
   // Device attestation is verified once per upload request (one capture token /
   // nonce per session), not per photo — see verifyDeviceAttestation in the route.
   const [c2pa, deepfake, polygon] = await Promise.all([
     withTimeout(
-      signC2pa(buffer, mime, captureBinding),
+      signC2pa(buffer, mime, captureBinding, transformOutcome),
       { manifestCid: null, verified: false, signedBuffer: null, manifestSummary: null },
       "c2pa",
     ),
@@ -70,7 +71,7 @@ export async function invokeAllUploadProviders(
   return { c2pa, deepfake, polygon };
 }
 
-export type { CaptureBinding } from "./c2pa";
+export type { CaptureBinding, TransformOutcome } from "./c2pa";
 export type { UploadProviderBundle } from "./types";
 export type {
   C2paResult,

@@ -1,11 +1,13 @@
 import { useState, useEffect } from "react";
 import { View, ScrollView, StyleSheet } from "react-native";
-import { TextInput, Button, HelperText, ActivityIndicator } from "react-native-paper";
+import { TextInput, HelperText, ActivityIndicator } from "react-native-paper";
 import { router, useLocalSearchParams } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { supabase } from "@/lib/supabase";
 import { useAuthStore } from "@/stores/authStore";
+import { LedraButton } from "@/components/ui";
+import { colors, spacing } from "@/constants/tokens";
 
 export default function CustomerEditScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -96,7 +98,7 @@ export default function CustomerEditScreen() {
   if (isLoading) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator />
+        <ActivityIndicator color={colors.primary} />
       </View>
     );
   }
@@ -168,16 +170,14 @@ export default function CustomerEditScreen() {
           style={styles.input}
         />
 
-        <Button
-          mode="contained"
+        <LedraButton
           onPress={handleSubmit}
           loading={mutation.isPending}
           disabled={mutation.isPending}
-          buttonColor="#1a1a2e"
           style={styles.button}
         >
           保存する
-        </Button>
+        </LedraButton>
 
         {mutation.isError && (
           <HelperText type="error" style={styles.errorText}>
@@ -190,10 +190,10 @@ export default function CustomerEditScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#fafafa" },
+  container: { flex: 1, backgroundColor: colors.background },
   center: { flex: 1, justifyContent: "center", alignItems: "center" },
-  form: { padding: 16 },
-  input: { marginBottom: 8, backgroundColor: "#ffffff" },
-  button: { marginTop: 16 },
-  errorText: { marginTop: 8 },
+  form: { padding: spacing.lg },
+  input: { marginBottom: spacing.sm, backgroundColor: colors.surface },
+  button: { marginTop: spacing.lg },
+  errorText: { marginTop: spacing.sm },
 });

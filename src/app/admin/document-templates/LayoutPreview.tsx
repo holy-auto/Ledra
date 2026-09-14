@@ -1,7 +1,7 @@
 "use client";
 
 import type { LayoutConfig } from "@/types/documentTemplate";
-import type { DocType } from "@/types/document";
+import { hasNoHonorificPrefix, type DocType } from "@/types/document";
 
 const DOC_TYPE_LABELS: Record<DocType, string> = {
   estimate: "見積書",
@@ -47,7 +47,8 @@ const ISSUED_LABEL: Record<DocType, string> = {
  * layout changes in real time without needing a backend round-trip.
  */
 export default function LayoutPreview({ layout, docType }: { layout: LayoutConfig; docType: DocType }) {
-  const label = layout.title.prefix ? `御${DOC_TYPE_LABELS[docType]}` : DOC_TYPE_LABELS[docType];
+  const label =
+    layout.title.prefix && !hasNoHonorificPrefix(docType) ? `御${DOC_TYPE_LABELS[docType]}` : DOC_TYPE_LABELS[docType];
 
   const issuerBlock = (
     <div

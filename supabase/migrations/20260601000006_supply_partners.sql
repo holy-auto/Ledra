@@ -323,3 +323,31 @@ ALTER TABLE purchase_orders
   ADD COLUMN IF NOT EXISTS external_order_id text,
   ADD COLUMN IF NOT EXISTS transport_status  text CHECK (transport_status IN ('queued', 'sent', 'acked', 'failed')),
   ADD COLUMN IF NOT EXISTS transport_error   text;
+
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 【後から追記】20260601000002 / 20260601000003 が足すはずだった列を、
+-- supply_partners / supply_partner_credentials を作ったこの位置で足す。
+-- あの2本はファイル名の日付がこのファイルより前で、空 DB ではテーブルがまだ無い
+-- （どちらも「前提が無ければ skip」にしてある）。新しいファイルは作らない
+-- （out-of-order で db push が止まるため）。どちらも ADD COLUMN IF NOT EXISTS
+-- なので本番では no-op。
+DO $mig$
+BEGIN
+  IF to_regclass('public.supply_partner_credentials') IS NOT NULL THEN
+    ALTER TABLE public.supply_partner_credentials
+      ADD COLUMN IF NOT EXISTS webhook_secret_ciphertext text;
+
+    COMMENT ON COLUMN public.supply_partner_credentials.webhook_secret_ciphertext IS
+      '受注確定 Webhook の HMAC 署名検証用シークレット (secretBox 暗号化)。パートナーが生成・保持し、署名に使う。';
+  END IF;
+
+  IF to_regclass('public.supply_partners') IS NOT NULL THEN
+    ALTER TABLE public.supply_partners
+      ADD COLUMN IF NOT EXISTS is_trusted boolean NOT NULL DEFAULT false;
+
+    COMMENT ON COLUMN public.supply_partners.is_trusted IS
+      '運営が承認した信頼パートナー。全自動送信(auto-send)の対象になり得る。既定 false。';
+  END IF;
+END
+$mig$;

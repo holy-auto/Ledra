@@ -19,7 +19,7 @@ export async function GET(_request: NextRequest, ctx: RouteContext) {
       supabase
         .from("agent_invoices")
         .select(
-          "id, agent_id, invoice_number, amount, tax, total, status, period_start, period_end, issued_at, paid_at, created_at, updated_at",
+          "id, agent_id, invoice_number, subtotal, tax_rate, tax_amount, total, status, period_start, period_end, issued_at, paid_at, created_at, updated_at",
         )
         .eq("id", id)
         .eq("agent_id", agent.agent_id)

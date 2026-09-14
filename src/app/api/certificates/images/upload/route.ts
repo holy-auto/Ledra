@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { apiUnauthorized, apiInternalError } from "@/lib/api/response";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
+import { apiUnauthorized, apiInternalError, apiForbidden } from "@/lib/api/response";
+import { resolveCallerWithRole, requirePermission } from "@/lib/auth/checkRole";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { handleCertificateImageUpload } from "@/lib/certificateImages/uploadHandler";
 
@@ -25,6 +25,7 @@ export async function POST(req: NextRequest) {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
+    if (!requirePermission(caller, "certificates:edit")) return apiForbidden();
 
     return await handleCertificateImageUpload(req, caller.tenantId);
   } catch (e) {

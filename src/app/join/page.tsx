@@ -81,21 +81,23 @@ export default function InsurerRegisterPage() {
     }
   }, []);
 
-  const handleCorporateNumberChange = useCallback((value: string) => {
-    setCorporateNumber(value);
-    setLookupDone(false);
-    const cleaned = value.replace(/[-\s]/g, "");
-    if (cleaned.length === 13 && /^\d{13}$/.test(cleaned)) {
-      handleLookupCorporate(cleaned);
-    }
-  }, [handleLookupCorporate]);
+  const handleCorporateNumberChange = useCallback(
+    (value: string) => {
+      setCorporateNumber(value);
+      setLookupDone(false);
+      const cleaned = value.replace(/[-\s]/g, "");
+      if (cleaned.length === 13 && /^\d{13}$/.test(cleaned)) {
+        handleLookupCorporate(cleaned);
+      }
+    },
+    [handleLookupCorporate],
+  );
 
   // --- Step 1: Send verification code ---
   const handleSendCode = async () => {
     clearErr();
     if (!email.trim()) return setErr("メールアドレスを入力してください");
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()))
-      return setErr("有効なメールアドレスを入力してください");
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) return setErr("有効なメールアドレスを入力してください");
 
     setBusy(true);
     try {
@@ -233,9 +235,7 @@ export default function InsurerRegisterPage() {
             </svg>
           </div>
           <h1 className="text-xl font-bold text-primary">登録が完了しました</h1>
-          <p className="text-sm text-secondary">
-            審査が完了次第、ご登録のメールアドレスにご連絡いたします。
-          </p>
+          <p className="text-sm text-secondary">審査が完了次第、ご登録のメールアドレスにご連絡いたします。</p>
           <a href="/insurer/login" className="btn-primary inline-block px-8">
             ログインページへ
           </a>
@@ -267,9 +267,7 @@ export default function InsurerRegisterPage() {
           {([1, 2, 3, 4, 5, 6] as Step[]).map((s) => (
             <div
               key={s}
-              className={`h-1 flex-1 rounded-full transition-colors ${
-                s <= step ? "bg-accent" : "bg-surface-active"
-              }`}
+              className={`h-1 flex-1 rounded-full transition-colors ${s <= step ? "bg-accent" : "bg-surface-active"}`}
             />
           ))}
         </div>
@@ -291,9 +289,7 @@ export default function InsurerRegisterPage() {
                   onKeyDown={(e) => e.key === "Enter" && !busy && handleSendCode()}
                 />
               </label>
-              <p className="text-xs text-muted">
-                確認コードをメールでお送りします。
-              </p>
+              <p className="text-xs text-muted">確認コードをメールでお送りします。</p>
             </>
           )}
 
@@ -337,10 +333,10 @@ export default function InsurerRegisterPage() {
                   事業形態 <span className="text-red-500">*</span>
                 </legend>
                 <div className="flex gap-3">
-                  {([
+                  {[
                     { value: "corporation" as const, label: "法人" },
                     { value: "sole_proprietor" as const, label: "個人事業主" },
-                  ]).map((opt) => (
+                  ].map((opt) => (
                     <label
                       key={opt.value}
                       className={`flex-1 flex items-center justify-center gap-2 p-3 rounded-xl border cursor-pointer transition-colors text-sm ${
@@ -390,9 +386,7 @@ export default function InsurerRegisterPage() {
                       </div>
                     )}
                   </div>
-                  <p className="text-xs text-muted mt-1">
-                    法人番号を入力すると会社情報を自動取得します
-                  </p>
+                  <p className="text-xs text-muted mt-1">法人番号を入力すると会社情報を自動取得します</p>
                 </label>
               )}
 
@@ -467,7 +461,9 @@ export default function InsurerRegisterPage() {
                     className="mt-1 h-4 w-4 accent-accent"
                   />
                   <span className="text-sm text-primary">
-                    <a href="/terms" target="_blank" className="text-accent hover:underline">利用規約</a>
+                    <a href="/terms" target="_blank" className="text-accent hover:underline">
+                      利用規約
+                    </a>
                     に同意します <span className="text-red-500">*</span>
                   </span>
                 </label>
@@ -480,7 +476,9 @@ export default function InsurerRegisterPage() {
                     className="mt-1 h-4 w-4 accent-accent"
                   />
                   <span className="text-sm text-primary">
-                    <a href="/privacy" target="_blank" className="text-accent hover:underline">プライバシーポリシー</a>
+                    <a href="/privacy" target="_blank" className="text-accent hover:underline">
+                      プライバシーポリシー
+                    </a>
                     に同意します <span className="text-red-500">*</span>
                   </span>
                 </label>
@@ -493,7 +491,8 @@ export default function InsurerRegisterPage() {
                     className="mt-1 h-4 w-4 accent-accent"
                   />
                   <span className="text-sm text-primary">
-                    反社会的勢力でないこと、及び反社会的勢力との関係がないことを表明・確約します <span className="text-red-500">*</span>
+                    反社会的勢力でないこと、及び反社会的勢力との関係がないことを表明・確約します{" "}
+                    <span className="text-red-500">*</span>
                   </span>
                 </label>
               </div>
@@ -571,8 +570,7 @@ export default function InsurerRegisterPage() {
               </div>
 
               <div className="rounded-xl bg-amber-50 border border-amber-200 p-3 text-xs text-amber-800">
-                登録後、管理者の審査が完了するまで一部機能が制限されます。
-                審査完了後にメールでお知らせいたします。
+                登録後、管理者の審査が完了するまで一部機能が制限されます。 審査完了後にメールでお知らせいたします。
               </div>
             </>
           )}
@@ -588,7 +586,10 @@ export default function InsurerRegisterPage() {
           <div className="flex gap-3">
             {step > 1 && (
               <button
-                onClick={() => { clearErr(); setStep((s) => (s - 1) as Step); }}
+                onClick={() => {
+                  clearErr();
+                  setStep((s) => (s - 1) as Step);
+                }}
                 disabled={busy}
                 className="btn-secondary flex-1"
               >

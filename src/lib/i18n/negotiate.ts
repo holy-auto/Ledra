@@ -8,6 +8,10 @@
  */
 import { DEFAULT_LOCALE, SUPPORTED_LOCALES, type Locale, isSupportedLocale } from "./locales";
 
+// ponytail: BCP 47 language tag aliases for supported locales.
+// "tl" (Tagalog) → "fil" (Filipino) — same language, different ISO codes.
+const LOCALE_ALIASES: Record<string, Locale> = { tl: "fil" };
+
 /**
  * Parse Accept-Language and return the best-matching supported locale, or
  * DEFAULT_LOCALE if none match.
@@ -27,7 +31,9 @@ export function negotiateLocale(input: { headers: Headers } | Headers): Locale {
       const q = qPart ? Number(qPart.trim().slice(2)) : 1;
       return { tag: tag.trim().toLowerCase(), q: Number.isFinite(q) ? q : 0 };
     })
-    .filter((e) => e.tag.length > 0)
+    // RFC 9110 §12.5.4: q=0 は「その言語は受け入れ不可」。候補から外す。
+    // 外さないと `tl;q=0` が別名解決で fil を返し、`vi;q=0` が vi を返す。
+    .filter((e) => e.tag.length > 0 && e.q > 0)
     .sort((a, b) => b.q - a.q);
 
   for (const { tag } of ranked) {
@@ -36,6 +42,11 @@ export function negotiateLocale(input: { headers: Headers } | Headers): Locale {
     // Language-only prefix (e.g. "ja-JP" → "ja", "en-US" → "en")
     const primary = tag.split("-")[0];
     if (isSupportedLocale(primary)) return primary;
+    // Alias (e.g. "tl" → "fil")
+    // `in` は Object.prototype 由来のキーも真になる。`Accept-Language: constructor`
+    // で Object コンストラクタ（関数）を Locale として返してしまう。ヘッダは
+    // クライアントが自由に送れるので、own property だけ見る。
+    if (Object.hasOwn(LOCALE_ALIASES, primary)) return LOCALE_ALIASES[primary];
   }
 
   return DEFAULT_LOCALE;

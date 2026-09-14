@@ -14,11 +14,7 @@ export default async function AdminInsurersPage() {
 
   return (
     <main className="space-y-6">
-      <PageHeader
-        tag="INSURERS"
-        title="保険会社管理"
-        description="加盟保険会社の一覧・審査・プラン管理"
-      />
+      <PageHeader tag="INSURERS" title="保険会社管理" description="加盟保険会社の一覧・審査・プラン管理" />
       <InsurerReviewClient />
     </main>
   );

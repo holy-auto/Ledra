@@ -9,13 +9,7 @@ export type CommissionType = "percentage" | "fixed";
 
 /** Referral status */
 export type ReferralStatus =
-  | "pending"
-  | "contacted"
-  | "in_negotiation"
-  | "trial"
-  | "contracted"
-  | "cancelled"
-  | "churned";
+  "pending" | "contacted" | "in_negotiation" | "trial" | "contracted" | "cancelled" | "churned";
 
 /** Commission payout status */
 export type CommissionStatus = "pending" | "approved" | "paid" | "failed" | "cancelled";

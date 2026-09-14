@@ -43,8 +43,28 @@ export type CspOptions = {
   isDev: boolean;
 };
 
+/**
+ * C-L4 是正 (2026-09-08): `https://*.supabase.co` / `https://*.supabase.in`
+ * ワイルドカードは自プロジェクト以外の任意の Supabase プロジェクトへの
+ * img-src/connect-src を許可してしまう。`NEXT_PUBLIC_SUPABASE_URL`
+ * （envValidation で必須）から実際のプロジェクトホストを取り出し、
+ * そのホストだけを許可する。取得できない場合のみ既定のワイルドカードに
+ * fail open する（CSP はここが緩んでも他の防御層が別途あるため、
+ * env 未設定時にアプリ全体を止める理由にはしない）。
+ */
+function supabaseCspHosts(): string[] {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  if (!url) return ["https://*.supabase.co", "https://*.supabase.in"];
+  try {
+    return [`https://${new URL(url).host}`];
+  } catch {
+    return ["https://*.supabase.co", "https://*.supabase.in"];
+  }
+}
+
 export function buildCsp(options: CspOptions): Record<CspDirective, string[]> {
   const { nonce, isDev } = options;
+  const supabaseHosts = supabaseCspHosts();
 
   const scriptSrc = [
     "'self'",
@@ -74,8 +94,7 @@ export function buildCsp(options: CspOptions): Record<CspDirective, string[]> {
       "'self'",
       "data:", // base64 thumbnails, react-pdf rasterization
       "blob:", // client-side QR generation, image upload preview
-      "https://*.supabase.co",
-      "https://*.supabase.in",
+      ...supabaseHosts,
       "https://api.qrserver.com", // QR fallback (referral links, certificate PDF)
       // Google Analytics 4 — pixel / no-cors transport fallback
       "https://*.google-analytics.com",
@@ -88,8 +107,7 @@ export function buildCsp(options: CspOptions): Record<CspDirective, string[]> {
     ],
     "connect-src": [
       "'self'",
-      "https://*.supabase.co",
-      "https://*.supabase.in",
+      ...supabaseHosts,
       "https://api.stripe.com",
       "https://*.sentry.io",
       "https://*.ingest.sentry.io",

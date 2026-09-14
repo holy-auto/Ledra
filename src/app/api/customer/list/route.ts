@@ -34,13 +34,13 @@ export async function GET(req: Request) {
     if (tenantToken) {
       const tenantSession = await validateSession(tenantId, tenantToken);
       if (tenantSession) {
-        phoneHash = tenantSession.phone_last4_hash;
-        sessionEmail = tenantSession.email;
+        phoneHash = tenantSession.phone_last4_hash ?? "";
+        sessionEmail = tenantSession.email ?? undefined;
         sessionCustomerId = tenantSession.customer_id;
       }
     }
 
-    if (!phoneHash && globalToken) {
+    if (!phoneHash && !sessionCustomerId && globalToken) {
       const portalAccess = await resolvePortalTenantAccessByGlobalToken(tenant_slug, globalToken);
       if (portalAccess) {
         phoneHash = portalAccess.phone_last4_hash;
@@ -50,7 +50,9 @@ export async function GET(req: Request) {
       }
     }
 
-    if (!phoneHash) return apiUnauthorized();
+    // LINE ログインのセッションは phone hash を持たず customer_id だけで scope される。
+    // どちらも無ければ本当に未認証。
+    if (!phoneHash && !sessionCustomerId) return apiUnauthorized();
 
     if (action === "history") {
       const history = await listHistoryForCustomer(tenantId, phoneHash, sessionEmail, sessionCustomerId);
@@ -64,7 +66,9 @@ export async function GET(req: Request) {
 
     if (action === "profile") {
       const profile = await getCustomerProfile(tenantId, phoneHash, sessionEmail, sessionCustomerId);
-      return apiJson({ ok: true, profile });
+      // 連絡先の自己登録は customer_id 付きセッションでしか通らない (更新対象の行を
+      // 一意に決められないため)。フォームを出してから 401 にしないよう、UI に伝える。
+      return apiJson({ ok: true, profile: profile ? { ...profile, canEditContact: !!sessionCustomerId } : null });
     }
 
     const rows = await listCertificatesForCustomer(tenantId, phoneHash, sessionEmail, sessionCustomerId);

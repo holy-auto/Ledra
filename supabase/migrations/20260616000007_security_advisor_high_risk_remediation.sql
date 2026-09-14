@@ -27,20 +27,32 @@ alter view public.invoices set (security_invoker = on);
 --    ever called server-side via the service-role client. Revoke client
 --    execution (incl. the PUBLIC grant where present) and keep service_role.
 -- ---------------------------------------------------------------------------
-revoke execute on function public.auth_uid_by_email(text) from public, anon, authenticated;
-grant  execute on function public.auth_uid_by_email(text) to service_role;
+-- 【後から内容だけ修正】ここで権限を締める関数のうち auth_uid_by_email / get_auth_email /
+-- get_auth_email_scoped は**本番にしかなく**、マイグレーションでは 20260826000005
+-- （ずっと後ろ）でしか作られない。無い関数への revoke/grant は落ちるので、
+-- あるものだけ処理する。版番号は変えていないので本番への影響は無い。
+do $mig$
+declare
+  sig text;
+begin
+  foreach sig in array array[
+    'public.auth_uid_by_email(text)',
+    'public.get_auth_email(uuid)',
+    'public.get_auth_email_scoped(uuid)',
+    'public.get_auth_emails_by_ids(uuid[])',
+    'public.check_auth_email_exists(text)'
+  ] loop
+    if to_regprocedure(sig) is not null then
+      execute format('revoke execute on function %s from public, anon, authenticated', sig);
+      execute format('grant  execute on function %s to service_role', sig);
+    end if;
+  end loop;
+end
+$mig$;
 
-revoke execute on function public.get_auth_email(uuid) from public, anon, authenticated;
-grant  execute on function public.get_auth_email(uuid) to service_role;
 
-revoke execute on function public.get_auth_email_scoped(uuid) from public, anon, authenticated;
-grant  execute on function public.get_auth_email_scoped(uuid) to service_role;
 
-revoke execute on function public.get_auth_emails_by_ids(uuid[]) from public, anon, authenticated;
-grant  execute on function public.get_auth_emails_by_ids(uuid[]) to service_role;
 
-revoke execute on function public.check_auth_email_exists(text) from public, anon, authenticated;
-grant  execute on function public.check_auth_email_exists(text) to service_role;
 
 -- ---------------------------------------------------------------------------
 -- 3) WARN 0024 — RLS policies with always-true USING/WITH CHECK on a write
@@ -53,8 +65,25 @@ grant  execute on function public.check_auth_email_exists(text) to service_role;
 --     RLS, and no client (user-token) code touches these tables, so the broad
 --     policy is pure over-exposure. Drop it; the table keeps RLS enabled with no
 --     policy, denying anon/authenticated while service-role access is unchanged.
-drop policy if exists service_role_all_line_link_tokens on public.line_link_tokens;
-drop policy if exists service_role_all_line_pending_links on public.line_pending_links;
+-- 【後から内容だけ修正】`line_link_tokens` / `line_pending_links` は**本番にしか無い**
+-- （どのマイグレーションも作っていない。`20260603010000_fk_covering_indexes.sql` の
+-- コメントにも「ドリフト」テーブルとして列挙されている）。
+--
+-- `DROP POLICY IF EXISTS ... ON <欠けたテーブル>` は **PostgreSQL 16 では NOTICE で
+-- skip されるが、15 では `relation does not exist (SQLSTATE 42P01)` で落ちる。**
+-- 手元の再生は 16、Supabase は 15 なので、手元では一度も再現しなかった。
+-- to_regclass で見てから実行する（版に依存しない）。
+do $mig$
+declare
+  t text;
+begin
+  foreach t in array array['public.line_link_tokens', 'public.line_pending_links'] loop
+    if to_regclass(t) is not null then
+      execute format('drop policy if exists service_role_all_%s on %s', split_part(t, '.', 2), t);
+    end if;
+  end loop;
+end
+$mig$;
 
 -- 3b) market_inquiries / market_inquiry_messages: INSERT policies used
 --     WITH CHECK(true). Inquiries/replies are written by the service-role client

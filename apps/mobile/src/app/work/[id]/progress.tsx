@@ -2,8 +2,6 @@ import { useState } from "react";
 import { View, StyleSheet, ScrollView } from "react-native";
 import {
   Text,
-  Card,
-  Button,
   RadioButton,
   TextInput,
   Snackbar,
@@ -14,6 +12,8 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import { useAuthStore } from "@/stores/authStore";
 import { mobileApi } from "@/lib/api";
+import { LedraButton } from "@/components/ui";
+import { colors, spacing, radius, typography, shadows } from "@/constants/tokens";
 
 const PROGRESS_LABELS = [
   "受付完了",
@@ -77,69 +77,61 @@ export default function WorkProgressScreen() {
     <>
       <Stack.Screen options={{ title: "進捗公開" }} />
       <ScrollView style={styles.container}>
-        <Card style={styles.card} mode="outlined">
-          <Card.Content>
-            <Text variant="titleMedium" style={styles.heading}>
-              ステータスを選択
-            </Text>
-            <RadioButton.Group
-              onValueChange={setSelectedLabel}
-              value={selectedLabel}
-            >
-              {PROGRESS_LABELS.map((label) => (
-                <RadioButton.Item
-                  key={label}
-                  label={label}
-                  value={label}
-                  labelStyle={styles.radioLabel}
-                  style={styles.radioItem}
-                />
-              ))}
-            </RadioButton.Group>
-          </Card.Content>
-        </Card>
+        <View style={styles.card}>
+          <Text style={styles.heading}>ステータスを選択</Text>
+          <RadioButton.Group
+            onValueChange={setSelectedLabel}
+            value={selectedLabel}
+          >
+            {PROGRESS_LABELS.map((label) => (
+              <RadioButton.Item
+                key={label}
+                label={label}
+                value={label}
+                labelStyle={styles.radioLabel}
+                style={styles.radioItem}
+                color={colors.primary}
+                uncheckedColor={colors.textTertiary}
+              />
+            ))}
+          </RadioButton.Group>
+        </View>
 
-        <Card style={styles.card} mode="outlined">
-          <Card.Content>
-            <Text variant="titleMedium" style={styles.heading}>
-              メモ（任意）
-            </Text>
-            <TextInput
-              mode="outlined"
-              multiline
-              numberOfLines={3}
-              value={note}
-              onChangeText={setNote}
-              placeholder="お客様への補足メッセージ..."
-              style={{ backgroundColor: "#ffffff" }}
-            />
-          </Card.Content>
-        </Card>
+        <View style={styles.card}>
+          <Text style={styles.heading}>メモ（任意）</Text>
+          <TextInput
+            mode="outlined"
+            multiline
+            numberOfLines={3}
+            value={note}
+            onChangeText={setNote}
+            placeholder="お客様への補足メッセージ..."
+            style={{ backgroundColor: colors.surface }}
+          />
+        </View>
 
         <View style={styles.submitArea}>
-          <Text variant="bodySmall" style={styles.notice}>
+          <Text style={styles.notice}>
             この内容はお客様に公開されます
           </Text>
-          <Button
-            mode="contained"
+          <LedraButton
             icon="send"
             onPress={() => publishMutation.mutate()}
             loading={publishMutation.isPending}
             disabled={publishMutation.isPending}
-            style={styles.submitButton}
-            buttonColor="#1a1a2e"
           >
             進捗を公開
-          </Button>
+          </LedraButton>
         </View>
 
-        <View style={{ height: 40 }} />
+        <View style={{ height: spacing["4xl"] }} />
       </ScrollView>
 
       <Snackbar
         visible={!!snackbar}
         onDismiss={() => setSnackbar("")}
         duration={2000}
+        style={{ backgroundColor: colors.textPrimary }}
       >
         {snackbar}
       </Snackbar>
@@ -148,29 +140,34 @@ export default function WorkProgressScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#fafafa" },
+  container: { flex: 1, backgroundColor: colors.background },
   card: {
-    marginHorizontal: 16,
-    marginTop: 16,
-    backgroundColor: "#ffffff",
+    marginHorizontal: spacing.lg,
+    marginTop: spacing.lg,
+    backgroundColor: colors.surface,
+    borderRadius: radius.card,
+    padding: spacing.lg,
+    ...shadows.card,
   },
-  heading: { fontWeight: "700", color: "#1a1a2e", marginBottom: 8 },
+  heading: {
+    ...typography.titleMedium,
+    color: colors.textPrimary,
+    marginBottom: spacing.sm,
+  },
   radioItem: {
-    paddingVertical: 4,
+    paddingVertical: spacing.xs,
   },
   radioLabel: {
-    fontSize: 15,
+    ...typography.body,
+    color: colors.textPrimary,
   },
   submitArea: {
-    padding: 16,
-    gap: 12,
+    padding: spacing.lg,
+    gap: spacing.md,
   },
   notice: {
-    color: "#71717a",
+    ...typography.bodySmall,
+    color: colors.textSecondary,
     textAlign: "center",
-  },
-  submitButton: {
-    borderRadius: 8,
-    paddingVertical: 4,
   },
 });
