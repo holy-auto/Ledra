@@ -13,7 +13,7 @@
 - **`apps/mobile` の `@stripe/stripe-terminal-react-native` を beta.31 → beta.32**。
   Dependabot が再生成したロックファイルは `expo-font` の peer エントリを落として
   `npm ci` を EUSAGE で壊していたため、手元でロックファイルを作り直した。
-  結果の差分は意図した2ハンクのみ（Dependabot 版は余計な5ハンクを含んでいた）。
+  結果の差分は意図した2ハンクのみ（Dependabot 版は6ハンクで、余計なものが4つ）。
   - **このバンプは無害な patch ではない。** beta.32 は Expo config plugin に
     `withDangerousMod` を追加し、`MainApplication` の Tap to Pay ガードの位置を変える。
     実際に `npx expo prebuild` して生成物を比較したところ、
