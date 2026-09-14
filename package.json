@@ -35,13 +35,14 @@
     "check:bundle-size": "node scripts/check-bundle-size.js",
     "check:schema": "node scripts/check-schema.mjs",
     "check:context-dates": "node scripts/check-context-dates.mjs",
+    "check:ox-override": "node scripts/check-ox-override.mjs",
     "check:resurrected": "bash scripts/check-resurrected-files.sh",
     "build:analyze": "ANALYZE=true next build",
     "db:typegen": "supabase gen types typescript --db-url \"${SUPABASE_DB_URL:?db-migrate.yml と同じ接続URIを設定してください}\" --schema public > src/types/db.generated.ts.tmp && mv src/types/db.generated.ts.tmp src/types/db.generated.ts"
   },
   "overrides": {
     "picomatch": "^4.0.4",
-    "ox": "0.14.29",
+    "ox": "0.14.44",
     "esbuild": "0.28.1",
     "ws": "^8.21.0",
     "undici": "^7.28.0",
