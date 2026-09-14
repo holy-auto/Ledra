@@ -4,6 +4,462 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-09-13 証明書発行完了画面に収益還元プレビューカードを追加
+
+- 証明書発行直後の成功画面（`/admin/certificates/new/success`）に、
+  「技術が、資産になる。」という価値訴求カードを追加。
+- 記録がブロックチェーンに刻まれ、パスポートレポート販売時に収益還元される
+  仕組みを、発行完了の瞬間に店舗オーナーへ伝える。
+- DB から `vehicle_report_settings` の現在価格を取得し、
+  レポート販売あたりの店舗最大収益（価格 × 70%）を算出して表示。
+- `/admin/report-revenue`（既存の収益ダッシュボード）へのリンクも配置。
+- ファイル変更: `src/app/admin/certificates/new/success/page.tsx` のみ。
+  新規ファイル・API ルートの追加なし。
+- 背景: 価値仮説フレームワーク分析（PR #965）で「Ledra の独自価値3軸は
+  すべて Lv.1 では不可視」と判明。最初の体験で価値を体感させる施策の第一弾。
+
+## 2026-09-11 Tap to Pay 決済が非承認でアプリを閉じていた場合に通知（要件5.12）
+
+- Apple Tap to Pay Publishing Entitlement 要件チェックリスト v1.7（v1.6からの
+  差分はこの1項目のみ）に対応。決済が非承認で、かつ結果を見る前にアプリを
+  バックグラウンドへ回した/閉じた場合、ローカル通知で結果を知らせる。
+- `apps/mobile/src/hooks/useTerminal.ts` の `processCardPayment` の失敗
+  catch ブロック（成功以外の全結果が集約する唯一の箇所）に、
+  `AppState.currentState !== "active"` を条件にローカル通知
+  （`expo-notifications`）を追加。判定は `src/lib/paymentOutcomeNotify.ts`
+  に切り出し、自己チェック付き。
+- クライアント側のみの対応。NFCタップ中にアプリごと強制終了された場合は
+  未カバー（サーバー側 Stripe webhook + push 送信の新規構築が必要になるが、
+  現状そのインフラ自体が存在しないため今回は見送り。理由は DECISION_LOG 参照）。
+- `/code-review` で2件の指摘。(1) カードは既に切られたが記録
+  （`/pos/terminal/capture`）だけ失敗したケースを「決済が完了しませんでした」
+  と同じ文言で通知すると、店舗が二重決済してしまう危険があった →
+  `pendingCapturePaymentIntentId` の有無で文言を分岐。(2) Tap to Pay の
+  NFC読み取りシートの閉じ際に `AppState` が一瞬 "inactive" を挟む可能性
+  （未検証）を指摘され、300ms 後に再確認してから送る形にした
+  （ponytail、実機での遷移時間計測は未実施）。
+- PRを ready化した際の Codex レビューで指摘、修正:
+  (3) `Notifications.setNotificationHandler` が未設定だと、Expo は
+  フォアグラウンド/inactive中に届いた通知を既定でバナー表示しない
+  （通知自体は送られるが実際には見えない）。`push.ts` に設定を追加。
+  (4) 【当初の修正は動かないコードだった】`confirmError.paymentIntent`で
+  「実は成功していたか」を見る初回修正を入れたが、Codex に
+  「使用中のSDK(beta.31)のJSラッパーは confirmPaymentIntent のエラー時に
+  paymentIntent を確定的に undefined にする」と再指摘され、node_modules の
+  実装を確認して事実だと確認した。型定義に `paymentIntent?` があっても
+  実際には使えない値だった。サーバー側の既存GET（ポーリング用に元々あった
+  `/pos/terminal/create-payment-intent?id=`）で実際の状態を確認する方式に
+  作り直した。
+  (5) `captureOnServer` が401を返すと、`mobileApi`が投げる前に
+  `handleUnauthorized→signOutEverywhere→resetPayment()`が走り、
+  catchブロックに来る前に`pendingCapturePaymentIntentId`が消えていた。
+  store ではなくこの呼び出しに閉じたローカル変数で「課金済みか」を
+  判定するよう直した。
+  (6) 上記(4)のサーバー確認自体が失敗した場合、「確認できない」を
+  「非承認」として扱っていた（自分が直前に直したのと同じ型のバグを
+  フォールバック側に作っていた）。「不明」を安全側（課金済みかもしれない
+  扱い）に倒し、記録リトライ経路（`captureOnServer`側でStripeの実際の
+  状態を再確認する）に委ねるよう直した。
+  (7) 同じ修正について再度2件。(a) `"succeeded"`だけを非承認以外として
+  扱っていたため、`"processing"`等の未確定状態を非承認扱いにしていた
+  →`"requires_payment_method"`/`"canceled"`という明確な終端状態のときだけ
+  非承認として扱うよう変更。(b) 確認自体が401（トークン切れ）で失敗すると
+  `mobileApi`内部で既に`signOutEverywhere→resetPayment()`が走っているのに、
+  その直後に`store.setPendingCapture`を呼んで書き戻していた。共有端末で
+  次にログインした別ユーザーが前のユーザーの決済を引き継ぐ危険があった
+  →401由来のときはstoreに書かず、通知文言の判定にのみ反映するよう変更。
+- 対象: `apps/mobile/src/hooks/useTerminal.ts`,
+  `apps/mobile/src/lib/paymentOutcomeNotify.ts`（新規）。
+
+## 2026-09-11 typegen の専用トークン対応をマージした（#1056）。設定とシークレットは未登録のまま
+
+- **マージ済み**（`b38a7445`、squash）。`db-typegen.yml` の
+  `peter-evans/create-pull-request` に `token: ${{ secrets.TYPEGEN_TOKEN || github.token }}`
+  が入った。**シークレットが登録されれば、2箇所の穴が両方とも解ける。**
+- **登録されるまで挙動は変わらない。** `GITHUB_TOKEN` へ落ちて 2026-09-07 以前と同じ。
+  ただし黙って落ちないよう、直前の warning ステップが2つの症状を名指しで出す。
+  **`db-typegen.yml` は毎回最終ステップで赤くなり続ける。**
+- **残っているのはリポジトリ側の2操作で、Claude からは実行できない**:
+  Actions の PR 作成許可と、`contents: write` + `pull-requests: write` を持つ
+  **PAT** の `TYPEGEN_TOKEN` 登録。OPEN_QUESTIONS に依頼として残っている。
+- 実体はワークフローの変更1本。差分の大半は **main 取り込み6回**と事業ログ。
+  この PR は 2026-09-09 に開いてから 2026-09-11 まで開いており、その間に main が
+  6回動いた。**開けておくこと自体のコストが実測で出た**（下記）。
+
+### 開けておいた2日間に起きたこと（すべて中身と無関係のコスト）
+
+| 事象 | 回数 |
+|---|---|
+| main 取り込み | 6回 |
+| MISTAKE_LEDGER の ID 繰り上げ | 4回（M-070 → 071 → 072 → 074 → 081） |
+| その繰り上げで参照を壊した | 3回 |
+| 他人（main 側）の参照を自分のエントリへ向けた | 1回（2箇所） |
+
+- **ID の空き番号は毎回飛ぶ。** 3回目は2つ、4回目は7つ。「main の最大 ID + 1」を
+  毎回引き直さないと当たらない。
+- **一括置換で3回同じ壊し方をした。** 経過の表にある旧 ID まで書き換わるのが2回、
+  **main 自身の M-074 への参照2箇所**（DECISION_LOG / RELEASE_LOG。main の M-074 は
+  型 B の別エントリ）まで書き換えたのが1回。
+  `git show origin/main:<file> | grep -c '<旧ID>'` との突き合わせで気づいて戻した。
+- **文章の警告は効かなかった。** OPEN_QUESTIONS にも次回の作業手順にも
+  「一括置換は危険」と書いたうえで、同じことをした。手順を
+  **grep 1回で判定できる形**（置換前後で main 側の出現数と突き合わせる）に書き換えた。
+
+### 途中で破棄したもの
+
+- `next` / `sharp` のロックファイル更新。CI の `Security audit` が赤くなったため入れたが、
+  **同じ CVE 3件を #1054 が先に main へ入れていた**（`b9dba57e`）。main 取り込み時に
+  破棄して main 側を採用したので、**この PR に依存の変更は残っていない**。
+  「自分の PR のせいか」は調べたのに「誰かが既に直しているか」を調べなかった
+  見落とし（M-081）。
+
+### マージ後に判明した誤り（Codex レビュー3件、#1065 で修正）
+
+**レビューはマージの20秒前に届いていたが、読まずにマージした**（M-082）。3件とも実在した。
+
+- **`TYPEGEN_TOKEN` の権限記述が classic PAT に対して誤りだった。**
+  `contents: write` / `pull-requests: write` は **fine-grained の権限名**で、
+  classic は OAuth スコープ（private なら `repo`）を使う。**classic を選んだ人は
+  その項目を画面で探しても見つからない。** ワークフローのコメントを両方併記へ修正。
+- **OPEN_QUESTIONS に同じ件の項が2つあり、古い方が「PAT か GitHub App トークン」を
+  勧めたままだった。** App のインストールトークンは1時間で失効するので使えない。
+  方針は DECISION_LOG 2026-09-09 へ移っているので、古い項を削除。
+- **Actions の PR 作成許可は PAT を使うなら不要で、有効化はリポジトリ全体に効く**
+  （`pull-requests: write` を要求する全ワークフローが PR を作成・承認できるようになる）。
+  しかも有効化してもフォールバック経路は直らない（`GITHUB_TOKEN` の push は
+  CI を起動しないまま）。**2 だけで自動化は完結する。**
+
+### 副産物
+
+- **間欠的なテスト失敗を特定した。** `src/lib/line/__tests__/webhookEvents.test.ts` の
+  「falls back to the normal inbound record when there is no active vehicle-photo flow」付近。
+  **単体では12回連続で通り、全体実行のときだけ落ちる**（実測5回中2回）ので、
+  ファイル単体の不具合ではなく並列実行時の干渉かタイミング。**assertion 本体は未取得。**
+  OPEN_QUESTIONS に次に捕まえる手順とあわせて起票済み。
+
+検証（head `b80e09bb`、マージ直前に数え直し）: `ci-parallel-checks.sh` の6検査すべて通過
+（`check:context-dates` 1285件）、`npm audit --audit-level=high --omit=dev` で
+`found 0 vulnerabilities`、`## M-` の重複は6組のみ（取り込み前から main 側にあり増えていない）、
+CI 全11チェック緑。
+
+## 2026-09-09 next / sharp の脆弱性による CI 停止 —— #1054 と同じ修正を並行して作り、こちらは破棄した
+
+- **成果物は残っていない。** 同じ CVE 3件を #1054 が先に main へ入れており
+  （`b9dba57e`「CI「Security audit」ゲートが検出したCVE3件をnpm audit fixで解消」）、
+  main 取り込み時にこちらの `package-lock.json` は捨てて main 側を採用した。
+- 経緯: #1056 の CI が `Security audit`（`npm audit --audit-level=high --omit=dev`）で
+  赤くなり、main でも同じステップで赤いことを確認した（run 34357806973、`0ddd8e44`）。
+  **同じ問題を直している PR が開いていないかを確認しないまま**、`next` 16.2.11 → 16.3.4 /
+  `sharp` 0.35.3 → 0.35.4 のロックファイル更新を作って push した（`f46faeec`）。
+  その約1時間後に #1054 がマージされ、衝突して初めて重複に気づいた（M-081）。
+- **結果として main の方が広い**: #1054 は `npm audit fix` を通しているので
+  `fflate`（moderate、`posthog-js` 配下）も 0.4.9 に上がっている。こちらは
+  「しきい値 high に届かないので触らない」と判断して残していた。
+- 取り込み後に確認: `npm install --package-lock-only` でロックファイルに差分が出ない
+  （main のロックが merge 後の `package.json` と整合）、`found 0 vulnerabilities`。
+- **この件で残った実体は事業ログだけ**（この項、DECISION_LOG、OPEN_QUESTIONS の
+  「誰も何も変えていないのに CI 全体が赤くなる」、MISTAKE_LEDGER M-081）。
+
+## 2026-09-09 typegen が専用トークンを使えるようにした（設定とシークレットは未登録）
+
+- `db-typegen.yml` の `peter-evans/create-pull-request` に `token:` を渡していなかった
+  ため、既定の `GITHUB_TOKEN` が使われ、**2箇所で自動化が切れていた**
+  （PR が作れない／PR を人が作っても CI が走らない。RELEASE_LOG 2026-09-08）。
+- `token: ${{ secrets.TYPEGEN_TOKEN || github.token }}` にした。**シークレットが
+  登録されれば両方とも解ける**（PAT / GitHub App トークンの push と PR は他の
+  workflow を起動する —— create-pull-request の `docs/concepts-guidelines.md` で確認）。
+- **未登録でも壊れない。** `GITHUB_TOKEN` へ落ちて 2026-09-07 以前と同じ挙動になる。
+  ただし黙って落ちないよう、直前に warning ステップを置いて**2つの症状を名指しで出す**
+  （PR 作成の失敗メッセージは設定の話しかせず、CI が走らない方には気づけないため）。
+  トークンあり／なし／変数そのものが無い、の3分岐を手元で実行して確認済み。
+- **残っているのはリポジトリ側の2操作で、Claude からは実行できない**:
+  Actions の PR 作成許可（設定）と、**PAT** の `TYPEGEN_TOKEN` 登録（シークレット）。
+  OPEN_QUESTIONS と DECISION_LOG 2026-09-09 に依頼として残した。
+- **GitHub App はこの形では使えない**（同 PR 内の `/code-review` で訂正）。
+  インストールアクセストークンは**1時間で失効する**ので、シークレットに保存すると
+  ほぼ毎回 401 になる。App を採るなら APP_ID と秘密鍵を登録し、実行のたびに
+  発行する別構成が要る。
+- **`TYPEGEN_TOKEN` が登録されるまで、このワークフローは毎回最終ステップで
+  赤くなり続ける**（この PR で変わっていない）。赤が常態になる前に登録するか、
+  赤の意味を変える判断が要る（M-047 の系列）。
+- **この変更は通しで検証していない。** 実際に走るのはシークレット登録後の初回実行が最初。
+## 2026-09-11 stripe-event-monitor の詰まりアラートをSentry+メールの二重通知にした
+
+- `src/app/api/cron/stripe-event-monitor/route.ts`: `sendStuckEventsAlert()` が
+  `RESEND_API_KEY`/`CONTACT_TO_EMAIL` 両方揃わないとメール送信自体をスキップし、
+  それ以外の通知経路が無かった。本番で55日間気づかれなかった詰まりイベントを
+  ログから発見（DECISION_LOG 参照）。
+- Sentry (`captureMessage`, tag `cron_job:stripe-event-monitor`) をメール設定の
+  有無に関わらず無条件で発火させ、`RESEND_API_KEY` の事前チェックは削除して
+  `sendEmail()` の Resend→SendGrid フォールバックに委ねるようにした。
+  必須チェックは送信先 `CONTACT_TO_EMAIL` の有無のみ。
+- テスト2件追加（`route.test.ts`）、既存5件+新規2件で計7件 pass。
+
+## 2026-09-13 モバイルで潰れる固定列グリッドを直した（#924 の作り直し）
+
+PR #924（35ファイルで衝突）をマージせず、**現在の main で作り直した**。
+衝突解決より安く、かつ #924 の指摘のうち**今のコードでは誤りになったもの**を落とせる。
+
+**接頭辞を足したグリッド36箇所・`col-span` 4箇所、計22ファイル。**
+
+| 変更 | 件数 |
+|---|---:|
+| `grid-cols-1 sm:grid-cols-2` | 27 |
+| `grid-cols-1 sm:grid-cols-3` | 7 |
+| `grid-cols-2 sm:grid-cols-4` | 2 |
+
+**一律置換をしなかった理由**: 固定が正解のものが混ざっている。カレンダーの曜日列
+（`WEEKDAYS.map` の7列）は7列でなければ意味を成さず、25セルの装飾グリッドは
+`w-16 h-16` の中の飾り、`DataTable` の2列は**それ自体がモバイル用のカード表示**。
+マーケティングとピッチ資料は**製品画面のミニチュア模型**（`text-[0.5rem]` の疑似
+ダッシュボード）と固定レイアウトのスライドなので、検査の対象範囲から外した。
+
+**`PageBar`**: アクション群が `shrink-0` のままで横にはみ出していた。
+最初 `flex-wrap` を足したが、**これは効かない** —— `flex-shrink:0` の要素は
+max-content 幅になり、折り返しコンテナの max-content は「全項目を1行に並べた幅」
+なので wrap が発火しない（`/code-review` の指摘）。`shrink-0` を外して `min-w-0` を
+付ける形に直した。
+
+**`col-span` の追随漏れ**: `grid-cols-1 sm:grid-cols-2` に変えた `StoresClient` で、
+子の `col-span-2` をそのままにしていた。1列グリッドに `col-span-2` は**暗黙の
+2列目**を作るので、モバイルで右に12pxの死に余白が出る。`sm:col-span-2` に直した
+（`/code-review` の指摘）。変更した全グリッドを走査して、他に同じ形が無いことを確認済み。
+
+**`OnboardingFunnelSection`**: 12列グリッドで**子も固定**（`col-span-3 sm:col-span-3`）
+だったため、どの幅でも12列のまま。400px でラベル欄が約78pxしかない。モバイルでは
+ラベルを全幅、バーと件数を次行にした。なお `PackageEditor` も12列だが、そちらは
+**子が `col-span-12 sm:col-span-4` と応答的**なので正しい書き方であり、変更しない。
+
+**#924 の指摘のうち1件は、今のコードでは誤りだった。** 「`insurer/layout.tsx` に
+パディングが無い」はその通りだが、**insurer の各ページは自前で `p-6` を持っている**。
+レイアウト側に足すと二重パディングになり、360px 幅で左右 40px を取られる。適用しない。
+
+**回帰検査** `src/lib/__tests__/responsiveGrids.test.ts`。当初は正規表現でソース全体の
+固定列を数える形だったが、`/code-review` に2つの取りこぼしを指摘された ——
+`grid-cols-[2-9]` が **`grid-cols-12` に当たらず**、``className={`...`}`` の
+**テンプレートリテラルも見ていなかった**。構文木（既存の `astScan` / `sourceScan` を再利用）
+で見る形に作り替え、さらに**壊れる条件そのもの**（素の固定列 × 中に実際の
+`input` / `select` / `textarea` がある）だけを見るようにした。
+リポジトリ全体の固定列は60箇所以上あり一覧にしても根拠が薄れるが、この条件なら3箇所まで
+絞れる。作り替えたことで**旧検出器が見落としていた `LessonForm` の1件**も見つかった。
+変異3通り（接頭辞を剥がす／12列＋テンプレートリテラルで新規追加／許容一覧から外す）で
+赤を確認済み。
+
+なお初回はこの検査自体が **CI で 5 秒のタイムアウトに掛かって落ちた**（手元 2.5 秒、
+ランナーは数倍遅い）。構文木に通す前に文字列で足切りし（`grid-cols-` と `<input` の
+両方を含むファイルのみ。どちらも必要条件なので取りこぼさない）、3300 → 70 ファイル・
+本体 707ms にした。足切り後も変異3通りが赤であることを再確認している（M-084）。
+
+**既知の未対応**: `src/app/admin/documents/DocumentForm.tsx` の行アイテム編集は
+固定10トラック（`28px_96px_...` で計664px以上）で、モバイル用の代替表示が無い。
+class の調整では直らず**再設計が要る**ため、この PR では触っていない（OPEN_QUESTIONS）。
+
+## 2026-09-13 滞留していたドラフト PR 3件をマージした
+
+**放置していた調査・分析が main に入っていなかった。** ブランチの中にしか無い知識は、
+誰も読めない。衝突ゼロを実地で確認した上で3件をマージした。
+
+| PR | 中身 |
+|---|---|
+| #981 | 本番マイグレーション停止の根因（台帳に書く経路が2つある） |
+| #913 | C2PA Conformance Program v0.2 の適合ギャップ分析 |
+| #965 | 価値仮説・ターゲット仮説・国内競合比較 |
+
+いずれもドキュメントのみで、実行時挙動は変えていない。
+
+**#981 の根因は今も生きている。** `list_branches` で確認したところ、Supabase の
+既定ブランチ `main` の `project_ref` が本番と同一のままで、`main` への push で
+`supabase/migrations/**` が本番へ適用される経路が残っている。順序を見ず、
+Actions にログも残さない2本目の書き手がいる状態。恒久対策は代表判断待ち。
+
+**マージにあたり `OPEN_QUESTIONS` の1件を訂正した。** #981 が「プレビューブランチ2本が
+`MIGRATIONS_FAILED` で詰まり、全 PR の `Supabase Preview` が cancelled になる」と
+書いていたが、これは解消済み（#938 / #941 ともマージ済み、#941 は 2026-08-30）。
+`list_branches` は `main` のみを返す。DECISION_LOG / RELEASE_LOG 側は 2026-08-26 時点の
+日付入り記録なのでそのまま残し、**未解決一覧である OPEN_QUESTIONS だけを実態に合わせた。**
+
+**残した判断**: #924（モバイルレスポンシブ）は中身が今も有効だが衝突あり。
+#979（店頭QR決済）は外部 API 未検証。#760（design 同期）は目的を達成済み。
+
+## 2026-09-11 車両履歴の外部公開を許可リストに反転した（同日の続き）
+
+- 上の修正に `/code-review` を掛けて11件の指摘。最も重いものは
+  **除外リストが5種別しか見ておらず、残り19種別が既定で公開**だったこと。
+- **本番の確認**: `type:"note"`（パスポート移転が「移転先: <メール>」を書く）は 0 行で未発火。
+  ただし **`member_added` にメールアドレスを含む行が1件実在**し、`ai_settings_changed`
+  には uid を含む JSON が入っていた。外に出ていなかったのは `vehicle_id` が
+  NULL だったという偶然による（`note` の書き込み4箇所は**すべて `vehicleId` を渡す**）。
+- `aiAuditLog.ts` は `type: event.action` と**動的に**書くため、`AuditEventType` に
+  無い種別（`ai_auto_action_executed`）が DB に入っている。
+  **除外リストは知らない種別を覆えない**ので、許可リストに反転した。
+- `Record<AuditEventType, boolean>` で分類を1箇所に持ち、許可リストを導出する。
+  union に種別を足すと**型エラーになる**（分類を書くまで通らない）。
+  外へ出すのは発行・編集・無効化の3種別のみ。読む側は `.in("type", OUTWARD_VISIBLE_TYPES)`。
+- 旧フィルタの `type.is.null` は、`vehicle_histories.type` が `not null`
+  （`20260313020000_core_tables.sql`、本番も同じ）なので**起こりえない分岐**だった。削除。
+- 検査は「読み手の数え落とし」を拾えるよう、`vehicle_histories` に触る**全15ファイルを
+  列挙して分類漏れで落ちる**形にした。変異4通り（読み手2つのガード除去・許可種別の追加・
+  未分類の読み手の追加）すべてで赤を確認。
+- 本番で外へ出る行は発行28件・無効化2件のみ。**反転しても顧客が見る情報は減らない。**
+- #1040 の回帰テスト `publicTimelinePrivacy.test.ts` は、許可リストを3種別に固定する
+  検査が同じ保証を含むため統合して削除（同じ種別名を2つのテストに書き写す重複を残さない）。
+
+## 2026-09-11 閲覧監査の IP / uid が顧客ポータルにも出ていたのを塞いだ
+
+- PR #1040 が公開証明書ページで塞いだのと**同じ漏れが、顧客ポータルに残っていた**。
+  `listHistoryForCustomer` が `vehicle_histories` を型で絞らず service-role で引き、
+  `/api/customer/list` が画面に描画、`/api/customer/data-export` が書き出しに入れていた。
+- **本番の実測**: 14行（IP 6 / uid 8）、9証明書・4テナント。ログイン済み顧客から、
+  自分の証明書の履歴として**他の訪問者の IP** と**店舗スタッフの uid** が見えていた。
+  （公開ページ側は #1040 の修正が効いており、同じ条件で数えて 0 件だった。）
+- 除外する型の定義を**書く側**（`audit/certificateLog.ts`）へ移し、読む側2経路が
+  同じ定義を共有する形にした（この定数は同日、上の項で許可リストに置き換えた）。
+  `publicData.ts` にあった同じ配列は削除（定義を1つに）。
+- 回帰テスト `src/lib/audit/__tests__/privateAuditTypes.test.ts`。
+  **テナント外へ出す読み手を名指しで列挙**し、各クエリの鎖に除外が掛かっているかを
+  構文木で見る。検出器の空振りも同じファイルで確認。3通りの変異で赤を確認済み。
+- **既存行の IP / uid は DB に残る。** 表示されなくなっただけで、扱いは未判断
+  （#1040 の起票を引き継ぎ、OPEN_QUESTIONS 継続）。
+
+## 2026-09-08 plpgsql を静的検査の対象に入れたら、本番の不具合が2件出た（本番未適用）
+
+#1016 の未解決事項を潰しに行った結果。**`scripts/replay-migrations.mjs` に
+`plpgsql_check` を足した初回の走査で2件出た。**
+
+| 関数 | 症状 | 見え方 |
+|---|---|---|
+| `insurer_get_certificate` | 42702 `column reference "tenant_id" is ambiguous` | 保険会社ポータルの証明書詳細がエラー |
+| `agent_rankings` | 42883 `operator does not exist: date >= text` | **200 で空のランキング**（画面は「該当なし」） |
+
+- **`insurer_get_certificate` は `is_pii_disclosed` を呼ぶ手前で落ちていた。**
+  `RETURNS TABLE` の出力列 `tenant_id` と `insurer_tenant_access.tenant_id` が同名で、
+  plpgsql の `variable_conflict` は既定で `error`。つまり #1016 で直した関数には
+  **到達していなかった**。本番の `insurer_access_logs` は `action='view'` が**0件**で、
+  この機能は一度も成功していない。**部品を直して機能を直したと書いていた**
+  （MISTAKE_LEDGER M-074）。
+- **`agent_rankings` は失敗が見えない形で壊れていた。** 呼び出し元
+  `/api/agent/rankings` が `const { data } = await supabase.rpc(...)` と書いて `error` を
+  捨てているため、落ちても 200 と空配列が返る。本番で
+  `select public.agent_rankings('month')` を実行して 42883 を再現済み。
+  **【2026-09-10 追記】この2件目はこの PR では出さない。** 別経路の
+  `20260908131725`（型不一致）と `20260909003200`（JOIN のファンアウト）が先にマージ・
+  適用され、あわせて**認可チェック**（有効な代理店ユーザーであること）が付いた。
+  版番号を付け替えるとこの PR の定義が最後に適用され、その認可チェックを消して
+  しまうため、**`agent_rankings` の再作成は取り下げた**。
+- **修正**（**`20260910010000`**。起票時は `20260908005952`。本番の最大版が
+  `20260910000000` まで進んだため改名）。あわせて `search_path` を `''` に締め、本体を
+  `public.` で修飾した（`20260404000000` の一括適用から漏れて `'public, extensions'` の
+  まま残っており、リポジトリの lint にも違反していた）。**本番未適用** —— 2026-09-07 に
+  決めたとおり PR をマージして `db-migrate` に任せる。
+- **再生 DB で機能ごと通して確認済み**: 同意なし → `山***` / `pii_disclosed=f`、
+  同意あり → 実名 / `pii_disclosed=t`、`insurer_access_logs` に2行。
+- **検査の作り**: `plpgsql_check_function()` を全 plpgsql 関数に当てる。トリガ関数は
+  `relid` を渡さないと検査できないので、その関数を使っているトリガの**すべての
+  テーブル**に対して1回ずつ回す（再生 DB で (トリガ関数, テーブル) は **129 組**、
+  関数の実数は 36）。どのトリガからも使われていないものは対象外。**現在2本**:
+  `generate_case_number` / `handle_updated_at`。どちらも本番ではトリガが付いている
+  （`trg_set_case_number` / `trg_job_orders_updated_at`）ので、**死んでいるのではなく
+  再生 DB にトリガが無い**＝ドリフト。検査の穴として毎回名前を出す。
+  陽性・陰性の対照を対で置き、対照が通ったときだけ本走査に進む。CI は
+  `REQUIRE_PLPGSQL_CHECK=1` で、**拡張が入らなかったときに黙って飛ばさせない**。
+  **【2026-09-10 訂正】初版は「トリガから1つ取って渡す」（`limit 1`）で、129 組のうち
+  36 組しか見ていなかった** —— `set_updated_at` は 88 テーブルに付いているのに
+  1テーブルだけ。`/code-review` の指摘で全組に広げたところ、**隠れていた 42703 が
+  1件出た**（MISTAKE_LEDGER M-075）。
+- **列レベルのドリフトが1件見つかり、あわせて塞いだ**（`20260910010100`）。
+  `vehicle_histories.updated_at` は本番にだけ在り、再生 DB に無かった。
+  `20260907010100` で本番から書き起こしたトリガ `trg_vehicle_histories_set_updated_at`
+  （`set_updated_at`）が `new.updated_at` へ代入するので、列の無い再生 DB では
+  UPDATE のたびに 42703 で落ちる。**本番は無事**（`timestamptz not null default now()`
+  が在ることを実測確認）ので、追加は `add column if not exists` で本番では no-op。
+  #1045 のドリフト検出器はオブジェクトの有無しか見ないため、**この形は見えていない**
+  （OPEN_QUESTIONS に起票）。
+- **偽陽性は allowlist ではなく再生 DB の側を直した。** `register_insurer_v2` の4件は
+  `auth.users.instance_id` / `auth.identities.provider_id` が `bootstrap.sql` の簡略
+  スキーマに無いことが原因で、本番には在る（実測確認）。auth スキーマを本番の
+  列定義どおりに書き直した。
+- **ビューは構造的に免疫**であることも実測した。ビューの定義は作成時に解決されて
+  保存されるので（`search_path='__vs'` で作ったビューの定義が `__vs.t` に書き換わる）、
+  `search_path=''` で呼んでも動く。トリガ関数は関数なので上の検査に含まれる。
+- **残る上限**: 動的 SQL（`EXECUTE format(...)`）の中身。文字列が組み上がるのは
+  実行時なので、道具を変えても静的には見えない。
+
+## 2026-09-08 `is_pii_disclosed()` が本番で常に落ちていたのを直し、同じ形を機械が検査するようにした
+
+PR #1016 をマージ（`a6da088`、2026-09-08 00:39 UTC）。`DB migrate (apply to production)`
+run #65 が **success**（[run 34174047498](https://github.com/holy-auto/Ledra/actions/runs/34174047498)）で
+`20260907000000_qualify_refs_in_empty_search_path_functions.sql` が本番へ入った。
+
+- **直したもの。** `is_pii_disclosed(certificate_id, insurer_id)` は `SET search_path = ''`
+  を持ちながら本体が `FROM pii_disclosure_consents` と非修飾のままで、**呼べば必ず 42P01**
+  で落ちていた。本体を `public.` 修飾して再作成。属性（SECURITY DEFINER / STABLE /
+  `search_path=''`）は変えていない。
+- **本番で実測して確定。** 適用前は `ERROR: 42P01: relation "pii_disclosure_consents"
+  does not exist`、適用後は `false` が返る。あわせて同じ経路で壊れていた
+  `insurer_accessible_tenant_ids`（9/3 に `20260903123728` で解消済み）と2本まとめて確認し、
+  どちらも `search_path=""` が残っていること・本体が修飾済みであること・
+  `anon` / `authenticated` に EXECUTE が無いことを確かめた。
+- **同じ穴を塞ぐ検査を常設した。** `scripts/replay-migrations.mjs` が、空 DB への再生後に
+  `search_path=""` を持つ SECURITY DEFINER 関数の `pg_get_functiondef()` を1本ずつ流し直す。
+  通れば健全、落ちれば呼んでも落ちる。**判定は自前の正規表現ではなく Postgres の
+  `check_function_bodies` にさせる**ので、非修飾のテーブル・関数呼び出し・`USING` 句を
+  同じ1回で拾う。検査が空振りしていないことは毎回、わざと壊した1本（拾えること）と
+  健全な1本（拾わないこと）の**対で**確かめてから本走査に入る。
+- **この壊れ方は `CREATE` では作れない。** `check_function_bodies` が SET 句を適用した状態で
+  本体を検証して弾くため、入り込む経路は「正常に作ったあとで `ALTER FUNCTION ... SET
+  search_path`」だけ。**ALTER は本体を再検証しない。** 落ちるのは実行時だけなので、
+  マイグレーションも型検査も CI も素通りしていた。
+- 発見の経路は「配布資料（#982）に載せる保険会社ポータルの検索画面を撮ろうとしたら 500」。
+  8/31 に見つけてから本番反映まで8日かかった。誰もこの画面を実行していなかった。
+
+## 2026-09-09 PR #1054（全体セキュリティ監査是正 PR-1〜PR-5 全て）が main にマージされた（マージコミット `042d3b0`）
+
+【訂正】マージ直後に書いた本エントリの初版は「次はPR-2以降、別セッションで
+着手する」としていたが誤り。PR #1054 は**5段階の是正計画（PR-1〜PR-5）の
+全てを含んでおり**、このマージで**計画全体が完結**している（`getCurrentPeriodEnd`
+切り出し=PR-2、`register.tsx`のD-A1是正=PR-3、`c/layout.tsx`のnoindex=PR-4、
+`withCaller.ts`=PR-5を実コードで確認済み。gitleaks CIは当初PR-5と誤記したが
+下記2026-09-08「PR-4」エントリの通り正しくはPR-4）。
+
+Critical 1件・High 11件のセキュリティ修正に加え、Codex自動レビュー2ラウンド
+（round 1: 6件、round 2: 7件、計13件）で発見された不具合を検証し（誤検知0件）、
+うち12件を修正、1件（モバイルsignupのPKCE Cookie衝突。既存の
+OPEN_QUESTIONS起票済み・Tap to Payのアプリ内オンボーディング要件との
+緊張関係で製品判断が必要）はfounder判断待ちとして意図的に未修正のまま
+スレッドを未解決で維持した。代表がGitHub UI上でマージした。マージ直前に
+別PR(#1053)との衝突（docs/context 5ファイルの追記位置競合）を
+`git merge origin/main`で解消済み。残るのはこの監査から派生した
+founder判断待ちのOPEN_QUESTIONS少なくとも4件（詳細は LEDRA_CURRENT
+2026-09-09 追記(8)参照。OPEN_QUESTIONS.md全体にはこの監査と無関係な
+既存の未解決事項も別途多数ある）。
+
+## 2026-09-08 本番データを流し込めない状態を解消した（tenants.plan_tier）
+
+**2026-09-10 追記: PR #1052 を main へマージ（`662e46f`）、本番適用も成功した**
+（`DB migrate` run #68。本番の最大版 `20260910000000`、`tenants_plan_tier_check` は
+本番に**存在せず** `plan_tier` は `plan_tier_enum` のまま＝予告どおり no-op）。
+`Supabase Preview` チェックだけ赤のままマージした。プレビュー用ブランチ DB に
+改名前の版 `20260908010000` が残っており、ローカルに同名ファイルが無いための
+`Remote migration versions not found in local migrations directory.` で、
+本番の台帳に「ローカルに無い版」は 1 件も無いことをクエリで確認済み。
+理由は PR #1052 にコメントとして残した。
+
+マイグレーションから作り直した DB へ本番データを入れると、**24 テナント中 20 件が
+弾かれる**状態だった。`tenants.plan_tier` の check が (mini, standard, pro) の 3 値で、
+本番の enum が持つ `free` / `starter` を受け付けなかったため。
+
+- `20260910000000` で check を enum と同じ 5 値へ広げた（`NOT VALID` → `VALIDATE`）
+- 本番では `tenants_plan_tier_check` 自体が存在しない（既に enum）ので **no-op**
+- 再生 DB で `free` / `starter` / `mini` が投入でき、enum に無い値は弾かれることを実測
+
+列の**型名**の食い違い（text か enum か）は残した。揃えるには
+`alter column ... type` が要り、`lint:migrations` の zero-downtime 検査に掛かる。
+本番では何も動かない変更のために本番の中核表を書き換える手順を組むのは釣り合わないと判断
+（DECISION_LOG 2026-09-08）。
+
+調査中に**ポリシー層の別ドリフト**を発見し、OPEN_QUESTIONS に起票した。
+`certificates` の anon 向け SELECT ポリシー 2 本が本番にしか無い。
+
 ## 2026-09-08 帳票メール送付の失敗理由が「送信に失敗しました」に潰れていたのを、実際のプロバイダ理由が残るように修正
 
 - 内容: 帳票共有（`POST /api/admin/documents/share`）とAI自動送付（`documentAuto.ts`）のメール送信経路
@@ -2972,6 +3428,45 @@ supabase migration repair --status reverted 20260825000000
   「out-of-order → 後ろの日付へ改名する」と**無条件に**書いており、「本番に入っていないことを
   確かめてから」が抜けていた。2回とも、その一文どおりに動いた結果である。両方に条件と
   確かめ方（バージョン名で名指しして引く／降順 LIMIT で代用しない）を書いた。
+
+## 2026-08-26 本番マイグレーション停止の根因を特定 —— 台帳に書く経路が2つあった
+
+`db-migrate` が今日2回止まった件を、症状ではなく根因まで追った。
+
+**本番の `supabase_migrations.schema_migrations` に書く経路は2つある。**
+
+| 経路 | 順序チェック | ログの出どころ | 失敗通知 |
+| --- | --- | --- | --- |
+| `db-migrate.yml`（`supabase db push --db-url`） | **する**（out-of-order で exit 1） | GitHub Actions | Slack |
+| **Supabase の GitHub 連携（Branching）** | **しない** | Supabase 側のみ | なし |
+
+Supabase 側に既定ブランチ `main` が本番プロジェクトへ紐づいている
+（`list_branches` で `is_default: true`・`project_ref` が親と同一）。`main` への push で
+`supabase/migrations/**` を本番へ適用する。
+
+**実測（postgres_logs・2026-08-26）**:
+
+```
+08:23:34  db-migrate が out-of-order で exit 1
+          （このとき supabase migration list は 20260825000000 を「未適用」と表示）
+08:23:56  別のクライアントが schema_migrations をブートストラップし、
+          同じファイルの6文を実行して台帳へ入れた（created_by は null = CLI 経路）
+```
+
+**22秒**。この差を知らずに「`db-migrate` が未適用と言っているから改名してよい」と判断すると、
+条件1（本番にあるバージョンのファイルが repo に必要）を壊して次の run を別のエラーで止める。
+今日それを踏んだ。#971 / #972 / #973 の停止も同じ二重書き込みで説明がつく。
+
+**この変更で入れたもの**: `db-migrate.yml` の不変条件コメントに、経路が2つある事実・22秒の実測・
+「失敗ログを根拠に改名しない。失敗した後は必ず台帳を引き直す」を明記した。
+
+**恒久対策は未実施**: 書き手を1つに絞る（Supabase ダッシュボードの Integrations で本番への
+自動適用を切る）。本番プロジェクトの設定変更であり、開いている PR #938 / #941 の
+プレビュー環境にも影響するため代表判断待ち → `OPEN_QUESTIONS.md`。
+
+**副次的にわかったこと**: プレビューブランチ2本（PR #938 / #941）が `MIGRATIONS_FAILED` のまま
+残っており、同時プレビューブランチ数の上限に達している。これが**全 PR で `Supabase Preview` が
+cancelled になる**原因。どちらも PR が開いたままなので、こちらの判断では消していない。
 
 ## 2026-08-26 デプロイと型生成の自動化を復旧させる
 

@@ -280,6 +280,112 @@ function checkQualifiedRefs(dsn) {
   return { rows: scanned.out.trim().split("\n").map((l) => l.trim()).filter(Boolean) };
 }
 
+/**
+ * plpgsql の本体を plpgsql_check に検証させる。
+ *
+ * 上の検査（pg_get_functiondef の流し直し）は LANGUAGE sql にしか効かない。
+ * plpgsql は CREATE 時に**構文しか**検証されないので、名前も演算子も解決は実行時まで
+ * 行われない —— つまり「呼ばれるまで誰も気づかない不具合」を作れる。実際 2026-09-08 に
+ * この検査を入れた初回で本番の2件が出た（agent_rankings が date >= text で 42883、
+ * insurer_get_certificate が出力列と同名の tenant_id で 42702。どちらも本番で再現済み）。
+ *
+ * plpgsql_check は関数自身の SET 句（search_path 含む）を適用して検証するので、
+ * search_path='' の取りこぼしもここで一緒に見える。
+ *
+ * トリガ関数は relid を渡さないと "missing trigger relation" で検査できないため、
+ * その関数を使っているトリガの**すべての**テーブルに対して1回ずつ回す。同じ関数でも
+ * 相手のテーブルが違えば NEW/OLD の列が違うので、1つ取って済ませると残りが未検査に
+ * なる（実際 set_updated_at は 88 テーブルに付いていて、1テーブルしか見ないと
+ * vehicle_histories の 42703 を見逃した）。どのトリガからも使われていないトリガ関数
+ * だけは検査できないので対象から外す（名前は下の警告に出る）。
+ *
+ * ponytail: 動的 SQL（EXECUTE format(...)）の中身は依然として見えない。文字列が
+ * 組み上がるのは実行時なので、静的検査で見られる上限がここ。
+ */
+const PLPGSQL_SCAN = (pred) => `
+  with target as (
+    select distinct p.oid, p.proname,
+           p.prorettype = 'trigger'::regtype as is_trigger,
+           t.tgrelid as relid
+    from pg_proc p
+    join pg_namespace n on n.oid = p.pronamespace
+    join pg_language l on l.oid = p.prolang
+    left join pg_trigger t on t.tgfoid = p.oid
+    where n.nspname = 'public' and l.lanname = 'plpgsql' and ${pred}
+  )
+  select t.proname
+         || case when t.relid is null then '' else ' @ ' || t.relid::regclass::text end
+         || ' -> ' || c.message
+  from target t,
+  lateral plpgsql_check_function(t.oid, relid => coalesce(t.relid, 0::oid), fatal_errors => false) as c(message)
+  where not (t.is_trigger and t.relid is null)
+    and c.message like 'error:%'
+  order by 1;`;
+
+function checkPlpgsqlBodies(dsn) {
+  const ext = psqlRun(dsn, "create extension if not exists plpgsql_check;");
+  if (ext.error) {
+    // CI では必ず入っている前提にする。入っていないのに黙って飛ばすと、
+    // 「検査があるのに何も見ていない」状態が緑で通り続ける（MISTAKE_LEDGER M-060）。
+    if (process.env.REQUIRE_PLPGSQL_CHECK === "1") {
+      return { error: `plpgsql_check を入れられません: ${ext.error}` };
+    }
+    return { skipped: `plpgsql_check がありません（apt: postgresql-16-plpgsql-check）。${ext.error}` };
+  }
+
+  // 陽性・陰性の対照。qualref 側と同じ理由で対で置く。
+  const probe = [
+    "create table public.__pc_probe(id int);",
+    "create function public.__pc_bad_fn() returns bigint language plpgsql stable security definer as $b$ declare n bigint; begin select count(*) into n from __pc_probe; return n; end $b$;",
+    "alter function public.__pc_bad_fn() set search_path = '';",
+    "create function public.__pc_ok_fn() returns bigint language plpgsql stable security definer as $b$ declare n bigint; begin -- read from __pc_probe\n select count(*) into n from public.__pc_probe; return n; end $b$;",
+    "alter function public.__pc_ok_fn() set search_path = '';",
+  ].join("\n");
+  const cleanup = [
+    "drop function if exists public.__pc_bad_fn();",
+    "drop function if exists public.__pc_ok_fn();",
+    "drop table if exists public.__pc_probe;",
+  ].join("\n");
+
+  try {
+    const made = psqlRun(dsn, probe);
+    if (made.error) return { error: `probe を作れませんでした: ${made.error}` };
+    const probed = psqlRun(dsn, PLPGSQL_SCAN("p.proname like '\\_\\_pc\\_%'"));
+    if (probed.error) return { error: `probe 走査に失敗しました: ${probed.error}` };
+    if (!probed.out.includes("__pc_bad_fn")) {
+      return { error: "わざと壊した plpgsql を検出できませんでした（検査が機能していません）" };
+    }
+    if (probed.out.includes("__pc_ok_fn")) {
+      return { error: "健全な plpgsql を誤検出しました（検査が厳しすぎます）" };
+    }
+  } finally {
+    const cleaned = psqlRun(dsn, cleanup);
+    if (cleaned.error) console.log(`\n⚠️ probe の後始末に失敗しました: ${cleaned.error}`);
+  }
+
+  const scanned = psqlRun(dsn, PLPGSQL_SCAN("true"));
+  if (scanned.error) return { error: scanned.error };
+
+  // 検査できなかったトリガ関数（0 本でないなら、その分だけ検査に穴がある）。
+  // ここが失敗したまま 0 を返すと「全部見た」と偽ることになるので、エラーは握らない。
+  const unchecked = psqlRun(
+    dsn,
+    `select string_agg(p.proname, ', ' order by p.proname)
+       from pg_proc p
+       join pg_namespace n on n.oid = p.pronamespace
+       join pg_language l on l.oid = p.prolang
+      where n.nspname = 'public' and l.lanname = 'plpgsql'
+        and p.prorettype = 'trigger'::regtype
+        and not exists (select 1 from pg_trigger t where t.tgfoid = p.oid);`,
+  );
+  if (unchecked.error) return { error: `検査対象外の本数を数えられませんでした: ${unchecked.error}` };
+
+  return {
+    rows: scanned.out.trim().split("\n").map((l) => l.trim()).filter(Boolean),
+    unchecked: unchecked.out.trim(),
+  };
+}
+
 function main() {
   const files = readdirSync(MIGRATIONS)
     .filter((f) => f.endsWith(".sql"))
@@ -351,6 +457,30 @@ function main() {
       return;
     } else {
       console.log("非修飾参照の検査: 該当なし");
+    }
+
+    // plpgsql の本体は CREATE 時に構文しか見られない。plpgsql_check に解決させる
+    const plpg = checkPlpgsqlBodies(dsn);
+    if (plpg.error) {
+      console.log(`\n⚠️ plpgsql の検査を実行できませんでした: ${plpg.error}`);
+      process.exitCode = 1;
+      return;
+    } else if (plpg.skipped) {
+      console.log(`plpgsql の検査: 飛ばしました —— ${plpg.skipped}`);
+    } else {
+      // 検査に穴があることは、指摘の有無に関わらず毎回出す（緑のときこそ見落とす）
+      if (plpg.unchecked) {
+        console.log(`plpgsql の検査: どのトリガからも使われていない ${plpg.unchecked} は検査対象外`);
+      }
+      if (plpg.rows.length > 0) {
+        console.log(`\n❌ plpgsql の本体が実行時に落ちます（${plpg.rows.length} 件）:`);
+        for (const row of plpg.rows) console.log(`  - ${row}`);
+        console.log("\n構文は通っていても、名前・型・演算子の解決は実行時まで行われません。");
+        console.log("呼ばれた瞬間に落ちるので、CI も型検査も素通りします。");
+        process.exitCode = 1;
+        return;
+      }
+      console.log("plpgsql の検査: 該当なし");
     }
 
     if (DUMP_TO) {

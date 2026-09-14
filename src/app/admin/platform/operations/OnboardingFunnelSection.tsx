@@ -80,11 +80,11 @@ export default function OnboardingFunnelSection() {
                     key={s.id}
                     className="grid grid-cols-12 gap-2 items-center py-1.5 border-b border-border-subtle last:border-0"
                   >
-                    <div className="col-span-3 sm:col-span-3 text-xs text-secondary truncate">
+                    <div className="col-span-12 sm:col-span-3 text-xs text-secondary truncate">
                       <span className="text-muted mr-1.5">{idx + 1}.</span>
                       {s.label}
                     </div>
-                    <div className="col-span-7 sm:col-span-7">
+                    <div className="col-span-8 sm:col-span-7">
                       <div className="h-5 rounded-full bg-surface-active overflow-hidden">
                         <div
                           className={`h-full rounded-full transition-all ${
@@ -100,7 +100,7 @@ export default function OnboardingFunnelSection() {
                         />
                       </div>
                     </div>
-                    <div className="col-span-2 sm:col-span-2 text-right">
+                    <div className="col-span-4 sm:col-span-2 text-right">
                       <span className="text-sm font-semibold text-primary">{s.count}</span>
                       <span className="text-[11px] text-muted ml-1">({pctOfTotal}%)</span>
                       {s.drop_pct > 0 && <div className="text-[10px] text-muted">▼ {s.drop_pct}% drop</div>}

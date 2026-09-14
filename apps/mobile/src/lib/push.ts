@@ -5,6 +5,20 @@ import Constants from "expo-constants";
 
 import { mobileApi } from "./api";
 
+// 通知ハンドラ未設定だと、アプリが起動中（フォアグラウンド/inactive）に
+// 届いた通知を Expo は既定でバナー表示しない。Apple Tap to Pay 要件 5.12
+// のローカル通知（useTerminal.ts）はまさにこの状態で送るため、ここで
+// 明示的に「表示する」よう設定しておく（/code-review 指摘、未設定だと
+// 通知が黙って表示されないまま終わる）。
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowBanner: true,
+    shouldShowList: true,
+    shouldPlaySound: false,
+    shouldSetBadge: false,
+  }),
+});
+
 /**
  * Expo Push 通知トークンを取得し、バックエンド (/api/mobile/push/register)
  * へ登録する。

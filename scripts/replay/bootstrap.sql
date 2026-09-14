@@ -45,32 +45,62 @@ create extension if not exists pgcrypto     with schema extensions;
 -- 探索パスに入れておく（本番の postgres ロールも同じ設定）
 alter database postgres set search_path = "$user", public, extensions;
 
--- ── auth スキーマ（GoTrue 相当の最小形）────────────────────
+-- ── auth スキーマ（GoTrue 相当）────────────────────
+-- 列の名前・型・NOT NULL は本番（information_schema.columns）から写している。
+-- **簡略化しない。**（id の既定値だけは再生の都合で付けている。本番には無い）
+-- register_insurer_v2 のように auth.users / auth.identities へ直接 INSERT する関数が
+-- あり、ここに無い列は「本番には在るのに再生 DB では存在しない」ズレになる。
+-- 静的検査（plpgsql_check）はそのズレを本物の不具合として報告するので、
+-- 簡略化した分だけ誤検知が出る（2026-09-08 に instance_id / provider_id で実際に出た）。
 create table if not exists auth.users (
+  instance_id uuid,
   id uuid primary key default extensions.gen_random_uuid(),
-  email text,
-  phone text,
-  encrypted_password text,
+  aud varchar(255),
+  role varchar(255),
+  email varchar(255),
+  encrypted_password varchar(255),
   email_confirmed_at timestamptz,
   invited_at timestamptz,
-  confirmation_token text,
+  confirmation_token varchar(255),
+  confirmation_sent_at timestamptz,
+  recovery_token varchar(255),
+  recovery_sent_at timestamptz,
+  email_change_token_new varchar(255),
+  email_change varchar(255),
+  email_change_sent_at timestamptz,
+  last_sign_in_at timestamptz,
   raw_app_meta_data jsonb default '{}'::jsonb,
   raw_user_meta_data jsonb default '{}'::jsonb,
   is_super_admin boolean,
-  last_sign_in_at timestamptz,
   created_at timestamptz default now(),
   updated_at timestamptz default now(),
-  deleted_at timestamptz
+  phone text default null,
+  phone_confirmed_at timestamptz,
+  phone_change text default '',
+  phone_change_token varchar(255) default '',
+  phone_change_sent_at timestamptz,
+  confirmed_at timestamptz,
+  email_change_token_current varchar(255) default '',
+  email_change_confirm_status smallint default 0,
+  banned_until timestamptz,
+  reauthentication_token varchar(255) default '',
+  reauthentication_sent_at timestamptz,
+  is_sso_user boolean not null default false,
+  deleted_at timestamptz,
+  is_anonymous boolean not null default false
 );
 
 create table if not exists auth.identities (
-  id text,
-  user_id uuid references auth.users(id) on delete cascade,
-  provider text,
-  identity_data jsonb,
+  provider_id text not null,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  identity_data jsonb not null,
+  provider text not null,
+  last_sign_in_at timestamptz,
   created_at timestamptz default now(),
   updated_at timestamptz default now(),
-  primary key (provider, id)
+  email text,
+  id uuid not null default extensions.gen_random_uuid(),
+  primary key (provider, provider_id)
 );
 
 create table if not exists auth.sessions (

@@ -482,7 +482,7 @@ function AddDialog({
         </Field>
 
         {showKm && (
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Field label="直近の走行距離 (km)">
               <input
                 type="number"
@@ -507,7 +507,7 @@ function AddDialog({
         )}
 
         {showMonths && (
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Field label="直近の施工日">
               <input
                 type="date"
