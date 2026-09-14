@@ -517,7 +517,7 @@ export default function OrderDetailClient({ orderId }: { orderId: string }) {
                   </div>
                 )}
               </div>
-              <div className="grid gap-2 grid-cols-4 text-center">
+              <div className="grid gap-2 grid-cols-2 sm:grid-cols-4 text-center">
                 <div className="p-2 rounded-lg bg-surface-hover">
                   <div className="text-lg font-bold text-primary">{counterpartyScore.completed_orders}</div>
                   <div className="text-[10px] text-muted">完了取引</div>

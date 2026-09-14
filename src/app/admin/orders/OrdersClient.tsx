@@ -508,7 +508,7 @@ export default function OrdersClient() {
                   </div>
                 )}
               </div>
-              <div className="grid gap-3 grid-cols-4 text-center">
+              <div className="grid gap-3 grid-cols-2 sm:grid-cols-4 text-center">
                 <div className="p-2 rounded-lg bg-surface-hover">
                   <div className="text-xl font-bold text-primary">{myScore.completed_orders}</div>
                   <div className="text-[10px] text-muted">完了取引</div>

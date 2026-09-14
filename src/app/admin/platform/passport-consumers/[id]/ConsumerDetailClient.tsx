@@ -311,7 +311,7 @@ export default function ConsumerDetailClient({ consumerId }: { consumerId: strin
               <option value="closed">解約済み</option>
             </select>
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="text-sm font-semibold text-primary">月間クォータ</label>
               <input
