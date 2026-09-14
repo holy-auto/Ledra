@@ -252,7 +252,7 @@ export default function SignupPage() {
 
           {/* 任意項目はデフォルトで折りたたみ、入力欄を最小化 */}
           {showDetails ? (
-            <div className="grid grid-cols-2 gap-3 pt-1">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
               <FloatingField
                 label="担当者名"
                 name="display_name"

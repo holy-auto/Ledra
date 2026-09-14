@@ -1,5 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
+import { DEFAULT_MERCHANT_SHARE_BPS } from "@/lib/vehicleReport/revenueShare";
 import { scopeFromRow, type ReportScope } from "@/lib/vehicleReport/tiers";
 
 /** Fallback price when the settings row is missing/unreadable. */
@@ -11,6 +12,7 @@ export const REPORT_ACCESS_VALIDITY_DAYS = 30;
 export type VehicleReportSettings = {
   price_jpy: number;
   enabled: boolean;
+  merchant_share_bps: number;
 };
 
 /**
@@ -19,12 +21,18 @@ export type VehicleReportSettings = {
  */
 export async function getVehicleReportSettings(): Promise<VehicleReportSettings> {
   const admin = createServiceRoleAdmin("vehicle report settings — platform-wide singleton pricing");
-  const { data } = await admin.from("vehicle_report_settings").select("price_jpy, enabled").eq("id", 1).maybeSingle();
+  const { data } = await admin
+    .from("vehicle_report_settings")
+    .select("price_jpy, enabled, merchant_share_bps")
+    .eq("id", 1)
+    .maybeSingle();
 
-  const row = data as { price_jpy: number | null; enabled: boolean | null } | null;
+  const row = data as { price_jpy: number | null; enabled: boolean | null; merchant_share_bps: number | null } | null;
   return {
     price_jpy: typeof row?.price_jpy === "number" ? row.price_jpy : DEFAULT_REPORT_PRICE_JPY,
     enabled: row?.enabled ?? true,
+    merchant_share_bps:
+      typeof row?.merchant_share_bps === "number" ? row.merchant_share_bps : DEFAULT_MERCHANT_SHARE_BPS,
   };
 }
 
