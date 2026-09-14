@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildRssFeed } from "../rss";
+import { buildRssFeed, feedSortKey } from "../rss";
 import { siteConfig } from "../config";
 
 describe("buildRssFeed", () => {
@@ -33,5 +33,17 @@ describe("buildRssFeed", () => {
     expect(xml.startsWith('<?xml version="1.0" encoding="UTF-8"?>')).toBe(true);
     expect(xml).toContain("</channel>");
     expect(xml).not.toContain("<item>");
+  });
+});
+
+describe("feedSortKey", () => {
+  it("日付だけの MDX と UTC 日時の DB を同じ尺度で比べる", () => {
+    // 2026-04-21T20:00Z は 2026-04-22T05:00+09:00 なので、MDX の 2026-04-22（JST 0時）より新しい
+    expect(feedSortKey("2026-04-21T20:00:00+00:00")).toBeGreaterThan(feedSortKey("2026-04-22"));
+  });
+
+  it("日付が無い／壊れている記事は末尾に落ちる", () => {
+    expect(feedSortKey(undefined)).toBe(Number.NEGATIVE_INFINITY);
+    expect(feedSortKey("きのう")).toBe(Number.NEGATIVE_INFINITY);
   });
 });

@@ -10,7 +10,7 @@
 import { listContent, type ContentCollection } from "@/lib/marketing/content";
 import { listPublishedPosts } from "@/lib/marketing/site-content-posts";
 import { mergeContentItems, type ContentListItem } from "@/lib/marketing/mergeContent";
-import { buildRssFeed, type FeedItem } from "@/lib/marketing/rss";
+import { buildRssFeed, feedSortKey, type FeedItem } from "@/lib/marketing/rss";
 import type { SiteContentType } from "@/lib/validations/site-content-post";
 
 /** 5分。予約投稿の cron と同じ間隔（それより短くしても公開は早まらない）。 */
@@ -46,8 +46,9 @@ async function collect(collection: ContentCollection & SiteContentType, category
 
 export async function GET() {
   const [news, blog] = await Promise.all([collect("news", "お知らせ"), collect("blog", "ブログ")]);
-  // 新しい順にまとめる。日付の無い記事は末尾。
-  const items = [...news, ...blog].sort((a, b) => (b.publishedAt ?? "").localeCompare(a.publishedAt ?? ""));
+  // 新しい順にまとめる。MDX は日付だけ・DB は UTC の日時なので、
+  // 文字列比較ではなく同じ尺度（実際の時刻）に直して比べる。日付の無い記事は末尾。
+  const items = [...news, ...blog].sort((a, b) => feedSortKey(b.publishedAt) - feedSortKey(a.publishedAt));
 
   return new Response(buildRssFeed(items), {
     headers: {

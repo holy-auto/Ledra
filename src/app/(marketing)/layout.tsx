@@ -39,8 +39,6 @@ export const metadata = {
   // C-M1 是正 (2026-09-08): ルートレイアウト (src/app/layout.tsx) の既定を
   // 非索引に反転したため、マーケティングページはここで明示的に索引可へ戻す。
   robots: { index: true, follow: true },
-  // お知らせ・ブログの更新を購読できるようにする（/feed.xml）
-  alternates: { types: { "application/rss+xml": "/feed.xml" } },
 };
 
 export default function MarketingLayout({ children }: { children: React.ReactNode }) {

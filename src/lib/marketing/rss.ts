@@ -22,14 +22,25 @@ function esc(s: string): string {
 }
 
 /**
- * 日付だけ（YYYY-MM-DD）の場合は JST の 0 時として扱う。
- * 不正な値は pubDate を出さない（壊れた日付でフィードごと落とさない）。
+ * 日付だけ（YYYY-MM-DD）の MDX と、日時（UTC）で入る DB の値を同じ尺度にする。
+ * 日付だけのものは JST の 0 時とみなす。不正な値は null。
  */
-function toPubDate(value: string | undefined): string | null {
+function toInstant(value: string | undefined): number | null {
   if (!value) return null;
   const iso = /^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T00:00:00+09:00` : value;
-  const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? null : d.toUTCString();
+  const t = new Date(iso).getTime();
+  return Number.isNaN(t) ? null : t;
+}
+
+/** 新しい順の並べ替えキー。日付が無い／壊れている記事は末尾。 */
+export function feedSortKey(publishedAt: string | undefined): number {
+  return toInstant(publishedAt) ?? Number.NEGATIVE_INFINITY;
+}
+
+/** 不正な値は pubDate を出さない（壊れた日付でフィードごと落とさない）。 */
+function toPubDate(value: string | undefined): string | null {
+  const t = toInstant(value);
+  return t === null ? null : new Date(t).toUTCString();
 }
 
 export function buildRssFeed(items: FeedItem[]): string {
@@ -46,7 +57,8 @@ export function buildRssFeed(items: FeedItem[]): string {
   ];
 
   for (const item of items) {
-    const url = `${origin}${item.path}`;
+    // slug は MDX の frontmatter やファイル名から来るので、& が混ざりうる。
+    const url = esc(`${origin}${item.path}`);
     const pubDate = toPubDate(item.publishedAt);
     lines.push("    <item>");
     lines.push(`      <title>${esc(item.title)}</title>`);
