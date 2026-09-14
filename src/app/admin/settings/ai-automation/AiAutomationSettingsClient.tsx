@@ -468,7 +468,7 @@ export default function AiAutomationSettingsClient({ role, initialSettings, cost
                     </div>
 
                     <div className="flex flex-col gap-1.5">
-                      <div className="inline-flex flex-wrap rounded-lg border border-border-default overflow-hidden">
+                      <div className="inline-flex rounded-lg border border-border-default overflow-x-auto">
                         {POLICY_OPTIONS.map((p) => {
                           const selected = policy === p;
                           return (
