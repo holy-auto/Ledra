@@ -31,13 +31,13 @@
 #
 # ponytail: 上限。並列数は固定（配列の要素数ぶん同時に起動する）。
 # チェックが増えて runner のメモリが足りなくなったら、ここにジョブ分割か
-# 同時実行数の制限を入れる。今は6本で問題ない。
+# 同時実行数の制限を入れる。今は7本で問題ない。
 set -uo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 # 表示名と実行コマンド。**CI はこの1箇所だけを見る。**
-NAMES=(lint lint:migrations tsc test:coverage check:schema check:context-dates)
+NAMES=(lint lint:migrations tsc test:coverage check:schema check:context-dates check:ox-override)
 CMDS=(
   "npm run lint"
   "npm run lint:migrations"
@@ -50,6 +50,10 @@ CMDS=(
   # 2026-09-03 に2日先の日付を4ファイルに書いた (MISTAKE_LEDGER M-011)。
   # DECISION_LOG の日付はその記録自体が唯一の出典で、誤ると検証手段が無い
   "npm run check:context-dates"
+  # overrides.ox が viem の要求を下回っていないか。下回ると next build の
+  # コンパイル段階で「Export ... doesn't exist in target module」になるが、
+  # そのメッセージから overrides に辿り着くのは難しい (DECISION_LOG 2026-09-14)
+  "npm run check:ox-override"
 )
 
 LOG_DIR="$(mktemp -d)"

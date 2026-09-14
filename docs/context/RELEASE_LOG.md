@@ -4,6 +4,67 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-09-14 依存関係の詰まりを解消（`ox` overrides 追従・mobile ロックファイル修復・GitHub Actions の Node 20 対応）
+
+- **`overrides.ox` を 0.14.29 → 0.14.44 に更新**。viem 2.56.3 が要求する `ox` に
+  追従させ、Dependabot PR #1059（web 39件）のクライアントビルド失敗
+  （`Export MultisigOperation doesn't exist in target module`）を解消する。
+  `ox` はアプリから直接 import していない（viem 経由の推移的依存のみ）。
+- **`apps/mobile` の `@stripe/stripe-terminal-react-native` を beta.31 → beta.32**。
+  Dependabot が再生成したロックファイルは `expo-font` の peer エントリを落として
+  `npm ci` を EUSAGE で壊していたため、手元でロックファイルを作り直した。
+  結果の差分は意図した2ハンクのみ（Dependabot 版は6ハンクで、余計なものが4つ）。
+  - **このバンプは無害な patch ではない。** beta.32 は Expo config plugin に
+    `withDangerousMod` を追加し、`MainApplication` の Tap to Pay ガードの位置を変える。
+    実際に `npx expo prebuild` して生成物を比較したところ、
+    **beta.31 は `super.onCreate()` の直後**にガードを置いていたのに対し、
+    **beta.32 は `TerminalApplicationDelegate.onCreate(this)` の後ろ**に移す。
+    つまり Tap to Pay プロセスでも Terminal デリゲートが初期化されるようになる。
+    `app.json` の `tapToPayCheck: true` が有効なのでこの経路は実際に通る。
+    実機での Tap to Pay 動作確認は未実施（OPEN_QUESTIONS 起票済み）。
+- **GitHub Actions の Node 20 削除（2026-09-16）への対応**。
+  `gitleaks/gitleaks-action` v2→v3（#1070）と `github/codeql-action` 4.37.6→4.38.0
+  （#1069）をマージ。全 workflow の**トップレベルの** `uses:` を点検し、
+  node20 のアクションが残っていないことを確認した（コメントアウト行は除外して再集計）。
+  - 内訳: `actions/checkout@v7` / `setup-node@v7` / `upload-artifact@v7` /
+    `gitleaks-action@v3` / `create-pull-request@v8` / `lighthouse-ci-action@v12` /
+    `sonarqube-scan-action@2291811` は node24。
+    `codacy-analysis-cli-action` と `claude-code-action@v1` は composite。
+  - **限界**: この点検はトップレベルの `uses:` までしか降りていない。
+    composite アクションは内部で別のアクションを呼べる。実際
+    `codacy/codacy-analysis-cli-action` は内部で `actions/setup-go@v3`（**node16**）を
+    使っている。現状は到達不能（当該ステップは `inputs.run-staticcheck == 'true'` で
+    gate されており既定値が無く、`codacy.yml` 自体も `workflow_dispatch` のみ、
+    `CODACY_PROJECT_TOKEN` も未設定）なので 2026-09-16 に壊れるものは無いが、
+    **Codacy を有効化するときは先にここを見ること。**
+- **再発防止の仕組みを追加**: `scripts/check-ox-override.mjs`。
+  `overrides.ox` が ox を要求するパッケージの pin を下回っていないかを
+  lockfile から検査する。`ox` は直接依存ではないため Dependabot の管理対象外で、
+  viem が上がるたび人間が手で追従しない限り同じ失敗が再発する。
+  CI の並列チェック（`scripts/ci-parallel-checks.sh`）に組み込んだ。
+  2026-09-14 に実際に落ちた構成（ox 0.14.29 / viem が 0.14.44 を要求）を
+  検出できることをテストで確認済み（`scripts/check-ox-override.test.ts`）。
+- **`apps/mobile/scripts/fix-stripe-terminal-package.mjs` のバージョン盲を修正**。
+  互換シムの存在だけを見て「既にある」で済ませていたため、SDK を上げても
+  古いコピーが残りうる（`npm ci` は node_modules を消すので CI では起きないが、
+  `npm install` でその場アップグレードする手元では起きる）。version を比較して
+  違えば作り直すようにした。
+- 検証（web）: `npm run lint`（0 errors）、`npx tsc --noEmit`（クリーン）、
+  `npm run check:schema`（OK）、`npm run check:context-dates`（OK）、
+  `npm run check:ox-override`（OK）、`npm ci` 後の `npx vitest run`
+  （**573 ファイル / 5612 テスト通過・5 スキップ・0 失敗**）、
+  `next build`（`build-manifest.json` 生成を確認）。
+  - スキップ5件のうち4件は C2PA 適合性テスト。`npm ci` が
+    `@contentauth/c2pa-node`（optionalDependency）をインストールしないため
+    沈黙している —— **これは本変更が原因ではなく main の現状**。
+    OPEN_QUESTIONS に起票した。手でパッケージを入れると 4/4 通る。
+- 検証（mobile）: `npm ci` で **beta.32 を実際にインストールした上で**、
+  `.github/workflows/mobile-ci.yml` の4ステップをすべて実行 ——
+  `npm run typecheck`（クリーン）、`npm test`（通過）、
+  `npx expo prebuild --platform android`（成功）、`npm run check:native`（OK）。
+- 変更ファイル: 依存関係 4 ファイル（計 9 行）＋ 新規チェック 2 ファイル
+  ＋ `scripts/ci-parallel-checks.sh` ＋ mobile の postinstall スクリプト。
+
 ## 2026-09-14 マーケサイトのフッターに運営会社・姉妹サービスへの相互リンクを追加
 
 - マーケサイトのフッター（ブランド列）に「グループサイト」の外部リンクを追加。

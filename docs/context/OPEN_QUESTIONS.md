@@ -3,6 +3,124 @@
 > まだ決まっていないこと、判断に迷っていることを書く場所。決まったら
 > DECISION_LOG.md に移し、このファイルからは消す（削除履歴は git で追える）。
 
+## Stripe Terminal beta.32 が Tap to Pay の起動順を変えるが、実機で確認していない（2026-09-14）
+
+`@stripe/stripe-terminal-react-native` beta.31 → beta.32（#1075）は、
+Expo config plugin に `withDangerousMod` を追加して `MainApplication` の
+Tap to Pay ガードの位置を変える。`app.json` の `tapToPayCheck: true` が
+有効なのでこの経路は実際に通る。
+
+`npx expo prebuild --platform android` して生成物を比較した実測:
+
+```diff
+   super.onCreate()
+-  if (TapToPay.isInTapToPayProcess()) { return }     ← beta.31
+   TerminalApplicationDelegate.onCreate(this)
++  if (TapToPay.isInTapToPayProcess()) { return }     ← beta.32
+```
+
+つまり **beta.31 では Tap to Pay プロセスで `TerminalApplicationDelegate.onCreate(this)`
+が実行されないまま return していた**のが、beta.32 では実行されるようになる。
+Stripe 側の意図した修正と読めるが、**どちらが正しいかを一次情報で確認していない。**
+
+さらに beta.32 の dangerous mod は、`MainApplication` に `super.onCreate()` の
+文字列が見つからない場合、`console.warn` だけ出して**ガードの注入を黙って諦める**。
+prebuild は成功したままなので、ビルドは通るのにガードだけ消える形になりうる。
+
+判断・確認が要るのは次の点:
+
+- **実機での Tap to Pay 動作確認。** 起動順が変わっているので、
+  カード読み取りの初期化に影響が出ていないかは実機でしか分からない。
+  CI の `prebuild` は生成物が作れることしか見ていない。
+- ガードの注入が黙って諦められる経路を、生成後の `MainApplication` に
+  `TapToPay.isInTapToPayProcess` が含まれることの assert で塞ぐか。
+  `check:native`（`apps/mobile/scripts/check-native-config.mjs`）に足せる。
+
+【要確認】Stripe の beta.32 リリースノートに、この順序変更の理由が
+書かれているか。書かれていれば意図した修正と確定できる。
+
+## C2PA 適合性ゲートがフェイルソフトで、CI が緑のまま検査が沈黙しうる（2026-09-14）
+
+`src/lib/anchoring/providers/__tests__/c2paSignValidate.test.ts` は JPEG / PNG / WebP を
+実際にネイティブライブラリで署名してマニフェストを検証する、本物の適合性ゲートである
+（`@contentauth/c2pa-node` 0.9.3 に対しても 4/4 通ることを手元で確認済み）。
+
+問題は**落ち方**である。`import("@contentauth/c2pa-node")` が失敗すると
+`readerAvailable = false` になり 4本とも `ctx.skip()` でスキップされ、
+**テストファイルは "passed" として集計される**。そして `@contentauth/c2pa-node` は
+`optionalDependencies` にあり、実際に入らないことがある（この環境で素の `npm install` を
+実行したところ node_modules に入らなかった）。
+両者が重なると **CI は緑のまま C2PA の検査が丸ごと沈黙する**。
+
+**そして実際にそうなっている。** 2026-09-14 に `package-lock.json` どおりの
+ツリーで確認した（CI と同じ `npm ci`）:
+
+```
+$ npm ci
+$ ls node_modules/@contentauth/c2pa-node
+（存在しない）
+
+$ npx vitest run
+Test Files  573 passed | 1 skipped (574)
+     Tests  5612 passed | 5 skipped (5617)   ← 増えた4件が C2PA
+
+$ npx vitest run src/lib/anchoring/providers/__tests__/c2paSignValidate.test.ts
+Test Files  1 passed (1)
+     Tests  4 skipped (4)                     ← 緑だが中身は走っていない
+```
+
+lockfile は `@contentauth/c2pa-node` 0.6.0 を記録しているのに、`npm ci` は
+それをインストールしない。つまり **CI の C2PA 適合性ゲートは現在まったく
+走っていない**（main の現状）。参考までに、パッケージを手で入れると
+4/4 通る（0.6.4 でも 0.9.3 でも）ので、ゲート自体は健全である。
+沈黙しているだけ。
+
+さらにフェイルソフトの判定自体にも穴がある。`import()` と `Reader` の存在は
+JS ラッパだけで成立するため、**ネイティブバイナリの dlopen 失敗は catch されず**、
+`signC2pa` の中で普通のテスト失敗になる（この環境で実際にそうなった:
+`invalid ELF header` — macOS arm64 のバイナリが Linux x86-64 に置かれていた）。
+つまり「入らない」はスキップ、「入ったが壊れている」は失敗、と挙動が割れている。
+
+判断が要るのは次の点:
+
+- ゲートをフェイルソフトのままにするか、**本番向け検査として fail-closed にするか**。
+  fail-closed にすると、ネイティブ依存が入らない開発環境でローカルテストが落ちる。
+- 代替として、**CI でだけスキップ数を検査する**（`c2pa` のスキップが 0 であることを
+  assert する）方法がある。ローカルの利便性を保ったまま CI の沈黙だけを塞げる。
+- そもそも `@contentauth/c2pa-node` を `optionalDependencies` から
+  `dependencies` に移すべきか。C2PA は署名の中核なので「無くてもよい」扱いが妥当か。
+
+【要確認】本番（Vercel）で `@contentauth/c2pa-node` が実際に入っているか。
+入っていない場合、C2PA 署名はランタイムでもフェイルオープンしている可能性がある。
+なお本番データ上、C2PA は現時点で未稼働である（`certificate_images` 81 行に対し
+`c2pa_verified` / `c2pa_manifest` / `external_c2pa_present` / `c2pa_manifest_cid`
+すべて 0 行・2026-09-13 実測）ため、**今すぐ壊れるものは無い**。
+
+## Dependabot PR #1046（mobile 28件）に react-native 0.87 が紛れており、代表判断が要る（2026-09-14）
+
+Dependabot の "minor-and-patch" グループに、破壊的変更を含みうるバンプが入っている。
+
+- `react-native` 0.83.6 → **0.87.1**
+- `react-native-worklets` 0.7.4 → **0.12.2**
+- `react-native-reanimated` 4.2.1 → 4.6.0
+- `react` / `react-dom` 19.2.0 → 19.2.8、`expo` ~55.0.26 → ~55.0.31 ほか
+
+react-native は 0.x のため minor バンプが破壊的変更を含みうるが、
+Dependabot の semver 分類では "minor" 扱いになりグループに入ってしまう。
+`Mobile Typecheck & Unit Tests` は現在 `npm ci` の段階で落ちている
+（#911 と同じロックファイル再生成の不具合）ため、RN 0.87 自体の影響はまだ測れていない。
+
+選択肢:
+
+- (a) `react-native` / `react-native-worklets` / `react-native-reanimated` を
+  `.github/dependabot.yml` のグループから **ignore / 除外**し、残りの安全な25件だけ取り込む
+- (b) Expo 55 側が RN 0.87 を正式サポートするまで PR ごと寝かせる
+- (c) RN 0.87 移行を独立した作業として立てる（実機ビルド・回帰確認込み）
+
+【要確認】Expo 55.0.31 が RN 0.87.1 を公式サポートしているか。
+Expo は SDK ごとに RN バージョンを固定する設計なので、
+ここがズレていると (a) が唯一の選択肢になる。
+
 ## MobileWash のドメインと法人格が、リポジトリ間で食い違っている（2026-09-14）
 
 - 起票日: 2026-09-14

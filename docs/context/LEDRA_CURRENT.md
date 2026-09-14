@@ -4,7 +4,22 @@
 > 追わず、常に最新状態だけを保つ（履歴は DECISION_LOG.md / RELEASE_LOG.md 側）。
 > 大きな変化があったら都度上書きすること。
 
-最終更新: 2026-09-13
+最終更新: 2026-09-14
+
+> 2026-09-14 追記: **GitHub Actions の Node 20 削除（2026-09-16）に備え、
+> node20 のアクションを一掃した。** `gitleaks/gitleaks-action` v2→v3（#1070）と
+> `github/codeql-action` 4.38.0（#1069）をマージし、全 workflow の**トップレベルの**
+> `uses:` に node20 が残っていないことを確認した。ただしこの点検は composite
+> アクションの内部までは降りていない（`codacy-analysis-cli-action` は内部で
+> node16 の `actions/setup-go@v3` を使うが、当該 workflow は `workflow_dispatch`
+> のみかつ未設定で到達不能。Codacy を有効化するときは要確認）。
+> あわせて滞留していた Dependabot PR の原因を1本ずつ特定し、`overrides.ox` を
+> viem に追従させる修正（0.14.29→0.14.44）と、mobile のロックファイル作り直しを
+> 入れた。再発防止として `scripts/check-ox-override.mjs` を CI に追加。
+> #1046（react-native 0.87 を含む mobile 28件）は代表判断待ちで OPEN_QUESTIONS に起票。
+> C2PA 適合性ゲートがフェイルソフトである件、および Stripe Terminal beta.32 が
+> Tap to Pay の起動順を変える件も同様に起票した。
+
 
 > 2026-09-13 追記: **価値仮説フレームワーク分析を正式化した**（PR #965）。
 > `docs/startup-value-target-hypothesis-2026-08.md` に独自性検証・Lv.1→5定義・
