@@ -4,6 +4,22 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-09-14 3サイト（holy-inc.jp / Ledra / MobileWash）の相互リンクを3リポジトリ同時にマージ
+
+- 3つの PR をすべて main/master にマージした。
+  - `holy-auto/Ledra#1074` → `988b8d1`
+  - `holy-auto/holy-inc#7` → `88d3de7`
+  - `holy-auto/MobileWash#19` → `eba93b5`
+- 各リポジトリに「他サイトのURLはここにしか書かない」定数を1つずつ置いた
+  （Ledra: `groupSites` / holy-inc: `src/lib/sites.ts` / MobileWash: `GROUP_SITES`）。
+- holy-inc 側では、作業中に見つかった既存不具合もまとめて直した
+  （Navbar が存在しないルート `/holyauto` を指していた、sitemap.xml と robots.txt が
+  `https://example.com` のままだった、座標が2か所で食い違っていた 等）。
+  再発防止として `npm run check:links` を追加している。
+- デプロイ側の出来事: 作業中、Vercel アカウントが `Account is blocked.` で
+  全プロジェクトのデプロイを止めていた。解除後も**過去のコミットステータスは
+  自動では書き換わらない**ため、新しいデプロイを走らせるまで PR は赤のままだった。
+
 ## 2026-09-14 依存関係の詰まりを解消（`ox` overrides 追従・mobile ロックファイル修復・GitHub Actions の Node 20 対応）
 
 - **`overrides.ox` を 0.14.29 → 0.14.44 に更新**。viem 2.56.3 が要求する `ox` に
