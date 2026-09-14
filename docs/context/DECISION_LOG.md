@@ -17,6 +17,7 @@
    - #911（mobile 1件）: Dependabot が再生成したロックファイルが
      `expo-font` のエントリを落とし（`peer: true` の項目）、`devOptional`→`dev` も
      書き換えていたため `npm ci` が EUSAGE で落ちる。バンプ内容とは無関係。
+     なお**バンプ内容そのものは無害ではなかった**（下記5の後半）。
    - #1046（mobile 28件）: react-native 0.83.6→**0.87.1** ほかを含む。別枠（下記8）。
 3. **以前の考え**: 「Dependabot が落ちているのはロックファイルがずれているだけなので
    `@dependabot recreate` を投げれば直る」。実際、前回はそう判断して recreate を投げた。
@@ -29,8 +30,21 @@
    - `overrides.ox` を `0.14.29` → `0.14.44` に上げる（1行）。これで viem 2.56.3 が
      通るようになり、Dependabot が rebase すれば #1059 は自力で緑になる。
    - #911 のバンプ（`@stripe/stripe-terminal-react-native` beta.31→beta.32）は
-     **手元で `npm install` してロックファイルを作り直し**、こちらの PR で取り込む。
+     **手元でロックファイルを作り直し**、こちらの PR で取り込む。
      Dependabot の PR は main に入った時点で自動的に閉じる。
+   - **`scripts/check-ox-override.mjs` を追加して CI に組み込む。**
+     `overrides.ox` を1回上げるだけでは、次に viem が上がったとき同じ失敗が
+     同じ形で再発する（`ox` は直接依存ではないので Dependabot は触れない）。
+     lockfile から「ox を要求する全パッケージの pin」と「解決後の ox」を突き合わせ、
+     下回っていたら落とす。2026-09-14 に実際に落ちた構成を検出できることを
+     テストで確認した。
+   - **beta.32 の中身を見た結果、これは無害な patch バンプではなかった。**
+     Expo config plugin に `withDangerousMod` が追加され、生成される
+     `MainApplication` の Tap to Pay ガードが
+     `TerminalApplicationDelegate.onCreate(this)` の前から後ろへ移る
+     （`npx expo prebuild` の生成物を beta.31 と比較して実測）。
+     Tap to Pay は稼働中の機能なので、**実機確認を OPEN_QUESTIONS に起票**した上で
+     取り込む。CI の `prebuild` は生成物が作れることしか見ていない。
    - #1046 は着手しない（下記8）。
 6. **捨てた選択肢**:
    - **`overrides.ox` を削除する**: viem が自分の必要な `ox` を持てるようになるが、
@@ -48,6 +62,13 @@
    CI と同じく page-data 収集（秘密情報が無いため）で非ゼロ終了するが、
    `.next/build-manifest.json` は生成され、`MultisigOperation` エラーは 0 件。
    これは CI の `Client Bundle Size` ジョブの判定条件そのもの。
+   mobile 側は `npm ci` で beta.32 を実際にインストールした上で、
+   `mobile-ci.yml` の4ステップをすべて実行した（`--dry-run` は検証ではない。
+   MISTAKE_LEDGER M-089）。
+   `overrides.ox` を**削除せず上げる**方を選んだのは、ox を1本に揃えるという
+   overrides 本来の意図を保ったまま、追従忘れだけを検査で塞げるため。
+   削除案は「1本に揃える」保証を失う代わりに追従が不要になるが、
+   検査1本のほうが安い。
 8. **まだ答えが出ていないこと**: **#1046 は代表判断が要る。**
    `react-native` 0.83.6→**0.87.1** と `react-native-worklets` 0.7.4→**0.12.2**、
    `react-native-reanimated` 4.2.1→4.6.0 を含む。RN は 0.x なので minor バンプが

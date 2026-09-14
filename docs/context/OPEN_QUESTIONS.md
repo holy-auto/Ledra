@@ -3,6 +3,42 @@
 > まだ決まっていないこと、判断に迷っていることを書く場所。決まったら
 > DECISION_LOG.md に移し、このファイルからは消す（削除履歴は git で追える）。
 
+## Stripe Terminal beta.32 が Tap to Pay の起動順を変えるが、実機で確認していない（2026-09-14）
+
+`@stripe/stripe-terminal-react-native` beta.31 → beta.32（#1075）は、
+Expo config plugin に `withDangerousMod` を追加して `MainApplication` の
+Tap to Pay ガードの位置を変える。`app.json` の `tapToPayCheck: true` が
+有効なのでこの経路は実際に通る。
+
+`npx expo prebuild --platform android` して生成物を比較した実測:
+
+```diff
+   super.onCreate()
+-  if (TapToPay.isInTapToPayProcess()) { return }     ← beta.31
+   TerminalApplicationDelegate.onCreate(this)
++  if (TapToPay.isInTapToPayProcess()) { return }     ← beta.32
+```
+
+つまり **beta.31 では Tap to Pay プロセスで `TerminalApplicationDelegate.onCreate(this)`
+が実行されないまま return していた**のが、beta.32 では実行されるようになる。
+Stripe 側の意図した修正と読めるが、**どちらが正しいかを一次情報で確認していない。**
+
+さらに beta.32 の dangerous mod は、`MainApplication` に `super.onCreate()` の
+文字列が見つからない場合、`console.warn` だけ出して**ガードの注入を黙って諦める**。
+prebuild は成功したままなので、ビルドは通るのにガードだけ消える形になりうる。
+
+判断・確認が要るのは次の点:
+
+- **実機での Tap to Pay 動作確認。** 起動順が変わっているので、
+  カード読み取りの初期化に影響が出ていないかは実機でしか分からない。
+  CI の `prebuild` は生成物が作れることしか見ていない。
+- ガードの注入が黙って諦められる経路を、生成後の `MainApplication` に
+  `TapToPay.isInTapToPayProcess` が含まれることの assert で塞ぐか。
+  `check:native`（`apps/mobile/scripts/check-native-config.mjs`）に足せる。
+
+【要確認】Stripe の beta.32 リリースノートに、この順序変更の理由が
+書かれているか。書かれていれば意図した修正と確定できる。
+
 ## C2PA 適合性ゲートがフェイルソフトで、CI が緑のまま検査が沈黙しうる（2026-09-14）
 
 `src/lib/anchoring/providers/__tests__/c2paSignValidate.test.ts` は JPEG / PNG / WebP を
@@ -16,7 +52,28 @@
 実行したところ node_modules に入らなかった）。
 両者が重なると **CI は緑のまま C2PA の検査が丸ごと沈黙する**。
 
-実測: パッケージ不在の状態で実行 → `Test Files 1 passed / Tests 4 skipped`。
+**そして実際にそうなっている。** 2026-09-14 に `package-lock.json` どおりの
+ツリーで確認した（CI と同じ `npm ci`）:
+
+```
+$ npm ci
+$ ls node_modules/@contentauth/c2pa-node
+（存在しない）
+
+$ npx vitest run
+Test Files  573 passed | 1 skipped (574)
+     Tests  5612 passed | 5 skipped (5617)   ← 増えた4件が C2PA
+
+$ npx vitest run src/lib/anchoring/providers/__tests__/c2paSignValidate.test.ts
+Test Files  1 passed (1)
+     Tests  4 skipped (4)                     ← 緑だが中身は走っていない
+```
+
+lockfile は `@contentauth/c2pa-node` 0.6.0 を記録しているのに、`npm ci` は
+それをインストールしない。つまり **CI の C2PA 適合性ゲートは現在まったく
+走っていない**（main の現状）。参考までに、パッケージを手で入れると
+4/4 通る（0.6.4 でも 0.9.3 でも）ので、ゲート自体は健全である。
+沈黙しているだけ。
 
 さらにフェイルソフトの判定自体にも穴がある。`import()` と `Reader` の存在は
 JS ラッパだけで成立するため、**ネイティブバイナリの dlopen 失敗は catch されず**、
