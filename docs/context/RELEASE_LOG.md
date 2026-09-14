@@ -4,6 +4,28 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-09-14 3サイトに「ファイルを1つ足せば公開される」投稿の仕組みを入れた
+
+代表が記事を出すのにコードを書かなくて済む形に揃えた。
+
+- **holy-inc**: `src/content/news/<日付>-<内容>.md` を足すと、トップのお知らせ（5件）・
+  `/news`・記事ページ `/news/<slug>`（本文を書いた記事のみ）・`sitemap.xml`・
+  RSS `/feed.xml` に自動で載る。既存の5件は i18n の直書きから md に移設。
+- **MobileWash**: `src/content/{news,press}/*.md` を足すと、`/company/news` と
+  `/company/press`・プリレンダHTML・RSS `/feed.xml` に自動で載る。
+  既存の5件（news 3・press 2）は `src/mocks/company{News,Press}.ts` から移設。
+  一覧ページの静的HTMLに記事本文を出し、CollectionPage + ItemList の JSON-LD を付けた。
+  記事ごとのページは作っていない（1〜3文の告知でページを量産しないため）。
+- **Ledra**: 仕組みは既にあった（管理画面 `/admin/site-content` からの投稿＋
+  5分ごとの予約公開 cron＋MDX）。足りなかったのは RSS と手順書なので、
+  `/feed.xml`（お知らせ・ブログ、DBとMDXの両方から集約）と
+  `docs/marketing/operation/posting-guide.md` を追加した。
+- 3サイトとも `llms.txt` に RSS の URL を載せた。
+
+不具合の修正も含む: MobileWash のプリレンダは JSON-LD を1件も出力できていなかった
+（`index.html` に `</head>` が無く、素の文字列置換が黙って空振りしていた）。
+`</head>` / `<body>` を補い、差し込みを Error で落ちる形に揃えた（MISTAKE_LEDGER M-092）。
+
 ## 2026-09-14 3サイト（holy-inc.jp / Ledra / MobileWash）の相互リンクを3リポジトリ同時にマージ
 
 - 3つの PR をすべて main/master にマージした。

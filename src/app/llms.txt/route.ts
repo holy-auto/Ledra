@@ -19,6 +19,7 @@ ${siteConfig.siteDescription}
 - [お知らせ](${siteConfig.siteUrl}/news)
 - [事例](${siteConfig.siteUrl}/cases)
 - [お問い合わせ](${siteConfig.siteUrl}/contact)
+- [更新情報（RSS）](${siteConfig.siteUrl}/feed.xml)
 - [詳細版: llms-full.txt](${siteConfig.siteUrl}/llms-full.txt)
 `;
 
