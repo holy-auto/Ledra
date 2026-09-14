@@ -402,7 +402,7 @@ function OrderDetailModal({
             )}
 
             {mode !== "decline" && (
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <label>
                   <div className="mb-1 text-xs text-muted">出荷予定日（任意）</div>
                   <input
