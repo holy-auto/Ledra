@@ -13,7 +13,9 @@
 3. **以前の考え**: 外すのは `react-native` / `react-native-worklets` /
    `react-native-reanimated` の3つでよい、と自分で書いていた。
 4. **違和感・問題**: **3つでは足りなかった。** `expo@55.0.31` の
-   `bundledNativeModules.json`（`expo install` がバージョンを決める一次情報）と
+   `bundledNativeModules.json`（`expo install` がバージョンを決める一次情報。
+   55.0.31 は #1046 が提案する版で、リポジトリにロックされているのは 55.0.28。
+   ただし下表の6件＋`react`/`react-dom` の指定は両者で同一であることを確認済み）と
    実際の `package.json` を突き合わせたところ、Expo が固定していて **かつ**
    #1046 が Expo の指定を追い越すものは **6件**あった —— 上記3つに加えて
    `react-native-gesture-handler`（~2.30.0 固定に対し ~2.32.0 提案）、
@@ -27,8 +29,10 @@
      `.github/dependabot.yml` の `/apps/mobile` に、Expo 固定依存の
      `version-update:semver-minor` を無視する規則を14本追加（パターン4＋個別10）。
    - **minor だけを止めて patch は通す。** Expo 自身が出す 55.0.x の追従
-     （`expo-camera` ~55.0.19 → ~55.0.23 等）は patch なので流れる。実測で
-     危険な6件はすべて semver-minor、Expo が望む更新はすべて patch と確認した。
+     （`expo-camera` ~55.0.19 → ~55.0.23 等）は patch なので流れる。
+     実測で確認したのは **#1046 が提案する危険な6件がすべて semver-minor である**
+     ことまで。「Expo が望む更新はすべて patch」ではない（項目8の
+     `datetimepicker` が反例）。
    - SDK を上げるときは `npx expo install --fix` でまとめて追従させる。
    - 一覧が手書きである以上いつか漏れるので、
      **`apps/mobile/scripts/check-expo-pins.check.mjs`** を追加した。
@@ -52,8 +56,13 @@
 8. **まだ答えが出ていないこと**: **RN 0.87 への移行そのもの**は未着手。
    Expo が SDK 56 等で RN 0.87 を採用した時点で、`expo install --fix` を通した
    まとまった作業として実施する必要がある。実機ビルドと回帰確認が要る。
-   また `@react-native-community/datetimepicker` は Expo が 8.6.0 を指定して
-   いるのに現在 ^8.3.1 で、この規則により追従が止まる（安全側だが差は残る）。
+   また **この規則は名前の集合しか守らない。バージョンは見ていない。**
+   Expo の完全一致 pin（`react-native` 0.83.10 等、28件中8件）に対して
+   patch バンプは ignore を素通りするので、指定を追い越した状態は起こりうる。
+   実際 `react-native-svg` は Expo 指定 15.15.3 に対し 15.15.5、
+   `expo-video` は ~55.0.19 に対し ~55.0.20 で、すでに追い越している。
+   バージョン単位で揃えるには `npx expo install --check` が要るが、
+   これは `npm test` に組み込んでいない（OPEN_QUESTIONS に起票）。
 9. **公開区分**: 公開可（Expo プロジェクトの依存管理として一般的な知見）
 
 ## 2026-09-14 `ox` の overrides を viem に追従させ、Dependabot の壊れたロックファイルは手元で作り直す

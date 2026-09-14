@@ -107,17 +107,40 @@ Dependabot #1046 に紛れていた `react-native` 0.83.6 → 0.87.1 は、
 `npx expo install --fix` を通したまとまった作業として実施する必要がある。
 実機ビルドと回帰確認が要るので、依存更新の PR では扱えない。
 
-あわせて小さな差が2つ残る（どちらも安全側）。
-
 - `react-native` は現在 0.83.6 だが Expo の指定は **0.83.10**。これは patch なので
   ignore の対象外であり、次の Dependabot 実行で追従するはず。
-- `@react-native-community/datetimepicker` は現在 `^8.3.1` だが Expo の指定は
-  **8.6.0**。8.3 → 8.6 は semver-minor なのでこの規則により止まる。
-  Expo の指定より古いまま固定されるが、追い越すよりは安全。
-  SDK を上げるときに `expo install --fix` で揃う。
 
 【要確認】Expo がどのバージョンで RN 0.87 を採用するか（SDK 56 か、55 の後期か）。
 これが決まるまで移行の時期を決められない。
+
+## Expo 固定依存の「バージョン」は誰も検査していない（2026-09-14）
+
+`dependabot.yml` の ignore 規則と `check-expo-pins.check.mjs` が守るのは
+**名前の集合だけ**で、バージョンは見ていない。Expo の完全一致 pin に対して
+**patch バンプは ignore を素通りする**ため、指定を追い越した状態は起こりうる。
+
+実測（`expo@55.0.28` 基準、2026-09-14）:
+
+- `react-native-svg` — Expo 指定 **15.15.3** / 現在 **15.15.5**（追い越し済み）
+- `expo-video` — Expo 指定 **~55.0.19** / 現在 **~55.0.20**（追い越し済み）
+- 完全一致 pin は28件中**8件**（`react` `react-dom` `react-native`
+  `react-native-worklets` `react-native-reanimated` `react-native-svg`
+  `@react-native-community/netinfo` `@react-native-community/datetimepicker`）
+
+つまり今回の対応で止まるのは **minor による大きな追い越し**（RN 0.87 など）だけで、
+patch による小さなズレは残る。RELEASE_LOG 2026-08 時点で
+`expo doctor` が「16 packages out of date」と報告していたのと同じ種類の差である。
+
+判断が要るのは次の点:
+
+- **`npx expo install --check` を `apps/mobile` の `npm test` か CI に組み込むか。**
+  バージョン単位で Expo の指定と突き合わせる正規の道具。
+  組み込むと現時点で落ちる可能性が高い（既に追い越しが2件ある）ので、
+  先に `expo install --fix` で揃えてから入れる必要がある。
+- 揃えた後に実機ビルドの確認が要るか（ネイティブモジュールのバージョンが動く）。
+
+【要確認】`expo install --fix` を流したときに実際に何件動くか。
+`expo doctor` の出力を取れば分かるが、この環境では未実行。
 
 ## `processCardPayment` の決済確定失敗時、PaymentIntentの状態を二値分類しているのが構造的に足りない（2026-09-11）
 

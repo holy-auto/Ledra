@@ -6,11 +6,15 @@ on:
     paths:
       - "apps/mobile/**"
       - ".github/workflows/mobile-ci.yml"
+      # check-expo-pins.check.mjs が守る対象。ここを外すと、ignore 規則を
+      # 削る PR がこのワークフローを起動せず、保護が黙って外れたまま緑になる。
+      - ".github/dependabot.yml"
   pull_request:
     branches: [main, staging]
     paths:
       - "apps/mobile/**"
       - ".github/workflows/mobile-ci.yml"
+      - ".github/dependabot.yml"
 
 jobs:
   typecheck-test:
