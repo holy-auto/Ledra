@@ -433,7 +433,7 @@ export default function AiAutomationSettingsClient({ role, initialSettings, cost
       {/* ── ワークフロー × フィールド ─────────────────────── */}
       {workflows.map((w) => (
         <section key={w.key} className="glass-card p-5 space-y-4">
-          <div className="flex items-start justify-between gap-3">
+          <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <div className="text-xs font-semibold tracking-[0.18em] text-muted">{w.key.toUpperCase()}</div>
               <div className="mt-1 text-base font-semibold text-primary">{w.label}</div>
@@ -461,14 +461,14 @@ export default function AiAutomationSettingsClient({ role, initialSettings, cost
               return (
                 <div key={f.key} className="rounded-xl border border-border-subtle bg-surface px-4 py-3">
                   <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div className="min-w-[200px] flex-1">
+                    <div className="sm:min-w-[200px] flex-1">
                       <div className="text-sm font-medium text-primary">{f.label}</div>
                       {f.hint && <div className="text-[11px] text-muted mt-0.5">{f.hint}</div>}
                       <div className="text-[10px] text-muted mt-1 font-mono opacity-60">{f.key}</div>
                     </div>
 
                     <div className="flex flex-col gap-1.5">
-                      <div className="inline-flex rounded-lg border border-border-default overflow-hidden">
+                      <div className="inline-flex flex-wrap rounded-lg border border-border-default overflow-hidden">
                         {POLICY_OPTIONS.map((p) => {
                           const selected = policy === p;
                           return (

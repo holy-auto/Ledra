@@ -197,7 +197,7 @@ export default function PhotoTamperingPanel({
                     </div>
                   )}
 
-                  <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-0.5 text-xs text-muted">
+                  <div className="mt-2 grid grid-cols-1 gap-y-0.5 text-xs text-muted sm:grid-cols-2 sm:gap-x-4">
                     {r.taken_at && <span>撮影: {new Date(r.taken_at).toLocaleString("ja-JP")}</span>}
                     {r.device && <span>端末: {r.device}</span>}
                     {r.software && <span>ソフト: {r.software}</span>}
