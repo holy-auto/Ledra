@@ -9,6 +9,7 @@
 
 import { headers } from "next/headers";
 import { HOLY_INC_URL, siteConfig } from "@/lib/marketing/config";
+import { AREA_SERVED_JSONLD } from "@/lib/marketing/areas";
 
 async function getNonce(): Promise<string | undefined> {
   return (await headers()).get("x-nonce") ?? undefined;
@@ -39,6 +40,8 @@ export async function OrganizationJsonLd() {
       lowPrice: "9800",
       highPrice: "49800",
       offerCount: "3",
+      // ブラウザから使う SaaS なので提供エリアは日本全国。47都道府県を明示する。
+      areaServed: AREA_SERVED_JSONLD,
     },
     provider: {
       "@type": "Organization",
@@ -51,6 +54,7 @@ export async function OrganizationJsonLd() {
         name: "株式会社HOLY",
         url: HOLY_INC_URL,
       },
+      areaServed: AREA_SERVED_JSONLD,
     },
   };
 
