@@ -231,14 +231,14 @@ export default function DocumentDetailClient({
       {/* Status & Actions */}
       <section className="glass-card p-5">
         <div className="flex flex-wrap items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
             <span className="text-sm text-muted">ステータス:</span>
             <Badge variant={statusVariant(doc.status)}>{statusLabel(doc.status)}</Badge>
             {doc.is_invoice_compliant && <Badge variant="info">インボイス対応</Badge>}
             {seal && (
-              <span className="inline-flex items-center gap-1" title={seal.detail ?? undefined}>
+              <span className="inline-flex flex-wrap items-center gap-1" title={seal.detail ?? undefined}>
                 <Badge variant={seal.hasTimestamp ? "success" : "info"}>🔏 {seal.label}</Badge>
-                {seal.detail && <span className="text-xs text-muted">{seal.detail}</span>}
+                {seal.detail && <span className="hidden text-xs text-muted sm:inline">{seal.detail}</span>}
               </span>
             )}
           </div>
@@ -309,7 +309,7 @@ export default function DocumentDetailClient({
           <div className="mt-3 rounded-md border border-border-default bg-inset p-3 text-xs">
             <div className="text-muted mb-1">決済リンク (24 時間有効):</div>
             <div className="flex items-center gap-2">
-              <code className="flex-1 break-all font-mono text-[11px] text-primary">{linePayUrl}</code>
+              <code className="min-w-0 flex-1 break-all font-mono text-[11px] text-primary">{linePayUrl}</code>
               <button
                 type="button"
                 className="btn-ghost text-[11px]"
@@ -328,10 +328,10 @@ export default function DocumentDetailClient({
         {paymentDateInput !== null && (
           <div className="mt-3 rounded-md border border-border-default bg-inset p-3 space-y-2">
             <div className="text-xs text-muted">入金日</div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <input
                 type="date"
-                className="input-field text-sm"
+                className="input-field w-full text-sm sm:w-auto"
                 value={paymentDateInput}
                 onChange={(e) => setPaymentDateInput(e.target.value)}
               />
@@ -512,7 +512,7 @@ export default function DocumentDetailClient({
 
             {/* Totals */}
             <div className="flex justify-end">
-              <div className="w-64 space-y-2">
+              <div className="w-full space-y-2 sm:w-64">
                 <div className="flex justify-between text-sm border-b border-border-subtle pb-2 print:border-gray-200">
                   <span className="text-muted print:text-gray-500">小計</span>
                   <span className="text-primary print:text-black">{formatJpy(doc.subtotal)}</span>
