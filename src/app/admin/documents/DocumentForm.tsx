@@ -1143,7 +1143,7 @@ export default function DocumentForm({
           </div>
         </div>
         <div className="overflow-x-auto">
-          <div className="space-y-1 md:min-w-[960px]">
+          <div className="min-w-[800px] space-y-1 md:min-w-[960px]">
             {/* Header labels */}
             <div className="hidden gap-2 px-1 md:grid md:grid-cols-[28px_96px_minmax(0,1fr)_64px_60px_88px_72px_96px_104px_56px]">
               <span />
