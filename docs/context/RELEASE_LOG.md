@@ -4,6 +4,30 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-09-14 Expo 固定依存を Dependabot の minor バンプから保護
+
+- `.github/dependabot.yml` の `/apps/mobile` に、**Expo SDK が
+  `bundledNativeModules.json` で固定している依存の `semver-minor` を無視する**
+  規則を14本追加（`expo` / `expo-*` / `@expo/*` / `@react-native-community/*` の
+  4パターン＋ `react` `react-dom` `react-native` ほか個別10件）。
+- 背景: Dependabot #1046 が `react-native` 0.83.6 → **0.87.1** を
+  "minor-and-patch" グループに含めていた。**Expo SDK 55 は RN 0.87 を
+  サポートしておらず**（`expo@55.0.31` の指定は 0.83.10）、単独で上げると
+  Expo のツールチェーンが壊れる。
+- 当初 `react-native` / `worklets` / `reanimated` の3件と見ていたが、実データを
+  突き合わせた結果 **6件**だった（`gesture-handler` / `screens` /
+  `safe-area-context` も Expo の指定を追い越していた）。
+- **minor だけを止めて patch は通す。** Expo 自身が出す 55.0.x の追従は patch
+  なので流れる。危険な6件がすべて semver-minor であることは実測で確認。
+- 再発防止: **`apps/mobile/scripts/check-expo-pins.check.mjs`** を追加。
+  `bundledNativeModules.json` × `package.json` × `dependabot.yml` の実データを
+  突き合わせ、ignore に載っていない Expo 固定依存があれば落とす。
+  Expo 依存を足して ignore に書き忘れても、そこで止まる。
+  `apps/mobile` の `npm test` に登録（登録漏れは `checkRegistry.check.ts` が検出）。
+- 検証: Expo 固定の直接依存 **28件**すべてが ignore 対象であることを確認。
+  変異3種（個別行の削除／パターンの削除／`update-types` の改変）で実際に
+  落ちることを確認済み。mobile の `npm test` 全通過。
+
 ## 2026-09-14 依存関係の詰まりを解消（`ox` overrides 追従・mobile ロックファイル修復・GitHub Actions の Node 20 対応）
 
 - **`overrides.ox` を 0.14.29 → 0.14.44 に更新**。viem 2.56.3 が要求する `ox` に

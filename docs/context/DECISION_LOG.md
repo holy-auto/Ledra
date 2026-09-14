@@ -4,6 +4,58 @@
 > （新しい順）。実装の詳細は RELEASE_LOG.md、迷っている段階のものは
 > OPEN_QUESTIONS.md に書く。
 
+## 2026-09-14 Expo が固定する依存は Dependabot ではなく Expo SDK に追従させる
+
+1. **日付**: 2026-09-14
+2. **起きたこと**: Dependabot #1046（mobile 28件）の "minor-and-patch" グループに
+   `react-native` 0.83.6 → **0.87.1** が紛れていた。代表判断で選択肢 (a)
+   「危険なものをグループから外して残りを取る」を採ることになった。
+3. **以前の考え**: 外すのは `react-native` / `react-native-worklets` /
+   `react-native-reanimated` の3つでよい、と自分で書いていた。
+4. **違和感・問題**: **3つでは足りなかった。** `expo@55.0.31` の
+   `bundledNativeModules.json`（`expo install` がバージョンを決める一次情報）と
+   実際の `package.json` を突き合わせたところ、Expo が固定していて **かつ**
+   #1046 が Expo の指定を追い越すものは **6件**あった —— 上記3つに加えて
+   `react-native-gesture-handler`（~2.30.0 固定に対し ~2.32.0 提案）、
+   `react-native-screens`（~4.23.0 に対し ~4.27.0）、
+   `react-native-safe-area-context`（~5.6.2 に対し ~5.9.1）。
+   目についた3つだけ外していたら、兄弟が壊れたまま残っていた。
+   さらに **Expo SDK 55 は RN 0.87 をサポートしていない**ことも確定した
+   （Expo の指定は 0.83.10）。OPEN_QUESTIONS の【要確認】はこれで解決。
+5. **決めたこと**:
+   - **単位を「私が気づいた3つ」から「Expo が固定しているもの全部」に変えた。**
+     `.github/dependabot.yml` の `/apps/mobile` に、Expo 固定依存の
+     `version-update:semver-minor` を無視する規則を14本追加（パターン4＋個別10）。
+   - **minor だけを止めて patch は通す。** Expo 自身が出す 55.0.x の追従
+     （`expo-camera` ~55.0.19 → ~55.0.23 等）は patch なので流れる。実測で
+     危険な6件はすべて semver-minor、Expo が望む更新はすべて patch と確認した。
+   - SDK を上げるときは `npx expo install --fix` でまとめて追従させる。
+   - 一覧が手書きである以上いつか漏れるので、
+     **`apps/mobile/scripts/check-expo-pins.check.mjs`** を追加した。
+     `bundledNativeModules.json` × `package.json` × `dependabot.yml` の
+     実データ3つを突き合わせ、ignore に載っていない Expo 固定依存があれば落とす。
+6. **捨てた選択肢**:
+   - **`exclude-patterns` でグループから外すだけ**（単独 PR にする）: 単独の
+     RN 0.87 PR も結局マージできない（Expo のツールチェーンが壊れる）。
+     恒久的なノイズが増えるだけなので採らない。
+   - **これらを完全に `ignore` する**: `react-native` 0.83.6 → 0.83.10 のような
+     Expo が望む patch 追従まで止まってしまう。
+   - **`react-native-*` をワイルドカードで一括**: `react-native-nfc-manager` /
+     `paper` / `qrcode-svg` / `url-polyfill` / `vector-icons` の5つは Expo 固定
+     ではない。一括にすると、これらの更新を黙って止めることになる。
+7. **判断理由**: 「RN は 0.x なので minor が破壊的」という性質と、
+   「Expo がバージョンを決める」という構造が、**semver-minor を止める**という
+   1つの規則にちょうど一致した。特別扱いのリストを増やさずに済む。
+   検査を1本足したのは、一覧が手書きだから。仕組みで止められるものを
+   習慣に頼らない。変異3種（個別行の削除・パターンの削除・update-types の改変）で
+   実際に落ちることを確認済み。
+8. **まだ答えが出ていないこと**: **RN 0.87 への移行そのもの**は未着手。
+   Expo が SDK 56 等で RN 0.87 を採用した時点で、`expo install --fix` を通した
+   まとまった作業として実施する必要がある。実機ビルドと回帰確認が要る。
+   また `@react-native-community/datetimepicker` は Expo が 8.6.0 を指定して
+   いるのに現在 ^8.3.1 で、この規則により追従が止まる（安全側だが差は残る）。
+9. **公開区分**: 公開可（Expo プロジェクトの依存管理として一般的な知見）
+
 ## 2026-09-14 `ox` の overrides を viem に追従させ、Dependabot の壊れたロックファイルは手元で作り直す
 
 1. **日付**: 2026-09-14

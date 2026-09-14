@@ -96,30 +96,28 @@ JS ラッパだけで成立するため、**ネイティブバイナリの dlope
 `c2pa_verified` / `c2pa_manifest` / `external_c2pa_present` / `c2pa_manifest_cid`
 すべて 0 行・2026-09-13 実測）ため、**今すぐ壊れるものは無い**。
 
-## Dependabot PR #1046（mobile 28件）に react-native 0.87 が紛れており、代表判断が要る（2026-09-14）
+## react-native 0.87 への移行そのものは未着手（2026-09-14）
 
-Dependabot の "minor-and-patch" グループに、破壊的変更を含みうるバンプが入っている。
+Dependabot #1046 に紛れていた `react-native` 0.83.6 → 0.87.1 は、
+**Expo SDK 55 が RN 0.87 をサポートしていない**ため取り込まない方針が決まった
+（DECISION_LOG 2026-09-14、`dependabot.yml` で semver-minor を無視）。
+`expo@55.0.31` の `bundledNativeModules.json` は `react-native: 0.83.10` を指定している。
 
-- `react-native` 0.83.6 → **0.87.1**
-- `react-native-worklets` 0.7.4 → **0.12.2**
-- `react-native-reanimated` 4.2.1 → 4.6.0
-- `react` / `react-dom` 19.2.0 → 19.2.8、`expo` ~55.0.26 → ~55.0.31 ほか
+残っているのは**移行そのもの**である。Expo が SDK 56 等で RN 0.87 を採用した時点で、
+`npx expo install --fix` を通したまとまった作業として実施する必要がある。
+実機ビルドと回帰確認が要るので、依存更新の PR では扱えない。
 
-react-native は 0.x のため minor バンプが破壊的変更を含みうるが、
-Dependabot の semver 分類では "minor" 扱いになりグループに入ってしまう。
-`Mobile Typecheck & Unit Tests` は現在 `npm ci` の段階で落ちている
-（#911 と同じロックファイル再生成の不具合）ため、RN 0.87 自体の影響はまだ測れていない。
+あわせて小さな差が2つ残る（どちらも安全側）。
 
-選択肢:
+- `react-native` は現在 0.83.6 だが Expo の指定は **0.83.10**。これは patch なので
+  ignore の対象外であり、次の Dependabot 実行で追従するはず。
+- `@react-native-community/datetimepicker` は現在 `^8.3.1` だが Expo の指定は
+  **8.6.0**。8.3 → 8.6 は semver-minor なのでこの規則により止まる。
+  Expo の指定より古いまま固定されるが、追い越すよりは安全。
+  SDK を上げるときに `expo install --fix` で揃う。
 
-- (a) `react-native` / `react-native-worklets` / `react-native-reanimated` を
-  `.github/dependabot.yml` のグループから **ignore / 除外**し、残りの安全な25件だけ取り込む
-- (b) Expo 55 側が RN 0.87 を正式サポートするまで PR ごと寝かせる
-- (c) RN 0.87 移行を独立した作業として立てる（実機ビルド・回帰確認込み）
-
-【要確認】Expo 55.0.31 が RN 0.87.1 を公式サポートしているか。
-Expo は SDK ごとに RN バージョンを固定する設計なので、
-ここがズレていると (a) が唯一の選択肢になる。
+【要確認】Expo がどのバージョンで RN 0.87 を採用するか（SDK 56 か、55 の後期か）。
+これが決まるまで移行の時期を決められない。
 
 ## `processCardPayment` の決済確定失敗時、PaymentIntentの状態を二値分類しているのが構造的に足りない（2026-09-11）
 

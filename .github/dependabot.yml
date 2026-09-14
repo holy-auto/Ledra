@@ -36,6 +36,50 @@ updates:
     ignore:
       - dependency-name: "*"
         update-types: ["version-update:semver-major"]
+      # Expo SDK が bundledNativeModules.json で固定している依存は、Dependabot では
+      # なく **Expo SDK に追従させる**。これらを単独で上げると Expo のツールチェーンが
+      # 壊れるため、単独の PR が来ても結局マージできない。
+      #
+      # react-native は 0.x なので semver 上の "minor" が破壊的変更を含みうるのに、
+      # Dependabot の分類では minor 扱いで minor-and-patch グループに入ってしまう。
+      # 実際 #1046 は expo@55.0.31 が 0.83.10 を指定している状況で
+      # react-native 0.83.6 → 0.87.1 を提案していた（worklets / reanimated /
+      # gesture-handler / screens / safe-area-context も同様に Expo の指定を追い越す）。
+      #
+      # minor だけを止めて patch は通すのは意図的。Expo 自身が出す
+      # 55.0.x の追従（expo-camera ~55.0.19 → ~55.0.23 等）は patch なので流れる。
+      # SDK を上げるときは `npx expo install --fix` でまとめて追従させる。
+      #
+      # 対象は scripts/check-expo-pins.check.mjs が実データと突き合わせて検査する。
+      # Expo 依存を足したらこの一覧も足すこと（足し忘れはそのチェックが落とす）。
+      - dependency-name: "expo"
+        update-types: ["version-update:semver-minor"]
+      - dependency-name: "expo-*"
+        update-types: ["version-update:semver-minor"]
+      - dependency-name: "@expo/*"
+        update-types: ["version-update:semver-minor"]
+      - dependency-name: "@react-native-community/*"
+        update-types: ["version-update:semver-minor"]
+      - dependency-name: "react"
+        update-types: ["version-update:semver-minor"]
+      - dependency-name: "react-dom"
+        update-types: ["version-update:semver-minor"]
+      - dependency-name: "react-native"
+        update-types: ["version-update:semver-minor"]
+      - dependency-name: "react-native-gesture-handler"
+        update-types: ["version-update:semver-minor"]
+      - dependency-name: "react-native-reanimated"
+        update-types: ["version-update:semver-minor"]
+      - dependency-name: "react-native-safe-area-context"
+        update-types: ["version-update:semver-minor"]
+      - dependency-name: "react-native-screens"
+        update-types: ["version-update:semver-minor"]
+      - dependency-name: "react-native-svg"
+        update-types: ["version-update:semver-minor"]
+      - dependency-name: "react-native-web"
+        update-types: ["version-update:semver-minor"]
+      - dependency-name: "react-native-worklets"
+        update-types: ["version-update:semver-minor"]
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
