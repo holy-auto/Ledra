@@ -4,7 +4,17 @@
 > 追わず、常に最新状態だけを保つ（履歴は DECISION_LOG.md / RELEASE_LOG.md 側）。
 > 大きな変化があったら都度上書きすること。
 
-最終更新: 2026-09-13
+最終更新: 2026-09-14
+
+> 2026-09-14 追記: **GitHub Actions の Node 20 削除（2026-09-16）への対応が完了した。**
+> `gitleaks/gitleaks-action` v2→v3（#1070）と `github/codeql-action` 4.38.0（#1069）を
+> マージし、全 workflow の `uses:` を点検した結果、**稼働中のアクションはすべて
+> node24 / composite / docker** になった。あわせて滞留していた Dependabot PR の
+> 原因を1本ずつ特定し、`overrides.ox` を viem に追従させる修正
+> （0.14.29→0.14.44）と、mobile のロックファイル作り直しを入れた。
+> #1046（react-native 0.87 を含む mobile 28件）は代表判断待ちで
+> OPEN_QUESTIONS に起票。C2PA 適合性ゲートがフェイルソフトである件も同様に起票した。
+
 
 > 2026-09-13 追記: **価値仮説フレームワーク分析を正式化した**（PR #965）。
 > `docs/startup-value-target-hypothesis-2026-08.md` に独自性検証・Lv.1→5定義・

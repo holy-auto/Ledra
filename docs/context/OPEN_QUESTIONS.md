@@ -3,6 +3,67 @@
 > まだ決まっていないこと、判断に迷っていることを書く場所。決まったら
 > DECISION_LOG.md に移し、このファイルからは消す（削除履歴は git で追える）。
 
+## C2PA 適合性ゲートがフェイルソフトで、CI が緑のまま検査が沈黙しうる（2026-09-14）
+
+`src/lib/anchoring/providers/__tests__/c2paSignValidate.test.ts` は JPEG / PNG / WebP を
+実際にネイティブライブラリで署名してマニフェストを検証する、本物の適合性ゲートである
+（`@contentauth/c2pa-node` 0.9.3 に対しても 4/4 通ることを手元で確認済み）。
+
+問題は**落ち方**である。`import("@contentauth/c2pa-node")` が失敗すると
+`readerAvailable = false` になり 4本とも `ctx.skip()` でスキップされ、
+**テストファイルは "passed" として集計される**。そして `@contentauth/c2pa-node` は
+`optionalDependencies` にあり、実際に入らないことがある（この環境で素の `npm install` を
+実行したところ node_modules に入らなかった）。
+両者が重なると **CI は緑のまま C2PA の検査が丸ごと沈黙する**。
+
+実測: パッケージ不在の状態で実行 → `Test Files 1 passed / Tests 4 skipped`。
+
+さらにフェイルソフトの判定自体にも穴がある。`import()` と `Reader` の存在は
+JS ラッパだけで成立するため、**ネイティブバイナリの dlopen 失敗は catch されず**、
+`signC2pa` の中で普通のテスト失敗になる（この環境で実際にそうなった:
+`invalid ELF header` — macOS arm64 のバイナリが Linux x86-64 に置かれていた）。
+つまり「入らない」はスキップ、「入ったが壊れている」は失敗、と挙動が割れている。
+
+判断が要るのは次の点:
+
+- ゲートをフェイルソフトのままにするか、**本番向け検査として fail-closed にするか**。
+  fail-closed にすると、ネイティブ依存が入らない開発環境でローカルテストが落ちる。
+- 代替として、**CI でだけスキップ数を検査する**（`c2pa` のスキップが 0 であることを
+  assert する）方法がある。ローカルの利便性を保ったまま CI の沈黙だけを塞げる。
+- そもそも `@contentauth/c2pa-node` を `optionalDependencies` から
+  `dependencies` に移すべきか。C2PA は署名の中核なので「無くてもよい」扱いが妥当か。
+
+【要確認】本番（Vercel）で `@contentauth/c2pa-node` が実際に入っているか。
+入っていない場合、C2PA 署名はランタイムでもフェイルオープンしている可能性がある。
+なお本番データ上、C2PA は現時点で未稼働である（`certificate_images` 81 行に対し
+`c2pa_verified` / `c2pa_manifest` / `external_c2pa_present` / `c2pa_manifest_cid`
+すべて 0 行・2026-09-13 実測）ため、**今すぐ壊れるものは無い**。
+
+## Dependabot PR #1046（mobile 28件）に react-native 0.87 が紛れており、代表判断が要る（2026-09-14）
+
+Dependabot の "minor-and-patch" グループに、破壊的変更を含みうるバンプが入っている。
+
+- `react-native` 0.83.6 → **0.87.1**
+- `react-native-worklets` 0.7.4 → **0.12.2**
+- `react-native-reanimated` 4.2.1 → 4.6.0
+- `react` / `react-dom` 19.2.0 → 19.2.8、`expo` ~55.0.26 → ~55.0.31 ほか
+
+react-native は 0.x のため minor バンプが破壊的変更を含みうるが、
+Dependabot の semver 分類では "minor" 扱いになりグループに入ってしまう。
+`Mobile Typecheck & Unit Tests` は現在 `npm ci` の段階で落ちている
+（#911 と同じロックファイル再生成の不具合）ため、RN 0.87 自体の影響はまだ測れていない。
+
+選択肢:
+
+- (a) `react-native` / `react-native-worklets` / `react-native-reanimated` を
+  `.github/dependabot.yml` のグループから **ignore / 除外**し、残りの安全な25件だけ取り込む
+- (b) Expo 55 側が RN 0.87 を正式サポートするまで PR ごと寝かせる
+- (c) RN 0.87 移行を独立した作業として立てる（実機ビルド・回帰確認込み）
+
+【要確認】Expo 55.0.31 が RN 0.87.1 を公式サポートしているか。
+Expo は SDK ごとに RN バージョンを固定する設計なので、
+ここがズレていると (a) が唯一の選択肢になる。
+
 ## `processCardPayment` の決済確定失敗時、PaymentIntentの状態を二値分類しているのが構造的に足りない（2026-09-11）
 
 要件5.12のPR #1064で、`confirmPaymentIntent`が失敗した際にStripe側の実際の

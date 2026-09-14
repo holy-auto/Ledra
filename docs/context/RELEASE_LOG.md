@@ -4,6 +4,26 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-09-14 依存関係の詰まりを解消（`ox` overrides 追従・mobile ロックファイル修復・GitHub Actions の Node 20 対応）
+
+- **`overrides.ox` を 0.14.29 → 0.14.44 に更新**。viem 2.56.3 が要求する `ox` に
+  追従させ、Dependabot PR #1059（web 39件）のクライアントビルド失敗
+  （`Export MultisigOperation doesn't exist in target module`）を解消する。
+  `ox` はアプリから直接 import していない（viem 経由の推移的依存のみ）。
+- **`apps/mobile` の `@stripe/stripe-terminal-react-native` を beta.31 → beta.32**。
+  Dependabot が再生成したロックファイルは `expo-font` の peer エントリを落として
+  `npm ci` を EUSAGE で壊していたため、手元で `npm install` し直した。
+  結果の差分は意図した2フック分のみ（Dependabot 版は余計な5フックを含んでいた）。
+- **GitHub Actions の Node 20 削除（2026-09-16）への対応を完了**。
+  `gitleaks/gitleaks-action` v2→v3（#1070）と `github/codeql-action` 4.37.6→4.38.0
+  （#1069）をマージ。全 workflow の `uses:` を点検し、**稼働中のアクションはすべて
+  node24 / composite / docker** であることを確認した（コメントアウト行を除外して再集計）。
+- 検証: `npm run lint`（0 errors）、`npx tsc --noEmit`（クリーン）、
+  `npm run check:schema`（OK）、`npx vitest run`（**572 ファイル / 5609 テスト通過・
+  1 スキップ・0 失敗**）、`next build`（`build-manifest.json` 生成を確認）。
+- 変更ファイル: `package.json` / `package-lock.json` /
+  `apps/mobile/package.json` / `apps/mobile/package-lock.json` の4つ、計 9 行。
+
 ## 2026-09-13 証明書発行完了画面に収益還元プレビューカードを追加
 
 - 証明書発行直後の成功画面（`/admin/certificates/new/success`）に、
