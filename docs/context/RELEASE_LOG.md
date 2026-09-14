@@ -4,6 +4,21 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-09-14 マーケサイトのフッターに運営会社・姉妹サービスへの相互リンクを追加
+
+- マーケサイトのフッター（ブランド列）に「グループサイト」の外部リンクを追加。
+  株式会社HOLY（holy-inc.jp）／ MobileWash（mobilewash.app）／
+  HOLY AUTO（holy-auto.com）の3件。
+- URL は `src/lib/marketing/config.ts` の `groupSites` に集約。
+  ドメイン差し替えは siteConfig と同じくここだけを直す。
+- `OrganizationJsonLd` の `provider` に `parentOrganization`（株式会社HOLY /
+  holy-inc.jp）を追加。/law の特定商取引法表記と同じ事業者を機械可読にした。
+- 背景: これまで Ledra から自社の他サイトへの導線が1本も無く、
+  相互リンクが片側だけだった。holy-inc.jp 側・MobileWash 側にも同時に
+  Ledra への導線を追加している（別リポジトリの同名ブランチ）。
+- ファイル変更: `src/lib/marketing/config.ts` /
+  `src/components/marketing/Footer.tsx` / `src/components/marketing/JsonLd.tsx`。
+
 ## 2026-09-13 証明書発行完了画面に収益還元プレビューカードを追加
 
 - 証明書発行直後の成功画面（`/admin/certificates/new/success`）に、

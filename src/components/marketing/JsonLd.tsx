@@ -45,6 +45,12 @@ export async function OrganizationJsonLd() {
       name: "Ledra",
       url: siteConfig.siteUrl,
       email: siteConfig.contactEmail,
+      // 運営会社（/law の特定商取引法表記と同じ事業者）。グループサイトの相互リンクを機械可読にする。
+      parentOrganization: {
+        "@type": "Organization",
+        name: "株式会社HOLY",
+        url: "https://holy-inc.jp",
+      },
     },
   };
 

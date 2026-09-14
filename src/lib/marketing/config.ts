@@ -86,6 +86,16 @@ export const siteConfig = {
   twitterHandle: "@detailing_holy",
 } as const;
 
+/**
+ * グループサイト（相互リンク）。Ledra は株式会社HOLYが手がけるサービスの一つ。
+ * URL は各サイトが宣言している canonical に合わせている。
+ */
+export const groupSites = [
+  { label: "株式会社HOLY（運営会社）", href: "https://holy-inc.jp" },
+  { label: "MobileWash（出張洗車）", href: "https://mobilewash.app" },
+  { label: "HOLY AUTO（コーティング・フィルム施工）", href: "https://holy-auto.com" },
+] as const;
+
 /** ヘッダー・フッターで使うナビゲーションリンク */
 export const marketingNav = [
   { label: "機能", href: "/features" },
