@@ -1,5 +1,6 @@
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { logCertificateAction, getRequestMeta } from "@/lib/audit/certificateLog";
+import { getRequestMeta } from "@/lib/audit/certificateLog";
+import { voidCertificate } from "@/lib/certificates/voidCertificate";
 import { resolveCallerWithRole, requirePermission } from "@/lib/auth/checkRole";
 import {
   apiOk,
@@ -33,49 +34,23 @@ export async function POST(req: Request) {
     }
     const { public_id: publicId } = parsed.data;
 
-    const userRes = { user: { id: caller.userId } };
-    const tenantId = caller.tenantId;
-
-    // tenant_id で絞ることで他テナントの証明書は操作不可
-    const existing = await supabase
-      .from("certificates")
-      .select("id, vehicle_id, status")
-      .eq("tenant_id", tenantId)
-      .eq("public_id", publicId)
-      .limit(1)
-      .maybeSingle();
-
-    if (existing.error || !existing.data) {
-      return apiNotFound("証明書が見つかりません。");
-    }
-
-    if (String(existing.data.status ?? "").toLowerCase() === "void") {
-      return apiOk({ already_void: true });
-    }
-
-    const { error: updateErr } = await supabase
-      .from("certificates")
-      .update({ status: "void", updated_at: new Date().toISOString() })
-      .eq("tenant_id", tenantId)
-      .eq("public_id", publicId);
-
-    if (updateErr) {
-      return apiInternalError(updateErr, "admin/certificates/void update");
-    }
-
-    // Audit log (fire-and-forget)
-    const { ip, userAgent } = getRequestMeta(req);
-    logCertificateAction({
-      type: "certificate_voided",
-      tenantId,
-      publicId,
-      certificateId: existing.data.id,
-      vehicleId: existing.data.vehicle_id ?? null,
-      userId: userRes.user.id,
-      description: `証明書を無効化 (void)`,
-      ip,
-      userAgent,
+    // 無効化の本体は `voidCertificate` に一本化（5経路で実装が食い違っていた）。
+    // ユーザースコープのクライアントをそのまま渡す（信頼境界を変えない）。
+    const result = await voidCertificate(supabase, {
+      tenantId: caller.tenantId,
+      userId: caller.userId,
+      selector: { publicId },
+      requestMeta: getRequestMeta(req),
     });
+
+    if (!result.ok) {
+      if (result.kind === "not_found") return apiNotFound("証明書が見つかりません。");
+      return apiInternalError(
+        result.kind === "update_failed" ? result.error : result.kind,
+        "admin/certificates/void update",
+      );
+    }
+    if (result.alreadyVoid) return apiOk({ already_void: true });
 
     return apiOk({});
   } catch (e) {

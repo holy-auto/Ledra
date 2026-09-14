@@ -534,7 +534,7 @@ export default function BookingSettingsClient() {
       if (!res.ok) {
         // サーバの実際のエラー内容を握り潰さず表示する（原因調査のため）。
         const err = (await res.json().catch(() => null)) as { error?: string; message?: string } | null;
-        throw new Error(err?.error || err?.message || `保存に失敗しました (${res.status})`);
+        throw new Error(err?.message || err?.error || `保存に失敗しました (${res.status})`);
       }
       showToast("success", "設定を保存しました");
       await fetchSettings();

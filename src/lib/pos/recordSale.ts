@@ -22,6 +22,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { logger } from "@/lib/logger";
+import { makePublicId } from "@/lib/publicId";
 import { resolveStoreId } from "@/lib/stores/resolveStoreId";
 
 /** `pos_checkout` に渡す引数（tenant_id と user_id は呼び出し側が持つ） */
@@ -88,6 +89,8 @@ export async function recordPosSale(
     }
 
     if (existing) {
+      // 再送でも領収書は送れる。トークンは初回に書かれていて documents に残っており、
+      // レシート画面が documents.public_id を直接引くので、ここで返す必要はない。
       return {
         ok: true,
         result: { payment_id: existing.id, document_id: existing.document_id },
@@ -135,6 +138,37 @@ export async function recordPosSale(
   if (error) return { ok: false, error };
 
   const paymentId = (data as { payment_id?: string | null } | null)?.payment_id ?? null;
+  const documentId = (data as { document_id?: string | null } | null)?.document_id ?? null;
+
+  // レシートの公開トークン。顧客に送る /receipt/[public_id] の識別子になる。
+  //
+  // pos_checkout の中ではなくここで書く理由: あの関数は決済の中枢で、
+  // 引数を足すと CREATE OR REPLACE が置換ではなく**オーバーロード**になり、
+  // 既存の関数を DROP する必要が出る。支払は既に成立しているので、
+  // ここが失敗しても売上は残る（共有ボタンが出ないだけ。receiptUrl 側で
+  // public_id が無ければボタンを隠す）。
+  //
+  // 生成器は証明書と同じ makePublicId()（22文字 base64url / CSPRNG）を使う。
+  //
+  // **返り値には載せない。** レシート画面は documents.public_id を直接引くので、
+  // API のレスポンスに持たせても誰も読まない。書くことが本体。
+  if (documentId) {
+    const token = makePublicId();
+    const { error: pubErr } = await admin
+      .from("documents")
+      .update({ public_id: token })
+      .eq("id", documentId)
+      .eq("tenant_id", caller.tenantId)
+      .is("public_id", null);
+
+    if (pubErr) {
+      // 売上は成立している。レシートが送れないだけなので失敗にはしない。
+      logger.error("recordPosSale: レシート公開トークンの記録に失敗", {
+        documentId,
+        err: pubErr.message,
+      });
+    }
+  }
 
   // PaymentIntent の ID を残す。これが無いと、後から突き合わせて重複を見つけられない
   if (pi && paymentId) {
@@ -184,5 +218,11 @@ export async function recordPosSale(
     }
   }
 
-  return { ok: true, result: data, paymentId, alreadyRecorded: false, recordedAmount: null };
+  return {
+    ok: true,
+    result: data,
+    paymentId,
+    alreadyRecorded: false,
+    recordedAmount: null,
+  };
 }

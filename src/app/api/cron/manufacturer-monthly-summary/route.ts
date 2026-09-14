@@ -3,7 +3,7 @@ import { apiJson, apiUnauthorized, apiInternalError } from "@/lib/api/response";
 import { verifyCronRequest } from "@/lib/cronAuth";
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { withCronLock } from "@/lib/cron/lock";
-import { sendResendEmail } from "@/lib/email/resendSend";
+import { sendEmail } from "@/lib/email/sendEmail";
 import { buildMonthlySummaryEmail } from "@/lib/manufacturers/monthlySummaryEmail";
 import { evaluateQualityFlags } from "@/lib/manufacturers/qualityFlags";
 import { logger } from "@/lib/logger";
@@ -193,7 +193,7 @@ export async function GET(req: NextRequest) {
           portalUrl: portalBase,
         });
 
-        const result = await sendResendEmail({
+        const result = await sendEmail({
           to: recipientEmails,
           subject,
           html,

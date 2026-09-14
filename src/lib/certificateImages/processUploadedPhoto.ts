@@ -13,7 +13,7 @@
  */
 
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
-import { CERTIFICATE_IMAGE_BUCKET } from "@/lib/certificateImages";
+import { CERTIFICATE_IMAGE_BUCKET } from "@/lib/certificateImages/constants";
 import { hashSha256, computePerceptualHash } from "@/lib/anchoring/imageHashing";
 import { stripGpsAndReadExif } from "@/lib/anchoring/imageExif";
 import { checkPhotoLocation } from "@/lib/geo/photoLocationCheck";

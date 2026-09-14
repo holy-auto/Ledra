@@ -24,9 +24,19 @@ function fakeAdmin(opts: {
   stores?: Array<{ id: string }>;
   /** 指定された店舗がテナントのものか。省略時は「ある」 */
   requestedStoreFound?: boolean;
+  /** pos_checkout が返す領収書の ID。省略時は null（＝領収書を作らなかった） */
+  rpcDocumentId?: string | null;
+  /** 再送時に既存の領収書が持っている公開トークン */
+  existingPublicId?: string | null;
+  /** 公開トークンの書き込みが失敗する場合 */
+  docUpdateError?: { message: string } | null;
 }) {
-  const rpc = vi.fn().mockResolvedValue({ data: { payment_id: "pay-new" }, error: null });
+  const rpc = vi.fn().mockResolvedValue({
+    data: { payment_id: "pay-new", document_id: opts.rpcDocumentId ?? null },
+    error: null,
+  });
   const updates: Array<Record<string, unknown>> = [];
+  const docUpdates: Array<Record<string, unknown>> = [];
   let selects = 0;
 
   const chain = (result: () => Promise<unknown>) => {
@@ -51,6 +61,24 @@ function fakeAdmin(opts: {
       };
       return { select: () => node };
     }
+    if (table === "documents") {
+      // 再送時の読み直し（公開トークン）と、初回の書き込み
+      return {
+        select: () =>
+          chain(async () => ({
+            data: { public_id: opts.existingPublicId ?? null },
+            error: null,
+          })),
+        update: (patch: Record<string, unknown>) => {
+          docUpdates.push(patch);
+          const node: Record<string, unknown> = {
+            eq: () => node,
+            is: async () => ({ error: opts.docUpdateError ?? null }),
+          };
+          return node;
+        },
+      };
+    }
     if (table !== "payments") throw new Error(`想定外のテーブル: ${table}`);
     return {
       select: (cols: string) => {
@@ -72,7 +100,7 @@ function fakeAdmin(opts: {
   });
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return { admin: { from, rpc } as any, rpc, updates, selectCount: () => selects };
+  return { admin: { from, rpc } as any, rpc, updates, docUpdates, selectCount: () => selects };
 }
 
 describe("recordPosSale", () => {
@@ -98,7 +126,10 @@ describe("recordPosSale", () => {
   });
 
   it("**同じ PaymentIntent で再送されたら2件目を作らない**（カードは既に切られている）", async () => {
-    const a = fakeAdmin({ existing: { id: "pay-existing", tenant_id: "t-1", amount: 5000, document_id: "doc-1" } });
+    const a = fakeAdmin({
+      existing: { id: "pay-existing", tenant_id: "t-1", amount: 5000, document_id: "doc-1" },
+      existingPublicId: "tok-1",
+    });
     const res = await recordPosSale(a.admin, CALLER, ARGS, "pi_123");
     expect(res.ok).toBe(true);
     if (!res.ok) return;
@@ -107,6 +138,27 @@ describe("recordPosSale", () => {
     expect(res.recordedAmount).toBe(5000);
     // ここが本題。2回目で pos_checkout を呼ぶと売上が二重に立つ
     expect(a.rpc).not.toHaveBeenCalled();
+    // 再送では documents を触らない。トークンは初回に書かれたものが残る
+    expect(a.docUpdates).toEqual([]);
+  });
+
+  it("領収書ができたら公開トークンを書く（要件5.10 の共有URLの鍵）", async () => {
+    const a = fakeAdmin({ rpcDocumentId: "doc-1" });
+    const res = await recordPosSale(a.admin, CALLER, ARGS, "pi_123");
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect(a.docUpdates).toHaveLength(1);
+    // 22文字 base64url（makePublicId / CSPRNG）。ここが空だと共有ボタンが出ない
+    expect(a.docUpdates[0].public_id).toMatch(/^[A-Za-z0-9_-]{22}$/);
+  });
+
+  it("**公開トークンが書けなくても売上は失敗にしない**（カードは既に切られている）", async () => {
+    const a = fakeAdmin({ rpcDocumentId: "doc-1", docUpdateError: { message: "boom" } });
+    const res = await recordPosSale(a.admin, CALLER, ARGS, "pi_123");
+    // 共有ボタンが出なくなるだけ。売上は残す
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect(res.paymentId).toBe("pay-new");
   });
 
   it("一意制約に当たったら**失敗として返す**（黙って ok にしない）", async () => {

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import PageHeader from "@/components/ui/PageHeader";
+import { jstLocalInputToUtcIso } from "@/lib/datetime";
 import {
   LINE_BROADCAST_STATUS_LABEL,
   LINE_SEGMENT_TYPES,
@@ -60,7 +61,14 @@ function formatDateTime(iso: string | null): string | null {
   if (!iso) return null;
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return null;
-  return d.toLocaleString("ja-JP", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
+  // 配信予約はサーバ側が実行するので、表示も入力も JST 固定にする（ブラウザ TZ 依存を外す）。
+  return d.toLocaleString("ja-JP", {
+    timeZone: "Asia/Tokyo",
+    month: "numeric",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 // ─── メインコンポーネント ─────────────────────────────────────────
@@ -350,7 +358,9 @@ function CreateDialog({
           name: name.trim(),
           message_text: messageText.trim(),
           segment_json: seg.value,
-          scheduled_at: scheduledAt ? new Date(scheduledAt).toISOString() : null,
+          // datetime-local の naive 文字列は JST 壁時計として解釈する。
+          // ブラウザ TZ で解釈すると、UTC 環境の端末から予約したとき配信が 9 時間ずれる。
+          scheduled_at: jstLocalInputToUtcIso(scheduledAt),
         }),
       });
       if (!res.ok) {

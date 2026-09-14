@@ -3,28 +3,27 @@ import { View, StyleSheet, FlatList, Pressable } from "react-native";
 import { Text, ActivityIndicator, Icon } from "react-native-paper";
 import { router, useLocalSearchParams } from "expo-router";
 
-import { supabase } from "@/lib/supabase";
+import { fetchActiveStores, type ActiveStore } from "@/lib/auth";
 import { useAuthStore } from "@/stores/authStore";
 import { LedraButton } from "@/components/ui";
 import { colors, spacing, radius, typography, shadows, sizing } from "@/constants/tokens";
 
-interface Store {
-  id: string;
-  name: string;
-  address: string | null;
-  is_default: boolean;
-}
-
 export default function SelectStoreScreen() {
   const { fromSignup } = useLocalSearchParams<{ fromSignup?: string }>();
-  const [stores, setStores] = useState<Store[]>([]);
+  const [stores, setStores] = useState<ActiveStore[]>([]);
   const [loading, setLoading] = useState(true);
+  // 取得失敗と「店舗が0個」を区別する。混同すると、通信が切れているだけなのに
+  // 「店舗が登録されていません」と表示し、ユーザーが「続行する」を押して
+  // selectedStore に空文字IDが入る。空文字IDは certificates/new・reservations/new・
+  // customers/new の INSERT で uuid エラーになる（POS 系と違い正規化されていない）。
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
   const { user, setSelectedStore } = useAuthStore();
 
   const nextRoute = fromSignup === "1" ? "/(auth)/biometric-setup" : "/(tabs)";
 
   const handleSelect = useCallback(
-    (store: Store) => {
+    (store: ActiveStore) => {
       setSelectedStore({ id: store.id, name: store.name });
       router.replace(nextRoute as never);
     },
@@ -35,37 +34,76 @@ export default function SelectStoreScreen() {
     async function loadStores() {
       if (!user?.tenantId) return;
 
-      const { data } = await supabase
-        .from("stores")
-        .select("id, name, address, is_default")
-        .eq("tenant_id", user.tenantId)
-        .eq("is_active", true)
-        .order("is_default", { ascending: false })
-        .order("sort_order");
-
-      if (data) {
-        setStores(data);
-
-        // 店舗が1つだけならスキップ
-        if (data.length === 1) {
-          handleSelect(data[0]);
-          return;
-        }
-
-        // デフォルト店舗があれば自動選択オプション
-        // （ここではユーザーに選ばせる）
+      // 取得条件は lib/auth.ts の fetchActiveStores に集約している。
+      // コールドスタート (useAuthInit) とログイン (login.tsx) は、遷移先を
+      // 決める前に同じ判定 (resolveDefaultStore) を済ませている。よって
+      // 通常は「複数店舗」「0店舗」「設定からの店舗切替」「新規登録直後
+      // （必ず0店舗）」だけがここに来る。
+      //
+      // ただし resolveDefaultStore は取得失敗を握りつぶして null を返すので、
+      // 通信が切れていた1店舗のユーザーもここに来る。下の
+      // data.length === 1 の自動選択は「もう通らない分岐」ではない。
+      // 消すと、再試行で復帰した1店舗ユーザーが毎回カード1枚の画面を
+      // 手でタップすることになる。
+      let data: ActiveStore[];
+      try {
+        data = await fetchActiveStores(user.tenantId);
+      } catch (e) {
+        console.warn(
+          "fetchActiveStores failed:",
+          e instanceof Error ? e.message : e,
+        );
+        setStores([]);
+        setLoadFailed(true);
+        setLoading(false);
+        return;
       }
 
+      setLoadFailed(false);
+      setStores(data);
+
+      // 店舗が1つだけならスキップ
+      if (data.length === 1) {
+        handleSelect(data[0]);
+        return;
+      }
+
+      // デフォルト店舗があれば自動選択オプション
+      // （ここではユーザーに選ばせる）
       setLoading(false);
     }
 
     loadStores();
-  }, [user?.tenantId, handleSelect]);
+  }, [user?.tenantId, handleSelect, reloadKey]);
 
   if (loading) {
     return (
       <View style={styles.center}>
         <ActivityIndicator size="large" color={colors.primary} />
+      </View>
+    );
+  }
+
+  // 取得に失敗したときは「0店舗」と別の画面を出す。
+  // ここで「続行する」を出すと、通信断のたびに空文字IDが入り込む。
+  if (loadFailed) {
+    return (
+      <View style={styles.center}>
+        <Icon source="wifi-off" size={48} color={colors.textTertiary} />
+        <Text style={styles.emptyTitle}>店舗情報を取得できませんでした</Text>
+        <Text style={styles.emptyDesc}>
+          通信状況を確認して、もう一度お試しください
+        </Text>
+        <LedraButton
+          onPress={() => {
+            setLoading(true);
+            setLoadFailed(false);
+            setReloadKey((n) => n + 1);
+          }}
+          style={styles.continueButton}
+        >
+          再試行
+        </LedraButton>
       </View>
     );
   }

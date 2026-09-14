@@ -163,7 +163,7 @@ export default function CustomerListPage() {
     const j = await res.json().catch(() => ({}) as Record<string, unknown>);
 
     if (!res.ok) {
-      const e = j?.error ?? "unauthorized";
+      const e = j?.message ?? j?.error ?? "unauthorized";
       setErr(e);
       setRows([]);
       setLoading(false);
@@ -263,7 +263,7 @@ export default function CustomerListPage() {
         }),
       });
       const j = await res.json().catch(() => ({}) as Record<string, unknown>);
-      if (!res.ok) throw new Error(j?.error ?? "送信に失敗しました");
+      if (!res.ok) throw new Error(j?.message ?? j?.error ?? "送信に失敗しました");
       setInquiryMsg({ ok: true, text: "お問い合わせを送信しました。" });
       setInquirySubject("");
       setInquiryMessage("");

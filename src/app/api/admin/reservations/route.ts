@@ -12,7 +12,9 @@ import {
   apiValidationError,
   apiNotFound,
   apiInternalError,
+  apiError,
 } from "@/lib/api/response";
+import { checkOverlap } from "@/lib/reservations/overlap";
 import { logger } from "@/lib/logger";
 import {
   reservationCreateSchema,
@@ -30,6 +32,11 @@ import { resolveStoreId, STORE_ERROR_MESSAGES } from "@/lib/stores/resolveStoreI
 import { businessDateString } from "@/lib/datetime";
 
 export const dynamic = "force-dynamic";
+
+// 終日予約の占有時間帯（ダブルブッキング判定用）。src/app/api/customer/booking/route.ts と同じ規約。
+// ponytail: 24時間制の店舗を想定しない前提。深夜跨ぎ営業が要件化したら要見直し。
+const ADMIN_ALL_DAY_START = "00:00";
+const ADMIN_ALL_DAY_END = "23:59";
 
 /**
  * assigned_staff_id / booth_id が呼び出し元テナントのものか検証する。
@@ -253,6 +260,31 @@ export async function POST(req: NextRequest) {
 
     // 終日予約は時刻を持たない（NULL 保存）。誤って時刻が送られても正規化する。
     const isAllDay = input.all_day === true;
+
+    // E3-1 是正 (2026-09-08): 管理側の予約作成には重複チェックが無く、同一時間帯への
+    // 二重登録を検知できなかった（顧客/外部予約経路には既にある）。承知の上での登録は
+    // force:true で明示的に上書きできる。
+    if (!input.force && (isAllDay || (input.start_time && input.end_time))) {
+      const overlapStart = isAllDay ? ADMIN_ALL_DAY_START : input.start_time!;
+      const overlapEnd = isAllDay ? ADMIN_ALL_DAY_END : input.end_time!;
+      const overlaps = await checkOverlap({
+        tenantId: caller.tenantId,
+        scheduledDate: input.scheduled_date,
+        startTime: overlapStart.length === 5 ? `${overlapStart}:00` : overlapStart,
+        endTime: overlapEnd.length === 5 ? `${overlapEnd}:00` : overlapEnd,
+        assignedUserId: input.assigned_user_id ?? undefined,
+      });
+      if (overlaps.length > 0) {
+        return apiError({
+          code: "conflict",
+          message: isAllDay
+            ? "この日は既に予約が入っているため終日予約は登録できません。よろしければ force で再送してください。"
+            : "ご指定の時間帯は既に予約が入っています。よろしければ force で再送してください。",
+          status: 409,
+        });
+      }
+    }
+
     const row = {
       id: crypto.randomUUID(),
       tenant_id: caller.tenantId,
@@ -348,7 +380,7 @@ export async function PUT(req: NextRequest) {
     if (!parsed.success) {
       return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
     }
-    const { id, cancel_reason, ...rest } = parsed.data;
+    const { id, cancel_reason, force, ...rest } = parsed.data;
 
     // 部分更新で「送っていないフィールド」を誤って null 上書きしないよう、
     // クライアントが実際に送ったキーだけを採用する。nullableUuid 等の transform は
@@ -454,6 +486,63 @@ export async function PUT(req: NextRequest) {
         .eq("tenant_id", caller.tenantId)
         .maybeSingle();
       priorStatus = (prev?.status as string | null) ?? null;
+    }
+
+    // E3-1 是正 (2026-09-08): 日時に関わるフィールドの変更時にも重複チェックを追加。
+    // force:true で警告を無視して更新できる。
+    const scheduleFieldsChanged =
+      sentKeys.has("scheduled_date") ||
+      sentKeys.has("start_time") ||
+      sentKeys.has("end_time") ||
+      sentKeys.has("all_day");
+    if (!force && scheduleFieldsChanged) {
+      const { data: curSchedule } = await supabase
+        .from("reservations")
+        .select("scheduled_date, start_time, end_time, all_day, assigned_user_id")
+        .eq("id", id)
+        .eq("tenant_id", caller.tenantId)
+        .maybeSingle();
+      if (curSchedule) {
+        const effAllDay = sentKeys.has("all_day") ? updates.all_day === true : curSchedule.all_day === true;
+        const effScheduledDate = sentKeys.has("scheduled_date")
+          ? (updates.scheduled_date as string)
+          : curSchedule.scheduled_date;
+        const effStartTime = effAllDay
+          ? null
+          : sentKeys.has("start_time")
+            ? (updates.start_time as string | null)
+            : curSchedule.start_time;
+        const effEndTime = effAllDay
+          ? null
+          : sentKeys.has("end_time")
+            ? (updates.end_time as string | null)
+            : curSchedule.end_time;
+        const effAssignedUserId = sentKeys.has("assigned_user_id")
+          ? (updates.assigned_user_id as string | null)
+          : curSchedule.assigned_user_id;
+
+        if (effAllDay || (effStartTime && effEndTime)) {
+          const overlapStart = effAllDay ? ADMIN_ALL_DAY_START : effStartTime!;
+          const overlapEnd = effAllDay ? ADMIN_ALL_DAY_END : effEndTime!;
+          const overlaps = await checkOverlap({
+            tenantId: caller.tenantId,
+            scheduledDate: effScheduledDate,
+            startTime: overlapStart.length === 5 ? `${overlapStart}:00` : overlapStart,
+            endTime: overlapEnd.length === 5 ? `${overlapEnd}:00` : overlapEnd,
+            excludeId: id,
+            assignedUserId: effAssignedUserId ?? undefined,
+          });
+          if (overlaps.length > 0) {
+            return apiError({
+              code: "conflict",
+              message: effAllDay
+                ? "この日は既に予約が入っているため終日予約には変更できません。よろしければ force で再送してください。"
+                : "ご指定の時間帯は既に予約が入っています。よろしければ force で再送してください。",
+              status: 409,
+            });
+          }
+        }
+      }
     }
 
     const { data, error } = await supabase

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { parseJsonSafe } from "@/lib/api/safeJson";
 import { SUGGESTED_SKILLS } from "@/lib/staff/skills";
+import { formatDate } from "@/lib/format";
 
 type StaffStats = {
   assignments_total: number;
@@ -174,7 +175,7 @@ export default function StaffClient() {
         body: JSON.stringify(payload),
       });
       const j = await parseJsonSafe(res);
-      if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
+      if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       setDraft(null);
       setMsg({ text: "保存しました", ok: true });
       await fetchStaff();
@@ -182,6 +183,55 @@ export default function StaffClient() {
       setMsg({ text: e instanceof Error ? e.message : String(e), ok: false });
     } finally {
       setSaving(false);
+    }
+  };
+
+  /**
+   * 外注職人へ渡す連携コード。外注は自分の Ledra でこれを入力すると、
+   * **自分が施工した記録だけ**を自分の管理画面から見られるようになる。
+   * raw code は発行レスポンスにしか出ない（DB はハッシュのみ）ので、ここで一度だけ表示する。
+   */
+  const [linkCode, setLinkCode] = useState<{ staffId: string; code: string; expiresAt: string } | null>(null);
+  const [linkBusy, setLinkBusy] = useState<string | null>(null);
+
+  const issueLinkCode = async (st: Staff) => {
+    setMsg(null);
+    setLinkBusy(st.id);
+    try {
+      const res = await fetch("/api/admin/staff/link-invite", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ staff_member_id: st.id }),
+      });
+      const j = await parseJsonSafe(res);
+      if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
+      setLinkCode({ staffId: st.id, code: j.code, expiresAt: j.expires_at });
+    } catch (e: unknown) {
+      setMsg({ text: e instanceof Error ? e.message : String(e), ok: false });
+    } finally {
+      setLinkBusy(null);
+    }
+  };
+
+  const unlinkTenant = async (st: Staff) => {
+    if (!confirm(`「${st.name}」との連携を解除しますか？（相手は自分の施工実績を見られなくなります）`)) return;
+    setMsg(null);
+    setLinkBusy(st.id);
+    try {
+      const res = await fetch("/api/admin/staff/link-invite", {
+        method: "DELETE",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ staff_member_id: st.id }),
+      });
+      const j = await parseJsonSafe(res);
+      if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
+      if (linkCode?.staffId === st.id) setLinkCode(null);
+      setMsg({ text: "連携を解除しました。", ok: true });
+      await fetchStaff();
+    } catch (e: unknown) {
+      setMsg({ text: e instanceof Error ? e.message : String(e), ok: false });
+    } finally {
+      setLinkBusy(null);
     }
   };
 
@@ -195,7 +245,7 @@ export default function StaffClient() {
         body: JSON.stringify({ id: s.id }),
       });
       const j = await parseJsonSafe(res);
-      if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
+      if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       await fetchStaff();
     } catch (e: unknown) {
       setMsg({ text: e instanceof Error ? e.message : String(e), ok: false });
@@ -256,7 +306,7 @@ export default function StaffClient() {
         }),
       });
       const j = await parseJsonSafe(res);
-      if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
+      if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       setMsg({ text: "シフトを保存しました", ok: true });
     } catch (e: unknown) {
       setMsg({ text: e instanceof Error ? e.message : String(e), ok: false });
@@ -491,12 +541,67 @@ export default function StaffClient() {
                 )}
                 <button
                   type="button"
+                  onClick={() => issueLinkCode(s)}
+                  disabled={!s.is_active || linkBusy === s.id}
+                  title={
+                    s.is_active
+                      ? "外注が自分の Ledra で入力する連携コードを発行します"
+                      : "休止中の職人には発行できません"
+                  }
+                  className="btn-secondary text-xs px-3 py-1.5 disabled:opacity-50"
+                >
+                  {linkBusy === s.id ? "処理中…" : "連携コードを発行"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => unlinkTenant(s)}
+                  disabled={linkBusy === s.id}
+                  className="text-xs px-3 py-1.5 text-secondary hover:underline disabled:opacity-50"
+                >
+                  連携を解除
+                </button>
+                <button
+                  type="button"
                   onClick={() => removeStaff(s)}
                   className="text-xs px-3 py-1.5 text-red-500 hover:underline"
                 >
                   削除
                 </button>
               </div>
+
+              {/* 発行直後の一度きりの表示。raw code は DB に無いので、閉じたら再発行が要る。 */}
+              {linkCode?.staffId === s.id && (
+                <div className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs dark:border-amber-800/50 dark:bg-amber-950">
+                  <div className="font-semibold text-amber-800 dark:text-amber-400">
+                    このコードを本人に伝えてください（今だけ表示されます）
+                  </div>
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <code className="rounded bg-surface px-3 py-1.5 font-mono text-sm tracking-widest text-primary">
+                      {linkCode.code}
+                    </code>
+                    <button
+                      type="button"
+                      onClick={() => navigator.clipboard?.writeText(linkCode.code)}
+                      className="btn-secondary text-xs px-3 py-1"
+                    >
+                      コピー
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setLinkCode(null)}
+                      className="text-xs px-2 py-1 text-secondary hover:underline"
+                    >
+                      閉じる
+                    </button>
+                  </div>
+                  <div className="mt-2 leading-5 text-amber-800 dark:text-amber-400">
+                    本人が自分の Ledra の「受注先での施工実績」で入力すると連携されます。 有効期限{" "}
+                    {formatDate(linkCode.expiresAt)}。再表示はできません（保存しているのはハッシュのみ）。
+                    連携後に相手が見られるのは<span className="font-semibold">その人が施工した記録だけ</span>で、
+                    お客様の氏名・連絡先は含まれません。
+                  </div>
+                </div>
+              )}
 
               {/* シフト編集 */}
               {shiftStaffId === s.id && (

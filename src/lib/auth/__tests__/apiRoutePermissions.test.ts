@@ -32,7 +32,7 @@ import type {
   MethodRequirement,
   MinRoleRequirement,
 } from "../permissions";
-import { walkSource, enclosingFunctions, handlerChunks } from "../../__tests__/sourceScan";
+import { walkSource, enclosingFunctions, handlerChunks, stripComments } from "../../__tests__/sourceScan";
 
 const APP_ROOT = join(process.cwd(), "src", "app");
 const API_ROOT = join(APP_ROOT, "api");
@@ -138,11 +138,18 @@ describe("検出器そのものの性質", () => {
 
 describe("証明書の無効化 (operationRisk = critical)", () => {
   /**
-   * 無効化経路を拾う。`certificates` への UPDATE があることを前提に、
-   * 監査イベント `certificate_voided` を出しているか（書き方に依存しない合図）、
-   * または `status: "void"` を書いているかで判定する。
+   * 無効化経路を拾う。合図は2つ。
+   *
+   *   1. 自前で `certificates` を UPDATE し、`certificate_voided` を出すか
+   *      `status: "void"` を書いている（一本化前の形）
+   *   2. 一本化した `@/lib/certificates/voidCertificate` を呼んでいる（2026-09-05〜）
+   *
+   * **2 を足さないと、一本化した瞬間にこの検査が空になって緑で通る**
+   * （実際 2026-09-05 に5本→1本まで落ちた）。数を下げて通すのは
+   * 「移設で弱める」（MISTAKE_LEDGER 型 D）なので、判定対象を移した。
    */
   function isVoidPath(src: string): boolean {
+    if (/certificates\/voidCertificate/.test(src)) return true;
     if (!/from\("certificates"\)/.test(src) || !/\.update\(/.test(src)) return false;
     return /certificate_voided/.test(src) || /status:\s*"void"/.test(src);
   }
@@ -156,14 +163,19 @@ describe("証明書の無効化 (operationRisk = critical)", () => {
     const rel = file.slice(APP_ROOT.length + 1);
     voidPaths.push(rel);
 
-    // 書き込みを含む関数の中でガードされているかを見る（ファイル全体では見ない）。
-    const writers = enclosingFunctions(src, /\.update\(/g).filter((body) => /from\("certificates"\)/.test(body));
+    // 書き込み（または一本化ヘルパーの呼び出し）を含む関数の中でガードされているかを見る。
+    // ファイル全体では見ない（別の関数のガードで通ってしまう）。
+    const calls = /certificates\/voidCertificate/.test(src) ? /voidCertificate\w*\(/g : /\.update\(/g;
+    const writers = enclosingFunctions(src, calls).filter(
+      (body) => /from\("certificates"\)/.test(body) || /voidCertificate\w*\(/.test(body),
+    );
     if (!writers.length || !writers.every((body) => enforces(body, "certificates:void"))) ungated.push(rel);
   }
 
   it("検出できている（検出器が壊れて空で合格するのを防ぐ）", () => {
-    // 2026-08-31 時点で5本。減ったら経路が消えたか検出器が壊れたかのどちらかで、
-    // どちらも確認が要る。
+    // 2026-08-31 時点で5本。2026-09-05 に4本を `voidCertificate()` へ一本化したが、
+    // **入口の数は変わっていない**（呼び出し側も検出対象に入れてある）。
+    // 減ったら経路が消えたか検出器が壊れたかのどちらかで、どちらも確認が要る。
     expect(voidPaths.length).toBeGreaterThanOrEqual(5);
   });
 
@@ -290,5 +302,57 @@ describe("未登録の変更系ハンドラ", () => {
 
   it("既知リストに、もう強制済みのものが残っていない（棚卸しの取りこぼしを防ぐ）", () => {
     expect([...KNOWN_UNGUARDED].filter((h) => !found.includes(h)).sort()).toEqual([]);
+  });
+});
+
+/**
+ * `/api/admin/agent*`（代理店運営 API）は `agents` がテナントを持たない
+ * プラットフォーム共通資源であり、`isPlatformAdmin` 必須（A-H1、2026-09-08）。
+ *
+ * 監査で判明した実例: 一覧・作成系 14 本が `requireMinRole(caller, "admin")`
+ * （自テナント admin なら誰でも通る）のみで守られ、`createTenantScopedAdmin`
+ * （RLS バイパスの service-role クライアント）を任意テナント admin から
+ * 実行できていた。同機能の `[id]` ルートは既に `isPlatformAdmin` 必須。
+ *
+ * `enforces()`/GUARD 系の一般検出は「何らかの認可があるか」しか見ず
+ * `requireMinRole` も認可として認識するため、この退行は拾えない。
+ * ここでは `/api/admin/agent*` に限定して `isPlatformAdmin` の使用を直接要求する。
+ */
+describe("代理店運営 API (/api/admin/agent*) は isPlatformAdmin 必須", () => {
+  const files = walkSource(API_ROOT, (f) => f.endsWith("route.ts")).filter((f) => {
+    const rel = f
+      .slice(API_ROOT.length + 1)
+      .split(/[\\/]/)
+      .join("/");
+    return rel.startsWith("admin/agent-") || rel.startsWith("admin/agents/");
+  });
+
+  it("対象ファイルを取りこぼしていない（検出器が壊れて空で合格するのを防ぐ）", () => {
+    expect(files.length).toBeGreaterThanOrEqual(14);
+  });
+
+  it("全ファイルが isPlatformAdmin をガードとして使い、requireMinRole/createTenantScopedAdmin に依存しない", () => {
+    const bad: string[] = [];
+    for (const file of files) {
+      const src = stripComments(readFileSync(file, "utf8"), file);
+      const rel = file
+        .slice(API_ROOT.length + 1)
+        .split(/[\\/]/)
+        .join("/");
+      const chunks = handlerChunks(src);
+      for (const [method, chunk] of chunks) {
+        if (!/resolveCallerWithRole\(/.test(chunk)) continue;
+        if (!/!\s*isPlatformAdmin\(caller\)/.test(chunk)) {
+          bad.push(`${rel} [${method}] -> isPlatformAdmin ガード無し`);
+        }
+      }
+      if (/requireMinRole\(caller,\s*"admin"\)/.test(src)) {
+        bad.push(`${rel} -> requireMinRole(caller, "admin") が残存`);
+      }
+      if (/createTenantScopedAdmin\(/.test(src)) {
+        bad.push(`${rel} -> createTenantScopedAdmin を使用（RLS バイパスがテナントスコープに閉じない）`);
+      }
+    }
+    expect(bad.sort()).toEqual([]);
   });
 });

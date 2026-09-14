@@ -1,5 +1,5 @@
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
-import { isResendFailure, sendResendEmail } from "@/lib/email/resendSend";
+import { sendEmail } from "@/lib/email/sendEmail";
 import { maskEmail } from "@/lib/logger";
 
 type Supabase = ReturnType<typeof createServiceRoleAdmin>;
@@ -152,7 +152,7 @@ ${itemsLinesText}
 Ledra — 株式会社HOLY
 `;
 
-  const sent = await sendResendEmail({
+  const sent = await sendEmail({
     to: email,
     reply_to: "support@ledra.co.jp",
     subject,
@@ -160,7 +160,7 @@ Ledra — 株式会社HOLY
     text,
     idempotencyKey,
   });
-  if (isResendFailure(sent)) {
+  if (!sent.ok) {
     console.error("shopOrderEmail: send failed", {
       tenantId,
       shopOrderId,
@@ -340,7 +340,7 @@ ${order.note ? `\n備考: ${order.note}\n` : ""}
 Ledra 運営通知 — 株式会社HOLY AUTO
 `;
 
-  const sent = await sendResendEmail({
+  const sent = await sendEmail({
     to,
     reply_to: "support@ledra.co.jp",
     subject: `【Ledra運営】新規注文 ${order.order_number}（${tenantLabel}）`,
@@ -348,7 +348,7 @@ Ledra 運営通知 — 株式会社HOLY AUTO
     text,
     idempotencyKey,
   });
-  if (isResendFailure(sent)) {
+  if (!sent.ok) {
     console.error("shopOrderOps: send failed", { shopOrderId, kind, status: sent.status });
   } else {
     console.info("shopOrderOps: sent", { shopOrderId, kind, resendId: sent.id });

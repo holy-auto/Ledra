@@ -1,4 +1,4 @@
-import { createTenantScopedAdmin } from "@/lib/supabase/admin";
+import { createPlatformScopedAdmin } from "@/lib/supabase/admin";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
@@ -29,7 +29,9 @@ export async function POST(request: NextRequest, ctx: RouteContext) {
       return apiValidationError("message is required");
     }
 
-    const { admin } = createTenantScopedAdmin(caller.tenantId);
+    const admin = createPlatformScopedAdmin(
+      "agent-support/[id]/messages — platform-wide agent operations (no tenant scope)",
+    );
 
     // Verify ticket exists
     const { data: ticket, error: ticketError } = await admin

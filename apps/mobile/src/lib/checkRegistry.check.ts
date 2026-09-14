@@ -7,6 +7,10 @@
 // シェルの for ループで全部拾う案もあったが、npm script は Windows では cmd で
 // 走るため壊れる。リポジトリに .ps1 があり Windows 開発者がいるので採らない。
 //
+// scripts/*.check.mjs も同じ理由で見る。src/lib だけを見ていた頃、
+// scripts/check-native-config.check.mjs が保護対象外だった（登録を外しても
+// 誰も気づかない状態）。置き場所が違うだけで走らない危険は同じ。
+//
 // 実行: node apps/mobile/src/lib/checkRegistry.check.ts
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
@@ -31,4 +35,28 @@ assert.deepEqual(missing, [], `package.json の test に未登録の check が�
 const stale = registered.filter((f) => !onDisk.includes(f));
 assert.deepEqual(stale, [], `package.json の test に実体の無い check が並んでいる: ${stale.join(", ")}`);
 
-console.log(`checkRegistry.check.ts OK (${onDisk.length} 本)`);
+// scripts/*.check.mjs（ネイティブ設定の検査など）も同様に突き合わせる。
+const scriptsDir = join(here, "..", "..", "scripts");
+const scriptsOnDisk = readdirSync(scriptsDir)
+  .filter((f) => f.endsWith(".check.mjs"))
+  .sort();
+const scriptsRegistered = (pkg.scripts.test.match(/scripts\/[\w.-]+\.check\.mjs/g) ?? [])
+  .map((p) => p.replace("scripts/", ""))
+  .sort();
+
+const scriptsMissing = scriptsOnDisk.filter((f) => !scriptsRegistered.includes(f));
+assert.deepEqual(
+  scriptsMissing,
+  [],
+  `package.json の test に未登録の check がある: scripts/${scriptsMissing.join(", scripts/")}`,
+);
+const scriptsStale = scriptsRegistered.filter((f) => !scriptsOnDisk.includes(f));
+assert.deepEqual(
+  scriptsStale,
+  [],
+  `package.json の test に実体の無い check が並んでいる: scripts/${scriptsStale.join(", scripts/")}`,
+);
+
+console.log(
+  `checkRegistry.check.ts OK (src/lib ${onDisk.length} 本 / scripts ${scriptsOnDisk.length} 本)`,
+);

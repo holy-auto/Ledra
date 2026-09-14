@@ -72,7 +72,7 @@ export default function AgentDashboardPage() {
       try {
         const res = await fetch("/api/agent/dashboard", { cache: "no-store" });
         const j = await res.json();
-        if (!res.ok) throw new Error(j?.error ?? "fetch_failed");
+        if (!res.ok) throw new Error(j?.message ?? j?.error ?? "fetch_failed");
         setData(j);
       } catch (e: any) {
         setErr(e?.message ?? "fetch_failed");

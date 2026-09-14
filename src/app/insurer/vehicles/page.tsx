@@ -41,7 +41,7 @@ export default function InsurerVehiclesPage() {
         cache: "no-store",
       });
       const j = await res.json();
-      if (!res.ok) throw new Error(j?.error ?? "search_failed");
+      if (!res.ok) throw new Error(j?.message ?? j?.error ?? "search_failed");
       setRows(j?.rows ?? []);
     } catch (e: any) {
       setErr(e?.message ?? "search_failed");

@@ -152,7 +152,7 @@ export default function HearingClient() {
         body: JSON.stringify({ ...form, vehicle_year: form.vehicle_year ? Number(form.vehicle_year) : null }),
       });
       const j = await parseJsonSafe(res);
-      if (!res.ok) throw new Error(j?.error ?? "保存に失敗しました");
+      if (!res.ok) throw new Error(j?.message ?? j?.error ?? "保存に失敗しました");
       setShowForm(false);
       setForm({
         customer_name: "",
@@ -193,7 +193,7 @@ export default function HearingClient() {
         body: JSON.stringify({ id: hearingId, action: "link_customer" }),
       });
       const j = await parseJsonSafe(res);
-      if (!res.ok) throw new Error(j?.error ?? "連携に失敗しました");
+      if (!res.ok) throw new Error(j?.message ?? j?.error ?? "連携に失敗しました");
       await fetchHearings();
       // 連携後、証明書作成に遷移するかリロード
       if (j.vehicle_id) {

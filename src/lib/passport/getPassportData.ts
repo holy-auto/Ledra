@@ -2,6 +2,9 @@ import { getReadReplica } from "@/lib/supabase/readReplica";
 import { buildExplorerUrl } from "@/lib/anchoring/providers";
 import { normalizeVin } from "@/lib/passport/normalizeVin";
 
+// ラベルは client からも使うため独立モジュールへ移した。既存の import 経路は維持する。
+export { getServiceTypeLabel } from "@/lib/certificates/serviceTypeLabel";
+
 export type PassportCertCard = {
   public_id: string;
   service_type: string | null;
@@ -185,21 +188,4 @@ export async function getPassportData(vinRaw: string): Promise<PassportData | nu
     certificates: cards,
     meta_anchor: metaAnchor,
   };
-}
-
-export function getServiceTypeLabel(serviceType: string | null): string {
-  switch (serviceType) {
-    case "ppf":
-      return "PPF施工";
-    case "coating":
-      return "コーティング";
-    case "body_repair":
-      return "鈑金塗装";
-    case "maintenance":
-      return "車両整備";
-    case "wrapping":
-      return "ラッピング";
-    default:
-      return serviceType ?? "施工";
-  }
 }

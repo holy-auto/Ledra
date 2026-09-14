@@ -60,20 +60,17 @@ vi.mock("@/lib/agent/email", () => ({
 }));
 
 vi.mock("@/lib/supabase/admin", () => ({
-  createTenantScopedAdmin: () => ({
-    admin: {
-      from: fromMock,
-      rpc: rpcMock,
-      storage: { from: storageFromMock },
-      auth: {
-        admin: {
-          listUsers: () => adminApiListMock(),
-          createUser: (...a: unknown[]) => adminApiCreateMock(...a),
-          deleteUser: (...a: unknown[]) => adminApiDeleteMock(...a),
-        },
+  createPlatformScopedAdmin: () => ({
+    from: fromMock,
+    rpc: rpcMock,
+    storage: { from: storageFromMock },
+    auth: {
+      admin: {
+        listUsers: () => adminApiListMock(),
+        createUser: (...a: unknown[]) => adminApiCreateMock(...a),
+        deleteUser: (...a: unknown[]) => adminApiDeleteMock(...a),
       },
     },
-    tenantId: "platform-tenant",
   }),
 }));
 

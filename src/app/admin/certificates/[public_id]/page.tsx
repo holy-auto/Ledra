@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
-import { CERTIFICATE_IMAGE_BUCKET, formatCertificateImageBytes } from "@/lib/certificateImages";
+import { CERTIFICATE_IMAGE_BUCKET, formatCertificateImageBytes } from "@/lib/certificateImages/constants";
 import { logCertificateAction } from "@/lib/audit/certificateLog";
 import PageHeader from "@/components/ui/PageHeader";
 import AiExplainPanel from "@/components/certificates/AiExplainPanel";

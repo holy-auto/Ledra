@@ -1,5 +1,7 @@
+import type Stripe from "stripe";
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { getStripeClient } from "@/lib/stripe/client";
+import { getCurrentPeriodEnd } from "@/lib/stripe/subscription";
 import { type PlanTier, PLAN_RANK as RANK } from "@/types/billing";
 import { normalizePlanTier } from "@/lib/billing/planFeatures";
 import { isPlatformTenantId } from "@/lib/auth/platformAdmin";
@@ -172,7 +174,11 @@ async function graceInfoForTenant(stripe_subscription_id: string | null) {
     const resRecord = res as unknown as Record<string, unknown>;
     const sub = (resRecord.data as Record<string, unknown> | undefined) ?? (res as unknown as Record<string, unknown>);
 
-    const end = sub?.current_period_end ? Number(sub.current_period_end) : null;
+    // E2-1 是正 (2026-09-08): Stripe SDK v20+ で current_period_end が
+    // Subscription から SubscriptionItem に移動済み。webhook 側は既にこの
+    // フォールバックを持っていたが guard 側は無く、items 側にしか値が無い
+    // サブスクリプションで `end=null` となり、14日猶予を経ずに即ブロックしていた。
+    const end = getCurrentPeriodEnd(sub as unknown as Stripe.Subscription);
     if (!end) return { ok: false as const, grace_until: null as string | null };
 
     const until = new Date((end + graceDays() * 86400) * 1000);

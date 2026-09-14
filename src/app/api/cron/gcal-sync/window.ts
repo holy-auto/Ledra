@@ -1,3 +1,5 @@
+import { JST_OFFSET_MS } from "@/lib/datetime";
+
 /**
  * 定期カレンダー同期の対象期間を JST の YYYY-MM-DD で算出する純粋関数。
  *
@@ -10,7 +12,6 @@ export function computeSyncWindow(now: Date, pastDays = 7, futureDays = 60): { f
   // ロケール/ICU に依存せず JST の暦日を出す: UTC 時刻を +9h ずらして ISO の日付部を取る。
   // (JST は DST が無いので固定 +9h で正しい。toLocaleDateString('en-CA') は small-ICU 環境で
   //  MM/DD/YYYY にフォールバックし壊れ得るため使わない。)
-  const JST_OFFSET_MS = 9 * 60 * 60 * 1000;
   const fmt = (offsetDays: number): string =>
     new Date(now.getTime() + offsetDays * 86_400_000 + JST_OFFSET_MS).toISOString().slice(0, 10);
   return { from: fmt(-pastDays), to: fmt(futureDays) };

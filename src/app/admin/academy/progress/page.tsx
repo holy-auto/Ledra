@@ -189,7 +189,7 @@ export default function AcademyProgressPage() {
       const res = await fetch(`/api/admin/academy/certificates/${category}`);
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        alert(data.error ?? "ダウンロードに失敗しました");
+        alert(data.message ?? data.error ?? "ダウンロードに失敗しました");
         return;
       }
       const blob = await res.blob();
@@ -223,7 +223,7 @@ export default function AcademyProgressPage() {
         alert(`集計完了: ${data.inserted} 件追加、${data.skipped_existing} 件スキップ`);
         await fetchRewards();
       } else {
-        alert(`エラー: ${data.error ?? "不明なエラー"}`);
+        alert(`エラー: ${data.message ?? data.error ?? "不明なエラー"}`);
       }
     } finally {
       setCalculating(false);
@@ -245,7 +245,7 @@ export default function AcademyProgressPage() {
         }
         await fetchRewards();
       } else {
-        alert(`エラー: ${data.error ?? "不明なエラー"}`);
+        alert(`エラー: ${data.message ?? data.error ?? "不明なエラー"}`);
       }
     } finally {
       setApplyingId(null);

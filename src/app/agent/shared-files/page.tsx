@@ -85,7 +85,7 @@ export default function AgentSharedFilesPage() {
       const res = await fetch("/api/agent/shared-files", { method: "POST", body: fd });
       const data = await res.json();
       if (!res.ok) {
-        setError(data.error || "アップロードに失敗しました");
+        setError(data.message || data.error || "アップロードに失敗しました");
         return;
       }
       setNote("");

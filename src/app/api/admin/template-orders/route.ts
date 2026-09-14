@@ -2,7 +2,7 @@ import { createPlatformScopedAdmin } from "@/lib/supabase/admin";
 import { z } from "zod";
 import { NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { resolveCallerFull } from "@/lib/api/auth";
+import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { isPlatformAdmin } from "@/lib/auth/platformAdmin";
 import { apiOk, apiUnauthorized, apiValidationError, apiInternalError, apiForbidden } from "@/lib/api/response";
 
@@ -17,7 +17,7 @@ const templateOrderUpdateSchema = z.object({
 export async function GET(req: NextRequest) {
   try {
     const supabase = await createClient();
-    const caller = await resolveCallerFull(supabase);
+    const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
     if (!isPlatformAdmin(caller)) {
       return apiForbidden("運営権限が必要です。");
@@ -70,7 +70,7 @@ export async function PUT(req: NextRequest) {
     const { order_id, status, notes, assigned_to } = parsed.data;
 
     const supabase = await createClient();
-    const caller = await resolveCallerFull(supabase);
+    const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
     if (!isPlatformAdmin(caller)) {
       return apiForbidden("運営権限が必要です。");

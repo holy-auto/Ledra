@@ -145,7 +145,7 @@ export default function OrderCsvImport({ onImported }: Props) {
         body: JSON.stringify({ orders: payload }),
       });
       const j = await res.json();
-      if (!res.ok) throw new Error(j.error ?? `HTTP ${res.status}`);
+      if (!res.ok) throw new Error(j.message ?? j.error ?? `HTTP ${res.status}`);
       setResult(j);
       if (j.created > 0) {
         setRows([]);

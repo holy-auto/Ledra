@@ -36,6 +36,9 @@ export const metadata = {
     locale: "ja_JP",
     type: "website",
   },
+  // C-M1 是正 (2026-09-08): ルートレイアウト (src/app/layout.tsx) の既定を
+  // 非索引に反転したため、マーケティングページはここで明示的に索引可へ戻す。
+  robots: { index: true, follow: true },
 };
 
 export default function MarketingLayout({ children }: { children: React.ReactNode }) {

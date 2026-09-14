@@ -1,7 +1,8 @@
 import { parseJsonSafe } from "@/lib/api/safeJson";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
-import { logCertificateAction, getRequestMeta } from "@/lib/audit/certificateLog";
+import { getRequestMeta } from "@/lib/audit/certificateLog";
+import { voidCertificate } from "@/lib/certificates/voidCertificate";
 import { certificateVoidSchema } from "@/lib/validations/certificate";
 import { resolveCallerWithRole, requirePermission } from "@/lib/auth/checkRole";
 import {
@@ -43,49 +44,21 @@ export async function POST(req: Request) {
       return apiValidationError(parsed.error.issues[0]?.message ?? "入力内容に誤りがあります。");
     }
 
-    const tenantId = caller.tenantId;
-
-    // Verify certificate belongs to this tenant
+    // 無効化の本体は `voidCertificate` に一本化してある（5経路で実装が食い違っていた）。
+    // ここに残すのは認証・認可・入力検証・応答の組み立てだけ。
     const { admin } = createTenantScopedAdmin(caller.tenantId);
-    const { data: cert, error: fetchErr } = await admin
-      .from("certificates")
-      .select("id, vehicle_id, status")
-      .eq("tenant_id", tenantId)
-      .eq("public_id", parsed.data.public_id)
-      .limit(1)
-      .maybeSingle();
-
-    if (fetchErr || !cert) {
-      return apiNotFound("証明書が見つかりません。");
-    }
-
-    if (String(cert.status ?? "").toLowerCase() === "void") {
-      return apiOk({ already_void: true });
-    }
-
-    const { error } = await admin
-      .from("certificates")
-      .update({ status: "void", updated_at: new Date().toISOString() })
-      .eq("tenant_id", tenantId)
-      .eq("public_id", parsed.data.public_id);
-
-    if (error) {
-      return apiInternalError(error, "certificates/void update");
-    }
-
-    // Audit log (fire-and-forget)
-    const { ip, userAgent } = getRequestMeta(req);
-    logCertificateAction({
-      type: "certificate_voided",
-      tenantId,
-      publicId: parsed.data.public_id,
-      certificateId: cert.id,
-      vehicleId: cert.vehicle_id ?? null,
+    const result = await voidCertificate(admin, {
+      tenantId: caller.tenantId,
       userId: caller.userId,
-      description: "証明書を無効化 (void)",
-      ip,
-      userAgent,
+      selector: { publicId: parsed.data.public_id },
+      requestMeta: getRequestMeta(req),
     });
+
+    if (!result.ok) {
+      if (result.kind === "not_found") return apiNotFound("証明書が見つかりません。");
+      return apiInternalError(result.kind === "update_failed" ? result.error : result.kind, "certificates/void update");
+    }
+    if (result.alreadyVoid) return apiOk({ already_void: true });
 
     return apiOk({});
   } catch (e) {

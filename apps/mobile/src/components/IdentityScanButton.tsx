@@ -130,7 +130,7 @@ export default function IdentityScanButton({ onComplete, label = "身分証で�
       const json = (await res.json().catch(() => null)) as ApiResponse | null;
 
       if (!res.ok || !json || json.ok === false) {
-        setError(json?.error ?? json?.message ?? `OCR に失敗しました (HTTP ${res.status})`);
+        setError(json?.message ?? json?.error ?? `OCR に失敗しました (HTTP ${res.status})`);
         return;
       }
       setResult(json);

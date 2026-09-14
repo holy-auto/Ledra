@@ -18,6 +18,7 @@ export default async function Page({
     vehicle_id?: string;
     customer_id?: string;
     reservation_id?: string;
+    job_order_id?: string;
     category?: string;
     stage?: string;
   }>;
@@ -28,6 +29,9 @@ export default async function Page({
   const defaultVehicleId = sp.vehicle_id ?? undefined;
   const defaultCustomerId = sp.customer_id ?? undefined;
   const defaultReservationId = sp.reservation_id ?? undefined;
+  // 外注施工: 受発注画面 (/admin/orders/[id]) の「証明書を発行」導線から来た場合、
+  // 発行する証明書をその発注に紐付ける（双方が同じ発注画面から成果物を辿れる）。
+  const defaultJobOrderId = sp.job_order_id ?? undefined;
   // 案件ワークフローの「作業中の写真を撮る」導線から来た場合、アップロードする写真を
   // stage=in_progress として記録する（施工前/後のみだった撮影段階タグを作業中にも拡張）。
   const defaultPhotoStage = sp.stage === "in_progress" ? "in_progress" : undefined;
@@ -206,6 +210,7 @@ export default async function Page({
         defaultVehicleId={defaultVehicleId}
         defaultCustomerId={defaultCustomerId}
         defaultReservationId={defaultReservationId}
+        defaultJobOrderId={defaultJobOrderId}
         defaultPartsReplacedNote={defaultPartsReplacedNote}
         defaultPhotoStage={defaultPhotoStage}
         templates={list}

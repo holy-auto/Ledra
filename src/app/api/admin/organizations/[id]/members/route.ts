@@ -100,6 +100,19 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     if (!parsed.ok) return parsed.response;
     const { tenant_id } = parsed.data;
 
+    // 追加対象テナントの owner であることを要求する。存在確認だけでは
+    // 任意テナントを組織に取り込んで横断閲覧できてしまう (A-C1)。
+    const { data: targetMembership } = await supabase
+      .from("tenant_memberships")
+      .select("role")
+      .eq("tenant_id", tenant_id)
+      .eq("user_id", caller.userId)
+      .eq("role", "owner")
+      .maybeSingle();
+    if (!targetMembership) {
+      return apiForbidden("追加する店舗のオーナー権限が必要です。");
+    }
+
     const admin = createPlatformScopedAdmin("組織オーナーによる所属店舗の追加 (クロステナント)");
 
     // 追加対象テナントの存在検証。

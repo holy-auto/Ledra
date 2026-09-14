@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from "react";
 import PageHeader from "@/components/ui/PageHeader";
+import { businessDateString, jstLocalInputToUtcIso, utcIsoToJstLocalInput } from "@/lib/datetime";
 
 // ─── 型定義 ──────────────────────────────────────────────────────
 type ContactType = "call" | "visit" | "email" | "sms" | "line";
@@ -64,17 +65,30 @@ const inputCls =
 const selectCls = inputCls;
 
 // ─── ユーティリティ ───────────────────────────────────────────────
-function startOfToday(): Date {
-  const d = new Date();
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+/**
+ * JST の「今日」の 0 時（実時刻）。
+ *
+ * ブラウザローカルの `new Date(y, m, d)` を使っていたため、UTC 端末では
+ * **取得クエリの `from` がずれて行が丸ごと落ちていた**（8:00 JST の予定は
+ * 前日 23:00Z なので、UTC の「今日」以降を要求すると入らない）。
+ * タブ振り分けも同じ境界を使うので、表示だけの問題ではなかった
+ * （PR #1027 の Codex レビュー指摘。当初「表示専用」と書いたのは誤り）。
+ *
+ * JST は夏時間が無いので、日の加算は 24 時間の加算でよい。
+ */
+function startOfTodayJst(): Date {
+  return new Date(`${businessDateString()}T00:00:00+09:00`);
 }
-function ymd(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+/** その実時刻を JST の暦日 `YYYY-MM-DD` にする（API のクエリ用）。 */
+function ymdJst(d: Date): string {
+  return businessDateString(d);
 }
 function formatDateTime(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
+  // 連絡予定はサーバ側の通知が実行するので、表示も入力も JST 固定にする。
   return d.toLocaleString("ja-JP", {
+    timeZone: "Asia/Tokyo",
     month: "numeric",
     day: "numeric",
     weekday: "short",
@@ -82,12 +96,9 @@ function formatDateTime(iso: string): string {
     minute: "2-digit",
   });
 }
-/** datetime-local input 用の現在時刻文字列 (秒なし) */
+/** datetime-local input 用の現在時刻文字列 (JST 壁時計・秒なし) */
 function nowLocalInput(): string {
-  const d = new Date();
-  const off = d.getTimezoneOffset();
-  const local = new Date(d.getTime() - off * 60000);
-  return local.toISOString().slice(0, 16);
+  return utcIsoToJstLocalInput(new Date().toISOString());
 }
 
 // ─── メインコンポーネント ─────────────────────────────────────────
@@ -110,10 +121,9 @@ export default function ContactSchedulesClient() {
   const fetchSchedules = useCallback(async () => {
     setLoading(true);
     try {
-      const from = ymd(startOfToday());
-      const to = new Date(startOfToday());
-      to.setDate(to.getDate() + 30);
-      const params = new URLSearchParams({ status: "all", from, to: ymd(to) });
+      const from = ymdJst(startOfTodayJst());
+      const to = new Date(startOfTodayJst().getTime() + 30 * 86400000);
+      const params = new URLSearchParams({ status: "all", from, to: ymdJst(to) });
       const res = await fetch(`/api/admin/contact-schedules?${params.toString()}`);
       if (!res.ok) throw new Error("fetch failed");
       const data = await res.json();
@@ -132,11 +142,10 @@ export default function ContactSchedulesClient() {
 
   // ─── タブごとの絞り込み ───
   const grouped = useMemo(() => {
-    const today = startOfToday();
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    const weekEnd = new Date(today);
-    weekEnd.setDate(weekEnd.getDate() + 7);
+    // 境界も JST の 0 時に揃える（取得と振り分けで基準を変えない）。
+    const today = startOfTodayJst();
+    const tomorrow = new Date(today.getTime() + 86400000);
+    const weekEnd = new Date(today.getTime() + 7 * 86400000);
 
     const inRange = (iso: string, lo: Date, hi: Date) => {
       const t = new Date(iso).getTime();
@@ -486,10 +495,12 @@ function AddDialog({
   }, []);
 
   function submit() {
-    if (!scheduledAt) return;
+    // datetime-local の naive 文字列は JST 壁時計として解釈する。
+    // ブラウザ TZ で解釈すると、UTC 環境の端末から登録したとき予定が 9 時間ずれる。
+    // 変換は setSubmitting より前に行う（ここで抜けると送信ボタンが戻らない）。
+    const iso = jstLocalInputToUtcIso(scheduledAt);
+    if (!iso) return;
     setSubmitting(true);
-    // datetime-local はローカル時刻なので Date 経由で ISO(UTC) に変換
-    const iso = new Date(scheduledAt).toISOString();
     onCreate({
       customer_id: customerId || null,
       vehicle_id: null,

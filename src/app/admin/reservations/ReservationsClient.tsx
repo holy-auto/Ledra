@@ -564,12 +564,29 @@ export default function ReservationsClient() {
     };
     if (editingId) payload.id = editingId;
     try {
-      const res = await fetch("/api/admin/reservations", {
+      // code-review 指摘 (2026-09-09): サーバー側（E3-1是正）は重複時に
+      // 409 + code:"conflict" を返し force:true での再送を案内しているが、
+      // このUIには配線されておらず、正当な重複予約が確認・上書きの手段なしに
+      // 常に拒否されていた。409+conflict のときだけ確認ダイアログを出し、
+      // 同意されたら force:true を付けて同一エンドポイントに再送する。
+      let res = await fetch("/api/admin/reservations", {
         method: editingId ? "PUT" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-      const j = await parseJsonSafe(res);
+      let j = await parseJsonSafe(res);
+      if (res.status === 409 && j?.code === "conflict") {
+        if (!confirm(`${j?.message ?? "この日時は既に予約が入っています。"}\nこのまま登録しますか？`)) {
+          setSaving(false);
+          return;
+        }
+        res = await fetch("/api/admin/reservations", {
+          method: editingId ? "PUT" : "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ...payload, force: true }),
+        });
+        j = await parseJsonSafe(res);
+      }
       if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       setSaveMsg({ text: editingId ? "予約を更新しました" : "予約を作成しました", ok: true });
       setShowForm(false);
@@ -725,7 +742,7 @@ export default function ReservationsClient() {
 
       {/* ── Stats cards ── */}
       {presentation.showStatsCards ? (
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           {[
             { label: "本日の予約", value: stats?.today_count ?? 0, icon: "📅", color: "from-blue-500 to-blue-600" },
             { label: "進行中", value: stats?.active_count ?? 0, icon: "⚙️", color: "from-violet-500 to-violet-600" },
@@ -1408,7 +1425,7 @@ export default function ReservationsClient() {
                     </label>
 
                     {/* Date & Time */}
-                    <div className="grid grid-cols-3 gap-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                       <label className={`${labelCls} col-span-1`}>
                         <span className={labelTextCls}>
                           予約日 <span className="text-danger">*</span>

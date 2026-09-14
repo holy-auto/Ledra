@@ -4,8 +4,60 @@
  * 同じ walk が3ファイルに複製されていたので1箇所に集約した。
  * 除外リスト（__tests__ / node_modules）を変えるときに1箇所で済む。
  */
+import ts from "typescript";
+
+/**
+ * 拡張子で文法を選ぶ。**`.ts` を TSX として解いてはいけない。**
+ * `const f = <T,>(x: T) => x` のような総称のアロー関数が JSX と曖昧になり、
+ * 構文木が壊れてその先のコメントを取りこぼす（Codex の指摘）。
+ */
+export function scriptKind(fileName: string): ts.ScriptKind {
+  return fileName.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS;
+}
 import { readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
+
+/**
+ * コメントを落とす。**構造テストは必ずこれを通してから照合すること。**
+ *
+ * 検出器が説明コメントに書いた関数名へ反応し、実際のガードを消しても緑のまま —— を
+ * この repo は2回やっている（MISTAKE_LEDGER M-022 ほか）。同じ実装が2ファイルに
+ * 複製されていたので集約した。
+ *
+ * **自前の正規表現をやめ、TypeScript のスキャナで落とす。** 行頭の `//` だけを見る
+ * 実装だったので、`void 0; // const limited = await checkRateLimit(...)` のような
+ * **行末コメント**が残り、そこに書かれた呼び出しを検出器が本物と読んだ（Codex の指摘）。
+ * 逆に素朴に `//` を全部消すと `"https://..."` の中まで壊す。字句解析なら
+ * 文字列・テンプレート・正規表現リテラルの中身を壊さずにコメントだけを落とせる。
+ *
+ * 行番号がずれないよう、コメントは改行だけ残して空白化する。
+ */
+export function stripComments(src: string, fileName = "scan.tsx"): string {
+  const sf = ts.createSourceFile(fileName, src, ts.ScriptTarget.Latest, true, scriptKind(fileName));
+  const ranges: { pos: number; end: number }[] = [];
+  const visit = (node: ts.Node): void => {
+    // 前置と後置の両方を取る。**同じ行にあるコメントは前置に出てこない**ので、
+    // 前置だけ見ていると `void 0; // ...` の行末コメントが丸ごと残る。
+    for (const r of ts.getLeadingCommentRanges(src, node.getFullStart()) ?? []) ranges.push(r);
+    for (const r of ts.getTrailingCommentRanges(src, node.getEnd()) ?? []) ranges.push(r);
+    for (const child of node.getChildren(sf)) visit(child);
+  };
+  visit(sf);
+
+  // **文字列で切り貼りする。** `[...src]` はコードポイント単位の配列になるが、
+  // TypeScript が返す pos/end は **UTF-16 単位**。絵文字が1つでも手前にあると
+  // 位置がずれ、コメントが残ったり本物のコードを潰したりする（Codex の指摘）。
+  const sorted = [...ranges].sort((a, b) => a.pos - b.pos);
+  let out = "";
+  let at = 0;
+  for (const { pos, end } of sorted) {
+    if (end <= at) continue; // 入れ子・重複
+    const from = Math.max(pos, at);
+    out += src.slice(at, from) + src.slice(from, end).replace(/[^\n]/g, " "); // 行番号を保つ
+    at = end;
+  }
+  return out + src.slice(at);
+}
 
 /** ディレクトリ配下の .ts/.tsx を再帰的に集める。 */
 export function walkSource(dir: string, filter: (name: string) => boolean = isTsFile, out: string[] = []): string[] {

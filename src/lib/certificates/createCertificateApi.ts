@@ -86,6 +86,8 @@ export const certCreateJsonSchema = z
     // しないよう、FormData ↔ JSON の round-trip に含める。
     reservation_id: z.string().uuid().nullable().optional(),
     craftsman_staff_id: z.string().uuid().nullable().optional(),
+    // 外注施工: テナント間の発注 (job_orders) から発行した場合の紐付け先。
+    job_order_id: z.string().uuid().nullable().optional(),
 
     // ステータス: draft or active
     status: z.enum(["draft", "active"]).optional().default("active"),
@@ -171,6 +173,7 @@ export function jsonToCertFormData(input: CertCreateJsonInput): FormData {
   // 案件連携 (職人解決 / 予約紐付け)
   appendIf("reservation_id", input.reservation_id ?? undefined);
   appendIf("craftsman_staff_id", input.craftsman_staff_id ?? undefined);
+  appendIf("job_order_id", input.job_order_id ?? undefined);
 
   // Template fields (f__ prefix). Server Action expects multi-value as repeated appends
   // and "on" string for booleans.
@@ -260,6 +263,7 @@ export function formDataToCertJson(fd: FormData): Record<string, unknown> {
     "package_id",
     "reservation_id",
     "craftsman_staff_id",
+    "job_order_id",
     "status",
   ] as const;
 

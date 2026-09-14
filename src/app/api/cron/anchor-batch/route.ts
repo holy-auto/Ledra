@@ -12,6 +12,8 @@ import type { NextRequest } from "next/server";
 import { apiJson, apiUnauthorized, apiInternalError } from "@/lib/api/response";
 import { verifyCronRequest } from "@/lib/cronAuth";
 import { runCertificateAnchorBatch } from "@/lib/anchoring/certificateBatchAnchor";
+import { createServiceRoleAdmin } from "@/lib/supabase/admin";
+import { withCronLock } from "@/lib/cron/lock";
 
 export const dynamic = "force-dynamic";
 // Merkle 構築 + tx confirm 待ちで時間がかかり得るため上限を伸ばす。
@@ -29,8 +31,18 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const result = await runCertificateAnchorBatch();
-    return apiJson(result);
+    // E3-3 是正 (2026-09-08): 同時多重起動を防ぐロック。無いと Vercel の timeout retry
+    // 等で cron が重複起動した場合に、同じ queued 行から2本の Merkle batch が組まれ
+    // Polygon への anchor tx がガス代ごと二重発行され得る。maxDuration(60s) 超の実行
+    // が想定されるため TTL は余裕を持たせる。
+    const supabase = createServiceRoleAdmin("cron:anchor-batch — Merkle batch anchor lock coordination");
+    const lock = await withCronLock(supabase, "anchor-batch", 300, async () => {
+      return runCertificateAnchorBatch();
+    });
+    if (!lock.acquired) {
+      return apiJson({ skipped: true, reason: "lock-held" });
+    }
+    return apiJson(lock.value);
   } catch (e) {
     return apiInternalError(e, "cron/anchor-batch");
   }

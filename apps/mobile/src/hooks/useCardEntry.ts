@@ -66,6 +66,12 @@ export function useCardEntry(onRecorded: (paymentId: string | null) => void) {
   const paidSessionId = useRef<string | null>(null);
   // 記録の多重送信を止める。やり直しボタンの二度押しで2件立つのを防ぐ
   const recording = useRef(false);
+  // D-B8 是正 (2026-09-08): start() の多重起動防止に `starting` state を直接
+  // 見ていたが、setStarting(true) は次の再描画まで反映されない。連打の
+  // 2回目が再描画前に来ると `starting` はまだ false のままガードを素通りし、
+  // Checkout セッションが2本立っていた。record() の `recording` ref と同じ
+  // 形で、同期的に読める ref を判定に使う（state は表示専用に残す）。
+  const startingRef = useRef(false);
 
   const record = useCallback(async () => {
     const s = sale.current;
@@ -111,8 +117,10 @@ export function useCardEntry(onRecorded: (paymentId: string | null) => void) {
 
   const start = useCallback(
     async (next: CardEntrySale, tapFailure: boolean) => {
-      // 二度押し・セッションの二重作成を止める
-      if (starting || sessionId) return;
+      // 二度押し・セッションの二重作成を止める（同期的な ref で判定。state は
+      // 次の再描画まで反映されないため連打の2回目を止められない）
+      if (startingRef.current || sessionId) return;
+      startingRef.current = true;
       setStarting(true);
       setStartError(null);
       try {
@@ -136,10 +144,11 @@ export function useCardEntry(onRecorded: (paymentId: string | null) => void) {
         // 店員には「ボタンが効かない」としか見えない
         setStartError(err instanceof Error ? err.message : "支払リンクを作れませんでした");
       } finally {
+        startingRef.current = false;
         setStarting(false);
       }
     },
-    [starting, sessionId],
+    [sessionId],
   );
 
   const cancel = useCallback(async () => {

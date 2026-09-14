@@ -1,7 +1,8 @@
 import { NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { createTenantScopedAdmin } from "@/lib/supabase/admin";
-import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
+import { createPlatformScopedAdmin } from "@/lib/supabase/admin";
+import { resolveCallerWithRole } from "@/lib/auth/checkRole";
+import { isPlatformAdmin } from "@/lib/auth/platformAdmin";
 import { apiJson, apiUnauthorized, apiForbidden, apiInternalError, apiValidationError } from "@/lib/api/response";
 import { MATERIALS_BUCKET, MAX_MATERIAL_SIZE, isAllowedMaterialType, materialStoragePath } from "../storage";
 
@@ -21,7 +22,7 @@ export async function POST(request: NextRequest) {
     const supabase = await createClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
-    if (!requireMinRole(caller, "admin")) return apiForbidden();
+    if (!isPlatformAdmin(caller)) return apiForbidden();
 
     const body = (await request.json().catch(() => null)) as {
       file_name?: unknown;
@@ -48,7 +49,9 @@ export async function POST(request: NextRequest) {
 
     const storagePath = materialStoragePath(fileName);
 
-    const { admin } = createTenantScopedAdmin(caller.tenantId);
+    const admin = createPlatformScopedAdmin(
+      "agent-materials/upload-url — platform-wide agent operations (no tenant scope)",
+    );
     const { data, error } = await admin.storage.from(MATERIALS_BUCKET).createSignedUploadUrl(storagePath);
 
     if (error || !data?.token) {

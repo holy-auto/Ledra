@@ -93,7 +93,7 @@ export default function AdminInvoicesClient() {
       });
       if (!res.ok) {
         const j = await parseJsonSafe(res);
-        throw new Error(j?.error ?? `HTTP ${res.status}`);
+        throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       }
       setMsg("請求書を作成しました");
       setShowForm(false);
@@ -127,7 +127,7 @@ export default function AdminInvoicesClient() {
       });
       if (!res.ok) {
         const j = await parseJsonSafe(res);
-        throw new Error(j?.error ?? `HTTP ${res.status}`);
+        throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
       }
       setMsg(`ステータスを「${statusEntry(newStatus).label}」に変更しました`);
       fetchInvoices();

@@ -73,7 +73,7 @@ export default function InsurerReviewClient() {
         body: JSON.stringify({ insurer_id, ...updates }),
       });
       const json = await res.json();
-      if (!res.ok) throw new Error(json.error ?? "update failed");
+      if (!res.ok) throw new Error(json.message ?? json.error ?? "update failed");
       setMsg(`${json.insurer?.name ?? ""} を更新しました`);
       setRejectionReason("");
       setExpandedId(null);

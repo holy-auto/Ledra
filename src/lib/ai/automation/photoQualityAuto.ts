@@ -19,7 +19,7 @@
  */
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { canUseFeature, normalizePlanTier } from "@/lib/billing/planFeatures";
-import { CERTIFICATE_IMAGE_BUCKET } from "@/lib/certificateImages";
+import { CERTIFICATE_IMAGE_BUCKET } from "@/lib/certificateImages/constants";
 import { auditCertificatePhotos, type StandardRule } from "@/lib/ai/photoQualityCheck";
 import { visionModelForPlanTier } from "@/lib/ai/client";
 import { startAiRouteUsage } from "@/lib/ai/recordRouteUsage";

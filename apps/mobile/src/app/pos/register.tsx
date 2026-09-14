@@ -29,26 +29,56 @@ interface RegisterSession {
 }
 
 export default function PosRegisterScreen() {
-  const { user, selectedStore } = useAuthStore();
+  const { user, selectedStore, getSelectedStoreId } = useAuthStore();
   const queryClient = useQueryClient();
 
   const [openingCash, setOpeningCash] = useState("");
   const [closingCash, setClosingCash] = useState("");
   const [snackbar, setSnackbar] = useState("");
 
+  // D-A1 是正 (2026-09-08): サーバの /registers/{id}/open,close は registers.id を
+  // path param として要求するが、以前は stores.id を送っていたため register_id の
+  // FK 制約に落ちて常に失敗していた（レジ機能が動かない）。この画面にレジ選択 UI は
+  // 無い（1店舗＝1レジのモバイルPOS運用を前提）ので、店舗の有効なレジを1件引く。
+  const { data: register, isLoading: registerLoading } = useQuery<{ id: string } | null>({
+    queryKey: ["register", selectedStore?.id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("registers")
+        .select("id")
+        .eq("store_id", getSelectedStoreId()!)
+        .eq("tenant_id", user!.tenantId)
+        .eq("is_active", true)
+        .order("sort_order", { ascending: true })
+        .limit(1)
+        .maybeSingle();
+      if (error) throw error;
+      return data;
+    },
+    // D-B2 是正 (2026-09-08): 「店舗なしで続行」時は selectedStore が非 null でも
+    // id が空文字になり、uuid 列へのクエリが不正な形式で必ず失敗する。
+    // 実 store_id が無いときはクエリ自体を起動しない。
+    enabled: !!getSelectedStoreId(),
+  });
+
+  // code-review 指摘 (2026-09-09): 以前は register_sessions を店舗経由
+  // （registers!inner(store_id)）で絞っており、store_id に有効なレジが
+  // 複数ある場合、上の register クエリ（sort_order 昇順で1件）とは別の
+  // レジの最新セッション（opened_at 降順で1件）を返しうる。結果、画面が
+  // 表示するセッションと open/close ミューテーションが叩く register.id が
+  // ズレ、無関係なレジのセッションを締めてしまう等の誤操作になる。
+  // register クエリが確定した register.id に直接紐付けることで一本化する。
   const {
     data: session,
     isLoading,
     refetch,
   } = useQuery<RegisterSession | null>({
-    queryKey: ["register-session", selectedStore?.id],
+    queryKey: ["register-session", register?.id],
     queryFn: async () => {
-      // register_sessions に店舗は無い。レジ（registers）が店舗を持つので
-      // 埋め込みで内部結合して絞る
       const { data, error } = await supabase
         .from("register_sessions")
-        .select("*, registers!inner(store_id)")
-        .eq("registers.store_id", selectedStore!.id)
+        .select("*")
+        .eq("register_id", register!.id)
         .eq("tenant_id", user!.tenantId)
         .order("opened_at", { ascending: false })
         .limit(1)
@@ -57,7 +87,7 @@ export default function PosRegisterScreen() {
       if (!data) return null;
       return data as unknown as RegisterSession;
     },
-    enabled: !!selectedStore,
+    enabled: !!register?.id,
   });
 
   const isOpen = session?.status === "open";
@@ -68,7 +98,10 @@ export default function PosRegisterScreen() {
       if (isNaN(amount) || amount < 0) {
         throw new Error("正しい金額を入力してください");
       }
-      return mobileApi(`/registers/${selectedStore!.id}/open`, {
+      if (!register) {
+        throw new Error("この店舗のレジが見つかりません。管理画面でレジを設定してください");
+      }
+      return mobileApi(`/registers/${register.id}/open`, {
         method: "POST",
         body: { opening_cash: amount },
       });
@@ -76,7 +109,7 @@ export default function PosRegisterScreen() {
     onSuccess: () => {
       setOpeningCash("");
       queryClient.invalidateQueries({
-        queryKey: ["register-session", selectedStore?.id],
+        queryKey: ["register-session", register?.id],
       });
       setSnackbar("レジを開けました");
     },
@@ -93,7 +126,10 @@ export default function PosRegisterScreen() {
       if (isNaN(amount) || amount < 0) {
         throw new Error("正しい金額を入力してください");
       }
-      return mobileApi(`/registers/${selectedStore!.id}/close`, {
+      if (!register) {
+        throw new Error("この店舗のレジが見つかりません。管理画面でレジを設定してください");
+      }
+      return mobileApi(`/registers/${register.id}/close`, {
         method: "POST",
         body: { closing_cash: amount },
       });
@@ -101,7 +137,7 @@ export default function PosRegisterScreen() {
     onSuccess: () => {
       setClosingCash("");
       queryClient.invalidateQueries({
-        queryKey: ["register-session", selectedStore?.id],
+        queryKey: ["register-session", register?.id],
       });
       setSnackbar("レジを締めました");
     },
@@ -112,7 +148,12 @@ export default function PosRegisterScreen() {
     },
   });
 
-  if (isLoading) {
+  // code-review 指摘 (2026-09-08): register クエリと session クエリは並行して
+  // 走るが、以前は session 側の isLoading だけで画面をガードしていた。
+  // session が先に解決すると、register がまだ取得中でも操作可能になり、
+  // その間にレジ開け/締めを押すと register===undefined で
+  // 「この店舗のレジが見つかりません」という誤ったエラーが出ていた。
+  if (isLoading || registerLoading) {
     return (
       <View style={styles.center}>
         <ActivityIndicator size="large" />

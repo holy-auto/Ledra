@@ -20,25 +20,16 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { Redis } from "@upstash/redis";
+import type { Redis } from "@upstash/redis";
 import { createHash } from "node:crypto";
 import { apiError } from "./response";
 import { captureSecurityEvent } from "@/lib/observability/sentry";
 import { getClientIp } from "@/lib/rateLimit";
+import { getRedis } from "@/lib/upstash";
 
 const IDEMPOTENCY_TTL_SECONDS = 24 * 60 * 60;
 const MAX_KEY_LENGTH = 255;
 const KEY_PATTERN = /^[A-Za-z0-9_\-:.]+$/;
-
-let redis: Redis | null = null;
-function getRedis(): Redis | null {
-  if (redis) return redis;
-  const url = process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
-  if (!url || !token) return null;
-  redis = new Redis({ url, token });
-  return redis;
-}
 
 type CachedResponse = {
   status: number;
