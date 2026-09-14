@@ -86,6 +86,24 @@ export const siteConfig = {
   twitterHandle: "@detailing_holy",
 } as const;
 
+/** 運営会社のコーポレートサイト。/law の特定商取引法表記の販売事業者と同じ。 */
+export const HOLY_INC_URL = "https://holy-inc.jp";
+
+/**
+ * グループサイト（相互リンク）。Ledra は株式会社HOLYが手がけるサービスの一つ。
+ *
+ * URL の出典:
+ * - holy-inc.jp   … コーポレートサイトのルートドメイン（holy-inc リポジトリの VITE_SITE_URL 既定値）
+ * - mobilewash.app … MobileWash リポジトリ index.html の <link rel="canonical">
+ * - holy-auto.com  … holy-inc リポジトリが従来から掲載しているURL。
+ *                    canonical の宣言は未確認（www 付きへ寄せているかは【要確認】）。
+ */
+export const groupSites = [
+  { label: "株式会社HOLY（運営会社）", href: HOLY_INC_URL },
+  { label: "MobileWash（出張洗車）", href: "https://mobilewash.app" },
+  { label: "HOLY AUTO（コーティング・フィルム施工）", href: "https://holy-auto.com" },
+] as const;
+
 /** ヘッダー・フッターで使うナビゲーションリンク */
 export const marketingNav = [
   { label: "機能", href: "/features" },

@@ -8,7 +8,7 @@
  */
 
 import { headers } from "next/headers";
-import { siteConfig } from "@/lib/marketing/config";
+import { HOLY_INC_URL, siteConfig } from "@/lib/marketing/config";
 
 async function getNonce(): Promise<string | undefined> {
   return (await headers()).get("x-nonce") ?? undefined;
@@ -45,6 +45,12 @@ export async function OrganizationJsonLd() {
       name: "Ledra",
       url: siteConfig.siteUrl,
       email: siteConfig.contactEmail,
+      // 運営会社（/law の特定商取引法表記と同じ事業者）。グループサイトの相互リンクを機械可読にする。
+      parentOrganization: {
+        "@type": "Organization",
+        name: "株式会社HOLY",
+        url: HOLY_INC_URL,
+      },
     },
   };
 
