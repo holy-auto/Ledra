@@ -45,6 +45,7 @@ export function Footer() {
                     href={site.href}
                     target="_blank"
                     rel="noopener"
+                    aria-label={`${site.label}（新しいタブで開く）`}
                     className="inline-flex items-center gap-1.5 text-xs text-white/70 hover:text-white transition-colors"
                   >
                     {site.label}

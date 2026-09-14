@@ -8,7 +8,7 @@
  */
 
 import { headers } from "next/headers";
-import { siteConfig } from "@/lib/marketing/config";
+import { HOLY_INC_URL, siteConfig } from "@/lib/marketing/config";
 
 async function getNonce(): Promise<string | undefined> {
   return (await headers()).get("x-nonce") ?? undefined;
@@ -49,7 +49,7 @@ export async function OrganizationJsonLd() {
       parentOrganization: {
         "@type": "Organization",
         name: "株式会社HOLY",
-        url: "https://holy-inc.jp",
+        url: HOLY_INC_URL,
       },
     },
   };
