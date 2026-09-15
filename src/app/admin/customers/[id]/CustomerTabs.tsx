@@ -285,7 +285,7 @@ export default function CustomerTabs({
 
       {tab === "vehicles" && (
         <section className="glass-card overflow-hidden">
-          <div className="border-b border-border-subtle p-5 flex items-center justify-between">
+          <div className="border-b border-border-subtle p-5 flex flex-wrap items-center justify-between gap-3">
             <div>
               <div className="text-xs font-semibold tracking-[0.18em] text-muted">VEHICLES</div>
               <div className="mt-1 text-base font-semibold text-primary">紐付き車両 ({vehicles.length}件)</div>
@@ -302,8 +302,11 @@ export default function CustomerTabs({
           </div>
           <div className="divide-y divide-border-subtle">
             {vehicles.map((v) => (
-              <div key={v.id} className="flex items-center justify-between px-5 py-3.5 hover:bg-surface-hover/60">
-                <div className="flex items-center gap-3">
+              <div
+                key={v.id}
+                className="flex flex-wrap items-center justify-between gap-2 px-5 py-3.5 hover:bg-surface-hover/60"
+              >
+                <div className="flex flex-wrap items-center gap-3">
                   <Link href={`/admin/vehicles/${v.id}`} className="font-medium text-primary hover:text-accent">
                     {v.maker} {v.model}
                   </Link>

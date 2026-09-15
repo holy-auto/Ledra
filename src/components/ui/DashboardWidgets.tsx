@@ -62,7 +62,10 @@ function CustomizeModal({
   const orderedWidgets = state.order.map((id) => widgets.find((w) => w.id === id)).filter(Boolean) as Widget[];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm" onClick={onClose}>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 px-4 backdrop-blur-sm"
+      onClick={onClose}
+    >
       <div
         className="w-full max-w-md rounded-2xl border border-border-subtle bg-[var(--bg-elevated)] shadow-xl"
         onClick={(e) => e.stopPropagation()}

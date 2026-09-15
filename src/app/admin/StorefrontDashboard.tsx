@@ -546,8 +546,8 @@ export default function StorefrontDashboard() {
               {todays.map((r) => {
                 const isConfirmed = r.status === "confirmed";
                 return (
-                  <li key={r.id} className="flex items-center gap-3 px-4 py-3">
-                    <div className="w-16 shrink-0 text-center">
+                  <li key={r.id} className="flex items-center gap-2 px-3 py-3 sm:gap-3 sm:px-4">
+                    <div className="w-12 shrink-0 text-center sm:w-16">
                       <div className="text-xs font-semibold text-secondary">
                         {r.start_time ? r.start_time.slice(0, 5) : "--:--"}
                       </div>
@@ -558,7 +558,7 @@ export default function StorefrontDashboard() {
                         {[r.customer_name, r.vehicle_label].filter(Boolean).join(" / ") || "顧客未設定"}
                       </div>
                     </div>
-                    <span className="shrink-0 rounded-full bg-inset px-2 py-0.5 text-[11px] font-semibold text-secondary">
+                    <span className="hidden shrink-0 rounded-full bg-inset px-2 py-0.5 text-[11px] font-semibold text-secondary sm:inline">
                       {STATUS_LABEL[r.status] ?? r.status}
                     </span>
                     {isConfirmed ? (

@@ -78,7 +78,7 @@ export default function StorefrontBilling() {
     <div className="space-y-6">
       {/* ─── ① サマリ ─── */}
       <section className="rounded-2xl border border-border-subtle bg-surface p-4">
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 min-[400px]:grid-cols-2 sm:grid-cols-3">
           <div>
             <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">未回収</div>
             <div className="mt-1 text-2xl font-bold text-warning">{stats ? formatJpy(stats.unpaid_amount) : "—"}</div>

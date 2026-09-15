@@ -222,7 +222,7 @@ export default function OrderCsvImport({ onImported }: Props) {
 
       {rows.length > 0 && (
         <div className="glass-card overflow-hidden">
-          <div className="flex items-center justify-between px-5 py-3 border-b border-border">
+          <div className="flex flex-wrap items-center justify-between gap-2 px-5 py-3 border-b border-border">
             <div className="text-sm font-semibold text-primary">
               プレビュー{" "}
               <span className="text-muted font-normal">
