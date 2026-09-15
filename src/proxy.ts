@@ -172,12 +172,18 @@ function ensureRequestId(request: NextRequest) {
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // Skip static assets
+  // Skip static assets.
+  // クローラー向けの公開ファイル（robots / sitemap / RSS / llms.txt）もここで抜ける。
+  // 抜けないと下の既定で `x-robots-tag: noindex` が付く（= 読ませるために置いた
+  // ファイルに「索引するな」と付けることになる）。
   if (
     pathname.startsWith("/_next") ||
     pathname === "/favicon.ico" ||
     pathname === "/robots.txt" ||
-    pathname === "/sitemap.xml"
+    pathname === "/sitemap.xml" ||
+    pathname === "/feed.xml" ||
+    pathname === "/llms.txt" ||
+    pathname === "/llms-full.txt"
   ) {
     return NextResponse.next();
   }

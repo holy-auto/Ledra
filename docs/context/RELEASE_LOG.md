@@ -19,6 +19,49 @@
 - `layout.tsx` の main 要素に `min-w-0` を追加し、flex子要素がコンテンツ幅以下に
   縮小可能にした（全adminページに効く根本修正）。
 
+## 2026-09-15 1つの管理画面から3サイトに投稿できるようにした
+
+Ledra の管理画面 `/admin/site-content` に「投稿先」を足し、Ledra 自身に加えて
+holy-inc.jp と MobileWash にも同じ画面から投稿できるようにした。
+
+- 外部2サイトは静的サイトなので、**公開時にアプリが md を相手リポジトリへコミットする**
+  （`src/lib/marketing/externalPublish.ts` → `src/lib/github/contents.ts`）。
+  Vercel の自動デプロイで反映されるので、サイトに出るまで1〜2分かかる。
+- 下書き・アーカイブに戻すとコミット済みの md を削除する。スラッグや公開日を変えて
+  置き場所がずれた場合は古いファイルを消す（同じ記事が2件出るのを防ぐ）。
+- 予約公開も外部サイトに効く。5分ごとの cron がコミットし、失敗したら下書きへ戻す
+  （DB だけ公開済みでサイトに出ていない状態を残さない）。
+- サイトごとの必須項目は保存時に検証する。holy-inc は英語タイトルと4分類、
+  MobileWash は抜粋が必須で本文は書けない（記事ページが無いため）。
+- DB: `site` / `category` / `title_en` 列を追加し、`type` に `press` を追加。
+  UNIQUE は `(site, type, slug)` に張り替え。公開読み取りは `site='ledra'` で絞る。
+- 環境変数 `GITHUB_CONTENT_TOKEN`（両リポジトリの Contents: write）が要る。
+
+検証: 生成した md を **holy-inc と MobileWash の実際のパーサに通して** 6パターン確認した
+（本文あり/なし、press、引用符を含むタイトル、ファイル名規約）。ユニットテスト28件追加。
+
+## 2026-09-14 3サイトに「ファイルを1つ足せば公開される」投稿の仕組みを入れた
+
+代表が記事を出すのにコードを書かなくて済む形に揃えた。
+
+- **holy-inc**: `src/content/news/<日付>-<内容>.md` を足すと、トップのお知らせ（5件）・
+  `/news`・記事ページ `/news/<slug>`（本文を書いた記事のみ）・`sitemap.xml`・
+  RSS `/feed.xml` に自動で載る。既存の5件は i18n の直書きから md に移設。
+- **MobileWash**: `src/content/{news,press}/*.md` を足すと、`/company/news` と
+  `/company/press`・プリレンダHTML・RSS `/feed.xml` に自動で載る。
+  既存の5件（news 3・press 2）は `src/mocks/company{News,Press}.ts` から移設。
+  一覧ページの静的HTMLに記事本文を出し、CollectionPage + ItemList の JSON-LD を付けた。
+  記事ごとのページは作っていない（1〜3文の告知でページを量産しないため）。
+- **Ledra**: 仕組みは既にあった（管理画面 `/admin/site-content` からの投稿＋
+  5分ごとの予約公開 cron＋MDX）。足りなかったのは RSS と手順書なので、
+  `/feed.xml`（お知らせ・ブログ、DBとMDXの両方から集約）と
+  `docs/marketing/operation/posting-guide.md` を追加した。
+- 3サイトとも `llms.txt` に RSS の URL を載せた。
+
+不具合の修正も含む: MobileWash のプリレンダは JSON-LD を1件も出力できていなかった
+（`index.html` に `</head>` が無く、素の文字列置換が黙って空振りしていた）。
+`</head>` / `<body>` を補い、差し込みを Error で落ちる形に揃えた（MISTAKE_LEDGER M-093）。
+
 ## 2026-09-14 3サイト（holy-inc.jp / Ledra / MobileWash）の相互リンクを3リポジトリ同時にマージ
 
 - 3つの PR をすべて main/master にマージした。

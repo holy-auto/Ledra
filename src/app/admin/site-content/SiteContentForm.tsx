@@ -9,22 +9,27 @@ import FormField from "@/components/ui/FormField";
 import Button from "@/components/ui/Button";
 import TranslatePanel from "@/components/ai/TranslatePanel";
 import {
-  SITE_CONTENT_TYPES,
+  SITE_CONTENT_SITES,
   SITE_CONTENT_STATUSES,
   SITE_CONTENT_TYPE_LABELS,
   SITE_CONTENT_STATUS_LABELS,
+  type SiteContentSite,
   type SiteContentStatus,
   type SiteContentType,
 } from "@/lib/validations/site-content-post";
+import { SITE_LABELS, SITE_TYPES, categoryOptions } from "@/lib/marketing/externalSites";
 import { utcIsoToJstLocalInput } from "@/lib/datetime";
 import { createSiteContentAction, updateSiteContentAction } from "./actions";
 
 export type SiteContentFormInitial = {
   id?: string;
+  site: SiteContentSite;
   type: SiteContentType;
   status: SiteContentStatus;
   slug: string;
   title: string;
+  title_en: string | null;
+  category: string | null;
   excerpt: string | null;
   body: string;
   hero_image_url: string | null;
@@ -64,9 +69,12 @@ export default function SiteContentForm({ initial }: { initial: SiteContentFormI
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState<string | null>(null);
 
+  const [site, setSite] = useState<SiteContentSite>(initial.site);
   const [type, setType] = useState<SiteContentType>(initial.type);
   const [status, setStatus] = useState<SiteContentStatus>(initial.status);
   const [title, setTitle] = useState(initial.title);
+  const [titleEn, setTitleEn] = useState(initial.title_en ?? "");
+  const [category, setCategory] = useState(initial.category ?? "");
   const [slug, setSlug] = useState(initial.slug);
   const [slugTouched, setSlugTouched] = useState(Boolean(initial.slug));
   const [excerpt, setExcerpt] = useState(initial.excerpt ?? "");
@@ -92,6 +100,15 @@ export default function SiteContentForm({ initial }: { initial: SiteContentFormI
 
   const isEvent = type === "event" || type === "webinar";
   const isEdit = Boolean(initial.id);
+  const isExternal = site !== "ledra";
+  const categories = categoryOptions(site, type);
+
+  // 投稿先を変えると選べる種別が変わる。今の種別が無ければ先頭に寄せる。
+  const handleSiteChange = (next: SiteContentSite) => {
+    setSite(next);
+    setCategory("");
+    if (!SITE_TYPES[next].includes(type)) setType(SITE_TYPES[next][0]);
+  };
 
   const handleTitleChange = (v: string) => {
     setTitle(v);
@@ -104,10 +121,13 @@ export default function SiteContentForm({ initial }: { initial: SiteContentFormI
     setFormError(null);
 
     const fd = new FormData();
+    fd.set("site", site);
     fd.set("type", type);
     fd.set("status", status);
     fd.set("slug", slug);
     fd.set("title", title);
+    fd.set("title_en", site === "holy-inc" ? titleEn : "");
+    fd.set("category", categories.length > 0 ? category : "");
     fd.set("excerpt", excerpt);
     fd.set("body", body);
     fd.set("hero_image_url", heroImageUrl);
@@ -153,12 +173,24 @@ export default function SiteContentForm({ initial }: { initial: SiteContentFormI
         </div>
       )}
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+        <FormField
+          label="投稿先"
+          required
+          hint={isExternal ? "公開すると相手のリポジトリへ md をコミットします（反映まで1〜2分）。" : undefined}
+          error={errors.site}
+        >
+          <Select
+            value={site}
+            onChange={(e) => handleSiteChange(e.target.value as SiteContentSite)}
+            options={SITE_CONTENT_SITES.map((s) => ({ value: s, label: SITE_LABELS[s] }))}
+          />
+        </FormField>
         <FormField label="種別" required error={errors.type}>
           <Select
             value={type}
             onChange={(e) => setType(e.target.value as SiteContentType)}
-            options={SITE_CONTENT_TYPES.map((t) => ({ value: t, label: SITE_CONTENT_TYPE_LABELS[t] }))}
+            options={SITE_TYPES[site].map((t) => ({ value: t, label: SITE_CONTENT_TYPE_LABELS[t] }))}
           />
         </FormField>
         <FormField label="ステータス" required error={errors.status}>
@@ -179,6 +211,32 @@ export default function SiteContentForm({ initial }: { initial: SiteContentFormI
         />
       </FormField>
 
+      {site === "holy-inc" && (
+        <FormField
+          label="英語タイトル"
+          required
+          hint="holy-inc.jp は日英2言語です。英語ページにそのまま出ます。"
+          error={errors.title_en}
+        >
+          <Input
+            value={titleEn}
+            onChange={(e) => setTitleEn(e.target.value)}
+            placeholder="Released a new feature"
+            error={Boolean(errors.title_en)}
+          />
+        </FormField>
+      )}
+
+      {categories.length > 0 && (
+        <FormField label="分類" required hint="相手サイトの一覧に出ます。" error={errors.category}>
+          <Select
+            value={category}
+            onChange={(e) => setCategory(e.target.value)}
+            options={[{ value: "", label: "選択してください" }, ...categories.map((c) => ({ value: c, label: c }))]}
+          />
+        </FormField>
+      )}
+
       <FormField
         label="スラッグ"
         required
@@ -196,7 +254,15 @@ export default function SiteContentForm({ initial }: { initial: SiteContentFormI
         />
       </FormField>
 
-      <FormField label="抜粋" hint="一覧ページに表示される要約（任意）" error={errors.excerpt}>
+      <FormField
+        label="抜粋"
+        hint={
+          site === "mobilewash"
+            ? "MobileWash は一覧に出る本文そのものです（必須・1〜3文）。"
+            : "一覧ページに表示される要約（任意）"
+        }
+        error={errors.excerpt}
+      >
         <Textarea
           value={excerpt}
           onChange={(e) => setExcerpt(e.target.value)}
@@ -206,7 +272,17 @@ export default function SiteContentForm({ initial }: { initial: SiteContentFormI
         />
       </FormField>
 
-      <FormField label="本文（Markdown）" error={errors.body}>
+      <FormField
+        label="本文（Markdown）"
+        hint={
+          site === "mobilewash"
+            ? "MobileWash には記事ページが無いため使いません（書くと保存時に止めます）。"
+            : site === "holy-inc"
+              ? "書くと /news/<ファイル名> に記事ページができます。空欄なら一覧に見出しだけ載ります。"
+              : undefined
+        }
+        error={errors.body}
+      >
         <Textarea
           value={body}
           onChange={(e) => setBody(e.target.value)}
