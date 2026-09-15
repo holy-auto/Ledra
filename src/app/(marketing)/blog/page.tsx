@@ -10,7 +10,9 @@ import { formatJstDateJa } from "@/lib/datetime";
 export const metadata = {
   title: "ブログ",
   description: "Ledra 編集部による、施工業界・証明書のあり方・技術解説に関する記事をお届けします。",
-  alternates: { canonical: "/blog" },
+  // RSS の autodiscovery。metadata.alternates はページ側が丸ごと上書きするので、
+  // レイアウトではなく一覧ページ自身に置く。
+  alternates: { canonical: "/blog", types: { "application/rss+xml": "/feed.xml" } },
   openGraph: {
     title: "ブログ | Ledra",
     description: "Ledra 編集部による、施工業界・証明書のあり方・技術解説に関する記事をお届けします。",

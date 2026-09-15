@@ -11862,6 +11862,7 @@ export type Database = {
           author: string | null;
           body: string;
           capacity: number | null;
+          category: string | null;
           created_at: string;
           created_by: string | null;
           cta_primary_href: string | null;
@@ -11881,11 +11882,13 @@ export type Database = {
           online_url: string | null;
           published_at: string | null;
           registration_url: string | null;
+          site: string;
           slug: string;
           status: string;
           tags: string[];
           tenant_id: string | null;
           title: string;
+          title_en: string | null;
           type: string;
           updated_at: string;
         };
@@ -11893,6 +11896,7 @@ export type Database = {
           author?: string | null;
           body?: string;
           capacity?: number | null;
+          category?: string | null;
           created_at?: string;
           created_by?: string | null;
           cta_primary_href?: string | null;
@@ -11912,11 +11916,13 @@ export type Database = {
           online_url?: string | null;
           published_at?: string | null;
           registration_url?: string | null;
+          site?: string;
           slug: string;
           status?: string;
           tags?: string[];
           tenant_id?: string | null;
           title: string;
+          title_en?: string | null;
           type: string;
           updated_at?: string;
         };
@@ -11924,6 +11930,7 @@ export type Database = {
           author?: string | null;
           body?: string;
           capacity?: number | null;
+          category?: string | null;
           created_at?: string;
           created_by?: string | null;
           cta_primary_href?: string | null;
@@ -11943,11 +11950,13 @@ export type Database = {
           online_url?: string | null;
           published_at?: string | null;
           registration_url?: string | null;
+          site?: string;
           slug?: string;
           status?: string;
           tags?: string[];
           tenant_id?: string | null;
           title?: string;
+          title_en?: string | null;
           type?: string;
           updated_at?: string;
         };

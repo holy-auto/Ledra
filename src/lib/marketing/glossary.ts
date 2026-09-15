@@ -11,7 +11,7 @@
  * - related は必ず実在する slug を指す（テストで担保）。
  */
 
-export type GlossaryCategory = "coating" | "bodywork" | "insurance" | "tech";
+export type GlossaryCategory = "coating" | "bodywork" | "ops" | "insurance" | "tech";
 
 export type GlossaryTerm = {
   /** URL slug（英小文字・ハイフン） */
@@ -43,6 +43,10 @@ export const GLOSSARY_CATEGORIES: Record<GlossaryCategory, { label: string; desc
   insurance: {
     label: "保険・査定・流通",
     description: "車両保険・査定・中古車流通で使われる用語。",
+  },
+  ops: {
+    label: "業務管理・DX",
+    description: "整備工場・鈑金塗装工場・コーティング店の日々の業務と、その電子化に関する用語。",
   },
   tech: {
     label: "デジタル証明・技術",
@@ -253,6 +257,150 @@ export const GLOSSARY: GlossaryTerm[] = [
       "車両を一意に識別するための番号（日本では車台番号に相当）です。施工・整備・証明の記録をVINに紐付けることで、履歴を「その車」に正確に結び付けられます。車検証OCRなどで読み取り、証明書や膜厚データの管理キーとして使われます。",
     related: ["coating-certificate", "repair-history", "nfc"],
     seeAlso: { label: "車検証OCRの機能", href: "/features/vehicle-ocr" },
+  },
+  {
+    slug: "maintenance-record",
+    term: "点検整備記録簿",
+    reading: "てんけんせいびきろくぼ / maintenance record",
+    category: "ops",
+    short: "定期点検整備で実施した項目と結果を記載する書類。",
+    definition:
+      "道路運送車両法に基づく定期点検整備で、点検した項目・整備した内容・実施日・実施者を記載する書類です。法定点検の実施を示す記録であり、車両の整備履歴として次の所有者や買取査定の場面でも参照されます。記載事項・保存の扱いは制度で定められているため、運用は最新の告示・通達を確認してください。",
+    related: ["maintenance-record-digitization", "garage-management-system", "repair-history", "assessment"],
+  },
+  {
+    slug: "maintenance-record-digitization",
+    term: "整備記録簿の電子化",
+    reading: "せいびきろくぼのでんしか / digitizing maintenance records",
+    category: "ops",
+    short: "紙で運用してきた整備記録を、電子的に作成・保存・引き渡しできるようにすること。",
+    definition:
+      "点検整備記録簿をはじめとする整備関連の記録を、紙ではなく電子データとして作成・保存・受け渡しできるようにする取り組みです。紛失や記載漏れを減らし、車両単位で履歴を追えるようになる一方、どの書類をどの形式で電子保存してよいかは制度の改正で変わります。導入時は最新の制度を確認したうえで、紙と電子のどちらを正本とするかを決めておく必要があります。",
+    related: ["maintenance-record", "garage-dx", "coating-certificate", "tamper-detection"],
+    seeAlso: { label: "施工証明書の機能を見る", href: "/features/digital-certificate" },
+  },
+  {
+    slug: "garage-management-system",
+    term: "整備工場管理システム",
+    reading: "せいびこうじょうかんりシステム / garage management system",
+    category: "ops",
+    short: "予約・作業指示・整備履歴・請求までを一元管理する業務システム。",
+    definition:
+      "整備工場の日常業務（入庫予約、作業指示、部品手配、整備履歴、見積・請求）を1つのシステムで扱う業務システムの総称です。従来は紙の伝票や個別の表計算で分断されがちだった情報を、車両・顧客を軸につなぎ直すことを目的とします。導入形態はパッケージ、クラウド（SaaS）、自社開発などさまざまです。",
+    related: ["automotive-saas", "garage-dx", "booking-management", "work-order"],
+    seeAlso: { label: "施工店の方へ", href: "/for-shops" },
+  },
+  {
+    slug: "automotive-saas",
+    term: "自動車整備SaaS",
+    reading: "じどうしゃせいびサース / automotive SaaS",
+    category: "ops",
+    short: "ブラウザから使う、自動車整備・カーケア事業者向けのクラウド業務サービス。",
+    definition:
+      "自動車整備・鈑金塗装・コーティングなどの事業者向けに、業務機能をクラウド経由で提供するサービスです。自社でサーバーを持たず、ブラウザやアプリから利用します。インターネット環境があれば拠点や地域を問わず使えるため、多店舗・出張作業のような分散した現場とも相性があります。",
+    related: ["garage-management-system", "garage-dx", "customer-management"],
+    seeAlso: { label: "料金プランを見る", href: "/pricing" },
+  },
+  {
+    slug: "garage-dx",
+    term: "整備工場のDX",
+    reading: "せいびこうじょうのディーエックス / garage DX",
+    category: "ops",
+    short: "紙・電話・記憶に頼っていた工場の業務を、データで回る形に変えること。",
+    definition:
+      "受付から施工、記録、請求、アフターフォローまでを紙や電話、担当者の記憶に頼っていた状態から、データとして残り検索・共有できる状態へ移行する取り組みです。単なるツール導入ではなく、記録の粒度や引き継ぎ方といった業務の型そのものを変える点が要点です。効果は工場の規模・業態によって大きく異なります。",
+    related: [
+      "garage-management-system",
+      "automotive-saas",
+      "maintenance-record-digitization",
+      "bodywork-job-management",
+    ],
+  },
+  {
+    slug: "bodywork-job-management",
+    term: "鈑金塗装の業務管理",
+    reading: "ばんきんとそうのぎょうむかんり / bodywork job management",
+    category: "ops",
+    short: "入庫から納車までの工程・写真・見積・保険案件を、車両単位で束ねる管理。",
+    definition:
+      "鈑金塗装は、入庫・見積・分解・板金・塗装・組付け・仕上げ・納車と工程が多く、保険会社とのやり取りや工程ごとの写真も伴います。これらを車両1台の単位で束ねて管理することを指します。工程が進むほど写真と書類が増えるため、どこに何があるかを人の記憶に依存させないことが実務上の要点です。",
+    related: ["bodywork", "repaint", "work-order", "insurance-claim-coordination"],
+  },
+  {
+    slug: "booking-management",
+    term: "予約管理（整備工場）",
+    reading: "よやくかんり / booking management",
+    category: "ops",
+    short: "入庫予定とピット・人員の空きを突き合わせて、受付の取りこぼしを防ぐ仕組み。",
+    definition:
+      "入庫予定を、ピット（作業スペース）と担当者の空き状況に突き合わせて管理する仕組みです。電話やメッセージで受けた予定が個人の手帳や頭の中に留まると、重複受付や待ち時間の発生につながります。オンライン受付と連動させると、営業時間外の申し込みも取りこぼさずに済みます。",
+    related: ["garage-management-system", "work-order", "customer-management"],
+    seeAlso: { label: "予約・作業管理の機能", href: "/features/job-workflow" },
+  },
+  {
+    slug: "work-order",
+    term: "作業指示書（ジョブ）",
+    reading: "さぎょうしじしょ / work order",
+    category: "ops",
+    short: "1台の車に対して「誰が・何を・どこまでやるか」を定めた単位。",
+    definition:
+      "1台の車両に対する作業の範囲・担当・進捗をまとめた単位です。見積、部品、施工前後の写真、完了報告などがこの単位にぶら下がります。作業指示をデータの単位として揃えておくと、進捗の可視化や、施工履歴・証明書への引き継ぎがしやすくなります。",
+    related: ["booking-management", "bodywork-job-management", "coating-certificate"],
+    seeAlso: { label: "予約・作業管理の機能", href: "/features/job-workflow" },
+  },
+  {
+    slug: "customer-management",
+    term: "顧客管理（CRM）",
+    reading: "こきゃくかんり / customer relationship management",
+    category: "ops",
+    short: "顧客と、その所有車両・来店履歴・施工履歴をひとつながりで持つこと。",
+    definition:
+      "顧客の連絡先だけでなく、所有車両、来店・入庫の履歴、実施した施工の内容までをひとつながりで管理することです。車両を軸に履歴が揃っていると、次回の提案や点検時期の案内を、担当者の記憶に頼らず行えます。コーティング店では、施工時期から次のメンテナンス案内につなぐ用途でも使われます。",
+    related: ["garage-management-system", "booking-management", "automotive-saas"],
+    seeAlso: { label: "顧客360の機能", href: "/features/customer-360" },
+  },
+  {
+    slug: "invoice-document",
+    term: "請求書・帳票",
+    reading: "せいきゅうしょ・ちょうひょう / invoice and business documents",
+    category: "ops",
+    short: "見積書・作業明細・請求書など、取引の内容を相手に示す書類。",
+    definition:
+      "見積書、作業明細、納品書、請求書など、取引の内容と金額を相手に示す書類の総称です。作業指示のデータから生成できれば、転記による金額違いや作業内容の食い違いを減らせます。電子での発行・保存の要件は制度で定められているため、運用の設計時に確認が必要です。",
+    related: ["work-order", "garage-management-system"],
+    seeAlso: { label: "請求・帳票の機能", href: "/features/accounting" },
+  },
+  {
+    slug: "insurance-claim-coordination",
+    term: "保険会社との案件連携",
+    reading: "ほけんがいしゃとのあんけんれんけい / insurance claim coordination",
+    category: "ops",
+    short: "事故車の修理で、工場と保険会社の間で見積・写真・認定をやり取りすること。",
+    definition:
+      "事故による修理では、修理工場と損害保険会社の間で、損害状況の写真、修理見積、修理範囲の認定といったやり取りが発生します。電話・FAX・メールに分散すると、どの版が最新かが分からなくなりがちです。案件単位で資料と経緯が揃っていることが、確認の往復を減らす前提になります。",
+    related: ["adjuster", "vehicle-insurance", "bodywork-job-management", "repair-history"],
+    seeAlso: { label: "保険会社の方へ", href: "/for-insurers" },
+  },
+  {
+    slug: "adjuster",
+    term: "アジャスター（損害調査員）",
+    reading: "アジャスター / claims adjuster",
+    category: "insurance",
+    short: "事故車の損害を調査し、修理内容と金額の妥当性を確認する担当者。",
+    definition:
+      "損害保険会社や関連会社に所属し、事故車両の損害状況を調査して、修理の内容と金額が妥当かを確認する担当者です。修理工場の見積と突き合わせ、必要に応じて現車を確認します。確認の材料が写真や記録として揃っているほど、やり取りの回数は少なくて済みます。",
+    related: ["insurance-claim-coordination", "vehicle-insurance", "assessment", "repair-history"],
+  },
+  {
+    slug: "tamper-detection",
+    term: "改ざん検知",
+    reading: "かいざんけんち / tamper detection",
+    category: "tech",
+    short: "記録が後から書き換えられていないかを、技術的に確かめられるようにすること。",
+    definition:
+      "記録した内容が後から変更されていないかを検証できるようにする仕組みです。データからハッシュ値を計算して保管し、検証時に再計算した値と突き合わせます。ハッシュにタイムスタンプや電子署名を組み合わせると、「いつ時点の内容か」「誰が出したものか」まで確認できます。改ざんを防ぐのではなく、改ざんがあれば分かる状態を作る技術です。",
+    related: ["hash", "timestamp", "digital-signature", "blockchain", "coating-certificate"],
+    seeAlso: { label: "ブロックチェーン・アンカリングの機能", href: "/features/blockchain-anchoring" },
   },
 ];
 

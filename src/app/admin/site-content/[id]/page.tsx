@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import PageHeader from "@/components/ui/PageHeader";
 import { requireSiteContentAdmin } from "../guard";
 import SiteContentForm, { type SiteContentFormInitial } from "../SiteContentForm";
-import type { SiteContentStatus, SiteContentType } from "@/lib/validations/site-content-post";
+import type { SiteContentSite, SiteContentStatus, SiteContentType } from "@/lib/validations/site-content-post";
 
 export const dynamic = "force-dynamic";
 
@@ -15,7 +15,7 @@ export default async function SiteContentEditPage(props: { params: Promise<{ id:
   const { data: row, error } = await supabase
     .from("site_content_posts")
     .select(
-      "id, type, status, slug, title, excerpt, body, hero_image_url, tags, author, published_at, event_start_at, event_end_at, location, online_url, capacity, registration_url, cta_title, cta_subtitle, cta_primary_label, cta_primary_href, cta_secondary_label, cta_secondary_href, og_title, og_subtitle",
+      "id, site, type, status, slug, title, title_en, category, excerpt, body, hero_image_url, tags, author, published_at, event_start_at, event_end_at, location, online_url, capacity, registration_url, cta_title, cta_subtitle, cta_primary_label, cta_primary_href, cta_secondary_label, cta_secondary_href, og_title, og_subtitle",
     )
     .eq("id", id)
     .maybeSingle();
@@ -32,10 +32,13 @@ export default async function SiteContentEditPage(props: { params: Promise<{ id:
 
   const initial: SiteContentFormInitial = {
     id: row.id as string,
+    site: (row.site as SiteContentSite | null) ?? "ledra",
     type: row.type as SiteContentType,
     status: row.status as SiteContentStatus,
     slug: (row.slug as string) ?? "",
     title: (row.title as string) ?? "",
+    title_en: (row.title_en as string | null) ?? null,
+    category: (row.category as string | null) ?? null,
     excerpt: (row.excerpt as string | null) ?? "",
     body: (row.body as string) ?? "",
     hero_image_url: (row.hero_image_url as string | null) ?? "",

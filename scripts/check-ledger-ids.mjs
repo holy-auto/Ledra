@@ -16,7 +16,7 @@
  * ID は `M-<YYYYMMDD>-<スラッグ>`。日付＋スラッグには共有状態が無いので、
  * 同じ日に同じ表現を選ばない限り衝突しない。選んでも中身が違うのでマージ時に気づく。
  *
- * 旧番号（`旧 M-NNN`）は既存の参照 440 箇所を書き換えずに済ませるため見出しに残してあり、
+ * 旧番号（`旧 M-NNN`）は既存の参照 446 箇所を書き換えずに済ませるため見出しに残してあり、
  * **10組が重複したままである**。これは既知で、台帳冒頭の「ID について」節の表で引ける。
  * ここで見るのは新 ID の一意性だけ。旧番号の重複は「余剰の数」で見て、増えたら落とす。
  *
@@ -59,7 +59,7 @@ export const KNOWN_LEGACY_EXCESS = 10;
  * `git show origin/main:docs/context/MISTAKE_LEDGER.md | grep -c '^## M-'` で引くが、
  * pre-commit フックは shallow clone や detached HEAD でも動く必要があるので採らない。
  */
-export const MIN_ENTRIES = 103;
+export const MIN_ENTRIES = 105;
 
 /** 正準の見出し。`## M-<YYYYMMDD>-<スラッグ> 表題（…）` */
 const ID_RE = /^## (M-(\d{4})(\d{2})(\d{2})-[a-z0-9-]+) \S/;
