@@ -119,7 +119,7 @@ const FENCE = /^\s*(`{3,}|~{3,})(.*)$/;
  *
  * 抽出と突き合わせの両方がこの1つを使う。
  */
-function contentLines(text) {
+export function contentLines(text) {
   const out = [];
   let open = null; // 開いているフェンスの記号（`` ```　`` 等）
   let openedAt = 0;

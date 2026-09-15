@@ -60,6 +60,15 @@ CMDS=(
   "npm run check:ledger-ids"
 )
 
+# NAMES と CMDS は添字で対応する並列配列で、間に説明コメントが挟まるため
+# 片方だけ足す事故が起きる。**どちらに失敗しても黙って通る**:
+# CMDS だけ足せば新しい検査が起動されず CI は緑、NAMES だけ足せば
+# `bash -c ""` が exit 0 して `ok` と表示される（PR #1089 の `/code-review` 指摘）。
+if ((${#NAMES[@]} != ${#CMDS[@]})); then
+  echo "::error::NAMES (${#NAMES[@]}) と CMDS (${#CMDS[@]}) の要素数が違います。両方に足してください。"
+  exit 1
+fi
+
 LOG_DIR="$(mktemp -d)"
 trap 'rm -rf "$LOG_DIR"' EXIT
 
