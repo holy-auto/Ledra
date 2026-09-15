@@ -35,6 +35,43 @@
   全プロジェクトのデプロイを止めていた。解除後も**過去のコミットステータスは
   自動では書き換わらない**ため、新しいデプロイを走らせるまで PR は赤のままだった。
 
+## 2026-09-14 Expo 固定依存を Dependabot の minor バンプから保護
+
+- `.github/dependabot.yml` の `/apps/mobile` に、**Expo SDK が
+  `bundledNativeModules.json` で固定している依存の `semver-minor` を無視する**
+  規則を14本追加（`expo` / `expo-*` / `@expo/*` / `@react-native-community/*` の
+  4パターン＋ `react` `react-dom` `react-native` ほか個別10件）。
+- 背景: Dependabot #1046 が `react-native` 0.83.6 → **0.87.1** を
+  "minor-and-patch" グループに含めていた。**Expo SDK 55 は RN 0.87 を
+  サポートしておらず**（`expo@55.0.31` の指定は 0.83.10）、単独で上げると
+  Expo のツールチェーンが壊れる。
+- 当初 `react-native` / `worklets` / `reanimated` の3件と見ていたが、実データを
+  突き合わせた結果 **6件**だった（`gesture-handler` / `screens` /
+  `safe-area-context` も Expo の指定を追い越していた）。
+- **minor だけを止めて patch は通す。** Expo 自身が出す 55.0.x の追従は patch
+  なので流れる。危険な6件がすべて semver-minor であることは実測で確認。
+- 再発防止: **`apps/mobile/scripts/check-expo-pins.check.mjs`** を追加。
+  `bundledNativeModules.json` × `package.json` × `dependabot.yml` の実データを
+  **双方向に**突き合わせる。片方向だと退けたはずの選択肢を止められない。
+  - 不足: Expo が固定しているのに ignore に無い → 黙って追い越される
+  - 過剰: Expo が固定していないのに ignore に載っている → 黙って更新が止まる
+    （`react-native-*` のワイルドカード案がこれ。nfc-manager / paper /
+     qrcode-svg / url-polyfill / vector-icons の5つを巻き添えにする）
+  `apps/mobile` の `npm test` に登録（登録漏れは `checkRegistry.check.ts` が検出）。
+  あわせて **`mobile-ci.yml` の `paths` に `.github/dependabot.yml` を追加**した。
+  これが無いと、ignore 規則を削る PR がこのワークフローを起動せず、
+  **保護が黙って外れたまま緑になる**（検査が守る対象で検査が走らない状態だった）。
+- **この検査は名前の集合しか見ない。バージョンは見ない。** Expo の完全一致 pin
+  （28件中8件）に対して patch バンプは ignore を素通りするので、指定を追い越した
+  状態は別途起こりうる（実際 `react-native-svg` と `expo-video` は追い越し済み）。
+  バージョン単位で揃えるには `npx expo install --check` が要る。OPEN_QUESTIONS に起票。
+- 検証: Expo 固定の直接依存 **29件**（`expo` 本体を含む）が過不足なく ignore 対象。
+  変異8種で期待どおりの挙動を確認 —— 個別行の削除／パターンの削除／`expo` 本体の削除／
+  **規則を別ブロックへ移す**／**ワイルドカードの過剰**／アンカーの破壊／
+  `node_modules/expo` の不在 はすべて失敗し、**保護を強める変更（patch を足す）は通る**。
+  mobile の `npm test` 全通過。
+
+
 ## 2026-09-14 依存関係の詰まりを解消（`ox` overrides 追従・mobile ロックファイル修復・GitHub Actions の Node 20 対応）
 
 - **`overrides.ox` を 0.14.29 → 0.14.44 に更新**。viem 2.56.3 が要求する `ox` に
