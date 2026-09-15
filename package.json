@@ -113,7 +113,7 @@
     "zod": "^4.6.2"
   },
   "optionalDependencies": {
-    "@contentauth/c2pa-node": "^0.9.4"
+    "@contentauth/c2pa-node": "^0.9.5"
   },
   "devDependencies": {
     "@next/bundle-analyzer": "^16.3.5",
