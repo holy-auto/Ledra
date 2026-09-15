@@ -4,6 +4,37 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-09-15 管理画面全体のモバイルレスポンシブ崩れを修正（#1076）
+
+- 帳票管理セクション（DocumentForm / DocumentsClient / DocumentDetailClient / StorefrontBilling）の
+  モバイル崩れを修正: フィルタータブ切れ、ステータスバッジ重なり、line item表の横溢れ。
+- さらにadmin全体を網羅的に調査（約100ファイル）し、ダッシュボード・顧客・案件・POS・
+  分析・証明書・設定・共通UIコンポーネントで発見した20箇所の問題を修正。
+- 修正ファイル: 22ファイル。主な修正パターン:
+  - `flex-wrap` 追加で横溢れ防止
+  - モーダルoverlayに `px-4` で端張り付き防止
+  - レスポンシブグリッド列数（`grid-cols-2 sm:grid-cols-3`）
+  - 二重パディング解消（レイアウトが既に `px-4` を持つのに子が再度 `px-4`）
+  - `min-w-0` / `break-words` でテキスト溢れ防止
+- `layout.tsx` の main 要素に `min-w-0` を追加し、flex子要素がコンテンツ幅以下に
+  縮小可能にした（全adminページに効く根本修正）。
+
+## 2026-09-14 3サイト（holy-inc.jp / Ledra / MobileWash）の相互リンクを3リポジトリ同時にマージ
+
+- 3つの PR をすべて main/master にマージした。
+  - `holy-auto/Ledra#1074` → `988b8d1`
+  - `holy-auto/holy-inc#7` → `88d3de7`
+  - `holy-auto/MobileWash#19` → `eba93b5`
+- 各リポジトリに「他サイトのURLはここにしか書かない」定数を1つずつ置いた
+  （Ledra: `groupSites` / holy-inc: `src/lib/sites.ts` / MobileWash: `GROUP_SITES`）。
+- holy-inc 側では、作業中に見つかった既存不具合もまとめて直した
+  （Navbar が存在しないルート `/holyauto` を指していた、sitemap.xml と robots.txt が
+  `https://example.com` のままだった、座標が2か所で食い違っていた 等）。
+  再発防止として `npm run check:links` を追加している。
+- デプロイ側の出来事: 作業中、Vercel アカウントが `Account is blocked.` で
+  全プロジェクトのデプロイを止めていた。解除後も**過去のコミットステータスは
+  自動では書き換わらない**ため、新しいデプロイを走らせるまで PR は赤のままだった。
+
 ## 2026-09-14 Expo 固定依存を Dependabot の minor バンプから保護
 
 - `.github/dependabot.yml` の `/apps/mobile` に、**Expo SDK が
@@ -39,6 +70,7 @@
   **規則を別ブロックへ移す**／**ワイルドカードの過剰**／アンカーの破壊／
   `node_modules/expo` の不在 はすべて失敗し、**保護を強める変更（patch を足す）は通る**。
   mobile の `npm test` 全通過。
+
 
 ## 2026-09-14 依存関係の詰まりを解消（`ox` overrides 追従・mobile ロックファイル修復・GitHub Actions の Node 20 対応）
 
@@ -100,6 +132,21 @@
   `npx expo prebuild --platform android`（成功）、`npm run check:native`（OK）。
 - 変更ファイル: 依存関係 4 ファイル（計 9 行）＋ 新規チェック 2 ファイル
   ＋ `scripts/ci-parallel-checks.sh` ＋ mobile の postinstall スクリプト。
+
+## 2026-09-14 マーケサイトのフッターに運営会社・姉妹サービスへの相互リンクを追加
+
+- マーケサイトのフッター（ブランド列）に「グループサイト」の外部リンクを追加。
+  株式会社HOLY（holy-inc.jp）／ MobileWash（mobilewash.app）／
+  HOLY AUTO（holy-auto.com）の3件。
+- URL は `src/lib/marketing/config.ts` の `groupSites` に集約。
+  ドメイン差し替えは siteConfig と同じくここだけを直す。
+- `OrganizationJsonLd` の `provider` に `parentOrganization`（株式会社HOLY /
+  holy-inc.jp）を追加。/law の特定商取引法表記と同じ事業者を機械可読にした。
+- 背景: これまで Ledra から自社の他サイトへの導線が1本も無く、
+  相互リンクが片側だけだった。holy-inc.jp 側・MobileWash 側にも同時に
+  Ledra への導線を追加している（別リポジトリの同名ブランチ）。
+- ファイル変更: `src/lib/marketing/config.ts` /
+  `src/components/marketing/Footer.tsx` / `src/components/marketing/JsonLd.tsx`。
 
 ## 2026-09-13 証明書発行完了画面に収益還元プレビューカードを追加
 

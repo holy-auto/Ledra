@@ -417,7 +417,7 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
           {/* Filters */}
           <section className="glass-card p-5">
             <div className="flex gap-4 items-end flex-wrap">
-              <div className="space-y-1">
+              <div className="w-full space-y-1 sm:w-auto">
                 <label className="text-xs text-muted">書類種別</label>
                 <select
                   className="select-field"
@@ -432,7 +432,7 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
                   ))}
                 </select>
               </div>
-              <div className="space-y-1">
+              <div className="w-full space-y-1 sm:w-auto">
                 <label className="text-xs text-muted">ステータス</label>
                 <select
                   className="select-field"
@@ -446,7 +446,7 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
                   ))}
                 </select>
               </div>
-              <div className="space-y-1">
+              <div className="w-full space-y-1 sm:w-auto">
                 <label className="text-xs text-muted">期間</label>
                 <select
                   className="select-field"
@@ -462,7 +462,7 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
                   <option value="year">今年</option>
                 </select>
               </div>
-              <div className="space-y-1">
+              <div className="w-full space-y-1 sm:w-auto">
                 <label className="text-xs text-muted">取引先</label>
                 <input
                   type="text"
@@ -473,13 +473,13 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
                   onKeyDown={(e) => e.key === "Enter" && applySearch()}
                 />
               </div>
-              <div className="space-y-1">
+              <div className="w-full space-y-1 sm:w-auto">
                 <label className="text-xs text-muted">金額（円）</label>
                 <div className="flex items-center gap-1">
                   <input
                     type="number"
                     min={0}
-                    className="input-field w-28"
+                    className="input-field w-full sm:w-28"
                     placeholder="下限"
                     value={amountMinInput}
                     onChange={(e) => setAmountMinInput(e.target.value)}
@@ -489,7 +489,7 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
                   <input
                     type="number"
                     min={0}
-                    className="input-field w-28"
+                    className="input-field w-full sm:w-28"
                     placeholder="上限"
                     value={amountMaxInput}
                     onChange={(e) => setAmountMaxInput(e.target.value)}
@@ -497,7 +497,7 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
                   />
                 </div>
               </div>
-              <div className="flex items-end gap-2">
+              <div className="flex w-full items-end gap-2 sm:w-auto">
                 <button type="button" className="btn-secondary px-4 py-2 text-sm" onClick={applySearch}>
                   検索
                 </button>
@@ -580,7 +580,7 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
               <table className="min-w-full text-sm">
                 <thead className="bg-surface-hover">
                   <tr>
-                    <th className="px-5 py-3 w-10">
+                    <th className="px-3 py-3 w-10 sm:px-5">
                       <input
                         type="checkbox"
                         checked={allSelected}
@@ -589,25 +589,33 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
                         aria-label="すべて選択"
                       />
                     </th>
-                    <th className="text-left px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">種別</th>
-                    <th className="text-left px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">書類番号</th>
-                    <th className="hidden sm:table-cell text-left px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">
+                    <th className="text-left px-3 py-3 text-xs font-semibold tracking-[0.12em] text-muted sm:px-5">
+                      種別
+                    </th>
+                    <th className="text-left px-3 py-3 text-xs font-semibold tracking-[0.12em] text-muted sm:px-5">
+                      書類番号
+                    </th>
+                    <th className="hidden sm:table-cell text-left px-3 py-3 text-xs font-semibold tracking-[0.12em] text-muted sm:px-5">
                       顧客名
                     </th>
-                    <th className="hidden md:table-cell text-left px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">
+                    <th className="hidden md:table-cell text-left px-3 py-3 text-xs font-semibold tracking-[0.12em] text-muted sm:px-5">
                       発行日
                     </th>
-                    <th className="text-left px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">合計</th>
-                    <th className="hidden sm:table-cell text-left px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">
+                    <th className="text-left px-3 py-3 text-xs font-semibold tracking-[0.12em] text-muted sm:px-5">
+                      合計
+                    </th>
+                    <th className="hidden sm:table-cell text-left px-3 py-3 text-xs font-semibold tracking-[0.12em] text-muted sm:px-5">
                       ステータス
                     </th>
-                    <th className="text-left px-5 py-3 text-xs font-semibold tracking-[0.12em] text-muted">操作</th>
+                    <th className="text-left px-3 py-3 text-xs font-semibold tracking-[0.12em] text-muted sm:px-5">
+                      操作
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border-subtle">
                   {docs.map((doc) => (
                     <tr key={doc.id} className="hover:bg-surface-hover/60">
-                      <td className="px-5 py-3.5">
+                      <td className="px-3 py-3.5 sm:px-5">
                         {(isDeletable(doc) || isSendable(doc)) && (
                           <input
                             type="checkbox"
@@ -617,12 +625,12 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
                           />
                         )}
                       </td>
-                      <td className="px-5 py-3.5">
+                      <td className="px-3 py-3.5 sm:px-5">
                         <Badge variant={DOC_TYPES[doc.doc_type]?.color ?? "default"}>
                           {docTypeLabel(doc.doc_type)}
                         </Badge>
                       </td>
-                      <td className="px-5 py-3.5">
+                      <td className="px-3 py-3.5 sm:px-5">
                         <Link
                           href={`/admin/documents/${doc.id}`}
                           className="font-mono text-accent hover:text-accent underline"
@@ -630,18 +638,18 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
                           {doc.doc_number}
                         </Link>
                       </td>
-                      <td className="hidden sm:table-cell px-5 py-3.5 text-secondary">
+                      <td className="hidden sm:table-cell px-3 py-3.5 sm:px-5 text-secondary">
                         {doc.recipient_name || doc.customer_name || "-"}
                       </td>
-                      <td className="hidden md:table-cell px-5 py-3.5 whitespace-nowrap text-secondary">
+                      <td className="hidden md:table-cell px-3 py-3.5 sm:px-5 whitespace-nowrap text-secondary">
                         {formatDate(doc.issued_at)}
                       </td>
-                      <td className="px-5 py-3.5 font-medium text-primary">{formatJpy(doc.total)}</td>
-                      <td className="hidden sm:table-cell px-5 py-3.5">
+                      <td className="px-3 py-3.5 sm:px-5 font-medium text-primary">{formatJpy(doc.total)}</td>
+                      <td className="hidden sm:table-cell px-3 py-3.5 sm:px-5">
                         <Badge variant={statusVariant(doc.status)}>{statusLabel(doc.status)}</Badge>
                       </td>
-                      <td className="px-5 py-3.5">
-                        <div className="flex gap-2">
+                      <td className="px-3 py-3.5 sm:px-5">
+                        <div className="flex flex-col gap-1 sm:flex-row sm:gap-2">
                           <Link href={`/admin/documents/${doc.id}`} className="btn-ghost px-3 py-1 text-xs">
                             詳細
                           </Link>

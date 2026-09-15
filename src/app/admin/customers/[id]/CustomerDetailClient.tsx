@@ -334,7 +334,7 @@ export default function CustomerDetailClient({ customer: initial }: { customer: 
 
   return (
     <section className="glass-card p-5 space-y-3">
-      <div className="flex items-start justify-between">
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <div className="text-xs font-semibold tracking-[0.18em] text-muted">CUSTOMER INFO</div>
           <div className="mt-1 text-lg font-bold text-primary">{customer.name}</div>
