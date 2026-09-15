@@ -35,6 +35,7 @@
     "check:bundle-size": "node scripts/check-bundle-size.js",
     "check:schema": "node scripts/check-schema.mjs",
     "check:context-dates": "node scripts/check-context-dates.mjs",
+    "check:ledger-ids": "node scripts/check-ledger-ids.mjs",
     "check:ox-override": "node scripts/check-ox-override.mjs",
     "check:resurrected": "bash scripts/check-resurrected-files.sh",
     "build:analyze": "ANALYZE=true next build",
