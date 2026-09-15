@@ -80,11 +80,8 @@ ALTER TABLE public.site_content_posts
 ALTER TABLE public.site_content_posts
   ADD CONSTRAINT site_content_posts_site_type_slug_key UNIQUE (site, type, slug);
 
--- 公開読み取りは site='ledra' で絞るので、索引の先頭に site を足す
-CREATE INDEX IF NOT EXISTS idx_site_content_posts_site_type_status
-  ON public.site_content_posts (site, type, status, published_at DESC);
-
-DROP INDEX IF EXISTS public.idx_site_content_posts_type_status;
+-- 索引の張り替えは CONCURRENTLY が要るため別ファイルにした
+-- （20260915000100 で新索引を作り、20260915000200 で旧索引を落とす）。
 
 COMMENT ON COLUMN public.site_content_posts.site IS
   '投稿先サイト。ledra = 自サイト。holy-inc / mobilewash は公開時に md をリポジトリへコミットする';
