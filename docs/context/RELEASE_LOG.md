@@ -4,6 +4,13 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-09-15 ダッシュボードヘッダーのモバイルレイアウト改善（#1084）
+
+- PageBar（全admin共通ヘッダー）の actions ラッパーにモバイルファーストの responsive クラスを適用。
+- モバイル: `basis-full` で全幅配置、左寄せ。デスクトップ: `sm:basis-auto` + `sm:ml-auto` で従来の右寄せ。
+- ダッシュボード固有: `justify-end` → `sm:justify-end` でモバイル時の右寄せを解除。
+- 変更ファイル: `PageBar.tsx`, `admin/page.tsx` の2ファイル・計8行。
+
 ## 2026-09-15 管理画面全体のモバイルレスポンシブ崩れを修正（#1076）
 
 - 帳票管理セクション（DocumentForm / DocumentsClient / DocumentDetailClient / StorefrontBilling）の
