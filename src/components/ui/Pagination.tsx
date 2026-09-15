@@ -16,7 +16,7 @@ export default function Pagination({ page, totalPages, onPageChange }: Paginatio
   for (let i = Math.max(1, end - 4); i <= end; i++) range.push(i);
 
   return (
-    <nav className="flex items-center justify-center gap-1 mt-4" aria-label="ページネーション">
+    <nav className="flex flex-wrap items-center justify-center gap-1 mt-4" aria-label="ページネーション">
       <button
         onClick={() => onPageChange(page - 1)}
         disabled={page <= 1}

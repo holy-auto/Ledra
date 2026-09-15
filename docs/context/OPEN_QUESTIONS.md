@@ -116,30 +116,51 @@ JS ラッパだけで成立するため、**ネイティブバイナリの dlope
 `c2pa_verified` / `c2pa_manifest` / `external_c2pa_present` / `c2pa_manifest_cid`
 すべて 0 行・2026-09-13 実測）ため、**今すぐ壊れるものは無い**。
 
-## Dependabot PR #1046（mobile 28件）に react-native 0.87 が紛れており、代表判断が要る（2026-09-14）
+## react-native 0.87 への移行そのものは未着手（2026-09-14）
 
-Dependabot の "minor-and-patch" グループに、破壊的変更を含みうるバンプが入っている。
+Dependabot #1046 に紛れていた `react-native` 0.83.6 → 0.87.1 は、
+**Expo SDK 55 が RN 0.87 をサポートしていない**ため取り込まない方針が決まった
+（DECISION_LOG 2026-09-14、`dependabot.yml` で semver-minor を無視）。
+`expo@55.0.31` の `bundledNativeModules.json` は `react-native: 0.83.10` を指定している。
 
-- `react-native` 0.83.6 → **0.87.1**
-- `react-native-worklets` 0.7.4 → **0.12.2**
-- `react-native-reanimated` 4.2.1 → 4.6.0
-- `react` / `react-dom` 19.2.0 → 19.2.8、`expo` ~55.0.26 → ~55.0.31 ほか
+残っているのは**移行そのもの**である。Expo が SDK 56 等で RN 0.87 を採用した時点で、
+`npx expo install --fix` を通したまとまった作業として実施する必要がある。
+実機ビルドと回帰確認が要るので、依存更新の PR では扱えない。
 
-react-native は 0.x のため minor バンプが破壊的変更を含みうるが、
-Dependabot の semver 分類では "minor" 扱いになりグループに入ってしまう。
-`Mobile Typecheck & Unit Tests` は現在 `npm ci` の段階で落ちている
-（#911 と同じロックファイル再生成の不具合）ため、RN 0.87 自体の影響はまだ測れていない。
+- `react-native` は現在 0.83.6 だが Expo の指定は **0.83.10**。これは patch なので
+  ignore の対象外であり、次の Dependabot 実行で追従するはず。
 
-選択肢:
+【要確認】Expo がどのバージョンで RN 0.87 を採用するか（SDK 56 か、55 の後期か）。
+これが決まるまで移行の時期を決められない。
 
-- (a) `react-native` / `react-native-worklets` / `react-native-reanimated` を
-  `.github/dependabot.yml` のグループから **ignore / 除外**し、残りの安全な25件だけ取り込む
-- (b) Expo 55 側が RN 0.87 を正式サポートするまで PR ごと寝かせる
-- (c) RN 0.87 移行を独立した作業として立てる（実機ビルド・回帰確認込み）
+## Expo 固定依存の「バージョン」は誰も検査していない（2026-09-14）
 
-【要確認】Expo 55.0.31 が RN 0.87.1 を公式サポートしているか。
-Expo は SDK ごとに RN バージョンを固定する設計なので、
-ここがズレていると (a) が唯一の選択肢になる。
+`dependabot.yml` の ignore 規則と `check-expo-pins.check.mjs` が守るのは
+**名前の集合だけ**で、バージョンは見ていない。Expo の完全一致 pin に対して
+**patch バンプは ignore を素通りする**ため、指定を追い越した状態は起こりうる。
+
+実測（`expo@55.0.28` 基準、2026-09-14）:
+
+- `react-native-svg` — Expo 指定 **15.15.3** / 現在 **15.15.5**（追い越し済み）
+- `expo-video` — Expo 指定 **~55.0.19** / 現在 **~55.0.20**（追い越し済み）
+- 完全一致 pin は28件中**8件**（`react` `react-dom` `react-native`
+  `react-native-worklets` `react-native-reanimated` `react-native-svg`
+  `@react-native-community/netinfo` `@react-native-community/datetimepicker`）
+
+つまり今回の対応で止まるのは **minor による大きな追い越し**（RN 0.87 など）だけで、
+patch による小さなズレは残る。RELEASE_LOG 2026-08 時点で
+`expo doctor` が「16 packages out of date」と報告していたのと同じ種類の差である。
+
+判断が要るのは次の点:
+
+- **`npx expo install --check` を `apps/mobile` の `npm test` か CI に組み込むか。**
+  バージョン単位で Expo の指定と突き合わせる正規の道具。
+  組み込むと現時点で落ちる可能性が高い（既に追い越しが2件ある）ので、
+  先に `expo install --fix` で揃えてから入れる必要がある。
+- 揃えた後に実機ビルドの確認が要るか（ネイティブモジュールのバージョンが動く）。
+
+【要確認】`expo install --fix` を流したときに実際に何件動くか。
+`expo doctor` の出力を取れば分かるが、この環境では未実行。
 
 ## `processCardPayment` の決済確定失敗時、PaymentIntentの状態を二値分類しているのが構造的に足りない（2026-09-11）
 

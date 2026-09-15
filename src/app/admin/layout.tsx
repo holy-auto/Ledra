@@ -50,7 +50,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             <OfflineBanner />
             <div className="flex min-h-screen">
               <Sidebar />
-              <main className="flex min-h-screen flex-1 flex-col lg:ml-60">
+              <main className="flex min-h-screen min-w-0 flex-1 flex-col lg:ml-60">
                 <PageBarProvider>
                   <AdminTopBar />
                   <AdminPageBar />

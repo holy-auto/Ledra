@@ -715,7 +715,7 @@ export default function DocumentForm({
   };
 
   return (
-    <section className="glass-card p-5 space-y-4">
+    <section className="glass-card p-3 space-y-4 sm:p-5">
       {!isEdit && formDocType === "estimate" && (
         <QuoteAiDraftPanel
           customerId={formCustomerId || undefined}
@@ -1067,7 +1067,7 @@ export default function DocumentForm({
 
       {/* テンプレート選択 */}
       <div className="flex flex-wrap items-end gap-4">
-        <div className="space-y-1 min-w-[280px]">
+        <div className="w-full space-y-1 sm:w-auto sm:min-w-[280px]">
           <label className="text-xs text-muted">帳票テンプレート</label>
           <select className="select-field" value={formTemplateId} onChange={(e) => setFormTemplateId(e.target.value)}>
             <option value="">（既定のレイアウトを使用）</option>
@@ -1087,7 +1087,7 @@ export default function DocumentForm({
       </div>
 
       {/* Options */}
-      <div className="flex flex-wrap gap-6">
+      <div className="flex flex-wrap gap-x-6 gap-y-2">
         <label className="flex items-center gap-2 text-sm text-secondary cursor-pointer">
           <input
             type="checkbox"
@@ -1143,9 +1143,9 @@ export default function DocumentForm({
           </div>
         </div>
         <div className="overflow-x-auto">
-          <div className="min-w-[960px] space-y-1">
+          <div className="min-w-[800px] space-y-1 md:min-w-[960px]">
             {/* Header labels */}
-            <div className="grid grid-cols-[28px_96px_minmax(0,1fr)_64px_60px_88px_72px_96px_104px_56px] gap-2 px-1">
+            <div className="hidden gap-2 px-1 md:grid md:grid-cols-[28px_96px_minmax(0,1fr)_64px_60px_88px_72px_96px_104px_56px]">
               <span />
               <label className="text-xs text-muted">行タイプ</label>
               <label className="text-xs text-muted">内容</label>

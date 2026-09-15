@@ -134,7 +134,7 @@ function DonutChart({ data }: { data: { status: string; count: number }[] }) {
       <div className="text-[11px] font-medium tracking-[0.12em] text-muted uppercase">Status</div>
       <div className="text-[15px] font-semibold text-primary mt-1 mb-5">ステータス別内訳</div>
 
-      <div className="flex items-center gap-8">
+      <div className="flex flex-col items-center gap-4 sm:flex-row sm:gap-8">
         <div className="relative flex-shrink-0">
           <svg width="150" height="150" viewBox="0 0 150 150">
             <circle cx={cx} cy={cy} r={radius} fill="none" stroke="var(--border-default)" strokeWidth={strokeWidth} />
