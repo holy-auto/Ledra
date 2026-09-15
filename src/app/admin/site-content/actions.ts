@@ -70,9 +70,12 @@ function revalidatePublicPaths(type: SiteContentType, site: SiteContentSite = "l
 }
 
 /**
- * 外部サイトへ反映する。失敗したら「公開」を取り消して下書きに戻す。
+ * 外部サイトへ反映する。失敗したら DB を元の状態へ戻す。
  *
- * DB だけ published で相手サイトに出ていない状態を残さないため。
+ * 「DB は公開済みなのに相手サイトに出ていない」も、その逆の
+ * 「DB は下書きなのに相手サイトに出たまま」も残さないため、
+ * 公開方向・取り下げ方向のどちらの失敗でも `revertTo` に巻き戻す。
+ *
  * ponytail: 戻しは status の単純上書きなので、同時に別の編集が走っていると
  * それを踏む。運営は1人想定。複数人になったら楽観ロック（updated_at 条件）にする。
  */
@@ -81,7 +84,11 @@ async function syncExternal(
   id: string,
   input: SiteContentPostInput,
   published_at: string | null,
-  previous?: { slug: string; type: SiteContentType; published_at: string | null },
+  opts: {
+    previous?: { slug: string; type: SiteContentType; published_at: string | null };
+    /** 失敗したときに戻す status。create では行ごと消すので渡さない。 */
+    revertTo?: SiteContentStatus;
+  } = {},
 ): Promise<Err | null> {
   if (!isExternalSite(input.site)) return null;
 
@@ -98,16 +105,17 @@ async function syncExternal(
       body: input.body ?? "",
       published_at,
     },
-    previous,
+    opts.previous,
   );
   if (result.ok) return null;
 
-  if (input.status === "published") {
-    await auth.supabase.from("site_content_posts").update({ status: "draft" }).eq("id", id);
+  if (opts.revertTo && opts.revertTo !== input.status) {
+    await auth.supabase.from("site_content_posts").update({ status: opts.revertTo }).eq("id", id);
   }
   return {
     ok: false,
-    error: "external_publish_failed",
+    // 一番ありがちな失敗（トークン未設定・失効）は項目に紐付かないので、本文をそのまま出す
+    error: result.message,
     fieldErrors: result.field ? { [result.field]: result.message } : undefined,
   };
 }
@@ -186,7 +194,15 @@ export async function createSiteContentAction(
   }
 
   const syncErr = await syncExternal(auth, data.id as string, input, published_at);
-  if (syncErr) return syncErr;
+  if (syncErr) {
+    // 作ったばかりの行を残すと、入力を直して再送したときに duplicate_slug になる。
+    // フォームの入力はクライアント側に残っているので、行を消して作り直させる。
+    await auth.supabase
+      .from("site_content_posts")
+      .delete()
+      .eq("id", data.id as string);
+    return syncErr;
+  }
 
   revalidatePublicPaths(input.type, input.site);
   return { ok: true, data: { id: data.id as string, type: data.type as SiteContentType } };
@@ -207,7 +223,7 @@ export async function updateSiteContentAction(
 
   const { data: existing, error: fetchErr } = await auth.supabase
     .from("site_content_posts")
-    .select("id, published_at, site, type, slug")
+    .select("id, published_at, site, type, slug, status")
     .eq("id", id)
     .maybeSingle();
 
@@ -273,21 +289,30 @@ export async function updateSiteContentAction(
           published_at: existing.published_at as string | null,
         }
       : undefined;
-  const syncErr = await syncExternal(auth, id, input, published_at, previous);
+  const syncErr = await syncExternal(auth, id, input, published_at, {
+    previous,
+    revertTo: existing.status as SiteContentStatus,
+  });
   if (syncErr) return syncErr;
 
   // 投稿先を付け替えたときは、元のサイトに出ていた記事を消す
   if (existing.site !== input.site) {
-    await removeExternalPost({
+    const removed = await removeExternalPost({
       site: existing.site as string,
       type: existing.type as SiteContentType,
       slug: existing.slug as string,
       title: input.title,
       published_at: existing.published_at as string | null,
     });
+    if (!removed.ok) return { ok: false, error: removed.message };
   }
 
   revalidatePublicPaths(input.type, input.site);
+  // 投稿先や種別を変えた場合、元の場所のページも作り直す
+  // （Ledra → 外部 に移したのに Ledra の /news に残る、を防ぐ）
+  if (existing.site !== input.site || existing.type !== input.type) {
+    revalidatePublicPaths(existing.type as SiteContentType, existing.site as SiteContentSite);
+  }
   return { ok: true, data: { id: data.id as string, type: data.type as SiteContentType } };
 }
 
@@ -304,13 +329,8 @@ export async function deleteSiteContentAction(id: string): Promise<ActionResult<
   // これが無いと、二度押しや古いリンクが「権限がありません」に化ける。
   if (!row) return { ok: false, error: "not_found" };
 
-  // .select() を付けて削除行数を見る。RLS で弾かれた場合 error は null のまま
-  // 0行になるので、これが無いと「削除しました」と嘘をつく。
-  const { data: deleted, error } = await auth.supabase.from("site_content_posts").delete().eq("id", id).select("id");
-  if (error) return { ok: false, error: error.message };
-  if (!deleted?.length) return { ok: false, error: "forbidden" };
-
-  // 外部サイトに出ていれば、そちらのファイルも消す（消せなくても削除自体は成立している）
+  // 外部サイトのファイルを**先に**消す。DB 行を消したあとに失敗すると、
+  // 記事はサイトに出たままなのに管理画面から消す手段が無くなる。
   const removed = await removeExternalPost({
     site: row.site as string,
     type: row.type as SiteContentType,
@@ -319,6 +339,12 @@ export async function deleteSiteContentAction(id: string): Promise<ActionResult<
     published_at: row.published_at as string | null,
   });
   if (!removed.ok) return { ok: false, error: removed.message };
+
+  // .select() を付けて削除行数を見る。RLS で弾かれた場合 error は null のまま
+  // 0行になるので、これが無いと「削除しました」と嘘をつく。
+  const { data: deleted, error } = await auth.supabase.from("site_content_posts").delete().eq("id", id).select("id");
+  if (error) return { ok: false, error: error.message };
+  if (!deleted?.length) return { ok: false, error: "forbidden" };
 
   revalidatePublicPaths(row.type as SiteContentType, row.site as SiteContentSite);
   return { ok: true, data: null };
@@ -330,7 +356,7 @@ export async function setSiteContentStatusAction(id: string, status: SiteContent
 
   const { data: existing } = await auth.supabase
     .from("site_content_posts")
-    .select("type, published_at, site, slug, title, title_en, category, excerpt, body")
+    .select("type, published_at, site, slug, title, title_en, category, excerpt, body, status")
     .eq("id", id)
     .maybeSingle();
 
@@ -364,10 +390,12 @@ export async function setSiteContentStatusAction(id: string, status: SiteContent
     published_at,
   });
   if (!synced.ok) {
-    // 一覧からの1クリック操作なので、失敗したら元の状態に戻して知らせる
-    if (status === "published") {
-      await auth.supabase.from("site_content_posts").update({ status: "draft" }).eq("id", id);
-    }
+    // 一覧からの1クリック操作。公開も取り下げも、失敗したら元の状態に戻す
+    // （DB とサイトが食い違ったまま「成功」と言わない）。
+    await auth.supabase
+      .from("site_content_posts")
+      .update({ status: existing.status as SiteContentStatus })
+      .eq("id", id);
     return { ok: false, error: synced.message };
   }
 

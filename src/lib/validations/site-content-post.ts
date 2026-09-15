@@ -1,4 +1,6 @@
 import { z } from "zod";
+// externalSites 側の型参照は `import type` なので実行時の循環は無い。
+import { SITE_TYPES, categoryOptions, isExternalSite } from "@/lib/marketing/externalSites";
 
 export const SITE_CONTENT_TYPES = ["blog", "news", "press", "event", "webinar"] as const;
 export type SiteContentType = (typeof SITE_CONTENT_TYPES)[number];
@@ -76,6 +78,47 @@ export const siteContentPostSchema = z
     og_subtitle: z.string().trim().max(200).nullable().optional(),
   })
   .superRefine((data, ctx) => {
+    // 外部サイト（holy-inc / MobileWash）は相手のパーサが項目を要求する。
+    // 足りないまま INSERT すると、コミットに失敗した下書きだけが残るので、
+    // 保存の前に止める。下書きのままなら未入力でよい。
+    if (isExternalSite(data.site)) {
+      if (!SITE_TYPES[data.site].includes(data.type)) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["type"], message: "この投稿先にはこの種別がありません。" });
+      }
+      if (data.status === "published" || data.status === "scheduled") {
+        const categories = categoryOptions(data.site, data.type);
+        if (categories.length > 0 && !categories.includes((data.category ?? "").trim())) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["category"],
+            message: `分類は ${categories.join(" / ")} のいずれかを選んでください。`,
+          });
+        }
+        if (data.site === "holy-inc" && !(data.title_en ?? "").trim()) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["title_en"],
+            message: "holy-inc は日英2言語なので、英語タイトルが必要です。",
+          });
+        }
+        if (data.site === "mobilewash") {
+          if (!(data.excerpt ?? "").trim()) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: ["excerpt"],
+              message: "MobileWash は一覧に出す「抜粋」が必須です。",
+            });
+          }
+          if ((data.body ?? "").trim()) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: ["body"],
+              message: "MobileWash には記事ページがありません。本文ではなく「抜粋」に書いてください。",
+            });
+          }
+        }
+      }
+    }
     if (data.status === "scheduled" && (!data.published_at || Number.isNaN(Date.parse(data.published_at)))) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,

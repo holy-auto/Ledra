@@ -42,6 +42,7 @@ export async function publishScheduledPosts(): Promise<{ published: number; slug
   // 外部サイト（holy-inc / MobileWash）向けの予約投稿は、md を相手リポジトリへ
   // コミットしないと公開されない。失敗したら下書きへ戻す（DB だけ公開済みで
   // サイトに出ていない状態を残さない）。
+  const reverted = new Set<string>();
   for (const row of rows.filter((r) => isExternalSite(r.site))) {
     const synced = await syncExternalPost({
       site: row.site,
@@ -57,6 +58,7 @@ export async function publishScheduledPosts(): Promise<{ published: number; slug
     });
     if (!synced.ok) {
       await admin.from("site_content_posts").update({ status: "draft" }).eq("id", row.id);
+      reverted.add(row.id);
       logger.error("scheduled external post failed; reverted to draft", {
         slug: row.slug,
         site: row.site,
@@ -65,8 +67,11 @@ export async function publishScheduledPosts(): Promise<{ published: number; slug
     }
   }
 
-  if (rows.length > 0) {
-    const types = new Set(rows.filter((r) => !isExternalSite(r.site)).map((r) => r.type));
+  // 下書きへ戻した分は公開できていない。件数にもログにも混ぜない。
+  const publishedRows = rows.filter((r) => !reverted.has(r.id));
+
+  if (publishedRows.length > 0) {
+    const types = new Set(publishedRows.filter((r) => !isExternalSite(r.site)).map((r) => r.type));
     if (types.has("news")) {
       revalidatePath("/news");
       revalidatePath("/"); // トップの NewsTeaser
@@ -74,10 +79,11 @@ export async function publishScheduledPosts(): Promise<{ published: number; slug
     if (types.has("blog")) revalidatePath("/blog");
     if (types.has("event") || types.has("webinar")) revalidatePath("/events");
     logger.info("publishScheduledPosts promoted scheduled posts", {
-      count: rows.length,
-      slugs: rows.map((r) => r.slug),
+      count: publishedRows.length,
+      slugs: publishedRows.map((r) => r.slug),
+      revertedCount: reverted.size,
     });
   }
 
-  return { published: rows.length, slugs: rows.map((r) => r.slug) };
+  return { published: publishedRows.length, slugs: publishedRows.map((r) => r.slug) };
 }
