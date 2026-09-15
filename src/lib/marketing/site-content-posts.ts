@@ -32,6 +32,15 @@ export type PublicContentPost = {
 const PUBLIC_POST_COLUMNS =
   "id, type, slug, title, excerpt, body, hero_image_url, tags, author, published_at, event_start_at, event_end_at, location, online_url, capacity, registration_url, cta_title, cta_subtitle, cta_primary_label, cta_primary_href, cta_secondary_label, cta_secondary_href, og_title, og_subtitle";
 
+/**
+ * このサイト（Ledra）の投稿だけを読む。
+ *
+ * 同じテーブルに holy-inc / MobileWash 向けの投稿も入る（管理画面から
+ * 3サイト分を投稿できる）。site で絞らないと、他社サイト向けのお知らせが
+ * Ledra の /news や sitemap に出てしまう。
+ */
+const LEDRA_SITE = "ledra";
+
 /** HP向け: 公開済みの投稿だけを取得する（RLSでもフィルタされるが明示的に） */
 export async function listPublishedPosts(
   types: SiteContentType[],
@@ -41,6 +50,7 @@ export async function listPublishedPosts(
   const { data, error } = await supabase
     .from("site_content_posts")
     .select(PUBLIC_POST_COLUMNS)
+    .eq("site", LEDRA_SITE)
     .eq("status", "published")
     .in("type", types)
     .order("published_at", { ascending: false, nullsFirst: false })
@@ -58,6 +68,7 @@ export async function getPublishedPostBySlug(type: SiteContentType, slug: string
   const { data, error } = await supabase
     .from("site_content_posts")
     .select(PUBLIC_POST_COLUMNS)
+    .eq("site", LEDRA_SITE)
     .eq("status", "published")
     .eq("type", type)
     .eq("slug", slug)

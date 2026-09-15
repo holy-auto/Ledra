@@ -6,9 +6,11 @@ import { requireSiteContentAdmin } from "./guard";
 import {
   SITE_CONTENT_TYPE_LABELS,
   SITE_CONTENT_STATUS_LABELS,
+  type SiteContentSite,
   type SiteContentStatus,
   type SiteContentType,
 } from "@/lib/validations/site-content-post";
+import { SITE_LABELS } from "@/lib/marketing/externalSites";
 import { formatJstDateTime } from "@/lib/datetime";
 import SiteContentRowActions from "./SiteContentRowActions";
 
@@ -16,6 +18,7 @@ export const dynamic = "force-dynamic";
 
 type Row = {
   id: string;
+  site: SiteContentSite;
   type: SiteContentType;
   status: SiteContentStatus;
   slug: string;
@@ -40,13 +43,17 @@ export default async function SiteContentListPage(props: { searchParams?: Promis
 
   let query = supabase
     .from("site_content_posts")
-    .select("id, type, status, slug, title, published_at, event_start_at, updated_at, author")
+    .select("id, site, type, status, slug, title, published_at, event_start_at, updated_at, author")
     .order("updated_at", { ascending: false })
     .limit(100);
 
   if (
     typeFilter &&
-    (typeFilter === "blog" || typeFilter === "news" || typeFilter === "event" || typeFilter === "webinar")
+    (typeFilter === "blog" ||
+      typeFilter === "news" ||
+      typeFilter === "press" ||
+      typeFilter === "event" ||
+      typeFilter === "webinar")
   ) {
     query = query.eq("type", typeFilter);
   }
@@ -57,6 +64,7 @@ export default async function SiteContentListPage(props: { searchParams?: Promis
     { key: "all", label: "すべて", href: "/admin/site-content" },
     { key: "blog", label: "ブログ", href: "/admin/site-content?type=blog" },
     { key: "news", label: "お知らせ", href: "/admin/site-content?type=news" },
+    { key: "press", label: "プレスリリース", href: "/admin/site-content?type=press" },
     { key: "event", label: "イベント", href: "/admin/site-content?type=event" },
     { key: "webinar", label: "ウェビナー", href: "/admin/site-content?type=webinar" },
   ];
@@ -68,7 +76,7 @@ export default async function SiteContentListPage(props: { searchParams?: Promis
       <PageHeader
         tag="SITE CONTENT"
         title="HPコンテンツ管理"
-        description="LedraのHPに掲載するお知らせ・ブログ・イベント・ウェビナーを作成・編集できます。"
+        description="Ledra・holy-inc.jp・MobileWash の3サイトに、この画面から投稿できます。"
         actions={
           <Link href="/admin/site-content/new" className="btn-primary">
             新規作成
@@ -95,6 +103,7 @@ export default async function SiteContentListPage(props: { searchParams?: Promis
           <table className="w-full text-sm">
             <thead className="border-b border-border-default bg-surface-hover text-xs text-muted">
               <tr>
+                <th className="px-4 py-3 text-left font-medium">投稿先</th>
                 <th className="px-4 py-3 text-left font-medium">種別</th>
                 <th className="px-4 py-3 text-left font-medium">タイトル</th>
                 <th className="px-4 py-3 text-left font-medium">ステータス</th>
@@ -106,6 +115,7 @@ export default async function SiteContentListPage(props: { searchParams?: Promis
             <tbody>
               {(rows as Row[]).map((r) => (
                 <tr key={r.id} className="border-b border-border-subtle last:border-0 hover:bg-surface-hover/50">
+                  <td className="px-4 py-3 text-xs text-secondary">{SITE_LABELS[r.site ?? "ledra"]}</td>
                   <td className="px-4 py-3 text-xs text-secondary">{SITE_CONTENT_TYPE_LABELS[r.type]}</td>
                   <td className="px-4 py-3">
                     <Link href={`/admin/site-content/${r.id}`} className="font-medium text-primary hover:underline">

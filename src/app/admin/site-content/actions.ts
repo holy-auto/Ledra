@@ -7,9 +7,13 @@ import { resolveCallerWithRole, requirePermission } from "@/lib/auth/checkRole";
 import {
   parseSiteContentFormData,
   siteContentPostSchema,
+  type SiteContentPostInput,
+  type SiteContentSite,
   type SiteContentStatus,
   type SiteContentType,
 } from "@/lib/validations/site-content-post";
+import { removeExternalPost, syncExternalPost } from "@/lib/marketing/externalPublish";
+import { isExternalSite } from "@/lib/marketing/externalSites";
 
 type Ok<T> = { ok: true; data: T };
 type Err = { ok: false; error: string; fieldErrors?: Record<string, string> };
@@ -52,14 +56,60 @@ function isErr(v: AuthContext | Err): v is Err {
   return (v as Err).ok === false;
 }
 
-function revalidatePublicPaths(type: SiteContentType) {
+function revalidatePublicPaths(type: SiteContentType, site: SiteContentSite = "ledra") {
   revalidatePath("/admin/site-content");
+  // 外部サイト（holy-inc / MobileWash）の記事は Ledra のページに出ないので、
+  // revalidate する公開パスは無い。反映は相手リポジトリへのコミット。
+  if (site !== "ledra") return;
   if (type === "blog") revalidatePath("/blog");
   if (type === "news") {
     revalidatePath("/news");
     revalidatePath("/"); // トップの NewsTeaser も更新する
   }
   if (type === "event" || type === "webinar") revalidatePath("/events");
+}
+
+/**
+ * 外部サイトへ反映する。失敗したら「公開」を取り消して下書きに戻す。
+ *
+ * DB だけ published で相手サイトに出ていない状態を残さないため。
+ * ponytail: 戻しは status の単純上書きなので、同時に別の編集が走っていると
+ * それを踏む。運営は1人想定。複数人になったら楽観ロック（updated_at 条件）にする。
+ */
+async function syncExternal(
+  auth: AuthContext,
+  id: string,
+  input: SiteContentPostInput,
+  published_at: string | null,
+  previous?: { slug: string; type: SiteContentType; published_at: string | null },
+): Promise<Err | null> {
+  if (!isExternalSite(input.site)) return null;
+
+  const result = await syncExternalPost(
+    {
+      site: input.site,
+      type: input.type,
+      status: input.status,
+      slug: input.slug,
+      title: input.title,
+      title_en: input.title_en ?? null,
+      category: input.category ?? null,
+      excerpt: input.excerpt ?? null,
+      body: input.body ?? "",
+      published_at,
+    },
+    previous,
+  );
+  if (result.ok) return null;
+
+  if (input.status === "published") {
+    await auth.supabase.from("site_content_posts").update({ status: "draft" }).eq("id", id);
+  }
+  return {
+    ok: false,
+    error: "external_publish_failed",
+    fieldErrors: result.field ? { [result.field]: result.message } : undefined,
+  };
 }
 
 function flattenZodErrors(err: unknown): Record<string, string> {
@@ -92,10 +142,13 @@ export async function createSiteContentAction(
     .from("site_content_posts")
     .insert({
       tenant_id: auth.tenantId,
+      site: input.site,
       type: input.type,
       status: input.status,
       slug: input.slug,
       title: input.title,
+      title_en: input.title_en ?? null,
+      category: input.category ?? null,
       excerpt: input.excerpt ?? null,
       body: input.body ?? "",
       hero_image_url: input.hero_image_url ?? null,
@@ -132,7 +185,10 @@ export async function createSiteContentAction(
     return { ok: false, error: error.message };
   }
 
-  revalidatePublicPaths(input.type);
+  const syncErr = await syncExternal(auth, data.id as string, input, published_at);
+  if (syncErr) return syncErr;
+
+  revalidatePublicPaths(input.type, input.site);
   return { ok: true, data: { id: data.id as string, type: data.type as SiteContentType } };
 }
 
@@ -151,7 +207,7 @@ export async function updateSiteContentAction(
 
   const { data: existing, error: fetchErr } = await auth.supabase
     .from("site_content_posts")
-    .select("id, published_at")
+    .select("id, published_at, site, type, slug")
     .eq("id", id)
     .maybeSingle();
 
@@ -165,10 +221,13 @@ export async function updateSiteContentAction(
   const { data, error } = await auth.supabase
     .from("site_content_posts")
     .update({
+      site: input.site,
       type: input.type,
       status: input.status,
       slug: input.slug,
       title: input.title,
+      title_en: input.title_en ?? null,
+      category: input.category ?? null,
       excerpt: input.excerpt ?? null,
       body: input.body ?? "",
       hero_image_url: input.hero_image_url ?? null,
@@ -205,7 +264,30 @@ export async function updateSiteContentAction(
     return { ok: false, error: error.message };
   }
 
-  revalidatePublicPaths(input.type);
+  // 置き場所（スラッグ・公開日・種別）が変わったら、前のファイルを消すために渡す
+  const previous =
+    existing.site === input.site
+      ? {
+          slug: existing.slug as string,
+          type: existing.type as SiteContentType,
+          published_at: existing.published_at as string | null,
+        }
+      : undefined;
+  const syncErr = await syncExternal(auth, id, input, published_at, previous);
+  if (syncErr) return syncErr;
+
+  // 投稿先を付け替えたときは、元のサイトに出ていた記事を消す
+  if (existing.site !== input.site) {
+    await removeExternalPost({
+      site: existing.site as string,
+      type: existing.type as SiteContentType,
+      slug: existing.slug as string,
+      title: input.title,
+      published_at: existing.published_at as string | null,
+    });
+  }
+
+  revalidatePublicPaths(input.type, input.site);
   return { ok: true, data: { id: data.id as string, type: data.type as SiteContentType } };
 }
 
@@ -213,7 +295,11 @@ export async function deleteSiteContentAction(id: string): Promise<ActionResult<
   const auth = await authorize();
   if (isErr(auth)) return auth;
 
-  const { data: row } = await auth.supabase.from("site_content_posts").select("type").eq("id", id).maybeSingle();
+  const { data: row } = await auth.supabase
+    .from("site_content_posts")
+    .select("type, site, slug, title, published_at")
+    .eq("id", id)
+    .maybeSingle();
   // 他の3アクションと同じく、存在しない id は not_found として返す。
   // これが無いと、二度押しや古いリンクが「権限がありません」に化ける。
   if (!row) return { ok: false, error: "not_found" };
@@ -224,7 +310,17 @@ export async function deleteSiteContentAction(id: string): Promise<ActionResult<
   if (error) return { ok: false, error: error.message };
   if (!deleted?.length) return { ok: false, error: "forbidden" };
 
-  revalidatePublicPaths(row.type as SiteContentType);
+  // 外部サイトに出ていれば、そちらのファイルも消す（消せなくても削除自体は成立している）
+  const removed = await removeExternalPost({
+    site: row.site as string,
+    type: row.type as SiteContentType,
+    slug: row.slug as string,
+    title: row.title as string,
+    published_at: row.published_at as string | null,
+  });
+  if (!removed.ok) return { ok: false, error: removed.message };
+
+  revalidatePublicPaths(row.type as SiteContentType, row.site as SiteContentSite);
   return { ok: true, data: null };
 }
 
@@ -234,7 +330,7 @@ export async function setSiteContentStatusAction(id: string, status: SiteContent
 
   const { data: existing } = await auth.supabase
     .from("site_content_posts")
-    .select("type, published_at")
+    .select("type, published_at, site, slug, title, title_en, category, excerpt, body")
     .eq("id", id)
     .maybeSingle();
 
@@ -255,6 +351,26 @@ export async function setSiteContentStatusAction(id: string, status: SiteContent
   if (error) return { ok: false, error: error.message };
   if (!updated?.length) return { ok: false, error: "forbidden" };
 
-  revalidatePublicPaths(existing.type as SiteContentType);
+  const synced = await syncExternalPost({
+    site: existing.site as string,
+    type: existing.type as SiteContentType,
+    status,
+    slug: existing.slug as string,
+    title: existing.title as string,
+    title_en: existing.title_en as string | null,
+    category: existing.category as string | null,
+    excerpt: existing.excerpt as string | null,
+    body: (existing.body as string | null) ?? "",
+    published_at,
+  });
+  if (!synced.ok) {
+    // 一覧からの1クリック操作なので、失敗したら元の状態に戻して知らせる
+    if (status === "published") {
+      await auth.supabase.from("site_content_posts").update({ status: "draft" }).eq("id", id);
+    }
+    return { ok: false, error: synced.message };
+  }
+
+  revalidatePublicPaths(existing.type as SiteContentType, existing.site as SiteContentSite);
   return { ok: true, data: null };
 }
