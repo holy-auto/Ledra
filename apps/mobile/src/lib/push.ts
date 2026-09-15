@@ -37,6 +37,15 @@ export async function registerForPushNotifications(): Promise<void> {
   if (!Device.isDevice) return;
 
   try {
+    // iPhone宛の通知がApple Watchへ転送された場合も「作業を見る」を表示する。
+    await Notifications.setNotificationCategoryAsync("customer_arrived", [
+      {
+        identifier: "open_job",
+        buttonTitle: "作業を見る",
+        options: { opensAppToForeground: true },
+      },
+    ]);
+
     const { status: existing } = await Notifications.getPermissionsAsync();
     let status = existing;
     if (existing !== "granted") {

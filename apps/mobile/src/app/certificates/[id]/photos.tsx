@@ -1,11 +1,6 @@
 import { useState } from "react";
 import { View, StyleSheet, FlatList, Image, Alert } from "react-native";
-import {
-  Text,
-  ActivityIndicator,
-  Snackbar,
-  IconButton,
-} from "react-native-paper";
+import { Text, ActivityIndicator, Snackbar, IconButton } from "react-native-paper";
 import { useLocalSearchParams, Stack } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -16,6 +11,7 @@ import { STAGE_OPTIONS, type CertificatePhotoStage } from "@/lib/photoStage";
 import { appendImage, pickImageFromCamera, type PickedImage } from "@/lib/pickImage";
 import { LedraButton, SegmentedControl } from "@/components/ui";
 import { colors, spacing, radius, typography, shadows } from "@/constants/tokens";
+import { notifyWatchPhotoResult } from "@/lib/watchSync";
 
 interface NonceResponse {
   capture_nonce: string | null;
@@ -25,10 +21,17 @@ interface NonceResponse {
 const STAGE_SEGMENTS = STAGE_OPTIONS.map((o) => ({ value: o.value, label: o.label }));
 
 export default function CertificatePhotosScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, stage: requestedStage } = useLocalSearchParams<{ id: string; stage?: string }>();
   const queryClient = useQueryClient();
 
-  const [stage, setStage] = useState<Exclude<CertificatePhotoStage, "unspecified">>("in_progress");
+  const initialStage: Exclude<CertificatePhotoStage, "unspecified"> = [
+    "intake_before",
+    "in_progress",
+    "after",
+  ].includes(requestedStage ?? "")
+    ? (requestedStage as Exclude<CertificatePhotoStage, "unspecified">)
+    : "in_progress";
+  const [stage, setStage] = useState<Exclude<CertificatePhotoStage, "unspecified">>(initialStage);
   const [staged, setStaged] = useState<PickedImage[]>([]);
   const [uploading, setUploading] = useState(false);
   const [snackbar, setSnackbar] = useState("");
@@ -39,15 +42,16 @@ export default function CertificatePhotosScreen() {
     queryKey: ["certificate-photo-meta", id],
     queryFn: async () => {
       const [{ data: row, error: rowErr }, { count, error: cntErr }] = await Promise.all([
-        supabase.from("certificates").select("public_id").eq("id", id).single(),
-        supabase
-          .from("certificate_images")
-          .select("id", { count: "exact", head: true })
-          .eq("certificate_id", id),
+        supabase.from("certificates").select("public_id, reservation_id").eq("id", id).single(),
+        supabase.from("certificate_images").select("id", { count: "exact", head: true }).eq("certificate_id", id),
       ]);
       if (rowErr) throw rowErr;
       if (cntErr) throw cntErr;
-      return { publicId: (row?.public_id as string | null) ?? null, uploadedCount: count ?? 0 };
+      return {
+        publicId: (row?.public_id as string | null) ?? null,
+        reservationId: (row?.reservation_id as string | null) ?? null,
+        uploadedCount: count ?? 0,
+      };
     },
     enabled: !!id,
   });
@@ -98,10 +102,27 @@ export default function CertificatePhotosScreen() {
       await queryClient.invalidateQueries({ queryKey: ["certificate-images", id] });
       // 作業詳細のサムネイル（["work-photos", certId]）も同じ certificate_id を見るため更新する。
       await queryClient.invalidateQueries({ queryKey: ["work-photos", id] });
-      setSnackbar(`${res?.uploaded ?? staged.length}枚をアップロードしました`);
+      const count = res?.uploaded ?? staged.length;
+      const message = `${count}枚をアップロードしました`;
+      setSnackbar(message);
+      if (cert?.reservationId) {
+        void notifyWatchPhotoResult({
+          reservationId: cert.reservationId,
+          success: true,
+          message,
+          count,
+        });
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : "アップロードに失敗しました";
       setSnackbar(msg);
+      if (cert?.reservationId) {
+        void notifyWatchPhotoResult({
+          reservationId: cert.reservationId,
+          success: false,
+          message: "写真のアップロードに失敗しました",
+        });
+      }
     } finally {
       setUploading(false);
     }
@@ -150,16 +171,12 @@ export default function CertificatePhotosScreen() {
               <Text style={styles.infoText}>
                 アップロード済み: {uploadedCount}枚 / 撮影待ち: {staged.length}枚
               </Text>
-              <Text style={styles.hint}>
-                写真はカメラ撮影のみ・端末には保存されずDBに直接保存されます。
-              </Text>
+              <Text style={styles.hint}>写真はカメラ撮影のみ・端末には保存されずDBに直接保存されます。</Text>
             </View>
           }
           ListEmptyComponent={
             <View style={styles.emptyCenter}>
-              <Text style={styles.emptyText}>
-                「撮影」で施工写真を追加してください
-              </Text>
+              <Text style={styles.emptyText}>「撮影」で施工写真を追加してください</Text>
             </View>
           }
         />
