@@ -716,7 +716,7 @@ export default async function AdminHome({
         title="ダッシュボード"
         description="施工証明書の管理状況を一目で確認"
         actions={
-          <div className="flex flex-wrap items-center justify-end gap-3">
+          <div className="flex flex-wrap items-center gap-3 sm:justify-end">
             <HomeScopeToggle scope={workScope} scopes={allowed} defaultScopeValue="store" />
             <DisplayModeSwitcher />
           </div>
