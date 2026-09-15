@@ -29,6 +29,12 @@
 - `scripts/ci-parallel-checks.sh` に `NAMES` と `CMDS` の要素数を突き合わせるガードを
   追加した。片方だけ足すと**新しい検査が起動されないまま CI が緑になる**（逆は
   `bash -c ""` が exit 0 して `ok` と表示される）。どちらも黙って通る形だった。
+## 2026-09-15 ダッシュボードヘッダーのモバイルレイアウト改善（#1084）
+
+- PageBar（全admin共通ヘッダー）の actions ラッパーにモバイルファーストの responsive クラスを適用。
+- モバイル: `basis-full` で全幅配置、左寄せ。デスクトップ: `sm:basis-auto` + `sm:ml-auto` で従来の右寄せ。
+- ダッシュボード固有: `justify-end` → `sm:justify-end` でモバイル時の右寄せを解除。
+- 変更ファイル: `PageBar.tsx`, `admin/page.tsx` の2ファイル・計8行。
 
 ## 2026-09-15 管理画面全体のモバイルレスポンシブ崩れを修正（#1076）
 
@@ -44,6 +50,43 @@
   - `min-w-0` / `break-words` でテキスト溢れ防止
 - `layout.tsx` の main 要素に `min-w-0` を追加し、flex子要素がコンテンツ幅以下に
   縮小可能にした（全adminページに効く根本修正）。
+
+## 2026-09-15 3サイトの SEO / 投稿まわりを3リポジトリ同時にマージ
+
+- `holy-auto/Ledra#1080` → `acf8957`（代表がマージ）
+- `holy-auto/MobileWash#21` → `a12d49e`
+- `holy-auto/holy-inc#8` → `3f6a129`
+
+入ったもの: 3サイトのプリレンダ（JS を実行しない AI クローラー向け）、
+robots/sitemap/llms.txt、md ファイルでの投稿、RSS、Ledra の全国対応
+構造化データと用語集32件、そして **1つの管理画面から3サイトに投稿する機能**。
+
+作業中に見つかった既存不具合もこの3本で直っている。
+
+- MobileWash: `/company/*` の5ページが常に404だった（実ルータに定義が無く、
+  検査は dead file を読んでいた）
+- MobileWash: プリレンダの JSON-LD が1件も出力されていなかった（MISTAKE_LEDGER M-093）
+- Ledra: `/llms.txt` `/llms-full.txt` に `x-robots-tag: noindex` が付いていた
+
+### マージ時の出来事
+
+- Ledra#1080 は main が進んでコンフリクトし、**GitHub Actions が1本も走らない**
+  状態になっていた（コンフリクト中の PR では `pull_request` ワークフローが起動しない）。
+  main を取り込んで解消したら全チェックが動いた。
+- 解消時に `MISTAKE_LEDGER` の採番が衝突した（main 側にも M-092 があった）。
+  こちらのエントリを M-093 へ繰り上げ。
+- CI の `lint:migrations` で落ちた。`CREATE INDEX` に `CONCURRENTLY` が必要で、
+  かつ単独ファイルに分ける必要がある（MISTAKE_LEDGER M-094）。
+- GitHub の GraphQL API がレート制限に当たり、ドラフト解除ができなかった。
+  代表に「Ready for review」を押していただいて解消。
+
+### 残っている代表判断
+
+- **Vercel の Ledra プロジェクトに `GITHUB_CONTENT_TOKEN` を設定する**
+  （未設定だと管理画面から外部2サイトへの公開だけがエラーになる）
+- MobileWash のクーポン金額が `index.html`（¥1,000OFF）と `src/`（¥1,500 OFF）で食い違う
+- MobileWash `index.html` の「最短5分で出張」「全国47都道府県対応」が
+  ローンチ前の現状と合っていない
 
 ## 2026-09-15 1つの管理画面から3サイトに投稿できるようにした
 
