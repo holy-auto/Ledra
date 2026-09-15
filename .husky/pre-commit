@@ -4,3 +4,7 @@ npx lint-staged
 # CI でも見るが、ここで落とせば「コミットしてから気づく」を避けられる。
 # 未来日だけを禁じているので、過去日での遡及追記は通る（理由はスクリプト冒頭）。
 node scripts/check-context-dates.mjs
+
+# MISTAKE_LEDGER の見出し ID が一意か。CI でも見るが、ここで落とせば
+# 衝突したまま PR を出すのを避けられる。
+node scripts/check-ledger-ids.mjs
