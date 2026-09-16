@@ -9,20 +9,10 @@
  * 確定署名・アンカー・在庫計上には関与しない (人の操作のまま)。手動の即時照合は
  * 従来どおり `POST /api/parts/installations/[id]/reconcile` (base64 直送) を使える。
  */
-import { NextRequest, after } from "next/server";
-import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
+import { after } from "next/server";
+import { withCaller } from "@/lib/api/withCaller";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
-import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
-import { checkRateLimit } from "@/lib/api/rateLimit";
-import {
-  apiJson,
-  apiError,
-  apiInternalError,
-  apiUnauthorized,
-  apiValidationError,
-  apiNotFound,
-  apiForbidden,
-} from "@/lib/api/response";
+import { apiJson, apiError, apiInternalError, apiValidationError, apiNotFound } from "@/lib/api/response";
 import { CERTIFICATE_IMAGE_BUCKET } from "@/lib/certificateImages/constants"; // 共有 "assets" バケット
 import { hashSha256 } from "@/lib/anchoring/imageHashing";
 import { maybeAutoReconcileDeliveryNote } from "@/lib/ai/automation/partsReconcileAuto";
@@ -54,17 +44,9 @@ function detectMime(buf: Buffer): "image/jpeg" | "image/png" | "image/webp" | "i
   return null;
 }
 
-export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
-  try {
-    const limited = await checkRateLimit(req, "general");
-    if (limited) return limited;
-
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
-    if (!requireMinRole(caller, "staff")) return apiForbidden();
-
-    const { id: installationId } = await ctx.params;
+export const POST = withCaller<{ id: string }>(
+  async (req, { caller, params }) => {
+    const { id: installationId } = params;
     if (!installationId) return apiNotFound("installation id is required");
 
     const { admin, tenantId } = createTenantScopedAdmin(caller.tenantId);
@@ -139,7 +121,6 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     );
 
     return apiJson({ ok: true, evidence_id: evidence.id }, { status: 201 });
-  } catch (e) {
-    return apiInternalError(e, "parts/installations/[id]/delivery-note POST");
-  }
-}
+  },
+  { rateLimit: "general", minRole: "staff", routeName: "parts/installations/[id]/delivery-note POST" },
+);

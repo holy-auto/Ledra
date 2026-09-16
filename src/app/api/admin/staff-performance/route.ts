@@ -1,10 +1,10 @@
 import { NextRequest } from "next/server";
-import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
-import { apiJson, apiUnauthorized, apiInternalError } from "@/lib/api/response";
+
+import { apiJson, apiInternalError } from "@/lib/api/response";
 import { getStaffMonthlyPerformance } from "@/lib/analytics/staffPerformanceMonthly";
 import { withCache } from "@/lib/cache";
 
+import { withCaller } from "@/lib/api/withCaller";
 export const dynamic = "force-dynamic";
 
 /** year/month クエリのパース。未指定なら現在年月にフォールバック。 */
@@ -19,22 +19,21 @@ function resolveYearMonth(req: NextRequest): { year: number; month: number } {
 }
 
 // GET: 指定 (またはデフォルト当月) の担当者別実績。
-export async function GET(req: NextRequest) {
-  try {
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
+export const GET = withCaller(
+  async (req, { caller }) => {
+    try {
+      const { year, month } = resolveYearMonth(req);
 
-    const { year, month } = resolveYearMonth(req);
-
-    // 月次実績をテナント×年月でキャッシュする (認証は毎回検証済み)。過去月も予約の
-    // 事後修正 (status/日付/担当/金額) で変わりうるため、明示的な無効化を持たない本層では
-    // 短い一律 TTL に留め、編集が数分で反映されるようにする。
-    const result = await withCache(`staff-perf:${caller.tenantId}:${year}-${month}`, 600, () =>
-      getStaffMonthlyPerformance({ tenantId: caller.tenantId, year, month }),
-    );
-    return apiJson(result);
-  } catch (e: unknown) {
-    return apiInternalError(e, "staff-performance GET");
-  }
-}
+      // 月次実績をテナント×年月でキャッシュする (認証は毎回検証済み)。過去月も予約の
+      // 事後修正 (status/日付/担当/金額) で変わりうるため、明示的な無効化を持たない本層では
+      // 短い一律 TTL に留め、編集が数分で反映されるようにする。
+      const result = await withCache(`staff-perf:${caller.tenantId}:${year}-${month}`, 600, () =>
+        getStaffMonthlyPerformance({ tenantId: caller.tenantId, year, month }),
+      );
+      return apiJson(result);
+    } catch (e: unknown) {
+      return apiInternalError(e, "staff-performance GET");
+    }
+  },
+  { routeName: "admin/staff-performance GET" },
+);

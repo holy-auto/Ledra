@@ -8,20 +8,16 @@
  * - スコアは level に応じて自動付与 (intro=10, basic=20, standard=30, pro=50)
  */
 import { NextRequest } from "next/server";
-import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
-import { apiOk, apiUnauthorized, apiInternalError, apiNotFound, apiForbidden } from "@/lib/api/response";
+import { withCaller } from "@/lib/api/withCaller";
+import { apiOk, apiInternalError, apiNotFound, apiForbidden } from "@/lib/api/response";
 import { canUseFeature } from "@/lib/billing/planFeatures";
 import { scoreForLevel } from "@/lib/academy/scoring";
 
 export const dynamic = "force-dynamic";
 
-export async function POST(_req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
-  try {
-    const { id } = await ctx.params;
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
+export const POST = withCaller<{ id: string }>(
+  async (_req: NextRequest, { caller, supabase, params }) => {
+    const { id } = params;
 
     const { data: lesson } = await supabase
       .from("academy_lessons")
@@ -51,17 +47,13 @@ export async function POST(_req: NextRequest, ctx: { params: Promise<{ id: strin
     if (error) return apiInternalError(error);
 
     return apiOk({ message: "完了マークを記録しました", score_earned: score });
-  } catch (e: unknown) {
-    return apiInternalError(e);
-  }
-}
+  },
+  { routeName: "admin/academy/lessons/[id]/complete POST" },
+);
 
-export async function DELETE(_req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
-  try {
-    const { id } = await ctx.params;
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
+export const DELETE = withCaller<{ id: string }>(
+  async (_req: NextRequest, { caller, supabase, params }) => {
+    const { id } = params;
 
     const { error } = await supabase
       .from("academy_lesson_completions")
@@ -71,7 +63,6 @@ export async function DELETE(_req: NextRequest, ctx: { params: Promise<{ id: str
     if (error) return apiInternalError(error);
 
     return apiOk({ message: "完了マークを取り消しました" });
-  } catch (e: unknown) {
-    return apiInternalError(e);
-  }
-}
+  },
+  { routeName: "admin/academy/lessons/[id]/complete DELETE" },
+);

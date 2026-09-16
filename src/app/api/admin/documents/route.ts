@@ -1,19 +1,11 @@
-import { NextRequest, after } from "next/server";
-import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
+import { after } from "next/server";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
-import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
+import { requireMinRole } from "@/lib/auth/checkRole";
 import { DOC_TYPES, isDocumentEditable, isDocumentDeletable, type DocType } from "@/types/document";
-import { checkRateLimit } from "@/lib/api/rateLimit";
 import { parsePagination } from "@/lib/api/pagination";
 import { parseAmountParam } from "@/lib/api/amountFilter";
-import {
-  apiJson,
-  apiUnauthorized,
-  apiForbidden,
-  apiValidationError,
-  apiNotFound,
-  apiInternalError,
-} from "@/lib/api/response";
+import { apiJson, apiForbidden, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
+import { withCaller } from "@/lib/api/withCaller";
 import { documentCreateSchema, documentUpdateSchema, documentDeleteSchema } from "@/lib/validations/document";
 import { resolveBaseUrl } from "@/lib/url";
 import { insertDocWithRetry } from "@/lib/invoice/invoiceNumber";
@@ -26,12 +18,8 @@ import { sealDocumentOnFinalize, stripClientIntegritySeal, type SealableDocument
 export const dynamic = "force-dynamic";
 
 // ─── GET: 帳票一覧 ───
-export async function GET(req: NextRequest) {
-  try {
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
-
+export const GET = withCaller(
+  async (req, { caller }) => {
     const url = new URL(req.url);
     const docType = url.searchParams.get("doc_type") ?? "";
     const status = url.searchParams.get("status") ?? "";
@@ -154,21 +142,13 @@ export async function GET(req: NextRequest) {
         },
       }),
     });
-  } catch (e) {
-    return apiInternalError(e, "documents GET");
-  }
-}
+  },
+  { routeName: "documents GET" },
+);
 
 // ─── POST: 帳票作成 ───
-export async function POST(req: NextRequest) {
-  try {
-    const limited = await checkRateLimit(req, "general");
-    if (limited) return limited;
-
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
-
+export const POST = withCaller(
+  async (req, { caller }) => {
     const parsed = documentCreateSchema.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) {
       return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
@@ -337,18 +317,13 @@ export async function POST(req: NextRequest) {
     }
 
     return apiJson({ ok: true, document: data });
-  } catch (e) {
-    return apiInternalError(e, "documents POST");
-  }
-}
+  },
+  { rateLimit: "general", routeName: "documents POST" },
+);
 
 // ─── PUT: 帳票更新 ───
-export async function PUT(req: NextRequest) {
-  try {
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
-
+export const PUT = withCaller(
+  async (req, { caller, supabase }) => {
     const parsed = documentUpdateSchema.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) {
       return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
@@ -531,19 +506,13 @@ export async function PUT(req: NextRequest) {
     }
 
     return apiJson({ ok: true, document: data });
-  } catch (e) {
-    return apiInternalError(e, "documents PUT");
-  }
-}
+  },
+  { routeName: "documents PUT" },
+);
 
 // ─── DELETE: 帳票削除（下書きのみ） ───
-export async function DELETE(req: NextRequest) {
-  try {
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
-    if (!requireMinRole(caller, "staff")) return apiForbidden();
-
+export const DELETE = withCaller(
+  async (req, { caller, supabase }) => {
     const parsed = documentDeleteSchema.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) {
       return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
@@ -577,7 +546,6 @@ export async function DELETE(req: NextRequest) {
     }
 
     return apiJson({ ok: true, deleted: eligibleIds.length, skipped: docs.length - eligibleIds.length });
-  } catch (e) {
-    return apiInternalError(e, "documents DELETE");
-  }
-}
+  },
+  { minRole: "staff", routeName: "documents DELETE" },
+);

@@ -1,16 +1,7 @@
 import { NextRequest } from "next/server";
-import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
-import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
-import {
-  apiJson,
-  apiUnauthorized,
-  apiForbidden,
-  apiNotFound,
-  apiValidationError,
-  apiError,
-  apiInternalError,
-} from "@/lib/api/response";
+import { withCaller } from "@/lib/api/withCaller";
+import { apiJson, apiNotFound, apiValidationError, apiError, apiInternalError } from "@/lib/api/response";
 import { couponUseSchema } from "@/lib/validations/coupon";
 
 export const dynamic = "force-dynamic";
@@ -29,15 +20,10 @@ export const runtime = "nodejs";
  * compare-and-set + 補償ロールバック (used_count 加算失敗時に issue を戻す)
  * で整合性を担保する。
  */
-export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
-  try {
-    const { id } = await ctx.params;
+export const POST = withCaller<{ id: string }>(
+  async (req: NextRequest, { caller, params }) => {
+    const { id } = params;
     if (!id) return apiNotFound("coupon id required");
-
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
-    if (!requireMinRole(caller, "staff")) return apiForbidden();
 
     const parsed = couponUseSchema.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) {
@@ -128,7 +114,6 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     }
 
     return apiJson({ ok: true, issue: updatedIssue, coupon: coupon ?? null });
-  } catch (e) {
-    return apiInternalError(e, "coupons use POST");
-  }
-}
+  },
+  { minRole: "staff", routeName: "coupons use POST" },
+);

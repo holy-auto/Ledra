@@ -1,17 +1,8 @@
-import { NextRequest } from "next/server";
 import { z } from "zod";
-import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { resolveCallerWithRole, requirePermission } from "@/lib/auth/checkRole";
-import { checkRateLimit } from "@/lib/api/rateLimit";
-import {
-  apiJson,
-  apiUnauthorized,
-  apiNotFound,
-  apiValidationError,
-  apiInternalError,
-  apiForbidden,
-} from "@/lib/api/response";
 
+import { apiJson, apiNotFound, apiValidationError, apiInternalError } from "@/lib/api/response";
+
+import { withCaller } from "@/lib/api/withCaller";
 export const dynamic = "force-dynamic";
 
 /**
@@ -68,127 +59,117 @@ function resolveAuthorName(user: { email?: string | null; user_metadata?: Record
 }
 
 // ─── POST: 申し送りメモを 1 件追加 ───
-export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  try {
-    const limited = await checkRateLimit(req, "general");
-    if (limited) return limited;
+export const POST = withCaller<{ id: string }>(
+  async (req, { caller, supabase, params }) => {
+    try {
+      const { id } = params;
 
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
-    if (!requirePermission(caller, "reservations:edit")) return apiForbidden();
+      const parsed = handoffCreateSchema.safeParse(await req.json().catch(() => ({})));
+      if (!parsed.success) {
+        return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
+      }
+      const { content, priority } = parsed.data;
 
-    const { id } = await params;
+      // 既存の handoff_notes を取得 (予約存在確認も兼ねる)
+      const { data: reservation, error: fetchErr } = await supabase
+        .from("reservations")
+        .select("id, handoff_notes")
+        .eq("id", id)
+        .eq("tenant_id", caller.tenantId)
+        .maybeSingle();
 
-    const parsed = handoffCreateSchema.safeParse(await req.json().catch(() => ({})));
-    if (!parsed.success) {
-      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
+      if (fetchErr) return apiInternalError(fetchErr, "handoff fetch");
+      if (!reservation) return apiNotFound("not_found");
+
+      // 投稿者名はセッションユーザの metadata から解決 (admin 不要)
+      const { data: userRes } = await supabase.auth.getUser();
+      const authorName = userRes?.user
+        ? resolveAuthorName(userRes.user as { email?: string | null; user_metadata?: Record<string, unknown> | null })
+        : "スタッフ";
+
+      const existing = normalizeNotes((reservation as { handoff_notes?: unknown }).handoff_notes);
+
+      const newNote: HandoffNote = {
+        id: crypto.randomUUID(),
+        author_id: caller.userId,
+        author_name: authorName,
+        content,
+        created_at: new Date().toISOString(),
+        priority,
+      };
+
+      // 新しいものを末尾に push し、上限を超えたら古いもの (先頭) から落とす
+      const next = [...existing, newNote].slice(-MAX_NOTES);
+
+      const { data: updated, error: updateErr } = await supabase
+        .from("reservations")
+        .update({ handoff_notes: next, updated_at: new Date().toISOString() })
+        .eq("id", id)
+        .eq("tenant_id", caller.tenantId)
+        .select("id, handoff_notes")
+        .single();
+
+      if (updateErr) return apiInternalError(updateErr, "handoff update");
+
+      return apiJson({
+        ok: true,
+        note: newNote,
+        handoff_notes: normalizeNotes((updated as { handoff_notes?: unknown }).handoff_notes),
+      });
+    } catch (e: unknown) {
+      return apiInternalError(e, "reservations/handoff POST");
     }
-    const { content, priority } = parsed.data;
-
-    // 既存の handoff_notes を取得 (予約存在確認も兼ねる)
-    const { data: reservation, error: fetchErr } = await supabase
-      .from("reservations")
-      .select("id, handoff_notes")
-      .eq("id", id)
-      .eq("tenant_id", caller.tenantId)
-      .maybeSingle();
-
-    if (fetchErr) return apiInternalError(fetchErr, "handoff fetch");
-    if (!reservation) return apiNotFound("not_found");
-
-    // 投稿者名はセッションユーザの metadata から解決 (admin 不要)
-    const { data: userRes } = await supabase.auth.getUser();
-    const authorName = userRes?.user
-      ? resolveAuthorName(userRes.user as { email?: string | null; user_metadata?: Record<string, unknown> | null })
-      : "スタッフ";
-
-    const existing = normalizeNotes((reservation as { handoff_notes?: unknown }).handoff_notes);
-
-    const newNote: HandoffNote = {
-      id: crypto.randomUUID(),
-      author_id: caller.userId,
-      author_name: authorName,
-      content,
-      created_at: new Date().toISOString(),
-      priority,
-    };
-
-    // 新しいものを末尾に push し、上限を超えたら古いもの (先頭) から落とす
-    const next = [...existing, newNote].slice(-MAX_NOTES);
-
-    const { data: updated, error: updateErr } = await supabase
-      .from("reservations")
-      .update({ handoff_notes: next, updated_at: new Date().toISOString() })
-      .eq("id", id)
-      .eq("tenant_id", caller.tenantId)
-      .select("id, handoff_notes")
-      .single();
-
-    if (updateErr) return apiInternalError(updateErr, "handoff update");
-
-    return apiJson({
-      ok: true,
-      note: newNote,
-      handoff_notes: normalizeNotes((updated as { handoff_notes?: unknown }).handoff_notes),
-    });
-  } catch (e: unknown) {
-    return apiInternalError(e, "reservations/handoff POST");
-  }
-}
+  },
+  { rateLimit: "general", permission: "reservations:edit", routeName: "admin/reservations/[id]/handoff POST" },
+);
 
 // ─── DELETE: ?note_id= で 1 件削除 (自分が追加したもののみ) ───
-export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  try {
-    const limited = await checkRateLimit(req, "general");
-    if (limited) return limited;
+export const DELETE = withCaller<{ id: string }>(
+  async (req, { caller, supabase, params }) => {
+    try {
+      const { id } = params;
+      const noteId = new URL(req.url).searchParams.get("note_id")?.trim() ?? "";
+      if (!noteId) return apiValidationError("note_id is required");
 
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
-    if (!requirePermission(caller, "reservations:edit")) return apiForbidden();
+      const { data: reservation, error: fetchErr } = await supabase
+        .from("reservations")
+        .select("id, handoff_notes")
+        .eq("id", id)
+        .eq("tenant_id", caller.tenantId)
+        .maybeSingle();
 
-    const { id } = await params;
-    const noteId = new URL(req.url).searchParams.get("note_id")?.trim() ?? "";
-    if (!noteId) return apiValidationError("note_id is required");
+      if (fetchErr) return apiInternalError(fetchErr, "handoff delete fetch");
+      if (!reservation) return apiNotFound("not_found");
 
-    const { data: reservation, error: fetchErr } = await supabase
-      .from("reservations")
-      .select("id, handoff_notes")
-      .eq("id", id)
-      .eq("tenant_id", caller.tenantId)
-      .maybeSingle();
+      const existing = normalizeNotes((reservation as { handoff_notes?: unknown }).handoff_notes);
+      const target = existing.find((n) => n.id === noteId);
 
-    if (fetchErr) return apiInternalError(fetchErr, "handoff delete fetch");
-    if (!reservation) return apiNotFound("not_found");
+      if (!target) return apiNotFound("note_not_found");
+      // 自分の投稿のみ削除可 (他人の申し送りは削除させない)
+      if (target.author_id !== caller.userId) {
+        return apiValidationError("自分が追加した申し送りのみ削除できます。");
+      }
 
-    const existing = normalizeNotes((reservation as { handoff_notes?: unknown }).handoff_notes);
-    const target = existing.find((n) => n.id === noteId);
+      const next = existing.filter((n) => n.id !== noteId);
 
-    if (!target) return apiNotFound("note_not_found");
-    // 自分の投稿のみ削除可 (他人の申し送りは削除させない)
-    if (target.author_id !== caller.userId) {
-      return apiValidationError("自分が追加した申し送りのみ削除できます。");
+      const { data: updated, error: updateErr } = await supabase
+        .from("reservations")
+        .update({ handoff_notes: next, updated_at: new Date().toISOString() })
+        .eq("id", id)
+        .eq("tenant_id", caller.tenantId)
+        .select("id, handoff_notes")
+        .single();
+
+      if (updateErr) return apiInternalError(updateErr, "handoff delete update");
+
+      return apiJson({
+        ok: true,
+        deleted_id: noteId,
+        handoff_notes: normalizeNotes((updated as { handoff_notes?: unknown }).handoff_notes),
+      });
+    } catch (e: unknown) {
+      return apiInternalError(e, "reservations/handoff DELETE");
     }
-
-    const next = existing.filter((n) => n.id !== noteId);
-
-    const { data: updated, error: updateErr } = await supabase
-      .from("reservations")
-      .update({ handoff_notes: next, updated_at: new Date().toISOString() })
-      .eq("id", id)
-      .eq("tenant_id", caller.tenantId)
-      .select("id, handoff_notes")
-      .single();
-
-    if (updateErr) return apiInternalError(updateErr, "handoff delete update");
-
-    return apiJson({
-      ok: true,
-      deleted_id: noteId,
-      handoff_notes: normalizeNotes((updated as { handoff_notes?: unknown }).handoff_notes),
-    });
-  } catch (e: unknown) {
-    return apiInternalError(e, "reservations/handoff DELETE");
-  }
-}
+  },
+  { rateLimit: "general", permission: "reservations:edit", routeName: "admin/reservations/[id]/handoff DELETE" },
+);

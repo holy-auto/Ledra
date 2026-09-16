@@ -9,6 +9,7 @@
  * - 未マイグレーション (PGRST205 / does not exist) は warning + persisted=false で 200
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { NextRequest } from "next/server";
 
 const mocks = vi.hoisted(() => ({
   resolveCaller: vi.fn(),
@@ -49,7 +50,7 @@ vi.mock("@sentry/nextjs", () => ({ captureException: vi.fn() }));
 import { GET, PUT } from "@/app/api/admin/settings/ai-automation/route";
 
 function req(body: unknown) {
-  return new Request("http://localhost/x", {
+  return new NextRequest("http://localhost/x", {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -72,7 +73,7 @@ beforeEach(() => {
 describe("GET /api/admin/settings/ai-automation", () => {
   it("returns 401 when not authenticated", async () => {
     mocks.resolveCaller.mockResolvedValue(null);
-    const res = await GET();
+    const res = await GET(new NextRequest("http://localhost/api/admin/settings/ai-automation"));
     expect(res.status).toBe(401);
   });
 
@@ -90,7 +91,7 @@ describe("GET /api/admin/settings/ai-automation", () => {
       sourcePolicies: { photos: false },
       loadedFromDb: true,
     });
-    const res = await GET();
+    const res = await GET(new NextRequest("http://localhost/api/admin/settings/ai-automation"));
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.settings.confidenceThreshold).toBe(0.7);

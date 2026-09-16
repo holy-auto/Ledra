@@ -1,8 +1,7 @@
 import { z } from "zod";
-import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { logCertificateAction, getRequestMeta } from "@/lib/audit/certificateLog";
-import { resolveCallerWithRole, requireMinRole, requirePermission } from "@/lib/auth/checkRole";
+import { requireMinRole, requirePermission } from "@/lib/auth/checkRole";
 import { evaluateCertificateActivationGate, firstGateFailureMessage } from "@/lib/certificates/activationGate";
 import { certificateMileageKm, CERTIFICATE_MILEAGE_REQUIRED_MESSAGE } from "@/lib/maintenance/mileage";
 import { triggerCertificateIssued } from "@/lib/certificates/issueHooks";
@@ -10,14 +9,8 @@ import { enqueueCertificateAnchor } from "@/lib/anchoring/certificateAnchorServi
 import { getActorAssurance } from "@/lib/auth/mfa";
 import { describeAssurance } from "@/lib/certificates/issuerAssurance";
 import { requireOperationAssertion } from "@/lib/webauthn/gate";
-import {
-  apiOk,
-  apiInternalError,
-  apiUnauthorized,
-  apiValidationError,
-  apiNotFound,
-  apiForbidden,
-} from "@/lib/api/response";
+import { apiOk, apiInternalError, apiValidationError, apiNotFound, apiForbidden } from "@/lib/api/response";
+import { withCaller } from "@/lib/api/withCaller";
 
 export const dynamic = "force-dynamic";
 
@@ -57,22 +50,13 @@ const TRANSITIONS: Record<string, { to: CertStatus; minRole: "staff" | "admin" }
  * PUT /api/admin/certificates/status
  * Body: { public_id: string, status: "active" | "void" | "draft" }
  */
-export async function PUT(req: Request) {
-  try {
+export const PUT = withCaller(
+  async (req, { caller, supabase }) => {
     const parsed = certStatusSchema.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) {
       return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
     }
     const { public_id: publicId, status: newStatus } = parsed.data;
-
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
-
-    // Base minimum role: staff
-    if (!requireMinRole(caller, "staff")) {
-      return apiForbidden("この操作を行う権限がありません。");
-    }
 
     const { admin } = createTenantScopedAdmin(caller.tenantId);
 
@@ -219,7 +203,6 @@ export async function PUT(req: Request) {
     }
 
     return apiOk({ certificate: updated });
-  } catch (e) {
-    return apiInternalError(e, "admin/certificates/status");
-  }
-}
+  },
+  { minRole: "staff", routeName: "admin/certificates/status PUT" },
+);

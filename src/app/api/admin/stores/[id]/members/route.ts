@@ -1,15 +1,8 @@
 import { NextRequest } from "next/server";
+import { withCaller } from "@/lib/api/withCaller";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
-import { resolveCallerWithRole, requirePermission } from "@/lib/auth/checkRole";
-import {
-  apiJson,
-  apiUnauthorized,
-  apiForbidden,
-  apiValidationError,
-  apiNotFound,
-  apiInternalError,
-} from "@/lib/api/response";
+import { apiJson, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
 import { storeMemberAddSchema, storeMemberDeleteSchema } from "@/lib/validations/store";
 
 export const dynamic = "force-dynamic";
@@ -25,14 +18,9 @@ async function storeInTenant(
 }
 
 // GET /api/admin/stores/:id/members — 店舗担当者一覧（表示名・メール付き）
-export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  try {
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
-    if (!requirePermission(caller, "stores:view")) return apiForbidden();
-
-    const { id: storeId } = await params;
+export const GET = withCaller<{ id: string }>(
+  async (_req: NextRequest, { caller, supabase, params }) => {
+    const { id: storeId } = params;
     if (!(await storeInTenant(supabase, storeId, caller.tenantId))) return apiNotFound("店舗が見つかりません。");
 
     const { admin } = createTenantScopedAdmin(caller.tenantId);
@@ -63,20 +51,14 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     });
 
     return apiJson({ members });
-  } catch (e) {
-    return apiInternalError(e, "store members GET");
-  }
-}
+  },
+  { permission: "stores:view", routeName: "store members GET" },
+);
 
 // POST /api/admin/stores/:id/members — 担当者を割当（役割変更は同じ user_id で再送信）
-export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  try {
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
-    if (!requirePermission(caller, "stores:manage")) return apiForbidden();
-
-    const { id: storeId } = await params;
+export const POST = withCaller<{ id: string }>(
+  async (req: NextRequest, { caller, supabase, params }) => {
+    const { id: storeId } = params;
     if (!(await storeInTenant(supabase, storeId, caller.tenantId))) return apiNotFound("店舗が見つかりません。");
 
     const parsed = storeMemberAddSchema.safeParse(await req.json().catch(() => ({})));
@@ -105,20 +87,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     if (error) return apiInternalError(error, "store members POST");
 
     return apiJson({ ok: true });
-  } catch (e) {
-    return apiInternalError(e, "store members POST");
-  }
-}
+  },
+  { permission: "stores:manage", routeName: "store members POST" },
+);
 
 // DELETE /api/admin/stores/:id/members — 担当者の割当解除
-export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  try {
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
-    if (!requirePermission(caller, "stores:manage")) return apiForbidden();
-
-    const { id: storeId } = await params;
+export const DELETE = withCaller<{ id: string }>(
+  async (req: NextRequest, { caller, supabase, params }) => {
+    const { id: storeId } = params;
     if (!(await storeInTenant(supabase, storeId, caller.tenantId))) return apiNotFound("店舗が見つかりません。");
 
     const parsed = storeMemberDeleteSchema.safeParse(await req.json().catch(() => ({})));
@@ -136,7 +112,6 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     if (error) return apiInternalError(error, "store members DELETE");
 
     return apiJson({ ok: true });
-  } catch (e) {
-    return apiInternalError(e, "store members DELETE");
-  }
-}
+  },
+  { permission: "stores:manage", routeName: "store members DELETE" },
+);

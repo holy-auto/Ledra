@@ -10,12 +10,12 @@
  */
 
 import { z } from "zod";
-import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
-import { resolveCallerWithRole, requirePermission } from "@/lib/auth/checkRole";
-import { apiOk, apiUnauthorized, apiForbidden, apiValidationError, apiInternalError } from "@/lib/api/response";
+
+import { apiOk, apiValidationError, apiInternalError } from "@/lib/api/response";
 import { listBuiltinTopics } from "@/lib/email/templates";
 
+import { withCaller } from "@/lib/api/withCaller";
 export const dynamic = "force-dynamic";
 
 interface TemplateRow {
@@ -36,77 +36,73 @@ const upsertSchema = z.object({
   body_text: z.string().max(50_000).nullable().optional(),
 });
 
-export async function GET() {
-  try {
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
-    if (!requirePermission(caller, "settings:view")) return apiForbidden();
+export const GET = withCaller(
+  async (_req, { caller }) => {
+    try {
+      const { admin } = createTenantScopedAdmin(caller.tenantId);
+      const { data, error } = await admin
+        .from("tenant_email_templates")
+        .select("id, topic, subject, body_html, body_text, is_active, created_at, updated_at")
+        .eq("tenant_id", caller.tenantId)
+        .eq("is_active", true)
+        .order("topic", { ascending: true });
 
-    const { admin } = createTenantScopedAdmin(caller.tenantId);
-    const { data, error } = await admin
-      .from("tenant_email_templates")
-      .select("id, topic, subject, body_html, body_text, is_active, created_at, updated_at")
-      .eq("tenant_id", caller.tenantId)
-      .eq("is_active", true)
-      .order("topic", { ascending: true });
+      if (error) return apiInternalError(error, "integrations/email-templates GET");
 
-    if (error) return apiInternalError(error, "integrations/email-templates GET");
+      const overrides = (data ?? []) as TemplateRow[];
+      const overridden = new Set(overrides.map((r) => r.topic));
+      const available = listBuiltinTopics();
 
-    const overrides = (data ?? []) as TemplateRow[];
-    const overridden = new Set(overrides.map((r) => r.topic));
-    const available = listBuiltinTopics();
-
-    return apiOk({
-      overrides,
-      available_topics: available,
-      missing: available.filter((t) => !overridden.has(t)),
-    });
-  } catch (e) {
-    return apiInternalError(e, "integrations/email-templates GET");
-  }
-}
-
-export async function POST(req: Request) {
-  try {
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
-    if (!requirePermission(caller, "settings:edit")) return apiForbidden();
-
-    const parsed = upsertSchema.safeParse(await req.json().catch(() => ({})));
-    if (!parsed.success) {
-      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
+      return apiOk({
+        overrides,
+        available_topics: available,
+        missing: available.filter((t) => !overridden.has(t)),
+      });
+    } catch (e) {
+      return apiInternalError(e, "integrations/email-templates GET");
     }
+  },
+  { permission: "settings:view", routeName: "integrations/email-templates GET" },
+);
 
-    const { admin } = createTenantScopedAdmin(caller.tenantId);
+export const POST = withCaller(
+  async (req, { caller }) => {
+    try {
+      const parsed = upsertSchema.safeParse(await req.json().catch(() => ({})));
+      if (!parsed.success) {
+        return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
+      }
 
-    // Deactivate any existing active row for this topic (the partial unique
-    // index enforces only one active per topic — soft-deactivating preserves
-    // history for audit).
-    await admin
-      .from("tenant_email_templates")
-      .update({ is_active: false })
-      .eq("tenant_id", caller.tenantId)
-      .eq("topic", parsed.data.topic)
-      .eq("is_active", true);
+      const { admin } = createTenantScopedAdmin(caller.tenantId);
 
-    const { data, error } = await admin
-      .from("tenant_email_templates")
-      .insert({
-        tenant_id: caller.tenantId,
-        topic: parsed.data.topic,
-        subject: parsed.data.subject,
-        body_html: parsed.data.body_html,
-        body_text: parsed.data.body_text ?? null,
-        is_active: true,
-      })
-      .select("id, topic, subject, body_html, body_text, is_active, created_at, updated_at")
-      .single();
+      // Deactivate any existing active row for this topic (the partial unique
+      // index enforces only one active per topic — soft-deactivating preserves
+      // history for audit).
+      await admin
+        .from("tenant_email_templates")
+        .update({ is_active: false })
+        .eq("tenant_id", caller.tenantId)
+        .eq("topic", parsed.data.topic)
+        .eq("is_active", true);
 
-    if (error) return apiInternalError(error, "integrations/email-templates POST");
-    return apiOk({ template: data as TemplateRow });
-  } catch (e) {
-    return apiInternalError(e, "integrations/email-templates POST");
-  }
-}
+      const { data, error } = await admin
+        .from("tenant_email_templates")
+        .insert({
+          tenant_id: caller.tenantId,
+          topic: parsed.data.topic,
+          subject: parsed.data.subject,
+          body_html: parsed.data.body_html,
+          body_text: parsed.data.body_text ?? null,
+          is_active: true,
+        })
+        .select("id, topic, subject, body_html, body_text, is_active, created_at, updated_at")
+        .single();
+
+      if (error) return apiInternalError(error, "integrations/email-templates POST");
+      return apiOk({ template: data as TemplateRow });
+    } catch (e) {
+      return apiInternalError(e, "integrations/email-templates POST");
+    }
+  },
+  { permission: "settings:edit", routeName: "integrations/email-templates POST" },
+);

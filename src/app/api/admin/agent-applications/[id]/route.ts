@@ -1,31 +1,18 @@
 import { createPlatformScopedAdmin } from "@/lib/supabase/admin";
-import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
+import { NextRequest } from "next/server";
+import { withCaller } from "@/lib/api/withCaller";
 import { isPlatformAdmin } from "@/lib/auth/platformAdmin";
-import {
-  apiJson,
-  apiUnauthorized,
-  apiForbidden,
-  apiInternalError,
-  apiNotFound,
-  apiValidationError,
-} from "@/lib/api/response";
+import { apiJson, apiForbidden, apiInternalError, apiNotFound, apiValidationError } from "@/lib/api/response";
 import { notifyApplicationApproved, notifyApplicationRejected } from "@/lib/agent/email";
 import crypto from "crypto";
-
-type RouteContext = { params: Promise<{ id: string }> };
 
 /**
  * GET /api/admin/agent-applications/[id]
  * Get full details of a single application.
  */
-export async function GET(_request: NextRequest, ctx: RouteContext) {
-  try {
-    const { id } = await ctx.params;
-    const supabase = await createClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
+export const GET = withCaller<{ id: string }>(
+  async (_request: NextRequest, { caller, supabase, params }) => {
+    const { id } = params;
     if (!isPlatformAdmin(caller)) return apiForbidden();
 
     const admin = createPlatformScopedAdmin(
@@ -56,21 +43,17 @@ export async function GET(_request: NextRequest, ctx: RouteContext) {
     );
 
     return apiJson({ application: { ...data, documents: docsWithUrls } });
-  } catch (e) {
-    return apiInternalError(e, "agent-applications [id] GET");
-  }
-}
+  },
+  { routeName: "agent-applications/[id] GET" },
+);
 
 /**
  * PUT /api/admin/agent-applications/[id]
  * Update application status: under_review, approved, rejected.
  */
-export async function PUT(request: NextRequest, ctx: RouteContext) {
-  try {
-    const { id } = await ctx.params;
-    const supabase = await createClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
+export const PUT = withCaller<{ id: string }>(
+  async (request: NextRequest, { caller, supabase, params }) => {
+    const { id } = params;
     if (!isPlatformAdmin(caller)) return apiForbidden();
 
     const body = await request.json();
@@ -235,7 +218,6 @@ export async function PUT(request: NextRequest, ctx: RouteContext) {
     }
 
     return apiValidationError("invalid status. Must be: under_review, approved, rejected");
-  } catch (e) {
-    return apiInternalError(e, "agent-applications [id] PUT");
-  }
-}
+  },
+  { routeName: "agent-applications/[id] PUT" },
+);

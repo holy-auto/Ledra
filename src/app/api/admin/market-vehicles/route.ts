@@ -1,22 +1,13 @@
-import { NextRequest, NextResponse } from "next/server";
-import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { resolveCallerWithRole, requirePermission } from "@/lib/auth/checkRole";
 import { escapeIlike } from "@/lib/sanitize";
 import { enforceBilling } from "@/lib/billing/guard";
-import {
-  apiJson,
-  apiUnauthorized,
-  apiValidationError,
-  apiNotFound,
-  apiInternalError,
-  apiForbidden,
-} from "@/lib/api/response";
+import { apiJson, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
 import {
   marketVehicleCreateSchema,
   marketVehicleDeleteSchema,
   marketVehicleUpdateSchema,
 } from "@/lib/validations/market";
 
+import { withCaller } from "@/lib/api/withCaller";
 const MV_COLS =
   "id, tenant_id, maker, model, grade, year, mileage, color, color_code, plate_number, chassis_number, engine_type, displacement, transmission, drive_type, fuel_type, door_count, seating_capacity, body_type, inspection_date, repair_history, condition_grade, condition_note, asking_price, wholesale_price, cost_price, supplier_name, acquisition_date, description, features, status, listed_at, created_at, updated_at";
 const MVI_COLS = "id, vehicle_id, tenant_id, storage_path, file_name, content_type, file_size, sort_order, created_at";
@@ -36,279 +27,273 @@ type MarketVehicleImageRow = {
 export const dynamic = "force-dynamic";
 
 // ─── GET: BtoB中古車在庫一覧 ───
-export async function GET(req: NextRequest) {
-  try {
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
+export const GET = withCaller(
+  async (req, { caller, supabase }) => {
+    try {
+      const url = new URL(req.url);
+      const singleId = url.searchParams.get("id") ?? "";
+      const status = url.searchParams.get("status") ?? "";
+      const maker = url.searchParams.get("maker") ?? "";
+      const bodyType = url.searchParams.get("body_type") ?? "";
+      const search = url.searchParams.get("search") ?? "";
+      const isPublic = url.searchParams.get("public") === "true";
 
-    const url = new URL(req.url);
-    const singleId = url.searchParams.get("id") ?? "";
-    const status = url.searchParams.get("status") ?? "";
-    const maker = url.searchParams.get("maker") ?? "";
-    const bodyType = url.searchParams.get("body_type") ?? "";
-    const search = url.searchParams.get("search") ?? "";
-    const isPublic = url.searchParams.get("public") === "true";
-
-    // Single vehicle by ID
-    if (singleId) {
-      let q = supabase.from("market_vehicles").select(MV_COLS).eq("id", singleId);
-      if (!isPublic) q = q.eq("tenant_id", caller.tenantId);
-      else q = q.eq("status", "listed");
-      const { data: vehicles, error } = await q;
-      if (error) {
-        return apiInternalError(error, "market-vehicles single fetch");
+      // Single vehicle by ID
+      if (singleId) {
+        let q = supabase.from("market_vehicles").select(MV_COLS).eq("id", singleId);
+        if (!isPublic) q = q.eq("tenant_id", caller.tenantId);
+        else q = q.eq("status", "listed");
+        const { data: vehicles, error } = await q;
+        if (error) {
+          return apiInternalError(error, "market-vehicles single fetch");
+        }
+        // Fetch images
+        let imgs: MarketVehicleImageRow[] = [];
+        if (vehicles && vehicles.length > 0) {
+          const { data } = await supabase
+            .from("market_vehicle_images")
+            .select(MVI_COLS)
+            .eq("vehicle_id", singleId)
+            .order("sort_order", { ascending: true })
+            .returns<MarketVehicleImageRow[]>();
+          imgs = data ?? [];
+        }
+        const enriched = (vehicles ?? []).map((v) => ({ ...v, images: imgs }));
+        return apiJson({ vehicles: enriched, stats: { total: enriched.length, listed: 0, draft: 0 } });
       }
-      // Fetch images
-      let imgs: MarketVehicleImageRow[] = [];
-      if (vehicles && vehicles.length > 0) {
-        const { data } = await supabase
+
+      let query;
+
+      if (isPublic) {
+        // Cross-tenant: only listed vehicles
+        query = supabase
+          .from("market_vehicles")
+          .select(MV_COLS)
+          .eq("status", "listed")
+          .order("listed_at", { ascending: false });
+      } else {
+        // Tenant's own vehicles: show all statuses
+        query = supabase
+          .from("market_vehicles")
+          .select(MV_COLS)
+          .eq("tenant_id", caller.tenantId)
+          .order("created_at", { ascending: false });
+
+        if (status && status !== "all") query = query.eq("status", status);
+      }
+
+      if (maker) query = query.eq("maker", maker);
+      if (bodyType) query = query.eq("body_type", bodyType);
+      if (search) {
+        const sq = escapeIlike(search);
+        query = query.or(`maker.ilike.%${sq}%,model.ilike.%${sq}%`);
+      }
+
+      const { data: vehicles, error } = await query;
+      if (error) {
+        return apiInternalError(error, "market-vehicles list");
+      }
+
+      // Fetch images for all vehicles
+      const vehicleIds = (vehicles ?? []).map((v) => v.id);
+      const imagesMap: Record<string, MarketVehicleImageRow[]> = {};
+
+      if (vehicleIds.length > 0) {
+        const { data: images } = await supabase
           .from("market_vehicle_images")
           .select(MVI_COLS)
-          .eq("vehicle_id", singleId)
+          .in("vehicle_id", vehicleIds)
           .order("sort_order", { ascending: true })
           .returns<MarketVehicleImageRow[]>();
-        imgs = data ?? [];
+
+        (images ?? []).forEach((img) => {
+          if (!imagesMap[img.vehicle_id]) imagesMap[img.vehicle_id] = [];
+          imagesMap[img.vehicle_id].push(img);
+        });
       }
-      const enriched = (vehicles ?? []).map((v) => ({ ...v, images: imgs }));
-      return apiJson({ vehicles: enriched, stats: { total: enriched.length, listed: 0, draft: 0 } });
-    }
 
-    let query;
+      const enriched = (vehicles ?? []).map((v) => ({
+        ...v,
+        images: imagesMap[v.id] ?? [],
+      }));
 
-    if (isPublic) {
-      // Cross-tenant: only listed vehicles
-      query = supabase
-        .from("market_vehicles")
-        .select(MV_COLS)
-        .eq("status", "listed")
-        .order("listed_at", { ascending: false });
-    } else {
-      // Tenant's own vehicles: show all statuses
-      query = supabase
-        .from("market_vehicles")
-        .select(MV_COLS)
-        .eq("tenant_id", caller.tenantId)
-        .order("created_at", { ascending: false });
+      // Stats (only for tenant's own vehicles)
+      const allVehicles = isPublic ? enriched : enriched;
+      const total = allVehicles.length;
+      const listed = allVehicles.filter((v) => v.status === "listed").length;
+      const draft = allVehicles.filter((v) => v.status === "draft").length;
 
-      if (status && status !== "all") query = query.eq("status", status);
-    }
-
-    if (maker) query = query.eq("maker", maker);
-    if (bodyType) query = query.eq("body_type", bodyType);
-    if (search) {
-      const sq = escapeIlike(search);
-      query = query.or(`maker.ilike.%${sq}%,model.ilike.%${sq}%`);
-    }
-
-    const { data: vehicles, error } = await query;
-    if (error) {
-      return apiInternalError(error, "market-vehicles list");
-    }
-
-    // Fetch images for all vehicles
-    const vehicleIds = (vehicles ?? []).map((v) => v.id);
-    const imagesMap: Record<string, MarketVehicleImageRow[]> = {};
-
-    if (vehicleIds.length > 0) {
-      const { data: images } = await supabase
-        .from("market_vehicle_images")
-        .select(MVI_COLS)
-        .in("vehicle_id", vehicleIds)
-        .order("sort_order", { ascending: true })
-        .returns<MarketVehicleImageRow[]>();
-
-      (images ?? []).forEach((img) => {
-        if (!imagesMap[img.vehicle_id]) imagesMap[img.vehicle_id] = [];
-        imagesMap[img.vehicle_id].push(img);
+      return apiJson({
+        vehicles: enriched,
+        stats: { total, listed, draft },
       });
+    } catch (e: unknown) {
+      return apiInternalError(e, "market-vehicles list");
     }
-
-    const enriched = (vehicles ?? []).map((v) => ({
-      ...v,
-      images: imagesMap[v.id] ?? [],
-    }));
-
-    // Stats (only for tenant's own vehicles)
-    const allVehicles = isPublic ? enriched : enriched;
-    const total = allVehicles.length;
-    const listed = allVehicles.filter((v) => v.status === "listed").length;
-    const draft = allVehicles.filter((v) => v.status === "draft").length;
-
-    return apiJson({
-      vehicles: enriched,
-      stats: { total, listed, draft },
-    });
-  } catch (e: unknown) {
-    return apiInternalError(e, "market-vehicles list");
-  }
-}
+  },
+  { routeName: "admin/market-vehicles GET" },
+);
 
 // ─── POST: 中古車登録 ───
-export async function POST(req: NextRequest) {
-  try {
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
-    if (!requirePermission(caller, "market:create")) return apiForbidden();
+export const POST = withCaller(
+  async (req, { caller, supabase }) => {
+    try {
+      const deny = await enforceBilling(req, {
+        minPlan: "standard",
+        action: "market_create",
+        tenantId: caller.tenantId,
+      });
+      if (deny) return deny;
 
-    const deny = await enforceBilling(req, {
-      minPlan: "standard",
-      action: "market_create",
-      tenantId: caller.tenantId,
-    });
-    if (deny) return deny;
+      const parsed = marketVehicleCreateSchema.safeParse(await req.json().catch(() => ({})));
+      if (!parsed.success) {
+        return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
+      }
 
-    const parsed = marketVehicleCreateSchema.safeParse(await req.json().catch(() => ({})));
-    if (!parsed.success) {
-      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
+      const row: Record<string, unknown> = {
+        id: crypto.randomUUID(),
+        tenant_id: caller.tenantId,
+        ...parsed.data,
+      };
+
+      // If status is 'listed', set listed_at
+      if (row.status === "listed") {
+        row.listed_at = new Date().toISOString();
+      }
+
+      const { data, error } = await supabase.from("market_vehicles").insert(row).select(MV_COLS).single();
+      if (error) {
+        return apiInternalError(error, "market-vehicles insert");
+      }
+
+      return apiJson({ ok: true, vehicle: data });
+    } catch (e: unknown) {
+      return apiInternalError(e, "market-vehicles create");
     }
-
-    const row: Record<string, unknown> = {
-      id: crypto.randomUUID(),
-      tenant_id: caller.tenantId,
-      ...parsed.data,
-    };
-
-    // If status is 'listed', set listed_at
-    if (row.status === "listed") {
-      row.listed_at = new Date().toISOString();
-    }
-
-    const { data, error } = await supabase.from("market_vehicles").insert(row).select(MV_COLS).single();
-    if (error) {
-      return apiInternalError(error, "market-vehicles insert");
-    }
-
-    return apiJson({ ok: true, vehicle: data });
-  } catch (e: unknown) {
-    return apiInternalError(e, "market-vehicles create");
-  }
-}
+  },
+  { permission: "market:create", routeName: "admin/market-vehicles POST" },
+);
 
 // ─── PUT: 中古車更新 ───
-export async function PUT(req: NextRequest) {
-  try {
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
-    if (!requirePermission(caller, "market:edit")) return apiForbidden();
+export const PUT = withCaller(
+  async (req, { caller, supabase }) => {
+    try {
+      const deny = await enforceBilling(req, {
+        minPlan: "standard",
+        action: "market_update",
+        tenantId: caller.tenantId,
+      });
+      if (deny) return deny;
 
-    const deny = await enforceBilling(req, {
-      minPlan: "standard",
-      action: "market_update",
-      tenantId: caller.tenantId,
-    });
-    if (deny) return deny;
+      const parsed = marketVehicleUpdateSchema.safeParse(await req.json().catch(() => ({})));
+      if (!parsed.success) {
+        return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
+      }
+      const { id, ...fields } = parsed.data;
 
-    const parsed = marketVehicleUpdateSchema.safeParse(await req.json().catch(() => ({})));
-    if (!parsed.success) {
-      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
+      // Check current status for listed_at logic
+      const { data: existing } = await supabase
+        .from("market_vehicles")
+        .select("status")
+        .eq("id", id)
+        .eq("tenant_id", caller.tenantId)
+        .single();
+
+      if (!existing) return apiNotFound("not_found");
+
+      const updates: Record<string, unknown> = {
+        ...fields,
+        updated_at: new Date().toISOString(),
+      };
+
+      // When status changes to 'listed', set listed_at
+      if (fields.status === "listed" && existing.status !== "listed") {
+        updates.listed_at = new Date().toISOString();
+      }
+
+      const { data, error } = await supabase
+        .from("market_vehicles")
+        .update(updates)
+        .eq("id", id)
+        .eq("tenant_id", caller.tenantId)
+        .select(MV_COLS)
+        .single();
+
+      if (error) {
+        return apiInternalError(error, "market-vehicles update");
+      }
+
+      return apiJson({ ok: true, vehicle: data });
+    } catch (e: unknown) {
+      return apiInternalError(e, "market-vehicles update");
     }
-    const { id, ...fields } = parsed.data;
-
-    // Check current status for listed_at logic
-    const { data: existing } = await supabase
-      .from("market_vehicles")
-      .select("status")
-      .eq("id", id)
-      .eq("tenant_id", caller.tenantId)
-      .single();
-
-    if (!existing) return apiNotFound("not_found");
-
-    const updates: Record<string, unknown> = {
-      ...fields,
-      updated_at: new Date().toISOString(),
-    };
-
-    // When status changes to 'listed', set listed_at
-    if (fields.status === "listed" && existing.status !== "listed") {
-      updates.listed_at = new Date().toISOString();
-    }
-
-    const { data, error } = await supabase
-      .from("market_vehicles")
-      .update(updates)
-      .eq("id", id)
-      .eq("tenant_id", caller.tenantId)
-      .select(MV_COLS)
-      .single();
-
-    if (error) {
-      return apiInternalError(error, "market-vehicles update");
-    }
-
-    return apiJson({ ok: true, vehicle: data });
-  } catch (e: unknown) {
-    return apiInternalError(e, "market-vehicles update");
-  }
-}
+  },
+  { permission: "market:edit", routeName: "admin/market-vehicles PUT" },
+);
 
 // ─── DELETE: 中古車削除（下書きのみ） ───
-export async function DELETE(req: NextRequest) {
-  try {
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
-    // 削除は admin 以上（代表判断 2026-09-04）。顧客削除と同じ理由なので、
-    // 作成・編集（staff）とは分ける。
-    if (!requirePermission(caller, "market:delete")) return apiForbidden();
+export const DELETE = withCaller(
+  async (req, { caller, supabase }) => {
+    try {
+      // 削除は admin 以上（代表判断 2026-09-04）。顧客削除と同じ理由なので、
+      // 作成・編集（staff）とは分ける。
 
-    const deny = await enforceBilling(req, {
-      minPlan: "standard",
-      action: "market_delete",
-      tenantId: caller.tenantId,
-    });
-    if (deny) return deny;
+      const deny = await enforceBilling(req, {
+        minPlan: "standard",
+        action: "market_delete",
+        tenantId: caller.tenantId,
+      });
+      if (deny) return deny;
 
-    const parsed = marketVehicleDeleteSchema.safeParse(await req.json().catch(() => ({})));
-    if (!parsed.success) {
-      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
-    }
-    const { id } = parsed.data;
-
-    // Fetch vehicle to check status
-    const { data: vehicle } = await supabase
-      .from("market_vehicles")
-      .select("status")
-      .eq("id", id)
-      .eq("tenant_id", caller.tenantId)
-      .single();
-
-    if (!vehicle) return apiNotFound("not_found");
-
-    if (vehicle.status !== "draft") {
-      return apiValidationError("下書きステータスの車両のみ削除できます。");
-    }
-
-    // 画像のパスは先に読むが、**消すのは車両行を消せてから**。
-    // 逆順だと、車両の削除が失敗した（FK 違反・RLS 不一致など）ときに
-    // 画像だけが復元不能に消え、車両は一覧に残る。
-    const { data: images } = await supabase
-      .from("market_vehicle_images")
-      .select("storage_path")
-      .eq("vehicle_id", id)
-      .eq("tenant_id", caller.tenantId);
-
-    // Delete the vehicle
-    const { error } = await supabase.from("market_vehicles").delete().eq("id", id).eq("tenant_id", caller.tenantId);
-
-    if (error) {
-      return apiInternalError(error, "market-vehicles delete");
-    }
-
-    // ここから先の後片付けは、失敗しても車両の削除自体は成立している。
-    if (images && images.length > 0) {
-      const paths = images.map((img) => img.storage_path).filter(Boolean);
-      if (paths.length > 0) {
-        await supabase.storage.from("market-vehicle-images").remove(paths);
+      const parsed = marketVehicleDeleteSchema.safeParse(await req.json().catch(() => ({})));
+      if (!parsed.success) {
+        return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
       }
-      await supabase.from("market_vehicle_images").delete().eq("vehicle_id", id).eq("tenant_id", caller.tenantId);
-    }
+      const { id } = parsed.data;
 
-    return apiJson({ ok: true });
-  } catch (e: unknown) {
-    return apiInternalError(e, "market-vehicles delete");
-  }
-}
+      // Fetch vehicle to check status
+      const { data: vehicle } = await supabase
+        .from("market_vehicles")
+        .select("status")
+        .eq("id", id)
+        .eq("tenant_id", caller.tenantId)
+        .single();
+
+      if (!vehicle) return apiNotFound("not_found");
+
+      if (vehicle.status !== "draft") {
+        return apiValidationError("下書きステータスの車両のみ削除できます。");
+      }
+
+      // 画像のパスは先に読むが、**消すのは車両行を消せてから**。
+      // 逆順だと、車両の削除が失敗した（FK 違反・RLS 不一致など）ときに
+      // 画像だけが復元不能に消え、車両は一覧に残る。
+      const { data: images } = await supabase
+        .from("market_vehicle_images")
+        .select("storage_path")
+        .eq("vehicle_id", id)
+        .eq("tenant_id", caller.tenantId);
+
+      // Delete the vehicle
+      const { error } = await supabase.from("market_vehicles").delete().eq("id", id).eq("tenant_id", caller.tenantId);
+
+      if (error) {
+        return apiInternalError(error, "market-vehicles delete");
+      }
+
+      // ここから先の後片付けは、失敗しても車両の削除自体は成立している。
+      if (images && images.length > 0) {
+        const paths = images.map((img) => img.storage_path).filter(Boolean);
+        if (paths.length > 0) {
+          await supabase.storage.from("market-vehicle-images").remove(paths);
+        }
+        await supabase.from("market_vehicle_images").delete().eq("vehicle_id", id).eq("tenant_id", caller.tenantId);
+      }
+
+      return apiJson({ ok: true });
+    } catch (e: unknown) {
+      return apiInternalError(e, "market-vehicles delete");
+    }
+  },
+  { permission: "market:delete", routeName: "admin/market-vehicles DELETE" },
+);

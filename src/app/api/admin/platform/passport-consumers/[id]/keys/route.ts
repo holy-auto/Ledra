@@ -5,20 +5,11 @@
  * value is returned ONCE in this response and is unrecoverable
  * afterwards (Stripe-style). Only the prefix + hash live in the DB.
  */
-import { NextRequest } from "next/server";
 import { z } from "zod";
-import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
+import { withCaller } from "@/lib/api/withCaller";
 import { isPlatformAdmin } from "@/lib/auth/platformAdmin";
 import { createPlatformScopedAdmin } from "@/lib/supabase/admin";
-import {
-  apiJson,
-  apiUnauthorized,
-  apiForbidden,
-  apiNotFound,
-  apiValidationError,
-  apiInternalError,
-} from "@/lib/api/response";
+import { apiJson, apiForbidden, apiNotFound, apiValidationError, apiInternalError } from "@/lib/api/response";
 import { generatePassportApiKey } from "@/lib/passport/api/keys";
 
 export const dynamic = "force-dynamic";
@@ -36,12 +27,9 @@ const issueSchema = z.object({
     .refine((v) => !v || new Date(v).getTime() > Date.now(), { message: "expires_at_in_past" }),
 });
 
-export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
-  try {
-    const { id } = await ctx.params;
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
+export const POST = withCaller<{ id: string }>(
+  async (req, { caller, params }) => {
+    const { id } = params;
     if (!isPlatformAdmin(caller)) return apiForbidden();
 
     const parsed = issueSchema.safeParse(await req.json().catch(() => ({})));
@@ -87,7 +75,6 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       key: generated.rawKey, // shown once — never returned again
       meta: data,
     });
-  } catch (e) {
-    return apiInternalError(e, "passport-consumer keys POST");
-  }
-}
+  },
+  { routeName: "passport-consumer keys POST" },
+);

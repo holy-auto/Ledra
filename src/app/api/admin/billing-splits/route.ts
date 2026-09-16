@@ -1,17 +1,8 @@
-import { NextRequest } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
-import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
-import { checkRateLimit } from "@/lib/api/rateLimit";
-import {
-  apiJson,
-  apiUnauthorized,
-  apiForbidden,
-  apiValidationError,
-  apiNotFound,
-  apiInternalError,
-} from "@/lib/api/response";
+import { apiJson, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
 import { billingSplitCreateSchema, billingSplitUpdateSchema } from "@/lib/validations/billing-split";
+import { withCaller } from "@/lib/api/withCaller";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -47,12 +38,8 @@ async function getOwnedDocument(
 }
 
 // ─── GET: 帳票の按分一覧 (?document_id=uuid) ───
-export async function GET(req: NextRequest) {
-  try {
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
-
+export const GET = withCaller(
+  async (req, { caller, supabase }) => {
     const url = new URL(req.url);
     const documentId = (url.searchParams.get("document_id") ?? "").trim();
     if (!UUID_RE.test(documentId)) {
@@ -83,22 +70,13 @@ export async function GET(req: NextRequest) {
         unallocated: doc.total - splitTotal,
       },
     });
-  } catch (e) {
-    return apiInternalError(e, "billing-splits GET");
-  }
-}
+  },
+  { routeName: "billing-splits GET" },
+);
 
 // ─── POST: 按分作成 ───
-export async function POST(req: NextRequest) {
-  try {
-    const limited = await checkRateLimit(req, "general");
-    if (limited) return limited;
-
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
-    if (!requireMinRole(caller, "staff")) return apiForbidden();
-
+export const POST = withCaller(
+  async (req, { caller, supabase }) => {
     const parsed = billingSplitCreateSchema.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) {
       return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
@@ -128,22 +106,13 @@ export async function POST(req: NextRequest) {
     if (error) return apiInternalError(error, "billing-splits POST");
 
     return apiJson({ ok: true, split: normalizeSplit(data) });
-  } catch (e) {
-    return apiInternalError(e, "billing-splits POST");
-  }
-}
+  },
+  { minRole: "staff", rateLimit: "general", routeName: "billing-splits POST" },
+);
 
 // ─── PATCH: 按分更新 (body に id) ───
-export async function PATCH(req: NextRequest) {
-  try {
-    const limited = await checkRateLimit(req, "general");
-    if (limited) return limited;
-
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
-    if (!requireMinRole(caller, "staff")) return apiForbidden();
-
+export const PATCH = withCaller(
+  async (req, { caller, supabase }) => {
     const parsed = billingSplitUpdateSchema.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) {
       return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
@@ -178,22 +147,13 @@ export async function PATCH(req: NextRequest) {
     if (error) return apiInternalError(error, "billing-splits PATCH");
 
     return apiJson({ ok: true, split: normalizeSplit(data) });
-  } catch (e) {
-    return apiInternalError(e, "billing-splits PATCH");
-  }
-}
+  },
+  { minRole: "staff", rateLimit: "general", routeName: "billing-splits PATCH" },
+);
 
 // ─── DELETE: 按分削除 (?id=uuid) ───
-export async function DELETE(req: NextRequest) {
-  try {
-    const limited = await checkRateLimit(req, "general");
-    if (limited) return limited;
-
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
-    if (!requireMinRole(caller, "staff")) return apiForbidden();
-
+export const DELETE = withCaller(
+  async (req, { caller }) => {
     const url = new URL(req.url);
     const id = (url.searchParams.get("id") ?? "").trim();
     if (!UUID_RE.test(id)) {
@@ -205,7 +165,6 @@ export async function DELETE(req: NextRequest) {
     if (error) return apiInternalError(error, "billing-splits DELETE");
 
     return apiJson({ ok: true });
-  } catch (e) {
-    return apiInternalError(e, "billing-splits DELETE");
-  }
-}
+  },
+  { minRole: "staff", rateLimit: "general", routeName: "billing-splits DELETE" },
+);

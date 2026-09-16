@@ -7,11 +7,11 @@
  */
 
 import { z } from "zod";
-import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
-import { apiOk, apiUnauthorized, apiInternalError, apiValidationError, apiError } from "@/lib/api/response";
+
+import { apiOk, apiInternalError, apiValidationError, apiError } from "@/lib/api/response";
 import { verifyEnroll } from "@/lib/auth/mfa";
 
+import { withCaller } from "@/lib/api/withCaller";
 export const dynamic = "force-dynamic";
 
 const schema = z.object({
@@ -19,22 +19,21 @@ const schema = z.object({
   code: z.string().regex(/^\d{6}$/, "invalid_code"),
 });
 
-export async function POST(req: Request) {
-  try {
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
+export const POST = withCaller(
+  async (req, { caller, supabase }) => {
+    try {
+      const parsed = schema.safeParse(await req.json().catch(() => ({})));
+      if (!parsed.success) return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
 
-    const parsed = schema.safeParse(await req.json().catch(() => ({})));
-    if (!parsed.success) return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
+      const r = await verifyEnroll(supabase, parsed.data.factor_id, parsed.data.code);
+      if (!r.ok) {
+        return apiError({ code: "auth_error", message: r.error, status: 400 });
+      }
 
-    const r = await verifyEnroll(supabase, parsed.data.factor_id, parsed.data.code);
-    if (!r.ok) {
-      return apiError({ code: "auth_error", message: r.error, status: 400 });
+      return apiOk({ ok: true });
+    } catch (e) {
+      return apiInternalError(e, "admin/mfa/verify-enroll");
     }
-
-    return apiOk({ ok: true });
-  } catch (e) {
-    return apiInternalError(e, "admin/mfa/verify-enroll");
-  }
-}
+  },
+  { routeName: "admin/mfa/verify-enroll" },
+);

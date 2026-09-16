@@ -1,10 +1,9 @@
-import { NextResponse } from "next/server";
-import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { vehicleCreateSchema } from "@/lib/validations/vehicle";
-import { resolveCallerWithRole, requirePermission } from "@/lib/auth/checkRole";
-import { createCustomerResolver } from "@/lib/customers/resolveCustomer";
-import { apiJson, apiUnauthorized, apiValidationError, apiInternalError, apiForbidden } from "@/lib/api/response";
 
+import { createCustomerResolver } from "@/lib/customers/resolveCustomer";
+import { apiJson, apiValidationError, apiInternalError } from "@/lib/api/response";
+
+import { withCaller } from "@/lib/api/withCaller";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
@@ -66,107 +65,105 @@ function parseCsv(text: string): CsvRow[] {
   return out;
 }
 
-export async function POST(req: Request) {
-  try {
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
-    if (!requirePermission(caller, "vehicles:create")) return apiForbidden();
-
-    const body = await req.text();
-    let rows: CsvRow[];
+export const POST = withCaller(
+  async (req, { caller, supabase }) => {
     try {
-      rows = parseCsv(body);
-    } catch (e) {
-      return apiValidationError(e instanceof Error ? e.message : String(e));
-    }
-
-    if (rows.length === 0) {
-      return apiJson({ ok: true, total: 0, inserted: 0, errors: [] });
-    }
-
-    const errors: Array<{ row: number; error: string }> = [];
-    type VehicleInsert = {
-      tenant_id: string;
-      maker: string;
-      model: string;
-      year: number | null;
-      plate_display: string | null;
-      vin_code: string | null;
-      notes: string | null;
-      customer_id: string | null;
-    };
-    // 元 CSV 行番号を保持したまま挿入対象を組み立てる (エラー行番号の整合のため)。
-    const validRows: Array<{ rowNo: number; data: VehicleInsert }> = [];
-
-    // 顧客名寄せリゾルバ (バルクなので AI 判定はオフ)。顧客列が無ければ未使用。
-    const resolver = await createCustomerResolver(supabase, caller.tenantId, { ai: false });
-
-    // Validate all rows first, resolving customer link inline.
-    for (let i = 0; i < rows.length; i++) {
-      const r = rows[i];
-      const parsed = vehicleCreateSchema.safeParse(r);
-      if (!parsed.success) {
-        errors.push({ row: i + 1, error: parsed.error.issues[0]?.message ?? "バリデーションエラー" });
-        continue;
-      }
-      const b = parsed.data;
-
-      let customerId: string | null = null;
-      if (r.customer_name || r.customer_phone || r.customer_email) {
-        const resolved = await resolver.resolve({
-          name: r.customer_name,
-          phone: r.customer_phone,
-          email: r.customer_email,
-        });
-        customerId = resolved.customerId;
+      const body = await req.text();
+      let rows: CsvRow[];
+      try {
+        rows = parseCsv(body);
+      } catch (e) {
+        return apiValidationError(e instanceof Error ? e.message : String(e));
       }
 
-      validRows.push({
-        rowNo: i + 1,
-        data: {
-          tenant_id: caller.tenantId,
-          maker: b.maker,
-          model: b.model,
-          year: b.year ?? null,
-          plate_display: b.plate_display ?? null,
-          vin_code: b.vin_code ?? null,
-          notes: b.notes ?? null,
-          customer_id: customerId,
-        },
-      });
-    }
+      if (rows.length === 0) {
+        return apiJson({ ok: true, total: 0, inserted: 0, errors: [] });
+      }
 
-    // Batch insert valid rows in chunks of 100
-    let inserted = 0;
-    const CHUNK_SIZE = 100;
-    for (let i = 0; i < validRows.length; i += CHUNK_SIZE) {
-      const chunk = validRows.slice(i, i + CHUNK_SIZE);
-      const insertData = chunk.map((c) => c.data);
+      const errors: Array<{ row: number; error: string }> = [];
+      type VehicleInsert = {
+        tenant_id: string;
+        maker: string;
+        model: string;
+        year: number | null;
+        plate_display: string | null;
+        vin_code: string | null;
+        notes: string | null;
+        customer_id: string | null;
+      };
+      // 元 CSV 行番号を保持したまま挿入対象を組み立てる (エラー行番号の整合のため)。
+      const validRows: Array<{ rowNo: number; data: VehicleInsert }> = [];
 
-      const { error } = await supabase.from("vehicles").insert(insertData);
-      if (error) {
-        // If batch fails, fall back to individual inserts for this chunk
-        for (const c of chunk) {
-          const { error: singleErr } = await supabase.from("vehicles").insert(c.data);
-          if (singleErr) {
-            errors.push({ row: c.rowNo, error: singleErr.message });
-          } else {
-            inserted++;
-          }
+      // 顧客名寄せリゾルバ (バルクなので AI 判定はオフ)。顧客列が無ければ未使用。
+      const resolver = await createCustomerResolver(supabase, caller.tenantId, { ai: false });
+
+      // Validate all rows first, resolving customer link inline.
+      for (let i = 0; i < rows.length; i++) {
+        const r = rows[i];
+        const parsed = vehicleCreateSchema.safeParse(r);
+        if (!parsed.success) {
+          errors.push({ row: i + 1, error: parsed.error.issues[0]?.message ?? "バリデーションエラー" });
+          continue;
         }
-      } else {
-        inserted += chunk.length;
-      }
-    }
+        const b = parsed.data;
 
-    return apiJson({
-      ok: errors.length === 0,
-      total: rows.length,
-      inserted,
-      errors,
-    });
-  } catch (e) {
-    return apiInternalError(e, "vehicles/import-csv");
-  }
-}
+        let customerId: string | null = null;
+        if (r.customer_name || r.customer_phone || r.customer_email) {
+          const resolved = await resolver.resolve({
+            name: r.customer_name,
+            phone: r.customer_phone,
+            email: r.customer_email,
+          });
+          customerId = resolved.customerId;
+        }
+
+        validRows.push({
+          rowNo: i + 1,
+          data: {
+            tenant_id: caller.tenantId,
+            maker: b.maker,
+            model: b.model,
+            year: b.year ?? null,
+            plate_display: b.plate_display ?? null,
+            vin_code: b.vin_code ?? null,
+            notes: b.notes ?? null,
+            customer_id: customerId,
+          },
+        });
+      }
+
+      // Batch insert valid rows in chunks of 100
+      let inserted = 0;
+      const CHUNK_SIZE = 100;
+      for (let i = 0; i < validRows.length; i += CHUNK_SIZE) {
+        const chunk = validRows.slice(i, i + CHUNK_SIZE);
+        const insertData = chunk.map((c) => c.data);
+
+        const { error } = await supabase.from("vehicles").insert(insertData);
+        if (error) {
+          // If batch fails, fall back to individual inserts for this chunk
+          for (const c of chunk) {
+            const { error: singleErr } = await supabase.from("vehicles").insert(c.data);
+            if (singleErr) {
+              errors.push({ row: c.rowNo, error: singleErr.message });
+            } else {
+              inserted++;
+            }
+          }
+        } else {
+          inserted += chunk.length;
+        }
+      }
+
+      return apiJson({
+        ok: errors.length === 0,
+        total: rows.length,
+        inserted,
+        errors,
+      });
+    } catch (e) {
+      return apiInternalError(e, "vehicles/import-csv");
+    }
+  },
+  { permission: "vehicles:create", routeName: "vehicles/import-csv" },
+);

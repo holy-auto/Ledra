@@ -7,13 +7,13 @@
  */
 
 import { z } from "zod";
-import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
-import { resolveCallerWithRole, requirePermission } from "@/lib/auth/checkRole";
-import { apiOk, apiUnauthorized, apiForbidden, apiValidationError, apiInternalError } from "@/lib/api/response";
+
+import { apiOk, apiValidationError, apiInternalError } from "@/lib/api/response";
 import { generateApiKey } from "@/lib/tenant-api-keys";
 import { API_KEY_SCOPES } from "@/lib/api-key-scopes";
 
+import { withCaller } from "@/lib/api/withCaller";
 export const dynamic = "force-dynamic";
 
 const KNOWN_SCOPES = API_KEY_SCOPES;
@@ -57,69 +57,65 @@ function shape(row: KeyRow) {
   };
 }
 
-export async function GET() {
-  try {
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
-    if (!requirePermission(caller, "settings:view")) return apiForbidden();
-
-    const { admin } = createTenantScopedAdmin(caller.tenantId);
-    const { data, error } = await admin
-      .from("tenant_api_keys")
-      .select("id, prefix, description, scopes, expires_at, last_used_at, revoked_at, created_at")
-      .eq("tenant_id", caller.tenantId)
-      .order("created_at", { ascending: false });
-
-    if (error) return apiInternalError(error, "integrations/api-keys GET");
-    return apiOk({ keys: ((data ?? []) as KeyRow[]).map(shape) });
-  } catch (e) {
-    return apiInternalError(e, "integrations/api-keys GET");
-  }
-}
-
-export async function POST(req: Request) {
-  try {
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
-    if (!requirePermission(caller, "settings:edit")) return apiForbidden();
-
-    const parsed = createSchema.safeParse(await req.json().catch(() => ({})));
-    if (!parsed.success) {
-      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
-    }
-
-    let generated: ReturnType<typeof generateApiKey>;
+export const GET = withCaller(
+  async (_req, { caller }) => {
     try {
-      generated = generateApiKey();
+      const { admin } = createTenantScopedAdmin(caller.tenantId);
+      const { data, error } = await admin
+        .from("tenant_api_keys")
+        .select("id, prefix, description, scopes, expires_at, last_used_at, revoked_at, created_at")
+        .eq("tenant_id", caller.tenantId)
+        .order("created_at", { ascending: false });
+
+      if (error) return apiInternalError(error, "integrations/api-keys GET");
+      return apiOk({ keys: ((data ?? []) as KeyRow[]).map(shape) });
     } catch (e) {
-      // Pepper missing → server config issue, not a client error.
-      return apiInternalError(e, "integrations/api-keys POST: generate");
+      return apiInternalError(e, "integrations/api-keys GET");
     }
+  },
+  { permission: "settings:view", routeName: "integrations/api-keys GET" },
+);
 
-    const { admin } = createTenantScopedAdmin(caller.tenantId);
-    const { data, error } = await admin
-      .from("tenant_api_keys")
-      .insert({
-        tenant_id: caller.tenantId,
-        prefix: generated.prefix,
-        key_hash: generated.keyHash,
-        description: parsed.data.description ?? null,
-        scopes: parsed.data.scopes,
-        expires_at: parsed.data.expires_at ?? null,
-        created_by: caller.userId,
-      })
-      .select("id, prefix, description, scopes, expires_at, last_used_at, revoked_at, created_at")
-      .single();
+export const POST = withCaller(
+  async (req, { caller }) => {
+    try {
+      const parsed = createSchema.safeParse(await req.json().catch(() => ({})));
+      if (!parsed.success) {
+        return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
+      }
 
-    if (error) return apiInternalError(error, "integrations/api-keys POST");
+      let generated: ReturnType<typeof generateApiKey>;
+      try {
+        generated = generateApiKey();
+      } catch (e) {
+        // Pepper missing → server config issue, not a client error.
+        return apiInternalError(e, "integrations/api-keys POST: generate");
+      }
 
-    return apiOk({
-      key: generated.rawKey, // shown once
-      meta: shape(data as KeyRow),
-    });
-  } catch (e) {
-    return apiInternalError(e, "integrations/api-keys POST");
-  }
-}
+      const { admin } = createTenantScopedAdmin(caller.tenantId);
+      const { data, error } = await admin
+        .from("tenant_api_keys")
+        .insert({
+          tenant_id: caller.tenantId,
+          prefix: generated.prefix,
+          key_hash: generated.keyHash,
+          description: parsed.data.description ?? null,
+          scopes: parsed.data.scopes,
+          expires_at: parsed.data.expires_at ?? null,
+          created_by: caller.userId,
+        })
+        .select("id, prefix, description, scopes, expires_at, last_used_at, revoked_at, created_at")
+        .single();
+
+      if (error) return apiInternalError(error, "integrations/api-keys POST");
+
+      return apiOk({
+        key: generated.rawKey, // shown once
+        meta: shape(data as KeyRow),
+      });
+    } catch (e) {
+      return apiInternalError(e, "integrations/api-keys POST");
+    }
+  },
+  { permission: "settings:edit", routeName: "integrations/api-keys POST" },
+);

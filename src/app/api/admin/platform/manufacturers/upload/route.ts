@@ -1,11 +1,10 @@
-import { NextRequest } from "next/server";
 import { z } from "zod";
-import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
+
 import { isPlatformAdmin } from "@/lib/auth/platformAdmin";
 import { createPlatformScopedAdmin } from "@/lib/supabase/admin";
-import { apiJson, apiUnauthorized, apiForbidden, apiValidationError, apiInternalError } from "@/lib/api/response";
+import { apiJson, apiForbidden, apiValidationError, apiInternalError } from "@/lib/api/response";
 
+import { withCaller } from "@/lib/api/withCaller";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
@@ -59,59 +58,61 @@ function objectPathFor(kind: Kind, manufacturerId: string, templateId?: string) 
  *   manufacturer_id   — uuid
  *   template_id       — uuid (required for thumbnail kind)
  */
-export async function POST(req: NextRequest) {
-  const supabase = await createSupabaseServerClient();
-  const caller = await resolveCallerWithRole(supabase);
-  if (!caller) return apiUnauthorized();
-  if (!isPlatformAdmin(caller)) return apiForbidden();
+export const POST = withCaller(
+  async (req, { caller }) => {
+    if (!isPlatformAdmin(caller)) return apiForbidden();
 
-  let form: FormData;
-  try {
-    form = await req.formData();
-  } catch {
-    return apiValidationError("multipart/form-data として読み取れませんでした。");
-  }
-
-  const parsed = metaSchema.safeParse({
-    kind: form.get("kind"),
-    manufacturer_id: form.get("manufacturer_id"),
-    template_id: form.get("template_id") ?? undefined,
-  });
-  if (!parsed.success) {
-    return apiValidationError(parsed.error.issues[0]?.message ?? "入力に誤りがあります。");
-  }
-  const { kind, manufacturer_id, template_id } = parsed.data;
-  if (kind === "manufacturer_template_thumbnail" && !template_id) {
-    return apiValidationError("サムネイル登録には template_id が必要です。");
-  }
-
-  const file = form.get("file");
-  if (!(file instanceof File) || file.size === 0) {
-    return apiValidationError("ファイルが添付されていません。");
-  }
-  if (file.size > MAX_BYTES) {
-    return apiValidationError("ファイルサイズは 2MB 以下にしてください。");
-  }
-  if (file.type !== "image/png") {
-    return apiValidationError("PNG のみ対応しています。");
-  }
-  const bytes = new Uint8Array(await file.arrayBuffer());
-  if (!isPngSignature(bytes)) {
-    return apiValidationError("PNG として読み取れないファイルです。");
-  }
-
-  const objectPath = objectPathFor(kind, manufacturer_id, template_id);
-
-  try {
-    const admin = createPlatformScopedAdmin(
-      "admin/manufacturers upload — write to assets bucket for manufacturer-owned imagery",
-    );
-    const up = await admin.storage.from("assets").upload(objectPath, bytes, { contentType: "image/png", upsert: true });
-    if (up.error) {
-      return apiInternalError(up.error, "manufacturers upload");
+    let form: FormData;
+    try {
+      form = await req.formData();
+    } catch {
+      return apiValidationError("multipart/form-data として読み取れませんでした。");
     }
-    return apiJson({ path: objectPath });
-  } catch (e) {
-    return apiInternalError(e, "manufacturers upload");
-  }
-}
+
+    const parsed = metaSchema.safeParse({
+      kind: form.get("kind"),
+      manufacturer_id: form.get("manufacturer_id"),
+      template_id: form.get("template_id") ?? undefined,
+    });
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "入力に誤りがあります。");
+    }
+    const { kind, manufacturer_id, template_id } = parsed.data;
+    if (kind === "manufacturer_template_thumbnail" && !template_id) {
+      return apiValidationError("サムネイル登録には template_id が必要です。");
+    }
+
+    const file = form.get("file");
+    if (!(file instanceof File) || file.size === 0) {
+      return apiValidationError("ファイルが添付されていません。");
+    }
+    if (file.size > MAX_BYTES) {
+      return apiValidationError("ファイルサイズは 2MB 以下にしてください。");
+    }
+    if (file.type !== "image/png") {
+      return apiValidationError("PNG のみ対応しています。");
+    }
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    if (!isPngSignature(bytes)) {
+      return apiValidationError("PNG として読み取れないファイルです。");
+    }
+
+    const objectPath = objectPathFor(kind, manufacturer_id, template_id);
+
+    try {
+      const admin = createPlatformScopedAdmin(
+        "admin/manufacturers upload — write to assets bucket for manufacturer-owned imagery",
+      );
+      const up = await admin.storage
+        .from("assets")
+        .upload(objectPath, bytes, { contentType: "image/png", upsert: true });
+      if (up.error) {
+        return apiInternalError(up.error, "manufacturers upload");
+      }
+      return apiJson({ path: objectPath });
+    } catch (e) {
+      return apiInternalError(e, "manufacturers upload");
+    }
+  },
+  { routeName: "manufacturers upload" },
+);

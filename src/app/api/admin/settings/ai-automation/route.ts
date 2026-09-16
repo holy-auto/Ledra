@@ -5,12 +5,11 @@
  * Reads gracefully degrade to catalog defaults when the migration has not
  * been applied yet so preview deploys never crash the settings UI.
  */
-import { NextRequest } from "next/server";
+
 import { z } from "zod";
-import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
-import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
-import { apiOk, apiUnauthorized, apiForbidden, apiInternalError, apiPlanLimit } from "@/lib/api/response";
+
+import { apiOk, apiInternalError, apiPlanLimit } from "@/lib/api/response";
 import { parseJsonBody } from "@/lib/api/parseBody";
 import { canUseFeature } from "@/lib/billing/planFeatures";
 import { loadAiAutomationSettings } from "@/lib/ai/automation/policy";
@@ -18,35 +17,35 @@ import { logAiAuditEvent } from "@/lib/audit/aiAuditLog";
 import { isFieldPolicy, isKnownFieldKey, isKnownSourceKey } from "@/lib/ai/automation/fieldCatalog";
 import { sanitizeAutoActions } from "@/lib/ai/automation/actionCatalog";
 
+import { withCaller } from "@/lib/api/withCaller";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-export async function GET() {
-  try {
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
-
-    // 設定画面は「設定値そのもの」を見せるため、コストキャップ超過で enabled を
-    // 倒さない (applyCostCap:false)。現況は costCap で別途返す。
-    const settings = await loadAiAutomationSettings(caller.tenantId, { applyCostCap: false });
-    return apiOk({
-      settings: {
-        enabled: settings.enabled,
-        fieldPolicies: settings.fieldPolicies,
-        confidenceThreshold: settings.confidenceThreshold,
-        sourcePolicies: settings.sourcePolicies,
-        autoActions: settings.autoActions,
-        monthlyCostCapJpy: settings.monthlyCostCapJpy,
-      },
-      costCap: settings.costCap ?? null,
-      loadedFromDb: settings.loadedFromDb,
-      role: caller.role,
-    });
-  } catch (e: unknown) {
-    return apiInternalError(e, "ai-automation GET");
-  }
-}
+export const GET = withCaller(
+  async (_req, { caller }) => {
+    try {
+      // 設定画面は「設定値そのもの」を見せるため、コストキャップ超過で enabled を
+      // 倒さない (applyCostCap:false)。現況は costCap で別途返す。
+      const settings = await loadAiAutomationSettings(caller.tenantId, { applyCostCap: false });
+      return apiOk({
+        settings: {
+          enabled: settings.enabled,
+          fieldPolicies: settings.fieldPolicies,
+          confidenceThreshold: settings.confidenceThreshold,
+          sourcePolicies: settings.sourcePolicies,
+          autoActions: settings.autoActions,
+          monthlyCostCapJpy: settings.monthlyCostCapJpy,
+        },
+        costCap: settings.costCap ?? null,
+        loadedFromDb: settings.loadedFromDb,
+        role: caller.role,
+      });
+    } catch (e: unknown) {
+      return apiInternalError(e, "ai-automation GET");
+    }
+  },
+  { routeName: "admin/settings/ai-automation GET" },
+);
 
 const fieldPolicyValue = z.enum(["auto", "suggest", "manual"]);
 
@@ -66,147 +65,145 @@ function isMissingColumnError(err: { message?: string; code?: string } | null | 
   return err.code === "42703" || err.code === "PGRST204";
 }
 
-export async function PUT(req: NextRequest) {
-  try {
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
-    if (!requireMinRole(caller, "admin")) {
-      return apiForbidden("AI 自動入力の設定は管理者のみ変更できます。");
-    }
+export const PUT = withCaller(
+  async (req, { caller }) => {
+    try {
+      const parsed = await parseJsonBody(req, updateSchema);
+      if (!parsed.ok) return parsed.response;
 
-    const parsed = await parseJsonBody(req, updateSchema);
-    if (!parsed.ok) return parsed.response;
+      const { admin, tenantId } = createTenantScopedAdmin(caller.tenantId);
+      const current = await loadAiAutomationSettings(tenantId, { applyCostCap: false });
 
-    const { admin, tenantId } = createTenantScopedAdmin(caller.tenantId);
-    const current = await loadAiAutomationSettings(tenantId, { applyCostCap: false });
-
-    // Sanitize: unknown keys are silently dropped so future catalog removals
-    // never lock anyone out of the settings page.
-    const cleanedFieldPolicies = sanitizePersistedFieldPolicies(parsed.data.fieldPolicies ?? current.fieldPolicies);
-    const cleanedSourcePolicies = sanitizePersistedSourcePolicies(parsed.data.sourcePolicies ?? current.sourcePolicies);
-    // 壁3 アクションは sanitizeAutoActions が常に弾く (true でも永続化されない)。
-    const cleanedAutoActions =
-      parsed.data.autoActions !== undefined
-        ? sanitizeAutoActions(parsed.data.autoActions)
-        : sanitizeAutoActions(current.autoActions);
-
-    const nextEnabled = parsed.data.enabled ?? current.enabled;
-    const nextThreshold = parsed.data.confidenceThreshold ?? current.confidenceThreshold;
-    // 0 / null は「個別上限なし」として null 永続化する。
-    const nextCostCap =
-      parsed.data.monthlyCostCapJpy === undefined
-        ? current.monthlyCostCapJpy
-        : parsed.data.monthlyCostCapJpy && parsed.data.monthlyCostCapJpy > 0
-          ? parsed.data.monthlyCostCapJpy
-          : null;
-
-    // この PUT で新たに auto-action を有効化する場合のみ、プランを判定する
-    // (他設定だけの編集はプランで縛らない)。
-    if (parsed.data.autoActions !== undefined && Object.keys(cleanedAutoActions).length > 0) {
-      if (!canUseFeature(caller.planTier, "ai_inbound_extract")) {
-        return apiPlanLimit("AI 自動アクションは Standard プラン以上でご利用いただけます。");
-      }
-    }
-
-    const baseRow = {
-      tenant_id: tenantId,
-      enabled: nextEnabled,
-      field_policies: cleanedFieldPolicies,
-      confidence_threshold: nextThreshold,
-      source_policies: cleanedSourcePolicies,
-      updated_by: caller.userId,
-      updated_at: new Date().toISOString(),
-    };
-
-    let autoActionsPersisted = true;
-    let costCapPersisted = true;
-    let { error } = await admin
-      .from("tenant_ai_automation_settings")
-      .upsert(
-        { ...baseRow, auto_actions: cleanedAutoActions, monthly_cost_cap_jpy: nextCostCap },
-        { onConflict: "tenant_id" },
+      // Sanitize: unknown keys are silently dropped so future catalog removals
+      // never lock anyone out of the settings page.
+      const cleanedFieldPolicies = sanitizePersistedFieldPolicies(parsed.data.fieldPolicies ?? current.fieldPolicies);
+      const cleanedSourcePolicies = sanitizePersistedSourcePolicies(
+        parsed.data.sourcePolicies ?? current.sourcePolicies,
       );
+      // 壁3 アクションは sanitizeAutoActions が常に弾く (true でも永続化されない)。
+      const cleanedAutoActions =
+        parsed.data.autoActions !== undefined
+          ? sanitizeAutoActions(parsed.data.autoActions)
+          : sanitizeAutoActions(current.autoActions);
 
-    // 部分マイグレーション対応。monthly_cost_cap_jpy 列だけ無い環境では、まず
-    // auto_actions を残したまま cost-cap 列だけ外して保存する (auto-action トグルの
-    // 編集を失わせない)。auto_actions も無い更に古い環境のときだけ基本列のみに落とす。
-    if (error && isMissingColumnError(error)) {
-      costCapPersisted = false; // cost-cap 列が無いので今回の上限値は保存されない
-      ({ error } = await admin
+      const nextEnabled = parsed.data.enabled ?? current.enabled;
+      const nextThreshold = parsed.data.confidenceThreshold ?? current.confidenceThreshold;
+      // 0 / null は「個別上限なし」として null 永続化する。
+      const nextCostCap =
+        parsed.data.monthlyCostCapJpy === undefined
+          ? current.monthlyCostCapJpy
+          : parsed.data.monthlyCostCapJpy && parsed.data.monthlyCostCapJpy > 0
+            ? parsed.data.monthlyCostCapJpy
+            : null;
+
+      // この PUT で新たに auto-action を有効化する場合のみ、プランを判定する
+      // (他設定だけの編集はプランで縛らない)。
+      if (parsed.data.autoActions !== undefined && Object.keys(cleanedAutoActions).length > 0) {
+        if (!canUseFeature(caller.planTier, "ai_inbound_extract")) {
+          return apiPlanLimit("AI 自動アクションは Standard プラン以上でご利用いただけます。");
+        }
+      }
+
+      const baseRow = {
+        tenant_id: tenantId,
+        enabled: nextEnabled,
+        field_policies: cleanedFieldPolicies,
+        confidence_threshold: nextThreshold,
+        source_policies: cleanedSourcePolicies,
+        updated_by: caller.userId,
+        updated_at: new Date().toISOString(),
+      };
+
+      let autoActionsPersisted = true;
+      let costCapPersisted = true;
+      let { error } = await admin
         .from("tenant_ai_automation_settings")
-        .upsert({ ...baseRow, auto_actions: cleanedAutoActions }, { onConflict: "tenant_id" }));
+        .upsert(
+          { ...baseRow, auto_actions: cleanedAutoActions, monthly_cost_cap_jpy: nextCostCap },
+          { onConflict: "tenant_id" },
+        );
 
+      // 部分マイグレーション対応。monthly_cost_cap_jpy 列だけ無い環境では、まず
+      // auto_actions を残したまま cost-cap 列だけ外して保存する (auto-action トグルの
+      // 編集を失わせない)。auto_actions も無い更に古い環境のときだけ基本列のみに落とす。
       if (error && isMissingColumnError(error)) {
-        autoActionsPersisted = false;
-        ({ error } = await admin.from("tenant_ai_automation_settings").upsert(baseRow, { onConflict: "tenant_id" }));
+        costCapPersisted = false; // cost-cap 列が無いので今回の上限値は保存されない
+        ({ error } = await admin
+          .from("tenant_ai_automation_settings")
+          .upsert({ ...baseRow, auto_actions: cleanedAutoActions }, { onConflict: "tenant_id" }));
+
+        if (error && isMissingColumnError(error)) {
+          autoActionsPersisted = false;
+          ({ error } = await admin.from("tenant_ai_automation_settings").upsert(baseRow, { onConflict: "tenant_id" }));
+        }
       }
-    }
 
-    if (error) {
-      // Soft-fail if the migration has not yet been applied — return the
-      // posted state as if it were saved so the UI does not block.
-      const msg = error.message?.toLowerCase() ?? "";
-      if (error.code === "42P01" || error.code === "PGRST205" || msg.includes("does not exist")) {
-        return apiOk({
-          settings: {
-            enabled: nextEnabled,
-            fieldPolicies: cleanedFieldPolicies,
-            confidenceThreshold: nextThreshold,
-            sourcePolicies: cleanedSourcePolicies,
-            autoActions: cleanedAutoActions,
-            monthlyCostCapJpy: nextCostCap,
-          },
-          persisted: false,
-          warning: "AI 自動入力設定テーブルがまだ未作成です。マイグレーションを適用すると保存されるようになります。",
-        });
+      if (error) {
+        // Soft-fail if the migration has not yet been applied — return the
+        // posted state as if it were saved so the UI does not block.
+        const msg = error.message?.toLowerCase() ?? "";
+        if (error.code === "42P01" || error.code === "PGRST205" || msg.includes("does not exist")) {
+          return apiOk({
+            settings: {
+              enabled: nextEnabled,
+              fieldPolicies: cleanedFieldPolicies,
+              confidenceThreshold: nextThreshold,
+              sourcePolicies: cleanedSourcePolicies,
+              autoActions: cleanedAutoActions,
+              monthlyCostCapJpy: nextCostCap,
+            },
+            persisted: false,
+            warning: "AI 自動入力設定テーブルがまだ未作成です。マイグレーションを適用すると保存されるようになります。",
+          });
+        }
+        return apiInternalError(error, "ai-automation PUT upsert");
       }
-      return apiInternalError(error, "ai-automation PUT upsert");
+
+      // 監査ログ: 変更があった項目だけ detail に残す (fire-and-forget)
+      void logAiAuditEvent({
+        tenantId,
+        userId: caller.userId,
+        action: "ai_settings_changed",
+        detail: diffSettings(current, {
+          enabled: nextEnabled,
+          fieldPolicies: cleanedFieldPolicies,
+          confidenceThreshold: nextThreshold,
+          sourcePolicies: cleanedSourcePolicies,
+          autoActions: cleanedAutoActions,
+        }),
+      });
+
+      return apiOk({
+        settings: {
+          enabled: nextEnabled,
+          fieldPolicies: cleanedFieldPolicies,
+          confidenceThreshold: nextThreshold,
+          sourcePolicies: cleanedSourcePolicies,
+          autoActions: cleanedAutoActions,
+          monthlyCostCapJpy: nextCostCap,
+        },
+        persisted: true,
+        ...(autoActionsPersisted
+          ? {}
+          : {
+              autoActionsWarning:
+                "auto_actions 列が未作成のため自動アクション設定は保存されていません (マイグレーション適用後に有効化されます)。",
+            }),
+        // cost-cap 列が未作成 かつ 上限を設定しようとした場合は保存できていない旨を明示
+        // (persisted:true でも上限はリロードで消えるため誤認を防ぐ)。
+        ...(!costCapPersisted && nextCostCap != null
+          ? {
+              costCapWarning:
+                "monthly_cost_cap_jpy 列が未作成のため月次コスト上限は保存されていません (マイグレーション適用後に設定してください)。",
+            }
+          : {}),
+      });
+    } catch (e: unknown) {
+      return apiInternalError(e, "ai-automation PUT");
     }
-
-    // 監査ログ: 変更があった項目だけ detail に残す (fire-and-forget)
-    void logAiAuditEvent({
-      tenantId,
-      userId: caller.userId,
-      action: "ai_settings_changed",
-      detail: diffSettings(current, {
-        enabled: nextEnabled,
-        fieldPolicies: cleanedFieldPolicies,
-        confidenceThreshold: nextThreshold,
-        sourcePolicies: cleanedSourcePolicies,
-        autoActions: cleanedAutoActions,
-      }),
-    });
-
-    return apiOk({
-      settings: {
-        enabled: nextEnabled,
-        fieldPolicies: cleanedFieldPolicies,
-        confidenceThreshold: nextThreshold,
-        sourcePolicies: cleanedSourcePolicies,
-        autoActions: cleanedAutoActions,
-        monthlyCostCapJpy: nextCostCap,
-      },
-      persisted: true,
-      ...(autoActionsPersisted
-        ? {}
-        : {
-            autoActionsWarning:
-              "auto_actions 列が未作成のため自動アクション設定は保存されていません (マイグレーション適用後に有効化されます)。",
-          }),
-      // cost-cap 列が未作成 かつ 上限を設定しようとした場合は保存できていない旨を明示
-      // (persisted:true でも上限はリロードで消えるため誤認を防ぐ)。
-      ...(!costCapPersisted && nextCostCap != null
-        ? {
-            costCapWarning:
-              "monthly_cost_cap_jpy 列が未作成のため月次コスト上限は保存されていません (マイグレーション適用後に設定してください)。",
-          }
-        : {}),
-    });
-  } catch (e: unknown) {
-    return apiInternalError(e, "ai-automation PUT");
-  }
-}
+  },
+  { minRole: "admin", routeName: "admin/settings/ai-automation PUT" },
+);
 
 function diffSettings(
   before: {

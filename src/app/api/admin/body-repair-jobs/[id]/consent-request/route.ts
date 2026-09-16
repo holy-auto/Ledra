@@ -8,21 +8,12 @@
  * purpose='estimate_consent' / 'change_consent'、本人確認は顧客電話番号下4桁。
  */
 
-import { NextRequest } from "next/server";
 import { randomUUID } from "crypto";
 import { z } from "zod";
-import { createClient } from "@/lib/supabase/server";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
-import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
-import {
-  apiOk,
-  apiError,
-  apiUnauthorized,
-  apiForbidden,
-  apiValidationError,
-  apiInternalError,
-} from "@/lib/api/response";
-import { checkRateLimit } from "@/lib/api/rateLimit";
+
+import { apiOk, apiError, apiValidationError, apiInternalError } from "@/lib/api/response";
+
 import { computeDocumentHash } from "@/lib/signature/hash";
 import { phoneLast4Hash } from "@/lib/customerPortalServer";
 import {
@@ -36,6 +27,7 @@ import {
   type ConsentExplanationSnapshot,
 } from "@/lib/signature/bodyRepairConsent";
 
+import { withCaller } from "@/lib/api/withCaller";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
@@ -62,193 +54,188 @@ function extractLast4(phone: string | null | undefined): string | null {
   return digits.length >= 4 ? digits.slice(-4) : null;
 }
 
-export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const limited = await checkRateLimit(req, "auth");
-  if (limited) return limited;
+export const POST = withCaller<{ id: string }>(
+  async (req, { caller, params }) => {
+    try {
+      const { id: jobId } = params;
+      if (!/^[0-9a-f-]{36}$/i.test(jobId)) return apiValidationError("job_id が不正です");
 
-  try {
-    const supabase = await createClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
-    if (!requireMinRole(caller, "staff")) return apiForbidden();
+      const parsed = requestSchema.safeParse(await req.json().catch(() => ({})));
+      if (!parsed.success) return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
+      const { kind, signer_email } = parsed.data as { kind: BodyRepairConsentKind; signer_email?: string };
 
-    const { id: jobId } = await params;
-    if (!/^[0-9a-f-]{36}$/i.test(jobId)) return apiValidationError("job_id が不正です");
+      const { admin } = createTenantScopedAdmin(caller.tenantId);
 
-    const parsed = requestSchema.safeParse(await req.json().catch(() => ({})));
-    if (!parsed.success) return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
-    const { kind, signer_email } = parsed.data as { kind: BodyRepairConsentKind; signer_email?: string };
+      // 案件 + 顧客 + 車両を取得 (テナント境界チェック込み)
+      const { data: job, error: jobErr } = await admin
+        .from("body_repair_jobs")
+        .select(
+          `
+          id, tenant_id, planned_work_json, actual_work_json, deviation_reason,
+          estimate_amount, actual_amount,
+          customer:customers ( id, name, phone ),
+          vehicle:vehicles ( maker, model, plate_display )
+        `,
+        )
+        .eq("id", jobId)
+        .eq("tenant_id", caller.tenantId)
+        .maybeSingle();
 
-    const { admin } = createTenantScopedAdmin(caller.tenantId);
+      if (jobErr) return apiInternalError(jobErr, "consent-request job fetch");
+      if (!job) return apiError({ code: "not_found", message: "案件が見つかりません", status: 404 });
 
-    // 案件 + 顧客 + 車両を取得 (テナント境界チェック込み)
-    const { data: job, error: jobErr } = await admin
-      .from("body_repair_jobs")
-      .select(
-        `
-        id, tenant_id, planned_work_json, actual_work_json, deviation_reason,
-        estimate_amount, actual_amount,
-        customer:customers ( id, name, phone ),
-        vehicle:vehicles ( maker, model, plate_display )
-      `,
-      )
-      .eq("id", jobId)
-      .eq("tenant_id", caller.tenantId)
-      .maybeSingle();
+      const customer = (Array.isArray(job.customer) ? job.customer[0] : job.customer) as {
+        id: string;
+        name: string | null;
+        phone: string | null;
+      } | null;
+      const vehicle = (Array.isArray(job.vehicle) ? job.vehicle[0] : job.vehicle) as {
+        maker: string | null;
+        model: string | null;
+        plate_display: string | null;
+      } | null;
 
-    if (jobErr) return apiInternalError(jobErr, "consent-request job fetch");
-    if (!job) return apiError({ code: "not_found", message: "案件が見つかりません", status: 404 });
-
-    const customer = (Array.isArray(job.customer) ? job.customer[0] : job.customer) as {
-      id: string;
-      name: string | null;
-      phone: string | null;
-    } | null;
-    const vehicle = (Array.isArray(job.vehicle) ? job.vehicle[0] : job.vehicle) as {
-      maker: string | null;
-      model: string | null;
-      plate_display: string | null;
-    } | null;
-
-    const last4 = extractLast4(customer?.phone);
-    if (!last4) {
-      return apiValidationError(
-        "同意サインには本人確認用の電話番号下4桁が必要です。案件の顧客に電話番号を登録してから再度お試しください。",
-      );
-    }
-    const last4Hash = phoneLast4Hash(caller.tenantId, last4);
-    const purpose = CONSENT_KIND_PURPOSE[kind];
-
-    // 説明内容スナップショット + document_hash (現在の案件内容)
-    const consentTextHash = computeConsentTextHash(kind);
-    const baseSnapshot: Omit<ConsentExplanationSnapshot, "consent"> = {
-      kind,
-      shop: { name: null },
-      vehicle: vehicle ? { maker: vehicle.maker, model: vehicle.model, plate: vehicle.plate_display } : null,
-      work: {
-        planned: (job.planned_work_json as Record<string, unknown>) ?? null,
-        actual: (job.actual_work_json as Record<string, unknown>) ?? null,
-        deviation_reason: job.deviation_reason ?? null,
-      },
-      fees: { estimate_amount: job.estimate_amount ?? null, actual_amount: job.actual_amount ?? null },
-    };
-    const { data: tenant } = await admin.from("tenants").select("name").eq("id", caller.tenantId).maybeSingle();
-    baseSnapshot.shop.name = tenant?.name ?? null;
-
-    const documentHash = computeDocumentHash(Buffer.from(canonicalizeExplanation(baseSnapshot)));
-    const snapshot: ConsentExplanationSnapshot = {
-      ...baseSnapshot,
-      consent: { version: BODY_REPAIR_CONSENT_VERSION, text: getConsentText(kind), text_hash: consentTextHash },
-    };
-
-    // 同一 kind の有効な pending 依頼を確認する。
-    const { data: existing } = await admin
-      .from("body_repair_consents")
-      .select(
-        "id, status, signature_session_id, signature_sessions:signature_sessions(token, expires_at, status, document_hash)",
-      )
-      .eq("tenant_id", caller.tenantId)
-      .eq("body_repair_job_id", jobId)
-      .eq("kind", kind)
-      .eq("status", "pending")
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    const existingSessRaw = existing?.signature_sessions as unknown as
-      | { token: string; expires_at: string; status: string; document_hash: string }
-      | Array<{ token: string; expires_at: string; status: string; document_hash: string }>
-      | null;
-    const existingSess = Array.isArray(existingSessRaw) ? (existingSessRaw[0] ?? null) : existingSessRaw;
-    const existingValid =
-      existing && existingSess?.status === "pending" && new Date(existingSess.expires_at) > new Date();
-
-    if (existingValid) {
-      // 内容が同じなら再利用 (idempotent)。
-      if (existingSess?.document_hash === documentHash) {
-        return apiOk({
-          consent_id: existing!.id,
-          sign_url: `${CONSENT_SIGN_PATH}/${existingSess.token}`,
-          expires_at: existingSess.expires_at,
-          is_existing: true,
-          message: "有効な同意依頼がすでに存在します",
-        });
+      const last4 = extractLast4(customer?.phone);
+      if (!last4) {
+        return apiValidationError(
+          "同意サインには本人確認用の電話番号下4桁が必要です。案件の顧客に電話番号を登録してから再度お試しください。",
+        );
       }
-      // 案件内容が変わっている: 古い (古い内容を指す) pending を無効化し、新規発行する。
-      // explanation_json は不変設計のため、内容変更時は必ず新リンクに差し替える。
-      const cancelledAt = new Date().toISOString();
-      if (existing!.signature_session_id) {
-        await admin
-          .from("signature_sessions")
-          .update({ status: "cancelled", cancelled_at: cancelledAt, cancel_reason: "superseded_by_content_change" })
-          .eq("id", existing!.signature_session_id);
-      }
-      await admin.from("body_repair_consents").update({ status: "cancelled" }).eq("id", existing!.id);
-    }
+      const last4Hash = phoneLast4Hash(caller.tenantId, last4);
+      const purpose = CONSENT_KIND_PURPOSE[kind];
 
-    // signature_sessions を作成
-    const token = randomUUID();
-    const expiresAt = new Date(Date.now() + EXPIRES_HOURS * 60 * 60 * 1000).toISOString();
-
-    const { data: session, error: sessErr } = await admin
-      .from("signature_sessions")
-      .insert({
-        tenant_id: caller.tenantId,
-        created_by: caller.userId,
-        token,
-        expires_at: expiresAt,
-        status: "pending",
-        document_hash: documentHash,
-        document_hash_alg: "SHA-256",
-        signer_name: customer?.name ?? null,
-        signer_email: signer_email ?? null,
-        notification_method: signer_email ? "email" : "line",
-        purpose,
-        secondary_factor_required: true,
-        secondary_factor_verified: false,
-        secondary_factor_attempts: 0,
-        phone_last4_hash: last4Hash,
-        consent_version: BODY_REPAIR_CONSENT_VERSION,
-        consent_text_hash: consentTextHash,
-      })
-      .select("id")
-      .single();
-
-    if (sessErr || !session)
-      return apiError({ code: "db_error", message: "同意依頼の作成に失敗しました", status: 500 });
-
-    await admin.from("signature_audit_logs").insert({
-      session_id: session.id,
-      event: "session_created",
-      metadata: { purpose, body_repair_job_id: jobId, kind, consent_version: BODY_REPAIR_CONSENT_VERSION },
-    });
-
-    const { data: consent, error: consentErr } = await admin
-      .from("body_repair_consents")
-      .insert({
-        tenant_id: caller.tenantId,
-        body_repair_job_id: jobId,
+      // 説明内容スナップショット + document_hash (現在の案件内容)
+      const consentTextHash = computeConsentTextHash(kind);
+      const baseSnapshot: Omit<ConsentExplanationSnapshot, "consent"> = {
         kind,
-        signature_session_id: session.id,
-        status: "pending",
-        explanation_json: snapshot,
-        created_by: caller.userId,
-      })
-      .select("id")
-      .single();
+        shop: { name: null },
+        vehicle: vehicle ? { maker: vehicle.maker, model: vehicle.model, plate: vehicle.plate_display } : null,
+        work: {
+          planned: (job.planned_work_json as Record<string, unknown>) ?? null,
+          actual: (job.actual_work_json as Record<string, unknown>) ?? null,
+          deviation_reason: job.deviation_reason ?? null,
+        },
+        fees: { estimate_amount: job.estimate_amount ?? null, actual_amount: job.actual_amount ?? null },
+      };
+      const { data: tenant } = await admin.from("tenants").select("name").eq("id", caller.tenantId).maybeSingle();
+      baseSnapshot.shop.name = tenant?.name ?? null;
 
-    if (consentErr || !consent) {
-      return apiError({ code: "db_error", message: "同意レコードの作成に失敗しました", status: 500 });
+      const documentHash = computeDocumentHash(Buffer.from(canonicalizeExplanation(baseSnapshot)));
+      const snapshot: ConsentExplanationSnapshot = {
+        ...baseSnapshot,
+        consent: { version: BODY_REPAIR_CONSENT_VERSION, text: getConsentText(kind), text_hash: consentTextHash },
+      };
+
+      // 同一 kind の有効な pending 依頼を確認する。
+      const { data: existing } = await admin
+        .from("body_repair_consents")
+        .select(
+          "id, status, signature_session_id, signature_sessions:signature_sessions(token, expires_at, status, document_hash)",
+        )
+        .eq("tenant_id", caller.tenantId)
+        .eq("body_repair_job_id", jobId)
+        .eq("kind", kind)
+        .eq("status", "pending")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      const existingSessRaw = existing?.signature_sessions as unknown as
+        | { token: string; expires_at: string; status: string; document_hash: string }
+        | Array<{ token: string; expires_at: string; status: string; document_hash: string }>
+        | null;
+      const existingSess = Array.isArray(existingSessRaw) ? (existingSessRaw[0] ?? null) : existingSessRaw;
+      const existingValid =
+        existing && existingSess?.status === "pending" && new Date(existingSess.expires_at) > new Date();
+
+      if (existingValid) {
+        // 内容が同じなら再利用 (idempotent)。
+        if (existingSess?.document_hash === documentHash) {
+          return apiOk({
+            consent_id: existing!.id,
+            sign_url: `${CONSENT_SIGN_PATH}/${existingSess.token}`,
+            expires_at: existingSess.expires_at,
+            is_existing: true,
+            message: "有効な同意依頼がすでに存在します",
+          });
+        }
+        // 案件内容が変わっている: 古い (古い内容を指す) pending を無効化し、新規発行する。
+        // explanation_json は不変設計のため、内容変更時は必ず新リンクに差し替える。
+        const cancelledAt = new Date().toISOString();
+        if (existing!.signature_session_id) {
+          await admin
+            .from("signature_sessions")
+            .update({ status: "cancelled", cancelled_at: cancelledAt, cancel_reason: "superseded_by_content_change" })
+            .eq("id", existing!.signature_session_id);
+        }
+        await admin.from("body_repair_consents").update({ status: "cancelled" }).eq("id", existing!.id);
+      }
+
+      // signature_sessions を作成
+      const token = randomUUID();
+      const expiresAt = new Date(Date.now() + EXPIRES_HOURS * 60 * 60 * 1000).toISOString();
+
+      const { data: session, error: sessErr } = await admin
+        .from("signature_sessions")
+        .insert({
+          tenant_id: caller.tenantId,
+          created_by: caller.userId,
+          token,
+          expires_at: expiresAt,
+          status: "pending",
+          document_hash: documentHash,
+          document_hash_alg: "SHA-256",
+          signer_name: customer?.name ?? null,
+          signer_email: signer_email ?? null,
+          notification_method: signer_email ? "email" : "line",
+          purpose,
+          secondary_factor_required: true,
+          secondary_factor_verified: false,
+          secondary_factor_attempts: 0,
+          phone_last4_hash: last4Hash,
+          consent_version: BODY_REPAIR_CONSENT_VERSION,
+          consent_text_hash: consentTextHash,
+        })
+        .select("id")
+        .single();
+
+      if (sessErr || !session)
+        return apiError({ code: "db_error", message: "同意依頼の作成に失敗しました", status: 500 });
+
+      await admin.from("signature_audit_logs").insert({
+        session_id: session.id,
+        event: "session_created",
+        metadata: { purpose, body_repair_job_id: jobId, kind, consent_version: BODY_REPAIR_CONSENT_VERSION },
+      });
+
+      const { data: consent, error: consentErr } = await admin
+        .from("body_repair_consents")
+        .insert({
+          tenant_id: caller.tenantId,
+          body_repair_job_id: jobId,
+          kind,
+          signature_session_id: session.id,
+          status: "pending",
+          explanation_json: snapshot,
+          created_by: caller.userId,
+        })
+        .select("id")
+        .single();
+
+      if (consentErr || !consent) {
+        return apiError({ code: "db_error", message: "同意レコードの作成に失敗しました", status: 500 });
+      }
+
+      return apiOk({
+        consent_id: consent.id,
+        kind,
+        kind_label: CONSENT_KIND_LABEL[kind],
+        sign_url: `${CONSENT_SIGN_PATH}/${token}`,
+        expires_at: expiresAt,
+      });
+    } catch (e) {
+      return apiInternalError(e, "admin/body-repair-jobs/[id]/consent-request");
     }
-
-    return apiOk({
-      consent_id: consent.id,
-      kind,
-      kind_label: CONSENT_KIND_LABEL[kind],
-      sign_url: `${CONSENT_SIGN_PATH}/${token}`,
-      expires_at: expiresAt,
-    });
-  } catch (e) {
-    return apiInternalError(e, "admin/body-repair-jobs/[id]/consent-request");
-  }
-}
+  },
+  { rateLimit: "auth", minRole: "staff", routeName: "admin/body-repair-jobs/[id]/consent-request" },
+);

@@ -13,14 +13,13 @@
  * 納品書 (kind=delivery_note) は OCR + 三方照合を伴う専用経路を使う。本経路は装着・
  * 文脈・旧品・封印・刻印等の写真用。
  */
-import { NextRequest } from "next/server";
-import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
+
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
-import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
-import { checkRateLimit } from "@/lib/api/rateLimit";
-import { apiJson, apiInternalError, apiUnauthorized, apiValidationError, apiForbidden } from "@/lib/api/response";
+
+import { apiJson, apiInternalError, apiValidationError } from "@/lib/api/response";
 import { stageInstallationPhoto, INSTALL_PHOTO_KINDS, type InstallPhotoKind } from "@/lib/parts/evidenceService";
 
+import { withCaller } from "@/lib/api/withCaller";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
@@ -48,51 +47,46 @@ function detectMime(buf: Buffer): "image/jpeg" | "image/png" | "image/webp" | "i
   return null;
 }
 
-export async function POST(req: NextRequest) {
-  try {
-    const limited = await checkRateLimit(req, "general");
-    if (limited) return limited;
+export const POST = withCaller(
+  async (req, { caller }) => {
+    try {
+      const { admin, tenantId } = createTenantScopedAdmin(caller.tenantId);
 
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
-    if (!requireMinRole(caller, "staff")) return apiForbidden();
+      const form = await req.formData();
 
-    const { admin, tenantId } = createTenantScopedAdmin(caller.tenantId);
+      const kindRaw = String(form.get("kind") ?? "");
+      if (!(INSTALL_PHOTO_KINDS as readonly string[]).includes(kindRaw)) {
+        return apiValidationError(`kind は ${INSTALL_PHOTO_KINDS.join(" / ")} のいずれかを指定してください。`);
+      }
 
-    const form = await req.formData();
+      const file = form.get("photo");
+      if (!(file instanceof File) || file.size === 0) {
+        return apiValidationError("写真ファイル (photo) が必要です。");
+      }
+      if (file.size > MAX_FILE_BYTES) {
+        return apiValidationError(`ファイルサイズが大きすぎます (上限 ${MAX_FILE_BYTES / 1024 / 1024}MB)。`);
+      }
 
-    const kindRaw = String(form.get("kind") ?? "");
-    if (!(INSTALL_PHOTO_KINDS as readonly string[]).includes(kindRaw)) {
-      return apiValidationError(`kind は ${INSTALL_PHOTO_KINDS.join(" / ")} のいずれかを指定してください。`);
+      const arrayBuffer = await file.arrayBuffer();
+      const buffer = Buffer.from(arrayBuffer);
+      const mime = detectMime(buffer);
+      if (!mime) {
+        return apiValidationError("対応していないファイル形式です (JPEG・PNG・WebP・GIF のみ)。");
+      }
+
+      const staged = await stageInstallationPhoto({
+        admin,
+        tenantId,
+        kind: kindRaw as InstallPhotoKind,
+        buffer,
+        arrayBuffer,
+        mime,
+      });
+
+      return apiJson({ ok: true, ...staged }, { status: 201 });
+    } catch (e) {
+      return apiInternalError(e, "parts/installations/evidence-upload POST");
     }
-
-    const file = form.get("photo");
-    if (!(file instanceof File) || file.size === 0) {
-      return apiValidationError("写真ファイル (photo) が必要です。");
-    }
-    if (file.size > MAX_FILE_BYTES) {
-      return apiValidationError(`ファイルサイズが大きすぎます (上限 ${MAX_FILE_BYTES / 1024 / 1024}MB)。`);
-    }
-
-    const arrayBuffer = await file.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
-    const mime = detectMime(buffer);
-    if (!mime) {
-      return apiValidationError("対応していないファイル形式です (JPEG・PNG・WebP・GIF のみ)。");
-    }
-
-    const staged = await stageInstallationPhoto({
-      admin,
-      tenantId,
-      kind: kindRaw as InstallPhotoKind,
-      buffer,
-      arrayBuffer,
-      mime,
-    });
-
-    return apiJson({ ok: true, ...staged }, { status: 201 });
-  } catch (e) {
-    return apiInternalError(e, "parts/installations/evidence-upload POST");
-  }
-}
+  },
+  { rateLimit: "general", minRole: "staff", routeName: "parts/installations/evidence-upload POST" },
+);

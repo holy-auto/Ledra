@@ -20,16 +20,8 @@
 
 import { NextRequest } from "next/server";
 import { z } from "zod";
-import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
-import {
-  apiOk,
-  apiUnauthorized,
-  apiNotFound,
-  apiForbidden,
-  apiValidationError,
-  apiInternalError,
-} from "@/lib/api/response";
+import { withCaller } from "@/lib/api/withCaller";
+import { apiOk, apiNotFound, apiForbidden, apiValidationError, apiInternalError } from "@/lib/api/response";
 import { getDefaultProvider } from "@/lib/video/provider";
 import { logger } from "@/lib/logger";
 
@@ -40,12 +32,9 @@ const schema = z.object({
   max_duration_sec: z.number().int().min(60).max(7200).optional(),
 });
 
-export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
-  try {
-    const { id } = await ctx.params;
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
+export const POST = withCaller<{ id: string }>(
+  async (req: NextRequest, { caller, supabase, params }) => {
+    const { id } = params;
 
     const parsed = schema.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) {
@@ -101,7 +90,6 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       playback_id: upload.data.playback_id,
       expires_in_sec: upload.data.expires_in_sec,
     });
-  } catch (e: unknown) {
-    return apiInternalError(e, "video upload-url");
-  }
-}
+  },
+  { routeName: "admin/academy/lessons/[id]/video/upload-url POST" },
+);

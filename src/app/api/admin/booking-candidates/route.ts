@@ -1,12 +1,12 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
-import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
-import { resolveCallerWithRole, requirePermission } from "@/lib/auth/checkRole";
-import { apiJson, apiUnauthorized, apiInternalError, apiValidationError } from "@/lib/api/response";
+import { requirePermission } from "@/lib/auth/checkRole";
+import { apiJson, apiInternalError, apiValidationError } from "@/lib/api/response";
 import { estimateReservationMinutes } from "@/lib/booths/duration";
 import { proposeCandidates, computeFreeLoanersByDate } from "@/lib/booking/candidates";
 import { addDays } from "@/lib/booking/slots";
+import { withCaller } from "@/lib/api/withCaller";
 
 export const dynamic = "force-dynamic";
 
@@ -64,12 +64,8 @@ const querySchema = z.object({
  *   needs_loaner?    "1"/"true" で代車必須（空き代車0の日を除外）
  *   limit?           返す候補数上限（既定 20）
  */
-export async function GET(req: NextRequest) {
-  try {
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
-
+export const GET = withCaller(
+  async (req, { caller, supabase }) => {
     const url = new URL(req.url);
     const parsed = querySchema.safeParse(Object.fromEntries(url.searchParams.entries()));
     if (!parsed.success) {
@@ -246,7 +242,6 @@ export async function GET(req: NextRequest) {
       days,
       candidates,
     });
-  } catch (e) {
-    return apiInternalError(e, "booking-candidates");
-  }
-}
+  },
+  { routeName: "booking-candidates GET" },
+);

@@ -1,22 +1,16 @@
 import { createPlatformScopedAdmin } from "@/lib/supabase/admin";
-import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
+import { NextRequest } from "next/server";
 import { isPlatformAdmin } from "@/lib/auth/platformAdmin";
-import { apiJson, apiUnauthorized, apiForbidden, apiInternalError, apiNotFound } from "@/lib/api/response";
-
-type RouteContext = { params: Promise<{ id: string }> };
+import { apiJson, apiForbidden, apiNotFound } from "@/lib/api/response";
+import { withCaller } from "@/lib/api/withCaller";
 
 /**
  * DELETE /api/admin/agent-shared-files/[id]
  * Admin deletes a shared file.
  */
-export async function DELETE(_request: NextRequest, ctx: RouteContext) {
-  try {
-    const { id } = await ctx.params;
-    const supabase = await createClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
+export const DELETE = withCaller<{ id: string }>(
+  async (_request, { caller, supabase, params }) => {
+    const { id } = params;
     if (!isPlatformAdmin(caller)) return apiForbidden();
 
     const admin = createPlatformScopedAdmin(
@@ -41,7 +35,6 @@ export async function DELETE(_request: NextRequest, ctx: RouteContext) {
     if (deleteErr) throw deleteErr;
 
     return apiJson({ ok: true });
-  } catch (e) {
-    return apiInternalError(e, "admin/agent-shared-files DELETE");
-  }
-}
+  },
+  { routeName: "admin/agent-shared-files/[id] DELETE" },
+);

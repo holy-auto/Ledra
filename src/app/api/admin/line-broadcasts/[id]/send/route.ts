@@ -1,15 +1,7 @@
 import { NextRequest } from "next/server";
-import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
+import { withCaller } from "@/lib/api/withCaller";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
-import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
-import {
-  apiJson,
-  apiUnauthorized,
-  apiForbidden,
-  apiNotFound,
-  apiValidationError,
-  apiInternalError,
-} from "@/lib/api/response";
+import { apiJson, apiNotFound, apiValidationError, apiInternalError } from "@/lib/api/response";
 import { sendLineBroadcast, type BroadcastRecipient } from "@/lib/line/broadcast";
 import { segmentSchema, type LineBroadcastSegment } from "@/lib/validations/line-broadcast";
 
@@ -32,15 +24,10 @@ type AdminClient = ReturnType<typeof createTenantScopedAdmin>["admin"];
  * "no_visit_days" の絞り込みは無効化し「line_user_id を持つ全顧客」に
  * フォールバックする (DB スキーマ追加後に対応予定)。
  */
-export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
-  try {
-    const { id } = await ctx.params;
+export const POST = withCaller<{ id: string }>(
+  async (req: NextRequest, { caller, params }) => {
+    const { id } = params;
     if (!id) return apiNotFound("broadcast id required");
-
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
-    if (!requireMinRole(caller, "staff")) return apiForbidden();
 
     const { admin } = createTenantScopedAdmin(caller.tenantId);
 
@@ -131,10 +118,9 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       failed_count: result.failedCount,
       target_count: result.targetCount,
     });
-  } catch (e) {
-    return apiInternalError(e, "line-broadcasts send");
-  }
-}
+  },
+  { minRole: "staff", routeName: "line-broadcasts send POST" },
+);
 
 /**
  * segment_json に従って受信者 (line_user_id を持つ顧客) を解決する。

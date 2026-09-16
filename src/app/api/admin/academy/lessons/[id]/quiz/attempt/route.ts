@@ -10,16 +10,8 @@
  */
 import { NextRequest } from "next/server";
 import { z } from "zod";
-import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
-import {
-  apiOk,
-  apiUnauthorized,
-  apiInternalError,
-  apiValidationError,
-  apiNotFound,
-  apiForbidden,
-} from "@/lib/api/response";
+import { withCaller } from "@/lib/api/withCaller";
+import { apiOk, apiInternalError, apiValidationError, apiNotFound, apiForbidden } from "@/lib/api/response";
 import { canUseFeature } from "@/lib/billing/planFeatures";
 import { scoreForLevel } from "@/lib/academy/scoring";
 
@@ -39,12 +31,9 @@ const attemptSchema = z.object({
     .max(30),
 });
 
-export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
-  try {
-    const { id } = await ctx.params;
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
+export const POST = withCaller<{ id: string }>(
+  async (req: NextRequest, { caller, supabase, params }) => {
+    const { id } = params;
 
     const parsed = attemptSchema.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) {
@@ -142,7 +131,6 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       auto_completed,
       results,
     });
-  } catch (e: unknown) {
-    return apiInternalError(e);
-  }
-}
+  },
+  { routeName: "admin/academy/lessons/[id]/quiz/attempt POST" },
+);

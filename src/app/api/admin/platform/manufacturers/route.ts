@@ -1,19 +1,11 @@
-import { NextRequest } from "next/server";
 import { z } from "zod";
-import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
+
 import { isPlatformAdmin } from "@/lib/auth/platformAdmin";
 import { createPlatformScopedAdmin } from "@/lib/supabase/admin";
-import {
-  apiJson,
-  apiUnauthorized,
-  apiForbidden,
-  apiValidationError,
-  apiNotFound,
-  apiInternalError,
-} from "@/lib/api/response";
+import { apiJson, apiForbidden, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
 import { escapeIlike } from "@/lib/sanitize";
 
+import { withCaller } from "@/lib/api/withCaller";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
@@ -71,108 +63,108 @@ function emptyToNull<T extends string | undefined | null>(v: T): string | null {
  * GET /api/admin/platform/manufacturers
  * List all manufacturers (platform-admin only). Optional ?q= search by name.
  */
-export async function GET(req: NextRequest) {
-  const supabase = await createSupabaseServerClient();
-  const caller = await resolveCallerWithRole(supabase);
-  if (!caller) return apiUnauthorized();
-  if (!isPlatformAdmin(caller)) return apiForbidden();
+export const GET = withCaller(
+  async (req, { caller }) => {
+    if (!isPlatformAdmin(caller)) return apiForbidden();
 
-  const url = new URL(req.url);
-  const q = url.searchParams.get("q") ?? "";
-  const includeInactive = url.searchParams.get("include_inactive") === "1";
+    const url = new URL(req.url);
+    const q = url.searchParams.get("q") ?? "";
+    const includeInactive = url.searchParams.get("include_inactive") === "1";
 
-  const admin = createPlatformScopedAdmin("admin/manufacturers list — platform directory");
-  let query = admin.from("manufacturers").select("*").order("name", { ascending: true });
-  if (!includeInactive) query = query.eq("is_active", true);
-  if (q) query = query.ilike("name", `%${escapeIlike(q)}%`);
+    const admin = createPlatformScopedAdmin("admin/manufacturers list — platform directory");
+    let query = admin.from("manufacturers").select("*").order("name", { ascending: true });
+    if (!includeInactive) query = query.eq("is_active", true);
+    if (q) query = query.ilike("name", `%${escapeIlike(q)}%`);
 
-  const { data, error } = await query;
-  if (error) return apiInternalError(error, "manufacturers GET");
+    const { data, error } = await query;
+    if (error) return apiInternalError(error, "manufacturers GET");
 
-  return apiJson({ manufacturers: data ?? [] });
-}
+    return apiJson({ manufacturers: data ?? [] });
+  },
+  { routeName: "admin/platform/manufacturers GET" },
+);
 
 /**
  * POST /api/admin/platform/manufacturers
  * Create a new manufacturer.
  */
-export async function POST(req: NextRequest) {
-  const supabase = await createSupabaseServerClient();
-  const caller = await resolveCallerWithRole(supabase);
-  if (!caller) return apiUnauthorized();
-  if (!isPlatformAdmin(caller)) return apiForbidden();
+export const POST = withCaller(
+  async (req, { caller }) => {
+    if (!isPlatformAdmin(caller)) return apiForbidden();
 
-  const parsed = createSchema.safeParse(await req.json().catch(() => ({})));
-  if (!parsed.success) {
-    return apiValidationError(parsed.error.issues[0]?.message ?? "入力に誤りがあります。");
-  }
-  const b = parsed.data;
-
-  const admin = createPlatformScopedAdmin("admin/manufacturers create — platform directory");
-  const { data, error } = await admin
-    .from("manufacturers")
-    .insert({
-      name: b.name,
-      slug: emptyToNull(b.slug),
-      description: emptyToNull(b.description),
-      logo_asset_path: emptyToNull(b.logo_asset_path),
-      website_url: emptyToNull(b.website_url),
-      contact_email: emptyToNull(b.contact_email),
-      contact_phone: emptyToNull(b.contact_phone),
-      is_active: b.is_active ?? true,
-      created_by: caller.userId,
-    })
-    .select("*")
-    .single();
-  if (error) {
-    if (error.code === "23505") {
-      return apiValidationError("同じslugのメーカーが既に登録されています。");
+    const parsed = createSchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "入力に誤りがあります。");
     }
-    return apiInternalError(error, "manufacturers POST");
-  }
+    const b = parsed.data;
 
-  return apiJson({ manufacturer: data });
-}
+    const admin = createPlatformScopedAdmin("admin/manufacturers create — platform directory");
+    const { data, error } = await admin
+      .from("manufacturers")
+      .insert({
+        name: b.name,
+        slug: emptyToNull(b.slug),
+        description: emptyToNull(b.description),
+        logo_asset_path: emptyToNull(b.logo_asset_path),
+        website_url: emptyToNull(b.website_url),
+        contact_email: emptyToNull(b.contact_email),
+        contact_phone: emptyToNull(b.contact_phone),
+        is_active: b.is_active ?? true,
+        created_by: caller.userId,
+      })
+      .select("*")
+      .single();
+    if (error) {
+      if (error.code === "23505") {
+        return apiValidationError("同じslugのメーカーが既に登録されています。");
+      }
+      return apiInternalError(error, "manufacturers POST");
+    }
+
+    return apiJson({ manufacturer: data });
+  },
+  { routeName: "admin/platform/manufacturers POST" },
+);
 
 /**
  * PATCH /api/admin/platform/manufacturers
  * Update a manufacturer.
  */
-export async function PATCH(req: NextRequest) {
-  const supabase = await createSupabaseServerClient();
-  const caller = await resolveCallerWithRole(supabase);
-  if (!caller) return apiUnauthorized();
-  if (!isPlatformAdmin(caller)) return apiForbidden();
+export const PATCH = withCaller(
+  async (req, { caller }) => {
+    if (!isPlatformAdmin(caller)) return apiForbidden();
 
-  const parsed = patchSchema.safeParse(await req.json().catch(() => ({})));
-  if (!parsed.success) {
-    return apiValidationError(parsed.error.issues[0]?.message ?? "入力に誤りがあります。");
-  }
-  const { id, ...rest } = parsed.data;
-
-  // Convert empty strings to null for nullable text columns. Boolean
-  // and required `name` pass through as-is.
-  const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
-  for (const [k, v] of Object.entries(rest)) {
-    if (v === undefined) continue;
-    if (k === "is_active" || k === "name") {
-      updates[k] = v;
-    } else if (typeof v === "string") {
-      updates[k] = emptyToNull(v);
-    } else {
-      updates[k] = v;
+    const parsed = patchSchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "入力に誤りがあります。");
     }
-  }
+    const { id, ...rest } = parsed.data;
 
-  const admin = createPlatformScopedAdmin("admin/manufacturers update — platform directory");
-  const { data, error } = await admin.from("manufacturers").update(updates).eq("id", id).select("*").single();
-  if (error) {
-    if (error.code === "23505") {
-      return apiValidationError("同じslugのメーカーが既に登録されています。");
+    // Convert empty strings to null for nullable text columns. Boolean
+    // and required `name` pass through as-is.
+    const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
+    for (const [k, v] of Object.entries(rest)) {
+      if (v === undefined) continue;
+      if (k === "is_active" || k === "name") {
+        updates[k] = v;
+      } else if (typeof v === "string") {
+        updates[k] = emptyToNull(v);
+      } else {
+        updates[k] = v;
+      }
     }
-    if (error.code === "PGRST116") return apiNotFound("メーカーが見つかりません。");
-    return apiInternalError(error, "manufacturers PATCH");
-  }
 
-  return apiJson({ manufacturer: data });
-}
+    const admin = createPlatformScopedAdmin("admin/manufacturers update — platform directory");
+    const { data, error } = await admin.from("manufacturers").update(updates).eq("id", id).select("*").single();
+    if (error) {
+      if (error.code === "23505") {
+        return apiValidationError("同じslugのメーカーが既に登録されています。");
+      }
+      if (error.code === "PGRST116") return apiNotFound("メーカーが見つかりません。");
+      return apiInternalError(error, "manufacturers PATCH");
+    }
+
+    return apiJson({ manufacturer: data });
+  },
+  { routeName: "admin/platform/manufacturers PATCH" },
+);

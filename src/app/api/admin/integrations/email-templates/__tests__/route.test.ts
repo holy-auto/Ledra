@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { NextRequest } from "next/server";
 
 const mocks = vi.hoisted(() => ({
   resolveCallerWithRole: vi.fn(),
@@ -21,8 +22,8 @@ import { GET, POST } from "@/app/api/admin/integrations/email-templates/route";
 
 const ADMIN_CALLER = { userId: "u1", tenantId: "t1", role: "admin", planTier: "pro" };
 
-function postReq(body: unknown): Request {
-  return new Request("http://localhost/api/admin/integrations/email-templates", {
+function postReq(body: unknown): NextRequest {
+  return new NextRequest("http://localhost/api/admin/integrations/email-templates", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
@@ -65,7 +66,7 @@ describe("GET /api/admin/integrations/email-templates", () => {
         }),
       },
     });
-    const res = await GET();
+    const res = await GET(new NextRequest("http://localhost/api/admin/integrations/email-templates"));
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
       overrides: Array<{ topic: string }>;

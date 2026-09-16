@@ -1,16 +1,8 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
-import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
-import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
-import {
-  apiJson,
-  apiUnauthorized,
-  apiForbidden,
-  apiValidationError,
-  apiNotFound,
-  apiInternalError,
-} from "@/lib/api/response";
+import { withCaller } from "@/lib/api/withCaller";
+import { apiJson, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
 import { sendCustomerLineText } from "@/lib/line/client";
 import { withAttachmentUrls } from "@/lib/messages/attachments";
 import { sendLineImageFromForm } from "@/lib/messages/sendImage";
@@ -28,14 +20,10 @@ const sendSchema = z.object({
  * customer_id でマッチした行に加え、線形に紐付いていないが
  * 同じ line_user_id を共有する inbound (友だち追加直後など) も含めて返す。
  */
-export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
-  try {
-    const { id: customerId } = await ctx.params;
+export const GET = withCaller<{ id: string }>(
+  async (_req: NextRequest, { caller, params }) => {
+    const { id: customerId } = params;
     if (!customerId) return apiValidationError("customer id is required");
-
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
 
     const { admin } = createTenantScopedAdmin(caller.tenantId);
 
@@ -88,10 +76,9 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
       messages: merged,
       can_send: !!customer.line_user_id,
     });
-  } catch (e) {
-    return apiInternalError(e, "customer messages GET");
-  }
-}
+  },
+  { routeName: "customer messages GET" },
+);
 
 /**
  * POST /api/admin/customers/[id]/messages
@@ -100,15 +87,10 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
  * 顧客へ LINE Push 送信し、customer_messages に outbound として記録する。
  * 顧客に line_user_id が紐付いていない場合は 400。
  */
-export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
-  try {
-    const { id: customerId } = await ctx.params;
+export const POST = withCaller<{ id: string }>(
+  async (req: NextRequest, { caller, params }) => {
+    const { id: customerId } = params;
     if (!customerId) return apiValidationError("customer id is required");
-
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
-    if (!requireMinRole(caller, "staff")) return apiForbidden();
 
     const { admin } = createTenantScopedAdmin(caller.tenantId);
     const { data: customer, error: custErr } = await admin
@@ -148,7 +130,6 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     });
 
     return apiJson({ ok: true, delivered });
-  } catch (e) {
-    return apiInternalError(e, "customer messages POST");
-  }
-}
+  },
+  { minRole: "staff", routeName: "customer messages POST" },
+);

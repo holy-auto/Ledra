@@ -6,20 +6,11 @@
  *   Update status / quotas / contact. The id, key set, and audit logs
  *   are immutable through this endpoint.
  */
-import { NextRequest } from "next/server";
 import { z } from "zod";
-import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
+import { withCaller } from "@/lib/api/withCaller";
 import { isPlatformAdmin } from "@/lib/auth/platformAdmin";
 import { createPlatformScopedAdmin } from "@/lib/supabase/admin";
-import {
-  apiJson,
-  apiUnauthorized,
-  apiForbidden,
-  apiNotFound,
-  apiValidationError,
-  apiInternalError,
-} from "@/lib/api/response";
+import { apiJson, apiForbidden, apiNotFound, apiValidationError, apiInternalError } from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -64,12 +55,9 @@ function shapeKey(k: KeyRow) {
   };
 }
 
-export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
-  try {
-    const { id } = await ctx.params;
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
+export const GET = withCaller<{ id: string }>(
+  async (_req, { caller, params }) => {
+    const { id } = params;
     if (!isPlatformAdmin(caller)) return apiForbidden();
 
     const admin = createPlatformScopedAdmin("passport-consumer detail — keys + 30d call summary");
@@ -134,17 +122,13 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
       },
       billing_periods: periodsRaw ?? [],
     });
-  } catch (e) {
-    return apiInternalError(e, "passport-consumer GET");
-  }
-}
+  },
+  { routeName: "passport-consumer GET" },
+);
 
-export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
-  try {
-    const { id } = await ctx.params;
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
+export const PATCH = withCaller<{ id: string }>(
+  async (req, { caller, params }) => {
+    const { id } = params;
     if (!isPlatformAdmin(caller)) return apiForbidden();
 
     const parsed = patchSchema.safeParse(await req.json().catch(() => ({})));
@@ -170,7 +154,6 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     if (!data) return apiNotFound("consumer_not_found");
 
     return apiJson({ consumer: data });
-  } catch (e) {
-    return apiInternalError(e, "passport-consumer PATCH");
-  }
-}
+  },
+  { routeName: "passport-consumer PATCH" },
+);

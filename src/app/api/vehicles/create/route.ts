@@ -1,81 +1,72 @@
-import { NextResponse } from "next/server";
-import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { vehicleCreateSchema } from "@/lib/validations/vehicle";
-import { resolveCallerWithRole, requirePermission } from "@/lib/auth/checkRole";
-import {
-  apiJson,
-  apiOk,
-  apiInternalError,
-  apiUnauthorized,
-  apiValidationError,
-  apiForbidden,
-} from "@/lib/api/response";
+
+import { apiJson, apiOk, apiInternalError, apiUnauthorized, apiValidationError } from "@/lib/api/response";
 import { resolveVehicleSizeClass } from "@/lib/vehicles/resolveSizeClass";
 import { emitEntityWebhook } from "@/lib/outbound-webhooks";
 import type { VehicleSizeClass } from "@/lib/validations/vehicle";
 
+import { withCaller } from "@/lib/api/withCaller";
 export const dynamic = "force-dynamic";
 
-export async function POST(req: Request) {
-  try {
-    const supabase = await createSupabaseServerClient();
+export const POST = withCaller(
+  async (req, { caller, supabase }) => {
+    try {
+      if (!caller) {
+        return apiUnauthorized();
+      }
 
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) {
-      return apiUnauthorized();
-    }
-    if (!requirePermission(caller, "vehicles:create")) return apiForbidden();
+      const body = await req.json();
+      const parsed = vehicleCreateSchema.safeParse(body);
+      if (!parsed.success) {
+        return apiValidationError(parsed.error.issues[0]?.message ?? "入力内容に誤りがあります。");
+      }
+      const b = parsed.data;
 
-    const body = await req.json();
-    const parsed = vehicleCreateSchema.safeParse(body);
-    if (!parsed.success) {
-      return apiValidationError(parsed.error.issues[0]?.message ?? "入力内容に誤りがあります。");
-    }
-    const b = parsed.data;
+      // size_classが未指定ならマスタから自動判定
+      let sizeClass = b.size_class ?? null;
 
-    // size_classが未指定ならマスタから自動判定
-    let sizeClass = b.size_class ?? null;
+      if (!sizeClass) {
+        sizeClass = (await resolveVehicleSizeClass(supabase, {
+          maker: b.maker,
+          model: b.model,
+          lengthMm: b.full_length_mm,
+          widthMm: b.full_width_mm,
+          heightMm: b.full_height_mm,
+        })) as VehicleSizeClass | null;
+      }
 
-    if (!sizeClass) {
-      sizeClass = (await resolveVehicleSizeClass(supabase, {
+      const insertRow: Record<string, unknown> = {
+        tenant_id: caller.tenantId,
         maker: b.maker,
         model: b.model,
-        lengthMm: b.full_length_mm,
-        widthMm: b.full_width_mm,
-        heightMm: b.full_height_mm,
-      })) as VehicleSizeClass | null;
+        year: b.year ?? null,
+        plate_display: b.plate_display ?? null,
+        vin_code: b.vin_code ?? null,
+        notes: b.notes ?? null,
+        customer_id: b.customer_id ?? null,
+        size_class: sizeClass,
+        inspection_expiry_date: b.inspection_expiry_date ?? null,
+      };
+
+      const { data: vehicle, error } = await supabase.from("vehicles").insert(insertRow).select("id").single();
+
+      if (error) {
+        return apiInternalError(error, "vehicles/create insert");
+      }
+
+      await emitEntityWebhook(caller.tenantId, "vehicle.created", vehicle.id, {
+        id: vehicle.id,
+        maker: insertRow.maker,
+        model: insertRow.model,
+        plate_display: insertRow.plate_display,
+        vin_code: insertRow.vin_code,
+        customer_id: insertRow.customer_id,
+      });
+
+      return apiJson({ id: vehicle.id }, { status: 200 });
+    } catch (e) {
+      return apiInternalError(e, "vehicles/create");
     }
-
-    const insertRow: Record<string, unknown> = {
-      tenant_id: caller.tenantId,
-      maker: b.maker,
-      model: b.model,
-      year: b.year ?? null,
-      plate_display: b.plate_display ?? null,
-      vin_code: b.vin_code ?? null,
-      notes: b.notes ?? null,
-      customer_id: b.customer_id ?? null,
-      size_class: sizeClass,
-      inspection_expiry_date: b.inspection_expiry_date ?? null,
-    };
-
-    const { data: vehicle, error } = await supabase.from("vehicles").insert(insertRow).select("id").single();
-
-    if (error) {
-      return apiInternalError(error, "vehicles/create insert");
-    }
-
-    await emitEntityWebhook(caller.tenantId, "vehicle.created", vehicle.id, {
-      id: vehicle.id,
-      maker: insertRow.maker,
-      model: insertRow.model,
-      plate_display: insertRow.plate_display,
-      vin_code: insertRow.vin_code,
-      customer_id: insertRow.customer_id,
-    });
-
-    return apiJson({ id: vehicle.id }, { status: 200 });
-  } catch (e) {
-    return apiInternalError(e, "vehicles/create");
-  }
-}
+  },
+  { permission: "vehicles:create", routeName: "vehicles/create" },
+);

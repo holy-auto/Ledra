@@ -1,16 +1,7 @@
 import { NextRequest } from "next/server";
-import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
+import { withCaller } from "@/lib/api/withCaller";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
-import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
-import {
-  apiJson,
-  apiUnauthorized,
-  apiForbidden,
-  apiNotFound,
-  apiValidationError,
-  apiError,
-  apiInternalError,
-} from "@/lib/api/response";
+import { apiJson, apiNotFound, apiValidationError, apiError, apiInternalError } from "@/lib/api/response";
 import { maintenancePackUseSchema } from "@/lib/validations/maintenance-pack";
 
 export const dynamic = "force-dynamic";
@@ -31,15 +22,10 @@ export const runtime = "nodejs";
  * ため、楽観的 compare-and-set + 補償ロールバック (使用行 INSERT 失敗時に
  * used_tickets を戻す) で整合性を担保する。
  */
-export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
-  try {
-    const { id } = await ctx.params;
+export const POST = withCaller<{ id: string }>(
+  async (req: NextRequest, { caller, params }) => {
+    const { id } = params;
     if (!id) return apiNotFound("pack id required");
-
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
-    if (!requireMinRole(caller, "staff")) return apiForbidden();
 
     const parsed = maintenancePackUseSchema.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) {
@@ -139,7 +125,6 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       usage,
       remaining: updated.total_tickets - updated.used_tickets,
     });
-  } catch (e) {
-    return apiInternalError(e, "maintenance-packs use POST");
-  }
-}
+  },
+  { minRole: "staff", routeName: "maintenance-packs use POST" },
+);

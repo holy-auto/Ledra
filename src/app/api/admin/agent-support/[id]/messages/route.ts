@@ -1,28 +1,14 @@
 import { createPlatformScopedAdmin } from "@/lib/supabase/admin";
-import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { isPlatformAdmin } from "@/lib/auth/platformAdmin";
-import {
-  apiJson,
-  apiUnauthorized,
-  apiForbidden,
-  apiInternalError,
-  apiValidationError,
-  apiNotFound,
-} from "@/lib/api/response";
+import { apiJson, apiForbidden, apiInternalError, apiValidationError, apiNotFound } from "@/lib/api/response";
+import { withCaller } from "@/lib/api/withCaller";
 
-type RouteContext = { params: Promise<{ id: string }> };
-
-export async function POST(request: NextRequest, ctx: RouteContext) {
-  try {
-    const { id } = await ctx.params;
-    const supabase = await createClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
+export const POST = withCaller<{ id: string }>(
+  async (req, { caller, params }) => {
+    const { id } = params;
     if (!isPlatformAdmin(caller)) return apiForbidden();
 
-    const body = await request.json();
+    const body = await req.json();
     const { message } = body;
 
     if (!message || typeof message !== "string" || !message.trim()) {
@@ -67,7 +53,6 @@ export async function POST(request: NextRequest, ctx: RouteContext) {
       .eq("id", id);
 
     return apiJson({ message: msg }, { status: 201 });
-  } catch (e) {
-    return apiInternalError(e, "agent-support message POST");
-  }
-}
+  },
+  { routeName: "agent-support/[id]/messages POST" },
+);

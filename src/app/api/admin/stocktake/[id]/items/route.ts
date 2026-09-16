@@ -1,29 +1,15 @@
 import { NextRequest } from "next/server";
-import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
+import { withCaller } from "@/lib/api/withCaller";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
-import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
-import { checkRateLimit } from "@/lib/api/rateLimit";
-import {
-  apiJson,
-  apiUnauthorized,
-  apiForbidden,
-  apiValidationError,
-  apiNotFound,
-  apiInternalError,
-} from "@/lib/api/response";
+import { apiJson, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
 import { stocktakeItemUpdateSchema } from "@/lib/validations/stocktake";
 
 export const dynamic = "force-dynamic";
 
-type RouteContext = { params: Promise<{ id: string }> };
-
 // ─── GET: セッションの明細一覧 (menu_items 結合 + 差異算出) ───
-export async function GET(_req: NextRequest, ctx: RouteContext) {
-  try {
-    const { id: sessionId } = await ctx.params;
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
+export const GET = withCaller<{ id: string }>(
+  async (_req: NextRequest, { caller, supabase, params }) => {
+    const { id: sessionId } = params;
 
     // セッションが自テナントのものか確認 (RLS でも担保されるが 404 を明示)
     const { data: session } = await supabase
@@ -72,22 +58,14 @@ export async function GET(_req: NextRequest, ctx: RouteContext) {
       .sort((a, b) => a.menu_item_name.localeCompare(b.menu_item_name, "ja"));
 
     return apiJson({ session, items: enriched });
-  } catch (e) {
-    return apiInternalError(e, "stocktake items GET");
-  }
-}
+  },
+  { routeName: "stocktake items GET" },
+);
 
 // ─── PATCH: 1 明細の実測数 / メモ更新 ───
-export async function PATCH(req: NextRequest, ctx: RouteContext) {
-  try {
-    const limited = await checkRateLimit(req, "general");
-    if (limited) return limited;
-
-    const { id: sessionId } = await ctx.params;
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
-    if (!requireMinRole(caller, "staff")) return apiForbidden();
+export const PATCH = withCaller<{ id: string }>(
+  async (req: NextRequest, { caller, supabase, params }) => {
+    const { id: sessionId } = params;
 
     const parsed = stocktakeItemUpdateSchema.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) {
@@ -138,7 +116,6 @@ export async function PATCH(req: NextRequest, ctx: RouteContext) {
         discrepancy: counted == null ? null : counted - expected,
       },
     });
-  } catch (e) {
-    return apiInternalError(e, "stocktake items PATCH");
-  }
-}
+  },
+  { minRole: "staff", rateLimit: "general", routeName: "stocktake items PATCH" },
+);

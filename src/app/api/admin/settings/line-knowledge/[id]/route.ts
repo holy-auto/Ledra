@@ -4,17 +4,9 @@
  */
 import { NextRequest } from "next/server";
 import { z } from "zod";
-import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
+import { withCaller } from "@/lib/api/withCaller";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
-import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
-import {
-  apiOk,
-  apiUnauthorized,
-  apiForbidden,
-  apiNotFound,
-  apiInternalError,
-  apiValidationError,
-} from "@/lib/api/response";
+import { apiOk, apiNotFound, apiValidationError } from "@/lib/api/response";
 import { parseJsonBody } from "@/lib/api/parseBody";
 import { logAiAuditEvent } from "@/lib/audit/aiAuditLog";
 
@@ -27,17 +19,10 @@ const updateSchema = z.object({
   enabled: z.boolean().optional(),
 });
 
-export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
-  try {
-    const { id } = await ctx.params;
+export const PATCH = withCaller<{ id: string }>(
+  async (req: NextRequest, { caller, params }) => {
+    const { id } = params;
     if (!z.string().uuid().safeParse(id).success) return apiValidationError("不正な ID です。");
-
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
-    if (!requireMinRole(caller, "admin")) {
-      return apiForbidden("LINEナレッジの編集は管理者のみ行えます。");
-    }
 
     const parsed = await parseJsonBody(req, updateSchema);
     if (!parsed.ok) return parsed.response;
@@ -52,7 +37,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
       .eq("tenant_id", tenantId)
       .select("id, title, content, enabled, created_at, updated_at")
       .maybeSingle();
-    if (error) return apiInternalError(error, "line-knowledge PATCH");
+    if (error) throw error;
     if (!data) return apiNotFound("ナレッジが見つかりません。");
 
     void logAiAuditEvent({
@@ -63,22 +48,14 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     });
 
     return apiOk({ entry: data });
-  } catch (e: unknown) {
-    return apiInternalError(e, "line-knowledge PATCH");
-  }
-}
+  },
+  { minRole: "admin", routeName: "line-knowledge PATCH" },
+);
 
-export async function DELETE(_req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
-  try {
-    const { id } = await ctx.params;
+export const DELETE = withCaller<{ id: string }>(
+  async (_req: NextRequest, { caller, params }) => {
+    const { id } = params;
     if (!z.string().uuid().safeParse(id).success) return apiValidationError("不正な ID です。");
-
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
-    if (!requireMinRole(caller, "admin")) {
-      return apiForbidden("LINEナレッジの編集は管理者のみ行えます。");
-    }
 
     const { admin, tenantId } = createTenantScopedAdmin(caller.tenantId);
     // 消えた行を select で確認する: 0 行削除 (既に削除済み / 他テナントの ID) を
@@ -90,7 +67,7 @@ export async function DELETE(_req: NextRequest, ctx: { params: Promise<{ id: str
       .eq("tenant_id", tenantId)
       .select("id")
       .maybeSingle();
-    if (error) return apiInternalError(error, "line-knowledge DELETE");
+    if (error) throw error;
     if (!data) return apiNotFound("ナレッジが見つかりません。");
 
     void logAiAuditEvent({
@@ -101,7 +78,6 @@ export async function DELETE(_req: NextRequest, ctx: { params: Promise<{ id: str
     });
 
     return apiOk({ deleted: true });
-  } catch (e: unknown) {
-    return apiInternalError(e, "line-knowledge DELETE");
-  }
-}
+  },
+  { minRole: "admin", routeName: "line-knowledge DELETE" },
+);

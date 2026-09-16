@@ -1,53 +1,50 @@
-import { NextRequest, NextResponse } from "next/server";
-import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { resolveCallerWithRole, requirePermission } from "@/lib/auth/checkRole";
-import { apiJson, apiUnauthorized, apiInternalError, apiValidationError, apiForbidden } from "@/lib/api/response";
+import { apiJson, apiInternalError, apiValidationError } from "@/lib/api/response";
 import { bookingSettingsPutSchema } from "@/lib/validations/booking-settings";
 
+import { withCaller } from "@/lib/api/withCaller";
 export const dynamic = "force-dynamic";
 
 /**
  * GET /api/admin/booking-settings
  * 外部予約受付設定（スロット一覧 + 定休日一覧）を取得
  */
-export async function GET(_req: NextRequest) {
-  try {
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
+export const GET = withCaller(
+  async (_req, { caller, supabase }) => {
+    try {
+      const [slotsRes, closedRes] = await Promise.all([
+        supabase
+          .from("external_booking_slots")
+          .select("id, day_of_week, start_time, end_time, max_bookings, is_active, label, accepted_categories")
+          .eq("tenant_id", caller.tenantId)
+          .order("day_of_week")
+          .order("start_time"),
+        supabase
+          .from("closed_days")
+          .select("id, type, day_of_week, closed_date, note")
+          .eq("tenant_id", caller.tenantId)
+          .order("day_of_week", { nullsFirst: false })
+          .order("closed_date", { nullsFirst: false }),
+      ]);
 
-    const [slotsRes, closedRes] = await Promise.all([
-      supabase
-        .from("external_booking_slots")
-        .select("id, day_of_week, start_time, end_time, max_bookings, is_active, label, accepted_categories")
-        .eq("tenant_id", caller.tenantId)
-        .order("day_of_week")
-        .order("start_time"),
-      supabase
-        .from("closed_days")
-        .select("id, type, day_of_week, closed_date, note")
-        .eq("tenant_id", caller.tenantId)
-        .order("day_of_week", { nullsFirst: false })
-        .order("closed_date", { nullsFirst: false }),
-    ]);
+      if (slotsRes.error) {
+        console.error("[booking-settings] slots error:", slotsRes.error.message);
+        return apiInternalError(slotsRes.error, "booking-settings");
+      }
+      if (closedRes.error) {
+        console.error("[booking-settings] closed_days error:", closedRes.error.message);
+        return apiInternalError(closedRes.error, "booking-settings");
+      }
 
-    if (slotsRes.error) {
-      console.error("[booking-settings] slots error:", slotsRes.error.message);
-      return apiInternalError(slotsRes.error, "booking-settings");
+      return apiJson({
+        slots: slotsRes.data ?? [],
+        closed_days: closedRes.data ?? [],
+      });
+    } catch (e) {
+      return apiInternalError(e, "booking-settings");
     }
-    if (closedRes.error) {
-      console.error("[booking-settings] closed_days error:", closedRes.error.message);
-      return apiInternalError(closedRes.error, "booking-settings");
-    }
-
-    return apiJson({
-      slots: slotsRes.data ?? [],
-      closed_days: closedRes.data ?? [],
-    });
-  } catch (e) {
-    return apiInternalError(e, "booking-settings");
-  }
-}
+  },
+  { routeName: "booking-settings" },
+);
 
 /**
  * PUT /api/admin/booking-settings
@@ -73,134 +70,133 @@ export async function GET(_req: NextRequest) {
  *   deleted_slot_ids?: string[]
  *   deleted_closed_day_ids?: string[]
  */
-export async function PUT(req: NextRequest) {
-  try {
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
-    // 予約設定の変更は admin 以上 (代表判断 2026-09-01)
-    if (!requirePermission(caller, "settings:edit")) return apiForbidden();
+export const PUT = withCaller(
+  async (req, { caller, supabase }) => {
+    try {
+      // 予約設定の変更は admin 以上 (代表判断 2026-09-01)
 
-    const parsed = bookingSettingsPutSchema.safeParse(await req.json().catch(() => ({})));
-    if (!parsed.success) {
-      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
-    }
-    const { slots, closed_days: closedDays, deleted_closed_day_ids: deletedClosedDayIds } = parsed.data;
-
-    // ── スロット差分削除（サーバ側で権威的に算出） ──
-    // slots は full-replace の desired set。省略時 (undefined) はスロットに一切触れず、
-    // 定休日のみ更新できるようにする（省略を「全消し」と誤解して全スロットを削除する
-    // 事故を防ぐ）。明示的な空配列 [] のときだけ全削除になる。
-    if (slots !== undefined) {
-      const desiredSlotIds = new Set(slots.map((s) => s.id).filter((id): id is string => !!id));
-      const { data: existingSlots, error: existingErr } = await supabase
-        .from("external_booking_slots")
-        .select("id")
-        .eq("tenant_id", caller.tenantId);
-      if (existingErr) {
-        console.error("[booking-settings] list slots error:", existingErr.message);
-        return apiInternalError(existingErr, "booking-settings");
+      const parsed = bookingSettingsPutSchema.safeParse(await req.json().catch(() => ({})));
+      if (!parsed.success) {
+        return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
       }
-      const slotIdsToDelete = (existingSlots ?? []).map((r) => r.id).filter((id) => !desiredSlotIds.has(id));
-      if (slotIdsToDelete.length > 0) {
-        const { error } = await supabase
+      const { slots, closed_days: closedDays, deleted_closed_day_ids: deletedClosedDayIds } = parsed.data;
+
+      // ── スロット差分削除（サーバ側で権威的に算出） ──
+      // slots は full-replace の desired set。省略時 (undefined) はスロットに一切触れず、
+      // 定休日のみ更新できるようにする（省略を「全消し」と誤解して全スロットを削除する
+      // 事故を防ぐ）。明示的な空配列 [] のときだけ全削除になる。
+      if (slots !== undefined) {
+        const desiredSlotIds = new Set(slots.map((s) => s.id).filter((id): id is string => !!id));
+        const { data: existingSlots, error: existingErr } = await supabase
           .from("external_booking_slots")
-          .delete()
-          .in("id", slotIdsToDelete)
+          .select("id")
           .eq("tenant_id", caller.tenantId);
-        if (error) {
-          console.error("[booking-settings] delete slots error:", error.message);
-          return apiInternalError(error, "booking-settings");
+        if (existingErr) {
+          console.error("[booking-settings] list slots error:", existingErr.message);
+          return apiInternalError(existingErr, "booking-settings");
         }
-      }
-    }
-
-    // ── 定休日削除 ──
-    if (deletedClosedDayIds.length > 0) {
-      const { error } = await supabase
-        .from("closed_days")
-        .delete()
-        .in("id", deletedClosedDayIds)
-        .eq("tenant_id", caller.tenantId);
-      if (error) {
-        console.error("[booking-settings] delete closed_days error:", error.message);
-        return apiInternalError(error, "booking-settings");
-      }
-    }
-
-    // ── スロット upsert ──
-    for (const slot of slots ?? []) {
-      const payload = {
-        tenant_id: caller.tenantId,
-        day_of_week: slot.day_of_week,
-        start_time: slot.start_time,
-        end_time: slot.end_time,
-        max_bookings: slot.max_bookings ?? 1,
-        is_active: slot.is_active ?? true,
-        label: slot.label ?? null,
-        accepted_categories: slot.accepted_categories ?? null,
-      };
-
-      if (slot.id) {
-        // update が 0 件（id 不在 / 別テナント）だと「保存成功なのに未反映」になるため、
-        // 更新後の行を select で確認し、対象が無ければ insert にフォールバックする。
-        const { data: updated, error } = await supabase
-          .from("external_booking_slots")
-          .update(payload)
-          .eq("id", slot.id)
-          .eq("tenant_id", caller.tenantId)
-          .select("id");
-        if (error) {
-          console.error("[booking-settings] update slot error:", error.message);
-          return apiInternalError(error, "booking-settings");
-        }
-        if (!updated || updated.length === 0) {
-          const { error: insErr } = await supabase.from("external_booking_slots").insert(payload);
-          if (insErr) {
-            console.error("[booking-settings] insert (fallback) slot error:", insErr.message);
-            return apiInternalError(insErr, "booking-settings");
+        const slotIdsToDelete = (existingSlots ?? []).map((r) => r.id).filter((id) => !desiredSlotIds.has(id));
+        if (slotIdsToDelete.length > 0) {
+          const { error } = await supabase
+            .from("external_booking_slots")
+            .delete()
+            .in("id", slotIdsToDelete)
+            .eq("tenant_id", caller.tenantId);
+          if (error) {
+            console.error("[booking-settings] delete slots error:", error.message);
+            return apiInternalError(error, "booking-settings");
           }
         }
-      } else {
-        const { error } = await supabase.from("external_booking_slots").insert(payload);
-        if (error) {
-          console.error("[booking-settings] insert slot error:", error.message);
-          return apiInternalError(error, "booking-settings");
-        }
       }
-    }
 
-    // ── 定休日 upsert ──
-    for (const cd of closedDays) {
-      const payload: Record<string, unknown> = {
-        tenant_id: caller.tenantId,
-        type: cd.type,
-        note: cd.note ?? null,
-        day_of_week: cd.type === "weekly" ? cd.day_of_week : null,
-        closed_date: cd.type === "specific" ? cd.closed_date : null,
-      };
-
-      if (cd.id) {
+      // ── 定休日削除 ──
+      if (deletedClosedDayIds.length > 0) {
         const { error } = await supabase
           .from("closed_days")
-          .update(payload)
-          .eq("id", cd.id)
+          .delete()
+          .in("id", deletedClosedDayIds)
           .eq("tenant_id", caller.tenantId);
         if (error) {
-          console.error("[booking-settings] update closed_day error:", error.message);
-          return apiInternalError(error, "booking-settings");
-        }
-      } else {
-        const { error } = await supabase.from("closed_days").insert(payload);
-        if (error) {
-          console.error("[booking-settings] insert closed_day error:", error.message);
+          console.error("[booking-settings] delete closed_days error:", error.message);
           return apiInternalError(error, "booking-settings");
         }
       }
-    }
 
-    return apiJson({ success: true });
-  } catch (e) {
-    return apiInternalError(e, "booking-settings");
-  }
-}
+      // ── スロット upsert ──
+      for (const slot of slots ?? []) {
+        const payload = {
+          tenant_id: caller.tenantId,
+          day_of_week: slot.day_of_week,
+          start_time: slot.start_time,
+          end_time: slot.end_time,
+          max_bookings: slot.max_bookings ?? 1,
+          is_active: slot.is_active ?? true,
+          label: slot.label ?? null,
+          accepted_categories: slot.accepted_categories ?? null,
+        };
+
+        if (slot.id) {
+          // update が 0 件（id 不在 / 別テナント）だと「保存成功なのに未反映」になるため、
+          // 更新後の行を select で確認し、対象が無ければ insert にフォールバックする。
+          const { data: updated, error } = await supabase
+            .from("external_booking_slots")
+            .update(payload)
+            .eq("id", slot.id)
+            .eq("tenant_id", caller.tenantId)
+            .select("id");
+          if (error) {
+            console.error("[booking-settings] update slot error:", error.message);
+            return apiInternalError(error, "booking-settings");
+          }
+          if (!updated || updated.length === 0) {
+            const { error: insErr } = await supabase.from("external_booking_slots").insert(payload);
+            if (insErr) {
+              console.error("[booking-settings] insert (fallback) slot error:", insErr.message);
+              return apiInternalError(insErr, "booking-settings");
+            }
+          }
+        } else {
+          const { error } = await supabase.from("external_booking_slots").insert(payload);
+          if (error) {
+            console.error("[booking-settings] insert slot error:", error.message);
+            return apiInternalError(error, "booking-settings");
+          }
+        }
+      }
+
+      // ── 定休日 upsert ──
+      for (const cd of closedDays) {
+        const payload: Record<string, unknown> = {
+          tenant_id: caller.tenantId,
+          type: cd.type,
+          note: cd.note ?? null,
+          day_of_week: cd.type === "weekly" ? cd.day_of_week : null,
+          closed_date: cd.type === "specific" ? cd.closed_date : null,
+        };
+
+        if (cd.id) {
+          const { error } = await supabase
+            .from("closed_days")
+            .update(payload)
+            .eq("id", cd.id)
+            .eq("tenant_id", caller.tenantId);
+          if (error) {
+            console.error("[booking-settings] update closed_day error:", error.message);
+            return apiInternalError(error, "booking-settings");
+          }
+        } else {
+          const { error } = await supabase.from("closed_days").insert(payload);
+          if (error) {
+            console.error("[booking-settings] insert closed_day error:", error.message);
+            return apiInternalError(error, "booking-settings");
+          }
+        }
+      }
+
+      return apiJson({ success: true });
+    } catch (e) {
+      return apiInternalError(e, "booking-settings");
+    }
+  },
+  { permission: "settings:edit", routeName: "booking-settings" },
+);

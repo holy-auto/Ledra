@@ -1,8 +1,7 @@
-import { createClient } from "@/lib/supabase/server";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
-import { apiJson, apiUnauthorized, apiInternalError } from "@/lib/api/response";
+import { apiJson, apiInternalError } from "@/lib/api/response";
 import { fetchApprovalInbox } from "@/lib/admin/approvalInboxData";
 
+import { withCaller } from "@/lib/api/withCaller";
 export const dynamic = "force-dynamic";
 
 /**
@@ -11,15 +10,14 @@ export const dynamic = "force-dynamic";
  * 集約して返す。データ取得は fetchApprovalInbox に集約（ダッシュボードの承認
  * ウィジェットと共通化）。RLS + 明示の tenant_id で当テナントに限定。
  */
-export async function GET() {
-  try {
-    const supabase = await createClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
-
-    const result = await fetchApprovalInbox(supabase, caller.tenantId, caller.role);
-    return apiJson(result);
-  } catch (e) {
-    return apiInternalError(e, "admin/inbox GET");
-  }
-}
+export const GET = withCaller(
+  async (_req, { caller, supabase }) => {
+    try {
+      const result = await fetchApprovalInbox(supabase, caller.tenantId, caller.role);
+      return apiJson(result);
+    } catch (e) {
+      return apiInternalError(e, "admin/inbox GET");
+    }
+  },
+  { routeName: "admin/inbox GET" },
+);

@@ -1,23 +1,16 @@
-import { NextRequest } from "next/server";
-import { createClient } from "@/lib/supabase/server";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
-import { apiJson, apiUnauthorized, apiNotFound, apiInternalError } from "@/lib/api/response";
+import { withCaller } from "@/lib/api/withCaller";
+import { apiJson, apiNotFound } from "@/lib/api/response";
 import { buildCaseTimeline } from "@/lib/admin/caseTimeline";
 
 export const dynamic = "force-dynamic";
-
-type RouteContext = { params: Promise<{ id: string }> };
 
 /**
  * GET /api/admin/reservations/<id>/timeline
  * 案件（予約）の連鎖タイムライン（予約→施工→証明書→請求→フォロー）。
  */
-export async function GET(_req: NextRequest, ctx: RouteContext) {
-  try {
-    const { id } = await ctx.params;
-    const supabase = await createClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
+export const GET = withCaller<{ id: string }>(
+  async (_req, { caller, supabase, params }) => {
+    const { id } = params;
     const tenantId = caller.tenantId;
 
     const { data: reservation } = await supabase
@@ -77,7 +70,6 @@ export async function GET(_req: NextRequest, ctx: RouteContext) {
     });
 
     return apiJson({ steps });
-  } catch (e) {
-    return apiInternalError(e, "reservations/[id]/timeline GET");
-  }
-}
+  },
+  { routeName: "reservations/[id]/timeline GET" },
+);

@@ -2,19 +2,10 @@
  * PATCH  — 施工ナレッジ 1 件の更新 (staff 以上)。
  * DELETE — 施工ナレッジ 1 件の削除 (staff 以上)。
  */
-import { NextRequest } from "next/server";
 import { z } from "zod";
-import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
-import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
-import {
-  apiOk,
-  apiUnauthorized,
-  apiForbidden,
-  apiNotFound,
-  apiInternalError,
-  apiValidationError,
-} from "@/lib/api/response";
+import { apiOk, apiNotFound, apiValidationError, apiInternalError } from "@/lib/api/response";
+import { withCaller } from "@/lib/api/withCaller";
 import { parseJsonBody } from "@/lib/api/parseBody";
 import { logAiAuditEvent } from "@/lib/audit/aiAuditLog";
 
@@ -31,17 +22,10 @@ const updateSchema = z.object({
   enabled: z.boolean().optional(),
 });
 
-export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
-  try {
-    const { id } = await ctx.params;
+export const PATCH = withCaller<{ id: string }>(
+  async (req, { caller, params }) => {
+    const { id } = params;
     if (!z.string().uuid().safeParse(id).success) return apiValidationError("不正な ID です。");
-
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
-    if (!requireMinRole(caller, "staff")) {
-      return apiForbidden("施工ナレッジの編集はスタッフ以上が行えます。");
-    }
 
     const parsed = await parseJsonBody(req, updateSchema);
     if (!parsed.ok) return parsed.response;
@@ -67,22 +51,14 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     });
 
     return apiOk({ entry: data });
-  } catch (e: unknown) {
-    return apiInternalError(e, "field-knowledge PATCH");
-  }
-}
+  },
+  { minRole: "staff", routeName: "field-knowledge PATCH" },
+);
 
-export async function DELETE(_req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
-  try {
-    const { id } = await ctx.params;
+export const DELETE = withCaller<{ id: string }>(
+  async (_req, { caller, params }) => {
+    const { id } = params;
     if (!z.string().uuid().safeParse(id).success) return apiValidationError("不正な ID です。");
-
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
-    if (!requireMinRole(caller, "staff")) {
-      return apiForbidden("施工ナレッジの編集はスタッフ以上が行えます。");
-    }
 
     const { admin, tenantId } = createTenantScopedAdmin(caller.tenantId);
     // 0 行削除 (既に削除済み / 他テナントの ID) は成功扱いにして幻の監査ログを残さない。
@@ -104,7 +80,6 @@ export async function DELETE(_req: NextRequest, ctx: { params: Promise<{ id: str
     });
 
     return apiOk({ deleted: true });
-  } catch (e: unknown) {
-    return apiInternalError(e, "field-knowledge DELETE");
-  }
-}
+  },
+  { minRole: "staff", routeName: "field-knowledge DELETE" },
+);

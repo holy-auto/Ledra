@@ -1,16 +1,9 @@
 import type { NextRequest } from "next/server";
+import { withCaller } from "@/lib/api/withCaller";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { createPlatformScopedAdmin } from "@/lib/supabase/admin";
-import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
 import { parseJsonBody } from "@/lib/api/parseBody";
-import {
-  apiJson,
-  apiUnauthorized,
-  apiForbidden,
-  apiNotFound,
-  apiValidationError,
-  apiInternalError,
-} from "@/lib/api/response";
+import { apiJson, apiForbidden, apiNotFound, apiValidationError, apiInternalError } from "@/lib/api/response";
 import { organizationMemberAddSchema } from "@/lib/validations/organization";
 
 export const dynamic = "force-dynamic";
@@ -45,13 +38,9 @@ async function assertOwner(
 }
 
 // ─── GET: メンバー店舗一覧 (tenants を join) ───
-export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  try {
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
-
-    const { id: orgId } = await params;
+export const GET = withCaller<{ id: string }>(
+  async (_req: NextRequest, { caller, supabase, params }) => {
+    const { id: orgId } = params;
     if (!(await assertOwner(supabase, orgId, caller.userId))) {
       return apiNotFound("対象の組織が見つかりません。");
     }
@@ -78,20 +67,14 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     });
 
     return apiJson({ members: list });
-  } catch (e) {
-    return apiInternalError(e, "org members GET");
-  }
-}
+  },
+  { routeName: "org members GET" },
+);
 
 // ─── POST: 店舗を組織に追加 ───
-export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  try {
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
-    if (!requireMinRole(caller, "owner")) return apiForbidden();
-
-    const { id: orgId } = await params;
+export const POST = withCaller<{ id: string }>(
+  async (req: NextRequest, { caller, supabase, params }) => {
+    const { id: orgId } = params;
     if (!(await assertOwner(supabase, orgId, caller.userId))) {
       return apiNotFound("対象の組織が見つかりません。");
     }
@@ -154,20 +137,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       },
       { status: 201 },
     );
-  } catch (e) {
-    return apiInternalError(e, "org members POST");
-  }
-}
+  },
+  { minRole: "owner", routeName: "org members POST" },
+);
 
 // ─── DELETE: 店舗を組織から除外 (?tenant_id=uuid) ───
-export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  try {
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
-    if (!requireMinRole(caller, "owner")) return apiForbidden();
-
-    const { id: orgId } = await params;
+export const DELETE = withCaller<{ id: string }>(
+  async (req: NextRequest, { caller, supabase, params }) => {
+    const { id: orgId } = params;
     if (!(await assertOwner(supabase, orgId, caller.userId))) {
       return apiNotFound("対象の組織が見つかりません。");
     }
@@ -188,7 +165,6 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     if (!deleted) return apiNotFound("対象の店舗は組織に含まれていません。");
 
     return apiJson({ ok: true });
-  } catch (e) {
-    return apiInternalError(e, "org members DELETE");
-  }
-}
+  },
+  { minRole: "owner", routeName: "org members DELETE" },
+);

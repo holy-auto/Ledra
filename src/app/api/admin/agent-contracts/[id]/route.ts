@@ -1,22 +1,12 @@
 import { createPlatformScopedAdmin } from "@/lib/supabase/admin";
 import { randomBytes } from "crypto";
 import { NextRequest } from "next/server";
-import { createClient } from "@/lib/supabase/server";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { isPlatformAdmin } from "@/lib/auth/platformAdmin";
-import {
-  apiJson,
-  apiUnauthorized,
-  apiForbidden,
-  apiInternalError,
-  apiNotFound,
-  apiValidationError,
-} from "@/lib/api/response";
+import { apiJson, apiForbidden, apiInternalError, apiNotFound, apiValidationError } from "@/lib/api/response";
 import { parseJsonBody } from "@/lib/api/parseBody";
 import { agentContractActionSchema } from "@/lib/validations/agent-content";
 import { notifyAgentSignRequest } from "@/lib/agent/email";
-
-type RouteContext = { params: Promise<{ id: string }> };
+import { withCaller } from "@/lib/api/withCaller";
 
 const TOKEN_TTL_DAYS = 7;
 
@@ -34,12 +24,9 @@ function tokenExpiresAt(): string {
  * GET /api/admin/agent-contracts/[id]
  * 署名依頼の詳細を返す。
  */
-export async function GET(_request: NextRequest, ctx: RouteContext) {
-  try {
-    const { id } = await ctx.params;
-    const supabase = await createClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
+export const GET = withCaller<{ id: string }>(
+  async (_request, { caller, supabase, params }) => {
+    const { id } = params;
     if (!isPlatformAdmin(caller)) return apiForbidden();
 
     const admin = createPlatformScopedAdmin("agent-contracts/[id] — platform-wide agent operations (no tenant scope)");
@@ -54,22 +41,18 @@ export async function GET(_request: NextRequest, ctx: RouteContext) {
     if (error || !data) return apiNotFound("contract not found");
 
     return apiJson({ contract: data });
-  } catch (e) {
-    return apiInternalError(e, "admin/agent-contracts [id] GET");
-  }
-}
+  },
+  { routeName: "admin/agent-contracts/[id] GET" },
+);
 
 /**
  * PUT /api/admin/agent-contracts/[id]
  * 署名依頼の再送またはキャンセル。
  * Body: { action: "resend" | "cancel" }
  */
-export async function PUT(request: NextRequest, ctx: RouteContext) {
-  try {
-    const { id } = await ctx.params;
-    const supabase = await createClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
+export const PUT = withCaller<{ id: string }>(
+  async (request, { caller, supabase, params }) => {
+    const { id } = params;
     if (!isPlatformAdmin(caller)) return apiForbidden();
 
     const parsed = await parseJsonBody(request, agentContractActionSchema);
@@ -151,7 +134,6 @@ export async function PUT(request: NextRequest, ctx: RouteContext) {
     }
 
     return apiValidationError("invalid action. Must be: resend, cancel");
-  } catch (e) {
-    return apiInternalError(e, "admin/agent-contracts [id] PUT");
-  }
-}
+  },
+  { routeName: "admin/agent-contracts/[id] PUT" },
+);

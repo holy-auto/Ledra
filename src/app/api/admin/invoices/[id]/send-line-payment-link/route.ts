@@ -1,21 +1,12 @@
 import { NextRequest } from "next/server";
 import Stripe from "stripe";
 import { getStripeClient } from "@/lib/stripe/client";
-import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
+import { withCaller } from "@/lib/api/withCaller";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
-import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
-import { checkRateLimit } from "@/lib/api/rateLimit";
-import { resolveBaseUrl } from "@/lib/url";
-import {
-  apiJson,
-  apiUnauthorized,
-  apiForbidden,
-  apiNotFound,
-  apiValidationError,
-  apiInternalError,
-} from "@/lib/api/response";
+import { apiJson, apiNotFound, apiValidationError, apiInternalError, apiForbidden } from "@/lib/api/response";
 import { sendCustomerLineText } from "@/lib/line/client";
 import { createInvoicePaymentLink } from "@/lib/stripe/invoicePaymentLink";
+import { resolveBaseUrl } from "@/lib/url";
 
 export const dynamic = "force-dynamic";
 
@@ -36,19 +27,10 @@ function getStripe() {
  * (sendCustomerLineText 経由)。LINE 配信に失敗しても URL 自体は返すため、
  * クライアント側でコピー可能なフォールバック表示ができる。
  */
-export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
-  // Stripe Checkout 生成は重い + 課金関連なのでレート制限。
-  const limited = await checkRateLimit(req, "auth");
-  if (limited) return limited;
-
-  try {
-    const { id: invoiceId } = await ctx.params;
+export const POST = withCaller<{ id: string }>(
+  async (req: NextRequest, { caller, params }) => {
+    const { id: invoiceId } = params;
     if (!invoiceId) return apiValidationError("invoice id is required");
-
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
-    if (!requireMinRole(caller, "staff")) return apiForbidden();
 
     const { admin } = createTenantScopedAdmin(caller.tenantId);
 
@@ -148,7 +130,6 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       session_id: linkResult.sessionId,
       amount: linkResult.totalYen,
     });
-  } catch (e) {
-    return apiInternalError(e, "send-line-payment-link");
-  }
-}
+  },
+  { minRole: "staff", rateLimit: "auth", routeName: "send-line-payment-link POST" },
+);

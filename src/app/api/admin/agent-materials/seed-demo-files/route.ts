@@ -1,14 +1,14 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
+
 import { isPlatformAdmin } from "@/lib/auth/platformAdmin";
 import { createPlatformScopedAdmin } from "@/lib/supabase/admin";
-import { apiUnauthorized, apiForbidden, apiInternalError } from "@/lib/api/response";
+import { apiForbidden, apiInternalError } from "@/lib/api/response";
 import { renderToBuffer } from "@react-pdf/renderer";
 import { Document, Page, Text, View, StyleSheet, Font } from "@react-pdf/renderer";
 import { notoSansJpDataUrl } from "@/lib/marketing/pdfFonts";
 import React from "react";
 
+import { withCaller } from "@/lib/api/withCaller";
 const DEMO_MATERIALS: { id: string; title: string; path: string }[] = [
   {
     id: "10000000-0000-0000-0000-000000000001",
@@ -112,35 +112,37 @@ function PlaceholderPdf({ title }: { title: string }) {
   );
 }
 
-export async function POST() {
-  try {
-    const supabase = await createClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
-    if (!isPlatformAdmin(caller)) return apiForbidden();
+export const POST = withCaller(
+  async (_req, { caller }) => {
+    try {
+      if (!isPlatformAdmin(caller)) return apiForbidden();
 
-    const admin = createPlatformScopedAdmin("seed demo agent materials — platform admin only");
-    const results: { path: string; ok: boolean; error?: string }[] = [];
+      const admin = createPlatformScopedAdmin("seed demo agent materials — platform admin only");
+      const results: { path: string; ok: boolean; error?: string }[] = [];
 
-    for (const m of DEMO_MATERIALS) {
-      try {
-        const buffer = await renderToBuffer(
-          React.createElement(PlaceholderPdf, { title: m.title }) as unknown as React.ReactElement<{ title?: string }>,
-        );
+      for (const m of DEMO_MATERIALS) {
+        try {
+          const buffer = await renderToBuffer(
+            React.createElement(PlaceholderPdf, { title: m.title }) as unknown as React.ReactElement<{
+              title?: string;
+            }>,
+          );
 
-        const { error } = await admin.storage
-          .from("agent-materials")
-          .upload(m.path, buffer, { contentType: "application/pdf", upsert: true });
+          const { error } = await admin.storage
+            .from("agent-materials")
+            .upload(m.path, buffer, { contentType: "application/pdf", upsert: true });
 
-        results.push({ path: m.path, ok: !error, error: error?.message });
-      } catch (e) {
-        results.push({ path: m.path, ok: false, error: String(e) });
+          results.push({ path: m.path, ok: !error, error: error?.message });
+        } catch (e) {
+          results.push({ path: m.path, ok: false, error: String(e) });
+        }
       }
-    }
 
-    const failed = results.filter((r) => !r.ok);
-    return NextResponse.json({ results, ok: failed.length === 0 }, { status: failed.length === 0 ? 200 : 207 });
-  } catch (e) {
-    return apiInternalError(e, "admin/agent-materials/seed-demo-files POST");
-  }
-}
+      const failed = results.filter((r) => !r.ok);
+      return NextResponse.json({ results, ok: failed.length === 0 }, { status: failed.length === 0 ? 200 : 207 });
+    } catch (e) {
+      return apiInternalError(e, "admin/agent-materials/seed-demo-files POST");
+    }
+  },
+  { routeName: "admin/agent-materials/seed-demo-files POST" },
+);

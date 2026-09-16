@@ -1,16 +1,8 @@
 import { z } from "zod";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
-import {
-  apiJson,
-  apiUnauthorized,
-  apiForbidden,
-  apiValidationError,
-  apiNotFound,
-  apiInternalError,
-} from "@/lib/api/response";
-import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
+import { apiJson, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
 import { CONCERN_STATUSES, CONCERN_CATEGORIES } from "@/lib/concerns/types";
+import { withCaller } from "@/lib/api/withCaller";
 
 const patchSchema = z.object({
   status: z.enum(CONCERN_STATUSES).optional(),
@@ -18,18 +10,10 @@ const patchSchema = z.object({
   category: z.enum(CONCERN_CATEGORIES).optional(),
 });
 
-interface RouteContext {
-  params: Promise<{ id: string }>;
-}
-
 /** PATCH /api/admin/concerns/[id] — ステータス更新・管理者対応記録 */
-export async function PATCH(req: Request, ctx: RouteContext) {
-  try {
-    const { id } = await ctx.params;
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
-    if (!requireMinRole(caller, "staff")) return apiForbidden();
+export const PATCH = withCaller<{ id: string }>(
+  async (req, { caller, params }) => {
+    const { id } = params;
 
     const parsed = patchSchema.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) {
@@ -81,7 +65,6 @@ export async function PATCH(req: Request, ctx: RouteContext) {
     if (error) return apiInternalError(error, "admin/concerns PATCH");
 
     return apiJson({ ok: true, concern: data });
-  } catch (e) {
-    return apiInternalError(e, "admin/concerns PATCH");
-  }
-}
+  },
+  { minRole: "staff", routeName: "admin/concerns/[id] PATCH" },
+);

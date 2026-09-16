@@ -1,16 +1,8 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
-import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
+import { withCaller } from "@/lib/api/withCaller";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
-import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
-import {
-  apiJson,
-  apiUnauthorized,
-  apiForbidden,
-  apiValidationError,
-  apiNotFound,
-  apiInternalError,
-} from "@/lib/api/response";
+import { apiJson, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
 import { parseThreadKey } from "@/lib/messages/threadKey";
 import { linkLineUserToCustomer } from "@/lib/line/linkCustomer";
 
@@ -48,21 +40,15 @@ const linkSchema = z.discriminatedUnion("mode", [
   }),
 ]);
 
-export async function POST(req: NextRequest, ctx: { params: Promise<{ key: string }> }) {
-  try {
-    const { key } = await ctx.params;
+export const POST = withCaller<{ key: string }>(
+  async (req: NextRequest, { caller, params }) => {
+    const { key } = params;
     const ref = parseThreadKey(key);
     if (ref.kind !== "line") {
       // customer スレッドは既に紐付け済み。line スレッドだけが対象。
       return apiValidationError("このスレッドは紐付け対象ではありません (LINE 未紐付けスレッドのみ)。");
     }
     const lineUserId = ref.lineUserId;
-
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
-    // 本人確認に関わる操作なので staff 以上。
-    if (!requireMinRole(caller, "staff")) return apiForbidden();
 
     const parsed = linkSchema.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
@@ -139,7 +125,6 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ key: strin
       thread_key: `c:${customerId}`,
       backfilled: linkResult.backfilled,
     });
-  } catch (e) {
-    return apiInternalError(e, "message link POST");
-  }
-}
+  },
+  { minRole: "staff", routeName: "message link POST" },
+);

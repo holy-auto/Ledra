@@ -10,9 +10,8 @@
  */
 import { NextRequest } from "next/server";
 import { z } from "zod";
-import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
-import { apiOk, apiUnauthorized, apiInternalError, apiPlanLimit, apiForbidden } from "@/lib/api/response";
+import { withCaller } from "@/lib/api/withCaller";
+import { apiOk, apiInternalError, apiPlanLimit } from "@/lib/api/response";
 import { parseJsonBody } from "@/lib/api/parseBody";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { canUseFeature } from "@/lib/billing/planFeatures";
@@ -49,68 +48,71 @@ const schema = z.object({
     .max(100),
 });
 
-export async function POST(req: NextRequest) {
-  const usage = startAiRouteUsage("/api/admin/accounting/ai-categorize");
-  try {
-    const limited = await checkRateLimit(req, "ai");
-    if (limited) {
-      usage.record({ outcome: "rate_limit" });
-      return limited;
-    }
+export const POST = withCaller(
+  async (req: NextRequest, { caller, supabase }) => {
+    const usage = startAiRouteUsage("/api/admin/accounting/ai-categorize");
+    try {
+      const limited = await checkRateLimit(req, "ai");
+      if (limited) {
+        usage.record({ outcome: "rate_limit" });
+        return limited;
+      }
 
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
-    // AI 呼び出しは staff 以上 (代表判断 2026-09-01。閲覧専用ロールに費用の出る操作をさせない)
-    if (!requireMinRole(caller, "staff")) return apiForbidden();
-    if (!canUseFeature(caller.planTier, "ai_accounting")) {
-      usage.record({ tenantId: caller.tenantId, userId: caller.userId, outcome: "plan_limit" });
-      return apiPlanLimit("AI 仕訳科目推定は Standard プラン以上でご利用いただけます。");
-    }
+      if (!canUseFeature(caller.planTier, "ai_accounting")) {
+        usage.record({ tenantId: caller.tenantId, userId: caller.userId, outcome: "plan_limit" });
+        return apiPlanLimit("AI 仕訳科目推定は Standard プラン以上でご利用いただけます。");
+      }
 
-    const parsed = await parseJsonBody(req, schema);
-    if (!parsed.ok) {
-      usage.record({ tenantId: caller.tenantId, userId: caller.userId, outcome: "schema_error" });
-      return parsed.response;
-    }
+      const parsed = await parseJsonBody(req, schema);
+      if (!parsed.ok) {
+        usage.record({ tenantId: caller.tenantId, userId: caller.userId, outcome: "schema_error" });
+        return parsed.response;
+      }
 
-    const settings = await loadAiAutomationSettings(caller.tenantId);
-    if (!settings.enabled) {
-      usage.record({ tenantId: caller.tenantId, userId: caller.userId, outcome: "ai_disabled" });
-      return apiOk({
-        ai_disabled: true,
-        lines: parsed.data.lines.map((l) => ({
-          description: l.description,
-          amount: l.amount,
-          suggested_code: parsed.data.fallback_code,
-          suggested_label: "未分類 (AI 自動入力 OFF)",
-          confidence: 0,
-          method: "fallback" as const,
-        })),
+      const settings = await loadAiAutomationSettings(caller.tenantId);
+      if (!settings.enabled) {
+        usage.record({ tenantId: caller.tenantId, userId: caller.userId, outcome: "ai_disabled" });
+        return apiOk({
+          ai_disabled: true,
+          lines: parsed.data.lines.map((l) => ({
+            description: l.description,
+            amount: l.amount,
+            suggested_code: parsed.data.fallback_code,
+            suggested_label: "未分類 (AI 自動入力 OFF)",
+            confidence: 0,
+            method: "fallback" as const,
+          })),
+        });
+      }
+
+      const result = await categorizeAccountingLines(
+        parsed.data.lines,
+        parsed.data.accounts,
+        parsed.data.fallback_code,
+        {
+          model: fastModelForPlanTier(caller.planTier),
+        },
+      );
+
+      const methods = result.lines.reduce<Record<string, number>>((acc, l) => {
+        acc[l.method] = (acc[l.method] ?? 0) + 1;
+        return acc;
+      }, {});
+      usage.record({
+        tenantId: caller.tenantId,
+        userId: caller.userId,
+        outcome: "ok",
+        meta: { method_counts: methods, lines: result.lines.length },
       });
+
+      return apiOk({
+        ai_disabled: false,
+        lines: result.lines,
+      });
+    } catch (e: unknown) {
+      usage.record({ outcome: "error" });
+      throw e;
     }
-
-    const result = await categorizeAccountingLines(parsed.data.lines, parsed.data.accounts, parsed.data.fallback_code, {
-      model: fastModelForPlanTier(caller.planTier),
-    });
-
-    const methods = result.lines.reduce<Record<string, number>>((acc, l) => {
-      acc[l.method] = (acc[l.method] ?? 0) + 1;
-      return acc;
-    }, {});
-    usage.record({
-      tenantId: caller.tenantId,
-      userId: caller.userId,
-      outcome: "ok",
-      meta: { method_counts: methods, lines: result.lines.length },
-    });
-
-    return apiOk({
-      ai_disabled: false,
-      lines: result.lines,
-    });
-  } catch (e: unknown) {
-    usage.record({ outcome: "error" });
-    return apiInternalError(e, "accounting ai-categorize");
-  }
-}
+  },
+  { minRole: "staff", routeName: "accounting ai-categorize POST" },
+);

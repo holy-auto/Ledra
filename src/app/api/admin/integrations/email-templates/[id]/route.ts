@@ -4,20 +4,15 @@
  *   to the built-in default afterwards.
  */
 
-import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
-import { resolveCallerWithRole, requirePermission } from "@/lib/auth/checkRole";
-import { apiOk, apiUnauthorized, apiForbidden, apiNotFound, apiInternalError } from "@/lib/api/response";
+import { apiOk, apiNotFound, apiInternalError } from "@/lib/api/response";
+import { withCaller } from "@/lib/api/withCaller";
 
 export const dynamic = "force-dynamic";
 
-export async function DELETE(_req: Request, ctx: { params: Promise<{ id: string }> }) {
-  try {
-    const { id } = await ctx.params;
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
-    if (!requirePermission(caller, "settings:edit")) return apiForbidden();
+export const DELETE = withCaller<{ id: string }>(
+  async (_req, { caller, params }) => {
+    const { id } = params;
 
     const { admin } = createTenantScopedAdmin(caller.tenantId);
     const { data, error } = await admin
@@ -33,7 +28,6 @@ export async function DELETE(_req: Request, ctx: { params: Promise<{ id: string 
     if (!data) return apiNotFound("template_not_found_or_inactive");
 
     return apiOk({ ok: true });
-  } catch (e) {
-    return apiInternalError(e, "integrations/email-templates DELETE");
-  }
-}
+  },
+  { permission: "settings:edit", routeName: "integrations/email-templates DELETE" },
+);
