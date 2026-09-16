@@ -1,3 +1,4 @@
+import { timingSafeEqual } from "crypto";
 import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
 import {
   GLOBAL_PORTAL_COOKIE,
@@ -45,7 +46,11 @@ export async function POST(req: Request) {
     if (new Date(row.expires_at).getTime() < Date.now()) return apiValidationError("code_expired");
 
     const expected = globalOtpCodeHash(email, last4, code);
-    if (expected !== row.code_hash) {
+    // 定数時間比較でタイミング攻撃を防止
+    const expectedBuf = Buffer.from(expected);
+    const actualBuf = Buffer.from(row.code_hash ?? "");
+    const codeMatches = expectedBuf.length === actualBuf.length && timingSafeEqual(expectedBuf, actualBuf);
+    if (!codeMatches) {
       const nextAttempts = (row.attempts ?? 0) + 1;
       await markGlobalCodeAttempt(row.id, nextAttempts);
       return apiValidationError("invalid_code");

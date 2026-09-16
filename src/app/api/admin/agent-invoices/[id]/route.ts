@@ -1,20 +1,14 @@
 import { createPlatformScopedAdmin } from "@/lib/supabase/admin";
 import { NextRequest } from "next/server";
-import { createClient } from "@/lib/supabase/server";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { isPlatformAdmin } from "@/lib/auth/platformAdmin";
-import { apiJson, apiUnauthorized, apiForbidden, apiInternalError } from "@/lib/api/response";
+import { apiJson, apiForbidden, apiInternalError } from "@/lib/api/response";
 import { parseJsonBody } from "@/lib/api/parseBody";
 import { agentInvoiceUpdateSchema } from "@/lib/validations/agent-content";
+import { withCaller } from "@/lib/api/withCaller";
 
-type RouteContext = { params: Promise<{ id: string }> };
-
-export async function PUT(request: NextRequest, ctx: RouteContext) {
-  try {
-    const { id } = await ctx.params;
-    const supabase = await createClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
+export const PUT = withCaller<{ id: string }>(
+  async (request, { caller, supabase, params }) => {
+    const { id } = params;
     if (!isPlatformAdmin(caller)) return apiForbidden();
 
     const parsed = await parseJsonBody(request, agentInvoiceUpdateSchema);
@@ -40,7 +34,6 @@ export async function PUT(request: NextRequest, ctx: RouteContext) {
       .single();
     if (error) return apiInternalError(error, "agent-invoices PUT");
     return apiJson({ invoice: data });
-  } catch (e) {
-    return apiInternalError(e, "agent-invoices PUT");
-  }
-}
+  },
+  { routeName: "admin/agent-invoices/[id] PUT" },
+);

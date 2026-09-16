@@ -1,85 +1,84 @@
 import { createPlatformScopedAdmin } from "@/lib/supabase/admin";
-import { NextRequest } from "next/server";
-import { createClient } from "@/lib/supabase/server";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
+
 import { isPlatformAdmin } from "@/lib/auth/platformAdmin";
-import { apiJson, apiUnauthorized, apiForbidden, apiInternalError } from "@/lib/api/response";
+import { apiJson, apiForbidden, apiInternalError } from "@/lib/api/response";
 import { parseJsonBody } from "@/lib/api/parseBody";
 import { parsePagination } from "@/lib/api/pagination";
 import { agentNotificationCreateSchema } from "@/lib/validations/agent-content";
 
+import { withCaller } from "@/lib/api/withCaller";
 export const dynamic = "force-dynamic";
 
-export async function GET(request: NextRequest) {
-  try {
-    const supabase = await createClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
-    if (!isPlatformAdmin(caller)) return apiForbidden();
+export const GET = withCaller(
+  async (request, { caller }) => {
+    try {
+      if (!isPlatformAdmin(caller)) return apiForbidden();
 
-    const admin = createPlatformScopedAdmin("agent-notifications — platform-wide agent operations (no tenant scope)");
-    const p = parsePagination(request, { defaultPerPage: 50, maxPerPage: 200 });
+      const admin = createPlatformScopedAdmin("agent-notifications — platform-wide agent operations (no tenant scope)");
+      const p = parsePagination(request, { defaultPerPage: 50, maxPerPage: 200 });
 
-    let query = admin
-      .from("agent_notifications")
-      .select("id, agent_id, user_id, type, title, body, link, is_read, created_at, agents(name)", {
-        count: "exact",
-      })
-      .order("created_at", { ascending: false });
+      let query = admin
+        .from("agent_notifications")
+        .select("id, agent_id, user_id, type, title, body, link, is_read, created_at, agents(name)", {
+          count: "exact",
+        })
+        .order("created_at", { ascending: false });
 
-    if (p.page > 0) query = query.range(p.from, p.to);
-    else query = query.limit(p.perPage);
+      if (p.page > 0) query = query.range(p.from, p.to);
+      else query = query.limit(p.perPage);
 
-    const { data, error, count } = await query;
+      const { data, error, count } = await query;
 
-    if (error) return apiInternalError(error, "agent-notifications");
+      if (error) return apiInternalError(error, "agent-notifications");
 
-    const notifications = (data ?? []).map((n: any) => ({
-      ...n,
-      agent_name: n.agents?.name ?? "",
-      agents: undefined,
-    }));
+      const notifications = (data ?? []).map((n: any) => ({
+        ...n,
+        agent_name: n.agents?.name ?? "",
+        agents: undefined,
+      }));
 
-    return apiJson({
-      notifications,
-      page: p.page,
-      per_page: p.perPage,
-      total: count ?? null,
-    });
-  } catch (e) {
-    return apiInternalError(e, "agent-notifications");
-  }
-}
+      return apiJson({
+        notifications,
+        page: p.page,
+        per_page: p.perPage,
+        total: count ?? null,
+      });
+    } catch (e) {
+      return apiInternalError(e, "agent-notifications");
+    }
+  },
+  { routeName: "agent-notifications" },
+);
 
-export async function POST(request: NextRequest) {
-  try {
-    const supabase = await createClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
-    if (!isPlatformAdmin(caller)) return apiForbidden();
+export const POST = withCaller(
+  async (request, { caller }) => {
+    try {
+      if (!isPlatformAdmin(caller)) return apiForbidden();
 
-    const parsed = await parseJsonBody(request, agentNotificationCreateSchema);
-    if (!parsed.ok) return parsed.response;
-    const body = parsed.data;
-    const admin = createPlatformScopedAdmin("agent-notifications — platform-wide agent operations (no tenant scope)");
+      const parsed = await parseJsonBody(request, agentNotificationCreateSchema);
+      if (!parsed.ok) return parsed.response;
+      const body = parsed.data;
+      const admin = createPlatformScopedAdmin("agent-notifications — platform-wide agent operations (no tenant scope)");
 
-    const { data, error } = await admin
-      .from("agent_notifications")
-      .insert({
-        agent_id: body.agent_id,
-        user_id: caller.userId,
-        type: body.type ?? "info",
-        title: body.title,
-        body: body.body,
-        link: body.link ?? null,
-        is_read: false,
-      })
-      .select("id, agent_id, user_id, type, title, body, link, is_read, created_at")
-      .single();
+      const { data, error } = await admin
+        .from("agent_notifications")
+        .insert({
+          agent_id: body.agent_id,
+          user_id: caller.userId,
+          type: body.type ?? "info",
+          title: body.title,
+          body: body.body,
+          link: body.link ?? null,
+          is_read: false,
+        })
+        .select("id, agent_id, user_id, type, title, body, link, is_read, created_at")
+        .single();
 
-    if (error) return apiInternalError(error, "agent-notifications");
-    return apiJson({ notification: data }, { status: 201 });
-  } catch (e) {
-    return apiInternalError(e, "agent-notifications");
-  }
-}
+      if (error) return apiInternalError(error, "agent-notifications");
+      return apiJson({ notification: data }, { status: 201 });
+    } catch (e) {
+      return apiInternalError(e, "agent-notifications");
+    }
+  },
+  { routeName: "agent-notifications" },
+);

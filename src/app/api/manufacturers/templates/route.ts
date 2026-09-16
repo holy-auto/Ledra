@@ -1,8 +1,8 @@
-import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
-import { listCertifiedManufacturerTemplates } from "@/lib/manufacturers/certifiedTemplates";
-import { apiJson, apiUnauthorized, apiInternalError } from "@/lib/api/response";
 
+import { listCertifiedManufacturerTemplates } from "@/lib/manufacturers/certifiedTemplates";
+import { apiJson, apiInternalError } from "@/lib/api/response";
+
+import { withCaller } from "@/lib/api/withCaller";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
@@ -15,15 +15,14 @@ export const runtime = "nodejs";
  * the caller should fall back to the existing tenant template
  * picker.
  */
-export async function GET() {
-  const supabase = await createSupabaseServerClient();
-  const caller = await resolveCallerWithRole(supabase);
-  if (!caller) return apiUnauthorized();
-
-  try {
-    const entries = await listCertifiedManufacturerTemplates(caller.tenantId);
-    return apiJson({ entries });
-  } catch (e) {
-    return apiInternalError(e, "GET /api/manufacturers/templates");
-  }
-}
+export const GET = withCaller(
+  async (_req, { caller }) => {
+    try {
+      const entries = await listCertifiedManufacturerTemplates(caller.tenantId);
+      return apiJson({ entries });
+    } catch (e) {
+      return apiInternalError(e, "GET /api/manufacturers/templates");
+    }
+  },
+  { routeName: "GET /api/manufacturers/templates" },
+);

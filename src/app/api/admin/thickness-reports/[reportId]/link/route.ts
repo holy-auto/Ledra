@@ -12,12 +12,10 @@
  */
 import { NextRequest } from "next/server";
 import { z } from "zod";
-import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
+import { withCaller } from "@/lib/api/withCaller";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
-import { checkRateLimit } from "@/lib/api/rateLimit";
 import { parseJsonBody } from "@/lib/api/parseBody";
-import { apiOk, apiUnauthorized, apiForbidden, apiNotFound, apiError, apiInternalError } from "@/lib/api/response";
+import { apiOk, apiNotFound, apiError, apiInternalError } from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -29,23 +27,15 @@ const linkSchema = z.object({
   force: z.boolean().optional().default(false),
 });
 
-export async function POST(req: NextRequest, ctx: { params: Promise<{ reportId: string }> }) {
-  const limited = await checkRateLimit(req, "general");
-  if (limited) return limited;
+export const POST = withCaller<{ reportId: string }>(
+  async (req: NextRequest, { caller, params }) => {
+    const { reportId } = params;
+    if (!reportId || !UUID.test(reportId)) return apiNotFound("レポートが見つかりません。");
 
-  const supabase = await createSupabaseServerClient();
-  const caller = await resolveCallerWithRole(supabase);
-  if (!caller) return apiUnauthorized();
-  if (!requireMinRole(caller, "staff")) return apiForbidden();
+    const parsed = await parseJsonBody(req, linkSchema);
+    if (!parsed.ok) return parsed.response;
+    const { vehicle_id: vehicleId, force } = parsed.data;
 
-  const { reportId } = await ctx.params;
-  if (!reportId || !UUID.test(reportId)) return apiNotFound("レポートが見つかりません。");
-
-  const parsed = await parseJsonBody(req, linkSchema);
-  if (!parsed.ok) return parsed.response;
-  const { vehicle_id: vehicleId, force } = parsed.data;
-
-  try {
     const { admin, tenantId } = createTenantScopedAdmin(caller.tenantId);
 
     // レポートが自テナント所属か確認。
@@ -111,24 +101,15 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ reportId: 
         plate_display: vehicle.plate_display,
       },
     });
-  } catch (e) {
-    return apiInternalError(e, "thickness link POST");
-  }
-}
+  },
+  { minRole: "staff", rateLimit: "general", routeName: "thickness link POST" },
+);
 
-export async function DELETE(req: NextRequest, ctx: { params: Promise<{ reportId: string }> }) {
-  const limited = await checkRateLimit(req, "general");
-  if (limited) return limited;
+export const DELETE = withCaller<{ reportId: string }>(
+  async (_req: NextRequest, { caller, params }) => {
+    const { reportId } = params;
+    if (!reportId || !UUID.test(reportId)) return apiNotFound("レポートが見つかりません。");
 
-  const supabase = await createSupabaseServerClient();
-  const caller = await resolveCallerWithRole(supabase);
-  if (!caller) return apiUnauthorized();
-  if (!requireMinRole(caller, "staff")) return apiForbidden();
-
-  const { reportId } = await ctx.params;
-  if (!reportId || !UUID.test(reportId)) return apiNotFound("レポートが見つかりません。");
-
-  try {
     const { admin, tenantId } = createTenantScopedAdmin(caller.tenantId);
 
     const { data: report, error: reportErr } = await admin
@@ -164,7 +145,6 @@ export async function DELETE(req: NextRequest, ctx: { params: Promise<{ reportId
     });
 
     return apiOk({ report_id: report.id, vehicle_id: null });
-  } catch (e) {
-    return apiInternalError(e, "thickness link DELETE");
-  }
-}
+  },
+  { minRole: "staff", rateLimit: "general", routeName: "thickness link DELETE" },
+);

@@ -1,12 +1,7 @@
-import { NextRequest } from "next/server";
-import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
+import { withCaller } from "@/lib/api/withCaller";
 import {
   apiOk,
   apiError,
-  apiUnauthorized,
-  apiForbidden,
-  apiInternalError,
   apiValidationError,
 } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
@@ -48,19 +43,9 @@ const AI_DISABLED_RESPONSE = {
  * Accept a vehicle inspection certificate image (multipart/form-data)
  * and return parsed dimensions, size_class, and other metadata.
  */
-export async function POST(req: NextRequest) {
-  // 1) IP ベースの rate limit（兄弟 OCR ルートと同じ preset）。Vision コストの暴発を防ぐ。
-  const ipLimit = await checkRateLimit(req, "identity_ocr");
-  if (ipLimit) return ipLimit;
-
-  try {
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
-    // 2) 認証（staff 以上）。viewer など閲覧専用ロールに Vision を叩かせない。
-    if (!requireMinRole(caller, "staff")) return apiForbidden();
-
-    // 3) テナント単位の rate limit
+export const POST = withCaller(
+  async (req, { caller, supabase }) => {
+    // テナント単位の rate limit
     const tenantLimit = await checkRateLimit(req, "identity_ocr", `tenant:${caller.tenantId}`);
     if (tenantLimit) return tenantLimit;
 
@@ -84,7 +69,7 @@ export async function POST(req: NextRequest) {
       return apiValidationError("対応形式は JPEG / PNG / WebP です。");
     }
 
-    // 4) AI マスタースイッチ OFF / 月次コストキャップ超過時はスキップして手入力にフォールバック。
+    // AI マスタースイッチ OFF / 月次コストキャップ超過時はスキップして手入力にフォールバック。
     // 車検証画像→フィールド抽出なので識別情報系(identity_documents)として判定する。
     const usage = startAiRouteUsage("/api/admin/vehicle-size/ocr");
     const aiSettings = await loadAiAutomationSettings(caller.tenantId);
@@ -180,7 +165,6 @@ export async function POST(req: NextRequest) {
       },
       master_size_class,
     });
-  } catch (e) {
-    return apiInternalError(e, "vehicle-size/ocr");
-  }
-}
+  },
+  { rateLimit: "identity_ocr", minRole: "staff", routeName: "vehicle-size/ocr" },
+);

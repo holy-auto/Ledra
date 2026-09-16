@@ -1,5 +1,4 @@
-import { NextRequest } from "next/server";
-import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
+
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import {
   CERTIFICATE_MEDIA_BUCKET,
@@ -13,16 +12,9 @@ import {
   extensionForMime,
   type MediaType,
 } from "@/lib/certificateMedia";
-import {
-  apiOk,
-  apiInternalError,
-  apiUnauthorized,
-  apiValidationError,
-  apiNotFound,
-  apiForbidden,
-} from "@/lib/api/response";
-import { resolveCallerWithRole, requirePermission } from "@/lib/auth/checkRole";
-import { checkRateLimit } from "@/lib/api/rateLimit";
+import { apiOk, apiInternalError, apiValidationError, apiNotFound } from "@/lib/api/response";
+
+import { withCaller } from "@/lib/api/withCaller";
 
 export const runtime = "nodejs";
 // Videos can be up to 100 MB so we need extra time for upload + storage write.
@@ -120,130 +112,127 @@ async function validateFile(
   return { ok: true, data: { buffer, mime, ext: extensionForMime(mime), size: buffer.length } };
 }
 
-export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  try {
-    const limited = await checkRateLimit(req, "general");
-    if (limited) return limited;
+export const POST = withCaller<{ id: string }>(
+  async (req, { caller, params }) => {
+    try {
 
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
-    if (!requirePermission(caller, "certificates:edit")) return apiForbidden();
-    const tenantId = caller.tenantId;
+      const tenantId = caller.tenantId;
 
-    const { id: publicId } = await params;
-    if (!publicId) return apiValidationError("public_id は必須です。");
+      const { id: publicId } = params;
+      if (!publicId) return apiValidationError("public_id は必須です。");
 
-    const form = await req.formData();
-    const parsed = parseInput(form);
-    if (parsed.error || !parsed.input) {
-      return apiValidationError(parsed.error ?? "入力が不正です。");
-    }
-    const input = parsed.input;
-
-    const { admin } = createTenantScopedAdmin(tenantId);
-    const certRes = await admin
-      .from("certificates")
-      .select("id, tenant_id")
-      .eq("public_id", publicId)
-      .eq("tenant_id", tenantId)
-      .limit(1)
-      .maybeSingle<{ id: string; tenant_id: string }>();
-    if (!certRes.data?.id) return apiNotFound("証明書が見つかりません。");
-    const certId = certRes.data.id;
-
-    const primaryExpected: "video" | "image" = input.mediaType === "video" ? "video" : "image";
-    const primaryResult = await validateFile(input.primary, primaryExpected);
-    if (!primaryResult.ok) return apiValidationError(primaryResult.error);
-
-    let beforeResult: ValidatedFile | null = null;
-    if (input.before) {
-      const r = await validateFile(input.before, "image");
-      if (!r.ok) return apiValidationError(`before: ${r.error}`);
-      beforeResult = r.data;
-    }
-    let posterResult: ValidatedFile | null = null;
-    if (input.poster) {
-      const r = await validateFile(input.poster, "image");
-      if (!r.ok) return apiValidationError(`poster: ${r.error}`);
-      posterResult = r.data;
-    }
-
-    // Determine sort_order = current max + 1
-    const { data: maxRow } = await admin
-      .from("certificate_media")
-      .select("sort_order")
-      .eq("certificate_id", certId)
-      .order("sort_order", { ascending: false })
-      .limit(1)
-      .maybeSingle<{ sort_order: number | null }>();
-    const nextSort = (maxRow?.sort_order ?? -1) + 1;
-
-    const ts = Date.now();
-    const basePath = `${CERTIFICATE_MEDIA_STORAGE_PREFIX}/${tenantId}/${certId}/${ts}`;
-    const primaryPath = `${basePath}_main.${primaryResult.data.ext}`;
-    const beforePath = beforeResult ? `${basePath}_before.${beforeResult.ext}` : null;
-    const posterPath = posterResult ? `${basePath}_poster.${posterResult.ext}` : null;
-
-    // Upload primary
-    const uploads: { path: string; buf: Buffer; mime: string }[] = [
-      { path: primaryPath, buf: primaryResult.data.buffer, mime: primaryResult.data.mime },
-    ];
-    if (beforeResult && beforePath) {
-      uploads.push({ path: beforePath, buf: beforeResult.buffer, mime: beforeResult.mime });
-    }
-    if (posterResult && posterPath) {
-      uploads.push({ path: posterPath, buf: posterResult.buffer, mime: posterResult.mime });
-    }
-
-    const uploaded: string[] = [];
-    for (const u of uploads) {
-      const { error: upErr } = await admin.storage
-        .from(CERTIFICATE_MEDIA_BUCKET)
-        .upload(u.path, u.buf, { contentType: u.mime, upsert: false });
-      if (upErr) {
-        // Best-effort cleanup of any already-uploaded files
-        if (uploaded.length > 0) {
-          admin.storage
-            .from(CERTIFICATE_MEDIA_BUCKET)
-            .remove(uploaded)
-            .catch((e) => console.error("[media upload] cleanup failed", e));
-        }
-        return apiInternalError(upErr, "media storage upload");
+      const form = await req.formData();
+      const parsed = parseInput(form);
+      if (parsed.error || !parsed.input) {
+        return apiValidationError(parsed.error ?? "入力が不正です。");
       }
-      uploaded.push(u.path);
+      const input = parsed.input;
+
+      const { admin } = createTenantScopedAdmin(tenantId);
+      const certRes = await admin
+        .from("certificates")
+        .select("id, tenant_id")
+        .eq("public_id", publicId)
+        .eq("tenant_id", tenantId)
+        .limit(1)
+        .maybeSingle<{ id: string; tenant_id: string }>();
+      if (!certRes.data?.id) return apiNotFound("証明書が見つかりません。");
+      const certId = certRes.data.id;
+
+      const primaryExpected: "video" | "image" = input.mediaType === "video" ? "video" : "image";
+      const primaryResult = await validateFile(input.primary, primaryExpected);
+      if (!primaryResult.ok) return apiValidationError(primaryResult.error);
+
+      let beforeResult: ValidatedFile | null = null;
+      if (input.before) {
+        const r = await validateFile(input.before, "image");
+        if (!r.ok) return apiValidationError(`before: ${r.error}`);
+        beforeResult = r.data;
+      }
+      let posterResult: ValidatedFile | null = null;
+      if (input.poster) {
+        const r = await validateFile(input.poster, "image");
+        if (!r.ok) return apiValidationError(`poster: ${r.error}`);
+        posterResult = r.data;
+      }
+
+      // Determine sort_order = current max + 1
+      const { data: maxRow } = await admin
+        .from("certificate_media")
+        .select("sort_order")
+        .eq("certificate_id", certId)
+        .order("sort_order", { ascending: false })
+        .limit(1)
+        .maybeSingle<{ sort_order: number | null }>();
+      const nextSort = (maxRow?.sort_order ?? -1) + 1;
+
+      const ts = Date.now();
+      const basePath = `${CERTIFICATE_MEDIA_STORAGE_PREFIX}/${tenantId}/${certId}/${ts}`;
+      const primaryPath = `${basePath}_main.${primaryResult.data.ext}`;
+      const beforePath = beforeResult ? `${basePath}_before.${beforeResult.ext}` : null;
+      const posterPath = posterResult ? `${basePath}_poster.${posterResult.ext}` : null;
+
+      // Upload primary
+      const uploads: { path: string; buf: Buffer; mime: string }[] = [
+        { path: primaryPath, buf: primaryResult.data.buffer, mime: primaryResult.data.mime },
+      ];
+      if (beforeResult && beforePath) {
+        uploads.push({ path: beforePath, buf: beforeResult.buffer, mime: beforeResult.mime });
+      }
+      if (posterResult && posterPath) {
+        uploads.push({ path: posterPath, buf: posterResult.buffer, mime: posterResult.mime });
+      }
+
+      const uploaded: string[] = [];
+      for (const u of uploads) {
+        const { error: upErr } = await admin.storage
+          .from(CERTIFICATE_MEDIA_BUCKET)
+          .upload(u.path, u.buf, { contentType: u.mime, upsert: false });
+        if (upErr) {
+          // Best-effort cleanup of any already-uploaded files
+          if (uploaded.length > 0) {
+            admin.storage
+              .from(CERTIFICATE_MEDIA_BUCKET)
+              .remove(uploaded)
+              .catch((e) => console.error("[media upload] cleanup failed", e));
+          }
+          return apiInternalError(upErr, "media storage upload");
+        }
+        uploaded.push(u.path);
+      }
+
+      const { data: inserted, error: insertErr } = await admin
+        .from("certificate_media")
+        .insert({
+          certificate_id: certId,
+          tenant_id: tenantId,
+          media_type: input.mediaType,
+          storage_path: primaryPath,
+          before_path: beforePath,
+          poster_path: posterPath,
+          caption: input.caption,
+          sort_order: nextSort,
+          content_type: primaryResult.data.mime,
+          file_size: primaryResult.data.size,
+        })
+        .select(
+          "id, media_type, storage_path, before_path, poster_path, caption, sort_order, content_type, file_size, created_at",
+        )
+        .single();
+
+      if (insertErr || !inserted) {
+        // Roll back uploaded files so we don't orphan storage objects.
+        admin.storage
+          .from(CERTIFICATE_MEDIA_BUCKET)
+          .remove(uploaded)
+          .catch((e) => console.error("[media upload] rollback failed", e));
+        return apiInternalError(insertErr ?? new Error("insert failed"), "media insert");
+      }
+
+      return apiOk({ media: inserted });
+    } catch (e) {
+      return apiInternalError(e, "media upload");
     }
-
-    const { data: inserted, error: insertErr } = await admin
-      .from("certificate_media")
-      .insert({
-        certificate_id: certId,
-        tenant_id: tenantId,
-        media_type: input.mediaType,
-        storage_path: primaryPath,
-        before_path: beforePath,
-        poster_path: posterPath,
-        caption: input.caption,
-        sort_order: nextSort,
-        content_type: primaryResult.data.mime,
-        file_size: primaryResult.data.size,
-      })
-      .select(
-        "id, media_type, storage_path, before_path, poster_path, caption, sort_order, content_type, file_size, created_at",
-      )
-      .single();
-
-    if (insertErr || !inserted) {
-      // Roll back uploaded files so we don't orphan storage objects.
-      admin.storage
-        .from(CERTIFICATE_MEDIA_BUCKET)
-        .remove(uploaded)
-        .catch((e) => console.error("[media upload] rollback failed", e));
-      return apiInternalError(insertErr ?? new Error("insert failed"), "media insert");
-    }
-
-    return apiOk({ media: inserted });
-  } catch (e) {
-    return apiInternalError(e, "media upload");
-  }
-}
+  },
+  { rateLimit: "general", permission: "certificates:edit", routeName: "media upload" },
+);

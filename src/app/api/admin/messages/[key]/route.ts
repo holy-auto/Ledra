@@ -1,16 +1,12 @@
 import { NextRequest } from "next/server";
 import { after } from "next/server";
 import { z } from "zod";
-import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
+import { withCaller } from "@/lib/api/withCaller";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
-import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
 import {
   apiJson,
-  apiUnauthorized,
-  apiForbidden,
   apiValidationError,
   apiNotFound,
-  apiInternalError,
 } from "@/lib/api/response";
 import { sendCustomerLineText } from "@/lib/line/client";
 import { maybeCaptureKnowledgeFromReply } from "@/lib/ai/automation/knowledgeCaptureAuto";
@@ -37,15 +33,11 @@ const sendSchema = z.object({
   body: z.string().trim().min(1, "メッセージを入力してください。").max(2000, "メッセージは 2000 文字以内です。"),
 });
 
-export async function GET(_req: NextRequest, ctx: { params: Promise<{ key: string }> }) {
-  try {
-    const { key } = await ctx.params;
+export const GET = withCaller<{ key: string }>(
+  async (_req: NextRequest, { caller, params }) => {
+    const { key } = params;
     const ref = parseThreadKey(key);
     if (ref.kind === "invalid") return apiValidationError("invalid thread key");
-
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
 
     const { admin } = createTenantScopedAdmin(caller.tenantId);
     const resolved = await resolveThread(admin, caller.tenantId, ref);
@@ -67,21 +59,15 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ key: strin
       // 返信送信は LINE のみ (メールは受信取り込み専用)。
       can_send: !!resolved.lineUserId,
     });
-  } catch (e) {
-    return apiInternalError(e, "message thread GET");
-  }
-}
+  },
+  { routeName: "message thread GET" },
+);
 
-export async function POST(req: NextRequest, ctx: { params: Promise<{ key: string }> }) {
-  try {
-    const { key } = await ctx.params;
+export const POST = withCaller<{ key: string }>(
+  async (req: NextRequest, { caller, params }) => {
+    const { key } = params;
     const ref = parseThreadKey(key);
     if (ref.kind === "invalid") return apiValidationError("invalid thread key");
-
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
-    if (!requireMinRole(caller, "staff")) return apiForbidden();
 
     const { admin } = createTenantScopedAdmin(caller.tenantId);
     const resolved = await resolveThread(admin, caller.tenantId, ref);
@@ -134,25 +120,19 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ key: strin
     }
 
     return apiJson({ ok: true, delivered });
-  } catch (e) {
-    return apiInternalError(e, "message thread POST");
-  }
-}
+  },
+  { minRole: "staff", routeName: "message thread POST" },
+);
 
 /**
  * PATCH /api/admin/messages/[key] — スレッドの inbound 未読を一括既読化する。
  * body 不要。スタッフがスレッドを開いた時点でクライアントから呼ぶ。
  */
-export async function PATCH(_req: NextRequest, ctx: { params: Promise<{ key: string }> }) {
-  try {
-    const { key } = await ctx.params;
+export const PATCH = withCaller<{ key: string }>(
+  async (_req: NextRequest, { caller, params }) => {
+    const { key } = params;
     const ref = parseThreadKey(key);
     if (ref.kind === "invalid") return apiValidationError("invalid thread key");
-
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
-    if (!requireMinRole(caller, "staff")) return apiForbidden();
 
     const { admin } = createTenantScopedAdmin(caller.tenantId);
     const resolved = await resolveThread(admin, caller.tenantId, ref);
@@ -160,7 +140,6 @@ export async function PATCH(_req: NextRequest, ctx: { params: Promise<{ key: str
 
     const marked = await markThreadRead(admin, caller.tenantId, resolved);
     return apiJson({ ok: true, marked_read: marked });
-  } catch (e) {
-    return apiInternalError(e, "message thread PATCH");
-  }
-}
+  },
+  { minRole: "staff", routeName: "message thread PATCH" },
+);

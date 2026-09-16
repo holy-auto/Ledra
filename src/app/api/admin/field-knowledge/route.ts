@@ -7,46 +7,46 @@
  * 空一覧に degrade して UI を壊さない。line-knowledge (顧客向け・admin 限定)
  * と違い、現場技術者 (staff) が知見を足せるようにする。
  */
-import { NextRequest } from "next/server";
+
 import { z } from "zod";
-import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
-import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
-import { apiOk, apiUnauthorized, apiForbidden, apiInternalError, apiValidationError } from "@/lib/api/response";
+
+import { apiOk, apiInternalError, apiValidationError } from "@/lib/api/response";
 import { parseJsonBody } from "@/lib/api/parseBody";
 import { logAiAuditEvent } from "@/lib/audit/aiAuditLog";
 import { isMissingTableError } from "@/lib/ai/automation/policy";
 import { FIELD_KNOWLEDGE_LIMIT } from "@/lib/ai/fieldKnowledgeAnswer";
 
+import { withCaller } from "@/lib/api/withCaller";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 const SELECT_COLS = "id, title, content, vehicle_model, tags, enabled, created_at, updated_at";
 const MIGRATION_WARNING = "施工ナレッジのテーブルが未作成です。マイグレーション適用後に保存できるようになります。";
 
-export async function GET() {
-  try {
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
+export const GET = withCaller(
+  async (_req, { caller }) => {
+    try {
 
-    const { admin, tenantId } = createTenantScopedAdmin(caller.tenantId);
-    const { data, error } = await admin
-      .from("tenant_field_knowledge")
-      .select(SELECT_COLS)
-      .eq("tenant_id", tenantId)
-      .order("created_at", { ascending: true })
-      .limit(FIELD_KNOWLEDGE_LIMIT);
+      const { admin, tenantId } = createTenantScopedAdmin(caller.tenantId);
+      const { data, error } = await admin
+        .from("tenant_field_knowledge")
+        .select(SELECT_COLS)
+        .eq("tenant_id", tenantId)
+        .order("created_at", { ascending: true })
+        .limit(FIELD_KNOWLEDGE_LIMIT);
 
-    if (error) {
-      if (isMissingTableError(error)) return apiOk({ entries: [], warning: MIGRATION_WARNING });
-      return apiInternalError(error, "field-knowledge GET");
+      if (error) {
+        if (isMissingTableError(error)) return apiOk({ entries: [], warning: MIGRATION_WARNING });
+        return apiInternalError(error, "field-knowledge GET");
+      }
+      return apiOk({ entries: data ?? [] });
+    } catch (e: unknown) {
+      return apiInternalError(e, "field-knowledge GET");
     }
-    return apiOk({ entries: data ?? [] });
-  } catch (e: unknown) {
-    return apiInternalError(e, "field-knowledge GET");
-  }
-}
+  },
+  { routeName: "admin/field-knowledge GET" },
+);
 
 const createSchema = z.object({
   title: z.string().trim().min(1, "トピックを入力してください。").max(200),
@@ -55,59 +55,56 @@ const createSchema = z.object({
   tags: z.array(z.string().trim().min(1).max(40)).max(20).optional(),
 });
 
-export async function POST(req: NextRequest) {
-  try {
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
-    if (!requireMinRole(caller, "staff")) {
-      return apiForbidden("施工ナレッジの編集はスタッフ以上が行えます。");
+export const POST = withCaller(
+  async (req, { caller }) => {
+    try {
+
+      const parsed = await parseJsonBody(req, createSchema);
+      if (!parsed.ok) return parsed.response;
+
+      const { admin, tenantId } = createTenantScopedAdmin(caller.tenantId);
+
+      // 登録上限 = プロンプト注入上限 (FIELD_KNOWLEDGE_LIMIT)。登録したのに AI が
+      // 参照しないエントリを作らないため両者は同じ定数を共有する。
+      // ponytail: count→insert は非アトミック。同時 POST で数件超え得るが実害は
+      // 「上限超過分がプロンプトに載らない」だけなので許容 (line-knowledge と同方針)。
+      const { count, error: countError } = await admin
+        .from("tenant_field_knowledge")
+        .select("id", { count: "exact", head: true })
+        .eq("tenant_id", tenantId);
+      if (countError) {
+        if (isMissingTableError(countError)) return apiValidationError(MIGRATION_WARNING);
+        return apiInternalError(countError, "field-knowledge POST count");
+      }
+      if ((count ?? 0) >= FIELD_KNOWLEDGE_LIMIT) {
+        return apiValidationError(`施工ナレッジは 1 店舗あたり ${FIELD_KNOWLEDGE_LIMIT} 件まで登録できます。`);
+      }
+
+      const { data, error } = await admin
+        .from("tenant_field_knowledge")
+        .insert({
+          tenant_id: tenantId,
+          title: parsed.data.title,
+          content: parsed.data.content,
+          vehicle_model: parsed.data.vehicle_model || null,
+          tags: parsed.data.tags ?? [],
+          created_by: caller.userId,
+        })
+        .select(SELECT_COLS)
+        .single();
+      if (error) return apiInternalError(error, "field-knowledge POST insert");
+
+      void logAiAuditEvent({
+        tenantId,
+        userId: caller.userId,
+        action: "ai_settings_changed",
+        detail: { field_knowledge: { added: data?.id, title: parsed.data.title } },
+      });
+
+      return apiOk({ entry: data });
+    } catch (e: unknown) {
+      return apiInternalError(e, "field-knowledge POST");
     }
-
-    const parsed = await parseJsonBody(req, createSchema);
-    if (!parsed.ok) return parsed.response;
-
-    const { admin, tenantId } = createTenantScopedAdmin(caller.tenantId);
-
-    // 登録上限 = プロンプト注入上限 (FIELD_KNOWLEDGE_LIMIT)。登録したのに AI が
-    // 参照しないエントリを作らないため両者は同じ定数を共有する。
-    // ponytail: count→insert は非アトミック。同時 POST で数件超え得るが実害は
-    // 「上限超過分がプロンプトに載らない」だけなので許容 (line-knowledge と同方針)。
-    const { count, error: countError } = await admin
-      .from("tenant_field_knowledge")
-      .select("id", { count: "exact", head: true })
-      .eq("tenant_id", tenantId);
-    if (countError) {
-      if (isMissingTableError(countError)) return apiValidationError(MIGRATION_WARNING);
-      return apiInternalError(countError, "field-knowledge POST count");
-    }
-    if ((count ?? 0) >= FIELD_KNOWLEDGE_LIMIT) {
-      return apiValidationError(`施工ナレッジは 1 店舗あたり ${FIELD_KNOWLEDGE_LIMIT} 件まで登録できます。`);
-    }
-
-    const { data, error } = await admin
-      .from("tenant_field_knowledge")
-      .insert({
-        tenant_id: tenantId,
-        title: parsed.data.title,
-        content: parsed.data.content,
-        vehicle_model: parsed.data.vehicle_model || null,
-        tags: parsed.data.tags ?? [],
-        created_by: caller.userId,
-      })
-      .select(SELECT_COLS)
-      .single();
-    if (error) return apiInternalError(error, "field-knowledge POST insert");
-
-    void logAiAuditEvent({
-      tenantId,
-      userId: caller.userId,
-      action: "ai_settings_changed",
-      detail: { field_knowledge: { added: data?.id, title: parsed.data.title } },
-    });
-
-    return apiOk({ entry: data });
-  } catch (e: unknown) {
-    return apiInternalError(e, "field-knowledge POST");
-  }
-}
+  },
+  { minRole: "staff", routeName: "admin/field-knowledge POST" },
+);

@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { NextRequest } from "next/server";
 
 const mocks = vi.hoisted(() => ({
   resolveCallerWithRole: vi.fn(),
@@ -29,8 +30,8 @@ import { GET, POST } from "@/app/api/admin/integrations/webhooks/route";
 
 const ADMIN_CALLER = { userId: "u1", tenantId: "t1", role: "admin", planTier: "pro" };
 
-function req(body?: unknown): Request {
-  return new Request("http://localhost/api/admin/integrations/webhooks", {
+function req(body?: unknown): NextRequest {
+  return new NextRequest("http://localhost/api/admin/integrations/webhooks", {
     method: body === undefined ? "GET" : "POST",
     headers: { "content-type": "application/json" },
     body: body === undefined ? undefined : JSON.stringify(body),
@@ -45,14 +46,14 @@ beforeEach(() => {
 describe("GET /api/admin/integrations/webhooks", () => {
   it("401 when not authenticated", async () => {
     mocks.resolveCallerWithRole.mockResolvedValueOnce(null);
-    const res = await GET();
+    const res = await GET(new NextRequest("http://localhost/api/admin/integrations/webhooks"));
     expect(res.status).toBe(401);
   });
 
   it("403 when missing settings:view permission", async () => {
     mocks.resolveCallerWithRole.mockResolvedValueOnce(ADMIN_CALLER);
     mocks.requirePermission.mockReturnValueOnce(false);
-    const res = await GET();
+    const res = await GET(new NextRequest("http://localhost/api/admin/integrations/webhooks"));
     expect(res.status).toBe(403);
   });
 
@@ -87,7 +88,7 @@ describe("GET /api/admin/integrations/webhooks", () => {
       },
     });
 
-    const res = await GET();
+    const res = await GET(new NextRequest("http://localhost/api/admin/integrations/webhooks"));
     expect(res.status).toBe(200);
     const body = (await res.json()) as { ok: boolean; webhooks: Array<{ secret: string; id: string }> };
     expect(body.webhooks[0].id).toBe("w1");

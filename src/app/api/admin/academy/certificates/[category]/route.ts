@@ -5,12 +5,12 @@
  * CERTIFICATE_THRESHOLD 未満の場合は 403 を返す。
  */
 import { NextResponse } from "next/server";
-import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { createPlatformScopedAdmin } from "@/lib/supabase/admin";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
-import { apiUnauthorized, apiForbidden, apiInternalError, apiNotFound } from "@/lib/api/response";
+
+import { apiForbidden, apiInternalError, apiNotFound } from "@/lib/api/response";
 import { renderAcademyCertificate, CATEGORY_LABEL, CERTIFICATE_THRESHOLD } from "@/lib/academy/certificate";
 
+import { withCaller } from "@/lib/api/withCaller";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
@@ -22,71 +22,71 @@ function makeCertNumber(userId: string, category: string, issueDate: string): st
   return `LDRA-${cat}-${ym}-${prefix}`;
 }
 
-export async function GET(_req: Request, { params }: { params: Promise<{ category: string }> }) {
-  try {
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
+export const GET = withCaller<{ category: string }>(
+  async (_req, { caller, supabase, params }) => {
+    try {
 
-    const { category } = await params;
+      const { category } = params;
 
-    if (!CATEGORY_LABEL[category]) return apiNotFound("カテゴリが見つかりません");
+      if (!CATEGORY_LABEL[category]) return apiNotFound("カテゴリが見つかりません");
 
-    // カテゴリ内の完了レッスン数を確認
-    const { data: completions, error: cErr } = await supabase
-      .from("academy_lesson_completions")
-      .select("lesson_id")
-      .eq("user_id", caller.userId);
+      // カテゴリ内の完了レッスン数を確認
+      const { data: completions, error: cErr } = await supabase
+        .from("academy_lesson_completions")
+        .select("lesson_id")
+        .eq("user_id", caller.userId);
 
-    if (cErr) return apiInternalError(cErr);
+      if (cErr) return apiInternalError(cErr);
 
-    const lessonIds = (completions ?? []).map((c) => c.lesson_id as string);
+      const lessonIds = (completions ?? []).map((c) => c.lesson_id as string);
 
-    let categoryCount = 0;
-    if (lessonIds.length > 0) {
-      const { count, error: lErr } = await supabase
-        .from("academy_lessons")
-        .select("id", { count: "exact", head: true })
-        .in("id", lessonIds)
-        .eq("category", category);
+      let categoryCount = 0;
+      if (lessonIds.length > 0) {
+        const { count, error: lErr } = await supabase
+          .from("academy_lessons")
+          .select("id", { count: "exact", head: true })
+          .in("id", lessonIds)
+          .eq("category", category);
 
-      if (lErr) return apiInternalError(lErr);
-      categoryCount = count ?? 0;
+        if (lErr) return apiInternalError(lErr);
+        categoryCount = count ?? 0;
+      }
+
+      if (categoryCount < CERTIFICATE_THRESHOLD) {
+        return apiForbidden(
+          `${CATEGORY_LABEL[category]} コースの修了証には ${CERTIFICATE_THRESHOLD} 件以上の完了が必要です (現在: ${categoryCount} 件)`,
+        );
+      }
+
+      // テナント名を取得
+      const admin = createPlatformScopedAdmin("academy/certificates: tenant name 取得");
+      const { data: tenant } = await admin.from("tenants").select("name").eq("id", caller.tenantId).maybeSingle();
+
+      const tenantName = (tenant?.name as string | null) ?? "加盟店";
+      const issueDate = new Date().toISOString().slice(0, 10);
+      const certNumber = makeCertNumber(caller.userId, category, issueDate);
+
+      const buf = await renderAcademyCertificate({
+        category,
+        tenant_name: tenantName,
+        lesson_count: categoryCount,
+        issue_date: issueDate,
+        cert_number: certNumber,
+      });
+
+      const filename = `ledra-academy-${category}-certificate.pdf`;
+
+      return new NextResponse(new Uint8Array(buf), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/pdf",
+          "Content-Disposition": `attachment; filename="${filename}"`,
+          "Cache-Control": "no-store",
+        },
+      });
+    } catch (e: unknown) {
+      return apiInternalError(e);
     }
-
-    if (categoryCount < CERTIFICATE_THRESHOLD) {
-      return apiForbidden(
-        `${CATEGORY_LABEL[category]} コースの修了証には ${CERTIFICATE_THRESHOLD} 件以上の完了が必要です (現在: ${categoryCount} 件)`,
-      );
-    }
-
-    // テナント名を取得
-    const admin = createPlatformScopedAdmin("academy/certificates: tenant name 取得");
-    const { data: tenant } = await admin.from("tenants").select("name").eq("id", caller.tenantId).maybeSingle();
-
-    const tenantName = (tenant?.name as string | null) ?? "加盟店";
-    const issueDate = new Date().toISOString().slice(0, 10);
-    const certNumber = makeCertNumber(caller.userId, category, issueDate);
-
-    const buf = await renderAcademyCertificate({
-      category,
-      tenant_name: tenantName,
-      lesson_count: categoryCount,
-      issue_date: issueDate,
-      cert_number: certNumber,
-    });
-
-    const filename = `ledra-academy-${category}-certificate.pdf`;
-
-    return new NextResponse(new Uint8Array(buf), {
-      status: 200,
-      headers: {
-        "Content-Type": "application/pdf",
-        "Content-Disposition": `attachment; filename="${filename}"`,
-        "Cache-Control": "no-store",
-      },
-    });
-  } catch (e: unknown) {
-    return apiInternalError(e);
-  }
-}
+  },
+  { routeName: "admin/academy/certificates/[category] GET" },
+);

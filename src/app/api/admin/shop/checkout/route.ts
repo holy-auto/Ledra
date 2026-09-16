@@ -1,12 +1,12 @@
-import { NextRequest } from "next/server";
+
 import { z } from "zod";
 import Stripe from "stripe";
 import { getStripeClient } from "@/lib/stripe/client";
-import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
+
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
-import { apiOk, apiUnauthorized, apiValidationError, apiInternalError, apiForbidden } from "@/lib/api/response";
-import { checkRateLimit } from "@/lib/api/rateLimit";
+import { apiOk, apiValidationError, apiInternalError } from "@/lib/api/response";
+
+import { withCaller } from "@/lib/api/withCaller";
 
 const shopCheckoutSchema = z.object({
   items: z
@@ -29,180 +29,177 @@ function getStripe() {
 }
 
 /** POST /api/admin/shop/checkout — Stripe Checkout Session作成 */
-export async function POST(req: NextRequest) {
-  // Each call hits Stripe to create a Checkout session. Auth preset
-  // (10/min/IP) bounds Stripe API spend if a session leaks.
-  const limited = await checkRateLimit(req, "auth");
-  if (limited) return limited;
+export const POST = withCaller(
+  async (req, { caller, supabase }) => {
+    // Each call hits Stripe to create a Checkout session. Auth preset
+    // (10/min/IP) bounds Stripe API spend if a session leaks.
 
-  try {
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
-    // 備品購入は admin 以上（2026-09-03 代表判断）。会社のお金を使う操作なので、
-    // 顧客への請求（payments:create / staff）とは分ける。
-    // billing:manage は owner 以上でしか持たないため、ロール下限で「admin 以上」を表す。
-    // 同じ買い物は請求書払い経路（admin/shop/orders）からも作れるので、そちらも同じ下限。
-    if (!requireMinRole(caller, "admin")) return apiForbidden();
-
-    const parsed = shopCheckoutSchema.safeParse(await req.json().catch(() => ({})));
-    if (!parsed.success) {
-      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
-    }
-    const body = parsed.data;
-
-    // 商品情報を取得
-    const productIds = body.items.map((i) => i.product_id);
-    const { data: products, error: pErr } = await supabase
-      .from("shop_products")
-      .select("id, name, price, tax_rate, unit, min_quantity, meta")
-      .in("id", productIds)
-      .eq("is_active", true);
-
-    if (pErr) return apiInternalError(pErr, "shop_products lookup");
-    if (!products?.length) return apiValidationError("有効な商品が見つかりません。");
-
-    const productMap = new Map(products.map((p) => [p.id, p]));
-
-    // 金額計算 & Stripe line_items構築
-    const lineItems: Stripe.Checkout.SessionCreateParams.LineItem[] = [];
-    let subtotal = 0;
-    let tax = 0;
-    const orderItems: Array<{
-      product_id: string;
-      product_name: string;
-      quantity: number;
-      unit_price: number;
-      tax_rate: number;
-      amount: number;
-      meta: Record<string, unknown>;
-    }> = [];
-
-    for (const item of body.items) {
-      const product = productMap.get(item.product_id);
-      if (!product) continue;
-
-      const amount = product.price * item.quantity;
-      // 税は「単価ごとに端数処理してから数量倍」で計算する。Stripe の line_item は
-      // 税込み単価(unitAmountWithTax)×quantity で請求するため、行合計に対する端数処理だと
-      // price*rate に端数がある数量>1 の商品で shop_orders.total と実請求額が 1 円ずれる。
-      const itemTax = Math.floor(product.price * product.tax_rate) * item.quantity;
-      subtotal += amount;
-      tax += itemTax;
-
-      orderItems.push({
-        product_id: product.id,
-        product_name: product.name,
-        quantity: item.quantity,
-        unit_price: product.price,
-        tax_rate: product.tax_rate,
-        amount,
-        meta: product.meta ?? {},
-      });
-
-      // 税込み単価
-      const unitAmountWithTax = product.price + Math.floor(product.price * product.tax_rate);
-
-      lineItems.push({
-        price_data: {
-          currency: "jpy",
-          product_data: { name: product.name },
-          unit_amount: unitAmountWithTax,
-        },
-        quantity: item.quantity,
-      });
-    }
-
-    const total = subtotal + tax;
-
-    // テナント情報取得（Stripe Customer ID用）
-    const { admin } = createTenantScopedAdmin(caller.tenantId);
-    const { data: tenant, error: tErr } = await admin
-      .from("tenants")
-      .select("id, name, stripe_customer_id")
-      .eq("id", caller.tenantId)
-      .maybeSingle();
-
-    if (tErr) return apiInternalError(tErr, "read tenants");
-
-    const stripe = getStripe();
-
-    // Stripe Customer確保
-    let customerId = tenant?.stripe_customer_id as string | null;
-    if (!customerId) {
-      const c = await stripe.customers.create({
-        name: tenant?.name ?? "Ledra Tenant",
-        metadata: { tenant_id: caller.tenantId },
-      });
-      customerId = c.id;
-      await admin.from("tenants").update({ stripe_customer_id: customerId }).eq("id", caller.tenantId);
-    }
-
-    // 注文番号生成
-    const orderNumber = `SO-${Date.now().toString(36).toUpperCase()}`;
-
-    // Step 1: 仮レコード作成（order_id を先に確保）
-    const { data: order, error: oErr } = await supabase
-      .from("shop_orders")
-      .insert({
-        tenant_id: caller.tenantId,
-        order_number: orderNumber,
-        status: "pending_checkout",
-        payment_method: "stripe",
-        subtotal,
-        tax,
-        total,
-        note: body.note ?? null,
-        created_by: caller.userId,
-      })
-      .select("id")
-      .single();
-
-    if (oErr) return apiInternalError(oErr, "shop_orders insert");
-
-    // 明細作成（内部DBなので Stripe 前に実行してOK）
-    const itemsToInsert = orderItems.map((item) => ({
-      ...item,
-      order_id: order.id,
-    }));
-    await supabase.from("shop_order_items").insert(itemsToInsert);
-
-    // Step 2: Stripe Checkout Session作成
-    const appUrl = process.env.APP_URL ?? process.env.NEXT_PUBLIC_APP_URL;
-    if (!appUrl) throw new Error("Missing APP_URL");
-
-    let session: Stripe.Checkout.Session;
     try {
-      session = await stripe.checkout.sessions.create({
-        mode: "payment",
-        customer: customerId,
-        client_reference_id: caller.tenantId,
-        metadata: {
+      // 備品購入は admin 以上（2026-09-03 代表判断）。会社のお金を使う操作なので、
+      // 顧客への請求（payments:create / staff）とは分ける。
+      // billing:manage は owner 以上でしか持たないため、ロール下限で「admin 以上」を表す。
+      // 同じ買い物は請求書払い経路（admin/shop/orders）からも作れるので、そちらも同じ下限。
+
+      const parsed = shopCheckoutSchema.safeParse(await req.json().catch(() => ({})));
+      if (!parsed.success) {
+        return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
+      }
+      const body = parsed.data;
+
+      // 商品情報を取得
+      const productIds = body.items.map((i) => i.product_id);
+      const { data: products, error: pErr } = await supabase
+        .from("shop_products")
+        .select("id, name, price, tax_rate, unit, min_quantity, meta")
+        .in("id", productIds)
+        .eq("is_active", true);
+
+      if (pErr) return apiInternalError(pErr, "shop_products lookup");
+      if (!products?.length) return apiValidationError("有効な商品が見つかりません。");
+
+      const productMap = new Map(products.map((p) => [p.id, p]));
+
+      // 金額計算 & Stripe line_items構築
+      const lineItems: Stripe.Checkout.SessionCreateParams.LineItem[] = [];
+      let subtotal = 0;
+      let tax = 0;
+      const orderItems: Array<{
+        product_id: string;
+        product_name: string;
+        quantity: number;
+        unit_price: number;
+        tax_rate: number;
+        amount: number;
+        meta: Record<string, unknown>;
+      }> = [];
+
+      for (const item of body.items) {
+        const product = productMap.get(item.product_id);
+        if (!product) continue;
+
+        const amount = product.price * item.quantity;
+        // 税は「単価ごとに端数処理してから数量倍」で計算する。Stripe の line_item は
+        // 税込み単価(unitAmountWithTax)×quantity で請求するため、行合計に対する端数処理だと
+        // price*rate に端数がある数量>1 の商品で shop_orders.total と実請求額が 1 円ずれる。
+        const itemTax = Math.floor(product.price * product.tax_rate) * item.quantity;
+        subtotal += amount;
+        tax += itemTax;
+
+        orderItems.push({
+          product_id: product.id,
+          product_name: product.name,
+          quantity: item.quantity,
+          unit_price: product.price,
+          tax_rate: product.tax_rate,
+          amount,
+          meta: product.meta ?? {},
+        });
+
+        // 税込み単価
+        const unitAmountWithTax = product.price + Math.floor(product.price * product.tax_rate);
+
+        lineItems.push({
+          price_data: {
+            currency: "jpy",
+            product_data: { name: product.name },
+            unit_amount: unitAmountWithTax,
+          },
+          quantity: item.quantity,
+        });
+      }
+
+      const total = subtotal + tax;
+
+      // テナント情報取得（Stripe Customer ID用）
+      const { admin } = createTenantScopedAdmin(caller.tenantId);
+      const { data: tenant, error: tErr } = await admin
+        .from("tenants")
+        .select("id, name, stripe_customer_id")
+        .eq("id", caller.tenantId)
+        .maybeSingle();
+
+      if (tErr) return apiInternalError(tErr, "read tenants");
+
+      const stripe = getStripe();
+
+      // Stripe Customer確保
+      let customerId = tenant?.stripe_customer_id as string | null;
+      if (!customerId) {
+        const c = await stripe.customers.create({
+          name: tenant?.name ?? "Ledra Tenant",
+          metadata: { tenant_id: caller.tenantId },
+        });
+        customerId = c.id;
+        await admin.from("tenants").update({ stripe_customer_id: customerId }).eq("id", caller.tenantId);
+      }
+
+      // 注文番号生成
+      const orderNumber = `SO-${Date.now().toString(36).toUpperCase()}`;
+
+      // Step 1: 仮レコード作成（order_id を先に確保）
+      const { data: order, error: oErr } = await supabase
+        .from("shop_orders")
+        .insert({
           tenant_id: caller.tenantId,
-          shop_order_id: order.id,
           order_number: orderNumber,
-        },
-        line_items: lineItems,
-        success_url: `${appUrl}/admin/shop?status=success&order=${orderNumber}`,
-        cancel_url: `${appUrl}/admin/shop?status=cancel&order=${orderNumber}`,
-      });
-    } catch (stripeErr) {
-      // Stripe 失敗 → 仮レコードをクリーンアップして孤立オーダーを防ぐ。
-      // shop_order_items も合わせて削除しないと、failed order に対する
-      // items が DB に残って在庫集計などが歪む。
-      await admin.from("shop_order_items").delete().eq("order_id", order.id);
-      await admin.from("shop_orders").update({ status: "checkout_failed" }).eq("id", order.id);
-      throw stripeErr;
+          status: "pending_checkout",
+          payment_method: "stripe",
+          subtotal,
+          tax,
+          total,
+          note: body.note ?? null,
+          created_by: caller.userId,
+        })
+        .select("id")
+        .single();
+
+      if (oErr) return apiInternalError(oErr, "shop_orders insert");
+
+      // 明細作成（内部DBなので Stripe 前に実行してOK）
+      const itemsToInsert = orderItems.map((item) => ({
+        ...item,
+        order_id: order.id,
+      }));
+      await supabase.from("shop_order_items").insert(itemsToInsert);
+
+      // Step 2: Stripe Checkout Session作成
+      const appUrl = process.env.APP_URL ?? process.env.NEXT_PUBLIC_APP_URL;
+      if (!appUrl) throw new Error("Missing APP_URL");
+
+      let session: Stripe.Checkout.Session;
+      try {
+        session = await stripe.checkout.sessions.create({
+          mode: "payment",
+          customer: customerId,
+          client_reference_id: caller.tenantId,
+          metadata: {
+            tenant_id: caller.tenantId,
+            shop_order_id: order.id,
+            order_number: orderNumber,
+          },
+          line_items: lineItems,
+          success_url: `${appUrl}/admin/shop?status=success&order=${orderNumber}`,
+          cancel_url: `${appUrl}/admin/shop?status=cancel&order=${orderNumber}`,
+        });
+      } catch (stripeErr) {
+        // Stripe 失敗 → 仮レコードをクリーンアップして孤立オーダーを防ぐ。
+        // shop_order_items も合わせて削除しないと、failed order に対する
+        // items が DB に残って在庫集計などが歪む。
+        await admin.from("shop_order_items").delete().eq("order_id", order.id);
+        await admin.from("shop_orders").update({ status: "checkout_failed" }).eq("id", order.id);
+        throw stripeErr;
+      }
+
+      // Step 3: セッションID・ステータスを記録
+      await admin
+        .from("shop_orders")
+        .update({ stripe_checkout_session_id: session.id, status: "pending_payment" })
+        .eq("id", order.id);
+
+      return apiOk({ url: session.url, order_id: order.id, order_number: orderNumber });
+    } catch (e) {
+      return apiInternalError(e, "shop checkout");
     }
-
-    // Step 3: セッションID・ステータスを記録
-    await admin
-      .from("shop_orders")
-      .update({ stripe_checkout_session_id: session.id, status: "pending_payment" })
-      .eq("id", order.id);
-
-    return apiOk({ url: session.url, order_id: order.id, order_number: orderNumber });
-  } catch (e) {
-    return apiInternalError(e, "shop checkout");
-  }
-}
+  },
+  { rateLimit: "auth", minRole: "admin", routeName: "shop checkout" },
+);

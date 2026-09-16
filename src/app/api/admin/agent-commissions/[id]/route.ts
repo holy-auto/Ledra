@@ -1,12 +1,9 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
-import { createClient } from "@/lib/supabase/server";
 import { createPlatformScopedAdmin } from "@/lib/supabase/admin";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { isPlatformAdmin } from "@/lib/auth/platformAdmin";
 import {
   apiJson,
-  apiUnauthorized,
   apiForbidden,
   apiInternalError,
   apiNotFound,
@@ -14,12 +11,11 @@ import {
 } from "@/lib/api/response";
 import { parseJsonBody } from "@/lib/api/parseBody";
 import { payAgentCommission } from "@/lib/agents/payout";
+import { withCaller } from "@/lib/api/withCaller";
 
 export const dynamic = "force-dynamic";
 
 const actionSchema = z.object({ action: z.enum(["approve", "pay", "cancel"]) });
-
-type RouteContext = { params: Promise<{ id: string }> };
 
 /**
  * PATCH /api/admin/agent-commissions/<id>
@@ -29,12 +25,9 @@ type RouteContext = { params: Promise<{ id: string }> };
  * pay:     approved → Stripe transfer (webhook settles to paid). 壁3 gate.
  * cancel:  pending/approved → cancelled
  */
-export async function PATCH(request: NextRequest, ctx: RouteContext) {
-  try {
-    const { id } = await ctx.params;
-    const supabase = await createClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
+export const PATCH = withCaller<{ id: string }>(
+  async (request, { caller, supabase, params }) => {
+    const { id } = params;
     if (!isPlatformAdmin(caller)) return apiForbidden();
 
     const parsed = await parseJsonBody(request, actionSchema);
@@ -86,7 +79,6 @@ export async function PATCH(request: NextRequest, ctx: RouteContext) {
       transfer_id: result.transferId,
       message: "送金を開始しました。着金後に支払い済みへ自動更新されます。",
     });
-  } catch (e) {
-    return apiInternalError(e, "agent-commissions PATCH");
-  }
-}
+  },
+  { routeName: "admin/agent-commissions/[id] PATCH" },
+);

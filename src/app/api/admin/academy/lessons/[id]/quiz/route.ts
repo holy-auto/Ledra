@@ -8,11 +8,9 @@
  */
 import { NextRequest } from "next/server";
 import { z } from "zod";
-import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
+import { withCaller, type CallerRouteContext } from "@/lib/api/withCaller";
 import {
   apiOk,
-  apiUnauthorized,
   apiInternalError,
   apiValidationError,
   apiNotFound,
@@ -34,7 +32,7 @@ const putSchema = z.object({
 });
 
 async function isAuthor(
-  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
+  supabase: CallerRouteContext["supabase"],
   lessonId: string,
   userId: string,
   isSuperAdmin: boolean,
@@ -44,12 +42,9 @@ async function isAuthor(
   return { exists: true, isAuthor: data.author_user_id === userId || isSuperAdmin };
 }
 
-export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
-  try {
-    const { id } = await ctx.params;
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
+export const GET = withCaller<{ id: string }>(
+  async (_req: NextRequest, { caller, supabase, params }) => {
+    const { id } = params;
 
     const { exists, isAuthor: canEdit } = await isAuthor(supabase, id, caller.userId, caller.role === "super_admin");
     if (!exists) return apiNotFound("レッスンが見つかりません");
@@ -74,17 +69,13 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
     });
 
     return apiOk({ questions, can_edit: canEdit });
-  } catch (e: unknown) {
-    return apiInternalError(e);
-  }
-}
+  },
+  { routeName: "admin/academy/lessons/[id]/quiz GET" },
+);
 
-export async function PUT(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
-  try {
-    const { id } = await ctx.params;
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
+export const PUT = withCaller<{ id: string }>(
+  async (req: NextRequest, { caller, supabase, params }) => {
+    const { id } = params;
 
     const { exists, isAuthor: canEdit } = await isAuthor(supabase, id, caller.userId, caller.role === "super_admin");
     if (!exists) return apiNotFound("レッスンが見つかりません");
@@ -123,7 +114,6 @@ export async function PUT(req: NextRequest, ctx: { params: Promise<{ id: string 
     if (insErr) return apiInternalError(insErr);
 
     return apiOk({ message: "クイズを保存しました", count: rows.length });
-  } catch (e: unknown) {
-    return apiInternalError(e);
-  }
-}
+  },
+  { routeName: "admin/academy/lessons/[id]/quiz PUT" },
+);

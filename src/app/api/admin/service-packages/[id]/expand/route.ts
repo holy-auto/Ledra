@@ -1,8 +1,7 @@
 import { NextRequest } from "next/server";
-import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
+import { withCaller } from "@/lib/api/withCaller";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
-import { apiJson, apiUnauthorized, apiNotFound, apiInternalError } from "@/lib/api/response";
+import { apiJson, apiNotFound, apiInternalError } from "@/lib/api/response";
 import { expandServicePackage } from "@/lib/service-packages/expand";
 import type { MenuItemRow, PackageItemRow, ServicePackageRow } from "@/lib/service-packages/expand";
 import type { PriceStrategy } from "@/lib/validations/service-package";
@@ -19,13 +18,9 @@ export const dynamic = "force-dynamic";
  *
  * GET でも同じ結果を返す (副作用なし) が、POST も許容して RPC ライクに使える。
  */
-async function expandHandler(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  try {
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
-
-    const { id } = await params;
+const expandHandler = withCaller<{ id: string }>(
+  async (_req: NextRequest, { caller, params }) => {
+    const { id } = params;
     const { admin } = createTenantScopedAdmin(caller.tenantId);
 
     const { data: pkg, error: pkgErr } = await admin
@@ -61,10 +56,9 @@ async function expandHandler(_req: NextRequest, { params }: { params: Promise<{ 
     );
 
     return apiJson(result);
-  } catch (e) {
-    return apiInternalError(e, "service-package expand");
-  }
-}
+  },
+  { routeName: "service-package expand" },
+);
 
 export const GET = expandHandler;
 export const POST = expandHandler;

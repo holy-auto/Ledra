@@ -2,8 +2,8 @@ import { parseJsonSafe } from "@/lib/api/safeJson";
 import { NextRequest, NextResponse } from "next/server";
 import { enforceBilling } from "@/lib/billing/guard";
 import { apiJson, apiValidationError, apiUnauthorized, apiNotFound, apiInternalError } from "@/lib/api/response";
-import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
+
+import { withCaller } from "@/lib/api/withCaller";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -66,44 +66,48 @@ async function proxyToCertificatePdf(req: NextRequest, id: string) {
   return apiJson({ error: "Failed to proxy to /api/certificate/pdf", status, detail: text.slice(0, 500) }, { status });
 }
 
-export async function POST(req: NextRequest) {
-  try {
-    // ── 認証チェック ──
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) {
-      return apiUnauthorized();
+export const POST = withCaller(
+  async (req, { caller, supabase }) => {
+    try {
+      // ── 認証チェック ──
+      if (!caller) {
+        return apiUnauthorized();
+      }
+
+      // free以上 + is_active 必須（certificate_id が来れば guard 側で tenant 逆引き可能）
+      const deny = await enforceBilling(req, { minPlan: "free", action: "pdf_one", tenantId: caller.tenantId });
+      if (deny) return deny;
+
+      const body = await parseJsonSafe(req);
+      const id = pickId(body);
+
+      if (!id) {
+        return apiValidationError("certificate_id は必須です。");
+      }
+
+      // ── テナント所有チェック (cross-tenant IDOR 防止) ──
+      // id は certificate_id (uuid) か public_id のどちらか。caller のテナントに
+      // 属する証明書でなければ proxy せず 404 を返し、存在も秘匿する。
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+      let ownership = supabase.from("certificates").select("id").eq("tenant_id", caller.tenantId);
+      ownership = isUuid ? ownership.or(`id.eq.${id},public_id.eq.${id}`) : ownership.eq("public_id", id);
+      const { data: owned } = await ownership.maybeSingle();
+      if (!owned) {
+        return apiNotFound("証明書が見つかりません。");
+      }
+
+      return proxyToCertificatePdf(req, id);
+    } catch (e) {
+      return apiInternalError(e, "certificates/pdf-one");
     }
-
-    // free以上 + is_active 必須（certificate_id が来れば guard 側で tenant 逆引き可能）
-    const deny = await enforceBilling(req, { minPlan: "free", action: "pdf_one", tenantId: caller.tenantId });
-    if (deny) return deny;
-
-    const body = await parseJsonSafe(req);
-    const id = pickId(body);
-
-    if (!id) {
-      return apiValidationError("certificate_id は必須です。");
-    }
-
-    // ── テナント所有チェック (cross-tenant IDOR 防止) ──
-    // id は certificate_id (uuid) か public_id のどちらか。caller のテナントに
-    // 属する証明書でなければ proxy せず 404 を返し、存在も秘匿する。
-    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
-    let ownership = supabase.from("certificates").select("id").eq("tenant_id", caller.tenantId);
-    ownership = isUuid ? ownership.or(`id.eq.${id},public_id.eq.${id}`) : ownership.eq("public_id", id);
-    const { data: owned } = await ownership.maybeSingle();
-    if (!owned) {
-      return apiNotFound("証明書が見つかりません。");
-    }
-
-    return proxyToCertificatePdf(req, id);
-  } catch (e) {
-    return apiInternalError(e, "certificates/pdf-one");
-  }
-}
+  },
+  { routeName: "certificates/pdf-one" },
+);
 
 // A: GETは案内を出さず 405 に統一
-export async function GET() {
-  return apiJson({ error: "Method Not Allowed" }, { status: 405 });
-}
+export const GET = withCaller(
+  async (_req, { caller }) => {
+    return apiJson({ error: "Method Not Allowed" }, { status: 405 });
+  },
+  { routeName: "certificates/pdf-one GET" },
+);

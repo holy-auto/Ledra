@@ -11,6 +11,7 @@
  * 「呼んでいるが結果を捨てている」形の壊れ方も落とすため。
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { NextRequest } from "next/server";
 
 const mocks = vi.hoisted(() => ({
   resolveCallerWithRole: vi.fn(),
@@ -37,7 +38,7 @@ const TENANT = "11111111-1111-1111-1111-111111111111";
 const PUBLIC_ID = "CERT-0123456789";
 
 function req() {
-  return new Request("http://localhost/api/certificates/void", {
+  return new NextRequest("http://localhost/api/certificates/void", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ public_id: PUBLIC_ID }),

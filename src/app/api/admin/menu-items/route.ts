@@ -1,8 +1,8 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
+import { withCaller } from "@/lib/api/withCaller";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
-import { resolveCallerWithRole, requirePermission } from "@/lib/auth/checkRole";
-import { apiJson, apiUnauthorized, apiValidationError, apiInternalError, apiForbidden } from "@/lib/api/response";
+import { apiJson, apiValidationError, apiInternalError } from "@/lib/api/response";
 import {
   menuItemCreateSchema,
   menuItemCsvImportSchema,
@@ -25,12 +25,8 @@ async function fetchLaborRate(
 }
 
 // ─── GET: 品目一覧 ───
-export async function GET(req: NextRequest) {
-  try {
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
-
+export const GET = withCaller(
+  async (req: NextRequest, { caller, supabase }) => {
     const url = new URL(req.url);
     const activeOnly = url.searchParams.get("active_only") !== "false";
 
@@ -57,20 +53,13 @@ export async function GET(req: NextRequest) {
     });
     res.headers.set("Cache-Control", "private, max-age=60, stale-while-revalidate=120");
     return res;
-  } catch (e: unknown) {
-    return apiInternalError(e, "menu-items GET");
-  }
-}
+  },
+  { routeName: "menu-items GET" },
+);
 
 // ─── POST: 品目作成 / CSV一括インポート ───
-export async function POST(req: NextRequest) {
-  try {
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
-    // メニュー(商品)マスタの変更は admin 以上 (代表判断 2026-09-01)
-    if (!requirePermission(caller, "menu_items:manage")) return apiForbidden();
-
+export const POST = withCaller(
+  async (req: NextRequest, { caller, supabase }) => {
     const body = await req.json().catch(() => ({}) as Record<string, unknown>);
 
     // CSV一括インポート
@@ -156,20 +145,13 @@ export async function POST(req: NextRequest) {
     }
 
     return apiJson({ ok: true, item: data });
-  } catch (e: unknown) {
-    return apiInternalError(e, "menu-items POST");
-  }
-}
+  },
+  { permission: "menu_items:manage", routeName: "menu-items POST" },
+);
 
 // ─── PUT: 品目更新 ───
-export async function PUT(req: NextRequest) {
-  try {
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
-    // メニュー(商品)マスタの変更は admin 以上 (代表判断 2026-09-01)
-    if (!requirePermission(caller, "menu_items:manage")) return apiForbidden();
-
+export const PUT = withCaller(
+  async (req: NextRequest, { caller }) => {
     const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
     const parsed = menuItemUpdateSchema.safeParse(body);
     if (!parsed.success) {
@@ -206,20 +188,13 @@ export async function PUT(req: NextRequest) {
     }
 
     return apiJson({ ok: true, item: data });
-  } catch (e: unknown) {
-    return apiInternalError(e, "menu-items PUT");
-  }
-}
+  },
+  { permission: "menu_items:manage", routeName: "menu-items PUT" },
+);
 
 // ─── DELETE: 品目論理削除 ───
-export async function DELETE(req: NextRequest) {
-  try {
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
-    // メニュー(商品)マスタの変更は admin 以上 (代表判断 2026-09-01)
-    if (!requirePermission(caller, "menu_items:manage")) return apiForbidden();
-
+export const DELETE = withCaller(
+  async (req: NextRequest, { caller }) => {
     const parsed = menuItemDeleteSchema.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) {
       return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
@@ -241,7 +216,6 @@ export async function DELETE(req: NextRequest) {
     }
 
     return apiJson({ ok: true, disabled: data?.length ?? 0 });
-  } catch (e: unknown) {
-    return apiInternalError(e, "menu-items DELETE");
-  }
-}
+  },
+  { permission: "menu_items:manage", routeName: "menu-items DELETE" },
+);

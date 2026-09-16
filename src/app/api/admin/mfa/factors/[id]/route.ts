@@ -7,30 +7,24 @@
  */
 
 import { z } from "zod";
-import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
-import { apiOk, apiUnauthorized, apiValidationError, apiInternalError, apiError } from "@/lib/api/response";
+import { withCaller } from "@/lib/api/withCaller";
+import { apiOk, apiValidationError, apiError } from "@/lib/api/response";
 import { unenrollFactor } from "@/lib/auth/mfa";
 
 export const dynamic = "force-dynamic";
 
 const idSchema = z.string().uuid("invalid_factor_id");
 
-export async function DELETE(_req: Request, ctx: { params: Promise<{ id: string }> }) {
-  try {
-    const { id } = await ctx.params;
+export const DELETE = withCaller<{ id: string }>(
+  async (_req, { supabase, params }) => {
+    const { id } = params;
     const parsed = idSchema.safeParse(id);
     if (!parsed.success) return apiValidationError("invalid_factor_id");
-
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
 
     const r = await unenrollFactor(supabase, parsed.data);
     if (!r.ok) return apiError({ code: "auth_error", message: r.error, status: 400 });
 
     return apiOk({ ok: true });
-  } catch (e) {
-    return apiInternalError(e, "admin/mfa/factors DELETE");
-  }
-}
+  },
+  { routeName: "admin/mfa/factors DELETE" },
+);

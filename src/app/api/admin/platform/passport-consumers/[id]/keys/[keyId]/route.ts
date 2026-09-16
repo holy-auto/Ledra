@@ -6,22 +6,17 @@
  * 401 immediately. last_used_at and audit logs survive for billing
  * reconciliation.
  */
-import { NextRequest } from "next/server";
-import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
+import { withCaller } from "@/lib/api/withCaller";
 import { isPlatformAdmin } from "@/lib/auth/platformAdmin";
 import { createPlatformScopedAdmin } from "@/lib/supabase/admin";
-import { apiJson, apiUnauthorized, apiForbidden, apiNotFound, apiInternalError } from "@/lib/api/response";
+import { apiJson, apiForbidden, apiNotFound, apiInternalError } from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-export async function DELETE(_req: NextRequest, ctx: { params: Promise<{ id: string; keyId: string }> }) {
-  try {
-    const { id, keyId } = await ctx.params;
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
+export const DELETE = withCaller<{ id: string; keyId: string }>(
+  async (_req, { caller, params }) => {
+    const { id, keyId } = params;
     if (!isPlatformAdmin(caller)) return apiForbidden();
 
     const admin = createPlatformScopedAdmin("passport-consumer key revoke — soft revoke (revoked_at)");
@@ -39,7 +34,6 @@ export async function DELETE(_req: NextRequest, ctx: { params: Promise<{ id: str
     if (!data) return apiNotFound("key_not_found_or_already_revoked");
 
     return apiJson({ ok: true });
-  } catch (e) {
-    return apiInternalError(e, "passport-consumer key DELETE");
-  }
-}
+  },
+  { routeName: "passport-consumer key DELETE" },
+);

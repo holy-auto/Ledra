@@ -5,16 +5,12 @@
  * 元発注の各明細の backorder_quantity (= 発注 − 受注) を数量とした明細を持つ draft を作る。
  * 欠品が無ければ 400。仕入先・送信は人が行う (本ルートは下書き作成まで)。
  */
-import { NextRequest } from "next/server";
-import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
+import { withCaller } from "@/lib/api/withCaller";
 import {
   apiJson,
-  apiUnauthorized,
   apiValidationError,
   apiNotFound,
   apiInternalError,
-  apiForbidden,
 } from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
@@ -26,14 +22,9 @@ function makePoNumber(): string {
   return `PO-${ymd}-${Math.floor(1000 + Math.random() * 9000)}`;
 }
 
-export async function POST(_req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
-  try {
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
-    if (!requireMinRole(caller, "staff")) return apiForbidden();
-
-    const { id } = await ctx.params;
+export const POST = withCaller<{ id: string }>(
+  async (_req, { caller, supabase, params }) => {
+    const { id } = params;
 
     const { data: po, error: poErr } = await supabase
       .from("purchase_orders")
@@ -109,7 +100,6 @@ export async function POST(_req: NextRequest, ctx: { params: Promise<{ id: strin
     }
 
     return apiJson({ ok: true, id: created.id, lines: lines.length });
-  } catch (e: unknown) {
-    return apiInternalError(e, "backorder reorder");
-  }
-}
+  },
+  { minRole: "staff", routeName: "backorder reorder" },
+);
