@@ -115,13 +115,6 @@ export function enclosingFunctions(src: string, needle: RegExp): string[] {
         }
       }
     }
-    // `withCaller(handler, { permission: "x:y", minRole: "admin" })` のように、
-    // 権限指定がハンドラ本体の外（次の引数のオプションオブジェクト）に出る書き方が
-    // 増えている。本文だけ見ると「ガード無し」に見えて誤検出するので、本文の直後に
-    // 単純なオブジェクトリテラルが1個続いていれば、そこまで検査対象に含める。
-    // **足すだけ**（既存の一致は一切減らさない）なので、誤検出の抑制にしかならない。
-    const trailingOptions = /^\s*,\s*\{[^{}]*\}/.exec(src.slice(end));
-    if (trailingOptions) end += trailingOptions[0].length;
     out.push(src.slice(s.index ?? 0, end));
   }
   return out;
