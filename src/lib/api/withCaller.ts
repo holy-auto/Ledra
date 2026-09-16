@@ -58,6 +58,8 @@ export type WithCallerOptions = {
   permission?: Permission;
   /** 先頭で `checkRateLimit(req, preset)` を通す。省略時はレート制限しない。 */
   rateLimit?: RateLimitPreset;
+  /** apiInternalError に渡すルート名。省略時は "withCaller"。 */
+  routeName?: string;
 };
 
 /**
@@ -88,7 +90,7 @@ export function withCaller<P = undefined>(handler: CallerRouteHandler<P>, option
 
       return await handler(req, ctx);
     } catch (e) {
-      return apiInternalError(e, "withCaller");
+      return apiInternalError(e, options.routeName ?? "withCaller");
     }
   };
 }

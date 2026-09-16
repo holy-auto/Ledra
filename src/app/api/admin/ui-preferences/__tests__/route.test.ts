@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { NextRequest } from "next/server";
 
 const mocks = vi.hoisted(() => ({
   resolveCallerWithRole: vi.fn(),
@@ -18,7 +19,7 @@ import { GET, PUT } from "@/app/api/admin/ui-preferences/route";
 const CALLER = { userId: "u1", tenantId: "t1", role: "staff", planTier: "pro" };
 
 function request(body: unknown) {
-  return new Request("http://localhost/api/admin/ui-preferences", {
+  return new NextRequest("http://localhost/api/admin/ui-preferences", {
     method: "PUT",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
@@ -50,7 +51,7 @@ beforeEach(() => {
 describe("admin UI preferences", () => {
   it("rejects unauthenticated reads", async () => {
     mocks.resolveCallerWithRole.mockResolvedValue(null);
-    expect((await GET()).status).toBe(401);
+    expect((await GET(new NextRequest("http://localhost/api/admin/ui-preferences"))).status).toBe(401);
   });
 
   it("returns a safe default for a first-time user", async () => {
@@ -58,7 +59,7 @@ describe("admin UI preferences", () => {
     const db = adminMock();
     mocks.createTenantScopedAdmin.mockReturnValue({ admin: db.admin, tenantId: "t1" });
 
-    const response = await GET();
+    const response = await GET(new NextRequest("http://localhost/api/admin/ui-preferences"));
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
       ok: true,
@@ -69,7 +70,7 @@ describe("admin UI preferences", () => {
 
   it("rejects an unknown display mode", async () => {
     mocks.resolveCallerWithRole.mockResolvedValue(CALLER);
-    const response = await PUT(request({ displayMode: "expert" }) as never);
+    const response = await PUT(request({ displayMode: "expert" }));
     expect(response.status).toBe(400);
   });
 
@@ -78,7 +79,7 @@ describe("admin UI preferences", () => {
     const db = adminMock({ display_mode: "standard", onboarding_completed_at: null });
     mocks.createTenantScopedAdmin.mockReturnValue({ admin: db.admin, tenantId: "t1" });
 
-    const response = await PUT(request({ displayMode: "dense", onboardingCompleted: true }) as never);
+    const response = await PUT(request({ displayMode: "dense", onboardingCompleted: true }));
     expect(response.status).toBe(200);
     expect(db.upsert).toHaveBeenCalledWith(
       expect.objectContaining({

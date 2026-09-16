@@ -1,11 +1,10 @@
 import { createPlatformScopedAdmin } from "@/lib/supabase/admin";
 import { z } from "zod";
-import { NextRequest } from "next/server";
-import { createClient } from "@/lib/supabase/server";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
-import { isPlatformAdmin } from "@/lib/auth/platformAdmin";
-import { apiOk, apiUnauthorized, apiValidationError, apiInternalError, apiForbidden } from "@/lib/api/response";
 
+import { isPlatformAdmin } from "@/lib/auth/platformAdmin";
+import { apiOk, apiValidationError, apiInternalError, apiForbidden } from "@/lib/api/response";
+
+import { withCaller } from "@/lib/api/withCaller";
 const templateOrderUpdateSchema = z.object({
   order_id: z.string().uuid("order_id と status は必須です。"),
   status: z.string().trim().min(1, "order_id と status は必須です。").max(50),
@@ -14,99 +13,99 @@ const templateOrderUpdateSchema = z.object({
 });
 
 /** GET: 全テナントのテンプレートオーダー一覧（運営専用） */
-export async function GET(req: NextRequest) {
-  try {
-    const supabase = await createClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
-    if (!isPlatformAdmin(caller)) {
-      return apiForbidden("運営権限が必要です。");
-    }
+export const GET = withCaller(
+  async (req, { caller }) => {
+    try {
+      if (!isPlatformAdmin(caller)) {
+        return apiForbidden("運営権限が必要です。");
+      }
 
-    const admin = createPlatformScopedAdmin("admin/template-orders — cross-tenant template order management");
+      const admin = createPlatformScopedAdmin("admin/template-orders — cross-tenant template order management");
 
-    // 個別オーダーのログ取得
-    const url = new URL(req.url);
-    const orderId = url.searchParams.get("order_id");
-    const wantLogs = url.searchParams.get("logs");
-    if (orderId && wantLogs) {
-      const { data: logs } = await admin
-        .from("template_order_logs")
-        .select("id, order_id, action, from_status, to_status, actor, message, meta_json, created_at")
-        .eq("order_id", orderId)
+      // 個別オーダーのログ取得
+      const url = new URL(req.url);
+      const orderId = url.searchParams.get("order_id");
+      const wantLogs = url.searchParams.get("logs");
+      if (orderId && wantLogs) {
+        const { data: logs } = await admin
+          .from("template_order_logs")
+          .select("id, order_id, action, from_status, to_status, actor, message, meta_json, created_at")
+          .eq("order_id", orderId)
+          .order("created_at", { ascending: false })
+          .limit(50);
+        return apiOk({ logs: logs ?? [] });
+      }
+
+      const { data: orders, error } = await admin
+        .from("template_orders")
+        .select("*, tenants:tenant_id(name, slug)")
         .order("created_at", { ascending: false })
-        .limit(50);
-      return apiOk({ logs: logs ?? [] });
+        .limit(100);
+
+      if (error) throw error;
+
+      // サブスクリプション一覧も取得
+      const { data: subs } = await admin
+        .from("tenant_option_subscriptions")
+        .select("*, tenants:tenant_id(name, slug)")
+        .order("created_at", { ascending: false })
+        .limit(100);
+
+      return apiOk({ orders: orders ?? [], subscriptions: subs ?? [] });
+    } catch (e) {
+      return apiInternalError(e, "admin/template-orders GET");
     }
-
-    const { data: orders, error } = await admin
-      .from("template_orders")
-      .select("*, tenants:tenant_id(name, slug)")
-      .order("created_at", { ascending: false })
-      .limit(100);
-
-    if (error) throw error;
-
-    // サブスクリプション一覧も取得
-    const { data: subs } = await admin
-      .from("tenant_option_subscriptions")
-      .select("*, tenants:tenant_id(name, slug)")
-      .order("created_at", { ascending: false })
-      .limit(100);
-
-    return apiOk({ orders: orders ?? [], subscriptions: subs ?? [] });
-  } catch (e) {
-    return apiInternalError(e, "admin/template-orders GET");
-  }
-}
+  },
+  { routeName: "admin/template-orders GET" },
+);
 
 /** PUT: オーダーステータス更新（運営専用） */
-export async function PUT(req: NextRequest) {
-  try {
-    const parsed = templateOrderUpdateSchema.safeParse(await req.json().catch(() => ({})));
-    if (!parsed.success) {
-      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
+export const PUT = withCaller(
+  async (req, { caller }) => {
+    try {
+      const parsed = templateOrderUpdateSchema.safeParse(await req.json().catch(() => ({})));
+      if (!parsed.success) {
+        return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
+      }
+      const { order_id, status, notes, assigned_to } = parsed.data;
+
+      if (!isPlatformAdmin(caller)) {
+        return apiForbidden("運営権限が必要です。");
+      }
+
+      const admin = createPlatformScopedAdmin("admin/template-orders PUT — cross-tenant order status update");
+
+      // 現在のステータスを取得
+      const { data: current } = await admin.from("template_orders").select("status").eq("id", order_id).single();
+
+      if (!current) return apiForbidden("オーダーが見つかりません。");
+
+      const update: Record<string, unknown> = {
+        status,
+        updated_at: new Date().toISOString(),
+      };
+      if (notes !== undefined) update.notes = notes;
+      if (assigned_to !== undefined) update.assigned_to = assigned_to;
+      if (status === "active") update.completed_at = new Date().toISOString();
+
+      const { error } = await admin.from("template_orders").update(update).eq("id", order_id);
+
+      if (error) throw error;
+
+      // ログ記録
+      await admin.from("template_order_logs").insert({
+        order_id,
+        action: "status_change",
+        from_status: current.status,
+        to_status: status,
+        actor: `admin:${caller.userId}`,
+        message: notes ?? null,
+      });
+
+      return apiOk({ order_id, status });
+    } catch (e) {
+      return apiInternalError(e, "admin/template-orders PUT");
     }
-    const { order_id, status, notes, assigned_to } = parsed.data;
-
-    const supabase = await createClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
-    if (!isPlatformAdmin(caller)) {
-      return apiForbidden("運営権限が必要です。");
-    }
-
-    const admin = createPlatformScopedAdmin("admin/template-orders PUT — cross-tenant order status update");
-
-    // 現在のステータスを取得
-    const { data: current } = await admin.from("template_orders").select("status").eq("id", order_id).single();
-
-    if (!current) return apiForbidden("オーダーが見つかりません。");
-
-    const update: Record<string, unknown> = {
-      status,
-      updated_at: new Date().toISOString(),
-    };
-    if (notes !== undefined) update.notes = notes;
-    if (assigned_to !== undefined) update.assigned_to = assigned_to;
-    if (status === "active") update.completed_at = new Date().toISOString();
-
-    const { error } = await admin.from("template_orders").update(update).eq("id", order_id);
-
-    if (error) throw error;
-
-    // ログ記録
-    await admin.from("template_order_logs").insert({
-      order_id,
-      action: "status_change",
-      from_status: current.status,
-      to_status: status,
-      actor: `admin:${caller.userId}`,
-      message: notes ?? null,
-    });
-
-    return apiOk({ order_id, status });
-  } catch (e) {
-    return apiInternalError(e, "admin/template-orders PUT");
-  }
-}
+  },
+  { routeName: "admin/template-orders PUT" },
+);

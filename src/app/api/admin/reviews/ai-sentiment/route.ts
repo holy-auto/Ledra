@@ -7,11 +7,9 @@
  */
 import { NextRequest } from "next/server";
 import { z } from "zod";
-import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
-import { apiOk, apiUnauthorized, apiInternalError, apiPlanLimit, apiForbidden } from "@/lib/api/response";
+import { withCaller } from "@/lib/api/withCaller";
+import { apiOk, apiPlanLimit } from "@/lib/api/response";
 import { parseJsonBody } from "@/lib/api/parseBody";
-import { checkRateLimit } from "@/lib/api/rateLimit";
 import { canUseFeature } from "@/lib/billing/planFeatures";
 import { analyzeReviewSentiment } from "@/lib/ai/reviewSentiment";
 import { fastModelForPlanTier } from "@/lib/ai/client";
@@ -28,71 +26,63 @@ const schema = z.object({
   days_since_certificate: z.number().int().min(0).max(3650).optional(),
 });
 
-export async function POST(req: NextRequest) {
-  const usage = startAiRouteUsage("/api/admin/reviews/ai-sentiment");
-  try {
-    const limited = await checkRateLimit(req, "ai");
-    if (limited) {
-      usage.record({ outcome: "rate_limit" });
-      return limited;
-    }
+export const POST = withCaller(
+  async (req: NextRequest, { caller }) => {
+    const usage = startAiRouteUsage("/api/admin/reviews/ai-sentiment");
+    try {
+      if (!canUseFeature(caller.planTier, "ai_review_sentiment")) {
+        usage.record({ tenantId: caller.tenantId, userId: caller.userId, outcome: "plan_limit" });
+        return apiPlanLimit("AI レビュー解析は Standard プラン以上でご利用いただけます。");
+      }
 
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
-    // AI 呼び出しは staff 以上 (代表判断 2026-09-01。閲覧専用ロールに費用の出る操作をさせない)
-    if (!requireMinRole(caller, "staff")) return apiForbidden();
-    if (!canUseFeature(caller.planTier, "ai_review_sentiment")) {
-      usage.record({ tenantId: caller.tenantId, userId: caller.userId, outcome: "plan_limit" });
-      return apiPlanLimit("AI レビュー解析は Standard プラン以上でご利用いただけます。");
-    }
+      const parsed = await parseJsonBody(req, schema);
+      if (!parsed.ok) {
+        usage.record({ tenantId: caller.tenantId, userId: caller.userId, outcome: "schema_error" });
+        return parsed.response;
+      }
 
-    const parsed = await parseJsonBody(req, schema);
-    if (!parsed.ok) {
-      usage.record({ tenantId: caller.tenantId, userId: caller.userId, outcome: "schema_error" });
-      return parsed.response;
-    }
+      const settings = await loadAiAutomationSettings(caller.tenantId);
+      if (!settings.enabled) {
+        usage.record({ tenantId: caller.tenantId, userId: caller.userId, outcome: "ai_disabled" });
+        return apiOk({ ai_disabled: true, sentiment: null });
+      }
 
-    const settings = await loadAiAutomationSettings(caller.tenantId);
-    if (!settings.enabled) {
-      usage.record({ tenantId: caller.tenantId, userId: caller.userId, outcome: "ai_disabled" });
-      return apiOk({ ai_disabled: true, sentiment: null });
-    }
+      const result = await analyzeReviewSentiment(
+        {
+          text: parsed.data.text,
+          npsScore: parsed.data.nps_score,
+          daysSinceCertificate: parsed.data.days_since_certificate,
+        },
+        { model: fastModelForPlanTier(caller.planTier) },
+      );
 
-    const result = await analyzeReviewSentiment(
-      {
-        text: parsed.data.text,
-        npsScore: parsed.data.nps_score,
-        daysSinceCertificate: parsed.data.days_since_certificate,
-      },
-      { model: fastModelForPlanTier(caller.planTier) },
-    );
+      const sentimentPolicy = resolveFieldPolicy(settings, "review.sentiment", result.confidence);
+      const summaryPolicy = resolveFieldPolicy(settings, "review.summary", result.confidence);
+      const topicsPolicy = resolveFieldPolicy(settings, "review.topics", result.confidence);
 
-    const sentimentPolicy = resolveFieldPolicy(settings, "review.sentiment", result.confidence);
-    const summaryPolicy = resolveFieldPolicy(settings, "review.summary", result.confidence);
-    const topicsPolicy = resolveFieldPolicy(settings, "review.topics", result.confidence);
-
-    usage.record({
-      tenantId: caller.tenantId,
-      userId: caller.userId,
-      outcome: "ok",
-      confidence: result.confidence,
-      meta: { ai: result.ai, sentiment: result.sentiment, actionable: result.actionable },
-    });
-
-    return apiOk({
-      ai_disabled: false,
-      sentiment: {
-        sentiment: sentimentPolicy === "manual" ? null : result.sentiment,
-        summary: summaryPolicy === "manual" ? "" : result.summary,
-        topics: topicsPolicy === "manual" ? [] : result.topics,
-        actionable: result.actionable,
+      usage.record({
+        tenantId: caller.tenantId,
+        userId: caller.userId,
+        outcome: "ok",
         confidence: result.confidence,
-        ai: result.ai,
-      },
-    });
-  } catch (e: unknown) {
-    usage.record({ outcome: "error" });
-    return apiInternalError(e, "review ai-sentiment");
-  }
-}
+        meta: { ai: result.ai, sentiment: result.sentiment, actionable: result.actionable },
+      });
+
+      return apiOk({
+        ai_disabled: false,
+        sentiment: {
+          sentiment: sentimentPolicy === "manual" ? null : result.sentiment,
+          summary: summaryPolicy === "manual" ? "" : result.summary,
+          topics: topicsPolicy === "manual" ? [] : result.topics,
+          actionable: result.actionable,
+          confidence: result.confidence,
+          ai: result.ai,
+        },
+      });
+    } catch (e: unknown) {
+      usage.record({ outcome: "error" });
+      throw e;
+    }
+  },
+  { minRole: "staff", rateLimit: "ai", routeName: "review ai-sentiment POST" },
+);

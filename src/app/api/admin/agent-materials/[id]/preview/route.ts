@@ -1,18 +1,12 @@
-import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { NextRequest } from "next/server";
 import { createPlatformScopedAdmin } from "@/lib/supabase/admin";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { isPlatformAdmin } from "@/lib/auth/platformAdmin";
-import { apiJson, apiUnauthorized, apiForbidden, apiNotFound, apiInternalError } from "@/lib/api/response";
+import { apiJson, apiForbidden, apiNotFound, apiInternalError } from "@/lib/api/response";
+import { withCaller } from "@/lib/api/withCaller";
 
-type RouteContext = { params: Promise<{ id: string }> };
-
-export async function GET(_request: NextRequest, ctx: RouteContext) {
-  try {
-    const { id } = await ctx.params;
-    const supabase = await createClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
+export const GET = withCaller<{ id: string }>(
+  async (_request, { caller, supabase, params }) => {
+    const { id } = params;
     if (!isPlatformAdmin(caller)) return apiForbidden();
 
     const admin = createPlatformScopedAdmin(
@@ -36,7 +30,6 @@ export async function GET(_request: NextRequest, ctx: RouteContext) {
     }
 
     return apiJson({ url: signedData.signedUrl, file_type: material.file_type });
-  } catch (e) {
-    return apiInternalError(e, "admin/agent-materials/[id]/preview GET");
-  }
-}
+  },
+  { routeName: "admin/agent-materials/[id]/preview GET" },
+);

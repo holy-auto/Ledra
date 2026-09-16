@@ -1,10 +1,10 @@
-import { NextRequest } from "next/server";
-import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
+
+
 import { isPlatformAdmin } from "@/lib/auth/platformAdmin";
 import { createPlatformScopedAdmin } from "@/lib/supabase/admin";
-import { apiJson, apiUnauthorized, apiForbidden, apiInternalError } from "@/lib/api/response";
+import { apiJson, apiForbidden, apiInternalError } from "@/lib/api/response";
 
+import { withCaller } from "@/lib/api/withCaller";
 export const dynamic = "force-dynamic";
 
 /**
@@ -149,22 +149,22 @@ async function computeFunnel(
   return { stages, total };
 }
 
-export async function GET(req: NextRequest) {
-  try {
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
-    if (!isPlatformAdmin(caller)) return apiForbidden();
+export const GET = withCaller(
+  async (req, { caller }) => {
+    try {
+      if (!isPlatformAdmin(caller)) return apiForbidden();
 
-    const url = new URL(req.url);
-    const rangeRaw = parseInt(url.searchParams.get("range") ?? "30", 10);
-    const range: Range = RANGES.includes(rangeRaw as Range) ? (rangeRaw as Range) : 30;
+      const url = new URL(req.url);
+      const rangeRaw = parseInt(url.searchParams.get("range") ?? "30", 10);
+      const range: Range = RANGES.includes(rangeRaw as Range) ? (rangeRaw as Range) : 30;
 
-    const admin = createPlatformScopedAdmin("platform onboarding-funnel — platform-wide signup conversion analytics");
-    const result = await computeFunnel(admin, range);
+      const admin = createPlatformScopedAdmin("platform onboarding-funnel — platform-wide signup conversion analytics");
+      const result = await computeFunnel(admin, range);
 
-    return apiJson({ ok: true, range_days: range, ...result });
-  } catch (e) {
-    return apiInternalError(e, "platform/onboarding-funnel");
-  }
-}
+      return apiJson({ ok: true, range_days: range, ...result });
+    } catch (e) {
+      return apiInternalError(e, "platform/onboarding-funnel");
+    }
+  },
+  { routeName: "platform/onboarding-funnel" },
+);

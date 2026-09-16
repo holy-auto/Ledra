@@ -11,14 +11,13 @@
  * の順で行う。
  */
 
-import { NextRequest } from "next/server";
-import { createClient } from "@/lib/supabase/server";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
-import { apiOk, apiError, apiUnauthorized, apiInternalError } from "@/lib/api/response";
+
+import { apiOk, apiError, apiInternalError } from "@/lib/api/response";
 import { certificateBeforeAfterState } from "@/lib/certificates/photoRequirement";
 import { computeSignoffState } from "@/lib/signoff/state";
 
+import { withCaller } from "@/lib/api/withCaller";
 export const dynamic = "force-dynamic";
 
 const SIGN_BASE_URL = process.env.NEXT_PUBLIC_SIGN_BASE_URL ?? "/sign";
@@ -60,153 +59,153 @@ async function resolveCertificate(
   return null;
 }
 
-export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  try {
-    const supabase = await createClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
+export const GET = withCaller<{ id: string }>(
+  async (_req, { caller, params }) => {
+    try {
 
-    const { id: reservationId } = await params;
-    if (!/^[0-9a-f-]{36}$/i.test(reservationId)) {
-      return apiError({ code: "validation_error", message: "reservation_id が不正です", status: 400 });
-    }
-
-    const { admin } = createTenantScopedAdmin(caller.tenantId);
-
-    // signoff_* は本 PR 追加列で生成型に未反映のため、行を明示型にキャストする。
-    const { data: resvRaw } = await admin
-      .from("reservations")
-      .select(
-        "id, status, work_completed_at, payment_status, ai_certificate_id, vehicle_id, customer_id, " +
-          "signoff_status, signoff_requested_at, signoff_deadline, signed_off_at",
-      )
-      .eq("id", reservationId)
-      .eq("tenant_id", caller.tenantId)
-      .maybeSingle();
-    const resv = resvRaw as unknown as {
-      id: string;
-      status: string;
-      work_completed_at: string | null;
-      payment_status: string | null;
-      ai_certificate_id: string | null;
-      vehicle_id: string | null;
-      customer_id: string | null;
-      signoff_status: "not_requested" | "awaiting" | "signed" | null;
-      signoff_requested_at: string | null;
-      signoff_deadline: string | null;
-      signed_off_at: string | null;
-    } | null;
-
-    if (!resv) {
-      return apiError({ code: "not_found", message: "案件(予約)が見つかりません", status: 404 });
-    }
-
-    // 顧客区分 + 支払いサイクル (お会計ステップの自動判定に使う)。
-    // customer_type / billing_cycle は本 PR 追加列で生成型に未反映のためキャスト。
-    let customerType: "individual" | "corporate" = "individual";
-    let billingCycle: "per_job" | "consolidated" | null = null;
-    if (resv.customer_id) {
-      const { data: custRaw } = await admin
-        .from("customers")
-        .select("customer_type, billing_cycle")
-        .eq("id", resv.customer_id)
-        .eq("tenant_id", caller.tenantId)
-        .maybeSingle();
-      const cust = custRaw as unknown as {
-        customer_type: "individual" | "corporate" | null;
-        billing_cycle: "per_job" | "consolidated" | null;
-      } | null;
-      if (cust?.customer_type === "corporate") customerType = "corporate";
-      billingCycle = cust?.billing_cycle ?? null;
-    }
-
-    // 証明書 + 施工前後写真
-    const cert = await resolveCertificate(admin, caller.tenantId, resv);
-    let certState = null as null | {
-      id: string;
-      public_id: string | null;
-      status: string;
-      hasBeforePhoto: boolean;
-      hasAfterPhoto: boolean;
-    };
-    if (cert) {
-      const ba = await certificateBeforeAfterState(admin, cert.id);
-      certState = {
-        id: cert.id,
-        public_id: cert.public_id,
-        status: cert.status,
-        hasBeforePhoto: ba.hasBefore,
-        hasAfterPhoto: ba.hasAfter,
-      };
-    }
-
-    // 有効な pending 受領サインリンク (リロード後も表示できるよう live で返す)。
-    // reservation_id での紐付けを優先し、無ければ証明書経由でフォールバック。
-    let signLink: { url: string; token: string; expires_at: string } | null = null;
-    let anchored = false;
-    {
-      let sessQuery = admin
-        .from("signature_sessions")
-        .select("token, expires_at, status")
-        .eq("tenant_id", caller.tenantId)
-        .eq("purpose", "delivery_receipt")
-        .eq("status", "pending")
-        .order("created_at", { ascending: false })
-        .limit(1);
-      sessQuery = cert?.id
-        ? sessQuery.or(`reservation_id.eq.${reservationId},certificate_id.eq.${cert.id}`)
-        : sessQuery.eq("reservation_id", reservationId);
-      const { data: sess } = await sessQuery.maybeSingle();
-      if (sess && new Date(sess.expires_at) > new Date()) {
-        signLink = { url: `${RECEIPT_SIGN_PATH}/${sess.token}`, token: sess.token, expires_at: sess.expires_at };
+      const { id: reservationId } = params;
+      if (!/^[0-9a-f-]{36}$/i.test(reservationId)) {
+        return apiError({ code: "validation_error", message: "reservation_id が不正です", status: 400 });
       }
 
-      // アンカー済み判定: この案件/証明書の受領サインに anchor_tx_hash があるか。
-      let recQuery = admin
-        .from("delivery_receipts")
-        .select("anchor_tx_hash")
+      const { admin } = createTenantScopedAdmin(caller.tenantId);
+
+      // signoff_* は本 PR 追加列で生成型に未反映のため、行を明示型にキャストする。
+      const { data: resvRaw } = await admin
+        .from("reservations")
+        .select(
+          "id, status, work_completed_at, payment_status, ai_certificate_id, vehicle_id, customer_id, " +
+            "signoff_status, signoff_requested_at, signoff_deadline, signed_off_at",
+        )
+        .eq("id", reservationId)
         .eq("tenant_id", caller.tenantId)
-        .not("anchor_tx_hash", "is", null)
-        .limit(1);
-      recQuery = cert?.id
-        ? recQuery.or(`reservation_id.eq.${reservationId},certificate_id.eq.${cert.id}`)
-        : recQuery.eq("reservation_id", reservationId);
-      const { data: rec } = await recQuery.maybeSingle();
-      anchored = !!rec?.anchor_tx_hash;
+        .maybeSingle();
+      const resv = resvRaw as unknown as {
+        id: string;
+        status: string;
+        work_completed_at: string | null;
+        payment_status: string | null;
+        ai_certificate_id: string | null;
+        vehicle_id: string | null;
+        customer_id: string | null;
+        signoff_status: "not_requested" | "awaiting" | "signed" | null;
+        signoff_requested_at: string | null;
+        signoff_deadline: string | null;
+        signed_off_at: string | null;
+      } | null;
+
+      if (!resv) {
+        return apiError({ code: "not_found", message: "案件(予約)が見つかりません", status: 404 });
+      }
+
+      // 顧客区分 + 支払いサイクル (お会計ステップの自動判定に使う)。
+      // customer_type / billing_cycle は本 PR 追加列で生成型に未反映のためキャスト。
+      let customerType: "individual" | "corporate" = "individual";
+      let billingCycle: "per_job" | "consolidated" | null = null;
+      if (resv.customer_id) {
+        const { data: custRaw } = await admin
+          .from("customers")
+          .select("customer_type, billing_cycle")
+          .eq("id", resv.customer_id)
+          .eq("tenant_id", caller.tenantId)
+          .maybeSingle();
+        const cust = custRaw as unknown as {
+          customer_type: "individual" | "corporate" | null;
+          billing_cycle: "per_job" | "consolidated" | null;
+        } | null;
+        if (cust?.customer_type === "corporate") customerType = "corporate";
+        billingCycle = cust?.billing_cycle ?? null;
+      }
+
+      // 証明書 + 施工前後写真
+      const cert = await resolveCertificate(admin, caller.tenantId, resv);
+      let certState = null as null | {
+        id: string;
+        public_id: string | null;
+        status: string;
+        hasBeforePhoto: boolean;
+        hasAfterPhoto: boolean;
+      };
+      if (cert) {
+        const ba = await certificateBeforeAfterState(admin, cert.id);
+        certState = {
+          id: cert.id,
+          public_id: cert.public_id,
+          status: cert.status,
+          hasBeforePhoto: ba.hasBefore,
+          hasAfterPhoto: ba.hasAfter,
+        };
+      }
+
+      // 有効な pending 受領サインリンク (リロード後も表示できるよう live で返す)。
+      // reservation_id での紐付けを優先し、無ければ証明書経由でフォールバック。
+      let signLink: { url: string; token: string; expires_at: string } | null = null;
+      let anchored = false;
+      {
+        let sessQuery = admin
+          .from("signature_sessions")
+          .select("token, expires_at, status")
+          .eq("tenant_id", caller.tenantId)
+          .eq("purpose", "delivery_receipt")
+          .eq("status", "pending")
+          .order("created_at", { ascending: false })
+          .limit(1);
+        sessQuery = cert?.id
+          ? sessQuery.or(`reservation_id.eq.${reservationId},certificate_id.eq.${cert.id}`)
+          : sessQuery.eq("reservation_id", reservationId);
+        const { data: sess } = await sessQuery.maybeSingle();
+        if (sess && new Date(sess.expires_at) > new Date()) {
+          signLink = { url: `${RECEIPT_SIGN_PATH}/${sess.token}`, token: sess.token, expires_at: sess.expires_at };
+        }
+
+        // アンカー済み判定: この案件/証明書の受領サインに anchor_tx_hash があるか。
+        let recQuery = admin
+          .from("delivery_receipts")
+          .select("anchor_tx_hash")
+          .eq("tenant_id", caller.tenantId)
+          .not("anchor_tx_hash", "is", null)
+          .limit(1);
+        recQuery = cert?.id
+          ? recQuery.or(`reservation_id.eq.${reservationId},certificate_id.eq.${cert.id}`)
+          : recQuery.eq("reservation_id", reservationId);
+        const { data: rec } = await recQuery.maybeSingle();
+        anchored = !!rec?.anchor_tx_hash;
+      }
+
+      const nowIso = new Date().toISOString();
+      const state = computeSignoffState({
+        status: resv.status,
+        workCompletedAt: resv.work_completed_at,
+        certificate: certState,
+        signoffStatus: (resv.signoff_status ?? "not_requested") as "not_requested" | "awaiting" | "signed",
+        signoffDeadline: resv.signoff_deadline,
+        signedOffAt: resv.signed_off_at,
+        paymentStatus: resv.payment_status,
+        customerType,
+        billingCycle,
+        anchored,
+        now: nowIso,
+      });
+
+      return apiOk({
+        reservation_id: reservationId,
+        certificate: certState,
+        customer: { id: resv.customer_id, type: customerType, billing_cycle: billingCycle },
+        signoff: {
+          status: resv.signoff_status ?? "not_requested",
+          requested_at: resv.signoff_requested_at,
+          deadline: resv.signoff_deadline,
+          signed_off_at: resv.signed_off_at,
+          overdue: state.overdue,
+        },
+        payment_status: resv.payment_status,
+        sign_link: signLink,
+        anchored,
+        state,
+      });
+    } catch (e) {
+      return apiInternalError(e, "admin/reservations/[id]/signoff-state");
     }
-
-    const nowIso = new Date().toISOString();
-    const state = computeSignoffState({
-      status: resv.status,
-      workCompletedAt: resv.work_completed_at,
-      certificate: certState,
-      signoffStatus: (resv.signoff_status ?? "not_requested") as "not_requested" | "awaiting" | "signed",
-      signoffDeadline: resv.signoff_deadline,
-      signedOffAt: resv.signed_off_at,
-      paymentStatus: resv.payment_status,
-      customerType,
-      billingCycle,
-      anchored,
-      now: nowIso,
-    });
-
-    return apiOk({
-      reservation_id: reservationId,
-      certificate: certState,
-      customer: { id: resv.customer_id, type: customerType, billing_cycle: billingCycle },
-      signoff: {
-        status: resv.signoff_status ?? "not_requested",
-        requested_at: resv.signoff_requested_at,
-        deadline: resv.signoff_deadline,
-        signed_off_at: resv.signed_off_at,
-        overdue: state.overdue,
-      },
-      payment_status: resv.payment_status,
-      sign_link: signLink,
-      anchored,
-      state,
-    });
-  } catch (e) {
-    return apiInternalError(e, "admin/reservations/[id]/signoff-state");
-  }
-}
+  },
+  { routeName: "admin/reservations/[id]/signoff-state" },
+);

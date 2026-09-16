@@ -1,13 +1,9 @@
 import { NextRequest, after } from "next/server";
-import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
+import { withCaller } from "@/lib/api/withCaller";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
-import { resolveCallerWithRole, requireMinRole, requirePermission } from "@/lib/auth/checkRole";
-import { checkRateLimit } from "@/lib/api/rateLimit";
 import { parsePagination } from "@/lib/api/pagination";
 import {
   apiJson,
-  apiUnauthorized,
-  apiForbidden,
   apiValidationError,
   apiNotFound,
   apiInternalError,
@@ -21,12 +17,8 @@ import { autoRegisterMenuItems } from "@/lib/documents/autoRegisterMenuItems";
 export const dynamic = "force-dynamic";
 
 // ─── GET: 請求書一覧 ───
-export async function GET(req: NextRequest) {
-  try {
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
-
+export const GET = withCaller(
+  async (req: NextRequest, { caller, supabase }) => {
     const url = new URL(req.url);
     const action = url.searchParams.get("action") ?? "";
     const status = url.searchParams.get("status") ?? "";
@@ -149,22 +141,13 @@ export async function GET(req: NextRequest) {
       },
       { headers },
     );
-  } catch (e: unknown) {
-    return apiInternalError(e, "invoices list");
-  }
-}
+  },
+  { routeName: "invoices GET" },
+);
 
 // ─── POST: 請求書作成 ───
-export async function POST(req: NextRequest) {
-  try {
-    const limited = await checkRateLimit(req, "general");
-    if (limited) return limited;
-
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
-    if (!requirePermission(caller, "invoices:create")) return apiForbidden();
-
+export const POST = withCaller(
+  async (req: NextRequest, { caller }) => {
     const parsed = invoiceCreateSchema.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) {
       return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
@@ -289,19 +272,13 @@ export async function POST(req: NextRequest) {
 
     // 後方互換: invoice_number エイリアス
     return apiJson({ ok: true, invoice: { ...data, invoice_number: data.doc_number } });
-  } catch (e: unknown) {
-    return apiInternalError(e, "invoices create");
-  }
-}
+  },
+  { permission: "invoices:create", rateLimit: "general", routeName: "invoices POST" },
+);
 
 // ─── PUT: 請求書更新 ───
-export async function PUT(req: NextRequest) {
-  try {
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
-    if (!requirePermission(caller, "invoices:edit")) return apiForbidden();
-
+export const PUT = withCaller(
+  async (req: NextRequest, { caller }) => {
     const parsed = invoiceUpdateSchema.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) {
       return apiValidationError(parsed.error.issues[0]?.message ?? "missing_id");
@@ -433,22 +410,13 @@ export async function PUT(req: NextRequest) {
     }
 
     return apiJson({ ok: true, invoice: { ...data, invoice_number: data.doc_number } });
-  } catch (e: unknown) {
-    return apiInternalError(e, "invoices update");
-  }
-}
+  },
+  { permission: "invoices:edit", routeName: "invoices PUT" },
+);
 
 // ─── DELETE: 請求書削除（下書きのみ、admin以上） ───
-export async function DELETE(req: NextRequest) {
-  try {
-    const supabase = await createSupabaseServerClient();
-    const callerWithRole = await resolveCallerWithRole(supabase);
-    if (!callerWithRole) return apiUnauthorized();
-    if (!requireMinRole(callerWithRole, "admin")) {
-      return apiForbidden("削除権限がありません。");
-    }
-    const caller = { userId: callerWithRole.userId, tenantId: callerWithRole.tenantId };
-
+export const DELETE = withCaller(
+  async (req: NextRequest, { caller, supabase }) => {
     const parsed = invoiceDeleteSchema.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) {
       return apiValidationError(parsed.error.issues[0]?.message ?? "missing_id");
@@ -479,7 +447,6 @@ export async function DELETE(req: NextRequest) {
     }
 
     return apiJson({ ok: true });
-  } catch (e: unknown) {
-    return apiInternalError(e, "invoices delete");
-  }
-}
+  },
+  { minRole: "admin", routeName: "invoices DELETE" },
+);

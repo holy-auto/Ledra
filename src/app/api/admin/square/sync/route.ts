@@ -1,19 +1,10 @@
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { z } from "zod";
-import { NextRequest } from "next/server";
-import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
-import { checkRateLimit } from "@/lib/api/rateLimit";
-import {
-  apiOk,
-  apiUnauthorized,
-  apiForbidden,
-  apiInternalError,
-  apiError,
-  apiValidationError,
-} from "@/lib/api/response";
+
+import { apiOk, apiInternalError, apiError, apiValidationError } from "@/lib/api/response";
 import { enqueueSquareSync } from "@/lib/qstash/publish";
 
+import { withCaller } from "@/lib/api/withCaller";
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "from / to は YYYY-MM-DD 形式です");
 const squareSyncSchema = z.object({
   from: isoDate.optional(),
@@ -23,116 +14,113 @@ const squareSyncSchema = z.object({
 export const dynamic = "force-dynamic";
 
 // ─── POST: Square 手動同期 (QStash キューイング) ───
-export async function POST(req: NextRequest) {
-  try {
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
-    if (!requireMinRole(caller, "admin")) return apiForbidden();
-
-    // Rate limit: 5 req/min per tenant
-    const limited = await checkRateLimit(req, "auth", `square-sync:${caller.tenantId}`);
-    if (limited) return limited;
-
-    const { admin } = createTenantScopedAdmin(caller.tenantId);
-
-    // 接続情報を確認
-    const { data: conn } = await admin
-      .from("square_connections")
-      .select("id, square_location_ids, status")
-      .eq("tenant_id", caller.tenantId)
-      .maybeSingle();
-
-    if (!conn || conn.status !== "active") {
-      return apiError({
-        code: "validation_error",
-        message: "Squareが接続されていません。先に連携を行ってください。",
-        status: 400,
-      });
-    }
-
-    const locationIds = (conn.square_location_ids as string[]) ?? [];
-    if (locationIds.length === 0) {
-      return apiValidationError("Squareのロケーション情報がありません。再連携してください。");
-    }
-
-    // 重複実行防止：処理中のジョブがあれば即座にそのIDを返す
-    const { data: running } = await admin
-      .from("square_sync_runs")
-      .select("id")
-      .eq("tenant_id", caller.tenantId)
-      .eq("status", "processing")
-      .maybeSingle();
-
-    if (running) {
-      return apiOk({
-        message: "同期が既に実行中です",
-        sync_run_id: running.id as string,
-      });
-    }
-
-    // リクエストボディから日付範囲を取得（デフォルト: 過去90日）
-    const parsed = squareSyncSchema.safeParse(await req.json().catch(() => ({})));
-    if (!parsed.success) {
-      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
-    }
-    const now = new Date();
-    const defaultFrom = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-    const defaultTo = now.toISOString().slice(0, 10);
-    const from = parsed.data.from || defaultFrom;
-    const to = parsed.data.to || defaultTo;
-
-    // sync run レコード作成（Worker が処理開始時に "processing" に更新する）
-    const { data: syncRun, error: syncRunErr } = await admin
-      .from("square_sync_runs")
-      .insert({
-        tenant_id: caller.tenantId,
-        status: "queued",
-        trigger_type: "manual",
-        triggered_by: caller.userId,
-        sync_from: new Date(from).toISOString(),
-        sync_to: new Date(to).toISOString(),
-      })
-      .select("id")
-      .single();
-
-    if (syncRunErr) {
-      return apiInternalError(syncRunErr, "square sync run create");
-    }
-
-    // enqueue 失敗時は queued 行を failed に落とし、原因をユーザーへ返す。
-    // ここで throw すると行が "queued" のまま滞留し UI / 履歴で原因が見えない。
+export const POST = withCaller(
+  async (req, { caller }) => {
     try {
-      await enqueueSquareSync({
-        job_id: syncRun.id,
-        tenant_id: caller.tenantId,
-      });
-    } catch (enqueueErr) {
-      const message = enqueueErr instanceof Error ? enqueueErr.message : String(enqueueErr);
-      console.error(`[square:sync] enqueue failed tenant=${caller.tenantId} job=${syncRun.id}:`, message);
-      await admin
+
+      // Rate limit: 5 req/min per tenant
+
+      const { admin } = createTenantScopedAdmin(caller.tenantId);
+
+      // 接続情報を確認
+      const { data: conn } = await admin
+        .from("square_connections")
+        .select("id, square_location_ids, status")
+        .eq("tenant_id", caller.tenantId)
+        .maybeSingle();
+
+      if (!conn || conn.status !== "active") {
+        return apiError({
+          code: "validation_error",
+          message: "Squareが接続されていません。先に連携を行ってください。",
+          status: 400,
+        });
+      }
+
+      const locationIds = (conn.square_location_ids as string[]) ?? [];
+      if (locationIds.length === 0) {
+        return apiValidationError("Squareのロケーション情報がありません。再連携してください。");
+      }
+
+      // 重複実行防止：処理中のジョブがあれば即座にそのIDを返す
+      const { data: running } = await admin
         .from("square_sync_runs")
-        .update({
-          status: "failed",
-          finished_at: new Date().toISOString(),
-          error_message: `QStash enqueue failed: ${message}`.slice(0, 500),
+        .select("id")
+        .eq("tenant_id", caller.tenantId)
+        .eq("status", "processing")
+        .maybeSingle();
+
+      if (running) {
+        return apiOk({
+          message: "同期が既に実行中です",
+          sync_run_id: running.id as string,
+        });
+      }
+
+      // リクエストボディから日付範囲を取得（デフォルト: 過去90日）
+      const parsed = squareSyncSchema.safeParse(await req.json().catch(() => ({})));
+      if (!parsed.success) {
+        return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
+      }
+      const now = new Date();
+      const defaultFrom = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+      const defaultTo = now.toISOString().slice(0, 10);
+      const from = parsed.data.from || defaultFrom;
+      const to = parsed.data.to || defaultTo;
+
+      // sync run レコード作成（Worker が処理開始時に "processing" に更新する）
+      const { data: syncRun, error: syncRunErr } = await admin
+        .from("square_sync_runs")
+        .insert({
+          tenant_id: caller.tenantId,
+          status: "queued",
+          trigger_type: "manual",
+          triggered_by: caller.userId,
+          sync_from: new Date(from).toISOString(),
+          sync_to: new Date(to).toISOString(),
         })
-        .eq("id", syncRun.id);
-      return apiError({
-        code: "internal_error",
-        message: "同期キューへの登録に失敗しました。時間を置いて再試行してください。",
-        status: 502,
-        data: { sync_run_id: syncRun.id as string },
+        .select("id")
+        .single();
+
+      if (syncRunErr) {
+        return apiInternalError(syncRunErr, "square sync run create");
+      }
+
+      // enqueue 失敗時は queued 行を failed に落とし、原因をユーザーへ返す。
+      // ここで throw すると行が "queued" のまま滞留し UI / 履歴で原因が見えない。
+      try {
+        await enqueueSquareSync({
+          job_id: syncRun.id,
+          tenant_id: caller.tenantId,
+        });
+      } catch (enqueueErr) {
+        const message = enqueueErr instanceof Error ? enqueueErr.message : String(enqueueErr);
+        console.error(`[square:sync] enqueue failed tenant=${caller.tenantId} job=${syncRun.id}:`, message);
+        await admin
+          .from("square_sync_runs")
+          .update({
+            status: "failed",
+            finished_at: new Date().toISOString(),
+            error_message: `QStash enqueue failed: ${message}`.slice(0, 500),
+          })
+          .eq("id", syncRun.id);
+        return apiError({
+          code: "internal_error",
+          message: "同期キューへの登録に失敗しました。時間を置いて再試行してください。",
+          status: 502,
+          data: { sync_run_id: syncRun.id as string },
+        });
+      }
+
+      console.info(`[square:sync] tenant=${caller.tenantId} queued job=${syncRun.id}`);
+
+      return apiOk({
+        message: "Square同期を開始しました",
+        sync_run_id: syncRun.id as string,
       });
+    } catch (e) {
+      return apiInternalError(e, "square sync POST");
     }
-
-    console.info(`[square:sync] tenant=${caller.tenantId} queued job=${syncRun.id}`);
-
-    return apiOk({
-      message: "Square同期を開始しました",
-      sync_run_id: syncRun.id as string,
-    });
-  } catch (e) {
-    return apiInternalError(e, "square sync POST");
-  }
-}
+  },
+  { minRole: "admin", routeName: "square sync POST" },
+);

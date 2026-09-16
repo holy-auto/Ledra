@@ -5,11 +5,9 @@
  */
 import { NextRequest } from "next/server";
 import { z } from "zod";
-import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
+import { withCaller } from "@/lib/api/withCaller";
 import {
   apiOk,
-  apiUnauthorized,
   apiInternalError,
   apiValidationError,
   apiNotFound,
@@ -37,12 +35,9 @@ const updateSchema = z.object({
   status: z.enum(["draft", "published", "archived"]).optional(),
 });
 
-export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
-  try {
-    const { id } = await ctx.params;
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
+export const GET = withCaller<{ id: string }>(
+  async (_req: NextRequest, { caller, supabase, params }) => {
+    const { id } = params;
 
     const { data, error } = await supabase
       .from("academy_lessons")
@@ -119,17 +114,13 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
       quiz_question_count: quizQuestionCount ?? 0,
       my_quiz_best: bestAttempt ?? null,
     });
-  } catch (e: unknown) {
-    return apiInternalError(e);
-  }
-}
+  },
+  { routeName: "admin/academy/lessons/[id] GET" },
+);
 
-export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
-  try {
-    const { id } = await ctx.params;
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
+export const PATCH = withCaller<{ id: string }>(
+  async (req: NextRequest, { caller, supabase, params }) => {
+    const { id } = params;
 
     const parsed = updateSchema.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) {
@@ -165,17 +156,13 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     if (error) return apiInternalError(error);
 
     return apiOk({ message: "更新しました" });
-  } catch (e: unknown) {
-    return apiInternalError(e);
-  }
-}
+  },
+  { routeName: "admin/academy/lessons/[id] PATCH" },
+);
 
-export async function DELETE(_req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
-  try {
-    const { id } = await ctx.params;
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
+export const DELETE = withCaller<{ id: string }>(
+  async (_req: NextRequest, { caller, supabase, params }) => {
+    const { id } = params;
 
     const { data: existing } = await supabase
       .from("academy_lessons")
@@ -192,7 +179,6 @@ export async function DELETE(_req: NextRequest, ctx: { params: Promise<{ id: str
     if (error) return apiInternalError(error);
 
     return apiOk({ message: "削除しました" });
-  } catch (e: unknown) {
-    return apiInternalError(e);
-  }
-}
+  },
+  { routeName: "admin/academy/lessons/[id] DELETE" },
+);

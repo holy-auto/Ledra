@@ -1,16 +1,12 @@
-import { NextRequest, after } from "next/server";
-import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
+import { after } from "next/server";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
-import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
 import {
   apiJson,
-  apiUnauthorized,
-  apiForbidden,
   apiValidationError,
   apiNotFound,
   apiInternalError,
 } from "@/lib/api/response";
-import { checkRateLimit } from "@/lib/api/rateLimit";
+import { withCaller } from "@/lib/api/withCaller";
 import { insurerCaseMessageSchema } from "@/lib/validations/insurer-case";
 import { emitEntityWebhook } from "@/lib/outbound-webhooks";
 
@@ -42,13 +38,9 @@ async function verifyTenantCase(
  * 施工店が紐づく保険案件のメッセージ往復を取得する。表示は sender_type で
  * 区別すれば足りるため個人名の解決は行わない (insurer/tenant/system)。
  */
-export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
-  try {
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
-
-    const { id } = await ctx.params;
+export const GET = withCaller<{ id: string }>(
+  async (_req, { caller, params }) => {
+    const { id } = params;
     const { admin } = createTenantScopedAdmin(caller.tenantId);
 
     const verified = await verifyTenantCase(admin, id, caller.tenantId);
@@ -65,27 +57,18 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
       { case: verified, messages: messages ?? [] },
       { headers: { "Cache-Control": "private, max-age=5, stale-while-revalidate=20" } },
     );
-  } catch (e) {
-    return apiInternalError(e, "admin/insurer-cases/[id]/messages GET");
-  }
-}
+  },
+  { routeName: "admin/insurer-cases/[id]/messages GET" },
+);
 
 /**
  * POST /api/admin/insurer-cases/[id]/messages
  * 施工店から保険会社へメッセージを送る。sender_type は API 側で 'tenant' に固定する。
  * 保険会社からの返答待ち (pending_tenant) だった案件は in_progress に進める。
  */
-export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
-  try {
-    const limited = await checkRateLimit(req, "general");
-    if (limited) return limited;
-
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
-    if (!requireMinRole(caller, "staff")) return apiForbidden();
-
-    const { id } = await ctx.params;
+export const POST = withCaller<{ id: string }>(
+  async (req, { caller, params }) => {
+    const { id } = params;
 
     const parsed = insurerCaseMessageSchema.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) {
@@ -158,7 +141,6 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     }
 
     return apiJson({ message }, { status: 201 });
-  } catch (e) {
-    return apiInternalError(e, "admin/insurer-cases/[id]/messages POST");
-  }
-}
+  },
+  { minRole: "staff", rateLimit: "general", routeName: "admin/insurer-cases/[id]/messages POST" },
+);

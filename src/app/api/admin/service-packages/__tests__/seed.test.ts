@@ -2,6 +2,7 @@
 // Test file uses a polymorphic supabase query-builder mock; the chained shape demands `any`.
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { NextRequest } from "next/server";
 
 const mocks = vi.hoisted(() => ({
   resolveCallerWithRole: vi.fn(),
@@ -133,19 +134,19 @@ function buildAdmin(opts: {
 }
 
 function makeReq() {
-  return new Request("http://localhost/api/admin/service-packages/seed", { method: "POST" }) as any;
+  return new NextRequest("http://localhost/api/admin/service-packages/seed", { method: "POST" });
 }
 
 describe("POST /api/admin/service-packages/seed", () => {
   it("returns 401 when unauthenticated", async () => {
     mocks.resolveCallerWithRole.mockResolvedValueOnce(null);
-    const res = await POST();
+    const res = await POST(makeReq());
     expect(res.status).toBe(401);
   });
 
   it("returns 403 when caller role is below staff", async () => {
     mocks.resolveCallerWithRole.mockResolvedValueOnce(VIEWER_A);
-    const res = await POST();
+    const res = await POST(makeReq());
     expect(res.status).toBe(403);
   });
 
@@ -163,7 +164,7 @@ describe("POST /api/admin/service-packages/seed", () => {
       }),
     });
 
-    const res = await POST();
+    const res = await POST(makeReq());
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
       ok: boolean;
@@ -209,7 +210,7 @@ describe("POST /api/admin/service-packages/seed", () => {
       }),
     });
 
-    const res = await POST();
+    const res = await POST(makeReq());
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
       created_packages: number;
@@ -239,7 +240,7 @@ describe("POST /api/admin/service-packages/seed", () => {
       }),
     });
 
-    const res = await POST();
+    const res = await POST(makeReq());
     expect(res.status).toBe(200);
 
     const menuInsertCalls = inserted.filter((i) => i.table === "menu_items");

@@ -7,50 +7,49 @@
  * 設計: docs/parts-installation-integrity-design.md §4 L7
  */
 
-import { apiJson, apiInternalError, apiUnauthorized } from "@/lib/api/response";
-import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
+import { apiJson, apiInternalError } from "@/lib/api/response";
+
 import { parseFindingsQuery } from "@/lib/parts/findingsQuery";
 
+import { withCaller } from "@/lib/api/withCaller";
 export const dynamic = "force-dynamic";
 
-export async function GET(req: Request) {
-  const supabase = await createSupabaseServerClient();
-  const caller = await resolveCallerWithRole(supabase);
-  if (!caller) return apiUnauthorized();
+export const GET = withCaller(
+  async (req, { caller, supabase }) => {
+    const q = parseFindingsQuery(new URL(req.url).searchParams);
 
-  const q = parseFindingsQuery(new URL(req.url).searchParams);
+    try {
+      let query = supabase
+        .from("part_integrity_findings")
+        .select("id, installation_id, rule, severity, detail, status, created_at")
+        .order("created_at", { ascending: false })
+        .limit(q.limit);
 
-  try {
-    let query = supabase
-      .from("part_integrity_findings")
-      .select("id, installation_id, rule, severity, detail, status, created_at")
-      .order("created_at", { ascending: false })
-      .limit(q.limit);
+      query = query.eq("status", q.status ?? "open");
+      if (q.severity) query = query.eq("severity", q.severity);
+      if (q.installationId) query = query.eq("installation_id", q.installationId);
 
-    query = query.eq("status", q.status ?? "open");
-    if (q.severity) query = query.eq("severity", q.severity);
-    if (q.installationId) query = query.eq("installation_id", q.installationId);
+      const { data, error } = await query;
+      if (error) throw new Error(error.message);
 
-    const { data, error } = await query;
-    if (error) throw new Error(error.message);
+      // 重大度サマリ（open のみ・全体）
+      const { data: openRows, error: sumErr } = await supabase
+        .from("part_integrity_findings")
+        .select("severity")
+        .eq("status", "open")
+        .limit(1000);
+      if (sumErr) throw new Error(sumErr.message);
 
-    // 重大度サマリ（open のみ・全体）
-    const { data: openRows, error: sumErr } = await supabase
-      .from("part_integrity_findings")
-      .select("severity")
-      .eq("status", "open")
-      .limit(1000);
-    if (sumErr) throw new Error(sumErr.message);
+      const summary = { critical: 0, warning: 0, info: 0 };
+      for (const r of openRows ?? []) {
+        const s = r.severity as keyof typeof summary;
+        if (s in summary) summary[s]++;
+      }
 
-    const summary = { critical: 0, warning: 0, info: 0 };
-    for (const r of openRows ?? []) {
-      const s = r.severity as keyof typeof summary;
-      if (s in summary) summary[s]++;
+      return apiJson({ findings: data ?? [], summary });
+    } catch (e) {
+      return apiInternalError(e, "parts/findings GET");
     }
-
-    return apiJson({ findings: data ?? [], summary });
-  } catch (e) {
-    return apiInternalError(e, "parts/findings GET");
-  }
-}
+  },
+  { routeName: "parts/findings GET" },
+);

@@ -1,20 +1,13 @@
-import { NextRequest } from "next/server";
+
 import { z } from "zod";
 import { randomBytes } from "node:crypto";
-import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
-import { resolveCallerWithRole, requirePermission } from "@/lib/auth/checkRole";
+
 import { requireAal2OrResponse } from "@/lib/auth/stepUpGuard";
 import { getExternalApiKeyStatus, writeExternalApiKey } from "@/lib/security/tenantPrivateSecrets";
-import {
-  apiJson,
-  apiUnauthorized,
-  apiForbidden,
-  apiValidationError,
-  apiInternalError,
-  apiOk,
-} from "@/lib/api/response";
+import { apiJson, apiValidationError, apiInternalError, apiOk } from "@/lib/api/response";
 
+import { withCaller } from "@/lib/api/withCaller";
 /**
  * テナントの外部APIキー（tenant_private_secrets にハッシュ保存）管理エンドポイント。
  *
@@ -40,53 +33,51 @@ function maskKey(last4: string): string {
   return KEY_PREFIX + "****" + last4;
 }
 
-export async function GET() {
-  try {
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
-    if (!requirePermission(caller, "settings:view")) return apiForbidden();
+export const GET = withCaller(
+  async (_req, { caller }) => {
+    try {
 
-    const { admin } = createTenantScopedAdmin(caller.tenantId);
-    const status = await getExternalApiKeyStatus(admin, caller.tenantId);
-    return apiJson({
-      status: status.active ? "active" : "not_set",
-      masked: status.active && status.last4 ? maskKey(status.last4) : null,
-    });
-  } catch (e) {
-    return apiInternalError(e, "external-api-key GET");
-  }
-}
-
-export async function POST(req: NextRequest) {
-  try {
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
-    if (!requirePermission(caller, "settings:edit")) return apiForbidden();
-    const stepUpDenied = await requireAal2OrResponse(supabase);
-    if (stepUpDenied) return stepUpDenied;
-
-    const parsed = externalApiKeyActionSchema.safeParse(await req.json().catch(() => ({})));
-    if (!parsed.success) {
-      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
+      const { admin } = createTenantScopedAdmin(caller.tenantId);
+      const status = await getExternalApiKeyStatus(admin, caller.tenantId);
+      return apiJson({
+        status: status.active ? "active" : "not_set",
+        masked: status.active && status.last4 ? maskKey(status.last4) : null,
+      });
+    } catch (e) {
+      return apiInternalError(e, "external-api-key GET");
     }
-    const { action } = parsed.data;
+  },
+  { permission: "settings:view", routeName: "external-api-key GET" },
+);
 
-    const { admin } = createTenantScopedAdmin(caller.tenantId);
+export const POST = withCaller(
+  async (req, { caller, supabase }) => {
+    try {
+      const stepUpDenied = await requireAal2OrResponse(supabase);
+      if (stepUpDenied) return stepUpDenied;
 
-    if (action === "issue") {
-      const newKey = generateApiKey();
-      await writeExternalApiKey(admin, caller.tenantId, newKey);
+      const parsed = externalApiKeyActionSchema.safeParse(await req.json().catch(() => ({})));
+      if (!parsed.success) {
+        return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
+      }
+      const { action } = parsed.data;
 
-      // 平文キーはこのレスポンスでのみ返す（再取得不可）
-      return apiOk({ key: newKey, masked: maskKey(newKey.slice(-4)) });
+      const { admin } = createTenantScopedAdmin(caller.tenantId);
+
+      if (action === "issue") {
+        const newKey = generateApiKey();
+        await writeExternalApiKey(admin, caller.tenantId, newKey);
+
+        // 平文キーはこのレスポンスでのみ返す（再取得不可）
+        return apiOk({ key: newKey, masked: maskKey(newKey.slice(-4)) });
+      }
+
+      // action === "revoke"
+      await writeExternalApiKey(admin, caller.tenantId, null);
+      return apiOk({ status: "not_set" });
+    } catch (e) {
+      return apiInternalError(e, "external-api-key POST");
     }
-
-    // action === "revoke"
-    await writeExternalApiKey(admin, caller.tenantId, null);
-    return apiOk({ status: "not_set" });
-  } catch (e) {
-    return apiInternalError(e, "external-api-key POST");
-  }
-}
+  },
+  { permission: "settings:edit", routeName: "external-api-key POST" },
+);

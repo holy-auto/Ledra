@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { NextRequest } from "next/server";
 
 const mocks = vi.hoisted(() => ({
   resolveCallerWithRole: vi.fn(),
@@ -27,7 +28,7 @@ const CALLER = { userId: "u1", tenantId: "platform", role: "super_admin", planTi
 type AnyReq = any;
 
 function jsonReq(url: string, method: string, body?: unknown): AnyReq {
-  return new Request(url, {
+  return new NextRequest(url, {
     method,
     headers: { "content-type": "application/json" },
     body: body ? JSON.stringify(body) : undefined,
@@ -44,7 +45,7 @@ describe("GET /api/admin/platform/passport-consumers", () => {
   it("403 when caller is not platform admin", async () => {
     mocks.resolveCallerWithRole.mockResolvedValueOnce(CALLER);
     mocks.isPlatformAdmin.mockReturnValueOnce(false);
-    const res = await listGET();
+    const res = await listGET(new NextRequest("http://localhost/api/admin/platform/passport-consumers"));
     expect(res.status).toBe(403);
   });
 
@@ -114,7 +115,7 @@ describe("GET /api/admin/platform/passport-consumers", () => {
       },
     });
 
-    const res = await listGET();
+    const res = await listGET(new NextRequest("http://localhost/api/admin/platform/passport-consumers"));
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
       consumers: { id: string; active_key_count: number; call_count_30d: number }[];

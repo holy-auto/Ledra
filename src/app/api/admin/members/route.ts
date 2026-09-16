@@ -1,329 +1,315 @@
-import { NextRequest, NextResponse } from "next/server";
-import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
-import { checkRateLimit } from "@/lib/api/rateLimit";
+
+
 import { memberLimit, canAddMember } from "@/lib/billing/memberLimits";
 import { logAuditEvent } from "@/lib/audit/certificateLog";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { hasPermission } from "@/lib/auth/permissions";
 import { ASSIGNABLE_ROLES, type Role } from "@/lib/auth/roles";
 import { memberAddSchema, memberDeleteSchema, memberRoleChangeSchema } from "@/lib/validations/member";
-import {
-  apiJson,
-  apiUnauthorized,
-  apiForbidden,
-  apiValidationError,
-  apiNotFound,
-  apiInternalError,
-} from "@/lib/api/response";
+import { apiJson, apiForbidden, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
 
+import { withCaller } from "@/lib/api/withCaller";
 export const dynamic = "force-dynamic";
 
 // ─── GET: メンバー一覧 ───
-export async function GET(req: NextRequest) {
-  try {
-    const limited = await checkRateLimit(req, "general");
-    if (limited) return limited;
+export const GET = withCaller(
+  async (_req, { caller }) => {
+    try {
 
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
+      const { admin } = createTenantScopedAdmin(caller.tenantId);
 
-    const { admin } = createTenantScopedAdmin(caller.tenantId);
+      // tenant_memberships からメンバー取得
+      const { data: members, error } = await admin
+        .from("tenant_memberships")
+        .select("user_id, role, created_at")
+        .eq("tenant_id", caller.tenantId);
 
-    // tenant_memberships からメンバー取得
-    const { data: members, error } = await admin
-      .from("tenant_memberships")
-      .select("user_id, role, created_at")
-      .eq("tenant_id", caller.tenantId);
+      if (error) {
+        return apiInternalError(error, "members GET");
+      }
 
-    if (error) {
-      return apiInternalError(error, "members GET");
+      // ユーザー情報を admin API で一括取得 (N+1 回避)
+      const {
+        data: { users },
+      } = await admin.auth.admin.listUsers({ perPage: 1000 });
+      const userMap = new Map(
+        (users as Array<{ id: string; email?: string; user_metadata?: Record<string, unknown> }>).map((u) => [u.id, u]),
+      );
+
+      const enriched = (members ?? []).map((m) => {
+        const user = userMap.get(m.user_id);
+        const meta = user?.user_metadata as Record<string, unknown> | undefined;
+        return {
+          user_id: m.user_id,
+          email: user?.email ?? null,
+          display_name: (meta?.display_name as string | undefined) ?? null,
+          role: m.role ?? "member",
+          created_at: m.created_at ?? null,
+          is_self: m.user_id === caller.userId,
+        };
+      });
+
+      const limit = memberLimit(caller.planTier);
+
+      return apiJson({
+        members: enriched,
+        plan_tier: caller.planTier,
+        member_count: enriched.length,
+        member_limit: limit,
+        can_add: canAddMember(caller.planTier, enriched.length),
+      });
+    } catch (e: unknown) {
+      return apiInternalError(e, "members GET");
     }
-
-    // ユーザー情報を admin API で一括取得 (N+1 回避)
-    const {
-      data: { users },
-    } = await admin.auth.admin.listUsers({ perPage: 1000 });
-    const userMap = new Map(
-      (users as Array<{ id: string; email?: string; user_metadata?: Record<string, unknown> }>).map((u) => [u.id, u]),
-    );
-
-    const enriched = (members ?? []).map((m) => {
-      const user = userMap.get(m.user_id);
-      const meta = user?.user_metadata as Record<string, unknown> | undefined;
-      return {
-        user_id: m.user_id,
-        email: user?.email ?? null,
-        display_name: (meta?.display_name as string | undefined) ?? null,
-        role: m.role ?? "member",
-        created_at: m.created_at ?? null,
-        is_self: m.user_id === caller.userId,
-      };
-    });
-
-    const limit = memberLimit(caller.planTier);
-
-    return apiJson({
-      members: enriched,
-      plan_tier: caller.planTier,
-      member_count: enriched.length,
-      member_limit: limit,
-      can_add: canAddMember(caller.planTier, enriched.length),
-    });
-  } catch (e: unknown) {
-    return apiInternalError(e, "members GET");
-  }
-}
+  },
+  { rateLimit: "general", routeName: "admin/members GET" },
+);
 
 // ─── POST: メンバー追加（メール招待） ───
-export async function POST(req: NextRequest) {
-  try {
-    const limited = await checkRateLimit(req, "general");
-    if (limited) return limited;
+export const POST = withCaller(
+  async (req, { caller }) => {
+    try {
 
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
+      // Permission check: only roles with members:manage can add members
+      if (!hasPermission(caller.role as Role, "members:manage")) {
+        return apiForbidden("メンバー追加の権限がありません。");
+      }
 
-    // Permission check: only roles with members:manage can add members
-    if (!hasPermission(caller.role as Role, "members:manage")) {
-      return apiForbidden("メンバー追加の権限がありません。");
-    }
+      const parsed = memberAddSchema.safeParse(await req.json().catch(() => ({})));
+      if (!parsed.success) {
+        return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
+      }
+      const { email, display_name: displayName, role } = parsed.data;
 
-    const parsed = memberAddSchema.safeParse(await req.json().catch(() => ({})));
-    if (!parsed.success) {
-      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
-    }
-    const { email, display_name: displayName, role } = parsed.data;
+      // Validate role is assignable (prevent escalation to "owner")
+      if (role && !ASSIGNABLE_ROLES.includes(role as Role)) {
+        return apiValidationError(`無効なロールです。指定可能: ${ASSIGNABLE_ROLES.join(", ")}`);
+      }
 
-    // Validate role is assignable (prevent escalation to "owner")
-    if (role && !ASSIGNABLE_ROLES.includes(role as Role)) {
-      return apiValidationError(`無効なロールです。指定可能: ${ASSIGNABLE_ROLES.join(", ")}`);
-    }
+      const { admin } = createTenantScopedAdmin(caller.tenantId);
 
-    const { admin } = createTenantScopedAdmin(caller.tenantId);
+      // 現在のメンバー数を確認
+      const { count, error: countErr } = await admin
+        .from("tenant_memberships")
+        .select("user_id", { count: "exact", head: true })
+        .eq("tenant_id", caller.tenantId);
 
-    // 現在のメンバー数を確認
-    const { count, error: countErr } = await admin
-      .from("tenant_memberships")
-      .select("user_id", { count: "exact", head: true })
-      .eq("tenant_id", caller.tenantId);
+      if (countErr) {
+        return apiInternalError(countErr, "members POST count");
+      }
 
-    if (countErr) {
-      return apiInternalError(countErr, "members POST count");
-    }
-
-    const currentCount = count ?? 0;
-    if (!canAddMember(caller.planTier, currentCount)) {
-      const limit = memberLimit(caller.planTier);
-      return apiForbidden(
-        `現在のプラン（${caller.planTier}）ではメンバーは${limit}人までです。プランをアップグレードしてください。`,
-      );
-    }
-
-    const userMeta = displayName ? { display_name: displayName } : undefined;
-    let userId: string;
-
-    // まず招待を試み、既存ユーザーの場合はフォールバック
-    const { data: invited, error: inviteErr } = await admin.auth.admin.inviteUserByEmail(email, {
-      data: userMeta ?? {},
-    });
-
-    if (invited?.user) {
-      userId = invited.user.id;
-    } else if (inviteErr?.message?.includes("already been registered")) {
-      // 既存ユーザー → auth.users からメールで検索（ページ分割で全件走査を回避）
-      let found: { id: string; user_metadata?: Record<string, unknown> } | null = null;
-      let page = 1;
-      while (!found) {
-        const { data: page_data } = await admin.auth.admin.listUsers({ page, perPage: 100 });
-        if (!page_data?.users?.length) break;
-        const match = page_data.users.find(
-          (u: { id: string; email?: string; user_metadata?: Record<string, unknown> }) => u.email === email,
+      const currentCount = count ?? 0;
+      if (!canAddMember(caller.planTier, currentCount)) {
+        const limit = memberLimit(caller.planTier);
+        return apiForbidden(
+          `現在のプラン（${caller.planTier}）ではメンバーは${limit}人までです。プランをアップグレードしてください。`,
         );
-        if (match) {
-          found = match;
-          break;
+      }
+
+      const userMeta = displayName ? { display_name: displayName } : undefined;
+      let userId: string;
+
+      // まず招待を試み、既存ユーザーの場合はフォールバック
+      const { data: invited, error: inviteErr } = await admin.auth.admin.inviteUserByEmail(email, {
+        data: userMeta ?? {},
+      });
+
+      if (invited?.user) {
+        userId = invited.user.id;
+      } else if (inviteErr?.message?.includes("already been registered")) {
+        // 既存ユーザー → auth.users からメールで検索（ページ分割で全件走査を回避）
+        let found: { id: string; user_metadata?: Record<string, unknown> } | null = null;
+        let page = 1;
+        while (!found) {
+          const { data: page_data } = await admin.auth.admin.listUsers({ page, perPage: 100 });
+          if (!page_data?.users?.length) break;
+          const match = page_data.users.find(
+            (u: { id: string; email?: string; user_metadata?: Record<string, unknown> }) => u.email === email,
+          );
+          if (match) {
+            found = match;
+            break;
+          }
+          if (page_data.users.length < 100) break;
+          page++;
         }
-        if (page_data.users.length < 100) break;
-        page++;
+        if (!found) {
+          return apiInternalError(new Error("既存ユーザーが見つかりませんでした。"), "members POST lookup");
+        }
+        userId = found.id;
+        // 既存ユーザーに display_name をセット（未設定の場合のみ）
+        if (displayName && !found.user_metadata?.display_name) {
+          await admin.auth.admin.updateUserById(userId, {
+            user_metadata: { ...found.user_metadata, display_name: displayName },
+          });
+        }
+      } else {
+        return apiInternalError(inviteErr ?? new Error("招待に失敗しました。"), "members POST invite");
       }
-      if (!found) {
-        return apiInternalError(new Error("既存ユーザーが見つかりませんでした。"), "members POST lookup");
+
+      // 既にこのテナントに所属していないか確認
+      const { data: existingMem } = await admin
+        .from("tenant_memberships")
+        .select("user_id")
+        .eq("tenant_id", caller.tenantId)
+        .eq("user_id", userId)
+        .maybeSingle();
+
+      if (existingMem) {
+        return apiJson({ error: "conflict", message: "このユーザーは既にメンバーです。" }, { status: 409 });
       }
-      userId = found.id;
-      // 既存ユーザーに display_name をセット（未設定の場合のみ）
-      if (displayName && !found.user_metadata?.display_name) {
-        await admin.auth.admin.updateUserById(userId, {
-          user_metadata: { ...found.user_metadata, display_name: displayName },
-        });
+
+      // tenant_memberships に追加
+      const row: Record<string, unknown> = {
+        id: crypto.randomUUID(),
+        tenant_id: caller.tenantId,
+        user_id: userId,
+        // 省略時は最小権限 viewer。DB デフォルトに任せない (fail-closed)
+        role: role ?? "viewer",
+      };
+
+      const { error: insertErr } = await admin.from("tenant_memberships").insert(row);
+
+      if (insertErr) {
+        return apiInternalError(insertErr, "members POST insert");
       }
-    } else {
-      return apiInternalError(inviteErr ?? new Error("招待に失敗しました。"), "members POST invite");
+
+      logAuditEvent({
+        type: "member_added",
+        tenantId: caller.tenantId,
+        description: `${email} (role: ${role ?? "viewer"}) を追加`,
+      });
+
+      return apiJson({ ok: true, user_id: userId, email });
+    } catch (e: unknown) {
+      return apiInternalError(e, "members POST");
     }
-
-    // 既にこのテナントに所属していないか確認
-    const { data: existingMem } = await admin
-      .from("tenant_memberships")
-      .select("user_id")
-      .eq("tenant_id", caller.tenantId)
-      .eq("user_id", userId)
-      .maybeSingle();
-
-    if (existingMem) {
-      return apiJson({ error: "conflict", message: "このユーザーは既にメンバーです。" }, { status: 409 });
-    }
-
-    // tenant_memberships に追加
-    const row: Record<string, unknown> = {
-      id: crypto.randomUUID(),
-      tenant_id: caller.tenantId,
-      user_id: userId,
-      // 省略時は最小権限 viewer。DB デフォルトに任せない (fail-closed)
-      role: role ?? "viewer",
-    };
-
-    const { error: insertErr } = await admin.from("tenant_memberships").insert(row);
-
-    if (insertErr) {
-      return apiInternalError(insertErr, "members POST insert");
-    }
-
-    logAuditEvent({
-      type: "member_added",
-      tenantId: caller.tenantId,
-      description: `${email} (role: ${role ?? "viewer"}) を追加`,
-    });
-
-    return apiJson({ ok: true, user_id: userId, email });
-  } catch (e: unknown) {
-    return apiInternalError(e, "members POST");
-  }
-}
+  },
+  { rateLimit: "general", routeName: "admin/members POST" },
+);
 
 // ─── PUT: ロール変更 ───
-export async function PUT(req: NextRequest) {
-  try {
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
+export const PUT = withCaller(
+  async (req, { caller }) => {
+    try {
 
-    // owner または admin のみロール変更可
-    if (caller.role !== "owner" && caller.role !== "admin") {
-      return apiForbidden("ロール変更の権限がありません。");
+      // owner または admin のみロール変更可
+      if (caller.role !== "owner" && caller.role !== "admin") {
+        return apiForbidden("ロール変更の権限がありません。");
+      }
+
+      const parsed = memberRoleChangeSchema.safeParse(await req.json().catch(() => ({})));
+      if (!parsed.success) {
+        return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
+      }
+      const { user_id: targetUserId, role: newRole } = parsed.data;
+
+      // 自分自身のロール変更は不可
+      if (targetUserId === caller.userId) {
+        return apiValidationError("自分のロールは変更できません。");
+      }
+
+      const { admin } = createTenantScopedAdmin(caller.tenantId);
+
+      // owner のロール変更は不可
+      const { data: targetMem } = await admin
+        .from("tenant_memberships")
+        .select("role")
+        .eq("tenant_id", caller.tenantId)
+        .eq("user_id", targetUserId)
+        .maybeSingle();
+
+      if (!targetMem) {
+        return apiNotFound("メンバーが見つかりません。");
+      }
+      if (targetMem.role === "owner") {
+        return apiValidationError("オーナーのロールは変更できません。");
+      }
+
+      const { error } = await admin
+        .from("tenant_memberships")
+        .update({ role: newRole })
+        .eq("tenant_id", caller.tenantId)
+        .eq("user_id", targetUserId);
+
+      if (error) {
+        return apiInternalError(error, "members PUT");
+      }
+
+      logAuditEvent({
+        type: "member_role_changed",
+        tenantId: caller.tenantId,
+        description: `${targetUserId} のロールを ${targetMem.role} → ${newRole} に変更`,
+      });
+
+      return apiJson({ ok: true, role: newRole });
+    } catch (e: unknown) {
+      return apiInternalError(e, "members PUT");
     }
-
-    const parsed = memberRoleChangeSchema.safeParse(await req.json().catch(() => ({})));
-    if (!parsed.success) {
-      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
-    }
-    const { user_id: targetUserId, role: newRole } = parsed.data;
-
-    // 自分自身のロール変更は不可
-    if (targetUserId === caller.userId) {
-      return apiValidationError("自分のロールは変更できません。");
-    }
-
-    const { admin } = createTenantScopedAdmin(caller.tenantId);
-
-    // owner のロール変更は不可
-    const { data: targetMem } = await admin
-      .from("tenant_memberships")
-      .select("role")
-      .eq("tenant_id", caller.tenantId)
-      .eq("user_id", targetUserId)
-      .maybeSingle();
-
-    if (!targetMem) {
-      return apiNotFound("メンバーが見つかりません。");
-    }
-    if (targetMem.role === "owner") {
-      return apiValidationError("オーナーのロールは変更できません。");
-    }
-
-    const { error } = await admin
-      .from("tenant_memberships")
-      .update({ role: newRole })
-      .eq("tenant_id", caller.tenantId)
-      .eq("user_id", targetUserId);
-
-    if (error) {
-      return apiInternalError(error, "members PUT");
-    }
-
-    logAuditEvent({
-      type: "member_role_changed",
-      tenantId: caller.tenantId,
-      description: `${targetUserId} のロールを ${targetMem.role} → ${newRole} に変更`,
-    });
-
-    return apiJson({ ok: true, role: newRole });
-  } catch (e: unknown) {
-    return apiInternalError(e, "members PUT");
-  }
-}
+  },
+  { routeName: "admin/members PUT" },
+);
 
 // ─── DELETE: メンバー削除 ───
-export async function DELETE(req: NextRequest) {
-  try {
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
+export const DELETE = withCaller(
+  async (req, { caller }) => {
+    try {
 
-    // owner または admin のみ削除可
-    if (caller.role !== "owner" && caller.role !== "admin") {
-      return apiForbidden("メンバー削除の権限がありません。");
+      // owner または admin のみ削除可
+      if (caller.role !== "owner" && caller.role !== "admin") {
+        return apiForbidden("メンバー削除の権限がありません。");
+      }
+
+      const parsed = memberDeleteSchema.safeParse(await req.json().catch(() => ({})));
+      if (!parsed.success) {
+        return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
+      }
+      const { user_id: targetUserId } = parsed.data;
+
+      // 自分自身は削除不可
+      if (targetUserId === caller.userId) {
+        return apiValidationError("自分自身は削除できません。");
+      }
+
+      const { admin } = createTenantScopedAdmin(caller.tenantId);
+
+      // A-H2 是正 (2026-09-08): PUT（ロール変更）は owner の降格を拒否しているのに
+      // DELETE だけ対象ロールを見ずに削除しており、admin が owner を排除できた。
+      // 削除前に対象ロールを取得し、owner は拒否する。
+      const { data: targetMem } = await admin
+        .from("tenant_memberships")
+        .select("role")
+        .eq("tenant_id", caller.tenantId)
+        .eq("user_id", targetUserId)
+        .maybeSingle();
+
+      if (!targetMem) {
+        return apiNotFound("メンバーが見つかりません。");
+      }
+      if (targetMem.role === "owner") {
+        return apiValidationError("オーナーは削除できません。");
+      }
+
+      const { error } = await admin
+        .from("tenant_memberships")
+        .delete()
+        .eq("tenant_id", caller.tenantId)
+        .eq("user_id", targetUserId);
+
+      if (error) {
+        return apiInternalError(error, "members DELETE");
+      }
+
+      logAuditEvent({
+        type: "member_removed",
+        tenantId: caller.tenantId,
+        description: `${targetUserId} を削除`,
+      });
+
+      return apiJson({ ok: true });
+    } catch (e: unknown) {
+      return apiInternalError(e, "members DELETE");
     }
-
-    const parsed = memberDeleteSchema.safeParse(await req.json().catch(() => ({})));
-    if (!parsed.success) {
-      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
-    }
-    const { user_id: targetUserId } = parsed.data;
-
-    // 自分自身は削除不可
-    if (targetUserId === caller.userId) {
-      return apiValidationError("自分自身は削除できません。");
-    }
-
-    const { admin } = createTenantScopedAdmin(caller.tenantId);
-
-    // A-H2 是正 (2026-09-08): PUT（ロール変更）は owner の降格を拒否しているのに
-    // DELETE だけ対象ロールを見ずに削除しており、admin が owner を排除できた。
-    // 削除前に対象ロールを取得し、owner は拒否する。
-    const { data: targetMem } = await admin
-      .from("tenant_memberships")
-      .select("role")
-      .eq("tenant_id", caller.tenantId)
-      .eq("user_id", targetUserId)
-      .maybeSingle();
-
-    if (!targetMem) {
-      return apiNotFound("メンバーが見つかりません。");
-    }
-    if (targetMem.role === "owner") {
-      return apiValidationError("オーナーは削除できません。");
-    }
-
-    const { error } = await admin
-      .from("tenant_memberships")
-      .delete()
-      .eq("tenant_id", caller.tenantId)
-      .eq("user_id", targetUserId);
-
-    if (error) {
-      return apiInternalError(error, "members DELETE");
-    }
-
-    logAuditEvent({
-      type: "member_removed",
-      tenantId: caller.tenantId,
-      description: `${targetUserId} を削除`,
-    });
-
-    return apiJson({ ok: true });
-  } catch (e: unknown) {
-    return apiInternalError(e, "members DELETE");
-  }
-}
+  },
+  { routeName: "admin/members DELETE" },
+);

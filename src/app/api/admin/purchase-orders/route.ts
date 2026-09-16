@@ -12,16 +12,13 @@
  */
 import { NextRequest } from "next/server";
 import { z } from "zod";
-import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
+import { withCaller } from "@/lib/api/withCaller";
 import { createPlatformScopedAdmin } from "@/lib/supabase/admin";
-import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
 import {
   apiJson,
-  apiUnauthorized,
   apiValidationError,
   apiNotFound,
   apiInternalError,
-  apiForbidden,
 } from "@/lib/api/response";
 import { enforceBilling } from "@/lib/billing/guard";
 import { sendEmail } from "@/lib/email/sendEmail";
@@ -30,6 +27,7 @@ import { placeOrderViaApi, type SupplyAuthType } from "@/lib/supply/placeOrder";
 import { markOrderDeliveredToPortal } from "@/lib/supply/portalDispatch";
 import { notifyPartnerNewPortalOrder } from "@/lib/supply/portalNotify";
 import { logger } from "@/lib/logger";
+import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -78,12 +76,8 @@ function makePoNumber(): string {
 }
 
 // ─── GET: 発注一覧 (明細つき) ───
-export async function GET(req: NextRequest) {
-  try {
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
-
+export const GET = withCaller(
+  async (req, { caller, supabase }) => {
     const url = new URL(req.url);
     const status = url.searchParams.get("status") ?? "";
 
@@ -101,19 +95,13 @@ export async function GET(req: NextRequest) {
     const { data, error } = await query;
     if (error) return apiInternalError(error, "purchase orders list");
     return apiJson({ ok: true, purchase_orders: data ?? [] });
-  } catch (e: unknown) {
-    return apiInternalError(e, "purchase orders list");
-  }
-}
+  },
+  { routeName: "purchase orders list" },
+);
 
 // ─── POST: 手動で発注を作成 (draft) ───
-export async function POST(req: NextRequest) {
-  try {
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
-    if (!requireMinRole(caller, "staff")) return apiForbidden();
-
+export const POST = withCaller(
+  async (req, { caller, supabase }) => {
     const deny = await enforceBilling(req, {
       minPlan: "starter",
       action: "purchase_order_create",
@@ -165,19 +153,13 @@ export async function POST(req: NextRequest) {
     }
 
     return apiJson({ ok: true, id: po.id });
-  } catch (e: unknown) {
-    return apiInternalError(e, "purchase order create");
-  }
-}
+  },
+  { minRole: "staff", routeName: "purchase order create" },
+);
 
 // ─── PUT: ステータス遷移 (承認 / 送信 / 入荷 / 取消) ───
-export async function PUT(req: NextRequest) {
-  try {
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
-    if (!requireMinRole(caller, "staff")) return apiForbidden();
-
+export const PUT = withCaller(
+  async (req, { caller, supabase }) => {
     const parsed = updateSchema.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
     const { id, status: nextStatus, message } = parsed.data;
@@ -319,10 +301,9 @@ export async function PUT(req: NextRequest) {
       external_order_id: externalOrderId,
       stocked_in: stockedIn,
     });
-  } catch (e: unknown) {
-    return apiInternalError(e, "purchase order update");
-  }
-}
+  },
+  { minRole: "staff", routeName: "purchase order update" },
+);
 
 interface PoForSend {
   poNumber: string;

@@ -6,18 +6,18 @@
  *
  * minPlan: standard 以上 (ai_draft 機能と同条件)。
  */
-import { NextRequest } from "next/server";
+
 import { z } from "zod";
-import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
-import { apiOk, apiUnauthorized, apiInternalError, apiValidationError, apiForbidden } from "@/lib/api/response";
-import { checkRateLimit } from "@/lib/api/rateLimit";
+
+import { apiOk, apiInternalError, apiValidationError, apiForbidden } from "@/lib/api/response";
+
 import { canUseFeature, normalizePlanTier } from "@/lib/billing/planFeatures";
 import { reformatVoiceMemo } from "@/lib/ai/voiceMemoReformat";
 import { fastModelForPlanTier } from "@/lib/ai/client";
 import { loadAiAutomationSettings } from "@/lib/ai/automation/policy";
 import { startAiRouteUsage } from "@/lib/ai/recordRouteUsage";
 
+import { withCaller } from "@/lib/api/withCaller";
 export const runtime = "nodejs";
 export const maxDuration = 60;
 export const dynamic = "force-dynamic";
@@ -29,56 +29,52 @@ const schema = z.object({
   customer_hint: z.string().trim().max(200).optional(),
 });
 
-export async function POST(req: NextRequest) {
-  const usage = startAiRouteUsage("/api/admin/certificates/voice-memo");
-  try {
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
-    // AI 呼び出しは staff 以上 (代表判断 2026-09-01。閲覧専用ロールに費用の出る操作をさせない)
-    if (!requireMinRole(caller, "staff")) return apiForbidden();
+export const POST = withCaller(
+  async (req, { caller }) => {
+    const usage = startAiRouteUsage("/api/admin/certificates/voice-memo");
+    try {
+      // AI 呼び出しは staff 以上 (代表判断 2026-09-01。閲覧専用ロールに費用の出る操作をさせない)
 
-    const tier = normalizePlanTier(caller.planTier);
-    if (!canUseFeature(tier, "ai_draft")) {
-      return apiForbidden("AI ドラフト機能は Standard プラン以上で利用できます。");
+      const tier = normalizePlanTier(caller.planTier);
+      if (!canUseFeature(tier, "ai_draft")) {
+        return apiForbidden("AI ドラフト機能は Standard プラン以上で利用できます。");
+      }
+
+      const parsed = schema.safeParse(await req.json().catch(() => ({})));
+      if (!parsed.success) {
+        return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
+      }
+
+      // E4-7 是正 (2026-09-08): このルートは月次コストキャップ超過時も無条件で
+      // AI を呼んでいた。マスタースイッチ OFF / キャップ超過時は enabled=false に
+      // 倒るので、それを見て呼び出し自体をスキップする。
+      const aiSettings = await loadAiAutomationSettings(caller.tenantId);
+      if (!aiSettings.enabled) {
+        usage.record({ tenantId: caller.tenantId, userId: caller.userId, outcome: "ai_disabled" });
+        return apiOk({ ok: false, reason: "ai_unavailable" });
+      }
+
+      const draft = await reformatVoiceMemo(
+        {
+          transcript: parsed.data.transcript,
+          serviceType: parsed.data.service_type,
+          vehicleHint: parsed.data.vehicle_hint,
+          customerHint: parsed.data.customer_hint,
+        },
+        { model: fastModelForPlanTier(caller.planTier) },
+      );
+
+      if (!draft) {
+        usage.record({ tenantId: caller.tenantId, userId: caller.userId, outcome: "error" });
+        return apiOk({ ok: false, reason: "ai_unavailable" });
+      }
+
+      usage.record({ tenantId: caller.tenantId, userId: caller.userId, outcome: "ok" });
+      return apiOk({ ok: true, draft });
+    } catch (e: unknown) {
+      usage.record({ outcome: "error" });
+      return apiInternalError(e, "voice-memo");
     }
-
-    const limited = await checkRateLimit(req, "ai", `voice-memo:${caller.tenantId}`);
-    if (limited) return limited;
-
-    const parsed = schema.safeParse(await req.json().catch(() => ({})));
-    if (!parsed.success) {
-      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
-    }
-
-    // E4-7 是正 (2026-09-08): このルートは月次コストキャップ超過時も無条件で
-    // AI を呼んでいた。マスタースイッチ OFF / キャップ超過時は enabled=false に
-    // 倒るので、それを見て呼び出し自体をスキップする。
-    const aiSettings = await loadAiAutomationSettings(caller.tenantId);
-    if (!aiSettings.enabled) {
-      usage.record({ tenantId: caller.tenantId, userId: caller.userId, outcome: "ai_disabled" });
-      return apiOk({ ok: false, reason: "ai_unavailable" });
-    }
-
-    const draft = await reformatVoiceMemo(
-      {
-        transcript: parsed.data.transcript,
-        serviceType: parsed.data.service_type,
-        vehicleHint: parsed.data.vehicle_hint,
-        customerHint: parsed.data.customer_hint,
-      },
-      { model: fastModelForPlanTier(caller.planTier) },
-    );
-
-    if (!draft) {
-      usage.record({ tenantId: caller.tenantId, userId: caller.userId, outcome: "error" });
-      return apiOk({ ok: false, reason: "ai_unavailable" });
-    }
-
-    usage.record({ tenantId: caller.tenantId, userId: caller.userId, outcome: "ok" });
-    return apiOk({ ok: true, draft });
-  } catch (e: unknown) {
-    usage.record({ outcome: "error" });
-    return apiInternalError(e, "voice-memo");
-  }
-}
+  },
+  { minRole: "staff", routeName: "admin/certificates/voice-memo POST" },
+);

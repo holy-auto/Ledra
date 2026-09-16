@@ -14,44 +14,41 @@
  * cross-tenant access closed without us having to scope manually.
  */
 
-import { NextRequest } from "next/server";
-import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
 import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
-import { apiJson, apiUnauthorized, apiForbidden, apiValidationError, apiInternalError } from "@/lib/api/response";
+import { apiJson, apiValidationError, apiInternalError } from "@/lib/api/response";
 import { checkInventoryForPosItems } from "@/lib/pos/inventoryWarnings";
 import { z } from "zod";
 
+import { withCaller } from "@/lib/api/withCaller";
 export const dynamic = "force-dynamic";
 
 const inputSchema = z.object({
   items_json: z.array(z.unknown()).max(200),
 });
 
-export async function POST(req: NextRequest) {
-  try {
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
-    if (!requireMinRole(caller, "staff")) return apiForbidden();
+export const POST = withCaller(
+  async (req, { caller, supabase }) => {
+    try {
 
-    // Mild rate limit — this fires on every cart edit so it's hot, but not
-    // hot enough to need its own bucket. 60/min/user is well above realistic
-    // POS throughput.
-    const rlKey = `pos-inv-warn:${caller.userId || getClientIp(req)}`;
-    const rl = await checkRateLimit(rlKey, { limit: 60, windowSec: 60 });
-    if (!rl.allowed) {
-      return apiJson({ error: "rate_limited", retry_after: rl.retryAfterSec }, { status: 429 });
+      // Mild rate limit — this fires on every cart edit so it's hot, but not
+      // hot enough to need its own bucket. 60/min/user is well above realistic
+      // POS throughput.
+      const rlKey = `pos-inv-warn:${caller.userId || getClientIp(req)}`;
+      const rl = await checkRateLimit(rlKey, { limit: 60, windowSec: 60 });
+      if (!rl.allowed) {
+        return apiJson({ error: "rate_limited", retry_after: rl.retryAfterSec }, { status: 429 });
+      }
+
+      const parsed = inputSchema.safeParse(await req.json().catch(() => ({})));
+      if (!parsed.success) {
+        return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
+      }
+
+      const warnings = await checkInventoryForPosItems(supabase, parsed.data.items_json, caller.tenantId);
+      return apiJson({ warnings });
+    } catch (e: unknown) {
+      return apiInternalError(e, "pos/inventory-warnings");
     }
-
-    const parsed = inputSchema.safeParse(await req.json().catch(() => ({})));
-    if (!parsed.success) {
-      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
-    }
-
-    const warnings = await checkInventoryForPosItems(supabase, parsed.data.items_json, caller.tenantId);
-    return apiJson({ warnings });
-  } catch (e: unknown) {
-    return apiInternalError(e, "pos/inventory-warnings");
-  }
-}
+  },
+  { minRole: "staff", routeName: "admin/pos/inventory-warnings POST" },
+);

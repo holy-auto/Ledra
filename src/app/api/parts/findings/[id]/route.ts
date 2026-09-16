@@ -6,9 +6,9 @@
  */
 
 import { z } from "zod";
-import { apiJson, apiInternalError, apiValidationError, apiUnauthorized, apiForbidden } from "@/lib/api/response";
-import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
+import { apiJson, apiInternalError, apiValidationError } from "@/lib/api/response";
+
+import { withCaller } from "@/lib/api/withCaller";
 
 export const dynamic = "force-dynamic";
 
@@ -16,34 +16,32 @@ const schema = z.object({
   status: z.enum(["open", "acknowledged", "resolved", "dismissed"]),
 });
 
-export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const supabase = await createSupabaseServerClient();
-  const caller = await resolveCallerWithRole(supabase);
-  if (!caller) return apiUnauthorized();
-  if (!requireMinRole(caller, "staff")) return apiForbidden();
+export const POST = withCaller<{ id: string }>(
+  async (req, { caller, supabase, params }) => {
+    const { id } = params;
 
-  const { id } = await params;
+    let body: unknown;
+    try {
+      body = await req.json();
+    } catch {
+      return apiValidationError("リクエストボディが不正です。");
+    }
+    const parsed = schema.safeParse(body);
+    if (!parsed.success) return apiValidationError("status が不正です。");
 
-  let body: unknown;
-  try {
-    body = await req.json();
-  } catch {
-    return apiValidationError("リクエストボディが不正です。");
-  }
-  const parsed = schema.safeParse(body);
-  if (!parsed.success) return apiValidationError("status が不正です。");
-
-  try {
-    const { data, error } = await supabase
-      .from("part_integrity_findings")
-      .update({ status: parsed.data.status })
-      .eq("id", id)
-      .select("id, status")
-      .maybeSingle();
-    if (error) throw new Error(error.message);
-    if (!data) return apiJson({ error: "not_found" }, { status: 404 });
-    return apiJson({ id: data.id, status: data.status });
-  } catch (e) {
-    return apiInternalError(e, "parts/findings/[id] POST");
-  }
-}
+    try {
+      const { data, error } = await supabase
+        .from("part_integrity_findings")
+        .update({ status: parsed.data.status })
+        .eq("id", id)
+        .select("id, status")
+        .maybeSingle();
+      if (error) throw new Error(error.message);
+      if (!data) return apiJson({ error: "not_found" }, { status: 404 });
+      return apiJson({ id: data.id, status: data.status });
+    } catch (e) {
+      return apiInternalError(e, "parts/findings/[id] POST");
+    }
+  },
+  { minRole: "staff", routeName: "parts/findings/[id] POST" },
+);

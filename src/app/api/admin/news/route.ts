@@ -1,10 +1,10 @@
-import { NextResponse } from "next/server";
-import { unstable_cache } from "next/cache";
-import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import Parser from "rss-parser";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
-import { apiJson, apiUnauthorized, apiInternalError } from "@/lib/api/response";
 
+import { unstable_cache } from "next/cache";
+import Parser from "rss-parser";
+
+import { apiJson, apiInternalError } from "@/lib/api/response";
+
+import { withCaller } from "@/lib/api/withCaller";
 const RSS_FEEDS = [
   // ── 塗装・コーティング専門 ──
   { url: "https://tosojiho.jp/?feed=rss2", source: "日本塗装時報", category: "塗装・コーティング" },
@@ -63,49 +63,49 @@ const fetchLiveFeeds = unstable_cache(
   { revalidate: 300 },
 );
 
-export async function GET() {
-  try {
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
+export const GET = withCaller(
+  async (_req, { caller, supabase }) => {
+    try {
 
-    // 1) DBに保存済みの記事を取得（cron で保存されたもの）
-    const { data: savedNews } = await supabase
-      .from("saved_news")
-      .select("id, title, summary, category, source, url, published_at, keywords, is_relevant, fetched_at")
-      .eq("is_relevant", true)
-      .order("published_at", { ascending: false })
-      .limit(100);
+      // 1) DBに保存済みの記事を取得（cron で保存されたもの）
+      const { data: savedNews } = await supabase
+        .from("saved_news")
+        .select("id, title, summary, category, source, url, published_at, keywords, is_relevant, fetched_at")
+        .eq("is_relevant", true)
+        .order("published_at", { ascending: false })
+        .limit(100);
 
-    // 2) ライブRSSも取得
-    const liveNews = await fetchLiveFeeds();
+      // 2) ライブRSSも取得
+      const liveNews = await fetchLiveFeeds();
 
-    // 3) マージ（DB記事を優先、URLで重複排除）
-    const urlSet = new Set<string>();
-    const merged: any[] = [];
+      // 3) マージ（DB記事を優先、URLで重複排除）
+      const urlSet = new Set<string>();
+      const merged: any[] = [];
 
-    // DB記事を先に追加（saved=trueマーク）
-    for (const item of savedNews ?? []) {
-      if (item.url) urlSet.add(item.url);
-      merged.push({ ...item, saved: true });
+      // DB記事を先に追加（saved=trueマーク）
+      for (const item of savedNews ?? []) {
+        if (item.url) urlSet.add(item.url);
+        merged.push({ ...item, saved: true });
+      }
+
+      // ライブ記事で重複しないものを追加
+      for (const item of liveNews) {
+        if (item.url && urlSet.has(item.url)) continue;
+        merged.push(item);
+      }
+
+      // 日付順ソート
+      merged.sort((a, b) => new Date(b.published_at).getTime() - new Date(a.published_at).getTime());
+
+      return apiJson({
+        news: merged.slice(0, 80),
+        source: "hybrid",
+        feedCount: RSS_FEEDS.length + 12, // RSS + スクレイピングサイト
+        savedCount: savedNews?.length ?? 0,
+      });
+    } catch (e) {
+      return apiInternalError(e, "news");
     }
-
-    // ライブ記事で重複しないものを追加
-    for (const item of liveNews) {
-      if (item.url && urlSet.has(item.url)) continue;
-      merged.push(item);
-    }
-
-    // 日付順ソート
-    merged.sort((a, b) => new Date(b.published_at).getTime() - new Date(a.published_at).getTime());
-
-    return apiJson({
-      news: merged.slice(0, 80),
-      source: "hybrid",
-      feedCount: RSS_FEEDS.length + 12, // RSS + スクレイピングサイト
-      savedCount: savedNews?.length ?? 0,
-    });
-  } catch (e) {
-    return apiInternalError(e, "news");
-  }
-}
+  },
+  { routeName: "news" },
+);

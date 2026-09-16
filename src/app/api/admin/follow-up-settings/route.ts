@@ -1,9 +1,9 @@
-import { NextRequest, NextResponse } from "next/server";
-import { z } from "zod";
-import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { resolveCallerWithRole, requirePermission } from "@/lib/auth/checkRole";
-import { apiJson, apiUnauthorized, apiForbidden, apiInternalError, apiValidationError } from "@/lib/api/response";
 
+import { z } from "zod";
+
+import { apiJson, apiInternalError, apiValidationError } from "@/lib/api/response";
+
+import { withCaller } from "@/lib/api/withCaller";
 /**
  * 施工種別ごとのメンテナンス月数 override の zod スキーマ。
  * キーは小文字英数 + アンダースコアのみ許可 (DB 側に流す前のサニタイズ)。
@@ -27,78 +27,76 @@ const followUpSettingsSchema = z.object({
 export const dynamic = "force-dynamic";
 
 // GET: フォロー設定取得
-export async function GET() {
-  try {
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
-    if (!requirePermission(caller, "settings:view")) return apiForbidden();
+export const GET = withCaller(
+  async (_req, { caller, supabase }) => {
+    try {
 
-    const { data } = await supabase
-      .from("follow_up_settings")
-      .select(
-        "reminder_days_before, follow_up_days_after, enabled, maintenance_reminder_months, maintenance_schedule_by_service, birthday_enabled, birthday_lead_days, seasonal_enabled",
-      )
-      .eq("tenant_id", caller.tenantId)
-      .maybeSingle();
+      const { data } = await supabase
+        .from("follow_up_settings")
+        .select(
+          "reminder_days_before, follow_up_days_after, enabled, maintenance_reminder_months, maintenance_schedule_by_service, birthday_enabled, birthday_lead_days, seasonal_enabled",
+        )
+        .eq("tenant_id", caller.tenantId)
+        .maybeSingle();
 
-    return apiJson({
-      settings: data ?? {
-        reminder_days_before: [30, 7, 1],
-        follow_up_days_after: [90, 180],
-        enabled: true,
-        maintenance_reminder_months: [6, 12],
-        maintenance_schedule_by_service: {},
-        birthday_enabled: false,
-        birthday_lead_days: 0,
-        seasonal_enabled: false,
-      },
-    });
-  } catch (e: unknown) {
-    return apiInternalError(e, "follow-up-settings");
-  }
-}
+      return apiJson({
+        settings: data ?? {
+          reminder_days_before: [30, 7, 1],
+          follow_up_days_after: [90, 180],
+          enabled: true,
+          maintenance_reminder_months: [6, 12],
+          maintenance_schedule_by_service: {},
+          birthday_enabled: false,
+          birthday_lead_days: 0,
+          seasonal_enabled: false,
+        },
+      });
+    } catch (e: unknown) {
+      return apiInternalError(e, "follow-up-settings");
+    }
+  },
+  { permission: "settings:view", routeName: "admin/follow-up-settings GET" },
+);
 
 // PUT: フォロー設定更新
-export async function PUT(req: NextRequest) {
-  try {
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
-    if (!requirePermission(caller, "settings:edit")) return apiForbidden();
+export const PUT = withCaller(
+  async (req, { caller, supabase }) => {
+    try {
 
-    const rawBody = await req.json().catch(() => ({}));
-    const parsed = followUpSettingsSchema.safeParse(rawBody);
-    if (!parsed.success) {
-      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
+      const rawBody = await req.json().catch(() => ({}));
+      const parsed = followUpSettingsSchema.safeParse(rawBody);
+      if (!parsed.success) {
+        return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
+      }
+
+      // クライアントが実際に送ったキーだけを書く。別の設定ページ（birthday_* を
+      // 送らない旧フォーム等）からの保存で、Zod の既定値が omitted フィールドを
+      // false/0 に上書きして誕生日自動送信などを無効化してしまうのを防ぐ。
+      const sentKeys = new Set(
+        rawBody && typeof rawBody === "object" ? Object.keys(rawBody as Record<string, unknown>) : [],
+      );
+      const row: Record<string, unknown> = { tenant_id: caller.tenantId, updated_at: new Date().toISOString() };
+      for (const [key, value] of Object.entries(parsed.data)) {
+        if (sentKeys.has(key)) row[key] = value;
+      }
+
+      // Upsert
+      const { data: existing } = await supabase
+        .from("follow_up_settings")
+        .select("id")
+        .eq("tenant_id", caller.tenantId)
+        .maybeSingle();
+
+      if (existing) {
+        await supabase.from("follow_up_settings").update(row).eq("tenant_id", caller.tenantId);
+      } else {
+        await supabase.from("follow_up_settings").insert({ ...row, id: crypto.randomUUID() });
+      }
+
+      return apiJson({ ok: true });
+    } catch (e: unknown) {
+      return apiInternalError(e, "follow-up-settings");
     }
-
-    // クライアントが実際に送ったキーだけを書く。別の設定ページ（birthday_* を
-    // 送らない旧フォーム等）からの保存で、Zod の既定値が omitted フィールドを
-    // false/0 に上書きして誕生日自動送信などを無効化してしまうのを防ぐ。
-    const sentKeys = new Set(
-      rawBody && typeof rawBody === "object" ? Object.keys(rawBody as Record<string, unknown>) : [],
-    );
-    const row: Record<string, unknown> = { tenant_id: caller.tenantId, updated_at: new Date().toISOString() };
-    for (const [key, value] of Object.entries(parsed.data)) {
-      if (sentKeys.has(key)) row[key] = value;
-    }
-
-    // Upsert
-    const { data: existing } = await supabase
-      .from("follow_up_settings")
-      .select("id")
-      .eq("tenant_id", caller.tenantId)
-      .maybeSingle();
-
-    if (existing) {
-      await supabase.from("follow_up_settings").update(row).eq("tenant_id", caller.tenantId);
-    } else {
-      await supabase.from("follow_up_settings").insert({ ...row, id: crypto.randomUUID() });
-    }
-
-    return apiJson({ ok: true });
-  } catch (e: unknown) {
-    return apiInternalError(e, "follow-up-settings");
-  }
-}
+  },
+  { permission: "settings:edit", routeName: "admin/follow-up-settings PUT" },
+);

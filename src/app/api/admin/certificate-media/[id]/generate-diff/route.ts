@@ -17,23 +17,17 @@
  *   429 rate_limited      — AI 呼び出しレート上限
  *   500 internal_error    — Storage 取得 / Vision API 失敗
  */
-import type { NextRequest } from "next/server";
 import {
-  apiUnauthorized,
-  apiForbidden,
   apiNotFound,
   apiValidationError,
   apiInternalError,
   apiJson,
 } from "@/lib/api/response";
-import { checkRateLimit } from "@/lib/api/rateLimit";
-import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
-import { hasMinRole } from "@/lib/auth/roles";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { generateBeforeAfterDiff, normalizeImageMimeType } from "@/lib/ai/beforeAfterDiff";
 import { CERTIFICATE_MEDIA_BUCKET } from "@/lib/certificateMedia";
 import { logger } from "@/lib/logger";
+import { withCaller } from "@/lib/api/withCaller";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -64,19 +58,9 @@ async function fetchImage(
   };
 }
 
-export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
-  try {
-    const limited = await checkRateLimit(req, "ai");
-    if (limited) return limited;
-
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
-    if (!hasMinRole(caller.role, "admin")) {
-      return apiForbidden("この機能には管理者権限が必要です。");
-    }
-
-    const { id } = await ctx.params;
+export const POST = withCaller<{ id: string }>(
+  async (_req, { caller, params }) => {
+    const { id } = params;
     if (!/^[0-9a-f-]{36}$/i.test(id)) {
       return apiValidationError("メディアIDの形式が不正です。");
     }
@@ -155,7 +139,6 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       highlights: result.highlights,
       generated_at: generatedAt,
     });
-  } catch (e) {
-    return apiInternalError(e, "admin/certificate-media/[id]/generate-diff");
-  }
-}
+  },
+  { minRole: "admin", rateLimit: "ai", routeName: "admin/certificate-media/[id]/generate-diff POST" },
+);
