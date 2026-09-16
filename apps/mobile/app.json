@@ -16,6 +16,7 @@
       "bundleIdentifier": "com.ledra.app",
       "infoPlist": {
         "NFCReaderUsageDescription": "Ledraは証明書NFCタグの読み取りと書き込みに使用します",
+        "NSSupportsLiveActivities": true,
         "ITSAppUsesNonExemptEncryption": false,
         "UIRequiredDeviceCapabilities": ["arm64", "iphone-ipad-minimum-performance-a12"]
       },

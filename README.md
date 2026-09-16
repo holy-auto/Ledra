@@ -69,8 +69,10 @@ src/
                                ・rate limit プリセット適用
 
 apps/
-└── mobile/                    Expo (React Native) モバイルアプリ (ledra-mobile)
-                               店舗スタッフ向け。証明書 / 車両 / 案件を現場で確認・操作。
+├── mobile/                    Expo (React Native) モバイルアプリ (ledra-mobile)
+│                              店舗スタッフ向け。証明書 / 車両 / 案件を現場で確認・操作。
+└── watch/                     SwiftUI Apple Watch MVP
+                               今日の作業確認と工程更新に特化した店舗スタッフ向けUI。
 ```
 
 ## 主要機能の柱
