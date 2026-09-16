@@ -28,6 +28,19 @@ const createSchema = z.object({ name: z.string().trim().min(1).max(40).default("
 
 function squareError(e: unknown) {
   if (e instanceof SquareNotConnectedError) {
+    // "multiple_locations" は接続そのものは生きている（トークン切れではない）。
+    // ここを「接続し直してください」に混ぜると、繋ぎ直しても直らない案内を
+    // 繰り返すだけになる（/code-review 指摘）。qr-checkout/route.ts と同じ分岐。
+    if (e.reason === "multiple_locations") {
+      return apiJson(
+        {
+          error: e.message,
+          reason: e.reason,
+          message: "Square の店舗（ロケーション）が複数あり、どれを使うか決められません。サポートにご連絡ください。",
+        },
+        { status: 409 },
+      );
+    }
     const notConnected = e.reason === "not_connected";
     return apiJson(
       {

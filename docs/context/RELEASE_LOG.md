@@ -4,6 +4,39 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-09-16 PR #1092（PR #979 マージ後の Codex 追加指摘）を修正
+
+PR #979 は Codex 指摘8件が未反映のまま main の `withCaller` リファクタと同時に
+マージされたため、`claude/ledra-merchant-approval-2cq3ou` を最新 main から
+再スタートして PR #1092 を開き、8件＋回帰2件を反映（前項参照）。その後、
+マージ済み #979 に後から届いた追加レビューのうち3件を #1092 に持ち込み、
+さらに #1092 自身への `/code-review` で見つかった3件を修正した。
+
+- 端末の接続解除 UI が無かった（`SquareConnectSection.tsx`）。
+  `DELETE /api/admin/square/device` は既にあったが呼び出す導線が無く、
+  故障・交換した端末の device_id を店舗側で消せなかった。
+- Terminal チェックアウトが CANCELED になった後、冪等キーを使い切らずに
+  残していた（`PosClient.tsx`）。残したまま「再試行」を押すと、Square は
+  同じキーに対して取消済みのチェックアウトを返し続け、新しい決済を
+  一切開始できなくなる。
+- POS の QR チェックアウト作成が、ログイン・OTP 等と共有の "auth" レート
+  制限バケット（10 req/60s・IP単位・Redis障害時は常に503）に乗っていた
+  （`qr-checkout/route.ts`）。他の POS 系ルートと同じ "mobile_pos" プリセット
+  （IP + 利用者単位の二段構え）に変更した。
+- 上記の CANCELED 分岐修正で、同じポーリング内のもう1つの終端分岐
+  （5分タイムアウト）に同じリセットを入れ忘れていた（型J、詳細は
+  `MISTAKE_LEDGER.md` の `M-20260916-timeout-branch-missed-sibling-fix`）。
+- タブ切替（`handleModeSwitch`）が、表示中の端末 QR を取り消さずにローカル
+  状態だけ捨てていた。予約切替では既に直っていたが、モード切替のタブでは
+  未対応のままだった（同じく型J）。
+- Square 未接続エラーの新しい `reason: "multiple_locations"` を、
+  `device/route.ts` 側の `squareError` が「接続が切れています」と誤案内して
+  いた（`qr-checkout/route.ts` は正しく分岐済み）。
+
+残り2件は本 PR の規模を超えるため `docs/context/OPEN_QUESTIONS.md` に記録し、
+対応を見送った: Square POS アプリ引き当ての同時実行レース、複数ロケーション
+接続の店にアプリ内の復旧手段が無い問題。
+
 ## 2026-09-16 PR #979（Square 経由の QR コード決済）の Codex 指摘8件を修正
 
 ready for review にした直後、リポジトリ標準の Codex レビューが P1 5件・P2 3件を

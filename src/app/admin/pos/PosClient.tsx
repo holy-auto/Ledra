@@ -232,29 +232,43 @@ export default function PosClient() {
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // ── Mode switch reset ──
-  const handleModeSwitch = useCallback((newMode: PosMode) => {
-    setMode(newMode);
-    setSelected(null);
-    setCart([]);
-    setMenuSearch("");
-    setMenuCategory(null);
-    setResult(null);
-    setError(null);
-    setPaymentMethod("cash");
-    setReceivedAmount("");
-    setNote("");
-    setQrStep("idle");
-    setQrDataUrl(null);
-    setQrSessionId(null);
-    setQrError(null);
-    setInvoiceSearch("");
-    setInvoiceSearchError(null);
-    setLoadedInvoice(null);
-    if (pollingRef.current) {
-      clearInterval(pollingRef.current);
-      pollingRef.current = null;
-    }
-  }, []);
+  const handleModeSwitch = useCallback(
+    (newMode: PosMode) => {
+      // 表示中のタブ（reservation/walkin/invoice）を切り替えても、端末に出した
+      // QR はモードを跨いで生きている。消さずに離れると、客が読んで決済でき、
+      // その分は Ledra がチェックアウトIDを持っていないので追えなくなる
+      // （handleCancelQr / 予約切替 effect と同じ理由。/code-review 指摘）
+      if (squareMode === "terminal" && qrSessionId) {
+        void fetch(`/api/admin/square/qr-checkout?id=${encodeURIComponent(qrSessionId)}`, {
+          method: "DELETE",
+        }).catch(() => {});
+      }
+      setMode(newMode);
+      setSelected(null);
+      setCart([]);
+      setMenuSearch("");
+      setMenuCategory(null);
+      setResult(null);
+      setError(null);
+      setPaymentMethod("cash");
+      setReceivedAmount("");
+      setNote("");
+      setQrStep("idle");
+      setQrDataUrl(null);
+      setQrSessionId(null);
+      setQrError(null);
+      setSquareMode(null);
+      squareRef.current = null;
+      setInvoiceSearch("");
+      setInvoiceSearchError(null);
+      setLoadedInvoice(null);
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current);
+        pollingRef.current = null;
+      }
+    },
+    [squareMode, qrSessionId],
+  );
 
   // ── Invoice search ──
   const handleInvoiceSearch = useCallback(async () => {
@@ -677,6 +691,10 @@ export default function PosClient() {
         void fetch(`/api/admin/square/qr-checkout?id=${encodeURIComponent(checkoutId)}`, { method: "DELETE" }).catch(
           () => {},
         );
+        // 冪等キーを使い切っておく。残したまま「再試行」を押すと、Square は
+        // 同じキーに対して同じ（取消済みの）チェックアウトを返し続け、新しい
+        // 決済を一切開始できなくなる（CANCELED 分岐と同じ理由。/code-review 指摘）
+        squareRef.current = null;
         setQrError("決済がタイムアウトしました。端末の画面を確認してください。");
         setQrStep("error");
         return;

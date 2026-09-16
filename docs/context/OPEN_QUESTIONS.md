@@ -15,6 +15,22 @@
   逃げられることだけは分かっている。GitHub 側の一時障害か、ブランチ単位の
   スロットリングかは切り分けられていない。
 
+## 追加（2026-09-16・Square 複数ロケーション接続の店に復旧手段が無い）
+
+- **`getSquareContext`（`src/lib/square/client.ts:108`）は、テナントの
+  `square_location_ids` が2件以上のとき `SquareNotConnectedError("multiple_locations")`
+  で fail closed する（店を跨いだ誤爆を防ぐための意図的な変更、PR #1092）。
+  確実: 該当テナントには「サポートにご連絡ください」という案内以外、
+  アプリ内に直す手段が無い。`SquareConnectSection.tsx` にあるのは端末の
+  接続解除ボタンだけで、ロケーションを1つに絞るUI・APIは無い。
+  Square を再接続しても `square_location_ids` は同じ複数件のまま返るはずなので
+  （推定・未検証）、案内どおり繋ぎ直しても直らない。
+  - 対応しなかった理由: ロケーション一覧を取得して選ばせるUI＋APIの新規実装が
+    必要で、fail closed 自体の修正（このPRの本題）より大きい別スコープ。
+  - 暫定の逃げ道: サポート側で `square_connections.square_location_ids` を
+    手動で1件に絞る DB 更新は可能（未実施・要確認）。恒久対応は別PRで
+    ロケーション選択UIを作ること。
+
 ## 追加（2026-09-16・Square POS アプリ引き当ての同時実行レース）【要確認】
 
 - **`resolvePosAppSale`（`src/lib/pos/squareSale.ts`）に、2件の会計が同時に
