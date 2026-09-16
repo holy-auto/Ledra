@@ -11,6 +11,7 @@ import { maybeAutoDraftCertificateForReservation } from "@/lib/ai/automation/cer
 import { maybeAutoCreateDraftCertificateForReservation } from "@/lib/ai/automation/certificateRecordAuto";
 import { maybeAutoCreateDraftInvoiceForReservation } from "@/lib/ai/automation/invoiceRecordAuto";
 import { maybeAutoNextActionForReservation } from "@/lib/ai/automation/nextActionAuto";
+import { notifyCustomerArrived } from "@/lib/watch/arrivalPush";
 
 import { withCaller } from "@/lib/api/withCaller";
 /** advance() 後に GCal イベントを作成/更新する (advance は cancelled への遷移が無いため削除分岐は不要)。 */
@@ -156,6 +157,14 @@ export const POST = withCaller<{ id: string }>(
             }),
           ),
         );
+
+        if (nextStatus === "arrived") {
+          after(() =>
+            notifyCustomerArrived({ tenantId: caller.tenantId, reservationId: id }).catch((pushError) =>
+              logger.warn("arrival push failed (non-blocking)", { reservationId: id, error: pushError }),
+            ),
+          );
+        }
 
         // レガシーフローでも完了時は証明書ドラフト内容の生成＋証明書ドラフト行＋請求書ドラフトを
         // 自動起票する (各自 opt-in のテナントのみ・冪等・壁3)。PUT /api/admin/reservations の
@@ -305,6 +314,14 @@ export const POST = withCaller<{ id: string }>(
 
       // ── Google Calendar 同期（非ブロッキング） ──
       syncGcalAfterAdvance(caller.tenantId, updatedReservation);
+
+      if (reservation.status !== "arrived" && updatedReservation.status === "arrived") {
+        after(() =>
+          notifyCustomerArrived({ tenantId: caller.tenantId, reservationId: id }).catch((pushError) =>
+            logger.warn("arrival push failed (non-blocking)", { reservationId: id, error: pushError }),
+          ),
+        );
+      }
 
       // ─── 設定済みワークフローを汲み取った各工程の AI 自動化 ───
       // 到達した工程の意味（証明書/会計…）に応じて先回りで下書きを生成する

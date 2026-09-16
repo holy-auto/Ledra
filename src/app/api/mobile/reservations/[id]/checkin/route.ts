@@ -1,4 +1,4 @@
-import { NextRequest } from "next/server";
+import { NextRequest, after } from "next/server";
 import { resolveMobileCaller } from "@/lib/auth/mobileAuth";
 import { hasPermission } from "@/lib/auth/permissions";
 import {
@@ -9,6 +9,8 @@ import {
   apiValidationError,
   apiInternalError,
 } from "@/lib/api/response";
+import { notifyCustomerArrived } from "@/lib/watch/arrivalPush";
+import { logger } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
 
@@ -43,6 +45,12 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       .single();
 
     if (error) return apiInternalError(error, "reservations.checkin");
+
+    after(() =>
+      notifyCustomerArrived({ tenantId: caller.tenantId, reservationId: id }).catch((pushError) =>
+        logger.warn("arrival push failed (non-blocking)", { reservationId: id, error: pushError }),
+      ),
+    );
 
     return apiOk({ reservation: data });
   } catch (e) {
