@@ -1,4 +1,3 @@
-
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 
 import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
@@ -16,7 +15,6 @@ export const dynamic = "force-dynamic";
 export const POST = withCaller(
   async (req, { caller, supabase }) => {
     try {
-
       // staff以上のロールが必要
 
       // Rate limiting: 10 requests per 60 seconds per user
@@ -31,6 +29,15 @@ export const POST = withCaller(
         return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
       }
       const data2 = parsed.data;
+
+      // 決済の証明は1つの経路にしか属さない。両方渡されると、Square 側で
+      // 確認できた本物の決済の payment_id が記録から**まるごと落ちる**
+      // （recordPosSale の冪等キーは1列しか持てず、Stripe を優先するため）。
+      // 落ちた決済は次の引き当てで「まだ記録されていない」ように見え、
+      // 別の会計として二重に記帳されうる。
+      if (data2.checkout_session_id && (data2.square_checkout_id || data2.square_reconcile)) {
+        return apiValidationError("checkout_session_id と square_checkout_id/square_reconcile は同時に指定できません");
+      }
 
       const { admin: rpcAdmin } = createTenantScopedAdmin(caller.tenantId);
       // pos_checkout は SECURITY DEFINER で、引数の tenant_id をそのまま使う。

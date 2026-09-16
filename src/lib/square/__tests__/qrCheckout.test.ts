@@ -69,6 +69,26 @@ describe("findRecentPayment", () => {
     expect(res).toEqual({ ok: true, payment: expect.objectContaining({ id: "fresh" }) });
   });
 
+  it("1ページ目に無くても cursor を辿って次ページから見つける", async () => {
+    squareFetch
+      .mockResolvedValueOnce({ payments: [payment({ id: "other", amount: 9_999 })], cursor: "page2" })
+      .mockResolvedValueOnce({ payments: [payment({ id: "target" })] });
+
+    const res = await findRecentPayment(base);
+
+    expect(res).toEqual({ ok: true, payment: expect.objectContaining({ id: "target" }) });
+    expect(squareFetch).toHaveBeenCalledTimes(2);
+    expect(squareFetch.mock.calls[1][1]).toContain("cursor=page2");
+  });
+
+  it("同額のウォレット決済が2ページに分かれていても曖昧と判定する（取り違え防止）", async () => {
+    squareFetch
+      .mockResolvedValueOnce({ payments: [payment({ id: "a" })], cursor: "page2" })
+      .mockResolvedValueOnce({ payments: [payment({ id: "b" })] });
+
+    expect(await findRecentPayment(base)).toEqual({ ok: false, reason: "ambiguous" });
+  });
+
   it("引き当ての窓を Square 側の検索条件に渡す", async () => {
     squareFetch.mockResolvedValue({ payments: [] });
 

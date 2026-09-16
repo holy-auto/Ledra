@@ -366,6 +366,14 @@ export default function PosClient() {
   // Reset form when selection changes (reservation mode)
   useEffect(() => {
     if (mode !== "reservation") return;
+    // 端末に出したままの QR を消してから離れる。消さずに離れると、
+    // **予約を切り替えた後も端末は生きたまま**で、客が読んで決済でき、
+    // その分は Ledra がチェックアウトIDを持っていないので追えなくなる
+    if (squareMode === "terminal" && qrSessionId) {
+      void fetch(`/api/admin/square/qr-checkout?id=${encodeURIComponent(qrSessionId)}`, { method: "DELETE" }).catch(
+        () => {},
+      );
+    }
     setPaymentMethod("cash");
     setReceivedAmount("");
     setNote("");
@@ -381,6 +389,9 @@ export default function PosClient() {
       clearInterval(pollingRef.current);
       pollingRef.current = null;
     }
+    // squareMode/qrSessionId は意図的に依存配列から外す:
+    // これらが変わるたびではなく、予約(selected)を切り替えたときだけ動かす
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selected?.id, mode]);
 
   // Cleanup polling on unmount

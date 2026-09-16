@@ -5,6 +5,7 @@
 
 import { z } from "zod";
 
+import { checkRateLimit } from "@/lib/api/rateLimit";
 import { apiOk, apiInternalError, apiValidationError, apiNotFound } from "@/lib/api/response";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { presentAcademyCases, academyCaseToken, type AcademyCaseRow } from "@/lib/academy/casePresentation";
@@ -38,7 +39,6 @@ export const dynamic = "force-dynamic";
 export const GET = withCaller(
   async (req, { caller }) => {
     try {
-
       const { searchParams } = new URL(req.url);
       const category = searchParams.get("category");
       const type = searchParams.get("type"); // "published" | "candidates"
@@ -137,6 +137,13 @@ export const POST = withCaller(
         // AI 呼び出しは**レート制限のすぐ隣**に置く。ヘルパーへ出すと、ハンドラ単位で
         // 追う検出器（aiRouteRateLimit.test.ts）から見えなくなり、「制限の無い AI 呼び出し」
         // として扱われる。読みやすさより、呼び出しと制限が並んでいることを優先する。
+        //
+        // withCaller への統一リファクタ（378本、2026-09-16）でこの呼び出しが一度
+        // 消えていた ―― コメントだけが「隣に置く」と言い張り、実体が無かった。
+        // aiRouteRateLimit.test.ts と publishGate.test.ts の両方がこれを検出した。
+        const limited = await checkRateLimit(req, "ai", `academy-case:${caller.tenantId}`);
+        if (limited) return limited;
+
         let aiSummary: string | undefined;
         let goodPoints: string[] = [];
         let cautionPoints: string[] = [];
@@ -179,7 +186,9 @@ export const POST = withCaller(
         // チェックが入り、続く publish は必ず弾かれる。既存の文面も消さない。
         if (!aiSummary) {
           usage.record({ tenantId: caller.tenantId, userId: caller.userId, outcome: "error" });
-          return apiValidationError("公開する内容を生成できませんでした。元の証明書が削除されていないか確認してください");
+          return apiValidationError(
+            "公開する内容を生成できませんでした。元の証明書が削除されていないか確認してください",
+          );
         }
         usage.record({ tenantId: caller.tenantId, userId: caller.userId, outcome: "ok" });
 

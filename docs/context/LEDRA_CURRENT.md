@@ -4,7 +4,16 @@
 > 追わず、常に最新状態だけを保つ（履歴は DECISION_LOG.md / RELEASE_LOG.md 側）。
 > 大きな変化があったら都度上書きすること。
 
-最終更新: 2026-09-15
+最終更新: 2026-09-16
+
+> 2026-09-16 追記: **PR #979（Square 経由の QR コード決済）が ready for review になり、
+> Codex の指摘8件（P1 5件・P2 3件）を全件修正した。** いずれも実物のバグ
+> （idempotency_key の文字数超過で全会計が動かない／未接続の reason が返らずレジの
+> フォールバックが発火しない／Stripe と Square の決済証明を両方渡すと Square の
+> payment_id が記録から落ちる、等）。詳細は RELEASE_LOG と MISTAKE_LEDGER の
+> `M-20260916-codex-found-8-in-own-untested-pr`。**Square API はまだ1回も実際に
+> 叩けていない**（この環境からは到達不可）。実 API 検証は代表側の作業として
+> `docs/payment-methods-setup.md` §2 に残っている。
 
 > 2026-09-15 追記: **MISTAKE_LEDGER の ID 方式を連番から `M-<日付>-<スラッグ>` に変えた。**
 > 連番は並行セッションが次の空き番号を取り合うため衝突し続け、改番で直そうとして

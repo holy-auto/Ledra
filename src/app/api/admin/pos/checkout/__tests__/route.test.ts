@@ -123,6 +123,13 @@ describe("POST /api/admin/pos/checkout", () => {
     expect(rpcMock).not.toHaveBeenCalled();
   });
 
+  it("returns 400 when both Stripe and Square payment proofs are given (Square payment_id would be silently dropped)", async () => {
+    resolveCallerMock.mockResolvedValueOnce({ userId: "u-1", tenantId: "t-1" });
+    const res = await POST(jsonReq({ ...validBody, checkout_session_id: "cs_test_1", square_checkout_id: "co_1" }));
+    expect(res.status).toBe(400);
+    expect(rpcMock).not.toHaveBeenCalled();
+  });
+
   it("calls pos_checkout RPC with tenant scope and returns 500 on RPC error", async () => {
     resolveCallerMock.mockResolvedValueOnce({ userId: "u-1", tenantId: "tenant-A" });
     rpcMock.mockResolvedValueOnce({ data: null, error: { message: "advisory lock contention" } });

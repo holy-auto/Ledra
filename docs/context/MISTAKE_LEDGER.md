@@ -85,6 +85,70 @@
 
 ---
 
+## M-20260916-codex-found-8-in-own-untested-pr Square QR 決済 PR に、自分のテストでは検出できない実害バグが8件残っていた（2026-09-16・型 K）
+
+**Before**
+- 信じたこと: PR #979（Square 経由の QR コード決済）は `/code-review` を4回回し、
+  `tsc` / `eslint` / `vitest` を毎回通し、「検証済み」として何度も push していた。
+  自分で書いたテスト（`squareSale.test.ts` / `qrCheckout.test.ts`）は全部緑
+- したこと: 3週間かけて main を4回取り込みつつ、ドラフトのまま「Square API を
+  1回も叩けない」ことを PR 本文に明記して止めていた。代表が ready for review に
+  切り替えた直後、リポジトリ標準の Codex 自動レビューが走った
+
+**After**
+- Codex が P1 5件・P2 3件を指摘し、**全件が実物のバグ**だった（読んで再現条件を
+  確認済み）。代表的な3件:
+  - Square Terminal の idempotency_key が `ledra:` + テナントUUID(36) +
+    `:` + reference_id(最大40) = 最大83文字で組んでいた。Square の上限を
+    超えると**全会計が作成時点で400になる** —— 一番最初の1件から機能しない
+  - `getSquareContext` が投げる `SquareNotConnectedError` の `reason` を
+    ルートのレスポンスに載せていなかった。`PosClient` は
+    `data?.reason === "not_connected"` を見てフォールバックする作りなので、
+    **未接続の店が全店エラーになり、フォールバックが一度も発火しない**
+  - Stripe の `checkout_session_id` と Square の `square_checkout_id` を
+    同じリクエストに両方渡せる作りのまま、`recordSale` の冪等キーは1列しか
+    持てず Stripe を優先していた。**Square 側で確認できた本物の決済の
+    payment_id が記録からまるごと落ちる**
+- 自分のテストは全部、**自分が書いた実装の入出力をそのままなぞって**いた
+  （`squareError()` を書いた自分が「`reason` を返す」つもりで実装し、
+  そのテストも「`reason` を返すはず」を検証せず `error`/`message` だけ見ていた）
+- 8件とも読んで検証し、`src/lib/square/client.ts` / `qrCheckout.ts` /
+  `src/lib/pos/squareSale.ts` / `recordSale.ts` 呼び出し元 /
+  `src/app/api/admin/square/qr-checkout/route.ts` / `PosClient.tsx` を修正。
+  新規テスト7件を追加（`resolveTerminalSale` のウォレット判定、
+  `findRecentPayment` のページング、複数ロケーション時の fail-closed、
+  Stripe/Square 二重証明の拒否）
+
+**なぜ気づけなかったか**
+- **実装者とテスト作成者が同一人物で、同じ思い込みを共有していた。** 「Square は
+  未接続なら `reason: "not_connected"` を返すはず」という前提はコードにもテストにも
+  同じ形で埋め込まれ、**テストが実装を検証したのではなく、実装がテストの期待値の
+  出所になっていた**（循環）。型 K の核心 —— 「実際に呼ばれる文脈」を、実際の
+  Stripe/Square API ではなく**自分の想定するモック**で代用し続けた
+- この環境は Stripe / Square の本番 API に届かない（プロキシで
+  `docs.stripe.com` / `developer.squareup.com` もブロック）。「未検証」は
+  PR 本文に4回書いたが、**未検証であることと、自分のテストが検出力を持つことは
+  別**だと扱わずに進めてしまった。「テストが通る」を「動く」の証拠として扱った
+  （型 G に隣接するが、今回はテストの中身自体が実装の写しだった点が異なる）
+- idempotency_key の文字数上限は、Stripe/Square のドキュメントを見ずに
+  「テナントIDを混ぜれば安全」という自分の直感だけで決めていた
+  （型 A: 検証していない道具＝自分の直感を事実として扱った）
+
+**再発防止**
+- 仕組み無し（判断に依存）。この環境から Stripe/Square の実 API を叩けない制約は
+  変わらないため、**外部 API と対話する新規コードは、実 API 到達までレビュー
+  ゲート（Codex 等の第三者レビュー、または代表の実機検証）を経るまでドラフトを
+  外さない**運用で代用する。すでに CLAUDE.md の PR 運用ルールが `/code-review`
+  必須化をしているが、**自分の `/code-review` も自分が書いたコードへの理解を
+  前提にする点は同じ限界を持つ**ため、Codex のような別モデル・別視点のレビューを
+  「未検証の外部 API 呼び出しを含む PR」では省略しないことを習慣にする
+- 具体的な仕組み: 今回追加したテスト（複数ロケーション・二重証明拒否・
+  ウォレット判定・ページング）は「実装者の想定」ではなく「レビューアが指摘した
+  失敗シナリオ」から書いたため、循環の外側にある。**指摘されたバグへのテストは、
+  実装を見ずに指摘文だけから再現条件を書く**と、同じ循環を避けやすい
+
+---
+
 ## M-20260915-dupe-count-from-truncated-grep 重複していた旧番号を「4組」と報告したが、実際は10組だった（2026-09-15・型 F）
 
 **Before**

@@ -115,22 +115,45 @@ export async function findRecentPayment(params: {
   excludeIds?: readonly string[];
 }): Promise<FindPaymentResult> {
   const beginTime = new Date(params.now.getTime() - params.withinMinutes * 60_000).toISOString();
-  const res = await squareFetch<{ payments?: SquarePayment[] }>(
-    params.accessToken,
-    `/v2/payments?location_id=${encodeURIComponent(params.locationId)}&begin_time=${encodeURIComponent(beginTime)}&sort_order=DESC&limit=100`,
-  );
-
   const exclude = new Set(params.excludeIds ?? []);
-  const candidates = (res.payments ?? []).filter(
-    (p) =>
-      p.status === "COMPLETED" &&
-      // **QR（ウォレット）決済だけを見る。** Square アプリで切った同額のカード・
-      // 現金まで候補に入れると、それを引き当てるか「特定できない」になる
-      p.source_type === "WALLET" &&
-      p.amount_money?.amount === params.amountJpy &&
-      (p.amount_money?.currency ?? "JPY") === "JPY" &&
-      !exclude.has(p.id),
-  );
+  const candidates: SquarePayment[] = [];
+
+  // ページングを最後まで辿る。**1ページ目だけ見て決めると**、100件を超える
+  // 店舗で対象の決済が2ページ目に落ちて「見つからない」になったり、逆に
+  // 本来2件ある同額のウォレット決済の片方だけを見て「1件に絞れた」と
+  // 誤認して取り違えることがある（曖昧判定そのものが1ページ内でしか効かない）。
+  let cursor: string | undefined;
+  let pages = 0;
+  do {
+    const query = new URLSearchParams({
+      location_id: params.locationId,
+      begin_time: beginTime,
+      sort_order: "DESC",
+      limit: "100",
+    });
+    if (cursor) query.set("cursor", cursor);
+    const res = await squareFetch<{ payments?: SquarePayment[]; cursor?: string }>(
+      params.accessToken,
+      `/v2/payments?${query.toString()}`,
+    );
+    for (const p of res.payments ?? []) {
+      if (
+        p.status === "COMPLETED" &&
+        // **QR（ウォレット）決済だけを見る。** Square アプリで切った同額のカード・
+        // 現金まで候補に入れると、それを引き当てるか「特定できない」になる
+        p.source_type === "WALLET" &&
+        p.amount_money?.amount === params.amountJpy &&
+        (p.amount_money?.currency ?? "JPY") === "JPY" &&
+        !exclude.has(p.id)
+      ) {
+        candidates.push(p);
+      }
+    }
+    cursor = res.cursor;
+    pages++;
+    // 上限（100ページ = 最大1万件）。begin_time で30分に絞っているので
+    // 通常はここに届かないが、無限ループにはしない
+  } while (cursor && pages < 100);
 
   if (candidates.length === 0) return { ok: false, reason: "not_found" };
   if (candidates.length > 1) return { ok: false, reason: "ambiguous" };

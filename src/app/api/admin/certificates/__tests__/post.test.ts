@@ -26,6 +26,18 @@ vi.mock("@/lib/logger", () => ({
   logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn(), child: () => ({}) },
 }));
 vi.mock("@sentry/nextjs", () => ({ captureException: vi.fn() }));
+// このルートは withCaller でラップされている。認証/認可は createCertAction 側に
+// 集約されているため（ハンドラは JSON↔FormData 変換だけ）、withCaller には
+// 常に通す最小限の caller を返させる。実 Supabase クライアントを作らせると
+// テスト環境では例外になり、全ケースが 500 に潰れて意図した分岐を検証できない。
+vi.mock("@/lib/supabase/server", () => ({
+  createClient: async () => ({}),
+}));
+vi.mock("@/lib/auth/checkRole", () => ({
+  resolveCallerWithRole: async () => ({ userId: "u-1", tenantId: "t-1", role: "staff" }),
+  requireMinRole: () => true,
+  requirePermission: () => true,
+}));
 
 import { POST } from "@/app/api/admin/certificates/route";
 
