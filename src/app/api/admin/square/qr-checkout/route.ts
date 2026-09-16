@@ -51,14 +51,25 @@ function squareError(e: unknown) {
  * `square_reconcile` で Ledra に引き当てる。
  */
 export async function POST(req: NextRequest) {
-  const limited = await checkRateLimit(req, "auth");
-  if (limited) return limited;
+  // 認証の**前**に IP で止める。ここを外すと、でたらめなトークンを投げるだけで
+  // auth.getUser() と membership の照会を無制限に走らせられる
+  const ipLimited = await checkRateLimit(req, "mobile_pos");
+  if (ipLimited) return ipLimited;
 
   try {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
     if (!requireMinRole(caller, "staff")) return apiForbidden();
+
+    // IP に加えて利用者単位でも数える。IP だけだと店舗の NAT で全端末が
+    // まとめて上限に当たり、**会計を出した直後に別の店員の分だけ弾かれる**。
+    // 併せて、ログイン・OTP 等と共有の "auth" バケット（10 req/60s・IP単位・
+    // 常時フェイルクローズ）から外す —— 決済作成を認証系トラフィックと
+    // 相乗りさせると、無関係な認証の混雑や Redis 障害時の 503 がそのまま
+    // 会計不能に直結する（/code-review 指摘）。
+    const limited = await checkRateLimit(req, "mobile_pos", caller.userId);
+    if (limited) return limited;
 
     const parsed = createSchema.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");

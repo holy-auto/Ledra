@@ -695,6 +695,10 @@ export default function PosClient() {
           done = true;
           if (pollingRef.current) clearInterval(pollingRef.current);
           pollingRef.current = null;
+          // 冪等キーを使い切っておく。**残したまま「再試行」を押すと**、Square は
+          // 同じキーに対して同じ（取消済みの）チェックアウトを返し続け、新しい
+          // 決済を一切開始できなくなる（/code-review 指摘）
+          squareRef.current = null;
           setQrError(`決済がキャンセルされました${status.cancel_reason ? `（${status.cancel_reason}）` : ""}。`);
           setQrStep("error");
         }
