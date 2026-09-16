@@ -6,36 +6,35 @@
  *
  * クエリ: ?partner_id=<uuid> で 1 パートナーに絞る (在庫品目のマッピング候補表示用)。
  */
-import { NextRequest } from "next/server";
-import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
-import { apiJson, apiUnauthorized, apiInternalError } from "@/lib/api/response";
 
+import { apiJson, apiInternalError } from "@/lib/api/response";
+
+import { withCaller } from "@/lib/api/withCaller";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-export async function GET(req: NextRequest) {
-  try {
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
+export const GET = withCaller(
+  async (req, { caller, supabase }) => {
+    try {
 
-    const url = new URL(req.url);
-    const partnerId = url.searchParams.get("partner_id");
+      const url = new URL(req.url);
+      const partnerId = url.searchParams.get("partner_id");
 
-    let query = supabase
-      .from("supply_partner_products")
-      .select(
-        "id, supply_partner_id, sku, name, category, list_price, currency, stock_status, lead_time_days, is_active",
-      )
-      .eq("is_active", true)
-      .order("name");
-    if (partnerId) query = query.eq("supply_partner_id", partnerId);
+      let query = supabase
+        .from("supply_partner_products")
+        .select(
+          "id, supply_partner_id, sku, name, category, list_price, currency, stock_status, lead_time_days, is_active",
+        )
+        .eq("is_active", true)
+        .order("name");
+      if (partnerId) query = query.eq("supply_partner_id", partnerId);
 
-    const { data, error } = await query;
-    if (error) return apiInternalError(error, "supply products (store) list");
-    return apiJson({ ok: true, products: data ?? [] });
-  } catch (e: unknown) {
-    return apiInternalError(e, "supply products (store) GET");
-  }
-}
+      const { data, error } = await query;
+      if (error) return apiInternalError(error, "supply products (store) list");
+      return apiJson({ ok: true, products: data ?? [] });
+    } catch (e: unknown) {
+      return apiInternalError(e, "supply products (store) GET");
+    }
+  },
+  { routeName: "admin/supply/products GET" },
+);

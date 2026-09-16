@@ -9,12 +9,11 @@
  *
  * セキュリティ: isPlatformAdmin ゲート（super_admin もしくは運営テナントの owner/admin）。
  */
-import { NextRequest, NextResponse } from "next/server";
-import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
+import { NextResponse } from "next/server";
+import { withCaller } from "@/lib/api/withCaller";
 import { isPlatformAdmin } from "@/lib/auth/platformAdmin";
 import { createPlatformScopedAdmin } from "@/lib/supabase/admin";
-import { apiUnauthorized, apiForbidden, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
+import { apiForbidden, apiValidationError, apiNotFound } from "@/lib/api/response";
 import {
   renderShopOrderDocument,
   isShopDocumentKind,
@@ -28,14 +27,11 @@ export const runtime = "nodejs";
 const SENDER_COLUMNS =
   "name, address, contact_email, contact_phone, registration_number, logo_asset_path, company_seal_path, bank_info";
 
-export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
-  try {
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
+export const GET = withCaller<{ id: string }>(
+  async (req, { caller, params }) => {
     if (!isPlatformAdmin(caller)) return apiForbidden("運営権限が必要です。");
 
-    const { id } = await ctx.params;
+    const { id } = params;
     const type = new URL(req.url).searchParams.get("type") ?? "invoice";
     if (!isShopDocumentKind(type)) {
       return apiValidationError("帳票の種類が不正です（invoice / delivery / receipt）。");
@@ -110,7 +106,6 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
         "cache-control": "no-store",
       },
     });
-  } catch (e) {
-    return apiInternalError(e, "admin/platform/shop-orders document GET");
-  }
-}
+  },
+  { routeName: "admin/platform/shop-orders document GET" },
+);

@@ -7,11 +7,9 @@
  */
 import { NextRequest } from "next/server";
 import { z } from "zod";
-import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
+import { withCaller } from "@/lib/api/withCaller";
 import {
   apiOk,
-  apiUnauthorized,
   apiInternalError,
   apiValidationError,
   apiNotFound,
@@ -26,12 +24,9 @@ const rateSchema = z.object({
   comment: z.string().trim().max(1000).optional(),
 });
 
-export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
-  try {
-    const { id } = await ctx.params;
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
+export const POST = withCaller<{ id: string }>(
+  async (req: NextRequest, { caller, supabase, params }) => {
+    const { id } = params;
 
     const parsed = rateSchema.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) {
@@ -67,17 +62,13 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     if (error) return apiInternalError(error);
 
     return apiOk({ message: "評価を送信しました" });
-  } catch (e: unknown) {
-    return apiInternalError(e);
-  }
-}
+  },
+  { routeName: "admin/academy/lessons/[id]/rate POST" },
+);
 
-export async function DELETE(_req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
-  try {
-    const { id } = await ctx.params;
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
+export const DELETE = withCaller<{ id: string }>(
+  async (_req: NextRequest, { caller, supabase, params }) => {
+    const { id } = params;
 
     const { error } = await supabase
       .from("academy_lesson_ratings")
@@ -87,7 +78,6 @@ export async function DELETE(_req: NextRequest, ctx: { params: Promise<{ id: str
     if (error) return apiInternalError(error);
 
     return apiOk({ message: "評価を削除しました" });
-  } catch (e: unknown) {
-    return apiInternalError(e);
-  }
-}
+  },
+  { routeName: "admin/academy/lessons/[id]/rate DELETE" },
+);

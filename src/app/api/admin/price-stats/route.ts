@@ -1,8 +1,8 @@
-import { NextResponse } from "next/server";
-import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
-import { apiJson, apiUnauthorized, apiInternalError } from "@/lib/api/response";
 
+
+import { apiJson, apiInternalError } from "@/lib/api/response";
+
+import { withCaller } from "@/lib/api/withCaller";
 const PREFECTURES = [
   "北海道",
   "青森県",
@@ -53,70 +53,70 @@ const PREFECTURES = [
   "沖縄県",
 ];
 
-export async function GET() {
-  try {
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
+export const GET = withCaller(
+  async (_req, { caller, supabase }) => {
+    try {
 
-    // Get all certificates with service_price and tenant prefecture info
-    const { data: certs } = await supabase
-      .from("certificates")
-      .select("service_price, tenant_id, created_at")
-      .eq("tenant_id", caller.tenantId)
-      .not("service_price", "is", null)
-      .gt("service_price", 0);
+      // Get all certificates with service_price and tenant prefecture info
+      const { data: certs } = await supabase
+        .from("certificates")
+        .select("service_price, tenant_id, created_at")
+        .eq("tenant_id", caller.tenantId)
+        .not("service_price", "is", null)
+        .gt("service_price", 0);
 
-    // Get tenant info with prefecture
-    const { data: tenants } = await supabase.from("tenants").select("id, prefecture, name");
+      // Get tenant info with prefecture
+      const { data: tenants } = await supabase.from("tenants").select("id, prefecture, name");
 
-    const tenantMap = new Map<string, string>();
-    for (const t of tenants ?? []) {
-      if (t.prefecture) tenantMap.set(t.id, t.prefecture);
-    }
-
-    // Build regional price stats
-    const regionData = new Map<string, number[]>();
-    for (const pref of PREFECTURES) {
-      regionData.set(pref, []);
-    }
-
-    for (const cert of certs ?? []) {
-      const pref = tenantMap.get(cert.tenant_id);
-      if (pref && regionData.has(pref)) {
-        regionData.get(pref)!.push(cert.service_price);
+      const tenantMap = new Map<string, string>();
+      for (const t of tenants ?? []) {
+        if (t.prefecture) tenantMap.set(t.id, t.prefecture);
       }
-    }
 
-    const regionalStats = PREFECTURES.map((pref) => {
-      const prices = regionData.get(pref) ?? [];
-      if (prices.length === 0) {
-        return { prefecture: pref, count: 0, avg: 0, min: 0, max: 0 };
+      // Build regional price stats
+      const regionData = new Map<string, number[]>();
+      for (const pref of PREFECTURES) {
+        regionData.set(pref, []);
       }
-      const sum = prices.reduce((a, b) => a + b, 0);
-      return {
-        prefecture: pref,
-        count: prices.length,
-        avg: Math.round(sum / prices.length),
-        min: Math.min(...prices),
-        max: Math.max(...prices),
-      };
-    });
 
-    // Overall stats
-    const allPrices = (certs ?? []).map((c: any) => c.service_price as number);
-    const overall =
-      allPrices.length > 0
-        ? {
-            count: allPrices.length,
-            avg: Math.round(allPrices.reduce((a, b) => a + b, 0) / allPrices.length),
-            min: Math.min(...allPrices),
-            max: Math.max(...allPrices),
-          }
-        : { count: 0, avg: 0, min: 0, max: 0 };
+      for (const cert of certs ?? []) {
+        const pref = tenantMap.get(cert.tenant_id);
+        if (pref && regionData.has(pref)) {
+          regionData.get(pref)!.push(cert.service_price);
+        }
+      }
 
-    return apiJson({ regionalStats, overall });
-  } catch (e) {
-    return apiInternalError(e, "price-stats");
-  }
-}
+      const regionalStats = PREFECTURES.map((pref) => {
+        const prices = regionData.get(pref) ?? [];
+        if (prices.length === 0) {
+          return { prefecture: pref, count: 0, avg: 0, min: 0, max: 0 };
+        }
+        const sum = prices.reduce((a, b) => a + b, 0);
+        return {
+          prefecture: pref,
+          count: prices.length,
+          avg: Math.round(sum / prices.length),
+          min: Math.min(...prices),
+          max: Math.max(...prices),
+        };
+      });
+
+      // Overall stats
+      const allPrices = (certs ?? []).map((c: any) => c.service_price as number);
+      const overall =
+        allPrices.length > 0
+          ? {
+              count: allPrices.length,
+              avg: Math.round(allPrices.reduce((a, b) => a + b, 0) / allPrices.length),
+              min: Math.min(...allPrices),
+              max: Math.max(...allPrices),
+            }
+          : { count: 0, avg: 0, min: 0, max: 0 };
+
+      return apiJson({ regionalStats, overall });
+    } catch (e) {
+      return apiInternalError(e, "price-stats");
+    }
+  },
+  { routeName: "price-stats" },
+);

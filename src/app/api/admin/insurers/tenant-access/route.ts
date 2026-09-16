@@ -1,22 +1,14 @@
-import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
 import { createPlatformScopedAdmin, createTenantScopedAdmin } from "@/lib/supabase/admin";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { isPlatformAdmin } from "@/lib/auth/platformAdmin";
 import { getClientIp } from "@/lib/rateLimit";
 import { apiJson, apiForbidden, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
+import { withCaller } from "@/lib/api/withCaller";
 import {
   insurerTenantAccessGrantSchema,
   insurerTenantAccessPatchSchema,
 } from "@/lib/validations/insurer-tenant-access";
 
 export const runtime = "nodejs";
-
-async function requirePlatformAdmin(supabase: Awaited<ReturnType<typeof createClient>>) {
-  const caller = await resolveCallerWithRole(supabase);
-  if (!caller || !isPlatformAdmin(caller)) return null;
-  return caller;
-}
 
 async function logAdminAction(params: {
   actorId: string;
@@ -50,242 +42,239 @@ async function logAdminAction(params: {
  * GET /api/admin/insurers/tenant-access?insurer_id=xxx
  * List tenant access grants for an insurer (or all if no insurer_id).
  */
-export async function GET(req: NextRequest) {
-  const supabase = await createClient();
-  const caller = await requirePlatformAdmin(supabase);
-  if (!caller) {
-    return apiForbidden();
-  }
+export const GET = withCaller(
+  async (req, { caller }) => {
+    if (!isPlatformAdmin(caller)) return apiForbidden();
 
-  const url = new URL(req.url);
-  const insurerId = url.searchParams.get("insurer_id");
+    const url = new URL(req.url);
+    const insurerId = url.searchParams.get("insurer_id");
 
-  const { admin } = createTenantScopedAdmin(caller.tenantId);
+    const { admin } = createTenantScopedAdmin(caller.tenantId);
 
-  let query = admin
-    .from("insurer_tenant_access")
-    .select("id, insurer_id, tenant_id, granted_by, granted_at, revoked_at, is_active, notes, created_at")
-    .order("created_at", { ascending: false });
+    let query = admin
+      .from("insurer_tenant_access")
+      .select("id, insurer_id, tenant_id, granted_by, granted_at, revoked_at, is_active, notes, created_at")
+      .order("created_at", { ascending: false });
 
-  if (insurerId) {
-    query = query.eq("insurer_id", insurerId);
-  }
+    if (insurerId) {
+      query = query.eq("insurer_id", insurerId);
+    }
 
-  const { data, error } = await query;
-  if (error) {
-    return apiInternalError(error, "tenant-access GET");
-  }
+    const { data, error } = await query;
+    if (error) {
+      return apiInternalError(error, "tenant-access GET");
+    }
 
-  // Enrich with insurer and tenant names
-  const insurerIds = [...new Set((data ?? []).map((r) => r.insurer_id))];
-  const tenantIds = [...new Set((data ?? []).map((r) => r.tenant_id))];
+    // Enrich with insurer and tenant names
+    const insurerIds = [...new Set((data ?? []).map((r) => r.insurer_id))];
+    const tenantIds = [...new Set((data ?? []).map((r) => r.tenant_id))];
 
-  const [insurerRes, tenantRes] = await Promise.all([
-    insurerIds.length > 0 ? admin.from("insurers").select("id, name").in("id", insurerIds) : { data: [] },
-    tenantIds.length > 0 ? admin.from("tenants").select("id, name").in("id", tenantIds) : { data: [] },
-  ]);
+    const [insurerRes, tenantRes] = await Promise.all([
+      insurerIds.length > 0 ? admin.from("insurers").select("id, name").in("id", insurerIds) : { data: [] },
+      tenantIds.length > 0 ? admin.from("tenants").select("id, name").in("id", tenantIds) : { data: [] },
+    ]);
 
-  const insurerMap = new Map((insurerRes.data ?? []).map((i: any) => [i.id, i.name]));
-  const tenantMap = new Map((tenantRes.data ?? []).map((t: any) => [t.id, t.name]));
+    const insurerMap = new Map((insurerRes.data ?? []).map((i: any) => [i.id, i.name]));
+    const tenantMap = new Map((tenantRes.data ?? []).map((t: any) => [t.id, t.name]));
 
-  const enriched = (data ?? []).map((row) => ({
-    ...row,
-    insurer_name: insurerMap.get(row.insurer_id) ?? null,
-    tenant_name: tenantMap.get(row.tenant_id) ?? null,
-  }));
+    const enriched = (data ?? []).map((row) => ({
+      ...row,
+      insurer_name: insurerMap.get(row.insurer_id) ?? null,
+      tenant_name: tenantMap.get(row.tenant_id) ?? null,
+    }));
 
-  return apiJson({ grants: enriched });
-}
+    return apiJson({ grants: enriched });
+  },
+  { routeName: "tenant-access GET" },
+);
 
 /**
  * POST /api/admin/insurers/tenant-access
  * Grant a tenant access to an insurer.
  * Body: { insurer_id, tenant_id, notes? }
  */
-export async function POST(req: NextRequest) {
-  const supabase = await createClient();
-  const caller = await requirePlatformAdmin(supabase);
-  if (!caller) {
-    return apiForbidden();
-  }
+export const POST = withCaller(
+  async (req, { caller }) => {
+    if (!isPlatformAdmin(caller)) return apiForbidden();
 
-  const parsed = insurerTenantAccessGrantSchema.safeParse(await req.json().catch(() => ({})));
-  if (!parsed.success) {
-    return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
-  }
-  const { insurer_id, tenant_id, notes } = parsed.data;
+    const parsed = insurerTenantAccessGrantSchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
+    }
+    const { insurer_id, tenant_id, notes } = parsed.data;
 
-  const { admin } = createTenantScopedAdmin(caller.tenantId);
+    const { admin } = createTenantScopedAdmin(caller.tenantId);
 
-  // Check if grant already exists (including revoked ones — reactivate)
-  const { data: existing } = await admin
-    .from("insurer_tenant_access")
-    .select("id, is_active, revoked_at")
-    .eq("insurer_id", insurer_id)
-    .eq("tenant_id", tenant_id)
-    .maybeSingle();
+    // Check if grant already exists (including revoked ones — reactivate)
+    const { data: existing } = await admin
+      .from("insurer_tenant_access")
+      .select("id, is_active, revoked_at")
+      .eq("insurer_id", insurer_id)
+      .eq("tenant_id", tenant_id)
+      .maybeSingle();
 
-  const ip = getClientIp(req);
-  const userAgent = req.headers.get("user-agent") ?? "";
+    const ip = getClientIp(req);
+    const userAgent = req.headers.get("user-agent") ?? "";
 
-  if (existing) {
-    if (existing.is_active && !existing.revoked_at) {
-      return apiJson({ error: "conflict", message: "このアクセス許可は既に有効です。" }, { status: 409 });
+    if (existing) {
+      if (existing.is_active && !existing.revoked_at) {
+        return apiJson({ error: "conflict", message: "このアクセス許可は既に有効です。" }, { status: 409 });
+      }
+
+      // Reactivate revoked grant
+      const { data: updated, error } = await admin
+        .from("insurer_tenant_access")
+        .update({
+          is_active: true,
+          revoked_at: null,
+          granted_by: caller.userId,
+          granted_at: new Date().toISOString(),
+          notes: notes || existing.id,
+        })
+        .eq("id", existing.id)
+        .select("id, insurer_id, tenant_id, granted_by, granted_at, revoked_at, is_active, notes, created_at")
+        .single();
+
+      if (error) {
+        return apiInternalError(error, "tenant-access reactivate");
+      }
+
+      logAdminAction({
+        actorId: caller.userId,
+        action: "tenant_access_reactivate",
+        targetType: "insurer_tenant_access",
+        targetId: existing.id,
+        afterData: { insurer_id, tenant_id },
+        ip,
+        userAgent,
+      });
+
+      return apiJson({ ok: true, grant: updated }, { status: 200 });
     }
 
-    // Reactivate revoked grant
-    const { data: updated, error } = await admin
+    // Create new grant
+    const { data: newGrant, error } = await admin
       .from("insurer_tenant_access")
-      .update({
-        is_active: true,
-        revoked_at: null,
+      .insert({
+        insurer_id,
+        tenant_id,
         granted_by: caller.userId,
         granted_at: new Date().toISOString(),
-        notes: notes || existing.id,
+        is_active: true,
+        notes: notes || null,
       })
-      .eq("id", existing.id)
       .select("id, insurer_id, tenant_id, granted_by, granted_at, revoked_at, is_active, notes, created_at")
       .single();
 
     if (error) {
-      return apiInternalError(error, "tenant-access reactivate");
+      return apiInternalError(error, "tenant-access POST");
     }
 
     logAdminAction({
       actorId: caller.userId,
-      action: "tenant_access_reactivate",
+      action: "tenant_access_grant",
       targetType: "insurer_tenant_access",
-      targetId: existing.id,
-      afterData: { insurer_id, tenant_id },
+      targetId: newGrant.id,
+      afterData: { insurer_id, tenant_id, notes },
       ip,
       userAgent,
     });
 
-    return apiJson({ ok: true, grant: updated }, { status: 200 });
-  }
-
-  // Create new grant
-  const { data: newGrant, error } = await admin
-    .from("insurer_tenant_access")
-    .insert({
-      insurer_id,
-      tenant_id,
-      granted_by: caller.userId,
-      granted_at: new Date().toISOString(),
-      is_active: true,
-      notes: notes || null,
-    })
-    .select("id, insurer_id, tenant_id, granted_by, granted_at, revoked_at, is_active, notes, created_at")
-    .single();
-
-  if (error) {
-    return apiInternalError(error, "tenant-access POST");
-  }
-
-  logAdminAction({
-    actorId: caller.userId,
-    action: "tenant_access_grant",
-    targetType: "insurer_tenant_access",
-    targetId: newGrant.id,
-    afterData: { insurer_id, tenant_id, notes },
-    ip,
-    userAgent,
-  });
-
-  return apiJson({ ok: true, grant: newGrant }, { status: 201 });
-}
+    return apiJson({ ok: true, grant: newGrant }, { status: 201 });
+  },
+  { routeName: "tenant-access POST" },
+);
 
 /**
  * PATCH /api/admin/insurers/tenant-access
  * Revoke or update a tenant access grant.
  * Body: { id, action: "revoke" | "update", notes? }
  */
-export async function PATCH(req: NextRequest) {
-  const supabase = await createClient();
-  const caller = await requirePlatformAdmin(supabase);
-  if (!caller) {
-    return apiForbidden();
-  }
+export const PATCH = withCaller(
+  async (req, { caller }) => {
+    if (!isPlatformAdmin(caller)) return apiForbidden();
 
-  const parsed = insurerTenantAccessPatchSchema.safeParse(await req.json().catch(() => ({})));
-  if (!parsed.success) {
-    return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
-  }
-  const { id, action, notes } = parsed.data;
+    const parsed = insurerTenantAccessPatchSchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
+    }
+    const { id, action, notes } = parsed.data;
 
-  const { admin } = createTenantScopedAdmin(caller.tenantId);
-  const ip = getClientIp(req);
-  const userAgent = req.headers.get("user-agent") ?? "";
+    const { admin } = createTenantScopedAdmin(caller.tenantId);
+    const ip = getClientIp(req);
+    const userAgent = req.headers.get("user-agent") ?? "";
 
-  // Fetch current state
-  const { data: before } = await admin
-    .from("insurer_tenant_access")
-    .select("id, insurer_id, tenant_id, granted_by, granted_at, revoked_at, is_active, notes, created_at")
-    .eq("id", id)
-    .maybeSingle();
+    // Fetch current state
+    const { data: before } = await admin
+      .from("insurer_tenant_access")
+      .select("id, insurer_id, tenant_id, granted_by, granted_at, revoked_at, is_active, notes, created_at")
+      .eq("id", id)
+      .maybeSingle();
 
-  if (!before) {
-    return apiNotFound("アクセス許可が見つかりません。");
-  }
+    if (!before) {
+      return apiNotFound("アクセス許可が見つかりません。");
+    }
 
-  if (action === "revoke") {
+    if (action === "revoke") {
+      const { data: updated, error } = await admin
+        .from("insurer_tenant_access")
+        .update({
+          is_active: false,
+          revoked_at: new Date().toISOString(),
+        })
+        .eq("id", id)
+        .select("id, insurer_id, tenant_id, granted_by, granted_at, revoked_at, is_active, notes, created_at")
+        .single();
+
+      if (error) {
+        return apiInternalError(error, "tenant-access revoke");
+      }
+
+      logAdminAction({
+        actorId: caller.userId,
+        action: "tenant_access_revoke",
+        targetType: "insurer_tenant_access",
+        targetId: id,
+        beforeData: { is_active: before.is_active },
+        afterData: { is_active: false, revoked_at: updated.revoked_at },
+        ip,
+        userAgent,
+      });
+
+      return apiJson({ ok: true, grant: updated });
+    }
+
+    // Default: update notes
+    const updates: Record<string, unknown> = {};
+    if (notes !== undefined) updates.notes = notes;
+
+    if (Object.keys(updates).length === 0) {
+      return apiValidationError("更新するフィールドを指定してください。");
+    }
+
     const { data: updated, error } = await admin
       .from("insurer_tenant_access")
-      .update({
-        is_active: false,
-        revoked_at: new Date().toISOString(),
-      })
+      .update(updates)
       .eq("id", id)
       .select("id, insurer_id, tenant_id, granted_by, granted_at, revoked_at, is_active, notes, created_at")
       .single();
 
     if (error) {
-      return apiInternalError(error, "tenant-access revoke");
+      return apiInternalError(error, "tenant-access update");
     }
 
     logAdminAction({
       actorId: caller.userId,
-      action: "tenant_access_revoke",
+      action: "tenant_access_update",
       targetType: "insurer_tenant_access",
       targetId: id,
-      beforeData: { is_active: before.is_active },
-      afterData: { is_active: false, revoked_at: updated.revoked_at },
+      beforeData: { notes: before.notes },
+      afterData: { notes: updated.notes },
       ip,
       userAgent,
     });
 
     return apiJson({ ok: true, grant: updated });
-  }
-
-  // Default: update notes
-  const updates: Record<string, unknown> = {};
-  if (notes !== undefined) updates.notes = notes;
-
-  if (Object.keys(updates).length === 0) {
-    return apiValidationError("更新するフィールドを指定してください。");
-  }
-
-  const { data: updated, error } = await admin
-    .from("insurer_tenant_access")
-    .update(updates)
-    .eq("id", id)
-    .select("id, insurer_id, tenant_id, granted_by, granted_at, revoked_at, is_active, notes, created_at")
-    .single();
-
-  if (error) {
-    return apiInternalError(error, "tenant-access update");
-  }
-
-  logAdminAction({
-    actorId: caller.userId,
-    action: "tenant_access_update",
-    targetType: "insurer_tenant_access",
-    targetId: id,
-    beforeData: { notes: before.notes },
-    afterData: { notes: updated.notes },
-    ip,
-    userAgent,
-  });
-
-  return apiJson({ ok: true, grant: updated });
-}
+  },
+  { routeName: "tenant-access PATCH" },
+);

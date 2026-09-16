@@ -15,13 +15,13 @@
  *
  * テーブル未マイグレーション時は全項目 0 / 空配列で 200 を返す (UI を壊さない)。
  */
-import { NextRequest } from "next/server";
-import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
+
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
-import { apiOk, apiUnauthorized, apiInternalError } from "@/lib/api/response";
+
+import { apiOk, apiInternalError } from "@/lib/api/response";
 import { estimateCostJpy, usdJpyRate } from "@/lib/ai/pricing";
 
+import { withCaller } from "@/lib/api/withCaller";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
@@ -83,53 +83,53 @@ function isMissingTableError(err: { message?: string; code?: string } | null | u
   return msg.includes("does not exist") || msg.includes("schema cache");
 }
 
-export async function GET(req: NextRequest) {
-  try {
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
+export const GET = withCaller(
+  async (req, { caller }) => {
+    try {
 
-    const url = new URL(req.url);
-    const daysRaw = Number(url.searchParams.get("days") ?? "30");
-    const days = [7, 30, 90].includes(daysRaw) ? daysRaw : 30;
-    const cutoff = new Date(Date.now() - days * 86400000).toISOString();
+      const url = new URL(req.url);
+      const daysRaw = Number(url.searchParams.get("days") ?? "30");
+      const days = [7, 30, 90].includes(daysRaw) ? daysRaw : 30;
+      const cutoff = new Date(Date.now() - days * 86400000).toISOString();
 
-    const { admin, tenantId } = createTenantScopedAdmin(caller.tenantId);
-    const baseCols = "endpoint, outcome, model, confidence, input_tokens, output_tokens, latency_ms, created_at";
-    const run = (cols: string) =>
-      admin
-        .from("ai_usage_logs")
-        .select(cols)
-        .eq("tenant_id", tenantId)
-        .gte("created_at", cutoff)
-        .order("created_at", { ascending: false })
-        .limit(10000);
+      const { admin, tenantId } = createTenantScopedAdmin(caller.tenantId);
+      const baseCols = "endpoint, outcome, model, confidence, input_tokens, output_tokens, latency_ms, created_at";
+      const run = (cols: string) =>
+        admin
+          .from("ai_usage_logs")
+          .select(cols)
+          .eq("tenant_id", tenantId)
+          .gte("created_at", cutoff)
+          .order("created_at", { ascending: false })
+          .limit(10000);
 
-    let res = await run(`${baseCols}, cost_jpy`);
-    // cost_jpy 列が未作成 (部分マイグレーション) のときは列を外して再取得 (cost_jpy は
-    // null 扱いとなり、行ごとにトークンでフォールバック計上する)。
-    if (res.error && (res.error.code === "42703" || res.error.code === "PGRST204")) {
-      res = await run(baseCols);
-    }
-    const { data, error } = res;
-
-    if (error) {
-      if (isMissingTableError(error)) {
-        return apiOk({
-          stats: emptyStats(),
-          warning: "ai_usage_logs テーブルが未作成のため空の集計を返しています。",
-          days,
-        });
+      let res = await run(`${baseCols}, cost_jpy`);
+      // cost_jpy 列が未作成 (部分マイグレーション) のときは列を外して再取得 (cost_jpy は
+      // null 扱いとなり、行ごとにトークンでフォールバック計上する)。
+      if (res.error && (res.error.code === "42703" || res.error.code === "PGRST204")) {
+        res = await run(baseCols);
       }
-      return apiInternalError(error, "ai-usage GET");
-    }
+      const { data, error } = res;
 
-    const stats = aggregate((data ?? []) as unknown as UsageRow[], days);
-    return apiOk({ stats, days });
-  } catch (e: unknown) {
-    return apiInternalError(e, "ai-usage GET");
-  }
-}
+      if (error) {
+        if (isMissingTableError(error)) {
+          return apiOk({
+            stats: emptyStats(),
+            warning: "ai_usage_logs テーブルが未作成のため空の集計を返しています。",
+            days,
+          });
+        }
+        return apiInternalError(error, "ai-usage GET");
+      }
+
+      const stats = aggregate((data ?? []) as unknown as UsageRow[], days);
+      return apiOk({ stats, days });
+    } catch (e: unknown) {
+      return apiInternalError(e, "ai-usage GET");
+    }
+  },
+  { routeName: "admin/platform/ai-usage GET" },
+);
 
 function aggregate(rows: UsageRow[], days: number): EmptyStats {
   const byOutcome: Record<string, number> = {};

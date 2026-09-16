@@ -1,12 +1,9 @@
-import { NextRequest } from "next/server";
 import { z } from "zod";
-import { createClient } from "@/lib/supabase/server";
-import { createPlatformScopedAdmin } from "@/lib/supabase/admin";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
+import { withCaller } from "@/lib/api/withCaller";
 import { isPlatformAdmin } from "@/lib/auth/platformAdmin";
+import { createPlatformScopedAdmin } from "@/lib/supabase/admin";
 import {
   apiJson,
-  apiUnauthorized,
   apiForbidden,
   apiInternalError,
   apiNotFound,
@@ -19,8 +16,6 @@ export const dynamic = "force-dynamic";
 
 const actionSchema = z.object({ action: z.enum(["approve", "pay", "cancel"]) });
 
-type RouteContext = { params: Promise<{ id: string }> };
-
 /**
  * PATCH /api/admin/platform/report-revenue/<id>
  * Body: { action: "approve" | "pay" | "cancel" }
@@ -31,12 +26,9 @@ type RouteContext = { params: Promise<{ id: string }> };
  *
  * Mirrors the agent-commission payout gate.
  */
-export async function PATCH(request: NextRequest, ctx: RouteContext) {
-  try {
-    const { id } = await ctx.params;
-    const supabase = await createClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
+export const PATCH = withCaller<{ id: string }>(
+  async (request, { caller, params }) => {
+    const { id } = params;
     if (!isPlatformAdmin(caller)) return apiForbidden();
 
     const parsed = await parseJsonBody(request, actionSchema);
@@ -100,7 +92,6 @@ export async function PATCH(request: NextRequest, ctx: RouteContext) {
     // does not emit transfer.paid), so report the real resulting status, not
     // the pre-transfer `approved`.
     return apiJson({ ok: true, status: "paid", transferId: result.transferId });
-  } catch (e) {
-    return apiInternalError(e, "report-revenue PATCH");
-  }
-}
+  },
+  { routeName: "report-revenue PATCH" },
+);

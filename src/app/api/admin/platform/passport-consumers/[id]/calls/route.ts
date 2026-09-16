@@ -8,11 +8,10 @@
  */
 import { NextRequest } from "next/server";
 import { z } from "zod";
-import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
+import { withCaller } from "@/lib/api/withCaller";
 import { isPlatformAdmin } from "@/lib/auth/platformAdmin";
 import { createPlatformScopedAdmin } from "@/lib/supabase/admin";
-import { apiJson, apiUnauthorized, apiForbidden, apiValidationError, apiInternalError } from "@/lib/api/response";
+import { apiJson, apiForbidden, apiValidationError } from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -21,12 +20,9 @@ const querySchema = z.object({
   limit: z.coerce.number().int().min(1).max(500).optional(),
 });
 
-export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
-  try {
-    const { id } = await ctx.params;
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
+export const GET = withCaller<{ id: string }>(
+  async (req: NextRequest, { caller, params }) => {
+    const { id } = params;
     if (!isPlatformAdmin(caller)) return apiForbidden();
 
     const url = new URL(req.url);
@@ -48,10 +44,9 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
       .order("called_at", { ascending: false })
       .limit(limit);
 
-    if (error) return apiInternalError(error, "passport-consumer calls GET");
+    if (error) throw error;
 
     return apiJson({ calls: data ?? [] });
-  } catch (e) {
-    return apiInternalError(e, "passport-consumer calls GET");
-  }
-}
+  },
+  { routeName: "passport-consumer calls GET" },
+);

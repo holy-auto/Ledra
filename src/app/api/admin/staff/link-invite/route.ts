@@ -1,11 +1,11 @@
-import { NextRequest } from "next/server";
+
 import { z } from "zod";
-import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
-import { resolveCallerWithRole, requirePermission } from "@/lib/auth/checkRole";
-import { apiJson, apiUnauthorized, apiForbidden, apiValidationError, apiInternalError } from "@/lib/api/response";
+
+import { apiJson, apiValidationError, apiInternalError } from "@/lib/api/response";
 import { issueStaffLinkInvite, unlinkStaffTenant } from "@/lib/staff/tenantLink";
 
+import { withCaller } from "@/lib/api/withCaller";
 export const dynamic = "force-dynamic";
 
 const bodySchema = z.object({ staff_member_id: z.string().uuid() });
@@ -28,42 +28,40 @@ async function resolveTargetStaff(tenantId: string, staffMemberId: string) {
 }
 
 /** POST: 発行（再発行）。raw code を返すのは**このレスポンスだけ**。 */
-export async function POST(req: NextRequest) {
-  try {
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
-    if (!requirePermission(caller, "members:manage")) return apiForbidden();
+export const POST = withCaller(
+  async (req, { caller }) => {
+    try {
 
-    const parsed = bodySchema.safeParse(await req.json().catch(() => ({})));
-    if (!parsed.success) return apiValidationError("staff_member_id が不正です。");
+      const parsed = bodySchema.safeParse(await req.json().catch(() => ({})));
+      if (!parsed.success) return apiValidationError("staff_member_id が不正です。");
 
-    const staff = await resolveTargetStaff(caller.tenantId, parsed.data.staff_member_id);
-    if (!staff) return apiValidationError("該当の職人が見つかりません。");
-    // 休止中の職人はそもそも連携しても記録が出ない。発行できたつもりにさせない。
-    if (!staff.is_active) return apiValidationError("休止中の職人にはコードを発行できません。");
+      const staff = await resolveTargetStaff(caller.tenantId, parsed.data.staff_member_id);
+      if (!staff) return apiValidationError("該当の職人が見つかりません。");
+      // 休止中の職人はそもそも連携しても記録が出ない。発行できたつもりにさせない。
+      if (!staff.is_active) return apiValidationError("休止中の職人にはコードを発行できません。");
 
-    const { code, expiresAt } = await issueStaffLinkInvite(caller.tenantId, staff.id as string, caller.userId);
-    return apiJson({ ok: true, code, expires_at: expiresAt, staff_name: staff.name });
-  } catch (e: unknown) {
-    return apiInternalError(e, "admin/staff/link-invite POST");
-  }
-}
+      const { code, expiresAt } = await issueStaffLinkInvite(caller.tenantId, staff.id as string, caller.userId);
+      return apiJson({ ok: true, code, expires_at: expiresAt, staff_name: staff.name });
+    } catch (e: unknown) {
+      return apiInternalError(e, "admin/staff/link-invite POST");
+    }
+  },
+  { permission: "members:manage", routeName: "admin/staff/link-invite POST" },
+);
 
 /** DELETE: 連携の解除。職人行はそのまま、繋がりだけ切る。 */
-export async function DELETE(req: NextRequest) {
-  try {
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
-    if (!requirePermission(caller, "members:manage")) return apiForbidden();
+export const DELETE = withCaller(
+  async (req, { caller }) => {
+    try {
 
-    const parsed = bodySchema.safeParse(await req.json().catch(() => ({})));
-    if (!parsed.success) return apiValidationError("staff_member_id が不正です。");
+      const parsed = bodySchema.safeParse(await req.json().catch(() => ({})));
+      if (!parsed.success) return apiValidationError("staff_member_id が不正です。");
 
-    await unlinkStaffTenant(caller.tenantId, parsed.data.staff_member_id);
-    return apiJson({ ok: true });
-  } catch (e: unknown) {
-    return apiInternalError(e, "admin/staff/link-invite DELETE");
-  }
-}
+      await unlinkStaffTenant(caller.tenantId, parsed.data.staff_member_id);
+      return apiJson({ ok: true });
+    } catch (e: unknown) {
+      return apiInternalError(e, "admin/staff/link-invite DELETE");
+    }
+  },
+  { permission: "members:manage", routeName: "admin/staff/link-invite DELETE" },
+);

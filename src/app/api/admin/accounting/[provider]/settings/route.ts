@@ -6,21 +6,12 @@
  * 後から細かい調整 (取引先の振り分けなど) ができる退避口として用意する。
  */
 
-import { NextRequest } from "next/server";
-import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
-import {
-  apiOk,
-  apiUnauthorized,
-  apiForbidden,
-  apiNotFound,
-  apiInternalError,
-  apiValidationError,
-} from "@/lib/api/response";
+import { apiOk, apiNotFound, apiInternalError, apiValidationError } from "@/lib/api/response";
 import { isAccountingProvider } from "@/lib/accounting/registry";
 import { z } from "zod";
 
+import { withCaller } from "@/lib/api/withCaller";
 export const dynamic = "force-dynamic";
 
 const SettingsSchema = z.object({
@@ -32,32 +23,30 @@ const SettingsSchema = z.object({
   default_partner_id: z.string().min(1).max(64).nullable().optional(),
 });
 
-export async function PATCH(req: NextRequest, { params }: { params: Promise<{ provider: string }> }) {
-  try {
-    const { provider } = await params;
-    if (!isAccountingProvider(provider)) return apiNotFound("Unknown accounting provider");
+export const PATCH = withCaller<{ provider: string }>(
+  async (req, { caller, params }) => {
+    try {
+      const { provider } = params;
+      if (!isAccountingProvider(provider)) return apiNotFound("Unknown accounting provider");
 
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
-    if (!requireMinRole(caller, "admin")) return apiForbidden();
+      const json = await req.json().catch(() => null);
+      const parsed = SettingsSchema.safeParse(json);
+      if (!parsed.success) {
+        return apiValidationError("入力値が不正です。", { issues: parsed.error.flatten() });
+      }
 
-    const json = await req.json().catch(() => null);
-    const parsed = SettingsSchema.safeParse(json);
-    if (!parsed.success) {
-      return apiValidationError("入力値が不正です。", { issues: parsed.error.flatten() });
+      const { admin, tenantId } = createTenantScopedAdmin(caller.tenantId);
+      const { error } = await admin
+        .from("accounting_integrations")
+        .update(parsed.data)
+        .eq("tenant_id", tenantId)
+        .eq("provider", provider);
+
+      if (error) return apiInternalError(error, "accounting settings PATCH");
+      return apiOk({ updated: true });
+    } catch (e) {
+      return apiInternalError(e, "accounting settings PATCH");
     }
-
-    const { admin, tenantId } = createTenantScopedAdmin(caller.tenantId);
-    const { error } = await admin
-      .from("accounting_integrations")
-      .update(parsed.data)
-      .eq("tenant_id", tenantId)
-      .eq("provider", provider);
-
-    if (error) return apiInternalError(error, "accounting settings PATCH");
-    return apiOk({ updated: true });
-  } catch (e) {
-    return apiInternalError(e, "accounting settings PATCH");
-  }
-}
+  },
+  { minRole: "admin", routeName: "accounting settings PATCH" },
+);

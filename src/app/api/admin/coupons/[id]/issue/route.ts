@@ -1,11 +1,8 @@
 import { NextRequest } from "next/server";
-import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
-import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
+import { withCaller } from "@/lib/api/withCaller";
 import {
   apiJson,
-  apiUnauthorized,
-  apiForbidden,
   apiNotFound,
   apiValidationError,
   apiInternalError,
@@ -23,15 +20,10 @@ export const runtime = "nodejs";
  *  - expires_days を指定すると発行時刻 + N 日を expires_at にセット。
  *  - customer_id を指定する場合は自テナント所属を検証 (client 供給 ID を信頼しない)。
  */
-export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
-  try {
-    const { id } = await ctx.params;
+export const POST = withCaller<{ id: string }>(
+  async (req: NextRequest, { caller, params }) => {
+    const { id } = params;
     if (!id) return apiNotFound("coupon id required");
-
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
-    if (!requireMinRole(caller, "staff")) return apiForbidden();
 
     const parsed = couponIssueSchema.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) {
@@ -97,7 +89,6 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     if (insertErr) return apiInternalError(insertErr, "coupon_issues insert");
 
     return apiJson({ ok: true, issue }, { status: 201 });
-  } catch (e) {
-    return apiInternalError(e, "coupons issue POST");
-  }
-}
+  },
+  { minRole: "staff", routeName: "coupons issue POST" },
+);

@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { NextRequest } from "next/server";
 
 const mocks = vi.hoisted(() => ({
   resolveCallerWithRole: vi.fn(),
@@ -21,8 +22,8 @@ import { GET, POST } from "@/app/api/admin/integrations/api-keys/route";
 
 const ADMIN_CALLER = { userId: "u1", tenantId: "t1", role: "admin", planTier: "pro" };
 
-function req(body: unknown): Request {
-  return new Request("http://localhost/api/admin/integrations/api-keys", {
+function req(body: unknown): NextRequest {
+  return new NextRequest("http://localhost/api/admin/integrations/api-keys", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
@@ -38,7 +39,7 @@ beforeEach(() => {
 describe("GET /api/admin/integrations/api-keys", () => {
   it("401 when not authenticated", async () => {
     mocks.resolveCallerWithRole.mockResolvedValueOnce(null);
-    const res = await GET();
+    const res = await GET(new NextRequest("http://localhost/api/admin/integrations/api-keys"));
     expect(res.status).toBe(401);
   });
 
@@ -94,7 +95,7 @@ describe("GET /api/admin/integrations/api-keys", () => {
         }),
       },
     });
-    const res = await GET();
+    const res = await GET(new NextRequest("http://localhost/api/admin/integrations/api-keys"));
     expect(res.status).toBe(200);
     const body = (await res.json()) as { keys: Array<{ id: string; status: string }> };
     expect(body.keys.map((k) => [k.id, k.status])).toEqual([

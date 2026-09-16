@@ -10,24 +10,18 @@
  */
 import { NextRequest } from "next/server";
 import { z } from "zod";
-import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
-import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
-import { apiOk, apiUnauthorized, apiForbidden, apiNotFound, apiInternalError } from "@/lib/api/response";
+import { withCaller } from "@/lib/api/withCaller";
+import { apiOk, apiNotFound, apiInternalError } from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
 
 const schema = z.object({ handled: z.boolean().optional() });
 
-export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
-  try {
-    const { id } = await ctx.params;
+export const POST = withCaller<{ id: string }>(
+  async (req: NextRequest, { caller, params }) => {
+    const { id } = params;
     if (!id) return apiNotFound("message id is required");
-
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
-    if (!requireMinRole(caller, "staff")) return apiForbidden();
 
     const handled = schema.safeParse(await req.json().catch(() => ({}))).data?.handled ?? true;
 
@@ -53,7 +47,6 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     if (upErr) return apiInternalError(upErr, "candidate-dismiss: update");
 
     return apiOk({ ok: true, handled_at: next.handled_at });
-  } catch (e) {
-    return apiInternalError(e, "candidate-dismiss");
-  }
-}
+  },
+  { minRole: "staff", routeName: "candidate-dismiss POST" },
+);

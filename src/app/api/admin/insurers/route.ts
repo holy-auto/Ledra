@@ -1,11 +1,9 @@
-import { NextResponse } from "next/server";
 import { z } from "zod";
-import { createClient } from "@/lib/supabase/server";
 import { createPlatformScopedAdmin, createTenantScopedAdmin } from "@/lib/supabase/admin";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { isPlatformAdmin } from "@/lib/auth/platformAdmin";
 import { getClientIp } from "@/lib/rateLimit";
 import { apiJson, apiForbidden, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
+import { withCaller } from "@/lib/api/withCaller";
 import { escapeHtml } from "@/lib/sanitize";
 import { sendEmail } from "@/lib/email/sendEmail";
 
@@ -29,14 +27,6 @@ const insurerPatchSchema = z.object({
     .optional()
     .transform((v) => (v === undefined ? undefined : v || null)),
 });
-
-async function requirePlatformAdmin(supabase: Awaited<ReturnType<typeof createClient>>) {
-  const caller = await resolveCallerWithRole(supabase);
-  if (!caller || !isPlatformAdmin(caller)) {
-    return null;
-  }
-  return caller;
-}
 
 /**
  * Log admin action to admin_audit_logs
@@ -183,132 +173,130 @@ async function sendInsurerNotification(params: {
  * GET /api/admin/insurers?status=active_pending_review
  * 全保険会社一覧（プラットフォーム管理者専用）
  */
-export async function GET(req: Request) {
-  const supabase = await createClient();
-  const caller = await requirePlatformAdmin(supabase);
-  if (!caller) {
-    return apiForbidden();
-  }
+export const GET = withCaller(
+  async (req, { caller }) => {
+    if (!isPlatformAdmin(caller)) return apiForbidden();
 
-  const url = new URL(req.url);
-  const statusFilter = url.searchParams.get("status") ?? "";
+    const url = new URL(req.url);
+    const statusFilter = url.searchParams.get("status") ?? "";
 
-  const { admin } = createTenantScopedAdmin(caller.tenantId);
-  let query = admin
-    .from("insurers")
-    .select(
-      "id, name, slug, is_active, status, plan_tier, requested_plan, contact_person, contact_email, contact_phone, signup_source, business_type, corporate_number, address, representative_name, terms_accepted_at, rejection_reason, created_at, updated_at, reviewed_at, activated_at",
-    )
-    .order("created_at", { ascending: false });
+    const { admin } = createTenantScopedAdmin(caller.tenantId);
+    let query = admin
+      .from("insurers")
+      .select(
+        "id, name, slug, is_active, status, plan_tier, requested_plan, contact_person, contact_email, contact_phone, signup_source, business_type, corporate_number, address, representative_name, terms_accepted_at, rejection_reason, created_at, updated_at, reviewed_at, activated_at",
+      )
+      .order("created_at", { ascending: false });
 
-  if (statusFilter && (VALID_STATUSES as readonly string[]).includes(statusFilter)) {
-    query = query.eq("status", statusFilter);
-  }
+    if (statusFilter && (VALID_STATUSES as readonly string[]).includes(statusFilter)) {
+      query = query.eq("status", statusFilter);
+    }
 
-  const { data, error } = await query;
+    const { data, error } = await query;
 
-  if (error) {
-    return apiInternalError(error, "insurers GET");
-  }
+    if (error) {
+      return apiInternalError(error, "insurers GET");
+    }
 
-  return apiJson({ insurers: data ?? [] });
-}
+    return apiJson({ insurers: data ?? [] });
+  },
+  { routeName: "insurers GET" },
+);
 
 /**
  * PATCH /api/admin/insurers
  * 保険会社のステータス・プラン更新（プラットフォーム管理者専用）
  */
-export async function PATCH(req: Request) {
-  const supabase = await createClient();
-  const caller = await requirePlatformAdmin(supabase);
-  if (!caller) {
-    return apiForbidden();
-  }
+export const PATCH = withCaller(
+  async (req, { caller }) => {
+    if (!isPlatformAdmin(caller)) return apiForbidden();
 
-  const parsed = insurerPatchSchema.safeParse(await req.json().catch(() => ({})));
-  if (!parsed.success) {
-    return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
-  }
-  const { insurer_id, status, plan_tier, rejection_reason } = parsed.data;
-
-  const { admin } = createTenantScopedAdmin(caller.tenantId);
-
-  // Fetch current state for audit log
-  const { data: beforeInsurer } = await admin
-    .from("insurers")
-    .select("id, name, status, plan_tier, contact_email, rejection_reason")
-    .eq("id", insurer_id)
-    .single();
-
-  if (!beforeInsurer) {
-    return apiNotFound("保険会社が見つかりません。");
-  }
-
-  const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
-
-  if (status) {
-    updates.status = status;
-    updates.reviewed_at = new Date().toISOString();
-    updates.reviewed_by = caller.userId;
-
-    if (status === "active") {
-      updates.activated_at = new Date().toISOString();
+    const parsed = insurerPatchSchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
     }
-  }
+    const { insurer_id, status, plan_tier, rejection_reason } = parsed.data;
 
-  if (plan_tier !== undefined) {
-    updates.plan_tier = plan_tier;
-  }
+    const { admin } = createTenantScopedAdmin(caller.tenantId);
 
-  if (rejection_reason !== undefined) {
-    updates.rejection_reason = rejection_reason;
-  }
+    // Fetch current state for audit log
+    const { data: beforeInsurer } = await admin
+      .from("insurers")
+      .select("id, name, status, plan_tier, contact_email, rejection_reason")
+      .eq("id", insurer_id)
+      .single();
 
-  const { data, error } = await admin
-    .from("insurers")
-    .update(updates)
-    .eq("id", insurer_id)
-    .select("id, name, status, plan_tier, activated_at, reviewed_at, rejection_reason")
-    .single();
-
-  if (error) {
-    return apiInternalError(error, "insurers PATCH");
-  }
-
-  // Audit log
-  const ip = getClientIp(req);
-  const userAgent = req.headers.get("user-agent") ?? "";
-  logAdminAction({
-    actorId: caller.userId,
-    action: status ? `insurer_status_${status}` : "insurer_update",
-    targetType: "insurer",
-    targetId: insurer_id,
-    beforeData: { status: beforeInsurer.status, plan_tier: beforeInsurer.plan_tier },
-    afterData: { status: data.status, plan_tier: data.plan_tier, rejection_reason: data.rejection_reason },
-    ip,
-    userAgent,
-  });
-
-  // Send notification email
-  if (status && beforeInsurer.contact_email) {
-    const emailAction =
-      status === "active"
-        ? ("approved" as const)
-        : status === "suspended"
-          ? beforeInsurer.status === "active_pending_review"
-            ? ("rejected" as const)
-            : ("suspended" as const)
-          : null;
-
-    if (emailAction) {
-      sendInsurerNotification({
-        email: beforeInsurer.contact_email,
-        companyName: beforeInsurer.name,
-        action: emailAction,
-        reason: rejection_reason ?? undefined,
-      });
+    if (!beforeInsurer) {
+      return apiNotFound("保険会社が見つかりません。");
     }
-  }
 
-  return apiJson({ ok: true, insurer: data });
-}
+    const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
+
+    if (status) {
+      updates.status = status;
+      updates.reviewed_at = new Date().toISOString();
+      updates.reviewed_by = caller.userId;
+
+      if (status === "active") {
+        updates.activated_at = new Date().toISOString();
+      }
+    }
+
+    if (plan_tier !== undefined) {
+      updates.plan_tier = plan_tier;
+    }
+
+    if (rejection_reason !== undefined) {
+      updates.rejection_reason = rejection_reason;
+    }
+
+    const { data, error } = await admin
+      .from("insurers")
+      .update(updates)
+      .eq("id", insurer_id)
+      .select("id, name, status, plan_tier, activated_at, reviewed_at, rejection_reason")
+      .single();
+
+    if (error) {
+      return apiInternalError(error, "insurers PATCH");
+    }
+
+    // Audit log
+    const ip = getClientIp(req);
+    const userAgent = req.headers.get("user-agent") ?? "";
+    logAdminAction({
+      actorId: caller.userId,
+      action: status ? `insurer_status_${status}` : "insurer_update",
+      targetType: "insurer",
+      targetId: insurer_id,
+      beforeData: { status: beforeInsurer.status, plan_tier: beforeInsurer.plan_tier },
+      afterData: { status: data.status, plan_tier: data.plan_tier, rejection_reason: data.rejection_reason },
+      ip,
+      userAgent,
+    });
+
+    // Send notification email
+    if (status && beforeInsurer.contact_email) {
+      const emailAction =
+        status === "active"
+          ? ("approved" as const)
+          : status === "suspended"
+            ? beforeInsurer.status === "active_pending_review"
+              ? ("rejected" as const)
+              : ("suspended" as const)
+            : null;
+
+      if (emailAction) {
+        sendInsurerNotification({
+          email: beforeInsurer.contact_email,
+          companyName: beforeInsurer.name,
+          action: emailAction,
+          reason: rejection_reason ?? undefined,
+        });
+      }
+    }
+
+    return apiJson({ ok: true, insurer: data });
+  },
+  { routeName: "insurers PATCH" },
+);

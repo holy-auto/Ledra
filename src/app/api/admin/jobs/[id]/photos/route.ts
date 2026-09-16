@@ -1,8 +1,7 @@
 import { NextRequest } from "next/server";
-import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
+import { withCaller } from "@/lib/api/withCaller";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
-import { resolveCallerWithRole } from "@/lib/auth/checkRole";
-import { apiJson, apiUnauthorized, apiNotFound, apiInternalError } from "@/lib/api/response";
+import { apiJson, apiNotFound, apiInternalError } from "@/lib/api/response";
 import { CERTIFICATE_IMAGE_BUCKET } from "@/lib/certificateImages/constants";
 import { isAnnotationDocument, type AnnotationDocument } from "@/components/imageMarkup/types";
 
@@ -20,14 +19,10 @@ type CertRow = { id: string; public_id: string; status: string; created_at: stri
  * 注釈は AnnotateExistingImageButton 経由で
  * PUT /api/certificates/images/[id]/annotations に書き込まれる。
  */
-export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
-  try {
-    const { id: reservationId } = await ctx.params;
+export const GET = withCaller<{ id: string }>(
+  async (_req: NextRequest, { caller, params }) => {
+    const { id: reservationId } = params;
     if (!reservationId) return apiNotFound("reservation id is required");
-
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
 
     const { admin } = createTenantScopedAdmin(caller.tenantId);
 
@@ -117,7 +112,6 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
       certificates: certs.map((c) => ({ public_id: c.public_id, status: c.status, created_at: c.created_at })),
       photos,
     });
-  } catch (e) {
-    return apiInternalError(e, "job photos GET");
-  }
-}
+  },
+  { routeName: "job photos GET" },
+);

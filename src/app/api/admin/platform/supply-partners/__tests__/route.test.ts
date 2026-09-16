@@ -4,6 +4,7 @@
  * createPlatformScopedAdmin は in-memory store に差し替え (service-role 相当)。
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { NextRequest } from "next/server";
 
 const P1 = "11111111-1111-4111-8111-111111111111";
 const P2 = "22222222-2222-4222-8222-222222222222";
@@ -108,7 +109,7 @@ beforeEach(() => {
 
 describe("GET /api/admin/platform/supply-partners", () => {
   it("運営は一覧を取得でき credentials_configured が計算される", async () => {
-    const res = await GET();
+    const res = await GET(new NextRequest("http://localhost/api/admin/platform/supply-partners"));
     expect(res.status).toBe(200);
     const json = await res.json();
     expect(json.ok).toBe(true);
@@ -119,7 +120,7 @@ describe("GET /api/admin/platform/supply-partners", () => {
 
   it("非運営は 403", async () => {
     h.isPlatform = false;
-    const res = await GET();
+    const res = await GET(new NextRequest("http://localhost/api/admin/platform/supply-partners"));
     expect(res.status).toBe(403);
   });
 });

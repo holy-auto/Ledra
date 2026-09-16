@@ -13,12 +13,10 @@
  * 拡張時は keys を追加するだけで OK。フロントは存在 key だけ拾う。
  */
 
-import type { NextRequest } from "next/server";
-import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
-import { apiOk, apiUnauthorized, apiForbidden, apiValidationError, apiInternalError } from "@/lib/api/response";
+import { apiOk, apiValidationError, apiInternalError } from "@/lib/api/response";
 
+import { withCaller } from "@/lib/api/withCaller";
 export const dynamic = "force-dynamic";
 
 const RANGE: Record<string, () => Date> = {
@@ -64,38 +62,37 @@ async function safeSumAmount(
   return (data as Array<{ amount: number | null }>).reduce((s, r) => s + (r.amount ?? 0), 0);
 }
 
-export async function GET(req: NextRequest) {
-  try {
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
-    if (!requireMinRole(caller, "admin")) return apiForbidden();
+export const GET = withCaller(
+  async (req, { caller }) => {
+    try {
 
-    const url = new URL(req.url);
-    const rangeKey = url.searchParams.get("range") ?? "30d";
-    const since = RANGE[rangeKey]?.();
-    if (!since) return apiValidationError("invalid_range");
+      const url = new URL(req.url);
+      const rangeKey = url.searchParams.get("range") ?? "30d";
+      const since = RANGE[rangeKey]?.();
+      if (!since) return apiValidationError("invalid_range");
 
-    const { admin, tenantId } = createTenantScopedAdmin(caller.tenantId);
+      const { admin, tenantId } = createTenantScopedAdmin(caller.tenantId);
 
-    const [revenueTotal, certsIssued, reservationsCompleted, newCustomers] = await Promise.all([
-      safeSumAmount(admin, tenantId, since),
-      safeCount(admin, tenantId, "certificates", "created_at", since),
-      safeCount(admin, tenantId, "reservations", "scheduled_date", since, { col: "status", val: "completed" }),
-      safeCount(admin, tenantId, "customers", "created_at", since),
-    ]);
+      const [revenueTotal, certsIssued, reservationsCompleted, newCustomers] = await Promise.all([
+        safeSumAmount(admin, tenantId, since),
+        safeCount(admin, tenantId, "certificates", "created_at", since),
+        safeCount(admin, tenantId, "reservations", "scheduled_date", since, { col: "status", val: "completed" }),
+        safeCount(admin, tenantId, "customers", "created_at", since),
+      ]);
 
-    return apiOk({
-      range: rangeKey,
-      since: since.toISOString(),
-      kpis: {
-        revenue_total: revenueTotal,
-        certificates_issued: certsIssued,
-        reservations_completed: reservationsCompleted,
-        new_customers: newCustomers,
-      },
-    });
-  } catch (e) {
-    return apiInternalError(e, "admin/reports/summary");
-  }
-}
+      return apiOk({
+        range: rangeKey,
+        since: since.toISOString(),
+        kpis: {
+          revenue_total: revenueTotal,
+          certificates_issued: certsIssued,
+          reservations_completed: reservationsCompleted,
+          new_customers: newCustomers,
+        },
+      });
+    } catch (e) {
+      return apiInternalError(e, "admin/reports/summary");
+    }
+  },
+  { minRole: "admin", routeName: "admin/reports/summary" },
+);

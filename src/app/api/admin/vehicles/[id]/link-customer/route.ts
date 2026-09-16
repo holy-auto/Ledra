@@ -7,21 +7,14 @@
  * Body:  { customer_id: uuid | null }  (null で連携解除)
  * 認証:  caller 必須 + role >= staff。車両・顧客ともに自テナント所属を検証。
  */
-import { NextRequest } from "next/server";
+
 import { z } from "zod";
-import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
+
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { emitEntityWebhook } from "@/lib/outbound-webhooks";
-import {
-  apiOk,
-  apiUnauthorized,
-  apiForbidden,
-  apiNotFound,
-  apiValidationError,
-  apiInternalError,
-} from "@/lib/api/response";
+import { apiOk, apiNotFound, apiValidationError, apiInternalError } from "@/lib/api/response";
 
+import { withCaller } from "@/lib/api/withCaller";
 export const dynamic = "force-dynamic";
 
 // customer_id は **キー必須**。null は「連携解除」の明示。キー欠落 (空ボディ / {}) は
@@ -34,59 +27,58 @@ const linkSchema = z.object({
     .nullable(),
 });
 
-export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  try {
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
-    if (!requireMinRole(caller, "staff")) return apiForbidden();
+export const PUT = withCaller<{ id: string }>(
+  async (req, { caller, params }) => {
+    try {
 
-    const { id } = await params;
-    if (!id) return apiValidationError("車両IDが必要です。");
+      const { id } = params;
+      if (!id) return apiValidationError("車両IDが必要です。");
 
-    const parsed = linkSchema.safeParse(await req.json().catch(() => ({})));
-    if (!parsed.success) {
-      return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
-    }
-    const customerId = parsed.data.customer_id;
+      const parsed = linkSchema.safeParse(await req.json().catch(() => ({})));
+      if (!parsed.success) {
+        return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
+      }
+      const customerId = parsed.data.customer_id;
 
-    const { admin } = createTenantScopedAdmin(caller.tenantId);
+      const { admin } = createTenantScopedAdmin(caller.tenantId);
 
-    // 車両が自テナント所属か確認。
-    const { data: vehicle } = await admin
-      .from("vehicles")
-      .select("id")
-      .eq("id", id)
-      .eq("tenant_id", caller.tenantId)
-      .maybeSingle();
-    if (!vehicle) return apiNotFound("指定された車両が見つかりません。");
-
-    // 連携先の顧客も自テナント所属か確認 (null=解除時は不要)。
-    if (customerId) {
-      const { data: customer } = await admin
-        .from("customers")
+      // 車両が自テナント所属か確認。
+      const { data: vehicle } = await admin
+        .from("vehicles")
         .select("id")
-        .eq("id", customerId)
+        .eq("id", id)
         .eq("tenant_id", caller.tenantId)
         .maybeSingle();
-      if (!customer) return apiNotFound("指定された顧客が見つかりません。");
+      if (!vehicle) return apiNotFound("指定された車両が見つかりません。");
+
+      // 連携先の顧客も自テナント所属か確認 (null=解除時は不要)。
+      if (customerId) {
+        const { data: customer } = await admin
+          .from("customers")
+          .select("id")
+          .eq("id", customerId)
+          .eq("tenant_id", caller.tenantId)
+          .maybeSingle();
+        if (!customer) return apiNotFound("指定された顧客が見つかりません。");
+      }
+
+      const { data: updated, error: updateErr } = await admin
+        .from("vehicles")
+        .update({ customer_id: customerId, updated_at: new Date().toISOString() })
+        .eq("id", id)
+        .eq("tenant_id", caller.tenantId)
+        .select("id, customer_id, customer:customers(id, name)")
+        .single();
+
+      if (updateErr) return apiInternalError(updateErr, "vehicles link-customer PUT");
+
+      // 既存の車両更新経路 (PUT /api/vehicles/[id]) と同様に双方向同期を通知する。
+      await emitEntityWebhook(caller.tenantId, "vehicle.updated", id, { id, customer_id: customerId });
+
+      return apiOk({ vehicle: updated });
+    } catch (e) {
+      return apiInternalError(e, "vehicles link-customer PUT");
     }
-
-    const { data: updated, error: updateErr } = await admin
-      .from("vehicles")
-      .update({ customer_id: customerId, updated_at: new Date().toISOString() })
-      .eq("id", id)
-      .eq("tenant_id", caller.tenantId)
-      .select("id, customer_id, customer:customers(id, name)")
-      .single();
-
-    if (updateErr) return apiInternalError(updateErr, "vehicles link-customer PUT");
-
-    // 既存の車両更新経路 (PUT /api/vehicles/[id]) と同様に双方向同期を通知する。
-    await emitEntityWebhook(caller.tenantId, "vehicle.updated", id, { id, customer_id: customerId });
-
-    return apiOk({ vehicle: updated });
-  } catch (e) {
-    return apiInternalError(e, "vehicles link-customer PUT");
-  }
-}
+  },
+  { minRole: "staff", routeName: "vehicles link-customer PUT" },
+);

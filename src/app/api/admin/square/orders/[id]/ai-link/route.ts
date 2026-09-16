@@ -8,11 +8,9 @@
  * リクエストボディは不要 (Square 注文の name/phone/email を内部で取得する)。
  */
 import { NextRequest } from "next/server";
-import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
+import { withCaller } from "@/lib/api/withCaller";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
-import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
-import { apiOk, apiUnauthorized, apiNotFound, apiInternalError, apiPlanLimit, apiForbidden } from "@/lib/api/response";
-import { checkRateLimit } from "@/lib/api/rateLimit";
+import { apiOk, apiNotFound, apiInternalError, apiPlanLimit } from "@/lib/api/response";
 import { canUseFeature } from "@/lib/billing/planFeatures";
 import { fuzzyMatchCustomer } from "@/lib/ai/customerFuzzyMatch";
 import { fastModelForPlanTier } from "@/lib/ai/client";
@@ -23,126 +21,118 @@ export const runtime = "nodejs";
 export const maxDuration = 30;
 export const dynamic = "force-dynamic";
 
-export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
-  const usage = startAiRouteUsage("/api/admin/square/orders/[id]/ai-link");
-  try {
-    const limited = await checkRateLimit(req, "ai");
-    if (limited) {
-      usage.record({ outcome: "rate_limit" });
-      return limited;
-    }
+export const POST = withCaller<{ id: string }>(
+  async (_req: NextRequest, { caller, params }) => {
+    const usage = startAiRouteUsage("/api/admin/square/orders/[id]/ai-link");
+    try {
+      const { id } = params;
+      if (!id) return apiNotFound("order id is required");
 
-    const { id } = await ctx.params;
-    if (!id) return apiNotFound("order id is required");
+      if (!canUseFeature(caller.planTier, "ai_master_normalize")) {
+        usage.record({ tenantId: caller.tenantId, userId: caller.userId, outcome: "plan_limit" });
+        return apiPlanLimit("Square 顧客ファジーマッチは Starter プラン以上でご利用いただけます。");
+      }
 
-    const supabase = await createSupabaseServerClient();
-    const caller = await resolveCallerWithRole(supabase);
-    if (!caller) return apiUnauthorized();
-    // AI 呼び出しは staff 以上 (代表判断 2026-09-01。閲覧専用ロールに費用の出る操作をさせない)
-    if (!requireMinRole(caller, "staff")) return apiForbidden();
-    if (!canUseFeature(caller.planTier, "ai_master_normalize")) {
-      usage.record({ tenantId: caller.tenantId, userId: caller.userId, outcome: "plan_limit" });
-      return apiPlanLimit("Square 顧客ファジーマッチは Starter プラン以上でご利用いただけます。");
-    }
+      const settings = await loadAiAutomationSettings(caller.tenantId);
+      if (!settings.enabled) {
+        usage.record({ tenantId: caller.tenantId, userId: caller.userId, outcome: "ai_disabled" });
+        return apiOk({ ai_disabled: true, match: null });
+      }
+      if (!isSourceAllowed(settings, "customer_history")) {
+        usage.record({
+          tenantId: caller.tenantId,
+          userId: caller.userId,
+          outcome: "ai_disabled",
+          meta: { reason: "source_disabled" },
+        });
+        return apiOk({ ai_disabled: false, match: null, skipped: "customer_history source disabled" });
+      }
+      const policy = resolveFieldPolicy(settings, "master_data.customer_fuzzy_match");
+      if (policy === "manual") {
+        usage.record({
+          tenantId: caller.tenantId,
+          userId: caller.userId,
+          outcome: "ai_disabled",
+          meta: { reason: "policy_manual" },
+        });
+        return apiOk({ ai_disabled: false, match: null, skipped: "policy is manual" });
+      }
 
-    const settings = await loadAiAutomationSettings(caller.tenantId);
-    if (!settings.enabled) {
-      usage.record({ tenantId: caller.tenantId, userId: caller.userId, outcome: "ai_disabled" });
-      return apiOk({ ai_disabled: true, match: null });
-    }
-    if (!isSourceAllowed(settings, "customer_history")) {
+      const { admin, tenantId } = createTenantScopedAdmin(caller.tenantId);
+
+      // square_orders は customer name/phone/email を持たない。
+      // 既に紐付け済みなら customer_id 経由でマスタを引いて query にする。
+      // 未紐付けなら raw_json (Square API レスポンス全体) から fulfillments の
+      // customer 情報を救い上げる。
+      const { data: order, error: oErr } = await admin
+        .from("square_orders")
+        .select("id, customer_id, square_customer_id, raw_json")
+        .eq("id", id)
+        .eq("tenant_id", tenantId)
+        .maybeSingle();
+      if (oErr) return apiInternalError(oErr, "square ai-link: order");
+      if (!order) return apiNotFound("square order not found");
+
+      const query = extractQueryFromRawJson(order.raw_json);
+
+      // 自テナント顧客マスタ
+      const { data: candidates } = await admin
+        .from("customers")
+        .select("id, name, name_kana, phone, email")
+        .eq("tenant_id", tenantId)
+        .limit(500);
+
+      const result = await fuzzyMatchCustomer(
+        {
+          query,
+          candidates: (candidates ?? []) as Array<{
+            id: string;
+            name: string;
+            name_kana: string | null;
+            phone: string | null;
+            email: string | null;
+          }>,
+        },
+        { model: fastModelForPlanTier(caller.planTier) },
+      );
+
       usage.record({
         tenantId: caller.tenantId,
         userId: caller.userId,
-        outcome: "ai_disabled",
-        meta: { reason: "source_disabled" },
-      });
-      return apiOk({ ai_disabled: false, match: null, skipped: "customer_history source disabled" });
-    }
-    const policy = resolveFieldPolicy(settings, "master_data.customer_fuzzy_match");
-    if (policy === "manual") {
-      usage.record({
-        tenantId: caller.tenantId,
-        userId: caller.userId,
-        outcome: "ai_disabled",
-        meta: { reason: "policy_manual" },
-      });
-      return apiOk({ ai_disabled: false, match: null, skipped: "policy is manual" });
-    }
-
-    const { admin, tenantId } = createTenantScopedAdmin(caller.tenantId);
-
-    // square_orders は customer name/phone/email を持たない。
-    // 既に紐付け済みなら customer_id 経由でマスタを引いて query にする。
-    // 未紐付けなら raw_json (Square API レスポンス全体) から fulfillments の
-    // customer 情報を救い上げる。
-    const { data: order, error: oErr } = await admin
-      .from("square_orders")
-      .select("id, customer_id, square_customer_id, raw_json")
-      .eq("id", id)
-      .eq("tenant_id", tenantId)
-      .maybeSingle();
-    if (oErr) return apiInternalError(oErr, "square ai-link: order");
-    if (!order) return apiNotFound("square order not found");
-
-    const query = extractQueryFromRawJson(order.raw_json);
-
-    // 自テナント顧客マスタ
-    const { data: candidates } = await admin
-      .from("customers")
-      .select("id, name, name_kana, phone, email")
-      .eq("tenant_id", tenantId)
-      .limit(500);
-
-    const result = await fuzzyMatchCustomer(
-      {
-        query,
-        candidates: (candidates ?? []) as Array<{
-          id: string;
-          name: string;
-          name_kana: string | null;
-          phone: string | null;
-          email: string | null;
-        }>,
-      },
-      { model: fastModelForPlanTier(caller.planTier) },
-    );
-
-    usage.record({
-      tenantId: caller.tenantId,
-      userId: caller.userId,
-      outcome: "ok",
-      confidence: result.confidence,
-      meta: { ai: result.ai, method: result.method, has_best: !!result.best },
-    });
-
-    return apiOk({
-      ai_disabled: false,
-      match: {
-        best: result.best
-          ? {
-              customer_id: result.best.candidate.id,
-              name: result.best.candidate.name,
-              score: result.best.score,
-              reasons: result.best.reasons,
-            }
-          : null,
-        alternatives: result.alternatives.map((a) => ({
-          customer_id: a.candidate.id,
-          name: a.candidate.name,
-          score: a.score,
-          reasons: a.reasons,
-        })),
+        outcome: "ok",
         confidence: result.confidence,
-        method: result.method,
-        ai: result.ai,
-      },
-    });
-  } catch (e: unknown) {
-    usage.record({ outcome: "error" });
-    return apiInternalError(e, "square ai-link");
-  }
-}
+        meta: { ai: result.ai, method: result.method, has_best: !!result.best },
+      });
+
+      return apiOk({
+        ai_disabled: false,
+        match: {
+          best: result.best
+            ? {
+                customer_id: result.best.candidate.id,
+                name: result.best.candidate.name,
+                score: result.best.score,
+                reasons: result.best.reasons,
+              }
+            : null,
+          alternatives: result.alternatives.map((a) => ({
+            customer_id: a.candidate.id,
+            name: a.candidate.name,
+            score: a.score,
+            reasons: a.reasons,
+          })),
+          confidence: result.confidence,
+          method: result.method,
+          ai: result.ai,
+        },
+      });
+    } catch (e: unknown) {
+      usage.record({ outcome: "error" });
+      throw e;
+    }
+  },
+  { minRole: "staff", rateLimit: "ai", routeName: "square ai-link POST" },
+);
 
 /**
  * Square Orders API のレスポンス本体 (raw_json) から、顧客名・電話・メールを
