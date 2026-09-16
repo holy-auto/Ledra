@@ -1,5 +1,6 @@
 "use client";
 import { parseJsonSafe } from "@/lib/api/safeJson";
+import { OPTIONAL_CAPABILITIES } from "@/lib/stripe/optionalCapabilities";
 
 import { useTransition, useState, useCallback } from "react";
 import HelpTooltip from "@/components/ui/HelpTooltip";
@@ -338,6 +339,16 @@ function StripeConnectSection({ connectStatus }: { connectStatus: ConnectStatus 
     } catch {}
   }, []);
 
+  /**
+   * Connect の接続と一緒に申請する決済手段。**既定は空**（Ledra からは強制しない）。
+   * 申請するとその手段の審査に必要な入力がオンボーディングに増えるので、
+   * 使う予定のあるものだけ選んでもらう。
+   */
+  const [wantedCapabilities, setWantedCapabilities] = useState<string[]>([]);
+
+  const toggleCapability = (id: string) =>
+    setWantedCapabilities((prev) => (prev.includes(id) ? prev.filter((c) => c !== id) : [...prev, id]));
+
   const handleConnect = async () => {
     setBusy(true);
     setConnectErr(null);
@@ -348,10 +359,27 @@ function StripeConnectSection({ connectStatus }: { connectStatus: ConnectStatus 
         body: JSON.stringify({
           return_url: window.location.href,
           refresh_url: window.location.href,
+          // 選んだ決済手段だけ一緒に申請する。**既定は何も選ばない**
+          capabilities: wantedCapabilities,
         }),
       });
       const j = await parseJsonSafe(res);
       if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
+
+      // 選んだのに申請できなかった分を伝える。**黙って進むと「申請したのに
+      // Stripe が何も聞いてこない」だけの状態になり、店側は気づけない**
+      const requested: string[] = Array.isArray(j?.requested_capabilities) ? j.requested_capabilities : [];
+      const missing = wantedCapabilities.filter((c) => !requested.includes(c));
+      if (missing.length) {
+        const labels = missing.map((id) => OPTIONAL_CAPABILITIES.find((c) => c.id === id)?.label ?? id).join(" / ");
+        const reason = j?.account_existed
+          ? "既に作成済みの Stripe アカウントには、後から一緒に申請できません。"
+          : "この環境では申請を受け付けられませんでした。";
+        alert(
+          `${labels} は今回申請していません。\n${reason}\nStripe のダッシュボード（設定 → 決済手段）から申請してください。`,
+        );
+      }
+
       if (j?.onboarding_url) {
         window.location.href = j.onboarding_url;
       }
@@ -427,6 +455,30 @@ function StripeConnectSection({ connectStatus }: { connectStatus: ConnectStatus 
           onRetry={handleConnect}
           supportHref="/admin/support"
         />
+      )}
+
+      {!isConnected && (
+        <div className="rounded-lg border border-border-subtle p-3 space-y-2">
+          <p className="text-sm font-medium text-primary">一緒に申請する決済手段（任意）</p>
+          <p className="text-xs text-secondary">
+            選ぶと、その手段の審査に必要な入力も Stripe のオンボーディングでまとめて済ませられます。
+            <b>選ばなくても接続できます。</b>後から Stripe のダッシュボードでいつでも申請できます。
+          </p>
+          <div className="flex flex-col gap-1.5">
+            {OPTIONAL_CAPABILITIES.map((cap) => (
+              <label key={cap.id} className="flex items-center gap-2 text-sm text-secondary">
+                <input
+                  type="checkbox"
+                  className="accent-accent"
+                  checked={wantedCapabilities.includes(cap.id)}
+                  onChange={() => toggleCapability(cap.id)}
+                />
+                <span className="text-primary">{cap.label}</span>
+                <span className="text-xs text-muted">{cap.note}</span>
+              </label>
+            ))}
+          </div>
+        </div>
       )}
 
       <div className="flex gap-3 flex-wrap">

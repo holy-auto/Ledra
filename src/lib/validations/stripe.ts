@@ -22,4 +22,9 @@ export const billingStateSchema = z.object({
 export const stripeConnectCreateSchema = z.object({
   return_url: z.string().trim().max(2000).nullable().optional(),
   refresh_url: z.string().trim().max(2000).nullable().optional(),
+  /**
+   * 一緒に申請する決済手段（`OPTIONAL_CAPABILITY_IDS`）。**既定は空** ——
+   * Ledra 側から申請を強制しない。中身の検証はルート側で許可リストと突き合わせる。
+   */
+  capabilities: z.array(z.string().trim().max(60)).max(10).optional(),
 });

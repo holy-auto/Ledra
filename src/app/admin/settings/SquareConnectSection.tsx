@@ -29,6 +29,10 @@ export default function SquareConnectSection({ initialConnection }: Props) {
   const [connection, setConnection] = useState<SquareConnection | null>(initialConnection ?? null);
   const [syncStatus, setSyncStatus] = useState<"idle" | "syncing" | "completed" | "error">("idle");
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  /** Square 端末のペアリング。ここが済むと会計画面から端末に QR を出せる。 */
+  const [device, setDevice] = useState<{ status: string; device_id: string | null } | null>(null);
+  const [pairingCode, setPairingCode] = useState<{ id: string; code: string } | null>(null);
+  const [deviceBusy, setDeviceBusy] = useState(false);
 
   // fetchStatus は useEffect から参照されるので先に定義する
   // (React Compiler は temporal-dead-zone を error 扱いするため)
@@ -43,6 +47,63 @@ export default function SquareConnectSection({ initialConnection }: Props) {
       // silently ignore
     }
   }, []);
+
+  const fetchDevice = useCallback(async () => {
+    try {
+      const res = await fetch("/api/admin/square/device");
+      const j = await parseJsonSafe(res);
+      if (res.ok && j) setDevice(j as { status: string; device_id: string | null });
+    } catch {
+      // 端末の状態が取れなくても接続そのものの表示は続ける
+    }
+  }, []);
+
+  /** ペアリング用のコードを発行する。店員が端末に入力する。 */
+  const handlePairDevice = useCallback(async () => {
+    setDeviceBusy(true);
+    setErr(null);
+    try {
+      const res = await fetch("/api/admin/square/device", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "Ledra POS" }),
+      });
+      const j = await parseJsonSafe(res);
+      if (!res.ok) throw new Error((j as { message?: string })?.message ?? "ペアリングコードを発行できませんでした");
+      setPairingCode({ id: (j as { device_code_id: string }).device_code_id, code: (j as { code: string }).code });
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "ペアリングコードを発行できませんでした");
+    } finally {
+      setDeviceBusy(false);
+    }
+  }, []);
+
+  /** 端末側で入力が済んだかを確認し、済んでいれば保存する。 */
+  const handleCheckPairing = useCallback(async () => {
+    if (!pairingCode) return;
+    setDeviceBusy(true);
+    setErr(null);
+    try {
+      const res = await fetch(`/api/admin/square/device?device_code_id=${encodeURIComponent(pairingCode.id)}`);
+      const j = (await parseJsonSafe(res)) as { status?: string; device_id?: string | null } | null;
+      if (!res.ok) throw new Error("ペアリングの状態を確認できませんでした");
+      if (j?.status === "PAIRED" && j.device_id) {
+        setDevice({ status: "PAIRED", device_id: j.device_id });
+        setPairingCode(null);
+        setSuccessMsg("Square 端末を接続しました。会計画面のQR決済が端末に出ます。");
+      } else {
+        setErr(`まだペアリングされていません（${j?.status ?? "UNKNOWN"}）。端末にコードを入力してください。`);
+      }
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "ペアリングの状態を確認できませんでした");
+    } finally {
+      setDeviceBusy(false);
+    }
+  }, [pairingCode]);
+
+  useEffect(() => {
+    if (connection?.status === "active") void fetchDevice();
+  }, [connection?.status, fetchDevice]);
 
   // Check for ?square=connected query param on mount
   useEffect(() => {
@@ -222,6 +283,49 @@ export default function SquareConnectSection({ initialConnection }: Props) {
           </button>
         )}
       </div>
+
+      {/* Square 端末（QRコード決済） */}
+      {status === "active" && (
+        <div className="mt-3 rounded-lg border border-border-subtle p-3 space-y-2">
+          <p className="text-sm font-medium text-primary">
+            QRコード決済（PayPay / d払い / 楽天ペイ / au PAY / メルペイ ほか）
+          </p>
+          {device?.device_id ? (
+            <p className="text-sm text-success">
+              Square 端末に接続済み。会計画面で「QR決済」を選ぶと端末にQRが出ます。
+            </p>
+          ) : pairingCode ? (
+            <div className="space-y-2">
+              <p className="text-sm text-secondary">
+                Square 端末に次のコードを入力してください（Square 端末 → 設定 → デバイスコード）。
+              </p>
+              <p className="font-mono text-2xl tracking-widest text-primary">{pairingCode.code}</p>
+              <button
+                type="button"
+                className="btn-secondary text-sm"
+                disabled={deviceBusy}
+                onClick={handleCheckPairing}
+              >
+                {deviceBusy ? "確認中…" : "入力が終わったら確認"}
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <p className="text-sm text-secondary">
+                Square 端末をつなぐと、会計画面から端末にQRを出せます（Ledra から移動しません）。端末が無い場合は Square
+                アプリで会計し、この画面に戻って取り込みます。
+              </p>
+              <button type="button" className="btn-secondary text-sm" disabled={deviceBusy} onClick={handlePairDevice}>
+                {deviceBusy ? "発行中…" : "Square 端末を接続する"}
+              </button>
+            </div>
+          )}
+          <p className="text-xs text-muted">
+            ※ Square 側でQRコード決済の申請（1回で7ブランド）が必要です。権限を追加したため、以前から接続している場合は
+            一度「切断する」→「Squareアカウントを接続」で繋ぎ直してください。
+          </p>
+        </div>
+      )}
 
       {/* Connected hint */}
       {status === "active" && (

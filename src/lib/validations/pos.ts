@@ -42,6 +42,12 @@ export const posCheckoutSchema = z.object({
   checkout_session_id: nullableText(200).refine((v) => v === null || v.startsWith("cs_"), {
     message: "invalid_checkout_session",
   }),
+  // Square 端末（Terminal API）のチェックアウト。**サーバが Square から
+  // 取り直して**支払済みと金額を確かめる（こちらの申告は信じない）
+  square_checkout_id: nullableText(200),
+  // Square POS アプリで会計した分の引き当て。金額・時刻・店舗で1件に絞れた
+  // ときだけ記帳する
+  square_reconcile: z.boolean().optional(),
 });
 
 export const posCheckoutSessionSchema = z.object({

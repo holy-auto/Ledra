@@ -5,6 +5,7 @@ import { getStripeClient } from "@/lib/stripe/client";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { apiJson, apiNotFound, apiInternalError, apiValidationError } from "@/lib/api/response";
 import { stripeConnectCreateSchema } from "@/lib/validations/stripe";
+import { createAccountWithCapabilities } from "@/lib/stripe/paymentMethods";
 
 import { withCaller } from "@/lib/api/withCaller";
 
@@ -53,8 +54,18 @@ export const POST = withCaller(
 
       if (!tenant) return apiNotFound("tenant_not_found");
 
+      // アカウントを作る前に読む。**選ばれた決済手段は作成時にしか要求できない**
+      // ので、作成の後でパースしていては間に合わない
+      const parsed = stripeConnectCreateSchema.safeParse(await req.json().catch(() => ({})));
+      if (!parsed.success) {
+        return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
+      }
+
       const stripe = getStripe();
       let accountId = tenant.stripe_connect_account_id as string | null;
+      // 画面に返す: この接続で実際に申請できた決済手段と、既存アカウントだったか
+      let requestedCapabilities: string[] = [];
+      const hadAccount = !!accountId;
 
       // 保存済み account_id があっても、Stripe 側で削除済み・mode 不一致
       // (test ⇄ live) などで参照できないことがある。その場合は accountLinks.create
@@ -76,23 +87,29 @@ export const POST = withCaller(
 
       // Create account if not exists (or was just cleared above)
       if (!accountId) {
-        const account = await stripe.accounts.create({
-          type: "standard",
-          country: "JP",
-          business_profile: {
-            name: (tenant.name as string) || undefined,
+        // 加盟店が選んだ決済手段（PayPay・コンビニ払い・銀行振込・Link）の申請も
+        // 同時に出す。**選ばなければ何も要求しない** —— 申請すると審査に必要な
+        // 入力が増えるので、使うかどうかは加盟店が決める（後から Stripe の
+        // ダッシュボードでも申請できる）。通らない capability は個別に外して
+        // 作られる（接続そのものは止めない）
+        const created = await createAccountWithCapabilities(
+          stripe,
+          {
+            type: "standard",
+            country: "JP",
+            business_profile: {
+              name: (tenant.name as string) || undefined,
+            },
           },
-        });
-        accountId = account.id;
+          parsed.data.capabilities ?? [],
+        );
+        accountId = created.account.id;
+        requestedCapabilities = created.requested;
 
         await admin.from("tenants").update({ stripe_connect_account_id: accountId }).eq("id", caller.tenantId);
       }
 
       // Generate onboarding link
-      const parsed = stripeConnectCreateSchema.safeParse(await req.json().catch(() => ({})));
-      if (!parsed.success) {
-        return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
-      }
       const returnUrl = safeUrl(req, parsed.data.return_url);
       const refreshUrl = safeUrl(req, parsed.data.refresh_url);
 
@@ -106,6 +123,11 @@ export const POST = withCaller(
       return apiJson({
         ok: true,
         account_id: accountId,
+        // 選んだのに申請できなかった分を画面が知れるようにする。**黙って落とすと
+        // 「申請したのに Stripe が何も聞いてこない」だけの状態になる**
+        requested_capabilities: requestedCapabilities,
+        // 既存アカウントには作成時にしか capability を足せない
+        account_existed: hadAccount && !!tenant.stripe_connect_account_id,
         onboarding_url: accountLink.url,
       });
     } catch (e) {
