@@ -26,10 +26,14 @@ const createSchema = z.object({
 
 function squareError(e: unknown) {
   if (e instanceof SquareNotConnectedError) {
-    return apiJson(
-      { error: e.message, message: "Square が接続されていません。設定から接続してください。" },
-      { status: 409 },
-    );
+    // `reason` はレジ側の分岐に使われる（"not_connected" だけが「記録だけ」に
+    // 落としてよい状態。トークン切れ等をここに混ぜると、決済していないのに
+    // 記録だけされて領収書が出る）。**reason を返さないと、その分岐が一生効かない。**
+    const message =
+      e.reason === "multiple_locations"
+        ? "Square の店舗（ロケーション）が複数あり、どれを使うか決められません。サポートにご連絡ください。"
+        : "Square が接続されていません。設定から接続してください。";
+    return apiJson({ error: e.message, reason: e.reason, message }, { status: 409 });
   }
   if (e instanceof SquareApiError) {
     return apiJson({ error: "square_api_error", message: e.detail }, { status: 502 });
@@ -70,8 +74,12 @@ export async function POST(req: NextRequest) {
       accessToken: ctx.accessToken,
       deviceId: ctx.terminalDeviceId,
       amountJpy: parsed.data.amount,
-      // 端末側の二重表示を防ぐ。同じ会計をやり直しても Square 側は1件
-      idempotencyKey: `ledra:${caller.tenantId}:${parsed.data.reference_id ?? crypto.randomUUID()}`,
+      // 端末側の二重表示を防ぐ。同じ会計をやり直しても Square 側は1件。
+      // Square の idempotency_key には文字数上限があり（`ledra:` + UUID36 +
+      // `:` + reference_id で最大83文字になっていた）、上限を超えた分は
+      // 全件が 400 で落ちる。Square 側の冪等性はアクセストークン＝店舗単位で
+      // スコープされるので、テナント接頭辞は無くても他店と衝突しない。
+      idempotencyKey: parsed.data.reference_id ?? crypto.randomUUID(),
       referenceId: parsed.data.reference_id,
       note: parsed.data.note,
     });
@@ -128,8 +136,23 @@ export async function DELETE(req: NextRequest) {
     const ctx = await getSquareContext(admin, caller.tenantId);
     try {
       await cancelTerminalCheckout(ctx.accessToken, id);
-    } catch {
-      // 既に完了・取消済みならここに来る。やめた側の操作は止めない
+    } catch (e) {
+      // 既に完了・取消済みで取消を拒否された場合だけ許容する（やめた側の
+      // 操作は止めない）。それ以外（認証切れ・タイムアウト・5xx 等）まで
+      // 「取消できた」と返すと、**端末に QR が生きたまま**呼び出し側が
+      // チェックアウトIDを捨てて次の会計に進み、二重決済や記帳漏れを生む。
+      //
+      // 仮定: Square はチェックアウトが既に終端状態のとき 4xx を返す。
+      // Sandbox 未検証のため、実際のエラー形を見て条件を調整すること。
+      if (!(e instanceof SquareApiError) || e.status >= 500) {
+        return apiJson(
+          {
+            error: "square_cancel_failed",
+            message: "端末の会計を取り消せませんでした。端末の画面を確認してください。",
+          },
+          { status: 502 },
+        );
+      }
     }
     return apiOk({ ok: true });
   } catch (e) {

@@ -21,7 +21,10 @@ export interface SquareContext {
 }
 
 export class SquareNotConnectedError extends Error {
-  constructor(readonly reason: "not_connected" | "token_unavailable" | "token_refresh_failed" | "lookup_failed") {
+  constructor(
+    readonly reason:
+      "not_connected" | "token_unavailable" | "token_refresh_failed" | "lookup_failed" | "multiple_locations",
+  ) {
     super(`square_${reason}`);
     this.name = "SquareNotConnectedError";
   }
@@ -99,6 +102,10 @@ export async function getSquareContext(admin: SupabaseClient, tenantId: string):
   }
 
   const locationIds = (conn.square_location_ids as string[] | null) ?? [];
+  // Ledra は店舗ごとの Square ロケーション選択を持たない。1つに決まらないのに
+  // 先頭を黙って使うと、端末のペアリングも引き当ての検索も**別店舗**に向く
+  // （店を跨いだ誤爆は、動いているように見えて一番気づきにくい）。
+  if (locationIds.length > 1) throw new SquareNotConnectedError("multiple_locations");
   return {
     accessToken,
     locationId: locationIds[0] ?? null,
