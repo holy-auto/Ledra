@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Container } from "./Container";
 import { NewsletterForm } from "./NewsletterForm";
-import { footerNavGroups } from "@/lib/marketing/config";
+import { footerNavGroups, groupSites } from "@/lib/marketing/config";
 
 const portalLinks = {
   heading: "ポータル",
@@ -36,6 +36,24 @@ export function Footer() {
             <div className="mt-8 max-w-[280px]">
               <NewsletterForm />
             </div>
+
+            {/* グループサイト（相互リンク）。運営会社・姉妹サービスへの導線。 */}
+            <ul className="mt-8 space-y-2.5">
+              {groupSites.map((site) => (
+                <li key={site.href}>
+                  <a
+                    href={site.href}
+                    target="_blank"
+                    rel="noopener"
+                    aria-label={`${site.label}（新しいタブで開く）`}
+                    className="inline-flex items-center gap-1.5 text-xs text-white/70 hover:text-white transition-colors"
+                  >
+                    {site.label}
+                    <span aria-hidden="true">↗</span>
+                  </a>
+                </li>
+              ))}
+            </ul>
           </div>
 
           {/* Link columns */}

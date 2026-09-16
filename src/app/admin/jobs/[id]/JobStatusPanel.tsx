@@ -434,7 +434,7 @@ export default function JobStatusPanel({ reservation, customerId, vehicleId, wor
 
         {/* 担当者ピッカー + 作業タイマー */}
         <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 text-xs">
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <span className="font-semibold tracking-[0.12em] text-muted uppercase">担当</span>
             {currentAssignee ? (
               <span className="text-primary">
@@ -463,7 +463,7 @@ export default function JobStatusPanel({ reservation, customerId, vehicleId, wor
           </div>
 
           {/* 施工担当（職人）ピッカー — 社内/外注を含む staff_members。スキルマッチ順。 */}
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <span className="font-semibold tracking-[0.12em] text-muted uppercase">施工担当</span>
             {currentStaff ? (
               <span className="text-primary">

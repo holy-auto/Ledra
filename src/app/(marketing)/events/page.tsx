@@ -5,19 +5,12 @@ import { CTABanner } from "@/components/marketing/CTABanner";
 import { CTAButton } from "@/components/marketing/CTAButton";
 import { listPublishedPosts } from "@/lib/marketing/site-content-posts";
 import { formatJstDateTimeJa } from "@/lib/datetime";
-import type { SiteContentType } from "@/lib/validations/site-content-post";
+import { SITE_CONTENT_TYPE_LABELS } from "@/lib/validations/site-content-post";
 
 export const metadata = {
   title: "イベント・ウェビナー",
   description: "Ledra が主催・共催するイベント、ウェビナー、導入相談会の情報をお届けします。",
   alternates: { canonical: "/events" },
-};
-
-const TYPE_LABEL: Record<SiteContentType, string> = {
-  blog: "ブログ",
-  news: "お知らせ",
-  event: "イベント",
-  webinar: "ウェビナー",
 };
 
 export default async function EventsPage() {
@@ -71,7 +64,7 @@ export default async function EventsPage() {
                       <article className="rounded-2xl border border-white/[0.08] bg-white/[0.03] p-7 md:p-8 hover:bg-white/[0.06] transition-colors">
                         <div className="flex flex-wrap items-center gap-2 text-[0.688rem] text-white">
                           <span className="inline-flex items-center rounded-full border border-blue-500/30 bg-blue-500/10 px-2.5 py-0.5 font-medium text-blue-200">
-                            {TYPE_LABEL[p.type]}
+                            {SITE_CONTENT_TYPE_LABELS[p.type]}
                           </span>
                           {p.event_start_at && (
                             <time dateTime={p.event_start_at}>{formatJstDateTimeJa(p.event_start_at)}</time>
@@ -122,7 +115,7 @@ export default async function EventsPage() {
                     <div key={p.id} className="py-5">
                       <div className="flex flex-wrap items-center gap-2 text-[0.688rem] text-white">
                         <span className="inline-flex items-center rounded-full border border-white/[0.08] px-2 py-0.5 font-medium text-white">
-                          {TYPE_LABEL[p.type]}
+                          {SITE_CONTENT_TYPE_LABELS[p.type]}
                         </span>
                         {p.event_start_at && (
                           <time dateTime={p.event_start_at}>{formatJstDateTimeJa(p.event_start_at)}</time>

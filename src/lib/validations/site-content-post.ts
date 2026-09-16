@@ -1,7 +1,17 @@
 import { z } from "zod";
+// externalSites 側の型参照は `import type` なので実行時の循環は無い。
+import { SITE_TYPES, categoryOptions, isExternalSite } from "@/lib/marketing/externalSites";
 
-export const SITE_CONTENT_TYPES = ["blog", "news", "event", "webinar"] as const;
+export const SITE_CONTENT_TYPES = ["blog", "news", "press", "event", "webinar"] as const;
 export type SiteContentType = (typeof SITE_CONTENT_TYPES)[number];
+
+/**
+ * 投稿先サイト。'ledra' は自サイト、他はグループの静的サイト。
+ * 外部サイトの設定（リポジトリ・md の書式）は `src/lib/marketing/externalSites.ts`。
+ * ここに置くのは、externalSites がこのファイルの型を読むため（循環を作らない）。
+ */
+export const SITE_CONTENT_SITES = ["ledra", "holy-inc", "mobilewash"] as const;
+export type SiteContentSite = (typeof SITE_CONTENT_SITES)[number];
 
 export const SITE_CONTENT_STATUSES = ["draft", "scheduled", "published", "archived"] as const;
 export type SiteContentStatus = (typeof SITE_CONTENT_STATUSES)[number];
@@ -9,6 +19,7 @@ export type SiteContentStatus = (typeof SITE_CONTENT_STATUSES)[number];
 export const SITE_CONTENT_TYPE_LABELS: Record<SiteContentType, string> = {
   blog: "ブログ",
   news: "お知らせ",
+  press: "プレスリリース",
   event: "イベント",
   webinar: "ウェビナー",
 };
@@ -28,6 +39,7 @@ const hrefOrNull = z.string().trim().max(500, "リンクは500文字以内で入
 
 export const siteContentPostSchema = z
   .object({
+    site: z.enum(SITE_CONTENT_SITES).default("ledra"),
     type: z.enum(SITE_CONTENT_TYPES),
     status: z.enum(SITE_CONTENT_STATUSES).default("draft"),
     slug: z
@@ -37,6 +49,9 @@ export const siteContentPostSchema = z
       .max(120, "スラッグは120文字以内で入力してください。")
       .regex(slugRegex, "スラッグは半角英小文字・数字・ハイフンのみ使用可能です。"),
     title: z.string().trim().min(1, "タイトルは必須です。").max(200, "タイトルは200文字以内で入力してください。"),
+    // 外部サイト向け（Ledra 自身の投稿では未使用）
+    title_en: z.string().trim().max(200, "英語タイトルは200文字以内で入力してください。").nullable().optional(),
+    category: z.string().trim().max(40).nullable().optional(),
     excerpt: z.string().trim().max(400, "抜粋は400文字以内で入力してください。").nullable().optional(),
     body: z.string().default(""),
     hero_image_url: urlOrNull,
@@ -63,6 +78,47 @@ export const siteContentPostSchema = z
     og_subtitle: z.string().trim().max(200).nullable().optional(),
   })
   .superRefine((data, ctx) => {
+    // 外部サイト（holy-inc / MobileWash）は相手のパーサが項目を要求する。
+    // 足りないまま INSERT すると、コミットに失敗した下書きだけが残るので、
+    // 保存の前に止める。下書きのままなら未入力でよい。
+    if (isExternalSite(data.site)) {
+      if (!SITE_TYPES[data.site].includes(data.type)) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["type"], message: "この投稿先にはこの種別がありません。" });
+      }
+      if (data.status === "published" || data.status === "scheduled") {
+        const categories = categoryOptions(data.site, data.type);
+        if (categories.length > 0 && !categories.includes((data.category ?? "").trim())) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["category"],
+            message: `分類は ${categories.join(" / ")} のいずれかを選んでください。`,
+          });
+        }
+        if (data.site === "holy-inc" && !(data.title_en ?? "").trim()) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["title_en"],
+            message: "holy-inc は日英2言語なので、英語タイトルが必要です。",
+          });
+        }
+        if (data.site === "mobilewash") {
+          if (!(data.excerpt ?? "").trim()) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: ["excerpt"],
+              message: "MobileWash は一覧に出す「抜粋」が必須です。",
+            });
+          }
+          if ((data.body ?? "").trim()) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: ["body"],
+              message: "MobileWash には記事ページがありません。本文ではなく「抜粋」に書いてください。",
+            });
+          }
+        }
+      }
+    }
     if (data.status === "scheduled" && (!data.published_at || Number.isNaN(Date.parse(data.published_at)))) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -112,10 +168,13 @@ export function parseSiteContentFormData(fd: FormData): Record<string, unknown> 
   const capacityRaw = get("capacity").trim();
 
   return {
+    site: get("site") || "ledra",
     type: get("type"),
     status: get("status") || "draft",
     slug: get("slug"),
     title: get("title"),
+    title_en: nullable("title_en"),
+    category: nullable("category"),
     excerpt: nullable("excerpt"),
     body: get("body"),
     hero_image_url: nullable("hero_image_url"),

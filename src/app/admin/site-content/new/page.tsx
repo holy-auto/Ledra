@@ -7,10 +7,13 @@ import type { SiteContentType } from "@/lib/validations/site-content-post";
 export const dynamic = "force-dynamic";
 
 const DEFAULT_INITIAL: SiteContentFormInitial = {
+  site: "ledra",
   type: "blog",
   status: "draft",
   slug: "",
   title: "",
+  title_en: null,
+  category: null,
   excerpt: "",
   body: "",
   hero_image_url: "",
@@ -52,7 +55,7 @@ export default async function SiteContentNewPage(props: { searchParams?: Promise
       <PageHeader
         tag="SITE CONTENT"
         title="新規作成"
-        description="お知らせ・ブログ・イベント・ウェビナーを新規作成します。"
+        description="Ledra・holy-inc.jp・MobileWash のお知らせやブログを新規作成します。"
         actions={
           <Link href="/admin/site-content" className="btn-secondary">
             一覧へ戻る

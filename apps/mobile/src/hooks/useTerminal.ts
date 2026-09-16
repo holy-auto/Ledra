@@ -1,11 +1,14 @@
 import { useCallback, useRef } from "react";
+import { AppState } from "react-native";
+import * as Notifications from "expo-notifications";
 import {
   useStripeTerminal,
   ErrorCode,
   type Reader,
 } from "@stripe/stripe-terminal-react-native";
-import { mobileApi } from "@/lib/api";
+import { mobileApi, ApiError } from "@/lib/api";
 import type { PosCheckoutItem } from "@/lib/pos";
+import { shouldNotifyDeclinedInBackground } from "@/lib/paymentOutcomeNotify";
 
 /**
  * 決済の記録（サーバ側の pos_checkout）。**カードを切った後に呼ぶ。**
@@ -402,6 +405,15 @@ export function useTerminal() {
       store.setPaymentStatus("creating");
       store.setPaymentError(null);
 
+      // /code-review (Codex) 指摘: store の pendingCapturePaymentIntentId は、
+      // captureOnServer が 401 を返すと mobileApi → handleUnauthorized →
+      // signOutEverywhere → resetPayment() の連鎖で**この catch に来る前に**
+      // null へ戻される（セッション切れは店舗側にはよくある）。store だけを見て
+      // 「非承認」と判定すると、実際は課金済みなのに「完了しませんでした」と
+      // 誤通知してしまう。store の外側（この呼び出しのローカル）にも
+      // 課金済みの事実を残しておき、store が途中でリセットされても正しく判定する
+      let chargedPaymentIntentId: string | null = null;
+
       try {
         // **カードを切った後で記録に失敗した分**があれば、新しく切り直さずに
         // その PaymentIntent の記録だけをやり直す。ここを飛ばすと毎回新しい
@@ -410,6 +422,7 @@ export function useTerminal() {
         // 現在値を読む（画面側も同じ形で getState() を使っている）
         const pending = useTerminalStore.getState().pendingCapturePaymentIntentId;
         if (pending) {
+          chargedPaymentIntentId = pending;
           store.setPaymentStatus("capturing");
           const receipt = await captureOnServer(pending, reservationId, storeId, itemsJson);
           store.setPendingCapture(null);
@@ -462,6 +475,47 @@ export function useTerminal() {
         const { paymentIntent: confirmed, error: confirmError } =
           await confirmPaymentIntent({ paymentIntent: collected });
         if (confirmError || !confirmed) {
+          // /code-review (Codex) 指摘: このSDK (beta.31) の confirmPaymentIntent は
+          // ネイティブ側がエラーと並べて渡す更新済み PaymentIntent を、JS の
+          // ラッパーが確定的に捨てる（node_modules の functions.js:
+          // `if (error) return { error, paymentIntent: undefined }`）。
+          // StripeError 型に `paymentIntent` フィールドはあるが、この呼び出しの
+          // エラーには実際には載らない＝前回の修正（confirmError.paymentIntent
+          // を見る）は動かないコードだった。通信エラー等で「確定失敗」と
+          // 返っても Stripe 側では charge が成功していることがあるため、
+          // サーバー経由（ポーリング用に既にある GET）で実際の状態を確認する
+          try {
+            const latest = await mobileApi<{ status: string }>(
+              `/pos/terminal/create-payment-intent?id=${encodeURIComponent(collected.id)}`
+            );
+            // /code-review (Codex) 指摘: "succeeded" だけを見ると、まだ
+            // 確定していない "processing" 等の非終端状態を「非承認」扱いに
+            // してしまう。後で succeeded に変わった場合、二重決済になる。
+            // 「非承認で安全に再試行できる」と分かる終端状態のときだけ
+            // 非承認として扱い、それ以外（processing 等の未確定含む）は
+            // 課金済みかもしれない扱いにする
+            if (latest.status !== "requires_payment_method" && latest.status !== "canceled") {
+              chargedPaymentIntentId = collected.id;
+              store.setPendingCapture(collected.id);
+            }
+          } catch (statusError) {
+            // 「確認できない」を「非承認」と同じ扱いにすると、確認自体が
+            // 失敗しただけ（同じ障害で通信が落ちている等）のケースで
+            // 「非承認」の誤通知と新規カード入力への誘導を許し、実際には
+            // 課金済みなら二重決済になる。「不明」は安全側（既に課金済み
+            // かもしれない扱い）に倒す
+            chargedPaymentIntentId = collected.id;
+            // /code-review (Codex) 指摘: この確認自体が401（トークン切れ）で
+            // 失敗した場合、mobileApi 内部で signOutEverywhere→resetPayment()
+            // が既に走っている。ここで store.setPendingCapture を呼ぶと、
+            // サインアウトで消したはずの store に書き戻してしまい、共有端末で
+            // 次にログインした別ユーザーが前のユーザーの決済（違う予約・店舗・
+            // 明細）を引き継いで記録しようとしてしまう。401由来のときは store
+            // には書かず、この呼び出し内の通知文言判定にだけ反映する
+            if (!(statusError instanceof ApiError && statusError.status === 401)) {
+              store.setPendingCapture(collected.id);
+            }
+          }
           throw new Error(confirmError?.message ?? "決済確定失敗");
         }
 
@@ -469,6 +523,7 @@ export function useTerminal() {
 
         // **ここから先で失敗しても、カードは既に切られている。**
         // 記録だけをやり直せるように ID を残してから記録しに行く
+        chargedPaymentIntentId = confirmed.id;
         store.setPendingCapture(confirmed.id);
 
         // 5. バックエンドでキャプチャ
@@ -483,6 +538,41 @@ export function useTerminal() {
         const msg = e instanceof Error ? e.message : String(e);
         store.setPaymentStatus("failed");
         store.setPaymentError(msg);
+
+        // Apple Tap to Pay 要件 5.12: 非承認の結果を見る前にアプリを
+        // 閉じていたら通知する。通知失敗は決済結果そのものを妨げない。
+        //
+        // pendingCapturePaymentIntentId（相当）が残っているなら、カードは既に
+        // 切られていて capture（記録）だけが失敗したケース＝非承認ではない。
+        // 同じ「完了しませんでした」の文言で送ると、店舗が記録待ちの再試行導線
+        // を知らずに決済し直し、二重請求になる。文言を分ける。
+        //
+        // store の値ではなくこのローカル変数を見る: captureOnServer が 401 を
+        // 返すと store は catch に来る前に resetPayment() で null に戻されるため
+        // （上のコメント参照）
+        const alreadyCharged = chargedPaymentIntentId != null;
+        const notification = alreadyCharged
+          ? {
+              title: "決済の記録に失敗しました",
+              body: "カードへの請求は完了している可能性があります。二重に決済せず、アプリを開いて記録をやり直してください。",
+            }
+          : { title: "決済が完了しませんでした", body: msg };
+
+        // ponytail: Tap to Pay の NFC 読み取りシートが閉じる際、フォアグラウンド
+        // のままでも AppState が一瞬 "inactive" を挟むことがある（未検証）。
+        // 300ms 待って再確認し、その一瞬だけの遷移を通知の誤送信として拾わない
+        // ようにする。300ms は経験則の暫定値。実機で NFC シート dismiss の
+        // 遷移時間を計測して調整すること
+        if (shouldNotifyDeclinedInBackground(AppState.currentState)) {
+          setTimeout(() => {
+            if (!shouldNotifyDeclinedInBackground(AppState.currentState)) return;
+            void Notifications.scheduleNotificationAsync({
+              content: notification,
+              trigger: null,
+            }).catch(() => {});
+          }, 300);
+        }
+
         return { success: false, error: msg };
       }
     },

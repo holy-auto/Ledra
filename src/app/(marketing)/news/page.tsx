@@ -11,7 +11,9 @@ import { formatJstDateJa } from "@/lib/datetime";
 export const metadata = {
   title: "お知らせ",
   description: "Ledra からのプレスリリース・製品アップデート・イベント情報をお届けします。",
-  alternates: { canonical: "/news" },
+  // RSS の autodiscovery。metadata.alternates はページ側が丸ごと上書きするので、
+  // レイアウトではなく一覧ページ自身に置く。
+  alternates: { canonical: "/news", types: { "application/rss+xml": "/feed.xml" } },
   openGraph: {
     title: "お知らせ | Ledra",
     description: "Ledra からのプレスリリース・製品アップデート・イベント情報をお届けします。",

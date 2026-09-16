@@ -332,7 +332,7 @@ function CreateOrderDialog({ onClose, onCreated }: { onClose: () => void; onCrea
           />
         </Field>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Field label="品番">
             <input
               value={partNumber}
@@ -353,7 +353,7 @@ function CreateOrderDialog({ onClose, onCreated }: { onClose: () => void; onCrea
           </Field>
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Field label="数量" required>
             <input
               type="number"
@@ -376,7 +376,7 @@ function CreateOrderDialog({ onClose, onCreated }: { onClose: () => void; onCrea
           </Field>
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Field label="発注日">
             <input
               type="date"

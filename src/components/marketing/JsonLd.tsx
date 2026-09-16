@@ -8,10 +8,20 @@
  */
 
 import { headers } from "next/headers";
-import { siteConfig } from "@/lib/marketing/config";
+import { HOLY_INC_URL, siteConfig } from "@/lib/marketing/config";
+import { AREA_SERVED_JSONLD } from "@/lib/marketing/areas";
 
 async function getNonce(): Promise<string | undefined> {
   return (await headers()).get("x-nonce") ?? undefined;
+}
+
+/**
+ * JSON を <script> の中身にする。記事タイトルなど管理画面から入力された文字列に
+ * `</script>` が入ると script が早期終了してしまうので、`<` を Unicode
+ * エスケープする（JSON としては同じ値）。
+ */
+function jsonLdHtml(data: unknown): string {
+  return JSON.stringify(data).replace(/</g, "\\u003c");
 }
 
 export async function OrganizationJsonLd() {
@@ -39,17 +49,26 @@ export async function OrganizationJsonLd() {
       lowPrice: "9800",
       highPrice: "49800",
       offerCount: "3",
+      // ブラウザから使う SaaS なので提供エリアは日本全国。47都道府県を明示する。
+      areaServed: AREA_SERVED_JSONLD,
     },
     provider: {
       "@type": "Organization",
       name: "Ledra",
       url: siteConfig.siteUrl,
       email: siteConfig.contactEmail,
+      // 運営会社（/law の特定商取引法表記と同じ事業者）。グループサイトの相互リンクを機械可読にする。
+      parentOrganization: {
+        "@type": "Organization",
+        name: "株式会社HOLY",
+        url: HOLY_INC_URL,
+      },
+      areaServed: AREA_SERVED_JSONLD,
     },
   };
 
   const nonce = await getNonce();
-  return <script type="application/ld+json" nonce={nonce} dangerouslySetInnerHTML={{ __html: JSON.stringify(data) }} />;
+  return <script type="application/ld+json" nonce={nonce} dangerouslySetInnerHTML={{ __html: jsonLdHtml(data) }} />;
 }
 
 export async function WebSiteJsonLd() {
@@ -63,7 +82,7 @@ export async function WebSiteJsonLd() {
   };
 
   const nonce = await getNonce();
-  return <script type="application/ld+json" nonce={nonce} dangerouslySetInnerHTML={{ __html: JSON.stringify(data) }} />;
+  return <script type="application/ld+json" nonce={nonce} dangerouslySetInnerHTML={{ __html: jsonLdHtml(data) }} />;
 }
 
 type FaqItem = { question: string; answer: string };
@@ -80,7 +99,7 @@ export async function FAQJsonLd({ items }: { items: FaqItem[] }) {
   };
 
   const nonce = await getNonce();
-  return <script type="application/ld+json" nonce={nonce} dangerouslySetInnerHTML={{ __html: JSON.stringify(data) }} />;
+  return <script type="application/ld+json" nonce={nonce} dangerouslySetInnerHTML={{ __html: jsonLdHtml(data) }} />;
 }
 
 type PlanOffer = { name: string; price: string; description: string };
@@ -102,7 +121,7 @@ export async function PricingJsonLd({ plans }: { plans: PlanOffer[] }) {
   };
 
   const nonce = await getNonce();
-  return <script type="application/ld+json" nonce={nonce} dangerouslySetInnerHTML={{ __html: JSON.stringify(data) }} />;
+  return <script type="application/ld+json" nonce={nonce} dangerouslySetInnerHTML={{ __html: jsonLdHtml(data) }} />;
 }
 
 type ArticleJsonLdInput = {
@@ -153,7 +172,7 @@ export async function ArticleJsonLd({
   };
 
   const nonce = await getNonce();
-  return <script type="application/ld+json" nonce={nonce} dangerouslySetInnerHTML={{ __html: JSON.stringify(data) }} />;
+  return <script type="application/ld+json" nonce={nonce} dangerouslySetInnerHTML={{ __html: jsonLdHtml(data) }} />;
 }
 
 type DefinedTermInput = { term: string; definition: string; slug: string };
@@ -178,7 +197,7 @@ export async function DefinedTermJsonLd({ term, definition, slug }: DefinedTermI
   };
 
   const nonce = await getNonce();
-  return <script type="application/ld+json" nonce={nonce} dangerouslySetInnerHTML={{ __html: JSON.stringify(data) }} />;
+  return <script type="application/ld+json" nonce={nonce} dangerouslySetInnerHTML={{ __html: jsonLdHtml(data) }} />;
 }
 
 type BreadcrumbItem = { name: string; url: string };
@@ -196,5 +215,5 @@ export async function BreadcrumbJsonLd({ items }: { items: BreadcrumbItem[] }) {
   };
 
   const nonce = await getNonce();
-  return <script type="application/ld+json" nonce={nonce} dangerouslySetInnerHTML={{ __html: JSON.stringify(data) }} />;
+  return <script type="application/ld+json" nonce={nonce} dangerouslySetInnerHTML={{ __html: jsonLdHtml(data) }} />;
 }
