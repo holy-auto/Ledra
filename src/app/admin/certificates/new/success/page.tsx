@@ -53,9 +53,7 @@ async function ValuePreviewSection({
   qr: string;
 }) {
   const settings = await getVehicleReportSettings();
-  const merchantShareJpy = Math.floor(
-    (settings.price_jpy * settings.merchant_share_bps) / 10_000,
-  );
+  const merchantShareJpy = Math.floor((settings.price_jpy * settings.merchant_share_bps) / 10_000);
 
   return (
     <>
