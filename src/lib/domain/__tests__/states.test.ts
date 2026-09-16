@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   CERTIFICATE_STATES,
   DOCUMENT_CORRECTION_STATES,
+  FT_DEFECT_STATES,
+  FT_JOB_STATES,
+  FT_PROJECT_STATES,
   JOB_STATES,
   PART_INSTALLATION_STATES,
   PAYMENT_STATES,
@@ -10,6 +13,9 @@ import {
   SYNC_STATES,
   isCertificateState,
   isDocumentCorrectionState,
+  isFtDefectState,
+  isFtJobState,
+  isFtProjectState,
   isJobState,
   isPartInstallationState,
   isPaymentState,
@@ -38,6 +44,9 @@ const AXES = [
   { name: "sync", values: SYNC_STATES, guard: isSyncState, expected: 5 },
   { name: "partInstallation", values: PART_INSTALLATION_STATES, guard: isPartInstallationState, expected: 5 },
   { name: "documentCorrection", values: DOCUMENT_CORRECTION_STATES, guard: isDocumentCorrectionState, expected: 4 },
+  { name: "ftProject", values: FT_PROJECT_STATES, guard: isFtProjectState, expected: 5 },
+  { name: "ftJob", values: FT_JOB_STATES, guard: isFtJobState, expected: 6 },
+  { name: "ftDefect", values: FT_DEFECT_STATES, guard: isFtDefectState, expected: 5 },
 ] as const;
 
 describe("正準語彙の値集合(v2.0 Appendix A)", () => {
@@ -85,12 +94,17 @@ describe("型ガード(不正値の扱い)", () => {
 
 // PartInstallation / DocumentCorrection の遷移表テストは transitions.test.ts（他の軸と同じ場所）に移設。
 
+// FT 系の軸はラベルを labels.ts ではなく types/manufacturer.ts で管理する。
+// __DOMAIN_LABEL_MAPS に含まれる軸のみラベルテスト対象。
+const LABELED_AXES = AXES.filter((a) => a.name in __DOMAIN_LABEL_MAPS);
+
 describe("ロケール別ラベル", () => {
-  it.each(AXES)("$name: 収録ロケールのマップは全正準値を網羅し空文字がない", ({ name, values }) => {
-    const maps = __DOMAIN_LABEL_MAPS[name];
+  it.each(LABELED_AXES)("$name: 収録ロケールのマップは全正準値を網羅し空文字がない", ({ name, values }) => {
+    const maps = __DOMAIN_LABEL_MAPS[name as keyof typeof __DOMAIN_LABEL_MAPS];
     for (const [locale, map] of Object.entries(maps)) {
-      expect(Object.keys(map).sort(), `${name}/${locale}`).toEqual([...values].sort());
-      for (const v of values) expect(map[v as keyof typeof map], `${name}/${locale}/${v}`).toBeTruthy();
+      const m = map as Record<string, string>;
+      expect(Object.keys(m).sort(), `${name}/${locale}`).toEqual([...values].sort());
+      for (const v of values) expect(m[v as string], `${name}/${locale}/${v}`).toBeTruthy();
     }
   });
 
