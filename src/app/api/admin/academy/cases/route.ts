@@ -21,6 +21,8 @@ import { generateAcademyCaseSummary } from "@/lib/ai/academyFeedback";
 import { fastModelForPlanTier } from "@/lib/ai/client";
 import { canUseFeature } from "@/lib/billing/planFeatures";
 import { CERT_AI_COLUMNS, certAiFields, certPhotoCount } from "@/lib/certificates/aiFields";
+import { loadAiAutomationSettings } from "@/lib/ai/automation/policy";
+import { startAiRouteUsage } from "@/lib/ai/recordRouteUsage";
 
 const academyCaseActionSchema = z.object({
   case_id: z.string().uuid("case_id が必要です"),
@@ -93,6 +95,7 @@ export async function GET(req: NextRequest) {
 
 /** Academy事例を公開する（管理者操作） */
 export async function POST(req: NextRequest) {
+  const usage = startAiRouteUsage("/api/admin/academy/cases");
   try {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
@@ -133,6 +136,16 @@ export async function POST(req: NextRequest) {
       // 見られないものは確認できない（2026-09-05 代表判断「目視確認を入れる」）。
       const limited = await checkRateLimit(req, "ai", `academy-case:${caller.tenantId}`);
       if (limited) return limited;
+
+      // E4-7 是正 (2026-09-08): 月次コストキャップ超過時は enabled=false に倒るので、
+      // それを見て呼び出し自体をスキップする。
+      const aiSettings = await loadAiAutomationSettings(caller.tenantId);
+      if (!aiSettings.enabled) {
+        usage.record({ tenantId: caller.tenantId, userId: caller.userId, outcome: "ai_disabled" });
+        return apiValidationError("月次のAI利用上限に達しました。来月まで今しばらくお待ちください。", {
+          code: "ai_cost_cap_exceeded",
+        });
+      }
 
       // AI 呼び出しは**レート制限のすぐ隣**に置く。ヘルパーへ出すと、ハンドラ単位で
       // 追う検出器（aiRouteRateLimit.test.ts）から見えなくなり、「制限の無い AI 呼び出し」
@@ -178,8 +191,10 @@ export async function POST(req: NextRequest) {
       // ここで「生成できませんでした」を確認対象として見せると、確認する中身が無いのに
       // チェックが入り、続く publish は必ず弾かれる。既存の文面も消さない。
       if (!aiSummary) {
+        usage.record({ tenantId: caller.tenantId, userId: caller.userId, outcome: "error" });
         return apiValidationError("公開する内容を生成できませんでした。元の証明書が削除されていないか確認してください");
       }
+      usage.record({ tenantId: caller.tenantId, userId: caller.userId, outcome: "ok" });
 
       // 生成した文面を**行に保存する**。公開時に作り直すと、確認した文面と
       // 公開される文面が別物になりうる。保存しておけば publish は反転するだけで済み、
@@ -297,6 +312,7 @@ export async function POST(req: NextRequest) {
 
     return apiOk({ message: "事例を非公開にしました" });
   } catch (e: unknown) {
+    usage.record({ outcome: "error" });
     return apiInternalError(e);
   }
 }

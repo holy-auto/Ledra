@@ -26,7 +26,7 @@ export async function GET(req: NextRequest) {
 
     const url = new URL(req.url);
     const q = (url.searchParams.get("q") ?? "").trim();
-    const limit = Math.min(20, Math.max(1, parseInt(url.searchParams.get("limit") ?? "5", 10)));
+    const limit = Math.min(20, Math.max(1, parseInt(url.searchParams.get("limit") ?? "5", 10) || 5));
 
     if (q.length < 2) {
       return apiValidationError("検索クエリは2文字以上入力してください。");

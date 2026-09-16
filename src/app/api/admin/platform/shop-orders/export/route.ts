@@ -16,6 +16,7 @@ import { isPlatformAdmin } from "@/lib/auth/platformAdmin";
 import { createPlatformScopedAdmin } from "@/lib/supabase/admin";
 import { apiUnauthorized, apiForbidden, apiInternalError } from "@/lib/api/response";
 import { buildCsv, csvDownloadHeaders } from "@/lib/csv/serialize";
+import { JST_OFFSET_MS } from "@/lib/datetime";
 import {
   SHOP_ORDER_STATUS_LABELS,
   SHOP_PAYMENT_METHOD_LABELS,
@@ -32,7 +33,7 @@ function fmtDateTime(v: string | null | undefined): string {
   const d = new Date(v);
   if (Number.isNaN(d.getTime())) return String(v);
   // toLocaleString(ja-JP) はロケール依存の区切りが入るため、安定した固定書式で出力する。
-  const jst = new Date(d.getTime() + 9 * 60 * 60 * 1000);
+  const jst = new Date(d.getTime() + JST_OFFSET_MS);
   return jst.toISOString().slice(0, 16).replace("T", " ");
 }
 

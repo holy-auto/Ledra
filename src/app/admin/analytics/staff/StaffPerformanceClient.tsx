@@ -90,7 +90,7 @@ export default function StaffPerformanceClient({ initial }: Props) {
   const topPerformers = useMemo(() => data.staff.slice(0, 3), [data.staff]);
 
   return (
-    <main className="mx-auto max-w-7xl space-y-6 px-4 py-8 text-zinc-900">
+    <main className="mx-auto max-w-7xl space-y-6 py-8 text-zinc-900">
       <PageHeader
         tag="Analytics"
         title="スタッフ別パフォーマンス"

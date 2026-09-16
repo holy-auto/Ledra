@@ -47,6 +47,15 @@ export const metadata = {
   alternates: {
     canonical: "/",
   },
+  // C-M1 是正 (2026-09-08): このレイアウトは /admin, /insurer, /customer, /my,
+  // /agent, /manufacturer, /pos 等、認証を要する社内向け・テナント向け画面が
+  // 大半を占める（マーケティングページは (marketing) レイアウトが別に持つ）。
+  // 既定を索引可のままにすると、robots.txt の disallow に載っていないパス
+  // （/agent, /manufacturer, /my 等）や、Client Component 依存のログイン
+  // ガードしか無いページがクローラに索引され得る。既定を非索引に反転し、
+  // マーケティングページ側 ((marketing)/layout.tsx) だけ index: true で
+  // 明示的に上書きする。
+  robots: { index: false, follow: false },
 };
 
 /** Inline script to prevent flash of wrong theme on load */

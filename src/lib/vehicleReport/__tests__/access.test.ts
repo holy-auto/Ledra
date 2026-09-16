@@ -58,8 +58,12 @@ describe("reportCookieName", () => {
 
 describe("getVehicleReportSettings", () => {
   it("returns the stored row when present", async () => {
-    fromMock.mockReturnValue(chainable({ data: { price_jpy: 4980, enabled: false } }));
-    await expect(getVehicleReportSettings()).resolves.toEqual({ price_jpy: 4980, enabled: false });
+    fromMock.mockReturnValue(chainable({ data: { price_jpy: 4980, enabled: false, merchant_share_bps: 5000 } }));
+    await expect(getVehicleReportSettings()).resolves.toEqual({
+      price_jpy: 4980,
+      enabled: false,
+      merchant_share_bps: 5000,
+    });
   });
 
   it("falls back to defaults when the row is missing", async () => {
@@ -67,6 +71,7 @@ describe("getVehicleReportSettings", () => {
     await expect(getVehicleReportSettings()).resolves.toEqual({
       price_jpy: DEFAULT_REPORT_PRICE_JPY,
       enabled: true,
+      merchant_share_bps: 7000,
     });
   });
 });

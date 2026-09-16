@@ -19,6 +19,14 @@ import { generateOtp, hashOtp, verifyOtp, otpExpiresAt, OTP_DEFAULT_MAX_ATTEMPTS
 
 const PEPPER = process.env.CUSTOMER_AUTH_PEPPER ?? "";
 
+// C-L2 是正 (2026-09-08): 他14箇所の CUSTOMER_AUTH_PEPPER 利用箇所は未設定時に
+// throw するが、ここだけ "" にフォールバックしていた。本番は envValidation で
+// 必須化済みで実害は無いが、fail-open（pepper 無しでハッシュが計算できてしまう）
+// を消して他箇所と同じ fail-closed に揃える。
+function assertPepper(): void {
+  if (!PEPPER) throw new Error("Missing CUSTOMER_AUTH_PEPPER");
+}
+
 export type EmailOtpPurpose = "mobile_signup";
 
 function scope(tenantId: string, userId: string, purpose: EmailOtpPurpose): string {
@@ -30,6 +38,7 @@ export async function issueEmailOtp(
   admin: SupabaseClient,
   params: { tenantId: string; userId: string; email: string; purpose: EmailOtpPurpose },
 ): Promise<string> {
+  assertPepper();
   const code = generateOtp();
   const codeHash = hashOtp(code, scope(params.tenantId, params.userId, params.purpose), PEPPER);
   const { error } = await admin.from("email_otp_codes").insert({
@@ -52,6 +61,7 @@ export async function confirmEmailOtp(
   admin: SupabaseClient,
   params: { tenantId: string; userId: string; purpose: EmailOtpPurpose; code: string },
 ): Promise<EmailOtpVerifyResult> {
+  assertPepper();
   const { data: row, error } = await admin
     .from("email_otp_codes")
     .select("id, code_hash, expires_at, attempts")

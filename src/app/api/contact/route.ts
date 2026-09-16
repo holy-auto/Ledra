@@ -1,14 +1,8 @@
-import { NextResponse } from "next/server";
-import { Resend } from "resend";
 import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
 import { contactSchema, parseBody } from "@/lib/validation/schemas";
 import { apiJson, apiValidationError, apiInternalError } from "@/lib/api/response";
 import { notifySlack } from "@/lib/slack";
-
-/** 遅延初期化: ビルド時に API キーが無くてもクラッシュしない */
-function getResend() {
-  return new Resend(process.env.RESEND_API_KEY ?? "");
-}
+import { sendEmail } from "@/lib/email/sendEmail";
 
 /** 送信先（問い合わせ受信用アドレス） */
 const TO = process.env.CONTACT_TO_EMAIL ?? "info@ledra.co.jp";
@@ -51,10 +45,10 @@ export async function POST(request: Request) {
   }
 
   try {
-    await getResend().emails.send({
+    const sent = await sendEmail({
       from: FROM,
       to: TO,
-      replyTo: email,
+      reply_to: email,
       subject: `[Ledra] お問い合わせ: ${category}（${name}）`,
       text: [
         `お名前: ${name}`,
@@ -68,6 +62,9 @@ export async function POST(request: Request) {
         .filter((l) => l !== null)
         .join("\n"),
     });
+    if (!sent.ok) {
+      return apiInternalError(new Error(sent.error), "contact email send");
+    }
 
     try {
       await notifySlack(process.env.SLACK_ADMIN_SUPPORT_WEBHOOK_URL, {

@@ -22,7 +22,7 @@ describe("sendDocumentEmail", () => {
       return new Response(JSON.stringify({ id: "msg_1" }), { status: 200 });
     }) as never;
 
-    const ok = await sendDocumentEmail({
+    const result = await sendDocumentEmail({
       to: "customer@example.com",
       docType: "請求書",
       docNumber: "INV-001",
@@ -31,7 +31,7 @@ describe("sendDocumentEmail", () => {
       senderName: "株式会社テスト",
     });
 
-    expect(ok).toBe(true);
+    expect(result.ok).toBe(true);
     expect(body!.subject).toBe("[株式会社テスト] 請求書 INV-001 のご送付");
     expect(body!.html).toContain("書類番号: <strong>INV-001</strong>");
     expect(body!.html).not.toContain("<table");
@@ -44,7 +44,7 @@ describe("sendDocumentEmail", () => {
       return new Response(JSON.stringify({ id: "msg_2" }), { status: 200 });
     }) as never;
 
-    const ok = await sendDocumentEmail({
+    const result = await sendDocumentEmail({
       to: "customer@example.com",
       docType: "請求書",
       docNumber: "INV-001",
@@ -57,11 +57,84 @@ describe("sendDocumentEmail", () => {
       ],
     });
 
-    expect(ok).toBe(true);
+    expect(result.ok).toBe(true);
     expect(body!.subject).toBe("[株式会社テスト] 請求書 INV-001 他2件のご送付");
     expect(body!.html).toContain("<table");
     expect(body!.html).toContain("INV-001");
     expect(body!.html).toContain("EST-002");
     expect(body!.html).toContain("DLV-003");
+  });
+
+  // 回帰テスト: プロバイダ側の失敗理由が result.error に残ること
+  // (以前は真偽値だけ返し、失敗理由が document_share_log にも API 応答にも
+  // 一切残らず "送信に失敗しました" だけになっていた。本番でこの状態が起きて
+  // 実際の原因を追えなかった不具合の再発防止)。
+  it("Resend が失敗した場合、result.ok=false かつ result.error に実際の理由が残る", async () => {
+    globalThis.fetch = vi.fn(async () => new Response("Invalid API key", { status: 401 })) as never;
+
+    const result = await sendDocumentEmail({
+      to: "customer@example.com",
+      docType: "請求書",
+      docNumber: "INV-001",
+      totalAmount: 10000,
+      recipientName: "山田太郎",
+      senderName: "株式会社テスト",
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain("resend");
+    expect(result.error).toContain("401"); // Codex 指摘: HTTPステータスも失われず残ること
+    expect(result.error).toContain("Invalid API key");
+  });
+
+  // 回帰テスト: Resend/SendGrid 両方失敗した場合、sendEmail() が既に
+  // "resend:... | sendgrid:..." の形でプロバイダ名をタグ済みの理由を返す。
+  // ここでさらに provider を前置すると "sendgrid:resend:... | sendgrid:..." と
+  // 二重表示になっていた不具合の再発防止。
+  it("Resend/SendGrid 両方失敗した場合、理由が二重にタグ付けされない", async () => {
+    vi.stubEnv("SENDGRID_API_KEY", "sg_test_key");
+    globalThis.fetch = vi.fn(async (url: unknown) => {
+      // CodeQL: ホスト名の完全一致で判定する（部分文字列一致は他ホストで誤爆しうる）。
+      if (new URL(String(url)).hostname === "api.sendgrid.com") {
+        return new Response("SendGrid down", { status: 503 });
+      }
+      return new Response("Resend down", { status: 503 });
+    }) as never;
+
+    const result = await sendDocumentEmail({
+      to: "customer@example.com",
+      docType: "請求書",
+      docNumber: "INV-001",
+      totalAmount: 10000,
+      recipientName: "山田太郎",
+      senderName: "株式会社テスト",
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.error).not.toMatch(/^sendgrid:resend:/);
+    expect(result.error).toContain("resend:");
+    expect(result.error).toContain("sendgrid:");
+    // Codex 指摘: 両プロバイダ失敗時も、分かっている最終ステータス (sendgrid の503) が失われないこと
+    expect(result.error).toContain("503");
+  });
+
+  it("RESEND_API_KEY/RESEND_FROM が未設定の場合も理由付きで失敗を返す", async () => {
+    // Codex 指摘: unstubAllEnvs() はスタブ前の値（実行環境に本物の資格情報が
+    // 入っていればその値）に戻すだけで「未設定」にはならない。空文字を明示的に
+    // stub して確実に未設定を再現する（実際の Resend への通信を避ける）。
+    vi.stubEnv("RESEND_API_KEY", "");
+    vi.stubEnv("RESEND_FROM", "");
+
+    const result = await sendDocumentEmail({
+      to: "customer@example.com",
+      docType: "請求書",
+      docNumber: "INV-001",
+      totalAmount: 10000,
+      recipientName: "山田太郎",
+      senderName: "株式会社テスト",
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch(/RESEND_API_KEY|RESEND_FROM/);
   });
 });

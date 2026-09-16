@@ -184,7 +184,7 @@ export async function POST(req: NextRequest) {
 
     try {
       if (channel === "email") {
-        success = await sendDocumentEmail({
+        const emailResult = await sendDocumentEmail({
           to: recipient,
           docType: docLabel,
           docNumber: doc.doc_number,
@@ -199,6 +199,8 @@ export async function POST(req: NextRequest) {
             totalAmount: d.total,
           })),
         });
+        success = emailResult.ok;
+        if (!success) errorMessage = emailResult.error;
       } else if (channel === "line") {
         success = await sendDocumentLink({
           tenantId: caller.tenantId,

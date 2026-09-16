@@ -78,6 +78,9 @@ describe("renderAnnotatedImage", () => {
     expect(b.buffer.equals(a.buffer)).toBe(false);
   });
 
+  // ponytail: WEBP エンコードは他形式より CPU 負荷が高く、CI ランナーが混んでいる
+  // ときに既定の 5000ms を超えることがある（本テスト自体は 450ms 程度で終わる）。
+  // タイムアウトだけ緩め、ロジックは変えない。
   it("keeps WEBP when source is webp", async () => {
     const { default: sharp } = await import("sharp");
     const src = await sharp({
@@ -95,5 +98,5 @@ describe("renderAnnotatedImage", () => {
     };
     const out = await renderAnnotatedImage(src, "image/webp", doc);
     expect(out.contentType).toBe("image/webp");
-  });
+  }, 15000);
 });

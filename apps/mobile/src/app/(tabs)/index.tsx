@@ -10,9 +10,10 @@ import { useAuthStore } from "@/stores/authStore";
 import { supabase } from "@/lib/supabase";
 import { scopeToStore } from "@/lib/storeScope";
 import { getHomePresentation } from "@/lib/homePresentation";
+import { useDeviceType } from "@/hooks/useDeviceType";
 import { useTabContentInset } from "@/hooks/useTabContentInset";
 import { NotifBell } from "@/components/NotifBell";
-import { colors, radius, spacing, sizing, shadows } from "@/constants/tokens";
+import { colors, radius, spacing, sizing, shadows, typography } from "@/constants/tokens";
 import { ProgressRing, SegmentedControl, StatusBadge, Skeleton } from "@/components/ui";
 import { DisplayModeControl } from "@/components/DisplayModeControl";
 import { DisplayModeOnboarding } from "@/components/DisplayModeOnboarding";
@@ -100,6 +101,9 @@ const EMPTY_STATS: HomeStats = {
 
 export default function HomeScreen() {
   const tabInset = useTabContentInset();
+  // Tap to Pay は iPhone 専用。判定は useDeviceType（Platform.isPad ベース）を使う。
+  // 旧実装はウィンドウ幅で判定していたが、iPad の Split View で反転する既知のバグがある。
+  const { isIPhone } = useDeviceType();
   // ヘッダー非表示（画面名の帯を出さない）なので上端は自前で空ける
   const insets = useSafeAreaInsets();
   const { user, selectedStore } = useAuthStore();
@@ -121,7 +125,10 @@ export default function HomeScreen() {
     const todayStr = dayjs().format("YYYY-MM-DD");
     const storeId = scope === "all" ? null : selectedStore?.id || null;
 
-    let q1 = supabase.from("reservations").select("id, status", { count: "exact" }).eq("tenant_id", user.tenantId);
+    let q1 = supabase
+      .from("reservations")
+      .select("id, status, signoff_status", { count: "exact" })
+      .eq("tenant_id", user.tenantId);
     q1 = scopeToStore(q1, storeId);
 
     let q2 = supabase
@@ -171,12 +178,22 @@ export default function HomeScreen() {
         .limit(8),
     ]);
 
+    // D-B1 是正 (2026-09-08): "delivered" / "awaiting_confirmation" は
+    // reservations.status の CHECK 制約に無い値（confirmed/arrived/in_progress/
+    // completed/cancelled のみ、CLAUDE.md ドメイン状態語彙ルール参照）で、
+    // 一致することが無いため「確認待ち」ピルは常に0だった。確認待ちは
+    // status ではなく signoff_status='awaiting' から算出する。
     const todayTotal = todayRes.count ?? 0;
-    const todayData = (todayRes.data ?? []) as Array<{ id: string; status: string }>;
-    const todayCompleted = todayData.filter((r) => r.status === "completed" || r.status === "delivered").length;
+    const todayData = (todayRes.data ?? []) as Array<{ id: string; status: string; signoff_status: string | null }>;
+    const todayCompleted = todayData.filter((r) => r.status === "completed").length;
     const inProgressCount = todayData.filter((r) => r.status === "in_progress" || r.status === "arrived").length;
-    const awaitingConfirmation = todayData.filter((r) => r.status === "awaiting_confirmation").length;
-    const notStarted = todayTotal - todayCompleted - inProgressCount - awaitingConfirmation;
+    const awaitingConfirmation = todayData.filter((r) => r.signoff_status === "awaiting").length;
+    // code-review 指摘 (2026-09-08): signoff_status は status とは独立した別軸で、
+    // status='completed' かつ signoff_status='awaiting'（施工完了・お客様サイン待ち）
+    // は普通に起こる組み合わせ（src/lib/signoff/state.ts 参照）。awaitingConfirmation を
+    // ここでも引くと該当予約が二重に差し引かれ、「未完了」が過小に出る。
+    // 未完了は status 単独の3分割（完了 / 進行中 / それ以外）だけで決める。
+    const notStarted = todayTotal - todayCompleted - inProgressCount;
 
     // Build issues
     const issues: Issue[] = [];
@@ -237,7 +254,8 @@ export default function HomeScreen() {
       id: r.id,
       time: r.start_time ? r.start_time.slice(0, 5) : "時刻未定",
       title: r.vehicle?.plate_display || r.customer?.name || "予約",
-      status: (r.status === "completed" || r.status === "delivered"
+      // D-B1 是正 (2026-09-08): "delivered" は reservations.status に存在しない値。
+      status: (r.status === "completed"
         ? "completed"
         : r.status === "in_progress" || r.status === "arrived"
           ? "in_progress"
@@ -446,6 +464,38 @@ export default function HomeScreen() {
     </View>
   );
 
+  /**
+   * Tap to Pay の導線（Apple 要件 3.1 / 3.4: 発見しやすい入口）。
+   *
+   * 閉じられないようにしているのは、閉じられると要件 3.1 を満たさない時間帯が
+   * できるため。文言は勧誘ではなく案内にして、有効化済みの店舗が毎日見ても
+   * 邪魔にならない書き方にしている。
+   *
+   * iPhone 判定は useDeviceType（Platform.isPad ベース）。ウィンドウ幅で判定すると
+   * iPad の Split View で反転する（useDeviceType の ponytail コメント参照）。
+   *
+   * 表示モード（かんたん／詳細）では出し分けない。審査要件はモードに依存しない。
+   */
+  const tapToPaySection = isIPhone ? (
+    <View style={styles.section}>
+      <Pressable
+        style={styles.ttpCard}
+        onPress={() => router.push("/settings/tap-to-pay")}
+        accessibilityRole="button"
+        accessibilityLabel="iPhone でのカード決済（Tap to Pay）の設定を開く"
+      >
+        <Icon source="contactless-payment" size={24} color={colors.primary} />
+        <View style={styles.ttpTexts}>
+          <Text style={styles.ttpTitle}>iPhone でカード決済（Tap to Pay）</Text>
+          <Text style={styles.ttpSub}>
+            追加の端末なしで、その場でカードをタッチして支払いを受け取れます
+          </Text>
+        </View>
+        <Icon source="chevron-right" size={20} color={colors.textTertiary} />
+      </Pressable>
+    </View>
+  ) : null;
+
   return (
     <>
       <DisplayModeOnboarding />
@@ -492,6 +542,7 @@ export default function HomeScreen() {
         {scopeSection}
         {todaySummarySection}
         {!presentation.nextActionFirst && nextActionSection}
+        {tapToPaySection}
 
         {/* ── 5. In-progress work (compact) ── */}
         {displayMode !== "simple" && stats.activeWork.length > 0 && (
@@ -947,6 +998,26 @@ const styles = StyleSheet.create({
   },
 
   // All done
+  ttpCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    backgroundColor: colors.primaryLight,
+    borderRadius: radius.card,
+    padding: spacing.lg,
+  },
+  ttpTexts: {
+    flex: 1,
+    gap: 2,
+  },
+  ttpTitle: {
+    ...typography.titleSmall,
+    color: colors.primaryDark,
+  },
+  ttpSub: {
+    ...typography.bodySmall,
+    color: colors.textSecondary,
+  },
   allDoneCard: {
     flexDirection: "row",
     alignItems: "center",

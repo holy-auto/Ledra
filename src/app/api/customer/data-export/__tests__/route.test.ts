@@ -36,6 +36,11 @@ vi.mock("@/lib/logger", () => ({
 
 vi.mock("@sentry/nextjs", () => ({ captureException: vi.fn() }));
 
+// B-M1 是正 (2026-09-08) 以降、"sensitive" プリセットは Redis 未設定でも
+// 常にフェイルクローズ (503) するため、この経路のテストではレート制限自体を
+// モックして本題（認可・データ整形）から切り離す。
+vi.mock("@/lib/api/rateLimit", () => ({ checkRateLimit: vi.fn().mockResolvedValue(null) }));
+
 import { GET } from "@/app/api/customer/data-export/route";
 
 function req(url: string): Request {

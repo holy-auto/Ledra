@@ -5,6 +5,7 @@ import { apiOk, apiUnauthorized, apiForbidden, apiNotFound, apiInternalError } f
 import { parseJsonBody } from "@/lib/api/parseBody";
 import { mobileRegisterCloseSchema } from "@/lib/validations/mobile";
 import { logTenantAuditEvent } from "@/lib/audit/tenantLog";
+import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 
 export const dynamic = "force-dynamic";
 
@@ -58,7 +59,11 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     if (error) return apiInternalError(error, "registers.close");
 
     // Audit log
-    await logTenantAuditEvent(caller.supabase, {
+    // G-M8 是正 (2026-09-08): 本番の audit_logs は RLS 有効かつ policy 0本のため、
+    // 利用者スコープの caller.supabase での insert は黙って弾かれ、監査ログが
+    // 1件も残らない（Supabase advisor 実測で確認）。RLS を bypass する admin クライアントを渡す。
+    const { admin: auditAdmin } = createTenantScopedAdmin(caller.tenantId);
+    await logTenantAuditEvent(auditAdmin, {
       tenantId: caller.tenantId,
       userId: caller.userId,
       action: "register_session_closed",

@@ -107,7 +107,7 @@ export const RESOURCE_CATALOG: readonly Resource[] = [
     title: "自動車施工・記録の用語集",
     description:
       "コーティング・板金・保険査定・デジタル証明の用語を、事実ベースの定義でまとめた用語集。新人研修の副読本、保険会社・代理店との認識合わせにどうぞ。",
-    pageCount: 7,
+    pageCount: 10,
     downloadUrl: "/api/marketing/resources/glossary/pdf",
   },
 ] as const;

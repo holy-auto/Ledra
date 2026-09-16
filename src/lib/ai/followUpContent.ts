@@ -14,6 +14,7 @@ import { z } from "zod";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { withRetry } from "@/lib/http/withRetry";
 import { getAnthropicClient, AI_MODEL_FAST } from "@/lib/ai/client";
+import { JST_OFFSET_MS } from "@/lib/datetime";
 
 const FollowUpContentSchema = z.object({
   emailSubject: z.string(),
@@ -190,7 +191,7 @@ export function getDaysUntilInspection(nextInspectionDate: string | undefined | 
 function toJstYmd(value: string | Date): { y: number; m: number; d: number } | null {
   const date = typeof value === "string" ? new Date(value) : value;
   if (Number.isNaN(date.getTime())) return null;
-  const jst = new Date(date.getTime() + 9 * 60 * 60 * 1000);
+  const jst = new Date(date.getTime() + JST_OFFSET_MS);
   return { y: jst.getUTCFullYear(), m: jst.getUTCMonth(), d: jst.getUTCDate() };
 }
 

@@ -55,9 +55,11 @@ App Store 一般公開のため、**アプリ内で新規アカウント作成 �
 5. 「登録して始める」をタップ
    ↓
    /api/signup がテナント + owner ユーザーを作成し、そのまま自動サインイン
-6. 店舗選択画面 → 店舗を選ぶ
-7. ホーム画面が表示される（=利用開始）
-8. ホームの「iPhone でカード決済を受け付けられます」バナーをタップ
+6. メール確認（OTP）画面 → 届いた6桁コードを入力（#1012 で実配線済み）
+7. 店舗選択画面 → 新規テナントは必ず0店舗なので「続行する」をタップ
+   （/api/signup は auth.users / tenants / tenant_memberships の3つしか作らない）
+   → 生体認証の設定 → オンボーディング → ホーム画面が表示される（=利用開始）
+8. ホームの「iPhone でカード決済（Tap to Pay）」をタップ
    → Tap to Pay 設定へ（動画2へ続く導線を示す。要件 3.1 / 3.4）
 ```
 
@@ -120,6 +122,8 @@ Tap to Pay UI は **画面録画でブラック表示** される (Apple の仕�
 ```
 1. ホーム画面から「予約」タブ → テスト予約をタップ
 2. もしくは「会計」タブ → 「新規会計（飛び込み）」を選択
+   （2026-09-03: 飛び込み側にも専用 Tap to Pay ボタンを追加したので、どちらの経路でも
+     要件 5.1/5.2/5.5 を満たす。以前は飛び込みに専用ボタンが無く撮影に使えなかった）
 3. メニュー (例: コーティング ¥10,000) を追加し合計を表示
 4. ★ チェックアウト画面で 専用 Tap to Pay ボタンが**最上位**に表示されるのを写す
    ↓
@@ -169,10 +173,10 @@ Tap to Pay UI は **画面録画でブラック表示** される (Apple の仕�
 | 2 | 2.1 | ✅ Completed | (auth)/signup.tsx でアプリ内サインアップ（テナント+owner作成→自動サインイン） |
 | 2 | 2.2 | ✅ Completed | 完全アプリ内デジタルオンボーディング（Web遷移なし） |
 | 2 | 2.3 | ⚠️ 要計測 | 平均15分以内。実機で所要時間を計測して記入 |
-| 3 | 3.1 | ✅ Completed | ホームの Tap to Pay 有効化バナー + 設定 → Tap to Pay 設定 |
+| 3 | 3.1 | ✅ Completed | ホームの「iPhone でカード決済（Tap to Pay）」導線 + 設定 → Tap to Pay 設定。**閉じられない常設**にしている（閉じられると要件を満たさない時間帯ができるため） |
 | 3 | 3.2 | ⚠️ 未実装 | 初回起動の全画面スプラッシュ告知は未実装（リリース時告知として後追い可。審査ブロッカーか要確認） |
 | 3 | 3.3 | ⚠️ 基盤のみ | push トークン収集（expo-notifications → /api/mobile/push/register）は実装済み。実際の一斉配信送出はリリース運用時に実施 |
-| 3 | 3.4 | ✅ Completed | サインアップ完了後ホームの有効化バナーで TTP 有効化方法を提示 |
+| 3 | 3.4 | ✅ Completed | サインアップ完了後ホームの常設導線で TTP 有効化方法を提示 |
 | 3 | 3.5 | ✅ Completed | 設定画面の「Tap to Pay を有効化する」ボタン |
 | 3 | 3.6 | ✅ Completed | 設定画面から有効化可能 |
 | 3 | 3.7 | ✅ Completed | チェックアウトの TTP ボタン押下で connectTapToPay 起動 |
@@ -186,15 +190,15 @@ Tap to Pay UI は **画面録画でブラック表示** される (Apple の仕�
 | 4 | 4.3 | ✅ Completed | 同上 |
 | 4 | 4.4-4.8 | ⚠️ 要確認 | 4.1 で SDK が対応していれば充足。教育コンテンツの網羅性を点検 |
 | 5 | 5.1 | ✅ Completed | TapToPayButton コンポーネント |
-| 5 | 5.2 | ✅ Completed | 明細カード直後・支払方法より上に配置 |
+| 5 | 5.2 | ✅ Completed | 明細カード直後・支払方法より上に配置。**予約会計と飛び込み会計の両方**（2026-09-03 に飛び込み側を追加） |
 | 5 | 5.3 | ✅ Completed | グレーアウトせず常時押下可能 |
 | 5 | 5.4 | ✅ Completed | 「iPhone のタッチ決済」(日本語ロケール) |
 | 5 | 5.5 | ✅ Completed | wave.3.right.circle 同等アイコンを SVG で再現 |
 | 5 | 5.6 | ✅ Completed | useTapToPayWarmup により起動時から準備済み |
 | 5 | 5.7 | ✅ Completed | 既存 isProcessing UI を流用 |
 | 5 | 5.8 | ✅ Completed | TapToPayButton state="processing" |
-| 5 | 5.9 | ✅ Completed | PaymentOutcome コンポーネント (承認/拒否/タイムアウト) |
-| 5 | 5.10 | ✅ Completed | ReceiptShareDialog (SMS/Email/Share Sheet) |
+| 5 | 5.9 | ✅ Completed | 会計画面のインライン UI（`pos/checkout/[id].tsx` の「タッチ決済ができませんでした」等）。**`components/PaymentOutcome.tsx` はどこからも import されていないデッドコードなので、この行の根拠ではない**（2026-09-03 に確認） |
+| 5 | 5.10 | ✅ Completed | ReceiptShareDialog (SMS/Email/Share Sheet)。**予約レシートと飛び込みレシートの両方**（2026-09-03 に `receipt-standalone` へ追加） |
 | 5 | 5.11 | N/A | 日本市場のため PIN 入力 / Fallback 不要 |
 | 6 | 6.1 | ⚠️ リリース時 | 対象ユーザーへ専用メール（リリース運用） |
 | 6 | 6.2 | ⚠️ 未実装 | 3.2 と兼ねる（リリース時スプラッシュ） |

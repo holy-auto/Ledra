@@ -27,7 +27,7 @@ export const dynamic = "force-dynamic";
 
 // ─── Signature verification ───
 
-function verifySquareSignature(
+export function verifySquareSignature(
   rawBody: string,
   signatureHeader: string,
   signatureKey: string,
@@ -35,8 +35,14 @@ function verifySquareSignature(
 ): boolean {
   const hmac = crypto.createHmac("sha256", signatureKey);
   hmac.update(notificationUrl + rawBody);
-  const expected = hmac.digest("base64");
-  return crypto.timingSafeEqual(Buffer.from(expected, "utf8"), Buffer.from(signatureHeader, "utf8"));
+  const expected = Buffer.from(hmac.digest("base64"), "utf8");
+  const actual = Buffer.from(signatureHeader, "utf8");
+  // C-L3 是正 (2026-09-08): crypto.timingSafeEqual はバッファ長が異なると
+  // （false を返さず）RangeError を投げる。呼び出し元の try/catch で 401 に
+  // 落ちるため機能上の問題は無かったが、不正な署名を「例外」ではなく
+  // 「不一致」として扱う方が意図が明確なので、長さチェックを先に行う。
+  if (expected.length !== actual.length) return false;
+  return crypto.timingSafeEqual(expected, actual);
 }
 
 // ─── Event types ───

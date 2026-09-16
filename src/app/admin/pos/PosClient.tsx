@@ -1052,7 +1052,7 @@ export default function PosClient() {
 
               {/* Menu item grid */}
               {menuLoading ? (
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                   {[1, 2, 3, 4, 5, 6].map((i) => (
                     <div key={i} className="h-20 animate-pulse rounded-xl bg-surface-hover" />
                   ))}
@@ -1066,7 +1066,7 @@ export default function PosClient() {
                   {"該当する品目がありません"}
                 </div>
               ) : (
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                   {filteredMenuItems.map((mi) => {
                     const inCart = cart.find((c) => c.id === mi.id);
                     return (

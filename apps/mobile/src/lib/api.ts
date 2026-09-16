@@ -8,6 +8,16 @@ interface ApiOptions {
   method?: HttpMethod;
   body?: unknown;
   headers?: Record<string, string>;
+  /**
+   * code-review 指摘 (2026-09-08): handleUnauthorized() 自体（signOutEverywhere
+   * 経由）から呼ばれる mobileApi 呼び出し（push 解除など）で true にする。
+   * 401 ハンドラが自分自身を再帰的に呼び直すのを防ぐ — セッションを
+   * 破棄した直後に他の mobileApi 呼び出しを行うと必ず 401 になり、
+   * handleUnauthorized → signOutEverywhere → unregisterPushNotifications →
+   * mobileApi → handleUnauthorized → ... と無限に再帰し、ログイン画面への
+   * 遷移も store のリセットも一切完了しなくなる。
+   */
+  skipUnauthorizedHandler?: boolean;
 }
 
 /**
@@ -53,7 +63,7 @@ export async function mobileApi<T = unknown>(
   path: string,
   options: ApiOptions = {}
 ): Promise<T> {
-  const { method = "GET", body, headers = {} } = options;
+  const { method = "GET", body, headers = {}, skipUnauthorizedHandler = false } = options;
 
   const {
     data: { session },
@@ -61,7 +71,7 @@ export async function mobileApi<T = unknown>(
 
   if (!session?.access_token) {
     // ローカルにトークンが無い → サインアウト誘導
-    await handleUnauthorized();
+    if (!skipUnauthorizedHandler) await handleUnauthorized();
     throw new ApiError("認証が必要です", 401);
   }
 
@@ -87,7 +97,7 @@ export async function mobileApi<T = unknown>(
 
     // 401 → セッション失効。グローバルにサインアウト誘導してから throw。
     // 各画面で個別に "再ログインしてください" を出していた重複処理を集約。
-    if (response.status === 401) {
+    if (response.status === 401 && !skipUnauthorizedHandler) {
       await handleUnauthorized();
     }
 

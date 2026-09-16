@@ -1,7 +1,8 @@
-import { createTenantScopedAdmin } from "@/lib/supabase/admin";
+import { createPlatformScopedAdmin } from "@/lib/supabase/admin";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { resolveCallerWithRole, requireMinRole } from "@/lib/auth/checkRole";
+import { resolveCallerWithRole } from "@/lib/auth/checkRole";
+import { isPlatformAdmin } from "@/lib/auth/platformAdmin";
 import { apiJson, apiUnauthorized, apiForbidden, apiInternalError, apiValidationError } from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
@@ -26,12 +27,12 @@ export async function GET(request: NextRequest) {
     const supabase = await createClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
-    if (!requireMinRole(caller, "admin")) return apiForbidden();
+    if (!isPlatformAdmin(caller)) return apiForbidden();
 
     const agentId = request.nextUrl.searchParams.get("agent_id");
     if (!agentId) return apiValidationError("agent_id is required");
 
-    const { admin } = createTenantScopedAdmin(caller.tenantId);
+    const admin = createPlatformScopedAdmin("agent-shared-files — platform-wide agent operations (no tenant scope)");
     const { data, error } = await admin
       .from("agent_shared_files")
       .select("id, agent_id, uploaded_by, direction, file_name, file_size, file_type, storage_path, note, created_at")
@@ -55,7 +56,7 @@ export async function POST(request: NextRequest) {
     const supabase = await createClient();
     const caller = await resolveCallerWithRole(supabase);
     if (!caller) return apiUnauthorized();
-    if (!requireMinRole(caller, "admin")) return apiForbidden();
+    if (!isPlatformAdmin(caller)) return apiForbidden();
 
     const formData = await request.formData();
     const agentId = formData.get("agent_id") as string | null;
@@ -72,7 +73,7 @@ export async function POST(request: NextRequest) {
       return apiValidationError(`許可されていないファイル形式です: ${contentType}`);
     }
 
-    const { admin } = createTenantScopedAdmin(caller.tenantId);
+    const admin = createPlatformScopedAdmin("agent-shared-files — platform-wide agent operations (no tenant scope)");
 
     // Verify agent exists
     const { data: agent, error: agentErr } = await admin.from("agents").select("id").eq("id", agentId).single();

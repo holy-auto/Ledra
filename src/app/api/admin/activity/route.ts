@@ -32,7 +32,7 @@ export async function GET(req: NextRequest) {
     if (!requireMinRole(caller, "staff")) return apiForbidden();
 
     const url = new URL(req.url);
-    const days = Math.min(7, Math.max(1, parseInt(url.searchParams.get("days") ?? "1", 10)));
+    const days = Math.min(7, Math.max(1, parseInt(url.searchParams.get("days") ?? "1", 10) || 1));
 
     const { admin } = createTenantScopedAdmin(caller.tenantId);
     const tenantId = caller.tenantId;

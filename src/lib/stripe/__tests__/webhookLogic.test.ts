@@ -1,4 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { getCurrentPeriodEnd } from "@/lib/stripe/subscription";
+import type Stripe from "stripe";
 
 /**
  * Tests for webhook-related logic extracted from the route handler.
@@ -143,25 +145,23 @@ describe("webhook: idempotency / duplicate event detection", () => {
 });
 
 // ─── getCurrentPeriodEnd pattern ───
+// E2-1 是正 (2026-09-08): src/lib/stripe/subscription.ts へ一本化した実関数を
+// 直接テストする（以前はここに別実装を持ち、実体との乖離に気づけなかった）。
 describe("webhook: getCurrentPeriodEnd logic", () => {
-  function getCurrentPeriodEnd(sub: any): number | null {
-    return sub?.current_period_end ?? sub?.items?.data?.[0]?.current_period_end ?? null;
-  }
-
   it("returns top-level current_period_end when present", () => {
-    expect(getCurrentPeriodEnd({ current_period_end: 1700000000 })).toBe(1700000000);
+    expect(getCurrentPeriodEnd({ current_period_end: 1700000000 } as unknown as Stripe.Subscription)).toBe(1700000000);
   });
 
   it("falls back to first subscription item", () => {
     const sub = {
       items: { data: [{ current_period_end: 1700001000 }] },
-    };
+    } as unknown as Stripe.Subscription;
     expect(getCurrentPeriodEnd(sub)).toBe(1700001000);
   });
 
   it("returns null when neither is present", () => {
-    expect(getCurrentPeriodEnd({})).toBeNull();
-    expect(getCurrentPeriodEnd({ items: { data: [] } })).toBeNull();
+    expect(getCurrentPeriodEnd({} as unknown as Stripe.Subscription)).toBeNull();
+    expect(getCurrentPeriodEnd({ items: { data: [] } } as unknown as Stripe.Subscription)).toBeNull();
   });
 
   it("returns null for null/undefined subscription", () => {
@@ -173,7 +173,7 @@ describe("webhook: getCurrentPeriodEnd logic", () => {
     const sub = {
       current_period_end: 1700000000,
       items: { data: [{ current_period_end: 1700001000 }] },
-    };
+    } as unknown as Stripe.Subscription;
     expect(getCurrentPeriodEnd(sub)).toBe(1700000000);
   });
 
@@ -182,7 +182,7 @@ describe("webhook: getCurrentPeriodEnd logic", () => {
       items: {
         data: [{ current_period_end: 1700001000 }, { current_period_end: 1700002000 }],
       },
-    };
+    } as unknown as Stripe.Subscription;
     expect(getCurrentPeriodEnd(sub)).toBe(1700001000);
   });
 });

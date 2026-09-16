@@ -51,6 +51,7 @@
 
 - API Route Handlers: `find src/app/api -name route.ts | wc -l` → **627**。主な内訳: admin 334 / insurer 42 / agent 40 / cron 32 / mobile 26 / customer 13 / manufacturer 13 / v1(外部公開 API)7 / webhooks 6 / webauthn 6。
 - **`middleware.ts` は存在しない**(リポジトリ全体を検索して確認)。エッジでの一括認証ゲートはなく、認可は各ページ(Server Component)と各 API ルートで個別に実施される(§4)。
+  - **【2026-09-12 追記】この記述は監査日時点のもの。現在は `src/proxy.ts`(Next.js 16 の `middleware.ts` 相当)がほぼ全パスを `matcher` で拾い、CSRF 検査・CSP nonce・レート制限・セッション更新・未ログインリダイレクト・AAL2 ステップアップを担う。最新の構成は [`docs/diagrams/system-architecture.md`](../diagrams/system-architecture.md) を参照。**
 - CSP は `src/proxy.ts` がリクエストごとに nonce 付きで設定(next.config.ts のコメントに明記)。その他のセキュリティヘッダは `next.config.ts` で網羅的に定義。
 
 ## 4. 認証・認可(3層)

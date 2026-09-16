@@ -13,8 +13,11 @@ import { describe, it, expect, vi } from "vitest";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { voidCertificate } from "../voidCertificate";
+import { logCertificateAction } from "@/lib/audit/certificateLog";
 
 vi.mock("@/lib/audit/certificateLog", () => ({ logCertificateAction: vi.fn(async () => {}) }));
+
+const logMock = vi.mocked(logCertificateAction);
 
 const REPO = resolve(__dirname, "../../../..");
 
@@ -134,6 +137,56 @@ describe("voidCertificate", () => {
       selector: { certificateId: "c1", vehicleId: "v1" },
     });
     expect(db.calls[0].filters).toContainEqual(["vehicle_id", "v1"]);
+  });
+
+  // 既定は「2つの既定の間」にしか無い。
+  //   「証明書を無効化 (void)」だと、車両詳細が持っていた Public ID が消えて
+  //   どの証明書を消したのか分からない（Codex 指摘、PR #1027）。
+  //   `logCertificateAction` 側の既定に委ねると `User: <uid> / IP: <IP>` が付くが、
+  //   **この行は公開証明書ページに描画される**ので担当者の uid と IP が公開される
+  //   （`/code-review` 指摘、PR #1040）。
+  it("description を渡さなければ Public ID だけを既定にする", async () => {
+    logMock.mockClear();
+    await voidCertificate(fakeDb(ACTIVE), { tenantId: "t1", selector: { publicId: "PUB1" } });
+    expect(logMock).toHaveBeenCalledTimes(1);
+    expect(logMock.mock.calls[0][0].description).toBe("Public ID: PUB1");
+  });
+
+  // 公開ページに出る行なので、担当者の識別子が既定で混ざらないことを固定する。
+  it("既定の description に uid や IP を混ぜない", async () => {
+    logMock.mockClear();
+    await voidCertificate(fakeDb(ACTIVE), {
+      tenantId: "t1",
+      selector: { publicId: "PUB1" },
+      userId: "user-abc",
+      requestMeta: { ip: "203.0.113.9", userAgent: "UA" },
+    });
+    const desc = String(logMock.mock.calls[0][0].description ?? "");
+    expect(desc, "公開ページに出る description に担当者情報が入っている").not.toMatch(/user-abc|203\.0\.113\.9/);
+  });
+
+  it("description を渡せばそれを使う", async () => {
+    logMock.mockClear();
+    await voidCertificate(fakeDb(ACTIVE), {
+      tenantId: "t1",
+      selector: { publicId: "PUB1" },
+      description: "誤発行のため取消",
+    });
+    expect(logMock.mock.calls[0][0].description).toBe("誤発行のため取消");
+  });
+
+  // await しないと、Server Action が直後に redirect したときサーバレス実行が
+  // insert の前に終わりうる。`logCertificateAction` は自分で例外を握るので
+  // await しても監査の失敗が無効化の失敗にはならない。同レビュー指摘。
+  it("監査ログの完了を待ってから返す", async () => {
+    let done = false;
+    logMock.mockClear();
+    logMock.mockImplementationOnce(async () => {
+      await new Promise((r) => setTimeout(r, 10));
+      done = true;
+    });
+    await voidCertificate(fakeDb(ACTIVE), { tenantId: "t1", selector: { publicId: "PUB1" } });
+    expect(done, "監査ログを待たずに返っている（fire-and-forget に戻っている）").toBe(true);
   });
 
   it("更新に失敗したら update_failed を返す", async () => {

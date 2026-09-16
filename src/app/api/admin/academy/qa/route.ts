@@ -12,6 +12,8 @@ import { apiOk, apiUnauthorized, apiInternalError, apiValidationError, apiForbid
 import { canUseFeature } from "@/lib/billing/planFeatures";
 import { generateQAAnswer } from "@/lib/ai/qaAssistant";
 import { fastModelForPlanTier } from "@/lib/ai/client";
+import { loadAiAutomationSettings } from "@/lib/ai/automation/policy";
+import { startAiRouteUsage } from "@/lib/ai/recordRouteUsage";
 
 const qaSchema = z.object({
   question: z.string().trim().min(5, "質問を5文字以上で入力してください").max(2000),
@@ -23,6 +25,7 @@ export const maxDuration = 60;
 export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
+  const usage = startAiRouteUsage("/api/admin/academy/qa");
   try {
     const supabase = await createSupabaseServerClient();
     const caller = await resolveCallerWithRole(supabase);
@@ -46,6 +49,26 @@ export async function POST(req: NextRequest) {
       return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
     }
 
+    // E4-7 是正 (2026-09-08): 月次コストキャップ超過時は enabled=false に倒る。
+    // code-review 指摘 (2026-09-09): ただし enabled=false は管理者による
+    // AI自動化トグルOFFでも同じ値になる（loadAiAutomationSettings 参照）ため、
+    // enabled のみを見て「コスト上限超過」と決めつけると、上限未達のテナントの
+    // トグルOFF時にも誤ったメッセージでQ&A機能をブロックしてしまう。
+    // costCap.exceeded を優先して見て、原因を区別する。
+    const aiSettings = await loadAiAutomationSettings(caller.tenantId);
+    if (aiSettings.costCap?.exceeded) {
+      usage.record({ tenantId: caller.tenantId, userId: caller.userId, outcome: "ai_disabled" });
+      return apiValidationError("月次のAI利用上限に達しました。来月まで今しばらくお待ちください。", {
+        code: "ai_cost_cap_exceeded",
+      });
+    }
+    if (!aiSettings.enabled) {
+      usage.record({ tenantId: caller.tenantId, userId: caller.userId, outcome: "ai_disabled" });
+      return apiValidationError("この機能は現在管理者により無効化されています。", {
+        code: "ai_automation_disabled",
+      });
+    }
+
     const answer = await generateQAAnswer(
       {
         question: parsed.data.question,
@@ -55,8 +78,10 @@ export async function POST(req: NextRequest) {
       { model: fastModelForPlanTier(caller.planTier) },
     );
 
+    usage.record({ tenantId: caller.tenantId, userId: caller.userId, outcome: "ok" });
     return apiOk({ answer });
   } catch (e: unknown) {
+    usage.record({ outcome: "error" });
     return apiInternalError(e);
   }
 }

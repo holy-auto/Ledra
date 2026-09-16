@@ -14,6 +14,22 @@ import type { Role } from "@/lib/auth/roles";
 
 export const LESSON_LEVELS = ["intro", "basic", "standard", "pro"] as const;
 
+/**
+ * https(s) スキームのみ許可する URL。
+ *
+ * D-A8 是正 (2026-09-08): video_url はモバイルの知識共有画面
+ * (apps/mobile/src/app/knowledge/[id].tsx) が `Linking.openURL()` で
+ * そのまま開く。投稿は他テナントにも公開されるため、`tel:` `sms:` や
+ * 他アプリの custom scheme を許すと、他店舗の投稿者がスタッフ端末で
+ * 任意のアプリ起動・電話発信を誘発できてしまう。
+ */
+const httpsUrlSchema = z
+  .string()
+  .trim()
+  .url()
+  .max(1000)
+  .refine((v) => /^https?:\/\//i.test(v), "http(s) の URL を入力してください");
+
 export const lessonCreateSchema = z.object({
   title: z.string().trim().min(3, "タイトルを3文字以上で入力してください").max(200),
   summary: z.string().trim().max(500).optional(),
@@ -21,8 +37,8 @@ export const lessonCreateSchema = z.object({
   category: z.string().trim().min(1).max(50),
   level: z.enum(LESSON_LEVELS).default("basic"),
   difficulty: z.number().int().min(1).max(5).default(3),
-  video_url: z.string().trim().url().max(1000).optional().or(z.literal("")),
-  cover_image_url: z.string().trim().url().max(1000).optional().or(z.literal("")),
+  video_url: httpsUrlSchema.optional().or(z.literal("")),
+  cover_image_url: httpsUrlSchema.optional().or(z.literal("")),
   tags: z.array(z.string().trim().min(1).max(40)).max(10).default([]),
   status: z.enum(["draft", "published"]).default("draft"),
   /** super_admin のみ tenant_id=null（運営コンテンツ）で投稿可 */

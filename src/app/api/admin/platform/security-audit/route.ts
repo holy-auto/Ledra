@@ -27,7 +27,7 @@ export async function GET(req: NextRequest) {
     const admin = createPlatformScopedAdmin("platform/security-audit — cross-tenant access/PII/webhook logs");
     const now = new Date();
     const url = new URL(req.url);
-    const days = Math.min(30, Math.max(1, parseInt(url.searchParams.get("days") ?? "7", 10)));
+    const days = Math.min(30, Math.max(1, parseInt(url.searchParams.get("days") ?? "7", 10) || 7));
     const since = new Date(now.getTime() - days * 24 * 60 * 60 * 1000).toISOString();
 
     type InsurerAccessLog = {

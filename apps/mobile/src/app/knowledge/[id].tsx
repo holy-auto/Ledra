@@ -159,9 +159,12 @@ export default function KnowledgeDetailScreen() {
           )}
         </View>
 
-        {data.video_url && (
+        {data.video_url && /^https?:\/\//i.test(data.video_url) && (
           <Pressable
             style={styles.card}
+            // D-A8 是正: サーバ側 (createLesson.ts) でも https(s) のみに制限済みだが、
+            // 是正前に投稿された行が残っている可能性があるため、ここでも再検証してから
+            // 開く（他店舗投稿の video_url を Linking.openURL に直接渡さない）。
             onPress={() => void Linking.openURL(data.video_url!)}
             accessibilityRole="button"
             accessibilityLabel="動画を再生"

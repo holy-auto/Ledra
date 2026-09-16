@@ -75,3 +75,59 @@ describe("予約公開（scheduled）", () => {
     if (parsed.success) expect(parsed.data.status).toBe("scheduled");
   });
 });
+
+describe("外部サイト（holy-inc / MobileWash）への投稿", () => {
+  const external = (over: Record<string, string>) =>
+    parseSiteContentFormData(
+      fd({
+        ...base,
+        site: "holy-inc",
+        type: "news",
+        status: "published",
+        published_at: "2026-09-15T10:00",
+        ...over,
+      }),
+    );
+
+  it("下書きなら未入力でも保存できる", () => {
+    expect(siteContentPostSchema.safeParse(external({ status: "draft" })).success).toBe(true);
+  });
+
+  it("holy-inc の公開は英語タイトルと分類が要る", () => {
+    const r = siteContentPostSchema.safeParse(external({ title_en: "", category: "" }));
+    expect(r.success).toBe(false);
+    if (!r.success) {
+      const paths = r.error.issues.map((i) => i.path.join("."));
+      expect(paths).toContain("title_en");
+      expect(paths).toContain("category");
+    }
+  });
+
+  it("holy-inc の分類は4種から選ぶ", () => {
+    const r = siteContentPostSchema.safeParse(external({ title_en: "Title", category: "その他" }));
+    expect(r.success).toBe(false);
+  });
+
+  it("揃っていれば通る", () => {
+    const r = siteContentPostSchema.safeParse(external({ title_en: "Title", category: "会社" }));
+    expect(r.success).toBe(true);
+  });
+
+  it("MobileWash は抜粋が必須で、本文は書けない", () => {
+    const r = siteContentPostSchema.safeParse(
+      external({ site: "mobilewash", category: "お知らせ", excerpt: "", body: "長い本文" }),
+    );
+    expect(r.success).toBe(false);
+    if (!r.success) {
+      const paths = r.error.issues.map((i) => i.path.join("."));
+      expect(paths).toContain("excerpt");
+      expect(paths).toContain("body");
+    }
+  });
+
+  it("その投稿先に無い種別は弾く", () => {
+    const r = siteContentPostSchema.safeParse(external({ type: "press", title_en: "T", category: "会社" }));
+    expect(r.success).toBe(false);
+    if (!r.success) expect(r.error.issues.map((i) => i.path.join("."))).toContain("type");
+  });
+});

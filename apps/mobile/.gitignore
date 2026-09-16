@@ -43,6 +43,8 @@ google-play-service-account.json
 # credentials.json には .p12 password が直書きされるので必ず ignore。
 credentials.json
 ttp-creds/
+# eas credentials のダウンロード既定パス。.p12 秘密鍵が入るので必ず ignore。
+credentials/
 
 # typescript
 *.tsbuildinfo

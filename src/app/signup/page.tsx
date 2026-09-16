@@ -93,7 +93,11 @@ export default function SignupPage() {
         return;
       }
 
-      // 2) 作成したアカウントで自動ログイン
+      // 2) 作成したアカウントでログインを試みる。
+      // メール確認前 (email_confirm: false) はサーバが拒否するため、
+      // 通常はここで失敗し「確認メールを送信しました」画面に落ちる
+      // (B-H3 是正: 2026-09-08 以前はここが常に成功し、メール所有確認を経ずに
+      // 即ログインできてしまっていた)。
       const supabase = createClient();
       const { error: loginError } = await supabase.auth.signInWithPassword({ email, password });
       if (loginError) {
@@ -144,8 +148,10 @@ export default function SignupPage() {
               />
             </svg>
           </div>
-          <h1 className="text-xl font-bold text-primary">登録完了</h1>
-          <p className="text-sm text-secondary">アカウントが作成されました。ログインしてご利用ください。</p>
+          <h1 className="text-xl font-bold text-primary">確認メールを送信しました</h1>
+          <p className="text-sm text-secondary">
+            入力いただいたメールアドレスに確認リンクを送信しました。メール内のリンクをクリックすると、ログインが完了します。
+          </p>
           <Link href="/login" className="btn-primary w-full inline-block text-center">
             ログインページへ
           </Link>
@@ -246,7 +252,7 @@ export default function SignupPage() {
 
           {/* 任意項目はデフォルトで折りたたみ、入力欄を最小化 */}
           {showDetails ? (
-            <div className="grid grid-cols-2 gap-3 pt-1">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
               <FloatingField
                 label="担当者名"
                 name="display_name"

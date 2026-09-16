@@ -10,8 +10,7 @@ import {
 import { Text, TextInput, HelperText } from "react-native-paper";
 import { router } from "expo-router";
 
-import { signIn } from "@/lib/auth";
-import { fetchUserProfile } from "@/lib/auth";
+import { fetchUserProfile, resolveDefaultStore, signIn } from "@/lib/auth";
 import { useAuthStore } from "@/stores/authStore";
 import { LedraButton } from "@/components/ui";
 import { colors, spacing, radius, typography, shadows, sizing } from "@/constants/tokens";
@@ -22,7 +21,7 @@ export default function LoginScreen() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const { setUser } = useAuthStore();
+  const { setUser, setSelectedStore } = useAuthStore();
 
   async function handleLogin() {
     if (!email.trim() || !password.trim()) {
@@ -43,8 +42,24 @@ export default function LoginScreen() {
         return;
       }
 
+      // 遷移先を決める前に店舗を確定させる。ここで解決しておかないと
+      // select-store に飛ばされ、そこでの店舗フェッチを待って /(tabs) へ
+      // 跳ね返る＝ログインのたびに画面が2回変わる。
+      // 解決に失敗しても null になるだけで、ログイン自体は成功させる。
+      const store = profile.tenantId
+        ? await resolveDefaultStore(profile.tenantId)
+        : null;
+
+      // 店舗を先に入れる。setUser が isAuthenticated を立てるので、
+      // 逆順だと (tabs)/_layout が「認証済みだが店舗なし」を見て
+      // select-store へ飛ばす。
+      setSelectedStore(store);
       setUser(profile);
-      router.replace("/(auth)/select-store");
+
+      // 行き先は明示的に分ける。常に /(tabs) へ送って (tabs)/_layout の
+      // ゲートに任せると、0店舗・複数店舗のユーザーに1フレーム分の
+      // 余計な画面が挟まる（いま消そうとしているものと同種）。
+      router.replace(store ? "/(tabs)" : "/(auth)/select-store");
     } catch (err: unknown) {
       const message =
         err instanceof Error ? err.message : "ログインに失敗しました";
@@ -126,23 +141,9 @@ export default function LoginScreen() {
             ログイン
           </LedraButton>
 
-          {/* Divider */}
-          <View style={styles.dividerRow}>
-            <View style={styles.dividerLine} />
-            <Text style={styles.dividerText}>または</Text>
-            <View style={styles.dividerLine} />
-          </View>
-
-          {/* Google sign-in (visual only) */}
-          <LedraButton
-            variant="outline"
-            icon="google"
-            onPress={() => {
-              // ponytail: Google sign-in not implemented yet
-            }}
-          >
-            Googleでログイン
-          </LedraButton>
+          {/* D-B4 是正 (2026-09-08): 「Googleでログイン」ボタンは未実装の見た目だけ
+              (onPress が空)。押しても何も起きないボタンは App Store 審査ガイドライン
+              2.1（アプリの完全性）に抵触しうる。実装するまでは divider ごと削除する。 */}
 
           {/* Sign-up link */}
           <Pressable
@@ -204,21 +205,6 @@ const styles = StyleSheet.create({
   forgotText: {
     ...typography.bodySmall,
     color: colors.primary,
-  },
-  dividerRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginVertical: spacing.sm,
-    gap: spacing.md,
-  },
-  dividerLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: colors.divider,
-  },
-  dividerText: {
-    ...typography.meta,
-    color: colors.textTertiary,
   },
   bottomLink: {
     alignItems: "center",

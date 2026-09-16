@@ -102,7 +102,7 @@ const DOC_C = "cccccccc-cccc-4ccc-8ccc-cccccccccccc"; // 別顧客の帳票
 beforeEach(() => {
   Object.values(mocks).forEach((m) => m.mockReset());
   mocks.resolveCaller.mockResolvedValue({ userId: "user-1", tenantId: TENANT_ID, role: "admin" });
-  mocks.sendDocumentEmail.mockResolvedValue(true);
+  mocks.sendDocumentEmail.mockResolvedValue({ ok: true });
   mocks.renderAndStoreDocumentPdf.mockResolvedValue("https://signed.example/doc.pdf");
 
   tables = {
@@ -221,6 +221,20 @@ describe("POST /api/admin/documents/share — additional_document_ids", () => {
     expect(res.status).toBe(200);
     const lineArgs = mocks.sendDocumentLink.mock.calls[0][0];
     expect(lineArgs.pdfUrl).toBeUndefined();
+  });
+
+  // 回帰テスト: メール送信失敗の実際の理由 (sendDocumentEmail の result.error) が
+  // 汎用文言に潰されず、そのまま応答へ伝わること。以前は真偽値しか受け取らないため
+  // ここが必ず "送信に失敗しました" 固定になり、本番で原因調査ができなかった。
+  it("メール送信失敗時、sendDocumentEmail が返した理由がそのまま応答に伝わる", async () => {
+    mocks.sendDocumentEmail.mockResolvedValue({ ok: false, error: "resend:401 Invalid API key" });
+    const res = (await POST(
+      req({ document_id: DOC_A, channel: "email", recipient: "customer@example.com" }),
+    )) as Response;
+
+    expect(res.status).toBe(500);
+    const json = await res.json();
+    expect(json.message).toContain("resend:401 Invalid API key");
   });
 });
 

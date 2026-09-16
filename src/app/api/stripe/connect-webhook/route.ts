@@ -243,7 +243,7 @@ export async function POST(req: NextRequest) {
             tenant_id: tenantId,
             agent_id: agentId,
             amount: transfer.amount,
-            fee_amount: parseInt(meta?.fee_amount ?? "0", 10),
+            fee_amount: parseInt(meta?.fee_amount ?? "0", 10) || 0,
             currency: transfer.currency,
             source_type: (meta?.source_type as string) ?? "other",
             source_id: meta?.source_id ?? null,

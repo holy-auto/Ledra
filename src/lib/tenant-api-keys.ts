@@ -3,7 +3,7 @@
  *
  * 認証フロー:
  *   1. 顧客側システムが `Authorization: Bearer lk_live_XXXX...` で叩く
- *   2. resolveTenantApiKey() がリクエストを検証 → CallerContext 相当を返す
+ *   2. resolveTenantApiKey() がリクエストを検証 → CallerInfo 相当を返す
  *
  * セキュリティ:
  *   - 生鍵は SHA-256(key + pepper) で照合。DB には hash のみ保存。

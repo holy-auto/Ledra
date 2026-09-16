@@ -12,9 +12,21 @@
 
 const JST_OFFSET = "+09:00";
 
+/**
+ * JST (UTC+9, DST 無し) のミリ秒オフセット。`new Date(x.getTime() + JST_OFFSET_MS)` で
+ * UTC の Date を「JST 壁時計」として読める Date に変換できる（getUTCFullYear 等と組み合わせる）。
+ *
+ * F-7 是正 (2026-09-08): 同じ `9 * 60 * 60 * 1000` のインライン計算が
+ * src/lib/gantt/board.ts・src/lib/admin/fetchTodaySignals.ts・
+ * src/lib/ai/followUpContent.ts・src/app/api/cron/gcal-sync/window.ts・
+ * src/app/api/admin/sidebar-badges/route.ts・
+ * src/app/api/admin/platform/shop-orders/export/route.ts に散っていたのをここへ集約。
+ */
+export const JST_OFFSET_MS = 9 * 60 * 60 * 1000;
+
 /** 国内店舗の営業日を YYYY-MM-DD で返す。ブラウザ/サーバーの TZ に依存しない。 */
 export function businessDateString(now: Date = new Date()): string {
-  return new Date(now.getTime() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  return new Date(now.getTime() + JST_OFFSET_MS).toISOString().slice(0, 10);
 }
 
 /** 既に Z / ±HH:MM のオフセットを持つか。 */
@@ -44,7 +56,7 @@ export function jstParts(
   const base = new Date(iso);
   if (Number.isNaN(base.getTime())) return null;
   // JST へシフトしてから UTC 各値を読む（= JST 壁時計）。
-  const jst = new Date(base.getTime() + 9 * 60 * 60 * 1000);
+  const jst = new Date(base.getTime() + JST_OFFSET_MS);
   return {
     y: jst.getUTCFullYear(),
     m: jst.getUTCMonth() + 1,

@@ -29,7 +29,7 @@ const SERVICE_TYPES = [
 ];
 
 export default function CertificateNewScreen() {
-  const { user, selectedStore } = useAuthStore();
+  const { user, getSelectedStoreId } = useAuthStore();
   const { reservationId } = useLocalSearchParams<{ reservationId?: string }>();
   const queryClient = useQueryClient();
 
@@ -131,7 +131,11 @@ export default function CertificateNewScreen() {
           // 顧客 ID を渡すと、サーバ側の「名前で似た顧客を探す」経路を通らずに済む。
           // 同名の別人に紐付く事故と、顧客表の全件読み込みを両方避けられる
           customer_id: selectedVehicle?.customers?.id ?? null,
-          store_id: selectedStore?.id ?? null,
+          // code-review 指摘 (2026-09-08): `selectedStore?.id ?? null` は `??` が
+          // null/undefined しか拾わないため、「店舗なしで続行」時の空文字 id
+          // (select-store.tsx 参照) がそのままサーバへ送られ、uuid バリデーションで
+          // 400 になっていた（D-B2 と同根、getSelectedStoreId() に統一）。
+          store_id: getSelectedStoreId(),
           vehicle_id: form.vehicle_id || null,
           vehicle_maker: form.vehicle_maker.trim(),
           model: form.vehicle_model.trim(),

@@ -11,7 +11,7 @@
 import { cache } from "react";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { deriveTodayTasks, type TaskTile } from "@/lib/admin/todayTasks";
-import { businessDateString } from "@/lib/datetime";
+import { businessDateString, JST_OFFSET_MS } from "@/lib/datetime";
 
 export { businessDateString } from "@/lib/datetime";
 
@@ -58,7 +58,7 @@ const fetchTodaySignalsCached = cache(async function fetchTodaySignalsImpl(
   const realNow = nowMs !== undefined ? new Date(nowMs) : new Date();
   // 「今日」は営業タイムゾーン (JST) で判定する。digest_date (businessDateString) と
   // 揃え、UTC 日付とのズレでダッシュボードのタイルと保存済みサマリが食い違うのを防ぐ。
-  const jstNow = new Date(realNow.getTime() + 9 * 60 * 60 * 1000);
+  const jstNow = new Date(realNow.getTime() + JST_OFFSET_MS);
   const todayStr = jstNow.toISOString().slice(0, 10);
   const dormantCutoff = new Date(jstNow.getTime() - 180 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 

@@ -19,7 +19,7 @@ const SECRET_ADMIN_PREFIXES = [
 // Legacy platform-wide endpoints that predate the /api/admin/platform namespace.
 const PLATFORM_ADMIN_PREFIXES = [
   "/api/admin/agent-",
-  "/api/admin/agents/",
+  "/api/admin/agents",
   "/api/admin/insurers",
   "/api/admin/billing-status",
   "/api/admin/template-orders",

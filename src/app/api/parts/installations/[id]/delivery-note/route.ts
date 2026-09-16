@@ -23,7 +23,7 @@ import {
   apiNotFound,
   apiForbidden,
 } from "@/lib/api/response";
-import { CERTIFICATE_IMAGE_BUCKET } from "@/lib/certificateImages"; // 共有 "assets" バケット
+import { CERTIFICATE_IMAGE_BUCKET } from "@/lib/certificateImages/constants"; // 共有 "assets" バケット
 import { hashSha256 } from "@/lib/anchoring/imageHashing";
 import { maybeAutoReconcileDeliveryNote } from "@/lib/ai/automation/partsReconcileAuto";
 
