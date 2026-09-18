@@ -2922,9 +2922,9 @@ GRANT EXECUTE ON FUNCTION "public"."insurer_search_vehicles"(text, integer, inte
 
 REVOKE ALL ON FUNCTION "public"."is_insurer_admin"() FROM PUBLIC;
 
-GRANT DELETE, INSERT, MAINTAIN, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON TABLE "public"."certificates_public" TO "anon", "authenticated", "postgres", "service_role";
+GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON TABLE "public"."certificates_public" TO "anon", "authenticated", "postgres", "service_role";
 
-GRANT DELETE, INSERT, MAINTAIN, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON TABLE "public"."invoices" TO "anon", "authenticated", "postgres", "service_role";
+GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON TABLE "public"."invoices" TO "anon", "authenticated", "postgres", "service_role";
 
 ALTER TABLE "public"."certificates"
   ALTER COLUMN "public_id" SET DEFAULT public.generate_public_id();
