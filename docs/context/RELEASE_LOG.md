@@ -26,6 +26,10 @@
   通常フロー・例外承認（1回更新・2イベント）・受領拒否後の再受領・完了後再施工の承認消費を通す。
 - **`/code-review` の指摘10件を反映**（DECISION_LOG 同日、MISTAKE_LEDGER
   `M-20260918-verification-skippable-via-transition-flag`）。
+- **main の CI が赤（この PR と無関係の既存失敗 10 件）**。未マージの PR #1092 が持つ回帰修正2件
+  （証明書 POST テストの withCaller 用モック、Academy 事例公開の AI レート制限復元）を移植して
+  6 件を解消。残り 4 件（`apiRoutePermissions` の検出器が `withCaller` のオプション引数を
+  読めない 3 件、`aiRouteRateLimit` の他ルート 24 本）は修正が存在せず、PR コメントに提案を残した。
 
 未実施: 実運用確認（AC-030）、写真アップロード UI、店舗単位の閲覧絞り。対象外機能（AC-031: 配送追跡・
 QR/NFC・OCR・AI 画像照合・ERP/DMS 連携・物流管理・費用負担・SLA）は入れていない。
