@@ -30,7 +30,9 @@
  * 必要な env（CI シークレット）:
  *   SUPABASE_ACCESS_TOKEN   Management API のトークン
  *   SUPABASE_PROJECT_ID     プロジェクト ref
- *   どちらか欠けたら skip して exit 0（フォークで落ちないように）。
+ *   CI では `REQUIRE_SCHEMA_DRIFT=1` を立てる。**欠けていたら落とす** —— 黙って skip
+ *   すると「検査があるのに何も見ていない」状態が緑で通り続ける（実際 #1045 で入れてから
+ *   2026-09-18 まで一度も走っていなかった）。手元とフォークは立てなければ従来どおり skip。
  *
  * 終了コード: ドリフトが1件でもあれば 1。
  *
@@ -38,10 +40,14 @@
  *   （スキーマ単位の書き出しに、クラスタ単位のオブジェクトは入らない）。
  *   イベントトリガだけはマイグレーションの字面から拾う。数が少なく、
  *   `create event trigger` に `if not exists` が無いので必ずリテラルで書かれる。
- * ponytail: 上限その2。見るのは**オブジェクトの有無**だけで、列の型・既定値・
- *   ポリシーの中身までは比べない。本番の `tenants.plan_tier` は enum 型なのに
- *   マイグレーション側は `text + check` という差が現に残っている
+ * ponytail: 上限その2。見るのは**名前の有無**だけで、列の型・既定値・ポリシーの
+ *   中身（USING / WITH CHECK の式）までは比べない。本番の `tenants.plan_tier` は
+ *   enum 型なのにマイグレーション側は `text + check` という差が現に残っている
  *   （OPEN_QUESTIONS 参照）。そこまで見るなら pg_dump 同士の差分が要る。
+ * ponytail: 上限その3。列は**両方向**を見る。本番にあって再生に無い側（＝本番データを
+ *   流し込めなくなる）と、マイグレーションにあって本番に無い側（＝本番でだけ 42703 に
+ *   なる。certificates.certificate_no が実例）。テーブル・関数などは本番→再生の一方向
+ *   だけで、ポリシーの逆向きは件数を出すに留める（「本番のほうが緩い」は別の判断軸）。
  */
 
 import { execFileSync } from "node:child_process";
@@ -57,7 +63,20 @@ const token = process.env.SUPABASE_ACCESS_TOKEN;
 const ref = process.env.SUPABASE_PROJECT_ID;
 
 if (!token || !ref) {
-  console.log("[drift] SUPABASE_ACCESS_TOKEN / SUPABASE_PROJECT_ID が未設定のため skip します。");
+  // ここを「黙って skip して exit 0」にしていたため、この検出器は #1045 で入れてから
+  // **一度も実際に走らないまま緑を出し続けていた**（週次ジョブの該当ステップが 0 秒で
+  // success。再生だけで数分かかるので、走っていれば 0 秒にはならない）。
+  // その間に本番へ ft_* 12 テーブルが入っている。MISTAKE_LEDGER の型 A そのもので、
+  // plpgsql 検査には REQUIRE_PLPGSQL_CHECK で同じ穴を塞いでおきながら、こちらは
+  // 塞いでいなかった。CI では落とす。手元やフォークでは REQUIRE_SCHEMA_DRIFT を
+  // 立てなければ従来どおり skip する。
+  const msg =
+    "SUPABASE_ACCESS_TOKEN / SUPABASE_PROJECT_ID が未設定です。本番と比べられません。";
+  if (process.env.REQUIRE_SCHEMA_DRIFT === "1") {
+    console.error(`[drift] ${msg}\n  CI ではシークレットの登録が要ります（未登録なら検査は存在しないのと同じです）。`);
+    process.exit(1);
+  }
+  console.log(`[drift] ${msg} skip します（CI では REQUIRE_SCHEMA_DRIFT=1 で落とします）。`);
   process.exit(0);
 }
 
@@ -97,6 +116,54 @@ rmSync(dumpPath, { force: true });
 
 // pg_dump の出力は書き方が一定なので、素直に読める。
 const dumped = (re) => new Set([...dump.matchAll(re)].map((m) => m[1].replace(/"/g, "").toLowerCase()));
+
+const bare = (s) => s.replace(/^"|"$/g, "").replace(/""/g, '"').toLowerCase();
+
+/**
+ * `CREATE TABLE public.x ( ... );` の中身から `表名.列名` を拾う。
+ *
+ * pg_dump は1列1行で書くが、`GENERATED ALWAYS AS (CASE WHEN ... ELSE ... END)` のように
+ * **式が複数行に折り返る**ことがある。行頭の語をそのまま列名として拾うと、その折り返し行の
+ * `WHEN` / `ELSE` を列だと誤認する（実際に4件拾ってしまい、再生 DB の pg_attribute と
+ * 突き合わせて気づいた）。括弧の深さを追い、深さ0で始まる行だけを列として扱う。
+ */
+function columnsFromDump(text) {
+  const out = new Set();
+  const re = /^CREATE (?:UNLOGGED )?TABLE (?:ONLY )?public\.([\w"]+) \(\n([\s\S]*?)^\)/gm;
+  for (const m of text.matchAll(re)) {
+    const table = bare(m[1]);
+    let depth = 0;
+    for (const raw of m[2].split("\n")) {
+      const startDepth = depth;
+      let inStr = false;
+      for (let i = 0; i < raw.length; i++) {
+        const ch = raw[i];
+        if (inStr) {
+          if (ch === "'") inStr = raw[i + 1] === "'" ? (i++, true) : false;
+          continue;
+        }
+        if (ch === "'") inStr = true;
+        else if (ch === "(") depth++;
+        else if (ch === ")") depth--;
+      }
+      if (startDepth !== 0) continue; // 前の行の式の続き
+      const line = raw.trim();
+      if (!line) continue;
+      if (/^(CONSTRAINT|PRIMARY|UNIQUE|CHECK|FOREIGN|EXCLUDE|LIKE)\b/i.test(line)) continue;
+      const col = line.match(/^("?\w+"?)\s/);
+      if (col) out.add(`${table}.${bare(col[1])}`);
+    }
+  }
+  return out;
+}
+
+/** `CREATE POLICY <名前> ON public.<表>` から `表名.ポリシー名` を拾う。名前は引用符付きもある。 */
+function policiesFromDump(text) {
+  const out = new Set();
+  const re = /^CREATE POLICY ("(?:[^"]|"")+"|\S+) ON public\.([\w"]+)/gm;
+  for (const m of text.matchAll(re)) out.add(`${bare(m[2])}.${bare(m[1])}`);
+  return out;
+}
 const replayed = {
   table: dumped(/^CREATE (?:UNLOGGED )?TABLE public\.([\w"]+)/gm),
   view: dumped(/^CREATE (?:MATERIALIZED )?VIEW public\.([\w"]+)/gm),
@@ -106,6 +173,10 @@ const replayed = {
   function: dumped(/^CREATE (?:FUNCTION|PROCEDURE|AGGREGATE) public\.([\w"]+)\s*\(/gm),
   trigger: dumped(/^CREATE (?:OR REPLACE )?(?:CONSTRAINT )?TRIGGER ([\w"]+)/gm),
   enum: dumped(/^CREATE TYPE public\.([\w"]+) AS ENUM/gm),
+  // 列とポリシーは `表名.名前` で持つ。名前だけだと `id` のように表を跨いで
+  // 同名のものが大量にあり、比較が意味を失う。
+  column: columnsFromDump(dump),
+  policy: policiesFromDump(dump),
 };
 
 // イベントトリガだけは pg_dump に出ないので、マイグレーションの字面から拾う。
@@ -130,6 +201,10 @@ const NEGATIVE = {
   trigger: ["trg_certificates_updated_at"],
   enum: ["plan_tier_enum"],
   event_trigger: ["ensure_rls"],
+  // 列は `GENERATED ... CASE WHEN` の折り返しを誤認しやすいので、その形を持つ表
+  // （vehicle_size_master）からも1件取る。
+  column: ["certificates.public_id", "tenants.plan_tier", "vehicle_size_master.id"],
+  policy: ["certificates.certificates_select_v2", "tenants.tenants_select_v2"],
 };
 /** 本番側の名前のうち、再生 DB に無いものを返す。**本番の比較もここを通る。** */
 const missingFrom = (kind, prodNames) =>
@@ -201,6 +276,20 @@ const prod = {
       "select evtname from pg_event_trigger where evtname not like 'pgrst\\_%' and evtname not like 'issue\\_%' order by 1",
     ),
   ),
+  column: names(
+    await query(
+      "select c.relname||'.'||a.attname from pg_attribute a" +
+        " join pg_class c on c.oid=a.attrelid join pg_namespace n on n.oid=c.relnamespace" +
+        " where n.nspname='public' and c.relkind in ('r','p') and a.attnum>0 and not a.attisdropped order by 1",
+    ),
+  ),
+  policy: names(
+    await query(
+      "select c.relname||'.'||p.polname from pg_policy p" +
+        " join pg_class c on c.oid=p.polrelid join pg_namespace n on n.oid=c.relnamespace" +
+        " where n.nspname='public' order by 1",
+    ),
+  ),
 };
 
 // ── 4. 突き合わせ ───────────────────────────────────────────
@@ -211,25 +300,71 @@ const LABEL = {
   trigger: "トリガ",
   enum: "enum 型",
   event_trigger: "イベントトリガ",
+  column: "列",
+  policy: "RLS ポリシー",
 };
+
+// 表ごと無いときは、その表の列とポリシーも当然すべて無い。根本原因は表のほうなので、
+// 列・ポリシーの側では黙らせる（ft_* 12 表で 150 行以上の重複になり、本当に見るべき
+// 「既存の表に後から足された列」が埋もれる）。件数だけは残す。
+const missingTables = new Set(missingFrom("table", prod.table).map((t) => String(t).toLowerCase()));
+const tableOf = (key) => String(key).slice(0, String(key).indexOf(".")).toLowerCase();
 
 let total = 0;
 console.log("");
 for (const kind of Object.keys(LABEL)) {
-  const missing = missingFrom(kind, prod[kind]);
+  const all = missingFrom(kind, prod[kind]);
+  const nested = kind === "column" || kind === "policy";
+  const missing = nested ? all.filter((n) => !missingTables.has(tableOf(n))) : all;
+  const hidden = all.length - missing.length;
   total += missing.length;
-  console.log(`[drift] ${LABEL[kind]}: 本番 ${prod[kind].length} 件 / マイグレーションから作られない ${missing.length} 件`);
+  console.log(
+    `[drift] ${LABEL[kind]}: 本番 ${prod[kind].length} 件 / マイグレーションから作られない ${missing.length} 件` +
+      (hidden > 0 ? `（ほかに、表ごと無い ${hidden} 件は表の側に集約）` : ""),
+  );
   for (const n of missing) console.log(`         - ${n}`);
 }
 
-if (total > 0) {
-  console.error(
-    `\n[drift] 本番にだけ存在するオブジェクトが ${total} 件あります。` +
-      "\n  マイグレーションを通さず本番へ入ったか、作成元のファイルが再生できていません。" +
-      "\n  対処は docs/context/OPEN_QUESTIONS.md「マイグレーション外で本番スキーマへ入った」の項を参照。",
-  );
+// 逆向き（マイグレーションが作るのに本番に無い列）も落とす。
+//
+// こちらを見ないと、**この検出器を足す原因になった不具合そのものを見逃す**。
+// certificates.certificate_no はマイグレーション側にだけ在り、本番の2関数がそれを読んで
+// 42703 で落ちていた（DECISION_LOG 2026-09-18）。「本番にあって再生に無い」だけを見る
+// 検出器は、この向きを構造的に検出できない。
+//
+// 列に限る: 本番に無い列を読むコードは本番で落ちるので、実害が直接つながる。
+// ポリシーの逆向き（マイグレーションにだけ在る）は「本番のほうが緩い」という別の話で、
+// 落とす基準が違うため件数だけ出す。
+const lowerSet = (xs) => new Set(xs.map((n) => String(n).toLowerCase()));
+const notInProd = (kind) => {
+  const inProd = lowerSet(prod[kind]);
+  return [...replayed[kind]].filter((k) => !inProd.has(k)).sort();
+};
+const extraColumns = notInProd("column");
+const extraPolicies = notInProd("policy");
+
+console.log(
+  `[drift] 逆向き: マイグレーションが作るのに本番に無い 列 ${extraColumns.length} 件 / ポリシー ${extraPolicies.length} 件`,
+);
+for (const n of extraColumns) console.log(`         - ${n}`);
+
+if (total > 0 || extraColumns.length > 0) {
+  if (total > 0) {
+    console.error(
+      `\n[drift] 本番にだけ存在するオブジェクトが ${total} 件あります。` +
+        "\n  マイグレーションを通さず本番へ入ったか、作成元のファイルが再生できていません。" +
+        "\n  対処は docs/context/OPEN_QUESTIONS.md「マイグレーション外で本番スキーマへ入った」の項を参照。",
+    );
+  }
+  if (extraColumns.length > 0) {
+    console.error(
+      `\n[drift] マイグレーションにだけ存在する列が ${extraColumns.length} 件あります。` +
+        "\n  本番に無い列を読むコードは、本番でだけ 42703 で落ちます（実例: certificates.certificate_no）。" +
+        "\n  足すか、読んでいる側から外すかを決めてください。",
+    );
+  }
   process.exit(1);
 }
 
-console.log("\n[drift] ドリフト無し。本番のオブジェクトはすべてマイグレーションから再現できます。");
+console.log("\n[drift] ドリフト無し。本番とマイグレーションの列・オブジェクトは双方向で一致しています。");
 process.exit(0);

@@ -810,6 +810,7 @@
 "certificates": [
 "accessory_json",
 "body_repair_json",
+"certificate_no",
 "coating_products_json",
 "content_free_text",
 "content_preset_json",
