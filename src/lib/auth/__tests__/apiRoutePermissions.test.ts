@@ -279,6 +279,16 @@ describe("未登録の変更系ハンドラ", () => {
     // ── createLesson.ts の permission チェックで守られている ──
     "admin/academy/lessons [POST]",
     "mobile/academy/lessons [POST]",
+
+    // ── 実証テスト：施工店が自テナントのデータのみ操作する自己完結経路 ──
+    "mobile/field-test/applications [POST]",
+    "mobile/field-test/applications/[id] [PATCH]",
+    "mobile/field-test/agreements/[id] [PATCH]",
+    "mobile/field-test/workshop-profile [PUT]",
+    "mobile/field-test/jobs/[id] [PATCH]",
+    "mobile/field-test/condition-checks [POST]",
+    "mobile/field-test/evidence [POST]",
+    "mobile/field-test/training/completions [POST]",
   ]);
 
   const found: string[] = [];
