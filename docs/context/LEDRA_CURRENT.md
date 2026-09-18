@@ -4,7 +4,18 @@
 > 追わず、常に最新状態だけを保つ（履歴は DECISION_LOG.md / RELEASE_LOG.md 側）。
 > 大きな変化があったら都度上書きすること。
 
-最終更新: 2026-09-15
+最終更新: 2026-09-16
+
+> 2026-09-16 追記: **メーカー向け実証テスト（Field Test）プラットフォームを全面実装した**（PR #1093、
+> ブランチ `feat/manufacturer-field-testing`）。DB 12テーブル（ft_projects / ft_recruitments /
+> ft_applications / ft_agreements / ft_training_modules / ft_training_completions / ft_jobs /
+> ft_conditions / ft_condition_checks / ft_evidence / ft_inspections / ft_defects）、
+> API 23エンドポイント、UI 18ファイル（10タブ構成のプロジェクト詳細 + ジョブ詳細）。
+> ドメイン状態語彙に3軸追加（FT_PROJECT_STATES / FT_JOB_STATES / FT_DEFECT_STATES）。
+> SQL マイグレーション4件すべて Supabase 本番に適用済み。全テーブルに RLS ポリシー・
+> インデックス・updated_at トリガーあり。業務フロー: 実証条件・製品・予算 → 施工店募集 →
+> 審査 → NDA/規約 → 教育・認定 → 案件割当 → 施工条件管理 → 証拠取得 → 品質管理 →
+> 不具合管理 → データ分析 → 検証可能な Field Data。
 
 > 2026-09-15 追記: **MISTAKE_LEDGER の ID 方式を連番から `M-<日付>-<スラッグ>` に変えた。**
 > 連番は並行セッションが次の空き番号を取り合うため衝突し続け、改番で直そうとして

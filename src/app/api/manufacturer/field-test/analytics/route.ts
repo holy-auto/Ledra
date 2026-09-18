@@ -44,10 +44,10 @@ export async function GET(req: NextRequest) {
     // Parallel fetch all related data
     const scope = { project_id: projectId, manufacturer_id: manufacturerId };
     const [jobsRes, inspRes, defectsRes, evidenceRes] = await Promise.all([
-      admin.from("ft_jobs").select("status, tenant_id, completed_at").match(scope),
-      admin.from("ft_inspections").select("result, score").match(scope),
-      admin.from("ft_defects").select("severity, status").match(scope),
-      admin.from("ft_evidence").select("evidence_type").match(scope),
+      admin.from("ft_jobs").select("id, status, tenant_id, completed_at").match(scope),
+      admin.from("ft_inspections").select("result, score, job_id").match(scope),
+      admin.from("ft_defects").select("severity, status, tenant_id").match(scope),
+      admin.from("ft_evidence").select("evidence_type, tenant_id").match(scope),
     ]);
 
     if (jobsRes.error) return apiInternalError(jobsRes.error, "ft analytics jobs");
@@ -101,6 +101,70 @@ export async function GET(req: NextRequest) {
       byType[e.evidence_type as string] = (byType[e.evidence_type as string] ?? 0) + 1;
     }
 
+    // ── Per-tenant breakdown ──
+    // Build job_id → tenant_id map for inspections (which only have job_id)
+    const jobTenantMap = new Map<string, string>();
+    for (const j of jobs) {
+      if (j.id && j.tenant_id) jobTenantMap.set(j.id as string, j.tenant_id as string);
+    }
+
+    type TenantAgg = {
+      jobs: number; completed: number;
+      pass: number; fail: number; conditional_pass: number;
+      scoreSum: number; scoreN: number;
+      defects: number; evidence: number;
+    };
+    const tenantAgg = new Map<string, TenantAgg>();
+    const ensure = (tid: string): TenantAgg => {
+      if (!tenantAgg.has(tid))
+        tenantAgg.set(tid, { jobs: 0, completed: 0, pass: 0, fail: 0, conditional_pass: 0, scoreSum: 0, scoreN: 0, defects: 0, evidence: 0 });
+      return tenantAgg.get(tid)!;
+    };
+
+    for (const j of jobs) {
+      const a = ensure(j.tenant_id as string);
+      a.jobs++;
+      if (j.completed_at) a.completed++;
+    }
+    for (const i of inspections) {
+      const tid = jobTenantMap.get(i.job_id as string);
+      if (!tid) continue;
+      const a = ensure(tid);
+      if (i.result === "pass") a.pass++;
+      else if (i.result === "fail") a.fail++;
+      else if (i.result === "conditional_pass") a.conditional_pass++;
+      if (i.score != null) { a.scoreSum += Number(i.score); a.scoreN++; }
+    }
+    for (const d of defects) {
+      if (d.tenant_id) ensure(d.tenant_id as string).defects++;
+    }
+    for (const e of evidence) {
+      if (e.tenant_id) ensure(e.tenant_id as string).evidence++;
+    }
+
+    // Resolve tenant names
+    const allTenantIds = [...tenantAgg.keys()];
+    const tenantNameMap = new Map<string, string>();
+    if (allTenantIds.length > 0) {
+      const { data: tRows } = await admin.from("tenants").select("id, name").in("id", allTenantIds);
+      for (const t of tRows ?? []) tenantNameMap.set(t.id as string, (t.name as string) ?? "");
+    }
+
+    const tenantsDetail = [...tenantAgg.entries()]
+      .sort(([, a], [, b]) => b.jobs - a.jobs)
+      .map(([tid, a]) => ({
+        tenant_id: tid,
+        tenant_name: tenantNameMap.get(tid) ?? tid.slice(0, 8),
+        jobs: a.jobs,
+        completed: a.completed,
+        pass: a.pass,
+        fail: a.fail,
+        conditional_pass: a.conditional_pass,
+        avg_score: a.scoreN > 0 ? Math.round((a.scoreSum / a.scoreN) * 100) / 100 : null,
+        defects: a.defects,
+        evidence: a.evidence,
+      }));
+
     return apiJson({
       project: { id: project.id, name: project.name, status: project.status },
       jobs: { total: jobs.length, by_status: jobsByStatus },
@@ -115,6 +179,7 @@ export async function GET(req: NextRequest) {
       defects: { total: defects.length, by_severity: bySeverity, by_status: byDefectStatus },
       evidence: { total: evidence.length, by_type: byType },
       tenants: { total: tenantIds.size, completed_jobs: completedJobs },
+      tenants_detail: tenantsDetail,
     });
   } catch (e) {
     return apiInternalError(e, "ft analytics GET");

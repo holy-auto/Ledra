@@ -14,6 +14,7 @@ import EvidenceTab from "./tabs/EvidenceTab";
 import InspectionsTab from "./tabs/InspectionsTab";
 import DefectsTab from "./tabs/DefectsTab";
 import AnalyticsTab from "./tabs/AnalyticsTab";
+import WorkshopProfilesTab from "./tabs/WorkshopProfilesTab";
 
 type Project = {
   id: string;
@@ -34,6 +35,7 @@ const TABS = [
   { key: "overview", label: "概要" },
   { key: "recruitment", label: "募集" },
   { key: "applications", label: "応募" },
+  { key: "workshops", label: "施工店" },
   { key: "agreements", label: "契約" },
   { key: "training", label: "教育" },
   { key: "jobs", label: "案件" },
@@ -128,6 +130,7 @@ export default function ProjectDetailClient({
         {tab === "overview" && <OverviewTab project={project} isAdmin={isAdmin} onUpdate={reload} />}
         {tab === "recruitment" && <RecruitmentTab projectId={projectId} isAdmin={isAdmin} />}
         {tab === "applications" && <ApplicationsTab projectId={projectId} isAdmin={isAdmin} />}
+        {tab === "workshops" && <WorkshopProfilesTab projectId={projectId} isAdmin={isAdmin} />}
         {tab === "agreements" && <AgreementsTab projectId={projectId} isAdmin={isAdmin} />}
         {tab === "training" && <TrainingTab projectId={projectId} isAdmin={isAdmin} />}
         {tab === "jobs" && <JobsTab projectId={projectId} isAdmin={isAdmin} />}

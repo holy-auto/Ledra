@@ -1,4 +1,4 @@
-import { NextRequest } from "next/server";
+import { NextRequest, after } from "next/server";
 import { z } from "zod";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveManufacturerCaller } from "@/lib/auth/manufacturerCaller";
@@ -11,6 +11,7 @@ import {
   apiNotFound,
   apiInternalError,
 } from "@/lib/api/response";
+import { notifyFtTenant } from "@/lib/fieldTest/ftNotify";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -124,6 +125,17 @@ export async function POST(req: NextRequest) {
       .select("*")
       .single();
     if (error) return apiInternalError(error, "ft jobs POST");
+
+    after(async () => {
+      await notifyFtTenant({
+        tenantId: parsed.data.tenant_id,
+        type: "ft_job_assigned",
+        title: "実証テスト案件が割り当てられました",
+        body: `「${parsed.data.title}」が割り当てられました。`,
+        linkPath: "/admin/field-test",
+        priority: "high",
+      });
+    });
 
     return apiJson({ job: data });
   } catch (e) {

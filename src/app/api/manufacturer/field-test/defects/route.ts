@@ -1,4 +1,4 @@
-import { NextRequest } from "next/server";
+import { NextRequest, after } from "next/server";
 import { z } from "zod";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveManufacturerCaller } from "@/lib/auth/manufacturerCaller";
@@ -10,6 +10,7 @@ import {
   apiValidationError,
   apiInternalError,
 } from "@/lib/api/response";
+import { notifyFtTenant } from "@/lib/fieldTest/ftNotify";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -100,6 +101,20 @@ export async function POST(req: NextRequest) {
       .select("*")
       .single();
     if (error) return apiInternalError(error, "ft defects POST");
+
+    const targetTenantId = (data.tenant_id ?? parsed.data.tenant_id) as string | null;
+    if (targetTenantId) {
+      after(async () => {
+        await notifyFtTenant({
+          tenantId: targetTenantId,
+          type: "ft_defect_reported",
+          title: "不具合が報告されました",
+          body: `「${parsed.data.title}」（${parsed.data.severity ?? "medium"}）`,
+          linkPath: "/admin/field-test",
+          priority: "high",
+        });
+      });
+    }
 
     return apiJson({ defect: data });
   } catch (e) {

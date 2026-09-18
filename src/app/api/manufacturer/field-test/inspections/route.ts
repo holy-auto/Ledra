@@ -1,4 +1,4 @@
-import { NextRequest } from "next/server";
+import { NextRequest, after } from "next/server";
 import { z } from "zod";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveManufacturerCaller } from "@/lib/auth/manufacturerCaller";
@@ -11,6 +11,7 @@ import {
   apiNotFound,
   apiInternalError,
 } from "@/lib/api/response";
+import { notifyFtTenant } from "@/lib/fieldTest/ftNotify";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -83,7 +84,7 @@ export async function POST(req: NextRequest) {
     // Resolve project_id from the job
     const { data: job, error: jobErr } = await admin
       .from("ft_jobs")
-      .select("project_id")
+      .select("project_id, tenant_id")
       .eq("id", parsed.data.job_id)
       .eq("manufacturer_id", manufacturerId)
       .maybeSingle();
@@ -105,6 +106,20 @@ export async function POST(req: NextRequest) {
       .select("*")
       .single();
     if (error) return apiInternalError(error, "ft inspections POST");
+
+    const RESULT_JA: Record<string, string> = { pass: "合格", fail: "不合格", conditional_pass: "条件付合格", pending: "保留" };
+    after(async () => {
+      if (job.tenant_id) {
+        const r = (parsed.data.result ?? "pending") as string;
+        await notifyFtTenant({
+          tenantId: job.tenant_id as string,
+          type: "ft_inspection_completed",
+          title: "検査結果が登録されました",
+          body: `検査結果: ${RESULT_JA[r] ?? r}`,
+          linkPath: "/admin/field-test",
+        });
+      }
+    });
 
     return apiJson({ inspection: data });
   } catch (e) {

@@ -347,3 +347,44 @@ export const FT_AGREEMENT_TYPE_LABELS: Record<FtAgreementType, string> = {
   terms: "利用規約",
   other: "その他",
 };
+
+// ============================================================
+// Workshop Capability Profile
+// ============================================================
+
+export type WorkshopCapabilityProfileRow = {
+  id: string;
+  tenant_id: string;
+  permits: { type: string; number?: string; expires_at?: string }[];
+  mechanic_certifications: { grade: string; holder_name?: string; cert_number?: string }[];
+  has_lift: boolean;
+  has_diagnostic_tools: boolean;
+  has_adas_equipment: boolean;
+  equipment_notes: string | null;
+  ev_capable: boolean;
+  body_work: boolean;
+  painting: boolean;
+  coating: boolean;
+  ppf: boolean;
+  electrical: boolean;
+  mobile_service: boolean;
+  supported_vehicles: string[];
+  service_area: { prefectures?: string[]; radius_km?: number; notes?: string };
+  verified_at: string | null;
+  verified_by: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export const WORKSHOP_CAPABILITY_LABELS: Record<string, string> = {
+  has_lift: "リフト",
+  has_diagnostic_tools: "診断機",
+  has_adas_equipment: "ADAS設備",
+  ev_capable: "EV対応",
+  body_work: "鈑金",
+  painting: "塗装",
+  coating: "コーティング",
+  ppf: "PPF",
+  electrical: "電装",
+  mobile_service: "出張対応",
+};
