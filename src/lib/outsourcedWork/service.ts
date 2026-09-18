@@ -256,6 +256,25 @@ export async function createWorkRequest(
     };
   }
   const db = admin();
+  // 店舗・車両は自テナントのものだけ（FK は他テナントの行も通してしまう）
+  if (input.client_store_id) {
+    const { data: store } = await db
+      .from("stores")
+      .select("id")
+      .eq("id", input.client_store_id)
+      .eq("tenant_id", caller.tenantId)
+      .maybeSingle();
+    if (!store) return { ok: false, code: "validation", message: "店舗が見つかりません。" };
+  }
+  if (input.vehicle_id) {
+    const { data: vehicle } = await db
+      .from("vehicles")
+      .select("id")
+      .eq("id", input.vehicle_id)
+      .eq("tenant_id", caller.tenantId)
+      .maybeSingle();
+    if (!vehicle) return { ok: false, code: "validation", message: "車両が見つかりません。" };
+  }
   const { data, error } = await db
     .from("outsourced_work_requests")
     .insert({
@@ -423,6 +442,7 @@ export async function getWorkRequestDetail(
       "verification:record",
       "correction:record",
       "rework_after_completion:request",
+      "rework_after_completion:approve",
       "rework_after_completion:record",
       "evidence:generate",
     ] as const
@@ -450,16 +470,24 @@ async function openReceiptAttempt(request: WorkRequestRow, userId: string): Prom
     .from("outsourced_receipt_attempts")
     .select("id", { count: "exact", head: true })
     .eq("request_id", request.id);
-  const attempt_no = (count ?? 0) + 1;
-  const { data, error } = await db
-    .from("outsourced_receipt_attempts")
-    .insert({ request_id: request.id, attempt_no, started_by: userId })
-    .select(
-      "id, request_id, attempt_no, started_by, started_at, result, received_by, received_at, lines, comment, rejected_by, rejected_at, rejection_reason, superseded_by_attempt_id",
-    )
-    .single();
-  if (error) throw new Error(`receipt attempt insert failed: ${error.message}`);
-  const attempt = data as ReceiptAttemptRow;
+  // 採番は COUNT+1。同時に2人が受領を始めると UNIQUE(request_id, attempt_no) で衝突するので、
+  // 衝突（23505）のときだけ番号を進めて数回やり直す（/code-review 指摘 2026-09-18）。
+  let attempt: ReceiptAttemptRow | null = null;
+  for (let attempt_no = (count ?? 0) + 1; attempt_no <= (count ?? 0) + 4; attempt_no++) {
+    const { data, error } = await db
+      .from("outsourced_receipt_attempts")
+      .insert({ request_id: request.id, attempt_no, started_by: userId })
+      .select(
+        "id, request_id, attempt_no, started_by, started_at, result, received_by, received_at, lines, comment, rejected_by, rejected_at, rejection_reason, superseded_by_attempt_id",
+      )
+      .single();
+    if (!error) {
+      attempt = data as ReceiptAttemptRow;
+      break;
+    }
+    if (error.code !== "23505") throw new Error(`receipt attempt insert failed: ${error.message}`);
+  }
+  if (!attempt) throw new Error("receipt attempt insert failed: attempt_no collision");
   // AC-014: 拒否した旧試行 → 新試行のリンク（旧側は上書きせず、後継 ID だけ足す）
   if (request.current_receipt_attempt_id) {
     await db
@@ -471,11 +499,38 @@ async function openReceiptAttempt(request: WorkRequestRow, userId: string): Prom
   return attempt;
 }
 
+/**
+ * 受領済みへ入るときに進行中の受領試行を accepted にする。受領確認中からの通常受領（現物ライン付き）
+ * だけでなく、例外承認（TR-022）・保留解除（TR-042）で受領済みへ戻るときも、pending のまま残さない。
+ */
+async function markAttemptAccepted(attemptId: string, userId: string, input: TransitionInput): Promise<void> {
+  const parsed = receivedPayloadSchema.safeParse(input.payload);
+  await admin()
+    .from("outsourced_receipt_attempts")
+    .update({
+      result: "accepted",
+      received_by: userId,
+      received_at: new Date().toISOString(),
+      ...(parsed.success
+        ? { lines: parsed.data.lines, comment: parsed.data.comment ?? null }
+        : { comment: input.reason ?? null }),
+    })
+    .eq("id", attemptId)
+    .eq("result", "pending");
+}
+
+/** 呼び出し側（サービス内）だけが渡せる文脈。API の payload からは作れない。 */
+type TransitionInternal = {
+  /** RECEIVED → MATCHED は VERIFICATION イベント（result=MATCH）経由でしか起こせない（AC-005）。 */
+  verificationEventId?: string;
+};
+
 /** 遷移先ごとに必要な記録が揃っているか（AC-002 / AC-004 / AC-007 など）。 */
 async function validateTransitionPayload(
   request: WorkRequestRow,
   to: OutsourcedWorkState,
   input: TransitionInput,
+  internal: TransitionInternal,
 ): Promise<{ ok: true } | { ok: false; message: string }> {
   const needsReason: OutsourcedWorkState[] = [
     "QUANTITY_SHORTAGE",
@@ -505,8 +560,8 @@ async function validateTransitionPayload(
     const parsed = receivedPayloadSchema.safeParse(input.payload);
     if (!parsed.success) return { ok: false, message: "受領した部品ごとの数量・品番・状態を登録してください。" };
   }
-  if (to === "MATCHED" && input.payload.verification_result !== "MATCH") {
-    return { ok: false, message: "照合結果が「一致」のときだけ照合済みへ進めます。" };
+  if (to === "MATCHED" && !internal.verificationEventId) {
+    return { ok: false, message: "照合済みへは三方向照合の結果（一致）を記録することで進みます。" };
   }
   if (to === "WORK_COMPLETED" || to === "REWORK_COMPLETED") {
     const parsed = workCompletedPayloadSchema.safeParse(input.payload);
@@ -563,6 +618,7 @@ export async function transitionWorkRequest(
   caller: CallerInfo,
   requestId: string,
   input: TransitionInput,
+  internal: TransitionInternal = {},
 ): Promise<ServiceResult<{ request: WorkRequestRow; events: WorkEventRow[] }>> {
   const loaded = await loadForCaller(caller, requestId, `transition:${input.to}`);
   if (!loaded.ok) return loaded;
@@ -574,7 +630,7 @@ export async function transitionWorkRequest(
     await denied(caller, requestId, `transition:${request.status}->${input.to}`, check.reason);
     return { ok: false, code: request.status === "COMPLETED" ? "conflict" : "forbidden", message: check.reason };
   }
-  const valid = await validateTransitionPayload(request, input.to, input);
+  const valid = await validateTransitionPayload(request, input.to, input, internal);
   if (!valid.ok) return { ok: false, code: "validation", message: valid.message };
 
   const db = admin();
@@ -609,20 +665,7 @@ export async function transitionWorkRequest(
     patch.current_receipt_attempt_id = attempt.id;
     payload.receipt_attempt_no = attempt.attempt_no;
   }
-  if (to === "RECEIVED" && request.status === "RECEIPT_IN_REVIEW" && receiptAttemptId) {
-    const parsed = receivedPayloadSchema.parse(input.payload);
-    await db
-      .from("outsourced_receipt_attempts")
-      .update({
-        result: "accepted",
-        received_by: caller.userId,
-        received_at: new Date().toISOString(),
-        lines: parsed.lines,
-        comment: parsed.comment ?? null,
-      })
-      .eq("id", receiptAttemptId)
-      .eq("result", "pending");
-  }
+  if (to === "RECEIVED" && receiptAttemptId) await markAttemptAccepted(receiptAttemptId, caller.userId, input);
   if (to === "RECEIPT_REJECTED" && receiptAttemptId) {
     // TR-015 / AC-013: この受領試行の終端
     await db
@@ -651,60 +694,86 @@ export async function transitionWorkRequest(
   if (request.status === "ON_HOLD" && to !== "CANCELED") patch.exception_origin_status = null;
   if (to === "COMPLETED") patch.completed_at = new Date().toISOString();
 
-  const first = await applyTransition({
-    request,
-    to,
-    patch,
-    event: {
-      actor_user_id: caller.userId,
-      actor_tenant_id: caller.tenantId,
-      actor_role: actor.role,
-      reason: input.reason ?? null,
-      receipt_attempt_id: receiptAttemptId,
-      payload,
-    },
-  });
-  if (!first.ok) return first;
-  const events = [first.data.event];
-  let current = first.data.request;
+  const humanEvent = {
+    actor_user_id: caller.userId,
+    actor_tenant_id: caller.tenantId,
+    actor_role: actor.role,
+    reason: input.reason ?? null,
+    receipt_attempt_id: receiptAttemptId,
+    payload,
+  };
 
-  // ── システム制御の後続遷移（TR-021〜031）──
+  // ── 例外承認・却下（TR-019/020）とシステム制御の復帰（TR-021〜031）──
+  // 行の状態は EXCEPTION_APPROVED / EXCEPTION_REJECTED に**留めない**。承認と復帰を2回の更新に
+  // 分けると、間で失敗したときに人が抜けられない状態で止まる（/code-review 指摘 2026-09-18）。
+  // 付随処理（受領試行の採番・accepted 化）を先に済ませ、行は 承認待ち → 復帰先 の1回更新にし、
+  // イベントは「承認待ち → 承認済み（人）」「承認済み → 復帰先（システム）」の2件を追記する。
   if (to === "EXCEPTION_APPROVED" || to === "EXCEPTION_REJECTED") {
-    const origin = current.exception_origin_status;
+    const origin = request.exception_origin_status;
     if (!isExceptionOriginState(origin)) throw new Error("exception origin missing after approval"); // validate 済みなので到達しない
     const target =
       to === "EXCEPTION_APPROVED" ? (input.return_to as OutsourcedWorkState) : rejectionReturnTarget(origin);
-    const sysPatch: Record<string, unknown> = {};
-    let sysAttempt: string | null = current.current_receipt_attempt_id;
+    let sysAttempt: string | null = request.current_receipt_attempt_id;
     if (target === "RECEIPT_IN_REVIEW") {
-      const attempt = await openReceiptAttempt(current, caller.userId);
+      const attempt = await openReceiptAttempt(request, caller.userId);
       sysAttempt = attempt.id;
-      sysPatch.current_receipt_attempt_id = attempt.id;
+      patch.current_receipt_attempt_id = attempt.id;
     }
-    if (to === "EXCEPTION_APPROVED") sysPatch.exception_origin_status = null;
-    const second = await applyTransition({
-      request: current,
-      to: target,
-      patch: sysPatch,
-      event: {
-        actor_user_id: null,
-        actor_tenant_id: null,
-        actor_role: "system",
-        reason: to === "EXCEPTION_APPROVED" ? "例外承認に基づく復帰" : "例外却下に基づく原因ステータスへの復帰",
-        receipt_attempt_id: sysAttempt,
-        related_event_id: first.data.event.id,
-        payload: { approval_event_id: first.data.event.id, origin, return_to: target },
-      },
+    if (target === "RECEIVED" && sysAttempt) await markAttemptAccepted(sysAttempt, caller.userId, input);
+    if (to === "EXCEPTION_APPROVED") patch.exception_origin_status = null;
+
+    const { data, error } = await db
+      .from("outsourced_work_requests")
+      .update({ status: target, ...patch })
+      .eq("id", request.id)
+      .eq("status", request.status)
+      .select(REQUEST_COLUMNS)
+      .maybeSingle();
+    if (error) throw new Error(`work request transition failed: ${error.message}`);
+    if (!data)
+      return { ok: false, code: "conflict", message: "他の操作で状態が変わっています。画面を更新してください。" };
+    const ev1 = await appendEvent({
+      ...humanEvent,
+      request_id: request.id,
+      event_type: "STATUS_TRANSITION",
+      from_status: request.status,
+      to_status: to,
     });
-    if (!second.ok) return second;
-    events.push(second.data.event);
-    current = second.data.request;
+    const ev2 = await appendEvent({
+      request_id: request.id,
+      event_type: "STATUS_TRANSITION",
+      from_status: to,
+      to_status: target,
+      actor_user_id: null,
+      actor_tenant_id: null,
+      actor_role: "system",
+      reason: to === "EXCEPTION_APPROVED" ? "例外承認に基づく復帰" : "例外却下に基づく原因ステータスへの復帰",
+      receipt_attempt_id: sysAttempt,
+      related_event_id: ev1.id,
+      payload: { approval_event_id: ev1.id, origin, return_to: target },
+    });
+    return { ok: true, data: { request: data as WorkRequestRow, events: [ev1, ev2] } };
   }
 
-  return { ok: true, data: { request: current, events } };
+  const result = await applyTransition({ request, to, patch, event: humanEvent });
+  if (!result.ok) return result;
+  return { ok: true, data: { request: result.data.request, events: [result.data.event] } };
 }
 
 // ── 遷移を伴わないイベント ──
+
+async function latestEvent(requestId: string, eventType: string): Promise<{ id: string; created_at: string } | null> {
+  const { data, error } = await admin()
+    .from("outsourced_work_events")
+    .select("id, created_at")
+    .eq("request_id", requestId)
+    .eq("event_type", eventType)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw new Error(`work event lookup failed: ${error.message}`);
+  return (data as { id: string; created_at: string } | null) ?? null;
+}
 
 export async function recordWorkEvent(
   caller: CallerInfo,
@@ -741,17 +810,19 @@ export async function recordWorkEvent(
         payload: { result: input.result, comment: input.comment ?? null },
       });
       if (input.result !== "MATCH") return { ok: true, data: { request, events: [ev] } }; // AC-005: 施工開始が止まる（状態は受領済みのまま）
-      const t = await transitionWorkRequest(caller, requestId, {
-        to: "MATCHED",
-        reason: input.comment ?? null,
-        return_to: null,
-        payload: { verification_result: "MATCH", verification_event_id: ev.id },
-      });
+      const t = await transitionWorkRequest(
+        caller,
+        requestId,
+        { to: "MATCHED", reason: input.comment ?? null, return_to: null, payload: { verification_event_id: ev.id } },
+        { verificationEventId: ev.id },
+      );
       if (!t.ok) return t;
       return { ok: true, data: { request: t.data.request, events: [ev, ...t.data.events] } };
     }
     case "WORKER_ASSIGNED": {
       if (!canOperate(actor, "worker:assign")) return forbid("worker:assign");
+      if (request.status === "COMPLETED" || request.status === "CANCELED")
+        return { ok: false, code: "conflict", message: "完了・取消後の作業依頼には担当者を割り当てられません。" };
       const { data: member } = await admin()
         .from("tenant_memberships")
         .select("id")
@@ -803,23 +874,21 @@ export async function recordWorkEvent(
     }
     case "POST_COMPLETION_REWORK_APPROVED": {
       // PER-019 再施工承認: 発注元管理者または確認者
-      if (actor.role !== "client_admin" && actor.role !== "reviewer") return forbid("rework_after_completion:request");
+      if (!canOperate(actor, "rework_after_completion:approve")) return forbid("rework_after_completion:approve");
       if (request.status !== "COMPLETED")
         return { ok: false, code: "conflict", message: "完了した作業依頼ではありません。" };
-      const { data: req } = await admin()
-        .from("outsourced_work_events")
-        .select("id")
-        .eq("request_id", request.id)
-        .eq("event_type", "POST_COMPLETION_REWORK_REQUESTED")
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      if (!req) return { ok: false, code: "conflict", message: "先に完了後再施工の申請を登録してください。" };
+      // 承認は「まだ承認されていない申請」に対してだけ（1申請 = 1承認）
+      const [req, approved] = await Promise.all([
+        latestEvent(request.id, "POST_COMPLETION_REWORK_REQUESTED"),
+        latestEvent(request.id, "POST_COMPLETION_REWORK_APPROVED"),
+      ]);
+      if (!req || (approved && approved.created_at >= req.created_at))
+        return { ok: false, code: "conflict", message: "先に完了後再施工の申請を登録してください。" };
       const ev = await appendEvent({
         ...base,
         event_type: "POST_COMPLETION_REWORK_APPROVED",
         reason: input.reason ?? null,
-        related_event_id: (req as { id: string }).id,
+        related_event_id: req.id,
         payload: { post_completion: true },
       });
       return { ok: true, data: { request, events: [ev] } };
@@ -828,22 +897,23 @@ export async function recordWorkEvent(
       if (!canOperate(actor, "rework_after_completion:record")) return forbid("rework_after_completion:record");
       if (request.status !== "COMPLETED")
         return { ok: false, code: "conflict", message: "完了した作業依頼ではありません。" };
-      // AC-021: 発注元管理者の承認が先。承認イベントが無ければ記録できない
-      const { data: approval } = await admin()
-        .from("outsourced_work_events")
-        .select("id")
-        .eq("request_id", request.id)
-        .eq("event_type", "POST_COMPLETION_REWORK_APPROVED")
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      if (!approval) return { ok: false, code: "conflict", message: "完了後再施工は発注元の承認後に記録できます。" };
+      // AC-021: 発注元管理者の承認が先。**未消費の**承認（最後の記録より後の承認）が無ければ記録できない
+      const [approval, recorded] = await Promise.all([
+        latestEvent(request.id, "POST_COMPLETION_REWORK_APPROVED"),
+        latestEvent(request.id, "POST_COMPLETION_REWORK_RECORDED"),
+      ]);
+      if (!approval || (recorded && recorded.created_at >= approval.created_at))
+        return {
+          ok: false,
+          code: "conflict",
+          message: "完了後再施工は発注元の承認後に記録できます（承認1件につき記録1件）。",
+        };
       const { reason, ...rest } = input;
       const ev = await appendEvent({
         ...base,
         event_type: "POST_COMPLETION_REWORK_RECORDED",
         reason,
-        related_event_id: (approval as { id: string }).id,
+        related_event_id: approval.id,
         payload: { ...rest, type: undefined, post_completion: true, initial_completed_at: request.completed_at },
       });
       return { ok: true, data: { request, events: [ev] } };

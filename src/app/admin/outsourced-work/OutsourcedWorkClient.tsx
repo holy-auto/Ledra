@@ -472,7 +472,7 @@ function Detail({
         </div>
       )}
 
-      <EventForms r={r} operations={operations} actorRole={actor.role} busy={busy} post={post} run={run} />
+      <EventForms r={r} operations={operations} busy={busy} post={post} run={run} />
 
       <div>
         <h3 className="text-xs font-semibold text-primary mb-1">履歴（{events.length}）</h3>
@@ -621,14 +621,12 @@ function TransitionForm({
 function EventForms({
   r,
   operations,
-  actorRole,
   busy,
   post,
   run,
 }: {
   r: WorkRequestRow;
   operations: WorkRequestDetail["operations"];
-  actorRole: string;
   busy: boolean;
   post: (path: string, body: unknown) => Promise<unknown>;
   run: (fn: () => Promise<unknown>, okText: string) => Promise<void>;
@@ -636,6 +634,7 @@ function EventForms({
   const [verification, setVerification] = useState<{ result: string; reason: string }>({ result: "MATCH", reason: "" });
   const [workerId, setWorkerId] = useState("");
   const [text, setText] = useState("");
+  const [signature, setSignature] = useState("");
   const has = (op: WorkRequestDetail["operations"][number]) => operations.includes(op);
   const items: React.ReactNode[] = [];
 
@@ -740,7 +739,7 @@ function EventForms({
           完了後再施工を申請（上の欄を理由に使います）
         </button>,
       );
-    if (actorRole === "client_admin" || actorRole === "reviewer")
+    if (has("rework_after_completion:approve"))
       items.push(
         <button
           key="ra"
@@ -759,26 +758,31 @@ function EventForms({
       );
     if (has("rework_after_completion:record"))
       items.push(
-        <button
-          key="rc"
-          type="button"
-          disabled={busy || !text}
-          className="text-xs px-3 py-1.5 rounded border border-border"
-          onClick={() =>
-            run(
-              () =>
-                post("/events", {
-                  type: "POST_COMPLETION_REWORK_RECORDED",
-                  reason: text,
-                  signature: "recorded",
-                  used_parts: [],
-                }),
-              "完了後再施工を記録しました。",
-            )
-          }
-        >
-          完了後再施工を記録
-        </button>,
+        <div key="rc" className="flex flex-wrap gap-2 items-end">
+          <label>
+            再施工者署名（氏名）
+            <input className="input-field" value={signature} onChange={(e) => setSignature(e.target.value)} />
+          </label>
+          <button
+            type="button"
+            disabled={busy || !text || !signature}
+            className="text-xs px-3 py-1.5 rounded border border-border"
+            onClick={() =>
+              run(
+                () =>
+                  post("/events", {
+                    type: "POST_COMPLETION_REWORK_RECORDED",
+                    reason: text,
+                    signature,
+                    used_parts: [],
+                  }),
+                "完了後再施工を記録しました。",
+              )
+            }
+          >
+            完了後再施工を記録（上の欄を理由に使います）
+          </button>
+        </div>,
       );
   }
   if (has("evidence:generate") && (r.status === "COMPLETED" || r.status === "CANCELED"))

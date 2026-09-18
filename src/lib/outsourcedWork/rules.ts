@@ -97,6 +97,7 @@ export const OUTSOURCED_OPERATIONS = [
   "verification:record", // PER-008 三方向照合（結果イベントの記録。一致なら遷移は別途）
   "correction:record", // TR-049 / EVD-017 訂正イベント（完了後）
   "rework_after_completion:request", // PER-026 完了後再施工申請
+  "rework_after_completion:approve", // PER-019 再施工承認（完了後）
   "rework_after_completion:record", // PER-027 完了後再施工実施
   "evidence:generate", // AC-026 証明データ生成
   "history:view", // PER-023 証跡閲覧
@@ -115,6 +116,7 @@ export const OPERATION_ACTORS: Record<OutsourcedOperation, readonly OutsourcedAc
   // TR-049 の「権限保持者」: 完了記録を書いた側（施工）と承認した側（発注元）の管理者。
   "correction:record": ["client_admin", "contractor_admin"],
   "rework_after_completion:request": ["client_admin", "contractor_admin"],
+  "rework_after_completion:approve": ["client_admin", "reviewer"],
   "rework_after_completion:record": CONTRACTOR_WRITERS,
   // 証明データは記録が揃った後に誰が作っても同じ内容になる。発注元管理者と施工会社管理者。
   "evidence:generate": ["client_admin", "contractor_admin"],

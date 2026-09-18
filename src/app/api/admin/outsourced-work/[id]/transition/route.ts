@@ -18,5 +18,10 @@ export const POST = withCaller<{ id: string }>(
     if (!result.ok) return serviceFailure(result);
     return apiOk(result.data);
   },
-  { minRole: "staff", rateLimit: "admin_write", routeName: "admin/outsourced-work/[id]/transition POST" },
+  {
+    // 確認者（PER-017〜019）はテナントロールが viewer でもありうる。実行主体の判定は rules.ts に一本化する。
+    minRole: "viewer",
+    rateLimit: "admin_write",
+    routeName: "admin/outsourced-work/[id]/transition POST",
+  },
 );
