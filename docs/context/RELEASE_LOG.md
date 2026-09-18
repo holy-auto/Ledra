@@ -25,8 +25,16 @@
   （ラッパの `rateLimit` は IP 単位で、店舗の NAT で全端末が1枠を共有してしまう）。
 - **陰性対照を追加**。ラッパで包んだだけ・要求と違う権限・ラッパでない関数の同じ形のオプション・
   変数渡しは「守られている」と読まないことをテストで固定した。
+- **別名 export（`const h = withCaller(...); export const POST = h;`）の実体を解く**
+  （`withAliasTarget`）。この形は断片が1行しか持たず、withCaller 対応を入れてもなお
+  素通りしていた（`/code-review` が無認可の別名 export を実際に通して証明）。
+  解いた結果1件（`admin/service-packages/[id]/expand [POST]`）が出たので読んで分類した
+  （GET と同じ副作用なしの読み取り。POST は RPC 的な使い方のため）。
+- **同じリファクタで剥がれた非 AI の2本も復元**: `admin/inspection-records/images`
+  （`general`・テナント単位）と `admin/square/sync`（`auth`・テナント単位）。
+  **どちらの検出器も AI を呼ばないルートは見ない**ので、ここは仕組みでは止まらない。
 
-これで `npm run test:coverage` は 5,780 件すべて緑（この作業の前は 4 件が赤）。
+これで `npm run test:coverage` は **5,782 件緑 + 1 件 skip**（この作業の前は 4 件が赤）。
 台帳: `M-20260918-read-detector-blindness-as-stale-list`。
 
 ## 2026-09-18 支給部品を伴う外注施工履歴（発注元 ⇄ 施工事業者）を MVP として実装

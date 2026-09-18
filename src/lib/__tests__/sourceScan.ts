@@ -92,12 +92,9 @@ const FUNCTION_START = /\b(?:export\s+)?(?:async\s+)?function\s+\w+\s*\([^)]*\)\
  * 対象は本リポジトリの route.tsx / page.tsx なので実用上は足りている。
  * 誤判定が出たら TypeScript の AST（ts.createSourceFile）に置き換える。
  */
-export function enclosingFunctions(src: string, needle: RegExp): string[] {
-  return enclosingFunctionsWithPos(src, needle).map((h) => h.body);
-}
-
 /**
- * `enclosingFunctions` と同じものを、**一致した位置**付きで返す。
+ * `needle` に一致する箇所それぞれについて、それを含む**最も内側の関数の本文**を、
+ * **一致した位置**付きで返す。
  *
  * ラッパに預けた認可（`withCaller(handler, { permission })`）は書き込み関数の
  * **外側**に出るため、本文だけでは見えない。位置が分かれば
@@ -263,4 +260,38 @@ export function wrapperGuards(
     minRoles: new Set(calls.flatMap((c) => [...c.minRoles])),
     rateLimits: new Set(calls.flatMap((c) => [...c.rateLimits])),
   };
+}
+
+/**
+ * 別名で export したハンドラの実体を、断片に足して返す。
+ *
+ * `const h = withCaller(...); export const GET = h; export const POST = h;` の形
+ * （実在: `src/app/api/admin/service-packages/[id]/expand/route.ts`）は、
+ * `handlerChunks` が切る断片が `export const POST = h;` の1行しか持たない。
+ * **ガードは実体の側にあるので、断片だけを見ると「認可なし」に見える** ——
+ * withCaller 対応で塞いだはずの穴が、この形でそのまま残っていた
+ * （`/code-review` 指摘 2026-09-18。実際に無認可の別名 export が検査を素通りした）。
+ *
+ * 見つからなければ断片をそのまま返す（**実体を勝手に補わない**）。
+ */
+export function withAliasTarget(src: string, chunk: string, fileName = "scan.ts"): string {
+  const alias = chunk.match(/export\s+const\s+(?:GET|POST|PUT|PATCH|DELETE)\s*(?::[^=]+)?=\s*([A-Za-z_$][\w$]*)\s*;/);
+  if (!alias) return chunk;
+  const name = alias[1];
+  const sf = ts.createSourceFile(fileName, src, ts.ScriptTarget.Latest, true, scriptKind(fileName));
+  let found: string | null = null;
+  const visit = (node: ts.Node): void => {
+    if (
+      found === null &&
+      ts.isVariableDeclaration(node) &&
+      ts.isIdentifier(node.name) &&
+      node.name.text === name &&
+      node.initializer
+    ) {
+      found = node.getText(sf);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sf);
+  return found === null ? chunk : `${chunk}\n${found}`;
 }

@@ -39,6 +39,7 @@ import {
   stripComments,
   wrapperCalls,
   wrapperGuards,
+  withAliasTarget,
 } from "../../__tests__/sourceScan";
 
 const APP_ROOT = join(process.cwd(), "src", "app");
@@ -171,6 +172,28 @@ describe("検出器そのものの性質", () => {
   it("読めない渡し方は認可と見なさない（変数・短縮形は fail closed）", () => {
     expect(enforces("export const POST = withCaller(h, OPTIONS);", "certificates:void")).toBe(false);
     expect(enforces("export const POST = withCaller(h, { permission });", "certificates:void")).toBe(false);
+  });
+
+  it("別名 export の実体まで辿る（`const h = withCaller(...); export const POST = h;`）", () => {
+    // レビューが実際にこの形で無認可のルートを検査に通した（2026-09-18）。
+    const src = [
+      'const h = withCaller(async (req) => apiOk({}), { permission: "certificates:void" });',
+      "export const POST = h;",
+    ].join("\n");
+    expect(enforces("export const POST = h;", "certificates:void")).toBe(false); // 断片だけでは見えない
+    expect(enforces(withAliasTarget(src, "export const POST = h;"), "certificates:void")).toBe(true);
+  });
+
+  it("別名の実体に認可が無ければ、辿っても認めない（陰性対照）", () => {
+    const src = ["const h = withCaller(async (req) => apiOk({}));", "export const POST = h;"].join("\n");
+    expect(enforces(withAliasTarget(src, "export const POST = h;"), "certificates:void")).toBe(false);
+  });
+
+  it("別名の実体が見つからないときは断片を補わない", () => {
+    // 実体が別ファイルにある形。**無いものを認可として補うと嘘をつく側に倒れる。**
+    expect(withAliasTarget("export const POST = imported;", "export const POST = imported;")).toBe(
+      "export const POST = imported;",
+    );
   });
 
   it("メソッド別の指定が minRole より優先される（黙って弱くならない）", () => {
@@ -314,6 +337,11 @@ describe("未登録の変更系ハンドラ", () => {
 
     // ── 読み取りのみ（POST だが書き込まない）──
     "certificates/pdf-one [POST]", // PDF 出力。テナント所有チェックはある
+    // パッケージ展開。GET と同じ結果を返す副作用なしの読み取りで、POST は RPC 的な
+    // 使い方のために許しているだけ。読むのは自テナントの行だけ
+    //（createTenantScopedAdmin + 全クエリに tenant_id 一致）。
+    // **別名 export の解決を入れて初めて見えた**（/code-review 指摘 2026-09-18）。
+    "admin/service-packages/[id]/expand [POST]",
 
     // ── 認可を共有関数に集約している（ルートの中には無い）──
     "admin/certificates [POST]", // createCertAction が certificates:create を要求する
@@ -350,8 +378,11 @@ describe("未登録の変更系ハンドラ", () => {
       .replace(/[\\/]route\.ts$/, "")
       .split(/[\\/]/)
       .join("/");
-    for (const [method, chunk] of handlerChunks(src)) {
+    for (const [method, rawChunk] of handlerChunks(src)) {
       if (method === "GET") continue;
+      // `export const POST = handler;` の実体はこの断片の外にある。足さないと
+      // 「認可なし」にも「caller 未解決」にも見える（/code-review 指摘 2026-09-18）。
+      const chunk = withAliasTarget(src, rawChunk, file);
       // **ラッパ包みも「caller を解決している」に数える。** ここを直すまで、
       // `withCaller` へ寄せた 378 本はこの continue で丸ごと視界から消えており、
       // 認可の無いハンドラを増やしても赤にならない状態だった（2026-09-18）。

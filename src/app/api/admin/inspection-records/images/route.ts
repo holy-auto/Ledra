@@ -24,6 +24,7 @@
  * Auth: 施工店セッション (staff 以上)。
  */
 
+import { checkRateLimit } from "@/lib/api/rateLimit";
 import { randomUUID } from "node:crypto";
 
 import { apiOk, apiValidationError, apiInternalError } from "@/lib/api/response";
@@ -56,6 +57,8 @@ export const POST = withCaller(
     // 1) 認証 (staff 以上)
 
     // 2) rate limit
+    const limited = await checkRateLimit(req, "general", `tenant:${caller.tenantId}`);
+    if (limited) return limited;
 
     // 3) multipart 解析
     const contentType = req.headers.get("content-type") ?? "";
