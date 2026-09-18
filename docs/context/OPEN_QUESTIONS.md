@@ -3,6 +3,77 @@
 > まだ決まっていないこと、判断に迷っていることを書く場所。決まったら
 > DECISION_LOG.md に移し、このファイルからは消す（削除履歴は git で追える）。
 
+## 本番にだけ在る `ft_*` 12 テーブルをどうするか（2026-09-18）
+
+ドリフト検出器を実際に動かしたら出た。**`#1045` で 63 個を片付けた後に、また同じ形で
+入っている。**
+
+実測（2026-09-18）:
+
+- テーブル **12 本**: `ft_agreements` `ft_applications` `ft_condition_checks`
+  `ft_conditions` `ft_defects` `ft_evidence` `ft_inspections` `ft_jobs`
+  `ft_projects` `ft_recruitments` `ft_training_completions` `ft_training_modules`
+- **全 12 本とも 0 行。** RLS ポリシー 12・トリガ 9 を伴う。`ft_` で始まる関数は 0。
+- **他の表からこれらを参照する外部キーは 0 本。**
+- `supabase/migrations/` に定義は**無い**。`src/` `apps/` からの参照も**0 件**。
+
+**未決**: (a) `#1045` と同じく削除する、(b) マイグレーションへ書き起こして残す。
+**判断材料が1つ足りない** ——「FT」が何の略で、誰がいつ何のために作ったかが分からない
+【要確認】。Postgres に作成時刻が無いので、**作った人に聞く以外に辿る方法がない**。
+外注・協力工場（field technician？）まわりの試作に見えるが、**推測**。
+本番のテーブルを消すのは不可逆なので、代表の指示が要る。
+
+## マイグレーションと本番で列が食い違っている（2026-09-18）
+
+検出器に列を足して出た。**両方向に在る。**
+
+**本番にだけ在る 15 件**（＝マイグレーションから作った DB に本番データを入れられない側）:
+`agent_signing_requests.notified_at` / `certificate_images.created_by` /
+`certificates.template_id` / `documents.assigned_user_id` /
+`insurer_tenant_access.is_enabled` / `insurer_users.created_by` / `insurer_users.email` /
+`insurer_users.note` / `job_orders.prefecture` / `payments.square_payment_id` /
+`signature_sessions.customer_id` / `signature_sessions.line_user_id` /
+`square_connections.square_terminal_device_id` / `tenants.current_period_end` /
+`vehicles.plate_hash`
+
+**マイグレーションにだけ在る 13 件**（＝本番に無いので、読むコードは本番で落ちる側）:
+`audit_logs` の 8 件（`device_id` `ip_address` `new_values` `old_values` `performed_by`
+`reason` `record_id` `table_name`）/ `certificates.certificate_no` /
+`insurers.max_users` / `templates.updated_at` / `tenant_memberships.updated_at` /
+`tenants.updated_at`
+
+**このうち `certificates.certificate_no` は実害が確定したので `20260918000000` で直した**
+（本番の2関数が読んでいて 42703。上の RELEASE_LOG 2026-09-18 参照）。
+
+**未決**:
+
+- **`audit_logs` は形そのものが違う。** 本番 12 列 / マイグレーション 20 列で、
+  `table_name` `record_id` `old_values` `new_values` のような「汎用監査ログ」の列が
+  マイグレーション側にだけ在る。本番の `audit_logs` は保険会社の閲覧監査
+  （`insurer_id` `target_public_id` `query_json`）の形。**どちらが正か**、
+  そもそも別々の表が同じ名前になっているのではないか【要確認】。
+  この表に書き込むコードが本番で落ちていないかは未調査。
+- 残る本番だけの 15 列を書き起こすか。復旧手順を通すなら要るが、
+  **1件ずつ「本当に要る列か」を確かめないと、消したはずのものを戻すことになる**。
+- `certificate_no` の扱い。モバイル側のコメントは「**`certificate_no` 列は存在せず、
+  `public_id` が番号**」と書いている。それが正なら、正しい直し方は列を足すことではなく
+  **2関数の `RETURNS TABLE` から `certificate_no` を外す**こと（呼び出し側3箇所と
+  あわせて決める必要がある）。今回は本番とマイグレーションを一致させる最小の手を採った。
+
+## 本番にだけ在る RLS ポリシーがある（2026-09-18 に件数を確定）
+
+検出器にポリシーを足して数えた。**本番 626 / 再生 607。**
+`ft_*` の 12 本を除くと、本番にだけ在るのは `certificates` に 3
+（`cert_public_read_active` / `cert_select_member` /
+`public read active certificates by public_id`）、`insurer_access_logs` に 2
+（`logs_insert_self_only` / `logs_select_same_insurer`）、
+`insurer_users` `insurers` `templates` `tenant_memberships` `tenants` に各 1〜2。
+逆に `audit_logs` は**再生にだけ**ポリシーが 2 本ある。
+
+2026-09-08 起票の「本番にあってマイグレーションに無い RLS ポリシーがある」の続きで、
+**未決は同じ**（書き起こすか、本番から消すか）。変わったのは、**当て推量ではなく
+検出器が毎週数えるようになった**こと。`certificates` の anon 公開が意図どおりかは
+引き続き【要確認】。
 ## 追加（2026-08-27・CI が2回続けて起動しなかった）
 
 - **PR #979 への push 2回（`f97fbe0` / `2c78c1d`、8/27 00:10〜00:12 UTC）で

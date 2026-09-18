@@ -1,0 +1,25 @@
+-- certificates.certificate_no が本番にだけ無い（列レベルのドリフト）。
+--
+-- この列は最初期の 20260313020000_core_tables.sql から全マイグレーションに在るが、
+-- 本番の certificates には一度も存在しない。マイグレーションから作った DB と本番で
+-- 表の形が違う、という古いドリフトで、#1045 の検出器はオブジェクトの有無しか見ないため
+-- 見えていなかった（列を見るようにしたこの PR で出た）。
+--
+-- 実害は保険会社ポータル。本番の2関数がこの列を読むので、呼ぶと必ず 42703 で落ちる:
+--   insurer_get_certificate          … 証明書詳細
+--   insurer_get_vehicle_certificates … 車両ごとの証明書一覧
+-- 本番で `select c.certificate_no from public.certificates c limit 0` を実行して
+-- 42703 を再現済み。20260910010000 で 42702 を直したが、その1段下にこれが在り、
+-- 詳細画面は依然として動いていない。
+--
+-- 本番では列を1本足すだけ（nullable・既定値なし＝メタデータ更新のみで表の書き換えは
+-- 起きない）。再生 DB では既に在るので no-op。
+--
+-- ponytail: 「証明書番号は public_id であって certificate_no 列は使わない」という
+--   別の読み方もある（モバイル側のコメントがそう書いている）。その場合の正しい直し方は
+--   2関数の RETURNS TABLE から certificate_no を外すことだが、返り値の形が変わるので
+--   呼び出し側3箇所とあわせて決める必要がある。ここでは**本番とマイグレーションを
+--   一致させる**最小の手を採り、どちらが正かは OPEN_QUESTIONS に残す。
+--   列は NULL のままなので、画面は既存コードのフォールバックで「-」を表示する。
+alter table public.certificates
+  add column if not exists certificate_no text;

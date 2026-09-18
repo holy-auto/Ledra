@@ -51,4 +51,8 @@ jobs:
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
+          # シークレットが無いときに黙って skip させない。#1045 でこの検出器を入れてから
+          # 2026-09-18 まで、該当ステップは毎回 0 秒で success を返していた（再生だけで
+          # 数分かかるので、走っていれば 0 秒にはならない）＝ 一度も動いていなかった。
+          REQUIRE_SCHEMA_DRIFT: "1"
         run: node scripts/check-schema-drift.mjs
