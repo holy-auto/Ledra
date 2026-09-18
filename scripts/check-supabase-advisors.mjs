@@ -29,9 +29,15 @@ const token = process.env.SUPABASE_ACCESS_TOKEN;
 const ref = process.env.SUPABASE_PROJECT_ID;
 
 if (!token || !ref) {
-  console.log(
-    "[advisors] SUPABASE_ACCESS_TOKEN / SUPABASE_PROJECT_ID not set — skipping advisor check.",
-  );
+  // ドリフト検出器と同じ穴。シークレットが未登録だと「0 秒で success」を返し続け、
+  // 検査があるのに何も見ていない状態が緑で通る（2026-09-14 の週次実行のログで、
+  // 両ステップとも env が空のまま skip していたことを確認した）。CI では落とす。
+  const msg = "[advisors] SUPABASE_ACCESS_TOKEN / SUPABASE_PROJECT_ID not set.";
+  if (process.env.REQUIRE_SUPABASE_ADVISORS === "1") {
+    console.error(`${msg} CI ではシークレットの登録が要ります（未登録なら検査は存在しないのと同じです）。`);
+    process.exit(1);
+  }
+  console.log(`${msg} skipping advisor check（CI では REQUIRE_SUPABASE_ADVISORS=1 で落とします）。`);
   process.exit(0);
 }
 
