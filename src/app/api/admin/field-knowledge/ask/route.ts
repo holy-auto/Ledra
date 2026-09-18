@@ -10,6 +10,7 @@
  * startAiRouteUsage 経由で ai_usage_logs 記録 + 月次コストキャップ加算。
  */
 
+import { checkRateLimit } from "@/lib/api/rateLimit";
 import { z } from "zod";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 
@@ -37,6 +38,8 @@ export const POST = withCaller(
       // AI 呼び出しは staff 以上 (代表判断 2026-09-01。閲覧専用ロールに費用の出る操作をさせない)
 
       // スクリプトによる連投コストを防ぐ AI レート制限 (ユーザ単位)。
+      const limited = await checkRateLimit(req, "ai", caller.userId);
+      if (limited) return limited;
 
       if (!canUseFeature(caller.planTier, "ai_academy_qa")) {
         return apiValidationError("この機能はStandardプラン以上でご利用いただけます。", { code: "plan_limit" });

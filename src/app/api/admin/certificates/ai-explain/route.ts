@@ -4,6 +4,7 @@
  * minPlan: standard
  */
 
+import { checkRateLimit } from "@/lib/api/rateLimit";
 import { z } from "zod";
 
 import { apiOk, apiInternalError, apiValidationError, apiNotFound } from "@/lib/api/response";
@@ -42,6 +43,8 @@ export const POST = withCaller(
 
       // 証明書の説明文生成は呼ぶたびに AI 費用が出る。
       // プラン判定より後に置く。Free のテナントには 429 ではなく案内を返したい。
+      const limited = await checkRateLimit(req, "ai", `cert-ai-explain:${caller.tenantId}`);
+      if (limited) return limited;
 
       // E4-7 是正 (2026-09-08): 月次コストキャップ超過時は enabled=false に倒るので、
       // それを見て呼び出し自体をスキップする。

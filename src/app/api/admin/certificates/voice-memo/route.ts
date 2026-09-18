@@ -7,6 +7,7 @@
  * minPlan: standard 以上 (ai_draft 機能と同条件)。
  */
 
+import { checkRateLimit } from "@/lib/api/rateLimit";
 import { z } from "zod";
 
 import { apiOk, apiInternalError, apiValidationError, apiForbidden } from "@/lib/api/response";
@@ -39,6 +40,8 @@ export const POST = withCaller(
       if (!canUseFeature(tier, "ai_draft")) {
         return apiForbidden("AI ドラフト機能は Standard プラン以上で利用できます。");
       }
+      const limited = await checkRateLimit(req, "ai", `voice-memo:${caller.tenantId}`);
+      if (limited) return limited;
 
       const parsed = schema.safeParse(await req.json().catch(() => ({})));
       if (!parsed.success) {

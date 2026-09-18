@@ -93,12 +93,23 @@ const FUNCTION_START = /\b(?:export\s+)?(?:async\s+)?function\s+\w+\s*\([^)]*\)\
  * 誤判定が出たら TypeScript の AST（ts.createSourceFile）に置き換える。
  */
 export function enclosingFunctions(src: string, needle: RegExp): string[] {
-  const out: string[] = [];
+  return enclosingFunctionsWithPos(src, needle).map((h) => h.body);
+}
+
+/**
+ * `enclosingFunctions` と同じものを、**一致した位置**付きで返す。
+ *
+ * ラッパに預けた認可（`withCaller(handler, { permission })`）は書き込み関数の
+ * **外側**に出るため、本文だけでは見えない。位置が分かれば
+ * 「その書き込みを包んでいるラッパ呼び出し」を特定できる（`wrapperCalls`）。
+ */
+export function enclosingFunctionsWithPos(src: string, needle: RegExp): { pos: number; body: string }[] {
+  const out: { pos: number; body: string }[] = [];
   for (const m of src.matchAll(needle)) {
     const at = m.index ?? 0;
     const starts = [...src.slice(0, at).matchAll(FUNCTION_START)];
     if (!starts.length) {
-      out.push(src); // 関数の外（モジュールトップレベル）
+      out.push({ pos: at, body: src }); // 関数の外（モジュールトップレベル）
       continue;
     }
     const s = starts[starts.length - 1];
@@ -115,7 +126,7 @@ export function enclosingFunctions(src: string, needle: RegExp): string[] {
         }
       }
     }
-    out.push(src.slice(s.index ?? 0, end));
+    out.push({ pos: at, body: src.slice(s.index ?? 0, end) });
   }
   return out;
 }
@@ -151,4 +162,105 @@ export function moduleChunk(src: string): string {
   const named = /export\s+(?:async\s+)?(?:function\s+|const\s+)(GET|POST|PUT|PATCH|DELETE)\b/;
   const first = src.split(split)[0] ?? "";
   return named.test(first) ? "" : first;
+}
+
+/**
+ * ラッパ関数（`withCaller` 等）の**オプション引数**に書かれた認可・レート制限を読む。
+ *
+ * なぜ要るか: 378 本のルートを `withCaller(handler, { permission: "x:y" })` へ寄せた
+ * 結果、ハンドラ本文から `!requirePermission(...)` が消えた。本文だけを見ていた検出器は
+ * **登録ルート 144 件を「未強制」と誤検出し、同時に withCaller 包みのルートを丸ごと
+ * 見失った**（2026-09-18）。見失った側が重い —— 認可もレート制限も持たないルートが
+ * 検出器の視界の外に出て、赤にならないまま増やせる状態だった。
+ *
+ * **ラッパを信用してよい根拠は `src/lib/api/__tests__/withCaller.test.ts`。**
+ * あそこが値の水準で「未認証なら 401」「minRole 不足なら 403」「permission 不足なら 403」
+ * 「rateLimit に達したらハンドラを呼ばない」を固定している。withCaller から分岐を
+ * 抜けば**あの検査が落ちる**ので、ここだけが緑になることはない。
+ *
+ * **ラッパ呼び出しの引数の中だけを見る（構文木）。** ファイル全体を正規表現で引くと、
+ * 説明コメントや別目的のオブジェクトリテラルを認可と読む（型 D「移設で弱める」）。
+ * 変数で渡す形（`withCaller(h, opts)`・`{ permission }` の短縮）は**読めないので数えない** ——
+ * 分からないものを認可として通すと、検出器が嘘をつく側に倒れる。
+ */
+export type WrapperGuards = {
+  /** ラッパで包まれている = ラッパが caller を解決している。 */
+  wrapped: boolean;
+  permissions: Set<string>;
+  minRoles: Set<string>;
+  rateLimits: Set<string>;
+};
+
+/** caller を解決するラッパの名前。増えたらここに足す。 */
+export const CALLER_WRAPPERS = ["withCaller"] as const;
+
+/** ラッパ呼び出し1つ。`start`/`end` はソース上の範囲（包まれている位置の判定に使う）。 */
+export type WrapperCall = {
+  start: number;
+  end: number;
+  permissions: Set<string>;
+  minRoles: Set<string>;
+  rateLimits: Set<string>;
+};
+
+/** ラッパ呼び出しを**範囲付き**で全部返す。 */
+export function wrapperCalls(
+  src: string,
+  fileName = "scan.ts",
+  wrappers: readonly string[] = CALLER_WRAPPERS,
+): WrapperCall[] {
+  const out: WrapperCall[] = [];
+  const sf = ts.createSourceFile(fileName, src, ts.ScriptTarget.Latest, true, scriptKind(fileName));
+
+  const literal = (e: ts.Expression): string | null => {
+    if (ts.isStringLiteral(e) || ts.isNoSubstitutionTemplateLiteral(e)) return e.text;
+    return null;
+  };
+
+  const visit = (node: ts.Node): void => {
+    if (ts.isCallExpression(node)) {
+      // `withCaller(...)` と `withCaller<{ id: string }>(...)` の両方。
+      const callee = ts.isIdentifier(node.expression) ? node.expression.text : null;
+      if (callee && wrappers.includes(callee)) {
+        const call: WrapperCall = {
+          start: node.getStart(sf),
+          end: node.getEnd(),
+          permissions: new Set(),
+          minRoles: new Set(),
+          rateLimits: new Set(),
+        };
+        out.push(call);
+        for (const arg of node.arguments) {
+          if (!ts.isObjectLiteralExpression(arg)) continue;
+          for (const prop of arg.properties) {
+            if (!ts.isPropertyAssignment(prop)) continue; // 短縮形・スプレッドは読めない
+            const key = ts.isIdentifier(prop.name) || ts.isStringLiteral(prop.name) ? prop.name.text : null;
+            const value = literal(prop.initializer);
+            if (!key || value === null) continue;
+            if (key === "permission") call.permissions.add(value);
+            else if (key === "minRole") call.minRoles.add(value);
+            else if (key === "rateLimit") call.rateLimits.add(value);
+          }
+        }
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sf);
+  return out;
+}
+
+/** そのソース断片に出てくるラッパのオプションをまとめたもの。 */
+export function wrapperGuards(
+  src: string,
+  fileName = "scan.ts",
+  wrappers: readonly string[] = CALLER_WRAPPERS,
+): WrapperGuards {
+  const calls = wrapperCalls(src, fileName, wrappers);
+  return {
+    wrapped: calls.length > 0,
+    permissions: new Set(calls.flatMap((c) => [...c.permissions])),
+    minRoles: new Set(calls.flatMap((c) => [...c.minRoles])),
+    rateLimits: new Set(calls.flatMap((c) => [...c.rateLimits])),
+  };
 }

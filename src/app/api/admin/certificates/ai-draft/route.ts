@@ -4,6 +4,7 @@
  * minPlan: standard
  */
 
+import { checkRateLimit } from "@/lib/api/rateLimit";
 import { z } from "zod";
 
 import { apiOk, apiInternalError, apiValidationError } from "@/lib/api/response";
@@ -43,6 +44,8 @@ export const POST = withCaller(
 
       // 証明書ドラフト生成は呼ぶたびに AI 費用が出る。
       // プラン判定より後に置く。Free のテナントには 429 ではなく案内を返したい。
+      const limited = await checkRateLimit(req, "ai", `cert-ai-draft:${caller.tenantId}`);
+      if (limited) return limited;
 
       const parsed = aiDraftSchema.safeParse(await req.json().catch(() => ({})));
       if (!parsed.success) {

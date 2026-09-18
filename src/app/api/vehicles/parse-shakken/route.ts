@@ -1,3 +1,4 @@
+import { checkRateLimit } from "@/lib/api/rateLimit";
 import { apiError, apiInternalError, apiValidationError } from "@/lib/api/response";
 
 import { parseShakenshoAuto, extractFirstRegistrationYear, calcSizeClass } from "@/lib/ocr/shakensho";
@@ -38,9 +39,10 @@ export const POST = withCaller(
   async (req, { caller, supabase }) => {
     const usage = startAiRouteUsage("/api/vehicles/parse-shakken");
     try {
-
       // 車検証 OCR は Vision モデルを叩くので呼ぶたびに費用が出る。
       // 画像を buffer 化する前に弾く。
+      const limited = await checkRateLimit(req, "ai", `parse-shakken:${caller.tenantId}`);
+      if (limited) return limited;
 
       const formData = await req.formData();
       const file = formData.get("file") as File | null;

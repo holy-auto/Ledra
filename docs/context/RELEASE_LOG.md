@@ -4,6 +4,31 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-09-18 権限・AIレート制限の検出器を withCaller 対応にし、剥がれていた13本の制限を復元
+
+`withCaller` へ 378 本を寄せたリファクタで、認可とレート制限が**ハンドラ本文から
+オプション引数へ移った**。検出器2本は本文しか見ていなかったため、誤検出を出しながら
+**同時に withCaller 包みのルートを1本も見ていなかった**。
+
+- **共通ヘルパー `wrapperGuards` / `wrapperCalls`**（`src/lib/__tests__/sourceScan.ts`）。
+  ラッパ呼び出しの**引数の中だけ**を構文木で読み、`permission` / `minRole` / `rateLimit` を返す。
+  変数渡し・短縮形は読めないので数えない（fail closed）。
+- **権限検出器**（`apiRoutePermissions.test.ts`）: 登録ルート 144 件の誤検出が消え、
+  **未登録ハンドラの走査が withCaller 包みを対象に含めるようになった**。
+  可視化されて1件（`market/inquiries [POST]`）が新しく出たので、中身を読んで分類した
+  （買い手側の操作。ロール権限を課す方が誤り）。走査対象を `stripComments` 経由に揃えた。
+- **AI レート制限検出器**（`aiRouteRateLimit.test.ts`）: ラッパの `rateLimit` を制限として数える。
+- **剥がれていた13本を復元**（academy/{feedback,qa}、ask、certificates/{ai-draft,ai-explain,
+  ai-quality,delivery-note-extract,voice-memo}、field-knowledge/ask、purchase-orders/ai-message、
+  voice-note、parts/installations/[id]/reconcile、vehicles/parse-shakken）。
+  リファクタ前と同じ**テナント/ユーザー単位**の `checkRateLimit(req, "ai", ...)` をハンドラ内に戻した
+  （ラッパの `rateLimit` は IP 単位で、店舗の NAT で全端末が1枠を共有してしまう）。
+- **陰性対照を追加**。ラッパで包んだだけ・要求と違う権限・ラッパでない関数の同じ形のオプション・
+  変数渡しは「守られている」と読まないことをテストで固定した。
+
+これで `npm run test:coverage` は 5,780 件すべて緑（この作業の前は 4 件が赤）。
+台帳: `M-20260918-read-detector-blindness-as-stale-list`。
+
 ## 2026-09-18 支給部品を伴う外注施工履歴（発注元 ⇄ 施工事業者）を MVP として実装
 
 発注元が部品を用意して施工事業者へ依頼し、**部品準備 → 引渡し → 受領 → 三方向照合 → 施工 →
