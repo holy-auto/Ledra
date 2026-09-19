@@ -168,6 +168,22 @@ export async function DELETE(req: NextRequest) {
           { status: 502 },
         );
       }
+      // 400 は「終端状態から遷移できない」だが、終端状態には CANCELED だけでなく
+      // **COMPLETED（客がキャンセルの直前に支払い終えた）も含まれる**。ここを
+      // 区別せず ok:true を返すと、呼び出し側はキャンセル成功と判断して
+      // チェックアウトIDを捨て、**実際には成立した支払いが一切記帳されない**
+      // （二重決済より悪い、売上が消える経路。/code-review 指摘）。
+      const checkout = await getTerminalCheckout(ctx.accessToken, id);
+      if (checkout.status === "COMPLETED") {
+        return apiJson(
+          {
+            error: "square_already_completed",
+            message: "取消の直前に決済が完了しました。記帳のため会計を続けてください。",
+            checkout_id: id,
+          },
+          { status: 409 },
+        );
+      }
     }
     return apiOk({ ok: true });
   } catch (e) {

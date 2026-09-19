@@ -44,8 +44,28 @@
   支払い要求になりうる経路があった。取消が確認できたときだけキーを手放し、
   失敗時はキーを残して（次の試行が同じチェックアウトに問い合わせるようにして）
   「端末の画面を確認してから操作してください」と表示するようにした。
+- **[P1] 予約切替の effect が取消の応答を確かめず投げっぱなしにしていた**
+  （`PosClient.tsx`、Codex の2回目のレビューで発見・未着手だった箇所）。
+  handleModeSwitch / タイムアウト分岐 / handleCancelQr と同じ形の指摘。
+- **[P1・上記の副産物として発覚] 取消 API の 400 を「取消済み」として一律
+  ok:true を返すと、取消の直前に決済が完了していた場合まで「取消成功」と
+  誤って伝わり、記帳の機会が失われる**（DELETE ルート、二重決済より悪い、
+  売上が消える経路）。`getTerminalCheckout` で実際の状態を確認し、
+  `COMPLETED` なら `square_already_completed`（409）として区別するように
+  DELETE ルートを修正。呼び出し側4箇所（handleModeSwitch / 予約切替 /
+  handleCancelQr / タイムアウト分岐）はこの区別を受けて、完了済みなら
+  `recordPaidSale` で記帳してから止まるよう統一した。
+  - 予約切替の effect だけは、`selected` が既に新しい予約に切り替わった
+    **後**に走るため、`recordPaidSale`（現在の mode/selected を読む）を
+    使うと新しい予約に誤って紐付く。チェックアウト作成時点のスナップ
+    ショット（`activeCheckoutSnapshotRef`）を別途持たせ、離れた予約の
+    スナップショットで直接記帳する専用の経路（`recordSquareCheckoutFromSnapshot`）
+    を用意した。
+  - 共通のキャンセル呼び出しを `cancelSquareCheckout`（モジュール関数）に
+    集約し、4箇所の分岐がバラバラに実装されて一部だけ直る事態
+    （型J、`M-20260916-timeout-branch-missed-sibling-fix` と同じ形）を防いだ。
 
-検証: `tsc` / `eslint` 0 errors、対象テスト29件緑（新規1件を含む）。
+検証: `tsc` / `eslint` 0 errors、フルスイート 5786/5791 緑・5 skip。
 
 ## 2026-09-18 権限・AIレート制限の検出器を withCaller 対応にし、剥がれていた13本の制限を復元
 
