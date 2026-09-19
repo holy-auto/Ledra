@@ -83,26 +83,13 @@ export default function WorkshopProfileScreen() {
     if (!profile) return;
     setSaving(true);
     try {
-      const res = await fetch(
-        `${process.env.EXPO_PUBLIC_API_URL ?? ""}/api/mobile/field-test/workshop-profile`,
-        {
-          method: "PUT",
-          headers: {
-            "content-type": "application/json",
-            authorization: `Bearer ${user?.accessToken ?? ""}`,
-          },
-          body: JSON.stringify(profile),
-        },
-      );
-      if (res.ok) {
-        const json = await res.json();
-        setProfile(json.profile);
-        queryClient.invalidateQueries({ queryKey: qk });
-        Alert.alert("完了", "保存しました");
-      } else {
-        const err = await res.json().catch(() => ({}));
-        Alert.alert("エラー", (err as Record<string, string>).error ?? "保存に失敗しました");
-      }
+      const res = await mobileApi<{ profile: Profile }>("/field-test/workshop-profile", {
+        method: "PUT",
+        body: profile,
+      });
+      setProfile(res.profile);
+      queryClient.invalidateQueries({ queryKey: qk });
+      Alert.alert("完了", "保存しました");
     } catch (e) {
       Alert.alert("エラー", e instanceof Error ? e.message : "保存に失敗しました");
     } finally {

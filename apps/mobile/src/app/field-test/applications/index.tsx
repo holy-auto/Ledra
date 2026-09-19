@@ -106,7 +106,7 @@ export default function ApplicationsScreen() {
                   <Button
                     mode="outlined"
                     onPress={() => handleWithdraw(item.id)}
-                    textColor={colors.error}
+                    textColor={colors.danger}
                     style={styles.withdrawBtn}
                     labelStyle={styles.withdrawLabel}
                   >
@@ -158,7 +158,7 @@ const styles = StyleSheet.create({
   noteText: { ...typography.bodySmall, color: colors.textSecondary },
   reviewDate: { ...typography.meta, color: colors.textTertiary, marginTop: spacing.sm },
   actionRow: { marginTop: spacing.md },
-  withdrawBtn: { borderColor: colors.error, borderRadius: radius.md },
+  withdrawBtn: { borderColor: colors.danger, borderRadius: radius.md },
   withdrawLabel: { fontSize: 13 },
   empty: { alignItems: "center", paddingTop: 80, gap: spacing.sm },
   emptyTitle: { ...typography.titleSmall, color: colors.textPrimary, marginTop: spacing.lg },
