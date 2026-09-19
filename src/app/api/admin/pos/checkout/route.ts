@@ -1,4 +1,3 @@
-
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 
 import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
@@ -16,7 +15,6 @@ export const dynamic = "force-dynamic";
 export const POST = withCaller(
   async (req, { caller, supabase }) => {
     try {
-
       // staff以上のロールが必要
 
       // Rate limiting: 10 requests per 60 seconds per user
@@ -31,6 +29,11 @@ export const POST = withCaller(
         return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
       }
       const data2 = parsed.data;
+
+      // 決済の証明の排他性は posCheckoutSchema 側（.refine）で強制する。
+      // admin/mobile 両方の POS checkout が同じスキーマを使うため、
+      // ルート個別にここへ書くと片方だけ直る事態を生む
+      // （/code-review 指摘: モバイル側にだけ同じガードが無かった）。
 
       const { admin: rpcAdmin } = createTenantScopedAdmin(caller.tenantId);
       // pos_checkout は SECURITY DEFINER で、引数の tenant_id をそのまま使う。

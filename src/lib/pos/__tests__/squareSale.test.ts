@@ -45,7 +45,12 @@ beforeEach(() => {
 describe("resolveTerminalSale", () => {
   it("完了した端末決済は payment_id と実額を返す", async () => {
     getTerminalCheckout.mockResolvedValue({ id: "co_1", status: "COMPLETED", payment_ids: ["sqpmt_1"] });
-    getPayment.mockResolvedValue({ id: "sqpmt_1", status: "COMPLETED", amount_money: { amount: 12_345 } });
+    getPayment.mockResolvedValue({
+      id: "sqpmt_1",
+      status: "COMPLETED",
+      amount_money: { amount: 12_345 },
+      source_type: "WALLET",
+    });
 
     const res = await resolveTerminalSale(fakeAdmin(), "t1", "co_1");
 
@@ -71,6 +76,21 @@ describe("resolveTerminalSale", () => {
     });
   });
 
+  it("ウォレット払いでない決済（カード等）は QR 決済として記帳しない", async () => {
+    getTerminalCheckout.mockResolvedValue({ id: "co_1", status: "COMPLETED", payment_ids: ["sqpmt_1"] });
+    getPayment.mockResolvedValue({
+      id: "sqpmt_1",
+      status: "COMPLETED",
+      amount_money: { amount: 12_345 },
+      source_type: "CARD",
+    });
+
+    expect(await resolveTerminalSale(fakeAdmin(), "t1", "co_1")).toEqual({
+      ok: false,
+      error: "square_payment_not_wallet: CARD",
+    });
+  });
+
   it("決済が複数ある会計は記帳しない（先頭だけ記帳すると売上が小さくなる）", async () => {
     getTerminalCheckout.mockResolvedValue({ id: "co_1", status: "COMPLETED", payment_ids: ["a", "b"] });
 
@@ -85,7 +105,12 @@ describe("resolveTerminalSale", () => {
       payment_ids: ["sqpmt_1"],
       amount_money: { amount: 12_345 },
     });
-    getPayment.mockResolvedValue({ id: "sqpmt_1", status: "COMPLETED", amount_money: { amount: 10_000 } });
+    getPayment.mockResolvedValue({
+      id: "sqpmt_1",
+      status: "COMPLETED",
+      amount_money: { amount: 10_000 },
+      source_type: "WALLET",
+    });
 
     expect(await resolveTerminalSale(fakeAdmin(), "t1", "co_1")).toEqual({
       ok: false,

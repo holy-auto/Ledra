@@ -153,6 +153,65 @@ function qrMethodLabel(method: string): string {
   return QR_METHOD_LABELS[method] ?? "";
 }
 
+/**
+ * 端末に出した Square チェックアウトを取り消す。
+ *
+ * 呼び出し側は応答を確かめずに次へ進んではいけない —— HTTP エラーは
+ * `fetch` を reject しない（`.catch()` では拾えない）ため、必ずここで
+ * `res.ok` を見る。`completed: true` は「取消の直前に客が支払い終えた」
+ * （DELETE ルートが `square_already_completed` で返す）ことを意味し、
+ * このときは取消未確認として扱ってはいけない —— **記帳が必要**
+ * （/code-review 指摘。取消済みと記帳漏れは別の失敗であることを区別する）。
+ */
+async function cancelSquareCheckout(
+  checkoutId: string,
+): Promise<{ ok: true } | { ok: false; completed: true } | { ok: false; completed: false }> {
+  try {
+    const res = await fetch(`/api/admin/square/qr-checkout?id=${encodeURIComponent(checkoutId)}`, {
+      method: "DELETE",
+    });
+    if (res.ok) return { ok: true };
+    if (res.status === 409) {
+      const data = await res.json().catch(() => null);
+      if (data?.error === "square_already_completed") return { ok: false, completed: true };
+    }
+    return { ok: false, completed: false };
+  } catch {
+    return { ok: false, completed: false };
+  }
+}
+
+/**
+ * 予約切替の後（`selected` が既に新しい予約に変わった後）で、離れた予約の
+ * チェックアウトが完了していたと判明したときに、**その予約のスナップショット**
+ * （切替前の reservation_id/customer_id/amount 等）で直接記帳する。
+ *
+ * `recordPaidSale`（コンポーネント内の useCallback）は現在の `mode`/`selected`
+ * を読むため、ここで使うと新しい予約に誤って紐付く（取り違え）。呼び出し元は
+ * チェックアウト作成時点のスナップショットを渡すこと（/code-review 指摘）。
+ */
+async function recordSquareCheckoutFromSnapshot(
+  checkoutId: string,
+  snapshot: { reservation_id?: string; customer_id?: string; amount: number; items_json: unknown[]; note?: string },
+): Promise<boolean> {
+  try {
+    const res = await fetch("/api/admin/pos/checkout", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...snapshot,
+        payment_method: "qr",
+        square_checkout_id: checkoutId,
+        tax_rate: 10,
+        create_receipt: true,
+      }),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
 export default function PosClient() {
   // ── Mode ──
   const [mode, setMode] = useState<PosMode>("reservation");
@@ -220,6 +279,41 @@ export default function PosClient() {
    * 会計をやめる（キャンセル・完了）まで同じ値を使う。
    */
   const squareRef = useRef<string | null>(null);
+  /**
+   * 表示中の Square チェックアウトが「どの会計」のものかのスナップショット。
+   * 予約切替の effect は `selected` が**既に切り替わった後**に走るため、
+   * その時点の `mode`/`selected` を読むと新しい予約に誤って紐付く
+   * （取り違え）。チェックアウト作成時点の値を ref に控え、切替後に
+   * 完了が判明したときはこちらを使って**元の予約に**記帳する。
+   */
+  const activeCheckoutSnapshotRef = useRef<{
+    reservation_id?: string;
+    customer_id?: string;
+    amount: number;
+    items_json: unknown[];
+    note?: string;
+  } | null>(null);
+  /**
+   * 予約切替で離れた予約の決済が完了していたのに、記帳（POST）が失敗した分。
+   * 現在の画面（別の予約・別のモード）とは無関係に残るので、
+   * console.error だけでは店員が気づけない。手動で再試行できるよう
+   * 永続的なバナーに出す（/code-review 指摘）。
+   */
+  const [staleCompletedCheckouts, setStaleCompletedCheckouts] = useState<
+    Array<{ checkoutId: string; snapshot: NonNullable<typeof activeCheckoutSnapshotRef.current> }>
+  >([]);
+  /**
+   * 予約切替で離れた予約の端末チェックアウトを取り消そうとして genuine failure
+   * （completed でも ok でもない、ネットワークエラー等）になった分。この effect は
+   * 取消の成否に関わらず即座に qrSessionId 等の状態をリセットするため、取消
+   * できたかどうか分からないまま画面からは消える —— 端末には決済可能なQRが
+   * 生きたまま残っている可能性がある。手動で再試行できるよう永続バナーに出す
+   * （/code-review 指摘: 予約切替のeffectがgenuine failureを無視し、追跡不能な
+   * まま状態をリセットしていた）。
+   */
+  const [staleUncancelledCheckouts, setStaleUncancelledCheckouts] = useState<
+    Array<{ checkoutId: string; snapshot: NonNullable<typeof activeCheckoutSnapshotRef.current> }>
+  >([]);
   // 決済は済んだが記録に失敗したセッション。**これがある間は新しいQRを出させない**
   // （出すと客が二重に請求される）
   /** 記録に失敗した決済の再送内容。**決済は済んでいるので同じ本文で送り直す。** */
@@ -232,29 +326,64 @@ export default function PosClient() {
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // ── Mode switch reset ──
-  const handleModeSwitch = useCallback((newMode: PosMode) => {
-    setMode(newMode);
-    setSelected(null);
-    setCart([]);
-    setMenuSearch("");
-    setMenuCategory(null);
-    setResult(null);
-    setError(null);
-    setPaymentMethod("cash");
-    setReceivedAmount("");
-    setNote("");
-    setQrStep("idle");
-    setQrDataUrl(null);
-    setQrSessionId(null);
-    setQrError(null);
-    setInvoiceSearch("");
-    setInvoiceSearchError(null);
-    setLoadedInvoice(null);
-    if (pollingRef.current) {
-      clearInterval(pollingRef.current);
-      pollingRef.current = null;
-    }
-  }, []);
+  const handleModeSwitch = useCallback(
+    async (newMode: PosMode) => {
+      // 表示中のタブ（reservation/walkin/invoice）を切り替えても、端末に出した
+      // QR はモードを跨いで生きている。消さずに離れると、客が読んで決済でき、
+      // その分は Ledra がチェックアウトIDを持っていないので追えなくなる
+      // （handleCancelQr / 予約切替 effect と同じ理由。/code-review 指摘）
+      //
+      // 取消の応答を確かめずに切り替えると、502（取消できなかった）が
+      // fetch の catch では拾えない（HTTP エラーは reject しない）ため、
+      // 切り替えを続けて QR を生かしたまま見失う。**取消が失敗したら
+      // 切り替えを止める**（/code-review 指摘）
+      if (squareMode === "terminal" && qrSessionId) {
+        const result = await cancelSquareCheckout(qrSessionId);
+        if (!result.ok) {
+          if (result.completed) {
+            // 取消の直前に決済が完了していた。切替を続けると記帳の機会を
+            // 失う（二重決済より悪い、売上が消える経路）ので、記帳してから
+            // 切替を止める。mode/selected はまだこの会計のものなので
+            // recordPaidSale の現在値でよい（/code-review 指摘）。
+            // ポーリングを止めてから呼ぶ —— 動いたままだと次の tick でも
+            // 同じ決済を検出して recordPaidSale が二重に走りうる
+            if (pollingRef.current) {
+              clearInterval(pollingRef.current);
+              pollingRef.current = null;
+            }
+            await recordPaidSaleRef.current({ payment_method: "qr", square_checkout_id: qrSessionId });
+            return;
+          }
+          setError("端末の会計を取り消せなかったため、タブを切り替えられません。端末の画面を確認してください。");
+          return;
+        }
+      }
+      setMode(newMode);
+      setSelected(null);
+      setCart([]);
+      setMenuSearch("");
+      setMenuCategory(null);
+      setResult(null);
+      setError(null);
+      setPaymentMethod("cash");
+      setReceivedAmount("");
+      setNote("");
+      setQrStep("idle");
+      setQrDataUrl(null);
+      setQrSessionId(null);
+      setQrError(null);
+      setSquareMode(null);
+      squareRef.current = null;
+      setInvoiceSearch("");
+      setInvoiceSearchError(null);
+      setLoadedInvoice(null);
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current);
+        pollingRef.current = null;
+      }
+    },
+    [squareMode, qrSessionId],
+  );
 
   // ── Invoice search ──
   const handleInvoiceSearch = useCallback(async () => {
@@ -366,6 +495,41 @@ export default function PosClient() {
   // Reset form when selection changes (reservation mode)
   useEffect(() => {
     if (mode !== "reservation") return;
+    // 端末に出したままの QR を消してから離れる。消さずに離れると、
+    // **予約を切り替えた後も端末は生きたまま**で、客が読んで決済でき、
+    // その分は Ledra がチェックアウトIDを持っていないので追えなくなる。
+    //
+    // 応答を確かめずに投げっぱなしにすると、502（取消できなかった）や
+    // 409（取消直前に決済完了）を検知できない。この effect は既に
+    // `selected` が新しい予約に変わった後で走るため、`recordPaidSale`
+    // （現在の mode/selected を読む）は使えない —— **離れた予約のスナップ
+    // ショット**（チェックアウト作成時点の値）で直接記帳する
+    // （/code-review 指摘）。
+    if (squareMode === "terminal" && qrSessionId) {
+      const staleCheckoutId = qrSessionId;
+      const snapshot = activeCheckoutSnapshotRef.current;
+      void cancelSquareCheckout(staleCheckoutId).then((result) => {
+        if (!result.ok && result.completed && snapshot) {
+          void recordSquareCheckoutFromSnapshot(staleCheckoutId, snapshot).then((ok) => {
+            if (ok) {
+              void mutate();
+            } else {
+              // 記帳に失敗した。既に別の予約へ切替済みなので、この画面の
+              // error 表示に出しても店員は気づけない（すぐ消える／別会計の
+              // 操作で上書きされる）。現在の画面と無関係に残る永続バナーへ
+              // 積んで、手動で再試行できるようにする（/code-review 指摘）
+              setStaleCompletedCheckouts((prev) => [...prev, { checkoutId: staleCheckoutId, snapshot }]);
+            }
+          });
+        } else if (!result.ok && !result.completed && snapshot) {
+          // genuine failure（ネットワークエラー等）。取消できたか分からない
+          // まま画面はもう切り替わっている —— 端末にQRが生きたままの可能性が
+          // ある。放置すると二重に決済を受け付けかねないので、手動で再試行
+          // できる永続バナーへ積む（/code-review 指摘）。
+          setStaleUncancelledCheckouts((prev) => [...prev, { checkoutId: staleCheckoutId, snapshot }]);
+        }
+      });
+    }
     setPaymentMethod("cash");
     setReceivedAmount("");
     setNote("");
@@ -381,6 +545,9 @@ export default function PosClient() {
       clearInterval(pollingRef.current);
       pollingRef.current = null;
     }
+    // squareMode/qrSessionId は意図的に依存配列から外す:
+    // これらが変わるたびではなく、予約(selected)を切り替えたときだけ動かす
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selected?.id, mode]);
 
   // Cleanup polling on unmount
@@ -475,6 +642,58 @@ export default function PosClient() {
       }
     },
     [mode, selected, loadedInvoice, amount, checkoutItems, note, mutate],
+  );
+
+  // handleModeSwitch はファイル内で recordPaidSale より前に定義されており、
+  // 依存配列に直接 recordPaidSale を入れると TDZ でクラッシュする。ref 経由で
+  // 常に最新の関数を呼べるようにし、かつ handleModeSwitch 自体の再生成（と、
+  // それに伴う useCallback の依存配列の不整合）を避ける。
+  const recordPaidSaleRef = useRef(recordPaidSale);
+  useEffect(() => {
+    // 「常に最新のコールバックを ref で持つ」定番パターン。handleModeSwitch を
+    // 毎回作り直さないための意図的な ref 更新（react-hooks/immutability の
+    // 誤検知）。
+    // eslint-disable-next-line react-hooks/immutability
+    recordPaidSaleRef.current = recordPaidSale;
+  }, [recordPaidSale]);
+
+  // 離れた予約の完了済み決済（記帳失敗分）を再試行する
+  const retryStaleCompletedCheckout = useCallback(
+    async (checkoutId: string) => {
+      const entry = staleCompletedCheckouts.find((e) => e.checkoutId === checkoutId);
+      if (!entry) return;
+      const ok = await recordSquareCheckoutFromSnapshot(entry.checkoutId, entry.snapshot);
+      if (ok) {
+        setStaleCompletedCheckouts((prev) => prev.filter((e) => e.checkoutId !== checkoutId));
+        void mutate();
+      }
+    },
+    [staleCompletedCheckouts, mutate],
+  );
+
+  // 離れた予約の端末チェックアウトの取消（genuine failure分）を再試行する
+  const retryStaleUncancelledCheckout = useCallback(
+    async (checkoutId: string) => {
+      const entry = staleUncancelledCheckouts.find((e) => e.checkoutId === checkoutId);
+      if (!entry) return;
+      const result = await cancelSquareCheckout(checkoutId);
+      if (result.ok) {
+        setStaleUncancelledCheckouts((prev) => prev.filter((e) => e.checkoutId !== checkoutId));
+        return;
+      }
+      if (result.completed) {
+        setStaleUncancelledCheckouts((prev) => prev.filter((e) => e.checkoutId !== checkoutId));
+        const ok = await recordSquareCheckoutFromSnapshot(entry.checkoutId, entry.snapshot);
+        if (ok) {
+          void mutate();
+        } else {
+          setStaleCompletedCheckouts((prev) => [...prev, entry]);
+        }
+        return;
+      }
+      // まだ genuine failure。バナーに残したまま次の再試行を待つ。
+    },
+    [staleUncancelledCheckouts, mutate],
   );
 
   // ── QR Code card payment flow ──
@@ -578,17 +797,38 @@ export default function PosClient() {
   }, [selected, loadedInvoice, amount, checkoutItems, note, mutate, mode, recordPaidSale]);
 
   // ── Cancel QR payment ──
-  const handleCancelQr = useCallback(() => {
+  const handleCancelQr = useCallback(async () => {
+    // 端末に出した QR を消す。残すと、**現金会計に切り替えた後で客が読んで
+    // 二重に払える**。応答を確かめずに投げっぱなしにすると、取消直前に
+    // 決済が完了していた場合（409 / square_already_completed）を見逃し、
+    // 記帳しないまま「戻る」を通してしまう（/code-review 指摘）。
+    // mode/selected はまだこの会計のものなので recordPaidSale の
+    // 現在値で正しく記帳できる（予約切替 effect と違い、ここでは選択を
+    // 変えていない）。
+    //
+    // ポーリングは結果が分かるまで止めない —— 取消が本当に失敗した
+    // （completed でもない）場合、ここで止めてしまうと、後で決済が完了しても
+    // 誰も気づけなくなる。ポーリングが生きていれば次の tick で拾える
+    // （/code-review 指摘: 「戻る」失敗時も状態を残すべき）。
+    if (squareMode === "terminal" && qrSessionId) {
+      const result = await cancelSquareCheckout(qrSessionId);
+      if (!result.ok) {
+        if (result.completed) {
+          if (pollingRef.current) {
+            clearInterval(pollingRef.current);
+            pollingRef.current = null;
+          }
+          await recordPaidSale({ payment_method: "qr", square_checkout_id: qrSessionId });
+          return;
+        }
+        setQrError("端末の会計を取り消せませんでした。端末の画面を確認してください。");
+        setProcessing(false);
+        return;
+      }
+    }
     if (pollingRef.current) {
       clearInterval(pollingRef.current);
       pollingRef.current = null;
-    }
-    // 端末に出した QR を消す。残すと、**現金会計に切り替えた後で客が読んで
-    // 二重に払える**（失敗しても店員の操作は止めない）
-    if (squareMode === "terminal" && qrSessionId) {
-      void fetch(`/api/admin/square/qr-checkout?id=${encodeURIComponent(qrSessionId)}`, { method: "DELETE" }).catch(
-        () => {},
-      );
     }
     setQrStep("idle");
     setQrDataUrl(null);
@@ -598,7 +838,7 @@ export default function PosClient() {
     setSquareMode(null);
     squareRef.current = null;
     setProcessing(false);
-  }, [squareMode, qrSessionId]);
+  }, [squareMode, qrSessionId, recordPaidSale]);
 
   /**
    * Square 経由の QR コード決済（PayPay / d払い / 楽天ペイ / au PAY / メルペイ /
@@ -651,6 +891,18 @@ export default function PosClient() {
     const checkoutId = created.checkout_id;
     setQrSessionId(checkoutId);
     setQrStep("showing");
+    activeCheckoutSnapshotRef.current = {
+      reservation_id: mode === "reservation" ? selected?.id : undefined,
+      customer_id:
+        (mode === "reservation"
+          ? selected?.customer_id
+          : mode === "invoice"
+            ? loadedInvoice?.customer_id
+            : undefined) ?? undefined,
+      amount,
+      items_json: checkoutItems,
+      note: note || undefined,
+    };
 
     // 端末の状態をポーリング（2秒間隔・最大5分）。
     // 通信が2秒より遅いと tick が重なるので、完了したら二度と入らないようにする
@@ -662,11 +914,29 @@ export default function PosClient() {
         if (pollingRef.current) clearInterval(pollingRef.current);
         pollingRef.current = null;
         // **端末のQRを消してから終える。** 残すと、会計を諦めた後で客が読んで
-        // 決済でき、その分は Ledra に残らない
-        void fetch(`/api/admin/square/qr-checkout?id=${encodeURIComponent(checkoutId)}`, { method: "DELETE" }).catch(
-          () => {},
-        );
-        setQrError("決済がタイムアウトしました。端末の画面を確認してください。");
+        // 決済でき、その分は Ledra に残らない。
+        //
+        // 取消の応答を確かめずに冪等キーを使い切ると、DELETE が失敗（ネットワーク
+        // エラーや 502）したときに**元のチェックアウトが生きたまま**新しいキーで
+        // 「再試行」してしまい、二重の支払い要求になりうる。取消が確認できた
+        // ときだけキーを手放す（/code-review 指摘）
+        const result = await cancelSquareCheckout(checkoutId);
+        if (result.ok) {
+          squareRef.current = null;
+          setQrError("決済がタイムアウトしました。端末の画面を確認してください。");
+        } else if (result.completed) {
+          // 取消の直前に決済が完了していた。ここは既にポーリングを止めた
+          // 後なので、そのままだと記帳の機会を失う（/code-review 指摘）
+          setQrStep("paid");
+          await recordPaidSale({ payment_method: "qr", square_checkout_id: checkoutId });
+          return;
+        } else {
+          // 冪等キーは残す。「再試行」を押しても同じキーで Square に問い合わせる
+          // ため、元のチェックアウトが生きていれば新規作成にはならない
+          setQrError(
+            "決済がタイムアウトし、端末の会計を取り消せませんでした。端末の画面を確認してから操作してください。",
+          );
+        }
         setQrStep("error");
         return;
       }
@@ -684,6 +954,10 @@ export default function PosClient() {
           done = true;
           if (pollingRef.current) clearInterval(pollingRef.current);
           pollingRef.current = null;
+          // 冪等キーを使い切っておく。**残したまま「再試行」を押すと**、Square は
+          // 同じキーに対して同じ（取消済みの）チェックアウトを返し続け、新しい
+          // 決済を一切開始できなくなる（/code-review 指摘）
+          squareRef.current = null;
           setQrError(`決済がキャンセルされました${status.cancel_reason ? `（${status.cancel_reason}）` : ""}。`);
           setQrStep("error");
         }
@@ -692,7 +966,7 @@ export default function PosClient() {
       }
     }, 2000);
     return true;
-  }, [amount, note, recordPaidSale]);
+  }, [amount, note, recordPaidSale, mode, selected, loadedInvoice, checkoutItems]);
 
   // ── Main checkout handler ──
   const handleCheckout = useCallback(async () => {
@@ -798,6 +1072,46 @@ export default function PosClient() {
         activeTab={mode}
         onTabSelect={(k) => handleModeSwitch(k as PosMode)}
       />
+
+      {staleCompletedCheckouts.length > 0 && (
+        <div className="space-y-2 rounded-xl border border-warning bg-warning-dim p-4">
+          <p className="text-sm font-semibold text-warning-text">
+            {"離れた予約の決済が完了していましたが、記帳に失敗した分があります"}
+          </p>
+          {staleCompletedCheckouts.map((entry) => (
+            <div key={entry.checkoutId} className="flex items-center justify-between gap-3 text-sm">
+              <span className="text-warning-text">{`金額 ${formatJpy(entry.snapshot.amount)}`}</span>
+              <button
+                type="button"
+                onClick={() => retryStaleCompletedCheckout(entry.checkoutId)}
+                className="rounded-lg border border-warning px-3 py-1 text-xs font-medium text-warning-text hover:bg-warning-dim/60"
+              >
+                {"再試行"}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {staleUncancelledCheckouts.length > 0 && (
+        <div className="space-y-2 rounded-xl border border-danger bg-danger-dim p-4">
+          <p className="text-sm font-semibold text-danger-text">
+            {"離れた予約の端末チェックアウトを取り消せませんでした。端末を確認してください"}
+          </p>
+          {staleUncancelledCheckouts.map((entry) => (
+            <div key={entry.checkoutId} className="flex items-center justify-between gap-3 text-sm">
+              <span className="text-danger-text">{`金額 ${formatJpy(entry.snapshot.amount)}`}</span>
+              <button
+                type="button"
+                onClick={() => retryStaleUncancelledCheckout(entry.checkoutId)}
+                className="rounded-lg border border-danger px-3 py-1 text-xs font-medium text-danger-text hover:bg-danger-dim/60"
+              >
+                {"再試行"}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
 
       <FirstUseInlineGuide
         storageKey="pos"

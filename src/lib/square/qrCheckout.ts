@@ -96,7 +96,8 @@ export async function getPayment(accessToken: string, paymentId: string): Promis
   return res.payment;
 }
 
-export type FindPaymentResult = { ok: true; payment: SquarePayment } | { ok: false; reason: "not_found" | "ambiguous" };
+export type FindPaymentResult =
+  { ok: true; payment: SquarePayment } | { ok: false; reason: "not_found" | "ambiguous" | "search_truncated" };
 
 /**
  * 「Square POS アプリで会計した分」を引き当てる。
@@ -115,25 +116,62 @@ export async function findRecentPayment(params: {
   excludeIds?: readonly string[];
 }): Promise<FindPaymentResult> {
   const beginTime = new Date(params.now.getTime() - params.withinMinutes * 60_000).toISOString();
-  const res = await squareFetch<{ payments?: SquarePayment[] }>(
-    params.accessToken,
-    `/v2/payments?location_id=${encodeURIComponent(params.locationId)}&begin_time=${encodeURIComponent(beginTime)}&sort_order=DESC&limit=100`,
-  );
-
   const exclude = new Set(params.excludeIds ?? []);
-  const candidates = (res.payments ?? []).filter(
-    (p) =>
-      p.status === "COMPLETED" &&
-      // **QR（ウォレット）決済だけを見る。** Square アプリで切った同額のカード・
-      // 現金まで候補に入れると、それを引き当てるか「特定できない」になる
-      p.source_type === "WALLET" &&
-      p.amount_money?.amount === params.amountJpy &&
-      (p.amount_money?.currency ?? "JPY") === "JPY" &&
-      !exclude.has(p.id),
-  );
+  const candidates: SquarePayment[] = [];
+
+  // ページングを最後まで辿る。**1ページ目だけ見て決めると**、100件を超える
+  // 店舗で対象の決済が2ページ目に落ちて「見つからない」になったり、逆に
+  // 本来2件ある同額のウォレット決済の片方だけを見て「1件に絞れた」と
+  // 誤認して取り違えることがある（曖昧判定そのものが1ページ内でしか効かない）。
+  let cursor: string | undefined;
+  let pages = 0;
+  do {
+    const query = new URLSearchParams({
+      location_id: params.locationId,
+      begin_time: beginTime,
+      sort_order: "DESC",
+      limit: "100",
+    });
+    if (cursor) query.set("cursor", cursor);
+    const res = await squareFetch<{ payments?: SquarePayment[]; cursor?: string }>(
+      params.accessToken,
+      `/v2/payments?${query.toString()}`,
+    );
+    for (const p of res.payments ?? []) {
+      if (
+        p.status === "COMPLETED" &&
+        // **QR（ウォレット）決済だけを見る。** Square アプリで切った同額のカード・
+        // 現金まで候補に入れると、それを引き当てるか「特定できない」になる
+        p.source_type === "WALLET" &&
+        p.amount_money?.amount === params.amountJpy &&
+        (p.amount_money?.currency ?? "JPY") === "JPY" &&
+        !exclude.has(p.id)
+      ) {
+        candidates.push(p);
+      }
+    }
+    cursor = res.cursor;
+    pages++;
+    // 候補が2件以上見えた時点で、以降のページを見ても結果は変わらない
+    // （曖昧の判定はすでに確定している）。ここで止めないと高頻度店舗で
+    // 最大100回の逐次 Square 呼び出しになり、無駄なAPI消費とタイムアウトの
+    // リスクを生む（/code-review 指摘）。
+    if (candidates.length > 1) break;
+    // 上限（100ページ = 最大1万件）。begin_time で30分に絞っているので
+    // 通常はここに届かないが、無限ループにはしない
+  } while (cursor && pages < 100);
+
+  // 曖昧の判定は「まだ未確認のページが残っている」より優先する。早期break
+  // した場合、cursor はまだ残っているが、それを理由に search_truncated を
+  // 返すと誤った理由になる。
+  if (candidates.length > 1) return { ok: false, reason: "ambiguous" };
+
+  // 上限に達した時点でまだ cursor が残っている＝未確認のページがある。
+  // ここまでの候補が1件でも、**残りのページに同額の別決済がいる可能性を
+  // 否定できない**ので「1件に絞れた」として通さない（/code-review 指摘）。
+  if (cursor) return { ok: false, reason: "search_truncated" };
 
   if (candidates.length === 0) return { ok: false, reason: "not_found" };
-  if (candidates.length > 1) return { ok: false, reason: "ambiguous" };
   return { ok: true, payment: candidates[0] };
 }
 

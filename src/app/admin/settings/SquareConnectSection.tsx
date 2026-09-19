@@ -101,6 +101,31 @@ export default function SquareConnectSection({ initialConnection }: Props) {
     }
   }, [pairingCode]);
 
+  /**
+   * 端末の紐付けを解除する。買い替え・返却・別端末への切り替え、または
+   * Square を一度切断して繋ぎ直した後に古い端末IDが残ったままの場合に使う。
+   *
+   * `square_connections.square_terminal_device_id` は OAuth の再接続時にも
+   * 保持されるため、解除の手段が無いと**古い（もう無い）端末を会計画面が
+   * 使い続け**、端末なし用の Square アプリ経路にも切り替えられなくなる
+   * （/code-review 指摘）。
+   */
+  const handleUnpairDevice = useCallback(async () => {
+    if (!confirm("Square 端末の接続を解除しますか？解除後は Square アプリでの会計に切り替わります。")) return;
+    setDeviceBusy(true);
+    setErr(null);
+    try {
+      const res = await fetch("/api/admin/square/device", { method: "DELETE" });
+      if (!res.ok) throw new Error("端末の接続解除に失敗しました");
+      setDevice(null);
+      setSuccessMsg("Square 端末の接続を解除しました。");
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "端末の接続解除に失敗しました");
+    } finally {
+      setDeviceBusy(false);
+    }
+  }, []);
+
   useEffect(() => {
     if (connection?.status === "active") void fetchDevice();
   }, [connection?.status, fetchDevice]);
@@ -291,9 +316,19 @@ export default function SquareConnectSection({ initialConnection }: Props) {
             QRコード決済（PayPay / d払い / 楽天ペイ / au PAY / メルペイ ほか）
           </p>
           {device?.device_id ? (
-            <p className="text-sm text-success">
-              Square 端末に接続済み。会計画面で「QR決済」を選ぶと端末にQRが出ます。
-            </p>
+            <div className="space-y-2">
+              <p className="text-sm text-success">
+                Square 端末に接続済み。会計画面で「QR決済」を選ぶと端末にQRが出ます。
+              </p>
+              <button
+                type="button"
+                className="btn-secondary text-sm"
+                disabled={deviceBusy}
+                onClick={handleUnpairDevice}
+              >
+                {deviceBusy ? "解除中…" : "端末の接続を解除する"}
+              </button>
+            </div>
           ) : pairingCode ? (
             <div className="space-y-2">
               <p className="text-sm text-secondary">
