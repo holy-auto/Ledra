@@ -5,6 +5,7 @@
  * Vision AI チェックは standard 以上
  */
 
+import { checkRateLimit } from "@/lib/api/rateLimit";
 import { z } from "zod";
 
 import { apiOk, apiInternalError, apiValidationError } from "@/lib/api/response";
@@ -47,6 +48,8 @@ export const POST = withCaller(
 
       // Vision AI (Anthropic) を最大 50 枚分呼び出すため、テナント単位で
       // レートリミットを掛けて課金爆発を防ぐ。
+      const limited = await checkRateLimit(req, "ai", `ai-quality:${caller.tenantId}`);
+      if (limited) return limited;
 
       const parsed = aiQualitySchema.safeParse(await req.json().catch(() => ({})));
       if (!parsed.success) {

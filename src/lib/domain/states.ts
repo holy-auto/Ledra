@@ -2,8 +2,8 @@
  * 正準ドメイン状態語彙(IMP-001)。
  *
  * 出典: Ledra UI/UX & Development Specification v2.0 §19 / Appendix A。
- * 8軸(Job / Step / Severity / Certificate / Payment / Sync / PartInstallation /
- * DocumentCorrection)は独立した関心事であり、1つの status カラムに混ぜない。新しいステータス文字列・遷移を
+ * 9軸(Job / Step / Severity / Certificate / Payment / Sync / PartInstallation /
+ * DocumentCorrection / OutsourcedWork)は独立した関心事であり、1つの status カラムに混ぜない。新しいステータス文字列・遷移を
  * 追加する場合は、必ず本モジュールと __tests__ を先に更新すること(docs/adr/0002 参照)。
  *
  * 注意: これは v2.0 語彙の正準定義であり、稼働中の実装語彙
@@ -148,3 +148,50 @@ export const isFtJobState = makeGuard(FT_JOB_STATES);
 export const FT_DEFECT_STATES = ["OPEN", "INVESTIGATING", "RESOLVED", "CLOSED", "WONTFIX"] as const;
 export type FtDefectState = (typeof FT_DEFECT_STATES)[number];
 export const isFtDefectState = makeGuard(FT_DEFECT_STATES);
+
+/**
+ * 支給部品を伴う外注施工の作業依頼の状態（外注施工履歴 ST-001 / ST-002）。
+ *
+ * 発注元が部品を用意して施工事業者へ依頼し、受領・照合・施工・完了確認までを
+ * 1つの作業依頼で追う。通常 11 状態（ST-001）と例外・中間 14 状態（ST-002）。
+ * 「一致 / 要確認 / 不一致」「再発送手配中」などは状態ではなく、照合結果・対応方針・
+ * イベント属性として記録する（ST-003）。
+ *
+ * 終端（ST-004）: COMPLETED（発注元の完了承認済み）と CANCELED。RECEIPT_REJECTED は
+ * **受領試行**の終端であり、作業依頼としては新しい受領試行で RECEIPT_IN_REVIEW へ
+ * 戻れる（TR-032）。DB 列 outsourced_work_requests.status にこの値をそのまま格納する。
+ *
+ * 遷移表は `OUTSOURCED_WORK_TRANSITIONS`（./transitions）、実行主体と復帰先制御は
+ * src/lib/outsourcedWork/rules.ts。
+ */
+export const OUTSOURCED_WORK_STATES = [
+  // ── 通常（ST-001）──
+  "REQUEST_CREATED", // 依頼作成
+  "PARTS_PREPARED", // 部品準備済み
+  "AWAITING_HANDOVER", // 引渡し待ち
+  "RECEIPT_IN_REVIEW", // 受領確認中
+  "RECEIVED", // 受領済み
+  "MATCHED", // 照合済み
+  "READY_FOR_WORK", // 施工待ち
+  "WORK_IN_PROGRESS", // 施工中
+  "WORK_COMPLETED", // 施工完了
+  "AWAITING_CLIENT_CONFIRMATION", // 発注元確認待ち
+  "COMPLETED", // 完了
+  // ── 例外・中間（ST-002）──
+  "QUANTITY_SHORTAGE", // 数量不足
+  "PART_NUMBER_MISMATCH", // 品番不一致
+  "DAMAGE_REVIEW", // 破損確認
+  "RECEIPT_REJECTED", // 受領拒否
+  "WORK_INTERRUPTED", // 施工中断
+  "EXCEPTION_APPROVAL_PENDING", // 例外承認待ち
+  "EXCEPTION_APPROVED", // 例外承認済み
+  "EXCEPTION_REJECTED", // 例外却下
+  "RETURNED", // 差戻し
+  "REWORK_PENDING", // 再施工待ち
+  "REWORK_IN_PROGRESS", // 再施工中
+  "REWORK_COMPLETED", // 再施工完了
+  "ON_HOLD", // 作業保留
+  "CANCELED", // 作業取消
+] as const;
+export type OutsourcedWorkState = (typeof OUTSOURCED_WORK_STATES)[number];
+export const isOutsourcedWorkState = makeGuard(OUTSOURCED_WORK_STATES);

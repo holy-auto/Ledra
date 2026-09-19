@@ -7,6 +7,7 @@
  * 送信は別操作 (人が確認して PUT で sent) で行う。ここでは draft 文面を返すだけ。
  */
 
+import { checkRateLimit } from "@/lib/api/rateLimit";
 import { z } from "zod";
 
 import { apiOk, apiNotFound, apiValidationError, apiInternalError } from "@/lib/api/response";
@@ -37,6 +38,8 @@ export const POST = withCaller(
 
       // 発注メッセージ生成は呼ぶたびに AI 費用が出る。
       // プラン判定より後に置く。Free のテナントには 429 ではなく案内を返したい。
+      const limited = await checkRateLimit(req, "ai", `po-ai-message:${caller.tenantId}`);
+      if (limited) return limited;
 
       const parsed = schema.safeParse(await req.json().catch(() => ({})));
       if (!parsed.success) return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");

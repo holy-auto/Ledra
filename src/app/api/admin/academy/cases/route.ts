@@ -5,6 +5,7 @@
 
 import { z } from "zod";
 
+import { checkRateLimit } from "@/lib/api/rateLimit";
 import { apiOk, apiInternalError, apiValidationError, apiNotFound } from "@/lib/api/response";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { presentAcademyCases, academyCaseToken, type AcademyCaseRow } from "@/lib/academy/casePresentation";
@@ -137,6 +138,14 @@ export const POST = withCaller(
         // AI 呼び出しは**レート制限のすぐ隣**に置く。ヘルパーへ出すと、ハンドラ単位で
         // 追う検出器（aiRouteRateLimit.test.ts）から見えなくなり、「制限の無い AI 呼び出し」
         // として扱われる。読みやすさより、呼び出しと制限が並んでいることを優先する。
+        //
+        // withCaller への統一リファクタ（378本、2026-09-16）でこの呼び出しが一度
+        // 消えていた ―― コメントだけが「隣に置く」と言い張り、実体が無かった。
+        // aiRouteRateLimit.test.ts と publishGate.test.ts の両方がこれを検出した。
+        // （PR #1092 から移植。main でも赤になっている回帰の修正）
+        const limited = await checkRateLimit(req, "ai", `academy-case:${caller.tenantId}`);
+        if (limited) return limited;
+
         let aiSummary: string | undefined;
         let goodPoints: string[] = [];
         let cautionPoints: string[] = [];

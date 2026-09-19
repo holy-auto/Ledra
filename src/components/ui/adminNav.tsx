@@ -354,6 +354,21 @@ export const NAV_GROUPS: NavGroup[] = [
         ),
       },
       {
+        // 支給部品を伴う外注施工の作業依頼。発注元・施工事業者の両方がこの画面を使う。
+        href: "/admin/outsourced-work",
+        label: "外注施工履歴",
+        requiredPermission: "orders:view",
+        icon: (
+          <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M9 12h6m-6 4h6M7.5 3.75h9A2.25 2.25 0 0 1 18.75 6v12a2.25 2.25 0 0 1-2.25 2.25h-9A2.25 2.25 0 0 1 5.25 18V6A2.25 2.25 0 0 1 7.5 3.75Zm1.5-1.5h6v3h-6v-3Z"
+            />
+          </svg>
+        ),
+      },
+      {
         // 外注として元請けから連携コードをもらった側の画面。自分が施工した記録だけが出る。
         href: "/admin/linked-work",
         label: "受注先での施工実績",
