@@ -4,6 +4,31 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-09-19 外注施工履歴を main へマージ —— ただし本番 DB には届いていない
+
+PR #1095 がマージされた（`8f26a0e`・2026-09-19 13:16 UTC）。CI は 10 件すべて緑、
+`/code-review` の指摘 13 件（機能 10 + 検出器 3）は反映済み。
+
+**本番 DB への適用は失敗している。** マージで走った `db-migrate`（run #73）が
+`Remote migration versions not found in local migrations directory` で停止した。
+**本番の台帳に main に無い版が7つある**のが原因で、#1094 が「次のマージで失敗する」と
+書いていたとおりの形。前回のマージ（#1094 自身・run #72）も同じ理由で失敗しており、
+**本番へスキーマが届かなくなってから2回目**。
+
+- 本番に在って main に無い7版（本番台帳を引いて確認）: `ft_projects` / `ft_agreements_training` /
+  `ft_jobs_conditions` / `ft_evidence_quality_defects` / `ft_tenant_rls_and_storage`（PR #1093・未マージ）、
+  `workshop_capability_profiles`、`20260918142610 remote_schema`（`db pull` 由来・368 文）。
+- main に在って本番に無い2版: `20260918150000`（`certificates.certificate_no`）、
+  `20260918160000`（外注施工履歴の4表）。
+- 本番で直接確認: `outsourced_work_requests` / `outsourced_supplied_parts` /
+  `outsourced_receipt_attempts` / `outsourced_work_events` は**いずれも存在しない**。
+  `certificates.certificate_no` も無い（保険会社ポータルの証明書詳細は 42703 のまま）。
+
+したがって **`/admin/outsourced-work` は本番では使えない**。コードは Vercel 経由で出ているが、
+最初のクエリでテーブルが無い。**台帳の修復が済むまで、以降のスキーマ変更も本番に届かない。**
+修復案は OPEN_QUESTIONS に3つ並べた（代表判断待ち）。
+
+
 ## 2026-09-19 保険会社ポータルの車両検索を本番で復旧した（enum に無い `'expired'` で毎回落ちていた）
 
 **本番の `insurer_search_vehicles(text,integer,integer,text,text)` が全呼び出し落ちていた。**
@@ -91,30 +116,6 @@ MISTAKE_LEDGER M-074）: 確かめたのは**本番の関数がもう静的エ�
 **残り**: 6引数オーバーロード `insurer_search_vehicles(text,integer,integer,text,text,text)`
 は、本番から消えた `insurer_is_active_subscription` を呼ぶので呼ばれれば必ず落ちる。
 アプリからの呼び出しは0件。消すか戻すかは未決（OPEN_QUESTIONS）。
-## 2026-09-19 外注施工履歴を main へマージ —— ただし本番 DB には届いていない
-
-PR #1095 がマージされた（`8f26a0e`・2026-09-19 13:16 UTC）。CI は 10 件すべて緑、
-`/code-review` の指摘 13 件（機能 10 + 検出器 3）は反映済み。
-
-**本番 DB への適用は失敗している。** マージで走った `db-migrate`（run #73）が
-`Remote migration versions not found in local migrations directory` で停止した。
-**本番の台帳に main に無い版が7つある**のが原因で、#1094 が「次のマージで失敗する」と
-書いていたとおりの形。前回のマージ（#1094 自身・run #72）も同じ理由で失敗しており、
-**本番へスキーマが届かなくなってから2回目**。
-
-- 本番に在って main に無い7版（本番台帳を引いて確認）: `ft_projects` / `ft_agreements_training` /
-  `ft_jobs_conditions` / `ft_evidence_quality_defects` / `ft_tenant_rls_and_storage`（PR #1093・未マージ）、
-  `workshop_capability_profiles`、`20260918142610 remote_schema`（`db pull` 由来・368 文）。
-- main に在って本番に無い2版: `20260918150000`（`certificates.certificate_no`）、
-  `20260918160000`（外注施工履歴の4表）。
-- 本番で直接確認: `outsourced_work_requests` / `outsourced_supplied_parts` /
-  `outsourced_receipt_attempts` / `outsourced_work_events` は**いずれも存在しない**。
-  `certificates.certificate_no` も無い（保険会社ポータルの証明書詳細は 42703 のまま）。
-
-したがって **`/admin/outsourced-work` は本番では使えない**。コードは Vercel 経由で出ているが、
-最初のクエリでテーブルが無い。**台帳の修復が済むまで、以降のスキーマ変更も本番に届かない。**
-修復案は OPEN_QUESTIONS に3つ並べた（代表判断待ち）。
-
 ## 2026-09-18 権限・AIレート制限の検出器を withCaller 対応にし、剥がれていた13本の制限を復元
 
 `withCaller` へ 378 本を寄せたリファクタで、認可とレート制限が**ハンドラ本文から
