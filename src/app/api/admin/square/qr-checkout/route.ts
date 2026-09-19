@@ -168,22 +168,38 @@ export async function DELETE(req: NextRequest) {
           { status: 502 },
         );
       }
-      // 400 は「終端状態から遷移できない」だが、終端状態には CANCELED だけでなく
-      // **COMPLETED（客がキャンセルの直前に支払い終えた）も含まれる**。ここを
-      // 区別せず ok:true を返すと、呼び出し側はキャンセル成功と判断して
-      // チェックアウトIDを捨て、**実際には成立した支払いが一切記帳されない**
-      // （二重決済より悪い、売上が消える経路。/code-review 指摘）。
-      const checkout = await getTerminalCheckout(ctx.accessToken, id);
-      if (checkout.status === "COMPLETED") {
-        return apiJson(
-          {
-            error: "square_already_completed",
-            message: "取消の直前に決済が完了しました。記帳のため会計を続けてください。",
-            checkout_id: id,
-          },
-          { status: 409 },
-        );
-      }
+      // 400（終端状態から遷移できない）は下の GET 確認へ続ける。
+    }
+    // Cancel Terminal Checkout の呼び出しが例外を投げなかった（2xx）としても、
+    // それは「取消済み」ではなく「物理端末への取消要求を受け付けた」でしか
+    // ない —— 端末との往復が要るため非同期で、`CANCEL_REQUESTED` のまま
+    // 返ってくることがある（`TerminalCheckoutStatus` に別状態として既に
+    // モデル化済み）。ここで確定させずに ok:true を返すと、呼び出し側は
+    // キャンセル成功と判断してポーリングを止め、その隙に客が支払いを完了
+    // させても誰も拾えなくなる（/code-review 指摘）。GET で実際の状態を
+    // 確認してから返す。COMPLETED の扱いは400分岐と同じ理由で必要
+    // （客がキャンセル直前に支払い終えたケースを区別する）。
+    const checkout = await getTerminalCheckout(ctx.accessToken, id);
+    if (checkout.status === "COMPLETED") {
+      return apiJson(
+        {
+          error: "square_already_completed",
+          message: "取消の直前に決済が完了しました。記帳のため会計を続けてください。",
+          checkout_id: id,
+        },
+        { status: 409 },
+      );
+    }
+    if (checkout.status !== "CANCELED") {
+      // まだ CANCEL_REQUESTED 等。呼び出し側は「取消未確認」として扱い、
+      // チェックアウトIDを保持したまま再試行できるようにする。
+      return apiJson(
+        {
+          error: "square_cancel_pending",
+          message: "端末の取消をまだ確認できませんでした。少し待ってから再試行してください。",
+        },
+        { status: 502 },
+      );
     }
     return apiOk({ ok: true });
   } catch (e) {

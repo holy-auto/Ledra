@@ -4,6 +4,30 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-09-19 端末チェックアウトの取消2xxを「取消済み」と決めていた（非同期）
+
+`/code-review`（Codex）6回目の追加指摘（P1×1）。
+
+- **端末チェックアウトの取消 API（`qr-checkout/route.ts` DELETE）が、Square の
+  Cancel Terminal Checkout 呼び出しが例外を投げなかった（2xx）ことをそのまま
+  「取消済み」と扱っていた。** 端末キャンセルは物理端末との往復が要るため
+  非同期で、2xxは「取消を受け付けた」でしかなく、実際には
+  `CANCEL_REQUESTED`（`TerminalCheckoutStatus` に既に別状態としてモデル化
+  済み）のまま返ってくることがある。ここで確定させずに `ok:true` を返すと、
+  呼び出し側はキャンセル成功と判断してポーリングを止め、その隙に客が支払いを
+  完了させても誰も拾えなくなる（`M-20260919-cancel-2xx-treated-as-final`、型A:
+  自分で書いた型定義を読み返していなかった）。400分岐（終端状態から遷移不可）
+  と同じ `getTerminalCheckout` 確認を、cancel 呼び出しが成功した経路にも
+  必ず通すよう統一し、`CANCELED` 以外は `square_cancel_pending`（502）を
+  返すようにした。クライアント側の `cancelSquareCheckout` は409以外の
+  非okをすべて genuine failure として扱う設計に既にしてあったため、
+  クライアント側の変更は不要だった（4回目・5回目の修正で作った
+  `staleCompletedCheckouts`/`staleUncancelledCheckouts` の再試行導線が
+  そのまま効く）。
+
+検証: `tsc` / `eslint` 0 errors、フルスイート 5812/5817 緑・5 skip、
+`check:schema` OK / `lint:migrations` OK。
+
 ## 2026-09-19 予約切替の取消失敗を見失っていた／ページング無駄打ち／決済証明の排他が不完全
 
 main 追従のマージコミットに対する `/code-review`（Codex）5回目のレビューで3件
