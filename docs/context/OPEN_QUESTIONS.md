@@ -41,6 +41,76 @@ main に無い状態になった（#1097 が持つ）。**復旧には #1093 と
 - 修復が済んだ後、`20260918150000` / `20260918160000` が本番で実際に通るか。
   再生 DB では 471/471 通っているが、本番の現状（`ft_*` が先に入っている）との組み合わせは未検証。
 
+
+## 呼ばれれば必ず落ちる `insurer_search_vehicles` の6引数オーバーロードをどうするか（2026-09-19）
+
+## 保険会社 RPC の認可が、ルート層にしか無い（2026-09-19・Codex P1）
+
+Codex が PR #1097 に P1 を4件出し、**2件はその PR で直し、2件はここに残した**。
+どちらも「この2関数だけの話ではない」ので、1本ずつ塞ぐと同じ漏れを量産する。
+
+### (a) 停止中の保険会社が RPC を直接叩ける
+
+ルート層の `resolveInsurerCaller`（`src/lib/api/insurerAuth.ts`）は
+`insurers.is_active = true AND status IN ('active','active_pending_review')` を見るが、
+**RPC 側は `insurer_users.is_active` しか見ない**。PostgREST を直接叩けば素通りする。
+
+本番で `insurer_users` を読む SECURITY DEFINER 関数は **17 本**あり、そのうち
+`insurers` 行まで見ているのは **`get_my_insurer_status` と `withdraw_insurer` の2本だけ**（実測）。
+穴を持つ主なもの: `insurer_search_vehicles` / `insurer_get_certificate` /
+`insurer_get_vehicle_certificates` / `insurer_search_certificates` / `insurer_search_stores`。
+
+**未決**: 根の共有関数は `my_insurer_ids()` と `current_insurer_id()`。ここを直すと
+保険会社系の RLS ポリシー全部に波及するので、影響範囲を測ってから決める。
+1本ずつ `join insurers` を足す案は、17本のうちどれを直したか追えなくなるので採らない。
+
+### (b) 複数保険会社に属するユーザで、RPC が保険会社の文脈を捨てる
+
+API は `active_insurer_id` クッキーで保険会社を選ばせているが、RPC は
+`insurer_users` を**条件なし `LIMIT 1`**（順序指定も無し）で拾う。
+別の保険会社のテナントを検索し、アクセスログもその保険会社に付きうる。
+
+**現在そのようなユーザは0人**（有効なメンバーシップ4件、複数所属0件。実測）。
+つまり今は潜在的な不具合。
+
+**未決**: 直すには RPC のシグネチャに `p_insurer_id` を足し、ルート側から
+検証済みの `caller.insurerId` を渡して、その保険会社でのメンバーシップを
+関数内で検証する必要がある。呼び出し側の変更を伴うので別 PR。
+
+## ~~呼ばれれば必ず落ちる `insurer_search_vehicles` の6引数オーバーロードをどうするか~~（2026-09-19・解決）
+
+**`20260919150043` で落とした。** Codex が「5引数と6引数の両方に一致して PostgREST が
+RPC を解決できない可能性がある」と指摘し、それが本当なら復旧そのものが成立しないため、
+曖昧さの条件ごと消した。落として安全な根拠は2つとも実測:
+呼び出し元は repo 全体で0件、そして呼ばれれば必ず 42883（依存先の
+`insurer_is_active_subscription` が本番に無い）。
+**落とした後、本番の全 plpgsql 関数で `plpgsql_check` の error は0件。**
+以下は解決前の記録として残す。
+
+## （解決済み）呼ばれれば必ず落ちる `insurer_search_vehicles` の6引数オーバーロードをどうするか（2026-09-19）
+
+本番には同名の関数が2つある。
+
+| シグネチャ | 状態 |
+|---|---|
+| `insurer_search_vehicles(text,integer,integer,text,text)` | アプリ（`src/app/api/insurer/vehicles/route.ts`）が呼ぶ方。**2026-09-19 に復旧済み** |
+| `insurer_search_vehicles(text,integer,integer,text,text,text)` | **呼ばれれば必ず落ちる。アプリからの呼び出しは0件** |
+
+6引数側は `public.insurer_is_active_subscription(uuid)` を呼ぶが、その関数は
+`20260907010000_drop_unmanaged_marketplace_tables.sql` で drop 済み（本番に0件）、
+根拠表 `insurer_subscriptions` も無い。つまり呼ばれた瞬間に 42883 になる。
+`p_status` で絞り込める版なので、**機能としては5引数版より新しい**ように見える。
+
+**未決**:
+
+- 消すか、`insurer_is_active_subscription` と `insurer_subscriptions` ごと戻すか【要確認】。
+  保険会社に有料プランを敷く計画があるかどうかで決まる。
+- 消す場合、**同名2つが並んでいる状態そのものが事故のもと**でもある
+  —— PostgREST の RPC は引数名で解決するので、片方を消すと呼び出し側の挙動が変わりうる。
+  消す前にアプリ側の呼び出しを全部当たる必要がある（現状は1箇所）。
+- 同じ drop（`20260907010000`）のコメントには「その関数はポリシーからもアプリからも
+  呼ばれていなかった」とあるが、**関数からは呼ばれていた**。
+  コメントの根拠の取り方も一緒に直す価値がある。
 ## 検出器の視界に残っている穴（2026-09-18）
 
 `withCaller` 対応で誤検出と盲点は消えたが、次の3つは残っている。
@@ -91,7 +161,9 @@ main に無い状態になった（#1097 が持つ）。**復旧には #1093 と
 | 版 | 出所 |
 |---|---|
 | `20260917000000` `20260917000100` `20260917000200` `20260917000300` | **PR #1093（メーカー実証テスト、`ft_*` 12 テーブル）** —— 未マージ |
-| `20260917000400` `20260917100000` `20260918142610` | **不明**【要確認】。どの open PR にも該当ファイルが見つからない |
+| `20260917000400` = `workshop_capability_profiles`（5 statements） | **PR #1093 の5本目**。ブランチ `feat/manufacturer-field-testing` に `20260917000400_workshop_capability_profiles.sql` が在る（実測） |
+| `20260917100000` = `ft_tenant_rls_and_storage`（19 statements） | **PR #1093 の6本目**。名前のとおり `ft_*` の RLS と Storage |
+| `20260918142610` = `remote_schema`（368 statements） | `supabase db pull` が作る形の名前。**誰かが本番から pull して push し直した**ように見える【要確認】 |
 
 **影響**: `supabase db push` は「ローカルに無い版が本番にある」と止まる。
 **次に main へマージした時点で `db-migrate` が失敗する**（直近の成功は 2026-09-16 09:23 で、
@@ -103,8 +175,60 @@ main に無い状態になった（#1097 が持つ）。**復旧には #1093 と
 
 **未決**:
 
-- 残る3版（`20260917000400` / `20260917100000` / `20260918142610`）が何か【要確認】。
-  `20260918142610` は 2026-09-18 14:26 UTC ＝ **今日**当てられている。
+- **7版のうち6版は PR #1093 で解消する。** `feat/manufacturer-field-testing` ブランチの
+  `supabase/migrations/` を実際に引いて確認した（`20260917000000` / `000100` / `000200` /
+  `000300` / `000400` / `20260917100000` の6ファイルが在る）。
+  **残る未決は `20260918142610`（`remote_schema`、368 statements）1版だけ** ——
+  `supabase db pull` が作る形の名前で、誰がいつ当てたか不明【要確認】。
+  `statements` は本番に残っているのでファイルは復元できる。
+  （**訂正**: 2026-09-19 の最初の版で `20260917000400` を「どの open PR にも無い」と書いたが誤り。
+  #1093 のブランチを見れば在った —— MISTAKE_LEDGER `M-20260919-said-no-open-pr-has-it-again`）
+- **2026-09-19 追記: この日に3版を手で本番へ当てた。**
+  `20260918150000`（`certificates_certificate_no`、PR #1094 で main にあった）、
+  `20260919132119`（`fix_insurer_search_vehicles_status_enum`）、
+  `20260919134412`（`fix_insurer_get_certificate_enum_columns`）。
+  いずれも**意図的で、main にも同名・同版のファイルがある** ——
+  落ちていた本番機能を `db-migrate` の復旧を待たずに直したため（DECISION_LOG 2026-09-19）。
+  本番の記録版に合わせてファイル名を付けてあるので、`db push` の障害にはならない。
+  **ただし「手で当てて後から repo に入れる」を繰り返すと、一致を守る仕組みが無い**
+  —— 下の `production-ledger` の項と同じ穴。
+  **`db-migrate` を直す優先度はこれで下がっていない**。むしろ、手で当てる回数が
+  増えるほど台帳のずれが広がる。
+- **2026-09-19 追記2: 上の手当てが、他人の未適用マイグレーションを out-of-order にしていた。**
+  `20260918160000`（外注施工履歴の4表、PR #1095 で main に在り本番未適用）は
+  手で当てた `202609191…` より古いので、`supabase db push` の不変条件2に触れる
+  （`db-migrate.yml` 冒頭のコメント参照。`--include-all` は DECISION_LOG 2026-07-21 で不採用）。
+  **`20260918160000` も本番へ当てて解消した**（4表・4ポリシー・RLS を実測確認）。
+  同時に `/admin/outsourced-work` が本番で動かない状態も解消している。
+  MISTAKE_LEDGER `M-20260919-hand-applied-ahead-of-a-pending-migration`。
+- **2026-09-19 時点の2つの不変条件の実測**（本番の全版と `supabase/migrations/` の
+  全版を `comm` で突き合わせた）:
+  - 不変条件1（本番にあって repo に無い）: **7件**＝上の表のまま。**未解消**。
+  - 不変条件2（repo にあって本番に無い＝適用待ち）: **0件**。
+  つまり `db-migrate` を止めているのは**不変条件1だけ**で、その6/7は #1093 で解ける。
+
+## 本番の関数が静かに落ちていることを、定期的に検出する仕組みが無い（2026-09-19）
+
+2026-09-19 に、本番の全 plpgsql 関数へ `plpgsql_check` を回したら
+**3つの関数が静的エラーで落ちている**ことが1クエリで出た
+（`insurer_search_vehicles` 22P02、`insurer_get_certificate` 42804、
+`insurer_get_vehicle_certificates` 42703）。いずれも**生きている画面**の RPC で、
+何か月も落ちたままだった。
+
+**この走査は CI に既にある** —— `scripts/replay-migrations.mjs` が
+**再生 DB に対して**回している。本番に対しては回していない。
+そして本番と再生 DB は列の型が違う（enum vs `text + check`）ので、
+**再生 DB で緑でも本番では落ちる**（実際そうなっていた）。
+
+**未決**:
+
+- 週次ジョブ（`.github/workflows/supabase-advisors.yml`）に本番向けの
+  `plpgsql_check` 走査を足すか。足すなら `check-schema-drift.mjs` と同じ
+  `REQUIRE_*` の形にして、シークレットが無ければ落とす。
+- ただし**そのシークレット（`SUPABASE_ACCESS_TOKEN` / `SUPABASE_PROJECT_ID`）が
+  未登録で、週次ジョブ自体が今は赤い**。先にそちらの登録が要る（代表の操作）。
+- 本番で `create extension plpgsql_check` が既に入っていることに依存する
+  （2026-09-19 時点で入っている。確認済み）。
 - **`supabase/migrations.production-ledger` が 2026-09-06 で止まっている**
   （`max: 20260906100003`、本番の実際の最大は `20260918142610`）。
   `lint:migrations` はこの台帳を見るので、**本番に対する out-of-order を検出できない**。
