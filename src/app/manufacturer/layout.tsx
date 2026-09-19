@@ -10,6 +10,7 @@ const AUTH_ROUTES = ["/manufacturer/login"];
 
 const NAV = [
   { href: "/manufacturer", label: "ダッシュボード", exact: true },
+  { href: "/manufacturer/field-test", label: "実証テスト" },
   { href: "/manufacturer/tenants", label: "認定施工店" },
   { href: "/manufacturer/certificates", label: "発行履歴" },
   { href: "/manufacturer/quality", label: "品質チェック" },

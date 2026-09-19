@@ -4,7 +4,35 @@
 > 追わず、常に最新状態だけを保つ（履歴は DECISION_LOG.md / RELEASE_LOG.md 側）。
 > 大きな変化があったら都度上書きすること。
 
-最終更新: 2026-09-18
+最終更新: 2026-09-19
+
+> 2026-09-19 続報: **代表判断で案1（PR #1093 を先にマージ）を採った。** #1093 は7版すべて
+> （`ft_*` 5版・`workshop_capability_profiles`・`remote_schema`）をファイルとして持っているので、
+> マージすれば台帳のズレは埋まる。CI が3件赤だったので直して push した（`c14f339`）——
+> 権限検出器の既知リスト（`admin/field-test` の変更系8本。`mobile/` 側の2面目）、
+> 本番台帳の免除欄（7版を sha256 付きで追認、`max` を 20260919134412 へ）、
+> それに #1093 の新規ファイル由来のテスト3件。
+> **`workshop_capability_profiles` が本番に存在しない**ことがこの過程で分かった。
+> 台帳は `20260917000400` を適用済みと記録しているのに、`pg_class` を全スキーマで見ても表が無い。
+> `db push` は適用済み版を再実行しないので**通常の経路では永久に作られない**。
+> 同じ定義を冪等に流し直す版 `20260919150000` を足した（再生 DB では no-op）。
+> **本番適用の再開には #1093 と #1097 の両方が要る。** 本番台帳はこの日さらに動いており、
+> `20260919132119` / `20260919134412`（保険会社ポータルの enum 修正）が main に無い。これは #1097 が持つ。
+
+> 2026-09-19 追記: **外注施工履歴（PR #1095）は main にマージされたが、本番 DB には届いていない。**
+> マージ（`8f26a0e`・13:16 UTC）直後の `db-migrate` が
+> `Remote migration versions not found in local migrations directory` で失敗した。
+> **#1094 が予告していた「次のマージで db-migrate が失敗する」が、そのまま起きた。**
+> 本番台帳を引いて内訳を確認した —— main に無い版は7つで、`ft_` で始まる5版と
+> `workshop_capability_profiles`（PR #1093 のもの。`ft_projects` は本番に実在する）、
+> それに `20260918142610 remote_schema`（`db pull` 由来・368 文）。
+> **止まっている未適用の版は2つ**: `20260918150000`（`certificates.certificate_no`）と
+> `20260918160000`（外注施工履歴の4表）。
+> 本番で直接確認した結果、**`outsourced_work_requests` 等の4表は存在せず**、
+> **`certificates.certificate_no` もまだ無い**。
+> つまり **`/admin/outsourced-work` は本番では動かない**（コードだけ出ている状態）。
+> 保険会社ポータルの証明書詳細も 42703 で落ちたまま。
+> 台帳の修復は本番かリポジトリのどちらかを触る判断が要るため、**代表の指示待ち**（OPEN_QUESTIONS）。
 
 > 2026-09-18 追記: **認可とAIレート制限の検出器が、`withCaller` へ寄せた 378 本を見ていなかった。**
 > リファクタで認可がオプション引数へ移ったのに検出器は本文しか見ておらず、
@@ -50,6 +78,17 @@
 > `M-20260916-codex-found-8-in-own-untested-pr`。**Square API はまだ1回も実際に
 > 叩けていない**（この環境からは到達不可）。実 API 検証は代表側の作業として
 > `docs/payment-methods-setup.md` §2 に残っている。
+
+> 2026-09-16 追記: **メーカー向け実証テスト（Field Test）プラットフォームを全面実装した**（PR #1093、
+> ブランチ `feat/manufacturer-field-testing`）。DB 12テーブル（ft_projects / ft_recruitments /
+> ft_applications / ft_agreements / ft_training_modules / ft_training_completions / ft_jobs /
+> ft_conditions / ft_condition_checks / ft_evidence / ft_inspections / ft_defects）、
+> API 23エンドポイント、UI 18ファイル（10タブ構成のプロジェクト詳細 + ジョブ詳細）。
+> ドメイン状態語彙に3軸追加（FT_PROJECT_STATES / FT_JOB_STATES / FT_DEFECT_STATES）。
+> SQL マイグレーション4件すべて Supabase 本番に適用済み。全テーブルに RLS ポリシー・
+> インデックス・updated_at トリガーあり。業務フロー: 実証条件・製品・予算 → 施工店募集 →
+> 審査 → NDA/規約 → 教育・認定 → 案件割当 → 施工条件管理 → 証拠取得 → 品質管理 →
+> 不具合管理 → データ分析 → 検証可能な Field Data。
 
 > 2026-09-15 追記: **MISTAKE_LEDGER の ID 方式を連番から `M-<日付>-<スラッグ>` に変えた。**
 > 連番は並行セッションが次の空き番号を取り合うため衝突し続け、改番で直そうとして
