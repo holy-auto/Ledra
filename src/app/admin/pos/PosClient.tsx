@@ -293,6 +293,15 @@ export default function PosClient() {
     items_json: unknown[];
     note?: string;
   } | null>(null);
+  /**
+   * 予約切替で離れた予約の決済が完了していたのに、記帳（POST）が失敗した分。
+   * 現在の画面（別の予約・別のモード）とは無関係に残るので、
+   * console.error だけでは店員が気づけない。手動で再試行できるよう
+   * 永続的なバナーに出す（/code-review 指摘）。
+   */
+  const [staleCompletedCheckouts, setStaleCompletedCheckouts] = useState<
+    Array<{ checkoutId: string; snapshot: NonNullable<typeof activeCheckoutSnapshotRef.current> }>
+  >([]);
   // 決済は済んだが記録に失敗したセッション。**これがある間は新しいQRを出させない**
   // （出すと客が二重に請求される）
   /** 記録に失敗した決済の再送内容。**決済は済んでいるので同じ本文で送り直す。** */
@@ -490,9 +499,15 @@ export default function PosClient() {
       void cancelSquareCheckout(staleCheckoutId).then((result) => {
         if (!result.ok && result.completed && snapshot) {
           void recordSquareCheckoutFromSnapshot(staleCheckoutId, snapshot).then((ok) => {
-            if (ok) void mutate();
-            else
-              console.error("square qr-checkout: 予約切替前に完了した決済の記帳に失敗（要手動確認）", staleCheckoutId);
+            if (ok) {
+              void mutate();
+            } else {
+              // 記帳に失敗した。既に別の予約へ切替済みなので、この画面の
+              // error 表示に出しても店員は気づけない（すぐ消える／別会計の
+              // 操作で上書きされる）。現在の画面と無関係に残る永続バナーへ
+              // 積んで、手動で再試行できるようにする（/code-review 指摘）
+              setStaleCompletedCheckouts((prev) => [...prev, { checkoutId: staleCheckoutId, snapshot }]);
+            }
           });
         }
       });
@@ -624,6 +639,20 @@ export default function PosClient() {
     recordPaidSaleRef.current = recordPaidSale;
   }, [recordPaidSale]);
 
+  // 離れた予約の完了済み決済（記帳失敗分）を再試行する
+  const retryStaleCompletedCheckout = useCallback(
+    async (checkoutId: string) => {
+      const entry = staleCompletedCheckouts.find((e) => e.checkoutId === checkoutId);
+      if (!entry) return;
+      const ok = await recordSquareCheckoutFromSnapshot(entry.checkoutId, entry.snapshot);
+      if (ok) {
+        setStaleCompletedCheckouts((prev) => prev.filter((e) => e.checkoutId !== checkoutId));
+        void mutate();
+      }
+    },
+    [staleCompletedCheckouts, mutate],
+  );
+
   // ── QR Code card payment flow ──
   const handleCardPaymentQr = useCallback(async () => {
     // Square の経路が残っていると、カードのQRではなく Square の案内が出る
@@ -726,23 +755,37 @@ export default function PosClient() {
 
   // ── Cancel QR payment ──
   const handleCancelQr = useCallback(async () => {
-    if (pollingRef.current) {
-      clearInterval(pollingRef.current);
-      pollingRef.current = null;
-    }
     // 端末に出した QR を消す。残すと、**現金会計に切り替えた後で客が読んで
     // 二重に払える**。応答を確かめずに投げっぱなしにすると、取消直前に
     // 決済が完了していた場合（409 / square_already_completed）を見逃し、
     // 記帳しないまま「戻る」を通してしまう（/code-review 指摘）。
     // mode/selected はまだこの会計のものなので recordPaidSale の
     // 現在値で正しく記帳できる（予約切替 effect と違い、ここでは選択を
-    // 変えていない）
+    // 変えていない）。
+    //
+    // ポーリングは結果が分かるまで止めない —— 取消が本当に失敗した
+    // （completed でもない）場合、ここで止めてしまうと、後で決済が完了しても
+    // 誰も気づけなくなる。ポーリングが生きていれば次の tick で拾える
+    // （/code-review 指摘: 「戻る」失敗時も状態を残すべき）。
     if (squareMode === "terminal" && qrSessionId) {
       const result = await cancelSquareCheckout(qrSessionId);
-      if (!result.ok && result.completed) {
-        await recordPaidSale({ payment_method: "qr", square_checkout_id: qrSessionId });
+      if (!result.ok) {
+        if (result.completed) {
+          if (pollingRef.current) {
+            clearInterval(pollingRef.current);
+            pollingRef.current = null;
+          }
+          await recordPaidSale({ payment_method: "qr", square_checkout_id: qrSessionId });
+          return;
+        }
+        setQrError("端末の会計を取り消せませんでした。端末の画面を確認してください。");
+        setProcessing(false);
         return;
       }
+    }
+    if (pollingRef.current) {
+      clearInterval(pollingRef.current);
+      pollingRef.current = null;
     }
     setQrStep("idle");
     setQrDataUrl(null);
@@ -986,6 +1029,26 @@ export default function PosClient() {
         activeTab={mode}
         onTabSelect={(k) => handleModeSwitch(k as PosMode)}
       />
+
+      {staleCompletedCheckouts.length > 0 && (
+        <div className="space-y-2 rounded-xl border border-warning bg-warning-dim p-4">
+          <p className="text-sm font-semibold text-warning-text">
+            {"離れた予約の決済が完了していましたが、記帳に失敗した分があります"}
+          </p>
+          {staleCompletedCheckouts.map((entry) => (
+            <div key={entry.checkoutId} className="flex items-center justify-between gap-3 text-sm">
+              <span className="text-warning-text">{`金額 ${formatJpy(entry.snapshot.amount)}`}</span>
+              <button
+                type="button"
+                onClick={() => retryStaleCompletedCheckout(entry.checkoutId)}
+                className="rounded-lg border border-warning px-3 py-1 text-xs font-medium text-warning-text hover:bg-warning-dim/60"
+              >
+                {"再試行"}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
 
       <FirstUseInlineGuide
         storageKey="pos"
