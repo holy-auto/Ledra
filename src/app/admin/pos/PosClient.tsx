@@ -302,6 +302,18 @@ export default function PosClient() {
   const [staleCompletedCheckouts, setStaleCompletedCheckouts] = useState<
     Array<{ checkoutId: string; snapshot: NonNullable<typeof activeCheckoutSnapshotRef.current> }>
   >([]);
+  /**
+   * 予約切替で離れた予約の端末チェックアウトを取り消そうとして genuine failure
+   * （completed でも ok でもない、ネットワークエラー等）になった分。この effect は
+   * 取消の成否に関わらず即座に qrSessionId 等の状態をリセットするため、取消
+   * できたかどうか分からないまま画面からは消える —— 端末には決済可能なQRが
+   * 生きたまま残っている可能性がある。手動で再試行できるよう永続バナーに出す
+   * （/code-review 指摘: 予約切替のeffectがgenuine failureを無視し、追跡不能な
+   * まま状態をリセットしていた）。
+   */
+  const [staleUncancelledCheckouts, setStaleUncancelledCheckouts] = useState<
+    Array<{ checkoutId: string; snapshot: NonNullable<typeof activeCheckoutSnapshotRef.current> }>
+  >([]);
   // 決済は済んだが記録に失敗したセッション。**これがある間は新しいQRを出させない**
   // （出すと客が二重に請求される）
   /** 記録に失敗した決済の再送内容。**決済は済んでいるので同じ本文で送り直す。** */
@@ -509,6 +521,12 @@ export default function PosClient() {
               setStaleCompletedCheckouts((prev) => [...prev, { checkoutId: staleCheckoutId, snapshot }]);
             }
           });
+        } else if (!result.ok && !result.completed && snapshot) {
+          // genuine failure（ネットワークエラー等）。取消できたか分からない
+          // まま画面はもう切り替わっている —— 端末にQRが生きたままの可能性が
+          // ある。放置すると二重に決済を受け付けかねないので、手動で再試行
+          // できる永続バナーへ積む（/code-review 指摘）。
+          setStaleUncancelledCheckouts((prev) => [...prev, { checkoutId: staleCheckoutId, snapshot }]);
         }
       });
     }
@@ -651,6 +669,31 @@ export default function PosClient() {
       }
     },
     [staleCompletedCheckouts, mutate],
+  );
+
+  // 離れた予約の端末チェックアウトの取消（genuine failure分）を再試行する
+  const retryStaleUncancelledCheckout = useCallback(
+    async (checkoutId: string) => {
+      const entry = staleUncancelledCheckouts.find((e) => e.checkoutId === checkoutId);
+      if (!entry) return;
+      const result = await cancelSquareCheckout(checkoutId);
+      if (result.ok) {
+        setStaleUncancelledCheckouts((prev) => prev.filter((e) => e.checkoutId !== checkoutId));
+        return;
+      }
+      if (result.completed) {
+        setStaleUncancelledCheckouts((prev) => prev.filter((e) => e.checkoutId !== checkoutId));
+        const ok = await recordSquareCheckoutFromSnapshot(entry.checkoutId, entry.snapshot);
+        if (ok) {
+          void mutate();
+        } else {
+          setStaleCompletedCheckouts((prev) => [...prev, entry]);
+        }
+        return;
+      }
+      // まだ genuine failure。バナーに残したまま次の再試行を待つ。
+    },
+    [staleUncancelledCheckouts, mutate],
   );
 
   // ── QR Code card payment flow ──
@@ -1042,6 +1085,26 @@ export default function PosClient() {
                 type="button"
                 onClick={() => retryStaleCompletedCheckout(entry.checkoutId)}
                 className="rounded-lg border border-warning px-3 py-1 text-xs font-medium text-warning-text hover:bg-warning-dim/60"
+              >
+                {"再試行"}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {staleUncancelledCheckouts.length > 0 && (
+        <div className="space-y-2 rounded-xl border border-danger bg-danger-dim p-4">
+          <p className="text-sm font-semibold text-danger-text">
+            {"離れた予約の端末チェックアウトを取り消せませんでした。端末を確認してください"}
+          </p>
+          {staleUncancelledCheckouts.map((entry) => (
+            <div key={entry.checkoutId} className="flex items-center justify-between gap-3 text-sm">
+              <span className="text-danger-text">{`金額 ${formatJpy(entry.snapshot.amount)}`}</span>
+              <button
+                type="button"
+                onClick={() => retryStaleUncancelledCheckout(entry.checkoutId)}
+                className="rounded-lg border border-danger px-3 py-1 text-xs font-medium text-danger-text hover:bg-danger-dim/60"
               >
                 {"再試行"}
               </button>

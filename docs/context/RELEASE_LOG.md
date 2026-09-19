@@ -4,6 +4,39 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-09-19 予約切替の取消失敗を見失っていた／ページング無駄打ち／決済証明の排他が不完全
+
+main 追従のマージコミットに対する `/code-review`（Codex）5回目のレビューで3件
+（P1×1・P2×2）。
+
+- **[P1] 予約切替の `useEffect` が、端末チェックアウトの取消が genuine
+  failure（completed でも ok でもない）で終わったときの分岐を持っていなかった**
+  （`PosClient.tsx`）。`completed` 分岐（記帳）だけ足して、素の失敗
+  （ネットワークエラー等）はそのまま無条件の状態リセットへ落ち、
+  `qrSessionId`/`squareRef` を消していた。端末には決済可能なQRが生きたまま
+  残る可能性があり、店員は気づけない。`handleCancelQr` で直した同じ形の
+  バグ（`M-20260919-handled-completed-branch-not-failed-branch`）が、
+  `cancelSquareCheckout` を呼ぶ他の呼び出し元には展開されていなかった
+  （`M-20260919-else-fix-not-swept-to-siblings`、型J）。`staleCompletedCheckouts`
+  と同じ形の永続バナー `staleUncancelledCheckouts`（金額 + 再試行ボタン）を
+  追加し、genuine failure でも取消を後から手動で再試行できるようにした。
+- **[P2] POS アプリ引き当てのページングが、候補が2件見えて曖昧が確定した
+  後も残りのページを取りに行っていた**（`qrCheckout.ts` `findRecentPayment`）。
+  高頻度店舗では最大100回の逐次 Square 呼び出しになり、無駄なAPI消費と
+  タイムアウトのリスクがあった。候補が2件になった時点でループを抜けるようにし、
+  曖昧判定を「残りページの有無」より先に評価する順序に修正（早期break後も
+  cursor が残っているため、判定順を誤ると `search_truncated` に化けてしまう）。
+- **[P2] 決済証明の排他チェックが Stripe対Square の1組しか見ておらず、
+  `square_checkout_id` と `square_reconcile` を同時に渡す組み合わせが素通り
+  していた**（`posCheckoutSchema`）。両方渡すと `square_checkout_id` が優先され
+  `square_reconcile` が無視されるため、意図した POS アプリの決済が未記帳の
+  まま残る経路があった（`M-20260919-exclusivity-checked-one-pair-not-all`、型C）。
+  3フィールドのうち true な個数を数えて `<= 1` を要求する形に書き換え、
+  どの2つの組み合わせでも排他にした。
+
+検証: `tsc` / `eslint` 0 errors、フルスイート 5812/5817 緑・5 skip、
+`check:schema` OK / `lint:migrations` OK。
+
 ## 2026-09-19 「戻る」ボタンの取消失敗時に状態を捨てていた／記帳失敗が店員に見えなかった
 
 `/code-review`（Codex）の4回目の追加指摘（2件）に対応。

@@ -20,6 +20,14 @@ describe("posCheckoutSchema", () => {
     expect(res.success).toBe(false);
   });
 
+  it("square_checkout_id と square_reconcile を同時に渡すと拒否する", () => {
+    // 端末フィールドが古いまま POS アプリ引き当てへ切り替えた場合等。両方
+    // 渡すとルート側は square_checkout_id を優先し、square_reconcile が
+    // 意図した決済を黙って無視する（/code-review 指摘）。
+    const res = posCheckoutSchema.safeParse({ ...base, square_checkout_id: "co_1", square_reconcile: true });
+    expect(res.success).toBe(false);
+  });
+
   it("どちらか片方だけなら通す", () => {
     expect(posCheckoutSchema.safeParse({ ...base, checkout_session_id: "cs_test_1" }).success).toBe(true);
     expect(posCheckoutSchema.safeParse({ ...base, square_checkout_id: "co_1" }).success).toBe(true);

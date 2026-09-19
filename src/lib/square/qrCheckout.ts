@@ -152,9 +152,19 @@ export async function findRecentPayment(params: {
     }
     cursor = res.cursor;
     pages++;
+    // 候補が2件以上見えた時点で、以降のページを見ても結果は変わらない
+    // （曖昧の判定はすでに確定している）。ここで止めないと高頻度店舗で
+    // 最大100回の逐次 Square 呼び出しになり、無駄なAPI消費とタイムアウトの
+    // リスクを生む（/code-review 指摘）。
+    if (candidates.length > 1) break;
     // 上限（100ページ = 最大1万件）。begin_time で30分に絞っているので
     // 通常はここに届かないが、無限ループにはしない
   } while (cursor && pages < 100);
+
+  // 曖昧の判定は「まだ未確認のページが残っている」より優先する。早期break
+  // した場合、cursor はまだ残っているが、それを理由に search_truncated を
+  // 返すと誤った理由になる。
+  if (candidates.length > 1) return { ok: false, reason: "ambiguous" };
 
   // 上限に達した時点でまだ cursor が残っている＝未確認のページがある。
   // ここまでの候補が1件でも、**残りのページに同額の別決済がいる可能性を
@@ -162,7 +172,6 @@ export async function findRecentPayment(params: {
   if (cursor) return { ok: false, reason: "search_truncated" };
 
   if (candidates.length === 0) return { ok: false, reason: "not_found" };
-  if (candidates.length > 1) return { ok: false, reason: "ambiguous" };
   return { ok: true, payment: candidates[0] };
 }
 

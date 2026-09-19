@@ -50,17 +50,30 @@ export const posCheckoutSchema = z
     // ときだけ記帳する
     square_reconcile: z.boolean().optional(),
   })
-  // 決済の証明は1つの経路にしか属さない。両方渡されると、Square 側で確認できた
-  // 本物の決済の payment_id が記録から**まるごと落ちる**（recordPosSale の冪等
-  // キーは1列しか持てず、Stripe を優先するため）。落ちた決済は次の引き当てで
-  // 「まだ記録されていない」ように見え、別の会計として二重に記帳されうる。
-  // このスキーマを共有する呼び出し元（admin/mobile 両方の POS checkout）
-  // 全てに一度で効かせるため、ルート個別ではなくここに置く
-  // （/code-review 指摘: モバイル側にだけ同じガードが無かった）。
-  .refine((data) => !(data.checkout_session_id && (data.square_checkout_id || data.square_reconcile)), {
-    message: "checkout_session_id と square_checkout_id/square_reconcile は同時に指定できません",
-    path: ["checkout_session_id"],
-  });
+  // 決済の証明は1つの経路にしか属さない。2つ渡されると、記録ルートは片方を
+  // 優先するため、もう片方で確認できた本物の決済の payment_id が記録から
+  // **まるごと落ちる**。落ちた決済は次の引き当てで「まだ記録されていない」
+  // ように見え、別の会計として二重に記帳されうる。このスキーマを共有する
+  // 呼び出し元（admin/mobile 両方の POS checkout）全てに一度で効かせるため、
+  // ルート個別ではなくここに置く（/code-review 指摘: モバイル側にだけ同じ
+  // ガードが無かった）。
+  //
+  // 当初は checkout_session_id（Stripe）と square_checkout_id/square_reconcile
+  // （Square）の組だけを見ていたが、square_checkout_id と square_reconcile を
+  // 同時に渡す経路（端末フィールドが古いまま POS アプリ引き当てへ切り替えた
+  // 場合等）は素通りしていた。両ルートとも square_checkout_id を優先して
+  // square_reconcile を無視するため、古いチェックアウトが already_recorded を
+  // 返し、本来意図した POS アプリの決済が未記帳のまま残る（/code-review 指摘）。
+  // 3つのフィールドを互いに排他にする。
+  .refine(
+    (data) =>
+      [data.checkout_session_id != null, !!data.square_checkout_id, !!data.square_reconcile].filter(Boolean).length <=
+      1,
+    {
+      message: "checkout_session_id と square_checkout_id と square_reconcile は同時に指定できません",
+      path: ["checkout_session_id"],
+    },
+  );
 
 export const posCheckoutSessionSchema = z.object({
   amount: z.coerce.number().int().min(1).max(999_999_999),
