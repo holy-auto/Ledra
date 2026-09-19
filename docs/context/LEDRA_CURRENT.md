@@ -26,7 +26,14 @@
 > （`insurer_get_certificate` の `status` / `expiry_type` を `::text`）。
 > **適用後、本番の全 plpgsql 関数で error は1件のみ。**
 > 確かめたのは**関数が静的エラーで落ちないこと**だけで、画面を通した確認は未実施【要確認】。
-> **残件**: その1件＝6引数オーバーロード `insurer_search_vehicles(...,text)`。本番から消えた
+> **手当ての副作用も1つ出して直した**: 3版を当てたことで、PR #1095 の
+> `20260918160000`（外注施工履歴の4表・本番未適用）が out-of-order になった
+> （`db push` の不変条件2）。これも本番へ当てて解消し、同時に
+> `/admin/outsourced-work` が本番で動かない状態も直った。
+> **現在の実測: 不変条件1が7件（未解消・6件は #1093 で解ける）、不変条件2は0件。**
+> `db-migrate` を止めているのは不変条件1だけ。
+> MISTAKE_LEDGER `M-20260919-hand-applied-ahead-of-a-pending-migration`。
+> **残件**: 落ちている関数は1件＝6引数オーバーロード `insurer_search_vehicles(...,text)`。本番から消えた
 > `insurer_is_active_subscription` を呼ぶので呼ばれれば必ず落ちる（アプリからの呼び出しは0件）。
 > 消すか戻すかは代表判断待ち。
 
