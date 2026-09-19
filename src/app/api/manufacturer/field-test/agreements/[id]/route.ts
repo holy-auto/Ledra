@@ -26,10 +26,7 @@ const patchSchema = z.object({
  *
  * Update a field-test agreement (e.g. mark as accepted). Admin only.
  */
-export async function PATCH(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
-) {
+export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const supabase = await createSupabaseServerClient();
   const caller = await resolveManufacturerCaller(supabase);
   if (!caller) return apiUnauthorized();

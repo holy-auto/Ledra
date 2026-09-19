@@ -45,22 +45,16 @@ export async function uploadFtEvidence(
 ): Promise<FtEvidenceUploadResult> {
   const admin = getSupabaseAdmin();
 
-  const ext = opts.fileName.includes(".")
-    ? opts.fileName.split(".").pop()!.toLowerCase()
-    : "bin";
+  const ext = opts.fileName.includes(".") ? opts.fileName.split(".").pop()!.toLowerCase() : "bin";
   const storagePath = `${opts.manufacturerId}/${opts.projectId}/${opts.jobId}/${randomUUID()}.${ext}`;
 
-  const { error: upErr } = await admin.storage
-    .from(BUCKET)
-    .upload(storagePath, file, {
-      contentType: opts.contentType,
-      upsert: false,
-    });
+  const { error: upErr } = await admin.storage.from(BUCKET).upload(storagePath, file, {
+    contentType: opts.contentType,
+    upsert: false,
+  });
   if (upErr) throw new Error(`ft-evidence upload failed: ${upErr.message}`);
 
-  const { data: urlData, error: urlErr } = await admin.storage
-    .from(BUCKET)
-    .createSignedUrl(storagePath, 3600); // 60 min
+  const { data: urlData, error: urlErr } = await admin.storage.from(BUCKET).createSignedUrl(storagePath, 3600); // 60 min
   if (urlErr) throw new Error(`ft-evidence signedUrl failed: ${urlErr.message}`);
 
   return { path: storagePath, signedUrl: urlData.signedUrl };
@@ -72,14 +66,9 @@ export async function uploadFtEvidence(
  * @param path  Storage パス (ft_evidence.file_path)
  * @param expiresIn  有効期間 (秒, デフォルト 3600)
  */
-export async function signFtEvidenceUrl(
-  path: string,
-  expiresIn = 3600,
-): Promise<string> {
+export async function signFtEvidenceUrl(path: string, expiresIn = 3600): Promise<string> {
   const admin = getSupabaseAdmin();
-  const { data, error } = await admin.storage
-    .from(BUCKET)
-    .createSignedUrl(path, expiresIn);
+  const { data, error } = await admin.storage.from(BUCKET).createSignedUrl(path, expiresIn);
   if (error) throw new Error(`ft-evidence signedUrl failed: ${error.message}`);
   return data.signedUrl;
 }

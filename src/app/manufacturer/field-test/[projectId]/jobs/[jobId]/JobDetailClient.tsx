@@ -115,7 +115,9 @@ export default function JobDetailClient({
   };
 
   if (error) {
-    return <div className="rounded-md border border-danger-border bg-danger-dim p-4 text-sm text-danger-text">{error}</div>;
+    return (
+      <div className="rounded-md border border-danger-border bg-danger-dim p-4 text-sm text-danger-text">{error}</div>
+    );
   }
   if (loading || !job) return <div className="text-sm text-secondary">読み込み中...</div>;
 
@@ -158,7 +160,10 @@ export default function JobDetailClient({
         ) : (
           <div className="space-y-2">
             {checks.map((c) => (
-              <div key={c.id} className="flex items-center justify-between gap-4 rounded-lg border border-border-subtle px-3 py-2">
+              <div
+                key={c.id}
+                className="flex items-center justify-between gap-4 rounded-lg border border-border-subtle px-3 py-2"
+              >
                 <span className="text-sm text-primary">{c.label}</span>
                 <span className="text-xs text-muted">
                   {c.value_boolean != null ? (c.value_boolean ? "OK" : "NG") : ""}
@@ -177,7 +182,10 @@ export default function JobDetailClient({
         {evidence.length > 0 && (
           <div className="space-y-1 mb-3">
             {evidence.map((ev) => (
-              <div key={ev.id} className="flex items-center justify-between gap-4 rounded-lg border border-border-subtle px-3 py-2">
+              <div
+                key={ev.id}
+                className="flex items-center justify-between gap-4 rounded-lg border border-border-subtle px-3 py-2"
+              >
                 <span className="text-sm text-primary">{ev.caption ?? ev.file_name ?? "証拠"}</span>
                 <span className="text-xs text-muted">{FT_EVIDENCE_TYPE_LABELS[ev.evidence_type]}</span>
               </div>
@@ -186,14 +194,41 @@ export default function JobDetailClient({
         )}
         {isAdmin && (
           <form onSubmit={addEvidence} className="flex gap-2 items-end">
-            <select name="evidence_type" required className="rounded-lg border border-border-subtle bg-surface px-2 py-1.5 text-xs">
-              {(["photo_before", "photo_during", "photo_after", "measurement", "env_data", "video", "document", "other"] as FtEvidenceType[]).map((t) => (
-                <option key={t} value={t}>{FT_EVIDENCE_TYPE_LABELS[t]}</option>
+            <select
+              name="evidence_type"
+              required
+              className="rounded-lg border border-border-subtle bg-surface px-2 py-1.5 text-xs"
+            >
+              {(
+                [
+                  "photo_before",
+                  "photo_during",
+                  "photo_after",
+                  "measurement",
+                  "env_data",
+                  "video",
+                  "document",
+                  "other",
+                ] as FtEvidenceType[]
+              ).map((t) => (
+                <option key={t} value={t}>
+                  {FT_EVIDENCE_TYPE_LABELS[t]}
+                </option>
               ))}
             </select>
-            <input name="caption" placeholder="説明" className="flex-1 rounded-lg border border-border-subtle bg-surface px-2 py-1.5 text-xs" />
-            <input name="file_name" placeholder="ファイル名" className="w-32 rounded-lg border border-border-subtle bg-surface px-2 py-1.5 text-xs" />
-            <button type="submit" className="rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-white">追加</button>
+            <input
+              name="caption"
+              placeholder="説明"
+              className="flex-1 rounded-lg border border-border-subtle bg-surface px-2 py-1.5 text-xs"
+            />
+            <input
+              name="file_name"
+              placeholder="ファイル名"
+              className="w-32 rounded-lg border border-border-subtle bg-surface px-2 py-1.5 text-xs"
+            />
+            <button type="submit" className="rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-white">
+              追加
+            </button>
           </form>
         )}
       </Section>
@@ -203,7 +238,10 @@ export default function JobDetailClient({
         {inspections.length > 0 && (
           <div className="space-y-1 mb-3">
             {inspections.map((ins) => (
-              <div key={ins.id} className="flex items-center justify-between gap-4 rounded-lg border border-border-subtle px-3 py-2">
+              <div
+                key={ins.id}
+                className="flex items-center justify-between gap-4 rounded-lg border border-border-subtle px-3 py-2"
+              >
                 <div className="flex items-center gap-2">
                   <span className="text-xs font-medium">{FT_INSPECTION_RESULT_LABELS[ins.result]}</span>
                   {ins.score != null && <span className="text-xs text-muted">{ins.score}点</span>}

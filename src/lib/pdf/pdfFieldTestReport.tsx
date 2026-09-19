@@ -1,12 +1,5 @@
 import React from "react";
-import {
-  Document,
-  Page,
-  Text,
-  View,
-  StyleSheet,
-  Font,
-} from "@react-pdf/renderer";
+import { Document, Page, Text, View, StyleSheet, Font } from "@react-pdf/renderer";
 import { renderToBuffer } from "@react-pdf/renderer";
 import { notoSansJpDataUrl } from "@/lib/marketing/pdfFonts";
 import { fmtDate } from "@/lib/pdf/format";
@@ -233,15 +226,7 @@ const s = StyleSheet.create({
 // Helper components
 // ---------------------------------------------------------------------------
 
-function KpiCard({
-  label,
-  value,
-  unit,
-}: {
-  label: string;
-  value: string | number;
-  unit?: string;
-}) {
+function KpiCard({ label, value, unit }: { label: string; value: string | number; unit?: string }) {
   return (
     <View style={s.kpiCard}>
       <Text style={s.kpiLabel}>{label}</Text>
@@ -253,15 +238,7 @@ function KpiCard({
   );
 }
 
-function BarRow({
-  label,
-  count,
-  total,
-}: {
-  label: string;
-  count: number;
-  total: number;
-}) {
+function BarRow({ label, count, total }: { label: string; count: number; total: number }) {
   const pct = total > 0 ? (count / total) * 100 : 0;
   return (
     <View style={s.barContainer}>
@@ -304,14 +281,8 @@ function BreakdownSection({
 function FtReportDocument({ data }: { data: FtReportData }) {
   const { project: p, jobs, inspections: ins, defects: def, evidence: ev, tenants_detail } = data;
 
-  const completionRate =
-    jobs.total > 0
-      ? Math.round(((jobs.by_status["completed"] ?? 0) / jobs.total) * 100)
-      : 0;
-  const passRate =
-    ins.total > 0
-      ? Math.round(((ins.pass + ins.conditional_pass) / ins.total) * 100)
-      : 0;
+  const completionRate = jobs.total > 0 ? Math.round(((jobs.by_status["completed"] ?? 0) / jobs.total) * 100) : 0;
+  const passRate = ins.total > 0 ? Math.round(((ins.pass + ins.conditional_pass) / ins.total) * 100) : 0;
 
   return (
     <Document>
@@ -319,9 +290,7 @@ function FtReportDocument({ data }: { data: FtReportData }) {
       <Page size="A4" style={s.page}>
         <View style={s.coverBar} />
         <Text style={s.title}>{p.name}</Text>
-        <Text style={s.subtitle}>
-          Field Test Report — {STATUS_JA[p.status] ?? p.status}
-        </Text>
+        <Text style={s.subtitle}>Field Test Report — {STATUS_JA[p.status] ?? p.status}</Text>
 
         <View style={s.metaRow}>
           {p.product_name && (
@@ -339,9 +308,7 @@ function FtReportDocument({ data }: { data: FtReportData }) {
           {p.budget != null && (
             <View style={s.metaItem}>
               <Text style={s.metaLabel}>予算</Text>
-              <Text style={s.metaValue}>
-                {Number(p.budget).toLocaleString("ja-JP")} 円
-              </Text>
+              <Text style={s.metaValue}>{Number(p.budget).toLocaleString("ja-JP")} 円</Text>
             </View>
           )}
           {p.target_units != null && (
@@ -357,11 +324,7 @@ function FtReportDocument({ data }: { data: FtReportData }) {
           <KpiCard label="総案件数" value={jobs.total} />
           <KpiCard label="完了率" value={`${completionRate}`} unit="%" />
           <KpiCard label="合格率" value={`${passRate}`} unit="%" />
-          <KpiCard
-            label="平均スコア"
-            value={ins.avg_score != null ? ins.avg_score.toFixed(1) : "-"}
-            unit="点"
-          />
+          <KpiCard label="平均スコア" value={ins.avg_score != null ? ins.avg_score.toFixed(1) : "-"} unit="点" />
           <KpiCard label="不具合" value={def.total} unit="件" />
         </View>
 
@@ -382,17 +345,10 @@ function FtReportDocument({ data }: { data: FtReportData }) {
               </View>
               {tenants_detail.map((t, i) => {
                 const inspTotal = t.pass + t.fail + t.conditional_pass;
-                const tPassRate =
-                  inspTotal > 0
-                    ? Math.round(((t.pass + t.conditional_pass) / inspTotal) * 100)
-                    : 0;
-                const tCompRate =
-                  t.jobs > 0 ? Math.round((t.completed / t.jobs) * 100) : 0;
+                const tPassRate = inspTotal > 0 ? Math.round(((t.pass + t.conditional_pass) / inspTotal) * 100) : 0;
+                const tCompRate = t.jobs > 0 ? Math.round((t.completed / t.jobs) * 100) : 0;
                 return (
-                  <View
-                    key={t.tenant_id}
-                    style={[s.tableRow, i % 2 === 1 ? s.tableRowAlt : {}]}
-                  >
+                  <View key={t.tenant_id} style={[s.tableRow, i % 2 === 1 ? s.tableRowAlt : {}]}>
                     <Text style={[s.td, { width: "25%" }]}>{t.tenant_name}</Text>
                     <Text style={[s.td, s.tdRight, { width: "10%" }]}>{t.jobs}</Text>
                     <Text style={[s.td, s.tdRight, { width: "10%" }]}>{t.completed}</Text>
@@ -419,25 +375,13 @@ function FtReportDocument({ data }: { data: FtReportData }) {
       {/* ── Page 2: Detailed Breakdown ── */}
       <Page size="A4" style={s.page}>
         <View style={s.coverBar} />
-        <Text style={[s.sectionTitle, { marginBottom: 16 }]}>
-          詳細分析 — {p.name}
-        </Text>
+        <Text style={[s.sectionTitle, { marginBottom: 16 }]}>詳細分析 — {p.name}</Text>
 
         <View style={{ flexDirection: "row", gap: 16 }}>
           {/* Left column */}
           <View style={{ flex: 1 }}>
-            <BreakdownSection
-              title="案件ステータス"
-              data={jobs.by_status}
-              labels={JOB_JA}
-              total={jobs.total}
-            />
-            <BreakdownSection
-              title="不具合 — 重大度別"
-              data={def.by_severity}
-              labels={SEV_JA}
-              total={def.total}
-            />
+            <BreakdownSection title="案件ステータス" data={jobs.by_status} labels={JOB_JA} total={jobs.total} />
+            <BreakdownSection title="不具合 — 重大度別" data={def.by_severity} labels={SEV_JA} total={def.total} />
           </View>
 
           {/* Right column */}
@@ -451,9 +395,7 @@ function FtReportDocument({ data }: { data: FtReportData }) {
               </View>
               <View style={s.breakdownRow}>
                 <Text style={s.breakdownLabel}>条件付合格</Text>
-                <Text style={[s.breakdownValue, { color: C.yellow }]}>
-                  {ins.conditional_pass}
-                </Text>
+                <Text style={[s.breakdownValue, { color: C.yellow }]}>{ins.conditional_pass}</Text>
               </View>
               <View style={s.breakdownRow}>
                 <Text style={s.breakdownLabel}>不合格</Text>
@@ -466,29 +408,17 @@ function FtReportDocument({ data }: { data: FtReportData }) {
               {ins.avg_score != null && (
                 <View style={[s.breakdownRow, { borderBottomWidth: 0, marginTop: 4 }]}>
                   <Text style={s.breakdownLabel}>平均スコア</Text>
-                  <Text style={[s.breakdownValue, { fontSize: 12 }]}>
-                    {ins.avg_score.toFixed(1)} 点
-                  </Text>
+                  <Text style={[s.breakdownValue, { fontSize: 12 }]}>{ins.avg_score.toFixed(1)} 点</Text>
                 </View>
               )}
             </View>
 
-            <BreakdownSection
-              title="不具合 — ステータス別"
-              data={def.by_status}
-              labels={DEF_JA}
-              total={def.total}
-            />
+            <BreakdownSection title="不具合 — ステータス別" data={def.by_status} labels={DEF_JA} total={def.total} />
           </View>
         </View>
 
         {/* Evidence breakdown */}
-        <BreakdownSection
-          title="証拠データ — 種別"
-          data={ev.by_type}
-          labels={EVT_JA}
-          total={ev.total}
-        />
+        <BreakdownSection title="証拠データ — 種別" data={ev.by_type} labels={EVT_JA} total={ev.total} />
 
         <View style={s.footer}>
           <Text>Ledra Field Test Report</Text>

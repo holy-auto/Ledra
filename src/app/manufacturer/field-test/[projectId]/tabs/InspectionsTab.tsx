@@ -54,7 +54,10 @@ export default function InspectionsTab({ projectId, isAdmin }: { projectId: stri
         </div>
       ) : (
         items.map((ins) => (
-          <div key={ins.id} className="rounded-2xl border border-border-subtle bg-surface p-4 flex items-center justify-between gap-4">
+          <div
+            key={ins.id}
+            className="rounded-2xl border border-border-subtle bg-surface p-4 flex items-center justify-between gap-4"
+          >
             <div>
               <div className="flex items-center gap-2">
                 <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${RESULT_COLORS[ins.result]}`}>
@@ -64,14 +67,31 @@ export default function InspectionsTab({ projectId, isAdmin }: { projectId: stri
               </div>
               {ins.notes && <p className="mt-1 text-xs text-secondary">{ins.notes}</p>}
               <div className="mt-1 text-xs text-muted">
-                {ins.inspected_at ? `検査日: ${new Date(ins.inspected_at).toLocaleDateString("ja-JP")}` : `作成日: ${new Date(ins.created_at).toLocaleDateString("ja-JP")}`}
+                {ins.inspected_at
+                  ? `検査日: ${new Date(ins.inspected_at).toLocaleDateString("ja-JP")}`
+                  : `作成日: ${new Date(ins.created_at).toLocaleDateString("ja-JP")}`}
               </div>
             </div>
             {isAdmin && ins.result === "pending" && (
               <div className="flex gap-1">
-                <button onClick={() => updateResult(ins.id, "pass")} className="rounded-lg bg-green-600 px-2 py-1 text-[11px] font-medium text-white">合格</button>
-                <button onClick={() => updateResult(ins.id, "conditional_pass")} className="rounded-lg bg-yellow-600 px-2 py-1 text-[11px] font-medium text-white">条件付</button>
-                <button onClick={() => updateResult(ins.id, "fail")} className="rounded-lg bg-red-600 px-2 py-1 text-[11px] font-medium text-white">不合格</button>
+                <button
+                  onClick={() => updateResult(ins.id, "pass")}
+                  className="rounded-lg bg-green-600 px-2 py-1 text-[11px] font-medium text-white"
+                >
+                  合格
+                </button>
+                <button
+                  onClick={() => updateResult(ins.id, "conditional_pass")}
+                  className="rounded-lg bg-yellow-600 px-2 py-1 text-[11px] font-medium text-white"
+                >
+                  条件付
+                </button>
+                <button
+                  onClick={() => updateResult(ins.id, "fail")}
+                  className="rounded-lg bg-red-600 px-2 py-1 text-[11px] font-medium text-white"
+                >
+                  不合格
+                </button>
               </div>
             )}
           </div>

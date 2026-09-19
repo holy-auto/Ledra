@@ -45,9 +45,7 @@ describe("notifyFtTenant", () => {
       linkPath: "/admin/field-test",
     });
 
-    expect(mockInsert).toHaveBeenCalledWith(
-      expect.objectContaining({ user_id: "user-42" }),
-    );
+    expect(mockInsert).toHaveBeenCalledWith(expect.objectContaining({ user_id: "user-42" }));
   });
 
   it("priority 指定時はそのまま渡す", async () => {
@@ -60,9 +58,7 @@ describe("notifyFtTenant", () => {
       priority: "high",
     });
 
-    expect(mockInsert).toHaveBeenCalledWith(
-      expect.objectContaining({ priority: "high" }),
-    );
+    expect(mockInsert).toHaveBeenCalledWith(expect.objectContaining({ priority: "high" }));
   });
 
   it("insert エラー時でも例外を投げない", async () => {

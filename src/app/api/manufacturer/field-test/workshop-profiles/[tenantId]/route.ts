@@ -58,10 +58,7 @@ const profileSchema = z.object({
 /**
  * GET /api/manufacturer/field-test/workshop-profiles/[tenantId]
  */
-export async function GET(
-  _req: NextRequest,
-  ctx: { params: Promise<{ tenantId: string }> },
-) {
+export async function GET(_req: NextRequest, ctx: { params: Promise<{ tenantId: string }> }) {
   const supabase = await createSupabaseServerClient();
   const caller = await resolveManufacturerCaller(supabase);
   if (!caller) return apiUnauthorized();
@@ -89,23 +86,17 @@ export async function GET(
  *
  * Upsert workshop capability profile. Admin only.
  */
-export async function PUT(
-  req: NextRequest,
-  ctx: { params: Promise<{ tenantId: string }> },
-) {
+export async function PUT(req: NextRequest, ctx: { params: Promise<{ tenantId: string }> }) {
   const supabase = await createSupabaseServerClient();
   const caller = await resolveManufacturerCaller(supabase);
   if (!caller) return apiUnauthorized();
-  if (caller.role !== "admin")
-    return apiForbidden("プロファイル更新は admin ロールのみ実行できます。");
+  if (caller.role !== "admin") return apiForbidden("プロファイル更新は admin ロールのみ実行できます。");
 
   const { tenantId } = await ctx.params;
 
   const parsed = profileSchema.safeParse(await req.json().catch(() => ({})));
   if (!parsed.success) {
-    return apiValidationError(
-      parsed.error.issues[0]?.message ?? "入力に誤りがあります。",
-    );
+    return apiValidationError(parsed.error.issues[0]?.message ?? "入力に誤りがあります。");
   }
 
   try {

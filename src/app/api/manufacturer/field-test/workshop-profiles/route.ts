@@ -28,10 +28,7 @@ export async function GET(req: NextRequest) {
     const admin = createServiceRoleAdmin("workshop profiles list — manufacturer-scoped");
 
     if (tenantId) {
-      const { data, error } = await admin
-        .from("workshop_capability_profiles")
-        .select("*")
-        .eq("tenant_id", tenantId);
+      const { data, error } = await admin.from("workshop_capability_profiles").select("*").eq("tenant_id", tenantId);
       if (error) return apiInternalError(error, "workshop profiles GET");
       return apiJson({ profiles: data ?? [] });
     }
@@ -61,10 +58,7 @@ export async function GET(req: NextRequest) {
 
       if (tenantIds.length === 0) return apiJson({ profiles: [] });
 
-      const { data, error } = await admin
-        .from("workshop_capability_profiles")
-        .select("*")
-        .in("tenant_id", tenantIds);
+      const { data, error } = await admin.from("workshop_capability_profiles").select("*").in("tenant_id", tenantIds);
       if (error) return apiInternalError(error, "workshop profiles GET");
       return apiJson({ profiles: data ?? [] });
     }

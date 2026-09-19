@@ -1,10 +1,6 @@
 import { NextRequest, after } from "next/server";
 import { withCaller } from "@/lib/api/withCaller";
-import {
-  apiJson,
-  apiNotFound,
-  apiValidationError,
-} from "@/lib/api/response";
+import { apiJson, apiNotFound, apiValidationError } from "@/lib/api/response";
 import {
   getTenantFtJobDetail,
   validateTenantStatusTransition,

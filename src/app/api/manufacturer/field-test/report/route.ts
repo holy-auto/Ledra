@@ -2,13 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveManufacturerCaller } from "@/lib/auth/manufacturerCaller";
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
-import {
-  apiUnauthorized,
-  apiForbidden,
-  apiValidationError,
-  apiNotFound,
-  apiInternalError,
-} from "@/lib/api/response";
+import { apiUnauthorized, apiForbidden, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
 import { renderFieldTestReport, type FtReportData, type FtReportTenantDetail } from "@/lib/pdf/pdfFieldTestReport";
 
 export const runtime = "nodejs";
@@ -24,8 +18,7 @@ export async function GET(req: NextRequest) {
   const supabase = await createSupabaseServerClient();
   const caller = await resolveManufacturerCaller(supabase);
   if (!caller) return apiUnauthorized();
-  if (caller.role !== "admin")
-    return apiForbidden("レポート生成は admin ロールのみ実行できます。");
+  if (caller.role !== "admin") return apiForbidden("レポート生成は admin ロールのみ実行できます。");
 
   const projectId = new URL(req.url).searchParams.get("project_id");
   if (!projectId) return apiValidationError("project_id は必須です。");
@@ -48,22 +41,10 @@ export async function GET(req: NextRequest) {
 
     // Parallel fetch
     const [jobsRes, inspRes, defectsRes, evidenceRes] = await Promise.all([
-      admin
-        .from("ft_jobs")
-        .select("status, tenant_id, completed_at")
-        .match(scope),
-      admin
-        .from("ft_inspections")
-        .select("result, score, job_id")
-        .match(scope),
-      admin
-        .from("ft_defects")
-        .select("severity, status, tenant_id")
-        .match(scope),
-      admin
-        .from("ft_evidence")
-        .select("evidence_type, tenant_id")
-        .match(scope),
+      admin.from("ft_jobs").select("status, tenant_id, completed_at").match(scope),
+      admin.from("ft_inspections").select("result, score, job_id").match(scope),
+      admin.from("ft_defects").select("severity, status, tenant_id").match(scope),
+      admin.from("ft_evidence").select("evidence_type, tenant_id").match(scope),
     ]);
 
     if (jobsRes.error) return apiInternalError(jobsRes.error, "ft report jobs");
@@ -77,13 +58,8 @@ export async function GET(req: NextRequest) {
     const evidence = evidenceRes.data ?? [];
 
     // Build job_id → tenant_id map for inspections
-    const { data: jobTenantRows } = await admin
-      .from("ft_jobs")
-      .select("id, tenant_id")
-      .match(scope);
-    const jobTenantMap = new Map(
-      (jobTenantRows ?? []).map((j) => [j.id as string, j.tenant_id as string]),
-    );
+    const { data: jobTenantRows } = await admin.from("ft_jobs").select("id, tenant_id").match(scope);
+    const jobTenantMap = new Map((jobTenantRows ?? []).map((j) => [j.id as string, j.tenant_id as string]));
 
     // ── Aggregate: global ──
     const jobsByStatus: Record<string, number> = {};
@@ -93,16 +69,31 @@ export async function GET(req: NextRequest) {
       if (j.tenant_id) tenantIds.add(j.tenant_id as string);
     }
 
-    let passCount = 0, failCount = 0, condCount = 0, pendCount = 0;
-    let scoreSum = 0, scoreN = 0;
+    let passCount = 0,
+      failCount = 0,
+      condCount = 0,
+      pendCount = 0;
+    let scoreSum = 0,
+      scoreN = 0;
     for (const i of inspections) {
       switch (i.result) {
-        case "pass": passCount++; break;
-        case "fail": failCount++; break;
-        case "conditional_pass": condCount++; break;
-        case "pending": pendCount++; break;
+        case "pass":
+          passCount++;
+          break;
+        case "fail":
+          failCount++;
+          break;
+        case "conditional_pass":
+          condCount++;
+          break;
+        case "pending":
+          pendCount++;
+          break;
       }
-      if (i.score != null) { scoreSum += Number(i.score); scoreN++; }
+      if (i.score != null) {
+        scoreSum += Number(i.score);
+        scoreN++;
+      }
     }
 
     const bySev: Record<string, number> = {};
@@ -118,20 +109,33 @@ export async function GET(req: NextRequest) {
     }
 
     // ── Aggregate: per tenant ──
-    const tenantAgg = new Map<string, {
-      jobs: number; completed: number;
-      pass: number; fail: number; conditional_pass: number;
-      scoreSum: number; scoreN: number;
-      defects: number; evidence: number;
-    }>();
+    const tenantAgg = new Map<
+      string,
+      {
+        jobs: number;
+        completed: number;
+        pass: number;
+        fail: number;
+        conditional_pass: number;
+        scoreSum: number;
+        scoreN: number;
+        defects: number;
+        evidence: number;
+      }
+    >();
 
     const ensureTenant = (tid: string) => {
       if (!tenantAgg.has(tid)) {
         tenantAgg.set(tid, {
-          jobs: 0, completed: 0,
-          pass: 0, fail: 0, conditional_pass: 0,
-          scoreSum: 0, scoreN: 0,
-          defects: 0, evidence: 0,
+          jobs: 0,
+          completed: 0,
+          pass: 0,
+          fail: 0,
+          conditional_pass: 0,
+          scoreSum: 0,
+          scoreN: 0,
+          defects: 0,
+          evidence: 0,
         });
       }
       return tenantAgg.get(tid)!;
@@ -150,7 +154,10 @@ export async function GET(req: NextRequest) {
       if (i.result === "pass") a.pass++;
       else if (i.result === "fail") a.fail++;
       else if (i.result === "conditional_pass") a.conditional_pass++;
-      if (i.score != null) { a.scoreSum += Number(i.score); a.scoreN++; }
+      if (i.score != null) {
+        a.scoreSum += Number(i.score);
+        a.scoreN++;
+      }
     }
 
     for (const d of defects) {
@@ -166,10 +173,7 @@ export async function GET(req: NextRequest) {
     const allTenantIds = [...tenantAgg.keys()];
     const tenantNameMap = new Map<string, string>();
     if (allTenantIds.length > 0) {
-      const { data: tRows } = await admin
-        .from("tenants")
-        .select("id, name")
-        .in("id", allTenantIds);
+      const { data: tRows } = await admin.from("tenants").select("id, name").in("id", allTenantIds);
       for (const t of tRows ?? []) {
         tenantNameMap.set(t.id as string, (t.name as string) ?? "");
       }

@@ -47,13 +47,7 @@ const TABS = [
 
 type TabKey = (typeof TABS)[number]["key"];
 
-export default function ProjectDetailClient({
-  projectId,
-  isAdmin,
-}: {
-  projectId: string;
-  isAdmin: boolean;
-}) {
+export default function ProjectDetailClient({ projectId, isAdmin }: { projectId: string; isAdmin: boolean }) {
   const [project, setProject] = useState<Project | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -91,9 +85,7 @@ export default function ProjectDetailClient({
             ← プロジェクト一覧
           </Link>
           <h1 className="mt-1 text-xl font-bold text-primary">{project.name}</h1>
-          {project.product_name && (
-            <p className="mt-0.5 text-sm text-secondary">製品: {project.product_name}</p>
-          )}
+          {project.product_name && <p className="mt-0.5 text-sm text-secondary">製品: {project.product_name}</p>}
         </div>
         <span
           className={`shrink-0 rounded-full px-3 py-1 text-xs font-medium ${
@@ -115,9 +107,7 @@ export default function ProjectDetailClient({
             key={t.key}
             onClick={() => setTab(t.key)}
             className={`shrink-0 rounded-t-lg px-3 py-2 text-xs font-medium transition-colors ${
-              tab === t.key
-                ? "border-b-2 border-accent text-accent"
-                : "text-secondary hover:text-primary"
+              tab === t.key ? "border-b-2 border-accent text-accent" : "text-secondary hover:text-primary"
             }`}
           >
             {t.label}

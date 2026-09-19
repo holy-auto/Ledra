@@ -78,11 +78,34 @@ export default function JobsTab({ projectId, isAdmin }: { projectId: string; isA
 
       {showForm && (
         <form onSubmit={handleCreate} className="rounded-2xl border border-border-subtle bg-surface p-4 space-y-3">
-          <input name="tenant_id" required placeholder="テナントID (UUID)" className="w-full rounded-lg border border-border-subtle bg-surface px-3 py-2 text-sm" />
-          <input name="title" required placeholder="案件名" className="w-full rounded-lg border border-border-subtle bg-surface px-3 py-2 text-sm" />
-          <input name="job_code" placeholder="管理番号" className="w-full rounded-lg border border-border-subtle bg-surface px-3 py-2 text-sm" />
-          <textarea name="description" placeholder="説明" rows={2} className="w-full rounded-lg border border-border-subtle bg-surface px-3 py-2 text-sm" />
-          <button type="submit" disabled={saving} className="rounded-lg bg-accent px-4 py-2 text-xs font-semibold text-white disabled:opacity-50">
+          <input
+            name="tenant_id"
+            required
+            placeholder="テナントID (UUID)"
+            className="w-full rounded-lg border border-border-subtle bg-surface px-3 py-2 text-sm"
+          />
+          <input
+            name="title"
+            required
+            placeholder="案件名"
+            className="w-full rounded-lg border border-border-subtle bg-surface px-3 py-2 text-sm"
+          />
+          <input
+            name="job_code"
+            placeholder="管理番号"
+            className="w-full rounded-lg border border-border-subtle bg-surface px-3 py-2 text-sm"
+          />
+          <textarea
+            name="description"
+            placeholder="説明"
+            rows={2}
+            className="w-full rounded-lg border border-border-subtle bg-surface px-3 py-2 text-sm"
+          />
+          <button
+            type="submit"
+            disabled={saving}
+            className="rounded-lg bg-accent px-4 py-2 text-xs font-semibold text-white disabled:opacity-50"
+          >
             {saving ? "割当中..." : "割当"}
           </button>
         </form>
@@ -108,7 +131,9 @@ export default function JobsTab({ projectId, isAdmin }: { projectId: string; isA
                   </div>
                   <div className="mt-0.5 text-xs text-secondary">{j.tenant_name ?? j.tenant_id}</div>
                 </div>
-                <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${STATUS_COLORS[j.status]}`}>
+                <span
+                  className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${STATUS_COLORS[j.status]}`}
+                >
                   {FT_JOB_STATUS_LABELS[j.status]}
                 </span>
               </div>

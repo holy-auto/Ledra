@@ -56,12 +56,17 @@ export default function ApplicationsTab({ projectId, isAdmin }: { projectId: str
         </div>
       ) : (
         items.map((a) => (
-          <div key={a.id} className="rounded-2xl border border-border-subtle bg-surface p-4 flex items-center justify-between gap-4">
+          <div
+            key={a.id}
+            className="rounded-2xl border border-border-subtle bg-surface p-4 flex items-center justify-between gap-4"
+          >
             <div>
               <div className="text-sm font-medium text-primary">{a.tenant_name ?? "(テナント名なし)"}</div>
               {a.notes && <p className="mt-0.5 text-xs text-secondary">{a.notes}</p>}
               {a.review_notes && <p className="mt-0.5 text-xs text-muted">審査メモ: {a.review_notes}</p>}
-              <div className="mt-1 text-xs text-muted">応募日: {new Date(a.created_at).toLocaleDateString("ja-JP")}</div>
+              <div className="mt-1 text-xs text-muted">
+                応募日: {new Date(a.created_at).toLocaleDateString("ja-JP")}
+              </div>
             </div>
             <div className="flex items-center gap-2">
               <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${STATUS_COLORS[a.status]}`}>

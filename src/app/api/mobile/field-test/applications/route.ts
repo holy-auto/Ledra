@@ -1,16 +1,7 @@
 import { NextRequest, after } from "next/server";
 import { resolveMobileCaller } from "@/lib/auth/mobileAuth";
-import {
-  apiJson,
-  apiUnauthorized,
-  apiValidationError,
-  apiInternalError,
-} from "@/lib/api/response";
-import {
-  listTenantApplications,
-  createApplication,
-  getRecruitmentDetail,
-} from "@/lib/fieldTest/tenantQueries";
+import { apiJson, apiUnauthorized, apiValidationError, apiInternalError } from "@/lib/api/response";
+import { listTenantApplications, createApplication, getRecruitmentDetail } from "@/lib/fieldTest/tenantQueries";
 import { notifyFtTenant } from "@/lib/fieldTest/ftNotify";
 
 export const dynamic = "force-dynamic";

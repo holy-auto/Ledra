@@ -39,7 +39,6 @@ export const dynamic = "force-dynamic";
 export const GET = withCaller(
   async (req, { caller }) => {
     try {
-
       const { searchParams } = new URL(req.url);
       const category = searchParams.get("category");
       const type = searchParams.get("type"); // "published" | "candidates"
@@ -188,7 +187,9 @@ export const POST = withCaller(
         // チェックが入り、続く publish は必ず弾かれる。既存の文面も消さない。
         if (!aiSummary) {
           usage.record({ tenantId: caller.tenantId, userId: caller.userId, outcome: "error" });
-          return apiValidationError("公開する内容を生成できませんでした。元の証明書が削除されていないか確認してください");
+          return apiValidationError(
+            "公開する内容を生成できませんでした。元の証明書が削除されていないか確認してください",
+          );
         }
         usage.record({ tenantId: caller.tenantId, userId: caller.userId, outcome: "ok" });
 

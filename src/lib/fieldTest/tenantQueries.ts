@@ -14,10 +14,7 @@ type Supa = SupabaseClient<any, any, any>;
 
 export async function listTenantFtProjects(supabase: Supa, tenantId: string) {
   // テナントに案件が割り当てられているプロジェクトを返す
-  const { data: jobRows, error: jErr } = await supabase
-    .from("ft_jobs")
-    .select("project_id")
-    .eq("tenant_id", tenantId);
+  const { data: jobRows, error: jErr } = await supabase.from("ft_jobs").select("project_id").eq("tenant_id", tenantId);
   if (jErr) throw jErr;
 
   const projectIds = [...new Set((jobRows ?? []).map((j) => j.project_id as string))];
@@ -34,11 +31,7 @@ export async function listTenantFtProjects(supabase: Supa, tenantId: string) {
 
 // ── Jobs ──
 
-export async function listTenantFtJobs(
-  supabase: Supa,
-  tenantId: string,
-  projectId: string,
-) {
+export async function listTenantFtJobs(supabase: Supa, tenantId: string, projectId: string) {
   const { data, error } = await supabase
     .from("ft_jobs")
     .select("id, job_code, title, description, status, assigned_at, completed_at, created_at, project_id")
@@ -49,14 +42,12 @@ export async function listTenantFtJobs(
   return data ?? [];
 }
 
-export async function getTenantFtJobDetail(
-  supabase: Supa,
-  tenantId: string,
-  jobId: string,
-) {
+export async function getTenantFtJobDetail(supabase: Supa, tenantId: string, jobId: string) {
   const { data: job, error: jobErr } = await supabase
     .from("ft_jobs")
-    .select("id, job_code, title, description, status, conditions_snapshot, assigned_at, completed_at, created_at, project_id, manufacturer_id")
+    .select(
+      "id, job_code, title, description, status, conditions_snapshot, assigned_at, completed_at, created_at, project_id, manufacturer_id",
+    )
     .eq("id", jobId)
     .eq("tenant_id", tenantId)
     .maybeSingle();
@@ -112,10 +103,7 @@ const TENANT_STATUS_TRANSITIONS: Record<string, string[]> = {
   in_progress: ["evidence_submitted"],
 };
 
-export function validateTenantStatusTransition(
-  current: string,
-  next: string,
-): string | null {
+export function validateTenantStatusTransition(current: string, next: string): string | null {
   const allowed = TENANT_STATUS_TRANSITIONS[current];
   if (!allowed || !allowed.includes(next)) {
     return `ステータス "${current}" から "${next}" への変更はできません。`;
@@ -123,12 +111,7 @@ export function validateTenantStatusTransition(
   return null;
 }
 
-export async function updateTenantFtJobStatus(
-  supabase: Supa,
-  tenantId: string,
-  jobId: string,
-  newStatus: string,
-) {
+export async function updateTenantFtJobStatus(supabase: Supa, tenantId: string, jobId: string, newStatus: string) {
   const updatePayload: Record<string, unknown> = { status: newStatus };
   if (newStatus === "evidence_submitted") {
     // ponytail: completed_at はメーカーが completed にしたとき設定。ここでは不要。
@@ -147,10 +130,7 @@ export async function updateTenantFtJobStatus(
 
 // ── Condition Checks ──
 
-export async function listConditionChecks(
-  supabase: Supa,
-  jobId: string,
-) {
+export async function listConditionChecks(supabase: Supa, jobId: string) {
   const { data, error } = await supabase
     .from("ft_condition_checks")
     .select("id, condition_id, value_boolean, value_numeric, value_text, value_photo_path, checked_at")
@@ -192,11 +172,7 @@ export async function upsertConditionCheck(
 
 // ── Evidence ──
 
-export async function listEvidence(
-  supabase: Supa,
-  tenantId: string,
-  jobId: string,
-) {
+export async function listEvidence(supabase: Supa, tenantId: string, jobId: string) {
   const { data, error } = await supabase
     .from("ft_evidence")
     .select("id, evidence_type, file_path, file_name, content_type, caption, metadata, captured_at, created_at")
@@ -239,26 +215,27 @@ export async function insertEvidence(
 export async function listOpenRecruitments(supabase: Supa) {
   const { data, error } = await supabase
     .from("ft_recruitments")
-    .select(`
+    .select(
+      `
       id, title, description, required_certifications, max_participants, deadline, is_open, created_at,
       project_id, manufacturer_id
-    `)
+    `,
+    )
     .eq("is_open", true)
     .order("created_at", { ascending: false });
   if (error) throw error;
   return data ?? [];
 }
 
-export async function getRecruitmentDetail(
-  supabase: Supa,
-  recruitmentId: string,
-) {
+export async function getRecruitmentDetail(supabase: Supa, recruitmentId: string) {
   const { data: rec, error: recErr } = await supabase
     .from("ft_recruitments")
-    .select(`
+    .select(
+      `
       id, title, description, required_certifications, max_participants, deadline, is_open, created_at,
       project_id, manufacturer_id
-    `)
+    `,
+    )
     .eq("id", recruitmentId)
     .maybeSingle();
   if (recErr) throw recErr;
@@ -275,16 +252,15 @@ export async function getRecruitmentDetail(
 
 // ── Applications ──
 
-export async function listTenantApplications(
-  supabase: Supa,
-  tenantId: string,
-) {
+export async function listTenantApplications(supabase: Supa, tenantId: string) {
   const { data, error } = await supabase
     .from("ft_applications")
-    .select(`
+    .select(
+      `
       id, status, notes, review_notes, reviewed_at, created_at, updated_at,
       recruitment_id, project_id, manufacturer_id
-    `)
+    `,
+    )
     .eq("tenant_id", tenantId)
     .order("created_at", { ascending: false });
   if (error) throw error;
@@ -311,11 +287,7 @@ export async function createApplication(
   return data;
 }
 
-export async function withdrawApplication(
-  supabase: Supa,
-  tenantId: string,
-  applicationId: string,
-) {
+export async function withdrawApplication(supabase: Supa, tenantId: string, applicationId: string) {
   const { data, error } = await supabase
     .from("ft_applications")
     .update({ status: "withdrawn" })
@@ -330,11 +302,7 @@ export async function withdrawApplication(
 
 // ── Training ──
 
-export async function listTrainingWithCompletions(
-  supabase: Supa,
-  tenantId: string,
-  projectId: string,
-) {
+export async function listTrainingWithCompletions(supabase: Supa, tenantId: string, projectId: string) {
   const [modulesRes, completionsRes] = await Promise.all([
     supabase
       .from("ft_training_modules")
@@ -349,9 +317,7 @@ export async function listTrainingWithCompletions(
   if (modulesRes.error) throw modulesRes.error;
   if (completionsRes.error) throw completionsRes.error;
 
-  const completionMap = new Map(
-    (completionsRes.data ?? []).map((c) => [c.module_id as string, c]),
-  );
+  const completionMap = new Map((completionsRes.data ?? []).map((c) => [c.module_id as string, c]));
 
   return (modulesRes.data ?? []).map((m) => ({
     ...m,
@@ -359,12 +325,7 @@ export async function listTrainingWithCompletions(
   }));
 }
 
-export async function completeTrainingModule(
-  supabase: Supa,
-  tenantId: string,
-  moduleId: string,
-  completedBy: string,
-) {
+export async function completeTrainingModule(supabase: Supa, tenantId: string, moduleId: string, completedBy: string) {
   const { data, error } = await supabase
     .from("ft_training_completions")
     .upsert(
@@ -384,11 +345,7 @@ export async function completeTrainingModule(
 
 // ── Agreements ──
 
-export async function listTenantAgreements(
-  supabase: Supa,
-  tenantId: string,
-  projectId: string,
-) {
+export async function listTenantAgreements(supabase: Supa, tenantId: string, projectId: string) {
   const { data, error } = await supabase
     .from("ft_agreements")
     .select("id, agreement_type, document_url, document_text, accepted, accepted_by, accepted_at, created_at")
@@ -399,12 +356,7 @@ export async function listTenantAgreements(
   return data ?? [];
 }
 
-export async function acceptAgreement(
-  supabase: Supa,
-  tenantId: string,
-  agreementId: string,
-  acceptedBy: string,
-) {
+export async function acceptAgreement(supabase: Supa, tenantId: string, agreementId: string, acceptedBy: string) {
   const { data, error } = await supabase
     .from("ft_agreements")
     .update({
@@ -433,11 +385,7 @@ export async function getWorkshopProfile(supabase: Supa, tenantId: string) {
   return data;
 }
 
-export async function upsertWorkshopProfile(
-  supabase: Supa,
-  tenantId: string,
-  fields: Record<string, unknown>,
-) {
+export async function upsertWorkshopProfile(supabase: Supa, tenantId: string, fields: Record<string, unknown>) {
   const { data, error } = await supabase
     .from("workshop_capability_profiles")
     .upsert(

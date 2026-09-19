@@ -9,13 +9,22 @@ export const dynamic = "force-dynamic";
 
 const MAX_FILE_BYTES = 20 * 1024 * 1024; // 20 MB
 const ALLOWED_TYPES = new Set([
-  "image/jpeg", "image/png", "image/webp",
-  "video/mp4", "video/quicktime",
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "video/mp4",
+  "video/quicktime",
   "application/pdf",
 ]);
 const VALID_EVIDENCE_TYPES = new Set([
-  "photo_before", "photo_during", "photo_after",
-  "measurement", "env_data", "video", "document", "other",
+  "photo_before",
+  "photo_during",
+  "photo_after",
+  "measurement",
+  "env_data",
+  "video",
+  "document",
+  "other",
 ]);
 
 /** GET /api/admin/field-test/evidence?job_id=xxx */

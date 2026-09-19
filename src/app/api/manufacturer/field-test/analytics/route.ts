@@ -2,13 +2,7 @@ import { NextRequest } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveManufacturerCaller } from "@/lib/auth/manufacturerCaller";
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
-import {
-  apiJson,
-  apiUnauthorized,
-  apiValidationError,
-  apiNotFound,
-  apiInternalError,
-} from "@/lib/api/response";
+import { apiJson, apiUnauthorized, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -79,12 +73,23 @@ export async function GET(req: NextRequest) {
     let scoreCount = 0;
     for (const i of inspections) {
       switch (i.result) {
-        case "pass": passCount++; break;
-        case "fail": failCount++; break;
-        case "conditional_pass": conditionalCount++; break;
-        case "pending": pendingCount++; break;
+        case "pass":
+          passCount++;
+          break;
+        case "fail":
+          failCount++;
+          break;
+        case "conditional_pass":
+          conditionalCount++;
+          break;
+        case "pending":
+          pendingCount++;
+          break;
       }
-      if (i.score != null) { scoreSum += Number(i.score); scoreCount++; }
+      if (i.score != null) {
+        scoreSum += Number(i.score);
+        scoreCount++;
+      }
     }
 
     // Defects aggregation
@@ -109,15 +114,30 @@ export async function GET(req: NextRequest) {
     }
 
     type TenantAgg = {
-      jobs: number; completed: number;
-      pass: number; fail: number; conditional_pass: number;
-      scoreSum: number; scoreN: number;
-      defects: number; evidence: number;
+      jobs: number;
+      completed: number;
+      pass: number;
+      fail: number;
+      conditional_pass: number;
+      scoreSum: number;
+      scoreN: number;
+      defects: number;
+      evidence: number;
     };
     const tenantAgg = new Map<string, TenantAgg>();
     const ensure = (tid: string): TenantAgg => {
       if (!tenantAgg.has(tid))
-        tenantAgg.set(tid, { jobs: 0, completed: 0, pass: 0, fail: 0, conditional_pass: 0, scoreSum: 0, scoreN: 0, defects: 0, evidence: 0 });
+        tenantAgg.set(tid, {
+          jobs: 0,
+          completed: 0,
+          pass: 0,
+          fail: 0,
+          conditional_pass: 0,
+          scoreSum: 0,
+          scoreN: 0,
+          defects: 0,
+          evidence: 0,
+        });
       return tenantAgg.get(tid)!;
     };
 
@@ -133,7 +153,10 @@ export async function GET(req: NextRequest) {
       if (i.result === "pass") a.pass++;
       else if (i.result === "fail") a.fail++;
       else if (i.result === "conditional_pass") a.conditional_pass++;
-      if (i.score != null) { a.scoreSum += Number(i.score); a.scoreN++; }
+      if (i.score != null) {
+        a.scoreSum += Number(i.score);
+        a.scoreN++;
+      }
     }
     for (const d of defects) {
       if (d.tenant_id) ensure(d.tenant_id as string).defects++;

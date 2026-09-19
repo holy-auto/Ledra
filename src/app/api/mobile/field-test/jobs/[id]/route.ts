@@ -1,12 +1,6 @@
 import { NextRequest, after } from "next/server";
 import { resolveMobileCaller } from "@/lib/auth/mobileAuth";
-import {
-  apiJson,
-  apiUnauthorized,
-  apiNotFound,
-  apiValidationError,
-  apiInternalError,
-} from "@/lib/api/response";
+import { apiJson, apiUnauthorized, apiNotFound, apiValidationError, apiInternalError } from "@/lib/api/response";
 import {
   getTenantFtJobDetail,
   validateTenantStatusTransition,
@@ -17,10 +11,7 @@ import { notifyFtTenant } from "@/lib/fieldTest/ftNotify";
 export const dynamic = "force-dynamic";
 
 /** GET /api/mobile/field-test/jobs/[id] — 案件詳細 */
-export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
-) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const caller = await resolveMobileCaller(request);
     if (!caller) return apiUnauthorized();
@@ -35,10 +26,7 @@ export async function GET(
 }
 
 /** PATCH /api/mobile/field-test/jobs/[id] — ステータス更新 */
-export async function PATCH(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
-) {
+export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const caller = await resolveMobileCaller(request);
     if (!caller) return apiUnauthorized();

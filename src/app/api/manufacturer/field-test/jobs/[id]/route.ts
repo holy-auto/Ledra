@@ -16,9 +16,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const updateJobSchema = z.object({
-  status: z
-    .enum(["assigned", "in_progress", "evidence_submitted", "inspection", "completed", "rejected"])
-    .optional(),
+  status: z.enum(["assigned", "in_progress", "evidence_submitted", "inspection", "completed", "rejected"]).optional(),
   title: z.string().trim().min(1).max(200).optional(),
   description: z.string().trim().max(5000).nullable().optional(),
 });
@@ -50,11 +48,7 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
 
     // Fetch related data in parallel
     const [checksRes, evidenceRes, inspectionsRes] = await Promise.all([
-      admin
-        .from("ft_condition_checks")
-        .select("*")
-        .eq("job_id", id)
-        .order("checked_at", { ascending: true }),
+      admin.from("ft_condition_checks").select("*").eq("job_id", id).order("checked_at", { ascending: true }),
       admin
         .from("ft_evidence")
         .select("id", { count: "exact", head: true })

@@ -93,7 +93,8 @@ export type FtProjectStatus = "draft" | "recruiting" | "active" | "completed" | 
 export type FtApplicationStatus = "pending" | "approved" | "rejected" | "withdrawn";
 export type FtAgreementType = "nda" | "terms" | "other";
 export type FtJobStatus = "assigned" | "in_progress" | "evidence_submitted" | "inspection" | "completed" | "rejected";
-export type FtEvidenceType = "photo_before" | "photo_during" | "photo_after" | "measurement" | "env_data" | "video" | "document" | "other";
+export type FtEvidenceType =
+  "photo_before" | "photo_during" | "photo_after" | "measurement" | "env_data" | "video" | "document" | "other";
 export type FtInspectionResult = "pending" | "pass" | "fail" | "conditional_pass";
 export type FtDefectSeverity = "low" | "medium" | "high" | "critical";
 export type FtDefectStatus = "open" | "investigating" | "resolved" | "closed" | "wontfix";

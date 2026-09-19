@@ -59,8 +59,14 @@ export default function OverviewTab({
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Stat label="ステータス" value={FT_PROJECT_STATUS_LABELS[project.status]} />
         <Stat label="目標施工台数" value={project.target_units != null ? `${project.target_units} 台` : "-"} />
-        <Stat label="予算" value={project.budget != null ? `${Number(project.budget).toLocaleString("ja-JP")} 円` : "-"} />
-        <Stat label="期間" value={project.starts_at && project.ends_at ? `${project.starts_at} 〜 ${project.ends_at}` : "-"} />
+        <Stat
+          label="予算"
+          value={project.budget != null ? `${Number(project.budget).toLocaleString("ja-JP")} 円` : "-"}
+        />
+        <Stat
+          label="期間"
+          value={project.starts_at && project.ends_at ? `${project.starts_at} 〜 ${project.ends_at}` : "-"}
+        />
       </div>
 
       {/* Description */}

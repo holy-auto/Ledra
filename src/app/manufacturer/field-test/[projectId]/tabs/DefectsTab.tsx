@@ -87,16 +87,39 @@ export default function DefectsTab({ projectId, isAdmin }: { projectId: string; 
 
       {showForm && (
         <form onSubmit={handleCreate} className="rounded-2xl border border-border-subtle bg-surface p-4 space-y-3">
-          <input name="title" required placeholder="不具合タイトル" className="w-full rounded-lg border border-border-subtle bg-surface px-3 py-2 text-sm" />
-          <input name="defect_code" placeholder="不具合コード" className="w-full rounded-lg border border-border-subtle bg-surface px-3 py-2 text-sm" />
-          <textarea name="description" placeholder="詳細" rows={3} className="w-full rounded-lg border border-border-subtle bg-surface px-3 py-2 text-sm" />
-          <select name="severity" className="w-full rounded-lg border border-border-subtle bg-surface px-3 py-2 text-sm">
+          <input
+            name="title"
+            required
+            placeholder="不具合タイトル"
+            className="w-full rounded-lg border border-border-subtle bg-surface px-3 py-2 text-sm"
+          />
+          <input
+            name="defect_code"
+            placeholder="不具合コード"
+            className="w-full rounded-lg border border-border-subtle bg-surface px-3 py-2 text-sm"
+          />
+          <textarea
+            name="description"
+            placeholder="詳細"
+            rows={3}
+            className="w-full rounded-lg border border-border-subtle bg-surface px-3 py-2 text-sm"
+          />
+          <select
+            name="severity"
+            className="w-full rounded-lg border border-border-subtle bg-surface px-3 py-2 text-sm"
+          >
             <option value="low">軽微</option>
-            <option value="medium" selected>中</option>
+            <option value="medium" selected>
+              中
+            </option>
             <option value="high">重大</option>
             <option value="critical">致命的</option>
           </select>
-          <button type="submit" disabled={saving} className="rounded-lg bg-accent px-4 py-2 text-xs font-semibold text-white disabled:opacity-50">
+          <button
+            type="submit"
+            disabled={saving}
+            className="rounded-lg bg-accent px-4 py-2 text-xs font-semibold text-white disabled:opacity-50"
+          >
             {saving ? "保存中..." : "報告"}
           </button>
         </form>
@@ -131,14 +154,23 @@ export default function DefectsTab({ projectId, isAdmin }: { projectId: string; 
               {isAdmin && (d.status === "open" || d.status === "investigating") && (
                 <div className="mt-3 flex gap-1">
                   {d.status === "open" && (
-                    <button onClick={() => updateStatus(d.id, "investigating")} className="rounded-lg border border-border-subtle px-2 py-1 text-[11px] text-secondary hover:bg-surface-hover">
+                    <button
+                      onClick={() => updateStatus(d.id, "investigating")}
+                      className="rounded-lg border border-border-subtle px-2 py-1 text-[11px] text-secondary hover:bg-surface-hover"
+                    >
                       調査開始
                     </button>
                   )}
-                  <button onClick={() => updateStatus(d.id, "resolved")} className="rounded-lg border border-border-subtle px-2 py-1 text-[11px] text-secondary hover:bg-surface-hover">
+                  <button
+                    onClick={() => updateStatus(d.id, "resolved")}
+                    className="rounded-lg border border-border-subtle px-2 py-1 text-[11px] text-secondary hover:bg-surface-hover"
+                  >
                     解決
                   </button>
-                  <button onClick={() => updateStatus(d.id, "wontfix")} className="rounded-lg border border-border-subtle px-2 py-1 text-[11px] text-secondary hover:bg-surface-hover">
+                  <button
+                    onClick={() => updateStatus(d.id, "wontfix")}
+                    className="rounded-lg border border-border-subtle px-2 py-1 text-[11px] text-secondary hover:bg-surface-hover"
+                  >
                     対応不要
                   </button>
                 </div>

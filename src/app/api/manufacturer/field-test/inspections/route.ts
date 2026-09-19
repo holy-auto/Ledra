@@ -107,7 +107,12 @@ export async function POST(req: NextRequest) {
       .single();
     if (error) return apiInternalError(error, "ft inspections POST");
 
-    const RESULT_JA: Record<string, string> = { pass: "合格", fail: "不合格", conditional_pass: "条件付合格", pending: "保留" };
+    const RESULT_JA: Record<string, string> = {
+      pass: "合格",
+      fail: "不合格",
+      conditional_pass: "条件付合格",
+      pending: "保留",
+    };
     after(async () => {
       if (job.tenant_id) {
         const r = (parsed.data.result ?? "pending") as string;

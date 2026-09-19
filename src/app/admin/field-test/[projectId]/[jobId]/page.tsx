@@ -78,17 +78,36 @@ type JobDetail = {
 // ── Labels ──
 
 const STATUS_JA: Record<string, string> = {
-  assigned: "割当済", in_progress: "施工中", evidence_submitted: "証拠提出済",
-  inspection: "検査中", completed: "完了", rejected: "差戻し",
+  assigned: "割当済",
+  in_progress: "施工中",
+  evidence_submitted: "証拠提出済",
+  inspection: "検査中",
+  completed: "完了",
+  rejected: "差戻し",
 };
 const RESULT_JA: Record<string, string> = {
-  pending: "未検査", pass: "合格", fail: "不合格", conditional_pass: "条件付合格",
+  pending: "未検査",
+  pass: "合格",
+  fail: "不合格",
+  conditional_pass: "条件付合格",
 };
 const SEV_JA: Record<string, string> = { low: "軽微", medium: "中", high: "重大", critical: "致命的" };
-const DEF_ST_JA: Record<string, string> = { open: "未対応", investigating: "調査中", resolved: "解決済", closed: "クローズ", wontfix: "対応不要" };
+const DEF_ST_JA: Record<string, string> = {
+  open: "未対応",
+  investigating: "調査中",
+  resolved: "解決済",
+  closed: "クローズ",
+  wontfix: "対応不要",
+};
 const EVT_JA: Record<string, string> = {
-  photo_before: "施工前", photo_during: "施工中", photo_after: "施工後",
-  measurement: "計測", env_data: "環境", video: "動画", document: "書類", other: "その他",
+  photo_before: "施工前",
+  photo_during: "施工中",
+  photo_after: "施工後",
+  measurement: "計測",
+  env_data: "環境",
+  video: "動画",
+  document: "書類",
+  other: "その他",
 };
 
 const TABS = ["概要", "条件チェック", "証拠", "検査結果", "不具合"] as const;
@@ -109,7 +128,9 @@ export default function FieldTestJobDetailPage() {
       .finally(() => setLoading(false));
   }, [jobId]);
 
-  useEffect(() => { fetchJob(); }, [fetchJob]);
+  useEffect(() => {
+    fetchJob();
+  }, [fetchJob]);
 
   const changeStatus = async (newStatus: string) => {
     setActing(true);
@@ -145,9 +166,13 @@ export default function FieldTestJobDetailPage() {
     <div className="p-6">
       {/* Breadcrumb */}
       <div className="mb-3 flex items-center gap-2 text-xs text-secondary">
-        <Link href="/admin/field-test" className="text-accent hover:underline">プロジェクト一覧</Link>
+        <Link href="/admin/field-test" className="text-accent hover:underline">
+          プロジェクト一覧
+        </Link>
         <span>/</span>
-        <Link href={`/admin/field-test/${projectId}`} className="text-accent hover:underline">案件一覧</Link>
+        <Link href={`/admin/field-test/${projectId}`} className="text-accent hover:underline">
+          案件一覧
+        </Link>
         <span>/</span>
         <span className="text-muted">{job.title}</span>
       </div>
@@ -190,9 +215,7 @@ export default function FieldTestJobDetailPage() {
             key={t}
             onClick={() => setTab(t)}
             className={`shrink-0 px-3 py-2 text-xs font-medium border-b-2 transition-colors ${
-              tab === t
-                ? "border-accent text-accent"
-                : "border-transparent text-muted hover:text-primary"
+              tab === t ? "border-accent text-accent" : "border-transparent text-muted hover:text-primary"
             }`}
           >
             {t}
@@ -316,14 +339,15 @@ function ConditionChecksSection({
         const check = checkMap.get(cond.id);
         const done = !!check;
         return (
-          <div key={cond.id} className={`rounded-xl border p-3 ${done ? "border-green-200 bg-green-50/50" : "border-border-subtle bg-surface"}`}>
+          <div
+            key={cond.id}
+            className={`rounded-xl border p-3 ${done ? "border-green-200 bg-green-50/50" : "border-border-subtle bg-surface"}`}
+          >
             <div className="flex items-center justify-between gap-2">
               <div>
                 <span className="text-sm font-medium text-primary">{cond.label}</span>
                 {cond.is_required && <span className="ml-1 text-[10px] text-red-500">必須</span>}
-                {cond.description && (
-                  <div className="text-xs text-muted mt-0.5">{cond.description}</div>
-                )}
+                {cond.description && <div className="text-xs text-muted mt-0.5">{cond.description}</div>}
               </div>
               {done && <span className="text-xs text-green-600 font-medium">✓</span>}
             </div>
@@ -353,10 +377,7 @@ function ConditionChecksSection({
               />
             )}
             {editable && !done && cond.check_type === "text" && (
-              <TextInput
-                saving={saving === cond.id}
-                onSave={(v) => saveCheck(cond.id, { value_text: v })}
-              />
+              <TextInput saving={saving === cond.id} onSave={(v) => saveCheck(cond.id, { value_text: v })} />
             )}
             {done && (
               <div className="mt-1 text-xs text-secondary">
@@ -388,7 +409,9 @@ function NumericInput({ cond, saving, onSave }: { cond: Condition; saving: boole
       />
       {cond.unit && <span className="text-xs text-muted">{cond.unit}</span>}
       <button
-        onClick={() => { if (val) onSave(Number(val)); }}
+        onClick={() => {
+          if (val) onSave(Number(val));
+        }}
         disabled={saving || !val}
         className="rounded-lg bg-accent px-3 py-1 text-xs text-white hover:bg-accent/90 disabled:opacity-50"
       >
@@ -409,7 +432,9 @@ function TextInput({ saving, onSave }: { saving: boolean; onSave: (v: string) =>
         className="flex-1 rounded-lg border border-border-subtle bg-surface px-2 py-1 text-sm"
       />
       <button
-        onClick={() => { if (val) onSave(val); }}
+        onClick={() => {
+          if (val) onSave(val);
+        }}
         disabled={saving || !val}
         className="rounded-lg bg-accent px-3 py-1 text-xs text-white hover:bg-accent/90 disabled:opacity-50"
       >
@@ -461,12 +486,20 @@ function EvidenceSection({
             className="rounded-lg border border-border-subtle bg-surface px-2 py-1 text-xs"
           >
             {Object.entries(EVT_JA).map(([k, v]) => (
-              <option key={k} value={k}>{v}</option>
+              <option key={k} value={k}>
+                {v}
+              </option>
             ))}
           </select>
           <label className="cursor-pointer rounded-lg bg-accent px-3 py-1.5 text-xs font-medium text-white hover:bg-accent/90">
             {uploading ? "アップロード中..." : "ファイルを選択"}
-            <input type="file" className="hidden" onChange={handleUpload} disabled={uploading} accept="image/*,video/mp4,application/pdf" />
+            <input
+              type="file"
+              className="hidden"
+              onChange={handleUpload}
+              disabled={uploading}
+              accept="image/*,video/mp4,application/pdf"
+            />
           </label>
         </div>
       )}
@@ -481,10 +514,19 @@ function EvidenceSection({
                 {ev.signed_url && isImage ? (
                   <a href={ev.signed_url} target="_blank" rel="noopener noreferrer" className="shrink-0">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={ev.signed_url} alt={ev.file_name ?? ""} className="h-14 w-14 rounded-lg object-cover border border-border-subtle" />
+                    <img
+                      src={ev.signed_url}
+                      alt={ev.file_name ?? ""}
+                      className="h-14 w-14 rounded-lg object-cover border border-border-subtle"
+                    />
                   </a>
                 ) : ev.signed_url ? (
-                  <a href={ev.signed_url} target="_blank" rel="noopener noreferrer" className="shrink-0 flex h-14 w-14 items-center justify-center rounded-lg bg-gray-100 text-[10px] text-accent hover:bg-gray-200">
+                  <a
+                    href={ev.signed_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="shrink-0 flex h-14 w-14 items-center justify-center rounded-lg bg-gray-100 text-[10px] text-accent hover:bg-gray-200"
+                  >
                     開く
                   </a>
                 ) : (
@@ -497,9 +539,7 @@ function EvidenceSection({
                   <div className="mt-1 text-xs text-primary truncate">{ev.file_name ?? "ファイル"}</div>
                   {ev.caption && <div className="text-[10px] text-muted truncate">{ev.caption}</div>}
                 </div>
-                <span className="text-[10px] text-secondary shrink-0">
-                  {ev.created_at?.slice(0, 10)}
-                </span>
+                <span className="text-[10px] text-secondary shrink-0">{ev.created_at?.slice(0, 10)}</span>
               </div>
             );
           })}
@@ -524,11 +564,15 @@ function InspectionsSection({ inspections }: { inspections: Inspection[] }) {
       {inspections.map((ins) => (
         <div key={ins.id} className="rounded-xl border border-border-subtle bg-surface p-3">
           <div className="flex items-center justify-between gap-2">
-            <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${RESULT_COLOR[ins.result] ?? "bg-gray-100"}`}>
+            <span
+              className={`rounded-full px-2 py-0.5 text-xs font-medium ${RESULT_COLOR[ins.result] ?? "bg-gray-100"}`}
+            >
               {RESULT_JA[ins.result] ?? ins.result}
             </span>
             {ins.score != null && <span className="text-sm font-bold text-primary">{ins.score}点</span>}
-            <span className="text-[10px] text-secondary ml-auto">{ins.inspected_at?.slice(0, 10) ?? ins.created_at?.slice(0, 10)}</span>
+            <span className="text-[10px] text-secondary ml-auto">
+              {ins.inspected_at?.slice(0, 10) ?? ins.created_at?.slice(0, 10)}
+            </span>
           </div>
           {ins.notes && <div className="mt-2 text-xs text-secondary whitespace-pre-wrap">{ins.notes}</div>}
         </div>
@@ -556,15 +600,11 @@ function DefectsSection({ defects }: { defects: Defect[] }) {
               <span className="rounded-full bg-red-50 px-2 py-0.5 text-[10px] font-medium text-red-700">
                 {SEV_JA[d.severity] ?? d.severity}
               </span>
-              <span className="text-[10px] text-secondary">
-                {DEF_ST_JA[d.status] ?? d.status}
-              </span>
+              <span className="text-[10px] text-secondary">{DEF_ST_JA[d.status] ?? d.status}</span>
             </div>
           </div>
           {d.resolution && (
-            <div className="mt-2 rounded-lg bg-green-50 p-2 text-xs text-green-800">
-              解決: {d.resolution}
-            </div>
+            <div className="mt-2 rounded-lg bg-green-50 p-2 text-xs text-green-800">解決: {d.resolution}</div>
           )}
         </div>
       ))}

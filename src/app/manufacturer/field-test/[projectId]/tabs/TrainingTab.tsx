@@ -30,8 +30,12 @@ export default function TrainingTab({ projectId, isAdmin }: { projectId: string;
   const load = () => {
     setLoading(true);
     Promise.all([
-      fetch(`/api/manufacturer/field-test/training?project_id=${projectId}`, { cache: "no-store" }).then((r) => r.json()),
-      fetch(`/api/manufacturer/field-test/training/completions?project_id=${projectId}`, { cache: "no-store" }).then((r) => r.json()),
+      fetch(`/api/manufacturer/field-test/training?project_id=${projectId}`, { cache: "no-store" }).then((r) =>
+        r.json(),
+      ),
+      fetch(`/api/manufacturer/field-test/training/completions?project_id=${projectId}`, { cache: "no-store" }).then(
+        (r) => r.json(),
+      ),
     ])
       .then(([mJson, cJson]) => {
         setModules(mJson.modules ?? []);
@@ -82,13 +86,31 @@ export default function TrainingTab({ projectId, isAdmin }: { projectId: string;
 
         {showForm && (
           <form onSubmit={handleCreate} className="rounded-2xl border border-border-subtle bg-surface p-4 space-y-3">
-            <input name="title" required placeholder="モジュール名" className="w-full rounded-lg border border-border-subtle bg-surface px-3 py-2 text-sm" />
-            <textarea name="description" placeholder="説明" rows={2} className="w-full rounded-lg border border-border-subtle bg-surface px-3 py-2 text-sm" />
-            <input name="content_url" placeholder="資料URL" className="w-full rounded-lg border border-border-subtle bg-surface px-3 py-2 text-sm" />
+            <input
+              name="title"
+              required
+              placeholder="モジュール名"
+              className="w-full rounded-lg border border-border-subtle bg-surface px-3 py-2 text-sm"
+            />
+            <textarea
+              name="description"
+              placeholder="説明"
+              rows={2}
+              className="w-full rounded-lg border border-border-subtle bg-surface px-3 py-2 text-sm"
+            />
+            <input
+              name="content_url"
+              placeholder="資料URL"
+              className="w-full rounded-lg border border-border-subtle bg-surface px-3 py-2 text-sm"
+            />
             <label className="flex items-center gap-2 text-xs text-secondary">
               <input name="is_required" type="checkbox" defaultChecked /> 必修
             </label>
-            <button type="submit" disabled={saving} className="rounded-lg bg-accent px-4 py-2 text-xs font-semibold text-white disabled:opacity-50">
+            <button
+              type="submit"
+              disabled={saving}
+              className="rounded-lg bg-accent px-4 py-2 text-xs font-semibold text-white disabled:opacity-50"
+            >
               {saving ? "保存中..." : "追加"}
             </button>
           </form>
@@ -103,11 +125,18 @@ export default function TrainingTab({ projectId, isAdmin }: { projectId: string;
             <div key={m.id} className="rounded-2xl border border-border-subtle bg-surface p-4">
               <div className="flex items-center gap-2">
                 <span className="text-sm font-medium text-primary">{m.title}</span>
-                {m.is_required && <span className="rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-medium text-red-600">必修</span>}
+                {m.is_required && (
+                  <span className="rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-medium text-red-600">必修</span>
+                )}
               </div>
               {m.description && <p className="mt-0.5 text-xs text-secondary">{m.description}</p>}
               {m.content_url && (
-                <a href={m.content_url} target="_blank" rel="noopener noreferrer" className="mt-1 inline-block text-xs text-accent hover:underline">
+                <a
+                  href={m.content_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-1 inline-block text-xs text-accent hover:underline"
+                >
                   資料を開く →
                 </a>
               )}

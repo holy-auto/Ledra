@@ -28,6 +28,94 @@ PR #1095 がマージされた（`8f26a0e`・2026-09-19 13:16 UTC）。CI は 10
 最初のクエリでテーブルが無い。**台帳の修復が済むまで、以降のスキーマ変更も本番に届かない。**
 修復案は OPEN_QUESTIONS に3つ並べた（代表判断待ち）。
 
+
+## 2026-09-19 保険会社ポータルの車両検索を本番で復旧した（enum に無い `'expired'` で毎回落ちていた）
+
+**本番の `insurer_search_vehicles(text,integer,integer,text,text)` が全呼び出し落ちていた。**
+保険会社ポータルの車両検索（`src/app/api/insurer/vehicles/route.ts` が呼ぶ RPC）で、
+原因は2つとも `certificates.status` の型 —— 本番は enum `certificate_status_enum`
+（`active, void, draft`）である。
+
+| # | エラー | 場所 |
+|---|---|---|
+| 1 | **22P02** invalid input value for enum: `"expired"` | `c.status IN ('active','void','expired')` —— enum に無い値へのリテラル変換で落ちる |
+| 2 | **42804** structure of query does not match function result type | `RETURNS TABLE` の `latest_cert_status` は `text` だが `(SELECT c2.status ...)` は enum を返す |
+
+**直し方は `status::text`。** この形はリポジトリに既に3回入っている
+（`20260329200001` / `20260802154302` / `20260802154541`）。
+**その3回とも「目の前の関数」だけを直していたので、`insurer_search_vehicles` が漏れ続けた。**
+
+**【訂正】最初の走査は不十分だった。** `'expired'` というリテラルで引いたので、
+**上の表の 1 しか見ておらず 2 を見ていない**。`/code-review` の指摘で
+`insurer_get_certificate`（証明書詳細）が 42804 で残っていることが分かった
+（MISTAKE_LEDGER `M-20260919-swept-for-the-literal-not-the-bug-class`）。
+走査は `plpgsql_check` を**本番の全 plpgsql 関数**に回す形に替えた ——
+書き方に依らず「壊れている関数そのもの」が出る。
+
+### 同じ走査でまとめて直したもの
+
+| 対象 | 何が起きていたか | 版 |
+|---|---|---|
+| `insurer_search_vehicles`（5引数、車両検索） | 22P02 + 42804 | `20260919132119` |
+| `certificates.certificate_no` 列が本番に無い | `insurer_get_certificate` / `insurer_get_vehicle_certificates` が 42703。**修正は PR #1094 で main にあったが `db-migrate` が止まっていて届いていなかった** | `20260918150000` を手で適用 |
+| `insurer_get_certificate`（証明書詳細） | `status` と `expiry_type` の2列が enum なのに返り値は `text` で 42804 | `20260919134412` |
+
+**適用後、本番の全 plpgsql 関数で `plpgsql_check` が出す error は1件だけ** ——
+6引数オーバーロード `insurer_search_vehicles(...,text)` の 42883（誰からも呼ばれていない、
+OPEN_QUESTIONS に起票済み）。
+
+**手当てが作ってしまった二次不具合と、その解消**: 上の3版を本番へ当てたことで、
+PR #1095 の `20260918160000`（外注施工履歴の4表・main に在り本番未適用）が
+**out-of-order** になった（`supabase db push` の不変条件2。`db-migrate.yml` 冒頭に明記されている）。
+Supabase のプレビューが `⚠️ Applied out-of-order migrations` で出してきて気づいた。
+**`20260918160000` も本番へ当てて解消**し、あわせて `/admin/outsourced-work` が
+本番で動かない状態（4表とも存在しなかった）も直った。
+本番の全版と `supabase/migrations/` の全版を突き合わせた実測は
+**不変条件1が7件（未解消・6件は #1093 で解ける）、不変条件2は0件**。
+なぜ当てる前に気づけなかったかは MISTAKE_LEDGER
+`M-20260919-hand-applied-ahead-of-a-pending-migration`。
+
+**Codex レビューで出た P1 4件のうち2件を同じ PR で直した**（`20260919150043`）。
+どちらも「関数が実際に動くようになったことで初めて到達可能になった」もの。
+
+| # | 内容 | 対応 |
+|---|---|---|
+| 1 | **下書き証明書の漏れ**。`insurer_search_vehicles` の最新証明書サブクエリ3本に status 条件が無く、draft の `public_id` を返す。それを `insurer_get_certificate` に渡すと本文と JSON まで返る（本番に draft は1件） | 両方に `active/void/expired` の条件を足した。detail 側は「見つからない」と同じ経路に落として存在を漏らさない |
+| 2 | **オーバーロードの曖昧さ**。5引数と6引数の両方にアプリの引数が一致し、PostgREST が RPC を解決できない恐れ | 6引数版を drop。呼び出し元0件・呼ばれれば必ず 42883 なので残す理由が無い |
+
+**残り2件は直していない** —— どちらも「この2関数だけの話ではない」ため
+（OPEN_QUESTIONS「保険会社 RPC の認可が、ルート層にしか無い」）。
+停止中の保険会社が RPC を直叩きできる件は、本番の該当関数 17 本中 **15 本**が同じ穴を持ち、
+根は共有関数 `my_insurer_ids()` / `current_insurer_id()`。1本ずつ塞ぐと同じ漏れを量産する。
+複数保険会社に所属するユーザの文脈落ちは、**該当ユーザが現在0人**（実測）。
+
+**6引数版を落としたことで、本番の全 plpgsql 関数で `plpgsql_check` の error は 0 件になった。**
+
+**何を確かめたかの線引き**（過去に「動く状態になった」と書いて外している ——
+MISTAKE_LEDGER M-074）: 確かめたのは**本番の関数がもう静的エラーで落ちないこと**だけ。
+保険会社ユーザでログインして画面を通した確認は**していない**【要確認】。
+呼び出し側（`src/app/api/insurer/*`）の挙動・RLS・認証はこの走査の対象外。
+
+**検証（再現 → 修正 → 通過）**
+
+- 22P02 は**本番で**再現（副作用なし）:
+  `select 1 from public.certificates c where c.status in ('active','void','expired') limit 0;`
+- 42804 は再生 DB の `certificates.status` を本番と同じ enum に寄せてから再現。
+  **キャストを片方だけ直した版**で `plpgsql_check` を回すと 42804 が出る
+  —— 2つが別々のバグであることをここで確かめた。
+- 修正版は enum 化した再生 DB で `plpgsql_check` が**指摘なし**、
+  本番でも適用後に**指摘なし**。`check:migrations`（471/471 再生）と
+  `lint:migrations` も緑。
+
+**出し方**: `db-migrate` は本番に main へ無い版が7つあって止まっているので、
+**その復旧を待たずに手で本番へ当てた**。版は
+`supabase_migrations.schema_migrations` に `20260919132119` として記録され、
+**リポジトリのファイル名もそれに合わせてある**ので、次の `supabase db push` は
+この版を再実行しない。
+
+**残り**: 6引数オーバーロード `insurer_search_vehicles(text,integer,integer,text,text,text)`
+は、本番から消えた `insurer_is_active_subscription` を呼ぶので呼ばれれば必ず落ちる。
+アプリからの呼び出しは0件。消すか戻すかは未決（OPEN_QUESTIONS）。
 ## 2026-09-18 権限・AIレート制限の検出器を withCaller 対応にし、剥がれていた13本の制限を復元
 
 `withCaller` へ 378 本を寄せたリファクタで、認可とレート制限が**ハンドラ本文から

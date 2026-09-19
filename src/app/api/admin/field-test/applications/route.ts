@@ -1,11 +1,7 @@
 import { NextRequest, after } from "next/server";
 import { withCaller } from "@/lib/api/withCaller";
 import { apiJson, apiValidationError } from "@/lib/api/response";
-import {
-  listTenantApplications,
-  createApplication,
-  getRecruitmentDetail,
-} from "@/lib/fieldTest/tenantQueries";
+import { listTenantApplications, createApplication, getRecruitmentDetail } from "@/lib/fieldTest/tenantQueries";
 import { notifyFtTenant } from "@/lib/fieldTest/ftNotify";
 
 export const dynamic = "force-dynamic";

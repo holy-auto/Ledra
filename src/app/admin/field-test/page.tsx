@@ -40,10 +40,32 @@ type Application = {
 
 // ── Labels ──
 
-const STATUS_JA: Record<string, string> = { draft: "下書き", recruiting: "募集中", active: "実施中", completed: "完了", archived: "アーカイブ" };
-const STATUS_COLOR: Record<string, string> = { active: "bg-green-100 text-green-800", recruiting: "bg-blue-100 text-blue-800", completed: "bg-gray-100 text-gray-600", draft: "bg-yellow-100 text-yellow-800", archived: "bg-gray-100 text-gray-500" };
-const APP_STATUS_JA: Record<string, string> = { pending: "審査中", approved: "承認", rejected: "却下", withdrawn: "取下げ" };
-const APP_STATUS_COLOR: Record<string, string> = { pending: "bg-yellow-100 text-yellow-800", approved: "bg-green-100 text-green-800", rejected: "bg-red-100 text-red-800", withdrawn: "bg-gray-100 text-gray-500" };
+const STATUS_JA: Record<string, string> = {
+  draft: "下書き",
+  recruiting: "募集中",
+  active: "実施中",
+  completed: "完了",
+  archived: "アーカイブ",
+};
+const STATUS_COLOR: Record<string, string> = {
+  active: "bg-green-100 text-green-800",
+  recruiting: "bg-blue-100 text-blue-800",
+  completed: "bg-gray-100 text-gray-600",
+  draft: "bg-yellow-100 text-yellow-800",
+  archived: "bg-gray-100 text-gray-500",
+};
+const APP_STATUS_JA: Record<string, string> = {
+  pending: "審査中",
+  approved: "承認",
+  rejected: "却下",
+  withdrawn: "取下げ",
+};
+const APP_STATUS_COLOR: Record<string, string> = {
+  pending: "bg-yellow-100 text-yellow-800",
+  approved: "bg-green-100 text-green-800",
+  rejected: "bg-red-100 text-red-800",
+  withdrawn: "bg-gray-100 text-gray-500",
+};
 
 const TABS = ["参加中", "募集", "応募状況"] as const;
 type Tab = (typeof TABS)[number];
@@ -95,9 +117,7 @@ export default function FieldTestPage() {
       body: JSON.stringify({ action: "withdraw" }),
     });
     if (res.ok) {
-      setApplications((prev) =>
-        prev.map((a) => (a.id === appId ? { ...a, status: "withdrawn" } : a)),
-      );
+      setApplications((prev) => prev.map((a) => (a.id === appId ? { ...a, status: "withdrawn" } : a)));
     }
   };
 
@@ -140,15 +160,9 @@ export default function FieldTestPage() {
         <>
           {tab === "参加中" && <ProjectsTab projects={projects} />}
           {tab === "募集" && (
-            <RecruitmentsTab
-              recruitments={recruitments}
-              appliedIds={appliedRecruitmentIds}
-              onApply={handleApply}
-            />
+            <RecruitmentsTab recruitments={recruitments} appliedIds={appliedRecruitmentIds} onApply={handleApply} />
           )}
-          {tab === "応募状況" && (
-            <ApplicationsTab applications={applications} onWithdraw={handleWithdraw} />
-          )}
+          {tab === "応募状況" && <ApplicationsTab applications={applications} onWithdraw={handleWithdraw} />}
         </>
       )}
     </div>
@@ -162,9 +176,7 @@ function ProjectsTab({ projects }: { projects: FtProject[] }) {
     return (
       <div className="rounded-2xl border border-border-subtle bg-surface p-8 text-center">
         <div className="text-sm text-muted">参加中のプロジェクトはありません</div>
-        <div className="mt-1 text-xs text-secondary">
-          メーカーからの案件割当があるとここに表示されます
-        </div>
+        <div className="mt-1 text-xs text-secondary">メーカーからの案件割当があるとここに表示されます</div>
       </div>
     );
   }
@@ -181,13 +193,17 @@ function ProjectsTab({ projects }: { projects: FtProject[] }) {
               <div className="text-sm font-semibold text-primary truncate">{p.name}</div>
               {p.product_name && <div className="mt-0.5 text-xs text-secondary truncate">{p.product_name}</div>}
             </div>
-            <span className={`inline-block shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium ${STATUS_COLOR[p.status] ?? "bg-gray-100 text-gray-600"}`}>
+            <span
+              className={`inline-block shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium ${STATUS_COLOR[p.status] ?? "bg-gray-100 text-gray-600"}`}
+            >
               {STATUS_JA[p.status] ?? p.status}
             </span>
           </div>
           {p.description && <div className="mt-2 text-xs text-muted line-clamp-2">{p.description}</div>}
           {(p.starts_at || p.ends_at) && (
-            <div className="mt-2 text-[10px] text-secondary">{p.starts_at ?? "?"} 〜 {p.ends_at ?? "?"}</div>
+            <div className="mt-2 text-[10px] text-secondary">
+              {p.starts_at ?? "?"} 〜 {p.ends_at ?? "?"}
+            </div>
           )}
         </Link>
       ))}
@@ -223,7 +239,9 @@ function RecruitmentsTab({
                 {r.description && <div className="mt-1 text-xs text-muted line-clamp-2">{r.description}</div>}
               </div>
               {applied ? (
-                <span className="shrink-0 rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-medium text-green-800">応募済</span>
+                <span className="shrink-0 rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-medium text-green-800">
+                  応募済
+                </span>
               ) : (
                 <button
                   onClick={() => onApply(r.id)}
@@ -236,9 +254,7 @@ function RecruitmentsTab({
             <div className="mt-2 flex flex-wrap gap-3 text-[10px] text-secondary">
               {r.deadline && <span>締切: {r.deadline.slice(0, 10)}</span>}
               {r.max_participants && <span>定員: {r.max_participants}社</span>}
-              {r.required_certifications.length > 0 && (
-                <span>必要資格: {r.required_certifications.join(", ")}</span>
-              )}
+              {r.required_certifications.length > 0 && <span>必要資格: {r.required_certifications.join(", ")}</span>}
             </div>
           </div>
         );
@@ -266,20 +282,17 @@ function ApplicationsTab({
       {applications.map((a) => (
         <div key={a.id} className="rounded-2xl border border-border-subtle bg-surface p-4">
           <div className="flex items-center justify-between gap-2">
-            <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${APP_STATUS_COLOR[a.status] ?? "bg-gray-100 text-gray-600"}`}>
+            <span
+              className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${APP_STATUS_COLOR[a.status] ?? "bg-gray-100 text-gray-600"}`}
+            >
               {APP_STATUS_JA[a.status] ?? a.status}
             </span>
             <span className="text-[10px] text-secondary">{a.created_at?.slice(0, 10)}</span>
           </div>
           {a.notes && <div className="mt-1 text-xs text-muted">{a.notes}</div>}
-          {a.review_notes && (
-            <div className="mt-1 text-xs text-secondary">レビュー: {a.review_notes}</div>
-          )}
+          {a.review_notes && <div className="mt-1 text-xs text-secondary">レビュー: {a.review_notes}</div>}
           {a.status === "pending" && (
-            <button
-              onClick={() => onWithdraw(a.id)}
-              className="mt-2 text-xs text-red-500 hover:underline"
-            >
+            <button onClick={() => onWithdraw(a.id)} className="mt-2 text-xs text-red-500 hover:underline">
               取り下げる
             </button>
           )}

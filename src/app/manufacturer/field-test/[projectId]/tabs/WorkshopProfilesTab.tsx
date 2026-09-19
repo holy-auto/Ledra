@@ -43,13 +43,7 @@ const BOOL_KEYS = [
 
 type BoolKey = (typeof BOOL_KEYS)[number];
 
-export default function WorkshopProfilesTab({
-  projectId,
-  isAdmin,
-}: {
-  projectId: string;
-  isAdmin: boolean;
-}) {
+export default function WorkshopProfilesTab({ projectId, isAdmin }: { projectId: string; isAdmin: boolean }) {
   const [profiles, setProfiles] = useState<(Profile & { tenant_name?: string })[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -84,9 +78,7 @@ export default function WorkshopProfilesTab({
           {/* Header */}
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <h3 className="text-sm font-bold text-primary">
-                {p.tenant_name ?? p.tenant_id.slice(0, 8)}
-              </h3>
+              <h3 className="text-sm font-bold text-primary">{p.tenant_name ?? p.tenant_id.slice(0, 8)}</h3>
               {p.verified_at && (
                 <span className="rounded-full bg-green-100 px-2 py-0.5 text-[11px] font-medium text-green-700">
                   検証済み
@@ -221,16 +213,12 @@ function ProfileEditForm({ profile, onSaved }: { profile: Profile; onSaved: () =
   // Text fields
   const [equipmentNotes, setEquipmentNotes] = useState(profile.equipment_notes ?? "");
   const [vehiclesText, setVehiclesText] = useState(profile.supported_vehicles.join("、"));
-  const [prefecturesText, setPrefecturesText] = useState(
-    profile.service_area.prefectures?.join("、") ?? "",
-  );
+  const [prefecturesText, setPrefecturesText] = useState(profile.service_area.prefectures?.join("、") ?? "");
   const [radiusKm, setRadiusKm] = useState(profile.service_area.radius_km?.toString() ?? "");
   const [areaNotes, setAreaNotes] = useState(profile.service_area.notes ?? "");
 
   // Permits
-  const [permits, setPermits] = useState<Permit[]>(
-    profile.permits.length > 0 ? [...profile.permits] : [],
-  );
+  const [permits, setPermits] = useState<Permit[]>(profile.permits.length > 0 ? [...profile.permits] : []);
 
   // Certifications
   const [certs, setCerts] = useState<Cert[]>(

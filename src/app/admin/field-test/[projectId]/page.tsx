@@ -96,11 +96,7 @@ export default function FieldTestProjectDetailPage() {
     });
     if (res.ok) {
       const json = await res.json();
-      setModules((prev) =>
-        prev.map((m) =>
-          m.id === moduleId ? { ...m, completion: json } : m,
-        ),
-      );
+      setModules((prev) => prev.map((m) => (m.id === moduleId ? { ...m, completion: json } : m)));
     }
   }, []);
 
@@ -114,11 +110,7 @@ export default function FieldTestProjectDetailPage() {
     if (res.ok) {
       const json = await res.json();
       setAgreements((prev) =>
-        prev.map((a) =>
-          a.id === agreementId
-            ? { ...a, accepted: true, accepted_at: json.accepted_at }
-            : a,
-        ),
+        prev.map((a) => (a.id === agreementId ? { ...a, accepted: true, accepted_at: json.accepted_at } : a)),
       );
     }
   }, []);
@@ -148,10 +140,14 @@ export default function FieldTestProjectDetailPage() {
           >
             {t}
             {t === "教育" && modules.length > 0 && (
-              <span className="ml-1 text-[10px] text-secondary">({completedCount}/{modules.length})</span>
+              <span className="ml-1 text-[10px] text-secondary">
+                ({completedCount}/{modules.length})
+              </span>
             )}
             {t === "契約" && agreements.length > 0 && (
-              <span className="ml-1 text-[10px] text-secondary">({acceptedCount}/{agreements.length})</span>
+              <span className="ml-1 text-[10px] text-secondary">
+                ({acceptedCount}/{agreements.length})
+              </span>
             )}
           </button>
         ))}
@@ -170,9 +166,7 @@ export default function FieldTestProjectDetailPage() {
               onComplete={handleComplete}
             />
           )}
-          {tab === "契約" && (
-            <AgreementsTab agreements={agreements} onAccept={handleAccept} />
-          )}
+          {tab === "契約" && <AgreementsTab agreements={agreements} onAccept={handleAccept} />}
         </>
       )}
     </div>
@@ -207,11 +201,11 @@ function JobsTab({ jobs, projectId }: { jobs: FtJob[]; projectId: string }) {
                 )}
                 <span className="text-sm font-semibold text-primary truncate">{j.title}</span>
               </div>
-              {j.description && (
-                <div className="mt-1 text-xs text-muted line-clamp-1">{j.description}</div>
-              )}
+              {j.description && <div className="mt-1 text-xs text-muted line-clamp-1">{j.description}</div>}
             </div>
-            <span className={`inline-block shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium ${STATUS_COLOR[j.status] ?? "bg-gray-100 text-gray-600"}`}>
+            <span
+              className={`inline-block shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium ${STATUS_COLOR[j.status] ?? "bg-gray-100 text-gray-600"}`}
+            >
               {STATUS_JA[j.status] ?? j.status}
             </span>
           </div>
@@ -261,9 +255,7 @@ function TrainingTab({
           <div
             key={m.id}
             className={`rounded-2xl border p-4 ${
-              m.completion
-                ? "border-green-200 bg-green-50"
-                : "border-border-subtle bg-surface"
+              m.completion ? "border-green-200 bg-green-50" : "border-border-subtle bg-surface"
             }`}
           >
             <div className="flex items-start justify-between gap-2">
@@ -276,9 +268,7 @@ function TrainingTab({
                     </span>
                   )}
                 </div>
-                {m.description && (
-                  <div className="mt-1 text-xs text-muted">{m.description}</div>
-                )}
+                {m.description && <div className="mt-1 text-xs text-muted">{m.description}</div>}
               </div>
               <div className="shrink-0">
                 {m.completion ? (
@@ -314,13 +304,7 @@ function TrainingTab({
   );
 }
 
-function AgreementsTab({
-  agreements,
-  onAccept,
-}: {
-  agreements: Agreement[];
-  onAccept: (id: string) => void;
-}) {
+function AgreementsTab({ agreements, onAccept }: { agreements: Agreement[]; onAccept: (id: string) => void }) {
   if (agreements.length === 0) {
     return (
       <div className="rounded-2xl border border-border-subtle bg-surface p-8 text-center">
@@ -335,9 +319,7 @@ function AgreementsTab({
         <div
           key={a.id}
           className={`rounded-2xl border p-4 ${
-            a.accepted
-              ? "border-green-200 bg-green-50"
-              : "border-yellow-200 bg-yellow-50"
+            a.accepted ? "border-green-200 bg-green-50" : "border-yellow-200 bg-yellow-50"
           }`}
         >
           <div className="flex items-start justify-between gap-2">

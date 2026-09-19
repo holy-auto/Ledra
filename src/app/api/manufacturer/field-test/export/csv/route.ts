@@ -2,13 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveManufacturerCaller } from "@/lib/auth/manufacturerCaller";
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
-import {
-  apiUnauthorized,
-  apiForbidden,
-  apiValidationError,
-  apiNotFound,
-  apiInternalError,
-} from "@/lib/api/response";
+import { apiUnauthorized, apiForbidden, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
 import { buildCsv, csvDownloadHeaders } from "@/lib/csv/serialize";
 import type {
   FtJobStatus,
@@ -30,13 +24,7 @@ export const dynamic = "force-dynamic";
 
 type TableName = "jobs" | "inspections" | "defects" | "evidence" | "condition_checks";
 
-const VALID_TABLES = new Set<TableName>([
-  "jobs",
-  "inspections",
-  "defects",
-  "evidence",
-  "condition_checks",
-]);
+const VALID_TABLES = new Set<TableName>(["jobs", "inspections", "defects", "evidence", "condition_checks"]);
 
 /**
  * GET /api/manufacturer/field-test/export/csv?project_id=xxx&table=jobs
@@ -48,8 +36,7 @@ export async function GET(req: NextRequest) {
   const supabase = await createSupabaseServerClient();
   const caller = await resolveManufacturerCaller(supabase);
   if (!caller) return apiUnauthorized();
-  if (caller.role !== "admin")
-    return apiForbidden("CSVエクスポートは admin ロールのみ実行できます。");
+  if (caller.role !== "admin") return apiForbidden("CSVエクスポートは admin ロールのみ実行できます。");
 
   const url = new URL(req.url);
   const projectId = url.searchParams.get("project_id");
@@ -57,9 +44,7 @@ export async function GET(req: NextRequest) {
 
   if (!projectId) return apiValidationError("project_id は必須です。");
   if (!table || !VALID_TABLES.has(table))
-    return apiValidationError(
-      `table は ${[...VALID_TABLES].join(" / ")} のいずれかを指定してください。`,
-    );
+    return apiValidationError(`table は ${[...VALID_TABLES].join(" / ")} のいずれかを指定してください。`);
 
   try {
     const admin = createServiceRoleAdmin("ft csv export");
@@ -132,17 +117,22 @@ export async function GET(req: NextRequest) {
       case "defects": {
         const { data, error } = await admin
           .from("ft_defects")
-          .select(
-            "defect_code, title, description, severity, status, resolution, tenant_id, resolved_at, created_at",
-          )
+          .select("defect_code, title, description, severity, status, resolution, tenant_id, resolved_at, created_at")
           .match(scope)
           .order("created_at", { ascending: true });
         if (error) return apiInternalError(error, "ft csv defects");
         const tenantIds = [...new Set((data ?? []).filter((r) => r.tenant_id).map((r) => r.tenant_id as string))];
         const tenantMap = await resolveTenantNames(admin, tenantIds);
         const header = [
-          "不具合コード", "タイトル", "詳細", "重大度", "ステータス",
-          "解決内容", "施工店", "解決日", "報告日",
+          "不具合コード",
+          "タイトル",
+          "詳細",
+          "重大度",
+          "ステータス",
+          "解決内容",
+          "施工店",
+          "解決日",
+          "報告日",
         ];
         const rows = (data ?? []).map((r) => [
           r.defect_code,
@@ -185,10 +175,7 @@ export async function GET(req: NextRequest) {
 
       case "condition_checks": {
         // condition_checks has no manufacturer_id, scope via job_ids
-        const { data: jobRows, error: jErr } = await admin
-          .from("ft_jobs")
-          .select("id, job_code")
-          .match(scope);
+        const { data: jobRows, error: jErr } = await admin.from("ft_jobs").select("id, job_code").match(scope);
         if (jErr) return apiInternalError(jErr, "ft csv cc jobs");
         const jobIds = (jobRows ?? []).map((j) => (j as { id: string }).id);
         if (jobIds.length === 0) {
@@ -197,7 +184,10 @@ export async function GET(req: NextRequest) {
           break;
         }
         const jobCodeMap = new Map(
-          (jobRows ?? []).map((j) => [(j as { id: string }).id, (j as { job_code: string | null }).job_code ?? (j as { id: string }).id]),
+          (jobRows ?? []).map((j) => [
+            (j as { id: string }).id,
+            (j as { job_code: string | null }).job_code ?? (j as { id: string }).id,
+          ]),
         );
 
         const { data: checks, error: ccErr } = await admin
@@ -220,7 +210,7 @@ export async function GET(req: NextRequest) {
                 : "NG"
               : c.value_numeric != null
                 ? String(c.value_numeric)
-                : c.value_text ?? c.value_photo_path ?? "";
+                : (c.value_text ?? c.value_photo_path ?? "");
           return [
             jobCodeMap.get(c.job_id as string) ?? c.job_id,
             condMap.get(c.condition_id as string) ?? c.condition_id,
@@ -266,10 +256,7 @@ async function resolveJobCodes(
   if (ids.length === 0) return new Map();
   const { data } = await admin.from("ft_jobs").select("id, job_code, title").in("id", ids);
   return new Map(
-    (data ?? []).map((j) => [
-      j.id as string,
-      (j.job_code as string | null) ?? (j.title as string) ?? (j.id as string),
-    ]),
+    (data ?? []).map((j) => [j.id as string, (j.job_code as string | null) ?? (j.title as string) ?? (j.id as string)]),
   );
 }
 

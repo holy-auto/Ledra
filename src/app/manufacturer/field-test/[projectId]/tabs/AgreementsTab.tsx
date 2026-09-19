@@ -75,14 +75,32 @@ export default function AgreementsTab({ projectId, isAdmin }: { projectId: strin
 
       {showForm && (
         <form onSubmit={handleCreate} className="rounded-2xl border border-border-subtle bg-surface p-4 space-y-3">
-          <input name="tenant_id" required placeholder="テナントID (UUID)" className="w-full rounded-lg border border-border-subtle bg-surface px-3 py-2 text-sm" />
-          <select name="agreement_type" required className="w-full rounded-lg border border-border-subtle bg-surface px-3 py-2 text-sm">
+          <input
+            name="tenant_id"
+            required
+            placeholder="テナントID (UUID)"
+            className="w-full rounded-lg border border-border-subtle bg-surface px-3 py-2 text-sm"
+          />
+          <select
+            name="agreement_type"
+            required
+            className="w-full rounded-lg border border-border-subtle bg-surface px-3 py-2 text-sm"
+          >
             <option value="nda">秘密保持契約</option>
             <option value="terms">利用規約</option>
             <option value="other">その他</option>
           </select>
-          <textarea name="document_text" placeholder="契約本文" rows={4} className="w-full rounded-lg border border-border-subtle bg-surface px-3 py-2 text-sm" />
-          <button type="submit" disabled={saving} className="rounded-lg bg-accent px-4 py-2 text-xs font-semibold text-white disabled:opacity-50">
+          <textarea
+            name="document_text"
+            placeholder="契約本文"
+            rows={4}
+            className="w-full rounded-lg border border-border-subtle bg-surface px-3 py-2 text-sm"
+          />
+          <button
+            type="submit"
+            disabled={saving}
+            className="rounded-lg bg-accent px-4 py-2 text-xs font-semibold text-white disabled:opacity-50"
+          >
             {saving ? "保存中..." : "追加"}
           </button>
         </form>
@@ -95,7 +113,10 @@ export default function AgreementsTab({ projectId, isAdmin }: { projectId: strin
       ) : (
         <div className="space-y-3">
           {items.map((a) => (
-            <div key={a.id} className="rounded-2xl border border-border-subtle bg-surface p-4 flex items-center justify-between gap-4">
+            <div
+              key={a.id}
+              className="rounded-2xl border border-border-subtle bg-surface p-4 flex items-center justify-between gap-4"
+            >
               <div>
                 <div className="text-sm font-medium text-primary">{a.tenant_name ?? a.tenant_id}</div>
                 <div className="mt-0.5 text-xs text-secondary">{FT_AGREEMENT_TYPE_LABELS[a.agreement_type]}</div>
@@ -107,7 +128,9 @@ export default function AgreementsTab({ projectId, isAdmin }: { projectId: strin
                   </span>
                 ) : (
                   <>
-                    <span className="rounded-full bg-yellow-100 px-2 py-0.5 text-[11px] font-medium text-yellow-700">未承諾</span>
+                    <span className="rounded-full bg-yellow-100 px-2 py-0.5 text-[11px] font-medium text-yellow-700">
+                      未承諾
+                    </span>
                     {isAdmin && (
                       <button
                         onClick={() => markAccepted(a.id)}

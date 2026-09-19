@@ -54,7 +54,9 @@ export default function FieldTestProjectsClient({ isAdmin }: { isAdmin: boolean 
       })
       .catch((e) => !cancelled && setError(e.message))
       .finally(() => !cancelled && setLoading(false));
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [filter]);
 
   return (
@@ -66,9 +68,7 @@ export default function FieldTestProjectsClient({ isAdmin }: { isAdmin: boolean 
               key={f.value}
               onClick={() => setFilter(f.value)}
               className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
-                filter === f.value
-                  ? "bg-accent-dim text-accent"
-                  : "text-secondary hover:bg-surface-hover"
+                filter === f.value ? "bg-accent-dim text-accent" : "text-secondary hover:bg-surface-hover"
               }`}
             >
               {f.label}
@@ -106,11 +106,11 @@ export default function FieldTestProjectsClient({ isAdmin }: { isAdmin: boolean 
               <div className="flex items-start justify-between gap-4">
                 <div className="space-y-1">
                   <div className="text-sm font-semibold text-primary">{p.name}</div>
-                  {p.product_name && (
-                    <div className="text-xs text-secondary">製品: {p.product_name}</div>
-                  )}
+                  {p.product_name && <div className="text-xs text-secondary">製品: {p.product_name}</div>}
                 </div>
-                <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-[11px] font-medium ${STATUS_COLORS[p.status]}`}>
+                <span
+                  className={`shrink-0 rounded-full px-2.5 py-0.5 text-[11px] font-medium ${STATUS_COLORS[p.status]}`}
+                >
                   {FT_PROJECT_STATUS_LABELS[p.status]}
                 </span>
               </div>

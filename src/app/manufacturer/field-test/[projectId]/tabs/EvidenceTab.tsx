@@ -44,7 +44,9 @@ export default function EvidenceTab({ projectId }: { projectId: string }) {
                 </span>
               </div>
               <span className="text-xs text-muted">
-                {e.captured_at ? new Date(e.captured_at).toLocaleDateString("ja-JP") : new Date(e.created_at).toLocaleDateString("ja-JP")}
+                {e.captured_at
+                  ? new Date(e.captured_at).toLocaleDateString("ja-JP")
+                  : new Date(e.created_at).toLocaleDateString("ja-JP")}
               </span>
             </div>
           ))}

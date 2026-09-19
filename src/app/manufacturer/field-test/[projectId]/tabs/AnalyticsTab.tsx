@@ -18,7 +18,14 @@ type TenantDetail = {
 type Analytics = {
   project: { id: string; name: string; status: string };
   jobs: { total: number; by_status: Record<string, number> };
-  inspections: { total: number; pass: number; fail: number; conditional_pass: number; pending: number; avg_score: number | null };
+  inspections: {
+    total: number;
+    pass: number;
+    fail: number;
+    conditional_pass: number;
+    pending: number;
+    avg_score: number | null;
+  };
   defects: { total: number; by_severity: Record<string, number>; by_status: Record<string, number> };
   evidence: { total: number; by_type: Record<string, number> };
   tenants: { total: number; completed_jobs: number };
@@ -35,8 +42,23 @@ const JOB_STATUS_JA: Record<string, string> = {
 };
 
 const SEV_JA: Record<string, string> = { low: "軽微", medium: "中", high: "重大", critical: "致命的" };
-const DEF_STATUS_JA: Record<string, string> = { open: "未対応", investigating: "調査中", resolved: "解決済", closed: "クローズ", wontfix: "対応不要" };
-const EVT_JA: Record<string, string> = { photo_before: "施工前", photo_during: "施工中", photo_after: "施工後", measurement: "計測", env_data: "環境", video: "動画", document: "書類", other: "その他" };
+const DEF_STATUS_JA: Record<string, string> = {
+  open: "未対応",
+  investigating: "調査中",
+  resolved: "解決済",
+  closed: "クローズ",
+  wontfix: "対応不要",
+};
+const EVT_JA: Record<string, string> = {
+  photo_before: "施工前",
+  photo_during: "施工中",
+  photo_after: "施工後",
+  measurement: "計測",
+  env_data: "環境",
+  video: "動画",
+  document: "書類",
+  other: "その他",
+};
 
 export default function AnalyticsTab({ projectId }: { projectId: string }) {
   const [data, setData] = useState<Analytics | null>(null);
@@ -52,21 +74,18 @@ export default function AnalyticsTab({ projectId }: { projectId: string }) {
   if (loading) return <div className="text-sm text-secondary">読み込み中...</div>;
   if (!data) return <div className="text-sm text-secondary">分析データを取得できませんでした。</div>;
 
-  const completionRate = data.jobs.total > 0
-    ? Math.round(((data.jobs.by_status["completed"] ?? 0) / data.jobs.total) * 100)
-    : 0;
-  const passRate = data.inspections.total > 0
-    ? Math.round(((data.inspections.pass + data.inspections.conditional_pass) / data.inspections.total) * 100)
-    : 0;
+  const completionRate =
+    data.jobs.total > 0 ? Math.round(((data.jobs.by_status["completed"] ?? 0) / data.jobs.total) * 100) : 0;
+  const passRate =
+    data.inspections.total > 0
+      ? Math.round(((data.inspections.pass + data.inspections.conditional_pass) / data.inspections.total) * 100)
+      : 0;
 
   return (
     <div className="space-y-6">
       {/* Export buttons */}
       <div className="flex flex-wrap gap-2">
-        <ExportButton
-          label="PDF レポート"
-          href={`/api/manufacturer/field-test/report?project_id=${projectId}`}
-        />
+        <ExportButton label="PDF レポート" href={`/api/manufacturer/field-test/report?project_id=${projectId}`} />
         <ExportButton
           label="CSV: 案件"
           href={`/api/manufacturer/field-test/export/csv?project_id=${projectId}&table=jobs`}
@@ -94,7 +113,10 @@ export default function AnalyticsTab({ projectId }: { projectId: string }) {
         <Card label="総案件数" value={data.jobs.total} />
         <Card label="完了率" value={`${completionRate}%`} />
         <Card label="合格率" value={`${passRate}%`} />
-        <Card label="平均スコア" value={data.inspections.avg_score != null ? `${data.inspections.avg_score.toFixed(1)}点` : "-"} />
+        <Card
+          label="平均スコア"
+          value={data.inspections.avg_score != null ? `${data.inspections.avg_score.toFixed(1)}点` : "-"}
+        />
         <Card label="不具合" value={data.defects.total} />
       </div>
 
@@ -152,7 +174,9 @@ export default function AnalyticsTab({ projectId }: { projectId: string }) {
               <span className="text-gray-500">未検査: {data.inspections.pending}</span>
             </div>
             {data.inspections.avg_score != null && (
-              <div className="text-sm text-primary">平均スコア: <span className="font-bold">{data.inspections.avg_score.toFixed(1)}</span>点</div>
+              <div className="text-sm text-primary">
+                平均スコア: <span className="font-bold">{data.inspections.avg_score.toFixed(1)}</span>点
+              </div>
             )}
           </div>
         </Section>
@@ -195,7 +219,11 @@ function ExportButton({ label, href }: { label: string; href: string }) {
       className="inline-flex items-center gap-1.5 rounded-lg border border-border-subtle bg-surface px-3 py-1.5 text-xs font-medium text-secondary hover:bg-surface-hover hover:text-primary transition-colors"
     >
       <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-        <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" />
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3"
+        />
       </svg>
       {label}
     </a>
@@ -211,7 +239,15 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-function BarList({ data, labels, total }: { data: Record<string, number>; labels: Record<string, string>; total: number }) {
+function BarList({
+  data,
+  labels,
+  total,
+}: {
+  data: Record<string, number>;
+  labels: Record<string, string>;
+  total: number;
+}) {
   const entries = Object.entries(data).sort(([, a], [, b]) => b - a);
   if (entries.length === 0) return <div className="text-xs text-muted">データなし</div>;
   return (

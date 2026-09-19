@@ -12,7 +12,9 @@ const profileSchema = z.object({
     .array(z.object({ type: z.string().min(1), number: z.string().optional(), expires_at: z.string().optional() }))
     .optional(),
   mechanic_certifications: z
-    .array(z.object({ grade: z.string().min(1), holder_name: z.string().optional(), cert_number: z.string().optional() }))
+    .array(
+      z.object({ grade: z.string().min(1), holder_name: z.string().optional(), cert_number: z.string().optional() }),
+    )
     .optional(),
   has_lift: z.boolean().optional(),
   has_diagnostic_tools: z.boolean().optional(),
@@ -27,7 +29,11 @@ const profileSchema = z.object({
   mobile_service: z.boolean().optional(),
   supported_vehicles: z.array(z.string()).optional(),
   service_area: z
-    .object({ prefectures: z.array(z.string()).optional(), radius_km: z.number().nonnegative().optional(), notes: z.string().optional() })
+    .object({
+      prefectures: z.array(z.string()).optional(),
+      radius_km: z.number().nonnegative().optional(),
+      notes: z.string().optional(),
+    })
     .optional(),
 });
 
