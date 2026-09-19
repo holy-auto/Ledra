@@ -3,6 +3,93 @@
 > まだ決まっていないこと、判断に迷っていることを書く場所。決まったら
 > DECISION_LOG.md に移し、このファイルからは消す（削除履歴は git で追える）。
 
+## 本番の台帳に、main に無いマイグレーションが7版ある（2026-09-18）
+
+**不変条件1の再発。** 2026-09-07 に同じ形（`20260906094512` / `20260906094735`）で
+本番適用が19時間止まったのと同じことが、より大きな規模で起きている。
+
+本番の `supabase_migrations.schema_migrations` にあって、**main にファイルが無い版**:
+
+| 版 | 出所 |
+|---|---|
+| `20260917000000` `20260917000100` `20260917000200` `20260917000300` | **PR #1093（メーカー実証テスト、`ft_*` 12 テーブル）** —— 未マージ |
+| `20260917000400` `20260917100000` `20260918142610` | **不明**【要確認】。どの open PR にも該当ファイルが見つからない |
+
+**影響**: `supabase db push` は「ローカルに無い版が本番にある」と止まる。
+**次に main へマージした時点で `db-migrate` が失敗する**（直近の成功は 2026-09-16 09:23 で、
+問題の版はその後に入っている）。PR #1052 のプレビューで見たのと同じエラーになる。
+
+**`ft_*` 12 テーブルは「用途不明のドリフト」ではなかった。** PR #1093 が
+`20260917000000_ft_projects.sql` ほか4本で作るもので、PR 本文に 12 テーブルすべての
+名前が載っている。**削除してはいけない。** #1093 がマージされれば4版は解消する。
+
+**未決**:
+
+- 残る3版（`20260917000400` / `20260917100000` / `20260918142610`）が何か【要確認】。
+  `20260918142610` は 2026-09-18 14:26 UTC ＝ **今日**当てられている。
+- **`supabase/migrations.production-ledger` が 2026-09-06 で止まっている**
+  （`max: 20260906100003`、本番の実際の最大は `20260918142610`）。
+  `lint:migrations` はこの台帳を見るので、**本番に対する out-of-order を検出できない**。
+  実際このPRのマイグレーションも、当初 `20260918000000` で lint を通過しながら
+  本番より前だった（本番へ直接聞いて気づき、`20260918150000` へ改名した）。
+  誰がいつ更新するかは既存の起票（2026-09-07）のまま未決。
+
+## 本番にだけ在る `ft_*` 12 テーブルについて（2026-09-18・解決）
+
+ドリフト検出器に列を足して最初に出たとき「用途不明。作った人に聞く以外に辿る方法がない」と
+書いたが**誤り**だった。open PR を見れば載っていた（#1093）。上の項に統合。
+
+## マイグレーションと本番で列が食い違っている（2026-09-18）
+
+検出器に列を足して出た。**両方向に在る。**
+
+**本番にだけ在る 15 件**（＝マイグレーションから作った DB に本番データを入れられない側）:
+`agent_signing_requests.notified_at` / `certificate_images.created_by` /
+`certificates.template_id` / `documents.assigned_user_id` /
+`insurer_tenant_access.is_enabled` / `insurer_users.created_by` / `insurer_users.email` /
+`insurer_users.note` / `job_orders.prefecture` / `payments.square_payment_id` /
+`signature_sessions.customer_id` / `signature_sessions.line_user_id` /
+`square_connections.square_terminal_device_id` / `tenants.current_period_end` /
+`vehicles.plate_hash`
+
+**マイグレーションにだけ在る 13 件**（＝本番に無いので、読むコードは本番で落ちる側）:
+`audit_logs` の 8 件（`device_id` `ip_address` `new_values` `old_values` `performed_by`
+`reason` `record_id` `table_name`）/ `certificates.certificate_no` /
+`insurers.max_users` / `templates.updated_at` / `tenant_memberships.updated_at` /
+`tenants.updated_at`
+
+**このうち `certificates.certificate_no` は実害が確定したので `20260918000000` で直した**
+（本番の2関数が読んでいて 42703。上の RELEASE_LOG 2026-09-18 参照）。
+
+**未決**:
+
+- **`audit_logs` は形そのものが違う。** 本番 12 列 / マイグレーション 20 列で、
+  `table_name` `record_id` `old_values` `new_values` のような「汎用監査ログ」の列が
+  マイグレーション側にだけ在る。本番の `audit_logs` は保険会社の閲覧監査
+  （`insurer_id` `target_public_id` `query_json`）の形。**どちらが正か**、
+  そもそも別々の表が同じ名前になっているのではないか【要確認】。
+  この表に書き込むコードが本番で落ちていないかは未調査。
+- 残る本番だけの 15 列を書き起こすか。復旧手順を通すなら要るが、
+  **1件ずつ「本当に要る列か」を確かめないと、消したはずのものを戻すことになる**。
+- `certificate_no` の扱い。モバイル側のコメントは「**`certificate_no` 列は存在せず、
+  `public_id` が番号**」と書いている。それが正なら、正しい直し方は列を足すことではなく
+  **2関数の `RETURNS TABLE` から `certificate_no` を外す**こと（呼び出し側3箇所と
+  あわせて決める必要がある）。今回は本番とマイグレーションを一致させる最小の手を採った。
+
+## 本番にだけ在る RLS ポリシーがある（2026-09-18 に件数を確定）
+
+検出器にポリシーを足して数えた。**本番 626 / 再生 607。**
+`ft_*` の 12 本を除くと、本番にだけ在るのは `certificates` に 3
+（`cert_public_read_active` / `cert_select_member` /
+`public read active certificates by public_id`）、`insurer_access_logs` に 2
+（`logs_insert_self_only` / `logs_select_same_insurer`）、
+`insurer_users` `insurers` `templates` `tenant_memberships` `tenants` に各 1〜2。
+逆に `audit_logs` は**再生にだけ**ポリシーが 2 本ある。
+
+2026-09-08 起票の「本番にあってマイグレーションに無い RLS ポリシーがある」の続きで、
+**未決は同じ**（書き起こすか、本番から消すか）。変わったのは、**当て推量ではなく
+検出器が毎週数えるようになった**こと。`certificates` の anon 公開が意図どおりかは
+引き続き【要確認】。
 ## 追加（2026-08-27・CI が2回続けて起動しなかった）
 
 - **PR #979 への push 2回（`f97fbe0` / `2c78c1d`、8/27 00:10〜00:12 UTC）で
