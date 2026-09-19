@@ -4,7 +4,22 @@
 > 追わず、常に最新状態だけを保つ（履歴は DECISION_LOG.md / RELEASE_LOG.md 側）。
 > 大きな変化があったら都度上書きすること。
 
-最終更新: 2026-09-18
+最終更新: 2026-09-19
+
+> 2026-09-19 追記: **外注施工履歴（PR #1095）は main にマージされたが、本番 DB には届いていない。**
+> マージ（`8f26a0e`・13:16 UTC）直後の `db-migrate` が
+> `Remote migration versions not found in local migrations directory` で失敗した。
+> **#1094 が予告していた「次のマージで db-migrate が失敗する」が、そのまま起きた。**
+> 本番台帳を引いて内訳を確認した —— main に無い版は7つで、`ft_` で始まる5版と
+> `workshop_capability_profiles`（PR #1093 のもの。`ft_projects` は本番に実在する）、
+> それに `20260918142610 remote_schema`（`db pull` 由来・368 文）。
+> **止まっている未適用の版は2つ**: `20260918150000`（`certificates.certificate_no`）と
+> `20260918160000`（外注施工履歴の4表）。
+> 本番で直接確認した結果、**`outsourced_work_requests` 等の4表は存在せず**、
+> **`certificates.certificate_no` もまだ無い**。
+> つまり **`/admin/outsourced-work` は本番では動かない**（コードだけ出ている状態）。
+> 保険会社ポータルの証明書詳細も 42703 で落ちたまま。
+> 台帳の修復は本番かリポジトリのどちらかを触る判断が要るため、**代表の指示待ち**（OPEN_QUESTIONS）。
 
 > 2026-09-18 追記: **認可とAIレート制限の検出器が、`withCaller` へ寄せた 378 本を見ていなかった。**
 > リファクタで認可がオプション引数へ移ったのに検出器は本文しか見ておらず、
