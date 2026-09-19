@@ -19,8 +19,30 @@
 **直し方は `status::text`。** この形はリポジトリに既に3回入っている
 （`20260329200001` / `20260802154302` / `20260802154541`）。
 **その3回とも「目の前の関数」だけを直していたので、`insurer_search_vehicles` が漏れ続けた。**
-今回は本番の全関数を `'expired'` × 素の `status` で走査し、**残りはこの1本のみ・
-RLS ポリシーは0件**であることを確定させてから閉じた。
+
+**【訂正】最初の走査は不十分だった。** `'expired'` というリテラルで引いたので、
+**上の表の 1 しか見ておらず 2 を見ていない**。`/code-review` の指摘で
+`insurer_get_certificate`（証明書詳細）が 42804 で残っていることが分かった
+（MISTAKE_LEDGER `M-20260919-swept-for-the-literal-not-the-bug-class`）。
+走査は `plpgsql_check` を**本番の全 plpgsql 関数**に回す形に替えた ——
+書き方に依らず「壊れている関数そのもの」が出る。
+
+### 同じ走査でまとめて直したもの
+
+| 対象 | 何が起きていたか | 版 |
+|---|---|---|
+| `insurer_search_vehicles`（5引数、車両検索） | 22P02 + 42804 | `20260919132119` |
+| `certificates.certificate_no` 列が本番に無い | `insurer_get_certificate` / `insurer_get_vehicle_certificates` が 42703。**修正は PR #1094 で main にあったが `db-migrate` が止まっていて届いていなかった** | `20260918150000` を手で適用 |
+| `insurer_get_certificate`（証明書詳細） | `status` と `expiry_type` の2列が enum なのに返り値は `text` で 42804 | `20260919134412` |
+
+**適用後、本番の全 plpgsql 関数で `plpgsql_check` が出す error は1件だけ** ——
+6引数オーバーロード `insurer_search_vehicles(...,text)` の 42883（誰からも呼ばれていない、
+OPEN_QUESTIONS に起票済み）。
+
+**何を確かめたかの線引き**（過去に「動く状態になった」と書いて外している ——
+MISTAKE_LEDGER M-074）: 確かめたのは**本番の関数がもう静的エラーで落ちないこと**だけ。
+保険会社ユーザでログインして画面を通した確認は**していない**【要確認】。
+呼び出し側（`src/app/api/insurer/*`）の挙動・RLS・認証はこの走査の対象外。
 
 **検証（再現 → 修正 → 通過）**
 

@@ -55,12 +55,40 @@
 - `20260917000400`（`workshop_capability_profiles`）と `20260918142610`（`remote_schema`、
   368 statements）を誰がいつ当てたか【要確認】。どちらも `statements` は本番に残っているので
   ファイルは復元できる。`20260917100000` は #1093 の5本目なので、#1093 で解消する。
-- **2026-09-19 追記: ここに8つ目 `20260919132119`（`fix_insurer_search_vehicles_status_enum`）が
-  増えた。** ただしこれは**意図的で、main にも同名・同版のファイルがある** ——
+- **2026-09-19 追記: この日に3版を手で本番へ当てた。**
+  `20260918150000`（`certificates_certificate_no`、PR #1094 で main にあった）、
+  `20260919132119`（`fix_insurer_search_vehicles_status_enum`）、
+  `20260919134412`（`fix_insurer_get_certificate_enum_columns`）。
+  いずれも**意図的で、main にも同名・同版のファイルがある** ——
   落ちていた本番機能を `db-migrate` の復旧を待たずに直したため（DECISION_LOG 2026-09-19）。
   本番の記録版に合わせてファイル名を付けてあるので、`db push` の障害にはならない。
   **ただし「手で当てて後から repo に入れる」を繰り返すと、一致を守る仕組みが無い**
   —— 下の `production-ledger` の項と同じ穴。
+  **`db-migrate` を直す優先度はこれで下がっていない**。むしろ、手で当てる回数が
+  増えるほど台帳のずれが広がる。
+
+## 本番の関数が静かに落ちていることを、定期的に検出する仕組みが無い（2026-09-19）
+
+2026-09-19 に、本番の全 plpgsql 関数へ `plpgsql_check` を回したら
+**3つの関数が静的エラーで落ちている**ことが1クエリで出た
+（`insurer_search_vehicles` 22P02、`insurer_get_certificate` 42804、
+`insurer_get_vehicle_certificates` 42703）。いずれも**生きている画面**の RPC で、
+何か月も落ちたままだった。
+
+**この走査は CI に既にある** —— `scripts/replay-migrations.mjs` が
+**再生 DB に対して**回している。本番に対しては回していない。
+そして本番と再生 DB は列の型が違う（enum vs `text + check`）ので、
+**再生 DB で緑でも本番では落ちる**（実際そうなっていた）。
+
+**未決**:
+
+- 週次ジョブ（`.github/workflows/supabase-advisors.yml`）に本番向けの
+  `plpgsql_check` 走査を足すか。足すなら `check-schema-drift.mjs` と同じ
+  `REQUIRE_*` の形にして、シークレットが無ければ落とす。
+- ただし**そのシークレット（`SUPABASE_ACCESS_TOKEN` / `SUPABASE_PROJECT_ID`）が
+  未登録で、週次ジョブ自体が今は赤い**。先にそちらの登録が要る（代表の操作）。
+- 本番で `create extension plpgsql_check` が既に入っていることに依存する
+  （2026-09-19 時点で入っている。確認済み）。
 - **`supabase/migrations.production-ledger` が 2026-09-06 で止まっている**
   （`max: 20260906100003`、本番の実際の最大は `20260918142610`）。
   `lint:migrations` はこの台帳を見るので、**本番に対する out-of-order を検出できない**。

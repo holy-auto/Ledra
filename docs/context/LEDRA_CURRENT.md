@@ -16,8 +16,17 @@
 > 合わせてあるので、次の `supabase db push` は再実行しない。
 > 同じ直し方は既に3回入っていた（`20260329200001` / `20260802154302` / `20260802154541`）が、
 > **毎回「目の前の関数」だけを直していたのでこの1本が漏れ続けた**。
-> 今回は本番の全関数を走査し、**残りは0本・RLS ポリシーも0件**と確定させた。
-> **残件**: 6引数オーバーロード `insurer_search_vehicles(...,text)` は、本番から消えた
+>
+> **最初の走査（`'expired'` の grep）では足りず、`/code-review` の指摘で
+> `insurer_get_certificate` が 42804 で残っていることが分かった**
+> （MISTAKE_LEDGER `M-20260919-swept-for-the-literal-not-the-bug-class`）。
+> 走査を **`plpgsql_check` を本番の全 plpgsql 関数に回す**形に替え、あわせて次の2つも本番へ当てた ——
+> `20260918150000`（`certificates.certificate_no`、PR #1094 で main にあったが
+> `db-migrate` が止まっていて届いていなかった）と `20260919134412`
+> （`insurer_get_certificate` の `status` / `expiry_type` を `::text`）。
+> **適用後、本番の全 plpgsql 関数で error は1件のみ。**
+> 確かめたのは**関数が静的エラーで落ちないこと**だけで、画面を通した確認は未実施【要確認】。
+> **残件**: その1件＝6引数オーバーロード `insurer_search_vehicles(...,text)`。本番から消えた
 > `insurer_is_active_subscription` を呼ぶので呼ばれれば必ず落ちる（アプリからの呼び出しは0件）。
 > 消すか戻すかは代表判断待ち。
 
@@ -35,7 +44,8 @@
 > **そのうち1件が、動いていない機能だった** —— `certificates.certificate_no` が本番に無く、
 > `insurer_get_certificate` と `insurer_get_vehicle_certificates` が読んでいて 42703。
 > 保険会社ポータルの証明書詳細・車両ごとの証明書一覧・CSV エクスポートが揃って落ちる。
-> `20260918150000` で列を足した（本番の最大版より後ろへ改名済み）。**本番反映は `db-migrate` 待ち** ——ただし上記7版が片付くまで届かない。
+> `20260918150000` で列を足した（本番の最大版より後ろへ改名済み）。
+> **2026-09-19 に手で本番へ適用済み**（`db-migrate` が止まったままなので待たなかった）。
 > **注意**: シークレット（`SUPABASE_ACCESS_TOKEN` / `SUPABASE_PROJECT_ID`）が未登録なので、
 > このマージ後は週次ジョブが赤くなる。登録は代表の操作が要る。
 
