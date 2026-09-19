@@ -701,15 +701,31 @@ export default function PosClient() {
         if (pollingRef.current) clearInterval(pollingRef.current);
         pollingRef.current = null;
         // **端末のQRを消してから終える。** 残すと、会計を諦めた後で客が読んで
-        // 決済でき、その分は Ledra に残らない
-        void fetch(`/api/admin/square/qr-checkout?id=${encodeURIComponent(checkoutId)}`, { method: "DELETE" }).catch(
-          () => {},
-        );
-        // 冪等キーを使い切っておく。残したまま「再試行」を押すと、Square は
-        // 同じキーに対して同じ（取消済みの）チェックアウトを返し続け、新しい
-        // 決済を一切開始できなくなる（CANCELED 分岐と同じ理由。/code-review 指摘）
-        squareRef.current = null;
-        setQrError("決済がタイムアウトしました。端末の画面を確認してください。");
+        // 決済でき、その分は Ledra に残らない。
+        //
+        // 取消の応答を確かめずに冪等キーを使い切ると、DELETE が失敗（ネットワーク
+        // エラーや 502）したときに**元のチェックアウトが生きたまま**新しいキーで
+        // 「再試行」してしまい、二重の支払い要求になりうる。取消が確認できた
+        // ときだけキーを手放す（/code-review 指摘）
+        let canceled = false;
+        try {
+          const res = await fetch(`/api/admin/square/qr-checkout?id=${encodeURIComponent(checkoutId)}`, {
+            method: "DELETE",
+          });
+          canceled = res.ok;
+        } catch {
+          canceled = false;
+        }
+        if (canceled) {
+          squareRef.current = null;
+          setQrError("決済がタイムアウトしました。端末の画面を確認してください。");
+        } else {
+          // 冪等キーは残す。「再試行」を押しても同じキーで Square に問い合わせる
+          // ため、元のチェックアウトが生きていれば新規作成にはならない
+          setQrError(
+            "決済がタイムアウトし、端末の会計を取り消せませんでした。端末の画面を確認してから操作してください。",
+          );
+        }
         setQrStep("error");
         return;
       }
