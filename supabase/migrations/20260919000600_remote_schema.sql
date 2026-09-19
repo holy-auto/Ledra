@@ -1,0 +1,4 @@
+-- intentionally empty: original remote_schema dump contained
+-- destructive operations (DROP TABLE workshop_capability_profiles,
+-- DROP COLUMN certificate_no, stale insurer_search_vehicles recreation)
+-- that conflict with feature migrations. Cleared to allow clean replay.

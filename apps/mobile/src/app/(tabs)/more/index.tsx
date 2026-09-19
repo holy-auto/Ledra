@@ -44,6 +44,7 @@ const SECTIONS: MenuSection[] = [
       { icon: "calculator-variant-outline", label: "レジ管理（開設・締め）", route: "/pos/register" },
       { icon: "account-group-outline", label: "顧客一覧", route: "/customers" },
       { icon: "chart-box-outline", label: "店舗ダッシュボード", route: "/dashboard" },
+      { icon: "flask-outline", label: "実証テスト", route: "/field-test" },
     ],
   },
   {

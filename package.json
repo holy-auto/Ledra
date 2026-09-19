@@ -139,6 +139,7 @@
     "lint-staged": "^16.4.0",
     "prettier": "^3.9.6",
     "remotion": "^4.0.454",
+    "supabase": "^2.117.0",
     "tailwindcss": "^4",
     "tsx": "^4.23.13",
     "typescript": "5.9.3",

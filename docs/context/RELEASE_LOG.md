@@ -143,6 +143,33 @@ QR/NFC・OCR・AI 画像照合・ERP/DMS 連携・物流管理・費用負担・
 （`max: 20260906100003`／本番の実際は `20260918142610`）、`lint:migrations` は
 それを見るので**本番に対する out-of-order を検出できない**。このPRのマイグレーションも
 当初 `20260918000000` で lint を通過しながら本番より前だった。
+
+## 2026-09-16 メーカー向け実証テスト（Field Test）プラットフォーム — 全工程を一括実装
+
+メーカーが施工店を募集し、製品の実証テストを管理する業務フロー全体を実装した。
+
+- **DB: 12テーブル新設**（4マイグレーション、全て Supabase 本番に適用済み）
+  - `ft_projects` / `ft_recruitments` / `ft_applications`（プロジェクト・募集・応募）
+  - `ft_agreements` / `ft_training_modules` / `ft_training_completions`（契約・教育）
+  - `ft_jobs` / `ft_conditions` / `ft_condition_checks`（案件・施工条件・チェック）
+  - `ft_evidence` / `ft_inspections` / `ft_defects`（証拠・品質検査・不具合）
+  - 全テーブルに RLS（`my_manufacturer_ids()` による SELECT）、インデックス、`updated_at` トリガー
+- **API: 23エンドポイント新設**（`/api/manufacturer/field-test/` 配下）
+  - プロジェクト CRUD、募集・応募・契約・教育・案件・施工条件・証拠・検査・不具合の各 CRUD
+  - 集計（analytics）、全データ JSON エクスポート（export）
+  - 書き込みは全て admin ロール限定、viewer は参照のみ
+- **UI: 18ファイル新設**（`/manufacturer/field-test/` 配下）
+  - プロジェクト一覧（ステータスフィルタ付き）、新規作成フォーム
+  - プロジェクト詳細: 10タブ構成（概要/募集/応募/契約/教育/案件/証拠/品質検査/不具合/分析）
+  - ジョブ詳細: 施工条件チェック・証拠・検査の一覧と操作
+- **ドメイン状態語彙: 3軸追加**（`states.ts` + テスト更新）
+  - `FT_PROJECT_STATES`: DRAFT / RECRUITING / ACTIVE / COMPLETED / ARCHIVED
+  - `FT_JOB_STATES`: ASSIGNED / IN_PROGRESS / EVIDENCE_SUBMITTED / INSPECTION / COMPLETED / REJECTED
+  - `FT_DEFECT_STATES`: OPEN / INVESTIGATING / RESOLVED / CLOSED / WONTFIX
+- ナビゲーションに「実証テスト」リンクを追加（`manufacturer/layout.tsx`）
+
+PR #1093（ブランチ `feat/manufacturer-field-testing`）。
+
 ## 2026-08-26 決済手段の申請は「選べる」形にする（Ledra からは強制しない）＋手順書
 
 代表の方針「Ledra 側としては強制しない」「Square はアカウント作成のオンボーディングで
