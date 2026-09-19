@@ -15,6 +15,7 @@ import type {
   CertificateState,
   DocumentCorrectionState,
   JobState,
+  OutsourcedWorkState,
   PartInstallationState,
   PaymentState,
   Severity,
@@ -446,6 +447,67 @@ const DOCUMENT_CORRECTION_STATE_LABELS: LabelMaps<DocumentCorrectionState> = {
   hi: { PENDING: "लंबित", APPROVED: "स्वीकृत", REJECTED: "अस्वीकृत", APPLIED: "लागू" },
 };
 
+/**
+ * 外注施工の作業依頼の状態ラベル（外注施工履歴 ST-001 / ST-002）。
+ * ja は仕様書のステータス一覧の表記そのまま。他ロケールは本実装で定めた（仕様引用ではない）。
+ */
+const OUTSOURCED_WORK_STATE_LABELS: LabelMaps<OutsourcedWorkState> = {
+  ja: {
+    REQUEST_CREATED: "依頼作成",
+    PARTS_PREPARED: "部品準備済み",
+    AWAITING_HANDOVER: "引渡し待ち",
+    RECEIPT_IN_REVIEW: "受領確認中",
+    RECEIVED: "受領済み",
+    MATCHED: "照合済み",
+    READY_FOR_WORK: "施工待ち",
+    WORK_IN_PROGRESS: "施工中",
+    WORK_COMPLETED: "施工完了",
+    AWAITING_CLIENT_CONFIRMATION: "発注元確認待ち",
+    COMPLETED: "完了",
+    QUANTITY_SHORTAGE: "数量不足",
+    PART_NUMBER_MISMATCH: "品番不一致",
+    DAMAGE_REVIEW: "破損確認",
+    RECEIPT_REJECTED: "受領拒否",
+    WORK_INTERRUPTED: "施工中断",
+    EXCEPTION_APPROVAL_PENDING: "例外承認待ち",
+    EXCEPTION_APPROVED: "例外承認済み",
+    EXCEPTION_REJECTED: "例外却下",
+    RETURNED: "差戻し",
+    REWORK_PENDING: "再施工待ち",
+    REWORK_IN_PROGRESS: "再施工中",
+    REWORK_COMPLETED: "再施工完了",
+    ON_HOLD: "作業保留",
+    CANCELED: "作業取消",
+  },
+  en: {
+    REQUEST_CREATED: "Request created",
+    PARTS_PREPARED: "Parts prepared",
+    AWAITING_HANDOVER: "Awaiting handover",
+    RECEIPT_IN_REVIEW: "Receipt in review",
+    RECEIVED: "Received",
+    MATCHED: "Matched",
+    READY_FOR_WORK: "Ready for work",
+    WORK_IN_PROGRESS: "Work in progress",
+    WORK_COMPLETED: "Work completed",
+    AWAITING_CLIENT_CONFIRMATION: "Awaiting client confirmation",
+    COMPLETED: "Completed",
+    QUANTITY_SHORTAGE: "Quantity shortage",
+    PART_NUMBER_MISMATCH: "Part number mismatch",
+    DAMAGE_REVIEW: "Damage review",
+    RECEIPT_REJECTED: "Receipt rejected",
+    WORK_INTERRUPTED: "Work interrupted",
+    EXCEPTION_APPROVAL_PENDING: "Exception approval pending",
+    EXCEPTION_APPROVED: "Exception approved",
+    EXCEPTION_REJECTED: "Exception rejected",
+    RETURNED: "Returned",
+    REWORK_PENDING: "Rework pending",
+    REWORK_IN_PROGRESS: "Rework in progress",
+    REWORK_COMPLETED: "Rework completed",
+    ON_HOLD: "On hold",
+    CANCELED: "Canceled",
+  },
+};
+
 function pick<T extends string>(maps: LabelMaps<T>, code: T, locale: DomainLocale): string {
   // 型を欺いて legacy 値等が渡された場合に「undefined」を描画せず、コードをそのまま返す
   // (statusMaps.ts の getStatusEntry と同じ境界防御)
@@ -471,6 +533,9 @@ export const documentCorrectionStateLabel = (
   locale: DomainLocale = DEFAULT_DOMAIN_LOCALE,
 ) => pick(DOCUMENT_CORRECTION_STATE_LABELS, s, locale);
 
+export const outsourcedWorkStateLabel = (s: OutsourcedWorkState, locale: DomainLocale = DEFAULT_DOMAIN_LOCALE) =>
+  pick(OUTSOURCED_WORK_STATE_LABELS, s, locale);
+
 /** テスト用に全マップを公開(アプリコードからは個別の *Label 関数を使うこと)。 */
 export const __DOMAIN_LABEL_MAPS = {
   job: JOB_STATE_LABELS,
@@ -481,4 +546,5 @@ export const __DOMAIN_LABEL_MAPS = {
   sync: SYNC_STATE_LABELS,
   partInstallation: PART_INSTALLATION_STATE_LABELS,
   documentCorrection: DOCUMENT_CORRECTION_STATE_LABELS,
+  outsourcedWork: OUTSOURCED_WORK_STATE_LABELS,
 } as const;

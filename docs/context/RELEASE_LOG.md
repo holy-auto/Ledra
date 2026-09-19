@@ -64,6 +64,68 @@ MISTAKE_LEDGER M-074）: 確かめたのは**本番の関数がもう静的エ�
 **残り**: 6引数オーバーロード `insurer_search_vehicles(text,integer,integer,text,text,text)`
 は、本番から消えた `insurer_is_active_subscription` を呼ぶので呼ばれれば必ず落ちる。
 アプリからの呼び出しは0件。消すか戻すかは未決（OPEN_QUESTIONS）。
+## 2026-09-18 権限・AIレート制限の検出器を withCaller 対応にし、剥がれていた13本の制限を復元
+
+`withCaller` へ 378 本を寄せたリファクタで、認可とレート制限が**ハンドラ本文から
+オプション引数へ移った**。検出器2本は本文しか見ていなかったため、誤検出を出しながら
+**同時に withCaller 包みのルートを1本も見ていなかった**。
+
+- **共通ヘルパー `wrapperGuards` / `wrapperCalls`**（`src/lib/__tests__/sourceScan.ts`）。
+  ラッパ呼び出しの**引数の中だけ**を構文木で読み、`permission` / `minRole` / `rateLimit` を返す。
+  変数渡し・短縮形は読めないので数えない（fail closed）。
+- **権限検出器**（`apiRoutePermissions.test.ts`）: 登録ルート 144 件の誤検出が消え、
+  **未登録ハンドラの走査が withCaller 包みを対象に含めるようになった**。
+  可視化されて1件（`market/inquiries [POST]`）が新しく出たので、中身を読んで分類した
+  （買い手側の操作。ロール権限を課す方が誤り）。走査対象を `stripComments` 経由に揃えた。
+- **AI レート制限検出器**（`aiRouteRateLimit.test.ts`）: ラッパの `rateLimit` を制限として数える。
+- **剥がれていた13本を復元**（academy/{feedback,qa}、ask、certificates/{ai-draft,ai-explain,
+  ai-quality,delivery-note-extract,voice-memo}、field-knowledge/ask、purchase-orders/ai-message、
+  voice-note、parts/installations/[id]/reconcile、vehicles/parse-shakken）。
+  リファクタ前と同じ**テナント/ユーザー単位**の `checkRateLimit(req, "ai", ...)` をハンドラ内に戻した
+  （ラッパの `rateLimit` は IP 単位で、店舗の NAT で全端末が1枠を共有してしまう）。
+- **陰性対照を追加**。ラッパで包んだだけ・要求と違う権限・ラッパでない関数の同じ形のオプション・
+  変数渡しは「守られている」と読まないことをテストで固定した。
+- **別名 export（`const h = withCaller(...); export const POST = h;`）の実体を解く**
+  （`withAliasTarget`）。この形は断片が1行しか持たず、withCaller 対応を入れてもなお
+  素通りしていた（`/code-review` が無認可の別名 export を実際に通して証明）。
+  解いた結果1件（`admin/service-packages/[id]/expand [POST]`）が出たので読んで分類した
+  （GET と同じ副作用なしの読み取り。POST は RPC 的な使い方のため）。
+- **同じリファクタで剥がれた非 AI の2本も復元**: `admin/inspection-records/images`
+  （`general`・テナント単位）と `admin/square/sync`（`auth`・テナント単位）。
+  **どちらの検出器も AI を呼ばないルートは見ない**ので、ここは仕組みでは止まらない。
+
+これで `npm run test:coverage` は **5,782 件緑 + 1 件 skip**（この作業の前は 4 件が赤）。
+台帳: `M-20260918-read-detector-blindness-as-stale-list`。
+
+## 2026-09-18 支給部品を伴う外注施工履歴（発注元 ⇄ 施工事業者）を MVP として実装
+
+発注元が部品を用意して施工事業者へ依頼し、**部品準備 → 引渡し → 受領 → 三方向照合 → 施工 →
+完了確認**までを1つの作業依頼で追う。数量不足・品番不一致・破損・受領拒否・施工中断・例外承認・
+差戻し・再施工・作業保留・作業取消の例外フローも同じ状態機械に載せた。
+
+- **状態語彙**: 正準 9 軸目 `OUTSOURCED_WORK_STATES`（25 値）。遷移表 `OUTSOURCED_WORK_TRANSITIONS` は
+  仕様の TR-001〜047 を遷移 ID 付きで写した。完了は終端（TR-048）、例外承認済みから施工中へは直行不可（TR-026）。
+- **実行主体・復帰先制御**: `src/lib/outsourcedWork/rules.ts`。6 ロール（発注元店舗担当者 / 発注元管理者 /
+  施工担当者 / 施工会社管理者 / 確認者 / 閲覧者）をテナントロールと「その依頼での立場」から導く。
+  例外承認・却下の後の復帰はシステムが同じ呼び出しで起こし、復帰先は発生工程で絞る（PER-029）。
+- **DB**: `20260918160000_outsourced_work_requests.sql`。作業依頼・支給部品・受領試行・イベント（追記専用、
+  UPDATE/DELETE はトリガで拒否）。完了後の状態変更もトリガで拒否。両テナントが SELECT、書き込みは API のみ。
+- **API**: `/api/admin/outsourced-work`（一覧・作成）、`[id]`（詳細 + 次アクション）、`[id]/transition`、
+  `[id]/parts`、`[id]/events`（照合・担当者割当・訂正・完了後再施工）、`[id]/evidence`（ハッシュ生成と
+  Polygon アンカー送信）。権限外操作は `audit_logs` に `outsourced_work_denied` で残す（AC-028）。
+- **画面**: `/admin/outsourced-work`。一覧 → 詳細 → 「今起こせる次のアクション」を API から受け取って出す。
+- **テスト**: 遷移表の構造（漏れ・自己遷移・重複）、TR-051 通常フロー、TR-026/TR-048、実行主体の網羅、
+  復帰先が遷移表の部分集合であること、閲覧者がどの遷移も起こせないこと。サービス層は偽の Supabase で
+  通常フロー・例外承認（1回更新・2イベント）・受領拒否後の再受領・完了後再施工の承認消費を通す。
+- **`/code-review` の指摘10件を反映**（DECISION_LOG 同日、MISTAKE_LEDGER
+  `M-20260918-verification-skippable-via-transition-flag`）。
+- **main の CI が赤（この PR と無関係の既存失敗 10 件）**。未マージの PR #1092 が持つ回帰修正2件
+  （証明書 POST テストの withCaller 用モック、Academy 事例公開の AI レート制限復元）を移植して
+  6 件を解消。残り 4 件（`apiRoutePermissions` の検出器が `withCaller` のオプション引数を
+  読めない 3 件、`aiRouteRateLimit` の他ルート 24 本）は修正が存在せず、PR コメントに提案を残した。
+
+未実施: 実運用確認（AC-030）、写真アップロード UI、店舗単位の閲覧絞り。対象外機能（AC-031: 配送追跡・
+QR/NFC・OCR・AI 画像照合・ERP/DMS 連携・物流管理・費用負担・SLA）は入れていない。
 
 ## 2026-09-18 ドリフト検出器が一度も動いていなかった。列まで見るようにしたら、保険会社ポータルが今も壊れていることが分かった
 

@@ -3,6 +3,7 @@ import {
   CERTIFICATE_STATES,
   DOCUMENT_CORRECTION_STATES,
   JOB_STATES,
+  OUTSOURCED_WORK_STATES,
   PART_INSTALLATION_STATES,
   PAYMENT_STATES,
   SEVERITIES,
@@ -11,6 +12,7 @@ import {
   isCertificateState,
   isDocumentCorrectionState,
   isJobState,
+  isOutsourcedWorkState,
   isPartInstallationState,
   isPaymentState,
   isSeverity,
@@ -22,6 +24,7 @@ import {
   __DOMAIN_LABEL_MAPS,
   certificateStateLabel,
   jobStateLabel,
+  outsourcedWorkStateLabel,
   partInstallationStateLabel,
   paymentStateLabel,
   severityLabel,
@@ -38,6 +41,8 @@ const AXES = [
   { name: "sync", values: SYNC_STATES, guard: isSyncState, expected: 5 },
   { name: "partInstallation", values: PART_INSTALLATION_STATES, guard: isPartInstallationState, expected: 5 },
   { name: "documentCorrection", values: DOCUMENT_CORRECTION_STATES, guard: isDocumentCorrectionState, expected: 4 },
+  // 通常 11（ST-001）+ 例外・中間 14（ST-002）
+  { name: "outsourcedWork", values: OUTSOURCED_WORK_STATES, guard: isOutsourcedWorkState, expected: 25 },
 ] as const;
 
 describe("正準語彙の値集合(v2.0 Appendix A)", () => {
@@ -140,6 +145,19 @@ describe("ロケール別ラベル", () => {
   it("PartInstallation ラベル — 6言語すべてで解決可能", () => {
     for (const locale of DOMAIN_LOCALES) {
       expect(partInstallationStateLabel("INSTALLED", locale)).toBeTruthy();
+    }
+  });
+
+  it("OutsourcedWork ラベル — ja は仕様書のステータス一覧の表記に一致", () => {
+    expect(outsourcedWorkStateLabel("MATCHED")).toBe("照合済み");
+    expect(outsourcedWorkStateLabel("AWAITING_CLIENT_CONFIRMATION")).toBe("発注元確認待ち");
+    expect(outsourcedWorkStateLabel("RECEIPT_REJECTED")).toBe("受領拒否");
+    expect(outsourcedWorkStateLabel("ON_HOLD", "en")).toBe("On hold");
+  });
+
+  it("ST-003: 照合結果・対応方針は状態ではない", () => {
+    for (const notAState of ["MATCH", "NEEDS_REVIEW", "MISMATCH", "RESHIPPING", "一致", "要確認", "不一致"]) {
+      expect(isOutsourcedWorkState(notAState)).toBe(false);
     }
   });
 });
