@@ -540,6 +540,20 @@ export const NAV_GROUPS: NavGroup[] = [
           </svg>
         ),
       },
+      {
+        href: "/admin/field-test",
+        label: "実証テスト",
+        requiredPermission: "vehicles:view",
+        icon: (
+          <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M9.75 3.104v5.714a2.25 2.25 0 0 1-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 0 1 4.5 0m0 0v5.714a2.25 2.25 0 0 0 .659 1.591L19 14.5M14.25 3.104c.251.023.501.05.75.082M19 14.5l-1.338 4.686A2.25 2.25 0 0 1 15.5 21H8.5a2.25 2.25 0 0 1-2.162-1.814L5 14.5m14 0H5"
+            />
+          </svg>
+        ),
+      },
     ],
     defaultOpen: true,
   },

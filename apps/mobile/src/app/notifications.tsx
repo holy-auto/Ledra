@@ -84,6 +84,12 @@ const TYPE_ICON: Record<string, { icon: string; color: string; bg: string }> = {
   low_stock_alert: { icon: "package-variant", color: colors.warning, bg: colors.warningLight },
   // maintenance
   follow_up_reminder: { icon: "calendar-clock", color: colors.textSecondary, bg: colors.surfaceVariant },
+  // field test（メーカー実証テスト）
+  ft_recruitment_opened: { icon: "bullhorn-outline", color: colors.warning, bg: colors.warningLight },
+  ft_job_assigned: { icon: "clipboard-check-outline", color: colors.warning, bg: colors.warningLight },
+  ft_evidence_submitted: { icon: "camera-outline", color: colors.textSecondary, bg: colors.surfaceVariant },
+  ft_inspection_completed: { icon: "magnify-scan", color: colors.success, bg: colors.successLight },
+  ft_defect_reported: { icon: "alert-octagon-outline", color: colors.danger, bg: colors.dangerLight },
 };
 
 const DEFAULT_ICON = { icon: "bell", color: colors.textSecondary, bg: colors.surfaceVariant };

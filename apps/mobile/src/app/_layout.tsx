@@ -274,6 +274,7 @@ export default function RootLayout() {
                   <Stack.Screen name="work" options={{ headerShown: false }} />
                   <Stack.Screen name="pos" options={{ headerShown: false }} />
                   <Stack.Screen name="knowledge" options={{ headerShown: false }} />
+                  <Stack.Screen name="field-test" options={{ headerShown: false }} />
                   {/* Stack を持たない単体画面。ヘッダーを出さないと戻る導線が無くなる */}
                   <Stack.Screen
                     name="notifications"

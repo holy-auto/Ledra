@@ -193,6 +193,34 @@ export const NOTIFICATION_TYPE_CATALOG = {
     category: "maintenance",
     targetRole: "customer",
   },
+
+  // ── 実証テスト (Field Test) ──
+  ft_job_assigned: {
+    severity: "action_required",
+    defaultChannels: ["in_app", "email"],
+    category: "job",
+    targetRole: "admin",
+  },
+  ft_evidence_submitted: {
+    severity: "action_required",
+    defaultChannels: ["in_app"],
+    category: "job",
+  },
+  ft_inspection_completed: {
+    severity: "informational",
+    defaultChannels: ["in_app"],
+    category: "job",
+  },
+  ft_defect_reported: {
+    severity: "action_required",
+    defaultChannels: ["in_app", "email"],
+    category: "job",
+  },
+  ft_recruitment_opened: {
+    severity: "informational",
+    defaultChannels: ["in_app"],
+    category: "job",
+  },
 } as const satisfies Record<string, NotificationTypeConfig>;
 
 export type NotificationType = keyof typeof NOTIFICATION_TYPE_CATALOG;
