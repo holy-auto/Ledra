@@ -44,6 +44,51 @@ main に無い状態になった（#1097 が持つ）。**復旧には #1093 と
 
 ## 呼ばれれば必ず落ちる `insurer_search_vehicles` の6引数オーバーロードをどうするか（2026-09-19）
 
+## 保険会社 RPC の認可が、ルート層にしか無い（2026-09-19・Codex P1）
+
+Codex が PR #1097 に P1 を4件出し、**2件はその PR で直し、2件はここに残した**。
+どちらも「この2関数だけの話ではない」ので、1本ずつ塞ぐと同じ漏れを量産する。
+
+### (a) 停止中の保険会社が RPC を直接叩ける
+
+ルート層の `resolveInsurerCaller`（`src/lib/api/insurerAuth.ts`）は
+`insurers.is_active = true AND status IN ('active','active_pending_review')` を見るが、
+**RPC 側は `insurer_users.is_active` しか見ない**。PostgREST を直接叩けば素通りする。
+
+本番で `insurer_users` を読む SECURITY DEFINER 関数は **17 本**あり、そのうち
+`insurers` 行まで見ているのは **`get_my_insurer_status` と `withdraw_insurer` の2本だけ**（実測）。
+穴を持つ主なもの: `insurer_search_vehicles` / `insurer_get_certificate` /
+`insurer_get_vehicle_certificates` / `insurer_search_certificates` / `insurer_search_stores`。
+
+**未決**: 根の共有関数は `my_insurer_ids()` と `current_insurer_id()`。ここを直すと
+保険会社系の RLS ポリシー全部に波及するので、影響範囲を測ってから決める。
+1本ずつ `join insurers` を足す案は、17本のうちどれを直したか追えなくなるので採らない。
+
+### (b) 複数保険会社に属するユーザで、RPC が保険会社の文脈を捨てる
+
+API は `active_insurer_id` クッキーで保険会社を選ばせているが、RPC は
+`insurer_users` を**条件なし `LIMIT 1`**（順序指定も無し）で拾う。
+別の保険会社のテナントを検索し、アクセスログもその保険会社に付きうる。
+
+**現在そのようなユーザは0人**（有効なメンバーシップ4件、複数所属0件。実測）。
+つまり今は潜在的な不具合。
+
+**未決**: 直すには RPC のシグネチャに `p_insurer_id` を足し、ルート側から
+検証済みの `caller.insurerId` を渡して、その保険会社でのメンバーシップを
+関数内で検証する必要がある。呼び出し側の変更を伴うので別 PR。
+
+## ~~呼ばれれば必ず落ちる `insurer_search_vehicles` の6引数オーバーロードをどうするか~~（2026-09-19・解決）
+
+**`20260919150043` で落とした。** Codex が「5引数と6引数の両方に一致して PostgREST が
+RPC を解決できない可能性がある」と指摘し、それが本当なら復旧そのものが成立しないため、
+曖昧さの条件ごと消した。落として安全な根拠は2つとも実測:
+呼び出し元は repo 全体で0件、そして呼ばれれば必ず 42883（依存先の
+`insurer_is_active_subscription` が本番に無い）。
+**落とした後、本番の全 plpgsql 関数で `plpgsql_check` の error は0件。**
+以下は解決前の記録として残す。
+
+## （解決済み）呼ばれれば必ず落ちる `insurer_search_vehicles` の6引数オーバーロードをどうするか（2026-09-19）
+
 本番には同名の関数が2つある。
 
 | シグネチャ | 状態 |
