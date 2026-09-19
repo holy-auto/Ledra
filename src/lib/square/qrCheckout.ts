@@ -96,7 +96,8 @@ export async function getPayment(accessToken: string, paymentId: string): Promis
   return res.payment;
 }
 
-export type FindPaymentResult = { ok: true; payment: SquarePayment } | { ok: false; reason: "not_found" | "ambiguous" };
+export type FindPaymentResult =
+  { ok: true; payment: SquarePayment } | { ok: false; reason: "not_found" | "ambiguous" | "search_truncated" };
 
 /**
  * 「Square POS アプリで会計した分」を引き当てる。
@@ -154,6 +155,11 @@ export async function findRecentPayment(params: {
     // 上限（100ページ = 最大1万件）。begin_time で30分に絞っているので
     // 通常はここに届かないが、無限ループにはしない
   } while (cursor && pages < 100);
+
+  // 上限に達した時点でまだ cursor が残っている＝未確認のページがある。
+  // ここまでの候補が1件でも、**残りのページに同額の別決済がいる可能性を
+  // 否定できない**ので「1件に絞れた」として通さない（/code-review 指摘）。
+  if (cursor) return { ok: false, reason: "search_truncated" };
 
   if (candidates.length === 0) return { ok: false, reason: "not_found" };
   if (candidates.length > 1) return { ok: false, reason: "ambiguous" };

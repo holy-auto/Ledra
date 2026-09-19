@@ -97,7 +97,12 @@ export async function GET(req: NextRequest) {
       });
       if (locRes.ok) {
         const locData = await locRes.json();
-        locationIds = (locData.locations ?? []).map((loc: { id: string }) => loc.id);
+        // INACTIVE（廃業・閉店済み）のロケーションも一覧に含まれる。ここで
+        // 除かないと、営業中が1つだけの加盟店でも「複数ロケーション」の
+        // fail closed（qr-checkout 等）に永久に引っかかる（/code-review 指摘）
+        locationIds = (locData.locations ?? [])
+          .filter((loc: { status?: string }) => loc.status !== "INACTIVE")
+          .map((loc: { id: string }) => loc.id);
       }
     } catch (locErr) {
       console.error("[square callback] failed to fetch locations:", locErr);

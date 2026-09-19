@@ -90,7 +90,9 @@ export async function POST(req: NextRequest) {
       // `:` + reference_id で最大83文字になっていた）、上限を超えた分は
       // 全件が 400 で落ちる。Square 側の冪等性はアクセストークン＝店舗単位で
       // スコープされるので、テナント接頭辞は無くても他店と衝突しない。
-      idempotencyKey: parsed.data.reference_id ?? crypto.randomUUID(),
+      // reference_id が空文字（省略を "" で表す API クライアント向け）だと
+      // ?? では拾えず、Square に空の idempotency_key を送って落ちる（/code-review 指摘）
+      idempotencyKey: parsed.data.reference_id || crypto.randomUUID(),
       referenceId: parsed.data.reference_id,
       note: parsed.data.note,
     });
@@ -149,13 +151,15 @@ export async function DELETE(req: NextRequest) {
       await cancelTerminalCheckout(ctx.accessToken, id);
     } catch (e) {
       // 既に完了・取消済みで取消を拒否された場合だけ許容する（やめた側の
-      // 操作は止めない）。それ以外（認証切れ・タイムアウト・5xx 等）まで
+      // 操作は止めない）。それ以外（認証切れ・レート制限・5xx 等）まで
       // 「取消できた」と返すと、**端末に QR が生きたまま**呼び出し側が
       // チェックアウトIDを捨てて次の会計に進み、二重決済や記帳漏れを生む。
       //
-      // 仮定: Square はチェックアウトが既に終端状態のとき 4xx を返す。
-      // Sandbox 未検証のため、実際のエラー形を見て条件を調整すること。
-      if (!(e instanceof SquareApiError) || e.status >= 500) {
+      // 推定: Square は「終端状態から CANCELED への遷移不可」を 400 で返す
+      // （Square Developer Forum の報告に基づく。この環境からは Square API に
+      // 到達できず未検証）。401/403/429 等の他の 4xx まで許容すると、
+      // トークン切れやレート制限を「取消済み」と誤認する（/code-review 指摘）。
+      if (!(e instanceof SquareApiError) || e.status !== 400) {
         return apiJson(
           {
             error: "square_cancel_failed",

@@ -89,6 +89,16 @@ describe("findRecentPayment", () => {
     expect(await findRecentPayment(base)).toEqual({ ok: false, reason: "ambiguous" });
   });
 
+  it("ページング上限に達してもまだ cursor が残っているときは、候補が1件でも引き当てない", async () => {
+    // 100ページ目まで毎回 cursor 付きで返す＝上限に達しても検索は終わっていない
+    squareFetch.mockResolvedValue({ payments: [payment({ id: "only-seen-so-far" })], cursor: "more" });
+
+    const res = await findRecentPayment(base);
+
+    expect(res).toEqual({ ok: false, reason: "search_truncated" });
+    expect(squareFetch).toHaveBeenCalledTimes(100);
+  });
+
   it("引き当ての窓を Square 側の検索条件に渡す", async () => {
     squareFetch.mockResolvedValue({ payments: [] });
 

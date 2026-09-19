@@ -4,6 +4,41 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-09-19 PR #1092 が ready for review 化 → Codex 自動レビューで5件（P1×3・P2×2）を修正
+
+代表が PR #1092 を draft から ready for review に切り替え、リポジトリ標準の Codex
+レビューが自動起動。main の取り込み（マージコンフリクト解消）と同じタイミングで
+届いた。全件を読んで再現条件を確認し修正。
+
+- **[P1] 端末チェックアウトの取消 API が 401/403/429 も「取消済み」扱いにしていた**
+  （`qr-checkout/route.ts` DELETE）。前回の修正（5xx 以外を許容）が広すぎ、
+  トークン切れ・レート制限まで「取消できた」と誤認していた。Square の
+  Cancel Terminal Checkout は終端状態からの遷移不可を **400** で返す
+  （Square Developer Forum の報告に基づく推定、この環境からは Square API に
+  到達できず未検証）。許容条件を `status === 400` のみに絞った。
+- **[P2] POS アプリ引き当てのページング上限（100ページ）に達したとき、まだ
+  cursor が残っているのに候補1件を「特定できた」と返していた**
+  （`qrCheckout.ts` `findRecentPayment`）。残りのページに同額の別決済がいる
+  可能性を否定できないまま確定させる、ページング対応そのものが目的にしていた
+  取り違え防止が抜けていた。cursor が残っていれば新しい理由
+  （`search_truncated`）で必ず不成立にした。テスト追加。
+- **[P2] `reference_id` に空文字を渡すと Square に空の idempotency_key を
+  送っていた**（`qr-checkout/route.ts` POST）。`??` は空文字を「値あり」として
+  素通りさせるため、空文字を「省略」として扱う API クライアントで全会計が失敗する
+  経路が残っていた。`||` に変更。
+- **[P1] タブ切替時の端末QR取消を確かめずに切り替えを続けていた**
+  （`PosClient.tsx` `handleModeSwitch`、今回のPRで追加した箇所）。`fetch(...).catch()`
+  は HTTP エラー応答では発火しない（reject しない）ため、取消が 502 で失敗しても
+  検知できず、切り替えを続けて QR を生かしたまま見失っていた。取消の応答を
+  確かめ、失敗したら切り替えを止めてエラー表示するようにした。
+- **[P1] Square OAuth コールバックが INACTIVE（廃業・閉店済み）ロケーションも
+  `square_location_ids` に含めていた**（`square/callback/route.ts`）。営業中が
+  1つしかない加盟店でも「複数ロケーション」の fail closed に永久に引っかかる
+  経路があった。List Locations の `status !== "INACTIVE"` でフィルタした。
+  既存の接続済みテナントは再接続が必要（`docs/context/OPEN_QUESTIONS.md` に追記）。
+
+検証: `tsc` / `eslint` 0 errors、対象テスト29件緑（新規1件を含む）。
+
 ## 2026-09-18 ドリフト検出器が一度も動いていなかった。列まで見るようにしたら、保険会社ポータルが今も壊れていることが分かった
 
 **検出器そのものが黙っていた。** `#1045` で入れた `scripts/check-schema-drift.mjs` は、

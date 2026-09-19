@@ -233,15 +233,29 @@ export default function PosClient() {
 
   // ── Mode switch reset ──
   const handleModeSwitch = useCallback(
-    (newMode: PosMode) => {
+    async (newMode: PosMode) => {
       // 表示中のタブ（reservation/walkin/invoice）を切り替えても、端末に出した
       // QR はモードを跨いで生きている。消さずに離れると、客が読んで決済でき、
       // その分は Ledra がチェックアウトIDを持っていないので追えなくなる
       // （handleCancelQr / 予約切替 effect と同じ理由。/code-review 指摘）
+      //
+      // 取消の応答を確かめずに切り替えると、502（取消できなかった）が
+      // fetch の catch では拾えない（HTTP エラーは reject しない）ため、
+      // 切り替えを続けて QR を生かしたまま見失う。**取消が失敗したら
+      // 切り替えを止める**（/code-review 指摘）
       if (squareMode === "terminal" && qrSessionId) {
-        void fetch(`/api/admin/square/qr-checkout?id=${encodeURIComponent(qrSessionId)}`, {
-          method: "DELETE",
-        }).catch(() => {});
+        try {
+          const res = await fetch(`/api/admin/square/qr-checkout?id=${encodeURIComponent(qrSessionId)}`, {
+            method: "DELETE",
+          });
+          if (!res.ok) {
+            setError("端末の会計を取り消せなかったため、タブを切り替えられません。端末の画面を確認してください。");
+            return;
+          }
+        } catch {
+          setError("端末の会計を取り消せなかったため、タブを切り替えられません。端末の画面を確認してください。");
+          return;
+        }
       }
       setMode(newMode);
       setSelected(null);

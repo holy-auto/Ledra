@@ -102,21 +102,27 @@
   逃げられることだけは分かっている。GitHub 側の一時障害か、ブランチ単位の
   スロットリングかは切り分けられていない。
 
-## 追加（2026-09-16・Square 複数ロケーション接続の店に復旧手段が無い）
+## 追加（2026-09-16・Square 複数ロケーション接続の店に復旧手段が無い）（2026-09-19 追記あり）
 
 - **`getSquareContext`（`src/lib/square/client.ts:108`）は、テナントの
   `square_location_ids` が2件以上のとき `SquareNotConnectedError("multiple_locations")`
   で fail closed する（店を跨いだ誤爆を防ぐための意図的な変更、PR #1092）。
-  確実: 該当テナントには「サポートにご連絡ください」という案内以外、
-  アプリ内に直す手段が無い。`SquareConnectSection.tsx` にあるのは端末の
-  接続解除ボタンだけで、ロケーションを1つに絞るUI・APIは無い。
-  Square を再接続しても `square_location_ids` は同じ複数件のまま返るはずなので
-  （推定・未検証）、案内どおり繋ぎ直しても直らない。
+  `SquareConnectSection.tsx` にあるのは端末の接続解除ボタンだけで、
+  ロケーションを1つに絞るUI・APIは無い。
   - 対応しなかった理由: ロケーション一覧を取得して選ばせるUI＋APIの新規実装が
     必要で、fail closed 自体の修正（このPRの本題）より大きい別スコープ。
-  - 暫定の逃げ道: サポート側で `square_connections.square_location_ids` を
-    手動で1件に絞る DB 更新は可能（未実施・要確認）。恒久対応は別PRで
-    ロケーション選択UIを作ること。
+  - **2026-09-19 追記**: `/code-review`（Codex）指摘で、OAuth コールバック
+    （`src/app/api/admin/square/callback/route.ts`）が List Locations の
+    `INACTIVE`（廃業・閉店済み）ロケーションまで `square_location_ids` に
+    含めていたことが判明。これを `status !== "INACTIVE"` で除くよう修正した。
+    **これにより、営業中が1つでINACTIVEが1つ以上の店は再接続すれば直る**
+    （直前の「再接続しても直らない」という推定は誤りだった。確実: 修正コードで
+    フィルタが効くことをコードレベルで確認済み。未検証: 実際に Square API を
+    叩いての確認はできていない）。
+  - **残る場合**: 本当に**営業中のロケーションが2つ以上**ある店は、この修正後も
+    fail closed のまま。暫定の逃げ道: サポート側で `square_connections.square_location_ids`
+    を手動で1件に絞る DB 更新（未実施・要確認）。恒久対応は別PRでロケーション
+    選択UIを作ること。
 
 ## 追加（2026-09-16・Square POS アプリ引き当ての同時実行レース）【要確認】
 
