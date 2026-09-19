@@ -361,6 +361,29 @@ describe("未登録の変更系ハンドラ", () => {
     "admin/academy/lessons [POST]",
     "mobile/academy/lessons [POST]",
 
+    // ── 実証テスト：施工店が自テナントのデータのみ操作する自己完結経路 ──
+    //    書き込みはいずれも caller.tenantId で絞っている（自社の応募・契約・案件・証拠・
+    //    教育・プロフィールのみ）。ロール権限を課すと施工店が自分のデータを出せなくなる。
+    //    **Web(admin) とモバイルに同じハンドラが2面ある**ので両方を挙げる。片面だけだと
+    //    検出器が兄弟を「新しく増えた無認可ルート」として拾う（2026-09-19 に実際に拾った）。
+    //    テナント内では viewer も実行できる点は #1093 の設計判断のまま（OPEN_QUESTIONS）。
+    "admin/field-test/applications [POST]",
+    "admin/field-test/applications/[id] [PATCH]",
+    "admin/field-test/agreements/[id] [PATCH]",
+    "admin/field-test/workshop-profile [PUT]",
+    "admin/field-test/jobs/[id] [PATCH]",
+    "admin/field-test/condition-checks [POST]",
+    "admin/field-test/evidence [POST]",
+    "admin/field-test/training/completions [POST]",
+    "mobile/field-test/applications [POST]",
+    "mobile/field-test/applications/[id] [PATCH]",
+    "mobile/field-test/agreements/[id] [PATCH]",
+    "mobile/field-test/workshop-profile [PUT]",
+    "mobile/field-test/jobs/[id] [PATCH]",
+    "mobile/field-test/condition-checks [POST]",
+    "mobile/field-test/evidence [POST]",
+    "mobile/field-test/training/completions [POST]",
+
     // ── 買い手側の操作（ロール権限を課す方が誤り）──
     //    BtoB マーケットの問い合わせ送信。**検出器を withCaller 対応にして初めて見えた**
     //    （2026-09-18）。出品側の `market:*` を課すと、買いたい側が送れなくなる。

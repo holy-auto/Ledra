@@ -123,6 +123,33 @@ export type DocumentCorrectionState = (typeof DOCUMENT_CORRECTION_STATES)[number
 export const isDocumentCorrectionState = makeGuard(DOCUMENT_CORRECTION_STATES);
 
 /**
+ * メーカー実証プロジェクトの状態。
+ *
+ * draft → recruiting → active → completed → archived の一方向フロー。
+ * DB 実装値は小文字。既存の JOB_STATES とは別の軸（実証テスト専用）。
+ */
+export const FT_PROJECT_STATES = ["DRAFT", "RECRUITING", "ACTIVE", "COMPLETED", "ARCHIVED"] as const;
+export type FtProjectState = (typeof FT_PROJECT_STATES)[number];
+export const isFtProjectState = makeGuard(FT_PROJECT_STATES);
+
+/** メーカー実証テストの案件状態。 */
+export const FT_JOB_STATES = [
+  "ASSIGNED",
+  "IN_PROGRESS",
+  "EVIDENCE_SUBMITTED",
+  "INSPECTION",
+  "COMPLETED",
+  "REJECTED",
+] as const;
+export type FtJobState = (typeof FT_JOB_STATES)[number];
+export const isFtJobState = makeGuard(FT_JOB_STATES);
+
+/** メーカー実証テストの不具合状態。 */
+export const FT_DEFECT_STATES = ["OPEN", "INVESTIGATING", "RESOLVED", "CLOSED", "WONTFIX"] as const;
+export type FtDefectState = (typeof FT_DEFECT_STATES)[number];
+export const isFtDefectState = makeGuard(FT_DEFECT_STATES);
+
+/**
  * 支給部品を伴う外注施工の作業依頼の状態（外注施工履歴 ST-001 / ST-002）。
  *
  * 発注元が部品を用意して施工事業者へ依頼し、受領・照合・施工・完了確認までを
