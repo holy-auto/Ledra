@@ -4,6 +4,45 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-09-19 保険会社ポータルの車両検索を本番で復旧した（enum に無い `'expired'` で毎回落ちていた）
+
+**本番の `insurer_search_vehicles(text,integer,integer,text,text)` が全呼び出し落ちていた。**
+保険会社ポータルの車両検索（`src/app/api/insurer/vehicles/route.ts` が呼ぶ RPC）で、
+原因は2つとも `certificates.status` の型 —— 本番は enum `certificate_status_enum`
+（`active, void, draft`）である。
+
+| # | エラー | 場所 |
+|---|---|---|
+| 1 | **22P02** invalid input value for enum: `"expired"` | `c.status IN ('active','void','expired')` —— enum に無い値へのリテラル変換で落ちる |
+| 2 | **42804** structure of query does not match function result type | `RETURNS TABLE` の `latest_cert_status` は `text` だが `(SELECT c2.status ...)` は enum を返す |
+
+**直し方は `status::text`。** この形はリポジトリに既に3回入っている
+（`20260329200001` / `20260802154302` / `20260802154541`）。
+**その3回とも「目の前の関数」だけを直していたので、`insurer_search_vehicles` が漏れ続けた。**
+今回は本番の全関数を `'expired'` × 素の `status` で走査し、**残りはこの1本のみ・
+RLS ポリシーは0件**であることを確定させてから閉じた。
+
+**検証（再現 → 修正 → 通過）**
+
+- 22P02 は**本番で**再現（副作用なし）:
+  `select 1 from public.certificates c where c.status in ('active','void','expired') limit 0;`
+- 42804 は再生 DB の `certificates.status` を本番と同じ enum に寄せてから再現。
+  **キャストを片方だけ直した版**で `plpgsql_check` を回すと 42804 が出る
+  —— 2つが別々のバグであることをここで確かめた。
+- 修正版は enum 化した再生 DB で `plpgsql_check` が**指摘なし**、
+  本番でも適用後に**指摘なし**。`check:migrations`（471/471 再生）と
+  `lint:migrations` も緑。
+
+**出し方**: `db-migrate` は本番に main へ無い版が7つあって止まっているので、
+**その復旧を待たずに手で本番へ当てた**。版は
+`supabase_migrations.schema_migrations` に `20260919132119` として記録され、
+**リポジトリのファイル名もそれに合わせてある**ので、次の `supabase db push` は
+この版を再実行しない。
+
+**残り**: 6引数オーバーロード `insurer_search_vehicles(text,integer,integer,text,text,text)`
+は、本番から消えた `insurer_is_active_subscription` を呼ぶので呼ばれれば必ず落ちる。
+アプリからの呼び出しは0件。消すか戻すかは未決（OPEN_QUESTIONS）。
+
 ## 2026-09-18 ドリフト検出器が一度も動いていなかった。列まで見るようにしたら、保険会社ポータルが今も壊れていることが分かった
 
 **検出器そのものが黙っていた。** `#1045` で入れた `scripts/check-schema-drift.mjs` は、
