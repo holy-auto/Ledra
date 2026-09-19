@@ -274,7 +274,7 @@ function ProfileEditForm({ profile, onSaved }: { profile: Profile; onSaved: () =
       {/* Boolean capabilities */}
       <fieldset>
         <legend className="text-[11px] font-semibold text-muted mb-2">対応サービス・設備</legend>
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-2">
           {BOOL_KEYS.map((k) => (
             <label key={k} className="flex items-center gap-1.5 text-xs text-primary cursor-pointer">
               <input

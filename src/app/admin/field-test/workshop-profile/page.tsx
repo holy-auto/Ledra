@@ -64,7 +64,7 @@ export default function WorkshopProfilePage() {
         alert("保存しました");
       } else {
         const err = await res.json();
-        alert(err.error ?? "保存に失敗しました");
+        alert(err.message ?? err.error ?? "保存に失敗しました");
       }
     } finally {
       setSaving(false);

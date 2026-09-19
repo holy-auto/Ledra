@@ -83,7 +83,7 @@ export default function FieldTestPage() {
       setApplications((prev) => [json, ...prev]);
     } else {
       const err = await res.json();
-      alert(err.error ?? "応募に失敗しました");
+      alert(err.message ?? err.error ?? "応募に失敗しました");
     }
   };
 
