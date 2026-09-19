@@ -32,7 +32,15 @@ import type {
   MethodRequirement,
   MinRoleRequirement,
 } from "../permissions";
-import { walkSource, enclosingFunctions, handlerChunks, stripComments } from "../../__tests__/sourceScan";
+import {
+  walkSource,
+  enclosingFunctionsWithPos,
+  handlerChunks,
+  stripComments,
+  wrapperCalls,
+  wrapperGuards,
+  withAliasTarget,
+} from "../../__tests__/sourceScan";
 
 const APP_ROOT = join(process.cwd(), "src", "app");
 const API_ROOT = join(APP_ROOT, "api");
@@ -46,14 +54,23 @@ const MUTATING_METHODS: MutatingMethod[] = ["POST", "PUT", "PATCH", "DELETE"];
  * でも一致してしまい、素通りするルートが緑になる。否定まで要求する。
  * `if (cond && !requirePermission(...))` のような複合条件も正当なので、
  * `if (` の直後であることまでは求めない。
+ *
+ * **ラッパに預けた形も認可として数える**（2026-09-18）。378 本を
+ * `withCaller(handler, { permission: "x:y" })` へ寄せた結果、ハンドラ本文から
+ * この呼び出しが消え、**登録ルート 144 件がまとめて「未強制」に化けた**。
+ * 認可の在処が変わったのに検出器が追いついていなかっただけで、実物は守られている。
+ * ラッパを信用してよい根拠は `src/lib/api/__tests__/withCaller.test.ts`
+ * （値の水準で 401 / 403 / レート制限を固定している）。
  */
 function enforces(src: string, perm: Permission): boolean {
-  return new RegExp(`!\\s*(requirePermission|hasPermission)\\([^)]*"${perm}"\\)`).test(src);
+  if (new RegExp(`!\\s*(requirePermission|hasPermission)\\([^)]*"${perm}"\\)`).test(src)) return true;
+  return wrapperGuards(src).permissions.has(perm);
 }
 
-/** `!requireMinRole(caller, "staff")` の形で弾いているか。 */
+/** `!requireMinRole(caller, "staff")` の形で弾いているか（ラッパのオプションも同じ扱い）。 */
 function enforcesMinRole(src: string, role: string): boolean {
-  return new RegExp(`!\\s*(requireMinRole|hasMinRole)\\([^)]*"${role}"\\)`).test(src);
+  if (new RegExp(`!\\s*(requireMinRole|hasMinRole)\\([^)]*"${role}"\\)`).test(src)) return true;
+  return wrapperGuards(src).minRoles.has(role);
 }
 
 /** route.ts をハンドラ単位に切る。`export const POST = ...` 形式も認識する。 */
@@ -87,7 +104,7 @@ describe("API ルートのサーバ側権限強制", () => {
     for (const route of Object.keys(API_ROUTE_PERMISSIONS)) {
       const file = join(API_ROOT, ...route.split("/"), "route.ts");
       if (!existsSync(file)) continue;
-      const chunks = handlerChunks(readFileSync(file, "utf8"));
+      const chunks = handlerChunks(stripComments(readFileSync(file, "utf8"), file));
       if (!MUTATING_METHODS.some((m) => chunks.has(m))) unrecognized.push(route);
     }
     expect(unrecognized).toEqual([]);
@@ -98,7 +115,9 @@ describe("API ルートのサーバ側権限強制", () => {
     for (const [route, value] of Object.entries(API_ROUTE_PERMISSIONS)) {
       const file = join(API_ROOT, ...route.split("/"), "route.ts");
       if (!existsSync(file)) continue;
-      const chunks = handlerChunks(readFileSync(file, "utf8"));
+      // **コメントを落としてから照合する。** 説明コメントに書いた
+      // `!requirePermission(...)` を本物と読む形を、この repo は2回やっている（M-022）。
+      const chunks = handlerChunks(stripComments(readFileSync(file, "utf8"), file));
       for (const method of MUTATING_METHODS) {
         const chunk = chunks.get(method);
         if (!chunk) continue;
@@ -126,6 +145,55 @@ describe("検出器そのものの性質", () => {
     ).toBe(true);
     expect(enforcesMinRole('const ok = requireMinRole(caller, "staff");', "staff")).toBe(false);
     expect(enforcesMinRole('if (!requireMinRole(caller, "staff")) return apiForbidden();', "staff")).toBe(true);
+  });
+
+  it("ラッパのオプションに書いた認可を認める（withCaller 統一後の形）", () => {
+    const src =
+      'export const POST = withCaller(async (req, { caller }) => apiOk({}), { permission: "certificates:edit" });';
+    expect(enforces(src, "certificates:edit")).toBe(true);
+    expect(enforcesMinRole('export const PUT = withCaller(h, { minRole: "owner" });', "owner")).toBe(true);
+  });
+
+  it("ラッパのオプションでも、要求と違う値なら認めない（陰性対照）", () => {
+    // 「どれか1つ認可があればよい」にすると、表が要求した権限と違うものでも
+    // 緑になる。実際 certificates:void は certificates:edit より強い。
+    const src = 'export const POST = withCaller(h, { permission: "certificates:edit" });';
+    expect(enforces(src, "certificates:void")).toBe(false);
+    expect(enforcesMinRole('export const PUT = withCaller(h, { minRole: "staff" });', "owner")).toBe(false);
+  });
+
+  it("ラッパでない関数の同じ形のオプションは認可と読まない（陰性対照）", () => {
+    // `{ permission: "..." }` はただのオブジェクト。どの関数に渡したかで意味が変わる。
+    expect(
+      enforces('export const POST = logSomething(h, { permission: "certificates:void" });', "certificates:void"),
+    ).toBe(false);
+  });
+
+  it("読めない渡し方は認可と見なさない（変数・短縮形は fail closed）", () => {
+    expect(enforces("export const POST = withCaller(h, OPTIONS);", "certificates:void")).toBe(false);
+    expect(enforces("export const POST = withCaller(h, { permission });", "certificates:void")).toBe(false);
+  });
+
+  it("別名 export の実体まで辿る（`const h = withCaller(...); export const POST = h;`）", () => {
+    // レビューが実際にこの形で無認可のルートを検査に通した（2026-09-18）。
+    const src = [
+      'const h = withCaller(async (req) => apiOk({}), { permission: "certificates:void" });',
+      "export const POST = h;",
+    ].join("\n");
+    expect(enforces("export const POST = h;", "certificates:void")).toBe(false); // 断片だけでは見えない
+    expect(enforces(withAliasTarget(src, "export const POST = h;"), "certificates:void")).toBe(true);
+  });
+
+  it("別名の実体に認可が無ければ、辿っても認めない（陰性対照）", () => {
+    const src = ["const h = withCaller(async (req) => apiOk({}));", "export const POST = h;"].join("\n");
+    expect(enforces(withAliasTarget(src, "export const POST = h;"), "certificates:void")).toBe(false);
+  });
+
+  it("別名の実体が見つからないときは断片を補わない", () => {
+    // 実体が別ファイルにある形。**無いものを認可として補うと嘘をつく側に倒れる。**
+    expect(withAliasTarget("export const POST = imported;", "export const POST = imported;")).toBe(
+      "export const POST = imported;",
+    );
   });
 
   it("メソッド別の指定が minRole より優先される（黙って弱くならない）", () => {
@@ -158,7 +226,8 @@ describe("証明書の無効化 (operationRisk = critical)", () => {
   const ungated: string[] = [];
 
   for (const file of walkSource(APP_ROOT)) {
-    const src = readFileSync(file, "utf8");
+    // stripComments は文字数を保つ（コメントを空白にする）ので、下の位置判定は狂わない。
+    const src = stripComments(readFileSync(file, "utf8"), file);
     if (!isVoidPath(src)) continue;
     const rel = file.slice(APP_ROOT.length + 1);
     voidPaths.push(rel);
@@ -166,10 +235,17 @@ describe("証明書の無効化 (operationRisk = critical)", () => {
     // 書き込み（または一本化ヘルパーの呼び出し）を含む関数の中でガードされているかを見る。
     // ファイル全体では見ない（別の関数のガードで通ってしまう）。
     const calls = /certificates\/voidCertificate/.test(src) ? /voidCertificate\w*\(/g : /\.update\(/g;
-    const writers = enclosingFunctions(src, calls).filter(
-      (body) => /from\("certificates"\)/.test(body) || /voidCertificate\w*\(/.test(body),
+    const writers = enclosingFunctionsWithPos(src, calls).filter(
+      ({ body }) => /from\("certificates"\)/.test(body) || /voidCertificate\w*\(/.test(body),
     );
-    if (!writers.length || !writers.every((body) => enforces(body, "certificates:void"))) ungated.push(rel);
+    // **ラッパに預けた認可は書き込み関数の外側に出る。**
+    // `withCaller(async (req) => { …void… }, { permission: "certificates:void" })` は
+    // 本文だけ見ると無防備に見える。その書き込みを**包んでいる**ラッパだけを数える
+    // （ファイル内の別のラッパのオプションを流用しない）。
+    const gates = wrapperCalls(src, file).filter((c) => c.permissions.has("certificates:void"));
+    const gated = ({ pos, body }: { pos: number; body: string }) =>
+      enforces(body, "certificates:void") || gates.some((g) => g.start <= pos && pos < g.end);
+    if (!writers.length || !writers.every(gated)) ungated.push(rel);
   }
 
   it("検出できている（検出器が壊れて空で合格するのを防ぐ）", () => {
@@ -261,6 +337,11 @@ describe("未登録の変更系ハンドラ", () => {
 
     // ── 読み取りのみ（POST だが書き込まない）──
     "certificates/pdf-one [POST]", // PDF 出力。テナント所有チェックはある
+    // パッケージ展開。GET と同じ結果を返す副作用なしの読み取りで、POST は RPC 的な
+    // 使い方のために許しているだけ。読むのは自テナントの行だけ
+    //（createTenantScopedAdmin + 全クエリに tenant_id 一致）。
+    // **別名 export の解決を入れて初めて見えた**（/code-review 指摘 2026-09-18）。
+    "admin/service-packages/[id]/expand [POST]",
 
     // ── 認可を共有関数に集約している（ルートの中には無い）──
     "admin/certificates [POST]", // createCertAction が certificates:create を要求する
@@ -279,20 +360,36 @@ describe("未登録の変更系ハンドラ", () => {
     // ── createLesson.ts の permission チェックで守られている ──
     "admin/academy/lessons [POST]",
     "mobile/academy/lessons [POST]",
+
+    // ── 買い手側の操作（ロール権限を課す方が誤り）──
+    //    BtoB マーケットの問い合わせ送信。**検出器を withCaller 対応にして初めて見えた**
+    //    （2026-09-18）。出品側の `market:*` を課すと、買いたい側が送れなくなる。
+    //    売り手テナントは車両から引く（caller からではない）ので、どのテナントの
+    //    メンバーでも送れてよい。IP 単位の 5件/15分 制限あり。
+    //    掲載中(listed)の車両にしか送れないことも確認済み。
+    "market/inquiries [POST]",
   ]);
 
   const found: string[] = [];
   for (const file of walkSource(API_ROOT, (f) => f.endsWith("route.ts"))) {
-    const src = readFileSync(file, "utf8");
+    const src = stripComments(readFileSync(file, "utf8"), file);
     const route = file
       .slice(API_ROOT.length + 1)
       .replace(/[\\/]route\.ts$/, "")
       .split(/[\\/]/)
       .join("/");
-    for (const [method, chunk] of handlerChunks(src)) {
+    for (const [method, rawChunk] of handlerChunks(src)) {
       if (method === "GET") continue;
-      if (!/resolveCallerWithRole\(|resolveMobileCaller\(/.test(chunk)) continue;
-      if (!GUARD.test(chunk)) found.push(`${route} [${method}]`);
+      // `export const POST = handler;` の実体はこの断片の外にある。足さないと
+      // 「認可なし」にも「caller 未解決」にも見える（/code-review 指摘 2026-09-18）。
+      const chunk = withAliasTarget(src, rawChunk, file);
+      // **ラッパ包みも「caller を解決している」に数える。** ここを直すまで、
+      // `withCaller` へ寄せた 378 本はこの continue で丸ごと視界から消えており、
+      // 認可の無いハンドラを増やしても赤にならない状態だった（2026-09-18）。
+      const guards = wrapperGuards(chunk, file);
+      if (!/resolveCallerWithRole\(|resolveMobileCaller\(/.test(chunk) && !guards.wrapped) continue;
+      const wrapperEnforces = guards.permissions.size > 0 || guards.minRoles.size > 0;
+      if (!GUARD.test(chunk) && !wrapperEnforces) found.push(`${route} [${method}]`);
     }
   }
 

@@ -1,5 +1,3 @@
-
-
 import { createServiceRoleAdmin, createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
 import { apiJson, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
@@ -8,9 +6,13 @@ import { inquiryCreateSchema } from "@/lib/validations/market";
 import { withCaller } from "@/lib/api/withCaller";
 export const dynamic = "force-dynamic";
 
-// ─── POST: Create inquiry (public, rate-limited) ───
+// ─── POST: Create inquiry (要ログイン・IP レート制限) ───
+// **「public」ではない。** withCaller 統一（2026-09-16）で認証必須になった。
+// 入口の `/market/[id]` も未ログインなら /login へ送るので、実際の導線と一致している。
+// ロール権限は課さない（買い手側の操作。出品側の market:* を課すと送れなくなる）。
 export const POST = withCaller(
-  async (req, { caller }) => {
+  // caller は使わない（買い手の氏名・連絡先はフォームの入力、売り手は車両から引く）。
+  async (req) => {
     try {
       // Rate limit: 5 inquiries per 15 minutes per IP
       const ip = getClientIp(req);
@@ -22,9 +24,11 @@ export const POST = withCaller(
         );
       }
 
-      // Public inquiry form — the seller tenant is derived from the vehicle lookup
-      // below, so this initial query must be pre-resolution (service-role).
-      const admin = createServiceRoleAdmin("market public inquiry — seller tenant resolved from vehicle_id after lookup");
+      // 売り手テナントは下の車両検索から引く（caller のテナントではない）ので、
+      // この最初の問い合わせだけは解決前 = service-role で読む。
+      const admin = createServiceRoleAdmin(
+        "market public inquiry — seller tenant resolved from vehicle_id after lookup",
+      );
       const parsed = inquiryCreateSchema.safeParse(await req.json().catch(() => ({})));
       if (!parsed.success) {
         return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
@@ -81,7 +85,6 @@ export const POST = withCaller(
 export const GET = withCaller(
   async (req, { caller }) => {
     try {
-
       const { admin } = createTenantScopedAdmin(caller.tenantId);
       const url = new URL(req.url);
       const status = url.searchParams.get("status") ?? "";

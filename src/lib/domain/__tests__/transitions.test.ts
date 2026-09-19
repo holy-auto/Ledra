@@ -8,6 +8,7 @@ import {
   SYNC_TRANSITIONS,
   PART_INSTALLATION_TRANSITIONS,
   DOCUMENT_CORRECTION_TRANSITIONS,
+  OUTSOURCED_WORK_TRANSITIONS,
   isValidTransition,
   validNextStates,
   isTerminalState,
@@ -24,6 +25,7 @@ import {
   SYNC_STATES,
   PART_INSTALLATION_STATES,
   DOCUMENT_CORRECTION_STATES,
+  OUTSOURCED_WORK_STATES,
   isPartInstallationState,
   isDocumentCorrectionState,
 } from "../states";
@@ -40,6 +42,7 @@ const AXES = [
   { name: "sync", table: SYNC_TRANSITIONS, states: SYNC_STATES },
   { name: "partInstallation", table: PART_INSTALLATION_TRANSITIONS, states: PART_INSTALLATION_STATES },
   { name: "documentCorrection", table: DOCUMENT_CORRECTION_TRANSITIONS, states: DOCUMENT_CORRECTION_STATES },
+  { name: "outsourcedWork", table: OUTSOURCED_WORK_TRANSITIONS, states: OUTSOURCED_WORK_STATES },
 ] as const;
 
 describe("遷移表の構造", () => {
@@ -462,5 +465,93 @@ describe("現場の操作が表せること", () => {
     expect(isValidTransition(JOB_TRANSITIONS, "CHECKED_IN", "CANCELED")).toBe(true);
     // 来店前なら NO_SHOW は正しい。
     expect(isValidTransition(JOB_TRANSITIONS, "SCHEDULED", "NO_SHOW")).toBe(true);
+  });
+});
+
+// ── 外注施工（OutsourcedWork）遷移 外注施工履歴 TR-001〜TR-050 ──
+
+describe("OUTSOURCED_WORK_TRANSITIONS", () => {
+  it("TR-051 通常フローが順に有効", () => {
+    const flow = [
+      "REQUEST_CREATED",
+      "PARTS_PREPARED",
+      "AWAITING_HANDOVER",
+      "RECEIPT_IN_REVIEW",
+      "RECEIVED",
+      "MATCHED",
+      "READY_FOR_WORK",
+      "WORK_IN_PROGRESS",
+      "WORK_COMPLETED",
+      "AWAITING_CLIENT_CONFIRMATION",
+      "COMPLETED",
+    ] as const;
+    for (let i = 0; i < flow.length - 1; i++) {
+      expect(isValidTransition(OUTSOURCED_WORK_TRANSITIONS, flow[i], flow[i + 1]), `${flow[i]} → ${flow[i + 1]}`).toBe(
+        true,
+      );
+    }
+  });
+
+  it("TR-048 / TR-052: COMPLETED は終端。通常ステータスへの復帰も取消も不可", () => {
+    expect(isTerminalState(OUTSOURCED_WORK_TRANSITIONS, "COMPLETED")).toBe(true);
+    for (const s of OUTSOURCED_WORK_STATES) {
+      expect(isValidTransition(OUTSOURCED_WORK_TRANSITIONS, "COMPLETED", s)).toBe(false);
+    }
+    expect(rejectTransition(OUTSOURCED_WORK_TRANSITIONS, "outsourcedWork", "COMPLETED", "CANCELED")?.reason).toContain(
+      "終端",
+    );
+  });
+
+  it("TR-026: 例外承認済みから施工中へは直行できない（必ず施工待ちを経由）", () => {
+    expect(isValidTransition(OUTSOURCED_WORK_TRANSITIONS, "EXCEPTION_APPROVED", "WORK_IN_PROGRESS")).toBe(false);
+    expect(isValidTransition(OUTSOURCED_WORK_TRANSITIONS, "EXCEPTION_APPROVED", "READY_FOR_WORK")).toBe(true);
+  });
+
+  it("TR-021〜025: 例外承認済みの復帰先は5つ", () => {
+    expect([...validNextStates(OUTSOURCED_WORK_TRANSITIONS, "EXCEPTION_APPROVED")].sort()).toEqual(
+      ["AWAITING_CLIENT_CONFIRMATION", "READY_FOR_WORK", "RECEIPT_IN_REVIEW", "RECEIVED", "REWORK_PENDING"].sort(),
+    );
+  });
+
+  it("TR-027〜031: 例外却下は原因の例外ステータスへだけ戻る", () => {
+    expect([...validNextStates(OUTSOURCED_WORK_TRANSITIONS, "EXCEPTION_REJECTED")].sort()).toEqual(
+      ["DAMAGE_REVIEW", "PART_NUMBER_MISMATCH", "QUANTITY_SHORTAGE", "RETURNED", "WORK_INTERRUPTED"].sort(),
+    );
+    expect(isValidTransition(OUTSOURCED_WORK_TRANSITIONS, "EXCEPTION_REJECTED", "READY_FOR_WORK")).toBe(false);
+  });
+
+  it("ST-004 / TR-032: 受領拒否は作業依頼としては終端ではなく、新しい受領試行で受領確認中へ戻れる", () => {
+    expect(isTerminalState(OUTSOURCED_WORK_TRANSITIONS, "RECEIPT_REJECTED")).toBe(false);
+    expect(validNextStates(OUTSOURCED_WORK_TRANSITIONS, "RECEIPT_REJECTED")).toEqual(["RECEIPT_IN_REVIEW", "CANCELED"]);
+  });
+
+  it("ST-005: 作業保留の復帰先は仕様の6つちょうど", () => {
+    expect([...validNextStates(OUTSOURCED_WORK_TRANSITIONS, "ON_HOLD")].sort()).toEqual(
+      [
+        "AWAITING_CLIENT_CONFIRMATION",
+        "CANCELED",
+        "READY_FOR_WORK",
+        "RECEIPT_IN_REVIEW",
+        "RECEIVED",
+        "REWORK_PENDING",
+      ].sort(),
+    );
+  });
+
+  it("TR-012〜015: 受領確認中から4つの例外へ分岐できる", () => {
+    for (const to of ["QUANTITY_SHORTAGE", "PART_NUMBER_MISMATCH", "DAMAGE_REVIEW", "RECEIPT_REJECTED"] as const) {
+      expect(isValidTransition(OUTSOURCED_WORK_TRANSITIONS, "RECEIPT_IN_REVIEW", to)).toBe(true);
+    }
+  });
+
+  it("AC-006: 施工中へ入れるのは施工待ちからだけ", () => {
+    const sources = OUTSOURCED_WORK_STATES.filter((s) =>
+      isValidTransition(OUTSOURCED_WORK_TRANSITIONS, s, "WORK_IN_PROGRESS"),
+    );
+    expect(sources).toEqual(["READY_FOR_WORK"]);
+  });
+
+  it("CANCELED は終端", () => {
+    expect(isTerminalState(OUTSOURCED_WORK_TRANSITIONS, "CANCELED")).toBe(true);
   });
 });

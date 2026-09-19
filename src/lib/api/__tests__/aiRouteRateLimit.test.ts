@@ -28,7 +28,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join, dirname, normalize } from "node:path";
 import ts from "typescript";
-import { walkSource, handlerChunks, moduleChunk, stripComments } from "@/lib/__tests__/sourceScan";
+import { walkSource, handlerChunks, moduleChunk, stripComments, wrapperGuards } from "@/lib/__tests__/sourceScan";
 import {
   parse,
   collect,
@@ -283,17 +283,34 @@ for (const file of walkSource(API_ROOT, (f) => f.endsWith("route.ts"))) {
   const callsAi = (chunk: string) => bindings.some((b) => new RegExp(String.raw`(?<![\w.])${b}\s*\(`).test(chunk));
 
   const name = routeName(file);
+  /**
+   * ラッパに預けた制限（`withCaller(handler, { rateLimit: "ai" })`）も数える。
+   *
+   * ラッパは**ハンドラ本文に入る前**に弾くので、「弾いてから呼ぶ」は構造で保証される
+   * （`src/lib/api/withCaller.ts` の先頭。値の水準の固定は
+   * `src/lib/api/__tests__/withCaller.test.ts`）。
+   *
+   * ここを直すまで、`rateLimit` を指定済みの 13 本が「制限なし」に見えていた。
+   * ただし**この誤検出に紛れて、本当に剥がれた 13 本が同じ一覧に並んでいた** ——
+   * 誤検出を消すだけでは、そちらが一緒に消える。両方を分けて確認すること。
+   */
+  const wrapperLimited = (chunk: string) => wrapperGuards(chunk, file).rateLimits.size > 0;
+
   for (const [method, chunk] of handlerChunks(src)) {
     if (callsAi(chunk)) {
       const tree = parse(chunk, file);
-      units.push({ id: `${name} [${method}]`, limited: rateLimited(tree, aiCallStarts(tree, bindings)) });
+      const limited = rateLimited(tree, aiCallStarts(tree, bindings)) || wrapperLimited(chunk);
+      units.push({ id: `${name} [${method}]`, limited });
     }
   }
   // `export const POST = withX(handler)` の実体はここに落ちる。見落とすと消える。
   const top = moduleChunk(src);
   if (top && callsAi(top)) {
     const tree = parse(top, file);
-    units.push({ id: `${name} [module]`, limited: rateLimited(tree, aiCallStarts(tree, bindings)) });
+    units.push({
+      id: `${name} [module]`,
+      limited: rateLimited(tree, aiCallStarts(tree, bindings)) || wrapperLimited(top),
+    });
   }
 }
 
@@ -434,5 +451,25 @@ describe("検出器そのものの性質", () => {
 
   it("呼んでいないものを「制限している」と言わない", () => {
     expect(limited("const x = await somethingElse(req);")).toBe(false);
+  });
+
+  // ── ラッパのオプションに預けた制限（withCaller 統一後の形）──
+  const wrapperLimits = (src: string) => wrapperGuards(src, "route.ts").rateLimits.size > 0;
+
+  it("ラッパの rateLimit オプションを制限として読む", () => {
+    expect(wrapperLimits('export const POST = withCaller(h, { rateLimit: "ai" });')).toBe(true);
+    expect(wrapperLimits('export const POST = withCaller(h, { permission: "x:y", rateLimit: "admin_write" });')).toBe(
+      true,
+    );
+  });
+
+  it("オプションの無いラッパは制限として読まない（陰性対照）", () => {
+    // ここを true に倒すと、**withCaller で包むだけで制限を剥がせる**ようになる。
+    expect(wrapperLimits('export const POST = withCaller(h, { permission: "x:y" });')).toBe(false);
+    expect(wrapperLimits("export const POST = withCaller(h);")).toBe(false);
+  });
+
+  it("ラッパでない関数の同じ形のオプションは制限と読まない（陰性対照）", () => {
+    expect(wrapperLimits('export const POST = describeRoute(h, { rateLimit: "ai" });')).toBe(false);
   });
 });

@@ -107,6 +107,12 @@ Payment Policy(v2.0 §11.3: Consumer PAID / B2B CREDIT_APPROVED / Insurance INSU
 | FAILED | `outbox_events.status='errored'` / `'dead_letter'` | 近似 | |
 | CONFLICT | 概念なし | — | 競合検出・解決 UI は存在しない |
 
+### 1.7 OutsourcedWorkState(外注施工履歴 ST-001/002: 25値) ⇔ `outsourced_work_requests.status`(実値25)
+
+- 対応: **完全**(2026-09-18)。新設テーブルのため正準値をそのまま DB に格納し、変換関数を持たない。
+- 遷移表: `OUTSOURCED_WORK_TRANSITIONS`(TR-001〜047)。実行主体・復帰先制御は `src/lib/outsourcedWork/rules.ts`。
+- ST-003(一致 / 要確認 / 不一致、再発送手配中 等)は状態ではなく `outsourced_work_events.payload` の属性。
+
 ## 2. v2.0 仕様セクション別トレース
 
 | v2.0 § | 要件領域 | 既存実装(代表パス) | 状態 | ギャップ / 語彙差 | 担当 IMP |

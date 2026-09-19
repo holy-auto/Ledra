@@ -8,6 +8,7 @@
  * minPlan: standard 以上 (ai_draft 機能と同条件)。
  */
 
+import { checkRateLimit } from "@/lib/api/rateLimit";
 import { apiOk, apiInternalError, apiValidationError, apiForbidden } from "@/lib/api/response";
 
 import { canUseFeature, normalizePlanTier } from "@/lib/billing/planFeatures";
@@ -34,6 +35,8 @@ export const POST = withCaller(
       if (!canUseFeature(tier, "ai_draft")) {
         return apiForbidden("この機能は Standard プラン以上で利用できます。");
       }
+      const limited = await checkRateLimit(req, "ai", `delivery-note-extract:${caller.tenantId}`);
+      if (limited) return limited;
 
       const form = await req.formData();
       const file = form.get("delivery_note");
