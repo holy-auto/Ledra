@@ -21,34 +21,46 @@ const nullableText = (max: number) =>
     .optional()
     .transform((v) => v || null);
 
-export const posCheckoutSchema = z.object({
-  amount: z.coerce.number().int().min(1, "invalid_amount").max(999_999_999, "invalid_amount"),
-  tax_rate: z.coerce.number().int().min(0, "invalid_tax_rate").max(100, "invalid_tax_rate").default(10),
-  payment_method: z.enum(PAYMENT_METHODS, { message: "invalid_payment_method" }).default("cash"),
-  received_amount: z.coerce.number().int().min(0).nullable().optional(),
-  reservation_id: nullableUuid,
-  customer_id: nullableUuid,
-  store_id: nullableUuid,
-  register_session_id: nullableUuid,
-  items_json: z.any().optional(),
-  note: nullableText(500),
-  create_receipt: z.boolean().optional(),
-  // カード番号決済（Stripe Checkout）のセッション。**重複記録の防止に使う。**
-  //
-  // PaymentIntent を直接受けてはいけない。`pi_` で始まる文字列は誰でも作れるので、
-  // 記録済みの値を現金会計に付けて**売上を消す**ことができてしまう。
-  // サーバがこのセッションを Stripe から取り直し、支払済みであることと
-  // 金額を自分で確かめる（`resolvePaidCheckoutSession`）。
-  checkout_session_id: nullableText(200).refine((v) => v === null || v.startsWith("cs_"), {
-    message: "invalid_checkout_session",
-  }),
-  // Square 端末（Terminal API）のチェックアウト。**サーバが Square から
-  // 取り直して**支払済みと金額を確かめる（こちらの申告は信じない）
-  square_checkout_id: nullableText(200),
-  // Square POS アプリで会計した分の引き当て。金額・時刻・店舗で1件に絞れた
-  // ときだけ記帳する
-  square_reconcile: z.boolean().optional(),
-});
+export const posCheckoutSchema = z
+  .object({
+    amount: z.coerce.number().int().min(1, "invalid_amount").max(999_999_999, "invalid_amount"),
+    tax_rate: z.coerce.number().int().min(0, "invalid_tax_rate").max(100, "invalid_tax_rate").default(10),
+    payment_method: z.enum(PAYMENT_METHODS, { message: "invalid_payment_method" }).default("cash"),
+    received_amount: z.coerce.number().int().min(0).nullable().optional(),
+    reservation_id: nullableUuid,
+    customer_id: nullableUuid,
+    store_id: nullableUuid,
+    register_session_id: nullableUuid,
+    items_json: z.any().optional(),
+    note: nullableText(500),
+    create_receipt: z.boolean().optional(),
+    // カード番号決済（Stripe Checkout）のセッション。**重複記録の防止に使う。**
+    //
+    // PaymentIntent を直接受けてはいけない。`pi_` で始まる文字列は誰でも作れるので、
+    // 記録済みの値を現金会計に付けて**売上を消す**ことができてしまう。
+    // サーバがこのセッションを Stripe から取り直し、支払済みであることと
+    // 金額を自分で確かめる（`resolvePaidCheckoutSession`）。
+    checkout_session_id: nullableText(200).refine((v) => v === null || v.startsWith("cs_"), {
+      message: "invalid_checkout_session",
+    }),
+    // Square 端末（Terminal API）のチェックアウト。**サーバが Square から
+    // 取り直して**支払済みと金額を確かめる（こちらの申告は信じない）
+    square_checkout_id: nullableText(200),
+    // Square POS アプリで会計した分の引き当て。金額・時刻・店舗で1件に絞れた
+    // ときだけ記帳する
+    square_reconcile: z.boolean().optional(),
+  })
+  // 決済の証明は1つの経路にしか属さない。両方渡されると、Square 側で確認できた
+  // 本物の決済の payment_id が記録から**まるごと落ちる**（recordPosSale の冪等
+  // キーは1列しか持てず、Stripe を優先するため）。落ちた決済は次の引き当てで
+  // 「まだ記録されていない」ように見え、別の会計として二重に記帳されうる。
+  // このスキーマを共有する呼び出し元（admin/mobile 両方の POS checkout）
+  // 全てに一度で効かせるため、ルート個別ではなくここに置く
+  // （/code-review 指摘: モバイル側にだけ同じガードが無かった）。
+  .refine((data) => !(data.checkout_session_id && (data.square_checkout_id || data.square_reconcile)), {
+    message: "checkout_session_id と square_checkout_id/square_reconcile は同時に指定できません",
+    path: ["checkout_session_id"],
+  });
 
 export const posCheckoutSessionSchema = z.object({
   amount: z.coerce.number().int().min(1).max(999_999_999),

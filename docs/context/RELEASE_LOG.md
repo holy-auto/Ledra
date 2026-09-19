@@ -4,6 +4,25 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-09-19 決済証明の排他チェックが admin ルートにしか無く、モバイル側は素通りだった
+
+`/code-review`（Codex）指摘。Stripe の `checkout_session_id` と Square の
+`square_checkout_id`/`square_reconcile` を同時に渡すと、`recordPosSale` の
+冪等キーは1列しか持てず Stripe を優先するため、**Square 側で確認済みの
+本物の決済の payment_id が記録からまるごと落ちる**。この排他チェックは
+`admin/pos/checkout/route.ts` にだけルート内で書いてあり、同じ
+`posCheckoutSchema` を使う `mobile/pos/checkout/route.ts` には無かった
+（型C: 経路を1本しか見ない。同じ問題を最初に直したときに
+`grep -rl posCheckoutSchema src/` をしていれば気づけていた）。
+
+route 個別のチェックを削除し、**共有スキーマ `posCheckoutSchema` 自体に
+`.refine()` で持たせた**。admin/mobile どちらの呼び出し元も同じスキーマを
+経由するため、これで両方に一度で効く。新規テスト
+`src/lib/validations/__tests__/pos.test.ts` をスキーマ単体に追加（ルートごとに
+同じテストを重複させない）。
+
+検証: `tsc` / `eslint` 0 errors、対象テスト236件緑。
+
 ## 2026-09-19 PR #1092 が ready for review 化 → Codex 自動レビューで6件（P1×4・P2×2）を修正
 
 代表が PR #1092 を draft から ready for review に切り替え、リポジトリ標準の Codex
