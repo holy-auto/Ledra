@@ -4,8 +4,8 @@
  * v2.0 §19: 各正準状態軸の有効な遷移を定義し、無効な遷移を構造的に拒否する。
  *
  * 目的:
- * - 8 軸（Job / Step / Severity / Certificate / Payment / Sync / PartInstallation /
- *   DocumentCorrection）の遷移可否の単一定義源
+ * - 9 軸（Job / Step / Severity / Certificate / Payment / Sync / PartInstallation /
+ *   DocumentCorrection / OutsourcedWork）の遷移可否の単一定義源
  * - 無効遷移の拒否理由メッセージ
  * - 終端状態の明示（遷移先なし = terminal）
  *
@@ -35,6 +35,7 @@ import type {
   SyncState,
   PartInstallationState,
   DocumentCorrectionState,
+  OutsourcedWorkState,
 } from "./states";
 
 // ── 案件（Job）遷移表 v2.0 §19.1 ──
@@ -191,6 +192,88 @@ export const DOCUMENT_CORRECTION_TRANSITIONS: Record<DocumentCorrectionState, re
   APPROVED: ["APPLIED"],
   REJECTED: [],
   APPLIED: [],
+};
+
+// ── 外注施工（OutsourcedWork）遷移表 外注施工履歴 TR-001〜TR-050 ──
+//
+// 行の出典は遷移 ID で示す。**実行主体（誰が起こせるか）はここに持たない**——
+// src/lib/outsourcedWork/rules.ts の actorsForTransition が持つ。この表は
+// 「何から何へ行けるか」だけを言う（他の軸と同じ分担）。
+//
+// 表に無い判断（仕様に明記が無く、実装で決めたもの。OPEN_QUESTIONS に転記済み）:
+//   - ON_HOLD への入口: 仕様は出口（TR-041〜046）しか書いていない。AC-022 の
+//     「例外または差戻しにより一時停止」に従い、**受領時例外3種・施工中断・差戻しから**
+//     だけ入れる（AC-015 は施工中断→保留を明記）。
+//   - TR-047 の「任意の取消可能ステータス」: 終端（COMPLETED / CANCELED）と、承認操作の
+//     中でシステムが即座に抜ける EXCEPTION_APPROVED / EXCEPTION_REJECTED を除く全状態。
+//     承認済みのまま取り消すと「承認したのに復帰先へ行かなかった」記録になるため除いた。
+export const OUTSOURCED_WORK_TRANSITIONS: Record<OutsourcedWorkState, readonly OutsourcedWorkState[]> = {
+  REQUEST_CREATED: ["PARTS_PREPARED", "CANCELED"], // TR-001, TR-047
+  PARTS_PREPARED: ["AWAITING_HANDOVER", "CANCELED"], // TR-002
+  AWAITING_HANDOVER: ["RECEIPT_IN_REVIEW", "CANCELED"], // TR-003
+  RECEIPT_IN_REVIEW: [
+    "RECEIVED", // TR-004
+    "QUANTITY_SHORTAGE", // TR-012
+    "PART_NUMBER_MISMATCH", // TR-013
+    "DAMAGE_REVIEW", // TR-014
+    "RECEIPT_REJECTED", // TR-015
+    "CANCELED",
+  ],
+  RECEIVED: ["MATCHED", "DAMAGE_REVIEW", "CANCELED"], // TR-005, TR-016
+  MATCHED: ["READY_FOR_WORK", "DAMAGE_REVIEW", "CANCELED"], // TR-006, TR-016
+  READY_FOR_WORK: ["WORK_IN_PROGRESS", "CANCELED"], // TR-007
+  WORK_IN_PROGRESS: ["WORK_COMPLETED", "WORK_INTERRUPTED", "CANCELED"], // TR-008, TR-017
+  WORK_COMPLETED: ["AWAITING_CLIENT_CONFIRMATION", "CANCELED"], // TR-009
+  AWAITING_CLIENT_CONFIRMATION: ["COMPLETED", "RETURNED", "CANCELED"], // TR-010, TR-011
+  // **完了は終端。**直接編集・通常ステータスへの復帰・取消はすべて拒否する（TR-048 / TR-052 /
+  // AC-024）。完了後の対応は訂正イベント（TR-049）と再施工イベント（TR-050）で、
+  // 作業依頼の状態は COMPLETED のまま動かさない。
+  COMPLETED: [],
+  QUANTITY_SHORTAGE: ["EXCEPTION_APPROVAL_PENDING", "ON_HOLD", "CANCELED"], // TR-018
+  PART_NUMBER_MISMATCH: ["EXCEPTION_APPROVAL_PENDING", "ON_HOLD", "CANCELED"], // TR-018
+  DAMAGE_REVIEW: ["EXCEPTION_APPROVAL_PENDING", "ON_HOLD", "CANCELED"], // TR-018
+  // 受領試行としては終端（ST-004）。作業依頼としては新しい受領試行で再受領できる。
+  RECEIPT_REJECTED: ["RECEIPT_IN_REVIEW", "CANCELED"], // TR-032, TR-033
+  WORK_INTERRUPTED: [
+    "EXCEPTION_APPROVAL_PENDING", // TR-018
+    "READY_FOR_WORK", // TR-034
+    "REWORK_PENDING", // TR-035
+    "ON_HOLD", // AC-015
+    "CANCELED",
+  ],
+  EXCEPTION_APPROVAL_PENDING: ["EXCEPTION_APPROVED", "EXCEPTION_REJECTED", "CANCELED"], // TR-019, TR-020
+  // **WORK_IN_PROGRESS へ直行させない（TR-026）。**施工の再開は必ず READY_FOR_WORK を
+  // 経由し、AC-006 の開始条件（受領確認・照合・必要な例外承認）をもう一度通す。
+  // 復帰先の絞り込み（例外の発生工程に応じて許される先だけ）は rules.ts の
+  // allowedReturnTargets（PER-029 / AC-017）。この表はその上限集合。
+  EXCEPTION_APPROVED: [
+    "RECEIPT_IN_REVIEW", // TR-021
+    "RECEIVED", // TR-022
+    "READY_FOR_WORK", // TR-023
+    "REWORK_PENDING", // TR-024
+    "AWAITING_CLIENT_CONFIRMATION", // TR-025
+  ],
+  // 却下は申請の原因になった例外ステータスへ戻す（TR-027〜031 / AC-018）。
+  EXCEPTION_REJECTED: ["QUANTITY_SHORTAGE", "PART_NUMBER_MISMATCH", "DAMAGE_REVIEW", "WORK_INTERRUPTED", "RETURNED"],
+  RETURNED: [
+    "AWAITING_CLIENT_CONFIRMATION", // TR-039（記録修正）
+    "REWORK_PENDING", // TR-040
+    "EXCEPTION_APPROVAL_PENDING", // TR-018
+    "ON_HOLD", // AC-022
+    "CANCELED",
+  ],
+  REWORK_PENDING: ["REWORK_IN_PROGRESS", "CANCELED"], // TR-036
+  REWORK_IN_PROGRESS: ["REWORK_COMPLETED", "CANCELED"], // TR-037
+  REWORK_COMPLETED: ["AWAITING_CLIENT_CONFIRMATION", "CANCELED"], // TR-038
+  ON_HOLD: [
+    "RECEIPT_IN_REVIEW", // TR-041
+    "RECEIVED", // TR-042
+    "READY_FOR_WORK", // TR-043
+    "REWORK_PENDING", // TR-044
+    "AWAITING_CLIENT_CONFIRMATION", // TR-045
+    "CANCELED", // TR-046
+  ],
+  CANCELED: [],
 };
 
 // ── 汎用遷移検証 ──

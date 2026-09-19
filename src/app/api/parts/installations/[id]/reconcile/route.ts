@@ -8,6 +8,7 @@
  * 設計: docs/parts-installation-integrity-design.md §4 L3
  */
 
+import { checkRateLimit } from "@/lib/api/rateLimit";
 import { z } from "zod";
 import { apiJson, apiInternalError, apiValidationError } from "@/lib/api/response";
 
@@ -62,6 +63,8 @@ export const POST = withCaller<{ id: string }>(
       if (parsed.data.delivery_note_base64 && parsed.data.media_type) {
         // 納品書 OCR は Vision モデルを叩くので呼ぶたびに費用が出る。
         // 画像が渡されたときだけ課金するので、ここで制限する（明細を直接渡す経路は対象外）。
+        const limited = await checkRateLimit(req, "ai", `parts-reconcile:${caller.tenantId}`);
+        if (limited) return limited;
 
         const extract = await extractDeliveryNote(
           parsed.data.delivery_note_base64,

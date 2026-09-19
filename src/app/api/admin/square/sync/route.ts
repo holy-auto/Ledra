@@ -1,3 +1,4 @@
+import { checkRateLimit } from "@/lib/api/rateLimit";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { z } from "zod";
 
@@ -17,8 +18,9 @@ export const dynamic = "force-dynamic";
 export const POST = withCaller(
   async (req, { caller }) => {
     try {
-
       // Rate limit: 5 req/min per tenant
+      const limited = await checkRateLimit(req, "auth", `square-sync:${caller.tenantId}`);
+      if (limited) return limited;
 
       const { admin } = createTenantScopedAdmin(caller.tenantId);
 

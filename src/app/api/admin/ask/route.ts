@@ -10,6 +10,7 @@
  * AI 使用量は startAiRouteUsage 経由で ai_usage_logs 記録 + 月次コストキャップ加算。
  */
 
+import { checkRateLimit } from "@/lib/api/rateLimit";
 import { z } from "zod";
 
 import { apiOk, apiInternalError, apiValidationError } from "@/lib/api/response";
@@ -49,6 +50,8 @@ export const POST = withCaller(
       }
 
       // ここから先は AI フォールバック。field-knowledge/ask と同じ gating に揃える。
+      const limited = await checkRateLimit(req, "ai", caller.userId);
+      if (limited) return limited;
 
       if (!canUseFeature(caller.planTier, "ai_academy_qa")) {
         return apiValidationError("この機能はStandardプラン以上でご利用いただけます。", { code: "plan_limit" });

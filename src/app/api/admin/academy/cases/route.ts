@@ -141,6 +141,7 @@ export const POST = withCaller(
         // withCaller への統一リファクタ（378本、2026-09-16）でこの呼び出しが一度
         // 消えていた ―― コメントだけが「隣に置く」と言い張り、実体が無かった。
         // aiRouteRateLimit.test.ts と publishGate.test.ts の両方がこれを検出した。
+        // （PR #1092 から移植。main でも赤になっている回帰の修正）
         const limited = await checkRateLimit(req, "ai", `academy-case:${caller.tenantId}`);
         if (limited) return limited;
 

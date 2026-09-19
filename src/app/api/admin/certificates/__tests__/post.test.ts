@@ -30,6 +30,7 @@ vi.mock("@sentry/nextjs", () => ({ captureException: vi.fn() }));
 // 集約されているため（ハンドラは JSON↔FormData 変換だけ）、withCaller には
 // 常に通す最小限の caller を返させる。実 Supabase クライアントを作らせると
 // テスト環境では例外になり、全ケースが 500 に潰れて意図した分岐を検証できない。
+// （PR #1092 から移植。main でも赤になっている回帰の修正）
 vi.mock("@/lib/supabase/server", () => ({
   createClient: async () => ({}),
 }));
