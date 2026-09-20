@@ -19,8 +19,13 @@ RPC は PostgREST に公開された SECURITY DEFINER 関数なので、認証�
 
 - **`public.current_insurer_access()`** —— 「保険会社ユーザが顧客データを読んでよいか」を
   決める唯一の場所。`iu.is_active` + `i.is_active` + `i.status IN ('active','active_pending_review')`。
-  **規則も並び順も `resolveInsurerCaller` と同じ**にした（`created_at asc`。
-  従来は RPC が順序指定なし・`current_insurer_id()` が `desc`・ルート層が `asc` でばらばら）。
+  **規則・並び順に加えて判定の順序まで `resolveInsurerCaller` と同じ**にした ——
+  「`created_at` 昇順で1件選ぶ → **その1件の** `insurers` を見る」。別のメンバーシップへは落ちない。
+  （従来は RPC が順序指定なし・`current_insurer_id()` が `desc`・ルート層が `asc` でばらばら。
+  最初は「停止を除いてから選ぶ」形で書いており、`/code-review` に
+  **「ルートは 401 なのに RPC は別の保険会社のデータを返す＝ DB の方が緩い」**と指摘されて直した。）
+  揃っていない点も書いておく: 同着時の第2キー（`id`）はこちらにだけあり、
+  `active_insurer_id` クッキーの文脈はこの関数へは渡らない。
 - **顧客データを返す5本**を全部その呼び出しに差し替え:
   `insurer_search_vehicles` / `insurer_search_certificates` / `insurer_search_stores` /
   `insurer_get_certificate` / `insurer_get_vehicle_certificates`。

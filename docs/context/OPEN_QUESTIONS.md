@@ -64,9 +64,12 @@ Codex が PR #1097 に P1 を4件出し、**2件はその PR で直し、2件は
 **`public.current_insurer_access()`** を作り、顧客データを返す5本
 （`insurer_search_vehicles` / `insurer_search_certificates` / `insurer_search_stores` /
 `insurer_get_certificate` / `insurer_get_vehicle_certificates`）を全部そこ経由にした。
-判定は `resolveInsurerCaller` と同じ規則・同じ並び順
-（`iu.is_active` + `i.is_active` + `i.status IN ('active','active_pending_review')`、
-`created_at asc`）。**規則を変えるときに触る場所は1箇所**になった。
+判定は `resolveInsurerCaller` と同じ規則・同じ並び順・**同じ順序**
+（`created_at` 昇順で1件選ぶ → **その1件の** `insurers` を見る。
+`iu.is_active` + `i.is_active` + `i.status IN ('active','active_pending_review')`）。
+**規則を変えるときに触る場所は1箇所**になった。
+揃っていない点: 同着時の第2キー（`id`）はこちらにだけあり、
+`active_insurer_id` クッキーの文脈はこの関数へは渡らない（下の (b) と同じ話）。
 
 本番データで新旧を突き合わせた実測: **現行の有効ユーザ4人は全員そのまま通り、
 アクセスを失う人は0人／選ばれるメンバーシップが変わる人も0人／孤立メンバーシップ0件。**

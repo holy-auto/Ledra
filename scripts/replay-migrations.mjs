@@ -169,6 +169,22 @@ function checkRlsPolicyNullification(dsn) {
  * クエリはファイル経由（pg() は sh -c を通すので -c に複数行を渡すと改行が壊れる）。
  * ON_ERROR_STOP=1 を付けないと、途中のエラーを飛ばして終了コード 0 で返ってくる。
  */
+function psqlRun(dsn, sql) {
+  const f = join(tmpdir(), `qualref-${process.pid}.sql`);
+  writeFileSync(f, sql);
+  try {
+    const [bin, args] = pg(`psql "${dsn}" -v ON_ERROR_STOP=1 -A -t -q -f ${f}`);
+    const r = spawnSync(bin, args, { encoding: "utf8" });
+    if (r.status !== 0) {
+      const err = `${r.stderr ?? ""}`.trim().split("\n").filter(Boolean);
+      return { error: err.find((l) => l.includes("ERROR:")) ?? err[0] ?? "unknown error" };
+    }
+    return { out: `${r.stdout ?? ""}` };
+  } finally {
+    rmSync(f, { force: true });
+  }
+}
+
 /**
  * scripts/replay/checks/*.sql を再生後の DB に流す（振る舞いの検査）。
  *
@@ -189,22 +205,6 @@ function checkBehaviour(dsn) {
     }
   }
   return { ran: files.length, rows };
-}
-
-function psqlRun(dsn, sql) {
-  const f = join(tmpdir(), `qualref-${process.pid}.sql`);
-  writeFileSync(f, sql);
-  try {
-    const [bin, args] = pg(`psql "${dsn}" -v ON_ERROR_STOP=1 -A -t -q -f ${f}`);
-    const r = spawnSync(bin, args, { encoding: "utf8" });
-    if (r.status !== 0) {
-      const err = `${r.stderr ?? ""}`.trim().split("\n").filter(Boolean);
-      return { error: err.find((l) => l.includes("ERROR:")) ?? err[0] ?? "unknown error" };
-    }
-    return { out: `${r.stdout ?? ""}` };
-  } finally {
-    rmSync(f, { force: true });
-  }
 }
 
 /**

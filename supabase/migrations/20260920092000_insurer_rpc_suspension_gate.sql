@@ -19,11 +19,16 @@
 -- 判定を `public.current_insurer_access()` 1本に閉じ込め、5本はそれを呼ぶだけにする。
 -- 以後この規則を変えるときに触る場所は1箇所。
 --
--- 並び順は `resolveInsurerCaller` に合わせて `created_at asc`（従来 RPC は順序指定なしの
--- LIMIT 1、`current_insurer_id()` は desc で、3者がばらばらだった）。
--- **複数の保険会社に属するユーザで「どの保険会社として見ているか」を
--- クッキーの文脈に合わせる件は、これとは別**（RPC のシグネチャ変更が要る。
--- 該当ユーザは現在0人。OPEN_QUESTIONS に残す）。
+-- 並び順と**判定の順序**を `resolveInsurerCaller` に合わせる。
+-- 従来 RPC は順序指定なしの `LIMIT 1`、`current_insurer_id()` は `desc`、
+-- ルート層は `asc` で3者がばらばらだった。
+-- 順序そのものより重要なのは **「選んでから判定する」** 方（下の関数のコメント参照）。
+--
+-- **揃っていないところも書いておく**:
+--   - 同着のときの第2キー（`id`）はこちらにだけある。ルート側に第2キーは無いので、
+--     `created_at` が完全に同じ行が2つあると両者が別の行を選びうる。
+--   - `active_insurer_id` クッキーで選んだ保険会社は、この関数には渡らない。
+--     RPC のシグネチャ変更が要るので別件（該当ユーザは現在0人。OPEN_QUESTIONS）。
 --
 -- ## 範囲
 --
@@ -47,6 +52,14 @@
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 1) 判定を1箇所に置く
 -- ─────────────────────────────────────────────────────────────────────────────
+-- **「1件選んでから停止判定」の順序を守る。** ルート層 resolveInsurerCaller は
+--   (1) insurer_users を created_at 昇順で 1 件選ぶ
+--   (2) **その1件の** insurers を見て、停止中なら null を返す（= 401）
+-- という順で、**別のメンバーシップへは落ちない**。
+--
+-- ここを `join insurers ... where status in (...)` の形（停止中を除いてから選ぶ）に
+-- 書くと、停止中Aと有効Bに属するユーザで **ルートは 401 なのに RPC は B のデータを返す**。
+-- DB がルートより緩くなるので、順序までそろえる（/code-review の指摘）。
 CREATE OR REPLACE FUNCTION public.current_insurer_access()
 RETURNS TABLE (insurer_user_id uuid, insurer_id uuid)
 LANGUAGE sql
@@ -54,19 +67,23 @@ STABLE
 SECURITY DEFINER
 SET search_path = ''
 AS $$
-  SELECT iu.id, iu.insurer_id
-  FROM public.insurer_users iu
-  JOIN public.insurers i ON i.id = iu.insurer_id
-  WHERE iu.user_id = auth.uid()
-    AND iu.is_active = true
-    AND i.is_active = true
+  WITH picked AS (
+    SELECT iu.id, iu.insurer_id
+    FROM public.insurer_users iu
+    WHERE iu.user_id = auth.uid()
+      AND iu.is_active = true
+    ORDER BY iu.created_at ASC, iu.id ASC
+    LIMIT 1
+  )
+  SELECT p.id, p.insurer_id
+  FROM picked p
+  JOIN public.insurers i ON i.id = p.insurer_id
+  WHERE i.is_active = true
     AND i.status IN ('active', 'active_pending_review')
-  ORDER BY iu.created_at ASC NULLS LAST
-  LIMIT 1
 $$;
 
 COMMENT ON FUNCTION public.current_insurer_access() IS
-  '保険会社ユーザが顧客データを読んでよいかを判定する唯一の場所。insurer_users.is_active に加えて insurers.is_active と status（active / active_pending_review）まで見る。src/lib/api/insurerAuth.ts の resolveInsurerCaller と同じ規則・同じ並び順。';
+  '保険会社ユーザが顧客データを読んでよいかを判定する唯一の場所。insurer_users を created_at 昇順で1件選び、その1件の insurers.is_active と status（active / active_pending_review）を見る。順序は src/lib/api/insurerAuth.ts の resolveInsurerCaller と同じ（選んでから判定。別のメンバーシップへは落ちない）。相違点: 同着のときの決定性のため id を第2キーに足してある（ルート側に第2キーは無い）。また active_insurer_id クッキーの文脈はここへは渡らない（OPEN_QUESTIONS）。';
 
 REVOKE ALL ON FUNCTION public.current_insurer_access() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.current_insurer_access() TO authenticated, service_role;
