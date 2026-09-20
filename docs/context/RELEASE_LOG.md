@@ -90,8 +90,27 @@ RPC は PostgREST に公開された SECURITY DEFINER 関数なので、認証�
 | 選ばれるメンバーシップが変わるユーザ | 0 |
 | 孤立メンバーシップ（`insurers` 行が無い） | 0 |
 
-増えたのは拒否経路だけ。**本番へは手で当てず**、`db-migrate` の通常経路で流す
+増えたのは拒否経路だけ。**本番へは手で当てず**、`db-migrate` の通常経路で流した
 （不変条件1/2 とも0件で復旧済みのため）。
+
+### 本番適用（2026-09-20 15:32 UTC・実測）
+
+PR #1101 をマージ（`cd04b934`）→ `db-migrate` 実行 **#79 成功**。本番 `cahybswpduchptvyvdkk` で確認:
+
+| 確認したこと | 結果 |
+|---|---|
+| `schema_migrations` に `20260920151600` | **あり** |
+| `current_insurer_access` の存在 | **あり**（マージ前は0本） |
+| 5本の RPC が呼んでいるか（`pg_get_functiondef`） | **5/5** |
+
+同じ確認を再生後のプレビュー DB でも先に通しているので、「空 DB から再生しても
+本番に適用しても同じ形になる」ところまで見ている。
+
+**同じマージで `db-typegen`（実行 #191）は赤。** 原因は
+`GitHub Actions is not permitted to create or approve pull requests.` で、
+**この変更とは無関係の既知の停止**（OPEN_QUESTIONS「`db-typegen.yml` の TYPEGEN_TOKEN 登録」）。
+`TYPEGEN_TOKEN` が未登録なので `GITHUB_TOKEN` に落ち、そちらは PR を作れない。
+登録は Claude からは実行できない。
 
 **やっていないこと**: `my_insurer_ids()` は変えていない（RLS 14 本・7 テーブルに波及し、
 停止中に自社の行まで見えなくなる）。複数保険会社に所属するユーザでクッキーの文脈が
