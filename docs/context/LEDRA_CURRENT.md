@@ -15,7 +15,11 @@
 > **`db-migrate` の run #76 は失敗のまま履歴に残っている** —— 原因は
 > `Found local migration files to be inserted before the last migration on remote database.`
 > で、`20260919150043` が先に手当てされたため `20260919150000` が out-of-order になったもの。
-> その後どちらも本番へ入ったので、**次のマージで走る run で緑を実測できる**（未検証）。
+> その後どちらも本番へ入ったので原因は解消済みだが、**緑はまだ実測していない**。
+> `db-migrate` は `on: push (main) / paths: supabase/migrations/**` で、
+> **マイグレーションを含まないマージでは走らない**（#1092 と #1099 のマージでは実際に走っていない）。
+> したがって実測できるのは「次にマイグレーションを含む変更が main へ入ったとき」か、
+> `workflow_dispatch` による手動実行のとき。
 
 > 2026-09-20 追記: **PR #1092（PR #979 の Codex 指摘8件の反映 + `withCaller` リファクタ
 > 由来の回帰2件の修正）が main へマージされた。** 店頭QRコード決済（Stripe + Square）の
