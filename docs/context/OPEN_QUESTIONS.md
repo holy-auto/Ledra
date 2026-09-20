@@ -12,7 +12,7 @@
 
 ### 列の差は解消済み（2026-09-20 実測）
 
-| | 9/20 朝 | `20260920120500` 後 | `20260920140000` 後 |
+| | 9/20 朝 | `20260920120500` 後 | `20260920154100` 後 |
 |---|---|---|---|
 | 再生にだけある列 | 12 | 8（`audit_logs` のみ） | **0** |
 | 本番にだけある列 | 15 | 0 | **0** |
@@ -49,9 +49,36 @@ Codex が PR #1097 に P1 を4件出し、**2件はその PR で直し、2件は
 穴を持つ主なもの: `insurer_search_vehicles` / `insurer_get_certificate` /
 `insurer_get_vehicle_certificates` / `insurer_search_certificates` / `insurer_search_stores`。
 
-**未決**: 根の共有関数は `my_insurer_ids()` と `current_insurer_id()`。ここを直すと
-保険会社系の RLS ポリシー全部に波及するので、影響範囲を測ってから決める。
-1本ずつ `join insurers` を足す案は、17本のうちどれを直したか追えなくなるので採らない。
+**【2026-09-20・顧客データ側は解決】** `20260920151600` で
+**`public.current_insurer_access()`** を作り、顧客データを返す5本
+（`insurer_search_vehicles` / `insurer_search_certificates` / `insurer_search_stores` /
+`insurer_get_certificate` / `insurer_get_vehicle_certificates`）を全部そこ経由にした。
+判定は `resolveInsurerCaller` と同じ規則・同じ並び順・**同じ順序**
+（`created_at` 昇順で1件選ぶ → **その1件の** `insurers` を見る。
+`iu.is_active` + `i.is_active` + `i.status IN ('active','active_pending_review')`）。
+**規則を変えるときに触る場所は1箇所**になった。
+揃っていない点: 同着時の第2キー（`id`）はこちらにだけあり、
+`active_insurer_id` クッキーの文脈はこの関数へは渡らない（下の (b) と同じ話）。
+
+本番データで新旧を突き合わせた実測: **現行の有効ユーザ4人は全員そのまま通り、
+アクセスを失う人は0人／選ばれるメンバーシップが変わる人も0人／孤立メンバーシップ0件。**
+増えたのは拒否経路だけ。
+
+`scripts/replay/checks/insurer_suspension_gate.sql` が陽性対照3件・陰性対照6件で
+振る舞いを確かめ、`npm run check:migrations` から毎回走る。
+**検出器自体も検証済み** —— `i.status` の条件をわざと1つ落とすと
+「停止中の保険会社が顧客データ経路を通れる（1 件）」で落ちることを実測した。
+
+**まだ未決（RLS 側）**: `my_insurer_ids()` は**あえて変えていない**。
+14 本の RLS ポリシー（`insurers` / `insurer_users` / `insurer_cases` /
+`insurer_case_messages` / `insurer_case_attachments` / `insurer_tenant_access` /
+`pii_disclosure_consents` / `ai_usage_logs`）が使っており、停止中に自社の行まで
+見えなくすると「アカウント停止中」画面の周辺が壊れる。
+停止時に切るべきは**他社テナントの顧客データ**であって自社の管理画面ではない、
+という線引きで今回は顧客データ側だけを閉じた。
+自社データ側（停止中に自社の案件やユーザ一覧を見せるか）は product 判断が要る。
+`current_insurer_id()` も未変更（`insurer_search_vehicles` の6引数版が消えたので
+現在の呼び出し元は限られるが、棚卸しはしていない【要確認】）。
 
 ### (b) 複数保険会社に属するユーザで、RPC が保険会社の文脈を捨てる
 
@@ -65,6 +92,12 @@ API は `active_insurer_id` クッキーで保険会社を選ばせているが�
 **未決**: 直すには RPC のシグネチャに `p_insurer_id` を足し、ルート側から
 検証済みの `caller.insurerId` を渡して、その保険会社でのメンバーシップを
 関数内で検証する必要がある。呼び出し側の変更を伴うので別 PR。
+
+**2026-09-20 追記**: `20260920151600` で並び順だけは揃えた
+（`current_insurer_access()` は `created_at asc` で、`resolveInsurerCaller` と同じ）。
+**「同じ人なら同じ保険会社が選ばれる」ところまでは揃ったが、
+「クッキーで選んだ保険会社が使われる」わけではない。** 複数所属が1人でも出た時点で
+本物の不具合になるので、そうなる前に片付ける。
 
 ## ~~呼ばれれば必ず落ちる `insurer_search_vehicles` の6引数オーバーロードをどうするか~~（2026-09-19・解決）
 

@@ -6,7 +6,7 @@
 
 ## 2026-09-20 `audit_logs` の旧8列を落とし、列のドリフトを両方向 0 にした
 
-`20260920140000` で `audit_logs` の mobile_support 版8列
+`20260920154100` で `audit_logs` の mobile_support 版8列
 （`table_name` / `record_id` / `old_values` / `new_values` / `reason` /
 `performed_by` / `device_id` / `ip_address`）を落とした。
 **2026-08-23 の `audit_logs_reconcile` が「次のマイグレーションで落とす」と
@@ -32,6 +32,69 @@
 
 検証: `check:migrations` 再生 **484/484** / `ci-parallel-checks.sh` 8種すべて緑。
 
+## 2026-09-20 保険会社 RPC の停止ゲートを DB 側にも入れた —— 認可の判定を1箇所に集約
+
+**ルート層を通らない経路があった。** `resolveInsurerCaller` は停止中（`suspended`）の
+保険会社を止めるが、**RPC 側は `insurer_users.is_active` しか見ていなかった**。
+RPC は PostgREST に公開された SECURITY DEFINER 関数なので、認証済みセッションから
+直接叩けばルート層のガードを素通りする。
+
+本番で実測: `insurer_users` を読む SECURITY DEFINER 関数は **17 本**、
+そのうち `insurers` 行まで見ていたのは **2 本だけ**（`get_my_insurer_status` /
+`withdraw_insurer`）。顧客データを返す5本が揃って素通りしていた。
+
+### 入れたもの（`20260920151600`）
+
+- **`public.current_insurer_access()`** —— 「保険会社ユーザが顧客データを読んでよいか」を
+  決める唯一の場所。`iu.is_active` + `i.is_active` + `i.status IN ('active','active_pending_review')`。
+  **規則・並び順に加えて判定の順序まで `resolveInsurerCaller` と同じ**にした ——
+  「`created_at` 昇順で1件選ぶ → **その1件の** `insurers` を見る」。別のメンバーシップへは落ちない。
+  （従来は RPC が順序指定なし・`current_insurer_id()` が `desc`・ルート層が `asc` でばらばら。
+  最初は「停止を除いてから選ぶ」形で書いており、`/code-review` に
+  **「ルートは 401 なのに RPC は別の保険会社のデータを返す＝ DB の方が緩い」**と指摘されて直した。）
+  揃っていない点も書いておく: 同着時の第2キー（`id`）はこちらにだけあり、
+  `active_insurer_id` クッキーの文脈はこの関数へは渡らない。
+- **顧客データを返す5本**を全部その呼び出しに差し替え:
+  `insurer_search_vehicles` / `insurer_search_certificates` / `insurer_search_stores` /
+  `insurer_get_certificate` / `insurer_get_vehicle_certificates`。
+  あわせて `insurer_search_certificates` と `insurer_search_stores` の `search_path` を
+  `'public','extensions'` から `''` にし、本体の参照を schema 修飾した。
+
+### 壊れたら落ちる検査を仕組みとして足した
+
+`scripts/replay/checks/*.sql` を再生後の DB に流す段を `replay-migrations.mjs` に追加し、
+`insurer_suspension_gate.sql` を置いた（`npm run check:migrations` から毎回走る）。
+
+| 対照 | 期待 |
+|---|---|
+| `active` | 通る |
+| `active_pending_review` | 通る（ルート層が許しているので DB だけ弾くと画面が割れる） |
+| `suspended` | **通さない** |
+| `insurers.is_active = false` | **通さない** |
+| `insurer_users.is_active = false` | **通さない**（従来からの挙動の退行確認） |
+| 別人のセッション | **通さない**（`auth.uid()` を見ていることの確認） |
+
+**検出器そのものも検証した。** `i.status` の条件をわざと1つ落とした版で回すと
+「停止中の保険会社が顧客データ経路を通れる（1 件）」で落ちることを実測してから、
+正しい版に戻している。構文も型も `plpgsql_check` も通ってしまう種類の壊れなので、
+この確認をしないと「検査がある」だけで何も見ていない状態になりうる。
+
+### 現行ユーザへの影響（本番データで新旧を突き合わせ）
+
+| | 件数 |
+|---|---|
+| 旧規則で通るユーザ | 4 |
+| 新規則で通るユーザ | 4 |
+| **アクセスを失うユーザ** | **0** |
+| 選ばれるメンバーシップが変わるユーザ | 0 |
+| 孤立メンバーシップ（`insurers` 行が無い） | 0 |
+
+増えたのは拒否経路だけ。**本番へは手で当てず**、`db-migrate` の通常経路で流す
+（不変条件1/2 とも0件で復旧済みのため）。
+
+**やっていないこと**: `my_insurer_ids()` は変えていない（RLS 14 本・7 テーブルに波及し、
+停止中に自社の行まで見えなくなる）。複数保険会社に所属するユーザでクッキーの文脈が
+RPC に渡らない件も未対応（該当0人）。画面を通した確認も未実施。すべて OPEN_QUESTIONS。
 ## 2026-09-20 マイグレーションを本番の形へ寄せた（`audit_logs` を除く）
 
 `20260918142610 remote_schema` が**本番だけ**で実行した DROP のせいで、再生 DB と本番が
