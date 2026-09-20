@@ -13,11 +13,17 @@
 > **本番だけがその368文を実行し、再生 DB は一度も実行していない**（同じ版番号で中身が違う）。
 > これは #1094 が追った `certificates.certificate_no` の 42703 の出所でもあり、
 > 「`audit_logs` が本番12列 / マイグレーション20列」（20 − 8 = 12）の差もここで説明がつく。
-> 復旧済みは2列ぶん（`certificate_no` / `workshop_capability_profiles`）で、**残り11列は本番に無いまま**。
+> 復旧済みは2列ぶん（`certificate_no` / `workshop_capability_profiles`）で、
+> **残りは11列ではなく12列だった**（目視で数えて外した。MISTAKE_LEDGER
+> `M-20260920-counted-12-as-11-again`）。
 > **アプリは壊れていない** —— `scripts/schema.snapshot.json` と本番が**表277・列差0で一致**し、
 > `check:schema` が通る（消えた列を引くコードは無い）。`audit_logs` の書き込みは
 > `src/lib/audit/tenantLog.ts` が `query_json` へまとめている。
-> 11列を戻すかマイグレーション側を本番へ寄せるかは未決（OPEN_QUESTIONS）。
+> **その後、代表判断で「マイグレーション側を本番に寄せる」を採り、`20260920120500` で解消した**
+> （`audit_logs` の8列だけ対象外・未決。OPEN_QUESTIONS）。
+> 本番適用は **2026-09-20 13:15 UTC の `db-migrate` run #78 成功**（push / `db219e3`）。
+> 適用後の実測: 台帳の最大版 `20260920120500`・総数 483、`invoices` の `reloptions` は
+> `{security_invoker=on}`（剥がれていない）、`audit_logs` は 12 列のまま。
 
 > 2026-09-20 追記: **本番へのスキーマ適用が復旧した。** main の `supabase/migrations/*.sql` の
 > 版番号 **482件** と本番 `schema_migrations` の **482件** が完全一致している
