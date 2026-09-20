@@ -6,6 +6,19 @@
 
 最終更新: 2026-09-20
 
+> 2026-09-20 追記: **`20260917000400` の謎が解けた。** `20260918142610 remote_schema`
+> （`db pull` 由来・368文）が 2026-09-18 14:26 UTC に本番で
+> **`DROP TABLE workshop_capability_profiles` と `DROP COLUMN` 13件**を実行していた。
+> repo 側の同じファイルは「破壊的操作を含むので空にした」というコメント4行だけなので、
+> **本番だけがその368文を実行し、再生 DB は一度も実行していない**（同じ版番号で中身が違う）。
+> これは #1094 が追った `certificates.certificate_no` の 42703 の出所でもあり、
+> 「`audit_logs` が本番12列 / マイグレーション20列」（20 − 8 = 12）の差もここで説明がつく。
+> 復旧済みは2列ぶん（`certificate_no` / `workshop_capability_profiles`）で、**残り11列は本番に無いまま**。
+> **アプリは壊れていない** —— `scripts/schema.snapshot.json` と本番が**表277・列差0で一致**し、
+> `check:schema` が通る（消えた列を引くコードは無い）。`audit_logs` の書き込みは
+> `src/lib/audit/tenantLog.ts` が `query_json` へまとめている。
+> 11列を戻すかマイグレーション側を本番へ寄せるかは未決（OPEN_QUESTIONS）。
+
 > 2026-09-20 追記: **本番へのスキーマ適用が復旧した。** main の `supabase/migrations/*.sql` の
 > 版番号 **482件** と本番 `schema_migrations` の **482件** が完全一致している
 > （並べた文字列の md5 が両側で `fce9f92f9e99cc7a7493a7a1a5bfd249`。2026-09-20 実測）。

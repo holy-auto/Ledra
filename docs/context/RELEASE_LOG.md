@@ -4,6 +4,30 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-09-20 マイグレーションを本番の形へ寄せた（`audit_logs` を除く）
+
+`20260918142610 remote_schema` が**本番だけ**で実行した DROP のせいで、再生 DB と本番が
+列・トリガでずれていた。`20260920120500` で寄せた。**本番では全文 no-op**（落とす対象は
+既に無く、足す対象は既に在る）。効くのは再生 DB と新しいプレビュー分岐だけ。
+
+- **トリガ5本を落とした**: `templates` / `tenant_memberships` / `tenants` の `*_updated_at`
+  （列ごと本番から消えているので、列を落とすと `set_updated_at` が実行時に落ちる）と、
+  `nfc_tags` / `vehicles` の**旧名**（本番は新名だけ。再生は同じ関数が二重に発火していた）。
+- **列4本を落とした**: `insurers.max_users` / `templates` / `tenant_memberships` / `tenants` の `updated_at`。
+- **列13本を足した**: 本番にだけ在った列（`certificates.template_id` / `vehicles.plate_hash` /
+  `tenants.current_period_end` ほか）。`documents.assigned_user_id` には本番と同じ外部キーも付けた。
+- **`invoices` ビューを本番の定義に置き直した**。`invoices` は表ではなく `documents` のビューで、
+  差の2列（`job_status` / `assigned_user_id`）は SELECT 一覧の差だった。
+  **1回目の再生は `ALTER TABLE ... ADD COLUMN` がビューに効かず落ちている。**
+
+測り直し（`--keep` の再生 DB ⇄ 本番）: 本番にだけある列 **15 → 0**、再生にだけあるトリガ
+**5 → 0**、再生にだけある列 **12 → 8**（`audit_logs` のみ）。
+`audit_logs` の8列は**代表判断待ちで意図的に残した** —— 監査テーブルの構造化列を
+スキーマから正式に削る判断は別物なので、`OPEN_QUESTIONS.md` で追う。
+索引は本番が7本多いままで、今回の対象外。
+
+検証: `check:migrations` 再生 **483/483** / `ci-parallel-checks.sh` 8種すべて緑。
+
 ## 2026-09-19〜20 本番へのスキーマ適用を復旧させた（改名を戻し、実在する版は免除欄で追認）
 
 `db-migrate` は #1094 のマージから **4回連続で失敗**していた（run #72・#73・#74・#76）。
