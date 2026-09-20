@@ -12,10 +12,14 @@
 > **不変条件1（本番にあって repo に無い）0件 / 不変条件2（repo にあって本番に無い）0件。**
 > 本番に外注施工履歴の4表・`certificates.certificate_no`・`workshop_capability_profiles` すべて在る。
 > 経路は #1098（#1093 が改名した7版を元の版番号へ戻す）→ #1097（保険会社 RPC の3版を追認）。
+> **2026-09-20 11:06 UTC に手動実行（`workflow_dispatch`）した run #77 が成功した**
+> （head `eca32af`・28秒・conclusion success）。**適用が通ることを実測で確認済み**。
+> 未適用の版は0件なので何も適用されておらず、確かめたのは「止まっていない」ことだけ。
+>
 > **`db-migrate` の run #76 は失敗のまま履歴に残っている** —— 原因は
 > `Found local migration files to be inserted before the last migration on remote database.`
 > で、`20260919150043` が先に手当てされたため `20260919150000` が out-of-order になったもの。
-> その後どちらも本番へ入ったので原因は解消済みだが、**緑はまだ実測していない**。
+> その後どちらも本番へ入って原因は解消し、run #77 で緑を実測した。
 > `db-migrate` は `on: push (main) / paths: supabase/migrations/**` で、
 > **マイグレーションを含まないマージでは走らない**（#1092 と #1099 のマージでは実際に走っていない）。
 > したがって実測できるのは「次にマイグレーションを含む変更が main へ入ったとき」か、

@@ -24,6 +24,9 @@
   **新しい版 `20260919150000` で同じ定義を冪等に流し直した**（再生 DB では no-op）。
 
 結果（2026-09-20 実測）: main 482版 ⇄ 本番 482版で**版リストの md5 が一致**。
+**`db-migrate` の手動実行（run #77・11:06 UTC・head `eca32af`）が成功**し、適用が通ることを実測した
+（未適用0件なので何も適用されていない。確かめたのは「止まっていない」ことだけ）。
+#1094 のマージから続いていた4連続失敗（run #72・#73・#74・#76）はここで止まった。
 本番に外注施工履歴の4表・`certificate_no`・`workshop_capability_profiles` すべて在る。
 台帳: `M-20260919-green-ci-read-as-production-applied` /
 `M-20260919-credited-my-own-dirty-tree-to-another-session` /
