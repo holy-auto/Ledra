@@ -80,7 +80,7 @@ Codex が PR #1097 に P1 を4件出し、**2件はその PR で直し、2件は
 アクセスを失う人は0人／選ばれるメンバーシップが変わる人も0人／孤立メンバーシップ0件。**
 増えたのは拒否経路だけ。
 
-`scripts/replay/checks/insurer_suspension_gate.sql` が陽性対照2件・陰性対照4件で
+`scripts/replay/checks/insurer_suspension_gate.sql` が陽性対照3件・陰性対照6件で
 振る舞いを確かめ、`npm run check:migrations` から毎回走る。
 **検出器自体も検証済み** —— `i.status` の条件をわざと1つ落とすと
 「停止中の保険会社が顧客データ経路を通れる（1 件）」で落ちることを実測した。
