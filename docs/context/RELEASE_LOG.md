@@ -4,6 +4,35 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-09-20 `audit_logs` の旧8列を落とし、列のドリフトを両方向 0 にした
+
+`20260920154100` で `audit_logs` の mobile_support 版8列
+（`table_name` / `record_id` / `old_values` / `new_values` / `reason` /
+`performed_by` / `device_id` / `ip_address`）を落とした。
+**2026-08-23 の `audit_logs_reconcile` が「次のマイグレーションで落とす」と
+予告していた後始末**で、新しい判断ではない。
+
+- **本番では no-op** —— 本番の `audit_logs` は12列で、この8列を持っていない。
+- **失われるデータは無い。** `audit_logs` への insert は `src/lib/audit/tenantLog.ts`
+  の1箇所だけで、12列の形（`query_json` へまとめる）しか書かない。
+  `src/types/db.generated.ts` の `audit_logs` も12列。空 DB から再生した環境でも
+  この8列に値が入る経路が無い。
+- 副作用: `idx_audit_logs_record (table_name, record_id)` と `performed_by` の
+  `auth.users` への外部キーが列と一緒に自動で落ちる（本番にはどちらも無い）。
+  RLS ポリシー2本は `tenant_id` しか見ないので無傷。
+
+**測り直し（`--keep` の再生 DB ⇄ 本番・2026-09-20 実測）**: `public` の実表の列を
+全部並べた md5 が両側で `09fe8d69088f885e0e754a8ef3ee271d`・**3549列で一致**。
+`audit_logs` 単体でも `b3c2feb021889c3831d69b20060a638b`・12列で一致。
+**列のドリフトは両方向とも 0**（再生にだけある列 8 → 0 / 本番にだけある列 0 のまま）。
+`check-schema-drift.mjs` の除外リストは足していない —— 差そのものが消えたため。
+
+残る差: **索引は本番が7本多いまま**（再生 1172 / 本番 1179・名前の突き合わせは未実施【要確認】）。
+関数・ポリシー・制約の中身の比較も未実施。どちらも `check-schema-drift.mjs` の対象外。
+
+検証: `check:migrations` 再生 **485/485**（main の `20260920151600` を取り込み、この版を
+`20260920154100` へ改名したあとの実測）/ `ci-parallel-checks.sh` 8種すべて緑。
+
 ## 2026-09-20 保険会社 RPC の停止ゲートを DB 側にも入れた —— 認可の判定を1箇所に集約
 
 **ルート層を通らない経路があった。** `resolveInsurerCaller` は停止中（`suspended`）の
