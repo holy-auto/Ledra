@@ -65,7 +65,7 @@ Codex が PR #1097 に P1 を4件出し、**2件はその PR で直し、2件は
 穴を持つ主なもの: `insurer_search_vehicles` / `insurer_get_certificate` /
 `insurer_get_vehicle_certificates` / `insurer_search_certificates` / `insurer_search_stores`。
 
-**【2026-09-20・顧客データ側は解決】** `20260920151600` で
+**【2026-09-20・顧客データ側は解決／本番適用済み】** `20260920151600` で
 **`public.current_insurer_access()`** を作り、顧客データを返す5本
 （`insurer_search_vehicles` / `insurer_search_certificates` / `insurer_search_stores` /
 `insurer_get_certificate` / `insurer_get_vehicle_certificates`）を全部そこ経由にした。
@@ -79,6 +79,9 @@ Codex が PR #1097 に P1 を4件出し、**2件はその PR で直し、2件は
 本番データで新旧を突き合わせた実測: **現行の有効ユーザ4人は全員そのまま通り、
 アクセスを失う人は0人／選ばれるメンバーシップが変わる人も0人／孤立メンバーシップ0件。**
 増えたのは拒否経路だけ。
+
+**2026-09-20 15:32 UTC に本番適用済み**（PR #1101 マージ `cd04b934` → `db-migrate` #79 成功。
+本番で `current_insurer_access` の存在と5本の RPC からの呼び出し 5/5 を実測）。
 
 `scripts/replay/checks/insurer_suspension_gate.sql` が陽性対照3件・陰性対照6件で
 振る舞いを確かめ、`npm run check:migrations` から毎回走る。
