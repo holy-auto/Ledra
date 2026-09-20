@@ -4,6 +4,18 @@
 > （新しい順）。実装の詳細は RELEASE_LOG.md、迷っている段階のものは
 > OPEN_QUESTIONS.md に書く。
 
+## 2026-09-20 認可の判定は1箇所に置く —— 保険会社 RPC の停止ゲートを DB 側にも入れる
+
+1. 日付: 2026-09-20（`date -u` で確認: Sun Sep 20 09:19:33 UTC 2026）
+2. 起きたこと: Codex が PR #1097 で挙げた P1 のうち、持ち越していた「**停止中の保険会社が RPC を直接叩ける**」を片付けた。ルート層 `resolveInsurerCaller`（`src/lib/api/insurerAuth.ts`）は `insurers.is_active = true AND status IN ('active','active_pending_review')` を見て suspended を止めるが、**RPC 側は `insurer_users.is_active` しか見ていなかった**。これらは PostgREST に公開された SECURITY DEFINER 関数なので、認証済みセッションから直接叩けばルート層を素通りする。本番で実測すると、`insurer_users` を読む SECURITY DEFINER 関数 **17 本**のうち `insurers` 行まで見ていたのは **2 本だけ**だった。
+3. 以前の考え: 「根の共有関数は `my_insurer_ids()` と `current_insurer_id()` なので、そこを直せば全部に効く」。
+4. 違和感・問題: (a) **`my_insurer_ids()` を締めると巻き添えが出る。** 実測すると 14 本の RLS ポリシーが使っており、対象は `insurers` / `insurer_users` / `insurer_cases` / `insurer_case_messages` / `insurer_case_attachments` / `insurer_tenant_access` / `pii_disclosure_consents` / `ai_usage_logs` の 7 テーブル。停止中に自社の行まで見えなくすると「アカウント停止中」画面の周辺が壊れる。**止めたいのは他社テナントの顧客データであって、自社の管理画面ではない。** (b) 一方で5本の RPC にそれぞれ `join insurers` を足すのは、次に増えた6本目がまた漏れる形。昨日それを4回やっている（`status::text` の取りこぼしが3回、`'expired'` が1回）。(c) 従来の RPC は `LIMIT 1` に順序指定が無く、`current_insurer_id()` は `desc`、ルート層は `asc` で、**3者がばらばら**だった。
+5. 決めたこと: (a) **判定を `public.current_insurer_access()` 1本に閉じ込める。** 5本の RPC はそれを呼ぶだけにし、以後この規則を変えるときに触る場所は1箇所にする。(b) 規則と並び順は **`resolveInsurerCaller` に合わせる**（`iu.is_active` + `i.is_active` + `i.status IN ('active','active_pending_review')`、`created_at asc`）。DB とアプリで別の規則を持たない。(c) **`my_insurer_ids()` は変えない。** 今回閉じるのは顧客データ側だけ。(d) **振る舞いの検査を仕組みとして残す。** `scripts/replay/checks/*.sql` を再生後の DB に流す仕組みを `replay-migrations.mjs` に足し、陽性対照2件・陰性対照4件を置いた。(e) **本番へ手では当てない。** `db-migrate` は復旧済み（不変条件1/2 とも0件）なので、通常の経路で流す。
+6. 捨てた選択肢: (a) **`my_insurer_ids()` に `join insurers` を入れる**＝1行で 17 本すべてに効くが、RLS 14 本の巻き添えを検証できない（保険会社ユーザのセッションを用意できず、画面で確かめられない）。効く範囲が広い変更ほど、確かめられない範囲も広い。(b) **5本に個別に条件を足す**＝昨日すでに4回失敗している形。(c) **ルート層だけで守り続ける**＝PostgREST が公開されている以上、ルートを通らない経路が実在する。(d) **RLS 側も同時に締める**＝product 判断（停止中に自社の案件を見せるか）が要る。混ぜない。
+7. 判断理由: 「Bug fix = root cause, not symptom」（CLAUDE.md）だが、**根は「条件が5箇所に散っていること」であって「共有関数が甘いこと」ではない**。共有関数を締める案は根に見えて、実は**別の根（RLS の設計）まで巻き込む**。条件の置き場所を1つにするのが、今日確かめられる範囲で一番深い修正だった。そして「非トリバルなロジックは壊れたら落ちる検査を1つ残す」——認可の条件は1つ落としても構文も型も通るので、**行を入れて数える検査**にした。
+8. まだ答えが出ていないこと: (a) **RLS 側（`my_insurer_ids()`）をどうするか**。停止中に自社データを見せるかの product 判断が要る【要確認】。(b) **複数保険会社に属するユーザでクッキーの文脈が RPC に渡らない**件。並び順は揃えたが、「選んだ保険会社が使われる」わけではない。該当ユーザは現在0人【要確認】。(c) `current_insurer_id()` の呼び出し元の棚卸しは未実施【要確認】。(d) **画面を通した確認はしていない**（保険会社ユーザのセッションを用意していない）。確かめたのは再生 DB での振る舞いと、本番データに対する新旧の突き合わせまで。
+9. 公開区分: 公開可（note 候補: 「共有関数を締める案は根に見えて、別の根まで巻き込むことがある」「認可の条件は1つ落としても全部の検査が通る——だから行を入れて数える」「検出器を入れたら、わざと壊して落ちることを確かめる」。テナント名・保険会社名・利用者情報・本番の識別子は含まない）
+
 ## 2026-09-19 落ちている本番機能は、db-migrate の復旧を待たずに直す —— 保険会社ポータルの車両検索
 
 1. 日付: 2026-09-19（`date -u` で確認: Sat Sep 19 13:16:18 UTC 2026）
