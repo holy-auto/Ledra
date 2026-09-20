@@ -4,7 +4,18 @@
 > 追わず、常に最新状態だけを保つ（履歴は DECISION_LOG.md / RELEASE_LOG.md 側）。
 > 大きな変化があったら都度上書きすること。
 
-最終更新: 2026-09-19
+最終更新: 2026-09-20
+
+> 2026-09-20 追記: **本番へのスキーマ適用が復旧した。** main の `supabase/migrations/*.sql` の
+> 版番号 **482件** と本番 `schema_migrations` の **482件** が完全一致している
+> （並べた文字列の md5 が両側で `fce9f92f9e99cc7a7493a7a1a5bfd249`。2026-09-20 実測）。
+> **不変条件1（本番にあって repo に無い）0件 / 不変条件2（repo にあって本番に無い）0件。**
+> 本番に外注施工履歴の4表・`certificates.certificate_no`・`workshop_capability_profiles` すべて在る。
+> 経路は #1098（#1093 が改名した7版を元の版番号へ戻す）→ #1097（保険会社 RPC の3版を追認）。
+> **`db-migrate` の run #76 は失敗のまま履歴に残っている** —— 原因は
+> `Found local migration files to be inserted before the last migration on remote database.`
+> で、`20260919150043` が先に手当てされたため `20260919150000` が out-of-order になったもの。
+> その後どちらも本番へ入ったので、**次のマージで走る run で緑を実測できる**（未検証）。
 
 > 2026-09-19 追記: **保険会社ポータルの車両検索を本番で復旧した。**
 > `insurer_search_vehicles(text,integer,integer,text,text)` が全呼び出し落ちていた。
