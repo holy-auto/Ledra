@@ -20,6 +20,27 @@
 > **本番へは手で当てていない** —— `db-migrate` が復旧済みなので通常経路で流す。
 > **残件**: `my_insurer_ids()`（RLS 14 本・7 テーブルに波及）と、複数所属ユーザで
 > クッキーの文脈が RPC に渡らない件（該当0人）。画面を通した確認も未実施【要確認】。
+> 2026-09-20 追記: **本番へのスキーマ適用が復旧した。** main の `supabase/migrations/*.sql` の
+> 版番号 **482件** と本番 `schema_migrations` の **482件** が完全一致している
+> （並べた文字列の md5 が両側で `fce9f92f9e99cc7a7493a7a1a5bfd249`。2026-09-20 実測）。
+> **不変条件1（本番にあって repo に無い）0件 / 不変条件2（repo にあって本番に無い）0件。**
+> 本番に外注施工履歴の4表・`certificates.certificate_no`・`workshop_capability_profiles` すべて在る。
+> 経路は #1098（#1093 が改名した7版を元の版番号へ戻す）→ #1097（保険会社 RPC の3版を追認）。
+> **2026-09-20 11:06 UTC に手動実行（`workflow_dispatch`）した run #77 が成功した**
+> （head `eca32af`・28秒・conclusion success）。**適用が通ることを実測で確認済み**。
+> 未適用の版は0件なので何も適用されておらず、確かめたのは「止まっていない」ことだけ。
+>
+> **`db-migrate` の run #76 は失敗のまま履歴に残っている** —— 原因は
+> `Found local migration files to be inserted before the last migration on remote database.`
+> で、`20260919150043` が先に手当てされたため `20260919150000` が out-of-order になったもの。
+> その後どちらも本番へ入って原因は解消し、run #77 で緑を実測した。
+> `db-migrate` は `on: push (main) / paths: supabase/migrations/**` で、
+> **マイグレーションを含まないマージでは走らない**（#1092 と #1099 のマージでは実際に走っていない）。
+> したがって実測できるのは「次にマイグレーションを含む変更が main へ入ったとき」か、
+> `workflow_dispatch` による手動実行のとき。
+> **Claude セッションからは手動実行できない**（`POST .../dispatches` が 403
+> `Resource not accessible by integration`。2026-09-20 実測）。代表が GitHub の
+> Actions タブ → "DB migrate (apply to production)" → Run workflow → main で回せる。
 
 > 2026-09-20 追記: **PR #1092（PR #979 の Codex 指摘8件の反映 + `withCaller` リファクタ
 > 由来の回帰2件の修正）が main へマージされた。** 店頭QRコード決済（Stripe + Square）の
