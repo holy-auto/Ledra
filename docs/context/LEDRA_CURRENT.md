@@ -20,6 +20,9 @@
 > **マイグレーションを含まないマージでは走らない**（#1092 と #1099 のマージでは実際に走っていない）。
 > したがって実測できるのは「次にマイグレーションを含む変更が main へ入ったとき」か、
 > `workflow_dispatch` による手動実行のとき。
+> **Claude セッションからは手動実行できない**（`POST .../dispatches` が 403
+> `Resource not accessible by integration`。2026-09-20 実測）。代表が GitHub の
+> Actions タブ → "DB migrate (apply to production)" → Run workflow → main で回せる。
 
 > 2026-09-20 追記: **PR #1092（PR #979 の Codex 指摘8件の反映 + `withCaller` リファクタ
 > 由来の回帰2件の修正）が main へマージされた。** 店頭QRコード決済（Stripe + Square）の
