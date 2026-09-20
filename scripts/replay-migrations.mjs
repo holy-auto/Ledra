@@ -31,6 +31,7 @@ import { fileURLToPath } from "node:url";
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const MIGRATIONS = join(ROOT, "supabase", "migrations");
 const BOOTSTRAP = join(ROOT, "scripts", "replay", "bootstrap.sql");
+const CHECKS_DIR = join(ROOT, "scripts", "replay", "checks");
 
 const argv = process.argv.slice(2);
 const flag = (name) => argv.includes(name);
@@ -182,6 +183,28 @@ function psqlRun(dsn, sql) {
   } finally {
     rmSync(f, { force: true });
   }
+}
+
+/**
+ * scripts/replay/checks/*.sql を再生後の DB に流す（振る舞いの検査）。
+ *
+ * ファイルは自分で BEGIN / ROLLBACK する約束なので、ここでは `-1` を付けない
+ * （付けると明示 BEGIN と二重になる）。ON_ERROR_STOP=1 なので RAISE EXCEPTION は
+ * 非 0 終了になり、そのファイル名と理由を返す。
+ */
+function checkBehaviour(dsn) {
+  if (!existsSync(CHECKS_DIR)) return { ran: 0, rows: [] };
+  const files = readdirSync(CHECKS_DIR).filter((f) => f.endsWith(".sql")).sort();
+  const rows = [];
+  for (const file of files) {
+    const [bin, args] = pg(`psql "${dsn}" -v ON_ERROR_STOP=1 -q -f ${join(CHECKS_DIR, file)}`);
+    const r = spawnSync(bin, args, { encoding: "utf8" });
+    if (r.status !== 0) {
+      const err = `${r.stderr ?? ""}`.trim().split("\n").filter(Boolean);
+      rows.push(`${file}: ${err.find((l) => l.includes("ERROR:")) ?? err[0] ?? "unknown error"}`);
+    }
+  }
+  return { ran: files.length, rows };
 }
 
 /**
@@ -482,6 +505,26 @@ function main() {
       }
       console.log("plpgsql の検査: 該当なし");
     }
+
+    // 振る舞いの検査。scripts/replay/checks/*.sql を再生後の DB にそのまま流す。
+    //
+    // なぜ要るか: ここまでの検査は「構文が通るか」「名前と型が解決できるか」しか見ない。
+    // 認可の条件を1つ落としても全部通る（型も名前も正しいので）。**壊れたことが
+    // 分かるのは、止めたはずの相手がデータを読めたときだけ** なので、行を入れて数える。
+    //
+    // 各ファイルは自分で BEGIN / ROLLBACK し、DB に何も残さない約束。
+    const behaviour = checkBehaviour(dsn);
+    if (behaviour.rows.length > 0) {
+      console.log(`\n❌ 振る舞いの検査が落ちました（${behaviour.rows.length} 件）:`);
+      for (const row of behaviour.rows) console.log(`  - ${row}`);
+      process.exitCode = 1;
+      return;
+    }
+    console.log(
+      behaviour.ran === 0
+        ? "振る舞いの検査: 対象なし"
+        : `振る舞いの検査: ${behaviour.ran} 件すべて期待どおり`,
+    );
 
     if (DUMP_TO) {
       const [dbin, dargs] = pg(`pg_dump "${dsn}" --schema-only --schema=public --no-owner --no-acl`);
