@@ -18,8 +18,10 @@
 --   - 本番にだけある列: 15（下の ③）
 --   - 再生にだけあるトリガ: 5（下の ①）
 --
--- **本番ではこのファイルは全文 no-op になる**（落とす対象は既に無く、足す対象は既に在る）。
--- 効くのは再生 DB と、これから作られるプレビュー分岐だけ。
+-- **本番では中身が変わらない**（落とす対象は既に無く、足す対象は既に在る）。
+-- ただし ④ のビュー置き直しだけは実際に実行される —— 定義も `security_invoker` も
+-- 本番と同一に書いてあるので結果は変わらないが、「1文も実行されない」わけではない。
+-- 形が変わるのは再生 DB と、これから作られるプレビュー分岐。
 -- ============================================================
 
 -- ── ① 再生にだけあるトリガを落とす ──────────────────────────
@@ -63,7 +65,11 @@ ALTER TABLE public.vehicles ADD COLUMN IF NOT EXISTS plate_hash TEXT;
 DO $$
 BEGIN
   IF NOT EXISTS (
-    SELECT 1 FROM pg_constraint WHERE conname = 'documents_assigned_user_id_fkey'
+    -- conname だけで見ると、他の表に同名の制約があったときに黙って飛ばしてしまう。
+    -- conrelid まで指定して documents の制約かどうかを見る。
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'documents_assigned_user_id_fkey'
+      AND conrelid = 'public.documents'::regclass
   ) THEN
     ALTER TABLE public.documents
       ADD CONSTRAINT documents_assigned_user_id_fkey
@@ -77,7 +83,11 @@ END $$;
 -- ALTER TABLE ADD COLUMN では揃わない（実際 1回目の再生はここで落ちた）。
 -- 本番の `pg_get_viewdef` と同じ順序・同じ列で置き直す。前半の列は完全に一致しているので、
 -- CREATE OR REPLACE で末尾に2列を足す形になる（③ で documents.assigned_user_id を先に足してある）。
-CREATE OR REPLACE VIEW public.invoices AS
+-- **`WITH (security_invoker = on)` を必ず付ける。** PostgreSQL は CREATE OR REPLACE VIEW で
+-- reloptions を丸ごと置き換えるので、WITH を省くと本番の `security_invoker=on`（実測で確認）が
+-- 剥がれ、ビューが所有者権限で動いて `documents` の RLS を迂回する。定義文が同一でも起きる。
+-- 同じ罠がリポジトリ内にも書かれている（20260907010100_repair_unmanaged_objects.sql）。
+CREATE OR REPLACE VIEW public.invoices WITH (security_invoker = on) AS
 SELECT
   id, tenant_id, customer_id,
   doc_number AS invoice_number,
