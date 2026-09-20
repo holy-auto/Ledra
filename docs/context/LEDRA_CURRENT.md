@@ -17,6 +17,20 @@
 > で、`20260919150043` が先に手当てされたため `20260919150000` が out-of-order になったもの。
 > その後どちらも本番へ入ったので、**次のマージで走る run で緑を実測できる**（未検証）。
 
+> 2026-09-20 追記: **PR #1092（PR #979 の Codex 指摘8件の反映 + `withCaller` リファクタ
+> 由来の回帰2件の修正）が main へマージされた。** 店頭QRコード決済（Stripe + Square）の
+> 実物のバグ8件（idempotency_key 文字数超過で全会計400、取消APIが失敗を握り潰す、
+> 複数ロケーションで先頭を黙って使う等）が本番コードから解消済み。
+> ready for review 化後、Codex 自動レビューが4日間で6回に分けて追加で**15件**の指摘
+> （P1×10・P2×5）を出し、全件を読んで再現条件を確認したうえで修正・resolved。
+> 主な内容: 端末チェックアウトの取消が「取消済み」と「決済完了」を区別しない
+> （二重決済より悪い、売上が消える経路）／Square の Cancel Terminal Checkout は
+> 非同期で2xxが即「取消済み」を意味しない（`CANCEL_REQUESTED` を経由しうる）／
+> 決済証明（Stripe/Square 2種）の排他チェックが不完全だった、の3系統。
+> 検証は `tsc`/`eslint`/フルテストスイート（5812/5817緑）/`check:schema`/`lint:migrations`
+> すべて緑。詳細は `RELEASE_LOG.md` 2026-09-19の各エントリ、経緯（同じ型の再発が
+> 複数回起きたこと）は `MISTAKE_LEDGER.md` を参照。
+
 > 2026-09-19 追記: **保険会社ポータルの車両検索を本番で復旧した。**
 > `insurer_search_vehicles(text,integer,integer,text,text)` が全呼び出し落ちていた。
 > 原因は2つとも `certificates.status` の型 —— 本番は enum `certificate_status_enum`
