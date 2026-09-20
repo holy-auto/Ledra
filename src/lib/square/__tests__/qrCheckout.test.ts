@@ -69,6 +69,52 @@ describe("findRecentPayment", () => {
     expect(res).toEqual({ ok: true, payment: expect.objectContaining({ id: "fresh" }) });
   });
 
+  it("1ページ目に無くても cursor を辿って次ページから見つける", async () => {
+    squareFetch
+      .mockResolvedValueOnce({ payments: [payment({ id: "other", amount: 9_999 })], cursor: "page2" })
+      .mockResolvedValueOnce({ payments: [payment({ id: "target" })] });
+
+    const res = await findRecentPayment(base);
+
+    expect(res).toEqual({ ok: true, payment: expect.objectContaining({ id: "target" }) });
+    expect(squareFetch).toHaveBeenCalledTimes(2);
+    expect(squareFetch.mock.calls[1][1]).toContain("cursor=page2");
+  });
+
+  it("同額のウォレット決済が2ページに分かれていても曖昧と判定する（取り違え防止）", async () => {
+    squareFetch
+      .mockResolvedValueOnce({ payments: [payment({ id: "a" })], cursor: "page2" })
+      .mockResolvedValueOnce({ payments: [payment({ id: "b" })] });
+
+    expect(await findRecentPayment(base)).toEqual({ ok: false, reason: "ambiguous" });
+  });
+
+  it("候補が2件見えた時点で以降のページは取りに行かない（/code-review 指摘）", async () => {
+    // 2ページ目で曖昧が確定する。3ページ目以降にも cursor が残っているが、
+    // 結果は変わらないので取得しないはず
+    squareFetch
+      .mockResolvedValueOnce({ payments: [payment({ id: "a" })], cursor: "page2" })
+      .mockResolvedValueOnce({ payments: [payment({ id: "b" })], cursor: "page3" });
+
+    const res = await findRecentPayment(base);
+
+    expect(res).toEqual({ ok: false, reason: "ambiguous" });
+    expect(squareFetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("ページング上限に達してもまだ cursor が残っているときは、候補が1件でも引き当てない", async () => {
+    // 1ページ目で候補を1件だけ見つけ、残り99ページは空だが cursor 付きで返す
+    // ＝候補は絞れているが、上限に達しても検索自体は終わっていない。
+    squareFetch
+      .mockResolvedValueOnce({ payments: [payment({ id: "only-seen-so-far" })], cursor: "page2" })
+      .mockResolvedValue({ payments: [], cursor: "more" });
+
+    const res = await findRecentPayment(base);
+
+    expect(res).toEqual({ ok: false, reason: "search_truncated" });
+    expect(squareFetch).toHaveBeenCalledTimes(100);
+  });
+
   it("引き当ての窓を Square 側の検索条件に渡す", async () => {
     squareFetch.mockResolvedValue({ payments: [] });
 

@@ -55,6 +55,14 @@ export async function resolveTerminalSale(
   const result = verified(payment);
   if (!result.ok) return result;
 
+  // checkoutId はクライアントから来る。**この Square マーチャントの別の
+  // チェックアウト（カード払い等）を指定されても「QR決済」として通さない**
+  // ―― `payment_type: "QR_CODE"` で作った端末チェックアウトの決済は必ず
+  // ウォレット払いになる（`findRecentPayment` と同じ判定）。
+  if (payment.source_type !== "WALLET") {
+    return { ok: false, error: `square_payment_not_wallet: ${payment.source_type ?? "unknown"}` };
+  }
+
   // 端末に出した額と実際に受け取った額の食い違いを通さない
   const requested = checkout.amount_money?.amount;
   if (typeof requested === "number" && requested !== result.amountTotal) {

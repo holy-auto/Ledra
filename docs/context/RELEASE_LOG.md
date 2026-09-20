@@ -4,6 +4,166 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-09-19 端末チェックアウトの取消2xxを「取消済み」と決めていた（非同期）
+
+`/code-review`（Codex）6回目の追加指摘（P1×1）。
+
+- **端末チェックアウトの取消 API（`qr-checkout/route.ts` DELETE）が、Square の
+  Cancel Terminal Checkout 呼び出しが例外を投げなかった（2xx）ことをそのまま
+  「取消済み」と扱っていた。** 端末キャンセルは物理端末との往復が要るため
+  非同期で、2xxは「取消を受け付けた」でしかなく、実際には
+  `CANCEL_REQUESTED`（`TerminalCheckoutStatus` に既に別状態としてモデル化
+  済み）のまま返ってくることがある。ここで確定させずに `ok:true` を返すと、
+  呼び出し側はキャンセル成功と判断してポーリングを止め、その隙に客が支払いを
+  完了させても誰も拾えなくなる（`M-20260919-cancel-2xx-treated-as-final`、型A:
+  自分で書いた型定義を読み返していなかった）。400分岐（終端状態から遷移不可）
+  と同じ `getTerminalCheckout` 確認を、cancel 呼び出しが成功した経路にも
+  必ず通すよう統一し、`CANCELED` 以外は `square_cancel_pending`（502）を
+  返すようにした。クライアント側の `cancelSquareCheckout` は409以外の
+  非okをすべて genuine failure として扱う設計に既にしてあったため、
+  クライアント側の変更は不要だった（4回目・5回目の修正で作った
+  `staleCompletedCheckouts`/`staleUncancelledCheckouts` の再試行導線が
+  そのまま効く）。
+
+検証: `tsc` / `eslint` 0 errors、フルスイート 5812/5817 緑・5 skip、
+`check:schema` OK / `lint:migrations` OK。
+
+## 2026-09-19 予約切替の取消失敗を見失っていた／ページング無駄打ち／決済証明の排他が不完全
+
+main 追従のマージコミットに対する `/code-review`（Codex）5回目のレビューで3件
+（P1×1・P2×2）。
+
+- **[P1] 予約切替の `useEffect` が、端末チェックアウトの取消が genuine
+  failure（completed でも ok でもない）で終わったときの分岐を持っていなかった**
+  （`PosClient.tsx`）。`completed` 分岐（記帳）だけ足して、素の失敗
+  （ネットワークエラー等）はそのまま無条件の状態リセットへ落ち、
+  `qrSessionId`/`squareRef` を消していた。端末には決済可能なQRが生きたまま
+  残る可能性があり、店員は気づけない。`handleCancelQr` で直した同じ形の
+  バグ（`M-20260919-handled-completed-branch-not-failed-branch`）が、
+  `cancelSquareCheckout` を呼ぶ他の呼び出し元には展開されていなかった
+  （`M-20260919-else-fix-not-swept-to-siblings`、型J）。`staleCompletedCheckouts`
+  と同じ形の永続バナー `staleUncancelledCheckouts`（金額 + 再試行ボタン）を
+  追加し、genuine failure でも取消を後から手動で再試行できるようにした。
+- **[P2] POS アプリ引き当てのページングが、候補が2件見えて曖昧が確定した
+  後も残りのページを取りに行っていた**（`qrCheckout.ts` `findRecentPayment`）。
+  高頻度店舗では最大100回の逐次 Square 呼び出しになり、無駄なAPI消費と
+  タイムアウトのリスクがあった。候補が2件になった時点でループを抜けるようにし、
+  曖昧判定を「残りページの有無」より先に評価する順序に修正（早期break後も
+  cursor が残っているため、判定順を誤ると `search_truncated` に化けてしまう）。
+- **[P2] 決済証明の排他チェックが Stripe対Square の1組しか見ておらず、
+  `square_checkout_id` と `square_reconcile` を同時に渡す組み合わせが素通り
+  していた**（`posCheckoutSchema`）。両方渡すと `square_checkout_id` が優先され
+  `square_reconcile` が無視されるため、意図した POS アプリの決済が未記帳の
+  まま残る経路があった（`M-20260919-exclusivity-checked-one-pair-not-all`、型C）。
+  3フィールドのうち true な個数を数えて `<= 1` を要求する形に書き換え、
+  どの2つの組み合わせでも排他にした。
+
+検証: `tsc` / `eslint` 0 errors、フルスイート 5812/5817 緑・5 skip、
+`check:schema` OK / `lint:migrations` OK。
+
+## 2026-09-19 「戻る」ボタンの取消失敗時に状態を捨てていた／記帳失敗が店員に見えなかった
+
+`/code-review`（Codex）の4回目の追加指摘（2件）に対応。
+
+- **`handleCancelQr`（戻るボタン）が、取消の genuine failure（completed でも
+  ok でもない）を無視していた。** `completed` の分岐だけ書いて、素の失敗
+  （ネットワークエラー・502）はそのまま下の状態リセットへ落ちていた —— 直前の
+  コミットで完了済みチェックアウトの区別を入れたのに、その同じ関数の中で
+  もう一つの分岐を揃え忘れていた。ポーリングも取消を試す前に無条件で
+  止めていたため、genuine failure のときに後で決済が完了しても誰も拾えなく
+  なる経路も残っていた。取消の成否が分かるまでポーリングを止めないよう順序を
+  入れ替え、genuine failure はエラー表示のうえ状態を保持するようにした。
+- **予約切替で離れた予約の決済が完了していたのに記帳（POST）が失敗した分を
+  `console.error` にしか出していなかった。** 既に別の予約へ切替済みの
+  ブラウザコンソールを店員が見ることは無く、専用の再試行導線も無かった。
+  `staleCompletedCheckouts` という永続的な state に積み、POS画面の上部に
+  常設バナー（金額 + 再試行ボタン）として出すようにした
+  （`recordSquareCheckoutFromSnapshot` を同じスナップショットで再試行できる）。
+
+検証: `tsc` / `eslint` 0 errors、フルスイート 5789/5794 緑・5 skip。
+
+## 2026-09-19 決済証明の排他チェックが admin ルートにしか無く、モバイル側は素通りだった
+
+`/code-review`（Codex）指摘。Stripe の `checkout_session_id` と Square の
+`square_checkout_id`/`square_reconcile` を同時に渡すと、`recordPosSale` の
+冪等キーは1列しか持てず Stripe を優先するため、**Square 側で確認済みの
+本物の決済の payment_id が記録からまるごと落ちる**。この排他チェックは
+`admin/pos/checkout/route.ts` にだけルート内で書いてあり、同じ
+`posCheckoutSchema` を使う `mobile/pos/checkout/route.ts` には無かった
+（型C: 経路を1本しか見ない。同じ問題を最初に直したときに
+`grep -rl posCheckoutSchema src/` をしていれば気づけていた）。
+
+route 個別のチェックを削除し、**共有スキーマ `posCheckoutSchema` 自体に
+`.refine()` で持たせた**。admin/mobile どちらの呼び出し元も同じスキーマを
+経由するため、これで両方に一度で効く。新規テスト
+`src/lib/validations/__tests__/pos.test.ts` をスキーマ単体に追加（ルートごとに
+同じテストを重複させない）。
+
+検証: `tsc` / `eslint` 0 errors、対象テスト236件緑。
+
+## 2026-09-19 PR #1092 が ready for review 化 → Codex 自動レビューで6件（P1×4・P2×2）を修正
+
+代表が PR #1092 を draft から ready for review に切り替え、リポジトリ標準の Codex
+レビューが自動起動。main の取り込み（マージコンフリクト解消）と同じタイミングで
+届いた。全件を読んで再現条件を確認し修正（1件は最初の5件を直した後の追加 push に
+対する2回目のレビューで届いた）。
+
+- **[P1] 端末チェックアウトの取消 API が 401/403/429 も「取消済み」扱いにしていた**
+  （`qr-checkout/route.ts` DELETE）。前回の修正（5xx 以外を許容）が広すぎ、
+  トークン切れ・レート制限まで「取消できた」と誤認していた。Square の
+  Cancel Terminal Checkout は終端状態からの遷移不可を **400** で返す
+  （Square Developer Forum の報告に基づく推定、この環境からは Square API に
+  到達できず未検証）。許容条件を `status === 400` のみに絞った。
+- **[P2] POS アプリ引き当てのページング上限（100ページ）に達したとき、まだ
+  cursor が残っているのに候補1件を「特定できた」と返していた**
+  （`qrCheckout.ts` `findRecentPayment`）。残りのページに同額の別決済がいる
+  可能性を否定できないまま確定させる、ページング対応そのものが目的にしていた
+  取り違え防止が抜けていた。cursor が残っていれば新しい理由
+  （`search_truncated`）で必ず不成立にした。テスト追加。
+- **[P2] `reference_id` に空文字を渡すと Square に空の idempotency_key を
+  送っていた**（`qr-checkout/route.ts` POST）。`??` は空文字を「値あり」として
+  素通りさせるため、空文字を「省略」として扱う API クライアントで全会計が失敗する
+  経路が残っていた。`||` に変更。
+- **[P1] タブ切替時の端末QR取消を確かめずに切り替えを続けていた**
+  （`PosClient.tsx` `handleModeSwitch`、今回のPRで追加した箇所）。`fetch(...).catch()`
+  は HTTP エラー応答では発火しない（reject しない）ため、取消が 502 で失敗しても
+  検知できず、切り替えを続けて QR を生かしたまま見失っていた。取消の応答を
+  確かめ、失敗したら切り替えを止めてエラー表示するようにした。
+- **[P1] Square OAuth コールバックが INACTIVE（廃業・閉店済み）ロケーションも
+  `square_location_ids` に含めていた**（`square/callback/route.ts`）。営業中が
+  1つしかない加盟店でも「複数ロケーション」の fail closed に永久に引っかかる
+  経路があった。List Locations の `status !== "INACTIVE"` でフィルタした。
+  既存の接続済みテナントは再接続が必要（`docs/context/OPEN_QUESTIONS.md` に追記）。
+- **[P1] ポーリングの5分タイムアウト分岐が、取消の応答を確かめずに冪等キーを
+  使い切っていた**（`PosClient.tsx`、CANCELED 分岐の修正と同時に自分が書いた
+  コード）。DELETE がネットワークエラーや 502 で失敗しても検知できず、
+  元のチェックアウトが生きたまま新しいキーで「再試行」してしまい、二重の
+  支払い要求になりうる経路があった。取消が確認できたときだけキーを手放し、
+  失敗時はキーを残して（次の試行が同じチェックアウトに問い合わせるようにして）
+  「端末の画面を確認してから操作してください」と表示するようにした。
+- **[P1] 予約切替の effect が取消の応答を確かめず投げっぱなしにしていた**
+  （`PosClient.tsx`、Codex の2回目のレビューで発見・未着手だった箇所）。
+  handleModeSwitch / タイムアウト分岐 / handleCancelQr と同じ形の指摘。
+- **[P1・上記の副産物として発覚] 取消 API の 400 を「取消済み」として一律
+  ok:true を返すと、取消の直前に決済が完了していた場合まで「取消成功」と
+  誤って伝わり、記帳の機会が失われる**（DELETE ルート、二重決済より悪い、
+  売上が消える経路）。`getTerminalCheckout` で実際の状態を確認し、
+  `COMPLETED` なら `square_already_completed`（409）として区別するように
+  DELETE ルートを修正。呼び出し側4箇所（handleModeSwitch / 予約切替 /
+  handleCancelQr / タイムアウト分岐）はこの区別を受けて、完了済みなら
+  `recordPaidSale` で記帳してから止まるよう統一した。
+  - 予約切替の effect だけは、`selected` が既に新しい予約に切り替わった
+    **後**に走るため、`recordPaidSale`（現在の mode/selected を読む）を
+    使うと新しい予約に誤って紐付く。チェックアウト作成時点のスナップ
+    ショット（`activeCheckoutSnapshotRef`）を別途持たせ、離れた予約の
+    スナップショットで直接記帳する専用の経路（`recordSquareCheckoutFromSnapshot`）
+    を用意した。
+  - 共通のキャンセル呼び出しを `cancelSquareCheckout`（モジュール関数）に
+    集約し、4箇所の分岐がバラバラに実装されて一部だけ直る事態
+    （型J、`M-20260916-timeout-branch-missed-sibling-fix` と同じ形）を防いだ。
+
+検証: `tsc` / `eslint` 0 errors、フルスイート 5786/5791 緑・5 skip。
+
 ## 2026-09-19 外注施工履歴を main へマージ —— ただし本番 DB には届いていない
 
 PR #1095 がマージされた（`8f26a0e`・2026-09-19 13:16 UTC）。CI は 10 件すべて緑、
@@ -231,6 +391,65 @@ QR/NFC・OCR・AI 画像照合・ERP/DMS 連携・物流管理・費用負担・
 （`max: 20260906100003`／本番の実際は `20260918142610`）、`lint:migrations` は
 それを見るので**本番に対する out-of-order を検出できない**。このPRのマイグレーションも
 当初 `20260918000000` で lint を通過しながら本番より前だった。
+
+## 2026-09-16 PR #1092（PR #979 マージ後の Codex 追加指摘）を修正
+
+PR #979 は Codex 指摘8件が未反映のまま main の `withCaller` リファクタと同時に
+マージされたため、`claude/ledra-merchant-approval-2cq3ou` を最新 main から
+再スタートして PR #1092 を開き、8件＋回帰2件を反映（前項参照）。その後、
+マージ済み #979 に後から届いた追加レビューのうち3件を #1092 に持ち込み、
+さらに #1092 自身への `/code-review` で見つかった3件を修正した。
+
+- 端末の接続解除 UI が無かった（`SquareConnectSection.tsx`）。
+  `DELETE /api/admin/square/device` は既にあったが呼び出す導線が無く、
+  故障・交換した端末の device_id を店舗側で消せなかった。
+- Terminal チェックアウトが CANCELED になった後、冪等キーを使い切らずに
+  残していた（`PosClient.tsx`）。残したまま「再試行」を押すと、Square は
+  同じキーに対して取消済みのチェックアウトを返し続け、新しい決済を
+  一切開始できなくなる。
+- POS の QR チェックアウト作成が、ログイン・OTP 等と共有の "auth" レート
+  制限バケット（10 req/60s・IP単位・Redis障害時は常に503）に乗っていた
+  （`qr-checkout/route.ts`）。他の POS 系ルートと同じ "mobile_pos" プリセット
+  （IP + 利用者単位の二段構え）に変更した。
+- 上記の CANCELED 分岐修正で、同じポーリング内のもう1つの終端分岐
+  （5分タイムアウト）に同じリセットを入れ忘れていた（型J、詳細は
+  `MISTAKE_LEDGER.md` の `M-20260916-timeout-branch-missed-sibling-fix`）。
+- タブ切替（`handleModeSwitch`）が、表示中の端末 QR を取り消さずにローカル
+  状態だけ捨てていた。予約切替では既に直っていたが、モード切替のタブでは
+  未対応のままだった（同じく型J）。
+- Square 未接続エラーの新しい `reason: "multiple_locations"` を、
+  `device/route.ts` 側の `squareError` が「接続が切れています」と誤案内して
+  いた（`qr-checkout/route.ts` は正しく分岐済み）。
+
+残り2件は本 PR の規模を超えるため `docs/context/OPEN_QUESTIONS.md` に記録し、
+対応を見送った: Square POS アプリ引き当ての同時実行レース、複数ロケーション
+接続の店にアプリ内の復旧手段が無い問題。
+
+## 2026-09-16 PR #979（Square 経由の QR コード決済）の Codex 指摘8件を修正
+
+ready for review にした直後、リポジトリ標準の Codex レビューが P1 5件・P2 3件を
+指摘。全件を読んで再現条件を確認したうえで修正（詳細は
+`docs/context/MISTAKE_LEDGER.md` の `M-20260916-codex-found-8-in-own-untested-pr`）。
+
+- Square Terminal の idempotency_key が文字数上限を超えて**全会計が作成時点で
+  400 になっていた**（テナントID接頭辞を外して修正）。
+- Square 未接続エラーの `reason` をレスポンスに載せておらず、レジ側の
+  フォールバック分岐が一度も発火しない状態だった。
+- 端末チェックアウトの取消 API が、認証切れ・タイムアウト・5xx まで含めて
+  常に成功扱いにしていた（既に完了・取消済みの場合だけ許容するよう限定）。
+- 予約を切り替えると、表示中の端末 QR を取り消さずに状態だけ捨てていた
+  （客が読めば決済でき、Ledra 側は追跡できなくなる）。
+- Square の複数ロケーション接続で先頭を黙って使っていた（店を跨いだ誤爆になりうる
+  ため、1つに決まらないときは fail closed にした）。
+- `resolveTerminalSale` が決済のウォレット種別を確認しておらず、同じ端末の
+  カード払いなどを QR 決済として記帳できる余地があった。
+- Square Payments API のページングを辿っておらず、30分の窓に100件を超える
+  決済があると引き当てを見逃す／誤って一意判定する余地があった。
+- Stripe と Square の決済証明を同一リクエストに両方渡せる作りで、
+  Square 側で確認済みの本物の決済の payment_id が記録から丸ごと落ちる経路が
+  あった（バリデーションで排他にした）。
+
+検証: `tsc` / `eslint` 0 errors、新規テスト7件を含む `vitest` 全緑。
 
 ## 2026-09-16 メーカー向け実証テスト（Field Test）プラットフォーム — 全工程を一括実装
 
