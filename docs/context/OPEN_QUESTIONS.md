@@ -154,16 +154,24 @@ Codex が PR #1097 に P1 を4件出し、**2件はその PR で直し、2件は
 **検出器自体も検証済み** —— `i.status` の条件をわざと1つ落とすと
 「停止中の保険会社が顧客データ経路を通れる（1 件）」で落ちることを実測した。
 
-**まだ未決（RLS 側）**: `my_insurer_ids()` は**あえて変えていない**。
-14 本の RLS ポリシー（`insurers` / `insurer_users` / `insurer_cases` /
-`insurer_case_messages` / `insurer_case_attachments` / `insurer_tenant_access` /
-`pii_disclosure_consents` / `ai_usage_logs`）が使っており、停止中に自社の行まで
-見えなくすると「アカウント停止中」画面の周辺が壊れる。
-停止時に切るべきは**他社テナントの顧客データ**であって自社の管理画面ではない、
-という線引きで今回は顧客データ側だけを閉じた。
-自社データ側（停止中に自社の案件やユーザ一覧を見せるか）は product 判断が要る。
-`current_insurer_id()` も未変更（`insurer_search_vehicles` の6引数版が消えたので
-現在の呼び出し元は限られるが、棚卸しはしていない【要確認】）。
+**【2026-09-21・RLS 側も解決／本番未適用】** `20260921134500` で
+`my_insurer_ids()` に同じ停止判定を入れた。14本のポリシーは**1本も触っていない**
+（全部この関数を通り、他の呼び出し元は本番の `pg_proc` で 0 本と実測）。
+
+**ここに書いていた「自社の行まで見えなくなるので product 判断が要る」は誤りだった。**
+`insurers` には `my_insurer_ids()` を使わない SELECT ポリシーが2本、`insurer_users` には
+1本あり、permissive は OR なので**停止中でも自社の1行と自分のメンバーシップ行は読める**。
+再生 DB に `authenticated` で降りて実測（停止中: insurers=1 / insurer_users=1（自分のみ）
+/ tenant_access=0 / cases=0 / messages=0。active では現行と同じ 1/2/1/1/1）。
+経緯は `M-20260921-classified-rls-impact-from-one-policy`。
+
+停止中に見えなくなるもの: 同僚のスタッフ一覧・閲覧許可テナント一覧・AI 利用ログ・
+案件・メッセージ・添付・PII 開示同意（書き込み側も同じ関数を通るので止まる）。
+残るもの: 自社の1行・自分のメンバーシップ行・`get_my_insurer_status()`（SECURITY DEFINER）。
+
+**未決のまま残るもの**: `current_insurer_id()` は未変更（棚卸し未実施【要確認】）。
+アプリ側がこの8表を RLS 経由で読んでいるかサービスロール経由かの全数調査も未実施
+【要確認】——**サービスロール経由の画面があれば停止中も見え続ける**。
 
 ### (b) 複数保険会社に属するユーザで、RPC が保険会社の文脈を捨てる
 
@@ -1694,6 +1702,59 @@ starter 1）が、マイグレーション側の check に**弾かれる**。つ
   型名を揃えるだけの利得に見合わない。
 - 上の表以外にも型・既定値・NOT NULL の食い違いが無いかは**未調査**【要確認】。
   今の検出器はオブジェクトの有無しか見ない。pg_dump 同士の差分を取れば洗える。
+
+## 施工店は自社の案件のメッセージも添付も読めない（2026-09-21・`/code-review` 指摘）
+
+`icm_select_tenant` と `ica_select_tenant`（`20260326000000_insurer_portal_v2.sql`、
+469行目付近と490行目付近）は **絶対にマッチしない**。
+
+```
+case_id IN (SELECT id FROM insurer_cases WHERE tenant_id IN (SELECT my_tenant_ids()))
+```
+
+この内側の `insurer_cases` の副問い合わせ**自体が RLS で絞られる**。
+ところが `insurer_cases` には**保険会社側の SELECT ポリシーしか無い**ので、
+施工店の利用者から見た `insurer_cases` は常に 0 行になり、外側も 0 行になる。
+
+実測（再生 DB・`/code-review` 側）: `my_tenant_ids()` が 1 件で、自テナントの案件に
+メッセージがある利用者から `insurer_cases` 0 件 / `insurer_case_messages` 0 件。
+`pdc_select_tenant` は `certificates` を経由しているのでこの穴に落ちていない
+（施工店は `certificates` を読める）。
+
+**既存の不具合**で、停止ゲート（`20260921134500`）が作ったものではない。
+
+**未決**: (a) `insurer_cases` に施工店側の SELECT ポリシーを足す
+（＝保険会社から来た案件を施工店に見せる設計だったのか、を先に確かめる）。
+(b) 2本のポリシーを消す（＝施工店には見せない設計だったと決める）。
+**どちらが元の意図だったかが分からない。** 本番の `insurer_cases` は1行しかないので、
+今は誰も困っていない。
+
+関連: `src/app/api/insurer/switch/route.ts:41` が `.eq("status", "active")` で
+`active_pending_review` を除いている。`resolveInsurerCaller` /
+`current_insurer_access()` / `my_insurer_ids()` はいずれも
+`IN ('active','active_pending_review')` なので、**ここだけ狭い**。
+審査中の保険会社が切り替えできない可能性がある【要確認】。
+
+## ポリシーのドリフトが、認可の変更を黙って危険にする（2026-09-21・新規3本）
+
+2026-09-08 起票の「本番にあってマイグレーションに無い RLS ポリシー」に、**3本追加**。
+今回は `certificates` / `templates` と違って、**認可の変更がこの3本に依存していた**。
+
+- `insurers.insurers_select_own`（SELECT / `{public}`）
+- `insurers.insurers_select_linked_user`（SELECT / `{authenticated}`）
+- `insurer_users.insurer_users_select_self`（SELECT / `{authenticated}`）
+
+いずれも `grep -rn` でマイグレーションに 0 件、再生 DB の `pg_policies` にも 0 本。
+`20260921134500` で書き起こしたので**この3本はもう差ではない**（定義は本番と
+`qual` の空白正規化まで一致させて確認済み。本番では実質 no-op）。
+
+**残る問題は検出されていないことそのもの。** ポリシーの有無を見る検査が無いので、
+次に同じことが起きても気づけない。`check-schema-drift.mjs` は表と列しか見ていない。
+`pg_policies` の `(tablename, policyname)` の集合を突き合わせるだけなら安い。
+
+**未決**: (a) `pg_policies` をドリフト検出の対象に入れるか（名前だけ／定義まで）。
+(b) 入れるなら、既知の差（`certificates` 2本・`templates` 1本）をどう扱うか
+——除外リストを持つと「決まった」ことになってしまうのは `audit_logs` の8列と同じ構図。
 
 ## 本番にあってマイグレーションに無い RLS ポリシーがある（2026-09-08）
 
