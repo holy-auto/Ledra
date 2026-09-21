@@ -5,6 +5,7 @@ import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { apiJson, apiUnauthorized, apiValidationError, apiForbidden } from "@/lib/api/response";
 import { insurerSwitchSchema } from "@/lib/validations/insurer";
+import { INSURER_USABLE_STATUSES } from "@/lib/api/insurerAuth";
 
 export const runtime = "nodejs";
 
@@ -38,7 +39,9 @@ export async function GET() {
     .select("id, name, slug, status, plan_tier")
     .in("id", insurerIds)
     .eq("is_active", true)
-    .eq("status", "active");
+    // resolveInsurerCaller と同じ規則にする。ここだけ status='active' に絞っていたため、
+    // **審査中（active_pending_review）の保険会社が切替リストに出てこなかった**
+    .in("status", [...INSURER_USABLE_STATUSES]);
 
   const cookieStore = await cookies();
   const activeId = cookieStore.get("active_insurer_id")?.value;
@@ -86,6 +89,22 @@ export async function POST(req: NextRequest) {
 
   if (!membership) {
     return apiForbidden("この保険会社のメンバーではありません。");
+  }
+
+  // メンバーシップだけでは足りない。**ここは insurers を一度も見ていなかった**ので、
+  // 停止中の保険会社へも切り替えられ、後段の resolveInsurerCaller が 401 を返していた
+  // （＝利用者には「メンバーではない」でも「停止中」でもない、理由の分からない失敗に見える）。
+  const { data: usable } = await admin
+    .from("insurers")
+    .select("id")
+    .eq("id", insurer_id)
+    .eq("is_active", true)
+    .in("status", [...INSURER_USABLE_STATUSES])
+    .limit(1)
+    .maybeSingle();
+
+  if (!usable) {
+    return apiForbidden("この保険会社のアカウントは現在利用できません。管理者にお問い合わせください。");
   }
 
   // Set cookie

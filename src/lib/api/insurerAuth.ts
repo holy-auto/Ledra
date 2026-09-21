@@ -9,6 +9,20 @@ const ACTIVE_INSURER_COOKIE = "active_insurer_id";
 
 export type InsurerStatus = "active" | "active_pending_review" | "suspended";
 
+/**
+ * 保険会社が「使える」状態の集合。**停止（suspended）だけを外す。**
+ *
+ * ここが唯一の定義源。同じ規則が DB 側にも2つある
+ * （`public.current_insurer_access()` と `public.my_insurer_ids()`）ので、
+ * **変えるときは3箇所を揃える**こと。
+ *
+ * 揃っていなかった実例（2026-09-21 に修正）: `/api/insurer/switch` の GET が
+ * `status = 'active'` だけを見ており、**審査中（active_pending_review）の保険会社が
+ * 切替リストに出てこなかった**。同じファイルの POST は逆に `insurers` を一切見ず、
+ * 停止中でもクッキーを設定できた。1つの規則を3箇所に別々に書いた結果。
+ */
+export const INSURER_USABLE_STATUSES = ["active", "active_pending_review"] as const satisfies readonly InsurerStatus[];
+
 export type InsurerCallerContext = {
   userId: string;
   insurerId: string;
@@ -80,7 +94,7 @@ async function resolveInsurerContext(
     .select("plan_tier, status")
     .eq("id", iu.insurer_id)
     .eq("is_active", true)
-    .in("status", ["active", "active_pending_review"])
+    .in("status", [...INSURER_USABLE_STATUSES])
     .limit(1)
     .maybeSingle();
 
