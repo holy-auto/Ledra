@@ -3,12 +3,74 @@
 > まだ決まっていないこと、判断に迷っていることを書く場所。決まったら
 > DECISION_LOG.md に移し、このファイルからは消す（削除履歴は git で追える）。
 
-## 本番と再生 DB の索引が7本ずれている（2026-09-20）
+## 一意でない索引が本番と再生 DB で食い違っている（2026-09-21）
 
-列は両方向とも 0 になったが（下記）、**索引は本番が7本多い**（再生 1172 / 本番 1179）。
-名前の突き合わせは未実施【要確認】。性能の話なので動作は変わらないが、
-`check-schema-drift.mjs` は索引を見ていないので、この差は**どの検査にも映らない**。
-関数・ポリシー・制約の中身の比較も未実施。
+**一意制約の差は `20260921093300`〜`05` で解消した**（DECISION_LOG 2026-09-21）。
+残っているのは**一意でない索引**で、これは性能の話なので判断が要る。
+
+実測（2026-09-21・`--keep` の再生 DB ⇄ 本番、表ごとの索引名 md5 で 273 表を比較）:
+
+| | 件数 |
+|---|---|
+| 本番にだけある索引 | 44（うち一意 8 → 解消済み / **一意でない 36**） |
+| 再生にだけある索引 | 36（うち一意 2 → 解消済み / **一意でない 34**） |
+
+**再生にだけある 34 本の大半は、`20260918142610 remote_schema` が本番だけで落とした
+38 本の DROP INDEX に含まれる**（本番台帳の `statements` で確認）。
+つまり「本番には元々無い」ではなく**事故で消えた**もの。ただし、そのうち何本かは
+本番側の新しい索引が前方一致で覆っている（例: 再生の `idx_certs_tenant (tenant_id)` は
+本番の `idx_certificates_tenant_status_created (tenant_id, status, created_at)` に覆われる）。
+**全部戻すと重複索引が増えて書き込みが遅くなるだけ**なので、1本ずつの判断が要る。
+
+- **本番にだけ・一意でない 36 本**: `idx_asr_engine` `idx_asr_ledra_session`
+  `audit_logs_action_idx` `audit_logs_created_at_idx` `audit_logs_insurer_idx`
+  `certificate_images_certificate_id_sort_idx` `certificate_images_tenant_id_created_idx`
+  `idx_certificates_tenant_vehicle` `idx_certificates_vehicle_active_latest`
+  `idx_certificates_vehicle_id` `customer_login_codes_lookup` `customer_sessions_lookup`
+  `idx_customers_tenant_line_status` `idx_customers_tenant_line_user`
+  `idx_documents_assigned_user` `idx_documents_job_status`
+  `insurer_access_logs_certificate_created_idx` `insurer_access_logs_insurer_created_idx`
+  `insurer_tenant_access_insurer_idx` `insurers_is_active_idx` `idx_job_orders_category`
+  `idx_job_orders_prefecture` `idx_job_orders_status` `idx_nfc_tags_certificate_id`
+  `idx_nfc_tags_tenant_id` `idx_nfc_tags_vehicle_id` `tenants_stripe_customer_id_idx`
+  `tenants_stripe_subscription_id_idx` `idx_vehicle_histories_tenant_id`
+  `idx_vehicle_histories_vehicle_id` `idx_vehicle_histories_vehicle_performed_at`
+  `idx_vehicles_plate_hash` `idx_vehicles_tenant_created_at` `idx_vehicles_tenant_id`
+  `idx_vehicles_tenant_shaken` `vehicles_plate_display_trgm`
+- **再生にだけ・一意でない 34 本**: `idx_audit_logs_tenant` `idx_certificate_images_cert_sort`
+  `idx_certimg_cert` `idx_certificates_public_id` `idx_certificates_tenant_status`
+  `idx_certificates_vehicle` `idx_certs_public_id` `idx_certs_status` `idx_certs_tenant`
+  `idx_certs_vehicle` `idx_customer_inquiries_customer` `idx_customer_inquiries_tenant`
+  `idx_customers_tenant_email` `idx_customers_tenant_line` `idx_ial_cert` `idx_ial_insurer`
+  `idx_market_vehicles_tenant_created` `idx_nfc_tag_code` `idx_nfc_tags_cert`
+  `idx_nfc_tags_certificate` `idx_nfc_tenant` `idx_nfc_vehicle`
+  `idx_reservations_assigned_user` `idx_reservations_date_tenant` `idx_reservations_source`
+  `idx_tm_tenant` `idx_tm_user` `idx_tenants_slug` `idx_tenants_stripe_customer`
+  `idx_vehicle_histories_vehicle` `idx_vh_tenant` `idx_vh_vehicle` `idx_vehicles_plate`
+  `idx_vehicles_tenant`
+
+**判断材料が足りない**: どれが実際に使われているかは `pg_stat_user_indexes.idx_scan` を
+見ないと分からない。本番は行数が小さい（payments 11 / vehicles 27 / certificates 59 /
+reservations 176）ので、今はどちらでも実害が出ない【要確認】。
+
+`check-schema-drift.mjs` は**一意でない索引を見ていない**（見ると上の 70 本で常に赤くなり、
+新しいドリフトが埋もれる）。一意制約だけを両方向で見る。
+
+## 本番と再生 DB で制約・ポリシーの数が違う（2026-09-21）
+
+索引と同じ形の差が、制約とポリシーにもある。**名前の突き合わせは未実施**【要確認】。
+
+| | 本番 | 再生 |
+|---|---|---|
+| CHECK 制約 | 329 | 328 |
+| 外部キー | 597 | 600 |
+| RLS ポリシー | 622 | 642 |
+| 関数 | 145 | 145（名前の差は 0。`check-schema-drift.mjs` が見ている） |
+
+ポリシーの逆向き（マイグレーションにだけ在る）は既存の検出器が**件数だけ**出して
+落とさない。「本番のほうが緩い」は別の判断軸だから、という設計。
+制約は**どちらの向きも見ていない**。外部キーが片側に無ければ、その環境は
+参照整合性の壊れた行を受け入れる —— 一意制約と同じ形の穴である。
 
 ### 列の差は解消済み（2026-09-20 実測）
 
