@@ -3,12 +3,94 @@
 > まだ決まっていないこと、判断に迷っていることを書く場所。決まったら
 > DECISION_LOG.md に移し、このファイルからは消す（削除履歴は git で追える）。
 
-## 本番と再生 DB の索引が7本ずれている（2026-09-20）
+## 一意でない索引が本番と再生 DB で食い違っている（2026-09-21）
 
-列は両方向とも 0 になったが（下記）、**索引は本番が7本多い**（再生 1172 / 本番 1179）。
-名前の突き合わせは未実施【要確認】。性能の話なので動作は変わらないが、
-`check-schema-drift.mjs` は索引を見ていないので、この差は**どの検査にも映らない**。
-関数・ポリシー・制約の中身の比較も未実施。
+**一意制約の差は `20260921093300`〜`05` で解消した**（DECISION_LOG 2026-09-21）。
+残っているのは**一意でない索引**で、これは性能の話なので判断が要る。
+
+実測（2026-09-21・`--keep` の再生 DB ⇄ 本番、表ごとの索引名 md5 で 273 表を比較）:
+
+| | 件数 |
+|---|---|
+| 本番にだけある索引 | 44（うち一意 8 → 解消済み / **一意でない 36**） |
+| 再生にだけある索引 | 36（うち一意 2 → 解消済み / **一意でない 34**） |
+
+**再生にだけある 34 本の大半は、`20260918142610 remote_schema` が本番だけで落とした
+38 本の DROP INDEX に含まれる**（本番台帳の `statements` で確認）。
+つまり「本番には元々無い」ではなく**事故で消えた**もの。ただし、そのうち何本かは
+本番側の新しい索引が前方一致で覆っている（例: 再生の `idx_certs_tenant (tenant_id)` は
+本番の `idx_certificates_tenant_status_created (tenant_id, status, created_at)` に覆われる）。
+**全部戻すと重複索引が増えて書き込みが遅くなるだけ**なので、1本ずつの判断が要る。
+
+- **本番にだけ・一意でない 36 本**: `idx_asr_engine` `idx_asr_ledra_session`
+  `audit_logs_action_idx` `audit_logs_created_at_idx` `audit_logs_insurer_idx`
+  `certificate_images_certificate_id_sort_idx` `certificate_images_tenant_id_created_idx`
+  `idx_certificates_tenant_vehicle` `idx_certificates_vehicle_active_latest`
+  `idx_certificates_vehicle_id` `customer_login_codes_lookup` `customer_sessions_lookup`
+  `idx_customers_tenant_line_status` `idx_customers_tenant_line_user`
+  `idx_documents_assigned_user` `idx_documents_job_status`
+  `insurer_access_logs_certificate_created_idx` `insurer_access_logs_insurer_created_idx`
+  `insurer_tenant_access_insurer_idx` `insurers_is_active_idx` `idx_job_orders_category`
+  `idx_job_orders_prefecture` `idx_job_orders_status` `idx_nfc_tags_certificate_id`
+  `idx_nfc_tags_tenant_id` `idx_nfc_tags_vehicle_id` `tenants_stripe_customer_id_idx`
+  `tenants_stripe_subscription_id_idx` `idx_vehicle_histories_tenant_id`
+  `idx_vehicle_histories_vehicle_id` `idx_vehicle_histories_vehicle_performed_at`
+  `idx_vehicles_plate_hash` `idx_vehicles_tenant_created_at` `idx_vehicles_tenant_id`
+  `idx_vehicles_tenant_shaken` `vehicles_plate_display_trgm`
+- **再生にだけ・一意でない 34 本**: `idx_audit_logs_tenant` `idx_certificate_images_cert_sort`
+  `idx_certimg_cert` `idx_certificates_public_id` `idx_certificates_tenant_status`
+  `idx_certificates_vehicle` `idx_certs_public_id` `idx_certs_status` `idx_certs_tenant`
+  `idx_certs_vehicle` `idx_customer_inquiries_customer` `idx_customer_inquiries_tenant`
+  `idx_customers_tenant_email` `idx_customers_tenant_line` `idx_ial_cert` `idx_ial_insurer`
+  `idx_market_vehicles_tenant_created` `idx_nfc_tag_code` `idx_nfc_tags_cert`
+  `idx_nfc_tags_certificate` `idx_nfc_tenant` `idx_nfc_vehicle`
+  `idx_reservations_assigned_user` `idx_reservations_date_tenant` `idx_reservations_source`
+  `idx_tm_tenant` `idx_tm_user` `idx_tenants_slug` `idx_tenants_stripe_customer`
+  `idx_vehicle_histories_vehicle` `idx_vh_tenant` `idx_vh_vehicle` `idx_vehicles_plate`
+  `idx_vehicles_tenant`
+
+**判断材料が足りない**: どれが実際に使われているかは `pg_stat_user_indexes.idx_scan` を
+見ないと分からない。本番は行数が小さい（payments 11 / vehicles 27 / certificates 59 /
+reservations 176）ので、今はどちらでも実害が出ない【要確認】。
+
+`check-schema-drift.mjs` は**一意でない索引を見ていない**（見ると上の 70 本で常に赤くなり、
+新しいドリフトが埋もれる）。一意制約だけを両方向で見る。
+
+## 公開IDの一意索引が2組重複している（2026-09-21）
+
+本番にもマイグレーションにも、同じ列に対する一意制約が**2つずつ**ある。
+
+| 表 | 既存 | 重複しているもの |
+|---|---|---|
+| `job_orders` | `idx_job_orders_public_id (public_id)` | `job_orders_public_id_key (public_id)` |
+| `vehicles` | `idx_vehicles_public_id (public_id) WHERE public_id IS NOT NULL` | `vehicles_public_id_uidx (public_id)` |
+
+`vehicles` の2つは実質同じ（NULL は互いに重複扱いされないので、部分索引の条件は効いていない）。
+
+`20260603010001` は「`job_orders_public_id_key` は本番のみのドリフト」として対象から外し、
+**重複の解消を専用のマイグレーションに送る**判断をしていた。
+`20260921093300`〜`03` は全環境を本番と同じ形にするのが目的なので、この重複も含めて配っている
+（片方だけ作ると新しいドリフトになるため）。
+
+**未決**: 重複を消すか。消すなら**本番とマイグレーションの両方から1回で**落とす専用の版が要る。
+どちらを残しても一意性は保たれる（残る側が同じ列を守る）。書き込みのたびに索引が2つ更新される
+コストだけが減る。本番の行数が小さい（job_orders / vehicles とも3桁以下）ので急がない【要確認】。
+
+## 本番と再生 DB で制約・ポリシーの数が違う（2026-09-21）
+
+索引と同じ形の差が、制約とポリシーにもある。**名前の突き合わせは未実施**【要確認】。
+
+| | 本番 | 再生 |
+|---|---|---|
+| CHECK 制約 | 329 | 328 |
+| 外部キー | 597 | 600 |
+| RLS ポリシー | 622 | 642 |
+| 関数 | 145 | 145（名前の差は 0。`check-schema-drift.mjs` が見ている） |
+
+ポリシーの逆向き（マイグレーションにだけ在る）は既存の検出器が**件数だけ**出して
+落とさない。「本番のほうが緩い」は別の判断軸だから、という設計。
+制約は**どちらの向きも見ていない**。外部キーが片側に無ければ、その環境は
+参照整合性の壊れた行を受け入れる —— 一意制約と同じ形の穴である。
 
 ### 列の差は解消済み（2026-09-20 実測）
 
@@ -72,16 +154,24 @@ Codex が PR #1097 に P1 を4件出し、**2件はその PR で直し、2件は
 **検出器自体も検証済み** —— `i.status` の条件をわざと1つ落とすと
 「停止中の保険会社が顧客データ経路を通れる（1 件）」で落ちることを実測した。
 
-**まだ未決（RLS 側）**: `my_insurer_ids()` は**あえて変えていない**。
-14 本の RLS ポリシー（`insurers` / `insurer_users` / `insurer_cases` /
-`insurer_case_messages` / `insurer_case_attachments` / `insurer_tenant_access` /
-`pii_disclosure_consents` / `ai_usage_logs`）が使っており、停止中に自社の行まで
-見えなくすると「アカウント停止中」画面の周辺が壊れる。
-停止時に切るべきは**他社テナントの顧客データ**であって自社の管理画面ではない、
-という線引きで今回は顧客データ側だけを閉じた。
-自社データ側（停止中に自社の案件やユーザ一覧を見せるか）は product 判断が要る。
-`current_insurer_id()` も未変更（`insurer_search_vehicles` の6引数版が消えたので
-現在の呼び出し元は限られるが、棚卸しはしていない【要確認】）。
+**【2026-09-21・RLS 側も解決／本番未適用】** `20260921134500` で
+`my_insurer_ids()` に同じ停止判定を入れた。14本のポリシーは**1本も触っていない**
+（全部この関数を通り、他の呼び出し元は本番の `pg_proc` で 0 本と実測）。
+
+**ここに書いていた「自社の行まで見えなくなるので product 判断が要る」は誤りだった。**
+`insurers` には `my_insurer_ids()` を使わない SELECT ポリシーが2本、`insurer_users` には
+1本あり、permissive は OR なので**停止中でも自社の1行と自分のメンバーシップ行は読める**。
+再生 DB に `authenticated` で降りて実測（停止中: insurers=1 / insurer_users=1（自分のみ）
+/ tenant_access=0 / cases=0 / messages=0。active では現行と同じ 1/2/1/1/1）。
+経緯は `M-20260921-classified-rls-impact-from-one-policy`。
+
+停止中に見えなくなるもの: 同僚のスタッフ一覧・閲覧許可テナント一覧・AI 利用ログ・
+案件・メッセージ・添付・PII 開示同意（書き込み側も同じ関数を通るので止まる）。
+残るもの: 自社の1行・自分のメンバーシップ行・`get_my_insurer_status()`（SECURITY DEFINER）。
+
+**未決のまま残るもの**: `current_insurer_id()` は未変更（棚卸し未実施【要確認】）。
+アプリ側がこの8表を RLS 経由で読んでいるかサービスロール経由かの全数調査も未実施
+【要確認】——**サービスロール経由の画面があれば停止中も見え続ける**。
 
 ### (b) 複数保険会社に属するユーザで、RPC が保険会社の文脈を捨てる
 
@@ -1586,6 +1676,59 @@ starter 1）が、マイグレーション側の check に**弾かれる**。つ
   型名を揃えるだけの利得に見合わない。
 - 上の表以外にも型・既定値・NOT NULL の食い違いが無いかは**未調査**【要確認】。
   今の検出器はオブジェクトの有無しか見ない。pg_dump 同士の差分を取れば洗える。
+
+## 施工店は自社の案件のメッセージも添付も読めない（2026-09-21・`/code-review` 指摘）
+
+`icm_select_tenant` と `ica_select_tenant`（`20260326000000_insurer_portal_v2.sql`、
+469行目付近と490行目付近）は **絶対にマッチしない**。
+
+```
+case_id IN (SELECT id FROM insurer_cases WHERE tenant_id IN (SELECT my_tenant_ids()))
+```
+
+この内側の `insurer_cases` の副問い合わせ**自体が RLS で絞られる**。
+ところが `insurer_cases` には**保険会社側の SELECT ポリシーしか無い**ので、
+施工店の利用者から見た `insurer_cases` は常に 0 行になり、外側も 0 行になる。
+
+実測（再生 DB・`/code-review` 側）: `my_tenant_ids()` が 1 件で、自テナントの案件に
+メッセージがある利用者から `insurer_cases` 0 件 / `insurer_case_messages` 0 件。
+`pdc_select_tenant` は `certificates` を経由しているのでこの穴に落ちていない
+（施工店は `certificates` を読める）。
+
+**既存の不具合**で、停止ゲート（`20260921134500`）が作ったものではない。
+
+**未決**: (a) `insurer_cases` に施工店側の SELECT ポリシーを足す
+（＝保険会社から来た案件を施工店に見せる設計だったのか、を先に確かめる）。
+(b) 2本のポリシーを消す（＝施工店には見せない設計だったと決める）。
+**どちらが元の意図だったかが分からない。** 本番の `insurer_cases` は1行しかないので、
+今は誰も困っていない。
+
+関連: `src/app/api/insurer/switch/route.ts:41` が `.eq("status", "active")` で
+`active_pending_review` を除いている。`resolveInsurerCaller` /
+`current_insurer_access()` / `my_insurer_ids()` はいずれも
+`IN ('active','active_pending_review')` なので、**ここだけ狭い**。
+審査中の保険会社が切り替えできない可能性がある【要確認】。
+
+## ポリシーのドリフトが、認可の変更を黙って危険にする（2026-09-21・新規3本）
+
+2026-09-08 起票の「本番にあってマイグレーションに無い RLS ポリシー」に、**3本追加**。
+今回は `certificates` / `templates` と違って、**認可の変更がこの3本に依存していた**。
+
+- `insurers.insurers_select_own`（SELECT / `{public}`）
+- `insurers.insurers_select_linked_user`（SELECT / `{authenticated}`）
+- `insurer_users.insurer_users_select_self`（SELECT / `{authenticated}`）
+
+いずれも `grep -rn` でマイグレーションに 0 件、再生 DB の `pg_policies` にも 0 本。
+`20260921134500` で書き起こしたので**この3本はもう差ではない**（定義は本番と
+`qual` の空白正規化まで一致させて確認済み。本番では実質 no-op）。
+
+**残る問題は検出されていないことそのもの。** ポリシーの有無を見る検査が無いので、
+次に同じことが起きても気づけない。`check-schema-drift.mjs` は表と列しか見ていない。
+`pg_policies` の `(tablename, policyname)` の集合を突き合わせるだけなら安い。
+
+**未決**: (a) `pg_policies` をドリフト検出の対象に入れるか（名前だけ／定義まで）。
+(b) 入れるなら、既知の差（`certificates` 2本・`templates` 1本）をどう扱うか
+——除外リストを持つと「決まった」ことになってしまうのは `audit_logs` の8列と同じ構図。
 
 ## 本番にあってマイグレーションに無い RLS ポリシーがある（2026-09-08）
 

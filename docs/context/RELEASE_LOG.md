@@ -10,6 +10,47 @@
 - 背景: 2026-08 の堅牢化で「DBエラーを一掃」と記録したが計上本体を見落としていた（Codex が #895 レビューで指摘、issue #892 に計上）。本番実データで**レポート注文まだ0件＝実害未発生**を確認のうえ、最初の課金が走る前に修正。見落としの経緯は MISTAKE_LEDGER `M-20260921-claimed-all-db-errors-swept-but-left-booking-upsert`。
 - 対象: 公開レポート課金の還元計上（Stripe webhook / unlock 経路）。
 - 検証: `tsc --noEmit` エラー0、`vehicleReport` テスト32件パス、変更ファイル eslint エラー0。ガード追加（error→throw）のみで純ロジック不変のため新規テストなし。
+## 2026-09-21 一意制約を本番とマイグレーションで一致させ、検出器に両方向の比較を足した
+
+**本番から決済の冪等キーの一意性が消えていた。** `20260918142610 remote_schema` が
+本番だけで実行した 38 本の `DROP INDEX` に `idx_payments_idempotency` が入っており、
+**2026-09-18 以降、本番は同じ `idempotency_key` を持つ payments 行を2つ受け入れる状態だった**
+（本番台帳の `statements` を引いて確認）。`idx_nfc_active_certificate`
+（1証明書につき有効な NFC タグは1つ）も同じ経路で消えていた。
+
+逆向きもあった。**本番にあってマイグレーションが作らない一意制約が8件**あり、
+空 DB から作った環境（プレビュー分岐・新環境）はその8つの一意性を持たない。
+
+- `20260921093300`: 制約として持つ5件を足す（`certificate_images_storage_path_key` /
+  `insurer_cases_case_number_key` / `insurer_users_user_id_key` /
+  `job_orders_public_id_key` / `nfc_tags_tenant_tag_code_key`）。本番では no-op。
+- `20260921093301`〜`03`: 一意索引として持つ3件（`customer_sessions_session_hash_uniq` /
+  `tenants_custom_domain_uniq` / `vehicles_public_id_uidx`）。本番では no-op。
+  `CONCURRENTLY` のため1ファイル1文。
+- `20260921093304`〜`05`: **本番から消えた2件を戻す。この2文だけが本番で実際に走る。**
+  事前に重複0件を実測（payments 11行・`idempotency_key` 非 NULL は0行、nfc_tags 0行）。
+
+**検出器**: `check-schema-drift.mjs` が**一意制約を両方向**で見るようになった。
+解析（pg_dump から一意制約を拾う部分）は `scripts/lib/dumpParse.mjs` へ出して
+単体テストを付けた —— pg_dump は一意制約を `CREATE UNIQUE INDEX` と
+`ADD CONSTRAINT ... UNIQUE` の**2つの書き方**で出すので、片方しか読めない解析でも
+もう片方の形が無いスキーマなら緑になる。再生 DB の dump 全体で当たりを取った
+（解析 135 件 = `pg_index` の 135 件・差分 0）。
+
+**振る舞い検査を1つ書き直した**: 前日の `insurer_suspension_gate.sql` の陰性対照5は
+「停止中Aと有効Bに属するユーザ」を作っていたが、`insurer_users_user_id_key` を
+取り込んだ瞬間に `unique_violation` で落ちた。**本番のスキーマではその状態を作れない**
+（1ユーザは1社にしか属せない）。到達できない対照は何も守らないので、
+「2社目の所属が弾かれること」と「停止中の1社に属するユーザが通らないこと」に分けた。
+一意制約が消えたら前者が落ちるので、そのとき順序の対照を戻せる。
+
+残る差（`OPEN_QUESTIONS`）: **一意でない索引**が本番にだけ 36 本 / 再生にだけ 34 本。
+性能の話で、どちらが要るかは `pg_stat_user_indexes` を見ないと決まらない。
+CHECK 制約（329 / 328）・外部キー（597 / 600）・RLS ポリシー（622 / 642）の差も未着手。
+
+検証: `check:migrations` 再生 **491/491**・振る舞い検査 1 件緑 /
+`ci-parallel-checks.sh` 8種すべて緑 / 適用後の再生 DB の一意制約 143 件は
+本番 141 件 + 戻す2件と一致（`comm` で両方向とも差分0を確認）。
 
 ## 2026-09-20 `audit_logs` の旧8列を落とし、列のドリフトを両方向 0 にした
 
@@ -39,6 +80,80 @@
 
 検証: `check:migrations` 再生 **485/485**（main の `20260920151600` を取り込み、この版を
 `20260920154100` へ改名したあとの実測）/ `ci-parallel-checks.sh` 8種すべて緑。
+
+## 2026-09-21 保険会社の停止を RLS 側にも効かせた —— 先に「本番にだけ在る3本」を書き起こした
+
+前日に RPC 側（顧客データを返す5本）は塞いだが、**RLS は素通りのままだった**。PostgREST は表も
+直接公開しているので、停止中（`suspended`）の保険会社ユーザが `insurer_cases` /
+`insurer_case_messages` / `insurer_case_attachments` / `pii_disclosure_consents` を読めていた。
+
+### 入れたもの（`20260921134500`）
+
+1. **本番にしか無かった SELECT ポリシー3本をマイグレーションへ書き起こした** ——
+   `insurers_select_own` / `insurers_select_linked_user` / `insurer_users_select_self`。
+   `grep -rn` で 0 件、再生 DB の `pg_policies` にも 0 本。**本番だけのドリフト**だった。
+2. **`my_insurer_ids()` に停止判定を足した** ——
+   `iu.is_active` + `i.is_active` + `i.status IN ('active','active_pending_review')`。
+   ルート層 `resolveInsurerCaller` および `current_insurer_access()` と同じ規則。
+   **ポリシーは1本も触っていない**（14本すべてがこの関数を通り、他の呼び出し元は本番の
+   `pg_proc` で 0 本と実測）。`search_path` も `''` へ直した。
+
+**順序が意味を持つので1ファイルにした。** ②だけ入れると、本番は無事で
+**プレビュー分岐と新環境だけが「停止中に自社名すら出せない」**状態になる。
+
+### 再生 DB で `authenticated` ロールに降りて実測（RLS は所有者と superuser には効かない）
+
+| 状況 | insurers | insurer_users | tenant_access | cases | messages |
+|---|---|---|---|---|---|
+| active・現行 | 1 | 2 | 1 | 1 | 1 |
+| **suspended・現行** | 1 | 2 | **1** | **1** | **1** ← 穴 |
+| suspended・ゲート後（3本なし） | **0** | **0** | 0 | 0 | 0 ← 画面が割れる |
+| **suspended・ゲート後（3本あり）** | **1** | **1（自分だけ）** | **0** | **0** | **0** |
+| active・ゲート後（3本あり） | 1 | 2 | 1 | 1 | 1 ← 無変化 |
+
+書き起こした3本の定義が本番と同一であることは、`pg_policies` の `qual` を空白正規化して
+両側で突き合わせて確認した（3本とも一致 ＝ **本番では実質 no-op**）。
+
+### 検出器そのものを3通りの壊し方で検証した
+
+`scripts/replay/checks/insurer_rls_suspension_gate.sql`（陽性2件・陰性5件、`npm run check:migrations` から毎回走る）。
+
+| 壊し方 | 出たメッセージ |
+|---|---|
+| `i.status` 条件を落とす | ❌ `停止中なのに顧客データ経路が開いている: tenant_access=1 cases=1 messages=1` |
+| `insurers_select_own` を落とす | ❌ `自社行を支えるポリシーが無い: insurers_select_own` |
+| `i.is_active` 条件を落とす | ❌ `is_active=false なのに案件が見える（1 件）` |
+| `pdc_select_insurer` をゲート前の形に戻す | ❌ `停止中なのに PII 開示同意が見える（1 件）` |
+| `ai_usage_logs_select_insurer` をゲート前の形に戻す | ❌ `停止中なのに AI 利用ログが見える（1 件）` |
+
+いずれも復元後に検査が通ることまで確認している。
+
+下2つは `/code-review` の指摘で足した。**当初の検査は
+`pii_disclosure_consents` と `ai_usage_logs` を一度も数えていなかった** ——
+この2表は `insurer_cases` を経由せず `insurer_id` を直接見るので、案件が 0 件でも
+独立に漏れる。経緯は `M-20260921-detector-covered-half-the-tables-i-had-listed`。
+
+本番の3本が PERMISSIVE であることも確認した（RESTRICTIVE なら `DROP` + `CREATE` で
+アクセスが広がるという指摘。3本とも PERMISSIVE で、`CREATE POLICY` の既定と一致）。
+
+**レビューが見つけた範囲外の不具合（この PR では直していない）**:
+`icm_select_tenant` / `ica_select_tenant`（`20260326000000_insurer_portal_v2.sql`）は
+**絶対にマッチしない**。`insurer_cases` を経由する条件だが、`insurer_cases` には
+施工店側の SELECT ポリシーが無く、内側の副問い合わせが常に 0 行になる。
+つまり施工店は自社の案件のメッセージも添付も読めない。既存の不具合。
+`src/app/api/insurer/switch/route.ts:41` が `.eq("status","active")` で
+`active_pending_review` を除いているのも、他の箇所より狭い。
+
+### 停止中の見え方
+
+**見えなくなる**: 同僚のスタッフ一覧 / 閲覧許可テナント一覧 / AI 利用ログ /
+案件・メッセージ・添付・PII 開示同意。書き込み側（`ic_insert` / `ic_update` /
+`iu_insert` / `iu_update` / `iu_delete`）も同じ関数を通るので止まる。
+**残る**: 自社の1行、自分のメンバーシップ行、`get_my_insurer_status()`（SECURITY DEFINER）。
+
+**やっていないこと**: アプリ側がこの8表を RLS 経由で読んでいるかサービスロール経由かの
+全数調査【要確認】。実アカウントでの画面確認。`certificates` / `templates` の
+本番だけのポリシー（2026-09-08 起票）。
 
 ## 2026-09-20 保険会社 RPC の停止ゲートを DB 側にも入れた —— 認可の判定を1箇所に集約
 

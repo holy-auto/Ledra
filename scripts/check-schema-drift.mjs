@@ -41,9 +41,16 @@
  *   イベントトリガだけはマイグレーションの字面から拾う。数が少なく、
  *   `create event trigger` に `if not exists` が無いので必ずリテラルで書かれる。
  * ponytail: 上限その2。見るのは**名前の有無**だけで、列の型・既定値・ポリシーの
- *   中身（USING / WITH CHECK の式）までは比べない。本番の `tenants.plan_tier` は
+ *   中身（USING / WITH CHECK の式）までは比べない。**一意制約も名前だけ**で、
+ *   同じ名前が両側にあれば対象列が違っても通る。本番の `tenants.plan_tier` は
  *   enum 型なのにマイグレーション側は `text + check` という差が現に残っている
  *   （OPEN_QUESTIONS 参照）。そこまで見るなら pg_dump 同士の差分が要る。
+ * ponytail: 上限その4。**一意でない索引は比べない。** 2026-09-21 の実測で、名前の差は
+ *   本番にだけ 44 本（うち一意 8）・再生にだけ 36 本（うち一意 2）あり、その大半は旧名と新名が併存しているだけの
+ *   性能の話である（どちらが正しいかは実データを見ないと決まらない）。
+ *   一方**一意索引は正しさの保証**で、片側に無ければその環境は、もう片側が拒否する
+ *   データを受け入れる。だから一意のものだけを両方向で見る。
+ *   一意でない索引の差は docs/context/OPEN_QUESTIONS.md に一覧で残してある。
  * ponytail: 上限その3。列は**両方向**を見る。本番にあって再生に無い側（＝本番データを
  *   流し込めなくなる）と、マイグレーションにあって本番に無い側（＝本番でだけ 42703 に
  *   なる。certificates.certificate_no が実例）。テーブル・関数などは本番→再生の一方向
@@ -54,6 +61,7 @@ import { execFileSync } from "node:child_process";
 import { readFileSync, readdirSync, rmSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve, join } from "node:path";
+import { bare, uniqueFromDump } from "./lib/dumpParse.mjs";
 import { tmpdir } from "node:os";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -117,7 +125,7 @@ rmSync(dumpPath, { force: true });
 // pg_dump の出力は書き方が一定なので、素直に読める。
 const dumped = (re) => new Set([...dump.matchAll(re)].map((m) => m[1].replace(/"/g, "").toLowerCase()));
 
-const bare = (s) => s.replace(/^"|"$/g, "").replace(/""/g, '"').toLowerCase();
+
 
 /**
  * `CREATE TABLE public.x ( ... );` の中身から `表名.列名` を拾う。
@@ -177,6 +185,12 @@ const replayed = {
   // 同名のものが大量にあり、比較が意味を失う。
   column: columnsFromDump(dump),
   policy: policiesFromDump(dump),
+  // 一意制約は pg_dump が2つの書き方で出す。**両方拾わないと幻のドリフトになる。**
+  //   - 制約として持つもの: `ALTER TABLE ONLY public.t\n    ADD CONSTRAINT c UNIQUE (...)`
+  //   - 索引として持つもの: `CREATE UNIQUE INDEX c ON public.t ...`
+  // 実際の dump で数えて確かめた（2026-09-21: CREATE UNIQUE INDEX 38 / ADD CONSTRAINT UNIQUE 97 = 135、
+  // 同じ再生 DB の pg_index でも 135）。主キーは対象外（本番側のクエリでも除いている）。
+  unique_index: uniqueFromDump(dump),
 };
 
 // イベントトリガだけは pg_dump に出ないので、マイグレーションの字面から拾う。
@@ -205,6 +219,10 @@ const NEGATIVE = {
   // （vehicle_size_master）からも1件取る。
   column: ["certificates.public_id", "tenants.plan_tier", "vehicle_size_master.id"],
   policy: ["certificates.certificates_select_v2", "tenants.tenants_select_v2"],
+  // 2つの書き方それぞれから1件ずつ取る（片方の正規表現が壊れても対照が落ちるように）。
+  //   tenants_slug_key            … ADD CONSTRAINT ... UNIQUE 由来
+  //   idx_documents_public_id     … CREATE UNIQUE INDEX 由来
+  unique_index: ["tenants.tenants_slug_key", "documents.idx_documents_public_id"],
 };
 /** 本番側の名前のうち、再生 DB に無いものを返す。**本番の比較もここを通る。** */
 const missingFrom = (kind, prodNames) =>
@@ -290,6 +308,23 @@ const prod = {
         " where n.nspname='public' order by 1",
     ),
   ),
+  // 一意制約。主キーは別軸（表があれば必ず付いてくる）なので除く。
+  // 制約由来か索引由来かは問わない —— 名前で突き合わせる。
+  //
+  // **`indisvalid` を必ず見る。** `CREATE UNIQUE INDEX CONCURRENTLY` は待機フェーズで
+  // 落ちると `indisvalid = false` の索引を残す。名前は pg_index に在るので、
+  // 見ないと「在る」と読んでしまい、次の実行は `IF NOT EXISTS` で黙って飛ぶ。
+  // **無効な索引は一意性を強制しない**ので、この検出器が塞ごうとしている穴
+  // （本番だけが重複を受け入れる）がそのまま残る。無効なら「無い」として扱い、落とす。
+  unique_index: names(
+    await query(
+      "select t.relname||'.'||i.relname from pg_index ix" +
+        " join pg_class i on i.oid=ix.indexrelid join pg_class t on t.oid=ix.indrelid" +
+        " join pg_namespace n on n.oid=t.relnamespace" +
+        " where n.nspname='public' and ix.indisunique and not ix.indisprimary" +
+        " and ix.indisvalid and ix.indisready order by 1",
+    ),
+  ),
 };
 
 // ── 4. 突き合わせ ───────────────────────────────────────────
@@ -302,6 +337,7 @@ const LABEL = {
   event_trigger: "イベントトリガ",
   column: "列",
   policy: "RLS ポリシー",
+  unique_index: "一意制約",
 };
 
 // 表ごと無いときは、その表の列とポリシーも当然すべて無い。根本原因は表のほうなので、
@@ -314,7 +350,7 @@ let total = 0;
 console.log("");
 for (const kind of Object.keys(LABEL)) {
   const all = missingFrom(kind, prod[kind]);
-  const nested = kind === "column" || kind === "policy";
+  const nested = kind === "column" || kind === "policy" || kind === "unique_index";
   const missing = nested ? all.filter((n) => !missingTables.has(tableOf(n))) : all;
   const hidden = all.length - missing.length;
   total += missing.length;
@@ -342,13 +378,28 @@ const notInProd = (kind) => {
 };
 const extraColumns = notInProd("column");
 const extraPolicies = notInProd("policy");
+// 一意制約の逆向きも落とす。**これを見ないと、本番だけ一意性が消えた状態に気づけない。**
+// 実例: `idx_payments_idempotency`（決済の冪等キー）は 2026-09-18 に remote_schema が
+// 本番だけで落としており、マイグレーション側には在った。列を両方向で見ていた
+// 2026-09-20 時点でも、この検査は素通りしていた（DECISION_LOG 2026-09-21）。
+const extraUnique = notInProd("unique_index");
 
 console.log(
-  `[drift] 逆向き: マイグレーションが作るのに本番に無い 列 ${extraColumns.length} 件 / ポリシー ${extraPolicies.length} 件`,
+  `[drift] 逆向き: マイグレーションが作るのに本番に無い 列 ${extraColumns.length} 件 /` +
+    ` 一意制約 ${extraUnique.length} 件 / ポリシー ${extraPolicies.length} 件`,
 );
 for (const n of extraColumns) console.log(`         - ${n}`);
+// 表ごと本番に無い場合は「本番だけが重複を受け入れる」ではなく「表そのものが無い」。
+// 同じ行で同じ文言を出すと、読んだ人が原因を取り違える。分けて出す（どちらも落とす）。
+const prodTableSet = lowerSet(prod.table);
+const extraUniqueTableMissing = extraUnique.filter((n) => !prodTableSet.has(tableOf(n)));
+const extraUniqueTablePresent = extraUnique.filter((n) => prodTableSet.has(tableOf(n)));
+for (const n of extraUniqueTablePresent) console.log(`         - ${n}（一意制約）`);
+for (const n of extraUniqueTableMissing) {
+  console.log(`         - ${n}（一意制約。ただし**表そのものが本番に無い** —— 先に表を見ること）`);
+}
 
-if (total > 0 || extraColumns.length > 0) {
+if (total > 0 || extraColumns.length > 0 || extraUnique.length > 0) {
   if (total > 0) {
     console.error(
       `\n[drift] 本番にだけ存在するオブジェクトが ${total} 件あります。` +
@@ -361,6 +412,22 @@ if (total > 0 || extraColumns.length > 0) {
       `\n[drift] マイグレーションにだけ存在する列が ${extraColumns.length} 件あります。` +
         "\n  本番に無い列を読むコードは、本番でだけ 42703 で落ちます（実例: certificates.certificate_no）。" +
         "\n  足すか、読んでいる側から外すかを決めてください。",
+    );
+  }
+  if (extraUniqueTablePresent.length > 0) {
+    console.error(
+      `\n[drift] マイグレーションにだけ存在する一意制約が ${extraUniqueTablePresent.length} 件あります。` +
+        "\n  **本番だけがその重複を受け入れます。**性能ではなく正しさの差です" +
+        "（実例: idx_payments_idempotency —— 決済の冪等キーが本番でだけ効いていなかった）。" +
+        "\n  `CREATE UNIQUE INDEX CONCURRENTLY` が落ちて無効な索引が残っている場合も" +
+        "ここに出ます（indisvalid を見ているため）。その場合は DROP してから作り直してください。" +
+        "\n  本番へ戻すか、マイグレーション側から外すかを決めてください。",
+    );
+  }
+  if (extraUniqueTableMissing.length > 0) {
+    console.error(
+      `\n[drift] マイグレーションにだけ存在する一意制約のうち ${extraUniqueTableMissing.length} 件は、` +
+        "**表そのものが本番にありません**。一意制約ではなく表の未適用として追ってください。",
     );
   }
   process.exit(1);
