@@ -4,6 +4,48 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-09-21 一意制約を本番とマイグレーションで一致させ、検出器に両方向の比較を足した
+
+**本番から決済の冪等キーの一意性が消えていた。** `20260918142610 remote_schema` が
+本番だけで実行した 38 本の `DROP INDEX` に `idx_payments_idempotency` が入っており、
+**2026-09-18 以降、本番は同じ `idempotency_key` を持つ payments 行を2つ受け入れる状態だった**
+（本番台帳の `statements` を引いて確認）。`idx_nfc_active_certificate`
+（1証明書につき有効な NFC タグは1つ）も同じ経路で消えていた。
+
+逆向きもあった。**本番にあってマイグレーションが作らない一意制約が8件**あり、
+空 DB から作った環境（プレビュー分岐・新環境）はその8つの一意性を持たない。
+
+- `20260921093300`: 制約として持つ5件を足す（`certificate_images_storage_path_key` /
+  `insurer_cases_case_number_key` / `insurer_users_user_id_key` /
+  `job_orders_public_id_key` / `nfc_tags_tenant_tag_code_key`）。本番では no-op。
+- `20260921093301`〜`03`: 一意索引として持つ3件（`customer_sessions_session_hash_uniq` /
+  `tenants_custom_domain_uniq` / `vehicles_public_id_uidx`）。本番では no-op。
+  `CONCURRENTLY` のため1ファイル1文。
+- `20260921093304`〜`05`: **本番から消えた2件を戻す。この2文だけが本番で実際に走る。**
+  事前に重複0件を実測（payments 11行・`idempotency_key` 非 NULL は0行、nfc_tags 0行）。
+
+**検出器**: `check-schema-drift.mjs` が**一意制約を両方向**で見るようになった。
+解析（pg_dump から一意制約を拾う部分）は `scripts/lib/dumpParse.mjs` へ出して
+単体テストを付けた —— pg_dump は一意制約を `CREATE UNIQUE INDEX` と
+`ADD CONSTRAINT ... UNIQUE` の**2つの書き方**で出すので、片方しか読めない解析でも
+もう片方の形が無いスキーマなら緑になる。再生 DB の dump 全体で当たりを取った
+（解析 135 件 = `pg_index` の 135 件・差分 0）。
+
+**振る舞い検査を1つ書き直した**: 前日の `insurer_suspension_gate.sql` の陰性対照5は
+「停止中Aと有効Bに属するユーザ」を作っていたが、`insurer_users_user_id_key` を
+取り込んだ瞬間に `unique_violation` で落ちた。**本番のスキーマではその状態を作れない**
+（1ユーザは1社にしか属せない）。到達できない対照は何も守らないので、
+「2社目の所属が弾かれること」と「停止中の1社に属するユーザが通らないこと」に分けた。
+一意制約が消えたら前者が落ちるので、そのとき順序の対照を戻せる。
+
+残る差（`OPEN_QUESTIONS`）: **一意でない索引**が本番にだけ 36 本 / 再生にだけ 34 本。
+性能の話で、どちらが要るかは `pg_stat_user_indexes` を見ないと決まらない。
+CHECK 制約（329 / 328）・外部キー（597 / 600）・RLS ポリシー（622 / 642）の差も未着手。
+
+検証: `check:migrations` 再生 **491/491**・振る舞い検査 1 件緑 /
+`ci-parallel-checks.sh` 8種すべて緑 / 適用後の再生 DB の一意制約 143 件は
+本番 141 件 + 戻す2件と一致（`comm` で両方向とも差分0を確認）。
+
 ## 2026-09-20 `audit_logs` の旧8列を落とし、列のドリフトを両方向 0 にした
 
 `20260920154100` で `audit_logs` の mobile_support 版8列
