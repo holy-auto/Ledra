@@ -136,6 +136,32 @@ const eslintConfig = defineConfig([
       ],
     },
   },
+  {
+    // C2PA / 画像の真正性まわりの検査は **fail-closed**（DECISION_LOG 2026-09-21）。
+    //
+    // ネイティブ依存が読み込めないことを skip で逃がしていたため、依存が入らないだけで
+    // 適合性ゲートが丸ごと沈黙し、CI は緑のままだった。読み込みは
+    // `src/lib/anchoring/__tests__/nativeImaging.ts` の `requireNative()` に一本化して
+    // 落ちるようにしたが、**方針を1箇所に置くだけでは、新しいファイルが独自に
+    // skip を書くのを止められない**（PR #1115 の `/code-review` 指摘）。
+    // 「スキップ」と「合格」が同じ緑である状態に戻らないよう、ここで機械的に止める。
+    //
+    // `describe.runIf(...)` は別物なので通る（本番証明書スイートは設計どおりスキップする）。
+    files: ["src/lib/anchoring/**/__tests__/**/*.{ts,tsx}"],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector: "CallExpression[callee.property.name='skip']",
+          message:
+            "この配下の検査は fail-closed です。skip すると『検査できなかった』が" +
+            "『検査して通った』と同じ緑になり、依存が抜けた日から誰も気づけません。" +
+            "ネイティブ依存の読み込みは requireNative() を使い、落ちるに任せてください" +
+            "（理由: DECISION_LOG 2026-09-21 / src/lib/anchoring/__tests__/nativeImaging.ts）。",
+        },
+      ],
+    },
+  },
   // Override default ignores of eslint-config-next.
   globalIgnores([
     // Default ignores of eslint-config-next:

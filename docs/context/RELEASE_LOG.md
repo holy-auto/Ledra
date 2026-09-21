@@ -20,7 +20,20 @@
   成功側も固定してある。
 - **`describe.runIf(hasProdCert)` は触っていない。** 本番証明書スイートのスキップは
   設計どおり（本番鍵は署名環境にしか無い）。
-- 検証: CI 並列チェック8本すべて通過（594 files / 5827 passed | 1 skipped）。
+- `/code-review` の指摘10件を反映（1件は根拠を示して見送り）。主なもの:
+  - `providers.test.ts` に**同じ沈黙が残っていた**（skip ではないが、モジュールを退避しても
+    24 passed で CI は緑）。環境依存の分岐を消して常に強い検証を走らせるようにした。
+  - **eslint で `.skip()` を禁止**（`src/lib/anchoring/**/__tests__/`）。方針を1箇所に置くだけでは
+    新しいファイルが独自に skip を書くのを止められない。陰性対照で、書き戻すと lint が
+    error で落ちることを確認した。
+  - 失敗メッセージが「optionalDependencies なので」と断定していたが、`sharp` は通常の
+    `dependencies` で成り立たない。依存区分を見るよう促す形に直した。
+  - `collectFailureCodes`（18行）が2ファイルに複製されていたので共有化。
+    片方だけ直すと本番証明書スイートが古い規則で黙って通る。
+  - `requireNative` でアプリのモジュール（`../imageExif`）まで包んでいた。そこが落ちるのは
+    ネイティブ依存の不在ではなく退行なので、案内が的外れになる。包むのをやめた。
+  - 本番証明書スイートに `afterAll` が無く `C2PA_MODE` を復元していなかった。
+- 検証: CI 並列チェック8本すべて通過（595 files / 5827 passed | 1 skipped）。
   1 skipped は上記の本番証明書スイート。
 
 ## 2026-09-21 レポート還元の計上失敗を無音にしない —— `recordVehicleReportRevenueShares` の DBエラーを surface (branch claude/merchant-revenue-sharing-22tuq3)

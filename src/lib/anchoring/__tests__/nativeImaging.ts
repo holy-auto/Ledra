@@ -43,8 +43,10 @@ export async function requireNative<T>(load: () => Promise<T>, what: string): Pr
   } catch (cause) {
     throw new Error(
       `${what} を読み込めませんでした。この検査は fail-closed です（skip しません）。\n` +
-        `  未インストールなら: npm ci で入るか確認する（optionalDependencies なので黙って抜けることがある）。\n` +
-        `  "invalid ELF header" などなら: 別プラットフォーム向けのバイナリが置かれている。\n` +
+        `  まず package.json の依存区分を見る: optionalDependencies なら npm ci が黙って抜けることがある\n` +
+        `  （@contentauth/c2pa-node が該当）。dependencies なら入っているはずなので、入っていなければ\n` +
+        `  インストールが壊れているか、プラットフォーム別のサブパッケージが欠けている（sharp が該当）。\n` +
+        `  下の "Caused by" が "invalid ELF header" 等なら、別プラットフォーム向けのバイナリが置かれている。\n` +
         `  理由は src/lib/anchoring/__tests__/nativeImaging.ts と DECISION_LOG 2026-09-21 を参照。`,
       { cause },
     );

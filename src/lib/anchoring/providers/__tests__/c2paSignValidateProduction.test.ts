@@ -1,5 +1,6 @@
-import { describe, it, expect, beforeAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { requireNative } from "../../__tests__/nativeImaging";
+import { collectFailureCodes } from "./c2paFailureCodes";
 
 /**
  * PRODUCTION-CERT signature check. Only runs when C2PA_SIGNER_CERT and
@@ -25,25 +26,6 @@ const hasProdCert = !!(process.env.C2PA_SIGNER_CERT && process.env.C2PA_SIGNER_K
 // A valid signature means NO claimSignature.* code is present.
 const ALLOWED = [/^signingCredential\.untrusted$/];
 
-function collectFailureCodes(json: Record<string, unknown> | null): Set<string> {
-  const acc = new Set<string>();
-  const status = (json?.validation_status ?? []) as Array<{ code?: string }>;
-  for (const e of status) if (e?.code) acc.add(e.code);
-  const walk = (node: unknown): void => {
-    if (Array.isArray(node)) {
-      node.forEach(walk);
-    } else if (node && typeof node === "object") {
-      const obj = node as Record<string, unknown>;
-      if (Array.isArray(obj.failure)) {
-        for (const e of obj.failure as Array<{ code?: string }>) if (e?.code) acc.add(e.code);
-      }
-      for (const v of Object.values(obj)) walk(v);
-    }
-  };
-  walk(json?.validation_results);
-  return acc;
-}
-
 describe.runIf(hasProdCert)("C2PA production-cert signature is valid", () => {
   let signed: Buffer | null = null;
   // Structural type — the package's `Reader` is not reachable via
@@ -53,7 +35,18 @@ describe.runIf(hasProdCert)("C2PA production-cert signature is valid", () => {
   };
   let Reader: C2paReader;
 
+  let originalMode: string | undefined;
+
+  afterAll(() => {
+    // 兄弟スイート（c2paSignValidate.test.ts）は復元しているのに、ここだけ
+    // していなかった。vitest の既定のファイル分離に頼っているだけで、
+    // isolate を切ったり2つを統合したら C2PA_MODE=production が後続へ漏れる（PR #1115 の指摘）。
+    if (originalMode === undefined) delete process.env.C2PA_MODE;
+    else process.env.C2PA_MODE = originalMode;
+  });
+
   beforeAll(async () => {
+    originalMode = process.env.C2PA_MODE;
     process.env.C2PA_MODE = "production";
     // **fail-closed**: 読み込めないことは skip ではなく失敗にする（DECISION_LOG 2026-09-21）。
     // 本番資格情報が渡っている環境でここまで来ている以上、読み込めないのは異常である。

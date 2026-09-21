@@ -17,7 +17,10 @@ describe("stripGpsAndReadExif per-action outcomes", () => {
     // 「読み込めなければ skip」だったので、同じ根で直す。sharp は optional ですらない
     // 通常の依存なので、読み込めないのはインストールが壊れているということ。
     sharp = (await requireNative(() => import("sharp"), "sharp")).default;
-    ({ stripGpsAndReadExif } = await requireNative(() => import("../imageExif"), "../imageExif"));
+    // `../imageExif` はアプリのモジュールで、sharp / exifr は関数の中で遅延 import される。
+    // つまりここが失敗するのはネイティブ依存の不在ではなく**そのモジュール自身の退行**なので、
+    // requireNative で包むと「node_modules を見ろ」という的外れな案内になる（PR #1115 の指摘）。
+    ({ stripGpsAndReadExif } = await import("../imageExif"));
   });
 
   it("a metadata-free image reports reencoded=true but orientationApplied/metadataRemoved=false", async () => {

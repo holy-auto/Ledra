@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { requireNative } from "../../__tests__/nativeImaging";
+import { collectFailureCodes } from "./c2paFailureCodes";
 
 /**
  * Sign a real image and validate the resulting manifest. This is the check that
@@ -35,30 +36,6 @@ describe("C2PA sign → validate (manifest content conformance)", () => {
   // signature/trust concerns, orthogonal to manifest-content conformance, and
   // are cleared by a production certificate. Everything else must be absent.
   const ALLOWED = [/^signingCredential\.untrusted$/, /^claimSignature\./];
-
-  // Collect only FAILURE codes. c2pa 0.6 exposes the legacy `validation_status`
-  // array (failures/warnings) and the structured `validation_results` object.
-  // The latter also carries SUCCESS codes (e.g. assertion.dataHash.match) under
-  // `success`/`informational`, so we must not scan it wholesale — only its
-  // `failure` buckets, or a passing manifest would look failed.
-  function collectFailureCodes(json: Record<string, unknown> | null): Set<string> {
-    const acc = new Set<string>();
-    const status = (json?.validation_status ?? []) as Array<{ code?: string }>;
-    for (const e of status) if (e?.code) acc.add(e.code);
-    const walk = (node: unknown): void => {
-      if (Array.isArray(node)) {
-        node.forEach(walk);
-      } else if (node && typeof node === "object") {
-        const obj = node as Record<string, unknown>;
-        if (Array.isArray(obj.failure)) {
-          for (const e of obj.failure as Array<{ code?: string }>) if (e?.code) acc.add(e.code);
-        }
-        for (const v of Object.values(obj)) walk(v);
-      }
-    };
-    walk(json?.validation_results);
-    return acc;
-  }
 
   beforeAll(async () => {
     originalMode = process.env.C2PA_MODE;
@@ -133,7 +110,7 @@ describe("C2PA sign → validate (manifest content conformance)", () => {
   // transforms that never happened — only c2pa.created, allActionsIncluded=false.
   it("fallback (transform not applied) asserts only c2pa.created with allActionsIncluded=false", async () => {
     const { signC2pa } = await import("../c2pa");
-    const sharp = (await import("sharp")).default;
+    const sharp = (await requireNative(() => import("sharp"), "sharp")).default;
     const buf = await sharp({
       create: { width: 200, height: 120, channels: 3, background: { r: 30, g: 30, b: 30 } },
     })
