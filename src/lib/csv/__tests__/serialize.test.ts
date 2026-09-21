@@ -29,7 +29,27 @@ describe("csvEscape", () => {
 describe("csvDownloadHeaders", () => {
   it("strips quotes/CRLF from filename to prevent header injection", () => {
     const h = csvDownloadHeaders('a"\r\nX-Evil: 1.csv');
-    expect(h["content-disposition"]).toBe('attachment; filename="aX-Evil: 1.csv"');
+    // ASCII fallback keeps the injection-stripped name; filename* mirrors it.
+    expect(h["content-disposition"]).toBe(
+      "attachment; filename=\"aX-Evil: 1.csv\"; filename*=UTF-8''aX-Evil%3A%201.csv",
+    );
+  });
+
+  it("does not throw and stays header-safe (Latin1) for Japanese names", () => {
+    const h = csvDownloadHeaders("ft_jobs_トヨタ実証.csv");
+    const cd = h["content-disposition"];
+    // Regression for the ByteString-throw bug: the header value must be
+    // settable as an HTTP header (all code points <= 255) and expose the
+    // real name via RFC 5987 filename*.
+    expect(() => new Response("", { headers: { "content-disposition": cd } })).not.toThrow();
+    expect([...cd].every((ch) => ch.charCodeAt(0) <= 255)).toBe(true);
+    // ASCII fallback: every CJK char became "_" (no char > 127 in the quoted name).
+    const fallback = cd.match(/filename="([^"]*)"/)?.[1] ?? "";
+    expect(fallback.startsWith("ft_jobs")).toBe(true);
+    expect(fallback.endsWith(".csv")).toBe(true);
+    expect([...fallback].every((ch) => ch.charCodeAt(0) <= 127)).toBe(true);
+    // filename* carries the real UTF-8 name, percent-encoded (exact).
+    expect(cd).toContain("filename*=UTF-8''ft_jobs_%E3%83%88%E3%83%A8%E3%82%BF%E5%AE%9F%E8%A8%BC.csv");
   });
 });
 

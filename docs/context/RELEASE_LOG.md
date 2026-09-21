@@ -4,6 +4,14 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-09-21 Field Test のエクスポートが日本語プロジェクト名で常に500になるのを修正（RFC 5987） (branch claude/merchant-revenue-sharing-22tuq3)
+- 内容: 製造業向け Field Test の CSV エクスポート（`manufacturer/field-test/export/csv`）と PDF レポート（`.../report`）が、`Content-Disposition` の `filename="..."` に日本語プロジェクト名をそのまま入れており、Node/undici の ByteString 変換（コードポイント>255）で throw → **日本語名のプロジェクトでは常に 500**（本コードのプロジェクト名は基本日本語なので事実上いつも失敗）。
+- 修正: `src/lib/csv/serialize.ts` に共有ヘルパ `contentDispositionAttachment()` を追加し、**ASCII フォールバック `filename=` ＋ RFC 5987 `filename*=UTF-8''<percent-encoded>`** の両方を出す（ヘッダインジェクション対策の "・改行除去も維持）。`csvDownloadHeaders` と PDF ルートの両方をこの1関数に集約（PDF ルートは CJK を残す独自サニタイザを廃止）。
+- 検出: `/code-review`（PR #1108）。本セッションで `new Response(...)` により throw を再現・修正後の解消を確認。
+- 検証: `tsc --noEmit` エラー0、`csv` テスト16件パス（日本語名の非throw・Latin1・filename* の回帰テストを追加）、変更ファイル eslint エラー0。
+- 対象: 製造業ポータルの Field Test CSV/PDF エクスポート。
+- 未対応（別issue推奨・本PR外）: 同 `/code-review` が検出した **Field Test テナント側 RLS のドリフト**——`20260917100000_ft_tenant_rls_and_storage.sql` が定義する tenant 用ポリシー（`ft_condition_checks_tenant_insert` 等・`my_tenant_ids()`）が本番に存在せず（マイグレーションは適用記録あり＝ドリフト）、施工店の FT 書き込みが RLS で全ブロック。ただし**本番の FT 利用は全ゼロ（jobs/checks/applications すべて0件）＝実害未発生**。ドリフト整合の進行中作業と競合しうるため、修復マイグレーションは別途慎重に。
+
 ## 2026-09-21 レポート還元の計上失敗を無音にしない —— `recordVehicleReportRevenueShares` の DBエラーを surface (branch claude/merchant-revenue-sharing-22tuq3)
 - 内容: 還元計上関数 `src/lib/vehicleReport/revenueShare.ts` に残っていた3つの Supabase エラー握り潰し（order 読取・settings 読取・台帳 upsert が `console.error(...); return;` で握り潰し）を throw に変更。upsert 失敗時に加盟店の還元計上が無音で欠落し、webhook が正常完了して `stripe-event-monitor` も鳴らない、という会計の穴を塞いだ。
 - 経路の使い分け（意図的）: webhook 側 `handleVehicleReportSessionPaid` は throw を捕まえず伝播させ、Stripe イベントを `processed_at IS NULL` のまま残して monitor cron の replay に載せる（冪等 upsert なので安全）。unlock フォールバックは従来どおり try/catch で非致命のまま——購入者のアクセス Cookie を会計ヒカップで止めないため。webhook が同じ share を冪等 re-book するので自己修復する。
