@@ -126,11 +126,18 @@ export async function recordVehicleReportRevenueShares(orderId: string): Promise
     "vehicle report revenue share — book merchant accrual on paid order (cross-tenant)",
   );
 
-  const { data: orderRaw } = await admin
+  // Surface DB errors on every read/write below: this books the merchant
+  // accrual and the caller (paid webhook) marks the Stripe event processed on
+  // return, so a swallowed error = permanently omitted accrual with no monitor
+  // alert. Throwing keeps the event `processed_at IS NULL` for the
+  // stripe-event-monitor cron + replay; the upsert is idempotent so replay is
+  // safe. (A null order / non-paid status is a legitimate no-op, not an error.)
+  const { data: orderRaw, error: orderErr } = await admin
     .from("vehicle_report_orders")
     .select("id, vin_code_normalized, status, amount_jpy, scope_from, created_at")
     .eq("id", orderId)
     .maybeSingle();
+  if (orderErr) throw new Error(`vehicle report revenue share: order read failed for ${orderId}: ${orderErr.message}`);
   const order = orderRaw as {
     id: string;
     vin_code_normalized: string;
@@ -143,11 +150,15 @@ export async function recordVehicleReportRevenueShares(orderId: string): Promise
 
   const vin = order.vin_code_normalized;
 
-  const { data: settingsRaw } = await admin
+  const { data: settingsRaw, error: settingsErr } = await admin
     .from("vehicle_report_settings")
     .select("merchant_share_bps")
     .eq("id", 1)
     .maybeSingle();
+  // A missing row is fine (falls back to DEFAULT_MERCHANT_SHARE_BPS); a real
+  // read error must not silently book at the default rate — throw to retry.
+  if (settingsErr)
+    throw new Error(`vehicle report revenue share: settings read failed for ${orderId}: ${settingsErr.message}`);
   const shareBps =
     typeof (settingsRaw as { merchant_share_bps: number | null } | null)?.merchant_share_bps === "number"
       ? (settingsRaw as { merchant_share_bps: number }).merchant_share_bps
@@ -183,8 +194,10 @@ export async function recordVehicleReportRevenueShares(orderId: string): Promise
     .upsert(rows, { onConflict: "order_id,tenant_id", ignoreDuplicates: true });
 
   if (error) {
-    console.error("vehicle report revenue share: ledger insert failed", { orderId, vin, error });
-    return;
+    // Don't swallow: a failed booking must surface (throw) so the event is
+    // replayed, not silently drop the merchant accrual. Idempotent upsert
+    // (ignoreDuplicates on UNIQUE(order_id,tenant_id)) makes replay safe.
+    throw new Error(`vehicle report revenue share: ledger insert failed for ${orderId} (${vin}): ${error.message}`);
   }
 
   // Close the booking-vs-refund race: a `charge.refunded` handler that ran
