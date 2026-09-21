@@ -206,11 +206,15 @@ export async function recordVehicleReportRevenueShares(orderId: string): Promise
   // pending shares we just booked so they can't later be approved/paid for a
   // refunded sale. (Shares are pending here and gated behind manual approval,
   // so this recheck reliably wins before any payout.)
-  const { data: freshRaw } = await admin
+  const { data: freshRaw, error: freshErr } = await admin
     .from("vehicle_report_orders")
     .select("status")
     .eq("id", order.id)
     .maybeSingle();
+  // A failed recheck read must not silently skip the cancel (leaving pending
+  // shares on a refunded order) — throw so the event replays and rechecks.
+  if (freshErr)
+    throw new Error(`vehicle report revenue share: refund recheck read failed for ${orderId}: ${freshErr.message}`);
   if ((freshRaw as { status: string } | null)?.status === "refunded") {
     // This cancel is the only barrier stopping the shares we just booked from
     // being approved/paid for a refunded sale. If it fails, surface it (throw)
