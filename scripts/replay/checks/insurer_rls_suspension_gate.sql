@@ -49,11 +49,30 @@ INSERT INTO public.insurer_case_messages (id, case_id, sender_id, sender_type, c
 VALUES ('00000000-0000-4000-8000-0000000001f1', '00000000-0000-4000-8000-0000000001e1',
         '00000000-0000-4000-8000-00000000babe', 'insurer', 'rls gate message');
 
+-- pii_disclosure_consents と ai_usage_logs は、insurer_cases を経由せず
+-- insurer_id を直接見るポリシーなので、**案件が 0 件でも独立に漏れうる**。
+-- /code-review の指摘（2026-09-21）で足した。証明書は FK のために要る。
+INSERT INTO public.certificates (id, tenant_id, public_id)
+VALUES ('00000000-0000-4000-8000-000000000201', '00000000-0000-4000-8000-0000000001a1', 'rls-gate-cert');
+
+INSERT INTO public.pii_disclosure_consents (id, certificate_id, insurer_id, is_active)
+VALUES ('00000000-0000-4000-8000-000000000202', '00000000-0000-4000-8000-000000000201',
+        '00000000-0000-4000-8000-0000000001b1', true);
+
+INSERT INTO public.ai_usage_logs (id, insurer_id, endpoint, outcome)
+VALUES ('00000000-0000-4000-8000-000000000203', '00000000-0000-4000-8000-0000000001b1',
+        'rls-gate-endpoint', 'ok');
+
+INSERT INTO public.insurer_case_attachments (id, case_id, file_name, storage_path)
+VALUES ('00000000-0000-4000-8000-000000000204', '00000000-0000-4000-8000-0000000001e1',
+        'rls-gate.pdf', 'rls-gate/rls-gate.pdf');
+
 DO $$
 DECLARE
   k_insurer CONSTANT uuid := '00000000-0000-4000-8000-0000000001b1';
   k_self    CONSTANT uuid := '00000000-0000-4000-8000-0000000001c1';
   n_ins int; n_iu int; n_ita int; n_case int; n_msg int; n_self int;
+  n_pdc int; n_ai int; n_att int;
   missing text;
 BEGIN
   -- ── 前提: 自社行を支える3本が居ること ────────────────────────────────
@@ -78,11 +97,19 @@ BEGIN
   SELECT count(*) INTO n_ita  FROM public.insurer_tenant_access;
   SELECT count(*) INTO n_case FROM public.insurer_cases;
   SELECT count(*) INTO n_msg  FROM public.insurer_case_messages;
+  SELECT count(*) INTO n_att  FROM public.insurer_case_attachments;
+  SELECT count(*) INTO n_pdc  FROM public.pii_disclosure_consents;
+  SELECT count(*) INTO n_ai   FROM public.ai_usage_logs;
   EXECUTE 'RESET ROLE';
   IF (n_ins, n_iu, n_ita, n_case, n_msg) <> (1, 2, 1, 1, 1) THEN
     RAISE EXCEPTION
       'active で見え方が変わった: insurers=% insurer_users=% tenant_access=% cases=% messages=%（期待 1/2/1/1/1）。ゲートが厳しすぎる',
       n_ins, n_iu, n_ita, n_case, n_msg;
+  END IF;
+  IF (n_att, n_pdc, n_ai) <> (1, 1, 1) THEN
+    RAISE EXCEPTION
+      'active で添付・PII開示同意・AI利用ログが見えない: attachments=% consents=% ai_logs=%（期待 1/1/1）',
+      n_att, n_pdc, n_ai;
   END IF;
 
   -- ── 陽性対照2: 審査中（active_pending_review）も通る ──────────────────
@@ -101,11 +128,28 @@ BEGIN
   SELECT count(*) INTO n_ita  FROM public.insurer_tenant_access;
   SELECT count(*) INTO n_case FROM public.insurer_cases;
   SELECT count(*) INTO n_msg  FROM public.insurer_case_messages;
+  SELECT count(*) INTO n_att  FROM public.insurer_case_attachments;
+  SELECT count(*) INTO n_pdc  FROM public.pii_disclosure_consents;
+  SELECT count(*) INTO n_ai   FROM public.ai_usage_logs;
   EXECUTE 'RESET ROLE';
   IF (n_ita, n_case, n_msg) <> (0, 0, 0) THEN
     RAISE EXCEPTION
       '停止中なのに顧客データ経路が開いている: tenant_access=% cases=% messages=%（期待 0/0/0）',
       n_ita, n_case, n_msg;
+  END IF;
+  -- 添付は insurer_cases 経由なので案件が閉じれば連れて閉じるが、
+  -- **PII 開示同意と AI 利用ログは insurer_id を直接見る**。案件が 0 件でも独立に漏れうるので
+  -- 別の IF で数える（まとめると、どちらが開いたのかメッセージで分からない）。
+  IF n_att <> 0 THEN
+    RAISE EXCEPTION '停止中なのに案件の添付が見える（% 件）', n_att;
+  END IF;
+  IF n_pdc <> 0 THEN
+    RAISE EXCEPTION
+      '停止中なのに PII 開示同意が見える（% 件）。pii_disclosure_consents のポリシーがゲートを通っていない', n_pdc;
+  END IF;
+  IF n_ai <> 0 THEN
+    RAISE EXCEPTION
+      '停止中なのに AI 利用ログが見える（% 件）。ai_usage_logs のポリシーがゲートを通っていない', n_ai;
   END IF;
 
   -- ── 陰性対照2: ただし自社の1行と自分のメンバーシップは残る ────────────

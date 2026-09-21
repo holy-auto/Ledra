@@ -75,8 +75,26 @@
 | `i.status` 条件を落とす | ❌ `停止中なのに顧客データ経路が開いている: tenant_access=1 cases=1 messages=1` |
 | `insurers_select_own` を落とす | ❌ `自社行を支えるポリシーが無い: insurers_select_own` |
 | `i.is_active` 条件を落とす | ❌ `is_active=false なのに案件が見える（1 件）` |
+| `pdc_select_insurer` をゲート前の形に戻す | ❌ `停止中なのに PII 開示同意が見える（1 件）` |
+| `ai_usage_logs_select_insurer` をゲート前の形に戻す | ❌ `停止中なのに AI 利用ログが見える（1 件）` |
 
 いずれも復元後に検査が通ることまで確認している。
+
+下2つは `/code-review` の指摘で足した。**当初の検査は
+`pii_disclosure_consents` と `ai_usage_logs` を一度も数えていなかった** ——
+この2表は `insurer_cases` を経由せず `insurer_id` を直接見るので、案件が 0 件でも
+独立に漏れる。経緯は `M-20260921-detector-covered-half-the-tables-i-had-listed`。
+
+本番の3本が PERMISSIVE であることも確認した（RESTRICTIVE なら `DROP` + `CREATE` で
+アクセスが広がるという指摘。3本とも PERMISSIVE で、`CREATE POLICY` の既定と一致）。
+
+**レビューが見つけた範囲外の不具合（この PR では直していない）**:
+`icm_select_tenant` / `ica_select_tenant`（`20260326000000_insurer_portal_v2.sql`）は
+**絶対にマッチしない**。`insurer_cases` を経由する条件だが、`insurer_cases` には
+施工店側の SELECT ポリシーが無く、内側の副問い合わせが常に 0 行になる。
+つまり施工店は自社の案件のメッセージも添付も読めない。既存の不具合。
+`src/app/api/insurer/switch/route.ts:41` が `.eq("status","active")` で
+`active_pending_review` を除いているのも、他の箇所より狭い。
 
 ### 停止中の見え方
 

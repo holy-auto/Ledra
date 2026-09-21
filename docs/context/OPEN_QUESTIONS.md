@@ -1595,6 +1595,38 @@ starter 1）が、マイグレーション側の check に**弾かれる**。つ
 - 上の表以外にも型・既定値・NOT NULL の食い違いが無いかは**未調査**【要確認】。
   今の検出器はオブジェクトの有無しか見ない。pg_dump 同士の差分を取れば洗える。
 
+## 施工店は自社の案件のメッセージも添付も読めない（2026-09-21・`/code-review` 指摘）
+
+`icm_select_tenant` と `ica_select_tenant`（`20260326000000_insurer_portal_v2.sql`、
+469行目付近と490行目付近）は **絶対にマッチしない**。
+
+```
+case_id IN (SELECT id FROM insurer_cases WHERE tenant_id IN (SELECT my_tenant_ids()))
+```
+
+この内側の `insurer_cases` の副問い合わせ**自体が RLS で絞られる**。
+ところが `insurer_cases` には**保険会社側の SELECT ポリシーしか無い**ので、
+施工店の利用者から見た `insurer_cases` は常に 0 行になり、外側も 0 行になる。
+
+実測（再生 DB・`/code-review` 側）: `my_tenant_ids()` が 1 件で、自テナントの案件に
+メッセージがある利用者から `insurer_cases` 0 件 / `insurer_case_messages` 0 件。
+`pdc_select_tenant` は `certificates` を経由しているのでこの穴に落ちていない
+（施工店は `certificates` を読める）。
+
+**既存の不具合**で、停止ゲート（`20260921134500`）が作ったものではない。
+
+**未決**: (a) `insurer_cases` に施工店側の SELECT ポリシーを足す
+（＝保険会社から来た案件を施工店に見せる設計だったのか、を先に確かめる）。
+(b) 2本のポリシーを消す（＝施工店には見せない設計だったと決める）。
+**どちらが元の意図だったかが分からない。** 本番の `insurer_cases` は1行しかないので、
+今は誰も困っていない。
+
+関連: `src/app/api/insurer/switch/route.ts:41` が `.eq("status", "active")` で
+`active_pending_review` を除いている。`resolveInsurerCaller` /
+`current_insurer_access()` / `my_insurer_ids()` はいずれも
+`IN ('active','active_pending_review')` なので、**ここだけ狭い**。
+審査中の保険会社が切り替えできない可能性がある【要確認】。
+
 ## ポリシーのドリフトが、認可の変更を黙って危険にする（2026-09-21・新規3本）
 
 2026-09-08 起票の「本番にあってマイグレーションに無い RLS ポリシー」に、**3本追加**。
