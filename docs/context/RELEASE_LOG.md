@@ -33,6 +33,62 @@
 検証: `check:migrations` 再生 **485/485**（main の `20260920151600` を取り込み、この版を
 `20260920154100` へ改名したあとの実測）/ `ci-parallel-checks.sh` 8種すべて緑。
 
+## 2026-09-21 保険会社の停止を RLS 側にも効かせた —— 先に「本番にだけ在る3本」を書き起こした
+
+前日に RPC 側（顧客データを返す5本）は塞いだが、**RLS は素通りのままだった**。PostgREST は表も
+直接公開しているので、停止中（`suspended`）の保険会社ユーザが `insurer_cases` /
+`insurer_case_messages` / `insurer_case_attachments` / `pii_disclosure_consents` を読めていた。
+
+### 入れたもの（`20260921134500`）
+
+1. **本番にしか無かった SELECT ポリシー3本をマイグレーションへ書き起こした** ——
+   `insurers_select_own` / `insurers_select_linked_user` / `insurer_users_select_self`。
+   `grep -rn` で 0 件、再生 DB の `pg_policies` にも 0 本。**本番だけのドリフト**だった。
+2. **`my_insurer_ids()` に停止判定を足した** ——
+   `iu.is_active` + `i.is_active` + `i.status IN ('active','active_pending_review')`。
+   ルート層 `resolveInsurerCaller` および `current_insurer_access()` と同じ規則。
+   **ポリシーは1本も触っていない**（14本すべてがこの関数を通り、他の呼び出し元は本番の
+   `pg_proc` で 0 本と実測）。`search_path` も `''` へ直した。
+
+**順序が意味を持つので1ファイルにした。** ②だけ入れると、本番は無事で
+**プレビュー分岐と新環境だけが「停止中に自社名すら出せない」**状態になる。
+
+### 再生 DB で `authenticated` ロールに降りて実測（RLS は所有者と superuser には効かない）
+
+| 状況 | insurers | insurer_users | tenant_access | cases | messages |
+|---|---|---|---|---|---|
+| active・現行 | 1 | 2 | 1 | 1 | 1 |
+| **suspended・現行** | 1 | 2 | **1** | **1** | **1** ← 穴 |
+| suspended・ゲート後（3本なし） | **0** | **0** | 0 | 0 | 0 ← 画面が割れる |
+| **suspended・ゲート後（3本あり）** | **1** | **1（自分だけ）** | **0** | **0** | **0** |
+| active・ゲート後（3本あり） | 1 | 2 | 1 | 1 | 1 ← 無変化 |
+
+書き起こした3本の定義が本番と同一であることは、`pg_policies` の `qual` を空白正規化して
+両側で突き合わせて確認した（3本とも一致 ＝ **本番では実質 no-op**）。
+
+### 検出器そのものを3通りの壊し方で検証した
+
+`scripts/replay/checks/insurer_rls_suspension_gate.sql`（陽性2件・陰性5件、`npm run check:migrations` から毎回走る）。
+
+| 壊し方 | 出たメッセージ |
+|---|---|
+| `i.status` 条件を落とす | ❌ `停止中なのに顧客データ経路が開いている: tenant_access=1 cases=1 messages=1` |
+| `insurers_select_own` を落とす | ❌ `自社行を支えるポリシーが無い: insurers_select_own` |
+| `i.is_active` 条件を落とす | ❌ `is_active=false なのに案件が見える（1 件）` |
+
+いずれも復元後に検査が通ることまで確認している。
+
+### 停止中の見え方
+
+**見えなくなる**: 同僚のスタッフ一覧 / 閲覧許可テナント一覧 / AI 利用ログ /
+案件・メッセージ・添付・PII 開示同意。書き込み側（`ic_insert` / `ic_update` /
+`iu_insert` / `iu_update` / `iu_delete`）も同じ関数を通るので止まる。
+**残る**: 自社の1行、自分のメンバーシップ行、`get_my_insurer_status()`（SECURITY DEFINER）。
+
+**やっていないこと**: アプリ側がこの8表を RLS 経由で読んでいるかサービスロール経由かの
+全数調査【要確認】。実アカウントでの画面確認。`certificates` / `templates` の
+本番だけのポリシー（2026-09-08 起票）。
+
 ## 2026-09-20 保険会社 RPC の停止ゲートを DB 側にも入れた —— 認可の判定を1箇所に集約
 
 **ルート層を通らない経路があった。** `resolveInsurerCaller` は停止中（`suspended`）の
