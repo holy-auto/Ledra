@@ -8,8 +8,11 @@
 -- 検査の形（/code-review の指摘で3点強くした）:
 --   1. 件数だけでなく**返ってくる値**まで見る。select の並びを入れ替えただけでも落ちる
 --   2. ヘルパだけでなく**5本の RPC すべて**を実際に呼ぶ。1本が直読みに戻ったら落ちる
---   3. 「停止中Aと有効Bに属するユーザ」を陰性対照に入れる。**選んでから判定**の順序が
---      崩れて「停止を除いてから選ぶ」形になると、ルート層より緩くなるので落とす
+--   3. 「停止中Aと有効Bに属するユーザ」を陰性対照に入れていたが、**本番のスキーマでは
+--      その状態を作れない**と 2026-09-21 に判明した（`insurer_users_user_id_key
+--      UNIQUE (user_id)`）。到達できない状態の対照は何も守らないので、
+--      「2社目の所属が弾かれること」と「停止中の1社に属するユーザが通らないこと」に分けた。
+--      一意制約が消えたら (a) が落ちるので、そのとき順序の対照を戻す
 --
 -- 最後に ROLLBACK するので DB には何も残らない。
 -- 走らせ方: npm run check:migrations（再生の最後に自動で走る）
@@ -38,6 +41,7 @@ VALUES ('00000000-0000-4000-8000-0000000000c1',
 DO $$
 DECLARE
   k_user      CONSTANT uuid := '00000000-0000-4000-8000-00000000c0de';
+  violated_constraint text;
   k_insurer   CONSTANT uuid := '00000000-0000-4000-8000-0000000000b1';
   k_membership CONSTANT uuid := '00000000-0000-4000-8000-0000000000c1';
   k_insurer_b CONSTANT uuid := '00000000-0000-4000-8000-0000000000b2';
@@ -150,22 +154,39 @@ BEGIN
     RAISE EXCEPTION '無効化された保険会社ユーザが通れる（% 件）', n;
   END IF;
 
-  -- ── 陰性対照5: 「選んでから判定」の順序 ───────────────────────────────────
-  -- 停止中A（古い）と有効B（新しい）に属するユーザ。ルート層は A を選んでから
-  -- A の停止を見て 401 にする（B へは落ちない）。DB も同じでなければ、
-  -- **ルートが 401 のケースで RPC だけが B のデータを返す**ことになる。
+  -- ── 陰性対照5: 1ユーザは2社に所属できない（スキーマが禁じている）────────
+  -- **もとは「停止中Aと有効Bに属するユーザ」を作って順序を見ていたが、その状態は
+  -- 本番のスキーマでは作れない。** 本番の `insurer_users` には
+  -- `insurer_users_user_id_key UNIQUE (user_id)` があり、1ユーザは1社にしか属せない
+  -- （2026-09-21 にこの制約をマイグレーション側へ取り込んだところ、この対照が
+  --  unique_violation で落ちて分かった）。
+  -- 到達できない状態を対照に置いても何も守れないので、**到達できないこと自体**を
+  -- 確かめる対照に置き換えた（2社目の所属が一意制約で弾かれる）。
+  -- 「停止中の1社に属するユーザが通らない」は陰性対照1がすでに見ているので重ねない。
   UPDATE public.insurer_users SET is_active = true WHERE id = k_membership;
-  UPDATE public.insurers SET status = 'suspended' WHERE id = k_insurer;  -- A = 停止中
+  UPDATE public.insurers SET status = 'suspended' WHERE id = k_insurer;
   INSERT INTO public.insurers (id, name, slug, is_active, status)
   VALUES (k_insurer_b, 'gate-check insurer B', 'gate-check-insurer-b', true, 'active');
-  INSERT INTO public.insurer_users (id, insurer_id, user_id, is_active, created_at)
-  VALUES ('00000000-0000-4000-8000-0000000000c2', k_insurer_b, k_user, true, '2026-06-01T00:00:00Z');
 
-  SELECT count(*) INTO n FROM public.current_insurer_access();
-  IF n <> 0 THEN
+  -- 2社目の所属は一意制約で弾かれる。**弾かれなければ、この検査が前提にしている
+  -- 「1ユーザ1社」が崩れているので落とす**（制約が消えたことに気づける）。
+  BEGIN
+    INSERT INTO public.insurer_users (id, insurer_id, user_id, is_active, created_at)
+    VALUES ('00000000-0000-4000-8000-0000000000c2', k_insurer_b, k_user, true, '2026-06-01T00:00:00Z');
     RAISE EXCEPTION
-      '停止中Aを選ぶべき場面で有効Bに落ちている（% 件）。「停止を除いてから選ぶ」形になっており、ルート層より緩い', n;
-  END IF;
+      '1ユーザが2社に所属できてしまった。insurer_users_user_id_key が無い。'
+      'この場合「選んでから判定」の順序が意味を持つので、対照を戻すこと';
+  EXCEPTION WHEN unique_violation THEN
+    -- **どの制約で弾かれたかまで見る。** `unique_violation` を握るだけだと、
+    -- 固定 id を使い回す編集が入ったときに主キー違反を拾って合格してしまい、
+    -- `insurer_users_user_id_key` が消えていても気づけない（/code-review の指摘）。
+    GET STACKED DIAGNOSTICS violated_constraint = CONSTRAINT_NAME;
+    IF violated_constraint <> 'insurer_users_user_id_key' THEN
+      RAISE EXCEPTION
+        '2社目の所属が弾かれたが、理由が insurer_users_user_id_key ではない（% ）。'
+        '対照が別の理由で合格している', violated_constraint;
+    END IF;
+  END;
 
   -- ── 陰性対照6: 別人のセッションでは通らない（auth.uid() を見ていることの確認）──
   UPDATE public.insurers SET status = 'active' WHERE id = k_insurer;
@@ -175,7 +196,7 @@ BEGIN
     RAISE EXCEPTION '無関係なユーザが通れる（% 件）。auth.uid() を見ていない', n;
   END IF;
 
-  RAISE NOTICE '保険会社の停止ゲート: 陽性対照3件・陰性対照6件すべて期待どおり';
+  RAISE NOTICE '保険会社の停止ゲート: 陽性対照3件・陰性対照6件（うち1件は一意制約の確認）すべて期待どおり';
 END $$;
 
 ROLLBACK;
