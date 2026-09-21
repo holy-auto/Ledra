@@ -24,6 +24,17 @@
 -- `vehicles_public_id_uidx`）は制約ではなく一意索引なので、`CREATE INDEX CONCURRENTLY` が
 -- トランザクション内で動かない制約から、1ファイル1文で別に置いてある（20260921093301〜03）。
 --
+-- **既知の重複を2組そのまま配ることになる**（/code-review の指摘）:
+--   - `job_orders_public_id_key (public_id)` は既存の `idx_job_orders_public_id (public_id)` と同じ
+--   - `vehicles_public_id_uidx (public_id)` は既存の `idx_vehicles_public_id (public_id)
+--     WHERE public_id IS NOT NULL` と実質同じ（NULL は元々互いに重複扱いされない）
+-- `20260603010001` は job_orders を対象から外すとき「`job_orders_public_id_key` は本番のみの
+-- ドリフト」と書いており、**重複の解消は専用のマイグレーションに送る**という判断だった。
+-- ここでそれを覆さない —— このファイルの目的は「全環境を本番と同じ形にする」ことで、
+-- 本番に両方ある以上、片方だけ作ると新しいドリフトになる。
+-- **重複を消すなら本番とマイグレーションの両方から1回で落とす**専用の版が要る。
+-- 代表判断待ちとして `OPEN_QUESTIONS.md` に残してある（消しても一意性は残る側が担保する）。
+--
 -- ponytail: 上限。`ALTER TABLE ADD CONSTRAINT ... UNIQUE` は索引を作る間 ACCESS EXCLUSIVE
 -- ロックを取り、CONCURRENTLY にはできない（`CREATE UNIQUE INDEX CONCURRENTLY` →
 -- `ADD CONSTRAINT ... USING INDEX` の2段が要る）。ここではロックが問題にならない ——

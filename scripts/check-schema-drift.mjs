@@ -310,12 +310,19 @@ const prod = {
   ),
   // 一意制約。主キーは別軸（表があれば必ず付いてくる）なので除く。
   // 制約由来か索引由来かは問わない —— 名前で突き合わせる。
+  //
+  // **`indisvalid` を必ず見る。** `CREATE UNIQUE INDEX CONCURRENTLY` は待機フェーズで
+  // 落ちると `indisvalid = false` の索引を残す。名前は pg_index に在るので、
+  // 見ないと「在る」と読んでしまい、次の実行は `IF NOT EXISTS` で黙って飛ぶ。
+  // **無効な索引は一意性を強制しない**ので、この検出器が塞ごうとしている穴
+  // （本番だけが重複を受け入れる）がそのまま残る。無効なら「無い」として扱い、落とす。
   unique_index: names(
     await query(
       "select t.relname||'.'||i.relname from pg_index ix" +
         " join pg_class i on i.oid=ix.indexrelid join pg_class t on t.oid=ix.indrelid" +
         " join pg_namespace n on n.oid=t.relnamespace" +
-        " where n.nspname='public' and ix.indisunique and not ix.indisprimary order by 1",
+        " where n.nspname='public' and ix.indisunique and not ix.indisprimary" +
+        " and ix.indisvalid and ix.indisready order by 1",
     ),
   ),
 };
@@ -382,7 +389,15 @@ console.log(
     ` 一意制約 ${extraUnique.length} 件 / ポリシー ${extraPolicies.length} 件`,
 );
 for (const n of extraColumns) console.log(`         - ${n}`);
-for (const n of extraUnique) console.log(`         - ${n}（一意制約）`);
+// 表ごと本番に無い場合は「本番だけが重複を受け入れる」ではなく「表そのものが無い」。
+// 同じ行で同じ文言を出すと、読んだ人が原因を取り違える。分けて出す（どちらも落とす）。
+const prodTableSet = lowerSet(prod.table);
+const extraUniqueTableMissing = extraUnique.filter((n) => !prodTableSet.has(tableOf(n)));
+const extraUniqueTablePresent = extraUnique.filter((n) => prodTableSet.has(tableOf(n)));
+for (const n of extraUniqueTablePresent) console.log(`         - ${n}（一意制約）`);
+for (const n of extraUniqueTableMissing) {
+  console.log(`         - ${n}（一意制約。ただし**表そのものが本番に無い** —— 先に表を見ること）`);
+}
 
 if (total > 0 || extraColumns.length > 0 || extraUnique.length > 0) {
   if (total > 0) {
@@ -399,12 +414,20 @@ if (total > 0 || extraColumns.length > 0 || extraUnique.length > 0) {
         "\n  足すか、読んでいる側から外すかを決めてください。",
     );
   }
-  if (extraUnique.length > 0) {
+  if (extraUniqueTablePresent.length > 0) {
     console.error(
-      `\n[drift] マイグレーションにだけ存在する一意制約が ${extraUnique.length} 件あります。` +
+      `\n[drift] マイグレーションにだけ存在する一意制約が ${extraUniqueTablePresent.length} 件あります。` +
         "\n  **本番だけがその重複を受け入れます。**性能ではなく正しさの差です" +
         "（実例: idx_payments_idempotency —— 決済の冪等キーが本番でだけ効いていなかった）。" +
+        "\n  `CREATE UNIQUE INDEX CONCURRENTLY` が落ちて無効な索引が残っている場合も" +
+        "ここに出ます（indisvalid を見ているため）。その場合は DROP してから作り直してください。" +
         "\n  本番へ戻すか、マイグレーション側から外すかを決めてください。",
+    );
+  }
+  if (extraUniqueTableMissing.length > 0) {
+    console.error(
+      `\n[drift] マイグレーションにだけ存在する一意制約のうち ${extraUniqueTableMissing.length} 件は、` +
+        "**表そのものが本番にありません**。一意制約ではなく表の未適用として追ってください。",
     );
   }
   process.exit(1);

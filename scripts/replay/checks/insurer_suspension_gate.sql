@@ -41,6 +41,7 @@ VALUES ('00000000-0000-4000-8000-0000000000c1',
 DO $$
 DECLARE
   k_user      CONSTANT uuid := '00000000-0000-4000-8000-00000000c0de';
+  violated_constraint text;
   k_insurer   CONSTANT uuid := '00000000-0000-4000-8000-0000000000b1';
   k_membership CONSTANT uuid := '00000000-0000-4000-8000-0000000000c1';
   k_insurer_b CONSTANT uuid := '00000000-0000-4000-8000-0000000000b2';
@@ -153,22 +154,22 @@ BEGIN
     RAISE EXCEPTION '無効化された保険会社ユーザが通れる（% 件）', n;
   END IF;
 
-  -- ── 陰性対照5: 停止中の1社に属するユーザは通らない ───────────────────────
+  -- ── 陰性対照5: 1ユーザは2社に所属できない（スキーマが禁じている）────────
   -- **もとは「停止中Aと有効Bに属するユーザ」を作って順序を見ていたが、その状態は
   -- 本番のスキーマでは作れない。** 本番の `insurer_users` には
   -- `insurer_users_user_id_key UNIQUE (user_id)` があり、1ユーザは1社にしか属せない
   -- （2026-09-21 にこの制約をマイグレーション側へ取り込んだところ、この対照が
   --  unique_violation で落ちて分かった）。
-  -- 到達できない状態を対照に置いても何も守れないので、下の2つに分けた。
-  --   (a) 到達できないこと自体を確かめる ＝ 2社目の所属が弾かれる
-  --   (b) 今日ありうる形 ＝ 停止中の1社に属するユーザが通らない
+  -- 到達できない状態を対照に置いても何も守れないので、**到達できないこと自体**を
+  -- 確かめる対照に置き換えた（2社目の所属が一意制約で弾かれる）。
+  -- 「停止中の1社に属するユーザが通らない」は陰性対照1がすでに見ているので重ねない。
   UPDATE public.insurer_users SET is_active = true WHERE id = k_membership;
   UPDATE public.insurers SET status = 'suspended' WHERE id = k_insurer;
   INSERT INTO public.insurers (id, name, slug, is_active, status)
   VALUES (k_insurer_b, 'gate-check insurer B', 'gate-check-insurer-b', true, 'active');
 
-  -- (a) 2社目の所属は一意制約で弾かれる。**弾かれなければ、この検査が前提にしている
-  --     「1ユーザ1社」が崩れているので落とす**（制約が消えたことに気づける）。
+  -- 2社目の所属は一意制約で弾かれる。**弾かれなければ、この検査が前提にしている
+  -- 「1ユーザ1社」が崩れているので落とす**（制約が消えたことに気づける）。
   BEGIN
     INSERT INTO public.insurer_users (id, insurer_id, user_id, is_active, created_at)
     VALUES ('00000000-0000-4000-8000-0000000000c2', k_insurer_b, k_user, true, '2026-06-01T00:00:00Z');
@@ -176,14 +177,16 @@ BEGIN
       '1ユーザが2社に所属できてしまった。insurer_users_user_id_key が無い。'
       'この場合「選んでから判定」の順序が意味を持つので、対照を戻すこと';
   EXCEPTION WHEN unique_violation THEN
-    NULL;  -- 期待どおり
+    -- **どの制約で弾かれたかまで見る。** `unique_violation` を握るだけだと、
+    -- 固定 id を使い回す編集が入ったときに主キー違反を拾って合格してしまい、
+    -- `insurer_users_user_id_key` が消えていても気づけない（/code-review の指摘）。
+    GET STACKED DIAGNOSTICS violated_constraint = CONSTRAINT_NAME;
+    IF violated_constraint <> 'insurer_users_user_id_key' THEN
+      RAISE EXCEPTION
+        '2社目の所属が弾かれたが、理由が insurer_users_user_id_key ではない（% ）。'
+        '対照が別の理由で合格している', violated_constraint;
+    END IF;
   END;
-
-  -- (b) 停止中の1社に属するユーザは通らない。
-  SELECT count(*) INTO n FROM public.current_insurer_access();
-  IF n <> 0 THEN
-    RAISE EXCEPTION '停止中の保険会社に属するユーザが通れる（% 件）', n;
-  END IF;
 
   -- ── 陰性対照6: 別人のセッションでは通らない（auth.uid() を見ていることの確認）──
   UPDATE public.insurers SET status = 'active' WHERE id = k_insurer;
