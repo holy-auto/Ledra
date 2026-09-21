@@ -51,10 +51,12 @@ describe("INSURER_USABLE_STATUSES", () => {
       .filter((f) => f.endsWith(".sql"))
       .sort();
     for (const fn of ["current_insurer_access", "my_insurer_ids"]) {
-      const last = [...files].reverse().find((f) => {
-        const t = readFileSync(join(dir, f), "utf8");
-        return new RegExp(`FUNCTION\\s+public\\.${fn}\\s*\\(`, "i").test(t);
-      });
+      // **本体を取り出すのと同じ正規表現で選ぶ。** `FUNCTION public.<名前>(` だけで
+      // 選ぶと GRANT / REVOKE / COMMENT / DROP ... ON FUNCTION にも当たり、
+      // 後から権限だけ触るマイグレーションが来た瞬間に「本体が無い」で落ちる
+      // （/code-review 指摘）。
+      const defRe = new RegExp(`CREATE\\s+OR\\s+REPLACE\\s+FUNCTION\\s+public\\.${fn}\\s*\\(`, "i");
+      const last = [...files].reverse().find((f) => defRe.test(readFileSync(join(dir, f), "utf8")));
       expect(last, `${fn} を定義しているマイグレーションが無い`).toBeDefined();
       const file = readFileSync(join(dir, last as string), "utf8");
       // **関数本体だけを見る。** ファイル全体を対象にすると、同じファイルの別の関数や

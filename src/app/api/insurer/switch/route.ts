@@ -3,7 +3,7 @@ import { cookies } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { checkRateLimit } from "@/lib/api/rateLimit";
-import { apiJson, apiUnauthorized, apiValidationError, apiForbidden } from "@/lib/api/response";
+import { apiJson, apiUnauthorized, apiValidationError, apiForbidden, apiInternalError } from "@/lib/api/response";
 import { insurerSwitchSchema } from "@/lib/validations/insurer";
 import { INSURER_USABLE_STATUSES } from "@/lib/api/insurerAuth";
 
@@ -94,7 +94,7 @@ export async function POST(req: NextRequest) {
   // メンバーシップだけでは足りない。**ここは insurers を一度も見ていなかった**ので、
   // 停止中の保険会社へも切り替えられ、後段の resolveInsurerCaller が 401 を返していた
   // （＝利用者には「メンバーではない」でも「停止中」でもない、理由の分からない失敗に見える）。
-  const { data: usable } = await admin
+  const { data: usable, error: usableErr } = await admin
     .from("insurers")
     .select("id")
     .eq("id", insurer_id)
@@ -102,6 +102,13 @@ export async function POST(req: NextRequest) {
     .in("status", [...INSURER_USABLE_STATUSES])
     .limit(1)
     .maybeSingle();
+
+  // **DB の一時的な失敗を「停止中」と取り違えない。** error を捨てると、健全な
+  // active の保険会社の担当者に「アカウントが利用できません」と出て、原因も残らない
+  // （/code-review 指摘）。行が無いこと（= 本当に使えない）とは分けて返す。
+  if (usableErr) {
+    return apiInternalError(usableErr, "POST /api/insurer/switch — insurers 参照");
+  }
 
   if (!usable) {
     return apiForbidden("この保険会社のアカウントは現在利用できません。管理者にお問い合わせください。");

@@ -1743,11 +1743,11 @@ RLS は列を絞れないので、行を開けば `meta` ごと開く。
 「同じ状態集合を複数箇所に別々に書く」の実例でもある【要確認: 正準モジュールに
 保険案件の軸を足すのか、片方を消すのか】。
 
-関連: `src/app/api/insurer/switch/route.ts:41` が `.eq("status", "active")` で
-`active_pending_review` を除いている。`resolveInsurerCaller` /
-`current_insurer_access()` / `my_insurer_ids()` はいずれも
-`IN ('active','active_pending_review')` なので、**ここだけ狭い**。
-審査中の保険会社が切り替えできない可能性がある【要確認】。
+**【2026-09-21 解決】** 関連として挙げていた `/api/insurer/switch` の件は直した。
+GET が `status='active'` だけを見て審査中を落としていたのに加え、**POST は
+`insurers` を一度も見ていなかった**（停止中でもクッキーを設定できた）。
+規則を `INSURER_USABLE_STATUSES`（`src/lib/api/insurerAuth.ts`）に集約し、
+DB 側2関数との一致を `src/lib/api/__tests__/insurerUsableStatuses.test.ts` が見る。
 
 ## ポリシーのドリフトが、認可の変更を黙って危険にする（2026-09-21・新規3本）
 
