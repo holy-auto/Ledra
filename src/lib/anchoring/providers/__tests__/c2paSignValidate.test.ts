@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { requireNative } from "../../__tests__/nativeImaging";
 
 /**
  * Sign a real image and validate the resulting manifest. This is the check that
@@ -15,7 +16,6 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
  */
 describe("C2PA sign → validate (manifest content conformance)", () => {
   const signedByType: Record<string, Buffer> = {};
-  let readerAvailable = true;
   // Structural type for the bits we use. The package's own `Reader` type is not
   // reachable via `typeof import(...).Reader` under bundler resolution (its .d.ts
   // re-exports use .js/.d.ts specifiers), so we describe the surface we call.
@@ -64,21 +64,15 @@ describe("C2PA sign → validate (manifest content conformance)", () => {
     originalMode = process.env.C2PA_MODE;
     process.env.C2PA_MODE = "dev-signed";
 
-    // Only a native-module load failure (sharp / c2pa-node unavailable on this
-    // platform) is a legitimate skip. Guard ONLY the loads — signing runs after
-    // the guard so an @contentauth/c2pa-node API-shape regression or a broken
-    // manifest fails the test loudly instead of masquerading as a platform skip
-    // (which would silently disable the conformance guard this file exists for).
-    let sharp: typeof import("sharp").default;
-    try {
-      sharp = (await import("sharp")).default;
-      const mod = await import("@contentauth/c2pa-node");
-      Reader = mod.Reader as unknown as C2paReader;
-      if (!Reader) throw new Error("c2pa-node Reader export missing");
-    } catch {
-      readerAvailable = false;
-      return;
-    }
+    // **fail-closed**: 読み込めないことは skip ではなく失敗にする。以前はここで
+    // フラグを倒して各 it で ctx.skip() していたため、依存が入らないだけで
+    // この適合性ゲートが丸ごと沈黙し、CI が緑のままだった（DECISION_LOG 2026-09-21）。
+    // ガードを「読み込み」だけに限定するのは従来どおり。署名はこの後ろで走るので、
+    // API 形状の退行やマニフェストの不正は普通のテスト失敗として出る。
+    const sharp = (await requireNative(() => import("sharp"), "sharp")).default;
+    const mod = await requireNative(() => import("@contentauth/c2pa-node"), "@contentauth/c2pa-node");
+    Reader = mod.Reader as unknown as C2paReader;
+    if (!Reader) throw new Error("c2pa-node の Reader export が見つかりません（API 形状の退行）");
 
     const { signC2pa } = await import("../c2pa");
     for (const { fmt, mime } of TYPES) {
@@ -98,11 +92,7 @@ describe("C2PA sign → validate (manifest content conformance)", () => {
   });
 
   for (const { mime } of TYPES) {
-    it(`${mime}: manifest has only dev-signing validation codes (no content errors)`, async (ctx) => {
-      if (!readerAvailable) {
-        ctx.skip(); // native c2pa-node/sharp not loadable here — surfaced as skipped, not passed
-        return;
-      }
+    it(`${mime}: manifest has only dev-signing validation codes (no content errors)`, async () => {
       const signed = signedByType[mime];
       expect(signed, `signing produced a buffer for ${mime}`).toBeTruthy();
 
@@ -141,11 +131,7 @@ describe("C2PA sign → validate (manifest content conformance)", () => {
   // Fallback path: when the upload pipeline could NOT re-encode/strip (sharp
   // failed) and signs the original as-is, the manifest must not certify
   // transforms that never happened — only c2pa.created, allActionsIncluded=false.
-  it("fallback (transform not applied) asserts only c2pa.created with allActionsIncluded=false", async (ctx) => {
-    if (!readerAvailable) {
-      ctx.skip();
-      return;
-    }
+  it("fallback (transform not applied) asserts only c2pa.created with allActionsIncluded=false", async () => {
     const { signC2pa } = await import("../c2pa");
     const sharp = (await import("sharp")).default;
     const buf = await sharp({

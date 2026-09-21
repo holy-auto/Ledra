@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeAll } from "vitest";
+import { requireNative } from "../../__tests__/nativeImaging";
 
 /**
  * PRODUCTION-CERT signature check. Only runs when C2PA_SIGNER_CERT and
@@ -51,22 +52,17 @@ describe.runIf(hasProdCert)("C2PA production-cert signature is valid", () => {
     fromAsset(input: { buffer: Buffer; mimeType: string }): Promise<{ json(): unknown } | null>;
   };
   let Reader: C2paReader;
-  let nativeAvailable = true;
 
   beforeAll(async () => {
     process.env.C2PA_MODE = "production";
-    // Only a native-module load failure is a legitimate skip. Signing runs after
-    // the guard: with production credentials supplied, a signing failure means the
-    // app would fail open to unsigned images, so it must FAIL this suite, not skip.
-    let sharp: typeof import("sharp").default;
-    try {
-      sharp = (await import("sharp")).default;
-      Reader = (await import("@contentauth/c2pa-node")).Reader as unknown as C2paReader;
-      if (!Reader) throw new Error("c2pa-node Reader export missing");
-    } catch {
-      nativeAvailable = false;
-      return;
-    }
+    // **fail-closed**: 読み込めないことは skip ではなく失敗にする（DECISION_LOG 2026-09-21）。
+    // 本番資格情報が渡っている環境でここまで来ている以上、読み込めないのは異常である。
+    // なお suite 全体の `describe.runIf(hasProdCert)` は別物で、そちらは設計どおりの
+    // スキップ（本番鍵は署名環境にしか無い）。
+    const sharp = (await requireNative(() => import("sharp"), "sharp")).default;
+    const mod = await requireNative(() => import("@contentauth/c2pa-node"), "@contentauth/c2pa-node");
+    Reader = mod.Reader as unknown as C2paReader;
+    if (!Reader) throw new Error("c2pa-node の Reader export が見つかりません（API 形状の退行）");
     const { signC2pa } = await import("../c2pa");
     const buf = await sharp({
       create: { width: 240, height: 160, channels: 3, background: { r: 20, g: 90, b: 160 } },
@@ -77,11 +73,7 @@ describe.runIf(hasProdCert)("C2PA production-cert signature is valid", () => {
     signed = res.signedBuffer ?? null;
   }, 30_000);
 
-  it("has no claimSignature or content failures (untrusted CA is allowed)", async (ctx) => {
-    if (!nativeAvailable) {
-      ctx.skip(); // native c2pa-node/sharp not loadable here — surfaced as skipped, not passed
-      return;
-    }
+  it("has no claimSignature or content failures (untrusted CA is allowed)", async () => {
     expect(signed, "production signing produced a buffer").toBeTruthy();
     const reader = await Reader.fromAsset({ buffer: signed!, mimeType: "image/jpeg" });
     const raw = reader?.json();

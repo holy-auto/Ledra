@@ -4,6 +4,25 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-09-21 C2PA 適合性ゲートを fail-closed にした（読み込めなければ落ちる）
+
+- ネイティブ依存の読み込み失敗を `ctx.skip()` で逃がしていた**4箇所**を削除し、
+  `src/lib/anchoring/__tests__/nativeImaging.ts` の `requireNative()` に一本化した。
+  読み込めなければ投げる。対象は `c2paSignValidate.test.ts`（2箇所）、
+  `c2paSignValidateProduction.test.ts`（1箇所）、`imageExif.test.ts`（1箇所）。
+  最後の1つは C2PA ではないが同じ形の兄弟で、残すと同じ沈黙が残る。
+- **陰性対照で確認した。** `node_modules/@contentauth/c2pa-node` を退避して実行すると、
+  変更前は `Test Files 1 passed / Tests 4 skipped`（緑）、変更後は `Test Files 1 failed`（exit 1）。
+- 失敗メッセージは対処まで書く: fail-closed であること、未インストールなら `npm ci` を見ること、
+  `invalid ELF header` なら別プラットフォームのバイナリであること。元の例外は `cause` に残す。
+- `requireNative()` 自体のテストを4件追加（成功時の素通し・失敗時の throw・メッセージの中身・
+  `cause` の保持）。「失敗したら投げる」だけを見ると「常に投げる」実装でも通るので、
+  成功側も固定してある。
+- **`describe.runIf(hasProdCert)` は触っていない。** 本番証明書スイートのスキップは
+  設計どおり（本番鍵は署名環境にしか無い）。
+- 検証: CI 並列チェック8本すべて通過（594 files / 5827 passed | 1 skipped）。
+  1 skipped は上記の本番証明書スイート。
+
 ## 2026-09-21 レポート還元の計上失敗を無音にしない —— `recordVehicleReportRevenueShares` の DBエラーを surface (branch claude/merchant-revenue-sharing-22tuq3)
 - 内容: 還元計上関数 `src/lib/vehicleReport/revenueShare.ts` に残っていた3つの Supabase エラー握り潰し（order 読取・settings 読取・台帳 upsert が `console.error(...); return;` で握り潰し）を throw に変更。upsert 失敗時に加盟店の還元計上が無音で欠落し、webhook が正常完了して `stripe-event-monitor` も鳴らない、という会計の穴を塞いだ。
 - 経路の使い分け（意図的）: webhook 側 `handleVehicleReportSessionPaid` は throw を捕まえず伝播させ、Stripe イベントを `processed_at IS NULL` のまま残して monitor cron の replay に載せる（冪等 upsert なので安全）。unlock フォールバックは従来どおり try/catch で非致命のまま——購入者のアクセス Cookie を会計ヒカップで止めないため。webhook が同じ share を冪等 re-book するので自己修復する。
