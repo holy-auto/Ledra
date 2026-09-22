@@ -4,6 +4,34 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-09-22 新環境で車両登録が通らなくなるのを直した（前の PR の後始末）
+
+`20260922123100` が本番から `vehicles_public_id_format_chk` を取り込んだが、
+**同じ列の既定値を揃えていなかった**。
+
+    本番            DEFAULT generate_vehicle_public_id()  → 'v_' + 24桁hex  → 通る
+    マイグレーション DEFAULT 'veh_' || replace(...)         → 'veh_' + 32桁hex → 弾かれる
+
+アプリは `public_id` を省いて insert するので、**空 DB から作った環境では通常の車両登録が
+必ず 23514 で落ちる**（Codex の P1 指摘）。本番は既定が生成関数なので無傷、実データも違反0件。
+
+- `20260922131500`: 既定を `generate_vehicle_public_id()` へ揃える。**本番では no-op。**
+- `scripts/replay/checks/vehicles_public_id_default.sql`: `public_id` を省いて車両を入れ、
+  既定が CHECK を通る形かまで見る振る舞い検査。**修正を外して実際に落ちることを確認した**
+  （`ERROR: new row for relation "vehicles" violates check constraint
+  "vehicles_public_id_format_chk"`）。DEFAULT と CHECK のどちらが変わっても落ちる。
+
+MISTAKE_LEDGER: `M-20260922-copied-a-check-without-checking-the-default`（型 B）。
+列を「名前」の単位で考えていた。列には生成側（DEFAULT）と検査側（CHECK）があり、
+片方だけ揃えると矛盾する。
+
+**同時に見つかった本番の既存バグ（未修正）**: `insurer_access_logs_action_check` は4値しか許さないが、
+アプリは 13 種類の `action` を書く。**11 種類が本番で弾かれており、案件操作の監査記録が
+1件も残っていない**（本番の `insurer_access_logs` は2行・すべて `search`）。
+語彙の決め方に判断が要るので `OPEN_QUESTIONS` へ。
+
+検証: `check:migrations` 再生・振る舞いの検査 **3 件**緑 / `ci-parallel-checks.sh` 8種すべて緑。
+
 ## 2026-09-22 外部キーと CHECK も両方向で揃え、検出器に足した
 
 **同じ事故が制約も壊していた。** `20260918142610 remote_schema` は索引 38 本に加えて

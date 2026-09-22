@@ -3,6 +3,35 @@
 > まだ決まっていないこと、判断に迷っていることを書く場所。決まったら
 > DECISION_LOG.md に移し、このファイルからは消す（削除履歴は git で追える）。
 
+## 保険会社の監査ログが本番で記録できていない（2026-09-22）
+
+`insurer_access_logs_action_check` は **`view` / `search` / `download_pdf` / `export_csv` の4値だけ**を許す。
+この制約は**本番に以前から在る**（`20260922123100` はそれをマイグレーション側へ写しただけ）。
+
+ところがアプリが書く `action` は **13 種類**ある（`src/app/api/insurer/**`・`src/lib/insurer/audit.ts`・
+`src/lib/ai/automation/**` から機械的に抽出）:
+
+    case_assign_suggest_auto  case_attachment_upload  case_bulk_update  case_create
+    case_message  case_summary_auto  case_update  download_pdf  fraud_check
+    fraud_check_auto  issue_certificate  pii_disclosure_request  view
+
+うち通るのは `view` と `download_pdf` の2つだけで、**残り 11 種類は本番で弾かれている**。
+本番の `insurer_access_logs` は **2行・すべて `search`** で、案件操作の監査記録が1件も無いのは
+これで説明がつく（Codex の P1 指摘。2026-09-22）。
+
+書き込み経路で挙動が分かれる。`src/lib/insurer/audit.ts` は `if (insErr) throw insErr` なので
+**リクエストごと 500 になる**が、`src/lib/ai/automation/*.ts` の直 insert は結果を見ていないので
+**黙って記録だけ落ちる**【要確認: どの経路が実際に使われているか】。
+
+**未決**: どう直すか。
+- (a) CHECK を実際の語彙 13 種へ広げる（本番とマイグレーションの両方）。広げる方向なので既存行は壊れない
+- (b) コード側を4値の語彙に寄せる（`case_*` を `meta` に入れて `action` は `view`/`search` に畳む）
+- (c) `action` を正準語彙として `src/lib/domain/` に定義し、CHECK をそこから生成する
+  （CLAUDE.md のドメイン状態語彙ルールに沿う形）
+
+(a) が最短だが、`action` に何を載せる設計なのかを決めないと同じことが起きる。
+**監査は Ledra の売りなので、記録が落ちている状態を長く放置しない**。
+
 ## 一意でない索引が本番と再生 DB で食い違っている（2026-09-21）
 
 **一意制約の差は `20260921093300`〜`05` で解消した**（DECISION_LOG 2026-09-21）。
