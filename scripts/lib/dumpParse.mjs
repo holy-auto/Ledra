@@ -34,3 +34,32 @@ export function uniqueFromDump(text) {
   }
   return out;
 }
+
+/**
+ * 制約の名前を `表名.制約名` で拾う。`kind` は 'FOREIGN KEY' か 'CHECK'。
+ *
+ * pg_dump は制約を `ALTER TABLE ONLY public.<表>\n    ADD CONSTRAINT <名前> <種類> ...` で出す。
+ * **CHECK は列定義の中にインラインでも書かれる**が、その形は名前を持たない匿名制約か、
+ * `CONSTRAINT <名前> CHECK (...)` として CREATE TABLE の中に現れる。後者も拾う ——
+ * 拾い漏らすと「本番にあって再生に無い」と出続ける幻のドリフトになる。
+ */
+export function constraintsFromDump(text, kind) {
+  const out = new Set();
+  const alterRe = new RegExp(
+    `^ALTER TABLE (?:ONLY )?public\\.([\\w"]+)\\s*\\n\\s*ADD CONSTRAINT ([\\w"]+) ${kind}[ (]`,
+    "gm",
+  );
+  for (const m of text.matchAll(alterRe)) out.add(`${bare(m[1])}.${bare(m[2])}`);
+
+  if (kind === "CHECK") {
+    // CREATE TABLE の中の `CONSTRAINT <名前> CHECK (` も拾う。
+    const tableRe = /^CREATE (?:UNLOGGED )?TABLE (?:ONLY )?public\.([\w"]+) \(\n([\s\S]*?)^\)/gm;
+    for (const m of text.matchAll(tableRe)) {
+      const table = bare(m[1]);
+      for (const c of m[2].matchAll(/^\s*CONSTRAINT ([\w"]+) CHECK[ (]/gm)) {
+        out.add(`${table}.${bare(c[1])}`);
+      }
+    }
+  }
+  return out;
+}

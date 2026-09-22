@@ -4,6 +4,61 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-09-22 外部キーと CHECK も両方向で揃え、検出器に足した
+
+**同じ事故が制約も壊していた。** `20260918142610 remote_schema` は索引 38 本に加えて
+**制約を 19 本**落としており（本番台帳の `statements` で確認）、今も本番に無いのが
+**外部キー6本・CHECK 8本**だった。
+
+**実害が出ていた**: `tenant_memberships` に `user_id` が `auth.users` に無い行が1件ある
+（role=owner・2026-07-26 作成）。この外部キーは `ON DELETE CASCADE` なので、
+生きていれば利用者の削除と一緒に消えていた。**行は消していない**（`OPEN_QUESTIONS`）。
+
+- `20260922123000`: 本番から消えた**外部キー6本と CHECK 5本を戻す**。すべて `NOT VALID`
+  （孤児行があるので `tenant_memberships` は VALID では足せない。他も全表走査のロックを避ける）。
+  **本番で実際に走るのはこのファイルだけ。**
+- `20260922123100`: 本番にあってマイグレーションが作らない **CHECK 9本・外部キー3本**を足す。
+  本番では no-op。
+
+落ちた CHECK 8本のうち3本（`certificates_status_check` / `tenants_plan_tier_check` /
+`tenant_memberships_role_check`）は**対象外**にした。本番は列そのものを enum
+（`certificate_status_enum` / `plan_tier_enum` / `membership_role_enum`）にして
+CHECK を置き換えており、「本番が緩い」のではなく「別の形で同じことをしている」。
+
+**検出器**: `check-schema-drift.mjs` が外部キーと CHECK を見るようになった。
+外部キーは**両方向で落とす**。CHECK は**逆向きを落とさない** —— 上の3本が直しようのない赤として
+居座り、新しいドリフトを埋もれさせるため。件数と名前は出す。
+解析（`scripts/lib/dumpParse.mjs`）は再生 DB の dump 全体で当たりを取った
+（外部キー 600 = 600・CHECK 328 = 328、いずれも差分0）。
+**CHECK は `ALTER TABLE ADD CONSTRAINT` と `CREATE TABLE` 内インラインの2つの書き方がある。**
+
+適用後の見込み: 外部キーは本番・再生とも 603 で両方向 0。CHECK は本番 334 / 再生 337 で、
+差は enum に置き換わった3本だけ。
+
+残る差（`OPEN_QUESTIONS`）: RLS ポリシー 本番 622 / 再生 642 の名前突き合わせ、
+列の**型**の差（enum 対 text。列名しか比べていないのでどの検査にも映らない）、
+一意でない索引 70 本、孤児 membership 1件の扱い。
+
+検証: `check:migrations` 再生 **493/493**・振る舞いの検査2件緑 /
+`ci-parallel-checks.sh` 8種すべて緑 / 単体テスト 13 件。
+## 2026-09-22 Field Test テナント側 RLS ドリフトの修復＋不足ポリシー補完＋ロジック3件 (branch claude/merchant-revenue-sharing-22tuq3)
+- 背景: `/code-review`（#1108/#1112）で検出した FT 残課題（issue #1117）に着手。本番実測で、`20260917100000_ft_tenant_rls_and_storage.sql` は適用記録があるのに**そのポリシー群も ft-evidence バケットも本番に存在しない**（recorded-but-not-applied ドリフト）と確定。施工店ユーザーの FT 参照・書き込みが RLS で全ブロックされる状態だった（FT 本番利用は 2026-09-21 時点で全ゼロ＝実害未発生）。
+- migration `20260922000000_repair_ft_tenant_rls_drift.sql`:
+  - `20260917100000` の tenant ポリシー群（`my_tenant_ids()` 経由の SELECT/INSERT/UPDATE）と `ft-evidence` バケットを**冪等に再適用**（`DROP POLICY IF EXISTS`→`CREATE`。`check:migrations` 再生でも重複しない）。
+  - 元migrationに欠けていた **UPDATE ポリシーを補完**: `ft_condition_checks` / `ft_training_completions` は upsert(ON CONFLICT DO UPDATE) なのに INSERT ポリシーのみで、再保存が RLS で 500 になっていた。
+  - `workshop_capability_profiles` に tenant の **INSERT/UPDATE** を追加（どのmigrationにも write ポリシーが無く `upsertWorkshopProfile` が初回保存から失敗していた）。
+- コード修正:
+  - `manufacturer/field-test/jobs/[id]`: `completed` から他ステータスへ戻したとき `completed_at` を `null` に戻す（消し忘れで analytics/report の完了数が過大化していた）。
+  - `manufacturer/field-test/defects/[id]`: `resolved`/`closed` から他ステータスへ戻したとき `resolved_at`/`resolved_by` を `null` に戻す（`completed_at` と同型の消し忘れ。CSV の解決日が未解決の不具合に出るのを防ぐ。`/code-review` 指摘）。
+  - `tenantQueries.listTrainingWithCompletions`: テナント全完了行ではなく当該プロジェクトのモジュールに絞って取得（payload 肥大の抑制）。
+  - `createApplication`: `UNIQUE(recruitment_id, tenant_id)` 違反(23505)時、既存行が `withdrawn`/`rejected` なら**再応募として復活**（status を pending に戻し review 情報をクリア）、`pending`/`approved` のときだけ型付きエラー `FT_DUPLICATE_APPLICATION` で 4xx。取り下げ後に再応募できない「片道罠」を解消（`/code-review` 指摘）。admin/mobile 両ルートで 4xx 変換。
+- 検証: `lint:migrations` OK、`check:migrations` 再生 493/493・RLS 打ち消しなし、`tsc --noEmit` エラー0、`fieldTest` テスト16件パス（createApplication の insert/revive/dup/rethrow 回帰4件を追加）、変更ファイル eslint エラー0。
+- 未対応（本PR外・#1117 に残す）:
+  - evidence_submitted 通知の宛先（現状は提出元テナント自身。メーカー側へ届けるにはメーカー通知チャネルが必要で、tenant-keyed `notifications` では表現できない＝別設計）。
+  - condition-checks POST の入力バリデーション（value_* を zod で型検査せず生値を DB へ。malformed で 500。既存の trust-boundary ギャップで本PRの回帰ではない）。
+  - `manufacturer/field-test/report` の二重 ft_jobs クエリ（1本目 select に `id` を足せば1本に集約可能・性能のみ）。
+- 対象: Field Test（製造業ポータル＋施工店の web/mobile API）・本番 RLS ドリフト修復。
+
 ## 2026-09-21 C2PA 適合性ゲートを fail-closed にした（読み込めなければ落ちる）
 
 - ネイティブ依存の読み込み失敗を `ctx.skip()` で逃がしていた**4箇所**を削除し、
@@ -122,6 +177,8 @@ CHECK 制約（329 / 328）・外部キー（597 / 600）・RLS ポリシー（6
 
 ## 2026-09-21 保険会社の「使える状態」を1箇所に集約し、`db-typegen` の赤の意味を戻した
 
+**マージ済み**（#1111 → `7f66029`、2026-09-22）。
+
 RLS 停止ゲート（#1107）の残件を消化した。**5件のうち2件は前提が崩れた。**
 
 ### `/api/insurer/switch` が、同じファイルの中で互いに食い違っていた
@@ -150,8 +207,14 @@ POST は広すぎて**停止中でもクッキーを設定できた**（後段�
 
 ### `db-typegen` は、トークンが無いときだけ赤くならないようにした
 
-`TYPEGEN_TOKEN` が未登録の間、最後の PR 作成だけが必ず失敗し、**マージのたびに赤**だった。
+`TYPEGEN_TOKEN` が未登録の間、最後の PR 作成だけが必ず失敗し、赤いままだった。
 赤が常態になると本物の失敗を見落とす（2026-09-07 に13日間見落とした系列）。
+
+**【2026-09-22 訂正】 当初ここに「マージのたびに赤」と書いたが、実際は
+「マイグレーションを含むマージのたびに」である。** `db-typegen` は
+`db-migrate`（`push: main` の `paths: supabase/migrations/**`）の成功後にしか起動しない。
+2026-09-01 以降の `main` へのマージ 101 件のうち該当は **27 件**。
+経緯は `M-20260922-said-typegen-red-on-every-merge`。
 PR 作成ステップに `continue-on-error: ${{ steps.typegen_token.outputs.present != 'true' }}`
 を付けた。**握り潰しではない** —— push は先に成功しているので生成物は
 `chore/db-typegen` に残り、warning も注釈も出る。変わるのはジョブの色だけで、
@@ -180,6 +243,12 @@ PR 作成ステップに `continue-on-error: ${{ steps.typegen_token.outputs.pre
 **施工店の返信待ち状態へ遷移させる経路が本番に無い。**
 
 ### やっていないこと
+
+**`continue-on-error` はまだ一度も実行されていない。** #1111 はマイグレーションを
+含まないので、このマージでは `db-migrate` も `db-typegen` も起動しなかった。
+`workflow_dispatch` での手動確認はこのセッションの権限では叩けない
+（403 Resource not accessible by integration）。**次にマイグレーションを含む PR が
+マージされたときが初回**【要確認】。
 
 **実アカウントでの画面確認**は実行できない（保険会社ユーザのセッションを用意する手段が無い）。
 `npm run check:drift` も、このセッションに `SUPABASE_ACCESS_TOKEN` /
