@@ -49,67 +49,55 @@ export async function resolveInsurerCaller(): Promise<InsurerCallerContext | nul
   const cookieStore = await cookies();
   const activeInsurerId = cookieStore.get(ACTIVE_INSURER_COOKIE)?.value;
 
-  // Build query for insurer_user record
-  let query = admin
+  // Fetch ALL active memberships (oldest first) — never narrow by cookie here.
+  // Picking a single row before checking insurer usability was the bug: a
+  // cookie-pinned but suspended insurer would win the query, then get rejected
+  // by the status filter, and the user was locked out even though another
+  // usable insurer existed. Resolve usability across all memberships instead.
+  const { data: memberships, error: iuErr } = await admin
     .from("insurer_users")
     .select("id, insurer_id, role")
     .eq("user_id", auth.user.id)
-    .eq("is_active", true);
-
-  if (activeInsurerId) {
-    // Try specific insurer first
-    query = query.eq("insurer_id", activeInsurerId);
-  }
-
-  const { data: iu, error: iuErr } = await query.order("created_at", { ascending: true }).limit(1).maybeSingle();
-
-  // If cookie-specified insurer not found, fall back to any
-  if (!iu && activeInsurerId) {
-    const { data: fallbackIu } = await admin
-      .from("insurer_users")
-      .select("id, insurer_id, role")
-      .eq("user_id", auth.user.id)
-      .eq("is_active", true)
-      .order("created_at", { ascending: true })
-      .limit(1)
-      .maybeSingle();
-    if (!fallbackIu) return null;
-    // Use fallback and continue
-    return resolveInsurerContext(admin, auth.user.id, fallbackIu);
-  }
-
-  if (iuErr || !iu) return null;
-
-  return resolveInsurerContext(admin, auth.user.id, iu);
-}
-
-async function resolveInsurerContext(
-  admin: ReturnType<typeof createServiceRoleAdmin>,
-  userId: string,
-  iu: { id: string; insurer_id: string; role: string },
-): Promise<InsurerCallerContext | null> {
-  // Get insurer plan info — allow active and active_pending_review (not suspended)
-  const { data: insurer, error: insErr } = await admin
-    .from("insurers")
-    .select("plan_tier, status")
-    .eq("id", iu.insurer_id)
     .eq("is_active", true)
-    .in("status", [...INSURER_USABLE_STATUSES])
-    .limit(1)
-    .maybeSingle();
+    .order("created_at", { ascending: true });
 
-  if (insErr || !insurer) return null;
+  if (iuErr || !memberships?.length) return null;
+
+  // Which of those insurers are usable (active/active_pending_review, not suspended)?
+  const insurerIds = memberships.map((m) => m.insurer_id);
+  const { data: insurers, error: insErr } = await admin
+    .from("insurers")
+    .select("id, plan_tier, status")
+    .in("id", insurerIds)
+    .eq("is_active", true)
+    .in("status", [...INSURER_USABLE_STATUSES]);
+
+  if (insErr) return null;
+
+  const usableById = new Map((insurers ?? []).map((i) => [i.id, i]));
+
+  // Prefer the cookie-pinned insurer when it is both a membership and usable;
+  // otherwise fall back to the oldest membership whose insurer is usable.
+  const pinned =
+    activeInsurerId && usableById.has(activeInsurerId)
+      ? memberships.find((m) => m.insurer_id === activeInsurerId)
+      : undefined;
+  const chosen = pinned ?? memberships.find((m) => usableById.has(m.insurer_id));
+  if (!chosen) return null;
+
+  const insurer = usableById.get(chosen.insurer_id);
+  if (!insurer) return null;
 
   const ctx: InsurerCallerContext = {
-    userId,
-    insurerId: iu.insurer_id,
-    insurerUserId: iu.id,
-    role: normalizeInsurerRole(iu.role),
+    userId: auth.user.id,
+    insurerId: chosen.insurer_id,
+    insurerUserId: chosen.id,
+    role: normalizeInsurerRole(chosen.role),
     planTier: normalizeInsurerPlanTier(insurer.plan_tier),
     insurerStatus: insurer.status as InsurerStatus,
   };
 
-  setSentryInsurerContext({ userId, insurerId: iu.insurer_id });
+  setSentryInsurerContext({ userId: auth.user.id, insurerId: chosen.insurer_id });
 
   return ctx;
 }
