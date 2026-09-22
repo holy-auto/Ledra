@@ -13,12 +13,13 @@
  * 解析 135 件 = `pg_index` の 135 件、差分 0）。ここは書き方の読み分けだけ。
  */
 import { describe, it, expect } from "vitest";
-import { uniqueFromDump } from "../lib/dumpParse.mjs";
+import { uniqueFromDump, constraintsFromDump } from "../lib/dumpParse.mjs";
 
 const DUMP = `
 CREATE TABLE public.tenants (
     id uuid NOT NULL,
-    slug text NOT NULL
+    slug text NOT NULL,
+    CONSTRAINT tenants_slug_length CHECK ((char_length(slug) > 0))
 );
 
 CREATE UNIQUE INDEX vehicles_public_id_uidx ON public.vehicles USING btree (public_id);
@@ -35,6 +36,9 @@ ALTER TABLE ONLY public.tenants
 
 ALTER TABLE ONLY public.documents
     ADD CONSTRAINT documents_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id);
+
+ALTER TABLE ONLY public.documents
+    ADD CONSTRAINT documents_status_check CHECK ((status = ANY (ARRAY['draft'::text, 'sent'::text])));
 `;
 
 describe("uniqueFromDump（pg_dump から一意制約を拾う）", () => {
@@ -69,6 +73,40 @@ describe("uniqueFromDump（pg_dump から一意制約を拾う）", () => {
       "tenants.tenants_custom_domain_uniq",
       "tenants.tenants_slug_key",
       "vehicles.vehicles_public_id_uidx",
+    ]);
+  });
+});
+
+describe("constraintsFromDump（pg_dump から外部キー・CHECK を拾う）", () => {
+  const fks = constraintsFromDump(DUMP, "FOREIGN KEY");
+  const checks = constraintsFromDump(DUMP, "CHECK");
+
+  it("外部キーを 表名.制約名 で拾う", () => {
+    expect([...fks]).toEqual(["documents.documents_tenant_id_fkey"]);
+  });
+
+  it("ALTER TABLE 由来の CHECK を拾う", () => {
+    expect(checks.has("documents.documents_status_check")).toBe(true);
+  });
+
+  it("**CREATE TABLE の中に書かれた CHECK も拾う**（書き方が2つある）", () => {
+    expect(checks.has("tenants.tenants_slug_length")).toBe(true);
+  });
+
+  it("UNIQUE 制約を CHECK と読み違えない", () => {
+    expect(checks.has("tenants.tenants_slug_key")).toBe(false);
+    expect(fks.has("tenants.tenants_slug_key")).toBe(false);
+  });
+
+  it("PRIMARY KEY をどちらにも入れない", () => {
+    expect(checks.has("tenants.tenants_pkey")).toBe(false);
+    expect(fks.has("tenants.tenants_pkey")).toBe(false);
+  });
+
+  it("CHECK は2件だけ（件数も固定する）", () => {
+    expect([...checks].sort()).toEqual([
+      "documents.documents_status_check",
+      "tenants.tenants_slug_length",
     ]);
   });
 });
