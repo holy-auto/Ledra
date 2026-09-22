@@ -107,7 +107,6 @@ jobs:
       # 未設定を「PR 作成の失敗メッセージ」任せにしない。あのメッセージは
       # 設定の話しかしないので、CI が走らない方 (2) には気づけない
       - name: TYPEGEN_TOKEN の有無を確かめる
-        id: typegen_token
         env:
           TYPEGEN_TOKEN: ${{ secrets.TYPEGEN_TOKEN }}
         run: |
@@ -118,34 +117,16 @@ jobs:
             # 「両方効く」と出すと、その失敗の原因からトークンを外して読ませてしまう
             echo "TYPEGEN_TOKEN は設定されている（値の有効性・権限はここでは判定できない）。"
             echo "次のステップが 401/403 で落ちるなら、まず失効と権限 (contents: write / pull-requests: write) を疑う。"
-            echo "present=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          echo "present=false" >> "$GITHUB_OUTPUT"
           echo "::warning::TYPEGEN_TOKEN が未設定です。既定の GITHUB_TOKEN へ落ちるため、(1) PR 作成が『GitHub Actions is not permitted to create or approve pull requests』で失敗し、(2) 仮に人が PR を作っても、この workflow が force-push するたびに CI が走らない head に戻ります。contents: write と pull-requests: write を持つ PAT を TYPEGEN_TOKEN として登録してください（GitHub App のインストールトークンは1時間で失効するのでこの形では使えません）。"
 
       - name: Open PR if types changed
-        id: open_pr
-        # **トークンが無いときだけ、このステップの失敗でジョブを赤くしない。**
-        #
-        # 未登録の間、最後の PR 作成だけが必ず
-        # "GitHub Actions is not permitted to create or approve pull requests" で落ち、
-        # マージのたびにこのワークフローが赤くなる。**赤が常態になると「赤いのが普通」に
-        # なり、本物の失敗を見落とす**（2026-09-07 に 13 日間見落とした系列。
-        # OPEN_QUESTIONS「db-typegen.yml の TYPEGEN_TOKEN 登録」）。
-        #
-        # 握り潰しではない: **push は先に成功している**ので生成物は
-        # chore/db-typegen に残り、直前のステップが未設定の理由を warning で出し、
-        # このステップ自体も失敗として注釈が付く。変わるのはジョブの色だけ。
-        # **トークンが設定されているのに落ちた場合は、今までどおり赤になる**
-        # （失効・権限不足を見落とさないため）。
-        #
-        # **握り潰す範囲がステップ単位であることの穴は、次のステップで塞ぐ。**
-        # continue-on-error は PR 作成だけでなく commit と push にも掛かるので、
-        # push が弾かれた場合も緑になり、生成した型が黙って消えうる（/code-review 指摘）。
-        #
-        # 登録が済んだら、この1行を消すだけで元に戻る。
-        continue-on-error: ${{ steps.typegen_token.outputs.present != 'true' }}
+        # **2026-09-22: TYPEGEN_TOKEN が登録され、実行 #195（workflow_dispatch）が
+        # PR #1120 の作成まで通った。** 未登録の間だけ失敗を握っていた
+        # `continue-on-error` はここで外した —— 以後このステップが落ちたら赤になる
+        # （失効・権限不足・シークレットの消失を見落とさないため）。
+        # 未設定に戻った場合は直前のステップが warning を出し、ここが赤くなる。
         uses: peter-evans/create-pull-request@v8
         with:
           # 未設定なら既定の GITHUB_TOKEN へ落ちる（＝2026-09-07 以前と同じ挙動）。
@@ -165,20 +146,3 @@ jobs:
           branch: chore/db-typegen
           delete-branch: true
 
-      # continue-on-error で緑にしたとき、**落ちたのが PR 作成だけだったことを確かめる。**
-      # create-pull-request は push を済ませてから PR を作るので、PR 作成だけが落ちた
-      # 場合は chore/db-typegen に生成物が載っている。載っていなければ push の側が
-      # 落ちており、**型が黙って消えた**ことになる。そのときは赤にする。
-      - name: 生成物が chore/db-typegen に載ったか確かめる
-        if: steps.typegen_token.outputs.present != 'true' && steps.open_pr.outcome == 'failure'
-        run: |
-          set -uo pipefail
-          if ! git fetch --depth=1 origin chore/db-typegen 2>/dev/null; then
-            echo "::error::PR 作成が失敗したうえ、chore/db-typegen が remote に存在しません。push の側が落ちています（生成した型はどこにも残っていません）。"
-            exit 1
-          fi
-          if ! git diff --quiet FETCH_HEAD -- src/types/db.generated.ts; then
-            echo "::error::PR 作成が失敗したうえ、chore/db-typegen の src/types/db.generated.ts が今回の生成物と違います。push の側が落ちています。"
-            exit 1
-          fi
-          echo "chore/db-typegen に今回の生成物が載っている（落ちたのは PR 作成だけ）。TYPEGEN_TOKEN を登録すれば PR まで通る。"
