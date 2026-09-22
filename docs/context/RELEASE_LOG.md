@@ -59,6 +59,40 @@ CHECK を置き換えており、「本番が緩い」のではなく「別の�
   - `manufacturer/field-test/report` の二重 ft_jobs クエリ（1本目 select に `id` を足せば1本に集約可能・性能のみ）。
 - 対象: Field Test（製造業ポータル＋施工店の web/mobile API）・本番 RLS ドリフト修復。
 
+## 2026-09-22 `TYPEGEN_TOKEN` が登録され、型の自動再生成が2026-09-07以来はじめて完結した
+
+代表が PAT を `TYPEGEN_TOKEN` として登録。手動実行（Actions → "DB types regenerate" →
+Run workflow）で **実行 #195 が全ステップ success**、**PR #1120（`chore(db): regenerate
+Supabase types`）が自動で立った**。`src/types/db.generated.ts` の1ファイルのみ、
+**+16271 / −14758**（2026-09-07 以降 PR 作成が落ち続け、型が止まっていた分の差）。
+
+- **手動実行だけでなく、自然な起動でも回った。** 同日の #1119・#1116（どちらも
+  マイグレーションを含む）のマージで実行 #196 / #197 が `workflow_run` から起動し、
+  **どちらも success**。`db-migrate → db-typegen → PR` の連鎖が実際に動いている。
+  なお #197 は**新しい PR を作らず、PR #1120 の head を `7f4ff8a` に差し替えた**
+  （固定ブランチ `chore/db-typegen` の設計どおり。下の `exit 1` の根拠でもある）。
+- 2026-09-07 から 15 日間、生成と push は成功していたのに **PR 作成だけ**が
+  「GitHub Actions is not permitted to create or approve pull requests」で落ちていた。
+  成果物は `chore/db-typegen` に積み上がるが、誰も見ないブランチだった。
+- **`continue-on-error` は一度も発火しないまま役目を終えた。** 入れたのが #1111（09-21）、
+  登録が 09-22 で、その間にマイグレーションを含むマージが無かった。今回の PR で外し、
+  併せて**それを補っていた検査ステップ（`生成物が chore/db-typegen に載ったか確かめる`）と、
+  どこからも参照されなくなった `id:` / `present` 出力も削除**した。
+  以後このステップが落ちたら赤になる（失効・権限不足・シークレットの消失を見落とさないため）。
+- **シークレットが消えた場合を warning から `exit 1` に変えた。** 当初は「消えたら次の
+  ステップが赤くなる」と書いたが、**成立しない** —— `chore/db-typegen` の PR が既に
+  開いていると、`GITHUB_TOKEN` へ落ちても `create-pull-request` は**既存 PR の更新**に
+  なり、「PR を作れない」エラーが出ない。**緑のまま head だけが CI 未実行のコミットへ
+  戻る**（このワークフローの冒頭が自分で書いている穴(2)そのもの）。`/code-review` の指摘。
+  前段で落とせばフォールバックが発動しないので、経路ごと塞いだ。
+
+`OPEN_QUESTIONS` の当該項目は、**登録（当初の2番）だけを解決として畳み、
+「Actions の PR 作成許可」（1番）は代表の再判断待ちとして残した**。
+**こちらは有効化していない** —— PAT 経路では不要で（実測でも、この設定に触らないまま
+PR #1120 が立った）、有効化はリポジトリ全体の権限を広げる（2026-09-11 の判断どおり）。
+`LEDRA_CURRENT` の「登録までは赤くなり続ける」「自動化はまだ完結していない」も更新した。
+
+
 ## 2026-09-21 Field Test のエクスポートが日本語プロジェクト名で常に500になるのを修正（RFC 5987） (branch claude/merchant-revenue-sharing-22tuq3)
 - 内容: 製造業向け Field Test の CSV エクスポート（`manufacturer/field-test/export/csv`）と PDF レポート（`.../report`）が、`Content-Disposition` の `filename="..."` に日本語プロジェクト名をそのまま入れており、Node/undici の ByteString 変換（コードポイント>255）で throw → **日本語名のプロジェクトでは常に 500**（本コードのプロジェクト名は基本日本語なので事実上いつも失敗）。
 - 修正: `src/lib/csv/serialize.ts` に共有ヘルパ `contentDispositionAttachment()` を追加し、**ASCII フォールバック `filename=` ＋ RFC 5987 `filename*=UTF-8''<percent-encoded>`** の両方を出す（ヘッダインジェクション対策の "・改行除去も維持）。`csvDownloadHeaders` と PDF ルートの両方をこの1関数に集約（PDF ルートは CJK を残す独自サニタイザを廃止）。
