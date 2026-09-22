@@ -62,6 +62,24 @@
 既定値・NULL 可否・型の食い違いは `check:schema` にも再生にも映らない。
 検出器を属性まで見るように広げるかは別途判断する。
 
+## Field Test 既存コードの残バグ3件（2026-09-22・#1117・`/code-review` #1123 検出）
+
+FT 本番利用は全ゼロ＝実害なし。FT を使い始める前に対応すればよい。本 PR(#1123) の
+テーマ（通知/insurer/検証）と無関係なのでスコープを分け、#1117 にトラッキング。
+
+- **A. `.single()` on no-op UPDATE → 500（共通根・helper 化推奨）**: `tenantQueries.ts` の
+  `withdrawApplication` / `acceptAgreement` / `updateTenantFtJobStatus` は状態ガード付き
+  UPDATE に `.single()` を掛けており、二重操作や競合で 0 行になると PGRST116 を throw →
+  `apiInternalError`=500。同機能のメーカー側 `manufacturer/field-test/applications/[id]` は
+  PGRST116 を 404 にしており不整合。`maybeSingle`＋明示的な no-op 結果（404/409/冪等成功）に寄せる。
+- **B. 応募の締切未チェック＋notes 未検証**: `{admin,mobile}/field-test/applications` は
+  `rec.is_open` のみで `rec.deadline` を比較せず、締切超過でも応募できる。`notes` は zod 無しで DB へ。
+- **C. report / analytics の集計重複（品質）**: per-tenant+global 集計(~90行)が2ルートでほぼ
+  逐語コピー。共有集計関数に抽出しないと片方だけ直して PDF と API が乖離する。
+
+（解決済み: 「メーカー向け通知チャネルの設計」は #1123 で新設＝クローズ。DECISION_LOG 2026-09-22。）
+
+
 ## 一意でない索引が本番と再生 DB で食い違っている（2026-09-21）
 
 **一意制約の差は `20260921093300`〜`05` で解消した**（DECISION_LOG 2026-09-21）。
