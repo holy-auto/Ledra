@@ -1,19 +1,17 @@
 import { describe, it, expect } from "vitest";
 import { validateTenantStatusTransition, createApplication } from "../tenantQueries";
 
-// Minimal chainable fake of the supabase insert path used by createApplication:
-// .from(...).insert(...).select(...).single() → { data, error }.
+// Minimal chainable fake covering both paths createApplication uses:
+//   insert(...).select(...).single()            → { data|null, error }
+//   update(...).eq().eq().in().select().maybeSingle() → { data:reviveData|null }
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function fakeSupabaseInsertError(error: { code?: string; message?: string } | null): any {
-  return {
-    from: () => ({
-      insert: () => ({
-        select: () => ({
-          single: async () => ({ data: error ? null : { id: "x" }, error }),
-        }),
-      }),
-    }),
-  };
+function fakeSupa(opts: { insertError?: { code?: string; message?: string } | null; reviveData?: unknown }): any {
+  const insertError = opts.insertError ?? null;
+  const obj: Record<string, unknown> = {};
+  for (const m of ["from", "insert", "update", "select", "eq", "in"]) obj[m] = () => obj;
+  obj.single = async () => ({ data: insertError ? null : { id: "new", status: "pending" }, error: insertError });
+  obj.maybeSingle = async () => ({ data: opts.reviveData ?? null, error: null });
+  return obj;
 }
 
 const appRow = {
@@ -24,14 +22,24 @@ const appRow = {
   applied_by: "u1",
 };
 
-describe("createApplication duplicate handling", () => {
-  it("maps a UNIQUE violation (23505) to a typed FT_DUPLICATE_APPLICATION error", async () => {
-    const supa = fakeSupabaseInsertError({ code: "23505", message: "duplicate key" });
+describe("createApplication re-apply / duplicate handling", () => {
+  it("inserts a fresh application when there is no conflict", async () => {
+    const supa = fakeSupa({ insertError: null });
+    await expect(createApplication(supa, appRow)).resolves.toMatchObject({ id: "new" });
+  });
+
+  it("revives a withdrawn/rejected application on re-apply (23505 → update finds a revivable row)", async () => {
+    const supa = fakeSupa({ insertError: { code: "23505" }, reviveData: { id: "revived", status: "pending" } });
+    await expect(createApplication(supa, appRow)).resolves.toMatchObject({ id: "revived" });
+  });
+
+  it("blocks a genuine active duplicate (23505 → no revivable row) with a typed error", async () => {
+    const supa = fakeSupa({ insertError: { code: "23505" }, reviveData: null });
     await expect(createApplication(supa, appRow)).rejects.toMatchObject({ code: "FT_DUPLICATE_APPLICATION" });
   });
 
   it("rethrows non-unique DB errors unchanged (not mislabeled as duplicate)", async () => {
-    const supa = fakeSupabaseInsertError({ code: "42501", message: "rls denied" });
+    const supa = fakeSupa({ insertError: { code: "42501", message: "rls denied" } });
     await expect(createApplication(supa, appRow)).rejects.toMatchObject({ code: "42501" });
   });
 });
