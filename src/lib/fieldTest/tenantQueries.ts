@@ -278,13 +278,36 @@ export async function createApplication(
     notes?: string;
   },
 ) {
-  const { data, error } = await supabase
+  const sel = "id, status, notes, created_at, recruitment_id, project_id";
+  const { data, error } = await supabase.from("ft_applications").insert(row).select(sel).single();
+  if (!error) return data;
+  if ((error as { code?: string }).code !== "23505") throw error;
+
+  // UNIQUE(recruitment_id, tenant_id) 違反。既存行が withdrawn / rejected なら「再応募」
+  // として復活させる（取り下げ・不採用の後に再度応募できるべき）。pending / approved
+  // （＝有効な応募中）のときだけ本当の二重応募として弾く。
+  const { data: revived, error: reviveErr } = await supabase
     .from("ft_applications")
-    .insert(row)
-    .select("id, status, notes, created_at, recruitment_id, project_id")
-    .single();
-  if (error) throw error;
-  return data;
+    .update({
+      status: "pending",
+      applied_by: row.applied_by,
+      notes: row.notes ?? null,
+      review_notes: null,
+      reviewed_by: null,
+      reviewed_at: null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("recruitment_id", row.recruitment_id)
+    .eq("tenant_id", row.tenant_id)
+    .in("status", ["withdrawn", "rejected"])
+    .select(sel)
+    .maybeSingle();
+  if (reviveErr) throw reviveErr;
+  if (revived) return revived;
+
+  const dup = new Error("この募集にはすでに応募済みです。") as Error & { code?: string };
+  dup.code = "FT_DUPLICATE_APPLICATION";
+  throw dup;
 }
 
 export async function withdrawApplication(supabase: Supa, tenantId: string, applicationId: string) {
@@ -303,18 +326,23 @@ export async function withdrawApplication(supabase: Supa, tenantId: string, appl
 // ── Training ──
 
 export async function listTrainingWithCompletions(supabase: Supa, tenantId: string, projectId: string) {
-  const [modulesRes, completionsRes] = await Promise.all([
-    supabase
-      .from("ft_training_modules")
-      .select("id, title, description, content_url, sort_order, is_required, created_at")
-      .eq("project_id", projectId)
-      .order("sort_order", { ascending: true }),
-    supabase
-      .from("ft_training_completions")
-      .select("id, module_id, completed_by, completed_at")
-      .eq("tenant_id", tenantId),
-  ]);
+  const modulesRes = await supabase
+    .from("ft_training_modules")
+    .select("id, title, description, content_url, sort_order, is_required, created_at")
+    .eq("project_id", projectId)
+    .order("sort_order", { ascending: true });
   if (modulesRes.error) throw modulesRes.error;
+
+  const moduleIds = (modulesRes.data ?? []).map((m) => m.id as string);
+  // このプロジェクトのモジュールに絞る。テナント全完了行を引くと、参加プロジェクト
+  // が増えるほど payload が無制限に膨らむため（表示に使うのは projectId 分だけ）。
+  const completionsRes = moduleIds.length
+    ? await supabase
+        .from("ft_training_completions")
+        .select("id, module_id, completed_by, completed_at")
+        .eq("tenant_id", tenantId)
+        .in("module_id", moduleIds)
+    : { data: [], error: null };
   if (completionsRes.error) throw completionsRes.error;
 
   const completionMap = new Map((completionsRes.data ?? []).map((c) => [c.module_id as string, c]));
