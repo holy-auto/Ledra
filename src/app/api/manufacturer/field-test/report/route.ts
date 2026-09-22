@@ -4,6 +4,7 @@ import { resolveManufacturerCaller } from "@/lib/auth/manufacturerCaller";
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { apiUnauthorized, apiForbidden, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
 import { renderFieldTestReport, type FtReportData, type FtReportTenantDetail } from "@/lib/pdf/pdfFieldTestReport";
+import { contentDispositionAttachment } from "@/lib/csv/serialize";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -224,12 +225,13 @@ export async function GET(req: NextRequest) {
     // ── Render PDF ──
     const pdfBuffer = await renderFieldTestReport(reportData);
 
-    const safeName = (project.name as string).replace(/[^\w\u3000-\u9FFF-]/g, "_");
     return new NextResponse(new Uint8Array(pdfBuffer), {
       status: 200,
       headers: {
         "content-type": "application/pdf",
-        "content-disposition": `attachment; filename="ft_report_${safeName}.pdf"`,
+        // \u65E5\u672C\u8A9E\u30D7\u30ED\u30B8\u30A7\u30AF\u30C8\u540D\u3067\u3082 500 \u306B\u306A\u3089\u306A\u3044\u3088\u3046 RFC 5987 \u3067\u7D44\u307F\u7ACB\u3066\u308B
+        // \uFF08ASCII \u30D5\u30A9\u30FC\u30EB\u30D0\u30C3\u30AF + filename*\uFF09\u3002
+        "content-disposition": contentDispositionAttachment(`ft_report_${project.name as string}.pdf`),
         "cache-control": "no-store",
       },
     });
