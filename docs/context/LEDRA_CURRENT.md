@@ -4,7 +4,19 @@
 > 追わず、常に最新状態だけを保つ（履歴は DECISION_LOG.md / RELEASE_LOG.md 側）。
 > 大きな変化があったら都度上書きすること。
 
-最終更新: 2026-09-21
+最終更新: 2026-09-22
+
+> 2026-09-22 追記: **メーカー向け in-app 通知チャネルを新設**（#1123・`20260922140000`、本番未適用）。
+> 施工店の証拠提出（evidence_submitted）通知が提出元テナント自身に飛んでメーカーに届いて
+> いなかった。`notifications` は tenant-keyed で表現できないため、姉妹表
+> `manufacturer_notifications`（`manufacturer_id` / RLS `my_manufacturer_ids()`・
+> `insurer_notifications` と同方針の別表）を作り、`notifyFtManufacturer`＋読み取り API 3本＋
+> メーカーポータルのベル（`NotificationBell` を `basePath` で再利用）を追加。通知先を
+> メーカー宛に付け替えた。**本番に表が作られるのは次回 db-migrate。**メーカーベルは
+> サイドバー（デスクトップ表示）に載る＝モバイル対応は将来課題。
+> 同 PR で **#1122 停止保険会社のフォールバック**（`resolveInsurerCaller` がクッキー指定先の
+> 停止で締め出していたのを、使える保険会社へフォールバック）と **FT condition-checks の
+> 入力/越境検証・report の二重クエリ解消**も対応。
 
 > 2026-09-21 追記: **C2PA 適合性ゲートを fail-closed にした。** ネイティブ依存が
 > 読み込めないことを `ctx.skip()` で隠していた4箇所を削除し、読み込めなければ落ちるようにした。

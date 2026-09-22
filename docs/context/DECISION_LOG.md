@@ -4,6 +4,18 @@
 > （新しい順）。実装の詳細は RELEASE_LOG.md、迷っている段階のものは
 > OPEN_QUESTIONS.md に書く。
 
+## 2026-09-22 メーカー通知チャネルを別表で新設 —— evidence_submitted の宛先を提出元テナントからメーカーへ
+
+1. 日付: 2026-09-22（`date -u` で確認）
+2. 起きたこと: #1117 の据え置き項目「evidence_submitted 通知がメーカーに届かない」に着手。代表判断で**メーカー通知チャネルを新設**（同日の前 DECISION では「別設計として据え置く」としていたのを覆した）。姉妹表 `manufacturer_notifications`（`20260922140000`）を追加し、施工店の証拠提出時の通知先を提出元テナント自身からメーカーへ付け替えた。あわせて #1122（停止保険会社のフォールバック）・condition-checks の入力/越境検証・report の二重クエリ解消も同 PR(#1123) で対応しマージ（437ef68）。
+3. 以前の考え: 「通知チャネルはスキーマ級の新機能なので FT 未使用のうちは据え置く」。
+4. 違和感・問題: (a) 既存 `notifications` は `tenant_id NOT NULL REFERENCES tenants(id)`・RLS `my_tenant_ids()` で、メーカー（別エンティティ・`my_manufacturer_ids()`）は表現できない。カラム追加案（`manufacturer_id` を足して `tenant_id` を nullable 化）は**1つの表/カラムに2つの宛先軸を混ぜる**ことになり、稼働中の tenant 通知の RLS・挙動に手を入れるリスク。(b) 既に姉妹先例 `insurer_notifications`（別表）があった。
+5. 決めたこと: (a) **別表 `manufacturer_notifications`**（`manufacturer_id` / RLS `my_manufacturer_ids()` / INSERT はサービスロールのみ / realtime は付けない＝ベルはポーリング）。`insurer_notifications` と同方針。(b) 挿入は `notifyFtManufacturer`（service-role）。(c) 読み取り API 3本はレスポンス形を tenant 版と揃え、**ベル UI は clone せず `basePath` prop で再利用**。(d) evidence_submitted の emit をメーカー宛に付け替え（リンク `/manufacturer/field-test/{projectId}`）。
+6. 捨てた選択肢: (a) 既存 `notifications` に `manufacturer_id` を足す＝2軸混在・本番表の nullable 化リスク。(b) tenant への自己通知を残す＝提出者自身への冗長通知で、次に動くメーカーには届かない。(c) ベル UI を clone＝二重管理。(d) realtime publish＝購読者不在の YAGNI。
+7. 判断理由: 「1カラム1軸」（CLAUDE.md ドメイン語彙ルール）と既存先例に沿うのが最小で安全。ベルは `basePath` 差し替えでコンポーネント再利用（クローン0）。realtime は使わないので足さない。
+8. まだ答えが出ていないこと: (a) メーカーベルはサイドバー（`hidden lg:flex`＝デスクトップ）に載る。メーカーポータルはモバイルナビ未整備で既存ナビと同挙動だが、モバイル対応は将来課題。(b) `manufacturer_notifications` が本番に実際に作られるのは次回 db-migrate 実行時＝適用後に本番実測が要る。(c) 他の `notifyFtTenant` 発火点（応募/検査/不具合等）をメーカーへも fan-out するかは未着手（今回は evidence_submitted のみ）。(d) `/code-review` が検出した FT 既存バグ3件（`.single()` on no-op→500 の共通根・応募締切未チェック＋notes 未検証・report/analytics 集計重複）は #1117 にトラッキング。
+9. 公開区分: 公開可（設計方針「宛先軸ごとに表を分ける」「UIは basePath で再利用」は一般化できる。本番ID・実データは非公開）。
+
 ## 2026-09-22 制約も同じ事故で消えていた —— 外部キーとCHECKを両方向で揃える
 
 1. 日付: 2026-09-22（`date -u` で確認）
