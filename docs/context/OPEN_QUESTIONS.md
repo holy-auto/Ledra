@@ -764,6 +764,31 @@ Stripe webhook（`payment_intent.payment_failed`）+ Expo Push API 送信の
   #1054 と #1056 が同じ CVE 3件を別々に直し、後者が丸ごと無駄になった（M-081）。
   リポジトリ全体を止める赤は「気づいた人が直す」だと重複する。
 
+## Actions の「PR 作成許可」を有効化するか（2026-09-09 / 2026-09-22 更新）
+
+**2 だった `TYPEGEN_TOKEN` の登録は 2026-09-22 に完了した**（実行 #195 が PR #1120 の
+作成まで通った）。**自動化はこれで完結している。** 残っているのは当初1番だった方だけで、
+**こちらは実施していない**。
+
+1. **Settings → Actions → General → Workflow permissions →
+   「Allow GitHub Actions to create and approve pull requests」を有効にするか。**
+
+**Claude の見立ては「不要」**（2026-09-11 の Codex レビュー指摘と一致）。
+
+- `TYPEGEN_TOKEN` があれば `create-pull-request` は**その PAT として**認証するので、
+  `GITHUB_TOKEN` の PR 作成可否を決めるこの設定は経路に関係しない。**実測でもそのとおりで、
+  この設定を触らないまま PR #1120 が立った。**
+- **有効化はリポジトリ全体に効く。** `pull-requests: write` を要求する**どのワークフローも**
+  PR を作成・承認できるようになる。typegen 1本のために全ワークフローの権限を広げることになる。
+- 有効化しても**フォールバック経路は直らない。** `GITHUB_TOKEN` で PR が立つようになるだけで、
+  その後の push は相変わらず CI を起動しない（再帰防止の仕様）。つまり「PR は自動で立つが
+  誰も検証していない差分が並ぶ」状態そのものを作る。
+
+**代表からは当初「1と2は両方やる」との指示を受けている。** 上記は指示時点で出ていなかった
+情報なので、**1 を実施するかは代表の再判断が要る**（Claude の判断で落とすべきものではない）。
+なお `docs.github.com` は作業環境からブロックされたままで、**1 の要否を一次情報で確認する
+ことは依然できていない**【要確認】。
+
 ## stripe-event-monitor が検知した3件の詰まりが `account.updated` に偏り、`payload` も NULL（2026-09-11）
 
 本番 Supabase (`cahybswpduchptvyvdkk`) を実測。`stripe_processed_events` で

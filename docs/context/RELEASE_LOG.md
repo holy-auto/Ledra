@@ -19,12 +19,18 @@ Supabase types`）が自動で立った**。`src/types/db.generated.ts` の1フ�
   併せて**それを補っていた検査ステップ（`生成物が chore/db-typegen に載ったか確かめる`）と、
   どこからも参照されなくなった `id:` / `present` 出力も削除**した。
   以後このステップが落ちたら赤になる（失効・権限不足・シークレットの消失を見落とさないため）。
-- **未設定に戻った場合の警告は残してある** —— `token: ${{ secrets.TYPEGEN_TOKEN || github.token }}`
-  のフォールバックと、直前のステップの `::warning::` はそのまま。
+- **シークレットが消えた場合を warning から `exit 1` に変えた。** 当初は「消えたら次の
+  ステップが赤くなる」と書いたが、**成立しない** —— `chore/db-typegen` の PR が既に
+  開いていると、`GITHUB_TOKEN` へ落ちても `create-pull-request` は**既存 PR の更新**に
+  なり、「PR を作れない」エラーが出ない。**緑のまま head だけが CI 未実行のコミットへ
+  戻る**（このワークフローの冒頭が自分で書いている穴(2)そのもの）。`/code-review` の指摘。
+  前段で落とせばフォールバックが発動しないので、経路ごと塞いだ。
 
-`OPEN_QUESTIONS` の「TYPEGEN_TOKEN 登録と、Actions の PR 作成許可（2026-09-09）」は解決したので削除した。
-**「Allow GitHub Actions to create and approve pull requests」は有効化していない**
-（PAT 経路では不要で、有効化はリポジトリ全体の権限を広げる。2026-09-11 の判断どおり）。
+`OPEN_QUESTIONS` の当該項目は、**登録（当初の2番）だけを解決として畳み、
+「Actions の PR 作成許可」（1番）は代表の再判断待ちとして残した**。
+**こちらは有効化していない** —— PAT 経路では不要で（実測でも、この設定に触らないまま
+PR #1120 が立った）、有効化はリポジトリ全体の権限を広げる（2026-09-11 の判断どおり）。
+`LEDRA_CURRENT` の「登録までは赤くなり続ける」「自動化はまだ完結していない」も更新した。
 
 ## 2026-09-21 Field Test のエクスポートが日本語プロジェクト名で常に500になるのを修正（RFC 5987） (branch claude/merchant-revenue-sharing-22tuq3)
 - 内容: 製造業向け Field Test の CSV エクスポート（`manufacturer/field-test/export/csv`）と PDF レポート（`.../report`）が、`Content-Disposition` の `filename="..."` に日本語プロジェクト名をそのまま入れており、Node/undici の ByteString 変換（コードポイント>255）で throw → **日本語名のプロジェクトでは常に 500**（本コードのプロジェクト名は基本日本語なので事実上いつも失敗）。

@@ -119,18 +119,25 @@ jobs:
             echo "次のステップが 401/403 で落ちるなら、まず失効と権限 (contents: write / pull-requests: write) を疑う。"
             exit 0
           fi
-          echo "::warning::TYPEGEN_TOKEN が未設定です。既定の GITHUB_TOKEN へ落ちるため、(1) PR 作成が『GitHub Actions is not permitted to create or approve pull requests』で失敗し、(2) 仮に人が PR を作っても、この workflow が force-push するたびに CI が走らない head に戻ります。contents: write と pull-requests: write を持つ PAT を TYPEGEN_TOKEN として登録してください（GitHub App のインストールトークンは1時間で失効するのでこの形では使えません）。"
+          # **2026-09-22 以降は警告ではなく失敗にする。** 登録済みが正常な状態になったので、
+          # 消えた・名前が変わったのは異常。しかも **warning のままだと緑で通りうる** ——
+          # chore/db-typegen の PR が既に開いていると、GITHUB_TOKEN へ落ちても
+          # create-pull-request は**既存 PR の更新**になり、「PR を作れない」エラーが
+          # 出ないまま head だけが CI 未実行のコミットへ戻る（この冒頭の穴(2)そのもの）。
+          echo "::error::TYPEGEN_TOKEN が未設定です。既定の GITHUB_TOKEN へ落ちると、(1) PR 作成が『GitHub Actions is not permitted to create or approve pull requests』で失敗し、(2) chore/db-typegen の PR が既に開いている場合は更新だけが通り、CI が走らない head に静かに戻ります。contents: write と pull-requests: write を持つ PAT を TYPEGEN_TOKEN として登録してください（GitHub App のインストールトークンは1時間で失効するのでこの形では使えません）。"
+          exit 1
 
       - name: Open PR if types changed
         # **2026-09-22: TYPEGEN_TOKEN が登録され、実行 #195（workflow_dispatch）が
         # PR #1120 の作成まで通った。** 未登録の間だけ失敗を握っていた
         # `continue-on-error` はここで外した —— 以後このステップが落ちたら赤になる
-        # （失効・権限不足・シークレットの消失を見落とさないため）。
-        # 未設定に戻った場合は直前のステップが warning を出し、ここが赤くなる。
+        # （失効・権限不足を見落とさないため）。
+        # **シークレット自体が消えた場合はここまで来ない**（直前のステップが落とす）。
         uses: peter-evans/create-pull-request@v8
         with:
-          # 未設定なら既定の GITHUB_TOKEN へ落ちる（＝2026-09-07 以前と同じ挙動）。
-          # 黙って落ちないよう、直前のステップが理由を warning で出す
+          # `|| github.token` は保険として残すが、**未設定ならここまで来ない**
+          # （直前のステップが error で落とす）。GITHUB_TOKEN 経路が静かに
+          # 成立してしまう穴を塞ぐため、フォールバックの発動を許さない
           token: ${{ secrets.TYPEGEN_TOKEN || github.token }}
           # 生成物だけをコミットする。既定は作業ツリー全体なので、CLI が
           # supabase/.temp/ などを落とすとそれごと PR に入ってしまう
