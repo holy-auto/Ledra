@@ -157,6 +157,38 @@ drop policy if exists foo on public.missing_table;
 **マイグレーションが作っていないリレーション**への `DROP POLICY / TRIGGER IF EXISTS` は
 `to_regclass` で存在を見てから実行すること。
 
+## 適用済みファイルを改名したら、プレビュー DB をリセットする
+
+`lint:migrations` の `migration-version-before-base-head` は、`main` が先に新しい
+マイグレーションをマージすると発火する。base より前のバージョンを持つファイルは
+本番の `supabase db push` を out-of-order で止めるので、**改名するしかない**。
+
+ところが、その PR にプレビュー DB が既に付いていると、**旧いファイル名のまま
+適用が済んでいる**。改名すると台帳にだけ残り、`Supabase Preview` が落ちる:
+
+```
+Remote migration versions not found in local migrations directory.
+```
+
+**直し方**: プレビュー分岐を「改名していない最後のバージョン」までリセットする。
+Supabase の bot は「PR を close して reopen しろ」と書くが、それは CI を蹴り直す
+行為なので採らない。リセットは API から1回で済む。
+
+```
+# 分岐 ID を調べる（pr_number で自分の PR を探す）
+list_branches(project_id = <本番の ref>)
+# 改名していない最後のバージョンへ戻す
+reset_branch(branch_id = <分岐 ID>, migration_version = "<改名していない最後の版>")
+```
+
+プレビュー分岐は `persistent: false` / `with_data: false` の使い捨てなので、
+消えて困るデータは無い。**本番の分岐（`is_default: true`）には絶対に使わない。**
+
+実例: 2026-09-22 / PR #1124。`main` が `20260922140000` をマージしたため
+`20260922131500` と `131600` を `141000` / `141100` へ改名し、プレビュー DB が
+この形で落ちた。`20260922123100` までリセットして復旧。
+MISTAKE_LEDGER `M-20260922-renamed-a-migration-the-preview-db-had-applied`。
+
 ## 新しいマイグレーションを書くとき
 
 - **バージョンは本番の最新より後にすること。** 古いと本番の `db push` が
