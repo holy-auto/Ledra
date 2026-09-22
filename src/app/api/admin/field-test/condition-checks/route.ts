@@ -38,14 +38,28 @@ export const POST = withCaller(
     // 自社案件であることを確認
     const { data: job } = await supabase
       .from("ft_jobs")
-      .select("id")
+      .select("id, project_id")
       .eq("id", job_id)
       .eq("tenant_id", caller.tenantId)
       .maybeSingle();
     if (!job) return apiValidationError("案件が見つかりません。");
 
-    const check = await upsertConditionCheck(supabase, job_id, condition_id, value, caller.userId);
-    return apiJson(check);
+    try {
+      const check = await upsertConditionCheck(
+        supabase,
+        job_id,
+        job.project_id as string,
+        condition_id,
+        value,
+        caller.userId,
+      );
+      return apiJson(check);
+    } catch (e) {
+      if ((e as { code?: string })?.code === "FT_INVALID_CONDITION") {
+        return apiValidationError((e as Error).message);
+      }
+      throw e;
+    }
   },
   { routeName: "ft tenant condition-checks POST" },
 );

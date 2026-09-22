@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { validateTenantStatusTransition, createApplication, conditionCheckInputSchema } from "../tenantQueries";
+import {
+  validateTenantStatusTransition,
+  createApplication,
+  conditionCheckInputSchema,
+  upsertConditionCheck,
+} from "../tenantQueries";
 
 // Minimal chainable fake covering both paths createApplication uses:
 //   insert(...).select(...).single()            → { data|null, error }
@@ -65,6 +70,31 @@ describe("conditionCheckInputSchema（信頼境界の入力検証）", () => {
     expect(conditionCheckInputSchema.safeParse({ job_id: j, condition_id: c, value_numeric: "abc" }).success).toBe(
       false,
     );
+  });
+});
+
+describe("upsertConditionCheck の condition 越境ガード（/code-review #1123）", () => {
+  // ft_conditions 照会（maybeSingle）→ ft_condition_checks upsert（single）を賄う最小モック。
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  function fakeSupa(condFound: boolean): any {
+    const obj: Record<string, unknown> = {};
+    for (const m of ["from", "select", "eq", "upsert"]) obj[m] = () => obj;
+    obj.maybeSingle = async () => ({ data: condFound ? { id: "cond1" } : null, error: null });
+    obj.single = async () => ({ data: { id: "check1", condition_id: "cond1" }, error: null });
+    return obj;
+  }
+  const val = { value_boolean: true };
+
+  it("条件が案件のプロジェクトに無ければ FT_INVALID_CONDITION を投げる（実在しない/越境の両方）", async () => {
+    await expect(upsertConditionCheck(fakeSupa(false), "job1", "proj1", "condX", val, "user1")).rejects.toMatchObject({
+      code: "FT_INVALID_CONDITION",
+    });
+  });
+
+  it("条件がプロジェクトに属していれば記録する", async () => {
+    await expect(upsertConditionCheck(fakeSupa(true), "job1", "proj1", "cond1", val, "user1")).resolves.toMatchObject({
+      id: "check1",
+    });
   });
 });
 

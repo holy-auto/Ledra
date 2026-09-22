@@ -43,15 +43,25 @@ export async function POST(request: NextRequest) {
 
     const { data: job } = await caller.supabase
       .from("ft_jobs")
-      .select("id")
+      .select("id, project_id")
       .eq("id", job_id)
       .eq("tenant_id", caller.tenantId)
       .maybeSingle();
     if (!job) return apiValidationError("案件が見つかりません。");
 
-    const check = await upsertConditionCheck(caller.supabase, job_id, condition_id, value, caller.userId);
+    const check = await upsertConditionCheck(
+      caller.supabase,
+      job_id,
+      job.project_id as string,
+      condition_id,
+      value,
+      caller.userId,
+    );
     return apiJson(check);
   } catch (e) {
+    if ((e as { code?: string })?.code === "FT_INVALID_CONDITION") {
+      return apiValidationError((e as Error).message);
+    }
     return apiInternalError(e, "mobile ft condition-checks POST");
   }
 }

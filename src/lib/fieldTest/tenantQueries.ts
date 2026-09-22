@@ -160,6 +160,7 @@ export const conditionCheckInputSchema = z.object({
 export async function upsertConditionCheck(
   supabase: Supa,
   jobId: string,
+  projectId: string,
   conditionId: string,
   value: {
     value_boolean?: boolean | null;
@@ -169,6 +170,25 @@ export async function upsertConditionCheck(
   },
   checkedBy: string,
 ) {
+  // condition_id が対象案件のプロジェクトに属する実在の条件かを検証する。
+  // zod は形（UUID）しか見ないので、これが無いと (a) 実在しない condition_id は
+  // FK(23503) で不透明な 500 になり（schema が閉じたと謳う経路そのもの）、
+  // (b) 別プロジェクトの実在条件は FK を通って案件に越境記録され、per-condition
+  // 集計を汚す（/code-review #1123）。テナントの ft_conditions SELECT は自社案件の
+  // プロジェクトにスコープ済み。呼び出し元が確認した job の project に絞って1回で確かめる。
+  const { data: cond, error: condErr } = await supabase
+    .from("ft_conditions")
+    .select("id")
+    .eq("id", conditionId)
+    .eq("project_id", projectId)
+    .maybeSingle();
+  if (condErr) throw condErr;
+  if (!cond) {
+    const err = new Error("指定された施工条件が案件のプロジェクトに存在しません。") as Error & { code?: string };
+    err.code = "FT_INVALID_CONDITION";
+    throw err;
+  }
+
   const { data, error } = await supabase
     .from("ft_condition_checks")
     .upsert(
