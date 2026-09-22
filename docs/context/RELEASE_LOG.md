@@ -42,6 +42,12 @@ CHECK を置き換えており、「本番が緩い」のではなく「別の�
 検証: `check:migrations` 再生 **493/493**・振る舞いの検査2件緑 /
 `ci-parallel-checks.sh` 8種すべて緑 / 単体テスト 13 件。
 
+## 2026-09-21 レポート還元の計上失敗を無音にしない —— `recordVehicleReportRevenueShares` の DBエラーを surface (branch claude/merchant-revenue-sharing-22tuq3)
+- 内容: 還元計上関数 `src/lib/vehicleReport/revenueShare.ts` に残っていた3つの Supabase エラー握り潰し（order 読取・settings 読取・台帳 upsert が `console.error(...); return;` で握り潰し）を throw に変更。upsert 失敗時に加盟店の還元計上が無音で欠落し、webhook が正常完了して `stripe-event-monitor` も鳴らない、という会計の穴を塞いだ。
+- 経路の使い分け（意図的）: webhook 側 `handleVehicleReportSessionPaid` は throw を捕まえず伝播させ、Stripe イベントを `processed_at IS NULL` のまま残して monitor cron の replay に載せる（冪等 upsert なので安全）。unlock フォールバックは従来どおり try/catch で非致命のまま——購入者のアクセス Cookie を会計ヒカップで止めないため。webhook が同じ share を冪等 re-book するので自己修復する。
+- 背景: 2026-08 の堅牢化で「DBエラーを一掃」と記録したが計上本体を見落としていた（Codex が #895 レビューで指摘、issue #892 に計上）。本番実データで**レポート注文まだ0件＝実害未発生**を確認のうえ、最初の課金が走る前に修正。見落としの経緯は MISTAKE_LEDGER `M-20260921-claimed-all-db-errors-swept-but-left-booking-upsert`。
+- 対象: 公開レポート課金の還元計上（Stripe webhook / unlock 経路）。
+- 検証: `tsc --noEmit` エラー0、`vehicleReport` テスト32件パス、変更ファイル eslint エラー0。ガード追加（error→throw）のみで純ロジック不変のため新規テストなし。
 ## 2026-09-21 一意制約を本番とマイグレーションで一致させ、検出器に両方向の比較を足した
 
 **本番から決済の冪等キーの一意性が消えていた。** `20260918142610 remote_schema` が
