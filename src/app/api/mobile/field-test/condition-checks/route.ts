@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { resolveMobileCaller } from "@/lib/auth/mobileAuth";
 import { apiJson, apiUnauthorized, apiValidationError, apiInternalError } from "@/lib/api/response";
-import { listConditionChecks, upsertConditionCheck } from "@/lib/fieldTest/tenantQueries";
+import { listConditionChecks, upsertConditionCheck, conditionCheckInputSchema } from "@/lib/fieldTest/tenantQueries";
 
 export const dynamic = "force-dynamic";
 
@@ -35,12 +35,11 @@ export async function POST(request: NextRequest) {
     const caller = await resolveMobileCaller(request);
     if (!caller) return apiUnauthorized();
 
-    const body = await request.json();
-    const { job_id, condition_id, value_boolean, value_numeric, value_text, value_photo_path } = body;
-
-    if (!job_id || !condition_id) {
-      return apiValidationError("job_id と condition_id は必須です。");
+    const parsed = conditionCheckInputSchema.safeParse(await request.json().catch(() => ({})));
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "入力に誤りがあります。");
     }
+    const { job_id, condition_id, ...value } = parsed.data;
 
     const { data: job } = await caller.supabase
       .from("ft_jobs")
@@ -50,13 +49,7 @@ export async function POST(request: NextRequest) {
       .maybeSingle();
     if (!job) return apiValidationError("案件が見つかりません。");
 
-    const check = await upsertConditionCheck(
-      caller.supabase,
-      job_id,
-      condition_id,
-      { value_boolean, value_numeric, value_text, value_photo_path },
-      caller.userId,
-    );
+    const check = await upsertConditionCheck(caller.supabase, job_id, condition_id, value, caller.userId);
     return apiJson(check);
   } catch (e) {
     return apiInternalError(e, "mobile ft condition-checks POST");

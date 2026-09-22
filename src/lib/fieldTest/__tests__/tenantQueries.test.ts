@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { validateTenantStatusTransition, createApplication } from "../tenantQueries";
+import { validateTenantStatusTransition, createApplication, conditionCheckInputSchema } from "../tenantQueries";
 
 // Minimal chainable fake covering both paths createApplication uses:
 //   insert(...).select(...).single()            → { data|null, error }
@@ -41,6 +41,30 @@ describe("createApplication re-apply / duplicate handling", () => {
   it("rethrows non-unique DB errors unchanged (not mislabeled as duplicate)", async () => {
     const supa = fakeSupa({ insertError: { code: "42501", message: "rls denied" } });
     await expect(createApplication(supa, appRow)).rejects.toMatchObject({ code: "42501" });
+  });
+});
+
+describe("conditionCheckInputSchema（信頼境界の入力検証）", () => {
+  const j = "11111111-1111-4111-8111-111111111111";
+  const c = "22222222-2222-4222-8222-222222222222";
+
+  it("正しい入力を通す（value_* は省略可）", () => {
+    expect(conditionCheckInputSchema.safeParse({ job_id: j, condition_id: c }).success).toBe(true);
+    expect(
+      conditionCheckInputSchema.safeParse({ job_id: j, condition_id: c, value_numeric: 3.5, value_boolean: true })
+        .success,
+    ).toBe(true);
+  });
+
+  it("job_id / condition_id が UUID でなければ弾く（旧: 生値のまま DB へ）", () => {
+    expect(conditionCheckInputSchema.safeParse({ job_id: "not-a-uuid", condition_id: c }).success).toBe(false);
+    expect(conditionCheckInputSchema.safeParse({ condition_id: c }).success).toBe(false);
+  });
+
+  it("value_numeric に文字列が来たら弾く（旧: Postgres まで届いて不透明な 500）", () => {
+    expect(conditionCheckInputSchema.safeParse({ job_id: j, condition_id: c, value_numeric: "abc" }).success).toBe(
+      false,
+    );
   });
 });
 

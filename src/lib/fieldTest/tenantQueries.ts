@@ -6,6 +6,7 @@
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { z } from "zod";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Supa = SupabaseClient<any, any, any>;
@@ -139,6 +140,22 @@ export async function listConditionChecks(supabase: Supa, jobId: string) {
   if (error) throw error;
   return data ?? [];
 }
+
+/**
+ * POST /field-test/condition-checks の入力検証（admin / mobile 共通）。
+ *
+ * 生の body 値をそのまま upsert に渡すと、`value_numeric: "abc"` のような
+ * 型不一致が Postgres まで届いて不透明な 500 になる。信頼境界で弾く。
+ * 1つの規則を admin/mobile で別々に書かないよう、ここを唯一の定義源にする。
+ */
+export const conditionCheckInputSchema = z.object({
+  job_id: z.string().uuid(),
+  condition_id: z.string().uuid(),
+  value_boolean: z.boolean().nullish(),
+  value_numeric: z.number().finite().nullish(),
+  value_text: z.string().max(2000).nullish(),
+  value_photo_path: z.string().max(1024).nullish(),
+});
 
 export async function upsertConditionCheck(
   supabase: Supa,
