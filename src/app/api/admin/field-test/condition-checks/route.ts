@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { withCaller } from "@/lib/api/withCaller";
 import { apiJson, apiValidationError } from "@/lib/api/response";
-import { listConditionChecks, upsertConditionCheck } from "@/lib/fieldTest/tenantQueries";
+import { listConditionChecks, upsertConditionCheck, conditionCheckInputSchema } from "@/lib/fieldTest/tenantQueries";
 
 export const dynamic = "force-dynamic";
 
@@ -29,30 +29,37 @@ export const GET = withCaller(
 /** POST /api/admin/field-test/condition-checks — 条件チェック記録 */
 export const POST = withCaller(
   async (req: NextRequest, { caller, supabase }) => {
-    const body = await req.json();
-    const { job_id, condition_id, value_boolean, value_numeric, value_text, value_photo_path } = body;
-
-    if (!job_id || !condition_id) {
-      return apiValidationError("job_id と condition_id は必須です。");
+    const parsed = conditionCheckInputSchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "入力に誤りがあります。");
     }
+    const { job_id, condition_id, ...value } = parsed.data;
 
     // 自社案件であることを確認
     const { data: job } = await supabase
       .from("ft_jobs")
-      .select("id")
+      .select("id, project_id")
       .eq("id", job_id)
       .eq("tenant_id", caller.tenantId)
       .maybeSingle();
     if (!job) return apiValidationError("案件が見つかりません。");
 
-    const check = await upsertConditionCheck(
-      supabase,
-      job_id,
-      condition_id,
-      { value_boolean, value_numeric, value_text, value_photo_path },
-      caller.userId,
-    );
-    return apiJson(check);
+    try {
+      const check = await upsertConditionCheck(
+        supabase,
+        job_id,
+        job.project_id as string,
+        condition_id,
+        value,
+        caller.userId,
+      );
+      return apiJson(check);
+    } catch (e) {
+      if ((e as { code?: string })?.code === "FT_INVALID_CONDITION") {
+        return apiValidationError((e as Error).message);
+      }
+      throw e;
+    }
   },
   { routeName: "ft tenant condition-checks POST" },
 );

@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { validateTenantStatusTransition, createApplication } from "../tenantQueries";
+import {
+  validateTenantStatusTransition,
+  createApplication,
+  conditionCheckInputSchema,
+  upsertConditionCheck,
+} from "../tenantQueries";
 
 // Minimal chainable fake covering both paths createApplication uses:
 //   insert(...).select(...).single()            → { data|null, error }
@@ -41,6 +46,55 @@ describe("createApplication re-apply / duplicate handling", () => {
   it("rethrows non-unique DB errors unchanged (not mislabeled as duplicate)", async () => {
     const supa = fakeSupa({ insertError: { code: "42501", message: "rls denied" } });
     await expect(createApplication(supa, appRow)).rejects.toMatchObject({ code: "42501" });
+  });
+});
+
+describe("conditionCheckInputSchema（信頼境界の入力検証）", () => {
+  const j = "11111111-1111-4111-8111-111111111111";
+  const c = "22222222-2222-4222-8222-222222222222";
+
+  it("正しい入力を通す（value_* は省略可）", () => {
+    expect(conditionCheckInputSchema.safeParse({ job_id: j, condition_id: c }).success).toBe(true);
+    expect(
+      conditionCheckInputSchema.safeParse({ job_id: j, condition_id: c, value_numeric: 3.5, value_boolean: true })
+        .success,
+    ).toBe(true);
+  });
+
+  it("job_id / condition_id が UUID でなければ弾く（旧: 生値のまま DB へ）", () => {
+    expect(conditionCheckInputSchema.safeParse({ job_id: "not-a-uuid", condition_id: c }).success).toBe(false);
+    expect(conditionCheckInputSchema.safeParse({ condition_id: c }).success).toBe(false);
+  });
+
+  it("value_numeric に文字列が来たら弾く（旧: Postgres まで届いて不透明な 500）", () => {
+    expect(conditionCheckInputSchema.safeParse({ job_id: j, condition_id: c, value_numeric: "abc" }).success).toBe(
+      false,
+    );
+  });
+});
+
+describe("upsertConditionCheck の condition 越境ガード（/code-review #1123）", () => {
+  // ft_conditions 照会（maybeSingle）→ ft_condition_checks upsert（single）を賄う最小モック。
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  function fakeSupa(condFound: boolean): any {
+    const obj: Record<string, unknown> = {};
+    for (const m of ["from", "select", "eq", "upsert"]) obj[m] = () => obj;
+    obj.maybeSingle = async () => ({ data: condFound ? { id: "cond1" } : null, error: null });
+    obj.single = async () => ({ data: { id: "check1", condition_id: "cond1" }, error: null });
+    return obj;
+  }
+  const val = { value_boolean: true };
+
+  it("条件が案件のプロジェクトに無ければ FT_INVALID_CONDITION を投げる（実在しない/越境の両方）", async () => {
+    await expect(upsertConditionCheck(fakeSupa(false), "job1", "proj1", "condX", val, "user1")).rejects.toMatchObject({
+      code: "FT_INVALID_CONDITION",
+    });
+  });
+
+  it("条件がプロジェクトに属していれば記録する", async () => {
+    await expect(upsertConditionCheck(fakeSupa(true), "job1", "proj1", "cond1", val, "user1")).resolves.toMatchObject({
+      id: "check1",
+    });
   });
 });
 

@@ -20,7 +20,12 @@ type NotificationApiRow = {
   link_path: string | null;
 };
 
-export default function NotificationBell() {
+/**
+ * @param basePath 通知 API のベース。tenant は /api/admin/notifications、
+ *   メーカーは /api/manufacturer/notifications。レスポンス形と read-all の
+ *   経路が同一なので、ここを差し替えるだけで両ポータルで使い回せる。
+ */
+export default function NotificationBell({ basePath = "/api/admin/notifications" }: { basePath?: string } = {}) {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -30,7 +35,7 @@ export default function NotificationBell() {
   // Fetch initial notifications
   const fetchNotifications = useCallback(async () => {
     try {
-      const res = await fetch("/api/admin/notifications?limit=10");
+      const res = await fetch(`${basePath}?limit=10`);
       if (!res.ok) return;
       const json = await res.json();
       // API は { notifications: [...] } を返す (read_at / link_path)。
@@ -48,7 +53,7 @@ export default function NotificationBell() {
     } catch {
       // silently ignore - API may not exist yet
     }
-  }, []);
+  }, [basePath]);
 
   useEffect(() => {
     // Delay initial fetch by 3 s so it doesn't compete with the page's own
@@ -78,7 +83,7 @@ export default function NotificationBell() {
     // (read_at が null のまま) ため、必ず API を叩いてから再取得する。
     setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
     try {
-      await fetch("/api/admin/notifications/read-all", { method: "PUT" });
+      await fetch(`${basePath}/read-all`, { method: "PUT" });
     } catch {
       // 失敗時は次回ポーリングで元の未読状態に戻る (サーバが真実)。
     }
