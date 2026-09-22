@@ -109,6 +109,8 @@ CHECK 制約（329 / 328）・外部キー（597 / 600）・RLS ポリシー（6
 
 ## 2026-09-21 保険会社の「使える状態」を1箇所に集約し、`db-typegen` の赤の意味を戻した
 
+**マージ済み**（#1111 → `7f66029`、2026-09-22）。
+
 RLS 停止ゲート（#1107）の残件を消化した。**5件のうち2件は前提が崩れた。**
 
 ### `/api/insurer/switch` が、同じファイルの中で互いに食い違っていた
@@ -137,8 +139,14 @@ POST は広すぎて**停止中でもクッキーを設定できた**（後段�
 
 ### `db-typegen` は、トークンが無いときだけ赤くならないようにした
 
-`TYPEGEN_TOKEN` が未登録の間、最後の PR 作成だけが必ず失敗し、**マージのたびに赤**だった。
+`TYPEGEN_TOKEN` が未登録の間、最後の PR 作成だけが必ず失敗し、赤いままだった。
 赤が常態になると本物の失敗を見落とす（2026-09-07 に13日間見落とした系列）。
+
+**【2026-09-22 訂正】 当初ここに「マージのたびに赤」と書いたが、実際は
+「マイグレーションを含むマージのたびに」である。** `db-typegen` は
+`db-migrate`（`push: main` の `paths: supabase/migrations/**`）の成功後にしか起動しない。
+2026-09-01 以降の `main` へのマージ 101 件のうち該当は **27 件**。
+経緯は `M-20260922-said-typegen-red-on-every-merge`。
 PR 作成ステップに `continue-on-error: ${{ steps.typegen_token.outputs.present != 'true' }}`
 を付けた。**握り潰しではない** —— push は先に成功しているので生成物は
 `chore/db-typegen` に残り、warning も注釈も出る。変わるのはジョブの色だけで、
@@ -167,6 +175,12 @@ PR 作成ステップに `continue-on-error: ${{ steps.typegen_token.outputs.pre
 **施工店の返信待ち状態へ遷移させる経路が本番に無い。**
 
 ### やっていないこと
+
+**`continue-on-error` はまだ一度も実行されていない。** #1111 はマイグレーションを
+含まないので、このマージでは `db-migrate` も `db-typegen` も起動しなかった。
+`workflow_dispatch` での手動確認はこのセッションの権限では叩けない
+（403 Resource not accessible by integration）。**次にマイグレーションを含む PR が
+マージされたときが初回**【要確認】。
 
 **実アカウントでの画面確認**は実行できない（保険会社ユーザのセッションを用意する手段が無い）。
 `npm run check:drift` も、このセッションに `SUPABASE_ACCESS_TOKEN` /
