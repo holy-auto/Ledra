@@ -4,6 +4,44 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-09-22 外部キーと CHECK も両方向で揃え、検出器に足した
+
+**同じ事故が制約も壊していた。** `20260918142610 remote_schema` は索引 38 本に加えて
+**制約を 19 本**落としており（本番台帳の `statements` で確認）、今も本番に無いのが
+**外部キー6本・CHECK 8本**だった。
+
+**実害が出ていた**: `tenant_memberships` に `user_id` が `auth.users` に無い行が1件ある
+（role=owner・2026-07-26 作成）。この外部キーは `ON DELETE CASCADE` なので、
+生きていれば利用者の削除と一緒に消えていた。**行は消していない**（`OPEN_QUESTIONS`）。
+
+- `20260921152000`: 本番から消えた**外部キー6本と CHECK 5本を戻す**。すべて `NOT VALID`
+  （孤児行があるので `tenant_memberships` は VALID では足せない。他も全表走査のロックを避ける）。
+  **本番で実際に走るのはこのファイルだけ。**
+- `20260921152100`: 本番にあってマイグレーションが作らない **CHECK 9本・外部キー3本**を足す。
+  本番では no-op。
+
+落ちた CHECK 8本のうち3本（`certificates_status_check` / `tenants_plan_tier_check` /
+`tenant_memberships_role_check`）は**対象外**にした。本番は列そのものを enum
+（`certificate_status_enum` / `plan_tier_enum` / `membership_role_enum`）にして
+CHECK を置き換えており、「本番が緩い」のではなく「別の形で同じことをしている」。
+
+**検出器**: `check-schema-drift.mjs` が外部キーと CHECK を見るようになった。
+外部キーは**両方向で落とす**。CHECK は**逆向きを落とさない** —— 上の3本が直しようのない赤として
+居座り、新しいドリフトを埋もれさせるため。件数と名前は出す。
+解析（`scripts/lib/dumpParse.mjs`）は再生 DB の dump 全体で当たりを取った
+（外部キー 600 = 600・CHECK 328 = 328、いずれも差分0）。
+**CHECK は `ALTER TABLE ADD CONSTRAINT` と `CREATE TABLE` 内インラインの2つの書き方がある。**
+
+適用後の見込み: 外部キーは本番・再生とも 603 で両方向 0。CHECK は本番 334 / 再生 337 で、
+差は enum に置き換わった3本だけ。
+
+残る差（`OPEN_QUESTIONS`）: RLS ポリシー 本番 622 / 再生 642 の名前突き合わせ、
+列の**型**の差（enum 対 text。列名しか比べていないのでどの検査にも映らない）、
+一意でない索引 70 本、孤児 membership 1件の扱い。
+
+検証: `check:migrations` 再生 **493/493**・振る舞いの検査2件緑 /
+`ci-parallel-checks.sh` 8種すべて緑 / 単体テスト 13 件。
+
 ## 2026-09-21 一意制約を本番とマイグレーションで一致させ、検出器に両方向の比較を足した
 
 **本番から決済の冪等キーの一意性が消えていた。** `20260918142610 remote_schema` が
