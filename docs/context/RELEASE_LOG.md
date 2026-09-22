@@ -4,6 +4,24 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-09-22 Field Test テナント側 RLS ドリフトの修復＋不足ポリシー補完＋ロジック3件 (branch claude/merchant-revenue-sharing-22tuq3)
+- 背景: `/code-review`（#1108/#1112）で検出した FT 残課題（issue #1117）に着手。本番実測で、`20260917100000_ft_tenant_rls_and_storage.sql` は適用記録があるのに**そのポリシー群も ft-evidence バケットも本番に存在しない**（recorded-but-not-applied ドリフト）と確定。施工店ユーザーの FT 参照・書き込みが RLS で全ブロックされる状態だった（FT 本番利用は 2026-09-21 時点で全ゼロ＝実害未発生）。
+- migration `20260922000000_repair_ft_tenant_rls_drift.sql`:
+  - `20260917100000` の tenant ポリシー群（`my_tenant_ids()` 経由の SELECT/INSERT/UPDATE）と `ft-evidence` バケットを**冪等に再適用**（`DROP POLICY IF EXISTS`→`CREATE`。`check:migrations` 再生でも重複しない）。
+  - 元migrationに欠けていた **UPDATE ポリシーを補完**: `ft_condition_checks` / `ft_training_completions` は upsert(ON CONFLICT DO UPDATE) なのに INSERT ポリシーのみで、再保存が RLS で 500 になっていた。
+  - `workshop_capability_profiles` に tenant の **INSERT/UPDATE** を追加（どのmigrationにも write ポリシーが無く `upsertWorkshopProfile` が初回保存から失敗していた）。
+- コード修正:
+  - `manufacturer/field-test/jobs/[id]`: `completed` から他ステータスへ戻したとき `completed_at` を `null` に戻す（消し忘れで analytics/report の完了数が過大化していた）。
+  - `manufacturer/field-test/defects/[id]`: `resolved`/`closed` から他ステータスへ戻したとき `resolved_at`/`resolved_by` を `null` に戻す（`completed_at` と同型の消し忘れ。CSV の解決日が未解決の不具合に出るのを防ぐ。`/code-review` 指摘）。
+  - `tenantQueries.listTrainingWithCompletions`: テナント全完了行ではなく当該プロジェクトのモジュールに絞って取得（payload 肥大の抑制）。
+  - `createApplication`: `UNIQUE(recruitment_id, tenant_id)` 違反(23505)時、既存行が `withdrawn`/`rejected` なら**再応募として復活**（status を pending に戻し review 情報をクリア）、`pending`/`approved` のときだけ型付きエラー `FT_DUPLICATE_APPLICATION` で 4xx。取り下げ後に再応募できない「片道罠」を解消（`/code-review` 指摘）。admin/mobile 両ルートで 4xx 変換。
+- 検証: `lint:migrations` OK、`check:migrations` 再生 493/493・RLS 打ち消しなし、`tsc --noEmit` エラー0、`fieldTest` テスト16件パス（createApplication の insert/revive/dup/rethrow 回帰4件を追加）、変更ファイル eslint エラー0。
+- 未対応（本PR外・#1117 に残す）:
+  - evidence_submitted 通知の宛先（現状は提出元テナント自身。メーカー側へ届けるにはメーカー通知チャネルが必要で、tenant-keyed `notifications` では表現できない＝別設計）。
+  - condition-checks POST の入力バリデーション（value_* を zod で型検査せず生値を DB へ。malformed で 500。既存の trust-boundary ギャップで本PRの回帰ではない）。
+  - `manufacturer/field-test/report` の二重 ft_jobs クエリ（1本目 select に `id` を足せば1本に集約可能・性能のみ）。
+- 対象: Field Test（製造業ポータル＋施工店の web/mobile API）・本番 RLS ドリフト修復。
+
 ## 2026-09-21 Field Test のエクスポートが日本語プロジェクト名で常に500になるのを修正（RFC 5987） (branch claude/merchant-revenue-sharing-22tuq3)
 - 内容: 製造業向け Field Test の CSV エクスポート（`manufacturer/field-test/export/csv`）と PDF レポート（`.../report`）が、`Content-Disposition` の `filename="..."` に日本語プロジェクト名をそのまま入れており、Node/undici の ByteString 変換（コードポイント>255）で throw → **日本語名のプロジェクトでは常に 500**（本コードのプロジェクト名は基本日本語なので事実上いつも失敗）。
 - 修正: `src/lib/csv/serialize.ts` に共有ヘルパ `contentDispositionAttachment()` を追加し、**ASCII フォールバック `filename=` ＋ RFC 5987 `filename*=UTF-8''<percent-encoded>`** の両方を出す（ヘッダインジェクション対策の "・改行除去も維持）。`csvDownloadHeaders` と PDF ルートの両方をこの1関数に集約（PDF ルートは CJK を残す独自サニタイザを廃止）。
