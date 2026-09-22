@@ -4,6 +4,17 @@
 > （新しい順）。実装の詳細は RELEASE_LOG.md、迷っている段階のものは
 > OPEN_QUESTIONS.md に書く。
 
+## 2026-09-22 Field Test テナント RLS ドリフトを「冪等 re-apply 修復マイグレーション」で直す。通知宛先は別設計として据え置く
+1. 日付: 2026-09-22
+2. 起きたこと: `/code-review`（#1108/#1112）が Field Test の RLS 起因 500 を複数指摘。本番（`cahybswpduchptvyvdkk`）の `pg_policies`/`storage.buckets` を実測すると、`20260917100000_ft_tenant_rls_and_storage.sql` は schema_migrations に適用記録があるのに、そのポリシー群（`ft_*_tenant_*`）も `ft-evidence` バケットも**本番に一切存在しなかった**。施工店の FT 参照・書き込みが RLS で全ブロックされる状態。
+3. 以前の考え: 当初レビューは「INSERT はあるが UPDATE 欠落で再保存が失敗」と読んでいた（migration ファイルベース）。
+4. 違和感・問題: 実測は違った。tenant ポリシーは1本も無く、バケットも無い＝migration 丸ごとが本番に効いていない（recorded-but-not-applied ドリフト、20260715 バッチと同型）。後続 migration による DROP も align 対象も無いことを確認したので「一度も適用されていない」が最有力。加えて元 migration 自体が `ft_condition_checks`/`ft_training_completions` の UPDATE を欠いており、`workshop_capability_profiles` は write ポリシーがどこにも無かった。
+5. 決めたこと: 新規修復マイグレーション `20260922000000_repair_ft_tenant_rls_drift.sql` を追加。`20260917100000` の tenant ポリシー＋バケットを `DROP POLICY IF EXISTS`→`CREATE` で**冪等に再適用**し、あわせて欠けていた UPDATE 2本と `workshop_capability_profiles` の INSERT/UPDATE を補う。`check:migrations` の再生（493/493・打ち消し無し）で SQL 妥当性と冪等性を確認。通知宛先（evidence_submitted がメーカーに届かない）は別設計として #1117 に残す。
+6. 捨てた選択肢: (A) `20260917100000` を直接編集して再適用させる → 適用記録済みで db-migrate は再実行しない。履歴改変にもなる。(B) `apply_migration` で本番に直接当てる → db-migrate パイプラインの台帳と乖離し、次の再生でまたドリフトになる（過去に同種の痛み）。正規の新規マイグレーションで通すのが整合的。(C) 通知チャネルをこのPRで新設 → メーカー通知の仕組みが無く、tenant-keyed `notifications` では表現できない大きめの設計。FT 未使用で急がないため分離。
+7. 判断理由: ドリフトは「本番に無いものを、正規パイプラインで冪等に足す」のが最小で安全。冪等化により再生でも本番でも二重作成にならない。RLS はセキュリティ急所なので、予測（migration ファイル）ではなく本番 `pg_policies` の実測を根拠にした。FT 本番利用は全ゼロ（実害未発生）のため、最初の利用開始前に直せば十分。
+8. まだ答えが出ていないこと: 「なぜ `20260917100000` が適用記録だけ付いて本番に効かなかったのか」の根因（途中失敗で記録だけ残った等）は未特定＝進行中のドリフト整合作業と合わせて要追跡。メーカー向け通知チャネルの設計（#1117）。この修復マイグレーションが db-migrate で実際に本番適用されるかは次回の pipeline 実行で要確認。
+9. 公開区分: 要確認（RLS/セキュリティとドリフト運用の知見は公開可＝「適用記録があっても実体を実測せよ」「ドリフト修復は冪等な新規マイグレーションで」。本番プロジェクトID・テナント/実データは非公開）。
+
 ## 2026-09-21 保険会社の停止を RLS 側にも効かせる。ただし先に「本番にだけ在る3本」を書き起こす
 
 1. 日付: 2026-09-21（`date -u` で確認。13:40 UTC）

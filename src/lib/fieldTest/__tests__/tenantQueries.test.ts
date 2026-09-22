@@ -1,5 +1,40 @@
 import { describe, it, expect } from "vitest";
-import { validateTenantStatusTransition } from "../tenantQueries";
+import { validateTenantStatusTransition, createApplication } from "../tenantQueries";
+
+// Minimal chainable fake of the supabase insert path used by createApplication:
+// .from(...).insert(...).select(...).single() → { data, error }.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function fakeSupabaseInsertError(error: { code?: string; message?: string } | null): any {
+  return {
+    from: () => ({
+      insert: () => ({
+        select: () => ({
+          single: async () => ({ data: error ? null : { id: "x" }, error }),
+        }),
+      }),
+    }),
+  };
+}
+
+const appRow = {
+  recruitment_id: "r1",
+  project_id: "p1",
+  manufacturer_id: "m1",
+  tenant_id: "t1",
+  applied_by: "u1",
+};
+
+describe("createApplication duplicate handling", () => {
+  it("maps a UNIQUE violation (23505) to a typed FT_DUPLICATE_APPLICATION error", async () => {
+    const supa = fakeSupabaseInsertError({ code: "23505", message: "duplicate key" });
+    await expect(createApplication(supa, appRow)).rejects.toMatchObject({ code: "FT_DUPLICATE_APPLICATION" });
+  });
+
+  it("rethrows non-unique DB errors unchanged (not mislabeled as duplicate)", async () => {
+    const supa = fakeSupabaseInsertError({ code: "42501", message: "rls denied" });
+    await expect(createApplication(supa, appRow)).rejects.toMatchObject({ code: "42501" });
+  });
+});
 
 describe("validateTenantStatusTransition", () => {
   it("assigned → in_progress は許可", () => {

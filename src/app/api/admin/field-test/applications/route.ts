@@ -32,14 +32,22 @@ export const POST = withCaller(
     if (!rec) return apiValidationError("募集が見つかりません。");
     if (!rec.is_open) return apiValidationError("この募集は締め切られています。");
 
-    const application = await createApplication(supabase, {
-      recruitment_id: recruitmentId,
-      project_id: rec.project_id as string,
-      manufacturer_id: rec.manufacturer_id as string,
-      tenant_id: caller.tenantId,
-      applied_by: caller.userId,
-      notes,
-    });
+    let application;
+    try {
+      application = await createApplication(supabase, {
+        recruitment_id: recruitmentId,
+        project_id: rec.project_id as string,
+        manufacturer_id: rec.manufacturer_id as string,
+        tenant_id: caller.tenantId,
+        applied_by: caller.userId,
+        notes,
+      });
+    } catch (e) {
+      if ((e as { code?: string })?.code === "FT_DUPLICATE_APPLICATION") {
+        return apiValidationError((e as Error).message);
+      }
+      throw e;
+    }
 
     after(async () => {
       await notifyFtTenant({

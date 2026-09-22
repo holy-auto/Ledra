@@ -54,6 +54,9 @@ export async function POST(request: NextRequest) {
 
     return apiJson(application);
   } catch (e) {
+    if ((e as { code?: string })?.code === "FT_DUPLICATE_APPLICATION") {
+      return apiValidationError((e as Error).message);
+    }
     return apiInternalError(e, "mobile ft applications POST");
   }
 }
