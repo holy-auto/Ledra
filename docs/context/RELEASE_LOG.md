@@ -89,6 +89,71 @@ CHECK 制約（329 / 328）・外部キー（597 / 600）・RLS ポリシー（6
 検証: `check:migrations` 再生 **485/485**（main の `20260920151600` を取り込み、この版を
 `20260920154100` へ改名したあとの実測）/ `ci-parallel-checks.sh` 8種すべて緑。
 
+## 2026-09-21 保険会社の「使える状態」を1箇所に集約し、`db-typegen` の赤の意味を戻した
+
+RLS 停止ゲート（#1107）の残件を消化した。**5件のうち2件は前提が崩れた。**
+
+### `/api/insurer/switch` が、同じファイルの中で互いに食い違っていた
+
+| | 直す前 | 他の場所 |
+|---|---|---|
+| GET（切替リスト） | `is_active` かつ **`status = 'active'` のみ** | `IN ('active','active_pending_review')` |
+| POST（切替の実行） | **`insurers` を一度も見ない** | 同上 |
+
+GET は狭すぎて**審査中（`active_pending_review`）の保険会社が切替リストに出ず**、
+POST は広すぎて**停止中でもクッキーを設定できた**（後段の `resolveInsurerCaller` が
+401 にするので情報漏れではないが、利用者には理由の分からない失敗に見える）。
+
+根本原因は**同じ規則が3箇所に別々に書かれていた**こと。`INSURER_USABLE_STATUSES` を
+`src/lib/api/insurerAuth.ts` から出し、3箇所ともそれを使うようにした。
+
+**検査**: `src/lib/api/__tests__/insurerUsableStatuses.test.ts`。
+定数の中身、TS 側での直書きの再発、**DB 側2関数（`current_insurer_access` /
+`my_insurer_ids`）の状態集合との一致**を見る。3通りの壊し方で検証済み
+（定数から1つ外す／`switch` に直書きし直す／マイグレーションの `status` 条件を落とす）。
+**これは構造の検査であって振る舞いの証明ではない**（振る舞いは
+`scripts/replay/checks/insurer_rls_suspension_gate.sql` が行を入れて見ている）。
+
+最初に書いた版は、ファイル全体から `status IN (...)` を拾って**コメントの「...」を
+状態集合として比べ**、落ちた。関数本体（`$$ ... $$`）だけを見るように直した。
+
+### `db-typegen` は、トークンが無いときだけ赤くならないようにした
+
+`TYPEGEN_TOKEN` が未登録の間、最後の PR 作成だけが必ず失敗し、**マージのたびに赤**だった。
+赤が常態になると本物の失敗を見落とす（2026-09-07 に13日間見落とした系列）。
+PR 作成ステップに `continue-on-error: ${{ steps.typegen_token.outputs.present != 'true' }}`
+を付けた。**握り潰しではない** —— push は先に成功しているので生成物は
+`chore/db-typegen` に残り、warning も注釈も出る。変わるのはジョブの色だけで、
+**トークンがあるのに落ちた場合は今までどおり赤**。登録が済んだら1行消せば戻る。
+
+**トークンの登録自体は Claude にはできない。** 代表の操作が要る。
+
+### 前提が崩れた2件
+
+- **`pg_policies` をドリフト検出に入れるか** → **すでに入っていた。**
+  `check-schema-drift.mjs` は今日より前からポリシー名を双方向で比べており、
+  「本番にあってマイグレーションに無いポリシー」は exit 1 する。
+  今朝この事実と逆のことを `OPEN_QUESTIONS` に書いてマージしていた。訂正済み
+  （`M-20260921-said-the-drift-checker-ignores-policies`）。
+- **施工店が自社案件を読めない件** → **意図は「見せる」で確定。**
+  施工店向けの API と画面が既に出荷されており（`/api/admin/insurer-cases`、
+  `BodyRepairClient` の「保険会社とのやり取り」）、スキーマも
+  `sender_type='tenant'` と `icm_insert_tenant`（施工店への**書き込み**許可）を持つ。
+  `20260622000004` の冒頭は「テナント双方向 RLS 済み」と書いている——済んでいなかった。
+  **ただし `ic_select_tenant` を今すぐ足すべきかは別の問題**で、足しても今日の挙動は
+  変わらず（両側ともサービスロールで読んでいる）、代わりに `meta.ai_fraud`
+  （confidential 分類）が DB 層で施工店に開く。`OPEN_QUESTIONS` で問い直した。
+
+**付随して見つかった**: `CASE_STATUSES` が2箇所に別々の値で定義されており、
+保険会社側の更新 API は `pending_tenant` を受け付けない。
+**施工店の返信待ち状態へ遷移させる経路が本番に無い。**
+
+### やっていないこと
+
+**実アカウントでの画面確認**は実行できない（保険会社ユーザのセッションを用意する手段が無い）。
+`npm run check:drift` も、このセッションに `SUPABASE_ACCESS_TOKEN` /
+`SUPABASE_PROJECT_ID` が無いため走らせられない【要確認】。
+
 ## 2026-09-21 保険会社の停止を RLS 側にも効かせた —— 先に「本番にだけ在る3本」を書き起こした
 
 前日に RPC 側（顧客データを返す5本）は塞いだが、**RLS は素通りのままだった**。PostgREST は表も
