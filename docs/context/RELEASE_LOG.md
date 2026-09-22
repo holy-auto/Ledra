@@ -66,6 +66,11 @@ Run workflow）で **実行 #195 が全ステップ success**、**PR #1120（`ch
 Supabase types`）が自動で立った**。`src/types/db.generated.ts` の1ファイルのみ、
 **+16271 / −14758**（2026-09-07 以降 PR 作成が落ち続け、型が止まっていた分の差）。
 
+- **手動実行だけでなく、自然な起動でも回った。** 同日の #1119・#1116（どちらも
+  マイグレーションを含む）のマージで実行 #196 / #197 が `workflow_run` から起動し、
+  **どちらも success**。`db-migrate → db-typegen → PR` の連鎖が実際に動いている。
+  なお #197 は**新しい PR を作らず、PR #1120 の head を `7f4ff8a` に差し替えた**
+  （固定ブランチ `chore/db-typegen` の設計どおり。下の `exit 1` の根拠でもある）。
 - 2026-09-07 から 15 日間、生成と push は成功していたのに **PR 作成だけ**が
   「GitHub Actions is not permitted to create or approve pull requests」で落ちていた。
   成果物は `chore/db-typegen` に積み上がるが、誰も見ないブランチだった。
