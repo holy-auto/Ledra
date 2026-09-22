@@ -184,6 +184,20 @@ reset_branch(branch_id = <分岐 ID>, migration_version = "<改名していな�
 プレビュー分岐は `persistent: false` / `with_data: false` の使い捨てなので、
 消えて困るデータは無い。**本番の分岐（`is_default: true`）には絶対に使わない。**
 
+**リセットが終わるまで push しない。** リセットは台帳を空にして全部を流し直す。
+その最中に push すると、push 契機の適用がもう一方の途中の台帳を見て頭から入れ直し、
+衝突する:
+
+```
+ERROR: duplicate key value violates unique constraint "schema_migrations_pkey"
+Key (version)=(<古い版>) already exists.  At statement: 19
+```
+
+`list_branches` の `status` が `CREATING_PROJECT` / `RUNNING_MIGRATIONS` の間は待つ。
+`MIGRATIONS_PASSED` になってから push する。衝突してしまったら、
+`reset_branch(migration_version = "<最後のファイルの版>")` で最後まで流し直す
+（リセットは指定した版まで**リポジトリのファイルから**適用し直す）。
+
 実例: 2026-09-22 / PR #1124。`main` が `20260922140000` をマージしたため
 `20260922131500` と `131600` を `141000` / `141100` へ改名し、プレビュー DB が
 この形で落ちた。`20260922123100` までリセットして復旧。
