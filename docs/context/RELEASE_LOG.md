@@ -25,12 +25,34 @@ MISTAKE_LEDGER: `M-20260922-copied-a-check-without-checking-the-default`（型 B
 列を「名前」の単位で考えていた。列には生成側（DEFAULT）と検査側（CHECK）があり、
 片方だけ揃えると矛盾する。
 
-**同時に見つかった本番の既存バグ（未修正）**: `insurer_access_logs_action_check` は4値しか許さないが、
-アプリは 13 種類の `action` を書く。**11 種類が本番で弾かれており、案件操作の監査記録が
-1件も残っていない**（本番の `insurer_access_logs` は2行・すべて `search`）。
-語彙の決め方に判断が要るので `OPEN_QUESTIONS` へ。
+- `20260922131500` は既存行の後始末も持つ。`20260711000002` が `'veh_'` 形式で埋めた行は
+  CHECK を通らず、**NOT VALID でも UPDATE は検査される**ので「読めるが二度と更新できない行」
+  になる。本番は該当0件（27行すべて `v_` 始まり・実測）なので no-op。
 
-検証: `check:migrations` 再生・振る舞いの検査 **3 件**緑 / `ci-parallel-checks.sh` 8種すべて緑。
+**同じ型が2件目にもあった**（`/code-review` の指摘）。`20260922123100` が写した
+`certificate_images_file_size_check`（`CHECK (file_size > 0)`）に対し、
+マイグレーション側の列は `file_size bigint DEFAULT 0`（NULL 可）で、
+**既定値が自分の CHECK に弾かれる**。本番は `NOT NULL`・既定なし。
+
+- `20260922131600`: 既定を外し `NOT NULL` にして本番と揃える。**本番では両方とも no-op。**
+- `scripts/replay/checks/certificate_images_file_size.sql`: `file_size` を省いた insert が
+  `23502` で止まるかを見る。**修正を外すと既定の 0 が CHECK に進んで `23514` になり、
+  実際に落ちることを確認した。**
+- 実害は現時点で無い（唯一の insert 経路 `processUploadedPhoto.ts` は必ず値を渡す）。
+  直したのは、列の定義が本番と食い違ったまま残ると次に触る人が踏むから。
+
+**同時に見つかった本番の既存バグ（未修正）**: `insurer_access_logs_action_check` は
+`view`/`search`/`download_pdf`/`export_csv` の4値しか許さないが、**13 種類がその外にある**。
+うち SQL 関数3本（`insurer_search_vehicles`・`insurer_search_stores`・
+`insurer_get_vehicle_certificates`）は例外ハンドラ無しで `RETURN QUERY` の前に insert するため
+**関数ごと中断し、保険会社ポータルの車両検索・店舗検索・車両詳細が本番で必ず 500 になる**。
+残り10種類は TypeScript の直 insert で、`error` を見ていないため黙って記録だけ落ちる。
+本番の `insurer_access_logs` は2行・どちらも `search`・どちらも 2026-09-03。
+本番で insert を試して 23514 を実測した（ROLLBACK 済み）。語彙の決め方に判断が要るので
+`OPEN_QUESTIONS` へ。MISTAKE_LEDGER `M-20260922-enumerated-actions-from-typescript-only`
+（型 A）—— 最初は TypeScript だけを grep して「11 種類・記録が落ちるだけ」と書いていた。
+
+検証: `check:migrations` 再生・振る舞いの検査 **4 件**緑 / `ci-parallel-checks.sh` 8種すべて緑。
 
 ## 2026-09-22 外部キーと CHECK も両方向で揃え、検出器に足した
 

@@ -29,3 +29,16 @@
 
 ALTER TABLE public.vehicles
   ALTER COLUMN public_id SET DEFAULT public.generate_vehicle_public_id();
+
+-- 既存行の後始末。
+-- `20260711000002` は全行を `'veh_' || …` で埋める UPDATE を持つ。その形式の行は
+-- `vehicles_public_id_format_chk` を通らない。制約は NOT VALID なので既存行の検証は
+-- 走らないが、**NOT VALID でも INSERT と UPDATE は検査される**。つまり古い形式の行は
+-- 「読めるが二度と更新できない行」になる。
+-- 本番は該当 0 件（27 行すべて `v_` 始まり・2026-09-22 実測）なので no-op。
+-- 既にデータを持つ開発・ステージング DB のために揃えておく。
+-- `public_id` を外部キーで参照している表は無い（本番の pg_constraint で確認済み）ので、
+-- 採番し直しても参照は壊れない。
+UPDATE public.vehicles
+SET public_id = public.generate_vehicle_public_id()
+WHERE public_id !~ '^v_[0-9a-f]{24}$';

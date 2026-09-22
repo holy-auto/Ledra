@@ -3,34 +3,64 @@
 > まだ決まっていないこと、判断に迷っていることを書く場所。決まったら
 > DECISION_LOG.md に移し、このファイルからは消す（削除履歴は git で追える）。
 
-## 保険会社の監査ログが本番で記録できていない（2026-09-22）
+## 保険会社ポータルの3画面が本番で必ず落ちている（2026-09-22）
 
-`insurer_access_logs_action_check` は **`view` / `search` / `download_pdf` / `export_csv` の4値だけ**を許す。
-この制約は**本番に以前から在る**（`20260922123100` はそれをマイグレーション側へ写しただけ）。
+`insurer_access_logs_action_check` は **`view` / `search` / `download_pdf` / `export_csv` の4値だけ**を許す
+（本番で convalidated。`20260922123100` はそれをマイグレーション側へ写しただけ）。
+ところがアプリが書く `action` は **13 種類がこの4値の外**にある。
 
-ところがアプリが書く `action` は **13 種類**ある（`src/app/api/insurer/**`・`src/lib/insurer/audit.ts`・
-`src/lib/ai/automation/**` から機械的に抽出）:
+**本番で実際に弾かれることを確認した**（2026-09-22、本番で insert を試し ROLLBACK）:
+
+    ERROR 23514: new row for relation "insurer_access_logs"
+                 violates check constraint "insurer_access_logs_action_check"
+
+弾かれる 13 種類と、その結果:
+
+**(A) SQL 関数の中の insert — 関数ごと落ちる。画面が 500 になる。**
+
+| 関数 | 書く `action` | 呼ぶ API |
+|---|---|---|
+| `insurer_search_vehicles` | `vehicle_search` | `GET /api/insurer/vehicles` |
+| `insurer_search_stores` | `store_search` | `GET /api/insurer/stores` |
+| `insurer_get_vehicle_certificates` | `vehicle_view` | `GET /api/insurer/vehicles/[id]` |
+
+3関数とも insert に例外ハンドラが無く、`RETURN QUERY` の**前**に insert するので、
+**検索結果が1件も返らず関数全体が中断する**。本番の関数定義で確認済み。
+つまり保険会社ポータルの車両検索・店舗検索・車両詳細は**現在まったく使えない**。
+（通るのは `insurer_search_certificates`(`search`) と `insurer_get_certificate`(`view`) の2つだけ。）
+
+**(B) TypeScript からの insert — 記録だけ黙って落ちる。**
+
+10 箇所すべてが `await admin.from("insurer_access_logs").insert({...})` で
+**戻り値の `error` を見ていない**ので、例外にもログにもならない:
 
     case_assign_suggest_auto  case_attachment_upload  case_bulk_update  case_create
-    case_message  case_summary_auto  case_update  download_pdf  fraud_check
-    fraud_check_auto  issue_certificate  pii_disclosure_request  view
+    case_message  case_summary_auto  case_update  fraud_check  fraud_check_auto
+    pii_disclosure_request
 
-うち通るのは `view` と `download_pdf` の2つだけで、**残り 11 種類は本番で弾かれている**。
-本番の `insurer_access_logs` は **2行・すべて `search`** で、案件操作の監査記録が1件も無いのは
-これで説明がつく（Codex の P1 指摘。2026-09-22）。
+`src/lib/insurer/audit.ts` と `src/lib/supabase/insurer/audit.ts` は
+`AuditAction = "view" | "search" | "download_pdf" | "export_csv"` と型で縛っているので
+**この2経路は落ちていない**（`if (insErr) throw insErr` は正しく機能している）。
 
-書き込み経路で挙動が分かれる。`src/lib/insurer/audit.ts` は `if (insErr) throw insErr` なので
-**リクエストごと 500 になる**が、`src/lib/ai/automation/*.ts` の直 insert は結果を見ていないので
-**黙って記録だけ落ちる**【要確認: どの経路が実際に使われているか】。
+本番の `insurer_access_logs` は **2行・どちらも `search`・どちらも 2026-09-03**。
+案件操作の監査記録が1件も無いのはこれで説明がつく。
 
 **未決**: どう直すか。
-- (a) CHECK を実際の語彙 13 種へ広げる（本番とマイグレーションの両方）。広げる方向なので既存行は壊れない
-- (b) コード側を4値の語彙に寄せる（`case_*` を `meta` に入れて `action` は `view`/`search` に畳む）
+- (a) CHECK を実際の語彙（4 + 13 = 17 種）へ広げる。広げる方向なので既存行は壊れない
+- (b) コード側を4値に寄せる（`case_*` を `meta` に入れて `action` は `view`/`search` に畳む）。
+  ただし **(A) の3関数は本番の関数定義も直す必要がある**ので、どちらを選んでも SQL 側の修正は要る
 - (c) `action` を正準語彙として `src/lib/domain/` に定義し、CHECK をそこから生成する
   （CLAUDE.md のドメイン状態語彙ルールに沿う形）
 
-(a) が最短だが、`action` に何を載せる設計なのかを決めないと同じことが起きる。
-**監査は Ledra の売りなので、記録が落ちている状態を長く放置しない**。
+(a) が最短。ただし `action` に何を載せる設計なのかを決めないと同じことが起きる。
+**(A) は監査の欠落ではなく機能停止なので、語彙の決め方を待たずに先に通す判断もありうる。**
+
+付随して見つかった別件: `certificate_images` の列定義が本番と食い違っている
+（`file_name` と `content_type` が本番は NOT NULL・マイグレーションは NULL 可、
+`sort_order` の既定が本番 1・マイグレーション 0）。
+`file_size` だけは `20260922131600` で揃えた。**列の「名前」しか突き合わせていない**ので、
+既定値・NULL 可否・型の食い違いは `check:schema` にも再生にも映らない。
+検出器を属性まで見るように広げるかは別途判断する。
 
 ## 一意でない索引が本番と再生 DB で食い違っている（2026-09-21）
 

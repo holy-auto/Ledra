@@ -70,9 +70,9 @@
 
 | 型 | 中身 | 該当 |
 |---|---|---|
-| **A. 道具を検証しない** | 変更したコードは検証したのに、「何を変えるべきか判断するために使った道具」（検出器・正規表現・スクリプト・クエリ）を検証していない。道具の出力を事実として扱う。**そのクエリが何を確定させたのかを確かめずに、確定したつもりになる**のもこの型。**自分の想定だけで検証するのも同じ**（当たりを取る「既知の1件」を自分で作る）。**動作を主張するコメントを、その根拠（スキーマ・型定義）を確認せずに書く**のも同じ。**検査の「該当なし」を、その検査が何件を見たか数えずに受け取る**のも同じ | M-001, M-002, M-003, M-006, **M-010**, M-012, M-016, M-017, **M-022**, **M-024**, **M-031**, M-036, **M-041**, **M-044**, **M-046**, **M-050**, **M-055**, **M-056**, **M-057**, **M-060**, **M-061**, **M-062**, **M-064**, **M-065**, **M-068**, **M-075**, **M-078**, **M-079**, **M-084**, **M-085**, **M-089**, **M-092**, **M-093**, **M-20260915-dupe-count-from-truncated-grep**, **M-20260918-silent-skip-made-detector-never-run**, **M-20260918-replay-db-lacked-prod-column**, **M-20260918-read-detector-blindness-as-stale-list**, **M-20260919-attributed-an-overloads-call-to-its-sibling**, **M-20260919-swept-for-the-literal-not-the-bug-class**, **M-20260919-cancel-2xx-treated-as-final**, **M-20260921-compared-counts-where-names-differed**, **M-20260921-detector-covered-half-the-tables-i-had-listed**, **M-20260921-said-the-drift-checker-ignores-policies**, **M-20260922-wrote-constraint-bodies-from-their-names** |
+| **A. 道具を検証しない** | 変更したコードは検証したのに、「何を変えるべきか判断するために使った道具」（検出器・正規表現・スクリプト・クエリ）を検証していない。道具の出力を事実として扱う。**そのクエリが何を確定させたのかを確かめずに、確定したつもりになる**のもこの型。**自分の想定だけで検証するのも同じ**（当たりを取る「既知の1件」を自分で作る）。**動作を主張するコメントを、その根拠（スキーマ・型定義）を確認せずに書く**のも同じ。**検査の「該当なし」を、その検査が何件を見たか数えずに受け取る**のも同じ | M-001, M-002, M-003, M-006, **M-010**, M-012, M-016, M-017, **M-022**, **M-024**, **M-031**, M-036, **M-041**, **M-044**, **M-046**, **M-050**, **M-055**, **M-056**, **M-057**, **M-060**, **M-061**, **M-062**, **M-064**, **M-065**, **M-068**, **M-075**, **M-078**, **M-079**, **M-084**, **M-085**, **M-089**, **M-092**, **M-093**, **M-20260915-dupe-count-from-truncated-grep**, **M-20260918-silent-skip-made-detector-never-run**, **M-20260918-replay-db-lacked-prod-column**, **M-20260918-read-detector-blindness-as-stale-list**, **M-20260919-attributed-an-overloads-call-to-its-sibling**, **M-20260919-swept-for-the-literal-not-the-bug-class**, **M-20260919-cancel-2xx-treated-as-final**, **M-20260921-compared-counts-where-names-differed**, **M-20260921-detector-covered-half-the-tables-i-had-listed**, **M-20260921-said-the-drift-checker-ignores-policies**, **M-20260922-wrote-constraint-bodies-from-their-names**, **M-20260922-enumerated-actions-from-typescript-only** |
 | **B. 読まずに分類する** | コードの形（関数名・構造・コメント）から中身を推測して分類し、実際に読んでいない。**1段だけ深く読んで止まる**のも同じ（条件式は読んだが、その値の既定を追っていない）。**その値がどこから来るかを見ない**のも同じ（既定・サンプル・過去の配布物に同じ値が無いか）。**列や機能が「ある」ことを「使われている」と読む**のもこの型。**値の出所を変えたのに、その値を使う式が旧い出所の前提（排他性等）を暗黙に置いたままか確認しない**のも同じ。**部品が直ったことを、その部品を使う機能が直ったことと読む**のも同じ | M-004, M-020, **M-032**, M-035, M-036, **M-039**, **M-040**, **M-048**, **M-052**, **M-063**, **M-074**, **M-083**, **M-088**, **M-20260920-hashed-a-file-i-never-opened**, **M-20260920-asked-for-a-decision-that-was-already-made-in-the-file-i-cited**, **M-20260921-classified-rls-impact-from-one-policy**, **M-20260922-copied-a-check-without-checking-the-default** |
-| **C. 経路を1本しか見ない** | 同じ操作に複数の入口があるのに、目についた1本だけ直す。**同じ事実を2箇所に書いて片方だけ直す**のも同じ（文書に出た形）。**排他にすべき組み合わせのうち一部のペアだけをチェックする**のも同じ | M-005, M-007, M-013, M-019, **M-023**, **M-025**, M-038, **M-058**, **M-061**, **M-072**, **M-076**, **M-087**, **M-20260918-verification-skippable-via-transition-flag**, **M-20260919-exclusivity-guard-only-in-admin-route**, **M-20260919-exclusivity-checked-one-pair-not-all**, **M-20260920-called-it-all-no-op-while-fixing-the-one-statement-that-runs** |
+| **C. 経路を1本しか見ない** | 同じ操作に複数の入口があるのに、目についた1本だけ直す。**同じ事実を2箇所に書いて片方だけ直す**のも同じ（文書に出た形）。**排他にすべき組み合わせのうち一部のペアだけをチェックする**のも同じ | M-005, M-007, M-013, M-019, **M-023**, **M-025**, M-038, **M-058**, **M-061**, **M-072**, **M-076**, **M-087**, **M-20260918-verification-skippable-via-transition-flag**, **M-20260919-exclusivity-guard-only-in-admin-route**, **M-20260919-exclusivity-checked-one-pair-not-all**, **M-20260920-called-it-all-no-op-while-fixing-the-one-statement-that-runs**, **M-20260922-enumerated-actions-from-typescript-only** |
 | **D. 移設で弱める** | 「同じものを別の場所に置くだけ」のつもりが、検査の強さや信号が落ちている。**移設先の信頼境界（誰の書き換えを受けるか・どんな権限を持つか）が変わっているのに気づかない**のもこの型 | M-008, **M-028**, **M-029**, **M-042**, **M-047**, **M-054**, **M-060**, **M-062**, **M-063**, **M-065** |
 | **J. 兄弟実装と揃えていない** | 同じ理由で複数箇所に同種のガード・分岐を書いたのに、片方にしか適用しなかった／既存の兄弟実装が既に持っていた条件を新しい実装に持ち込まなかった。**「同じパターンで書いた」つもりが実は違う**のがこの型の核。**「AをBに置き換える」判断をしたのに、A自体を全リポジトリでgrepせず一部だけ置き換えて終わる**のも同じ | M-066, **M-069**, **M-092**, **M-093**, **M-20260916-timeout-branch-missed-sibling-fix**, **M-20260919-cancel-checkout-scattered-across-4-handlers**, **M-20260919-handled-completed-branch-not-failed-branch**, **M-20260919-else-fix-not-swept-to-siblings**, **M-20260921-claimed-all-db-errors-swept-but-left-booking-upsert** |
 | **K. 新しいコード経路を、それが実際に呼ばれる文脈で動かして試していない** | 単体の変更としては正しいのに、それが実際に発火する呼び出し元・エラー経路まで通して動かしていない。ユニットテストがあっても「起こりうる呼び出し順」を再現していなければ検出できない | **M-067** |
@@ -83,6 +83,48 @@
 | **G. 構造テストを振る舞いの証明として扱う** | ソースを grep して「その語が書かれている」を確かめただけで、**値が通るか**を確かめていない。テストは緑、機能は壊れている。**ファイルに在ること**を、**その経路が実際に動く/覆われている**ことの証拠として扱うのも同じ | **M-033**, **M-20260921-file-content-read-as-behavior** |
 | **H. 未確定の前提の上に作る** | 依頼者しか決められない前提を確認しないまま、その前提が変われば丸ごと消える実装を先に作る | **M-043** |
 | **I. 前提が途中で変わったのに読み直さない** | 判断したときは正しかった観察が、その後の `main` 取り込みなどで無効になっているのに、変更を見直さない。**衝突しなかったファイルにこそ潜む** | **M-047**, **M-051** |
+
+---
+
+## M-20260922-enumerated-actions-from-typescript-only 監査 action の語彙を TypeScript だけ grep して数え、本番で機能が3つ止まっているのを「記録が落ちている」と書いた（2026-09-22・型 A、併せて型 C）
+
+**Before**: `insurer_access_logs_action_check` が4値しか許さないのを見つけ、`src/` を grep して
+「アプリが書く `action` は 13 種類、うち 11 種類が弾かれている」と OPEN_QUESTIONS に書いた。
+被害は「案件操作の監査記録が1件も残っていない」だと結論し、
+「語彙の決め方に判断が要るので代表に確認」として PR の対象外に置いた。
+
+**After**: 数も、被害の大きさも、原因の切り分けも間違っていた。
+
+- **書き手は TypeScript だけではない。** 本番の SQL 関数3本が `insurer_access_logs` に
+  直接 insert していて、その `action` が `vehicle_search` / `store_search` / `vehicle_view`。
+  3本とも例外ハンドラが無く `RETURN QUERY` の**前**に insert するので、
+  **関数ごと中断する**。つまり `GET /api/insurer/vehicles`・`/api/insurer/stores`・
+  `/api/insurer/vehicles/[id]` は**本番で必ず 500**。記録の欠落ではなく機能停止だった。
+- **「11 種類」は誤り。** 正しくは TypeScript 10 + SQL 3 = **13 種類が弾かれる**
+  （4値の外にある値の数。`| wc -l` で数え直した）。
+- **`issue_certificate` は無関係だった。** `src/lib/ai/jobNextAction.ts` などの別の語彙を
+  同じ一覧に混ぜていた。`insurer_access_logs` には一度も書かれない。
+- **「`audit.ts` は throw するのでリクエストごと 500」も誤り。**
+  `audit.ts` は `AuditAction` を4値に型で縛っているので、そもそも弾かれる値を渡せない。
+  実際に落ちているのは、戻り値の `error` を見ていない 10 箇所の直 insert（黙って欠落）と、
+  上の SQL 関数3本（500）。
+
+**なぜ気づけなかったか**: **「アプリが書く値」を数える道具として `src/` の grep を選び、
+その道具が母集団を覆っているかを確かめなかった。** `insurer_access_logs` に書けるのは
+アプリだけではない —— SECURITY DEFINER の SQL 関数も書く。`supabase/migrations/` も
+本番の `pg_proc` も、どちらも1クエリで見られる場所にあったのに見ていない。
+さらに、被害の大きさを**書き手の側（誰が insert するか）だけで判断し、
+読み手の側（その insert が失敗したとき呼び出し元がどうなるか）を見なかった**。
+TypeScript の直 insert は結果を捨てるので無害に近いが、SQL 関数の中では
+同じ失敗がトランザクション全体を落とす。**同じ制約違反でも、置かれた場所で被害が桁違いになる。**
+
+**再発防止**: 仕組み半分。
+- 「この表に何が書かれるか」を数えるときは、**アプリのソースと DB の関数定義の両方**を見る。
+  `select proname from pg_proc where pg_get_functiondef(oid) like '%<表名>%'` が1行で効く。
+- 列挙した値が本当に弾かれるかは、**本番で insert を試して ROLLBACK する**。
+  今回それをやって初めて 23514 を実測した（推論ではなく観測になった）。
+- 被害を書く前に、**その insert の直後に何があるか**（`RETURN QUERY` か、結果を捨てる `await` か）
+  を1行読む。ここが「記録が落ちる」と「画面が落ちる」を分ける。
 
 ---
 
