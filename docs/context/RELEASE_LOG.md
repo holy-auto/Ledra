@@ -4,6 +4,30 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-09-22 メーカー通知チャネル新設＋停止保険会社フォールバック＋FT入力検証（#1123 / #1122・#1117）
+
+**メーカー通知チャネル（#1117）**: 施工店の証拠提出（evidence_submitted）通知が提出元
+テナント自身に飛んでメーカーに届いていなかった。姉妹表 `manufacturer_notifications`
+（`20260922140000`・`manufacturer_id` / RLS `my_manufacturer_ids()` / INSERT はサービス
+ロールのみ / realtime なし）を新設し、`notifyFtManufacturer` ＋ 読み取り API 3本
+（一覧 / read-all / [id]/read）を追加。`NotificationBell` に `basePath` prop を足して
+メーカーポータルのサイドバーに設置（コンポーネントは再利用・クローン0）。emit をメーカー宛
+（リンク `/manufacturer/field-test/{projectId}`）に付け替え。**本番適用は次回 db-migrate**。
+
+**停止保険会社のフォールバック（#1122）**: `resolveInsurerCaller` がクッキー指定先の会員行を
+先に1件へ絞ってから使用可否を見ていたため、指定先が停止(suspended)だと別に使える保険会社が
+あっても 401 だった。会員行を全件取得→使える集合から選ぶ方式に。再現テスト6件。
+
+**FT condition-checks 入力検証（#1117）**: `conditionCheckInputSchema`(zod) で 4xx 化＋
+「condition が案件のプロジェクトに属するか」の越境ガードを追加（型付き `FT_INVALID_CONDITION`）。
+
+**FT report 二重クエリ解消（#1117）**: 集計用とマップ用で `ft_jobs` を2回取得していたのを、
+1本目 select に `id` を足して1回に集約。
+
+検証: `bash scripts/ci-parallel-checks.sh` 全緑（`check:migrations` 再生 496/496）。
+なお push 前に同スクリプトを回さず `check:schema`（新表を snapshot 未登録）で一度 CI を
+落とした（MISTAKE_LEDGER `M-20260922-pushed-without-ci-parallel-checks`）。
+
 ## 2026-09-22 外部キーと CHECK も両方向で揃え、検出器に足した
 
 **同じ事故が制約も壊していた。** `20260918142610 remote_schema` は索引 38 本に加えて
