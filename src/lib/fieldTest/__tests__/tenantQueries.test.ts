@@ -1,5 +1,48 @@
 import { describe, it, expect } from "vitest";
-import { validateTenantStatusTransition } from "../tenantQueries";
+import { validateTenantStatusTransition, createApplication } from "../tenantQueries";
+
+// Minimal chainable fake covering both paths createApplication uses:
+//   insert(...).select(...).single()            → { data|null, error }
+//   update(...).eq().eq().in().select().maybeSingle() → { data:reviveData|null }
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function fakeSupa(opts: { insertError?: { code?: string; message?: string } | null; reviveData?: unknown }): any {
+  const insertError = opts.insertError ?? null;
+  const obj: Record<string, unknown> = {};
+  for (const m of ["from", "insert", "update", "select", "eq", "in"]) obj[m] = () => obj;
+  obj.single = async () => ({ data: insertError ? null : { id: "new", status: "pending" }, error: insertError });
+  obj.maybeSingle = async () => ({ data: opts.reviveData ?? null, error: null });
+  return obj;
+}
+
+const appRow = {
+  recruitment_id: "r1",
+  project_id: "p1",
+  manufacturer_id: "m1",
+  tenant_id: "t1",
+  applied_by: "u1",
+};
+
+describe("createApplication re-apply / duplicate handling", () => {
+  it("inserts a fresh application when there is no conflict", async () => {
+    const supa = fakeSupa({ insertError: null });
+    await expect(createApplication(supa, appRow)).resolves.toMatchObject({ id: "new" });
+  });
+
+  it("revives a withdrawn/rejected application on re-apply (23505 → update finds a revivable row)", async () => {
+    const supa = fakeSupa({ insertError: { code: "23505" }, reviveData: { id: "revived", status: "pending" } });
+    await expect(createApplication(supa, appRow)).resolves.toMatchObject({ id: "revived" });
+  });
+
+  it("blocks a genuine active duplicate (23505 → no revivable row) with a typed error", async () => {
+    const supa = fakeSupa({ insertError: { code: "23505" }, reviveData: null });
+    await expect(createApplication(supa, appRow)).rejects.toMatchObject({ code: "FT_DUPLICATE_APPLICATION" });
+  });
+
+  it("rethrows non-unique DB errors unchanged (not mislabeled as duplicate)", async () => {
+    const supa = fakeSupa({ insertError: { code: "42501", message: "rls denied" } });
+    await expect(createApplication(supa, appRow)).rejects.toMatchObject({ code: "42501" });
+  });
+});
 
 describe("validateTenantStatusTransition", () => {
   it("assigned → in_progress は許可", () => {
