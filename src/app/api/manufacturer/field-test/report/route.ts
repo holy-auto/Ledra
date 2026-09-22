@@ -42,7 +42,7 @@ export async function GET(req: NextRequest) {
 
     // Parallel fetch
     const [jobsRes, inspRes, defectsRes, evidenceRes] = await Promise.all([
-      admin.from("ft_jobs").select("status, tenant_id, completed_at").match(scope),
+      admin.from("ft_jobs").select("id, status, tenant_id, completed_at").match(scope),
       admin.from("ft_inspections").select("result, score, job_id").match(scope),
       admin.from("ft_defects").select("severity, status, tenant_id").match(scope),
       admin.from("ft_evidence").select("evidence_type, tenant_id").match(scope),
@@ -58,9 +58,8 @@ export async function GET(req: NextRequest) {
     const defects = defectsRes.data ?? [];
     const evidence = evidenceRes.data ?? [];
 
-    // Build job_id → tenant_id map for inspections
-    const { data: jobTenantRows } = await admin.from("ft_jobs").select("id, tenant_id").match(scope);
-    const jobTenantMap = new Map((jobTenantRows ?? []).map((j) => [j.id as string, j.tenant_id as string]));
+    // Build job_id → tenant_id map for inspections（jobs は上で取得済み。二重取得しない）
+    const jobTenantMap = new Map(jobs.map((j) => [j.id as string, j.tenant_id as string]));
 
     // ── Aggregate: global ──
     const jobsByStatus: Record<string, number> = {};

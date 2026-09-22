@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import ManufacturerRouteGuard from "./ManufacturerRouteGuard";
+import NotificationBell from "@/components/ui/NotificationBell";
 
 const AUTH_ROUTES = ["/manufacturer/login"];
 
@@ -63,6 +64,9 @@ function Sidebar() {
         <Link href="/manufacturer" className="text-[13px] font-semibold tracking-wide text-primary">
           メーカーポータル
         </Link>
+        <div className="ml-auto">
+          <NotificationBell basePath="/api/manufacturer/notifications" />
+        </div>
       </div>
       <nav className="flex-1 overflow-y-auto p-3 space-y-0.5">
         {items.map((item) => {

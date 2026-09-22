@@ -77,13 +77,38 @@
 | **J. 兄弟実装と揃えていない** | 同じ理由で複数箇所に同種のガード・分岐を書いたのに、片方にしか適用しなかった／既存の兄弟実装が既に持っていた条件を新しい実装に持ち込まなかった。**「同じパターンで書いた」つもりが実は違う**のがこの型の核。**「AをBに置き換える」判断をしたのに、A自体を全リポジトリでgrepせず一部だけ置き換えて終わる**のも同じ | M-066, **M-069**, **M-092**, **M-093**, **M-20260916-timeout-branch-missed-sibling-fix**, **M-20260919-cancel-checkout-scattered-across-4-handlers**, **M-20260919-handled-completed-branch-not-failed-branch**, **M-20260919-else-fix-not-swept-to-siblings**, **M-20260921-claimed-all-db-errors-swept-but-left-booking-upsert** |
 | **K. 新しいコード経路を、それが実際に呼ばれる文脈で動かして試していない** | 単体の変更としては正しいのに、それが実際に発火する呼び出し元・エラー経路まで通して動かしていない。ユニットテストがあっても「起こりうる呼び出し順」を再現していなければ検出できない | **M-067** |
 | **L. 既定を開いたまま守る（除外リスト）** | 「見せないもの」を並べて塞ぐ。塞いだ時点では実データと一致していても、**既定が公開**なので、値が増えるたびに漏れる。**母集団を数えていない**のが根（「今あるもの」を実測して、「入りうるもの」を数えていない）。外向けの経路では許可リストにして、知らないものを既定で落とす | **M-077** |
-| **E. 手元とCIの差を忘れる** | 手元では通るのに CI だけ落ちる構成を作る。書いた本人には見えない。**リポジトリが用意した「CIと同じ検査」を走らせず、思い出せる検査だけ個別に走らせる**のも同じ | M-009, **M-030**, **M-084**, **M-089**, **M-094** |
+| **E. 手元とCIの差を忘れる** | 手元では通るのに CI だけ落ちる構成を作る。書いた本人には見えない。**リポジトリが用意した「CIと同じ検査」を走らせず、思い出せる検査だけ個別に走らせる**のも同じ | M-009, **M-030**, **M-084**, **M-089**, **M-094**, **M-20260922-pushed-without-ci-parallel-checks** |
 | **F. 確認できる事実を確認しない** | 環境から1コマンドで確かめられる事実（今日の日付・件数・バージョン・設定ファイルの中身・**CI が実際に走ったか**・**同じ問題を直している PR が既に開いていないか**）を、確かめずに書く。**自分がこれから追記しようとしているログファイル自身に、既に矛盾する記述が無いか確認しない**のも同じ。**本番の実データをそのまま調査ログ・事業ログに転記する**のも同じ（PIIのマスクを確認事実として扱わない） | M-011, M-014, M-015, M-016, **M-018**, **M-021**, **M-026**, **M-027**, M-034, M-037, **M-045**, **M-049**, **M-053**, **M-059**, **M-070**, **M-071**, **M-073**, **M-080**, **M-081**, **M-082**, **M-086**, **M-088**, **M-090**, **M-20260915-dupe-count-from-truncated-grep**, **M-20260918-called-it-untraceable-without-checking-open-prs**, **M-20260919-said-no-open-pr-has-it-again**, **M-20260919-hand-applied-ahead-of-a-pending-migration**, **M-20260919-skipped-the-check-i-had-just-written**, **M-20260919-green-ci-read-as-production-applied**, **M-20260919-credited-my-own-dirty-tree-to-another-session**, **M-20260919-wrote-a-replay-count-i-never-read**, **M-20260920-hashed-a-file-i-never-opened**, **M-20260920-counted-12-as-11-again**, **M-20260921-reported-a-subtraction-as-a-measurement**, **M-20260921-two-samples-read-as-all**, **M-20260921-restated-my-own-summary-as-fact**, **M-20260922-said-typegen-red-on-every-merge** |
 | **G. 構造テストを振る舞いの証明として扱う** | ソースを grep して「その語が書かれている」を確かめただけで、**値が通るか**を確かめていない。テストは緑、機能は壊れている。**ファイルに在ること**を、**その経路が実際に動く/覆われている**ことの証拠として扱うのも同じ | **M-033**, **M-20260921-file-content-read-as-behavior** |
 | **H. 未確定の前提の上に作る** | 依頼者しか決められない前提を確認しないまま、その前提が変われば丸ごと消える実装を先に作る | **M-043** |
 | **I. 前提が途中で変わったのに読み直さない** | 判断したときは正しかった観察が、その後の `main` 取り込みなどで無効になっているのに、変更を見直さない。**衝突しなかったファイルにこそ潜む** | **M-047**, **M-051** |
 
 ---
+
+## M-20260922-pushed-without-ci-parallel-checks 新表を足したのに `check:schema` を手元で回さず、赤を push した（2026-09-22・型 E）
+
+**Before**: メーカー通知チャネルで新表 `manufacturer_notifications` を追加した。手元で
+`tsc` / `eslint`（変更ファイル）/ `vitest`（FT+api）/ `check:migrations` を回して全部緑を
+確認し、「検証済み」として push した。
+
+**After**: CI の "Lint, Type Check & Unit Tests" が `check:schema` で落ちた。
+`scripts/schema.snapshot.json` は実スキーマのコピーで、コードが参照する表がここに載って
+いないと `check-schema.mjs` が落とす。新表を足したのに snapshot を更新していなかった。
+snapshot に1表追記して緑。CI ジョブは `bash scripts/ci-parallel-checks.sh` 一発で回る一式
+（lint / lint:migrations / tsc / test:coverage / **check:schema** / check:context-dates /
+check:ox-override / check:ledger-ids）だが、これを回さず記憶にある4つで判断していた。
+
+**なぜ気づけなかったか**: リポジトリが「CIと同じ検査」を1コマンドで用意している
+（`scripts/ci-parallel-checks.sh`、コメントに M-018 の教訓まで書いてある）のに、それを
+回さず「思い出せる検査」で代替した。新表＝マイグレーションの話だと思い込み、
+`check:migrations`（空DB再生）は回したが、**コードが参照する表とスナップショットの突き合わせ**
+（`check:schema`）は別物だと結びつかなかった。型 E の再発防止（CIと同じ検査を走らせる）が
+効かなかったのは、用意された一括スクリプトの存在を確認せず記憶で代替したため。
+
+**再発防止**: 仕組みあり。**push 前に `bash scripts/ci-parallel-checks.sh` を回す**
+（"Lint, Type Check & Unit Tests" ジョブと同一の集合）。特に表・列・ビューを増減した PR では
+`check:schema` が新規/変更表を要求するので、**新表を足したら `scripts/schema.snapshot.json`
+更新をセットで行う**。個別スクリプトの寄せ集めで「全部緑」と判断しない。
 
 ## M-20260922-said-typegen-red-on-every-merge 自分が編集したワークフローの `on:` を読まず、「マージのたびに赤」と書いた（2026-09-22・型 F）
 
