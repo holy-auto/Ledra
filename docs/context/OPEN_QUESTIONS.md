@@ -1760,17 +1760,57 @@ case_id IN (SELECT id FROM insurer_cases WHERE tenant_id IN (SELECT my_tenant_id
 
 **既存の不具合**で、停止ゲート（`20260921134500`）が作ったものではない。
 
-**未決**: (a) `insurer_cases` に施工店側の SELECT ポリシーを足す
-（＝保険会社から来た案件を施工店に見せる設計だったのか、を先に確かめる）。
-(b) 2本のポリシーを消す（＝施工店には見せない設計だったと決める）。
-**どちらが元の意図だったかが分からない。** 本番の `insurer_cases` は1行しかないので、
-今は誰も困っていない。
+**【2026-09-21・意図は確定。(a) だった】** コードベースを全数調査して確かめた。
 
-関連: `src/app/api/insurer/switch/route.ts:41` が `.eq("status", "active")` で
-`active_pending_review` を除いている。`resolveInsurerCaller` /
-`current_insurer_access()` / `my_insurer_ids()` はいずれも
-`IN ('active','active_pending_review')` なので、**ここだけ狭い**。
-審査中の保険会社が切り替えできない可能性がある【要確認】。
+- **施工店向けの API が既にある**: `src/app/api/admin/insurer-cases/route.ts`（一覧）と
+  `.../[id]/messages/route.ts`（スレッド取得と**返信の投稿**）。前者のヘッダに
+  「施工店(tenant)が、自社に紐づく保険案件 (insurer_cases.tenant_id) の一覧を取得する」。
+- **施工店向けの画面も出荷済み**: `src/app/admin/body-repair/BodyRepairClient.tsx` の
+  `InsurerCaseSection`（「保険会社とのやり取り」）。`FEATURES.md` にも機能として載っている。
+- **スキーマがその設計**: `insurer_cases.tenant_id`、`status` に `pending_tenant`、
+  `sender_type` の CHECK に `'tenant'`、そして **`icm_insert_tenant`（施工店への書き込み許可）**。
+  「見せない設計」なら書き込み許可は意味を成さない。
+- **書いた本人がそう信じていた**: `20260622000004_body_repair_insurer_case.sql` の冒頭に
+  「会話/添付スキーマは既存・**テナント双方向 RLS 済み**なので、ここではリンクのみ追加する」。
+  実際には `insurer_cases` 側の SELECT ポリシーが無く、済んでいなかった。
+
+**つまり (b)（2本を消す）は、不具合を設計として固定することになる。採らない。**
+
+**では (a) を今すぐ入れるべきか —— そこが新しい未決。**
+**施工店側の本番経路は1つも RLS を通っていない**（両側ともサービスロールで読んでいる）。
+だから `ic_select_tenant` を足しても**今日の挙動は何も変わらず**、代わりに
+`insurer_cases.meta` が DB 層で施工店に開く。`meta` には AI の不正スコア
+（`meta.ai_fraud`）が入り、`src/lib/privacy/classification.ts` は confidential に分類している。
+サービスロール経由の API は施工店へ**意図的に狭い列だけ**を返している。
+RLS は列を絞れないので、行を開けば `meta` ごと開く。
+
+**未決（新）**: (a-1) `ic_select_tenant` を足し、`meta` も施工店に開く。
+(a-2) 足すが、`meta` を別表へ出すか施工店向けビューを挟む。(a-3) RLS は当面足さず、
+2本のポリシーは「将来そうする」印として残す（現状維持）。**どれも挙動は今日変わらない**ので、
+急がない。急ぐのは下の `pending_tenant` の方。
+
+### 付随して見つかった: `pending_tenant` に遷移させる経路が無い（2026-09-21）
+
+`CASE_STATUSES` が**2箇所に別々の値で**定義されている。
+
+| 場所 | 値 |
+|---|---|
+| `src/lib/validations/insurer-case.ts:3` | `open` / `in_progress` / `resolved` / `closed`（**`pending_tenant` 無し**） |
+| `src/app/api/admin/insurer-cases/route.ts:10` | 上記 + `pending_tenant` |
+
+保険会社側の更新 API は前者で検証するので、**案件を `pending_tenant` にできない**。
+一方、施工店が返信すると `pending_tenant → in_progress` へ進める CAS が
+`src/app/api/admin/insurer-cases/[id]/messages/route.ts` にある。
+**入口が無いので、この遷移は本番で一度も起きない。** 施工店の返信待ち状態が
+運用に乗っていないということ。CLAUDE.md のドメイン状態語彙ルールが禁じている
+「同じ状態集合を複数箇所に別々に書く」の実例でもある【要確認: 正準モジュールに
+保険案件の軸を足すのか、片方を消すのか】。
+
+**【2026-09-21 解決】** 関連として挙げていた `/api/insurer/switch` の件は直した。
+GET が `status='active'` だけを見て審査中を落としていたのに加え、**POST は
+`insurers` を一度も見ていなかった**（停止中でもクッキーを設定できた）。
+規則を `INSURER_USABLE_STATUSES`（`src/lib/api/insurerAuth.ts`）に集約し、
+DB 側2関数との一致を `src/lib/api/__tests__/insurerUsableStatuses.test.ts` が見る。
 
 ## ポリシーのドリフトが、認可の変更を黙って危険にする（2026-09-21・新規3本）
 
@@ -1785,13 +1825,23 @@ case_id IN (SELECT id FROM insurer_cases WHERE tenant_id IN (SELECT my_tenant_id
 `20260921134500` で書き起こしたので**この3本はもう差ではない**（定義は本番と
 `qual` の空白正規化まで一致させて確認済み。本番では実質 no-op）。
 
-**残る問題は検出されていないことそのもの。** ポリシーの有無を見る検査が無いので、
-次に同じことが起きても気づけない。`check-schema-drift.mjs` は表と列しか見ていない。
-`pg_policies` の `(tablename, policyname)` の集合を突き合わせるだけなら安い。
+**【2026-09-21 訂正】上の段落に「ポリシーの有無を見る検査が無い」「`check-schema-drift.mjs` は
+表と列しか見ていない」と書いたが、誤り。** `check-schema-drift.mjs` は**今日より前から**
+ポリシー名を双方向で比べている（`55c2faf` の版で確認。`policiesFromDump()` /
+`prod.policy` / `extraPolicies`、`LABEL` に「RLS ポリシー」）。
+**「本番にあってマイグレーションに無いポリシー」は `total` に加算され exit 1 する。**
+つまり今日見つけた3本は、この検出器が報告できる対象だった。
+道具が何を見ているかを読まずに書いた（`M-20260921-said-the-drift-checker-ignores-policies`）。
 
-**未決**: (a) `pg_policies` をドリフト検出の対象に入れるか（名前だけ／定義まで）。
-(b) 入れるなら、既知の差（`certificates` 2本・`templates` 1本）をどう扱うか
-——除外リストを持つと「決まった」ことになってしまうのは `audit_logs` の8列と同じ構図。
+**本当の未決はここ**: 検出器は報告できたはずなのに、なぜ誰も気づかなかったか。
+週次ジョブ `supabase-advisors.yml` の出力を読めば分かるが、**このセッションからは
+`SUPABASE_ACCESS_TOKEN` / `SUPABASE_PROJECT_ID` が無く `npm run check:drift` を走らせられない**
+【要確認】。推定: `audit_logs` の8列などで赤が続いており、出力が読まれていなかった
+（この節自身が予告していた「赤が常態になる」の実例）。**未検証。**
+
+残る設計上の未決: (a) ポリシーを**定義まで**比べるか（今は名前だけ。名前が同じで
+`USING` が違う差は素通りする）。(b) 既知の差（`certificates` 2本・`templates` 1本）を
+どう扱うか——除外リストを持つと「決まった」ことになってしまうのは `audit_logs` の8列と同じ構図。
 
 ## 本番にあってマイグレーションに無い RLS ポリシーがある（2026-09-08）
 
