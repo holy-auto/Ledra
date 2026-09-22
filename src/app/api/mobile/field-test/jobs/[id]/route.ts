@@ -6,7 +6,7 @@ import {
   validateTenantStatusTransition,
   updateTenantFtJobStatus,
 } from "@/lib/fieldTest/tenantQueries";
-import { notifyFtTenant } from "@/lib/fieldTest/ftNotify";
+import { notifyFtManufacturer } from "@/lib/fieldTest/ftNotify";
 
 export const dynamic = "force-dynamic";
 
@@ -38,7 +38,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
     const { data: job } = await caller.supabase
       .from("ft_jobs")
-      .select("id, status")
+      .select("id, status, manufacturer_id, project_id")
       .eq("id", id)
       .eq("tenant_id", caller.tenantId)
       .maybeSingle();
@@ -50,13 +50,14 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     const updated = await updateTenantFtJobStatus(caller.supabase, caller.tenantId, id, newStatus);
 
     if (newStatus === "evidence_submitted") {
+      // 提出後に次に動くのは検査するメーカー。提出元テナント自身ではなくメーカーへ届ける。
       after(async () => {
-        await notifyFtTenant({
-          tenantId: caller.tenantId,
+        await notifyFtManufacturer({
+          manufacturerId: job.manufacturer_id as string,
           type: "ft_evidence_submitted",
           title: "証拠が提出されました",
-          body: `案件の証拠が提出されました。`,
-          linkPath: `/admin/field-test`,
+          body: `施工店から案件の証拠が提出されました。検査してください。`,
+          linkPath: `/manufacturer/field-test/${job.project_id as string}`,
         });
       });
     }
