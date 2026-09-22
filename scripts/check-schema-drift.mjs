@@ -227,8 +227,12 @@ const NEGATIVE = {
   //   idx_documents_public_id     … CREATE UNIQUE INDEX 由来
   unique_index: ["tenants.tenants_slug_key", "documents.idx_documents_public_id"],
   fk_constraint: ["certificates.certificates_tenant_id_fkey", "vehicles.vehicles_tenant_id_fkey"],
-  // CREATE TABLE 内の `CONSTRAINT <名前> CHECK` 由来も1件入れる（2つの書き方を両方見る）。
-  check_constraint: ["documents.documents_status_check", "job_orders.job_orders_status_check"],
+  // **2つの書き方から1件ずつ取る。** pg_dump は VALID な CHECK を CREATE TABLE の中へ、
+  // NOT VALID な CHECK を `ALTER TABLE ... ADD CONSTRAINT` として出す。
+  // 最初どちらもインライン側から選んでおり、ALTER 側の枝に対照が無かった（/code-review の指摘）。
+  //   documents_status_check            … CREATE TABLE 内インライン由来
+  //   tenants_registration_number_format … ALTER TABLE ... NOT VALID 由来
+  check_constraint: ["documents.documents_status_check", "tenants.tenants_registration_number_format"],
 };
 /** 本番側の名前のうち、再生 DB に無いものを返す。**本番の比較もここを通る。** */
 const missingFrom = (kind, prodNames) =>
@@ -423,7 +427,6 @@ console.log(
     ` 一意制約 ${extraUnique.length} 件 / 外部キー ${extraFk.length} 件 /` +
     ` CHECK ${extraCheck.length} 件（落とさない）/ ポリシー ${extraPolicies.length} 件`,
 );
-for (const n of extraFk) console.log(`         - ${n}（外部キー）`);
 for (const n of extraCheck) console.log(`         - ${n}（CHECK・落とさない）`);
 for (const n of extraColumns) console.log(`         - ${n}`);
 // 表ごと本番に無い場合は「本番だけが重複を受け入れる」ではなく「表そのものが無い」。
@@ -434,6 +437,13 @@ const extraUniqueTablePresent = extraUnique.filter((n) => prodTableSet.has(table
 for (const n of extraUniqueTablePresent) console.log(`         - ${n}（一意制約）`);
 for (const n of extraUniqueTableMissing) {
   console.log(`         - ${n}（一意制約。ただし**表そのものが本番に無い** —— 先に表を見ること）`);
+}
+// 外部キーも同じ切り分けをする（/code-review の指摘。一意制約側にだけ入れて揃えていなかった）。
+const extraFkTableMissing = extraFk.filter((n) => !prodTableSet.has(tableOf(n)));
+const extraFkTablePresent = extraFk.filter((n) => prodTableSet.has(tableOf(n)));
+for (const n of extraFkTablePresent) console.log(`         - ${n}（外部キー）`);
+for (const n of extraFkTableMissing) {
+  console.log(`         - ${n}（外部キー。ただし**表そのものが本番に無い** —— 先に表を見ること）`);
 }
 
 if (total > 0 || extraColumns.length > 0 || extraUnique.length > 0 || extraFk.length > 0) {
@@ -461,11 +471,17 @@ if (total > 0 || extraColumns.length > 0 || extraUnique.length > 0 || extraFk.le
         "\n  本番へ戻すか、マイグレーション側から外すかを決めてください。",
     );
   }
-  if (extraFk.length > 0) {
+  if (extraFkTablePresent.length > 0) {
     console.error(
-      `\n[drift] マイグレーションにだけ存在する外部キーが ${extraFk.length} 件あります。` +
+      `\n[drift] マイグレーションにだけ存在する外部キーが ${extraFkTablePresent.length} 件あります。` +
         "\n  **本番だけが参照先の消えた行を受け入れます。**" +
         "\n  戻すときは NOT VALID で足してください（既存の壊れた行があると VALID では足せません）。",
+    );
+  }
+  if (extraFkTableMissing.length > 0) {
+    console.error(
+      `\n[drift] マイグレーションにだけ存在する外部キーのうち ${extraFkTableMissing.length} 件は、` +
+        "**表そのものが本番にありません**。外部キーではなく表の未適用として追ってください。",
     );
   }
   if (extraUniqueTableMissing.length > 0) {

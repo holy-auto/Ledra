@@ -13,8 +13,23 @@
 --
 -- 既知の重複2組（本番にそのまま在るので、片方だけ作ると新しいドリフトになる）:
 --   - `certificate_images_tenant_id_fkey` (CASCADE) は既存の `fk_certimg_tenant`
---     (RESTRICT) と同じ列。**両方あると厳しい側（RESTRICT）が効く**ので、
---     テナント削除は `certificate_images` に行があると止まる。本番の現状がそれ。
+--     (RESTRICT) と同じ列。**当初このヘッダには「厳しい側（RESTRICT）が効く」と書いたが、
+--     それは誤りだった**（/code-review の指摘）。同じイベントに付いた RI トリガは
+--     **名前順**に発火し、その名前は制約の OID を含む。どちらが先に走るかは
+--     **制約を作った順**で決まる。
+--
+--     実測（2026-09-22）:
+--       本番    CASCADE  oid=26232  <  RESTRICT oid=39885  → **CASCADE が先**
+--       再生 DB RESTRICT oid=18244  <  CASCADE  oid=25739  → **RESTRICT が先**
+--     再生 DB では実際にテナントを消してみて、`fk_certimg_tenant` に止められることを確認した。
+--     本番では逆順なので、**テナント削除は `certificate_images` を黙って道連れにする**
+--     見込み（推定。本番で削除を試すわけにいかないので未検証。
+--     `certificate_images` に行があるテナントを1件消せば確定する）。
+--
+--     **このファイルは本番の振る舞いを変えない**（本番には両方あるので no-op）。
+--     変わるのは再生 DB とこれから作る環境で、そこでは RESTRICT が先になる ——
+--     つまり**名前は揃うが、振る舞いは揃わない**。名前しか見ない検出器には映らない差である。
+--     根治は2本のうち1本を消すこと（どちらを残すかは product 判断）。`OPEN_QUESTIONS` へ。
 --   - `insurer_access_logs_insurer_user_fk` は既存の `fk_ial_insurer_user` と同じ列。
 --     本番では NOT VALID のまま。ここでも NOT VALID で足して本番と同じにする。
 --   どちらを残すかは `OPEN_QUESTIONS.md`（公開IDの重複索引と同じ扱い）。
