@@ -126,17 +126,23 @@ function ftStateConflict(message: string): Error & { code: string } {
   return e;
 }
 
-export async function updateTenantFtJobStatus(supabase: Supa, tenantId: string, jobId: string, newStatus: string) {
-  const updatePayload: Record<string, unknown> = { status: newStatus };
-  if (newStatus === "evidence_submitted") {
-    // ponytail: completed_at はメーカーが completed にしたとき設定。ここでは不要。
-  }
-
+export async function updateTenantFtJobStatus(
+  supabase: Supa,
+  tenantId: string,
+  jobId: string,
+  expectedStatus: string,
+  newStatus: string,
+) {
+  // `.eq("status", expectedStatus)` で楽観ロックする。呼び出し元は現在の status を読んで
+  // 遷移を検証してからここに来るが、その間に別操作が status を変えていたら 0 行になり、
+  // 検証済みでない遷移を上書きしない（競合 → FT_STATE_CONFLICT）。ガードが無いと
+  // 2つの PATCH が同じ旧状態を前提に両方書き込めてしまう（/code-review #1126）。
   const { data, error } = await supabase
     .from("ft_jobs")
-    .update(updatePayload)
+    .update({ status: newStatus })
     .eq("id", jobId)
     .eq("tenant_id", tenantId)
+    .eq("status", expectedStatus)
     .select("id, status, updated_at")
     .maybeSingle();
   if (error) throw error;
@@ -325,7 +331,8 @@ export async function listTenantApplications(supabase: Supa, tenantId: string) {
  */
 export const applicationInputSchema = z.object({
   recruitment_id: z.string().uuid(),
-  notes: z.string().max(2000).optional(),
+  // nullish: 旧実装は `notes: null` をそのまま INSERT できた。conditionCheckInputSchema と揃える。
+  notes: z.string().max(2000).nullish(),
 });
 
 /**
@@ -346,7 +353,7 @@ export async function createApplication(
     manufacturer_id: string;
     tenant_id: string;
     applied_by: string;
-    notes?: string;
+    notes?: string | null;
   },
 ) {
   const sel = "id, status, notes, created_at, recruitment_id, project_id";
@@ -391,7 +398,8 @@ export async function withdrawApplication(supabase: Supa, tenantId: string, appl
     .select("id, status, updated_at")
     .maybeSingle();
   if (error) throw error;
-  if (!data) throw ftStateConflict("この応募は取り下げできません（既に取り下げ済み、または審査が進んでいます）。");
+  if (!data)
+    throw ftStateConflict("この応募は取り下げできません（既に取り下げ済み・審査済み、または対象が見つかりません）。");
   return data;
 }
 

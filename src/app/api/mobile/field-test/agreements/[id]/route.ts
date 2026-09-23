@@ -18,7 +18,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     if (!caller) return apiUnauthorized();
 
     const { id } = await params;
-    const body = await request.json();
+    const body = await request.json().catch(() => ({}));
     if (body.action !== "accept") {
       return apiValidationError('action は "accept" のみ対応しています。');
     }

@@ -11,7 +11,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     if (!caller) return apiUnauthorized();
 
     const { id } = await params;
-    const body = await request.json();
+    const body = await request.json().catch(() => ({}));
     if (body.action !== "withdraw") {
       return apiValidationError('action は "withdraw" のみ対応しています。');
     }

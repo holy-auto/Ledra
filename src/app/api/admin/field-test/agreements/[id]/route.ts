@@ -15,7 +15,7 @@ const AGREEMENT_TYPE_JA: Record<string, string> = {
 /** PATCH /api/admin/field-test/agreements/[id] — 同意 */
 export const PATCH = withCaller<{ id: string }>(
   async (req: NextRequest, { caller, supabase, params }) => {
-    const body = await req.json();
+    const body = await req.json().catch(() => ({}));
     if (body.action !== "accept") {
       return apiValidationError('action は "accept" のみ対応しています。');
     }

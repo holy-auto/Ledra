@@ -111,10 +111,11 @@ describe("状態ガード付き UPDATE の 0 行 → FT_STATE_CONFLICT（500 に
     return obj;
   }
 
-  it("updateTenantFtJobStatus: 対象行が無い（競合/不存在）と型付き 4xx で投げる", async () => {
-    await expect(updateTenantFtJobStatus(fakeSupaNoRow(), "t1", "job1", "evidence_submitted")).rejects.toMatchObject({
-      code: "FT_STATE_CONFLICT",
-    });
+  it("updateTenantFtJobStatus: 期待状態で0行（競合/不存在）と型付き 4xx で投げる", async () => {
+    // expectedStatus ガードにより、現在状態が変わっていれば 0 行 → FT_STATE_CONFLICT。
+    await expect(
+      updateTenantFtJobStatus(fakeSupaNoRow(), "t1", "job1", "assigned", "evidence_submitted"),
+    ).rejects.toMatchObject({ code: "FT_STATE_CONFLICT" });
   });
 });
 
@@ -144,6 +145,9 @@ describe("applicationInputSchema（応募入力の信頼境界・#1117）", () =
   it("notes は 2000 文字まで（過大行を防ぐ）", () => {
     expect(applicationInputSchema.safeParse({ recruitment_id: rid, notes: "a".repeat(2000) }).success).toBe(true);
     expect(applicationInputSchema.safeParse({ recruitment_id: rid, notes: "a".repeat(2001) }).success).toBe(false);
+  });
+  it("notes: null も受け付ける（旧実装の挙動維持・nullish）", () => {
+    expect(applicationInputSchema.safeParse({ recruitment_id: rid, notes: null }).success).toBe(true);
   });
 });
 
