@@ -39,8 +39,6 @@ export const GET = withCaller(
 
 const importSchema = z.object({
   csv: z.string().min(1, "CSV が空です").max(2_000_000),
-  // 既存と値が違う行（衝突）を上書きするか。既定は上書きせず衝突として返す
-  overwrite: z.boolean().optional().default(false),
 });
 // 既存行は登録する型式の行をまとめて読み、アプリ側で (型式, 品番キー) を突き合わせる。
 // 品番キー（日本語の品名を含む）を in() で URL に並べると、200 件で URL が長すぎて 400 になった
@@ -74,7 +72,8 @@ export const POST = withCaller(
     }
 
     const { toInsert, unchanged, metaUpdates, conflicts } = classifyAgainstExisting(rows, existing);
-    const toWrite = [...toInsert, ...metaUpdates, ...(parsed.data.overwrite ? conflicts.map((c) => c.row) : [])];
+    // 登録済みと値が違う行は、あとから入ってきた今回の値で上書きする（2026-09-23 代表判断）
+    const toWrite = [...toInsert, ...metaUpdates, ...conflicts.map((c) => c.row)];
     if (toWrite.length > 0) {
       const now = new Date().toISOString();
       const { error } = await admin.from("labor_hour_masters").upsert(
@@ -86,9 +85,9 @@ export const POST = withCaller(
     return apiJson({
       ok: true,
       inserted: toInsert.length,
-      updated: parsed.data.overwrite ? conflicts.length : 0,
+      updated: conflicts.length,
       unchanged: unchanged.length + metaUpdates.length,
-      conflicts: parsed.data.overwrite ? [] : conflicts.map((c) => c.conflict),
+      overwritten: conflicts.map((c) => c.conflict),
       errors,
     });
   },
