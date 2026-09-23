@@ -98,6 +98,7 @@ describe("parseLaborCsv", () => {
     expect(rows).toEqual([
       {
         model_code: "JF5",
+        tc_code: "",
         part_key: "08E25PH0C01",
         part_number: "08E25PH0C01",
         hours: 1.4,
@@ -107,6 +108,7 @@ describe("parseLaborCsv", () => {
       },
       {
         model_code: "*",
+        tc_code: "",
         part_key: normalizeKey("ETCセットアップ"),
         part_number: "ETCセットアップ",
         hours: null,
@@ -347,6 +349,30 @@ describe("sheetRowsToLaborCsv", () => {
       ["JF5", normalizeKey("ETC2.0車載器 取付アタッチメント"), 1.4], // 0h は食い違いでは採らない
       ["JF5", normalizeKey("LEDフォグライト 5,800K"), 0.3], // 全角カンマで書き出し、照合キーは元の表記と一致
     ]);
+  });
+
+  it("TCコード列: TC で差があれば TC 別の行も出し、差が無ければ TC 問わずの1行だけ", () => {
+    const h = ["項目", "取付工数", "車台番号", "TCコード"];
+    const r = sheetRowsToLaborCsv([
+      h,
+      ["ETC", "1.2", "JF5-1511014", "JF5-110"],
+      ["ETC", "1.1", "JF5-1405694", "JF5-120"],
+      ["マット", "0.2", "JF5-1511014", "JF5-110"],
+      ["マット", "0.2", "JF5-1405694", "JF5-120"],
+    ]);
+    const { rows, errors } = parseLaborCsv(r.csv);
+    expect(errors).toEqual([]);
+    expect(rows.map((x) => [x.part_key, x.tc_code, x.hours])).toEqual([
+      [normalizeKey("ETC"), "", 1.1],
+      [normalizeKey("ETC"), "JF5110", 1.2],
+      [normalizeKey("マット"), "", 0.2],
+    ]);
+    // 引く側: TC 指定があれば TC 専用、無い TC は TC 問わずへ
+    const entries = rows.map((x) => ({ ...x, label: x.label }));
+    expect(findEntry(entries, "JF5", "ETC", "JF5-110")?.hours).toBe(1.2);
+    expect(findEntry(entries, "JF5", "ETC", "JF5-120")?.hours).toBe(1.1);
+    expect(findEntry(entries, "JF5", "ETC")?.hours).toBe(1.1);
+    expect(findEntry(entries, "JF5", "マット", "JF5-110")?.hours).toBe(0.2);
   });
 
   it("工数マスタ形式はそのまま、見出しが分からなければエラー", () => {

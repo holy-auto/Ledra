@@ -24,6 +24,7 @@ import {
 type Entry = {
   id: string;
   model_code: string;
+  tc_code: string | null;
   part_number: string;
   label: string | null;
   hours: number | string | null;
@@ -31,7 +32,7 @@ type Entry = {
   source_url: string | null;
 };
 
-const CSV_HEADER = "型式,品番(または作業名),工数h,定額円,名称,出典URL";
+const CSV_HEADER = "型式,品番(または作業名),工数h,定額円,名称,出典URL,TCコード(任意)";
 const CSV_EXAMPLE = `${CSV_HEADER}
 JF5,08E25PH0C01,1.2,,ETC2.0車載器,
 DG5,08E25PH0C01,1.5,,ETC2.0車載器,
@@ -147,7 +148,7 @@ export default function LaborHoursClient() {
       {overwritten.length > 0 && (
         <section className="glass-card space-y-2 p-5">
           <div className="text-sm font-semibold text-primary">
-            値が食い違った {overwritten.length} 件は、あとから入ってきた値で上書きしました
+            値の食い違い・TC 別の登録 {overwritten.length} 件（食い違いはあとから入ってきた値を採りました）
           </div>
           <ul className="list-disc space-y-1 pl-5 text-xs text-secondary">
             {overwritten.map((t) => (
@@ -200,7 +201,8 @@ export default function LaborHoursClient() {
           <div className="text-xs font-semibold tracking-[0.18em] text-muted">ファイル（Excel / CSV）で登録・更新</div>
           <p className="text-xs text-secondary">
             Excel（.xlsx）か CSV を選ぶと、そのまま登録します。対応する形は2つ: 「{CSV_HEADER}」の列、または d-Happy
-            収集表（項目・取付工数・車台番号の列。型式は車台番号から取ります）。
+            収集表（項目・取付工数・車台番号の列。型式は車台番号から取ります。「TCコード」列があれば TC で差のある工数を
+            TC 別にも登録します）。0h は、同じ品目に 0h 以外の工数があれば採りません。
             登録済みの型式・品番と値が違う行は今回の値で上書きし、一覧に出します。同じファイル内で同じ型式・品番が複数あるときは後の行を採ります（d-Happy
             収集表は食い違いも一覧に出します）。
           </p>
@@ -252,6 +254,7 @@ export default function LaborHoursClient() {
             <thead className="text-left text-xs text-muted">
               <tr>
                 <th className="px-5 py-2">型式</th>
+                <th className="px-3 py-2">TC</th>
                 <th className="px-3 py-2">品番 / 作業名</th>
                 <th className="px-3 py-2">名称</th>
                 <th className="px-3 py-2 text-right">工数h</th>
@@ -264,6 +267,7 @@ export default function LaborHoursClient() {
               {entries.map((e) => (
                 <tr key={e.id}>
                   <td className="px-5 py-2 font-mono">{e.model_code === "*" ? "共通" : e.model_code}</td>
+                  <td className="px-3 py-2 font-mono text-xs">{e.tc_code || "—"}</td>
                   <td className="px-3 py-2 font-mono">{e.part_number}</td>
                   <td className="px-3 py-2">{e.label}</td>
                   <td className="px-3 py-2 text-right">{e.hours ?? ""}</td>
@@ -292,7 +296,7 @@ export default function LaborHoursClient() {
               ))}
               {entries.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="px-5 py-8 text-center text-muted">
+                  <td colSpan={8} className="px-5 py-8 text-center text-muted">
                     まだ登録がありません。上の CSV から登録してください。
                   </td>
                 </tr>

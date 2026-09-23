@@ -11,6 +11,7 @@ import type { DocumentItem } from "@/types/document";
  * 明細の品番（無ければ品名）と型式・支店から、工数マスタで工賃を算出して単価に入れる
  * （`/api/admin/labor-hours/quote`、AI 不使用）。発注書の価格（用品の販売価格）は工賃では
  * ないため、マスタに無い行は 0 円にして「未登録」として知らせる。時間単価は税抜。
+ * TC コード（任意）を入れると、その TC 専用の工数を優先する（無ければ TC を問わない工数）。
  * 未登録の行はその場で工数を入れてマスタに登録できる（型式・品番で重複を確認し、
  * 登録済みと値が違うものは今回の値で上書きする）。
  */
@@ -43,6 +44,7 @@ export default function LaborQuoteButton({
   onApplied,
 }: Props) {
   const [busy, setBusy] = useState(false);
+  const [tcCode, setTcCode] = useState("");
   const [msg, setMsg] = useState<string | null>(null);
   const [missing, setMissing] = useState<{ key: string; label: string }[]>([]);
   const [hoursInput, setHoursInput] = useState<Record<string, string>>({});
@@ -62,6 +64,7 @@ export default function LaborQuoteButton({
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           model_code: modelCode,
+          tc_code: tcCode.trim() || null,
           branch_id: branchId || null,
           keys: targets.map((t) => t.key),
           // 品番で見つからなければ品名でも引く（d-Happy 由来の工数は品名で登録されている）
@@ -140,6 +143,15 @@ export default function LaborQuoteButton({
         aria-label="型式"
         value={modelCode}
         onChange={(e) => onModelCodeChange(e.target.value)}
+      />
+      <input
+        type="text"
+        className="input-field !w-24 !py-1 text-xs"
+        placeholder="TCコード(任意)"
+        aria-label="TCコード"
+        maxLength={20}
+        value={tcCode}
+        onChange={(e) => setTcCode(e.target.value)}
       />
       <button
         type="button"

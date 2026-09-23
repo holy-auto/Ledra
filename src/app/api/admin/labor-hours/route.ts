@@ -15,7 +15,8 @@ import {
 
 export const dynamic = "force-dynamic";
 
-const COLUMNS = "id, model_code, part_key, part_number, label, hours, fixed_price, source_url, updated_at, created_at";
+const COLUMNS =
+  "id, model_code, tc_code, part_key, part_number, label, hours, fixed_price, source_url, updated_at, created_at";
 // ponytail: 一覧は上限件数で打ち切る。天井: 1テナント数千行を超えたらページングを付ける。
 const LIST_LIMIT = 2000;
 
@@ -28,6 +29,7 @@ export const GET = withCaller(
       .eq("tenant_id", caller.tenantId)
       .order("model_code")
       .order("part_key")
+      .order("tc_code")
       .limit(LIST_LIMIT);
     if (model) q = q.eq("model_code", model);
     const { data, error } = await q;
@@ -61,7 +63,7 @@ export const POST = withCaller(
     for (let p = 0; p < MAX_PAGES; p++) {
       const { data, error } = await admin
         .from("labor_hour_masters")
-        .select("model_code, part_key, hours, fixed_price, part_number, label, source_url")
+        .select("model_code, tc_code, part_key, hours, fixed_price, part_number, label, source_url")
         .eq("tenant_id", caller.tenantId)
         .in("model_code", models)
         .order("id")
@@ -78,7 +80,7 @@ export const POST = withCaller(
       const now = new Date().toISOString();
       const { error } = await admin.from("labor_hour_masters").upsert(
         toWrite.map((r) => ({ ...r, tenant_id: caller.tenantId, updated_at: now })),
-        { onConflict: "tenant_id,model_code,part_key" },
+        { onConflict: "tenant_id,model_code,tc_code,part_key" },
       );
       if (error) return apiInternalError(error, "labor-hours import");
     }
