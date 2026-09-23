@@ -201,8 +201,8 @@ export default function LaborHoursClient() {
           <div className="text-xs font-semibold tracking-[0.18em] text-muted">ファイル（Excel / CSV）で登録・更新</div>
           <p className="text-xs text-secondary">
             Excel（.xlsx）か CSV を選ぶと、そのまま登録します。対応する形は2つ: 「{CSV_HEADER}」の列、または d-Happy
-            収集表（項目・取付工数・車台番号の列。型式は車台番号から取ります。「TCコード」列があれば TC で差のある工数を
-            TC 別にも登録します）。0h は、同じ品目に 0h 以外の工数があれば採りません。
+            収集表（項目・取付工数・車台番号の列。型式は車台番号から取ります。「TCコード」列があれば TC
+            別にも登録します）。0h は、同じ品目に 0h 以外の工数があれば採りません。
             登録済みの型式・品番と値が違う行は今回の値で上書きし、一覧に出します。同じファイル内で同じ型式・品番が複数あるときは後の行を採ります（d-Happy
             収集表は食い違いも一覧に出します）。
           </p>
