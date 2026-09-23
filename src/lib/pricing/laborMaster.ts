@@ -46,16 +46,21 @@ export interface LaborEntry {
   label: string | null;
 }
 
-/** (型式, キー) の完全一致 → 無ければ型式共通 '*' の順で引く。 */
+/**
+ * (型式, キー) の完全一致 → 無ければ型式共通 '*' の順で引く。
+ * キーは part_key（品番・作業名）に加えて名称（label）とも照合する
+ * （d-Happy の貼り付け登録は品番が part_key、品名は label に入るため）。part_key の一致を優先。
+ */
 export function findEntry(entries: LaborEntry[], modelCode: string, key: string): LaborEntry | null {
   const model = normalizeModelCode(modelCode);
   const k = normalizeKey(key);
   if (!k) return null;
-  return (
-    entries.find((e) => e.model_code === model && e.part_key === k) ??
-    entries.find((e) => e.model_code === ANY_MODEL && e.part_key === k) ??
-    null
-  );
+  for (const m of [model, ANY_MODEL]) {
+    const inModel = entries.filter((e) => e.model_code === m);
+    const hit = inModel.find((e) => e.part_key === k) ?? inModel.find((e) => normalizeKey(e.label) === k);
+    if (hit) return hit;
+  }
+  return null;
 }
 
 /** 店舗（支店）の時間単価を優先し、未設定なら自社の既定単価。 */
@@ -245,7 +250,7 @@ export function formatImportSummary(r: LaborImportResult): string {
   if (r.updated) parts.push(`上書き ${r.updated} 件`);
   if (r.unchanged) parts.push(`登録済み（同じ値）${r.unchanged} 件`);
   if (r.conflicts?.length) parts.push(`値が違うため未登録 ${r.conflicts.length} 件`);
-  if (r.errors?.length) parts.push(`読めない行 ${r.errors.length} 件: ${r.errors.join(" / ")}`);
+  if (r.errors?.length) parts.push(`登録しなかった行 ${r.errors.length} 件: ${r.errors.join(" / ")}`);
   return parts.join("、");
 }
 
@@ -253,4 +258,144 @@ export function formatImportSummary(r: LaborImportResult): string {
 export function describeConflict(c: LaborConflict): string {
   const model = c.model_code === ANY_MODEL ? "型式共通" : c.model_code;
   return `${model} ${c.part_number}${c.label ? `（${c.label}）` : ""} 登録済み ${fmtValue(c.current)} → 今回 ${fmtValue(c.incoming)}`;
+}
+
+export interface ModelCoverage {
+  model_code: string;
+  /** その型式の車台番号の例（収集時に d-Happy へ入れる1台）。 */
+  sample_chassis: string;
+  /** 手元にある同じ型式の車台番号の数。 */
+  vehicle_count: number;
+  /** 工数マスタに登録済みの行数（0 = 未収集）。 */
+  registered_rows: number;
+}
+
+/**
+ * 車台番号の一覧を型式ごとにまとめ、工数マスタの登録状況と突き合わせる。
+ * 未収集（登録0行）を先頭に、台数の多い順。型式を取り出せない番号は unparsed に分ける
+ * （番号だけの F-NO から型式を推測しない）。
+ */
+export function summarizeCoverage(chassisList: string[], registeredRowsByModel: Record<string, number>) {
+  const byModel = new Map<string, ModelCoverage>();
+  const unparsed: string[] = [];
+  const seen = new Set<string>(); // 同じ車台番号を登録車両と貼り付けの両方から数えない
+  for (const raw of chassisList) {
+    const chassis = raw.normalize("NFKC").trim().toUpperCase().replace(/\s/g, "");
+    if (!chassis || seen.has(chassis)) continue;
+    seen.add(chassis);
+    const model = modelCodeFromChassis(chassis);
+    if (!model) {
+      unparsed.push(raw.trim());
+      continue;
+    }
+    const cur = byModel.get(model);
+    if (cur) cur.vehicle_count++;
+    else
+      byModel.set(model, {
+        model_code: model,
+        sample_chassis: chassis,
+        vehicle_count: 1,
+        registered_rows: registeredRowsByModel[model] ?? 0,
+      });
+  }
+  const rows = [...byModel.values()].sort(
+    (a, b) =>
+      Number(a.registered_rows > 0) - Number(b.registered_rows > 0) ||
+      b.vehicle_count - a.vehicle_count ||
+      a.model_code.localeCompare(b.model_code),
+  );
+  return { rows, unparsed: [...new Set(unparsed)] };
+}
+
+/** 貼り付けた車台番号の文字列を1台ずつに分ける。「GP3 - 1017220」のようなハイフン前後の空白は詰める。 */
+export function splitChassisInput(text: string): string[] {
+  return text
+    .normalize("NFKC")
+    .replace(/\s*-\s*/g, "-")
+    .split(/[\s,、]+/)
+    .filter(Boolean);
+}
+
+/** 品番（key）で引き、無ければ品名（alt）で引く。どちらで当たったかも返す。 */
+export function findEntryWithFallback(
+  entries: LaborEntry[],
+  modelCode: string,
+  key: string,
+  alt: string | null | undefined,
+): { entry: LaborEntry | null; by: "key" | "alt_key" | null } {
+  const byKey = findEntry(entries, modelCode, key);
+  if (byKey) return { entry: byKey, by: "key" };
+  const byAlt = alt ? findEntry(entries, modelCode, alt) : null;
+  return { entry: byAlt, by: byAlt ? "alt_key" : null };
+}
+
+/** CSV 1セルに入れる。区切りの半角カンマは全角「，」へ（NFKC で照合キーは元と一致する）。 */
+const csvCell = (s: string | null | undefined) =>
+  (s ?? "")
+    .replace(/,/g, "，")
+    .replace(/[\r\n]+/g, " ")
+    .trim();
+
+/**
+ * 添付ファイル（Excel / CSV を行に分けたもの）を工数 CSV に変換する。対応する形は2つ:
+ * - 工数マスタ形式: 1行目が「型式,品番,…」 → そのまま
+ * - d-Happy 収集形式: 見出しに「項目」「取付工数」「車台番号」（任意で「備考」）
+ *   型式は車台番号から取り、同じ型式・品名で工数が食い違う行は登録せず conflicts に出す
+ *   （組み合わせやグレードで工数が変わるため、どちらを採るかは人が決める）。工数が空欄の行は skipped。
+ */
+export function sheetRowsToLaborCsv(rows: string[][]): {
+  csv: string;
+  count: number;
+  errors: string[];
+  conflicts: string[];
+} {
+  const header = (rows[0] ?? []).map((h) => (h ?? "").normalize("NFKC").trim());
+  const col = (name: string) => header.findIndex((h) => h === name);
+
+  if (/^型式/.test(header[0] ?? "")) {
+    // 見出しと空行も残して渡す（parseLaborCsv の「N行目」が元のファイルの行と一致するように）
+    const count = rows.slice(1).filter((r) => r.some((c) => (c ?? "").trim())).length;
+    return { csv: rows.map((r) => r.map(csvCell).join(",")).join("\n"), count, errors: [], conflicts: [] };
+  }
+
+  const [iItem, iHours, iVin, iNote] = [col("項目"), col("取付工数"), col("車台番号"), col("備考")];
+  if (iItem < 0 || iHours < 0 || iVin < 0) {
+    return {
+      csv: "",
+      count: 0,
+      errors: ["列が読み取れません。「型式,品番,工数h,…」か「項目・取付工数・車台番号」の見出しが必要です"],
+      conflicts: [],
+    };
+  }
+
+  const errors: string[] = [];
+  const groups = new Map<string, { model: string; item: string; hours: Set<number>; note: string }>();
+  rows.slice(1).forEach((r, i) => {
+    const item = (r[iItem] ?? "").trim();
+    if (!item) return;
+    const no = `${i + 2}行目`;
+    const model = modelCodeFromChassis(r[iVin]);
+    if (!model) return void errors.push(`${no}: 車台番号から型式が分かりません（${r[iVin] ?? ""}）`);
+    const rawHours = (r[iHours] ?? "").trim();
+    if (!rawHours) return void errors.push(`${no}: 取付工数が空欄のため登録しません（${item}）`);
+    const hours = Math.round(Number(rawHours) * 100) / 100;
+    if (!Number.isFinite(hours) || hours < 0) return void errors.push(`${no}: 取付工数を読めません（${rawHours}）`);
+    const key = `${model}\u0000${normalizeKey(item)}`;
+    const g = groups.get(key) ?? { model, item, hours: new Set<number>(), note: "" };
+    g.hours.add(hours);
+    if (!g.note && iNote >= 0) g.note = (r[iNote] ?? "").trim();
+    groups.set(key, g);
+  });
+
+  const lines: string[] = [];
+  const conflicts: string[] = [];
+  for (const g of groups.values()) {
+    if (g.hours.size > 1) {
+      conflicts.push(`${g.model} ${g.item}: ${[...g.hours].map((h) => `${h}h`).join(" / ")}`);
+      continue;
+    }
+    const label = (csvCell(g.item) + (g.note ? `（${csvCell(g.note)}）` : "")).slice(0, 200);
+    lines.push([g.model, csvCell(g.item), [...g.hours][0], "", label, DHAPPY_SOURCE_URL].join(","));
+  }
+  return { csv: lines.join("\n"), count: lines.length, errors, conflicts };
 }

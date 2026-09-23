@@ -7,11 +7,15 @@ import {
   DHAPPY_SOURCE_URL,
   dHappyPasteToCsv,
   findEntry,
+  findEntryWithFallback,
   laborPrice,
   modelCodeFromChassis,
   normalizeKey,
   parseLaborCsv,
   resolveRate,
+  sheetRowsToLaborCsv,
+  splitChassisInput,
+  summarizeCoverage,
   type LaborEntry,
 } from "../laborMaster";
 
@@ -221,5 +225,111 @@ describe("formatImportSummary / describeConflict", () => {
       "新規 2 件、登録済み（同じ値）1 件、値が違うため未登録 1 件",
     );
     expect(describeConflict(conflict)).toBe("GP3 08P18SYY011（ラバーマット） 登録済み 0.2h → 今回 0.1h");
+  });
+});
+
+describe("summarizeCoverage", () => {
+  it("型式ごとにまとめ、未収集を先頭・台数順に並べ、型式の無い番号は分ける", () => {
+    const { rows, unparsed } = summarizeCoverage(
+      ["JF5-1511014", "DG5-1204166", "RP8-1344844", "jf5-1405694", "GP3-1017220", "1508937", " ", "1508937"],
+      { GP3: 3 },
+    );
+    expect(rows.map((r) => [r.model_code, r.sample_chassis, r.vehicle_count, r.registered_rows])).toEqual([
+      ["JF5", "JF5-1511014", 2, 0],
+      ["DG5", "DG5-1204166", 1, 0],
+      ["RP8", "RP8-1344844", 1, 0],
+      ["GP3", "GP3-1017220", 1, 3],
+    ]);
+    expect(unparsed).toEqual(["1508937"]);
+  });
+
+  it("同じ車台番号は1台として数える", () => {
+    const { rows } = summarizeCoverage(["JF5-1511014", "jf5-1511014", "JF5-1405694"], {});
+    expect(rows[0].vehicle_count).toBe(2);
+  });
+});
+
+describe("splitChassisInput", () => {
+  it("改行・カンマ・読点・空白で分け、ハイフン前後の空白は詰める", () => {
+    expect(splitChassisInput("GP3 - 1017220\nJF5-1511014, DG5-1204166、RP8-1344844 JF5-1405694")).toEqual([
+      "GP3-1017220",
+      "JF5-1511014",
+      "DG5-1204166",
+      "RP8-1344844",
+      "JF5-1405694",
+    ]);
+  });
+});
+
+describe("findEntryWithFallback", () => {
+  const entries = [
+    entry("DG5", "08E2631XD00", 1.0),
+    // d-Happy 由来は品名がキー（発注書の全角表記とは NFKC で一致する）
+    entry("DG5", "ETC2.0車載器 取付アタッチメント/取付位置:ドライバーロアーカバー部", 1.2),
+  ];
+
+  it("品番で当たればそれを使う", () => {
+    expect(findEntryWithFallback(entries, "DG5", "08E2631XD00", "何か")).toMatchObject({
+      by: "key",
+      entry: { hours: 1 },
+    });
+  });
+
+  it("品番で無ければ品名で引く（全角・スラッシュ・コロンの表記ゆれを吸収）", () => {
+    const r = findEntryWithFallback(
+      entries,
+      "DG5",
+      "08E2632RD00",
+      "ＥＴＣ２．０車載器　取付アタッチメント／取付位置：ドライバーロアーカバー部",
+    );
+    expect(r).toMatchObject({ by: "alt_key", entry: { hours: 1.2 } });
+    expect(findEntryWithFallback(entries, "DG5", "08E2632RD00", null)).toEqual({ entry: null, by: null });
+  });
+
+  it("d-Happy 貼り付け登録（品番が key・品名は label）にも品名で当たる", () => {
+    const pasted = [{ ...entry("GP3", "08R04SYY001", 0.4), label: "ドアバイザー（フロント／リア４枚セット）" }];
+    expect(findEntryWithFallback(pasted, "GP3", "08R04SYY099", "ドアバイザー(フロント/リア4枚セット)")).toMatchObject({
+      by: "alt_key",
+      entry: { hours: 0.4 },
+    });
+  });
+});
+
+describe("sheetRowsToLaborCsv", () => {
+  const head = ["車種", "グレード", "項目", "取付工数", "車台番号", "カテゴリ", "備考"];
+
+  it("d-Happy 収集形式: 型式を車台番号から取り、食い違いと空欄は登録しない", () => {
+    const r = sheetRowsToLaborCsv([
+      head,
+      ["N-BOX", "N-BOX", "ドアバイザー", "0.4", "JF5-1511014", "ベーシック", ""],
+      ["N-BOX", "N-BOX", "ドアバイザー", "0.4", "JF5-1405694", "ベーシック", ""],
+      ["N-BOX", "N-BOX", "ETC2.0車載器 取付アタッチメント", "1.4", "JF5-1511014", "インテリア", "自動追加"],
+      ["N-BOX", "N-BOX", "ETC2.0車載器 取付アタッチメント", "0", "JF5-1405694", "インテリア", ""],
+      ["N-BOX", "N-BOX", "LEDフォグライト 5,800K", "0.30000000000000004", "JF5-1511014", "エクステリア", ""],
+      ["N-BOX", "N-BOX", "リアカメラ", "", "JF5-1511014", "A&V", "算出不可"],
+      ["WR-V", "Z", "フロアマット", "0.2", "1204166", "", ""],
+    ]);
+    expect(r.count).toBe(2);
+    expect(r.conflicts).toEqual(["JF5 ETC2.0車載器 取付アタッチメント: 1.4h / 0h"]);
+    expect(r.errors).toHaveLength(2);
+    const { rows, errors } = parseLaborCsv(r.csv);
+    expect(errors).toEqual([]);
+    expect(rows.map((x) => [x.model_code, x.part_key, x.hours])).toEqual([
+      ["JF5", normalizeKey("ドアバイザー"), 0.4],
+      ["JF5", normalizeKey("LEDフォグライト 5,800K"), 0.3], // 全角カンマで書き出し、照合キーは元の表記と一致
+    ]);
+  });
+
+  it("工数マスタ形式はそのまま、見出しが分からなければエラー", () => {
+    const std = sheetRowsToLaborCsv([
+      ["型式", "品番", "工数h", "定額円", "名称", "出典URL"],
+      ["GP3", "08R04SYY001", "0.4", "", "ドアバイザー", ""],
+    ]);
+    expect(parseLaborCsv(std.csv).rows.map((x) => x.part_key)).toEqual(["08R04SYY001"]);
+    // 空行があっても「N行目」は元の行番号のまま
+    const withGap = sheetRowsToLaborCsv([["型式", "品番", "工数h"], ["GP3", "A", "0.1"], [], ["GP3", "", "0.2"]]);
+    expect(withGap.count).toBe(2);
+    expect(parseLaborCsv(withGap.csv).errors[0]).toMatch(/^4行目/);
+    expect(sheetRowsToLaborCsv([["a", "b"]]).errors).toHaveLength(1);
   });
 });
