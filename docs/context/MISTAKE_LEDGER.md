@@ -70,7 +70,7 @@
 
 | 型 | 中身 | 該当 |
 |---|---|---|
-| **A. 道具を検証しない** | 変更したコードは検証したのに、「何を変えるべきか判断するために使った道具」（検出器・正規表現・スクリプト・クエリ）を検証していない。道具の出力を事実として扱う。**そのクエリが何を確定させたのかを確かめずに、確定したつもりになる**のもこの型。**自分の想定だけで検証するのも同じ**（当たりを取る「既知の1件」を自分で作る）。**動作を主張するコメントを、その根拠（スキーマ・型定義）を確認せずに書く**のも同じ。**検査の「該当なし」を、その検査が何件を見たか数えずに受け取る**のも同じ | M-001, M-002, M-003, M-006, **M-010**, M-012, M-016, M-017, **M-022**, **M-024**, **M-031**, M-036, **M-041**, **M-044**, **M-046**, **M-050**, **M-055**, **M-056**, **M-057**, **M-060**, **M-061**, **M-062**, **M-064**, **M-065**, **M-068**, **M-075**, **M-078**, **M-079**, **M-084**, **M-085**, **M-089**, **M-092**, **M-093**, **M-20260915-dupe-count-from-truncated-grep**, **M-20260918-silent-skip-made-detector-never-run**, **M-20260918-replay-db-lacked-prod-column**, **M-20260918-read-detector-blindness-as-stale-list**, **M-20260919-attributed-an-overloads-call-to-its-sibling**, **M-20260919-swept-for-the-literal-not-the-bug-class**, **M-20260919-cancel-2xx-treated-as-final**, **M-20260921-compared-counts-where-names-differed**, **M-20260921-detector-covered-half-the-tables-i-had-listed**, **M-20260921-said-the-drift-checker-ignores-policies**, **M-20260921-restated-my-own-summary-as-fact**, **M-20260922-wrote-constraint-bodies-from-their-names** |
+| **A. 道具を検証しない** | 変更したコードは検証したのに、「何を変えるべきか判断するために使った道具」（検出器・正規表現・スクリプト・クエリ）を検証していない。道具の出力を事実として扱う。**そのクエリが何を確定させたのかを確かめずに、確定したつもりになる**のもこの型。**自分の想定だけで検証するのも同じ**（当たりを取る「既知の1件」を自分で作る）。**動作を主張するコメントを、その根拠（スキーマ・型定義）を確認せずに書く**のも同じ。**検査の「該当なし」を、その検査が何件を見たか数えずに受け取る**のも同じ | M-001, M-002, M-003, M-006, **M-010**, M-012, M-016, M-017, **M-022**, **M-024**, **M-031**, M-036, **M-041**, **M-044**, **M-046**, **M-050**, **M-055**, **M-056**, **M-057**, **M-060**, **M-061**, **M-062**, **M-064**, **M-065**, **M-068**, **M-075**, **M-078**, **M-079**, **M-084**, **M-085**, **M-089**, **M-092**, **M-093**, **M-20260915-dupe-count-from-truncated-grep**, **M-20260918-silent-skip-made-detector-never-run**, **M-20260918-replay-db-lacked-prod-column**, **M-20260918-read-detector-blindness-as-stale-list**, **M-20260919-attributed-an-overloads-call-to-its-sibling**, **M-20260919-swept-for-the-literal-not-the-bug-class**, **M-20260919-cancel-2xx-treated-as-final**, **M-20260921-compared-counts-where-names-differed**, **M-20260921-detector-covered-half-the-tables-i-had-listed**, **M-20260921-said-the-drift-checker-ignores-policies**, **M-20260921-restated-my-own-summary-as-fact**, **M-20260922-wrote-constraint-bodies-from-their-names**, **M-20260923-committed-conflict-markers-from-truncated-merge-output** |
 | **B. 読まずに分類する** | コードの形（関数名・構造・コメント）から中身を推測して分類し、実際に読んでいない。**1段だけ深く読んで止まる**のも同じ（条件式は読んだが、その値の既定を追っていない）。**その値がどこから来るかを見ない**のも同じ（既定・サンプル・過去の配布物に同じ値が無いか）。**列や機能が「ある」ことを「使われている」と読む**のもこの型。**値の出所を変えたのに、その値を使う式が旧い出所の前提（排他性等）を暗黙に置いたままか確認しない**のも同じ。**部品が直ったことを、その部品を使う機能が直ったことと読む**のも同じ | M-004, M-020, **M-032**, M-035, M-036, **M-039**, **M-040**, **M-048**, **M-052**, **M-063**, **M-074**, **M-083**, **M-088**, **M-20260920-hashed-a-file-i-never-opened**, **M-20260920-asked-for-a-decision-that-was-already-made-in-the-file-i-cited**, **M-20260921-classified-rls-impact-from-one-policy** |
 | **C. 経路を1本しか見ない** | 同じ操作に複数の入口があるのに、目についた1本だけ直す。**同じ事実を2箇所に書いて片方だけ直す**のも同じ（文書に出た形）。**排他にすべき組み合わせのうち一部のペアだけをチェックする**のも同じ | M-005, M-007, M-013, M-019, **M-023**, **M-025**, M-038, **M-058**, **M-061**, **M-072**, **M-076**, **M-087**, **M-20260918-verification-skippable-via-transition-flag**, **M-20260919-exclusivity-guard-only-in-admin-route**, **M-20260919-exclusivity-checked-one-pair-not-all**, **M-20260920-called-it-all-no-op-while-fixing-the-one-statement-that-runs** |
 | **D. 移設で弱める** | 「同じものを別の場所に置くだけ」のつもりが、検査の強さや信号が落ちている。**移設先の信頼境界（誰の書き換えを受けるか・どんな権限を持つか）が変わっているのに気づかない**のもこの型 | M-008, **M-028**, **M-029**, **M-042**, **M-047**, **M-054**, **M-060**, **M-062**, **M-063**, **M-065** |
@@ -109,6 +109,50 @@ check:ox-override / check:ledger-ids）だが、これを回さず記憶にあ�
 （"Lint, Type Check & Unit Tests" ジョブと同一の集合）。特に表・列・ビューを増減した PR では
 `check:schema` が新規/変更表を要求するので、**新表を足したら `scripts/schema.snapshot.json`
 更新をセットで行う**。個別スクリプトの寄せ集めで「全部緑」と判断しない。
+
+## M-20260923-committed-conflict-markers-from-truncated-merge-output マージ出力を `tail -3` で切って衝突1件しか見ず、残り3ファイルの衝突マーカーをコミットした（2026-09-23・型 A）
+
+**Before**
+- 信じたこと: 取り込もうとしているコミット（`ed1a055`）の tree は `main` の tree と
+  **完全に一致している**。だからこのマージは実質何もしない。衝突は起きようがない。
+- したこと: `git merge ... 2>&1 | tail -3` で実行し、出力の末尾に見えた
+  `CONFLICT ... RELEASE_LOG.md` の1件だけを直して `git add -A && git commit`。
+
+**After**
+- 実際の衝突は **4ファイル**だった（`LEDRA_CURRENT` / `MISTAKE_LEDGER` /
+  `NOTE_CANDIDATES` / `RELEASE_LOG`）。`tail -3` が上3件を捨てていた。
+- `git add -A` は**衝突マーカーごと**ステージする。`<<<<<<< HEAD` を含む3ファイルが
+  そのままコミットされた。
+- 前提自体は正しかった。tree は一致している。だが3方向マージの**ベースは
+  squash 前の `3901a38`** になるので、git から見れば「squash で入った変更」と
+  「元のコミットで入った変更」は別物で、突き合わせて衝突する。
+  **「結果が同じ」と「git が同じだと分かる」は違う。**
+- 正しい直し方は `-s ours` —— こちらの tree をそのまま保ち、祖先関係だけを記録する。
+- push 前に気づけたのは、マージ後に **tree を突き合わせる検証を入れていたから**。
+  「内容が変わらないはず」と言った以上、変わっていないことを確かめる、という一手である。
+
+**なぜ気づけなかったか**
+- **このセッションで4回のマージすべてに `git grep '^<<<<<<<'` を通していたのに、
+  5回目だけ飛ばした。** 理由は「今回は空マージだから」。
+  習慣を止めた判断そのものが、確かめずに置いた前提だった。
+- `tail -3` は**出力を読みやすくするため**に付けた。出力の量を減らす操作は、
+  同時に**見落としの窓を開ける操作**でもある。
+  `M-20260915-dupe-count-from-truncated-grep`（切れた grep の件数を報告した）と
+  同じ根で、対象が grep からマージ出力に変わっただけである。
+- 型 A の再発防止に「検出器を変えたら、一覧から消えたものを1件ずつ確認する」と
+  書いてあるが、**`tail` は検出器を変える操作だと思っていなかった。**
+
+**再発防止**
+- 仕組み: pre-commit が動けば `check:ledger-ids` などは走るが、
+  **衝突マーカー自体を止める検査は無い**（今回は `--no-verify` でもあった）。
+  マーカーは lint 対象外の Markdown にも入るので、`git grep` が唯一の網である。
+- 習慣: **`git merge` の出力に `tail` / `head` を付けない。** 付けるなら
+  `grep -E "^(CONFLICT|Auto-merging)"` のように**落としたい行を名指しする**。
+  末尾N行は「何を捨てたか」を言えない。
+- 習慣: **衝突の有無にかかわらず、マージ後は必ず `git grep '^<<<<<<<' -- .` を通す。**
+  「今回は空マージだから要らない」は、この台帳で何度も出ている言い訳の形である。
+
+---
 
 ## M-20260922-said-ten-checks-without-listing-them CI のチェック数を「全10本」と繰り返し報告したが、数えた一覧を一度も見ていなかった（2026-09-22・型 F）
 
