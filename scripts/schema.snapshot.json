@@ -986,6 +986,7 @@
 "created_at",
 "customer_id",
 "id",
+"labor_rate_per_hour",
 "name",
 "name_kana",
 "note",
@@ -1993,6 +1994,19 @@
 "source_id",
 "source_type",
 "tags",
+"tenant_id",
+"updated_at"
+],
+"labor_hour_masters": [
+"created_at",
+"fixed_price",
+"hours",
+"id",
+"label",
+"model_code",
+"part_key",
+"part_number",
+"source_url",
 "tenant_id",
 "updated_at"
 ],
