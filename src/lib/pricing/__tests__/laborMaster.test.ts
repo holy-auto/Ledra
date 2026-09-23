@@ -351,7 +351,7 @@ describe("sheetRowsToLaborCsv", () => {
     ]);
   });
 
-  it("TCコード列: TC で差があれば TC 別の行も出し、差が無ければ TC 問わずの1行だけ", () => {
+  it("TCコード列: TC 問わずの行と TC 別の行を出す。TC が 0h だけなら 0h を採らない", () => {
     const h = ["項目", "取付工数", "車台番号", "TCコード"];
     const r = sheetRowsToLaborCsv([
       h,
@@ -359,13 +359,21 @@ describe("sheetRowsToLaborCsv", () => {
       ["ETC", "1.1", "JF5-1405694", "JF5-120"],
       ["マット", "0.2", "JF5-1511014", "JF5-110"],
       ["マット", "0.2", "JF5-1405694", "JF5-120"],
+      ["バイザー", "0.4", "JF5-1511014", "JF5-110"],
+      ["バイザー", "0", "JF5-1405694", "JF5-120"],
     ]);
     const { rows, errors } = parseLaborCsv(r.csv);
     expect(errors).toEqual([]);
     expect(rows.map((x) => [x.part_key, x.tc_code, x.hours])).toEqual([
       [normalizeKey("ETC"), "", 1.1],
       [normalizeKey("ETC"), "JF5110", 1.2],
+      [normalizeKey("ETC"), "JF5120", 1.1],
       [normalizeKey("マット"), "", 0.2],
+      [normalizeKey("マット"), "JF5110", 0.2],
+      [normalizeKey("マット"), "JF5120", 0.2],
+      [normalizeKey("バイザー"), "", 0.4],
+      [normalizeKey("バイザー"), "JF5110", 0.4],
+      [normalizeKey("バイザー"), "JF5120", 0.4], // 0h だけの TC は TC 問わずの値
     ]);
     // 引く側: TC 指定があれば TC 専用、無い TC は TC 問わずへ
     const entries = rows.map((x) => ({ ...x, label: x.label }));
@@ -373,6 +381,13 @@ describe("sheetRowsToLaborCsv", () => {
     expect(findEntry(entries, "JF5", "ETC", "JF5-120")?.hours).toBe(1.1);
     expect(findEntry(entries, "JF5", "ETC")?.hours).toBe(1.1);
     expect(findEntry(entries, "JF5", "マット", "JF5-110")?.hours).toBe(0.2);
+    expect(findEntry(entries, "JF5", "バイザー", "JF5-120")?.hours).toBe(0.4);
+  });
+
+  it("工数マスタ形式の同じ品目の重複でも、0h 以外があれば 0h を採らない", () => {
+    expect(parseLaborCsv("JF5,A,1.2,,,\nJF5,A,0,,,").rows.map((x) => x.hours)).toEqual([1.2]);
+    expect(parseLaborCsv("JF5,A,0,,,\nJF5,A,1.2,,,").rows.map((x) => x.hours)).toEqual([1.2]);
+    expect(parseLaborCsv("JF5,A,0,,,").rows.map((x) => x.hours)).toEqual([0]);
   });
 
   it("工数マスタ形式はそのまま、見出しが分からなければエラー", () => {

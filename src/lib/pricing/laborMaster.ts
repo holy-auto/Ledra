@@ -142,7 +142,11 @@ export function parseLaborCsv(text: string): { rows: LaborCsvRow[]; errors: stri
     const fixed = toNonNegative(cells[3]);
     if (hours === "invalid" || fixed === "invalid") return void errors.push(`${no}: 工数・定額は0以上の数値で`);
     if (hours == null && fixed == null) return void errors.push(`${no}: 工数か定額のどちらかが必要です`);
-    rows.set(`${model}\u0000${tc}\u0000${key}`, {
+    const rowKey = `${model}\u0000${tc}\u0000${key}`;
+    // 0h は、同じファイルの同じ品目に 0h 以外の工数・定額があれば採らない（代表判断）
+    const prev = rows.get(rowKey);
+    if (hours === 0 && fixed == null && prev && (prev.hours !== 0 || prev.fixed_price != null)) return;
+    rows.set(rowKey, {
       model_code: model,
       tc_code: tc,
       part_key: key,
@@ -371,7 +375,9 @@ const csvCell = (s: string | null | undefined) =>
  * - d-Happy 収集形式: 見出しに「項目」「取付工数」「車台番号」（任意で「備考」「TCコード」）
  *   型式は車台番号から取り、同じ型式・品名で工数が食い違うときは後の行（あとから入ってきた値）を採り、
  *   overwritten に出す。ただし 0h は食い違いでは採らない（0h 以外の値の最後を採る）。工数が空欄の行は errors。
- *   TC コードの列があり、TC で工数に差があるときは、TC 問わずの行に加えて差のある TC の行も登録する。
+ *   TC コードの列があれば、TC 問わずの行に加えて TC 別の行も毎回登録する（差が無ければ同じ値）。
+ *   ponytail: TC 列の無いファイルで取り込み直すと、以前の TC 別の行は残る（TC 指定の算出はそちらを引く）。
+ *   天井: 古い TC 行が問題になったら、取込時に同じ (型式, 品番) の TC 行を消す／工数マスタ画面で削除する。
  */
 export function sheetRowsToLaborCsv(rows: string[][]): {
   csv: string;
@@ -444,8 +450,12 @@ export function sheetRowsToLaborCsv(rows: string[][]): {
         overwritten.push(
           `${g.model}${tc ? `（TC ${tc}）` : ""} ${g.item}: ${hs.map((h) => `${h}h`).join(" → ")}（後の行の ${v}h を採用）`,
         );
-      if (tc && v !== generic) {
-        lines.push(line(v, tc));
+      if (!tc) continue;
+      // TC 列がある品目は TC の行を毎回書く（前回の TC 別の値が残って古いまま引かれないように）。
+      // その TC が 0h しか無いときは 0h を採らず、TC 問わずの値を入れる
+      const tcValue = v === 0 && generic !== 0 ? generic : v;
+      lines.push(line(tcValue, tc));
+      if (tcValue !== generic) {
         overwritten.push(
           `${g.model}（TC ${tc}）${g.item}: TC で工数が違うため TC 別に ${v}h（TC 問わずは ${generic}h）`,
         );
