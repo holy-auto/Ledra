@@ -25,9 +25,41 @@ permissions:
   pull-requests: write
   id-token: write # required by claude-code-action to fetch an OIDC token
 
+# Findings are filed with the gh CLI. The GitHub MCP issue tools are not
+# provided to claude-code-action in agent mode (schedule / workflow_dispatch),
+# so the previous allowlist of mcp__github__* tools left Claude with no way to
+# open an issue and every run ended "green" with nothing filed.
+env:
+  ALLOWED_TOOLS: >-
+    --allowedTools 'Read,Grep,Glob,Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(gh issue create:*),Bash(gh issue list:*),Bash(gh search issues:*)'
+  FILING_RULES: |
+    How to file findings (the only way to open an issue in this run):
+      1. Check for a duplicate first:
+         gh issue list --state open --label claude-weekly --search "<keywords>"
+         Skip the finding if an open issue already covers it.
+      2. Open the issue:
+         gh issue create --title "<short title>" --label "<labels>" --body "<markdown body>"
+    Run each gh command on its own (no pipes, no `&&`, no subshells).
+
 jobs:
+  labels:
+    name: Ensure issue labels
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Create labels used by the audits (no-op if they exist)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh label create claude-weekly --color 7057ff --description "Found by the weekly Claude review" --force
+          gh label create security --color d73a4a --description "Security issue" --force
+          gh label create tech-debt --color fbca04 --description "Dead or redundant code" --force
+          gh label create bug --color d73a4a --description "Something isn't working" --force
+
   security-audit:
     name: Security Review (vulnerability scan)
+    needs: labels
     if: ${{ github.event_name == 'schedule' || inputs.scope == 'all' || inputs.scope == 'security' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -38,8 +70,13 @@ jobs:
 
       - name: Run Claude security review
         uses: anthropics/claude-code-action@v1
+        env:
+          GH_TOKEN: ${{ github.token }}
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # TEMPORARY: print Claude's full transcript so denied tool calls can
+          # be diagnosed. Remove once the audits are confirmed to file issues.
+          show_full_output: true
           prompt: |
             Perform a thorough security review of this codebase against the
             main branch. Focus on the OWASP Top 10 and items commonly missed
@@ -51,14 +88,17 @@ jobs:
               - Unsafe `dangerouslySetInnerHTML`, eval, or untrusted JSON parsing
               - Tenant isolation regressions in shared queries
 
-            Open one GitHub issue per distinct finding using the label
-            `security` and `claude-weekly`. Include severity, file:line,
+            Open one GitHub issue per distinct finding using the labels
+            `security,claude-weekly`. Include severity, file:line,
             reproduction, and a suggested fix. If nothing is found, do not
             open an issue.
-          claude_args: "--allowedTools 'Read,Grep,Glob,Bash(git diff:*),Bash(git log:*),mcp__github__issue_write,mcp__github__list_issues,mcp__github__search_issues'"
+
+            ${{ env.FILING_RULES }}
+          claude_args: ${{ env.ALLOWED_TOOLS }}
 
   simplify-audit:
     name: Simplify (dead/redundant code)
+    needs: labels
     if: ${{ github.event_name == 'schedule' || inputs.scope == 'all' || inputs.scope == 'simplify' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -69,22 +109,29 @@ jobs:
 
       - name: Run Claude simplify pass
         uses: anthropics/claude-code-action@v1
+        env:
+          GH_TOKEN: ${{ github.token }}
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # TEMPORARY: see security-audit.
+          show_full_output: true
           prompt: |
             Audit the codebase for dead code, redundant abstractions, and
             duplicated logic that could be consolidated. Look at code added
             or modified in the last 7 days first (`git log --since='7 days ago'`),
             then sample older hot paths.
 
-            For each finding, open a GitHub issue with the label
-            `tech-debt` and `claude-weekly`. Include the file:line, the
+            For each finding, open a GitHub issue with the labels
+            `tech-debt,claude-weekly`. Include the file:line, the
             redundancy, and a concrete refactor suggestion. Skip stylistic
             nits. Do not open an issue if there is nothing material.
-          claude_args: "--allowedTools 'Read,Grep,Glob,Bash(git diff:*),Bash(git log:*),mcp__github__issue_write,mcp__github__list_issues,mcp__github__search_issues'"
+
+            ${{ env.FILING_RULES }}
+          claude_args: ${{ env.ALLOWED_TOOLS }}
 
   review-audit:
     name: Code Review (errors & bugs)
+    needs: labels
     if: ${{ github.event_name == 'schedule' || inputs.scope == 'all' || inputs.scope == 'review' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -95,15 +142,21 @@ jobs:
 
       - name: Run Claude code review
         uses: anthropics/claude-code-action@v1
+        env:
+          GH_TOKEN: ${{ github.token }}
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # TEMPORARY: see security-audit.
+          show_full_output: true
           prompt: |
             Review code merged to main in the last 7 days
             (`git log --since='7 days ago' main`) for likely bugs, broken
             error handling, missing null checks, race conditions, and
             type-system escapes (`any`, unsafe casts, `// @ts-ignore`).
 
-            Open one issue per distinct bug with the labels `bug` and
-            `claude-weekly`, including file:line, the failure mode, and a
+            Open one issue per distinct bug with the labels
+            `bug,claude-weekly`, including file:line, the failure mode, and a
             proposed fix. No issue if there is nothing actionable.
-          claude_args: "--allowedTools 'Read,Grep,Glob,Bash(git diff:*),Bash(git log:*),mcp__github__issue_write,mcp__github__list_issues,mcp__github__search_issues'"
+
+            ${{ env.FILING_RULES }}
+          claude_args: ${{ env.ALLOWED_TOOLS }}
