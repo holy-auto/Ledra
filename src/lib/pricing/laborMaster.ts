@@ -133,3 +133,36 @@ export function parseLaborCsv(text: string): { rows: LaborCsvRow[]; errors: stri
   });
   return { rows: [...rows.values()], errors };
 }
+
+/** d-Happy（Honda Access 用品適用検索）の出典 URL。 */
+export const DHAPPY_SOURCE_URL = "https://sfh.honda.co.jp/T001";
+
+/**
+ * d-Happy「装着用品確認」の表を人がドラッグ選択でコピーした文字列を、工数 CSV に変換する。
+ * コピーの形（1品目ごと）:
+ *   品名
+ *   品番<TAB>価格<TAB>取付工数<TAB>
+ *   合計金額
+ * 品番・工数の行を見つけ、その直前の空でない行を品名とする。サイトへは自動アクセスしない
+ * （robots.txt が全面 Disallow のため、人の操作で得た表だけを取り込む）。
+ */
+export function dHappyPasteToCsv(text: string, modelCode: string): { csv: string; count: number; errors: string[] } {
+  const model = normalizeModelCode(modelCode);
+  if (!model || model === ANY_MODEL) return { csv: "", count: 0, errors: ["型式を入力してください（例: GP3）"] };
+  const lines = text.split(/\r?\n/).map((l) => l.trim());
+  const out: string[] = [];
+  const errors: string[] = [];
+  lines.forEach((line, i) => {
+    const m = line.normalize("NFKC").match(/^([0-9A-Z]{6,20})\s+[\d,]+\s+(\S+)$/i);
+    if (!m) return;
+    const hours = Number(m[2]);
+    if (!Number.isFinite(hours) || hours < 0) return void errors.push(`${i + 1}行目: 取付工数を読めません（${m[2]}）`);
+    let j = i - 1;
+    while (j >= 0 && !lines[j]) j--;
+    // 品名はCSVの区切りと衝突しないよう半角カンマを読点に置き換える
+    const label = j >= 0 && !/^項目/.test(lines[j]) ? lines[j].replace(/,/g, "、") : "";
+    out.push([model, m[1].toUpperCase(), hours, "", label, DHAPPY_SOURCE_URL].join(","));
+  });
+  if (out.length === 0 && errors.length === 0) errors.push("品番と取付工数の行が見つかりませんでした");
+  return { csv: out.join("\n"), count: out.length, errors };
+}

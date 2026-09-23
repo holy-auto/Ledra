@@ -1,6 +1,8 @@
 import { describe, it, expect } from "vitest";
 import {
   ANY_MODEL,
+  DHAPPY_SOURCE_URL,
+  dHappyPasteToCsv,
   findEntry,
   laborPrice,
   modelCodeFromChassis,
@@ -115,5 +117,39 @@ describe("parseLaborCsv", () => {
     );
     expect(rows.map((r) => r.part_key)).toEqual(["X"]);
     expect(errors).toHaveLength(2);
+  });
+});
+
+describe("dHappyPasteToCsv", () => {
+  // 代表が d-Happy（GP3-1017220）の装着用品確認からコピーした実物
+  const paste = [
+    "項目用品品番コピー\t価格\t取付工数\t合計金額",
+    "ドアバイザー（フロント／リア４枚セット）",
+    "08R04SYY001\t9,900\t0.4\t",
+    "13,860",
+    "ラバーマット（縁高タイプ）　フロント／左右セット（回転式ホルダー固定仕様）",
+    "08P18SYY011\t3,575\t0.1\t",
+    "4,565",
+    "ナンバープレートロックボルト（３本入セット／ボルト長２０ｍｍ）",
+    "08P25EJ5C00A\t3,300\t0\t",
+    "3,300",
+  ].join("\r\n");
+
+  it("品番・工数・品名を読み、工数 CSV として取り込める", () => {
+    const { csv, count, errors } = dHappyPasteToCsv(paste, "gp3");
+    expect(errors).toEqual([]);
+    expect(count).toBe(3);
+    const { rows } = parseLaborCsv(csv);
+    expect(rows.map((r) => [r.model_code, r.part_key, r.hours, r.label])).toEqual([
+      ["GP3", "08R04SYY001", 0.4, "ドアバイザー（フロント／リア４枚セット）"],
+      ["GP3", "08P18SYY011", 0.1, "ラバーマット（縁高タイプ）　フロント／左右セット（回転式ホルダー固定仕様）"],
+      ["GP3", "08P25EJ5C00A", 0, "ナンバープレートロックボルト（３本入セット／ボルト長２０ｍｍ）"],
+    ]);
+    expect(rows[0].source_url).toBe(DHAPPY_SOURCE_URL);
+  });
+
+  it("型式なし・該当行なしはエラー", () => {
+    expect(dHappyPasteToCsv(paste, "").errors).toHaveLength(1);
+    expect(dHappyPasteToCsv("ただの文章", "GP3").errors).toHaveLength(1);
   });
 });

@@ -5,6 +5,7 @@ import useSWR from "swr";
 import MutationGuard from "@/components/ui/MutationGuard";
 import { parseJsonSafe } from "@/lib/api/safeJson";
 import { fetcher } from "@/lib/swr";
+import { dHappyPasteToCsv, modelCodeFromChassis } from "@/lib/pricing/laborMaster";
 
 /**
  * 工数マスタ（型式 × 品番 → 工数 / 定額）の CSV 一括登録・一覧・削除。
@@ -38,18 +39,21 @@ export default function LaborHoursClient() {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null);
 
-  const doImport = async () => {
+  const [vin, setVin] = useState("");
+  const [paste, setPaste] = useState("");
+
+  const doImport = async (body: string = csv, preErrors: string[] = []) => {
     setBusy(true);
     setMsg(null);
     try {
       const res = await fetch("/api/admin/labor-hours", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ csv }),
+        body: JSON.stringify({ csv: body }),
       });
       const j = await parseJsonSafe<{ imported?: number; errors?: string[]; message?: string }>(res);
       if (!res.ok) throw new Error(j?.message ?? `HTTP ${res.status}`);
-      const errs = j?.errors ?? [];
+      const errs = [...preErrors, ...(j?.errors ?? [])];
       setMsg({
         text:
           `${j?.imported ?? 0} 件を登録・更新しました` +
@@ -57,6 +61,7 @@ export default function LaborHoursClient() {
         ok: errs.length === 0,
       });
       setCsv("");
+      setPaste("");
       mutate();
     } catch (e) {
       setMsg({ text: e instanceof Error ? e.message : String(e), ok: false });
@@ -86,6 +91,50 @@ export default function LaborHoursClient() {
         </p>
       </div>
 
+      {msg && (
+        <div role="status" className={`text-sm ${msg.ok ? "text-success" : "text-danger"}`}>
+          {msg.text}
+        </div>
+      )}
+
+      <MutationGuard>
+        <section className="glass-card space-y-3 p-5">
+          <div className="text-xs font-semibold tracking-[0.18em] text-muted">d-Happy の表を貼り付けて登録</div>
+          <p className="text-xs text-secondary">
+            d-Happy で車台番号を検索し、装着用品を選んで「装着用品確認」を開きます。表の「項目」から最後の行までを
+            ドラッグで選んでコピーし、下に貼り付けてください。品番ごとの取付工数をこの型式で登録します。
+          </p>
+          <input
+            className="input-field !w-56"
+            placeholder="車台番号 GP3-1017220 または型式 GP3"
+            aria-label="車台番号または型式"
+            value={vin}
+            onChange={(e) => setVin(e.target.value)}
+          />
+          <textarea
+            className="input-field font-mono text-xs"
+            rows={6}
+            placeholder={
+              "項目\t価格\t取付工数\t合計金額\nドアバイザー（フロント／リア４枚セット）\n08R04SYY001\t9,900\t0.4\t\n13,860"
+            }
+            value={paste}
+            onChange={(e) => setPaste(e.target.value)}
+          />
+          <button
+            type="button"
+            className="btn-primary"
+            disabled={busy || !paste.trim() || !vin.trim()}
+            onClick={() => {
+              const { csv: converted, count, errors } = dHappyPasteToCsv(paste, modelCodeFromChassis(vin) ?? vin);
+              if (count === 0) return setMsg({ text: errors.join(" / "), ok: false });
+              void doImport(converted, errors);
+            }}
+          >
+            {busy ? "登録中…" : "貼り付けから登録"}
+          </button>
+        </section>
+      </MutationGuard>
+
       <MutationGuard>
         <section className="glass-card space-y-3 p-5">
           <div className="text-xs font-semibold tracking-[0.18em] text-muted">CSV で登録・更新</div>
@@ -103,7 +152,6 @@ export default function LaborHoursClient() {
           <button type="button" className="btn-primary" disabled={busy || !csv.trim()} onClick={() => void doImport()}>
             {busy ? "登録中…" : "登録"}
           </button>
-          {msg && <div className={`text-sm ${msg.ok ? "text-success" : "text-danger"}`}>{msg.text}</div>}
         </section>
       </MutationGuard>
 
