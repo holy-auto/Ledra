@@ -182,6 +182,23 @@ describe("classifyAgainstExisting", () => {
     expect(r.metaUpdates).toEqual([]);
   });
 
+  it("値違いで上書きする行も、今回が空欄の品名・出典は既存を残す", () => {
+    const { rows: incoming } = parseLaborCsv("GP3,08P18SYY011,0.1,,,");
+    const r = classifyAgainstExisting(incoming, [
+      {
+        model_code: "GP3",
+        part_key: "08P18SYY011",
+        hours: 0.2,
+        fixed_price: null,
+        label: "ラバーマット",
+        source_url: "https://sfh.honda.co.jp/T001",
+      },
+    ]);
+    expect(r.conflicts.map((c) => [c.row.hours, c.row.label, c.row.source_url])).toEqual([
+      [0.1, "ラバーマット", "https://sfh.honda.co.jp/T001"],
+    ]);
+  });
+
   it("値が同じで品名・出典だけ違う行は更新対象、空欄は既存を消さない", () => {
     const { rows: incoming } = parseLaborCsv("GP3,08R04SYY001,0.4,,ドアバイザー,\nGP3,08P18SYY011,0.1,,,");
     const r = classifyAgainstExisting(incoming, [
@@ -221,8 +238,8 @@ describe("formatImportSummary / describeConflict", () => {
       current: { hours: 0.2, fixed_price: null },
       incoming: { hours: 0.1, fixed_price: null },
     };
-    expect(formatImportSummary({ inserted: 2, unchanged: 1, conflicts: [conflict], errors: [] })).toBe(
-      "新規 2 件、登録済み（同じ値）1 件、値が違うため未登録 1 件",
+    expect(formatImportSummary({ inserted: 2, updated: 1, unchanged: 1, overwritten: [conflict], errors: [] })).toBe(
+      "新規 2 件、上書き 1 件、登録済み（同じ値）1 件",
     );
     expect(describeConflict(conflict)).toBe("GP3 08P18SYY011（ラバーマット） 登録済み 0.2h → 今回 0.1h");
   });
@@ -298,7 +315,7 @@ describe("findEntryWithFallback", () => {
 describe("sheetRowsToLaborCsv", () => {
   const head = ["車種", "グレード", "項目", "取付工数", "車台番号", "カテゴリ", "備考"];
 
-  it("d-Happy 収集形式: 型式を車台番号から取り、食い違いと空欄は登録しない", () => {
+  it("d-Happy 収集形式: 型式を車台番号から取り、食い違いは後の行を採り、空欄は登録しない", () => {
     const r = sheetRowsToLaborCsv([
       head,
       ["N-BOX", "N-BOX", "ドアバイザー", "0.4", "JF5-1511014", "ベーシック", ""],
@@ -309,13 +326,14 @@ describe("sheetRowsToLaborCsv", () => {
       ["N-BOX", "N-BOX", "リアカメラ", "", "JF5-1511014", "A&V", "算出不可"],
       ["WR-V", "Z", "フロアマット", "0.2", "1204166", "", ""],
     ]);
-    expect(r.count).toBe(2);
-    expect(r.conflicts).toEqual(["JF5 ETC2.0車載器 取付アタッチメント: 1.4h / 0h"]);
+    expect(r.count).toBe(3);
+    expect(r.overwritten).toEqual(["JF5 ETC2.0車載器 取付アタッチメント: 1.4h → 0h（後の行の 0h を採用）"]);
     expect(r.errors).toHaveLength(2);
     const { rows, errors } = parseLaborCsv(r.csv);
     expect(errors).toEqual([]);
     expect(rows.map((x) => [x.model_code, x.part_key, x.hours])).toEqual([
       ["JF5", normalizeKey("ドアバイザー"), 0.4],
+      ["JF5", normalizeKey("ETC2.0車載器 取付アタッチメント"), 0],
       ["JF5", normalizeKey("LEDフォグライト 5,800K"), 0.3], // 全角カンマで書き出し、照合キーは元の表記と一致
     ]);
   });

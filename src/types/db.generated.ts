@@ -2134,7 +2134,15 @@ export type Database = {
           tenant_id?: string | null;
           user_agent?: string | null;
         };
-        Relationships: [];
+        Relationships: [
+          {
+            foreignKeyName: "audit_logs_tenant_id_fkey";
+            columns: ["tenant_id"];
+            isOneToOne: false;
+            referencedRelation: "tenants";
+            referencedColumns: ["id"];
+          },
+        ];
       };
       batch_pdf_jobs: {
         Row: {
@@ -3150,6 +3158,7 @@ export type Database = {
         Row: {
           accessory_json: Json | null;
           body_repair_json: Json | null;
+          certificate_no: string | null;
           coating_products_json: Json | null;
           content_free_text: string | null;
           content_preset_json: Json;
@@ -3202,6 +3211,7 @@ export type Database = {
         Insert: {
           accessory_json?: Json | null;
           body_repair_json?: Json | null;
+          certificate_no?: string | null;
           coating_products_json?: Json | null;
           content_free_text?: string | null;
           content_preset_json?: Json;
@@ -3254,6 +3264,7 @@ export type Database = {
         Update: {
           accessory_json?: Json | null;
           body_repair_json?: Json | null;
+          certificate_no?: string | null;
           coating_products_json?: Json | null;
           content_free_text?: string | null;
           content_preset_json?: Json;
@@ -3854,6 +3865,7 @@ export type Database = {
           created_at: string;
           customer_id: string;
           id: string;
+          labor_rate_per_hour: number | null;
           name: string;
           name_kana: string | null;
           note: string | null;
@@ -3869,6 +3881,7 @@ export type Database = {
           created_at?: string;
           customer_id: string;
           id?: string;
+          labor_rate_per_hour?: number | null;
           name: string;
           name_kana?: string | null;
           note?: string | null;
@@ -3884,6 +3897,7 @@ export type Database = {
           created_at?: string;
           customer_id?: string;
           id?: string;
+          labor_rate_per_hour?: number | null;
           name?: string;
           name_kana?: string | null;
           note?: string | null;
@@ -5598,6 +5612,788 @@ export type Database = {
           },
         ];
       };
+      ft_agreements: {
+        Row: {
+          accepted: boolean;
+          accepted_at: string | null;
+          accepted_by: string | null;
+          agreement_type: string;
+          created_at: string;
+          document_text: string | null;
+          document_url: string | null;
+          id: string;
+          manufacturer_id: string;
+          project_id: string;
+          tenant_id: string;
+          updated_at: string;
+        };
+        Insert: {
+          accepted?: boolean;
+          accepted_at?: string | null;
+          accepted_by?: string | null;
+          agreement_type: string;
+          created_at?: string;
+          document_text?: string | null;
+          document_url?: string | null;
+          id?: string;
+          manufacturer_id: string;
+          project_id: string;
+          tenant_id: string;
+          updated_at?: string;
+        };
+        Update: {
+          accepted?: boolean;
+          accepted_at?: string | null;
+          accepted_by?: string | null;
+          agreement_type?: string;
+          created_at?: string;
+          document_text?: string | null;
+          document_url?: string | null;
+          id?: string;
+          manufacturer_id?: string;
+          project_id?: string;
+          tenant_id?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "ft_agreements_manufacturer_id_fkey";
+            columns: ["manufacturer_id"];
+            isOneToOne: false;
+            referencedRelation: "manufacturers";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "ft_agreements_project_id_fkey";
+            columns: ["project_id"];
+            isOneToOne: false;
+            referencedRelation: "ft_projects";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "ft_agreements_tenant_id_fkey";
+            columns: ["tenant_id"];
+            isOneToOne: false;
+            referencedRelation: "tenants";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      ft_applications: {
+        Row: {
+          applied_by: string | null;
+          created_at: string;
+          id: string;
+          manufacturer_id: string;
+          notes: string | null;
+          project_id: string;
+          recruitment_id: string;
+          review_notes: string | null;
+          reviewed_at: string | null;
+          reviewed_by: string | null;
+          status: string;
+          tenant_id: string;
+          updated_at: string;
+        };
+        Insert: {
+          applied_by?: string | null;
+          created_at?: string;
+          id?: string;
+          manufacturer_id: string;
+          notes?: string | null;
+          project_id: string;
+          recruitment_id: string;
+          review_notes?: string | null;
+          reviewed_at?: string | null;
+          reviewed_by?: string | null;
+          status?: string;
+          tenant_id: string;
+          updated_at?: string;
+        };
+        Update: {
+          applied_by?: string | null;
+          created_at?: string;
+          id?: string;
+          manufacturer_id?: string;
+          notes?: string | null;
+          project_id?: string;
+          recruitment_id?: string;
+          review_notes?: string | null;
+          reviewed_at?: string | null;
+          reviewed_by?: string | null;
+          status?: string;
+          tenant_id?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "ft_applications_manufacturer_id_fkey";
+            columns: ["manufacturer_id"];
+            isOneToOne: false;
+            referencedRelation: "manufacturers";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "ft_applications_project_id_fkey";
+            columns: ["project_id"];
+            isOneToOne: false;
+            referencedRelation: "ft_projects";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "ft_applications_recruitment_id_fkey";
+            columns: ["recruitment_id"];
+            isOneToOne: false;
+            referencedRelation: "ft_recruitments";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "ft_applications_tenant_id_fkey";
+            columns: ["tenant_id"];
+            isOneToOne: false;
+            referencedRelation: "tenants";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      ft_condition_checks: {
+        Row: {
+          checked_at: string;
+          checked_by: string | null;
+          condition_id: string;
+          created_at: string;
+          id: string;
+          job_id: string;
+          value_boolean: boolean | null;
+          value_numeric: number | null;
+          value_photo_path: string | null;
+          value_text: string | null;
+        };
+        Insert: {
+          checked_at?: string;
+          checked_by?: string | null;
+          condition_id: string;
+          created_at?: string;
+          id?: string;
+          job_id: string;
+          value_boolean?: boolean | null;
+          value_numeric?: number | null;
+          value_photo_path?: string | null;
+          value_text?: string | null;
+        };
+        Update: {
+          checked_at?: string;
+          checked_by?: string | null;
+          condition_id?: string;
+          created_at?: string;
+          id?: string;
+          job_id?: string;
+          value_boolean?: boolean | null;
+          value_numeric?: number | null;
+          value_photo_path?: string | null;
+          value_text?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "ft_condition_checks_condition_id_fkey";
+            columns: ["condition_id"];
+            isOneToOne: false;
+            referencedRelation: "ft_conditions";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "ft_condition_checks_job_id_fkey";
+            columns: ["job_id"];
+            isOneToOne: false;
+            referencedRelation: "ft_jobs";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      ft_conditions: {
+        Row: {
+          check_type: string;
+          created_at: string;
+          description: string | null;
+          id: string;
+          is_required: boolean;
+          label: string;
+          manufacturer_id: string;
+          numeric_max: number | null;
+          numeric_min: number | null;
+          project_id: string;
+          sort_order: number;
+          unit: string | null;
+          updated_at: string;
+        };
+        Insert: {
+          check_type?: string;
+          created_at?: string;
+          description?: string | null;
+          id?: string;
+          is_required?: boolean;
+          label: string;
+          manufacturer_id: string;
+          numeric_max?: number | null;
+          numeric_min?: number | null;
+          project_id: string;
+          sort_order?: number;
+          unit?: string | null;
+          updated_at?: string;
+        };
+        Update: {
+          check_type?: string;
+          created_at?: string;
+          description?: string | null;
+          id?: string;
+          is_required?: boolean;
+          label?: string;
+          manufacturer_id?: string;
+          numeric_max?: number | null;
+          numeric_min?: number | null;
+          project_id?: string;
+          sort_order?: number;
+          unit?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "ft_conditions_manufacturer_id_fkey";
+            columns: ["manufacturer_id"];
+            isOneToOne: false;
+            referencedRelation: "manufacturers";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "ft_conditions_project_id_fkey";
+            columns: ["project_id"];
+            isOneToOne: false;
+            referencedRelation: "ft_projects";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      ft_defects: {
+        Row: {
+          created_at: string;
+          defect_code: string | null;
+          description: string | null;
+          id: string;
+          job_id: string | null;
+          manufacturer_id: string;
+          project_id: string;
+          reported_by: string | null;
+          resolution: string | null;
+          resolved_at: string | null;
+          resolved_by: string | null;
+          severity: string;
+          status: string;
+          tenant_id: string | null;
+          title: string;
+          updated_at: string;
+        };
+        Insert: {
+          created_at?: string;
+          defect_code?: string | null;
+          description?: string | null;
+          id?: string;
+          job_id?: string | null;
+          manufacturer_id: string;
+          project_id: string;
+          reported_by?: string | null;
+          resolution?: string | null;
+          resolved_at?: string | null;
+          resolved_by?: string | null;
+          severity?: string;
+          status?: string;
+          tenant_id?: string | null;
+          title: string;
+          updated_at?: string;
+        };
+        Update: {
+          created_at?: string;
+          defect_code?: string | null;
+          description?: string | null;
+          id?: string;
+          job_id?: string | null;
+          manufacturer_id?: string;
+          project_id?: string;
+          reported_by?: string | null;
+          resolution?: string | null;
+          resolved_at?: string | null;
+          resolved_by?: string | null;
+          severity?: string;
+          status?: string;
+          tenant_id?: string | null;
+          title?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "ft_defects_job_id_fkey";
+            columns: ["job_id"];
+            isOneToOne: false;
+            referencedRelation: "ft_jobs";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "ft_defects_manufacturer_id_fkey";
+            columns: ["manufacturer_id"];
+            isOneToOne: false;
+            referencedRelation: "manufacturers";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "ft_defects_project_id_fkey";
+            columns: ["project_id"];
+            isOneToOne: false;
+            referencedRelation: "ft_projects";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "ft_defects_tenant_id_fkey";
+            columns: ["tenant_id"];
+            isOneToOne: false;
+            referencedRelation: "tenants";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      ft_evidence: {
+        Row: {
+          caption: string | null;
+          captured_at: string | null;
+          captured_by: string | null;
+          content_type: string | null;
+          created_at: string;
+          evidence_type: string;
+          file_name: string | null;
+          file_path: string | null;
+          id: string;
+          job_id: string;
+          manufacturer_id: string;
+          metadata: Json;
+          project_id: string;
+          tenant_id: string;
+        };
+        Insert: {
+          caption?: string | null;
+          captured_at?: string | null;
+          captured_by?: string | null;
+          content_type?: string | null;
+          created_at?: string;
+          evidence_type: string;
+          file_name?: string | null;
+          file_path?: string | null;
+          id?: string;
+          job_id: string;
+          manufacturer_id: string;
+          metadata?: Json;
+          project_id: string;
+          tenant_id: string;
+        };
+        Update: {
+          caption?: string | null;
+          captured_at?: string | null;
+          captured_by?: string | null;
+          content_type?: string | null;
+          created_at?: string;
+          evidence_type?: string;
+          file_name?: string | null;
+          file_path?: string | null;
+          id?: string;
+          job_id?: string;
+          manufacturer_id?: string;
+          metadata?: Json;
+          project_id?: string;
+          tenant_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "ft_evidence_job_id_fkey";
+            columns: ["job_id"];
+            isOneToOne: false;
+            referencedRelation: "ft_jobs";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "ft_evidence_manufacturer_id_fkey";
+            columns: ["manufacturer_id"];
+            isOneToOne: false;
+            referencedRelation: "manufacturers";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "ft_evidence_project_id_fkey";
+            columns: ["project_id"];
+            isOneToOne: false;
+            referencedRelation: "ft_projects";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "ft_evidence_tenant_id_fkey";
+            columns: ["tenant_id"];
+            isOneToOne: false;
+            referencedRelation: "tenants";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      ft_inspections: {
+        Row: {
+          checklist: Json;
+          created_at: string;
+          id: string;
+          inspected_at: string | null;
+          inspector_user_id: string | null;
+          job_id: string;
+          manufacturer_id: string;
+          notes: string | null;
+          project_id: string;
+          result: string;
+          score: number | null;
+          updated_at: string;
+        };
+        Insert: {
+          checklist?: Json;
+          created_at?: string;
+          id?: string;
+          inspected_at?: string | null;
+          inspector_user_id?: string | null;
+          job_id: string;
+          manufacturer_id: string;
+          notes?: string | null;
+          project_id: string;
+          result?: string;
+          score?: number | null;
+          updated_at?: string;
+        };
+        Update: {
+          checklist?: Json;
+          created_at?: string;
+          id?: string;
+          inspected_at?: string | null;
+          inspector_user_id?: string | null;
+          job_id?: string;
+          manufacturer_id?: string;
+          notes?: string | null;
+          project_id?: string;
+          result?: string;
+          score?: number | null;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "ft_inspections_job_id_fkey";
+            columns: ["job_id"];
+            isOneToOne: false;
+            referencedRelation: "ft_jobs";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "ft_inspections_manufacturer_id_fkey";
+            columns: ["manufacturer_id"];
+            isOneToOne: false;
+            referencedRelation: "manufacturers";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "ft_inspections_project_id_fkey";
+            columns: ["project_id"];
+            isOneToOne: false;
+            referencedRelation: "ft_projects";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      ft_jobs: {
+        Row: {
+          assigned_at: string;
+          assigned_by: string | null;
+          completed_at: string | null;
+          conditions_snapshot: Json;
+          created_at: string;
+          description: string | null;
+          id: string;
+          job_code: string | null;
+          manufacturer_id: string;
+          project_id: string;
+          status: string;
+          tenant_id: string;
+          title: string;
+          updated_at: string;
+        };
+        Insert: {
+          assigned_at?: string;
+          assigned_by?: string | null;
+          completed_at?: string | null;
+          conditions_snapshot?: Json;
+          created_at?: string;
+          description?: string | null;
+          id?: string;
+          job_code?: string | null;
+          manufacturer_id: string;
+          project_id: string;
+          status?: string;
+          tenant_id: string;
+          title: string;
+          updated_at?: string;
+        };
+        Update: {
+          assigned_at?: string;
+          assigned_by?: string | null;
+          completed_at?: string | null;
+          conditions_snapshot?: Json;
+          created_at?: string;
+          description?: string | null;
+          id?: string;
+          job_code?: string | null;
+          manufacturer_id?: string;
+          project_id?: string;
+          status?: string;
+          tenant_id?: string;
+          title?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "ft_jobs_manufacturer_id_fkey";
+            columns: ["manufacturer_id"];
+            isOneToOne: false;
+            referencedRelation: "manufacturers";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "ft_jobs_project_id_fkey";
+            columns: ["project_id"];
+            isOneToOne: false;
+            referencedRelation: "ft_projects";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "ft_jobs_tenant_id_fkey";
+            columns: ["tenant_id"];
+            isOneToOne: false;
+            referencedRelation: "tenants";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      ft_projects: {
+        Row: {
+          budget: number | null;
+          conditions: Json;
+          created_at: string;
+          created_by: string | null;
+          description: string | null;
+          ends_at: string | null;
+          id: string;
+          manufacturer_id: string;
+          name: string;
+          product_name: string | null;
+          product_spec: Json;
+          starts_at: string | null;
+          status: string;
+          target_units: number | null;
+          updated_at: string;
+        };
+        Insert: {
+          budget?: number | null;
+          conditions?: Json;
+          created_at?: string;
+          created_by?: string | null;
+          description?: string | null;
+          ends_at?: string | null;
+          id?: string;
+          manufacturer_id: string;
+          name: string;
+          product_name?: string | null;
+          product_spec?: Json;
+          starts_at?: string | null;
+          status?: string;
+          target_units?: number | null;
+          updated_at?: string;
+        };
+        Update: {
+          budget?: number | null;
+          conditions?: Json;
+          created_at?: string;
+          created_by?: string | null;
+          description?: string | null;
+          ends_at?: string | null;
+          id?: string;
+          manufacturer_id?: string;
+          name?: string;
+          product_name?: string | null;
+          product_spec?: Json;
+          starts_at?: string | null;
+          status?: string;
+          target_units?: number | null;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "ft_projects_manufacturer_id_fkey";
+            columns: ["manufacturer_id"];
+            isOneToOne: false;
+            referencedRelation: "manufacturers";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      ft_recruitments: {
+        Row: {
+          created_at: string;
+          deadline: string | null;
+          description: string | null;
+          id: string;
+          is_open: boolean;
+          manufacturer_id: string;
+          max_participants: number | null;
+          project_id: string;
+          required_certifications: string[];
+          title: string;
+          updated_at: string;
+        };
+        Insert: {
+          created_at?: string;
+          deadline?: string | null;
+          description?: string | null;
+          id?: string;
+          is_open?: boolean;
+          manufacturer_id: string;
+          max_participants?: number | null;
+          project_id: string;
+          required_certifications?: string[];
+          title: string;
+          updated_at?: string;
+        };
+        Update: {
+          created_at?: string;
+          deadline?: string | null;
+          description?: string | null;
+          id?: string;
+          is_open?: boolean;
+          manufacturer_id?: string;
+          max_participants?: number | null;
+          project_id?: string;
+          required_certifications?: string[];
+          title?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "ft_recruitments_manufacturer_id_fkey";
+            columns: ["manufacturer_id"];
+            isOneToOne: false;
+            referencedRelation: "manufacturers";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "ft_recruitments_project_id_fkey";
+            columns: ["project_id"];
+            isOneToOne: false;
+            referencedRelation: "ft_projects";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      ft_training_completions: {
+        Row: {
+          completed_at: string;
+          completed_by: string | null;
+          created_at: string;
+          id: string;
+          module_id: string;
+          tenant_id: string;
+        };
+        Insert: {
+          completed_at?: string;
+          completed_by?: string | null;
+          created_at?: string;
+          id?: string;
+          module_id: string;
+          tenant_id: string;
+        };
+        Update: {
+          completed_at?: string;
+          completed_by?: string | null;
+          created_at?: string;
+          id?: string;
+          module_id?: string;
+          tenant_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "ft_training_completions_module_id_fkey";
+            columns: ["module_id"];
+            isOneToOne: false;
+            referencedRelation: "ft_training_modules";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "ft_training_completions_tenant_id_fkey";
+            columns: ["tenant_id"];
+            isOneToOne: false;
+            referencedRelation: "tenants";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      ft_training_modules: {
+        Row: {
+          content_url: string | null;
+          created_at: string;
+          description: string | null;
+          id: string;
+          is_required: boolean;
+          manufacturer_id: string;
+          project_id: string;
+          sort_order: number;
+          title: string;
+          updated_at: string;
+        };
+        Insert: {
+          content_url?: string | null;
+          created_at?: string;
+          description?: string | null;
+          id?: string;
+          is_required?: boolean;
+          manufacturer_id: string;
+          project_id: string;
+          sort_order?: number;
+          title: string;
+          updated_at?: string;
+        };
+        Update: {
+          content_url?: string | null;
+          created_at?: string;
+          description?: string | null;
+          id?: string;
+          is_required?: boolean;
+          manufacturer_id?: string;
+          project_id?: string;
+          sort_order?: number;
+          title?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "ft_training_modules_manufacturer_id_fkey";
+            columns: ["manufacturer_id"];
+            isOneToOne: false;
+            referencedRelation: "manufacturers";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "ft_training_modules_project_id_fkey";
+            columns: ["project_id"];
+            isOneToOne: false;
+            referencedRelation: "ft_projects";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       gcal_sync_log: {
         Row: {
           action: string;
@@ -7170,10 +7966,24 @@ export type Database = {
         };
         Relationships: [
           {
+            foreignKeyName: "job_orders_from_tenant_id_fkey";
+            columns: ["from_tenant_id"];
+            isOneToOne: false;
+            referencedRelation: "tenants";
+            referencedColumns: ["id"];
+          },
+          {
             foreignKeyName: "job_orders_reservation_id_fkey";
             columns: ["reservation_id"];
             isOneToOne: false;
             referencedRelation: "reservations";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "job_orders_to_tenant_id_fkey";
+            columns: ["to_tenant_id"];
+            isOneToOne: false;
+            referencedRelation: "tenants";
             referencedColumns: ["id"];
           },
           {
@@ -7223,6 +8033,56 @@ export type Database = {
           updated_at?: string;
         };
         Relationships: [];
+      };
+      labor_hour_masters: {
+        Row: {
+          created_at: string;
+          fixed_price: number | null;
+          hours: number | null;
+          id: string;
+          label: string | null;
+          model_code: string;
+          part_key: string;
+          part_number: string;
+          source_url: string | null;
+          tenant_id: string;
+          updated_at: string | null;
+        };
+        Insert: {
+          created_at?: string;
+          fixed_price?: number | null;
+          hours?: number | null;
+          id?: string;
+          label?: string | null;
+          model_code: string;
+          part_key: string;
+          part_number: string;
+          source_url?: string | null;
+          tenant_id: string;
+          updated_at?: string | null;
+        };
+        Update: {
+          created_at?: string;
+          fixed_price?: number | null;
+          hours?: number | null;
+          id?: string;
+          label?: string | null;
+          model_code?: string;
+          part_key?: string;
+          part_number?: string;
+          source_url?: string | null;
+          tenant_id?: string;
+          updated_at?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "labor_hour_masters_tenant_id_fkey";
+            columns: ["tenant_id"];
+            isOneToOne: false;
+            referencedRelation: "tenants";
+            referencedColumns: ["id"];
+          },
+        ];
       };
       line_broadcasts: {
         Row: {
@@ -7764,6 +8624,53 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "manufacturer_memberships_manufacturer_id_fkey";
+            columns: ["manufacturer_id"];
+            isOneToOne: false;
+            referencedRelation: "manufacturers";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      manufacturer_notifications: {
+        Row: {
+          body: string | null;
+          created_at: string;
+          id: string;
+          link_path: string | null;
+          manufacturer_id: string;
+          notification_type: string;
+          priority: string;
+          read_at: string | null;
+          title: string;
+          user_id: string | null;
+        };
+        Insert: {
+          body?: string | null;
+          created_at?: string;
+          id?: string;
+          link_path?: string | null;
+          manufacturer_id: string;
+          notification_type: string;
+          priority?: string;
+          read_at?: string | null;
+          title: string;
+          user_id?: string | null;
+        };
+        Update: {
+          body?: string | null;
+          created_at?: string;
+          id?: string;
+          link_path?: string | null;
+          manufacturer_id?: string;
+          notification_type?: string;
+          priority?: string;
+          read_at?: string | null;
+          title?: string;
+          user_id?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "manufacturer_notifications_manufacturer_id_fkey";
             columns: ["manufacturer_id"];
             isOneToOne: false;
             referencedRelation: "manufacturers";
@@ -8922,6 +9829,326 @@ export type Database = {
           },
         ];
       };
+      outsourced_receipt_attempts: {
+        Row: {
+          attempt_no: number;
+          comment: string | null;
+          created_at: string;
+          id: string;
+          lines: Json;
+          received_at: string | null;
+          received_by: string | null;
+          rejected_at: string | null;
+          rejected_by: string | null;
+          rejection_reason: string | null;
+          request_id: string;
+          result: string;
+          started_at: string;
+          started_by: string | null;
+          superseded_by_attempt_id: string | null;
+          updated_at: string;
+        };
+        Insert: {
+          attempt_no: number;
+          comment?: string | null;
+          created_at?: string;
+          id?: string;
+          lines?: Json;
+          received_at?: string | null;
+          received_by?: string | null;
+          rejected_at?: string | null;
+          rejected_by?: string | null;
+          rejection_reason?: string | null;
+          request_id: string;
+          result?: string;
+          started_at?: string;
+          started_by?: string | null;
+          superseded_by_attempt_id?: string | null;
+          updated_at?: string;
+        };
+        Update: {
+          attempt_no?: number;
+          comment?: string | null;
+          created_at?: string;
+          id?: string;
+          lines?: Json;
+          received_at?: string | null;
+          received_by?: string | null;
+          rejected_at?: string | null;
+          rejected_by?: string | null;
+          rejection_reason?: string | null;
+          request_id?: string;
+          result?: string;
+          started_at?: string;
+          started_by?: string | null;
+          superseded_by_attempt_id?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "outsourced_receipt_attempts_request_id_fkey";
+            columns: ["request_id"];
+            isOneToOne: false;
+            referencedRelation: "outsourced_work_requests";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      outsourced_supplied_parts: {
+        Row: {
+          created_at: string;
+          created_by: string | null;
+          handed_over_at: string | null;
+          handed_over_by: string | null;
+          handover_comment: string | null;
+          id: string;
+          label_photo_paths: string[];
+          part_name: string;
+          part_number: string;
+          photo_paths: string[];
+          prepared_at: string | null;
+          prepared_by: string | null;
+          quantity: number;
+          request_id: string;
+          updated_at: string;
+        };
+        Insert: {
+          created_at?: string;
+          created_by?: string | null;
+          handed_over_at?: string | null;
+          handed_over_by?: string | null;
+          handover_comment?: string | null;
+          id?: string;
+          label_photo_paths?: string[];
+          part_name: string;
+          part_number: string;
+          photo_paths?: string[];
+          prepared_at?: string | null;
+          prepared_by?: string | null;
+          quantity: number;
+          request_id: string;
+          updated_at?: string;
+        };
+        Update: {
+          created_at?: string;
+          created_by?: string | null;
+          handed_over_at?: string | null;
+          handed_over_by?: string | null;
+          handover_comment?: string | null;
+          id?: string;
+          label_photo_paths?: string[];
+          part_name?: string;
+          part_number?: string;
+          photo_paths?: string[];
+          prepared_at?: string | null;
+          prepared_by?: string | null;
+          quantity?: number;
+          request_id?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "outsourced_supplied_parts_request_id_fkey";
+            columns: ["request_id"];
+            isOneToOne: false;
+            referencedRelation: "outsourced_work_requests";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      outsourced_work_events: {
+        Row: {
+          actor_role: string;
+          actor_tenant_id: string | null;
+          actor_user_id: string | null;
+          created_at: string;
+          event_type: string;
+          from_status: string | null;
+          id: string;
+          payload: Json;
+          reason: string | null;
+          receipt_attempt_id: string | null;
+          related_event_id: string | null;
+          request_id: string;
+          to_status: string | null;
+        };
+        Insert: {
+          actor_role: string;
+          actor_tenant_id?: string | null;
+          actor_user_id?: string | null;
+          created_at?: string;
+          event_type: string;
+          from_status?: string | null;
+          id?: string;
+          payload?: Json;
+          reason?: string | null;
+          receipt_attempt_id?: string | null;
+          related_event_id?: string | null;
+          request_id: string;
+          to_status?: string | null;
+        };
+        Update: {
+          actor_role?: string;
+          actor_tenant_id?: string | null;
+          actor_user_id?: string | null;
+          created_at?: string;
+          event_type?: string;
+          from_status?: string | null;
+          id?: string;
+          payload?: Json;
+          reason?: string | null;
+          receipt_attempt_id?: string | null;
+          related_event_id?: string | null;
+          request_id?: string;
+          to_status?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "outsourced_work_events_actor_tenant_id_fkey";
+            columns: ["actor_tenant_id"];
+            isOneToOne: false;
+            referencedRelation: "tenants";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "outsourced_work_events_receipt_attempt_id_fkey";
+            columns: ["receipt_attempt_id"];
+            isOneToOne: false;
+            referencedRelation: "outsourced_receipt_attempts";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "outsourced_work_events_related_event_id_fkey";
+            columns: ["related_event_id"];
+            isOneToOne: false;
+            referencedRelation: "outsourced_work_events";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "outsourced_work_events_request_id_fkey";
+            columns: ["request_id"];
+            isOneToOne: false;
+            referencedRelation: "outsourced_work_requests";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      outsourced_work_requests: {
+        Row: {
+          approved_at: string | null;
+          approved_by: string | null;
+          assigned_worker_user_id: string | null;
+          client_store_id: string | null;
+          client_tenant_id: string;
+          comment: string | null;
+          completed_at: string | null;
+          contractor_tenant_id: string;
+          created_at: string;
+          created_by: string | null;
+          current_receipt_attempt_id: string | null;
+          customer_note: string | null;
+          designated_approver_user_ids: string[];
+          designated_reviewer_user_ids: string[];
+          due_date: string | null;
+          evidence_generated_at: string | null;
+          evidence_hash: string | null;
+          exception_origin_status: string | null;
+          id: string;
+          order_number: string | null;
+          status: string;
+          updated_at: string;
+          vehicle_id: string | null;
+          vehicle_label: string | null;
+          vin: string;
+          work_description: string;
+        };
+        Insert: {
+          approved_at?: string | null;
+          approved_by?: string | null;
+          assigned_worker_user_id?: string | null;
+          client_store_id?: string | null;
+          client_tenant_id: string;
+          comment?: string | null;
+          completed_at?: string | null;
+          contractor_tenant_id: string;
+          created_at?: string;
+          created_by?: string | null;
+          current_receipt_attempt_id?: string | null;
+          customer_note?: string | null;
+          designated_approver_user_ids?: string[];
+          designated_reviewer_user_ids?: string[];
+          due_date?: string | null;
+          evidence_generated_at?: string | null;
+          evidence_hash?: string | null;
+          exception_origin_status?: string | null;
+          id?: string;
+          order_number?: string | null;
+          status?: string;
+          updated_at?: string;
+          vehicle_id?: string | null;
+          vehicle_label?: string | null;
+          vin: string;
+          work_description: string;
+        };
+        Update: {
+          approved_at?: string | null;
+          approved_by?: string | null;
+          assigned_worker_user_id?: string | null;
+          client_store_id?: string | null;
+          client_tenant_id?: string;
+          comment?: string | null;
+          completed_at?: string | null;
+          contractor_tenant_id?: string;
+          created_at?: string;
+          created_by?: string | null;
+          current_receipt_attempt_id?: string | null;
+          customer_note?: string | null;
+          designated_approver_user_ids?: string[];
+          designated_reviewer_user_ids?: string[];
+          due_date?: string | null;
+          evidence_generated_at?: string | null;
+          evidence_hash?: string | null;
+          exception_origin_status?: string | null;
+          id?: string;
+          order_number?: string | null;
+          status?: string;
+          updated_at?: string;
+          vehicle_id?: string | null;
+          vehicle_label?: string | null;
+          vin?: string;
+          work_description?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "outsourced_work_requests_client_store_id_fkey";
+            columns: ["client_store_id"];
+            isOneToOne: false;
+            referencedRelation: "stores";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "outsourced_work_requests_client_tenant_id_fkey";
+            columns: ["client_tenant_id"];
+            isOneToOne: false;
+            referencedRelation: "tenants";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "outsourced_work_requests_contractor_tenant_id_fkey";
+            columns: ["contractor_tenant_id"];
+            isOneToOne: false;
+            referencedRelation: "tenants";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "outsourced_work_requests_vehicle_id_fkey";
+            columns: ["vehicle_id"];
+            isOneToOne: false;
+            referencedRelation: "vehicles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       part_confirmation_signatures: {
         Row: {
           assurance: string | null;
@@ -9993,6 +11220,7 @@ export type Database = {
           refund_reason: string | null;
           register_session_id: string | null;
           reservation_id: string | null;
+          square_payment_id: string | null;
           status: string;
           store_id: string | null;
           stripe_payment_intent_id: string | null;
@@ -10018,6 +11246,7 @@ export type Database = {
           refund_reason?: string | null;
           register_session_id?: string | null;
           reservation_id?: string | null;
+          square_payment_id?: string | null;
           status?: string;
           store_id?: string | null;
           stripe_payment_intent_id?: string | null;
@@ -10043,6 +11272,7 @@ export type Database = {
           refund_reason?: string | null;
           register_session_id?: string | null;
           reservation_id?: string | null;
+          square_payment_id?: string | null;
           status?: string;
           store_id?: string | null;
           stripe_payment_intent_id?: string | null;
@@ -11983,6 +13213,7 @@ export type Database = {
           square_location_ids: string[] | null;
           square_merchant_id: string;
           square_refresh_token_ciphertext: string | null;
+          square_terminal_device_id: string | null;
           square_token_expires_at: string;
           status: string;
           tenant_id: string;
@@ -12000,6 +13231,7 @@ export type Database = {
           square_location_ids?: string[] | null;
           square_merchant_id: string;
           square_refresh_token_ciphertext?: string | null;
+          square_terminal_device_id?: string | null;
           square_token_expires_at: string;
           status?: string;
           tenant_id: string;
@@ -12017,6 +13249,7 @@ export type Database = {
           square_location_ids?: string[] | null;
           square_merchant_id?: string;
           square_refresh_token_ciphertext?: string | null;
+          square_terminal_device_id?: string | null;
           square_token_expires_at?: string;
           status?: string;
           tenant_id?: string;
@@ -15592,6 +16825,86 @@ export type Database = {
           },
         ];
       };
+      workshop_capability_profiles: {
+        Row: {
+          body_work: boolean;
+          coating: boolean;
+          created_at: string;
+          electrical: boolean;
+          equipment_notes: string | null;
+          ev_capable: boolean;
+          has_adas_equipment: boolean;
+          has_diagnostic_tools: boolean;
+          has_lift: boolean;
+          id: string;
+          mechanic_certifications: Json;
+          mobile_service: boolean;
+          painting: boolean;
+          permits: Json;
+          ppf: boolean;
+          service_area: Json;
+          supported_vehicles: Json;
+          tenant_id: string;
+          updated_at: string;
+          verified_at: string | null;
+          verified_by: string | null;
+        };
+        Insert: {
+          body_work?: boolean;
+          coating?: boolean;
+          created_at?: string;
+          electrical?: boolean;
+          equipment_notes?: string | null;
+          ev_capable?: boolean;
+          has_adas_equipment?: boolean;
+          has_diagnostic_tools?: boolean;
+          has_lift?: boolean;
+          id?: string;
+          mechanic_certifications?: Json;
+          mobile_service?: boolean;
+          painting?: boolean;
+          permits?: Json;
+          ppf?: boolean;
+          service_area?: Json;
+          supported_vehicles?: Json;
+          tenant_id: string;
+          updated_at?: string;
+          verified_at?: string | null;
+          verified_by?: string | null;
+        };
+        Update: {
+          body_work?: boolean;
+          coating?: boolean;
+          created_at?: string;
+          electrical?: boolean;
+          equipment_notes?: string | null;
+          ev_capable?: boolean;
+          has_adas_equipment?: boolean;
+          has_diagnostic_tools?: boolean;
+          has_lift?: boolean;
+          id?: string;
+          mechanic_certifications?: Json;
+          mobile_service?: boolean;
+          painting?: boolean;
+          permits?: Json;
+          ppf?: boolean;
+          service_area?: Json;
+          supported_vehicles?: Json;
+          tenant_id?: string;
+          updated_at?: string;
+          verified_at?: string | null;
+          verified_by?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "workshop_capability_profiles_tenant_id_fkey";
+            columns: ["tenant_id"];
+            isOneToOne: true;
+            referencedRelation: "tenants";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       zkp_commitments: {
         Row: {
           claims_snapshot: Json;
@@ -15850,6 +17163,43 @@ export type Database = {
       };
     };
     Functions: {
+      __plpgsql_show_dependency_tb:
+        | {
+            Args: {
+              anycompatiblerangetype?: unknown;
+              anycompatibletype?: unknown;
+              anyelememttype?: unknown;
+              anyenumtype?: unknown;
+              anyrangetype?: unknown;
+              funcoid: unknown;
+              relid?: unknown;
+            };
+            Returns: {
+              name: string;
+              oid: unknown;
+              params: string;
+              schema: string;
+              type: string;
+            }[];
+          }
+        | {
+            Args: {
+              anycompatiblerangetype?: unknown;
+              anycompatibletype?: unknown;
+              anyelememttype?: unknown;
+              anyenumtype?: unknown;
+              anyrangetype?: unknown;
+              name: string;
+              relid?: unknown;
+            };
+            Returns: {
+              name: string;
+              oid: unknown;
+              params: string;
+              schema: string;
+              type: string;
+            }[];
+          };
       acquire_cron_lock: {
         Args: { p_task: string; p_ttl_seconds: number };
         Returns: boolean;
@@ -15897,6 +17247,10 @@ export type Database = {
         Returns: string;
       };
       check_auth_email_exists: { Args: { p_email: string }; Returns: boolean };
+      check_auth_email_unconfirmed: {
+        Args: { p_email: string };
+        Returns: boolean;
+      };
       check_reservation_overlap: {
         Args: {
           p_assigned_user_id?: string;
@@ -16005,6 +17359,13 @@ export type Database = {
             };
             Returns: Json;
           };
+      current_insurer_access: {
+        Args: never;
+        Returns: {
+          insurer_id: string;
+          insurer_user_id: string;
+        }[];
+      };
       current_insurer_id: { Args: never; Returns: string };
       current_tenant_id: { Args: never; Returns: string };
       current_uid: { Args: never; Returns: string };
@@ -16191,55 +17552,30 @@ export type Database = {
           tenant_name: string;
         }[];
       };
-      insurer_search_vehicles:
-        | {
-            Args: {
-              p_ip?: string;
-              p_limit?: number;
-              p_offset?: number;
-              p_query?: string;
-              p_user_agent?: string;
-            };
-            Returns: {
-              certificate_count: number;
-              latest_cert_created_at: string;
-              latest_cert_public_id: string;
-              latest_cert_status: string;
-              maker: string;
-              model: string;
-              plate_display: string;
-              size_class: string;
-              tenant_id: string;
-              tenant_name: string;
-              vehicle_id: string;
-              vin_code: string;
-              year: number;
-            }[];
-          }
-        | {
-            Args: {
-              p_ip?: string;
-              p_limit?: number;
-              p_offset?: number;
-              p_query: string;
-              p_status?: string;
-              p_user_agent?: string;
-            };
-            Returns: {
-              certificate_count: number;
-              latest_active_certificate_public_id: string;
-              latest_certificate_public_id: string;
-              latest_certificate_status: string;
-              latest_certificate_ts: string;
-              maker: string;
-              model: string;
-              plate_display: string;
-              search_rank: number;
-              vehicle_id: string;
-              vehicle_public_id: string;
-              year_text: string;
-            }[];
-          };
+      insurer_search_vehicles: {
+        Args: {
+          p_ip?: string;
+          p_limit?: number;
+          p_offset?: number;
+          p_query?: string;
+          p_user_agent?: string;
+        };
+        Returns: {
+          certificate_count: number;
+          latest_cert_created_at: string;
+          latest_cert_public_id: string;
+          latest_cert_status: string;
+          maker: string;
+          model: string;
+          plate_display: string;
+          size_class: string;
+          tenant_id: string;
+          tenant_name: string;
+          vehicle_id: string;
+          vin_code: string;
+          year: number;
+        }[];
+      };
       is_agent_admin: { Args: never; Returns: boolean };
       is_insurer_admin: { Args: never; Returns: boolean };
       is_member_of_tenant: { Args: { p_tenant_id: string }; Returns: boolean };
@@ -16247,6 +17583,7 @@ export type Database = {
         Args: { p_certificate_id: string; p_insurer_id: string };
         Returns: boolean;
       };
+      is_platform_admin: { Args: never; Returns: boolean };
       is_super_admin_user: { Args: never; Returns: boolean };
       is_supply_partner_active: { Args: { p_id: string }; Returns: boolean };
       management_kpi_stats: { Args: { p_tenant_id: string }; Returns: Json };
@@ -16313,6 +17650,274 @@ export type Database = {
       platform_insurer_count: { Args: never; Returns: number };
       platform_regional_stats: { Args: never; Returns: Json };
       platform_tenant_category_stats: { Args: never; Returns: Json };
+      plpgsql_check_function:
+        | {
+            Args: {
+              all_warnings?: boolean;
+              anycompatiblerangetype?: unknown;
+              anycompatibletype?: unknown;
+              anyelememttype?: unknown;
+              anyenumtype?: unknown;
+              anyrangetype?: unknown;
+              compatibility_warnings?: boolean;
+              constant_tracing?: boolean;
+              extra_warnings?: boolean;
+              fatal_errors?: boolean;
+              format?: string;
+              funcoid: unknown;
+              incomment_options_usage_warning?: boolean;
+              newtable?: unknown;
+              oldtable?: unknown;
+              other_warnings?: boolean;
+              performance_warnings?: boolean;
+              relid?: unknown;
+              security_warnings?: boolean;
+              use_incomment_options?: boolean;
+              without_warnings?: boolean;
+            };
+            Returns: string[];
+          }
+        | {
+            Args: {
+              all_warnings?: boolean;
+              anycompatiblerangetype?: unknown;
+              anycompatibletype?: unknown;
+              anyelememttype?: unknown;
+              anyenumtype?: unknown;
+              anyrangetype?: unknown;
+              compatibility_warnings?: boolean;
+              constant_tracing?: boolean;
+              extra_warnings?: boolean;
+              fatal_errors?: boolean;
+              format?: string;
+              incomment_options_usage_warning?: boolean;
+              name: string;
+              newtable?: unknown;
+              oldtable?: unknown;
+              other_warnings?: boolean;
+              performance_warnings?: boolean;
+              relid?: unknown;
+              security_warnings?: boolean;
+              use_incomment_options?: boolean;
+              without_warnings?: boolean;
+            };
+            Returns: string[];
+          };
+      plpgsql_check_function_tb:
+        | {
+            Args: {
+              all_warnings?: boolean;
+              anycompatiblerangetype?: unknown;
+              anycompatibletype?: unknown;
+              anyelememttype?: unknown;
+              anyenumtype?: unknown;
+              anyrangetype?: unknown;
+              compatibility_warnings?: boolean;
+              constant_tracing?: boolean;
+              extra_warnings?: boolean;
+              fatal_errors?: boolean;
+              funcoid: unknown;
+              incomment_options_usage_warning?: boolean;
+              newtable?: unknown;
+              oldtable?: unknown;
+              other_warnings?: boolean;
+              performance_warnings?: boolean;
+              relid?: unknown;
+              security_warnings?: boolean;
+              use_incomment_options?: boolean;
+              without_warnings?: boolean;
+            };
+            Returns: {
+              context: string;
+              detail: string;
+              functionid: unknown;
+              hint: string;
+              level: string;
+              lineno: number;
+              message: string;
+              position: number;
+              query: string;
+              sqlstate: string;
+              statement: string;
+            }[];
+          }
+        | {
+            Args: {
+              all_warnings?: boolean;
+              anycompatiblerangetype?: unknown;
+              anycompatibletype?: unknown;
+              anyelememttype?: unknown;
+              anyenumtype?: unknown;
+              anyrangetype?: unknown;
+              compatibility_warnings?: boolean;
+              constant_tracing?: boolean;
+              extra_warnings?: boolean;
+              fatal_errors?: boolean;
+              incomment_options_usage_warning?: boolean;
+              name: string;
+              newtable?: unknown;
+              oldtable?: unknown;
+              other_warnings?: boolean;
+              performance_warnings?: boolean;
+              relid?: unknown;
+              security_warnings?: boolean;
+              use_incomment_options?: boolean;
+              without_warnings?: boolean;
+            };
+            Returns: {
+              context: string;
+              detail: string;
+              functionid: unknown;
+              hint: string;
+              level: string;
+              lineno: number;
+              message: string;
+              position: number;
+              query: string;
+              sqlstate: string;
+              statement: string;
+            }[];
+          };
+      plpgsql_check_pragma: { Args: { name: string[] }; Returns: number };
+      plpgsql_check_profiler: { Args: { enable?: boolean }; Returns: boolean };
+      plpgsql_check_tracer: {
+        Args: { enable?: boolean; verbosity?: string };
+        Returns: boolean;
+      };
+      plpgsql_coverage_branches:
+        { Args: { funcoid: unknown }; Returns: number } | { Args: { name: string }; Returns: number };
+      plpgsql_coverage_statements:
+        { Args: { funcoid: unknown }; Returns: number } | { Args: { name: string }; Returns: number };
+      plpgsql_profiler_function_statements_tb:
+        | {
+            Args: { funcoid: unknown };
+            Returns: {
+              avg_time: number;
+              block_num: number;
+              exec_stmts: number;
+              exec_stmts_err: number;
+              lineno: number;
+              max_time: number;
+              parent_note: string;
+              parent_stmtid: number;
+              processed_rows: number;
+              queryid: number;
+              stmtid: number;
+              stmtname: string;
+              total_time: number;
+            }[];
+          }
+        | {
+            Args: { name: string };
+            Returns: {
+              avg_time: number;
+              block_num: number;
+              exec_stmts: number;
+              exec_stmts_err: number;
+              lineno: number;
+              max_time: number;
+              parent_note: string;
+              parent_stmtid: number;
+              processed_rows: number;
+              queryid: number;
+              stmtid: number;
+              stmtname: string;
+              total_time: number;
+            }[];
+          };
+      plpgsql_profiler_function_tb:
+        | {
+            Args: { funcoid: unknown };
+            Returns: {
+              avg_time: number;
+              cmds_on_row: number;
+              exec_stmts: number;
+              exec_stmts_err: number;
+              lineno: number;
+              max_time: number[];
+              processed_rows: number[];
+              queryids: number[];
+              source: string;
+              stmt_lineno: number;
+              total_time: number;
+            }[];
+          }
+        | {
+            Args: { name: string };
+            Returns: {
+              avg_time: number;
+              cmds_on_row: number;
+              exec_stmts: number;
+              exec_stmts_err: number;
+              lineno: number;
+              max_time: number[];
+              processed_rows: number[];
+              queryids: number[];
+              source: string;
+              stmt_lineno: number;
+              total_time: number;
+            }[];
+          };
+      plpgsql_profiler_functions_all: {
+        Args: never;
+        Returns: {
+          avg_time: number;
+          exec_count: number;
+          exec_stmts_err: number;
+          funcoid: unknown;
+          max_time: number;
+          min_time: number;
+          stddev_time: number;
+          total_time: number;
+        }[];
+      };
+      plpgsql_profiler_install_fake_queryid_hook: {
+        Args: never;
+        Returns: undefined;
+      };
+      plpgsql_profiler_remove_fake_queryid_hook: {
+        Args: never;
+        Returns: undefined;
+      };
+      plpgsql_profiler_reset: { Args: { funcoid: unknown }; Returns: undefined };
+      plpgsql_profiler_reset_all: { Args: never; Returns: undefined };
+      plpgsql_show_dependency_tb:
+        | {
+            Args: {
+              anycompatiblerangetype?: unknown;
+              anycompatibletype?: unknown;
+              anyelememttype?: unknown;
+              anyenumtype?: unknown;
+              anyrangetype?: unknown;
+              fnname: string;
+              relid?: unknown;
+            };
+            Returns: {
+              name: string;
+              oid: unknown;
+              params: string;
+              schema: string;
+              type: string;
+            }[];
+          }
+        | {
+            Args: {
+              anycompatiblerangetype?: unknown;
+              anycompatibletype?: unknown;
+              anyelememttype?: unknown;
+              anyenumtype?: unknown;
+              anyrangetype?: unknown;
+              funcoid: unknown;
+              relid?: unknown;
+            };
+            Returns: {
+              name: string;
+              oid: unknown;
+              params: string;
+              schema: string;
+              type: string;
+            }[];
+          };
       pos_checkout: {
         Args: {
           p_amount?: number;
