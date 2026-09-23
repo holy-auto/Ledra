@@ -18,15 +18,35 @@
 > 状態ガード付き UPDATE の 0 行 500 を型付き 4xx＋楽観ロック（`updateTenantFtJobStatus` の
 > `.eq("status", expectedStatus)`）に、応募の締切ガード＋notes 検証、report/analytics の集計を
 > `aggregateFtProject` に一本化。FT 本番利用ゼロで実害は未発生。
-> **残り**: メーカー通知チャネルと FT tenant RLS の本番反映は次回 db-migrate 後に実測確認。
+>
+> **本番反映 実測確認済み（2026-09-23）**: `manufacturer_notifications`（表・10列・RLS 有効・
+> select/update ポリシー）、FT tenant RLS ポリシー群（ft_agreements/applications/condition_checks/
+> conditions/defects/evidence/inspections/jobs/recruitments/training_completions/training_modules）、
+> `workshop_capability_profiles` の select/insert/update、`ft-evidence` バケットが**すべて本番に実在**。
+> `20260922000000`（RLS 修復）と `20260922140000`（通知表）は適用記録だけでなく実体も確認＝
+> recorded-but-not-applied ドリフトは無し。
 
-> 2026-09-22 追記: **メーカー向け in-app 通知チャネルを新設**（#1123・`20260922140000`、本番未適用）。
+
+> 2026-09-23 追記: **本番から制約を写すときは、その制約が見る列の定義も一緒に写す**（#1124、
+> 本番適用済み・run #86）。`20260922123100` で本番の CHECK を取り込んだが、同じ列の
+> **既定値・NULL 可否を写していなかった**ため、空 DB から作った環境でだけ壊れる箇所が2つ
+> 生まれていた（`vehicles.public_id` は通常の車両登録が必ず 23514 で失敗、
+> `certificate_images.file_size` は既定値 0 が自分の CHECK `> 0` に弾かれる）。
+> `20260922141000` / `20260922141100` で列を本番に揃えた。**本番では両方とも no-op**
+> （適用後に実測し、`public_id` の既定・`file_size` の NOT NULL とも変化なしを確認）。
+> 振る舞い検査を2本追加し、修正を外すと実際に落ちること（陰性対照）を確認済み。
+> **残る既知のずれ**: 突き合わせの道具（`check:schema` / `check-schema-drift` / 再生検査）は
+> **列の「名前」しか見ていない**ので、既定値・NULL 可否・型の食い違いは映らない。
+> `certificate_images` には `file_name`/`content_type` の NOT NULL、`sort_order` の既定
+> （本番 1 / マイグレーション 0）という差が残っている（OPEN_QUESTIONS）。
+
+> 2026-09-22 追記: **メーカー向け in-app 通知チャネルを新設**（#1123・`20260922140000`、本番適用済み＝2026-09-23 の db-migrate run #86 で実測確認）。
 > 施工店の証拠提出（evidence_submitted）通知が提出元テナント自身に飛んでメーカーに届いて
 > いなかった。`notifications` は tenant-keyed で表現できないため、姉妹表
 > `manufacturer_notifications`（`manufacturer_id` / RLS `my_manufacturer_ids()`・
 > `insurer_notifications` と同方針の別表）を作り、`notifyFtManufacturer`＋読み取り API 3本＋
 > メーカーポータルのベル（`NotificationBell` を `basePath` で再利用）を追加。通知先を
-> メーカー宛に付け替えた。**本番に表が作られるのは次回 db-migrate。**メーカーベルは
+> メーカー宛に付け替えた。**本番に表が作られたことを 2026-09-23 に実測確認済み**（db-migrate run #86）。メーカーベルは
 > サイドバー（デスクトップ表示）に載る＝モバイル対応は将来課題。
 > 同 PR で **#1122 停止保険会社のフォールバック**（`resolveInsurerCaller` がクッキー指定先の
 > 停止で締め出していたのを、使える保険会社へフォールバック）と **FT condition-checks の

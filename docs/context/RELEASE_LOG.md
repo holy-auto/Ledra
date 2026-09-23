@@ -125,6 +125,11 @@ MISTAKE_LEDGER: `M-20260922-copied-a-check-without-checking-the-default`（型 B
 
 検証: `check:migrations` 再生・振る舞いの検査 **4 件**緑 / `ci-parallel-checks.sh` 8種すべて緑。
 
+**本番適用**: 2026-09-23 の `DB migrate (apply to production)` run #86 で成功。
+適用後に本番を実測し、`vehicles.public_id` の既定は `generate_vehicle_public_id()`、
+`certificate_images.file_size` は既定なし・NOT NULL のまま**変化なし**（予告どおり no-op）。
+同じ run で `20260922140000`（`manufacturer_notifications`）も本番へ入った。
+
 ## 2026-09-22 メーカー通知チャネル新設＋停止保険会社フォールバック＋FT入力検証（#1123 / #1122・#1117）
 
 **メーカー通知チャネル（#1117）**: 施工店の証拠提出（evidence_submitted）通知が提出元

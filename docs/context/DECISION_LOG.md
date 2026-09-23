@@ -40,17 +40,6 @@
 8. まだ答えが出ていないこと: FT 本番利用は全ゼロなので実害は未発生。メーカー通知チャネル同様、表・RLS の本番反映は次回 db-migrate 後に実測確認する項目が残る（#1117 のメーカー通知分）。
 9. 公開区分: 公開可（楽観ロック・信頼境界検証・集計の単一定義源は一般化できる知見。本番ID・実データは非公開）。
 
-## 2026-09-22 メーカー通知チャネルを別表で新設 —— evidence_submitted の宛先を提出元テナントからメーカーへ
-
-1. 日付: 2026-09-22（`date -u` で確認）
-2. 起きたこと: #1117 の据え置き項目「evidence_submitted 通知がメーカーに届かない」に着手。代表判断で**メーカー通知チャネルを新設**（同日の前 DECISION では「別設計として据え置く」としていたのを覆した）。姉妹表 `manufacturer_notifications`（`20260922140000`）を追加し、施工店の証拠提出時の通知先を提出元テナント自身からメーカーへ付け替えた。あわせて #1122（停止保険会社のフォールバック）・condition-checks の入力/越境検証・report の二重クエリ解消も同 PR(#1123) で対応しマージ（437ef68）。
-3. 以前の考え: 「通知チャネルはスキーマ級の新機能なので FT 未使用のうちは据え置く」。
-4. 違和感・問題: (a) 既存 `notifications` は `tenant_id NOT NULL REFERENCES tenants(id)`・RLS `my_tenant_ids()` で、メーカー（別エンティティ・`my_manufacturer_ids()`）は表現できない。カラム追加案（`manufacturer_id` を足して `tenant_id` を nullable 化）は**1つの表/カラムに2つの宛先軸を混ぜる**ことになり、稼働中の tenant 通知の RLS・挙動に手を入れるリスク。(b) 既に姉妹先例 `insurer_notifications`（別表）があった。
-5. 決めたこと: (a) **別表 `manufacturer_notifications`**（`manufacturer_id` / RLS `my_manufacturer_ids()` / INSERT はサービスロールのみ / realtime は付けない＝ベルはポーリング）。`insurer_notifications` と同方針。(b) 挿入は `notifyFtManufacturer`（service-role）。(c) 読み取り API 3本はレスポンス形を tenant 版と揃え、**ベル UI は clone せず `basePath` prop で再利用**。(d) evidence_submitted の emit をメーカー宛に付け替え（リンク `/manufacturer/field-test/{projectId}`）。
-6. 捨てた選択肢: (a) 既存 `notifications` に `manufacturer_id` を足す＝2軸混在・本番表の nullable 化リスク。(b) tenant への自己通知を残す＝提出者自身への冗長通知で、次に動くメーカーには届かない。(c) ベル UI を clone＝二重管理。(d) realtime publish＝購読者不在の YAGNI。
-7. 判断理由: 「1カラム1軸」（CLAUDE.md ドメイン語彙ルール）と既存先例に沿うのが最小で安全。ベルは `basePath` 差し替えでコンポーネント再利用（クローン0）。realtime は使わないので足さない。
-8. まだ答えが出ていないこと: (a) メーカーベルはサイドバー（`hidden lg:flex`＝デスクトップ）に載る。メーカーポータルはモバイルナビ未整備で既存ナビと同挙動だが、モバイル対応は将来課題。(b) `manufacturer_notifications` が本番に実際に作られるのは次回 db-migrate 実行時＝適用後に本番実測が要る。(c) 他の `notifyFtTenant` 発火点（応募/検査/不具合等）をメーカーへも fan-out するかは未着手（今回は evidence_submitted のみ）。(d) `/code-review` が検出した FT 既存バグ3件（`.single()` on no-op→500 の共通根・応募締切未チェック＋notes 未検証・report/analytics 集計重複）は #1117 にトラッキング。
-9. 公開区分: 公開可（設計方針「宛先軸ごとに表を分ける」「UIは basePath で再利用」は一般化できる。本番ID・実データは非公開）。
 
 ## 2026-09-23 PR 本文に「後から動く数字」を書かない —— 正しい値を常に持っている場所を指す
 
@@ -84,6 +73,42 @@
    残っているか未調査【要確認】。事業ログは追記型で後から動かないので当てはまらないはずだが、
    確かめていない。
 9. 公開区分: 公開可（PR の書き方の一般論。本番の識別子・件数の内訳は含まない。note 候補）
+
+## 2026-09-22 本番から CHECK を写すときは、その CHECK が見る列の定義も一緒に写す
+
+1. 日付: 2026-09-22〜23（`date -u` で確認）
+2. 起きたこと: PR #1116（`20260922123100`）で本番の CHECK 制約をマイグレーション側へ取り込んだところ、**制約だけを写して、その制約が見る列の定義を写していなかった**。`/code-review` が2件検出し、PR #1124 で直してマージ（`a8b6281f`）。(a) `vehicles.public_id` —— 本番の既定は `generate_vehicle_public_id()`（`v_`+16進24桁）だが、マイグレーション側は `'veh_' || replace(gen_random_uuid()::text,'-','')`（`veh_`+32桁）のままで、写した `vehicles_public_id_format_chk` に弾かれる。**空 DB から作った環境では `public_id` を省いた車両登録が必ず 23514 で落ちる**（アプリは省く）。(b) `certificate_images.file_size` —— 本番は `NOT NULL`・既定なしだが、マイグレーション側は `DEFAULT 0`（NULL 可）で、写した `CHECK (file_size > 0)` に**自分の既定値が弾かれる**。
+3. 以前の考え: 「本番から `pg_get_constraintdef` でそのまま写した制約なら、本番と同じ振る舞いになる」。制約の**中身**を推測せず実物を写すところまでは前回の反省（`M-20260922-wrote-constraint-bodies-from-their-names`）を踏まえていた。
+4. 違和感・問題: 制約は「列の値がどうあるべきか」を言うだけで、**その値を誰が作るか（DEFAULT）・NULL を許すか**は別に決まっている。突き合わせの道具（`check:schema`・再生検査・`check-schema-drift`）は**列の「名前」しか見ていない**ので、既定値・NULL 可否・型の食い違いはどの検査にも映らない。本番は無傷なので本番実測でも気づけない。
+5. 決めたこと: (a) 列の定義を本番に揃える2本を追加（`20260922141000` / `20260922141100`）。**本番では両方とも no-op**（違反行は `vehicles` 27行・`certificate_images` 88行とも0件・実測）。(b) `20260922141000` には既存行の後始末（`'veh_'` 形式の採番し直し）も入れる —— **NOT VALID の CHECK でも UPDATE は検査される**ため、古い形式の行は「読めるが二度と更新できない行」になる。(c) 振る舞い検査を2本追加し、**修正を外すと実際に落ちること（陰性対照）を両方で確認**してから入れた。(d) `certificate_images` に残る他の列差（`file_name`/`content_type` の NOT NULL、`sort_order` の既定 1 vs 0）は OPEN_QUESTIONS へ。
+6. 捨てた選択肢: (a) CHECK の側をマイグレーション用に緩める＝本番と別物になり、揃える目的を失う。(b) `file_size` の既定を外すだけ（NOT NULL にしない）＝NULL が CHECK を素通りするので、本番（NOT NULL）と挙動が分かれる。(c) 列差を全部まとめて直す＝この PR の射程を超える。
+7. 判断理由: 本番が唯一の正なので、食い違いは常に本番へ寄せる。no-op と分かっている DDL は安全で、次に触る人が踏む罠を消せる。振る舞い検査は「列の名前しか見ない」道具の盲点を、行を入れて塞ぐ唯一の方法。
+8. まだ答えが出ていないこと: (a) 検出器を**列の属性（既定値・NULL 可否・型）まで**見るように広げるか。広げると既知の差が大量に赤くなるので、先に棚卸しが要る。(b) `certificate_images` の残り3列差をどう扱うか。(c) 本番適用は run #86 で確認中。
+9. 公開区分: 公開可（「制約と既定値は対で見る」は一般化できる。本番の識別子・実データ件数の内訳は伏せる）。
+
+## 2026-09-22 プレビュー DB を持つ PR でマイグレーションを改名するときの手順
+
+1. 日付: 2026-09-22（`date -u` で確認）
+2. 起きたこと: PR #1124 の作業中、`main` が先に新しいマイグレーションをマージしたため `lint:migrations` の `migration-version-before-base-head` が発火し、こちらの2ファイルを改名した。その結果 `Supabase Preview` が2回落ちた。1回目は `Remote migration versions not found in local migrations directory.`（改名前の push でプレビュー DB が旧名のまま適用済みだった）、2回目は `duplicate key value violates unique constraint "schema_migrations_pkey"`（リセットが流し直している最中に push して競合）。
+3. 以前の考え: 「`lint:migrations` が通り、手元の再生が 498/498 緑で、`ci-parallel-checks.sh` が 8/8 なら push してよい」。
+4. 違和感・問題: 改名には**行き先が2つ**ある。(a) 本番の `supabase db push` の順序 —— これは `lint:migrations` が見てくれる。(b) **その PR に既に付いていて、旧い名前で適用を済ませているプレビュー DB** —— これは手元から見えない。手元の再生は毎回まっさらな DB を立てるので、**台帳を持ち越す環境で起きる失敗は原理的に映らない**。
+5. 決めたこと: (a) 既に push 済みの PR でマイグレーションを改名したら、**プレビュー DB のリセットまでが1セット**（`reset_branch(migration_version = "<最後のファイルの版>")`）。(b) **リセット中は push しない** —— `list_branches` の `status` が `MIGRATIONS_PASSED` / `FUNCTIONS_DEPLOYED` になるまで待つ。(c) 手順を `docs/operations/migrations.md` に明文化。
+6. 捨てた選択肢: Supabase の bot が勧める「PR を close して reopen」—— CI を蹴り直す行為なので採らない。台帳の行を手で消す —— 台帳の手編集は過去にも事故の元（`M-20260919-hand-applied-ahead-of-a-pending-migration`）。
+7. 判断理由: リセットは公式 API の1回で済み、プレビュー分岐は `persistent: false` / `with_data: false` の使い捨てなので失うものがない。待つべきタイミングが `status` で読めるので、判断を仕組みに寄せられる。
+8. まだ答えが出ていないこと: `lint:migrations` はプレビュー分岐の状態を知らないので、この2つは仕組みで止められない（判断に依存）。改名が3回続いた事実からすると、**並行セッションが増えるほど改名は増える**。改名そのものを減らす手（版番号の採り方を未来寄りにする等）は未検討。
+9. 公開区分: 公開可（「同じ変更でも、台帳を持ち越す環境と毎回作り直す環境で挙動が違う」は一般化できる）。
+
+## 2026-09-22 メーカー通知チャネルを別表で新設 —— evidence_submitted の宛先を提出元テナントからメーカーへ
+
+1. 日付: 2026-09-22（`date -u` で確認）
+2. 起きたこと: #1117 の据え置き項目「evidence_submitted 通知がメーカーに届かない」に着手。代表判断で**メーカー通知チャネルを新設**（同日の前 DECISION では「別設計として据え置く」としていたのを覆した）。姉妹表 `manufacturer_notifications`（`20260922140000`）を追加し、施工店の証拠提出時の通知先を提出元テナント自身からメーカーへ付け替えた。あわせて #1122（停止保険会社のフォールバック）・condition-checks の入力/越境検証・report の二重クエリ解消も同 PR(#1123) で対応しマージ（437ef68）。
+3. 以前の考え: 「通知チャネルはスキーマ級の新機能なので FT 未使用のうちは据え置く」。
+4. 違和感・問題: (a) 既存 `notifications` は `tenant_id NOT NULL REFERENCES tenants(id)`・RLS `my_tenant_ids()` で、メーカー（別エンティティ・`my_manufacturer_ids()`）は表現できない。カラム追加案（`manufacturer_id` を足して `tenant_id` を nullable 化）は**1つの表/カラムに2つの宛先軸を混ぜる**ことになり、稼働中の tenant 通知の RLS・挙動に手を入れるリスク。(b) 既に姉妹先例 `insurer_notifications`（別表）があった。
+5. 決めたこと: (a) **別表 `manufacturer_notifications`**（`manufacturer_id` / RLS `my_manufacturer_ids()` / INSERT はサービスロールのみ / realtime は付けない＝ベルはポーリング）。`insurer_notifications` と同方針。(b) 挿入は `notifyFtManufacturer`（service-role）。(c) 読み取り API 3本はレスポンス形を tenant 版と揃え、**ベル UI は clone せず `basePath` prop で再利用**。(d) evidence_submitted の emit をメーカー宛に付け替え（リンク `/manufacturer/field-test/{projectId}`）。
+6. 捨てた選択肢: (a) 既存 `notifications` に `manufacturer_id` を足す＝2軸混在・本番表の nullable 化リスク。(b) tenant への自己通知を残す＝提出者自身への冗長通知で、次に動くメーカーには届かない。(c) ベル UI を clone＝二重管理。(d) realtime publish＝購読者不在の YAGNI。
+7. 判断理由: 「1カラム1軸」（CLAUDE.md ドメイン語彙ルール）と既存先例に沿うのが最小で安全。ベルは `basePath` 差し替えでコンポーネント再利用（クローン0）。realtime は使わないので足さない。
+8. まだ答えが出ていないこと: (a) メーカーベルはサイドバー（`hidden lg:flex`＝デスクトップ）に載る。メーカーポータルはモバイルナビ未整備で既存ナビと同挙動だが、モバイル対応は将来課題。(b) `manufacturer_notifications` が本番に実際に作られるのは次回 db-migrate 実行時＝適用後に本番実測が要る。(c) 他の `notifyFtTenant` 発火点（応募/検査/不具合等）をメーカーへも fan-out するかは未着手（今回は evidence_submitted のみ）。(d) `/code-review` が検出した FT 既存バグ3件（`.single()` on no-op→500 の共通根・応募締切未チェック＋notes 未検証・report/analytics 集計重複）は #1117 にトラッキング。
+9. 公開区分: 公開可（設計方針「宛先軸ごとに表を分ける」「UIは basePath で再利用」は一般化できる。本番ID・実データは非公開）。
 
 ## 2026-09-22 制約も同じ事故で消えていた —— 外部キーとCHECKを両方向で揃える
 
