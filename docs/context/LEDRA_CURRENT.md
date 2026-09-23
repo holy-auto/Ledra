@@ -6,6 +6,24 @@
 
 最終更新: 2026-09-23
 
+> 2026-09-23 追記: **保険会社ポータルの6エンドポイントを本番で復旧した**（#1135・`5b34c562`・
+> マイグレーション `20260923141500` / `20260923141600`）。`insurer_access_logs_action_check` が
+> `view`/`search`/`download_pdf`/`export_csv` の4値しか許さず、アプリが書く残り 16 種を弾いていた。
+> SQL 関数3本（`insurer_search_vehicles` / `insurer_search_stores` /
+> `insurer_get_vehicle_certificates`）は `RETURN QUERY` の**前**に insert するため関数ごと中断し
+> 車両検索・店舗検索・車両詳細が **500**、`insurer_audit_log` RPC を呼ぶ CSV/PDF 出力3本は
+> 呼び出し元が fail-closed のため **400** になっていた。CHECK を 20 値へ広げて解除。
+>
+> **本番適用 実測確認済み（2026-09-23 14:54 UTC）**: `db-migrate` run 88 成功後、本番の
+> `pg_constraint` に 20 値すべてが入り `convalidated: true`。さらに**定義を読むだけでなく
+> 実際に insert して確かめた** —— 20 値すべてが CHECK を通過（FK 違反 23503 で止まる＝CHECK は通過）、
+> 語彙外 `not_a_real_action_xyz` は今も 23514 で弾かれる。`RAISE EXCEPTION` で全件ロールバックし、
+> 表の行数は2件のまま（最新 2026-09-03）で変化なし。
+>
+> **未決**: 語彙の単一定義源が無い（DB の CHECK / TypeScript 12 箇所 / RPC 経由3つ / SQL 関数6本）。
+> 21 個目が書かれたらまた黙って弾かれる。TypeScript の直 insert 10 箇所は `error` を捨てている。
+> 対応案 (c)(d)(e) は OPEN_QUESTIONS。
+
 > 2026-09-23 追記: **発注書の撮影取込と、型式×品番の工数マスタによる工賃算出をマージ**（#1131・`612f254`・
 > マイグレーション `20260923093000`）。ディーラーの商談メモ等の写真から見積・納品・請求の下書きを作り、
 > 工賃は `labor_hour_masters`（型式×品番→工数/定額）× 支店別の時間単価で**プログラム算出**（AI 不使用）。
