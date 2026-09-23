@@ -1163,8 +1163,8 @@ export default function DocumentForm({
               modelCode={formModelCode}
               onModelCodeChange={setFormModelCode}
               disabled={saving}
-              onApplied={(next) => {
-                setFormItems(recalcSubtotals(next));
+              onApplied={(update) => {
+                setFormItems((latest) => recalcSubtotals(update(latest)));
                 setFormIsTaxInclusive(false); // 時間単価・定額は税抜
               }}
             />

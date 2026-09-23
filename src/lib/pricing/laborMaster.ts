@@ -109,6 +109,14 @@ export function parseLaborCsv(text: string): { rows: LaborCsvRow[]; errors: stri
     const model = normalizeModelCode(cells[0]);
     const key = normalizeKey(cells[1]);
     if (!model || !key) return void errors.push(`${no}: 型式と品番（作業名）は必須です`);
+    // DB の CHECK（labor_hour_masters）と同じ上限。1行の超過で一括保存全体が落ちないよう行単位で弾く
+    if (
+      model.length > 20 ||
+      (cells[1] ?? "").length > 100 ||
+      (cells[4] ?? "").length > 200 ||
+      (cells[5] ?? "").length > 1000
+    )
+      return void errors.push(`${no}: 文字数が上限を超えています（型式20・品番100・名称200・URL1000）`);
     const hours = toNonNegative(cells[2]);
     const fixed = toNonNegative(cells[3]);
     if (hours === "invalid" || fixed === "invalid") return void errors.push(`${no}: 工数・定額は0以上の数値で`);

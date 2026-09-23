@@ -21,7 +21,8 @@ interface Props {
   modelCode: string;
   onModelCodeChange: (v: string) => void;
   disabled?: boolean;
-  onApplied: (items: DocumentItem[]) => void;
+  /** 応答待ちの間の編集を失わないよう、最新の明細に対する更新関数で渡す */
+  onApplied: (update: (latest: DocumentItem[]) => DocumentItem[]) => void;
 }
 
 const keyOf = (it: DocumentItem) => (it.item_code || it.description || "").trim();
@@ -61,15 +62,15 @@ export default function LaborQuoteButton({
         return setMsg("時間単価が未設定です。取引先の支店、または設定画面のレバーレートを入力してください。");
       }
 
-      const next = [...items];
-      const missing: string[] = [];
-      targets.forEach((t, j2) => {
-        const line = lines[j2];
-        const unitPrice = line?.unit_price ?? 0;
-        if (!line?.matched) missing.push(items[t.i].description || t.key);
-        next[t.i] = { ...next[t.i], unit_price: unitPrice, amount: Math.round(next[t.i].quantity * unitPrice) };
-      });
-      onApplied(next);
+      // 応答待ちの間に明細が編集・追加・削除されても、行位置ではなく照合キーで当てる
+      const priceByKey = new Map(targets.map((t, k) => [t.key, lines[k]?.unit_price ?? 0]));
+      const missing = targets.filter((_, k) => !lines[k]?.matched).map((t) => items[t.i].description || t.key);
+      onApplied((latest) =>
+        latest.map((it) => {
+          const price = (it.item_type ?? "item") === "item" ? priceByKey.get(keyOf(it)) : undefined;
+          return price === undefined ? it : { ...it, unit_price: price, amount: Math.round(it.quantity * price) };
+        }),
+      );
 
       const rate = j?.rate_per_hour ? `（時間単価 ${j.rate_per_hour.toLocaleString()}円）` : "";
       setMsg(

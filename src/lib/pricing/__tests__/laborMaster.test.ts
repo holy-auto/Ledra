@@ -108,4 +108,12 @@ describe("parseLaborCsv", () => {
     ]);
     expect(errors).toHaveLength(3);
   });
+
+  it("DB の文字数上限を超える行は行単位のエラー", () => {
+    const { rows, errors } = parseLaborCsv(
+      `${"A".repeat(21)},08E25PH0C01,1,,,\nJF5,${"9".repeat(101)},1,,,\nJF5,X,1,,,`,
+    );
+    expect(rows.map((r) => r.part_key)).toEqual(["X"]);
+    expect(errors).toHaveLength(2);
+  });
 });
