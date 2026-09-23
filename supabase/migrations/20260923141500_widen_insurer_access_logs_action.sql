@@ -17,15 +17,26 @@
 --       3本とも例外ハンドラが無く `RETURN QUERY` の**前**に insert するので、
 --       検索結果が1件も返らない。保険会社ポータルのこの3画面は本番で必ず 500。
 --
---   (B) TypeScript の直 insert —— 戻り値の error を見ていないので**黙って記録だけ落ちる**。
---       案件操作（case_*）・不正検知（fraud_check*）・PII 開示請求・CSV/PDF 出力の記録が
---       1件も残っていなかった（本番の insurer_access_logs は2行・どちらも `search`）。
+--   (B) insurer_audit_log RPC 経由 —— **呼び出し元が fail-closed なので 400 になる**
+--       /api/insurer/export        'insurer.export.csv'
+--       /api/insurer/export-one    'insurer.export.csv.one'
+--       /api/insurer/pdf-one       'insurer.export.pdf.one'
+--       3本とも `if (logErr) return apiValidationError(...)` で**ファイルを出す前に止まる**。
+--       つまり CSV/PDF 出力も壊れていた。(A) と合わせて**落ちていたのは6エンドポイント**。
+--
+--   (C) TypeScript の直 insert 10 箇所 —— 戻り値の error を見ていないので**黙って落ちる**。
+--       案件操作（case_*）・不正検知（fraud_check*）・PII 開示請求の記録が1件も残って
+--       いなかった（本番の insurer_access_logs は2行・どちらも `search`）。
+--       `src/lib/insurer/audit.ts` と `src/lib/supabase/insurer/audit.ts` の2本は
+--       `if (insErr) throw insErr` で握り潰していないが、`AuditAction` が4値に
+--       型で縛られているので、そもそも弾かれる値を渡せない。
 --
 -- **語彙の出し方**（前回 TypeScript だけを走査して3件取りこぼした反省を踏まえ、
 -- 書き込み経路を3つとも当たった。MISTAKE_LEDGER
 -- `M-20260922-enumerated-actions-from-typescript-only`）:
 --
---   1. `from("insurer_access_logs").insert({...})` の `action`（TypeScript 12 箇所）
+--   1. `from("insurer_access_logs").insert({...})` の `action`（TypeScript 12 箇所。
+--      うち2本は型で4値に固定されているので、実質の書き手は 10 箇所）
 --   2. `rpc("insurer_audit_log", { p_action })` の実引数（TypeScript 3 箇所）
 --      —— **ドット区切り**なので `[a-z_]+` では拾えない。ここで前回3件落とした
 --   3. 本番 `pg_proc` の `prosrc` に `insurer_access_logs` を含む関数 10 本のうち、

@@ -18,10 +18,17 @@
 
 3本とも例外ハンドラが無く `RETURN QUERY` の**前**に insert するので、検索結果が1件も返らない。
 
-**(B) TypeScript の直 insert 12 箇所 + RPC 3 箇所 —— 黙って記録だけ落ちる**
+**(B) `insurer_audit_log` RPC 経由 3 本 —— 呼び出し元が fail-closed なので 400**
+
+`/api/insurer/export`・`/api/insurer/export-one`・`/api/insurer/pdf-one` は
+`if (logErr) return apiValidationError(...)` で**ファイルを出す前に止まる**。
+つまり CSV/PDF 出力も壊れていた。**(A) と合わせて落ちていたのは6エンドポイント。**
+
+**(C) TypeScript の直 insert 10 箇所 —— 黙って記録だけ落ちる**
 
 戻り値の `error` を見ていないため例外にもログにもならない。案件操作（`case_*`）・
-不正検知（`fraud_check*`）・PII 開示請求・CSV/PDF 出力の記録が1件も残っていなかった。
+不正検知（`fraud_check*`）・PII 開示請求の記録が1件も残っていなかった。
+`audit.ts` 2本は `throw` するが、`AuditAction` が4値に型で縛られているので弾かれる値を渡せない。
 
 - `20260923141500`: CHECK を **20 値**（既存4 + 新規16）へ広げる。`NOT VALID` で追加
 - `20260923141600`: `VALIDATE CONSTRAINT`（規約どおり別ファイル）

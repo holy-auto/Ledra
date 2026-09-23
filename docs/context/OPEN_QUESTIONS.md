@@ -70,14 +70,14 @@ GitHub Actions のランナーから Google Fonts への経路だけである。
 ## `insurer_access_logs.action` の語彙を、どこに1つだけ置くか（2026-09-23）
 
 **本体は解決した。** 代表判断で (a) を採り、`20260923141500` で CHECK を
-アプリが実際に書く **20 種**へ広げた（4 + 新規 16）。保険会社ポータルの
-車両検索・店舗検索・車両詳細が本番で 500 になっていた件は、これで通る。
+アプリが実際に書く **20 種**へ広げた（4 + 新規 16）。落ちていた**6エンドポイント**
+（車両検索・店舗検索・車両詳細が 500、CSV/PDF 出力3本が 400）は、これで通る。
 経緯は DECISION_LOG 2026-09-23、被害の内訳は RELEASE_LOG。
 
 **残っているのはここ**: 語彙の単一定義源が無い。今は
 
 - DB の `insurer_access_logs_action_check`（20 値）
-- TypeScript の直 insert 12 箇所に散らばったリテラル
+- TypeScript の直 insert 12 箇所に散らばったリテラル（うち2本は型で4値に固定）
 - `insurer_audit_log` RPC に渡される3つの**ドット区切り**の値
 - SQL 関数 6 本の中のリテラル
 
@@ -96,12 +96,25 @@ SQL 関数の中なら画面ごと 500）。
   `states.ts` に同居させるのが妥当かは別途判断が要る）
 - (d) 検出器を足す —— 書き込み経路を走査して CHECK と突き合わせ、食い違ったら CI で落とす。
   `check-schema-drift` の仲間。語彙の置き場所は変えずに、ずれだけを止める
-- (e) TypeScript の直 insert 12 箇所が `error` を捨てているのを直す。
+- (e) TypeScript の直 insert **10 箇所**が `error` を捨てているのを直す。
   語彙のずれは残るが、**黙って落ちるのをやめれば**次は気づける
 
 付随: `src/lib/insurer/audit.ts` と `src/lib/supabase/insurer/audit.ts` の
 `AuditAction` は4値のままで、実際に使われているのは `view` / `download_pdf` の2つ。
 型を広げるかどうかは (c)〜(e) の決め方に従う。
+
+## `certificate_images` の列定義が本番と食い違っている（2026-09-22）
+
+> 2026-09-23: `insurer_access_logs.action` の節を書き直したとき、この内容を
+> 巻き込んで消してしまった（`/code-review` の指摘で復活）。`LEDRA_CURRENT.md` と
+> `DECISION_LOG.md` がここを指している。
+
+`certificate_images` の列定義が本番と食い違っている
+（`file_name` と `content_type` が本番は NOT NULL・マイグレーションは NULL 可、
+`sort_order` の既定が本番 1・マイグレーション 0）。
+`file_size` だけは `20260922141100` で揃えた。**列の「名前」しか突き合わせていない**ので、
+既定値・NULL 可否・型の食い違いは `check:schema` にも再生にも映らない。
+検出器を属性まで見るように広げるかは別途判断する。
 
 ## 一意でない索引が本番と再生 DB で食い違っている（2026-09-21）
 

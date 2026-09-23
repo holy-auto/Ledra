@@ -6,6 +6,8 @@
 -- 弾かれ、関数ごと中断していた）。語彙は DB の CHECK にしか書かれておらず、
 -- 書き手（TypeScript 12 箇所・RPC 3 箇所・SQL 関数 6 本）は散らばっている。
 -- **誰かが CHECK を狭めたら、ここが落ちる。**
+-- 逆に、**コードが新しい `action` を書き始めても、ここは落ちない**（一覧は手で足す）。
+-- その方向を止める案は OPEN_QUESTIONS「語彙を、どこに1つだけ置くか」。
 --
 -- 検査のしかた: CHECK は行を組み立てる時点で見られ、外部キーのトリガは行が入った
 -- **後**に走る。だから存在しない insurer_id でも、値が語彙に在れば 23514 にはならない
@@ -30,9 +32,8 @@ DECLARE
   v_state text;
   v_rejected text[] := ARRAY[]::text[];
 BEGIN
-  IF array_length(v_actions, 1) <> 20 THEN
-    RAISE EXCEPTION '語彙の件数が 20 ではない（%）。検査側の一覧が崩れている',
-      array_length(v_actions, 1);
+  IF coalesce(array_length(v_actions, 1), 0) = 0 THEN
+    RAISE EXCEPTION '検査側の語彙一覧が空。この検査は何も確かめていない';
   END IF;
 
   FOREACH v_action IN ARRAY v_actions LOOP
@@ -81,7 +82,8 @@ BEGIN
       'insurer_access_logs_action_check が外れている', v_state;
   END IF;
 
-  RAISE NOTICE 'insurer_access_logs.action: 20 種すべて通り、語彙外は弾かれる';
+  RAISE NOTICE 'insurer_access_logs.action: % 種すべて通り、語彙外は弾かれる',
+    array_length(v_actions, 1);
 END $$;
 
 ROLLBACK;

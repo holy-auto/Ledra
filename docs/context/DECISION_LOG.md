@@ -7,9 +7,9 @@
 ## 2026-09-23 監査 action の CHECK を、アプリが実際に書く 20 種へ広げる（本番の機能停止の解除）
 
 1. 日付: 2026-09-23（`date -u` で確認）
-2. 起きたこと: `insurer_access_logs_action_check` が `view`/`search`/`download_pdf`/`export_csv` の4値しか許さず、アプリが書く残り **16 種**を弾いていた。うち SQL 関数3本（`insurer_search_vehicles`・`insurer_search_stores`・`insurer_get_vehicle_certificates`）は例外ハンドラ無しで `RETURN QUERY` の**前**に insert するため関数ごと中断し、**保険会社ポータルの車両検索・店舗検索・車両詳細が本番で必ず 500** になっていた。残りは TypeScript の直 insert で、戻り値の `error` を見ていないため**黙って記録だけ落ちていた**（本番の `insurer_access_logs` は2行・どちらも `search`）。代表判断で (a)「CHECK を実際の語彙へ広げる」を採用し、`20260923141500` / `20260923141600` で実装。
+2. 起きたこと: `insurer_access_logs_action_check` が `view`/`search`/`download_pdf`/`export_csv` の4値しか許さず、アプリが書く残り **16 種**を弾いていた。うち SQL 関数3本（`insurer_search_vehicles`・`insurer_search_stores`・`insurer_get_vehicle_certificates`）は例外ハンドラ無しで `RETURN QUERY` の**前**に insert するため関数ごと中断し、**車両検索・店舗検索・車両詳細が本番で必ず 500** になっていた。さらに `insurer_audit_log` RPC を呼ぶ3本（CSV/PDF 出力）は呼び出し元が `if (logErr) return apiValidationError(...)` と fail-closed なので **400**。**落ちていたのは合計6エンドポイント。** 残る TypeScript の直 insert 10 箇所は戻り値の `error` を見ていないため**黙って記録だけ落ちていた**（本番の `insurer_access_logs` は2行・どちらも `search`）。代表判断で (a)「CHECK を実際の語彙へ広げる」を採用し、`20260923141500` / `20260923141600` で実装。
 3. 以前の考え: 「語彙の決め方（どこを単一定義源にするか）を決めてから直す」。2026-09-22 時点では (a)(b)(c) を並べて代表の判断待ちにしていた。
-4. 違和感・問題: **これは監査記録の欠落ではなく機能停止だった。** 設計の答えを待つ間、保険会社ポータルの3画面が落ち続ける。語彙の置き場所は後から変えられるが、落ちている画面は今すぐ通す必要がある。
+4. 違和感・問題: **これは監査記録の欠落ではなく機能停止だった。** 設計の答えを待つ間、保険会社ポータルの6エンドポイント（車両検索・店舗検索・車両詳細が 500、CSV/PDF 出力3本が 400）が落ち続ける。語彙の置き場所は後から変えられるが、落ちている画面は今すぐ通す必要がある。
 5. 決めたこと: (a) CHECK を 20 値（既存4 + 新規16）へ広げる。**広げる方向なので既存行は壊れない。** 規約どおり `NOT VALID` で足し、`VALIDATE` は別ファイル（`20260923141600`）。あわせて振る舞い検査 `insurer_access_logs_action_vocab.sql` を追加し、20 値を**1つずつ insert して**通ることと、語彙外が今も弾かれることを確かめる。`src/lib/domain/states.ts` は触らない（下記7）。
 6. 捨てた選択肢: (b) コードを4値に寄せる＝`case_*` を `meta` に畳む改修が広く、しかも (A) の SQL 関数3本は結局 DB 側も直す必要があるので、今すぐ止血する手としては大きすぎる。(c) `src/lib/domain/` に正準語彙を置いて CHECK を生成＝正しい方向だが、`action` が v2.0 の正準6軸のどれでもないため置き場所の設計が要る。**止血と設計を同じ PR に混ぜない。**
 7. 判断理由: 広げる方向の CHECK 変更は既存行に対して安全で、本番では DDL 1本で終わる。ドメイン状態語彙ルール（CLAUDE.md / ADR-0002）との関係は、`action` が監査の「操作名」であって正準6軸（Job / Step / Severity / Certificate / Payment / Sync）のいずれでもないこと、かつ本変更が**新しい値を増やしていない**（既にコードが書いている値を DB が受け取れるようにするだけ）ことから、`states.ts` の更新は不要と判断した。
