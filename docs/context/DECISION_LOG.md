@@ -4,6 +4,18 @@
 > （新しい順）。実装の詳細は RELEASE_LOG.md、迷っている段階のものは
 > OPEN_QUESTIONS.md に書く。
 
+## 2026-09-23 Field Test の残バグ3件を解消（#1117 クローズ）—— 楽観ロックで競合を実際に閉じる
+
+1. 日付: 2026-09-23（`date -u` で確認）
+2. 起きたこと: #1117 に集約していた FT 既存バグ3件を PR #1126 で解消しマージ（5e1f986）。(A) 状態ガード付き UPDATE + `.single()` の 0 行 → 不透明な 500、(B) 応募の締切未チェック＋notes 未検証、(C) report/analytics の集計重複。`/code-review` が本 PR の新規コードに4件指摘し、うち1件は自分が入れた実バグ（下記）だったので同 PR で修正。
+3. 以前の考え: (A) は「`.single()` を `.maybeSingle()` にして 0 行なら型付き 4xx を投げれば済む」と考えていた。
+4. 違和感・問題: `/code-review` 指摘で `updateTenantFtJobStatus` は**そもそも status を絞っていなかった**と判明。`id`+`tenant_id` だけの UPDATE では対象行は常に1件マッチし、`FT_STATE_CONFLICT` は行削除時しか発火しない＝**同時 PATCH が同じ旧状態を前提に両方書き込める競合が開いたまま**だった。docstring に「状態を絞った UPDATE」と書いたのに、この関数だけ絞っていなかった（自分のコメントが実装とズレていた）。
+5. 決めたこと: (A) 3関数を `.maybeSingle()`＋共有ヘルパー `ftStateConflict`（`FT_STATE_CONFLICT`）にし、6ルートで `apiValidationError`(4xx) にマップ。さらに `updateTenantFtJobStatus` に **`.eq("status", expectedStatus)` の楽観ロック**を足し、呼び出し元が読んだ現在状態を渡す。(B) `applicationInputSchema`(zod・notes≤2000・`.nullish()`)＋`isRecruitmentExpired` を `tenantQueries` に唯一の定義源として追加。(C) `aggregateFtProject` を `src/lib/fieldTest/projectAggregate.ts` に抽出し analytics/report で共有。加えて `/code-review` の残り3指摘（notes:null 拒否の退行→`.nullish()`、触った PATCH 6本の `req.json()` 未ガード 500→`.catch(()=>({}))`、not-found の誤ラベル→メッセージ修正）も反映。
+6. 捨てた選択肢: (A) status ガード無しのまま「削除時だけ 4xx」で妥協＝競合が残る。楽観ロックのために現在状態を SELECT で二重取得＝呼び出し元が既に持っているので不要。(C) 集計を各ルートに残す＝片方だけ直して PDF と API が乖離する（過去の型に該当）。not-found を 404 に厳密化＝存在確認の追加クエリが要る稀経路なので 4xx＋文言で対応。
+7. 判断理由: 「状態を絞った UPDATE の 0 行は 4xx」という規則を全経路で揃えるのが最小で一貫。競合は楽観ロック1行で閉じられ、呼び出し元は検証のために現在状態を既に読んでいるので追加コスト無し。集計は唯一の定義源に寄せ、乖離の芽を断つ。
+8. まだ答えが出ていないこと: FT 本番利用は全ゼロなので実害は未発生。メーカー通知チャネル同様、表・RLS の本番反映は次回 db-migrate 後に実測確認する項目が残る（#1117 のメーカー通知分）。
+9. 公開区分: 公開可（楽観ロック・信頼境界検証・集計の単一定義源は一般化できる知見。本番ID・実データは非公開）。
+
 ## 2026-09-22 メーカー通知チャネルを別表で新設 —— evidence_submitted の宛先を提出元テナントからメーカーへ
 
 1. 日付: 2026-09-22（`date -u` で確認）
