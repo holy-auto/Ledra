@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
+import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { renderInvoicePdf, type InvoiceForPdf, type TenantForPdf } from "@/lib/pdfInvoice";
 
@@ -10,7 +11,9 @@ export async function GET(req: Request) {
   const { data: userRes } = await supabase.auth.getUser();
   if (!userRes.user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
-  const { data: mem } = await supabase.from("tenant_memberships").select("tenant_id").limit(1).single();
+  // 複数テナント所属時は選択中テナント (active_tenant_id) を使う
+  const caller = await resolveCallerWithRole(supabase);
+  const mem = caller ? { tenant_id: caller.tenantId } : null;
   const tenantId = mem?.tenant_id as string | undefined;
   if (!tenantId) return NextResponse.json({ error: "tenant_not_found" }, { status: 400 });
 

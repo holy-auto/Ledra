@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
+import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { formatDate, formatDateTime } from "@/lib/format";
 import PageHeader from "@/components/ui/PageHeader";
 import {
@@ -142,12 +143,9 @@ export default async function ThicknessReportDetailPage({
     return <div className="p-6 text-primary">ログインしてください。</div>;
   }
 
-  const { data: membership } = await supabase
-    .from("tenant_memberships")
-    .select("tenant_id")
-    .eq("user_id", user.id)
-    .limit(1)
-    .single();
+  // 複数テナント所属時は選択中テナント (active_tenant_id) を使う
+  const caller = await resolveCallerWithRole(supabase);
+  const membership = caller ? { tenant_id: caller.tenantId } : null;
 
   if (!membership?.tenant_id) {
     return <div className="p-6 text-primary">tenant が見つかりません。</div>;

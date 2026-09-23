@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
+import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { renderCertificatePdf, type CertRow } from "@/lib/pdfCertificate";
 import { checkAdminFeature, billingDenyResponse } from "@/lib/billing/adminFeatureGate";
 import { logCertificateAction } from "@/lib/audit/certificateLog";
@@ -24,7 +25,9 @@ export async function GET(req: Request) {
     .slice(0, 50); // 安全上限 50
   if (ids.length === 0) return NextResponse.json({ error: "no ids" }, { status: 400 });
 
-  const { data: mem } = await supabase.from("tenant_memberships").select("tenant_id").limit(1).single();
+  // 複数テナント所属時は選択中テナント (active_tenant_id) を使う
+  const caller = await resolveCallerWithRole(supabase);
+  const mem = caller ? { tenant_id: caller.tenantId } : null;
 
   const tenantId = mem?.tenant_id as string | undefined;
   if (!tenantId) return NextResponse.json({ error: "tenant_not_found" }, { status: 400 });
