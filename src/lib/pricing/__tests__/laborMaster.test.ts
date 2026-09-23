@@ -7,6 +7,7 @@ import {
   DHAPPY_SOURCE_URL,
   dHappyPasteToCsv,
   findEntry,
+  findEntryWithFallback,
   laborPrice,
   modelCodeFromChassis,
   normalizeKey,
@@ -256,5 +257,39 @@ describe("splitChassisInput", () => {
       "RP8-1344844",
       "JF5-1405694",
     ]);
+  });
+});
+
+describe("findEntryWithFallback", () => {
+  const entries = [
+    entry("DG5", "08E2631XD00", 1.0),
+    // d-Happy 由来は品名がキー（発注書の全角表記とは NFKC で一致する）
+    entry("DG5", "ETC2.0車載器 取付アタッチメント/取付位置:ドライバーロアーカバー部", 1.2),
+  ];
+
+  it("品番で当たればそれを使う", () => {
+    expect(findEntryWithFallback(entries, "DG5", "08E2631XD00", "何か")).toMatchObject({
+      by: "key",
+      entry: { hours: 1 },
+    });
+  });
+
+  it("品番で無ければ品名で引く（全角・スラッシュ・コロンの表記ゆれを吸収）", () => {
+    const r = findEntryWithFallback(
+      entries,
+      "DG5",
+      "08E2632RD00",
+      "ＥＴＣ２．０車載器　取付アタッチメント／取付位置：ドライバーロアーカバー部",
+    );
+    expect(r).toMatchObject({ by: "alt_key", entry: { hours: 1.2 } });
+    expect(findEntryWithFallback(entries, "DG5", "08E2632RD00", null)).toEqual({ entry: null, by: null });
+  });
+
+  it("d-Happy 貼り付け登録（品番が key・品名は label）にも品名で当たる", () => {
+    const pasted = [{ ...entry("GP3", "08R04SYY001", 0.4), label: "ドアバイザー（フロント／リア４枚セット）" }];
+    expect(findEntryWithFallback(pasted, "GP3", "08R04SYY099", "ドアバイザー(フロント/リア4枚セット)")).toMatchObject({
+      by: "alt_key",
+      entry: { hours: 0.4 },
+    });
   });
 });

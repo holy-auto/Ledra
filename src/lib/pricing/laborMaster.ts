@@ -46,16 +46,21 @@ export interface LaborEntry {
   label: string | null;
 }
 
-/** (型式, キー) の完全一致 → 無ければ型式共通 '*' の順で引く。 */
+/**
+ * (型式, キー) の完全一致 → 無ければ型式共通 '*' の順で引く。
+ * キーは part_key（品番・作業名）に加えて名称（label）とも照合する
+ * （d-Happy の貼り付け登録は品番が part_key、品名は label に入るため）。part_key の一致を優先。
+ */
 export function findEntry(entries: LaborEntry[], modelCode: string, key: string): LaborEntry | null {
   const model = normalizeModelCode(modelCode);
   const k = normalizeKey(key);
   if (!k) return null;
-  return (
-    entries.find((e) => e.model_code === model && e.part_key === k) ??
-    entries.find((e) => e.model_code === ANY_MODEL && e.part_key === k) ??
-    null
-  );
+  for (const m of [model, ANY_MODEL]) {
+    const inModel = entries.filter((e) => e.model_code === m);
+    const hit = inModel.find((e) => e.part_key === k) ?? inModel.find((e) => normalizeKey(e.label) === k);
+    if (hit) return hit;
+  }
+  return null;
 }
 
 /** 店舗（支店）の時間単価を優先し、未設定なら自社の既定単価。 */
@@ -309,4 +314,17 @@ export function splitChassisInput(text: string): string[] {
     .replace(/\s*-\s*/g, "-")
     .split(/[\s,、]+/)
     .filter(Boolean);
+}
+
+/** 品番（key）で引き、無ければ品名（alt）で引く。どちらで当たったかも返す。 */
+export function findEntryWithFallback(
+  entries: LaborEntry[],
+  modelCode: string,
+  key: string,
+  alt: string | null | undefined,
+): { entry: LaborEntry | null; by: "key" | "alt_key" | null } {
+  const byKey = findEntry(entries, modelCode, key);
+  if (byKey) return { entry: byKey, by: "key" };
+  const byAlt = alt ? findEntry(entries, modelCode, alt) : null;
+  return { entry: byAlt, by: byAlt ? "alt_key" : null };
 }
