@@ -8,6 +8,7 @@ import { calcSellingPrice, calcCommissionAmount } from "@/lib/pricing/margin";
 import { DOC_TYPES, DOC_TYPE_LIST, type DocType, type DocumentItem, type DocumentRow } from "@/types/document";
 import QuoteAiDraftPanel from "./QuoteAiDraftPanel";
 import InvoiceOcrButton from "./InvoiceOcrButton";
+import LaborQuoteButton from "./LaborQuoteButton";
 import ItemCodeField from "@/components/documents/ItemCodeField";
 
 type Customer = {
@@ -183,6 +184,9 @@ export default function DocumentForm({
   const [formIssuedAt, setFormIssuedAt] = useState(initial?.issued_at ?? new Date().toISOString().slice(0, 10));
   const [formDueDate, setFormDueDate] = useState(initial?.due_date ?? "");
   const [formNote, setFormNote] = useState(initial?.note ?? "");
+  const lastOcrNoteRef = useRef<string | null>(null);
+  // 工賃計算に使う型式（OCR の車台番号から自動入力、番号だけのときは手入力）
+  const [formModelCode, setFormModelCode] = useState("");
   const [formItems, setFormItems] = useState<DocumentItem[]>(initialItems);
   const [formTaxRate, setFormTaxRate] = useState(initial?.tax_rate ?? 10);
   const [formIsTaxInclusive, setFormIsTaxInclusive] = useState(initialIsTaxInclusive);
@@ -1131,12 +1135,37 @@ export default function DocumentForm({
         <div className="flex items-baseline justify-between gap-2 flex-wrap">
           <div className="text-xs font-semibold text-muted tracking-[0.18em]">明細項目</div>
           <div className="flex items-center gap-3">
-            {/* 仕入先/外注請求書の写真からOCRで明細を取り込む（下書き・確定は人）。 */}
+            {/* 請求書・発注書・依頼書の写真からOCRで明細等を取り込む（下書き・確定は人）。
+                入力済みの欄は上書きしない。 */}
             <InvoiceOcrButton
               disabled={saving}
               onExtracted={(ocrItems, header) => {
                 setFormItems(recalcSubtotals(ocrItems.length > 0 ? ocrItems : [emptyItem()]));
                 if (header.due_date && !formDueDate) setFormDueDate(header.due_date);
+                if (header.delivery_date && !formDeliveryDate) setFormDeliveryDate(header.delivery_date);
+                if (header.subject && !formSubject) setFormSubject(header.subject);
+                if (header.model_code) setFormModelCode(header.model_code);
+                // 撮り直し時に前回OCR分の備考が重複・残留しないよう、前回分を差し替える
+                const prevOcrNote = lastOcrNoteRef.current;
+                lastOcrNoteRef.current = header.note;
+                setFormNote((prev) => {
+                  const base = prevOcrNote ? prev.replace(prevOcrNote, "").trim() : prev;
+                  if (!header.note) return base;
+                  return base ? `${base}\n${header.note}` : header.note;
+                });
+                // 税込価格の書類を税抜扱いで取り込むと二重課税になるため、判定できたときは合わせる
+                if (header.is_tax_inclusive != null) setFormIsTaxInclusive(header.is_tax_inclusive);
+              }}
+            />
+            <LaborQuoteButton
+              items={formItems}
+              branchId={formBranchId}
+              modelCode={formModelCode}
+              onModelCodeChange={setFormModelCode}
+              disabled={saving}
+              onApplied={(update) => {
+                setFormItems((latest) => recalcSubtotals(update(latest)));
+                setFormIsTaxInclusive(false); // 時間単価・定額は税抜
               }}
             />
             <div className="text-[11px] text-muted">{formIsTaxInclusive ? "単価は税込で入力" : "単価は税抜で入力"}</div>

@@ -77,13 +77,39 @@
 | **J. 兄弟実装と揃えていない** | 同じ理由で複数箇所に同種のガード・分岐を書いたのに、片方にしか適用しなかった／既存の兄弟実装が既に持っていた条件を新しい実装に持ち込まなかった。**「同じパターンで書いた」つもりが実は違う**のがこの型の核。**「AをBに置き換える」判断をしたのに、A自体を全リポジトリでgrepせず一部だけ置き換えて終わる**のも同じ | M-066, **M-069**, **M-092**, **M-093**, **M-20260916-timeout-branch-missed-sibling-fix**, **M-20260919-cancel-checkout-scattered-across-4-handlers**, **M-20260919-handled-completed-branch-not-failed-branch**, **M-20260919-else-fix-not-swept-to-siblings**, **M-20260921-claimed-all-db-errors-swept-but-left-booking-upsert** |
 | **K. 新しいコード経路を、それが実際に呼ばれる文脈で動かして試していない** | 単体の変更としては正しいのに、それが実際に発火する呼び出し元・エラー経路まで通して動かしていない。ユニットテストがあっても「起こりうる呼び出し順」を再現していなければ検出できない | **M-067** |
 | **L. 既定を開いたまま守る（除外リスト）** | 「見せないもの」を並べて塞ぐ。塞いだ時点では実データと一致していても、**既定が公開**なので、値が増えるたびに漏れる。**母集団を数えていない**のが根（「今あるもの」を実測して、「入りうるもの」を数えていない）。外向けの経路では許可リストにして、知らないものを既定で落とす | **M-077** |
-| **E. 手元とCIの差を忘れる** | 手元では通るのに CI だけ落ちる構成を作る。書いた本人には見えない。**リポジトリが用意した「CIと同じ検査」を走らせず、思い出せる検査だけ個別に走らせる**のも同じ | M-009, **M-030**, **M-084**, **M-089**, **M-094**, **M-20260922-pushed-without-ci-parallel-checks** |
+| **E. 手元とCIの差を忘れる** | 手元では通るのに CI だけ落ちる構成を作る。書いた本人には見えない。**リポジトリが用意した「CIと同じ検査」を走らせず、思い出せる検査だけ個別に走らせる**のも同じ | M-009, **M-030**, **M-084**, **M-089**, **M-094**, **M-20260922-pushed-without-ci-parallel-checks**, **M-20260923-schema-snapshot-missed-again** |
 | **F. 確認できる事実を確認しない** | 環境から1コマンドで確かめられる事実（今日の日付・件数・バージョン・設定ファイルの中身・**CI が実際に走ったか**・**同じ問題を直している PR が既に開いていないか**）を、確かめずに書く。**自分がこれから追記しようとしているログファイル自身に、既に矛盾する記述が無いか確認しない**のも同じ。**本番の実データをそのまま調査ログ・事業ログに転記する**のも同じ（PIIのマスクを確認事実として扱わない） | M-011, M-014, M-015, M-016, **M-018**, **M-021**, **M-026**, **M-027**, M-034, M-037, **M-045**, **M-049**, **M-053**, **M-059**, **M-070**, **M-071**, **M-073**, **M-080**, **M-081**, **M-082**, **M-086**, **M-088**, **M-090**, **M-20260915-dupe-count-from-truncated-grep**, **M-20260918-called-it-untraceable-without-checking-open-prs**, **M-20260919-said-no-open-pr-has-it-again**, **M-20260919-hand-applied-ahead-of-a-pending-migration**, **M-20260919-skipped-the-check-i-had-just-written**, **M-20260919-green-ci-read-as-production-applied**, **M-20260919-credited-my-own-dirty-tree-to-another-session**, **M-20260919-wrote-a-replay-count-i-never-read**, **M-20260920-hashed-a-file-i-never-opened**, **M-20260920-counted-12-as-11-again**, **M-20260921-reported-a-subtraction-as-a-measurement**, **M-20260921-two-samples-read-as-all**, **M-20260921-restated-my-own-summary-as-fact**, **M-20260922-said-typegen-red-on-every-merge**, **M-20260922-said-ten-checks-without-listing-them** |
 | **G. 構造テストを振る舞いの証明として扱う** | ソースを grep して「その語が書かれている」を確かめただけで、**値が通るか**を確かめていない。テストは緑、機能は壊れている。**ファイルに在ること**を、**その経路が実際に動く/覆われている**ことの証拠として扱うのも同じ | **M-033**, **M-20260921-file-content-read-as-behavior** |
 | **H. 未確定の前提の上に作る** | 依頼者しか決められない前提を確認しないまま、その前提が変われば丸ごと消える実装を先に作る | **M-043** |
 | **I. 前提が途中で変わったのに読み直さない** | 判断したときは正しかった観察が、その後の `main` 取り込みなどで無効になっているのに、変更を見直さない。**衝突しなかったファイルにこそ潜む** | **M-047**, **M-051** |
 
 ---
+
+## M-20260923-schema-snapshot-missed-again 新表を足して `check:schema` を回さず赤を push した —— 前日と同じ失敗（2026-09-23・型 E）
+
+**Before**: PR #1131 で工数マスタ `labor_hour_masters` と `customer_branches.labor_rate_per_hour` を
+追加した。`tsc`・変更ファイルの `eslint`・関連 `vitest`（421件）・`lint:migrations`・
+**全マイグレーションの空 DB 再生（499/499）と再生 DB 上での制約の実動作確認**まで回し、
+「検証済み」として push した。
+
+**After**: CI の "Lint, Type Check & Unit Tests" が `check:schema` で落ちた
+（`テーブル labor_hour_masters が存在しない` ほか6件）。`scripts/schema.snapshot.json` に
+1表11列と1列を追記して緑。`bash scripts/ci-parallel-checks.sh` 8/8 通過を確認してから再 push。
+
+**なぜ気づけなかったか**: **前日の `M-20260922-pushed-without-ci-parallel-checks` と同じ形。**
+その再発防止は「push 前に `ci-parallel-checks.sh` を回す」という**習慣**で、台帳の中にしか
+書かれていなかった。このセッションでは台帳を読まずに作業を始めたので、習慣は発動しなかった。
+加えて、依存を `npm ci --ignore-scripts` で入れたため husky（`prepare`）が走らず、
+pre-commit / pre-push フックがこの環境で**無効のまま**だった。検証の手を厚くした（空 DB 再生・
+制約の実動作）ことで「十分検証した」感覚が強まり、CI と同じ集合かどうかを問わなかった。
+
+**再発防止**: 仕組みあり。
+- `.husky/pre-push` に `node scripts/check-schema.mjs`（0.8秒）を追加。snapshot の追記を戻すと
+  exit 1、戻すと exit 0 になることを確認した（陰性対照あり）。
+- 依存を `--ignore-scripts` で入れた環境では `npx husky` でフックを有効化する（今回実施、
+  `core.hooksPath=.husky/_`）。フックが無効だと上の仕組みも効かない。
+- 型 E の再発防止が習慣のままだと、台帳を読まないセッションでは効かない。**習慣で書いた
+  再発防止は、同じ失敗が2回出たら仕組み（フック・CI 前段）に格上げする。**
 
 ## M-20260922-renamed-a-migration-the-preview-db-had-applied プレビュー DB が既に適用済みのマイグレーションを改名し、`Supabase Preview` を赤にした（2026-09-22・型 C）
 

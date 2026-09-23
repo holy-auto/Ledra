@@ -29,6 +29,16 @@ const branchBaseFields = {
   contact_person: optionalTrimmed(100),
   contact_email: optionalEmail,
   note: optionalTrimmed(1000),
+  // 工賃の時間単価（円/時、税抜）。空 = 自社既定を使う
+  labor_rate_per_hour: z.preprocess(
+    (v) => (v === "" || v == null ? null : Number(v)),
+    z
+      .number({ message: "時間単価は数値で入力してください。" })
+      .int("時間単価は整数で入力してください。")
+      .positive("時間単価は1以上で入力してください。")
+      .max(1_000_000, "時間単価が大きすぎます。")
+      .nullable(),
+  ),
 };
 
 export const branchCreateSchema = z.object({

@@ -2,14 +2,15 @@
 
 import { useState } from "react";
 import { parseJsonSafe } from "@/lib/api/safeJson";
+import { compressToJpeg } from "@/lib/media/compressToJpeg";
 import type { DocumentItem } from "@/types/document";
 
 /**
  * InvoiceOcrButton
  * ------------------------------------------------------------
- * 仕入先請求書 / 外注請求書の写真を撮る → OCR (`/api/admin/documents/ocr`) →
- * 明細（と支払期日）を帳票フォームへ下書きとして差し込む。証明書フォームの
- * 「膜厚計から取り込み」と同じカメラ直行パターン。金額の確定・送付は人が行う。
+ * 仕入先請求書 / 外注請求書、取引先の発注書・依頼書・商談メモの写真を撮る（または
+ * 撮影済み写真を選ぶ）→ OCR (`/api/admin/documents/ocr`) → 明細・件名・備考・日付を
+ * 帳票フォームへ下書きとして差し込む。金額の確定・送付は人が行う。
  */
 
 interface OcrHeader {
@@ -18,7 +19,24 @@ interface OcrHeader {
   issue_date: string | null;
   due_date: string | null;
   total_jpy: number | null;
+  delivery_date: string | null;
+  subject: string | null;
+  note: string | null;
+  is_tax_inclusive: boolean | null;
+  model_code: string | null;
 }
+const EMPTY_HEADER: OcrHeader = {
+  supplier_name: null,
+  invoice_number: null,
+  issue_date: null,
+  due_date: null,
+  total_jpy: null,
+  delivery_date: null,
+  subject: null,
+  note: null,
+  is_tax_inclusive: null,
+  model_code: null,
+};
 type OcrResponse = {
   status?: "ok" | "skipped";
   items?: DocumentItem[];
@@ -41,8 +59,11 @@ export default function InvoiceOcrButton({ disabled, onExtracted }: Props) {
     setMsg(null);
     setBusy(true);
     try {
+      // スマホ写真は Vercel の body 上限（4.5MB）を超えうるので送る前に縮める
+      const image = await compressToJpeg(file);
+      if (!image) throw new Error("画像を読み込めませんでした");
       const form = new FormData();
-      form.append("image", file);
+      form.append("image", image);
       const res = await fetch("/api/admin/documents/ocr", { method: "POST", body: form });
       const j = await parseJsonSafe<OcrResponse>(res);
       if (!res.ok) throw new Error(j?.message ?? `HTTP ${res.status}`);
@@ -55,10 +76,7 @@ export default function InvoiceOcrButton({ disabled, onExtracted }: Props) {
         setMsg("読み取れる明細が見つかりませんでした。手動で入力してください。");
         return;
       }
-      onExtracted(
-        items,
-        j?.header ?? { supplier_name: null, invoice_number: null, issue_date: null, due_date: null, total_jpy: null },
-      );
+      onExtracted(items, { ...EMPTY_HEADER, ...j?.header });
       setMsg(`${items.length} 行を取り込みました。内容を確認してください。`);
     } catch (e) {
       setMsg("取り込みに失敗しました: " + (e instanceof Error ? e.message : String(e)));
@@ -74,11 +92,10 @@ export default function InvoiceOcrButton({ disabled, onExtracted }: Props) {
           disabled || busy ? "pointer-events-none opacity-50" : ""
         }`}
       >
-        📷 {busy ? "取り込み中…" : "請求書を撮影して取込"}
+        📷 {busy ? "取り込み中…" : "書類を撮影して取込"}
         <input
           type="file"
           accept="image/jpeg,image/png,image/webp"
-          capture="environment"
           className="hidden"
           disabled={disabled || busy}
           onChange={(e) => {
