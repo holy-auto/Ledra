@@ -13,6 +13,7 @@ import {
   normalizeKey,
   parseLaborCsv,
   resolveRate,
+  sheetRowsToLaborCsv,
   splitChassisInput,
   summarizeCoverage,
   type LaborEntry,
@@ -291,5 +292,44 @@ describe("findEntryWithFallback", () => {
       by: "alt_key",
       entry: { hours: 0.4 },
     });
+  });
+});
+
+describe("sheetRowsToLaborCsv", () => {
+  const head = ["車種", "グレード", "項目", "取付工数", "車台番号", "カテゴリ", "備考"];
+
+  it("d-Happy 収集形式: 型式を車台番号から取り、食い違いと空欄は登録しない", () => {
+    const r = sheetRowsToLaborCsv([
+      head,
+      ["N-BOX", "N-BOX", "ドアバイザー", "0.4", "JF5-1511014", "ベーシック", ""],
+      ["N-BOX", "N-BOX", "ドアバイザー", "0.4", "JF5-1405694", "ベーシック", ""],
+      ["N-BOX", "N-BOX", "ETC2.0車載器 取付アタッチメント", "1.4", "JF5-1511014", "インテリア", "自動追加"],
+      ["N-BOX", "N-BOX", "ETC2.0車載器 取付アタッチメント", "0", "JF5-1405694", "インテリア", ""],
+      ["N-BOX", "N-BOX", "LEDフォグライト 5,800K", "0.30000000000000004", "JF5-1511014", "エクステリア", ""],
+      ["N-BOX", "N-BOX", "リアカメラ", "", "JF5-1511014", "A&V", "算出不可"],
+      ["WR-V", "Z", "フロアマット", "0.2", "1204166", "", ""],
+    ]);
+    expect(r.count).toBe(2);
+    expect(r.conflicts).toEqual(["JF5 ETC2.0車載器 取付アタッチメント: 1.4h / 0h"]);
+    expect(r.errors).toHaveLength(2);
+    const { rows, errors } = parseLaborCsv(r.csv);
+    expect(errors).toEqual([]);
+    expect(rows.map((x) => [x.model_code, x.part_key, x.hours])).toEqual([
+      ["JF5", normalizeKey("ドアバイザー"), 0.4],
+      ["JF5", normalizeKey("LEDフォグライト 5,800K"), 0.3], // 全角カンマで書き出し、照合キーは元の表記と一致
+    ]);
+  });
+
+  it("工数マスタ形式はそのまま、見出しが分からなければエラー", () => {
+    const std = sheetRowsToLaborCsv([
+      ["型式", "品番", "工数h", "定額円", "名称", "出典URL"],
+      ["GP3", "08R04SYY001", "0.4", "", "ドアバイザー", ""],
+    ]);
+    expect(parseLaborCsv(std.csv).rows.map((x) => x.part_key)).toEqual(["08R04SYY001"]);
+    // 空行があっても「N行目」は元の行番号のまま
+    const withGap = sheetRowsToLaborCsv([["型式", "品番", "工数h"], ["GP3", "A", "0.1"], [], ["GP3", "", "0.2"]]);
+    expect(withGap.count).toBe(2);
+    expect(parseLaborCsv(withGap.csv).errors[0]).toMatch(/^4行目/);
+    expect(sheetRowsToLaborCsv([["a", "b"]]).errors).toHaveLength(1);
   });
 });

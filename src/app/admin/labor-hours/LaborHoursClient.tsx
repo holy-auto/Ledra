@@ -6,8 +6,10 @@ import LaborCoveragePanel, { COVERAGE_KEY } from "./LaborCoveragePanel";
 import MutationGuard from "@/components/ui/MutationGuard";
 import { parseJsonSafe } from "@/lib/api/safeJson";
 import { fetcher } from "@/lib/swr";
+import { readXlsxRows } from "@/lib/pricing/readXlsxRows";
 import {
   dHappyPasteToCsv,
+  sheetRowsToLaborCsv,
   describeConflict,
   formatImportSummary,
   modelCodeFromChassis,
@@ -52,6 +54,36 @@ export default function LaborHoursClient() {
 
   // 値が違う登録済み行（衝突）。上書きは人が選んだときだけ、同じ CSV を overwrite 付きで送り直す
   const [conflicts, setConflicts] = useState<{ csv: string; items: LaborConflict[] } | null>(null);
+
+  // 添付ファイル（Excel / CSV）を行に分け、工数 CSV に変換して同じ登録処理に流す
+  const importFile = async (file: File) => {
+    setMsg(null);
+    try {
+      let rows: string[][];
+      if (/\.xlsx$/i.test(file.name)) {
+        rows = await readXlsxRows(await file.arrayBuffer());
+      } else {
+        const buf = await file.arrayBuffer();
+        let text: string;
+        try {
+          text = new TextDecoder("utf-8", { fatal: true }).decode(buf);
+        } catch {
+          text = new TextDecoder("shift_jis").decode(buf); // Excel で保存した CSV は Shift_JIS のことが多い
+        }
+        // ponytail: CSV は全カンマで分割（parseLaborCsv と同じ）。天井: クォート内カンマは不可
+        rows = text
+          .replace(/^\uFEFF/, "")
+          .split(/\r?\n/)
+          .map((l) => l.split(",").map((c) => c.replace(/^"(.*)"$/, "$1")));
+      }
+      const { csv: converted, count, errors, conflicts } = sheetRowsToLaborCsv(rows);
+      const skipped = [...errors, ...conflicts.map((c) => `工数が食い違うため未登録: ${c}`)];
+      if (count === 0) return setMsg({ text: skipped.join(" / ") || "登録できる行がありません", ok: false });
+      await doImport(converted, skipped);
+    } catch (e) {
+      setMsg({ text: `ファイルを読めませんでした: ${e instanceof Error ? e.message : String(e)}`, ok: false });
+    }
+  };
 
   const doImport = async (body: string = csv, preErrors: string[] = [], overwrite = false) => {
     setBusy(true);
@@ -177,11 +209,31 @@ export default function LaborHoursClient() {
 
       <MutationGuard>
         <section className="glass-card space-y-3 p-5">
-          <div className="text-xs font-semibold tracking-[0.18em] text-muted">CSV で登録・更新</div>
+          <div className="text-xs font-semibold tracking-[0.18em] text-muted">ファイル（Excel / CSV）で登録・更新</div>
           <p className="text-xs text-secondary">
-            列: {CSV_HEADER}。工数か定額のどちらかは必須。型式を問わない作業は型式を「*」に。
-            同じ型式・品番は上書きされます。
+            Excel（.xlsx）か CSV を選ぶと、そのまま登録します。対応する形は2つ: 「{CSV_HEADER}」の列、または d-Happy
+            収集表（項目・取付工数・車台番号の列。型式は車台番号から取ります）。
+            登録済みの型式・品番と値が違う行は上書きせず一覧に出します。
           </p>
+          <label
+            className={`inline-flex cursor-pointer items-center gap-2 rounded-lg border border-border-default px-3 py-2 text-sm text-secondary hover:border-border-strong ${
+              busy ? "pointer-events-none opacity-50" : ""
+            }`}
+          >
+            📎 {busy ? "登録中…" : "ファイルを選んで登録"}
+            <input
+              type="file"
+              accept=".xlsx,.csv,text/csv"
+              className="hidden"
+              disabled={busy}
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                e.target.value = "";
+                if (f) void importFile(f);
+              }}
+            />
+          </label>
+          <p className="text-xs text-muted">または CSV を下に貼り付け:</p>
           <textarea
             className="input-field font-mono text-xs"
             rows={8}
