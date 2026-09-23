@@ -3,6 +3,54 @@
 > まだ決まっていないこと、判断に迷っていることを書く場所。決まったら
 > DECISION_LOG.md に移し、このファイルからは消す（削除履歴は git で追える）。
 
+## ビルドが Google Fonts への外部フェッチに依存していて、取れないと CI が落ちる（2026-09-23）
+
+2026-09-23 05:23 UTC、**コード変更が1件も無い PR（#1127・`docs/context/` のみ）で
+`Client Bundle Size` が落ちた。** しきい値超過ではなく、`ci.yml` の
+`Build (production)` でクライアントのコンパイルごと失敗している。
+
+```
+at <unknown> ([next]/internal/font/google/noto_sans_jp_d013e090.module.css:2894:8)
+at <unknown> (https://nextjs.org/docs/messages/module-not-found)
+   … 同じ形が多数
+##[error].next/build-manifest.json missing — client compilation failed (not a secrets issue)
+```
+
+`next/font/google` が **Noto Sans JP を取得できず** module-not-found になった。
+ビルド時に外部へ取りに行く依存があり、そこが落ちるとコードが健全でもビルドが落ちる。
+
+**一時的な失敗であることは確定している。** 同じコミットのまま再実行（attempt 2）したら
+06:22 に成功した。コードは1バイトも変わっていない。並行して、同じコミットを
+**Vercel はビルドできていた**（05:23 に Ready）ので、壊れていたのは
+GitHub Actions のランナーから Google Fonts への経路だけである。
+
+使用箇所は **4箇所・3ファイル**（`grep -rn "next/font/google" src/` で計数）:
+
+| ファイル | フォント |
+|---|---|
+| `src/app/layout.tsx` | `Noto_Sans_JP` / `Geist_Mono` |
+| `src/app/(marketing)/layout.tsx` | `Noto_Sans_JP` |
+| `src/app/video/layout.tsx` | `Noto_Sans_JP` |
+
+### なぜ放置すると効くのか
+
+- **落ちたときの見た目が「自分の変更のせい」になる。** 今回は差分がドキュメントだけ
+  だったので切り分けられたが、コードを触った PR で同じことが起きれば、
+  無関係な調査に時間を使う。
+- **再実行に人手が要る。** このセッションからは `rerun-failed-jobs` が
+  403 Resource not accessible by integration で拒否されるので、代表の操作が要る。
+- 頻度は不明だが、**外部フェッチがある限りゼロにはならない**。
+
+### 判断が要る点
+
+- **フォントを自己ホスト（`next/font/local`）にするか。** ビルド時の外部依存が消える。
+  ただし日本語フォントは大きいので、**サブセット化とファイルサイズ**を見る必要がある
+  （`Client Bundle Size` のしきい値は既定 1200 KB、`CLIENT_BUNDLE_MAX_KB` で上書き可）。
+  【要確認】Noto Sans JP のサブセットを入れたときの実サイズ。
+- **採らない方がよいと考えている案**: (a) CI でだけフォント取得をスキップする ——
+  手元と CI で成果物が変わる形は型 E を作る。(b) リトライを足す ——
+  失敗の窓は狭くなるが無くならない。依存そのものを消す方が短い。
+
 ## 保険会社ポータルの3画面が本番で必ず落ちている（2026-09-22）
 
 `insurer_access_logs_action_check` は **`view` / `search` / `download_pdf` / `export_csv` の4値だけ**を許す
