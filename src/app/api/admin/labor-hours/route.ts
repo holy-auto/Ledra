@@ -6,7 +6,12 @@ import { z } from "zod";
 import { withCaller } from "@/lib/api/withCaller";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { apiJson, apiValidationError, apiInternalError } from "@/lib/api/response";
-import { classifyAgainstExisting, normalizeModelCode, parseLaborCsv } from "@/lib/pricing/laborMaster";
+import {
+  classifyAgainstExisting,
+  normalizeModelCode,
+  parseLaborCsv,
+  type ExistingLaborRow,
+} from "@/lib/pricing/laborMaster";
 
 export const dynamic = "force-dynamic";
 
@@ -37,8 +42,12 @@ const importSchema = z.object({
   // 既存と値が違う行（衝突）を上書きするか。既定は上書きせず衝突として返す
   overwrite: z.boolean().optional().default(false),
 });
-// ponytail: 既存行の照会を品番キー 200 件ずつに分ける（PostgREST の in() は URL に載るため）。
-const LOOKUP_CHUNK = 200;
+// 既存行は登録する型式の行をまとめて読み、アプリ側で (型式, 品番キー) を突き合わせる。
+// 品番キー（日本語の品名を含む）を in() で URL に並べると、200 件で URL が長すぎて 400 になった
+// （2026-09-23 本番、MISTAKE_LEDGER M-20260923-fixed-url-length-in-one-route-not-its-sibling）。
+// PostgREST の max_rows(1000) ごとに読む。ponytail: 天井は 50 ページ（5万行）。
+const PAGE = 1000;
+const MAX_PAGES = 50;
 
 export const POST = withCaller(
   async (req, { caller }) => {
@@ -50,17 +59,18 @@ export const POST = withCaller(
 
     const { admin } = createTenantScopedAdmin(caller.tenantId);
     const models = [...new Set(rows.map((r) => r.model_code))];
-    const keys = [...new Set(rows.map((r) => r.part_key))];
-    const existing = [];
-    for (let i = 0; i < keys.length; i += LOOKUP_CHUNK) {
+    const existing: ExistingLaborRow[] = [];
+    for (let p = 0; p < MAX_PAGES; p++) {
       const { data, error } = await admin
         .from("labor_hour_masters")
         .select("model_code, part_key, hours, fixed_price, part_number, label, source_url")
         .eq("tenant_id", caller.tenantId)
         .in("model_code", models)
-        .in("part_key", keys.slice(i, i + LOOKUP_CHUNK));
+        .order("id")
+        .range(p * PAGE, p * PAGE + PAGE - 1);
       if (error) return apiInternalError(error, "labor-hours import lookup");
-      existing.push(...(data ?? []));
+      existing.push(...((data ?? []) as ExistingLaborRow[]));
+      if ((data ?? []).length < PAGE) break;
     }
 
     const { toInsert, unchanged, metaUpdates, conflicts } = classifyAgainstExisting(rows, existing);
