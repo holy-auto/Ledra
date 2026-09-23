@@ -10,6 +10,7 @@ import QuoteAiDraftPanel from "./QuoteAiDraftPanel";
 import InvoiceOcrButton from "./InvoiceOcrButton";
 import LaborQuoteButton from "./LaborQuoteButton";
 import ItemCodeField from "@/components/documents/ItemCodeField";
+import { clearDraft, draftKey, loadDraft, saveDraft } from "./documentDraftStorage";
 
 type Customer = {
   id: string;
@@ -222,6 +223,120 @@ export default function DocumentForm({
   const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
   const dragSrcIdx = useRef<number | null>(null);
 
+  // ─── 入力途中データの自動保存（create モードのみ） ───
+  // 誤って「戻る」やリロードをしても入力が消えないよう、端末に退避して次回開いたときに復元する。
+  const snapshot = {
+    formDocType,
+    formCustomerId,
+    formStaffMemberId,
+    formBranchId,
+    formRecipientName,
+    formRecipientHonorific,
+    formRecipientPostalCode,
+    formRecipientAddress,
+    formRecipientPhone,
+    formSubject,
+    formPeriodStart,
+    formPeriodEnd,
+    formPaymentTerms,
+    formDeliveryDate,
+    formTemplateId,
+    formIssuedAt,
+    formDueDate,
+    formNote,
+    formModelCode,
+    formItems,
+    formTaxRate,
+    formIsTaxInclusive,
+    formInvoiceCompliant,
+    formShowSeal,
+    formShowLogo,
+    formShowBankInfo,
+    formVehicleId,
+    formVehicleModel,
+    formVehiclePlate,
+    formVehicleVin,
+  };
+  type Snapshot = typeof snapshot;
+  const storageKey = isEdit
+    ? null
+    : draftKey({
+        customerId: prefillCustomerId,
+        vehicleId: prefillVehicleId,
+        reservationId: prefillReservationId,
+        staffMemberId: prefillStaffMemberId,
+      });
+  const snapshotJson = JSON.stringify(snapshot);
+  const baselineRef = useRef<{ json: string; data: Snapshot } | null>(null);
+  if (baselineRef.current === null) baselineRef.current = { json: snapshotJson, data: snapshot };
+  const [draftChecked, setDraftChecked] = useState(isEdit);
+  const [restoredAt, setRestoredAt] = useState<number | null>(null);
+  // 復元した支店は「顧客変更で支店をリセット」する effect に消されないよう、顧客が揃うまで保留する。
+  const restoredBranchRef = useRef<{ customerId: string; branchId: string } | null>(null);
+  // 復元したら URL プリフィル・AI 起票で上書きしない（下の各 prefill effect が参照する）。
+  const draftRestoredRef = useRef(false);
+
+  const applySnapshot = (d: Snapshot) => {
+    setFormDocType(d.formDocType);
+    setFormCustomerId(d.formCustomerId);
+    setFormStaffMemberId(d.formStaffMemberId);
+    restoredBranchRef.current = { customerId: d.formCustomerId, branchId: d.formBranchId };
+    setFormRecipientName(d.formRecipientName);
+    setFormRecipientHonorific(d.formRecipientHonorific);
+    setFormRecipientPostalCode(d.formRecipientPostalCode);
+    setFormRecipientAddress(d.formRecipientAddress);
+    setFormRecipientPhone(d.formRecipientPhone);
+    setFormSubject(d.formSubject);
+    setFormPeriodStart(d.formPeriodStart);
+    setFormPeriodEnd(d.formPeriodEnd);
+    setFormPaymentTerms(d.formPaymentTerms);
+    setFormDeliveryDate(d.formDeliveryDate);
+    setFormTemplateId(d.formTemplateId);
+    setFormIssuedAt(d.formIssuedAt);
+    setFormDueDate(d.formDueDate);
+    setFormNote(d.formNote);
+    setFormModelCode(d.formModelCode);
+    setFormItems(d.formItems);
+    setFormTaxRate(d.formTaxRate);
+    setFormIsTaxInclusive(d.formIsTaxInclusive);
+    setFormInvoiceCompliant(d.formInvoiceCompliant);
+    setFormShowSeal(d.formShowSeal);
+    setFormShowLogo(d.formShowLogo);
+    setFormShowBankInfo(d.formShowBankInfo);
+    setFormVehicleId(d.formVehicleId);
+    setFormVehicleModel(d.formVehicleModel);
+    setFormVehiclePlate(d.formVehiclePlate);
+    setFormVehicleVin(d.formVehicleVin);
+  };
+
+  // マウント時に一度だけ復元する（prefill / AI 起票 effect より前に宣言すること）。
+  useEffect(() => {
+    if (!storageKey) return;
+    const stored = loadDraft<Snapshot>(storageKey);
+    if (stored) {
+      // 古い保存形式で欠けた項目は既定値で補う
+      applySnapshot({ ...baselineRef.current!.data, ...stored.data });
+      draftRestoredRef.current = true;
+      setRestoredAt(stored.savedAt);
+    }
+    setDraftChecked(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (!storageKey || !draftChecked) return;
+    // 何も触っていない空フォームは保存しない（次回「復元しました」と誤って出さないため）
+    if (snapshotJson === baselineRef.current!.json) return;
+    saveDraft(storageKey, JSON.parse(snapshotJson) as Snapshot);
+  }, [storageKey, draftChecked, snapshotJson]);
+
+  const discardDraft = () => {
+    if (storageKey) clearDraft(storageKey);
+    // ponytail: 破棄後は既定値に戻すだけで、URL プリフィル・AI 起票は再実行しない（開き直せば再実行される）。
+    applySnapshot(baselineRef.current!.data);
+    setRestoredAt(null);
+  };
+
   // Reference data fetch
   const fetchCustomers = useCallback(async () => {
     try {
@@ -365,7 +480,7 @@ export default function DocumentForm({
   // create モードで URL プリフィル（外注職人）
   const prefillStaffAppliedRef = useRef(false);
   useEffect(() => {
-    if (isEdit) return;
+    if (isEdit || draftRestoredRef.current) return;
     if (prefillStaffAppliedRef.current) return;
     if (!prefillStaffMemberId) return;
     if (externalStaff.length === 0) return;
@@ -384,7 +499,15 @@ export default function DocumentForm({
 
   // 顧客（法人）が決まったら、登録済みの支店一覧を取得する
   useEffect(() => {
-    setFormBranchId("");
+    const restored = restoredBranchRef.current;
+    if (restored) {
+      if (restored.customerId === formCustomerId) {
+        setFormBranchId(restored.branchId);
+        restoredBranchRef.current = null;
+      }
+    } else {
+      setFormBranchId("");
+    }
     fetchBranchesForCustomer(formCustomerId);
   }, [formCustomerId, fetchBranchesForCustomer]);
 
@@ -413,7 +536,7 @@ export default function DocumentForm({
   // create モードで URL プリフィル
   const prefillAppliedRef = useRef(false);
   useEffect(() => {
-    if (isEdit) return;
+    if (isEdit || draftRestoredRef.current) return;
     if (prefillAppliedRef.current) return;
     if (!prefillCustomerId) return;
     if (customers.length === 0) return;
@@ -451,7 +574,7 @@ export default function DocumentForm({
   // create モードで URL プリフィル（車両）
   const prefillVehicleAppliedRef = useRef(false);
   useEffect(() => {
-    if (isEdit) return;
+    if (isEdit || draftRestoredRef.current) return;
     if (prefillVehicleAppliedRef.current) return;
     if (!prefillVehicleId) return;
     if (vehicles.length === 0) return;
@@ -462,7 +585,7 @@ export default function DocumentForm({
   // 案件(予約)からの AI 起票: reservation_id がクエリに付いていれば明細・備考を自動起票する
   const aiPrefillAppliedRef = useRef(false);
   useEffect(() => {
-    if (isEdit) return;
+    if (isEdit || draftRestoredRef.current) return;
     if (aiPrefillAppliedRef.current) return;
     if (!prefillReservationId) return;
     aiPrefillAppliedRef.current = true;
@@ -710,6 +833,7 @@ export default function DocumentForm({
       });
       const j = await parseJsonSafe(res);
       if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
+      if (storageKey) clearDraft(storageKey);
       onSaved(j.document as DocumentRow);
     } catch (e: any) {
       setSaveMsg({ text: e?.message ?? String(e), ok: false });
@@ -747,12 +871,33 @@ export default function DocumentForm({
         </div>
       )}
 
-      <div>
-        <div className="text-xs font-semibold tracking-[0.18em] text-muted">{isEdit ? "編集" : "新規作成"}</div>
-        <div className="mt-1 text-base font-semibold text-primary">
-          {isEdit ? `${DOC_TYPES[formDocType]?.label ?? formDocType}を編集` : "新規帳票作成"}
+      {/* create モードの見出しは作成画面側（DocumentsClient のページ見出し）で出す */}
+      {isEdit && (
+        <div>
+          <div className="text-xs font-semibold tracking-[0.18em] text-muted">編集</div>
+          <div className="mt-1 text-base font-semibold text-primary">
+            {`${DOC_TYPES[formDocType]?.label ?? formDocType}を編集`}
+          </div>
         </div>
-      </div>
+      )}
+
+      {restoredAt != null && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-accent/30 bg-accent/5 px-3 py-2 text-xs text-accent">
+          <span>
+            前回の入力内容を復元しました（
+            {new Date(restoredAt).toLocaleString("ja-JP", {
+              month: "numeric",
+              day: "numeric",
+              hour: "2-digit",
+              minute: "2-digit",
+            })}{" "}
+            保存）
+          </span>
+          <button type="button" className="btn-ghost px-2 py-1 text-xs" onClick={discardDraft}>
+            破棄して最初から
+          </button>
+        </div>
+      )}
 
       {saveMsg && <div className={`text-sm ${saveMsg.ok ? "text-success" : "text-danger"}`}>{saveMsg.text}</div>}
 
