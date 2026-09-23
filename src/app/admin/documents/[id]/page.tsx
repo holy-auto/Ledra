@@ -5,6 +5,7 @@ import PageHeader from "@/components/ui/PageHeader";
 import DocumentDetailClient from "./DocumentDetailClient";
 import { DOC_TYPES, type DocType } from "@/types/document";
 import { createSignedAssetUrl } from "@/lib/signedUrl";
+import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 
 export const dynamic = "force-dynamic";
 
@@ -14,13 +15,10 @@ export default async function DocumentDetailPage({ params }: { params: Promise<{
   const { data: userRes } = await supabase.auth.getUser();
   if (!userRes?.user) redirect("/login?next=/admin/documents");
 
-  const { data: mem } = await supabase
-    .from("tenant_memberships")
-    .select("tenant_id")
-    .eq("user_id", userRes.user.id)
-    .limit(1)
-    .single();
-  if (!mem) redirect("/login?next=/admin/documents");
+  // 複数テナント所属時は active_tenant_id を尊重する（一覧・承認インボックスと同じテナントで引く）
+  const caller = await resolveCallerWithRole(supabase);
+  if (!caller) redirect("/login?next=/admin/documents");
+  const mem = { tenant_id: caller.tenantId };
 
   const { data: doc } = await supabase
     .from("documents")
