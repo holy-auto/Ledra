@@ -4,6 +4,39 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-09-23 保険会社ポータルの3画面が本番で 500 になっていたのを解除（監査 action の語彙）
+
+`insurer_access_logs_action_check` が4値しか許さず、アプリが書く **16 種**を弾いていた。
+
+**(A) SQL 関数の中の insert —— 関数ごと中断し、画面が 500**
+
+| 関数 | 書く `action` | 落ちていた API |
+|---|---|---|
+| `insurer_search_vehicles` | `vehicle_search` | `GET /api/insurer/vehicles` |
+| `insurer_search_stores` | `store_search` | `GET /api/insurer/stores` |
+| `insurer_get_vehicle_certificates` | `vehicle_view` | `GET /api/insurer/vehicles/[id]` |
+
+3本とも例外ハンドラが無く `RETURN QUERY` の**前**に insert するので、検索結果が1件も返らない。
+
+**(B) TypeScript の直 insert 12 箇所 + RPC 3 箇所 —— 黙って記録だけ落ちる**
+
+戻り値の `error` を見ていないため例外にもログにもならない。案件操作（`case_*`）・
+不正検知（`fraud_check*`）・PII 開示請求・CSV/PDF 出力の記録が1件も残っていなかった。
+
+- `20260923141500`: CHECK を **20 値**（既存4 + 新規16）へ広げる。`NOT VALID` で追加
+- `20260923141600`: `VALIDATE CONSTRAINT`（規約どおり別ファイル）
+- `scripts/replay/checks/insurer_access_logs_action_vocab.sql`: 20 値を**1つずつ insert**して
+  通ることと、語彙外（`not_a_real_action_xyz`）が今も弾かれることを検査。
+  **修正を外すと 16 件ちょうどが弾かれることを実測した**（陰性対照）
+
+**語彙の出し方**: 書き込み経路を3つとも当たった —— TypeScript の直 insert（12 箇所）、
+`insurer_audit_log` RPC の実引数（3 箇所・**ドット区切り**）、本番 `pg_proc` の関数6本。
+前回「13 種類」と報告したのは誤りで、**正しくは 16 種類**（RPC 経由の
+`insurer.export.csv` / `.csv.one` / `.pdf.one` を落としていた）。
+MISTAKE_LEDGER `M-20260922-enumerated-actions-from-typescript-only` に 2026-09-23 追記。
+
+検証: `check:migrations` 再生 501/501・振る舞いの検査 **5 件**緑（陰性対照も確認）。
+
 ## 2026-09-23 型式 × 品番の工数マスタと「工賃を計算」ボタン（PR #1131）
 
 発注書の品番から取付工賃を**プログラムで**算出できるようにした（AI は使わない）。

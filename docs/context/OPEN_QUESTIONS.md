@@ -67,64 +67,41 @@ GitHub Actions のランナーから Google Fonts への経路だけである。
   手元と CI で成果物が変わる形は型 E を作る。(b) リトライを足す ——
   失敗の窓は狭くなるが無くならない。依存そのものを消す方が短い。
 
-## 保険会社ポータルの3画面が本番で必ず落ちている（2026-09-22）
+## `insurer_access_logs.action` の語彙を、どこに1つだけ置くか（2026-09-23）
 
-`insurer_access_logs_action_check` は **`view` / `search` / `download_pdf` / `export_csv` の4値だけ**を許す
-（本番で convalidated。`20260922123100` はそれをマイグレーション側へ写しただけ）。
-ところがアプリが書く `action` は **13 種類がこの4値の外**にある。
+**本体は解決した。** 代表判断で (a) を採り、`20260923141500` で CHECK を
+アプリが実際に書く **20 種**へ広げた（4 + 新規 16）。保険会社ポータルの
+車両検索・店舗検索・車両詳細が本番で 500 になっていた件は、これで通る。
+経緯は DECISION_LOG 2026-09-23、被害の内訳は RELEASE_LOG。
 
-**本番で実際に弾かれることを確認した**（2026-09-22、本番で insert を試し ROLLBACK）:
+**残っているのはここ**: 語彙の単一定義源が無い。今は
 
-    ERROR 23514: new row for relation "insurer_access_logs"
-                 violates check constraint "insurer_access_logs_action_check"
+- DB の `insurer_access_logs_action_check`（20 値）
+- TypeScript の直 insert 12 箇所に散らばったリテラル
+- `insurer_audit_log` RPC に渡される3つの**ドット区切り**の値
+- SQL 関数 6 本の中のリテラル
 
-弾かれる 13 種類と、その結果:
+の4箇所に同じ語彙が分かれて存在する。**次に誰かが新しい `action` を書いたら、
+また本番で黙って弾かれる**（TypeScript 直 insert は `error` を見ていないので無言、
+SQL 関数の中なら画面ごと 500）。
 
-**(A) SQL 関数の中の insert — 関数ごと落ちる。画面が 500 になる。**
+今は `scripts/replay/checks/insurer_access_logs_action_vocab.sql` が
+「**CHECK が狭まったら落ちる**」方向だけを止めている。
+**「コードが 21 個目を書き始めたら落ちる」方向は止められていない。**
 
-| 関数 | 書く `action` | 呼ぶ API |
-|---|---|---|
-| `insurer_search_vehicles` | `vehicle_search` | `GET /api/insurer/vehicles` |
-| `insurer_search_stores` | `store_search` | `GET /api/insurer/stores` |
-| `insurer_get_vehicle_certificates` | `vehicle_view` | `GET /api/insurer/vehicles/[id]` |
+**未決**: どこに寄せるか。
+- (c) `src/lib/domain/` に正準語彙を置き、CHECK をそこから生成する
+  （CLAUDE.md のドメイン状態語彙ルールに沿う。ただし `action` は v2.0 の正準6軸
+  —— Job / Step / Severity / Certificate / Payment / Sync —— のいずれでもないので、
+  `states.ts` に同居させるのが妥当かは別途判断が要る）
+- (d) 検出器を足す —— 書き込み経路を走査して CHECK と突き合わせ、食い違ったら CI で落とす。
+  `check-schema-drift` の仲間。語彙の置き場所は変えずに、ずれだけを止める
+- (e) TypeScript の直 insert 12 箇所が `error` を捨てているのを直す。
+  語彙のずれは残るが、**黙って落ちるのをやめれば**次は気づける
 
-3関数とも insert に例外ハンドラが無く、`RETURN QUERY` の**前**に insert するので、
-**検索結果が1件も返らず関数全体が中断する**。本番の関数定義で確認済み。
-つまり保険会社ポータルの車両検索・店舗検索・車両詳細は**現在まったく使えない**。
-（通るのは `insurer_search_certificates`(`search`) と `insurer_get_certificate`(`view`) の2つだけ。）
-
-**(B) TypeScript からの insert — 記録だけ黙って落ちる。**
-
-10 箇所すべてが `await admin.from("insurer_access_logs").insert({...})` で
-**戻り値の `error` を見ていない**ので、例外にもログにもならない:
-
-    case_assign_suggest_auto  case_attachment_upload  case_bulk_update  case_create
-    case_message  case_summary_auto  case_update  fraud_check  fraud_check_auto
-    pii_disclosure_request
-
-`src/lib/insurer/audit.ts` と `src/lib/supabase/insurer/audit.ts` は
-`AuditAction = "view" | "search" | "download_pdf" | "export_csv"` と型で縛っているので
-**この2経路は落ちていない**（`if (insErr) throw insErr` は正しく機能している）。
-
-本番の `insurer_access_logs` は **2行・どちらも `search`・どちらも 2026-09-03**。
-案件操作の監査記録が1件も無いのはこれで説明がつく。
-
-**未決**: どう直すか。
-- (a) CHECK を実際の語彙（4 + 13 = 17 種）へ広げる。広げる方向なので既存行は壊れない
-- (b) コード側を4値に寄せる（`case_*` を `meta` に入れて `action` は `view`/`search` に畳む）。
-  ただし **(A) の3関数は本番の関数定義も直す必要がある**ので、どちらを選んでも SQL 側の修正は要る
-- (c) `action` を正準語彙として `src/lib/domain/` に定義し、CHECK をそこから生成する
-  （CLAUDE.md のドメイン状態語彙ルールに沿う形）
-
-(a) が最短。ただし `action` に何を載せる設計なのかを決めないと同じことが起きる。
-**(A) は監査の欠落ではなく機能停止なので、語彙の決め方を待たずに先に通す判断もありうる。**
-
-付随して見つかった別件: `certificate_images` の列定義が本番と食い違っている
-（`file_name` と `content_type` が本番は NOT NULL・マイグレーションは NULL 可、
-`sort_order` の既定が本番 1・マイグレーション 0）。
-`file_size` だけは `20260922141100` で揃えた。**列の「名前」しか突き合わせていない**ので、
-既定値・NULL 可否・型の食い違いは `check:schema` にも再生にも映らない。
-検出器を属性まで見るように広げるかは別途判断する。
+付随: `src/lib/insurer/audit.ts` と `src/lib/supabase/insurer/audit.ts` の
+`AuditAction` は4値のままで、実際に使われているのは `view` / `download_pdf` の2つ。
+型を広げるかどうかは (c)〜(e) の決め方に従う。
 
 ## 一意でない索引が本番と再生 DB で食い違っている（2026-09-21）
 
