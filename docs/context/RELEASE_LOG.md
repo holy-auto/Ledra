@@ -44,6 +44,13 @@ MISTAKE_LEDGER `M-20260922-enumerated-actions-from-typescript-only` に 2026-09-
 
 検証: `check:migrations` 再生 501/501・振る舞いの検査 **5 件**緑（陰性対照も確認）。
 
+**本番適用 実測（2026-09-23 14:54 UTC）**: `db-migrate` run 88 成功。本番の `pg_constraint` は
+20 値・`convalidated: true`。定義を読むだけで済ませず、**20 値を1つずつ本番に insert して**
+全件が CHECK を通過することを確かめた（bogus な UUID で FK 違反 23503 に到達＝CHECK は通過。
+CHECK は行構築時に評価され FK トリガより先に走るため、この区別が成り立つ）。
+陰性対照 `not_a_real_action_xyz` は 23514 で弾かれる。`RAISE EXCEPTION` で全件ロールバックし、
+表の行数は2件・最新 2026-09-03 のまま変化なし。
+
 ## 2026-09-23 工数の食い違いは「あとから入ってきた値」で上書き
 
 工数マスタの登録（貼り付け・ファイル・帳票フォームからの登録）で、登録済みと値が違う行は今回の値で上書きし、
