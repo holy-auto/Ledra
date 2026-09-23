@@ -182,6 +182,17 @@ describe("classifyAgainstExisting", () => {
     expect(r.metaUpdates).toEqual([]);
   });
 
+  it("今回が 0h なら 0h でない登録済みを上書きしない。登録済みが 0h なら上書きする", () => {
+    const { rows: incoming } = parseLaborCsv("GP3,A,0,,,\nGP3,B,0.5,,,\nGP3,C,0,,,");
+    const r = classifyAgainstExisting(incoming, [
+      { model_code: "GP3", part_key: "A", hours: 1.4, fixed_price: null },
+      { model_code: "GP3", part_key: "B", hours: 0, fixed_price: null },
+      { model_code: "GP3", part_key: "C", hours: null, fixed_price: 3300 },
+    ]);
+    expect(r.unchanged.map((x) => x.part_key)).toEqual(["A", "C"]);
+    expect(r.conflicts.map((c) => [c.row.part_key, c.row.hours])).toEqual([["B", 0.5]]);
+  });
+
   it("値違いで上書きする行も、今回が空欄の品名・出典は既存を残す", () => {
     const { rows: incoming } = parseLaborCsv("GP3,08P18SYY011,0.1,,,");
     const r = classifyAgainstExisting(incoming, [
@@ -327,13 +338,13 @@ describe("sheetRowsToLaborCsv", () => {
       ["WR-V", "Z", "フロアマット", "0.2", "1204166", "", ""],
     ]);
     expect(r.count).toBe(3);
-    expect(r.overwritten).toEqual(["JF5 ETC2.0車載器 取付アタッチメント: 1.4h → 0h（後の行の 0h を採用）"]);
+    expect(r.overwritten).toEqual(["JF5 ETC2.0車載器 取付アタッチメント: 1.4h → 0h（後の行の 1.4h を採用）"]);
     expect(r.errors).toHaveLength(2);
     const { rows, errors } = parseLaborCsv(r.csv);
     expect(errors).toEqual([]);
     expect(rows.map((x) => [x.model_code, x.part_key, x.hours])).toEqual([
       ["JF5", normalizeKey("ドアバイザー"), 0.4],
-      ["JF5", normalizeKey("ETC2.0車載器 取付アタッチメント"), 0],
+      ["JF5", normalizeKey("ETC2.0車載器 取付アタッチメント"), 1.4], // 0h は食い違いでは採らない
       ["JF5", normalizeKey("LEDフォグライト 5,800K"), 0.3], // 全角カンマで書き出し、照合キーは元の表記と一致
     ]);
   });

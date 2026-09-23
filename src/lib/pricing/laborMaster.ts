@@ -196,6 +196,8 @@ export interface LaborConflict {
  * - 工数・定額が同じ → unchanged（書かない）。ただし品名・出典・品番表記だけが変わった行は
  *   金額に影響しないので metaUpdates として更新する（今回が空欄の項目は既存を消さない）
  * - 値が違う → conflicts（あとから入ってきた値で上書きする。何が変わったかを画面に出すために分ける）
+ *   例外: 今回が工数 0h（定額なし）で登録済みが 0h でなければ、上書きせず unchanged に入れる
+ *   （d-Happy の 0h は「同時装着でパッケージ側に作業が載る」扱いで、単品の工数ではないため。代表判断）
  */
 export function classifyAgainstExisting(rows: LaborCsvRow[], existing: ExistingLaborRow[]) {
   const num = (v: number | string | null) => (v == null ? null : Number(v));
@@ -206,7 +208,10 @@ export function classifyAgainstExisting(rows: LaborCsvRow[], existing: ExistingL
   const conflicts: { row: LaborCsvRow; conflict: LaborConflict }[] = [];
   for (const r of rows) {
     const cur = byKey.get(`${r.model_code}\u0000${r.part_key}`);
+    const zeroOverNonZero =
+      cur && r.hours === 0 && r.fixed_price == null && (num(cur.hours) !== 0 || cur.fixed_price != null);
     if (!cur) toInsert.push(r);
+    else if (zeroOverNonZero) unchanged.push(r);
     else if (num(cur.hours) === r.hours && cur.fixed_price === r.fixed_price) {
       const changed = (["part_number", "label", "source_url"] as const).some(
         (f) => cur[f] !== undefined && r[f] != null && r[f] !== cur[f], // undefined = 照会していない項目
@@ -342,7 +347,7 @@ const csvCell = (s: string | null | undefined) =>
  * - 工数マスタ形式: 1行目が「型式,品番,…」 → そのまま
  * - d-Happy 収集形式: 見出しに「項目」「取付工数」「車台番号」（任意で「備考」）
  *   型式は車台番号から取り、同じ型式・品名で工数が食い違うときは後の行（あとから入ってきた値）を採り、
- *   overwritten に出す。工数が空欄の行は errors。
+ *   overwritten に出す。ただし 0h は食い違いでは採らない（0h 以外の値の最後を採る）。工数が空欄の行は errors。
  */
 export function sheetRowsToLaborCsv(rows: string[][]): {
   csv: string;
@@ -392,7 +397,8 @@ export function sheetRowsToLaborCsv(rows: string[][]): {
   const lines: string[] = [];
   const overwritten: string[] = [];
   for (const g of groups.values()) {
-    const last = g.hours[g.hours.length - 1];
+    const nonZero = g.hours.filter((h) => h !== 0);
+    const last = nonZero.length > 0 ? nonZero[nonZero.length - 1] : 0;
     if (g.hours.some((h) => h !== last))
       overwritten.push(`${g.model} ${g.item}: ${g.hours.map((h) => `${h}h`).join(" → ")}（後の行の ${last}h を採用）`);
     const label = (csvCell(g.item) + (g.note ? `（${csvCell(g.note)}）` : "")).slice(0, 200);
