@@ -20,7 +20,13 @@ export const PATCH = withCaller<{ id: string }>(
       return apiValidationError('action は "accept" のみ対応しています。');
     }
 
-    const result = await acceptAgreement(supabase, caller.tenantId, params.id, caller.userId);
+    let result;
+    try {
+      result = await acceptAgreement(supabase, caller.tenantId, params.id, caller.userId);
+    } catch (e) {
+      if ((e as { code?: string })?.code === "FT_STATE_CONFLICT") return apiValidationError((e as Error).message);
+      throw e;
+    }
 
     after(async () => {
       const label = AGREEMENT_TYPE_JA[result.agreement_type as string] ?? "契約書";

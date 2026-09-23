@@ -38,6 +38,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
     return apiJson(result);
   } catch (e) {
+    if ((e as { code?: string })?.code === "FT_STATE_CONFLICT") return apiValidationError((e as Error).message);
     return apiInternalError(e, "mobile ft agreement accept");
   }
 }

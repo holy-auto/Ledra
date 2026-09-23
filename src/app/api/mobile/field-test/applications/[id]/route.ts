@@ -19,6 +19,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     const result = await withdrawApplication(caller.supabase, caller.tenantId, id);
     return apiJson(result);
   } catch (e) {
+    if ((e as { code?: string })?.code === "FT_STATE_CONFLICT") return apiValidationError((e as Error).message);
     return apiInternalError(e, "mobile ft application withdraw");
   }
 }

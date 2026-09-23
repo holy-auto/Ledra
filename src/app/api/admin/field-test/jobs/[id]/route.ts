@@ -39,7 +39,13 @@ export const PATCH = withCaller<{ id: string }>(
     const err = validateTenantStatusTransition(job.status as string, newStatus);
     if (err) return apiValidationError(err);
 
-    const updated = await updateTenantFtJobStatus(supabase, caller.tenantId, params.id, newStatus);
+    let updated;
+    try {
+      updated = await updateTenantFtJobStatus(supabase, caller.tenantId, params.id, newStatus);
+    } catch (e) {
+      if ((e as { code?: string })?.code === "FT_STATE_CONFLICT") return apiValidationError((e as Error).message);
+      throw e;
+    }
 
     if (newStatus === "evidence_submitted") {
       // 提出後に次に動くのは検査するメーカー。提出元テナント自身ではなくメーカーへ届ける。

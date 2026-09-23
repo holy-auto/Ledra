@@ -112,6 +112,20 @@ export function validateTenantStatusTransition(current: string, next: string): s
   return null;
 }
 
+/**
+ * 状態ガード付き UPDATE が0行だったとき（既に対象状態・競合・不存在）に投げる型付きエラー。
+ * ルート側は FT_STATE_CONFLICT を 4xx にマップする。
+ *
+ * なぜ要るか: 状態を絞った UPDATE（`.in("status",[...])` 等）に `.single()` を掛けると、
+ * 0行のとき PostgREST が PGRST116 を返し、`if (error) throw error` が不透明な 500 を出す。
+ * 二重操作や競合で普通に起きる経路なので、`.maybeSingle()`＋明示的な 4xx に寄せる。
+ */
+function ftStateConflict(message: string): Error & { code: string } {
+  const e = new Error(message) as Error & { code: string };
+  e.code = "FT_STATE_CONFLICT";
+  return e;
+}
+
 export async function updateTenantFtJobStatus(supabase: Supa, tenantId: string, jobId: string, newStatus: string) {
   const updatePayload: Record<string, unknown> = { status: newStatus };
   if (newStatus === "evidence_submitted") {
@@ -124,8 +138,9 @@ export async function updateTenantFtJobStatus(supabase: Supa, tenantId: string, 
     .eq("id", jobId)
     .eq("tenant_id", tenantId)
     .select("id, status, updated_at")
-    .single();
+    .maybeSingle();
   if (error) throw error;
+  if (!data) throw ftStateConflict("案件の状態が変化しました。最新の状態を再読み込みしてください。");
   return data;
 }
 
@@ -304,6 +319,25 @@ export async function listTenantApplications(supabase: Supa, tenantId: string) {
   return data ?? [];
 }
 
+/**
+ * POST /field-test/applications の入力検証（admin / mobile 共通・唯一の定義源）。
+ * `notes` を生値のまま DB へ渡さない（型不一致で不透明な 500・過大行を防ぐ）。
+ */
+export const applicationInputSchema = z.object({
+  recruitment_id: z.string().uuid(),
+  notes: z.string().max(2000).optional(),
+});
+
+/**
+ * 募集が締切を過ぎているか。`is_open=true` のままでも deadline を過ぎたら応募不可にする
+ * （運用が締切後に is_open を戻し忘れても新規応募を受けないため）。deadline 未設定は無期限。
+ */
+export function isRecruitmentExpired(deadline: string | null | undefined, now: Date = new Date()): boolean {
+  if (!deadline) return false;
+  const d = new Date(deadline);
+  return !Number.isNaN(d.getTime()) && d.getTime() < now.getTime();
+}
+
 export async function createApplication(
   supabase: Supa,
   row: {
@@ -355,8 +389,9 @@ export async function withdrawApplication(supabase: Supa, tenantId: string, appl
     .eq("tenant_id", tenantId)
     .in("status", ["pending"])
     .select("id, status, updated_at")
-    .single();
+    .maybeSingle();
   if (error) throw error;
+  if (!data) throw ftStateConflict("この応募は取り下げできません（既に取り下げ済み、または審査が進んでいます）。");
   return data;
 }
 
@@ -433,8 +468,9 @@ export async function acceptAgreement(supabase: Supa, tenantId: string, agreemen
     .eq("tenant_id", tenantId)
     .eq("accepted", false)
     .select("id, agreement_type, accepted, accepted_at")
-    .single();
+    .maybeSingle();
   if (error) throw error;
+  if (!data) throw ftStateConflict("この契約は同意できません（既に同意済み、または対象が見つかりません）。");
   return data;
 }
 
