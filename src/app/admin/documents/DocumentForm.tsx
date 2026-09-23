@@ -289,6 +289,8 @@ export default function DocumentForm({
   // 復元したら URL プリフィル・AI 起票で上書きしない（下の各 prefill effect が参照する）。
   const draftRestoredRef = useRef(false);
   const restoreDoneRef = useRef(false);
+  // 復元後、保存しなかった宛先（住所・電話）と支払条件を顧客・支店の登録内容から埋め直す待ち。
+  const refillRef = useRef<{ customer: boolean; branch: boolean } | null>(null);
   // 人が最初に操作する直前の状態。プリフィル・AI 起票だけで埋まった状態は保存しない
   // （触らずに戻ったのに次回「復元しました」でプリフィルが効かなくなるため）。
   const touchedFromRef = useRef<string | null>(null);
@@ -339,26 +341,42 @@ export default function DocumentForm({
   useEffect(() => {
     if (!storageKey || restoreDoneRef.current) return;
     restoreDoneRef.current = true;
-    const stored = loadDraft<Snapshot>(storageKey);
+    const stored = loadDraft<Partial<Snapshot>>(storageKey);
     if (!stored) return;
     // 古い保存形式で欠けた項目は既定値で補う
-    applySnapshot({ ...defaultsRef.current!, ...stored.data });
+    const restored = { ...defaultsRef.current!, ...stored.data };
+    applySnapshot(restored);
+    refillRef.current = { customer: !!restored.formCustomerId, branch: !!restored.formBranchId };
     draftRestoredRef.current = true;
     touchedFromRef.current = "";
     setRestoredAt(stored.savedAt);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [storageKey]);
 
+  // 宛先の住所・電話と支払条件は端末に平文で残さない（個人情報・取引条件）。
+  // 復元時は顧客・支店の登録内容から埋め直す（下の refill effect）。
+  /* eslint-disable @typescript-eslint/no-unused-vars -- 除外するためだけに取り出す */
+  const {
+    formRecipientPostalCode: _postal,
+    formRecipientAddress: _address,
+    formRecipientPhone: _phone,
+    formPaymentTerms: _terms,
+    ...persistable
+  } = snapshot;
+  /* eslint-enable @typescript-eslint/no-unused-vars */
+  const persistJson = JSON.stringify(persistable);
   useEffect(() => {
     if (!storageKey || touchedFromRef.current === null) return;
     if (snapshotJson === touchedFromRef.current) return;
-    saveDraft(storageKey, JSON.parse(snapshotJson) as Snapshot);
+    saveDraft(storageKey, JSON.parse(persistJson) as Partial<Snapshot>);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [storageKey, snapshotJson]);
 
   const discardDraft = () => {
     if (storageKey) clearDraft(storageKey);
     // ponytail: 破棄後は既定値に戻すだけで、URL プリフィル・AI 起票は再実行しない（開き直せば再実行される）。
     applySnapshot(defaultsRef.current!);
+    refillRef.current = null;
     touchedFromRef.current = null;
     setRestoredAt(null);
   };
@@ -558,6 +576,31 @@ export default function DocumentForm({
     },
     [customers],
   );
+
+  // 復元した下書きの宛先・支払条件を、顧客 → 支店の順に登録内容から埋め直す
+  useEffect(() => {
+    const r = refillRef.current;
+    if (!r) return;
+    if (r.customer) {
+      const c = customers.find((cust) => cust.id === formCustomerId);
+      if (!c) return;
+      const d = customerFormDefaults(c);
+      setFormRecipientPostalCode(d.postal_code);
+      setFormRecipientAddress(d.address);
+      setFormRecipientPhone(d.phone);
+      setFormPaymentTerms(d.payment_terms);
+      r.customer = false;
+    }
+    if (r.branch) {
+      const b = branches.find((br) => br.id === formBranchId);
+      if (!b) return;
+      setFormRecipientPostalCode(b.postal_code ?? "");
+      setFormRecipientAddress(b.address ?? "");
+      setFormRecipientPhone(b.phone ?? "");
+      r.branch = false;
+    }
+    refillRef.current = null;
+  }, [customers, branches, formCustomerId, formBranchId]);
 
   // create モードで URL プリフィル
   const prefillAppliedRef = useRef(false);
@@ -917,7 +960,7 @@ export default function DocumentForm({
               hour: "2-digit",
               minute: "2-digit",
             })}{" "}
-            保存）
+            保存）。住所・電話・支払条件は端末に保存していないため、顧客・支店の登録内容から入れ直しています。
           </span>
           <button type="button" className="btn-ghost px-2 py-1 text-xs" onClick={discardDraft}>
             破棄して最初から

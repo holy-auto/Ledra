@@ -112,6 +112,40 @@ describe("DocumentForm の入力途中データ自動保存", () => {
     expect(backBranchSelect.value).toBe("");
   });
 
+  it("宛先の住所・電話・支払条件は端末に保存せず、復元時に顧客の登録内容から入れ直す", async () => {
+    mockApi({
+      "/api/admin/customers": {
+        customers: [
+          {
+            id: "c-1",
+            name: "山田商事",
+            honorific: "御中",
+            address: "東京都千代田区",
+            phone: "03-0000-0000",
+            billing_terms_note: "月末締め翌月末払い",
+          },
+        ],
+      },
+    });
+    const { unmount } = renderForm(<DocumentForm mode="create" onSaved={noop} onCancel={noop} />);
+    const customerSelect = (await screen.findByRole("option", { name: "山田商事" })).closest("select")!;
+    fireEvent.change(customerSelect, { target: { value: "c-1" } });
+    await waitFor(() => expect(screen.getByDisplayValue("東京都千代田区")).toBeTruthy());
+    await waitFor(() => expect(loadDraft<Record<string, unknown>>(KEY)?.data.formCustomerId).toBe("c-1"));
+
+    const raw = window.localStorage.getItem(KEY)!;
+    expect(raw).not.toContain("東京都千代田区");
+    expect(raw).not.toContain("03-0000-0000");
+    expect(raw).not.toContain("月末締め翌月末払い");
+    unmount();
+
+    renderForm(<DocumentForm mode="create" onSaved={noop} onCancel={noop} />);
+    await waitFor(() => expect(screen.getByText(/前回の入力内容を復元しました/)).toBeTruthy());
+    await waitFor(() => expect(screen.getByDisplayValue("東京都千代田区")).toBeTruthy());
+    expect(screen.getByDisplayValue("03-0000-0000")).toBeTruthy();
+    expect(screen.getByDisplayValue("月末締め翌月末払い")).toBeTruthy();
+  });
+
   it("edit モードでは下書きを復元しない", async () => {
     saveDraft(KEY, { formNote: "create の下書き" });
     renderForm(
