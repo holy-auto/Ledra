@@ -1,0 +1,73 @@
+/**
+ * 型式 × 品番 の取付工数マスタ（labor_hour_masters）の一覧・CSV 一括登録・削除。
+ * 算出は /api/admin/labor-hours/quote（src/lib/pricing/laborMaster.ts）。
+ */
+import { z } from "zod";
+import { withCaller } from "@/lib/api/withCaller";
+import { createTenantScopedAdmin } from "@/lib/supabase/admin";
+import { apiJson, apiValidationError, apiInternalError } from "@/lib/api/response";
+import { normalizeModelCode, parseLaborCsv } from "@/lib/pricing/laborMaster";
+
+export const dynamic = "force-dynamic";
+
+const COLUMNS = "id, model_code, part_key, part_number, label, hours, fixed_price, source_url, updated_at, created_at";
+// ponytail: 一覧は上限件数で打ち切る。天井: 1テナント数千行を超えたらページングを付ける。
+const LIST_LIMIT = 2000;
+
+export const GET = withCaller(
+  async (req, { caller, supabase }) => {
+    const model = normalizeModelCode(new URL(req.url).searchParams.get("model_code"));
+    let q = supabase
+      .from("labor_hour_masters")
+      .select(COLUMNS)
+      .eq("tenant_id", caller.tenantId)
+      .order("model_code")
+      .order("part_key")
+      .limit(LIST_LIMIT);
+    if (model) q = q.eq("model_code", model);
+    const { data, error } = await q;
+    if (error) return apiInternalError(error, "labor-hours GET");
+    return apiJson({ entries: data ?? [], limit: LIST_LIMIT });
+  },
+  { routeName: "labor-hours GET" },
+);
+
+const importSchema = z.object({ csv: z.string().min(1, "CSV が空です").max(2_000_000) });
+
+export const POST = withCaller(
+  async (req, { caller }) => {
+    const parsed = importSchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
+
+    const { rows, errors } = parseLaborCsv(parsed.data.csv);
+    if (rows.length === 0) return apiValidationError(errors[0] ?? "有効な行がありません");
+
+    const now = new Date().toISOString();
+    const { admin } = createTenantScopedAdmin(caller.tenantId);
+    const { error } = await admin.from("labor_hour_masters").upsert(
+      rows.map((r) => ({ ...r, tenant_id: caller.tenantId, updated_at: now })),
+      { onConflict: "tenant_id,model_code,part_key" },
+    );
+    if (error) return apiInternalError(error, "labor-hours import");
+    return apiJson({ ok: true, imported: rows.length, errors });
+  },
+  { permission: "menu_items:manage", routeName: "labor-hours POST" },
+);
+
+const deleteSchema = z.object({ id: z.string().uuid() });
+
+export const DELETE = withCaller(
+  async (req, { caller }) => {
+    const parsed = deleteSchema.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) return apiValidationError("無効なIDです。");
+    const { admin } = createTenantScopedAdmin(caller.tenantId);
+    const { error } = await admin
+      .from("labor_hour_masters")
+      .delete()
+      .eq("id", parsed.data.id)
+      .eq("tenant_id", caller.tenantId);
+    if (error) return apiInternalError(error, "labor-hours DELETE");
+    return apiJson({ ok: true });
+  },
+  { permission: "menu_items:manage", routeName: "labor-hours DELETE" },
+);

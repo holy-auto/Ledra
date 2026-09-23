@@ -9,7 +9,7 @@ import { withCaller } from "@/lib/api/withCaller";
 export const dynamic = "force-dynamic";
 
 const BRANCH_COLUMNS =
-  "id, customer_id, name, name_kana, postal_code, address, phone, contact_person, contact_email, note, created_at, updated_at";
+  "id, customer_id, name, name_kana, postal_code, address, phone, contact_person, contact_email, note, labor_rate_per_hour, created_at, updated_at";
 
 // ─── GET: 支店一覧 (?customer_id=) ───
 export const GET = withCaller(

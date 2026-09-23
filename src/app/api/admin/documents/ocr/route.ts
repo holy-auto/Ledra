@@ -17,6 +17,7 @@ import { checkRateLimit } from "@/lib/api/rateLimit";
 import { extractInvoice, toDocumentItems, toDraftHeader } from "@/lib/ai/invoiceOcr";
 import { loadAiAutomationSettings, isSourceAllowed } from "@/lib/ai/automation/policy";
 import { startAiRouteUsage } from "@/lib/ai/recordRouteUsage";
+import { modelCodeFromChassis } from "@/lib/pricing/laborMaster";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -82,6 +83,7 @@ export const POST = withCaller(
           due_date: extract.due_date,
           total_jpy: extract.total_jpy,
           delivery_date: extract.delivery_date,
+          model_code: modelCodeFromChassis(extract.vehicle_chassis_no),
           ...toDraftHeader(extract),
         },
       });

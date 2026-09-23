@@ -29,6 +29,15 @@ const branchBaseFields = {
   contact_person: optionalTrimmed(100),
   contact_email: optionalEmail,
   note: optionalTrimmed(1000),
+  // 工賃の時間単価（円/時、税抜）。空 = 自社既定を使う
+  labor_rate_per_hour: z.coerce
+    .number()
+    .int()
+    .positive()
+    .max(1_000_000)
+    .nullish()
+    .catch(null)
+    .transform((v) => v ?? null),
 };
 
 export const branchCreateSchema = z.object({

@@ -8,6 +8,7 @@ import { calcSellingPrice, calcCommissionAmount } from "@/lib/pricing/margin";
 import { DOC_TYPES, DOC_TYPE_LIST, type DocType, type DocumentItem, type DocumentRow } from "@/types/document";
 import QuoteAiDraftPanel from "./QuoteAiDraftPanel";
 import InvoiceOcrButton from "./InvoiceOcrButton";
+import LaborQuoteButton from "./LaborQuoteButton";
 import ItemCodeField from "@/components/documents/ItemCodeField";
 
 type Customer = {
@@ -184,6 +185,8 @@ export default function DocumentForm({
   const [formDueDate, setFormDueDate] = useState(initial?.due_date ?? "");
   const [formNote, setFormNote] = useState(initial?.note ?? "");
   const lastOcrNoteRef = useRef<string | null>(null);
+  // 工賃計算に使う型式（OCR の車台番号から自動入力、番号だけのときは手入力）
+  const [formModelCode, setFormModelCode] = useState("");
   const [formItems, setFormItems] = useState<DocumentItem[]>(initialItems);
   const [formTaxRate, setFormTaxRate] = useState(initial?.tax_rate ?? 10);
   const [formIsTaxInclusive, setFormIsTaxInclusive] = useState(initialIsTaxInclusive);
@@ -1141,6 +1144,7 @@ export default function DocumentForm({
                 if (header.due_date && !formDueDate) setFormDueDate(header.due_date);
                 if (header.delivery_date && !formDeliveryDate) setFormDeliveryDate(header.delivery_date);
                 if (header.subject && !formSubject) setFormSubject(header.subject);
+                if (header.model_code) setFormModelCode(header.model_code);
                 // 撮り直し時に前回OCR分の備考が重複・残留しないよう、前回分を差し替える
                 const prevOcrNote = lastOcrNoteRef.current;
                 lastOcrNoteRef.current = header.note;
@@ -1151,6 +1155,17 @@ export default function DocumentForm({
                 });
                 // 税込価格の書類を税抜扱いで取り込むと二重課税になるため、判定できたときは合わせる
                 if (header.is_tax_inclusive != null) setFormIsTaxInclusive(header.is_tax_inclusive);
+              }}
+            />
+            <LaborQuoteButton
+              items={formItems}
+              branchId={formBranchId}
+              modelCode={formModelCode}
+              onModelCodeChange={setFormModelCode}
+              disabled={saving}
+              onApplied={(next) => {
+                setFormItems(recalcSubtotals(next));
+                setFormIsTaxInclusive(false); // 時間単価・定額は税抜
               }}
             />
             <div className="text-[11px] text-muted">{formIsTaxInclusive ? "単価は税込で入力" : "単価は税抜で入力"}</div>
