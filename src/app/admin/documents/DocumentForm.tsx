@@ -10,6 +10,8 @@ import QuoteAiDraftPanel from "./QuoteAiDraftPanel";
 import InvoiceOcrButton from "./InvoiceOcrButton";
 import LaborQuoteButton from "./LaborQuoteButton";
 import ItemCodeField from "@/components/documents/ItemCodeField";
+import useSWR from "swr";
+import { fetcher } from "@/lib/swr";
 import { clearDraft, draftKey, loadDraft, saveDraft } from "./documentDraftStorage";
 
 type Customer = {
@@ -258,29 +260,53 @@ export default function DocumentForm({
     formVehicleVin,
   };
   type Snapshot = typeof snapshot;
-  const storageKey = isEdit
-    ? null
-    : draftKey({
-        customerId: prefillCustomerId,
-        vehicleId: prefillVehicleId,
-        reservationId: prefillReservationId,
-        staffMemberId: prefillStaffMemberId,
-      });
+  // 保存キーはテナント × ユーザーで分ける（テナント切替・共有端末の別スタッフに下書きを出さない）。
+  // 取得できない場合は自動保存しない。
+  const { data: me, error: meError } = useSWR<{ user_id?: string | null; tenant_id?: string | null }>(
+    isEdit ? null : "/api/admin/me",
+    fetcher,
+    { revalidateOnFocus: false },
+  );
+  const storageKey =
+    isEdit || !me?.user_id || !me?.tenant_id
+      ? null
+      : draftKey({
+          tenantId: me.tenant_id,
+          userId: me.user_id,
+          customerId: prefillCustomerId,
+          vehicleId: prefillVehicleId,
+          reservationId: prefillReservationId,
+          staffMemberId: prefillStaffMemberId,
+        });
   const snapshotJson = JSON.stringify(snapshot);
-  const baselineRef = useRef<{ json: string; data: Snapshot } | null>(null);
-  if (baselineRef.current === null) baselineRef.current = { json: snapshotJson, data: snapshot };
-  const [draftChecked, setDraftChecked] = useState(isEdit);
+  const defaultsRef = useRef<Snapshot | null>(null);
+  if (defaultsRef.current === null) defaultsRef.current = snapshot;
+  // 下書きの有無を確認し終えるまで prefill / AI 起票を待たせる（復元内容を上書きしないため）。
+  const draftChecked = isEdit || me != null || meError != null;
   const [restoredAt, setRestoredAt] = useState<number | null>(null);
   // 復元した支店は「顧客変更で支店をリセット」する effect に消されないよう、顧客が揃うまで保留する。
   const restoredBranchRef = useRef<{ customerId: string; branchId: string } | null>(null);
   // 復元したら URL プリフィル・AI 起票で上書きしない（下の各 prefill effect が参照する）。
   const draftRestoredRef = useRef(false);
+  const restoreDoneRef = useRef(false);
+  // 人が最初に操作する直前の状態。プリフィル・AI 起票だけで埋まった状態は保存しない
+  // （触らずに戻ったのに次回「復元しました」でプリフィルが効かなくなるため）。
+  const touchedFromRef = useRef<string | null>(null);
+  const markTouched = () => {
+    if (touchedFromRef.current === null) touchedFromRef.current = snapshotJson;
+  };
 
   const applySnapshot = (d: Snapshot) => {
     setFormDocType(d.formDocType);
     setFormCustomerId(d.formCustomerId);
     setFormStaffMemberId(d.formStaffMemberId);
-    restoredBranchRef.current = { customerId: d.formCustomerId, branchId: d.formBranchId };
+    if (d.formCustomerId === formCustomerId) {
+      // 顧客が変わらなければ支店リセット effect は走らないので、ここで直接反映する
+      restoredBranchRef.current = null;
+      setFormBranchId(d.formBranchId);
+    } else {
+      restoredBranchRef.current = { customerId: d.formCustomerId, branchId: d.formBranchId };
+    }
     setFormRecipientName(d.formRecipientName);
     setFormRecipientHonorific(d.formRecipientHonorific);
     setFormRecipientPostalCode(d.formRecipientPostalCode);
@@ -309,31 +335,31 @@ export default function DocumentForm({
     setFormVehicleVin(d.formVehicleVin);
   };
 
-  // マウント時に一度だけ復元する（prefill / AI 起票 effect より前に宣言すること）。
+  // 保存キーが決まったら一度だけ復元する（prefill / AI 起票 effect より前に宣言すること）。
   useEffect(() => {
-    if (!storageKey) return;
+    if (!storageKey || restoreDoneRef.current) return;
+    restoreDoneRef.current = true;
     const stored = loadDraft<Snapshot>(storageKey);
-    if (stored) {
-      // 古い保存形式で欠けた項目は既定値で補う
-      applySnapshot({ ...baselineRef.current!.data, ...stored.data });
-      draftRestoredRef.current = true;
-      setRestoredAt(stored.savedAt);
-    }
-    setDraftChecked(true);
+    if (!stored) return;
+    // 古い保存形式で欠けた項目は既定値で補う
+    applySnapshot({ ...defaultsRef.current!, ...stored.data });
+    draftRestoredRef.current = true;
+    touchedFromRef.current = "";
+    setRestoredAt(stored.savedAt);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [storageKey]);
 
   useEffect(() => {
-    if (!storageKey || !draftChecked) return;
-    // 何も触っていない空フォームは保存しない（次回「復元しました」と誤って出さないため）
-    if (snapshotJson === baselineRef.current!.json) return;
+    if (!storageKey || touchedFromRef.current === null) return;
+    if (snapshotJson === touchedFromRef.current) return;
     saveDraft(storageKey, JSON.parse(snapshotJson) as Snapshot);
-  }, [storageKey, draftChecked, snapshotJson]);
+  }, [storageKey, snapshotJson]);
 
   const discardDraft = () => {
     if (storageKey) clearDraft(storageKey);
     // ponytail: 破棄後は既定値に戻すだけで、URL プリフィル・AI 起票は再実行しない（開き直せば再実行される）。
-    applySnapshot(baselineRef.current!.data);
+    applySnapshot(defaultsRef.current!);
+    touchedFromRef.current = null;
     setRestoredAt(null);
   };
 
@@ -480,7 +506,7 @@ export default function DocumentForm({
   // create モードで URL プリフィル（外注職人）
   const prefillStaffAppliedRef = useRef(false);
   useEffect(() => {
-    if (isEdit || draftRestoredRef.current) return;
+    if (isEdit || !draftChecked || draftRestoredRef.current) return;
     if (prefillStaffAppliedRef.current) return;
     if (!prefillStaffMemberId) return;
     if (externalStaff.length === 0) return;
@@ -495,7 +521,7 @@ export default function DocumentForm({
           : items,
       );
     }
-  }, [isEdit, prefillStaffMemberId, externalStaff]);
+  }, [isEdit, draftChecked, prefillStaffMemberId, externalStaff]);
 
   // 顧客（法人）が決まったら、登録済みの支店一覧を取得する
   useEffect(() => {
@@ -536,7 +562,7 @@ export default function DocumentForm({
   // create モードで URL プリフィル
   const prefillAppliedRef = useRef(false);
   useEffect(() => {
-    if (isEdit || draftRestoredRef.current) return;
+    if (isEdit || !draftChecked || draftRestoredRef.current) return;
     if (prefillAppliedRef.current) return;
     if (!prefillCustomerId) return;
     if (customers.length === 0) return;
@@ -544,7 +570,7 @@ export default function DocumentForm({
     // プリフィルでも顧客登録済みの宛先・支払条件を反映する（onChange を経由しないため明示的に呼ぶ）。
     applyCustomerDefaults(prefillCustomerId);
     prefillAppliedRef.current = true;
-  }, [customers, prefillCustomerId, isEdit, applyCustomerDefaults]);
+  }, [customers, prefillCustomerId, isEdit, draftChecked, applyCustomerDefaults]);
 
   const handleVehicleSelect = useCallback(
     (vehicleId: string) => {
@@ -574,18 +600,18 @@ export default function DocumentForm({
   // create モードで URL プリフィル（車両）
   const prefillVehicleAppliedRef = useRef(false);
   useEffect(() => {
-    if (isEdit || draftRestoredRef.current) return;
+    if (isEdit || !draftChecked || draftRestoredRef.current) return;
     if (prefillVehicleAppliedRef.current) return;
     if (!prefillVehicleId) return;
     if (vehicles.length === 0) return;
     handleVehicleSelect(prefillVehicleId);
     prefillVehicleAppliedRef.current = true;
-  }, [isEdit, prefillVehicleId, vehicles, handleVehicleSelect]);
+  }, [isEdit, draftChecked, prefillVehicleId, vehicles, handleVehicleSelect]);
 
   // 案件(予約)からの AI 起票: reservation_id がクエリに付いていれば明細・備考を自動起票する
   const aiPrefillAppliedRef = useRef(false);
   useEffect(() => {
-    if (isEdit || draftRestoredRef.current) return;
+    if (isEdit || !draftChecked || draftRestoredRef.current) return;
     if (aiPrefillAppliedRef.current) return;
     if (!prefillReservationId) return;
     aiPrefillAppliedRef.current = true;
@@ -633,7 +659,7 @@ export default function DocumentForm({
         setAiPrefillBusy(false);
       }
     })();
-  }, [isEdit, prefillReservationId]);
+  }, [isEdit, draftChecked, prefillReservationId]);
 
   // ─── Item management ───
   const updateItem = (index: number, field: keyof DocumentItem, value: string | number | null) => {
@@ -843,7 +869,7 @@ export default function DocumentForm({
   };
 
   return (
-    <section className="glass-card p-3 space-y-4 sm:p-5">
+    <section className="glass-card p-3 space-y-4 sm:p-5" onChangeCapture={markTouched} onClickCapture={markTouched}>
       {!isEdit && formDocType === "estimate" && (
         <QuoteAiDraftPanel
           customerId={formCustomerId || undefined}
