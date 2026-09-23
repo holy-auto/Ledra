@@ -4,6 +4,7 @@
  * 帳票の明細（品番 or 作業名）と型式・支店から、工数マスタで工賃を算出する（AI 不使用）。
  * 品番で見つからない行は alt_keys（品名）でも引く（d-Happy 由来の工数は品名で登録されるため）。
  * 工賃 = 工数 × 時間単価（支店 → 自社の順）、または定額。マスタに無い行は unit_price: null。
+ * tc_code を渡すと、その TC 専用の工数を優先し、無ければ TC を問わない工数を使う。
  */
 import { z } from "zod";
 import { withCaller } from "@/lib/api/withCaller";
@@ -21,6 +22,7 @@ export const dynamic = "force-dynamic";
 
 const schema = z.object({
   model_code: z.string().trim().min(1, "型式を入力してください").max(20),
+  tc_code: z.string().trim().max(20).nullish(),
   branch_id: z.string().uuid().nullish(),
   keys: z.array(z.string().max(300)).min(1).max(200),
   // keys と同じ並び。品番で見つからないときに使う品名（無ければ null）
@@ -46,7 +48,7 @@ export const POST = withCaller(
         for (let p = 0; p < MAX_PAGES; p++) {
           const res = await supabase
             .from("labor_hour_masters")
-            .select("model_code, part_key, hours, fixed_price, label")
+            .select("model_code, tc_code, part_key, hours, fixed_price, label")
             .eq("tenant_id", caller.tenantId)
             .in("model_code", [model, ANY_MODEL])
             .order("id")
@@ -78,7 +80,7 @@ export const POST = withCaller(
     const rate = resolveRate(branchRate, tenantRate);
 
     const lines = keys.map((key, i) => {
-      const { entry, by } = findEntryWithFallback(entries, model, key, altKeys[i]);
+      const { entry, by } = findEntryWithFallback(entries, model, key, altKeys[i], parsed.data.tc_code);
       return {
         key,
         matched: entry != null,

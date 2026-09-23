@@ -4,8 +4,9 @@
  *   工賃 = 工数(h) × 店舗の時間単価(円/h)   … calcLaborPrice と同じ式
  *   または マスタに登録した定額（ETCセットアップ等、工数に乗らない作業）
  *
- * - 同じ品番でも型式で工数が変わるため、キーは (型式, 品番)。型式を問わない作業は
- *   型式 ANY_MODEL ('*') で登録し、完全一致が無いときだけ使う。
+ * - 同じ品番でも型式で工数が変わるため、キーは (型式, TC コード, 品番)。TC コードは同じ型式の中で
+ *   工数が違うときだけ入れ、'' は「TC を問わない」。型式を問わない作業は型式 ANY_MODEL ('*') で登録する。
+ *   引く順: (型式, TC) → (型式, '') → ('*', '')。
  * - 品番の無い作業（「ナビ移植」等）は名称をキーにする（normalizeKey で表記ゆれを吸収）。
  * - マスタに無いものは推測しない（null = 未登録）。
  *
@@ -26,6 +27,9 @@ export function normalizeModelCode(raw: string | null | undefined): string {
   return s === ANY_MODEL ? s : s.replace(/[\s-]/g, "");
 }
 
+/** TC コードの照合キー（品番と同じ正規化）。未入力は ''（TC を問わない）。 */
+export const normalizeTcCode = (raw: string | null | undefined): string => normalizeKey(raw);
+
 /**
  * 車台番号（F-NO）から型式を取り出す。"GP3-1017220" → "GP3"。
  * 番号だけ（"1204166"）など型式が含まれないときは null（車種名から推測しない）。
@@ -40,6 +44,8 @@ export function modelCodeFromChassis(chassis: string | null | undefined): string
 
 export interface LaborEntry {
   model_code: string;
+  /** 未指定・'' = TC コードを問わない */
+  tc_code?: string | null;
   part_key: string;
   hours: number | null;
   fixed_price: number | null;
@@ -47,20 +53,43 @@ export interface LaborEntry {
 }
 
 /**
- * (型式, キー) の完全一致 → 無ければ型式共通 '*' の順で引く。
+ * (型式, TC, キー) → (型式, TC 問わず, キー) → 型式共通 '*' の順で引く。
  * キーは part_key（品番・作業名）に加えて名称（label）とも照合する
  * （d-Happy の貼り付け登録は品番が part_key、品名は label に入るため）。part_key の一致を優先。
  */
-export function findEntry(entries: LaborEntry[], modelCode: string, key: string): LaborEntry | null {
+export function findEntry(
+  entries: LaborEntry[],
+  modelCode: string,
+  key: string,
+  tcCode?: string | null,
+): LaborEntry | null {
+  return findInScopes(entries, modelCode, [key], tcCode).entry;
+}
+
+/**
+ * 狭い範囲（型式+TC）から順に、その範囲の中で keys を先頭から照合する。
+ * 予備キー（品名）も同じ範囲で見てから広い範囲へ進む（TC 専用の行が品名でしか引けないときに、
+ * 品番で当たる TC 問わずの行を先に返さないように）。
+ */
+function findInScopes(
+  entries: LaborEntry[],
+  modelCode: string,
+  keys: (string | null | undefined)[],
+  tcCode?: string | null,
+): { entry: LaborEntry | null; index: number } {
   const model = normalizeModelCode(modelCode);
-  const k = normalizeKey(key);
-  if (!k) return null;
-  for (const m of [model, ANY_MODEL]) {
-    const inModel = entries.filter((e) => e.model_code === m);
-    const hit = inModel.find((e) => e.part_key === k) ?? inModel.find((e) => normalizeKey(e.label) === k);
-    if (hit) return hit;
+  const tc = normalizeTcCode(tcCode);
+  const ks = keys.map((k) => normalizeKey(k));
+  const scopes: [string, string][] = [...(tc ? [[model, tc] as [string, string]] : []), [model, ""], [ANY_MODEL, ""]];
+  for (const [m, t] of scopes) {
+    const inScope = entries.filter((e) => e.model_code === m && (e.tc_code ?? "") === t);
+    for (const [index, k] of ks.entries()) {
+      if (!k) continue;
+      const hit = inScope.find((e) => e.part_key === k) ?? inScope.find((e) => normalizeKey(e.label) === k);
+      if (hit) return { entry: hit, index };
+    }
   }
-  return null;
+  return { entry: null, index: -1 };
 }
 
 /** 店舗（支店）の時間単価を優先し、未設定なら自社の既定単価。 */
@@ -82,6 +111,7 @@ export function laborPrice(entry: LaborEntry, rate: number | null): number | nul
 
 export interface LaborCsvRow {
   model_code: string;
+  tc_code: string;
   part_key: string;
   part_number: string;
   hours: number | null;
@@ -98,12 +128,12 @@ function toNonNegative(raw: string | undefined): number | null | "invalid" {
 }
 
 /**
- * CSV: 型式, 品番(または作業名), 工数h, 定額円, 名称, 出典URL（ヘッダ行は任意）。
+ * CSV: 型式, 品番(または作業名), 工数h, 定額円, 名称, 出典URL, TCコード（ヘッダ行は任意。TC は省略可）。
  * 工数と定額のどちらかは必須。型式を問わない作業は型式に '*'。
  * ponytail: 全カンマで単純分割（vehicleMasterImport と同じ流儀）。天井: クォート内カンマ不可。
  */
 export function parseLaborCsv(text: string): { rows: LaborCsvRow[]; errors: string[] } {
-  // 同じ (型式, 品番) が複数行あれば後の行を採用（一括 upsert で同一行を二度更新できないため）
+  // 同じ (型式, TC, 品番) が複数行あれば後の行を採用（一括 upsert で同一行を二度更新できないため）
   const rows = new Map<string, LaborCsvRow>();
   const errors: string[] = [];
   text.split(/\r?\n/).forEach((line, i) => {
@@ -113,24 +143,35 @@ export function parseLaborCsv(text: string): { rows: LaborCsvRow[]; errors: stri
     const no = `${i + 1}行目`;
     const model = normalizeModelCode(cells[0]);
     const key = normalizeKey(cells[1]);
+    const tc = normalizeTcCode(cells[6]);
     if (!model || !key) return void errors.push(`${no}: 型式と品番（作業名）は必須です`);
+    // 型式共通は TC を問わない行だけ引く（findEntry）ので、TC 付きは登録しても使われない
+    if (model === ANY_MODEL && tc) return void errors.push(`${no}: 型式共通（*）に TC コードは付けられません`);
     // DB の CHECK（labor_hour_masters）と同じ上限。1行の超過で一括保存全体が落ちないよう行単位で弾く
     if (
       model.length > 20 ||
       (cells[1] ?? "").length > 100 ||
       (cells[4] ?? "").length > 200 ||
-      (cells[5] ?? "").length > 1000
+      (cells[5] ?? "").length > 1000 ||
+      tc.length > 20
     )
-      return void errors.push(`${no}: 文字数が上限を超えています（型式20・品番100・名称200・URL1000）`);
-    const hours = toNonNegative(cells[2]);
+      return void errors.push(`${no}: 文字数が上限を超えています（型式20・品番100・名称200・URL1000・TC20）`);
+    const rawHours = toNonNegative(cells[2]);
     const fixed = toNonNegative(cells[3]);
-    if (hours === "invalid" || fixed === "invalid") return void errors.push(`${no}: 工数・定額は0以上の数値で`);
-    if (hours == null && fixed == null) return void errors.push(`${no}: 工数か定額のどちらかが必要です`);
-    rows.set(`${model}\u0000${key}`, {
+    if (rawHours === "invalid" || fixed === "invalid") return void errors.push(`${no}: 工数・定額は0以上の数値で`);
+    if (rawHours == null && fixed == null) return void errors.push(`${no}: 工数か定額のどちらかが必要です`);
+    // 保存する値（小数2桁）で 0h を判定する（0.001 が 0 として保存され、0h の例外をすり抜けないように）
+    const hours = rawHours == null ? null : Math.round(rawHours * 100) / 100;
+    const rowKey = `${model}\u0000${tc}\u0000${key}`;
+    // 0h は、同じファイルの同じ品目に 0h 以外の工数・定額があれば採らない（代表判断）
+    const prev = rows.get(rowKey);
+    if (hours === 0 && fixed == null && prev && (prev.hours !== 0 || prev.fixed_price != null)) return;
+    rows.set(rowKey, {
       model_code: model,
+      tc_code: tc,
       part_key: key,
       part_number: cells[1],
-      hours: hours == null ? null : Math.round(hours * 100) / 100,
+      hours,
       fixed_price: fixed == null ? null : Math.round(fixed),
       label: cells[4] || null,
       source_url: cells[5] || null,
@@ -166,7 +207,7 @@ export function dHappyPasteToCsv(text: string, modelCode: string): { csv: string
     while (j >= 0 && !lines[j]) j--;
     // 品名はCSVの区切りと衝突しないよう半角カンマを読点に置き換える
     const label = j >= 0 && !/^項目/.test(lines[j]) ? lines[j].replace(/,/g, "、") : "";
-    out.push([model, m[1].toUpperCase(), hours, "", label, DHAPPY_SOURCE_URL].join(","));
+    out.push([model, m[1].toUpperCase(), hours, "", label, DHAPPY_SOURCE_URL].join(",")); // TC は問わない
   });
   if (out.length === 0 && errors.length === 0) errors.push("品番と取付工数の行が見つかりませんでした");
   return { csv: out.join("\n"), count: out.length, errors };
@@ -174,6 +215,7 @@ export function dHappyPasteToCsv(text: string, modelCode: string): { csv: string
 
 export interface ExistingLaborRow {
   model_code: string;
+  tc_code?: string | null;
   part_key: string;
   hours: number | string | null;
   fixed_price: number | null;
@@ -184,6 +226,7 @@ export interface ExistingLaborRow {
 
 export interface LaborConflict {
   model_code: string;
+  tc_code?: string;
   part_number: string;
   label: string | null;
   current: { hours: number | null; fixed_price: number | null };
@@ -196,17 +239,24 @@ export interface LaborConflict {
  * - 工数・定額が同じ → unchanged（書かない）。ただし品名・出典・品番表記だけが変わった行は
  *   金額に影響しないので metaUpdates として更新する（今回が空欄の項目は既存を消さない）
  * - 値が違う → conflicts（あとから入ってきた値で上書きする。何が変わったかを画面に出すために分ける）
+ *   例外: 今回が工数 0h（定額なし）で登録済みが 0h でなければ、上書きせず unchanged に入れる
+ *   （d-Happy の 0h は「同時装着でパッケージ側に作業が載る」扱いで、単品の工数ではないため。代表判断）
  */
 export function classifyAgainstExisting(rows: LaborCsvRow[], existing: ExistingLaborRow[]) {
   const num = (v: number | string | null) => (v == null ? null : Number(v));
-  const byKey = new Map(existing.map((e) => [`${e.model_code}\u0000${e.part_key}`, e]));
+  const keyOf = (e: { model_code: string; tc_code?: string | null; part_key: string }) =>
+    `${e.model_code}\u0000${e.tc_code ?? ""}\u0000${e.part_key}`;
+  const byKey = new Map(existing.map((e) => [keyOf(e), e]));
   const toInsert: LaborCsvRow[] = [];
   const unchanged: LaborCsvRow[] = [];
   const metaUpdates: LaborCsvRow[] = [];
   const conflicts: { row: LaborCsvRow; conflict: LaborConflict }[] = [];
   for (const r of rows) {
-    const cur = byKey.get(`${r.model_code}\u0000${r.part_key}`);
+    const cur = byKey.get(keyOf(r));
+    const zeroOverNonZero =
+      cur && r.hours === 0 && r.fixed_price == null && (num(cur.hours) !== 0 || cur.fixed_price != null);
     if (!cur) toInsert.push(r);
+    else if (zeroOverNonZero) unchanged.push(r);
     else if (num(cur.hours) === r.hours && cur.fixed_price === r.fixed_price) {
       const changed = (["part_number", "label", "source_url"] as const).some(
         (f) => cur[f] !== undefined && r[f] != null && r[f] !== cur[f], // undefined = 照会していない項目
@@ -224,6 +274,7 @@ export function classifyAgainstExisting(rows: LaborCsvRow[], existing: ExistingL
         row: { ...r, label: r.label ?? cur.label ?? null, source_url: r.source_url ?? cur.source_url ?? null },
         conflict: {
           model_code: r.model_code,
+          tc_code: r.tc_code,
           part_number: r.part_number,
           label: r.label,
           current: { hours: num(cur.hours), fixed_price: cur.fixed_price },
@@ -257,7 +308,7 @@ export function formatImportSummary(r: LaborImportResult): string {
 
 /** 上書き1件の説明（例: GP3 08P18SYY011 登録済み 0.2h → 今回 0.1h）。 */
 export function describeConflict(c: LaborConflict): string {
-  const model = c.model_code === ANY_MODEL ? "型式共通" : c.model_code;
+  const model = (c.model_code === ANY_MODEL ? "型式共通" : c.model_code) + (c.tc_code ? `（TC ${c.tc_code}）` : "");
   return `${model} ${c.part_number}${c.label ? `（${c.label}）` : ""} 登録済み ${fmtValue(c.current)} → 今回 ${fmtValue(c.incoming)}`;
 }
 
@@ -323,11 +374,10 @@ export function findEntryWithFallback(
   modelCode: string,
   key: string,
   alt: string | null | undefined,
+  tcCode?: string | null,
 ): { entry: LaborEntry | null; by: "key" | "alt_key" | null } {
-  const byKey = findEntry(entries, modelCode, key);
-  if (byKey) return { entry: byKey, by: "key" };
-  const byAlt = alt ? findEntry(entries, modelCode, alt) : null;
-  return { entry: byAlt, by: byAlt ? "alt_key" : null };
+  const { entry, index } = findInScopes(entries, modelCode, [key, alt], tcCode);
+  return { entry, by: index === 0 ? "key" : index === 1 ? "alt_key" : null };
 }
 
 /** CSV 1セルに入れる。区切りの半角カンマは全角「，」へ（NFKC で照合キーは元と一致する）。 */
@@ -340,9 +390,12 @@ const csvCell = (s: string | null | undefined) =>
 /**
  * 添付ファイル（Excel / CSV を行に分けたもの）を工数 CSV に変換する。対応する形は2つ:
  * - 工数マスタ形式: 1行目が「型式,品番,…」 → そのまま
- * - d-Happy 収集形式: 見出しに「項目」「取付工数」「車台番号」（任意で「備考」）
+ * - d-Happy 収集形式: 見出しに「項目」「取付工数」「車台番号」（任意で「備考」「TCコード」）
  *   型式は車台番号から取り、同じ型式・品名で工数が食い違うときは後の行（あとから入ってきた値）を採り、
- *   overwritten に出す。工数が空欄の行は errors。
+ *   overwritten に出す。ただし 0h は食い違いでは採らない（0h 以外の値の最後を採る）。工数が空欄の行は errors。
+ *   TC コードの列があれば、TC 問わずの行に加えて TC 別の行も毎回登録する（差が無ければ同じ値）。
+ *   ponytail: TC 列の無いファイルで取り込み直すと、以前の TC 別の行は残る（TC 指定の算出はそちらを引く）。
+ *   天井: 古い TC 行が問題になったら、取込時に同じ (型式, 品番) の TC 行を消す／工数マスタ画面で削除する。
  */
 export function sheetRowsToLaborCsv(rows: string[][]): {
   csv: string;
@@ -360,6 +413,7 @@ export function sheetRowsToLaborCsv(rows: string[][]): {
   }
 
   const [iItem, iHours, iVin, iNote] = [col("項目"), col("取付工数"), col("車台番号"), col("備考")];
+  const iTc = header.findIndex((h) => /^TC(コード)?$/i.test(h));
   if (iItem < 0 || iHours < 0 || iVin < 0) {
     return {
       csv: "",
@@ -370,7 +424,10 @@ export function sheetRowsToLaborCsv(rows: string[][]): {
   }
 
   const errors: string[] = [];
-  const groups = new Map<string, { model: string; item: string; hours: number[]; note: string }>();
+  const groups = new Map<
+    string,
+    { model: string; item: string; rows: { tc: string; hours: number }[]; note: string }
+  >();
   rows.slice(1).forEach((r, i) => {
     const item = (r[iItem] ?? "").trim();
     if (!item) return;
@@ -382,8 +439,8 @@ export function sheetRowsToLaborCsv(rows: string[][]): {
     const hours = Math.round(Number(rawHours) * 100) / 100;
     if (!Number.isFinite(hours) || hours < 0) return void errors.push(`${no}: 取付工数を読めません（${rawHours}）`);
     const key = `${model}\u0000${normalizeKey(item)}`;
-    const g = groups.get(key) ?? { model, item, hours: [], note: "" };
-    g.hours.push(hours);
+    const g = groups.get(key) ?? { model, item, rows: [], note: "" };
+    g.rows.push({ tc: iTc >= 0 ? normalizeTcCode(r[iTc]) : "", hours });
     const note = iNote >= 0 ? (r[iNote] ?? "").trim() : "";
     if (note) g.note = note; // 備考も後の行を採る
     groups.set(key, g);
@@ -391,12 +448,37 @@ export function sheetRowsToLaborCsv(rows: string[][]): {
 
   const lines: string[] = [];
   const overwritten: string[] = [];
+  // 後の行を採る。ただし 0h（同時装着でパッケージ側に作業が載る扱い）は、0h 以外があれば採らない
+  const pick = (hs: number[]) => {
+    const nonZero = hs.filter((h) => h !== 0);
+    return nonZero.length > 0 ? nonZero[nonZero.length - 1] : 0;
+  };
   for (const g of groups.values()) {
-    const last = g.hours[g.hours.length - 1];
-    if (g.hours.some((h) => h !== last))
-      overwritten.push(`${g.model} ${g.item}: ${g.hours.map((h) => `${h}h`).join(" → ")}（後の行の ${last}h を採用）`);
     const label = (csvCell(g.item) + (g.note ? `（${csvCell(g.note)}）` : "")).slice(0, 200);
-    lines.push([g.model, csvCell(g.item), last, "", label, DHAPPY_SOURCE_URL].join(","));
+    const line = (hours: number, tc: string) =>
+      [g.model, csvCell(g.item), hours, "", label, DHAPPY_SOURCE_URL, tc].join(",");
+    const generic = pick(g.rows.map((r) => r.hours));
+    lines.push(line(generic, ""));
+    const byTc = new Map<string, number[]>();
+    for (const r of g.rows) byTc.set(r.tc, [...(byTc.get(r.tc) ?? []), r.hours]);
+    // 同じ TC（TC 無しを含む）の中の食い違いだけを「上書き」として出す。TC で説明できる差は上書きではない
+    for (const [tc, hs] of byTc) {
+      const v = pick(hs);
+      if (hs.some((h) => h !== v))
+        overwritten.push(
+          `${g.model}${tc ? `（TC ${tc}）` : ""} ${g.item}: ${hs.map((h) => `${h}h`).join(" → ")}（${v === hs[hs.length - 1] ? "後の行の" : "0h は採らず"} ${v}h を採用）`,
+        );
+      if (!tc) continue;
+      // TC 列がある品目は TC の行を毎回書く（前回の TC 別の値が残って古いまま引かれないように）。
+      // その TC が 0h しか無いときは 0h を採らず、TC 問わずの値を入れる
+      const tcValue = v === 0 && generic !== 0 ? generic : v;
+      lines.push(line(tcValue, tc));
+      if (tcValue !== generic) {
+        overwritten.push(
+          `${g.model}（TC ${tc}）${g.item}: TC で工数が違うため TC 別に ${v}h（TC 問わずは ${generic}h）`,
+        );
+      }
+    }
   }
   return { csv: lines.join("\n"), count: lines.length, errors, overwritten };
 }
