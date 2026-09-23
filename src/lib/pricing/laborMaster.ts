@@ -166,3 +166,91 @@ export function dHappyPasteToCsv(text: string, modelCode: string): { csv: string
   if (out.length === 0 && errors.length === 0) errors.push("品番と取付工数の行が見つかりませんでした");
   return { csv: out.join("\n"), count: out.length, errors };
 }
+
+export interface ExistingLaborRow {
+  model_code: string;
+  part_key: string;
+  hours: number | string | null;
+  fixed_price: number | null;
+  part_number?: string | null;
+  label?: string | null;
+  source_url?: string | null;
+}
+
+export interface LaborConflict {
+  model_code: string;
+  part_number: string;
+  label: string | null;
+  current: { hours: number | null; fixed_price: number | null };
+  incoming: { hours: number | null; fixed_price: number | null };
+}
+
+/**
+ * 登録しようとする行を、既存マスタと (型式, 品番キー) で突き合わせて振り分ける。
+ * - 未登録 → toInsert
+ * - 工数・定額が同じ → unchanged（書かない）。ただし品名・出典・品番表記だけが変わった行は
+ *   金額に影響しないので metaUpdates として更新する（今回が空欄の項目は既存を消さない）
+ * - 値が違う → conflicts（黙って上書きしない。人が上書きを選んだときだけ更新する）
+ */
+export function classifyAgainstExisting(rows: LaborCsvRow[], existing: ExistingLaborRow[]) {
+  const num = (v: number | string | null) => (v == null ? null : Number(v));
+  const byKey = new Map(existing.map((e) => [`${e.model_code}\u0000${e.part_key}`, e]));
+  const toInsert: LaborCsvRow[] = [];
+  const unchanged: LaborCsvRow[] = [];
+  const metaUpdates: LaborCsvRow[] = [];
+  const conflicts: { row: LaborCsvRow; conflict: LaborConflict }[] = [];
+  for (const r of rows) {
+    const cur = byKey.get(`${r.model_code}\u0000${r.part_key}`);
+    if (!cur) toInsert.push(r);
+    else if (num(cur.hours) === r.hours && cur.fixed_price === r.fixed_price) {
+      const changed = (["part_number", "label", "source_url"] as const).some(
+        (f) => cur[f] !== undefined && r[f] != null && r[f] !== cur[f], // undefined = 照会していない項目
+      );
+      if (!changed) unchanged.push(r);
+      else
+        metaUpdates.push({
+          ...r,
+          label: r.label ?? cur.label ?? null,
+          source_url: r.source_url ?? cur.source_url ?? null,
+        });
+    } else
+      conflicts.push({
+        row: r,
+        conflict: {
+          model_code: r.model_code,
+          part_number: r.part_number,
+          label: r.label,
+          current: { hours: num(cur.hours), fixed_price: cur.fixed_price },
+          incoming: { hours: r.hours, fixed_price: r.fixed_price },
+        },
+      });
+  }
+  return { toInsert, unchanged, metaUpdates, conflicts };
+}
+
+export interface LaborImportResult {
+  inserted?: number;
+  updated?: number;
+  unchanged?: number;
+  conflicts?: LaborConflict[];
+  errors?: string[];
+}
+
+const fmtValue = (v: { hours: number | null; fixed_price: number | null }) =>
+  v.fixed_price != null ? `定額${v.fixed_price.toLocaleString()}円` : `${v.hours ?? "-"}h`;
+
+/** 登録結果を画面表示用の1文にする（管理画面・帳票フォーム共用）。 */
+export function formatImportSummary(r: LaborImportResult): string {
+  const parts = [`新規 ${r.inserted ?? 0} 件`];
+  if (r.updated) parts.push(`上書き ${r.updated} 件`);
+  if (r.unchanged) parts.push(`登録済み（同じ値）${r.unchanged} 件`);
+  if (r.conflicts?.length) parts.push(`値が違うため未登録 ${r.conflicts.length} 件`);
+  if (r.errors?.length) parts.push(`読めない行 ${r.errors.length} 件: ${r.errors.join(" / ")}`);
+  return parts.join("、");
+}
+
+/** 衝突1件の説明（例: GP3 08P18SYY011 登録済み 0.2h → 今回 0.1h）。 */
+export function describeConflict(c: LaborConflict): string {
+  const model = c.model_code === ANY_MODEL ? "型式共通" : c.model_code;
+  return `${model} ${c.part_number}${c.label ? `（${c.label}）` : ""} 登録済み ${fmtValue(c.current)} → 今回 ${fmtValue(c.incoming)}`;
+}

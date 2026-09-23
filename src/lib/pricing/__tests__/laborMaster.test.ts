@@ -1,6 +1,9 @@
 import { describe, it, expect } from "vitest";
 import {
   ANY_MODEL,
+  classifyAgainstExisting,
+  describeConflict,
+  formatImportSummary,
   DHAPPY_SOURCE_URL,
   dHappyPasteToCsv,
   findEntry,
@@ -151,5 +154,72 @@ describe("dHappyPasteToCsv", () => {
   it("型式なし・該当行なしはエラー", () => {
     expect(dHappyPasteToCsv(paste, "").errors).toHaveLength(1);
     expect(dHappyPasteToCsv("ただの文章", "GP3").errors).toHaveLength(1);
+  });
+});
+
+describe("classifyAgainstExisting", () => {
+  const { rows } = parseLaborCsv(
+    ["GP3,08R04SYY001,0.4,,,", "GP3,08P18SYY011,0.1,,,", "JF5,08R04SYY001,0.5,,,", "*,ETCセットアップ,,3300,,"].join(
+      "\n",
+    ),
+  );
+
+  it("同じ型式・品番で同値は書かない、値違いは衝突、型式違いは別物として新規", () => {
+    const r = classifyAgainstExisting(rows, [
+      { model_code: "GP3", part_key: "08R04SYY001", hours: "0.40", fixed_price: null }, // numeric は文字列で来る
+      { model_code: "GP3", part_key: "08P18SYY011", hours: 0.2, fixed_price: null },
+      { model_code: "*", part_key: normalizeKey("ETCセットアップ"), hours: null, fixed_price: 3300 },
+    ]);
+    expect(r.unchanged.map((x) => x.part_key)).toEqual(["08R04SYY001", normalizeKey("ETCセットアップ")]);
+    expect(
+      r.conflicts.map((c) => [c.conflict.part_number, c.conflict.current.hours, c.conflict.incoming.hours]),
+    ).toEqual([["08P18SYY011", 0.2, 0.1]]);
+    expect(r.toInsert.map((x) => [x.model_code, x.part_key])).toEqual([["JF5", "08R04SYY001"]]);
+    expect(r.metaUpdates).toEqual([]);
+  });
+
+  it("値が同じで品名・出典だけ違う行は更新対象、空欄は既存を消さない", () => {
+    const { rows: incoming } = parseLaborCsv("GP3,08R04SYY001,0.4,,ドアバイザー,\nGP3,08P18SYY011,0.1,,,");
+    const r = classifyAgainstExisting(incoming, [
+      {
+        model_code: "GP3",
+        part_key: "08R04SYY001",
+        hours: 0.4,
+        fixed_price: null,
+        part_number: "08R04SYY001",
+        label: null,
+        source_url: "https://x",
+      },
+      {
+        model_code: "GP3",
+        part_key: "08P18SYY011",
+        hours: 0.1,
+        fixed_price: null,
+        part_number: "08P18SYY011",
+        label: "ラバーマット",
+        source_url: null,
+      },
+    ]);
+    expect(r.metaUpdates.map((x) => [x.part_key, x.label, x.source_url])).toEqual([
+      ["08R04SYY001", "ドアバイザー", "https://x"],
+    ]);
+    expect(r.unchanged.map((x) => x.part_key)).toEqual(["08P18SYY011"]);
+    expect(r.conflicts).toEqual([]);
+  });
+});
+
+describe("formatImportSummary / describeConflict", () => {
+  it("件数と衝突内容を文にする", () => {
+    const conflict = {
+      model_code: "GP3",
+      part_number: "08P18SYY011",
+      label: "ラバーマット",
+      current: { hours: 0.2, fixed_price: null },
+      incoming: { hours: 0.1, fixed_price: null },
+    };
+    expect(formatImportSummary({ inserted: 2, unchanged: 1, conflicts: [conflict], errors: [] })).toBe(
+      "新規 2 件、登録済み（同じ値）1 件、値が違うため未登録 1 件",
+    );
+    expect(describeConflict(conflict)).toBe("GP3 08P18SYY011（ラバーマット） 登録済み 0.2h → 今回 0.1h");
   });
 });

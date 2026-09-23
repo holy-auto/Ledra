@@ -5,7 +5,14 @@ import useSWR from "swr";
 import MutationGuard from "@/components/ui/MutationGuard";
 import { parseJsonSafe } from "@/lib/api/safeJson";
 import { fetcher } from "@/lib/swr";
-import { dHappyPasteToCsv, modelCodeFromChassis } from "@/lib/pricing/laborMaster";
+import {
+  dHappyPasteToCsv,
+  describeConflict,
+  formatImportSummary,
+  modelCodeFromChassis,
+  type LaborConflict,
+  type LaborImportResult,
+} from "@/lib/pricing/laborMaster";
 
 /**
  * 工数マスタ（型式 × 品番 → 工数 / 定額）の CSV 一括登録・一覧・削除。
@@ -42,24 +49,24 @@ export default function LaborHoursClient() {
   const [vin, setVin] = useState("");
   const [paste, setPaste] = useState("");
 
-  const doImport = async (body: string = csv, preErrors: string[] = []) => {
+  // 値が違う登録済み行（衝突）。上書きは人が選んだときだけ、同じ CSV を overwrite 付きで送り直す
+  const [conflicts, setConflicts] = useState<{ csv: string; items: LaborConflict[] } | null>(null);
+
+  const doImport = async (body: string = csv, preErrors: string[] = [], overwrite = false) => {
     setBusy(true);
     setMsg(null);
     try {
       const res = await fetch("/api/admin/labor-hours", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ csv: body }),
+        body: JSON.stringify({ csv: body, overwrite }),
       });
-      const j = await parseJsonSafe<{ imported?: number; errors?: string[]; message?: string }>(res);
+      const j = await parseJsonSafe<LaborImportResult & { message?: string }>(res);
       if (!res.ok) throw new Error(j?.message ?? `HTTP ${res.status}`);
-      const errs = [...preErrors, ...(j?.errors ?? [])];
-      setMsg({
-        text:
-          `${j?.imported ?? 0} 件を登録・更新しました` +
-          (errs.length ? `。スキップ ${errs.length} 件: ${errs.join(" / ")}` : ""),
-        ok: errs.length === 0,
-      });
+      const errors = [...preErrors, ...(j?.errors ?? [])];
+      const items = j?.conflicts ?? [];
+      setMsg({ text: formatImportSummary({ ...j, errors }), ok: errors.length === 0 && items.length === 0 });
+      setConflicts(items.length > 0 ? { csv: body, items } : null);
       setCsv("");
       setPaste("");
       mutate();
@@ -95,6 +102,34 @@ export default function LaborHoursClient() {
         <div role="status" className={`text-sm ${msg.ok ? "text-success" : "text-danger"}`}>
           {msg.text}
         </div>
+      )}
+
+      {conflicts && (
+        <MutationGuard>
+          <section className="glass-card space-y-3 border border-warning p-5">
+            <div className="text-sm font-semibold text-primary">
+              登録済みと値が違う行が {conflicts.items.length} 件あります（まだ上書きしていません）
+            </div>
+            <ul className="list-disc space-y-1 pl-5 text-xs text-secondary">
+              {conflicts.items.map((c) => (
+                <li key={`${c.model_code}-${c.part_number}`}>{describeConflict(c)}</li>
+              ))}
+            </ul>
+            <div className="flex gap-3">
+              <button
+                type="button"
+                className="btn-primary"
+                disabled={busy}
+                onClick={() => void doImport(conflicts.csv, [], true)}
+              >
+                今回の値で上書きする
+              </button>
+              <button type="button" className="btn-ghost" onClick={() => setConflicts(null)}>
+                登録済みの値を残す
+              </button>
+            </div>
+          </section>
+        </MutationGuard>
       )}
 
       <MutationGuard>
