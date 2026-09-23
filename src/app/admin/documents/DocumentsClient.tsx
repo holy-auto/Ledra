@@ -333,8 +333,9 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
           onSaved={(created) => {
             // 作成後はそのまま書類詳細へ遷移し、確認・編集・PDF出力へ繋げる。
             // （どの書類作成画面から来ても、作成→詳細の導線を揃える）
+            // create=1 の履歴を詳細で置き換え、「戻る」で空の作成画面（と AI 起票の再実行）に戻らないようにする
             mutate();
-            router.push(`/admin/documents/${created.id}`);
+            router.replace(`/admin/documents/${created.id}`);
           }}
           onCancel={() => setShowForm(false)}
         />

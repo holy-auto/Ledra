@@ -341,6 +341,8 @@ export default function DocumentForm({
   useEffect(() => {
     if (!storageKey || restoreDoneRef.current) return;
     restoreDoneRef.current = true;
+    // 保存キーが決まる前に人が入力し始めていたら、古い下書きで上書きしない
+    if (touchedFromRef.current !== null) return;
     const stored = loadDraft<Partial<Snapshot>>(storageKey);
     if (!stored) return;
     // 古い保存形式で欠けた項目は既定値で補う
@@ -348,7 +350,8 @@ export default function DocumentForm({
     applySnapshot(restored);
     refillRef.current = { customer: !!restored.formCustomerId, branch: !!restored.formBranchId };
     draftRestoredRef.current = true;
-    touchedFromRef.current = "";
+    // 復元しただけでは保存し直さない（保存時刻が延びて 24h の期限が伸び続けるのを防ぐ）。
+    // 人が操作した時点から差分を保存する。
     setRestoredAt(stored.savedAt);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [storageKey]);
@@ -855,6 +858,8 @@ export default function DocumentForm({
 
   // ─── Submit ───
   const handleSubmit = async () => {
+    // プリフィル・AI 起票だけの状態で送信して失敗しても、入力を失わないよう先に退避する
+    if (storageKey) saveDraft(storageKey, JSON.parse(persistJson) as Partial<Snapshot>);
     if (isStaffInvoice && !formStaffMemberId) {
       setSaveMsg({ text: "外注職人を選択してください", ok: false });
       return;

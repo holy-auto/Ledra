@@ -146,6 +146,63 @@ describe("DocumentForm の入力途中データ自動保存", () => {
     expect(screen.getByDisplayValue("月末締め翌月末払い")).toBeTruthy();
   });
 
+  it("保存キーが決まる前に入力し始めたら、古い下書きで上書きしない", async () => {
+    saveDraft(KEY, { formNote: "古い下書き" });
+    let releaseMe: () => void = () => {};
+    const meGate = new Promise<void>((r) => (releaseMe = r));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (String(url).startsWith("/api/admin/me")) {
+          await meGate;
+          return new Response(JSON.stringify(ME), { status: 200 });
+        }
+        return new Response("{}", { status: 200 });
+      }),
+    );
+    renderForm(<DocumentForm mode="create" onSaved={noop} onCancel={noop} />);
+    const note = screen.getAllByRole("textbox").at(-1)!;
+    fireEvent.change(note, { target: { value: "新しく入力中" } });
+    releaseMe();
+    await settle();
+    expect(screen.getByDisplayValue("新しく入力中")).toBeTruthy();
+    expect(screen.queryByText(/前回の入力内容を復元しました/)).toBeNull();
+  });
+
+  it("開いただけでは保存時刻を更新しない（24h の期限を延ばさない）", async () => {
+    const savedAt = Date.now() - 60_000;
+    saveDraft(KEY, { formNote: "既存の下書き" }, savedAt);
+    renderForm(<DocumentForm mode="create" onSaved={noop} onCancel={noop} />);
+    await waitFor(() => expect(screen.getByText(/前回の入力内容を復元しました/)).toBeTruthy());
+    await settle();
+    expect(loadDraft(KEY)?.savedAt).toBe(savedAt);
+  });
+
+  it("プリフィルだけの状態で「下書き作成」が失敗しても、入力は端末に残る", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        const u = String(url);
+        if (u.startsWith("/api/admin/me")) return new Response(JSON.stringify(ME), { status: 200 });
+        if (u.startsWith("/api/admin/customers"))
+          return new Response(JSON.stringify({ customers: [{ id: "c-1", name: "山田商事", honorific: "御中" }] }));
+        if (u.startsWith("/api/admin/documents") && init?.method === "POST")
+          return new Response(JSON.stringify({ message: "boom" }), { status: 500 });
+        return new Response("{}", { status: 200 });
+      }),
+    );
+    renderForm(<DocumentForm mode="create" prefillCustomerId="c-1" onSaved={noop} onCancel={noop} />);
+    await waitFor(() =>
+      expect((screen.getByRole("option", { name: "山田商事" }) as HTMLOptionElement).selected).toBe(true),
+    );
+    fireEvent.click(screen.getByText("下書き作成"));
+    await waitFor(() => expect(screen.getByText("boom")).toBeTruthy());
+    expect(
+      loadDraft<{ formCustomerId: string }>(draftKey({ tenantId: "t-1", userId: "u-1", customerId: "c-1" }))?.data
+        .formCustomerId,
+    ).toBe("c-1");
+  });
+
   it("edit モードでは下書きを復元しない", async () => {
     saveDraft(KEY, { formNote: "create の下書き" });
     renderForm(
