@@ -220,7 +220,8 @@ export function classifyAgainstExisting(rows: LaborCsvRow[], existing: ExistingL
         });
     } else
       conflicts.push({
-        row: r,
+        // 上書きしても、今回が空欄の品名・出典は既存を残す（品名での照合が外れないように）
+        row: { ...r, label: r.label ?? cur.label ?? null, source_url: r.source_url ?? cur.source_url ?? null },
         conflict: {
           model_code: r.model_code,
           part_number: r.part_number,

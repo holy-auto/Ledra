@@ -57,6 +57,7 @@ export default function LaborHoursClient() {
   // 添付ファイル（Excel / CSV）を行に分け、工数 CSV に変換して同じ登録処理に流す
   const importFile = async (file: File) => {
     setMsg(null);
+    setOverwritten([]);
     try {
       let rows: string[][];
       if (/\.xlsx$/i.test(file.name)) {
@@ -90,6 +91,7 @@ export default function LaborHoursClient() {
   const doImport = async (body: string = csv, preErrors: string[] = [], preOverwritten: string[] = []) => {
     setBusy(true);
     setMsg(null);
+    setOverwritten([]);
     try {
       const res = await fetch("/api/admin/labor-hours", {
         method: "POST",
@@ -199,7 +201,8 @@ export default function LaborHoursClient() {
           <p className="text-xs text-secondary">
             Excel（.xlsx）か CSV を選ぶと、そのまま登録します。対応する形は2つ: 「{CSV_HEADER}」の列、または d-Happy
             収集表（項目・取付工数・車台番号の列。型式は車台番号から取ります）。
-            登録済みの型式・品番と値が違う行や、ファイル内で工数が食い違う行は、あとから入ってきた値で上書きし一覧に出します。
+            登録済みの型式・品番と値が違う行は今回の値で上書きし、一覧に出します。同じファイル内で同じ型式・品番が複数あるときは後の行を採ります（d-Happy
+            収集表は食い違いも一覧に出します）。
           </p>
           <label
             className={`inline-flex cursor-pointer items-center gap-2 rounded-lg border border-border-default px-3 py-2 text-sm text-secondary hover:border-border-strong ${

@@ -182,6 +182,23 @@ describe("classifyAgainstExisting", () => {
     expect(r.metaUpdates).toEqual([]);
   });
 
+  it("値違いで上書きする行も、今回が空欄の品名・出典は既存を残す", () => {
+    const { rows: incoming } = parseLaborCsv("GP3,08P18SYY011,0.1,,,");
+    const r = classifyAgainstExisting(incoming, [
+      {
+        model_code: "GP3",
+        part_key: "08P18SYY011",
+        hours: 0.2,
+        fixed_price: null,
+        label: "ラバーマット",
+        source_url: "https://sfh.honda.co.jp/T001",
+      },
+    ]);
+    expect(r.conflicts.map((c) => [c.row.hours, c.row.label, c.row.source_url])).toEqual([
+      [0.1, "ラバーマット", "https://sfh.honda.co.jp/T001"],
+    ]);
+  });
+
   it("値が同じで品名・出典だけ違う行は更新対象、空欄は既存を消さない", () => {
     const { rows: incoming } = parseLaborCsv("GP3,08R04SYY001,0.4,,ドアバイザー,\nGP3,08P18SYY011,0.1,,,");
     const r = classifyAgainstExisting(incoming, [
