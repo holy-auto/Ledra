@@ -248,6 +248,13 @@ PR #1120 が立った）、有効化はリポジトリ全体の権限を広げ�
   - 本番証明書スイートに `afterAll` が無く `C2PA_MODE` を復元していなかった。
 - 検証: CI 並列チェック8本すべて通過（595 files / 5827 passed | 1 skipped）。
   1 skipped は上記の本番証明書スイート。
+- **main へのマージは 2026-09-23 00:07 UTC**（`e743897`・squash、PR #1115）。実装は 09-21 で、
+  マージ判断待ちに約2日かかった。その間に **`main` を4回取り込んでいる**
+  （#1111/#1112 → #1116/#1117/#1118 → #1121/#1123 → #1125。`git log --merges` で計数）。
+  衝突はすべて `docs/context/` の追記どうしで、両側を残して解消した。
+  取り込みのたびに `scripts/ci-parallel-checks.sh` を手元で全通過させてから push している
+  （最後の実測は 597 files / 5854 passed | 1 skipped）。
+
 ## 2026-09-21 Field Test のエクスポートが日本語プロジェクト名で常に500になるのを修正（RFC 5987） (branch claude/merchant-revenue-sharing-22tuq3)
 - 内容: 製造業向け Field Test の CSV エクスポート（`manufacturer/field-test/export/csv`）と PDF レポート（`.../report`）が、`Content-Disposition` の `filename="..."` に日本語プロジェクト名をそのまま入れており、Node/undici の ByteString 変換（コードポイント>255）で throw → **日本語名のプロジェクトでは常に 500**（本コードのプロジェクト名は基本日本語なので事実上いつも失敗）。
 - 修正: `src/lib/csv/serialize.ts` に共有ヘルパ `contentDispositionAttachment()` を追加し、**ASCII フォールバック `filename=` ＋ RFC 5987 `filename*=UTF-8''<percent-encoded>`** の両方を出す（ヘッダインジェクション対策の "・改行除去も維持）。`csvDownloadHeaders` と PDF ルートの両方をこの1関数に集約（PDF ルートは CJK を残す独自サニタイザを廃止）。
