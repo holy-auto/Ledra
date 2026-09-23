@@ -1,7 +1,13 @@
 import { NextRequest, after } from "next/server";
 import { resolveMobileCaller } from "@/lib/auth/mobileAuth";
 import { apiJson, apiUnauthorized, apiValidationError, apiInternalError } from "@/lib/api/response";
-import { listTenantApplications, createApplication, getRecruitmentDetail } from "@/lib/fieldTest/tenantQueries";
+import {
+  listTenantApplications,
+  createApplication,
+  getRecruitmentDetail,
+  applicationInputSchema,
+  isRecruitmentExpired,
+} from "@/lib/fieldTest/tenantQueries";
 import { notifyFtTenant } from "@/lib/fieldTest/ftNotify";
 
 export const dynamic = "force-dynamic";
@@ -23,15 +29,18 @@ export async function POST(request: NextRequest) {
     const caller = await resolveMobileCaller(request);
     if (!caller) return apiUnauthorized();
 
-    const body = await request.json();
-    const recruitmentId = body.recruitment_id as string | undefined;
-    const notes = body.notes as string | undefined;
-
-    if (!recruitmentId) return apiValidationError("recruitment_id は必須です。");
+    const parsed = applicationInputSchema.safeParse(await request.json().catch(() => ({})));
+    if (!parsed.success) {
+      return apiValidationError(parsed.error.issues[0]?.message ?? "入力に誤りがあります。");
+    }
+    const { recruitment_id: recruitmentId, notes } = parsed.data;
 
     const rec = await getRecruitmentDetail(caller.supabase, recruitmentId);
     if (!rec) return apiValidationError("募集が見つかりません。");
     if (!rec.is_open) return apiValidationError("この募集は締め切られています。");
+    if (isRecruitmentExpired(rec.deadline as string | null)) {
+      return apiValidationError("この募集は締め切りを過ぎています。");
+    }
 
     const application = await createApplication(caller.supabase, {
       recruitment_id: recruitmentId,
