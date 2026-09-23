@@ -183,6 +183,7 @@ export default function DocumentForm({
   const [formIssuedAt, setFormIssuedAt] = useState(initial?.issued_at ?? new Date().toISOString().slice(0, 10));
   const [formDueDate, setFormDueDate] = useState(initial?.due_date ?? "");
   const [formNote, setFormNote] = useState(initial?.note ?? "");
+  const lastOcrNoteRef = useRef<string | null>(null);
   const [formItems, setFormItems] = useState<DocumentItem[]>(initialItems);
   const [formTaxRate, setFormTaxRate] = useState(initial?.tax_rate ?? 10);
   const [formIsTaxInclusive, setFormIsTaxInclusive] = useState(initialIsTaxInclusive);
@@ -1140,7 +1141,14 @@ export default function DocumentForm({
                 if (header.due_date && !formDueDate) setFormDueDate(header.due_date);
                 if (header.delivery_date && !formDeliveryDate) setFormDeliveryDate(header.delivery_date);
                 if (header.subject && !formSubject) setFormSubject(header.subject);
-                if (header.note) setFormNote((prev) => (prev ? `${prev}\n${header.note}` : header.note!));
+                // 撮り直し時に前回OCR分の備考が重複・残留しないよう、前回分を差し替える
+                const prevOcrNote = lastOcrNoteRef.current;
+                lastOcrNoteRef.current = header.note;
+                setFormNote((prev) => {
+                  const base = prevOcrNote ? prev.replace(prevOcrNote, "").trim() : prev;
+                  if (!header.note) return base;
+                  return base ? `${base}\n${header.note}` : header.note;
+                });
                 // 税込価格の書類を税抜扱いで取り込むと二重課税になるため、判定できたときは合わせる
                 if (header.is_tax_inclusive != null) setFormIsTaxInclusive(header.is_tax_inclusive);
               }}
