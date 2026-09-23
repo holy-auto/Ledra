@@ -7,79 +7,50 @@
 export const TARGET_BYTES = 3.5 * 1024 * 1024; // 3.5 MB target after compression
 const MAX_DIMENSION = 2048; // scale long side down to 2048 px before compressing
 
-// Compress a File (already fully read into memory) to JPEG via Canvas.
+// Compress a File to JPEG via Canvas.
 // Scales dimensions then tries quality 0.85 → 0.70 → 0.55 until under TARGET_BYTES.
-// iOS Safari natively decodes HEIC in Canvas (iOS 11+).
+// createImageBitmap で直接デコードする（object URL を img.src に流さず、ユーザー選択
+// ファイル由来の値が URL sink に到達する経路を作らない。PartInstallClient と同じ方式）。
 export async function compressToJpeg(file: File): Promise<File | null> {
   if (file.size <= TARGET_BYTES) return file;
 
-  return new Promise((resolve) => {
-    const objectUrl = URL.createObjectURL(file);
-    const img = document.createElement("img");
+  let bmp: ImageBitmap | null = null;
+  try {
+    bmp = await createImageBitmap(file);
+    let w = bmp.width;
+    let h = bmp.height;
+    if (!w || !h) return null;
 
-    img.onload = () => {
-      URL.revokeObjectURL(objectUrl);
-      try {
-        let w = img.naturalWidth;
-        let h = img.naturalHeight;
-        if (!w || !h) {
-          resolve(null);
-          return;
-        }
-
-        if (w > MAX_DIMENSION || h > MAX_DIMENSION) {
-          if (w >= h) {
-            h = Math.round((h * MAX_DIMENSION) / w);
-            w = MAX_DIMENSION;
-          } else {
-            w = Math.round((w * MAX_DIMENSION) / h);
-            h = MAX_DIMENSION;
-          }
-        }
-
-        const canvas = document.createElement("canvas");
-        canvas.width = w;
-        canvas.height = h;
-        const ctx = canvas.getContext("2d");
-        if (!ctx) {
-          resolve(null);
-          return;
-        }
-        ctx.drawImage(img, 0, 0, w, h);
-
-        const newName = file.name.replace(/\.[^.]+$/, ".jpg") || "photo.jpg";
-        const qualities = [0.85, 0.7, 0.55];
-        let qi = 0;
-
-        const tryNext = () => {
-          canvas.toBlob(
-            (blob) => {
-              if (!blob) {
-                resolve(null);
-                return;
-              }
-              if (blob.size <= TARGET_BYTES || qi >= qualities.length - 1) {
-                resolve(new File([blob], newName, { type: "image/jpeg" }));
-              } else {
-                qi++;
-                tryNext();
-              }
-            },
-            "image/jpeg",
-            qualities[qi],
-          );
-        };
-
-        tryNext();
-      } catch {
-        resolve(null);
+    if (w > MAX_DIMENSION || h > MAX_DIMENSION) {
+      if (w >= h) {
+        h = Math.round((h * MAX_DIMENSION) / w);
+        w = MAX_DIMENSION;
+      } else {
+        w = Math.round((w * MAX_DIMENSION) / h);
+        h = MAX_DIMENSION;
       }
-    };
+    }
 
-    img.onerror = () => {
-      URL.revokeObjectURL(objectUrl);
-      resolve(null);
-    };
-    img.src = objectUrl;
-  });
+    const canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return null;
+    ctx.drawImage(bmp, 0, 0, w, h);
+
+    const newName = file.name.replace(/\.[^.]+$/, ".jpg") || "photo.jpg";
+    const qualities = [0.85, 0.7, 0.55];
+    for (let qi = 0; qi < qualities.length; qi++) {
+      const blob = await new Promise<Blob | null>((r) => canvas.toBlob(r, "image/jpeg", qualities[qi]));
+      if (!blob) return null;
+      if (blob.size <= TARGET_BYTES || qi === qualities.length - 1) {
+        return new File([blob], newName, { type: "image/jpeg" });
+      }
+    }
+    return null;
+  } catch {
+    return null;
+  } finally {
+    bmp?.close();
+  }
 }
