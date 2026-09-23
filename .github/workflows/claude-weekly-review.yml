@@ -39,7 +39,7 @@ jobs:
       - name: Run Claude security review
         uses: anthropics/claude-code-action@v1
         with:
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           prompt: |
             Perform a thorough security review of this codebase against the
             main branch. Focus on the OWASP Top 10 and items commonly missed
@@ -70,7 +70,7 @@ jobs:
       - name: Run Claude simplify pass
         uses: anthropics/claude-code-action@v1
         with:
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           prompt: |
             Audit the codebase for dead code, redundant abstractions, and
             duplicated logic that could be consolidated. Look at code added
@@ -96,7 +96,7 @@ jobs:
       - name: Run Claude code review
         uses: anthropics/claude-code-action@v1
         with:
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           prompt: |
             Review code merged to main in the last 7 days
             (`git log --since='7 days ago' main`) for likely bugs, broken
