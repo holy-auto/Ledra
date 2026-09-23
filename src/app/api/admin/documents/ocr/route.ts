@@ -1,8 +1,9 @@
 /**
  * POST /api/admin/documents/ocr
  *
- * 仕入先請求書 / 外注請求書の写真を Vision OCR で読み取り、帳票フォーム (DocumentForm) の
- * 明細・金額の手打ちを減らす。結果は DB に永続化しない（抽出値は編集可能な下書きとして
+ * 仕入先請求書 / 外注請求書、取引先ごとに様式の違う発注書・依頼書・商談メモの写真を
+ * Vision OCR で読み取り、帳票フォーム (DocumentForm) の明細・件名・備考の手打ちを減らす。
+ * 結果は DB に永続化しない（抽出値は編集可能な下書きとして
  * フォームに差し込み、金額の確定・送付は人が行う＝壁3）。
  *
  * Body: multipart/form-data
@@ -13,7 +14,7 @@
 import { withCaller } from "@/lib/api/withCaller";
 import { apiOk, apiValidationError, apiInternalError } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
-import { extractInvoice, toDocumentItems } from "@/lib/ai/invoiceOcr";
+import { extractInvoice, toDocumentItems, toDraftHeader } from "@/lib/ai/invoiceOcr";
 import { loadAiAutomationSettings, isSourceAllowed } from "@/lib/ai/automation/policy";
 import { startAiRouteUsage } from "@/lib/ai/recordRouteUsage";
 
@@ -80,6 +81,8 @@ export const POST = withCaller(
           issue_date: extract.issue_date,
           due_date: extract.due_date,
           total_jpy: extract.total_jpy,
+          delivery_date: extract.delivery_date,
+          ...toDraftHeader(extract),
         },
       });
     } catch (err) {

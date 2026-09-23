@@ -1131,12 +1131,18 @@ export default function DocumentForm({
         <div className="flex items-baseline justify-between gap-2 flex-wrap">
           <div className="text-xs font-semibold text-muted tracking-[0.18em]">明細項目</div>
           <div className="flex items-center gap-3">
-            {/* 仕入先/外注請求書の写真からOCRで明細を取り込む（下書き・確定は人）。 */}
+            {/* 請求書・発注書・依頼書の写真からOCRで明細等を取り込む（下書き・確定は人）。
+                入力済みの欄は上書きしない。 */}
             <InvoiceOcrButton
               disabled={saving}
               onExtracted={(ocrItems, header) => {
                 setFormItems(recalcSubtotals(ocrItems.length > 0 ? ocrItems : [emptyItem()]));
                 if (header.due_date && !formDueDate) setFormDueDate(header.due_date);
+                if (header.delivery_date && !formDeliveryDate) setFormDeliveryDate(header.delivery_date);
+                if (header.subject && !formSubject) setFormSubject(header.subject);
+                if (header.note) setFormNote((prev) => (prev ? `${prev}\n${header.note}` : header.note!));
+                // 税込価格の書類を税抜扱いで取り込むと二重課税になるため、判定できたときは合わせる
+                if (header.is_tax_inclusive != null) setFormIsTaxInclusive(header.is_tax_inclusive);
               }}
             />
             <div className="text-[11px] text-muted">{formIsTaxInclusive ? "単価は税込で入力" : "単価は税抜で入力"}</div>
