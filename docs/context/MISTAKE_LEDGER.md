@@ -78,12 +78,38 @@
 | **K. 新しいコード経路を、それが実際に呼ばれる文脈で動かして試していない** | 単体の変更としては正しいのに、それが実際に発火する呼び出し元・エラー経路まで通して動かしていない。ユニットテストがあっても「起こりうる呼び出し順」を再現していなければ検出できない | **M-067** |
 | **L. 既定を開いたまま守る（除外リスト）** | 「見せないもの」を並べて塞ぐ。塞いだ時点では実データと一致していても、**既定が公開**なので、値が増えるたびに漏れる。**母集団を数えていない**のが根（「今あるもの」を実測して、「入りうるもの」を数えていない）。外向けの経路では許可リストにして、知らないものを既定で落とす | **M-077** |
 | **E. 手元とCIの差を忘れる** | 手元では通るのに CI だけ落ちる構成を作る。書いた本人には見えない。**リポジトリが用意した「CIと同じ検査」を走らせず、思い出せる検査だけ個別に走らせる**のも同じ | M-009, **M-030**, **M-084**, **M-089**, **M-094**, **M-20260922-pushed-without-ci-parallel-checks**, **M-20260923-schema-snapshot-missed-again** |
-| **F. 確認できる事実を確認しない** | 環境から1コマンドで確かめられる事実（今日の日付・件数・バージョン・設定ファイルの中身・**CI が実際に走ったか**・**同じ問題を直している PR が既に開いていないか**）を、確かめずに書く。**自分がこれから追記しようとしているログファイル自身に、既に矛盾する記述が無いか確認しない**のも同じ。**本番の実データをそのまま調査ログ・事業ログに転記する**のも同じ（PIIのマスクを確認事実として扱わない） | M-011, M-014, M-015, M-016, **M-018**, **M-021**, **M-026**, **M-027**, M-034, M-037, **M-045**, **M-049**, **M-053**, **M-059**, **M-070**, **M-071**, **M-073**, **M-080**, **M-081**, **M-082**, **M-086**, **M-088**, **M-090**, **M-20260915-dupe-count-from-truncated-grep**, **M-20260918-called-it-untraceable-without-checking-open-prs**, **M-20260919-said-no-open-pr-has-it-again**, **M-20260919-hand-applied-ahead-of-a-pending-migration**, **M-20260919-skipped-the-check-i-had-just-written**, **M-20260919-green-ci-read-as-production-applied**, **M-20260919-credited-my-own-dirty-tree-to-another-session**, **M-20260919-wrote-a-replay-count-i-never-read**, **M-20260920-hashed-a-file-i-never-opened**, **M-20260920-counted-12-as-11-again**, **M-20260921-reported-a-subtraction-as-a-measurement**, **M-20260921-two-samples-read-as-all**, **M-20260921-restated-my-own-summary-as-fact**, **M-20260922-said-typegen-red-on-every-merge**, **M-20260922-said-ten-checks-without-listing-them** |
+| **F. 確認できる事実を確認しない** | 環境から1コマンドで確かめられる事実（今日の日付・件数・バージョン・設定ファイルの中身・**CI が実際に走ったか**・**同じ問題を直している PR が既に開いていないか**）を、確かめずに書く。**自分がこれから追記しようとしているログファイル自身に、既に矛盾する記述が無いか確認しない**のも同じ。**本番の実データをそのまま調査ログ・事業ログに転記する**のも同じ（PIIのマスクを確認事実として扱わない） | M-011, M-014, M-015, M-016, **M-018**, **M-021**, **M-026**, **M-027**, M-034, M-037, **M-045**, **M-049**, **M-053**, **M-059**, **M-070**, **M-071**, **M-073**, **M-080**, **M-081**, **M-082**, **M-086**, **M-088**, **M-090**, **M-20260915-dupe-count-from-truncated-grep**, **M-20260918-called-it-untraceable-without-checking-open-prs**, **M-20260919-said-no-open-pr-has-it-again**, **M-20260919-hand-applied-ahead-of-a-pending-migration**, **M-20260919-skipped-the-check-i-had-just-written**, **M-20260919-green-ci-read-as-production-applied**, **M-20260919-credited-my-own-dirty-tree-to-another-session**, **M-20260919-wrote-a-replay-count-i-never-read**, **M-20260920-hashed-a-file-i-never-opened**, **M-20260920-counted-12-as-11-again**, **M-20260921-reported-a-subtraction-as-a-measurement**, **M-20260921-two-samples-read-as-all**, **M-20260921-restated-my-own-summary-as-fact**, **M-20260922-said-typegen-red-on-every-merge**, **M-20260922-said-ten-checks-without-listing-them**, **M-20260923-git-add-all-swept-a-formatted-generated-file** |
 | **G. 構造テストを振る舞いの証明として扱う** | ソースを grep して「その語が書かれている」を確かめただけで、**値が通るか**を確かめていない。テストは緑、機能は壊れている。**ファイルに在ること**を、**その経路が実際に動く/覆われている**ことの証拠として扱うのも同じ | **M-033**, **M-20260921-file-content-read-as-behavior** |
 | **H. 未確定の前提の上に作る** | 依頼者しか決められない前提を確認しないまま、その前提が変われば丸ごと消える実装を先に作る | **M-043** |
 | **I. 前提が途中で変わったのに読み直さない** | 判断したときは正しかった観察が、その後の `main` 取り込みなどで無効になっているのに、変更を見直さない。**衝突しなかったファイルにこそ潜む** | **M-047**, **M-051** |
 
 ---
+
+## M-20260923-git-add-all-swept-a-formatted-generated-file 生成ファイルを `git add -A` で巻き込み、3万行の差分を PR に載せた（2026-09-23・型 F）
+
+**Before**: main が動くたびに `git merge` → `git add -A && git commit --no-edit` でコンフリクトを解消していた。
+コミット後は `ci-parallel-checks.sh` と `check:migrations` を回し、どちらも緑だったので push した。
+検証が通った＝差分は意図どおり、と読んでいた。
+
+**After**: PR の `additions` が 328 → **16,482** に跳ねていた。マージ結果に含まれた
+`src/types/db.generated.ts`（18,000 行超の生成ファイル）を `git add -A` が staged にし、
+pre-commit の `npx lint-staged`（Prettier）が整形して **32,338 行**の差分を作っていた。
+中身はセミコロンの有無と改行位置だけで、スキーマは1文字も変わっていない
+（本 PR の変更は CHECK 制約のみで生成型に影響しない）。main の版に戻して `--no-verify` でコミットし、
+`git diff --stat origin/main...HEAD` が 8 ファイル・328 insertions に戻ったことを実測した。
+
+**なぜ気づけなかったか**: **検査が緑であることを、差分が意図どおりであることの証明として扱った。**
+lint も tsc も「整形された生成ファイル」を正しいと判定する —— 整形は壊れていないので当然通る。
+CI は「この差分は出すべきか」を一度も問わない。加えて `git add -A` は打った時点では
+何を staged にしたか見えず、hook がその後さらに書き換えるので、**コミットが出来上がるまで
+中身が確定しない**。自分が作った成果物を、送る前に1度も見ていなかった。
+
+**再発防止**: 仕組み無し（判断に依存）。習慣として:
+- **push の直前に `git diff --stat origin/main...HEAD` を打ち、ファイル数と行数を読む。**
+  PR 本文に書いた件数と合わない、あるいは触っていないファイルが居たら止まる。
+- コンフリクト解消では `git add -A` を使わず、**コンフリクトしたファイルだけを名指しで add する**。
+- 生成ファイル（`*.generated.*`・lock ファイル）が差分に現れたら、
+  自分がそれを変える変更をしたかを確認する。していなければ `git checkout origin/main -- <path>` で戻す。
 
 ## M-20260923-fixed-url-length-in-one-route-not-its-sibling 品名を URL に並べる照会を工賃計算だけ直し、登録 API に残して本番で 400 を出した（2026-09-23・型 J）
 
