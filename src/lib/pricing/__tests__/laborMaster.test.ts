@@ -340,7 +340,7 @@ describe("sheetRowsToLaborCsv", () => {
       ["WR-V", "Z", "フロアマット", "0.2", "1204166", "", ""],
     ]);
     expect(r.count).toBe(3);
-    expect(r.overwritten).toEqual(["JF5 ETC2.0車載器 取付アタッチメント: 1.4h → 0h（後の行の 1.4h を採用）"]);
+    expect(r.overwritten).toEqual(["JF5 ETC2.0車載器 取付アタッチメント: 1.4h → 0h（0h は採らず 1.4h を採用）"]);
     expect(r.errors).toHaveLength(2);
     const { rows, errors } = parseLaborCsv(r.csv);
     expect(errors).toEqual([]);
@@ -382,6 +382,26 @@ describe("sheetRowsToLaborCsv", () => {
     expect(findEntry(entries, "JF5", "ETC")?.hours).toBe(1.1);
     expect(findEntry(entries, "JF5", "マット", "JF5-110")?.hours).toBe(0.2);
     expect(findEntry(entries, "JF5", "バイザー", "JF5-120")?.hours).toBe(0.4);
+  });
+
+  it("TC 指定時は、TC 専用の行を品名で引けるなら品番で当たる TC 問わずの行より優先する", () => {
+    const entries = [
+      { ...entry("JF5", "08E25PH0C01", 1.1), tc_code: "" },
+      { ...entry("JF5", normalizeKey("ETC"), 1.2), tc_code: "JF5110", label: "ETC" },
+    ];
+    expect(findEntryWithFallback(entries, "JF5", "08E25PH0C01", "ETC", "JF5-110")).toMatchObject({
+      by: "alt_key",
+      entry: { hours: 1.2 },
+    });
+    expect(findEntryWithFallback(entries, "JF5", "08E25PH0C01", "ETC")).toMatchObject({
+      by: "key",
+      entry: { hours: 1.1 },
+    });
+  });
+
+  it("型式共通に TC は付けられない／0h 判定は丸めた後の値で", () => {
+    expect(parseLaborCsv("*,ETCセットアップ,,3300,,,JF5-110").errors).toHaveLength(1);
+    expect(parseLaborCsv("JF5,A,1.2,,,\nJF5,A,0.001,,,").rows.map((x) => x.hours)).toEqual([1.2]);
   });
 
   it("工数マスタ形式の同じ品目の重複でも、0h 以外があれば 0h を採らない", () => {

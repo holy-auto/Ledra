@@ -114,7 +114,11 @@ export default function LaborQuoteButton({
     if (rows.length === 0) return setMsg("登録する行の工数（時間）を入力してください");
     if (rows.some((r) => r.key.includes(",")))
       return setMsg("品番・品名に半角カンマがある行は工数マスタ画面から登録してください");
-    const csv = rows.map((r) => [modelCode, r.key, r.hours, "", r.label.replace(/,/g, "、"), ""].join(",")).join("\n");
+    // TC を入れて計算した行は、その TC の工数として登録する（他の TC に広げない）
+    const tc = tcCode.trim().replace(/,/g, "");
+    const csv = rows
+      .map((r) => [modelCode, r.key, r.hours, "", r.label.replace(/,/g, "、"), "", tc].join(","))
+      .join("\n");
     setBusy(true);
     try {
       const res = await fetch("/api/admin/labor-hours", {
@@ -165,7 +169,8 @@ export default function LaborQuoteButton({
       {missing.length > 0 && (
         <span className="flex w-full flex-col gap-1 rounded-lg border border-border-default p-2">
           <span className="text-[11px] text-muted">
-            工数未登録の行（型式 {modelCode || "未入力"}）。工数を入れて登録すると次回から自動で算出します。
+            工数未登録の行（型式 {modelCode || "未入力"}
+            {tcCode.trim() ? ` / TC ${tcCode.trim()}` : ""}）。工数を入れて登録すると次回から自動で算出します。
           </span>
           {missing.map((m) => (
             <label key={m.key} className="flex items-center gap-2 text-xs text-secondary">

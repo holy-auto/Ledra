@@ -63,17 +63,33 @@ export function findEntry(
   key: string,
   tcCode?: string | null,
 ): LaborEntry | null {
+  return findInScopes(entries, modelCode, [key], tcCode).entry;
+}
+
+/**
+ * 狭い範囲（型式+TC）から順に、その範囲の中で keys を先頭から照合する。
+ * 予備キー（品名）も同じ範囲で見てから広い範囲へ進む（TC 専用の行が品名でしか引けないときに、
+ * 品番で当たる TC 問わずの行を先に返さないように）。
+ */
+function findInScopes(
+  entries: LaborEntry[],
+  modelCode: string,
+  keys: (string | null | undefined)[],
+  tcCode?: string | null,
+): { entry: LaborEntry | null; index: number } {
   const model = normalizeModelCode(modelCode);
   const tc = normalizeTcCode(tcCode);
-  const k = normalizeKey(key);
-  if (!k) return null;
+  const ks = keys.map((k) => normalizeKey(k));
   const scopes: [string, string][] = [...(tc ? [[model, tc] as [string, string]] : []), [model, ""], [ANY_MODEL, ""]];
   for (const [m, t] of scopes) {
-    const inModel = entries.filter((e) => e.model_code === m && (e.tc_code ?? "") === t);
-    const hit = inModel.find((e) => e.part_key === k) ?? inModel.find((e) => normalizeKey(e.label) === k);
-    if (hit) return hit;
+    const inScope = entries.filter((e) => e.model_code === m && (e.tc_code ?? "") === t);
+    for (const [index, k] of ks.entries()) {
+      if (!k) continue;
+      const hit = inScope.find((e) => e.part_key === k) ?? inScope.find((e) => normalizeKey(e.label) === k);
+      if (hit) return { entry: hit, index };
+    }
   }
-  return null;
+  return { entry: null, index: -1 };
 }
 
 /** 店舗（支店）の時間単価を優先し、未設定なら自社の既定単価。 */
@@ -129,6 +145,8 @@ export function parseLaborCsv(text: string): { rows: LaborCsvRow[]; errors: stri
     const key = normalizeKey(cells[1]);
     const tc = normalizeTcCode(cells[6]);
     if (!model || !key) return void errors.push(`${no}: 型式と品番（作業名）は必須です`);
+    // 型式共通は TC を問わない行だけ引く（findEntry）ので、TC 付きは登録しても使われない
+    if (model === ANY_MODEL && tc) return void errors.push(`${no}: 型式共通（*）に TC コードは付けられません`);
     // DB の CHECK（labor_hour_masters）と同じ上限。1行の超過で一括保存全体が落ちないよう行単位で弾く
     if (
       model.length > 20 ||
@@ -138,10 +156,12 @@ export function parseLaborCsv(text: string): { rows: LaborCsvRow[]; errors: stri
       tc.length > 20
     )
       return void errors.push(`${no}: 文字数が上限を超えています（型式20・品番100・名称200・URL1000・TC20）`);
-    const hours = toNonNegative(cells[2]);
+    const rawHours = toNonNegative(cells[2]);
     const fixed = toNonNegative(cells[3]);
-    if (hours === "invalid" || fixed === "invalid") return void errors.push(`${no}: 工数・定額は0以上の数値で`);
-    if (hours == null && fixed == null) return void errors.push(`${no}: 工数か定額のどちらかが必要です`);
+    if (rawHours === "invalid" || fixed === "invalid") return void errors.push(`${no}: 工数・定額は0以上の数値で`);
+    if (rawHours == null && fixed == null) return void errors.push(`${no}: 工数か定額のどちらかが必要です`);
+    // 保存する値（小数2桁）で 0h を判定する（0.001 が 0 として保存され、0h の例外をすり抜けないように）
+    const hours = rawHours == null ? null : Math.round(rawHours * 100) / 100;
     const rowKey = `${model}\u0000${tc}\u0000${key}`;
     // 0h は、同じファイルの同じ品目に 0h 以外の工数・定額があれば採らない（代表判断）
     const prev = rows.get(rowKey);
@@ -151,7 +171,7 @@ export function parseLaborCsv(text: string): { rows: LaborCsvRow[]; errors: stri
       tc_code: tc,
       part_key: key,
       part_number: cells[1],
-      hours: hours == null ? null : Math.round(hours * 100) / 100,
+      hours,
       fixed_price: fixed == null ? null : Math.round(fixed),
       label: cells[4] || null,
       source_url: cells[5] || null,
@@ -356,10 +376,8 @@ export function findEntryWithFallback(
   alt: string | null | undefined,
   tcCode?: string | null,
 ): { entry: LaborEntry | null; by: "key" | "alt_key" | null } {
-  const byKey = findEntry(entries, modelCode, key, tcCode);
-  if (byKey) return { entry: byKey, by: "key" };
-  const byAlt = alt ? findEntry(entries, modelCode, alt, tcCode) : null;
-  return { entry: byAlt, by: byAlt ? "alt_key" : null };
+  const { entry, index } = findInScopes(entries, modelCode, [key, alt], tcCode);
+  return { entry, by: index === 0 ? "key" : index === 1 ? "alt_key" : null };
 }
 
 /** CSV 1セルに入れる。区切りの半角カンマは全角「，」へ（NFKC で照合キーは元と一致する）。 */
@@ -448,7 +466,7 @@ export function sheetRowsToLaborCsv(rows: string[][]): {
       const v = pick(hs);
       if (hs.some((h) => h !== v))
         overwritten.push(
-          `${g.model}${tc ? `（TC ${tc}）` : ""} ${g.item}: ${hs.map((h) => `${h}h`).join(" → ")}（後の行の ${v}h を採用）`,
+          `${g.model}${tc ? `（TC ${tc}）` : ""} ${g.item}: ${hs.map((h) => `${h}h`).join(" → ")}（${v === hs[hs.length - 1] ? "後の行の" : "0h は採らず"} ${v}h を採用）`,
         );
       if (!tc) continue;
       // TC 列がある品目は TC の行を毎回書く（前回の TC 別の値が残って古いまま引かれないように）。
