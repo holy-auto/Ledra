@@ -13,7 +13,6 @@ import {
   describeConflict,
   formatImportSummary,
   modelCodeFromChassis,
-  type LaborConflict,
   type LaborImportResult,
 } from "@/lib/pricing/laborMaster";
 
@@ -52,8 +51,8 @@ export default function LaborHoursClient() {
   const [vin, setVin] = useState("");
   const [paste, setPaste] = useState("");
 
-  // 値が違う登録済み行（衝突）。上書きは人が選んだときだけ、同じ CSV を overwrite 付きで送り直す
-  const [conflicts, setConflicts] = useState<{ csv: string; items: LaborConflict[] } | null>(null);
+  // 前回の登録で値を上書きした行（あとから入ってきた値を採る。何が変わったかを見せるだけ）
+  const [overwritten, setOverwritten] = useState<string[]>([]);
 
   // 添付ファイル（Excel / CSV）を行に分け、工数 CSV に変換して同じ登録処理に流す
   const importFile = async (file: File) => {
@@ -76,30 +75,32 @@ export default function LaborHoursClient() {
           .split(/\r?\n/)
           .map((l) => l.split(",").map((c) => c.replace(/^"(.*)"$/, "$1")));
       }
-      const { csv: converted, count, errors, conflicts } = sheetRowsToLaborCsv(rows);
-      const skipped = [...errors, ...conflicts.map((c) => `工数が食い違うため未登録: ${c}`)];
-      if (count === 0) return setMsg({ text: skipped.join(" / ") || "登録できる行がありません", ok: false });
-      await doImport(converted, skipped);
+      const { csv: converted, count, errors, overwritten: inFile } = sheetRowsToLaborCsv(rows);
+      if (count === 0) return setMsg({ text: errors.join(" / ") || "登録できる行がありません", ok: false });
+      await doImport(
+        converted,
+        errors,
+        inFile.map((c) => `ファイル内で食い違い: ${c}`),
+      );
     } catch (e) {
       setMsg({ text: `ファイルを読めませんでした: ${e instanceof Error ? e.message : String(e)}`, ok: false });
     }
   };
 
-  const doImport = async (body: string = csv, preErrors: string[] = [], overwrite = false) => {
+  const doImport = async (body: string = csv, preErrors: string[] = [], preOverwritten: string[] = []) => {
     setBusy(true);
     setMsg(null);
     try {
       const res = await fetch("/api/admin/labor-hours", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ csv: body, overwrite }),
+        body: JSON.stringify({ csv: body }),
       });
       const j = await parseJsonSafe<LaborImportResult & { message?: string }>(res);
       if (!res.ok) throw new Error(j?.message ?? `HTTP ${res.status}`);
       const errors = [...preErrors, ...(j?.errors ?? [])];
-      const items = j?.conflicts ?? [];
-      setMsg({ text: formatImportSummary({ ...j, errors }), ok: errors.length === 0 && items.length === 0 });
-      setConflicts(items.length > 0 ? { csv: body, items } : null);
+      setMsg({ text: formatImportSummary({ ...j, errors }), ok: errors.length === 0 });
+      setOverwritten([...preOverwritten, ...(j?.overwritten ?? []).map(describeConflict)]);
       setCsv("");
       setPaste("");
       mutate();
@@ -141,32 +142,17 @@ export default function LaborHoursClient() {
 
       <LaborCoveragePanel />
 
-      {conflicts && (
-        <MutationGuard>
-          <section className="glass-card space-y-3 border border-warning p-5">
-            <div className="text-sm font-semibold text-primary">
-              登録済みと値が違う行が {conflicts.items.length} 件あります（まだ上書きしていません）
-            </div>
-            <ul className="list-disc space-y-1 pl-5 text-xs text-secondary">
-              {conflicts.items.map((c) => (
-                <li key={`${c.model_code}-${c.part_number}`}>{describeConflict(c)}</li>
-              ))}
-            </ul>
-            <div className="flex gap-3">
-              <button
-                type="button"
-                className="btn-primary"
-                disabled={busy}
-                onClick={() => void doImport(conflicts.csv, [], true)}
-              >
-                今回の値で上書きする
-              </button>
-              <button type="button" className="btn-ghost" onClick={() => setConflicts(null)}>
-                登録済みの値を残す
-              </button>
-            </div>
-          </section>
-        </MutationGuard>
+      {overwritten.length > 0 && (
+        <section className="glass-card space-y-2 p-5">
+          <div className="text-sm font-semibold text-primary">
+            値が食い違った {overwritten.length} 件は、あとから入ってきた値で上書きしました
+          </div>
+          <ul className="list-disc space-y-1 pl-5 text-xs text-secondary">
+            {overwritten.map((t) => (
+              <li key={t}>{t}</li>
+            ))}
+          </ul>
+        </section>
       )}
 
       <MutationGuard>
@@ -213,7 +199,7 @@ export default function LaborHoursClient() {
           <p className="text-xs text-secondary">
             Excel（.xlsx）か CSV を選ぶと、そのまま登録します。対応する形は2つ: 「{CSV_HEADER}」の列、または d-Happy
             収集表（項目・取付工数・車台番号の列。型式は車台番号から取ります）。
-            登録済みの型式・品番と値が違う行は上書きせず一覧に出します。
+            登録済みの型式・品番と値が違う行や、ファイル内で工数が食い違う行は、あとから入ってきた値で上書きし一覧に出します。
           </p>
           <label
             className={`inline-flex cursor-pointer items-center gap-2 rounded-lg border border-border-default px-3 py-2 text-sm text-secondary hover:border-border-strong ${

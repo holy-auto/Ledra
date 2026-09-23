@@ -12,7 +12,7 @@ import type { DocumentItem } from "@/types/document";
  * （`/api/admin/labor-hours/quote`、AI 不使用）。発注書の価格（用品の販売価格）は工賃では
  * ないため、マスタに無い行は 0 円にして「未登録」として知らせる。時間単価は税抜。
  * 未登録の行はその場で工数を入れてマスタに登録できる（型式・品番で重複を確認し、
- * 登録済みと値が違うものは上書きしない）。
+ * 登録済みと値が違うものは今回の値で上書きする）。
  */
 
 type QuoteLine = { key: string; matched: boolean; unit_price: number | null };

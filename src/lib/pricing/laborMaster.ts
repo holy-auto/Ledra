@@ -195,7 +195,7 @@ export interface LaborConflict {
  * - 未登録 → toInsert
  * - 工数・定額が同じ → unchanged（書かない）。ただし品名・出典・品番表記だけが変わった行は
  *   金額に影響しないので metaUpdates として更新する（今回が空欄の項目は既存を消さない）
- * - 値が違う → conflicts（黙って上書きしない。人が上書きを選んだときだけ更新する）
+ * - 値が違う → conflicts（あとから入ってきた値で上書きする。何が変わったかを画面に出すために分ける）
  */
 export function classifyAgainstExisting(rows: LaborCsvRow[], existing: ExistingLaborRow[]) {
   const num = (v: number | string | null) => (v == null ? null : Number(v));
@@ -237,7 +237,8 @@ export interface LaborImportResult {
   inserted?: number;
   updated?: number;
   unchanged?: number;
-  conflicts?: LaborConflict[];
+  /** 登録済みと値が違い、今回の値で上書きした行 */
+  overwritten?: LaborConflict[];
   errors?: string[];
 }
 
@@ -249,12 +250,11 @@ export function formatImportSummary(r: LaborImportResult): string {
   const parts = [`新規 ${r.inserted ?? 0} 件`];
   if (r.updated) parts.push(`上書き ${r.updated} 件`);
   if (r.unchanged) parts.push(`登録済み（同じ値）${r.unchanged} 件`);
-  if (r.conflicts?.length) parts.push(`値が違うため未登録 ${r.conflicts.length} 件`);
   if (r.errors?.length) parts.push(`登録しなかった行 ${r.errors.length} 件: ${r.errors.join(" / ")}`);
   return parts.join("、");
 }
 
-/** 衝突1件の説明（例: GP3 08P18SYY011 登録済み 0.2h → 今回 0.1h）。 */
+/** 上書き1件の説明（例: GP3 08P18SYY011 登録済み 0.2h → 今回 0.1h）。 */
 export function describeConflict(c: LaborConflict): string {
   const model = c.model_code === ANY_MODEL ? "型式共通" : c.model_code;
   return `${model} ${c.part_number}${c.label ? `（${c.label}）` : ""} 登録済み ${fmtValue(c.current)} → 今回 ${fmtValue(c.incoming)}`;
@@ -340,14 +340,14 @@ const csvCell = (s: string | null | undefined) =>
  * 添付ファイル（Excel / CSV を行に分けたもの）を工数 CSV に変換する。対応する形は2つ:
  * - 工数マスタ形式: 1行目が「型式,品番,…」 → そのまま
  * - d-Happy 収集形式: 見出しに「項目」「取付工数」「車台番号」（任意で「備考」）
- *   型式は車台番号から取り、同じ型式・品名で工数が食い違う行は登録せず conflicts に出す
- *   （組み合わせやグレードで工数が変わるため、どちらを採るかは人が決める）。工数が空欄の行は skipped。
+ *   型式は車台番号から取り、同じ型式・品名で工数が食い違うときは後の行（あとから入ってきた値）を採り、
+ *   overwritten に出す。工数が空欄の行は errors。
  */
 export function sheetRowsToLaborCsv(rows: string[][]): {
   csv: string;
   count: number;
   errors: string[];
-  conflicts: string[];
+  overwritten: string[];
 } {
   const header = (rows[0] ?? []).map((h) => (h ?? "").normalize("NFKC").trim());
   const col = (name: string) => header.findIndex((h) => h === name);
@@ -355,7 +355,7 @@ export function sheetRowsToLaborCsv(rows: string[][]): {
   if (/^型式/.test(header[0] ?? "")) {
     // 見出しと空行も残して渡す（parseLaborCsv の「N行目」が元のファイルの行と一致するように）
     const count = rows.slice(1).filter((r) => r.some((c) => (c ?? "").trim())).length;
-    return { csv: rows.map((r) => r.map(csvCell).join(",")).join("\n"), count, errors: [], conflicts: [] };
+    return { csv: rows.map((r) => r.map(csvCell).join(",")).join("\n"), count, errors: [], overwritten: [] };
   }
 
   const [iItem, iHours, iVin, iNote] = [col("項目"), col("取付工数"), col("車台番号"), col("備考")];
@@ -364,12 +364,12 @@ export function sheetRowsToLaborCsv(rows: string[][]): {
       csv: "",
       count: 0,
       errors: ["列が読み取れません。「型式,品番,工数h,…」か「項目・取付工数・車台番号」の見出しが必要です"],
-      conflicts: [],
+      overwritten: [],
     };
   }
 
   const errors: string[] = [];
-  const groups = new Map<string, { model: string; item: string; hours: Set<number>; note: string }>();
+  const groups = new Map<string, { model: string; item: string; hours: number[]; note: string }>();
   rows.slice(1).forEach((r, i) => {
     const item = (r[iItem] ?? "").trim();
     if (!item) return;
@@ -381,21 +381,21 @@ export function sheetRowsToLaborCsv(rows: string[][]): {
     const hours = Math.round(Number(rawHours) * 100) / 100;
     if (!Number.isFinite(hours) || hours < 0) return void errors.push(`${no}: 取付工数を読めません（${rawHours}）`);
     const key = `${model}\u0000${normalizeKey(item)}`;
-    const g = groups.get(key) ?? { model, item, hours: new Set<number>(), note: "" };
-    g.hours.add(hours);
-    if (!g.note && iNote >= 0) g.note = (r[iNote] ?? "").trim();
+    const g = groups.get(key) ?? { model, item, hours: [], note: "" };
+    g.hours.push(hours);
+    const note = iNote >= 0 ? (r[iNote] ?? "").trim() : "";
+    if (note) g.note = note; // 備考も後の行を採る
     groups.set(key, g);
   });
 
   const lines: string[] = [];
-  const conflicts: string[] = [];
+  const overwritten: string[] = [];
   for (const g of groups.values()) {
-    if (g.hours.size > 1) {
-      conflicts.push(`${g.model} ${g.item}: ${[...g.hours].map((h) => `${h}h`).join(" / ")}`);
-      continue;
-    }
+    const last = g.hours[g.hours.length - 1];
+    if (g.hours.some((h) => h !== last))
+      overwritten.push(`${g.model} ${g.item}: ${g.hours.map((h) => `${h}h`).join(" → ")}（後の行の ${last}h を採用）`);
     const label = (csvCell(g.item) + (g.note ? `（${csvCell(g.note)}）` : "")).slice(0, 200);
-    lines.push([g.model, csvCell(g.item), [...g.hours][0], "", label, DHAPPY_SOURCE_URL].join(","));
+    lines.push([g.model, csvCell(g.item), last, "", label, DHAPPY_SOURCE_URL].join(","));
   }
-  return { csv: lines.join("\n"), count: lines.length, errors, conflicts };
+  return { csv: lines.join("\n"), count: lines.length, errors, overwritten };
 }
