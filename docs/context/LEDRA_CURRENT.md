@@ -4,7 +4,13 @@
 > 追わず、常に最新状態だけを保つ（履歴は DECISION_LOG.md / RELEASE_LOG.md 側）。
 > 大きな変化があったら都度上書きすること。
 
-最終更新: 2026-09-22
+最終更新: 2026-09-23
+
+> 2026-09-23 追記: **Field Test の残バグ3件を解消し #1117 をクローズ**（#1126・マイグレーション無し）。
+> 状態ガード付き UPDATE の 0 行 500 を型付き 4xx＋楽観ロック（`updateTenantFtJobStatus` の
+> `.eq("status", expectedStatus)`）に、応募の締切ガード＋notes 検証、report/analytics の集計を
+> `aggregateFtProject` に一本化。FT 本番利用ゼロで実害は未発生。
+> **残り**: メーカー通知チャネルと FT tenant RLS の本番反映は次回 db-migrate 後に実測確認。
 
 > 2026-09-22 追記: **メーカー向け in-app 通知チャネルを新設**（#1123・`20260922140000`、本番未適用）。
 > 施工店の証拠提出（evidence_submitted）通知が提出元テナント自身に飛んでメーカーに届いて
