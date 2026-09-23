@@ -23,7 +23,7 @@ export const GET = withCaller<{ id: string }>(
 /** PATCH /api/admin/field-test/jobs/[id] — ステータス更新 */
 export const PATCH = withCaller<{ id: string }>(
   async (req: NextRequest, { caller, supabase, params }) => {
-    const body = await req.json();
+    const body = await req.json().catch(() => ({}));
     const newStatus = body.status as string | undefined;
     if (!newStatus) return apiValidationError("status は必須です。");
 
@@ -39,7 +39,13 @@ export const PATCH = withCaller<{ id: string }>(
     const err = validateTenantStatusTransition(job.status as string, newStatus);
     if (err) return apiValidationError(err);
 
-    const updated = await updateTenantFtJobStatus(supabase, caller.tenantId, params.id, newStatus);
+    let updated;
+    try {
+      updated = await updateTenantFtJobStatus(supabase, caller.tenantId, params.id, job.status as string, newStatus);
+    } catch (e) {
+      if ((e as { code?: string })?.code === "FT_STATE_CONFLICT") return apiValidationError((e as Error).message);
+      throw e;
+    }
 
     if (newStatus === "evidence_submitted") {
       // 提出後に次に動くのは検査するメーカー。提出元テナント自身ではなくメーカーへ届ける。

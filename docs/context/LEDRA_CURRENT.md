@@ -6,6 +6,12 @@
 
 最終更新: 2026-09-23
 
+> 2026-09-23 追記: **Field Test の残バグ3件を解消し #1117 をクローズ**（#1126・マイグレーション無し）。
+> 状態ガード付き UPDATE の 0 行 500 を型付き 4xx＋楽観ロック（`updateTenantFtJobStatus` の
+> `.eq("status", expectedStatus)`）に、応募の締切ガード＋notes 検証、report/analytics の集計を
+> `aggregateFtProject` に一本化。FT 本番利用ゼロで実害は未発生。
+> **残り**: メーカー通知チャネルと FT tenant RLS の本番反映は次回 db-migrate 後に実測確認。
+
 > 2026-09-22 追記: **メーカー向け in-app 通知チャネルを新設**（#1123・`20260922140000`、本番未適用）。
 > 施工店の証拠提出（evidence_submitted）通知が提出元テナント自身に飛んでメーカーに届いて
 > いなかった。`notifications` は tenant-keyed で表現できないため、姉妹表
@@ -18,7 +24,7 @@
 > 停止で締め出していたのを、使える保険会社へフォールバック）と **FT condition-checks の
 > 入力/越境検証・report の二重クエリ解消**も対応。
 
-> 2026-09-23 追記: 上記の C2PA fail-closed 化は **`e743897` として `main` にマージ済み**
+> 2026-09-23 追記: 下の 2026-09-21 の C2PA fail-closed 化は **`e743897` として `main` にマージ済み**
 > （PR #1115）。以後、ネイティブ依存が入らなければ CI は赤くなる。
 > **未決は変わらず1つ**: ランタイム（Vercel）側のフェイルオープン
 > （`optionalDependencies` → `dependencies` に移すか）。

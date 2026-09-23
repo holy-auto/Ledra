@@ -4,6 +4,22 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-09-23 Field Test 残バグ3件を解消（#1117 クローズ・#1126）
+
+`/code-review`（#1123）が検出した FT 既存バグ3件を修正。FT 本番利用ゼロで実害は未発生。
+
+- **A. no-op UPDATE の 500**: `updateTenantFtJobStatus` / `withdrawApplication` / `acceptAgreement`
+  を `.maybeSingle()`＋型付き `FT_STATE_CONFLICT` にし、6ルート（admin/mobile × jobs/applications/
+  agreements）で 4xx マップ。`updateTenantFtJobStatus` は `.eq("status", expectedStatus)` の
+  **楽観ロック**も追加し、同時 PATCH の競合を実際に検出するようにした。
+- **B. 応募の締切／notes**: `applicationInputSchema`(zod・notes≤2000・`.nullish()`)＋
+  `isRecruitmentExpired` を追加し、admin/mobile の応募 POST で締切超過を弾き body を検証。
+- **C. report/analytics 集計重複**: `aggregateFtProject`（`src/lib/fieldTest/projectAggregate.ts`）
+  に抽出し両ルートで共有（~250 行削減）。
+
+`/code-review` は本 PR の新規コードに4件指摘（status ガード欠落・notes:null 退行・PATCH の
+`req.json()` 未ガード 500・not-found 誤ラベル）→ すべて同 PR で修正。マイグレーション変更なし。
+
 ## 2026-09-22 新環境で車両登録が通らなくなるのを直した（前の PR の後始末）
 
 `20260922123100` が本番から `vehicles_public_id_format_chk` を取り込んだが、
