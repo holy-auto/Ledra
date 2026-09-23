@@ -254,3 +254,59 @@ export function describeConflict(c: LaborConflict): string {
   const model = c.model_code === ANY_MODEL ? "型式共通" : c.model_code;
   return `${model} ${c.part_number}${c.label ? `（${c.label}）` : ""} 登録済み ${fmtValue(c.current)} → 今回 ${fmtValue(c.incoming)}`;
 }
+
+export interface ModelCoverage {
+  model_code: string;
+  /** その型式の車台番号の例（収集時に d-Happy へ入れる1台）。 */
+  sample_chassis: string;
+  /** 手元にある同じ型式の車台番号の数。 */
+  vehicle_count: number;
+  /** 工数マスタに登録済みの行数（0 = 未収集）。 */
+  registered_rows: number;
+}
+
+/**
+ * 車台番号の一覧を型式ごとにまとめ、工数マスタの登録状況と突き合わせる。
+ * 未収集（登録0行）を先頭に、台数の多い順。型式を取り出せない番号は unparsed に分ける
+ * （番号だけの F-NO から型式を推測しない）。
+ */
+export function summarizeCoverage(chassisList: string[], registeredRowsByModel: Record<string, number>) {
+  const byModel = new Map<string, ModelCoverage>();
+  const unparsed: string[] = [];
+  const seen = new Set<string>(); // 同じ車台番号を登録車両と貼り付けの両方から数えない
+  for (const raw of chassisList) {
+    const chassis = raw.normalize("NFKC").trim().toUpperCase().replace(/\s/g, "");
+    if (!chassis || seen.has(chassis)) continue;
+    seen.add(chassis);
+    const model = modelCodeFromChassis(chassis);
+    if (!model) {
+      unparsed.push(raw.trim());
+      continue;
+    }
+    const cur = byModel.get(model);
+    if (cur) cur.vehicle_count++;
+    else
+      byModel.set(model, {
+        model_code: model,
+        sample_chassis: chassis,
+        vehicle_count: 1,
+        registered_rows: registeredRowsByModel[model] ?? 0,
+      });
+  }
+  const rows = [...byModel.values()].sort(
+    (a, b) =>
+      Number(a.registered_rows > 0) - Number(b.registered_rows > 0) ||
+      b.vehicle_count - a.vehicle_count ||
+      a.model_code.localeCompare(b.model_code),
+  );
+  return { rows, unparsed: [...new Set(unparsed)] };
+}
+
+/** 貼り付けた車台番号の文字列を1台ずつに分ける。「GP3 - 1017220」のようなハイフン前後の空白は詰める。 */
+export function splitChassisInput(text: string): string[] {
+  return text
+    .normalize("NFKC")
+    .replace(/\s*-\s*/g, "-")
+    .split(/[\s,、]+/)
+    .filter(Boolean);
+}

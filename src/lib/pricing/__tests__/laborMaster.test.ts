@@ -12,6 +12,8 @@ import {
   normalizeKey,
   parseLaborCsv,
   resolveRate,
+  splitChassisInput,
+  summarizeCoverage,
   type LaborEntry,
 } from "../laborMaster";
 
@@ -221,5 +223,38 @@ describe("formatImportSummary / describeConflict", () => {
       "新規 2 件、登録済み（同じ値）1 件、値が違うため未登録 1 件",
     );
     expect(describeConflict(conflict)).toBe("GP3 08P18SYY011（ラバーマット） 登録済み 0.2h → 今回 0.1h");
+  });
+});
+
+describe("summarizeCoverage", () => {
+  it("型式ごとにまとめ、未収集を先頭・台数順に並べ、型式の無い番号は分ける", () => {
+    const { rows, unparsed } = summarizeCoverage(
+      ["JF5-1511014", "DG5-1204166", "RP8-1344844", "jf5-1405694", "GP3-1017220", "1508937", " ", "1508937"],
+      { GP3: 3 },
+    );
+    expect(rows.map((r) => [r.model_code, r.sample_chassis, r.vehicle_count, r.registered_rows])).toEqual([
+      ["JF5", "JF5-1511014", 2, 0],
+      ["DG5", "DG5-1204166", 1, 0],
+      ["RP8", "RP8-1344844", 1, 0],
+      ["GP3", "GP3-1017220", 1, 3],
+    ]);
+    expect(unparsed).toEqual(["1508937"]);
+  });
+
+  it("同じ車台番号は1台として数える", () => {
+    const { rows } = summarizeCoverage(["JF5-1511014", "jf5-1511014", "JF5-1405694"], {});
+    expect(rows[0].vehicle_count).toBe(2);
+  });
+});
+
+describe("splitChassisInput", () => {
+  it("改行・カンマ・読点・空白で分け、ハイフン前後の空白は詰める", () => {
+    expect(splitChassisInput("GP3 - 1017220\nJF5-1511014, DG5-1204166、RP8-1344844 JF5-1405694")).toEqual([
+      "GP3-1017220",
+      "JF5-1511014",
+      "DG5-1204166",
+      "RP8-1344844",
+      "JF5-1405694",
+    ]);
   });
 });
