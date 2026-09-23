@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import useSWR from "swr";
+import useSWR, { mutate as mutateKey } from "swr";
+import LaborCoveragePanel, { COVERAGE_KEY } from "./LaborCoveragePanel";
 import MutationGuard from "@/components/ui/MutationGuard";
 import { parseJsonSafe } from "@/lib/api/safeJson";
 import { fetcher } from "@/lib/swr";
@@ -70,6 +71,7 @@ export default function LaborHoursClient() {
       setCsv("");
       setPaste("");
       mutate();
+      void mutateKey(COVERAGE_KEY);
     } catch (e) {
       setMsg({ text: e instanceof Error ? e.message : String(e), ok: false });
     } finally {
@@ -86,6 +88,7 @@ export default function LaborHoursClient() {
     });
     if (!res.ok) alert("削除に失敗しました");
     mutate();
+    void mutateKey(COVERAGE_KEY);
   };
 
   return (
@@ -103,6 +106,8 @@ export default function LaborHoursClient() {
           {msg.text}
         </div>
       )}
+
+      <LaborCoveragePanel />
 
       {conflicts && (
         <MutationGuard>

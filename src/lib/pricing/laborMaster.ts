@@ -46,16 +46,21 @@ export interface LaborEntry {
   label: string | null;
 }
 
-/** (型式, キー) の完全一致 → 無ければ型式共通 '*' の順で引く。 */
+/**
+ * (型式, キー) の完全一致 → 無ければ型式共通 '*' の順で引く。
+ * キーは part_key（品番・作業名）に加えて名称（label）とも照合する
+ * （d-Happy の貼り付け登録は品番が part_key、品名は label に入るため）。part_key の一致を優先。
+ */
 export function findEntry(entries: LaborEntry[], modelCode: string, key: string): LaborEntry | null {
   const model = normalizeModelCode(modelCode);
   const k = normalizeKey(key);
   if (!k) return null;
-  return (
-    entries.find((e) => e.model_code === model && e.part_key === k) ??
-    entries.find((e) => e.model_code === ANY_MODEL && e.part_key === k) ??
-    null
-  );
+  for (const m of [model, ANY_MODEL]) {
+    const inModel = entries.filter((e) => e.model_code === m);
+    const hit = inModel.find((e) => e.part_key === k) ?? inModel.find((e) => normalizeKey(e.label) === k);
+    if (hit) return hit;
+  }
+  return null;
 }
 
 /** 店舗（支店）の時間単価を優先し、未設定なら自社の既定単価。 */
@@ -253,4 +258,73 @@ export function formatImportSummary(r: LaborImportResult): string {
 export function describeConflict(c: LaborConflict): string {
   const model = c.model_code === ANY_MODEL ? "型式共通" : c.model_code;
   return `${model} ${c.part_number}${c.label ? `（${c.label}）` : ""} 登録済み ${fmtValue(c.current)} → 今回 ${fmtValue(c.incoming)}`;
+}
+
+export interface ModelCoverage {
+  model_code: string;
+  /** その型式の車台番号の例（収集時に d-Happy へ入れる1台）。 */
+  sample_chassis: string;
+  /** 手元にある同じ型式の車台番号の数。 */
+  vehicle_count: number;
+  /** 工数マスタに登録済みの行数（0 = 未収集）。 */
+  registered_rows: number;
+}
+
+/**
+ * 車台番号の一覧を型式ごとにまとめ、工数マスタの登録状況と突き合わせる。
+ * 未収集（登録0行）を先頭に、台数の多い順。型式を取り出せない番号は unparsed に分ける
+ * （番号だけの F-NO から型式を推測しない）。
+ */
+export function summarizeCoverage(chassisList: string[], registeredRowsByModel: Record<string, number>) {
+  const byModel = new Map<string, ModelCoverage>();
+  const unparsed: string[] = [];
+  const seen = new Set<string>(); // 同じ車台番号を登録車両と貼り付けの両方から数えない
+  for (const raw of chassisList) {
+    const chassis = raw.normalize("NFKC").trim().toUpperCase().replace(/\s/g, "");
+    if (!chassis || seen.has(chassis)) continue;
+    seen.add(chassis);
+    const model = modelCodeFromChassis(chassis);
+    if (!model) {
+      unparsed.push(raw.trim());
+      continue;
+    }
+    const cur = byModel.get(model);
+    if (cur) cur.vehicle_count++;
+    else
+      byModel.set(model, {
+        model_code: model,
+        sample_chassis: chassis,
+        vehicle_count: 1,
+        registered_rows: registeredRowsByModel[model] ?? 0,
+      });
+  }
+  const rows = [...byModel.values()].sort(
+    (a, b) =>
+      Number(a.registered_rows > 0) - Number(b.registered_rows > 0) ||
+      b.vehicle_count - a.vehicle_count ||
+      a.model_code.localeCompare(b.model_code),
+  );
+  return { rows, unparsed: [...new Set(unparsed)] };
+}
+
+/** 貼り付けた車台番号の文字列を1台ずつに分ける。「GP3 - 1017220」のようなハイフン前後の空白は詰める。 */
+export function splitChassisInput(text: string): string[] {
+  return text
+    .normalize("NFKC")
+    .replace(/\s*-\s*/g, "-")
+    .split(/[\s,、]+/)
+    .filter(Boolean);
+}
+
+/** 品番（key）で引き、無ければ品名（alt）で引く。どちらで当たったかも返す。 */
+export function findEntryWithFallback(
+  entries: LaborEntry[],
+  modelCode: string,
+  key: string,
+  alt: string | null | undefined,
+): { entry: LaborEntry | null; by: "key" | "alt_key" | null } {
+  const byKey = findEntry(entries, modelCode, key);
+  if (byKey) return { entry: byKey, by: "key" };
+  const byAlt = alt ? findEntry(entries, modelCode, alt) : null;
+  return { entry: byAlt, by: byAlt ? "alt_key" : null };
 }

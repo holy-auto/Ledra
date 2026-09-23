@@ -29,6 +29,10 @@ interface Props {
 }
 
 const keyOf = (it: DocumentItem) => (it.item_code || it.description || "").trim();
+// 品番があるときの予備キー（品名）。品番で見つからなければこちらで引く
+const altOf = (it: DocumentItem) => (it.item_code ? it.description?.trim() || null : null);
+// 単価を当てる行の識別。品番が同じでも品名が違えば別行として扱う
+const lineIdOf = (it: DocumentItem) => `${keyOf(it)}\u0000${altOf(it) ?? ""}`;
 
 export default function LaborQuoteButton({
   items,
@@ -56,7 +60,13 @@ export default function LaborQuoteButton({
       const res = await fetch("/api/admin/labor-hours/quote", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ model_code: modelCode, branch_id: branchId || null, keys: targets.map((t) => t.key) }),
+        body: JSON.stringify({
+          model_code: modelCode,
+          branch_id: branchId || null,
+          keys: targets.map((t) => t.key),
+          // 品番で見つからなければ品名でも引く（d-Happy 由来の工数は品名で登録されている）
+          alt_keys: targets.map((t) => altOf(items[t.i])),
+        }),
       });
       const j = await parseJsonSafe<QuoteResponse>(res);
       if (!res.ok) throw new Error(j?.message ?? `HTTP ${res.status}`);
@@ -68,7 +78,7 @@ export default function LaborQuoteButton({
       }
 
       // 応答待ちの間に明細が編集・追加・削除されても、行位置ではなく照合キーで当てる
-      const priceByKey = new Map(targets.map((t, k) => [t.key, lines[k]?.unit_price ?? 0]));
+      const priceByLine = new Map(targets.map((t, k) => [lineIdOf(items[t.i]), lines[k]?.unit_price ?? 0]));
       const missingLines = targets
         .filter((_, k) => !lines[k]?.matched)
         .map((t) => ({ key: t.key, label: items[t.i].description || t.key }));
@@ -76,7 +86,7 @@ export default function LaborQuoteButton({
       setMissing(missingLines);
       onApplied((latest) =>
         latest.map((it) => {
-          const price = (it.item_type ?? "item") === "item" ? priceByKey.get(keyOf(it)) : undefined;
+          const price = (it.item_type ?? "item") === "item" ? priceByLine.get(lineIdOf(it)) : undefined;
           return price === undefined ? it : { ...it, unit_price: price, amount: Math.round(it.quantity * price) };
         }),
       );

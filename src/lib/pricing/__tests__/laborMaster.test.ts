@@ -7,11 +7,14 @@ import {
   DHAPPY_SOURCE_URL,
   dHappyPasteToCsv,
   findEntry,
+  findEntryWithFallback,
   laborPrice,
   modelCodeFromChassis,
   normalizeKey,
   parseLaborCsv,
   resolveRate,
+  splitChassisInput,
+  summarizeCoverage,
   type LaborEntry,
 } from "../laborMaster";
 
@@ -221,5 +224,72 @@ describe("formatImportSummary / describeConflict", () => {
       "新規 2 件、登録済み（同じ値）1 件、値が違うため未登録 1 件",
     );
     expect(describeConflict(conflict)).toBe("GP3 08P18SYY011（ラバーマット） 登録済み 0.2h → 今回 0.1h");
+  });
+});
+
+describe("summarizeCoverage", () => {
+  it("型式ごとにまとめ、未収集を先頭・台数順に並べ、型式の無い番号は分ける", () => {
+    const { rows, unparsed } = summarizeCoverage(
+      ["JF5-1511014", "DG5-1204166", "RP8-1344844", "jf5-1405694", "GP3-1017220", "1508937", " ", "1508937"],
+      { GP3: 3 },
+    );
+    expect(rows.map((r) => [r.model_code, r.sample_chassis, r.vehicle_count, r.registered_rows])).toEqual([
+      ["JF5", "JF5-1511014", 2, 0],
+      ["DG5", "DG5-1204166", 1, 0],
+      ["RP8", "RP8-1344844", 1, 0],
+      ["GP3", "GP3-1017220", 1, 3],
+    ]);
+    expect(unparsed).toEqual(["1508937"]);
+  });
+
+  it("同じ車台番号は1台として数える", () => {
+    const { rows } = summarizeCoverage(["JF5-1511014", "jf5-1511014", "JF5-1405694"], {});
+    expect(rows[0].vehicle_count).toBe(2);
+  });
+});
+
+describe("splitChassisInput", () => {
+  it("改行・カンマ・読点・空白で分け、ハイフン前後の空白は詰める", () => {
+    expect(splitChassisInput("GP3 - 1017220\nJF5-1511014, DG5-1204166、RP8-1344844 JF5-1405694")).toEqual([
+      "GP3-1017220",
+      "JF5-1511014",
+      "DG5-1204166",
+      "RP8-1344844",
+      "JF5-1405694",
+    ]);
+  });
+});
+
+describe("findEntryWithFallback", () => {
+  const entries = [
+    entry("DG5", "08E2631XD00", 1.0),
+    // d-Happy 由来は品名がキー（発注書の全角表記とは NFKC で一致する）
+    entry("DG5", "ETC2.0車載器 取付アタッチメント/取付位置:ドライバーロアーカバー部", 1.2),
+  ];
+
+  it("品番で当たればそれを使う", () => {
+    expect(findEntryWithFallback(entries, "DG5", "08E2631XD00", "何か")).toMatchObject({
+      by: "key",
+      entry: { hours: 1 },
+    });
+  });
+
+  it("品番で無ければ品名で引く（全角・スラッシュ・コロンの表記ゆれを吸収）", () => {
+    const r = findEntryWithFallback(
+      entries,
+      "DG5",
+      "08E2632RD00",
+      "ＥＴＣ２．０車載器　取付アタッチメント／取付位置：ドライバーロアーカバー部",
+    );
+    expect(r).toMatchObject({ by: "alt_key", entry: { hours: 1.2 } });
+    expect(findEntryWithFallback(entries, "DG5", "08E2632RD00", null)).toEqual({ entry: null, by: null });
+  });
+
+  it("d-Happy 貼り付け登録（品番が key・品名は label）にも品名で当たる", () => {
+    const pasted = [{ ...entry("GP3", "08R04SYY001", 0.4), label: "ドアバイザー（フロント／リア４枚セット）" }];
+    expect(findEntryWithFallback(pasted, "GP3", "08R04SYY099", "ドアバイザー(フロント/リア4枚セット)")).toMatchObject({
+      by: "alt_key",
+      entry: { hours: 0.4 },
+    });
   });
 });
