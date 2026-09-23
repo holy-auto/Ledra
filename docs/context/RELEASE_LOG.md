@@ -167,7 +167,37 @@ Supabase types`）が自動で立った**。`src/types/db.generated.ts` の1フ�
 PR #1120 が立った）、有効化はリポジトリ全体の権限を広げる（2026-09-11 の判断どおり）。
 `LEDRA_CURRENT` の「登録までは赤くなり続ける」「自動化はまだ完結していない」も更新した。
 
+## 2026-09-21 C2PA 適合性ゲートを fail-closed にした（読み込めなければ落ちる）
 
+- ネイティブ依存の読み込み失敗を `ctx.skip()` で逃がしていた**4箇所**を削除し、
+  `src/lib/anchoring/__tests__/nativeImaging.ts` の `requireNative()` に一本化した。
+  読み込めなければ投げる。対象は `c2paSignValidate.test.ts`（2箇所）、
+  `c2paSignValidateProduction.test.ts`（1箇所）、`imageExif.test.ts`（1箇所）。
+  最後の1つは C2PA ではないが同じ形の兄弟で、残すと同じ沈黙が残る。
+- **陰性対照で確認した。** `node_modules/@contentauth/c2pa-node` を退避して実行すると、
+  変更前は `Test Files 1 passed / Tests 4 skipped`（緑）、変更後は `Test Files 1 failed`（exit 1）。
+- 失敗メッセージは対処まで書く: fail-closed であること、未インストールなら `npm ci` を見ること、
+  `invalid ELF header` なら別プラットフォームのバイナリであること。元の例外は `cause` に残す。
+- `requireNative()` 自体のテストを4件追加（成功時の素通し・失敗時の throw・メッセージの中身・
+  `cause` の保持）。「失敗したら投げる」だけを見ると「常に投げる」実装でも通るので、
+  成功側も固定してある。
+- **`describe.runIf(hasProdCert)` は触っていない。** 本番証明書スイートのスキップは
+  設計どおり（本番鍵は署名環境にしか無い）。
+- `/code-review` の指摘10件を反映（1件は根拠を示して見送り）。主なもの:
+  - `providers.test.ts` に**同じ沈黙が残っていた**（skip ではないが、モジュールを退避しても
+    24 passed で CI は緑）。環境依存の分岐を消して常に強い検証を走らせるようにした。
+  - **eslint で `.skip()` を禁止**（`src/lib/anchoring/**/__tests__/`）。方針を1箇所に置くだけでは
+    新しいファイルが独自に skip を書くのを止められない。陰性対照で、書き戻すと lint が
+    error で落ちることを確認した。
+  - 失敗メッセージが「optionalDependencies なので」と断定していたが、`sharp` は通常の
+    `dependencies` で成り立たない。依存区分を見るよう促す形に直した。
+  - `collectFailureCodes`（18行）が2ファイルに複製されていたので共有化。
+    片方だけ直すと本番証明書スイートが古い規則で黙って通る。
+  - `requireNative` でアプリのモジュール（`../imageExif`）まで包んでいた。そこが落ちるのは
+    ネイティブ依存の不在ではなく退行なので、案内が的外れになる。包むのをやめた。
+  - 本番証明書スイートに `afterAll` が無く `C2PA_MODE` を復元していなかった。
+- 検証: CI 並列チェック8本すべて通過（595 files / 5827 passed | 1 skipped）。
+  1 skipped は上記の本番証明書スイート。
 ## 2026-09-21 Field Test のエクスポートが日本語プロジェクト名で常に500になるのを修正（RFC 5987） (branch claude/merchant-revenue-sharing-22tuq3)
 - 内容: 製造業向け Field Test の CSV エクスポート（`manufacturer/field-test/export/csv`）と PDF レポート（`.../report`）が、`Content-Disposition` の `filename="..."` に日本語プロジェクト名をそのまま入れており、Node/undici の ByteString 変換（コードポイント>255）で throw → **日本語名のプロジェクトでは常に 500**（本コードのプロジェクト名は基本日本語なので事実上いつも失敗）。
 - 修正: `src/lib/csv/serialize.ts` に共有ヘルパ `contentDispositionAttachment()` を追加し、**ASCII フォールバック `filename=` ＋ RFC 5987 `filename*=UTF-8''<percent-encoded>`** の両方を出す（ヘッダインジェクション対策の "・改行除去も維持）。`csvDownloadHeaders` と PDF ルートの両方をこの1関数に集約（PDF ルートは CJK を残す独自サニタイザを廃止）。
