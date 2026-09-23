@@ -21,6 +21,7 @@ describe("buildApprovalInbox", () => {
       id: "CERT-1",
       title: "田中",
       subtitle: "コーティング",
+      href: "/admin/certificates/CERT-1",
       action: { kind: "issue_certificate", label: "発行" },
     });
   });
@@ -50,7 +51,7 @@ describe("buildApprovalInbox", () => {
     const inv = sections.find((s) => s.key === "invoices");
     expect(inv?.count).toBe(1);
     expect(inv?.items[0].action).toBeUndefined();
-    expect(inv?.items[0].href).toBe("/admin/invoices");
+    expect(inv?.items[0].href).toBe("/admin/documents/doc-1");
   });
 
   it("falls back to safe labels when names are missing", () => {

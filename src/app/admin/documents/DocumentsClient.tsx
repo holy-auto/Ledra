@@ -2,7 +2,7 @@
 import { parseJsonSafe } from "@/lib/api/safeJson";
 
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import useSWR from "swr";
 import PageHeader from "@/components/ui/PageHeader";
@@ -59,12 +59,15 @@ type DocumentsData = { documents: DocumentRow[]; stats: Stats };
 
 export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilter?: string } = {}) {
   const router = useRouter();
+  const pathname = usePathname();
   const searchParams = useSearchParams();
   const prefillCustomerId = searchParams.get("customer_id") ?? "";
   const prefillVehicleId = searchParams.get("vehicle_id") ?? "";
   const prefillReservationId = searchParams.get("reservation_id") ?? "";
   const prefillStaffMemberId = searchParams.get("staff_id") ?? "";
-  const autoOpenForm = searchParams.get("create") === "1";
+  // 作成画面の開閉は URL (create=1) で持つ。ブラウザの「戻る」で一覧へ戻れるようにし、
+  // ページ外へ飛んで入力を失わないようにするため（入力自体は DocumentForm が端末に自動保存）。
+  const showForm = searchParams.get("create") === "1";
 
   const [typeFilter, setTypeFilter] = useState<string>(initialTypeFilter ?? "all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
@@ -111,7 +114,15 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
   const stats = swrData?.stats ?? { total: 0, unpaid_amount: 0 };
   const err = swrError ? (swrError.message ?? "読み込みに失敗しました") : null;
 
-  const [showForm, setShowForm] = useState(autoOpenForm);
+  const setShowForm = (open: boolean) => {
+    const params = new URLSearchParams(searchParams.toString());
+    if (open) params.set("create", "1");
+    else params.delete("create");
+    const qs = params.toString();
+    const url = qs ? `${pathname}?${qs}` : pathname;
+    if (open) router.push(url, { scroll: false });
+    else router.replace(url, { scroll: false });
+  };
   const [saveMsg, setSaveMsg] = useState<{ text: string; ok: boolean } | null>(null);
 
   // Delete
@@ -298,6 +309,40 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
   const defaultDocType: DocType =
     initialTypeFilter && initialTypeFilter in DOC_TYPES ? (initialTypeFilter as DocType) : "estimate";
 
+  // 作成画面: 一覧・集計・絞り込みは出さず、フォームだけに切り替える
+  if (showForm) {
+    return (
+      <div className="mx-auto max-w-6xl space-y-6">
+        <PageHeader
+          tag="帳票"
+          title="帳票の新規作成"
+          description="入力内容はこの端末に自動保存されます。誤って戻っても、もう一度開けば続きから再開できます。"
+          actions={
+            <button type="button" className="btn-ghost" onClick={() => setShowForm(false)}>
+              一覧に戻る
+            </button>
+          }
+        />
+        <DocumentForm
+          mode="create"
+          defaultDocType={defaultDocType}
+          prefillCustomerId={prefillCustomerId}
+          prefillVehicleId={prefillVehicleId}
+          prefillReservationId={prefillReservationId}
+          prefillStaffMemberId={prefillStaffMemberId}
+          onSaved={(created) => {
+            // 作成後はそのまま書類詳細へ遷移し、確認・編集・PDF出力へ繋げる。
+            // （どの書類作成画面から来ても、作成→詳細の導線を揃える）
+            // create=1 の履歴を詳細で置き換え、「戻る」で空の作成画面（と AI 起票の再実行）に戻らないようにする
+            mutate();
+            router.replace(`/admin/documents/${created.id}`);
+          }}
+          onCancel={() => setShowForm(false)}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="mx-auto max-w-6xl space-y-6">
       <PageHeader
@@ -309,11 +354,11 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
             type="button"
             className="btn-primary"
             onClick={() => {
-              setShowForm(!showForm);
+              setShowForm(true);
               setSaveMsg(null);
             }}
           >
-            {showForm ? "閉じる" : "新規作成"}
+            新規作成
           </button>
         }
       />
@@ -511,26 +556,6 @@ export default function DocumentsClient({ initialTypeFilter }: { initialTypeFilt
           </section>
 
           {saveMsg && <div className={`text-sm ${saveMsg.ok ? "text-success" : "text-danger"}`}>{saveMsg.text}</div>}
-
-          {/* Create Form */}
-          {showForm && (
-            <DocumentForm
-              mode="create"
-              defaultDocType={defaultDocType}
-              prefillCustomerId={prefillCustomerId}
-              prefillVehicleId={prefillVehicleId}
-              prefillReservationId={prefillReservationId}
-              prefillStaffMemberId={prefillStaffMemberId}
-              onSaved={(created) => {
-                // 作成後はそのまま書類詳細へ遷移し、確認・編集・PDF出力へ繋げる。
-                // （どの書類作成画面から来ても、作成→詳細の導線を揃える）
-                setShowForm(false);
-                mutate();
-                router.push(`/admin/documents/${created.id}`);
-              }}
-              onCancel={() => setShowForm(false)}
-            />
-          )}
 
           {/* Document List */}
           <section className="glass-card overflow-hidden">
