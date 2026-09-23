@@ -10,6 +10,9 @@ import QuoteAiDraftPanel from "./QuoteAiDraftPanel";
 import InvoiceOcrButton from "./InvoiceOcrButton";
 import LaborQuoteButton from "./LaborQuoteButton";
 import ItemCodeField from "@/components/documents/ItemCodeField";
+import useSWR from "swr";
+import { fetcher } from "@/lib/swr";
+import { clearDraft, draftKey, loadDraft, saveDraft } from "./documentDraftStorage";
 
 type Customer = {
   id: string;
@@ -222,6 +225,165 @@ export default function DocumentForm({
   const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
   const dragSrcIdx = useRef<number | null>(null);
 
+  // ─── 入力途中データの自動保存（create モードのみ） ───
+  // 誤って「戻る」やリロードをしても入力が消えないよう、端末に退避して次回開いたときに復元する。
+  const snapshot = {
+    formDocType,
+    formCustomerId,
+    formStaffMemberId,
+    formBranchId,
+    formRecipientName,
+    formRecipientHonorific,
+    formRecipientPostalCode,
+    formRecipientAddress,
+    formRecipientPhone,
+    formSubject,
+    formPeriodStart,
+    formPeriodEnd,
+    formPaymentTerms,
+    formDeliveryDate,
+    formTemplateId,
+    formIssuedAt,
+    formDueDate,
+    formNote,
+    formModelCode,
+    formItems,
+    formTaxRate,
+    formIsTaxInclusive,
+    formInvoiceCompliant,
+    formShowSeal,
+    formShowLogo,
+    formShowBankInfo,
+    formVehicleId,
+    formVehicleModel,
+    formVehiclePlate,
+    formVehicleVin,
+  };
+  type Snapshot = typeof snapshot;
+  // 保存キーはテナント × ユーザーで分ける（テナント切替・共有端末の別スタッフに下書きを出さない）。
+  // 取得できない場合は自動保存しない。
+  const { data: me, error: meError } = useSWR<{ user_id?: string | null; tenant_id?: string | null }>(
+    isEdit ? null : "/api/admin/me",
+    fetcher,
+    { revalidateOnFocus: false },
+  );
+  const storageKey =
+    isEdit || !me?.user_id || !me?.tenant_id
+      ? null
+      : draftKey({
+          tenantId: me.tenant_id,
+          userId: me.user_id,
+          customerId: prefillCustomerId,
+          vehicleId: prefillVehicleId,
+          reservationId: prefillReservationId,
+          staffMemberId: prefillStaffMemberId,
+        });
+  const snapshotJson = JSON.stringify(snapshot);
+  const defaultsRef = useRef<Snapshot | null>(null);
+  if (defaultsRef.current === null) defaultsRef.current = snapshot;
+  // 下書きの有無を確認し終えるまで prefill / AI 起票を待たせる（復元内容を上書きしないため）。
+  const draftChecked = isEdit || me != null || meError != null;
+  const [restoredAt, setRestoredAt] = useState<number | null>(null);
+  // 復元した支店は「顧客変更で支店をリセット」する effect に消されないよう、顧客が揃うまで保留する。
+  const restoredBranchRef = useRef<{ customerId: string; branchId: string } | null>(null);
+  // 復元したら URL プリフィル・AI 起票で上書きしない（下の各 prefill effect が参照する）。
+  const draftRestoredRef = useRef(false);
+  const restoreDoneRef = useRef(false);
+  // 復元後、保存しなかった宛先（住所・電話）と支払条件を顧客・支店の登録内容から埋め直す待ち。
+  const refillRef = useRef<{ customer: boolean; branch: boolean } | null>(null);
+  // 人が最初に操作する直前の状態。プリフィル・AI 起票だけで埋まった状態は保存しない
+  // （触らずに戻ったのに次回「復元しました」でプリフィルが効かなくなるため）。
+  const touchedFromRef = useRef<string | null>(null);
+  const markTouched = () => {
+    if (touchedFromRef.current === null) touchedFromRef.current = snapshotJson;
+  };
+
+  const applySnapshot = (d: Snapshot) => {
+    setFormDocType(d.formDocType);
+    setFormCustomerId(d.formCustomerId);
+    setFormStaffMemberId(d.formStaffMemberId);
+    if (d.formCustomerId === formCustomerId) {
+      // 顧客が変わらなければ支店リセット effect は走らないので、ここで直接反映する
+      restoredBranchRef.current = null;
+      setFormBranchId(d.formBranchId);
+    } else {
+      restoredBranchRef.current = { customerId: d.formCustomerId, branchId: d.formBranchId };
+    }
+    setFormRecipientName(d.formRecipientName);
+    setFormRecipientHonorific(d.formRecipientHonorific);
+    setFormRecipientPostalCode(d.formRecipientPostalCode);
+    setFormRecipientAddress(d.formRecipientAddress);
+    setFormRecipientPhone(d.formRecipientPhone);
+    setFormSubject(d.formSubject);
+    setFormPeriodStart(d.formPeriodStart);
+    setFormPeriodEnd(d.formPeriodEnd);
+    setFormPaymentTerms(d.formPaymentTerms);
+    setFormDeliveryDate(d.formDeliveryDate);
+    setFormTemplateId(d.formTemplateId);
+    setFormIssuedAt(d.formIssuedAt);
+    setFormDueDate(d.formDueDate);
+    setFormNote(d.formNote);
+    setFormModelCode(d.formModelCode);
+    setFormItems(d.formItems);
+    setFormTaxRate(d.formTaxRate);
+    setFormIsTaxInclusive(d.formIsTaxInclusive);
+    setFormInvoiceCompliant(d.formInvoiceCompliant);
+    setFormShowSeal(d.formShowSeal);
+    setFormShowLogo(d.formShowLogo);
+    setFormShowBankInfo(d.formShowBankInfo);
+    setFormVehicleId(d.formVehicleId);
+    setFormVehicleModel(d.formVehicleModel);
+    setFormVehiclePlate(d.formVehiclePlate);
+    setFormVehicleVin(d.formVehicleVin);
+  };
+
+  // 保存キーが決まったら一度だけ復元する（prefill / AI 起票 effect より前に宣言すること）。
+  useEffect(() => {
+    if (!storageKey || restoreDoneRef.current) return;
+    restoreDoneRef.current = true;
+    // 保存キーが決まる前に人が入力し始めていたら、古い下書きで上書きしない
+    if (touchedFromRef.current !== null) return;
+    const stored = loadDraft<Partial<Snapshot>>(storageKey);
+    if (!stored) return;
+    // 古い保存形式で欠けた項目は既定値で補う
+    const restored = { ...defaultsRef.current!, ...stored.data };
+    applySnapshot(restored);
+    refillRef.current = { customer: !!restored.formCustomerId, branch: !!restored.formBranchId };
+    draftRestoredRef.current = true;
+    // 復元しただけでは保存し直さない（保存時刻が延びて 24h の期限が伸び続けるのを防ぐ）。
+    // 人が操作した時点から差分を保存する。
+    setRestoredAt(stored.savedAt);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [storageKey]);
+
+  // 宛先の住所・電話と支払条件は端末に平文で残さない（個人情報・取引条件）。
+  // 復元時は顧客・支店の登録内容から埋め直す（下の refill effect）。
+  /* eslint-disable @typescript-eslint/no-unused-vars -- 除外するためだけに取り出す */
+  const {
+    formRecipientPostalCode: _postal,
+    formRecipientAddress: _address,
+    formRecipientPhone: _phone,
+    formPaymentTerms: _terms,
+    ...persistable
+  } = snapshot;
+  /* eslint-enable @typescript-eslint/no-unused-vars */
+  const persistJson = JSON.stringify(persistable);
+  useEffect(() => {
+    if (!storageKey || touchedFromRef.current === null) return;
+    if (snapshotJson === touchedFromRef.current) return;
+    saveDraft(storageKey, JSON.parse(persistJson) as Partial<Snapshot>);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [storageKey, snapshotJson]);
+
+  const discardDraft = () => {
+    if (storageKey) clearDraft(storageKey);
+    // ponytail: 破棄後は既定値に戻すだけで、URL プリフィル・AI 起票は再実行しない（開き直せば再実行される）。
+    applySnapshot(defaultsRef.current!);
+    refillRef.current = null;
+    touchedFromRef.current = null;
+    setRestoredAt(null);
+  };
+
   // Reference data fetch
   const fetchCustomers = useCallback(async () => {
     try {
@@ -365,7 +527,7 @@ export default function DocumentForm({
   // create モードで URL プリフィル（外注職人）
   const prefillStaffAppliedRef = useRef(false);
   useEffect(() => {
-    if (isEdit) return;
+    if (isEdit || !draftChecked || draftRestoredRef.current) return;
     if (prefillStaffAppliedRef.current) return;
     if (!prefillStaffMemberId) return;
     if (externalStaff.length === 0) return;
@@ -380,11 +542,19 @@ export default function DocumentForm({
           : items,
       );
     }
-  }, [isEdit, prefillStaffMemberId, externalStaff]);
+  }, [isEdit, draftChecked, prefillStaffMemberId, externalStaff]);
 
   // 顧客（法人）が決まったら、登録済みの支店一覧を取得する
   useEffect(() => {
-    setFormBranchId("");
+    const restored = restoredBranchRef.current;
+    if (restored) {
+      if (restored.customerId === formCustomerId) {
+        setFormBranchId(restored.branchId);
+        restoredBranchRef.current = null;
+      }
+    } else {
+      setFormBranchId("");
+    }
     fetchBranchesForCustomer(formCustomerId);
   }, [formCustomerId, fetchBranchesForCustomer]);
 
@@ -410,10 +580,35 @@ export default function DocumentForm({
     [customers],
   );
 
+  // 復元した下書きの宛先・支払条件を、顧客 → 支店の順に登録内容から埋め直す
+  useEffect(() => {
+    const r = refillRef.current;
+    if (!r) return;
+    if (r.customer) {
+      const c = customers.find((cust) => cust.id === formCustomerId);
+      if (!c) return;
+      const d = customerFormDefaults(c);
+      setFormRecipientPostalCode(d.postal_code);
+      setFormRecipientAddress(d.address);
+      setFormRecipientPhone(d.phone);
+      setFormPaymentTerms(d.payment_terms);
+      r.customer = false;
+    }
+    if (r.branch) {
+      const b = branches.find((br) => br.id === formBranchId);
+      if (!b) return;
+      setFormRecipientPostalCode(b.postal_code ?? "");
+      setFormRecipientAddress(b.address ?? "");
+      setFormRecipientPhone(b.phone ?? "");
+      r.branch = false;
+    }
+    refillRef.current = null;
+  }, [customers, branches, formCustomerId, formBranchId]);
+
   // create モードで URL プリフィル
   const prefillAppliedRef = useRef(false);
   useEffect(() => {
-    if (isEdit) return;
+    if (isEdit || !draftChecked || draftRestoredRef.current) return;
     if (prefillAppliedRef.current) return;
     if (!prefillCustomerId) return;
     if (customers.length === 0) return;
@@ -421,7 +616,7 @@ export default function DocumentForm({
     // プリフィルでも顧客登録済みの宛先・支払条件を反映する（onChange を経由しないため明示的に呼ぶ）。
     applyCustomerDefaults(prefillCustomerId);
     prefillAppliedRef.current = true;
-  }, [customers, prefillCustomerId, isEdit, applyCustomerDefaults]);
+  }, [customers, prefillCustomerId, isEdit, draftChecked, applyCustomerDefaults]);
 
   const handleVehicleSelect = useCallback(
     (vehicleId: string) => {
@@ -451,18 +646,18 @@ export default function DocumentForm({
   // create モードで URL プリフィル（車両）
   const prefillVehicleAppliedRef = useRef(false);
   useEffect(() => {
-    if (isEdit) return;
+    if (isEdit || !draftChecked || draftRestoredRef.current) return;
     if (prefillVehicleAppliedRef.current) return;
     if (!prefillVehicleId) return;
     if (vehicles.length === 0) return;
     handleVehicleSelect(prefillVehicleId);
     prefillVehicleAppliedRef.current = true;
-  }, [isEdit, prefillVehicleId, vehicles, handleVehicleSelect]);
+  }, [isEdit, draftChecked, prefillVehicleId, vehicles, handleVehicleSelect]);
 
   // 案件(予約)からの AI 起票: reservation_id がクエリに付いていれば明細・備考を自動起票する
   const aiPrefillAppliedRef = useRef(false);
   useEffect(() => {
-    if (isEdit) return;
+    if (isEdit || !draftChecked || draftRestoredRef.current) return;
     if (aiPrefillAppliedRef.current) return;
     if (!prefillReservationId) return;
     aiPrefillAppliedRef.current = true;
@@ -510,7 +705,7 @@ export default function DocumentForm({
         setAiPrefillBusy(false);
       }
     })();
-  }, [isEdit, prefillReservationId]);
+  }, [isEdit, draftChecked, prefillReservationId]);
 
   // ─── Item management ───
   const updateItem = (index: number, field: keyof DocumentItem, value: string | number | null) => {
@@ -663,6 +858,8 @@ export default function DocumentForm({
 
   // ─── Submit ───
   const handleSubmit = async () => {
+    // プリフィル・AI 起票だけの状態で送信して失敗しても、入力を失わないよう先に退避する
+    if (storageKey) saveDraft(storageKey, JSON.parse(persistJson) as Partial<Snapshot>);
     if (isStaffInvoice && !formStaffMemberId) {
       setSaveMsg({ text: "外注職人を選択してください", ok: false });
       return;
@@ -710,6 +907,7 @@ export default function DocumentForm({
       });
       const j = await parseJsonSafe(res);
       if (!res.ok) throw new Error(j?.message ?? j?.error ?? `HTTP ${res.status}`);
+      if (storageKey) clearDraft(storageKey);
       onSaved(j.document as DocumentRow);
     } catch (e: any) {
       setSaveMsg({ text: e?.message ?? String(e), ok: false });
@@ -719,7 +917,7 @@ export default function DocumentForm({
   };
 
   return (
-    <section className="glass-card p-3 space-y-4 sm:p-5">
+    <section className="glass-card p-3 space-y-4 sm:p-5" onChangeCapture={markTouched} onClickCapture={markTouched}>
       {!isEdit && formDocType === "estimate" && (
         <QuoteAiDraftPanel
           customerId={formCustomerId || undefined}
@@ -747,12 +945,33 @@ export default function DocumentForm({
         </div>
       )}
 
-      <div>
-        <div className="text-xs font-semibold tracking-[0.18em] text-muted">{isEdit ? "編集" : "新規作成"}</div>
-        <div className="mt-1 text-base font-semibold text-primary">
-          {isEdit ? `${DOC_TYPES[formDocType]?.label ?? formDocType}を編集` : "新規帳票作成"}
+      {/* create モードの見出しは作成画面側（DocumentsClient のページ見出し）で出す */}
+      {isEdit && (
+        <div>
+          <div className="text-xs font-semibold tracking-[0.18em] text-muted">編集</div>
+          <div className="mt-1 text-base font-semibold text-primary">
+            {`${DOC_TYPES[formDocType]?.label ?? formDocType}を編集`}
+          </div>
         </div>
-      </div>
+      )}
+
+      {restoredAt != null && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-accent/30 bg-accent/5 px-3 py-2 text-xs text-accent">
+          <span>
+            前回の入力内容を復元しました（
+            {new Date(restoredAt).toLocaleString("ja-JP", {
+              month: "numeric",
+              day: "numeric",
+              hour: "2-digit",
+              minute: "2-digit",
+            })}{" "}
+            保存）。住所・電話・支払条件は端末に保存していないため、顧客・支店の登録内容から入れ直しています。
+          </span>
+          <button type="button" className="btn-ghost px-2 py-1 text-xs" onClick={discardDraft}>
+            破棄して最初から
+          </button>
+        </div>
+      )}
 
       {saveMsg && <div className={`text-sm ${saveMsg.ok ? "text-success" : "text-danger"}`}>{saveMsg.text}</div>}
 

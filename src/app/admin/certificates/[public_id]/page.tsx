@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
+import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { CERTIFICATE_IMAGE_BUCKET, formatCertificateImageBytes } from "@/lib/certificateImages/constants";
 import { logCertificateAction } from "@/lib/audit/certificateLog";
@@ -44,14 +45,10 @@ function asC2paManifestSummary(v: unknown): C2paManifestSummary | null {
   return o as unknown as C2paManifestSummary;
 }
 
-async function getMyTenantId(supabase: any) {
-  const { data: userRes } = await supabase.auth.getUser();
-  if (!userRes.user) return null;
-
-  const { data, error } = await supabase.from("tenant_memberships").select("tenant_id").limit(1).single();
-
-  if (error || !data) return null;
-  return data.tenant_id as string;
+// 複数テナント所属時は active_tenant_id を尊重する（一覧・承認インボックスと同じテナントで引く）
+async function getMyTenantId(supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>) {
+  const caller = await resolveCallerWithRole(supabase);
+  return caller?.tenantId ?? null;
 }
 
 export default async function Page({ params }: PageProps) {
