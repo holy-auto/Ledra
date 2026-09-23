@@ -4,6 +4,9 @@ import {
   createApplication,
   conditionCheckInputSchema,
   upsertConditionCheck,
+  updateTenantFtJobStatus,
+  isRecruitmentExpired,
+  applicationInputSchema,
 } from "../tenantQueries";
 
 // Minimal chainable fake covering both paths createApplication uses:
@@ -95,6 +98,56 @@ describe("upsertConditionCheck の condition 越境ガード（/code-review #112
     await expect(upsertConditionCheck(fakeSupa(true), "job1", "proj1", "cond1", val, "user1")).resolves.toMatchObject({
       id: "check1",
     });
+  });
+});
+
+describe("状態ガード付き UPDATE の 0 行 → FT_STATE_CONFLICT（500 にしない・#1117）", () => {
+  // .from().update().eq().eq().select().maybeSingle() を賄い、maybeSingle は 0 行を表す null を返す。
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  function fakeSupaNoRow(): any {
+    const obj: Record<string, unknown> = {};
+    for (const m of ["from", "update", "select", "eq", "in"]) obj[m] = () => obj;
+    obj.maybeSingle = async () => ({ data: null, error: null });
+    return obj;
+  }
+
+  it("updateTenantFtJobStatus: 期待状態で0行（競合/不存在）と型付き 4xx で投げる", async () => {
+    // expectedStatus ガードにより、現在状態が変わっていれば 0 行 → FT_STATE_CONFLICT。
+    await expect(
+      updateTenantFtJobStatus(fakeSupaNoRow(), "t1", "job1", "assigned", "evidence_submitted"),
+    ).rejects.toMatchObject({ code: "FT_STATE_CONFLICT" });
+  });
+});
+
+describe("isRecruitmentExpired（応募の締切ガード・#1117）", () => {
+  const now = new Date("2026-09-23T00:00:00Z");
+  it("締切が過去なら true", () => {
+    expect(isRecruitmentExpired("2026-09-22T23:59:59Z", now)).toBe(true);
+  });
+  it("締切が未来なら false", () => {
+    expect(isRecruitmentExpired("2026-09-24T00:00:00Z", now)).toBe(false);
+  });
+  it("締切なし（null/undefined）は無期限＝false", () => {
+    expect(isRecruitmentExpired(null, now)).toBe(false);
+    expect(isRecruitmentExpired(undefined, now)).toBe(false);
+  });
+  it("不正な日付文字列は false（誤って締切扱いしない）", () => {
+    expect(isRecruitmentExpired("not-a-date", now)).toBe(false);
+  });
+});
+
+describe("applicationInputSchema（応募入力の信頼境界・#1117）", () => {
+  const rid = "11111111-1111-4111-8111-111111111111";
+  it("recruitment_id は UUID 必須、notes は任意", () => {
+    expect(applicationInputSchema.safeParse({ recruitment_id: rid }).success).toBe(true);
+    expect(applicationInputSchema.safeParse({ recruitment_id: "x" }).success).toBe(false);
+  });
+  it("notes は 2000 文字まで（過大行を防ぐ）", () => {
+    expect(applicationInputSchema.safeParse({ recruitment_id: rid, notes: "a".repeat(2000) }).success).toBe(true);
+    expect(applicationInputSchema.safeParse({ recruitment_id: rid, notes: "a".repeat(2001) }).success).toBe(false);
+  });
+  it("notes: null も受け付ける（旧実装の挙動維持・nullish）", () => {
+    expect(applicationInputSchema.safeParse({ recruitment_id: rid, notes: null }).success).toBe(true);
   });
 });
 

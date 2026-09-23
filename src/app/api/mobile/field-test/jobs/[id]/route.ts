@@ -32,7 +32,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     if (!caller) return apiUnauthorized();
 
     const { id } = await params;
-    const body = await request.json();
+    const body = await request.json().catch(() => ({}));
     const newStatus = body.status as string | undefined;
     if (!newStatus) return apiValidationError("status は必須です。");
 
@@ -47,7 +47,13 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     const err = validateTenantStatusTransition(job.status as string, newStatus);
     if (err) return apiValidationError(err);
 
-    const updated = await updateTenantFtJobStatus(caller.supabase, caller.tenantId, id, newStatus);
+    const updated = await updateTenantFtJobStatus(
+      caller.supabase,
+      caller.tenantId,
+      id,
+      job.status as string,
+      newStatus,
+    );
 
     if (newStatus === "evidence_submitted") {
       // 提出後に次に動くのは検査するメーカー。提出元テナント自身ではなくメーカーへ届ける。
@@ -64,6 +70,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
     return apiJson(updated);
   } catch (e) {
+    if ((e as { code?: string })?.code === "FT_STATE_CONFLICT") return apiValidationError((e as Error).message);
     return apiInternalError(e, "mobile ft job patch");
   }
 }
