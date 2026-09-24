@@ -30,6 +30,8 @@ export async function GET() {
       .from("insurer_users")
       .select("id, user_id, role, display_name, is_active, created_at, updated_at")
       .eq("insurer_id", caller.insurerId)
+      // システム行 (自動処理の監査用・ログイン不可) は人の一覧に出さない
+      .eq("is_system", false)
       .order("created_at", { ascending: true });
 
     if (error) {
@@ -206,6 +208,8 @@ export async function PATCH(req: Request) {
       .select("id, insurer_id, user_id, role")
       .eq("id", insurer_user_id)
       .eq("insurer_id", caller.insurerId)
+      // システム行は人向けの操作 (権限変更) の対象にしない
+      .eq("is_system", false)
       .single();
 
     if (!target) {
@@ -273,6 +277,8 @@ export async function DELETE(req: Request) {
       .select("id, insurer_id, user_id")
       .eq("id", insurer_user_id)
       .eq("insurer_id", caller.insurerId)
+      // システム行は人向けの操作 (削除) の対象にしない
+      .eq("is_system", false)
       .single();
 
     if (!target) {

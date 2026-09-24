@@ -10,6 +10,7 @@ import { maybeAutoFraudScoreForCase } from "@/lib/ai/automation/fraudScoreAuto";
 import { maybeAutoSummarizeCase } from "@/lib/ai/automation/caseSummaryAuto";
 import { maybeAutoSuggestAssigneeForCase } from "@/lib/ai/automation/caseAssignAuto";
 import { emitEntityWebhook } from "@/lib/outbound-webhooks";
+import { recordInsurerAccessLog } from "@/lib/insurer/auditActions";
 
 export const runtime = "nodejs";
 
@@ -212,24 +213,28 @@ export async function POST(req: NextRequest) {
     const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null;
     const ua = req.headers.get("user-agent") ?? null;
 
-    await admin.from("insurer_access_logs").insert({
-      insurer_id: caller.insurerId,
-      insurer_user_id: caller.insurerUserId,
-      action: "case_create",
-      meta: {
-        case_id: newCase.id,
-        route: "POST /api/insurer/cases",
-        ...(autoAssign
-          ? {
-              auto_assigned_to: autoAssign.assignedTo,
-              auto_assignment_rule_id: autoAssign.ruleId,
-              auto_assignment_rule_name: autoAssign.ruleName,
-            }
-          : {}),
+    await recordInsurerAccessLog(
+      admin,
+      {
+        insurer_id: caller.insurerId,
+        insurer_user_id: caller.insurerUserId,
+        action: "case_create",
+        meta: {
+          case_id: newCase.id,
+          route: "POST /api/insurer/cases",
+          ...(autoAssign
+            ? {
+                auto_assigned_to: autoAssign.assignedTo,
+                auto_assignment_rule_id: autoAssign.ruleId,
+                auto_assignment_rule_name: autoAssign.ruleName,
+              }
+            : {}),
+        },
+        ip,
+        user_agent: ua,
       },
-      ip,
-      user_agent: ua,
-    });
+      "POST /api/insurer/cases",
+    );
 
     // opt-in テナントでは、案件作成後に各 auto-action を実行 (fire-and-forget / レスポンス後)。
     // 3 つとも insurer_cases.meta を read-merge-write するため、並列だと最後の書き込みが他キーを

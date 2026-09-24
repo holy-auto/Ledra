@@ -37,7 +37,7 @@ set -uo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 # 表示名と実行コマンド。**CI はこの1箇所だけを見る。**
-NAMES=(lint lint:migrations tsc test:coverage check:schema check:context-dates check:ox-override check:ledger-ids)
+NAMES=(lint lint:migrations tsc test:coverage check:schema check:context-dates check:ox-override check:ledger-ids check:audit-actions)
 CMDS=(
   "npm run lint"
   "npm run lint:migrations"
@@ -58,6 +58,11 @@ CMDS=(
   # 改番で直そうとして4回失敗した。手順書は効かなかったので、衝突した状態を
   # マージさせない形にした (DECISION_LOG 2026-09-15)
   "npm run check:ledger-ids"
+  # insurer_access_logs.action の語彙が、正準の型 (auditActions.ts) と
+  # 再生検査の一覧でずれていないか。CHECK が4値しか許さないまま
+  # コードが 20 種を書き、保険会社ポータルの6エンドポイントが本番で
+  # 落ち続けた (DECISION_LOG 2026-09-23)
+  "npm run check:audit-actions"
 )
 
 # NAMES と CMDS は添字で対応する並列配列で、間に説明コメントが挟まるため

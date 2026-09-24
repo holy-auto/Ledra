@@ -5,6 +5,7 @@ import { apiJson, apiUnauthorized, apiValidationError, apiInternalError } from "
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { createInsurerScopedAdmin } from "@/lib/supabase/admin";
 import { checkFraudPatterns } from "@/lib/ai/fraudPatternDetect";
+import { recordInsurerAccessLog } from "@/lib/insurer/auditActions";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -98,18 +99,22 @@ export async function POST(req: NextRequest) {
     });
 
     // 監査ログ
-    await admin.from("insurer_access_logs").insert({
-      insurer_id: caller.insurerId,
-      insurer_user_id: caller.insurerUserId,
-      action: "fraud_check",
-      meta: {
-        case_id,
-        risk_level: result.riskLevel,
-        flags: result.flags,
-        used_llm: result.usedLlm,
-        llm_reason: result.llmReason,
+    await recordInsurerAccessLog(
+      admin,
+      {
+        insurer_id: caller.insurerId,
+        insurer_user_id: caller.insurerUserId,
+        action: "fraud_check",
+        meta: {
+          case_id,
+          risk_level: result.riskLevel,
+          flags: result.flags,
+          used_llm: result.usedLlm,
+          llm_reason: result.llmReason,
+        },
       },
-    });
+      "POST /api/insurer/cases/fraud-check",
+    );
 
     return apiJson({
       risk_level: result.riskLevel,
