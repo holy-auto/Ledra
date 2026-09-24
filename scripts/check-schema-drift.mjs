@@ -165,6 +165,51 @@ function columnsFromDump(text) {
   return out;
 }
 
+/**
+ * `表名.列名`（小文字）→ 宣言型の先頭トークン（小文字）。**enum ドリフトの検出専用。**
+ *
+ * columnsFromDump と同じ括弧深さ判定で列行だけを取り、列名の後ろの型の先頭語を拾う。
+ * enum 型名は単一の識別子（`certificate_status_enum` 等）なので先頭語の一致で判定できる。
+ * `character varying(255)` のような複合型は先頭語が `character` になり、どの enum 名とも
+ * 一致しないので誤検出しない（enum 判定にしか使わないため、それで十分）。
+ * 列名の集合そのものは columnsFromDump が持つので、ここは型だけを別に持つ（既存の
+ * 列比較には一切触らない＝ blast radius ゼロ）。
+ */
+function columnTypesFromDump(text) {
+  const out = new Map();
+  const re = /^CREATE (?:UNLOGGED )?TABLE (?:ONLY )?public\.([\w"]+) \(\n([\s\S]*?)^\)/gm;
+  for (const m of text.matchAll(re)) {
+    const table = bare(m[1]);
+    let depth = 0;
+    for (const raw of m[2].split("\n")) {
+      const startDepth = depth;
+      let inStr = false;
+      for (let i = 0; i < raw.length; i++) {
+        const ch = raw[i];
+        if (inStr) {
+          if (ch === "'") inStr = raw[i + 1] === "'" ? (i++, true) : false;
+          continue;
+        }
+        if (ch === "'") inStr = true;
+        else if (ch === "(") depth++;
+        else if (ch === ")") depth--;
+      }
+      if (startDepth !== 0) continue;
+      const line = raw.trim();
+      if (!line) continue;
+      if (/^(CONSTRAINT|PRIMARY|UNIQUE|CHECK|FOREIGN|EXCLUDE|LIKE)\b/i.test(line)) continue;
+      // 型の先頭語。pg_dump は public の enum を `public.x_enum` と修飾して書くので
+      // `public.` を剥がして enum 名だけを残す（列が enum を使う日への備え。現状 0 列）。
+      const mm = line.match(/^"?(\w+)"?\s+((?:public\.)?"?\w+"?)/);
+      if (mm) {
+        const typ = bare(mm[2]).toLowerCase().replace(/^public\./, "");
+        out.set(`${table}.${bare(mm[1])}`.toLowerCase(), typ);
+      }
+    }
+  }
+  return out;
+}
+
 /** `CREATE POLICY <名前> ON public.<表>` から `表名.ポリシー名` を拾う。名前は引用符付きもある。 */
 function policiesFromDump(text) {
   const out = new Set();
@@ -195,6 +240,17 @@ const replayed = {
   fk_constraint: constraintsFromDump(dump, "FOREIGN KEY"),
   check_constraint: constraintsFromDump(dump, "CHECK"),
 };
+
+// enum 型ドリフト検出用（本番 enum ⇄ マイグレーション非 enum）。再生 DB 側の列→型（先頭語）。
+// **既知の1件で当たりを取る**（型パーサの陰性対照。壊れたら列比較ではなくここで落ちる）。
+const replayColTypes = columnTypesFromDump(dump);
+if (replayColTypes.get("tenants.plan_tier") !== "text") {
+  console.error(
+    "[drift] 型パーサの自己検査が落ちました: tenants.plan_tier の再生型が text と読めていません" +
+      `（実際: ${replayColTypes.get("tenants.plan_tier") ?? "(拾えず)"}）。columnTypesFromDump を疑ってください。`,
+  );
+  process.exit(1);
+}
 
 // イベントトリガだけは pg_dump に出ないので、マイグレーションの字面から拾う。
 const migrationsText = readdirSync(join(repoRoot, "supabase/migrations"))
@@ -351,6 +407,18 @@ const prod = {
   ),
 };
 
+// 本番で enum 型になっている列（マイグレーション側が text だと、列名は一致するので
+// 既存の列比較には映らない型ドリフト。OPEN_QUESTIONS / DECISION_LOG 2026-09-22 (8)(b)）。
+const prodEnumCols = (
+  await query(
+    "select c.relname||'.'||a.attname as col, t.typname as enumtype from pg_attribute a" +
+      " join pg_class c on c.oid=a.attrelid join pg_namespace n on n.oid=c.relnamespace" +
+      " join pg_type t on t.oid=a.atttypid" +
+      " where n.nspname='public' and c.relkind in ('r','p') and a.attnum>0 and not a.attisdropped" +
+      " and t.typtype='e' order by 1",
+  )
+).map((r) => ({ col: String(r.col).toLowerCase(), enumtype: String(r.enumtype).toLowerCase() }));
+
 // ── 4. 突き合わせ ───────────────────────────────────────────
 const LABEL = {
   table: "テーブル",
@@ -446,6 +514,25 @@ for (const n of extraFkTableMissing) {
   console.log(`         - ${n}（外部キー。ただし**表そのものが本番に無い** —— 先に表を見ること）`);
 }
 
+// ── 列の型ドリフト（本番 enum / マイグレーション非 enum）: 報告のみ ──────────
+// 既存の列比較は「列名の有無」だけを見るため、本番が enum・マイグレーションが text の列は
+// **名前が一致して素通り**していた（tenants.plan_tier が実例。DECISION_LOG は3列挙げていたが
+// 実測は5列で、certificates.expiry_type と templates.scope は誰も気づいていなかった）。
+//
+// **落とさない（報告のみ）。** enum と text+CHECK で同じ制約を別表現にしている意図的なドリフトで、
+// CHECK の逆向き（"落とさない"）やポリシーの逆向き（件数のみ）と同じ性質。ビルドを永久に赤く
+// しないため件数と一覧を出すに留める。新規の（事故性の）型ドリフトもここに現れて可視化される。
+const enumTypeDrift = prodEnumCols.filter((e) => {
+  const rt = replayColTypes.get(e.col);
+  return rt !== undefined && rt !== e.enumtype; // 再生に列が無い＝別ドリフトで既出。同じ enum＝ドリフト無し。
+});
+console.log(
+  `\n[drift] 列の型ドリフト（本番 enum / マイグレーション非 enum）: ${enumTypeDrift.length} 件（報告のみ・落とさない）`,
+);
+for (const e of enumTypeDrift) {
+  console.log(`         - ${e.col}: 本番 ${e.enumtype} / マイグレーション ${replayColTypes.get(e.col)}`);
+}
+
 if (total > 0 || extraColumns.length > 0 || extraUnique.length > 0 || extraFk.length > 0) {
   if (total > 0) {
     console.error(
@@ -493,5 +580,10 @@ if (total > 0 || extraColumns.length > 0 || extraUnique.length > 0 || extraFk.le
   process.exit(1);
 }
 
-console.log("\n[drift] ドリフト無し。本番とマイグレーションの列・オブジェクトは双方向で一致しています。");
+console.log(
+  "\n[drift] オブジェクトの存在は双方向で一致（本番にだけ／マイグレーションにだけ、は無し）。" +
+    (enumTypeDrift.length > 0
+      ? `\n[drift] ただし列の型ドリフトが ${enumTypeDrift.length} 件あります（上記・報告のみ・落とさない）。`
+      : ""),
+);
 process.exit(0);
