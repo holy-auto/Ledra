@@ -84,6 +84,7 @@ export const POST = withCaller(
           total_jpy: extract.total_jpy,
           delivery_date: extract.delivery_date,
           model_code: modelCodeFromChassis(extract.vehicle_chassis_no),
+          tc_code: extract.vehicle_tc_code?.trim() || null,
           ...toDraftHeader(extract),
         },
       });

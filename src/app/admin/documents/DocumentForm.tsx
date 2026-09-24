@@ -190,6 +190,7 @@ export default function DocumentForm({
   const lastOcrNoteRef = useRef<string | null>(null);
   // 工賃計算に使う型式（OCR の車台番号から自動入力、番号だけのときは手入力）
   const [formModelCode, setFormModelCode] = useState("");
+  const [formTcCode, setFormTcCode] = useState("");
   const [formItems, setFormItems] = useState<DocumentItem[]>(initialItems);
   const [formTaxRate, setFormTaxRate] = useState(initial?.tax_rate ?? 10);
   const [formIsTaxInclusive, setFormIsTaxInclusive] = useState(initialIsTaxInclusive);
@@ -1364,6 +1365,7 @@ export default function DocumentForm({
                 if (header.delivery_date && !formDeliveryDate) setFormDeliveryDate(header.delivery_date);
                 if (header.subject && !formSubject) setFormSubject(header.subject);
                 if (header.model_code) setFormModelCode(header.model_code);
+                if (header.tc_code) setFormTcCode(header.tc_code);
                 // 撮り直し時に前回OCR分の備考が重複・残留しないよう、前回分を差し替える
                 const prevOcrNote = lastOcrNoteRef.current;
                 lastOcrNoteRef.current = header.note;
@@ -1381,6 +1383,8 @@ export default function DocumentForm({
               branchId={formBranchId}
               modelCode={formModelCode}
               onModelCodeChange={setFormModelCode}
+              tcCode={formTcCode}
+              onTcCodeChange={setFormTcCode}
               disabled={saving}
               onApplied={(update) => {
                 setFormItems((latest) => recalcSubtotals(update(latest)));
