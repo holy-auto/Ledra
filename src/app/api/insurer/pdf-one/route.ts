@@ -8,6 +8,7 @@ import { pdf, type DocumentProps } from "@react-pdf/renderer";
 import { InsurerPdfDoc } from "@/lib/insurerPdfDoc";
 import { apiInternalError, apiUnauthorized, apiValidationError, apiNotFound } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
+import type { InsurerAccessAction } from "@/lib/insurer/auditActions";
 
 export const runtime = "nodejs";
 
@@ -53,7 +54,7 @@ export async function GET(req: NextRequest) {
     if (!cert) return apiNotFound("証明書が見つかりません。");
 
     const { error: logErr } = await supabase.rpc("insurer_audit_log", {
-      p_action: "insurer.export.pdf.one",
+      p_action: "insurer.export.pdf.one" satisfies InsurerAccessAction,
       p_target_public_id: pid,
       p_query_json: null,
       p_ip: ip,

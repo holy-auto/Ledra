@@ -55,7 +55,8 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
         .select("condition_type, condition_value, assign_to, is_active")
         .eq("insurer_id", insurerId)
         .eq("is_active", true),
-      admin.from("insurer_users").select("id, display_name").eq("insurer_id", insurerId),
+      // 担当候補は人だけ。システム行 (自動処理の監査用) を提案しない
+      admin.from("insurer_users").select("id, display_name").eq("insurer_id", insurerId).eq("is_system", false),
       admin
         .from("insurer_cases")
         .select("category, priority, assigned_to")

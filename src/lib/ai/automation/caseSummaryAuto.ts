@@ -22,6 +22,7 @@ import { logger } from "@/lib/logger";
 import { loadAiAutomationSettings } from "./policy";
 import { shouldAutoSummarizeCase } from "./orchestrator";
 import { certAiFields } from "@/lib/certificates/aiFields";
+import { recordInsurerAccessLog, resolveInsurerSystemActorId } from "@/lib/insurer/auditActions";
 
 const AUTO_SUMMARY_ENDPOINT = "/api/insurer/cases#auto-summary";
 
@@ -119,14 +120,19 @@ export async function maybeAutoSummarizeCase(params: MaybeAutoSummarizeCaseParam
     }
 
     // 監査ログ (手動 ai-summary と対になる auto 版)
-    await admin
-      .from("insurer_access_logs")
-      .insert({
-        insurer_id: insurerId,
-        action: "case_summary_auto",
-        meta: { case_id: caseId, ai: result.ai, confidence: result.confidence },
-      })
-      .then(() => {});
+    const systemActorId = await resolveInsurerSystemActorId(admin, insurerId, "maybeAutoSummarizeCase");
+    if (systemActorId) {
+      await recordInsurerAccessLog(
+        admin,
+        {
+          insurer_id: insurerId,
+          insurer_user_id: systemActorId,
+          action: "case_summary_auto",
+          meta: { case_id: caseId, ai: result.ai, confidence: result.confidence },
+        },
+        "maybeAutoSummarizeCase",
+      );
+    }
   } catch (e) {
     logger.warn("[caseSummaryAuto] maybeAutoSummarizeCase threw", {
       caseId,

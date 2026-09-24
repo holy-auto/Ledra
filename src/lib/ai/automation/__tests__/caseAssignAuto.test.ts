@@ -45,7 +45,11 @@ const baseStore = (assignedTo: string | null = null) =>
         meta: null,
       },
     ],
-    insurer_users: [{ id: "u1", display_name: "担当A", insurer_id: INSURER }],
+    insurer_users: [
+      { id: "u1", display_name: "担当A", insurer_id: INSURER, is_system: false },
+      // 自動処理の監査行が指すシステム行。担当候補には出てはいけない
+      { id: "sys1", display_name: "システム (自動処理)", insurer_id: INSURER, user_id: null, is_system: true },
+    ],
     insurer_assignment_rules: [],
   });
 
@@ -76,6 +80,18 @@ describe("maybeAutoSuggestAssigneeForCase (#4)", () => {
     const upd = store.updates.find((u) => u.table === "insurer_cases");
     expect(upd?.payload.meta.ai_assign_suggestion.source).toBe("auto");
     expect(upd?.payload.meta.ai_assign_suggestion.candidates).toHaveLength(1);
+  });
+
+  it("システム行 (is_system) を担当候補に渡さない", async () => {
+    h.settings = settings({ "insurer_case.auto_assign_suggest": true });
+    const store = baseStore();
+    h.admin = makeFakeAdmin(store);
+    await maybeAutoSuggestAssigneeForCase({ caseId: CASE, insurerId: INSURER, tenantId: TENANT });
+    // suggestAssignee に渡った候補一覧に、自動処理用の行が混ざっていないこと。
+    // 混ざると「システム (自動処理)」が担当として提案される。
+    const passed = JSON.stringify(suggestMock.mock.calls[0] ?? []);
+    expect(passed).toContain("u1");
+    expect(passed).not.toContain("sys1");
   });
 
   it("既にルールで割当済み (assigned_to あり) なら提案しない", async () => {
