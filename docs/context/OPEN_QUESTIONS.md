@@ -127,18 +127,30 @@ Web 側は顧客名・車両情報など任意の日本語を出すので、同�
 - `insurer_access_logs.insurer_user_id` の外部キーが**2本ある**
   （`fk_ial_insurer_user` と `insurer_access_logs_insurer_user_fk`、片方は NOT VALID）。
   重複 FK の棚卸しは他の重複索引と一緒に扱う。
-- **`src/types/db.generated.ts` が未更新。** `insurer_users.user_id` は実行時に NULL 可に
-  なったが型は `string` のままで、`is_system` は型に無い。`npm run db:typegen` は
-  **本番 DB** から生成するので、マイグレーション適用後でないと正しい型が出ない。
-  今日のところ実害が無いのは、監査経路の Supabase クライアントが `SupabaseClient<any, any, any>`
-  だから（`/code-review` #1151 の指摘）。適用後に再生成する。
+- **`src/types/db.generated.ts` を手で直した（要・再生成での確認）。** 2026-09-24 の本番適用後、
+  `is_system` の追加と `user_id` の nullable 化を**手で9行**書いた。`npm run db:typegen` は
+  `SUPABASE_DB_URL`（本番 DB への接続 URI）を要求し、作業していたセッションの環境に無かったため。
+  生成器が出す形（アルファベット順・`?:` の付き方）に合わせたつもりだが、**確かめていない。**
+  次に typegen を回せる環境で再生成し、差分が出ないことを確認すること。
+  出たらそれが正で、手書きが誤っていたことになる。
 - **アプリのデプロイとマイグレーション適用が競合しうる。** `is_system=eq.false` を送る
   クエリが6箇所あり、マイグレーション適用前に新しいアプリが動くと PostgREST が
-  400（column does not exist）を返す。実測では `DB migrate` は **60 秒**で終わり
-  （run 88: 14:53:06→14:54:06 UTC）、Vercel のビルドは **約7分半**かかる
-  （14:41:19→14:48:51 UTC、プレビュー）ので通常は適用が先に終わる。
-  ただし**順序が保証された作りではない**（どちらも main への push で並行に走る）。
-  `db-migrate.yml` を Vercel の本番昇格より前に置く仕組みは未整備。
+  400（column does not exist）を返す。**順序が保証された作りではない**
+  （どちらも main への push で並行に走る）。`db-migrate.yml` を Vercel の本番昇格より
+  前に置く仕組みは未整備。
+
+  所要時間の実測（Actions API の `created_at`→`updated_at`、直近 10 回・2026-09-24 時点）:
+
+  | 対象 | 最短 | 最長 | 中央値 | 件数 |
+  |---|---|---|---|---|
+  | `DB migrate` | 24 秒（run 86 / 2026-09-23 00:13:12→00:13:36） | 60 秒（run 88 / 2026-09-23 14:53:06→14:54:06） | 約 29 秒 | 10 |
+  | Vercel **プレビュー**ビルド | 2 分 34 秒（`b1322246` / 2026-09-24 15:05:11→15:07:45） | 11 分 57 秒（`bfb031e7` / 2026-09-24 14:26:09→14:38:06） | —（3件のみ） | 3 |
+
+  **本番デプロイの所要時間は実測していない。** 上の Vercel 側はすべてプレビューの
+  ビルドで、当セッションの通知から拾った3件しかない。したがって
+  「通常は適用が先に終わる」は**プレビューの数字からの推定**であって、
+  本番で先後を確かめたわけではない。#1151 のマージでも、`db-migrate` の時刻
+  （15:50:09→15:50:34 UTC）は取れているが、Vercel 本番側の時刻は取れていない。
 
 付随: `src/lib/insurer/audit.ts` と `src/lib/supabase/insurer/audit.ts` の
 `AuditAction` は、正準語彙の部分集合（`Extract<InsurerAccessAction, ...>`）として

@@ -4,7 +4,19 @@
 > 追わず、常に最新状態だけを保つ（履歴は DECISION_LOG.md / RELEASE_LOG.md 側）。
 > 大きな変化があったら都度上書きすること。
 
-最終更新: 2026-09-23
+最終更新: 2026-09-24
+
+> 2026-09-24 追記（本番適用 実測）: **#1151 を本番に適用した**（`147ed34b`・`db-migrate` run 90 成功・15:50 UTC）。
+> 本番で実測: `insurer_users.is_system` 列あり、保険会社2社に**システム行が各1行**（`user_id` を持つものは0）、
+> 形の CHECK は `convalidated: true`、部分一意索引と挿入トリガも実在、適用台帳に4版すべて。
+> さらに**定義を読むだけで済ませず、実際に書き込んで**確かめた —— 2社 × 3種
+> （`case_summary_auto` / `case_assign_suggest_auto` / `fraud_check_auto`）の **6件すべてが成功**。
+> 陰性対照として `insurer_user_id` を渡さない（= 直前まで壊れていた形）と今も **23502** で落ちる。
+> `RAISE EXCEPTION` で全件ロールバックし、表の行数は2件・最新 2026-09-03 のまま変化なし。
+>
+> **注意**: `src/types/db.generated.ts` は `npm run db:typegen`（本番 DB への接続 URI が要る）では無く、
+> **手で直した**（`is_system` の追加と `user_id` の nullable 化の9行）。この作業環境に
+> `SUPABASE_DB_URL` が無いため。次に typegen を回せる環境で再生成して差分が出ないか確認すること。
 
 > 2026-09-24 追記: **監査 `action` の語彙を型で縛り、AI 自動処理の監査行を復旧**（マイグレーション
 > `20260924133000`〜`20260924133300`）。正準語彙は `src/lib/insurer/auditActions.ts` に置き、

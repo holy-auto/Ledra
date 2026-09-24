@@ -7440,11 +7440,12 @@ export type Database = {
           id: string
           insurer_id: string
           is_active: boolean
+          is_system: boolean
           last_login_at: string | null
           note: string | null
           role: string
           updated_at: string
-          user_id: string
+          user_id: string | null
         }
         Insert: {
           created_at?: string
@@ -7454,11 +7455,12 @@ export type Database = {
           id?: string
           insurer_id: string
           is_active?: boolean
+          is_system?: boolean
           last_login_at?: string | null
           note?: string | null
           role?: string
           updated_at?: string
-          user_id: string
+          user_id?: string | null
         }
         Update: {
           created_at?: string
@@ -7468,11 +7470,12 @@ export type Database = {
           id?: string
           insurer_id?: string
           is_active?: boolean
+          is_system?: boolean
           last_login_at?: string | null
           note?: string | null
           role?: string
           updated_at?: string
-          user_id?: string
+          user_id?: string | null
         }
         Relationships: [
           {
