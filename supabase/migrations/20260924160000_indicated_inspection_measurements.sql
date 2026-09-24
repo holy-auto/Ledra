@@ -58,7 +58,8 @@ create table if not exists inspection_measurements (
 );
 
 create index if not exists idx_im_tenant on inspection_measurements(tenant_id);
-create index if not exists idx_im_record on inspection_measurements(inspection_record_id);
+-- record 単位の lookup / FK cascade は unique(inspection_record_id, field_code) の
+-- 先頭列インデックスが担うため、専用の record インデックスは張らない（冗長回避）。
 
 -- 4) RLS — inspection_measurements（inspection_records と同一方針）
 alter table inspection_measurements enable row level security;
@@ -67,14 +68,28 @@ drop policy if exists inspection_measurements_tenant_select on inspection_measur
 create policy inspection_measurements_tenant_select on inspection_measurements
   for select using (tenant_id in (select my_tenant_ids()));
 
+-- insert/update の with check は tenant_id だけでなく、参照先 inspection_record_id が
+-- 自テナントの記録であることも要求する。これが無いと、他テナントの記録 id を指す行を
+-- 自テナント名義で作れ、unique(inspection_record_id, field_code) により相手のセルを
+-- 先取りして正当な insert を阻害できる（クロステナント汚染/DoS）。
 drop policy if exists inspection_measurements_tenant_insert on inspection_measurements;
 create policy inspection_measurements_tenant_insert on inspection_measurements
-  for insert with check (tenant_id in (select my_tenant_ids()));
+  for insert with check (
+    tenant_id in (select my_tenant_ids())
+    and inspection_record_id in (
+      select id from inspection_records where tenant_id in (select my_tenant_ids())
+    )
+  );
 
 drop policy if exists inspection_measurements_tenant_update on inspection_measurements;
 create policy inspection_measurements_tenant_update on inspection_measurements
   for update using (tenant_id in (select my_tenant_ids()))
-  with check (tenant_id in (select my_tenant_ids()));
+  with check (
+    tenant_id in (select my_tenant_ids())
+    and inspection_record_id in (
+      select id from inspection_records where tenant_id in (select my_tenant_ids())
+    )
+  );
 
 drop policy if exists inspection_measurements_tenant_delete on inspection_measurements;
 create policy inspection_measurements_tenant_delete on inspection_measurements

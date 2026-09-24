@@ -28,7 +28,10 @@ const BOTH: IndicatedInspectionForm[] = ["sanago", "yonago"];
 const SANAGO: IndicatedInspectionForm[] = ["sanago"]; // 四輪のみ
 
 /**
- * 測定セル定義。四輪(第三号)を上位集合とし、二輪(第四号)に無い項目は forms=['sanago']。
+ * 測定セル定義。多くは両様式共通だが、各様式に固有のセルがある（包含関係ではない）:
+ * 四輪(第三号)のみ = 軸ごと左右の制動力・駐車制動・左右差・サイドスリップ・OBD・黒煙、
+ * 二輪(第四号)のみ = 制動力を前軸/後軸の集約値で持つ(brake.front/brake.rear)。
+ * 各項目の該当様式は forms で表す。
  * ponytail: 光軸の上下/左右ズレの細分は初版では aim 1セル/灯にまとめる（描画で十分）。
  * 必要になれば code を足すだけ（DB 変更不要）。
  */
@@ -170,12 +173,20 @@ export const measurementInputSchema = z
   .superRefine((v, ctx) => {
     const def = getMeasurementField(v.field_code);
     if (!def) return; // 既に refine で弾かれる
-    if (v.unit && def.units && !def.units.includes(v.unit)) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["unit"],
-        message: `「${def.label}」の単位は ${def.units.join(" / ")} のいずれかです。`,
-      });
+    if (v.unit) {
+      if (!def.units) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["unit"],
+          message: `「${def.label}」は単位を取りません。`,
+        });
+      } else if (!def.units.includes(v.unit)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["unit"],
+          message: `「${def.label}」の単位は ${def.units.join(" / ")} のいずれかです。`,
+        });
+      }
     }
     if (def.valueKind === "numeric" && (v.num_value === null || v.num_value === undefined)) {
       ctx.addIssue({
@@ -189,6 +200,16 @@ export const measurementInputSchema = z
         code: z.ZodIssueCode.custom,
         path: ["judgment"],
         message: `「${def.label}」は良/否の判定が必要です。`,
+      });
+    }
+    // text 項目（サイド・スリップ / 光軸）を含め、値が一切無い空の測定値は許さない。
+    const hasNum = v.num_value !== null && v.num_value !== undefined;
+    const hasText = v.text_value !== null && v.text_value !== undefined && v.text_value !== "";
+    if (!hasNum && !hasText && !v.judgment) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["field_code"],
+        message: `「${def.label}」に測定値（数値・テキスト・判定のいずれか）が必要です。`,
       });
     }
   });
