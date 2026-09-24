@@ -53,23 +53,26 @@ export async function resolveActiveMembership(
   const activeTenantId = await getActiveTenantCookie();
 
   if (activeTenantId) {
-    const { data: mem } = await client
+    const { data: mem, error } = await client
       .from("tenant_memberships")
       .select("tenant_id, role")
       .eq("user_id", userId)
       .eq("tenant_id", activeTenantId)
       .limit(1)
       .maybeSingle();
+    // 問い合わせの失敗を「所属なし」と読んで最も古い所属へ落ちると、別テナントを操作してしまう
+    if (error) throw error;
     if (mem?.tenant_id) return { tenantId: normalizeTenantId(mem.tenant_id), role: normalizeRole(mem.role) };
   }
 
-  const { data: mem } = await client
+  const { data: mem, error } = await client
     .from("tenant_memberships")
     .select("tenant_id, role")
     .eq("user_id", userId)
     .order("created_at", { ascending: true })
     .limit(1)
     .maybeSingle();
+  if (error) throw error;
   if (!mem?.tenant_id) return null;
   return { tenantId: normalizeTenantId(mem.tenant_id), role: normalizeRole(mem.role) };
 }
@@ -85,7 +88,8 @@ export async function resolveCallerWithRole(
   const { data: userRes } = await supabase.auth.getUser();
   if (!userRes?.user) return null;
 
-  const mem = await resolveActiveMembership(supabase, userRes.user.id);
+  // 問い合わせ失敗時は別テナントへ落とさず「解決できない」として止める（呼び出し元は null を 401 等で扱う）
+  const mem = await resolveActiveMembership(supabase, userRes.user.id).catch((): null => null);
   if (!mem) return null;
 
   const ctx: CallerInfo = {

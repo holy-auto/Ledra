@@ -14,6 +14,7 @@ import { NextRequest } from "next/server";
 const state = vi.hoisted(() => ({
   activeTenant: "t-B" as string | undefined,
   memberships: [] as Array<{ user_id: string; tenant_id: string; role: string }>,
+  failMembershipLookup: false,
   stripe: {
     checkoutCreate: vi.fn(async (_p: Record<string, unknown>) => ({ url: "https://stripe.test/checkout" })),
     portalCreate: vi.fn(async (_p: Record<string, unknown>) => ({ url: "https://stripe.test/portal" })),
@@ -31,10 +32,13 @@ function table(rows: Array<Record<string, unknown>>) {
     },
     order: () => b,
     limit: () => b,
-    maybeSingle: async () => ({
-      data: rows.find((r) => Object.entries(filters).every(([k, v]) => r[k] === v)) ?? null,
-      error: null,
-    }),
+    maybeSingle: async () =>
+      rows === (state.memberships as unknown) && state.failMembershipLookup
+        ? { data: null, error: new Error("timeout") }
+        : {
+            data: rows.find((r) => Object.entries(filters).every(([k, v]) => r[k] === v)) ?? null,
+            error: null,
+          },
     update: () => ({ eq: async () => ({ error: null }) }),
   };
   return b;
@@ -90,6 +94,7 @@ describe("課金の操作は選択中テナントのオーナーのみ", () => {
   beforeEach(() => {
     process.env.APP_URL = "https://app.test";
     state.activeTenant = "t-B";
+    state.failMembershipLookup = false;
     state.stripe.checkoutCreate.mockClear();
     state.stripe.portalCreate.mockClear();
     // 最初の所属（t-A）はオーナー、選択中の t-B でのロールはテストごとに変える
@@ -120,6 +125,15 @@ describe("課金の操作は選択中テナントのオーナーのみ", () => {
     state.memberships[1].role = "owner";
     expect((await portal(req({ access_token: "tok" }))).status).toBe(200);
     expect((state.stripe.portalCreate.mock.calls[0][0] as { customer: string }).customer).toBe("cus_B");
+  });
+
+  it.each(CALLS)("%s: 所属の問い合わせが失敗したら最も古い所属へ落とさず 500", async (_n, call) => {
+    state.memberships[1].role = "owner";
+    state.failMembershipLookup = true;
+    const res = await call();
+    expect(res.status).toBe(500);
+    expect(state.stripe.checkoutCreate).not.toHaveBeenCalled();
+    expect(state.stripe.portalCreate).not.toHaveBeenCalled();
   });
 
   it("選択中テナントが無ければ最も古い所属（t-A）で判定する", async () => {
