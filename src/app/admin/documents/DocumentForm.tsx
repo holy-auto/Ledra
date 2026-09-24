@@ -248,6 +248,7 @@ export default function DocumentForm({
     formDueDate,
     formNote,
     formModelCode,
+    formTcCode,
     formItems,
     formTaxRate,
     formIsTaxInclusive,
@@ -325,6 +326,7 @@ export default function DocumentForm({
     setFormDueDate(d.formDueDate);
     setFormNote(d.formNote);
     setFormModelCode(d.formModelCode);
+    setFormTcCode(d.formTcCode ?? ""); // TC 欄を足す前に保存された下書きには無い
     setFormItems(d.formItems);
     setFormTaxRate(d.formTaxRate);
     setFormIsTaxInclusive(d.formIsTaxInclusive);
@@ -1365,7 +1367,8 @@ export default function DocumentForm({
                 if (header.delivery_date && !formDeliveryDate) setFormDeliveryDate(header.delivery_date);
                 if (header.subject && !formSubject) setFormSubject(header.subject);
                 if (header.model_code) setFormModelCode(header.model_code);
-                if (header.tc_code) setFormTcCode(header.tc_code);
+                // 撮り直しで前の写真の TC が残ると、別の車の工数を TC 専用として引く・登録するので毎回置き換える
+                setFormTcCode(header.tc_code ?? "");
                 // 撮り直し時に前回OCR分の備考が重複・残留しないよう、前回分を差し替える
                 const prevOcrNote = lastOcrNoteRef.current;
                 lastOcrNoteRef.current = header.note;
