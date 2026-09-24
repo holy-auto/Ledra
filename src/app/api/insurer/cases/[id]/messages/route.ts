@@ -5,6 +5,7 @@ import { checkRateLimit } from "@/lib/api/rateLimit";
 import { createInsurerScopedAdmin } from "@/lib/supabase/admin";
 import { sendCaseMessageNotification } from "@/lib/insurer/notifications";
 import { insurerCaseMessageSchema } from "@/lib/validations/insurer-case";
+import { recordInsurerAccessLog } from "@/lib/insurer/auditActions";
 
 export const runtime = "nodejs";
 
@@ -127,18 +128,22 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null;
     const ua = req.headers.get("user-agent") ?? null;
 
-    await admin.from("insurer_access_logs").insert({
-      insurer_id: caller.insurerId,
-      insurer_user_id: caller.insurerUserId,
-      action: "case_message",
-      meta: {
-        case_id: id,
-        message_id: message.id,
-        route: "POST /api/insurer/cases/[id]/messages",
+    await recordInsurerAccessLog(
+      admin,
+      {
+        insurer_id: caller.insurerId,
+        insurer_user_id: caller.insurerUserId,
+        action: "case_message",
+        meta: {
+          case_id: id,
+          message_id: message.id,
+          route: "POST /api/insurer/cases/[id]/messages",
+        },
+        ip,
+        user_agent: ua,
       },
-      ip,
-      user_agent: ua,
-    });
+      "POST /api/insurer/cases/[id]/messages",
+    );
 
     // Send message notification (fire-and-forget)
     (async () => {

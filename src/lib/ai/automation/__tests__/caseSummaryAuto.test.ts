@@ -31,6 +31,10 @@ const settings = (autoActions: Record<string, boolean>, enabled = true) => ({
 
 const baseStore = () =>
   emptyStore({
+    // 自動処理の監査行が指すシステム行 (20260924133200 のマイグレーションが用意する)
+    insurer_users: [
+      { id: "sys1", insurer_id: INSURER, user_id: null, is_system: true, role: "viewer", is_active: false },
+    ],
     tenants: [{ id: TENANT, is_active: true, plan_tier: "standard" }],
     insurer_cases: [
       {

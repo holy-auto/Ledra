@@ -9,3 +9,10 @@ apps/mobile
 supabase/migrations
 public
 package-lock.json
+
+# Supabase から生成する型定義。手で書き換えないし、整形もしない。
+# ここを外すと、マージのコンフリクト解消で `git add` に紛れ込んだだけで
+# lint-staged が整形し、記号の有無だけで 3 万行の差分が PR に載る
+# （MISTAKE_LEDGER M-20260923-git-add-all-swept-a-formatted-generated-file、
+#  2026-09-24 にも同じことが起きた）。習慣で止まらなかったので仕組みにした。
+src/types/db.generated.ts

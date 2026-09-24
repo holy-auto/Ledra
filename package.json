@@ -36,6 +36,7 @@
     "check:schema": "node scripts/check-schema.mjs",
     "check:context-dates": "node scripts/check-context-dates.mjs",
     "check:ledger-ids": "node scripts/check-ledger-ids.mjs",
+    "check:audit-actions": "node scripts/check-audit-action-vocab.mjs",
     "check:ox-override": "node scripts/check-ox-override.mjs",
     "check:resurrected": "bash scripts/check-resurrected-files.sh",
     "build:analyze": "ANALYZE=true next build",

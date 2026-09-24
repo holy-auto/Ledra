@@ -93,7 +93,10 @@ BEGIN
   -- ── 陽性対照1: active では今までどおり全部見える ──────────────────────
   EXECUTE 'SET LOCAL ROLE authenticated';
   SELECT count(*) INTO n_ins  FROM public.insurers;
-  SELECT count(*) INTO n_iu   FROM public.insurer_users;
+  -- 2026-09-24 以降、各保険会社には自動処理用の「システム行」(is_system) が1つある。
+  -- これは人ではないので、ここでは数えない（期待値 2 は人の数のまま）。
+  -- システム行そのものの見え方と無権限は下で別に確かめる。
+  SELECT count(*) INTO n_iu   FROM public.insurer_users WHERE NOT is_system;
   SELECT count(*) INTO n_ita  FROM public.insurer_tenant_access;
   SELECT count(*) INTO n_case FROM public.insurer_cases;
   SELECT count(*) INTO n_msg  FROM public.insurer_case_messages;
@@ -110,6 +113,16 @@ BEGIN
     RAISE EXCEPTION
       'active で添付・PII開示同意・AI利用ログが見えない: attachments=% consents=% ai_logs=%（期待 1/1/1）',
       n_att, n_pdc, n_ai;
+  END IF;
+
+  -- システム行は同じ保険会社の担当者からは「見える」（監査ログの表示名を引くため）が、
+  -- user_id を持たないので、この行を経由して誰かが権限を得ることはない。
+  EXECUTE 'SET LOCAL ROLE authenticated';
+  SELECT count(*) INTO n_iu FROM public.insurer_users WHERE is_system AND user_id IS NULL;
+  EXECUTE 'RESET ROLE';
+  IF n_iu <> 1 THEN
+    RAISE EXCEPTION
+      'システム行の見え方が想定と違う: user_id 無しのシステム行が % 件（期待 1）', n_iu;
   END IF;
 
   -- ── 陽性対照2: 審査中（active_pending_review）も通る ──────────────────

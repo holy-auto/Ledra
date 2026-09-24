@@ -1,5 +1,3 @@
-
-
 import { isPlatformAdmin } from "@/lib/auth/platformAdmin";
 import { createPlatformScopedAdmin } from "@/lib/supabase/admin";
 import { apiJson, apiUnauthorized, apiForbidden, apiInternalError } from "@/lib/api/response";
@@ -65,7 +63,7 @@ export const GET = withCaller(
         // 4. Total auth users
         admin.from("tenant_memberships").select("user_id", { count: "exact", head: true }),
         // 5. Insurers count
-        admin.from("insurer_users").select("id", { count: "exact", head: true }),
+        admin.from("insurer_users").select("id", { count: "exact", head: true }).eq("is_system", false),
         // 6. Webhooks 24h
         admin.from("stripe_processed_events").select("id", { count: "exact", head: true }).gte("created_at", oneDayAgo),
         // 7. Billing issues: subscription exists but is_active=false

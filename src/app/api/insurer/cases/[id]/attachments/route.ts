@@ -3,6 +3,7 @@ import { resolveInsurerCaller } from "@/lib/api/insurerAuth";
 import { apiJson, apiUnauthorized, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { createInsurerScopedAdmin } from "@/lib/supabase/admin";
+import { recordInsurerAccessLog } from "@/lib/insurer/auditActions";
 
 export const runtime = "nodejs";
 
@@ -98,20 +99,24 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null;
     const ua = req.headers.get("user-agent") ?? null;
 
-    await admin.from("insurer_access_logs").insert({
-      insurer_id: caller.insurerId,
-      insurer_user_id: caller.insurerUserId,
-      action: "case_attachment_upload",
-      meta: {
-        case_id: id,
-        attachment_id: attachment.id,
-        file_name: file.name,
-        file_size: file.size,
-        route: "POST /api/insurer/cases/[id]/attachments",
+    await recordInsurerAccessLog(
+      admin,
+      {
+        insurer_id: caller.insurerId,
+        insurer_user_id: caller.insurerUserId,
+        action: "case_attachment_upload",
+        meta: {
+          case_id: id,
+          attachment_id: attachment.id,
+          file_name: file.name,
+          file_size: file.size,
+          route: "POST /api/insurer/cases/[id]/attachments",
+        },
+        ip,
+        user_agent: ua,
       },
-      ip,
-      user_agent: ua,
-    });
+      "POST /api/insurer/cases/[id]/attachments",
+    );
 
     return apiJson({ attachment }, { status: 201 });
   } catch (err) {

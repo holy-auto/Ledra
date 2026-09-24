@@ -4,6 +4,7 @@ import { resolveInsurerCaller, enforceInsurerPlan } from "@/lib/api/insurerAuth"
 import { apiInternalError, apiJson, apiUnauthorized, apiValidationError, apiNotFound } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { buildCsv, csvDownloadHeaders } from "@/lib/csv/serialize";
+import type { InsurerAccessAction } from "@/lib/insurer/auditActions";
 
 export const runtime = "nodejs";
 
@@ -43,7 +44,7 @@ export async function GET(req: NextRequest) {
     if (!row) return apiNotFound("証明書が見つかりません。");
 
     const { error: logErr } = await supabase.rpc("insurer_audit_log", {
-      p_action: "insurer.export.csv.one",
+      p_action: "insurer.export.csv.one" satisfies InsurerAccessAction,
       p_target_public_id: pid,
       p_query_json: null,
       p_ip: ip,
