@@ -33,6 +33,16 @@ describe("管理画面のテナント解決", () => {
     expect(offenders).toEqual([]);
   });
 
+  it.each([
+    "src/app/api/stripe/checkout/route.ts",
+    "src/app/api/stripe/portal/route.ts",
+    "src/app/api/stripe/resume/route.ts",
+    "src/app/api/admin/billing-state/route.ts",
+    "src/app/api/admin/billing-status/route.ts",
+  ])("課金 API %s は tenant_memberships を直接引かない（選択中テナントで解決する）", (f) => {
+    expect(readFileSync(join(process.cwd(), f), "utf8")).not.toContain('from("tenant_memberships")');
+  });
+
   it("adminFeatureGate は解決済みの caller のテナントを使う", () => {
     const src = readFileSync(join(process.cwd(), "src/lib/billing/adminFeatureGate.ts"), "utf8");
     expect(src).not.toContain('from("tenant_memberships")');

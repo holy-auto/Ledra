@@ -1,4 +1,5 @@
 import { cookies } from "next/headers";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { normalizeRole, hasMinRole, type Role } from "./roles";
 import { hasPermission, type Permission } from "./permissions";
@@ -37,6 +38,43 @@ async function getActiveTenantCookie(): Promise<string | null> {
 }
 
 /**
+ * ユーザーの「選択中テナント」の所属（tenant_id と role）を解決する。
+ * active_tenant_id Cookie のテナントに所属していればそれを、無ければ最も古い所属を返す。
+ *
+ * Cookie セッションを持たない経路（Stripe 系のように access_token で本人確認し、
+ * service role で引くもの）でも同じ規則でテナントを決めるために切り出してある。
+ * 最初の所属を `limit(1)` で引くと、複数テナント所属のユーザーが別テナントを選んでいても
+ * 任意の所属テナントを操作してしまう（2026-09-24 に課金 API で是正）。
+ */
+export async function resolveActiveMembership(
+  client: Pick<SupabaseClient, "from">,
+  userId: string,
+): Promise<{ tenantId: string; role: Role } | null> {
+  const activeTenantId = await getActiveTenantCookie();
+
+  if (activeTenantId) {
+    const { data: mem } = await client
+      .from("tenant_memberships")
+      .select("tenant_id, role")
+      .eq("user_id", userId)
+      .eq("tenant_id", activeTenantId)
+      .limit(1)
+      .maybeSingle();
+    if (mem?.tenant_id) return { tenantId: normalizeTenantId(mem.tenant_id), role: normalizeRole(mem.role) };
+  }
+
+  const { data: mem } = await client
+    .from("tenant_memberships")
+    .select("tenant_id, role")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  if (!mem?.tenant_id) return null;
+  return { tenantId: normalizeTenantId(mem.tenant_id), role: normalizeRole(mem.role) };
+}
+
+/**
  * Resolve the current user's tenant and role.
  * Respects the active_tenant_id cookie for multi-tenant users.
  * Returns null if not authenticated or not a member.
@@ -47,51 +85,14 @@ export async function resolveCallerWithRole(
   const { data: userRes } = await supabase.auth.getUser();
   if (!userRes?.user) return null;
 
-  const activeTenantId = await getActiveTenantCookie();
-
-  // If cookie is set, try that tenant first
-  if (activeTenantId) {
-    const { data: mem } = await supabase
-      .from("tenant_memberships")
-      .select("tenant_id, role")
-      .eq("user_id", userRes.user.id)
-      .eq("tenant_id", activeTenantId)
-      .limit(1)
-      .maybeSingle();
-
-    if (mem?.tenant_id) {
-      const tid = normalizeTenantId(mem.tenant_id);
-      const planTier = await resolvePlanTier(tid);
-      const ctx: CallerInfo = {
-        userId: userRes.user.id,
-        tenantId: tid,
-        role: normalizeRole(mem.role),
-        planTier,
-      };
-      setSentryUserAndTenant(ctx);
-      return ctx;
-    }
-  }
-
-  // Fallback: first membership
-  const { data: mem } = await supabase
-    .from("tenant_memberships")
-    .select("tenant_id, role")
-    .eq("user_id", userRes.user.id)
-    .order("created_at", { ascending: true })
-    .limit(1)
-    .single();
-
-  if (!mem?.tenant_id) return null;
-
-  const tid = normalizeTenantId(mem.tenant_id);
-  const planTier = await resolvePlanTier(tid);
+  const mem = await resolveActiveMembership(supabase, userRes.user.id);
+  if (!mem) return null;
 
   const ctx: CallerInfo = {
     userId: userRes.user.id,
-    tenantId: tid,
-    role: normalizeRole(mem.role),
-    planTier,
+    tenantId: mem.tenantId,
+    role: mem.role,
+    planTier: await resolvePlanTier(mem.tenantId),
   };
   setSentryUserAndTenant(ctx);
   return ctx;
