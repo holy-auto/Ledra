@@ -44,9 +44,8 @@ export async function checkAdminFeature(feature: FeatureKey, returnTo: string): 
     return { ok: true, tenantId: caller.tenantId, planTier: "pro", isActive: true };
   }
 
-  const { data: mem } = await supabase.from("tenant_memberships").select("tenant_id").limit(1).single();
-
-  const tenantId = (mem?.tenant_id as string | undefined) ?? undefined;
+  // 複数テナント所属時は選択中テナント (active_tenant_id)。上で解決済みの caller を使う
+  const tenantId = caller?.tenantId;
   if (!tenantId) {
     return { ok: false, status: 400, reason: "no_tenant" };
   }
