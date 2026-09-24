@@ -61,16 +61,27 @@ BEGIN
     RAISE EXCEPTION 'システム行が user_id を持っている。ログイン経路から参照されうる';
   END IF;
 
+  -- `insurer_users` 自身に張られたポリシーでは、pg_policies.qual の中で
+  -- 自表の列が**非修飾**で出る（`user_id IS NULL` であって `insurer_users.user_id` ではない）。
+  -- そのため「表名と列名が同じ文字列に並んでいるか」で探すと、自表のポリシーを取り逃がす。
+  -- 表ごとに分けて見る。qual と with_check も別々に見る（連結すると境界をまたいで一致する）。
   SELECT count(*) INTO v_policies_not_uid
   FROM pg_policies
   WHERE schemaname = 'public'
-    AND (coalesce(qual, '') LIKE '%insurer_users%' OR coalesce(with_check, '') LIKE '%insurer_users%')
-    AND (coalesce(qual, '') || coalesce(with_check, '')) LIKE '%insurer_users%user_id IS NULL%';
+    AND (
+      -- (i) insurer_users 自身のポリシー: 列は非修飾で出る
+      (tablename = 'insurer_users'
+       AND (coalesce(qual, '') ~* 'user_id\s+IS\s+NULL' OR coalesce(with_check, '') ~* 'user_id\s+IS\s+NULL'))
+      -- (ii) 他表から insurer_users を引くポリシー: 修飾付きで出る
+      OR (tablename <> 'insurer_users'
+          AND (coalesce(qual, '') ~* 'insurer_users[^;]*user_id\s+IS\s+NULL'
+               OR coalesce(with_check, '') ~* 'insurer_users[^;]*user_id\s+IS\s+NULL'))
+    );
 
   IF v_policies_not_uid > 0 THEN
     RAISE EXCEPTION
-      'insurer_users を参照するポリシーに user_id IS NULL を含むものが % 本ある。'
-      'システム行がそのポリシーに一致し、権限を持ってしまう', v_policies_not_uid;
+      'user_id IS NULL を条件に含むポリシーが % 本ある。'
+      'システム行 (user_id が NULL) がそのポリシーに一致し、権限を持ってしまう', v_policies_not_uid;
   END IF;
 
   -- 形の CHECK が効いているか（人なのに user_id 無し、を弾くか）。

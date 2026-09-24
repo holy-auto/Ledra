@@ -114,9 +114,26 @@ GitHub Actions のランナーから Google Fonts への経路だけである。
   リテラルを位置で抜く正規表現は jsonb のキー（`'query'`・`'public_id'` 等）と区別できず、
   除外リストは既定で開く（型 L）ので採らなかった。関数を実際に呼んで確かめるには
   認証文脈と下ごしらえが要る。
+- **既存の書き手のオーバーロードが増えても気づけない。** 関数集合の比較は
+  `array_agg(DISTINCT p.proname)` なので、同名で引数違いの関数が足されても集合は変わらない。
+  DISTINCT を外すと配列に重複が入り「増えた: [] / 消えた: []」と何も名指ししない
+  メッセージになるため、名指しできる方を採った（`/code-review` #1151 の指摘）。
+  関数の**中身**を変えた場合と同じ死角。
 - `insurer_access_logs.insurer_user_id` の外部キーが**2本ある**
   （`fk_ial_insurer_user` と `insurer_access_logs_insurer_user_fk`、片方は NOT VALID）。
   重複 FK の棚卸しは他の重複索引と一緒に扱う。
+- **`src/types/db.generated.ts` が未更新。** `insurer_users.user_id` は実行時に NULL 可に
+  なったが型は `string` のままで、`is_system` は型に無い。`npm run db:typegen` は
+  **本番 DB** から生成するので、マイグレーション適用後でないと正しい型が出ない。
+  今日のところ実害が無いのは、監査経路の Supabase クライアントが `SupabaseClient<any, any, any>`
+  だから（`/code-review` #1151 の指摘）。適用後に再生成する。
+- **アプリのデプロイとマイグレーション適用が競合しうる。** `is_system=eq.false` を送る
+  クエリが6箇所あり、マイグレーション適用前に新しいアプリが動くと PostgREST が
+  400（column does not exist）を返す。実測では `DB migrate` は **60 秒**で終わり
+  （run 88: 14:53:06→14:54:06 UTC）、Vercel のビルドは **約7分半**かかる
+  （14:41:19→14:48:51 UTC、プレビュー）ので通常は適用が先に終わる。
+  ただし**順序が保証された作りではない**（どちらも main への push で並行に走る）。
+  `db-migrate.yml` を Vercel の本番昇格より前に置く仕組みは未整備。
 
 付随: `src/lib/insurer/audit.ts` と `src/lib/supabase/insurer/audit.ts` の
 `AuditAction` は、正準語彙の部分集合（`Extract<InsurerAccessAction, ...>`）として

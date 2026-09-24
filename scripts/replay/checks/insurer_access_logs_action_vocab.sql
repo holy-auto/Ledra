@@ -123,7 +123,11 @@ BEGIN
 
   -- (3) この表に insert する SQL 関数の集合。既知の6本から増えたら、その関数が
   --     書く `action` が語彙に入っているか人が確かめる（許可リスト＝既定で閉じる）。
-  SELECT array_agg(p.proname ORDER BY p.proname)
+  -- DISTINCT を付けるのは、同名のオーバーロードが増えたときに配列へ重複が入り、
+  -- 「増えた: [] / 消えた: []」と何も名指ししないメッセージになるため。
+  -- 代償として、**既存の書き手のオーバーロードが増えても気づけない**
+  -- （関数の中身を変えた場合と同じ死角。OPEN_QUESTIONS に記載）。
+  SELECT array_agg(DISTINCT p.proname ORDER BY p.proname)
     INTO v_writers
   FROM pg_proc p
   JOIN pg_namespace n ON n.oid = p.pronamespace
