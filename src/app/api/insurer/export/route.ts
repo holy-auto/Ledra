@@ -4,6 +4,7 @@ import { resolveInsurerCaller, enforceInsurerPlan } from "@/lib/api/insurerAuth"
 import { apiInternalError, apiJson, apiUnauthorized, apiValidationError } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { csvEscape, csvDownloadHeaders } from "@/lib/csv/serialize";
+import type { InsurerAccessAction } from "@/lib/insurer/auditActions";
 
 export const runtime = "nodejs";
 
@@ -44,7 +45,7 @@ export async function GET(req: NextRequest) {
     if (error) return apiInternalError(error, "insurer.export");
 
     const { error: logErr } = await supabase.rpc("insurer_audit_log", {
-      p_action: "insurer.export.csv",
+      p_action: "insurer.export.csv" satisfies InsurerAccessAction,
       p_target_public_id: null,
       p_query_json: { q, limit, offset },
       p_ip: ip,

@@ -21,6 +21,7 @@ import { startAiRouteUsage } from "@/lib/ai/recordRouteUsage";
 import { logger } from "@/lib/logger";
 import { loadAiAutomationSettings } from "./policy";
 import { shouldAutoFraudScore } from "./orchestrator";
+import { recordInsurerAccessLog, resolveInsurerSystemActorId } from "@/lib/insurer/auditActions";
 
 const AUTO_FRAUD_ENDPOINT = "/api/insurer/cases#auto-fraud-score";
 
@@ -151,20 +152,25 @@ export async function maybeAutoFraudScoreForCase(params: MaybeAutoFraudScorePara
     }
 
     // 監査ログ (手動 fraud_check と対になる auto 版)
-    await admin
-      .from("insurer_access_logs")
-      .insert({
-        insurer_id: insurerId,
-        action: "fraud_check_auto",
-        meta: {
-          case_id: caseId,
-          risk_level: result.riskLevel,
-          flags: result.flags,
-          used_llm: result.usedLlm,
-          llm_reason: result.llmReason,
+    const systemActorId = await resolveInsurerSystemActorId(admin, insurerId, "maybeAutoFraudScoreForCase");
+    if (systemActorId) {
+      await recordInsurerAccessLog(
+        admin,
+        {
+          insurer_id: insurerId,
+          insurer_user_id: systemActorId,
+          action: "fraud_check_auto",
+          meta: {
+            case_id: caseId,
+            risk_level: result.riskLevel,
+            flags: result.flags,
+            used_llm: result.usedLlm,
+            llm_reason: result.llmReason,
+          },
         },
-      })
-      .then(() => {});
+        "maybeAutoFraudScoreForCase",
+      );
+    }
   } catch (e) {
     logger.warn("[fraudScoreAuto] maybeAutoFraudScoreForCase threw", {
       caseId,

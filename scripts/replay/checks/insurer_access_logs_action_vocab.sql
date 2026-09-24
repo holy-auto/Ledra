@@ -5,9 +5,14 @@
 -- 車両検索・店舗検索・車両詳細が本番で必ず 500 になっていた（SQL 関数の中の insert が
 -- 弾かれ、関数ごと中断していた）。語彙は DB の CHECK にしか書かれておらず、
 -- 書き手（TypeScript 12 箇所・RPC 3 箇所・SQL 関数 6 本）は散らばっている。
--- **誰かが CHECK を狭めたら、ここが落ちる。**
--- 逆に、**コードが新しい `action` を書き始めても、ここは落ちない**（一覧は手で足す）。
--- その方向を止める案は OPEN_QUESTIONS「語彙を、どこに1つだけ置くか」。
+-- **誰かが CHECK を狭めても広げても、ここが落ちる**（下の (2) で値集合の完全一致を見る）。
+-- TypeScript 側の書き手は `src/lib/insurer/auditActions.ts` の型が縛り、
+-- その型とこの一覧のずれは `npm run check:audit-actions` が見る。鎖はこうなっている:
+--
+--   auditActions.ts の型  →(check:audit-actions)→  下の v_actions  →(この検査)→  DB の CHECK
+--
+-- SQL 関数が新しい `action` を書き始める経路だけは型で縛れないので、
+-- (3) で「この表に insert する関数の集合」を既知の6本に固定している（増えたら落ちる）。
 --
 -- 検査のしかた: CHECK は行を組み立てる時点で見られ、外部キーのトリガは行が入った
 -- **後**に走る。だから存在しない insurer_id でも、値が語彙に在れば 23514 にはならない
@@ -31,6 +36,18 @@ DECLARE
   v_action text;
   v_state text;
   v_rejected text[] := ARRAY[]::text[];
+  v_check_values text[];
+  v_expected text[];
+  v_writers text[];
+  -- この表に insert する public スキーマの関数（2026-09-23 に本番で実測）。
+  v_known_writers text[] := ARRAY[
+    'insurer_audit_log',
+    'insurer_get_certificate',
+    'insurer_get_vehicle_certificates',
+    'insurer_search_certificates',
+    'insurer_search_stores',
+    'insurer_search_vehicles'
+  ];
 BEGIN
   IF coalesce(array_length(v_actions, 1), 0) = 0 THEN
     RAISE EXCEPTION '検査側の語彙一覧が空。この検査は何も確かめていない';
@@ -82,8 +99,56 @@ BEGIN
       'insurer_access_logs_action_check が外れている', v_state;
   END IF;
 
-  RAISE NOTICE 'insurer_access_logs.action: % 種すべて通り、語彙外は弾かれる',
-    array_length(v_actions, 1);
+  -- (2) CHECK が余分な値を持っていないか（片側だけの包含では、CHECK を広げた
+  --     マイグレーションと一覧のずれが通ってしまう）。定義文字列から 'x'::text を拾う。
+  SELECT array_agg(m[1] ORDER BY m[1])
+    INTO v_check_values
+  FROM pg_constraint c,
+       LATERAL regexp_matches(pg_get_constraintdef(c.oid), '''([^'']+)''::text', 'g') AS m
+  WHERE c.conrelid = 'public.insurer_access_logs'::regclass
+    AND c.conname = 'insurer_access_logs_action_check';
+
+  IF v_check_values IS NULL THEN
+    RAISE EXCEPTION 'insurer_access_logs_action_check の値を1つも読めなかった。制約が無いか、定義の書式が変わっている';
+  END IF;
+
+  SELECT array_agg(x ORDER BY x) INTO v_expected FROM unnest(v_actions) AS x;
+
+  IF v_check_values <> v_expected THEN
+    RAISE EXCEPTION
+      'CHECK の値集合と検査の一覧が一致しない。CHECK のみ: [%] / 一覧のみ: [%]',
+      (SELECT coalesce(string_agg(x, ', '), '') FROM unnest(v_check_values) x WHERE x <> ALL (v_expected)),
+      (SELECT coalesce(string_agg(x, ', '), '') FROM unnest(v_expected) x WHERE x <> ALL (v_check_values));
+  END IF;
+
+  -- (3) この表に insert する SQL 関数の集合。既知の6本から増えたら、その関数が
+  --     書く `action` が語彙に入っているか人が確かめる（許可リスト＝既定で閉じる）。
+  -- DISTINCT を付けるのは、同名のオーバーロードが増えたときに配列へ重複が入り、
+  -- 「増えた: [] / 消えた: []」と何も名指ししないメッセージになるため。
+  -- 代償として、**既存の書き手のオーバーロードが増えても気づけない**
+  -- （関数の中身を変えた場合と同じ死角。OPEN_QUESTIONS に記載）。
+  SELECT array_agg(DISTINCT p.proname ORDER BY p.proname)
+    INTO v_writers
+  FROM pg_proc p
+  JOIN pg_namespace n ON n.oid = p.pronamespace
+  WHERE n.nspname = 'public'
+    -- `%insert into%insurer_access_logs%` だと、本文のどこかに insert があり、
+    -- 別のどこかに表名が出てくるだけの関数（コメント内の言及など）にも一致してしまう。
+    -- 実際 2026-09-24 に ensure_insurer_system_actor（insurer_users に insert し、
+    -- note の文中に insurer_access_logs と書いてある）を誤検知した。隣接を要求する。
+    AND p.prosrc ~* 'insert\s+into\s+(public\.)?insurer_access_logs';
+
+  IF v_writers IS DISTINCT FROM v_known_writers THEN
+    RAISE EXCEPTION
+      'insurer_access_logs に insert する関数が変わった。増えた: [%] / 消えた: [%]。'
+      '増えた関数が書く action が % の一覧と CHECK に入っているか確かめること',
+      (SELECT coalesce(string_agg(x, ', '), '') FROM unnest(coalesce(v_writers, '{}')) x WHERE x <> ALL (v_known_writers)),
+      (SELECT coalesce(string_agg(x, ', '), '') FROM unnest(v_known_writers) x WHERE x <> ALL (coalesce(v_writers, '{}'))),
+      'src/lib/insurer/auditActions.ts';
+  END IF;
+
+  RAISE NOTICE 'insurer_access_logs.action: % 種すべて通り、語彙外は弾かれ、CHECK の値集合も一致（書き手の関数 % 本）',
+    array_length(v_actions, 1), array_length(v_known_writers, 1);
 END $$;
 
 ROLLBACK;

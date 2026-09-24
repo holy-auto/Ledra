@@ -6,6 +6,7 @@ import { createInsurerScopedAdmin } from "@/lib/supabase/admin";
 import { sendCaseStatusNotification } from "@/lib/insurer/notifications";
 import { emitEntityWebhook } from "@/lib/outbound-webhooks";
 import { insurerCaseUpdateSchema } from "@/lib/validations/insurer-case";
+import { recordInsurerAccessLog } from "@/lib/insurer/auditActions";
 
 export const runtime = "nodejs";
 
@@ -151,18 +152,22 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null;
     const ua = req.headers.get("user-agent") ?? null;
 
-    await admin.from("insurer_access_logs").insert({
-      insurer_id: caller.insurerId,
-      insurer_user_id: caller.insurerUserId,
-      action: "case_update",
-      meta: {
-        case_id: id,
-        updated_fields: Object.keys(updateData),
-        route: "PATCH /api/insurer/cases/[id]",
+    await recordInsurerAccessLog(
+      admin,
+      {
+        insurer_id: caller.insurerId,
+        insurer_user_id: caller.insurerUserId,
+        action: "case_update",
+        meta: {
+          case_id: id,
+          updated_fields: Object.keys(updateData),
+          route: "PATCH /api/insurer/cases/[id]",
+        },
+        ip,
+        user_agent: ua,
       },
-      ip,
-      user_agent: ua,
-    });
+      "PATCH /api/insurer/cases/[id]",
+    );
 
     // Send notification on status change. Registered with after() so the
     // work is guaranteed to run in serverless (an unawaited bare async IIFE

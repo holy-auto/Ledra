@@ -95,34 +95,55 @@ Web 側は顧客名・車両情報など任意の日本語を出すので、同�
 （車両検索・店舗検索・車両詳細が 500、CSV/PDF 出力3本が 400）は、これで通る。
 経緯は DECISION_LOG 2026-09-23、被害の内訳は RELEASE_LOG。
 
-**残っているのはここ**: 語彙の単一定義源が無い。今は
+**2026-09-24 追記: 単一定義源を作り、自動処理の3本も直した。残りはSQL関数の中だけ。**
 
-- DB の `insurer_access_logs_action_check`（20 値）
-- TypeScript の直 insert 12 箇所に散らばったリテラル（うち2本は型で4値に固定）
-- `insurer_audit_log` RPC に渡される3つの**ドット区切り**の値
-- SQL 関数 6 本の中のリテラル
+正準語彙は `src/lib/insurer/auditActions.ts`。TypeScript の書き手は共有ヘルパー
+`recordInsurerAccessLog` を通り、`action` は union 型なので語彙外は tsc が落とす。
+型の一覧と再生検査の一覧のずれは `npm run check:audit-actions` が落とし、
+再生検査が本物の Postgres で CHECK の値集合との**完全一致**を見る。
+「型 → 検査の一覧 → 実際の CHECK」が1本に繋がった。
 
-の4箇所に同じ語彙が分かれて存在する。**次に誰かが新しい `action` を書いたら、
-また本番で黙って弾かれる**（TypeScript 直 insert は `error` を見ていないので無言、
-SQL 関数の中なら画面ごと 500）。
+同時に、**#1135 では直っていなかった故障**が1件見つかっている。
+`caseSummaryAuto` / `caseAssignAuto` / `fraudScoreAuto` の3本は `insurer_user_id`
+（NOT NULL・既定なし）を渡しておらず、本番で毎回 23502 で落ちていた。
+代表判断で、保険会社ごとに `insurer_users` のシステム行（`is_system` / `user_id IS NULL`）を
+持たせ、その id を使う形にした（DECISION_LOG 2026-09-24）。
 
-今は `scripts/replay/checks/insurer_access_logs_action_vocab.sql` が
-「**CHECK が狭まったら落ちる**」方向だけを止めている。
-**「コードが 21 個目を書き始めたら落ちる」方向は止められていない。**
+**まだ残っていること**
 
-**未決**: どこに寄せるか。
-- (c) `src/lib/domain/` に正準語彙を置き、CHECK をそこから生成する
-  （CLAUDE.md のドメイン状態語彙ルールに沿う。ただし `action` は v2.0 の正準6軸
-  —— Job / Step / Severity / Certificate / Payment / Sync —— のいずれでもないので、
-  `states.ts` に同居させるのが妥当かは別途判断が要る）
-- (d) 検出器を足す —— 書き込み経路を走査して CHECK と突き合わせ、食い違ったら CI で落とす。
-  `check-schema-drift` の仲間。語彙の置き場所は変えずに、ずれだけを止める
-- (e) TypeScript の直 insert **10 箇所**が `error` を捨てているのを直す。
-  語彙のずれは残るが、**黙って落ちるのをやめれば**次は気づける
+- **SQL 関数の中の `action` リテラルは、依然として縛れていない。** 今の検査は
+  「この表に insert する関数の集合が既知の6本のままか」までしか見ない
+  （`insurer_audit_log` / `insurer_get_certificate` / `insurer_get_vehicle_certificates` /
+  `insurer_search_certificates` / `insurer_search_stores` / `insurer_search_vehicles`）。
+  **既存の6本が書く値を変える改修は、この検査では捕まらない。**
+  リテラルを位置で抜く正規表現は jsonb のキー（`'query'`・`'public_id'` 等）と区別できず、
+  除外リストは既定で開く（型 L）ので採らなかった。関数を実際に呼んで確かめるには
+  認証文脈と下ごしらえが要る。
+- **既存の書き手のオーバーロードが増えても気づけない。** 関数集合の比較は
+  `array_agg(DISTINCT p.proname)` なので、同名で引数違いの関数が足されても集合は変わらない。
+  DISTINCT を外すと配列に重複が入り「増えた: [] / 消えた: []」と何も名指ししない
+  メッセージになるため、名指しできる方を採った（`/code-review` #1151 の指摘）。
+  関数の**中身**を変えた場合と同じ死角。
+- `insurer_access_logs.insurer_user_id` の外部キーが**2本ある**
+  （`fk_ial_insurer_user` と `insurer_access_logs_insurer_user_fk`、片方は NOT VALID）。
+  重複 FK の棚卸しは他の重複索引と一緒に扱う。
+- **`src/types/db.generated.ts` が未更新。** `insurer_users.user_id` は実行時に NULL 可に
+  なったが型は `string` のままで、`is_system` は型に無い。`npm run db:typegen` は
+  **本番 DB** から生成するので、マイグレーション適用後でないと正しい型が出ない。
+  今日のところ実害が無いのは、監査経路の Supabase クライアントが `SupabaseClient<any, any, any>`
+  だから（`/code-review` #1151 の指摘）。適用後に再生成する。
+- **アプリのデプロイとマイグレーション適用が競合しうる。** `is_system=eq.false` を送る
+  クエリが6箇所あり、マイグレーション適用前に新しいアプリが動くと PostgREST が
+  400（column does not exist）を返す。実測では `DB migrate` は **60 秒**で終わり
+  （run 88: 14:53:06→14:54:06 UTC）、Vercel のビルドは **約7分半**かかる
+  （14:41:19→14:48:51 UTC、プレビュー）ので通常は適用が先に終わる。
+  ただし**順序が保証された作りではない**（どちらも main への push で並行に走る）。
+  `db-migrate.yml` を Vercel の本番昇格より前に置く仕組みは未整備。
 
 付随: `src/lib/insurer/audit.ts` と `src/lib/supabase/insurer/audit.ts` の
-`AuditAction` は4値のままで、実際に使われているのは `view` / `download_pdf` の2つ。
-型を広げるかどうかは (c)〜(e) の決め方に従う。
+`AuditAction` は、正準語彙の部分集合（`Extract<InsurerAccessAction, ...>`）として
+定義し直した。正準側からどれかが消えたら呼び出し元が tsc で落ちる。
+この2ファイルがほぼ同じ内容で二重に在ること自体は未整理のまま。
 
 ## `certificate_images` の列定義が本番と食い違っている（2026-09-22）
 

@@ -4,6 +4,7 @@ import { apiInternalError, apiJson, apiUnauthorized, apiValidationError } from "
 import { createInsurerScopedAdmin } from "@/lib/supabase/admin";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { insurerPiiDisclosureSchema } from "@/lib/validations/insurer";
+import { recordInsurerAccessLog } from "@/lib/insurer/auditActions";
 
 export const runtime = "nodejs";
 
@@ -75,15 +76,19 @@ export async function POST(req: NextRequest) {
 
   if (error) return apiInternalError(error, "insurer.pii-disclosure");
 
-  await admin.from("insurer_access_logs").insert({
-    insurer_id: caller.insurerId,
-    insurer_user_id: caller.insurerUserId,
-    certificate_id,
-    action: "pii_disclosure_request",
-    meta: { reason: reason || null },
-    ip: req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null,
-    user_agent: req.headers.get("user-agent") ?? null,
-  });
+  await recordInsurerAccessLog(
+    admin,
+    {
+      insurer_id: caller.insurerId,
+      insurer_user_id: caller.insurerUserId,
+      certificate_id,
+      action: "pii_disclosure_request",
+      meta: { reason: reason || null },
+      ip: req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null,
+      user_agent: req.headers.get("user-agent") ?? null,
+    },
+    "POST /api/insurer/pii-disclosure",
+  );
 
   return apiJson({ consent: data });
 }

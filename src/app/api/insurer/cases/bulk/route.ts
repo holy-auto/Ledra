@@ -5,6 +5,7 @@ import { checkRateLimit } from "@/lib/api/rateLimit";
 import { createInsurerScopedAdmin } from "@/lib/supabase/admin";
 import { insurerCaseBulkSchema } from "@/lib/validations/insurer-case";
 import { emitEntityWebhook } from "@/lib/outbound-webhooks";
+import { recordInsurerAccessLog } from "@/lib/insurer/auditActions";
 
 export const runtime = "nodejs";
 
@@ -69,14 +70,18 @@ export async function PATCH(req: NextRequest) {
     const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null;
     const ua = req.headers.get("user-agent") ?? null;
 
-    await admin.from("insurer_access_logs").insert({
-      insurer_id: caller.insurerId,
-      insurer_user_id: caller.insurerUserId,
-      action: "case_bulk_update",
-      meta: { case_ids: transitioned.map((c) => c.id), status, route: "PATCH /api/insurer/cases/bulk" },
-      ip,
-      user_agent: ua,
-    });
+    await recordInsurerAccessLog(
+      admin,
+      {
+        insurer_id: caller.insurerId,
+        insurer_user_id: caller.insurerUserId,
+        action: "case_bulk_update",
+        meta: { case_ids: transitioned.map((c) => c.id), status, route: "PATCH /api/insurer/cases/bulk" },
+        ip,
+        user_agent: ua,
+      },
+      "PATCH /api/insurer/cases/bulk",
+    );
 
     // テナント (施工店) の基幹ソフト連携向け webhook。実際にこのリクエストで
     // ステータスが変わったケースのみ、対象テナントごとに発火 (購読が無ければ no-op)。

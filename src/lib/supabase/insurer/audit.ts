@@ -1,7 +1,12 @@
 import { createClient } from "@/lib/supabase/server";
 import { createInsurerScopedAdmin } from "@/lib/supabase/admin";
+import type { InsurerAccessAction } from "@/lib/insurer/auditActions";
 
-export type AuditAction = "view" | "search" | "download_pdf" | "export_csv";
+/**
+ * この関数が書く4値。正準語彙 `INSURER_ACCESS_ACTIONS` の部分集合として定義するので、
+ * 正準側からどれかが消えたらこの型が狭まり、呼び出し元が tsc で落ちる。
+ */
+export type AuditAction = Extract<InsurerAccessAction, "view" | "search" | "download_pdf" | "export_csv">;
 
 export async function logInsurerAccess(params: {
   action: AuditAction;
