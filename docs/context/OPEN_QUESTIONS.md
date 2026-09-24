@@ -264,24 +264,31 @@ reservations 176）ので、今はどちらでも実害が出ない【要確認�
 `20260922123000` は外部キーを **NOT VALID** で戻したので、**この行は残ったまま**で、
 これから入る行だけが縛られる。
 
-**未決**: この行をどうするか。選択肢は (a) 削除して `VALIDATE CONSTRAINT` まで済ませる、
+**2026-09-24 再実測**: まだ1件のまま（`tenant=647bce48-9c81-48b8-b60f-01cdd2e265c6`・role=owner・
+created 2026-07-26）。増えていない。
+
+**未決（代表判断待ち）**: この行をどうするか。選択肢は (a) 削除して `VALIDATE CONSTRAINT` まで済ませる、
 (b) 残す（所有者が消えたテナントの記録として）。**本番データの削除は代表判断**なので手を付けていない。
 ログイン経路は `auth.users` を引くので、この行だけでは誰も入れない【要確認】。
 
 ## 列の型が本番とマイグレーションで違う（2026-09-22）
 
+**検出器に載せた（2026-09-24）。** `check-schema-drift.mjs` に「本番 enum / マイグレーション非 enum」
+の列比較を追加（報告のみ・落とさない）。実測すると**5列**あった —— DECISION_LOG が挙げていた
+3列に加え、`certificates.expiry_type` と `templates.scope` は**誰も気づいていなかった**。
+
 | 列 | 本番 | マイグレーション |
 |---|---|---|
 | `certificates.status` | `certificate_status_enum` | `text` + CHECK |
+| `certificates.expiry_type` | `expiry_type_enum` | `text`（新規に判明） |
 | `tenants.plan_tier` | `plan_tier_enum` | `text` + CHECK |
+| `templates.scope` | `template_scope_enum` | `text`（新規に判明） |
 | `tenant_memberships.role` | `membership_role_enum` | `text` + CHECK |
-| `insurers.plan_tier` | `text`（CHECK も無かった → `20260922123000` で戻す） | `text` + CHECK |
 
-**どの検査にも映らない。** `check-schema-drift.mjs` が比べるのは**列名**だけで、型は見ていない。
-CHECK の逆向きにこの3本が出るが、落とさない設定にしてある
-（enum が同じ役目を果たしているので「本番が緩い」ではない）。
+以前は**列名だけ**を比べていたので素通りしていた。CHECK 逆向きと同思想で報告のみ
+（enum が同じ役目を果たしているので「本番が緩い」ではない）。CI の drift ジョブに毎回出る。
 
-**未決**: マイグレーション側を enum に寄せるか。`certificates.status` は稼働中の RPC が触るので
+**未決（残る）**: マイグレーション側を enum に寄せるか。`certificates.status` は稼働中の RPC が触るので
 （2026-09-19 の `status::text` 修正はこの型差が原因だった）、影響範囲の確認が要る【要確認】。
 
 ## 本番と再生 DB で制約・ポリシーの数が違う（2026-09-21）
@@ -381,9 +388,13 @@ Codex が PR #1097 に P1 を4件出し、**2件はその PR で直し、2件は
 案件・メッセージ・添付・PII 開示同意（書き込み側も同じ関数を通るので止まる）。
 残るもの: 自社の1行・自分のメンバーシップ行・`get_my_insurer_status()`（SECURITY DEFINER）。
 
-**未決のまま残るもの**: `current_insurer_id()` は未変更（棚卸し未実施【要確認】）。
-アプリ側がこの8表を RLS 経由で読んでいるかサービスロール経由かの全数調査も未実施
-【要確認】——**サービスロール経由の画面があれば停止中も見え続ける**。
+**棚卸し済み（2026-09-24）**: `current_insurer_id()` は**削除した**（`20260924160000`）。停止判定を
+持たない孤立関数で、本番の呼び出し元ゼロ（関数0・ポリシー0・実測）＋コード0（監査）だった。
+**`/api/insurer/**` の全数調査も実施** —— 素通りルートは無し（サービスロール経由のルートも
+読み取り前に必ず `resolveInsurerCaller`＝停止除外を通る。`switch` は自前で status を見る）。
+**残る構造的な脆さ**: `createInsurerScopedAdmin` 自体は status を見ないので、停止ゲートは
+「各ルートが `resolveInsurerCaller` を呼ぶ規約」頼み。将来この呼び出しを忘れたルートが即穴になる
+（防御を関数側に寄せるかは要検討）。
 
 ### (b) 複数保険会社に属するユーザで、RPC が保険会社の文脈を捨てる
 
