@@ -115,7 +115,7 @@ export async function updateTenantSettingsAction(formData: FormData): Promise<Se
       .gt("labor_hours", 0);
     if (laborItems && laborItems.length > 0) {
       // ponytail: 品目ごとに1クエリ (品目マスタは高々数百件)。数千件超で遅くなったら
-      // SQL 関数 (unit_price = round(labor_hours * rate)) の一括 UPDATE に置き換える。
+      // SQL 関数 (unit_price = ceil(labor_hours * rate)、calcLaborPrice と同じ切り上げ) の一括 UPDATE に置き換える。
       await Promise.all(
         laborItems.map((it) => {
           const price = calcLaborPrice(it.labor_hours as number | null, laborRate as number);

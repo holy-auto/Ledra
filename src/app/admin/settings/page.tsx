@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
+import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import SettingsForm from "./SettingsForm";
 import LogoSealSection from "./LogoSealSection";
@@ -118,12 +119,9 @@ export default async function AdminSettingsPage({
   } = await supabase.auth.getUser();
   if (!user) redirect("/login?next=/admin/settings");
 
-  const { data: membership } = await supabase
-    .from("tenant_memberships")
-    .select("tenant_id")
-    .eq("user_id", user.id)
-    .limit(1)
-    .single();
+  // 複数テナント所属時は選択中テナント (active_tenant_id) を使う
+  const caller = await resolveCallerWithRole(supabase);
+  const membership = caller ? { tenant_id: caller.tenantId } : null;
 
   if (!membership?.tenant_id) {
     return <div className="text-sm text-muted">tenant が見つかりません。</div>;

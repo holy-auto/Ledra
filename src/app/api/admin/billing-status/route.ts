@@ -1,4 +1,3 @@
-
 import { apiJson, apiUnauthorized, apiValidationError, apiNotFound, apiInternalError } from "@/lib/api/response";
 
 import { isPlatformAdmin } from "@/lib/auth/platformAdmin";
@@ -9,7 +8,6 @@ export const dynamic = "force-dynamic";
 export const GET = withCaller(
   async (_req, { caller, supabase }) => {
     try {
-
       const { data: userRes } = await supabase.auth.getUser();
       if (!userRes?.user) {
         return apiUnauthorized();
@@ -28,9 +26,8 @@ export const GET = withCaller(
         );
       }
 
-      const { data: mem } = await supabase.from("tenant_memberships").select("tenant_id").limit(1).single();
-
-      const tenantId = mem?.tenant_id as string | undefined;
+      // 選択中テナント（active_tenant_id）。withCaller が解決済みの caller を使う
+      const tenantId = caller?.tenantId;
       if (!tenantId) {
         return apiValidationError("テナントが見つかりません。");
       }

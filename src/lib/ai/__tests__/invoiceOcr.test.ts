@@ -17,6 +17,7 @@ function extract(lines: InvoiceExtract["lines"]): InvoiceExtract {
     vehicle_model: null,
     vehicle_color: null,
     vehicle_chassis_no: null,
+    vehicle_tc_code: null,
     delivery_date: null,
     handwritten_notes: [],
   };
@@ -175,6 +176,7 @@ describe("toDraftHeader", () => {
       vehicle_model: "N-BOX",
       vehicle_chassis_no: "1508937",
       vehicle_color: "白",
+      vehicle_tc_code: "JF5-110",
       delivery_date: "2026-09-26",
       handwritten_notes: ["12Vお願いします。"],
     });
@@ -183,7 +185,7 @@ describe("toDraftHeader", () => {
       [
         "発行元: 研究学園店（担当: 外山）",
         "管理番号: 書類No 260901447 / オーダーNo 88561",
-        "車両: N-BOX（1508937） / 白",
+        "車両: N-BOX（1508937） / 白 / TC JF5-110",
         "納車予定: 2026-09-26",
         "※ 12Vお願いします。",
       ].join("\n"),

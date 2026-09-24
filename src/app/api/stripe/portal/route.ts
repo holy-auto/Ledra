@@ -10,8 +10,11 @@ import {
   apiValidationError,
   apiNotFound,
   apiError,
+  apiForbidden,
 } from "@/lib/api/response";
 import { checkRateLimit } from "@/lib/api/rateLimit";
+import { resolveActiveMembership } from "@/lib/auth/checkRole";
+import { hasMinRole } from "@/lib/auth/roles";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -77,12 +80,13 @@ export async function POST(req: NextRequest) {
     }
     const user_id = u.data.user.id;
 
-    const m = await admin.from("tenant_memberships").select("tenant_id").eq("user_id", user_id).limit(1).maybeSingle();
+    // 選択中テナントの所属。請求ポータルでは解約・支払い方法変更ができるのでオーナーのみ。
+    const m = await resolveActiveMembership(admin, user_id);
+    if (!m) return apiNotFound("テナントメンバーシップが見つかりません。");
+    if (!hasMinRole(m.role, "owner"))
+      return apiForbidden("課金の操作（プラン購入・変更・再開・請求ポータル）はオーナーのみ行えます。");
 
-    if (m.error) return apiInternalError(m.error, "read tenant_memberships");
-    if (!m.data?.tenant_id) return apiNotFound("テナントメンバーシップが見つかりません。");
-
-    const t = await admin.from("tenants").select("stripe_customer_id").eq("id", m.data.tenant_id).maybeSingle();
+    const t = await admin.from("tenants").select("stripe_customer_id").eq("id", m.tenantId).maybeSingle();
 
     if (t.error) return apiInternalError(t.error, "read tenants");
 

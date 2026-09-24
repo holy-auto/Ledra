@@ -24,6 +24,9 @@ interface Props {
   branchId: string;
   modelCode: string;
   onModelCodeChange: (v: string) => void;
+  /** TC コード（任意）。発注書の写真に書かれていれば OCR で入る */
+  tcCode: string;
+  onTcCodeChange: (v: string) => void;
   disabled?: boolean;
   /** 応答待ちの間の編集を失わないよう、最新の明細に対する更新関数で渡す */
   onApplied: (update: (latest: DocumentItem[]) => DocumentItem[]) => void;
@@ -40,11 +43,12 @@ export default function LaborQuoteButton({
   branchId,
   modelCode,
   onModelCodeChange,
+  tcCode,
+  onTcCodeChange,
   disabled,
   onApplied,
 }: Props) {
   const [busy, setBusy] = useState(false);
-  const [tcCode, setTcCode] = useState("");
   const [msg, setMsg] = useState<string | null>(null);
   const [missing, setMissing] = useState<{ key: string; label: string }[]>([]);
   const [hoursInput, setHoursInput] = useState<Record<string, string>>({});
@@ -155,7 +159,7 @@ export default function LaborQuoteButton({
         aria-label="TCコード"
         maxLength={20}
         value={tcCode}
-        onChange={(e) => setTcCode(e.target.value)}
+        onChange={(e) => onTcCodeChange(e.target.value)}
       />
       <button
         type="button"

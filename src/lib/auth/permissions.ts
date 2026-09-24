@@ -632,6 +632,11 @@ export const API_ROUTE_PERMISSIONS: Record<string, ApiRouteRequirement> = {
   // Stripe 連携は会社の入金口座そのもので、解除されると入金が止まる。
   // billing:manage は admin も持つため、ロール下限 owner でさらに絞る。
   "stripe/connect": { minRole: "owner" },
+  // 自社の Ledra 契約の購入・再開・請求ポータル（解約・支払い方法変更）。オーナーのみ（2026-09-24 代表判断）。
+  // access_token で本人確認する経路なので、ルート内で resolveActiveMembership + hasMinRole を使う。
+  "stripe/checkout": { minRole: "owner" },
+  "stripe/portal": { minRole: "owner" },
+  "stripe/resume": { minRole: "owner" },
   // 顧客への請求を出すのは現場の通常業務なので staff に開く。
   "stripe/connect/payment-link": "payments:create",
   // 備品購入は会社のお金を使うので、顧客への請求とは分けて admin 以上。

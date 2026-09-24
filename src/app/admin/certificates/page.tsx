@@ -2,6 +2,7 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
+import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 
 const CertificatesTableClient = dynamic(() => import("./CertificatesTableClient"), {
   loading: () => <div className="animate-pulse h-40 rounded-2xl bg-surface-hover" />,
@@ -19,10 +20,10 @@ import PendingOfflineCerts from "./PendingOfflineCertsClient";
 
 type SearchParams = { q?: string; hidden?: string };
 
-async function getMyTenantId(supabase: any) {
-  const { data, error } = await supabase.from("tenant_memberships").select("tenant_id").limit(1).single();
-  if (error || !data) return null;
-  return data.tenant_id as string;
+// 複数テナント所属時は選択中テナント (active_tenant_id) を使う。最初の所属で引くと別テナントを見てしまう。
+async function getMyTenantId(supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>) {
+  const caller = await resolveCallerWithRole(supabase);
+  return caller?.tenantId ?? null;
 }
 
 export default async function Page({ searchParams }: { searchParams: Promise<SearchParams> }) {

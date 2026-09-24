@@ -84,6 +84,11 @@ export const POST = withCaller(
           total_jpy: extract.total_jpy,
           delivery_date: extract.delivery_date,
           model_code: modelCodeFromChassis(extract.vehicle_chassis_no),
+          // 工賃計算・工数マスタの TC 上限（20文字）を超える読み取りは誤読として渡さない
+          tc_code: (() => {
+            const tc = extract.vehicle_tc_code?.trim();
+            return tc && tc.length <= 20 ? tc : null;
+          })(),
           ...toDraftHeader(extract),
         },
       });
