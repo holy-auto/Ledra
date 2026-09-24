@@ -8,10 +8,14 @@ describe("calcLaborPrice (標準工数 × レバーレート)", () => {
     expect(calcLaborPrice(2, 10000)).toBe(20000);
   });
 
-  it("端数は四捨五入する", () => {
+  it("1円未満は切り上げる", () => {
     expect(calcLaborPrice(0.3, 9500)).toBe(2850);
-    expect(calcLaborPrice(0.7, 9999)).toBe(6999); // 6999.3 → 6999
+    expect(calcLaborPrice(0.7, 9999)).toBe(7000); // 6999.3 → 切り上げ 7000
     expect(calcLaborPrice(1.15, 8770)).toBe(10086); // 10085.5 → 10086
+    expect(calcLaborPrice(0.25, 8250)).toBe(2063); // 2062.5 → 2063
+    // 小数の誤差（0.07 × 7000 = 490.00000000000006）で 1 円増やさない
+    expect(calcLaborPrice(0.07, 7000)).toBe(490);
+    expect(calcLaborPrice(0.07, 9000)).toBe(630);
   });
 
   it("工数が未設定・0 以下なら null（算出不能）", () => {
