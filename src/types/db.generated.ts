@@ -8051,6 +8051,7 @@ export type Database = {
           part_key: string
           part_number: string
           source_url: string | null
+          tc_code: string
           tenant_id: string
           updated_at: string | null
         }
@@ -8064,6 +8065,7 @@ export type Database = {
           part_key: string
           part_number: string
           source_url?: string | null
+          tc_code?: string
           tenant_id: string
           updated_at?: string | null
         }
@@ -8077,6 +8079,7 @@ export type Database = {
           part_key?: string
           part_number?: string
           source_url?: string | null
+          tc_code?: string
           tenant_id?: string
           updated_at?: string | null
         }
