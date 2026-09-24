@@ -61,7 +61,7 @@ import { execFileSync } from "node:child_process";
 import { readFileSync, readdirSync, rmSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve, join } from "node:path";
-import { bare, uniqueFromDump, constraintsFromDump } from "./lib/dumpParse.mjs";
+import { bare, uniqueFromDump, constraintsFromDump, columnRowsFromDump } from "./lib/dumpParse.mjs";
 import { tmpdir } from "node:os";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -127,88 +127,9 @@ const dumped = (re) => new Set([...dump.matchAll(re)].map((m) => m[1].replace(/"
 
 
 
-/**
- * `CREATE TABLE public.x ( ... );` の中身から `表名.列名` を拾う。
- *
- * pg_dump は1列1行で書くが、`GENERATED ALWAYS AS (CASE WHEN ... ELSE ... END)` のように
- * **式が複数行に折り返る**ことがある。行頭の語をそのまま列名として拾うと、その折り返し行の
- * `WHEN` / `ELSE` を列だと誤認する（実際に4件拾ってしまい、再生 DB の pg_attribute と
- * 突き合わせて気づいた）。括弧の深さを追い、深さ0で始まる行だけを列として扱う。
- */
-function columnsFromDump(text) {
-  const out = new Set();
-  const re = /^CREATE (?:UNLOGGED )?TABLE (?:ONLY )?public\.([\w"]+) \(\n([\s\S]*?)^\)/gm;
-  for (const m of text.matchAll(re)) {
-    const table = bare(m[1]);
-    let depth = 0;
-    for (const raw of m[2].split("\n")) {
-      const startDepth = depth;
-      let inStr = false;
-      for (let i = 0; i < raw.length; i++) {
-        const ch = raw[i];
-        if (inStr) {
-          if (ch === "'") inStr = raw[i + 1] === "'" ? (i++, true) : false;
-          continue;
-        }
-        if (ch === "'") inStr = true;
-        else if (ch === "(") depth++;
-        else if (ch === ")") depth--;
-      }
-      if (startDepth !== 0) continue; // 前の行の式の続き
-      const line = raw.trim();
-      if (!line) continue;
-      if (/^(CONSTRAINT|PRIMARY|UNIQUE|CHECK|FOREIGN|EXCLUDE|LIKE)\b/i.test(line)) continue;
-      const col = line.match(/^("?\w+"?)\s/);
-      if (col) out.add(`${table}.${bare(col[1])}`);
-    }
-  }
-  return out;
-}
-
-/**
- * `表名.列名`（小文字）→ 宣言型の先頭トークン（小文字）。**enum ドリフトの検出専用。**
- *
- * columnsFromDump と同じ括弧深さ判定で列行だけを取り、列名の後ろの型の先頭語を拾う。
- * enum 型名は単一の識別子（`certificate_status_enum` 等）なので先頭語の一致で判定できる。
- * `character varying(255)` のような複合型は先頭語が `character` になり、どの enum 名とも
- * 一致しないので誤検出しない（enum 判定にしか使わないため、それで十分）。
- * 列名の集合そのものは columnsFromDump が持つので、ここは型だけを別に持つ（既存の
- * 列比較には一切触らない＝ blast radius ゼロ）。
- */
-function columnTypesFromDump(text) {
-  const out = new Map();
-  const re = /^CREATE (?:UNLOGGED )?TABLE (?:ONLY )?public\.([\w"]+) \(\n([\s\S]*?)^\)/gm;
-  for (const m of text.matchAll(re)) {
-    const table = bare(m[1]);
-    let depth = 0;
-    for (const raw of m[2].split("\n")) {
-      const startDepth = depth;
-      let inStr = false;
-      for (let i = 0; i < raw.length; i++) {
-        const ch = raw[i];
-        if (inStr) {
-          if (ch === "'") inStr = raw[i + 1] === "'" ? (i++, true) : false;
-          continue;
-        }
-        if (ch === "'") inStr = true;
-        else if (ch === "(") depth++;
-        else if (ch === ")") depth--;
-      }
-      if (startDepth !== 0) continue;
-      const line = raw.trim();
-      if (!line) continue;
-      if (/^(CONSTRAINT|PRIMARY|UNIQUE|CHECK|FOREIGN|EXCLUDE|LIKE)\b/i.test(line)) continue;
-      // 型の先頭語。pg_dump は public の enum を `public.x_enum` と修飾して書くので
-      // `public.` を剥がして enum 名だけを残す（列が enum を使う日への備え。現状 0 列）。
-      const mm = line.match(/^"?(\w+)"?\s+((?:public\.)?"?\w+"?)/);
-      if (mm) {
-        const typ = bare(mm[2]).toLowerCase().replace(/^public\./, "");
-        out.set(`${table}.${bare(mm[1])}`.toLowerCase(), typ);
-      }
-    }
-  }
-  return out;
-}
+// 列（名前＋型）の解析は dumpParse.mjs の columnRowsFromDump に集約した（列名 Set と
+// 型 Map の両方をここから導出する）。純関数として scripts/__tests__/dumpParse.test.ts で単体検査。
+const columnRows = columnRowsFromDump(dump);
 
 /** `CREATE POLICY <名前> ON public.<表>` から `表名.ポリシー名` を拾う。名前は引用符付きもある。 */
 function policiesFromDump(text) {
@@ -228,7 +149,7 @@ const replayed = {
   enum: dumped(/^CREATE TYPE public\.([\w"]+) AS ENUM/gm),
   // 列とポリシーは `表名.名前` で持つ。名前だけだと `id` のように表を跨いで
   // 同名のものが大量にあり、比較が意味を失う。
-  column: columnsFromDump(dump),
+  column: new Set(columnRows.map((r) => r.name)),
   policy: policiesFromDump(dump),
   // 一意制約は pg_dump が2つの書き方で出す。**両方拾わないと幻のドリフトになる。**
   //   - 制約として持つもの: `ALTER TABLE ONLY public.t\n    ADD CONSTRAINT c UNIQUE (...)`
@@ -241,13 +162,15 @@ const replayed = {
   check_constraint: constraintsFromDump(dump, "CHECK"),
 };
 
-// enum 型ドリフト検出用（本番 enum ⇄ マイグレーション非 enum）。再生 DB 側の列→型（先頭語）。
+// enum 型ドリフト検出用（本番 enum ⇄ マイグレーションの型が違う）。再生 DB 側の列→型（先頭語）。
 // **既知の1件で当たりを取る**（型パーサの陰性対照。壊れたら列比較ではなくここで落ちる）。
-const replayColTypes = columnTypesFromDump(dump);
-if (replayColTypes.get("tenants.plan_tier") !== "text") {
+// 対照は uuid の主キー tenants.id ——「常に text」の列を対照にすると、その列を enum に寄せた
+// 日に対照が反転して「パーサが壊れた」と誤報する（/code-review #1159）。id は enum 化しない。
+const replayColTypes = new Map(columnRows.map((r) => [r.name, r.type]));
+if (replayColTypes.get("tenants.id") !== "uuid") {
   console.error(
-    "[drift] 型パーサの自己検査が落ちました: tenants.plan_tier の再生型が text と読めていません" +
-      `（実際: ${replayColTypes.get("tenants.plan_tier") ?? "(拾えず)"}）。columnTypesFromDump を疑ってください。`,
+    "[drift] 型パーサの自己検査が落ちました: tenants.id の再生型が uuid と読めていません" +
+      `（実際: ${replayColTypes.get("tenants.id") ?? "(拾えず)"}）。columnRowsFromDump を疑ってください。`,
   );
   process.exit(1);
 }
@@ -526,8 +449,10 @@ const enumTypeDrift = prodEnumCols.filter((e) => {
   const rt = replayColTypes.get(e.col);
   return rt !== undefined && rt !== e.enumtype; // 再生に列が無い＝別ドリフトで既出。同じ enum＝ドリフト無し。
 });
+// 本番が enum の列で、マイグレーション側の型が違うもの（text のことが多いが、別 enum の
+// こともある）。各行に両側の型を出すので、text 差か enum↔enum 差かは一覧で分かる。
 console.log(
-  `\n[drift] 列の型ドリフト（本番 enum / マイグレーション非 enum）: ${enumTypeDrift.length} 件（報告のみ・落とさない）`,
+  `\n[drift] 列の型ドリフト（本番 enum ⇄ マイグレーションの型が違う）: ${enumTypeDrift.length} 件（報告のみ・落とさない）`,
 );
 for (const e of enumTypeDrift) {
   console.log(`         - ${e.col}: 本番 ${e.enumtype} / マイグレーション ${replayColTypes.get(e.col)}`);
