@@ -58,7 +58,16 @@ const PLANS = [
   },
 ];
 
-function PlanSelector({ currentPlan, isActive }: { currentPlan: string | null; isActive: boolean }) {
+function PlanSelector({
+  currentPlan,
+  isActive,
+  canManage,
+}: {
+  currentPlan: string | null;
+  isActive: boolean;
+  /** 課金の操作はオーナーのみ（サーバー側も 403 で弾く）。それ以外にはボタンを出さない */
+  canManage: boolean;
+}) {
   const supabase = useMemo(() => createClient(), []);
   const [busy, setBusy] = useState<string | null>(null);
   const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
@@ -151,7 +160,7 @@ function PlanSelector({ currentPlan, isActive }: { currentPlan: string | null; i
               </ul>
               {isCurrent ? (
                 <div className="btn-ghost text-xs text-center w-full cursor-default">現在のプラン</div>
-              ) : (
+              ) : !canManage ? null : (
                 <button
                   type="button"
                   className={`w-full ${plan.recommended ? "btn-primary" : "btn-secondary"} text-xs`}
@@ -306,6 +315,9 @@ export default function BillingPage() {
   const portal = useStripeAction<{ url: string }>("billing:portal");
   const resume = useStripeAction<{ url: string }>("billing:resume");
   const [tenant, setTenant] = useState<Tenant | null>(null);
+  const [role, setRole] = useState<string | null>(null);
+  // 課金の操作（プラン購入・再開・請求ポータル）はオーナーのみ。super_admin はプラットフォーム管理者
+  const canManage = role === "owner" || role === "super_admin";
   const [sub, setSub] = useState<SubInfo>(null);
 
   const [portalBusy, setPortalBusy] = useState(false);
@@ -355,6 +367,7 @@ export default function BillingPage() {
       }
 
       setTenant(j.tenant as Tenant);
+      setRole(typeof j.role === "string" ? j.role : null);
       setSub((j.subscription ?? null) as SubInfo);
     } finally {
       busyRef.current = false;
@@ -657,13 +670,20 @@ export default function BillingPage() {
             <div className="glass-card p-4 text-sm">
               <div className="font-semibold text-warning">支払いが停止しています</div>
               <div className="mt-1 text-muted">
-                この状態では機能が制限されます。下の「支払いを再開」で再決済してください。
+                この状態では機能が制限されます。
+                {canManage ? "下の「支払いを再開」で再決済してください。" : "再開はオーナーに依頼してください。"}
               </div>
             </div>
           )}
 
+          {!canManage && (
+            <div className="pt-2 text-xs text-muted">
+              プランの購入・変更・支払いの再開はオーナーのみ行えます。必要な場合はオーナーに依頼してください。
+            </div>
+          )}
+
           <div className="pt-3 flex gap-3 flex-wrap">
-            {tenant.is_active === false && (
+            {tenant.is_active === false && canManage && (
               <button className="btn-primary" onClick={resumeCheckout} disabled={resumeBusy}>
                 {resumeBusy ? "リダイレクト中…" : "支払いを再開"}
               </button>
@@ -675,7 +695,9 @@ export default function BillingPage() {
       )}
 
       {/* Plan selection */}
-      {!loading && tenant && <PlanSelector currentPlan={tenant.plan_tier} isActive={tenant.is_active === true} />}
+      {!loading && tenant && (
+        <PlanSelector currentPlan={tenant.plan_tier} isActive={tenant.is_active === true} canManage={canManage} />
+      )}
     </div>
   );
 }

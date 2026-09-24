@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
+import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { checkAdminFeature, billingDenyResponse } from "@/lib/billing/adminFeatureGate";
 import { escapeIlike, escapePostgrestValue } from "@/lib/sanitize";
 import { buildCsv, csvDownloadHeaders } from "@/lib/csv/serialize";
@@ -18,7 +19,9 @@ export async function GET(req: Request) {
   const url = new URL(req.url);
   const q = (url.searchParams.get("q") ?? "").trim();
 
-  const { data: mem } = await supabase.from("tenant_memberships").select("tenant_id").limit(1).single();
+  // 複数テナント所属時は選択中テナント (active_tenant_id) を使う
+  const caller = await resolveCallerWithRole(supabase);
+  const mem = caller ? { tenant_id: caller.tenantId } : null;
 
   const tenantId = mem?.tenant_id as string | undefined;
   if (!tenantId) {

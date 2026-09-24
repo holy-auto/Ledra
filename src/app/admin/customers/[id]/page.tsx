@@ -23,12 +23,10 @@ import { getOrCreateCustomerSummary } from "@/lib/customers/getOrCreateAiSummary
  * - 予約は /admin/jobs/[id] の案件ワークフローに 1 クリックで遷移
  */
 
-async function getMyTenantId(supabase: any) {
-  const { data: userRes } = await supabase.auth.getUser();
-  if (!userRes.user) return null;
-  const { data, error } = await supabase.from("tenant_memberships").select("tenant_id").limit(1).single();
-  if (error || !data) return null;
-  return data.tenant_id as string;
+// 複数テナント所属時は選択中テナント (active_tenant_id) を使う。最初の所属で引くと別テナントを見てしまう。
+async function getMyTenantId(supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>) {
+  const caller = await resolveCallerWithRole(supabase);
+  return caller?.tenantId ?? null;
 }
 
 export default async function Page({ params }: { params: Promise<{ id: string }> }) {

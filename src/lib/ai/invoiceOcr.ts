@@ -40,6 +40,10 @@ export const InvoiceSchema = z.object({
   vehicle_model: z.string().nullable().describe("車種。無ければ null"),
   vehicle_color: z.string().nullable().describe("車体色。無ければ null"),
   vehicle_chassis_no: z.string().nullable().describe("車台番号（F-NO 等）。無ければ null"),
+  vehicle_tc_code: z
+    .string()
+    .nullable()
+    .describe("TCコード（同じ型式の中の仕様を表すコード。「TC」「TCコード」欄の値）。書かれていなければ null"),
   delivery_date: z
     .string()
     .nullable()
@@ -67,6 +71,7 @@ const EMPTY: InvoiceExtract = {
   vehicle_model: null,
   vehicle_color: null,
   vehicle_chassis_no: null,
+  vehicle_tc_code: null,
   delivery_date: null,
   handwritten_notes: [],
 };
@@ -194,7 +199,8 @@ export function toDraftHeader(extract: InvoiceExtract): OcrDraftHeader {
     extract.supplier_name &&
       `発行元: ${extract.supplier_name}${extract.sales_rep ? `（担当: ${extract.sales_rep}）` : ""}`,
     numbers.length > 0 && `管理番号: ${numbers.join(" / ")}`,
-    (vehicle || extract.vehicle_color) && `車両: ${[vehicle, extract.vehicle_color].filter(Boolean).join(" / ")}`,
+    (vehicle || extract.vehicle_color || extract.vehicle_tc_code) &&
+      `車両: ${[vehicle, extract.vehicle_color, extract.vehicle_tc_code && `TC ${extract.vehicle_tc_code}`].filter(Boolean).join(" / ")}`,
     extract.delivery_date && `納車予定: ${extract.delivery_date}`,
     ...extract.handwritten_notes.map((n) => `※ ${n}`),
   ].filter(Boolean);
