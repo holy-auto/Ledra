@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
+import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import VehicleListClient, { type VehicleListRow } from "./VehicleListClient";
 
 export const dynamic = "force-dynamic";
@@ -13,12 +14,9 @@ export default async function AdminVehicleListPage() {
 
   if (!user) redirect("/login?next=/admin/vehicles");
 
-  const { data: membership } = await supabase
-    .from("tenant_memberships")
-    .select("tenant_id")
-    .eq("user_id", user.id)
-    .limit(1)
-    .single();
+  // 複数テナント所属時は選択中テナント (active_tenant_id) を使う
+  const caller = await resolveCallerWithRole(supabase);
+  const membership = caller ? { tenant_id: caller.tenantId } : null;
 
   if (!membership?.tenant_id) {
     return (

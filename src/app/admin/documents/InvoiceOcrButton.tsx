@@ -24,6 +24,7 @@ interface OcrHeader {
   note: string | null;
   is_tax_inclusive: boolean | null;
   model_code: string | null;
+  tc_code: string | null;
 }
 const EMPTY_HEADER: OcrHeader = {
   supplier_name: null,
@@ -36,6 +37,7 @@ const EMPTY_HEADER: OcrHeader = {
   note: null,
   is_tax_inclusive: null,
   model_code: null,
+  tc_code: null,
 };
 type OcrResponse = {
   status?: "ok" | "skipped";

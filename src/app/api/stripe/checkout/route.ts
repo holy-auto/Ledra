@@ -3,10 +3,19 @@ import Stripe from "stripe";
 import { getStripeClient } from "@/lib/stripe/client";
 import { planTierToPriceId } from "@/lib/stripe/plan";
 import { checkoutSchema } from "@/lib/validations/stripe";
-import { apiOk, apiInternalError, apiValidationError, apiNotFound, apiUnauthorized } from "@/lib/api/response";
+import {
+  apiOk,
+  apiInternalError,
+  apiValidationError,
+  apiNotFound,
+  apiUnauthorized,
+  apiForbidden,
+} from "@/lib/api/response";
 import { resolveCampaign } from "@/lib/billing/campaign";
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { checkRateLimit } from "@/lib/api/rateLimit";
+import { resolveActiveMembership } from "@/lib/auth/checkRole";
+import { hasMinRole } from "@/lib/auth/roles";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -42,18 +51,14 @@ export async function POST(req: NextRequest) {
     }
     const user_id = u.data.user.id;
 
-    // membership → tenant_id
-    const m = await supabase
-      .from("tenant_memberships")
-      .select("tenant_id")
-      .eq("user_id", user_id)
-      .limit(1)
-      .maybeSingle();
+    // 選択中テナント（active_tenant_id）の所属。最初の所属で引くと、別テナントを選んでいても
+    // そちらの契約を操作してしまう。課金の操作はオーナーのみ（2026-09-24 代表判断）。
+    const m = await resolveActiveMembership(supabase, user_id);
+    if (!m) return apiNotFound("テナントメンバーシップが見つかりません。");
+    if (!hasMinRole(m.role, "owner"))
+      return apiForbidden("課金の操作（プラン購入・変更・再開・請求ポータル）はオーナーのみ行えます。");
 
-    if (m.error) return apiInternalError(m.error, "read tenant_memberships");
-    if (!m.data?.tenant_id) return apiNotFound("テナントメンバーシップが見つかりません。");
-
-    const tenant_id = m.data.tenant_id;
+    const tenant_id = m.tenantId;
 
     // tenants から stripe_customer_id を取得
     const { data: tenant, error: tErr } = await supabase

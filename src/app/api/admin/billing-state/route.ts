@@ -5,6 +5,7 @@ import { billingStateSchema } from "@/lib/validations/stripe";
 import { apiJson, apiInternalError, apiUnauthorized, apiValidationError, apiNotFound } from "@/lib/api/response";
 import { createPlatformScopedAdmin } from "@/lib/supabase/admin";
 import { checkRateLimit } from "@/lib/api/rateLimit";
+import { resolveActiveMembership } from "@/lib/auth/checkRole";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -39,25 +40,16 @@ export async function POST(req: NextRequest) {
     }
     const user_id = u.data.user.id;
 
-    // membership → tenant_id
-    const m = await admin
-      .from("tenant_memberships")
-      .select("tenant_id, role")
-      .eq("user_id", user_id)
-      .limit(1)
-      .maybeSingle();
-
-    if (m.error) {
-      return apiInternalError(m.error, "read tenant_memberships");
-    }
-    if (!m.data?.tenant_id) {
+    // 選択中テナント（active_tenant_id）の所属。表示は所属者なら誰でも可（操作は Stripe 系ルートでオーナー限定）。
+    const m = await resolveActiveMembership(admin, user_id);
+    if (!m) {
       return apiNotFound("テナントメンバーシップが見つかりません。");
     }
 
     const t = await admin
       .from("tenants")
       .select("id, slug, name, plan_tier, is_active, stripe_customer_id, stripe_subscription_id")
-      .eq("id", m.data.tenant_id)
+      .eq("id", m.tenantId)
       .maybeSingle();
 
     if (t.error || !t.data) {
@@ -97,7 +89,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    return apiJson({ tenant: t.data, role: m.data.role ?? null, subscription });
+    return apiJson({ tenant: t.data, role: m.role, subscription });
   } catch (e) {
     return apiInternalError(e, "billing-state");
   }
