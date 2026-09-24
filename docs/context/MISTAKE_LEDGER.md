@@ -71,7 +71,7 @@
 | 型 | 中身 | 該当 |
 |---|---|---|
 | **A. 道具を検証しない** | 変更したコードは検証したのに、「何を変えるべきか判断するために使った道具」（検出器・正規表現・スクリプト・クエリ）を検証していない。道具の出力を事実として扱う。**そのクエリが何を確定させたのかを確かめずに、確定したつもりになる**のもこの型。**自分の想定だけで検証するのも同じ**（当たりを取る「既知の1件」を自分で作る）。**動作を主張するコメントを、その根拠（スキーマ・型定義）を確認せずに書く**のも同じ。**検査の「該当なし」を、その検査が何件を見たか数えずに受け取る**のも同じ | M-001, M-002, M-003, M-006, **M-010**, M-012, M-016, M-017, **M-022**, **M-024**, **M-031**, M-036, **M-041**, **M-044**, **M-046**, **M-050**, **M-055**, **M-056**, **M-057**, **M-060**, **M-061**, **M-062**, **M-064**, **M-065**, **M-068**, **M-075**, **M-078**, **M-079**, **M-084**, **M-085**, **M-089**, **M-092**, **M-093**, **M-20260915-dupe-count-from-truncated-grep**, **M-20260918-silent-skip-made-detector-never-run**, **M-20260918-replay-db-lacked-prod-column**, **M-20260918-read-detector-blindness-as-stale-list**, **M-20260919-attributed-an-overloads-call-to-its-sibling**, **M-20260919-swept-for-the-literal-not-the-bug-class**, **M-20260919-cancel-2xx-treated-as-final**, **M-20260921-compared-counts-where-names-differed**, **M-20260921-detector-covered-half-the-tables-i-had-listed**, **M-20260921-said-the-drift-checker-ignores-policies**, **M-20260922-wrote-constraint-bodies-from-their-names**, **M-20260922-enumerated-actions-from-typescript-only**, **M-20260921-restated-my-own-summary-as-fact**, **M-20260923-committed-conflict-markers-from-truncated-merge-output**, **M-20260923-counted-only-page-files-for-tenant-bug** |
-| **B. 読まずに分類する** | コードの形（関数名・構造・コメント）から中身を推測して分類し、実際に読んでいない。**1段だけ深く読んで止まる**のも同じ（条件式は読んだが、その値の既定を追っていない）。**その値がどこから来るかを見ない**のも同じ（既定・サンプル・過去の配布物に同じ値が無いか）。**列や機能が「ある」ことを「使われている」と読む**のもこの型。**値の出所を変えたのに、その値を使う式が旧い出所の前提（排他性等）を暗黙に置いたままか確認しない**のも同じ。**部品が直ったことを、その部品を使う機能が直ったことと読む**のも同じ | M-004, M-020, **M-032**, M-035, M-036, **M-039**, **M-040**, **M-048**, **M-052**, **M-063**, **M-074**, **M-083**, **M-088**, **M-20260920-hashed-a-file-i-never-opened**, **M-20260920-asked-for-a-decision-that-was-already-made-in-the-file-i-cited**, **M-20260921-classified-rls-impact-from-one-policy**, **M-20260922-copied-a-check-without-checking-the-default** |
+| **B. 読まずに分類する** | コードの形（関数名・構造・コメント）から中身を推測して分類し、実際に読んでいない。**1段だけ深く読んで止まる**のも同じ（条件式は読んだが、その値の既定を追っていない）。**その値がどこから来るかを見ない**のも同じ（既定・サンプル・過去の配布物に同じ値が無いか）。**列や機能が「ある」ことを「使われている」と読む**のもこの型。**値の出所を変えたのに、その値を使う式が旧い出所の前提（排他性等）を暗黙に置いたままか確認しない**のも同じ。**部品が直ったことを、その部品を使う機能が直ったことと読む**のも同じ | M-004, M-020, **M-032**, M-035, M-036, **M-039**, **M-040**, **M-048**, **M-052**, **M-063**, **M-074**, **M-083**, **M-088**, **M-20260920-hashed-a-file-i-never-opened**, **M-20260920-asked-for-a-decision-that-was-already-made-in-the-file-i-cited**, **M-20260921-classified-rls-impact-from-one-policy**, **M-20260922-copied-a-check-without-checking-the-default**, **M-20260924-called-a-tolerant-job-the-real-check** |
 | **C. 経路を1本しか見ない** | 同じ操作に複数の入口があるのに、目についた1本だけ直す。**同じ事実を2箇所に書いて片方だけ直す**のも同じ（文書に出た形）。**排他にすべき組み合わせのうち一部のペアだけをチェックする**のも同じ | M-005, M-007, M-013, M-019, **M-023**, **M-025**, M-038, **M-058**, **M-061**, **M-072**, **M-076**, **M-087**, **M-20260918-verification-skippable-via-transition-flag**, **M-20260919-exclusivity-guard-only-in-admin-route**, **M-20260919-exclusivity-checked-one-pair-not-all**, **M-20260920-called-it-all-no-op-while-fixing-the-one-statement-that-runs**, **M-20260922-enumerated-actions-from-typescript-only**, **M-20260922-renamed-a-migration-the-preview-db-had-applied**, **M-20260923-new-key-axis-not-traced-to-every-entry-point** |
 | **D. 移設で弱める** | 「同じものを別の場所に置くだけ」のつもりが、検査の強さや信号が落ちている。**移設先の信頼境界（誰の書き換えを受けるか・どんな権限を持つか）が変わっているのに気づかない**のもこの型 | M-008, **M-028**, **M-029**, **M-042**, **M-047**, **M-054**, **M-060**, **M-062**, **M-063**, **M-065**, **M-20260924-shared-resolver-dropped-error-to-500** |
 | **J. 兄弟実装と揃えていない** | 同じ理由で複数箇所に同種のガード・分岐を書いたのに、片方にしか適用しなかった／既存の兄弟実装が既に持っていた条件を新しい実装に持ち込まなかった。**「同じパターンで書いた」つもりが実は違う**のがこの型の核。**「AをBに置き換える」判断をしたのに、A自体を全リポジトリでgrepせず一部だけ置き換えて終わる**のも同じ | M-066, **M-069**, **M-092**, **M-093**, **M-20260916-timeout-branch-missed-sibling-fix**, **M-20260919-cancel-checkout-scattered-across-4-handlers**, **M-20260919-handled-completed-branch-not-failed-branch**, **M-20260919-else-fix-not-swept-to-siblings**, **M-20260921-claimed-all-db-errors-swept-but-left-booking-upsert**, **M-20260923-fixed-url-length-in-one-route-not-its-sibling** |
@@ -82,6 +82,49 @@
 | **G. 構造テストを振る舞いの証明として扱う** | ソースを grep して「その語が書かれている」を確かめただけで、**値が通るか**を確かめていない。テストは緑、機能は壊れている。**ファイルに在ること**を、**その経路が実際に動く/覆われている**ことの証拠として扱うのも同じ | **M-033**, **M-20260921-file-content-read-as-behavior** |
 | **H. 未確定の前提の上に作る** | 依頼者しか決められない前提を確認しないまま、その前提が変われば丸ごと消える実装を先に作る | **M-043** |
 | **I. 前提が途中で変わったのに読み直さない** | 判断したときは正しかった観察が、その後の `main` 取り込みなどで無効になっているのに、変更を見直さない。**衝突しなかったファイルにこそ潜む** | **M-047**, **M-051** |
+
+---
+
+## M-20260924-called-a-tolerant-job-the-real-check 「このジョブが緑なら本番ビルドも通る」と、ジョブの中身を読まずに代表へ伝えた（2026-09-24・型 B）
+
+**Before**: `overrides.ox` を viem に追従させた PR（#1114）で、代表に
+「`overrides.ox` が古いとビルドが落ちる、というのがこの検査の根拠なので、
+**`Client Bundle Size` ジョブが緑になることが本来の確認**です」と書いた。
+`check-ox-override.mjs` が「下回ると `next build` が『Export ... doesn't exist』で落ちる」と
+書いており、`next build` を回すジョブ＝`Client Bundle Size` だから、そこが緑なら確認済み、
+という筋で組み立てた。
+
+**After**: `ci.yml` の当該ジョブは **`next build` の非ゼロ終了を意図的に許容している**。
+
+```
+npm run build || echo "::warning::next build exited non-zero (page-data collection needs runtime secrets CI does not provide); ..."
+if [ ! -f .next/build-manifest.json ]; then
+  echo "::error::.next/build-manifest.json missing — client compilation failed (not a secrets issue)"
+  exit 1
+fi
+```
+
+確認できるのは**クライアントのコンパイルが通ること**までで、page data 収集以降は見ていない
+（本物のシークレットが無いと必ず落ちるため）。**「このジョブが緑＝本番ビルドが通る」ではない。**
+実際その直後に、**GitHub CI 全緑・Vercel のビルド失敗**という組み合わせが起きた。
+自分が「本来の確認」と呼んだものは、Vercel の失敗を1つも予告できていない。
+
+**なぜ気づけなかったか**: **ジョブの名前と `run:` の1行目から中身を決めつけた。**
+`ci.yml` の当該ブロックには、なぜ非ゼロを許すのかが **20行のコメント**で書いてある。
+開けば数秒で分かることを、開かずに断定した。根は
+**「`next build` を実行するジョブは `next build` の成否を見ているはずだ」という名前からの推論**で、
+型 B（読まずに分類する）そのもの。9月21日から続く「名前を出す前にそのファイルを開く」の系列
+（`M-20260921-said-the-drift-checker-ignores-policies` /
+`M-20260922-said-typegen-red-on-every-merge`）の3件目にあたる。
+前2件は**否定形**（「Xは〜を見ていない」）だったが、今回は**肯定形**（「Xが緑なら〜が保証される」）。
+**保証を約束する文も、否定形と同じだけ危ない。**
+
+**再発防止**:
+- 仕組み無し（判断に依存）。習慣は1つ: **「このチェックが緑なら X が保証される」と書く前に、
+  そのジョブの `run:` を最後まで読む。** CI のステップは「落ちたら赤」とは限らず、
+  この repo には**意図的に許容している箇所が現にある**。
+- 前2件の再発防止（「名前を出して否定形を書く前に開く」）を、
+  **「名前を出して保証を書くときも開く」に広げる。**
 
 ---
 
