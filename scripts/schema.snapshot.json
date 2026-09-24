@@ -986,6 +986,7 @@
 "created_at",
 "customer_id",
 "id",
+"labor_rate_per_hour",
 "name",
 "name_kana",
 "note",
@@ -1996,6 +1997,20 @@
 "tenant_id",
 "updated_at"
 ],
+"labor_hour_masters": [
+"created_at",
+"fixed_price",
+"hours",
+"id",
+"label",
+"model_code",
+"part_key",
+"part_number",
+"source_url",
+"tc_code",
+"tenant_id",
+"updated_at"
+],
 "line_broadcasts": [
 "created_at",
 "created_by",
@@ -2105,6 +2120,18 @@
 "manufacturer_id",
 "role",
 "updated_at",
+"user_id"
+],
+"manufacturer_notifications": [
+"body",
+"created_at",
+"id",
+"link_path",
+"manufacturer_id",
+"notification_type",
+"priority",
+"read_at",
+"title",
 "user_id"
 ],
 "manufacturer_templates": [

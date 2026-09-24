@@ -6,7 +6,7 @@ import {
   validateTenantStatusTransition,
   updateTenantFtJobStatus,
 } from "@/lib/fieldTest/tenantQueries";
-import { notifyFtTenant } from "@/lib/fieldTest/ftNotify";
+import { notifyFtManufacturer } from "@/lib/fieldTest/ftNotify";
 
 export const dynamic = "force-dynamic";
 
@@ -32,13 +32,13 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     if (!caller) return apiUnauthorized();
 
     const { id } = await params;
-    const body = await request.json();
+    const body = await request.json().catch(() => ({}));
     const newStatus = body.status as string | undefined;
     if (!newStatus) return apiValidationError("status は必須です。");
 
     const { data: job } = await caller.supabase
       .from("ft_jobs")
-      .select("id, status")
+      .select("id, status, manufacturer_id, project_id")
       .eq("id", id)
       .eq("tenant_id", caller.tenantId)
       .maybeSingle();
@@ -47,22 +47,30 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     const err = validateTenantStatusTransition(job.status as string, newStatus);
     if (err) return apiValidationError(err);
 
-    const updated = await updateTenantFtJobStatus(caller.supabase, caller.tenantId, id, newStatus);
+    const updated = await updateTenantFtJobStatus(
+      caller.supabase,
+      caller.tenantId,
+      id,
+      job.status as string,
+      newStatus,
+    );
 
     if (newStatus === "evidence_submitted") {
+      // 提出後に次に動くのは検査するメーカー。提出元テナント自身ではなくメーカーへ届ける。
       after(async () => {
-        await notifyFtTenant({
-          tenantId: caller.tenantId,
+        await notifyFtManufacturer({
+          manufacturerId: job.manufacturer_id as string,
           type: "ft_evidence_submitted",
           title: "証拠が提出されました",
-          body: `案件の証拠が提出されました。`,
-          linkPath: `/admin/field-test`,
+          body: `施工店から案件の証拠が提出されました。検査してください。`,
+          linkPath: `/manufacturer/field-test/${job.project_id as string}`,
         });
       });
     }
 
     return apiJson(updated);
   } catch (e) {
+    if ((e as { code?: string })?.code === "FT_STATE_CONFLICT") return apiValidationError((e as Error).message);
     return apiInternalError(e, "mobile ft job patch");
   }
 }

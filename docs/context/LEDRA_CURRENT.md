@@ -4,7 +4,98 @@
 > 追わず、常に最新状態だけを保つ（履歴は DECISION_LOG.md / RELEASE_LOG.md 側）。
 > 大きな変化があったら都度上書きすること。
 
-最終更新: 2026-09-20
+最終更新: 2026-09-23
+
+> 2026-09-23 追記: **帳票の新規作成を専用画面にし、入力途中を端末に自動保存するようにした**（#1140・`2b1a27dd`）。
+> 承認インボックスの請求書・証明書ドラフトの「確認」は各詳細ページへ直接飛ぶ（詳細ページは選択中テナントで引く）。
+> 新規作成中は集計・一覧を隠してフォームだけを出し、ブラウザの「戻る」は一覧へ戻るだけ。入力は localStorage に
+> テナント×ユーザー別・24時間で保存し、宛先の住所・電話と支払条件は保存せず復元時に顧客登録から埋め直す。
+> **未確認**: ログインが要る画面のため実ブラウザでの動作は未確認（自動テスト・E2E の CI は緑）。
+> **残課題**: 他の admin ページ10件が選択中テナントを見ずに最初の所属で引いている（別タスクで提案済み）。
+
+> 2026-09-23 追記: **保険会社ポータルの6エンドポイントを本番で復旧した**（#1135・`5b34c562`・
+> マイグレーション `20260923141500` / `20260923141600`）。`insurer_access_logs_action_check` が
+> `view`/`search`/`download_pdf`/`export_csv` の4値しか許さず、アプリが書く残り 16 種を弾いていた。
+> SQL 関数3本（`insurer_search_vehicles` / `insurer_search_stores` /
+> `insurer_get_vehicle_certificates`）は `RETURN QUERY` の**前**に insert するため関数ごと中断し
+> 車両検索・店舗検索・車両詳細が **500**、`insurer_audit_log` RPC を呼ぶ CSV/PDF 出力3本は
+> 呼び出し元が fail-closed のため **400** になっていた。CHECK を 20 値へ広げて解除。
+>
+> **本番適用 実測確認済み（2026-09-23 14:54 UTC）**: `db-migrate` run 88 成功後、本番の
+> `pg_constraint` に 20 値すべてが入り `convalidated: true`。さらに**定義を読むだけでなく
+> 実際に insert して確かめた** —— 20 値すべてが CHECK を通過（FK 違反 23503 で止まる＝CHECK は通過）、
+> 語彙外 `not_a_real_action_xyz` は今も 23514 で弾かれる。`RAISE EXCEPTION` で全件ロールバックし、
+> 表の行数は2件のまま（最新 2026-09-03）で変化なし。
+>
+> **未決**: 語彙の単一定義源が無い（DB の CHECK / TypeScript 12 箇所 / RPC 経由3つ / SQL 関数6本）。
+> 21 個目が書かれたらまた黙って弾かれる。TypeScript の直 insert 10 箇所は `error` を捨てている。
+> 対応案 (c)(d)(e) は OPEN_QUESTIONS。
+
+> 2026-09-23 追記: **発注書の撮影取込と、型式×品番の工数マスタによる工賃算出をマージ**（#1131・`612f254`・
+> マイグレーション `20260923093000`）。ディーラーの商談メモ等の写真から見積・納品・請求の下書きを作り、
+> 工賃は `labor_hour_masters`（型式×品番→工数/定額）× 支店別の時間単価で**プログラム算出**（AI 不使用）。
+> 工数は d-Happy（Honda Access 用品適用検索）の「装着用品確認」の表を人がコピーして貼り付けるか、
+> Excel / CSV を添付して登録する（#1134・`9f6ebce`。d-Happy の表をまとめた「項目・取付工数・車台番号・備考」形式も読める）
+> （robots.txt が全面 Disallow のため自動収集はしない）。登録は (型式, TC, 品番) で重複確認し、値違いは
+> あとから入ってきた値で上書き（ただし 0h では上書きしない。上書きした行は画面に一覧で出す）。**本番適用済み**（db-migrate run 87 成功後に本番を照会して実測: `labor_hour_masters` 11列（#1131 時点。#1138 の `tc_code` 追加後は **12列**、本番を照会して実測）・RLS 有効・ポリシー4本、`customer_branches.labor_rate_per_hour` あり、適用台帳に `20260923093000`）。**本番の工数データは 525 件**（2026-09-23 15:12 UTC に本番を照会: RS5 82・JF5 175・DG5 136・RP8 132。
+いずれも TC 問わず）。JF5・DG5・RP8 の 443 件は 14:27 UTC に、#1134 時点の規則（食い違い8品目は登録しない）で登録された。
+その後、食い違いは後の値で上書き（#1136）、ただし 0h は採らない、TC コードの軸を追加（#1138・`dd9b947`・
+マイグレーション `20260923150000`。本番に `tc_code` 列と UNIQUE (tenant, 型式, TC, 品番) を実測）。
+同じ Excel を登録し直すと、食い違い8品目が 0h を除いた後の値で入る。収集表にはまだ TC コード列が無い。
+> **未決**: d-Happy 運営者への自動取得可否の問い合わせ、グレードで工数が変わるか、店舗ごとの端数処理。
+
+> 2026-09-23 追記: **Field Test の残バグ3件を解消し #1117 をクローズ**（#1126・マイグレーション無し）。
+> 状態ガード付き UPDATE の 0 行 500 を型付き 4xx＋楽観ロック（`updateTenantFtJobStatus` の
+> `.eq("status", expectedStatus)`）に、応募の締切ガード＋notes 検証、report/analytics の集計を
+> `aggregateFtProject` に一本化。FT 本番利用ゼロで実害は未発生。
+>
+> **本番反映 実測確認済み（2026-09-23）**: `manufacturer_notifications`（表・10列・RLS 有効・
+> select/update ポリシー）、FT tenant RLS ポリシー群（ft_agreements/applications/condition_checks/
+> conditions/defects/evidence/inspections/jobs/recruitments/training_completions/training_modules）、
+> `workshop_capability_profiles` の select/insert/update、`ft-evidence` バケットが**すべて本番に実在**。
+> `20260922000000`（RLS 修復）と `20260922140000`（通知表）は適用記録だけでなく実体も確認＝
+> recorded-but-not-applied ドリフトは無し。
+
+
+> 2026-09-23 追記: **本番から制約を写すときは、その制約が見る列の定義も一緒に写す**（#1124、
+> 本番適用済み・run #86）。`20260922123100` で本番の CHECK を取り込んだが、同じ列の
+> **既定値・NULL 可否を写していなかった**ため、空 DB から作った環境でだけ壊れる箇所が2つ
+> 生まれていた（`vehicles.public_id` は通常の車両登録が必ず 23514 で失敗、
+> `certificate_images.file_size` は既定値 0 が自分の CHECK `> 0` に弾かれる）。
+> `20260922141000` / `20260922141100` で列を本番に揃えた。**本番では両方とも no-op**
+> （適用後に実測し、`public_id` の既定・`file_size` の NOT NULL とも変化なしを確認）。
+> 振る舞い検査を2本追加し、修正を外すと実際に落ちること（陰性対照）を確認済み。
+> **残る既知のずれ**: 突き合わせの道具（`check:schema` / `check-schema-drift` / 再生検査）は
+> **列の「名前」しか見ていない**ので、既定値・NULL 可否・型の食い違いは映らない。
+> `certificate_images` には `file_name`/`content_type` の NOT NULL、`sort_order` の既定
+> （本番 1 / マイグレーション 0）という差が残っている（OPEN_QUESTIONS）。
+
+> 2026-09-22 追記: **メーカー向け in-app 通知チャネルを新設**（#1123・`20260922140000`、本番適用済み＝2026-09-23 の db-migrate run #86 で実測確認）。
+> 施工店の証拠提出（evidence_submitted）通知が提出元テナント自身に飛んでメーカーに届いて
+> いなかった。`notifications` は tenant-keyed で表現できないため、姉妹表
+> `manufacturer_notifications`（`manufacturer_id` / RLS `my_manufacturer_ids()`・
+> `insurer_notifications` と同方針の別表）を作り、`notifyFtManufacturer`＋読み取り API 3本＋
+> メーカーポータルのベル（`NotificationBell` を `basePath` で再利用）を追加。通知先を
+> メーカー宛に付け替えた。**本番に表が作られたことを 2026-09-23 に実測確認済み**（db-migrate run #86）。メーカーベルは
+> サイドバー（デスクトップ表示）に載る＝モバイル対応は将来課題。
+> 同 PR で **#1122 停止保険会社のフォールバック**（`resolveInsurerCaller` がクッキー指定先の
+> 停止で締め出していたのを、使える保険会社へフォールバック）と **FT condition-checks の
+> 入力/越境検証・report の二重クエリ解消**も対応。
+
+> 2026-09-23 追記: 下の 2026-09-21 の C2PA fail-closed 化は **`e743897` として `main` にマージ済み**
+> （PR #1115）。以後、ネイティブ依存が入らなければ CI は赤くなる。
+> **未決は変わらず1つ**: ランタイム（Vercel）側のフェイルオープン
+> （`optionalDependencies` → `dependencies` に移すか）。
+
+> 2026-09-21 追記: **C2PA 適合性ゲートを fail-closed にした。** ネイティブ依存が
+> 読み込めないことを `ctx.skip()` で隠していた4箇所を削除し、読み込めなければ落ちるようにした。
+> 2026-09-14 に「CI が緑のまま C2PA の検査が丸ごと沈黙する」と起票されていた件の決着で、
+> 代表判断は fail-closed。**「検査して通った」と「検査できなかった」が同じ緑である状態を消した。**
+> 現状 `npm ci` は `@contentauth/c2pa-node` 0.9.5 を実際に入れ、ゲート4本は実走して通る
+> （起票当時は入っていなかった）。今回の変更は「また入らなくなったときに黙らせない」保険。
+> **未決**: ランタイム（Vercel）側のフェイルオープンは塞げていない。
+> `optionalDependencies` → `dependencies` に移すかは判断待ち。
+> なお本番データ上 C2PA は未稼働（`certificate_images` 81 行すべてで C2PA 列が 0）。
 
 > 2026-09-21 追記: **保険会社の停止が RLS 側でも効くようになった**（`20260921134500`、本番未適用）。
 > 前日に RPC 5本は塞いだが、PostgREST は表も直接公開しているので **RLS は素通りのまま**だった。
@@ -379,7 +470,14 @@
 > **ただし登録は未完了で、Claude からは実行できない**（Actions の PR 作成許可と、
 > `contents: write` + `pull-requests: write` を持つ **PAT** の登録。GitHub App の
 > インストールトークンは1時間で失効するのでこの形では使えない）。
-> **登録までは `db-typegen.yml` が毎回最終ステップで赤くなり続ける。**
+> **登録までは `db-typegen.yml` が最終ステップで赤くなり続ける。**
+>
+> **2026-09-22 追記: 登録が完了し、自動化は完結した。** 代表が PAT を `TYPEGEN_TOKEN` として
+> 登録し、手動実行（実行 #195・`workflow_dispatch`）が **PR #1120 の作成まで通った**。
+> Actions の「PR 作成許可」は**有効化していない**（PAT 経路では不要。OPEN_QUESTIONS）。
+> なお上の「毎回」は誤り —— `db-typegen` は `db-migrate`（`paths: supabase/migrations/**`）の
+> 成功後にしか起動しないので、**マイグレーションを含むマージのときだけ**走る
+> （`M-20260922-said-typegen-red-on-every-merge`）。
 
 > 2026-09-13 追記: **本番マイグレーションの書き手を1つに絞る判断が出た（代表「切る」）。**
 > Supabase の GitHub 連携による本番自動適用を無効化する。**設定変更はダッシュボード操作で、
@@ -534,6 +632,8 @@
 > ただし `db-typegen.yml` の自動化は**まだ完結していない** —— PR 作成が設定で禁止されており、
 > かつ `GITHUB_TOKEN` で push しているため CI も走らない。**当面は型の更新のたびに人が
 > PR を立て、CI の代わりに手元で検証する運用**になる（OPEN_QUESTIONS）。
+> **【2026-09-22 解決】 `TYPEGEN_TOKEN` の登録で完結した**（実行 #195 → PR #1120）。
+> 人が PR を立てる運用はここで終わり。
 
 > 2026-09-07 追記: **PR #966 をマージし、レシートの公開URLが本番で動くことを実機で確認した。**
 > 会計後に顧客へ送るリンクは、それまで証明書用のURLに決済IDを渡していて**必ず404**だった

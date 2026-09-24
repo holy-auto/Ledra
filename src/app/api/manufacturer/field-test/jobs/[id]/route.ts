@@ -108,10 +108,13 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     const admin = createServiceRoleAdmin("ft job update — admin caller scoped to own manufacturer_id");
     const manufacturerId = caller.manufacturerId;
 
-    // If transitioning to "completed", set completed_at
+    // completed_at は "completed" のときだけ立て、他ステータスへ戻したら必ず消す。
+    // （消し忘れると analytics/report の `if (j.completed_at)` 集計が過大になる。）
     const payload: Record<string, unknown> = { ...updates };
     if (updates.status === "completed") {
       payload.completed_at = new Date().toISOString();
+    } else if (updates.status !== undefined) {
+      payload.completed_at = null;
     }
 
     const { data, error } = await admin

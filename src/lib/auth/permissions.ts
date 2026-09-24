@@ -363,6 +363,7 @@ export const ROUTE_PERMISSIONS: Record<string, Permission> = {
   "/admin/outsourced-work": "orders:view",
   "/admin/booths": "reservations:view",
   "/admin/menu-items": "menu_items:manage",
+  "/admin/labor-hours": "menu_items:manage",
   "/admin/service-packages": "menu_items:manage",
   "/admin/inventory": "menu_items:manage",
   "/admin/stocktake": "menu_items:manage",

@@ -30,6 +30,14 @@ if [ -z "$BASE" ]; then
     exit 1
   }
 elif git diff --name-only HEAD "$BASE" | grep -qvE '^(docs/|README\.md|CHANGELOG\.md|.*\.md)$'; then
+  # 表・列を足してもクエリ照合用の snapshot を更新し忘れると CI だけ落ちる。
+  # 同じ失敗を2日続けたので（MISTAKE_LEDGER M-20260922-pushed-without-ci-parallel-checks /
+  # M-20260923-schema-snapshot-missed-again）、1秒未満の照合をここで先に回す。
+  node scripts/check-schema.mjs || {
+    echo ""
+    echo "[pre-push] check:schema failed. 新しい表・列は scripts/schema.snapshot.json にも追記してください。"
+    exit 1
+  }
   echo "[pre-push] comparing against $BASE"
   npx vitest run --changed "$BASE" || {
     echo ""

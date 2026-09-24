@@ -25,6 +25,7 @@ type Branch = {
   contact_person: string | null;
   contact_email: string | null;
   note: string | null;
+  labor_rate_per_hour: number | null;
   created_at: string;
   updated_at: string | null;
 };
@@ -38,6 +39,7 @@ const emptyForm = {
   contact_person: "",
   contact_email: "",
   note: "",
+  labor_rate_per_hour: "",
 };
 
 type BranchForm = typeof emptyForm;
@@ -70,6 +72,7 @@ export default function CustomerBranches({ customerId }: { customerId: string })
       contact_person: b.contact_person ?? "",
       contact_email: b.contact_email ?? "",
       note: b.note ?? "",
+      labor_rate_per_hour: b.labor_rate_per_hour ? String(b.labor_rate_per_hour) : "",
     });
     setShowForm(true);
   };
@@ -212,6 +215,18 @@ export default function CustomerBranches({ customerId }: { customerId: string })
               />
             </div>
             <div className="space-y-1">
+              <label className="text-xs text-muted">工賃の時間単価（円/時・税抜）</label>
+              <input
+                type="number"
+                inputMode="numeric"
+                min={1}
+                value={form.labor_rate_per_hour}
+                onChange={(e) => setForm({ ...form, labor_rate_per_hour: e.target.value })}
+                className="input-field"
+                placeholder="空欄 = 自社の既定単価"
+              />
+            </div>
+            <div className="space-y-1">
               <label className="text-xs text-muted">担当者メール</label>
               <input
                 type="email"
@@ -260,6 +275,7 @@ export default function CustomerBranches({ customerId }: { customerId: string })
                     </div>
                   )}
                   {b.contact_email && <div>{b.contact_email}</div>}
+                  {b.labor_rate_per_hour && <div>工賃単価: {b.labor_rate_per_hour.toLocaleString()}円/時</div>}
                   {b.note && <div className="text-muted">{b.note}</div>}
                 </div>
               </div>

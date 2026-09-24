@@ -7,7 +7,7 @@ vi.mock("@/lib/supabase/admin", () => ({
   getSupabaseAdmin: () => ({ from: mockFrom }),
 }));
 
-import { notifyFtTenant } from "../ftNotify";
+import { notifyFtTenant, notifyFtManufacturer } from "../ftNotify";
 
 describe("notifyFtTenant", () => {
   beforeEach(() => {
@@ -68,6 +68,51 @@ describe("notifyFtTenant", () => {
     await expect(
       notifyFtTenant({
         tenantId: "tenant-1",
+        type: "ft_evidence_submitted",
+        title: "t",
+        body: "b",
+        linkPath: "/",
+      }),
+    ).resolves.toBeUndefined();
+
+    expect(consoleSpy).toHaveBeenCalled();
+    consoleSpy.mockRestore();
+  });
+});
+
+describe("notifyFtManufacturer", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("manufacturer_notifications テーブルへ manufacturer_id で insert する", async () => {
+    await notifyFtManufacturer({
+      manufacturerId: "mfr-1",
+      type: "ft_evidence_submitted",
+      title: "証拠が提出されました",
+      body: "施工店から案件の証拠が提出されました。検査してください。",
+      linkPath: "/manufacturer/field-test/proj-1",
+    });
+
+    expect(mockFrom).toHaveBeenCalledWith("manufacturer_notifications");
+    expect(mockInsert).toHaveBeenCalledWith({
+      manufacturer_id: "mfr-1",
+      user_id: null,
+      notification_type: "ft_evidence_submitted",
+      priority: "normal",
+      title: "証拠が提出されました",
+      body: "施工店から案件の証拠が提出されました。検査してください。",
+      link_path: "/manufacturer/field-test/proj-1",
+    });
+  });
+
+  it("insert エラー時でも例外を投げない", async () => {
+    mockInsert.mockReturnValueOnce({ error: { message: "db error" } });
+    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    await expect(
+      notifyFtManufacturer({
+        manufacturerId: "mfr-1",
         type: "ft_evidence_submitted",
         title: "t",
         body: "b",

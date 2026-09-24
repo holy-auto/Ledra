@@ -6,7 +6,7 @@ import {
   validateTenantStatusTransition,
   updateTenantFtJobStatus,
 } from "@/lib/fieldTest/tenantQueries";
-import { notifyFtTenant } from "@/lib/fieldTest/ftNotify";
+import { notifyFtManufacturer } from "@/lib/fieldTest/ftNotify";
 
 export const dynamic = "force-dynamic";
 
@@ -23,14 +23,14 @@ export const GET = withCaller<{ id: string }>(
 /** PATCH /api/admin/field-test/jobs/[id] — ステータス更新 */
 export const PATCH = withCaller<{ id: string }>(
   async (req: NextRequest, { caller, supabase, params }) => {
-    const body = await req.json();
+    const body = await req.json().catch(() => ({}));
     const newStatus = body.status as string | undefined;
     if (!newStatus) return apiValidationError("status は必須です。");
 
-    // 現在のステータスを取得
+    // 現在のステータス＋メーカー宛通知に要る manufacturer_id / project_id を取得
     const { data: job } = await supabase
       .from("ft_jobs")
-      .select("id, status")
+      .select("id, status, manufacturer_id, project_id")
       .eq("id", params.id)
       .eq("tenant_id", caller.tenantId)
       .maybeSingle();
@@ -39,16 +39,23 @@ export const PATCH = withCaller<{ id: string }>(
     const err = validateTenantStatusTransition(job.status as string, newStatus);
     if (err) return apiValidationError(err);
 
-    const updated = await updateTenantFtJobStatus(supabase, caller.tenantId, params.id, newStatus);
+    let updated;
+    try {
+      updated = await updateTenantFtJobStatus(supabase, caller.tenantId, params.id, job.status as string, newStatus);
+    } catch (e) {
+      if ((e as { code?: string })?.code === "FT_STATE_CONFLICT") return apiValidationError((e as Error).message);
+      throw e;
+    }
 
     if (newStatus === "evidence_submitted") {
+      // 提出後に次に動くのは検査するメーカー。提出元テナント自身ではなくメーカーへ届ける。
       after(async () => {
-        await notifyFtTenant({
-          tenantId: caller.tenantId,
+        await notifyFtManufacturer({
+          manufacturerId: job.manufacturer_id as string,
           type: "ft_evidence_submitted",
           title: "証拠が提出されました",
-          body: `案件の証拠が提出されました。`,
-          linkPath: `/admin/field-test`,
+          body: `施工店から案件の証拠が提出されました。検査してください。`,
+          linkPath: `/manufacturer/field-test/${job.project_id as string}`,
         });
       });
     }

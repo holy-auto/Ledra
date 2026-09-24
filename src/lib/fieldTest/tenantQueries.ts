@@ -6,6 +6,7 @@
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { z } from "zod";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Supa = SupabaseClient<any, any, any>;
@@ -111,20 +112,41 @@ export function validateTenantStatusTransition(current: string, next: string): s
   return null;
 }
 
-export async function updateTenantFtJobStatus(supabase: Supa, tenantId: string, jobId: string, newStatus: string) {
-  const updatePayload: Record<string, unknown> = { status: newStatus };
-  if (newStatus === "evidence_submitted") {
-    // ponytail: completed_at はメーカーが completed にしたとき設定。ここでは不要。
-  }
+/**
+ * 状態ガード付き UPDATE が0行だったとき（既に対象状態・競合・不存在）に投げる型付きエラー。
+ * ルート側は FT_STATE_CONFLICT を 4xx にマップする。
+ *
+ * なぜ要るか: 状態を絞った UPDATE（`.in("status",[...])` 等）に `.single()` を掛けると、
+ * 0行のとき PostgREST が PGRST116 を返し、`if (error) throw error` が不透明な 500 を出す。
+ * 二重操作や競合で普通に起きる経路なので、`.maybeSingle()`＋明示的な 4xx に寄せる。
+ */
+function ftStateConflict(message: string): Error & { code: string } {
+  const e = new Error(message) as Error & { code: string };
+  e.code = "FT_STATE_CONFLICT";
+  return e;
+}
 
+export async function updateTenantFtJobStatus(
+  supabase: Supa,
+  tenantId: string,
+  jobId: string,
+  expectedStatus: string,
+  newStatus: string,
+) {
+  // `.eq("status", expectedStatus)` で楽観ロックする。呼び出し元は現在の status を読んで
+  // 遷移を検証してからここに来るが、その間に別操作が status を変えていたら 0 行になり、
+  // 検証済みでない遷移を上書きしない（競合 → FT_STATE_CONFLICT）。ガードが無いと
+  // 2つの PATCH が同じ旧状態を前提に両方書き込めてしまう（/code-review #1126）。
   const { data, error } = await supabase
     .from("ft_jobs")
-    .update(updatePayload)
+    .update({ status: newStatus })
     .eq("id", jobId)
     .eq("tenant_id", tenantId)
+    .eq("status", expectedStatus)
     .select("id, status, updated_at")
-    .single();
+    .maybeSingle();
   if (error) throw error;
+  if (!data) throw ftStateConflict("案件の状態が変化しました。最新の状態を再読み込みしてください。");
   return data;
 }
 
@@ -140,9 +162,26 @@ export async function listConditionChecks(supabase: Supa, jobId: string) {
   return data ?? [];
 }
 
+/**
+ * POST /field-test/condition-checks の入力検証（admin / mobile 共通）。
+ *
+ * 生の body 値をそのまま upsert に渡すと、`value_numeric: "abc"` のような
+ * 型不一致が Postgres まで届いて不透明な 500 になる。信頼境界で弾く。
+ * 1つの規則を admin/mobile で別々に書かないよう、ここを唯一の定義源にする。
+ */
+export const conditionCheckInputSchema = z.object({
+  job_id: z.string().uuid(),
+  condition_id: z.string().uuid(),
+  value_boolean: z.boolean().nullish(),
+  value_numeric: z.number().finite().nullish(),
+  value_text: z.string().max(2000).nullish(),
+  value_photo_path: z.string().max(1024).nullish(),
+});
+
 export async function upsertConditionCheck(
   supabase: Supa,
   jobId: string,
+  projectId: string,
   conditionId: string,
   value: {
     value_boolean?: boolean | null;
@@ -152,6 +191,25 @@ export async function upsertConditionCheck(
   },
   checkedBy: string,
 ) {
+  // condition_id が対象案件のプロジェクトに属する実在の条件かを検証する。
+  // zod は形（UUID）しか見ないので、これが無いと (a) 実在しない condition_id は
+  // FK(23503) で不透明な 500 になり（schema が閉じたと謳う経路そのもの）、
+  // (b) 別プロジェクトの実在条件は FK を通って案件に越境記録され、per-condition
+  // 集計を汚す（/code-review #1123）。テナントの ft_conditions SELECT は自社案件の
+  // プロジェクトにスコープ済み。呼び出し元が確認した job の project に絞って1回で確かめる。
+  const { data: cond, error: condErr } = await supabase
+    .from("ft_conditions")
+    .select("id")
+    .eq("id", conditionId)
+    .eq("project_id", projectId)
+    .maybeSingle();
+  if (condErr) throw condErr;
+  if (!cond) {
+    const err = new Error("指定された施工条件が案件のプロジェクトに存在しません。") as Error & { code?: string };
+    err.code = "FT_INVALID_CONDITION";
+    throw err;
+  }
+
   const { data, error } = await supabase
     .from("ft_condition_checks")
     .upsert(
@@ -267,6 +325,26 @@ export async function listTenantApplications(supabase: Supa, tenantId: string) {
   return data ?? [];
 }
 
+/**
+ * POST /field-test/applications の入力検証（admin / mobile 共通・唯一の定義源）。
+ * `notes` を生値のまま DB へ渡さない（型不一致で不透明な 500・過大行を防ぐ）。
+ */
+export const applicationInputSchema = z.object({
+  recruitment_id: z.string().uuid(),
+  // nullish: 旧実装は `notes: null` をそのまま INSERT できた。conditionCheckInputSchema と揃える。
+  notes: z.string().max(2000).nullish(),
+});
+
+/**
+ * 募集が締切を過ぎているか。`is_open=true` のままでも deadline を過ぎたら応募不可にする
+ * （運用が締切後に is_open を戻し忘れても新規応募を受けないため）。deadline 未設定は無期限。
+ */
+export function isRecruitmentExpired(deadline: string | null | undefined, now: Date = new Date()): boolean {
+  if (!deadline) return false;
+  const d = new Date(deadline);
+  return !Number.isNaN(d.getTime()) && d.getTime() < now.getTime();
+}
+
 export async function createApplication(
   supabase: Supa,
   row: {
@@ -275,16 +353,39 @@ export async function createApplication(
     manufacturer_id: string;
     tenant_id: string;
     applied_by: string;
-    notes?: string;
+    notes?: string | null;
   },
 ) {
-  const { data, error } = await supabase
+  const sel = "id, status, notes, created_at, recruitment_id, project_id";
+  const { data, error } = await supabase.from("ft_applications").insert(row).select(sel).single();
+  if (!error) return data;
+  if ((error as { code?: string }).code !== "23505") throw error;
+
+  // UNIQUE(recruitment_id, tenant_id) 違反。既存行が withdrawn / rejected なら「再応募」
+  // として復活させる（取り下げ・不採用の後に再度応募できるべき）。pending / approved
+  // （＝有効な応募中）のときだけ本当の二重応募として弾く。
+  const { data: revived, error: reviveErr } = await supabase
     .from("ft_applications")
-    .insert(row)
-    .select("id, status, notes, created_at, recruitment_id, project_id")
-    .single();
-  if (error) throw error;
-  return data;
+    .update({
+      status: "pending",
+      applied_by: row.applied_by,
+      notes: row.notes ?? null,
+      review_notes: null,
+      reviewed_by: null,
+      reviewed_at: null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("recruitment_id", row.recruitment_id)
+    .eq("tenant_id", row.tenant_id)
+    .in("status", ["withdrawn", "rejected"])
+    .select(sel)
+    .maybeSingle();
+  if (reviveErr) throw reviveErr;
+  if (revived) return revived;
+
+  const dup = new Error("この募集にはすでに応募済みです。") as Error & { code?: string };
+  dup.code = "FT_DUPLICATE_APPLICATION";
+  throw dup;
 }
 
 export async function withdrawApplication(supabase: Supa, tenantId: string, applicationId: string) {
@@ -295,26 +396,33 @@ export async function withdrawApplication(supabase: Supa, tenantId: string, appl
     .eq("tenant_id", tenantId)
     .in("status", ["pending"])
     .select("id, status, updated_at")
-    .single();
+    .maybeSingle();
   if (error) throw error;
+  if (!data)
+    throw ftStateConflict("この応募は取り下げできません（既に取り下げ済み・審査済み、または対象が見つかりません）。");
   return data;
 }
 
 // ── Training ──
 
 export async function listTrainingWithCompletions(supabase: Supa, tenantId: string, projectId: string) {
-  const [modulesRes, completionsRes] = await Promise.all([
-    supabase
-      .from("ft_training_modules")
-      .select("id, title, description, content_url, sort_order, is_required, created_at")
-      .eq("project_id", projectId)
-      .order("sort_order", { ascending: true }),
-    supabase
-      .from("ft_training_completions")
-      .select("id, module_id, completed_by, completed_at")
-      .eq("tenant_id", tenantId),
-  ]);
+  const modulesRes = await supabase
+    .from("ft_training_modules")
+    .select("id, title, description, content_url, sort_order, is_required, created_at")
+    .eq("project_id", projectId)
+    .order("sort_order", { ascending: true });
   if (modulesRes.error) throw modulesRes.error;
+
+  const moduleIds = (modulesRes.data ?? []).map((m) => m.id as string);
+  // このプロジェクトのモジュールに絞る。テナント全完了行を引くと、参加プロジェクト
+  // が増えるほど payload が無制限に膨らむため（表示に使うのは projectId 分だけ）。
+  const completionsRes = moduleIds.length
+    ? await supabase
+        .from("ft_training_completions")
+        .select("id, module_id, completed_by, completed_at")
+        .eq("tenant_id", tenantId)
+        .in("module_id", moduleIds)
+    : { data: [], error: null };
   if (completionsRes.error) throw completionsRes.error;
 
   const completionMap = new Map((completionsRes.data ?? []).map((c) => [c.module_id as string, c]));
@@ -368,8 +476,9 @@ export async function acceptAgreement(supabase: Supa, tenantId: string, agreemen
     .eq("tenant_id", tenantId)
     .eq("accepted", false)
     .select("id, agreement_type, accepted, accepted_at")
-    .single();
+    .maybeSingle();
   if (error) throw error;
+  if (!data) throw ftStateConflict("この契約は同意できません（既に同意済み、または対象が見つかりません）。");
   return data;
 }
 

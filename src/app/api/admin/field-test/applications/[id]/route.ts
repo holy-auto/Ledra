@@ -8,13 +8,18 @@ export const dynamic = "force-dynamic";
 /** PATCH /api/admin/field-test/applications/[id] — 応募取り下げ */
 export const PATCH = withCaller<{ id: string }>(
   async (req: NextRequest, { caller, supabase, params }) => {
-    const body = await req.json();
+    const body = await req.json().catch(() => ({}));
     if (body.action !== "withdraw") {
       return apiValidationError('action は "withdraw" のみ対応しています。');
     }
 
-    const result = await withdrawApplication(supabase, caller.tenantId, params.id);
-    return apiJson(result);
+    try {
+      const result = await withdrawApplication(supabase, caller.tenantId, params.id);
+      return apiJson(result);
+    } catch (e) {
+      if ((e as { code?: string })?.code === "FT_STATE_CONFLICT") return apiValidationError((e as Error).message);
+      throw e;
+    }
   },
   { routeName: "ft tenant application withdraw" },
 );

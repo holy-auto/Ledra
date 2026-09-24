@@ -100,7 +100,7 @@ export function buildApprovalInbox(input: {
     id: c.public_id,
     title: c.customer_name?.trim() || "（顧客名なし）",
     subtitle: c.service_type?.trim() || "施工証明書",
-    href: "/admin/certificates",
+    href: `/admin/certificates/${encodeURIComponent(c.public_id)}`,
     action: { kind: "issue_certificate", label: "発行" },
     why: certificateWhy(c.confidence, c.missingInfo),
   }));
@@ -136,7 +136,8 @@ export function buildApprovalInbox(input: {
     id: d.id,
     title: d.recipient_name?.trim() || d.doc_number?.trim() || "請求書",
     subtitle: [d.doc_number?.trim(), jpy(d.total)].filter(Boolean).join(" / "),
-    href: "/admin/invoices",
+    // 一覧ではなく当該ドラフトの詳細へ直接飛ばし、ワンタップで中身を確認できるようにする。
+    href: `/admin/documents/${encodeURIComponent(d.id)}`,
     // 送付（金額の外向き確定 = 壁3）はインボックスからは行わず、請求書画面で確認のうえ実施。
   }));
   if (invItems.length > 0) {

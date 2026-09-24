@@ -4,6 +4,379 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-09-23 帳票の新規作成を専用画面に・入力途中の自動保存・承認インボックスから詳細へ直行
+
+代表から帳票管理の使いにくさ4点の指摘を受けて修正。
+- 承認インボックスの請求書ドラフトの「確認」が請求・帳票管理の一覧に飛ぶだけだったのを、
+  そのドラフトの詳細（`/admin/documents/<id>`）へ直接飛ぶようにした。証明書ドラフトも同じ形で
+  一覧に飛んでいたので `/admin/certificates/<public_id>` に揃えた（発注ドラフトは詳細ページが無いので従来どおり）。
+- 新規作成を開くと、集計（合計・未入金・顧客別集計）・絞り込み・一覧を隠してフォームだけの
+  「帳票の新規作成」画面に切り替わる。作成画面では「新規作成」ボタンを出さず「一覧に戻る」を出す。
+- 作成画面の開閉を URL の `create=1` で持つようにした。ブラウザの「戻る」で一覧に戻り、ページ外に飛ばない。
+- 入力途中の内容を端末（localStorage）に自動保存し、作成画面を開き直すと復元する（24時間で破棄）。
+  保存先はテナント × ユーザー × プリフィル（顧客・車両・案件・外注職人）ごとに分ける。人が操作して
+  初めて保存し、プリフィル・AI 起票で埋まっただけの状態は保存しない。復元時は「前回の入力内容を復元しました」と
+  「破棄して最初から」を出す。下書き作成に成功したら保存分は消す。
+  宛先の郵便番号・住所・電話と支払条件は端末に保存せず、復元時に顧客・支店の登録内容から入れ直す（CodeQL 指摘）。
+- Codex レビュー対応: 帳票詳細・証明書詳細の画面が複数テナント所属時に最初の所属テナントで引いていたのを、
+  選択中テナント（`active_tenant_id`）で引くよう直した（インボックスから飛んで 404 にならないように）。
+  作成後は作成画面の履歴を詳細で置き換え、「戻る」で空の作成画面に戻らないようにした。
+  開いただけでは下書きの保存時刻を更新しない（期限を延ばさない）、保存キー確定前に入力を始めたら古い下書きで上書きしない、
+  プリフィルだけで「下書き作成」が失敗しても入力を端末に残す、の3点も修正。
+
+## 2026-09-23 保険会社ポータルの3画面が本番で 500 になっていたのを解除（監査 action の語彙）
+
+`insurer_access_logs_action_check` が4値しか許さず、アプリが書く **16 種**を弾いていた。
+
+**(A) SQL 関数の中の insert —— 関数ごと中断し、画面が 500**
+
+| 関数 | 書く `action` | 落ちていた API |
+|---|---|---|
+| `insurer_search_vehicles` | `vehicle_search` | `GET /api/insurer/vehicles` |
+| `insurer_search_stores` | `store_search` | `GET /api/insurer/stores` |
+| `insurer_get_vehicle_certificates` | `vehicle_view` | `GET /api/insurer/vehicles/[id]` |
+
+3本とも例外ハンドラが無く `RETURN QUERY` の**前**に insert するので、検索結果が1件も返らない。
+
+**(B) `insurer_audit_log` RPC 経由 3 本 —— 呼び出し元が fail-closed なので 400**
+
+`/api/insurer/export`・`/api/insurer/export-one`・`/api/insurer/pdf-one` は
+`if (logErr) return apiValidationError(...)` で**ファイルを出す前に止まる**。
+つまり CSV/PDF 出力も壊れていた。**(A) と合わせて落ちていたのは6エンドポイント。**
+
+**(C) TypeScript の直 insert 10 箇所 —— 黙って記録だけ落ちる**
+
+戻り値の `error` を見ていないため例外にもログにもならない。案件操作（`case_*`）・
+不正検知（`fraud_check*`）・PII 開示請求の記録が1件も残っていなかった。
+`audit.ts` 2本は `throw` するが、`AuditAction` が4値に型で縛られているので弾かれる値を渡せない。
+
+- `20260923141500`: CHECK を **20 値**（既存4 + 新規16）へ広げる。`NOT VALID` で追加
+- `20260923141600`: `VALIDATE CONSTRAINT`（規約どおり別ファイル）
+- `scripts/replay/checks/insurer_access_logs_action_vocab.sql`: 20 値を**1つずつ insert**して
+  通ることと、語彙外（`not_a_real_action_xyz`）が今も弾かれることを検査。
+  **修正を外すと 16 件ちょうどが弾かれることを実測した**（陰性対照）
+
+**語彙の出し方**: 書き込み経路を3つとも当たった —— TypeScript の直 insert（12 箇所）、
+`insurer_audit_log` RPC の実引数（3 箇所・**ドット区切り**）、本番 `pg_proc` の関数6本。
+前回「13 種類」と報告したのは誤りで、**正しくは 16 種類**（RPC 経由の
+`insurer.export.csv` / `.csv.one` / `.pdf.one` を落としていた）。
+MISTAKE_LEDGER `M-20260922-enumerated-actions-from-typescript-only` に 2026-09-23 追記。
+
+検証: `check:migrations` 再生 501/501・振る舞いの検査 **5 件**緑（陰性対照も確認）。
+
+**本番適用 実測（2026-09-23 14:54 UTC）**: `db-migrate` run 88 成功。本番の `pg_constraint` は
+20 値・`convalidated: true`。定義を読むだけで済ませず、**20 値を1つずつ本番に insert して**
+全件が CHECK を通過することを確かめた（bogus な UUID で FK 違反 23503 に到達＝CHECK は通過。
+CHECK は行構築時に評価され FK トリガより先に走るため、この区別が成り立つ）。
+陰性対照 `not_a_real_action_xyz` は 23514 で弾かれる。`RAISE EXCEPTION` で全件ロールバックし、
+表の行数は2件・最新 2026-09-03 のまま変化なし。
+
+## 2026-09-23 工数の食い違いは「あとから入ってきた値」で上書き
+
+工数マスタの登録（貼り付け・ファイル・帳票フォームからの登録）で、登録済みと値が違う行は今回の値で上書きし、
+d-Happy 収集表の中で同じ型式・品名の工数が食い違うときは後の行を採るようにした（代表判断、DECISION_LOG 同日）。
+「今回の値で上書きする」確認ボタンは廃止し、上書きした行は画面に一覧で出す。API の `overwrite` 指定は無くなり、
+結果は `overwritten` で返す。代表の収集 Excel は食い違い8件も含め 451 件が登録対象になる見込み（443 + 8、未実測）。
+例外として、食い違いでは 0h を採らない（0h 以外の最後の値を採り、登録済みの 0h 以外を 0h で上書きしない）。
+
+工数マスタに TC コード（`tc_code`、マイグレーション `20260923150000`、既存行は TC 問わず）を足し、キーを
+(型式, TC, 品番) にした。算出は (型式, TC) → (型式, TC 問わず) → 型式共通 の順。CSV は7列目、d-Happy 収集表は
+「TCコード」列で読み、TC 問わずの行に加えて TC 別の行も毎回登録する（前回の TC 別の値が古いまま残らないように。TC が 0h だけなら TC 問わずの値）。帳票フォームの工賃計算に TC コード入力欄（任意）。
+
+## 2026-09-23 工数マスタを Excel / CSV の添付で登録
+
+工数マスタ画面の「ファイル（Excel / CSV）で登録・更新」で、ファイルを選ぶだけで登録できるようにした
+（貼り付けも残す）。`.xlsx` は既存依存の jszip で開いて1枚目のシートを読む（`readXlsxRows`、新規依存なし）。
+CSV は UTF-8、読めなければ Shift_JIS として読む（Excel 保存の CSV 対策）。対応形式は2つ:
+工数マスタ形式（型式,品番,工数h,…）と、d-Happy 収集表（項目・取付工数・車台番号・備考）。後者は
+`sheetRowsToLaborCsv` が型式を車台番号から取り、同じ型式・品名で工数が食い違う行と工数空欄の行は登録せず
+一覧に出す。代表の収集 Excel（585行）で、取込 443・食い違い 8・空欄 15 と、別経路（Python 変換）と一致。
+
+## 2026-09-23 工数マスタに「型式ごとの収集状況」（未収集の型式リスト）
+
+d-Happy は車台番号で1台ずつ検索する仕組みで、全車種を集めるには型式ごとに実在する車台番号が要る。
+工数マスタ画面に、登録車両の車台番号＋貼り付けた車台番号を型式ごとにまとめ、工数マスタに行が無い型式を
+「未収集」として先頭に出す欄を追加（`summarizeCoverage`・`/api/admin/labor-hours/coverage`）。
+未収集分は型式ごとに1台の車台番号をまとめてコピーでき、d-Happy での収集（人の操作・ブラウザ拡張）に渡せる。
+番号だけの F-NO は型式を推測せず「型式が分からない番号」として分けて表示。
+本番の登録車両は全テナントで27台・型式付き車台番号は2台（2026-09-23 集計）なので、当面は貼り付けが主な入口。
+
+同 PR で **工賃計算の品名フォールバック**も追加: 品番で工数マスタに当たらない行は品名でも引く
+（`findEntryWithFallback`。part_key と label の両方と照合、全角/記号の表記ゆれは NFKC で吸収）。
+代表が d-Happy から収集した工数（品番列が無く品名のみ）を取り込めるようにするため。手元の発注書13行で
+試すと品名一致は12行（不一致は「新車パッケージ N-BOX、CUSTOM用」＝ d-Happy と表記が違う）。
+
+## 2026-09-23 型式 × 品番の工数マスタと「工賃を計算」ボタン（PR #1131）
+
+発注書の品番から取付工賃を**プログラムで**算出できるようにした（AI は使わない）。
+
+- **工数マスタ** `labor_hour_masters`（`20260923093000`）: 型式 × 品番（作業名）→ 工数 h または定額。
+  型式 `*` は型式共通。管理画面 `/admin/labor-hours`（サイドバー「工数マスタ」）で CSV 一括登録・一覧・削除。
+- **店舗別の時間単価**: 顧客詳細の支店に「工賃の時間単価（円/時・税抜）」欄。未設定なら自社のレバーレート。
+- **帳票フォームの「🔧 工賃を計算」**: 明細の品番（無ければ品名）× 型式 × 支店で `工数 × 時間単価`（定額優先）を
+  単価に入れ、税抜に切り替える。マスタに無い行は 0 円にして「工数未登録」と列挙。型式は OCR の車台番号
+  （`GP3-1017220` → `GP3`）から自動入力、番号だけのときは手入力。
+- 検証: 純関数テスト 7 件（`src/lib/pricing/__tests__/laborMaster.test.ts`）、マイグレーション全 499 本の空 DB 再生、
+  再生 DB 上で upsert と「工数か定額必須」制約の実動作を確認。
+
+- **d-Happy の表の貼り付け登録**: d-Happy「装着用品確認」の表をドラッグ選択でコピーして貼ると、
+  品番・取付工数・品名を車台番号の型式で一括登録（`dHappyPasteToCsv`）。代表の実コピー3品目で検証。
+  自動収集は `robots.txt` が全面 Disallow のため行わない（DECISION_LOG 同日）。
+- **重複を確認してから登録**（代表の依頼）: CSV・d-Happy 貼り付け・帳票の未登録行のどこから登録しても、
+  型式（車台番号から抽出）× 品番で既存と突き合わせる（`classifyAgainstExisting`）。未登録は新規、同じ値は
+  書かない、**値が違うものは上書きせず一覧表示し、人が「上書き」を選んだときだけ更新**。品名・出典だけの違いは
+  金額に影響しないので更新する。以前は CSV が黙って上書きしていた。
+- **帳票フォームからの登録**: 「工賃を計算」で未登録と出た行に工数を入れ、「工数マスタに登録して再計算」。
+
+## 2026-09-23 帳票の「書類を撮影して取込」を発注書・依頼書・商談メモに対応
+
+取引先（ディーラー等）ごとに様式がバラバラな発注書・作業依頼書・商談メモ（付属品明細）の
+写真から、見積書・納品書・請求書の下書きを作れるようにした。既存の仕入先請求書 OCR
+（`/api/admin/documents/ocr`・`src/lib/ai/invoiceOcr.ts`）を拡張し、新しい画面・API は作っていない。
+
+- **読取項目の追加**: お客様名・担当者・車種・色・車台番号（F-NO）・納車予定日・管理番号
+  （商談No/オーダーNo）・**手書きの指示**（「12Vお願いします」等）・値引き行（負の金額）・0円行。
+- **フォームへの反映**: 明細に加え、件名（お客様名＋車種）・備考（発行元・管理番号・車両・手書き指示）・
+  納期日を下書きとして入れる。入力済みの件名・納期日は上書きしない。
+- **内税の自動判定**（`detectTaxInclusive`）: 商談メモは税込価格を並べて内税の消費税を添える様式
+  （例: 合計 62,600円・消費税 5,690円 = 62,600×10/110 切捨）。税抜扱いで取り込むと 10% 二重課税に
+  なるため、AI の申告ではなく「明細合計＝合計欄」かつ「税額＝合計×10/110」の金額整合で判定する。
+- **撮影済み写真も選べるように**: `capture` を外した（カメラ直行ではなく写真ライブラリも選べる）。
+- **送信前にブラウザで圧縮**: 証明書写真アップロードの `compressToJpeg` を `src/lib/media/` へ共通化して
+  流用。スマホ写真が Vercel の body 上限（4.5MB）を超えて取込に失敗するのを防ぐ。
+
+未検証: 実写真での AI 読取精度（開発環境に API キーが無く未実行）。
+
+## 2026-09-23 Field Test 残バグ3件を解消（#1117 クローズ・#1126）
+
+`/code-review`（#1123）が検出した FT 既存バグ3件を修正。FT 本番利用ゼロで実害は未発生。
+
+- **A. no-op UPDATE の 500**: `updateTenantFtJobStatus` / `withdrawApplication` / `acceptAgreement`
+  を `.maybeSingle()`＋型付き `FT_STATE_CONFLICT` にし、6ルート（admin/mobile × jobs/applications/
+  agreements）で 4xx マップ。`updateTenantFtJobStatus` は `.eq("status", expectedStatus)` の
+  **楽観ロック**も追加し、同時 PATCH の競合を実際に検出するようにした。
+- **B. 応募の締切／notes**: `applicationInputSchema`(zod・notes≤2000・`.nullish()`)＋
+  `isRecruitmentExpired` を追加し、admin/mobile の応募 POST で締切超過を弾き body を検証。
+- **C. report/analytics 集計重複**: `aggregateFtProject`（`src/lib/fieldTest/projectAggregate.ts`）
+  に抽出し両ルートで共有（~250 行削減）。
+
+`/code-review` は本 PR の新規コードに4件指摘（status ガード欠落・notes:null 退行・PATCH の
+`req.json()` 未ガード 500・not-found 誤ラベル）→ すべて同 PR で修正。マイグレーション変更なし。
+
+## 2026-09-22 新環境で車両登録が通らなくなるのを直した（前の PR の後始末）
+
+`20260922123100` が本番から `vehicles_public_id_format_chk` を取り込んだが、
+**同じ列の既定値を揃えていなかった**。
+
+    本番            DEFAULT generate_vehicle_public_id()  → 'v_' + 24桁hex  → 通る
+    マイグレーション DEFAULT 'veh_' || replace(...)         → 'veh_' + 32桁hex → 弾かれる
+
+アプリは `public_id` を省いて insert するので、**空 DB から作った環境では通常の車両登録が
+必ず 23514 で落ちる**（Codex の P1 指摘）。本番は既定が生成関数なので無傷、実データも違反0件。
+
+- `20260922141000`: 既定を `generate_vehicle_public_id()` へ揃える。**本番では no-op。**
+- `scripts/replay/checks/vehicles_public_id_default.sql`: `public_id` を省いて車両を入れ、
+  既定が CHECK を通る形かまで見る振る舞い検査。**修正を外して実際に落ちることを確認した**
+  （`ERROR: new row for relation "vehicles" violates check constraint
+  "vehicles_public_id_format_chk"`）。DEFAULT と CHECK のどちらが変わっても落ちる。
+
+MISTAKE_LEDGER: `M-20260922-copied-a-check-without-checking-the-default`（型 B）。
+列を「名前」の単位で考えていた。列には生成側（DEFAULT）と検査側（CHECK）があり、
+片方だけ揃えると矛盾する。
+
+- `20260922141000` は既存行の後始末も持つ。`20260711000002` が `'veh_'` 形式で埋めた行は
+  CHECK を通らず、**NOT VALID でも UPDATE は検査される**ので「読めるが二度と更新できない行」
+  になる。本番は該当0件（27行すべて `v_` 始まり・実測）なので no-op。
+
+**同じ型が2件目にもあった**（`/code-review` の指摘）。`20260922123100` が写した
+`certificate_images_file_size_check`（`CHECK (file_size > 0)`）に対し、
+マイグレーション側の列は `file_size bigint DEFAULT 0`（NULL 可）で、
+**既定値が自分の CHECK に弾かれる**。本番は `NOT NULL`・既定なし。
+
+- `20260922141100`: 既定を外し `NOT NULL` にして本番と揃える。**本番では両方とも no-op。**
+- `scripts/replay/checks/certificate_images_file_size.sql`: `file_size` を省いた insert が
+  `23502` で止まるかを見る。**修正を外すと既定の 0 が CHECK に進んで `23514` になり、
+  実際に落ちることを確認した。**
+- 実害は現時点で無い（唯一の insert 経路 `processUploadedPhoto.ts` は必ず値を渡す）。
+  直したのは、列の定義が本番と食い違ったまま残ると次に触る人が踏むから。
+
+**同時に見つかった本番の既存バグ（未修正）**: `insurer_access_logs_action_check` は
+`view`/`search`/`download_pdf`/`export_csv` の4値しか許さないが、**13 種類がその外にある**。
+うち SQL 関数3本（`insurer_search_vehicles`・`insurer_search_stores`・
+`insurer_get_vehicle_certificates`）は例外ハンドラ無しで `RETURN QUERY` の前に insert するため
+**関数ごと中断し、保険会社ポータルの車両検索・店舗検索・車両詳細が本番で必ず 500 になる**。
+残り10種類は TypeScript の直 insert で、`error` を見ていないため黙って記録だけ落ちる。
+本番の `insurer_access_logs` は2行・どちらも `search`・どちらも 2026-09-03。
+本番で insert を試して 23514 を実測した（ROLLBACK 済み）。語彙の決め方に判断が要るので
+`OPEN_QUESTIONS` へ。MISTAKE_LEDGER `M-20260922-enumerated-actions-from-typescript-only`
+（型 A）—— 最初は TypeScript だけを grep して「11 種類・記録が落ちるだけ」と書いていた。
+
+検証: `check:migrations` 再生・振る舞いの検査 **4 件**緑 / `ci-parallel-checks.sh` 8種すべて緑。
+
+**本番適用**: 2026-09-23 の `DB migrate (apply to production)` run #86 で成功。
+適用後に本番を実測し、`vehicles.public_id` の既定は `generate_vehicle_public_id()`、
+`certificate_images.file_size` は既定なし・NOT NULL のまま**変化なし**（予告どおり no-op）。
+同じ run で `20260922140000`（`manufacturer_notifications`）も本番へ入った。
+
+## 2026-09-22 メーカー通知チャネル新設＋停止保険会社フォールバック＋FT入力検証（#1123 / #1122・#1117）
+
+**メーカー通知チャネル（#1117）**: 施工店の証拠提出（evidence_submitted）通知が提出元
+テナント自身に飛んでメーカーに届いていなかった。姉妹表 `manufacturer_notifications`
+（`20260922140000`・`manufacturer_id` / RLS `my_manufacturer_ids()` / INSERT はサービス
+ロールのみ / realtime なし）を新設し、`notifyFtManufacturer` ＋ 読み取り API 3本
+（一覧 / read-all / [id]/read）を追加。`NotificationBell` に `basePath` prop を足して
+メーカーポータルのサイドバーに設置（コンポーネントは再利用・クローン0）。emit をメーカー宛
+（リンク `/manufacturer/field-test/{projectId}`）に付け替え。**本番適用は次回 db-migrate**。
+
+**停止保険会社のフォールバック（#1122）**: `resolveInsurerCaller` がクッキー指定先の会員行を
+先に1件へ絞ってから使用可否を見ていたため、指定先が停止(suspended)だと別に使える保険会社が
+あっても 401 だった。会員行を全件取得→使える集合から選ぶ方式に。再現テスト6件。
+
+**FT condition-checks 入力検証（#1117）**: `conditionCheckInputSchema`(zod) で 4xx 化＋
+「condition が案件のプロジェクトに属するか」の越境ガードを追加（型付き `FT_INVALID_CONDITION`）。
+
+**FT report 二重クエリ解消（#1117）**: 集計用とマップ用で `ft_jobs` を2回取得していたのを、
+1本目 select に `id` を足して1回に集約。
+
+検証: `bash scripts/ci-parallel-checks.sh` 全緑（`check:migrations` 再生 496/496）。
+なお push 前に同スクリプトを回さず `check:schema`（新表を snapshot 未登録）で一度 CI を
+落とした（MISTAKE_LEDGER `M-20260922-pushed-without-ci-parallel-checks`）。
+
+
+## 2026-09-22 外部キーと CHECK も両方向で揃え、検出器に足した
+
+**同じ事故が制約も壊していた。** `20260918142610 remote_schema` は索引 38 本に加えて
+**制約を 19 本**落としており（本番台帳の `statements` で確認）、今も本番に無いのが
+**外部キー6本・CHECK 8本**だった。
+
+**実害が出ていた**: `tenant_memberships` に `user_id` が `auth.users` に無い行が1件ある
+（role=owner・2026-07-26 作成）。この外部キーは `ON DELETE CASCADE` なので、
+生きていれば利用者の削除と一緒に消えていた。**行は消していない**（`OPEN_QUESTIONS`）。
+
+- `20260922123000`: 本番から消えた**外部キー6本と CHECK 5本を戻す**。すべて `NOT VALID`
+  （孤児行があるので `tenant_memberships` は VALID では足せない。他も全表走査のロックを避ける）。
+  **本番で実際に走るのはこのファイルだけ。**
+- `20260922123100`: 本番にあってマイグレーションが作らない **CHECK 9本・外部キー3本**を足す。
+  本番では no-op。
+
+落ちた CHECK 8本のうち3本（`certificates_status_check` / `tenants_plan_tier_check` /
+`tenant_memberships_role_check`）は**対象外**にした。本番は列そのものを enum
+（`certificate_status_enum` / `plan_tier_enum` / `membership_role_enum`）にして
+CHECK を置き換えており、「本番が緩い」のではなく「別の形で同じことをしている」。
+
+**検出器**: `check-schema-drift.mjs` が外部キーと CHECK を見るようになった。
+外部キーは**両方向で落とす**。CHECK は**逆向きを落とさない** —— 上の3本が直しようのない赤として
+居座り、新しいドリフトを埋もれさせるため。件数と名前は出す。
+解析（`scripts/lib/dumpParse.mjs`）は再生 DB の dump 全体で当たりを取った
+（外部キー 600 = 600・CHECK 328 = 328、いずれも差分0）。
+**CHECK は `ALTER TABLE ADD CONSTRAINT` と `CREATE TABLE` 内インラインの2つの書き方がある。**
+
+適用後の見込み: 外部キーは本番・再生とも 603 で両方向 0。CHECK は本番 334 / 再生 337 で、
+差は enum に置き換わった3本だけ。
+
+残る差（`OPEN_QUESTIONS`）: RLS ポリシー 本番 622 / 再生 642 の名前突き合わせ、
+列の**型**の差（enum 対 text。列名しか比べていないのでどの検査にも映らない）、
+一意でない索引 70 本、孤児 membership 1件の扱い。
+
+検証: `check:migrations` 再生 **493/493**・振る舞いの検査2件緑 /
+`ci-parallel-checks.sh` 8種すべて緑 / 単体テスト 13 件。
+## 2026-09-22 Field Test テナント側 RLS ドリフトの修復＋不足ポリシー補完＋ロジック3件 (branch claude/merchant-revenue-sharing-22tuq3)
+- 背景: `/code-review`（#1108/#1112）で検出した FT 残課題（issue #1117）に着手。本番実測で、`20260917100000_ft_tenant_rls_and_storage.sql` は適用記録があるのに**そのポリシー群も ft-evidence バケットも本番に存在しない**（recorded-but-not-applied ドリフト）と確定。施工店ユーザーの FT 参照・書き込みが RLS で全ブロックされる状態だった（FT 本番利用は 2026-09-21 時点で全ゼロ＝実害未発生）。
+- migration `20260922000000_repair_ft_tenant_rls_drift.sql`:
+  - `20260917100000` の tenant ポリシー群（`my_tenant_ids()` 経由の SELECT/INSERT/UPDATE）と `ft-evidence` バケットを**冪等に再適用**（`DROP POLICY IF EXISTS`→`CREATE`。`check:migrations` 再生でも重複しない）。
+  - 元migrationに欠けていた **UPDATE ポリシーを補完**: `ft_condition_checks` / `ft_training_completions` は upsert(ON CONFLICT DO UPDATE) なのに INSERT ポリシーのみで、再保存が RLS で 500 になっていた。
+  - `workshop_capability_profiles` に tenant の **INSERT/UPDATE** を追加（どのmigrationにも write ポリシーが無く `upsertWorkshopProfile` が初回保存から失敗していた）。
+- コード修正:
+  - `manufacturer/field-test/jobs/[id]`: `completed` から他ステータスへ戻したとき `completed_at` を `null` に戻す（消し忘れで analytics/report の完了数が過大化していた）。
+  - `manufacturer/field-test/defects/[id]`: `resolved`/`closed` から他ステータスへ戻したとき `resolved_at`/`resolved_by` を `null` に戻す（`completed_at` と同型の消し忘れ。CSV の解決日が未解決の不具合に出るのを防ぐ。`/code-review` 指摘）。
+  - `tenantQueries.listTrainingWithCompletions`: テナント全完了行ではなく当該プロジェクトのモジュールに絞って取得（payload 肥大の抑制）。
+  - `createApplication`: `UNIQUE(recruitment_id, tenant_id)` 違反(23505)時、既存行が `withdrawn`/`rejected` なら**再応募として復活**（status を pending に戻し review 情報をクリア）、`pending`/`approved` のときだけ型付きエラー `FT_DUPLICATE_APPLICATION` で 4xx。取り下げ後に再応募できない「片道罠」を解消（`/code-review` 指摘）。admin/mobile 両ルートで 4xx 変換。
+- 検証: `lint:migrations` OK、`check:migrations` 再生 493/493・RLS 打ち消しなし、`tsc --noEmit` エラー0、`fieldTest` テスト16件パス（createApplication の insert/revive/dup/rethrow 回帰4件を追加）、変更ファイル eslint エラー0。
+- 未対応（本PR外・#1117 に残す）:
+  - evidence_submitted 通知の宛先（現状は提出元テナント自身。メーカー側へ届けるにはメーカー通知チャネルが必要で、tenant-keyed `notifications` では表現できない＝別設計）。
+  - condition-checks POST の入力バリデーション（value_* を zod で型検査せず生値を DB へ。malformed で 500。既存の trust-boundary ギャップで本PRの回帰ではない）。
+  - `manufacturer/field-test/report` の二重 ft_jobs クエリ（1本目 select に `id` を足せば1本に集約可能・性能のみ）。
+- 対象: Field Test（製造業ポータル＋施工店の web/mobile API）・本番 RLS ドリフト修復。
+
+## 2026-09-22 `TYPEGEN_TOKEN` が登録され、型の自動再生成が2026-09-07以来はじめて完結した
+
+代表が PAT を `TYPEGEN_TOKEN` として登録。手動実行（Actions → "DB types regenerate" →
+Run workflow）で **実行 #195 が全ステップ success**、**PR #1120（`chore(db): regenerate
+Supabase types`）が自動で立った**。`src/types/db.generated.ts` の1ファイルのみ、
+**+16271 / −14758**（2026-09-07 以降 PR 作成が落ち続け、型が止まっていた分の差）。
+
+- **手動実行だけでなく、自然な起動でも回った。** 同日の #1119・#1116（どちらも
+  マイグレーションを含む）のマージで実行 #196 / #197 が `workflow_run` から起動し、
+  **どちらも success**。`db-migrate → db-typegen → PR` の連鎖が実際に動いている。
+  なお #197 は**新しい PR を作らず、PR #1120 の head を `7f4ff8a` に差し替えた**
+  （固定ブランチ `chore/db-typegen` の設計どおり。下の `exit 1` の根拠でもある）。
+- 2026-09-07 から 15 日間、生成と push は成功していたのに **PR 作成だけ**が
+  「GitHub Actions is not permitted to create or approve pull requests」で落ちていた。
+  成果物は `chore/db-typegen` に積み上がるが、誰も見ないブランチだった。
+- **`continue-on-error` は一度も発火しないまま役目を終えた。** 入れたのが #1111（09-21）、
+  登録が 09-22 で、その間にマイグレーションを含むマージが無かった。今回の PR で外し、
+  併せて**それを補っていた検査ステップ（`生成物が chore/db-typegen に載ったか確かめる`）と、
+  どこからも参照されなくなった `id:` / `present` 出力も削除**した。
+  以後このステップが落ちたら赤になる（失効・権限不足・シークレットの消失を見落とさないため）。
+- **シークレットが消えた場合を warning から `exit 1` に変えた。** 当初は「消えたら次の
+  ステップが赤くなる」と書いたが、**成立しない** —— `chore/db-typegen` の PR が既に
+  開いていると、`GITHUB_TOKEN` へ落ちても `create-pull-request` は**既存 PR の更新**に
+  なり、「PR を作れない」エラーが出ない。**緑のまま head だけが CI 未実行のコミットへ
+  戻る**（このワークフローの冒頭が自分で書いている穴(2)そのもの）。`/code-review` の指摘。
+  前段で落とせばフォールバックが発動しないので、経路ごと塞いだ。
+
+`OPEN_QUESTIONS` の当該項目は、**登録（当初の2番）だけを解決として畳み、
+「Actions の PR 作成許可」（1番）は代表の再判断待ちとして残した**。
+**こちらは有効化していない** —— PAT 経路では不要で（実測でも、この設定に触らないまま
+PR #1120 が立った）、有効化はリポジトリ全体の権限を広げる（2026-09-11 の判断どおり）。
+`LEDRA_CURRENT` の「登録までは赤くなり続ける」「自動化はまだ完結していない」も更新した。
+
+## 2026-09-21 C2PA 適合性ゲートを fail-closed にした（読み込めなければ落ちる）
+
+- ネイティブ依存の読み込み失敗を `ctx.skip()` で逃がしていた**4箇所**を削除し、
+  `src/lib/anchoring/__tests__/nativeImaging.ts` の `requireNative()` に一本化した。
+  読み込めなければ投げる。対象は `c2paSignValidate.test.ts`（2箇所）、
+  `c2paSignValidateProduction.test.ts`（1箇所）、`imageExif.test.ts`（1箇所）。
+  最後の1つは C2PA ではないが同じ形の兄弟で、残すと同じ沈黙が残る。
+- **陰性対照で確認した。** `node_modules/@contentauth/c2pa-node` を退避して実行すると、
+  変更前は `Test Files 1 passed / Tests 4 skipped`（緑）、変更後は `Test Files 1 failed`（exit 1）。
+- 失敗メッセージは対処まで書く: fail-closed であること、未インストールなら `npm ci` を見ること、
+  `invalid ELF header` なら別プラットフォームのバイナリであること。元の例外は `cause` に残す。
+- `requireNative()` 自体のテストを4件追加（成功時の素通し・失敗時の throw・メッセージの中身・
+  `cause` の保持）。「失敗したら投げる」だけを見ると「常に投げる」実装でも通るので、
+  成功側も固定してある。
+- **`describe.runIf(hasProdCert)` は触っていない。** 本番証明書スイートのスキップは
+  設計どおり（本番鍵は署名環境にしか無い）。
+- `/code-review` の指摘10件を反映（1件は根拠を示して見送り）。主なもの:
+  - `providers.test.ts` に**同じ沈黙が残っていた**（skip ではないが、モジュールを退避しても
+    24 passed で CI は緑）。環境依存の分岐を消して常に強い検証を走らせるようにした。
+  - **eslint で `.skip()` を禁止**（`src/lib/anchoring/**/__tests__/`）。方針を1箇所に置くだけでは
+    新しいファイルが独自に skip を書くのを止められない。陰性対照で、書き戻すと lint が
+    error で落ちることを確認した。
+  - 失敗メッセージが「optionalDependencies なので」と断定していたが、`sharp` は通常の
+    `dependencies` で成り立たない。依存区分を見るよう促す形に直した。
+  - `collectFailureCodes`（18行）が2ファイルに複製されていたので共有化。
+    片方だけ直すと本番証明書スイートが古い規則で黙って通る。
+  - `requireNative` でアプリのモジュール（`../imageExif`）まで包んでいた。そこが落ちるのは
+    ネイティブ依存の不在ではなく退行なので、案内が的外れになる。包むのをやめた。
+  - 本番証明書スイートに `afterAll` が無く `C2PA_MODE` を復元していなかった。
+- 検証: CI 並列チェック8本すべて通過（595 files / 5827 passed | 1 skipped）。
+  1 skipped は上記の本番証明書スイート。
+- **main へのマージは 2026-09-23 00:07 UTC**（`e743897`・squash、PR #1115）。実装は 09-21 で、
+  マージ判断待ちに約2日かかった。その間に **`main` を4回取り込んでいる**
+  （#1111/#1112 → #1116/#1117/#1118 → #1121/#1123 → #1125。`git log --merges` で計数）。
+  衝突はすべて `docs/context/` の追記どうしで、両側を残して解消した。
+  取り込みのたびに `scripts/ci-parallel-checks.sh` を手元で全通過させてから push している
+  （最後の実測は 597 files / 5854 passed | 1 skipped）。
+
+## 2026-09-21 Field Test のエクスポートが日本語プロジェクト名で常に500になるのを修正（RFC 5987） (branch claude/merchant-revenue-sharing-22tuq3)
+- 内容: 製造業向け Field Test の CSV エクスポート（`manufacturer/field-test/export/csv`）と PDF レポート（`.../report`）が、`Content-Disposition` の `filename="..."` に日本語プロジェクト名をそのまま入れており、Node/undici の ByteString 変換（コードポイント>255）で throw → **日本語名のプロジェクトでは常に 500**（本コードのプロジェクト名は基本日本語なので事実上いつも失敗）。
+- 修正: `src/lib/csv/serialize.ts` に共有ヘルパ `contentDispositionAttachment()` を追加し、**ASCII フォールバック `filename=` ＋ RFC 5987 `filename*=UTF-8''<percent-encoded>`** の両方を出す（ヘッダインジェクション対策の "・改行除去も維持）。`csvDownloadHeaders` と PDF ルートの両方をこの1関数に集約（PDF ルートは CJK を残す独自サニタイザを廃止）。
+- 検出: `/code-review`（PR #1108）。本セッションで `new Response(...)` により throw を再現・修正後の解消を確認。
+- 検証: `tsc --noEmit` エラー0、`csv` テスト16件パス（日本語名の非throw・Latin1・filename* の回帰テストを追加）、変更ファイル eslint エラー0。
+- 対象: 製造業ポータルの Field Test CSV/PDF エクスポート。
+- 未対応（別issue推奨・本PR外）: 同 `/code-review` が検出した **Field Test テナント側 RLS のドリフト**——`20260917100000_ft_tenant_rls_and_storage.sql` が定義する tenant 用ポリシー（`ft_condition_checks_tenant_insert` 等・`my_tenant_ids()`）が本番に存在せず（マイグレーションは適用記録あり＝ドリフト）、施工店の FT 書き込みが RLS で全ブロック。ただし**本番の FT 利用は全ゼロ（jobs/checks/applications すべて0件）＝実害未発生**。ドリフト整合の進行中作業と競合しうるため、修復マイグレーションは別途慎重に。
+
 ## 2026-09-21 レポート還元の計上失敗を無音にしない —— `recordVehicleReportRevenueShares` の DBエラーを surface (branch claude/merchant-revenue-sharing-22tuq3)
 - 内容: 還元計上関数 `src/lib/vehicleReport/revenueShare.ts` に残っていた3つの Supabase エラー握り潰し（order 読取・settings 読取・台帳 upsert が `console.error(...); return;` で握り潰し）を throw に変更。upsert 失敗時に加盟店の還元計上が無音で欠落し、webhook が正常完了して `stripe-event-monitor` も鳴らない、という会計の穴を塞いだ。
 - 経路の使い分け（意図的）: webhook 側 `handleVehicleReportSessionPaid` は throw を捕まえず伝播させ、Stripe イベントを `processed_at IS NULL` のまま残して monitor cron の replay に載せる（冪等 upsert なので安全）。unlock フォールバックは従来どおり try/catch で非致命のまま——購入者のアクセス Cookie を会計ヒカップで止めないため。webhook が同じ share を冪等 re-book するので自己修復する。
@@ -80,6 +453,85 @@ CHECK 制約（329 / 328）・外部キー（597 / 600）・RLS ポリシー（6
 
 検証: `check:migrations` 再生 **485/485**（main の `20260920151600` を取り込み、この版を
 `20260920154100` へ改名したあとの実測）/ `ci-parallel-checks.sh` 8種すべて緑。
+
+## 2026-09-21 保険会社の「使える状態」を1箇所に集約し、`db-typegen` の赤の意味を戻した
+
+**マージ済み**（#1111 → `7f66029`、2026-09-22）。
+
+RLS 停止ゲート（#1107）の残件を消化した。**5件のうち2件は前提が崩れた。**
+
+### `/api/insurer/switch` が、同じファイルの中で互いに食い違っていた
+
+| | 直す前 | 他の場所 |
+|---|---|---|
+| GET（切替リスト） | `is_active` かつ **`status = 'active'` のみ** | `IN ('active','active_pending_review')` |
+| POST（切替の実行） | **`insurers` を一度も見ない** | 同上 |
+
+GET は狭すぎて**審査中（`active_pending_review`）の保険会社が切替リストに出ず**、
+POST は広すぎて**停止中でもクッキーを設定できた**（後段の `resolveInsurerCaller` が
+401 にするので情報漏れではないが、利用者には理由の分からない失敗に見える）。
+
+根本原因は**同じ規則が3箇所に別々に書かれていた**こと。`INSURER_USABLE_STATUSES` を
+`src/lib/api/insurerAuth.ts` から出し、3箇所ともそれを使うようにした。
+
+**検査**: `src/lib/api/__tests__/insurerUsableStatuses.test.ts`。
+定数の中身、TS 側での直書きの再発、**DB 側2関数（`current_insurer_access` /
+`my_insurer_ids`）の状態集合との一致**を見る。3通りの壊し方で検証済み
+（定数から1つ外す／`switch` に直書きし直す／マイグレーションの `status` 条件を落とす）。
+**これは構造の検査であって振る舞いの証明ではない**（振る舞いは
+`scripts/replay/checks/insurer_rls_suspension_gate.sql` が行を入れて見ている）。
+
+最初に書いた版は、ファイル全体から `status IN (...)` を拾って**コメントの「...」を
+状態集合として比べ**、落ちた。関数本体（`$$ ... $$`）だけを見るように直した。
+
+### `db-typegen` は、トークンが無いときだけ赤くならないようにした
+
+`TYPEGEN_TOKEN` が未登録の間、最後の PR 作成だけが必ず失敗し、赤いままだった。
+赤が常態になると本物の失敗を見落とす（2026-09-07 に13日間見落とした系列）。
+
+**【2026-09-22 訂正】 当初ここに「マージのたびに赤」と書いたが、実際は
+「マイグレーションを含むマージのたびに」である。** `db-typegen` は
+`db-migrate`（`push: main` の `paths: supabase/migrations/**`）の成功後にしか起動しない。
+2026-09-01 以降の `main` へのマージ 101 件のうち該当は **27 件**。
+経緯は `M-20260922-said-typegen-red-on-every-merge`。
+PR 作成ステップに `continue-on-error: ${{ steps.typegen_token.outputs.present != 'true' }}`
+を付けた。**握り潰しではない** —— push は先に成功しているので生成物は
+`chore/db-typegen` に残り、warning も注釈も出る。変わるのはジョブの色だけで、
+**トークンがあるのに落ちた場合は今までどおり赤**。登録が済んだら1行消せば戻る。
+
+**トークンの登録自体は Claude にはできない。** 代表の操作が要る。
+
+### 前提が崩れた2件
+
+- **`pg_policies` をドリフト検出に入れるか** → **すでに入っていた。**
+  `check-schema-drift.mjs` は今日より前からポリシー名を双方向で比べており、
+  「本番にあってマイグレーションに無いポリシー」は exit 1 する。
+  今朝この事実と逆のことを `OPEN_QUESTIONS` に書いてマージしていた。訂正済み
+  （`M-20260921-said-the-drift-checker-ignores-policies`）。
+- **施工店が自社案件を読めない件** → **意図は「見せる」で確定。**
+  施工店向けの API と画面が既に出荷されており（`/api/admin/insurer-cases`、
+  `BodyRepairClient` の「保険会社とのやり取り」）、スキーマも
+  `sender_type='tenant'` と `icm_insert_tenant`（施工店への**書き込み**許可）を持つ。
+  `20260622000004` の冒頭は「テナント双方向 RLS 済み」と書いている——済んでいなかった。
+  **ただし `ic_select_tenant` を今すぐ足すべきかは別の問題**で、足しても今日の挙動は
+  変わらず（両側ともサービスロールで読んでいる）、代わりに `meta.ai_fraud`
+  （confidential 分類）が DB 層で施工店に開く。`OPEN_QUESTIONS` で問い直した。
+
+**付随して見つかった**: `CASE_STATUSES` が2箇所に別々の値で定義されており、
+保険会社側の更新 API は `pending_tenant` を受け付けない。
+**施工店の返信待ち状態へ遷移させる経路が本番に無い。**
+
+### やっていないこと
+
+**`continue-on-error` はまだ一度も実行されていない。** #1111 はマイグレーションを
+含まないので、このマージでは `db-migrate` も `db-typegen` も起動しなかった。
+`workflow_dispatch` での手動確認はこのセッションの権限では叩けない
+（403 Resource not accessible by integration）。**次にマイグレーションを含む PR が
+マージされたときが初回**【要確認】。
+
+**実アカウントでの画面確認**は実行できない（保険会社ユーザのセッションを用意する手段が無い）。
+`npm run check:drift` も、このセッションに `SUPABASE_ACCESS_TOKEN` /
+`SUPABASE_PROJECT_ID` が無いため走らせられない【要確認】。
 
 ## 2026-09-21 保険会社の停止を RLS 側にも効かせた —— 先に「本番にだけ在る3本」を書き起こした
 

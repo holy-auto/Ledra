@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createRequire } from "node:module";
+import { requireNative } from "../../__tests__/nativeImaging";
 import { dirname, join } from "node:path";
 
 // Dynamically import so env vars take effect per-test
@@ -110,21 +111,20 @@ describe("signC2pa happy path (dev-signed)", () => {
   it("signs a real JPEG and embeds a readable capture-bound manifest", async () => {
     process.env.C2PA_MODE = "dev-signed";
 
-    // @contentauth/c2pa-node is an optionalDependency (native build may be
-    // absent). Gate the strong assertions on its presence so CI without the
-    // native binding still passes on the graceful-degradation contract.
+    // **fail-closed**（DECISION_LOG 2026-09-21）。以前はここで native binding の有無を
+    // 調べ、無ければ強い検証を飛ばして degradation の契約だけを見ていた。skip ではないが、
+    // **CI から見える結果は skip と同じ（緑のまま C2PA の中身が検査されない）**だった
+    // （PR #1115 の `/code-review` で陰性対照つきで指摘: モジュールを退避しても 24 passed）。
+    // degradation の契約自体は、このファイルの上の方で不正な JPEG を渡す形で
+    // 決定的に検査しているので、ここで環境依存の分岐を持つ必要は無い。
     const require = createRequire(import.meta.url);
-    let moduleAvailable = true;
-    try {
-      const entry = require.resolve("@contentauth/c2pa-node");
-      // パッケージが存在しても、別OS向けnative bindingだとロード時に失敗する。
-      // 実際に読み込める環境でだけhappy-pathの強い検証を行う。
-      require(join(dirname(entry), "index.node"));
-    } catch {
-      moduleAvailable = false;
-    }
+    const entry = require.resolve("@contentauth/c2pa-node");
+    // パッケージが在っても、別OS向けの native binding だとロード時に落ちる。
+    // ここで読み込んでおくことで、その場合も「署名できなかった」ではなく
+    // 「ネイティブ依存が壊れている」として落ちる。
+    require(join(dirname(entry), "index.node"));
 
-    const sharp = (await import("sharp")).default;
+    const sharp = (await requireNative(() => import("sharp"), "sharp")).default;
     const jpeg = await sharp({ create: { width: 64, height: 64, channels: 3, background: { r: 10, g: 20, b: 30 } } })
       .jpeg()
       .toBuffer();
@@ -133,12 +133,6 @@ describe("signC2pa happy path (dev-signed)", () => {
     const { signC2pa } = await import("../c2pa");
     const result = await signC2pa(jpeg, "image/jpeg", { publicId: "cert_test123", vin: "TESTVIN0000000001" });
     infoSpy.mockRestore();
-
-    if (!moduleAvailable) {
-      expect(result.signedBuffer).toBeNull();
-      expect(result.verified).toBe(false);
-      return;
-    }
 
     expect(result.verified).toBe(true);
     expect(result.signedBuffer).not.toBeNull();

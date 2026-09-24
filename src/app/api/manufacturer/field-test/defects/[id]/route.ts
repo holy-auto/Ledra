@@ -44,10 +44,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     return apiValidationError("更新項目がありません。");
   }
 
-  // Auto-set resolved_at / resolved_by when closing
+  // resolved/closed のときだけ resolved_at/by を立て、他ステータスへ戻したら消す。
+  // （消し忘れると CSV の 解決日 が未解決の不具合にも出る＝ft_jobs.completed_at と同型。）
   if (updates.status === "resolved" || updates.status === "closed") {
     updates.resolved_at = new Date().toISOString();
     updates.resolved_by = caller.userId;
+  } else if (updates.status !== undefined) {
+    updates.resolved_at = null;
+    updates.resolved_by = null;
   }
 
   const { id } = await params;

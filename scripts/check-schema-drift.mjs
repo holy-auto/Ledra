@@ -61,7 +61,7 @@ import { execFileSync } from "node:child_process";
 import { readFileSync, readdirSync, rmSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve, join } from "node:path";
-import { bare, uniqueFromDump } from "./lib/dumpParse.mjs";
+import { bare, uniqueFromDump, constraintsFromDump } from "./lib/dumpParse.mjs";
 import { tmpdir } from "node:os";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -191,6 +191,9 @@ const replayed = {
   // 実際の dump で数えて確かめた（2026-09-21: CREATE UNIQUE INDEX 38 / ADD CONSTRAINT UNIQUE 97 = 135、
   // 同じ再生 DB の pg_index でも 135）。主キーは対象外（本番側のクエリでも除いている）。
   unique_index: uniqueFromDump(dump),
+  // 外部キーと CHECK。どちらも「片側に無ければ、その側だけが壊れた行を受け入れる」形の差。
+  fk_constraint: constraintsFromDump(dump, "FOREIGN KEY"),
+  check_constraint: constraintsFromDump(dump, "CHECK"),
 };
 
 // イベントトリガだけは pg_dump に出ないので、マイグレーションの字面から拾う。
@@ -223,6 +226,13 @@ const NEGATIVE = {
   //   tenants_slug_key            … ADD CONSTRAINT ... UNIQUE 由来
   //   idx_documents_public_id     … CREATE UNIQUE INDEX 由来
   unique_index: ["tenants.tenants_slug_key", "documents.idx_documents_public_id"],
+  fk_constraint: ["certificates.certificates_tenant_id_fkey", "vehicles.vehicles_tenant_id_fkey"],
+  // **2つの書き方から1件ずつ取る。** pg_dump は VALID な CHECK を CREATE TABLE の中へ、
+  // NOT VALID な CHECK を `ALTER TABLE ... ADD CONSTRAINT` として出す。
+  // 最初どちらもインライン側から選んでおり、ALTER 側の枝に対照が無かった（/code-review の指摘）。
+  //   documents_status_check            … CREATE TABLE 内インライン由来
+  //   tenants_registration_number_format … ALTER TABLE ... NOT VALID 由来
+  check_constraint: ["documents.documents_status_check", "tenants.tenants_registration_number_format"],
 };
 /** 本番側の名前のうち、再生 DB に無いものを返す。**本番の比較もここを通る。** */
 const missingFrom = (kind, prodNames) =>
@@ -325,6 +335,20 @@ const prod = {
         " and ix.indisvalid and ix.indisready order by 1",
     ),
   ),
+  fk_constraint: names(
+    await query(
+      "select t.relname||'.'||c.conname from pg_constraint c" +
+        " join pg_class t on t.oid=c.conrelid join pg_namespace n on n.oid=t.relnamespace" +
+        " where n.nspname='public' and c.contype='f' order by 1",
+    ),
+  ),
+  check_constraint: names(
+    await query(
+      "select t.relname||'.'||c.conname from pg_constraint c" +
+        " join pg_class t on t.oid=c.conrelid join pg_namespace n on n.oid=t.relnamespace" +
+        " where n.nspname='public' and c.contype='c' order by 1",
+    ),
+  ),
 };
 
 // ── 4. 突き合わせ ───────────────────────────────────────────
@@ -338,6 +362,8 @@ const LABEL = {
   column: "列",
   policy: "RLS ポリシー",
   unique_index: "一意制約",
+  fk_constraint: "外部キー",
+  check_constraint: "CHECK 制約",
 };
 
 // 表ごと無いときは、その表の列とポリシーも当然すべて無い。根本原因は表のほうなので、
@@ -350,7 +376,9 @@ let total = 0;
 console.log("");
 for (const kind of Object.keys(LABEL)) {
   const all = missingFrom(kind, prod[kind]);
-  const nested = kind === "column" || kind === "policy" || kind === "unique_index";
+  const nested =
+    kind === "column" || kind === "policy" || kind === "unique_index" ||
+    kind === "fk_constraint" || kind === "check_constraint";
   const missing = nested ? all.filter((n) => !missingTables.has(tableOf(n))) : all;
   const hidden = all.length - missing.length;
   total += missing.length;
@@ -383,11 +411,23 @@ const extraPolicies = notInProd("policy");
 // 本番だけで落としており、マイグレーション側には在った。列を両方向で見ていた
 // 2026-09-20 時点でも、この検査は素通りしていた（DECISION_LOG 2026-09-21）。
 const extraUnique = notInProd("unique_index");
+// 外部キーの逆向きも落とす。片側に無ければ、その側だけが**参照先の消えた行**を受け入れる。
+// 実例: `tenant_memberships_user_id_fkey` は 2026-09-18 に remote_schema が本番だけで落とし、
+// その後、利用者が消えても残る membership 行が本番に1件生まれた（DECISION_LOG 2026-09-21）。
+const extraFk = notInProd("fk_constraint");
+// CHECK の逆向きは**件数だけ出して落とさない**。本番が列そのものを enum にして
+// CHECK を置き換えている例があり（certificates.status / tenants.plan_tier /
+// tenant_memberships.role）、それは「本番が緩い」ではなく「別の形で同じことをしている」。
+// ここを落とすと、直しようのない赤が居座って新しいドリフトが埋もれる。
+// 型の差を見る検出器は無い —— OPEN_QUESTIONS の宿題。
+const extraCheck = notInProd("check_constraint");
 
 console.log(
   `[drift] 逆向き: マイグレーションが作るのに本番に無い 列 ${extraColumns.length} 件 /` +
-    ` 一意制約 ${extraUnique.length} 件 / ポリシー ${extraPolicies.length} 件`,
+    ` 一意制約 ${extraUnique.length} 件 / 外部キー ${extraFk.length} 件 /` +
+    ` CHECK ${extraCheck.length} 件（落とさない）/ ポリシー ${extraPolicies.length} 件`,
 );
+for (const n of extraCheck) console.log(`         - ${n}（CHECK・落とさない）`);
 for (const n of extraColumns) console.log(`         - ${n}`);
 // 表ごと本番に無い場合は「本番だけが重複を受け入れる」ではなく「表そのものが無い」。
 // 同じ行で同じ文言を出すと、読んだ人が原因を取り違える。分けて出す（どちらも落とす）。
@@ -398,8 +438,15 @@ for (const n of extraUniqueTablePresent) console.log(`         - ${n}（一意�
 for (const n of extraUniqueTableMissing) {
   console.log(`         - ${n}（一意制約。ただし**表そのものが本番に無い** —— 先に表を見ること）`);
 }
+// 外部キーも同じ切り分けをする（/code-review の指摘。一意制約側にだけ入れて揃えていなかった）。
+const extraFkTableMissing = extraFk.filter((n) => !prodTableSet.has(tableOf(n)));
+const extraFkTablePresent = extraFk.filter((n) => prodTableSet.has(tableOf(n)));
+for (const n of extraFkTablePresent) console.log(`         - ${n}（外部キー）`);
+for (const n of extraFkTableMissing) {
+  console.log(`         - ${n}（外部キー。ただし**表そのものが本番に無い** —— 先に表を見ること）`);
+}
 
-if (total > 0 || extraColumns.length > 0 || extraUnique.length > 0) {
+if (total > 0 || extraColumns.length > 0 || extraUnique.length > 0 || extraFk.length > 0) {
   if (total > 0) {
     console.error(
       `\n[drift] 本番にだけ存在するオブジェクトが ${total} 件あります。` +
@@ -422,6 +469,19 @@ if (total > 0 || extraColumns.length > 0 || extraUnique.length > 0) {
         "\n  `CREATE UNIQUE INDEX CONCURRENTLY` が落ちて無効な索引が残っている場合も" +
         "ここに出ます（indisvalid を見ているため）。その場合は DROP してから作り直してください。" +
         "\n  本番へ戻すか、マイグレーション側から外すかを決めてください。",
+    );
+  }
+  if (extraFkTablePresent.length > 0) {
+    console.error(
+      `\n[drift] マイグレーションにだけ存在する外部キーが ${extraFkTablePresent.length} 件あります。` +
+        "\n  **本番だけが参照先の消えた行を受け入れます。**" +
+        "\n  戻すときは NOT VALID で足してください（既存の壊れた行があると VALID では足せません）。",
+    );
+  }
+  if (extraFkTableMissing.length > 0) {
+    console.error(
+      `\n[drift] マイグレーションにだけ存在する外部キーのうち ${extraFkTableMissing.length} 件は、` +
+        "**表そのものが本番にありません**。外部キーではなく表の未適用として追ってください。",
     );
   }
   if (extraUniqueTableMissing.length > 0) {
