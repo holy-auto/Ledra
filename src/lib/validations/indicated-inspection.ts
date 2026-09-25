@@ -215,3 +215,27 @@ export const measurementInputSchema = z
   });
 
 export type MeasurementInput = z.infer<typeof measurementInputSchema>;
+
+/**
+ * 完成検査記録の測定値をまとめて保存する PUT ボディ。フォームはその様式の全測定セルの
+ * うち入力されたものを配列で送る（未入力セルは含めない＝置換保存の対象外）。
+ * 同一 field_code の重複は許さない。
+ */
+export const measurementsPutSchema = z
+  .object({
+    measurements: z.array(measurementInputSchema).max(80, "測定項目が多すぎます。"),
+  })
+  .superRefine((v, ctx) => {
+    const seen = new Set<string>();
+    for (const m of v.measurements) {
+      if (seen.has(m.field_code)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["measurements"],
+          message: `測定項目 ${m.field_code} が重複しています。`,
+        });
+      }
+      seen.add(m.field_code);
+    }
+  });
+export type MeasurementsPutInput = z.infer<typeof measurementsPutSchema>;

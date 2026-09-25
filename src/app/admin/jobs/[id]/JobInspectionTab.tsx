@@ -6,6 +6,7 @@ import { fetcher } from "@/lib/swr";
 import { formatDate } from "@/lib/format";
 import Badge from "@/components/ui/Badge";
 import InspectionRecordForm from "@/components/admin/InspectionRecordForm";
+import CompletionInspectionForm from "@/components/admin/CompletionInspectionForm";
 import { INSPECTION_TYPE_LABEL, type InspectionType } from "@/lib/validations/inspection";
 import { canUseFeature } from "@/lib/billing/planFeatures";
 
@@ -43,10 +44,12 @@ const TYPE_BADGE: Record<InspectionType, "info" | "success" | "default"> = {
   intake: "info",
   delivery: "success",
   periodic: "default",
+  completion: "default",
 };
 
 export default function JobInspectionTab({ reservationId, vehicleId, customerId }: Props) {
   const [starting, setStarting] = useState(false);
+  const [startingCompletion, setStartingCompletion] = useState(false);
 
   const recordsKey = `/api/admin/inspection-records?reservation_id=${reservationId}`;
   const { data, isLoading, mutate } = useSWR<RecordsResponse>(recordsKey, fetcher, {
@@ -75,18 +78,36 @@ export default function JobInspectionTab({ reservationId, vehicleId, customerId 
         <div className="text-[11px] font-semibold tracking-[0.18em] text-muted uppercase">
           点検記録 ({records.length})
         </div>
-        {!starting && (
-          <button
-            type="button"
-            onClick={() => setStarting(true)}
-            disabled={!defaultTemplate}
-            className="btn-primary text-xs disabled:cursor-not-allowed disabled:opacity-50"
-            title={defaultTemplate ? undefined : "先に点検テンプレートを作成してください"}
-          >
-            入庫点検を開始
-          </button>
+        {!starting && !startingCompletion && (
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setStarting(true)}
+              disabled={!defaultTemplate}
+              className="btn-primary text-xs disabled:cursor-not-allowed disabled:opacity-50"
+              title={defaultTemplate ? undefined : "先に点検テンプレートを作成してください"}
+            >
+              入庫点検を開始
+            </button>
+            <button type="button" onClick={() => setStartingCompletion(true)} className="btn-ghost text-xs">
+              完成検査を開始
+            </button>
+          </div>
         )}
       </div>
+
+      {startingCompletion && (
+        <CompletionInspectionForm
+          reservationId={reservationId}
+          vehicleId={vehicleId ?? undefined}
+          customerId={customerId ?? undefined}
+          onCancel={() => setStartingCompletion(false)}
+          onSaved={async () => {
+            setStartingCompletion(false);
+            await mutate();
+          }}
+        />
+      )}
 
       {!defaultTemplate && (
         <div className="glass-card border-l-4 border-warning p-3 text-xs text-warning-text">
