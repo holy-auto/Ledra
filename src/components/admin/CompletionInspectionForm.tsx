@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import {
   measurementFieldsForForm,
+  measurementGroup,
   type IndicatedInspectionForm,
   type MeasurementInput,
 } from "@/lib/validations/indicated-inspection";
@@ -37,13 +38,6 @@ const JUDGMENTS: { value: string; label: string }[] = [
   { value: "na", label: "該当なし" },
 ];
 
-/** field_code の接頭辞から表示グループを決める */
-function groupOf(code: string): string {
-  if (code.startsWith("brake.") || code === "vehicle_weight") return "制動力・軸重";
-  if (code.startsWith("headlight.") || code.startsWith("fog_lamp.")) return "灯火（前照灯・前部霧灯）";
-  return "排出ガス・その他計測";
-}
-
 export default function CompletionInspectionForm({ reservationId, vehicleId, customerId, onCancel, onSaved }: Props) {
   const [form, setForm] = useState<IndicatedInspectionForm>("sanago");
   const [inspectorName, setInspectorName] = useState("");
@@ -51,12 +45,14 @@ export default function CompletionInspectionForm({ reservationId, vehicleId, cus
   const [cells, setCells] = useState<Record<string, Cell>>({});
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // 作成済みレコード ID。測定値保存だけ失敗した際、再保存で新レコードを重複作成しないよう保持する。
+  const [recordId, setRecordId] = useState<string | null>(null);
 
   const fields = useMemo(() => measurementFieldsForForm(form), [form]);
   const groups = useMemo(() => {
     const map = new Map<string, typeof fields>();
     for (const f of fields) {
-      const g = groupOf(f.code);
+      const g = measurementGroup(f.code);
       const arr = map.get(g) ?? [];
       arr.push(f);
       map.set(g, arr);
@@ -102,27 +98,31 @@ export default function CompletionInspectionForm({ reservationId, vehicleId, cus
     setSaving(true);
     setError(null);
     try {
-      // 1) 完成検査レコードを作成
-      const createRes = await fetch("/api/admin/inspection-records", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          reservation_id: reservationId,
-          vehicle_id: vehicleId ?? null,
-          customer_id: customerId ?? null,
-          inspection_type: "completion",
-          inspector_name: inspectorName || null,
-          notes: notes || null,
-        }),
-      });
-      const createJson = await createRes.json().catch(() => ({}));
-      if (!createRes.ok) throw new Error(createJson?.message ?? "完成検査記録の作成に失敗しました。");
-      const recordId: string | undefined = createJson?.record?.id;
-      if (!recordId) throw new Error("作成した記録の ID を取得できませんでした。");
+      // 1) 完成検査レコードを作成（既に作成済みなら再利用し、重複作成を避ける）
+      let id = recordId;
+      if (!id) {
+        const createRes = await fetch("/api/admin/inspection-records", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            reservation_id: reservationId,
+            vehicle_id: vehicleId ?? null,
+            customer_id: customerId ?? null,
+            inspection_type: "completion",
+            inspector_name: inspectorName || null,
+            notes: notes || null,
+          }),
+        });
+        const createJson = await createRes.json().catch(() => ({}));
+        if (!createRes.ok) throw new Error(createJson?.message ?? "完成検査記録の作成に失敗しました。");
+        id = createJson?.record?.id;
+        if (!id) throw new Error("作成した記録の ID を取得できませんでした。");
+        setRecordId(id);
+      }
 
       // 2) 測定値を保存
       const measurements = buildMeasurements();
-      const putRes = await fetch(`/api/admin/inspection-records/${recordId}/measurements`, {
+      const putRes = await fetch(`/api/admin/inspection-records/${id}/measurements`, {
         method: "PUT",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ measurements }),

@@ -155,6 +155,18 @@ export function measurementFieldsForForm(form: IndicatedInspectionForm): Measure
 }
 
 /**
+ * 測定項目の表示グループ（フォームの見出し）。カタログと同じ場所で一元管理する。
+ * ponytail: 接頭辞ベースの簡易分類。未知の接頭辞は「排出ガス・その他計測」に入る
+ * （描画上は消えず、グループが既定になるだけ）。様式改定で新カテゴリが要るなら
+ * MeasurementFieldDef に明示 group を持たせる方向で拡張する。
+ */
+export function measurementGroup(code: string): string {
+  if (code.startsWith("brake.") || code === "vehicle_weight") return "制動力・軸重";
+  if (code.startsWith("headlight.") || code.startsWith("fog_lamp.")) return "灯火（前照灯・前部霧灯）";
+  return "排出ガス・その他計測";
+}
+
+/**
  * 1測定値の入力バリデーション。field_code はカタログ既知のもののみ許可し、
  * 単位はその項目の許容単位（定義があれば）に限定する。judgment 項目は num/text を
  * 取らず判定のみ、numeric 項目は num_value を要求する、といった値種別の整合も検証する。

@@ -31,6 +31,8 @@ type InspectionRecord = {
   photo_urls: string[] | null;
   notes: string | null;
   template: { id: string; name: string } | null;
+  // 完成検査の測定値件数（inspection_measurements の集約カウント）
+  measurements?: { count: number }[] | null;
 };
 type RecordsResponse = { records: InspectionRecord[] };
 
@@ -142,6 +144,8 @@ export default function JobInspectionTab({ reservationId, vehicleId, customerId 
         {records.map((r) => {
           const answered = r.answers ? Object.keys(r.answers).length : 0;
           const photos = Array.isArray(r.photo_urls) ? r.photo_urls.length : 0;
+          const measurementCount = r.measurements?.[0]?.count ?? 0;
+          const isCompletion = r.inspection_type === "completion";
           return (
             <div key={r.id} className="glass-card p-4">
               <div className="flex items-center justify-between gap-2">
@@ -154,8 +158,14 @@ export default function JobInspectionTab({ reservationId, vehicleId, customerId 
                 <span className="text-[11px] text-muted">{formatDate(r.inspected_at)}</span>
               </div>
               <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[12px] text-secondary">
-                <span>記入 {answered} 項目</span>
-                <span>写真 {photos} 枚</span>
+                {isCompletion ? (
+                  <span>測定 {measurementCount} 項目</span>
+                ) : (
+                  <>
+                    <span>記入 {answered} 項目</span>
+                    <span>写真 {photos} 枚</span>
+                  </>
+                )}
                 {r.inspector_name && <span>担当 {r.inspector_name}</span>}
               </div>
               {r.notes && (
