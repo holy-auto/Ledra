@@ -17,6 +17,21 @@
 - スコープ外（後続）: 目視等による検査（構造・装置）と車両情報照合欄、Phase 2（外部テスタ取込 `source='imported'`）。
 - 注記: 本 PDF は「検査機器等による検査」の測定記録票であり、目視検査・諸元照合欄は未収載である旨を票面に明記。
 
+## 2026-09-24 型ドリフトを検出器に可視化＋dead current_insurer_id() を削除
+
+**A-1（検出器に型比較）**: `check-schema-drift.mjs` に「本番 enum / マイグレーション非 enum」の
+列比較を追加。従来は列名の有無だけで、本番 enum・マイグレーション text の列が素通りしていた。
+実測5列（`certificates.status`・`certificates.expiry_type`・`tenants.plan_tier`・
+`templates.scope`・`tenant_memberships.role`）を可視化。**報告のみ・落とさない**（CHECK 逆向きと
+同思想）。型パーサは実 dump で検証＋既知列の自己検査付き、`public.` 修飾も剥がす。CI の drift ジョブに出る。
+
+**B-1（棚卸し）**: `current_insurer_id()` を削除（`20260924160000`）。停止判定を持たない孤立関数で、
+本番の呼び出し元ゼロ（関数0・ポリシー0・実測）＋コード0（監査）。`check:migrations` 再生 OK。
+
+**B（監査・コード変更なし）**: `/api/insurer/**` に停止ゲート素通りルートは無し（全ルートが
+`resolveInsurerCaller`＝停止除外を通る）。構造的脆さ（`createInsurerScopedAdmin` が status 未確認）は
+OPEN_QUESTIONS に記録。孤児 owner membership 1件は代表判断待ちで OPEN_QUESTIONS に残置。
+
 ## 2026-09-24 監査 action を型で縛り、AI 自動処理の監査行を復旧
 
 **新しく分かった故障**: `caseSummaryAuto` / `caseAssignAuto` / `fraudScoreAuto` の3本は

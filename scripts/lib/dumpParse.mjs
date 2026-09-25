@@ -63,3 +63,49 @@ export function constraintsFromDump(text, kind) {
   }
   return out;
 }
+
+/**
+ * `CREATE TABLE public.x ( ... );` の中身から列を1行ずつ `{name, type}` で拾う。
+ * name = `表名.列名`（bare で小文字化）、type = 宣言型の先頭トークン（bare＋`public.` 剥がし）。
+ *
+ * pg_dump は1列1行で書くが、`GENERATED ALWAYS AS (CASE WHEN ... END)` のように式が
+ * 複数行に折り返る。括弧の深さを追い、**深さ0で始まる行だけ**を列として扱う（折り返し行の
+ * WHEN/ELSE を列と誤認しないため。実際に4件誤検出して pg_attribute と突き合わせて気づいた）。
+ * CONSTRAINT / PRIMARY / UNIQUE / CHECK / FOREIGN / EXCLUDE / LIKE 始まりの行は制約なので除く。
+ *
+ * type は enum ドリフト判定にしか使わないので先頭トークンで十分（`character varying(255)` の
+ * 先頭語 `character` はどの enum 名とも一致せず誤検出しない）。pg_dump は public の enum を
+ * `public.x_enum` と修飾するので剥がして enum 名だけ残す。
+ *
+ * 列名の集合だけ欲しいときは `new Set(columnRowsFromDump(t).map((r) => r.name))`。
+ */
+export function columnRowsFromDump(text) {
+  const rows = [];
+  const re = /^CREATE (?:UNLOGGED )?TABLE (?:ONLY )?public\.([\w"]+) \(\n([\s\S]*?)^\)/gm;
+  for (const m of text.matchAll(re)) {
+    const table = bare(m[1]);
+    let depth = 0;
+    for (const raw of m[2].split("\n")) {
+      const startDepth = depth;
+      let inStr = false;
+      for (let i = 0; i < raw.length; i++) {
+        const ch = raw[i];
+        if (inStr) {
+          if (ch === "'") inStr = raw[i + 1] === "'" ? (i++, true) : false;
+          continue;
+        }
+        if (ch === "'") inStr = true;
+        else if (ch === "(") depth++;
+        else if (ch === ")") depth--;
+      }
+      if (startDepth !== 0) continue; // 前の行の式の続き
+      const line = raw.trim();
+      if (!line) continue;
+      if (/^(CONSTRAINT|PRIMARY|UNIQUE|CHECK|FOREIGN|EXCLUDE|LIKE)\b/i.test(line)) continue;
+      const mm = line.match(/^"?(\w+)"?\s+((?:public\.)?"?\w+"?)/);
+      if (!mm) continue;
+      rows.push({ name: `${table}.${bare(mm[1])}`, type: bare(mm[2]).replace(/^public\./, "") });
+    }
+  }
+  return rows;
+}
