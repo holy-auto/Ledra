@@ -105,9 +105,42 @@ Web 側は顧客名・車両情報など任意の日本語を出すので、同�
 **これが覆る条件**: 再発すること。2回目が出たら (a) を本命として詰める
 （(b) は npm ci の重さ、(c) は退行と豆腐で落ちる）。再発の記録はこの項に追記する。
 
+> **【2026-09-24】 この条件は満たされた。** 2回目が出ている（下の「再発の記録」）。
+> **しかも今回落ちたのは Vercel 側** —— 1回目の分析では「壊れていたのは GitHub Actions の
+> ランナーから Google Fonts への経路だけ」と書いたが、**Vercel の経路も落ちる**。
+> 推奨は (d)（今は直さない）から **(a) を詰める**へ移る。ただし git +5.07 MB は
+> 恒久コストなので、着手は代表判断【要確認】。
+
 - **採らない案**: (e) CI でだけフォント取得をスキップする ——
   手元と CI で成果物が変わる形は型 E を作る。(f) リトライを足す ——
   失敗の窓は狭くなるが無くならない。
+
+### 再発の記録
+
+| 回 | 日時(UTC) | 落ちた場所 | 対象 | 結末 |
+|---|---|---|---|---|
+| 1 | 2026-09-23 05:23 | GitHub Actions（`Client Bundle Size`） | #1127（`docs/context/` のみ・コード変更0） | 同じコミットの再実行で 06:22 に成功。**同時刻に Vercel は成功** |
+| 2 | 2026-09-24 13:42→13:44 | **Vercel**（`dpl_7NgpKfXib84pLrSWtZTLouxNUoM8`） | #1114（依存更新・head `9f7c2bf3`） | **GitHub CI は同じコミットで10件すべて緑**。main を取り込んだ `368a1e8e` で 15:05 に Ready |
+
+**2回目の切り分け**（#1114 のコメントに詳細）:
+
+- 13件の依存更新に `next` は無く、ロックファイル上も `next` は 16.3.5 のまま（main と一致）。
+- `overrides.ox` の変更でロックファイルが動いたのは **1パッケージだけ**
+  （`added 0 / removed 0 / changed 1`、`ox 0.14.44 → 0.14.45`）。`ox` は viem の暗号ライブラリ。
+- この環境で `next build` を通すと `✓ Compiled successfully` まで進む。
+- 同じ時間帯に別 PR（#1147）の Vercel は成功している（13:47:24 Ready）。
+- **コードを1バイトも変えずに（main の取り込みのみ）緑になった。**
+
+**上流でも既知**: Turbopack がフォント取得の応答をクエリ文字列として解釈するため、
+Google Fonts が `&` を含む URL を返すと `next/font/google queries have exactly one entry` で落ちる
+（[vercel/next.js#99114](https://github.com/vercel/next.js/issues/99114) /
+[discussion #81721](https://github.com/vercel/next.js/discussions/81721) /
+[#61886](https://github.com/vercel/next.js/discussions/61886)）。**発生は散発的**。
+
+**2回目で分かった新しい天井**: 1回目は「差分がドキュメントだけ」だったので切り分けられた。
+2回目は**依存を13件更新した PR**で起きたので、「更新のどれかが壊した」に見えた。
+実際、原因の確定にはロックファイルの全パッケージ比較・ローカルビルド・他 PR との突き合わせが要った。
+**落ちる PR がコードを触っているほど、切り分けのコストは上がる。**
 
 ## `insurer_access_logs.action` の語彙を、どこに1つだけ置くか（2026-09-23）
 
@@ -297,24 +330,31 @@ reservations 176）ので、今はどちらでも実害が出ない【要確認�
 `20260922123000` は外部キーを **NOT VALID** で戻したので、**この行は残ったまま**で、
 これから入る行だけが縛られる。
 
-**未決**: この行をどうするか。選択肢は (a) 削除して `VALIDATE CONSTRAINT` まで済ませる、
+**2026-09-24 再実測**: まだ1件のまま（`tenant=647bce48-9c81-48b8-b60f-01cdd2e265c6`・role=owner・
+created 2026-07-26）。増えていない。
+
+**未決（代表判断待ち）**: この行をどうするか。選択肢は (a) 削除して `VALIDATE CONSTRAINT` まで済ませる、
 (b) 残す（所有者が消えたテナントの記録として）。**本番データの削除は代表判断**なので手を付けていない。
 ログイン経路は `auth.users` を引くので、この行だけでは誰も入れない【要確認】。
 
 ## 列の型が本番とマイグレーションで違う（2026-09-22）
 
+**検出器に載せた（2026-09-24）。** `check-schema-drift.mjs` に「本番 enum / マイグレーション非 enum」
+の列比較を追加（報告のみ・落とさない）。実測すると**5列**あった —— DECISION_LOG が挙げていた
+3列に加え、`certificates.expiry_type` と `templates.scope` は**誰も気づいていなかった**。
+
 | 列 | 本番 | マイグレーション |
 |---|---|---|
 | `certificates.status` | `certificate_status_enum` | `text` + CHECK |
+| `certificates.expiry_type` | `expiry_type_enum` | `text`（新規に判明） |
 | `tenants.plan_tier` | `plan_tier_enum` | `text` + CHECK |
+| `templates.scope` | `template_scope_enum` | `text`（新規に判明） |
 | `tenant_memberships.role` | `membership_role_enum` | `text` + CHECK |
-| `insurers.plan_tier` | `text`（CHECK も無かった → `20260922123000` で戻す） | `text` + CHECK |
 
-**どの検査にも映らない。** `check-schema-drift.mjs` が比べるのは**列名**だけで、型は見ていない。
-CHECK の逆向きにこの3本が出るが、落とさない設定にしてある
-（enum が同じ役目を果たしているので「本番が緩い」ではない）。
+以前は**列名だけ**を比べていたので素通りしていた。CHECK 逆向きと同思想で報告のみ
+（enum が同じ役目を果たしているので「本番が緩い」ではない）。CI の drift ジョブに毎回出る。
 
-**未決**: マイグレーション側を enum に寄せるか。`certificates.status` は稼働中の RPC が触るので
+**未決（残る）**: マイグレーション側を enum に寄せるか。`certificates.status` は稼働中の RPC が触るので
 （2026-09-19 の `status::text` 修正はこの型差が原因だった）、影響範囲の確認が要る【要確認】。
 
 ## 本番と再生 DB で制約・ポリシーの数が違う（2026-09-21）
@@ -414,9 +454,13 @@ Codex が PR #1097 に P1 を4件出し、**2件はその PR で直し、2件は
 案件・メッセージ・添付・PII 開示同意（書き込み側も同じ関数を通るので止まる）。
 残るもの: 自社の1行・自分のメンバーシップ行・`get_my_insurer_status()`（SECURITY DEFINER）。
 
-**未決のまま残るもの**: `current_insurer_id()` は未変更（棚卸し未実施【要確認】）。
-アプリ側がこの8表を RLS 経由で読んでいるかサービスロール経由かの全数調査も未実施
-【要確認】——**サービスロール経由の画面があれば停止中も見え続ける**。
+**棚卸し済み（2026-09-24）**: `current_insurer_id()` は**削除した**（`20260924160000`）。停止判定を
+持たない孤立関数で、本番の呼び出し元ゼロ（関数0・ポリシー0・実測）＋コード0（監査）だった。
+**`/api/insurer/**` の全数調査も実施** —— 素通りルートは無し（サービスロール経由のルートも
+読み取り前に必ず `resolveInsurerCaller`＝停止除外を通る。`switch` は自前で status を見る）。
+**残る構造的な脆さ**: `createInsurerScopedAdmin` 自体は status を見ないので、停止ゲートは
+「各ルートが `resolveInsurerCaller` を呼ぶ規約」頼み。将来この呼び出しを忘れたルートが即穴になる
+（防御を関数側に寄せるかは要検討）。
 
 ### (b) 複数保険会社に属するユーザで、RPC が保険会社の文脈を捨てる
 

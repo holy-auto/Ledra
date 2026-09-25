@@ -6,6 +6,7 @@ import { fetcher } from "@/lib/swr";
 import { formatDate } from "@/lib/format";
 import Badge from "@/components/ui/Badge";
 import InspectionRecordForm from "@/components/admin/InspectionRecordForm";
+import CompletionInspectionForm from "@/components/admin/CompletionInspectionForm";
 import { INSPECTION_TYPE_LABEL, type InspectionType } from "@/lib/validations/inspection";
 import { canUseFeature } from "@/lib/billing/planFeatures";
 
@@ -30,6 +31,8 @@ type InspectionRecord = {
   photo_urls: string[] | null;
   notes: string | null;
   template: { id: string; name: string } | null;
+  // 完成検査の測定値件数（inspection_measurements の集約カウント）
+  measurements?: { count: number }[] | null;
 };
 type RecordsResponse = { records: InspectionRecord[] };
 
@@ -43,10 +46,12 @@ const TYPE_BADGE: Record<InspectionType, "info" | "success" | "default"> = {
   intake: "info",
   delivery: "success",
   periodic: "default",
+  completion: "default",
 };
 
 export default function JobInspectionTab({ reservationId, vehicleId, customerId }: Props) {
   const [starting, setStarting] = useState(false);
+  const [startingCompletion, setStartingCompletion] = useState(false);
 
   const recordsKey = `/api/admin/inspection-records?reservation_id=${reservationId}`;
   const { data, isLoading, mutate } = useSWR<RecordsResponse>(recordsKey, fetcher, {
@@ -75,18 +80,36 @@ export default function JobInspectionTab({ reservationId, vehicleId, customerId 
         <div className="text-[11px] font-semibold tracking-[0.18em] text-muted uppercase">
           点検記録 ({records.length})
         </div>
-        {!starting && (
-          <button
-            type="button"
-            onClick={() => setStarting(true)}
-            disabled={!defaultTemplate}
-            className="btn-primary text-xs disabled:cursor-not-allowed disabled:opacity-50"
-            title={defaultTemplate ? undefined : "先に点検テンプレートを作成してください"}
-          >
-            入庫点検を開始
-          </button>
+        {!starting && !startingCompletion && (
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setStarting(true)}
+              disabled={!defaultTemplate}
+              className="btn-primary text-xs disabled:cursor-not-allowed disabled:opacity-50"
+              title={defaultTemplate ? undefined : "先に点検テンプレートを作成してください"}
+            >
+              入庫点検を開始
+            </button>
+            <button type="button" onClick={() => setStartingCompletion(true)} className="btn-ghost text-xs">
+              完成検査を開始
+            </button>
+          </div>
         )}
       </div>
+
+      {startingCompletion && (
+        <CompletionInspectionForm
+          reservationId={reservationId}
+          vehicleId={vehicleId ?? undefined}
+          customerId={customerId ?? undefined}
+          onCancel={() => setStartingCompletion(false)}
+          onSaved={async () => {
+            setStartingCompletion(false);
+            await mutate();
+          }}
+        />
+      )}
 
       {!defaultTemplate && (
         <div className="glass-card border-l-4 border-warning p-3 text-xs text-warning-text">
@@ -121,6 +144,8 @@ export default function JobInspectionTab({ reservationId, vehicleId, customerId 
         {records.map((r) => {
           const answered = r.answers ? Object.keys(r.answers).length : 0;
           const photos = Array.isArray(r.photo_urls) ? r.photo_urls.length : 0;
+          const measurementCount = r.measurements?.[0]?.count ?? 0;
+          const isCompletion = r.inspection_type === "completion";
           return (
             <div key={r.id} className="glass-card p-4">
               <div className="flex items-center justify-between gap-2">
@@ -133,8 +158,24 @@ export default function JobInspectionTab({ reservationId, vehicleId, customerId 
                 <span className="text-[11px] text-muted">{formatDate(r.inspected_at)}</span>
               </div>
               <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[12px] text-secondary">
-                <span>記入 {answered} 項目</span>
-                <span>写真 {photos} 枚</span>
+                {isCompletion ? (
+                  <>
+                    <span>測定 {measurementCount} 項目</span>
+                    <a
+                      href={`/api/admin/inspection-records/${r.id}/pdf`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-accent underline"
+                    >
+                      指定整備記録簿 PDF
+                    </a>
+                  </>
+                ) : (
+                  <>
+                    <span>記入 {answered} 項目</span>
+                    <span>写真 {photos} 枚</span>
+                  </>
+                )}
                 {r.inspector_name && <span>担当 {r.inspector_name}</span>}
               </div>
               {r.notes && (

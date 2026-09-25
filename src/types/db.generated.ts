@@ -17378,7 +17378,6 @@ export type Database = {
           insurer_user_id: string
         }[]
       }
-      current_insurer_id: { Args: never; Returns: string }
       current_tenant_id: { Args: never; Returns: string }
       current_uid: { Args: never; Returns: string }
       customer_summary_stats: {

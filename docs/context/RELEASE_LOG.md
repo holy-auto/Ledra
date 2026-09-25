@@ -37,6 +37,34 @@
 **検証**: dispatch の単体テスト8件（宛先解決・チャネル無効化・LINE 無効スキップ・失敗時に throw
 しない）。LINE 無効スキップを外すとテストが落ちることを確認済み。
 
+## 2026-09-25 指定整備記録簿（完成検査）G5 Phase 1b/1c
+
+- 内容: 指定整備記録簿（完成検査）の「検査機器等による検査」測定値について、
+  - **Phase 1b（#1162 マージ済み）**: 手入力 UI（`CompletionInspectionForm`、第三号/四号様式切替）と
+    保存 API（`PUT/GET /api/admin/inspection-records/[id]/measurements`、`source='manual'`）を追加。
+    完成検査記録は2年保存（`record_retention_until`）。
+  - **Phase 1c（本リリース）**: 測定値を第三号/四号様式のセル順で帳票化する PDF レンダラ
+    （`src/lib/pdf/pdfIndicatedInspection.tsx`）と出力ルート
+    （`GET /api/admin/inspection-records/[id]/pdf`）。案件「点検」タブに「指定整備記録簿 PDF」リンクを追加。
+- 様式の別（第三号=四輪 / 第四号=二輪）は作成時に `answers.__indicated_form` へ保存し、PDF がセル配列決定に使う。
+- スコープ外（後続）: 目視等による検査（構造・装置）と車両情報照合欄、Phase 2（外部テスタ取込 `source='imported'`）。
+- 注記: 本 PDF は「検査機器等による検査」の測定記録票であり、目視検査・諸元照合欄は未収載である旨を票面に明記。
+
+## 2026-09-24 型ドリフトを検出器に可視化＋dead current_insurer_id() を削除
+
+**A-1（検出器に型比較）**: `check-schema-drift.mjs` に「本番 enum / マイグレーション非 enum」の
+列比較を追加。従来は列名の有無だけで、本番 enum・マイグレーション text の列が素通りしていた。
+実測5列（`certificates.status`・`certificates.expiry_type`・`tenants.plan_tier`・
+`templates.scope`・`tenant_memberships.role`）を可視化。**報告のみ・落とさない**（CHECK 逆向きと
+同思想）。型パーサは実 dump で検証＋既知列の自己検査付き、`public.` 修飾も剥がす。CI の drift ジョブに出る。
+
+**B-1（棚卸し）**: `current_insurer_id()` を削除（`20260924160000`）。停止判定を持たない孤立関数で、
+本番の呼び出し元ゼロ（関数0・ポリシー0・実測）＋コード0（監査）。`check:migrations` 再生 OK。
+
+**B（監査・コード変更なし）**: `/api/insurer/**` に停止ゲート素通りルートは無し（全ルートが
+`resolveInsurerCaller`＝停止除外を通る）。構造的脆さ（`createInsurerScopedAdmin` が status 未確認）は
+OPEN_QUESTIONS に記録。孤児 owner membership 1件は代表判断待ちで OPEN_QUESTIONS に残置。
+
 ## 2026-09-24 監査 action を型で縛り、AI 自動処理の監査行を復旧
 
 **新しく分かった故障**: `caseSummaryAuto` / `caseAssignAuto` / `fraudScoreAuto` の3本は
@@ -81,6 +109,25 @@
 で落ちる（本番での陰性対照）。`RAISE EXCEPTION` で全件ロールバックし、表の行数は2件・
 最新 2026-09-03 のまま。
 
+
+## 2026-09-24 依存13件を更新し、`overrides.ox` を viem に追従させた（#1114 / #1141）
+
+- **#1114**（`61df0b5d`）: Dependabot の minor-and-patch 13件（`@anthropic-ai/sdk` / `@aws-sdk/client-kms` /
+  `@sentry/nextjs` / `@upstash/ratelimit` / `posthog-js` / `resend` / `viem` / `zod` /
+  `@remotion/cli` / `@testing-library/dom` / `prettier` / `remotion` / `@contentauth/c2pa-node`）。
+  **`check:ox-override` だけが赤だった。** viem@2.56.8 は ox@0.14.45 を完全一致で pin するのに
+  `overrides.ox` が 0.14.44 のままだったため。`ox` は直接依存ではないので Dependabot の
+  更新グループに入らず、**viem が上がるたびに手で追従させる必要がある**
+  （`scripts/check-ox-override.mjs` の冒頭と 2026-09-14 の DECISION_LOG）。0.14.45 に上げて解消。
+- **#1141**（`4b222ff`）: `src/types/db.generated.ts` の再生成（+3行）。`db-typegen` が自動で立てた PR。
+
+**Vercel のビルドが1回失敗したが、この更新が原因ではなかった。** `next/font/google` が
+Noto Sans JP を取得できない既知の症状（`OPEN_QUESTIONS` の「ビルドが Google Fonts への
+外部フェッチに依存している」。**これが2回目**）。**コードを1バイトも変えずに、main を
+取り込んだだけで緑になった**。切り分けの詳細は同項の「再発の記録」。
+
+検証: `tsc --noEmit` ✅ / `check:ox-override` ✅ / `check:ledger-ids` ✅ / `check:context-dates` ✅ /
+CI 10件すべて success・skipped（`Client Bundle Size` 含む）/ Vercel Ready。
 
 ## 2026-09-24 工賃の1円未満を切り上げに変更
 
