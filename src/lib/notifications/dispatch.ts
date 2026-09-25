@@ -32,6 +32,7 @@ import { sendCustomerLineText } from "@/lib/line/client";
 import { isMissingRelationError } from "@/lib/line/inboundNotify";
 import { sendNotificationSms } from "@/lib/sms/client";
 import { logger, maskEmail } from "@/lib/logger";
+import { escapeHtml } from "@/lib/sanitize";
 import { getTypeConfig, type NotificationChannel, type NotificationType } from "./types";
 import { resolveChannels, type ChannelOverrides } from "./routing";
 
@@ -66,15 +67,6 @@ type Admin = any;
 function absoluteUrl(linkPath: string | null | undefined): string | null {
   if (!linkPath) return null;
   return `${process.env.NEXT_PUBLIC_APP_URL ?? "https://app.ledra.co.jp"}${linkPath}`;
-}
-
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
 }
 
 /**

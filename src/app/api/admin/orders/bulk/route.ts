@@ -49,6 +49,7 @@ export const POST = withCaller(
 
       let created = 0;
       const failed: { index: number; title: string; error: string }[] = [];
+      const notifyPromises: Promise<void>[] = [];
 
       for (let i = 0; i < parsed.data.orders.length; i++) {
         const order = parsed.data.orders[i];
@@ -87,19 +88,23 @@ export const POST = withCaller(
         } else {
           created++;
           // 指名発注のみ受注者へ通知（IMP-029 order_created。公開案件は宛先未定）。
+          // ループ内で待たず集めて後で並列実行する（200件の逐次待ちによるタイムアウトを避ける）。
           if (to_tenant_id && row) {
-            await dispatchNotification({
-              tenantId: to_tenant_id,
-              type: "order_created",
-              title: "新しい発注が届きました",
-              body: `「${title}」の発注が届きました。`,
-              linkPath: `/admin/orders/${row.id}`,
-              jobOrderId: row.id,
-            });
+            notifyPromises.push(
+              dispatchNotification({
+                tenantId: to_tenant_id,
+                type: "order_created",
+                title: "新しい発注が届きました",
+                body: `「${title}」の発注が届きました。`,
+                linkPath: `/admin/orders/${row.id}`,
+                jobOrderId: row.id,
+              }),
+            );
           }
         }
       }
 
+      await Promise.allSettled(notifyPromises);
       return apiJson({ created, failed }, { status: created > 0 ? 201 : 422 });
     } catch (e: unknown) {
       return apiInternalError(e, "orders/bulk POST");
