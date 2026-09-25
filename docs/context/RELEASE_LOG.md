@@ -19,8 +19,9 @@
 差はこの3件だけで他は完全一致。`pg_dump` の字面を正規表現で読む方式は採らなかった。
 
 本番は 88 行・3列とも NULL 0件なので**本番では3文とも no-op**。直るのは新しく作る環境の側。
-唯一の書き手（`processUploadedPhoto.ts` の insert 1箇所。SQL 関数からの insert は
-`pg_proc` で0件を確認）は3列とも常に明示で渡すので、NOT NULL にしても既存経路は落ちない。
+書き手は2箇所（`processUploadedPhoto.ts` と `scripts/setup-demo-tenant.ts` のデモ投入。
+SQL 関数からの insert は `pg_proc` で0件を確認）。どちらも3列とも常に明示で渡すので、
+NOT NULL にしても既存経路は落ちない。
 
 振る舞い検査 `certificate_images_column_shape.sql` を追加（列定義を読むのではなく
 **実際に insert して**確かめる形）。**3件それぞれが独立に落ちることを陰性対照で実測。**
@@ -36,7 +37,7 @@
 また再生 DB では `insurer_access_logs` が RLS 有効・ポリシー0本（全拒否）であることを実測した
 —— 本番より緩いのではなく厳しい側の差。
 
-検証: `ci-parallel-checks.sh` 9/9・`check:migrations` 再生 509/509・振る舞いの検査 **7 件**。
+検証: `ci-parallel-checks.sh` 9/9・`check:migrations` 再生 510/510・振る舞いの検査 **7 件**。
 
 ## 2026-09-25 通知エンジンの中央 dispatch と、15タイプ中13タイプの発火（IMP-029）
 

@@ -217,7 +217,8 @@ Google Fonts が `&` を含む URL を返すと `next/font/google queries have e
 > 巻き込んで消してしまった（`/code-review` の指摘で復活）。`LEDRA_CURRENT.md` と
 > `DECISION_LOG.md` がここを指している。
 
-**2026-09-25 に解決（`20260925142800`）。** 本番と再生 DB を**同じクエリで**引いて
+**2026-09-25 に解決（`20260925142800`・判断は DECISION_LOG 2026-09-25）。**
+本番と再生 DB を**同じクエリで**引いて
 突き合わせた（`information_schema.columns` の列名・型・精度・NULL 可否・既定値）。
 45 列のうち差は次の3件だけで、他は完全一致だった。
 
@@ -228,10 +229,18 @@ Google Fonts が `&` を含む URL を返すと `next/font/google queries have e
 | `sort_order` | 既定 1 | 既定 0 |
 
 マイグレーション側を本番に揃えた。本番は 88 行・3列とも NULL 0件なので**本番では no-op**、
-直るのは新しく作る環境の側。唯一の書き手（`processUploadedPhoto.ts` の insert 1箇所。
-SQL 関数からの insert は `pg_proc` で0件を確認）は3列とも常に明示で渡す。
+直るのは新しく作る環境の側。書き手は2箇所（`processUploadedPhoto.ts` と
+`scripts/setup-demo-tenant.ts` のデモ投入。SQL 関数からの insert は `pg_proc` で0件を確認）で、
+どちらも3列とも常に明示で渡す。
 振る舞い検査 `certificate_images_column_shape.sql` を追加し、3件それぞれが
 独立に落ちることを陰性対照で実測した。
+
+**この修正が隣の検査を弱めていた（`/code-review` の指摘で修正）**: 同表の
+`certificate_images_file_size.sql` は「`file_size` を省くと 23502」で判定していたが、
+その insert は `file_name` / `content_type` も省いていた。3列とも NOT NULL になった後は
+**どの列で落ちても 23502** なので、`20260922141100` を丸ごと戻しても通る状態だった。
+insert に2列を明示で渡すよう直し、`20260922141100` を空にすると 23514 で落ちることを実測した。
+台帳 `M-20260925-my-not-null-blinded-the-sibling-check`。
 
 **残っている根の問題**: 検出器（`check-schema-drift.mjs`）と `check:schema` は
 **列の「名前」しか突き合わせていない**（検出器の「ponytail: 上限その2」に明記された既知の限界）。
