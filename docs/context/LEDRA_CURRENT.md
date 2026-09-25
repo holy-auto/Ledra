@@ -1029,6 +1029,13 @@
 > **IMP-029 の本丸（残り15タイプの発火条件・宛先・チャネル、統合dispatch）は経営判断が要るため
 > 実装していない** — 「証明書を発行したら誰に通知するか」は推測で決める話ではないため、
 > OPEN_QUESTIONS.md に起票した。
+>
+> 2026-09-25 追記: **上記の経営判断が確定し、中央 dispatch（`src/lib/notifications/dispatch.ts`）を
+> 実装、15タイプ中13タイプが本番で発火するようになった。** 代表に severity・叩き台の
+> チャネル・宛先ロールを一覧表で提示し「叩き台通り全15タイプ確定」の回答を得た
+> （DECISION_LOG 2026-09-25）。残り2タイプ（`certificate_gate_ready` / `rating_request`）は
+> 該当する業務イベントの実処理がコードに無いため未配線のまま OPEN_QUESTIONS に起票済み。
+> 詳細は RELEASE_LOG 2026-09-25。
 
 > 2026-08-31 追記: **証明書の無効化に認可漏れがあり、閲覧専用(viewer)でも証明書を恒久的に
 > 無効化できる状態だった（修正済み、IMP-013）。** 無効化の経路は**5本**あり、
@@ -1456,6 +1463,12 @@ LINE だけ「ログインのみ」になっていない。完全に消すには
 残作業の自動検出）。加盟店に残るのは Channel ID と Channel Secret のコピーのみ。
 自動発行トークンは30日で失効するため、送信直前に期限が近ければ自動で再発行する。
 詳細は `docs/line-module-channel-research.md` / OPEN_QUESTIONS.md。
+
+**LINE非依存テナント（大手導入向け）**: `tenants.line_enabled = false` でテナント単位に
+LINE機能を無効化できる。予約 (`reservations`) はLINE非依存の列構成、顧客ログインは
+既定でメール+電話下4桁OTP（LINEログインは連携済み顧客向けの代替経路のみ）、通知は
+メール(Resend)/SMS(Twilio)/Slackで代替可能。RFP/DDQ向けの回答テンプレは
+`docs/enterprise-readiness.md` §7 に追加済み（2026-09-25）。
 
 ## 競争優位戦略（2026-08-18 策定）
 

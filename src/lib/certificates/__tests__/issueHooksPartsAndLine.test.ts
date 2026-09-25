@@ -59,6 +59,7 @@ describe("triggerCertificateIssued — 証明書発行のLINE自動連絡", () =
     h.admin = makeFakeAdmin(
       emptyStore({
         follow_up_settings: [],
+        tenants: [{ id: TENANT, line_enabled: true }],
         customers: [{ id: CUSTOMER, tenant_id: TENANT, line_user_id: "line-abc" }],
       }),
     );
@@ -66,6 +67,18 @@ describe("triggerCertificateIssued — 証明書発行のLINE自動連絡", () =
     expect(sendLineMock).toHaveBeenCalledWith(
       expect.objectContaining({ tenantId: TENANT, customerId: CUSTOMER, lineUserId: "line-abc" }),
     );
+  });
+
+  it("テナントの LINE が無効なら line_user_id があっても送らない（dispatch 側で自動スキップ）", async () => {
+    h.admin = makeFakeAdmin(
+      emptyStore({
+        follow_up_settings: [],
+        tenants: [{ id: TENANT, line_enabled: false }],
+        customers: [{ id: CUSTOMER, tenant_id: TENANT, line_user_id: "line-abc" }],
+      }),
+    );
+    await triggerCertificateIssued({ ...baseParams, customerId: CUSTOMER });
+    expect(sendLineMock).not.toHaveBeenCalled();
   });
 
   it("line_user_id が無ければ LINE を送らない", async () => {

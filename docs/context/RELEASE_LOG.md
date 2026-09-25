@@ -38,6 +38,67 @@
 
 検証: `ci-parallel-checks.sh` 9/9・`check:migrations` 再生 509/509・振る舞いの検査 **7 件**。
 
+## 2026-09-25 通知エンジンの中央 dispatch と、15タイプ中13タイプの発火（IMP-029）
+
+代表が叩き台どおり全15タイプを確定した（DECISION_LOG 2026-09-25）のを受けて実装。
+
+**中央 dispatch** — `src/lib/notifications/dispatch.ts` の `dispatchNotification()`
+
+- チャネルは既存の `resolveChannels()`（カタログ + テナント単位の上書き）で決め、送信は既存の
+  sender を呼ぶだけ（in_app = `notifications` insert / email = `sendEmail` / slack = テナントの
+  Slack Webhook / line = `sendCustomerLineText` / sms = `sendNotificationSms`。push は未実装）
+- 宛先はカタログの `targetRole` から1箇所で解決（admin = owner/admin/super_admin、assigned =
+  指定ユーザー・空なら admin、customer = 顧客の email/電話/LINE、未指定 = テナント全員）
+- `tenants.line_enabled = false` のテナントは line を自動で外す。顧客のアプリ内受信箱は無いので
+  customer 宛の in_app は作らない
+- 絶対に throw しない。チャネルごとの失敗は `logger.warn` のみ
+
+**発火するようになったタイプ**
+
+- dispatch 経由で新規: `order_created` / `order_accepted` / `order_completed` / `order_cancelled` /
+  `payment_confirmed` / `rating_received`（受発注・取引相手テナント宛 in_app）、
+  `customer_concern_raised`（管理者 in_app + テナント Slack）
+- dispatch 経由に置き換え: `certificate_issued`（従来の顧客 LINE 連絡を dispatch に移設）
+- 既存と共存: `booking_created` は既存の専用メール+Slack（`bookingNotify.ts`）を残し、
+  dispatch には不足していた in_app だけを担わせた（email/slack を dispatch 側で無効化し二重送信なし）
+- チャネル追加: `sla_overdue` に email を追加（保険会社 SLA cron。in-app は従来どおり）
+- 既存経路がカタログのチャネルを既に満たしているため変更なし: `sla_at_risk`（保険会社 SLA cron）、
+  `low_stock_alert`（在庫 cron のサマリーメール）、`follow_up_reminder`（フォローアップ cron）
+
+**未配線（2タイプ）**: `certificate_gate_ready` / `rating_request` —— 該当イベントの実処理が
+コードに無い。OPEN_QUESTIONS 2026-09-25 に理由を記録。
+
+**検証**: dispatch の単体テスト8件（宛先解決・チャネル無効化・LINE 無効スキップ・失敗時に throw
+しない）。LINE 無効スキップを外すとテストが落ちることを確認済み。
+
+## 2026-09-25 指定整備記録簿（完成検査）G5 Phase 1b/1c
+
+- 内容: 指定整備記録簿（完成検査）の「検査機器等による検査」測定値について、
+  - **Phase 1b（#1162 マージ済み）**: 手入力 UI（`CompletionInspectionForm`、第三号/四号様式切替）と
+    保存 API（`PUT/GET /api/admin/inspection-records/[id]/measurements`、`source='manual'`）を追加。
+    完成検査記録は2年保存（`record_retention_until`）。
+  - **Phase 1c（本リリース）**: 測定値を第三号/四号様式のセル順で帳票化する PDF レンダラ
+    （`src/lib/pdf/pdfIndicatedInspection.tsx`）と出力ルート
+    （`GET /api/admin/inspection-records/[id]/pdf`）。案件「点検」タブに「指定整備記録簿 PDF」リンクを追加。
+- 様式の別（第三号=四輪 / 第四号=二輪）は作成時に `answers.__indicated_form` へ保存し、PDF がセル配列決定に使う。
+- スコープ外（後続）: 目視等による検査（構造・装置）と車両情報照合欄、Phase 2（外部テスタ取込 `source='imported'`）。
+- 注記: 本 PDF は「検査機器等による検査」の測定記録票であり、目視検査・諸元照合欄は未収載である旨を票面に明記。
+
+## 2026-09-24 型ドリフトを検出器に可視化＋dead current_insurer_id() を削除
+
+**A-1（検出器に型比較）**: `check-schema-drift.mjs` に「本番 enum / マイグレーション非 enum」の
+列比較を追加。従来は列名の有無だけで、本番 enum・マイグレーション text の列が素通りしていた。
+実測5列（`certificates.status`・`certificates.expiry_type`・`tenants.plan_tier`・
+`templates.scope`・`tenant_memberships.role`）を可視化。**報告のみ・落とさない**（CHECK 逆向きと
+同思想）。型パーサは実 dump で検証＋既知列の自己検査付き、`public.` 修飾も剥がす。CI の drift ジョブに出る。
+
+**B-1（棚卸し）**: `current_insurer_id()` を削除（`20260924160000`）。停止判定を持たない孤立関数で、
+本番の呼び出し元ゼロ（関数0・ポリシー0・実測）＋コード0（監査）。`check:migrations` 再生 OK。
+
+**B（監査・コード変更なし）**: `/api/insurer/**` に停止ゲート素通りルートは無し（全ルートが
+`resolveInsurerCaller`＝停止除外を通る）。構造的脆さ（`createInsurerScopedAdmin` が status 未確認）は
+OPEN_QUESTIONS に記録。孤児 owner membership 1件は代表判断待ちで OPEN_QUESTIONS に残置。
+
 ## 2026-09-24 監査 action を型で縛り、AI 自動処理の監査行を復旧
 
 **新しく分かった故障**: `caseSummaryAuto` / `caseAssignAuto` / `fraudScoreAuto` の3本は

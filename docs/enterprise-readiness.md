@@ -121,6 +121,9 @@ A. はい。`audit_logs` テーブルから CSV エクスポート (`/api/admin/
 ### Q. SSO は強制できますか?
 A. はい。`tenants.sso_required = true` + `sso_email_domain` を設定すると、その domain のメールはパスワード認証が画面側でブロックされます。SAML 2.0 (Supabase Auth 経由) で Okta / Azure AD / OneLogin など標準的な IdP に対応。`docs/sso-setup.md` に手順。
 
+### Q. LINE を使わない場合、予約管理・通知はどうなりますか?
+A. `tenants.line_enabled = false` でテナント単位に LINE 機能を無効化できます。予約データ本体 (`reservations` テーブル) は LINE 非依存の列構成で、`line_user_id` も nullable のため LINE なしで予約フローが完結します。顧客ポータルのログインは既定がメール + 電話番号下4桁 OTP で、LINE ログインはあくまで連携済み顧客向けの代替経路 (`src/lib/customerPortalLineLogin.ts`)。予約通知はメール (Resend) / SMS (Twilio) / Slack が既に稼働しており、`src/lib/notifications/routing.ts` の `disabledChannels` / `additionalChannels` でテナント単位にチャネルを上書き可能。**現状の制約**: チャネル切替はテナント単位までで、従業員/顧客個人ごとの通知チャネル選択は未実装 (`src/lib/notifications/types.ts:37`)。また通知18タイプ中15タイプは本番で未発火 — 発火要否・宛先・チャネルは個別に代表判断が必要 (`docs/context/OPEN_QUESTIONS.md` 2026-08-31)。
+
 ### Q. データの削除をリクエストされたらどう対応しますか?
 A. 顧客 (エンドユーザ) は `/customer/[tenant]/data-deletion` から自己リクエスト可。30 日の検証期間後に PII を物理削除します (audit_logs は anonymize)。テナント (加盟店) の解約時は契約終了から 90 日以内に全データを削除し、削除完了証明書を発行します。
 

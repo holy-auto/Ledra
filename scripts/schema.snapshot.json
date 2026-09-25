@@ -1632,6 +1632,22 @@
 "vehicle_vin",
 "vehicle_year"
 ],
+"inspection_measurements": [
+"created_at",
+"created_by",
+"device",
+"field_code",
+"id",
+"inspection_record_id",
+"judgment",
+"measured_at",
+"num_value",
+"source",
+"tenant_id",
+"text_value",
+"unit",
+"updated_at"
+],
 "inspection_records": [
 "answers",
 "created_at",
@@ -1642,6 +1658,7 @@
 "inspector_name",
 "notes",
 "photo_urls",
+"record_retention_until",
 "reservation_id",
 "template_id",
 "template_items",

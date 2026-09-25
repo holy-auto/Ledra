@@ -1,4 +1,3 @@
-
 import { makePublicId } from "@/lib/publicId";
 
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
@@ -12,6 +11,15 @@ import { partnerCanViewAvailability } from "@/lib/partners/availabilityGate";
 import { convertHoldToReservation, releaseOrderHolds } from "@/lib/booking/holdConvert";
 
 import { withCaller } from "@/lib/api/withCaller";
+import { dispatchNotification } from "@/lib/notifications/dispatch";
+
+// IMP-029: 受発注の通知はすべて「取引相手テナント全員」宛の in_app（カタログの targetRole 未指定 = 文脈で決定）。
+const STATUS_NOTIFY: Record<string, { type: "order_accepted" | "order_completed" | "order_cancelled"; title: string }> =
+  {
+    accepted: { type: "order_accepted", title: "発注が受注されました" },
+    completed: { type: "order_completed", title: "取引が完了しました" },
+    cancelled: { type: "order_cancelled", title: "発注がキャンセルされました" },
+  };
 // ─── ステータス遷移ルール ───
 // key: 現在のステータス, value: { next: 次ステータス, side: "from" | "to" | "both" }[]
 const TRANSITIONS: Record<string, { next: string; side: "from" | "to" | "both" }[]> = {
@@ -193,7 +201,6 @@ export const GET = withCaller(
 export const POST = withCaller(
   async (req, { caller }) => {
     try {
-
       const deny = await enforceBilling(req, {
         minPlan: "free",
         action: "order_create",
@@ -310,6 +317,14 @@ export const POST = withCaller(
               data: { reason: claim.result === "full" ? "hold_slot_taken" : "hold_no_slot" },
             });
           }
+          await dispatchNotification({
+            tenantId: to_tenant_id,
+            type: "order_created",
+            title: "新しい発注が届きました",
+            body: `「${title}」の発注が届きました。`,
+            linkPath: `/admin/orders/${data.id}`,
+            jobOrderId: data.id,
+          });
           return apiJson({ order: data, hold_id: claim.holdId }, { status: 201 });
         } catch (holdErr) {
           await admin.from("job_orders").delete().eq("id", data.id);
@@ -317,6 +332,17 @@ export const POST = withCaller(
         }
       }
 
+      // 公開案件（to_tenant_id なし）は宛先が決まっていないので通知しない。
+      if (to_tenant_id) {
+        await dispatchNotification({
+          tenantId: to_tenant_id,
+          type: "order_created",
+          title: "新しい発注が届きました",
+          body: `「${title}」の発注が届きました。`,
+          linkPath: `/admin/orders/${data.id}`,
+          jobOrderId: data.id,
+        });
+      }
       return apiJson({ order: data }, { status: 201 });
     } catch (e: unknown) {
       return apiInternalError(e, "orders POST");
@@ -329,7 +355,6 @@ export const POST = withCaller(
 export const PUT = withCaller(
   async (req, { caller }) => {
     try {
-
       const deny = await enforceBilling(req, {
         minPlan: "free",
         action: "order_update",
@@ -449,6 +474,20 @@ export const PUT = withCaller(
         releaseOrderHolds(id, status).catch((e: unknown) => console.error("[orders] hold release failed:", e));
       }
 
+      // 取引相手へ通知（受注→発注者 / 取消→受注者 / 完了→相手側）。受注者未定の取消は宛先なし。
+      const notify = STATUS_NOTIFY[status];
+      const counterparty = isFrom ? current.to_tenant_id : current.from_tenant_id;
+      if (notify && counterparty) {
+        await dispatchNotification({
+          tenantId: counterparty,
+          type: notify.type,
+          title: notify.title,
+          body: `「${data.title}」${status === "cancelled" && cancel_reason ? `（理由: ${cancel_reason}）` : ""}`,
+          linkPath: `/admin/orders/${id}`,
+          jobOrderId: id,
+        });
+      }
+
       return apiJson({ ok: true, order: data });
     } catch (e: unknown) {
       return apiInternalError(e, "orders PUT");
@@ -461,7 +500,6 @@ export const PUT = withCaller(
 export const PATCH = withCaller(
   async (req, { caller }) => {
     try {
-
       const deny = await enforceBilling(req, {
         minPlan: "free",
         action: "order_accept",
@@ -551,6 +589,15 @@ export const PATCH = withCaller(
           () => {},
           (e: unknown) => console.error("[orders] audit log failed:", e),
         );
+
+      await dispatchNotification({
+        tenantId: order.from_tenant_id,
+        type: "order_accepted",
+        title: "発注が受注されました",
+        body: `「${data.title}」が受注されました。`,
+        linkPath: `/admin/orders/${id}`,
+        jobOrderId: id,
+      });
 
       return apiJson({ ok: true, order: data });
     } catch (e: unknown) {

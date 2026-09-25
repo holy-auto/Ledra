@@ -4,6 +4,43 @@
 > （新しい順）。実装の詳細は RELEASE_LOG.md、迷っている段階のものは
 > OPEN_QUESTIONS.md に書く。
 
+## 2026-09-25 IMP-029 残り15通知タイプ、叩き台どおり全確定（発火させる・宛先/チャネルはカタログ準拠）
+
+1. 日付: 2026-09-25（`date -u` で確認）
+2. 起きたこと: 2026-08-31にOPEN_QUESTIONS.mdへ起票していた「通知18タイプのうち15タイプが本番で一度も発火していない」問題（`booking_created`/`order_created`/`order_accepted`/`order_completed`/`order_cancelled`/`payment_confirmed`/`certificate_gate_ready`/`certificate_issued`/`customer_concern_raised`/`rating_request`/`rating_received`/`sla_at_risk`/`sla_overdue`/`low_stock_alert`/`follow_up_reminder`）について、代表に severity・叩き台の `defaultChannels`・`targetRole` を一覧表で提示し、(a) 叩き台通り全15タイプ確定／(b) 重要度の高いものだけ先行／(c) タイプごとに個別確認／(d) 見送り、の4択で方針を確認したところ「全部」の回答を得た。
+3. 以前の考え: 「証明書を発行したら誰に通知するか」等は推測で決めれば必ず外れ、一度送った通知は取り消せないため、こちらでは決めずに経営判断として凍結していた（2026-08-31付DECISION_LOG）。
+4. 違和感・問題: なし。凍結の理由（代表判断が必要）自体は変わらず、今回代表本人が判断したことで凍結が解除された。
+5. 決めたこと: 15タイプ全てについて (a) 発火させる、(b) 宛先はカタログの `targetRole` を正とする、(c) 配信チャネルは `src/lib/notifications/types.ts` の `defaultChannels`（叩き台）を正式仕様として確定する。中央dispatch実装と15タイプの配線を、この決定を土台に進める。
+6. 捨てた選択肢:
+   - 重要度（urgent/action_required）の高いものだけ先行実装: 代表が「全部」を選んだため不採用。
+   - タイプごとに個別に確認: 同上（一括の意思表示があったため、これ以上の細分化は待たせるだけで不要と判断）。
+7. 判断理由: 代表が一覧表（severity・チャネル・宛先ロール）を確認した上での一括承認であり、叩き台自体がカタログ設計時点で個別に検討済みの内容のため、それ以上の追加確認は不要。
+8. まだ答えが出ていないこと: ユーザー単位（従業員/顧客個人ごと）の通知チャネル選択は引き続き未実装（`src/lib/notifications/routing.ts` はテナント単位の `disabledChannels`/`additionalChannels` 上書きのみ対応、`types.ts:37` に将来対応の注記あり）。実装（中央dispatch＋15タイプの配線）はこの決定の直後にコード化する。
+9. 公開区分: 要確認（社内の通知設計判断。対外公開は想定していないため代表確認まで非公開扱い）
+
+## 2026-09-25 完成検査の様式(第三号/四号)の別は `answers.__indicated_form` に載せて永続化する
+1. 日付: 2026-09-25（`date -u` 確認）
+2. 起きたこと: Phase 1c の PDF 出力で、第三号（四輪）/第四号（二輪）のどちらのセル配列で描くかを決めるため、記録に様式の別が必要になった。Phase 1b では様式は UI トグルのみで未保存だった。
+3. 以前の考え: 測定値の `field_code` 集合から様式を推定できる（四輪固有コードがあれば第三号、等）。
+4. 違和感・問題: 共通セルのみが入力された記録は推定が曖昧（既定に倒すしかない）で、判断の道具（推定ロジック）自体が検証対象になる。空欄の多い記録ほど誤判定しやすい。
+5. 決めたこと: 作成時に選んだ様式を `inspection_records.answers.__indicated_form.value` に明示保存し、PDF はそれを読む（未保存の旧記録のみ第三号を既定）。
+6. 捨てた選択肢: (a) 測定コードからの推定、(b) `inspection_records` に専用カラム／`inspection_measurements` に様式列を新設（スキーマ変更のコスト・完成検査は `answers` が他用途で未使用のため不要）。
+7. 判断理由: 完成検査記録では `answers`（`{item_id:{value,note}}` の汎用 jsonb）が未使用で、予約キー1つで確実に永続化できる。スキーマ変更もマイグレーションも不要で、推定の曖昧さを持ち込まない。
+8. まだ答えが出ていないこと: 目視検査（構造・装置）を将来 `answers` 本来の用途で入れる際、予約キーと衝突しないようキー名前空間の規約が要る（`__` 接頭辞で回避中だが明文化は未）。
+9. 公開区分: 公開可（設計判断、機密性なし）
+
+## 2026-09-24 型ドリフトを検出器に載せ、dead current_insurer_id() を削除（OPEN_QUESTIONS A/B の消化）
+
+1. 日付: 2026-09-24（`date -u` で確認）
+2. 起きたこと: OPEN_QUESTIONS の残件 A（型ドリフトが検出器に映らない・孤児 membership・RLS/索引の数差）と B（insurer 読み取り経路の停止ゲート監査・`current_insurer_id()` 棚卸し）に着手。
+3. 以前の考え: 「型差は3列（status/plan_tier/role）」「`current_insurer_id()` は棚卸し未実施」「サービスロール経路に停止ゲートの穴があるかも」。
+4. 違和感・問題: (a) 実測すると本番 enum 列は**5列**で、`certificates.expiry_type` と `templates.scope` は DECISION_LOG にも無く**誰も気づいていなかった**型ドリフト。検出器が列名しか見ないため素通りしていた。(b) `current_insurer_id()` は SECURITY DEFINER・service_role GRANT だが停止判定を持たず、本番の呼び出し元ゼロ（関数0・ポリシー0・実測）＋コード0（監査）＝完全な dead。(c) `/api/insurer/**` の監査では素通りルートは無かったが、停止ゲートは「各ルートが `resolveInsurerCaller` を呼ぶ規約」頼みで、`createInsurerScopedAdmin` 自体は status を見ない構造的脆さがある。
+5. 決めたこと: (a) `check-schema-drift.mjs` に「本番 enum / マイグレーション非 enum」の列比較を追加。**報告のみ・落とさない**（CHECK 逆向き・ポリシー逆向きと同思想。永久赤を作らない）。型パーサは実 dump で検証＋既知列(`plan_tier→text`)の自己検査付き、pg_dump の `public.` 修飾も剥がす。(b) `current_insurer_id()` を削除（`20260924160000`、`DROP FUNCTION IF EXISTS`）。(c) 孤児 owner membership（`tenant=647bce48…`・1件・2026-09-24 も1件のまま）は**本番データ削除＝代表判断**なので OPEN_QUESTIONS に残す。
+6. 捨てた選択肢: (a) 型ドリフトを「落とす」設定＝enum vs text は意図的差なので永久赤になる（しかも check:drift は手元で回せず＝赤を再現できない）。(b) `createInsurerScopedAdmin` に status チェックを足す＝同期関数を毎回 DB I/O にする重い変更で、現状素通りは無いので今はやらない（脆さは記録に残す）。(c) マイグレーションを enum に寄せる＝`certificates.status` は稼働 RPC が触るため影響確認が要る別作業。
+7. 判断理由: 「見えない差を見えるようにする」のが最小で効く（型ドリフトは可視化、dead 関数は削除で攻撃面を減らす）。落とさない選択は既存の検出器思想（意図的な表現差は報告のみ）と、手元で drift ジョブを再現できない制約の両方に沿う。
+8. まだ答えが出ていないこと: 型ドリフトを将来 enum に寄せるか（要確認）。孤児 membership の扱い（代表判断）。RLS ポリシー 本番622/再生642 の名前突き合わせと一意でない索引70本（A-3・据え置き、ポリシー名差は既存検出器が CI で毎回出す）。`createInsurerScopedAdmin` に停止判定を寄せるか。
+9. 公開区分: 公開可（「検査は名前だけ見て型を見ていなかった」「停止判定を持たない孤立関数を消す」は一般化できる知見。本番ID・テナント識別子・実データは非公開）。
+
 ## 2026-09-24 指定整備記録簿=完成検査測定値は「構造化スキーマ共通・書き込み口2つ（手入力/外部取込）」で作る
 1. 日付: 2026-09-24（`date -u` 確認）
 2. 起きたこと: G5 実装方針の検討で、代表から「Ledra 完結も外部測定受付も両方できるか」と確認。棚卸しで検査機器測定値の構造化スキーマが無いことは判明済み（OPEN_QUESTIONS G5 2026-09-24 追記）。
