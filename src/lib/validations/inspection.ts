@@ -16,13 +16,14 @@ export const INSPECTION_ITEM_TYPE_LABEL: Record<InspectionItemType, string> = {
   numeric: "数値",
 };
 
-export const INSPECTION_TYPES = ["intake", "delivery", "periodic"] as const;
+export const INSPECTION_TYPES = ["intake", "delivery", "periodic", "completion"] as const;
 export type InspectionType = (typeof INSPECTION_TYPES)[number];
 
 export const INSPECTION_TYPE_LABEL: Record<InspectionType, string> = {
   intake: "入庫点検",
   delivery: "納車前点検",
   periodic: "定期点検",
+  completion: "完成検査", // 指定整備記録簿（第三号/四号様式）の保安基準適合検査
 };
 
 /** 空文字 / undefined を null に正規化する nullable uuid */

@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   measurementInputSchema,
+  measurementsPutSchema,
   measurementFieldsForForm,
   isKnownMeasurementCode,
   MEASUREMENT_FIELDS,
@@ -79,5 +80,31 @@ describe("indicated-inspection measurement catalog", () => {
   it("カタログの各定義は一意の code を持つ", () => {
     const codes = MEASUREMENT_FIELDS.map((f) => f.code);
     expect(new Set(codes).size).toBe(codes.length);
+  });
+
+  it("measurementsPutSchema: 妥当な配列を受理する", () => {
+    const r = measurementsPutSchema.safeParse({
+      measurements: [
+        { field_code: "brake.total", num_value: 1000, unit: "N" },
+        { field_code: "co", num_value: 0.3 },
+        { field_code: "obd_result", judgment: "pass" },
+      ],
+    });
+    expect(r.success).toBe(true);
+  });
+
+  it("measurementsPutSchema: field_code 重複を拒否する", () => {
+    const r = measurementsPutSchema.safeParse({
+      measurements: [
+        { field_code: "co", num_value: 0.3 },
+        { field_code: "co", num_value: 0.4 },
+      ],
+    });
+    expect(r.success).toBe(false);
+  });
+
+  it("measurementsPutSchema: 不正メンバー（未知コード）を拒否する", () => {
+    const r = measurementsPutSchema.safeParse({ measurements: [{ field_code: "bogus", num_value: 1 }] });
+    expect(r.success).toBe(false);
   });
 });
