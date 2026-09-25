@@ -1446,6 +1446,12 @@ LINE だけ「ログインのみ」になっていない。完全に消すには
 自動発行トークンは30日で失効するため、送信直前に期限が近ければ自動で再発行する。
 詳細は `docs/line-module-channel-research.md` / OPEN_QUESTIONS.md。
 
+**LINE非依存テナント（大手導入向け）**: `tenants.line_enabled = false` でテナント単位に
+LINE機能を無効化できる。予約 (`reservations`) はLINE非依存の列構成、顧客ログインは
+既定でメール+電話下4桁OTP（LINEログインは連携済み顧客向けの代替経路のみ）、通知は
+メール(Resend)/SMS(Twilio)/Slackで代替可能。RFP/DDQ向けの回答テンプレは
+`docs/enterprise-readiness.md` §7 に追加済み（2026-09-25）。
+
 ## 競争優位戦略（2026-08-18 策定）
 
 DeepSeek型「方法を公開し、結果を独占する」戦略を採用。5層の堀を構築する:
