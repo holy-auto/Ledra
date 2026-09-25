@@ -49,6 +49,25 @@
 最新 2026-09-03 のまま。
 
 
+## 2026-09-24 依存13件を更新し、`overrides.ox` を viem に追従させた（#1114 / #1141）
+
+- **#1114**（`61df0b5d`）: Dependabot の minor-and-patch 13件（`@anthropic-ai/sdk` / `@aws-sdk/client-kms` /
+  `@sentry/nextjs` / `@upstash/ratelimit` / `posthog-js` / `resend` / `viem` / `zod` /
+  `@remotion/cli` / `@testing-library/dom` / `prettier` / `remotion` / `@contentauth/c2pa-node`）。
+  **`check:ox-override` だけが赤だった。** viem@2.56.8 は ox@0.14.45 を完全一致で pin するのに
+  `overrides.ox` が 0.14.44 のままだったため。`ox` は直接依存ではないので Dependabot の
+  更新グループに入らず、**viem が上がるたびに手で追従させる必要がある**
+  （`scripts/check-ox-override.mjs` の冒頭と 2026-09-14 の DECISION_LOG）。0.14.45 に上げて解消。
+- **#1141**（`4b222ff`）: `src/types/db.generated.ts` の再生成（+3行）。`db-typegen` が自動で立てた PR。
+
+**Vercel のビルドが1回失敗したが、この更新が原因ではなかった。** `next/font/google` が
+Noto Sans JP を取得できない既知の症状（`OPEN_QUESTIONS` の「ビルドが Google Fonts への
+外部フェッチに依存している」。**これが2回目**）。**コードを1バイトも変えずに、main を
+取り込んだだけで緑になった**。切り分けの詳細は同項の「再発の記録」。
+
+検証: `tsc --noEmit` ✅ / `check:ox-override` ✅ / `check:ledger-ids` ✅ / `check:context-dates` ✅ /
+CI 10件すべて success・skipped（`Client Bundle Size` 含む）/ Vercel Ready。
+
 ## 2026-09-24 工賃の1円未満を切り上げに変更
 
 工賃（工数 × 時間単価）の1円未満を、四捨五入から切り上げに変えた（`calcLaborPrice`、代表判断）。帳票の「工賃を計算」と、
