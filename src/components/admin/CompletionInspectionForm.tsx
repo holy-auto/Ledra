@@ -111,6 +111,9 @@ export default function CompletionInspectionForm({ reservationId, vehicleId, cus
             inspection_type: "completion",
             inspector_name: inspectorName || null,
             notes: notes || null,
+            // 様式(第三号/四号)の別を記録に永続化する。PDF 出力(Phase 1c)がセル配列の
+            // 決定に使う。answers は完成検査では他用途が無いため予約キーに載せる。
+            answers: { __indicated_form: { value: form } },
           }),
         });
         const createJson = await createRes.json().catch(() => ({}));

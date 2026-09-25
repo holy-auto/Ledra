@@ -159,7 +159,17 @@ export default function JobInspectionTab({ reservationId, vehicleId, customerId 
               </div>
               <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[12px] text-secondary">
                 {isCompletion ? (
-                  <span>測定 {measurementCount} 項目</span>
+                  <>
+                    <span>測定 {measurementCount} 項目</span>
+                    <a
+                      href={`/api/admin/inspection-records/${r.id}/pdf`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-accent underline"
+                    >
+                      指定整備記録簿 PDF
+                    </a>
+                  </>
                 ) : (
                   <>
                     <span>記入 {answered} 項目</span>

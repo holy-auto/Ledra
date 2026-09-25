@@ -4,6 +4,19 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-09-25 指定整備記録簿（完成検査）G5 Phase 1b/1c
+
+- 内容: 指定整備記録簿（完成検査）の「検査機器等による検査」測定値について、
+  - **Phase 1b（#1162 マージ済み）**: 手入力 UI（`CompletionInspectionForm`、第三号/四号様式切替）と
+    保存 API（`PUT/GET /api/admin/inspection-records/[id]/measurements`、`source='manual'`）を追加。
+    完成検査記録は2年保存（`record_retention_until`）。
+  - **Phase 1c（本リリース）**: 測定値を第三号/四号様式のセル順で帳票化する PDF レンダラ
+    （`src/lib/pdf/pdfIndicatedInspection.tsx`）と出力ルート
+    （`GET /api/admin/inspection-records/[id]/pdf`）。案件「点検」タブに「指定整備記録簿 PDF」リンクを追加。
+- 様式の別（第三号=四輪 / 第四号=二輪）は作成時に `answers.__indicated_form` へ保存し、PDF がセル配列決定に使う。
+- スコープ外（後続）: 目視等による検査（構造・装置）と車両情報照合欄、Phase 2（外部テスタ取込 `source='imported'`）。
+- 注記: 本 PDF は「検査機器等による検査」の測定記録票であり、目視検査・諸元照合欄は未収載である旨を票面に明記。
+
 ## 2026-09-24 監査 action を型で縛り、AI 自動処理の監査行を復旧
 
 **新しく分かった故障**: `caseSummaryAuto` / `caseAssignAuto` / `fraudScoreAuto` の3本は
