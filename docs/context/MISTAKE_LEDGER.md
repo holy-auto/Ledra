@@ -78,12 +78,43 @@
 | **K. 新しいコード経路を、それが実際に呼ばれる文脈で動かして試していない** | 単体の変更としては正しいのに、それが実際に発火する呼び出し元・エラー経路まで通して動かしていない。ユニットテストがあっても「起こりうる呼び出し順」を再現していなければ検出できない | **M-067**, **M-20260923-draft-autosave-baseline-before-prefill** |
 | **L. 既定を開いたまま守る（除外リスト）** | 「見せないもの」を並べて塞ぐ。塞いだ時点では実データと一致していても、**既定が公開**なので、値が増えるたびに漏れる。**母集団を数えていない**のが根（「今あるもの」を実測して、「入りうるもの」を数えていない）。外向けの経路では許可リストにして、知らないものを既定で落とす | **M-077** |
 | **E. 手元とCIの差を忘れる** | 手元では通るのに CI だけ落ちる構成を作る。書いた本人には見えない。**リポジトリが用意した「CIと同じ検査」を走らせず、思い出せる検査だけ個別に走らせる**のも同じ | M-009, **M-030**, **M-084**, **M-089**, **M-094**, **M-20260922-pushed-without-ci-parallel-checks**, **M-20260923-schema-snapshot-missed-again** |
-| **F. 確認できる事実を確認しない** | 環境から1コマンドで確かめられる事実（今日の日付・件数・バージョン・設定ファイルの中身・**CI が実際に走ったか**・**同じ問題を直している PR が既に開いていないか**）を、確かめずに書く。**自分がこれから追記しようとしているログファイル自身に、既に矛盾する記述が無いか確認しない**のも同じ。**本番の実データをそのまま調査ログ・事業ログに転記する**のも同じ（PIIのマスクを確認事実として扱わない） | M-011, M-014, M-015, M-016, **M-018**, **M-021**, **M-026**, **M-027**, M-034, M-037, **M-045**, **M-049**, **M-053**, **M-059**, **M-070**, **M-071**, **M-073**, **M-080**, **M-081**, **M-082**, **M-086**, **M-088**, **M-090**, **M-20260915-dupe-count-from-truncated-grep**, **M-20260918-called-it-untraceable-without-checking-open-prs**, **M-20260919-said-no-open-pr-has-it-again**, **M-20260919-hand-applied-ahead-of-a-pending-migration**, **M-20260919-skipped-the-check-i-had-just-written**, **M-20260919-green-ci-read-as-production-applied**, **M-20260919-credited-my-own-dirty-tree-to-another-session**, **M-20260919-wrote-a-replay-count-i-never-read**, **M-20260920-hashed-a-file-i-never-opened**, **M-20260920-counted-12-as-11-again**, **M-20260921-reported-a-subtraction-as-a-measurement**, **M-20260921-two-samples-read-as-all**, **M-20260921-restated-my-own-summary-as-fact**, **M-20260922-said-typegen-red-on-every-merge**, **M-20260922-said-ten-checks-without-listing-them**, **M-20260923-git-add-all-swept-a-formatted-generated-file** |
+| **F. 確認できる事実を確認しない** | 環境から1コマンドで確かめられる事実（今日の日付・件数・バージョン・設定ファイルの中身・**CI が実際に走ったか**・**同じ問題を直している PR が既に開いていないか**）を、確かめずに書く。**自分がこれから追記しようとしているログファイル自身に、既に矛盾する記述が無いか確認しない**のも同じ。**本番の実データをそのまま調査ログ・事業ログに転記する**のも同じ（PIIのマスクを確認事実として扱わない） | M-011, M-014, M-015, M-016, **M-018**, **M-021**, **M-026**, **M-027**, M-034, M-037, **M-045**, **M-049**, **M-053**, **M-059**, **M-070**, **M-071**, **M-073**, **M-080**, **M-081**, **M-082**, **M-086**, **M-088**, **M-090**, **M-20260915-dupe-count-from-truncated-grep**, **M-20260918-called-it-untraceable-without-checking-open-prs**, **M-20260919-said-no-open-pr-has-it-again**, **M-20260919-hand-applied-ahead-of-a-pending-migration**, **M-20260919-skipped-the-check-i-had-just-written**, **M-20260919-green-ci-read-as-production-applied**, **M-20260919-credited-my-own-dirty-tree-to-another-session**, **M-20260919-wrote-a-replay-count-i-never-read**, **M-20260920-hashed-a-file-i-never-opened**, **M-20260920-counted-12-as-11-again**, **M-20260921-reported-a-subtraction-as-a-measurement**, **M-20260921-two-samples-read-as-all**, **M-20260921-restated-my-own-summary-as-fact**, **M-20260922-said-typegen-red-on-every-merge**, **M-20260922-said-ten-checks-without-listing-them**, **M-20260923-git-add-all-swept-a-formatted-generated-file**, **M-20260925-migration-timestamp-collided-with-parallel-pr** |
 | **G. 構造テストを振る舞いの証明として扱う** | ソースを grep して「その語が書かれている」を確かめただけで、**値が通るか**を確かめていない。テストは緑、機能は壊れている。**ファイルに在ること**を、**その経路が実際に動く/覆われている**ことの証拠として扱うのも同じ | **M-033**, **M-20260921-file-content-read-as-behavior** |
 | **H. 未確定の前提の上に作る** | 依頼者しか決められない前提を確認しないまま、その前提が変われば丸ごと消える実装を先に作る | **M-043** |
 | **I. 前提が途中で変わったのに読み直さない** | 判断したときは正しかった観察が、その後の `main` 取り込みなどで無効になっているのに、変更を見直さない。**衝突しなかったファイルにこそ潜む** | **M-047**, **M-051** |
 
 ---
+
+## M-20260925-migration-timestamp-collided-with-parallel-pr マイグレーションのタイムスタンプをキリのいい 16:00:00 に丸め、並行 PR と同じ番号を取った（2026-09-25・型 F）
+
+**Before**: A/B の PR（#1159）で `current_insurer_id()` を落とすマイグレーションを
+`20260924160000_drop_dead_current_insurer_id.sql` と名付けた。作成時刻（`date -u` では 16:27）を
+使わず、キリのいい「16:00:00」に丸めた。自分のブランチでは `lint:migrations` も
+`check:migrations` 再生も緑だったので、番号は問題ないと思っていた。
+
+**After**: 並行して進んでいた #1162（G5 完成検査）が **同じ `20260924160000`** を
+`20260924160000_indicated_inspection_measurements.sql` に使っていた。#1162 が先に `main` へ入り、
+こちらのマージ直前に `origin/main` を取り込んだ**そのとき初めて衝突が表面化**した。同一バージョンが
+2本並ぶと適用順が不定になり、`lint:migrations` の重複検査にも掛かる。自分の方を
+`20260924160200`（#1162 の最後 `20260924160100` の後）へ改番し、Supabase プレビューで再適用が
+緑（Migrations ✅）になることを確認してからマージした。
+
+**なぜ気づけなかったか**: **バージョン番号を「自分のブランチの中だけ」で検証した。**
+`lint:migrations` は自分のツリーに重複が無いことしか見ない —— 並行ブランチが同じ番号を
+取っているかは `main` を取り込むまで分からない。しかも番号を実時刻ではなく「16:00:00」に
+丸めたので、**別セッションも同じ丸め方をすれば必ず一致する**空間に自分を置いた。
+キリのいい番号は衝突を招く。これは台帳の「ID について」（連番を並行セッションが取り合う）と
+同じ根で、識別子を実測ではなく人が丸めて付けると衝突する。
+
+**再発防止**: 仕組み半分。
+- 仕組み: マージ時の `origin/main` 取り込みで衝突は必ず表面化する（`lint:migrations` の
+  重複検査＋マージのファイル並び）。**本番へ出る前には止まる**が、マージ直前まで見えない。
+- 習慣: マイグレーションのタイムスタンプは**キリの良い時刻に丸めず**
+  `date -u +%Y%m%d%H%M%S` の実測値を使う（衝突空間を広げる）。長く滞留したブランチは
+  **マージ前に `origin/main` を取り込み、追加したマイグレーションが最新の番号より後ろに
+  来ているか**を確認する。改番するときは、プレビュー DB が旧名で適用済みでないか併せて見る
+  （型 C の `M-20260922-renamed-a-migration-the-preview-db-had-applied`。今回は Supabase の
+  Migrations が緑で問題化しなかったが、同じ綱渡り）。
 
 ## M-20260924-blamed-all-ten-inserts-on-the-check 10 箇所の失敗原因をどれも読まずに CHECK のせいにし、3本を直し残した（2026-09-24・型 B）
 
