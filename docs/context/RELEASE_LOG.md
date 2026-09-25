@@ -4,6 +4,39 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-09-25 通知エンジンの中央 dispatch と、15タイプ中13タイプの発火（IMP-029）
+
+代表が叩き台どおり全15タイプを確定した（DECISION_LOG 2026-09-25）のを受けて実装。
+
+**中央 dispatch** — `src/lib/notifications/dispatch.ts` の `dispatchNotification()`
+
+- チャネルは既存の `resolveChannels()`（カタログ + テナント単位の上書き）で決め、送信は既存の
+  sender を呼ぶだけ（in_app = `notifications` insert / email = `sendEmail` / slack = テナントの
+  Slack Webhook / line = `sendCustomerLineText` / sms = `sendNotificationSms`。push は未実装）
+- 宛先はカタログの `targetRole` から1箇所で解決（admin = owner/admin/super_admin、assigned =
+  指定ユーザー・空なら admin、customer = 顧客の email/電話/LINE、未指定 = テナント全員）
+- `tenants.line_enabled = false` のテナントは line を自動で外す。顧客のアプリ内受信箱は無いので
+  customer 宛の in_app は作らない
+- 絶対に throw しない。チャネルごとの失敗は `logger.warn` のみ
+
+**発火するようになったタイプ**
+
+- dispatch 経由で新規: `order_created` / `order_accepted` / `order_completed` / `order_cancelled` /
+  `payment_confirmed` / `rating_received`（受発注・取引相手テナント宛 in_app）、
+  `customer_concern_raised`（管理者 in_app + テナント Slack）
+- dispatch 経由に置き換え: `certificate_issued`（従来の顧客 LINE 連絡を dispatch に移設）
+- 既存と共存: `booking_created` は既存の専用メール+Slack（`bookingNotify.ts`）を残し、
+  dispatch には不足していた in_app だけを担わせた（email/slack を dispatch 側で無効化し二重送信なし）
+- チャネル追加: `sla_overdue` に email を追加（保険会社 SLA cron。in-app は従来どおり）
+- 既存経路がカタログのチャネルを既に満たしているため変更なし: `sla_at_risk`（保険会社 SLA cron）、
+  `low_stock_alert`（在庫 cron のサマリーメール）、`follow_up_reminder`（フォローアップ cron）
+
+**未配線（2タイプ）**: `certificate_gate_ready` / `rating_request` —— 該当イベントの実処理が
+コードに無い。OPEN_QUESTIONS 2026-09-25 に理由を記録。
+
+**検証**: dispatch の単体テスト8件（宛先解決・チャネル無効化・LINE 無効スキップ・失敗時に throw
+しない）。LINE 無効スキップを外すとテストが落ちることを確認済み。
+
 ## 2026-09-25 指定整備記録簿（完成検査）G5 Phase 1b/1c
 
 - 内容: 指定整備記録簿（完成検査）の「検査機器等による検査」測定値について、

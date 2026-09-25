@@ -24,6 +24,9 @@ export const maxDuration = 120;
  * 通知先:
  *   - tenants.contact_email を優先 (admin/settings で編集可)
  *   - 設定が空のテナントはスキップ
+ *
+ * IMP-029 low_stock_alert: カタログのチャネルは email のみで、このサマリーメールが
+ * それを満たしている。dispatchNotification を重ねると同じ内容のメールが二重に届くので通さない。
  */
 export async function GET(req: NextRequest) {
   const { authorized, error: authError } = verifyCronRequest(req);

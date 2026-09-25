@@ -15,7 +15,7 @@ import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { enqueueInsuranceCaseCreated } from "@/lib/qstash/publish";
 import { enqueueCertificateAnchor } from "@/lib/anchoring/certificateAnchorService";
 import { completeDraftPartInstallationsForReservation } from "@/lib/parts/installationService";
-import { sendCustomerLineText } from "@/lib/line/client";
+import { dispatchNotification } from "@/lib/notifications/dispatch";
 import { logger } from "@/lib/logger";
 
 export interface CertificateIssuedParams {
@@ -73,35 +73,20 @@ export async function triggerCertificateIssued(params: CertificateIssuedParams):
     );
   }
 
-  // 証明書発行を顧客へ LINE で自動連絡 (line_user_id が無ければ何もしない)。進捗通知と同様
-  // fire-and-forget・失敗しても発行はブロックしない。
-  notifyCustomerCertificateIssuedViaLine(params).catch((e) =>
-    logger.warn("[cert-issued] LINE notify failed", { err: e instanceof Error ? e.message : String(e) }),
-  );
-}
-
-/** 証明書発行を顧客へ LINE で連絡する (customers.line_user_id がある場合のみ)。 */
-async function notifyCustomerCertificateIssuedViaLine(params: CertificateIssuedParams): Promise<void> {
-  if (!params.customerId) return;
-
-  const { admin } = createTenantScopedAdmin(params.tenantId);
-  const { data: customer } = await admin
-    .from("customers")
-    .select("id, line_user_id")
-    .eq("id", params.customerId)
-    .eq("tenant_id", params.tenantId)
-    .maybeSingle();
-  if (!customer?.line_user_id) return;
-
-  const portalUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/c/${params.publicId}`;
-  const body = `【証明書発行】施工証明書を発行しました。${params.customerName ? `${params.customerName} 様\n` : ""}以下のリンクからご確認いただけます。\n${portalUrl}`;
-
-  await sendCustomerLineText({
-    tenantId: params.tenantId,
-    customerId: params.customerId,
-    lineUserId: customer.line_user_id as string,
-    body,
-  });
+  // 証明書発行を顧客へ連絡 (IMP-029 certificate_issued: カタログ上 in_app + line・顧客宛)。
+  // 顧客のアプリ内受信箱は無いので実際に届くのは LINE のみ。line_user_id が無い顧客・
+  // LINE 無効テナントは dispatch 側でスキップ。dispatch は throw しないので発行は止まらない
+  // (呼び出し側は本関数自体を await しないので、ここで await しても発行レスポンスは遅れない)。
+  if (params.customerId) {
+    await dispatchNotification({
+      tenantId: params.tenantId,
+      type: "certificate_issued",
+      title: "【証明書発行】施工証明書を発行しました。",
+      body: `${params.customerName ? `${params.customerName} 様\n` : ""}以下のリンクからご確認いただけます。`,
+      linkPath: `/c/${params.publicId}`,
+      customerId: params.customerId,
+    });
+  }
 }
 
 /** 発行直後フォローアップ通知ログを (重複なく) 記録する。 */

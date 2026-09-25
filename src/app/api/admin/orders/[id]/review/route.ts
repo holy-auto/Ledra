@@ -1,10 +1,11 @@
-
 import { z } from "zod";
 
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { apiJson, apiNotFound, apiValidationError, apiInternalError } from "@/lib/api/response";
 
 import { withCaller } from "@/lib/api/withCaller";
+import { dispatchNotification } from "@/lib/notifications/dispatch";
+
 const orderReviewCreateSchema = z.object({
   rating: z.coerce
     .number()
@@ -107,6 +108,17 @@ export const POST = withCaller<{ id: string }>(
           new_value: { rating, reviewed_tenant_id: reviewedTenantId },
         })
         .then(() => {}, console.error);
+
+      // 評価された側へ通知（IMP-029 rating_received）。評価は双方送信後に公開される
+      // （published_at トリガー）ので、本文に点数やコメントは載せない。
+      await dispatchNotification({
+        tenantId: reviewedTenantId,
+        type: "rating_received",
+        title: "取引の評価が届きました",
+        body: "取引先から評価が届きました。双方の評価がそろうと公開されます。",
+        linkPath: `/admin/orders/${id}`,
+        jobOrderId: id,
+      });
 
       return apiJson({ review: data }, { status: 201 });
     } catch (e: unknown) {

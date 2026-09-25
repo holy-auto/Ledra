@@ -4,6 +4,20 @@
 > （新しい順）。実装の詳細は RELEASE_LOG.md、迷っている段階のものは
 > OPEN_QUESTIONS.md に書く。
 
+## 2026-09-25 IMP-029 残り15通知タイプ、叩き台どおり全確定（発火させる・宛先/チャネルはカタログ準拠）
+
+1. 日付: 2026-09-25（`date -u` で確認）
+2. 起きたこと: 2026-08-31にOPEN_QUESTIONS.mdへ起票していた「通知18タイプのうち15タイプが本番で一度も発火していない」問題（`booking_created`/`order_created`/`order_accepted`/`order_completed`/`order_cancelled`/`payment_confirmed`/`certificate_gate_ready`/`certificate_issued`/`customer_concern_raised`/`rating_request`/`rating_received`/`sla_at_risk`/`sla_overdue`/`low_stock_alert`/`follow_up_reminder`）について、代表に severity・叩き台の `defaultChannels`・`targetRole` を一覧表で提示し、(a) 叩き台通り全15タイプ確定／(b) 重要度の高いものだけ先行／(c) タイプごとに個別確認／(d) 見送り、の4択で方針を確認したところ「全部」の回答を得た。
+3. 以前の考え: 「証明書を発行したら誰に通知するか」等は推測で決めれば必ず外れ、一度送った通知は取り消せないため、こちらでは決めずに経営判断として凍結していた（2026-08-31付DECISION_LOG）。
+4. 違和感・問題: なし。凍結の理由（代表判断が必要）自体は変わらず、今回代表本人が判断したことで凍結が解除された。
+5. 決めたこと: 15タイプ全てについて (a) 発火させる、(b) 宛先はカタログの `targetRole` を正とする、(c) 配信チャネルは `src/lib/notifications/types.ts` の `defaultChannels`（叩き台）を正式仕様として確定する。中央dispatch実装と15タイプの配線を、この決定を土台に進める。
+6. 捨てた選択肢:
+   - 重要度（urgent/action_required）の高いものだけ先行実装: 代表が「全部」を選んだため不採用。
+   - タイプごとに個別に確認: 同上（一括の意思表示があったため、これ以上の細分化は待たせるだけで不要と判断）。
+7. 判断理由: 代表が一覧表（severity・チャネル・宛先ロール）を確認した上での一括承認であり、叩き台自体がカタログ設計時点で個別に検討済みの内容のため、それ以上の追加確認は不要。
+8. まだ答えが出ていないこと: ユーザー単位（従業員/顧客個人ごと）の通知チャネル選択は引き続き未実装（`src/lib/notifications/routing.ts` はテナント単位の `disabledChannels`/`additionalChannels` 上書きのみ対応、`types.ts:37` に将来対応の注記あり）。実装（中央dispatch＋15タイプの配線）はこの決定の直後にコード化する。
+9. 公開区分: 要確認（社内の通知設計判断。対外公開は想定していないため代表確認まで非公開扱い）
+
 ## 2026-09-25 完成検査の様式(第三号/四号)の別は `answers.__indicated_form` に載せて永続化する
 1. 日付: 2026-09-25（`date -u` 確認）
 2. 起きたこと: Phase 1c の PDF 出力で、第三号（四輪）/第四号（二輪）のどちらのセル配列で描くかを決めるため、記録に様式の別が必要になった。Phase 1b では様式は UI トグルのみで未保存だった。

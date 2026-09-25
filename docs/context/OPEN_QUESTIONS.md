@@ -3,6 +3,27 @@
 > まだ決まっていないこと、判断に迷っていることを書く場所。決まったら
 > DECISION_LOG.md に移し、このファイルからは消す（削除履歴は git で追える）。
 
+## 通知2タイプ（`certificate_gate_ready` / `rating_request`）は該当イベントの実処理が見つからないため未配線（2026-09-25）
+
+IMP-029 の15タイプ配線（DECISION_LOG 2026-09-25 の決定に基づく）のうち、この2タイプだけは
+「発火させる場所」がコードに存在しないため、憶測で作らず見送った。
+
+- **`certificate_gate_ready`**（admin 宛・in_app）: Certificate Gate は発行（draft→active）の
+  その瞬間にしか評価されない（`evaluateCertificateActivationGate` の呼び出しは
+  admin status / activate-by-key / mobile activate / certificateRecordAuto の4箇所で、
+  どれも「READY なら即 active 化」）。写真アップロードや懸念解決のあとに Gate を評価し直して
+  「発行できる状態になった」と検知する処理が無い。配線するには「いつ Gate を再評価するか」
+  （写真アップロード時か、懸念解決時か、定期 cron か）という新しい業務フローの設計が要る。
+- **`rating_request`**（カタログ上 customer 宛・in_app）: 評価の仕組みは受発注（B2B）の
+  `order_reviews`（取引完了後に双方が評価）しか無い。カタログの宛先 `customer` を
+  「施工店の顧客」と読むと、顧客の評価フローも顧客のアプリ内受信箱も存在しない。
+  「受発注の発注側テナント」と読むなら取引完了時に送れるが、同じ瞬間に `order_completed` も
+  届くため、2通にするか・完了通知に評価依頼を含めるかも決めが要る。
+- 次のアクション: 代表に (a) Gate 再評価のタイミング、(b) `rating_request` の宛先の意味
+  （施工店の顧客 / 受発注の相手テナント）を確認する。
+- 起票日: 2026-09-25
+- 判断者: 代表
+
 ## ビルドが Google Fonts への外部フェッチに依存していて、取れないと CI が落ちる（2026-09-23）
 
 2026-09-23 05:23 UTC、**コード変更が1件も無い PR（#1127・`docs/context/` のみ）で
@@ -2164,7 +2185,7 @@ Next.js は関数内にも `"use server"` を書けるので（`vehicles/[id]/pa
 - 起票日: 2026-09-04
 - 判断者: 未定
 
-## 通知18タイプのうち15タイプが本番で一度も発火していない（2026-08-31）
+## 【解決済み 2026-09-25】通知18タイプのうち15タイプが本番で一度も発火していない（2026-08-31）
 
 通知タイプカタログ（`src/lib/notifications/types.ts`）には18タイプあるが、本番で実際に
 書き込まれているのは3タイプだけ（`chat_message` 56件 / `ai_action` 4件 / `platform_notification`
@@ -2185,6 +2206,13 @@ Next.js は関数内にも `"use server"` を書けるので（`vehicles/[id]/pa
 - 関連: 統合dispatch（既存の LINE/Slack/メール/SMS モジュールを中央エンジンへ移行）も
   この判断が決まってからでないと設計できない。
 - 起票日: 2026-08-31
+- **解決（2026-09-25）**: 代表に (a) 叩き台通り全15タイプ確定 / (b) 重要度の高いものだけ先行 /
+  (c) 個別確認 / (d) 見送り、の4択を提示し「全部」の回答を得た。全15タイプとも発火させ、
+  宛先はカタログの `targetRole`、チャネルは `defaultChannels` を正式仕様として確定。
+  詳細は DECISION_LOG.md 2026-09-25 を参照。
+- **実装（2026-09-25）**: 中央 dispatch（`src/lib/notifications/dispatch.ts`）を作り、13タイプが
+  発火する状態になった（内訳は RELEASE_LOG.md 2026-09-25）。`certificate_gate_ready` と
+  `rating_request` は該当イベントの実処理が無いため未配線（本ファイル先頭の項目）。
 
 ## notifications.priority が全行 "normal" で、読み手が1つも無い（2026-08-31）
 
