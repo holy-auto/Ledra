@@ -13,7 +13,7 @@
  * 解析 135 件 = `pg_index` の 135 件、差分 0）。ここは書き方の読み分けだけ。
  */
 import { describe, it, expect } from "vitest";
-import { uniqueFromDump, constraintsFromDump } from "../lib/dumpParse.mjs";
+import { uniqueFromDump, constraintsFromDump, columnRowsFromDump } from "../lib/dumpParse.mjs";
 
 const DUMP = `
 CREATE TABLE public.tenants (
@@ -108,5 +108,60 @@ describe("constraintsFromDump（pg_dump から外部キー・CHECK を拾う）"
       "documents.documents_status_check",
       "tenants.tenants_slug_length",
     ]);
+  });
+});
+
+/**
+ * columnRowsFromDump（列を {name, type} で拾う）のテスト。
+ *
+ * なぜ要るか: enum 型ドリフト検出（本番 enum ⇄ マイグレーション非 enum）はこの解析に乗る。
+ * 型を1トークンで取り、pg_dump の `public.` 修飾を剥がし、GENERATED の折り返し行や制約行を
+ * 列と誤認しないことを固定する。本体の check:drift は SUPABASE 秘密が要って手元で回せないので、
+ * 解析はここで単体検査する。
+ */
+const COLDUMP = `
+CREATE TABLE public.tenants (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    plan_tier text DEFAULT 'free'::text NOT NULL,
+    role public.membership_role_enum DEFAULT 'viewer'::public.membership_role_enum,
+    "name" character varying(255),
+    label_public boolean GENERATED ALWAYS AS (
+        CASE WHEN (status = 'active'::text) THEN true
+        ELSE false END) STORED,
+    CONSTRAINT tenants_plan_check CHECK ((plan_tier <> ''::text))
+);
+`;
+
+describe("columnRowsFromDump（pg_dump から列と型を拾う）", () => {
+  const rows = columnRowsFromDump(COLDUMP);
+  const typeOf = (n: string) => rows.find((r) => r.name === n)?.type;
+
+  it("列名を 表名.列名 で拾い、制約行は列にしない", () => {
+    const names = rows.map((r) => r.name).sort();
+    expect(names).toEqual([
+      "tenants.id",
+      "tenants.label_public",
+      "tenants.name",
+      "tenants.plan_tier",
+      "tenants.role",
+    ]);
+  });
+
+  it("型は先頭トークン。uuid / text をそのまま拾う", () => {
+    expect(typeOf("tenants.id")).toBe("uuid");
+    expect(typeOf("tenants.plan_tier")).toBe("text");
+  });
+
+  it("public. 修飾の enum は剥がして enum 名だけにする", () => {
+    expect(typeOf("tenants.role")).toBe("membership_role_enum");
+  });
+
+  it("複合型（character varying）は先頭語になり、どの enum 名とも一致しない", () => {
+    expect(typeOf("tenants.name")).toBe("character");
+  });
+
+  it("GENERATED の折り返し行（CASE/WHEN/ELSE/END）を列と誤認しない", () => {
+    expect(rows.some((r) => /when|else|end|then/i.test(r.name))).toBe(false);
+    expect(typeOf("tenants.label_public")).toBe("boolean");
   });
 });
