@@ -1,4 +1,3 @@
-
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 
 import { apiJson, apiValidationError, apiInternalError } from "@/lib/api/response";
@@ -9,6 +8,7 @@ import {
   type BodyRepairStage,
 } from "@/lib/validations/body-repair-job";
 import { maybeNotifyBodyRepairStageAdvance } from "@/lib/bodyRepair/stageNotify";
+import { retentionUntilYears } from "@/lib/retention";
 
 import { withCaller } from "@/lib/api/withCaller";
 export const dynamic = "force-dynamic";
@@ -37,10 +37,8 @@ const SELECT_COLUMNS = `
  * 事後検証可能性のため一定期間保存する。記録作成日からの保存期限 (date) を返す。
  */
 function computeRetentionUntil(isSpecifiedMaintenance: boolean): string {
-  const d = new Date();
-  // 特定整備=2年、それ以外=1年を最低保存期間とする。
-  d.setFullYear(d.getFullYear() + (isSpecifiedMaintenance ? 2 : 1));
-  return d.toISOString().slice(0, 10); // YYYY-MM-DD
+  // 特定整備=2年、それ以外=1年を最低保存期間とする（共有ヘルパに委譲）。
+  return retentionUntilYears(isSpecifiedMaintenance ? 2 : 1);
 }
 
 /** ステージ → そのステージに入った時刻を記録する列名。 */
@@ -57,7 +55,6 @@ const STAGE_TIMESTAMP_COLUMN: Record<BodyRepairStage, string> = {
 export const GET = withCaller(
   async (req, { caller }) => {
     try {
-
       const url = new URL(req.url);
       const stageParam = (url.searchParams.get("stage") ?? "").trim();
       const stage = (BODY_REPAIR_STAGES as readonly string[]).includes(stageParam)
@@ -92,7 +89,6 @@ export const GET = withCaller(
 export const POST = withCaller(
   async (req, { caller }) => {
     try {
-
       const parsed = bodyRepairJobCreateSchema.safeParse(await req.json().catch(() => ({})));
       if (!parsed.success) {
         return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
@@ -172,7 +168,6 @@ export const POST = withCaller(
 export const PATCH = withCaller(
   async (req, { caller }) => {
     try {
-
       const parsed = bodyRepairJobUpdateSchema.safeParse(await req.json().catch(() => ({})));
       if (!parsed.success) {
         return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");

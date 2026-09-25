@@ -1,8 +1,8 @@
-
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 
 import { apiJson, apiValidationError, apiInternalError } from "@/lib/api/response";
 import { inspectionRecordCreateSchema, inspectionRecordUpdateSchema } from "@/lib/validations/inspection";
+import { retentionUntilYears } from "@/lib/retention";
 
 import { withCaller } from "@/lib/api/withCaller";
 export const dynamic = "force-dynamic";
@@ -15,16 +15,16 @@ export const runtime = "nodejs";
 const SELECT_COLUMNS = `
   id, template_id, reservation_id, vehicle_id, customer_id, inspection_type,
   answers, photo_urls, template_name, template_items, inspector_name,
-  inspected_at, notes, created_at, updated_at,
+  inspected_at, notes, record_retention_until, created_at, updated_at,
   vehicle:vehicles ( id, maker, model, plate_display ),
-  template:inspection_templates ( id, name )
+  template:inspection_templates ( id, name ),
+  measurements:inspection_measurements ( count )
 `;
 
 // ─── GET: 点検記録一覧 ───
 export const GET = withCaller(
   async (req, { caller }) => {
     try {
-
       const url = new URL(req.url);
       const reservationId = (url.searchParams.get("reservation_id") ?? "").trim();
       const vehicleId = (url.searchParams.get("vehicle_id") ?? "").trim();
@@ -55,7 +55,6 @@ export const GET = withCaller(
 export const POST = withCaller(
   async (req, { caller }) => {
     try {
-
       const parsed = inspectionRecordCreateSchema.safeParse(await req.json().catch(() => ({})));
       if (!parsed.success) {
         return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
@@ -107,6 +106,8 @@ export const POST = withCaller(
           inspector_name: rest.inspector_name,
           inspected_at: inspected_at ?? new Date().toISOString(),
           notes: rest.notes,
+          // 完成検査＝指定整備記録簿は2年保存。データ保持 cron はこの日付前に消さない。
+          record_retention_until: rest.inspection_type === "completion" ? retentionUntilYears(2) : null,
         })
         .select(SELECT_COLUMNS)
         .single();
@@ -124,7 +125,6 @@ export const POST = withCaller(
 export const PATCH = withCaller(
   async (req, { caller }) => {
     try {
-
       const parsed = inspectionRecordUpdateSchema.safeParse(await req.json().catch(() => ({})));
       if (!parsed.success) {
         return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
