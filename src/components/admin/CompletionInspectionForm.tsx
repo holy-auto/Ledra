@@ -151,7 +151,12 @@ export default function CompletionInspectionForm({ reservationId, vehicleId, cus
               key={f}
               type="button"
               onClick={() => setForm(f)}
-              className={`rounded-lg px-2 py-1 text-xs ${
+              // 記録作成後は様式を固定する。作成時に answers.__indicated_form へ保存済みの様式と
+              // 入力中の測定コードがずれると PDF 出力でセルが欠落するため（保存し直しても create は
+              // 再実行されず古い様式が残る）。様式を変えたい場合はキャンセルしてやり直す。
+              disabled={recordId !== null}
+              title={recordId !== null ? "保存済みの様式は変更できません（やり直す場合はキャンセル）" : undefined}
+              className={`rounded-lg px-2 py-1 text-xs disabled:cursor-not-allowed disabled:opacity-50 ${
                 form === f ? "bg-accent text-white" : "bg-surface-hover text-secondary"
               }`}
             >

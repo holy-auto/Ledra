@@ -37,7 +37,9 @@ export type IndicatedMeasurement = {
 
 export type IndicatedInspectionPdfData = {
   form: IndicatedInspectionForm;
-  facility: { name: string | null; address: string | null; registrationNumber: string | null };
+  // 事業場名のみ。指定番号/認証番号・住所は tenants に正準カラムが無く（registration_number は
+  // 適格請求書の登録番号で別物）、誤った識別子を法定様式に載せないため本票には収載しない。
+  facility: { name: string | null };
   inspectorName: string | null;
   inspectedAt: string | null;
   vehicle: { maker: string | null; model: string | null; plate: string | null } | null;
@@ -168,7 +170,6 @@ function IndicatedInspectionDocument({ data }: { data: IndicatedInspectionPdfDat
 
         <View style={s.metaGrid}>
           <MetaItem label="事業場名" value={data.facility.name ?? ""} />
-          <MetaItem label="指定番号 / 認証番号" value={data.facility.registrationNumber ?? ""} />
           <MetaItem label="自動車検査員" value={data.inspectorName ?? ""} />
           <MetaItem label="検査年月日" value={fmtDate(data.inspectedAt)} />
           <MetaItem label="使用者 / 依頼者" value={data.customerName ?? ""} />

@@ -55,11 +55,12 @@ export const GET = withCaller<{ id: string }>(
         .eq("inspection_record_id", id);
       if (mErr) return apiInternalError(mErr, "inspection-record pdf measurements");
 
-      const { data: tenant } = await admin
+      const { data: tenant, error: tErr } = await admin
         .from("tenants")
-        .select("name, address, registration_number")
+        .select("name")
         .eq("id", caller.tenantId)
         .maybeSingle();
+      if (tErr) return apiInternalError(tErr, "inspection-record pdf tenant");
 
       const rec = record as unknown as {
         inspector_name: string | null;
@@ -72,11 +73,7 @@ export const GET = withCaller<{ id: string }>(
 
       const pdf = await renderIndicatedInspectionPdf({
         form: resolveForm(rec.answers),
-        facility: {
-          name: (tenant as { name?: string | null } | null)?.name ?? null,
-          address: (tenant as { address?: string | null } | null)?.address ?? null,
-          registrationNumber: (tenant as { registration_number?: string | null } | null)?.registration_number ?? null,
-        },
+        facility: { name: (tenant as { name?: string | null } | null)?.name ?? null },
         inspectorName: rec.inspector_name,
         inspectedAt: rec.inspected_at,
         vehicle: rec.vehicle
@@ -99,5 +96,6 @@ export const GET = withCaller<{ id: string }>(
       return apiInternalError(e, "inspection-record pdf GET");
     }
   },
-  { routeName: "inspection-record pdf GET" },
+  // 完成検査記録は顧客・車両・測定値を含む法定帳票。書き込み側(PUT measurements)と揃え staff+ に限定。
+  { minRole: "staff", routeName: "inspection-record pdf GET" },
 );

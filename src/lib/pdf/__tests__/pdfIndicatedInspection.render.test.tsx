@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { renderIndicatedInspectionPdf, type IndicatedInspectionPdfData } from "../pdfIndicatedInspection";
 
 const base: Omit<IndicatedInspectionPdfData, "form" | "measurements"> = {
-  facility: { name: "株式会社HOLY 指定工場", address: "東京都", registrationNumber: "関自指 第0000号" },
+  facility: { name: "株式会社HOLY 指定工場" },
   inspectorName: "堀越 友輔",
   inspectedAt: "2026-09-25T00:00:00Z",
   vehicle: { maker: "トヨタ", model: "プリウス", plate: "品川 300 あ 12-34" },
