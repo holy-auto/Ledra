@@ -1,9 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-const { sendEmailMock, notifySlackMock, createServiceRoleAdminMock } = vi.hoisted(() => ({
+const { sendEmailMock, notifySlackMock, createServiceRoleAdminMock, dispatchMock } = vi.hoisted(() => ({
   sendEmailMock: vi.fn(),
   notifySlackMock: vi.fn(),
   createServiceRoleAdminMock: vi.fn(),
+  dispatchMock: vi.fn(),
+}));
+
+vi.mock("@/lib/notifications/dispatch", () => ({
+  dispatchNotification: (...args: unknown[]) => dispatchMock(...args),
 }));
 
 vi.mock("@/lib/email/sendEmail", () => ({ sendEmail: (...args: unknown[]) => sendEmailMock(...args) }));
@@ -72,6 +77,7 @@ describe("notifyNewBooking", () => {
     sendEmailMock.mockReset();
     notifySlackMock.mockReset();
     createServiceRoleAdminMock.mockReset();
+    dispatchMock.mockReset();
     sendEmailMock.mockResolvedValue({ ok: true, id: "msg_1" });
     notifySlackMock.mockResolvedValue(undefined);
   });
@@ -122,5 +128,18 @@ describe("notifyNewBooking", () => {
     expect(payload.text).toContain("テスト整備");
     const dateField = payload.fields.find((f: { title: string }) => f.title === "日時");
     expect(dateField.value).toContain("終日");
+  });
+
+  it("in_app は dispatch 経由（email/slack は専用テンプレートが送るので dispatch 側では無効化＝二重送信しない）", async () => {
+    createServiceRoleAdminMock.mockReturnValue(
+      makeFakeSupabase({ members: null, userEmail: null, slackWebhookUrl: null }),
+    );
+
+    await notifyNewBooking("t-1", reservation, "山田太郎");
+
+    expect(dispatchMock).toHaveBeenCalledOnce();
+    const arg = dispatchMock.mock.calls[0][0];
+    expect(arg.type).toBe("booking_created");
+    expect(arg.overrides.disabledChannels).toEqual(["email", "slack"]);
   });
 });

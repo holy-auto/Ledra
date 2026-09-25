@@ -6,6 +6,8 @@ import { recordCronSuccess, recordCronFailure } from "@/lib/cron/failureTracker"
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { withCronLock } from "@/lib/cron/lock";
 import { logger } from "@/lib/logger";
+import { resolveChannels } from "@/lib/notifications/routing";
+import { sendNotificationEmail } from "@/lib/notifications/dispatch";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
@@ -31,8 +33,10 @@ export const maxDuration = 120;
  *   - at_risk: 担当者 (assigned_to)。未アサインなら管理者にフォールバック。
  *   - overdue: 担当者 + 保険会社管理者 (role='admin')。
  *
- * メール: SLA 専用のメールテンプレートは既存に無いため、ここでは in-app 通知のみ。
- *         (タスク方針: メール配管が複雑なら in-app 通知のみで可)
+ * メール: 通知タイプカタログ (IMP-029, 2026-09-25 代表確定) のチャネルに従う。
+ *         sla_overdue は in_app + email、sla_at_risk は in_app のみ。宛先は in-app と同じ
+ *         ユーザーの insurer_users.email。文面は notifications/dispatch の共通テンプレート。
+ *         (保険会社側は tenant の notifications テーブルではないので dispatchNotification は通さない)
  */
 
 /** Default SLA thresholds (hours) — GET /api/insurer/sla の DEFAULT_SLA と一致 */
@@ -174,13 +178,16 @@ async function runSlaAlerts(supabase: SupabaseAdmin) {
   // 3. assigned_to (insurer_users.id) → user_id (auth.users) のマップ。
   const assignedInsurerUserIds = [...new Set(cases.map((c) => c.assigned_to).filter((v): v is string => !!v))];
   const assigneeUserIdById = new Map<string, string>();
+  /** user_id → insurer_users.email（sla_overdue のメール宛先）。 */
+  const emailByUserId = new Map<string, string>();
   if (assignedInsurerUserIds.length > 0) {
     const { data: assignees } = await supabase
       .from("insurer_users")
-      .select("id, user_id")
+      .select("id, user_id, email")
       .in("id", assignedInsurerUserIds);
     for (const u of assignees ?? []) {
       if (u.user_id) assigneeUserIdById.set(u.id as string, u.user_id as string);
+      if (u.user_id && u.email) emailByUserId.set(u.user_id as string, u.email as string);
     }
   }
 
@@ -189,12 +196,13 @@ async function runSlaAlerts(supabase: SupabaseAdmin) {
   {
     const { data: admins } = await supabase
       .from("insurer_users")
-      .select("insurer_id, user_id, role, is_active")
+      .select("insurer_id, user_id, role, is_active, email")
       .in("insurer_id", insurerIds)
       .eq("role", "admin")
       .eq("is_active", true);
     for (const a of admins ?? []) {
       if (!a.user_id) continue;
+      if (a.email) emailByUserId.set(a.user_id as string, a.email as string);
       const list = adminUserIdsByInsurer.get(a.insurer_id as string) ?? [];
       list.push(a.user_id as string);
       adminUserIdsByInsurer.set(a.insurer_id as string, list);
@@ -236,10 +244,11 @@ async function runSlaAlerts(supabase: SupabaseAdmin) {
     }
 
     const copy = notificationCopy(stage, c.case_number ?? "", c.title ?? "", remainingHours);
+    const type = stage === "overdue" ? "sla_overdue" : "sla_at_risk";
     const rows = [...recipients].map((userId) => ({
       insurer_id: c.insurer_id,
       user_id: userId,
-      type: stage === "overdue" ? "sla_overdue" : "sla_at_risk",
+      type,
       title: copy.title,
       body: copy.body,
       link: `/insurer/cases/${c.id}`,
@@ -255,6 +264,23 @@ async function runSlaAlerts(supabase: SupabaseAdmin) {
       continue;
     }
     notificationsInserted += rows.length;
+
+    // カタログで email を持つタイプ (sla_overdue) はメールも送る。失敗は warn のみ
+    // (in-app は届いているのでマーカーは進める = メールだけの再送はしない)。
+    if (resolveChannels(type).includes("email")) {
+      const emails = [...recipients].map((u) => emailByUserId.get(u)).filter((e): e is string => !!e);
+      const sent = await Promise.allSettled(
+        emails.map((to) => sendNotificationEmail(to, { ...copy, linkPath: `/insurer/cases/${c.id}` })),
+      );
+      for (const r of sent) {
+        if (r.status === "rejected") {
+          logger.warn("[cron/insurer-sla-alerts] overdue email failed", {
+            caseId: c.id,
+            error: r.reason instanceof Error ? r.reason.message : String(r.reason),
+          });
+        }
+      }
+    }
     if (stage === "overdue") overdueNotified += 1;
     else atRiskNotified += 1;
 

@@ -5,6 +5,7 @@ import { apiJson, apiValidationError, apiInternalError, apiNotFound } from "@/li
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { notifySlack } from "@/lib/slack";
 import { CONCERN_SOURCES, CONCERN_CATEGORIES, CONCERN_CATEGORY_LABELS } from "@/lib/concerns/types";
+import { dispatchNotification } from "@/lib/notifications/dispatch";
 
 const concernSchema = z.object({
   source_type: z.enum(CONCERN_SOURCES),
@@ -77,6 +78,15 @@ export async function POST(req: NextRequest) {
     } catch (err) {
       console.error("[customer/concerns] slack notify failed:", err);
     }
+
+    // テナント管理者へ通知（IMP-029 customer_concern_raised: in_app + テナントの Slack）。
+    // 上の Slack は Ledra 運営向けの env Webhook で宛先が別なので、二重送信にはならない。
+    await dispatchNotification({
+      tenantId: resolved.tenantId,
+      type: "customer_concern_raised",
+      title: `顧客から懸念が届きました（${categoryLabel(category)}）`,
+      body: `${sourceLabel(source_type)}: ${concern_text.slice(0, 200)}`,
+    });
 
     return apiJson({ ok: true, id: data.id }, { status: 201 });
   } catch (e) {

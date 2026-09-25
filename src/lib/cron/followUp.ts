@@ -67,6 +67,10 @@ export type FollowUpResult = {
 const isAiPlan = (tier: string) => ["starter", "standard", "pro"].includes(tier);
 
 // ─── 共通: 通知送信 ─────────────────────────────────────────────
+// IMP-029 follow_up_reminder（カタログ: email + line・顧客宛）はこの経路が担う（LINE 優先・
+// 失敗時 email）。dispatchNotification は通さない（AI 文面と notification_logs の重複防止を持つ
+// こちらが正。重ねると顧客に二重に届く）。予約前日リマインダー（cron/reservation-reminders）は
+// 予約という別イベントで、このタイプとは重複しない。
 async function sendNotification(
   supabase: SupabaseClient,
   params: {
