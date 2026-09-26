@@ -217,12 +217,38 @@ Google Fonts が `&` を含む URL を返すと `next/font/google queries have e
 > 巻き込んで消してしまった（`/code-review` の指摘で復活）。`LEDRA_CURRENT.md` と
 > `DECISION_LOG.md` がここを指している。
 
-`certificate_images` の列定義が本番と食い違っている
-（`file_name` と `content_type` が本番は NOT NULL・マイグレーションは NULL 可、
-`sort_order` の既定が本番 1・マイグレーション 0）。
-`file_size` だけは `20260922141100` で揃えた。**列の「名前」しか突き合わせていない**ので、
-既定値・NULL 可否・型の食い違いは `check:schema` にも再生にも映らない。
-検出器を属性まで見るように広げるかは別途判断する。
+**2026-09-25 に解決（`20260925142800`・判断は DECISION_LOG 2026-09-25）。**
+本番と再生 DB を**同じクエリで**引いて
+突き合わせた（`information_schema.columns` の列名・型・精度・NULL 可否・既定値）。
+45 列のうち差は次の3件だけで、他は完全一致だった。
+
+| 列 | 本番 | 再生 |
+|---|---|---|
+| `file_name` | NOT NULL | NULL 可 |
+| `content_type` | NOT NULL | NULL 可 |
+| `sort_order` | 既定 1 | 既定 0 |
+
+マイグレーション側を本番に揃えた。本番は 88 行・3列とも NULL 0件なので**本番では no-op**、
+直るのは新しく作る環境の側。書き手は2箇所（`processUploadedPhoto.ts` と
+`scripts/setup-demo-tenant.ts` のデモ投入。SQL 関数からの insert は `pg_proc` で0件を確認）で、
+どちらも3列とも常に明示で渡す。
+振る舞い検査 `certificate_images_column_shape.sql` を追加し、3件それぞれが
+独立に落ちることを陰性対照で実測した。
+
+**この修正が隣の検査を弱めていた（`/code-review` の指摘で修正）**: 同表の
+`certificate_images_file_size.sql` は「`file_size` を省くと 23502」で判定していたが、
+その insert は `file_name` / `content_type` も省いていた。3列とも NOT NULL になった後は
+**どの列で落ちても 23502** なので、`20260922141100` を丸ごと戻しても通る状態だった。
+insert に2列を明示で渡すよう直し、`20260922141100` を空にすると 23514 で落ちることを実測した。
+台帳 `M-20260925-my-not-null-blinded-the-sibling-check`。
+
+**残っている根の問題**: 検出器（`check-schema-drift.mjs`）と `check:schema` は
+**列の「名前」しか突き合わせていない**（検出器の「ponytail: 上限その2」に明記された既知の限界）。
+だから今回の3件はどちらの検査にも映らず、表を1つずつ手で突き合わせるしかなかった。
+**他の表にも同じ形の食い違いが残っている可能性がある**（未調査）。
+検出器を属性（NULL 可否・既定値・型）まで見るように広げるのが筋だが、
+検出器は Management API の資格情報（`SUPABASE_ACCESS_TOKEN` / `SUPABASE_PROJECT_ID`）を
+要求するので、手元では動かして確かめられない。
 
 ## 一意でない索引が本番と再生 DB で食い違っている（2026-09-21）
 
@@ -367,6 +393,28 @@ created 2026-07-26）。増えていない。
 | 外部キー | 597 | 600 |
 | RLS ポリシー | 622 | 642 |
 | 関数 | 145 | 145（名前の差は 0。`check-schema-drift.mjs` が見ている） |
+
+**2026-09-25 に索引とポリシーを測り直した**（`--dsn` で残した再生 DB ⇄ 本番、同じクエリ）。
+
+| | 本番 | 再生 | 差のある表 |
+|---|---|---|---|
+| 一意でない索引 | 768 | 766 | **15 表** |
+| RLS ポリシー | 654 | 659 | **12 表** |
+
+**総数の差（索引2・ポリシー5）を「差が小さい」と読んではいけない。** 表ごとに見ると
+索引は本番のみ側が正味 16 本・再生のみ側が正味 14 本で、打ち消し合って2になっている
+（16−14=2 で総数差と一致）。ポリシーも再生のみ側 13・本番のみ側 8 で 13−8=5。
+以前これと同じ形で誤った（MISTAKE_LEDGER `M-20260921-compared-counts-where-names-differed`）。
+
+索引で件数が違う 15 表: `agent_signing_requests` `audit_logs` `certificates`
+`customer_inquiries` `customer_login_codes` `customer_sessions` `documents`
+`insurer_tenant_access` `insurers` `job_orders` `market_vehicles` `nfc_tags`
+`reservations` `tenant_memberships` `vehicles`。
+ポリシーで件数が違う 12 表: `academy_creator_rewards` `academy_lessons`
+`academy_quiz_questions` `admin_audit_logs` `audit_logs` `certificates`
+`customer_inquiries` `insurer_access_logs` `organization_members` `templates`
+`tenant_memberships` `tenants`。
+**索引名・ポリシー名までの突き合わせは今回も未実施**（表ごとの件数まで）。
 
 **CHECK と外部キーは 2026-09-22 に名前まで突き合わせ済み**（`20260922123000` / `20260922123100`）。
 適用後は外部キーが両方向 0、CHECK は enum に置き換わった3本だけが残る見込み。
@@ -640,6 +688,19 @@ RPC を解決できない可能性がある」と指摘し、それが本当な�
 **未決は同じ**（書き起こすか、本番から消すか）。変わったのは、**当て推量ではなく
 検出器が毎週数えるようになった**こと。`certificates` の anon 公開が意図どおりかは
 引き続き【要確認】。
+
+**2026-09-25 追記（再確認と、1つ足りていなかった事実）**: 件数は本番 654 / 再生 659 に
+動いたが、`insurer_access_logs` の2本（`logs_insert_self_only` / `logs_select_same_insurer`）は
+**今も本番にだけある**。この2本は `check-schema-drift.mjs` の既知リストに載っていないので、
+検出器が走っていれば出るはずのものである（この作業環境には Management API の資格情報が
+無く、検出器を走らせて「出ているのか」は確かめていない）。
+
+上の記録に無かった事実を1つ足す: **再生 DB では `insurer_access_logs` は
+RLS が有効なままポリシー0本**（`relrowsecurity = true` / `pg_policies` 0件を実測）。
+つまり新しい環境は `authenticated` に対して**全部拒否**で、本番より緩いのではなく厳しい。
+API の読み書きはサービスロール（`createInsurerScopedAdmin`）で RLS を迂回するので
+画面は動く。**漏れる向きの差ではない**が、同じマイグレーションから作った環境の
+振る舞いが本番と違う状態は残っている。
 ## 追加（2026-08-27・CI が2回続けて起動しなかった）
 
 - **PR #979 への push 2回（`f97fbe0` / `2c78c1d`、8/27 00:10〜00:12 UTC）で
