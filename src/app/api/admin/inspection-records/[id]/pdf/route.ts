@@ -3,7 +3,11 @@ import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { apiValidationError, apiInternalError } from "@/lib/api/response";
 import { withCaller } from "@/lib/api/withCaller";
 import { renderIndicatedInspectionPdf, type IndicatedMeasurement } from "@/lib/pdf/pdfIndicatedInspection";
-import { INDICATED_INSPECTION_FORMS, type IndicatedInspectionForm } from "@/lib/validations/indicated-inspection";
+import {
+  INDICATED_INSPECTION_FORMS,
+  extractInspectionAnswers,
+  type IndicatedInspectionForm,
+} from "@/lib/validations/indicated-inspection";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -71,6 +75,7 @@ export const GET = withCaller<{ id: string }>(
         customer: { name: string | null } | null;
       };
 
+      const { visual, match } = extractInspectionAnswers(rec.answers);
       const pdf = await renderIndicatedInspectionPdf({
         form: resolveForm(rec.answers),
         facility: { name: (tenant as { name?: string | null } | null)?.name ?? null },
@@ -82,6 +87,8 @@ export const GET = withCaller<{ id: string }>(
         customerName: rec.customer?.name ?? null,
         notes: rec.notes,
         measurements: (measurements ?? []) as IndicatedMeasurement[],
+        visual,
+        match,
         generatedAt: new Date().toISOString(),
       });
 
