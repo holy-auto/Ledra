@@ -30,6 +30,23 @@ function resolveForm(answers: unknown): IndicatedInspectionForm {
   return INDICATED_INSPECTION_FORMS.includes(v as IndicatedInspectionForm) ? (v as IndicatedInspectionForm) : "sanago";
 }
 
+/**
+ * answers（`{[key]:{value}}`）から目視検査(`visual.`)・照合欄(`match.`)の値を接頭辞で抽出する。
+ * PDF はカタログのキーで引くため、prefix 一致のみを渡せばよい（未知キーは無視）。
+ */
+function extractAnswers(answers: unknown): { visual: Record<string, string>; match: Record<string, string> } {
+  const visual: Record<string, string> = {};
+  const match: Record<string, string> = {};
+  const obj = (answers ?? {}) as Record<string, unknown>;
+  for (const [k, v] of Object.entries(obj)) {
+    const value = (v as { value?: unknown } | null)?.value;
+    if (typeof value !== "string" || value === "") continue;
+    if (k.startsWith("visual.")) visual[k] = value;
+    else if (k.startsWith("match.")) match[k] = value;
+  }
+  return { visual, match };
+}
+
 export const GET = withCaller<{ id: string }>(
   async (_req, { caller, params }) => {
     try {
@@ -71,6 +88,7 @@ export const GET = withCaller<{ id: string }>(
         customer: { name: string | null } | null;
       };
 
+      const { visual, match } = extractAnswers(rec.answers);
       const pdf = await renderIndicatedInspectionPdf({
         form: resolveForm(rec.answers),
         facility: { name: (tenant as { name?: string | null } | null)?.name ?? null },
@@ -82,6 +100,8 @@ export const GET = withCaller<{ id: string }>(
         customerName: rec.customer?.name ?? null,
         notes: rec.notes,
         measurements: (measurements ?? []) as IndicatedMeasurement[],
+        visual,
+        match,
         generatedAt: new Date().toISOString(),
       });
 

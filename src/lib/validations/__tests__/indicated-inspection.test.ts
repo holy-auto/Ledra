@@ -5,6 +5,9 @@ import {
   measurementFieldsForForm,
   isKnownMeasurementCode,
   MEASUREMENT_FIELDS,
+  visualItemsForForm,
+  vehicleMatchFieldsForForm,
+  VISUAL_INSPECTION_ITEMS,
 } from "../indicated-inspection";
 
 describe("indicated-inspection measurement catalog", () => {
@@ -106,5 +109,35 @@ describe("indicated-inspection measurement catalog", () => {
   it("measurementsPutSchema: 不正メンバー（未知コード）を拒否する", () => {
     const r = measurementsPutSchema.safeParse({ measurements: [{ field_code: "bogus", num_value: 1 }] });
     expect(r.success).toBe(false);
+  });
+});
+
+describe("indicated-inspection visual / match catalog [Phase 1d]", () => {
+  it("目視項目コードは一意で、全て visual. 接頭辞を持つ", () => {
+    const codes = VISUAL_INSPECTION_ITEMS.map((i) => i.code);
+    expect(new Set(codes).size).toBe(codes.length);
+    expect(codes.every((c) => c.startsWith("visual."))).toBe(true);
+  });
+
+  it("自動運行装置は第三号(四輪)のみ・第四号(二輪)には無い", () => {
+    const sanago = visualItemsForForm("sanago").map((i) => i.code);
+    const yonago = visualItemsForForm("yonago").map((i) => i.code);
+    expect(sanago).toContain("visual.device.autonomous");
+    expect(yonago).not.toContain("visual.device.autonomous");
+    // 「その他」は両様式にある
+    expect(sanago).toContain("visual.device.other");
+    expect(yonago).toContain("visual.device.other");
+  });
+
+  it("照合欄: 自動車の種別・用途・最大積載量は第三号のみ", () => {
+    const sanago = vehicleMatchFieldsForForm("sanago").map((f) => f.code);
+    const yonago = vehicleMatchFieldsForForm("yonago").map((f) => f.code);
+    for (const c of ["match.vehicle_type", "match.usage", "match.max_load"]) {
+      expect(sanago).toContain(c);
+      expect(yonago).not.toContain(c);
+    }
+    // 車名・型式は両様式共通
+    expect(yonago).toContain("match.vehicle_name");
+    expect(yonago).toContain("match.model");
   });
 });

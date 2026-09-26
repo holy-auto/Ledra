@@ -5,18 +5,21 @@ import { fmtDate } from "@/lib/pdf/format";
 import {
   measurementFieldsForForm,
   measurementGroup,
+  visualItemsForForm,
+  vehicleMatchFieldsForForm,
+  VISUAL_GROUP_LABEL,
   type IndicatedInspectionForm,
   type MeasurementFieldDef,
+  type VisualInspectionItem,
 } from "@/lib/validations/indicated-inspection";
 
 /**
- * 指定整備記録簿（完成検査・第三号/四号様式）の測定値記録 PDF。 [G5 / Phase 1c]
+ * 指定整備記録簿（完成検査・第三号/四号様式）の記録 PDF。 [G5 / Phase 1c・1d]
  *
- * Phase 1b で構造化保存した「検査機器等による検査」の測定値を、様式のセル配列どおりに
- * 帳票化する（電磁的方法による作成・交付, 令和7年7月8日通達 §電磁的記録）。
- * 目視等による検査（構造・装置）と車両情報の照合欄は Phase 1b で未捕捉のため本 PDF でも
- * 未収載であることを明記する（空欄の official 様式そのままを描くと未記入と誤認されるため、
- * 収載済みの測定値のみを対象とする測定記録票として出力する）。
+ * 様式に沿って帳票化する（電磁的方法による作成・交付, 令和7年7月8日通達 §電磁的記録）:
+ * - 検査機器等による検査（測定値, Phase 1b） … inspection_measurements
+ * - 目視等による検査（構造・装置）と車両情報の照合欄（Phase 1d） … inspection_records.answers
+ * 値の無いセルは様式どおり空欄で描く。
  */
 
 Font.register({
@@ -46,6 +49,9 @@ export type IndicatedInspectionPdfData = {
   customerName: string | null;
   notes: string | null;
   measurements: IndicatedMeasurement[];
+  // 目視検査の判定（code→"pass"/"fail"/"na"）と照合欄の値（code→文字列）。answers から抽出して渡す。
+  visual: Record<string, string>;
+  match: Record<string, string>;
   generatedAt: string;
 };
 
@@ -106,8 +112,6 @@ const s = StyleSheet.create({
     fontSize: 9,
     backgroundColor: C.bg,
   },
-  scopeNote: { fontSize: 7.5, color: C.muted, marginTop: 4, lineHeight: 1.4 },
-
   footer: {
     position: "absolute",
     bottom: 18,
@@ -119,6 +123,18 @@ const s = StyleSheet.create({
     color: C.muted,
   },
 });
+
+/**
+ * 丸数字（①〜⑳ / ㉑）を通常数字へ正規化する。PDF の日本語サブセットフォントは丸数字グリフを
+ * 含まないため、目視項目ラベルの「① 走行装置」は「1 走行装置」として描く（HTML フォームでは
+ * 丸数字のまま表示されるが、PDF では欠字になるため）。①=U+2460..⑳=U+2473 / ㉑=U+3251。
+ */
+function plainLabel(label: string): string {
+  return label.replace(/[①-⑳㉑-㉟]/g, (ch) => {
+    const cp = ch.codePointAt(0) ?? 0;
+    return String(cp >= 0x3251 ? cp - 0x3251 + 21 : cp - 0x2460 + 1);
+  });
+}
 
 /** 1測定セルの表示値を組み立てる。値が無ければ空文字（＝様式の未記入セル）。 */
 function formatValue(def: MeasurementFieldDef, m: IndicatedMeasurement | undefined): string {
@@ -159,14 +175,24 @@ function IndicatedInspectionDocument({ data }: { data: IndicatedInspectionPdfDat
     else groups.push({ name: g, fields: [f] });
   }
 
+  // 目視検査を構造→装置でグループ化（様式順）。
+  const visualItems = visualItemsForForm(data.form);
+  const visualGroups: { group: VisualInspectionItem["group"]; items: VisualInspectionItem[] }[] = [];
+  for (const it of visualItems) {
+    const last = visualGroups[visualGroups.length - 1];
+    if (last && last.group === it.group) last.items.push(it);
+    else visualGroups.push({ group: it.group, items: [it] });
+  }
+  const matchFields = vehicleMatchFieldsForForm(data.form);
+
   const vehicleLine = data.vehicle ? [data.vehicle.maker, data.vehicle.model].filter(Boolean).join(" ") || "—" : "—";
 
   return (
     <Document>
       <Page size="A4" style={s.page} wrap>
         <View style={s.headerBar} />
-        <Text style={s.title}>指定整備記録簿（完成検査）測定記録</Text>
-        <Text style={s.subtitle}>{FORM_LABEL[data.form]}　検査機器等による検査</Text>
+        <Text style={s.title}>指定整備記録簿（完成検査）</Text>
+        <Text style={s.subtitle}>{FORM_LABEL[data.form]}</Text>
 
         <View style={s.metaGrid}>
           <MetaItem label="事業場名" value={data.facility.name ?? ""} />
@@ -177,9 +203,10 @@ function IndicatedInspectionDocument({ data }: { data: IndicatedInspectionPdfDat
           <MetaItem label="登録番号 / 車両番号" value={data.vehicle?.plate ?? ""} />
         </View>
 
+        {/* 検査機器等による検査（測定値） */}
         {groups.map((g) => (
           <View key={g.name} style={s.section} wrap={false}>
-            <Text style={s.sectionTitle}>{g.name}</Text>
+            <Text style={s.sectionTitle}>検査機器等による検査 — {g.name}</Text>
             <View style={s.table}>
               <View style={s.headerRow}>
                 <Text style={[s.th, { width: "58%" }]}>測定項目</Text>
@@ -195,15 +222,48 @@ function IndicatedInspectionDocument({ data }: { data: IndicatedInspectionPdfDat
           </View>
         ))}
 
+        {/* 目視等による検査（構造・装置） */}
+        {visualGroups.map((g) => (
+          <View key={g.group} style={s.section} wrap={false}>
+            <Text style={s.sectionTitle}>目視等による検査 — {VISUAL_GROUP_LABEL[g.group]}</Text>
+            <View style={s.table}>
+              <View style={s.headerRow}>
+                <Text style={[s.th, { width: "78%" }]}>項目</Text>
+                <Text style={[s.th, { width: "22%", textAlign: "right" }]}>判定</Text>
+              </View>
+              {g.items.map((it, i) => (
+                <View key={it.code} style={[s.row, i % 2 === 1 ? s.rowAlt : {}]}>
+                  <Text style={[s.tdLabel, { width: "78%" }]}>{plainLabel(it.label)}</Text>
+                  <Text style={[s.tdValue, { width: "22%" }]}>
+                    {data.visual[it.code] ? (JUDGMENT_LABEL[data.visual[it.code]] ?? data.visual[it.code]) : ""}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          </View>
+        ))}
+
+        {/* 自動車検査証等の記載事項との照合 */}
+        <View style={s.section} wrap={false}>
+          <Text style={s.sectionTitle}>自動車検査証等の記載事項との照合</Text>
+          <View style={s.table}>
+            {matchFields.map((f, i) => (
+              <View key={f.code} style={[s.row, i % 2 === 1 ? s.rowAlt : {}]}>
+                <Text style={s.tdLabel}>
+                  {f.label}
+                  {f.unit ? `（${f.unit}）` : ""}
+                </Text>
+                <Text style={s.tdValue}>{data.match[f.code] ?? ""}</Text>
+              </View>
+            ))}
+          </View>
+        </View>
+
         <View style={s.section}>
           <Text style={s.sectionTitle}>点検及び整備の概要 / 備考</Text>
           <View style={s.notesBox}>
             <Text>{data.notes || "—"}</Text>
           </View>
-          <Text style={s.scopeNote}>
-            ※ 本票は「検査機器等による検査」の測定値記録です。目視等による検査（構造・装置の各項目）
-            および車両諸元の照合欄は本票には含まれません。
-          </Text>
         </View>
 
         <View style={s.footer} fixed>

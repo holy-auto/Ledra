@@ -4,16 +4,22 @@ import { useMemo, useState } from "react";
 import {
   measurementFieldsForForm,
   measurementGroup,
+  visualItemsForForm,
+  vehicleMatchFieldsForForm,
+  VISUAL_GROUP_LABEL,
   type IndicatedInspectionForm,
   type MeasurementInput,
+  type VisualInspectionItem,
 } from "@/lib/validations/indicated-inspection";
 
 /**
- * 完成検査（指定整備記録簿・第三号/四号様式）の測定値 手入力フォーム。 [G5 / Phase 1b]
+ * 完成検査（指定整備記録簿・第三号/四号様式）の手入力フォーム。 [G5 / Phase 1b・1d]
  *
- * inspection_type='completion' の点検記録を作成し、様式の「検査機器等による検査」測定値を
- * inspection_measurements へ保存する。様式(四輪=第三号 / 二輪=第四号)で測定セルが変わる。
- * 目視等による検査（構造・装置）と車両情報の照合は後続で拡張する。
+ * inspection_type='completion' の点検記録を作成し、
+ * - 「検査機器等による検査」測定値 → inspection_measurements（Phase 1b）
+ * - 「目視等による検査」（構造・装置）と車両情報の照合欄 → inspection_records.answers（Phase 1d,
+ *   `visual.` / `match.` 接頭辞。様式の別は `__indicated_form`）
+ * に保存する。様式(四輪=第三号 / 二輪=第四号)で項目が変わる。
  */
 
 interface Props {
@@ -43,6 +49,9 @@ export default function CompletionInspectionForm({ reservationId, vehicleId, cus
   const [inspectorName, setInspectorName] = useState("");
   const [notes, setNotes] = useState("");
   const [cells, setCells] = useState<Record<string, Cell>>({});
+  // 目視検査の判定（code→"pass"/"fail"/"na"）と照合欄のテキスト（code→値）。answers に保存する。
+  const [visual, setVisual] = useState<Record<string, string>>({});
+  const [match, setMatch] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // 作成済みレコード ID。測定値保存だけ失敗した際、再保存で新レコードを重複作成しないよう保持する。
@@ -59,6 +68,18 @@ export default function CompletionInspectionForm({ reservationId, vehicleId, cus
     }
     return Array.from(map.entries());
   }, [fields]);
+
+  const visualItems = useMemo(() => visualItemsForForm(form), [form]);
+  const visualGroups = useMemo(() => {
+    const map = new Map<VisualInspectionItem["group"], VisualInspectionItem[]>();
+    for (const it of visualItems) {
+      const arr = map.get(it.group) ?? [];
+      arr.push(it);
+      map.set(it.group, arr);
+    }
+    return Array.from(map.entries());
+  }, [visualItems]);
+  const matchFields = useMemo(() => vehicleMatchFieldsForForm(form), [form]);
 
   function cell(code: string): Cell {
     return cells[code] ?? { num: "", text: "", unit: "", judgment: "" };
@@ -94,11 +115,30 @@ export default function CompletionInspectionForm({ reservationId, vehicleId, cus
     return out;
   }
 
+  /**
+   * answers に保存する内容を組み立てる。様式の別(__indicated_form)＋目視検査の判定＋照合欄の値。
+   * 未入力の項目は含めない。PDF 出力(Phase 1c/1d)がこの接頭辞で読み分ける。
+   */
+  function buildAnswers(): Record<string, { value: string }> {
+    const a: Record<string, { value: string }> = { __indicated_form: { value: form } };
+    for (const it of visualItems) {
+      const v = visual[it.code];
+      if (v) a[it.code] = { value: v };
+    }
+    for (const f of matchFields) {
+      const v = (match[f.code] ?? "").trim();
+      if (v) a[f.code] = { value: v };
+    }
+    return a;
+  }
+
   async function handleSave() {
     setSaving(true);
     setError(null);
     try {
-      // 1) 完成検査レコードを作成（既に作成済みなら再利用し、重複作成を避ける）
+      const answers = buildAnswers();
+      // 1) 完成検査レコードを作成（既に作成済みなら再利用し、重複作成を避ける）。
+      //    再保存時は create をスキップするため、目視・照合の編集が消えないよう answers を PATCH で更新する。
       let id = recordId;
       if (!id) {
         const createRes = await fetch("/api/admin/inspection-records", {
@@ -111,9 +151,7 @@ export default function CompletionInspectionForm({ reservationId, vehicleId, cus
             inspection_type: "completion",
             inspector_name: inspectorName || null,
             notes: notes || null,
-            // 様式(第三号/四号)の別を記録に永続化する。PDF 出力(Phase 1c)がセル配列の
-            // 決定に使う。answers は完成検査では他用途が無いため予約キーに載せる。
-            answers: { __indicated_form: { value: form } },
+            answers,
           }),
         });
         const createJson = await createRes.json().catch(() => ({}));
@@ -121,6 +159,14 @@ export default function CompletionInspectionForm({ reservationId, vehicleId, cus
         id = createJson?.record?.id;
         if (!id) throw new Error("作成した記録の ID を取得できませんでした。");
         setRecordId(id);
+      } else {
+        const patchRes = await fetch("/api/admin/inspection-records", {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ id, answers }),
+        });
+        const patchJson = await patchRes.json().catch(() => ({}));
+        if (!patchRes.ok) throw new Error(patchJson?.message ?? "目視・照合の保存に失敗しました。");
       }
 
       // 2) 測定値を保存
@@ -241,6 +287,68 @@ export default function CompletionInspectionForm({ reservationId, vehicleId, cus
           </div>
         </div>
       ))}
+
+      {/* 目視等による検査（構造・装置） */}
+      <div className="space-y-2">
+        <div className="text-[11px] font-semibold tracking-[0.14em] text-muted uppercase">目視等による検査</div>
+        {visualGroups.map(([group, items]) => (
+          <div key={group} className="space-y-1">
+            <div className="text-[11px] font-semibold text-secondary">{VISUAL_GROUP_LABEL[group]}</div>
+            <div className="grid grid-cols-1 gap-1 sm:grid-cols-2">
+              {items.map((it) => (
+                <div key={it.code} className="flex items-center gap-2">
+                  <span className="flex-1 text-[12px] text-secondary">{it.label}</span>
+                  <select
+                    value={visual[it.code] ?? ""}
+                    onChange={(e) => setVisual((prev) => ({ ...prev, [it.code]: e.target.value }))}
+                    className="input w-24 text-sm"
+                  >
+                    {JUDGMENTS.map((j) => (
+                      <option key={j.value} value={j.value}>
+                        {j.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* 自動車検査証等の記載事項との照合 */}
+      <div className="space-y-2">
+        <div className="text-[11px] font-semibold tracking-[0.14em] text-muted uppercase">車両情報の照合</div>
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          {matchFields.map((f) => (
+            <label key={f.code} className="text-[12px] text-secondary">
+              {f.label}
+              {f.unit ? `（${f.unit}）` : ""}
+              {f.choices ? (
+                <select
+                  value={match[f.code] ?? ""}
+                  onChange={(e) => setMatch((prev) => ({ ...prev, [f.code]: e.target.value }))}
+                  className="input mt-1 w-full text-sm"
+                >
+                  <option value="">—</option>
+                  {f.choices.map((c) => (
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  value={match[f.code] ?? ""}
+                  onChange={(e) => setMatch((prev) => ({ ...prev, [f.code]: e.target.value }))}
+                  className="input mt-1 w-full text-sm"
+                  maxLength={120}
+                />
+              )}
+            </label>
+          ))}
+        </div>
+      </div>
 
       <label className="block text-xs text-secondary">
         点検及び整備の概要 / 備考
