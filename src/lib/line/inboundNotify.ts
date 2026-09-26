@@ -24,7 +24,8 @@ export interface MaybeNotifyInboundParams {
   customerId?: string | null;
 }
 
-function isMissingRelationError(err: { message?: string; code?: string } | null | undefined): boolean {
+/** テーブル/列の欠如（マイグレーション未適用）判定。notifications/dispatch.ts でも使う。 */
+export function isMissingRelationError(err: { message?: string; code?: string } | null | undefined): boolean {
   if (!err) return false;
   if (["42P01", "PGRST205", "42703", "PGRST204"].includes(err.code ?? "")) return true;
   const msg = (err.message ?? "").toLowerCase();

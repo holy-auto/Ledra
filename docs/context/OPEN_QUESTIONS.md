@@ -3,6 +3,27 @@
 > まだ決まっていないこと、判断に迷っていることを書く場所。決まったら
 > DECISION_LOG.md に移し、このファイルからは消す（削除履歴は git で追える）。
 
+## 通知2タイプ（`certificate_gate_ready` / `rating_request`）は該当イベントの実処理が見つからないため未配線（2026-09-25）
+
+IMP-029 の15タイプ配線（DECISION_LOG 2026-09-25 の決定に基づく）のうち、この2タイプだけは
+「発火させる場所」がコードに存在しないため、憶測で作らず見送った。
+
+- **`certificate_gate_ready`**（admin 宛・in_app）: Certificate Gate は発行（draft→active）の
+  その瞬間にしか評価されない（`evaluateCertificateActivationGate` の呼び出しは
+  admin status / activate-by-key / mobile activate / certificateRecordAuto の4箇所で、
+  どれも「READY なら即 active 化」）。写真アップロードや懸念解決のあとに Gate を評価し直して
+  「発行できる状態になった」と検知する処理が無い。配線するには「いつ Gate を再評価するか」
+  （写真アップロード時か、懸念解決時か、定期 cron か）という新しい業務フローの設計が要る。
+- **`rating_request`**（カタログ上 customer 宛・in_app）: 評価の仕組みは受発注（B2B）の
+  `order_reviews`（取引完了後に双方が評価）しか無い。カタログの宛先 `customer` を
+  「施工店の顧客」と読むと、顧客の評価フローも顧客のアプリ内受信箱も存在しない。
+  「受発注の発注側テナント」と読むなら取引完了時に送れるが、同じ瞬間に `order_completed` も
+  届くため、2通にするか・完了通知に評価依頼を含めるかも決めが要る。
+- 次のアクション: 代表に (a) Gate 再評価のタイミング、(b) `rating_request` の宛先の意味
+  （施工店の顧客 / 受発注の相手テナント）を確認する。
+- 起票日: 2026-09-25
+- 判断者: 代表
+
 ## ビルドが Google Fonts への外部フェッチに依存していて、取れないと CI が落ちる（2026-09-23）
 
 2026-09-23 05:23 UTC、**コード変更が1件も無い PR（#1127・`docs/context/` のみ）で
@@ -196,12 +217,38 @@ Google Fonts が `&` を含む URL を返すと `next/font/google queries have e
 > 巻き込んで消してしまった（`/code-review` の指摘で復活）。`LEDRA_CURRENT.md` と
 > `DECISION_LOG.md` がここを指している。
 
-`certificate_images` の列定義が本番と食い違っている
-（`file_name` と `content_type` が本番は NOT NULL・マイグレーションは NULL 可、
-`sort_order` の既定が本番 1・マイグレーション 0）。
-`file_size` だけは `20260922141100` で揃えた。**列の「名前」しか突き合わせていない**ので、
-既定値・NULL 可否・型の食い違いは `check:schema` にも再生にも映らない。
-検出器を属性まで見るように広げるかは別途判断する。
+**2026-09-25 に解決（`20260925142800`・判断は DECISION_LOG 2026-09-25）。**
+本番と再生 DB を**同じクエリで**引いて
+突き合わせた（`information_schema.columns` の列名・型・精度・NULL 可否・既定値）。
+45 列のうち差は次の3件だけで、他は完全一致だった。
+
+| 列 | 本番 | 再生 |
+|---|---|---|
+| `file_name` | NOT NULL | NULL 可 |
+| `content_type` | NOT NULL | NULL 可 |
+| `sort_order` | 既定 1 | 既定 0 |
+
+マイグレーション側を本番に揃えた。本番は 88 行・3列とも NULL 0件なので**本番では no-op**、
+直るのは新しく作る環境の側。書き手は2箇所（`processUploadedPhoto.ts` と
+`scripts/setup-demo-tenant.ts` のデモ投入。SQL 関数からの insert は `pg_proc` で0件を確認）で、
+どちらも3列とも常に明示で渡す。
+振る舞い検査 `certificate_images_column_shape.sql` を追加し、3件それぞれが
+独立に落ちることを陰性対照で実測した。
+
+**この修正が隣の検査を弱めていた（`/code-review` の指摘で修正）**: 同表の
+`certificate_images_file_size.sql` は「`file_size` を省くと 23502」で判定していたが、
+その insert は `file_name` / `content_type` も省いていた。3列とも NOT NULL になった後は
+**どの列で落ちても 23502** なので、`20260922141100` を丸ごと戻しても通る状態だった。
+insert に2列を明示で渡すよう直し、`20260922141100` を空にすると 23514 で落ちることを実測した。
+台帳 `M-20260925-my-not-null-blinded-the-sibling-check`。
+
+**残っている根の問題**: 検出器（`check-schema-drift.mjs`）と `check:schema` は
+**列の「名前」しか突き合わせていない**（検出器の「ponytail: 上限その2」に明記された既知の限界）。
+だから今回の3件はどちらの検査にも映らず、表を1つずつ手で突き合わせるしかなかった。
+**他の表にも同じ形の食い違いが残っている可能性がある**（未調査）。
+検出器を属性（NULL 可否・既定値・型）まで見るように広げるのが筋だが、
+検出器は Management API の資格情報（`SUPABASE_ACCESS_TOKEN` / `SUPABASE_PROJECT_ID`）を
+要求するので、手元では動かして確かめられない。
 
 ## 一意でない索引が本番と再生 DB で食い違っている（2026-09-21）
 
@@ -346,6 +393,28 @@ created 2026-07-26）。増えていない。
 | 外部キー | 597 | 600 |
 | RLS ポリシー | 622 | 642 |
 | 関数 | 145 | 145（名前の差は 0。`check-schema-drift.mjs` が見ている） |
+
+**2026-09-25 に索引とポリシーを測り直した**（`--dsn` で残した再生 DB ⇄ 本番、同じクエリ）。
+
+| | 本番 | 再生 | 差のある表 |
+|---|---|---|---|
+| 一意でない索引 | 768 | 766 | **15 表** |
+| RLS ポリシー | 654 | 659 | **12 表** |
+
+**総数の差（索引2・ポリシー5）を「差が小さい」と読んではいけない。** 表ごとに見ると
+索引は本番のみ側が正味 16 本・再生のみ側が正味 14 本で、打ち消し合って2になっている
+（16−14=2 で総数差と一致）。ポリシーも再生のみ側 13・本番のみ側 8 で 13−8=5。
+以前これと同じ形で誤った（MISTAKE_LEDGER `M-20260921-compared-counts-where-names-differed`）。
+
+索引で件数が違う 15 表: `agent_signing_requests` `audit_logs` `certificates`
+`customer_inquiries` `customer_login_codes` `customer_sessions` `documents`
+`insurer_tenant_access` `insurers` `job_orders` `market_vehicles` `nfc_tags`
+`reservations` `tenant_memberships` `vehicles`。
+ポリシーで件数が違う 12 表: `academy_creator_rewards` `academy_lessons`
+`academy_quiz_questions` `admin_audit_logs` `audit_logs` `certificates`
+`customer_inquiries` `insurer_access_logs` `organization_members` `templates`
+`tenant_memberships` `tenants`。
+**索引名・ポリシー名までの突き合わせは今回も未実施**（表ごとの件数まで）。
 
 **CHECK と外部キーは 2026-09-22 に名前まで突き合わせ済み**（`20260922123000` / `20260922123100`）。
 適用後は外部キーが両方向 0、CHECK は enum に置き換わった3本だけが残る見込み。
@@ -619,6 +688,19 @@ RPC を解決できない可能性がある」と指摘し、それが本当な�
 **未決は同じ**（書き起こすか、本番から消すか）。変わったのは、**当て推量ではなく
 検出器が毎週数えるようになった**こと。`certificates` の anon 公開が意図どおりかは
 引き続き【要確認】。
+
+**2026-09-25 追記（再確認と、1つ足りていなかった事実）**: 件数は本番 654 / 再生 659 に
+動いたが、`insurer_access_logs` の2本（`logs_insert_self_only` / `logs_select_same_insurer`）は
+**今も本番にだけある**。この2本は `check-schema-drift.mjs` の既知リストに載っていないので、
+検出器が走っていれば出るはずのものである（この作業環境には Management API の資格情報が
+無く、検出器を走らせて「出ているのか」は確かめていない）。
+
+上の記録に無かった事実を1つ足す: **再生 DB では `insurer_access_logs` は
+RLS が有効なままポリシー0本**（`relrowsecurity = true` / `pg_policies` 0件を実測）。
+つまり新しい環境は `authenticated` に対して**全部拒否**で、本番より緩いのではなく厳しい。
+API の読み書きはサービスロール（`createInsurerScopedAdmin`）で RLS を迂回するので
+画面は動く。**漏れる向きの差ではない**が、同じマイグレーションから作った環境の
+振る舞いが本番と違う状態は残っている。
 ## 追加（2026-08-27・CI が2回続けて起動しなかった）
 
 - **PR #979 への push 2回（`f97fbe0` / `2c78c1d`、8/27 00:10〜00:12 UTC）で
@@ -2164,7 +2246,7 @@ Next.js は関数内にも `"use server"` を書けるので（`vehicles/[id]/pa
 - 起票日: 2026-09-04
 - 判断者: 未定
 
-## 通知18タイプのうち15タイプが本番で一度も発火していない（2026-08-31）
+## 【解決済み 2026-09-25】通知18タイプのうち15タイプが本番で一度も発火していない（2026-08-31）
 
 通知タイプカタログ（`src/lib/notifications/types.ts`）には18タイプあるが、本番で実際に
 書き込まれているのは3タイプだけ（`chat_message` 56件 / `ai_action` 4件 / `platform_notification`
@@ -2185,6 +2267,13 @@ Next.js は関数内にも `"use server"` を書けるので（`vehicles/[id]/pa
 - 関連: 統合dispatch（既存の LINE/Slack/メール/SMS モジュールを中央エンジンへ移行）も
   この判断が決まってからでないと設計できない。
 - 起票日: 2026-08-31
+- **解決（2026-09-25）**: 代表に (a) 叩き台通り全15タイプ確定 / (b) 重要度の高いものだけ先行 /
+  (c) 個別確認 / (d) 見送り、の4択を提示し「全部」の回答を得た。全15タイプとも発火させ、
+  宛先はカタログの `targetRole`、チャネルは `defaultChannels` を正式仕様として確定。
+  詳細は DECISION_LOG.md 2026-09-25 を参照。
+- **実装（2026-09-25）**: 中央 dispatch（`src/lib/notifications/dispatch.ts`）を作り、13タイプが
+  発火する状態になった（内訳は RELEASE_LOG.md 2026-09-25）。`certificate_gate_ready` と
+  `rating_request` は該当イベントの実処理が無いため未配線（本ファイル先頭の項目）。
 
 ## notifications.priority が全行 "normal" で、読み手が1つも無い（2026-08-31）
 

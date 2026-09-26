@@ -70,20 +70,126 @@
 
 | 型 | 中身 | 該当 |
 |---|---|---|
-| **A. 道具を検証しない** | 変更したコードは検証したのに、「何を変えるべきか判断するために使った道具」（検出器・正規表現・スクリプト・クエリ）を検証していない。道具の出力を事実として扱う。**そのクエリが何を確定させたのかを確かめずに、確定したつもりになる**のもこの型。**自分の想定だけで検証するのも同じ**（当たりを取る「既知の1件」を自分で作る）。**動作を主張するコメントを、その根拠（スキーマ・型定義）を確認せずに書く**のも同じ。**検査の「該当なし」を、その検査が何件を見たか数えずに受け取る**のも同じ | M-001, M-002, M-003, M-006, **M-010**, M-012, M-016, M-017, **M-022**, **M-024**, **M-031**, M-036, **M-041**, **M-044**, **M-046**, **M-050**, **M-055**, **M-056**, **M-057**, **M-060**, **M-061**, **M-062**, **M-064**, **M-065**, **M-068**, **M-075**, **M-078**, **M-079**, **M-084**, **M-085**, **M-089**, **M-092**, **M-093**, **M-20260915-dupe-count-from-truncated-grep**, **M-20260918-silent-skip-made-detector-never-run**, **M-20260918-replay-db-lacked-prod-column**, **M-20260918-read-detector-blindness-as-stale-list**, **M-20260919-attributed-an-overloads-call-to-its-sibling**, **M-20260919-swept-for-the-literal-not-the-bug-class**, **M-20260919-cancel-2xx-treated-as-final**, **M-20260921-compared-counts-where-names-differed**, **M-20260921-detector-covered-half-the-tables-i-had-listed**, **M-20260921-said-the-drift-checker-ignores-policies**, **M-20260922-wrote-constraint-bodies-from-their-names**, **M-20260922-enumerated-actions-from-typescript-only**, **M-20260921-restated-my-own-summary-as-fact**, **M-20260923-committed-conflict-markers-from-truncated-merge-output**, **M-20260923-counted-only-page-files-for-tenant-bug** |
+| **A. 道具を検証しない** | 変更したコードは検証したのに、「何を変えるべきか判断するために使った道具」（検出器・正規表現・スクリプト・クエリ）を検証していない。道具の出力を事実として扱う。**そのクエリが何を確定させたのかを確かめずに、確定したつもりになる**のもこの型。**自分の想定だけで検証するのも同じ**（当たりを取る「既知の1件」を自分で作る）。**動作を主張するコメントを、その根拠（スキーマ・型定義）を確認せずに書く**のも同じ。**検査の「該当なし」を、その検査が何件を見たか数えずに受け取る**のも同じ | M-001, M-002, M-003, M-006, **M-010**, M-012, M-016, M-017, **M-022**, **M-024**, **M-031**, M-036, **M-041**, **M-044**, **M-046**, **M-050**, **M-055**, **M-056**, **M-057**, **M-060**, **M-061**, **M-062**, **M-064**, **M-065**, **M-068**, **M-075**, **M-078**, **M-079**, **M-084**, **M-085**, **M-089**, **M-092**, **M-093**, **M-20260915-dupe-count-from-truncated-grep**, **M-20260918-silent-skip-made-detector-never-run**, **M-20260918-replay-db-lacked-prod-column**, **M-20260918-read-detector-blindness-as-stale-list**, **M-20260919-attributed-an-overloads-call-to-its-sibling**, **M-20260919-swept-for-the-literal-not-the-bug-class**, **M-20260919-cancel-2xx-treated-as-final**, **M-20260921-compared-counts-where-names-differed**, **M-20260921-detector-covered-half-the-tables-i-had-listed**, **M-20260921-said-the-drift-checker-ignores-policies**, **M-20260922-wrote-constraint-bodies-from-their-names**, **M-20260922-enumerated-actions-from-typescript-only**, **M-20260921-restated-my-own-summary-as-fact**, **M-20260923-committed-conflict-markers-from-truncated-merge-output**, **M-20260923-counted-only-page-files-for-tenant-bug**, **M-20260925-grep-missed-the-generic-upsert-helper** |
 | **B. 読まずに分類する** | コードの形（関数名・構造・コメント）から中身を推測して分類し、実際に読んでいない。**1段だけ深く読んで止まる**のも同じ（条件式は読んだが、その値の既定を追っていない）。**その値がどこから来るかを見ない**のも同じ（既定・サンプル・過去の配布物に同じ値が無いか）。**列や機能が「ある」ことを「使われている」と読む**のもこの型。**値の出所を変えたのに、その値を使う式が旧い出所の前提（排他性等）を暗黙に置いたままか確認しない**のも同じ。**部品が直ったことを、その部品を使う機能が直ったことと読む**のも同じ | M-004, M-020, **M-032**, M-035, M-036, **M-039**, **M-040**, **M-048**, **M-052**, **M-063**, **M-074**, **M-083**, **M-088**, **M-20260920-hashed-a-file-i-never-opened**, **M-20260920-asked-for-a-decision-that-was-already-made-in-the-file-i-cited**, **M-20260921-classified-rls-impact-from-one-policy**, **M-20260922-copied-a-check-without-checking-the-default**, **M-20260924-blamed-all-ten-inserts-on-the-check**, **M-20260924-called-a-tolerant-job-the-real-check** |
 | **C. 経路を1本しか見ない** | 同じ操作に複数の入口があるのに、目についた1本だけ直す。**同じ事実を2箇所に書いて片方だけ直す**のも同じ（文書に出た形）。**排他にすべき組み合わせのうち一部のペアだけをチェックする**のも同じ | M-005, M-007, M-013, M-019, **M-023**, **M-025**, M-038, **M-058**, **M-061**, **M-072**, **M-076**, **M-087**, **M-20260918-verification-skippable-via-transition-flag**, **M-20260919-exclusivity-guard-only-in-admin-route**, **M-20260919-exclusivity-checked-one-pair-not-all**, **M-20260920-called-it-all-no-op-while-fixing-the-one-statement-that-runs**, **M-20260922-enumerated-actions-from-typescript-only**, **M-20260922-renamed-a-migration-the-preview-db-had-applied**, **M-20260923-new-key-axis-not-traced-to-every-entry-point** |
-| **D. 移設で弱める** | 「同じものを別の場所に置くだけ」のつもりが、検査の強さや信号が落ちている。**移設先の信頼境界（誰の書き換えを受けるか・どんな権限を持つか）が変わっているのに気づかない**のもこの型 | M-008, **M-028**, **M-029**, **M-042**, **M-047**, **M-054**, **M-060**, **M-062**, **M-063**, **M-065**, **M-20260924-shared-resolver-dropped-error-to-500** |
+| **D. 移設で弱める** | 「同じものを別の場所に置くだけ」のつもりが、検査の強さや信号が落ちている。**移設先の信頼境界（誰の書き換えを受けるか・どんな権限を持つか）が変わっているのに気づかない**のもこの型。**移設でなく「追加」で弱めるのも同じ** —— 制約を1本足したら、同じ対象を別の観点で見ていた既存の検査が、その制約のせいで区別できなくなる | M-008, **M-028**, **M-029**, **M-042**, **M-047**, **M-054**, **M-060**, **M-062**, **M-063**, **M-065**, **M-20260924-shared-resolver-dropped-error-to-500**, **M-20260925-my-not-null-blinded-the-sibling-check** |
 | **J. 兄弟実装と揃えていない** | 同じ理由で複数箇所に同種のガード・分岐を書いたのに、片方にしか適用しなかった／既存の兄弟実装が既に持っていた条件を新しい実装に持ち込まなかった。**「同じパターンで書いた」つもりが実は違う**のがこの型の核。**「AをBに置き換える」判断をしたのに、A自体を全リポジトリでgrepせず一部だけ置き換えて終わる**のも同じ | M-066, **M-069**, **M-092**, **M-093**, **M-20260916-timeout-branch-missed-sibling-fix**, **M-20260919-cancel-checkout-scattered-across-4-handlers**, **M-20260919-handled-completed-branch-not-failed-branch**, **M-20260919-else-fix-not-swept-to-siblings**, **M-20260921-claimed-all-db-errors-swept-but-left-booking-upsert**, **M-20260923-fixed-url-length-in-one-route-not-its-sibling** |
 | **K. 新しいコード経路を、それが実際に呼ばれる文脈で動かして試していない** | 単体の変更としては正しいのに、それが実際に発火する呼び出し元・エラー経路まで通して動かしていない。ユニットテストがあっても「起こりうる呼び出し順」を再現していなければ検出できない | **M-067**, **M-20260923-draft-autosave-baseline-before-prefill** |
 | **L. 既定を開いたまま守る（除外リスト）** | 「見せないもの」を並べて塞ぐ。塞いだ時点では実データと一致していても、**既定が公開**なので、値が増えるたびに漏れる。**母集団を数えていない**のが根（「今あるもの」を実測して、「入りうるもの」を数えていない）。外向けの経路では許可リストにして、知らないものを既定で落とす | **M-077** |
 | **E. 手元とCIの差を忘れる** | 手元では通るのに CI だけ落ちる構成を作る。書いた本人には見えない。**リポジトリが用意した「CIと同じ検査」を走らせず、思い出せる検査だけ個別に走らせる**のも同じ | M-009, **M-030**, **M-084**, **M-089**, **M-094**, **M-20260922-pushed-without-ci-parallel-checks**, **M-20260923-schema-snapshot-missed-again** |
-| **F. 確認できる事実を確認しない** | 環境から1コマンドで確かめられる事実（今日の日付・件数・バージョン・設定ファイルの中身・**CI が実際に走ったか**・**同じ問題を直している PR が既に開いていないか**）を、確かめずに書く。**自分がこれから追記しようとしているログファイル自身に、既に矛盾する記述が無いか確認しない**のも同じ。**本番の実データをそのまま調査ログ・事業ログに転記する**のも同じ（PIIのマスクを確認事実として扱わない） | M-011, M-014, M-015, M-016, **M-018**, **M-021**, **M-026**, **M-027**, M-034, M-037, **M-045**, **M-049**, **M-053**, **M-059**, **M-070**, **M-071**, **M-073**, **M-080**, **M-081**, **M-082**, **M-086**, **M-088**, **M-090**, **M-20260915-dupe-count-from-truncated-grep**, **M-20260918-called-it-untraceable-without-checking-open-prs**, **M-20260919-said-no-open-pr-has-it-again**, **M-20260919-hand-applied-ahead-of-a-pending-migration**, **M-20260919-skipped-the-check-i-had-just-written**, **M-20260919-green-ci-read-as-production-applied**, **M-20260919-credited-my-own-dirty-tree-to-another-session**, **M-20260919-wrote-a-replay-count-i-never-read**, **M-20260920-hashed-a-file-i-never-opened**, **M-20260920-counted-12-as-11-again**, **M-20260921-reported-a-subtraction-as-a-measurement**, **M-20260921-two-samples-read-as-all**, **M-20260921-restated-my-own-summary-as-fact**, **M-20260922-said-typegen-red-on-every-merge**, **M-20260922-said-ten-checks-without-listing-them**, **M-20260923-git-add-all-swept-a-formatted-generated-file** |
+| **F. 確認できる事実を確認しない** | 環境から1コマンドで確かめられる事実（今日の日付・件数・バージョン・設定ファイルの中身・**CI が実際に走ったか**・**同じ問題を直している PR が既に開いていないか**）を、確かめずに書く。**自分がこれから追記しようとしているログファイル自身に、既に矛盾する記述が無いか確認しない**のも同じ。**本番の実データをそのまま調査ログ・事業ログに転記する**のも同じ（PIIのマスクを確認事実として扱わない） | M-011, M-014, M-015, M-016, **M-018**, **M-021**, **M-026**, **M-027**, M-034, M-037, **M-045**, **M-049**, **M-053**, **M-059**, **M-070**, **M-071**, **M-073**, **M-080**, **M-081**, **M-082**, **M-086**, **M-088**, **M-090**, **M-20260915-dupe-count-from-truncated-grep**, **M-20260918-called-it-untraceable-without-checking-open-prs**, **M-20260919-said-no-open-pr-has-it-again**, **M-20260919-hand-applied-ahead-of-a-pending-migration**, **M-20260919-skipped-the-check-i-had-just-written**, **M-20260919-green-ci-read-as-production-applied**, **M-20260919-credited-my-own-dirty-tree-to-another-session**, **M-20260919-wrote-a-replay-count-i-never-read**, **M-20260920-hashed-a-file-i-never-opened**, **M-20260920-counted-12-as-11-again**, **M-20260921-reported-a-subtraction-as-a-measurement**, **M-20260921-two-samples-read-as-all**, **M-20260921-restated-my-own-summary-as-fact**, **M-20260922-said-typegen-red-on-every-merge**, **M-20260922-said-ten-checks-without-listing-them**, **M-20260923-git-add-all-swept-a-formatted-generated-file**, **M-20260925-migration-timestamp-collided-with-parallel-pr** |
 | **G. 構造テストを振る舞いの証明として扱う** | ソースを grep して「その語が書かれている」を確かめただけで、**値が通るか**を確かめていない。テストは緑、機能は壊れている。**ファイルに在ること**を、**その経路が実際に動く/覆われている**ことの証拠として扱うのも同じ | **M-033**, **M-20260921-file-content-read-as-behavior** |
 | **H. 未確定の前提の上に作る** | 依頼者しか決められない前提を確認しないまま、その前提が変われば丸ごと消える実装を先に作る | **M-043** |
-| **I. 前提が途中で変わったのに読み直さない** | 判断したときは正しかった観察が、その後の `main` 取り込みなどで無効になっているのに、変更を見直さない。**衝突しなかったファイルにこそ潜む** | **M-047**, **M-051** |
+| **I. 前提が途中で変わったのに読み直さない** | 判断したときは正しかった観察が、その後の `main` 取り込みなどで無効になっているのに、変更を見直さない。**衝突しなかったファイルにこそ潜む**。**自分が書いた実測値が、自分のマージで古くなる**のも同じ | **M-047**, **M-051**, **M-20260925-my-own-merge-staled-the-replay-count** |
 
 ---
+
+## M-20260925-my-not-null-blinded-the-sibling-check 自分が足した NOT NULL が、隣の検査の識別力を奪ったことを見ていない（2026-09-25・型 D）
+
+**Before**: #1166 で `certificate_images.file_name` / `content_type` を `SET NOT NULL` にした。
+同表には既に `certificate_images_file_size.sql` という振る舞い検査があり、
+**`file_size` を省いた insert が 23502 になること**で「既定なし・NOT NULL」を確かめていた。
+再生は 7 件すべて緑。3件それぞれの陰性対照も取ったので、検証は済んだと思っていた。
+
+**After**: その検査の insert は `file_size` だけでなく `file_name` / `content_type` も
+省いていた。私の NOT NULL が入った後は、**どの列で落ちても 23502** なので、
+`20260922141100`（`file_size` の既定を外して NOT NULL にしたマイグレーション）を
+丸ごと戻しても検査は通る。つまり**その検査は `file_size` を見なくなっていた**。
+`/code-review` の指摘。insert に `file_name, content_type` を明示で渡すよう直し、
+`20260922141100` を空にすると `23514`（既定 0 が CHECK に弾かれる）で落ちることを実測した。
+
+**なぜ気づけなかったか**: **自分の検査が通ることだけを確かめ、隣の検査が
+「まだ何を区別しているか」を確かめなかった。** SQLSTATE で判定する検査は、
+同じ SQLSTATE を出す原因が増えた瞬間に識別力を失う。7/7 緑は
+「7件が落ちなかった」であって「7件が今も意味のあることを見ている」ではない。
+陰性対照も**自分が足した3件**にしか取っていない —— 既存の検査の陰性対照を
+取り直せば、その場で分かった。
+
+**再発防止**: 仕組み半分。
+- 仕組み: 検査ファイル自身に「同表に NOT NULL 列を足す PR は、この insert にも
+  その列を足すこと」を書いた。SQLSTATE 判定の検査が何に依存しているかを明文化した。
+- 習慣: **NOT NULL・CHECK・一意制約を足したら、同じ表を見ている既存の振る舞い検査を
+  開き、その陰性対照を取り直す**（対象の migration を空にして落ちるか）。
+  「7/7 緑」は識別力の証明ではない。
+
+## M-20260925-grep-missed-the-generic-upsert-helper 汎用ヘルパ経由の insert を grep が拾えず「唯一の書き手」と書いた（2026-09-25・型 A）
+
+**Before**: `certificate_images` を NOT NULL にして安全か判断するため、書き手を洗い出した。
+`from("certificate_images")` と insert を組み合わせて grep し、
+`src/lib/certificateImages/processUploadedPhoto.ts` の1箇所だけが当たった。
+SQL 関数からの insert は `pg_proc` で0件。よって**「唯一の書き手」**とマイグレーションの
+ヘッダ・RELEASE_LOG・OPEN_QUESTIONS の3箇所に書いた。
+
+**After**: `scripts/setup-demo-tenant.ts` も書き手だった。こちらは
+`upsert("certificate_images", imageRows, "id")` という**汎用ヘルパ**を呼んでいるので、
+表名と `insert` が同じ行に並ばず、私の grep には原理的に映らない。
+`/code-review` の指摘。3列とも明示で渡していたので**結論（NOT NULL にしても落ちない）は
+生き残った**が、それを支えた根拠は不完全だった。3箇所を「書き手は2箇所」に直した。
+
+**なぜ気づけなかったか**: **grep の語形が、探している概念より狭いことを確かめなかった。**
+「表への書き込み」を探すのに、「表名と insert が近接する」という**実装の書き方**を条件にした。
+汎用ヘルパは表名を引数で受けるので、その条件を満たさない。しかも `src` に絞って
+`scripts/` を見ていない。台帳の型 A の再発防止は「自作の走査スクリプトは既知の1件で
+当たりを取る」だが、**当たりを取る「既知の1件」を自分の grep の結果から選んだ**ので、
+取りこぼしは原理的に見えなかった。既知の1件は**別の経路で**選ばないと意味がない。
+
+**再発防止**: 仕組み無し（判断に依存）。
+- 習慣: 表への書き手を数え切ったと言う前に、**表名だけ**で全リポジトリ（`src` に絞らない）を
+  grep し、当たった行を1つずつ読む。`from(...)` の形を条件にしない。
+  汎用ヘルパ（`upsert(` / `insertRows(` 等）が表名を引数で受けていないかを必ず見る。
+- 「唯一の」と書きたくなったら、その語が grep の語形に依存していないか確かめる。
+
+## M-20260925-my-own-merge-staled-the-replay-count 自分のマージで再生件数が 509→510 になったのに、書いた数字を読み直さなかった（2026-09-25・型 I）
+
+**Before**: #1166 の事業ログと PR 本文に「`check:migrations` 再生 509/509」と書いた。
+コミット `c92ac915` の時点では実測どおりで正しかった。その後 `origin/main` を取り込み、
+コンフリクト（RELEASE_LOG）を解消して push した。
+
+**After**: `main` がマイグレーションを1本足していたので、マージ後の実数は **510/510**。
+`/code-review` の指摘。マージ後に走らせた再生の出力にも `510 / 510` と出ていたのに、
+文書の 509 を直していなかった。510 に修正した。
+
+**なぜ気づけなかったか**: **マージを「コンフリクトの解消」としてしか見ていない。**
+衝突しなかった行の中に、`main` の変更で意味が変わる数字があることを見なかった
+（型 I そのもの）。しかも直前にマージ後の再生を走らせて `510 / 510` を**目で見ている**。
+出力を「緑か」だけで読み、数字を自分の文書と突き合わせなかった。
+
+**再発防止**: 仕組み無し（判断に依存）。
+- 習慣: `origin/main` を取り込んだら、**自分の文書に書いた実測値を grep して洗い直す**
+  （件数・ファイル数・テスト数）。マージ後に検査を走らせたなら、その出力の数字を
+  文書の数字と1つずつ突き合わせる。緑かどうかだけを見ない。
+
+## M-20260925-migration-timestamp-collided-with-parallel-pr マイグレーションのタイムスタンプをキリのいい 16:00:00 に丸め、並行 PR と同じ番号を取った（2026-09-25・型 F）
+
+**Before**: A/B の PR（#1159）で `current_insurer_id()` を落とすマイグレーションを
+`20260924160000_drop_dead_current_insurer_id.sql` と名付けた。作成時刻（`date -u` では 16:27）を
+使わず、キリのいい「16:00:00」に丸めた。自分のブランチでは `lint:migrations` も
+`check:migrations` 再生も緑だったので、番号は問題ないと思っていた。
+
+**After**: 並行して進んでいた #1162（G5 完成検査）が **同じ `20260924160000`** を
+`20260924160000_indicated_inspection_measurements.sql` に使っていた。#1162 が先に `main` へ入り、
+こちらのマージ直前に `origin/main` を取り込んだ**そのとき初めて衝突が表面化**した。同一バージョンが
+2本並ぶと適用順が不定になり、`lint:migrations` の重複検査にも掛かる。自分の方を
+`20260924160200`（#1162 の最後 `20260924160100` の後）へ改番し、Supabase プレビューで再適用が
+緑（Migrations ✅）になることを確認してからマージした。
+
+**なぜ気づけなかったか**: **バージョン番号を「自分のブランチの中だけ」で検証した。**
+`lint:migrations` は自分のツリーに重複が無いことしか見ない —— 並行ブランチが同じ番号を
+取っているかは `main` を取り込むまで分からない。しかも番号を実時刻ではなく「16:00:00」に
+丸めたので、**別セッションも同じ丸め方をすれば必ず一致する**空間に自分を置いた。
+キリのいい番号は衝突を招く。これは台帳の「ID について」（連番を並行セッションが取り合う）と
+同じ根で、識別子を実測ではなく人が丸めて付けると衝突する。
+
+**再発防止**: 仕組み半分。
+- 仕組み: マージ時の `origin/main` 取り込みで衝突は必ず表面化する（`lint:migrations` の
+  重複検査＋マージのファイル並び）。**本番へ出る前には止まる**が、マージ直前まで見えない。
+- 習慣: マイグレーションのタイムスタンプは**キリの良い時刻に丸めず**
+  `date -u +%Y%m%d%H%M%S` の実測値を使う（衝突空間を広げる）。長く滞留したブランチは
+  **マージ前に `origin/main` を取り込み、追加したマイグレーションが最新の番号より後ろに
+  来ているか**を確認する。改番するときは、プレビュー DB が旧名で適用済みでないか併せて見る
+  （型 C の `M-20260922-renamed-a-migration-the-preview-db-had-applied`。今回は Supabase の
+  Migrations が緑で問題化しなかったが、同じ綱渡り）。
 
 ## M-20260924-blamed-all-ten-inserts-on-the-check 10 箇所の失敗原因をどれも読まずに CHECK のせいにし、3本を直し残した（2026-09-24・型 B）
 

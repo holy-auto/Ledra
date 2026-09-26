@@ -19,6 +19,74 @@
 - 検証: render テスト（測定値・目視・照合入り／全空欄）＋カタログ様式差分テスト、tsc・eslint・
   check:schema、実 PDF を目視確認（3ページ）。
 
+## 2026-09-25 certificate_images の列定義を本番に揃え、索引とポリシーの差を測り直した
+
+`certificate_images` の残っていた3件の食い違いを解消（`20260925142800`）。
+
+| 列 | 本番 | 再生（修正前） |
+|---|---|---|
+| `file_name` | NOT NULL | NULL 可 |
+| `content_type` | NOT NULL | NULL 可 |
+| `sort_order` | 既定 1 | 既定 0 |
+
+**突き合わせ方**: `--dsn` で残した再生 DB と本番を**同じクエリで**引いた
+（`information_schema.columns` の列名・型・精度・NULL 可否・既定値）。45 列のうち
+差はこの3件だけで他は完全一致。`pg_dump` の字面を正規表現で読む方式は採らなかった。
+
+本番は 88 行・3列とも NULL 0件なので**本番では3文とも no-op**。直るのは新しく作る環境の側。
+書き手は2箇所（`processUploadedPhoto.ts` と `scripts/setup-demo-tenant.ts` のデモ投入。
+SQL 関数からの insert は `pg_proc` で0件を確認）。どちらも3列とも常に明示で渡すので、
+NOT NULL にしても既存経路は落ちない。
+
+振る舞い検査 `certificate_images_column_shape.sql` を追加（列定義を読むのではなく
+**実際に insert して**確かめる形）。**3件それぞれが独立に落ちることを陰性対照で実測。**
+
+**あわせて索引とポリシーを測り直した**（OPEN_QUESTIONS に記録）。
+
+| | 本番 | 再生 | 差のある表 |
+|---|---|---|---|
+| 一意でない索引 | 768 | 766 | 15 表 |
+| RLS ポリシー | 654 | 659 | 12 表 |
+
+総数の差（2・5）は両方向の差が打ち消し合った結果で、**「差が小さい」ではない**。
+また再生 DB では `insurer_access_logs` が RLS 有効・ポリシー0本（全拒否）であることを実測した
+—— 本番より緩いのではなく厳しい側の差。
+
+検証: `ci-parallel-checks.sh` 9/9・`check:migrations` 再生 510/510・振る舞いの検査 **7 件**。
+
+## 2026-09-25 通知エンジンの中央 dispatch と、15タイプ中13タイプの発火（IMP-029）
+
+代表が叩き台どおり全15タイプを確定した（DECISION_LOG 2026-09-25）のを受けて実装。
+
+**中央 dispatch** — `src/lib/notifications/dispatch.ts` の `dispatchNotification()`
+
+- チャネルは既存の `resolveChannels()`（カタログ + テナント単位の上書き）で決め、送信は既存の
+  sender を呼ぶだけ（in_app = `notifications` insert / email = `sendEmail` / slack = テナントの
+  Slack Webhook / line = `sendCustomerLineText` / sms = `sendNotificationSms`。push は未実装）
+- 宛先はカタログの `targetRole` から1箇所で解決（admin = owner/admin/super_admin、assigned =
+  指定ユーザー・空なら admin、customer = 顧客の email/電話/LINE、未指定 = テナント全員）
+- `tenants.line_enabled = false` のテナントは line を自動で外す。顧客のアプリ内受信箱は無いので
+  customer 宛の in_app は作らない
+- 絶対に throw しない。チャネルごとの失敗は `logger.warn` のみ
+
+**発火するようになったタイプ**
+
+- dispatch 経由で新規: `order_created` / `order_accepted` / `order_completed` / `order_cancelled` /
+  `payment_confirmed` / `rating_received`（受発注・取引相手テナント宛 in_app）、
+  `customer_concern_raised`（管理者 in_app + テナント Slack）
+- dispatch 経由に置き換え: `certificate_issued`（従来の顧客 LINE 連絡を dispatch に移設）
+- 既存と共存: `booking_created` は既存の専用メール+Slack（`bookingNotify.ts`）を残し、
+  dispatch には不足していた in_app だけを担わせた（email/slack を dispatch 側で無効化し二重送信なし）
+- チャネル追加: `sla_overdue` に email を追加（保険会社 SLA cron。in-app は従来どおり）
+- 既存経路がカタログのチャネルを既に満たしているため変更なし: `sla_at_risk`（保険会社 SLA cron）、
+  `low_stock_alert`（在庫 cron のサマリーメール）、`follow_up_reminder`（フォローアップ cron）
+
+**未配線（2タイプ）**: `certificate_gate_ready` / `rating_request` —— 該当イベントの実処理が
+コードに無い。OPEN_QUESTIONS 2026-09-25 に理由を記録。
+
+**検証**: dispatch の単体テスト8件（宛先解決・チャネル無効化・LINE 無効スキップ・失敗時に throw
+しない）。LINE 無効スキップを外すとテストが落ちることを確認済み。
+
 ## 2026-09-25 指定整備記録簿（完成検査）G5 Phase 1b/1c
 
 - 内容: 指定整備記録簿（完成検査）の「検査機器等による検査」測定値について、
@@ -91,7 +159,6 @@ OPEN_QUESTIONS に記録。孤児 owner membership 1件は代表判断待ちで 
 で落ちる（本番での陰性対照）。`RAISE EXCEPTION` で全件ロールバックし、表の行数は2件・
 最新 2026-09-03 のまま。
 
-
 ## 2026-09-24 依存13件を更新し、`overrides.ox` を viem に追従させた（#1114 / #1141）
 
 - **#1114**（`61df0b5d`）: Dependabot の minor-and-patch 13件（`@anthropic-ai/sdk` / `@aws-sdk/client-kms` /
@@ -118,7 +185,6 @@ CI 10件すべて success・skipped（`Client Bundle Size` 含む）/ Vercel Rea
 小数第6位で丸めてから切り上げる（工数 0.01〜10.00h（1000通り）× 単価 10 通りで、正確な値の切り上げと一致することを確認）。
 保存済みの品目の提供価格は、次にレバーレートを保存し直すと切り上げで計算し直される。
 
-
 ## 2026-09-23 管理画面 18 ファイルで「選択中の会社」のデータを引くよう統一
 
 複数テナントに所属するユーザーが別テナントを選んでいても、管理画面の一部が「最初の所属テナント」の
@@ -130,7 +196,6 @@ CI 10件すべて success・skipped（`Client Bundle Size` 含む）/ Vercel Rea
 2026-09-24 追記: 課金・Stripe 系 API 5 本も選択中テナントで解決するよう直し、プラン購入・請求ポータル・支払い再開は
 **オーナーのみ**にした（admin 以下は 403。代表判断、DECISION_LOG 同日）。課金画面ではオーナー以外に操作ボタンを出さない。
 ルートを実際に呼ぶテスト（admin は 403・オーナーは選択中テナントの契約で作る）を追加し、修正前のコードで 5 件落ちることを確認。
-
 
 ## 2026-09-24 発注書の写真から TC コードを読んで工賃計算に使う
 
@@ -157,7 +222,6 @@ CI 10件すべて success・skipped（`Client Bundle Size` 含む）/ Vercel Rea
   作成後は作成画面の履歴を詳細で置き換え、「戻る」で空の作成画面に戻らないようにした。
   開いただけでは下書きの保存時刻を更新しない（期限を延ばさない）、保存キー確定前に入力を始めたら古い下書きで上書きしない、
   プリフィルだけで「下書き作成」が失敗しても入力を端末に残す、の3点も修正。
-
 
 ## 2026-09-23 保険会社ポータルの3画面が本番で 500 になっていたのを解除（監査 action の語彙）
 
@@ -376,7 +440,6 @@ MISTAKE_LEDGER: `M-20260922-copied-a-check-without-checking-the-default`（型 B
 検証: `bash scripts/ci-parallel-checks.sh` 全緑（`check:migrations` 再生 496/496）。
 なお push 前に同スクリプトを回さず `check:schema`（新表を snapshot 未登録）で一度 CI を
 落とした（MISTAKE_LEDGER `M-20260922-pushed-without-ci-parallel-checks`）。
-
 
 ## 2026-09-22 外部キーと CHECK も両方向で揃え、検出器に足した
 
@@ -1069,7 +1132,6 @@ PR #1095 がマージされた（`8f26a0e`・2026-09-19 13:16 UTC）。CI は 10
 最初のクエリでテーブルが無い。**台帳の修復が済むまで、以降のスキーマ変更も本番に届かない。**
 修復案は OPEN_QUESTIONS に3つ並べた（代表判断待ち）。
 
-
 ## 2026-09-19 保険会社ポータルの車両検索を本番で復旧した（enum に無い `'expired'` で毎回落ちていた）
 
 **本番の `insurer_search_vehicles(text,integer,integer,text,text)` が全呼び出し落ちていた。**
@@ -1489,7 +1551,6 @@ Ledra の画面内で完結させるなら Connect 埋め込みコンポーネ�
 まだ無い。受けなければフォールバックが働き、これまで通りカードのみで動く。
 ## 2026-08-26 VIN トリガーのマイグレーションを `20260826000007` へ改名（本番適用の停止を解除）
 
-
 ## 2026-09-15 MISTAKE_LEDGER の ID を日付＋スラッグ方式に変更し、重複検査を CI に追加（#1089）
 
 - MISTAKE_LEDGER の見出し ID を連番 `M-NNN` から `M-<YYYYMMDD>-<スラッグ>` に変更。
@@ -1668,7 +1729,6 @@ holy-inc.jp と MobileWash にも同じ画面から投稿できるようにし�
   **規則を別ブロックへ移す**／**ワイルドカードの過剰**／アンカーの破壊／
   `node_modules/expo` の不在 はすべて失敗し、**保護を強める変更（patch を足す）は通る**。
   mobile の `npm test` 全通過。
-
 
 ## 2026-09-14 依存関係の詰まりを解消（`ox` overrides 追従・mobile ロックファイル修復・GitHub Actions の Node 20 対応）
 
@@ -6277,7 +6337,6 @@ cancelled になる**原因。どちらも PR が開いたままなので、こ�
   - `src/app/layout.tsx`: twitter.site/creator反映
   - `/privacy`, `/terms`, `/law`, `/contact`: canonical追加
   - `/tokusho`: canonical・og:urlを/lawに統一、sitemapから除去
-
 
 ## 2026-08-22 モバイル: ウォークイン会計の品目選択を POS レジ型に刷新／タブバーを丸ボタン化
 
