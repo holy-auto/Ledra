@@ -182,6 +182,13 @@ export function measurementGroup(code: string): string {
 export const VISUAL_JUDGMENTS = ["pass", "fail", "na"] as const;
 export type VisualJudgment = (typeof VISUAL_JUDGMENTS)[number];
 
+/** 判定値→表示ラベル。フォーム・PDF で共有する唯一の定義源。 */
+export const JUDGMENT_LABEL: Record<VisualJudgment, string> = {
+  pass: "良",
+  fail: "否",
+  na: "該当なし",
+};
+
 export interface VisualInspectionItem {
   code: string; // answers のキー（`visual.` 接頭辞）
   label: string;
@@ -256,6 +263,42 @@ export const VEHICLE_MATCH_FIELDS: readonly VehicleMatchField[] = [
 /** 指定様式に現れる目視検査項目のみ返す（構造→装置の順）。 */
 export function visualItemsForForm(form: IndicatedInspectionForm): VisualInspectionItem[] {
   return VISUAL_INSPECTION_ITEMS.filter((i) => i.forms.includes(form));
+}
+
+/**
+ * 目視検査項目を構造→装置でグループ化する（カタログ順を保つ）。フォームと PDF が同一結果を使うための
+ * 単一実装。カタログは構造→装置の順で並んでいるため連続ランでまとめる。
+ */
+export function groupVisualItems(
+  form: IndicatedInspectionForm,
+): [VisualInspectionItem["group"], VisualInspectionItem[]][] {
+  const groups: [VisualInspectionItem["group"], VisualInspectionItem[]][] = [];
+  for (const it of visualItemsForForm(form)) {
+    const last = groups[groups.length - 1];
+    if (last && last[0] === it.group) last[1].push(it);
+    else groups.push([it.group, [it]]);
+  }
+  return groups;
+}
+
+/**
+ * inspection_records.answers（`{[key]:{value}}`）から目視(`visual.`)・照合(`match.`)の値を接頭辞で
+ * 抽出する。カタログの code をそのままキーに用いるため、prefix 一致のみを返せば PDF が引ける。
+ */
+export function extractInspectionAnswers(answers: unknown): {
+  visual: Record<string, string>;
+  match: Record<string, string>;
+} {
+  const visual: Record<string, string> = {};
+  const match: Record<string, string> = {};
+  const obj = (answers ?? {}) as Record<string, unknown>;
+  for (const [k, v] of Object.entries(obj)) {
+    const value = (v as { value?: unknown } | null)?.value;
+    if (typeof value !== "string" || value === "") continue;
+    if (k.startsWith("visual.")) visual[k] = value;
+    else if (k.startsWith("match.")) match[k] = value;
+  }
+  return { visual, match };
 }
 
 /** 指定様式に現れる照合欄フィールドのみ返す。 */

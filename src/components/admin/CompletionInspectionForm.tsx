@@ -5,11 +5,13 @@ import {
   measurementFieldsForForm,
   measurementGroup,
   visualItemsForForm,
+  groupVisualItems,
   vehicleMatchFieldsForForm,
   VISUAL_GROUP_LABEL,
+  VISUAL_JUDGMENTS,
+  JUDGMENT_LABEL,
   type IndicatedInspectionForm,
   type MeasurementInput,
-  type VisualInspectionItem,
 } from "@/lib/validations/indicated-inspection";
 
 /**
@@ -37,11 +39,10 @@ const FORM_LABEL: Record<IndicatedInspectionForm, string> = {
   yonago: "第四号様式（二輪）",
 };
 
+// 判定 select の選択肢。空(—)＋カタログの判定語彙（良/否/該当なし）を単一定義源から生成する。
 const JUDGMENTS: { value: string; label: string }[] = [
   { value: "", label: "—" },
-  { value: "pass", label: "良" },
-  { value: "fail", label: "否" },
-  { value: "na", label: "該当なし" },
+  ...VISUAL_JUDGMENTS.map((v) => ({ value: v, label: JUDGMENT_LABEL[v] })),
 ];
 
 export default function CompletionInspectionForm({ reservationId, vehicleId, customerId, onCancel, onSaved }: Props) {
@@ -70,15 +71,7 @@ export default function CompletionInspectionForm({ reservationId, vehicleId, cus
   }, [fields]);
 
   const visualItems = useMemo(() => visualItemsForForm(form), [form]);
-  const visualGroups = useMemo(() => {
-    const map = new Map<VisualInspectionItem["group"], VisualInspectionItem[]>();
-    for (const it of visualItems) {
-      const arr = map.get(it.group) ?? [];
-      arr.push(it);
-      map.set(it.group, arr);
-    }
-    return Array.from(map.entries());
-  }, [visualItems]);
+  const visualGroups = useMemo(() => groupVisualItems(form), [form]);
   const matchFields = useMemo(() => vehicleMatchFieldsForForm(form), [form]);
 
   function cell(code: string): Cell {

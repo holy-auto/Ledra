@@ -8,6 +8,7 @@ import {
   visualItemsForForm,
   vehicleMatchFieldsForForm,
   VISUAL_INSPECTION_ITEMS,
+  extractInspectionAnswers,
 } from "../indicated-inspection";
 
 describe("indicated-inspection measurement catalog", () => {
@@ -139,5 +140,29 @@ describe("indicated-inspection visual / match catalog [Phase 1d]", () => {
     // 車名・型式は両様式共通
     expect(yonago).toContain("match.vehicle_name");
     expect(yonago).toContain("match.model");
+  });
+
+  it("extractInspectionAnswers: visual./match. のみを接頭辞抽出し、実カタログの code で引ける", () => {
+    // フォームが保存する形（PDF が同じ code で引く前提の往復契約）を再現する。
+    const visualCode = visualItemsForForm("sanago")[0].code;
+    const matchCode = vehicleMatchFieldsForForm("sanago")[0].code;
+    const answers = {
+      __indicated_form: { value: "sanago" }, // 予約キーは無視される
+      [visualCode]: { value: "pass" },
+      [matchCode]: { value: "普通" },
+      "match.empty": { value: "" }, // 空値は落とす
+      "visual.bad": { value: 123 }, // 非文字列は落とす
+    };
+    const { visual, match } = extractInspectionAnswers(answers);
+    expect(visual[visualCode]).toBe("pass");
+    expect(match[matchCode]).toBe("普通");
+    expect(visual).not.toHaveProperty("__indicated_form");
+    expect(match).not.toHaveProperty("match.empty");
+    expect(visual).not.toHaveProperty("visual.bad");
+  });
+
+  it("extractInspectionAnswers: null / 非オブジェクトでも落ちない", () => {
+    expect(extractInspectionAnswers(null)).toEqual({ visual: {}, match: {} });
+    expect(extractInspectionAnswers(undefined)).toEqual({ visual: {}, match: {} });
   });
 });

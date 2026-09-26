@@ -5,12 +5,12 @@ import { fmtDate } from "@/lib/pdf/format";
 import {
   measurementFieldsForForm,
   measurementGroup,
-  visualItemsForForm,
+  groupVisualItems,
   vehicleMatchFieldsForForm,
   VISUAL_GROUP_LABEL,
+  JUDGMENT_LABEL,
   type IndicatedInspectionForm,
   type MeasurementFieldDef,
-  type VisualInspectionItem,
 } from "@/lib/validations/indicated-inspection";
 
 /**
@@ -60,12 +60,6 @@ const FORM_LABEL: Record<IndicatedInspectionForm, string> = {
   yonago: "第四号様式（二輪）",
 };
 
-const JUDGMENT_LABEL: Record<string, string> = {
-  pass: "良",
-  fail: "否",
-  na: "該当なし",
-};
-
 const C = {
   primary: "#1a1a2e",
   muted: "#636e72",
@@ -112,6 +106,8 @@ const s = StyleSheet.create({
     fontSize: 9,
     backgroundColor: C.bg,
   },
+  scopeNote: { fontSize: 7.5, color: C.muted, marginTop: 4, lineHeight: 1.4 },
+
   footer: {
     position: "absolute",
     bottom: 18,
@@ -125,22 +121,24 @@ const s = StyleSheet.create({
 });
 
 /**
- * 丸数字（①〜⑳ / ㉑）を通常数字へ正規化する。PDF の日本語サブセットフォントは丸数字グリフを
- * 含まないため、目視項目ラベルの「① 走行装置」は「1 走行装置」として描く（HTML フォームでは
- * 丸数字のまま表示されるが、PDF では欠字になるため）。①=U+2460..⑳=U+2473 / ㉑=U+3251。
+ * 丸数字（①〜⑳）を通常数字へ正規化する。PDF の日本語サブセットフォントは丸数字グリフを含まないため、
+ * 目視項目ラベルの「① 走行装置」は「1 走行装置」として描く（HTML フォームでは丸数字のまま表示される）。
+ * カタログの目視ラベルは①〜⑳のみを使う（その他は番号なし）ため対象は U+2460..U+2473。
  */
 function plainLabel(label: string): string {
-  return label.replace(/[①-⑳㉑-㉟]/g, (ch) => {
-    const cp = ch.codePointAt(0) ?? 0;
-    return String(cp >= 0x3251 ? cp - 0x3251 + 21 : cp - 0x2460 + 1);
-  });
+  return label.replace(/[①-⑳]/g, (ch) => String((ch.codePointAt(0) ?? 0) - 0x2460 + 1));
+}
+
+/** 判定値→ラベル（未知値はそのまま返す）。カタログの JUDGMENT_LABEL を単一定義源とする。 */
+function judgmentLabel(v: string): string {
+  return JUDGMENT_LABEL[v as keyof typeof JUDGMENT_LABEL] ?? v;
 }
 
 /** 1測定セルの表示値を組み立てる。値が無ければ空文字（＝様式の未記入セル）。 */
 function formatValue(def: MeasurementFieldDef, m: IndicatedMeasurement | undefined): string {
   if (!m) return "";
   if (def.valueKind === "judgment") {
-    return m.judgment ? (JUDGMENT_LABEL[m.judgment] ?? m.judgment) : "";
+    return m.judgment ? judgmentLabel(m.judgment) : "";
   }
   if (def.valueKind === "numeric") {
     if (m.num_value == null) return "";
@@ -175,14 +173,8 @@ function IndicatedInspectionDocument({ data }: { data: IndicatedInspectionPdfDat
     else groups.push({ name: g, fields: [f] });
   }
 
-  // 目視検査を構造→装置でグループ化（様式順）。
-  const visualItems = visualItemsForForm(data.form);
-  const visualGroups: { group: VisualInspectionItem["group"]; items: VisualInspectionItem[] }[] = [];
-  for (const it of visualItems) {
-    const last = visualGroups[visualGroups.length - 1];
-    if (last && last.group === it.group) last.items.push(it);
-    else visualGroups.push({ group: it.group, items: [it] });
-  }
+  // 目視検査を構造→装置でグループ化（カタログと共有の単一実装）。
+  const visualGroups = groupVisualItems(data.form);
   const matchFields = vehicleMatchFieldsForForm(data.form);
 
   const vehicleLine = data.vehicle ? [data.vehicle.maker, data.vehicle.model].filter(Boolean).join(" ") || "—" : "—";
@@ -223,19 +215,19 @@ function IndicatedInspectionDocument({ data }: { data: IndicatedInspectionPdfDat
         ))}
 
         {/* 目視等による検査（構造・装置） */}
-        {visualGroups.map((g) => (
-          <View key={g.group} style={s.section} wrap={false}>
-            <Text style={s.sectionTitle}>目視等による検査 — {VISUAL_GROUP_LABEL[g.group]}</Text>
+        {visualGroups.map(([group, items]) => (
+          <View key={group} style={s.section} wrap={false}>
+            <Text style={s.sectionTitle}>目視等による検査 — {VISUAL_GROUP_LABEL[group]}</Text>
             <View style={s.table}>
               <View style={s.headerRow}>
                 <Text style={[s.th, { width: "78%" }]}>項目</Text>
                 <Text style={[s.th, { width: "22%", textAlign: "right" }]}>判定</Text>
               </View>
-              {g.items.map((it, i) => (
+              {items.map((it, i) => (
                 <View key={it.code} style={[s.row, i % 2 === 1 ? s.rowAlt : {}]}>
                   <Text style={[s.tdLabel, { width: "78%" }]}>{plainLabel(it.label)}</Text>
                   <Text style={[s.tdValue, { width: "22%" }]}>
-                    {data.visual[it.code] ? (JUDGMENT_LABEL[data.visual[it.code]] ?? data.visual[it.code]) : ""}
+                    {data.visual[it.code] ? judgmentLabel(data.visual[it.code]) : ""}
                   </Text>
                 </View>
               ))}
@@ -264,6 +256,10 @@ function IndicatedInspectionDocument({ data }: { data: IndicatedInspectionPdfDat
           <View style={s.notesBox}>
             <Text>{data.notes || "—"}</Text>
           </View>
+          <Text style={s.scopeNote}>
+            ※ 空欄の項目は、本記録に測定値・判定・照合値が入力されていないことを示します（検査結果が
+            「該当なし」の場合は判定欄に明示されます）。
+          </Text>
         </View>
 
         <View style={s.footer} fixed>

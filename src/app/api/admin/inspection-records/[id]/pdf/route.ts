@@ -3,7 +3,11 @@ import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { apiValidationError, apiInternalError } from "@/lib/api/response";
 import { withCaller } from "@/lib/api/withCaller";
 import { renderIndicatedInspectionPdf, type IndicatedMeasurement } from "@/lib/pdf/pdfIndicatedInspection";
-import { INDICATED_INSPECTION_FORMS, type IndicatedInspectionForm } from "@/lib/validations/indicated-inspection";
+import {
+  INDICATED_INSPECTION_FORMS,
+  extractInspectionAnswers,
+  type IndicatedInspectionForm,
+} from "@/lib/validations/indicated-inspection";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -28,23 +32,6 @@ const RECORD_COLUMNS = `
 function resolveForm(answers: unknown): IndicatedInspectionForm {
   const v = (answers as { __indicated_form?: { value?: unknown } } | null)?.__indicated_form?.value;
   return INDICATED_INSPECTION_FORMS.includes(v as IndicatedInspectionForm) ? (v as IndicatedInspectionForm) : "sanago";
-}
-
-/**
- * answers（`{[key]:{value}}`）から目視検査(`visual.`)・照合欄(`match.`)の値を接頭辞で抽出する。
- * PDF はカタログのキーで引くため、prefix 一致のみを渡せばよい（未知キーは無視）。
- */
-function extractAnswers(answers: unknown): { visual: Record<string, string>; match: Record<string, string> } {
-  const visual: Record<string, string> = {};
-  const match: Record<string, string> = {};
-  const obj = (answers ?? {}) as Record<string, unknown>;
-  for (const [k, v] of Object.entries(obj)) {
-    const value = (v as { value?: unknown } | null)?.value;
-    if (typeof value !== "string" || value === "") continue;
-    if (k.startsWith("visual.")) visual[k] = value;
-    else if (k.startsWith("match.")) match[k] = value;
-  }
-  return { visual, match };
 }
 
 export const GET = withCaller<{ id: string }>(
@@ -88,7 +75,7 @@ export const GET = withCaller<{ id: string }>(
         customer: { name: string | null } | null;
       };
 
-      const { visual, match } = extractAnswers(rec.answers);
+      const { visual, match } = extractInspectionAnswers(rec.answers);
       const pdf = await renderIndicatedInspectionPdf({
         form: resolveForm(rec.answers),
         facility: { name: (tenant as { name?: string | null } | null)?.name ?? null },
