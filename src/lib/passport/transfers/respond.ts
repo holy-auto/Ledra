@@ -181,23 +181,7 @@ export async function acceptTransferByToken(args: {
     // of truth and a reconciliation job can fix the passport row.
   }
 
-  // 旧オーナーのマイページから、この VIN の受諾時点までの証明書を外す（代表判断 2026-09-27）。
-  // 全テナント分（同じ VIN を別の店で施工していることがある）。/c の公開ページは変えない。
-  // 同じメールへの移転（名義の付け替えだけ）は本人のままなので外さない。
-  const sameOwner = isSameOwner(row);
-  const { data: vinVehicles, error: vinErr } = sameOwner
-    ? { data: [], error: null }
-    : await admin.from("vehicles").select("id").eq("vin_code_normalized", row.vin_code_normalized);
-  const vehicleIds = (vinVehicles ?? []).map((v) => v.id as string);
-  const { error: hideErr } =
-    vinErr || vehicleIds.length === 0
-      ? { error: vinErr }
-      : await admin
-          .from("certificates")
-          .update({ hidden_from_owner_portal_at: now })
-          .in("vehicle_id", vehicleIds)
-          .lte("created_at", now)
-          .is("hidden_from_owner_portal_at", null);
+  const hideErr = isSameOwner(row) ? null : await hideFromPreviousOwner(admin, row, now);
   if (hideErr) {
     // 受諾は確定済み。記録を残して手当てできるようにする（旧オーナーに見え続けるだけで、データは失われない）。
     logger.error("acceptTransferByToken hide from previous owner failed", {
@@ -228,6 +212,64 @@ export async function acceptTransferByToken(args: {
   });
 
   return { ok: true };
+}
+
+/**
+ * 旧オーナーのマイページから、この VIN の受諾時点までの**旧オーナー名義の**証明書を外す（代表判断 2026-09-27）。
+ * 全テナント分（同じ VIN を別の店で施工していることがある）。/c の公開ページは変えない。
+ *
+ * 旧オーナーの顧客行 = 移転を始めた車両に紐付く顧客 ＋ 旧オーナーのメールを持つ顧客（全テナント）。
+ * 新オーナーのメールを持つ顧客は除く。受諾前に新オーナーが自分名義で施工していた証明書まで
+ * 消さないため（/code-review 指摘）。
+ */
+async function hideFromPreviousOwner(
+  admin: ReturnType<typeof createServiceRoleAdmin>,
+  row: TransferRow,
+  now: string,
+): Promise<{ message: string } | null> {
+  const fromEmail = row.from_owner_email?.trim() ?? "";
+  const [vins, initVehicle, byEmail] = await Promise.all([
+    admin.from("vehicles").select("id").eq("vin_code_normalized", row.vin_code_normalized),
+    row.initiating_vehicle_id
+      ? admin.from("vehicles").select("customer_id").eq("id", row.initiating_vehicle_id).maybeSingle()
+      : Promise.resolve({ data: null, error: null }),
+    fromEmail
+      ? admin
+          .from("customers")
+          .select("id, email")
+          .ilike("email", fromEmail.replace(/[\\%_]/g, "\\$&"))
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+  const firstErr = vins.error ?? initVehicle.error ?? byEmail.error;
+  if (firstErr) return firstErr;
+
+  const vehicleIds = (vins.data ?? []).map((v: { id: string }) => v.id);
+  const initCustomerId = (initVehicle.data as { customer_id: string | null } | null)?.customer_id ?? null;
+  let initCustomerEmail: string | null = null;
+  if (initCustomerId) {
+    const { data } = await admin.from("customers").select("email").eq("id", initCustomerId).maybeSingle();
+    initCustomerEmail = (data as { email: string | null } | null)?.email ?? null;
+  }
+  const toEmail = row.to_owner_email.trim().toLowerCase();
+  const isNewOwner = (email: string | null) => !!email && email.trim().toLowerCase() === toEmail;
+  const ownerIds = [
+    ...new Set([
+      ...(initCustomerId && !isNewOwner(initCustomerEmail) ? [initCustomerId] : []),
+      ...((byEmail.data ?? []) as { id: string; email: string | null }[])
+        .filter((c) => !isNewOwner(c.email))
+        .map((c) => c.id),
+    ]),
+  ];
+  if (vehicleIds.length === 0 || ownerIds.length === 0) return null;
+
+  const { error } = await admin
+    .from("certificates")
+    .update({ hidden_from_owner_portal_at: now })
+    .in("vehicle_id", vehicleIds)
+    .in("customer_id", ownerIds)
+    .lte("created_at", now)
+    .is("hidden_from_owner_portal_at", null);
+  return error;
 }
 
 function isSameOwner(row: TransferRow): boolean {

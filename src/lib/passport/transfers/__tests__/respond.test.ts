@@ -49,7 +49,9 @@ function makeAdmin(opts: {
   onPassportUpdate?: (doc: Doc) => void;
   /** 同じ VIN を持つ全テナントの vehicles（旧オーナーのマイページから外す対象） */
   vinVehicles?: Doc[];
-  onCertificatesHide?: (doc: Doc, vehicleIds: string[]) => void;
+  /** 顧客行（id → email）。旧オーナーのメールでの ilike と id 引きの両方に使う */
+  customers?: { id: string; email: string | null }[];
+  onCertificatesHide?: (doc: Doc, vehicleIds: string[], customerIds: string[]) => void;
 }) {
   return {
     from: (table: string) => {
@@ -101,17 +103,34 @@ function makeAdmin(opts: {
             eq: (col: string) =>
               col === "vin_code_normalized"
                 ? Promise.resolve({ data: opts.vinVehicles ?? [], error: null })
-                : { maybeSingle: () => Promise.resolve({ data: opts.vehicle ?? null }) },
+                : { maybeSingle: () => Promise.resolve({ data: opts.vehicle ?? null, error: null }) },
+          }),
+        };
+      }
+      if (table === "customers") {
+        const rows = opts.customers ?? [];
+        return {
+          select: () => ({
+            ilike: (_col: string, pattern: string) =>
+              Promise.resolve({
+                data: rows.filter((c) => c.email?.toLowerCase() === pattern.toLowerCase()),
+                error: null,
+              }),
+            eq: (_col: string, id: string) => ({
+              maybeSingle: () => Promise.resolve({ data: rows.find((c) => c.id === id) ?? null, error: null }),
+            }),
           }),
         };
       }
       if (table === "certificates") {
         return {
           update: (doc: Doc) => ({
-            in: (_col: string, ids: string[]) => {
-              opts.onCertificatesHide?.(doc, ids);
-              return { lte: () => ({ is: () => Promise.resolve({ error: null }) }) };
-            },
+            in: (_c1: string, vehicleIds: string[]) => ({
+              in: (_c2: string, customerIds: string[]) => {
+                opts.onCertificatesHide?.(doc, vehicleIds, customerIds);
+                return { lte: () => ({ is: () => Promise.resolve({ error: null }) }) };
+              },
+            }),
           }),
         };
       }
@@ -234,9 +253,9 @@ describe("acceptTransferByToken — cross-tenant ownership flip", () => {
     if (!res.ok) expect(res.reason).toBe("expired");
   });
 
-  it("hides the VIN's certificates from the previous owner's portal and emails them", async () => {
+  it("hides the previous owner's certificates for the VIN (not the new owner's) and emails them", async () => {
     const { rawToken } = generateTransferToken();
-    let hidden: { doc: Doc; ids: string[] } | null = null;
+    let hidden: { doc: Doc; vehicleIds: string[]; customerIds: string[] } | null = null;
     mocks.createServiceRoleAdmin.mockReturnValue(
       makeAdmin({
         transfer: {
@@ -250,10 +269,15 @@ describe("acceptTransferByToken — cross-tenant ownership flip", () => {
           status: "pending",
           expires_at: future,
         },
-        vehicle: { maker: "Toyota", model: "Aqua", year: 2022 },
+        // 施工店 A は車両の顧客を既に新オーナーへ付け替えている
+        vehicle: { maker: "Toyota", model: "Aqua", year: 2022, customer_id: "cust-new-A" },
         // 同じ VIN を別テナントでも施工している
         vinVehicles: [{ id: "vehicle-A" }, { id: "vehicle-B" }],
-        onCertificatesHide: (doc, ids) => (hidden = { doc, ids }),
+        customers: [
+          { id: "cust-new-A", email: "new@example.com" },
+          { id: "cust-old-B", email: "Old@Example.com" },
+        ],
+        onCertificatesHide: (doc, vehicleIds, customerIds) => (hidden = { doc, vehicleIds, customerIds }),
       }),
     );
 
@@ -263,7 +287,9 @@ describe("acceptTransferByToken — cross-tenant ownership flip", () => {
     expect(res.ok).toBe(true);
     expect(hidden).toEqual({
       doc: { hidden_from_owner_portal_at: expect.any(String) },
-      ids: ["vehicle-A", "vehicle-B"],
+      vehicleIds: ["vehicle-A", "vehicle-B"],
+      // 新オーナーの顧客行（cust-new-A）は外さない
+      customerIds: ["cust-old-B"],
     });
     expect(mocks.sendTransferCompletedToPreviousOwner).toHaveBeenCalledWith({
       toEmail: "old@example.com",
