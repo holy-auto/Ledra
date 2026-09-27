@@ -180,7 +180,7 @@ export default function JobInspectionTab({ reservationId, vehicleId, customerId 
                     <button
                       type="button"
                       onClick={() => setEditingCompletion(r)}
-                      disabled={!!editingCompletion || startingCompletion}
+                      disabled={!!editingCompletion || startingCompletion || starting}
                       className="text-accent underline disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       詳細・編集
