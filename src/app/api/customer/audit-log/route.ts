@@ -67,6 +67,8 @@ export async function GET(req: Request) {
         .select("public_id")
         .eq("tenant_id", tenantId)
         .eq("customer_id", session.customer_id)
+        // 移転後の閲覧記録（新オーナーの閲覧）を旧オーナーに見せない。
+        .is("hidden_from_owner_portal_at", null)
         .order("created_at", { ascending: false })
         .range(from, from + CERT_PAGE - 1);
       if (certErr) return apiInternalError(certErr, "customer audit-log certs");

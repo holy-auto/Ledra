@@ -111,3 +111,41 @@ export async function sendTransferAcceptedNotification(args: {
     });
   }
 }
+
+/**
+ * 旧オーナーへ、所有権移転が完了したことを知らせる（代表判断 2026-09-27）。
+ * 移転は施工店が開始し新オーナーが受諾するので、旧オーナーはこのメールで初めて知る場合がある。
+ */
+export async function sendTransferCompletedToPreviousOwner(args: {
+  toEmail: string;
+  toName: string | null;
+  vehicleLabel: string;
+  passportShortId: string;
+}): Promise<void> {
+  const text = [
+    `${args.toName ?? "お客様"} 様`,
+    "",
+    "お客様が所有されていた車両の、車両パスポートの所有権移転が完了しました。",
+    "",
+    `対象車両: ${args.vehicleLabel}`,
+    `パスポートID: ${args.passportShortId}`,
+    "",
+    "移転前の施工証明書は、今後お客様のマイページには表示されません。",
+    "お心当たりのない場合は、施工を依頼した店舗または Ledra 運営までご連絡ください。",
+    "",
+    "— Ledra Vehicle Passport",
+  ].join("\n");
+
+  const res = await sendEmail({
+    to: args.toEmail,
+    subject: `[Ledra] 車両パスポートの所有権移転が完了しました — ${args.vehicleLabel}`,
+    text,
+  });
+
+  if (!res.ok) {
+    logger.warn("passport transfer previous-owner notification email failed", {
+      status: res.status,
+      error: res.error,
+    });
+  }
+}

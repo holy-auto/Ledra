@@ -5,6 +5,7 @@ import { createInsurerScopedAdmin } from "@/lib/supabase/admin";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { insurerPiiDisclosureSchema } from "@/lib/validations/insurer";
 import { recordInsurerAccessLog } from "@/lib/insurer/auditActions";
+import { notifyOwnerOfPiiRequest } from "@/lib/insurer/ownerConsent";
 
 export const runtime = "nodejs";
 
@@ -22,7 +23,7 @@ export async function GET(req: NextRequest) {
   const { data, error } = await admin
     .from("pii_disclosure_consents")
     .select(
-      "id, certificate_id, insurer_id, insurer_requested_at, insurer_requested_by, insurer_reason, tenant_consented_at, is_active, created_at, updated_at",
+      "id, certificate_id, insurer_id, insurer_requested_at, insurer_requested_by, insurer_reason, tenant_consented_at, owner_consented_at, revoked_at, is_active, created_at, updated_at",
     )
     .eq("certificate_id", certificateId)
     .eq("insurer_id", caller.insurerId)
@@ -31,13 +32,20 @@ export async function GET(req: NextRequest) {
 
   if (error) return apiInternalError(error, "insurer.pii-disclosure");
 
-  const disclosed = data && data.insurer_requested_at !== null && data.tenant_consented_at !== null;
+  // SQL の is_pii_disclosed() と同じ条件（申請・施工店の承認・オーナーの同意・未取消）。
+  const disclosed =
+    !!data &&
+    !!data.insurer_requested_at &&
+    !!data.tenant_consented_at &&
+    !!data.owner_consented_at &&
+    !data.revoked_at;
 
   return apiJson({
     consent: data,
     disclosed,
     insurer_requested: !!data?.insurer_requested_at,
     tenant_consented: !!data?.tenant_consented_at,
+    owner_consented: !!data?.owner_consented_at,
   });
 }
 
@@ -70,7 +78,7 @@ export async function POST(req: NextRequest) {
       { onConflict: "certificate_id,insurer_id" },
     )
     .select(
-      "id, certificate_id, insurer_id, insurer_requested_at, insurer_requested_by, insurer_reason, tenant_consented_at, is_active, created_at, updated_at",
+      "id, certificate_id, insurer_id, insurer_requested_at, insurer_requested_by, insurer_reason, tenant_consented_at, owner_consented_at, revoked_at, is_active, created_at, updated_at",
     )
     .single();
 
@@ -89,6 +97,9 @@ export async function POST(req: NextRequest) {
     },
     "POST /api/insurer/pii-disclosure",
   );
+
+  // オーナー本人にマイページでの同意を依頼する（届かなくても申請自体は成立させる）。
+  if (!data?.owner_consented_at) void notifyOwnerOfPiiRequest(certificate_id, caller.insurerId);
 
   return apiJson({ consent: data });
 }
