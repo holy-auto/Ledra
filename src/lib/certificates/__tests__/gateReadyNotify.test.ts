@@ -12,7 +12,19 @@ vi.mock("@/lib/logger", () => ({ logger: { warn: vi.fn() } }));
 
 import { watchGateReadyTransition, type GateWatchCert } from "../gateReadyNotify";
 
-const admin = {} as any;
+/** `admin.from("certificates").select("status").eq("id", ...).maybeSingle()` の最小スタブ。 */
+function adminWithStatus(status: string | null) {
+  return {
+    from: () => ({
+      select: () => ({
+        eq: () => ({
+          maybeSingle: async () => ({ data: status === null ? null : { status } }),
+        }),
+      }),
+    }),
+  } as any;
+}
+const admin = adminWithStatus("draft");
 const cert = (status: string): GateWatchCert => ({
   id: "c1",
   public_id: "pub1",
@@ -72,6 +84,14 @@ describe("watchGateReadyTransition", () => {
       await watchGateReadyTransition(admin, "t1", cert(status))
     )();
     expect(m.evaluate).not.toHaveBeenCalled();
+    expect(m.dispatch).not.toHaveBeenCalled();
+  });
+
+  it("アップロード処理中に別経路で発行(draft→active)されていたら、READYでも通知しない", async () => {
+    gate(false, true);
+    // 通知直前の再チェックで status を読むと既に active になっている想定。
+    const after = await watchGateReadyTransition(adminWithStatus("active"), "t1", cert("draft"));
+    await after();
     expect(m.dispatch).not.toHaveBeenCalled();
   });
 

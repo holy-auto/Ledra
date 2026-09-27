@@ -59,6 +59,11 @@ export async function watchGateReadyTransition(
   if ((await gateReady(admin, tenantId, cert)) !== false) return noop;
 
   return async () => {
+    // アップロード処理中に別経路で発行(draft→active)された可能性があるため、
+    // 通知直前に現在のステータスを取り直す（TOCTOU: 既に発行済みの証明書に
+    // 「発行できます」通知を送らないため）。
+    const { data: current } = await admin.from("certificates").select("status").eq("id", cert.id).maybeSingle();
+    if (current?.status !== "draft") return;
     if ((await gateReady(admin, tenantId, cert)) !== true) return;
     await dispatchNotification({
       tenantId,
