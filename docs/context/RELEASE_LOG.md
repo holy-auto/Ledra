@@ -4,6 +4,40 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-09-27 列属性のドリフトを全表で洗い出し、本番の「使えない既定値」2件を直した
+
+**全表調査**: 本番と再生 DB の `information_schema.columns` を**同じクエリで**引き、列ごとの
+digest で突き合わせた。**280 表のうち 268 表は完全一致**で、差は 12 表・310 セル中 25 セル・
+属性単位で 39 件。`20260927150900` / `20260927151000` で 19 件を解消し、残り 20 件は
+(a) enum/text の7列（IMP-015 の判断待ち）と (b) 本番へ適用すれば消える2件だけ。
+
+**本番の既定値が本番自身の CHECK に弾かれていた（2件）**
+
+| 列 | 本番の既定 | CHECK が許す値 | 直した先 |
+|---|---|---|---|
+| `job_orders.status` | `'open'` | pending / quoting / … / cancelled | `'pending'` |
+| `insurer_users.role` | `'member'` | admin / viewer / auditor | `'viewer'`（最も弱い） |
+
+どちらも**列を省いて insert すると本番で必ず 23514**。アプリの経路は明示で渡しているので
+実害は出ていなかったが、リポジトリ内には既に `role` を省く書き手があった
+（`insurer_suspension_gate.sql`）。本番の (既定値, 単一列 CHECK) の組 **183 件を本番自身に
+評価させ**（一時テーブル + `INSERT DEFAULT VALUES`）、違反2件・**評価不能0件**・OK 181 件を確認。
+
+**新しい環境が本番の実データを拒否していた（2件）**: `audit_logs.tenant_id` は本番 349 行のうち
+**337 行が NULL** なのに再生側が NOT NULL で、`INSERT INTO audit_logs (action)` は
+プレビュー DB で 23502 になっていた（実測）。`insurers.plan_tier` も同型。両方 DROP NOT NULL。
+
+**再発防止**: `scripts/replay/checks/defaults_satisfy_own_check.sql` を追加。定義文を正規表現で
+読まず **Postgres 自身を判定器にする**（同じ型・既定・CHECK の一時テーブルに `INSERT DEFAULT VALUES`）。
+**評価不能が1件でもあれば落とす** —— 「違反0」を「全部見た」と読み替えないため。
+
+**既存検査5本の修正**: 本番に合わせて NOT NULL を足したら、再生が緩かったから通っていた検査が
+5本落ちた（MISTAKE_LEDGER `M-20260927-checks-were-green-on-rows-production-would-reject`）。
+fixture が必要な列を明示で渡すよう直した。
+
+検証: `ci-parallel-checks.sh` 9/9・`check:migrations` 再生 512/512・振る舞いの検査 **8 件**・
+陰性対照（壊れた既定値を再生に入れる）で検出器が落ちることを実測。
+
 ## 2026-09-25 certificate_images の列定義を本番に揃え、索引とポリシーの差を測り直した
 
 `certificate_images` の残っていた3件の食い違いを解消（`20260925142800`）。

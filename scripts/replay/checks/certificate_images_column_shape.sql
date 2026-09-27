@@ -64,10 +64,12 @@ BEGIN
 
   -- (4) sort_order の既定が 1 か。既定は行が入らないと確かめられないので、
   --     外部キーを満たす行を用意してから省略して入れる。
-  INSERT INTO public.tenants (id, name) VALUES (v_tenant, '検査用ダミー店')
+  -- slug / customer_name は本番で NOT NULL（20260927151000 で再生側も揃えた）。
+  -- 省くと 23502 になるので、この検査の関心事でなくても明示で渡す。
+  INSERT INTO public.tenants (id, name, slug) VALUES (v_tenant, '検査用ダミー店', 'cert-img-shape-tenant')
   ON CONFLICT (id) DO NOTHING;
-  INSERT INTO public.certificates (id, tenant_id, public_id, status)
-  VALUES (v_cert, v_tenant, 'c_' || repeat('0', 24), 'draft')
+  INSERT INTO public.certificates (id, tenant_id, public_id, status, customer_name)
+  VALUES (v_cert, v_tenant, 'c_' || repeat('0', 24), 'draft', '検査用ダミー客')
   ON CONFLICT (id) DO NOTHING;
 
   INSERT INTO public.certificate_images (certificate_id, tenant_id, storage_path, file_name, content_type, file_size)

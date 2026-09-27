@@ -4,7 +4,7 @@
 > 追わず、常に最新状態だけを保つ（履歴は DECISION_LOG.md / RELEASE_LOG.md 側）。
 > 大きな変化があったら都度上書きすること。
 
-最終更新: 2026-09-25
+最終更新: 2026-09-27
 
 > 2026-09-25 追記: **`certificate_images` の列定義を本番に揃えた**（`20260925142800`）。
 > `file_name` / `content_type` を NOT NULL、`sort_order` の既定を 1 に。本番と再生 DB を
@@ -118,8 +118,20 @@
 > 振る舞い検査を2本追加し、修正を外すと実際に落ちること（陰性対照）を確認済み。
 > **残る既知のずれ**: 突き合わせの道具（`check:schema` / `check-schema-drift` / 再生検査）は
 > **列の「名前」しか見ていない**ので、既定値・NULL 可否・型の食い違いは映らない。
-> `certificate_images` には `file_name`/`content_type` の NOT NULL、`sort_order` の既定
-> （本番 1 / マイグレーション 0）という差が残っている（OPEN_QUESTIONS）。
+>
+> 2026-09-25 追記: `certificate_images` の残り3列差（`file_name`/`content_type` の NOT NULL、
+> `sort_order` の既定）を `20260925142800` で解消（#1166）。
+>
+> 2026-09-27 追記: **列属性の食い違いを 280 表すべてで洗い出した。** 本番と再生 DB の
+> `information_schema.columns` を同じクエリで引き、268 表は完全一致・差は 12 表 39 件と確定。
+> `20260927150900` / `20260927151000` で 19 件を解消。残り 20 件は enum/text の7列
+> （**IMP-015 の判断待ち**）と、本番へ適用すれば消える2件だけ。
+> 途中で **本番の既定値が本番自身の CHECK に弾かれる列を2つ**発見した
+> （`job_orders.status` = `'open'`、`insurer_users.role` = `'member'`。どちらも省略して
+> insert すると必ず 23514）。本番の 183 組を本番自身に評価させ、違反2件・評価不能0件を確認。
+> 再発防止は `scripts/replay/checks/defaults_satisfy_own_check.sql`。
+> **ただし検出器（`check-schema-drift.mjs`）は属性まで見るようには広げていない** ——
+> 今回の調査は一度きりの手作業なので、次にずれても誰も気づかない（OPEN_QUESTIONS）。
 
 > 2026-09-22 追記: **メーカー向け in-app 通知チャネルを新設**（#1123・`20260922140000`、本番適用済み＝2026-09-23 の db-migrate run #86 で実測確認）。
 > 施工店の証拠提出（evidence_submitted）通知が提出元テナント自身に飛んでメーカーに届いて

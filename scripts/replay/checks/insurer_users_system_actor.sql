@@ -31,7 +31,9 @@ BEGIN
   END IF;
 
   -- 増えた保険会社にトリガが効くか（実際に1社入れて確かめる）。
-  INSERT INTO public.insurers (name) VALUES ('検査用ダミー保険会社') RETURNING id INTO v_insurer_id;
+  -- slug は本番で NOT NULL（20260927151000 で再生側も揃えた）。
+  INSERT INTO public.insurers (name, slug) VALUES ('検査用ダミー保険会社', 'system-actor-check-insurer')
+  RETURNING id INTO v_insurer_id;
 
   SELECT id INTO v_system_id
   FROM public.insurer_users WHERE insurer_id = v_insurer_id AND is_system;
