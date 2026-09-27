@@ -20,6 +20,7 @@ export default function AdminVehicleEditPage() {
   const [vinCode, setVinCode] = useState("");
   const [sizeClass, setSizeClass] = useState("");
   const [notes, setNotes] = useState("");
+  const [passportPublic, setPassportPublic] = useState(true);
   const [customerId, setCustomerId] = useState<string | null>(null);
   const [customerSearch, setCustomerSearch] = useState("");
   const [customerResults, setCustomerResults] = useState<Customer[]>([]);
@@ -81,6 +82,7 @@ export default function AdminVehicleEditPage() {
           setVinCode(v.vin_code ?? "");
           setSizeClass(v.size_class ?? "");
           setNotes(v.notes ?? "");
+          setPassportPublic(!v.passport_opt_out);
           if (v.customer) {
             setCustomerId(v.customer.id);
             setCustomerSearch(v.customer.name);
@@ -111,6 +113,7 @@ export default function AdminVehicleEditPage() {
           notes: notes || null,
           customer_id: customerId || null,
           size_class: sizeClass || null,
+          passport_opt_out: !passportPublic,
         }),
       });
 
@@ -365,6 +368,22 @@ export default function AdminVehicleEditPage() {
               onChange={(e) => setNotes(e.target.value)}
               className="input-field min-h-[120px] w-full"
             />
+          </label>
+
+          <label className="flex items-start gap-3">
+            <input
+              type="checkbox"
+              checked={passportPublic}
+              onChange={(e) => setPassportPublic(e.target.checked)}
+              className="mt-1"
+            />
+            <span className="space-y-1">
+              <span className="block text-sm font-medium text-primary">車両パスポートに掲載する</span>
+              <span className="block text-[11px] text-muted">
+                オフにすると、この店舗の施工記録は車台番号ごとの公開履歴（車両パスポート）に載りません。
+                他店の記録は各店舗の設定に従います。
+              </span>
+            </span>
           </label>
 
           {err ? (
