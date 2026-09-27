@@ -133,7 +133,9 @@ export const NOTIFICATION_TYPE_CATALOG = {
   },
   rating_request: {
     severity: "informational",
-    defaultChannels: ["in_app"],
+    // 施工店の顧客宛（DECISION_LOG 2026-09-27）。customer 宛の in_app は dispatch が常にスキップする
+    // （顧客のアプリ内受信箱が無い）ため、叩き台の ["in_app"] では一度も届かなかった。
+    defaultChannels: ["email", "line"],
     category: "customer",
     targetRole: "customer",
   },

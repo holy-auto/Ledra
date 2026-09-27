@@ -3,6 +3,29 @@
 > まだ決まっていないこと、判断に迷っていることを書く場所。決まったら
 > DECISION_LOG.md に移し、このファイルからは消す（削除履歴は git で追える）。
 
+## rating_request の送信条件を「follow_up_settings.enabled のテナントのみ・発行7日後固定」で仮置きした（2026-09-27）
+
+- 実装（RELEASE_LOG 2026-09-27）で、評価依頼は `follow_up_settings.enabled = true` のテナントにだけ
+  送る形にした。代表判断の「follow_up_settings に準じてテナント設定可能」を、新しい設定 UI を作らず
+  既存の顧客フォロー用スイッチで代用したもの。フォローを有効にしていないテナントの顧客には届かない。
+- 日数は全テナント共通で7日（`RATING_REQUEST_DELAY_DAYS`）。テナント別に変えるなら
+  `follow_up_settings` に列を足す。
+- 確認したいこと: (a) スイッチを顧客フォローと共用してよいか（評価依頼だけ止めたいテナントがいるか）、
+  (b) 7日でよいか。
+- 起票日: 2026-09-27
+- 判断者: 代表
+
+## 発行直後フォロー（post_issue）が cron から一度も送られていない疑い（2026-09-27）
+
+- `triggerCertificateIssued` → `triggerPostIssueFollowUp` が発行時に `notification_logs`
+  （type=post_issue, status=queued）を1行入れるが、`queued` を読んで送る処理がコードに無い。
+  一方 cron の `processPostIssueFollowUps` は「post_issue のログが既にある証明書」を送信済みとして
+  飛ばすので、発行時に入れた queued 行が送信を止めている可能性がある。
+- コードを追っただけで、本番ログ（status=queued のまま残る post_issue 行の件数）は未確認。
+  【要確認】本番で `select count(*) from notification_logs where type='post_issue' and status='queued'`。
+- rating_request の実装中に気づいた。今回の変更範囲外なので手を入れていない。
+- 起票日: 2026-09-27
+
 ## 【解決済み 2026-09-27】通知2タイプ（`certificate_gate_ready` / `rating_request`）は該当イベントの実処理が見つからないため未配線（2026-09-25）
 
 IMP-029 の15タイプ配線（DECISION_LOG 2026-09-25 の決定に基づく）のうち、この2タイプだけは
