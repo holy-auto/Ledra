@@ -61,14 +61,20 @@ const DIGITAL_SOURCE_TYPE_CAPTURE = "http://cv.iptc.org/newscodes/digitalsourcet
 const CREATED_ACTION = { action: "c2pa.created", digitalSourceType: DIGITAL_SOURCE_TYPE_CAPTURE };
 const ORIENTATION_ACTION = { action: "c2pa.orientation", softwareAgent: "sharp" };
 const CONVERTED_ACTION = { action: "c2pa.converted", softwareAgent: "sharp" };
-// EXIF/GPS metadata removed for privacy before signing.
-const EDITED_REMOVE_METADATA_ACTION = { action: "c2pa.edited", parameters: { name: "exif_gps_metadata_removed" } };
+// EXIF/GPS metadata removed for privacy before signing. `c2pa.edited.metadata`（メタデータのみの編集）を
+// 使う。汎用の `c2pa.edited` は「editorial な意味に影響する編集」の定義で、Conformulator が
+// "Contains ambiguous actions" と表示した（2026-09-27）。画素は変えていないので意味が合わない。
+const EDITED_METADATA_ACTION = {
+  action: "c2pa.edited.metadata",
+  softwareAgent: "sharp",
+  description: "EXIF/GPS metadata removed for privacy",
+};
 
 type ManifestAction = {
   action: string;
   digitalSourceType?: string;
   softwareAgent?: string;
-  parameters?: { name?: string };
+  description?: string;
 };
 
 /**
@@ -96,13 +102,13 @@ function buildActions(o: TransformOutcome): ManifestAction[] {
   const actions: ManifestAction[] = [CREATED_ACTION];
   if (o.orientationApplied) actions.push(ORIENTATION_ACTION);
   if (o.reencoded) actions.push(CONVERTED_ACTION);
-  if (o.metadataRemoved) actions.push(EDITED_REMOVE_METADATA_ACTION);
+  if (o.metadataRemoved) actions.push(EDITED_METADATA_ACTION);
   return actions;
 }
 
-/** actions 台帳を要約文字列に落とす（parameters.name があれば `action:name`）。 */
+/** actions 台帳を要約文字列（action 名の列）に落とす。 */
 function summarizeActions(o: TransformOutcome): string[] {
-  return buildActions(o).map((a) => (a.parameters?.name ? `${a.action}:${a.parameters.name}` : a.action));
+  return buildActions(o).map((a) => a.action);
 }
 
 /** allActionsIncluded は「列挙した行為が実施した全て」＝再エンコードが走ったとき true。 */
@@ -201,7 +207,7 @@ export interface CaptureBinding {
  * `binding` seals certificate/vehicle/nonce/time into a custom assertion.
  * `outcome` = which transforms actually had an effect on this buffer (from
  * imageExif). Only effective actions are asserted, so the manifest never
- * certifies a no-op (e.g. `exif_gps_metadata_removed` when there was no
+ * certifies a no-op (e.g. `c2pa.edited.metadata` when there was no
  * metadata, or `c2pa.orientation` when there was no orientation to normalize).
  * On the fallback where sharp failed (reencoded=false) only `c2pa.created` is
  * asserted and allActionsIncluded=false.
@@ -239,7 +245,7 @@ export async function signC2pa(
     // Record the real provenance, asserting ONLY the actions that actually had an
     // effect on this buffer (from `outcome`): c2pa.created (camera-only input),
     // then c2pa.converted (re-encode), c2pa.orientation (only if an EXIF
-    // orientation was baked in), and c2pa.edited:exif_gps_metadata_removed (only
+    // orientation was baked in), and c2pa.edited.metadata (only
     // if the source carried EXIF/GPS that was removed). A no-op is never asserted,
     // so the manifest never certifies e.g. "GPS metadata removed" for an image
     // that had none. On the fallback where sharp failed, only c2pa.created is

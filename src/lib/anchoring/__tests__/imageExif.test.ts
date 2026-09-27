@@ -4,7 +4,7 @@ import { requireNative } from "./nativeImaging";
 /**
  * stripGpsAndReadExif must report per-action outcomes that reflect what actually
  * happened, so the C2PA action ledger never certifies a no-op (e.g. claiming
- * `exif_gps_metadata_removed` for an image that carried no metadata). A synthetic
+ * `c2pa.edited.metadata` for an image that carried no metadata). A synthetic
  * sharp image has no EXIF/GPS/orientation, so removal and orientation must be
  * false while the re-encode (reencoded) still ran.
  */

@@ -9,6 +9,8 @@
 - 修正: `stripGpsAndReadExif` の `orientationApplied` / `metadataRemoved` を sharp の `metadata()` で判定するようにした。
   従来は exifr を使っており、Orientation が文字列で返るため回転が常に未検出、WebP は読めず EXIF/GPS 除去が未記録だった
   （`allActionsIncluded=true` なのに `c2pa.orientation` / `c2pa.edited` が欠ける）。回転＋EXIF 付き jpeg/webp のテストを追加。
+  メタデータ除去の行為は汎用 `c2pa.edited`（editorial な編集の定義）から `c2pa.edited.metadata` に変更。Conformulator が
+  "Contains ambiguous actions" を表示したため（代表の自己テスト、2026-09-27）。
   本番は C2PA 未稼働のため影響画像なし（MISTAKE_LEDGER `M-20260927-c2pa-ledger-tested-only-on-exif-free-images`）。
 - 提出物（`docs/c2pa-evidence/`）: 英語の GPSA 本体・運用管理策、サンプル4枚（a-sample.jpg / b-sample.png / c-sample.webp /
   d-sample.heic。製品の署名パイプラインを通し c2pa-rs テスト証明書で署名、4枚とも `Valid`・指摘は untrusted のみ）、

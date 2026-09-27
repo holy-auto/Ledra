@@ -64,8 +64,8 @@ Authenticity pipeline, in order, for each uploaded image:
 4. Assertion generation:
    - `c2pa.actions.v2`: `c2pa.created` with `digitalSourceType = digitalCapture`, followed only by the
      transformations that actually took effect: `c2pa.orientation` (EXIF orientation was baked in),
-     `c2pa.converted` (re-encode ran), `c2pa.edited` with `parameters.name = exif_gps_metadata_removed`
-     (source carried metadata that was removed). `allActionsIncluded` is `true` when the re-encode ran
+     `c2pa.converted` (re-encode ran), `c2pa.edited.metadata` (source carried EXIF/GPS metadata that
+     was removed; pixels are not edited). `allActionsIncluded` is `true` when the re-encode ran
      and `false` when the bytes were signed as received (in that case only `c2pa.created` is listed).
    - `com.ledra.capture`: work-certificate public ID, vehicle VIN (when recorded), the single-use capture
      nonce, and the RFC 3161 time.

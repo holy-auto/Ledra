@@ -31,7 +31,7 @@ export interface ExifExtraction {
   orientationApplied: boolean;
   /**
    * True when the source actually carried EXIF/GPS metadata that the re-encode
-   * removed. Gates the `c2pa.edited:exif_gps_metadata_removed` action so it is
+   * removed. Gates the `c2pa.edited.metadata` action so it is
    * not asserted when there was nothing to remove (e.g. a metadata-free PNG).
    */
   metadataRemoved: boolean;

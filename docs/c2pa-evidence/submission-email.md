@@ -5,6 +5,10 @@
 - 送信前に必ずやること（代表）:
   1. Conformulator（https://c2pa-conformulator.netlify.app/）に `samples/` の4ファイルを1つずつ入れ、
      出る指摘が `signingCredential.untrusted`（テスト証明書なので想定内）だけであることを確認する。
+     赤いエラー欄の確認に加え、「評価基準」タブで不合格の項目が無いことも見る。概要の黄色ラベルのうち
+     "Contains ambiguous actions" は汎用 `c2pa.edited` が原因と見て `c2pa.edited.metadata` に変えた（2026-09-27）ので、
+     **新しいサンプルで消えたかを確認**する。"Non-editorial Transformations"（回転・再エンコード）は実際に行った処理の
+     表示と推定（未確認）。
      **それ以外の指摘が出たら送らずに Claude に結果を貼る。**
   2. `Ledra-GPSA.md` の §2.2（Vercel の本番環境変数を見られるのは管理者だけ）、§2.6（Vercel/Supabase に
      入れる人）が実態と合っているかを確認する。
@@ -43,7 +47,7 @@ submitting ingredient files. All other Intake Form values are unchanged.
 Each sample was produced by Ledra's production signing pipeline (EXIF/GPS removal and re-encode, then
 claim generation and signing). The inputs were synthetic test captures carrying EXIF orientation and GPS
 metadata, so the JPEG, PNG and WebP manifests list c2pa.created (digitalCapture), c2pa.orientation,
-c2pa.converted and c2pa.edited (exif_gps_metadata_removed) with allActionsIncluded = true. For the HEIC
+c2pa.converted and c2pa.edited.metadata with allActionsIncluded = true. For the HEIC
 sample the Backend's image library does not decode HEVC, so the asset is signed as received and the
 manifest lists only c2pa.created with allActionsIncluded = false. This is the product's behaviour for
 that input and is described in the GPSA document, section 1.6.
@@ -84,7 +88,7 @@ Intake Form の受理ありがとうございます。Ledra の証拠パッケ�
 
 2. サンプル（samples フォルダ）: a〜d の4ファイル。本番の署名パイプライン（EXIF/GPS 除去・再エンコード → 署名）で
    作成。入力は回転情報と GPS 付きの合成テスト画像なので、JPEG/PNG/WebP は「作成・回転・変換・メタデータ除去」の
-   4行為を記録し allActionsIncluded=true。HEIC はサーバーの画像ライブラリが HEVC を読めないため受け取ったまま署名し、
+   4行為を記録し allActionsIncluded=true（メタデータ除去はメタデータ専用の c2pa.edited.metadata）。HEIC はサーバーの画像ライブラリが HEVC を読めないため受け取ったまま署名し、
    「作成」のみ・allActionsIncluded=false（製品の実際の挙動で、GPSA §1.6 に記載）。
    署名は c2pa-rs のテスト用 ES256 証明書（本番証明書は適合後に発行されるため）。Conformulator で自己テスト済み、
    指摘は想定どおりの「信頼されていない証明書」のみ。
