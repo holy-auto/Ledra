@@ -70,7 +70,7 @@
 
 | 型 | 中身 | 該当 |
 |---|---|---|
-| **A. 道具を検証しない** | 変更したコードは検証したのに、「何を変えるべきか判断するために使った道具」（検出器・正規表現・スクリプト・クエリ）を検証していない。道具の出力を事実として扱う。**そのクエリが何を確定させたのかを確かめずに、確定したつもりになる**のもこの型。**自分の想定だけで検証するのも同じ**（当たりを取る「既知の1件」を自分で作る）。**動作を主張するコメントを、その根拠（スキーマ・型定義）を確認せずに書く**のも同じ。**検査の「該当なし」を、その検査が何件を見たか数えずに受け取る**のも同じ | M-001, M-002, M-003, M-006, **M-010**, M-012, M-016, M-017, **M-022**, **M-024**, **M-031**, M-036, **M-041**, **M-044**, **M-046**, **M-050**, **M-055**, **M-056**, **M-057**, **M-060**, **M-061**, **M-062**, **M-064**, **M-065**, **M-068**, **M-075**, **M-078**, **M-079**, **M-084**, **M-085**, **M-089**, **M-092**, **M-093**, **M-20260915-dupe-count-from-truncated-grep**, **M-20260918-silent-skip-made-detector-never-run**, **M-20260918-replay-db-lacked-prod-column**, **M-20260918-read-detector-blindness-as-stale-list**, **M-20260919-attributed-an-overloads-call-to-its-sibling**, **M-20260919-swept-for-the-literal-not-the-bug-class**, **M-20260919-cancel-2xx-treated-as-final**, **M-20260921-compared-counts-where-names-differed**, **M-20260921-detector-covered-half-the-tables-i-had-listed**, **M-20260921-said-the-drift-checker-ignores-policies**, **M-20260922-wrote-constraint-bodies-from-their-names**, **M-20260922-enumerated-actions-from-typescript-only**, **M-20260921-restated-my-own-summary-as-fact**, **M-20260923-committed-conflict-markers-from-truncated-merge-output**, **M-20260923-counted-only-page-files-for-tenant-bug**, **M-20260925-grep-missed-the-generic-upsert-helper**, **M-20260927-c2pa-ledger-tested-only-on-exif-free-images** |
+| **A. 道具を検証しない** | 変更したコードは検証したのに、「何を変えるべきか判断するために使った道具」（検出器・正規表現・スクリプト・クエリ）を検証していない。道具の出力を事実として扱う。**そのクエリが何を確定させたのかを確かめずに、確定したつもりになる**のもこの型。**自分の想定だけで検証するのも同じ**（当たりを取る「既知の1件」を自分で作る）。**動作を主張するコメントを、その根拠（スキーマ・型定義）を確認せずに書く**のも同じ。**検査の「該当なし」を、その検査が何件を見たか数えずに受け取る**のも同じ | M-001, M-002, M-003, M-006, **M-010**, M-012, M-016, M-017, **M-022**, **M-024**, **M-031**, M-036, **M-041**, **M-044**, **M-046**, **M-050**, **M-055**, **M-056**, **M-057**, **M-060**, **M-061**, **M-062**, **M-064**, **M-065**, **M-068**, **M-075**, **M-078**, **M-079**, **M-084**, **M-085**, **M-089**, **M-092**, **M-093**, **M-20260915-dupe-count-from-truncated-grep**, **M-20260918-silent-skip-made-detector-never-run**, **M-20260918-replay-db-lacked-prod-column**, **M-20260918-read-detector-blindness-as-stale-list**, **M-20260919-attributed-an-overloads-call-to-its-sibling**, **M-20260919-swept-for-the-literal-not-the-bug-class**, **M-20260919-cancel-2xx-treated-as-final**, **M-20260921-compared-counts-where-names-differed**, **M-20260921-detector-covered-half-the-tables-i-had-listed**, **M-20260921-said-the-drift-checker-ignores-policies**, **M-20260922-wrote-constraint-bodies-from-their-names**, **M-20260922-enumerated-actions-from-typescript-only**, **M-20260921-restated-my-own-summary-as-fact**, **M-20260923-committed-conflict-markers-from-truncated-merge-output**, **M-20260923-counted-only-page-files-for-tenant-bug**, **M-20260925-grep-missed-the-generic-upsert-helper**, **M-20260927-c2pa-ledger-tested-only-on-exif-free-images**, **M-20260927-read-c2pa-valid-as-conformant** |
 | **B. 読まずに分類する** | コードの形（関数名・構造・コメント）から中身を推測して分類し、実際に読んでいない。**1段だけ深く読んで止まる**のも同じ（条件式は読んだが、その値の既定を追っていない）。**その値がどこから来るかを見ない**のも同じ（既定・サンプル・過去の配布物に同じ値が無いか）。**列や機能が「ある」ことを「使われている」と読む**のもこの型。**値の出所を変えたのに、その値を使う式が旧い出所の前提（排他性等）を暗黙に置いたままか確認しない**のも同じ。**部品が直ったことを、その部品を使う機能が直ったことと読む**のも同じ | M-004, M-020, **M-032**, M-035, M-036, **M-039**, **M-040**, **M-048**, **M-052**, **M-063**, **M-074**, **M-083**, **M-088**, **M-20260920-hashed-a-file-i-never-opened**, **M-20260920-asked-for-a-decision-that-was-already-made-in-the-file-i-cited**, **M-20260921-classified-rls-impact-from-one-policy**, **M-20260922-copied-a-check-without-checking-the-default**, **M-20260924-blamed-all-ten-inserts-on-the-check**, **M-20260924-called-a-tolerant-job-the-real-check** |
 | **C. 経路を1本しか見ない** | 同じ操作に複数の入口があるのに、目についた1本だけ直す。**同じ事実を2箇所に書いて片方だけ直す**のも同じ（文書に出た形）。**排他にすべき組み合わせのうち一部のペアだけをチェックする**のも同じ | M-005, M-007, M-013, M-019, **M-023**, **M-025**, M-038, **M-058**, **M-061**, **M-072**, **M-076**, **M-087**, **M-20260918-verification-skippable-via-transition-flag**, **M-20260919-exclusivity-guard-only-in-admin-route**, **M-20260919-exclusivity-checked-one-pair-not-all**, **M-20260920-called-it-all-no-op-while-fixing-the-one-statement-that-runs**, **M-20260922-enumerated-actions-from-typescript-only**, **M-20260922-renamed-a-migration-the-preview-db-had-applied**, **M-20260923-new-key-axis-not-traced-to-every-entry-point** |
 | **D. 移設で弱める** | 「同じものを別の場所に置くだけ」のつもりが、検査の強さや信号が落ちている。**移設先の信頼境界（誰の書き換えを受けるか・どんな権限を持つか）が変わっているのに気づかない**のもこの型。**移設でなく「追加」で弱めるのも同じ** —— 制約を1本足したら、同じ対象を別の観点で見ていた既存の検査が、その制約のせいで区別できなくなる | M-008, **M-028**, **M-029**, **M-042**, **M-047**, **M-054**, **M-060**, **M-062**, **M-063**, **M-065**, **M-20260924-shared-resolver-dropped-error-to-500**, **M-20260925-my-not-null-blinded-the-sibling-check** |
@@ -84,6 +84,30 @@
 | **I. 前提が途中で変わったのに読み直さない** | 判断したときは正しかった観察が、その後の `main` 取り込みなどで無効になっているのに、変更を見直さない。**衝突しなかったファイルにこそ潜む**。**自分が書いた実測値が、自分のマージで古くなる**のも同じ | **M-047**, **M-051**, **M-20260925-my-own-merge-staled-the-replay-count** |
 
 ---
+
+## M-20260927-read-c2pa-valid-as-conformant c2pa-rs の `Valid` を Conformance の合格と読み、ルーブリック不合格2件を見落とした（2026-09-27・型 A）
+
+**Before**: 証拠サンプルを c2pa-node の `Reader` で読み戻し、4枚とも `validation_state: Valid`（指摘は untrusted のみ）
+だったので「提出できる状態」と代表に報告した。返信メール下書きにも「Conformulator で自己テスト済み、指摘は untrusted のみ」と
+**実施前に**書いた。代表が見せた概要画面の黄色ラベル "Contains ambiguous actions" は、汎用 `c2pa.edited` が原因と
+**推定だけで**決めて `c2pa.edited.metadata` に替え、「これで消えるはず」と再テストを頼んだ。
+
+**After**: 代表が Rubrics タブを貼ると、v0.2 / Spec 2.4 ルーブリックで2件不合格だった —
+`inception_action_position`（actions が created_assertions に無い）と
+`mandatory_dst_for_perceptible_transformations`（`c2pa.orientation` に digitalSourceType が無い）。黄色ラベルは
+シグナル（分類表示）で不合格ではなく、私の推定は的外れだった。created 指定と DST 付与で直し、両方をテストに固定した。
+
+**なぜ気づけなかったか**: **「署名が検証を通る」と「プログラムの適合要件を満たす」を同じものとして扱った。**
+c2pa-rs の検証は構造・ハッシュ・署名しか見ず、Conformance Program のルーブリック（action の配置や DST の必須化）は見ない。
+判断に使った道具（Reader の validation_state）が何を確かめる道具かを確認していなかった。9/3 の「全 Valid・v0.2 対応済み」も
+同じ道具の上に立っていた。加えて、画面の一部（概要タブ）だけを見て原因を推定し、コード変更まで進めた —
+不合格の一覧（Rubrics）を先に取り寄せていれば1往復で済んだ。
+
+**再発防止**: 仕組み半分。
+- 仕組み: 判明したルーブリック2件は `c2paSignValidate.test.ts` に固定した（修正を戻すと3件落ちる）。
+  ルーブリック全体は Conformulator にしか無く、この環境から到達できないので CI 化できない（仕組み無し）。
+- 習慣: **Conformance の合否は Conformulator の Rubrics タブの結果でだけ言う。** `Valid` は「署名が壊れていない」とだけ書く。
+  外部ツールの画面を根拠に直すときは、要約画面ではなく**合否の一覧を先にもらう**。
 
 ## M-20260927-c2pa-ledger-tested-only-on-exif-free-images C2PA の行為台帳を EXIF の無い画像でしか試さず、回転と WebP のメタデータ除去を記録し損ねていた（2026-09-27・型 A）
 

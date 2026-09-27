@@ -102,6 +102,15 @@ describe("C2PA sign → validate (manifest content conformance)", () => {
       expect(typeof actions?.data?.allActionsIncluded, `allActionsIncluded present for ${mime}`).toBe("boolean");
       const created = (actions?.data?.actions ?? []).find((a: { action?: string }) => a.action === "c2pa.created");
       expect(created?.digitalSourceType, `c2pa.created has digitalSourceType for ${mime}`).toBeTruthy();
+
+      // Conformulator rubrics (2026-09-27): the inception action must sit in a *created*
+      // actions assertion (inception_action_position), and perceptible transformations
+      // such as c2pa.orientation need a digitalSourceType too.
+      expect(actions?.created, `actions assertion is a created assertion for ${mime}`).toBe(true);
+      const orientation = (actions?.data?.actions ?? []).find(
+        (a: { action?: string }) => a.action === "c2pa.orientation",
+      );
+      expect(orientation?.digitalSourceType, `c2pa.orientation has digitalSourceType for ${mime}`).toBeTruthy();
     });
   }
 

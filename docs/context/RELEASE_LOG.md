@@ -11,6 +11,11 @@
   （`allActionsIncluded=true` なのに `c2pa.orientation` / `c2pa.edited` が欠ける）。回転＋EXIF 付き jpeg/webp のテストを追加。
   メタデータ除去の行為は汎用 `c2pa.edited`（editorial な編集の定義）から `c2pa.edited.metadata` に変更。Conformulator が
   "Contains ambiguous actions" を表示したため（代表の自己テスト、2026-09-27）。
+- 追加修正（同日、代表が Conformulator の Rubrics を実行して判明）: v0.2/Spec 2.4 ルーブリックで2件不合格だった。
+  (1) `inception_action_position` — actions を `builder.addAssertion` で足していたため gathered_assertions に入っていた。
+  マニフェスト定義の `assertions` に `created: true` で載せ、created_assertions の先頭にした（com.ledra.capture も created）。
+  (2) `mandatory_dst_for_perceptible_transformations` — `c2pa.orientation` に digitalSourceType が無かった。digitalCapture を付与。
+  `c2paSignValidate.test.ts` に両方の検査を追加（修正前のコードで3件落ちることを確認）。サンプル4枚を再生成。
   本番は C2PA 未稼働のため影響画像なし（MISTAKE_LEDGER `M-20260927-c2pa-ledger-tested-only-on-exif-free-images`）。
 - 提出物（`docs/c2pa-evidence/`）: 英語の GPSA 本体・運用管理策、サンプル4枚（a-sample.jpg / b-sample.png / c-sample.webp /
   d-sample.heic。製品の署名パイプラインを通し c2pa-rs テスト証明書で署名、4枚とも `Valid`・指摘は untrusted のみ）、

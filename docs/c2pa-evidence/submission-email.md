@@ -5,10 +5,9 @@
 - 送信前に必ずやること（代表）:
   1. Conformulator（https://c2pa-conformulator.netlify.app/）に `samples/` の4ファイルを1つずつ入れ、
      出る指摘が `signingCredential.untrusted`（テスト証明書なので想定内）だけであることを確認する。
-     赤いエラー欄の確認に加え、「評価基準」タブで不合格の項目が無いことも見る。概要の黄色ラベルのうち
-     "Contains ambiguous actions" は汎用 `c2pa.edited` が原因と見て `c2pa.edited.metadata` に変えた（2026-09-27）ので、
-     **新しいサンプルで消えたかを確認**する。"Non-editorial Transformations"（回転・再エンコード）は実際に行った処理の
-     表示と推定（未確認）。
+     **合否は「Rubrics（評価基準）」タブで見る。** 不合格が `C2PA Asset Integrity Rubric` の
+     `validation:trusted_success`（= untrusted）だけなら OK。概要の黄色ラベル（Signals）は分類表示で合否ではない。
+     2026-09-27 に不合格だった `inception_action_position` / `mandatory_dst_for_perceptible_transformations` は修正済み。
      **それ以外の指摘が出たら送らずに Claude に結果を貼る。**
   2. `Ledra-GPSA.md` の §2.2（Vercel の本番環境変数を見られるのは管理者だけ）、§2.6（Vercel/Supabase に
      入れる人）が実態と合っているかを確認する。

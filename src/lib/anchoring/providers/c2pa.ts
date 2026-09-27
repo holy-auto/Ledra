@@ -59,7 +59,14 @@ const DIGITAL_SOURCE_TYPE_CAPTURE = "http://cv.iptc.org/newscodes/digitalsourcet
  * 要求しない `orientation`/`converted`/`edited` は検証を通る（実測で確認）。
  */
 const CREATED_ACTION = { action: "c2pa.created", digitalSourceType: DIGITAL_SOURCE_TYPE_CAPTURE };
-const ORIENTATION_ACTION = { action: "c2pa.orientation", softwareAgent: "sharp" };
+// c2pa.orientation は「知覚できる変換」なので digitalSourceType が必須（Conformulator
+// `mandatory_dst_for_perceptible_transformations`）。回転は画素を足さず、内容は撮影画像のままなので
+// created と同じ digitalCapture を付ける。
+const ORIENTATION_ACTION = {
+  action: "c2pa.orientation",
+  softwareAgent: "sharp",
+  digitalSourceType: DIGITAL_SOURCE_TYPE_CAPTURE,
+};
 const CONVERTED_ACTION = { action: "c2pa.converted", softwareAgent: "sharp" };
 // EXIF/GPS metadata removed for privacy before signing. `c2pa.edited.metadata`（メタデータのみの編集）を
 // 使う。汎用の `c2pa.edited` は「editorial な意味に影響する編集」の定義で、Conformulator が
@@ -235,13 +242,6 @@ export async function signC2pa(
     // claim_generator_info (v2 form) carries specVersion — required by the C2PA
     // Conformance Program for Spec 2.4+ so validators can confirm the asserted
     // version matches the CPL record.
-    const builder = Builder.withJson({
-      claim_generator_info: [
-        { name: CLAIM_GENERATOR_NAME, version: CLAIM_GENERATOR_VERSION, specVersion: SPEC_VERSION },
-      ],
-      title: MANIFEST_TITLE,
-    });
-
     // Record the real provenance, asserting ONLY the actions that actually had an
     // effect on this buffer (from `outcome`): c2pa.created (camera-only input),
     // then c2pa.converted (re-encode), c2pa.orientation (only if an EXIF
@@ -253,24 +253,46 @@ export async function signC2pa(
     // (claim v2 requires an ingredient Ledra can't embed — see CREATED_ACTION).
     // The C2PA Conformance Program (Additional Conformance Requirements v0.2)
     // requires actions-map-v2 to carry allActionsIncluded (true|false).
-    builder.addAssertion("c2pa.actions", {
-      actions: buildActions(outcome) as unknown as Record<string, unknown>[],
-      allActionsIncluded: allActionsIncluded(outcome),
-    });
-
-    // Seal the capture context into the manifest: which certificate/vehicle this
-    // photo is for, the single-use capture nonce, and the TSA time. This binds
-    // the signed image to one certificate so it cannot be reused elsewhere, and
-    // ties it to a nonce that only existed after that certificate was created.
+    //
+    // Seal the capture context into the manifest (com.ledra.capture): which
+    // certificate/vehicle this photo is for, the single-use capture nonce, and the
+    // TSA time. This binds the signed image to one certificate so it cannot be
+    // reused elsewhere, and ties it to a nonce that only existed after that
+    // certificate was created.
     const bindingEntries = Object.entries({
       cert_public_id: binding?.publicId ?? undefined,
       vin: binding?.vin ?? undefined,
       capture_nonce: binding?.captureNonce ?? undefined,
       tsa_timestamp: binding?.tsaTimestamp ?? undefined,
     }).filter(([, v]) => v != null && v !== "");
-    if (bindingEntries.length > 0) {
-      builder.addAssertion("com.ledra.capture", Object.fromEntries(bindingEntries));
-    }
+
+    // Both assertions are made by Ledra itself, so they go in the manifest
+    // definition with `created: true` (→ claim.created_assertions). Added via
+    // builder.addAssertion they land in gathered_assertions, and the Conformulator
+    // rubric fails `inception_action_position`: the inception action (c2pa.created)
+    // must be in the first actions assertion of created_assertions (Spec 2.2 §18.14.2).
+    //
+    // c2pa-node 0.6.x 以降、マニフェスト定義から作るには静的ファクトリ `Builder.withJson(...)` を使う
+    // （旧 `new Builder({...})` は addAssertion 時に neon downcast エラーで fail-open した）。
+    // claim_generator_info (v2 form) carries specVersion — required by the C2PA
+    // Conformance Program for Spec 2.4+ so validators can confirm the asserted
+    // version matches the CPL record.
+    const builder = Builder.withJson({
+      claim_generator_info: [
+        { name: CLAIM_GENERATOR_NAME, version: CLAIM_GENERATOR_VERSION, specVersion: SPEC_VERSION },
+      ],
+      title: MANIFEST_TITLE,
+      assertions: [
+        {
+          label: "c2pa.actions",
+          created: true,
+          data: { actions: buildActions(outcome), allActionsIncluded: allActionsIncluded(outcome) },
+        },
+        ...(bindingEntries.length > 0
+          ? [{ label: "com.ledra.capture", created: true, data: Object.fromEntries(bindingEntries) }]
+          : []),
+      ],
+    });
 
     const input = { buffer, mimeType: mime };
     const output: { buffer: Buffer | null } = { buffer: null };
