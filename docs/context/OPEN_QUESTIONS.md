@@ -1819,7 +1819,23 @@ JST は夏時間が無いので日の加算は 24 時間の加算でよい。
   3. **Administrator へ訂正メール送付**（validate 取り下げ。文面 `scratchpad/ledra-intake-correction-email.md`）— 代表が送信。
   4. **Conformulator（https://c2pa-conformulator.netlify.app/）で生成サンプルを自己テスト**後に提出。
   5. 提出はメール添付/zip/DLリンク（機密）。GPSA 一式のファイル名に "GPSA" を含める。
-- 別論点: 本番 sharp が HEIF デコード不可だと HEIC の GPS 除去が効かない点は要確認。
+- **2026-09-27 更新（提出一式を再作成・リポジトリに保存）**: 9/3 のサンプルは消える作業領域にあり残っていなかったため、
+  現行コード（c2pa-node 0.9.7）で再生成し `docs/c2pa-evidence/samples/` に保存（4枚とも `Valid`、指摘は
+  `signingCredential.untrusted` のみ）。GPSA は**英語の提出版** `docs/c2pa-evidence/Ledra-GPSA*.md` を作成
+  （日本語版は参照用）。返信メール下書き（validate 取り下げ込み・英日）は `docs/c2pa-evidence/submission-email.md`。
+  再生成の過程で C2PA 行為台帳の不具合（回転・WebP のメタデータ除去が記録されない）を発見し修正
+  （MISTAKE_LEDGER `M-20260927-c2pa-ledger-tested-only-on-exif-free-images`）。
+  **残タスク（代表）**: (1) Conformulator で4枚を自己テスト（この環境からはサイトに届かず未実施）、
+  (2) GPSA §2.2/§2.6 の「Vercel/Supabase に入れる人＝管理者のみ」、本番デプロイが `main` からのみであること、
+  署名欄の英語表記（Yusuke Horikoshi / Representative Director）を確認、(3) 返信メール送信。
+  Intake Form（9/3 提出・PDF 控え確認済み）は validate=Yes（jpeg/png/webp/heic）のままなので、訂正は返信メールで行う。
+- **TLS 1.2 の扱い（未確認）**: GPSA O.5 は TLS 1.3 を要求。Vercel は現行クライアントとは TLS 1.3 で繋がるが、
+  旧クライアント向けに TLS 1.2 も受ける（推定・未検証）。審査で指摘された場合の対応（Vercel 側で 1.2 を止められるか）は未調査。
+- **HEIC の GPS が残る（2026-09-27 実測で確定）**: sharp のプリビルドは HEVC を読めず（`heif: Support for this compression
+  format has not been built in`）、`stripGpsAndReadExif` が原本フォールバックするため、HEIC は **GPS を含んだまま**
+  署名・Storage 保存される（`assets` バケットは公開読み取り）。マニフェストは `c2pa.created` のみ・allActionsIncluded=false で
+  正直だが、「生座標を保存しない」方針（imageExif.ts 冒頭）に反する。実際に HEIC が届く経路があるか
+  （iOS Safari はアップロード時に JPEG 化するのが通例＝推定）と、フォールバック時に保存を止めるかは未判断。
 - 確定済み: 役割=GP / 実装クラス=Backend / Max AL=1 / 申告 Spec=**2.4** / 法人名=株式会社HOLY（英字 **HOLY Inc.**）/ 登記住所=東京都港区北青山1-3-1 アールキューブ青山3F / 連絡先=info@holy-inc.jp / **生成メディアタイプ=image/jpeg・png・webp・heic（validate は今回申告せず）**。
 - 残る論点と選択肢:
   - **Spec 2.4 の実出力確認**: 申告 2.4 に対し、製品が実際に v2.4 準拠マニフェストを出力しているかを Intake 用サンプルで要検証（契約上、申告版に拘束される）。

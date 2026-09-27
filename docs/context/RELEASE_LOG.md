@@ -4,6 +4,20 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-09-27 C2PA 行為台帳の修正と、Conformance 証拠パッケージ一式の再作成
+
+- 修正: `stripGpsAndReadExif` の `orientationApplied` / `metadataRemoved` を sharp の `metadata()` で判定するようにした。
+  従来は exifr を使っており、Orientation が文字列で返るため回転が常に未検出、WebP は読めず EXIF/GPS 除去が未記録だった
+  （`allActionsIncluded=true` なのに `c2pa.orientation` / `c2pa.edited` が欠ける）。回転＋EXIF 付き jpeg/webp のテストを追加。
+  本番は C2PA 未稼働のため影響画像なし（MISTAKE_LEDGER `M-20260927-c2pa-ledger-tested-only-on-exif-free-images`）。
+- 提出物（`docs/c2pa-evidence/`）: 英語の GPSA 本体・運用管理策、サンプル4枚（a-sample.jpg / b-sample.png / c-sample.webp /
+  d-sample.heic。製品の署名パイプラインを通し c2pa-rs テスト証明書で署名、4枚とも `Valid`・指摘は untrusted のみ）、
+  サンプル再生成スクリプト、返信メール下書き（validate 取り下げ・英日）。TOE 構成図を将来形の表現を消して再描画し、
+  設定で有効化される外部連携（Hive / Pinata）を追記。
+- 検証: `src/lib/anchoring` と `src/lib/certificateImages` のテスト（修正前に新規2件が落ちることを確認）、
+  本番証明書経路のテストを c2pa-rs テスト証明書で実行、`npm audit --audit-level=high --omit=dev` 0件。
+  Conformulator はこの環境から到達できず未実施（代表が送信前に実施）。
+
 ## 2026-09-26 指定整備記録簿（完成検査）G5 Phase 1d — 目視検査＋車両照合
 
 - 内容: 完成検査フォームに「目視等による検査」（構造①〜③・装置①〜⑳/㉑）と「自動車検査証等の

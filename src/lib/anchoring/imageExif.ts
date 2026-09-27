@@ -61,28 +61,29 @@ export async function stripGpsAndReadExif(buffer: Buffer): Promise<ExifExtractio
     // Track whether the source actually carried tags, so the C2PA action ledger
     // records only operations that had an effect (see orientationApplied /
     // metadataRemoved). Orientation values 2–8 mean a real rotate/flip; 1 (or
-    // absent) means nothing to normalize.
-    let orientationApplied = false;
-    let hadExifTags = false;
+    // absent) means nothing to normalize. Read from sharp — the decoder that
+    // actually rotates/strips — not exifr, which stringifies Orientation
+    // ("Rotate 90 CW") and cannot parse WebP at all.
+    const srcInfo = await sharp(buffer).metadata();
+    const orientationApplied = (srcInfo.orientation ?? 1) > 1;
+    let hadExifTags = !!srcInfo.exif;
     try {
       const meta = (await exifr.parse(buffer, {
-        pick: ["DateTimeOriginal", "CreateDate", "Model", "Make", "Orientation"],
+        pick: ["DateTimeOriginal", "CreateDate", "Model", "Make"],
       })) as
         | {
             DateTimeOriginal?: Date;
             CreateDate?: Date;
             Model?: string;
             Make?: string;
-            Orientation?: number;
           }
         | undefined;
       if (meta) {
-        hadExifTags = Object.values(meta).some((v) => v !== undefined && v !== null);
+        hadExifTags ||= Object.values(meta).some((v) => v !== undefined && v !== null);
         capturedAt = meta.DateTimeOriginal ?? meta.CreateDate ?? null;
         const make = meta.Make ? String(meta.Make).trim() : "";
         const model = meta.Model ? String(meta.Model).trim() : "";
         deviceModel = [make, model].filter(Boolean).join(" ") || null;
-        orientationApplied = typeof meta.Orientation === "number" && meta.Orientation > 1;
       }
     } catch {
       // Non-fatal: EXIF may be missing/corrupt.
