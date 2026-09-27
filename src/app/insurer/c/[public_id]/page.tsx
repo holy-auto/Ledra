@@ -53,7 +53,6 @@ export default function InsurerCertificatePage() {
   const [disclosureStatus, setDisclosureStatus] = useState<{
     disclosed: boolean;
     insurer_requested: boolean;
-    tenant_consented: boolean;
     owner_consented: boolean;
   } | null>(null);
   const [disclosureBusy, setDisclosureBusy] = useState(false);
@@ -87,7 +86,6 @@ export default function InsurerCertificatePage() {
           setDisclosureStatus({
             disclosed: !!c.pii_disclosed,
             insurer_requested: !!c.pii_disclosed,
-            tenant_consented: !!c.pii_disclosed,
             owner_consented: !!c.pii_disclosed,
           });
           // Fetch related cases
@@ -106,7 +104,6 @@ export default function InsurerCertificatePage() {
               setDisclosureStatus({
                 disclosed: !!dj.disclosed,
                 insurer_requested: !!dj.insurer_requested,
-                tenant_consented: !!dj.tenant_consented,
                 owner_consented: !!dj.owner_consented,
               });
             }
@@ -215,7 +212,7 @@ export default function InsurerCertificatePage() {
                   <div className="text-sm font-semibold text-amber-800">個人情報マスキング中</div>
                   <p className="mt-1 text-sm text-amber-700">
                     顧客名は伏せています（車台番号・ナンバー・施工内容は表示しています）。保険事故の照会など
-                    正当な理由がある場合、施工店の承認とオーナー本人の同意がそろうと顧客名を開示できます。
+                    正当な理由がある場合、オーナー本人が同意すると顧客名を開示できます。
                   </p>
                   <div className="mt-3 flex items-center gap-4">
                     {!disclosureStatus.insurer_requested ? (
@@ -230,15 +227,6 @@ export default function InsurerCertificatePage() {
                       <div className="flex items-center gap-3 text-sm">
                         <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700">
                           保険会社側: 申請済み
-                        </span>
-                        <span
-                          className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-                            disclosureStatus.tenant_consented
-                              ? "bg-emerald-100 text-emerald-700"
-                              : "bg-surface-hover text-muted"
-                          }`}
-                        >
-                          施工店側: {disclosureStatus.tenant_consented ? "承認済み" : "未承認"}
                         </span>
                         <span
                           className={`rounded-full px-2 py-0.5 text-xs font-medium ${
@@ -260,7 +248,7 @@ export default function InsurerCertificatePage() {
           {disclosureStatus?.disclosed && (
             <section className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
               <div className="flex items-center gap-2 text-sm font-medium text-emerald-700">
-                <span>✓</span> 個人情報開示済み — 施工店の承認とオーナー本人の同意により顧客名が表示されています
+                <span>✓</span> 個人情報開示済み — オーナー本人の同意により顧客名が表示されています
               </div>
             </section>
           )}
