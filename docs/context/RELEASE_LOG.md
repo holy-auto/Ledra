@@ -4,6 +4,22 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-09-27 anon の certificates 直読みを閉じる／匿名の公開証明書からナンバーを外す
+
+DECISION_LOG 2026-09-27 の決定に基づく。
+
+- **anon の直読みを閉じる**: `20260927113105_revoke_anon_certificates_read.sql` で本番にだけあった
+  anon 向け SELECT ポリシー2本を DROP し、`certificates` と `certificates_public` から anon の権限を
+  REVOKE する。これまでは公開されている anon キーだけで、有効な証明書全件の顧客名などを REST で列挙できた。
+- **公開 PDF**（`/api/certificate/pdf`）: anon キーで REST を叩く方式をやめ、サービスロールで
+  `certificates_public` を読む方式にした。active 以外を 404 にするのは従来どおりルート側。
+- **ナンバーを外す**: 匿名の公開証明書ページ `/c/[public_id]` の「ナンバー」欄を削除した。
+  公開 PDF にもナンバーを出さない。`publicData.ts` は `vehicles.plate_display` を取得しない。
+  `vehicle_info_json` からは `omitPlate()` でナンバーのキーを落とす（同じ車両の他の証明書の分も含む）。
+  施工店の管理画面・admin 側の PDF は従来どおり。
+- **検証**: `omitPlate` の単体テストを追加。証明書・プライバシー・課金まわりのテストが通ること、
+  `tsc`、`check:schema`、`lint:migrations` が通ることを確認した。マイグレーションを空の DB に
+  1本ずつ流し直す再生テストも 510/510 で通った。
 ## 2026-09-26 指定整備記録簿（完成検査）G5 Phase 1d — 目視検査＋車両照合
 
 - 内容: 完成検査フォームに「目視等による検査」（構造①〜③・装置①〜⑳/㉑）と「自動車検査証等の

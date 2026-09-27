@@ -24,6 +24,24 @@ export function combineScheduledAt(date: string | null, time: string | null, fal
 
 type Json = Record<string, unknown> | unknown[] | string | number | boolean | null;
 
+/**
+ * vehicle_info_json に発行時スナップショットとして入るナンバーのキー。
+ * `plate` は certificates/create.ts が書く。残りは旧データ・外部取込で /c ページが拾っていたキー。
+ */
+const PLATE_KEYS = ["plate", "plate_display", "plate_no", "number"];
+
+/**
+ * 匿名閲覧向けに vehicle_info_json からナンバーを落とす。
+ * ナンバーは VEHICLE_TABLE_PII_COLUMNS で PII 分類済み（rendition.ts も tenant_internal 未満で null 化）。
+ * vehicles.plate_display を伏せても、ここに同じ値が残っていると公開ページ・公開 PDF に出る。
+ */
+export function omitPlate<T>(vehicleInfo: T): T {
+  if (!vehicleInfo || typeof vehicleInfo !== "object" || Array.isArray(vehicleInfo)) return vehicleInfo;
+  const rest = { ...(vehicleInfo as Record<string, unknown>) };
+  for (const k of PLATE_KEYS) delete rest[k];
+  return rest as T;
+}
+
 type CertRow = {
   id: string;
   tenant_id: string;
@@ -73,7 +91,6 @@ type VehicleRow = {
   maker: string | null;
   model: string | null;
   year: number | null;
-  plate_display: string | null;
   customer_name: string | null;
   customer_email: string | null;
   notes: string | null;
@@ -220,7 +237,8 @@ export async function getPublicCertificateData(pid: string): Promise<PublicCerti
     cert.vehicle_id
       ? supabase
           .from("vehicles")
-          .select("id, maker, model, year, plate_display, notes, vin_code_normalized")
+          // plate_display は PII（VEHICLE_TABLE_PII_COLUMNS）。匿名ページには取得もしない。
+          .select("id, maker, model, year, notes, vin_code_normalized")
           .eq("id", cert.vehicle_id)
           .limit(1)
           .maybeSingle<VehicleRow>()
@@ -382,6 +400,7 @@ export async function getPublicCertificateData(pid: string): Promise<PublicCerti
     ok: true,
     certificate: {
       ...cert,
+      vehicle_info_json: omitPlate(cert.vehicle_info_json),
       tenant_id: undefined as undefined,
       content_free_text: undefined as undefined,
       // 所有者名は公開(外部)表示では出力しない。認証付きの管理画面・PDF発行でのみ実名を扱う。
@@ -402,6 +421,7 @@ export async function getPublicCertificateData(pid: string): Promise<PublicCerti
     reservations,
     vehicle_certificates: vehicle_certificates.map((vc) => ({
       ...vc,
+      vehicle_info_json: omitPlate(vc.vehicle_info_json),
       content_free_text: undefined as undefined,
       customer_name: undefined as undefined,
     })),
