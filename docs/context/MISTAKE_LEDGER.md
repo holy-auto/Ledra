@@ -70,7 +70,7 @@
 
 | 型 | 中身 | 該当 |
 |---|---|---|
-| **A. 道具を検証しない** | 変更したコードは検証したのに、「何を変えるべきか判断するために使った道具」（検出器・正規表現・スクリプト・クエリ）を検証していない。道具の出力を事実として扱う。**そのクエリが何を確定させたのかを確かめずに、確定したつもりになる**のもこの型。**自分の想定だけで検証するのも同じ**（当たりを取る「既知の1件」を自分で作る）。**動作を主張するコメントを、その根拠（スキーマ・型定義）を確認せずに書く**のも同じ。**検査の「該当なし」を、その検査が何件を見たか数えずに受け取る**のも同じ | M-001, M-002, M-003, M-006, **M-010**, M-012, M-016, M-017, **M-022**, **M-024**, **M-031**, M-036, **M-041**, **M-044**, **M-046**, **M-050**, **M-055**, **M-056**, **M-057**, **M-060**, **M-061**, **M-062**, **M-064**, **M-065**, **M-068**, **M-075**, **M-078**, **M-079**, **M-084**, **M-085**, **M-089**, **M-092**, **M-093**, **M-20260915-dupe-count-from-truncated-grep**, **M-20260918-silent-skip-made-detector-never-run**, **M-20260918-replay-db-lacked-prod-column**, **M-20260918-read-detector-blindness-as-stale-list**, **M-20260919-attributed-an-overloads-call-to-its-sibling**, **M-20260919-swept-for-the-literal-not-the-bug-class**, **M-20260919-cancel-2xx-treated-as-final**, **M-20260921-compared-counts-where-names-differed**, **M-20260921-detector-covered-half-the-tables-i-had-listed**, **M-20260921-said-the-drift-checker-ignores-policies**, **M-20260922-wrote-constraint-bodies-from-their-names**, **M-20260922-enumerated-actions-from-typescript-only**, **M-20260921-restated-my-own-summary-as-fact**, **M-20260923-committed-conflict-markers-from-truncated-merge-output**, **M-20260923-counted-only-page-files-for-tenant-bug**, **M-20260925-grep-missed-the-generic-upsert-helper** |
+| **A. 道具を検証しない** | 変更したコードは検証したのに、「何を変えるべきか判断するために使った道具」（検出器・正規表現・スクリプト・クエリ）を検証していない。道具の出力を事実として扱う。**そのクエリが何を確定させたのかを確かめずに、確定したつもりになる**のもこの型。**自分の想定だけで検証するのも同じ**（当たりを取る「既知の1件」を自分で作る）。**動作を主張するコメントを、その根拠（スキーマ・型定義）を確認せずに書く**のも同じ。**検査の「該当なし」を、その検査が何件を見たか数えずに受け取る**のも同じ | M-001, M-002, M-003, M-006, **M-010**, M-012, M-016, M-017, **M-022**, **M-024**, **M-031**, M-036, **M-041**, **M-044**, **M-046**, **M-050**, **M-055**, **M-056**, **M-057**, **M-060**, **M-061**, **M-062**, **M-064**, **M-065**, **M-068**, **M-075**, **M-078**, **M-079**, **M-084**, **M-085**, **M-089**, **M-092**, **M-093**, **M-20260915-dupe-count-from-truncated-grep**, **M-20260918-silent-skip-made-detector-never-run**, **M-20260918-replay-db-lacked-prod-column**, **M-20260918-read-detector-blindness-as-stale-list**, **M-20260919-attributed-an-overloads-call-to-its-sibling**, **M-20260919-swept-for-the-literal-not-the-bug-class**, **M-20260919-cancel-2xx-treated-as-final**, **M-20260921-compared-counts-where-names-differed**, **M-20260921-detector-covered-half-the-tables-i-had-listed**, **M-20260921-said-the-drift-checker-ignores-policies**, **M-20260922-wrote-constraint-bodies-from-their-names**, **M-20260922-enumerated-actions-from-typescript-only**, **M-20260921-restated-my-own-summary-as-fact**, **M-20260923-committed-conflict-markers-from-truncated-merge-output**, **M-20260923-counted-only-page-files-for-tenant-bug**, **M-20260925-grep-missed-the-generic-upsert-helper**, **M-20260927-grep-filter-hid-vitest-errors-line** |
 | **B. 読まずに分類する** | コードの形（関数名・構造・コメント）から中身を推測して分類し、実際に読んでいない。**1段だけ深く読んで止まる**のも同じ（条件式は読んだが、その値の既定を追っていない）。**その値がどこから来るかを見ない**のも同じ（既定・サンプル・過去の配布物に同じ値が無いか）。**列や機能が「ある」ことを「使われている」と読む**のもこの型。**値の出所を変えたのに、その値を使う式が旧い出所の前提（排他性等）を暗黙に置いたままか確認しない**のも同じ。**部品が直ったことを、その部品を使う機能が直ったことと読む**のも同じ | M-004, M-020, **M-032**, M-035, M-036, **M-039**, **M-040**, **M-048**, **M-052**, **M-063**, **M-074**, **M-083**, **M-088**, **M-20260920-hashed-a-file-i-never-opened**, **M-20260920-asked-for-a-decision-that-was-already-made-in-the-file-i-cited**, **M-20260921-classified-rls-impact-from-one-policy**, **M-20260922-copied-a-check-without-checking-the-default**, **M-20260924-blamed-all-ten-inserts-on-the-check**, **M-20260924-called-a-tolerant-job-the-real-check**, **M-20260927-anon-customer-names-read-as-by-design** |
 | **C. 経路を1本しか見ない** | 同じ操作に複数の入口があるのに、目についた1本だけ直す。**同じ事実を2箇所に書いて片方だけ直す**のも同じ（文書に出た形）。**排他にすべき組み合わせのうち一部のペアだけをチェックする**のも同じ | M-005, M-007, M-013, M-019, **M-023**, **M-025**, M-038, **M-058**, **M-061**, **M-072**, **M-076**, **M-087**, **M-20260918-verification-skippable-via-transition-flag**, **M-20260919-exclusivity-guard-only-in-admin-route**, **M-20260919-exclusivity-checked-one-pair-not-all**, **M-20260920-called-it-all-no-op-while-fixing-the-one-statement-that-runs**, **M-20260922-enumerated-actions-from-typescript-only**, **M-20260922-renamed-a-migration-the-preview-db-had-applied**, **M-20260923-new-key-axis-not-traced-to-every-entry-point** |
 | **D. 移設で弱める** | 「同じものを別の場所に置くだけ」のつもりが、検査の強さや信号が落ちている。**移設先の信頼境界（誰の書き換えを受けるか・どんな権限を持つか）が変わっているのに気づかない**のもこの型。**移設でなく「追加」で弱めるのも同じ** —— 制約を1本足したら、同じ対象を別の観点で見ていた既存の検査が、その制約のせいで区別できなくなる | M-008, **M-028**, **M-029**, **M-042**, **M-047**, **M-054**, **M-060**, **M-062**, **M-063**, **M-065**, **M-20260924-shared-resolver-dropped-error-to-500**, **M-20260925-my-not-null-blinded-the-sibling-check** |
@@ -84,6 +84,31 @@
 | **I. 前提が途中で変わったのに読み直さない** | 判断したときは正しかった観察が、その後の `main` 取り込みなどで無効になっているのに、変更を見直さない。**衝突しなかったファイルにこそ潜む**。**自分が書いた実測値が、自分のマージで古くなる**のも同じ | **M-047**, **M-051**, **M-20260925-my-own-merge-staled-the-replay-count** |
 
 ---
+
+## M-20260927-grep-filter-hid-vitest-errors-line vitest の出力を `grep "Test Files|Tests|FAIL"` で絞り、`Errors 1 error` を見ずに「通った」と事業ログに書いた（2026-09-27・型 A）
+
+**Before**: 所有権移転の受諾処理に旧オーナーへの通知を足した。テストは
+`npx vitest run ... | grep -E "Test Files|Tests|FAIL"` で流した。出力は「47 passed / 506 passed」だけだったので、
+RELEASE_LOG に「関連テスト（47ファイル・506件）も通った」と書いてコミットした。
+
+**After**: push の pre-push フックが落ちた。既存の `respond.test.ts` は `./email` をモックしていたが、
+足した関数 `sendTransferCompletedToPreviousOwner` がモックに無かった。そのため、`void` で投げた通知が
+**テストの外で未処理のエラー**になっていた。vitest は全テストを passed と数えたうえで、別の行に
+`Errors  1 error` と出す。**私の grep はその行を拾わない形だった**（`Errors` は `Tests` にも `FAIL` にも当たらない）。
+モックを足し、移転時に旧オーナーの証明書を外すこととメール送信のテストを2件足した。RELEASE_LOG の件数も数え直した（508件）。
+**直した直後にもう一度同じ形をやった**: フックを `bash .husky/pre-push | tail -4; echo "exit=$?"` で流し、
+`exit=0` を見た。これは `tail` の終了コードで、フックの終了コードではない。出力をファイルに落とし、
+フック自体の終了コード（0）を取り直した。
+
+**なぜ気づけなかったか**: **出力を絞る道具（grep・tail）を、何を見えなくするか確かめずに使った。**
+「Tests が全部 passed なら緑」と思い込んでいて、vitest がテストの成否とは別の行で失敗を報告することを
+検査の設計に入れていなかった。パイプの後ろの `$?` がパイプの最後のコマンドのものであることも、同じく道具の性質で、
+確かめずに使った。型 A そのものである。pre-push フックが絞らずに終了コードで判定したので、main に届く前に止まった。
+
+**再発防止**: 仕組みあり（pre-push フックの `vitest --changed` は終了コードで判定する）＋習慣。
+- 習慣: テスト結果は **`tail` で要約の塊ごと見る**（`Test Files` / `Tests` / `Errors` の3行が並ぶ）。
+  終了コードを見るときは**パイプに通さず**、出力をファイルへ落としてから `$?` を取る。件数を文書に書くのは、
+  コマンド自身の終了コード 0 を見てから。
 
 ## M-20260927-anon-customer-names-read-as-by-design anon から顧客名が 23/23 件読めると実測しながら「証明書の性質上あるべき」と分類し、21日据え置いた（2026-09-27・型 B、併せて型 F）
 
