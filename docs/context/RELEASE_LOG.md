@@ -35,8 +35,17 @@ digest で突き合わせた。**280 表のうち 268 表は完全一致**で、
 5本落ちた（MISTAKE_LEDGER `M-20260927-checks-were-green-on-rows-production-would-reject`）。
 fixture が必要な列を明示で渡すよう直した。
 
+**`/code-review` の指摘を反映**: (a) 検出器が `cardinality(conkey) = 1` で複数列 CHECK を母集団から
+落としており、**「評価不能0」が嘘だった**（台帳 `M-20260927-said-evaluated-all-while-filtering-the-population`）。
+全 CHECK 351 件を母集団にし、評価 187 件・対象外 164 件（理由付き）・評価不能 0 件を毎回印字する形に直した。
+複数列の陰性対照も取った。(b) `nextval` 既定は本物のシーケンスを進めるので対象外に回した。
+(c) `certificates.expiry_type` に明示 NULL を送っていた2箇所（`certificates/create`・`admin/certificates/duplicate`）を
+キーごと落とす形に直した（DB の既定 `'text'` に任せる）。(d) `vehicles.maker` / `model` に明示 NULL を送る
+2経路は**本番で今日すでに 23502 で落ちている**ことを確認し、「不明な maker をどう保存するか」は
+仕様判断なので OPEN_QUESTIONS へ起票（`hearings` はエラーを握り潰すので車両の紐付けが黙って落ちる）。
+
 検証: `ci-parallel-checks.sh` 9/9・`check:migrations` 再生 512/512・振る舞いの検査 **8 件**・
-陰性対照（壊れた既定値を再生に入れる）で検出器が落ちることを実測。
+陰性対照（壊れた既定値を再生に入れる／複数列 CHECK の矛盾を仕込む）で検出器が落ちることを実測。
 
 ## 2026-09-25 certificate_images の列定義を本番に揃え、索引とポリシーの差を測り直した
 
