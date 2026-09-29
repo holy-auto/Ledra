@@ -1,12 +1,15 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   measurementFieldsForForm,
   measurementGroup,
+  getMeasurementField,
   visualItemsForForm,
   groupVisualItems,
   vehicleMatchFieldsForForm,
+  extractInspectionAnswers,
+  INDICATED_INSPECTION_FORMS,
   VISUAL_GROUP_LABEL,
   VISUAL_JUDGMENTS,
   JUDGMENT_LABEL,
@@ -15,19 +18,29 @@ import {
 } from "@/lib/validations/indicated-inspection";
 
 /**
- * 完成検査（指定整備記録簿・第三号/四号様式）の手入力フォーム。 [G5 / Phase 1b・1d]
+ * 完成検査（指定整備記録簿・第三号/四号様式）の手入力フォーム。 [G5 / Phase 1b・1d・閲覧編集]
  *
- * inspection_type='completion' の点検記録を作成し、
+ * inspection_type='completion' の点検記録を作成/編集し、
  * - 「検査機器等による検査」測定値 → inspection_measurements（Phase 1b）
  * - 「目視等による検査」（構造・装置）と車両情報の照合欄 → inspection_records.answers（Phase 1d,
  *   `visual.` / `match.` 接頭辞。様式の別は `__indicated_form`）
  * に保存する。様式(四輪=第三号 / 二輪=第四号)で項目が変わる。
+ * editRecord を渡すと編集モード（answers を prefill し、測定値は API から読み込む）。
  */
+
+/** 編集モードで渡す既存記録（一覧が持つ answers ＋ 氏名/備考）。測定値は別途 API で取得する。 */
+export type CompletionEditRecord = {
+  id: string;
+  inspector_name: string | null;
+  notes: string | null;
+  answers: Record<string, { value?: unknown }> | null;
+};
 
 interface Props {
   reservationId: string;
   vehicleId?: string | null;
   customerId?: string | null;
+  editRecord?: CompletionEditRecord | null;
   onCancel: () => void;
   onSaved: () => void | Promise<void>;
 }
@@ -39,24 +52,91 @@ const FORM_LABEL: Record<IndicatedInspectionForm, string> = {
   yonago: "第四号様式（二輪）",
 };
 
+/** answers.__indicated_form から様式を復元（未保存/不正は第三号）。 */
+function resolveFormFromAnswers(answers: CompletionEditRecord["answers"]): IndicatedInspectionForm {
+  const v = answers?.__indicated_form?.value;
+  return INDICATED_INSPECTION_FORMS.includes(v as IndicatedInspectionForm) ? (v as IndicatedInspectionForm) : "sanago";
+}
+
 // 判定 select の選択肢。空(—)＋カタログの判定語彙（良/否/該当なし）を単一定義源から生成する。
 const JUDGMENTS: { value: string; label: string }[] = [
   { value: "", label: "—" },
   ...VISUAL_JUDGMENTS.map((v) => ({ value: v, label: JUDGMENT_LABEL[v] })),
 ];
 
-export default function CompletionInspectionForm({ reservationId, vehicleId, customerId, onCancel, onSaved }: Props) {
-  const [form, setForm] = useState<IndicatedInspectionForm>("sanago");
-  const [inspectorName, setInspectorName] = useState("");
-  const [notes, setNotes] = useState("");
+export default function CompletionInspectionForm({
+  reservationId,
+  vehicleId,
+  customerId,
+  editRecord,
+  onCancel,
+  onSaved,
+}: Props) {
+  const isEdit = !!editRecord;
+  const [form, setForm] = useState<IndicatedInspectionForm>(() => resolveFormFromAnswers(editRecord?.answers ?? null));
+  const [inspectorName, setInspectorName] = useState(editRecord?.inspector_name ?? "");
+  const [notes, setNotes] = useState(editRecord?.notes ?? "");
   const [cells, setCells] = useState<Record<string, Cell>>({});
   // 目視検査の判定（code→"pass"/"fail"/"na"）と照合欄のテキスト（code→値）。answers に保存する。
-  const [visual, setVisual] = useState<Record<string, string>>({});
-  const [match, setMatch] = useState<Record<string, string>>({});
+  const [visual, setVisual] = useState<Record<string, string>>(() =>
+    editRecord ? extractInspectionAnswers(editRecord.answers).visual : {},
+  );
+  const [match, setMatch] = useState<Record<string, string>>(() =>
+    editRecord ? extractInspectionAnswers(editRecord.answers).match : {},
+  );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // 作成済みレコード ID。測定値保存だけ失敗した際、再保存で新レコードを重複作成しないよう保持する。
-  const [recordId, setRecordId] = useState<string | null>(null);
+  // 作成済み/編集対象レコード ID。作成時の再保存で新レコードを重複作成しないよう保持する。
+  const [recordId, setRecordId] = useState<string | null>(editRecord?.id ?? null);
+  // 編集モードで測定値を読み込み終えたか。読み込み前/失敗時に保存すると PUT の全置換で既存測定値を
+  // 消してしまうため、完了するまで保存を止める。新規モードは常に true。読み込み失敗は loadFailed。
+  const [measLoaded, setMeasLoaded] = useState(!editRecord);
+  const [loadFailed, setLoadFailed] = useState(false);
+
+  // 編集モード: 測定値を API から読み込みセルへ反映する（一覧は測定値を持たないため）。
+  useEffect(() => {
+    if (!editRecord) return;
+    let cancelled = false;
+    const fail = () => {
+      if (cancelled) return;
+      setLoadFailed(true);
+      setError("測定値の読み込みに失敗しました。画面を開き直してください（このまま保存すると測定値が消えます）。");
+    };
+    (async () => {
+      try {
+        const res = await fetch(`/api/admin/inspection-records/${editRecord.id}/measurements`);
+        const json = await res.json().catch(() => null);
+        if (cancelled) return;
+        // 200 でも measurements 配列が無ければ「読み込み成功で空」と誤認しない（誤った全消去を防ぐ）。
+        if (!res.ok || !json || !Array.isArray(json.measurements)) {
+          fail();
+          return;
+        }
+        const next: Record<string, Cell> = {};
+        for (const m of json.measurements as {
+          field_code: string;
+          num_value: number | null;
+          text_value: string | null;
+          unit: string | null;
+          judgment: string | null;
+        }[]) {
+          next[m.field_code] = {
+            num: m.num_value != null ? String(m.num_value) : "",
+            text: m.text_value ?? "",
+            unit: m.unit ?? "",
+            judgment: m.judgment ?? "",
+          };
+        }
+        setCells(next);
+        setMeasLoaded(true);
+      } catch {
+        fail();
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [editRecord]);
 
   const fields = useMemo(() => measurementFieldsForForm(form), [form]);
   const groups = useMemo(() => {
@@ -81,24 +161,29 @@ export default function CompletionInspectionForm({ reservationId, vehicleId, cus
     setCells((prev) => ({ ...prev, [code]: { ...cell(code), ...patch } }));
   }
 
-  /** 入力済みセルから PUT 用の測定値配列を組み立てる（空セルは送らない） */
+  /**
+   * 入力済みセルから PUT 用の測定値配列を組み立てる（空セルは送らない）。
+   * PUT は全置換のため、「現在の様式のフィールド」ではなく「値を持つ全セル」を対象にする。
+   * こうすることで、編集時に読み込んだ他様式のセル（様式が __indicated_form 欠落で既定に倒れた等）を
+   * 取りこぼして消してしまう事故を防ぐ。値種別はカタログ（getMeasurementField）で解決する。
+   */
   function buildMeasurements(): MeasurementInput[] {
     const out: MeasurementInput[] = [];
-    for (const f of fields) {
-      const c = cells[f.code];
-      if (!c) continue;
+    for (const [code, c] of Object.entries(cells)) {
+      const f = getMeasurementField(code);
+      if (!f) continue; // 未知コードは送らない（サーバ側でも拒否される）
       if (f.valueKind === "numeric") {
         if (c.num.trim() === "") continue;
         const n = Number(c.num);
         if (!Number.isFinite(n)) continue;
-        out.push({ field_code: f.code, num_value: n, unit: c.unit || (f.units?.[0] ?? null), source: "manual" });
+        out.push({ field_code: code, num_value: n, unit: c.unit || (f.units?.[0] ?? null), source: "manual" });
       } else if (f.valueKind === "judgment") {
         if (!c.judgment) continue;
-        out.push({ field_code: f.code, judgment: c.judgment as "pass" | "fail" | "na", source: "manual" });
+        out.push({ field_code: code, judgment: c.judgment as "pass" | "fail" | "na", source: "manual" });
       } else {
         if (c.text.trim() === "") continue;
         out.push({
-          field_code: f.code,
+          field_code: code,
           text_value: c.text.trim(),
           unit: c.unit || (f.units?.[0] ?? null),
           source: "manual",
@@ -153,13 +238,14 @@ export default function CompletionInspectionForm({ reservationId, vehicleId, cus
         if (!id) throw new Error("作成した記録の ID を取得できませんでした。");
         setRecordId(id);
       } else {
+        // 既存記録の更新（編集モード、または create 済みの再保存）。氏名・備考・answers を反映する。
         const patchRes = await fetch("/api/admin/inspection-records", {
           method: "PATCH",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ id, answers }),
+          body: JSON.stringify({ id, answers, inspector_name: inspectorName || null, notes: notes || null }),
         });
         const patchJson = await patchRes.json().catch(() => ({}));
-        if (!patchRes.ok) throw new Error(patchJson?.message ?? "目視・照合の保存に失敗しました。");
+        if (!patchRes.ok) throw new Error(patchJson?.message ?? "記録の更新に失敗しました。");
       }
 
       // 2) 測定値を保存
@@ -183,7 +269,9 @@ export default function CompletionInspectionForm({ reservationId, vehicleId, cus
   return (
     <div className="glass-card space-y-4 p-4">
       <div className="flex items-center justify-between gap-2">
-        <div className="text-sm font-semibold text-primary">完成検査（指定整備記録簿）</div>
+        <div className="text-sm font-semibold text-primary">
+          {isEdit ? "完成検査（編集）" : "完成検査（指定整備記録簿）"}
+        </div>
         <div className="flex gap-1">
           {(Object.keys(FORM_LABEL) as IndicatedInspectionForm[]).map((f) => (
             <button
@@ -365,10 +453,18 @@ export default function CompletionInspectionForm({ reservationId, vehicleId, cus
         <button
           type="button"
           onClick={handleSave}
-          disabled={saving}
+          disabled={saving || !measLoaded}
           className="btn-primary text-xs disabled:opacity-50"
         >
-          {saving ? "保存中…" : "完成検査を保存"}
+          {saving
+            ? "保存中…"
+            : loadFailed
+              ? "読み込み失敗"
+              : !measLoaded
+                ? "読み込み中…"
+                : isEdit
+                  ? "更新"
+                  : "完成検査を保存"}
         </button>
       </div>
     </div>
