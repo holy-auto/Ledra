@@ -3,6 +3,31 @@
 > まだ決まっていないこと、判断に迷っていることを書く場所。決まったら
 > DECISION_LOG.md に移し、このファイルからは消す（削除履歴は git で追える）。
 
+## Vercel のビルドが 8GB のビルド機の上限に近く、キャッシュが無いと OOM で落ちる（2026-09-29）
+
+- PR #1172 のプレビューで `npm run build` が SIGKILL（OOM）。ログに「ビルドキャッシュが大きすぎるので破棄」があり、
+  キャッシュなしのフルビルドだった。#1162 も同じ失敗でマージされている。
+- 手元の計測（4コア、1秒ごとの `free -m` の used、待機時の約0.65GBを含む）: main 相当 + Sentry で 6876MB、
+  PR #1172 + Sentry で 7192MB。ピークは Turbopack のコンパイル終盤で、型チェックの省略・ページデータ収集の
+  1ワーカー化・プレビューで Sentry を包まない、の3つを入れても 7054MB で計測誤差程度だった（設定変更は入れていない）。
+- 同じ PR が main 取り込み後の 79b9d60 では通ったが、ビルドに約25分かかった（普段は約3分）。
+- 決めたいこと: Vercel の Enhanced Builds（16GB、有料）に切り替えるか。切り替えないなら、ビルドが通らない PR が
+  出るたびに再デプロイで様子を見る運用になる。
+- 起票日: 2026-09-29
+- 判断者: 代表
+
+## CI の `Client Bundle Size` が Google Fonts の取得失敗で落ちることがある（2026-09-29）
+
+- PR #1172 の 7feaed9 と 5e100a8（どちらもアプリのコードは f4233c7 と同一）で、`next/font/google` の Noto Sans JP の
+  取り込みが `module-not-found` になり、クライアントのコンパイルごと失敗した。f4233c7 では 13:31 UTC に成功しており、
+  違いは実行時刻だけ。手元で同条件のビルドでは再現しない。
+- 案: `src/app/layout.tsx`・`src/app/(marketing)/layout.tsx`・`src/app/video/layout.tsx` の Noto Sans JP を、
+  リポジトリに同梱した woff2 を読む `next/font/local` に置き換える（ビルドが Google Fonts に依存しなくなる）。
+- 推定: GitHub Actions のランナーから Google Fonts への取得が一時的に失敗している。根拠は同一コードで時刻だけ違う
+  成功と失敗。未検証。
+- 起票日: 2026-09-29
+- 判断者: 代表（別 PR で置き換えるか）
+
 ## rating_request の送信条件を「follow_up_settings.enabled のテナントのみ・発行7日後固定」で仮置きした（2026-09-27）
 
 - 実装（RELEASE_LOG 2026-09-27）で、評価依頼は `follow_up_settings.enabled = true` のテナントにだけ
