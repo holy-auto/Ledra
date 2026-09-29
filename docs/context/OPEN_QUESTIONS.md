@@ -1874,6 +1874,13 @@ JST は夏時間が無いので日の加算は 24 時間の加算でよい。
     → 代表回答（2026-09-29）: **本番は TSA 未設定（無効）**。GPSA・運用文書・TOE 図から TSA の記述を削除した。
     → O.5 は代表回答「まず Vercel で最低 TLS 1.3 を設定できるか確認」。外向きは NODE_OPTIONS=--tls-min-v1.3 で強制する方針。
   - 代表が添付した画像4枚は Ledra の旧サンプルで、C2PA 指定ライブラリの素材ではない（ライブラリは引き続き未入手）。
+  - **2026-09-29 ライブラリ入手**（代表が zip を添付）: 画像は jpg（Google Pixel 署名・証明書期限切れ）と png（Google 署名）のみ。
+    webp/heic は Program の指示どおりライブラリ jpg から作り c2pa-rs テスト証明書で署名（`docs/c2pa-evidence/make-ingredients.mts`）。
+    X-ingredient1 → X-sample の4組を生成、4枚とも Valid・untrusted のみ・ingredient に元 manifest と検証結果あり。
+    計32MB のためリポジトリには入れず、生成スクリプトのみ保存。**Conformulator 未確認（zip 名に UNVERIFIED）**。
+  - **追加要件 PDF（v0.2）§2.3**: validate を申告すると **crJSON 出力のテストハーネス**（入力: 資産・テスト Trust List・TSA Trust List・
+    検証時刻 → crJSON）が必須。Program からテスト入力が後日届く。c2pa-node 0.9.7 は crJSON 非対応、c2pa-rs main に
+    `Reader::to_crjson_value` あり、この環境に Rust と crates.io 到達性あり → 小さな Rust ツールで作れる見込み（未着手）。
 - **TLS 1.2 の扱い（未確認）**: GPSA O.5 は TLS 1.3 を要求。Vercel は現行クライアントとは TLS 1.3 で繋がるが、
   旧クライアント向けに TLS 1.2 も受ける（推定・未検証）。審査で指摘された場合の対応（Vercel 側で 1.2 を止められるか）は未調査。
 - **HEIC の GPS が残る（2026-09-27 実測で確定）**: sharp のプリビルドは HEVC を読めず（`heif: Support for this compression
