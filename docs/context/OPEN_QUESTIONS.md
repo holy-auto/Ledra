@@ -17,6 +17,54 @@ GPSA 審査（2026-09-28、DOES NOT MEET）の Path A 是正はコードと文�
    （App Attest / Play Integrity）の有効化とモバイルアプリの SBOM が要る。製品の訴求（「本物の撮影」）はこちらが本命。
 - 起票日: 2026-09-29
 
+## Vercel のビルドが 8GB のビルド機の上限に近く、キャッシュが無いと OOM で落ちる（2026-09-29）
+
+- PR #1172 のプレビューで `npm run build` が SIGKILL（OOM）。ログに「ビルドキャッシュが大きすぎるので破棄」があり、
+  キャッシュなしのフルビルドだった。#1162 も同じ失敗でマージされている。
+- 手元の計測（4コア、1秒ごとの `free -m` の used、待機時の約0.65GBを含む）: main 相当 + Sentry で 6876MB、
+  PR #1172 + Sentry で 7192MB。ピークは Turbopack のコンパイル終盤で、型チェックの省略・ページデータ収集の
+  1ワーカー化・プレビューで Sentry を包まない、の3つを入れても 7054MB で計測誤差程度だった（設定変更は入れていない）。
+- 同じ PR が main 取り込み後の 79b9d60 では通ったが、ビルドに約25分かかった（普段は約3分）。
+- 決めたいこと: Vercel の Enhanced Builds（16GB、有料）に切り替えるか。切り替えないなら、ビルドが通らない PR が
+  出るたびに再デプロイで様子を見る運用になる。
+- 起票日: 2026-09-29
+- 判断者: 代表
+
+## CI の `Client Bundle Size` が Google Fonts の取得失敗で落ちることがある（2026-09-29）
+
+- PR #1172 の 7feaed9 と 5e100a8（どちらもアプリのコードは f4233c7 と同一）で、`next/font/google` の Noto Sans JP の
+  取り込みが `module-not-found` になり、クライアントのコンパイルごと失敗した。f4233c7 では 13:31 UTC に成功しており、
+  違いは実行時刻だけ。手元で同条件のビルドでは再現しない。
+- 案: `src/app/layout.tsx`・`src/app/(marketing)/layout.tsx`・`src/app/video/layout.tsx` の Noto Sans JP を、
+  リポジトリに同梱した woff2 を読む `next/font/local` に置き換える（ビルドが Google Fonts に依存しなくなる）。
+- 推定: GitHub Actions のランナーから Google Fonts への取得が一時的に失敗している。根拠は同一コードで時刻だけ違う
+  成功と失敗。未検証。
+- 起票日: 2026-09-29
+- 判断者: 代表（別 PR で置き換えるか）
+
+## rating_request の送信条件を「follow_up_settings.enabled のテナントのみ・発行7日後固定」で仮置きした（2026-09-27）
+
+- 実装（RELEASE_LOG 2026-09-27）で、評価依頼は `follow_up_settings.enabled = true` のテナントにだけ
+  送る形にした。代表判断の「follow_up_settings に準じてテナント設定可能」を、新しい設定 UI を作らず
+  既存の顧客フォロー用スイッチで代用したもの。フォローを有効にしていないテナントの顧客には届かない。
+- 日数は全テナント共通で7日（`RATING_REQUEST_DELAY_DAYS`）。テナント別に変えるなら
+  `follow_up_settings` に列を足す。
+- 確認したいこと: (a) スイッチを顧客フォローと共用してよいか（評価依頼だけ止めたいテナントがいるか）、
+  (b) 7日でよいか。
+- 起票日: 2026-09-27
+- 判断者: 代表
+
+## 発行直後フォロー（post_issue）が cron から一度も送られていない疑い（2026-09-27）
+
+- `triggerCertificateIssued` → `triggerPostIssueFollowUp` が発行時に `notification_logs`
+  （type=post_issue, status=queued）を1行入れるが、`queued` を読んで送る処理がコードに無い。
+  一方 cron の `processPostIssueFollowUps` は「post_issue のログが既にある証明書」を送信済みとして
+  飛ばすので、発行時に入れた queued 行が送信を止めている可能性がある。
+- コードを追っただけで、本番ログ（status=queued のまま残る post_issue 行の件数）は未確認。
+  【要確認】本番で `select count(*) from notification_logs where type='post_issue' and status='queued'`。
+- rating_request の実装中に気づいた。今回の変更範囲外なので手を入れていない。
+- 起票日: 2026-09-27
+
 ## プライバシー整合5件の決定後に残ったこと（2026-09-27）
 
 5件は代表が決めて実装した（DECISION_LOG 2026-09-27「プライバシー整合5件」）。実装してみて、次が残った。
@@ -36,7 +84,7 @@ GPSA 審査（2026-09-28、DOES NOT MEET）の Path A 是正はコードと文�
 - 判断者: 代表（1・2 は法務確認込み）
 - 2026-09-27 追記: 施工店の承認画面の件は「オーナー同意だけ」に決まり、解消した（DECISION_LOG）。
 
-## 通知2タイプ（`certificate_gate_ready` / `rating_request`）は該当イベントの実処理が見つからないため未配線（2026-09-25）
+## 【解決済み 2026-09-27】通知2タイプ（`certificate_gate_ready` / `rating_request`）は該当イベントの実処理が見つからないため未配線（2026-09-25）
 
 IMP-029 の15タイプ配線（DECISION_LOG 2026-09-25 の決定に基づく）のうち、この2タイプだけは
 「発火させる場所」がコードに存在しないため、憶測で作らず見送った。
@@ -56,6 +104,11 @@ IMP-029 の15タイプ配線（DECISION_LOG 2026-09-25 の決定に基づく）�
   （施工店の顧客 / 受発注の相手テナント）を確認する。
 - 起票日: 2026-09-25
 - 判断者: 代表
+- **解決（2026-09-27）**: (a) Gate再評価は写真アップロード時。(b) `rating_request`の宛先は
+  施工店の顧客（エンドユーザー）。送信タイミングは証明書発行の数日後（`signature_reviews`＝
+  サイン直後のその場レビューとは別物として扱う）。加えて調査中に`defaultChannels: ["in_app"]`
+  が顧客に届かない不整合と判明、実装時にemail/line等へ修正する。詳細は DECISION_LOG.md
+  2026-09-27 を参照。
 
 ## ビルドが Google Fonts への外部フェッチに依存していて、取れないと CI が落ちる（2026-09-23）
 
