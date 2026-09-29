@@ -17,6 +17,8 @@
   （fallback でも原本をそのまま署名しただけ）。
 - プライバシー: 原本 ingredient は GPS を運ばない（原本に GPS → 署名後ファイル・manifest JSON・ingredient サムネイルとも
   GPS なし、を実測。陰性対照＝GPS を消さずに署名すると検出される）。テスト化済み。
+  さらに原本自身の C2PA manifest に入った位置（`c2pa.metadata` 等）が ingredient ごと複写される経路を `/code-review` が指摘・再現。
+  原本 manifest store のメタデータ系アサーションを C2PA redaction（`c2pa.PII.present`、c2pa-rs が `c2pa.redacted` を自動追記）で除去し、テスト化。
 - 未対応: (3) カスタムアサーション（指摘のスクリーンショットが未入手）、ingredient 用ライブラリ（Drive・この環境から取得不可）、
   GPSA 改訂・レビュー文書（共有権限なしで閲覧不可）。
 

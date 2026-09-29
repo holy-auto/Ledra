@@ -117,6 +117,23 @@ function buildActions(o: TransformOutcome): ManifestAction[] {
   return actions;
 }
 
+/**
+ * 原本（ingredient）の manifest store 内で、位置などの個人情報を持ちうるメタデータ系アサーション
+ * （c2pa.metadata / stds.exif / stds.iptc / cawg.metadata 等）の JUMBF URI を列挙する。redaction 対象。
+ * // ponytail: ラベル名の部分一致（metadata|exif|iptc|xmp）で判定する。新しいメタデータ系ラベルが
+ * // 仕様に増えたらここを広げる（テスト: GPS 入り c2pa.metadata を持つ原本が漏れないこと）。
+ */
+export function metadataAssertionUris(store: unknown): string[] {
+  const manifests = (store as { manifests?: Record<string, { assertions?: Array<{ label?: string }> }> } | null)
+    ?.manifests;
+  return Object.entries(manifests ?? {}).flatMap(([label, m]) =>
+    (m.assertions ?? [])
+      .map((a) => a.label ?? "")
+      .filter((l) => /metadata|exif|iptc|xmp/i.test(l))
+      .map((l) => `self#jumbf=/c2pa/${label}/c2pa.assertions/${l}`),
+  );
+}
+
 /** actions 台帳を要約文字列（action 名の列）に落とす。 */
 function summarizeActions(o: TransformOutcome): string[] {
   return buildActions(o).map((a) => a.action);
@@ -244,7 +261,7 @@ export async function signC2pa(
     const signer = await createC2paSigner(mode);
     if (!signer) return DISABLED_RESULT;
 
-    const { Builder } = await import("@contentauth/c2pa-node");
+    const { Builder, Reader } = await import("@contentauth/c2pa-node");
 
     // Seal the capture context into the manifest (com.ledra.capture): which
     // certificate/vehicle this photo is for, the single-use capture nonce, and the
@@ -291,6 +308,13 @@ export async function signC2pa(
       JSON.stringify({ title: "Uploaded photo", relationship: "parentOf", label: PARENT_INGREDIENT_LABEL }),
       { buffer: original, mimeType: mime },
     );
+    // If the original carries its own C2PA manifest (C2PA cameras/phones), that manifest is
+    // copied into ours — and it can hold the shooting location in a metadata assertion,
+    // which would bypass the EXIF/GPS removal. Redact every metadata-type assertion of the
+    // ingredient's manifest store (C2PA redaction; c2pa-rs adds the c2pa.redacted action).
+    // A read error is not swallowed: signing then fails closed (unsigned, not leaking).
+    const parentStore = (await Reader.fromAsset({ buffer: original, mimeType: mime }))?.json();
+    for (const uri of metadataAssertionUris(parentStore)) builder.addRedaction(uri, "c2pa.PII.present");
 
     const input = { buffer, mimeType: mime };
     const output: { buffer: Buffer | null } = { buffer: null };

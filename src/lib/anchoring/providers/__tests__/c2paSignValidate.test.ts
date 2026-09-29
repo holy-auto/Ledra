@@ -191,4 +191,63 @@ describe("C2PA sign → validate (manifest content conformance)", () => {
     // 座標のフィールド名で見る（"GPS" だけだと edited.metadata の説明文 "EXIF/GPS metadata removed" に当たる）。
     expect(text, "no GPS coordinate field in the manifest store").not.toMatch(/GPSLat|GPSLong|latitude|longitude/i);
   });
+
+  // A C2PA camera/phone can put the shooting location inside its own manifest
+  // (c2pa.metadata). That manifest is copied into ours with the ingredient, so it
+  // bypasses EXIF stripping unless redacted. (/code-review on the opened change.)
+  it("location inside the original's own C2PA manifest is redacted, not carried over", async () => {
+    const { signC2pa } = await import("../c2pa");
+    const { createC2paSigner } = await import("../c2paSigner");
+    const { Builder } = await import("@contentauth/c2pa-node");
+    const sharp = (await requireNative(() => import("sharp"), "sharp")).default;
+    const base = await sharp({
+      create: { width: 160, height: 100, channels: 3, background: { r: 10, g: 80, b: 40 } },
+    })
+      .jpeg()
+      .toBuffer();
+    const camera = Builder.withJson({
+      claim_generator_info: [{ name: "SomeCamera", version: "1" }],
+      title: "camera",
+      assertions: [
+        {
+          label: "c2pa.actions",
+          created: true,
+          data: {
+            allActionsIncluded: true,
+            actions: [
+              {
+                action: "c2pa.created",
+                digitalSourceType: "http://cv.iptc.org/newscodes/digitalsourcetype/digitalCapture",
+              },
+            ],
+          },
+        },
+        {
+          label: "c2pa.metadata",
+          created: true,
+          data: { "@context": { exif: "http://ns.adobe.com/exif/1.0/" }, "exif:GPSLatitude": "35,40.2N" },
+        },
+      ],
+    } as never);
+    const camOut: { buffer: Buffer | null } = { buffer: null };
+    camera.sign(await createC2paSigner("dev-signed"), { buffer: base, mimeType: "image/jpeg" }, camOut);
+    expect(camOut.buffer!.includes(Buffer.from("35,40.2N")), "fixture carries the location").toBe(true);
+
+    const res = await signC2pa(base, "image/jpeg", undefined, undefined, camOut.buffer!);
+    expect(res.signedBuffer, "signed").toBeTruthy();
+    expect(res.signedBuffer!.includes(Buffer.from("35,40.2N")), "location bytes gone from the output").toBe(false);
+    const raw = (await Reader.fromAsset({ buffer: res.signedBuffer!, mimeType: "image/jpeg" }))?.json();
+    const json = (typeof raw === "string" ? JSON.parse(raw) : raw) as {
+      active_manifest: string;
+      manifests: Record<
+        string,
+        { assertions: Array<{ label: string; data: { actions?: Array<{ action: string }> } }> }
+      >;
+    };
+    const actions = json.manifests[json.active_manifest].assertions.find((a) => a.label.startsWith("c2pa.actions"));
+    expect(
+      actions?.data.actions?.map((a) => a.action),
+      "redaction is declared",
+    ).toContain("c2pa.redacted");
+  });
 });
