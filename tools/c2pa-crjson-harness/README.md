@@ -24,8 +24,10 @@ The harness runs the validation engine Ledra's product uses: c2pa-rs **0.90.22**
 c2pa-rs 0.90.22 has one trust store for claim signers and time-stamp authorities, and it validates
 at the system clock. `c2pa-0.90.22-harness.patch` adds the two inputs it lacks and changes nothing else:
 
-- `harness_overrides::VALIDATION_TIME` replaces the system clock.
+- `harness_overrides::VALIDATION_TIME` replaces the system clock, including the `validationTime` reported for ingredient manifests.
 - `harness_overrides::TSA_TRUST_POLICY` replaces the claim-signer trust list when checking time-stamp certificates.
+
+CAWG identity assertions are still checked at the system clock; the patch covers C2PA claim validation only.
 
 ## Build and self-test
 
@@ -34,5 +36,5 @@ Requires a Rust toolchain, `curl`, `patch`, `sha256sum`, and for the self-test `
 ```sh
 tools/c2pa-crjson-harness/setup.sh          # crates.io c2pa 0.90.22 (checksum-verified) + patch -> vendor/c2pa
 cargo build --release --manifest-path tools/c2pa-crjson-harness/Cargo.toml
-node tools/c2pa-crjson-harness/selftest.mjs # 5 cases: trusted, untrusted, expired, TSA trusted, TSA list separation
+node tools/c2pa-crjson-harness/selftest.mjs # 6 cases: trusted, untrusted, expired, TSA trusted, TSA list separation, ingredient validationTime
 ```

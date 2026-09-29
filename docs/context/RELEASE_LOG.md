@@ -8,7 +8,7 @@
 
 - `tools/c2pa-crjson-harness`: `<資産> <C2PA Trust List> <TSA Trust List> <検証時刻>` を受け、検証結果を crJSON で標準出力に出す Rust ツール。
 - エンジンは製品と同じ c2pa-rs 0.90.22。`setup.sh` が crates.io から取得して checksum を照合し、`c2pa-0.90.22-harness.patch`（検証時刻と TSA 専用信頼リストの2点）を当てる。
-- 自己テスト `selftest.mjs`: その場で作った CA・TSA で署名した画像を使い、5件（trusted / untrusted / expired / TSA trusted / 信頼リストの分離）を確認。パッチの各点を外すと該当ケースが落ちることを確認済み。
+- 自己テスト `selftest.mjs`: その場で作った CA・TSA で署名した画像を使い、6件（trusted / untrusted / expired / TSA trusted / 信頼リストの分離 / ingredient の validationTime）を確認。パッチの各点を外すと該当ケースが落ちることを確認済み。ingredient の validationTime は /code-review の指摘で追加（MISTAKE_LEDGER `M-20260929-left-crjson-time-fallback-unread`）。
 - 下書き zip のサンプル4形式（jpeg/png/webp/heic）で crJSON を出力できることを確認（信頼リスト空で `signingCredential.untrusted` のみ）。
 - GPSA §1.9 にハーネスの記述を1文追加。本番のアプリ挙動は変えていない。
 

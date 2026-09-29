@@ -1,3 +1,29 @@
+diff -ruN a/src/crjson.rs b/src/crjson.rs
+--- a/src/crjson.rs	2026-09-29 14:56:02.244742649 +0000
++++ b/src/crjson.rs	2026-09-29 15:15:21.855084306 +0000
+@@ -501,7 +501,7 @@
+         let validation_time = vr
+             .validation_time()
+             .map(String::from)
+-            .unwrap_or_else(|| Utc::now().to_rfc3339());
++            .unwrap_or_else(|| crate::crypto::internal::time::utc_now().to_rfc3339());
+ 
+         if let Some(active_label) = self.reader.active_label() {
+             let codes = vr.active_manifest().cloned().unwrap_or_default();
+@@ -642,7 +642,12 @@
+     let (codes, validation_time) = validation_map
+         .get(label)
+         .cloned()
+-        .unwrap_or_else(|| (StatusCodes::default(), Utc::now().to_rfc3339()));
++        .unwrap_or_else(|| {
++            (
++                StatusCodes::default(),
++                crate::crypto::internal::time::utc_now().to_rfc3339(),
++            )
++        });
+     ManifestValidationResults {
+         success: codes.success().clone(),
+         informational: codes.informational().clone(),
 diff -ruN a/src/crypto/cose/certificate_profile.rs b/src/crypto/cose/certificate_profile.rs
 --- a/src/crypto/cose/certificate_profile.rs	2026-09-29 14:56:02.245190524 +0000
 +++ b/src/crypto/cose/certificate_profile.rs	2026-09-29 14:56:07.144177422 +0000

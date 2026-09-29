@@ -1885,7 +1885,7 @@ JST は夏時間が無いので日の加算は 24 時間の加算でよい。
   - **追加要件 PDF（v0.2）§2.3**: validate を申告すると **crJSON 出力のテストハーネス**（入力: 資産・テスト Trust List・TSA Trust List・
     検証時刻 → crJSON）が必須。Program からテスト入力が後日届く。c2pa-node 0.9.7 は crJSON 非対応、c2pa-rs main に
     `Reader::to_crjson_value` あり、この環境に Rust と crates.io 到達性あり → 小さな Rust ツールで作れる見込み（未着手）。
-    → **2026-09-29 作成済み**: `tools/c2pa-crjson-harness`（c2pa-rs 0.90.22＝製品と同じエンジン＋2点パッチ、自己テスト5件）。
+    → **2026-09-29 作成済み**: `tools/c2pa-crjson-harness`（c2pa-rs 0.90.22＝製品と同じエンジン＋2点パッチ、自己テスト6件）。
       Program のテスト入力が届いたら、これで crJSON を出して返す。
   - **本番の検証は C2PA Trust List を使っていない（2026-09-29 判明・未判断）**: `verifyExternalC2pa` と ingredient 取り込み時の
     検証（`signC2pa` 内の `addIngredient` / `Reader.fromAsset`）は c2pa-rs を既定設定で呼んでおり、信頼アンカーを渡していない。

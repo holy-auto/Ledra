@@ -101,7 +101,7 @@ try {
   const jpeg = await sharp({ create: { width: 16, height: 16, channels: 3, background: "#888" } })
     .jpeg()
     .toBuffer();
-  async function sign(tsaUrl) {
+  async function sign(tsaUrl, parent) {
     const b = Builder.withJson({
       claim_generator_info: [{ name: "Ledra harness selftest", version: "1.0", specVersion: "2.4" }],
       assertions: [
@@ -110,16 +110,24 @@ try {
           created: true,
           data: {
             allActionsIncluded: true,
-            actions: [
-              {
-                action: "c2pa.created",
-                digitalSourceType: "http://cv.iptc.org/newscodes/digitalsourcetype/digitalCapture",
-              },
-            ],
+            actions: parent
+              ? [{ action: "c2pa.opened", parameters: { ingredientIds: ["parent"] } }]
+              : [
+                  {
+                    action: "c2pa.created",
+                    digitalSourceType: "http://cv.iptc.org/newscodes/digitalsourcetype/digitalCapture",
+                  },
+                ],
           },
         },
       ],
     });
+    if (parent) {
+      await b.addIngredient(JSON.stringify({ title: "parent", relationship: "parentOf", label: "parent" }), {
+        buffer: parent,
+        mimeType: "image/jpeg",
+      });
+    }
     // Only the async signing path can call a TSA in c2pa-node 0.9.7.
     const key = createPrivateKey(readFileSync(f("signer.key")));
     const cert = readFileSync(f("signer.pem"));
@@ -133,6 +141,8 @@ try {
   }
   writeFileSync(f("plain.jpg"), await sign(undefined));
   writeFileSync(f("stamped.jpg"), await sign(`http://127.0.0.1:${port}`));
+  writeFileSync(f("derived.jpg"), await sign(undefined, readFileSync(f("plain.jpg"))));
+  writeFileSync(f("derived2.jpg"), await sign(undefined, readFileSync(f("derived.jpg"))));
 } finally {
   tsaServer.kill();
 }
@@ -170,4 +180,13 @@ assert.ok(
 const tsaRootOnlyInC2paList = run("stamped.jpg", "both.pem", "empty.pem", now);
 assert.ok(!tsaRootOnlyInC2paList.ok.includes("timeStamp.trusted"), "C2PA trust list does not vouch for TSAs");
 
-console.log("crJSON harness selftest: 5 cases passed");
+// Ingredient manifests whose results match what their ingredient assertion recorded at signing (same trust,
+// signer still valid) get no delta; crjson.rs fills their validationTime from a separate fallback.
+const soon = new Date(Date.now() + 86400e3).toISOString();
+const derived = run("derived2.jpg", "empty.pem", "empty.pem", soon).out;
+assert.equal(derived.manifests.length, 3, "asset carries two levels of ingredient manifests");
+for (const m of derived.manifests) {
+  assert.equal(Date.parse(m.validationResults.validationTime), Date.parse(soon), `validationTime of ${m.label}`);
+}
+
+console.log("crJSON harness selftest: 6 cases passed");
