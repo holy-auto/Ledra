@@ -4,7 +4,22 @@
 > 追わず、常に最新状態だけを保つ（履歴は DECISION_LOG.md / RELEASE_LOG.md 側）。
 > 大きな変化があったら都度上書きすること。
 
-最終更新: 2026-09-25
+最終更新: 2026-09-29
+
+> 2026-09-29 追記（本番適用 実測）: **#1170 を本番に適用した**（`94f345f1`・`db-migrate` run 94 成功・12:35 UTC）。
+> 本番で実測した結果:
+> - `certificates` の anon 向けポリシーは **0本**。anon の SELECT 権限は `certificates` と `certificates_public` の**どちらにも無い**。
+>   → 未ログインで顧客名を列挙できた穴は閉じた。
+> - `pii_disclosure_consents` にオーナー同意の2列を追加した。`certificates.hidden_from_owner_portal_at` もある。
+> - `is_pii_disclosed()` は `owner_consented_at` を見て、`tenant_consented_at` は見ない（オーナー同意だけの定義）。
+> いまの状態:
+> - 保険会社への氏名開示は「保険会社の申請＋オーナー本人の同意」で決まる。オーナーはマイページで同意する。
+> - 匿名の公開証明書・公開 PDF にナンバーは出ない。
+> - パスポートへの掲載は、施工店が車両ごとに切り替えられる（既定オン）。
+> - 所有権を移転すると、旧オーナーにメールが届き、旧オーナーのマイページから旧オーナー名義の証明書が外れる。
+> - 契約条件は /terms（11条）だけ。
+> **未確認**: 塞ぐ前に第三者が anon の経路で証明書を読んだかどうか（PostgREST のログ）。公開 PDF の本番での実際の表示。
+> 法務確認が要る未決は OPEN_QUESTIONS 2026-09-27 に残っている。
 
 > 2026-09-25 追記: **`certificate_images` の列定義を本番に揃えた**（`20260925142800`）。
 > `file_name` / `content_type` を NOT NULL、`sort_order` の既定を 1 に。本番と再生 DB を
