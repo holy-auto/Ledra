@@ -4,7 +4,22 @@
 > 追わず、常に最新状態だけを保つ（履歴は DECISION_LOG.md / RELEASE_LOG.md 側）。
 > 大きな変化があったら都度上書きすること。
 
-最終更新: 2026-09-27
+最終更新: 2026-09-29
+
+> 2026-09-29 追記（本番適用 実測）: **#1170 を本番に適用した**（`94f345f1`・`db-migrate` run 94 成功・12:35 UTC）。
+> 本番で実測した結果:
+> - `certificates` の anon 向けポリシーは **0本**。anon の SELECT 権限は `certificates` と `certificates_public` の**どちらにも無い**。
+>   → 未ログインで顧客名を列挙できた穴は閉じた。
+> - `pii_disclosure_consents` にオーナー同意の2列を追加した。`certificates.hidden_from_owner_portal_at` もある。
+> - `is_pii_disclosed()` は `owner_consented_at` を見て、`tenant_consented_at` は見ない（オーナー同意だけの定義）。
+> いまの状態:
+> - 保険会社への氏名開示は「保険会社の申請＋オーナー本人の同意」で決まる。オーナーはマイページで同意する。
+> - 匿名の公開証明書・公開 PDF にナンバーは出ない。
+> - パスポートへの掲載は、施工店が車両ごとに切り替えられる（既定オン）。
+> - 所有権を移転すると、旧オーナーにメールが届き、旧オーナーのマイページから旧オーナー名義の証明書が外れる。
+> - 契約条件は /terms（11条）だけ。
+> **未確認**: 塞ぐ前に第三者が anon の経路で証明書を読んだかどうか（PostgREST のログ）。公開 PDF の本番での実際の表示。
+> 法務確認が要る未決は OPEN_QUESTIONS 2026-09-27 に残っている。
 
 > 2026-09-25 追記: **`certificate_images` の列定義を本番に揃えた**（`20260925142800`）。
 > `file_name` / `content_type` を NOT NULL、`sort_order` の既定を 1 に。本番と再生 DB を
@@ -118,20 +133,8 @@
 > 振る舞い検査を2本追加し、修正を外すと実際に落ちること（陰性対照）を確認済み。
 > **残る既知のずれ**: 突き合わせの道具（`check:schema` / `check-schema-drift` / 再生検査）は
 > **列の「名前」しか見ていない**ので、既定値・NULL 可否・型の食い違いは映らない。
->
-> 2026-09-25 追記: `certificate_images` の残り3列差（`file_name`/`content_type` の NOT NULL、
-> `sort_order` の既定）を `20260925142800` で解消（#1166）。
->
-> 2026-09-27 追記: **列属性の食い違いを 280 表すべてで洗い出した。** 本番と再生 DB の
-> `information_schema.columns` を同じクエリで引き、268 表は完全一致・差は 12 表 39 件と確定。
-> `20260927150900` / `20260927151000` で 19 件を解消。残り 20 件は enum/text の7列
-> （**IMP-015 の判断待ち**）と、本番へ適用すれば消える2件だけ。
-> 途中で **本番の既定値が本番自身の CHECK に弾かれる列を2つ**発見した
-> （`job_orders.status` = `'open'`、`insurer_users.role` = `'member'`。どちらも省略して
-> insert すると必ず 23514）。本番の 183 組を本番自身に評価させ、違反2件・評価不能0件を確認。
-> 再発防止は `scripts/replay/checks/defaults_satisfy_own_check.sql`。
-> **ただし検出器（`check-schema-drift.mjs`）は属性まで見るようには広げていない** ——
-> 今回の調査は一度きりの手作業なので、次にずれても誰も気づかない（OPEN_QUESTIONS）。
+> `certificate_images` には `file_name`/`content_type` の NOT NULL、`sort_order` の既定
+> （本番 1 / マイグレーション 0）という差が残っている（OPEN_QUESTIONS）。
 
 > 2026-09-22 追記: **メーカー向け in-app 通知チャネルを新設**（#1123・`20260922140000`、本番適用済み＝2026-09-23 の db-migrate run #86 で実測確認）。
 > 施工店の証拠提出（evidence_submitted）通知が提出元テナント自身に飛んでメーカーに届いて
@@ -883,6 +886,8 @@
 > あわせて **anon から読める表を全件実測**（13件）。秘密情報・加盟店データの露出は無し。
 > `certificates` の公開ポリシーが**行ごと**許可する点と `is_hidden` を見ない点を
 > OPEN_QUESTIONS に起票（いずれも現時点で実害0）。
+> **2026-09-27 訂正**: 「露出は無し」「実害0」は誤り。anon から `certificates` の顧客名が全件読めていた
+> （アプリは3経路とも顧客名を伏せる設計）。`20260927113105` で anon の読み取りを閉じた（DECISION_LOG 2026-09-27）。
 > 確認が今も有効かは **`preview_token`（中身4項目 + `updated_at` の sha256）** で持つ。
 > 印は preview / publish とも **DB が返した行**から作る —— 手元の値を混ぜると表記の
 > 食い違い（JS は `...Z`、PostgREST は `+00:00`）でハッシュが永久に一致せず、

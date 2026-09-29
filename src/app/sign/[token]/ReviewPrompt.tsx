@@ -10,6 +10,7 @@ import { useCallback, useEffect, useState } from "react";
  *   Google レビュー誘導ボタンを表示 (定石: 高評価のみ外部へ誘導)
  * - 二重送信は API 側の UNIQUE 制約で 409、UI は「投稿済み」表示にフォールバック
  * - tone は CompleteScreen の dark テーマに合わせる
+ * - `endpoint` を渡すと別の評価受け口でも使える（/rate/[token] = 発行数日後の評価依頼。同じ応答形）
  */
 
 type Status = "idle" | "loading" | "submitting" | "submitted" | "already" | "error";
@@ -22,7 +23,8 @@ interface ContextResponse {
   can_review: boolean;
 }
 
-export default function ReviewPrompt({ token }: { token: string }) {
+export default function ReviewPrompt({ token, endpoint }: { token: string; endpoint?: string }) {
+  const url = endpoint ?? `/api/signature/review/${encodeURIComponent(token)}`;
   const [status, setStatus] = useState<Status>("loading");
   const [tenantName, setTenantName] = useState<string | null>(null);
   const [googleUrl, setGoogleUrl] = useState<string | null>(null);
@@ -35,7 +37,7 @@ export default function ReviewPrompt({ token }: { token: string }) {
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch(`/api/signature/review/${encodeURIComponent(token)}`);
+        const res = await fetch(url);
         if (!res.ok) {
           if (!cancelled) setStatus("idle");
           return;
@@ -63,14 +65,14 @@ export default function ReviewPrompt({ token }: { token: string }) {
     return () => {
       cancelled = true;
     };
-  }, [token]);
+  }, [url]);
 
   const submit = useCallback(async () => {
     if (rating < 1) return;
     setStatus("submitting");
     setErrorMsg(null);
     try {
-      const res = await fetch(`/api/signature/review/${encodeURIComponent(token)}`, {
+      const res = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ rating, comment: comment.trim() || undefined }),
@@ -92,12 +94,12 @@ export default function ReviewPrompt({ token }: { token: string }) {
       setStatus("error");
       setErrorMsg(e instanceof Error ? e.message : String(e));
     }
-  }, [token, rating, comment]);
+  }, [url, rating, comment]);
 
   const recordGoogleRedirect = useCallback(async () => {
     // ベストエフォート: 高評価 → Google 遷移を記録 (失敗しても遷移は止めない)
     try {
-      await fetch(`/api/signature/review/${encodeURIComponent(token)}`, {
+      await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ rating, comment: comment.trim() || undefined, google_redirected: true }),
@@ -105,7 +107,7 @@ export default function ReviewPrompt({ token }: { token: string }) {
     } catch {
       // ignore
     }
-  }, [token, rating, comment]);
+  }, [url, rating, comment]);
 
   if (status === "loading" || status === "error") {
     // ロード中 or 取得不能はサイレント。完了画面の主要素ではないため。
