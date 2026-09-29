@@ -52,6 +52,8 @@ const TYPE_BADGE: Record<InspectionType, "info" | "success" | "default"> = {
 export default function JobInspectionTab({ reservationId, vehicleId, customerId }: Props) {
   const [starting, setStarting] = useState(false);
   const [startingCompletion, setStartingCompletion] = useState(false);
+  // 編集中の完成検査記録（詳細・編集を開いたレコード）。
+  const [editingCompletion, setEditingCompletion] = useState<InspectionRecord | null>(null);
 
   const recordsKey = `/api/admin/inspection-records?reservation_id=${reservationId}`;
   const { data, isLoading, mutate } = useSWR<RecordsResponse>(recordsKey, fetcher, {
@@ -80,7 +82,7 @@ export default function JobInspectionTab({ reservationId, vehicleId, customerId 
         <div className="text-[11px] font-semibold tracking-[0.18em] text-muted uppercase">
           点検記録 ({records.length})
         </div>
-        {!starting && !startingCompletion && (
+        {!starting && !startingCompletion && !editingCompletion && (
           <div className="flex gap-2">
             <button
               type="button"
@@ -106,6 +108,20 @@ export default function JobInspectionTab({ reservationId, vehicleId, customerId 
           onCancel={() => setStartingCompletion(false)}
           onSaved={async () => {
             setStartingCompletion(false);
+            await mutate();
+          }}
+        />
+      )}
+
+      {editingCompletion && (
+        <CompletionInspectionForm
+          reservationId={reservationId}
+          vehicleId={vehicleId ?? undefined}
+          customerId={customerId ?? undefined}
+          editRecord={editingCompletion}
+          onCancel={() => setEditingCompletion(null)}
+          onSaved={async () => {
+            setEditingCompletion(null);
             await mutate();
           }}
         />
@@ -161,6 +177,14 @@ export default function JobInspectionTab({ reservationId, vehicleId, customerId 
                 {isCompletion ? (
                   <>
                     <span>測定 {measurementCount} 項目</span>
+                    <button
+                      type="button"
+                      onClick={() => setEditingCompletion(r)}
+                      disabled={!!editingCompletion || startingCompletion || starting}
+                      className="text-accent underline disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      詳細・編集
+                    </button>
                     <a
                       href={`/api/admin/inspection-records/${r.id}/pdf`}
                       target="_blank"
