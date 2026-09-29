@@ -4,6 +4,18 @@
 > （新しい順）。実装の詳細は RELEASE_LOG.md、迷っている段階のものは
 > OPEN_QUESTIONS.md に書く。
 
+## 2026-09-29 crJSON テストハーネスは、製品と同じ c2pa-rs 0.90.22 に2点だけパッチを当てた Rust ツールで作る
+
+1. 日付: 2026-09-29
+2. 起きたこと: validate 申告を戻したため、追加要件 v0.2 §2.3 の crJSON テストハーネスが必須になった。代表が「ハーネス作って」と指示。§2.3 はハーネスに4入力（資産・C2PA Trust List・TSA Trust List・検証時刻 RFC 3339）を受け、crJSON を出すことを求める。
+3. 以前の考え: 2026-09-04 に validate を取り下げたときは「ハーネスは不要」とした。再申告後は「c2pa-rs の `Reader::to_crjson_value` を呼ぶ小さな Rust ツールで足りる」と見ていた。
+4. 違和感・問題: c2pa-node 0.9.7 は crJSON を出せない。c2pa-rs 0.90.22（製品のエンジン）と公式 c2patool 0.28.1 は crJSON と信頼リストには対応するが、**TSA 専用の信頼リストと検証時刻の入力が無い**。c2pa-rs は署名者と TSA を同じ信頼ストアで見て EKU だけ差し替えるうえ、既定 EKU に timeStamping が入っているので、TSA のルートを信頼リストに混ぜると TSA 証明書が署名者として trusted になりうる。検証時刻は常にシステム時計。
+5. 決めたこと: `tools/c2pa-crjson-harness` を作る。crates.io の c2pa 0.90.22（checksum 照合）に `harness_overrides`（検証時刻と TSA 用信頼ポリシー）を足すパッチを当て、crJSON は c2pa-rs 自身の `crjson_checked` で出す。自己テスト5件（trusted / untrusted / expired / TSA trusted / 信頼リストの分離）を用意し、パッチの各点を外すと落ちることを確認した。CI には入れない（Rust ビルドに約4分）。
+6. 捨てた選択肢: (a) c2patool をそのまま使う — TSA リストと検証時刻を扱えない。(b) crJSON 変換（c2pa-rs で約1200行）を TypeScript に移植 — 誤りやすく、エンジンと別物になる。(c) TSA のルートを信頼リストに混ぜる — 上記の理由で TSA 証明書が署名者として通りうる（パッチ無しで実測: `timeStamp.trusted` になった）。(d) libfaketime で時計をずらす — 環境依存が大きい。(e) c2pa-rs 0.91 系へ上げる — 製品のエンジンと版がずれる。
+7. 判断理由: 製品と同じエンジン・同じ版で、足りない入力だけを最小の差分（パッチ8ハンク）で足すのが、要件の4入力を満たしつつ「製品の検証機能」から離れない最短の道。
+8. まだ答えが出ていないこと: 本番の検証が C2PA Trust List を使っていない点（OPEN_QUESTIONS）。Program から届くテスト入力でハーネスが想定どおり動くか。
+9. 公開区分: 要確認
+
 ## 2026-09-29 C2PA O.5（TLS 1.3 必須）は Cloudflare を前段に置いて満たす
 1. 日付: 2026-09-29（`date -u` 確認）
 2. 起きたこと: GPSA レビューで O.5 不合格（TLS 1.3 を「最低」として強制していない）。代表が Vercel に確認し、Vercel では最低 TLS 1.3 を設定できないと回答を得た。

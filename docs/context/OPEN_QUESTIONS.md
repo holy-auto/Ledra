@@ -1885,6 +1885,13 @@ JST は夏時間が無いので日の加算は 24 時間の加算でよい。
   - **追加要件 PDF（v0.2）§2.3**: validate を申告すると **crJSON 出力のテストハーネス**（入力: 資産・テスト Trust List・TSA Trust List・
     検証時刻 → crJSON）が必須。Program からテスト入力が後日届く。c2pa-node 0.9.7 は crJSON 非対応、c2pa-rs main に
     `Reader::to_crjson_value` あり、この環境に Rust と crates.io 到達性あり → 小さな Rust ツールで作れる見込み（未着手）。
+    → **2026-09-29 作成済み**: `tools/c2pa-crjson-harness`（c2pa-rs 0.90.22＝製品と同じエンジン＋2点パッチ、自己テスト5件）。
+      Program のテスト入力が届いたら、これで crJSON を出して返す。
+  - **本番の検証は C2PA Trust List を使っていない（2026-09-29 判明・未判断）**: `verifyExternalC2pa` と ingredient 取り込み時の
+    検証（`signC2pa` 内の `addIngredient` / `Reader.fromAsset`）は c2pa-rs を既定設定で呼んでおり、信頼アンカーを渡していない。
+    そのため本番では外部の署名はすべて `signingCredential.untrusted` になる（`interpretC2paValidation` は untrusted を致命扱いしない設計）。
+    ハーネスは信頼リストを受け取るが、製品本体はそうなっていない。審査で「製品が Trust List で信頼を評価しているか」を
+    問われうる（推定・未検証）。直すなら本番に C2PA Trust List（と TSA Trust List）を設定する＝製品挙動の変更なので代表判断。
 - **TLS 1.2 の扱い（未確認）**: GPSA O.5 は TLS 1.3 を要求。Vercel は現行クライアントとは TLS 1.3 で繋がるが、
   旧クライアント向けに TLS 1.2 も受ける（推定・未検証）。審査で指摘された場合の対応（Vercel 側で 1.2 を止められるか）は未調査。
 - **HEIC の GPS が残る（2026-09-27 実測で確定）**: sharp のプリビルドは HEVC を読めず（`heif: Support for this compression
