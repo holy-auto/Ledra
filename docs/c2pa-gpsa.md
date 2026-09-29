@@ -172,10 +172,13 @@ GP TOE は Backend のみ（§1.6）。created_assertions を生成するのは 
 1. **TLS 1.3 & Cryptographic Protocols**: TOE 内のサブシステム間通信は TLS 1.3 以上に限定する。
    - Backend（Vercel 関数）→ Supabase（Postgres REST / Storage / Auth）: Backend の Supabase クライアントは
      **TLS 1.3 未満のハンドシェイクを拒否する** HTTP クライアントを使う（`src/lib/net/tls13Fetch.ts`、
-     `minVersion: "TLSv1.3"`）。サーバー側の全 Supabase クライアント — service-role（`src/lib/supabase/admin.ts`）、
-     Web 呼び出し元の認証（`server.ts`）、モバイル呼び出し元の認証（`mobile-server.ts`）、読み取りレプリカ
-     （`readReplica.ts`）— に適用する。相手が 1.2 までしか
-     話さない場合は接続自体が失敗し、旧版へは落ちない。実ハンドシェイクで 1.2 のみのサーバーを拒否することを
+     undici の `Agent`（`minVersion: "TLSv1.3"`）を dispatcher として渡す）。サーバー側の全 Supabase クライアント —
+     service-role（`src/lib/supabase/admin.ts`）、Web 呼び出し元の認証（`server.ts`）、モバイル呼び出し元の認証
+     （`mobile-server.ts`）、読み取りレプリカ（`readReplica.ts`）、公開読み取り（`public.ts`）、リクエスト前段の
+     セッション更新・MFA 判定（`src/proxy.ts` の3箇所、Next 16 の proxy は常に Node ランタイム）— に適用する。
+     ブラウザ用クライアント（`client.ts`）はクライアント側（TOE 外）で動くので対象外。相手が 1.2 までしか
+     話さない場合は接続自体が失敗し、旧版へは落ちない。実ハンドシェイクで 1.2 のみのサーバーを拒否すること、
+     Storage のアップロード形式（FormData / Blob / Request）が壊れずに届くことを
      `src/lib/net/__tests__/tls13Fetch.test.ts` が CI で確認する。
    - クライアント（Web/モバイル）→ API: クライアントは TOE の外（§1.6）であり、この経路は O.5 のいう
      サブシステム間通信ではない。経路は Vercel の HTTPS で保護される。

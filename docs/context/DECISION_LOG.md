@@ -13,10 +13,10 @@
 5. 決めたこと:
    - 先頭アクションを `c2pa.opened`（`parameters.ingredientIds` でアップロード原本の `parentOf` ingredient を参照）にした。ingredient は JSON 定義（タイトル・形式・関係）だけで追加し、原本のバイト列は渡さない。原本を渡すと c2pa-rs が原本からサムネイルを作り、原本の C2PA マニフェストも取り込むため。検証結果は `ingredient.unknownProvenance`（informational）で、これは「来歴不明のファイルを開いた」という事実そのもの。orientation/converted/edited は従来どおり、効果のあったものだけ記録する。`digitalSourceType` はどのアクションにも付けない。
    - 実署名→検証テストに、先頭が `c2pa.opened` であること・撮影主張が無いこと・ingredient にサムネイルが無いことの検査を足した。`c2pa.created`+`digitalCapture` に戻すと4件落ちることを確認した。
-   - サーバー側の Supabase クライアント4つ（service-role・Web 認証・モバイル認証・読み取りレプリカ）に、TLS 1.3 未満を拒否する fetch（`src/lib/net/tls13Fetch.ts`）を入れた。1.2 のみのサーバーを実ハンドシェイクで拒否するテストを足し、`minVersion` を外すと落ちることを確認した。
+   - サーバー側の Supabase クライアント全8箇所（service-role・Web 認証・モバイル認証・読み取りレプリカ・公開読み取り・`proxy.ts` の3箇所）に、TLS 1.3 未満を拒否する fetch（`src/lib/net/tls13Fetch.ts`）を入れた。fetch 本体はグローバル（Next がパッチした版）のまま、undici の `Agent({ connect: { minVersion: "TLSv1.3" } })` を dispatcher として渡すだけにした。1.2 のみのサーバーを実ハンドシェイクで拒否するテストと、FormData/Blob/Request の本文が壊れないテストを足し、それぞれ壊すと落ちることを確認した。
    - GPSA §1.5–1.9・§2.4・§2.5、運用文書 A02、構成図（`.mmd` と `.png`）を「クライアントは TOE 外の信頼しない入力元」「撮影を主張しない」「Backend→Supabase は TLS 1.3 のみ」に揃えた。
    - カメラ限定の UI は製品方針として残す。
-6. 捨てた選択肢: (a) Path B（Distributed＋App Attest/Play Integrity＋モバイル SBOM）を今やる — 工数が大きく、AL1 適合を先に取る。(b) 原本のバイト列を ingredient に渡す — サムネイルと上流マニフェスト経由で GPS が再露出しうる。(c) `c2pa.created` に別の digitalSourceType を付ける — 「来歴不明」を表す値が無く、どれを選んでも事実でない。(d) クライアントの申告を gathered_assertions に入れる — 現状、Backend が封入しているのは自ら発行・確認した値（証明書 ID・VIN・nonce・TSA 時刻）だけで、クライアントの申告は無い。(e) `tls.DEFAULT_MIN_VERSION` をプロセス全体で 1.3 にする — TSA・決済など外部サービスまで巻き込む。
+6. 捨てた選択肢: (a) Path B（Distributed＋App Attest/Play Integrity＋モバイル SBOM）を今やる — 工数が大きく、AL1 適合を先に取る。(b) 原本のバイト列を ingredient に渡す — サムネイルと上流マニフェスト経由で GPS が再露出しうる。(c) `c2pa.created` に別の digitalSourceType を付ける — 「来歴不明」を表す値が無く、どれを選んでも事実でない。(d) クライアントの申告を gathered_assertions に入れる — 現状、Backend が封入しているのは自ら発行・確認した値（証明書 ID・VIN・nonce・TSA 時刻）だけで、クライアントの申告は無い。(e) `tls.DEFAULT_MIN_VERSION` をプロセス全体で 1.3 にする — TSA・決済など外部サービスまで巻き込む。(f) undici パッケージの fetch をそのまま差し込む — 最初はこれで実装したが、Node 組み込みの FormData を解釈できず Storage の multipart が壊れた（`/code-review` で判明、MISTAKE_LEDGER `M-20260929-swapped-fetch-broke-formdata-uploads`）。Next の fetch 計測・メモ化も外れる。
 7. 判断理由: Backend が保証できるのは「受け取った時刻・事業者・その後に手を加えていないこと」までで、撮影は保証できない。主張をそこまでに下げれば、審査の O.4 の指摘は根から消える。TLS は、TOE 内のサブシステム間通信（Backend→Supabase）で Backend 側から強制でき、テストで確かめられる範囲に絞った。
 8. まだ答えが出ていないこと: クライアント→Vercel の経路を「TOE 外なので O.5 の対象外」とした説明が審査で通るか（OPEN_QUESTIONS 2026-09-29）。本番証明書での再署名サンプルと再提出の時期。
 9. 公開区分: 要確認（審査結果の扱いは C2PA 側の方針を確認してから）

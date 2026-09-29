@@ -26,7 +26,7 @@ let cached: CachedSigner | null = null;
  * Generate a self-signed ES256 (P-256) certificate + private key in PEM format.
  * Uses @peculiar/x509 + @peculiar/webcrypto (pure JS, no native deps).
  */
-async function generateDevCert(): Promise<{ certPem: string; keyPem: string }> {
+export async function generateDevCert(): Promise<{ certPem: string; keyPem: string }> {
   const { Crypto } = await import("@peculiar/webcrypto");
   const x509 = await import("@peculiar/x509");
 
