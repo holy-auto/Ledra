@@ -100,16 +100,28 @@ describe("C2PA sign → validate (manifest content conformance)", () => {
 
       const actions = (m.assertions ?? []).find((a: { label?: string }) => a.label?.startsWith("c2pa.actions"));
       expect(typeof actions?.data?.allActionsIncluded, `allActionsIncluded present for ${mime}`).toBe("boolean");
-      const created = (actions?.data?.actions ?? []).find((a: { action?: string }) => a.action === "c2pa.created");
-      expect(created?.digitalSourceType, `c2pa.created has digitalSourceType for ${mime}`).toBeTruthy();
+      // Backend 型: 先頭は c2pa.opened（DST なし）で、parentOf ingredient をちょうど1つ参照する
+      // （Conformulator no_dst_for_opened_action / opened_action_ingredient_reference）。
+      const list = (actions?.data?.actions ?? []) as Array<{
+        action?: string;
+        digitalSourceType?: string;
+        parameters?: { ingredients?: unknown[] };
+      }>;
+      expect(list[0]?.action, `first action is c2pa.opened for ${mime}`).toBe("c2pa.opened");
+      expect(list[0]?.digitalSourceType, `c2pa.opened carries no digitalSourceType for ${mime}`).toBeUndefined();
+      expect(list[0]?.parameters?.ingredients?.length, `c2pa.opened references one ingredient for ${mime}`).toBe(1);
+      const ingredients = (m.ingredients ?? []) as Array<{ relationship?: string }>;
+      expect(
+        ingredients.map((i) => i.relationship),
+        `one parentOf ingredient for ${mime}`,
+      ).toEqual(["parentOf"]);
+      expect(actions?.data?.allActionsIncluded, `allActionsIncluded=true for ${mime}`).toBe(true);
 
       // Conformulator rubrics (2026-09-27): the inception action must sit in a *created*
       // actions assertion (inception_action_position), and perceptible transformations
       // such as c2pa.orientation need a digitalSourceType too.
       expect(actions?.created, `actions assertion is a created assertion for ${mime}`).toBe(true);
-      const orientation = (actions?.data?.actions ?? []).find(
-        (a: { action?: string }) => a.action === "c2pa.orientation",
-      );
+      const orientation = list.find((a) => a.action === "c2pa.orientation");
       expect(orientation?.digitalSourceType, `c2pa.orientation has digitalSourceType for ${mime}`).toBeTruthy();
     });
   }
@@ -117,7 +129,7 @@ describe("C2PA sign → validate (manifest content conformance)", () => {
   // Fallback path: when the upload pipeline could NOT re-encode/strip (sharp
   // failed) and signs the original as-is, the manifest must not certify
   // transforms that never happened — only c2pa.created, allActionsIncluded=false.
-  it("fallback (transform not applied) asserts only c2pa.created with allActionsIncluded=false", async () => {
+  it("fallback (transform not applied) asserts only c2pa.opened, with allActionsIncluded=true", async () => {
     const { signC2pa } = await import("../c2pa");
     const sharp = (await requireNative(() => import("sharp"), "sharp")).default;
     const buf = await sharp({
@@ -137,10 +149,46 @@ describe("C2PA sign → validate (manifest content conformance)", () => {
     const json = typeof raw === "string" ? JSON.parse(raw) : raw;
     const m = json?.manifests?.[json.active_manifest] ?? {};
     const actions = (m.assertions ?? []).find((a: { label?: string }) => a.label?.startsWith("c2pa.actions"));
-    expect(actions?.data?.allActionsIncluded, "allActionsIncluded=false on fallback").toBe(false);
+    // 原本をそのまま署名しただけ＝opened 以外に何もしていないので、台帳は完全（true）。
+    expect(actions?.data?.allActionsIncluded, "allActionsIncluded=true on fallback").toBe(true);
     const actionNames = ((actions?.data?.actions ?? []) as Array<{ action?: string }>).map((a) => a.action);
-    expect(actionNames, "only c2pa.created on fallback").toEqual(["c2pa.created"]);
+    expect(actionNames, "only c2pa.opened on fallback").toEqual(["c2pa.opened"]);
     // Summary must mirror the embedded manifest (drift guard for the fallback too).
-    expect(res.manifestSummary?.allActionsIncluded, "summary allActionsIncluded mirrors fallback").toBe(false);
+    expect(res.manifestSummary?.allActionsIncluded, "summary allActionsIncluded mirrors fallback").toBe(true);
+  });
+
+  // The uploaded original (with GPS) becomes the parentOf ingredient. It must not carry
+  // the location into the signed output: c2pa-rs keeps only a hash, the format and a
+  // pixel-derived thumbnail. This is what makes c2pa.opened safe for Ledra's privacy rule.
+  it("the GPS in the uploaded original does not reach the signed output or its manifest", async () => {
+    const { signC2pa } = await import("../c2pa");
+    const { stripGpsAndReadExif } = await import("../../imageExif");
+    const sharp = (await requireNative(() => import("sharp"), "sharp")).default;
+    const exifr = (await import("exifr")).default;
+    const original = await sharp({
+      create: { width: 200, height: 120, channels: 3, background: { r: 90, g: 60, b: 30 } },
+    })
+      .jpeg()
+      .withExif({
+        IFD3: {
+          GPSLatitudeRef: "N",
+          GPSLatitude: "35/1 40/1 12/1",
+          GPSLongitudeRef: "E",
+          GPSLongitude: "139/1 43/1 5/1",
+        },
+      })
+      .toBuffer();
+    expect((await exifr.gps(original))?.latitude, "fixture really carries GPS").toBeCloseTo(35.67, 1);
+
+    const ex = await stripGpsAndReadExif(original);
+    const res = await signC2pa(ex.strippedBuffer, "image/jpeg", undefined, ex, original);
+    expect(res.signedBuffer, "signed").toBeTruthy();
+    expect(await exifr.gps(res.signedBuffer!).catch(() => undefined), "no GPS in the signed file").toBeFalsy();
+
+    const reader = await Reader.fromAsset({ buffer: res.signedBuffer!, mimeType: "image/jpeg" });
+    const raw = reader?.json();
+    const text = typeof raw === "string" ? raw : JSON.stringify(raw);
+    // 座標のフィールド名で見る（"GPS" だけだと edited.metadata の説明文 "EXIF/GPS metadata removed" に当たる）。
+    expect(text, "no GPS coordinate field in the manifest store").not.toMatch(/GPSLat|GPSLong|latitude|longitude/i);
   });
 });

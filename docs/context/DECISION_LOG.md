@@ -4,6 +4,23 @@
 > （新しい順）。実装の詳細は RELEASE_LOG.md、迷っている段階のものは
 > OPEN_QUESTIONS.md に書く。
 
+## 2026-09-29 C2PA 署名は `c2pa.opened`＋原本 ingredient にし、validate 申告を戻す
+1. 日付: 2026-09-29（`date -u` 確認）
+2. 起きたこと: Administrator（Conformance Program）が 9/27 送付の1版目を審査し、非適合4件を返した。うち (4) は
+   「Backend 型は資産を原生成しないので `c2pa.created` は主張できない。`c2pa.opened` で取り込むのだから validate を戻せ」。
+3. 以前の考え: 9/4 に「元写真は GPS を含むので ingredient にできない → `c2pa.created`（digitalCapture）で生成のみ申請」と決めた。
+4. 違和感・問題: 9/4 の前提（ingredient にすると GPS が漏れる）は一度も試していなかった。実測すると、c2pa-rs の ingredient は
+   原本のハッシュ・形式・画素から作り直したサムネイルだけを持ち、EXIF/GPS を運ばない。前提が偽で、`created` の根拠が消えた。
+5. 決めたこと: 行為台帳の先頭を `c2pa.opened`＋parentOf ingredient（アップロード原本）にする。原本が C2PA 付きなら、その manifest と
+   検証結果が ingredient に入る＝製品は実際に validate している。よって **validate（jpeg/png/webp/heic）を Intake に戻すよう依頼**し、
+   Administrator 指定ライブラリの素材を X-ingredientN として提出する。回転の DST は `algorithmicallyEnhanced`（ingredient の出自に依らない）。
+6. 捨てた選択肢: (a) `created` のまま実装クラスを Edge に変える — 署名はサーバーでしか行っておらず虚偽になる。
+   (b) opened にするが validate は戻さない — ingredient 検証が起きている以上、Administrator の勧告に反し差し戻しが続く。
+   (c) 回転の DST を digitalCapture のまま — ライブラリ素材（生成AI画像等を含みうる）に「撮影」を主張することになる。
+7. 判断理由: 審査者の要件が明示されており、製品の実際の挙動（原本を開いて変換して署名）とも一致する。プライバシー上の障害は無いと実測・テスト化で確認。
+8. まだ答えが出ていないこと: 指摘(3) カスタムアサーションの具体的な不正内容、GPSA レビュー文書の中身、TLS 1.2 と公開バケットが論点になるか。
+9. 公開区分: 要確認（申請進行中。Record ID と審査のやり取りは非公開）
+
 ## 2026-09-27 C2PA 提出用 GPSA は英語版を正本にし、サンプルは製品パイプラインを通した合成画像で作る
 1. 日付: 2026-09-27（`date -u` 確認）
 2. 起きたこと: Administrator の受理メール（9/3）を代表が再共有。記録を見ると、9/4 に作ったサンプルと訂正メール下書きは

@@ -6,9 +6,10 @@
 
 最終更新: 2026-09-29
 
-> 2026-09-29 追記: **C2PA Conformance の証拠パッケージを送信した**（代表・受理メールへの返信）。
-> 送信前に Conformulator で4枚（jpeg/png/webp/heic）とも自己テスト合格（不合格は test 証明書由来の untrusted のみ）。
-> Intake の validate 申告は同メールで取り下げ。**現在は Administrator の assessment 待ち。**
+> 2026-09-29 追記（訂正）: C2PA 証拠パッケージは **9/27 に1版目が送信され、9/28 に非適合4件で差し戻し**。
+> 「3版目・自己テスト合格後に送信」と書いたのは誤り。対応として署名を `c2pa.opened`＋原本 ingredient に作り替え済み
+> （GPS は漏れないことを実測・テスト化）。**再提出待ち**: カスタムアサーションの指摘内容・ingredient ライブラリ・
+> GPSA レビュー文書の入手、validate 申告の復活、GPSA 改訂、サンプル再生成と Conformulator 再確認。
 
 > 2026-09-27 追記: **C2PA Conformance の証拠パッケージを再作成し、`docs/c2pa-evidence/` に保存した**
 > （英語 GPSA・運用管理策・サンプル4枚・返信メール下書き）。**未送信**。送信前に代表が Conformulator で

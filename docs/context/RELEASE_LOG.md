@@ -4,13 +4,21 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
-## 2026-09-29 C2PA Conformance 証拠パッケージを提出
+## 2026-09-29 C2PA 署名を `c2pa.opened`＋原本 ingredient に変更（Administrator の非適合指摘への対応）
 
-- 内容: 代表が Administrator の受理メール（Record `01a06690-…`）に返信し、`docs/c2pa-evidence/` 一式（サンプル4枚・英語 GPSA・
-  運用管理策・TOE 図）を送付。Intake Form の validate 申告は同メールで取り下げ（生成のみで申請）。
-- 送信前検証: Conformulator の Rubrics で4枚とも「3 of 4 pass」。不合格はテスト証明書由来の `validation:trusted_success`
-  （untrusted）のみで、適合ルーブリック 0.1/2.2・0.2/2.2・0.2/2.4 は全項目合格。
-- 次: Administrator の assessment（非適合の指摘 or Approver 審査）待ち。
+- 経緯（訂正込み）: 実際に送信されたのは **2026-09-27 15:32 UTC、1版目の zip**（Gmail 送信記録で確認）。当初この項に
+  「3版目・Conformulator 合格後に送付」と書いたが誤り（MISTAKE_LEDGER `M-20260929-logged-the-wrong-zip-as-sent`）。
+  Administrator が 9/28 に1版目を審査し、非適合4件を返した: (1) 知覚できる変換に digitalSourceType が無い、
+  (2) actions が created assertions の先頭に無い、(3) カスタムアサーションの形式不正、(4) Backend は資産を原生成しないので
+  `c2pa.created` は不可 → `c2pa.opened`＋ingredient にし、validate 申告を戻すべき。(1)(2) は 3版目で修正済み。
+- 変更: 行為台帳の先頭を `c2pa.created`（digitalCapture）から **`c2pa.opened`＋parentOf ingredient（アップロード原本）**に。
+  `processUploadedPhoto` が原本バイトを `signC2pa` に渡し、`builder.addIngredient` で登録。`c2pa.orientation` の DST は
+  `algorithmicallyEnhanced`（ingredient の出自に依らない「アルゴリズムによる変換」）。`allActionsIncluded` は常に true
+  （fallback でも原本をそのまま署名しただけ）。
+- プライバシー: 原本 ingredient は GPS を運ばない（原本に GPS → 署名後ファイル・manifest JSON・ingredient サムネイルとも
+  GPS なし、を実測。陰性対照＝GPS を消さずに署名すると検出される）。テスト化済み。
+- 未対応: (3) カスタムアサーション（指摘のスクリーンショットが未入手）、ingredient 用ライブラリ（Drive・この環境から取得不可）、
+  GPSA 改訂・レビュー文書（共有権限なしで閲覧不可）。
 
 ## 2026-09-27 C2PA 行為台帳の修正と、Conformance 証拠パッケージ一式の再作成
 

@@ -1,64 +1,68 @@
-// Generate C2PA conformance evidence samples through Ledra's real pipeline:
-//   stripGpsAndReadExif (EXIF/GPS removal, orientation bake-in, re-encode)
-//   -> signC2pa (production mode, ES256 test cert from c2pa-rs fixtures)
-// then read each output back with c2pa-node's Reader and dump the manifest store.
-// Usage (repo root): python3 docs/c2pa-evidence/make-sources.py <srcdir>  (needs pillow-heif)
+// Generate C2PA conformance evidence through Ledra's real upload pipeline:
+//   X-ingredient1.EXT (the uploaded file, taken from the Conformance Program's ingredient library)
+//   -> stripGpsAndReadExif (EXIF/GPS removal, orientation bake-in, re-encode)
+//   -> signC2pa (c2pa.opened + the upload as parentOf ingredient)
+//   -> X-sample.EXT
+// and read each sample back to print its validation state and actions ledger.
+//
+// Usage (repo root):
 //   C2PA_SIGNER_CERT="$(cat es256.pub)" C2PA_SIGNER_KEY="$(cat es256.pem)" \
-//   npx tsx docs/c2pa-evidence/generate-samples.mts <srcdir> docs/c2pa-evidence/samples
+//   npx tsx docs/c2pa-evidence/generate-samples.mts <dir with X-ingredient1.EXT files> docs/c2pa-evidence/samples
 // Test cert: c2pa-rs sdk/tests/fixtures/certs/es256.{pub,pem} (untrusted by design until conformance).
-import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync, readdirSync, copyFileSync } from "node:fs";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { stripGpsAndReadExif } from "../../src/lib/anchoring/imageExif";
 import { signC2pa } from "../../src/lib/anchoring/providers/c2pa";
 import { Reader } from "@contentauth/c2pa-node";
-import exifr from "exifr";
+
+const MIME: Record<string, string> = {
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  png: "image/png",
+  webp: "image/webp",
+  heic: "image/heic",
+};
 
 const [srcDir, outDir] = process.argv.slice(2);
 process.env.C2PA_MODE = "production";
 mkdirSync(outDir, { recursive: true });
 
-const SAMPLES = [
-  { letter: "a", src: "src.jpg", mime: "image/jpeg", ext: "jpg" },
-  { letter: "b", src: "src.png", mime: "image/png", ext: "png" },
-  { letter: "c", src: "src.webp", mime: "image/webp", ext: "webp" },
-  { letter: "d", src: "src.heic", mime: "image/heic", ext: "heic" },
-];
-
-const summary: unknown[] = [];
-for (const s of SAMPLES) {
-  const input = readFileSync(join(srcDir, s.src));
-  const exif = await stripGpsAndReadExif(input);
+for (const file of readdirSync(srcDir)
+  .filter((f) => /^[a-z]-ingredient1\.\w+$/.test(f))
+  .sort()) {
+  const [letter, ext] = [file[0], file.split(".").pop()!.toLowerCase()];
+  const mime = MIME[ext];
+  if (!mime) throw new Error(`unsupported extension: ${file}`);
+  const original = readFileSync(join(srcDir, file));
+  const exif = await stripGpsAndReadExif(original);
   const res = await signC2pa(
     exif.strippedBuffer,
-    s.mime,
-    { publicId: `sample-${s.letter}`, captureNonce: randomUUID() },
-    { reencoded: exif.reencoded, orientationApplied: exif.orientationApplied, metadataRemoved: exif.metadataRemoved },
+    mime,
+    { publicId: `sample-${letter}`, captureNonce: randomUUID() },
+    exif,
+    original,
   );
-  if (!res.signedBuffer) throw new Error(`${s.mime}: signing produced no buffer`);
-  const file = `${s.letter}-sample.${s.ext}`;
-  writeFileSync(join(outDir, file), res.signedBuffer);
+  if (!res.signedBuffer) throw new Error(`${file}: signing produced no buffer`);
+  const sample = `${letter}-sample.${ext}`;
+  writeFileSync(join(outDir, sample), res.signedBuffer);
+  copyFileSync(join(srcDir, file), join(outDir, file));
 
-  const reader = await Reader.fromAsset({ buffer: res.signedBuffer, mimeType: s.mime });
-  const raw = reader?.json();
-  const json = typeof raw === "string" ? JSON.parse(raw) : raw;
-  writeFileSync(join(outDir, `${s.letter}-sample.manifest.json`), JSON.stringify(json, null, 2));
-  const active = json?.manifests?.[json.active_manifest];
-  summary.push({
-    file,
-    validation_state: json?.validation_state,
-    codes: [...(json?.validation_results?.activeManifest?.failure ?? []), ...(json?.validation_status ?? [])].map(
-      (c: { code: string }) => c.code,
-    ),
-    claim_generator_info: active?.claim_generator_info,
-    actions: active?.assertions?.find((a: { label: string }) => a.label.startsWith("c2pa.actions"))?.data,
-    gpsInOutput: (await exifr.gps(res.signedBuffer).catch(() => undefined)) ?? null,
-    exif: {
-      reencoded: exif.reencoded,
-      orientationApplied: exif.orientationApplied,
-      metadataRemoved: exif.metadataRemoved,
-      gpsReadFromSource: !!exif.gps,
-    },
-  });
+  const raw = (await Reader.fromAsset({ buffer: res.signedBuffer, mimeType: mime }))?.json();
+  const json = (typeof raw === "string" ? JSON.parse(raw) : raw) as any;
+  const m = json.manifests[json.active_manifest];
+  const actions = m.assertions.find((a: { label: string }) => a.label.startsWith("c2pa.actions")).data;
+  const codes = [...new Set((json.validation_status ?? []).map((c: { code: string }) => c.code))];
+  const ing = m.ingredients?.[0];
+  console.log(
+    sample,
+    json.validation_state,
+    codes.join(","),
+    "|",
+    actions.actions.map((a: { action: string }) => a.action).join(" > "),
+    "all=" + actions.allActionsIncluded,
+    "| ingredient:",
+    ing?.relationship,
+    ing?.active_manifest ? "with C2PA manifest" : "no C2PA manifest",
+  );
 }
-console.log(JSON.stringify(summary, null, 2));

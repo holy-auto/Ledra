@@ -61,22 +61,27 @@ Authenticity pipeline, in order, for each uploaded image:
    orientation and writes no EXIF, XMP or GPS metadata. If `sharp` cannot decode the input (in this
    TOE this applies to HEVC-coded HEIC), the bytes are signed as received.
 3. SHA-256 of the processed bytes, RFC 3161 time-stamp request, single-use capture-nonce consumption.
-4. Assertion generation:
-   - `c2pa.actions.v2`: `c2pa.created` with `digitalSourceType = digitalCapture`, followed only by the
-     transformations that actually took effect: `c2pa.orientation` (EXIF orientation was baked in),
+4. Ingredient and assertion generation:
+   - `c2pa.ingredient.v3` (relationship `parentOf`): the uploaded file as received. c2pa-rs records its
+     hash, format and a thumbnail re-rendered from its pixels; the original's EXIF/GPS metadata is not
+     carried into the ingredient. When the uploaded file carries a C2PA manifest, c2pa-rs validates it
+     and the ingredient holds that manifest and its validation results (§1.9, claim validation).
+   - `c2pa.actions.v2`, a created assertion and the first actions assertion: `c2pa.opened` referencing
+     the parentOf ingredient, followed only by the transformations that actually took effect:
+     `c2pa.orientation` (EXIF orientation was baked in; `digitalSourceType = algorithmicallyEnhanced`),
      `c2pa.converted` (re-encode ran), `c2pa.edited.metadata` (source carried EXIF/GPS metadata that
-     was removed; pixels are not edited). `allActionsIncluded` is `true` when the re-encode ran
-     and `false` when the bytes were signed as received (in that case only `c2pa.created` is listed).
+     was removed; pixels are not edited). `allActionsIncluded` is `true`: when the bytes are signed as
+     received, `c2pa.opened` is the only action performed.
    - `com.ledra.capture`: work-certificate public ID, vehicle VIN (when recorded), the single-use capture
      nonce, and the RFC 3161 time.
 5. Claim signing with the Claim Signing Credential (§2.2) and embedding of the manifest into the asset.
 6. Persistence of the signed asset to Supabase Storage and of the manifest summary to Postgres.
 
-`c2pa.created` + `digitalCapture` is asserted because the only inputs to this pipeline are the camera
-capture paths described above. Limitation of the current design: the Backend verifies the file's magic
-bytes and the caller's identity and capture nonce, but it does not cryptographically verify that the
-pixels came from a camera sensor. On desktop browsers, which ignore the `capture` attribute, the
-operating system may present a file chooser.
+As a Backend-class product Ledra does not originate the asset: it opens the file the client uploads,
+so it asserts `c2pa.opened` with the upload as the parentOf ingredient and does not assert
+`c2pa.created`. The Backend verifies the file's magic bytes and the caller's identity and capture nonce;
+it does not attest that the pixels came from a camera sensor. On desktop browsers, which ignore the
+`capture` attribute, the operating system may present a file chooser.
 
 Integrations that are active only when their credentials are configured in the hosting environment and
 that are outside the signing path (see the diagram):
@@ -97,12 +102,12 @@ entirely in the Backend hosting environment. Clients only capture and upload.
 ### 1.9 Target Generator Product capabilities
 
 1. Claim generation — still image media types: `image/jpeg`, `image/png`, `image/webp`, `image/heic`.
-2. Claim validation — none claimed in this submission. Ledra reads incoming C2PA manifests for its own
-   records, but it does not embed incoming assets as ingredients, because the pre-processing originals
-   carry GPS location data. The validation media types on the Intake Form are withdrawn by the cover
-   email.
+2. Claim validation — still image media types: `image/jpeg`, `image/png`, `image/webp`, `image/heic`.
+   Every uploaded file is ingested as the parentOf ingredient; when it carries a C2PA manifest, c2pa-rs
+   validates that manifest during claim generation and records it with its validation results in the
+   ingredient assertion.
 
-Samples: `a-sample.jpg`, `b-sample.png`, `c-sample.webp`, `d-sample.heic`.
+Samples: `X-sample.EXT` (output) with `X-ingredientN.EXT` (the uploaded input) for each media type.
 
 ---
 
