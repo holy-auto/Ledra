@@ -7,6 +7,7 @@
  * 後処理 (after) を共有する。真正性ロジックの drift を防ぐ単一の入口。
  */
 
+import { timingSafeEqual } from "node:crypto";
 import { after, type NextRequest } from "next/server";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { normalizePlanTier, PHOTO_LIMITS } from "@/lib/billing/planFeatures";
@@ -37,7 +38,23 @@ function validateMagicBytes(buffer: Buffer): string | null {
  * 認証済みテナントの証明書に写真をアップロードする共通処理。呼び出し側は認証・レート制限を
  * 済ませたうえで tenantId を渡す。Response を返す。
  */
+/**
+ * C2PA TOE の入口（写真アップロード）は、最低 TLS 1.3 を強制する Cloudflare 経由の通信だけを受ける
+ * （GPSA O.5。Vercel 単体では TLS 1.2 を拒否できない）。Cloudflare の Transform Rule が付ける
+ * `x-ledra-origin-secret` を照合し、`*.vercel.app` への直アクセス（TLS 1.2 可）を弾く。
+ * `CF_ORIGIN_SECRET` 未設定＝Cloudflare 前段なしの構成では照合しない。
+ */
+export function viaTls13Edge(req: Request, secret = process.env.CF_ORIGIN_SECRET): boolean {
+  if (!secret) return true;
+  const got = Buffer.from(req.headers.get("x-ledra-origin-secret") ?? "");
+  const want = Buffer.from(secret);
+  return got.length === want.length && timingSafeEqual(got, want);
+}
+
 export async function handleCertificateImageUpload(req: NextRequest, tenantId: string): Promise<Response> {
+  if (!viaTls13Edge(req)) {
+    return apiError({ code: "forbidden", message: "Uploads must arrive through the TLS 1.3 edge.", status: 403 });
+  }
   try {
     // ── Plan tier → photo limit（billing guard と共有の 60 秒キャッシュ）──
     const billing = await getCachedTenantBilling(tenantId);

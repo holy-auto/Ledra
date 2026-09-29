@@ -4,6 +4,17 @@
 > （新しい順）。実装の詳細は RELEASE_LOG.md、迷っている段階のものは
 > OPEN_QUESTIONS.md に書く。
 
+## 2026-09-29 C2PA O.5（TLS 1.3 必須）は Cloudflare を前段に置いて満たす
+1. 日付: 2026-09-29（`date -u` 確認）
+2. 起きたこと: GPSA レビューで O.5 不合格（TLS 1.3 を「最低」として強制していない）。代表が Vercel に確認し、Vercel では最低 TLS 1.3 を設定できないと回答を得た。
+3. 以前の考え: Vercel が TLS 1.3 を「ネゴシエートする」ことで足りると GPSA に書いていた。
+4. 違和感・問題: 要件は「1.3 以上を必須」。Vercel 単体では TLS 1.2 の握手を拒否する手段がない。
+5. 決めたこと: `ledra.co.jp` を Cloudflare 経由にし Minimum TLS Version=1.3。写真アップロード（TOE 入口）は Cloudflare が付ける共有秘密ヘッダ（`CF_ORIGIN_SECRET`）が一致するときだけ受け付け、`*.vercel.app` 直アクセスの抜け道を塞ぐ。外向きは `NODE_OPTIONS=--tls-min-v1.3`。
+6. 捨てた選択肢: (a) アプリ側で JA4 指紋から TLS 版を判定して拒否 — 画像は 1.2 の通信で一度送られてからの拒否になり「強制」と言いにくい、ヘッダの存在も未確認。(b) 先に審査側へ同等性を相談 — 1往復遅れる（代表判断）。
+7. 判断理由: 握手の段階で 1.2 を拒否できるのは前段プロキシのみ。Cloudflare 無料プランで可能。
+8. まだ答えが出ていないこと: DNS 移管時の既存レコード（メール等）の取りこぼし、Vercel が前段プロキシを推奨しない点の影響、`NODE_OPTIONS` で外部連携が切れないか、Vercel の Deployment Protection で `*.vercel.app` を塞げるか（いずれも未検証）。
+9. 公開区分: 要確認（申請進行中・インフラ構成）
+
 ## 2026-09-29 C2PA 署名は `c2pa.opened`＋原本 ingredient にし、validate 申告を戻す
 1. 日付: 2026-09-29（`date -u` 確認）
 2. 起きたこと: Administrator（Conformance Program）が 9/27 送付の1版目を審査し、非適合4件を返した。うち (4) は
