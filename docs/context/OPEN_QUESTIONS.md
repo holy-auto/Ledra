@@ -1827,8 +1827,9 @@ JST は夏時間が無いので日の加算は 24 時間の加算でよい。
   （MISTAKE_LEDGER `M-20260927-c2pa-ledger-tested-only-on-exif-free-images`）。
   **Conformulator 結果（2026-09-29、3版目サンプル）**: jpeg / webp / heic は「3 of 4 pass/fail rubrics passed」で、
   不合格は `validation:trusted_success`（untrusted＝テスト証明書、想定内）のみ。適合ルーブリック（0.1/2.2・0.2/2.2・0.2/2.4）は全 PASS。
-  png は画面での確認待ち。
-  **残タスク（代表）**: (1) Conformulator で png を確認、
+  png も同日合格（画面の manifest URN `urn:c2pa:bdf9c565-…` が b-sample.png と一致。Signals 欄の形式表示はサムネイル形式で、
+  png のサムネイルは jpeg なので `image/jpeg` と出る）。**4枚とも自己テスト合格**。
+  **残タスク（代表）**: (1) ✅ Conformulator 自己テスト、
   (2) GPSA §2.2/§2.6 の「Vercel/Supabase に入れる人＝管理者のみ」、本番デプロイが `main` からのみであること、
   署名欄の英語表記（Yusuke Horikoshi / Representative Director）を確認、(3) 返信メール送信。
   Intake Form（9/3 提出・PDF 控え確認済み）は validate=Yes（jpeg/png/webp/heic）のままなので、訂正は返信メールで行う。
