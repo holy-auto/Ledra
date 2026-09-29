@@ -1,9 +1,9 @@
 %% Ledra Generator Product — Target of Evaluation (TOE), Backend class, Assurance Level 1
 %% TOE boundary: from asset capture/upload through claim signing to persistence of the signed asset.
 flowchart TB
-    subgraph CLIENT["Client tier (capture / upload)"]
-        WEB["Web admin app<br/>(browser, camera-only capture)"]
-        MOB["Mobile app<br/>(camera-only capture,<br/>device not stored)"]
+    subgraph CLIENT["Outside TOE — untrusted clients (upload only)"]
+        WEB["Web admin app<br/>(browser upload)"]
+        MOB["Mobile app<br/>(upload)"]
     end
 
     subgraph TOE["GP TOE boundary — Backend (Vercel serverless + Supabase)"]

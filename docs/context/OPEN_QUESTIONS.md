@@ -1865,6 +1865,13 @@ JST は夏時間が無いので日の加算は 24 時間の加算でよい。
   2. ingredient ライブラリ（Drive `Google_Samples-…zip` 31MB）— この環境のネットワークでは取得不可。代表から jpeg/png/webp/heic を1つずつ受け取る。
   3. GPSA レビュー文書（Drive `1i-awde…`）— このアカウントに共有されておらず閲覧不可。
   4. validate 申告の復活（jpeg/png/webp/heic）を返信で依頼、GPSA を opened/ingredient 前提に改訂、サンプル再生成→Conformulator 再確認。
+  - **2026-09-29 追記**: 指摘(3)は画像で判明＝`no_unrecognized_custom_action_parameters`（1版目の `c2pa.edited` の `parameters.name`）で、
+    2版目で既に除去済み・3版目で合格。GPSA レビュー文書（代表が貼付）の不合格は O.4（TOE 境界の食い違い＋created/digitalCapture）と
+    O.5（TLS 1.3 を「最低」として強制していない）。O.4 は GPSA を Backend のみの TOE・クライアントは TOE 外の非信頼入力と書き直して対応。
+    **O.5 は未対応・代表判断待ち**: Vercel は前段に Cloudflare 無し（直）。Vercel 側で TLS 1.3 最低を設定できるかは未確認。
+    外向き（Backend→Supabase 等）は Node の `--tls-min-v1.3`（環境変数 NODE_OPTIONS）で強制できるが全外部連携に効く。
+    TSA は設定例が `http://timestamp.digicert.com`（平文 HTTP）で、GPSA の「HTTPS」記述と食い違う — 本番の PHOTO_TSA_URL 要確認。
+  - 代表が添付した画像4枚は Ledra の旧サンプルで、C2PA 指定ライブラリの素材ではない（ライブラリは引き続き未入手）。
 - **TLS 1.2 の扱い（未確認）**: GPSA O.5 は TLS 1.3 を要求。Vercel は現行クライアントとは TLS 1.3 で繋がるが、
   旧クライアント向けに TLS 1.2 も受ける（推定・未検証）。審査で指摘された場合の対応（Vercel 側で 1.2 を止められるか）は未調査。
 - **HEIC の GPS が残る（2026-09-27 実測で確定）**: sharp のプリビルドは HEVC を読めず（`heif: Support for this compression

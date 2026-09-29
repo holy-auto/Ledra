@@ -43,16 +43,16 @@ verifiable provenance for photographic evidence of the work performed.
 
 Architecture diagram: `Ledra-GPSA-TOE-Diagram.png`.
 
-The TOE spans capture/upload, caller authentication, the authenticity pipeline, assertion generation,
-claim signing and persistence of the signed asset.
+The GP TOE is the Backend only: caller authentication, the authenticity pipeline, ingredient and
+assertion generation, claim signing, custody of the signing credential, and persistence of the signed
+asset. It runs on Vercel serverless functions and Supabase (Postgres, Storage, Auth).
 
-| Component                                                       | Role in the TOE                                                                                                                                                                                                  |
-| --------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Web client (Next.js, browser)                                   | Captures photos with the device camera (`<input type="file" accept="image/*" capture="environment">`) and uploads them over HTTPS. No gallery/file-picker or drag-and-drop path exists in the photo-evidence UI. |
-| Mobile client (Expo / React Native)                             | Captures photos with the camera only (`pickImageFromCamera`; no library picker) and uploads them over HTTPS. Photos are not saved to the device gallery.                                                         |
-| Backend (Next.js route handlers on Vercel serverless functions) | Authenticates the caller, runs the authenticity pipeline, generates assertions, signs the claim, and persists the result. All C2PA generation and signing happens here.                                          |
-| Supabase (Postgres, Storage, Auth)                              | Identity provider for callers; stores the signed asset (Storage) and the manifest summary and pipeline results (Postgres).                                                                                       |
-| RFC 3161 Time-Stamp Authority                                   | Returns a time-stamp token over the pre-signing SHA-256 of the asset. Stored separately from the C2PA manifest; its genTime is sealed into the `com.ledra.capture` assertion.                                    |
+| Component                                                       | TOE membership and role                                                                                                                                                                                    |
+| --------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Backend (Next.js route handlers on Vercel serverless functions) | **In the TOE.** Authenticates the caller, runs the authenticity pipeline, generates the ingredient and assertions, signs the claim, and persists the result. All C2PA generation and signing happens here. |
+| Supabase (Postgres, Storage, Auth)                              | **In the TOE** (Backend hosting environment). Identity provider for callers; stores the signed asset (Storage) and the manifest summary and pipeline results (Postgres).                                   |
+| Web client (browser) and Mobile client (Expo / React Native)    | **Outside the TOE.** Untrusted input sources that upload a file over HTTPS. The Backend makes no claim about how the file was produced: it records the upload as the parentOf ingredient of `c2pa.opened`. |
+| RFC 3161 Time-Stamp Authority                                   | **Outside the TOE** (external service). Returns a time-stamp token over the pre-signing SHA-256 of the asset; its genTime is sealed into the `com.ledra.capture` assertion.                                |
 
 Authenticity pipeline, in order, for each uploaded image:
 
@@ -79,9 +79,11 @@ Authenticity pipeline, in order, for each uploaded image:
 
 As a Backend-class product Ledra does not originate the asset: it opens the file the client uploads,
 so it asserts `c2pa.opened` with the upload as the parentOf ingredient and does not assert
-`c2pa.created`. The Backend verifies the file's magic bytes and the caller's identity and capture nonce;
-it does not attest that the pixels came from a camera sensor. On desktop browsers, which ignore the
-`capture` attribute, the operating system may present a file chooser.
+`c2pa.created`, and it asserts no `digitalSourceType` about the uploaded content. The Backend verifies
+the file's magic bytes and the caller's identity and capture nonce; it makes no claim about how or
+where the pixels were produced. Any C2PA manifest the upload already carries is validated and kept
+inside the ingredient (with metadata-type assertions redacted for privacy, `c2pa.redacted`), where it
+remains attributed to its original signer rather than to Ledra.
 
 Integrations that are active only when their credentials are configured in the hosting environment and
 that are outside the signing path (see the diagram):
@@ -93,7 +95,7 @@ that are outside the signing path (see the diagram):
 ### 1.7 Implementation Class
 
 **Backend.** Assertion generation, claim signing and custody of the signing credential are performed
-entirely in the Backend hosting environment. Clients only capture and upload.
+entirely in the Backend hosting environment. Clients are outside the TOE and only upload files.
 
 ### 1.8 Target Max Assurance Level
 
