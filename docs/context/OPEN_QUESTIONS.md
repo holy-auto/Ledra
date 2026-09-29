@@ -1825,7 +1825,10 @@ JST は夏時間が無いので日の加算は 24 時間の加算でよい。
   （日本語版は参照用）。返信メール下書き（validate 取り下げ込み・英日）は `docs/c2pa-evidence/submission-email.md`。
   再生成の過程で C2PA 行為台帳の不具合（回転・WebP のメタデータ除去が記録されない）を発見し修正
   （MISTAKE_LEDGER `M-20260927-c2pa-ledger-tested-only-on-exif-free-images`）。
-  **残タスク（代表）**: (1) Conformulator で4枚を自己テスト（この環境からはサイトに届かず未実施）、
+  **Conformulator 結果（2026-09-29、3版目サンプル）**: jpeg / webp / heic は「3 of 4 pass/fail rubrics passed」で、
+  不合格は `validation:trusted_success`（untrusted＝テスト証明書、想定内）のみ。適合ルーブリック（0.1/2.2・0.2/2.2・0.2/2.4）は全 PASS。
+  png は画面での確認待ち。
+  **残タスク（代表）**: (1) Conformulator で png を確認、
   (2) GPSA §2.2/§2.6 の「Vercel/Supabase に入れる人＝管理者のみ」、本番デプロイが `main` からのみであること、
   署名欄の英語表記（Yusuke Horikoshi / Representative Director）を確認、(3) 返信メール送信。
   Intake Form（9/3 提出・PDF 控え確認済み）は validate=Yes（jpeg/png/webp/heic）のままなので、訂正は返信メールで行う。
