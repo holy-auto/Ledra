@@ -1833,6 +1833,10 @@ JST は夏時間が無いので日の加算は 24 時間の加算でよい。
   (2) GPSA §2.2/§2.6 の「Vercel/Supabase に入れる人＝管理者のみ」、本番デプロイが `main` からのみであること、
   署名欄の英語表記（Yusuke Horikoshi / Representative Director）を確認、(3) 返信メール送信。
   Intake Form（9/3 提出・PDF 控え確認済み）は validate=Yes（jpeg/png/webp/heic）のままなので、訂正は返信メールで行う。
+- **2026-09-29 証拠パッケージを送信済み**（代表が受理メールに返信。3版目 zip＋validate 取り下げ）。**Administrator の assessment 待ち**。
+  次に来うるもの: (a) 非適合の指摘（特に TLS 1.2、HEIC の扱い、公開バケット）→ 指摘文をもらって対応、
+  (b) Approver 審査 → Notice of Conformance → 認定 CA から本番証明書発行（→ `docs/c2pa-production-deployment.md` の手順で切替）。
+  validate 取り下げが受理されたかは返信で確認する。
 - **TLS 1.2 の扱い（未確認）**: GPSA O.5 は TLS 1.3 を要求。Vercel は現行クライアントとは TLS 1.3 で繋がるが、
   旧クライアント向けに TLS 1.2 も受ける（推定・未検証）。審査で指摘された場合の対応（Vercel 側で 1.2 を止められるか）は未調査。
 - **HEIC の GPS が残る（2026-09-27 実測で確定）**: sharp のプリビルドは HEVC を読めず（`heif: Support for this compression

@@ -4,7 +4,11 @@
 > 追わず、常に最新状態だけを保つ（履歴は DECISION_LOG.md / RELEASE_LOG.md 側）。
 > 大きな変化があったら都度上書きすること。
 
-最終更新: 2026-09-27
+最終更新: 2026-09-29
+
+> 2026-09-29 追記: **C2PA Conformance の証拠パッケージを送信した**（代表・受理メールへの返信）。
+> 送信前に Conformulator で4枚（jpeg/png/webp/heic）とも自己テスト合格（不合格は test 証明書由来の untrusted のみ）。
+> Intake の validate 申告は同メールで取り下げ。**現在は Administrator の assessment 待ち。**
 
 > 2026-09-27 追記: **C2PA Conformance の証拠パッケージを再作成し、`docs/c2pa-evidence/` に保存した**
 > （英語 GPSA・運用管理策・サンプル4枚・返信メール下書き）。**未送信**。送信前に代表が Conformulator で

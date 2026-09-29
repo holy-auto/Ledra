@@ -4,6 +4,14 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-09-29 C2PA Conformance 証拠パッケージを提出
+
+- 内容: 代表が Administrator の受理メール（Record `01a06690-…`）に返信し、`docs/c2pa-evidence/` 一式（サンプル4枚・英語 GPSA・
+  運用管理策・TOE 図）を送付。Intake Form の validate 申告は同メールで取り下げ（生成のみで申請）。
+- 送信前検証: Conformulator の Rubrics で4枚とも「3 of 4 pass」。不合格はテスト証明書由来の `validation:trusted_success`
+  （untrusted）のみで、適合ルーブリック 0.1/2.2・0.2/2.2・0.2/2.4 は全項目合格。
+- 次: Administrator の assessment（非適合の指摘 or Approver 審査）待ち。
+
 ## 2026-09-27 C2PA 行為台帳の修正と、Conformance 証拠パッケージ一式の再作成
 
 - 修正: `stripGpsAndReadExif` の `orientationApplied` / `metadataRemoved` を sharp の `metadata()` で判定するようにした。
