@@ -285,6 +285,9 @@ export async function listCertificatesForCustomer(
     .select(selectCols)
     .eq("tenant_id", tenantId)
     .neq("status", "void")
+    // 所有権移転が受諾された車両の証明書は旧オーナーに出さない（acceptTransferByToken が印を付ける）。
+    // 履歴・件数・予約の旧経路・加盟店一覧はすべてこの関数を通る。
+    .is("hidden_from_owner_portal_at", null)
     .order("created_at", { ascending: false });
 
   if (customerId) {
@@ -429,7 +432,8 @@ export async function getCustomerProfile(
       .select("id", { count: "exact", head: true })
       .eq("tenant_id", tenantId)
       .eq("customer_id", sessionCustomerId)
-      .neq("status", "void");
+      .neq("status", "void")
+      .is("hidden_from_owner_portal_at", null);
 
     if (!customer) return null;
     return {

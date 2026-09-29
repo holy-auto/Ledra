@@ -13,12 +13,14 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 const mocks = vi.hoisted(() => ({
   createServiceRoleAdmin: vi.fn(),
   sendTransferAcceptedNotification: vi.fn(),
+  sendTransferCompletedToPreviousOwner: vi.fn(),
   logAuditEvent: vi.fn(),
 }));
 
 vi.mock("@/lib/supabase/admin", () => ({ createServiceRoleAdmin: mocks.createServiceRoleAdmin }));
 vi.mock("@/lib/passport/transfers/email", () => ({
   sendTransferAcceptedNotification: mocks.sendTransferAcceptedNotification,
+  sendTransferCompletedToPreviousOwner: mocks.sendTransferCompletedToPreviousOwner,
 }));
 vi.mock("@/lib/audit/certificateLog", () => ({ logAuditEvent: mocks.logAuditEvent }));
 vi.mock("@/lib/logger", () => ({
@@ -45,6 +47,11 @@ function makeAdmin(opts: {
   passportUpdateErr?: { message: string } | null;
   onTransferUpdate?: (doc: Doc) => void;
   onPassportUpdate?: (doc: Doc) => void;
+  /** 同じ VIN を持つ全テナントの vehicles（旧オーナーのマイページから外す対象） */
+  vinVehicles?: Doc[];
+  /** 顧客行（id → email）。旧オーナーのメールでの ilike と id 引きの両方に使う */
+  customers?: { id: string; email: string | null }[];
+  onCertificatesHide?: (doc: Doc, vehicleIds: string[], customerIds: string[]) => void;
 }) {
   return {
     from: (table: string) => {
@@ -93,7 +100,37 @@ function makeAdmin(opts: {
       if (table === "vehicles") {
         return {
           select: () => ({
-            eq: () => ({ maybeSingle: () => Promise.resolve({ data: opts.vehicle ?? null }) }),
+            eq: (col: string) =>
+              col === "vin_code_normalized"
+                ? Promise.resolve({ data: opts.vinVehicles ?? [], error: null })
+                : { maybeSingle: () => Promise.resolve({ data: opts.vehicle ?? null, error: null }) },
+          }),
+        };
+      }
+      if (table === "customers") {
+        const rows = opts.customers ?? [];
+        return {
+          select: () => ({
+            ilike: (_col: string, pattern: string) =>
+              Promise.resolve({
+                data: rows.filter((c) => c.email?.toLowerCase() === pattern.toLowerCase()),
+                error: null,
+              }),
+            eq: (_col: string, id: string) => ({
+              maybeSingle: () => Promise.resolve({ data: rows.find((c) => c.id === id) ?? null, error: null }),
+            }),
+          }),
+        };
+      }
+      if (table === "certificates") {
+        return {
+          update: (doc: Doc) => ({
+            in: (_c1: string, vehicleIds: string[]) => ({
+              in: (_c2: string, customerIds: string[]) => {
+                opts.onCertificatesHide?.(doc, vehicleIds, customerIds);
+                return { lte: () => ({ is: () => Promise.resolve({ error: null }) }) };
+              },
+            }),
           }),
         };
       }
@@ -214,6 +251,80 @@ describe("acceptTransferByToken — cross-tenant ownership flip", () => {
     const res = await acceptTransferByToken({ rawToken, acceptedByName: null });
     expect(res.ok).toBe(false);
     if (!res.ok) expect(res.reason).toBe("expired");
+  });
+
+  it("hides the previous owner's certificates for the VIN (not the new owner's) and emails them", async () => {
+    const { rawToken } = generateTransferToken();
+    let hidden: { doc: Doc; vehicleIds: string[]; customerIds: string[] } | null = null;
+    mocks.createServiceRoleAdmin.mockReturnValue(
+      makeAdmin({
+        transfer: {
+          id: "t5",
+          vin_code_normalized: VIN,
+          initiating_tenant_id: "tenant-A",
+          initiating_vehicle_id: "vehicle-A",
+          from_owner_email: "old@example.com",
+          from_owner_name: "旧オーナー",
+          to_owner_email: "new@example.com",
+          status: "pending",
+          expires_at: future,
+        },
+        // 施工店 A は車両の顧客を既に新オーナーへ付け替えている
+        vehicle: { maker: "Toyota", model: "Aqua", year: 2022, customer_id: "cust-new-A" },
+        // 同じ VIN を別テナントでも施工している
+        vinVehicles: [{ id: "vehicle-A" }, { id: "vehicle-B" }],
+        customers: [
+          { id: "cust-new-A", email: "new@example.com" },
+          { id: "cust-old-B", email: "Old@Example.com" },
+        ],
+        onCertificatesHide: (doc, vehicleIds, customerIds) => (hidden = { doc, vehicleIds, customerIds }),
+      }),
+    );
+
+    const res = await acceptTransferByToken({ rawToken, acceptedByName: null });
+    await new Promise((r) => setTimeout(r, 0)); // void で投げた通知を待つ
+
+    expect(res.ok).toBe(true);
+    expect(hidden).toEqual({
+      doc: { hidden_from_owner_portal_at: expect.any(String) },
+      vehicleIds: ["vehicle-A", "vehicle-B"],
+      // 新オーナーの顧客行（cust-new-A）は外さない
+      customerIds: ["cust-old-B"],
+    });
+    expect(mocks.sendTransferCompletedToPreviousOwner).toHaveBeenCalledWith({
+      toEmail: "old@example.com",
+      toName: "旧オーナー",
+      vehicleLabel: "Toyota Aqua 2022",
+      passportShortId: VIN.slice(-6),
+    });
+  });
+
+  it("does not hide or notify when the 'previous owner' is the same person", async () => {
+    const { rawToken } = generateTransferToken();
+    const onCertificatesHide = vi.fn();
+    mocks.createServiceRoleAdmin.mockReturnValue(
+      makeAdmin({
+        transfer: {
+          id: "t6",
+          vin_code_normalized: VIN,
+          initiating_tenant_id: "tenant-A",
+          initiating_vehicle_id: "vehicle-A",
+          from_owner_email: "Same@Example.com",
+          to_owner_email: "same@example.com ",
+          status: "pending",
+          expires_at: future,
+        },
+        vinVehicles: [{ id: "vehicle-A" }],
+        onCertificatesHide,
+      }),
+    );
+
+    const res = await acceptTransferByToken({ rawToken, acceptedByName: null });
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(res.ok).toBe(true);
+    expect(onCertificatesHide).not.toHaveBeenCalled();
+    expect(mocks.sendTransferCompletedToPreviousOwner).not.toHaveBeenCalled();
   });
 
   it("returns not_found for an unknown token (without leaking format details)", async () => {

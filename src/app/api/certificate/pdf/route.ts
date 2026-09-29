@@ -13,6 +13,7 @@ import {
   type PdfPhoto,
 } from "@/lib/pdfCertificate";
 import { loadPublicCertificateMedia } from "@/lib/certificateMedia/loadPublic";
+import { omitPlate } from "@/lib/certificates/publicData";
 import { CERTIFICATE_IMAGE_BUCKET } from "@/lib/certificateImages/constants";
 import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
 import { logger } from "@/lib/logger";
@@ -54,25 +55,19 @@ async function getFallbackOrigin(): Promise<string> {
   return `${proto}://${host}`;
 }
 
+// 公開ビュー certificates_public（customer_name / content_free_text を NULL 化済み）をサーバー側で読む。
+// 以前は anon キーで REST を叩いていたため、anon に certificates の SELECT（active 全件）を
+// 開けておく必要があり、anon キーだけで全テナントの顧客名が読めていた。
+// active 以外を返さないのは下の GET の status チェックが担う。
 async function fetchCertPublic(pid: string): Promise<CertPublic | null> {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  if (!url || !anon) throw new Error("Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY");
-
-  const q = new URL(`${url}/rest/v1/certificates_public`);
-  q.searchParams.set("select", "*");
-  q.searchParams.set("public_id", `eq.${pid}`);
-  q.searchParams.set("limit", "1");
-
-  const res = await fetch(q.toString(), {
-    method: "GET",
-    cache: "no-store",
-    headers: { apikey: anon, Authorization: `Bearer ${anon}` },
-  });
-
-  if (!res.ok) return null;
-  const rows = (await res.json()) as CertPublic[];
-  return rows?.[0] ?? null;
+  const { data, error } = await createServiceRoleAdmin("public certificate PDF — certificates_public by public_id")
+    .from("certificates_public")
+    .select("*")
+    .eq("public_id", pid)
+    .limit(1)
+    .maybeSingle<CertPublic>();
+  if (error) throw error;
+  return data;
 }
 
 export async function GET(req: Request) {
@@ -211,7 +206,8 @@ export async function GET(req: Request) {
     // 公開PDF は認証なしで誰でも取得できるため所有者名は出力しない (個人情報保護)。
     // ログイン発行など認証付きルート (admin/*, certificates/pdf-one 等) では実名を渡す。
     customer_name: "",
-    vehicle_info_json: cert.vehicle_info_json ?? {},
+    // ナンバーも公開(匿名)PDF では出力しない。/c ページ (publicData) と同じ omitPlate を通す。
+    vehicle_info_json: omitPlate(cert.vehicle_info_json ?? {}),
     // 自由記述メモも公開(匿名)PDF では出力しない。Web 公開ページ (publicData) と同様に redact。
     content_free_text: null,
     content_preset_json: cert.content_preset_json ?? {},
