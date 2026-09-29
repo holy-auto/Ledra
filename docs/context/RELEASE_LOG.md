@@ -4,6 +4,14 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-09-29 CI の Client Bundle Size をフォント取得の一時失敗で落とさない
+
+- `.github/workflows/ci.yml` の `Build (production)` で、`.next/build-manifest.json` が無ければ `.next` を消して
+  1回だけビルドをやり直す。`next/font/google` の Noto Sans JP 取り込みがランナーで一時的に失敗し、同一コードで
+  落ちたり通ったりしていたため（PR #1172）。本物のコンパイルエラーは2回とも落ちるので見逃さない。
+- 判断の経緯は DECISION_LOG 2026-09-29（フォント同梱は利用者側の配信量が増えるので採らなかった）。
+- 検証: 再試行の分岐をスタブのビルドで確認（1回目成功・2回目成功・2回とも失敗の3通り）。ci.yml の YAML 構文を確認。
+
 ## 2026-09-27 IMP-029 残り2タイプの配線（certificate_gate_ready / rating_request）
 
 代表判断（DECISION_LOG 2026-09-27）を受けて実装。これで15タイプ全てに発火元がある。
