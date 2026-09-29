@@ -52,7 +52,6 @@ asset. It runs on Vercel serverless functions and Supabase (Postgres, Storage, A
 | Backend (Next.js route handlers on Vercel serverless functions) | **In the TOE.** Authenticates the caller, runs the authenticity pipeline, generates the ingredient and assertions, signs the claim, and persists the result. All C2PA generation and signing happens here. |
 | Supabase (Postgres, Storage, Auth)                              | **In the TOE** (Backend hosting environment). Identity provider for callers; stores the signed asset (Storage) and the manifest summary and pipeline results (Postgres).                                   |
 | Web client (browser) and Mobile client (Expo / React Native)    | **Outside the TOE.** Untrusted input sources that upload a file over HTTPS. The Backend makes no claim about how the file was produced: it records the upload as the parentOf ingredient of `c2pa.opened`. |
-| RFC 3161 Time-Stamp Authority                                   | **Outside the TOE** (external service). Returns a time-stamp token over the pre-signing SHA-256 of the asset; its genTime is sealed into the `com.ledra.capture` assertion.                                |
 
 Authenticity pipeline, in order, for each uploaded image:
 
@@ -60,7 +59,7 @@ Authenticity pipeline, in order, for each uploaded image:
 2. EXIF/GPS removal: the image is decoded and re-encoded with `sharp`, which bakes in the EXIF
    orientation and writes no EXIF, XMP or GPS metadata. If `sharp` cannot decode the input (in this
    TOE this applies to HEVC-coded HEIC), the bytes are signed as received.
-3. SHA-256 of the processed bytes, RFC 3161 time-stamp request, single-use capture-nonce consumption.
+3. SHA-256 of the processed bytes and single-use capture-nonce consumption.
 4. Ingredient and assertion generation:
    - `c2pa.ingredient.v3` (relationship `parentOf`): the uploaded file as received. c2pa-rs records its
      hash, format and a thumbnail re-rendered from its pixels; the original's EXIF/GPS metadata is not
@@ -72,8 +71,8 @@ Authenticity pipeline, in order, for each uploaded image:
      `c2pa.converted` (re-encode ran), `c2pa.edited.metadata` (source carried EXIF/GPS metadata that
      was removed; pixels are not edited). `allActionsIncluded` is `true`: when the bytes are signed as
      received, `c2pa.opened` is the only action performed.
-   - `com.ledra.capture`: work-certificate public ID, vehicle VIN (when recorded), the single-use capture
-     nonce, and the RFC 3161 time.
+   - `com.ledra.capture`: work-certificate public ID, vehicle VIN (when recorded) and the
+     single-use capture nonce.
 5. Claim signing with the Claim Signing Credential (§2.2) and embedding of the manifest into the asset.
 6. Persistence of the signed asset to Supabase Storage and of the manifest summary to Postgres.
 
@@ -208,7 +207,7 @@ signing), and Ledra's own pipeline code (`src/lib/certificateImages/*`, `src/lib
      negotiates TLS 1.3 with current clients. Plain HTTP is redirected to HTTPS.
    - Backend → Supabase (Auth, Postgres via the REST/PostgREST API, Storage): HTTPS to the Supabase
      project endpoint.
-   - Backend → RFC 3161 TSA and the integrations in §1.6: HTTPS.
+   - Backend → the integrations in §1.6: HTTPS.
      Cipher suites are those of the managed TLS configurations of Vercel and Supabase.
 
 ### 2.6 [O.6] Protection of the Hosting Environment (§6.6)

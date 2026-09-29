@@ -1871,6 +1871,8 @@ JST は夏時間が無いので日の加算は 24 時間の加算でよい。
     **O.5 は未対応・代表判断待ち**: Vercel は前段に Cloudflare 無し（直）。Vercel 側で TLS 1.3 最低を設定できるかは未確認。
     外向き（Backend→Supabase 等）は Node の `--tls-min-v1.3`（環境変数 NODE_OPTIONS）で強制できるが全外部連携に効く。
     TSA は設定例が `http://timestamp.digicert.com`（平文 HTTP）で、GPSA の「HTTPS」記述と食い違う — 本番の PHOTO_TSA_URL 要確認。
+    → 代表回答（2026-09-29）: **本番は TSA 未設定（無効）**。GPSA・運用文書・TOE 図から TSA の記述を削除した。
+    → O.5 は代表回答「まず Vercel で最低 TLS 1.3 を設定できるか確認」。外向きは NODE_OPTIONS=--tls-min-v1.3 で強制する方針。
   - 代表が添付した画像4枚は Ledra の旧サンプルで、C2PA 指定ライブラリの素材ではない（ライブラリは引き続き未入手）。
 - **TLS 1.2 の扱い（未確認）**: GPSA O.5 は TLS 1.3 を要求。Vercel は現行クライアントとは TLS 1.3 で繋がるが、
   旧クライアント向けに TLS 1.2 も受ける（推定・未検証）。審査で指摘された場合の対応（Vercel 側で 1.2 を止められるか）は未調査。
