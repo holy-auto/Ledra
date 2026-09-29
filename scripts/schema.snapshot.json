@@ -794,6 +794,21 @@
 "updated_at",
 "warning_messages"
 ],
+"certificate_rating_requests": [
+"certificate_id",
+"comment",
+"created_at",
+"customer_id",
+"id",
+"ip",
+"rating",
+"send_after",
+"sent_at",
+"submitted_at",
+"tenant_id",
+"token",
+"user_agent"
+],
 "certificate_versions": [
 "certificate_id",
 "change_reason",

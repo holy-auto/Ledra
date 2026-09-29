@@ -20,6 +20,7 @@ import { todayJst } from "@/lib/gantt/board";
 import { processInspectionReminders } from "@/lib/cron/inspectionReminders";
 import { processServiceReminders } from "@/lib/cron/serviceReminders";
 import { processBirthdayGreetings } from "@/lib/cron/birthdayGreetings";
+import { processRatingRequests } from "@/lib/cron/ratingRequests";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
@@ -29,6 +30,7 @@ export const maxDuration = 120;
  * 1. 有効期限リマインダー
  * 2. 施工後フォローアップ: 90日・180日 ＋ 発行直後・30日・保証終了前
  * 3. 季節提案（10〜11月: 冬前, 5〜6月: 梅雨前）
+ * 4. 評価依頼（証明書発行の数日後。IMP-029 rating_request）
  */
 export async function GET(req: NextRequest) {
   const { authorized, error: authError } = verifyCronRequest(req);
@@ -50,6 +52,7 @@ export async function GET(req: NextRequest) {
       let inspectionSent = 0;
       let serviceReminderSent = 0;
       let birthdaySent = 0;
+      let ratingRequestsSent = 0;
       try {
         const { data: rawSettings } = await supabase
           .from("follow_up_settings")
@@ -85,6 +88,20 @@ export async function GET(req: NextRequest) {
             serviceReminderSent += await processServiceReminders(supabase, setting, shopName, today);
             birthdaySent += await processBirthdayGreetings(supabase, setting, shopName, today);
           }
+
+          // 評価依頼は send_after（発行時刻 + 既定日数）で決まるので、テナントごとではなく1回で引く。
+          // 対象は follow_up_settings.enabled のテナントだけ（キー = 送信対象、値 = 店名）。
+          const shopNames = new Map(
+            settings.flatMap((s) => {
+              const t = tenantMap.get(s.tenant_id);
+              return t ? [[s.tenant_id, t.name ?? "施工店"] as const] : [];
+            }),
+          );
+          try {
+            ratingRequestsSent = await processRatingRequests(supabase, new Date(), shopNames);
+          } catch (e) {
+            console.error("[cron/follow-up] rating requests failed:", e);
+          }
         }
       } catch (e) {
         console.error("[cron/follow-up] failed:", e);
@@ -97,6 +114,7 @@ export async function GET(req: NextRequest) {
         inspectionSent,
         serviceReminderSent,
         birthdaySent,
+        ratingRequestsSent,
       };
     });
 
@@ -113,6 +131,7 @@ export async function GET(req: NextRequest) {
       inspection_sent: lock.value.inspectionSent,
       service_reminder_sent: lock.value.serviceReminderSent,
       birthday_sent: lock.value.birthdaySent,
+      rating_requests_sent: lock.value.ratingRequestsSent,
       date: todayStr,
     });
   } catch (e) {

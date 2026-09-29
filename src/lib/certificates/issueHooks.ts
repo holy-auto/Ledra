@@ -16,6 +16,7 @@ import { enqueueInsuranceCaseCreated } from "@/lib/qstash/publish";
 import { enqueueCertificateAnchor } from "@/lib/anchoring/certificateAnchorService";
 import { completeDraftPartInstallationsForReservation } from "@/lib/parts/installationService";
 import { dispatchNotification } from "@/lib/notifications/dispatch";
+import { queueRatingRequest } from "@/lib/cron/ratingRequests";
 import { logger } from "@/lib/logger";
 
 export interface CertificateIssuedParams {
@@ -70,6 +71,18 @@ export async function triggerCertificateIssued(params: CertificateIssuedParams):
       logger.warn("[cert-issued] complete draft part installations failed", {
         err: e instanceof Error ? e.message : String(e),
       }),
+    );
+  }
+
+  // 発行の数日後に顧客へ評価依頼を送る予約 (IMP-029 rating_request。実送信は cron/follow-up)。
+  if (params.customerId) {
+    const { admin } = createTenantScopedAdmin(params.tenantId);
+    await queueRatingRequest(admin, {
+      tenantId: params.tenantId,
+      certificateId: params.certificateId,
+      customerId: params.customerId,
+    }).catch((e) =>
+      logger.warn("[cert-issued] rating request queue failed", { err: e instanceof Error ? e.message : String(e) }),
     );
   }
 
