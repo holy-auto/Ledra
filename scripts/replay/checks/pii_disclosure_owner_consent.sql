@@ -16,8 +16,12 @@ VALUES ('00000000-0000-4000-8000-0000000003a1', 'owner-consent tenant', 'owner-c
 INSERT INTO public.insurers (id, name, slug, is_active, status)
 VALUES ('00000000-0000-4000-8000-0000000003b1', 'owner-consent insurer', 'owner-consent-insurer', true, 'active');
 
-INSERT INTO public.certificates (id, tenant_id, public_id)
-VALUES ('00000000-0000-4000-8000-0000000003c1', '00000000-0000-4000-8000-0000000003a1', 'owner-consent-cert');
+-- customer_name は本番で NOT NULL・既定なし（20260929150300 で再生側も揃えた）。
+-- この検査が見たいのは is_pii_disclosed() の条件なので、fixture の列不足で 23502 に
+-- ならないよう必要な列は明示で渡す。同表に NOT NULL 列を足す PR は、ここにもその列を足すこと。
+INSERT INTO public.certificates (id, tenant_id, public_id, customer_name)
+VALUES ('00000000-0000-4000-8000-0000000003c1', '00000000-0000-4000-8000-0000000003a1',
+        'owner-consent-cert', '検査用ダミー客');
 
 -- 保険会社の申請だけがある（施工店の承認もオーナーの同意も無い）。
 INSERT INTO public.pii_disclosure_consents

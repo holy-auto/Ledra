@@ -123,7 +123,7 @@ export const POST = withCaller(
         vehicle_info_json: b.vehicle_info_json ?? {},
         content_free_text: b.content_free_text ?? null,
         content_preset_json: b.content_preset_json ?? {},
-        // `expiry_type` は本番で NOT NULL・既定 `'text'`（20260927151000 で再生側も揃えた）。
+        // `expiry_type` は本番で NOT NULL・既定 `'text'`（20260929150300 で再生側も揃えた）。
         // 明示 NULL を送ると 23502 になるので、未指定なら**キーごと落として DB の既定に任せる**。
         // 既定値をここに写すとコードと DB で二重管理になり、ずれたときに気づけない。
         ...(b.expiry_type != null ? { expiry_type: b.expiry_type } : {}),

@@ -217,6 +217,7 @@ Postgres 自身にやらせ、さらに**「評価不能が1件でもあれば�
 | `insurer_users_system_actor.sql` | `insurers.slug` | NOT NULL |
 | `vehicles_public_id_default.sql` | `vehicles.maker` / `model` | NOT NULL |
 | `insurer_suspension_gate.sql` | `insurer_users.role`（既定に依存） | 既定が CHECK 違反 |
+| `pii_disclosure_owner_consent.sql`（**6本目・後から**） | `certificates.customer_name` | NOT NULL |
 
 最後の1本は、**本番の壊れた既定値を陰性対照として再生に入れた瞬間**に落ちて分かった。
 つまりこの検査は「本番では成立しない前提」の上で緑だった。
@@ -229,11 +230,19 @@ Postgres 自身にやらせ、さらに**「評価不能が1件でもあれば�
 
 **再発防止**: 仕組み半分。
 - 仕組み: `defaults_satisfy_own_check.sql` を追加し、既定値と CHECK の矛盾は再生で必ず落ちるようにした。
-  列属性の差そのものは `20260927151000` で揃えたので、**今後の検査は本番と同じ厳しさの DB で走る**。
+  列属性の差そのものは `20260929150300` で揃えたので、**今後の検査は本番と同じ厳しさの DB で走る**。
 - 習慣: 検査の fixture は**必要な列を明示で渡す**（既定値や NULL 許容に頼らない）。
   頼ると、その既定・許容が本番と違ったときに検査ごと意味を失う。
   本番との属性差は名前を見る検出器には映らないので、**新しい表に検査を書くときは
   その表の NOT NULL と既定値を本番側で1度読む。**
+
+**追記（2026-09-29）**: **6本目が、この台帳を書いた後に増えた。** #1170 が並行して
+`pii_disclosure_owner_consent.sql` を main に入れており、それも `certificates.customer_name` を
+省いていた。main では緑（再生が緩い）、本 PR を取り込むと 23502 で落ちる。
+**「今後の検査は本番と同じ厳しさの DB で走る」は、本 PR がマージされた後にしか成り立たない。**
+それまでに書かれた検査は、書いた時点の緩い DB で緑になっている。
+上の「5本」は本 PR をマージする時点の実数ではなく、**書いた時点の実数**だった（型 I）。
+`20260929150300` が main に入るまでは、新しい fixture が同じ形で入り続ける。
 ## M-20260925-my-not-null-blinded-the-sibling-check 自分が足した NOT NULL が、隣の検査の識別力を奪ったことを見ていない（2026-09-25・型 D）
 
 **Before**: #1166 で `certificate_images.file_name` / `content_type` を `SET NOT NULL` にした。

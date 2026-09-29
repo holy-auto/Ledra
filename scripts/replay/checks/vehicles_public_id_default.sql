@@ -22,7 +22,7 @@ DECLARE
   v_public_id text;
 BEGIN
   -- public_id を**省いて**入れる（アプリの通常経路と同じ）。
-  -- maker / model は本番で NOT NULL（20260927151000 で再生側も揃えた）。
+  -- maker / model は本番で NOT NULL（20260929150300 で再生側も揃えた）。
   -- この検査が見たいのは public_id の既定だけなので、他の必須列は明示で渡す。
   INSERT INTO public.vehicles (id, tenant_id, maker, model)
   VALUES ('00000000-0000-4000-8000-0000000000d2', '00000000-0000-4000-8000-0000000000d1', '検査用', '検査用')

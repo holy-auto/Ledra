@@ -52,7 +52,7 @@ VALUES ('00000000-0000-4000-8000-0000000001f1', '00000000-0000-4000-8000-0000000
 -- pii_disclosure_consents と ai_usage_logs は、insurer_cases を経由せず
 -- insurer_id を直接見るポリシーなので、**案件が 0 件でも独立に漏れうる**。
 -- /code-review の指摘（2026-09-21）で足した。証明書は FK のために要る。
--- customer_name は本番で NOT NULL・既定なし（20260927151000 で再生側も揃えた）。
+-- customer_name は本番で NOT NULL・既定なし（20260929150300 で再生側も揃えた）。
 INSERT INTO public.certificates (id, tenant_id, public_id, customer_name)
 VALUES ('00000000-0000-4000-8000-000000000201', '00000000-0000-4000-8000-0000000001a1', 'rls-gate-cert', 'rls-gate customer');
 

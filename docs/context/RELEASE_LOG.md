@@ -88,7 +88,7 @@ DECISION_LOG 2026-09-27 の決定に基づく。
 
 **全表調査**: 本番と再生 DB の `information_schema.columns` を**同じクエリで**引き、列ごとの
 digest で突き合わせた。**280 表のうち 268 表は完全一致**で、差は 12 表・310 セル中 25 セル・
-属性単位で 39 件。`20260927150900` / `20260927151000` で 19 件を解消し、残り 20 件は
+属性単位で 39 件。`20260929150200` / `20260929150300` で 19 件を解消し、残り 20 件は
 (a) enum/text の7列（IMP-015 の判断待ち）と (b) 本番へ適用すれば消える2件だけ。
 
 **本番の既定値が本番自身の CHECK に弾かれていた（2件）**
@@ -111,9 +111,11 @@ digest で突き合わせた。**280 表のうち 268 表は完全一致**で、
 読まず **Postgres 自身を判定器にする**（同じ型・既定・CHECK の一時テーブルに `INSERT DEFAULT VALUES`）。
 **評価不能が1件でもあれば落とす** —— 「違反0」を「全部見た」と読み替えないため。
 
-**既存検査5本の修正**: 本番に合わせて NOT NULL を足したら、再生が緩かったから通っていた検査が
-5本落ちた（MISTAKE_LEDGER `M-20260927-checks-were-green-on-rows-production-would-reject`）。
-fixture が必要な列を明示で渡すよう直した。
+**既存検査6本の修正**: 本番に合わせて NOT NULL を足したら、再生が緩かったから通っていた検査が
+落ちた（MISTAKE_LEDGER `M-20260927-checks-were-green-on-rows-production-would-reject`）。
+fixture が必要な列を明示で渡すよう直した。**6本目は後から増えた** —— #1170 が並行して
+`pii_disclosure_owner_consent.sql` を main に入れており、それも `certificates.customer_name` を
+省いていた（main では緑、本 PR を取り込むと 23502）。
 
 **`/code-review` の指摘を反映**: (a) 検出器が `cardinality(conkey) = 1` で複数列 CHECK を母集団から
 落としており、**「評価不能0」が嘘だった**（台帳 `M-20260927-said-evaluated-all-while-filtering-the-population`）。
@@ -124,7 +126,15 @@ fixture が必要な列を明示で渡すよう直した。
 2経路は**本番で今日すでに 23502 で落ちている**ことを確認し、「不明な maker をどう保存するか」は
 仕様判断なので OPEN_QUESTIONS へ起票（`hearings` はエラーを握り潰すので車両の紐付けが黙って落ちる）。
 
-検証: `ci-parallel-checks.sh` 9/9・`check:migrations` 再生 512/512・振る舞いの検査 **8 件**・
+**版番号の改名（2026-09-29）**: main に `20260929132849` が入ったので、`20260927150900` /
+`20260927151000` を **`20260929150200` / `20260929150300`** へ改名した。`lint:migrations` の
+`migration-version-before-base-head` が赤になる（本番の `supabase db push` が out-of-order で
+止まり、以降のマイグレーションが本番へ届かなくなる）。allowlist へは足していない。
+改名前に `list_branches` を引き、**このプロジェクトのブランチは `main` の1本だけ**で
+このブランチのプレビュー DB が存在しないことを実測した（同時実行上限で作られなかった）。
+適用済みの版を改名した `M-20260922-renamed-a-migration-the-preview-db-had-applied` の形にはならない。
+
+検証: `ci-parallel-checks.sh` 9/9・`check:migrations` 再生 **516/516**・振る舞いの検査 **9 件**・
 陰性対照（壊れた既定値を再生に入れる／複数列 CHECK の矛盾を仕込む）で検出器が落ちることを実測。
 ## 2026-09-26 指定整備記録簿（完成検査）G5 Phase 1d — 目視検査＋車両照合
 
