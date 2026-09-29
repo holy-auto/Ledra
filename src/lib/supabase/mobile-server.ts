@@ -1,4 +1,5 @@
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
+import { tls13Fetch } from "@/lib/net/tls13Fetch";
 
 /**
  * モバイルアプリ向け Supabase クライアント（Bearer Token 認証）。
@@ -23,6 +24,7 @@ export function createMobileClient(request: Request) {
 
   const client = createSupabaseClient(url, anonKey, {
     global: {
+      fetch: tls13Fetch, // Backend → Supabase is TLS 1.3+ (C2PA GPSA O.5)
       headers: {
         Authorization: `Bearer ${accessToken}`,
       },

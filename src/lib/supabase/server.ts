@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import { createServerClient } from "@supabase/ssr";
+import { tls13Fetch } from "@/lib/net/tls13Fetch";
 
 export async function createClient() {
   const cookieStore = await cookies();
@@ -12,6 +13,7 @@ export async function createClient() {
   }
 
   return createServerClient(url, anonKey, {
+    global: { fetch: tls13Fetch }, // Backend → Supabase is TLS 1.3+ (C2PA GPSA O.5)
     cookies: {
       getAll() {
         return cookieStore.getAll();

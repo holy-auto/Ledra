@@ -384,6 +384,8 @@ for the C2PA Conforming Products List」参照。
 
 `src/lib/anchoring/providers/c2pa.ts` の `MANIFEST_ACTIONS` を修正: 先頭を `c2pa.opened`（ingredient 必須で非準拠）から **`c2pa.created` + `digitalSourceType=digitalCapture`** に変更し、`orientation`/`converted`/`edited` は維持（ingredient 不要で準拠）。正直な処理履歴（向き・再エンコード・EXIF/GPS 除去）は保持。scratch 実測で `ingredientMismatch`/`malformed` が消え、残コードは dev-cert の `signingCredential.untrusted`/`claimSignature.mismatch` のみ。`c2paManifest.test.ts` の期待値を更新し、実署名→検証で action/assertion エラーが無いことを確かめる **`c2paSignValidate.test.ts`** を新設（欠けていた runnable check）。
 
+> **2026-09-29 更新**: 上の `c2pa.created`+`digitalCapture` は GPSA 審査（2026-09-28）で O.4 非適合とされた（Backend は撮影を検証できない）。先頭を **`c2pa.opened`＋定義だけの `parentOf` ingredient**（原本のバイト列は渡さない）に戻した。「ingredient には原本の埋め込みが要る」は誤りだった（MISTAKE_LEDGER `M-20260929-assumed-ingredient-needs-original-bytes`、DECISION_LOG 2026-09-29）。
+
 **HEIC 検証済み（2026-09-03）**: pillow-heif で生成した HEIC を c2pa-node で署名でき、内容エラーなし（残コードは dev-cert のみ）＝**HEIC 署名は対応・準拠**。先の失敗は sharp が HEIF を*エンコード*できないだけで、c2pa-node 自体は HEIC 署名可能。→ 申告メディアタイプに heic を残してよい。
 - ただし別論点（プライバシー）: Ledra の strip は sharp。**本番の sharp が HEIF を*デコード*できないと HEIC の EXIF/GPS 除去が効かず**（fail-open で原本署名）位置情報が残りうる。HEIC アップロードの GPS 除去可否は本番環境で要確認。
 

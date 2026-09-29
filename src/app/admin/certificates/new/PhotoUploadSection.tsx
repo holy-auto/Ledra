@@ -112,10 +112,10 @@ const PhotoUploadSection = forwardRef<PhotoUploadHandle, Props>(function PhotoUp
       </div>
 
       {/* Capture area — camera only. Album/file-picker & drag-drop were removed so
-          Ledra signs only on-site captures: the C2PA manifest asserts
-          digitalSourceType=digitalCapture, which would be false for arbitrary
-          uploaded files (screenshots / edited / generated images). See
-          src/lib/anchoring/providers/c2pa.ts (CREATED_ACTION). */}
+          shops submit on-site captures (product policy). The C2PA manifest does
+          NOT claim capture: the backend can't verify where the bytes came from,
+          so it records the upload as c2pa.opened. See
+          src/lib/anchoring/providers/c2pa.ts (OPENED_ACTION). */}
       {!full && (
         <div className="rounded-xl border-2 border-dashed border-border-default bg-inset px-4 py-6 text-center hover:border-border-strong hover:bg-surface-hover transition-colors">
           <div className="text-2xl text-muted">📷</div>

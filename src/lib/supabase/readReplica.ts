@@ -31,6 +31,7 @@
 
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
+import { tls13Fetch } from "@/lib/net/tls13Fetch";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnySupabaseClient = SupabaseClient<any, any, any>;
@@ -72,6 +73,7 @@ export function getReadReplica(reason: string): AnySupabaseClient {
     }
     replicaClient = createClient(url, key, {
       auth: { autoRefreshToken: false, persistSession: false },
+      global: { fetch: tls13Fetch }, // Backend → Supabase is TLS 1.3+ (C2PA GPSA O.5)
       // Replica is read-only; disable realtime which would attempt writes
       // on the auth schema during heartbeat reconciliation.
       realtime: { params: { eventsPerSecond: 0 } },

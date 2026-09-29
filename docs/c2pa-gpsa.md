@@ -34,29 +34,36 @@
 
 ### 1.5 Generator Product Description
 
-自動車整備・ボディリペア・コーティング / PPF 店向けのマルチテナント SaaS「Ledra」。加盟店が撮影した
+自動車整備・ボディリペア・コーティング / PPF 店向けのマルチテナント SaaS「Ledra」。加盟店がアップロードした
 施工写真をサーバー側の真正性パイプライン（ハッシュ化・EXIF/GPS 除去・RFC3161 TSA 封印・撮影 nonce 消費・
 段階タグ）で処理し、施工証明書に紐づく静止画へ C2PA マニフェストを付与・署名する。用途は施工の来歴・
 真正性の証明。対象ユーザーは整備/コーティング事業者およびその顧客・損保。
 
 ### 1.6 GP TOE Description
 
-TOE 境界は **写真のキャプチャ/アップロード → サーバー側でのアサーション生成 → claim 署名 → 署名済み
-アセットの永続化/配信** まで。構成:
+TOE 境界は **アップロードされた写真の受領 → サーバー側でのアサーション生成 → claim 署名 → 署名済み
+アセットの永続化/配信** まで。TOE はすべて Backend（Hosting Environment）内にある。構成:
 
-- フロント/実行基盤: Next.js（App Router）on **Vercel**（サーバーレス関数）。
-- データ/ストレージ/認証: **Supabase**（Postgres + Storage + Auth、Row Level Security）。
+- 実行基盤: Next.js（App Router）の API ルート on **Vercel**（サーバーレス関数、Node ランタイム）。
+- データ/ストレージ/認証: **Supabase**（Postgres + Storage + Auth）。Backend からの接続は TLS 1.3 のみ（§2.5）。
 - 署名: `@contentauth/c2pa-node` の `LocalSigner`（ES256 / P-256）。実装 `src/lib/anchoring/providers/c2pa.ts`,
   `c2paSigner.ts`。
 - タイムスタンプ: 独立した RFC3161 TSA トークン（`certificate_images.tsa_token`）。C2PA 署名とは分離。
-- クライアント: Web 管理画面 / モバイルアプリ（**施工写真の入力はカメラ撮影に限定**。モバイルは
-  `pickImageFromCamera` のみ＝ライブラリ選択不可、Web はカメラ入力（`capture="environment"`）のみで
-  アルバム/ファイル選択・ドラッグ&ドロップの経路を廃止済み）。端末非保存で API へ直送。
-  - **`digitalSourceType=digitalCapture` の根拠**: 上記のとおり署名対象は撮影経路に限定しているため、
-    生成マニフェストの `c2pa.created` に `digitalCapture`（実写のデジタル撮影）を付与する。
-    **既知の限界**: `capture` 属性はデスクトップブラウザでは無視されファイル選択にフォールバックしうる
-    （モバイル/タブレット実機では撮影を起動）。サーバーは magic bytes 検証のみで撮影由来を暗号学的に
-    保証はしない。厳密化（撮影シグナルの封入・実機限定）は将来の課題（AL2 相当で端末アテステーション連携）。
+
+**TOE の外（信頼しない入力元）**: Web 管理画面（ブラウザ）とモバイルアプリ。製品方針として撮影入力に
+限定しているが（モバイルは `pickImageFromCamera` のみ、Web は `capture="environment"` のみ）、Backend は
+受け取ったバイト列が撮影由来であることを検証できない（magic bytes 検証のみ。端末アテステーションは
+既定で無効、§2.2-5）。したがって:
+
+- 生成マニフェストは撮影を**主張しない**。`c2pa.created` / `digitalSourceType=digitalCapture` は使わず、
+  先頭アクションを **`c2pa.opened`**（アップロードされたファイルを `parentOf` ingredient として参照）とする。
+  ingredient は定義（タイトル・形式・関係）のみで追加し、元画像のバイト列は渡さない — 元画像のサムネイルや、
+  元画像が持っていた C2PA マニフェスト（GPS を含みうる）をマニフェストへ持ち込まないため。検証時は
+  `ingredient.unknownProvenance`（informational）＝「来歴不明のファイルを開いた」という事実どおりになる。
+- 続くアクションは Backend 自身が行った処理のみ: 向きの確定（`c2pa.orientation`）、再エンコード
+  （`c2pa.converted`）、EXIF/GPS 除去（`c2pa.edited`）。効果のあったものだけを記録する。
+- `com.ledra.capture` アサーションに封入するのは Backend が自ら発行・確認した値のみ（証明書 ID、VIN、
+  Backend が発行し消費した単回 nonce、Backend が取得した TSA 時刻）。
 
 **アーキテクチャ図: `docs/diagrams/c2pa-gp-toe.png`**（ソース `docs/diagrams/c2pa-gp-toe.mmd`）。TOE 境界
 （キャプチャ/アップロード → 認証 → 真正性パイプライン → アサーション生成 → claim 署名 → 署名済みアセット
@@ -65,7 +72,7 @@ TOE 境界は **写真のキャプチャ/アップロード → サーバー側�
 ### 1.7 Implementation Class
 
 **Backend**（アサーション生成・claim 署名・鍵保管はすべてサーバー側の Hosting Environment で完結。
-クライアントは撮影/アップロードのみ）。
+クライアントは TOE の外で、アップロードのみを行う — §1.6）。
 
 ### 1.8 Target Max Assurance Level
 
@@ -77,8 +84,9 @@ TOE 境界は **写真のキャプチャ/アップロード → サーバー側�
 
 - **Claim generation（署名）**: `image/jpeg`, `image/png`, `image/webp`, `image/heic`
 - **Claim validation**: 本申請では申告しない（Ledra は Generator Product として生成のみで申請する）。
-  製品には取り込み時の C2PA 検証機能（`verifyExternalC2pa`）が存在するが、出力マニフェストへ ingredient を
-  埋め込まない設計（プライバシーのため元写真を strip/再エンコード）のため、validation は本申請の対象外とする。
+  製品には取り込み時の C2PA 検証機能（`verifyExternalC2pa`）が存在するが、出力マニフェストの ingredient は
+  定義のみ（元写真のバイト列・マニフェストを持ち込まない、§1.6）であり検証対象の来歴を持たないため、
+  validation は本申請の対象外とする。
 
 生成メディアタイプはテンプレート §1.9 許可リストの部分集合。各型の署名済みサンプル + `.c2pa`/`.json` を証拠として提出。
 
@@ -146,19 +154,32 @@ TOE 境界は **写真のキャプチャ/アップロード → サーバー側�
 
 ### 2.4 [O.4] Protection of Assets & Assertions at Generation (§6.4)
 
-コンテンツ/アサーションを処理する GP TOE 内ソフト（画像処理 `sharp`、署名 `@contentauth/c2pa-node`、
-アップロード処理 `src/lib/certificateImages/*`）を対象。
+GP TOE は Backend のみ（§1.6）。created_assertions を生成するのは Backend 内のコードだけで、クライアントの
+ソフトウェアは TOE に含まれず、created_assertions の内容にも寄与しない（クライアントから受け取るのは画像の
+バイト列だけで、撮影を示す主張は生成しない）。対象は TOE 内でコンテンツ/アサーションを処理するソフト —
+画像処理 `sharp`、署名 `@contentauth/c2pa-node`、アップロード処理 `src/lib/certificateImages/*`、
+アサーション生成 `src/lib/anchoring/providers/c2pa.ts`。
 
 1. **SCA / SBOM Scanning Tools**: O.3 と同一の Dependabot + CodeQL + npm audit ゲートが上記ソフトの依存を含めて
    検査する（Codacy は自動トリガー無効・手動起動のみ。O.3 参照）。
 2. **90-Day Remediation Policy**: O.3 と同一の 90 日修正ポリシーを適用する（`c2pa-gpsa-operational-controls.md` §2）。
+3. **生成時の改ざん（T.4）への対処**: TOE の外から来た内容について来歴を主張しない（§1.6）。マニフェストの
+   アクションは Backend が実際に行った処理だけで、撮影主張（`digitalCapture`）が混入しないことを実署名→検証の
+   テスト（`src/lib/anchoring/providers/__tests__/c2paSignValidate.test.ts`）が CI で確認する。
 
 ### 2.5 [O.5] Protection of Traffic Between Subsystems (§6.5) — Backend
 
-1. **TLS 1.3 & Cryptographic Protocols**: サブシステム間通信は TLS で保護する。
-   - クライアント（Web/モバイル）↔ API: Vercel が **TLS 1.3** を提供する。
-   - API ↔ Supabase（Postgres/Storage/Auth）: TLS で保護される。
-   暗号スイートは Vercel / Supabase のマネージド TLS 構成に従う。
+1. **TLS 1.3 & Cryptographic Protocols**: TOE 内のサブシステム間通信は TLS 1.3 以上に限定する。
+   - Backend（Vercel 関数）→ Supabase（Postgres REST / Storage / Auth）: Backend の Supabase クライアントは
+     **TLS 1.3 未満のハンドシェイクを拒否する** HTTP クライアントを使う（`src/lib/net/tls13Fetch.ts`、
+     `minVersion: "TLSv1.3"`）。サーバー側の全 Supabase クライアント — service-role（`src/lib/supabase/admin.ts`）、
+     Web 呼び出し元の認証（`server.ts`）、モバイル呼び出し元の認証（`mobile-server.ts`）、読み取りレプリカ
+     （`readReplica.ts`）— に適用する。相手が 1.2 までしか
+     話さない場合は接続自体が失敗し、旧版へは落ちない。実ハンドシェイクで 1.2 のみのサーバーを拒否することを
+     `src/lib/net/__tests__/tls13Fetch.test.ts` が CI で確認する。
+   - クライアント（Web/モバイル）→ API: クライアントは TOE の外（§1.6）であり、この経路は O.5 のいう
+     サブシステム間通信ではない。経路は Vercel の HTTPS で保護される。
+   暗号スイートは TLS 1.3 の既定（Node / Supabase のマネージド構成）に従う。
 
 ### 2.6 [O.6] Protection of the Hosting Environment (§6.6) — Backend
 

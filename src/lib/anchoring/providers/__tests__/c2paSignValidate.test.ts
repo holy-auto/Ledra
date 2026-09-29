@@ -100,15 +100,32 @@ describe("C2PA sign → validate (manifest content conformance)", () => {
 
       const actions = (m.assertions ?? []).find((a: { label?: string }) => a.label?.startsWith("c2pa.actions"));
       expect(typeof actions?.data?.allActionsIncluded, `allActionsIncluded present for ${mime}`).toBe("boolean");
-      const created = (actions?.data?.actions ?? []).find((a: { action?: string }) => a.action === "c2pa.created");
-      expect(created?.digitalSourceType, `c2pa.created has digitalSourceType for ${mime}`).toBeTruthy();
+      // O.4 guard (GPSA review 2026-09-28): a Backend GP must not assert capture.
+      // The ledger starts with c2pa.opened on the upload, and nothing carries a
+      // digitalSourceType (which is what claims digitalCapture).
+      const list = (actions?.data?.actions ?? []) as Array<{ action?: string; digitalSourceType?: string }>;
+      expect(list[0]?.action, `first action is c2pa.opened for ${mime}`).toBe("c2pa.opened");
+      expect(
+        list.filter((a) => a.action === "c2pa.created" || a.digitalSourceType),
+        `no capture/creation claim for ${mime}`,
+      ).toEqual([]);
+
+      // The upload is a parentOf ingredient declared without its bytes, so no
+      // ingredient thumbnail (or upstream manifest) of the pre-strip original is
+      // carried into the signed asset.
+      const ingredients = (m.ingredients ?? []) as Array<{ relationship?: string; thumbnail?: unknown }>;
+      expect(
+        ingredients.map((i) => i.relationship),
+        `one parentOf ingredient for ${mime}`,
+      ).toEqual(["parentOf"]);
+      expect(ingredients[0]?.thumbnail, `no ingredient thumbnail for ${mime}`).toBeUndefined();
     });
   }
 
   // Fallback path: when the upload pipeline could NOT re-encode/strip (sharp
   // failed) and signs the original as-is, the manifest must not certify
-  // transforms that never happened — only c2pa.created, allActionsIncluded=false.
-  it("fallback (transform not applied) asserts only c2pa.created with allActionsIncluded=false", async () => {
+  // transforms that never happened — only c2pa.opened, allActionsIncluded=false.
+  it("fallback (transform not applied) asserts only c2pa.opened with allActionsIncluded=false", async () => {
     const { signC2pa } = await import("../c2pa");
     const sharp = (await requireNative(() => import("sharp"), "sharp")).default;
     const buf = await sharp({
@@ -130,7 +147,7 @@ describe("C2PA sign → validate (manifest content conformance)", () => {
     const actions = (m.assertions ?? []).find((a: { label?: string }) => a.label?.startsWith("c2pa.actions"));
     expect(actions?.data?.allActionsIncluded, "allActionsIncluded=false on fallback").toBe(false);
     const actionNames = ((actions?.data?.actions ?? []) as Array<{ action?: string }>).map((a) => a.action);
-    expect(actionNames, "only c2pa.created on fallback").toEqual(["c2pa.created"]);
+    expect(actionNames, "only c2pa.opened on fallback").toEqual(["c2pa.opened"]);
     // Summary must mirror the embedded manifest (drift guard for the fallback too).
     expect(res.manifestSummary?.allActionsIncluded, "summary allActionsIncluded mirrors fallback").toBe(false);
   });

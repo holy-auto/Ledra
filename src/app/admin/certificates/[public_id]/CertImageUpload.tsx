@@ -134,8 +134,9 @@ export default function CertImageUpload({ publicId, remaining, maxPhotos }: Prop
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-3">
         {/* Camera only. The album/file-picker path was removed so photos added
-            after certificate creation are also captures — the C2PA manifest
-            asserts digitalSourceType=digitalCapture (see
+            after certificate creation are also on-site captures (product policy).
+            The C2PA manifest does NOT claim capture — the backend can't verify it
+            and records the upload as c2pa.opened (see
             src/lib/anchoring/providers/c2pa.ts). Both this and PhotoUploadSection
             (creation flow) post to /api/certificates/images/upload. */}
         <button

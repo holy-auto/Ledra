@@ -42,23 +42,24 @@ const MANIFEST_TITLE = "Certificate Photo";
 // Intake Form.
 const SPEC_VERSION = "2.4";
 
-// IPTC DigitalSourceType: the depicted content is a real-life scene captured
-// digitally. `c2pa.created` requires a digitalSourceType or it is rejected as
-// `assertion.action.malformed` under a C2PA 2.x (claim v2) manifest.
-const DIGITAL_SOURCE_TYPE_CAPTURE = "http://cv.iptc.org/newscodes/digitalsourcetype/digitalCapture";
-
 /**
  * c2pa.actions に封入する行為台帳（要約と実アサーションで共有する唯一の定義）。
  * その実来歴を正直に宣言する。
  *
- * 先頭は `c2pa.created`（+digitalSourceType）。C2PA 2.x では `c2pa.opened`/`placed`/
- * `removed` は ingredient 参照が必須だが、Ledra は元写真を ingredient にできない
- * （プライバシーのため署名前に GPS を除去しており、除去前の原本を埋め込むと位置情報が
- * 再露出する）。よって `opened` は使わず、Ledra が生成した rendition を `created` とし、
- * 向き確定・再エンコード・EXIF/GPS 除去を後続の edit 系アクションで記録する。ingredient を
- * 要求しない `orientation`/`converted`/`edited` は検証を通る（実測で確認）。
+ * 先頭は `c2pa.opened`（parentOf ingredient = アップロードされた元画像）。Ledra は Backend
+ * 実装クラスで、撮影するクライアントは GP TOE の外にある。サーバーは受け取ったファイルが
+ * 撮影されたものかを保証できないので、`c2pa.created`+`digitalCapture` は主張しない
+ * （C2PA Conformance の GPSA 審査 2026-09-28 で O.4 非適合とされた点）。
+ *
+ * ingredient は JSON 定義だけで追加し、元画像のバイト列は渡さない。渡すと c2pa-rs が
+ * 元画像からサムネイルを作り、元画像に C2PA マニフェストがあればそれも取り込むため、
+ * GPS を含む来歴が再露出しうる。定義だけの ingredient でも `c2pa.opened` の参照要件は
+ * 満たされ、検証では `ingredient.unknownProvenance`（informational）になる＝
+ * 「来歴不明のファイルを開いた」という事実そのもの（実署名→検証で確認）。
+ * 向き確定・再エンコード・EXIF/GPS 除去は後続の edit 系アクションで記録する。
  */
-const CREATED_ACTION = { action: "c2pa.created", digitalSourceType: DIGITAL_SOURCE_TYPE_CAPTURE };
+const PARENT_INGREDIENT_LABEL = "uploaded-photo";
+const OPENED_ACTION = { action: "c2pa.opened", parameters: { ingredientIds: [PARENT_INGREDIENT_LABEL] } };
 const ORIENTATION_ACTION = { action: "c2pa.orientation", softwareAgent: "sharp" };
 const CONVERTED_ACTION = { action: "c2pa.converted", softwareAgent: "sharp" };
 // EXIF/GPS metadata removed for privacy before signing.
@@ -66,9 +67,8 @@ const EDITED_REMOVE_METADATA_ACTION = { action: "c2pa.edited", parameters: { nam
 
 type ManifestAction = {
   action: string;
-  digitalSourceType?: string;
   softwareAgent?: string;
-  parameters?: { name?: string };
+  parameters?: { name?: string; ingredientIds?: string[] };
 };
 
 /**
@@ -88,12 +88,12 @@ export interface TransformOutcome {
 const FULL_TRANSFORM: TransformOutcome = { reencoded: true, orientationApplied: true, metadataRemoved: true };
 
 /**
- * 実際に効果のあった行為だけを台帳にする。`c2pa.created`（camera-only 入力なので常時）に加え、
+ * 実際に効果のあった行為だけを台帳にする。`c2pa.opened`（常時）に加え、
  * orientation/converted/edited は各 outcome が true のときだけ載せる。fallback（reencoded=false）
- * では `c2pa.created` のみ。順序は created → orientation → converted → edited。
+ * では `c2pa.opened` のみ。順序は opened → orientation → converted → edited。
  */
 function buildActions(o: TransformOutcome): ManifestAction[] {
-  const actions: ManifestAction[] = [CREATED_ACTION];
+  const actions: ManifestAction[] = [OPENED_ACTION];
   if (o.orientationApplied) actions.push(ORIENTATION_ACTION);
   if (o.reencoded) actions.push(CONVERTED_ACTION);
   if (o.metadataRemoved) actions.push(EDITED_REMOVE_METADATA_ACTION);
@@ -203,7 +203,7 @@ export interface CaptureBinding {
  * imageExif). Only effective actions are asserted, so the manifest never
  * certifies a no-op (e.g. `exif_gps_metadata_removed` when there was no
  * metadata, or `c2pa.orientation` when there was no orientation to normalize).
- * On the fallback where sharp failed (reencoded=false) only `c2pa.created` is
+ * On the fallback where sharp failed (reencoded=false) only `c2pa.opened` is
  * asserted and allActionsIncluded=false.
  */
 export async function signC2pa(
@@ -236,15 +236,26 @@ export async function signC2pa(
       title: MANIFEST_TITLE,
     });
 
+    // The uploaded file is the parent ingredient. Declared from JSON only — the
+    // original bytes are NOT passed, so no ingredient thumbnail or upstream
+    // manifest (which may carry GPS) is copied in. See OPENED_ACTION.
+    await builder.addIngredient(
+      JSON.stringify({
+        title: "uploaded photo",
+        format: mime,
+        relationship: "parentOf",
+        label: PARENT_INGREDIENT_LABEL,
+      }),
+    );
+
     // Record the real provenance, asserting ONLY the actions that actually had an
-    // effect on this buffer (from `outcome`): c2pa.created (camera-only input),
+    // effect on this buffer (from `outcome`): c2pa.opened (the upload, always),
     // then c2pa.converted (re-encode), c2pa.orientation (only if an EXIF
     // orientation was baked in), and c2pa.edited:exif_gps_metadata_removed (only
     // if the source carried EXIF/GPS that was removed). A no-op is never asserted,
     // so the manifest never certifies e.g. "GPS metadata removed" for an image
-    // that had none. On the fallback where sharp failed, only c2pa.created is
-    // asserted and allActionsIncluded=false. `c2pa.opened` cannot be used here
-    // (claim v2 requires an ingredient Ledra can't embed — see CREATED_ACTION).
+    // that had none. On the fallback where sharp failed, only c2pa.opened is
+    // asserted and allActionsIncluded=false.
     // The C2PA Conformance Program (Additional Conformance Requirements v0.2)
     // requires actions-map-v2 to carry allActionsIncluded (true|false).
     builder.addAssertion("c2pa.actions", {

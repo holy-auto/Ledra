@@ -4,6 +4,18 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-09-29 C2PA マニフェストの撮影主張を撤回／Backend→Supabase を TLS 1.3 のみに
+
+- 内容: C2PA GPSA 審査（2026-09-28、DOES NOT MEET）の是正（Path A）。署名マニフェストの先頭アクションを
+  `c2pa.created`+`digitalCapture` から `c2pa.opened`（アップロード原本を `parentOf` ingredient として参照）に変更。
+  ingredient は定義だけで追加し、原本のバイト列・サムネイル・上流マニフェストは持ち込まない。
+- サーバー側の Supabase クライアント（admin / server / mobile-server / readReplica）を TLS 1.3 未満拒否の
+  fetch（`src/lib/net/tls13Fetch.ts`）に切り替え。
+- GPSA 本文・運用文書・構成図（`.mmd`/`.png`）を TOE 境界と TLS の実装に合わせて改訂。
+- 検証: 実署名→検証テスト（jpeg/png/webp＋fallback）で撮影主張が無いこと・ingredient にサムネイルが無いことを確認。
+  TLS は 1.2 のみのサーバーへの実ハンドシェイクで拒否を確認。どちらも変更を戻すとテストが落ちることを確認した。
+  tsc 緑、全 vitest 緑（612 ファイル中 611 passed・1 skipped）。
+
 ## 2026-09-27 完成検査記録の閲覧・編集 UI（作成のみ→再編集可能に）
 
 - 内容: 完成検査（指定整備記録簿）記録を作成後に開き直して編集できるようにした。案件「点検」タブの

@@ -49,7 +49,7 @@ Web アプリケーションの主要脆弱性（OWASP Top 10）を以下の管�
 | OWASP Top 10（2021） | 主な管理策 |
 |---|---|
 | A01 アクセス制御の不備 | API のロール確認（`resolveCallerWithRole` / `requireMinRole`）。GP アップロード経路は service-role クライアントで RLS をバイパスするため、テナント分離はアプリ層で tenant_id にスコープして担保（`createTenantScopedAdmin`）。テナント認証済みクライアントでアクセスする他経路は Supabase Row Level Security が担う |
-| A02 暗号化の失敗 | 通信は TLS 1.3（Vercel/Supabase）。署名鍵は保存時暗号化（環境変数） |
+| A02 暗号化の失敗 | Backend → Supabase は TLS 1.3 未満を拒否（`src/lib/net/tls13Fetch.ts`）。クライアント → API は Vercel の HTTPS。署名鍵は保存時暗号化（環境変数） |
 | A03 インジェクション | CodeQL `security-extended`（SQL/コマンド/XSS 等）、Supabase パラメタライズドクエリ |
 | A04 安全でない設計 | 認証・テナント分離・撮影 nonce を設計に内在化（端末アテステーションは実装済みだが既定 OFF＝Phase 3 まで未稼働） |
 | A05 セキュリティ設定ミス | CodeQL による設定・コード検査、Vercel/Supabase のマネージド設定（Codacy は自動トリガー無効・手動起動のみ） |
