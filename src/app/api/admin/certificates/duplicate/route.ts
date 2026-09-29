@@ -16,7 +16,6 @@ export const dynamic = "force-dynamic";
 export const POST = withCaller(
   async (req, { caller }) => {
     try {
-
       const deny = await enforceBilling(req, { minPlan: "free", action: "create", tenantId: caller.tenantId });
       if (deny) return deny;
 
@@ -65,7 +64,9 @@ export const POST = withCaller(
         service_price: source.service_price ?? null,
         coating_products_json: source.coating_products_json ?? null,
         // 表示設定
-        expiry_type: source.expiry_type ?? null,
+        // 複製元が NULL のことは本番では起きない（NOT NULL）が、緩い環境から来た行を
+        // 複製するときに明示 NULL を送らないよう、未設定ならキーごと落とす（DB の既定 'text' に任せる）。
+        ...(source.expiry_type != null ? { expiry_type: source.expiry_type } : {}),
         expiry_value: source.expiry_value ?? null,
         logo_asset_path: source.logo_asset_path ?? null,
         footer_variant: source.footer_variant ?? "holy",
