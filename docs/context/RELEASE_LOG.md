@@ -21,7 +21,7 @@
   - チャネル修正: `["in_app"]` → `["email", "line"]`。customer 宛の in_app は dispatch が常に
     スキップするため、叩き台のままでは一度も届かなかった。カタログ全体に「customer 宛は in_app
     以外のチャネルを持つ」テストを追加（修正前のカタログで落ちることを確認済み）。
-  - 新テーブル `certificate_rating_requests`（`20260927114500`、RLS は `signature_reviews` と同方針）。
+  - 新テーブル `certificate_rating_requests`（`20260929132849`、RLS は `signature_reviews` と同方針）。
     発行時（`triggerCertificateIssued`）に `send_after = 発行 + 7日` で1行予約（certificate_id UNIQUE）。
   - 送信: `cron/follow-up` から `processRatingRequests()`（`src/lib/cron/ratingRequests.ts`）。
     `sent_at IS NULL` 条件付き更新で取れた行だけ送る（二重送信防止）。対象は
