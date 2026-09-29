@@ -25,6 +25,7 @@ import { maybeAutoDraftContentForCertificate } from "@/lib/ai/automation/photoCo
 import { enqueueCertificateAnchor } from "@/lib/anchoring/certificateAnchorService";
 import { detectMagicByteMime } from "@/lib/media/magicBytes";
 import { fromCloudflareEdge } from "@/lib/edgeOrigin";
+import { watchGateReadyTransition } from "@/lib/certificates/gateReadyNotify";
 
 const MAX_FILE_BYTES = 20 * 1024 * 1024; // 20 MB per file
 
@@ -105,7 +106,7 @@ export async function handleCertificateImageUpload(req: NextRequest, tenantId: s
     const { admin } = createTenantScopedAdmin(tenantId);
     const { data: cert } = await admin
       .from("certificates")
-      .select("id, tenant_id, vehicle_id, reservation_id")
+      .select("id, tenant_id, vehicle_id, reservation_id, status, service_type")
       .eq("public_id", publicId)
       .eq("tenant_id", tenantId)
       .limit(1)
@@ -198,6 +199,16 @@ export async function handleCertificateImageUpload(req: NextRequest, tenantId: s
       : null;
     const nonceOk = nonceResult === "ok";
 
+    // IMP-029 certificate_gate_ready: INSERT 前の Gate 状態を控える（draft かつ未 READY のときだけ
+    // 後で再評価する）。遷移検知は gateReadyNotify.ts。失敗してもアップロードは止めない。
+    const notifyIfGateBecameReady = await watchGateReadyTransition(admin, tenantId, {
+      id: certId,
+      public_id: publicId,
+      status: (cert.status as string | null) ?? null,
+      service_type: (cert.service_type as string | null) ?? null,
+      reservation_id: (cert.reservation_id as string | null) ?? null,
+    });
+
     // ── Upload files ───────────────────────────────────────────────
     const toUpload = files.slice(0, remaining);
     let uploaded = 0;
@@ -268,6 +279,9 @@ export async function handleCertificateImageUpload(req: NextRequest, tenantId: s
         status: 422,
       });
     }
+
+    // 写真追加で Gate が未 READY→READY に変わったら admin へ通知（レスポンス後・AI 処理とは独立）。
+    after(notifyIfGateBecameReady);
 
     // 写真追加後に改ざんスクリーニング → 品質監査を after() で **順次** 実行
     // (fire-and-forget / レスポンス後 / 注釈のみ)。両者とも certificates.meta を read-merge-write

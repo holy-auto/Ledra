@@ -51,6 +51,36 @@
   本番証明書経路のテストを c2pa-rs テスト証明書で実行、`npm audit --audit-level=high --omit=dev` 0件。
   Conformulator はこの環境から到達できず未実施（代表が送信前に実施）。
 
+## 2026-09-27 IMP-029 残り2タイプの配線（certificate_gate_ready / rating_request）
+
+代表判断（DECISION_LOG 2026-09-27）を受けて実装。これで15タイプ全てに発火元がある。
+
+- **certificate_gate_ready（admin 宛・in_app）**: 写真アップロード時に Gate を再評価する。
+  `src/lib/certificates/gateReadyNotify.ts` が INSERT 前後で `evaluateCertificateActivationGate()`
+  （既存）を呼び、**draft かつ「前=未READY・後=READY」のときだけ**通知する（毎回 READY で送ると
+  写真追加のたびに連打になるため）。フック先は写真を書き込む2経路 ——
+  `handleCertificateImageUpload`（cookie `/api/certificates/images/upload` とモバイル
+  `/api/mobile/certificates/images/upload` の共通処理）と `/api/certificates/[id]/media`
+  （Gate が見る `before_after` のときだけ）。再評価と通知はレスポンス後（`after()`）で、
+  失敗してもアップロードは止めない。`/api/admin/jobs/[id]/photos` は GET のみで書き込みが無いので対象外。
+  上限: 同じ証明書への同時アップロードでは2通になりうる（ponytail コメントに記載）。
+- **rating_request（施工店の顧客宛）**:
+  - チャネル修正: `["in_app"]` → `["email", "line"]`。customer 宛の in_app は dispatch が常に
+    スキップするため、叩き台のままでは一度も届かなかった。カタログ全体に「customer 宛は in_app
+    以外のチャネルを持つ」テストを追加（修正前のカタログで落ちることを確認済み）。
+  - 新テーブル `certificate_rating_requests`（`20260929132849`、RLS は `signature_reviews` と同方針）。
+    発行時（`triggerCertificateIssued`）に `send_after = 発行 + 7日` で1行予約（certificate_id UNIQUE）。
+  - 送信: `cron/follow-up` から `processRatingRequests()`（`src/lib/cron/ratingRequests.ts`）。
+    `sent_at IS NULL` 条件付き更新で取れた行だけ送る（二重送信防止）。対象は
+    `follow_up_settings.enabled` のテナントのみ、`followup_opt_out` の顧客・void 証明書は除外、
+    30日より古い未送信は送らない。
+  - 回答: `/rate/[token]`（ログイン不要）→ `/api/rating/[token]`。UI は `/sign` の `ReviewPrompt`
+    を `endpoint` 指定で共用。回答は1回だけ（2回目は 409）。`signature_reviews` とは別物。
+  - 日数 7日は固定（ponytail: 将来テナント設定可能にする余地あり）。
+- 検証: tsc・eslint（変更ファイルに新規警告なし）・vitest 全件（611ファイル通過）・
+  `check:migrations` 再生 511/511・`lint:migrations`・`check:schema`。遷移検知と二重送信防止は
+  ガードを外すとテストが落ちることを確認済み。
+
 ## 2026-09-27 完成検査記録の閲覧・編集 UI（作成のみ→再編集可能に）
 
 - 内容: 完成検査（指定整備記録簿）記録を作成後に開き直して編集できるようにした。案件「点検」タブの
