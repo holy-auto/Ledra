@@ -62,7 +62,6 @@ type PublicStatusResponse = {
     maker?: string | null;
     model?: string | null;
     year?: number | null;
-    plate_display?: string | null;
     customer_name?: string | null;
     customer_email?: string | null;
     notes?: string | null;
@@ -200,7 +199,6 @@ export default async function CertificatePublicPage({ params, searchParams }: Pa
   const maker = pickVehicleField(data.vehicle, info, ["maker", "brand", "manufacturer"]);
   const model = pickVehicleField(data.vehicle, info, ["model", "car_model", "vehicle_model"]);
   const year = pickVehicleField(data.vehicle, info, ["year", "model_year"]);
-  const plate = pickVehicleField(data.vehicle, info, ["plate_display", "plate", "plate_no", "number"]);
   const freeText = asText(data.certificate.content_free_text);
   const images = !isVoidCertificate ? (data.images ?? []).filter((img) => !!img?.url) : [];
   const media = !isVoidCertificate ? (data.media ?? []) : [];
@@ -375,9 +373,7 @@ export default async function CertificatePublicPage({ params, searchParams }: Pa
             <div className="rounded-lg bg-base px-3 py-2 text-secondary">
               年式: <span className="text-primary">{year || "-"}</span>
             </div>
-            <div className="rounded-lg bg-base px-3 py-2 text-secondary">
-              ナンバー: <span className="text-primary">{plate || "-"}</span>
-            </div>
+            {/* ナンバーは PII（VEHICLE_TABLE_PII_COLUMNS）。匿名の公開ページには出さない。publicData 側でも落としている。 */}
             <div className="rounded-lg bg-base px-3 py-2 text-secondary">
               記録作成日: <span className="text-primary">{formatDate(data.certificate.created_at)}</span>
             </div>

@@ -167,7 +167,15 @@ export default async function PassportTransferAdminPage({ params }: PageProps) {
       ) : (
         <section className="rounded-2xl border border-amber-200 bg-amber-50 p-6 text-sm text-amber-900">
           {!vehicle.vin_code_normalized && "車台番号(VIN)が未登録です。先に車両情報を更新してください。"}
-          {vehicle.passport_opt_out && "この車両はパスポート公開がオフです。先にオンに切り替えてください。"}
+          {vehicle.passport_opt_out && (
+            <>
+              この車両はパスポート公開がオフです。
+              <a href={`/admin/vehicles/${vehicle.id}/edit`} className="underline">
+                車両の編集
+              </a>
+              で「車両パスポートに掲載する」をオンにしてください。
+            </>
+          )}
           {pendingExists && "保留中の移転リクエストがあります。下記から処理してください。"}
         </section>
       )}

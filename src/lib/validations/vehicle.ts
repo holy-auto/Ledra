@@ -48,6 +48,9 @@ export const vehicleCreateSchema = z.object({
 
 export const vehicleUpdateSchema = vehicleCreateSchema.partial().extend({
   id: z.string().uuid(),
+  // 車両パスポート（VIN 単位の公開履歴）への掲載を止める。既定は掲載（false）。
+  // 施工店が車両ごとに切り替える（DECISION_LOG 2026-09-27）。
+  passport_opt_out: z.boolean().optional(),
 });
 
 export type VehicleCreateInput = z.infer<typeof vehicleCreateSchema>;
