@@ -43,17 +43,21 @@
 
 Settings → Environment Variables（Production）に次を追加して、再デプロイする。
 
-| 名前               | 値                | 意味                                                                |
-| ------------------ | ----------------- | ------------------------------------------------------------------- |
-| `CF_ORIGIN_SECRET` | §2-4 と同じ文字列 | 写真アップロードを Cloudflare 経由（TLS 1.3）だけに限る             |
-| `TRUST_CF_HEADERS` | `1`               | レート制限が利用者の本当の IP（`cf-connecting-ip`）を使うようにする |
-| `NODE_OPTIONS`     | `--tls-min-v1.3`  | Backend から Supabase など外部への通信も TLS 1.3 に限る             |
+| 名前               | 値                | 意味                                                                                                               |
+| ------------------ | ----------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `CF_ORIGIN_SECRET` | §2-4 と同じ文字列 | 写真アップロードを Cloudflare 経由（TLS 1.3）だけに限る                                                            |
+| `TRUST_CF_HEADERS` | `1`               | レート制限が利用者の本当の IP（`cf-connecting-ip`）を使うようにする（`CF_ORIGIN_SECRET` が一致するリクエストだけ） |
+| `NODE_OPTIONS`     | `--tls-min-v1.3`  | Backend から Supabase など外部への通信も TLS 1.3 に限る                                                            |
 
 - **注意**（推定・未検証）: `NODE_OPTIONS` を入れると、TLS 1.3 に対応していない外部サービスへの接続が失敗する。
   主要サービス（Supabase、Stripe、Resend、LINE 等）は対応しているはずだが、設定後に決済・通知・メール送信が
   動くかを必ず確認する。失敗したら `NODE_OPTIONS` だけ外して報告する。
+- **`TRUST_CF_HEADERS` は `CF_ORIGIN_SECRET` とセット**で入れる。秘密ヘッダが一致しないリクエスト
+  （`*.vercel.app` への直アクセスなど）の `cf-connecting-ip` はコード側で無視するので、偽の IP でレート制限を
+  すり抜けることはできない。`CF_ORIGIN_SECRET` を入れずに `TRUST_CF_HEADERS=1` だけ入れても何も変わらない。
 - **推奨**: Settings → Deployment Protection で、`*.vercel.app` の URL を保護する設定
-  （Standard Protection など）を有効にする。`*.vercel.app` への直アクセスは Cloudflare を通らないため、残すと抜け道になる。
+  （Standard Protection など）を有効にする。写真アップロードとレート制限は上の照合で守られるが、
+  それ以外の画面は `*.vercel.app` から TLS 1.2 で開けてしまうため。
 
 ## 4. コード側（準備済み・この PR）
 
@@ -62,7 +66,10 @@ Settings → Environment Variables（Production）に次を追加して、再デ
     一致するときだけ受け付ける。一致しなければ 403。
   - `*.vercel.app` への直アクセス（TLS 1.2 で通れる）で C2PA の対象経路に入ることを防ぐ。
   - 未設定のあいだは何もしない。**DNS 切り替え前に本番へ出しても影響はない。**
-- テスト: `src/lib/certificateImages/__tests__/viaTls13Edge.test.ts`
+- `src/lib/rateLimit.ts` の `getClientIp`: `TRUST_CF_HEADERS=1` でも、秘密ヘッダが一致するときだけ
+  `cf-connecting-ip` を使う。照合は `src/lib/edgeOrigin.ts` の `fromCloudflareEdge`（両方で共有）。
+- テスト: `src/lib/__tests__/edgeOrigin.test.ts`、`src/lib/__tests__/rateLimit.test.ts`、
+  `src/lib/certificateImages/__tests__/viaTls13Edge.test.ts`
 
 ## 5. 確認（代表の PC で）
 

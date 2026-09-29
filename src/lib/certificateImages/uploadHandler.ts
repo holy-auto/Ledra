@@ -7,7 +7,6 @@
  * 後処理 (after) を共有する。真正性ロジックの drift を防ぐ単一の入口。
  */
 
-import { timingSafeEqual } from "node:crypto";
 import { after, type NextRequest } from "next/server";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { normalizePlanTier, PHOTO_LIMITS } from "@/lib/billing/planFeatures";
@@ -25,6 +24,7 @@ import { maybeAutoWorkStampForCertificate } from "@/lib/ai/automation/workStampA
 import { maybeAutoDraftContentForCertificate } from "@/lib/ai/automation/photoContentDraftAuto";
 import { enqueueCertificateAnchor } from "@/lib/anchoring/certificateAnchorService";
 import { detectMagicByteMime } from "@/lib/media/magicBytes";
+import { fromCloudflareEdge } from "@/lib/edgeOrigin";
 
 const MAX_FILE_BYTES = 20 * 1024 * 1024; // 20 MB per file
 
@@ -45,10 +45,7 @@ function validateMagicBytes(buffer: Buffer): string | null {
  * `CF_ORIGIN_SECRET` 未設定＝Cloudflare 前段なしの構成では照合しない。
  */
 export function viaTls13Edge(req: Request, secret = process.env.CF_ORIGIN_SECRET): boolean {
-  if (!secret) return true;
-  const got = Buffer.from(req.headers.get("x-ledra-origin-secret") ?? "");
-  const want = Buffer.from(secret);
-  return got.length === want.length && timingSafeEqual(got, want);
+  return !secret || fromCloudflareEdge(req, secret);
 }
 
 export async function handleCertificateImageUpload(req: NextRequest, tenantId: string): Promise<Response> {
