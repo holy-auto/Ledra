@@ -12,6 +12,8 @@
 - サーバー側の Supabase クライアント全8箇所（admin / server / mobile-server / readReplica / public / `proxy.ts` ×3）を
   TLS 1.3 未満拒否の fetch（`src/lib/net/tls13Fetch.ts`）に切り替え。fetch 本体はグローバルのまま、dispatcher だけを渡す。
 - GPSA 本文・運用文書・構成図（`.mmd`/`.png`）を TOE 境界と TLS の実装に合わせて改訂。
+- `undici` を直接依存に追加し、`^7.30.0` に上げた（overrides も同じ）。`tls13Fetch.ts` が import しているのに
+  直接依存ではなく cheerio 経由で入っていたため。7.29.0 以下には high の脆弱性勧告が出ており、CI の `npm audit` で落ちていた。
 - 公開文言の訂正: PoC ページ（`/poc`）とピッチ資料（`/pitch/tbl`）の「撮影デバイス・日時・編集履歴を記録」は、
   マニフェストに撮影デバイスを記録していないので誤り。「紐づく証明書・車両、登録日時、Ledra が行った加工の履歴」に直した。
   機能一覧（`src/lib/marketing/features.ts`）と資料 PDF（`resourcePdf.tsx`）の「撮影時に署名」も、署名はサーバーでの登録時に
