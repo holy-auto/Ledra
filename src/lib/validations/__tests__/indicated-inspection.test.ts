@@ -111,6 +111,24 @@ describe("indicated-inspection measurement catalog", () => {
     const r = measurementsPutSchema.safeParse({ measurements: [{ field_code: "bogus", num_value: 1 }] });
     expect(r.success).toBe(false);
   });
+
+  it("measurementsPutSchema: 外部取込の入力（source='imported'・device・measured_at）を受理する", () => {
+    // Phase 2 取込 API は本スキーマで検証し、書き込み時に source='imported' を固定する。
+    const r = measurementsPutSchema.safeParse({
+      measurements: [
+        {
+          field_code: "brake.total",
+          num_value: 8600,
+          unit: "N",
+          source: "imported",
+          device: "Banzai ブレーキテスタ BT-100",
+          measured_at: "2026-10-01T00:00:00+09:00",
+        },
+        { field_code: "co", num_value: 0.4, source: "imported" },
+      ],
+    });
+    expect(r.success).toBe(true);
+  });
 });
 
 describe("indicated-inspection visual / match catalog [Phase 1d]", () => {
