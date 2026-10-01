@@ -21,6 +21,7 @@ import {
   type DocumentRow,
 } from "@/types/document";
 import { describeIntegritySeal } from "@/lib/documents/integritySealView";
+import type { ConsolidatedSource } from "@/lib/documents/consolidatedSources";
 import DocumentForm from "../DocumentForm";
 
 type BankInfo = {
@@ -50,22 +51,6 @@ type ShareLogEntry = {
   status: string | null;
   error_message: string | null;
 };
-
-/** 合算請求書の元帳票（内訳表示用）。page.tsx が meta_json.source_document_ids から引く。 */
-export type ConsolidatedSource = Pick<
-  DocumentRow,
-  | "id"
-  | "doc_type"
-  | "doc_number"
-  | "issued_at"
-  | "subject"
-  | "vehicle_info_json"
-  | "items_json"
-  | "subtotal"
-  | "tax"
-  | "total"
-  | "tax_rate"
->;
 
 const CHANNEL_LABELS: Record<string, string> = { email: "メール", line: "LINE", sms: "SMS" };
 

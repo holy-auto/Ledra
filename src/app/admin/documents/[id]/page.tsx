@@ -2,7 +2,8 @@ import Link from "next/link";
 import { redirect, notFound } from "next/navigation";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import PageHeader from "@/components/ui/PageHeader";
-import DocumentDetailClient, { type ConsolidatedSource } from "./DocumentDetailClient";
+import DocumentDetailClient from "./DocumentDetailClient";
+import { loadConsolidatedSources } from "@/lib/documents/consolidatedSources";
 import { DOC_TYPES, type DocType } from "@/types/document";
 import { createSignedAssetUrl } from "@/lib/signedUrl";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
@@ -71,25 +72,7 @@ export default async function DocumentDetailPage({ params }: { params: Promise<{
     doc.show_seal && tenant?.company_seal_path ? createSignedAssetUrl(tenant.company_seal_path, 3600) : null,
   ]);
 
-  // 合算請求書は明細が「元帳票1件=1行（合計額のみ）」なので、元帳票の明細を内訳として引く。
-  // 一覧の合算作成時に meta_json.source_document_ids へ元帳票IDを保存している。
-  const sourceIds: string[] =
-    doc.doc_type === "consolidated_invoice" && Array.isArray(doc.meta_json?.source_document_ids)
-      ? doc.meta_json.source_document_ids.filter((v: unknown): v is string => typeof v === "string")
-      : [];
-  let consolidatedSources: ConsolidatedSource[] = [];
-  if (sourceIds.length > 0) {
-    const { data: srcDocs } = await supabase
-      .from("documents")
-      .select(
-        "id, doc_type, doc_number, issued_at, subject, vehicle_info_json, items_json, subtotal, tax, total, tax_rate",
-      )
-      .in("id", sourceIds)
-      .eq("tenant_id", mem.tenant_id);
-    // 合算時の並び（＝合算請求書の明細順）に揃える
-    const byId = new Map((srcDocs ?? []).map((d) => [d.id, d]));
-    consolidatedSources = sourceIds.flatMap((sid) => byId.get(sid) ?? []) as ConsolidatedSource[];
-  }
+  const consolidatedSources = await loadConsolidatedSources(supabase, mem.tenant_id, doc);
 
   const docLabel = DOC_TYPES[doc.doc_type as DocType]?.label ?? doc.doc_type;
 

@@ -5,7 +5,8 @@
  */
 import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
-import DocumentDetailClient, { type ConsolidatedSource } from "../DocumentDetailClient";
+import DocumentDetailClient from "../DocumentDetailClient";
+import type { ConsolidatedSource } from "@/lib/documents/consolidatedSources";
 import type { DocumentRow } from "@/types/document";
 
 const doc = {
