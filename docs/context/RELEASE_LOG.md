@@ -4,6 +4,18 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-10-01 外部テスタ測定値の取込 API（G5 Phase 2 サーバ土台）
+
+- 内容: 完成検査の測定値を外部取込する専用エンドポイント `POST …/inspection-records/[id]/measurements/import`
+  を追加。手入力 PUT（置換・`source='manual'`）と対に、取込は `source='imported'` 固定＋**マージ書き込み**
+  （送られた field_code のみ upsert、未送信の既存セルは消さない＝手入力分を保全）。`device`（テスタ名/型番）・
+  `measured_at` を保持。ボディ検証は手入力と同じ `measurementsPutSchema`（カタログ既知コードのみ・重複不可・
+  値種別/単位整合）。
+- 完成検査レコードの前段ガードを `src/lib/inspection/loadCompletionRecord.ts` に切り出し、手入力 PUT と取込で共有。
+- スコープ: **サーバ土台のみ**（代表判断）。UI・連携方式（CSV / テスタ API / OSS 連携）は取込元の出力仕様
+  確定後に追加する。取込元は呼び出し側で正準 field_code 配列へ正規化して本 API に渡す前提。
+- 検証: 取込入力（source='imported'・device・measured_at）の受理テストを追加。tsc・eslint・check:schema 緑。
+
 ## 2026-09-30 帳票メールの送付失敗通知（アプリのベル＋運営 Slack）と、エラー表示の日本語化
 
 - **失敗通知**: `sendDocumentEmail()`（`src/lib/documents/share-email.ts`）が失敗したら、
