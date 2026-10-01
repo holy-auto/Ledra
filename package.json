@@ -95,7 +95,7 @@
     "import-in-the-middle": "^3.5.1",
     "jszip": "^3.10.2",
     "konva": "^9.3.16",
-    "next": "^16.3.5",
+    "next": "^16.3.8",
     "posthog-js": "^1.434.2",
     "qrcode": "^1.5.4",
     "react": "19.3.0",
@@ -118,7 +118,7 @@
     "@contentauth/c2pa-node": "^0.9.7"
   },
   "devDependencies": {
-    "@next/bundle-analyzer": "^16.3.5",
+    "@next/bundle-analyzer": "^16.3.8",
     "@playwright/test": "^1.63.0",
     "@remotion/cli": "^4.0.526",
     "@tailwindcss/postcss": "^4",
@@ -134,7 +134,7 @@
     "@vitest/coverage-v8": "^4.1.11",
     "babel-plugin-react-compiler": "^1.0.0",
     "eslint": "^9",
-    "eslint-config-next": "16.3.5",
+    "eslint-config-next": "16.3.8",
     "husky": "^9.1.7",
     "jsdom": "^29.1.1",
     "lint-staged": "^16.4.0",

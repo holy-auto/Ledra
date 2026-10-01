@@ -264,7 +264,7 @@ export default function DocumentDetailClient({
                   handleStatusChange(ns);
                 }}
               >
-                {statusLabel(ns)}に変更
+                {doc.status === "cancelled" ? "キャンセル取り消し" : `${statusLabel(ns)}に変更`}
               </button>
             ))}
             {conversionTargets.map((target) => (

@@ -4,6 +4,26 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-10-01 帳票の「キャンセル取り消し」ボタン
+
+- 内容: キャンセルした帳票（請求書・見積書など全種別）を、帳票詳細の「キャンセル取り消し」で「送付済」に戻せるようにした。
+  戻り先は常に送付済。期限切れの請求書は翌日の cron/billing で期限超過に、受理済だった見積書はもう一度変更して戻す。
+- 本番データ: 誤キャンセルされた請求書1件を、ボタン実装前に DB で送付済へ戻した（DECISION_LOG 同日）。
+- 検証: 全 doc_type で `cancelled` から `sent` に遷移できるテストを追加。vitest（帳票関連 26 ファイル）・tsc・eslint 緑。
+
+## 2026-10-01 next を 16.3.8 に上げた（critical の脆弱性修正）と、本番デプロイのやり直し
+
+- 内容: `next` 16.3.5 → 16.3.8。16.3.5 は GHSA-vcvr-r3jv-pc5j（`next/og` の ImageResponse での RCE、critical）の
+  対象で、このアプリは `next/og` を使っている（`src/app/opengraph-image.tsx` / `src/lib/marketing/og.tsx`）。
+  同時に brace-expansion（high）・dompurify（low）・axios を lockfile で更新（#1184、`npm audit fix`）。
+- 続く PR で `package.json` の下限も `next` / `@next/bundle-analyzer` を `^16.3.8`、`eslint-config-next` を `16.3.8` に
+  揃えた（lockfile だけ上がった状態だと、作り直しで脆弱な版に戻る余地があったため）。
+- 本番: #1184 のマージコミット `5f54e29` の Vercel 本番デプロイが 13:14 UTC に**失敗**し
+  （`dpl_6mkLjCzPXseYfgbNDgHduyoFZJX4`）、代表の再デプロイで 13:36 UTC に成功。失敗の間、本番は修正前の版だったと
+  推定（直前に成功していたのは `6376b59`、next 16.3.5）。失敗の原因は未確認（OPEN_QUESTIONS）。
+- 検証: `npm audit` 0件、tsc 通過、vitest 5998 passed（#1184）。本番ビルドの成功は CI と Vercel で確認
+  （手元はフォント取得ができずビルドが完了しない）。
+
 ## 2026-10-01 外部テスタ測定値の取込 API（G5 Phase 2 サーバ土台）
 
 - 内容: 完成検査の測定値を外部取込する専用エンドポイント `POST …/inspection-records/[id]/measurements/import`
