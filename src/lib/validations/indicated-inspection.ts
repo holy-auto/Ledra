@@ -325,7 +325,8 @@ export const measurementInputSchema = z
     judgment: z.enum(["pass", "fail", "na"]).nullable().optional(),
     source: z.enum(["manual", "imported"]).default("manual"),
     device: z.string().max(120).nullable().optional(),
-    measured_at: z.string().datetime({ offset: true }).nullable().optional(),
+    // 外部テスタはオフセット無しのローカル時刻を出すことがあるため、Z/オフセット/ローカルいずれも許可する。
+    measured_at: z.string().datetime({ offset: true, local: true }).nullable().optional(),
   })
   .superRefine((v, ctx) => {
     const def = getMeasurementField(v.field_code);
