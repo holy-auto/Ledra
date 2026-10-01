@@ -1064,6 +1064,12 @@
 > （DECISION_LOG 2026-09-25）。残り2タイプ（`certificate_gate_ready` / `rating_request`）は
 > 該当する業務イベントの実処理がコードに無いため未配線のまま OPEN_QUESTIONS に起票済み。
 > 詳細は RELEASE_LOG 2026-09-25。
+>
+> 2026-09-29 追記: **残り2タイプも配線し、15タイプすべてに発火元がある状態になった（PR #1172 マージ）。**
+> `certificate_gate_ready` は写真アップロード時の Gate 再評価で未READY→READY の遷移だけ admin に通知、
+> `rating_request` は証明書発行の7日後に施工店の顧客へ評価依頼（新テーブル `certificate_rating_requests`、
+> `20260929132849`）。送信条件の仮置き（`follow_up_settings.enabled` のテナントのみ・7日固定）は
+> OPEN_QUESTIONS で代表確認待ち。詳細は RELEASE_LOG 2026-09-27、DECISION_LOG 2026-09-27。
 
 > 2026-08-31 追記: **証明書の無効化に認可漏れがあり、閲覧専用(viewer)でも証明書を恒久的に
 > 無効化できる状態だった（修正済み、IMP-013）。** 無効化の経路は**5本**あり、
