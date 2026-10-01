@@ -4,6 +4,10 @@
 
 import { escapeHtml } from "@/lib/sanitize";
 import { sendEmail } from "@/lib/email/sendEmail";
+import { notifySlack } from "@/lib/slack";
+import { maskEmail } from "@/lib/logger";
+import { dispatchNotification } from "@/lib/notifications/dispatch";
+import { describeEmailError } from "./emailError";
 
 function wrap(title: string, body: string) {
   return `
@@ -55,8 +59,46 @@ async function send(to: string, subject: string, html: string): Promise<SendDocu
   }
 }
 
-/** 帳票共有メール送信 */
+/**
+ * 送付失敗を、送った店の管理者（アプリのベル）と運営（Slack）に知らせる。
+ * メール自体が壊れているときに気づけるよう、メール以外の経路だけを使う。
+ * 2026-09-13 に本番で送付が失敗し続けたのに、画面の送付履歴を開くまで誰も気づけなかった。
+ *
+ * ponytail: 重複抑止なし。同じ帳票を何度も再送すると失敗の数だけ通知が出る。
+ * 自動送付が大量に失敗する運用になったら、テナント×時間窓でまとめる。
+ */
+async function notifySendFailure(
+  params: { tenantId: string; documentId?: string; to: string; docType: string; docNumber: string },
+  error: string,
+): Promise<void> {
+  const title = `${params.docType} ${params.docNumber} のメール送付に失敗しました`;
+  // Slack はメンション注入（<!channel> 等）を & < > のエスケープで無効化する（dispatch.ts と同じ）。
+  const esc = (v: string) => v.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  await Promise.all([
+    dispatchNotification({
+      tenantId: params.tenantId,
+      type: "document_email_failed",
+      title,
+      body: `宛先: ${params.to}\n${describeEmailError(error)}`,
+      linkPath: params.documentId ? `/admin/documents/${params.documentId}` : null,
+    }),
+    notifySlack(process.env.SLACK_OPS_ALERT_WEBHOOK_URL, {
+      text: `[帳票メール失敗] ${esc(title)}`,
+      color: "#dc2626",
+      fields: [
+        { title: "テナント", value: params.tenantId, short: true },
+        { title: "宛先", value: maskEmail(params.to), short: true },
+        { title: "理由", value: esc(error.slice(0, 500)) },
+      ],
+    }),
+  ]);
+}
+
+/** 帳票共有メール送信。失敗時は notifySendFailure で店の管理者と運営に通知する。 */
 export async function sendDocumentEmail(params: {
+  tenantId: string;
+  /** 通知からの遷移先（帳票詳細）。無ければリンク無しで通知する。 */
+  documentId?: string;
   to: string;
   docType: string;
   docNumber: string;
@@ -154,5 +196,7 @@ export async function sendDocumentEmail(params: {
     `,
   );
 
-  return send(params.to, subject, html);
+  const result = await send(params.to, subject, html);
+  if (!result.ok) await notifySendFailure(params, result.error ?? "送信に失敗しました");
+  return result;
 }
