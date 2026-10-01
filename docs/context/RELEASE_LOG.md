@@ -4,6 +4,16 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-10-01 依存の脆弱性修正（next CRITICAL ほか）— CI audit ゲート復旧
+
+- 内容: `npm audit fix`（--force なし＝semver 互換）で本番依存の脆弱性を解消。
+  `next` 16.3.5→16.3.8（**CRITICAL** next/og の RCE, GHSA-vcvr-r3jv-pc5j）、
+  `dompurify` 3.4.13→3.4.16（high DOM XSS）、`brace-expansion` 5.0.9→5.0.12（high DoS）。
+- 背景: 新規公示の脆弱性で CI の `npm audit --audit-level=high --omit=dev` が落ち、main の
+  「Lint, Type Check & Unit Tests」が全 PR で赤になっていた（Phase 2 の差分とは無関係）。
+- 変更は `package-lock.json` のみ（`package.json` の range は不変、いずれも patch 昇格）。
+  `npm audit --omit=dev` は 0 件、tsc・vitest 緑を確認。
+
 ## 2026-10-01 外部テスタ測定値の取込 API（G5 Phase 2 サーバ土台）
 
 - 内容: 完成検査の測定値を外部取込する専用エンドポイント `POST …/inspection-records/[id]/measurements/import`
