@@ -16,6 +16,49 @@
   確定後に追加する。取込元は呼び出し側で正準 field_code 配列へ正規化して本 API に渡す前提。
 - 検証: 取込入力（source='imported'・device・measured_at）の受理テストを追加。tsc・eslint・check:schema 緑。
 
+## 2026-09-30 帳票メールの送付失敗通知（アプリのベル＋運営 Slack）と、エラー表示の日本語化
+
+- **失敗通知**: `sendDocumentEmail()`（`src/lib/documents/share-email.ts`）が失敗したら、
+  送った店の owner/admin にアプリ内通知（`document_email_failed`、ベル）を出し、運営の Slack
+  （`SLACK_OPS_ALERT_WEBHOOK_URL`、未設定ならスキップ）にも送る。メールが壊れていても届くよう、メールは使わない。
+  手動送付（`/api/admin/documents/share`）と AI 自動送付（`documentAuto.ts`）の両方に効く。
+  モバイルの通知一覧にもアイコンを追加。
+- **表示の日本語化**: 帳票詳細の送付履歴で、メールの失敗理由を日本語で出す（`src/lib/documents/emailError.ts`）。
+  例: ドメイン未認証 →「送信元ドメインがメール配信サービスで未認証のため送れませんでした（運営側の設定が必要です）」。
+  生の理由は DB に残し、PC ではマウスを重ねると見える。
+- テスト: 失敗時に通知し成功時に通知しないこと、Slack で宛先をマスクすること、理由の言い換えを追加。
+- 補足: メールが届かない原因（Resend で ledra.co.jp が未認証）はこの変更では直らない。代表の Resend 設定待ち（OPEN_QUESTIONS）。
+
+## 2026-09-27 IMP-029 残り2タイプの配線（certificate_gate_ready / rating_request）
+
+代表判断（DECISION_LOG 2026-09-27）を受けて実装。これで15タイプ全てに発火元がある。
+
+- **certificate_gate_ready（admin 宛・in_app）**: 写真アップロード時に Gate を再評価する。
+  `src/lib/certificates/gateReadyNotify.ts` が INSERT 前後で `evaluateCertificateActivationGate()`
+  （既存）を呼び、**draft かつ「前=未READY・後=READY」のときだけ**通知する（毎回 READY で送ると
+  写真追加のたびに連打になるため）。フック先は写真を書き込む2経路 ——
+  `handleCertificateImageUpload`（cookie `/api/certificates/images/upload` とモバイル
+  `/api/mobile/certificates/images/upload` の共通処理）と `/api/certificates/[id]/media`
+  （Gate が見る `before_after` のときだけ）。再評価と通知はレスポンス後（`after()`）で、
+  失敗してもアップロードは止めない。`/api/admin/jobs/[id]/photos` は GET のみで書き込みが無いので対象外。
+  上限: 同じ証明書への同時アップロードでは2通になりうる（ponytail コメントに記載）。
+- **rating_request（施工店の顧客宛）**:
+  - チャネル修正: `["in_app"]` → `["email", "line"]`。customer 宛の in_app は dispatch が常に
+    スキップするため、叩き台のままでは一度も届かなかった。カタログ全体に「customer 宛は in_app
+    以外のチャネルを持つ」テストを追加（修正前のカタログで落ちることを確認済み）。
+  - 新テーブル `certificate_rating_requests`（`20260929132849`、RLS は `signature_reviews` と同方針）。
+    発行時（`triggerCertificateIssued`）に `send_after = 発行 + 7日` で1行予約（certificate_id UNIQUE）。
+  - 送信: `cron/follow-up` から `processRatingRequests()`（`src/lib/cron/ratingRequests.ts`）。
+    `sent_at IS NULL` 条件付き更新で取れた行だけ送る（二重送信防止）。対象は
+    `follow_up_settings.enabled` のテナントのみ、`followup_opt_out` の顧客・void 証明書は除外、
+    30日より古い未送信は送らない。
+  - 回答: `/rate/[token]`（ログイン不要）→ `/api/rating/[token]`。UI は `/sign` の `ReviewPrompt`
+    を `endpoint` 指定で共用。回答は1回だけ（2回目は 409）。`signature_reviews` とは別物。
+  - 日数 7日は固定（ponytail: 将来テナント設定可能にする余地あり）。
+- 検証: tsc・eslint（変更ファイルに新規警告なし）・vitest 全件（611ファイル通過）・
+  `check:migrations` 再生 511/511・`lint:migrations`・`check:schema`。遷移検知と二重送信防止は
+  ガードを外すとテストが落ちることを確認済み。
+
 ## 2026-09-27 完成検査記録の閲覧・編集 UI（作成のみ→再編集可能に）
 
 - 内容: 完成検査（指定整備記録簿）記録を作成後に開き直して編集できるようにした。案件「点検」タブの
@@ -27,6 +70,97 @@
   既存測定値を消すため）。読み込み失敗時は警告を出して保存を止める。
 - 検証: tsc・eslint・関連 vitest（19 pass）緑。
 
+## 2026-09-27 保険会社開示のオーナー同意・パスポート掲載の切替・移転時の旧オーナー通知
+
+DECISION_LOG 2026-09-27「プライバシー整合5件」に基づく。
+
+- **開示の条件（同日に変更）**: 代表判断で、施工店の承認を条件から外した。開示の条件は「保険会社の申請 AND オーナー本人の同意」だけ（`20260927142855`）。呼び出し元の無かった施工店の承認 API は削除した。振る舞いの検査も書き換え、施工店の承認が無くても開示されること、申請が無ければ開示されないことを確かめるようにした。新しいマイグレーションを外すと検査が落ちることも確認した。
+- **オーナー同意**: マイページに「保険会社からの開示申請」パネルを追加した。同意できるのは customer_id が結び付いたセッションだけ。
+  保険会社が申請するとオーナーにメールが届く。`is_pii_disclosed()` はオーナーの同意も必須にした
+  （`20260927120342`）。保険会社の画面には「オーナー本人」の状態を追加した。
+- **パスポート掲載**: 車両の編集画面に「車両パスポートに掲載する」（既定オン）を追加した。
+- **規約**: 契約条件は /terms（11条）だけと営業キットに明記した。27条版は不採用と表示した。
+- **文言**: 保険会社画面の開示説明と、プライバシーポリシー「2. 利用目的」を実態に合わせた（最終更新 2026年9月27日。モバイル版も同期）。
+- **所有権移転**: 受諾時に旧オーナーへメールを送る。その VIN の受諾時点までの証明書は、旧オーナーのマイページ
+  （一覧・件数・履歴・データ書き出し・閲覧記録）に出さない。同じメールへの移転では外さない。
+- **/code-review で見つかった3件を修正**:
+  - 移転で外すのは旧オーナー名義の証明書だけに限った。移転を始めた車両の顧客と、旧オーナーのメールを持つ顧客が対象で、新オーナーのメールを持つ顧客は除く。受諾前に新オーナーが自分名義で持っていた証明書まで消えていた。
+  - 保険会社が申請し直したら、オーナーの同意を取り直すようにした。理由を差し替えたまま、過去の同意で開示が続いていた。
+  - オーナーへのメールは、新しい申請のときと同意を取り直すときだけ送るようにした。
+- **検証**: マイグレーションの再生テストに振る舞いの検査 `pii_disclosure_owner_consent.sql` を追加した
+  （同意なしで偽、3つ揃えば真、施工店の承認なしで偽、取消済みで偽）。条件を1行消すと落ちることも確認した。
+  再生は 512/512 で通り、振る舞いの検査も8件すべて通った。tsc・check:schema・lint:migrations も通った。関連テストは47ファイル・508件がすべて通り、未処理のエラーは0件。
+  移転の受諾で旧オーナーの証明書を外すこととメールを送ることのテスト、同じメールへの移転ではどちらもしないことのテストを追加した。同じメールへの移転を判定する条件を外すとテストが落ちることも確認した。
+
+## 2026-09-27 anon の certificates 直読みを閉じる／匿名の公開証明書からナンバーを外す
+
+DECISION_LOG 2026-09-27 の決定に基づく。
+
+- **anon の直読みを閉じる**: `20260927113105_revoke_anon_certificates_read.sql` で本番にだけあった
+  anon 向け SELECT ポリシー2本を DROP し、`certificates` と `certificates_public` から anon の権限を
+  REVOKE する。これまでは公開されている anon キーだけで、有効な証明書全件の顧客名などを REST で列挙できた。
+- **公開 PDF**（`/api/certificate/pdf`）: anon キーで REST を叩く方式をやめ、サービスロールで
+  `certificates_public` を読む方式にした。active 以外を 404 にするのは従来どおりルート側。
+- **ナンバーを外す**: 匿名の公開証明書ページ `/c/[public_id]` の「ナンバー」欄を削除した。
+  公開 PDF にもナンバーを出さない。`publicData.ts` は `vehicles.plate_display` を取得しない。
+  `vehicle_info_json` からは `omitPlate()` でナンバーのキーを落とす（同じ車両の他の証明書の分も含む）。
+  施工店の管理画面・admin 側の PDF は従来どおり。
+- **検証**: `omitPlate` の単体テストを追加。証明書・プライバシー・課金まわりのテストが通ること、
+  `tsc`、`check:schema`、`lint:migrations` が通ることを確認した。マイグレーションを空の DB に
+  1本ずつ流し直す再生テストも 510/510 で通った。
+
+## 2026-09-27 列属性のドリフトを全表で洗い出し、本番の「使えない既定値」2件を直した（#1174・`54a0f875` でマージ・**本番未適用**）
+
+**全表調査**: 本番と再生 DB の `information_schema.columns` を**同じクエリで**引き、列ごとの
+digest で突き合わせた。**280 表のうち 268 表は完全一致**で、差は 12 表・310 セル中 25 セル・
+属性単位で 39 件。`20260929150200` / `20260929150300` で 19 件を解消し、残り 20 件は
+(a) enum/text の7列（IMP-015 の判断待ち）と (b) 本番へ適用すれば消える2件だけ。
+
+**本番の既定値が本番自身の CHECK に弾かれていた（2件）**
+
+| 列 | 本番の既定 | CHECK が許す値 | 直した先 |
+|---|---|---|---|
+| `job_orders.status` | `'open'` | pending / quoting / … / cancelled | `'pending'` |
+| `insurer_users.role` | `'member'` | admin / viewer / auditor | `'viewer'`（最も弱い） |
+
+どちらも**列を省いて insert すると本番で必ず 23514**。アプリの経路は明示で渡しているので
+実害は出ていなかったが、リポジトリ内には既に `role` を省く書き手があった
+（`insurer_suspension_gate.sql`）。本番の (既定値, 単一列 CHECK) の組 **183 件を本番自身に
+評価させ**（一時テーブル + `INSERT DEFAULT VALUES`）、違反2件・**評価不能0件**・OK 181 件を確認。
+
+**新しい環境が本番の実データを拒否していた（2件）**: `audit_logs.tenant_id` は本番 349 行のうち
+**337 行が NULL** なのに再生側が NOT NULL で、`INSERT INTO audit_logs (action)` は
+プレビュー DB で 23502 になっていた（実測）。`insurers.plan_tier` も同型。両方 DROP NOT NULL。
+
+**再発防止**: `scripts/replay/checks/defaults_satisfy_own_check.sql` を追加。定義文を正規表現で
+読まず **Postgres 自身を判定器にする**（同じ型・既定・CHECK の一時テーブルに `INSERT DEFAULT VALUES`）。
+**評価不能が1件でもあれば落とす** —— 「違反0」を「全部見た」と読み替えないため。
+
+**既存検査6本の修正**: 本番に合わせて NOT NULL を足したら、再生が緩かったから通っていた検査が
+落ちた（MISTAKE_LEDGER `M-20260927-checks-were-green-on-rows-production-would-reject`）。
+fixture が必要な列を明示で渡すよう直した。**6本目は後から増えた** —— #1170 が並行して
+`pii_disclosure_owner_consent.sql` を main に入れており、それも `certificates.customer_name` を
+省いていた（main では緑、本 PR を取り込むと 23502）。
+
+**`/code-review` の指摘を反映**: (a) 検出器が `cardinality(conkey) = 1` で複数列 CHECK を母集団から
+落としており、**「評価不能0」が嘘だった**（台帳 `M-20260927-said-evaluated-all-while-filtering-the-population`）。
+全 CHECK 351 件を母集団にし、評価 187 件・対象外 164 件（理由付き）・評価不能 0 件を毎回印字する形に直した。
+複数列の陰性対照も取った。(b) `nextval` 既定は本物のシーケンスを進めるので対象外に回した。
+(c) `certificates.expiry_type` に明示 NULL を送っていた2箇所（`certificates/create`・`admin/certificates/duplicate`）を
+キーごと落とす形に直した（DB の既定 `'text'` に任せる）。(d) `vehicles.maker` / `model` に明示 NULL を送る
+2経路は**本番で今日すでに 23502 で落ちている**ことを確認し、「不明な maker をどう保存するか」は
+仕様判断なので OPEN_QUESTIONS へ起票（`hearings` はエラーを握り潰すので車両の紐付けが黙って落ちる）。
+
+**版番号の改名（2026-09-29）**: main に `20260929132849` が入ったので、`20260927150900` /
+`20260927151000` を **`20260929150200` / `20260929150300`** へ改名した。`lint:migrations` の
+`migration-version-before-base-head` が赤になる（本番の `supabase db push` が out-of-order で
+止まり、以降のマイグレーションが本番へ届かなくなる）。allowlist へは足していない。
+改名前に `list_branches` を引き、**このプロジェクトのブランチは `main` の1本だけ**で
+このブランチのプレビュー DB が存在しないことを実測した（同時実行上限で作られなかった）。
+適用済みの版を改名した `M-20260922-renamed-a-migration-the-preview-db-had-applied` の形にはならない。
+
+検証: `ci-parallel-checks.sh` 9/9・`check:migrations` 再生 **516/516**・振る舞いの検査 **9 件**・
+陰性対照（壊れた既定値を再生に入れる／複数列 CHECK の矛盾を仕込む）で検出器が落ちることを実測。
 ## 2026-09-26 指定整備記録簿（完成検査）G5 Phase 1d — 目視検査＋車両照合
 
 - 内容: 完成検査フォームに「目視等による検査」（構造①〜③・装置①〜⑳/㉑）と「自動車検査証等の

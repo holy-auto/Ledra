@@ -46,7 +46,7 @@ const CASE_TEMPLATES = [
     label: "PII開示確認",
     title: "個人情報開示確認",
     category: "PII開示",
-    description: "保険事故調査のため、個人情報の開示確認を依頼します。双方の同意が必要です。",
+    description: "保険事故調査のため、個人情報の開示確認を依頼します。オーナー本人の同意が必要です。",
   },
   {
     key: "claim_investigation",

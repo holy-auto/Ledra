@@ -1,4 +1,4 @@
-
+import { after } from "next/server";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import {
   CERTIFICATE_MEDIA_BUCKET,
@@ -15,6 +15,7 @@ import {
 import { apiOk, apiInternalError, apiValidationError, apiNotFound } from "@/lib/api/response";
 
 import { withCaller } from "@/lib/api/withCaller";
+import { watchGateReadyTransition } from "@/lib/certificates/gateReadyNotify";
 
 export const runtime = "nodejs";
 // Videos can be up to 100 MB so we need extra time for upload + storage write.
@@ -115,7 +116,6 @@ async function validateFile(
 export const POST = withCaller<{ id: string }>(
   async (req, { caller, params }) => {
     try {
-
       const tenantId = caller.tenantId;
 
       const { id: publicId } = params;
@@ -131,11 +131,17 @@ export const POST = withCaller<{ id: string }>(
       const { admin } = createTenantScopedAdmin(tenantId);
       const certRes = await admin
         .from("certificates")
-        .select("id, tenant_id")
+        .select("id, tenant_id, status, service_type, reservation_id")
         .eq("public_id", publicId)
         .eq("tenant_id", tenantId)
         .limit(1)
-        .maybeSingle<{ id: string; tenant_id: string }>();
+        .maybeSingle<{
+          id: string;
+          tenant_id: string;
+          status: string | null;
+          service_type: string | null;
+          reservation_id: string | null;
+        }>();
       if (!certRes.data?.id) return apiNotFound("証明書が見つかりません。");
       const certId = certRes.data.id;
 
@@ -201,6 +207,13 @@ export const POST = withCaller<{ id: string }>(
         uploaded.push(u.path);
       }
 
+      // IMP-029 certificate_gate_ready: Gate が見るメディアは before_after だけ
+      // （certificateHasRequiredBeforeAfterMedia）。他の種別では Gate は変わらないので評価しない。
+      const notifyIfGateBecameReady =
+        input.mediaType === "before_after"
+          ? await watchGateReadyTransition(admin, tenantId, { ...certRes.data, public_id: publicId })
+          : null;
+
       const { data: inserted, error: insertErr } = await admin
         .from("certificate_media")
         .insert({
@@ -229,6 +242,8 @@ export const POST = withCaller<{ id: string }>(
         return apiInternalError(insertErr ?? new Error("insert failed"), "media insert");
       }
 
+      // レスポンス後に再評価し、未 READY→READY の遷移時だけ admin へ通知（throw しない）。
+      if (notifyIfGateBecameReady) after(notifyIfGateBecameReady);
       return apiOk({ media: inserted });
     } catch (e) {
       return apiInternalError(e, "media upload");

@@ -794,6 +794,21 @@
 "updated_at",
 "warning_messages"
 ],
+"certificate_rating_requests": [
+"certificate_id",
+"comment",
+"created_at",
+"customer_id",
+"id",
+"ip",
+"rating",
+"send_after",
+"sent_at",
+"submitted_at",
+"tenant_id",
+"token",
+"user_agent"
+],
 "certificate_versions": [
 "certificate_id",
 "change_reason",
@@ -830,6 +845,7 @@
 "expiry_type",
 "expiry_value",
 "footer_variant",
+"hidden_from_owner_portal_at",
 "id",
 "is_hidden",
 "latest_anchor_id",
@@ -2815,6 +2831,8 @@
 "insurer_requested_at",
 "insurer_requested_by",
 "is_active",
+"owner_consented_at",
+"owner_consented_customer_id",
 "revoked_at",
 "revoked_by",
 "tenant_consented_at",

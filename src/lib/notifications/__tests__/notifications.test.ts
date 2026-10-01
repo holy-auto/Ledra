@@ -43,6 +43,18 @@ describe("types", () => {
     }
   });
 
+  // dispatch.ts は customer 宛の in_app を常にスキップする（顧客のアプリ内受信箱が無い）。
+  // rating_request が ["in_app"] のまま確定し、一度も届かない状態だった（DECISION_LOG 2026-09-27）。
+  it("customer 宛のタイプは in_app 以外に実際に届くチャネルを持つ", () => {
+    for (const [type, config] of Object.entries(NOTIFICATION_TYPE_CATALOG) as [string, NotificationTypeConfig][]) {
+      if (config.targetRole !== "customer") continue;
+      expect(
+        config.defaultChannels.filter((c) => c !== "in_app"),
+        type,
+      ).not.toHaveLength(0);
+    }
+  });
+
   it("isActionRequired: urgent/action_required は true、informational は false", () => {
     expect(isActionRequired("urgent")).toBe(true);
     expect(isActionRequired("action_required")).toBe(true);

@@ -8,6 +8,7 @@ import ShareDocumentModal from "@/components/documents/ShareDocumentModal";
 import { fetcher, adminSwrConfig } from "@/lib/swr";
 import { formatDate, formatDateTime, formatJpy } from "@/lib/format";
 import { itemContentLines } from "@/lib/documents/itemDisplay";
+import { describeEmailError } from "@/lib/documents/emailError";
 import {
   CONVERSION_TARGETS,
   DOC_TYPES,
@@ -626,7 +627,9 @@ export default function DocumentDetailClient({
                 <span className="text-secondary break-all">{s.recipient}</span>
                 {s.status === "failed" ? <Badge variant="danger">失敗</Badge> : <Badge variant="success">送信済</Badge>}
                 {s.status === "failed" && s.error_message && (
-                  <span className="text-danger break-all">{s.error_message}</span>
+                  <span className="text-danger break-all" title={s.error_message}>
+                    {s.channel === "email" ? describeEmailError(s.error_message) : s.error_message}
+                  </span>
                 )}
               </li>
             ))}
