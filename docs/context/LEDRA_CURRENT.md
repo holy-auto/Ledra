@@ -6,6 +6,17 @@
 
 最終更新: 2026-09-29
 
+> 2026-09-29 追記（#1174 マージ・**本番未適用**）: 列属性のドリフトを揃える2本を main に入れた
+> （`54a0f875`）。**まだ本番には当てていない。**
+> - `20260929150200` は**本番で実際に走る** —— `job_orders.status` の既定を `'open'`→`'pending'`、
+>   `insurer_users.role` を `'member'`→`'viewer'`。どちらも本番の既定が本番自身の CHECK に弾かれていた。
+> - `20260929150300` は本番では no-op。新しい環境が本番と同じ厳しさになる（本番が拒否する行は
+>   新環境でも拒否される）ので、fixture が列を省いていた検査は当たらなくなる。
+> **残っている作業**: `db-migrate` の実行と結果確認。適用後に `job_orders` / `insurer_users` へ
+> 列を省いた insert が 23514 にならないことを実測する。
+> **代表判断待ち**: `vehicles.maker`/`model` に明示 NULL を送る2経路の保存方針、`insurers.plan_tier` の
+> 既定、enum/text の7列（IMP-015）。OPEN_QUESTIONS 参照。
+
 > 2026-09-29 追記（crJSON ハーネス）: validate 再申告に必要な **crJSON テストハーネスを作成**（`tools/c2pa-crjson-harness`、
 > 製品と同じ c2pa-rs 0.90.22＋検証時刻・TSA 信頼リストのパッチ、自己テスト6件）。Program のテスト入力待ち。
 > 本番の検証が C2PA Trust List を使っていない点は未判断（OPEN_QUESTIONS）。
@@ -1068,6 +1079,12 @@
 > （DECISION_LOG 2026-09-25）。残り2タイプ（`certificate_gate_ready` / `rating_request`）は
 > 該当する業務イベントの実処理がコードに無いため未配線のまま OPEN_QUESTIONS に起票済み。
 > 詳細は RELEASE_LOG 2026-09-25。
+>
+> 2026-09-29 追記: **残り2タイプも配線し、15タイプすべてに発火元がある状態になった（PR #1172 マージ）。**
+> `certificate_gate_ready` は写真アップロード時の Gate 再評価で未READY→READY の遷移だけ admin に通知、
+> `rating_request` は証明書発行の7日後に施工店の顧客へ評価依頼（新テーブル `certificate_rating_requests`、
+> `20260929132849`）。送信条件の仮置き（`follow_up_settings.enabled` のテナントのみ・7日固定）は
+> OPEN_QUESTIONS で代表確認待ち。詳細は RELEASE_LOG 2026-09-27、DECISION_LOG 2026-09-27。
 
 > 2026-08-31 追記: **証明書の無効化に認可漏れがあり、閲覧専用(viewer)でも証明書を恒久的に
 > 無効化できる状態だった（修正済み、IMP-013）。** 無効化の経路は**5本**あり、

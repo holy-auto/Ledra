@@ -109,11 +109,24 @@ jobs:
         # here on a *post-compile* error. We tolerate that, then assert the
         # manifest exists: a genuine *compile* break emits no manifest and
         # fails this step, while a secrets-only prerender failure does not.
+        #
+        # Retry once when the manifest is missing: next/font/google downloads
+        # Noto Sans JP from Google Fonts during compile, and that fetch has
+        # failed transiently on runners (PR #1172, 2026-09-29: identical code
+        # failed twice and passed before/after, as `module-not-found` in
+        # noto_sans_jp_*.module.css). A real compile error fails both attempts.
+        # ponytail: one blind retry. If fonts keep failing, self-host them via
+        # next/font/local (OPEN_QUESTIONS 2026-09-29).
         env:
           SKIP_ENV_VALIDATION: "true"
           NEXT_TELEMETRY_DISABLED: "1"
         run: |
           npm run build || echo "::warning::next build exited non-zero (page-data collection needs runtime secrets CI does not provide); verifying client manifest before continuing"
+          if [ ! -f .next/build-manifest.json ]; then
+            echo "::warning::client manifest missing — retrying the build once (Google Fonts fetch can fail transiently)"
+            rm -rf .next
+            npm run build || true
+          fi
           if [ ! -f .next/build-manifest.json ]; then
             echo "::error::.next/build-manifest.json missing — client compilation failed (not a secrets issue)"
             exit 1

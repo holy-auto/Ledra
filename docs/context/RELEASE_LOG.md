@@ -4,6 +4,18 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-10-01 外部テスタ測定値の取込 API（G5 Phase 2 サーバ土台）
+
+- 内容: 完成検査の測定値を外部取込する専用エンドポイント `POST …/inspection-records/[id]/measurements/import`
+  を追加。手入力 PUT（置換・`source='manual'`）と対に、取込は `source='imported'` 固定＋**マージ書き込み**
+  （送られた field_code のみ upsert、未送信の既存セルは消さない＝手入力分を保全）。`device`（テスタ名/型番）・
+  `measured_at` を保持。ボディ検証は手入力と同じ `measurementsPutSchema`（カタログ既知コードのみ・重複不可・
+  値種別/単位整合）。
+- 完成検査レコードの前段ガードを `src/lib/inspection/loadCompletionRecord.ts` に切り出し、手入力 PUT と取込で共有。
+- スコープ: **サーバ土台のみ**（代表判断）。UI・連携方式（CSV / テスタ API / OSS 連携）は取込元の出力仕様
+  確定後に追加する。取込元は呼び出し側で正準 field_code 配列へ正規化して本 API に渡す前提。
+- 検証: 取込入力（source='imported'・device・measured_at）の受理テストを追加。tsc・eslint・check:schema 緑。
+
 ## 2026-09-30 帳票メールの送付失敗通知（アプリのベル＋運営 Slack）と、エラー表示の日本語化
 
 - **失敗通知**: `sendDocumentEmail()`（`src/lib/documents/share-email.ts`）が失敗したら、
@@ -16,6 +28,14 @@
   生の理由は DB に残し、PC ではマウスを重ねると見える。
 - テスト: 失敗時に通知し成功時に通知しないこと、Slack で宛先をマスクすること、理由の言い換えを追加。
 - 補足: メールが届かない原因（Resend で ledra.co.jp が未認証）はこの変更では直らない。代表の Resend 設定待ち（OPEN_QUESTIONS）。
+
+## 2026-09-29 CI の Client Bundle Size をフォント取得の一時失敗で落とさない
+
+- `.github/workflows/ci.yml` の `Build (production)` で、`.next/build-manifest.json` が無ければ `.next` を消して
+  1回だけビルドをやり直す。`next/font/google` の Noto Sans JP 取り込みがランナーで一時的に失敗し、同一コードで
+  落ちたり通ったりしていたため（PR #1172）。本物のコンパイルエラーは2回とも落ちるので見逃さない。
+- 判断の経緯は DECISION_LOG 2026-09-29（フォント同梱は利用者側の配信量が増えるので採らなかった）。
+- 検証: 再試行の分岐をスタブのビルドで確認（1回目成功・2回目成功・2回とも失敗の3通り）。ci.yml の YAML 構文を確認。
 
 ## 2026-09-29 C2PA crJSON テストハーネス（追加要件 v0.2 §2.3）
 
@@ -144,7 +164,7 @@ DECISION_LOG 2026-09-27 の決定に基づく。
   `tsc`、`check:schema`、`lint:migrations` が通ることを確認した。マイグレーションを空の DB に
   1本ずつ流し直す再生テストも 510/510 で通った。
 
-## 2026-09-27 列属性のドリフトを全表で洗い出し、本番の「使えない既定値」2件を直した
+## 2026-09-27 列属性のドリフトを全表で洗い出し、本番の「使えない既定値」2件を直した（#1174・`54a0f875` でマージ・**本番未適用**）
 
 **全表調査**: 本番と再生 DB の `information_schema.columns` を**同じクエリで**引き、列ごとの
 digest で突き合わせた。**280 表のうち 268 表は完全一致**で、差は 12 表・310 セル中 25 セル・
