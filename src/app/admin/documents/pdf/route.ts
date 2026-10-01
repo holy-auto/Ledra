@@ -3,6 +3,7 @@ import { createClient as createSupabaseServerClient } from "@/lib/supabase/serve
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { renderDocumentPdf, type DocForPdf, type TenantForDocPdf } from "@/lib/pdfDocument";
+import { loadConsolidatedSources } from "@/lib/documents/consolidatedSources";
 import { resolveLayoutForDoc } from "@/lib/documents/pdfShare";
 
 export const dynamic = "force-dynamic";
@@ -61,6 +62,7 @@ export async function GET(req: Request) {
       tenant as unknown as TenantForDocPdf,
       customerName,
       layoutOverride,
+      await loadConsolidatedSources(admin, tenantId, doc),
     );
     const body = new Uint8Array(pdf);
     return new NextResponse(body, {
