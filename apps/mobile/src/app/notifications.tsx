@@ -76,6 +76,7 @@ const TYPE_ICON: Record<string, { icon: string; color: string; bg: string }> = {
   sla_overdue: { icon: "clock-alert-outline", color: colors.danger, bg: colors.dangerLight },
   // system
   platform_notification: { icon: "information", color: colors.textSecondary, bg: colors.surfaceVariant },
+  document_email_failed: { icon: "alert-octagon-outline", color: colors.danger, bg: colors.dangerLight },
   // ai
   ai_action: { icon: "robot-outline", color: colors.warning, bg: colors.warningLight },
   // message
