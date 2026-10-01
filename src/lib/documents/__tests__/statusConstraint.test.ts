@@ -36,4 +36,10 @@ describe("documents status ⊆ DB CHECK constraint", () => {
       }
     }
   });
+
+  it("誤キャンセルは全 doc_type で送付済に戻せる", () => {
+    for (const dt of DOC_TYPE_LIST) {
+      expect(nextStatusesFor(dt.value, "cancelled"), dt.value).toEqual(["sent"]);
+    }
+  });
 });
