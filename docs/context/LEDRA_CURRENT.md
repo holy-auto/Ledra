@@ -6,6 +6,17 @@
 
 最終更新: 2026-09-29
 
+> 2026-09-29 追記（#1174 マージ・**本番未適用**）: 列属性のドリフトを揃える2本を main に入れた
+> （`54a0f875`）。**まだ本番には当てていない。**
+> - `20260929150200` は**本番で実際に走る** —— `job_orders.status` の既定を `'open'`→`'pending'`、
+>   `insurer_users.role` を `'member'`→`'viewer'`。どちらも本番の既定が本番自身の CHECK に弾かれていた。
+> - `20260929150300` は本番では no-op。新しい環境が本番と同じ厳しさになる（本番が拒否する行は
+>   新環境でも拒否される）ので、fixture が列を省いていた検査は当たらなくなる。
+> **残っている作業**: `db-migrate` の実行と結果確認。適用後に `job_orders` / `insurer_users` へ
+> 列を省いた insert が 23514 にならないことを実測する。
+> **代表判断待ち**: `vehicles.maker`/`model` に明示 NULL を送る2経路の保存方針、`insurers.plan_tier` の
+> 既定、enum/text の7列（IMP-015）。OPEN_QUESTIONS 参照。
+
 > 2026-09-29 追記（本番適用 実測）: **#1170 を本番に適用した**（`94f345f1`・`db-migrate` run 94 成功・12:35 UTC）。
 > 本番で実測した結果:
 > - `certificates` の anon 向けポリシーは **0本**。anon の SELECT 権限は `certificates` と `certificates_public` の**どちらにも無い**。
