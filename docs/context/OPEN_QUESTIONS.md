@@ -2014,6 +2014,7 @@ JST は夏時間が無いので日の加算は 24 時間の加算でよい。
     TSA は設定例が `http://timestamp.digicert.com`（平文 HTTP）で、GPSA の「HTTPS」記述と食い違う — 本番の PHOTO_TSA_URL 要確認。
     → 代表回答（2026-09-29）: **本番は TSA 未設定（無効）**。GPSA・運用文書・TOE 図から TSA の記述を削除した。
     → O.5 は代表回答「まず Vercel で最低 TLS 1.3 を設定できるか確認」。外向きは NODE_OPTIONS=--tls-min-v1.3 で強制する方針。
+      → 2026-10-01 更新: 外向きは `NODE_OPTIONS` をやめ、#1183 の `tls13Fetch`（Supabase クライアントだけに TLS 1.3 を強制）を #1173 に取り込んだ。
     → 2026-09-29 Vercel 回答: **最低 TLS 1.3 は設定不可**（1.2/1.3 両対応で固定）。代表決定: **Cloudflare を前段に置き Minimum TLS 1.3**。
       手順書 `docs/c2pa-evidence/cloudflare-tls13-runbook.md`。コード側は写真アップロードに `viaTls13Edge`（`CF_ORIGIN_SECRET` の
       共有秘密ヘッダ照合、未設定なら無効）を追加済み — `*.vercel.app` 直アクセス（TLS 1.2 可）で TOE に入る抜け道を塞ぐ。

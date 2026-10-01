@@ -47,11 +47,9 @@ Settings → Environment Variables（Production）に次を追加して、再デ
 | ------------------ | ----------------- | ------------------------------------------------------------------------------------------------------------------ |
 | `CF_ORIGIN_SECRET` | §2-4 と同じ文字列 | 写真アップロードを Cloudflare 経由（TLS 1.3）だけに限る                                                            |
 | `TRUST_CF_HEADERS` | `1`               | レート制限が利用者の本当の IP（`cf-connecting-ip`）を使うようにする（`CF_ORIGIN_SECRET` が一致するリクエストだけ） |
-| `NODE_OPTIONS`     | `--tls-min-v1.3`  | Backend から Supabase など外部への通信も TLS 1.3 に限る                                                            |
 
-- **注意**（推定・未検証）: `NODE_OPTIONS` を入れると、TLS 1.3 に対応していない外部サービスへの接続が失敗する。
-  主要サービス（Supabase、Stripe、Resend、LINE 等）は対応しているはずだが、設定後に決済・通知・メール送信が
-  動くかを必ず確認する。失敗したら `NODE_OPTIONS` だけ外して報告する。
+- Backend → Supabase の TLS 1.3 はコード側で強制済み（`src/lib/net/tls13Fetch.ts`、サーバー側の Supabase
+  クライアント全部）。`NODE_OPTIONS=--tls-min-v1.3` は**入れない**（Stripe・LINE など他の連携まで巻き込むため）。
 - **`TRUST_CF_HEADERS` は `CF_ORIGIN_SECRET` とセット**で入れる。秘密ヘッダが一致しないリクエスト
   （`*.vercel.app` への直アクセスなど）の `cf-connecting-ip` はコード側で無視するので、偽の IP でレート制限を
   すり抜けることはできない。`CF_ORIGIN_SECRET` を入れずに `TRUST_CF_HEADERS=1` だけ入れても何も変わらない。

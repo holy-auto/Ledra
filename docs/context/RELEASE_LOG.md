@@ -4,6 +4,12 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-10-01 Backend→Supabase の通信を TLS 1.3 以上に限定（#1183 から #1173 へ取り込み）
+
+- `src/lib/net/tls13Fetch.ts`: undici の `Agent({ connect: { minVersion: "TLSv1.3" } })` を dispatcher として渡す fetch。サーバー側の Supabase クライアント（admin / server / mobile-server / readReplica / public / proxy の3か所）で使う。
+- テスト `tls13Fetch.test.ts` 3件（TLS 1.2 専用サーバーを拒否・1.3 は版交渉を通る・FormData/Request の本文が壊れない）。`minVersion` を外すと 1件目が落ちることを確認。
+- GPSA §2.5 O.5 の Backend→Supabase を現状どおり記述。Cloudflare 手順書から `NODE_OPTIONS=--tls-min-v1.3` を外した（他の連携を巻き込むため）。
+
 ## 2026-10-01 外部テスタ測定値の取込 API（G5 Phase 2 サーバ土台）
 
 - 内容: 完成検査の測定値を外部取込する専用エンドポイント `POST …/inspection-records/[id]/measurements/import`

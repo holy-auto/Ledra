@@ -4,6 +4,18 @@
 > （新しい順）。実装の詳細は RELEASE_LOG.md、迷っている段階のものは
 > OPEN_QUESTIONS.md に書く。
 
+## 2026-10-01 C2PA の並行2案（#1173 と #1183）は、ingredient は #1173 方式、Backend→Supabase の TLS 1.3 は #1183 の実装を取り込む
+
+1. 日付: 2026-10-01
+2. 起きたこと: 同じ GPSA 審査指摘を、別セッションが #1183 で違う設計で直していた（2026-09-29 起票）。どちらも `c2pa.ts`・テスト・GPSA・構成図を書き換えており、片方をマージするともう片方が大きく衝突する。代表に2点を確認し、回答を得た。
+3. 以前の考え: #1173 は ingredient に原本バイト列を渡し、原本の manifest を検証・保持（メタデータ系は redaction）。O.5 の Backend→Supabase は Cloudflare 手順書の `NODE_OPTIONS=--tls-min-v1.3` で強制する予定だった。#1183 は ingredient を JSON 定義だけで追加（原本を渡さない）、TLS 1.3 は undici の dispatcher で Supabase クライアントにだけ強制。
+4. 違和感・問題: #1183 の ingredient 方式は原本の manifest を検証しないため、Administrator が求める validate 再申告と「X-ingredient1 を参照する X-sample」の証拠にならない（推定）。一方 `NODE_OPTIONS` は全外部連携（Stripe・LINE 等）に効き、壊すリスクがある。
+5. 決めたこと: 代表決定 (1) ingredient は #1173 方式（原本ごと渡して redaction）。(2) #1183 の `tls13Fetch`（サーバー側 Supabase クライアント8か所＋テスト）を #1173 に取り込む。あわせて手順書から `NODE_OPTIONS` を外し、GPSA O.5 の Backend→Supabase を現状どおり記述した。
+6. 捨てた選択肢: #1183 を正にして #1173 を畳む（validate 再申告の証拠が作れない）。両 PR を別々にマージ（同じ箇所を逆向きに書き換えて衝突する）。`NODE_OPTIONS` を併用（Supabase はコードで足り、他連携を巻き込む）。
+7. 判断理由: validate 再申告に必要なのは原本 manifest の検証と記録で、それができるのは #1173 方式だけ。TLS 1.3 は対象を Supabase に絞れる #1183 の実装の方が副作用が小さい。
+8. まだ答えが出ていないこと: #1183 の扱い（クローズするか、残りの UI 文言修正などを別に拾うか）は代表判断待ち。クライアント→Vercel の TLS 1.3 は Cloudflare 切り替え後に実測する。
+9. 公開区分: 要確認
+
 ## 2026-09-30 帳票メールの送付失敗を、メール以外の経路（アプリのベル＋運営 Slack）で知らせる
 
 1. 日付: 2026-09-30（`date -u` で確認）

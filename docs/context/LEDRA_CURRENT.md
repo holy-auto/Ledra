@@ -17,6 +17,9 @@
 > **代表判断待ち**: `vehicles.maker`/`model` に明示 NULL を送る2経路の保存方針、`insurers.plan_tier` の
 > 既定、enum/text の7列（IMP-015）。OPEN_QUESTIONS 参照。
 
+> 2026-10-01 追記（C2PA 並行2案の整理）: 代表決定で、ingredient は #1173 方式（原本ごと＋redaction）、
+> Backend→Supabase の TLS 1.3 強制は #1183 の `tls13Fetch` を #1173 に取り込んだ。#1183 の扱いは代表判断待ち。
+
 > 2026-09-29 追記（crJSON ハーネス）: validate 再申告に必要な **crJSON テストハーネスを作成**（`tools/c2pa-crjson-harness`、
 > 製品と同じ c2pa-rs 0.90.22＋検証時刻・TSA 信頼リストのパッチ、自己テスト6件）。Program のテスト入力待ち。
 > 本番の検証が C2PA Trust List を使っていない点は未判断（OPEN_QUESTIONS）。

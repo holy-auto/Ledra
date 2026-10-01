@@ -208,7 +208,9 @@ signing), and Ledra's own pipeline code (`src/lib/certificateImages/*`, `src/lib
    - Web and mobile clients → Backend: HTTPS only, terminated by the Vercel edge network, which
      negotiates TLS 1.3 with current clients. Plain HTTP is redirected to HTTPS.
    - Backend → Supabase (Auth, Postgres via the REST/PostgREST API, Storage): HTTPS to the Supabase
-     project endpoint.
+     project endpoint. Every server-side Supabase client sends its requests through a fetch whose TLS
+     connections require TLS 1.3 as the minimum version (`src/lib/net/tls13Fetch.ts`); a server offering only
+     TLS 1.2 or lower fails the handshake and the request is not sent.
    - Backend → the integrations in §1.6: HTTPS.
      Cipher suites are those of the managed TLS configurations of Vercel and Supabase.
 
