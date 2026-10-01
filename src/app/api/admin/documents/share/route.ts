@@ -49,7 +49,6 @@ const documentShareSchema = z.object({
 export const GET = withCaller(
   async (req, { caller }) => {
     try {
-
       const documentId = new URL(req.url).searchParams.get("document_id");
       if (!documentId || !z.string().uuid().safeParse(documentId).success) {
         return apiValidationError("document_id は必須です。");
@@ -175,6 +174,8 @@ export const POST = withCaller(
       try {
         if (channel === "email") {
           const emailResult = await sendDocumentEmail({
+            tenantId: caller.tenantId,
+            documentId,
             to: recipient,
             docType: docLabel,
             docNumber: doc.doc_number,

@@ -1,5 +1,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+
+const dispatchNotification = vi.fn<(p: unknown) => Promise<void>>();
+const notifySlack = vi.fn<(url: unknown, p: unknown) => Promise<void>>();
+vi.mock("@/lib/notifications/dispatch", () => ({ dispatchNotification: (p: unknown) => dispatchNotification(p) }));
+vi.mock("@/lib/slack", () => ({ notifySlack: (u: unknown, p: unknown) => notifySlack(u, p) }));
+
 import { sendDocumentEmail } from "@/lib/documents/share-email";
+import { describeEmailError } from "@/lib/documents/emailError";
 
 describe("sendDocumentEmail", () => {
   const origFetch = globalThis.fetch;
@@ -7,6 +14,8 @@ describe("sendDocumentEmail", () => {
   beforeEach(() => {
     vi.stubEnv("RESEND_API_KEY", "re_test_key");
     vi.stubEnv("RESEND_FROM", "noreply@example.test");
+    dispatchNotification.mockClear();
+    notifySlack.mockClear();
   });
 
   afterEach(() => {
@@ -23,6 +32,7 @@ describe("sendDocumentEmail", () => {
     }) as never;
 
     const result = await sendDocumentEmail({
+      tenantId: "t1",
       to: "customer@example.com",
       docType: "請求書",
       docNumber: "INV-001",
@@ -45,6 +55,7 @@ describe("sendDocumentEmail", () => {
     }) as never;
 
     const result = await sendDocumentEmail({
+      tenantId: "t1",
       to: "customer@example.com",
       docType: "請求書",
       docNumber: "INV-001",
@@ -73,6 +84,7 @@ describe("sendDocumentEmail", () => {
     globalThis.fetch = vi.fn(async () => new Response("Invalid API key", { status: 401 })) as never;
 
     const result = await sendDocumentEmail({
+      tenantId: "t1",
       to: "customer@example.com",
       docType: "請求書",
       docNumber: "INV-001",
@@ -102,6 +114,7 @@ describe("sendDocumentEmail", () => {
     }) as never;
 
     const result = await sendDocumentEmail({
+      tenantId: "t1",
       to: "customer@example.com",
       docType: "請求書",
       docNumber: "INV-001",
@@ -126,6 +139,7 @@ describe("sendDocumentEmail", () => {
     vi.stubEnv("RESEND_FROM", "");
 
     const result = await sendDocumentEmail({
+      tenantId: "t1",
       to: "customer@example.com",
       docType: "請求書",
       docNumber: "INV-001",
@@ -136,5 +150,64 @@ describe("sendDocumentEmail", () => {
 
     expect(result.ok).toBe(false);
     expect(result.error).toMatch(/RESEND_API_KEY|RESEND_FROM/);
+  });
+
+  // 2026-09-13 本番で送付が失敗し続けたのに、送付履歴を開くまで誰も気づけなかった。
+  // 失敗したら店の管理者（ベル）と運営（Slack）の両方へ知らせる。成功時は何も出さない。
+  it("失敗時は店の管理者と運営に通知し、成功時は通知しない", async () => {
+    vi.stubEnv("SLACK_OPS_ALERT_WEBHOOK_URL", "https://hooks.slack.test/ops");
+    const domainError = JSON.stringify({
+      statusCode: 403,
+      message:
+        "The ledra.co.jp domain is not verified. Please, add and verify your domain on https://resend.com/domains",
+      name: "validation_error",
+    });
+    globalThis.fetch = vi.fn(async () => new Response(domainError, { status: 403 })) as never;
+
+    const params = {
+      tenantId: "t1",
+      documentId: "doc1",
+      to: "customer@example.com",
+      docType: "請求書",
+      docNumber: "INV-001",
+      totalAmount: 10000,
+      recipientName: "山田太郎",
+      senderName: "株式会社テスト",
+    };
+    const failed = await sendDocumentEmail(params);
+
+    expect(failed.ok).toBe(false);
+    expect(dispatchNotification).toHaveBeenCalledTimes(1);
+    expect(dispatchNotification.mock.calls[0][0]).toMatchObject({
+      tenantId: "t1",
+      type: "document_email_failed",
+      linkPath: "/admin/documents/doc1",
+    });
+    expect((dispatchNotification.mock.calls[0][0] as { body: string }).body).toContain("未認証");
+    expect(notifySlack).toHaveBeenCalledTimes(1);
+    expect(notifySlack.mock.calls[0][0]).toBe("https://hooks.slack.test/ops");
+    // 運営 Slack には宛先をマスクして載せ、生の理由を残す
+    const slack = JSON.stringify(notifySlack.mock.calls[0][1]);
+    expect(slack).not.toContain("customer@example.com");
+    expect(slack).toContain("domain is not verified");
+
+    dispatchNotification.mockClear();
+    notifySlack.mockClear();
+    globalThis.fetch = vi.fn(async () => new Response(JSON.stringify({ id: "m" }), { status: 200 })) as never;
+    expect((await sendDocumentEmail(params)).ok).toBe(true);
+    expect(dispatchNotification).not.toHaveBeenCalled();
+    expect(notifySlack).not.toHaveBeenCalled();
+  });
+});
+
+describe("describeEmailError", () => {
+  it("本番で出た理由を日本語にし、未知の理由は汎用文言に落とす", () => {
+    expect(
+      describeEmailError('resend(403):{"statusCode":403,"message":"The ledra.co.jp domain is not verified."}'),
+    ).toContain("送信元ドメイン");
+    expect(describeEmailError("RESEND_API_KEY/RESEND_FROM が未設定です。")).toContain("設定が未完了");
+    expect(describeEmailError("resend(401):Invalid API key")).toContain("認証に失敗");
+    expect(describeEmailError("送信に失敗しました")).toBe("メールを送信できませんでした");
+    expect(describeEmailError(null)).toBe("メールを送信できませんでした");
   });
 });

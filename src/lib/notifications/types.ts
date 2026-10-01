@@ -165,6 +165,13 @@ export const NOTIFICATION_TYPE_CATALOG = {
     defaultChannels: ["in_app"],
     category: "system",
   },
+  // 帳票メールの送付失敗（share-email.ts）。メールが壊れている時に出るので email は使わない。
+  document_email_failed: {
+    severity: "action_required",
+    defaultChannels: ["in_app"],
+    category: "system",
+    targetRole: "admin",
+  },
 
   // ── AI ──
   ai_action: {
