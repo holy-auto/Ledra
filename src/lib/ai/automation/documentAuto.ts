@@ -198,6 +198,8 @@ export async function maybeAutoSendDocumentOnConfirm(params: MaybeAutoSendDocume
       usedChannel = "email";
       usedRecipient = email;
       const emailResult = await sendDocumentEmail({
+        tenantId,
+        documentId,
         to: email,
         docType: docLabel,
         docNumber,

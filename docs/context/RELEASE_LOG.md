@@ -4,6 +4,19 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-09-30 帳票メールの送付失敗通知（アプリのベル＋運営 Slack）と、エラー表示の日本語化
+
+- **失敗通知**: `sendDocumentEmail()`（`src/lib/documents/share-email.ts`）が失敗したら、
+  送った店の owner/admin にアプリ内通知（`document_email_failed`、ベル）を出し、運営の Slack
+  （`SLACK_OPS_ALERT_WEBHOOK_URL`、未設定ならスキップ）にも送る。メールが壊れていても届くよう、メールは使わない。
+  手動送付（`/api/admin/documents/share`）と AI 自動送付（`documentAuto.ts`）の両方に効く。
+  モバイルの通知一覧にもアイコンを追加。
+- **表示の日本語化**: 帳票詳細の送付履歴で、メールの失敗理由を日本語で出す（`src/lib/documents/emailError.ts`）。
+  例: ドメイン未認証 →「送信元ドメインがメール配信サービスで未認証のため送れませんでした（運営側の設定が必要です）」。
+  生の理由は DB に残し、PC ではマウスを重ねると見える。
+- テスト: 失敗時に通知し成功時に通知しないこと、Slack で宛先をマスクすること、理由の言い換えを追加。
+- 補足: メールが届かない原因（Resend で ledra.co.jp が未認証）はこの変更では直らない。代表の Resend 設定待ち（OPEN_QUESTIONS）。
+
 ## 2026-09-29 CI の Client Bundle Size をフォント取得の一時失敗で落とさない
 
 - `.github/workflows/ci.yml` の `Build (production)` で、`.next/build-manifest.json` が無ければ `.next` を消して

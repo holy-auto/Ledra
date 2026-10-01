@@ -1426,21 +1426,26 @@ LINE または SMS 経由の送付失敗が同様に調査不能という報告�
 （`sendSMS` は OTP 送信とは別関数 `sendOtpSms` が既に `SmsSendResult` を返している
 のでそちらの形に揃えられる可能性がある）、着手前に呼び出し元を洗い出すこと。
 
-## 帳票メールが本番で送れない実際の外部原因（Resend/SendGrid 側）が未特定（2026-09-08）
+## 帳票メールが本番で送れない：原因は Resend で ledra.co.jp が未認証（2026-09-08 起票・2026-09-30 更新）
 
-「請求書のメール送付が出来ない」報告を調査（DECISION_LOG 2026-09-08）。本番
-`document_share_log` を見ると、同じ宛先 `sh***@honda-auto.ne.jp` 宛が
-2026-07-09・08-09 は成功、08-28 は別の2ドメイン（outlook.jp / gmail.com）宛で失敗、
-09-08 に同じ宛先が再び失敗——宛先ドメイン依存ではなく、07-09〜08-28 の間に
-プロバイダ側（Resend の API キー失効・送信ドメイン検証失効・アカウント停止等）
-で何かが起きたと推定されるが、該当期間にコードの変更は無く、本セッションからは
-Vercel の環境変数・Resend ダッシュボードを確認できないため未特定。
+**原因は特定済み。代表の作業待ち。** 2026-09-08 の修正（失敗理由を握り潰さない）の後、
+2026-09-13 22:29〜22:41（JST）の送付4件が `document_share_log.error_message` に
+`resend(403):{"message":"The ledra.co.jp domain is not verified. ..."}` を残した。
+送信元（`RESEND_FROM`）が `@ledra.co.jp` なのに、Resend 側でドメインが検証済みになっていない。
+403 は「再送しても同じ」扱いなので SendGrid へのフォールバックも起きない（`sendEmail.ts` の `shouldFallback`、設計どおり）。
+9/13 に理由は出ていたが、この項目が「未特定」のまま更新されず、代表に手順が届いていなかった
+（MISTAKE_LEDGER `M-20260930-diagnosable-fix-left-without-anyone-watching`）。
+本番DBで確認した範囲では 9/14〜9/30 の帳票メール送付は0件で、今送れるかは誰も確かめていない。
 
-**次にやること**: 代表に Resend ダッシュボード（API キーの有効性、送信ドメインの
-DKIM/SPF 検証状態）と Vercel の `RESEND_API_KEY` / `RESEND_FROM` / `SENDGRID_API_KEY`
-を確認してもらう。今回の修正（失敗理由を握り潰さないようにした）のデプロイ後に
-もう一度送付を試み、`document_share_log.error_message` に出る具体的な理由から
-判断する。
+**次にやること（代表）**:
+1. Resend の Domains で `ledra.co.jp` を追加（または状態確認）し、表示される DNS レコード（SPF/DKIM 等）を
+   ledra.co.jp の DNS に登録して Verify する。別の手として、`RESEND_FROM` を検証済みの別ドメインに変えてもよい。
+2. Vercel に `SLACK_OPS_ALERT_WEBHOOK_URL`（運営向け障害通知の Slack Incoming Webhook）を設定する。
+   未設定だと運営 Slack への失敗通知はスキップされる（店の管理者へのベル通知は設定なしで届く）。
+3. 請求書を1通送って、成功するか・新しい理由が出るかを確認する。
+
+推定: 7〜8月は同じ宛先に送れていたので、当時は検証済みだったドメインが DNS レコードの変更・削除で
+検証切れになった。根拠は成功と失敗の間にコード変更が無いことだけ。未検証。
 
 ## モバイル _layout.tsx の Stack.Protected 設計をディープリンク保存方式から恒久対応に切り替えるか（2026-09-09）
 
