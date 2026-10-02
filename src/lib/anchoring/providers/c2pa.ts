@@ -17,7 +17,12 @@ import type { C2paResult, C2paManifestSummary } from "./types";
 
 export type C2paMode = "disabled" | "dev-signed" | "production";
 
-function getMode(): C2paMode {
+/**
+ * `C2PA_MODE` の唯一の正規化源。**呼び出し側は生の env を読まずにこれを使う。**
+ * `Production` のような綴り違いを "disabled" に落とすので、「署名もしないが本番ゲートも
+ * 発火しない」という黙って未署名の状態を作らない（/code-review 指摘 #5）。
+ */
+export function getMode(): C2paMode {
   const raw = process.env.C2PA_MODE;
   if (raw === "dev-signed" || raw === "production") return raw;
   return "disabled";
@@ -33,9 +38,10 @@ const DISABLED_RESULT: C2paResult = {
 };
 
 /** 署名を試みて失敗した結果。**disabled と同じ形を返さない**のがこの関数の要点。 */
-function failedResult(failure: NonNullable<C2paResult["failure"]>): C2paResult {
+export function failedC2paResult(failure: NonNullable<C2paResult["failure"]>): C2paResult {
   return { ...DISABLED_RESULT, failure };
 }
+const failedResult = failedC2paResult;
 
 /** マニフェストの固定メタ（要約とアサーションで単一ソースにし drift を防ぐ）。 */
 const CLAIM_GENERATOR = "Ledra/1.0";
@@ -286,7 +292,14 @@ export async function signC2pa(
     }
 
     // Pin signed manifest to IPFS (non-blocking on failure)
-    const manifestCid = await pinToPinata(output.buffer);
+    // ponytail: ピンは「失敗したら null」という非ブロッキングの約束なのに、ここで素のまま
+    // await すると signC2pa 全体の 8 秒枠（providers/index.ts）を食い潰し、**署名は成功したのに
+    // timeout 扱いになってゲートが写真を弾く**（/code-review 指摘 #2）。約束どおり自前で打ち切る。
+    // 天井: 3 秒固定。遅い回線で CID が付かない写真が出る。付け直しが要るなら再ピンの経路を作る。
+    const manifestCid = await Promise.race([
+      pinToPinata(output.buffer),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), 3_000).unref?.()),
+    ]);
 
     return {
       manifestCid,

@@ -5,7 +5,7 @@
  * the upload or causes other providers to be skipped.
  */
 
-import { signC2pa, type CaptureBinding, type TransformOutcome } from "./c2pa";
+import { signC2pa, failedC2paResult, type CaptureBinding, type TransformOutcome } from "./c2pa";
 import { checkDeepfake } from "./deepfake";
 import { anchorToPolygon, verifyAnchor, buildExplorerUrl, findAnchorTx } from "./polygon";
 import type { UploadProviderBundle } from "./types";
@@ -63,7 +63,9 @@ export async function invokeAllUploadProviders(
       signC2pa(buffer, mime, captureBinding, transformOutcome),
       // 打ち切りも「試して得られなかった」なので failure を立てる。ここを null にすると
       // 呼び出し側から disabled と区別できず、本番で黙って未署名になる。
-      { manifestCid: null, verified: false, signedBuffer: null, manifestSummary: null, failure: "timeout" },
+      // **未署名の形をここで組み直さない**（c2pa.ts と2箇所に分かれると、将来フィールドを足したとき
+      // 片方だけ古い既定のまま残る —— それが今回直した欠陥そのもの。/code-review 指摘 #7）。
+      failedC2paResult("timeout"),
       "c2pa",
     ),
     withTimeout(checkDeepfake(buffer), { score: null, verdict: null }, "deepfake"),

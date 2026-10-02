@@ -85,6 +85,23 @@ describe("signC2pa directly", () => {
     delete process.env.C2PA_MODE;
   });
 
+  // `C2PA_MODE` の正規化は**本番ゲートの前提**。綴り違いを "production" として通すと
+  // ゲートだけが発火して全アップロードが落ち、"disabled" に落ちると署名もゲートも止まって
+  // 黙って未署名に戻る（/code-review 指摘 #5）。両方向を固定する。
+  it.each([
+    ["production", "production"],
+    ["dev-signed", "dev-signed"],
+    ["disabled", "disabled"],
+    ["Production", "disabled"],
+    ["prod", "disabled"],
+    ["", "disabled"],
+  ])("getMode(%j) === %j", async (raw, expected) => {
+    process.env.C2PA_MODE = raw;
+    vi.resetModules();
+    const { getMode } = await import("../c2pa");
+    expect(getMode()).toBe(expected);
+  });
+
   it("returns disabled result when C2PA_MODE is unset", async () => {
     const { signC2pa } = await (async () => {
       vi.resetModules();

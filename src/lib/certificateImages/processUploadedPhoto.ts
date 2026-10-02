@@ -20,6 +20,7 @@ import { checkPhotoLocation } from "@/lib/geo/photoLocationCheck";
 import { verifyExternalC2pa } from "@/lib/anchoring/providers/c2paVerify";
 import { computeAuthenticityGrade } from "@/lib/anchoring/authenticityGrade";
 import { invokeAllUploadProviders } from "@/lib/anchoring/providers";
+import { getMode as getC2paMode } from "@/lib/anchoring/providers/c2pa";
 import type { DeviceAttestationResult } from "@/lib/anchoring/providers/types";
 import { requestPhotoTimestamp } from "@/lib/anchoring/providers/photoTsa";
 import { deriveCaptureBindingReason } from "@/lib/anchoring/captureBindingReason";
@@ -72,7 +73,17 @@ export interface ProcessPhotoParams {
 
 export type ProcessPhotoResult =
   | { ok: true; id: string; fileName: string | null }
-  | { ok: false; code: "internal_error" | "db_error"; message: string };
+  | {
+      ok: false;
+      code: "internal_error" | "db_error";
+      message: string;
+      /**
+       * **C2PA 署名の失敗で弾いた**とき true。呼び出し側（uploadHandler）は、一部成功でも
+       * これが1枚でもあればエラーで返す。他の失敗（ストレージ・DB）と区別しないと、
+       * 「署名できなかったので保存しなかった」が成功レスポンスに埋もれる。
+       */
+      c2paRefused?: true;
+    };
 
 export async function processUploadedPhoto(params: ProcessPhotoParams): Promise<ProcessPhotoResult> {
   const {
@@ -153,7 +164,10 @@ export async function processUploadedPhoto(params: ProcessPhotoParams): Promise<
     },
   );
 
-  const c2paMode = (process.env.C2PA_MODE ?? "disabled") as "disabled" | "dev-signed" | "production";
+  // **生の env を読まない。** `getMode()` が唯一の正規化源（`Production` のような綴り違いを
+  // "disabled" に落とす）。ここで独自にキャストすると、署名もしないのに本番ゲートも発火しない
+  // 状態を作れてしまう（/code-review 指摘 #5）。
+  const c2paMode = getC2paMode();
 
   // **本番で署名に失敗したら未署名のまま保存しない**（代表判断 2026-10-02「黙って未署名はダメだ」）。
   // ここはストレージ書き込みの前なので、断っても孤児ファイルは残らない。
@@ -171,6 +185,7 @@ export async function processUploadedPhoto(params: ProcessPhotoParams): Promise<
       ok: false,
       code: "internal_error",
       message: `写真の来歴署名（C2PA）に失敗したため保存を中止しました（${providers.c2pa.failure}）。未署名の写真は保存しません。管理者にご連絡ください。`,
+      c2paRefused: true,
     };
   }
   if (providers.c2pa.failure) {

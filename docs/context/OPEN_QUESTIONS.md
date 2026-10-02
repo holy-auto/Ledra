@@ -1204,6 +1204,13 @@ JS ラッパだけで成立するため、**ネイティブバイナリの dlope
   - 【要確認】**本番（Vercel）で `@contentauth/c2pa-node` が実際にビルドできているか。**
     できていなければ、`C2PA_MODE=production` にした瞬間に全アップロードが
     `signer_unavailable` で断られる。**オンにする前に本番環境での読み込み可否を確かめること。**
+    先行検査を入れたので、落ちるとしても「1枚も保存されず 503」という分かる形になる。
+  - 【要確認】**HEIC を c2pa-node が署名できるか。** `validateMagicBytes` は `image/heic` を受け、
+    管理画面の `accept` にも入っているが、`c2paSignValidate.test.ts` は jpeg/png/webp しか見ていない。
+    `stripGpsAndReadExif` は `toFormat` を指定しないので入力形式のまま署名へ渡る。
+    署名できない場合、**本番オン後に iPhone 既定の HEIC が全部 503 になる**（以前は黙って
+    未署名で保存されていた）。手元の sharp の heif は avif 専用で HEIC を作れず検証できなかったので、
+    **実機で撮った HEIC で確かめること。**
 - **未決（今回の変更で残ったもう1つ）**: `providers.test.ts` の
   「c2pa-node が無ければ graceful-degradation の契約だけを見る」分岐。
   これは skip ではなく実際に assert しているので沈黙ではないが、**強い検証が
