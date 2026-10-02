@@ -2113,6 +2113,9 @@ JST は夏時間が無いので日の加算は 24 時間の加算でよい。
            Cloudflare に起点側の最低版を指定する設定があるかも未確認（この環境から Cloudflare の文書に届かない）。
         3. **外部連携**: Hive（`anchoring/providers/deepfake.ts`）・Pinata（`anchoring/providers/c2pa.ts`）は素の `fetch`、
            Polygon は viem の通常の通信で、TLS 1.2 にもなりうる。本番で有効かは未確認（設定次第）。
+        4. **写真アップロード以外の Backend 経路**（Codex 2回目の指摘）: 秘密ヘッダの照合は写真アップロードだけ。他の画面・API は
+           `*.vercel.app` から TLS 1.2 で届く（Vercel の Deployment Protection を有効にしていなければ。有効かは未確認）。
+           全経路で照合すると、Vercel Cron など `*.vercel.app` 宛ての内部呼び出しを止めるおそれがある（推定・未検証）。
       **代表判断待ち**: 送信済みの提出物をこのまま審査に出すか、訂正を追送するか。直し方（Supabase を TOE の外に出す／
       クライアントの Supabase 通信を Backend 経由に寄せる／現状を正直に書く）も製品・申請の判断。
       → **2026-10-02 再提出を送信**（代表の申告）。validate（jpeg/png/webp/heic）復活を依頼済み。
