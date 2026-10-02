@@ -22,6 +22,17 @@
 - スコープ外（後続）: documents / body_repair_jobs の更新差分履歴、保持期限後の消去経路＋監査、保持 cron の横断監査。
 - 検証: `changedFields` 単体テスト 5 件 / tsc・eslint・check:schema 緑 / 更新スキーマを実 PATCH ペイロードで実行し修正を確認。
 
+## 2026-10-02 外部連携（Hive・Pinata・Polygon RPC）の通信も TLS 1.3 以上に限定（C2PA GPSA O.5）
+
+- 送信後の Codex レビュー（#1213）で、外部連携だけ素の `fetch`／viem の通常の通信だった。`tls13Fetch` を通すようにした
+  （Hive・Pinata は `tls13Fetch`、Polygon は viem `http(rpcUrl, { fetchFn: tls13Fetch })` の8箇所。
+  うち1箇所は providers の外の `app/api/cron/polygon-signer` で、/code-review で見つかった）。
+- Codex 指摘: `tls13Fetch` はローカル Supabase のため平文 http も通すので、`POLYGON_RPC_URL` を `http://` にすると TLS ごと外れた。
+  連携には https 以外を送らない `tls13HttpsFetch` を使う（http は接続前に失敗。`tls13Fetch.test.ts` で確認）。
+- `integrationsTls13.test.ts` が providers 配下の素の `fetch`（`globalThis.fetch` 含む）と、viem を使う src 全ファイルの
+  `fetchFn` 無しのトランスポートを検出する。修正前のコード・cron だけ戻したコードで落ち、修正後に通ることを確認。
+- GPSA §2.5 と運用管理策 A02 に外部連携を加えた（本番反映後の状態として）。
+
 ## 2026-10-02 整備業の法定資格・職責の軸を作業者レジストリに追加（G1）
 
 - 内容: 点検整備記録簿の電子化基準（第２ ３（１）①）が例示する権限区分「自動車検査員 / 整備主任者 /
