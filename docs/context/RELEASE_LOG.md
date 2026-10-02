@@ -4,6 +4,21 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-10-02 整備業の法定資格・職責の軸を作業者レジストリに追加（G1）
+
+- 内容: 点検整備記録簿の電子化基準（第２ ３（１）①）が例示する権限区分「自動車検査員 / 整備主任者 /
+  起票入力担当」を、Ledra は汎用 SaaS ロールにも `skills[]`（自由タグ）にも持っていなかった（compliance G1）。
+  これを表す**統制語彙の軸** `staff_members.qualifications`（text[]）を追加した。
+- 定義源は `src/lib/staff/qualifications.ts`（3 資格のキー・ラベル・正規化・述語）。SaaS ロール（認可の強さ）・
+  skills（自由タグ）とは**別軸**で混ぜない。検証は `staffCreateSchema` が統制語彙外のキーを fail-closed で弾く。
+- UI: スタッフ管理（`StaffClient`）に資格のチェックボックス入力と一覧バッジを追加。API（`/api/admin/staff`）は
+  select/insert に `qualifications` を追加（PUT は部分更新ロジックで自動的に流れる）。
+- マイグレーション `20261002101121`: `ADD COLUMN ... text[] not null default '{}'`（定数デフォルト＝メタデータのみ）。
+  `src/types/db.generated.ts` は手で更新（db:typegen は本番 DB URL が要るため・OPEN_QUESTIONS 既知）。
+- スコープ外（後続）: 資格に基づく操作の強制（完成検査の確定は自動車検査員のみ 等）、資格番号・有効期限の保持、
+  完成検査記録への実施者資格の紐付け（G2 寄り）。
+- 検証: 資格カタログ単体テスト 4 件 / tsc・eslint・check:schema・lint:migrations 緑 / 実スキーマ再生ダンプで列追加を確認。
+
 ## 2026-10-02 スキーマドリフト検出器を列の NULL 可否まで拡張（報告のみ）
 
 - 内容: `scripts/check-schema-drift.mjs` は従来「列名の有無」しか見ず、本番と再生 DB の

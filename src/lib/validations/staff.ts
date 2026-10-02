@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { isStaffQualificationKey, normalizeQualifications, STAFF_QUALIFICATIONS } from "@/lib/staff/qualifications";
 
 const nullableUuid = z
   .string()
@@ -39,6 +40,16 @@ const skillsArray = z
     return out;
   });
 
+/**
+ * 法定資格キー配列。skills と違い**統制語彙**なので、集合外のキーは弾く（fail-closed）。
+ * 正準キー・正規化は src/lib/staff/qualifications.ts。
+ */
+const qualificationsArray = z
+  .array(z.string().trim().refine(isStaffQualificationKey, { message: "未知の資格キーです。" }))
+  .max(STAFF_QUALIFICATIONS.length)
+  .optional()
+  .transform((v) => normalizeQualifications(v));
+
 const nullableRate = z
   .number()
   .min(0)
@@ -54,6 +65,7 @@ export const staffCreateSchema = z.object({
   email: nullableText(200),
   phone: nullableText(50),
   skills: skillsArray,
+  qualifications: qualificationsArray,
   color: nullableText(20),
   note: nullableText(1000),
   is_active: z.boolean().default(true),

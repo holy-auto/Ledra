@@ -1,4 +1,3 @@
-
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 
 import { apiJson, apiValidationError, apiInternalError } from "@/lib/api/response";
@@ -54,7 +53,9 @@ export const GET = withCaller(
       const [staffRes, statsRes] = await Promise.all([
         supabase
           .from("staff_members")
-          .select("id, user_id, name, kind, email, phone, skills, color, is_active, note, commission_rate, created_at")
+          .select(
+            "id, user_id, name, kind, email, phone, skills, qualifications, color, is_active, note, commission_rate, created_at",
+          )
           .eq("tenant_id", caller.tenantId)
           .order("is_active", { ascending: false })
           .order("name", { ascending: true }),
@@ -71,6 +72,7 @@ export const GET = withCaller(
         return {
           ...s,
           skills: s.skills ?? [],
+          qualifications: s.qualifications ?? [],
           stats: {
             assignments_total: st?.assignments_total ?? 0,
             completed: st?.completed ?? 0,
@@ -92,7 +94,6 @@ export const GET = withCaller(
 export const POST = withCaller(
   async (req, { caller, supabase }) => {
     try {
-
       const parsed = staffCreateSchema.safeParse(await req.json().catch(() => ({})));
       if (!parsed.success) {
         return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
@@ -116,6 +117,7 @@ export const POST = withCaller(
           email: input.email,
           phone: input.phone,
           skills: input.skills,
+          qualifications: input.qualifications,
           color: input.color,
           note: input.note,
           is_active: input.is_active,
@@ -137,7 +139,6 @@ export const POST = withCaller(
 export const PUT = withCaller(
   async (req, { caller, supabase }) => {
     try {
-
       const rawBody = await req.json().catch(() => ({}));
       const parsed = staffUpdateSchema.safeParse(rawBody);
       if (!parsed.success) {
@@ -183,7 +184,6 @@ export const PUT = withCaller(
 export const DELETE = withCaller(
   async (req, { caller, supabase }) => {
     try {
-
       const parsed = staffDeleteSchema.safeParse(await req.json().catch(() => ({})));
       if (!parsed.success) {
         return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");

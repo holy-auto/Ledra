@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { parseJsonSafe } from "@/lib/api/safeJson";
 import { SUGGESTED_SKILLS } from "@/lib/staff/skills";
+import { STAFF_QUALIFICATIONS, qualificationLabel, type StaffQualificationKey } from "@/lib/staff/qualifications";
 import { formatDate } from "@/lib/format";
 
 type StaffStats = {
@@ -20,6 +21,7 @@ type Staff = {
   email: string | null;
   phone: string | null;
   skills: string[];
+  qualifications: string[];
   color: string | null;
   is_active: boolean;
   note: string | null;
@@ -44,6 +46,7 @@ type Draft = {
   email: string;
   phone: string;
   skillsText: string;
+  qualifications: StaffQualificationKey[];
   is_active: boolean;
   /** レス率の入力欄用テキスト（%表記、例: "70"）。空文字は未設定。 */
   commissionRateText: string;
@@ -56,6 +59,7 @@ const EMPTY_DRAFT: Draft = {
   email: "",
   phone: "",
   skillsText: "",
+  qualifications: [],
   is_active: true,
   commissionRateText: "",
 };
@@ -137,6 +141,9 @@ export default function StaffClient() {
       email: s.email ?? "",
       phone: s.phone ?? "",
       skillsText: s.skills.join(", "),
+      qualifications: (s.qualifications ?? []).filter((q): q is StaffQualificationKey =>
+        STAFF_QUALIFICATIONS.some((c) => c.key === q),
+      ),
       is_active: s.is_active,
       commissionRateText: s.commission_rate != null ? String(Math.round(s.commission_rate * 10000) / 100) : "",
     });
@@ -165,6 +172,7 @@ export default function StaffClient() {
       email: draft.email.trim() || null,
       phone: draft.phone.trim() || null,
       skills: parseSkills(draft.skillsText),
+      qualifications: draft.qualifications,
       is_active: draft.is_active,
       commission_rate: rate == null ? null : rate / 100,
     };
@@ -445,6 +453,38 @@ export default function StaffClient() {
             </div>
           </div>
 
+          <div className="space-y-1">
+            <label className="text-xs text-secondary">法定資格・職責</label>
+            <p className="text-[11px] text-muted">
+              点検整備記録簿の電子化基準が例示する権限区分（指定整備事業者）。スキルタグとは別軸です。
+            </p>
+            <div className="flex flex-col gap-1 pt-1">
+              {STAFF_QUALIFICATIONS.map((q) => {
+                const checked = draft.qualifications.includes(q.key);
+                return (
+                  <label key={q.key} className="flex items-start gap-2 text-xs text-secondary">
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={(e) =>
+                        setDraft({
+                          ...draft,
+                          qualifications: e.target.checked
+                            ? [...draft.qualifications, q.key]
+                            : draft.qualifications.filter((k) => k !== q.key),
+                        })
+                      }
+                    />
+                    <span>
+                      {q.label}
+                      <span className="block text-[10px] text-muted">{q.note}</span>
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+
           <label className="flex items-center gap-2 text-xs text-secondary">
             <input
               type="checkbox"
@@ -492,6 +532,18 @@ export default function StaffClient() {
                     </span>
                     {!s.is_active && <span className="text-[10px] text-muted">休止中</span>}
                   </div>
+                  {s.qualifications.length > 0 && (
+                    <div className="flex flex-wrap gap-1">
+                      {s.qualifications.map((q) => (
+                        <span
+                          key={q}
+                          className="rounded-full border border-accent/40 bg-accent-dim px-2 py-0.5 text-[11px] text-accent"
+                        >
+                          {qualificationLabel(q)}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                   {s.skills.length > 0 && (
                     <div className="flex flex-wrap gap-1">
                       {s.skills.map((sk) => (
