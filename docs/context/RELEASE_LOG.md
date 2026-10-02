@@ -14,6 +14,18 @@
   `.github/dependabot.yml` の ignore に入れた（DECISION_LOG 2026-10-02）。#1193 は閉じた。
 - 検証: `npm audit` 0件、tsc 通過、vitest exit=0（615 files / 6006 tests、`tail` で要約を確認）。
 
+## 2026-10-02 完成検査の外部テスタ測定値 汎用 CSV 取込 UI（G5 Phase 2）
+
+- 内容: Phase 2 のサーバ土台（取込 API）に接続する UI を追加。完成検査の編集画面に「外部テスタ取込（CSV）」
+  パネルを置き、`field_code,値,単位?` を貼付→プレビュー（取込可能/除外の内訳表示）→取込 API へ送信。
+  取込後は測定値セルを再読込。
+- パーサ `src/lib/inspection/measurementCsv.ts`（純粋関数）: 値種別で numeric/judgment(良否)/text を解釈し
+  `source='imported'` を付与。未知コード・様式外・数値不可・重複・空値は理由付きで除外。サーバの
+  `measurementsPutSchema` が最終検証、取込は手入力(manual)確定済みセルを上書きしない（API 側で保護）。
+- UI は既存記録（編集モード・測定値読込後）でのみ表示。特定テスタ依存の列マッピングは呼び出し元で
+  正準 field_code に正規化する前提（#7 の特定テスタ/OSS アダプタは別途）。
+- 検証: CSV パーサの単体テスト追加 / tsc・eslint 緑。
+
 ## 2026-10-01 合算請求書の詳細画面と PDF に「合算内訳」（元帳票ごとの明細）を表示
 
 - マージ: #1196（`6b20267`、2026-10-01 23:04 UTC）。DB 変更なし。
