@@ -45,8 +45,8 @@
 > 2026-10-02 再提出用サンプル a〜d を現行コードで再生成（4枚とも Valid・untrusted のみ・GPS なし）。zip `Ledra-C2PA-Resubmission-20261002-UNVERIFIED.zip` を代表へ渡した。**未送信**。
 > 2026-10-02 追記: #1173 は main にマージ済み（c4cc5816）。`www.ledra.co.jp` は Cloudflare 経由（`Server: cloudflare`）になり、
 > 代表の PC から `curl --tls-max 1.2` は exit 35（ハンドシェイク失敗）、`--tlsv1.3` は 200 を確認＝**TLS 1.2 拒否を実測**。
-> GPSA §1.6・§2.5（O.5）・TOE 図を Cloudflare 前段の構成で書き直した。**ただし Web とモバイルが使うのは `app.ledra.co.jp` で、
-> こちらの TLS 1.2 拒否と写真アップロードは未確認**（`M-20261002-tls-check-covered-www-but-app-host-is-app-ledra`）。
+> GPSA §1.6・§2.5（O.5）・TOE 図を Cloudflare 前段の構成で書き直した。Web とモバイルが使う `app.ledra.co.jp` も同日確認: TLS 1.2 は exit 35、TLS 1.3 は 200・`Server: cloudflare`、
+> `http://` は 301 で `https://` へ（`M-20261002-tls-check-covered-www-but-app-host-is-app-ledra`）。**写真アップロードの本番確認は未**。
 > Conformulator（新サンプル a〜d、zip 内と同一バイトを確認）は**4枚とも**適合ルーブリック3つが全 PASS、不合格は `trusted_success`（テスト証明書の untrusted）のみ。
 > 再提出メール下書き `docs/c2pa-evidence/submission-email.md`（validate 復活・指摘4件の是正・O.4/O.5）。**未送信**。
 

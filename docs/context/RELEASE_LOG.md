@@ -40,7 +40,7 @@ insert が通り、かつ**両方 NULL で入る**ことを行を入れて確か
 - 代表作業: `ledra.co.jp` を Cloudflare に載せ、Minimum TLS 1.3・Full (strict)・キャッシュ Bypass・
   秘密ヘッダ `x-ledra-origin-secret` の Transform Rule を設定。Vercel に `CF_ORIGIN_SECRET` と `TRUST_CF_HEADERS=1`。
 - 確認（代表の PC、PowerShell の curl.exe、`www.ledra.co.jp`）: `--tls-max 1.2` は exit 35（拒否）、`--tlsv1.3` は 200・`Server: cloudflare`。
-  Web・モバイルが使う `app.ledra.co.jp` は未確認。
+  Web・モバイルが使う `app.ledra.co.jp` も同じ結果で、`http://` は 301 で `https://` へ。
 - コード側（#1173、c4cc5816）: 写真アップロードは秘密ヘッダ一致のときだけ受け付け、レート制限の `cf-connecting-ip` も一致時だけ信用。
 - GPSA §1.6・§2.5・TOE 図・運用管理策 A02 を実構成で書き直し、再提出メール下書きを作成。
 

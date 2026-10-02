@@ -94,7 +94,7 @@
 **After**: 再提出メールの文面を確かめるためコードを引くと、`apps/mobile/eas.json` の `EXPO_PUBLIC_API_URL` は
 `https://app.ledra.co.jp`。`src`・`apps/mobile/src`・`eas.json` の自ドメイン URL も `app.ledra.co.jp` が最多（54件、`www` は1件）。
 `app` が Cloudflare を通っていない（灰色雲）と、`CF_ORIGIN_SECRET` を入れた本番では写真アップロードが全部 403 になり、
-TLS 1.2 も通る。実際にどうなっているかは未確認（代表の確認待ち）。手順書・GPSA・図・メール下書きを `app` を含む形に直した。
+TLS 1.2 も通る。同日に代表が確認し、`app` も Cloudflare 経由（TLS 1.2 は exit 35、`Server: cloudflare`）で実害は無かった。手順書・GPSA・図・メール下書きを `app` を含む形に直した。
 
 **なぜ気づけなかったか**: 手順書を書いたとき、製品がどのホスト名で使われているかを**コードから引かず**、
 サイトの顔である `www` を前提にした。確認コマンドも同じ前提で書いたので、代表の実測が通った時点で

@@ -5,12 +5,10 @@
 - 宛先: Administrator の差し戻しメール（2026-09-28、Record ID `01a06690-d01e-7608-ad8a-cd4f1a49d76e`）に**返信**する
 - 添付: `Ledra-C2PA-Resubmission-01a06690.zip`（samples 8ファイル＋GPSA 3ファイル）
 - 送信前に代表が確認すること:
-  1. **`app.ledra.co.jp`**（Web とモバイルが実際に使うホスト）でも TLS 1.2 が拒否される:
-     `curl.exe -sI --tls-max 1.2 https://app.ledra.co.jp; "exit=$LASTEXITCODE"` が exit 35 等、
-     `curl.exe -sI --tlsv1.3 https://app.ledra.co.jp` が `Server: cloudflare`。`www` は 2026-10-02 確認済み。
+  1. ✅ 2026-10-02 確認済み: `www`・`app.ledra.co.jp` とも TLS 1.2 は exit 35、TLS 1.3 は 200・`Server: cloudflare`、
+     `http://app.ledra.co.jp` は 301 で `https://` へ。
   2. 本番で写真アップロード（Web・モバイル）ができる（403 にならない）。Vercel の本番デプロイが c4cc5816 以降。
-  3. `curl.exe -sI http://app.ledra.co.jp` が `301`/`308` で `https://` に飛ぶ（GPSA §2.5「HTTP は HTTPS へリダイレクト」の裏付け）。
-  4. 英文の本文をそのまま送る（下の日本語訳は確認用）。
+  3. 英文の本文をそのまま送る（下の日本語訳は確認用）。
 
 ---
 
