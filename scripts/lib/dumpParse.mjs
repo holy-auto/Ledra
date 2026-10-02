@@ -80,10 +80,15 @@ export function constraintsFromDump(text, kind) {
  * 先頭語 `character` はどの enum 名とも一致せず誤検出しない）。pg_dump は public の enum を
  * `public.x_enum` と修飾するので剥がして enum 名だけ残す。
  *
- * ponytail: notnull 判定は文字列リテラルを潰してから `\bNOT NULL\b` を見る（`DEFAULT 'NOT NULL'`
- *   のような既定値の中の語を NOT NULL 制約と読み違えないため）。見るのは宣言上の NOT NULL だけで、
- *   主キー由来の暗黙 NOT NULL（pg_dump は列行に書かず ADD CONSTRAINT ... PRIMARY KEY で出す）は
- *   拾わない。NULL 可否ドリフトの比較では主キー列は本番側も NOT NULL なので一致し、問題にならない。
+ * ponytail: notnull 判定は（1）文字列リテラルを潰し（2）括弧で囲まれた式を剥がしてから
+ *   `\bNOT NULL\b` を見る。式を剥がすのが要点 —— `GENERATED ALWAYS AS (CASE WHEN x IS NOT NULL
+ *   ... ELSE NULL END) STORED` のような**式の中の `IS NOT NULL`** を列の NOT NULL 制約と読み違えると、
+ *   null 許容の生成列を「再生 NOT NULL / 本番 NULL 可」の実害ドリフトとして誤報する（実例
+ *   service_reminders.next_due_mileage / next_due_date）。列の NOT NULL 制約は常に深さ0に出るので、
+ *   括弧内（GENERATED 式・DEFAULT 関数の引数・CHECK）を落とせば top-level の宣言だけが残る。
+ *   リテラルを先に潰すのは、`DEFAULT '('::text` のように文字列内の括弧が剥がしを壊さないため。
+ *   主キー列は pg_dump が列行に `NOT NULL` を明記する（`id uuid DEFAULT ... NOT NULL`）ので真になる。
+ *   本番側も attnotnull が真なので一致し、ドリフトにはならない。
  *
  * 列名の集合だけ欲しいときは `new Set(columnRowsFromDump(t).map((r) => r.name))`。
  */
@@ -117,12 +122,17 @@ export function columnRowsFromDump(text) {
       if (/^(CONSTRAINT|PRIMARY|UNIQUE|CHECK|FOREIGN|EXCLUDE|LIKE)\b/i.test(line)) continue;
       const mm = line.match(/^"?(\w+)"?\s+((?:public\.)?"?\w+"?)/);
       if (!mm) continue;
-      // 文字列リテラルを潰してから NOT NULL を見る（既定値内の語を誤検出しない）。
-      const noStrings = line.replace(/'(?:[^']|'')*'/g, "''");
+      // 文字列リテラル→括弧内の式、の順に落としてから NOT NULL を見る（上の ponytail 参照）。
+      let flat = line.replace(/'(?:[^']|'')*'/g, "''");
+      let prev;
+      do {
+        prev = flat;
+        flat = flat.replace(/\([^()]*\)/g, " "); // 最内の括弧から外へ、無くなるまで
+      } while (flat !== prev);
       rows.push({
         name: `${table}.${bare(mm[1])}`,
         type: bare(mm[2]).replace(/^public\./, ""),
-        notnull: /\bNOT\s+NULL\b/i.test(noStrings),
+        notnull: /\bNOT\s+NULL\b/i.test(flat),
       });
     }
   }
@@ -130,8 +140,8 @@ export function columnRowsFromDump(text) {
 }
 
 /**
- * 列の NULL 可否ドリフトを両方向で仕分ける純関数。両側に在る列だけを見る
- * （片側に無い列は既存の列名ドリフトが拾う）。skipTables の表は「表ごと本番に無い」ので除く。
+ * 列の NULL 可否ドリフトを両方向で仕分ける純関数。**両側に在る列だけ**を見る
+ * （片側にしか無い列は表・列名のドリフトが別途拾う。ここは「列は在るが NULL 可否が違う」専任）。
  *
  * 引数は `Map<"表名.列名", notnull:boolean>`。
  *   replay … columnRowsFromDump 由来（マイグレーションを再生した DB）
@@ -143,13 +153,11 @@ export function columnRowsFromDump(text) {
  *   replayStrict … 再生 NOT NULL / 本番 NULL 可。**実害**: 本番で通る INSERT が再生・プレビューで
  *                  23502 になる（実例 audit_logs.tenant_id —— 本番 349 行中 337 行が NULL）。
  */
-export function nullabilityDrift(replay, prod, skipTables = new Set()) {
+export function nullabilityDrift(replay, prod) {
   const prodStrict = [];
   const replayStrict = [];
   for (const [col, rNotNull] of replay) {
     if (!prod.has(col)) continue;
-    const table = col.slice(0, col.indexOf("."));
-    if (skipTables.has(table)) continue;
     const pNotNull = prod.get(col);
     if (pNotNull && !rNotNull) prodStrict.push(col);
     else if (!pNotNull && rNotNull) replayStrict.push(col);

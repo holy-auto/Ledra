@@ -190,7 +190,10 @@ CREATE TABLE public.audit_logs (
     note text DEFAULT 'value is NOT NULL here'::text,
     label_public boolean GENERATED ALWAYS AS (
         CASE WHEN (action = 'x'::text) THEN true
-        ELSE false END) STORED NOT NULL
+        ELSE false END) STORED NOT NULL,
+    next_due date GENERATED ALWAYS AS (
+        CASE WHEN ((tenant_id IS NOT NULL) AND (action IS NOT NULL)) THEN now()
+        ELSE NULL::date END) STORED
 );
 `;
 
@@ -212,6 +215,13 @@ describe("columnRowsFromDump（NOT NULL 判定）", () => {
     expect(rows.filter((r) => r.name === "audit_logs.label_public")).toHaveLength(1);
     expect(nn("audit_logs.label_public")).toBe(true);
   });
+
+  it("式の中の IS NOT NULL を列の NOT NULL 制約と読み違えない（null 許容の生成列）", () => {
+    // 実例 service_reminders.next_due_mileage/date。ELSE NULL で null 許容だが式に IS NOT NULL を含む。
+    // ここが true に化けると「再生 NOT NULL / 本番 NULL 可」の実害ドリフトとして誤報する。
+    expect(rows.filter((r) => r.name === "audit_logs.next_due")).toHaveLength(1);
+    expect(nn("audit_logs.next_due")).toBe(false);
+  });
 });
 
 describe("nullabilityDrift（NULL 可否ドリフトの両方向仕分け）", () => {
@@ -232,13 +242,6 @@ describe("nullabilityDrift（NULL 可否ドリフトの両方向仕分け）", (
     );
     expect(prodStrict).toEqual([]);
     expect(replayStrict).toEqual([]);
-  });
-
-  it("skipTables の表（本番に表ごと無い）は除外する", () => {
-    const replay = map({ "gone.x": true, "kept.y": true });
-    const prod = map({ "gone.x": false, "kept.y": false });
-    const { replayStrict } = nullabilityDrift(replay, prod, new Set(["gone"]));
-    expect(replayStrict).toEqual(["kept.y"]);
   });
 
   it("結果はソート済み", () => {

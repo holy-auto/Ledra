@@ -372,6 +372,16 @@ const prodNotNull = new Map(
     )
   ).map((r) => [String(r.col).toLowerCase(), r.notnull === true || r.notnull === "true"]),
 );
+// **本番側の陰性対照**（再生側の tenants.id 自己検査と対）。tenants.id は本番でも主キーで NOT NULL。
+// Management API が attnotnull を boolean 以外（'t'/'f' 等）で返して上の判定が全列 false に化けると、
+// 本物の NOT NULL 列がすべて「本番 NULL 可」に見え、実害ドリフトを大量に誤報する。ここで落とす。
+if (prodNotNull.get("tenants.id") !== true) {
+  console.error(
+    "[drift] 本番 notnull の自己検査が落ちました: tenants.id が本番で NOT NULL と読めていません" +
+      `（実際: ${JSON.stringify(prodNotNull.get("tenants.id"))}）。attnotnull の取り込み（真偽の解釈）を疑ってください。`,
+  );
+  process.exit(1);
+}
 
 // ── 4. 突き合わせ ───────────────────────────────────────────
 const LABEL = {
@@ -498,7 +508,7 @@ for (const e of enumTypeDrift) {
 // 保証できないため、未適用のマイグレーション起因の差で**直しようのない赤**が居座るのを避ける。
 // ここを可視化しておけば、次に属性がずれたときに毎回の実行で一覧に現れる（宿題の
 // 「一度きりの手作業なので次にずれても誰も気づかない」を解消）。実害の向きには印を付ける。
-const { prodStrict, replayStrict } = nullabilityDrift(replayNotNull, prodNotNull, missingTables);
+const { prodStrict, replayStrict } = nullabilityDrift(replayNotNull, prodNotNull);
 console.log(
   `\n[drift] 列の NULL 可否ドリフト: 本番 NOT NULL / 再生 NULL 可 ${prodStrict.length} 件` +
     `（本番では no-op・新環境がゆるい）/ 再生 NOT NULL / 本番 NULL 可 ${replayStrict.length} 件` +
