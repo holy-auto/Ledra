@@ -90,14 +90,18 @@ export default function DocumentDetailScreen() {
 
   function confirmStatus(next: string) {
     const label = statusLabel(next);
+    // キャンセル取り消し（cancelled → sent）は封印も自動送付もしない
+    // （サーバは draft → sent のときだけ確定処理を走らせる）
+    const undoCancel = data?.status === "cancelled";
     // 確定は後戻りできない（封印が付き、設定によっては顧客へ自動送付される）
-    const warning =
-      next === "sent"
+    const warning = undoCancel
+      ? "キャンセルを取り消して「送付済」に戻します。"
+      : next === "sent"
         ? "確定すると内容が封印され、設定によっては顧客へ自動送付されます。取り消せません。"
         : `ステータスを「${label}」に変更します。`;
-    Alert.alert(`${label}にする`, warning, [
+    Alert.alert(undoCancel ? "キャンセル取り消し" : `${label}にする`, warning, [
       { text: "キャンセル", style: "cancel" },
-      { text: label, onPress: () => statusMutation.mutate(next) },
+      { text: undoCancel ? "取り消す" : label, onPress: () => statusMutation.mutate(next) },
     ]);
   }
 
@@ -213,7 +217,11 @@ export default function DocumentDetailScreen() {
                 disabled={statusMutation.isPending}
                 fullWidth
               >
-                {next === "sent" ? "確定して送付済にする" : `${statusLabel(next)}にする`}
+                {data.status === "cancelled"
+                  ? "キャンセル取り消し"
+                  : next === "sent"
+                    ? "確定して送付済にする"
+                    : `${statusLabel(next)}にする`}
               </LedraButton>
             ))}
           </View>
