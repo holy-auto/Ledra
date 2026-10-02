@@ -1,4 +1,5 @@
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
+import { tls13Fetch } from "@/lib/net/tls13Fetch";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnySupabaseClient = SupabaseClient<any, any, any>;
@@ -20,6 +21,8 @@ export function getSupabaseAdmin(): AnySupabaseClient {
     }
     adminClient = createClient(url, key, {
       auth: { autoRefreshToken: false, persistSession: false },
+      // Backend → Supabase must be TLS 1.3+ (C2PA GPSA O.5). Covers DB REST, Storage and Auth.
+      global: { fetch: tls13Fetch },
     });
   }
   return adminClient;

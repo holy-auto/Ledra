@@ -1,6 +1,7 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
+import { tls13Fetch } from "@/lib/net/tls13Fetch";
 import { resolveRequestId } from "@/lib/logger";
 import { checkRateLimit } from "@/lib/api/rateLimit";
 import { buildCspHeader } from "@/lib/security/csp";
@@ -247,6 +248,7 @@ export async function proxy(request: NextRequest) {
       return NextResponse.json({ error: "auth_unavailable" }, { status: 503 });
     }
     const stepUpClient = createServerClient(url, key, {
+      global: { fetch: tls13Fetch }, // Backend → Supabase is TLS 1.3+ (C2PA GPSA O.5)
       cookies: {
         getAll: () => request.cookies.getAll(),
         setAll: () => {},
@@ -372,6 +374,7 @@ async function refreshSession(request: NextRequest) {
   }
 
   const supabase = createServerClient(url, key, {
+    global: { fetch: tls13Fetch }, // Backend → Supabase is TLS 1.3+ (C2PA GPSA O.5)
     cookies: {
       getAll() {
         return request.cookies.getAll();
@@ -408,6 +411,7 @@ async function refreshSessionAndProtect(request: NextRequest) {
   if (!url || !key) return response;
 
   const supabase = createServerClient(url, key, {
+    global: { fetch: tls13Fetch }, // Backend → Supabase is TLS 1.3+ (C2PA GPSA O.5)
     cookies: {
       getAll() {
         return request.cookies.getAll();

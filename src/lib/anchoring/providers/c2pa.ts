@@ -42,33 +42,50 @@ const MANIFEST_TITLE = "Certificate Photo";
 // Intake Form.
 const SPEC_VERSION = "2.4";
 
-// IPTC DigitalSourceType: the depicted content is a real-life scene captured
-// digitally. `c2pa.created` requires a digitalSourceType or it is rejected as
-// `assertion.action.malformed` under a C2PA 2.x (claim v2) manifest.
-const DIGITAL_SOURCE_TYPE_CAPTURE = "http://cv.iptc.org/newscodes/digitalsourcetype/digitalCapture";
+// IPTC DigitalSourceType for a perceptible transformation made by a deterministic
+// (non-generative) algorithm — here sharp baking in the EXIF orientation. It
+// describes the *transformation*, not the ingredient, so it stays true whatever the
+// uploaded photo's own origin is.
+const DIGITAL_SOURCE_TYPE_ALGORITHMIC = "http://cv.iptc.org/newscodes/digitalsourcetype/algorithmicallyEnhanced";
+
+/** ingredient（アップロードされた原本）と c2pa.opened を結ぶラベル。 */
+const PARENT_INGREDIENT_LABEL = "parent";
 
 /**
  * c2pa.actions に封入する行為台帳（要約と実アサーションで共有する唯一の定義）。
  * その実来歴を正直に宣言する。
  *
- * 先頭は `c2pa.created`（+digitalSourceType）。C2PA 2.x では `c2pa.opened`/`placed`/
- * `removed` は ingredient 参照が必須だが、Ledra は元写真を ingredient にできない
- * （プライバシーのため署名前に GPS を除去しており、除去前の原本を埋め込むと位置情報が
- * 再露出する）。よって `opened` は使わず、Ledra が生成した rendition を `created` とし、
- * 向き確定・再エンコード・EXIF/GPS 除去を後続の edit 系アクションで記録する。ingredient を
- * 要求しない `orientation`/`converted`/`edited` は検証を通る（実測で確認）。
+ * 先頭は `c2pa.opened`＋parentOf ingredient（アップロードされた原本）。Ledra は Backend 型の
+ * Generator Product で、撮影そのものはしない＝アセットを「生成」していないので `c2pa.created`
+ * は主張できない（Conformance Program Administrator の指摘、2026-09-28）。原本を ingredient に
+ * しても GPS は漏れない — ingredient は原本のハッシュ・形式・画素から作り直したサムネイルだけを
+ * 持ち、EXIF/GPS は運ばない（実測: 原本 GPS あり → ingredient サムネイル・manifest JSON とも GPS なし）。
+ * 原本が C2PA 付きなら、その manifest と検証結果が ingredient に入る（＝validate）。
+ * `c2pa.opened` には digitalSourceType を付けない（Conformulator `no_dst_for_opened_action`）。
  */
-const CREATED_ACTION = { action: "c2pa.created", digitalSourceType: DIGITAL_SOURCE_TYPE_CAPTURE };
-const ORIENTATION_ACTION = { action: "c2pa.orientation", softwareAgent: "sharp" };
+const OPENED_ACTION = { action: "c2pa.opened", parameters: { ingredientIds: [PARENT_INGREDIENT_LABEL] } };
+// c2pa.orientation は「知覚できる変換」なので digitalSourceType が必須（Conformulator
+// `mandatory_dst_for_perceptible_transformations`）。
+const ORIENTATION_ACTION = {
+  action: "c2pa.orientation",
+  softwareAgent: "sharp",
+  digitalSourceType: DIGITAL_SOURCE_TYPE_ALGORITHMIC,
+};
 const CONVERTED_ACTION = { action: "c2pa.converted", softwareAgent: "sharp" };
-// EXIF/GPS metadata removed for privacy before signing.
-const EDITED_REMOVE_METADATA_ACTION = { action: "c2pa.edited", parameters: { name: "exif_gps_metadata_removed" } };
+// EXIF/GPS metadata removed for privacy before signing. `c2pa.edited.metadata`（メタデータのみの編集）を
+// 使う。汎用の `c2pa.edited` は「editorial な意味に影響する編集」の定義で、画素は変えていないので合わない。
+const EDITED_METADATA_ACTION = {
+  action: "c2pa.edited.metadata",
+  softwareAgent: "sharp",
+  description: "EXIF/GPS metadata removed for privacy",
+};
 
 type ManifestAction = {
   action: string;
   digitalSourceType?: string;
   softwareAgent?: string;
-  parameters?: { name?: string };
+  description?: string;
+  parameters?: { ingredientIds: string[] };
 };
 
 /**
@@ -88,27 +105,46 @@ export interface TransformOutcome {
 const FULL_TRANSFORM: TransformOutcome = { reencoded: true, orientationApplied: true, metadataRemoved: true };
 
 /**
- * 実際に効果のあった行為だけを台帳にする。`c2pa.created`（camera-only 入力なので常時）に加え、
+ * 実際に効果のあった行為だけを台帳にする。`c2pa.opened`（原本を開いた＝常時）に加え、
  * orientation/converted/edited は各 outcome が true のときだけ載せる。fallback（reencoded=false）
- * では `c2pa.created` のみ。順序は created → orientation → converted → edited。
+ * では原本をそのまま署名するので `c2pa.opened` のみ。順序は opened → orientation → converted → edited。
  */
 function buildActions(o: TransformOutcome): ManifestAction[] {
-  const actions: ManifestAction[] = [CREATED_ACTION];
+  const actions: ManifestAction[] = [OPENED_ACTION];
   if (o.orientationApplied) actions.push(ORIENTATION_ACTION);
   if (o.reencoded) actions.push(CONVERTED_ACTION);
-  if (o.metadataRemoved) actions.push(EDITED_REMOVE_METADATA_ACTION);
+  if (o.metadataRemoved) actions.push(EDITED_METADATA_ACTION);
   return actions;
 }
 
-/** actions 台帳を要約文字列に落とす（parameters.name があれば `action:name`）。 */
-function summarizeActions(o: TransformOutcome): string[] {
-  return buildActions(o).map((a) => (a.parameters?.name ? `${a.action}:${a.parameters.name}` : a.action));
+/**
+ * 原本（ingredient）の manifest store 内で、位置などの個人情報を持ちうるメタデータ系アサーション
+ * （c2pa.metadata / stds.exif / stds.iptc / cawg.metadata 等）の JUMBF URI を列挙する。redaction 対象。
+ * // ponytail: ラベル名の部分一致（metadata|exif|iptc|xmp）で判定する。新しいメタデータ系ラベルが
+ * // 仕様に増えたらここを広げる（テスト: GPS 入り c2pa.metadata を持つ原本が漏れないこと）。
+ */
+export function metadataAssertionUris(store: unknown): string[] {
+  const manifests = (store as { manifests?: Record<string, { assertions?: Array<{ label?: string }> }> } | null)
+    ?.manifests;
+  return Object.entries(manifests ?? {}).flatMap(([label, m]) =>
+    (m.assertions ?? [])
+      .map((a) => a.label ?? "")
+      .filter((l) => /metadata|exif|iptc|xmp/i.test(l))
+      .map((l) => `self#jumbf=/c2pa/${label}/c2pa.assertions/${l}`),
+  );
 }
 
-/** allActionsIncluded は「列挙した行為が実施した全て」＝再エンコードが走ったとき true。 */
-function allActionsIncluded(o: TransformOutcome): boolean {
-  return o.reencoded;
+/** actions 台帳を要約文字列（action 名の列）に落とす。 */
+function summarizeActions(o: TransformOutcome): string[] {
+  return buildActions(o).map((a) => a.action);
 }
+
+/**
+ * allActionsIncluded: 列挙した行為が実施した全て。fallback でも原本をそのまま署名しただけ
+ * （opened 以外に何もしていない）なので常に true。open-and-re-save の manifest では true が
+ * 求められる（Conformulator `all_actions_included_opened`, Spec 2.4 §18.15.3）。
+ */
+const ALL_ACTIONS_INCLUDED = true;
 
 /**
  * 署名時に確定するマニフェスト要約を組み立てる純関数（読み戻し不要・テスト可能）。
@@ -124,7 +160,7 @@ export function buildC2paManifestSummary(
     title: MANIFEST_TITLE,
     signerMode: mode,
     specVersion: SPEC_VERSION,
-    allActionsIncluded: allActionsIncluded(outcome),
+    allActionsIncluded: ALL_ACTIONS_INCLUDED,
     actions: summarizeActions(outcome),
     binding: {
       certPublicId: binding?.publicId?.trim() || null,
@@ -201,16 +237,21 @@ export interface CaptureBinding {
  * `binding` seals certificate/vehicle/nonce/time into a custom assertion.
  * `outcome` = which transforms actually had an effect on this buffer (from
  * imageExif). Only effective actions are asserted, so the manifest never
- * certifies a no-op (e.g. `exif_gps_metadata_removed` when there was no
+ * certifies a no-op (e.g. `c2pa.edited.metadata` when there was no
  * metadata, or `c2pa.orientation` when there was no orientation to normalize).
- * On the fallback where sharp failed (reencoded=false) only `c2pa.created` is
- * asserted and allActionsIncluded=false.
+ * On the fallback where sharp failed (reencoded=false) the original is signed
+ * as-is and only `c2pa.opened` is asserted.
+ *
+ * `original` = the bytes as uploaded (before EXIF/GPS removal). It becomes the
+ * parentOf ingredient that `c2pa.opened` points to; defaults to `buffer` when the
+ * caller has no separate original (tests, fallback).
  */
 export async function signC2pa(
   buffer: Buffer,
   mime: string,
   binding?: CaptureBinding,
   outcome: TransformOutcome = FULL_TRANSFORM,
+  original: Buffer = buffer,
 ): Promise<C2paResult> {
   const mode = getMode();
   if (mode === "disabled") return DISABLED_RESULT;
@@ -220,51 +261,60 @@ export async function signC2pa(
     const signer = await createC2paSigner(mode);
     if (!signer) return DISABLED_RESULT;
 
-    const { Builder } = await import("@contentauth/c2pa-node");
+    const { Builder, Reader } = await import("@contentauth/c2pa-node");
 
-    // c2pa-node 0.6.x では Builder のコンストラクタはネイティブハンドルを取る内部用で、
-    // マニフェスト定義から作るには静的ファクトリ `Builder.withJson(...)` を使う。
-    // `new Builder({...})` は旧APIで、0.6.x では addAssertion 時に neon downcast エラーで
-    // throw → signC2pa の catch で握られ「署名されない(DISABLED)」に fail-open してしまう。
-    // claim_generator_info (v2 form) carries specVersion — required by the C2PA
-    // Conformance Program for Spec 2.4+ so validators can confirm the asserted
-    // version matches the CPL record.
-    const builder = Builder.withJson({
-      claim_generator_info: [
-        { name: CLAIM_GENERATOR_NAME, version: CLAIM_GENERATOR_VERSION, specVersion: SPEC_VERSION },
-      ],
-      title: MANIFEST_TITLE,
-    });
-
-    // Record the real provenance, asserting ONLY the actions that actually had an
-    // effect on this buffer (from `outcome`): c2pa.created (camera-only input),
-    // then c2pa.converted (re-encode), c2pa.orientation (only if an EXIF
-    // orientation was baked in), and c2pa.edited:exif_gps_metadata_removed (only
-    // if the source carried EXIF/GPS that was removed). A no-op is never asserted,
-    // so the manifest never certifies e.g. "GPS metadata removed" for an image
-    // that had none. On the fallback where sharp failed, only c2pa.created is
-    // asserted and allActionsIncluded=false. `c2pa.opened` cannot be used here
-    // (claim v2 requires an ingredient Ledra can't embed — see CREATED_ACTION).
-    // The C2PA Conformance Program (Additional Conformance Requirements v0.2)
-    // requires actions-map-v2 to carry allActionsIncluded (true|false).
-    builder.addAssertion("c2pa.actions", {
-      actions: buildActions(outcome) as unknown as Record<string, unknown>[],
-      allActionsIncluded: allActionsIncluded(outcome),
-    });
-
-    // Seal the capture context into the manifest: which certificate/vehicle this
-    // photo is for, the single-use capture nonce, and the TSA time. This binds
-    // the signed image to one certificate so it cannot be reused elsewhere, and
-    // ties it to a nonce that only existed after that certificate was created.
+    // Seal the capture context into the manifest (com.ledra.capture): which
+    // certificate/vehicle this photo is for, the single-use capture nonce, and the
+    // TSA time. This binds the signed image to one certificate so it cannot be
+    // reused elsewhere, and ties it to a nonce that only existed after that
+    // certificate was created.
     const bindingEntries = Object.entries({
       cert_public_id: binding?.publicId ?? undefined,
       vin: binding?.vin ?? undefined,
       capture_nonce: binding?.captureNonce ?? undefined,
       tsa_timestamp: binding?.tsaTimestamp ?? undefined,
     }).filter(([, v]) => v != null && v !== "");
-    if (bindingEntries.length > 0) {
-      builder.addAssertion("com.ledra.capture", Object.fromEntries(bindingEntries));
-    }
+
+    // Both assertions are made by Ledra itself, so they go in the manifest
+    // definition with `created: true` (→ claim.created_assertions). Added via
+    // builder.addAssertion they land in gathered_assertions, and the Conformulator
+    // rubric fails `inception_action_position`: the inception action must be the
+    // first item of the first actions assertion in created_assertions (Spec 2.2 §18.14.2).
+    // The actions ledger lists only the transforms that took effect (see buildActions);
+    // the Conformance Program (Additional Conformance Requirements v0.2) requires
+    // allActionsIncluded, and claim_generator_info.specVersion matching the CPL record.
+    // マニフェスト定義から作るには静的ファクトリ `Builder.withJson(...)` を使う
+    // （旧 `new Builder({...})` は addAssertion 時に neon downcast エラーで fail-open した）。
+    const builder = Builder.withJson({
+      claim_generator_info: [
+        { name: CLAIM_GENERATOR_NAME, version: CLAIM_GENERATOR_VERSION, specVersion: SPEC_VERSION },
+      ],
+      title: MANIFEST_TITLE,
+      assertions: [
+        {
+          label: "c2pa.actions",
+          created: true,
+          data: { actions: buildActions(outcome), allActionsIncluded: ALL_ACTIONS_INCLUDED },
+        },
+        ...(bindingEntries.length > 0
+          ? [{ label: "com.ledra.capture", created: true, data: Object.fromEntries(bindingEntries) }]
+          : []),
+      ],
+    });
+    // The uploaded original is the parentOf ingredient that c2pa.opened references.
+    // c2pa-rs records its hash, format and a pixel-derived thumbnail (no EXIF/GPS),
+    // and — if the original carries C2PA — its manifest plus validation results.
+    await builder.addIngredient(
+      JSON.stringify({ title: "Uploaded photo", relationship: "parentOf", label: PARENT_INGREDIENT_LABEL }),
+      { buffer: original, mimeType: mime },
+    );
+    // If the original carries its own C2PA manifest (C2PA cameras/phones), that manifest is
+    // copied into ours — and it can hold the shooting location in a metadata assertion,
+    // which would bypass the EXIF/GPS removal. Redact every metadata-type assertion of the
+    // ingredient's manifest store (C2PA redaction; c2pa-rs adds the c2pa.redacted action).
+    // A read error is not swallowed: signing then fails closed (unsigned, not leaking).
+    const parentStore = (await Reader.fromAsset({ buffer: original, mimeType: mime }))?.json();
+    for (const uri of metadataAssertionUris(parentStore)) builder.addRedaction(uri, "c2pa.PII.present");
 
     const input = { buffer, mimeType: mime };
     const output: { buffer: Buffer | null } = { buffer: null };

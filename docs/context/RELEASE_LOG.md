@@ -4,6 +4,38 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-10-02 メーカー・車種が分からない車両でも証明書を発行できるようにした（`20261002120100`・**本番で実際に走る**）
+
+`vehicles.maker` / `model` の NOT NULL を外した。**アプリ側のコード変更は無い。**
+発行のサーバガード（`src/lib/certificates/create.ts:197`）と画面（`CertNewFormWrapper.tsx:359`）は
+もともと「`vehicle_id` か `maker` か `model` のどれか1つ」で通す形で、insert も既に
+`maker: vehicle_maker || null` を送っていた。**揃える先がコードではなく DB だった**ということ。
+
+**本番で実際に走る2文**（`20260929150300` が本番では no-op で宣言した `SET NOT NULL` を、
+この2列だけ戻す）。実測（2026-10-02・読み取りのみ）: 本番 `vehicles` **27 行**、
+`maker`/`model` の NULL **0 件**・空文字 **0 件** —— **既存データは1行も影響を受けない**。
+
+**空文字 `''` は採らなかった。** `''` は「不明」ではなく「空という文字列が入っている」で、
+一覧・検索・集計で未入力と区別できない。NULL なら既存コードの値そのままで意図が通る。
+
+**車両の直接登録 API は緩めていない。** `vehicleCreateSchema`
+（`src/lib/validations/vehicle.ts:17-18`）は maker / model を両方必須のまま。車両マスタを
+作る操作は「分からない」を受け付ける場面ではない。緩めたのは **DB と、発行・ヒアリングの2経路だけ**。
+
+**再発防止（この2列は過去に両方向へ動いている）**: 振る舞いの検査を1本追加した ——
+`scripts/replay/checks/vehicle_insert_without_maker_model.sql`。maker / model を**省いた**
+insert が通り、かつ**両方 NULL で入る**ことを行を入れて確かめる（既定値が後から足されたら落ちる）。
+**陰性対照つき** —— `tenant_id`（NOT NULL・既定なし）を省いた insert が 23502 で落ちることを
+同じ表で確かめ、23502 以外で落ちた場合も失敗にする。これが無いと「vehicles の NOT NULL が
+全部外れている」状態でも素通りしてしまう。
+
+検証: `npm run lint:migrations` 緑（350 new / 167 grandfathered）、
+`npm run check:migrations` 再生 **517/517**・**振る舞いの検査 10 件すべて期待どおり**（9 → 10）。
+あわせて `vehicles_public_id_default.sql` のコメント（「maker / model は本番で NOT NULL」）を
+現状に直した（同じ事実が2箇所に残る型 C を避けるため）。
+
+経緯は DECISION_LOG 2026-10-02。
+
 ## 2026-10-02 スキーマドリフト検出器を列の NULL 可否まで拡張（報告のみ）
 
 - 内容: `scripts/check-schema-drift.mjs` は従来「列名の有無」しか見ず、本番と再生 DB の
@@ -129,6 +161,12 @@ lint のメッセージは、実際にルールを発火させて表示を確認
 - 検証: `npm audit` 0件、tsc 通過、vitest 5998 passed（#1184）。本番ビルドの成功は CI と Vercel で確認
   （手元はフォント取得ができずビルドが完了しない）。
 
+## 2026-10-01 Backend→Supabase の通信を TLS 1.3 以上に限定（#1183 から #1173 へ取り込み）
+
+- `src/lib/net/tls13Fetch.ts`: undici の `Agent({ connect: { minVersion: "TLSv1.3" } })` を dispatcher として渡す fetch。サーバー側の Supabase クライアント（admin / server / mobile-server / readReplica / public / proxy の3か所）で使う。
+- テスト `tls13Fetch.test.ts` 3件（TLS 1.2 専用サーバーを拒否・1.3 は版交渉を通る・FormData/Request の本文が壊れない）。`minVersion` を外すと 1件目が落ちることを確認。
+- GPSA §2.5 O.5 の Backend→Supabase を現状どおり記述。Cloudflare 手順書から `NODE_OPTIONS=--tls-min-v1.3` を外した（他の連携を巻き込むため）。
+
 ## 2026-10-01 外部テスタ測定値の取込 API（G5 Phase 2 サーバ土台）
 
 - 内容: 完成検査の測定値を外部取込する専用エンドポイント `POST …/inspection-records/[id]/measurements/import`
@@ -161,6 +199,53 @@ lint のメッセージは、実際にルールを発火させて表示を確認
   落ちたり通ったりしていたため（PR #1172）。本物のコンパイルエラーは2回とも落ちるので見逃さない。
 - 判断の経緯は DECISION_LOG 2026-09-29（フォント同梱は利用者側の配信量が増えるので採らなかった）。
 - 検証: 再試行の分岐をスタブのビルドで確認（1回目成功・2回目成功・2回とも失敗の3通り）。ci.yml の YAML 構文を確認。
+
+## 2026-09-29 C2PA crJSON テストハーネス（追加要件 v0.2 §2.3）
+
+- `tools/c2pa-crjson-harness`: `<資産> <C2PA Trust List> <TSA Trust List> <検証時刻>` を受け、検証結果を crJSON で標準出力に出す Rust ツール。
+- エンジンは製品と同じ c2pa-rs 0.90.22。`setup.sh` が crates.io から取得して checksum を照合し、`c2pa-0.90.22-harness.patch`（検証時刻と TSA 専用信頼リストの2点）を当てる。
+- 自己テスト `selftest.mjs`: その場で作った CA・TSA で署名した画像を使い、6件（trusted / untrusted / expired / TSA trusted / 信頼リストの分離 / ingredient の validationTime）を確認。パッチの各点を外すと該当ケースが落ちることを確認済み。ingredient の validationTime は /code-review の指摘で追加（MISTAKE_LEDGER `M-20260929-left-crjson-time-fallback-unread`）。
+- 下書き zip のサンプル4形式（jpeg/png/webp/heic）で crJSON を出力できることを確認（信頼リスト空で `signingCredential.untrusted` のみ）。
+- GPSA §1.9 にハーネスの記述を1文追加。本番のアプリ挙動は変えていない。
+
+## 2026-09-29 C2PA 署名を `c2pa.opened`＋原本 ingredient に変更（Administrator の非適合指摘への対応）
+
+- 経緯（訂正込み）: 実際に送信されたのは **2026-09-27 15:32 UTC、1版目の zip**（Gmail 送信記録で確認）。当初この項に
+  「3版目・Conformulator 合格後に送付」と書いたが誤り（MISTAKE_LEDGER `M-20260929-logged-the-wrong-zip-as-sent`）。
+  Administrator が 9/28 に1版目を審査し、非適合4件を返した: (1) 知覚できる変換に digitalSourceType が無い、
+  (2) actions が created assertions の先頭に無い、(3) カスタムアサーションの形式不正、(4) Backend は資産を原生成しないので
+  `c2pa.created` は不可 → `c2pa.opened`＋ingredient にし、validate 申告を戻すべき。(1)(2) は 3版目で修正済み。
+- 変更: 行為台帳の先頭を `c2pa.created`（digitalCapture）から **`c2pa.opened`＋parentOf ingredient（アップロード原本）**に。
+  `processUploadedPhoto` が原本バイトを `signC2pa` に渡し、`builder.addIngredient` で登録。`c2pa.orientation` の DST は
+  `algorithmicallyEnhanced`（ingredient の出自に依らない「アルゴリズムによる変換」）。`allActionsIncluded` は常に true
+  （fallback でも原本をそのまま署名しただけ）。
+- プライバシー: 原本 ingredient は GPS を運ばない（原本に GPS → 署名後ファイル・manifest JSON・ingredient サムネイルとも
+  GPS なし、を実測。陰性対照＝GPS を消さずに署名すると検出される）。テスト化済み。
+  さらに原本自身の C2PA manifest に入った位置（`c2pa.metadata` 等）が ingredient ごと複写される経路を `/code-review` が指摘・再現。
+  原本 manifest store のメタデータ系アサーションを C2PA redaction（`c2pa.PII.present`、c2pa-rs が `c2pa.redacted` を自動追記）で除去し、テスト化。
+- 未対応: (3) カスタムアサーション（指摘のスクリーンショットが未入手）、ingredient 用ライブラリ（Drive・この環境から取得不可）、
+  GPSA 改訂・レビュー文書（共有権限なしで閲覧不可）。
+
+## 2026-09-27 C2PA 行為台帳の修正と、Conformance 証拠パッケージ一式の再作成
+
+- 修正: `stripGpsAndReadExif` の `orientationApplied` / `metadataRemoved` を sharp の `metadata()` で判定するようにした。
+  従来は exifr を使っており、Orientation が文字列で返るため回転が常に未検出、WebP は読めず EXIF/GPS 除去が未記録だった
+  （`allActionsIncluded=true` なのに `c2pa.orientation` / `c2pa.edited` が欠ける）。回転＋EXIF 付き jpeg/webp のテストを追加。
+  メタデータ除去の行為は汎用 `c2pa.edited`（editorial な編集の定義）から `c2pa.edited.metadata` に変更。Conformulator が
+  "Contains ambiguous actions" を表示したため（代表の自己テスト、2026-09-27）。
+- 追加修正（同日、代表が Conformulator の Rubrics を実行して判明）: v0.2/Spec 2.4 ルーブリックで2件不合格だった。
+  (1) `inception_action_position` — actions を `builder.addAssertion` で足していたため gathered_assertions に入っていた。
+  マニフェスト定義の `assertions` に `created: true` で載せ、created_assertions の先頭にした（com.ledra.capture も created）。
+  (2) `mandatory_dst_for_perceptible_transformations` — `c2pa.orientation` に digitalSourceType が無かった。digitalCapture を付与。
+  `c2paSignValidate.test.ts` に両方の検査を追加（修正前のコードで3件落ちることを確認）。サンプル4枚を再生成。
+  本番は C2PA 未稼働のため影響画像なし（MISTAKE_LEDGER `M-20260927-c2pa-ledger-tested-only-on-exif-free-images`）。
+- 提出物（`docs/c2pa-evidence/`）: 英語の GPSA 本体・運用管理策、サンプル4枚（a-sample.jpg / b-sample.png / c-sample.webp /
+  d-sample.heic。製品の署名パイプラインを通し c2pa-rs テスト証明書で署名、4枚とも `Valid`・指摘は untrusted のみ）、
+  サンプル再生成スクリプト、返信メール下書き（validate 取り下げ・英日）。TOE 構成図を将来形の表現を消して再描画し、
+  設定で有効化される外部連携（Hive / Pinata）を追記。
+- 検証: `src/lib/anchoring` と `src/lib/certificateImages` のテスト（修正前に新規2件が落ちることを確認）、
+  本番証明書経路のテストを c2pa-rs テスト証明書で実行、`npm audit --audit-level=high --omit=dev` 0件。
+  Conformulator はこの環境から到達できず未実施（代表が送信前に実施）。
 
 ## 2026-09-27 IMP-029 残り2タイプの配線（certificate_gate_ready / rating_request）
 

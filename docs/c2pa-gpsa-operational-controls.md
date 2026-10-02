@@ -1,5 +1,8 @@
 # Ledra GPSA — Operational Security Controls (Supporting Document)
 
+> **提出版は英語の `docs/c2pa-evidence/Ledra-GPSA-Operational-Controls.md`。本書は日本語の参照版で、
+> 食い違う場合は英語版が正**（英語版では Codacy の記述と将来形の表現を削除している）。
+
 > C2PA Generator Product Security Architecture (GPSA) 提出補足資料。GPSA 本体
 > `docs/c2pa-gpsa.md` の O.2–O.6 が参照する現行の運用管理策を、**現在有効なものとして**記述する。
 > ツール構成は実在の設定（`.github/dependabot.yml`, `.github/workflows/codeql.yml`,

@@ -1,0 +1,48 @@
+-- vehicles.maker / model の NOT NULL を外す —— 「メーカー・車種が分からない車両でも証明書を発行する」
+--
+-- ## 代表判断（2026-10-02）
+--
+-- 本番の `vehicles.maker` / `model` は NOT NULL・既定なしだが、証明書発行のガードは
+-- 「`vehicle_id` か `maker` か `model` のどれか1つあれば通す」（`src/lib/certificates/create.ts:197`、
+-- 画面側も `CertNewFormWrapper.tsx:359` で同じ条件）。片方だけで発行すると
+-- `maker: vehicle_maker || null`（同 291-292）が明示 NULL を送り、**本番で 23502 になる**。
+-- 2026-09-27 の `/code-review` が見つけ、「不明な maker をどう保存するか」を
+-- OPEN_QUESTIONS に起票していた（`20260929150300` の冒頭コメント参照）。
+--
+-- **代表判断は「発行させる」。** 実装は NOT NULL を外して **NULL を「不明」として許す**形にした。
+--
+-- 空文字 `''` を入れる案は採らない。`''` は「空という文字列が入っている」であって「不明」ではなく、
+-- 一覧・検索・集計で未入力と区別できなくなる。本番に `''` の行は 0 件（実測）なので、
+-- 入れた瞬間から新しい意味の値が増える。NULL なら既存コードが送っている値そのままで意図が通る
+-- （CLAUDE.md の「`PaymentState.UNKNOWN` は失敗ではなく『結果不明』」と同じ考え方）。
+--
+-- ## 本番で実際に変わること
+--
+-- **この2文は本番で実際に走る。** `20260929150300` が（本番では no-op で）宣言した
+-- `SET NOT NULL` を、この2列だけ元に戻す。
+--
+-- 実測（2026-10-02・読み取りのみ）: `vehicles` は 27 行、`maker` / `model` が
+-- NULL の行 0 件・空文字の行 0 件。**既存データは1行も影響を受けない**。
+-- 緩める方向なので既存行の再検査も走らない。
+--
+-- 元に戻したくなったら `SET NOT NULL` を足すだけでよい。ただし**その時点で NULL の行が
+-- 1件でもあると落ちる**ので、戻す前に数えること。
+--
+-- ## 変えない経路（意図的）
+--
+-- 車両を作る経路は3つあり、**緩めるのは DB だけ**。API 層の必須はそのまま残す。
+--   - `src/lib/certificates/create.ts`（証明書発行）…… 片方だけで通る。今回の判断の対象
+--   - `src/app/api/admin/hearings/route.ts`（ヒアリング）…… 同じ形。通るようになる
+--   - `src/app/api/vehicles/create/route.ts` と `import-csv`（車両の直接登録）……
+--     `vehicleCreateSchema`（`src/lib/validations/vehicle.ts:17-18`）が maker / model を
+--     両方必須にしている。**ここは緩めない。** 車両マスタを作る操作は「分からない」を
+--     受け付ける場面ではなく、発行の都合で登録 API の仕様まで変えると、
+--     判断していないことを一緒に変えることになる。
+--
+-- アプリ側のコード変更は無い。既存の `|| null` がそのまま意図どおりに効く。
+--
+-- 検証: `scripts/replay/checks/vehicle_insert_without_maker_model.sql` が、
+-- maker / model を**省いた** insert が通ることを行を入れて確かめる（最後に ROLLBACK）。
+
+ALTER TABLE public.vehicles ALTER COLUMN maker DROP NOT NULL;
+ALTER TABLE public.vehicles ALTER COLUMN model DROP NOT NULL;

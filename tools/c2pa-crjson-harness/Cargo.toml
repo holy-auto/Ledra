@@ -1,0 +1,14 @@
+[package]
+name = "c2pa-crjson-harness"
+version = "1.0.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+# Same validation engine as @contentauth/c2pa-node 0.9.7, which Ledra's product validation uses.
+c2pa = { version = "=0.90.22", features = ["file_io"] }
+chrono = "0.4"
+
+# vendor/c2pa is created by ./setup.sh (crates.io 0.90.22 + c2pa-0.90.22-harness.patch).
+[patch.crates-io]
+c2pa = { path = "vendor/c2pa" }
