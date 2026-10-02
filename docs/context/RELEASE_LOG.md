@@ -9,7 +9,9 @@
 - 内容: `src/content/news/2026-10-03-japan-mobility-show-bizweek.mdx`（公開日は JST の 2026-10-03）。holy-inc.jp の告知と同じ
   開催概要（会期 10/13〜16 10:00〜17:00・幕張メッセ 展示ホール2・3・小間 ZONE1 S-06・入場無料/事前登録制・主催 JAMA・
   公式サイト https://www.japan-mobility-show.com/）に、Ledra の説明とお問い合わせ導線を付けた。
-- 展示の中身（デモ構成など）は未確定のため本文に書いていない。ロゴ画像はこのセッションに手元が無く未掲載。
+- 見出し画像: 代表から受け取った Bizweek のグラフィック（透過・4:1）を白背景の 5:2 に収めて `public/marketing/news/` に置いた
+  （記事ページの見出し画像は 5:2 で切り抜かれるため、切れないよう余白を足した）。
+- 代表の「Ledra で出展」を受け、表記を「Ledra として出展」に統一。展示の中身（デモ構成など）は未確定のため本文に書いていない。
 
 ## 2026-10-02 holy-inc.jp に「Japan Mobility Show Bizweek 2026」出展のお知らせを公開（holy-auto/holy-inc#14）
 
