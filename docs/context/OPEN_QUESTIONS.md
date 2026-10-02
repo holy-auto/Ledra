@@ -1156,6 +1156,26 @@ JS ラッパだけで成立するため、**ネイティブバイナリの dlope
 - **未決**: `@contentauth/c2pa-node` を `optionalDependencies` から `dependencies` へ
   移すか。fail-closed にしたので「入らなければ CI が落ちる」ようにはなったが、
   **ランタイム（Vercel）でのフェイルオープンは塞げていない**。下の【要確認】と同じ論点。
+  - **2026-10-02 に片付いた論点: これは C2PA の適合性審査には影響しない（どちらの向きにも）。**
+    一次資料を取って確認した（`c2pa-org/conformance-public` を clone、
+    `docs/v0.2/C2PA Generator Product Security Requirements.md`。v0.2 は 2026-10-02 時点でも現行で、
+    `docs/` 配下に v0.3 以降は無い）。根拠は脅威モデルで、**T.1〜T.6 の6つすべてが
+    「偽の来歴を作る／鍵を盗む／改ざんする」側**であり、**「署名しない」は脅威に入っていない**。
+    未署名の画像は世の中の既定状態なので、C2PA から見て攻撃ではない。
+    O.3・O.4 の Level 1 要件は2つずつで、どちらも「Claim Generator の依存に SCA/SBOM を掛けて
+    NVD 脆弱性を検出する」「CRITICAL/HIGH を検知から90日以内に修正する」だけ。Static Evidence は
+    GPSA にツールと「90日超の既知 CRITICAL/HIGH を出荷しない仕組み」を書くこと、Dynamic Evidence は
+    "No stipulation"。**npm の依存区分を見る要件は無く、モジュールが丸ごと入らないことは
+    「既知の脆弱性」ではないので上記にも当たらない。** `docs/c2pa-gpsa.md` §2.3 の書きぶり
+    （SCA/SBOM ツール＋90日ポリシーの2点）は一次要件と一致しており、取りこぼしは無かった。
+  - CPL 掲載後の `Material Change`（再申請が必要な重大変更）にも当たらない。規定は
+    「CPL レコードまたは Generator Product Security Requirements への適合性への明確な改変」
+    （`docs/v0.2/C2PA Conformance Program.md`）で、依存区分はどちらにも触れない。
+    **したがって掲載の前でも後でも、審査の都合で急ぐ/待つ理由は無い。**
+    判断は純粋に「本番で黙って未署名になる経路を塞ぐか」だけで決めてよい。
+  - 【要確認】のまま残るもの: **O.2（署名鍵）・O.1・O.5・O.6 と、各 Level 2 は今回読んでいない。**
+    ギャップ分析 G4（鍵保管＝O.2）の「AL1 の具体要件は別文書＝要確認」は未解決。
+    一次資料は手元に clone 済みなので、読めば片付く。
 - **未決（今回の変更で残ったもう1つ）**: `providers.test.ts` の
   「c2pa-node が無ければ graceful-degradation の契約だけを見る」分岐。
   これは skip ではなく実際に assert しているので沈黙ではないが、**強い検証が
