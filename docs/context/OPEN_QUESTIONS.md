@@ -2106,6 +2106,8 @@ JST は夏時間が無いので日の加算は 24 時間の加算でよい。
       → **2026-10-02 一部確認**: `www.ledra.co.jp` で TLS 1.2 は exit 35（拒否）、TLS 1.3 は 200（`Server: cloudflare`）を代表の PC で実測。
       GPSA §1.6・§2.5 を書き直した。`app.ledra.co.jp` も同日確認（TLS 1.2 は exit 35、TLS 1.3 は 200・cloudflare、http は 301→https）。
       本番の写真アップロードも代表が確認（403 なし）。O.5 は解決。
+      → **2026-10-02 再提出を送信**（代表の申告）。validate（jpeg/png/webp/heic）復活を依頼済み。
+      **待ち**: Administrator の返答と、追加要件 §2.3 のテスト入力（届いたらハーネスで crJSON を返す）。
       Cloudflare→Vercel 間の TLS バージョンはこちらから見えない（Full (strict) で検証付き HTTPS までは設定どおり）。
   - 代表が添付した画像4枚は Ledra の旧サンプルで、C2PA 指定ライブラリの素材ではない（ライブラリは引き続き未入手）。
   - **2026-09-29 ライブラリ入手**（代表が zip を添付）: 画像は jpg（Google Pixel 署名・証明書期限切れ）と png（Google 署名）のみ。
