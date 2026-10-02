@@ -27,7 +27,9 @@ at the system clock. `c2pa-0.90.22-harness.patch` adds the two inputs it lacks a
 - `harness_overrides::VALIDATION_TIME` replaces the system clock, including the `validationTime` reported for ingredient manifests.
 - `harness_overrides::TSA_TRUST_POLICY` replaces the claim-signer trust list when checking time-stamp certificates.
 
-CAWG identity assertions are still checked at the system clock; the patch covers C2PA claim validation only.
+CAWG identity assertions are checked at the same validation time: the patch routes the identity-assertion
+credential date checks (`validFrom` / `validUntil`) through `VALIDATION_TIME` too, and `setup.sh` fails if
+`Utc::now()` is left under `src/identity`. The only other wall-clock reads in the crate are on the signing side.
 
 ## Build and self-test
 

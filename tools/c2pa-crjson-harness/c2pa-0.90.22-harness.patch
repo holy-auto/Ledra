@@ -1,6 +1,6 @@
 diff -ruN a/src/crjson.rs b/src/crjson.rs
---- a/src/crjson.rs	2026-09-29 14:56:02.244742649 +0000
-+++ b/src/crjson.rs	2026-09-29 15:15:21.855084306 +0000
+--- a/src/crjson.rs	2026-10-02 13:07:25.817725070 +0000
++++ b/src/crjson.rs	2026-10-02 13:07:26.071664461 +0000
 @@ -501,7 +501,7 @@
          let validation_time = vr
              .validation_time()
@@ -25,8 +25,8 @@ diff -ruN a/src/crjson.rs b/src/crjson.rs
          success: codes.success().clone(),
          informational: codes.informational().clone(),
 diff -ruN a/src/crypto/cose/certificate_profile.rs b/src/crypto/cose/certificate_profile.rs
---- a/src/crypto/cose/certificate_profile.rs	2026-09-29 14:56:02.245190524 +0000
-+++ b/src/crypto/cose/certificate_profile.rs	2026-09-29 14:56:07.144177422 +0000
+--- a/src/crypto/cose/certificate_profile.rs	2026-10-02 13:07:25.819167469 +0000
++++ b/src/crypto/cose/certificate_profile.rs	2026-10-02 13:07:26.072836201 +0000
 @@ -14,7 +14,6 @@
  use asn1_rs::{Any, Class, FromDer, Header, Tag};
  use chrono::{DateTime, Utc};
@@ -47,8 +47,8 @@ diff -ruN a/src/crypto/cose/certificate_profile.rs b/src/crypto/cose/certificate
                  "system time invalid".to_string(),
              ));
 diff -ruN a/src/crypto/internal/time.rs b/src/crypto/internal/time.rs
---- a/src/crypto/internal/time.rs	2026-09-29 14:56:02.245588766 +0000
-+++ b/src/crypto/internal/time.rs	2026-09-29 14:56:02.288176749 +0000
+--- a/src/crypto/internal/time.rs	2026-10-02 13:07:25.820366392 +0000
++++ b/src/crypto/internal/time.rs	2026-10-02 13:07:26.073561307 +0000
 @@ -17,6 +17,9 @@
  pub(crate) fn utc_now() -> DateTime<Utc> {
      #[cfg(not(target_arch = "wasm32"))]
@@ -60,8 +60,8 @@ diff -ruN a/src/crypto/internal/time.rs b/src/crypto/internal/time.rs
      }
  
 diff -ruN a/src/crypto/time_stamp/verify.rs b/src/crypto/time_stamp/verify.rs
---- a/src/crypto/time_stamp/verify.rs	2026-09-29 14:56:02.246718022 +0000
-+++ b/src/crypto/time_stamp/verify.rs	2026-09-29 14:56:02.289078557 +0000
+--- a/src/crypto/time_stamp/verify.rs	2026-10-02 13:07:25.828513597 +0000
++++ b/src/crypto/time_stamp/verify.rs	2026-10-02 13:07:26.073726829 +0000
 @@ -532,7 +532,10 @@
  
          // the certificate must be on the trust list to be considered valid
@@ -76,7 +76,7 @@ diff -ruN a/src/crypto/time_stamp/verify.rs b/src/crypto/time_stamp/verify.rs
              let ordered_cert_ders = order_certificates_leaf_to_root(&cert_ders, cert_pos)?;
 diff -ruN a/src/harness_overrides.rs b/src/harness_overrides.rs
 --- a/src/harness_overrides.rs	1970-01-01 00:00:00.000000000 +0000
-+++ b/src/harness_overrides.rs	2026-09-29 14:56:02.288126347 +0000
++++ b/src/harness_overrides.rs	2026-10-02 13:07:26.074381132 +0000
 @@ -0,0 +1,13 @@
 +//! Ledra crJSON test harness only (C2PA Conformance Program v0.2 §2.3). Not part of upstream c2pa-rs.
 +//!
@@ -91,9 +91,30 @@ diff -ruN a/src/harness_overrides.rs b/src/harness_overrides.rs
 +
 +/// Trust policy for time-stamp authority certificates, used instead of the claim-signer trust list.
 +pub static TSA_TRUST_POLICY: OnceLock<CertificateTrustPolicy> = OnceLock::new();
+diff -ruN a/src/identity/claim_aggregation/ica_signature_verifier.rs b/src/identity/claim_aggregation/ica_signature_verifier.rs
+--- a/src/identity/claim_aggregation/ica_signature_verifier.rs	2026-10-02 13:07:25.832236138 +0000
++++ b/src/identity/claim_aggregation/ica_signature_verifier.rs	2026-10-02 13:07:26.079279491 +0000
+@@ -683,7 +683,7 @@
+             ));
+         };
+ 
+-        let now = Utc::now().fixed_offset();
++        let now = crate::crypto::internal::time::utc_now().fixed_offset();
+ 
+         if now < valid_from {
+             return Err((
+@@ -725,7 +725,7 @@
+             return Ok(());
+         };
+ 
+-        let now = Utc::now().fixed_offset();
++        let now = crate::crypto::internal::time::utc_now().fixed_offset();
+ 
+         if now > valid_until {
+             return Err((
 diff -ruN a/src/lib.rs b/src/lib.rs
---- a/src/lib.rs	2026-09-29 14:56:02.254236627 +0000
-+++ b/src/lib.rs	2026-09-29 14:56:02.287995721 +0000
+--- a/src/lib.rs	2026-10-02 13:07:25.915909139 +0000
++++ b/src/lib.rs	2026-10-02 13:07:26.074456346 +0000
 @@ -206,6 +206,8 @@
  /// Cryptography primitives.
  #[doc(hidden)]
@@ -104,8 +125,8 @@ diff -ruN a/src/lib.rs b/src/lib.rs
  /// Dynamic assertions are a new feature that allows you to add assertions to a C2PA file as a part of the signing process.
  #[doc(hidden)]
 diff -ruN a/src/validation_results.rs b/src/validation_results.rs
---- a/src/validation_results.rs	2026-09-29 14:56:02.255306072 +0000
-+++ b/src/validation_results.rs	2026-09-29 15:01:22.285630059 +0000
+--- a/src/validation_results.rs	2026-10-02 13:07:25.926043885 +0000
++++ b/src/validation_results.rs	2026-10-02 13:07:26.075212996 +0000
 @@ -13,7 +13,6 @@
  
  use std::fmt::{self, Display};

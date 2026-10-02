@@ -35,6 +35,12 @@ insert が通り、かつ**両方 NULL で入る**ことを行を入れて確か
 現状に直した（同じ事実が2箇所に残る型 C を避けるため）。
 
 経緯は DECISION_LOG 2026-10-02。
+## 2026-10-02 crJSON ハーネス: CAWG の日付検査も入力の検証時刻で行う
+
+- Codex 指摘（#1213）: CAWG の identity assertion（ICA 資格情報の `validFrom` / `validUntil`）だけがシステム時計で検査されていた。
+  `c2pa-0.90.22-harness.patch` に2ハンク追加（計12ハンク）し、`crypto::internal::time::utc_now`（`VALIDATION_TIME`）経由にした。
+- `setup.sh` は `src/identity` に `Utc::now()` が残っていたら失敗する。旧パッチに当てて失敗すること（陰性対照）を確認。自己テスト6件合格。
+
 ## 2026-10-02 本番を Cloudflare 前段（最低 TLS 1.3）に切り替え（C2PA GPSA O.5）
 
 - 代表作業: `ledra.co.jp` を Cloudflare に載せ、Minimum TLS 1.3・Full (strict)・キャッシュ Bypass・

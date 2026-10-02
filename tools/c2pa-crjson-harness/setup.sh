@@ -9,4 +9,6 @@ curl -sSfL -A ledra-c2pa-crjson-harness -o vendor/c2pa.crate "https://crates.io/
 echo "$SHA256  vendor/c2pa.crate" | sha256sum -c -
 tar xzf vendor/c2pa.crate -C vendor && mv "vendor/c2pa-$V" vendor/c2pa && rm vendor/c2pa.crate
 patch -s -d vendor/c2pa -p1 < c2pa-0.90.22-harness.patch
+# Validation must read the clock only through crypto::internal::time::utc_now (VALIDATION_TIME).
+if grep -rn "Utc::now()" vendor/c2pa/src/identity; then echo "wall clock left in identity validation" >&2; exit 1; fi
 echo "vendor/c2pa ready"
