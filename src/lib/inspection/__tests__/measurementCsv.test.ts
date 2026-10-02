@@ -39,4 +39,26 @@ describe("parseMeasurementCsv [G5 Phase 2 取込UI]", () => {
     expect(reasons).toContain("hc:重複行");
     expect(reasons).toContain("diesel_smoke:値が空");
   });
+
+  it("単位不正・非十進数（hex/指数）を除外し、プレビューとサーバ検証を一致させる", () => {
+    const csv = [
+      "co,0.5,ppm", // co は % のみ → 単位不正
+      "hc,0x20", // 16進は非十進 → 数値に変換できない
+      "brake.total,1e3,N", // 指数表記も除外
+      "brake.total,8600,N", // これだけ有効
+    ].join("\n");
+    const { rows, issues } = parseMeasurementCsv(csv, "sanago");
+    expect(rows).toEqual([{ field_code: "brake.total", num_value: 8600, unit: "N", source: "imported" }]);
+    const reasons = issues.map((i) => i.reason);
+    expect(reasons.some((r) => r.startsWith("単位が不正"))).toBe(true);
+    // hex(0x20) と指数(1e3) の両方が非十進として弾かれる
+    expect(issues.filter((i) => i.reason === "数値に変換できない")).toHaveLength(2);
+  });
+
+  it("BOM・先頭空行の後のヘッダ行も data として拾わずスキップする", () => {
+    const csv = ["﻿", "field_code,value,unit", "co,0.5"].join("\n");
+    const { rows, issues } = parseMeasurementCsv(csv, "sanago");
+    expect(issues).toEqual([]);
+    expect(rows).toEqual([{ field_code: "co", num_value: 0.5, unit: "%", source: "imported" }]);
+  });
 });

@@ -78,6 +78,8 @@ export default function CompletionInspectionForm({
   const [inspectorName, setInspectorName] = useState(editRecord?.inspector_name ?? "");
   const [notes, setNotes] = useState(editRecord?.notes ?? "");
   const [cells, setCells] = useState<Record<string, Cell>>({});
+  // 読み込んだ測定値の来歴（code→'manual'|'imported'）。保存時に取込分を manual に化けさせないため保持。
+  const [loadedSources, setLoadedSources] = useState<Record<string, string>>({});
   // 目視検査の判定（code→"pass"/"fail"/"na"）と照合欄のテキスト（code→値）。answers に保存する。
   const [visual, setVisual] = useState<Record<string, string>>(() =>
     editRecord ? extractInspectionAnswers(editRecord.answers).visual : {},
@@ -103,12 +105,14 @@ export default function CompletionInspectionForm({
       // 200 でも measurements 配列が無ければ「読み込み成功で空」と誤認しない（誤った全消去を防ぐ）。
       if (!res.ok || !json || !Array.isArray(json.measurements)) return false;
       const next: Record<string, Cell> = {};
+      const sources: Record<string, string> = {};
       for (const m of json.measurements as {
         field_code: string;
         num_value: number | null;
         text_value: string | null;
         unit: string | null;
         judgment: string | null;
+        source: string | null;
       }[]) {
         next[m.field_code] = {
           num: m.num_value != null ? String(m.num_value) : "",
@@ -116,8 +120,10 @@ export default function CompletionInspectionForm({
           unit: m.unit ?? "",
           judgment: m.judgment ?? "",
         };
+        if (m.source) sources[m.field_code] = m.source;
       }
       setCells(next);
+      setLoadedSources(sources);
       return true;
     } catch {
       return false;
@@ -170,27 +176,31 @@ export default function CompletionInspectionForm({
    * PUT は全置換のため、「現在の様式のフィールド」ではなく「値を持つ全セル」を対象にする。
    * こうすることで、編集時に読み込んだ他様式のセル（様式が __indicated_form 欠落で既定に倒れた等）を
    * 取りこぼして消してしまう事故を防ぐ。値種別はカタログ（getMeasurementField）で解決する。
+   * ponytail: 来歴は「読み込んだ時の source を維持、未読込(新規入力)は manual」。読み込んだ imported セルを
+   * フォームで編集しても imported のまま（人手修正を manual へ厳密再分類はしない）。厳密化が要るなら
+   * 読み込み値のベースライン比較を足す。
    */
   function buildMeasurements(): MeasurementInput[] {
     const out: MeasurementInput[] = [];
     for (const [code, c] of Object.entries(cells)) {
       const f = getMeasurementField(code);
       if (!f) continue; // 未知コードは送らない（サーバ側でも拒否される）
+      const source = loadedSources[code] === "imported" ? "imported" : "manual";
       if (f.valueKind === "numeric") {
         if (c.num.trim() === "") continue;
         const n = Number(c.num);
         if (!Number.isFinite(n)) continue;
-        out.push({ field_code: code, num_value: n, unit: c.unit || (f.units?.[0] ?? null), source: "manual" });
+        out.push({ field_code: code, num_value: n, unit: c.unit || (f.units?.[0] ?? null), source });
       } else if (f.valueKind === "judgment") {
         if (!c.judgment) continue;
-        out.push({ field_code: code, judgment: c.judgment as "pass" | "fail" | "na", source: "manual" });
+        out.push({ field_code: code, judgment: c.judgment as "pass" | "fail" | "na", source });
       } else {
         if (c.text.trim() === "") continue;
         out.push({
           field_code: code,
           text_value: c.text.trim(),
           unit: c.unit || (f.units?.[0] ?? null),
-          source: "manual",
+          source,
         });
       }
     }
@@ -379,7 +389,15 @@ export default function CompletionInspectionForm({
           recordId={recordId}
           form={form}
           onImported={async () => {
-            await reloadMeasurements(recordId);
+            // 取込後の再読込が失敗したらセルは取込前のまま。そのまま保存すると全置換 PUT で
+            // 取込分が消えるため、保存を止めて開き直しを促す（初回ロードと同じガード）。
+            const ok = await reloadMeasurements(recordId);
+            if (!ok) {
+              setLoadFailed(true);
+              setError(
+                "取込後の再読込に失敗しました。画面を開き直してください（このまま保存すると取込分が消えます）。",
+              );
+            }
           }}
         />
       )}
