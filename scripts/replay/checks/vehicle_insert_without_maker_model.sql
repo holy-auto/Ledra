@@ -47,24 +47,33 @@ END $$;
 -- 別の理由であり、この検査は maker / model について何も言っていない。
 DO $$
 DECLARE
-  v_sqlstate text;
+  v_state text;
 BEGIN
+  -- **ガードの中で RAISE しない。** 同じブロックの `EXCEPTION WHEN others` に自分で捕まり、
+  -- 「落ちなかった」の診断が「23502 以外で落ちた」に化ける。結果を変数へ入れて
+  -- `END` の外で判定する（`certificate_images_file_size.sql:30-52` と同じ形）。
   BEGIN
     INSERT INTO public.vehicles (id, maker, model)
     VALUES ('00000000-0000-4000-8000-0000000000e3', '陰性対照', '陰性対照');
+    v_state := 'INSERTED';
+  EXCEPTION WHEN others THEN
+    v_state := SQLSTATE;
+  END;
+
+  IF v_state = 'INSERTED' THEN
     RAISE EXCEPTION
       '陰性対照が落ちなかった。tenant_id を省いた insert が通っている。'
       'vehicles の NOT NULL が想定より緩い（この検査は maker / model を検証できていない）';
-  EXCEPTION
-    WHEN not_null_violation THEN
-      RAISE NOTICE '陰性対照: tenant_id を省いた insert は 23502 で落ちた（検査は効いている）';
-    WHEN others THEN
-      v_sqlstate := SQLSTATE;
-      -- 23502 以外で落ちた場合は、落ちた理由が違う。黙って成功扱いにしない。
-      RAISE EXCEPTION
-        '陰性対照が 23502 以外（%）で落ちた。tenant_id の NOT NULL ではない別の理由で'
-        '弾かれているので、この検査の前提が崩れている', v_sqlstate;
-  END;
+  END IF;
+
+  -- 23502 以外で落ちた場合は、落ちた理由が違う。黙って成功扱いにしない。
+  IF v_state <> '23502' THEN
+    RAISE EXCEPTION
+      '陰性対照が 23502 以外（%）で落ちた。tenant_id の NOT NULL ではない別の理由で'
+      '弾かれているので、この検査の前提が崩れている', v_state;
+  END IF;
+
+  RAISE NOTICE '陰性対照: tenant_id を省いた insert は 23502 で落ちた（検査は効いている）';
 END $$;
 
 ROLLBACK;
