@@ -4,7 +4,12 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { parseJsonSafe } from "@/lib/api/safeJson";
 import { SUGGESTED_SKILLS } from "@/lib/staff/skills";
-import { STAFF_QUALIFICATIONS, qualificationLabel, type StaffQualificationKey } from "@/lib/staff/qualifications";
+import {
+  STAFF_QUALIFICATIONS,
+  normalizeQualifications,
+  qualificationLabel,
+  type StaffQualificationKey,
+} from "@/lib/staff/qualifications";
 import { formatDate } from "@/lib/format";
 
 type StaffStats = {
@@ -141,9 +146,8 @@ export default function StaffClient() {
       email: s.email ?? "",
       phone: s.phone ?? "",
       skillsText: s.skills.join(", "),
-      qualifications: (s.qualifications ?? []).filter((q): q is StaffQualificationKey =>
-        STAFF_QUALIFICATIONS.some((c) => c.key === q),
-      ),
+      // 既存データの表示用途なので、統制語彙外（将来値・旧値）は黙って落として編集を壊さない。
+      qualifications: normalizeQualifications(s.qualifications),
       is_active: s.is_active,
       commissionRateText: s.commission_rate != null ? String(Math.round(s.commission_rate * 10000) / 100) : "",
     });
