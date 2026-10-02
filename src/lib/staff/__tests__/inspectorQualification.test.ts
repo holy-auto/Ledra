@@ -64,6 +64,17 @@ describe("evaluateCompletionInspectorGate [G1 実施者資格ゲート]", () => 
     expect(r.snapshot).toEqual([{ qualification: "vehicle_inspector", number: "A-1", expires_on: "2999-12-31" }]);
   });
 
+  it("強制ON: 休止中（is_active=false）の自動車検査員はブロック", async () => {
+    const db = makeDb({
+      tenants: { single: { data: { require_inspector_qualification: true }, error: null } },
+      staff_members: { single: { data: { qualifications: ["vehicle_inspector"], is_active: false }, error: null } },
+      staff_qualifications: { list: { data: [], error: null } },
+    });
+    const r = await evaluateCompletionInspectorGate(db, T, S);
+    expect(r.blocked).toBe(true);
+    expect(r.message).toMatch(/休止中/);
+  });
+
   it("強制ON: 資格を保有しない実施者はブロック", async () => {
     const db = makeDb({
       tenants: { single: { data: { require_inspector_qualification: true }, error: null } },

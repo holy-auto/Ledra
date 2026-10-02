@@ -8,14 +8,19 @@ import {
   staffDeleteSchema,
   type QualificationDetailInput,
 } from "@/lib/validations/staff";
+import { STAFF_QUALIFICATIONS } from "@/lib/staff/qualifications";
 
 import { withCaller } from "@/lib/api/withCaller";
 
 /**
- * スタッフの法定資格の番号・有効期限（staff_qualifications）をスタッフ単位で一括置換する。
- * 保有の有無は staff_members.qualifications（text[]）が源泉。ここは属性行を provided で丸ごと置き換える
- * （shifts の一括置換と同型）。保有していないキーの明細が残ってもゲートは held を見るため無害だが、
- * 置換で表示と一致させる。details===undefined（未送信）のときは何もしない。
+ * スタッフの法定資格の番号・有効期限（staff_qualifications）をスタッフ単位で同期する。
+ * 保有の有無は staff_members.qualifications（text[]）が源泉。ここは属性行を provided に合わせる。
+ *
+ * **データ損失を作らない順序**: 先に upsert（挿入/更新）→ 後に「送られなかったキー」を削除。
+ * delete→insert の順にすると insert が一時失敗したときに既存の番号・有効期限が消える（CLAUDE.md
+ * 「データ損失を防ぐエラー処理」は非譲歩）。upsert が失敗しても既存行は残り、prune が失敗しても
+ * 残るのは未選択キーの古い明細だけ（ゲートは held を見るため無害）で、いずれも損失は起きない。
+ * details===undefined（未送信）のときは何もしない。
  */
 async function replaceStaffQualificationDetails(
   db: Pick<SupabaseClient, "from">,
@@ -24,21 +29,36 @@ async function replaceStaffQualificationDetails(
   details: QualificationDetailInput[] | undefined,
 ): Promise<{ error: unknown } | null> {
   if (details === undefined) return null;
-  const del = await db.from("staff_qualifications").delete().eq("tenant_id", tenantId).eq("staff_member_id", staffId);
-  if (del.error) return { error: del.error };
-  if (details.length === 0) return null;
   // 同一キーの重複送信は最後の値を採用（unique(tenant,staff,qualification) 違反を避ける）。
   const byKey = new Map<string, QualificationDetailInput>();
   for (const d of details) byKey.set(d.qualification, d);
-  const rows = [...byKey.values()].map((d) => ({
-    tenant_id: tenantId,
-    staff_member_id: staffId,
-    qualification: d.qualification,
-    number: d.number,
-    expires_on: d.expires_on,
-  }));
-  const ins = await db.from("staff_qualifications").insert(rows);
-  return ins.error ? { error: ins.error } : null;
+
+  if (byKey.size > 0) {
+    const rows = [...byKey.values()].map((d) => ({
+      tenant_id: tenantId,
+      staff_member_id: staffId,
+      qualification: d.qualification,
+      number: d.number,
+      expires_on: d.expires_on,
+    }));
+    const up = await db
+      .from("staff_qualifications")
+      .upsert(rows, { onConflict: "tenant_id,staff_member_id,qualification" });
+    if (up.error) return { error: up.error };
+  }
+
+  // 今回送られなかった統制語彙キーの明細だけを削除する（保存時は常にカタログキーなので取りこぼし無し）。
+  const toRemove = STAFF_QUALIFICATIONS.map((q) => q.key).filter((k) => !byKey.has(k));
+  if (toRemove.length > 0) {
+    const del = await db
+      .from("staff_qualifications")
+      .delete()
+      .eq("tenant_id", tenantId)
+      .eq("staff_member_id", staffId)
+      .in("qualification", toRemove);
+    if (del.error) return { error: del.error };
+  }
+  return null;
 }
 /** 紐付け先 user_id が当該テナントのメンバーか確認（他テナントアカウント連携の防止）。 */
 async function userInTenant(tenantId: string, userId: string): Promise<boolean> {

@@ -49,32 +49,37 @@ export async function tenantRequiresInspectorQualification(
   return (data as { require_inspector_qualification: boolean | null }).require_inspector_qualification === true;
 }
 
-/** 実施者（staff_members）の保有資格と明細を読む。error=クエリ失敗。 */
+/** 実施者（staff_members）の在籍・保有資格・明細を読む。error=クエリ失敗。 */
 async function loadStaffQualifications(
   db: Pick<SupabaseClient, "from">,
   tenantId: string,
   staffId: string,
-): Promise<{ found: boolean; held: string[]; details: QualificationDetail[]; error: boolean }> {
+): Promise<{ found: boolean; active: boolean; held: string[]; details: QualificationDetail[]; error: boolean }> {
   const { data: staff, error: staffErr } = await db
     .from("staff_members")
-    .select("qualifications")
+    .select("qualifications, is_active")
     .eq("tenant_id", tenantId)
     .eq("id", staffId)
     .maybeSingle();
-  if (staffErr) return { found: false, held: [], details: [], error: true };
-  if (!staff) return { found: false, held: [], details: [], error: false };
+  if (staffErr) return { found: false, active: false, held: [], details: [], error: true };
+  if (!staff) return { found: false, active: false, held: [], details: [], error: false };
 
   const { data: rows, error: detErr } = await db
     .from("staff_qualifications")
     .select("qualification, number, expires_on")
     .eq("tenant_id", tenantId)
     .eq("staff_member_id", staffId);
-  if (detErr) return { found: true, held: [], details: [], error: true };
+  if (detErr) return { found: true, active: false, held: [], details: [], error: true };
 
-  const held = Array.isArray((staff as { qualifications: unknown }).qualifications)
-    ? ((staff as { qualifications: string[] }).qualifications ?? [])
-    : [];
-  return { found: true, held, details: normalizeQualificationDetails(rows), error: false };
+  const s = staff as { qualifications: unknown; is_active: unknown };
+  const held = Array.isArray(s.qualifications) ? (s.qualifications as string[]) : [];
+  return {
+    found: true,
+    active: s.is_active !== false,
+    held,
+    details: normalizeQualificationDetails(rows),
+    error: false,
+  };
 }
 
 /**
@@ -111,6 +116,13 @@ export async function evaluateCompletionInspectorGate(
         blocked: true,
         message: "実施者の資格を確認できませんでした。時間をおいて再度お試しください。",
         snapshot: null,
+      };
+    }
+    if (!state.active) {
+      return {
+        blocked: true,
+        message: "完成検査の実施者が休止中です。在籍中の自動車検査員を指定してください。",
+        snapshot: buildQualificationSnapshot(state.held, state.details),
       };
     }
     if (!isQualificationValid(state.held, state.details, INSPECTOR_REQUIRED_QUALIFICATION)) {

@@ -202,13 +202,21 @@ export const PATCH = withCaller(
         .eq("tenant_id", caller.tenantId)
         .maybeSingle();
 
-      // 完成検査の実施者資格ゲート（G1/#1）。更新後に completion となる記録に効かせる。実施者は
-      // 送信があればそれ、無ければ既存値。ブロック時は 409。通過時は実施時点スナップショットを更新する（G1/#3）。
+      // 完成検査の実施者資格ゲート（G1/#1・#3）。ゲートは「実施者を設定/変更するとき」か
+      // 「この更新で初めて completion になるとき」だけ効かせる。無関係な項目（notes 等）の編集では
+      // 効かせない —— 作成時に検証済みの記録を再ブロックしない（実施者の資格が後で失効しても過去の
+      // 記録の編集を妨げない）し、inspector_qualification_snapshot を現在値で上書きしない
+      // （実施時点のスナップショット＝「後の資格変更に影響されない記録」を保つ）。
       const beforeRow = before as { inspection_type?: string; inspector_staff_id?: string | null } | null;
-      const willBeCompletion =
+      const isCompletion =
         (sentKeys.has("inspection_type") ? rest.inspection_type : beforeRow?.inspection_type) === "completion";
-      if (willBeCompletion) {
-        const effectiveStaffId = sentKeys.has("inspector_staff_id")
+      const changingInspector = sentKeys.has("inspector_staff_id");
+      const becameCompletion =
+        sentKeys.has("inspection_type") &&
+        rest.inspection_type === "completion" &&
+        beforeRow?.inspection_type !== "completion";
+      if (isCompletion && (changingInspector || becameCompletion)) {
+        const effectiveStaffId = changingInspector
           ? (rest.inspector_staff_id ?? null)
           : (beforeRow?.inspector_staff_id ?? null);
         const gate = await evaluateCompletionInspectorGate(admin, caller.tenantId, effectiveStaffId);
@@ -219,6 +227,7 @@ export const PATCH = withCaller(
             status: 409,
           });
         }
+        // 実施者が変わった/新たに completion になった時点の資格を記録する（再計算はこの時だけ）。
         updates.inspector_qualification_snapshot = gate.snapshot;
       }
 
