@@ -53,10 +53,12 @@
 > 代表の PC から `curl --tls-max 1.2` は exit 35（ハンドシェイク失敗）、`--tlsv1.3` は 200 を確認＝**TLS 1.2 拒否を実測**。
 > GPSA §1.6・§2.5（O.5）・TOE 図を Cloudflare 前段の構成で書き直した。Web とモバイルが使う `app.ledra.co.jp` も同日確認: TLS 1.2 は exit 35、TLS 1.3 は 200・`Server: cloudflare`、
 > `http://` は 301 で `https://` へ（`M-20261002-tls-check-covered-www-but-app-host-is-app-ledra`）。本番の写真アップロードも代表が確認済み（403 なし）。
-> Conformulator（新サンプル a〜d、zip 内と同一バイトを確認）は**4枚とも**適合ルーブリック3つが全 PASS、不合格は `trusted_success`（テスト証明書の untrusted）のみ。
+> Conformulator（新サンプル a〜d、zip 内と同一バイトを確認）は**4枚とも**適合ルーブリック（Conformance 3種）が全 PASS。Integrity ルーブリックの `trusted_success` だけ不合格（テスト証明書の untrusted、想定内）。
 > 再提出メール下書き `docs/c2pa-evidence/submission-email.md`（validate 復活・指摘4件の是正・O.4/O.5）と最終 zip
 > `Ledra-C2PA-Resubmission-01a06690.zip` を代表へ渡し、**2026-10-02 に代表が Administrator へ返信で送信**（代表の申告。送信時刻は未確認）。
-> 次は Administrator の返答待ち。validate を再申告したので、crJSON ハーネス用のテスト入力が届いたら `tools/c2pa-crjson-harness` で返す。
+> 次は Administrator の返答待ち。**ただし送信後の Codex レビュー（#1213）で、送った GPSA の O.5 に穴が3つ見つかった**
+> （クライアント→Supabase の直通信が未記載、Cloudflare→Vercel の版は未強制、外部連携は素の fetch。運用管理策 A02 は言い過ぎ）。
+> 追送するかは代表判断待ち（OPEN_QUESTIONS）。validate を再申告したので、crJSON ハーネス用のテスト入力が届いたら `tools/c2pa-crjson-harness` で返す。
 
 > 2026-09-29 追記（crJSON ハーネス）: validate 再申告に必要な **crJSON テストハーネスを作成**（`tools/c2pa-crjson-harness`、
 > 製品と同じ c2pa-rs 0.90.22＋検証時刻・TSA 信頼リストのパッチ、自己テスト6件）。Program のテスト入力待ち。
