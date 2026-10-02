@@ -13,20 +13,6 @@
 - 起票日: 2026-10-02
 - 判断者: 開発（Claude）。上流への報告をするかは代表
 
-## Enhanced Builds（16GB）に切り替わった後のビルドが、実際に 16GB 機で走っているか（2026-10-02）
-
-- #1184 のマージ後の本番デプロイ（`5f54e29`、13:08 UTC 開始）が落ちた原因は、ビルドログで**メモリ不足（OOM）**と確定した
-  （2026-10-02、代表がログを共有）。ログには `Build machine configuration: 4 cores, 8 GB`、
-  `Previous build cache ... was too large, starting from a clean state.`、`"npm run build" exited with SIGKILL`、
-  `At least one "Out of Memory" ("OOM") event was detected` がある。フォント取得の失敗ではない。
-  2026-09-29 の #1172 と同じ形（キャッシュ破棄 → フルビルド → 8GB 超過）。
-- このビルドはまだ 8GB 機だった。代表は 2026-10-01 に「Enhanced Builds に切り替えた」と回答しているので、切り替えはこの失敗の
-  後（13:36 UTC の再デプロイ成功の前後）と推定。未確認。
-- 確認したいこと: 切り替え後のビルドログの `Build machine configuration` 行が 16 GB になっているか【要確認】。
-  16 GB ならこの項を閉じる。8 GB のままなら、切り替えが効いていない（プロジェクト・プランの設定を見直す）。
-- 起票日: 2026-10-02（前身は 2026-10-01「#1184 マージ後の本番デプロイが1回失敗した原因」。原因が確定したので置き換えた）
-- 判断者: 代表（Vercel の設定とビルドログの確認）
-
 ## rating_request の送信条件を「follow_up_settings.enabled のテナントのみ・発行7日後固定」で仮置きした（2026-09-27）
 
 - 実装（RELEASE_LOG 2026-09-27）で、評価依頼は `follow_up_settings.enabled = true` のテナントにだけ
