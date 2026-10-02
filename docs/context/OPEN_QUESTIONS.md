@@ -2131,7 +2131,8 @@ JST は夏時間が無いので日の加算は 24 時間の加算でよい。
            Cloudflare に起点側の最低版を指定する設定があるかも未確認（この環境から Cloudflare の文書に届かない）。
         3. ~~**外部連携**~~ → **2026-10-02 対応**（代表了承）: Hive・Pinata・Polygon RPC を `tls13Fetch` 経由にした
            （Polygon は providers 7箇所＋ `app/api/cron/polygon-signer` 1箇所。`integrationsTls13.test.ts` が viem を使う全ファイルを走査）。
-           残り: (a) 各連携先が TLS 1.3 に対応しているか未確認（非対応なら黙って連携が止まる。代表の PC で `curl --tlsv1.3` を見る）。
+           (a) 連携先の TLS 1.3 対応は 2026-10-02 に代表の PC で確認済み（`curl.exe --tlsv1.3` で api.thehive.ai・api.pinata.cloud・
+           polygon-rpc.com とも exit 0）。本番の `POLYGON_RPC_URL` が別のホストなら、そのホストは未確認。残り:
            (b) Polygon 署名を `aws-kms` にした場合の AWS SDK の通信は対象外（本番は `local` か未確認）。
            (c) 写真 TSA（`photoTsa` → `parts/rfc3161` の素の fetch）は対象外。本番で無効・GPSA の連携一覧にも無い。有効にするなら直す。
         4. **写真アップロード以外の Backend 経路**（Codex 2回目の指摘）: 秘密ヘッダの照合は写真アップロードだけ。他の画面・API は
