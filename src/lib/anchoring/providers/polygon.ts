@@ -29,7 +29,7 @@
  */
 
 import type { PolygonAnchorResult, PolygonNetwork } from "./types";
-import { tls13Fetch } from "@/lib/net/tls13Fetch";
+import { tls13HttpsFetch } from "@/lib/net/tls13Fetch";
 import { withRetry } from "@/lib/http/withRetry";
 
 const DISABLED_RESULT: PolygonAnchorResult = {
@@ -140,13 +140,13 @@ export async function anchorToPolygon(sha256: string): Promise<PolygonAnchorResu
 
     const publicClient = createPublicClient({
       chain,
-      transport: http(config.rpcUrl, { fetchFn: tls13Fetch }),
+      transport: http(config.rpcUrl, { fetchFn: tls13HttpsFetch }),
     });
 
     const walletClient = createWalletClient({
       account,
       chain,
-      transport: http(config.rpcUrl, { fetchFn: tls13Fetch }),
+      transport: http(config.rpcUrl, { fetchFn: tls13HttpsFetch }),
     });
 
     // Submit the hash to the LedraAnchor contract.
@@ -212,7 +212,7 @@ export async function verifyAnchor(sha256: string, network?: PolygonNetwork | nu
 
     const client = createPublicClient({
       chain,
-      transport: http(config.rpcUrl, { fetchFn: tls13Fetch }),
+      transport: http(config.rpcUrl, { fetchFn: tls13HttpsFetch }),
     });
 
     const isAnchored = await withRetry("polygon-rpc", () =>
@@ -274,7 +274,7 @@ export async function findAnchorTx(
     const { polygon, polygonAmoy } = await import("viem/chains");
 
     const chain = config.network === "amoy" ? polygonAmoy : polygon;
-    const client = createPublicClient({ chain, transport: http(config.rpcUrl, { fetchFn: tls13Fetch }) });
+    const client = createPublicClient({ chain, transport: http(config.rpcUrl, { fetchFn: tls13HttpsFetch }) });
 
     const logs = await withRetry("polygon-rpc", () =>
       client.getLogs({

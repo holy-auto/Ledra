@@ -16,3 +16,15 @@ import { Agent } from "undici";
 const agent = new Agent({ connect: { minVersion: "TLSv1.3" } });
 
 export const tls13Fetch: typeof fetch = (input, init) => fetch(input, { ...init, dispatcher: agent } as RequestInit);
+
+/**
+ * 外部連携用。tls13Fetch は平文 http も通す（ローカル Supabase のため）ので、設定ミスの `http://` で
+ * TLS ごと外れないよう、https 以外は送らずに失敗させる（Codex 指摘 #1215）。
+ */
+export const tls13HttpsFetch: typeof fetch = (input, init) => {
+  const href = input instanceof Request ? input.url : String(input);
+  if (new URL(href).protocol !== "https:") {
+    return Promise.reject(new TypeError(`refusing non-HTTPS request to ${new URL(href).host}`));
+  }
+  return tls13Fetch(input, init);
+};

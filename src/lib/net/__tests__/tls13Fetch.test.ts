@@ -3,7 +3,7 @@ import { createServer, type Server } from "node:https";
 import type { AddressInfo } from "node:net";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { generateDevCert } from "@/lib/anchoring/providers/c2paSigner";
-import { tls13Fetch } from "../tls13Fetch";
+import { tls13Fetch, tls13HttpsFetch } from "../tls13Fetch";
 
 /**
  * tls13Fetch が TLS 1.2 止まりの相手を拒否し、1.3 の相手とは版の交渉を通ることを実ハンドシェイクで確かめる。
@@ -54,6 +54,16 @@ describe("tls13Fetch", () => {
     const why = await causeOf(url(tls13));
     expect(why).not.toMatch(/protocol version|UNSUPPORTED_PROTOCOL/i);
     expect(why).toMatch(/self[- ]signed|DEPTH_ZERO_SELF_SIGNED_CERT|INVALID_PURPOSE|certificate/i);
+  });
+
+  it("tls13HttpsFetch refuses plain http before connecting, and still enforces TLS 1.3 on https", async () => {
+    await expect(tls13HttpsFetch("http://127.0.0.1:1/")).rejects.toThrow(/non-HTTPS/);
+    await expect(tls13HttpsFetch(new Request("http://127.0.0.1:1/"))).rejects.toThrow(/non-HTTPS/);
+    const why = await tls13HttpsFetch(url(tls12)).then(
+      () => "connected",
+      (e: { cause?: { code?: string; message?: string } }) => `${e.cause?.code ?? ""} ${e.cause?.message ?? ""}`,
+    );
+    expect(why).toMatch(/protocol version|UNSUPPORTED_PROTOCOL|TLSV1_ALERT_PROTOCOL_VERSION/i);
   });
 
   it("sends built-in FormData/Blob and Request bodies intact (Storage upload shape)", async () => {

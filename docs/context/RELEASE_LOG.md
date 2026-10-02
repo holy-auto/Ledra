@@ -27,6 +27,8 @@
 - 送信後の Codex レビュー（#1213）で、外部連携だけ素の `fetch`／viem の通常の通信だった。`tls13Fetch` を通すようにした
   （Hive・Pinata は `tls13Fetch`、Polygon は viem `http(rpcUrl, { fetchFn: tls13Fetch })` の8箇所。
   うち1箇所は providers の外の `app/api/cron/polygon-signer` で、/code-review で見つかった）。
+- Codex 指摘: `tls13Fetch` はローカル Supabase のため平文 http も通すので、`POLYGON_RPC_URL` を `http://` にすると TLS ごと外れた。
+  連携には https 以外を送らない `tls13HttpsFetch` を使う（http は接続前に失敗。`tls13Fetch.test.ts` で確認）。
 - `integrationsTls13.test.ts` が providers 配下の素の `fetch`（`globalThis.fetch` 含む）と、viem を使う src 全ファイルの
   `fetchFn` 無しのトランスポートを検出する。修正前のコード・cron だけ戻したコードで落ち、修正後に通ることを確認。
 - GPSA §2.5 と運用管理策 A02 に外部連携を加えた（本番反映後の状態として）。

@@ -28,7 +28,7 @@ import { verifyCronRequest } from "@/lib/cronAuth";
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { recordCronSuccess, recordCronFailure } from "@/lib/cron/failureTracker";
 import { sendEmail } from "@/lib/email/sendEmail";
-import { tls13Fetch } from "@/lib/net/tls13Fetch";
+import { tls13HttpsFetch } from "@/lib/net/tls13Fetch";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -189,7 +189,7 @@ export async function GET(req: NextRequest) {
     const chain = config.network === "amoy" ? polygonAmoy : polygon;
     // 署名器抽象で残高監視も KMS アドレスを追跡する(既定 local は現行と同一挙動)。
     const account = await getPolygonAccount(normalizedKey);
-    const client = createPublicClient({ chain, transport: http(config.rpcUrl, { fetchFn: tls13Fetch }) });
+    const client = createPublicClient({ chain, transport: http(config.rpcUrl, { fetchFn: tls13HttpsFetch }) });
 
     const balanceWei = await client.getBalance({ address: account.address });
     const balancePol = weiToPolNumber(balanceWei);
