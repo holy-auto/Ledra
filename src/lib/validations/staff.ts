@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { isStaffQualificationKey, STAFF_QUALIFICATIONS, type StaffQualificationKey } from "@/lib/staff/qualifications";
 
 const nullableUuid = z
   .string()
@@ -39,6 +40,18 @@ const skillsArray = z
     return out;
   });
 
+/**
+ * 法定資格キー配列。skills と違い**統制語彙**なので、集合外のキーは **fail-closed で弾く**
+ * （正準キーは src/lib/staff/qualifications.ts）。各要素を refine で検証するので、残る transform は
+ * 重複除去だけ（未知キーはここに届かない）。max は業務上限ではなくペイロード上限で、正規化前に
+ * 効くため正準 3 件に重複が混じっても弾かれないよう緩め（重複は下の dedup が畳む）。
+ */
+const qualificationsArray = z
+  .array(z.string().trim().refine(isStaffQualificationKey, { message: "未知の資格キーです。" }))
+  .max(STAFF_QUALIFICATIONS.length * 4)
+  .optional()
+  .transform((v) => (v ? ([...new Set(v)] as StaffQualificationKey[]) : []));
+
 const nullableRate = z
   .number()
   .min(0)
@@ -54,6 +67,7 @@ export const staffCreateSchema = z.object({
   email: nullableText(200),
   phone: nullableText(50),
   skills: skillsArray,
+  qualifications: qualificationsArray,
   color: nullableText(20),
   note: nullableText(1000),
   is_active: z.boolean().default(true),
