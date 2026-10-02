@@ -3,6 +3,16 @@
 > まだ決まっていないこと、判断に迷っていることを書く場所。決まったら
 > DECISION_LOG.md に移し、このファイルからは消す（削除履歴は git で追える）。
 
+## `@contentauth/c2pa-node` の固定（0.9.7）をいつ外すか（2026-10-02）
+
+- 0.9.8 で署名したマニフェストを同じライブラリが読めず（`claim_cbor: unexpected trailing data`）、0.9.7 に固定して
+  Dependabot の対象から外した（DECISION_LOG 2026-10-02）。
+- 確認したいこと: (a) 上流で報告・修正されているか【要確認】、(b) 修正版が出たら `package.json` を上げて
+  `src/lib/anchoring/providers/__tests__/c2paSignValidate.test.ts` と `providers.test.ts` が通るか。
+  通ったら固定と `.github/dependabot.yml` の ignore を外す。
+- 起票日: 2026-10-02
+- 判断者: 開発（Claude）。上流への報告をするかは代表
+
 ## #1184 マージ後の本番デプロイが1回失敗した原因（2026-10-01）
 
 - `5f54e29`（#1184）の Vercel 本番デプロイが 13:14 UTC に失敗し、同じコミットの再デプロイ（代表）で 13:36 UTC に成功した。
