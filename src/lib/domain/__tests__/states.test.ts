@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   CERTIFICATE_STATES,
+  DELIVERY_CONSENT_STATES,
   DOCUMENT_CORRECTION_STATES,
   FT_DEFECT_STATES,
   FT_JOB_STATES,
@@ -13,6 +14,7 @@ import {
   STEP_STATES,
   SYNC_STATES,
   isCertificateState,
+  isDeliveryConsentState,
   isDocumentCorrectionState,
   isFtDefectState,
   isFtJobState,
@@ -52,6 +54,7 @@ const AXES = [
   { name: "ftDefect", values: FT_DEFECT_STATES, guard: isFtDefectState, expected: 5 },
   // 通常 11（ST-001）+ 例外・中間 14（ST-002）
   { name: "outsourcedWork", values: OUTSOURCED_WORK_STATES, guard: isOutsourcedWorkState, expected: 25 },
+  { name: "deliveryConsent", values: DELIVERY_CONSENT_STATES, guard: isDeliveryConsentState, expected: 2 },
 ] as const;
 
 describe("正準語彙の値集合(v2.0 Appendix A)", () => {

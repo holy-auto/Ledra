@@ -77,13 +77,15 @@ export function isExternalSite(site: string): site is ExternalSiteId {
 
 /**
  * holy-inc の分類（日本語 → 英語）。英語サイトにそのまま出るので、
- * 勝手な訳を作らないよう既存の4分類に閉じる。
+ * 勝手な訳を作らないよう、holy-inc の記事と英語版 i18n で使っている分類に閉じる。
+ * holy-inc 側で分類を足したら、ここにも同じ訳で足す。
  */
 export const HOLY_INC_CATEGORIES: Record<string, string> = {
   会社: "Company",
   サービス: "Service",
   プロダクト: "Product",
   地域貢献: "Community",
+  イベント: "Event",
 };
 
 /** MobileWash のニュース分類（相手のパーサが4値で検証している）。 */

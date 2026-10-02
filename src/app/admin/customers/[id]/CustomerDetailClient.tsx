@@ -5,6 +5,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { formatDate } from "@/lib/format";
+import DeliveryConsentPanel from "./DeliveryConsentPanel";
 
 type Customer = {
   id: string;
@@ -382,6 +383,7 @@ export default function CustomerDetailClient({ customer: initial }: { customer: 
       {infoRow("備考", customer.note)}
       {infoRow("登録日", formatDate(customer.created_at))}
       {infoRow("更新日", formatDate(customer.updated_at))}
+      <DeliveryConsentPanel customerId={customer.id} />
     </section>
   );
 }

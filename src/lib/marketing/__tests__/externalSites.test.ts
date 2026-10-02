@@ -51,8 +51,12 @@ describe("buildExternalPostFile — holy-inc", () => {
     expect(() => buildExternalPostFile({ ...base, titleEn: null })).toThrow(ExternalPostError);
   });
 
-  it("既存4分類以外は受け付けない（勝手な英訳を作らない）", () => {
+  it("決めてある分類以外は受け付けない（勝手な英訳を作らない）", () => {
     expect(() => buildExternalPostFile({ ...base, category: "その他" })).toThrow(/会社 \/ サービス/);
+  });
+
+  it("イベントは holy-inc 側と同じ英訳 Event で書く", () => {
+    expect(buildExternalPostFile({ ...base, category: "イベント" }).content).toContain('categoryEn: "Event"');
   });
 });
 
@@ -125,7 +129,7 @@ describe("ファイル名", () => {
 
 describe("選択肢", () => {
   it("分類が要るのは holy-inc と MobileWash の news だけ", () => {
-    expect(categoryOptions("holy-inc", "news")).toHaveLength(4);
+    expect(categoryOptions("holy-inc", "news")).toEqual(["会社", "サービス", "プロダクト", "地域貢献", "イベント"]);
     expect(categoryOptions("mobilewash", "news")).toHaveLength(4);
     expect(categoryOptions("mobilewash", "press")).toEqual([]);
     expect(categoryOptions("ledra", "news")).toEqual([]);

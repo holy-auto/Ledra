@@ -4,6 +4,49 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-10-02 管理画面から holy-inc.jp へ「イベント」分類で投稿できるようにした
+
+- 内容: `HOLY_INC_CATEGORIES`（`src/lib/marketing/externalSites.ts`）に `イベント: "Event"` を追加。holy-auto/holy-inc#14 で
+  holy-inc 側に足した分類と、Ledra の写しがずれていた（MISTAKE_LEDGER `M-20261002-added-holy-inc-category-without-ledra-cms-list`）。
+- 英訳は holy-inc の記事 frontmatter（`categoryEn: "Event"`）と英語版 i18n（`event: "Event"`）から写した。
+- 投稿手順書（`docs/marketing/operation/posting-guide.md`）の分類一覧も更新。
+- 検証: `externalSites` / `externalPublish` の単体テスト 27 件緑（分類一覧と、イベント→Event の書き出しを追加で確認）。
+
+## 2026-10-02 Ledra サイトの /news に「Japan Mobility Show Bizweek 2026」出展のお知らせを追加
+
+- 内容: `src/content/news/2026-10-03-japan-mobility-show-bizweek.mdx`（公開日は JST の 2026-10-03）。holy-inc.jp の告知と同じ
+  開催概要（会期 10/13〜16 10:00〜17:00・幕張メッセ 展示ホール2・3・小間 ZONE1 S-06・入場無料/事前登録制・主催 JAMA・
+  公式サイト https://www.japan-mobility-show.com/）に、Ledra の説明とお問い合わせ導線を付けた。
+- 見出し画像: 代表から受け取った Bizweek のグラフィック（透過・4:1）を白背景の 5:2 に収めて `public/marketing/news/` に置いた
+  （記事ページの見出し画像は 5:2 で切り抜かれるため、切れないよう余白を足した）。
+- 代表の「Ledra で出展」を受け、表記を「Ledra として出展」に統一。展示の中身（デモ構成など）は未確定のため本文に書いていない。
+
+## 2026-10-02 holy-inc.jp に「Japan Mobility Show Bizweek 2026」出展のお知らせを公開（holy-auto/holy-inc#14）
+
+- 内容: holy-inc.jp のお知らせに出展告知を追加（`/news/2026-10-japan-mobility-show-bizweek`）。トップのお知らせ・一覧・
+  sitemap・RSS・llms.txt に自動で載る。本文: 小間位置 ZONE1「滞らないシステムで、広がる安心。」S-06、出展内容 Ledra、
+  開催概要（会期 10/13〜16・幕張メッセ 展示ホール2・3・入場無料・事前登録制・主催 JAMA）、ロゴ画像。
+- holy-inc 側の仕組み変更: 記事の frontmatter に `image` / `imageAlt` を書くと記事ページに画像を出せるようにした。
+  段落内の改行をそのまま改行で表示するようにした（既存記事の見た目は不変）。分類に「イベント」を追加。
+- ロゴ: 受け取った画像ファイルは白文字・透過（暗い背景用）だったため、文字色を公式ブラック #231F20 に置き換えた版を掲載。
+- 開催概要は JAMA の発表・報道の検索結果から取った。公式ページはこの環境から開けず、日時と会場の公式サイト突合は代表確認待ち。
+- 検証: holy-inc の型チェック・lint・リンクチェック・ビルド・SEO チェック緑、PC/スマホ幅で表示確認、PR の CI 全緑でマージ。
+- **未対応**: Ledra 管理画面（`/admin/site-content`）の holy-inc 分類は4分類のままで「イベント」を選べない（OPEN_QUESTIONS）。
+
+## 2026-10-02 記録簿の写しの電子交付「事前承諾＋撤回＋撤回後ブロック」（G3/G4）
+
+- 内容: 電子交付の事前承諾（第２ ４（３））と撤回・撤回後の交付禁止（第２ ４（４））を、**記録簿の交付経路のみ**に
+  追加（代表判断で scope 確定）。見積/請求の送付 `documents/share` は**対象外**（非破壊）。
+- `delivery_consents`（顧客単位の granted/revoked・開示文言 hash・version・撤回者/経路）。定義源 `src/lib/delivery/deliveryConsent.ts`
+  （交付方法の開示文言カタログ＋純関数 `isElectronicDeliveryBlocked`＝撤回時のみ true）。
+- 承諾記録: 店舗 `POST/DELETE /api/admin/customers/:id/delivery-consent`（顧客詳細の「電子交付の承諾」パネル）。
+  撤回: 使用者本人 `POST /api/customer/delivery-consent/revoke`（顧客ポータルセッション）＋店舗代行 DELETE。
+- enforcement: 証明書＝記録簿の写しの電子交付（`certificates/:id/delivery-receipt-request` の受領サイン依頼メール）で、
+  当該顧客が**撤回済みなら 409 でブロック**。**未承諾のハードブロックは既定オフ**（既存交付を一斉に止めない非破壊既定。
+  厳格な事前承諾ゲートはテナント opt-in の後続）。顧客未紐付け証明書は顧客単位判定不可で従来どおり（後続）。
+- 注: `inspection_records`（指定整備記録簿）は現状アプリに顧客向け電子交付経路が無い（管理PDFのみ）ため対象は証明書交付。
+- 検証: `deliveryConsent` 純関数の単体テスト 4 件 / tsc・eslint（変更 0 error）・check:schema・lint:migrations 緑。
+
 ## 2026-10-02 指定整備記録簿（完成検査）の作成・更新を監査ログ化＋編集の既存不具合を修正（G2）
 
 - 内容: 点検整備記録簿の電子化基準（第２ ２（３））は作成・更新の日時／更新箇所／作業者の自動記録を求める。
