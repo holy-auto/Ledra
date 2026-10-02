@@ -4,6 +4,14 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-10-02 外部連携（Hive・Pinata・Polygon RPC）の通信も TLS 1.3 以上に限定（C2PA GPSA O.5）
+
+- 送信後の Codex レビュー（#1213）で、外部連携だけ素の `fetch`／viem の通常の通信だった。`tls13Fetch` を通すようにした
+  （Hive・Pinata は `tls13Fetch`、Polygon は viem `http(rpcUrl, { fetchFn: tls13Fetch })` の7箇所）。
+- `integrationsTls13.test.ts` が providers 配下の素の `fetch` と `fetchFn` 無しの `http()` を検出する。修正前のコードで
+  4ファイルとも落ち、修正後に通ることを確認。anchoring・net のテスト 179 件合格、型検査・lint 合格。
+- GPSA §2.5 と運用管理策 A02 に外部連携を加えた（本番反映後の状態として）。
+
 ## 2026-10-02 整備業の法定資格・職責の軸を作業者レジストリに追加（G1）
 
 - 内容: 点検整備記録簿の電子化基準（第２ ３（１）①）が例示する権限区分「自動車検査員 / 整備主任者 /

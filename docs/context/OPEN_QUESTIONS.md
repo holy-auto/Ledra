@@ -2123,14 +2123,20 @@ JST は夏時間が無いので日の加算は 24 時間の加算でよい。
         1. **クライアント→Supabase の直通信**: Web（`src/lib/supabase/client.ts`、`NEXT_PUBLIC_SUPABASE_URL`）と
            モバイル（`apps/mobile/src/lib/supabase.ts`）は Auth・PostgREST・Storage に Cloudflare を通らず直接つなぐ。
            §1.6 は Supabase を TOE 内としているのに、GPSA §2.5 と TOE 図にこの経路が無い。Supabase 側の最低 TLS 版は未確認
-           （代表の PC で `curl.exe -sI --tls-max 1.2 https://<project>.supabase.co` を見れば分かる）。
+           → **2026-10-02 実測: Supabase は TLS 1.2 を受け付ける**（代表の PC で `--tls-max 1.2` が exit 0・HTTP 401・`Server: cloudflare`）。
+           Supabase 側の最低版は当社で変えられない。代表の問い「Supabase 以外（AWS 等）にしないといけないか」→ 移行は不要の見込み。
+           候補は Administrator に O.5 の対象範囲を確認するか、クライアントの Supabase 通信を Backend 経由（tls13Fetch）に寄せるか。
+           Realtime（WebSocket）は Web・モバイルとも未使用なので、Backend 経由にする障害にはならない。
         2. **Cloudflare→Vercel の区間**: Full (strict) は証明書の検証で、最低 TLS 版の強制ではない。こちらからは版が見えず、
            Cloudflare に起点側の最低版を指定する設定があるかも未確認（この環境から Cloudflare の文書に届かない）。
-        3. **外部連携**: Hive（`anchoring/providers/deepfake.ts`）・Pinata（`anchoring/providers/c2pa.ts`）は素の `fetch`、
-           Polygon は viem の通常の通信で、TLS 1.2 にもなりうる。本番で有効かは未確認（設定次第）。
+        3. ~~**外部連携**~~ → **2026-10-02 対応**（代表了承）: Hive・Pinata・Polygon RPC を `tls13Fetch` 経由にした
+           （`src/lib/anchoring/__tests__/integrationsTls13.test.ts` が素の fetch の再侵入を止める）。
+           残り: Polygon 署名を `aws-kms` にした場合の AWS SDK の通信は対象外（本番は `local` か未確認）。
         4. **写真アップロード以外の Backend 経路**（Codex 2回目の指摘）: 秘密ヘッダの照合は写真アップロードだけ。他の画面・API は
            `*.vercel.app` から TLS 1.2 で届く（Vercel の Deployment Protection を有効にしていなければ。有効かは未確認）。
            全経路で照合すると、Vercel Cron など `*.vercel.app` 宛ての内部呼び出しを止めるおそれがある（推定・未検証）。
+           → 2026-10-02 代表了承: まず Vercel の Deployment Protection を有効にし、本番の `*.vercel.app` URL が保護されるかを実測する。
+           QStash のコールバック先は `NEXT_PUBLIC_APP_URL` が最優先（未設定時のみ `VERCEL_URL`）。
       **代表判断待ち**: 送信済みの提出物をこのまま審査に出すか、訂正を追送するか。直し方（Supabase を TOE の外に出す／
       クライアントの Supabase 通信を Backend 経由に寄せる／現状を正直に書く）も製品・申請の判断。
       → **2026-10-02 再提出を送信**（代表の申告）。validate（jpeg/png/webp/heic）復活を依頼済み。

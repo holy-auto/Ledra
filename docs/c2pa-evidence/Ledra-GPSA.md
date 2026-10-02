@@ -219,7 +219,8 @@ signing), and Ledra's own pipeline code (`src/lib/certificateImages/*`, `src/lib
      project endpoint. Every server-side Supabase client sends its requests through a fetch whose TLS
      connections require TLS 1.3 as the minimum version (`src/lib/net/tls13Fetch.ts`); a server offering only
      TLS 1.2 or lower fails the handshake and the request is not sent.
-   - Backend → the integrations in §1.6: HTTPS.
+   - Backend → the integrations in §1.6 (Polygon RPC, Hive, Pinata): HTTPS through the same TLS 1.3-minimum
+     fetch (`src/lib/net/tls13Fetch.ts`).
      Cipher suites are those of the managed TLS configurations of Cloudflare, Vercel and Supabase.
 
 ### 2.6 [O.6] Protection of the Hosting Environment (§6.6)
