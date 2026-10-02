@@ -4,6 +4,14 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-10-02 本番を Cloudflare 前段（最低 TLS 1.3）に切り替え（C2PA GPSA O.5）
+
+- 代表作業: `ledra.co.jp` を Cloudflare に載せ、Minimum TLS 1.3・Full (strict)・キャッシュ Bypass・
+  秘密ヘッダ `x-ledra-origin-secret` の Transform Rule を設定。Vercel に `CF_ORIGIN_SECRET` と `TRUST_CF_HEADERS=1`。
+- 確認（代表の PC、PowerShell の curl.exe）: `--tls-max 1.2` は exit 35（拒否）、`--tlsv1.3` は 200・`Server: cloudflare`。
+- コード側（#1173、c4cc5816）: 写真アップロードは秘密ヘッダ一致のときだけ受け付け、レート制限の `cf-connecting-ip` も一致時だけ信用。
+- GPSA §1.6・§2.5 を実構成で書き直した。
+
 ## 2026-10-02 スキーマドリフト検出器を列の NULL 可否まで拡張（報告のみ）
 
 - 内容: `scripts/check-schema-drift.mjs` は従来「列名の有無」しか見ず、本番と再生 DB の

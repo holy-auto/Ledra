@@ -31,7 +31,11 @@
 
 > 2026-10-01 追記（C2PA 並行2案の整理）: 代表決定で、ingredient は #1173 方式（原本ごと＋redaction）、
 > Backend→Supabase の TLS 1.3 強制は #1183 の `tls13Fetch` を #1173 に取り込んだ。#1183 は 2026-10-02 に代表指示でクローズ（文言修正は #1198 で main 済み）。
-> 2026-10-02 再提出用サンプル a〜d を現行コードで再生成（4枚とも Valid・untrusted のみ・GPS なし）。zip `Ledra-C2PA-Resubmission-20261002-UNVERIFIED.zip` を代表へ渡した。**Conformulator 未確認・未送信**。
+> 2026-10-02 再提出用サンプル a〜d を現行コードで再生成（4枚とも Valid・untrusted のみ・GPS なし）。zip `Ledra-C2PA-Resubmission-20261002-UNVERIFIED.zip` を代表へ渡した。**未送信**。
+> 2026-10-02 追記: #1173 は main にマージ済み（c4cc5816）。`www.ledra.co.jp` は Cloudflare 経由（`Server: cloudflare`）になり、
+> 代表の PC から `curl --tls-max 1.2` は exit 35（ハンドシェイク失敗）、`--tlsv1.3` は 200 を確認＝**TLS 1.2 拒否を実測**。
+> GPSA §1.6・§2.5（O.5）を Cloudflare 前段の構成で書き直した。Conformulator（新サンプル）は a-sample.jpg・b-sample.png が
+> 適合ルーブリック3つとも全 PASS、不合格は `trusted_success`（テスト証明書の untrusted）のみ。**c-sample.webp・d-sample.heic は未確認**。
 
 > 2026-09-29 追記（crJSON ハーネス）: validate 再申告に必要な **crJSON テストハーネスを作成**（`tools/c2pa-crjson-harness`、
 > 製品と同じ c2pa-rs 0.90.22＋検証時刻・TSA 信頼リストのパッチ、自己テスト6件）。Program のテスト入力待ち。
