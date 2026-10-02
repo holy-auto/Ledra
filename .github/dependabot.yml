@@ -22,6 +22,10 @@ updates:
       # (missing "types" condition) that breaks moduleResolution=bundler
       # type discovery → TS7016. Stay on 18.2.10 until upstream fixes it.
       - dependency-name: "react-konva"
+      # @contentauth/c2pa-node 0.9.8 で署名したマニフェストを同じライブラリが読めない
+      # （ClaimDecoding "claim_cbor: unexpected trailing data"、c2paSignValidate / providers の
+      # テスト5件が落ちる。#1193）。package.json で 0.9.7 に固定し、上流の修正を確かめてから外す。
+      - dependency-name: "@contentauth/c2pa-node"
   - package-ecosystem: "npm"
     directory: "/apps/mobile"
     schedule:
