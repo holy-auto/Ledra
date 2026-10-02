@@ -19,6 +19,8 @@ import { apiOk, apiError, apiValidationError } from "@/lib/api/response";
 
 import { createSignatureSession, getExistingPendingSession } from "@/lib/signature/session";
 import { generateCertificatePdfBytes } from "@/lib/signature/pdfUtils";
+import { createTenantScopedAdmin } from "@/lib/supabase/admin";
+import { isElectronicDeliveryBlockedForCustomer } from "@/lib/delivery/deliveryConsent";
 import { escapeHtml } from "@/lib/sanitize";
 import { sendEmail } from "@/lib/email/sendEmail";
 
@@ -108,7 +110,7 @@ export const POST = withCaller(
     // 2. 証明書の存在確認・テナント境界チェック
     const { data: cert, error: certError } = await supabase
       .from("certificates")
-      .select("id, tenant_id, public_id")
+      .select("id, tenant_id, public_id, customer_id")
       .eq("id", certificate_id)
       .eq("tenant_id", caller.tenantId)
       .single();
@@ -119,6 +121,20 @@ export const POST = withCaller(
         message: "証明書が見つからないか、アクセス権がありません",
         status: 404,
       });
+    }
+
+    // G4（第２ ４（４））: 署名依頼も証明書（＝記録簿の写し）を顧客へ電子交付する経路。
+    // 使用者が電子交付の承諾を撤回していればブロックする（受領サイン依頼と同じゲート・fail-closed）。
+    if (cert.customer_id) {
+      const { admin } = createTenantScopedAdmin(caller.tenantId);
+      if (await isElectronicDeliveryBlockedForCustomer(admin, caller.tenantId, cert.customer_id)) {
+        return apiError({
+          code: "conflict",
+          message:
+            "この顧客は電子交付の承諾を撤回しています。電磁的方法での交付はできません（書面交付等に切り替えてください）。",
+          status: 409,
+        });
+      }
     }
 
     // 3. 既存の有効な pending セッションがあれば再利用（重複リクエスト防止）

@@ -13,13 +13,16 @@
  */
 
 import { createHash } from "crypto";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import type { DeliveryConsentState } from "@/lib/domain/states";
 
 export const DELIVERY_CONSENT_VERSION = "delivery-consent-v1";
 
-export type DeliveryConsentStatus = "none" | "granted" | "revoked";
+/** 承諾が無い（行の非在）を含む、UI/判定用の状態。granted/revoked は正準軸（states.ts）。 */
+export type DeliveryConsentStatus = "none" | DeliveryConsentState;
 
 export interface DeliveryConsentRow {
-  status: "granted" | "revoked";
+  status: DeliveryConsentState;
   revoked_at?: string | null;
 }
 
@@ -39,6 +42,8 @@ export function deliveryConsentText(): string {
   ].join("\n");
 }
 
+// ponytail: sha256-hex は customerPortalServer にも同型の sha256Hex があるが、本モジュールは
+//   純粋なリーフ（DB/サーバ初期化に依存しない・単体テストもそのまま回る）に保ちたいので標準ライブラリで自前。
 export function computeDeliveryConsentTextHash(): string {
   return createHash("sha256").update(deliveryConsentText(), "utf8").digest("hex");
 }
@@ -55,4 +60,27 @@ export function deliveryConsentStatus(row: DeliveryConsentRow | null | undefined
  */
 export function isElectronicDeliveryBlocked(row: DeliveryConsentRow | null | undefined): boolean {
   return deliveryConsentStatus(row) === "revoked";
+}
+
+/**
+ * 顧客単位で電子交付をブロックすべきか（撤回済みか）を DB から判定する共通ゲート。 [G4]
+ * 記録簿の写しの電子交付を行う全経路（証明書の受領サイン依頼・署名依頼など）から呼ぶ。
+ *
+ * **fail-closed**: 承諾状態を確認できない（クエリ失敗）ときはブロックする —— 規制(4)の
+ * 「撤回されたら交付してはならない」保護を、DB 一時障害で落とさないため。
+ * `db` は tenant-scoped admin（RLS バイパス）を渡す。customerId が無い証明書は呼び出し側で除外する。
+ */
+export async function isElectronicDeliveryBlockedForCustomer(
+  db: Pick<SupabaseClient, "from">,
+  tenantId: string,
+  customerId: string,
+): Promise<boolean> {
+  const { data, error } = await db
+    .from("delivery_consents")
+    .select("status, revoked_at")
+    .eq("tenant_id", tenantId)
+    .eq("customer_id", customerId)
+    .maybeSingle();
+  if (error) return true; // 確認できない → ブロック（fail-closed）
+  return isElectronicDeliveryBlocked((data as DeliveryConsentRow | null) ?? null);
 }

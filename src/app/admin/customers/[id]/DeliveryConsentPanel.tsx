@@ -30,18 +30,25 @@ export default function DeliveryConsentPanel({ customerId }: { customerId: strin
   const [state, setState] = useState<ConsentState>("none");
   const [row, setRow] = useState<ConsentRow>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
+    setLoadError(false);
     try {
       const res = await fetch(`/api/admin/customers/${customerId}/delivery-consent`);
       const j = await parseJsonSafe(res);
       if (res.ok) {
         setState((j?.status as ConsentState) ?? "none");
         setRow((j?.consent as ConsentRow) ?? null);
+      } else {
+        // 取得失敗を「未承諾」と誤表示しない（実際は granted/revoked かもしれない）。
+        setLoadError(true);
       }
+    } catch {
+      setLoadError(true);
     } finally {
       setLoading(false);
     }
@@ -82,8 +89,10 @@ export default function DeliveryConsentPanel({ customerId }: { customerId: strin
     <div className="mt-4 rounded-lg border border-border p-3">
       <div className="flex items-center justify-between gap-2">
         <div className="text-[11px] font-semibold tracking-[0.14em] text-muted uppercase">電子交付の承諾</div>
-        <span className={`rounded-full px-2 py-0.5 text-[11px] ${badgeClass}`}>
-          {loading ? "読み込み中…" : LABEL[state]}
+        <span
+          className={`rounded-full px-2 py-0.5 text-[11px] ${loadError ? "bg-danger/10 text-danger-text" : badgeClass}`}
+        >
+          {loading ? "読み込み中…" : loadError ? "状態を取得できません" : LABEL[state]}
         </span>
       </div>
       <p className="mt-1 text-[11px] text-muted">
@@ -101,7 +110,7 @@ export default function DeliveryConsentPanel({ customerId }: { customerId: strin
         <button
           type="button"
           onClick={() => act("POST")}
-          disabled={busy || loading || state === "granted"}
+          disabled={busy || loading || loadError || state === "granted"}
           className="btn-ghost text-xs disabled:opacity-50"
         >
           承諾を記録
@@ -109,7 +118,7 @@ export default function DeliveryConsentPanel({ customerId }: { customerId: strin
         <button
           type="button"
           onClick={() => act("DELETE")}
-          disabled={busy || loading || state === "revoked"}
+          disabled={busy || loading || loadError || state === "revoked"}
           className="text-xs text-danger-text underline disabled:opacity-50"
         >
           撤回を記録

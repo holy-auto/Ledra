@@ -34,7 +34,7 @@ create table if not exists delivery_consents (
   unique (tenant_id, customer_id)
 );
 
-create index if not exists idx_delivery_consents_tenant on delivery_consents(tenant_id);
+-- tenant_id 単独の索引は張らない（unique(tenant_id, customer_id) の索引が先頭列 tenant_id を兼ねる）。
 
 alter table delivery_consents enable row level security;
 
