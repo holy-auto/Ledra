@@ -64,7 +64,7 @@
     ]
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.128.0",
+    "@anthropic-ai/sdk": "^0.129.0",
     "@aws-sdk/client-kms": "^3.1141.0",
     "@googleapis/calendar": "^14.2.0",
     "@gsap/react": "^2.1.2",
