@@ -3,6 +3,17 @@
 > まだ決まっていないこと、判断に迷っていることを書く場所。決まったら
 > DECISION_LOG.md に移し、このファイルからは消す（削除履歴は git で追える）。
 
+## Japan Mobility Show Bizweek 2026 出展: 残る3点（2026-10-02）
+
+1. **Ledra 管理画面の holy-inc 分類に「イベント」が無い**: holy-auto/holy-inc#14 で holy-inc 側に分類「イベント」を
+   追加したが、Ledra の `HOLY_INC_CATEGORIES`（`src/lib/marketing/externalSites.ts`）は4分類のまま。管理画面から
+   holy-inc にイベント記事を出せない（既存の公開済み記事には影響なし）。直すなら holy-inc 側で付けた英語表記を
+   **holy-inc のパーサから写して** 1行足す（英語表記はこの記録の時点で holy-inc リポジトリを読めず【要確認】）。
+   MISTAKE_LEDGER `M-20261002-added-holy-inc-category-without-ledra-cms-list`。
+2. **開催概要の公式サイト突合**: 日時・会場は JAMA 発表と報道の検索結果から書いた。公式ページを直接開けていないので、
+   代表が公式サイトと突き合わせるまで未確認。
+3. **展示の中身**: 出展内容は「Ledra」までしか決まっていない。デモの構成・配布物・当日の体制は【要確認】。
+
 ## G3/G4 電子交付の承諾: 撤回後ブロックは実装、残る3点（2026-10-02）
 
 `delivery_consents` ＋ 承諾記録/撤回 ＋ 証明書電子交付の撤回後ブロックを実装（RELEASE_LOG 2026-10-02）。残り。
