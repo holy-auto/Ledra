@@ -4,7 +4,7 @@ import { requireNative } from "./nativeImaging";
 /**
  * stripGpsAndReadExif must report per-action outcomes that reflect what actually
  * happened, so the C2PA action ledger never certifies a no-op (e.g. claiming
- * `exif_gps_metadata_removed` for an image that carried no metadata). A synthetic
+ * `c2pa.edited.metadata` for an image that carried no metadata). A synthetic
  * sharp image has no EXIF/GPS/orientation, so removal and orientation must be
  * false while the re-encode (reencoded) still ran.
  */
@@ -37,4 +37,24 @@ describe("stripGpsAndReadExif per-action outcomes", () => {
     expect(res.gps, "no GPS").toBeNull();
     expect(res.strippedBuffer.length, "produced a buffer").toBeGreaterThan(0);
   });
+
+  // exifr は既定で Orientation を "Rotate 90 CW" と文字列化し、WebP はそもそも読めない。
+  // そのため .rotate() で実際に回転/除去しても false と報告され、allActionsIncluded=true の
+  // 台帳から orientation / edited が落ちていた（C2PA 証拠サンプル生成時に発覚）。
+  for (const fmt of ["jpeg", "webp"] as const) {
+    it(`${fmt}: a rotated photo with EXIF reports orientationApplied/metadataRemoved=true`, async () => {
+      const src = await sharp({
+        create: { width: 32, height: 24, channels: 3, background: { r: 1, g: 2, b: 3 } },
+      })
+        [fmt]()
+        .withMetadata({ orientation: 6 })
+        .toBuffer();
+
+      const res = await stripGpsAndReadExif(src);
+      expect(res.orientationApplied, "orientation 6 was baked in").toBe(true);
+      expect(res.metadataRemoved, "EXIF was present and removed").toBe(true);
+      const out = await sharp(res.strippedBuffer).metadata();
+      expect([out.width, out.height, out.exif], "rotated, EXIF gone").toEqual([24, 32, undefined]);
+    });
+  }
 });

@@ -26,6 +26,7 @@ import { maybeAutoWorkStampForCertificate } from "@/lib/ai/automation/workStampA
 import { maybeAutoDraftContentForCertificate } from "@/lib/ai/automation/photoContentDraftAuto";
 import { enqueueCertificateAnchor } from "@/lib/anchoring/certificateAnchorService";
 import { detectMagicByteMime } from "@/lib/media/magicBytes";
+import { fromCloudflareEdge } from "@/lib/edgeOrigin";
 import { watchGateReadyTransition } from "@/lib/certificates/gateReadyNotify";
 
 const MAX_FILE_BYTES = 20 * 1024 * 1024; // 20 MB per file
@@ -40,7 +41,20 @@ function validateMagicBytes(buffer: Buffer): string | null {
  * 認証済みテナントの証明書に写真をアップロードする共通処理。呼び出し側は認証・レート制限を
  * 済ませたうえで tenantId を渡す。Response を返す。
  */
+/**
+ * C2PA TOE の入口（写真アップロード）は、最低 TLS 1.3 を強制する Cloudflare 経由の通信だけを受ける
+ * （GPSA O.5。Vercel 単体では TLS 1.2 を拒否できない）。Cloudflare の Transform Rule が付ける
+ * `x-ledra-origin-secret` を照合し、`*.vercel.app` への直アクセス（TLS 1.2 可）を弾く。
+ * `CF_ORIGIN_SECRET` 未設定＝Cloudflare 前段なしの構成では照合しない。
+ */
+export function viaTls13Edge(req: Request, secret = process.env.CF_ORIGIN_SECRET): boolean {
+  return !secret || fromCloudflareEdge(req, secret);
+}
+
 export async function handleCertificateImageUpload(req: NextRequest, tenantId: string): Promise<Response> {
+  if (!viaTls13Edge(req)) {
+    return apiError({ code: "forbidden", message: "Uploads must arrive through the TLS 1.3 edge.", status: 403 });
+  }
   try {
     // ── Plan tier → photo limit（billing guard と共有の 60 秒キャッシュ）──
     const billing = await getCachedTenantBilling(tenantId);
