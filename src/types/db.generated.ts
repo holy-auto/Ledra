@@ -13552,6 +13552,7 @@ export type Database = {
           name: string
           note: string | null
           phone: string | null
+          qualifications: string[]
           skills: string[]
           tenant_id: string
           updated_at: string
@@ -13569,6 +13570,7 @@ export type Database = {
           name: string
           note?: string | null
           phone?: string | null
+          qualifications?: string[]
           skills?: string[]
           tenant_id: string
           updated_at?: string
@@ -13586,6 +13588,7 @@ export type Database = {
           name?: string
           note?: string | null
           phone?: string | null
+          qualifications?: string[]
           skills?: string[]
           tenant_id?: string
           updated_at?: string

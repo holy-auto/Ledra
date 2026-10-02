@@ -3365,6 +3365,7 @@
 "name",
 "note",
 "phone",
+"qualifications",
 "skills",
 "tenant_id",
 "updated_at",

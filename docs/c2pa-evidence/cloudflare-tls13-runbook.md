@@ -14,7 +14,7 @@
   控える場所はドメインを買った業者（または今の DNS 管理先）の管理画面。
 - 作業は利用の少ない時間帯に行う。切り替えの反映には数分〜数時間かかる。
 - モバイルアプリの API 接続先（`EXPO_PUBLIC_API_URL`）が **`https://www.ledra.co.jp` などの独自ドメイン**
-  になっていることを確認する。`*.vercel.app` を向いていると Cloudflare を通らず、写真アップロードが拒否される（§4）。
+  になっていることを確認する（`apps/mobile/eas.json` では `https://app.ledra.co.jp`。§1 で `app` を Proxied にすること）。`*.vercel.app` を向いていると Cloudflare を通らず、写真アップロードが拒否される（§4）。
 
 ## 1. Cloudflare にドメインを追加する
 
@@ -22,6 +22,7 @@
 2. Cloudflare が取り込んだ DNS レコードを、§0 で控えた一覧と突き合わせる。足りないものは手で追加する。
 3. Vercel 向けのレコードは **オレンジ雲（Proxied）** にする。例:
    - `www` → CNAME `cname.vercel-dns.com`（Proxied）
+   - **`app`** → Vercel 向け CNAME（Proxied）。Web アプリとモバイル（`apps/mobile/eas.json` の `EXPO_PUBLIC_API_URL`）はこちらを使う。
    - `@`（apex）→ Vercel が指定する A レコード（Proxied）
    - メール関連（MX 等）は Proxy 不可なので灰色雲のまま。
 4. ドメイン業者の管理画面で、ネームサーバーを Cloudflare が指定する2つに変更する。
@@ -71,11 +72,12 @@ Settings → Environment Variables（Production）に次を追加して、再デ
 
 ## 5. 確認（代表の PC で）
 
-1. ブラウザで `https://www.ledra.co.jp` が開き、ログインと写真アップロードができる。
+1. ブラウザで `https://app.ledra.co.jp` が開き、ログインと写真アップロードができる。モバイルアプリからも写真アップロードができる。
 2. TLS 1.2 で接続できないことを確かめる（Mac / Linux のターミナル）:
    ```sh
-   curl -sI --tls-max 1.2 https://www.ledra.co.jp   # 失敗すれば OK（handshake failure 等）
-   curl -sI --tlsv1.3 https://www.ledra.co.jp       # HTTP/2 200 などが返れば OK
+   # app / www / apex の3つとも。Windows の PowerShell では curl.exe と書く
+   curl -sI --tls-max 1.2 https://app.ledra.co.jp   # 失敗すれば OK（exit 35 等）
+   curl -sI --tlsv1.3 https://app.ledra.co.jp       # 200 等と Server: cloudflare が返れば OK
    ```
-   または SSL Labs（https://www.ssllabs.com/ssltest/）で `www.ledra.co.jp` を検査し、「TLS 1.2: No」「TLS 1.3: Yes」を確認する。
+   または SSL Labs（https://www.ssllabs.com/ssltest/）で `app.ledra.co.jp`・`www.ledra.co.jp` を検査し、「TLS 1.2: No」「TLS 1.3: Yes」を確認する。
 3. 結果（コマンドの出力か SSL Labs の画面）を Claude に貼る。GPSA の O.5 を、実際の構成に合わせて書き直す。
