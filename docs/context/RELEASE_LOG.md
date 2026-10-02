@@ -4,6 +4,33 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-10-02 スキーマドリフト検出器を列の NULL 可否まで拡張（報告のみ）
+
+- 内容: `scripts/check-schema-drift.mjs` は従来「列名の有無」しか見ず、本番と再生 DB の
+  **NOT NULL の食い違い**を両方向とも見逃していた（検出器の「ponytail: 上限その2」/
+  OPEN_QUESTIONS §88・§381 の宿題）。列の NULL 可否を両方向で突き合わせて出すよう拡張。
+  - 本番 NOT NULL / 再生 NULL 可 … 本番では no-op（新環境だけゆるい）
+  - 再生 NOT NULL / 本番 NULL 可 … **実害**（本番で通る INSERT が再生・プレビューで 23502。
+    実例 `audit_logs.tenant_id`）。この向きには一覧で印を付ける。
+- **落とさない（報告のみ）。** 型・既定値ドリフトと同じ扱い。既知の差はマイグレーション側で
+  解消済みだが、本番の適用状況まで保証できず、未適用起因の「直しようのない赤」を避けるため。
+  毎回の実行で一覧に出るので、次に属性がずれても気づける（宿題の「一度きりの手作業」を解消）。
+- 解析は純関数 `columnRowsFromDump`（notnull 付与）／`nullabilityDrift`（両方向の仕分け）に集約し
+  `scripts/__tests__/dumpParse.test.ts` で単体検査。検出器側は tenants.id の NOT NULL を実行時の
+  陰性対照にする。残る宿題: 既定値・型の深い比較と、実害の向きの赤化（本番 1 回の実測で残差 0 を確認後）。
+- 検証: 実スキーマ再生ダンプ（3604 列）で notnull 解析を実測確認 / dumpParse 単体 25 件 /
+  tsc・eslint・check:schema 緑。
+
+## 2026-10-02 依存の一括更新（16件）と、`@contentauth/c2pa-node` の 0.9.7 固定
+
+- 内容: Dependabot #1193 の17件から c2pa-node を除いた16件を取り込んだ（`package.json` の15件と、lockfile だけで上がる `remotion`）。主なもの: `@supabase/supabase-js` 2.117、
+  `@sentry/nextjs` 10.75.3、`resend` 6.30 以上（lockfile では 6.32.0）、`@upstash/ratelimit` 2.2、`@anthropic-ai/sdk` 0.128、
+  `posthog-js`、`viem`、`three`、`@react-three/fiber`、`@aws-sdk/client-kms`。開発用は `@remotion/cli` / `prettier` /
+  `supabase` / `tsx`。
+- `@contentauth/c2pa-node` は 0.9.8 で C2PA の署名→検証が壊れる（テスト5件）ため、`package.json` で 0.9.7 に固定し、
+  `.github/dependabot.yml` の ignore に入れた（DECISION_LOG 2026-10-02）。#1193 は閉じた。
+- 検証: `npm audit` 0件、tsc 通過、vitest exit=0（615 files / 6006 tests、`tail` で要約を確認）。
+
 ## 2026-10-02 本番の C2PA 署名が失敗したら写真を保存せずに断る（黙って未署名にしない）
 
 - 内容: 署名の失敗を結果の型で表現できるようにし、`C2PA_MODE=production` で失敗したら
@@ -26,6 +53,7 @@
   本番証明書を入れてオンにした日から効く。**オンにする前に、本番で `@contentauth/c2pa-node` が
   実際に読み込めるかの確認が必要**【要確認】。
 
+
 ## 2026-10-02 完成検査の外部テスタ測定値 汎用 CSV 取込 UI（G5 Phase 2）
 
 - 内容: Phase 2 のサーバ土台（取込 API）に接続する UI を追加。完成検査の編集画面に「外部テスタ取込（CSV）」
@@ -37,6 +65,57 @@
 - UI は既存記録（編集モード・測定値読込後）でのみ表示。特定テスタ依存の列マッピングは呼び出し元で
   正準 field_code に正規化する前提（#7 の特定テスタ/OSS アダプタは別途）。
 - 検証: CSV パーサの単体テスト追加 / tsc・eslint 緑。
+
+## 2026-10-02 マイグレーション日付の陳腐化検査が「main が動いた直後」にも走る
+
+`.github/workflows/stale-migration-check.yml` に `push: branches: [main]` /
+`paths: supabase/migrations/**` の契機を足した。**判定ロジックは1行も増えていない** ——
+既にある `npm run lint:migrations` を `MIGRATIONS_BASE_REF=origin/main` でそのまま回す形のまま。
+
+**なぜ**: 日次（00:20 UTC）だけでは、追い越しからマージまでが同じ日のうちに終わると素通りする。
+#1174 は #1172 が版を入れた **14:54 UTC** に追い越され、その **28分後**の 15:22 UTC にマージされた
+（`git log -1 --format=%cI e37b2db3` で実測）。cron はその間に走っていない。
+追い越しが起こりうる瞬間は「main にマイグレーションが入ったとき」だけなので、そこを契機にした。
+
+push 経路では `MIN_AGE_DAYS=0`（PR の年齢は追い越しに関係しない）。
+**既定日数の切り替えは `${{ }}` の式ではなくシェルで書いた** —— 式で
+`A || (cond && '0') || '3'` と書くと文字列 `'0'` の真偽値の扱いに依存し、偽と見なされたら
+黙って `3` に落ちる。落ちても緑なので気づけない。event 名 × 入力の **6通りを実行して確認**した
+（push/なし→0、push/5→5、schedule/なし→3、schedule/5→5、workflow_dispatch/なし→3、同/5→5）。
+
+**あわせて因果の説明を4箇所直した。** 「古い版をマージすると以降のマイグレーションが本番へ
+届かなくなる」は誤りで、本番の台帳に書く経路は2本あり、もう1本（Supabase の GitHub 連携）は
+順序を見ずに当てるため、実際に起きるのは**失敗ログと本番の台帳の食い違い**である。
+`scripts/lint-migrations.js` の誤りメッセージ、`.github/stale-migration-comment.md`、
+`docs/operations/migrations.md`（2箇所）、本ファイルの 2026-09-29 の記述を訂正した。
+lint のメッセージは、実際にルールを発火させて表示を確認した（使い捨ての版 `20260101000000` を
+置いて実行し、確認後に削除）。
+
+**`/code-review` の指摘4件をすべて取り込んだ**（PR #1199）:
+- `paths` に `supabase/migrations.production-ledger` を足した。しきい値は
+  `max(base の最新, 台帳の max:)` なので**台帳が上がるだけでも PR は追い越される**のに、
+  `supabase/migrations/**` はこのファイルに当たらない。台帳だけを触った main のコミットは実在する（`2868e397`）。
+- `concurrency: stale-migration-check`（`cancel-in-progress: false`）を足した。push 契機で
+  自分同士が並走しうるようになり、「既に貼ってあれば黙る」が check-then-act なので二重投稿しうる。
+- 同じ誤った因果が `lint-migrations.js` の冒頭コメントと
+  `scripts/__tests__/lint-migrations.test.ts` にも残っていた（**型 C そのもの**）。直した。
+- PR へ貼るコメントの「CI が通った時点では起きていなかった」は、`MIN_AGE_DAYS=0` で
+  初日の PR も対象になったため断定できない。両方のケースを書く形に直した。
+
+検証: `scripts/ci-parallel-checks.sh` **9/9**（指摘の取り込み後に再実行）。
+`npm run lint:migrations` 緑（349 new / 167 grandfathered）。
+経緯は DECISION_LOG 2026-10-02 / MISTAKE_LEDGER
+`M-20261002-said-no-mechanism-without-reading-the-workflow-that-exists`。
+
+## 2026-10-01 公開文言の C2PA 説明を実装に合わせる（撮影デバイス・撮影時署名の表記を削除）
+
+- `/poc` と `/pitch/tbl` の「撮影デバイス・日時・編集履歴を記録」は、マニフェストに撮影デバイスを記録していないので誤り。
+  「紐づく証明書と Ledra が行った加工の履歴」に直した。VIN と時刻証明（TSA）は取得できた場合だけマニフェストに入り、
+  登録時刻そのものの記録は無いので、条件付きの書き方にした（Codex レビュー指摘）。
+- 機能一覧（`src/lib/marketing/features.ts`）と資料 PDF（`resourcePdf.tsx`）の「撮影時に署名」「撮影時点で C2PA 署名」は、
+  署名はサーバーでの登録時に行うので「登録時」に直した。
+- GPSA 審査（2026-09-28）で、Backend は撮影を主張できないとされた点（是正は PR #1173）に、公開文言を揃えるための変更。
+  元は PR #1183 にあったもので、#1183 は #1173 と重複していたためクローズし、この部分だけ切り出した。
 
 ## 2026-10-01 合算請求書の詳細画面と PDF に「合算内訳」（元帳票ごとの明細）を表示
 
@@ -239,7 +318,9 @@ fixture が必要な列を明示で渡すよう直した。**6本目は後から
 **版番号の改名（2026-09-29）**: main に `20260929132849` が入ったので、`20260927150900` /
 `20260927151000` を **`20260929150200` / `20260929150300`** へ改名した。`lint:migrations` の
 `migration-version-before-base-head` が赤になる（本番の `supabase db push` が out-of-order で
-止まり、以降のマイグレーションが本番へ届かなくなる）。allowlist へは足していない。
+止まる。**2026-10-02 訂正**: ここに「以降のマイグレーションが本番へ届かなくなる」と書いたのは誤りで、
+別の経路が順序を見ずに当てるため実際に起きるのは失敗ログと本番の台帳の食い違い。
+MISTAKE_LEDGER `M-20261001-cited-sources-i-never-opened-in-decision-log`）。allowlist へは足していない。
 改名前に `list_branches` を引き、**このプロジェクトのブランチは `main` の1本だけ**で
 このブランチのプレビュー DB が存在しないことを実測した（同時実行上限で作られなかった）。
 適用済みの版を改名した `M-20260922-renamed-a-migration-the-preview-db-had-applied` の形にはならない。

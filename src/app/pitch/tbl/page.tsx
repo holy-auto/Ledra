@@ -170,7 +170,8 @@ const S3 = (
             {
               layer: "Layer 1",
               label: "C2PA コンテンツ真正性署名",
-              detail: "施工写真に撮影デバイス・日時・編集履歴マニフェストを埋め込み",
+              detail:
+                "施工写真に、紐づく証明書と加工履歴（VIN・時刻証明は取得できた場合）を記したマニフェストを埋め込み",
               color: "border-violet-500/40 bg-violet-500/10",
               text: "text-violet-300",
             },

@@ -201,7 +201,8 @@ describe("lint-migrations", () => {
   // ── migration-version-before-base-head ───────────────────────────────────
   //
   // 本番の `supabase db push` は、本番の schema_migrations の最新より古い未適用が
-  // あると out-of-order で停止し、以降のマイグレーションが本番へ届かなくなる。
+  // あると out-of-order で停止する。止まっても別の経路（Supabase の GitHub 連携）が
+  // 順序を見ずに当てるので、起きるのは「届かない」ではなく失敗ログと本番の台帳の食い違い。
   //
   // **当初は「base に在るどれよりも後なら安全」という十分条件で判定していた。
   // これは誤りだった。** apply_migration で本番へ直接当てた版は main を通らないので、
