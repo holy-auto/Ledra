@@ -22,12 +22,15 @@ The harness runs the validation engine Ledra's product uses: c2pa-rs **0.90.22**
 `@contentauth/c2pa-node` 0.9.7. The crJSON is produced by c2pa-rs's own `Reader::crjson_checked`.
 
 c2pa-rs 0.90.22 has one trust store for claim signers and time-stamp authorities, and it validates
-at the system clock. `c2pa-0.90.22-harness.patch` adds the two inputs it lacks and changes nothing else:
+at the system clock. `c2pa-0.90.22-harness.patch` adds the two inputs it lacks. Its other changes route existing clock reads and trust checks through them:
 
 - `harness_overrides::VALIDATION_TIME` replaces the system clock, including the `validationTime` reported for ingredient manifests.
 - `harness_overrides::TSA_TRUST_POLICY` replaces the claim-signer trust list when checking time-stamp certificates.
 
-CAWG identity assertions are still checked at the system clock; the patch covers C2PA claim validation only.
+CAWG identity assertions are checked at the same validation time: the patch routes the identity-assertion
+credential date checks (`validFrom` / `validUntil`) through `VALIDATION_TIME` too. `setup.sh` fails unless the
+only wall-clock reads left in the patched crate are the clock helper itself and two signing-side ones.
+The self-test has no CAWG identity assertion, so this path is checked by that scan, not at run time.
 
 ## Build and self-test
 

@@ -2100,7 +2100,27 @@ JST は夏時間が無いので日の加算は 24 時間の加算でよい。
     → 2026-09-29 Vercel 回答: **最低 TLS 1.3 は設定不可**（1.2/1.3 両対応で固定）。代表決定: **Cloudflare を前段に置き Minimum TLS 1.3**。
       手順書 `docs/c2pa-evidence/cloudflare-tls13-runbook.md`。コード側は写真アップロードに `viaTls13Edge`（`CF_ORIGIN_SECRET` の
       共有秘密ヘッダ照合、未設定なら無効）を追加済み — `*.vercel.app` 直アクセス（TLS 1.2 可）で TOE に入る抜け道を塞ぐ。
-      **代表作業待ち**: DNS 移管・Cloudflare 設定・Vercel 環境変数 3 つ・切替後の TLS 1.2 拒否の確認。確認後に GPSA O.5 を現状で書き直す。
+      ~~代表作業待ち: DNS 移管・Cloudflare 設定・Vercel 環境変数・切替後の TLS 1.2 拒否の確認。~~
+      → **2026-10-02 一部確認**: `www.ledra.co.jp` で TLS 1.2 は exit 35（拒否）、TLS 1.3 は 200（`Server: cloudflare`）を代表の PC で実測。
+      GPSA §1.6・§2.5 を書き直した。`app.ledra.co.jp` も同日確認（TLS 1.2 は exit 35、TLS 1.3 は 200・cloudflare、http は 301→https）。
+      本番の写真アップロードも代表が確認（403 なし）。**解決したのはクライアント→Cloudflare の区間だけ**。
+      → **2026-10-02 Codex レビュー（#1213、再提出の送信後）で O.5 の穴が3つ判明・未解決**:
+        1. **クライアント→Supabase の直通信**: Web（`src/lib/supabase/client.ts`、`NEXT_PUBLIC_SUPABASE_URL`）と
+           モバイル（`apps/mobile/src/lib/supabase.ts`）は Auth・PostgREST・Storage に Cloudflare を通らず直接つなぐ。
+           §1.6 は Supabase を TOE 内としているのに、GPSA §2.5 と TOE 図にこの経路が無い。Supabase 側の最低 TLS 版は未確認
+           （代表の PC で `curl.exe -sI --tls-max 1.2 https://<project>.supabase.co` を見れば分かる）。
+        2. **Cloudflare→Vercel の区間**: Full (strict) は証明書の検証で、最低 TLS 版の強制ではない。こちらからは版が見えず、
+           Cloudflare に起点側の最低版を指定する設定があるかも未確認（この環境から Cloudflare の文書に届かない）。
+        3. **外部連携**: Hive（`anchoring/providers/deepfake.ts`）・Pinata（`anchoring/providers/c2pa.ts`）は素の `fetch`、
+           Polygon は viem の通常の通信で、TLS 1.2 にもなりうる。本番で有効かは未確認（設定次第）。
+        4. **写真アップロード以外の Backend 経路**（Codex 2回目の指摘）: 秘密ヘッダの照合は写真アップロードだけ。他の画面・API は
+           `*.vercel.app` から TLS 1.2 で届く（Vercel の Deployment Protection を有効にしていなければ。有効かは未確認）。
+           全経路で照合すると、Vercel Cron など `*.vercel.app` 宛ての内部呼び出しを止めるおそれがある（推定・未検証）。
+      **代表判断待ち**: 送信済みの提出物をこのまま審査に出すか、訂正を追送するか。直し方（Supabase を TOE の外に出す／
+      クライアントの Supabase 通信を Backend 経由に寄せる／現状を正直に書く）も製品・申請の判断。
+      → **2026-10-02 再提出を送信**（代表の申告）。validate（jpeg/png/webp/heic）復活を依頼済み。
+      **待ち**: Administrator の返答と、追加要件 §2.3 のテスト入力（届いたらハーネスで crJSON を返す）。
+      Cloudflare→Vercel 間の TLS バージョンはこちらから見えない（Full (strict) で検証付き HTTPS までは設定どおり）。
   - 代表が添付した画像4枚は Ledra の旧サンプルで、C2PA 指定ライブラリの素材ではない（ライブラリは引き続き未入手）。
   - **2026-09-29 ライブラリ入手**（代表が zip を添付）: 画像は jpg（Google Pixel 署名・証明書期限切れ）と png（Google 署名）のみ。
     webp/heic は Program の指示どおりライブラリ jpg から作り c2pa-rs テスト証明書で署名（`docs/c2pa-evidence/make-ingredients.mts`）。
@@ -2116,14 +2136,13 @@ JST は夏時間が無いので日の加算は 24 時間の加算でよい。
     そのため本番では外部の署名はすべて `signingCredential.untrusted` になる（`interpretC2paValidation` は untrusted を致命扱いしない設計）。
     ハーネスは信頼リストを受け取るが、製品本体はそうなっていない。審査で「製品が Trust List で信頼を評価しているか」を
     問われうる（推定・未検証）。直すなら本番に C2PA Trust List（と TSA Trust List）を設定する＝製品挙動の変更なので代表判断。
-- **TLS 1.2 の扱い（未確認）**: GPSA O.5 は TLS 1.3 を要求。Vercel は現行クライアントとは TLS 1.3 で繋がるが、
-  旧クライアント向けに TLS 1.2 も受ける（推定・未検証）。審査で指摘された場合の対応（Vercel 側で 1.2 を止められるか）は未調査。
+- ~~**TLS 1.2 の扱い（未確認）**~~ → 2026-10-02 解決（`www`・`app` とも TLS 1.2 拒否を実測。上の O.5 参照）。
 - **HEIC の GPS が残る（2026-09-27 実測で確定）**: sharp のプリビルドは HEVC を読めず（`heif: Support for this compression
   format has not been built in`）、`stripGpsAndReadExif` が原本フォールバックするため、HEIC は **GPS を含んだまま**
   署名・Storage 保存される（`assets` バケットは公開読み取り）。マニフェストは `c2pa.created` のみ・allActionsIncluded=false で
   正直だが、「生座標を保存しない」方針（imageExif.ts 冒頭）に反する。実際に HEIC が届く経路があるか
   （iOS Safari はアップロード時に JPEG 化するのが通例＝推定）と、フォールバック時に保存を止めるかは未判断。
-- 確定済み: 役割=GP / 実装クラス=Backend / Max AL=1 / 申告 Spec=**2.4** / 法人名=株式会社HOLY（英字 **HOLY Inc.**）/ 登記住所=東京都港区北青山1-3-1 アールキューブ青山3F / 連絡先=info@holy-inc.jp / **生成メディアタイプ=image/jpeg・png・webp・heic（validate は今回申告せず）**。
+- 確定済み: 役割=GP / 実装クラス=Backend / Max AL=1 / 申告 Spec=**2.4** / 法人名=株式会社HOLY（英字 **HOLY Inc.**）/ 登記住所=東京都港区北青山1-3-1 アールキューブ青山3F / 連絡先=info@holy-inc.jp / **生成メディアタイプ=image/jpeg・png・webp・heic**／**validate=image/jpeg・png・webp・heic（2026-10-02 再提出で復活を依頼。9/4 の取り下げは撤回）**。
 - 残る論点と選択肢:
   - **Spec 2.4 の実出力確認**: 申告 2.4 に対し、製品が実際に v2.4 準拠マニフェストを出力しているかを Intake 用サンプルで要検証（契約上、申告版に拘束される）。
   - **Date of Earliest Public Disclosure**: CPL 公開を遅らせたい日付があるか（無ければ即時）。

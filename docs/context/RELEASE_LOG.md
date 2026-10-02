@@ -4,6 +4,13 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-10-02 crJSON ハーネス: CAWG の日付検査も入力の検証時刻で行う
+
+- Codex 指摘（#1213）: CAWG の identity assertion（ICA 資格情報の `validFrom` / `validUntil`）だけがシステム時計で検査されていた。
+  `c2pa-0.90.22-harness.patch` に2ハンク追加（計12ハンク）し、`crypto::internal::time::utc_now`（`VALIDATION_TIME`）経由にした。
+- `setup.sh` は、パッチ後の crate に残る時計の直読みが「時計関数本体＋署名側2箇所」以外なら失敗する（crate 全体を走査）。
+  旧パッチ・走査先の欠落で失敗し、現パッチで通ることを確認。自己テスト6件は合格だが CAWG を含まないため、この経路は走査でだけ守っている。
+
 ## 2026-10-02 メーカー・車種が分からない車両でも証明書を発行できるようにした（`20261002120100`・**本番で実際に走る**）
 
 `vehicles.maker` / `model` の NOT NULL を外した。**アプリ側のコード変更は無い。**
@@ -35,6 +42,15 @@ insert が通り、かつ**両方 NULL で入る**ことを行を入れて確か
 現状に直した（同じ事実が2箇所に残る型 C を避けるため）。
 
 経緯は DECISION_LOG 2026-10-02。
+
+## 2026-10-02 本番を Cloudflare 前段（最低 TLS 1.3）に切り替え（C2PA GPSA O.5）
+
+- 代表作業: `ledra.co.jp` を Cloudflare に載せ、Minimum TLS 1.3・Full (strict)・キャッシュ Bypass・
+  秘密ヘッダ `x-ledra-origin-secret` の Transform Rule を設定。Vercel に `CF_ORIGIN_SECRET` と `TRUST_CF_HEADERS=1`。
+- 確認（代表の PC、PowerShell の curl.exe、`www.ledra.co.jp`）: `--tls-max 1.2` は exit 35（拒否）、`--tlsv1.3` は 200・`Server: cloudflare`。
+  Web・モバイルが使う `app.ledra.co.jp` も同じ結果で、`http://` は 301 で `https://` へ。
+- コード側（#1173、c4cc5816）: 写真アップロードは秘密ヘッダ一致のときだけ受け付け、レート制限の `cf-connecting-ip` も一致時だけ信用。
+- GPSA §1.6・§2.5・TOE 図・運用管理策 A02 を実構成で書き直し、再提出メール下書きを作成。
 
 ## 2026-10-02 スキーマドリフト検出器を列の NULL 可否まで拡張（報告のみ）
 
