@@ -151,6 +151,8 @@ export async function processUploadedPhoto(params: ProcessPhotoParams): Promise<
       orientationApplied: exif.orientationApplied,
       metadataRemoved: exif.metadataRemoved,
     },
+    // 原本（除去前）を C2PA の parentOf ingredient にする。ingredient は原本の EXIF/GPS を運ばない。
+    buffer,
   );
 
   const finalBuffer = providers.c2pa.signedBuffer ?? uploadBuffer;

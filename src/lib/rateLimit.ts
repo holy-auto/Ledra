@@ -13,6 +13,7 @@
 
 import { Ratelimit } from "@upstash/ratelimit";
 import { getRedis } from "@/lib/upstash";
+import { fromCloudflareEdge } from "@/lib/edgeOrigin";
 
 // ---------------------------------------------------------------------------
 // Types (unchanged)
@@ -157,7 +158,7 @@ export async function checkRateLimit(key: string, opts: RateLimitOptions): Promi
  *     1. `x-forwarded-for` の**先頭**（Vercel のエッジが上書きするため、
  *        ここより後段でクライアントが偽装できない）
  *     2. `x-real-ip`（無ければフォールバック）
- *   - `TRUST_CF_HEADERS=1`（Cloudflare を前段に置く構成）:
+ *   - `TRUST_CF_HEADERS=1` かつ `x-ledra-origin-secret` が `CF_ORIGIN_SECRET` と一致（Cloudflare 経由と証明できるとき）:
  *     1. `cf-connecting-ip` / `true-client-ip`（CF エッジが検証・設定する値で
  *        クライアントは偽装できない。**必ず最優先** — Cloudflare は
  *        クライアントが送った `x-forwarded-for` を上書きせず末尾に追記するだけ
@@ -171,7 +172,9 @@ export async function checkRateLimit(key: string, opts: RateLimitOptions): Promi
  */
 export function getClientIp(req: Request): string {
   const h = req.headers;
-  const trustCfHeaders = process.env.TRUST_CF_HEADERS === "1";
+  // CF ヘッダは Cloudflare を通ったと証明できるリクエストでだけ信じる。`*.vercel.app` 直アクセスは
+  // Cloudflare を通らず cf-connecting-ip を自由に書けるため（code-review 指摘 2026-09-29）。
+  const trustCfHeaders = process.env.TRUST_CF_HEADERS === "1" && fromCloudflareEdge(req);
   const cfIp = trustCfHeaders ? h.get("cf-connecting-ip")?.trim() || h.get("true-client-ip")?.trim() : undefined;
   const ip = cfIp || h.get("x-forwarded-for")?.split(",")[0]?.trim() || h.get("x-real-ip")?.trim() || undefined;
   if (ip) return ip;

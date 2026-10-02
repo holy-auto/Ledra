@@ -113,7 +113,7 @@
 | 規制が例示する権限区分 | 実装 |
 | --- | --- |
 | 認証機能そのもの（ID/PW・利用者登録・管理） | ✅ Supabase Auth（ID/PW）＋ TOTP MFA（`src/lib/auth/mfa.ts`）＋ WebAuthn 操作署名（`operator_credentials` / `webauthn_assertions`、重要操作を登録済み認証器に暗号的に束縛、`20260721093116_webauthn.sql`）。 |
-| 自動車検査員に係る権限（指定整備事業者に限る） | ⚠️ **資格軸を追加**（`staff_members.qualifications`・`src/lib/staff/qualifications.ts`、`20261002101121`）。作業者に資格を登録・表示できる。操作の強制（確定は自動車検査員のみ等）は後続。 |
+| 自動車検査員に係る権限（指定整備事業者に限る） | ⚠️ **資格軸を追加**（`staff_members.qualifications`・`src/lib/staff/qualifications.ts`、`20261002123644`）。作業者に資格を登録・表示できる。操作の強制（確定は自動車検査員のみ等）は後続。 |
 | 整備主任者に係る権限 | ⚠️ 同上（`maintenance_supervisor`）。 |
 | 点検整備記録簿等を起票・入力する権限 | ⚠️ `certificates:create/edit`・`requireMinRole(caller,"staff")` 等の起票・入力の権限制御に加え、法定資格軸（`record_author`）を追加。資格に基づく操作の強制は後続。 |
 
