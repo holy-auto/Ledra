@@ -2197,6 +2197,12 @@ JST は夏時間が無いので日の加算は 24 時間の加算でよい。
   - **2026-10-02 Administrator 助言**: 「生成製品が C2PA の CA・TSA Trust List を参照していない。参照すれば TRUSTED になる」。
     公式リスト（c2pa-org/conformance-public の `trust-list/C2PA-TRUST-LIST.pem`・`C2PA-TSA-TRUST-LIST.pem`）はこの環境から取得できる
     （2026-10-02 に HTTP 200 を確認）。c2pa-node 0.9.7 は `Context` の `trust.trustAnchors` に PEM の本文を渡せるが、URL は取りに行かない。
+    **2026-10-02 実測（c2pa-node 0.9.7、公式リスト C2PA 30件・TSA 22件を `trustAnchors` に渡して比較）**:
+    - Program 素材の Google Pixel 写真（a-ingredient1.jpg）は、既定設定だと `signingCredential.expired`＋`untrusted`・状態 Invalid。
+      リストを渡すと `timeStamp.trusted`・`signingCredential.trusted`・状態 Trusted（TSA が信頼されると証明書の有効期間を
+      タイムスタンプ時点で判定するため）。Google 署名の png も同様に Trusted。Ledra のテスト証明書のサンプルは untrusted のまま。
+    - **今の本番の不具合**: `interpretC2paValidation` は `expired` を致命とするので、本物の Pixel 写真が `external_c2pa_verified=false`
+      になり、管理画面の改ざん検知パネルに「外部C2PA署名が無効 (撮影後改変の疑い)」と出る（推定: 期限切れ証明書の端末写真すべて）。
     **代表判断待ち**: 本番に設定するか（製品挙動の変更。外部の署名が trusted 表示に変わる）。リストの更新手順も要る。
   - **本番の検証は C2PA Trust List を使っていない（2026-09-29 判明・未判断）**: `verifyExternalC2pa` と ingredient 取り込み時の
     検証（`signC2pa` 内の `addIngredient` / `Reader.fromAsset`）は c2pa-rs を既定設定で呼んでおり、信頼アンカーを渡していない。
