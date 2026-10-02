@@ -64,7 +64,9 @@ export const PUT = withCaller<{ id: string }>(
         text_value: m.text_value ?? null,
         unit: m.unit ?? null,
         judgment: m.judgment ?? null,
-        source: "manual" as const,
+        // 既定は手入力だが、フォームが読み込んだ取込(imported)セルを再保存で manual に化けさせないよう
+        // 行ごとの source を尊重する（フォームは未変更の imported セルに 'imported' を付けて送る）。
+        source: m.source ?? "manual",
         device: m.device ?? null,
         measured_at: m.measured_at ?? now,
         created_by: caller.userId,
