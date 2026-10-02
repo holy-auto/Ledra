@@ -4881,6 +4881,75 @@ export type Database = {
           },
         ]
       }
+      delivery_consents: {
+        Row: {
+          consent_text_hash: string | null
+          consent_version: string | null
+          created_at: string
+          customer_id: string
+          granted_at: string | null
+          granted_by: string | null
+          id: string
+          method: string | null
+          note: string | null
+          revoked_at: string | null
+          revoked_by: string | null
+          revoked_via: string | null
+          status: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          consent_text_hash?: string | null
+          consent_version?: string | null
+          created_at?: string
+          customer_id: string
+          granted_at?: string | null
+          granted_by?: string | null
+          id?: string
+          method?: string | null
+          note?: string | null
+          revoked_at?: string | null
+          revoked_by?: string | null
+          revoked_via?: string | null
+          status?: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          consent_text_hash?: string | null
+          consent_version?: string | null
+          created_at?: string
+          customer_id?: string
+          granted_at?: string | null
+          granted_by?: string | null
+          id?: string
+          method?: string | null
+          note?: string | null
+          revoked_at?: string | null
+          revoked_by?: string | null
+          revoked_via?: string | null
+          status?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "delivery_consents_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "delivery_consents_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       delivery_receipts: {
         Row: {
           anchor_tx_hash: string | null

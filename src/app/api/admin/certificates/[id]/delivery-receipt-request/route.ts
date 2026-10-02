@@ -27,6 +27,7 @@ import { apiOk, apiError, apiValidationError, apiInternalError } from "@/lib/api
 import { computeDocumentHash } from "@/lib/signature/hash";
 import { generateCertificatePdfBytes } from "@/lib/signature/pdfUtils";
 import { CONSENT_VERSION, computeConsentTextHash, type ReceiptPayloadSnapshot } from "@/lib/signature/deliveryReceipt";
+import { isElectronicDeliveryBlockedForCustomer } from "@/lib/delivery/deliveryConsent";
 import { certificateBeforeAfterState, BEFORE_AFTER_PHOTO_REQUIRED_MESSAGE } from "@/lib/certificates/photoRequirement";
 import { computeSignoffDeadline } from "@/lib/signoff/state";
 import { escapeHtml } from "@/lib/sanitize";
@@ -131,7 +132,6 @@ export const POST = withCaller<{ id: string }>(
     // PDF 生成 + メール送信 + DB 書き込みのため auth プリセット (10/min) を採用
 
     try {
-
       const { id: certificateId } = params;
       if (!/^[0-9a-f-]{36}$/i.test(certificateId)) {
         return apiValidationError("certificate_id が不正です");
@@ -148,7 +148,7 @@ export const POST = withCaller<{ id: string }>(
         .from("certificates")
         .select(
           `
-          id, tenant_id, public_id, customer_name,
+          id, tenant_id, public_id, customer_id, customer_name,
           customer_phone_last4, customer_phone_last4_hash,
           service_type, created_at,
           vehicles ( plate_display, maker, model ),
@@ -177,6 +177,21 @@ export const POST = withCaller<{ id: string }>(
       }
 
       const { admin } = createTenantScopedAdmin(caller.tenantId);
+
+      // G4（第２ ４（４））: 使用者が電子交付の承諾を撤回している場合は電磁的交付をしてはならない。
+      // 証明書＝記録簿の写しの電子交付（この受領サイン依頼メール）をブロックする。顧客未紐付け
+      // （customer_id 無し）の証明書は顧客単位の判定ができないため従来どおり（OPEN_QUESTIONS）。
+      if (
+        cert.customer_id &&
+        (await isElectronicDeliveryBlockedForCustomer(admin, caller.tenantId, cert.customer_id))
+      ) {
+        return apiError({
+          code: "conflict",
+          message:
+            "この顧客は電子交付の承諾を撤回しています。電磁的方法での交付はできません（書面交付等に切り替えてください）。",
+          status: 409,
+        });
+      }
 
       // ── 案件サインオフ由来の依頼: 予約検証 + 施工前後写真ゲート ──
       // 「作業前後で傷など後から揉める」トラブルを潰すため、案件フロー経由の

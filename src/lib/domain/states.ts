@@ -195,3 +195,15 @@ export const OUTSOURCED_WORK_STATES = [
 ] as const;
 export type OutsourcedWorkState = (typeof OUTSOURCED_WORK_STATES)[number];
 export const isOutsourcedWorkState = makeGuard(OUTSOURCED_WORK_STATES);
+
+/**
+ * 記録簿の写しの「電子交付」への承諾状態（G3/G4・第２ ４（３）（４））。
+ *
+ * DB 列 delivery_consents.status にこの値をそのまま格納する（新規の軸なので正準値＝格納値で揃える。
+ * 既存語彙の置き換えではないため IMP-015 のマッピング対象外）。「承諾が無い（none）」は行の非在で表し、
+ * この軸には含めない（格納される状態は granted / revoked の2値）。開示文言・判定は
+ * src/lib/delivery/deliveryConsent.ts。
+ */
+export const DELIVERY_CONSENT_STATES = ["granted", "revoked"] as const;
+export type DeliveryConsentState = (typeof DELIVERY_CONSENT_STATES)[number];
+export const isDeliveryConsentState = makeGuard(DELIVERY_CONSENT_STATES);
