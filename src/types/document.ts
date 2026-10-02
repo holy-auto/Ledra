@@ -80,7 +80,9 @@ export const STATUS_TRANSITIONS: Record<string, string[]> = {
   overdue: ["paid", "cancelled"],
   rejected: [],
   paid: [],
-  cancelled: [],
+  // 誤キャンセルの取り消し。ponytail: 戻り先は常に sent（キャンセル前の状態は記録していない）。
+  // 受理済・期限超過だった帳票は、取り消し後にもう一度そのステータスへ変更して戻す。
+  cancelled: ["sent"],
 };
 
 /**
@@ -93,7 +95,9 @@ const INVOICE_STATUS_TRANSITIONS: Record<string, string[]> = {
   sent: ["paid", "overdue", "cancelled"],
   overdue: ["paid", "cancelled"],
   paid: [],
-  cancelled: [],
+  // 誤キャンセルの取り消し（STATUS_TRANSITIONS と同じく sent へ）。期限切れの請求書・合算請求書は
+  // cron/billing（毎日 09:00 UTC）が overdue に戻す。
+  cancelled: ["sent"],
 };
 
 /** invoice 系のステータス遷移マップを使う帳票種別（受理/却下の概念を持たない）。 */

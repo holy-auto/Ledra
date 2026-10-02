@@ -21,6 +21,7 @@ import {
   type DocumentRow,
 } from "@/types/document";
 import { describeIntegritySeal } from "@/lib/documents/integritySealView";
+import type { ConsolidatedSource } from "@/lib/documents/consolidatedSources";
 import DocumentForm from "../DocumentForm";
 
 type BankInfo = {
@@ -63,6 +64,7 @@ export default function DocumentDetailClient({
   sealUrl,
   canSendLinePayment = false,
   customerHasLine = false,
+  consolidatedSources = [],
 }: {
   document: DocumentRow;
   customerName: string | null;
@@ -75,6 +77,8 @@ export default function DocumentDetailClient({
   canSendLinePayment?: boolean;
   /** 顧客に LINE ユーザが紐付いているか（ボタンの無効化理由表示に使う） */
   customerHasLine?: boolean;
+  /** 合算請求書の元帳票（合算時の並び順）。合算請求書以外は空。 */
+  consolidatedSources?: ConsolidatedSource[];
 }) {
   const [doc, setDoc] = useState(initial);
   const [updating, setUpdating] = useState(false);
@@ -264,7 +268,7 @@ export default function DocumentDetailClient({
                   handleStatusChange(ns);
                 }}
               >
-                {statusLabel(ns)}に変更
+                {doc.status === "cancelled" ? "キャンセル取り消し" : `${statusLabel(ns)}に変更`}
               </button>
             ))}
             {conversionTargets.map((target) => (
@@ -598,8 +602,105 @@ export default function DocumentDetailClient({
         </div>
       )}
 
-      {/* Source document link */}
-      {doc.source_document_id && (
+      {/* 合算内訳: 元帳票ごとの明細 */}
+      {consolidatedSources.length > 0 && (
+        <section className="glass-card p-5 space-y-5 print:border-none print:shadow-none print:bg-white print:text-black">
+          <h2 className="text-sm font-semibold text-primary print:text-black">
+            合算内訳（{consolidatedSources.length}件）
+          </h2>
+          {consolidatedSources.map((src) => {
+            const vi = (src.vehicle_info_json ?? {}) as { model?: string; plate?: string };
+            const vehicle = [vi.model, vi.plate].filter(Boolean).join(" ");
+            return (
+              <div key={src.id} className="space-y-2 border-t border-border-subtle pt-4 first:border-0 first:pt-0">
+                <div className="flex flex-wrap items-baseline justify-between gap-2 text-sm">
+                  <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                    <a
+                      href={`/admin/documents/${src.id}`}
+                      className="font-semibold text-accent underline print:text-black print:no-underline"
+                    >
+                      {DOC_TYPES[src.doc_type as DocType]?.label ?? src.doc_type} {src.doc_number}
+                    </a>
+                    <span className="text-xs text-muted">発行日: {formatDate(src.issued_at)}</span>
+                    {src.subject && <span className="text-xs text-secondary">件名: {src.subject}</span>}
+                    {vehicle && <span className="text-xs text-secondary">車両: {vehicle}</span>}
+                  </div>
+                  <span className="font-semibold text-primary print:text-black">{formatJpy(src.total)}</span>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="min-w-full text-xs">
+                    <thead>
+                      <tr className="border-b border-border-default text-muted print:border-gray-400">
+                        <th className="py-1.5 px-2 text-left font-semibold">内容</th>
+                        <th className="py-1.5 px-2 text-right font-semibold">数量</th>
+                        <th className="py-1.5 px-2 text-right font-semibold">単価</th>
+                        <th className="py-1.5 px-2 text-right font-semibold">金額</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(src.items_json ?? []).map((item, idx) => {
+                        const type = item.item_type ?? "item";
+                        const content = itemContentLines(item);
+                        if (type === "heading") {
+                          return (
+                            <tr key={idx} className="border-b border-border-subtle print:border-gray-200">
+                              <td colSpan={4} className="py-1.5 px-2 font-semibold text-primary print:text-black">
+                                {content.primary}
+                              </td>
+                            </tr>
+                          );
+                        }
+                        if (type === "subtotal") {
+                          return (
+                            <tr key={idx} className="border-b border-border-subtle print:border-gray-200">
+                              <td colSpan={3} className="py-1.5 px-2 text-right text-secondary">
+                                {item.description || "小計"}
+                              </td>
+                              <td className="py-1.5 px-2 text-right">{formatJpy(item.amount)}</td>
+                            </tr>
+                          );
+                        }
+                        return (
+                          <tr key={idx} className="border-b border-border-subtle print:border-gray-200">
+                            <td className="py-1.5 px-2 text-primary print:text-black">
+                              {content.primary}
+                              {item.tax_category === 8 && <span className="ml-1 text-[10px] text-muted">※軽減</span>}
+                            </td>
+                            <td className="py-1.5 px-2 text-right text-secondary">
+                              {item.quantity}
+                              {item.unit ?? ""}
+                            </td>
+                            <td className="py-1.5 px-2 text-right text-secondary">{formatJpy(item.unit_price)}</td>
+                            <td className="py-1.5 px-2 text-right text-primary print:text-black">
+                              {formatJpy(item.amount)}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                      {(src.items_json ?? []).length === 0 && (
+                        <tr>
+                          <td colSpan={4} className="py-3 text-center text-muted">
+                            明細がありません
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="flex justify-end gap-4 text-xs text-secondary">
+                  <span>小計 {formatJpy(src.subtotal)}</span>
+                  <span>
+                    消費税（{src.tax_rate}%） {formatJpy(src.tax)}
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+        </section>
+      )}
+
+      {/* Source document link（合算内訳を出す場合は内訳側に全件のリンクがあるので省く） */}
+      {doc.source_document_id && consolidatedSources.length === 0 && (
         <section className="glass-card p-5 text-sm print:hidden">
           <span className="text-muted">元帳票: </span>
           <a href={`/admin/documents/${doc.source_document_id}`} className="text-accent hover:text-accent underline">

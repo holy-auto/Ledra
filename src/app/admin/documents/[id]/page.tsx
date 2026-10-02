@@ -3,6 +3,7 @@ import { redirect, notFound } from "next/navigation";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import PageHeader from "@/components/ui/PageHeader";
 import DocumentDetailClient from "./DocumentDetailClient";
+import { loadConsolidatedSources } from "@/lib/documents/consolidatedSources";
 import { DOC_TYPES, type DocType } from "@/types/document";
 import { createSignedAssetUrl } from "@/lib/signedUrl";
 import { resolveCallerWithRole } from "@/lib/auth/checkRole";
@@ -71,6 +72,8 @@ export default async function DocumentDetailPage({ params }: { params: Promise<{
     doc.show_seal && tenant?.company_seal_path ? createSignedAssetUrl(tenant.company_seal_path, 3600) : null,
   ]);
 
+  const consolidatedSources = await loadConsolidatedSources(supabase, mem.tenant_id, doc);
+
   const docLabel = DOC_TYPES[doc.doc_type as DocType]?.label ?? doc.doc_type;
 
   return (
@@ -94,6 +97,7 @@ export default async function DocumentDetailPage({ params }: { params: Promise<{
         sealUrl={sealUrl}
         canSendLinePayment={canSendLinePayment}
         customerHasLine={customerHasLine}
+        consolidatedSources={consolidatedSources}
       />
     </div>
   );

@@ -2877,6 +2877,13 @@ DECISION_LOG「遷移表の未解決4件を代表判断で解決」参照。）
   - **2026-09-13 時点でこの経路はまだ生きている**（`list_branches`: 既定ブランチ `main` の
     `project_ref` が本番 `cahybswpduchptvyvdkk` と同一）。なお上の項のとおり、
     プレビューブランチの詰まりは解消したので、**切ったときに失うものは以前より小さい**。
+  - **2026-10-01: この経路がそのまま記録の誤りを生んだ。** #1174 をマージしたあと
+    `db-migrate` を手で回していないので「本番未適用」と事業ログに書き、代表にもそう報告した。
+    実際は**マージ時点で本番に適用済み**だった（`list_migrations` に `20260929150200` /
+    `20260929150300` が両方あり、`job_orders.status` の既定は `'pending'::text`）。
+    切らない限り、**「まだ当てていない」と書ける状態が存在しない**ので、事業ログの状態記述は
+    毎回台帳を引かないと書けない。経緯は MISTAKE_LEDGER
+    `M-20261001-reported-applied-migrations-as-not-applied`。
 - ~~**プレビューブランチ2本が `MIGRATIONS_FAILED` のまま残っている**
   （PR #938 `impl/IMP-023-evidence` / PR #941 `impl/IMP-026-customer-concern`）。
   同時プレビューブランチ数の上限に達しており、**全 PR で `Supabase Preview` が
