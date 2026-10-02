@@ -4,6 +4,37 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-10-02 メーカー・車種が分からない車両でも証明書を発行できるようにした（`20261002120100`・**本番で実際に走る**）
+
+`vehicles.maker` / `model` の NOT NULL を外した。**アプリ側のコード変更は無い。**
+発行のサーバガード（`src/lib/certificates/create.ts:197`）と画面（`CertNewFormWrapper.tsx:359`）は
+もともと「`vehicle_id` か `maker` か `model` のどれか1つ」で通す形で、insert も既に
+`maker: vehicle_maker || null` を送っていた。**揃える先がコードではなく DB だった**ということ。
+
+**本番で実際に走る2文**（`20260929150300` が本番では no-op で宣言した `SET NOT NULL` を、
+この2列だけ戻す）。実測（2026-10-02・読み取りのみ）: 本番 `vehicles` **27 行**、
+`maker`/`model` の NULL **0 件**・空文字 **0 件** —— **既存データは1行も影響を受けない**。
+
+**空文字 `''` は採らなかった。** `''` は「不明」ではなく「空という文字列が入っている」で、
+一覧・検索・集計で未入力と区別できない。NULL なら既存コードの値そのままで意図が通る。
+
+**車両の直接登録 API は緩めていない。** `vehicleCreateSchema`
+（`src/lib/validations/vehicle.ts:17-18`）は maker / model を両方必須のまま。車両マスタを
+作る操作は「分からない」を受け付ける場面ではない。緩めたのは **DB と、発行・ヒアリングの2経路だけ**。
+
+**再発防止（この2列は過去に両方向へ動いている）**: 振る舞いの検査を1本追加した ——
+`scripts/replay/checks/vehicle_insert_without_maker_model.sql`。maker / model を**省いた**
+insert が通り、かつ**両方 NULL で入る**ことを行を入れて確かめる（既定値が後から足されたら落ちる）。
+**陰性対照つき** —— `tenant_id`（NOT NULL・既定なし）を省いた insert が 23502 で落ちることを
+同じ表で確かめ、23502 以外で落ちた場合も失敗にする。これが無いと「vehicles の NOT NULL が
+全部外れている」状態でも素通りしてしまう。
+
+検証: `npm run lint:migrations` 緑（350 new / 167 grandfathered）、
+`npm run check:migrations` 再生 **517/517**・**振る舞いの検査 10 件すべて期待どおり**（9 → 10）。
+あわせて `vehicles_public_id_default.sql` のコメント（「maker / model は本番で NOT NULL」）を
+現状に直した（同じ事実が2箇所に残る型 C を避けるため）。
+
+経緯は DECISION_LOG 2026-10-02。
 ## 2026-10-02 本番を Cloudflare 前段（最低 TLS 1.3）に切り替え（C2PA GPSA O.5）
 
 - 代表作業: `ledra.co.jp` を Cloudflare に載せ、Minimum TLS 1.3・Full (strict)・キャッシュ Bypass・
