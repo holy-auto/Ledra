@@ -124,6 +124,10 @@ export default function JobInspectionTab({ reservationId, vehicleId, customerId 
             setEditingCompletion(null);
             await mutate();
           }}
+          onDeleted={async () => {
+            setEditingCompletion(null);
+            await mutate();
+          }}
         />
       )}
 

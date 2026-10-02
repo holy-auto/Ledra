@@ -3,6 +3,8 @@ import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { apiJson, apiValidationError, apiInternalError } from "@/lib/api/response";
 import { inspectionRecordCreateSchema, inspectionRecordUpdateSchema } from "@/lib/validations/inspection";
 import { retentionUntilYears } from "@/lib/retention";
+import { logTenantAuditEvent } from "@/lib/audit/tenantLog";
+import { changedFields } from "@/lib/inspection/auditDiff";
 
 import { withCaller } from "@/lib/api/withCaller";
 export const dynamic = "force-dynamic";
@@ -113,6 +115,17 @@ export const POST = withCaller(
         .single();
       if (error) return apiInternalError(error, "inspection-records POST");
 
+      // 作成の日時・作業者を監査ログに残す（第２ ２（３）/ G2）。失敗しても作成は止めない。
+      await logTenantAuditEvent(admin, {
+        tenantId: caller.tenantId,
+        userId: caller.userId,
+        action: "inspection_record_created",
+        table: "inspection_records",
+        recordId: (created as { id: string }).id,
+        extra: { inspection_type: rest.inspection_type, inspector_name: rest.inspector_name ?? null },
+        req,
+      });
+
       return apiJson({ ok: true, record: created }, { status: 201 });
     } catch (e) {
       return apiInternalError(e, "inspection-records POST");
@@ -151,6 +164,18 @@ export const PATCH = withCaller(
       if (vehicle_id !== undefined) updates.vehicle_id = vehicle_id;
       if (customer_id !== undefined) updates.customer_id = customer_id;
 
+      // 更新箇所を監査ログに残すため、更新しうるフィールドの**更新前の値**を先に読む（第２ ２（３）/ G2）。
+      // 列は固定リテラルで持つ（check:schema が解決できるように）。差分は更新キーだけを対象にする。
+      const diffKeys = Object.keys(updates).filter((k) => k !== "updated_at");
+      const { data: before } = await admin
+        .from("inspection_records")
+        .select(
+          "id, answers, photo_urls, inspector_name, notes, inspected_at, template_id, reservation_id, vehicle_id, customer_id, template_name",
+        )
+        .eq("id", id)
+        .eq("tenant_id", caller.tenantId)
+        .maybeSingle();
+
       const { data: updated, error } = await admin
         .from("inspection_records")
         .update(updates)
@@ -161,12 +186,76 @@ export const PATCH = withCaller(
       if (error) return apiInternalError(error, "inspection-records PATCH");
       if (!updated) return apiValidationError("対象の点検記録が見つかりません。");
 
+      // 実際に変わったフィールドだけを前後値つきで記録（更新箇所＋作業者＋日時）。updated_at は除外。
+      const diffUpdates = Object.fromEntries(diffKeys.map((k) => [k, updates[k]]));
+      const changed = changedFields(before as Record<string, unknown> | null, diffUpdates);
+      await logTenantAuditEvent(admin, {
+        tenantId: caller.tenantId,
+        userId: caller.userId,
+        action: "inspection_record_updated",
+        table: "inspection_records",
+        recordId: id,
+        extra: { changed },
+        req,
+      });
+
       return apiJson({ ok: true, record: updated });
     } catch (e) {
       return apiInternalError(e, "inspection-records PATCH");
     }
   },
   { minRole: "staff", routeName: "inspection-records PATCH" },
+);
+
+// ─── DELETE: 点検記録の消去 (body に id) ───
+// 指定整備記録簿の「消去」も日時・作業者を自動記録する（第２ ２（３）/ G2）。消去は
+// 管理ロール（owner/admin）に限定し、削除の**前に**監査ログへ残してから物理削除する。
+export const DELETE = withCaller(
+  async (req, { caller }) => {
+    try {
+      const body = (await req.json().catch(() => ({}))) as { id?: unknown };
+      const id = typeof body.id === "string" ? body.id : "";
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
+        return apiValidationError("無効なIDです。");
+      }
+
+      const { admin } = createTenantScopedAdmin(caller.tenantId);
+
+      // 消去対象を先に読む（存在確認＋監査ログに残す付随情報）。
+      const { data: target, error: selErr } = await admin
+        .from("inspection_records")
+        .select("id, inspection_type, inspector_name, inspected_at, record_retention_until")
+        .eq("id", id)
+        .eq("tenant_id", caller.tenantId)
+        .maybeSingle();
+      if (selErr) return apiInternalError(selErr, "inspection-records DELETE select");
+      if (!target) return apiValidationError("対象の点検記録が見つかりません。");
+
+      // 消去の日時・作業者を**削除の前に**記録する（削除後は record_id しか残らないため、
+      // 付随情報もここで残す）。監査ログの失敗では操作を止めない（helper 内でログ出力）。
+      await logTenantAuditEvent(admin, {
+        tenantId: caller.tenantId,
+        userId: caller.userId,
+        action: "inspection_record_deleted",
+        table: "inspection_records",
+        recordId: id,
+        extra: { erased: target },
+        req,
+      });
+
+      const { error: delErr } = await admin
+        .from("inspection_records")
+        .delete()
+        .eq("id", id)
+        .eq("tenant_id", caller.tenantId);
+      if (delErr) return apiInternalError(delErr, "inspection-records DELETE");
+
+      return apiJson({ ok: true });
+    } catch (e) {
+      return apiInternalError(e, "inspection-records DELETE");
+    }
+  },
+  { minRole: "admin", routeName: "inspection-records DELETE" },
 );
 
 /**

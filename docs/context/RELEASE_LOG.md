@@ -4,6 +4,21 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-10-02 指定整備記録簿（完成検査）の作成・更新・消去を監査ログ化（G2）
+
+- 内容: 点検整備記録簿の電子化基準（第２ ２（３））は作成・更新・**消去**の日時／更新箇所／作業者の自動記録を
+  求める。証明書は既に満たしていたが、`inspection_records`（完成検査＝指定整備記録簿）は作成/更新/消去の
+  監査履歴を持っていなかった。これを `logTenantAuditEvent`（既存の `audit_logs` 書込みヘルパ）で揃えた。
+  - `POST`＝作成 / `PATCH`＝更新 / `DELETE`＝消去（owner/admin 限定・削除の**前に**記録）。
+  - 更新は `changedFields`（純関数）で**変わったフィールドの前後値**だけを算出し `query_json.changed` に残す
+    （更新箇所＋作業者＋日時）。
+- UI: 完成検査の編集画面（`CompletionInspectionForm`）に「消去」導線（確認つき）を追加。`JobInspectionTab` が
+  `onDeleted` で一覧を再取得。
+- 注: `audit_logs` の実列は本番で `actor_type/actor_user_id/query_json/...`（マイグレーション定義と乖離・既知ドリフト）。
+  ヘルパ経由で本番の列形に書く。cron（横断削除）は tenant_id 非単一のため監査は後続（OPEN_QUESTIONS）。
+- スコープ外（後続）: documents / body_repair_jobs の更新差分履歴、保持 cron（非・記録簿データ）の横断監査。
+- 検証: `changedFields` 単体テスト 5 件 / tsc・eslint・check:schema 緑。
+
 ## 2026-10-02 整備業の法定資格・職責の軸を作業者レジストリに追加（G1）
 
 - 内容: 点検整備記録簿の電子化基準（第２ ３（１）①）が例示する権限区分「自動車検査員 / 整備主任者 /

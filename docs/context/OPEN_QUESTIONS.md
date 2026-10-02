@@ -3,6 +3,18 @@
 > まだ決まっていないこと、判断に迷っていることを書く場所。決まったら
 > DECISION_LOG.md に移し、このファイルからは消す（削除履歴は git で追える）。
 
+## G2 監査ログ: 指定整備記録簿は対応、documents/body_repair と保持 cron が残る（2026-10-02）
+
+`inspection_records`（完成検査）の作成/更新/消去を `audit_logs` に記録した（RELEASE_LOG 2026-10-02）。残り。
+
+1. **documents / body_repair_jobs の更新差分履歴**: 証明書・inspection_records と同じ「更新箇所＋作業者」の
+   自動記録がまだ無い。帳票（documents）と板金ジョブ（body_repair_jobs）にも `logTenantAuditEvent` ＋
+   `changedFields` を同じ形で入れるか、全テーブル共通の行トリガ（`updated_by` 自動記録）にするかは設計判断。
+2. **保持期限 cron（`data-retention`）の横断監査**: cron は認証コード/セッション/通知ログ等の**非・記録簿**を
+   全テナント横断で削除する。`audit_logs.tenant_id` が NOT NULL なので単一行では残せない。テナント別に集計して
+   記録するか、cron 専用の削除サマリ表を設けるか未決。規制が求める「記録簿の消去」は inspection_records の
+   DELETE 監査で満たすので、これは運用ログの充実（優先度は中）。
+
 ## G1 法定資格ロール: 軸は追加したが「強制」と「資格情報の充実」が残る（2026-10-02）
 
 `staff_members.qualifications`（自動車検査員 / 整備主任者 / 起票入力担当）の軸を追加した

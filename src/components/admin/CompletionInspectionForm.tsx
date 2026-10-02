@@ -44,6 +44,8 @@ interface Props {
   editRecord?: CompletionEditRecord | null;
   onCancel: () => void;
   onSaved: () => void | Promise<void>;
+  /** 編集中レコードを消去したとき（監査ログに消去を残したうえで物理削除）。 */
+  onDeleted?: () => void | Promise<void>;
 }
 
 type Cell = { num: string; text: string; unit: string; judgment: string };
@@ -72,6 +74,7 @@ export default function CompletionInspectionForm({
   editRecord,
   onCancel,
   onSaved,
+  onDeleted,
 }: Props) {
   const isEdit = !!editRecord;
   const [form, setForm] = useState<IndicatedInspectionForm>(() => resolveFormFromAnswers(editRecord?.answers ?? null));
@@ -88,6 +91,7 @@ export default function CompletionInspectionForm({
     editRecord ? extractInspectionAnswers(editRecord.answers).match : {},
   );
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // 作成済み/編集対象レコード ID。作成時の再保存で新レコードを重複作成しないよう保持する。
   const [recordId, setRecordId] = useState<string | null>(editRecord?.id ?? null);
@@ -222,6 +226,33 @@ export default function CompletionInspectionForm({
       if (v) a[f.code] = { value: v };
     }
     return a;
+  }
+
+  async function handleDelete() {
+    if (!recordId || !onDeleted) return;
+    if (
+      !window.confirm(
+        "この完成検査（指定整備記録簿）を消去します。消去の日時・作業者は監査ログに記録されます。よろしいですか？",
+      )
+    ) {
+      return;
+    }
+    setDeleting(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/admin/inspection-records", {
+        method: "DELETE",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ id: recordId }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.message ?? "消去に失敗しました。");
+      await onDeleted();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "消去に失敗しました。");
+    } finally {
+      setDeleting(false);
+    }
   }
 
   async function handleSave() {
@@ -479,8 +510,18 @@ export default function CompletionInspectionForm({
         <div className="rounded-lg border-l-4 border-danger bg-danger/10 p-2 text-xs text-danger-text">{error}</div>
       )}
 
-      <div className="flex justify-end gap-2">
-        <button type="button" onClick={onCancel} disabled={saving} className="btn-ghost text-xs">
+      <div className="flex items-center justify-end gap-2">
+        {isEdit && onDeleted && (
+          <button
+            type="button"
+            onClick={handleDelete}
+            disabled={saving || deleting || !recordId}
+            className="mr-auto text-xs text-danger-text underline disabled:opacity-50"
+          >
+            {deleting ? "消去中…" : "消去"}
+          </button>
+        )}
+        <button type="button" onClick={onCancel} disabled={saving || deleting} className="btn-ghost text-xs">
           キャンセル
         </button>
         <button
