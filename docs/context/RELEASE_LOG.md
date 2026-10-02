@@ -29,7 +29,19 @@ push 経路では `MIN_AGE_DAYS=0`（PR の年齢は追い越しに関係しな�
 lint のメッセージは、実際にルールを発火させて表示を確認した（使い捨ての版 `20260101000000` を
 置いて実行し、確認後に削除）。
 
-検証: `npm run lint:migrations` 緑（349 new / 167 grandfathered）。
+**`/code-review` の指摘4件をすべて取り込んだ**（PR #1199）:
+- `paths` に `supabase/migrations.production-ledger` を足した。しきい値は
+  `max(base の最新, 台帳の max:)` なので**台帳が上がるだけでも PR は追い越される**のに、
+  `supabase/migrations/**` はこのファイルに当たらない。台帳だけを触った main のコミットは実在する（`2868e397`）。
+- `concurrency: stale-migration-check`（`cancel-in-progress: false`）を足した。push 契機で
+  自分同士が並走しうるようになり、「既に貼ってあれば黙る」が check-then-act なので二重投稿しうる。
+- 同じ誤った因果が `lint-migrations.js` の冒頭コメントと
+  `scripts/__tests__/lint-migrations.test.ts` にも残っていた（**型 C そのもの**）。直した。
+- PR へ貼るコメントの「CI が通った時点では起きていなかった」は、`MIN_AGE_DAYS=0` で
+  初日の PR も対象になったため断定できない。両方のケースを書く形に直した。
+
+検証: `scripts/ci-parallel-checks.sh` **9/9**（指摘の取り込み後に再実行）。
+`npm run lint:migrations` 緑（349 new / 167 grandfathered）。
 経緯は DECISION_LOG 2026-10-02 / MISTAKE_LEDGER
 `M-20261002-said-no-mechanism-without-reading-the-workflow-that-exists`。
 
