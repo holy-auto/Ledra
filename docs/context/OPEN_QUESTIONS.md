@@ -2177,7 +2177,9 @@ JST は夏時間が無いので日の加算は 24 時間の加算でよい。
            全経路で照合すると、Vercel Cron など `*.vercel.app` 宛ての内部呼び出しを止めるおそれがある（推定・未検証）。
            → 2026-10-02 代表了承: まず Vercel の Deployment Protection を有効にし、本番の `*.vercel.app` URL が保護されるかを実測する。
            QStash のコールバック先は `NEXT_PUBLIC_APP_URL` が最優先（未設定時のみ `VERCEL_URL`）。
-      **代表判断待ち**: 送信済みの提出物をこのまま審査に出すか、訂正を追送するか。直し方（Supabase を TOE の外に出す／
+      → **2026-10-02 Administrator がアーキテクチャを合格とし「これ以上は不要」と返信。訂正の追送はしない。**
+        残りの穴（Supabase 直通信・Cloudflare→Vercel・`*.vercel.app`）は審査とは別に社内で詰める（Deployment Protection の設定待ち）。
+      ~~**代表判断待ち**: 送信済みの提出物をこのまま審査に出すか、訂正を追送するか。~~直し方（Supabase を TOE の外に出す／
       クライアントの Supabase 通信を Backend 経由に寄せる／現状を正直に書く）も製品・申請の判断。
       → **2026-10-02 再提出を送信**（代表の申告）。validate（jpeg/png/webp/heic）復活を依頼済み。
       **待ち**: Administrator の返答と、追加要件 §2.3 のテスト入力（届いたらハーネスで crJSON を返す）。
@@ -2192,6 +2194,10 @@ JST は夏時間が無いので日の加算は 24 時間の加算でよい。
     `Reader::to_crjson_value` あり、この環境に Rust と crates.io 到達性あり → 小さな Rust ツールで作れる見込み（未着手）。
     → **2026-09-29 作成済み**: `tools/c2pa-crjson-harness`（c2pa-rs 0.90.22＝製品と同じエンジン＋2点パッチ、自己テスト6件）。
       Program のテスト入力が届いたら、これで crJSON を出して返す。
+  - **2026-10-02 Administrator 助言**: 「生成製品が C2PA の CA・TSA Trust List を参照していない。参照すれば TRUSTED になる」。
+    公式リスト（c2pa-org/conformance-public の `trust-list/C2PA-TRUST-LIST.pem`・`C2PA-TSA-TRUST-LIST.pem`）はこの環境から取得できる
+    （2026-10-02 に HTTP 200 を確認）。c2pa-node 0.9.7 は `Context` の `trust.trustAnchors` に PEM の本文を渡せるが、URL は取りに行かない。
+    **代表判断待ち**: 本番に設定するか（製品挙動の変更。外部の署名が trusted 表示に変わる）。リストの更新手順も要る。
   - **本番の検証は C2PA Trust List を使っていない（2026-09-29 判明・未判断）**: `verifyExternalC2pa` と ingredient 取り込み時の
     検証（`signC2pa` 内の `addIngredient` / `Reader.fromAsset`）は c2pa-rs を既定設定で呼んでおり、信頼アンカーを渡していない。
     そのため本番では外部の署名はすべて `signingCredential.untrusted` になる（`interpretC2paValidation` は untrusted を致命扱いしない設計）。
