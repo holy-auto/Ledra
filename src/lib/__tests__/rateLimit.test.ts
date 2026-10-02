@@ -71,9 +71,13 @@ describe("checkRateLimit", () => {
 
 describe("getClientIp", () => {
   const ORIGINAL_TRUST_CF = process.env.TRUST_CF_HEADERS;
+  const ORIGINAL_SECRET = process.env.CF_ORIGIN_SECRET;
+  const EDGE = { "x-ledra-origin-secret": "edge-secret" };
   afterEach(() => {
     if (ORIGINAL_TRUST_CF === undefined) delete process.env.TRUST_CF_HEADERS;
     else process.env.TRUST_CF_HEADERS = ORIGINAL_TRUST_CF;
+    if (ORIGINAL_SECRET === undefined) delete process.env.CF_ORIGIN_SECRET;
+    else process.env.CF_ORIGIN_SECRET = ORIGINAL_SECRET;
   });
 
   // B-H2 是正 (2026-09-08): cf-connecting-ip / true-client-ip はクライアントが
@@ -111,10 +115,29 @@ describe("getClientIp", () => {
 
   it("uses cf-connecting-ip only when TRUST_CF_HEADERS=1 is explicitly set", () => {
     process.env.TRUST_CF_HEADERS = "1";
+    process.env.CF_ORIGIN_SECRET = "edge-secret";
     const req = new Request("http://localhost", {
-      headers: { "cf-connecting-ip": "3.3.3.3" },
+      headers: { "cf-connecting-ip": "3.3.3.3", ...EDGE },
     });
     expect(getClientIp(req)).toBe("3.3.3.3");
+  });
+
+  // code-review 指摘 (2026-09-29): TRUST_CF_HEADERS=1 でも `*.vercel.app` への直アクセスは
+  // Cloudflare を通らないので、cf-connecting-ip を毎回変えるだけで IP レート制限を迂回できた。
+  // Cloudflare だけが付ける x-ledra-origin-secret が一致するときだけ信じる。
+  it("ignores cf-connecting-ip on requests that did not come through Cloudflare", () => {
+    process.env.TRUST_CF_HEADERS = "1";
+    process.env.CF_ORIGIN_SECRET = "edge-secret";
+    const direct = { "cf-connecting-ip": "3.3.3.3", "x-forwarded-for": "1.2.3.4" };
+    expect(getClientIp(new Request("http://localhost", { headers: direct }))).toBe("1.2.3.4");
+    expect(
+      getClientIp(new Request("http://localhost", { headers: { ...direct, "x-ledra-origin-secret": "edge-secreX" } })),
+    ).toBe("1.2.3.4");
+    delete process.env.CF_ORIGIN_SECRET;
+    expect(
+      getClientIp(new Request("http://localhost", { headers: { ...direct, ...EDGE } })),
+      "no secret configured",
+    ).toBe("1.2.3.4");
   });
 
   // code-review 指摘の回帰確認 (2026-09-08): TRUST_CF_HEADERS=1 のとき、
@@ -124,8 +147,10 @@ describe("getClientIp", () => {
   // を有効にした意味が丸ごと消えて B-H2 の穴が CF 前段構成で再発する。
   it("prefers cf-connecting-ip over a spoofed x-forwarded-for when TRUST_CF_HEADERS=1", () => {
     process.env.TRUST_CF_HEADERS = "1";
+    process.env.CF_ORIGIN_SECRET = "edge-secret";
     const req = new Request("http://localhost", {
       headers: {
+        ...EDGE,
         // 攻撃者が自由に書ける先頭 IP（CF は既存の x-forwarded-for を
         // 上書きせず末尾に実 IP を追記するだけなので、そのまま残る）。
         "x-forwarded-for": "1.2.3.4, 9.9.9.9",

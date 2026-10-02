@@ -55,12 +55,14 @@ export async function invokeAllUploadProviders(
   sha256: string,
   captureBinding?: CaptureBinding,
   transformOutcome?: TransformOutcome,
+  /** アップロードされた原本（EXIF/GPS 除去前）。C2PA の parentOf ingredient になる。 */
+  original?: Buffer,
 ): Promise<UploadProviderBundle> {
   // Device attestation is verified once per upload request (one capture token /
   // nonce per session), not per photo — see verifyDeviceAttestation in the route.
   const [c2pa, deepfake, polygon] = await Promise.all([
     withTimeout(
-      signC2pa(buffer, mime, captureBinding, transformOutcome),
+      signC2pa(buffer, mime, captureBinding, transformOutcome, original),
       { manifestCid: null, verified: false, signedBuffer: null, manifestSummary: null },
       "c2pa",
     ),

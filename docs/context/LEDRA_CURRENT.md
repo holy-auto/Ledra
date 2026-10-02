@@ -29,6 +29,25 @@
 > **代表判断待ち**: `vehicles.maker`/`model` に明示 NULL を送る2経路の保存方針、`insurers.plan_tier` の
 > 既定、enum/text の7列（IMP-015）。OPEN_QUESTIONS 参照。
 
+> 2026-10-01 追記（C2PA 並行2案の整理）: 代表決定で、ingredient は #1173 方式（原本ごと＋redaction）、
+> Backend→Supabase の TLS 1.3 強制は #1183 の `tls13Fetch` を #1173 に取り込んだ。#1183 は 2026-10-02 に代表指示でクローズ（文言修正は #1198 で main 済み）。
+> 2026-10-02 再提出用サンプル a〜d を現行コードで再生成（4枚とも Valid・untrusted のみ・GPS なし）。zip `Ledra-C2PA-Resubmission-20261002-UNVERIFIED.zip` を代表へ渡した。**Conformulator 未確認・未送信**。
+
+> 2026-09-29 追記（crJSON ハーネス）: validate 再申告に必要な **crJSON テストハーネスを作成**（`tools/c2pa-crjson-harness`、
+> 製品と同じ c2pa-rs 0.90.22＋検証時刻・TSA 信頼リストのパッチ、自己テスト6件）。Program のテスト入力待ち。
+> 本番の検証が C2PA Trust List を使っていない点は未判断（OPEN_QUESTIONS）。
+
+> 2026-09-29 追記（訂正）: C2PA 証拠パッケージは **9/27 に1版目が送信され、9/28 に非適合4件で差し戻し**。
+> 「3版目・自己テスト合格後に送信」と書いたのは誤り。対応として署名を `c2pa.opened`＋原本 ingredient に作り替え済み
+> （GPS は漏れないことを実測・テスト化）。**再提出待ち**: カスタムアサーションの指摘内容・ingredient ライブラリ・
+> GPSA レビュー文書の入手、validate 申告の復活、GPSA 改訂、サンプル再生成と Conformulator 再確認。
+
+> 2026-09-27 追記: **C2PA Conformance の証拠パッケージを再作成し、`docs/c2pa-evidence/` に保存した**
+> （英語 GPSA・運用管理策・サンプル4枚・返信メール下書き）。**未送信**。送信前に代表が Conformulator で
+> 自己テストし、GPSA の管理者アクセス等の記述を確認する。Intake の validate 申告は返信メールで取り下げる。
+> 同時に C2PA 行為台帳の不具合（回転・WebP のメタデータ除去が記録されない）を修正。
+> **HEIC は GPS を残したまま署名・保存される**（sharp が HEVC を読めない）ことを実測で確定、対応は未判断。
+
 > 2026-09-29 追記（本番適用 実測）: **#1170 を本番に適用した**（`94f345f1`・`db-migrate` run 94 成功・12:35 UTC）。
 > 本番で実測した結果:
 > - `certificates` の anon 向けポリシーは **0本**。anon の SELECT 権限は `certificates` と `certificates_public` の**どちらにも無い**。

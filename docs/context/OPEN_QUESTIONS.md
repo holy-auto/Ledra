@@ -2033,7 +2033,62 @@ JST は夏時間が無いので日の加算は 24 時間の加算でよい。
   3. **Administrator へ訂正メール送付**（validate 取り下げ。文面 `scratchpad/ledra-intake-correction-email.md`）— 代表が送信。
   4. **Conformulator（https://c2pa-conformulator.netlify.app/）で生成サンプルを自己テスト**後に提出。
   5. 提出はメール添付/zip/DLリンク（機密）。GPSA 一式のファイル名に "GPSA" を含める。
-- 別論点: 本番 sharp が HEIF デコード不可だと HEIC の GPS 除去が効かない点は要確認。
+- **2026-09-27 更新（提出一式を再作成・リポジトリに保存）**: 9/3 のサンプルは消える作業領域にあり残っていなかったため、
+  現行コード（c2pa-node 0.9.7）で再生成し `docs/c2pa-evidence/samples/` に保存（4枚とも `Valid`、指摘は
+  `signingCredential.untrusted` のみ）。GPSA は**英語の提出版** `docs/c2pa-evidence/Ledra-GPSA*.md` を作成
+  （日本語版は参照用）。返信メール下書き（validate 取り下げ込み・英日）は `docs/c2pa-evidence/submission-email.md`。
+  再生成の過程で C2PA 行為台帳の不具合（回転・WebP のメタデータ除去が記録されない）を発見し修正
+  （MISTAKE_LEDGER `M-20260927-c2pa-ledger-tested-only-on-exif-free-images`）。
+  **Conformulator 結果（2026-09-29、3版目サンプル）**: jpeg / webp / heic は「3 of 4 pass/fail rubrics passed」で、
+  不合格は `validation:trusted_success`（untrusted＝テスト証明書、想定内）のみ。適合ルーブリック（0.1/2.2・0.2/2.2・0.2/2.4）は全 PASS。
+  png も同日合格（画面の manifest URN `urn:c2pa:bdf9c565-…` が b-sample.png と一致。Signals 欄の形式表示はサムネイル形式で、
+  png のサムネイルは jpeg なので `image/jpeg` と出る）。**4枚とも自己テスト合格**。
+  **残タスク（代表）**: (1) ✅ Conformulator 自己テスト、
+  (2) GPSA §2.2/§2.6 の「Vercel/Supabase に入れる人＝管理者のみ」、本番デプロイが `main` からのみであること、
+  署名欄の英語表記（Yusuke Horikoshi / Representative Director）を確認、(3) 返信メール送信。
+  Intake Form（9/3 提出・PDF 控え確認済み）は validate=Yes（jpeg/png/webp/heic）のままなので、訂正は返信メールで行う。
+- **2026-09-29 訂正と差し戻し**: 送信されたのは 9/27 の**1版目**（Gmail 送信記録 15:32 UTC）。9/28 に Administrator から
+  非適合4件（DST 欠落／actions 位置／カスタムアサーション形式／Backend は `c2pa.created` 不可）。validate 取り下げは受理されたが、
+  Administrator は「opened で取り込む以上 validate を戻すべき」と勧告。**再提出に必要な残り**:
+  1. 指摘(3) カスタムアサーション `com.ledra.capture` の何が不正か — メール内スクリーンショット2枚が必要（Gmail コネクタでは画像を取得できない）。
+  2. ingredient ライブラリ（Drive `Google_Samples-…zip` 31MB）— この環境のネットワークでは取得不可。代表から jpeg/png/webp/heic を1つずつ受け取る。
+  3. GPSA レビュー文書（Drive `1i-awde…`）— このアカウントに共有されておらず閲覧不可。
+  4. validate 申告の復活（jpeg/png/webp/heic）を返信で依頼、GPSA を opened/ingredient 前提に改訂、サンプル再生成→Conformulator 再確認。
+  - **2026-09-29 追記**: 指摘(3)は画像で判明＝`no_unrecognized_custom_action_parameters`（1版目の `c2pa.edited` の `parameters.name`）で、
+    2版目で既に除去済み・3版目で合格。GPSA レビュー文書（代表が貼付）の不合格は O.4（TOE 境界の食い違い＋created/digitalCapture）と
+    O.5（TLS 1.3 を「最低」として強制していない）。O.4 は GPSA を Backend のみの TOE・クライアントは TOE 外の非信頼入力と書き直して対応。
+    **O.5 は未対応・代表判断待ち**: Vercel は前段に Cloudflare 無し（直）。Vercel 側で TLS 1.3 最低を設定できるかは未確認。
+    外向き（Backend→Supabase 等）は Node の `--tls-min-v1.3`（環境変数 NODE_OPTIONS）で強制できるが全外部連携に効く。
+    TSA は設定例が `http://timestamp.digicert.com`（平文 HTTP）で、GPSA の「HTTPS」記述と食い違う — 本番の PHOTO_TSA_URL 要確認。
+    → 代表回答（2026-09-29）: **本番は TSA 未設定（無効）**。GPSA・運用文書・TOE 図から TSA の記述を削除した。
+    → O.5 は代表回答「まず Vercel で最低 TLS 1.3 を設定できるか確認」。外向きは NODE_OPTIONS=--tls-min-v1.3 で強制する方針。
+      → 2026-10-01 更新: 外向きは `NODE_OPTIONS` をやめ、#1183 の `tls13Fetch`（Supabase クライアントだけに TLS 1.3 を強制）を #1173 に取り込んだ。
+    → 2026-09-29 Vercel 回答: **最低 TLS 1.3 は設定不可**（1.2/1.3 両対応で固定）。代表決定: **Cloudflare を前段に置き Minimum TLS 1.3**。
+      手順書 `docs/c2pa-evidence/cloudflare-tls13-runbook.md`。コード側は写真アップロードに `viaTls13Edge`（`CF_ORIGIN_SECRET` の
+      共有秘密ヘッダ照合、未設定なら無効）を追加済み — `*.vercel.app` 直アクセス（TLS 1.2 可）で TOE に入る抜け道を塞ぐ。
+      **代表作業待ち**: DNS 移管・Cloudflare 設定・Vercel 環境変数 3 つ・切替後の TLS 1.2 拒否の確認。確認後に GPSA O.5 を現状で書き直す。
+  - 代表が添付した画像4枚は Ledra の旧サンプルで、C2PA 指定ライブラリの素材ではない（ライブラリは引き続き未入手）。
+  - **2026-09-29 ライブラリ入手**（代表が zip を添付）: 画像は jpg（Google Pixel 署名・証明書期限切れ）と png（Google 署名）のみ。
+    webp/heic は Program の指示どおりライブラリ jpg から作り c2pa-rs テスト証明書で署名（`docs/c2pa-evidence/make-ingredients.mts`）。
+    X-ingredient1 → X-sample の4組を生成、4枚とも Valid・untrusted のみ・ingredient に元 manifest と検証結果あり。
+    計32MB のためリポジトリには入れず、生成スクリプトのみ保存。**Conformulator 未確認（zip 名に UNVERIFIED）**。
+  - **追加要件 PDF（v0.2）§2.3**: validate を申告すると **crJSON 出力のテストハーネス**（入力: 資産・テスト Trust List・TSA Trust List・
+    検証時刻 → crJSON）が必須。Program からテスト入力が後日届く。c2pa-node 0.9.7 は crJSON 非対応、c2pa-rs main に
+    `Reader::to_crjson_value` あり、この環境に Rust と crates.io 到達性あり → 小さな Rust ツールで作れる見込み（未着手）。
+    → **2026-09-29 作成済み**: `tools/c2pa-crjson-harness`（c2pa-rs 0.90.22＝製品と同じエンジン＋2点パッチ、自己テスト6件）。
+      Program のテスト入力が届いたら、これで crJSON を出して返す。
+  - **本番の検証は C2PA Trust List を使っていない（2026-09-29 判明・未判断）**: `verifyExternalC2pa` と ingredient 取り込み時の
+    検証（`signC2pa` 内の `addIngredient` / `Reader.fromAsset`）は c2pa-rs を既定設定で呼んでおり、信頼アンカーを渡していない。
+    そのため本番では外部の署名はすべて `signingCredential.untrusted` になる（`interpretC2paValidation` は untrusted を致命扱いしない設計）。
+    ハーネスは信頼リストを受け取るが、製品本体はそうなっていない。審査で「製品が Trust List で信頼を評価しているか」を
+    問われうる（推定・未検証）。直すなら本番に C2PA Trust List（と TSA Trust List）を設定する＝製品挙動の変更なので代表判断。
+- **TLS 1.2 の扱い（未確認）**: GPSA O.5 は TLS 1.3 を要求。Vercel は現行クライアントとは TLS 1.3 で繋がるが、
+  旧クライアント向けに TLS 1.2 も受ける（推定・未検証）。審査で指摘された場合の対応（Vercel 側で 1.2 を止められるか）は未調査。
+- **HEIC の GPS が残る（2026-09-27 実測で確定）**: sharp のプリビルドは HEVC を読めず（`heif: Support for this compression
+  format has not been built in`）、`stripGpsAndReadExif` が原本フォールバックするため、HEIC は **GPS を含んだまま**
+  署名・Storage 保存される（`assets` バケットは公開読み取り）。マニフェストは `c2pa.created` のみ・allActionsIncluded=false で
+  正直だが、「生座標を保存しない」方針（imageExif.ts 冒頭）に反する。実際に HEIC が届く経路があるか
+  （iOS Safari はアップロード時に JPEG 化するのが通例＝推定）と、フォールバック時に保存を止めるかは未判断。
 - 確定済み: 役割=GP / 実装クラス=Backend / Max AL=1 / 申告 Spec=**2.4** / 法人名=株式会社HOLY（英字 **HOLY Inc.**）/ 登記住所=東京都港区北青山1-3-1 アールキューブ青山3F / 連絡先=info@holy-inc.jp / **生成メディアタイプ=image/jpeg・png・webp・heic（validate は今回申告せず）**。
 - 残る論点と選択肢:
   - **Spec 2.4 の実出力確認**: 申告 2.4 に対し、製品が実際に v2.4 準拠マニフェストを出力しているかを Intake 用サンプルで要検証（契約上、申告版に拘束される）。

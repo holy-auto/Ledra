@@ -1,5 +1,12 @@
 # Ledra — Generator Product Security Architecture (GPSA) Document
 
+> **提出版は英語の `docs/c2pa-evidence/Ledra-GPSA.md`（2026-09-27 作成）。本書は日本語の参照版で、
+> 内容が食い違う場合は英語版が正。** 英語版で直した点: 将来形の表現を削除（端末アテステーションは
+> 「本構成では無効・主張しない」、KMS 移行・Codacy 復活の記述を削除）、`assets` バケットは公開読み取り
+> （証明書公開ページで表示するため）と正しく記載、capture nonce は任意（無ければグレードを下げて受理）と
+> 正しく記載、HEIC は sharp が HEVC を読めず受け取ったまま署名される（`c2pa.created` のみ・
+> allActionsIncluded=false）ことを記載、Hive / Pinata / Polygon を設定で有効化される外部連携として記載。
+
 > C2PA Generator Product Security Architecture Document（提出用）。テンプレート:
 > `conformance-public/docs/v0.2/C2PA Generator Product Security Architecture Document Template.md`。
 > 対象: Generator Product「Ledra」 / 実装クラス Backend / **Target Max Assurance Level 1**。
@@ -194,5 +201,6 @@ TOE 境界は **写真のキャプチャ/アップロード → サーバー側�
 - [x] アーキテクチャ図（PNG）を §1.6 に添付 → `docs/diagrams/c2pa-gp-toe.png`
 - [x] 脆弱性修正ポリシー・OWASP カバレッジ・修正 SLA・鍵ローテ手順を運用文書化 → `docs/c2pa-gpsa-operational-controls.md`
 - [ ] 運用文書（`c2pa-gpsa-operational-controls.md`）の SLA・OWASP・ログ構成の記述が実運用と一致するか代表確認
-- [ ] 各メディアタイプ（jpeg/png/webp/heic）の署名済みサンプル + `.c2pa`/`.json` を用意（§1.9）
-- [ ] 提出時、GPSA 一式（本書＋運用文書＋図）のファイル名に "GPSA" を含める
+- [x] 各メディアタイプ（jpeg/png/webp/heic）の署名済みサンプル → `docs/c2pa-evidence/samples/`（2026-09-27 再生成）
+- [x] 提出時、GPSA 一式のファイル名に "GPSA" を含める → `docs/c2pa-evidence/Ledra-GPSA*.md` と zip 内の図
+- [ ] Conformulator で4サンプルを自己テスト（代表・ブラウザ。手順は `docs/c2pa-evidence/submission-email.md`）
