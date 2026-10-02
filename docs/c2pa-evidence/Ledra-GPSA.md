@@ -45,7 +45,8 @@ Architecture diagram: `Ledra-GPSA-TOE-Diagram.png`.
 
 The GP TOE is the Backend only: caller authentication, the authenticity pipeline, ingredient and
 assertion generation, claim signing, custody of the signing credential, and persistence of the signed
-asset. It runs on Vercel serverless functions and Supabase (Postgres, Storage, Auth).
+asset. It runs on Vercel serverless functions and Supabase (Postgres, Storage, Auth). Client traffic
+reaches it through a Cloudflare proxy that enforces TLS 1.3 (§2.5).
 
 | Component                                                       | TOE membership and role                                                                                                                                                                                    |
 | --------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -205,14 +206,21 @@ signing), and Ledra's own pipeline code (`src/lib/certificateImages/*`, `src/lib
 #### 2.5.1 Assurance Level 1 & 2 Base Evidence (Backend class)
 
 1. **TLS & Cryptographic Protocols**:
-   - Web and mobile clients → Backend: HTTPS only, terminated by the Vercel edge network, which
-     negotiates TLS 1.3 with current clients. Plain HTTP is redirected to HTTPS.
+   - Web and mobile clients → Backend: HTTPS only, to the `ledra.co.jp` hosts (`app.ledra.co.jp`, `www.ledra.co.jp`),
+     which are served through a Cloudflare proxy configured with Minimum TLS Version 1.3. A client offering only TLS 1.2 or lower
+     fails the handshake. Plain HTTP is redirected to HTTPS. Cloudflare forwards requests to the Vercel
+     deployment over HTTPS with the origin certificate validated (SSL mode Full (strict)).
+   - The photo upload endpoints, where C2PA generation starts, accept a request only if it carries a
+     secret header that Cloudflare adds to every request it forwards. The header is compared in constant
+     time with a value held as an encrypted Vercel environment variable. Requests that reach Vercel by
+     another route, such as the `*.vercel.app` deployment URL, are rejected with HTTP 403
+     (`src/lib/certificateImages/uploadHandler.ts`, `src/lib/edgeOrigin.ts`).
    - Backend → Supabase (Auth, Postgres via the REST/PostgREST API, Storage): HTTPS to the Supabase
      project endpoint. Every server-side Supabase client sends its requests through a fetch whose TLS
      connections require TLS 1.3 as the minimum version (`src/lib/net/tls13Fetch.ts`); a server offering only
      TLS 1.2 or lower fails the handshake and the request is not sent.
    - Backend → the integrations in §1.6: HTTPS.
-     Cipher suites are those of the managed TLS configurations of Vercel and Supabase.
+     Cipher suites are those of the managed TLS configurations of Cloudflare, Vercel and Supabase.
 
 ### 2.6 [O.6] Protection of the Hosting Environment (§6.6)
 
