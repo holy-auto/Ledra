@@ -23,12 +23,19 @@ function getMode(): C2paMode {
   return "disabled";
 }
 
+/** `C2PA_MODE=disabled`＝そもそも署名を試みていない状態。失敗ではないので failure は null。 */
 const DISABLED_RESULT: C2paResult = {
   manifestCid: null,
   verified: false,
   signedBuffer: null,
   manifestSummary: null,
+  failure: null,
 };
+
+/** 署名を試みて失敗した結果。**disabled と同じ形を返さない**のがこの関数の要点。 */
+function failedResult(failure: NonNullable<C2paResult["failure"]>): C2paResult {
+  return { ...DISABLED_RESULT, failure };
+}
 
 /** マニフェストの固定メタ（要約とアサーションで単一ソースにし drift を防ぐ）。 */
 const CLAIM_GENERATOR = "Ledra/1.0";
@@ -218,7 +225,9 @@ export async function signC2pa(
   try {
     const { createC2paSigner } = await import("./c2paSigner");
     const signer = await createC2paSigner(mode);
-    if (!signer) return DISABLED_RESULT;
+    // 署名器が無い理由はモジュール不在・env 未投入・鍵/証明書不正のいずれか（createC2paSigner が
+    // console.error を出す）。disabled と混ぜない。
+    if (!signer) return failedResult("signer_unavailable");
 
     const { Builder } = await import("@contentauth/c2pa-node");
 
@@ -273,7 +282,7 @@ export async function signC2pa(
 
     if (!output.buffer) {
       console.error("[c2pa] signing produced no output buffer");
-      return DISABLED_RESULT;
+      return failedResult("no_output_buffer");
     }
 
     // Pin signed manifest to IPFS (non-blocking on failure)
@@ -285,9 +294,10 @@ export async function signC2pa(
       signedBuffer: output.buffer,
       // 封入した内容から決定的に作る要約（読み戻し不要）。DBに保存し UI で表示する。
       manifestSummary: buildC2paManifestSummary(mode, binding, outcome),
+      failure: null,
     };
   } catch (err) {
-    console.error("[c2pa] signing failed, falling back to unsigned", err);
-    return DISABLED_RESULT;
+    console.error("[c2pa] signing failed", err);
+    return failedResult("sign_threw");
   }
 }

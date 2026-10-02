@@ -61,7 +61,9 @@ export async function invokeAllUploadProviders(
   const [c2pa, deepfake, polygon] = await Promise.all([
     withTimeout(
       signC2pa(buffer, mime, captureBinding, transformOutcome),
-      { manifestCid: null, verified: false, signedBuffer: null, manifestSummary: null },
+      // 打ち切りも「試して得られなかった」なので failure を立てる。ここを null にすると
+      // 呼び出し側から disabled と区別できず、本番で黙って未署名になる。
+      { manifestCid: null, verified: false, signedBuffer: null, manifestSummary: null, failure: "timeout" },
       "c2pa",
     ),
     withTimeout(checkDeepfake(buffer), { score: null, verdict: null }, "deepfake"),

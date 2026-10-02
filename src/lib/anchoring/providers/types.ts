@@ -45,7 +45,23 @@ export interface C2paResult {
   signedBuffer: Buffer | null;
   /** 署名したマニフェストの要約（未署名なら null）。DB `certificate_images.c2pa_manifest` に保存。 */
   manifestSummary: C2paManifestSummary | null;
+  /**
+   * **署名を試みて失敗した理由。試していない（`C2PA_MODE=disabled`）と成功なら null。**
+   *
+   * これが無かった頃は、失敗も disabled も同じ「未署名」の形を返していたため、
+   * 呼び出し側が「意図的にオフ」と「試して失敗」を区別できず、本番で黙って未署名の
+   * 写真が保存されうる状態だった（代表判断 2026-10-02: 本番では止める）。
+   * `processUploadedPhoto` が `C2PA_MODE=production` かつこれが非 null のとき保存を断る。
+   */
+  failure: C2paFailure | null;
 }
+
+/** 署名が失敗した場所。ログ・監査で「どこで落ちたか」を言えるようにするための区別。 */
+export type C2paFailure =
+  | "signer_unavailable" // 署名器を作れなかった（モジュール不在・env 未投入・鍵/証明書不正）
+  | "no_output_buffer" // 署名は走ったが出力バッファが無い
+  | "sign_threw" // 署名中に例外（c2pa-rs のエラー等）
+  | "timeout"; // withTimeout が打ち切った
 
 /* ── Deepfake detection ────────────────────────────────────────── */
 

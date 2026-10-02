@@ -30,7 +30,13 @@ describe("invokeAllUploadProviders", () => {
     const { invokeAllUploadProviders } = await loadProviders();
     const result = await invokeAllUploadProviders(dummyBuffer, "image/jpeg", "abc123");
 
-    expect(result.c2pa).toEqual({ manifestCid: null, verified: false, signedBuffer: null, manifestSummary: null });
+    expect(result.c2pa).toEqual({
+      manifestCid: null,
+      verified: false,
+      signedBuffer: null,
+      manifestSummary: null,
+      failure: null,
+    });
     expect(result.deepfake).toEqual({ score: null, verdict: null });
     expect(result.polygon).toEqual({ txHash: null, anchored: false, network: null });
   });
@@ -46,9 +52,13 @@ describe("invokeAllUploadProviders", () => {
     // dummyBuffer is not a valid JPEG, so c2pa-node will fail
     const result = await invokeAllUploadProviders(dummyBuffer, "image/jpeg", "abc123");
 
-    // Should fall back to disabled result, not throw
+    // Should fall back without throwing...
     expect(result.c2pa.verified).toBe(false);
     expect(result.c2pa.signedBuffer).toBeNull();
+    // ...but **must not look like `C2PA_MODE=disabled`**。ここが null に戻ると、
+    // 呼び出し側が「意図的にオフ」と「試して失敗」を区別できず、本番で黙って未署名の写真が
+    // 保存される（代表判断 2026-10-02: 本番では止める）。この1行がその退行を止める。
+    expect(result.c2pa.failure, "署名失敗は disabled と区別できる値で返る").not.toBeNull();
 
     errorSpy.mockRestore();
     infoSpy.mockRestore();
@@ -82,7 +92,13 @@ describe("signC2pa directly", () => {
     })();
 
     const result = await signC2pa(Buffer.from("test"), "image/jpeg");
-    expect(result).toEqual({ manifestCid: null, verified: false, signedBuffer: null, manifestSummary: null });
+    expect(result).toEqual({
+      manifestCid: null,
+      verified: false,
+      signedBuffer: null,
+      manifestSummary: null,
+      failure: null,
+    });
   });
 
   it("returns disabled result when C2PA_MODE is disabled", async () => {
@@ -93,7 +109,13 @@ describe("signC2pa directly", () => {
     })();
 
     const result = await signC2pa(Buffer.from("test"), "image/jpeg");
-    expect(result).toEqual({ manifestCid: null, verified: false, signedBuffer: null, manifestSummary: null });
+    expect(result).toEqual({
+      manifestCid: null,
+      verified: false,
+      signedBuffer: null,
+      manifestSummary: null,
+      failure: null,
+    });
   });
 });
 

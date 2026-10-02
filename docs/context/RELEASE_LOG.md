@@ -4,6 +4,28 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-10-02 本番の C2PA 署名が失敗したら写真を保存せずに断る（黙って未署名にしない）
+
+- 内容: 署名の失敗を結果の型で表現できるようにし、`C2PA_MODE=production` で失敗したら
+  **ストレージ書き込みの前に**アップロードを断る。`{ ok: false, code: "internal_error" }` を返すので
+  既存のアップロード経路（cookie / モバイル Bearer）がそのまま人の読めるメッセージを出す。
+- 根（症状ではなく）: `signC2pa` の失敗出口4本（署名器が作れない／出力バッファ無し／署名中の例外）と
+  `providers/index.ts` の `withTimeout` の打ち切りが、**すべて `C2PA_MODE=disabled` と同じ
+  `DISABLED_RESULT` を返していた**。呼び出し側は「意図的にオフ」と「試して失敗」を区別できず、
+  写真は真正性等級だけ下がって保存され、誰にも知らされなかった。`C2paResult` に
+  `failure: C2paFailure | null`（`signer_unavailable` / `no_output_buffer` / `sign_threw` / `timeout`）を
+  足して区別する。必須フィールドにしたので構築箇所3つは `tsc` が全部拾った。
+- `dev-signed` は `console.error` を出して通す（信頼チェーンが無く撮影時封印にも数えないため）。
+  `ponytail:` コメントで天井と切り替え方を明記。
+- 検証: ゲートのテストを追加（`c2paProductionGate.test.ts`）。`admin` を**触ったら落ちるスタブ**に
+  してあるので、「断る」だけでなく**ストレージ/DB に書く前に断っている**ことまで見る。
+  2つの変異で当たりを取った —— ゲートの条件を無効化すると爆発スタブで落ち、署名失敗を
+  `DISABLED_RESULT` に戻すと `providers.test.ts` の「disabled と区別できる」が落ちる。
+  CI 並列チェック9本すべて緑。
+- 本番の現場への影響は今日はゼロ（`C2PA_MODE` 未設定＝disabled、`certificate_images` の C2PA 列は全て0行）。
+  本番証明書を入れてオンにした日から効く。**オンにする前に、本番で `@contentauth/c2pa-node` が
+  実際に読み込めるかの確認が必要**【要確認】。
+
 ## 2026-10-02 完成検査の外部テスタ測定値 汎用 CSV 取込 UI（G5 Phase 2）
 
 - 内容: Phase 2 のサーバ土台（取込 API）に接続する UI を追加。完成検査の編集画面に「外部テスタ取込（CSV）」
