@@ -4,6 +4,35 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-10-02 マイグレーション日付の陳腐化検査が「main が動いた直後」にも走る
+
+`.github/workflows/stale-migration-check.yml` に `push: branches: [main]` /
+`paths: supabase/migrations/**` の契機を足した。**判定ロジックは1行も増えていない** ——
+既にある `npm run lint:migrations` を `MIGRATIONS_BASE_REF=origin/main` でそのまま回す形のまま。
+
+**なぜ**: 日次（00:20 UTC）だけでは、追い越しからマージまでが同じ日のうちに終わると素通りする。
+#1174 は #1172 が版を入れた **14:54 UTC** に追い越され、その **28分後**の 15:22 UTC にマージされた
+（`git log -1 --format=%cI e37b2db3` で実測）。cron はその間に走っていない。
+追い越しが起こりうる瞬間は「main にマイグレーションが入ったとき」だけなので、そこを契機にした。
+
+push 経路では `MIN_AGE_DAYS=0`（PR の年齢は追い越しに関係しない）。
+**既定日数の切り替えは `${{ }}` の式ではなくシェルで書いた** —— 式で
+`A || (cond && '0') || '3'` と書くと文字列 `'0'` の真偽値の扱いに依存し、偽と見なされたら
+黙って `3` に落ちる。落ちても緑なので気づけない。event 名 × 入力の **6通りを実行して確認**した
+（push/なし→0、push/5→5、schedule/なし→3、schedule/5→5、workflow_dispatch/なし→3、同/5→5）。
+
+**あわせて因果の説明を4箇所直した。** 「古い版をマージすると以降のマイグレーションが本番へ
+届かなくなる」は誤りで、本番の台帳に書く経路は2本あり、もう1本（Supabase の GitHub 連携）は
+順序を見ずに当てるため、実際に起きるのは**失敗ログと本番の台帳の食い違い**である。
+`scripts/lint-migrations.js` の誤りメッセージ、`.github/stale-migration-comment.md`、
+`docs/operations/migrations.md`（2箇所）、本ファイルの 2026-09-29 の記述を訂正した。
+lint のメッセージは、実際にルールを発火させて表示を確認した（使い捨ての版 `20260101000000` を
+置いて実行し、確認後に削除）。
+
+検証: `npm run lint:migrations` 緑（349 new / 167 grandfathered）。
+経緯は DECISION_LOG 2026-10-02 / MISTAKE_LEDGER
+`M-20261002-said-no-mechanism-without-reading-the-workflow-that-exists`。
+
 ## 2026-10-01 合算請求書の詳細画面と PDF に「合算内訳」（元帳票ごとの明細）を表示
 
 - マージ: #1196（`6b20267`、2026-10-01 23:04 UTC）。DB 変更なし。
@@ -205,7 +234,9 @@ fixture が必要な列を明示で渡すよう直した。**6本目は後から
 **版番号の改名（2026-09-29）**: main に `20260929132849` が入ったので、`20260927150900` /
 `20260927151000` を **`20260929150200` / `20260929150300`** へ改名した。`lint:migrations` の
 `migration-version-before-base-head` が赤になる（本番の `supabase db push` が out-of-order で
-止まり、以降のマイグレーションが本番へ届かなくなる）。allowlist へは足していない。
+止まる。**2026-10-02 訂正**: ここに「以降のマイグレーションが本番へ届かなくなる」と書いたのは誤りで、
+別の経路が順序を見ずに当てるため実際に起きるのは失敗ログと本番の台帳の食い違い。
+MISTAKE_LEDGER `M-20261001-cited-sources-i-never-opened-in-decision-log`）。allowlist へは足していない。
 改名前に `list_branches` を引き、**このプロジェクトのブランチは `main` の1本だけ**で
 このブランチのプレビュー DB が存在しないことを実測した（同時実行上限で作られなかった）。
 適用済みの版を改名した `M-20260922-renamed-a-migration-the-preview-db-had-applied` の形にはならない。

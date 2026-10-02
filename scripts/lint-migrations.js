@@ -506,7 +506,7 @@ for (const [version, group] of byVersion) {
         `   [migration-version-before-base-head] このブランチが追加したファイルのバージョン ${versionOf(file)} が、${headSource}に既にある最新 ${headMax} より前です。`,
       );
       console.error(
-        `     → 本番の \`supabase db push\` が out-of-order で停止し、以降のマイグレーションが本番へ届かなくなります。`,
+        `     → 本番の \`supabase db push\` が out-of-order で停止します。**「停止したから本番は変わっていない」と読まないこと。** 本番の台帳に書く経路は2つあり、もう1本（Supabase の GitHub 連携）は順序を見ずに main の差分を当てるため、停止したという記録と本番の実際の状態が食い違います（.github/workflows/db-migrate.yml の「なぜ台帳が勝手に進むのか」の節）。その食い違いを読み違えて改名し、別の障害を足したことが2回あります。`,
       );
       console.error(
         `     → 本番へ当てたい変更なら ${headMax} より後のバージョンへ改名してください。`,

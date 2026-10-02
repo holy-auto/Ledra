@@ -1,6 +1,7 @@
 name: Stale migration dates
 
-# レビュー待ちが長い PR のマイグレーション日付が陳腐化していないかを毎日見る。
+# PR のマイグレーション日付が陳腐化していないかを見る。
+# **main にマイグレーションが入った直後**（push）と、**毎日**（cron）の2つの契機で走る。
 #
 # ## なぜ要るか
 #
@@ -9,8 +10,8 @@ name: Stale migration dates
 # 走った時点では正しかった**日付が、その後 main に別のマイグレーションが入ると
 # 追い越されて out-of-order になる。
 #
-# ところが **push が無い間 CI は再実行されない**ので、追い越されたことに気づくのは
-# 次の push かマージ直前になる。このリポジトリで4回起きている（OPEN_QUESTIONS）。
+# ところが **PR 側に push が無い間 CI は再実行されない**ので、追い越されたことに
+# 気づくのは次の push かマージ直前になる。このリポジトリで4回起きている（OPEN_QUESTIONS）。
 # 2026-08-02〜08-15 は13日間 db push が止まり、証明書発行が全件停止した。
 #
 # 代表判断 2026-09-05: 案(b)（一定日数を超えた PR で日付を再チェックする CI）を採る。
@@ -24,6 +25,23 @@ name: Stale migration dates
 # 検査を2箇所に書くと必ず片方だけ直る（MISTAKE_LEDGER 型 C）。
 
 on:
+  # **main が動いた瞬間**に見る。PR が追い越されるのは「main に別のマイグレーションが
+  # 入ったとき」だけなので、そのときに見るのが本来の契機である。
+  #
+  # なぜ毎日だけでは足りないか（2026-10-01 に実測）: #1174 は #1172 が
+  # `20260929132849` を入れた **2026-09-29 14:54 UTC** に追い越され、その **28分後**の
+  # 15:22 UTC にマージされた。00:20 UTC の cron は**その間に1度も走っていない**。
+  # 日次は「レビュー待ちで放置された PR」には効くが、追い越しからマージまでが
+  # 同じ日のうちに終わると素通りする。経緯は MISTAKE_LEDGER
+  # `M-20260929-merged-main-without-migration-order-lint` / DECISION_LOG 2026-09-29。
+  #
+  # この経路では**開いてからの日数を見ない**（MIN_AGE_DAYS=0）。
+  # 追い越されたかどうかに PR の年齢は関係しない。
+  push:
+    branches: [main]
+    # マイグレーションが入らない push では見る必要がない。
+    paths:
+      - "supabase/migrations/**"
   schedule:
     # 毎日 00:20 UTC（JST 09:20）。朝いちばんで気づける。
     - cron: "20 0 * * *"
@@ -54,10 +72,26 @@ jobs:
       - name: 対象 PR を洗い出して1本ずつ検査する
         env:
           GH_TOKEN: ${{ github.token }}
-          MIN_AGE_DAYS: ${{ github.event.inputs.min_age_days || '3' }}
+          # 既定日数の切り替えは **${{ }} の中でやらない**。GitHub の式で
+          # `A || (cond && '0') || '3'` と書くと、文字列 '0' の真偽値の扱いに依存し、
+          # 偽と見なされたら黙って '3' に落ちる。落ちても緑なので気づけない。
+          # 入力はそのまま渡し、既定はシェルで event 名から決める。
+          MIN_AGE_DAYS_INPUT: ${{ github.event.inputs.min_age_days }}
+          EVENT_NAME: ${{ github.event_name }}
           REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
+
+          # push（main が動いた）経路では年齢を見ない。追い越されたかどうかに
+          # PR の年齢は関係しないので 0 日。それ以外（日次・手動）は既定 3 日。
+          if [ -n "${MIN_AGE_DAYS_INPUT:-}" ]; then
+            MIN_AGE_DAYS="$MIN_AGE_DAYS_INPUT"
+          elif [ "$EVENT_NAME" = "push" ]; then
+            MIN_AGE_DAYS=0
+          else
+            MIN_AGE_DAYS=3
+          fi
+          echo "event=$EVENT_NAME / MIN_AGE_DAYS=$MIN_AGE_DAYS"
 
           # マージ先が main の open PR のうち、supabase/migrations を触っていて、
           # 開いてから MIN_AGE_DAYS 日を超えたもの。
