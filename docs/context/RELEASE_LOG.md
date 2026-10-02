@@ -4,6 +4,14 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-10-02 管理画面から holy-inc.jp へ「イベント」分類で投稿できるようにした
+
+- 内容: `HOLY_INC_CATEGORIES`（`src/lib/marketing/externalSites.ts`）に `イベント: "Event"` を追加。holy-auto/holy-inc#14 で
+  holy-inc 側に足した分類と、Ledra の写しがずれていた（MISTAKE_LEDGER `M-20261002-added-holy-inc-category-without-ledra-cms-list`）。
+- 英訳は holy-inc の記事 frontmatter（`categoryEn: "Event"`）と英語版 i18n（`event: "Event"`）から写した。
+- 投稿手順書（`docs/marketing/operation/posting-guide.md`）の分類一覧も更新。
+- 検証: `externalSites` / `externalPublish` の単体テスト 27 件緑（分類一覧と、イベント→Event の書き出しを追加で確認）。
+
 ## 2026-10-02 Ledra サイトの /news に「Japan Mobility Show Bizweek 2026」出展のお知らせを追加
 
 - 内容: `src/content/news/2026-10-03-japan-mobility-show-bizweek.mdx`（公開日は JST の 2026-10-03）。holy-inc.jp の告知と同じ
