@@ -4,6 +4,29 @@
 > （新しい順）。実装の詳細は RELEASE_LOG.md、迷っている段階のものは
 > OPEN_QUESTIONS.md に書く。
 
+## 2026-10-02 `@contentauth/c2pa-node` を 0.9.7 に固定し、Dependabot の自動更新から外す
+
+1. 日付: 2026-10-02（`date -u` で確認）
+2. 起きたこと: Dependabot の一括更新 #1193（17件）で CI の「Lint, Type Check & Unit Tests」が落ちた。原因は
+   `@contentauth/c2pa-node` 0.9.7 → 0.9.8 で、0.9.8 で署名した C2PA マニフェストを同じライブラリが読めない
+   （`ClaimDecoding("claim_cbor: Syntax error: unexpected trailing data: 16 bytes remaining")`）。
+   `c2paSignValidate.test.ts` 4件と `providers.test.ts` 1件が落ち、手元で c2pa-node だけを差し替えて再現した
+   （0.9.8: 5件失敗・22件成功、0.9.7: 27件すべて成功）。
+3. 以前の考え: c2pa-node は `^0.9.7` で、パッチ更新は Dependabot の minor-and-patch グループで流してよい。
+4. 違和感・問題: 0.x の依存はパッチ更新でも互換性を壊しうる。C2PA は施工証明の改ざん検知と GPSA 審査に関わり、
+   壊れると証明書の検証が通らない。`^0.9.7` のままだと、lockfile の作り直しでも 0.9.8 が入る。
+5. 決めたこと: `package.json` で `"@contentauth/c2pa-node": "0.9.7"` に固定し、`.github/dependabot.yml` の ignore に
+   追加する（`react-konva` を 18.2.10 に止めているのと同じ形）。#1193 は閉じ、残り16件は c2pa-node を除いて取り込む。
+6. 捨てた選択肢: #1193 にコミットを足して c2pa-node だけ戻す（Dependabot のブランチで、次の再作成で消える）。
+   0.9.8 に合わせてこちらの署名コードを直す（壊れているのは「同じライブラリで署名→検証」で、こちらの使い方の問題とは
+   言えない。推定: 上流の不具合。未確認）。Dependabot にコメントで ignore を指示する（このセッションからの投稿は
+   メンションが無効化されて届かない）。
+7. 判断理由: 署名の互換性は本番の証明書に直結し、テストで壊れることが分かっている版を入れる理由が無い。固定と ignore の
+   2段にすれば、手作業でも自動更新でも 0.9.8 が混入しない。
+8. まだ答えが出ていないこと: 上流（contentauth/c2pa-js 系）で修正された版が出たか、そもそも報告されているか【要確認】。
+   固定を外す条件は「新しい版で `c2paSignValidate` / `providers` のテストが通ること」（OPEN_QUESTIONS）。
+9. 公開区分: 公開可（依存の固定判断のみ。顧客データを含まない）
+
 ## 2026-10-02 マイグレーション日付の陳腐化検査を「毎日」から「main が動いた直後にも」へ
 
 1. 日付: 2026-10-02（`date -u` で確認）

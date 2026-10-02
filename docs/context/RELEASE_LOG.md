@@ -4,6 +4,16 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-10-02 依存の一括更新（16件）と、`@contentauth/c2pa-node` の 0.9.7 固定
+
+- 内容: Dependabot #1193 の17件から c2pa-node を除いた16件を取り込んだ（`package.json` の15件と、lockfile だけで上がる `remotion`）。主なもの: `@supabase/supabase-js` 2.117、
+  `@sentry/nextjs` 10.75.3、`resend` 6.30 以上（lockfile では 6.32.0）、`@upstash/ratelimit` 2.2、`@anthropic-ai/sdk` 0.128、
+  `posthog-js`、`viem`、`three`、`@react-three/fiber`、`@aws-sdk/client-kms`。開発用は `@remotion/cli` / `prettier` /
+  `supabase` / `tsx`。
+- `@contentauth/c2pa-node` は 0.9.8 で C2PA の署名→検証が壊れる（テスト5件）ため、`package.json` で 0.9.7 に固定し、
+  `.github/dependabot.yml` の ignore に入れた（DECISION_LOG 2026-10-02）。#1193 は閉じた。
+- 検証: `npm audit` 0件、tsc 通過、vitest exit=0（615 files / 6006 tests、`tail` で要約を確認）。
+
 ## 2026-10-02 完成検査の外部テスタ測定値 汎用 CSV 取込 UI（G5 Phase 2）
 
 - 内容: Phase 2 のサーバ土台（取込 API）に接続する UI を追加。完成検査の編集画面に「外部テスタ取込（CSV）」
