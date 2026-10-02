@@ -1,8 +1,9 @@
 import { Agent } from "undici";
 
 /**
- * TLS 1.3 未満を拒否する fetch。Backend → Supabase（Postgres REST / Storage / Auth）の
- * サブシステム間通信に使う（C2PA GPSA O.5 / Req 5.1: TLS v1.3 以上で保護）。
+ * TLS 1.3 未満を拒否する fetch。Backend → Supabase（Postgres REST / Storage / Auth）と、外部連携
+ * （Hive・Pinata の multipart・Polygon RPC の viem `fetchFn`）に使う（C2PA GPSA O.5 / Req 5.1: TLS v1.3 以上で保護）。
+ * 経路の一覧は src/lib/anchoring/__tests__/integrationsTls13.test.ts が守る。
  * 相手が 1.2 までしか話さなければハンドシェイクで失敗し、旧版へは落ちない。
  *
  * fetch 本体は差し替えず、グローバル fetch（Next がパッチした版）に **dispatcher だけ**を渡す。

@@ -7,9 +7,10 @@
 ## 2026-10-02 外部連携（Hive・Pinata・Polygon RPC）の通信も TLS 1.3 以上に限定（C2PA GPSA O.5）
 
 - 送信後の Codex レビュー（#1213）で、外部連携だけ素の `fetch`／viem の通常の通信だった。`tls13Fetch` を通すようにした
-  （Hive・Pinata は `tls13Fetch`、Polygon は viem `http(rpcUrl, { fetchFn: tls13Fetch })` の7箇所）。
-- `integrationsTls13.test.ts` が providers 配下の素の `fetch` と `fetchFn` 無しの `http()` を検出する。修正前のコードで
-  4ファイルとも落ち、修正後に通ることを確認。anchoring・net のテスト 179 件合格、型検査・lint 合格。
+  （Hive・Pinata は `tls13Fetch`、Polygon は viem `http(rpcUrl, { fetchFn: tls13Fetch })` の8箇所。
+  うち1箇所は providers の外の `app/api/cron/polygon-signer` で、/code-review で見つかった）。
+- `integrationsTls13.test.ts` が providers 配下の素の `fetch`（`globalThis.fetch` 含む）と、viem を使う src 全ファイルの
+  `fetchFn` 無しのトランスポートを検出する。修正前のコード・cron だけ戻したコードで落ち、修正後に通ることを確認。
 - GPSA §2.5 と運用管理策 A02 に外部連携を加えた（本番反映後の状態として）。
 
 ## 2026-10-02 整備業の法定資格・職責の軸を作業者レジストリに追加（G1）
