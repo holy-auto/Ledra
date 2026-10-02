@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import CompletionMeasurementCsvImport from "@/components/admin/CompletionMeasurementCsvImport";
 import {
   measurementFieldsForForm,
   measurementGroup,
@@ -93,50 +94,53 @@ export default function CompletionInspectionForm({
   const [measLoaded, setMeasLoaded] = useState(!editRecord);
   const [loadFailed, setLoadFailed] = useState(false);
 
-  // 編集モード: 測定値を API から読み込みセルへ反映する（一覧は測定値を持たないため）。
+  // 既存記録の測定値を API から読み込みセルへ反映する（一覧は測定値を持たないため）。
+  // 初回ロード（useEffect）と CSV 取込後の再読込（onImported）で共有する。成否を返す。
+  const reloadMeasurements = useCallback(async (id: string): Promise<boolean> => {
+    try {
+      const res = await fetch(`/api/admin/inspection-records/${id}/measurements`);
+      const json = await res.json().catch(() => null);
+      // 200 でも measurements 配列が無ければ「読み込み成功で空」と誤認しない（誤った全消去を防ぐ）。
+      if (!res.ok || !json || !Array.isArray(json.measurements)) return false;
+      const next: Record<string, Cell> = {};
+      for (const m of json.measurements as {
+        field_code: string;
+        num_value: number | null;
+        text_value: string | null;
+        unit: string | null;
+        judgment: string | null;
+      }[]) {
+        next[m.field_code] = {
+          num: m.num_value != null ? String(m.num_value) : "",
+          text: m.text_value ?? "",
+          unit: m.unit ?? "",
+          judgment: m.judgment ?? "",
+        };
+      }
+      setCells(next);
+      return true;
+    } catch {
+      return false;
+    }
+  }, []);
+
+  // 編集モード: 初回に測定値を読み込む。失敗時は保存を止める（全置換 PUT による消去を防ぐ）。
   useEffect(() => {
     if (!editRecord) return;
     let cancelled = false;
-    const fail = () => {
-      if (cancelled) return;
-      setLoadFailed(true);
-      setError("測定値の読み込みに失敗しました。画面を開き直してください（このまま保存すると測定値が消えます）。");
-    };
     (async () => {
-      try {
-        const res = await fetch(`/api/admin/inspection-records/${editRecord.id}/measurements`);
-        const json = await res.json().catch(() => null);
-        if (cancelled) return;
-        // 200 でも measurements 配列が無ければ「読み込み成功で空」と誤認しない（誤った全消去を防ぐ）。
-        if (!res.ok || !json || !Array.isArray(json.measurements)) {
-          fail();
-          return;
-        }
-        const next: Record<string, Cell> = {};
-        for (const m of json.measurements as {
-          field_code: string;
-          num_value: number | null;
-          text_value: string | null;
-          unit: string | null;
-          judgment: string | null;
-        }[]) {
-          next[m.field_code] = {
-            num: m.num_value != null ? String(m.num_value) : "",
-            text: m.text_value ?? "",
-            unit: m.unit ?? "",
-            judgment: m.judgment ?? "",
-          };
-        }
-        setCells(next);
-        setMeasLoaded(true);
-      } catch {
-        fail();
+      const ok = await reloadMeasurements(editRecord.id);
+      if (cancelled) return;
+      if (ok) setMeasLoaded(true);
+      else {
+        setLoadFailed(true);
+        setError("測定値の読み込みに失敗しました。画面を開き直してください（このまま保存すると測定値が消えます）。");
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [editRecord]);
+  }, [editRecord, reloadMeasurements]);
 
   const fields = useMemo(() => measurementFieldsForForm(form), [form]);
   const groups = useMemo(() => {
@@ -368,6 +372,17 @@ export default function CompletionInspectionForm({
           </div>
         </div>
       ))}
+
+      {/* 外部テスタ CSV 取込（既存記録・測定値読み込み後のみ）。取込後は測定値セルを再読込する。 */}
+      {isEdit && recordId && measLoaded && (
+        <CompletionMeasurementCsvImport
+          recordId={recordId}
+          form={form}
+          onImported={async () => {
+            await reloadMeasurements(recordId);
+          }}
+        />
+      )}
 
       {/* 目視等による検査（構造・装置） */}
       <div className="space-y-2">
