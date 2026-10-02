@@ -4,16 +4,28 @@
 > 追わず、常に最新状態だけを保つ（履歴は DECISION_LOG.md / RELEASE_LOG.md 側）。
 > 大きな変化があったら都度上書きすること。
 
-最終更新: 2026-09-29
+最終更新: 2026-10-01
 
-> 2026-09-29 追記（#1174 マージ・**本番未適用**）: 列属性のドリフトを揃える2本を main に入れた
-> （`54a0f875`）。**まだ本番には当てていない。**
-> - `20260929150200` は**本番で実際に走る** —— `job_orders.status` の既定を `'open'`→`'pending'`、
->   `insurer_users.role` を `'member'`→`'viewer'`。どちらも本番の既定が本番自身の CHECK に弾かれていた。
-> - `20260929150300` は本番では no-op。新しい環境が本番と同じ厳しさになる（本番が拒否する行は
->   新環境でも拒否される）ので、fixture が列を省いていた検査は当たらなくなる。
-> **残っている作業**: `db-migrate` の実行と結果確認。適用後に `job_orders` / `insurer_users` へ
-> 列を省いた insert が 23514 にならないことを実測する。
+> 2026-10-01 追記（#1174 は**本番適用済み** —— 2026-09-29 に「未適用」と書いたのは誤り）:
+> 列属性のドリフトを揃える2本（`54a0f875`）は、**#1174 を main にマージした時点で本番へ自動適用されていた。**
+> `db-migrate` を手で回していないので「未適用」と書いたが、本番の台帳に書く経路は2つあり
+> （`.github/workflows/db-migrate.yml`）、(b) Supabase の GitHub 連携が main への push で適用する。
+> **2026-10-01 に本番へ直接問い合わせて確認した**（Supabase MCP・読み取りのみ）:
+> - 本番の適用台帳に `20260929150200` と `20260929150300` が**両方ある**（`list_migrations`）。
+> - 列定義も実際に変わっている —— `job_orders.status` の既定は `'pending'::text`、
+>   `insurer_users.role` の既定は `'viewer'::text`（どちらも NOT NULL）。
+> - 既定が自表の CHECK を**通る**ことも確認: `job_orders_status_check` は
+>   `['pending','quoting','accepted','in_progress','approval_pending','payment_pending','completed','rejected','cancelled']`、
+>   `insurer_users_role_check` は `['admin','viewer','auditor']`。どちらも `convalidated: true`。
+>   よって「列を省いた insert が 23514 になる」状態は解消している（insert を実行しての確認はしていない。
+>   既定リテラルが CHECK の許可配列に含まれることを定義から確認した）。
+> - `20260929150300` は本番では no-op（`audit_logs.tenant_id` は nullable、`insurers.plan_tier` は
+>   既定なし・nullable のまま）。直るのは新しく作る環境の側。
+> **残っている作業**: なし（適用と確認は完了）。経緯は
+> `M-20261001-reported-applied-migrations-as-not-applied`。
+> **これが示す運用上の問題**: main にマージすると `supabase/migrations/**` は**誰も実行しなくても本番に入る**。
+> 「まだ当てていない」と判断してよい状態は存在しない。OPEN_QUESTIONS の「Branching の自動適用を切る」は
+> 未実施のままで、切るまでこの形が続く。
 > **代表判断待ち**: `vehicles.maker`/`model` に明示 NULL を送る2経路の保存方針、`insurers.plan_tier` の
 > 既定、enum/text の7列（IMP-015）。OPEN_QUESTIONS 参照。
 
