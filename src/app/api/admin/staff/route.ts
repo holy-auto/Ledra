@@ -1,9 +1,45 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 
 import { apiJson, apiValidationError, apiInternalError } from "@/lib/api/response";
-import { staffCreateSchema, staffUpdateSchema, staffDeleteSchema } from "@/lib/validations/staff";
+import {
+  staffCreateSchema,
+  staffUpdateSchema,
+  staffDeleteSchema,
+  type QualificationDetailInput,
+} from "@/lib/validations/staff";
 
 import { withCaller } from "@/lib/api/withCaller";
+
+/**
+ * スタッフの法定資格の番号・有効期限（staff_qualifications）をスタッフ単位で一括置換する。
+ * 保有の有無は staff_members.qualifications（text[]）が源泉。ここは属性行を provided で丸ごと置き換える
+ * （shifts の一括置換と同型）。保有していないキーの明細が残ってもゲートは held を見るため無害だが、
+ * 置換で表示と一致させる。details===undefined（未送信）のときは何もしない。
+ */
+async function replaceStaffQualificationDetails(
+  db: Pick<SupabaseClient, "from">,
+  tenantId: string,
+  staffId: string,
+  details: QualificationDetailInput[] | undefined,
+): Promise<{ error: unknown } | null> {
+  if (details === undefined) return null;
+  const del = await db.from("staff_qualifications").delete().eq("tenant_id", tenantId).eq("staff_member_id", staffId);
+  if (del.error) return { error: del.error };
+  if (details.length === 0) return null;
+  // 同一キーの重複送信は最後の値を採用（unique(tenant,staff,qualification) 違反を避ける）。
+  const byKey = new Map<string, QualificationDetailInput>();
+  for (const d of details) byKey.set(d.qualification, d);
+  const rows = [...byKey.values()].map((d) => ({
+    tenant_id: tenantId,
+    staff_member_id: staffId,
+    qualification: d.qualification,
+    number: d.number,
+    expires_on: d.expires_on,
+  }));
+  const ins = await db.from("staff_qualifications").insert(rows);
+  return ins.error ? { error: ins.error } : null;
+}
 /** 紐付け先 user_id が当該テナントのメンバーか確認（他テナントアカウント連携の防止）。 */
 async function userInTenant(tenantId: string, userId: string): Promise<boolean> {
   const { admin } = createTenantScopedAdmin(tenantId);
@@ -54,7 +90,7 @@ export const GET = withCaller(
         supabase
           .from("staff_members")
           .select(
-            "id, user_id, name, kind, email, phone, skills, qualifications, color, is_active, note, commission_rate, created_at",
+            "id, user_id, name, kind, email, phone, skills, qualifications, color, is_active, note, commission_rate, created_at, qualification_details:staff_qualifications ( qualification, number, expires_on )",
           )
           .eq("tenant_id", caller.tenantId)
           .order("is_active", { ascending: false })
@@ -73,6 +109,7 @@ export const GET = withCaller(
           ...s,
           skills: s.skills ?? [],
           qualifications: s.qualifications ?? [],
+          qualification_details: s.qualification_details ?? [],
           stats: {
             assignments_total: st?.assignments_total ?? 0,
             completed: st?.completed ?? 0,
@@ -127,6 +164,14 @@ export const POST = withCaller(
         .single();
       if (error) return apiInternalError(error, "staff create");
 
+      const detErr = await replaceStaffQualificationDetails(
+        supabase,
+        caller.tenantId,
+        data.id,
+        input.qualification_details,
+      );
+      if (detErr) return apiInternalError(detErr.error, "staff create qualification details");
+
       return apiJson({ ok: true, id: data.id });
     } catch (e) {
       return apiInternalError(e, "staff create");
@@ -154,6 +199,9 @@ export const PUT = withCaller(
       for (const [key, value] of Object.entries(rest)) {
         if (value !== undefined && sentKeys.has(key)) updates[key] = value;
       }
+      // qualification_details は staff_members のカラムではなく別表（staff_qualifications）。
+      // staff_members の更新ペイロードから除き、下で一括置換する。
+      delete updates.qualification_details;
       // user_id ↔ kind の整合をとる
       if ("user_id" in updates && updates.user_id) updates.kind = "internal";
       if (updates.kind === "external") updates.user_id = null;
@@ -171,6 +219,12 @@ export const PUT = withCaller(
         .eq("id", id)
         .eq("tenant_id", caller.tenantId);
       if (error) return apiInternalError(error, "staff update");
+
+      // 資格明細（番号・有効期限）を送信時のみ一括置換。
+      const detErr = sentKeys.has("qualification_details")
+        ? await replaceStaffQualificationDetails(supabase, caller.tenantId, id, rest.qualification_details ?? [])
+        : null;
+      if (detErr) return apiInternalError(detErr.error, "staff update qualification details");
 
       return apiJson({ ok: true });
     } catch (e) {

@@ -26,6 +26,7 @@ type InspectionRecord = {
   inspection_type: InspectionType;
   template_name: string | null;
   inspector_name: string | null;
+  inspector_staff_id: string | null;
   inspected_at: string;
   answers: Record<string, { value?: unknown; note?: string }> | null;
   photo_urls: string[] | null;

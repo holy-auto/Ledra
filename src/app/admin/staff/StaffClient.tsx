@@ -27,6 +27,8 @@ type Staff = {
   phone: string | null;
   skills: string[];
   qualifications: string[];
+  /** 資格の番号・有効期限（任意）。保有の有無は qualifications が源泉。 */
+  qualification_details?: { qualification: string; number: string | null; expires_on: string | null }[];
   color: string | null;
   is_active: boolean;
   note: string | null;
@@ -52,6 +54,8 @@ type Draft = {
   phone: string;
   skillsText: string;
   qualifications: StaffQualificationKey[];
+  /** 資格キー → { number, expires_on }。保有チェック時に番号・有効期限を任意入力。 */
+  qualificationDetails: Record<string, { number: string; expires_on: string }>;
   is_active: boolean;
   /** レス率の入力欄用テキスト（%表記、例: "70"）。空文字は未設定。 */
   commissionRateText: string;
@@ -65,6 +69,7 @@ const EMPTY_DRAFT: Draft = {
   phone: "",
   skillsText: "",
   qualifications: [],
+  qualificationDetails: {},
   is_active: true,
   commissionRateText: "",
 };
@@ -148,6 +153,12 @@ export default function StaffClient() {
       skillsText: s.skills.join(", "),
       // 既存データの表示用途なので、統制語彙外（将来値・旧値）は黙って落として編集を壊さない。
       qualifications: normalizeQualifications(s.qualifications),
+      qualificationDetails: Object.fromEntries(
+        (s.qualification_details ?? []).map((d) => [
+          d.qualification,
+          { number: d.number ?? "", expires_on: d.expires_on ?? "" },
+        ]),
+      ),
       is_active: s.is_active,
       commissionRateText: s.commission_rate != null ? String(Math.round(s.commission_rate * 10000) / 100) : "",
     });
@@ -177,6 +188,12 @@ export default function StaffClient() {
       phone: draft.phone.trim() || null,
       skills: parseSkills(draft.skillsText),
       qualifications: draft.qualifications,
+      // 保有する資格だけ番号・有効期限を送る（空欄は null）。サーバで一括置換される。
+      qualification_details: draft.qualifications.map((k) => ({
+        qualification: k,
+        number: draft.qualificationDetails[k]?.number?.trim() || null,
+        expires_on: draft.qualificationDetails[k]?.expires_on || null,
+      })),
       is_active: draft.is_active,
       commission_rate: rate == null ? null : rate / 100,
     };
@@ -465,25 +482,64 @@ export default function StaffClient() {
             <div className="flex flex-col gap-1 pt-1">
               {STAFF_QUALIFICATIONS.map((q) => {
                 const checked = draft.qualifications.includes(q.key);
+                const detail = draft.qualificationDetails[q.key] ?? { number: "", expires_on: "" };
                 return (
-                  <label key={q.key} className="flex items-start gap-2 text-xs text-secondary">
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      onChange={(e) =>
-                        setDraft({
-                          ...draft,
-                          qualifications: e.target.checked
-                            ? [...draft.qualifications, q.key]
-                            : draft.qualifications.filter((k) => k !== q.key),
-                        })
-                      }
-                    />
-                    <span>
-                      {q.label}
-                      <span className="block text-[10px] text-muted">{q.note}</span>
-                    </span>
-                  </label>
+                  <div key={q.key} className="flex flex-col gap-1">
+                    <label className="flex items-start gap-2 text-xs text-secondary">
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={(e) =>
+                          setDraft({
+                            ...draft,
+                            qualifications: e.target.checked
+                              ? [...draft.qualifications, q.key]
+                              : draft.qualifications.filter((k) => k !== q.key),
+                          })
+                        }
+                      />
+                      <span>
+                        {q.label}
+                        <span className="block text-[10px] text-muted">{q.note}</span>
+                      </span>
+                    </label>
+                    {checked && (
+                      <div className="ml-6 flex flex-wrap items-center gap-2">
+                        <input
+                          type="text"
+                          value={detail.number}
+                          onChange={(e) =>
+                            setDraft({
+                              ...draft,
+                              qualificationDetails: {
+                                ...draft.qualificationDetails,
+                                [q.key]: { ...detail, number: e.target.value },
+                              },
+                            })
+                          }
+                          placeholder="資格番号（任意）"
+                          className="input-field h-8 w-40 text-xs"
+                        />
+                        <label className="flex items-center gap-1 text-[10px] text-muted">
+                          有効期限
+                          <input
+                            type="date"
+                            value={detail.expires_on}
+                            onChange={(e) =>
+                              setDraft({
+                                ...draft,
+                                qualificationDetails: {
+                                  ...draft.qualificationDetails,
+                                  [q.key]: { ...detail, expires_on: e.target.value },
+                                },
+                              })
+                            }
+                            className="input-field h-8 text-xs"
+                          />
+                        </label>
+                      </div>
+                    )}
+                  </div>
                 );
               })}
             </div>

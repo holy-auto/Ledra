@@ -114,11 +114,11 @@
 | 規制が例示する権限区分 | 実装 |
 | --- | --- |
 | 認証機能そのもの（ID/PW・利用者登録・管理） | ✅ Supabase Auth（ID/PW）＋ TOTP MFA（`src/lib/auth/mfa.ts`）＋ WebAuthn 操作署名（`operator_credentials` / `webauthn_assertions`、重要操作を登録済み認証器に暗号的に束縛、`20260721093116_webauthn.sql`）。 |
-| 自動車検査員に係る権限（指定整備事業者に限る） | ⚠️ **資格軸を追加**（`staff_members.qualifications`・`src/lib/staff/qualifications.ts`、`20261002123644`）。作業者に資格を登録・表示できる。操作の強制（確定は自動車検査員のみ等）は後続。 |
-| 整備主任者に係る権限 | ⚠️ 同上（`maintenance_supervisor`）。 |
-| 点検整備記録簿等を起票・入力する権限 | ⚠️ `certificates:create/edit`・`requireMinRole(caller,"staff")` 等の起票・入力の権限制御に加え、法定資格軸（`record_author`）を追加。資格に基づく操作の強制は後続。 |
+| 自動車検査員に係る権限（指定整備事業者に限る） | ✅ **資格軸＋操作の強制**。資格軸（`staff_members.qualifications`・`src/lib/staff/qualifications.ts`）に加え、完成検査（指定整備記録簿）の実施者に有効な自動車検査員資格を必須化（テナント opt-in `tenants.require_inspector_qualification`、`src/lib/staff/inspectorQualification.ts`、fail-closed）。資格番号・有効期限は `staff_qualifications`、実施時点の資格は記録簿へスナップショット。`20261002160000`。 |
+| 整備主任者に係る権限 | ⚠️ 資格軸（`maintenance_supervisor`）を登録・表示でき、番号・有効期限も保持可。固有の操作強制は未設定（完成検査の強制対象は自動車検査員）。 |
+| 点検整備記録簿等を起票・入力する権限 | ⚠️ `certificates:create/edit`・`requireMinRole(caller,"staff")` 等の起票・入力の権限制御に加え、法定資格軸（`record_author`）を登録・表示でき、番号・有効期限も保持可。 |
 
-Ledra の権限は汎用 SaaS ロール（`super_admin` / `owner` / `admin` / `staff` / `viewer`、`src/lib/auth/roles.ts`・`permissions.ts`）＋店舗ロール（`manager` / `staff`）＋作業者レジストリ（`staff_members.kind` = internal/external、`skills[]`）で構成される。**2026-10-02（G1）に、整備業の法定資格・職責（自動車検査員 / 整備主任者 / 起票入力担当）を表す統制語彙の軸 `staff_members.qualifications` を追加**（SaaS ロール・skills とは別軸。単一定義源 `src/lib/staff/qualifications.ts`）。**残る急所**: 資格に基づく操作の強制（完成検査の確定は自動車検査員のみ 等）と、資格番号・有効期限の保持。→ OPEN_QUESTIONS に後続として記載。
+Ledra の権限は汎用 SaaS ロール（`super_admin` / `owner` / `admin` / `staff` / `viewer`、`src/lib/auth/roles.ts`・`permissions.ts`）＋店舗ロール（`manager` / `staff`）＋作業者レジストリ（`staff_members.kind` = internal/external、`skills[]`）で構成される。**2026-10-02（G1）に、整備業の法定資格・職責（自動車検査員 / 整備主任者 / 起票入力担当）を表す統制語彙の軸 `staff_members.qualifications` を追加**（SaaS ロール・skills とは別軸。単一定義源 `src/lib/staff/qualifications.ts`）。続けて**（1）資格に基づく操作の強制**（完成検査＝指定整備記録簿の実施者に有効な自動車検査員資格を必須化。テナント opt-in `tenants.require_inspector_qualification`、既定 false で非破壊、`src/lib/staff/inspectorQualification.ts` が fail-closed で判定）、**（2）資格番号・有効期限の保持**（`staff_qualifications` 明細表。保有の有無は引き続き `qualifications` が源泉）、**（3）記録簿への実施者資格の紐付け**（`inspection_records.inspector_staff_id` ＋ 実施時点の `inspector_qualification_snapshot`）を実装（`20261002160000`）。自動車検査員要件は指定整備事業者に限るため、強制はテナント opt-in とした。
 
 #### ② オンライン接続時のユーザー認証 — ✅ 対応
 
@@ -181,7 +181,7 @@ PDF ダウンロード（`content-disposition: attachment`）により、使用�
 
 | # | ギャップ | 該当条項 | 区分 |
 | --- | --- | --- | --- |
-| G1 | 法定資格ロール（自動車検査員 / 整備主任者 / 起票入力）が権限体系に無い → ⚠️ **資格軸を追加（2026-10-02）**。強制・資格番号は後続 | 第２ ３（１）① | システム |
+| G1 | 法定資格ロール（自動車検査員 / 整備主任者 / 起票入力）が権限体系に無い → ✅ **資格軸＋操作強制＋資格番号/有効期限＋実施者紐付けを実装（2026-10-02）**。完成検査の実施者に自動車検査員を必須化（テナント opt-in・非破壊既定） | 第２ ３（１）① | システム |
 | G2 | 更新箇所＋作業者の自動履歴が記録簿本体・帳票で不完全、消去ログ未確認 → ✅ **指定整備記録簿（inspection_records）の作成/更新を監査ログ化（2026-10-02）**。消去は2年保存で保持期間中は不可。documents/body_repair と保持期限後の消去経路＋監査は後続 | 第２ ２（３） | システム |
 | G3 | 電子交付方法の**事前承諾**を専用取得する仕組みが未実装 → ✅ **`delivery_consents`＋承諾記録UI/APIを追加（2026-10-02）**。未承諾ハードブロックは opt-in 後続 | 第２ ４（３） | システム |
 | G4 | **交付承諾の撤回**フローと撤回後の交付ブロックが未実装 → ✅ **使用者/店舗の撤回＋撤回後の証明書電子交付ブロックを追加（2026-10-02）** | 第２ ４（４） | システム |

@@ -4,6 +4,23 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-10-02 法定資格に基づく操作の強制＋資格番号/有効期限＋実施者の記録簿紐付け（G1 残り3点）
+
+- 内容: 第２ ３（１）① の「自動車検査員に係る権限（指定整備事業者に限る）」を実装。#1208 で追加済みの
+  資格軸（`staff_members.qualifications`）に、(1)操作の強制、(2)資格番号・有効期限、(3)記録簿への実施者紐付けを足した。
+- **(1) 強制（テナント opt-in・非破壊既定）**: `tenants.require_inspector_qualification`（既定 false）。true のとき
+  完成検査（`inspection_type='completion'`＝指定整備記録簿）の作成/更新で、実施者が**有効な自動車検査員**で
+  あることを必須化。判定は `src/lib/staff/inspectorQualification.ts`＝**fail-closed**（資格を確認できなければブロック）。
+  強制 OFF（既定）は一切ブロックしない（指定整備事業者でないテナント・既存運用を止めない）。ブロックは 409。
+  opt-in の切替は店舗設定（owner のみ）。
+- **(2) 資格番号・有効期限**: `staff_qualifications`（tenant/staff/qualification 一意・number・expires_on 任意）。
+  保有の有無は引き続き `qualifications`（text[]）が源泉、明細表は属性のみ。有効期限は Asia/Tokyo の当日で判定
+  （`qualificationStatus.ts` の純関数、期限当日まで有効・未登録は無期限扱い）。スタッフ管理 UI で資格ごとに入力。
+- **(3) 実施者の紐付け**: `inspection_records.inspector_staff_id`（staff）＋ `inspector_qualification_snapshot`
+  （実施時点の資格 [{qualification,number,expires_on}]、後の資格変更に影響されない）。完成検査フォームに実施者
+  ピッカー（`/api/admin/staff/picker` が資格も返すよう拡張）。外注は従来どおり氏名の自由入力で併存。
+- 検証: 純関数 `qualificationStatus` 9 件＋ゲート `inspectorQualification`（fail-closed/期限/未保有/強制 ON·OFF）9 件の
+  単体テスト、tsc・eslint（変更 0 error）・check:schema・lint:migrations 緑。
 ## 2026-10-02 管理画面から holy-inc.jp へ「イベント」分類で投稿できるようにした
 
 - 内容: `HOLY_INC_CATEGORIES`（`src/lib/marketing/externalSites.ts`）に `イベント: "Event"` を追加。holy-auto/holy-inc#14 で
