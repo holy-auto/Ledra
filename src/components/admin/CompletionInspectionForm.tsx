@@ -479,7 +479,7 @@ export default function CompletionInspectionForm({
         <div className="rounded-lg border-l-4 border-danger bg-danger/10 p-2 text-xs text-danger-text">{error}</div>
       )}
 
-      <div className="flex justify-end gap-2">
+      <div className="flex items-center justify-end gap-2">
         <button type="button" onClick={onCancel} disabled={saving} className="btn-ghost text-xs">
           キャンセル
         </button>

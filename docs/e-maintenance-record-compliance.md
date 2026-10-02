@@ -79,15 +79,16 @@
 | --- | --- |
 | 電磁的記録を電磁的記録媒体に移行できる措置 | テナント全体エクスポート `GET /api/admin/data-export`（owner 限定・JSON・`schema_version:"1.0"`）、証明書エクスポート（`export` / `export-selected` / `export-one`）、帳票・在庫の CSV 系エクスポート。ダウンロードした電子データを SD カード等の媒体に保存できるため、実質的に移行可能。**注**: 外部媒体・アーカイブ（S3/R2 等）への専用書き出しスクリプトは未実装（`docs/data-retention.md` に TODO として記載）。 |
 
-### （３）作成・保存・更新・消去の日時、更新箇所、作業者を自動記録・保存 — ⚠️ 部分対応
+### （３）作成・保存・更新・消去の日時、更新箇所、作業者を自動記録・保存 — ⚠️ 部分対応（証明書・指定整備記録簿の作成/更新は対応・消去は2年保存で保持中不可／documents・body_repair は後続）
 
 | 対象 | 状況 |
 | --- | --- |
 | 証明書（certificates） | ✅ **ほぼ完全**。`certificate_edit_histories`（`edited_by` ＋ `changes:[{field,label,old,new}]` の**更新箇所差分**、`20260408000000_...`）、`certificate_versions`（`created_by` / `server_received_at`＝権威時刻 / SHA-256 ハッシュ、**UPDATE 拒否トリガで不変**、`20260719000001_...`）、`audit_logs`（`performed_by` / `old_values` / `new_values` / `performed_at`、`20260325000001_...`）。 |
-| 帳票・整備記録簿本体（documents / inspection_records / body_repair_jobs） | ⚠️ 差あり。`body_repair_jobs.recorded_by`（記録者）はあるが、証明書のような**フィールド単位の更新差分＋更新者の自動履歴**が全レコード横断で揃っているわけではない。汎用 `audit_logs` は存在するが、書込みは個別 API の明示 insert 依存で、`updated_by` を全テーブル自動記録する行トリガは無い。 |
-| 「消去」の日時記録 | ⚠️ **要確認**。`data-retention` cron（`src/app/api/cron/data-retention/route.ts`）が保持期限超過データを削除・匿名化するが、**削除イベント自体を監査ログに残す実装は未確認**。規制は「消去の日時」の自動記録も求めるため、ここは要点検。 |
+| 指定整備記録簿（inspection_records・完成検査） | ✅ **作成・更新を監査ログ化（2026-10-02 / G2）**。`POST`＝作成、`PATCH`＝更新（**更新箇所＝変わったフィールドの前後値**を `changedFields` で算出）を `logTenantAuditEvent` で `audit_logs` に `作業者（actor_user_id）＋日時（performed_at）＋更新箇所（query_json.changed）` として残す。**消去**は意図的にアプリ経路を設けない（下記）。あわせて、PATCH が未送信の任意フィールドを null に化けさせて `inspected_at`(NOT NULL) で失敗していた既存不具合を、送信キーだけ更新する方式に修正。 |
+| 帳票・整備記録簿本体（documents / body_repair_jobs） | ⚠️ 差あり。`body_repair_jobs.recorded_by`（記録者）はあるが、証明書・指定整備記録簿のような**フィールド単位の更新差分＋更新者の自動履歴**が documents / body_repair_jobs ではまだ揃っていない（OPEN_QUESTIONS に後続として記載）。 |
+| 「消去」の扱い | 指定整備記録簿（完成検査）は `record_retention_until`＝**2年保存**を課し、保持期間中は**アプリに消去経路を持たない**（保存義務に沿う）。保持期限後の物理削除は `data-retention` cron の領域だが、現状 cron は認証コード・セッション等の**非・記録簿**のみを対象にし、指定整備記録簿は削除しない。将来、保持期限後の管理者消去を設けるなら、`record_retention_until` 経過の確認＋消去の監査記録（`logTenantAuditEvent`）を必須にする（OPEN_QUESTIONS）。 |
 
-→ 本項は準拠上の**急所**。証明書は満たすが、記録簿本体・帳票・消去ログに差分が残る。OPEN_QUESTIONS に起票。
+→ 証明書・指定整備記録簿は作成/更新の自動記録を満たす。消去は保存義務（2年）により保持期間中は不可＝記録簿を保持する要件に沿う。残差は documents / body_repair_jobs の更新差分と、保持期限後の消去経路＋その監査（OPEN_QUESTIONS）。
 
 ### （４）保管場所を定め施錠する等し、不正改ざんを防止 — ✅ 対応
 
@@ -181,7 +182,7 @@ PDF ダウンロード（`content-disposition: attachment`）により、使用�
 | # | ギャップ | 該当条項 | 区分 |
 | --- | --- | --- | --- |
 | G1 | 法定資格ロール（自動車検査員 / 整備主任者 / 起票入力）が権限体系に無い → ⚠️ **資格軸を追加（2026-10-02）**。強制・資格番号は後続 | 第２ ３（１）① | システム |
-| G2 | 更新箇所＋作業者の自動履歴が記録簿本体・帳票で不完全、**消去ログ未確認** | 第２ ２（３） | システム |
+| G2 | 更新箇所＋作業者の自動履歴が記録簿本体・帳票で不完全、消去ログ未確認 → ✅ **指定整備記録簿（inspection_records）の作成/更新を監査ログ化（2026-10-02）**。消去は2年保存で保持期間中は不可。documents/body_repair と保持期限後の消去経路＋監査は後続 | 第２ ２（３） | システム |
 | G3 | 電子交付方法の**事前承諾**を専用取得する仕組みが未実装 | 第２ ４（３） | システム |
 | G4 | **交付承諾の撤回**フローと撤回後の交付ブロックが未実装 | 第２ ４（４） | システム |
 | G5 | **指定整備記録簿の法定様式**出力が未確認（指定整備事業者を顧客に含める場合に必須の可能性） | 第２ １（４） | システム/要確認 |

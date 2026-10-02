@@ -7,6 +7,7 @@
  */
 
 import type { DeepfakeResult, DeepfakeVerdict } from "./types";
+import { tls13HttpsFetch } from "@/lib/net/tls13Fetch";
 
 export type DeepfakeProvider = "disabled" | "hive" | "sensity";
 
@@ -44,7 +45,7 @@ async function callHive(buffer: Buffer): Promise<DeepfakeResult> {
   const timeout = setTimeout(() => controller.abort(), HIVE_TIMEOUT_MS);
 
   try {
-    const res = await fetch("https://api.thehive.ai/api/v2/task/sync", {
+    const res = await tls13HttpsFetch("https://api.thehive.ai/api/v2/task/sync", {
       method: "POST",
       headers: { Authorization: `Token ${apiKey}` },
       body: form,

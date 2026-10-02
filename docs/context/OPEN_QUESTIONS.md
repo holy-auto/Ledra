@@ -3,6 +3,22 @@
 > まだ決まっていないこと、判断に迷っていることを書く場所。決まったら
 > DECISION_LOG.md に移し、このファイルからは消す（削除履歴は git で追える）。
 
+## G2 監査ログ: 指定整備記録簿の作成/更新は対応、消去経路と documents/body_repair が残る（2026-10-02）
+
+`inspection_records`（完成検査）の作成/更新を `audit_logs` に記録した（RELEASE_LOG 2026-10-02）。残り。
+
+1. **消去経路（保持期限後）**: 完成検査は `record_retention_until`＝2年保存で、保持期間中はアプリに消去経路を
+   持たない（保存義務に沿う）。保持期限後に管理者が消去できる経路を設けるなら、(a) `record_retention_until`
+   経過の確認を必須にし、(b) 消去を `logTenantAuditEvent`（`inspection_record_deleted`）で残すこと。
+   当初この PR で owner/admin 消去＋UI を入れたが、保持期間中は常にブロックされ無意味で保持義務とも衝突するため
+   撤回した（MISTAKE_LEDGER M-20261002-delete-ignored-legal-retention）。
+2. **documents / body_repair_jobs の更新差分履歴**: 証明書・inspection_records と同じ「更新箇所＋作業者」の
+   自動記録がまだ無い。`logTenantAuditEvent` ＋ `changedFields` を同じ形で入れるか、全テーブル共通の行トリガに
+   するかは設計判断。
+3. **保持期限 cron（`data-retention`）の横断監査**: cron は認証コード/セッション/通知ログ等の**非・記録簿**を
+   全テナント横断で削除する。`audit_logs.tenant_id` が NOT NULL なので単一行では残せない。テナント別に集計するか
+   cron 専用の削除サマリ表を設けるか未決（運用ログの充実・優先度中。記録簿の消去要件には無関係）。
+
 ## G1 法定資格ロール: 軸は追加したが「強制」と「資格情報の充実」が残る（2026-10-02）
 
 `staff_members.qualifications`（自動車検査員 / 整備主任者 / 起票入力担当）の軸を追加した
@@ -2144,14 +2160,23 @@ JST は夏時間が無いので日の加算は 24 時間の加算でよい。
         1. **クライアント→Supabase の直通信**: Web（`src/lib/supabase/client.ts`、`NEXT_PUBLIC_SUPABASE_URL`）と
            モバイル（`apps/mobile/src/lib/supabase.ts`）は Auth・PostgREST・Storage に Cloudflare を通らず直接つなぐ。
            §1.6 は Supabase を TOE 内としているのに、GPSA §2.5 と TOE 図にこの経路が無い。Supabase 側の最低 TLS 版は未確認
-           （代表の PC で `curl.exe -sI --tls-max 1.2 https://<project>.supabase.co` を見れば分かる）。
+           → **2026-10-02 実測: Supabase は TLS 1.2 を受け付ける**（代表の PC で `--tls-max 1.2` が exit 0・HTTP 401・`Server: cloudflare`）。
+           Supabase 側の最低版は当社で変えられない。代表の問い「Supabase 以外（AWS 等）にしないといけないか」→ 移行は不要の見込み。
+           候補は Administrator に O.5 の対象範囲を確認するか、クライアントの Supabase 通信を Backend 経由（tls13Fetch）に寄せるか。
+           Realtime（WebSocket）は Web・モバイルとも未使用なので、Backend 経由にする障害にはならない。
         2. **Cloudflare→Vercel の区間**: Full (strict) は証明書の検証で、最低 TLS 版の強制ではない。こちらからは版が見えず、
            Cloudflare に起点側の最低版を指定する設定があるかも未確認（この環境から Cloudflare の文書に届かない）。
-        3. **外部連携**: Hive（`anchoring/providers/deepfake.ts`）・Pinata（`anchoring/providers/c2pa.ts`）は素の `fetch`、
-           Polygon は viem の通常の通信で、TLS 1.2 にもなりうる。本番で有効かは未確認（設定次第）。
+        3. ~~**外部連携**~~ → **2026-10-02 対応**（代表了承）: Hive・Pinata・Polygon RPC を `tls13Fetch` 経由にした
+           （Polygon は providers 7箇所＋ `app/api/cron/polygon-signer` 1箇所。`integrationsTls13.test.ts` が viem を使う全ファイルを走査）。
+           (a) 連携先の TLS 1.3 対応は 2026-10-02 に代表の PC で確認済み（`curl.exe --tlsv1.3` で api.thehive.ai・api.pinata.cloud・
+           polygon-rpc.com とも exit 0）。本番の `POLYGON_RPC_URL` が別のホストなら、そのホストは未確認。残り:
+           (b) Polygon 署名を `aws-kms` にした場合の AWS SDK の通信は対象外（本番は `local` か未確認）。
+           (c) 写真 TSA（`photoTsa` → `parts/rfc3161` の素の fetch）は対象外。本番で無効・GPSA の連携一覧にも無い。有効にするなら直す。
         4. **写真アップロード以外の Backend 経路**（Codex 2回目の指摘）: 秘密ヘッダの照合は写真アップロードだけ。他の画面・API は
            `*.vercel.app` から TLS 1.2 で届く（Vercel の Deployment Protection を有効にしていなければ。有効かは未確認）。
            全経路で照合すると、Vercel Cron など `*.vercel.app` 宛ての内部呼び出しを止めるおそれがある（推定・未検証）。
+           → 2026-10-02 代表了承: まず Vercel の Deployment Protection を有効にし、本番の `*.vercel.app` URL が保護されるかを実測する。
+           QStash のコールバック先は `NEXT_PUBLIC_APP_URL` が最優先（未設定時のみ `VERCEL_URL`）。
       **代表判断待ち**: 送信済みの提出物をこのまま審査に出すか、訂正を追送するか。直し方（Supabase を TOE の外に出す／
       クライアントの Supabase 通信を Backend 経由に寄せる／現状を正直に書く）も製品・申請の判断。
       → **2026-10-02 再提出を送信**（代表の申告）。validate（jpeg/png/webp/heic）復活を依頼済み。
