@@ -4,6 +4,13 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-10-02 crJSON ハーネス: CAWG の日付検査も入力の検証時刻で行う
+
+- Codex 指摘（#1213）: CAWG の identity assertion（ICA 資格情報の `validFrom` / `validUntil`）だけがシステム時計で検査されていた。
+  `c2pa-0.90.22-harness.patch` に2ハンク追加（計12ハンク）し、`crypto::internal::time::utc_now`（`VALIDATION_TIME`）経由にした。
+- `setup.sh` は、パッチ後の crate に残る時計の直読みが「時計関数本体＋署名側2箇所」以外なら失敗する（crate 全体を走査）。
+  旧パッチ・走査先の欠落で失敗し、現パッチで通ることを確認。自己テスト6件は合格だが CAWG を含まないため、この経路は走査でだけ守っている。
+
 ## 2026-10-02 メーカー・車種が分からない車両でも証明書を発行できるようにした（`20261002120100`・**本番で実際に走る**）
 
 `vehicles.maker` / `model` の NOT NULL を外した。**アプリ側のコード変更は無い。**
@@ -35,11 +42,6 @@ insert が通り、かつ**両方 NULL で入る**ことを行を入れて確か
 現状に直した（同じ事実が2箇所に残る型 C を避けるため）。
 
 経緯は DECISION_LOG 2026-10-02。
-## 2026-10-02 crJSON ハーネス: CAWG の日付検査も入力の検証時刻で行う
-
-- Codex 指摘（#1213）: CAWG の identity assertion（ICA 資格情報の `validFrom` / `validUntil`）だけがシステム時計で検査されていた。
-  `c2pa-0.90.22-harness.patch` に2ハンク追加（計12ハンク）し、`crypto::internal::time::utc_now`（`VALIDATION_TIME`）経由にした。
-- `setup.sh` は `src/identity` に `Utc::now()` が残っていたら失敗する。旧パッチに当てて失敗すること（陰性対照）を確認。自己テスト6件合格。
 
 ## 2026-10-02 本番を Cloudflare 前段（最低 TLS 1.3）に切り替え（C2PA GPSA O.5）
 
