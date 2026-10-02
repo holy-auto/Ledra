@@ -3,6 +3,8 @@ import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { apiJson, apiValidationError, apiInternalError } from "@/lib/api/response";
 import { inspectionRecordCreateSchema, inspectionRecordUpdateSchema } from "@/lib/validations/inspection";
 import { retentionUntilYears } from "@/lib/retention";
+import { logTenantAuditEvent } from "@/lib/audit/tenantLog";
+import { changedFields } from "@/lib/inspection/auditDiff";
 
 import { withCaller } from "@/lib/api/withCaller";
 export const dynamic = "force-dynamic";
@@ -113,6 +115,17 @@ export const POST = withCaller(
         .single();
       if (error) return apiInternalError(error, "inspection-records POST");
 
+      // 作成の日時・作業者を監査ログに残す（第２ ２（３）/ G2）。失敗しても作成は止めない。
+      await logTenantAuditEvent(admin, {
+        tenantId: caller.tenantId,
+        userId: caller.userId,
+        action: "inspection_record_created",
+        table: "inspection_records",
+        recordId: (created as { id: string }).id,
+        extra: { inspection_type: rest.inspection_type, inspector_name: rest.inspector_name ?? null },
+        req,
+      });
+
       return apiJson({ ok: true, record: created }, { status: 201 });
     } catch (e) {
       return apiInternalError(e, "inspection-records POST");
@@ -125,31 +138,47 @@ export const POST = withCaller(
 export const PATCH = withCaller(
   async (req, { caller }) => {
     try {
-      const parsed = inspectionRecordUpdateSchema.safeParse(await req.json().catch(() => ({})));
+      const rawBody = await req.json().catch(() => ({}));
+      const parsed = inspectionRecordUpdateSchema.safeParse(rawBody);
       if (!parsed.success) {
         return apiValidationError(parsed.error.issues[0]?.message ?? "invalid payload");
       }
-      const { id, template_id, reservation_id, vehicle_id, customer_id, ...fields } = parsed.data;
+      const { id, ...rest } = parsed.data;
+      // **クライアントが実際に送ったキーだけ**を更新する（staff route と同じ方針）。
+      // Zod の optional 変換は未送信フィールドも null に化けさせるため、これを使わずに
+      // 送信キーで絞らないと、未送信の inspected_at(NOT NULL) で 23502、参照列の暗黙 null 消去を招く。
+      const sentKeys = new Set(
+        rawBody && typeof rawBody === "object" ? Object.keys(rawBody as Record<string, unknown>) : [],
+      );
 
       const { admin } = createTenantScopedAdmin(caller.tenantId);
 
+      // 参照整合は「送られた参照だけ」検証する（validateTenantRefs は null をスキップ）。
       const refError = await validateTenantRefs(admin, caller.tenantId, {
-        template_id: template_id ?? null,
-        reservation_id: reservation_id ?? null,
-        vehicle_id: vehicle_id ?? null,
-        customer_id: customer_id ?? null,
+        template_id: sentKeys.has("template_id") ? (rest.template_id ?? null) : null,
+        reservation_id: sentKeys.has("reservation_id") ? (rest.reservation_id ?? null) : null,
+        vehicle_id: sentKeys.has("vehicle_id") ? (rest.vehicle_id ?? null) : null,
+        customer_id: sentKeys.has("customer_id") ? (rest.customer_id ?? null) : null,
       });
       if (refError) return apiValidationError(refError);
 
-      // 部分更新: undefined のキーは送らない（null は明示的にクリア）。
+      // 部分更新: 送信された（かつ undefined でない）キーだけを書く。
       const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
-      for (const [k, v] of Object.entries(fields)) {
-        if (v !== undefined) updates[k] = v;
+      for (const [k, v] of Object.entries(rest)) {
+        if (sentKeys.has(k) && v !== undefined) updates[k] = v;
       }
-      if (template_id !== undefined) updates.template_id = template_id;
-      if (reservation_id !== undefined) updates.reservation_id = reservation_id;
-      if (vehicle_id !== undefined) updates.vehicle_id = vehicle_id;
-      if (customer_id !== undefined) updates.customer_id = customer_id;
+
+      // 更新箇所を監査ログに残すため、更新するフィールドの**更新前の値**を先に読む（第２ ２（３）/ G2）。
+      // 列は固定リテラルで持つ（check:schema が解決できるように）。差分は更新キーだけを対象にする。
+      const diffKeys = Object.keys(updates).filter((k) => k !== "updated_at");
+      const { data: before } = await admin
+        .from("inspection_records")
+        .select(
+          "id, inspection_type, answers, photo_urls, inspector_name, notes, inspected_at, template_id, reservation_id, vehicle_id, customer_id, template_name",
+        )
+        .eq("id", id)
+        .eq("tenant_id", caller.tenantId)
+        .maybeSingle();
 
       const { data: updated, error } = await admin
         .from("inspection_records")
@@ -161,6 +190,19 @@ export const PATCH = withCaller(
       if (error) return apiInternalError(error, "inspection-records PATCH");
       if (!updated) return apiValidationError("対象の点検記録が見つかりません。");
 
+      // 実際に変わったフィールドだけを前後値つきで記録（更新箇所＋作業者＋日時）。updated_at は除外。
+      const diffUpdates = Object.fromEntries(diffKeys.map((k) => [k, updates[k]]));
+      const changed = changedFields(before as Record<string, unknown> | null, diffUpdates);
+      await logTenantAuditEvent(admin, {
+        tenantId: caller.tenantId,
+        userId: caller.userId,
+        action: "inspection_record_updated",
+        table: "inspection_records",
+        recordId: id,
+        extra: { changed },
+        req,
+      });
+
       return apiJson({ ok: true, record: updated });
     } catch (e) {
       return apiInternalError(e, "inspection-records PATCH");
@@ -168,6 +210,13 @@ export const PATCH = withCaller(
   },
   { minRole: "staff", routeName: "inspection-records PATCH" },
 );
+
+// 消去（DELETE）は意図的に設けない。完成検査＝指定整備記録簿は record_retention_until で
+// 2年保存を課しており（POST 参照）、保持期間中の消去は規制（第２ ２（３）の「消去」ではなく
+// 第２ ２ の保存義務）に反する。保持期限後の削除は data-retention cron の領域。アプリに消去経路が
+// 無いこと自体が「記録簿を保持する」要件に沿う。将来、保持期限後の管理者消去を設けるなら、
+// record_retention_until を過ぎていることの確認と logTenantAuditEvent による消去記録を必須にする
+// （OPEN_QUESTIONS 参照）。
 
 /**
  * 指定された ID 群が caller のテナントに属するかを検証する。

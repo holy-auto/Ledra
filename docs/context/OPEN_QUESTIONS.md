@@ -3,6 +3,22 @@
 > まだ決まっていないこと、判断に迷っていることを書く場所。決まったら
 > DECISION_LOG.md に移し、このファイルからは消す（削除履歴は git で追える）。
 
+## G2 監査ログ: 指定整備記録簿の作成/更新は対応、消去経路と documents/body_repair が残る（2026-10-02）
+
+`inspection_records`（完成検査）の作成/更新を `audit_logs` に記録した（RELEASE_LOG 2026-10-02）。残り。
+
+1. **消去経路（保持期限後）**: 完成検査は `record_retention_until`＝2年保存で、保持期間中はアプリに消去経路を
+   持たない（保存義務に沿う）。保持期限後に管理者が消去できる経路を設けるなら、(a) `record_retention_until`
+   経過の確認を必須にし、(b) 消去を `logTenantAuditEvent`（`inspection_record_deleted`）で残すこと。
+   当初この PR で owner/admin 消去＋UI を入れたが、保持期間中は常にブロックされ無意味で保持義務とも衝突するため
+   撤回した（MISTAKE_LEDGER M-20261002-delete-ignored-legal-retention）。
+2. **documents / body_repair_jobs の更新差分履歴**: 証明書・inspection_records と同じ「更新箇所＋作業者」の
+   自動記録がまだ無い。`logTenantAuditEvent` ＋ `changedFields` を同じ形で入れるか、全テーブル共通の行トリガに
+   するかは設計判断。
+3. **保持期限 cron（`data-retention`）の横断監査**: cron は認証コード/セッション/通知ログ等の**非・記録簿**を
+   全テナント横断で削除する。`audit_logs.tenant_id` が NOT NULL なので単一行では残せない。テナント別に集計するか
+   cron 専用の削除サマリ表を設けるか未決（運用ログの充実・優先度中。記録簿の消去要件には無関係）。
+
 ## G1 法定資格ロール: 軸は追加したが「強制」と「資格情報の充実」が残る（2026-10-02）
 
 `staff_members.qualifications`（自動車検査員 / 整備主任者 / 起票入力担当）の軸を追加した
