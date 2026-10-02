@@ -4,6 +4,20 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-10-02 記録簿の写しの電子交付「事前承諾＋撤回＋撤回後ブロック」（G3/G4）
+
+- 内容: 電子交付の事前承諾（第２ ４（３））と撤回・撤回後の交付禁止（第２ ４（４））を、**記録簿の交付経路のみ**に
+  追加（代表判断で scope 確定）。見積/請求の送付 `documents/share` は**対象外**（非破壊）。
+- `delivery_consents`（顧客単位の granted/revoked・開示文言 hash・version・撤回者/経路）。定義源 `src/lib/delivery/deliveryConsent.ts`
+  （交付方法の開示文言カタログ＋純関数 `isElectronicDeliveryBlocked`＝撤回時のみ true）。
+- 承諾記録: 店舗 `POST/DELETE /api/admin/customers/:id/delivery-consent`（顧客詳細の「電子交付の承諾」パネル）。
+  撤回: 使用者本人 `POST /api/customer/delivery-consent/revoke`（顧客ポータルセッション）＋店舗代行 DELETE。
+- enforcement: 証明書＝記録簿の写しの電子交付（`certificates/:id/delivery-receipt-request` の受領サイン依頼メール）で、
+  当該顧客が**撤回済みなら 409 でブロック**。**未承諾のハードブロックは既定オフ**（既存交付を一斉に止めない非破壊既定。
+  厳格な事前承諾ゲートはテナント opt-in の後続）。顧客未紐付け証明書は顧客単位判定不可で従来どおり（後続）。
+- 注: `inspection_records`（指定整備記録簿）は現状アプリに顧客向け電子交付経路が無い（管理PDFのみ）ため対象は証明書交付。
+- 検証: `deliveryConsent` 純関数の単体テスト 4 件 / tsc・eslint（変更 0 error）・check:schema・lint:migrations 緑。
+
 ## 2026-10-02 指定整備記録簿（完成検査）の作成・更新を監査ログ化＋編集の既存不具合を修正（G2）
 
 - 内容: 点検整備記録簿の電子化基準（第２ ２（３））は作成・更新の日時／更新箇所／作業者の自動記録を求める。

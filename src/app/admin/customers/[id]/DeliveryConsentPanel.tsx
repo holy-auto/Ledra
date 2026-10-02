@@ -1,0 +1,120 @@
+"use client";
+
+import { useCallback, useEffect, useState } from "react";
+import { parseJsonSafe } from "@/lib/api/safeJson";
+
+/**
+ * 電子交付の事前承諾（G3）とその撤回（G4）の記録パネル。 [第２ ４（３）（４）]
+ *
+ * 記録簿の写し（証明書）を電磁的方法で交付する前に、使用者の承諾を取得・記録する。撤回されると
+ * 受領サイン依頼（電子交付）がブロックされる。見積/請求の送付（documents/share）は対象外。
+ */
+
+type ConsentState = "none" | "granted" | "revoked";
+type ConsentRow = {
+  status: "granted" | "revoked";
+  method: string | null;
+  granted_at: string | null;
+  revoked_at: string | null;
+  revoked_via: string | null;
+  note: string | null;
+} | null;
+
+const LABEL: Record<ConsentState, string> = {
+  none: "未承諾",
+  granted: "承諾済み",
+  revoked: "撤回済み（電子交付不可）",
+};
+
+export default function DeliveryConsentPanel({ customerId }: { customerId: string }) {
+  const [state, setState] = useState<ConsentState>("none");
+  const [row, setRow] = useState<ConsentRow>(null);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/admin/customers/${customerId}/delivery-consent`);
+      const j = await parseJsonSafe(res);
+      if (res.ok) {
+        setState((j?.status as ConsentState) ?? "none");
+        setRow((j?.consent as ConsentRow) ?? null);
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, [customerId]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  async function act(method: "POST" | "DELETE") {
+    setBusy(true);
+    setMsg(null);
+    try {
+      const res = await fetch(`/api/admin/customers/${customerId}/delivery-consent`, {
+        method,
+        headers: { "content-type": "application/json" },
+        body: method === "POST" ? JSON.stringify({ method: "メール/LINE/SMS/ダウンロード" }) : undefined,
+      });
+      const j = await parseJsonSafe(res);
+      if (!res.ok) throw new Error(j?.message ?? "処理に失敗しました。");
+      setMsg({ text: method === "POST" ? "承諾を記録しました。" : "撤回を記録しました。", ok: true });
+      await load();
+    } catch (e) {
+      setMsg({ text: e instanceof Error ? e.message : "処理に失敗しました。", ok: false });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const badgeClass =
+    state === "granted"
+      ? "bg-success/10 text-success-text"
+      : state === "revoked"
+        ? "bg-danger/10 text-danger-text"
+        : "bg-surface text-muted";
+
+  return (
+    <div className="mt-4 rounded-lg border border-border p-3">
+      <div className="flex items-center justify-between gap-2">
+        <div className="text-[11px] font-semibold tracking-[0.14em] text-muted uppercase">電子交付の承諾</div>
+        <span className={`rounded-full px-2 py-0.5 text-[11px] ${badgeClass}`}>
+          {loading ? "読み込み中…" : LABEL[state]}
+        </span>
+      </div>
+      <p className="mt-1 text-[11px] text-muted">
+        記録簿の写し（証明書）を電子的に交付する前の事前承諾です。撤回されると電子交付（受領サイン依頼）は
+        行えません。見積書・請求書の送付には影響しません。
+      </p>
+      {row?.revoked_at && (
+        <p className="mt-1 text-[11px] text-danger-text">
+          撤回: {new Date(row.revoked_at).toLocaleString("ja-JP")}（
+          {row.revoked_via === "customer" ? "お客様本人" : "店舗"}）
+        </p>
+      )}
+      {msg && <p className={`mt-1 text-[11px] ${msg.ok ? "text-success-text" : "text-danger-text"}`}>{msg.text}</p>}
+      <div className="mt-2 flex gap-2">
+        <button
+          type="button"
+          onClick={() => act("POST")}
+          disabled={busy || loading || state === "granted"}
+          className="btn-ghost text-xs disabled:opacity-50"
+        >
+          承諾を記録
+        </button>
+        <button
+          type="button"
+          onClick={() => act("DELETE")}
+          disabled={busy || loading || state === "revoked"}
+          className="text-xs text-danger-text underline disabled:opacity-50"
+        >
+          撤回を記録
+        </button>
+      </div>
+    </div>
+  );
+}
