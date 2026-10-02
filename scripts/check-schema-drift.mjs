@@ -61,7 +61,13 @@ import { execFileSync } from "node:child_process";
 import { readFileSync, readdirSync, rmSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve, join } from "node:path";
-import { bare, uniqueFromDump, constraintsFromDump, columnRowsFromDump } from "./lib/dumpParse.mjs";
+import {
+  bare,
+  uniqueFromDump,
+  constraintsFromDump,
+  columnRowsFromDump,
+  nullabilityDrift,
+} from "./lib/dumpParse.mjs";
 import { tmpdir } from "node:os";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -171,6 +177,18 @@ if (replayColTypes.get("tenants.id") !== "uuid") {
   console.error(
     "[drift] 型パーサの自己検査が落ちました: tenants.id の再生型が uuid と読めていません" +
       `（実際: ${replayColTypes.get("tenants.id") ?? "(拾えず)"}）。columnRowsFromDump を疑ってください。`,
+  );
+  process.exit(1);
+}
+
+// 列の NULL 可否（notnull）。再生側は columnRows から、本番側は後段の pg_attribute から取る。
+// **既知の1件で当たりを取る**（notnull パーサの陰性対照）: tenants.id は宣言 NOT NULL。
+// ここが true に読めないなら、正規表現が壊れて NOT NULL を取りこぼしている。
+const replayNotNull = new Map(columnRows.map((r) => [r.name, r.notnull]));
+if (replayNotNull.get("tenants.id") !== true) {
+  console.error(
+    "[drift] notnull パーサの自己検査が落ちました: tenants.id が NOT NULL と読めていません" +
+      `（実際: ${replayNotNull.get("tenants.id")}）。columnRowsFromDump の notnull を疑ってください。`,
   );
   process.exit(1);
 }
@@ -342,6 +360,19 @@ const prodEnumCols = (
   )
 ).map((r) => ({ col: String(r.col).toLowerCase(), enumtype: String(r.enumtype).toLowerCase() }));
 
+// 本番の列ごとの NOT NULL（attnotnull）。再生側の宣言 NOT NULL（replayNotNull）と突き合わせて
+// NULL 可否ドリフトを両方向で出す。主キーの暗黙 NOT NULL も attnotnull には含まれるが、
+// 再生側も主キー列は本番と同じく NOT NULL なので一致し、差にはならない。
+const prodNotNull = new Map(
+  (
+    await query(
+      "select c.relname||'.'||a.attname as col, a.attnotnull as notnull from pg_attribute a" +
+        " join pg_class c on c.oid=a.attrelid join pg_namespace n on n.oid=c.relnamespace" +
+        " where n.nspname='public' and c.relkind in ('r','p') and a.attnum>0 and not a.attisdropped",
+    )
+  ).map((r) => [String(r.col).toLowerCase(), r.notnull === true || r.notnull === "true"]),
+);
+
 // ── 4. 突き合わせ ───────────────────────────────────────────
 const LABEL = {
   table: "テーブル",
@@ -456,6 +487,28 @@ console.log(
 );
 for (const e of enumTypeDrift) {
   console.log(`         - ${e.col}: 本番 ${e.enumtype} / マイグレーション ${replayColTypes.get(e.col)}`);
+}
+
+// ── 列の NULL 可否ドリフト（本番 ⇄ 再生の NOT NULL の食い違い）: 報告のみ ──────────
+// 既存の列比較は「列名の有無」だけ（検出器の「ponytail: 上限その2」）。属性まで広げる宿題の
+// 第一歩として NULL 可否を両方向で出す（OPEN_QUESTIONS §88・§381「検出器を属性まで広げる」）。
+//
+// **落とさない（報告のみ）。** 型・既定値ドリフトと同じ扱い。既知の差はマイグレーション側で
+// 解消済み（§103-106）だが、本環境では Management API 秘密があっても本番の適用状況までは
+// 保証できないため、未適用のマイグレーション起因の差で**直しようのない赤**が居座るのを避ける。
+// ここを可視化しておけば、次に属性がずれたときに毎回の実行で一覧に現れる（宿題の
+// 「一度きりの手作業なので次にずれても誰も気づかない」を解消）。実害の向きには印を付ける。
+const { prodStrict, replayStrict } = nullabilityDrift(replayNotNull, prodNotNull, missingTables);
+console.log(
+  `\n[drift] 列の NULL 可否ドリフト: 本番 NOT NULL / 再生 NULL 可 ${prodStrict.length} 件` +
+    `（本番では no-op・新環境がゆるい）/ 再生 NOT NULL / 本番 NULL 可 ${replayStrict.length} 件` +
+    `（**実害**・報告のみ・落とさない）`,
+);
+for (const c of prodStrict) console.log(`         - ${c}（本番 NOT NULL / 再生 NULL 可）`);
+for (const c of replayStrict) {
+  console.log(
+    `         - ${c}（**再生 NOT NULL / 本番 NULL 可 —— 本番で通る INSERT が再生・プレビューで 23502**）`,
+  );
 }
 
 if (total > 0 || extraColumns.length > 0 || extraUnique.length > 0 || extraFk.length > 0) {
