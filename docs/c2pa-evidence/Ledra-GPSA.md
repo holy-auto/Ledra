@@ -206,8 +206,8 @@ signing), and Ledra's own pipeline code (`src/lib/certificateImages/*`, `src/lib
 #### 2.5.1 Assurance Level 1 & 2 Base Evidence (Backend class)
 
 1. **TLS & Cryptographic Protocols**:
-   - Web and mobile clients → Backend: HTTPS only, to `www.ledra.co.jp`, which is served through a
-     Cloudflare proxy configured with Minimum TLS Version 1.3. A client offering only TLS 1.2 or lower
+   - Web and mobile clients → Backend: HTTPS only, to the `ledra.co.jp` hosts (`app.ledra.co.jp`, `www.ledra.co.jp`),
+     which are served through a Cloudflare proxy configured with Minimum TLS Version 1.3. A client offering only TLS 1.2 or lower
      fails the handshake. Plain HTTP is redirected to HTTPS. Cloudflare forwards requests to the Vercel
      deployment over HTTPS with the origin certificate validated (SSL mode Full (strict)).
    - The photo upload endpoints, where C2PA generation starts, accept a request only if it carries a

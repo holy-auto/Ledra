@@ -2067,8 +2067,9 @@ JST は夏時間が無いので日の加算は 24 時間の加算でよい。
       手順書 `docs/c2pa-evidence/cloudflare-tls13-runbook.md`。コード側は写真アップロードに `viaTls13Edge`（`CF_ORIGIN_SECRET` の
       共有秘密ヘッダ照合、未設定なら無効）を追加済み — `*.vercel.app` 直アクセス（TLS 1.2 可）で TOE に入る抜け道を塞ぐ。
       ~~代表作業待ち: DNS 移管・Cloudflare 設定・Vercel 環境変数・切替後の TLS 1.2 拒否の確認。~~
-      → **2026-10-02 解決**: `www.ledra.co.jp` で TLS 1.2 は exit 35（拒否）、TLS 1.3 は 200（`Server: cloudflare`）を代表の PC で実測。
-      GPSA §1.6・§2.5 を書き直した。残る確認: 本番で写真アップロード（Web・モバイル）が 403 にならないこと、
+      → **2026-10-02 一部確認**: `www.ledra.co.jp` で TLS 1.2 は exit 35（拒否）、TLS 1.3 は 200（`Server: cloudflare`）を代表の PC で実測。
+      GPSA §1.6・§2.5 を書き直した。**残る確認: Web とモバイルが使う `app.ledra.co.jp` の TLS 1.2 拒否**（未確認）、
+      本番で写真アップロード（Web・モバイル）が 403 にならないこと、
       HTTP→HTTPS のリダイレクト。Cloudflare→Vercel 間の TLS バージョンはこちらから見えない（Full (strict) で検証付き HTTPS までは設定どおり）。
   - 代表が添付した画像4枚は Ledra の旧サンプルで、C2PA 指定ライブラリの素材ではない（ライブラリは引き続き未入手）。
   - **2026-09-29 ライブラリ入手**（代表が zip を添付）: 画像は jpg（Google Pixel 署名・証明書期限切れ）と png（Google 署名）のみ。
@@ -2085,7 +2086,7 @@ JST は夏時間が無いので日の加算は 24 時間の加算でよい。
     そのため本番では外部の署名はすべて `signingCredential.untrusted` になる（`interpretC2paValidation` は untrusted を致命扱いしない設計）。
     ハーネスは信頼リストを受け取るが、製品本体はそうなっていない。審査で「製品が Trust List で信頼を評価しているか」を
     問われうる（推定・未検証）。直すなら本番に C2PA Trust List（と TSA Trust List）を設定する＝製品挙動の変更なので代表判断。
-- ~~**TLS 1.2 の扱い（未確認）**~~ → 2026-10-02 解決（上の O.5 参照。Cloudflare で最低 TLS 1.3、TLS 1.2 拒否を実測）。
+- ~~**TLS 1.2 の扱い（未確認）**~~ → 2026-10-02 `www` は解決、`app.ledra.co.jp` は未確認（上の O.5 参照）。
 - **HEIC の GPS が残る（2026-09-27 実測で確定）**: sharp のプリビルドは HEVC を読めず（`heif: Support for this compression
   format has not been built in`）、`stripGpsAndReadExif` が原本フォールバックするため、HEIC は **GPS を含んだまま**
   署名・Storage 保存される（`assets` バケットは公開読み取り）。マニフェストは `c2pa.created` のみ・allActionsIncluded=false で
