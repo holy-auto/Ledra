@@ -4,6 +4,13 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-10-02 Ledra サイトの /news に「Japan Mobility Show Bizweek 2026」出展のお知らせを追加
+
+- 内容: `src/content/news/2026-10-03-japan-mobility-show-bizweek.mdx`（公開日は JST の 2026-10-03）。holy-inc.jp の告知と同じ
+  開催概要（会期 10/13〜16 10:00〜17:00・幕張メッセ 展示ホール2・3・小間 ZONE1 S-06・入場無料/事前登録制・主催 JAMA・
+  公式サイト https://www.japan-mobility-show.com/）に、Ledra の説明とお問い合わせ導線を付けた。
+- 展示の中身（デモ構成など）は未確定のため本文に書いていない。ロゴ画像はこのセッションに手元が無く未掲載。
+
 ## 2026-10-02 holy-inc.jp に「Japan Mobility Show Bizweek 2026」出展のお知らせを公開（holy-auto/holy-inc#14）
 
 - 内容: holy-inc.jp のお知らせに出展告知を追加（`/news/2026-10-japan-mobility-show-bizweek`）。トップのお知らせ・一覧・

@@ -8,7 +8,8 @@
 
 > 2026-10-02 追記（**Japan Mobility Show Bizweek 2026 に Ledra を出展**）: 会期 2026-10-13〜16・幕張メッセ
 > 展示ホール2・3、小間位置 ZONE1「滞らないシステムで、広がる安心。」S-06。出展内容は Ledra（代表回答）。
-> holy-inc.jp のお知らせで告知済み（holy-auto/holy-inc#14 マージ）。展示の具体的な構成・デモ内容は【要確認】。
+> holy-inc.jp のお知らせで告知済み（holy-auto/holy-inc#14 マージ）。Ledra サイトの `/news` にも同じ告知を MDX で追加
+> （`src/content/news/2026-10-03-japan-mobility-show-bizweek.mdx`、マージ後のデプロイで公開）。展示の具体的な構成・デモ内容は【要確認】。
 
 > 2026-10-02 追記（**メーカー・車種が分からない車両でも証明書を発行できる**）: 代表判断で
 > `vehicles.maker` / `model` の NOT NULL を外した（`20261002120100`）。発行のガードと画面は
