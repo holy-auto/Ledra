@@ -1279,6 +1279,27 @@ JS ラッパだけで成立するため、**ネイティブバイナリの dlope
   - 【要確認】のまま残るもの: **O.2（署名鍵）・O.1・O.5・O.6 と、各 Level 2 は今回読んでいない。**
     ギャップ分析 G4（鍵保管＝O.2）の「AL1 の具体要件は別文書＝要確認」は未解決。
     一次資料は手元に clone 済みなので、読めば片付く。
+  - **2026-10-02 決着（代表判断「黙って未署名はダメだ」、DECISION_LOG 同日）: ランタイムの
+    フェイルオープンは塞いだ。** ただし**依存区分の移動では塞がらなかった**ので、塞ぎ方が違う。
+    黙る出口は6本あり（署名器が作れない／出力バッファ無し／署名中の例外／`withTimeout` の
+    打ち切り／disabled／成功）、**失敗の4本すべてが disabled と同じ `DISABLED_RESULT` を
+    返していた**のが根だった。`C2paResult` に `failure` を足して区別できるようにし、
+    `processUploadedPhoto` が `C2PA_MODE=production` かつ failure のとき
+    **ストレージ書き込みの前に**保存を断るようにした（孤児ファイルを残さない）。
+    `dev-signed` は `console.error` を出して通す。
+  - **依存区分（`optionalDependencies` → `dependencies`）は、これとは別の未決として残る。**
+    上のゲートで「黙って」は消えたので、依存区分の論点は「ビルド不可環境で `npm ci` ごと
+    落とす代わりに、モジュール不在を早く知るか」だけになった。
+  - 【要確認】**本番（Vercel）で `@contentauth/c2pa-node` が実際にビルドできているか。**
+    できていなければ、`C2PA_MODE=production` にした瞬間に全アップロードが
+    `signer_unavailable` で断られる。**オンにする前に本番環境での読み込み可否を確かめること。**
+    先行検査を入れたので、落ちるとしても「1枚も保存されず 503」という分かる形になる。
+  - 【要確認】**HEIC を c2pa-node が署名できるか。** `validateMagicBytes` は `image/heic` を受け、
+    管理画面の `accept` にも入っているが、`c2paSignValidate.test.ts` は jpeg/png/webp しか見ていない。
+    `stripGpsAndReadExif` は `toFormat` を指定しないので入力形式のまま署名へ渡る。
+    署名できない場合、**本番オン後に iPhone 既定の HEIC が全部 503 になる**（以前は黙って
+    未署名で保存されていた）。手元の sharp の heif は avif 専用で HEIC を作れず検証できなかったので、
+    **実機で撮った HEIC で確かめること。**
 - **未決（今回の変更で残ったもう1つ）**: `providers.test.ts` の
   「c2pa-node が無ければ graceful-degradation の契約だけを見る」分岐。
   これは skip ではなく実際に assert しているので沈黙ではないが、**強い検証が
