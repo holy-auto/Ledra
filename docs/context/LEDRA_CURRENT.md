@@ -35,8 +35,9 @@
 > （`dev-signed` はログを出して通す）。**2026-10-03 訂正: ここには「判定はストレージ書き込みの前なので
 > 孤児ファイルは残らない」と書いていたが、副作用をストレージだけで数えた言い方だった。** ストレージには
 > 確かに残らないが、`signC2pa` は `anchorToPolygon` と同じ `Promise.all`（`providers/index.ts:63`）で走るので、
-> 署名器の有無以外の失敗（署名中の例外・タイムアウト）で断る時点では **Polygon のオンチェーン送信は済んでおり
-> 取り消せない**。だから本番モードは署名器の先行検査を nonce・sharp・TSA・Polygon・ストレージより前に置いてある
+> 署名器の有無以外の失敗（署名中の例外・タイムアウト）で断る時点では、Polygon のアンカリングが有効（`POLYGON_ANCHOR_ENABLED=true`）で鍵とコントラクトが設定されている場合は**オンチェーン送信が済んでおり取り消せない**
+> （無効・未設定・SHA-256 不正なら `anchorToPolygon` は送信前に返る: `polygon.ts:116` / `:119` / `:125`）。
+> だから本番モードは署名器の先行検査を nonce・sharp・TSA・Polygon・ストレージより前に置いてある
 > （MISTAKE_LEDGER `M-20261002-checked-one-side-effect-and-called-it-no-orphans`）。
 > **現状、本番の C2PA はまだ稼働していない**（`C2PA_MODE` 未設定＝disabled）ので現場への影響は無く、
 > 本番証明書を入れてオンにした日から効く。**未確認**: 本番（Vercel）で `@contentauth/c2pa-node` が
