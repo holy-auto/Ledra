@@ -1285,8 +1285,15 @@ JS ラッパだけで成立するため、**ネイティブバイナリの dlope
     打ち切り／disabled／成功）、**失敗の4本すべてが disabled と同じ `DISABLED_RESULT` を
     返していた**のが根だった。`C2paResult` に `failure` を足して区別できるようにし、
     `processUploadedPhoto` が `C2PA_MODE=production` かつ failure のとき
-    **ストレージ書き込みの前に**保存を断るようにした（孤児ファイルを残さない）。
+    **ストレージ書き込みの前に**保存を断るようにした。
     `dev-signed` は `console.error` を出して通す。
+    **2026-10-03 訂正: ここには「（孤児ファイルを残さない）」と書いていたが、副作用をストレージだけで
+    数えた言い方で、出荷した設計とも違う。** `signC2pa` は `anchorToPolygon` と同じ `Promise.all` で走るため
+    署名例外・タイムアウトで断る時点では、Polygon のアンカリングが有効（`POLYGON_ANCHOR_ENABLED=true`）で鍵とコントラクトが設定されている場合は**オンチェーン送信が済んでおり取り消せない**（無効・未設定・SHA-256 不正なら `anchorToPolygon` は送信前に返る: `polygon.ts:116` / `:119` / `:125`）。そのため実装は
+    `/code-review` の指摘を受けて2段構えになった —— **本番は署名器の有無を nonce・sharp・TSA・Polygon・
+    ストレージより前に先行検査して全体を 503**、写真ごとの失敗は `c2paRefused` を立てて**一部成功でも 422 で
+    何枚目が欠けたか**を返す（`uploadHandler` は `uploaded === 0` のときしか失敗を表に出さなかった）。
+    2026-10-03 に `main` へマージ（squash `e9dbb95e`・PR #1209）。
   - **依存区分（`optionalDependencies` → `dependencies`）は、これとは別の未決として残る。**
     上のゲートで「黙って」は消えたので、依存区分の論点は「ビルド不可環境で `npm ci` ごと
     落とす代わりに、モジュール不在を早く知るか」だけになった。

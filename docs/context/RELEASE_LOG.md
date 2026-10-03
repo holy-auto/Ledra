@@ -183,8 +183,13 @@ insert が通り、かつ**両方 NULL で入る**ことを行を入れて確か
 ## 2026-10-02 本番の C2PA 署名が失敗したら写真を保存せずに断る（黙って未署名にしない）
 
 - 内容: 署名の失敗を結果の型で表現できるようにし、`C2PA_MODE=production` で失敗したら
-  **ストレージ書き込みの前に**アップロードを断る。`{ ok: false, code: "internal_error" }` を返すので
-  既存のアップロード経路（cookie / モバイル Bearer）がそのまま人の読めるメッセージを出す。
+  **ストレージ書き込みの前に**アップロードを断る。`{ ok: false, code: "internal_error", c2paRefused: true }` を返す。
+  **2026-10-03 訂正: この行には当初「既存のアップロード経路（cookie / モバイル Bearer）がそのまま人の読める
+  メッセージを出す」と書いていたが、誤り。** `uploadHandler` は写真ごとの失敗を `uploaded === 0` のときしか
+  表に出さないので、既存の経路では一部成功が HTTP 200 で通り、断ったことが誰にも伝わらなかった。
+  下の「`/code-review` で設計を訂正」の (2) がこれで、`c2paRefused` の集約（422）は**そのために足したコード**
+  である。PR 本文は訂正したのに、同じ理解で書いたこの行を直していなかった
+  （MISTAKE_LEDGER `M-20261003-fixed-the-pr-body-and-left-the-business-logs-wrong`）。
 - 根（症状ではなく）: `signC2pa` の失敗出口4本（署名器が作れない／出力バッファ無し／署名中の例外）と
   `providers/index.ts` の `withTimeout` の打ち切りが、**すべて `C2PA_MODE=disabled` と同じ
   `DISABLED_RESULT` を返していた**。呼び出し側は「意図的にオフ」と「試して失敗」を区別できず、
@@ -195,8 +200,11 @@ insert が通り、かつ**両方 NULL で入る**ことを行を入れて確か
   `ponytail:` コメントで天井と切り替え方を明記。
 - 検証: ゲートのテストを追加（`c2paProductionGate.test.ts`）。`admin` を**触ったら落ちるスタブ**に
   してあるので、「断る」だけでなく**ストレージ/DB に書く前に断っている**ことまで見る。
-  2つの変異で当たりを取った —— ゲートの条件を無効化すると爆発スタブで落ち、署名失敗を
-  `DISABLED_RESULT` に戻すと `providers.test.ts` の「disabled と区別できる」が落ちる。
+  **3つの変異で当たりを取った** —— ゲートの条件を無効化すると爆発スタブで落ち、署名失敗を
+  `DISABLED_RESULT` に戻すと `providers.test.ts` の「disabled と区別できる」が落ち、ゲートを**広げる**
+  （mode 条件を外す）と dev-signed のテストが落ちる。
+  （2026-10-03 訂正: 当初ここを「2つ」と書いていた。3つ目は下の「テストの追加」で書き直した変異そのもので、
+  同じエントリの中で数が食い違っていた。）
   CI 並列チェック9本すべて緑。
 - **`/code-review` で設計を訂正（同日）**: ゲートをストレージ書き込みの直前に置くだけでは、
   (1) 同じ `Promise.all` の `anchorToPolygon` が既にオンチェーン送信を終えており不可逆、
@@ -219,6 +227,9 @@ insert が通り、かつ**両方 NULL で入る**ことを行を入れて確か
 - 【要確認】**HEIC の署名**: iPhone 既定の HEIC で c2pa-node が署名できるかはリポジトリのどのテストも
   見ていない（手元の sharp の heif は avif 専用で HEIC を作れず検証不可）。署名できない場合、
   本番オン後に HEIC が全部 503 になる。オン前に実機 HEIC で確かめること。
+- **2026-10-03 `main` にマージ（squash `e9dbb95e`・PR #1209）。** マージ時点で CI 10 本緑
+  （9 success ＋ Supabase Preview skipped）、`mergeable_state: clean`。マージ直前に数え直して
+  MISTAKE_LEDGER 2件・変更13ファイルを確認した。
 
 
 ## 2026-10-02 完成検査の外部テスタ測定値 汎用 CSV 取込 UI（G5 Phase 2）
