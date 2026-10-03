@@ -2203,7 +2203,11 @@ JST は夏時間が無いので日の加算は 24 時間の加算でよい。
       タイムスタンプ時点で判定するため）。Google 署名の png も同様に Trusted。Ledra のテスト証明書のサンプルは untrusted のまま。
     - **今の本番の不具合**: `interpretC2paValidation` は `expired` を致命とするので、本物の Pixel 写真が `external_c2pa_verified=false`
       になり、管理画面の改ざん検知パネルに「外部C2PA署名が無効 (撮影後改変の疑い)」と出る（推定: 期限切れ証明書の端末写真すべて）。
-    **代表判断待ち**: 本番に設定するか（製品挙動の変更。外部の署名が trusted 表示に変わる）。リストの更新手順も要る。
+    ~~**代表判断待ち**: 本番に設定するか~~ → **2026-10-03 代表了承（「つづき」）で実装**: 公式リスト2つを
+    `src/lib/anchoring/c2paTrustList.generated.ts` に同梱し、`verifyExternalC2pa` と署名時の ingredient 検証（`Builder.withJsonAsync`）・
+    原本の読み取りに `Context` で渡す。実関数で Pixel 写真が verified=false → true に変わることを確認。
+    残り: (a) リストの更新は手動（`node scripts/update-c2pa-trust-list.mjs`）。定期更新の仕組みは無い。
+    (b) 署名者と TSA を1つの信頼ストアで見る（c2pa-rs 0.90.22 の制約。TSA のルートが署名者の信頼にも数えられうる）。
   - **本番の検証は C2PA Trust List を使っていない（2026-09-29 判明・未判断）**: `verifyExternalC2pa` と ingredient 取り込み時の
     検証（`signC2pa` 内の `addIngredient` / `Reader.fromAsset`）は c2pa-rs を既定設定で呼んでおり、信頼アンカーを渡していない。
     そのため本番では外部の署名はすべて `signingCredential.untrusted` になる（`interpretC2paValidation` は untrusted を致命扱いしない設計）。

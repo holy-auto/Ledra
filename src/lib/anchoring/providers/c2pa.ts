@@ -262,7 +262,9 @@ export async function signC2pa(
     const signer = await createC2paSigner(mode);
     if (!signer) return DISABLED_RESULT;
 
-    const { Builder, Reader } = await import("@contentauth/c2pa-node");
+    const { Builder, Reader, Context } = await import("@contentauth/c2pa-node");
+    const { C2PA_TRUST_SETTINGS } = await import("../c2paTrust");
+    const trust = new Context(C2PA_TRUST_SETTINGS);
 
     // Seal the capture context into the manifest (com.ledra.capture): which
     // certificate/vehicle this photo is for, the single-use capture nonce, and the
@@ -284,24 +286,27 @@ export async function signC2pa(
     // The actions ledger lists only the transforms that took effect (see buildActions);
     // the Conformance Program (Additional Conformance Requirements v0.2) requires
     // allActionsIncluded, and claim_generator_info.specVersion matching the CPL record.
-    // マニフェスト定義から作るには静的ファクトリ `Builder.withJson(...)` を使う
-    // （旧 `new Builder({...})` は addAssertion 時に neon downcast エラーで fail-open した）。
-    const builder = Builder.withJson({
-      claim_generator_info: [
-        { name: CLAIM_GENERATOR_NAME, version: CLAIM_GENERATOR_VERSION, specVersion: SPEC_VERSION },
-      ],
-      title: MANIFEST_TITLE,
-      assertions: [
-        {
-          label: "c2pa.actions",
-          created: true,
-          data: { actions: buildActions(outcome), allActionsIncluded: ALL_ACTIONS_INCLUDED },
-        },
-        ...(bindingEntries.length > 0
-          ? [{ label: "com.ledra.capture", created: true, data: Object.fromEntries(bindingEntries) }]
-          : []),
-      ],
-    });
+    // マニフェスト定義から作るには静的ファクトリを使う（旧 `new Builder({...})` は addAssertion 時に
+    // neon downcast エラーで fail-open した）。Trust List 付きの Context で、原本の ingredient を検証する。
+    const builder = await Builder.withJsonAsync(
+      {
+        claim_generator_info: [
+          { name: CLAIM_GENERATOR_NAME, version: CLAIM_GENERATOR_VERSION, specVersion: SPEC_VERSION },
+        ],
+        title: MANIFEST_TITLE,
+        assertions: [
+          {
+            label: "c2pa.actions",
+            created: true,
+            data: { actions: buildActions(outcome), allActionsIncluded: ALL_ACTIONS_INCLUDED },
+          },
+          ...(bindingEntries.length > 0
+            ? [{ label: "com.ledra.capture", created: true, data: Object.fromEntries(bindingEntries) }]
+            : []),
+        ],
+      },
+      trust,
+    );
     // The uploaded original is the parentOf ingredient that c2pa.opened references.
     // c2pa-rs records its hash, format and a pixel-derived thumbnail (no EXIF/GPS),
     // and — if the original carries C2PA — its manifest plus validation results.
@@ -314,7 +319,7 @@ export async function signC2pa(
     // which would bypass the EXIF/GPS removal. Redact every metadata-type assertion of the
     // ingredient's manifest store (C2PA redaction; c2pa-rs adds the c2pa.redacted action).
     // A read error is not swallowed: signing then fails closed (unsigned, not leaking).
-    const parentStore = (await Reader.fromAsset({ buffer: original, mimeType: mime }))?.json();
+    const parentStore = (await Reader.fromAsset({ buffer: original, mimeType: mime }, trust))?.json();
     for (const uri of metadataAssertionUris(parentStore)) builder.addRedaction(uri, "c2pa.PII.present");
 
     const input = { buffer, mimeType: mime };

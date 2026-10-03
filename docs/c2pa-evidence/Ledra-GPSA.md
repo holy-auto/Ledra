@@ -107,7 +107,8 @@ entirely in the Backend hosting environment. Clients are outside the TOE and onl
 2. Claim validation — still image media types: `image/jpeg`, `image/png`, `image/webp`, `image/heic`.
    Every uploaded file is ingested as the parentOf ingredient; when it carries a C2PA manifest, c2pa-rs
    validates that manifest during claim generation and records it with its validation results in the
-   ingredient assertion. For the Program's test inputs (Additional Requirement §2.3), the same engine
+   ingredient assertion. Trust is evaluated against the official C2PA Trust List and TSA Trust List,
+   which ship with the Backend (`src/lib/anchoring/c2paTrustList.generated.ts`). For the Program's test inputs (Additional Requirement §2.3), the same engine
    runs in a test harness that takes an asset, a C2PA Trust List, a TSA Trust List and a validation time,
    and outputs the validation results in crJSON (`tools/c2pa-crjson-harness`).
 
