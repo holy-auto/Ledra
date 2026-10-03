@@ -69,6 +69,10 @@
 > 2026-10-01 追記（C2PA 並行2案の整理）: 代表決定で、ingredient は #1173 方式（原本ごと＋redaction）、
 > Backend→Supabase の TLS 1.3 強制は #1183 の `tls13Fetch` を #1173 に取り込んだ。#1183 は 2026-10-02 に代表指示でクローズ（文言修正は #1198 で main 済み）。
 > 2026-10-02 再提出用サンプル a〜d を現行コードで再生成（4枚とも Valid・untrusted のみ・GPS なし）。zip `Ledra-C2PA-Resubmission-20261002-UNVERIFIED.zip` を代表へ渡した。**未送信**。
+> **2026-10-02 追記（適合審査）: Administrator から「validate の申告を戻した。アーキテクチャは適合チェックに合格。これ以上は不要」と返信**
+> （代表が転送）。あわせて「生成製品が C2PA の CA・TSA Trust List を参照する設定になっていない。参照すれば TRUSTED の判定になる」
+> との助言（添付画像は Claude からは見えていない）。送信後に見つけた O.5 の穴（#1215 で外部連携は対応済み）について訂正の追送は不要と判断。
+> 次の論点は Trust List の本番設定（OPEN_QUESTIONS）と、適合後の本番署名証明書の取得。
 > 2026-10-02 追記: #1173 は main にマージ済み（c4cc5816）。`www.ledra.co.jp` は Cloudflare 経由（`Server: cloudflare`）になり、
 > 代表の PC から `curl --tls-max 1.2` は exit 35（ハンドシェイク失敗）、`--tlsv1.3` は 200 を確認＝**TLS 1.2 拒否を実測**。
 > GPSA §1.6・§2.5（O.5）・TOE 図を Cloudflare 前段の構成で書き直した。Web とモバイルが使う `app.ledra.co.jp` も同日確認: TLS 1.2 は exit 35、TLS 1.3 は 200・`Server: cloudflare`、
