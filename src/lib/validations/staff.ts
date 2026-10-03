@@ -60,6 +60,42 @@ const nullableRate = z
   .optional()
   .transform((v) => (v == null || isNaN(v) ? null : v));
 
+// ponytail: body-repair-job.ts にも同型の isRealCalendarDate がある。7 行の自己完結ロジックなので
+//   本コンプラ PR では無関係ファイルを触らず複製する。3 箇所目が出たら共通 util へ寄せる。
+function isRealYmd(s: string): boolean {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+  if (!m) return false;
+  const [y, mo, d] = [Number(m[1]), Number(m[2]), Number(m[3])];
+  const dt = new Date(Date.UTC(y, mo - 1, d));
+  return dt.getUTCFullYear() === y && dt.getUTCMonth() === mo - 1 && dt.getUTCDate() === d;
+}
+
+/**
+ * 法定資格の番号・有効期限（任意）。保有の有無は qualifications（text[]）が源泉で、ここは属性のみ。
+ * qualification は統制語彙キー（fail-closed）。保存時にスタッフ単位で一括置換する（staff route）。
+ */
+const qualificationDetailSchema = z.object({
+  qualification: z.string().trim().refine(isStaffQualificationKey, { message: "未知の資格キーです。" }),
+  number: nullableText(60),
+  expires_on: z
+    .union([
+      z
+        .string()
+        .trim()
+        .regex(/^\d{4}-\d{2}-\d{2}$/, "有効期限は YYYY-MM-DD 形式で入力してください。"),
+      z.literal(""),
+      z.null(),
+    ])
+    .optional()
+    .transform((v) => (v ? v : null))
+    .refine((v) => v === null || isRealYmd(v), { message: "存在しない日付です。" }),
+});
+const qualificationDetailsArray = z
+  .array(qualificationDetailSchema)
+  .max(STAFF_QUALIFICATIONS.length * 4)
+  .optional();
+export type QualificationDetailInput = z.infer<typeof qualificationDetailSchema>;
+
 export const staffCreateSchema = z.object({
   name: z.string().trim().min(1, "名前は必須です。").max(100),
   kind: z.enum(["internal", "external"]).default("internal"),
@@ -68,6 +104,7 @@ export const staffCreateSchema = z.object({
   phone: nullableText(50),
   skills: skillsArray,
   qualifications: qualificationsArray,
+  qualification_details: qualificationDetailsArray,
   color: nullableText(20),
   note: nullableText(1000),
   is_active: z.boolean().default(true),

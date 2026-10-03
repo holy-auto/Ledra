@@ -1,10 +1,11 @@
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 
-import { apiJson, apiValidationError, apiInternalError } from "@/lib/api/response";
+import { apiJson, apiError, apiValidationError, apiInternalError } from "@/lib/api/response";
 import { inspectionRecordCreateSchema, inspectionRecordUpdateSchema } from "@/lib/validations/inspection";
 import { retentionUntilYears } from "@/lib/retention";
 import { logTenantAuditEvent } from "@/lib/audit/tenantLog";
 import { changedFields } from "@/lib/inspection/auditDiff";
+import { evaluateCompletionInspectorGate } from "@/lib/staff/inspectorQualification";
 
 import { withCaller } from "@/lib/api/withCaller";
 export const dynamic = "force-dynamic";
@@ -17,6 +18,7 @@ export const runtime = "nodejs";
 const SELECT_COLUMNS = `
   id, template_id, reservation_id, vehicle_id, customer_id, inspection_type,
   answers, photo_urls, template_name, template_items, inspector_name,
+  inspector_staff_id, inspector_qualification_snapshot,
   inspected_at, notes, record_retention_until, created_at, updated_at,
   vehicle:vehicles ( id, maker, model, plate_display ),
   template:inspection_templates ( id, name ),
@@ -71,8 +73,25 @@ export const POST = withCaller(
         reservation_id,
         vehicle_id,
         customer_id,
+        inspector_staff_id: rest.inspector_staff_id,
       });
       if (refError) return apiValidationError(refError);
+
+      // 完成検査（指定整備記録簿）の実施者資格ゲート（G1/#1）。テナントが opt-in していれば
+      // 実施者が有効な自動車検査員であることを必須化（fail-closed）。実施者の資格は実施時点の
+      // スナップショットとして記録簿に残す（G1/#3）。既定（未 opt-in）は非破壊で通す。
+      let inspectorSnapshot: unknown = null;
+      if (rest.inspection_type === "completion") {
+        const gate = await evaluateCompletionInspectorGate(admin, caller.tenantId, rest.inspector_staff_id);
+        if (gate.blocked) {
+          return apiError({
+            code: "conflict",
+            message: gate.message ?? "実施者資格の要件を満たしません。",
+            status: 409,
+          });
+        }
+        inspectorSnapshot = gate.snapshot;
+      }
 
       // template_id が指定されていれば、履歴保全のためテンプレ名 / 項目を snapshot する。
       let templateName: string | null = null;
@@ -106,6 +125,8 @@ export const POST = withCaller(
           template_name: templateName,
           template_items: templateItems,
           inspector_name: rest.inspector_name,
+          inspector_staff_id: rest.inspector_staff_id,
+          inspector_qualification_snapshot: inspectorSnapshot,
           inspected_at: inspected_at ?? new Date().toISOString(),
           notes: rest.notes,
           // 完成検査＝指定整備記録簿は2年保存。データ保持 cron はこの日付前に消さない。
@@ -159,6 +180,7 @@ export const PATCH = withCaller(
         reservation_id: sentKeys.has("reservation_id") ? (rest.reservation_id ?? null) : null,
         vehicle_id: sentKeys.has("vehicle_id") ? (rest.vehicle_id ?? null) : null,
         customer_id: sentKeys.has("customer_id") ? (rest.customer_id ?? null) : null,
+        inspector_staff_id: sentKeys.has("inspector_staff_id") ? (rest.inspector_staff_id ?? null) : null,
       });
       if (refError) return apiValidationError(refError);
 
@@ -174,11 +196,40 @@ export const PATCH = withCaller(
       const { data: before } = await admin
         .from("inspection_records")
         .select(
-          "id, inspection_type, answers, photo_urls, inspector_name, notes, inspected_at, template_id, reservation_id, vehicle_id, customer_id, template_name",
+          "id, inspection_type, answers, photo_urls, inspector_name, inspector_staff_id, notes, inspected_at, template_id, reservation_id, vehicle_id, customer_id, template_name",
         )
         .eq("id", id)
         .eq("tenant_id", caller.tenantId)
         .maybeSingle();
+
+      // 完成検査の実施者資格ゲート（G1/#1・#3）。ゲートは「実施者を設定/変更するとき」か
+      // 「この更新で初めて completion になるとき」だけ効かせる。無関係な項目（notes 等）の編集では
+      // 効かせない —— 作成時に検証済みの記録を再ブロックしない（実施者の資格が後で失効しても過去の
+      // 記録の編集を妨げない）し、inspector_qualification_snapshot を現在値で上書きしない
+      // （実施時点のスナップショット＝「後の資格変更に影響されない記録」を保つ）。
+      const beforeRow = before as { inspection_type?: string; inspector_staff_id?: string | null } | null;
+      const isCompletion =
+        (sentKeys.has("inspection_type") ? rest.inspection_type : beforeRow?.inspection_type) === "completion";
+      const changingInspector = sentKeys.has("inspector_staff_id");
+      const becameCompletion =
+        sentKeys.has("inspection_type") &&
+        rest.inspection_type === "completion" &&
+        beforeRow?.inspection_type !== "completion";
+      if (isCompletion && (changingInspector || becameCompletion)) {
+        const effectiveStaffId = changingInspector
+          ? (rest.inspector_staff_id ?? null)
+          : (beforeRow?.inspector_staff_id ?? null);
+        const gate = await evaluateCompletionInspectorGate(admin, caller.tenantId, effectiveStaffId);
+        if (gate.blocked) {
+          return apiError({
+            code: "conflict",
+            message: gate.message ?? "実施者資格の要件を満たしません。",
+            status: 409,
+          });
+        }
+        // 実施者が変わった/新たに completion になった時点の資格を記録する（再計算はこの時だけ）。
+        updates.inspector_qualification_snapshot = gate.snapshot;
+      }
 
       const { data: updated, error } = await admin
         .from("inspection_records")
@@ -230,6 +281,7 @@ async function validateTenantRefs(
     reservation_id?: string | null;
     vehicle_id?: string | null;
     customer_id?: string | null;
+    inspector_staff_id?: string | null;
   },
 ): Promise<string | null> {
   const checks: { table: string; id: string | null | undefined; label: string }[] = [
@@ -237,6 +289,7 @@ async function validateTenantRefs(
     { table: "reservations", id: refs.reservation_id, label: "予約" },
     { table: "vehicles", id: refs.vehicle_id, label: "車両" },
     { table: "customers", id: refs.customer_id, label: "顧客" },
+    { table: "staff_members", id: refs.inspector_staff_id, label: "検査実施者" },
   ];
   for (const c of checks) {
     if (!c.id) continue;

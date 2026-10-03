@@ -33,9 +33,12 @@ import {
 export type CompletionEditRecord = {
   id: string;
   inspector_name: string | null;
+  inspector_staff_id: string | null;
   notes: string | null;
   answers: Record<string, { value?: unknown }> | null;
 };
+
+type PickerStaff = { id: string; name: string; qualifications: string[]; is_active: boolean };
 
 interface Props {
   reservationId: string;
@@ -76,6 +79,8 @@ export default function CompletionInspectionForm({
   const isEdit = !!editRecord;
   const [form, setForm] = useState<IndicatedInspectionForm>(() => resolveFormFromAnswers(editRecord?.answers ?? null));
   const [inspectorName, setInspectorName] = useState(editRecord?.inspector_name ?? "");
+  const [inspectorStaffId, setInspectorStaffId] = useState<string>(editRecord?.inspector_staff_id ?? "");
+  const [staffList, setStaffList] = useState<PickerStaff[]>([]);
   const [notes, setNotes] = useState(editRecord?.notes ?? "");
   const [cells, setCells] = useState<Record<string, Cell>>({});
   // 読み込んだ測定値の来歴（code→'manual'|'imported'）。保存時に取込分を manual に化けさせないため保持。
@@ -147,6 +152,23 @@ export default function CompletionInspectionForm({
       cancelled = true;
     };
   }, [editRecord, reloadMeasurements]);
+
+  // 実施者ピッカー用のスタッフ一覧（最小・PII なし）。資格の有無を表示し、自動車検査員を選びやすくする。
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/admin/staff/picker");
+        const json = await res.json().catch(() => null);
+        if (!cancelled && res.ok && Array.isArray(json?.staff)) setStaffList(json.staff as PickerStaff[]);
+      } catch {
+        // 取得失敗時は従来どおり氏名の自由入力で続行（ピッカーは任意の補助）。
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const fields = useMemo(() => measurementFieldsForForm(form), [form]);
   const groups = useMemo(() => {
@@ -242,6 +264,7 @@ export default function CompletionInspectionForm({
             customer_id: customerId ?? null,
             inspection_type: "completion",
             inspector_name: inspectorName || null,
+            inspector_staff_id: inspectorStaffId || null,
             notes: notes || null,
             answers,
           }),
@@ -256,7 +279,13 @@ export default function CompletionInspectionForm({
         const patchRes = await fetch("/api/admin/inspection-records", {
           method: "PATCH",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ id, answers, inspector_name: inspectorName || null, notes: notes || null }),
+          body: JSON.stringify({
+            id,
+            answers,
+            inspector_name: inspectorName || null,
+            inspector_staff_id: inspectorStaffId || null,
+            notes: notes || null,
+          }),
         });
         const patchJson = await patchRes.json().catch(() => ({}));
         if (!patchRes.ok) throw new Error(patchJson?.message ?? "記録の更新に失敗しました。");
@@ -309,12 +338,39 @@ export default function CompletionInspectionForm({
 
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         <label className="text-xs text-secondary">
+          検査実施者（スタッフ）
+          <select
+            value={inspectorStaffId}
+            onChange={(e) => {
+              const id = e.target.value;
+              setInspectorStaffId(id);
+              // 選択時は氏名を当該スタッフ名で補完する（記録簿の実施者名と資格スナップショットを一致させる）。
+              const s = staffList.find((x) => x.id === id);
+              if (s) setInspectorName(s.name);
+            }}
+            className="input mt-1 w-full text-sm"
+          >
+            <option value="">（選択しない / 外注・氏名のみ入力）</option>
+            {staffList.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name}
+                {s.qualifications?.includes("vehicle_inspector") ? "（自動車検査員）" : ""}
+                {s.is_active ? "" : "（休止中）"}
+              </option>
+            ))}
+          </select>
+          <span className="mt-1 block text-[10px] text-muted">
+            指定整備事業者で資格強制が有効な場合、有効な自動車検査員の実施者が必須です。
+          </span>
+        </label>
+        <label className="text-xs text-secondary">
           自動車検査員の氏名
           <input
             value={inspectorName}
             onChange={(e) => setInspectorName(e.target.value)}
             className="input mt-1 w-full text-sm"
             maxLength={80}
+            placeholder="外注等でスタッフ未登録の場合に入力"
           />
         </label>
       </div>

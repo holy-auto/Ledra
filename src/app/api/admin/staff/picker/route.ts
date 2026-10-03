@@ -1,4 +1,3 @@
-
 import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 
 import { apiJson, apiInternalError } from "@/lib/api/response";
@@ -15,17 +14,18 @@ export const dynamic = "force-dynamic";
 export const GET = withCaller(
   async (_req, { caller }) => {
     try {
-
       const { admin } = createTenantScopedAdmin(caller.tenantId);
       const { data, error } = await admin
         .from("staff_members")
-        .select("id, name, kind, skills, is_active")
+        .select("id, name, kind, skills, qualifications, is_active")
         .eq("tenant_id", caller.tenantId)
         .order("is_active", { ascending: false })
         .order("name", { ascending: true });
       if (error) return apiInternalError(error, "staff picker");
 
-      return apiJson({ staff: (data ?? []).map((s) => ({ ...s, skills: s.skills ?? [] })) });
+      return apiJson({
+        staff: (data ?? []).map((s) => ({ ...s, skills: s.skills ?? [], qualifications: s.qualifications ?? [] })),
+      });
     } catch (e) {
       return apiInternalError(e, "staff picker");
     }

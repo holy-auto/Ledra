@@ -1689,6 +1689,8 @@
 "inspected_at",
 "inspection_type",
 "inspector_name",
+"inspector_qualification_snapshot",
+"inspector_staff_id",
 "notes",
 "photo_urls",
 "record_retention_until",
@@ -3388,6 +3390,17 @@
 "updated_at",
 "user_id"
 ],
+"staff_qualifications": [
+"created_at",
+"expires_on",
+"id",
+"note",
+"number",
+"qualification",
+"staff_member_id",
+"tenant_id",
+"updated_at"
+],
 "staff_shifts": [
 "created_at",
 "end_time",
@@ -3852,6 +3865,7 @@
 "plan_tier",
 "prefecture",
 "registration_number",
+"require_inspector_qualification",
 "slug",
 "square_merchant_id",
 "sso_email_domain",
