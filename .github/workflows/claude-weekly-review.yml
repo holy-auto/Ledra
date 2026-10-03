@@ -90,9 +90,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          # TEMPORARY: print Claude's full transcript so denied tool calls can
-          # be diagnosed. Remove once the audits are confirmed to file issues.
-          show_full_output: true
           prompt: |
             Perform a thorough security review of this codebase against the
             main branch. Focus on the OWASP Top 10 and items commonly missed
@@ -129,8 +126,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          # TEMPORARY: see security-audit.
-          show_full_output: true
           prompt: |
             Audit the codebase for dead code, redundant abstractions, and
             duplicated logic that could be consolidated. Look at code added
@@ -162,8 +157,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          # TEMPORARY: see security-audit.
-          show_full_output: true
           prompt: |
             Review code merged to main in the last 7 days
             (`git log --since='7 days ago' main`) for likely bugs, broken
