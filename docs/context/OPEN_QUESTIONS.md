@@ -1279,6 +1279,34 @@ JS ラッパだけで成立するため、**ネイティブバイナリの dlope
   - 【要確認】のまま残るもの: **O.2（署名鍵）・O.1・O.5・O.6 と、各 Level 2 は今回読んでいない。**
     ギャップ分析 G4（鍵保管＝O.2）の「AL1 の具体要件は別文書＝要確認」は未解決。
     一次資料は手元に clone 済みなので、読めば片付く。
+  - **2026-10-02 決着（代表判断「黙って未署名はダメだ」、DECISION_LOG 同日）: ランタイムの
+    フェイルオープンは塞いだ。** ただし**依存区分の移動では塞がらなかった**ので、塞ぎ方が違う。
+    黙る出口は6本あり（署名器が作れない／出力バッファ無し／署名中の例外／`withTimeout` の
+    打ち切り／disabled／成功）、**失敗の4本すべてが disabled と同じ `DISABLED_RESULT` を
+    返していた**のが根だった。`C2paResult` に `failure` を足して区別できるようにし、
+    `processUploadedPhoto` が `C2PA_MODE=production` かつ failure のとき
+    **ストレージ書き込みの前に**保存を断るようにした。
+    `dev-signed` は `console.error` を出して通す。
+    **2026-10-03 訂正: ここには「（孤児ファイルを残さない）」と書いていたが、副作用をストレージだけで
+    数えた言い方で、出荷した設計とも違う。** `signC2pa` は `anchorToPolygon` と同じ `Promise.all` で走るため
+    署名例外・タイムアウトで断る時点では、Polygon のアンカリングが有効（`POLYGON_ANCHOR_ENABLED=true`）で鍵とコントラクトが設定されている場合は**オンチェーン送信が済んでおり取り消せない**（無効・未設定・SHA-256 不正なら `anchorToPolygon` は送信前に返る: `polygon.ts:116` / `:119` / `:125`）。そのため実装は
+    `/code-review` の指摘を受けて2段構えになった —— **本番は署名器の有無を nonce・sharp・TSA・Polygon・
+    ストレージより前に先行検査して全体を 503**、写真ごとの失敗は `c2paRefused` を立てて**一部成功でも 422 で
+    何枚目が欠けたか**を返す（`uploadHandler` は `uploaded === 0` のときしか失敗を表に出さなかった）。
+    2026-10-03 に `main` へマージ（squash `e9dbb95e`・PR #1209）。
+  - **依存区分（`optionalDependencies` → `dependencies`）は、これとは別の未決として残る。**
+    上のゲートで「黙って」は消えたので、依存区分の論点は「ビルド不可環境で `npm ci` ごと
+    落とす代わりに、モジュール不在を早く知るか」だけになった。
+  - 【要確認】**本番（Vercel）で `@contentauth/c2pa-node` が実際にビルドできているか。**
+    できていなければ、`C2PA_MODE=production` にした瞬間に全アップロードが
+    `signer_unavailable` で断られる。**オンにする前に本番環境での読み込み可否を確かめること。**
+    先行検査を入れたので、落ちるとしても「1枚も保存されず 503」という分かる形になる。
+  - 【要確認】**HEIC を c2pa-node が署名できるか。** `validateMagicBytes` は `image/heic` を受け、
+    管理画面の `accept` にも入っているが、`c2paSignValidate.test.ts` は jpeg/png/webp しか見ていない。
+    `stripGpsAndReadExif` は `toFormat` を指定しないので入力形式のまま署名へ渡る。
+    署名できない場合、**本番オン後に iPhone 既定の HEIC が全部 503 になる**（以前は黙って
+    未署名で保存されていた）。手元の sharp の heif は avif 専用で HEIC を作れず検証できなかったので、
+    **実機で撮った HEIC で確かめること。**
 - **未決（今回の変更で残ったもう1つ）**: `providers.test.ts` の
   「c2pa-node が無ければ graceful-degradation の契約だけを見る」分岐。
   これは skip ではなく実際に assert しているので沈黙ではないが、**強い検証が
@@ -2177,7 +2205,9 @@ JST は夏時間が無いので日の加算は 24 時間の加算でよい。
            全経路で照合すると、Vercel Cron など `*.vercel.app` 宛ての内部呼び出しを止めるおそれがある（推定・未検証）。
            → 2026-10-02 代表了承: まず Vercel の Deployment Protection を有効にし、本番の `*.vercel.app` URL が保護されるかを実測する。
            QStash のコールバック先は `NEXT_PUBLIC_APP_URL` が最優先（未設定時のみ `VERCEL_URL`）。
-      **代表判断待ち**: 送信済みの提出物をこのまま審査に出すか、訂正を追送するか。直し方（Supabase を TOE の外に出す／
+      → **2026-10-02 Administrator がアーキテクチャを合格とし「これ以上は不要」と返信。訂正の追送はしない。**
+        残りの穴（Supabase 直通信・Cloudflare→Vercel・`*.vercel.app`）は審査とは別に社内で詰める（Deployment Protection の設定待ち）。
+      ~~**代表判断待ち**: 送信済みの提出物をこのまま審査に出すか、訂正を追送するか。~~直し方（Supabase を TOE の外に出す／
       クライアントの Supabase 通信を Backend 経由に寄せる／現状を正直に書く）も製品・申請の判断。
       → **2026-10-02 再提出を送信**（代表の申告）。validate（jpeg/png/webp/heic）復活を依頼済み。
       **待ち**: Administrator の返答と、追加要件 §2.3 のテスト入力（届いたらハーネスで crJSON を返す）。
@@ -2192,6 +2222,22 @@ JST は夏時間が無いので日の加算は 24 時間の加算でよい。
     `Reader::to_crjson_value` あり、この環境に Rust と crates.io 到達性あり → 小さな Rust ツールで作れる見込み（未着手）。
     → **2026-09-29 作成済み**: `tools/c2pa-crjson-harness`（c2pa-rs 0.90.22＝製品と同じエンジン＋2点パッチ、自己テスト6件）。
       Program のテスト入力が届いたら、これで crJSON を出して返す。
+  - **2026-10-02 Administrator 助言**: 「生成製品が C2PA の CA・TSA Trust List を参照していない。参照すれば TRUSTED になる」。
+    公式リスト（c2pa-org/conformance-public の `trust-list/C2PA-TRUST-LIST.pem`・`C2PA-TSA-TRUST-LIST.pem`）はこの環境から取得できる
+    （2026-10-02 に HTTP 200 を確認）。c2pa-node 0.9.7 は `Context` の `trust.trustAnchors` に PEM の本文を渡せるが、URL は取りに行かない。
+    **2026-10-02 実測（c2pa-node 0.9.7、公式リスト C2PA 30件・TSA 22件を `trustAnchors` に渡して比較）**:
+    - Program 素材の Google Pixel 写真（a-ingredient1.jpg）は、既定設定だと `signingCredential.expired`＋`untrusted`・状態 Invalid。
+      リストを渡すと `timeStamp.trusted`・`signingCredential.trusted`・状態 Trusted（TSA が信頼されると証明書の有効期間を
+      タイムスタンプ時点で判定するため）。Google 署名の png も同様に Trusted。Ledra のテスト証明書のサンプルは untrusted のまま。
+    - **今の本番の不具合**: `interpretC2paValidation` は `expired` を致命とするので、本物の Pixel 写真が `external_c2pa_verified=false`
+      になり、管理画面の改ざん検知パネルに「外部C2PA署名が無効 (撮影後改変の疑い)」と出る（推定: 期限切れ証明書の端末写真すべて）。
+    ~~**代表判断待ち**: 本番に設定するか~~ → **2026-10-03 代表了承（「つづき」）で実装**: 公式リスト2つを
+    `src/lib/anchoring/c2paTrustList.generated.ts` に同梱し、重複を除いた36件を `verifyExternalC2pa` と署名時の ingredient 検証に
+    生の設定で渡す。実関数で Pixel 写真が verified=false → true に変わり、署名したマニフェスト内の ingredient も trusted になることを確認。
+    残り: (a) リストの更新は手動（`node scripts/update-c2pa-trust-list.mjs`）。定期更新の仕組みは無い。
+    (b) 署名者と TSA を1つの信頼ストアで見る（c2pa-rs 0.90.22 の制約。TSA リストにしか無い中間 CA 6件が署名者の信頼にも数えられうる。
+    `trust_config` は EKU を足せるだけで外せないので設定では防げない）。(c) 本番証明書の事前検査 `scripts/verify-c2pa-cert.mjs` は
+    別に CA リストだけを URL から取る（同じ信頼セットにそろっていない）。(d) 取得元は main ブランチで、上流のコミットに固定していない。
   - **本番の検証は C2PA Trust List を使っていない（2026-09-29 判明・未判断）**: `verifyExternalC2pa` と ingredient 取り込み時の
     検証（`signC2pa` 内の `addIngredient` / `Reader.fromAsset`）は c2pa-rs を既定設定で呼んでおり、信頼アンカーを渡していない。
     そのため本番では外部の署名はすべて `signingCredential.untrusted` になる（`interpretC2paValidation` は untrusted を致命扱いしない設計）。

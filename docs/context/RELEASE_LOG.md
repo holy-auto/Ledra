@@ -4,6 +4,20 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-10-03 C2PA の検証に公式 Trust List（CA・TSA）を使う
+
+- Conformance Administrator の助言（2026-10-02）を受けて実装。c2pa-org/conformance-public の `C2PA-TRUST-LIST.pem`（30件）と
+  `C2PA-TSA-TRUST-LIST.pem`（22件）を `src/lib/anchoring/c2paTrustList.generated.ts` に同梱（c2pa-node は URL を取りに行かない）。
+- 外部 C2PA の検証（`verifyExternalC2pa`）と、署名時の原本 ingredient の検証（`Builder.withJson` の設定）に渡す。両リストを指紋で重複除去し
+  （TSA の22件中16件は CA と同じルート）36件を、c2pa-rs の生の設定 `trust.trust_anchors` として渡す。`Context` は使わない
+  （c2pa-utilities の既定値まで混ざり、署名の構成が信頼以外でも変わるため。/code-review 指摘）。
+- 実測: Pixel 写真を署名すると、Ledra のマニフェスト内の ingredient も `timeStamp.trusted`・`signingCredential.trusted` で記録される。
+- **直った不具合**: TSA を信頼していなかったため、期限切れ証明書の端末で撮った本物の写真（Program 素材の Google Pixel 写真で確認）が
+  `signingCredential.expired` で verified=false になり、改ざん検知パネルに「撮影後改変の疑い」と出ていた。実関数で false → true を確認。
+- リスト更新: `node scripts/update-c2pa-trust-list.mjs`（各証明書を X509 として読めることを検査してから書き出す）。
+- テスト: `c2paTrust.test.ts`（リストが読めること、重複なく両リストが入ること、外部検証と署名の両方に設定が渡ること。
+  署名側の設定を外すと落ちることを確認）。
+
 ## 2026-10-02 法定資格に基づく操作の強制＋資格番号/有効期限＋実施者の記録簿紐付け（G1 残り3点）
 
 - 内容: 第２ ３（１）① の「自動車検査員に係る権限（指定整備事業者に限る）」を実装。#1208 で追加済みの
@@ -21,6 +35,7 @@
   ピッカー（`/api/admin/staff/picker` が資格も返すよう拡張）。外注は従来どおり氏名の自由入力で併存。
 - 検証: 純関数 `qualificationStatus` 9 件＋ゲート `inspectorQualification`（fail-closed/期限/未保有/強制 ON·OFF）9 件の
   単体テスト、tsc・eslint（変更 0 error）・check:schema・lint:migrations 緑。
+
 ## 2026-10-02 管理画面から holy-inc.jp へ「イベント」分類で投稿できるようにした
 
 - 内容: `HOLY_INC_CATEGORIES`（`src/lib/marketing/externalSites.ts`）に `イベント: "Event"` を追加。holy-auto/holy-inc#14 で
@@ -182,6 +197,58 @@ insert が通り、かつ**両方 NULL で入る**ことを行を入れて確か
 - `@contentauth/c2pa-node` は 0.9.8 で C2PA の署名→検証が壊れる（テスト5件）ため、`package.json` で 0.9.7 に固定し、
   `.github/dependabot.yml` の ignore に入れた（DECISION_LOG 2026-10-02）。#1193 は閉じた。
 - 検証: `npm audit` 0件、tsc 通過、vitest exit=0（615 files / 6006 tests、`tail` で要約を確認）。
+
+## 2026-10-02 本番の C2PA 署名が失敗したら写真を保存せずに断る（黙って未署名にしない）
+
+- 内容: 署名の失敗を結果の型で表現できるようにし、`C2PA_MODE=production` で失敗したら
+  **ストレージ書き込みの前に**アップロードを断る。`{ ok: false, code: "internal_error", c2paRefused: true }` を返す。
+  **2026-10-03 訂正: この行には当初「既存のアップロード経路（cookie / モバイル Bearer）がそのまま人の読める
+  メッセージを出す」と書いていたが、誤り。** `uploadHandler` は写真ごとの失敗を `uploaded === 0` のときしか
+  表に出さないので、既存の経路では一部成功が HTTP 200 で通り、断ったことが誰にも伝わらなかった。
+  下の「`/code-review` で設計を訂正」の (2) がこれで、`c2paRefused` の集約（422）は**そのために足したコード**
+  である。PR 本文は訂正したのに、同じ理解で書いたこの行を直していなかった
+  （MISTAKE_LEDGER `M-20261003-fixed-the-pr-body-and-left-the-business-logs-wrong`）。
+- 根（症状ではなく）: `signC2pa` の失敗出口4本（署名器が作れない／出力バッファ無し／署名中の例外）と
+  `providers/index.ts` の `withTimeout` の打ち切りが、**すべて `C2PA_MODE=disabled` と同じ
+  `DISABLED_RESULT` を返していた**。呼び出し側は「意図的にオフ」と「試して失敗」を区別できず、
+  写真は真正性等級だけ下がって保存され、誰にも知らされなかった。`C2paResult` に
+  `failure: C2paFailure | null`（`signer_unavailable` / `no_output_buffer` / `sign_threw` / `timeout`）を
+  足して区別する。必須フィールドにしたので構築箇所3つは `tsc` が全部拾った。
+- `dev-signed` は `console.error` を出して通す（信頼チェーンが無く撮影時封印にも数えないため）。
+  `ponytail:` コメントで天井と切り替え方を明記。
+- 検証: ゲートのテストを追加（`c2paProductionGate.test.ts`）。`admin` を**触ったら落ちるスタブ**に
+  してあるので、「断る」だけでなく**ストレージ/DB に書く前に断っている**ことまで見る。
+  **3つの変異で当たりを取った** —— ゲートの条件を無効化すると爆発スタブで落ち、署名失敗を
+  `DISABLED_RESULT` に戻すと `providers.test.ts` の「disabled と区別できる」が落ち、ゲートを**広げる**
+  （mode 条件を外す）と dev-signed のテストが落ちる。
+  （2026-10-03 訂正: 当初ここを「2つ」と書いていた。3つ目は下の「テストの追加」で書き直した変異そのもので、
+  同じエントリの中で数が食い違っていた。）
+  CI 並列チェック9本すべて緑。
+- **`/code-review` で設計を訂正（同日）**: ゲートをストレージ書き込みの直前に置くだけでは、
+  (1) 同じ `Promise.all` の `anchorToPolygon` が既にオンチェーン送信を終えており不可逆、
+  (2) `uploadHandler` が写真ごとの失敗を `uploaded === 0` のときしか表に出さないため一部成功が
+  HTTP 200 で通り「黙って写真が欠ける」に置き換わる、(3) IPFS ピンが署名の 8 秒枠に入っていて
+  遅いと署名成功なのに弾く、(4) 単回 nonce がループ前に焼かれる —— の4点が残っていた。
+  → **本番モードは nonce・sharp・TSA・Polygon・ストレージより前に署名器の有無を先行検査して
+  全体を 503 で断る**。写真ごとの失敗は `c2paRefused` を立て、一部成功でも 422 で何枚目が
+  欠けたかを返す。ピンは 3 秒で自分から打ち切る。`C2PA_MODE` は `getMode()` を唯一の正規化源に
+  （生キャストだと `Production` で署名もゲートも止まり黙って未署名に戻る）。
+  `withTimeout` の未署名リテラルは `failedC2paResult("timeout")` に置き換え、未署名の形の複製を消した。
+- テストの追加: `getMode()` の正規化6ケース、dev-signed で failure でも弾かないこと（provider を
+  差し替えて failure を確実に立てる）。**最初に書いた dev-signed のテストは、dev-signed では
+  有効な JPEG の署名が成功するため失敗分岐を一度も通っておらず、「ゲートを広げる」変異を
+  捕まえられなかった。** 変異を両方向で回して気づき、書き直した。
+- 本番の現場への影響は今日はゼロ（`C2PA_MODE` 未設定＝disabled、`certificate_images` の C2PA 列は全て0行）。
+  本番証明書を入れてオンにした日から効く。**オンにする前に、本番で `@contentauth/c2pa-node` が
+  実際に読み込めるかの確認が必要**【要確認】。先行検査があるので、読み込めなければ
+  「写真が1枚も保存されず 503」という**分かる形**で落ちる（以前は黙って未署名だった）。
+- 【要確認】**HEIC の署名**: iPhone 既定の HEIC で c2pa-node が署名できるかはリポジトリのどのテストも
+  見ていない（手元の sharp の heif は avif 専用で HEIC を作れず検証不可）。署名できない場合、
+  本番オン後に HEIC が全部 503 になる。オン前に実機 HEIC で確かめること。
+- **2026-10-03 `main` にマージ（squash `e9dbb95e`・PR #1209）。** マージ時点で CI 10 本緑
+  （9 success ＋ Supabase Preview skipped）、`mergeable_state: clean`。マージ直前に数え直して
+  MISTAKE_LEDGER 2件・変更13ファイルを確認した。
+
 
 ## 2026-10-02 完成検査の外部テスタ測定値 汎用 CSV 取込 UI（G5 Phase 2）
 

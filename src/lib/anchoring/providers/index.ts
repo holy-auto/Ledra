@@ -5,7 +5,7 @@
  * the upload or causes other providers to be skipped.
  */
 
-import { signC2pa, type CaptureBinding, type TransformOutcome } from "./c2pa";
+import { signC2pa, failedC2paResult, type CaptureBinding, type TransformOutcome } from "./c2pa";
 import { checkDeepfake } from "./deepfake";
 import { anchorToPolygon, verifyAnchor, buildExplorerUrl, findAnchorTx } from "./polygon";
 import type { UploadProviderBundle } from "./types";
@@ -62,8 +62,12 @@ export async function invokeAllUploadProviders(
   // nonce per session), not per photo — see verifyDeviceAttestation in the route.
   const [c2pa, deepfake, polygon] = await Promise.all([
     withTimeout(
+      // main (#1173) が足した第5引数 `original`（原本 ingredient）を取り、fallback は共通
+      // コンストラクタのまま残す。**未署名の形をここで組み直さない**（c2pa.ts と2箇所に分かれると、
+      // 将来フィールドを足したとき片方だけ古い既定のまま残る —— それが今回直した欠陥そのもの。
+      // /code-review 指摘 #7）。打ち切りも「試して得られなかった」なので failure を立てる。
       signC2pa(buffer, mime, captureBinding, transformOutcome, original),
-      { manifestCid: null, verified: false, signedBuffer: null, manifestSummary: null },
+      failedC2paResult("timeout"),
       "c2pa",
     ),
     withTimeout(checkDeepfake(buffer), { score: null, verdict: null }, "deepfake"),
