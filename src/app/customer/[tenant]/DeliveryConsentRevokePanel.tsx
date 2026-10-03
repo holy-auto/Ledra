@@ -57,7 +57,7 @@ export default function DeliveryConsentRevokePanel({ tenantSlug }: { tenantSlug:
   }
 
   // 認証前（unknown）は何も出さない。撤回の導線は、記録簿の写しの電子交付を無効化する操作なので
-  // 承諾の有無に関わらず提示してよい（none でも「電子交付を希望しない」意思表示として有効）。
+  // 承諾の有無に関わらず提示してよい（none でも「電子交付を希望しない」事前の意思表示として有効）。
   if (status === "unknown") return null;
 
   return (
@@ -71,16 +71,12 @@ export default function DeliveryConsentRevokePanel({ tenantSlug }: { tenantSlug:
       ) : (
         <>
           <p className="mt-1 text-sm text-secondary">
-            記録簿の写し（施工証明書）は、ご承諾のうえ電子的な方法（メール等）で交付しています。
-            電子交付を希望されない場合は、下のボタンでいつでも撤回できます。撤回後は書面等での交付に切り替わります。
+            {/* status==="none" のとき「承諾のうえ交付しています」と言わない（未承諾の使用者に虚偽の承諾表示をしない。/code-review 指摘） */}
+            {status === "granted"
+              ? "記録簿の写し（施工証明書）は、ご承諾のうえ電子的な方法（メール等）で交付しています。"
+              : "記録簿の写し（施工証明書）を電子的な方法（メール等）で交付する場合があります。"}
+            電子交付を希望されない場合は、下のボタンでいつでも撤回（お断り）でき、撤回後は書面等での交付に切り替わります。
           </p>
-          {msg ? (
-            <div
-              className={`mt-2 rounded-xl px-3 py-2 text-sm ${msg.ok ? "bg-success-dim text-success-text" : "bg-danger-dim text-danger-text"}`}
-            >
-              {msg.text}
-            </div>
-          ) : null}
           {confirming ? (
             <div className="mt-3 flex flex-wrap items-center gap-2">
               <span className="text-sm text-secondary">本当に撤回しますか？</span>
@@ -109,7 +105,8 @@ export default function DeliveryConsentRevokePanel({ tenantSlug }: { tenantSlug:
           )}
         </>
       )}
-      {status === "revoked" && msg ? (
+      {/* 成功/失敗メッセージは状態に関わらず1箇所で描画する（撤回成功時は status=revoked 側に出る）。 */}
+      {msg ? (
         <div
           className={`mt-2 rounded-xl px-3 py-2 text-sm ${msg.ok ? "bg-success-dim text-success-text" : "bg-danger-dim text-danger-text"}`}
         >

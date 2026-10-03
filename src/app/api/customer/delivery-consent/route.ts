@@ -7,6 +7,7 @@
 import { cookies } from "next/headers";
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { apiOk, apiUnauthorized, apiNotFound, apiInternalError } from "@/lib/api/response";
+import { checkRateLimit } from "@/lib/api/rateLimit";
 import { CUSTOMER_COOKIE, getTenantIdBySlug, validateSession } from "@/lib/customerPortalServer";
 import { deliveryConsentStatus, type DeliveryConsentRow } from "@/lib/delivery/deliveryConsent";
 
@@ -14,6 +15,9 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 export async function GET(req: Request) {
+  // revoke（POST）と同じ器のレート制限を読みにも掛ける（service role の DB 参照を無制限ポーリングさせない）。
+  const limited = await checkRateLimit(req, "sensitive");
+  if (limited) return limited;
   try {
     const slug = (new URL(req.url).searchParams.get("tenant") ?? "").trim();
     if (!slug) return apiNotFound("unknown tenant");
