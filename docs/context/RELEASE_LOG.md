@@ -8,11 +8,15 @@
 
 - Conformance Administrator の助言（2026-10-02）を受けて実装。c2pa-org/conformance-public の `C2PA-TRUST-LIST.pem`（30件）と
   `C2PA-TSA-TRUST-LIST.pem`（22件）を `src/lib/anchoring/c2paTrustList.generated.ts` に同梱（c2pa-node は URL を取りに行かない）。
-- 外部 C2PA の検証（`verifyExternalC2pa`）、署名時の原本 ingredient の検証（`Builder.withJsonAsync`）、原本の読み取りに渡す。
+- 外部 C2PA の検証（`verifyExternalC2pa`）と、署名時の原本 ingredient の検証（`Builder.withJson` の設定）に渡す。両リストを指紋で重複除去し
+  （TSA の22件中16件は CA と同じルート）36件を、c2pa-rs の生の設定 `trust.trust_anchors` として渡す。`Context` は使わない
+  （c2pa-utilities の既定値まで混ざり、署名の構成が信頼以外でも変わるため。/code-review 指摘）。
+- 実測: Pixel 写真を署名すると、Ledra のマニフェスト内の ingredient も `timeStamp.trusted`・`signingCredential.trusted` で記録される。
 - **直った不具合**: TSA を信頼していなかったため、期限切れ証明書の端末で撮った本物の写真（Program 素材の Google Pixel 写真で確認）が
   `signingCredential.expired` で verified=false になり、改ざん検知パネルに「撮影後改変の疑い」と出ていた。実関数で false → true を確認。
 - リスト更新: `node scripts/update-c2pa-trust-list.mjs`（各証明書を X509 として読めることを検査してから書き出す）。
-- テスト: `c2paTrust.test.ts`（リストが読めること、両リストが信頼アンカーに入ること、検証に Context が渡ること。配線を外すと落ちる）。
+- テスト: `c2paTrust.test.ts`（リストが読めること、重複なく両リストが入ること、外部検証と署名の両方に設定が渡ること。
+  署名側の設定を外すと落ちることを確認）。
 
 ## 2026-10-02 管理画面から holy-inc.jp へ「イベント」分類で投稿できるようにした
 
