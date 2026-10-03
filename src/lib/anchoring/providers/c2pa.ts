@@ -278,6 +278,7 @@ export async function signC2pa(
     if (!signer) return failedResult("signer_unavailable");
 
     const { Builder, Reader } = await import("@contentauth/c2pa-node");
+    const { C2PA_TRUST_SETTINGS } = await import("../c2paTrust");
 
     // Seal the capture context into the manifest (com.ledra.capture): which
     // certificate/vehicle this photo is for, the single-use capture nonce, and the
@@ -299,24 +300,27 @@ export async function signC2pa(
     // The actions ledger lists only the transforms that took effect (see buildActions);
     // the Conformance Program (Additional Conformance Requirements v0.2) requires
     // allActionsIncluded, and claim_generator_info.specVersion matching the CPL record.
-    // マニフェスト定義から作るには静的ファクトリ `Builder.withJson(...)` を使う
-    // （旧 `new Builder({...})` は addAssertion 時に neon downcast エラーで fail-open した）。
-    const builder = Builder.withJson({
-      claim_generator_info: [
-        { name: CLAIM_GENERATOR_NAME, version: CLAIM_GENERATOR_VERSION, specVersion: SPEC_VERSION },
-      ],
-      title: MANIFEST_TITLE,
-      assertions: [
-        {
-          label: "c2pa.actions",
-          created: true,
-          data: { actions: buildActions(outcome), allActionsIncluded: ALL_ACTIONS_INCLUDED },
-        },
-        ...(bindingEntries.length > 0
-          ? [{ label: "com.ledra.capture", created: true, data: Object.fromEntries(bindingEntries) }]
-          : []),
-      ],
-    });
+    // マニフェスト定義から作るには静的ファクトリを使う（旧 `new Builder({...})` は addAssertion 時に
+    // neon downcast エラーで fail-open した）。原本の ingredient は公式 Trust List で検証する。
+    const builder = Builder.withJson(
+      {
+        claim_generator_info: [
+          { name: CLAIM_GENERATOR_NAME, version: CLAIM_GENERATOR_VERSION, specVersion: SPEC_VERSION },
+        ],
+        title: MANIFEST_TITLE,
+        assertions: [
+          {
+            label: "c2pa.actions",
+            created: true,
+            data: { actions: buildActions(outcome), allActionsIncluded: ALL_ACTIONS_INCLUDED },
+          },
+          ...(bindingEntries.length > 0
+            ? [{ label: "com.ledra.capture", created: true, data: Object.fromEntries(bindingEntries) }]
+            : []),
+        ],
+      },
+      C2PA_TRUST_SETTINGS,
+    );
     // The uploaded original is the parentOf ingredient that c2pa.opened references.
     // c2pa-rs records its hash, format and a pixel-derived thumbnail (no EXIF/GPS),
     // and — if the original carries C2PA — its manifest plus validation results.

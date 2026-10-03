@@ -51,12 +51,18 @@ type ReaderJson = {
 export async function verifyExternalC2pa(buffer: Buffer, mime: string): Promise<ExternalC2paResult> {
   try {
     const mod = (await import("@contentauth/c2pa-node")) as {
-      Reader?: { fromAsset?: (a: { buffer: Buffer; mimeType: string }) => Promise<{ json: () => ReaderJson } | null> };
+      Reader?: {
+        fromAsset?: (
+          a: { buffer: Buffer; mimeType: string },
+          settings: string,
+        ) => Promise<{ json: () => ReaderJson } | null>;
+      };
     };
     const Reader = mod.Reader;
     if (!Reader?.fromAsset) return DISABLED;
+    const { C2PA_TRUST_SETTINGS } = await import("../c2paTrust");
 
-    const reader = await Reader.fromAsset({ buffer, mimeType: mime });
+    const reader = await Reader.fromAsset({ buffer, mimeType: mime }, C2PA_TRUST_SETTINGS);
     if (!reader) return DISABLED; // マニフェスト無し
 
     const json = reader.json();
