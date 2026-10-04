@@ -7,6 +7,7 @@ import { formatDateTime } from "@/lib/format";
 import CustomerProgressBar from "@/components/workflow/CustomerProgressBar";
 import LineLinkPanel from "./LineLinkPanel";
 import PiiConsentPanel from "./PiiConsentPanel";
+import DeliveryConsentRevokePanel from "./DeliveryConsentRevokePanel";
 
 type Row = {
   public_id: string;
@@ -405,6 +406,7 @@ export default function CustomerListPage() {
 
       <LineLinkPanel key={tenant} tenantSlug={tenant} />
       <PiiConsentPanel key={`pii-${tenant}`} tenantSlug={tenant} />
+      <DeliveryConsentRevokePanel key={`dc-${tenant}`} tenantSlug={tenant} />
 
       {/* 連絡先が欠けているお客様への登録のお願い。LINE 連携だけで作られた顧客は
           email が無く、メール通知が届かず PC からもログインできないため。 */}
