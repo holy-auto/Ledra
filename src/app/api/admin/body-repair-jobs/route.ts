@@ -9,6 +9,8 @@ import {
 } from "@/lib/validations/body-repair-job";
 import { maybeNotifyBodyRepairStageAdvance } from "@/lib/bodyRepair/stageNotify";
 import { retentionUntilYears } from "@/lib/retention";
+import { logTenantAuditEvent } from "@/lib/audit/tenantLog";
+import { changedFieldKeys } from "@/lib/inspection/auditDiff";
 
 import { withCaller } from "@/lib/api/withCaller";
 export const dynamic = "force-dynamic";
@@ -156,6 +158,19 @@ export const POST = withCaller(
         .single();
       if (error) return apiInternalError(error, "body-repair-jobs POST");
 
+      // 作成の日時・作業者を監査ログに残す（第２ ２（３）/ G2。特定整備記録簿は2年保存）。
+      if (created?.id) {
+        await logTenantAuditEvent(admin, {
+          tenantId: caller.tenantId,
+          userId: caller.userId,
+          action: "body_repair_job_created",
+          table: "body_repair_jobs",
+          recordId: created.id as string,
+          extra: { stage: created.stage ?? stage, is_specified_maintenance: isSpecified },
+          req,
+        });
+      }
+
       return apiJson({ ok: true, job: created }, { status: 201 });
     } catch (e) {
       return apiInternalError(e, "body-repair-jobs POST");
@@ -248,6 +263,16 @@ export const PATCH = withCaller(
         }
       }
 
+      // 監査の更新前値（固定リテラル列）。更新箇所の算出に使う。recorded_by / updated_at は毎回変わるので差分から除く。
+      const { data: auditBefore } = await admin
+        .from("body_repair_jobs")
+        .select(
+          "stage, estimate_amount, actual_amount, due_date, insurance_company, claim_number, assigned_staff_id, intake_at, estimate_at, bodywork_start_at, paint_start_at, complete_at, delivered_at, notes, certificate_id, estimate_document_id, invoice_document_id, insurer_case_id, claim_status, claim_approved_amount, claim_decided_at, planned_work_json, actual_work_json, deviation_reason, is_specified_maintenance, record_retention_until",
+        )
+        .eq("id", id)
+        .eq("tenant_id", caller.tenantId)
+        .maybeSingle();
+
       // ステージ遷移時は UPDATE を「現在 stage が previousStage のまま」に条件付ける。
       // 並行 PATCH (二重送信・別タブ) では先勝ちした 1 件だけが行を更新し、後続は
       // updated=null になるため、進捗通知が重複しない (TOCTOU 安全)。
@@ -270,6 +295,24 @@ export const PATCH = withCaller(
           if (current) return apiJson({ ok: true, job: current });
         }
         return apiValidationError("対象の案件が見つかりません。");
+      }
+
+      // 更新箇所・作業者・日時を監査ログに残す（第２ ２（３）/ G2。特定整備記録簿は2年保存）。
+      // 作業者（recorded_by）と updated_at は毎回変わるため差分からは除く。値ではなく変わった列名を記録。
+      const updatesForDiff = Object.fromEntries(
+        Object.entries(updates).filter(([k]) => k !== "updated_at" && k !== "recorded_by"),
+      );
+      const changed = changedFieldKeys(auditBefore as Record<string, unknown> | null, updatesForDiff);
+      if (changed.length > 0) {
+        await logTenantAuditEvent(admin, {
+          tenantId: caller.tenantId,
+          userId: caller.userId,
+          action: "body_repair_job_updated",
+          table: "body_repair_jobs",
+          recordId: id,
+          extra: { changed },
+          req,
+        });
       }
 
       // 工程が「前進」したときだけ、opt-in 済みテナントで顧客へ進捗を自動通知する

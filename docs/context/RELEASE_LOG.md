@@ -4,6 +4,17 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-10-03 documents / body_repair_jobs の作成・更新・削除を監査ログ化（G2）
+
+- 内容: 第２ ２（３）の「作成・更新の日時／更新箇所／作業者」の自動記録を、inspection_records（完成検査）に続いて
+  `documents`（帳票）と `body_repair_jobs`（車体整備・特定整備記録簿）にも拡張。既存の `logTenantAuditEvent` を使用。
+  - `documents`: POST=作成 / PUT=更新 / DELETE=削除（下書き・領収書のみ）を記録。
+  - `body_repair_jobs`: POST=作成 / PATCH=更新 を記録（DELETE 経路は無い）。特定整備記録簿は2年保存。
+- **前後値ではなく「変わった列名」だけを記録**（`changedFieldKeys` を新設）。両テーブルは宛先名・住所等の PII と
+  大きな明細 JSON を含むため、audit_logs への PII 複製と肥大を避けつつ「更新箇所＋作業者＋日時」の要件を満たす。
+  更新前値は固定リテラル select で取得（check:schema 準拠）。body_repair の差分からは毎回変わる recorded_by/updated_at を除く。
+- 検証: `changedFieldKeys` の単体テスト 4 件（既存 changedFields と同ファイル）、tsc・eslint（変更 0 error）・check:schema 緑。
+
 ## 2026-10-03 使用者ポータルに電子交付の承諾「撤回」導線を配線（G4）
 
 - 内容: 第２ ４（４）の撤回権を使用者本人が行使できる UI を顧客ポータルに追加。撤回 API

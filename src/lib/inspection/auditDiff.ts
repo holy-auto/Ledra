@@ -28,3 +28,16 @@ export function changedFields(
   }
   return out;
 }
+
+/**
+ * 変わったフィールドの**名前だけ**を返す（前後値は載せない）。
+ * documents / body_repair_jobs のように PII（宛先名・住所）や大きな JSON（明細）を含む行で、
+ * 「更新箇所＋作業者＋日時」の要件（第２ ２（３））を満たしつつ audit_logs への PII 複製と肥大を避けるため。
+ */
+export function changedFieldKeys(
+  oldRow: Record<string, unknown> | null | undefined,
+  updates: Record<string, unknown>,
+): string[] {
+  const old = oldRow ?? {};
+  return Object.keys(updates).filter((key) => !eq(old[key], updates[key]));
+}
