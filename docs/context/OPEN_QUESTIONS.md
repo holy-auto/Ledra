@@ -23,19 +23,17 @@
 3. **inspection_records（指定整備記録簿）の顧客向け電子交付**: 現状アプリに経路が無い（管理PDFのみ）。顧客へ電子交付する
    経路を設ける場合は同じ `delivery_consents` ゲートを通すこと。
 
-## G2 監査ログ: 指定整備記録簿の作成/更新は対応、消去経路と documents/body_repair が残る（2026-10-02）
+## G2 監査ログ: 作成/更新は inspection_records・documents・body_repair_jobs とも対応、残るは消去 cron（2026-10-02）
 
-`inspection_records`（完成検査）の作成/更新を `audit_logs` に記録した（RELEASE_LOG 2026-10-02）。残り。
+`inspection_records`（完成検査）に加え、`documents` / `body_repair_jobs` の作成/更新（documents は削除も）を
+`audit_logs` に記録した（RELEASE_LOG 2026-10-02・2026-10-03）。残り。
 
 1. **消去経路（保持期限後）**: 完成検査は `record_retention_until`＝2年保存で、保持期間中はアプリに消去経路を
    持たない（保存義務に沿う）。保持期限後に管理者が消去できる経路を設けるなら、(a) `record_retention_until`
    経過の確認を必須にし、(b) 消去を `logTenantAuditEvent`（`inspection_record_deleted`）で残すこと。
    当初この PR で owner/admin 消去＋UI を入れたが、保持期間中は常にブロックされ無意味で保持義務とも衝突するため
    撤回した（MISTAKE_LEDGER M-20261002-delete-ignored-legal-retention）。
-2. **documents / body_repair_jobs の更新差分履歴**: 証明書・inspection_records と同じ「更新箇所＋作業者」の
-   自動記録がまだ無い。`logTenantAuditEvent` ＋ `changedFields` を同じ形で入れるか、全テーブル共通の行トリガに
-   するかは設計判断。
-3. **保持期限 cron（`data-retention`）の横断監査**: cron は認証コード/セッション/通知ログ等の**非・記録簿**を
+2. **保持期限 cron（`data-retention`）の横断監査**: cron は認証コード/セッション/通知ログ等の**非・記録簿**を
    全テナント横断で削除する。`audit_logs.tenant_id` が NOT NULL なので単一行では残せない。テナント別に集計するか
    cron 専用の削除サマリ表を設けるか未決（運用ログの充実・優先度中。記録簿の消去要件には無関係）。
 

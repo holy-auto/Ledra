@@ -6,11 +6,29 @@
  * `{field: {old, new}}` で返す（audit_logs の query_json に載せて 更新箇所＋前後値 を残す）。
  *
  * 等価判定は JSON 文字列で行う（answers / photo_urls / template_items などの jsonb・配列も比較できる）。
- * ponytail: JSON.stringify はキー順の違いを別物と見なす。本記録簿の更新は Zod 正規化後の値なので
- *   キー順は安定だが、順不同オブジェクトの厳密比較が要るなら deep-equal の導入を検討（現状は不要）。
+ * **キー順は正規化してから比較する**: 更新前値は DB の jsonb（キー順は正規化済み）、新値はクライアント/
+ * calcItems 由来（挿入順）で、素の JSON.stringify だと中身が同じでも別物と誤判定し、items_json 等の
+ * jsonb 列が毎回「変更あり」に化ける。オブジェクトのキーを再帰的にソートしてから比較する（配列の順序は
+ * 意味を持つので保持する）。
  */
 
-const eq = (a: unknown, b: unknown): boolean => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+/** オブジェクトのキーを再帰的にソートして正規化する（配列順は保持）。 */
+function canonical(v: unknown): unknown {
+  if (Array.isArray(v)) return v.map(canonical);
+  if (v && typeof v === "object") {
+    const obj = v as Record<string, unknown>;
+    return Object.keys(obj)
+      .sort()
+      .reduce<Record<string, unknown>>((acc, k) => {
+        acc[k] = canonical(obj[k]);
+        return acc;
+      }, {});
+  }
+  return v;
+}
+
+const eq = (a: unknown, b: unknown): boolean =>
+  JSON.stringify(canonical(a ?? null)) === JSON.stringify(canonical(b ?? null));
 
 /**
  * oldRow（更新前の行）と updates（適用する新値）から、変わったフィールドの前後値を返す。
@@ -27,4 +45,17 @@ export function changedFields(
     if (!eq(oldVal, newVal)) out[key] = { old: oldVal ?? null, new: newVal ?? null };
   }
   return out;
+}
+
+/**
+ * 変わったフィールドの**名前だけ**を返す（前後値は載せない）。
+ * documents / body_repair_jobs のように PII（宛先名・住所）や大きな JSON（明細）を含む行で、
+ * 「更新箇所＋作業者＋日時」の要件（第２ ２（３））を満たしつつ audit_logs への PII 複製と肥大を避けるため。
+ */
+export function changedFieldKeys(
+  oldRow: Record<string, unknown> | null | undefined,
+  updates: Record<string, unknown>,
+): string[] {
+  // changedFields と同じ判定を一本化する（eq/null 扱いの差異が二重管理にならないように）。
+  return Object.keys(changedFields(oldRow, updates));
 }
