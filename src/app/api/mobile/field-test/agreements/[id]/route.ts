@@ -27,6 +27,8 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
     after(async () => {
       const label = AGREEMENT_TYPE_JA[result.agreement_type as string] ?? "契約書";
+      // 同意した施工店自身への控え。dispatch に載せると ft_job_assigned の管理者宛メールまで
+      // 飛ぶので、in_app のみの notifyFtTenant のままにする（#1176 / DECISION_LOG 2026-10-03）。
       await notifyFtTenant({
         tenantId: caller.tenantId,
         type: "ft_job_assigned",

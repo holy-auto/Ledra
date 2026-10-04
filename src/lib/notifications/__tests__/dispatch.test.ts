@@ -70,6 +70,20 @@ describe("dispatchNotification", () => {
     expect(m.sendEmail).not.toHaveBeenCalled(); // カタログに email は無い
   });
 
+  it.each(["ft_job_assigned", "ft_defect_reported"] as const)(
+    "%s: 施工店の管理者ごとに in_app を作り、管理者全員にメールを送る（#1176）",
+    async (type) => {
+      const store = setup({ tenant_memberships: ADMINS });
+      await dispatchNotification({ tenantId: T, type, title: "実証テスト", body: "b", linkPath: "/admin/field-test" });
+
+      const rows = notificationRows(store);
+      expect(rows.map((r) => r.user_id).sort()).toEqual(["u1", "u2"]);
+      expect(rows[0]).toMatchObject({ tenant_id: T, notification_type: type, link_path: "/admin/field-test" });
+      const to = m.sendEmail.mock.calls.map((c) => c[0].to).sort();
+      expect(to).toEqual(["admin@example.com", "owner@example.com"]);
+    },
+  );
+
   it("targetRole 未指定・userIds なし: テナント全員宛（user_id=NULL）の in_app 1行", async () => {
     const store = setup({});
     await dispatchNotification({ tenantId: T, type: "order_created", title: "発注", body: "b", jobOrderId: "o1" });

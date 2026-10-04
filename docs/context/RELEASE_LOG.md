@@ -15,6 +15,19 @@
   認証前（customer_id 無しセッション）は何も表示しない。承諾の付与は店舗側の記録（顧客詳細パネル）のまま。
 - 検証: tsc・eslint（変更 0 error）・check:schema（GET は固定リテラル select）緑。
 
+## 2026-10-03 実証テストの案件割当・不具合報告で、施工店の管理者にメールを送る（#1176）
+
+- 代表判断（DECISION_LOG 2026-10-03）を受けて実装。メーカーが施工店に案件を割り当てたとき（`POST /api/manufacturer/field-test/jobs`、
+  `ft_job_assigned`）と不具合を報告したとき（`POST /api/manufacturer/field-test/defects`、`ft_defect_reported`）の通知を、
+  `notifyFtTenant`（in_app のみ）から中央 dispatch（`dispatchNotification`）に切り替えた。カタログどおり in_app + email、宛先は施工店の管理者。
+- `ft_defect_reported` に `targetRole: "admin"` を追加（宛先未指定のままだと dispatch はメールを誰にも送らない）。
+- 変わらないもの: 証拠提出（メーカー宛 `notifyFtManufacturer`）、検査結果・応募・契約同意の控え（`notifyFtTenant`、in_app のみ）。
+  契約同意の控えは `ft_job_assigned` を流用しているため、dispatch に載せると自分の操作がメールで届く。理由をコメントで残した。
+- in_app の宛先は「テナント全員1行」から「管理者ごとの行」に変わる（dispatch の targetRole=admin の仕様）。
+- 本番の FT データは 0 件のため、過去に送られなかったメールは無い。
+- テスト: `dispatch.test.ts` に2タイプのケースを追加（管理者ごとの in_app と管理者全員へのメール）。
+  `ft_defect_reported` の `targetRole` を外すと落ちることを確認。
+
 ## 2026-10-03 C2PA の検証に公式 Trust List（CA・TSA）を使う
 
 - Conformance Administrator の助言（2026-10-02）を受けて実装。c2pa-org/conformance-public の `C2PA-TRUST-LIST.pem`（30件）と
