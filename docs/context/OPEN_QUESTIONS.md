@@ -2204,8 +2204,12 @@ JST は夏時間が無いので日の加算は 24 時間の加算でよい。
            全経路で照合すると、Vercel Cron など `*.vercel.app` 宛ての内部呼び出しを止めるおそれがある（推定・未検証）。
            → 2026-10-02 代表了承: まず Vercel の Deployment Protection を有効にし、本番の `*.vercel.app` URL が保護されるかを実測する。
            QStash のコールバック先は `NEXT_PUBLIC_APP_URL` が最優先（未設定時のみ `VERCEL_URL`）。
+           → **2026-10-03 解決（実測）**: Vercel Authentication は「Require Log In」オン・Standard Protection（代表の画面で確認）。
+           代表の PC で本番デプロイの URL `ledra-lqjnjqxkf-yusuke-horikoshis-projects.vercel.app` は `302` で vercel.com/sso-api へ
+           （未ログインでは入れない）、`app.ledra.co.jp` は `200`・`Server: cloudflare`。残り: 固定の本番エイリアス URL が別にあれば未実測。
+           Cron が保護を通るかは未確認（翌日の Cron 実行結果で見る）。
       → **2026-10-02 Administrator がアーキテクチャを合格とし「これ以上は不要」と返信。訂正の追送はしない。**
-        残りの穴（Supabase 直通信・Cloudflare→Vercel・`*.vercel.app`）は審査とは別に社内で詰める（Deployment Protection の設定待ち）。
+        残りの穴（Supabase 直通信・Cloudflare→Vercel）は審査とは別に社内で詰める。`*.vercel.app` は 2026-10-03 に解決（上の4）。
       ~~**代表判断待ち**: 送信済みの提出物をこのまま審査に出すか、訂正を追送するか。~~直し方（Supabase を TOE の外に出す／
       クライアントの Supabase 通信を Backend 経由に寄せる／現状を正直に書く）も製品・申請の判断。
       → **2026-10-02 再提出を送信**（代表の申告）。validate（jpeg/png/webp/heic）復活を依頼済み。
