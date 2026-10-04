@@ -235,36 +235,9 @@ export const PATCH = withCaller(
       // この更新で記録に変更を加えた者を記録者として残す (ガイドライン4.2(2))。
       updates.recorded_by = caller.userId;
 
-      // ステージ変更時: 対応する到達タイムスタンプが未設定なら now() をセットする
-      // (一度入った工程の到達時刻は上書きしない = 出戻りで時刻が消えない)。
-      let previousStage: BodyRepairStage | null = null;
-      let isForwardAdvance = false;
-      if (stage !== undefined) {
-        // 現在の案件を取得して到達タイムスタンプの既存値を確認する。
-        const { data: existing, error: fetchErr } = await admin
-          .from("body_repair_jobs")
-          .select("id, stage, intake_at, estimate_at, bodywork_start_at, paint_start_at, complete_at, delivered_at")
-          .eq("id", id)
-          .eq("tenant_id", caller.tenantId)
-          .maybeSingle();
-        if (fetchErr) return apiInternalError(fetchErr, "body-repair-jobs PATCH fetch");
-        if (!existing) return apiValidationError("対象の案件が見つかりません。");
-
-        previousStage = (existing as { stage?: BodyRepairStage }).stage ?? null;
-        // 工程インデックスが増える「前進」のときだけ顧客通知の対象とする。
-        // 後退・補正 (admin/API のやり直し) で「進捗が進んだ」通知を送らない。
-        isForwardAdvance =
-          previousStage !== null && BODY_REPAIR_STAGES.indexOf(stage) > BODY_REPAIR_STAGES.indexOf(previousStage);
-        updates.stage = stage;
-        const tsColumn = STAGE_TIMESTAMP_COLUMN[stage];
-        const existingTs = (existing as Record<string, unknown>)[tsColumn];
-        if (!existingTs) {
-          updates[tsColumn] = new Date().toISOString();
-        }
-      }
-
-      // 監査の更新前値（固定リテラル列）。更新箇所の算出に使う。recorded_by / updated_at は毎回変わるので差分から除く。
-      const { data: auditBefore } = await admin
+      // 更新前値を1回だけ取得する（固定リテラル列）。ステージ到達タイムスタンプの既存値確認と、
+      // 監査の更新箇所算出を兼ねる。recorded_by / updated_at は毎回変わるので差分からは除く。
+      const { data: auditBefore, error: beforeErr } = await admin
         .from("body_repair_jobs")
         .select(
           "stage, estimate_amount, actual_amount, due_date, insurance_company, claim_number, assigned_staff_id, intake_at, estimate_at, bodywork_start_at, paint_start_at, complete_at, delivered_at, notes, certificate_id, estimate_document_id, invoice_document_id, insurer_case_id, claim_status, claim_approved_amount, claim_decided_at, planned_work_json, actual_work_json, deviation_reason, is_specified_maintenance, record_retention_until",
@@ -272,6 +245,26 @@ export const PATCH = withCaller(
         .eq("id", id)
         .eq("tenant_id", caller.tenantId)
         .maybeSingle();
+      if (beforeErr) return apiInternalError(beforeErr, "body-repair-jobs PATCH fetch");
+
+      // ステージ変更時: 対応する到達タイムスタンプが未設定なら now() をセットする
+      // (一度入った工程の到達時刻は上書きしない = 出戻りで時刻が消えない)。
+      let previousStage: BodyRepairStage | null = null;
+      let isForwardAdvance = false;
+      if (stage !== undefined) {
+        if (!auditBefore) return apiValidationError("対象の案件が見つかりません。");
+        previousStage = (auditBefore as { stage?: BodyRepairStage }).stage ?? null;
+        // 工程インデックスが増える「前進」のときだけ顧客通知の対象とする。
+        // 後退・補正 (admin/API のやり直し) で「進捗が進んだ」通知を送らない。
+        isForwardAdvance =
+          previousStage !== null && BODY_REPAIR_STAGES.indexOf(stage) > BODY_REPAIR_STAGES.indexOf(previousStage);
+        updates.stage = stage;
+        const tsColumn = STAGE_TIMESTAMP_COLUMN[stage];
+        const existingTs = (auditBefore as Record<string, unknown>)[tsColumn];
+        if (!existingTs) {
+          updates[tsColumn] = new Date().toISOString();
+        }
+      }
 
       // ステージ遷移時は UPDATE を「現在 stage が previousStage のまま」に条件付ける。
       // 並行 PATCH (二重送信・別タブ) では先勝ちした 1 件だけが行を更新し、後続は

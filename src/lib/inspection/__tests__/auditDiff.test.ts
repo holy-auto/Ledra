@@ -33,6 +33,19 @@ describe("changedFields [G2 指定整備記録簿の更新箇所]", () => {
   it("変化が無ければ空オブジェクト", () => {
     expect(changedFields({ notes: "a" }, { notes: "a" })).toEqual({});
   });
+
+  it("jsonb のキー順違い（DB正規化 vs 挿入順）は変更と見なさない", () => {
+    // DB 返却（キー正規化）と calcItems 由来（挿入順）で中身は同じ。誤って「変更あり」にしない。
+    const before = { items_json: [{ amount: 100, name: "A", price: 100 }] };
+    const updates = { items_json: [{ name: "A", price: 100, amount: 100 }] };
+    expect(changedFields(before, updates)).toEqual({});
+  });
+
+  it("配列の順序違いは変更として検出する（明細の並べ替えは実変更）", () => {
+    const before = { items_json: [{ name: "A" }, { name: "B" }] };
+    const updates = { items_json: [{ name: "B" }, { name: "A" }] };
+    expect(Object.keys(changedFields(before, updates))).toEqual(["items_json"]);
+  });
 });
 
 describe("changedFieldKeys [G2 documents/body_repair 更新箇所・列名のみ]", () => {
