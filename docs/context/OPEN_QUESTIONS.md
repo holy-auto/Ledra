@@ -23,9 +23,10 @@ Ledra ドメインから送れる。テナント UUID は推測しにくく、�
    代表が公式サイトと突き合わせるまで未確認。
 2. **展示の中身**: 出展内容は「Ledra」までしか決まっていない。デモの構成・配布物・当日の体制は【要確認】。
 
-## G3/G4 電子交付の承諾: 撤回後ブロックは実装、残る3点（2026-10-02）
+## G3/G4 電子交付の承諾: 撤回後ブロック・撤回UIは実装、残る2点（2026-10-02）
 
-`delivery_consents` ＋ 承諾記録/撤回 ＋ 証明書電子交付の撤回後ブロックを実装（RELEASE_LOG 2026-10-02）。残り。
+`delivery_consents` ＋ 承諾記録/撤回 ＋ 証明書電子交付の撤回後ブロックを実装（RELEASE_LOG 2026-10-02）。
+使用者ポータルの撤回 UI も配線済み（RELEASE_LOG 2026-10-03・`DeliveryConsentRevokePanel`）。残り。
 
 1. **未承諾（none）のハードブロック**: 規制(4)は「承諾が得られない場合も電磁的交付をしてはならない」だが、
    既定で none をブロックすると既存の証明書交付が一斉に止まる（誰も承諾記録を持たない）。今回は**撤回のみブロック**し、
@@ -33,9 +34,7 @@ Ledra ドメインから送れる。テナント UUID は推測しにくく、�
    厳格運用を選べるようにするのが筋。導入時は既存顧客への承諾記録の移行（バックフィル or 初回交付時取得）とセット。
 2. **顧客未紐付け（customer_id 無し）の証明書**: 顧客単位の承諾判定ができず従来どおり交付される。証明書作成時に
    customers を必須紐付けにするか、電話番号ハッシュ単位の承諾を持つかは要検討。
-3. **使用者ポータルの撤回 UI**: 撤回 API（`/api/customer/delivery-consent/revoke`）は実装したが、顧客ポータル画面の
-   撤回ボタン（`PiiConsentPanel` に倣う）は未配線。店舗代行の撤回 UI は顧客詳細に有り。
-4. **inspection_records（指定整備記録簿）の顧客向け電子交付**: 現状アプリに経路が無い（管理PDFのみ）。顧客へ電子交付する
+3. **inspection_records（指定整備記録簿）の顧客向け電子交付**: 現状アプリに経路が無い（管理PDFのみ）。顧客へ電子交付する
    経路を設ける場合は同じ `delivery_consents` ゲートを通すこと。
 
 ## G2 監査ログ: 指定整備記録簿の作成/更新は対応、消去経路と documents/body_repair が残る（2026-10-02）
@@ -2219,8 +2218,12 @@ JST は夏時間が無いので日の加算は 24 時間の加算でよい。
            全経路で照合すると、Vercel Cron など `*.vercel.app` 宛ての内部呼び出しを止めるおそれがある（推定・未検証）。
            → 2026-10-02 代表了承: まず Vercel の Deployment Protection を有効にし、本番の `*.vercel.app` URL が保護されるかを実測する。
            QStash のコールバック先は `NEXT_PUBLIC_APP_URL` が最優先（未設定時のみ `VERCEL_URL`）。
+           → **2026-10-03 解決（実測）**: Vercel Authentication は「Require Log In」オン・Standard Protection（代表の画面で確認）。
+           代表の PC で本番デプロイの URL `ledra-lqjnjqxkf-yusuke-horikoshis-projects.vercel.app` は `302` で vercel.com/sso-api へ
+           （未ログインでは入れない）、`app.ledra.co.jp` は `200`・`Server: cloudflare`。残り: 固定の本番エイリアス URL が別にあれば未実測。
+           Cron が保護を通るかは未確認（翌日の Cron 実行結果で見る）。
       → **2026-10-02 Administrator がアーキテクチャを合格とし「これ以上は不要」と返信。訂正の追送はしない。**
-        残りの穴（Supabase 直通信・Cloudflare→Vercel・`*.vercel.app`）は審査とは別に社内で詰める（Deployment Protection の設定待ち）。
+        残りの穴（Supabase 直通信・Cloudflare→Vercel）は審査とは別に社内で詰める。`*.vercel.app` は 2026-10-03 に解決（上の4）。
       ~~**代表判断待ち**: 送信済みの提出物をこのまま審査に出すか、訂正を追送するか。~~直し方（Supabase を TOE の外に出す／
       クライアントの Supabase 通信を Backend 経由に寄せる／現状を正直に書く）も製品・申請の判断。
       → **2026-10-02 再提出を送信**（代表の申告）。validate（jpeg/png/webp/heic）復活を依頼済み。

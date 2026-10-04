@@ -4,6 +4,17 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-10-03 使用者ポータルに電子交付の承諾「撤回」導線を配線（G4）
+
+- 内容: 第２ ４（４）の撤回権を使用者本人が行使できる UI を顧客ポータルに追加。撤回 API
+  （`/api/customer/delivery-consent/revoke`・#1216 実装済み）に加え、状態取得 GET
+  （`/api/customer/delivery-consent?tenant=slug` → none/granted/revoked）を新設し、`DeliveryConsentRevokePanel`
+  （`src/app/customer/[tenant]/`）を `PiiConsentPanel` に倣って `page.tsx` に配線。
+- 挙動: 撤回済みは「書面等での交付に切り替わる」旨を表示（ボタン無し）。未撤回は確認を挟んで撤回ボタン。
+  撤回すると証明書（＝記録簿の写し）の電子交付が以後ブロックされる（受領サイン依頼・署名依頼の既存ゲート）。
+  認証前（customer_id 無しセッション）は何も表示しない。承諾の付与は店舗側の記録（顧客詳細パネル）のまま。
+- 検証: tsc・eslint（変更 0 error）・check:schema（GET は固定リテラル select）緑。
+
 ## 2026-10-03 実証テストの案件割当・不具合報告で、施工店の管理者にメールを送る（#1176）
 
 - 代表判断（DECISION_LOG 2026-10-03）を受けて実装。メーカーが施工店に案件を割り当てたとき（`POST /api/manufacturer/field-test/jobs`、
