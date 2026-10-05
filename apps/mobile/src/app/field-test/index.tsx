@@ -127,11 +127,13 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     borderRadius: radius.card,
     padding: spacing.lg,
+    // chevron は position:absolute で右端 16〜36px を占める。行ごとに逃げ幅を
+    // 入れるとカードの縦中央に来た行を取りこぼすので、カード側で帯ごと確保する。
+    paddingRight: spacing["4xl"],
     ...shadows.card,
     position: "relative",
   },
-  // chevron が右端 16〜36px を絶対配置で占めるので、その帯を空ける
-  cardHeader: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingRight: spacing["3xl"] },
+  cardHeader: { flexDirection: "row", alignItems: "center", gap: spacing.md },
   iconWrap: {
     width: 40, height: 40, borderRadius: radius.md,
     backgroundColor: colors.primaryLight, alignItems: "center", justifyContent: "center",

@@ -114,14 +114,17 @@ const styles = StyleSheet.create({
   list: { padding: spacing.lg, gap: spacing.md },
   card: {
     backgroundColor: colors.surface, borderRadius: radius.card,
-    padding: spacing.lg, ...shadows.card, position: "relative",
+    padding: spacing.lg,
+    // chevron は position:absolute で右端 16〜36px を占める。行ごとに逃げ幅を
+    // 入れるとカードの縦中央に来た行を取りこぼすので、カード側で帯ごと確保する。
+    paddingRight: spacing["4xl"],
+    ...shadows.card, position: "relative",
   },
-  // chevron が右端 16〜36px を絶対配置で占めるので、その帯を空ける
-  cardHeader: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingRight: spacing["3xl"] },
+  cardHeader: { flexDirection: "row", alignItems: "center", gap: spacing.md },
   cardText: { flex: 1 },
   code: { ...typography.meta, color: colors.textTertiary, fontFamily: "monospace" },
   title: { ...typography.titleSmall, color: colors.textPrimary },
-  meta: { flexDirection: "row", alignItems: "center", gap: spacing.xs, marginTop: spacing.sm, paddingRight: spacing["3xl"] },
+  meta: { flexDirection: "row", alignItems: "center", gap: spacing.xs, marginTop: spacing.sm },
   metaText: { ...typography.meta, color: colors.textTertiary },
   chevron: { position: "absolute", right: spacing.lg, top: "50%", marginTop: -10 },
   navLinks: { gap: spacing.sm, marginBottom: spacing.md },
