@@ -9,6 +9,9 @@ import InspectionRecordForm from "@/components/admin/InspectionRecordForm";
 import CompletionInspectionForm from "@/components/admin/CompletionInspectionForm";
 import { INSPECTION_TYPE_LABEL, type InspectionType } from "@/lib/validations/inspection";
 import { canUseFeature } from "@/lib/billing/planFeatures";
+import { isRetentionExpired } from "@/lib/retention";
+import { hasMinRole, normalizeRole } from "@/lib/auth/roles";
+import { parseJsonSafe } from "@/lib/api/safeJson";
 
 /**
  * 案件ワークフローの「点検」タブ。
@@ -27,6 +30,7 @@ type InspectionRecord = {
   template_name: string | null;
   inspector_name: string | null;
   inspector_staff_id: string | null;
+  record_retention_until: string | null;
   inspected_at: string;
   answers: Record<string, { value?: unknown; note?: string }> | null;
   photo_urls: string[] | null;
@@ -67,11 +71,30 @@ export default function JobInspectionTab({ reservationId, vehicleId, customerId 
   });
   // 音声メモ(AI整形)はプラン依存。ai_draft 非対応プラン(Free)では 403 になるためパネルを出さない。
   // 未取得のうちは false 側 (= 非表示) に倒し、対応が確認できてから出す。
-  const { data: me } = useSWR<{ plan_tier?: string }>("/api/admin/me", fetcher, {
+  const { data: me } = useSWR<{ plan_tier?: string; role?: string | null }>("/api/admin/me", fetcher, {
     revalidateOnFocus: false,
     dedupingInterval: 60000,
   });
   const canUseVoiceAi = canUseFeature(me?.plan_tier, "ai_draft");
+  // 保持期限後の消去は管理者以上のみ（過去に staff 可視ボタンで保持義務を壊しかけた反省
+  // MISTAKE_LEDGER M-20261002）。ボタンは「管理者以上 かつ 保持期限経過」でのみ出す。
+  // ロール序列は server(minRole:"admin") と同じ roles.ts を使い、判定源を一本化する。
+  const canErase = hasMinRole(normalizeRole(me?.role), "admin");
+
+  async function eraseCompletion(id: string) {
+    if (!window.confirm("保持期限を過ぎた指定整備記録簿を消去します。元に戻せません。よろしいですか？")) return;
+    const res = await fetch("/api/admin/inspection-records", {
+      method: "DELETE",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id }),
+    });
+    const j = await parseJsonSafe(res);
+    if (!res.ok) {
+      alert(j?.message ?? "消去に失敗しました。");
+      return;
+    }
+    await mutate();
+  }
 
   const records = data?.records ?? [];
   const activeTemplates = (tplData?.templates ?? []).filter((t) => t.is_active);
@@ -194,6 +217,17 @@ export default function JobInspectionTab({ reservationId, vehicleId, customerId 
                     >
                       指定整備記録簿 PDF
                     </a>
+                    {/* 保持期限（2年）経過後のみ・管理者以上にだけ消去導線を出す。server 側でも二重に強制。 */}
+                    {canErase && isRetentionExpired(r.record_retention_until) && (
+                      <button
+                        type="button"
+                        onClick={() => eraseCompletion(r.id)}
+                        className="text-danger-text underline"
+                        title={`保持期限（${r.record_retention_until}）を過ぎた記録を消去します`}
+                      >
+                        保持期限後の消去
+                      </button>
+                    )}
                   </>
                 ) : (
                   <>

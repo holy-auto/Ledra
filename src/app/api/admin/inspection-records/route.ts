@@ -2,7 +2,7 @@ import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 
 import { apiJson, apiError, apiValidationError, apiInternalError } from "@/lib/api/response";
 import { inspectionRecordCreateSchema, inspectionRecordUpdateSchema } from "@/lib/validations/inspection";
-import { retentionUntilYears } from "@/lib/retention";
+import { retentionUntilYears, isRetentionExpired } from "@/lib/retention";
 import { logTenantAuditEvent } from "@/lib/audit/tenantLog";
 import { changedFields } from "@/lib/inspection/auditDiff";
 import { evaluateCompletionInspectorGate } from "@/lib/staff/inspectorQualification";
@@ -262,12 +262,75 @@ export const PATCH = withCaller(
   { minRole: "staff", routeName: "inspection-records PATCH" },
 );
 
-// 消去（DELETE）は意図的に設けない。完成検査＝指定整備記録簿は record_retention_until で
-// 2年保存を課しており（POST 参照）、保持期間中の消去は規制（第２ ２（３）の「消去」ではなく
-// 第２ ２ の保存義務）に反する。保持期限後の削除は data-retention cron の領域。アプリに消去経路が
-// 無いこと自体が「記録簿を保持する」要件に沿う。将来、保持期限後の管理者消去を設けるなら、
-// record_retention_until を過ぎていることの確認と logTenantAuditEvent による消去記録を必須にする
-// （OPEN_QUESTIONS 参照）。
+// ─── DELETE: 保持期限後の消去（管理者のみ・期限経過を必須・監査記録） ───
+// 完成検査＝指定整備記録簿は record_retention_until で2年保存を課す（POST 参照）。保持期間中の消去は
+// 保存義務（第２ ２）に反するため禁止し、**保持期限を過ぎた記録のみ** owner/admin が消去できる経路を設ける。
+// 過去に staff 可視の消去ボタン＋常時ブロックを入れて撤回した反省（MISTAKE_LEDGER
+// M-20261002-delete-ignored-legal-retention）を踏まえ、(1) 権限は admin 以上、(2) 期限経過を server で必須、
+// (3) 消去を logTenantAuditEvent で残す、の3点を満たす。保持期限が無い記録（非・完成検査）はこの経路の対象外。
+export const DELETE = withCaller(
+  async (req, { caller }) => {
+    try {
+      const body = (await req.json().catch(() => ({}))) as { id?: unknown };
+      const id = typeof body.id === "string" ? body.id : "";
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
+        return apiValidationError("点検記録 ID が不正です。");
+      }
+
+      const { admin } = createTenantScopedAdmin(caller.tenantId);
+      const { data: rec, error: readErr } = await admin
+        .from("inspection_records")
+        .select("id, inspection_type, record_retention_until")
+        .eq("id", id)
+        .eq("tenant_id", caller.tenantId)
+        .maybeSingle();
+      if (readErr) return apiInternalError(readErr, "inspection-records DELETE read");
+      if (!rec) return apiValidationError("対象の点検記録が見つかりません。");
+
+      const retention = (rec as { record_retention_until: string | null }).record_retention_until;
+      if (!retention) {
+        return apiError({
+          code: "conflict",
+          message: "この記録には保持期限が設定されていないため、この経路では消去できません。",
+          status: 409,
+        });
+      }
+      if (!isRetentionExpired(retention)) {
+        return apiError({
+          code: "conflict",
+          message: `保持期限（${retention}）内は消去できません。保存義務期間の経過後に消去できます。`,
+          status: 409,
+        });
+      }
+
+      const { error: delErr } = await admin
+        .from("inspection_records")
+        .delete()
+        .eq("id", id)
+        .eq("tenant_id", caller.tenantId);
+      if (delErr) return apiInternalError(delErr, "inspection-records DELETE");
+
+      // 消去の日時・作業者を監査ログに残す（第２ ２（３）/ G2）。
+      await logTenantAuditEvent(admin, {
+        tenantId: caller.tenantId,
+        userId: caller.userId,
+        action: "inspection_record_deleted",
+        table: "inspection_records",
+        recordId: id,
+        extra: {
+          inspection_type: (rec as { inspection_type: string | null }).inspection_type,
+          record_retention_until: retention,
+        },
+        req,
+      });
+
+      return apiJson({ ok: true });
+    } catch (e) {
+      return apiInternalError(e, "inspection-records DELETE");
+    }
+  },
+  { minRole: "admin", routeName: "inspection-records DELETE" },
+);
 
 /**
  * 指定された ID 群が caller のテナントに属するかを検証する。
