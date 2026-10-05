@@ -25,11 +25,12 @@ export function todayInJst(now: Date = new Date()): string {
  * 保持期限が過ぎており、その記録を消去してよいか。 [G2 / 保持期限後の消去経路]
  *
  * 保持期限（`record_retention_until`＝YYYY-MM-DD）より前は保存義務があり消去してはならない。
- * **期限日当日以降（today >= retention）は消去可**とする（ヘルパの「この日付より前に削除してはならない」に対応）。
- * 保持期限が無い（null）レコードは、この消去経路の対象外なので false を返す。
- * ponytail: 保存年数は2年スケールなので、JST/UTC の当日境界の半日差は実害にならない（当日判定は JST 固定）。
+ * **期限日の翌日以降（today > retention）にのみ消去可**とする。`retentionUntilYears` は作成時刻を UTC で
+ * 切り捨てて日付化するため、JST 作成だと保持期限が真の2年記念日より最大1日早くなりうる。保存義務を確実に
+ * 満たす（真の2年より早く消さない）よう、当日ではなく翌日以降で判定して1日分の安全余裕を持たせる
+ * （早く消す誤りは不可逆なので、長く保つ側へ倒す）。保持期限が無い（null）レコードは対象外で false。
  */
 export function isRetentionExpired(retentionUntil: string | null | undefined, today: string = todayInJst()): boolean {
   if (!retentionUntil || !/^\d{4}-\d{2}-\d{2}$/.test(retentionUntil)) return false;
-  return today >= retentionUntil;
+  return today > retentionUntil;
 }

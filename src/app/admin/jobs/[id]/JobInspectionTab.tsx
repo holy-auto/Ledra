@@ -10,6 +10,7 @@ import CompletionInspectionForm from "@/components/admin/CompletionInspectionFor
 import { INSPECTION_TYPE_LABEL, type InspectionType } from "@/lib/validations/inspection";
 import { canUseFeature } from "@/lib/billing/planFeatures";
 import { isRetentionExpired } from "@/lib/retention";
+import { hasMinRole, normalizeRole } from "@/lib/auth/roles";
 import { parseJsonSafe } from "@/lib/api/safeJson";
 
 /**
@@ -77,7 +78,8 @@ export default function JobInspectionTab({ reservationId, vehicleId, customerId 
   const canUseVoiceAi = canUseFeature(me?.plan_tier, "ai_draft");
   // 保持期限後の消去は管理者以上のみ（過去に staff 可視ボタンで保持義務を壊しかけた反省
   // MISTAKE_LEDGER M-20261002）。ボタンは「管理者以上 かつ 保持期限経過」でのみ出す。
-  const canErase = ["admin", "owner", "super_admin"].includes(me?.role ?? "");
+  // ロール序列は server(minRole:"admin") と同じ roles.ts を使い、判定源を一本化する。
+  const canErase = hasMinRole(normalizeRole(me?.role), "admin");
 
   async function eraseCompletion(id: string) {
     if (!window.confirm("保持期限を過ぎた指定整備記録簿を消去します。元に戻せません。よろしいですか？")) return;

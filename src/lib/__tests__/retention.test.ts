@@ -15,12 +15,12 @@ describe("isRetentionExpired [G2 保持期限後の消去経路]", () => {
     expect(isRetentionExpired("", "2030-01-01")).toBe(false);
   });
 
-  it("期限日より前（保存義務期間中）は false", () => {
+  it("期限日当日まで（保存義務期間中）は false（UTC/JST ズレの安全余裕で当日も保つ）", () => {
     expect(isRetentionExpired("2028-10-05", "2028-10-04")).toBe(false);
+    expect(isRetentionExpired("2028-10-05", "2028-10-05")).toBe(false);
   });
 
-  it("期限日当日以降は true（当日に消去可）", () => {
-    expect(isRetentionExpired("2028-10-05", "2028-10-05")).toBe(true);
+  it("期限日の翌日以降は true（翌日から消去可）", () => {
     expect(isRetentionExpired("2028-10-05", "2028-10-06")).toBe(true);
   });
 
