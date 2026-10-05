@@ -8,7 +8,7 @@ beforeAll(() => {
 afterEach(() => vi.useRealTimers());
 
 describe("staffPdfLink [スタッフ用 PDF 署名]", () => {
-  const t = () => createStaffPdfToken({ tenantId: "t1", publicId: "PID-0001", userId: "u1" });
+  const t = () => createStaffPdfToken({ tenantId: "t1", publicId: "PID-0001" });
 
   it("同じ証明書・同じテナントなら有効", () => {
     expect(isValidStaffPdfToken(t(), "PID-0001", "t1")).toBe(true);
@@ -23,6 +23,11 @@ describe("staffPdfLink [スタッフ用 PDF 署名]", () => {
     vi.useFakeTimers();
     vi.setSystemTime(Date.now() + 2 * 60 * 1000);
     expect(isValidStaffPdfToken(tok, "PID-0001", "t1")).toBe(false);
+  });
+
+  it("同じ鍵で作った OAuth state は署名として使えない（用途を分けている）", () => {
+    const state = createOAuthState({ tenantId: "t1", provider: "staff-pdf:PID-0001", ttlSeconds: 60 });
+    expect(isValidStaffPdfToken(state, "PID-0001", "t1")).toBe(false);
   });
 
   it("専用鍵が無い・短いときは無効（会計連携のフォールバック鍵では発行も検証もしない）", () => {

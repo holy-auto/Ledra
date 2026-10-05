@@ -57,7 +57,7 @@ export async function POST(req: NextRequest) {
     // 公開 PDF 側と同じく大文字小文字を区別しない
     if (!cert || String(cert.status ?? "").toLowerCase() !== "active") return apiNotFound("証明書が見つかりません。");
 
-    const token = createStaffPdfToken({ tenantId: caller.tenantId, publicId, userId: caller.userId });
+    const token = createStaffPdfToken({ tenantId: caller.tenantId, publicId });
     // 誰が書面交付用に出力したかを残す（公開 PDF 側の閲覧ログは匿名なので、発行時に記録する）。
     logCertificateAction({
       type: "certificate_pdf_generated",

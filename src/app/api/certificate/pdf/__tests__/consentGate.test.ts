@@ -93,7 +93,7 @@ describe("公開 PDF の電子交付承諾ゲート", () => {
 
   it("スタッフ用署名（自テナント・同じ証明書）があれば承諾ゲートを通さず先へ進む", async () => {
     gate.mockResolvedValue("この顧客は電子交付の承諾を撤回しています。");
-    const st = createStaffPdfToken({ tenantId: "t1", publicId: PID, userId: "u1" });
+    const st = createStaffPdfToken({ tenantId: "t1", publicId: PID });
     const r = new Request(`https://app.example/api/certificate/pdf?pid=${PID}&st=${encodeURIComponent(st)}`, {
       headers: { accept: "text/html" },
     });
@@ -103,7 +103,7 @@ describe("公開 PDF の電子交付承諾ゲート", () => {
 
   it("他テナントの署名では通さない", async () => {
     gate.mockResolvedValue("この顧客は電子交付の承諾を撤回しています。");
-    const st = createStaffPdfToken({ tenantId: "t2", publicId: PID, userId: "u1" });
+    const st = createStaffPdfToken({ tenantId: "t2", publicId: PID });
     const r = new Request(`https://app.example/api/certificate/pdf?pid=${PID}&st=${encodeURIComponent(st)}`, {
       headers: { accept: "text/html" },
     });
