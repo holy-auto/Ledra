@@ -180,6 +180,15 @@
   更新前値は固定リテラル select で取得（check:schema 準拠）。body_repair の差分からは毎回変わる recorded_by/updated_at を除く。
 - 検証: `changedFieldKeys` の単体テスト 4 件（既存 changedFields と同ファイル）、tsc・eslint（変更 0 error）・check:schema 緑。
 
+## 2026-10-05 実証テストの案件割当・不具合報告は、応募が承認された施工店にだけ行える
+
+- `POST /api/manufacturer/field-test/jobs` と、`tenant_id` を指定した `POST /api/manufacturer/field-test/defects` は、
+  その施工店の応募（`ft_applications`）が同じメーカー・プロジェクトで `approved` でなければ 403 を返す（DECISION_LOG 2026-10-05）。
+  #1176 で割当・報告が施工店管理者へのメールを伴うようになったため、任意テナントへのメール送信を塞ぐ。
+- 判定は `src/lib/fieldTest/applicationGate.ts`。メーカーの割当フォーム（JobsTab）は失敗時に理由を表示し、フォームを閉じない
+  （これまでは失敗しても黙って閉じていた）。
+- テスト: `applicationGate.test.ts`（絞り込み条件・未承認・問い合わせ失敗）。
+
 ## 2026-10-03 使用者ポータルに電子交付の承諾「撤回」導線を配線（G4）
 
 - 内容: 第２ ４（４）の撤回権を使用者本人が行使できる UI を顧客ポータルに追加。撤回 API

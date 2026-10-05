@@ -86,13 +86,6 @@ TSA の URL（`https://ts-c2pa.ssl.com/ecc`）と、証明書・TSA とも ssl.c
 `notifyFtTenant` に残してある。専用タイプ（例 `ft_agreement_accepted`）を足すか、控え自体が要るか（本人の操作の通知）は未決。
 通知一覧のアイコン・カテゴリも `ft_job_assigned` として表示される。
 
-## 実証テスト: メーカーは任意のテナントに案件割当・不具合報告ができる（2026-10-03）
-
-`POST /api/manufacturer/field-test/{jobs,defects}` は body の `tenant_id` を検証しない（応募 `ft_applications` が approved か等を見ない）。
-#1176 でこの2経路が施工店管理者へのメールを出すようになったため、メーカー admin が任意テナントの管理者へ、自由文の件名入りメールを
-Ledra ドメインから送れる。テナント UUID は推測しにくく、メーカーは審査済み B2B アカウントなので即時の実害は小さいと判断し、
-#1176 では広げていない。「approved の応募があるテナントにだけ割当可」にするか（直接割当の運用が要るか）は業務判断が要る。
-
 ## Japan Mobility Show Bizweek 2026 出展: 残る2点（2026-10-02）
 
 1. **開催概要の公式サイト突合**: 日時・会場は JAMA 発表と報道の検索結果から書いた。公式ページを直接開けていないので、

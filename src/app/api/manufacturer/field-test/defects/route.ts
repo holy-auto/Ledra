@@ -5,6 +5,7 @@ import { resolveManufacturerCaller } from "@/lib/auth/manufacturerCaller";
 import { createServiceRoleAdmin } from "@/lib/supabase/admin";
 import { apiJson, apiUnauthorized, apiForbidden, apiValidationError, apiInternalError } from "@/lib/api/response";
 import { dispatchNotification } from "@/lib/notifications/dispatch";
+import { APPLICATION_REQUIRED_MESSAGE, hasApprovedApplication } from "@/lib/fieldTest/applicationGate";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -78,6 +79,16 @@ export async function POST(req: NextRequest) {
   try {
     const admin = createServiceRoleAdmin("ft defects create — admin caller");
     const manufacturerId = caller.manufacturerId;
+
+    // 施工店を指定する報告は、その施工店の応募が承認済みのときだけ受け付ける（管理者へメールが出る）。
+    if (parsed.data.tenant_id) {
+      const approved = await hasApprovedApplication(admin, {
+        manufacturerId,
+        projectId: parsed.data.project_id,
+        tenantId: parsed.data.tenant_id,
+      });
+      if (!approved) return apiForbidden(APPLICATION_REQUIRED_MESSAGE);
+    }
 
     const { data, error } = await admin
       .from("ft_defects")
