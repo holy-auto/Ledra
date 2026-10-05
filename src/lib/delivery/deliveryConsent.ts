@@ -9,7 +9,8 @@
  *   - **撤回（revoked）されたら電子交付をブロックする**（規制(4)の絶対条件。常時オン）。
  *   - 未承諾（none）のハードブロックは既定で行わない（既存の交付を一斉に止めないための非破壊既定）。
  *     承諾は店舗が取得・記録し、交付画面に状態（未承諾/承諾済/撤回）を出して運用で担保する。
- *     未承諾もブロックする厳格運用はテナント opt-in の後続（OPEN_QUESTIONS）。
+ *   - テナントが tenants.require_delivery_consent を true にした場合は、未承諾もブロックする（規制(3)の
+ *     事前承諾をシステムで強制する opt-in）。
  */
 
 import { createHash } from "crypto";
@@ -55,32 +56,55 @@ export function deliveryConsentStatus(row: DeliveryConsentRow | null | undefined
 }
 
 /**
- * 電子交付をブロックすべきか（規制(4)）。**撤回済みのときだけブロック**する（非破壊既定）。
- * 未承諾（none）は既定では通す —— 厳格な事前承諾ゲートは別途 opt-in（上の方針参照）。
+ * 電子交付をブロックすべきか。撤回済み（規制(4)）は常にブロック。未承諾（none）は
+ * `requireConsent`（tenants.require_delivery_consent）が true のときだけブロック（規制(3)・opt-in）。
  */
-export function isElectronicDeliveryBlocked(row: DeliveryConsentRow | null | undefined): boolean {
-  return deliveryConsentStatus(row) === "revoked";
+export function isElectronicDeliveryBlocked(
+  row: DeliveryConsentRow | null | undefined,
+  requireConsent = false,
+): boolean {
+  const s = deliveryConsentStatus(row);
+  return s === "revoked" || (s === "none" && requireConsent);
 }
 
+const BLOCKED_REVOKED =
+  "この顧客は電子交付の承諾を撤回しています。電磁的方法での交付はできません（書面交付等に切り替えてください）。";
+const BLOCKED_NO_CONSENT =
+  "この顧客から電子交付の承諾を得ていません（店舗設定で事前承諾を必須にしています）。顧客詳細で承諾を記録するか、書面交付等に切り替えてください。";
+const BLOCKED_UNVERIFIED = "電子交付の承諾状態を確認できませんでした。時間をおいて再度お試しください。";
+
 /**
- * 顧客単位で電子交付をブロックすべきか（撤回済みか）を DB から判定する共通ゲート。 [G4]
+ * 顧客単位で電子交付をブロックすべきかを DB から判定する共通ゲート。 [G3/G4]
  * 記録簿の写しの電子交付を行う全経路（証明書の受領サイン依頼・署名依頼など）から呼ぶ。
+ * ブロックするなら利用者向けの理由メッセージを、通すなら null を返す。
  *
- * **fail-closed**: 承諾状態を確認できない（クエリ失敗）ときはブロックする —— 規制(4)の
- * 「撤回されたら交付してはならない」保護を、DB 一時障害で落とさないため。
+ * **fail-closed**: 承諾状態・テナント設定を確認できない（クエリ失敗）ときはブロックする —— 規制(4)の
+ * 「撤回されたら交付してはならない」保護を、DB 一時障害で落とさないため。テナント設定は未承諾のときだけ読む。
  * `db` は tenant-scoped admin（RLS バイパス）を渡す。customerId が無い証明書は呼び出し側で除外する。
  */
-export async function isElectronicDeliveryBlockedForCustomer(
+export async function electronicDeliveryBlockMessage(
   db: Pick<SupabaseClient, "from">,
   tenantId: string,
   customerId: string,
-): Promise<boolean> {
+): Promise<string | null> {
   const { data, error } = await db
     .from("delivery_consents")
     .select("status, revoked_at")
     .eq("tenant_id", tenantId)
     .eq("customer_id", customerId)
     .maybeSingle();
-  if (error) return true; // 確認できない → ブロック（fail-closed）
-  return isElectronicDeliveryBlocked((data as DeliveryConsentRow | null) ?? null);
+  if (error) return BLOCKED_UNVERIFIED;
+  const row = (data as DeliveryConsentRow | null) ?? null;
+  const status = deliveryConsentStatus(row);
+  if (status === "revoked") return BLOCKED_REVOKED;
+  if (status === "granted") return null;
+
+  const { data: tenant, error: tErr } = await db
+    .from("tenants")
+    .select("require_delivery_consent")
+    .eq("id", tenantId)
+    .maybeSingle();
+  if (tErr) return BLOCKED_UNVERIFIED;
+  const requireConsent = (tenant as { require_delivery_consent?: boolean | null } | null)?.require_delivery_consent;
+  return isElectronicDeliveryBlocked(row, requireConsent === true) ? BLOCKED_NO_CONSENT : null;
 }

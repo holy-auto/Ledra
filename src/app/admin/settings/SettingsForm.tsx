@@ -31,6 +31,7 @@ type Props = {
   bankInfo: BankInfo;
   laborRatePerHour: number | null;
   requireInspectorQualification: boolean;
+  requireDeliveryConsent: boolean;
   bookingNotifySlackColumnExists: boolean;
   bookingNotifySlackConfigured: boolean;
   columnsExist: boolean;
@@ -51,6 +52,7 @@ export default function SettingsForm({
   bankInfo,
   laborRatePerHour,
   requireInspectorQualification,
+  requireDeliveryConsent,
   bookingNotifySlackColumnExists,
   bookingNotifySlackConfigured,
   columnsExist,
@@ -259,6 +261,32 @@ export default function SettingsForm({
                 完成検査の実施者に有効な自動車検査員資格を必須化する
                 <span className="mt-0.5 block text-xs text-muted">
                   オフ（既定）の場合は実施者の資格を強制しません。スタッフの資格・資格番号・有効期限は「スタッフ管理」で登録します。
+                </span>
+              </span>
+            </label>
+          </div>
+
+          <div className="border-t border-[var(--border-default)] pt-5 mt-5">
+            <div className="text-xs font-semibold tracking-[0.18em] text-muted mb-3 flex items-center gap-1.5">
+              記録簿の写しの電子交付
+              <HelpTooltip>
+                記録簿の写し（証明書）を電磁的方法で交付する前に、使用者の承諾を得る必要があります（第２
+                ４（３））。承諾が撤回された顧客への電子交付は設定に関わらず常にブロックします。有効にすると、承諾を記録していない顧客への電子交付（受領サイン依頼・署名依頼）もブロックします。
+              </HelpTooltip>
+            </div>
+            <input type="hidden" name="require_delivery_consent_present" value="1" />
+            <label className="flex items-start gap-2 text-sm text-secondary">
+              <input
+                type="checkbox"
+                name="require_delivery_consent"
+                value="on"
+                defaultChecked={requireDeliveryConsent}
+                className="mt-0.5"
+              />
+              <span>
+                電子交付の前に顧客の承諾記録を必須にする
+                <span className="mt-0.5 block text-xs text-muted">
+                  オフ（既定）の場合、承諾の撤回のみブロックします。承諾は「顧客詳細」で記録します。
                 </span>
               </span>
             </label>
