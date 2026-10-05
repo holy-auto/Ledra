@@ -94,14 +94,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ toke
     }
 
     // G3/G4: 発行後に承諾が撤回された・事前承諾が必須になった場合は、開いた時点で止める（リンクの失効の代わり）。
-    const deliveryBlock = await customerFacingDeliveryBlock(supabase, session.certificate_id);
-    if (deliveryBlock) {
-      return apiError({
-        code: deliveryBlock.status === 409 ? "conflict" : "db_error",
-        message: deliveryBlock.message,
-        status: deliveryBlock.status,
-      });
-    }
+    const deliveryBlock = await customerFacingDeliveryBlock(supabase, session.certificate_id, {
+      sessionId: session.id,
+      req: req,
+    });
+    if (deliveryBlock) return apiError(deliveryBlock);
 
     // page_opened 監査ログ
     await supabase.from("signature_audit_logs").insert({

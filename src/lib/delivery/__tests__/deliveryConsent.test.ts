@@ -46,6 +46,7 @@ type Result = { data: unknown; error: unknown };
  */
 function makeDb(cfg: Record<string, Result>) {
   const calls: Record<string, [string, unknown][]> = {};
+  const inserted: Record<string, unknown[]> = {};
   const db = {
     from(table: string) {
       calls[table] = [];
@@ -53,11 +54,12 @@ function makeDb(cfg: Record<string, Result>) {
         select: () => builder,
         eq: (col: string, val: unknown) => (calls[table].push([col, val]), builder),
         maybeSingle: () => Promise.resolve(cfg[table] ?? { data: null, error: null }),
+        insert: (row: unknown) => ((inserted[table] ??= []).push(row), Promise.resolve({ error: null })),
       };
       return builder as unknown as ReturnType<SupabaseClient["from"]>;
     },
   } as Pick<SupabaseClient, "from">;
-  return { db, calls };
+  return { db, calls, inserted };
 }
 const ok = (data: unknown): Result => ({ data, error: null });
 const fail: Result = { data: null, error: { message: "boom" } };
@@ -101,23 +103,27 @@ describe("electronicDeliveryBlockMessage [G3/G4 交付ゲート]", () => {
 
 describe("customerFacingDeliveryBlock [発行済みの署名/受領リンク]", () => {
   const CERT = ok({ tenant_id: "t1", customer_id: "c1" });
+  const CTX = { sessionId: "s1" };
 
   it("証明書に紐付かないセッションは対象外（DB を読まない）", async () => {
     const { db, calls } = makeDb({});
-    expect(await customerFacingDeliveryBlock(db, null)).toBeNull();
+    expect(await customerFacingDeliveryBlock(db, null, CTX)).toBeNull();
     expect(calls).toEqual({});
   });
   it("撤回済みなら 409。お客様向けの文面で、店舗向けの理由（撤回の有無）は出さない", async () => {
-    const r = await customerFacingDeliveryBlock(
-      makeDb({ certificates: CERT, delivery_consents: ok({ status: "revoked" }) }).db,
-      "cert1",
-    );
+    const { db, inserted } = makeDb({ certificates: CERT, delivery_consents: ok({ status: "revoked" }) });
+    const r = await customerFacingDeliveryBlock(db, "cert1", CTX);
     expect(r?.status).toBe(409);
     expect(r?.message).not.toMatch(/撤回/);
+    // 止めたことを G4 の証跡として audit_logs に残す
+    await Promise.resolve();
+    expect(inserted.audit_logs).toEqual([
+      expect.objectContaining({ tenant_id: "t1", action: "delivery_link_blocked" }),
+    ]);
   });
   it("承諾済みなら通す・その証明書の顧客で判定する", async () => {
     const { db, calls } = makeDb({ certificates: CERT, delivery_consents: ok({ status: "granted" }) });
-    expect(await customerFacingDeliveryBlock(db, "cert1")).toBeNull();
+    expect(await customerFacingDeliveryBlock(db, "cert1", CTX)).toBeNull();
     expect(calls.certificates).toEqual([["id", "cert1"]]);
     expect(calls.delivery_consents).toEqual([
       ["tenant_id", "t1"],
@@ -125,9 +131,10 @@ describe("customerFacingDeliveryBlock [発行済みの署名/受領リンク]", 
     ]);
   });
   it("証明書・承諾状態を読めないときは 503（承諾の問題とは言わない）", async () => {
-    expect((await customerFacingDeliveryBlock(makeDb({ certificates: fail }).db, "cert1"))?.status).toBe(503);
+    expect((await customerFacingDeliveryBlock(makeDb({ certificates: fail }).db, "cert1", CTX))?.status).toBe(503);
     expect(
-      (await customerFacingDeliveryBlock(makeDb({ certificates: CERT, delivery_consents: fail }).db, "cert1"))?.status,
+      (await customerFacingDeliveryBlock(makeDb({ certificates: CERT, delivery_consents: fail }).db, "cert1", CTX))
+        ?.status,
     ).toBe(503);
   });
 });
