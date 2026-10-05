@@ -285,15 +285,22 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     borderRadius: radius.card,
     padding: spacing.lg,
+    // chevron は position:absolute で右端 16〜36px を占める。行ごとに逃げ幅を
+    // 入れるとカードの縦中央に来た行を取りこぼすので、カード側で帯ごと確保する。
+    paddingRight: spacing["4xl"],
     ...shadows.card,
     position: "relative",
   },
+  // simple は chevron を出さない（CTA ボタンになる）ので左右対称に戻す
   cardSimple: {
     padding: spacing.xl,
+    paddingRight: spacing.xl,
   },
+  // dense は chevronDense が right: sm(8) なので帯は 8〜28px
   cardDense: {
     borderRadius: radius.md,
     paddingHorizontal: spacing.md,
+    paddingRight: spacing["3xl"],
     paddingVertical: spacing.sm,
     shadowOpacity: 0,
     shadowRadius: 0,
@@ -308,7 +315,6 @@ const styles = StyleSheet.create({
   },
   cardHeaderDense: {
     gap: spacing.sm,
-    paddingRight: spacing["3xl"],
   },
   vehicleIcon: {
     width: 40,
@@ -363,7 +369,6 @@ const styles = StyleSheet.create({
   metaRowDense: {
     marginTop: spacing.xs,
     marginLeft: 0,
-    paddingRight: spacing["3xl"],
   },
   metaItem: {
     flexDirection: "row",
