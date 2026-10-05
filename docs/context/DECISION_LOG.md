@@ -30,6 +30,30 @@
    アプリ内通知が要るかは運用開始後に確認。
 9. 公開区分: 要確認（社内の通知設計判断）
 
+## 2026-10-05 C2PA の本番証明書と TSA は ssl.com の無料枠で取る（TSA は `https://ts-c2pa.ssl.com/ecc`）
+
+1. 日付: 2026-10-05（`date -u` で確認）
+2. 起きたこと: タイムスタンプ付き署名（#1231）を実装し、使う TSA と費用を調べた。ssl.com の C2PA 用 TSA は、代表の PC からの
+   実測で https・TLS 1.3 で受け（`curl.exe --tlsv1.3` が exit=0）、実際に発行したトークン（2026-10-05 11:29:12 UTC）が
+   同梱の TSA Trust List のルート「SSL.com C2PA ECC Root CA 2025」（SHA-256 指紋 8A:8B:…:B0:50、リストと一致）に、
+   「SSLcom C2PA Timestamping Unit 2026 E1」（2037-04-28 まで）→「SSL.com C2PA Time-Stamping ICA E1」（トークン同梱）経由で
+   チェーンした（`openssl ts -verify` で OK、無関係な信頼点・別データでは FAILED。同じ形を手元で再現すると c2pa-rs も
+   ルートだけの信頼点で `timeStamp.trusted`）。費用は、ssl.com が適合済み Generator 製品に AL1 証明書（1年）を無料で出し、タイムスタンプ枠が付く
+   （Web 検索結果の要約。公式ページは環境から開けず未確認）。Ledra の写真は直近12か月 88 枚。代表が「マージして無料枠で取得を進めよう」と判断。
+3. 以前の考え: 本番証明書の CA は DigiCert か SSL.com のどちらかで、費用・条件は【要確認】のまま（docs/c2pa-production-deployment.md §2）。
+   TSA は未定で、汎用の `timestamp.digicert.com` も候補に見えていた。
+4. 違和感・問題: 汎用の TSA は C2PA の TSA Trust List にチェーンしない見込みで（リストにある DigiCert の TSA 中間 CA は C2PA 専用のみ）、
+   入れても `timeStamp.untrusted` で期限切れの救済にならない。費用の見積りも無いまま CA を選ぶところだった。
+5. 決めたこと: 本番の claim 署名証明書と TSA を ssl.com の C2PA 無料枠で取る。`C2PA_TSA_URL=https://ts-c2pa.ssl.com/ecc`。
+   申込は代表が ssl.com のポータルで行い、画面の形（CSR 提出か否か）を見てから鍵の作り方を決める。
+6. 捨てた選択肢: (a) DigiCert — C2PA 用 TSA の URL も費用も確認できていない。(b) 汎用 TSA（`timestamp.digicert.com`）— Trust List に
+   チェーンしない見込み。(c) 証明書は ssl.com・TSA は別社 — 実測でチェーンを確かめた TSA が ssl.com のものだけで、分ける理由が無い。
+7. 判断理由: TSA は実測で条件を満たし、費用は今の量なら無料枠に収まる見込み（少ない方の 2,500 件でも約 3.5%）。
+   適合の Record ID を持っているので申込条件にも合う。
+8. まだ答えが出ていないこと: 申込画面の形（CSR か、ssl.com 側で鍵を持つか）、申込・発行の時期（Notice of Conformance は未着）、
+   無料枠の件数（2,500 か 10,000 か）・更新の可否・超過単価。OPEN_QUESTIONS 2026-10-05。
+9. 公開区分: 要確認（CA・TSA の選定理由は一般論として書けるが、契約条件は ssl.com との確認後）
+
 ## 2026-10-05 C2PA の claim 署名に RFC 3161 タイムスタンプを付ける。TSA への通信は中継して TLS 1.3・2秒で打ち切る
 
 1. 日付: 2026-10-05（`date -u` で確認）
