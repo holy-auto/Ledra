@@ -65,7 +65,7 @@ function redirectToBilling(req: Request, reason: "inactive" | "plan", action?: s
   return new Response(null, { status: 303, headers: { Location: billing.toString() } });
 }
 
-function redirectToPublic(pid: string, notice: string) {
+export function redirectToPublic(pid: string, notice: string) {
   const dest = new URL(`/c/${pid}`, "https://example.invalid");
   dest.searchParams.set("notice", notice);
   // caller will replace origin

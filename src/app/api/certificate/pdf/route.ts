@@ -1,5 +1,5 @@
-import { enforceBilling, isNavigation } from "@/lib/billing/guard";
-import { electronicDeliveryBlockMessage } from "@/lib/delivery/deliveryConsent";
+import { enforceBilling, isNavigation, redirectToPublic } from "@/lib/billing/guard";
+import { electronicDeliveryBlockMessage, BLOCKED_UNVERIFIED } from "@/lib/delivery/deliveryConsent";
 import { headers } from "next/headers";
 import { NextResponse } from "next/server";
 import { logCertificateAction, getRequestMeta } from "@/lib/audit/certificateLog";
@@ -20,6 +20,10 @@ import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
 import type { TemplateConfig } from "@/types/templateOption";
 
 export const dynamic = "force-dynamic";
+
+const PUBLIC_PDF_CONSENT_BLOCKED =
+  "電子データでのお渡しに必要なご承諾が確認できないため、PDFは出力できません。書面でのお渡しは発行店舗へお問い合わせください。";
+const PUBLIC_PDF_UNAVAILABLE = "現在PDFを出力できません。時間をおいて再度お試しください。";
 
 type CertPublic = {
   public_id: string;
@@ -98,48 +102,6 @@ export async function GET(req: Request) {
     return apiNotFound("証明書が見つかりません。");
   }
 
-  // 電子交付の承諾ゲート（G3/G4）: 公開 PDF は記録簿の写しの電子交付経路。承諾を撤回した顧客
-  // （事前承諾を必須にしたテナントでは未承諾・顧客未紐付けも）には出さない。公開ページの閲覧自体は止めない。
-  const adm = createServiceRoleAdmin("public certificate PDF — lookup by public_id, caller is anonymous");
-  const { data: gateRow, error: rowErr } = await adm
-    .from("certificates")
-    .select("tenant_id,id,vehicle_id,customer_id")
-    .eq("public_id", pid)
-    .limit(1)
-    .maybeSingle();
-  const blocked =
-    rowErr || !gateRow?.tenant_id
-      ? "証明書の情報を確認できませんでした。時間をおいて再度お試しください。"
-      : await electronicDeliveryBlockMessage(
-          adm,
-          gateRow.tenant_id as string,
-          (gateRow.customer_id as string | null) ?? null,
-        );
-  if (blocked || !gateRow) {
-    if (isNavigation(req)) {
-      const loc = new URL(`/c/${encodeURIComponent(pid)}`, req.url);
-      loc.searchParams.set("notice", "pdf_blocked_consent");
-      return new Response(null, { status: 303, headers: { Location: loc.toString() } });
-    }
-    return apiJson({ error: "delivery_consent_blocked", message: blocked ?? "" }, { status: 403 });
-  }
-
-  // 公開PDF閲覧ログ
-  const meta = getRequestMeta(req);
-  logCertificateAction({
-    type: "certificate_public_pdf",
-    tenantId: gateRow.tenant_id as string,
-    publicId: pid,
-    certificateId: gateRow.id as string,
-    vehicleId: gateRow.vehicle_id as string | null,
-    ip: meta.ip,
-    userAgent: meta.userAgent,
-  });
-
-  const fallbackOrigin = await getFallbackOrigin();
-  const origin = buildOriginFromCert(cert, fallbackOrigin);
-  const publicUrl = `${origin}/c/${cert.public_id}`;
-
   // 標準/ブランド両デザインで必要になる拡張カラムとアンカー情報をまとめて取得する。
   type FullCertRow = Pick<
     CertRow,
@@ -152,16 +114,58 @@ export async function GET(req: Request) {
     | "maintenance_json"
     | "body_repair_json"
     | "accessory_json"
-  > & { id: string; tenant_id: string | null; manufacturer_template_id: string | null };
+  > & {
+    id: string;
+    tenant_id: string | null;
+    vehicle_id: string | null;
+    customer_id: string | null;
+    manufacturer_template_id: string | null;
+  };
 
-  const { data: fullCert } = await adm
+  const adm = createServiceRoleAdmin("public certificate PDF — fetch full cert + anchors for rendering");
+  const { data: fullCert, error: fullErr } = await adm
     .from("certificates")
     .select(
-      "id, tenant_id, ppf_coverage_json, service_type, coating_products_json, warranty_period_end, warranty_exclusions, current_version, maintenance_json, body_repair_json, accessory_json, manufacturer_template_id",
+      "id, tenant_id, vehicle_id, customer_id, ppf_coverage_json, service_type, coating_products_json, warranty_period_end, warranty_exclusions, current_version, maintenance_json, body_repair_json, accessory_json, manufacturer_template_id",
     )
     .eq("public_id", pid)
     .limit(1)
     .maybeSingle<FullCertRow>();
+
+  // 電子交付の承諾ゲート（G3/G4）: 公開 PDF は記録簿の写しの電子交付経路。承諾を撤回した顧客
+  // （事前承諾を必須にしたテナントでは未承諾・顧客未紐付けも）には出さない。公開ページの閲覧自体は止めない。
+  // 判定できない（DB 一時障害）ときも出さないが、承諾の問題とは言わず再試行を案内する。
+  const blocked =
+    fullErr || !fullCert?.tenant_id
+      ? BLOCKED_UNVERIFIED
+      : await electronicDeliveryBlockMessage(adm, fullCert.tenant_id, fullCert.customer_id ?? null);
+  if (blocked || !fullCert?.tenant_id) {
+    const transient = blocked === BLOCKED_UNVERIFIED || !blocked;
+    if (isNavigation(req)) {
+      const loc = new URL(redirectToPublic(pid, transient ? "pdf_unavailable" : "pdf_blocked_consent"), req.url);
+      return new Response(null, { status: 303, headers: { Location: loc.toString() } });
+    }
+    // 匿名の呼び出し元に、店舗向けの理由（撤回の有無・テナント設定）は返さない。
+    return transient
+      ? apiJson({ error: "temporarily_unavailable", message: PUBLIC_PDF_UNAVAILABLE }, { status: 503 })
+      : apiJson({ error: "delivery_consent_blocked", message: PUBLIC_PDF_CONSENT_BLOCKED }, { status: 403 });
+  }
+
+  // 公開PDF閲覧ログ（PDF を出すときだけ）
+  const meta = getRequestMeta(req);
+  logCertificateAction({
+    type: "certificate_public_pdf",
+    tenantId: fullCert.tenant_id,
+    publicId: pid,
+    certificateId: fullCert.id,
+    vehicleId: fullCert.vehicle_id,
+    ip: meta.ip,
+    userAgent: meta.userAgent,
+  });
+
+  const fallbackOrigin = await getFallbackOrigin();
+  const origin = buildOriginFromCert(cert, fallbackOrigin);
+  const publicUrl = `${origin}/c/${cert.public_id}`;
 
   let anchors: AnchorInfo[] = [];
   let photos: PdfPhoto[] = [];
