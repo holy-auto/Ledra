@@ -10,7 +10,10 @@
 > claim 署名に TSA のタイムスタンプが入る。付いていないと、署名証明書の期限が切れた日から、それまでに署名した写真が
 > すべて `signingCredential.expired` と判定される。**未設定なら従来どおり**（本番の C2PA もまだ disabled）。
 > TSA が落ちている・2秒で返らないときは、写真を止めずにタイムスタンプなしで署名する。TSA への通信は TLS 1.3・https のみ。
-> **使う TSA の URL は未決**（C2PA の TSA Trust List にチェーンし、https・TLS 1.3 で受ける URL が要る。OPEN_QUESTIONS）。
+> #1231 で main にマージ済み（26959d80）。**TSA は `https://ts-c2pa.ssl.com/ecc` に決定**（TLS 1.3 で受けること、トークンが
+> TSA Trust List にチェーンすることを実測）。**本番証明書と TSA は ssl.com の C2PA 無料枠で取る**と代表が決定
+> （DECISION_LOG 2026-10-05）。次は代表が ssl.com のポータルで申込画面を開き、鍵の作り方（CSR か否か）を決める。
+> Notice of Conformance は 2026-10-05 時点で未着。
 
 > 2026-10-02 追記（**Japan Mobility Show Bizweek 2026 に Ledra を出展**）: 会期 2026-10-13〜16・幕張メッセ
 > 展示ホール2・3、小間位置 ZONE1「滞らないシステムで、広がる安心。」S-06。出展内容は Ledra（代表回答）。
