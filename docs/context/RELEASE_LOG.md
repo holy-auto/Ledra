@@ -4,6 +4,16 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-10-05 指定整備記録簿 PDF に自動車検査員番号を印字（G1）
+
+- 内容: 完成検査の実施時点スナップショット（`inspector_qualification_snapshot`）から **自動車検査員
+  （`vehicle_inspector`）の資格番号**を取り出し、指定整備記録簿 PDF の「自動車検査員」欄の直後に
+  「自動車検査員番号」として印字。番号が未保持なら空欄。
+- 実装: PDF データ型 `IndicatedInspectionPdfData.inspectorQualificationNumber`（任意）を追加、
+  `inspection-records/[id]/pdf` でスナップショットから番号を抽出して渡す（`normalizeQualificationDetails`
+  ＋ `INSPECTOR_REQUIRED_QUALIFICATION` で安全に解決）。
+- 検証: PDF レンダリングの単体テスト緑、tsc・eslint（変更 0 error）・check:schema 緑。
+
 ## 2026-10-05 指定整備記録簿の「保持期限後の消去」経路を実装（G2）
 
 - 内容: 完成検査（指定整備記録簿）は2年保存のためアプリに消去経路が無かった。**保持期限（`record_retention_until`）
