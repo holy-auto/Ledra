@@ -113,8 +113,8 @@ opt-in `tenants.require_inspector_qualification`・既定 false）。残って�
 2. **強制対象の操作の範囲**: 現状は完成検査（`completion`）の作成/更新のみ。証明書の確定や他の記録簿操作にも
    資格ゲートを広げるか、`maintenance_supervisor` 固有の操作強制を設けるかは、規制の求める範囲と運用現実
    （有資格者が1人のときの回避策）を見て代表が決める。
-3. **自動車検査員番号の様式への印字**: 記録簿 PDF（指定整備記録簿）に実施者の資格番号を印字するか。
-   スナップショット（`inspector_qualification_snapshot`）は保持済みだが PDF 出力への反映は未配線。
+
+（自動車検査員番号の様式への印字は実装済み＝指定整備記録簿 PDF に実施時スナップショットの番号を印字。RELEASE_LOG 2026-10-05。）
 
 ## `@contentauth/c2pa-node` の固定（0.9.7）をいつ外すか（2026-10-02）
 
