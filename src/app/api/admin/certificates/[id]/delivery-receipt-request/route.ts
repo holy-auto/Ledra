@@ -179,12 +179,10 @@ export const POST = withCaller<{ id: string }>(
       const { admin } = createTenantScopedAdmin(caller.tenantId);
 
       // G4（第２ ４（４））: 使用者が電子交付の承諾を撤回している場合は電磁的交付をしてはならない。
-      // 証明書＝記録簿の写しの電子交付（この受領サイン依頼メール）をブロックする。顧客未紐付け
-      // （customer_id 無し）の証明書は顧客単位の判定ができないため従来どおり（OPEN_QUESTIONS）。
-      // テナントが事前承諾を必須にしていれば未承諾もブロック（G3 opt-in）。
-      const blocked = cert.customer_id
-        ? await electronicDeliveryBlockMessage(admin, caller.tenantId, cert.customer_id)
-        : null;
+      // 証明書＝記録簿の写しの電子交付（この受領サイン依頼メール）をブロックする。テナントが事前承諾を
+      // 必須にしていれば未承諾もブロック（G3 opt-in）。顧客未紐付け（customer_id 無し）の証明書は既定では
+      // 従来どおり通し（OPEN_QUESTIONS）、必須化テナントでは承諾を確認できないためブロックする。
+      const blocked = await electronicDeliveryBlockMessage(admin, caller.tenantId, cert.customer_id ?? null);
       if (blocked) return apiError({ code: "conflict", message: blocked, status: 409 });
 
       // ── 案件サインオフ由来の依頼: 予約検証 + 施工前後写真ゲート ──

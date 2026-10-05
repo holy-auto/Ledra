@@ -23,12 +23,6 @@ describe("deliveryConsent [G3/G4 電子交付の承諾]", () => {
     expect(isElectronicDeliveryBlocked({ status: "revoked" })).toBe(true); // G4: 撤回は交付不可
   });
 
-  it("requireConsent（テナント opt-in）では未承諾もブロック、承諾済みは通す", () => {
-    expect(isElectronicDeliveryBlocked(null, true)).toBe(true);
-    expect(isElectronicDeliveryBlocked({ status: "granted" }, true)).toBe(false);
-    expect(isElectronicDeliveryBlocked({ status: "revoked" }, true)).toBe(true);
-  });
-
   it("開示文言は交付方法を列挙し、撤回できる旨を含む", () => {
     const t = deliveryConsentText();
     expect(t).toMatch(/電子メール/);
@@ -45,44 +39,61 @@ describe("deliveryConsent [G3/G4 電子交付の承諾]", () => {
 });
 
 type Result = { data: unknown; error: unknown };
-/** テーブルごとに maybeSingle の結果を返す最小のクエリビルダ模倣（inspectorQualification.test と同型）。 */
-function makeDb(cfg: Record<string, Result>): Pick<SupabaseClient, "from"> {
-  return {
+/**
+ * テーブルごとに maybeSingle の結果を返す最小のクエリビルダ模倣。eq の (列, 値) を記録し、
+ * 誤った列・テナントで絞った場合にテストで検出できるようにする。
+ */
+function makeDb(cfg: Record<string, Result>) {
+  const calls: Record<string, [string, unknown][]> = {};
+  const db = {
     from(table: string) {
+      calls[table] = [];
       const builder: Record<string, unknown> = {
         select: () => builder,
-        eq: () => builder,
+        eq: (col: string, val: unknown) => (calls[table].push([col, val]), builder),
         maybeSingle: () => Promise.resolve(cfg[table] ?? { data: null, error: null }),
       };
       return builder as unknown as ReturnType<SupabaseClient["from"]>;
     },
   } as Pick<SupabaseClient, "from">;
+  return { db, calls };
 }
 const ok = (data: unknown): Result => ({ data, error: null });
 const fail: Result = { data: null, error: { message: "boom" } };
+const STRICT = ok({ require_delivery_consent: true });
 
 describe("electronicDeliveryBlockMessage [G3/G4 交付ゲート]", () => {
-  const run = (cfg: Record<string, Result>) => electronicDeliveryBlockMessage(makeDb(cfg), "t1", "c1");
+  const run = (cfg: Record<string, Result>, customerId: string | null = "c1") =>
+    electronicDeliveryBlockMessage(makeDb(cfg).db, "t1", customerId);
 
   it("撤回済みはテナント設定に関係なくブロック", async () => {
     expect(await run({ delivery_consents: ok({ status: "revoked" }) })).toMatch(/撤回/);
   });
   it("承諾済みは通す", async () => {
-    expect(
-      await run({ delivery_consents: ok({ status: "granted" }), tenants: ok({ require_delivery_consent: true }) }),
-    ).toBeNull();
+    expect(await run({ delivery_consents: ok({ status: "granted" }), tenants: STRICT })).toBeNull();
   });
   it("未承諾: 既定（フラグ false/未設定）は通す＝非破壊", async () => {
     expect(await run({ delivery_consents: ok(null), tenants: ok({ require_delivery_consent: false }) })).toBeNull();
     expect(await run({ delivery_consents: ok(null), tenants: ok(null) })).toBeNull();
   });
   it("未承諾: フラグ true ならブロック", async () => {
-    expect(await run({ delivery_consents: ok(null), tenants: ok({ require_delivery_consent: true }) })).toMatch(
-      /承諾を得ていません/,
-    );
+    expect(await run({ delivery_consents: ok(null), tenants: STRICT })).toMatch(/承諾を得ていません/);
   });
-  it("確認できない（クエリ失敗）は fail-closed でブロック", async () => {
+  it("顧客未紐付け: 既定は通し、フラグ true ならブロック", async () => {
+    expect(await run({ tenants: ok({ require_delivery_consent: false }) }, null)).toBeNull();
+    expect(await run({ tenants: STRICT }, null)).toMatch(/顧客が紐付いていない/);
+  });
+  it("承諾クエリ失敗は fail-closed、テナント設定の読み取り失敗は既定（通す）", async () => {
     expect(await run({ delivery_consents: fail })).toMatch(/確認できません/);
-    expect(await run({ delivery_consents: ok(null), tenants: fail })).toMatch(/確認できません/);
+    expect(await run({ delivery_consents: ok(null), tenants: fail })).toBeNull();
+  });
+  it("自テナント・対象顧客で絞り込む", async () => {
+    const { db, calls } = makeDb({ delivery_consents: ok(null), tenants: STRICT });
+    await electronicDeliveryBlockMessage(db, "t1", "c1");
+    expect(calls.delivery_consents).toEqual([
+      ["tenant_id", "t1"],
+      ["customer_id", "c1"],
+    ]);
+    expect(calls.tenants).toEqual([["id", "t1"]]);
   });
 });

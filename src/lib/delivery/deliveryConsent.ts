@@ -56,37 +56,51 @@ export function deliveryConsentStatus(row: DeliveryConsentRow | null | undefined
 }
 
 /**
- * 電子交付をブロックすべきか。撤回済み（規制(4)）は常にブロック。未承諾（none）は
- * `requireConsent`（tenants.require_delivery_consent）が true のときだけブロック（規制(3)・opt-in）。
+ * 電子交付をブロックすべきか（規制(4)）。**撤回済みのときだけブロック**する（非破壊既定）。
+ * 未承諾（none）のブロックはテナント opt-in で、DB ゲート electronicDeliveryBlockMessage が判定する。
  */
-export function isElectronicDeliveryBlocked(
-  row: DeliveryConsentRow | null | undefined,
-  requireConsent = false,
-): boolean {
-  const s = deliveryConsentStatus(row);
-  return s === "revoked" || (s === "none" && requireConsent);
+export function isElectronicDeliveryBlocked(row: DeliveryConsentRow | null | undefined): boolean {
+  return deliveryConsentStatus(row) === "revoked";
 }
 
 const BLOCKED_REVOKED =
   "この顧客は電子交付の承諾を撤回しています。電磁的方法での交付はできません（書面交付等に切り替えてください）。";
 const BLOCKED_NO_CONSENT =
   "この顧客から電子交付の承諾を得ていません（店舗設定で事前承諾を必須にしています）。顧客詳細で承諾を記録するか、書面交付等に切り替えてください。";
+const BLOCKED_NO_CUSTOMER =
+  "顧客が紐付いていない証明書は承諾を確認できません（店舗設定で事前承諾を必須にしています）。顧客を紐付けて承諾を記録するか、書面交付等に切り替えてください。";
 const BLOCKED_UNVERIFIED = "電子交付の承諾状態を確認できませんでした。時間をおいて再度お試しください。";
 
 /**
- * 顧客単位で電子交付をブロックすべきかを DB から判定する共通ゲート。 [G3/G4]
- * 記録簿の写しの電子交付を行う全経路（証明書の受領サイン依頼・署名依頼など）から呼ぶ。
- * ブロックするなら利用者向けの理由メッセージを、通すなら null を返す。
+ * テナントが電子交付の事前承諾を必須にしているか（tenants.require_delivery_consent）。
+ * **fail-open（既定 false 扱い）**: 列の未適用（デプロイとマイグレーションの順序差）や一時障害で、
+ * opt-in していない全テナントの交付を止めないため。tenantRequiresInspectorQualification と同じ方針。
+ */
+async function tenantRequiresDeliveryConsent(db: Pick<SupabaseClient, "from">, tenantId: string): Promise<boolean> {
+  const { data, error } = await db.from("tenants").select("require_delivery_consent").eq("id", tenantId).maybeSingle();
+  if (error || !data) return false;
+  return (data as { require_delivery_consent: boolean | null }).require_delivery_consent === true;
+}
+
+/**
+ * 記録簿の写し（証明書）の電子交付をブロックすべきかを判定する共通ゲート。 [G3/G4]
+ * 電子交付を行う全経路（証明書の受領サイン依頼・署名依頼など）から呼ぶ。ブロックするなら利用者向けの
+ * 理由メッセージを、通すなら null を返す。
  *
- * **fail-closed**: 承諾状態・テナント設定を確認できない（クエリ失敗）ときはブロックする —— 規制(4)の
- * 「撤回されたら交付してはならない」保護を、DB 一時障害で落とさないため。テナント設定は未承諾のときだけ読む。
- * `db` は tenant-scoped admin（RLS バイパス）を渡す。customerId が無い証明書は呼び出し側で除外する。
+ * - 撤回済み → 常にブロック。承諾状態を確認できないときも **fail-closed** でブロック（規制(4)の保護を
+ *   DB 一時障害で落とさない）。
+ * - 未承諾・顧客未紐付け（customerId=null）→ テナントが事前承諾を必須にしているときだけブロック（規制(3)・opt-in）。
+ *   テナント設定は該当時のみ読む。
+ * `db` は tenant-scoped admin（RLS バイパス）を渡す。
  */
 export async function electronicDeliveryBlockMessage(
   db: Pick<SupabaseClient, "from">,
   tenantId: string,
-  customerId: string,
+  customerId: string | null,
 ): Promise<string | null> {
+  if (!customerId) {
+    return (await tenantRequiresDeliveryConsent(db, tenantId)) ? BLOCKED_NO_CUSTOMER : null;
+  }
   const { data, error } = await db
     .from("delivery_consents")
     .select("status, revoked_at")
@@ -94,17 +108,8 @@ export async function electronicDeliveryBlockMessage(
     .eq("customer_id", customerId)
     .maybeSingle();
   if (error) return BLOCKED_UNVERIFIED;
-  const row = (data as DeliveryConsentRow | null) ?? null;
-  const status = deliveryConsentStatus(row);
+  const status = deliveryConsentStatus((data as DeliveryConsentRow | null) ?? null);
   if (status === "revoked") return BLOCKED_REVOKED;
   if (status === "granted") return null;
-
-  const { data: tenant, error: tErr } = await db
-    .from("tenants")
-    .select("require_delivery_consent")
-    .eq("id", tenantId)
-    .maybeSingle();
-  if (tErr) return BLOCKED_UNVERIFIED;
-  const requireConsent = (tenant as { require_delivery_consent?: boolean | null } | null)?.require_delivery_consent;
-  return isElectronicDeliveryBlocked(row, requireConsent === true) ? BLOCKED_NO_CONSENT : null;
+  return (await tenantRequiresDeliveryConsent(db, tenantId)) ? BLOCKED_NO_CONSENT : null;
 }

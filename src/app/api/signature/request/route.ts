@@ -125,10 +125,10 @@ export const POST = withCaller(
 
     // G4（第２ ４（４））: 署名依頼も証明書（＝記録簿の写し）を顧客へ電子交付する経路。
     // 使用者が電子交付の承諾を撤回していればブロックする（受領サイン依頼と同じゲート・fail-closed）。
-    // テナントが事前承諾を必須にしていれば未承諾もブロック（G3 opt-in）。
-    if (cert.customer_id) {
+    // テナントが事前承諾を必須にしていれば未承諾・顧客未紐付けもブロック（G3 opt-in）。
+    {
       const { admin } = createTenantScopedAdmin(caller.tenantId);
-      const blocked = await electronicDeliveryBlockMessage(admin, caller.tenantId, cert.customer_id);
+      const blocked = await electronicDeliveryBlockMessage(admin, caller.tenantId, cert.customer_id ?? null);
       if (blocked) return apiError({ code: "conflict", message: blocked, status: 409 });
     }
 
