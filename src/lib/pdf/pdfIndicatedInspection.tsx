@@ -44,6 +44,8 @@ export type IndicatedInspectionPdfData = {
   // 適格請求書の登録番号で別物）、誤った識別子を法定様式に載せないため本票には収載しない。
   facility: { name: string | null };
   inspectorName: string | null;
+  /** 実施時点の自動車検査員番号（inspector_qualification_snapshot から。未保持なら null）。 */
+  inspectorQualificationNumber?: string | null;
   inspectedAt: string | null;
   vehicle: { maker: string | null; model: string | null; plate: string | null } | null;
   customerName: string | null;
@@ -189,6 +191,7 @@ function IndicatedInspectionDocument({ data }: { data: IndicatedInspectionPdfDat
         <View style={s.metaGrid}>
           <MetaItem label="事業場名" value={data.facility.name ?? ""} />
           <MetaItem label="自動車検査員" value={data.inspectorName ?? ""} />
+          <MetaItem label="自動車検査員番号" value={data.inspectorQualificationNumber ?? ""} />
           <MetaItem label="検査年月日" value={fmtDate(data.inspectedAt)} />
           <MetaItem label="使用者 / 依頼者" value={data.customerName ?? ""} />
           <MetaItem label="車両（車名・型式）" value={vehicleLine} />

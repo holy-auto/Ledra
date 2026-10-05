@@ -8,6 +8,8 @@ import {
   extractInspectionAnswers,
   type IndicatedInspectionForm,
 } from "@/lib/validations/indicated-inspection";
+import { normalizeQualificationDetails } from "@/lib/staff/qualificationStatus";
+import { INSPECTOR_REQUIRED_QUALIFICATION } from "@/lib/staff/inspectorQualification";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -23,7 +25,7 @@ export const runtime = "nodejs";
  */
 
 const RECORD_COLUMNS = `
-  id, inspection_type, inspector_name, inspected_at, notes, answers,
+  id, inspection_type, inspector_name, inspector_qualification_snapshot, inspected_at, notes, answers,
   vehicle:vehicles ( maker, model, plate_display ),
   customer:customers ( name )
 `;
@@ -68,6 +70,7 @@ export const GET = withCaller<{ id: string }>(
 
       const rec = record as unknown as {
         inspector_name: string | null;
+        inspector_qualification_snapshot: unknown;
         inspected_at: string | null;
         notes: string | null;
         answers: unknown;
@@ -75,11 +78,18 @@ export const GET = withCaller<{ id: string }>(
         customer: { name: string | null } | null;
       };
 
+      // 実施時点スナップショットから自動車検査員番号を取り出して様式に印字する（G1）。
+      const inspectorQualificationNumber =
+        normalizeQualificationDetails(rec.inspector_qualification_snapshot).find(
+          (d) => d.qualification === INSPECTOR_REQUIRED_QUALIFICATION,
+        )?.number ?? null;
+
       const { visual, match } = extractInspectionAnswers(rec.answers);
       const pdf = await renderIndicatedInspectionPdf({
         form: resolveForm(rec.answers),
         facility: { name: (tenant as { name?: string | null } | null)?.name ?? null },
         inspectorName: rec.inspector_name,
+        inspectorQualificationNumber,
         inspectedAt: rec.inspected_at,
         vehicle: rec.vehicle
           ? { maker: rec.vehicle.maker, model: rec.vehicle.model, plate: rec.vehicle.plate_display }
