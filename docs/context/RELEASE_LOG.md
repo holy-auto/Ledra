@@ -8,10 +8,11 @@
 
 - 内容: `/api/certificates/create` で作る証明書は `customer_id` が空のままだった（管理画面/モバイル経路は元から紐付け済み）。
   顧客名から既存顧客に名寄せし、無ければ新規作成して紐付けるようにした。電子交付の承諾を顧客単位で判定できるようにするため。
-- 実装: `createCertificate` 内の名寄せ/自動作成を `resolveCustomerIdByName`（`src/lib/certificates/create.ts`）に切り出し、
-  両経路から呼ぶ。挙動は従来の画面経路と同じ（類似度 0.85 以上で既存顧客、作成失敗は null で証明書作成は止めない）。
-- 検証: `resolveCustomerIdByName` の単体テスト 4 件（空名/名寄せ一致/新規作成/作成失敗）緑・名寄せを壊すと落ちることを確認、
-  certificates 配下のテスト 253 件（新規 4 件含む）緑、tsc・eslint（0 error）・check:schema 緑。
+- 実装: 既存の共通リゾルバ `createCustomerResolver`（`src/lib/customers/resolveCustomer.ts`、車両取込/CSV で使用中）を呼ぶ。
+  店舗の解決と並列に実行。あわせてリゾルバ側で、顧客候補の読み込みに失敗したときは新規作成せず連携しない（skipped）
+  ように修正（従来は候補ゼロ扱いで重複顧客を作っていた。車両取込/CSV にも効く）。
+- 検証: リゾルバの単体テストに読み込み失敗ケースを追加（6 件緑・修正を外すと落ちることを確認）、tsc・eslint（0 error）・
+  check:schema 緑。
 
 ## 2026-10-05 電子交付の「未承諾ハードブロック」をテナント opt-in で追加（G3/G4）
 

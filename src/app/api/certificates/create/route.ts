@@ -17,7 +17,7 @@ import { createTenantScopedAdmin } from "@/lib/supabase/admin";
 import { resolveCertifiedTemplateForTenant } from "@/lib/manufacturers/certifiedTemplates";
 import { issueCaptureNonce } from "@/lib/certificates/captureNonce";
 import { storeIdOrNull } from "@/lib/stores/resolveStoreId";
-import { resolveCustomerIdByName } from "@/lib/certificates/create";
+import { createCustomerResolver } from "@/lib/customers/resolveCustomer";
 
 import { withCaller } from "@/lib/api/withCaller";
 export const dynamic = "force-dynamic";
@@ -108,15 +108,18 @@ export const POST = withCaller(
       // active を要求されても draft で作成し、写真アップロード後に
       // PUT /api/admin/certificates/status で発行 (active 化) させる。
       const { admin } = createTenantScopedAdmin(caller.tenantId);
+      // この経路は createCertificate を通らないので、店舗と顧客の紐付けもここで決める。顧客は共通の名寄せ/
+      // 自動作成で顧客マスタへ紐付ける（未紐付けだと電子交付の承諾 G3/G4 を顧客単位で判定できないため）。
+      const [storeId, customer] = await Promise.all([
+        storeIdOrNull(admin, caller.tenantId, "certificates/create"),
+        createCustomerResolver(admin, caller.tenantId, { ai: false }).then((r) => r.resolve({ name: b.customer_name })),
+      ]);
       const insertRow = {
         tenant_id: caller.tenantId,
-        // この経路は createCertificate を通らないので、店舗もここで決める
-        store_id: await storeIdOrNull(admin, caller.tenantId, "certificates/create"),
+        store_id: storeId,
         status: "draft" as const,
         customer_name: b.customer_name,
-        // 顧客マスタへ紐付ける（createCertificate と同じ名寄せ/自動作成）。未紐付けだと電子交付の
-        // 承諾（G3/G4）を顧客単位で判定できないため。
-        customer_id: await resolveCustomerIdByName(admin, caller.tenantId, b.customer_name),
+        customer_id: customer.customerId,
 
         // 平文 (customer_phone_last4) は保存しない。検索・紐付けはハッシュ一本化。
         customer_phone_last4_hash,

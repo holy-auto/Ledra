@@ -228,7 +228,42 @@ export async function createCertificate(
 
   // Auto-create customer record if not linked to existing master
   // (Allows "type-to-create" — name entered freely will be registered to customer master.)
-  const resolvedCustomerId = customer_id ?? (await resolveCustomerIdByName(supabase, tenantId, customer_name));
+  let resolvedCustomerId = customer_id;
+  if (!resolvedCustomerId && customer_name) {
+    // 表記揺れ (「山田たろう / ヤマダ タロウ」等) も既存顧客に寄せるため、
+    // 完全一致ではなく名寄せ (電話/メール一致 → 氏名類似度) で照合する。
+    // バルクではないが単発なので AI 判定はオフ (決定的マッチのみ) で十分。
+    const { data: candidates } = await supabase
+      .from("customers")
+      .select("id, name, name_kana, phone, email")
+      .eq("tenant_id", tenantId);
+
+    let matchedId: string | null = null;
+    if (candidates && candidates.length > 0) {
+      const match = await fuzzyMatchCustomer(
+        { query: { name: customer_name }, candidates: candidates as CustomerCandidate[] },
+        { ai: false },
+      );
+      if (match.best && match.confidence >= 0.85) {
+        matchedId = match.best.candidate.id;
+      }
+    }
+
+    if (matchedId) {
+      resolvedCustomerId = matchedId;
+    } else {
+      const { data: newCustomer, error: customerErr } = await supabase
+        .from("customers")
+        .insert({ tenant_id: tenantId, name: customer_name })
+        .select("id")
+        .single();
+      if (customerErr) {
+        console.warn("[cert] auto customer create failed:", customerErr);
+      } else if (newCustomer?.id) {
+        resolvedCustomerId = newCustomer.id as string;
+      }
+    }
+  }
 
   // Auto-create vehicle record if not linked to existing master
   let resolvedVehicleId = vehicle_id;
@@ -590,43 +625,4 @@ export async function createCertificate(
   // として発火する (issueHooks.ts)。ここ (draft 作成時) では発火しない。
 
   return { ok: true, public_id, status: "draft", photo_required: requestedActive, capture_nonce: captureNonce };
-}
-
-/**
- * 顧客名から顧客マスタの id を解決する。名寄せ（電話/メール一致 → 氏名類似度）で既存顧客に寄せ、
- * 無ければ新規作成する（"type-to-create"）。証明書を顧客に紐付けて、電子交付の承諾判定（G3/G4）を
- * 顧客単位で行えるようにするため、証明書を作る全経路から呼ぶ。名前が空・作成失敗なら null。
- */
-export async function resolveCustomerIdByName(
-  supabase: Pick<SupabaseClient, "from">,
-  tenantId: string,
-  customerName: string,
-): Promise<string | null> {
-  if (!customerName) return null;
-  // 表記揺れ (「山田たろう / ヤマダ タロウ」等) も既存顧客に寄せるため、
-  // 完全一致ではなく名寄せ (電話/メール一致 → 氏名類似度) で照合する。
-  // バルクではないが単発なので AI 判定はオフ (決定的マッチのみ) で十分。
-  const { data: candidates } = await supabase
-    .from("customers")
-    .select("id, name, name_kana, phone, email")
-    .eq("tenant_id", tenantId);
-
-  if (candidates && candidates.length > 0) {
-    const match = await fuzzyMatchCustomer(
-      { query: { name: customerName }, candidates: candidates as CustomerCandidate[] },
-      { ai: false },
-    );
-    if (match.best && match.confidence >= 0.85) return match.best.candidate.id;
-  }
-
-  const { data: newCustomer, error: customerErr } = await supabase
-    .from("customers")
-    .insert({ tenant_id: tenantId, name: customerName })
-    .select("id")
-    .single();
-  if (customerErr) {
-    console.warn("[cert] auto customer create failed:", customerErr);
-    return null;
-  }
-  return (newCustomer?.id as string | undefined) ?? null;
 }

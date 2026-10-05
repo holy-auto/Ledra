@@ -108,7 +108,9 @@ export async function createCustomerResolver(
     .eq("tenant_id", tenantId);
 
   if (error) {
+    // 候補を読めないまま進むと、既存顧客を「未一致」と誤判定して重複顧客を作ってしまう。連携しない（skipped）。
     logger.warn("[resolveCustomer] candidate load failed", { tenantId, err: error.message });
+    return { resolve: async () => ({ customerId: null, method: "skipped", confidence: 0 }) };
   }
 
   return createCustomerResolverFromCandidates(admin, tenantId, (data ?? []) as CustomerCandidate[], opts);
