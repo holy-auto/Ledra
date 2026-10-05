@@ -3,6 +3,33 @@
 > まだ決まっていないこと、判断に迷っていることを書く場所。決まったら
 > DECISION_LOG.md に移し、このファイルからは消す（削除履歴は git で追える）。
 
+## C2PA の claim 署名に使う TSA の URL（2026-10-05）
+
+- `C2PA_TSA_URL` に入れる URL が未決。条件は2つ: (1) C2PA の TSA Trust List（同梱の22件）にチェーンすること、
+  (2) https で、TLS 1.3 で受けること（中継は `tls13HttpsFetch` で、http は送らない）。
+- 汎用の `timestamp.digicert.com` は、推定: TSA Trust List にチェーンしない — 根拠は、リストにある DigiCert の TSA 中間 CA が
+  「DigiCert … TSA ICA for C2PA G1」だけであること。未検証。
+- SSL.com は C2PA 用 TSA として `http://ts-c2pa.ssl.com/ecc` と `/rsa` を案内している（2026-10-05 の Web 検索結果の要約。
+  公式ページは環境から開けず未確認）。
+  **2026-10-05 確認: `https://ts-c2pa.ssl.com/ecc` は https・TLS 1.3 で受ける**（代表の PC で
+  `curl.exe --tlsv1.3 -sI` が exit=0。応答は SignServer の `400`・`Request must contain data` で、空の問い合わせを断っただけ）。
+  **2026-10-05 確認: TSA Trust List にチェーンする。** 代表の PC から実際にタイムスタンプを1つ取得し（Status: Granted、
+  2026-10-05 11:29:12 UTC）、`openssl ts -verify` で問い合わせと照合して、同梱の TSA リストを信頼点に Verification: OK。
+  連鎖は「SSLcom C2PA Timestamping Unit 2026 E1」（2037-04-28 まで）→「SSL.com C2PA Time-Stamping ICA E1」→
+  「SSL.com C2PA ECC Root CA 2025」で、ルートの SHA-256 指紋が同梱リストのものと一致（8A:8B:…:B0:50）。
+  無関係な信頼点では FAILED、別データでは imprint mismatch になることも確認。中間 CA はリストに無くトークンに同梱される形で、
+  この形を手元で再現すると c2pa-rs もルートだけの信頼点で `timeStamp.trusted` を出す。
+  **残る判断（代表）**: `C2PA_TSA_URL=https://ts-c2pa.ssl.com/ecc` で決めてよいか。利用条件・料金・回数制限は【要確認】
+  （契約なしで1件応答したことは確認。本番の量で使ってよいかは ssl.com の規約次第）。
+- 費用（2026-10-05 の Web 検索結果の要約。ssl.com の公式ページはこの環境から開けず未確認）: ssl.com は **適合済みの
+  Generator 製品に AL1 の claim 署名証明書を1年・無料で発行**し、タイムスタンプが年 2,500 件または 10,000 件付く
+  （要約の中で数字が食い違う）。申込に Conformance の Record ID が要る。超過分の単価は非公開（問い合わせ）。
+  Ledra の写真は本番 `certificate_images` で直近12か月 88 枚（全期間も 88 枚、最終 2026-09-20）なので、少ない方の
+  2,500 件でも約 3.5%。**証明書・TSA とも無料枠に収まる見込み**だが、条件は申込時に ssl.com で確認する。
+- DigiCert の C2PA 用 TSA の URL は【要確認】（DigiCert の資料はこの環境から開けない）。
+- 本番の証明書と同じ CA の TSA にするかも未決。
+- タイムスタンプなしに落ちた写真の件数は、今はログ（`[c2pa] time-stamped signing failed`）でしか分からない。
+
 ## 実証テスト: 契約同意の控えが ft_job_assigned を流用している（2026-10-03）
 
 `/api/{admin,mobile}/field-test/agreements/[id]` は、同意した施工店自身へ「契約に同意しました」を `ft_job_assigned` で出している

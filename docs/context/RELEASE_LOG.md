@@ -4,6 +4,25 @@
 > 詳細は `git log` を参照すればよいので、ここには機能単位のサマリだけを書く。
 > 新しい変更は先頭に追記（新しい順）。
 
+## 2026-10-05 C2PA の claim 署名に RFC 3161 タイムスタンプを付ける（`C2PA_TSA_URL`）
+
+- `C2PA_TSA_URL` を設定すると、`signC2pa` が TSA のタイムスタンプ付きで署名する（`signWithTimeStamp`、`c2paSigner.ts`）。
+  期限切れ後も「署名時点で証明書が有効だった」と検証器が判断できる。未設定なら従来どおりタイムスタンプなし。
+- c2pa-rs は TSA に自前の HTTP クライアントで接続し、**タイムアウトが無い**（応答しない TSA に100秒以上待ち続けたことを実測）。
+  `signC2pa` の持ち時間は8秒なので、そのままだと写真が弾かれる。そこで c2pa-rs には 127.0.0.1 の中継を渡し、中継が
+  `tls13HttpsFetch`（https のみ・TLS 1.3）で TSA に転送し、2秒で打ち切る。
+- TSA が失敗・無応答なら、同じ写真をタイムスタンプなしで署名する（マニフェストは落とさない）。
+- TSA の連続失敗は既存の `withRetry` のブレーカー（`c2pa-tsa`、5回で30秒開く）で即失敗にし、障害中に写真ごとに待たない。
+  `C2PA_TSA_URL` が https でなければ起動時の env 検証で弾く（`envValidation.ts`）。
+- テスト: `c2paTimeStamp.test.ts`（openssl のローカル TSA で5件: 付与される・未設定なら付かない・503 と無応答でも
+  予算内でタイムスタンプなしの署名になる・同時の初回署名で dev 証明書が1枚）。配線を外すと付与テストが、中継を外すと
+  無応答テストが、資格情報の共有を外すと同時署名テストが落ちることを確認。12MP・8.3MB の JPEG で、TSA 無応答時の
+  署名は 2.7 秒（未設定時 0.65 秒）。
+- 中継は TSA の返答に常に `application/timestamp-reply` を付けて c2pa-rs に渡す（c2pa-rs はそれ以外の Content-Type を
+  返答ごと拒否するため。テストの TSA は `application/octet-stream` で返し、素通しに戻すと付与テストが落ちることを確認）。
+- 候補の TSA `https://ts-c2pa.ssl.com/ecc` は、TLS 1.3 で受けること、トークンが TSA Trust List にチェーンすることを確認済み。
+- 本番ではまだ効かない（`C2PA_MODE` が disabled、`C2PA_TSA_URL` も未設定）。
+
 ## 2026-10-03 documents / body_repair_jobs の作成・更新・削除を監査ログ化（G2）
 
 - 内容: 第２ ２（３）の「作成・更新の日時／更新箇所／作業者」の自動記録を、inspection_records（完成検査）に続いて
